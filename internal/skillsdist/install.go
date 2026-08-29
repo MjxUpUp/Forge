@@ -63,8 +63,6 @@ const (
 	TargetAll    Target = "all"
 )
 
-// Distribution states (aligned with sync.py's four states).
-//
 // 分发态（对齐 sync.py 四态）。
 const (
 	// Target is already a link pointing to canonical.
@@ -77,10 +75,6 @@ const (
 	StateMissing = "missing" // 目标不存在
 )
 
-// reservedNames are skill names managed by forge's own skillgen; install must skip them —
-// otherwise autoSync would overwrite user-installed versions with the self-generated one on every
-// run, causing distribution churn.
-//
 // reservedNames 是 forge 自身 skillgen 管理的 skill 名，install 必须跳过——
 // 否则 autoSync 每次会用自生成版覆盖用户装的，造成分发抖动。
 var reservedNames = map[string]bool{
@@ -147,8 +141,7 @@ type TargetResult struct {
 	Backup string `json:"backup,omitempty"` // overwrite 前的备份路径（空=未备份：link/断链/非 overwrite）
 }
 
-// InstallStats is the statistical summary of an install. Two tiers: Total/Failed count skills;
-// Installed/Skipped/Drifted count skill×target operations (1 skill × N targets → N counts).
+// InstallStats is the statistical summary of an install.
 //
 // InstallStats 是 install 统计摘要。两级口径：Total/Failed 按 skill 计；
 // Installed/Skipped/Drifted 按 skill×target 操作计（1 skill × N target → 计 N 次）。
@@ -160,27 +153,16 @@ type InstallStats struct {
 	Failed    int `json:"failed"`
 }
 
-// distSkipDirs is synced with skillsqa: directory segments skipped by copyTree.
-//
 // skipDirs 与 skillsqa 同步：copyTree 跳过的目录段。
 var distSkipDirs = map[string]bool{
 	"node_modules": true, ".git": true, "__pycache__": true, ".venv": true,
 }
 
-// scanSkillFn is the security scanner used by the quality gate. Package-level var
-// so tests can inject a failing scanner — a ScanSkill error is otherwise unreachable
-// in tests (the walk root always exists once ListSkills has seen the skill).
-//
 // scanSkillFn 是质量门控用的安全扫描器。包级 var 供测试注入失败的扫描器——
 // 否则 ScanSkill 的错误路径在测试中无法触发（ListSkills 见过 skill 后 walk 根必存在）。
 var scanSkillFn = skillsqa.ScanSkill
 
-// DirEntryIsDir reports whether a ReadDir entry is a directory, following
-// junction/symlink (os.Stat semantics). Kept as an exported wrapper over
-// util.DirEntryIsDir (the single source of truth, shared with skilltrigger) —
-// e.IsDir() is Lstat-based and returns false for junction/symlink entries, and
-// with link-mode install most entries under a skills dir ARE links, so Lstat
-// semantics would silently drop them.
+// DirEntryIsDir reports whether a ReadDir entry is a directory, following junction/symlink (os.Stat semantics).
 //
 // DirEntryIsDir 判断 ReadDir 条目是否为目录，跟随 junction/symlink（os.Stat 语义）。
 // 保留为 util.DirEntryIsDir（单一真相源，与 skilltrigger 共享）的导出包装——
@@ -196,19 +178,12 @@ func DirEntryIsDir(parent string, e fs.DirEntry) bool {
 func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 	report := &InstallReport{Mode: opts.Mode, Canonical: canonical}
 
-	// overwrite backup root: opts.BackupBase (test injection) or ~/.forge/skills-backup/<ts> (production).
-	// One install shares one ts subdirectory for "what was overwritten this time" traceability and recovery.
-	//
 	// overwrite 备份根目录：opts.BackupBase（测试注入）或 ~/.forge/skills-backup/<ts>（生产）。
 	// 一次 install 共享一个 ts 子目录，便于"这次覆盖了什么"回溯与恢复。
 	backupBase := opts.BackupBase
 	if backupBase == "" {
 		home, herr := os.UserHomeDir()
 		if herr != nil {
-			// home unavailable (no USERPROFILE/HOME, container/CI scenarios) → backup cannot land on disk.
-			// Warn explicitly rather than silently disabling: users choosing overwrite expect a rollback path;
-			// silently giving up violates the design intent (anti error-swallow).
-			//
 			// home 拿不到（无 USERPROFILE/HOME，容器/CI 场景）→ 备份无法落盘。
 			// 显式告警而非静默禁用：用户选 overwrite 期待有后悔药，静默放弃违背设计意图（防 error-swallow）。
 			fmt.Fprintf(os.Stderr, "warn: 无法定位家目录，overwrite 备份已禁用: %v\n", herr)
@@ -227,11 +202,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			return nil, err
 		}
 	}
-	// Project profile: trim the distribution set to the allowlist. Unknown profile
-	// entries (skills removed upstream) are warnings, not errors — see filterByProfile.
-	// `!= nil` (not len>0): a present-but-empty profile means "allowlist empty",
-	// not "no profile".
-	//
 	// 项目画像：把分发集裁到白名单。画像里未知的条目（上游已移除的 skill）记告警
 	// 不报错——见 filterByProfile。用 `!= nil` 而非 len>0：存在但为空的画像
 	// 意为「白名单为空」，不是「无画像」。
@@ -249,9 +219,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			report.Warnings = append(report.Warnings,
 				"skills-profile: 画像为空（全部条目被注释/空行），本次不安装任何 skill")
 		}
-		// --skill explicitly requested but excluded by the profile: a silent no-op
-		// swallows an explicit user request — warn so Total=0 is explainable.
-		//
 		// --skill 显式点名但被画像剔除：静默 no-op 会吞掉显式请求——告警让
 		// Total=0 有解释。
 		if len(opts.SkillFilter) > 0 {
@@ -272,17 +239,10 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Output target names in a fixed order (alphabetic claude<codex<copilot<cursor) for stable rendering.
-	//
 	// 目标名按固定顺序输出（字母序 claude<codex<copilot<cursor），便于稳定渲染
 	targetOrder := orderedTargetNames(targetDirs)
 
 	for _, name := range names {
-		// Total counts every processed skill (before the quality gate), so that
-		// Total = passed + blocked/failed + reserved-skipped — the skill-level stats
-		// reconcile. Installed/Skipped/Drifted are target-level (one skill × N targets),
-		// printed as a separate tier by the CLI.
-		//
 		// Total 统计每个被处理的 skill（门控前计），保证 Total = 通过 + 被拦/失败 +
 		// 保留名跳过，skill 级口径对得上。Installed/Skipped/Drifted 是 target 级
 		// （1 skill × N target），CLI 分两级输出。
@@ -302,8 +262,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 		skillDir := filepath.Join(canonical, name)
 		res := SkillInstallResult{Name: name}
 
-		// Quality gate: registry spec + audit security (aligned with sync.py apply-time dual gate)
-		//
 		// 质量门控：registry 规范 + audit 安全（对齐 sync.py apply 时双门控）
 		if !opts.SkipQuality {
 			rep, qerr := skillsqa.AuditSkill(skillDir)
@@ -322,10 +280,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				report.Skills = append(report.Skills, res)
 				continue
 			}
-			// ScanSkill error must NOT be swallowed (skillsqa/audit.go's contract): an
-			// unreadable skill would otherwise be scored on zero findings and reported
-			// clean — security gate defeated. Treat as audit failure, same as qerr above.
-			//
 			// ScanSkill 的 err 禁止吞掉（skillsqa/audit.go 的契约）：不可读的 skill
 			// 否则会在零 findings 上打分被报 clean，安全门失守。按审查失败处理，同上 qerr 分支。
 			findings, serr := scanSkillFn(skillDir)
@@ -337,12 +291,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				continue
 			}
 			score, _, rec := skillsqa.ScoreFindings(findings)
-			// #4 fix: block on ANY CRITICAL finding, not just aggregate DO_NOT_INSTALL. The old
-			// score-only gate needed ≥3 CRITICALs to reach 50 — a single CRITICAL (≤23.75 points)
-			// landed in CAUTION and was installed to every target. HasCritical is shared with
-			// `forge skills audit --gate` (single source of truth — two paths judging the same
-			// property must not drift into one of them re-opening the hole).
-			//
 			// #4 修复：任一 CRITICAL finding 即阻断，而非只看聚合 DO_NOT_INSTALL。旧的纯分数
 			// 门禁要 ≥3 条 CRITICAL 才够 50 分——单条 CRITICAL（≤23.75 分）落在 CAUTION 被装进
 			// 所有 target。HasCritical 与 `forge skills audit --gate` 共用（单一真相源——同一
@@ -355,11 +303,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				report.Skills = append(report.Skills, res)
 				continue
 			}
-			// Non-blocking ≠ silent (#4 second half): findings below the block line used to be
-			// dropped entirely here — a CAUTION skill installed with zero surfaced signal.
-			// Surface every non-blocked finding set as a report warning (text-visible; matches the
-			// mcp-scan/skill-scan advisory precedent — visibility without blocking).
-			//
 			// 不阻断 ≠ 静默（#4 后半）：低于阻断线的 findings 此前在此被整体丢弃——CAUTION 的
 			// skill 零信号装完。把每个未阻断的 finding 集浮出为 report warning（文本可见；
 			// 对齐 mcp-scan/skill-scan 的 advisory 先例——可见而不阻断）。
@@ -376,13 +319,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			state := detectState(skillDir, dst)
 			tr := TargetResult{Target: tname, Dir: dst, State: state}
 
-			// Pre-overwrite backup: a drift real-directory copy is the user's local customization,
-			// back it up before overwriting (rollback path).
-			// link/junction/broken-link has no independent user content; backupTarget auto-skips it
-			// and returns an empty string.
-			// Backup failure does not block overwrite (user explicitly chose overwrite); it only
-			// leaves a trail on stderr.
-			//
 			// overwrite 前备份：drift 的真目录副本是用户本地定制，覆盖前留底（后悔药）。
 			// link/junction/断链无独立用户内容，backupTarget 自动跳过返回空串。
 			// 备份失败不阻断 overwrite（用户已明确选 overwrite），仅 stderr 留痕。
@@ -410,9 +346,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 			case actSkipped:
 				report.Stats.Skipped++
 			case actFailed:
-				// Per-target operation failed (e.g. overwrite deletion error — no copy
-				// attempted): record Failed + per-skill issue, continue to next target.
-				//
 				// 单 target 操作失败（如 overwrite 删除失败，未执行 copy）：
 				// 记 Failed + per-skill issue，继续下一个 target。
 				report.Stats.Failed++
@@ -427,19 +360,9 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 		}
 	}
 
-	// requires dependency check: for skills successfully installed this run, read frontmatter.requires
-	// and check whether declared dependencies are in the canonical superset (declared valid) and
-	// co-installed this run. Failures are recorded in Warnings (advisory, non-blocking).
-	// Resolves the existing defect that the requires field has no consumer — installing a single
-	// dependency skill breaks the chain; this surfaces it explicitly.
-	//
 	// requires 依赖检查：对本次成功装的 skill 读 frontmatter.requires，检查声明的依赖
 	// 是否在 canonical 全集（声明有效）且本次同装。不满足记入 Warnings（仅提示，不阻断）。
 	// 解除 requires 字段无消费方的既有缺陷——单装依赖 skill 会断链，此处显式提示。
-	// Profile trimming visibility: skills already present in a target but excluded by the
-	// profile are NOT deleted (install never destroys user content), yet the user believes
-	// the profile took effect — surfacing them as warnings closes that gap. Without this,
-	// a stale full-set install lingers invisibly next to the trimmed set.
 	//
 	// 画像裁剪可见性：已在目标但被画像排除的 skill 不会被删（install 绝不销毁用户
 	// 内容），而用户以为画像已生效——以告警浮出，堵住这个认知差。否则旧的全量安装
@@ -451,9 +374,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 		}
 		allNames, aerr := ListSkills(canonical)
 		if aerr != nil {
-			// The residue-warning feature itself must not vanish silently on a
-			// canonical listing failure (same discipline as checkRequires below).
-			//
 			// 残留告警功能自身不能在 canonical 列举失败时静默消失（与下方
 			// checkRequires 同纪律）。
 			report.Warnings = append(report.Warnings, fmt.Sprintf("skills-profile: canonical 列举失败，残留检测跳过（%v）", aerr))
@@ -473,9 +393,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 				}
 				for _, e := range entries {
 					name := e.Name()
-					// Only canonical-known skills excluded by the profile: foreign/external-managed
-					// skills are target-only orphans (drift-check's job), not profile residue.
-					//
 					// 只看 canonical 里存在但被画像排除的：外部管理的 skill 是
 					// target-only 孤儿（drift-check 管），不是画像残留。
 					if !DirEntryIsDir(tdir, e) || !canonSet[name] || profSet[name] || reservedNames[name] {
@@ -494,14 +411,6 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 	return report, nil
 }
 
-// parseRequires splits the frontmatter.requires field. requires is a single string, conventionally
-// comma-separated for multiple dependencies (e.g. code-review-gate, doc-generator). Whitespace is
-// auto-trimmed and empty segments filtered out.
-//
-// ⚠ Comma separation is fragile: skill names must not contain commas (otherwise ambiguous with the
-// separator). Medium-term, skillsfm.Parse could also recognize the YAML list form requires: [a, b],
-// and parseRequires would unify internally.
-//
 // parseRequires 拆解 frontmatter.requires 字段。requires 是单 string，约定逗号分隔多个依赖
 // （如 code-review-gate, doc-generator）。空白自动 trim，空段过滤。
 //
@@ -518,18 +427,6 @@ func parseRequires(s string) []string {
 	return out
 }
 
-// install action constants (consistent with the action literals returned/set by handleTarget and
-// the Install main loop; backtick raw string avoids Windows input quote corrosion).
-//
-// The closed success-action set (counts as installed to target) = {linked, copied, skipped} —
-// the okActions whitelist in checkRequires. **Any new success action must be synced**: (1) add an
-// actXxx constant (2) add it to okActions (3) add a TestCheckRequires case to guard it, to avoid
-// silently extending the set and breaking checkRequires semantics.
-//
-// Non-success actions: blocked (quality gate failed) / aborted (drift-policy=abort triggered) /
-// reserved (forge-quality reserved name) / failed (per-target operation failed, e.g. overwrite
-// deletion error — no copy was attempted) — not in okActions, naturally skipped by checkRequires.
-//
 // install action 常量（与 handleTarget 及 Install 主循环返回/设置的 action 字面量一致；
 // 反引号 raw string 规避 Windows 输入引号腐蚀）。
 //
@@ -551,26 +448,6 @@ const (
 	actFailed   = `failed`
 )
 
-// checkRequires verifies that the frontmatter.requires dependencies of each successfully installed
-// skill in this run are satisfied. A dependency is satisfied when (1) it is in the canonical
-// superset (declared valid, not a typo) and (2) it is co-installed this run.
-// Two kinds of failure each raise a warning:
-//   - Dependency not in canonical → the requires declaration is invalid (typo or target skill removed).
-//   - Dependency in canonical but not co-installed this run → single-install break risk
-//     (--skill filtered out the dependency); co-install recommended.
-//
-// installedSet is based on the action that successfully landed on a target (linked/copied/skipped),
-// not on SkillInstallResult.Pass — the latter is not set to true on the --skip-quality path, so
-// using Pass would miss successful installs that skipped the quality gate. blocked/aborted/reserved
-// actions are not in the whitelist and are naturally excluded.
-//
-// Error handling: canonical unreadable (ListSkills error) → return a system-level warning rather
-// than silently dropping; a single SKILL.md unreadable → that skill is skipped but a per-skill
-// warning is added (avoiding silent corruption that is hard to diagnose).
-//
-// Only returns warnings, never blocks install (requires is a declarative field; a missing
-// dependency should not override the user's explicit single-install intent).
-//
 // checkRequires 检查本次安装集里每个成功装的 skill 的 frontmatter.requires 依赖是否满足。
 // 依赖满足 = (1) 在 canonical 全集（声明有效，非笔误）且 (2) 本次同装。
 // 两类不满足分别告警：
@@ -596,9 +473,6 @@ func checkRequires(canonical string, results []SkillInstallResult) []string {
 	for _, n := range allNames {
 		allSet[n] = true
 	}
-	// okActions whitelist = closed set of success actions (see the constant-block comment); new
-	// actions must extend it in sync.
-	//
 	// okActions 白名单 = 成功 action 闭合集（见常量块注释）；新增 action 必须同步扩展。
 	okActions := map[string]bool{actLinked: true, actCopied: true, actSkipped: true}
 	installedSet := make(map[string]bool, len(results))
@@ -631,18 +505,10 @@ func checkRequires(canonical string, results []SkillInstallResult) []string {
 	return warns
 }
 
-// removeTargetTreeFn is the target-tree deleter used by handleTarget. Package-level var so
-// tests can inject a failing deleter — a deterministic cross-platform RemoveAll failure is
-// otherwise not constructible (Windows ignores read-only bits, Unix ignores open handles).
-//
 // removeTargetTreeFn 是 handleTarget 用的目标树删除器。包级 var 供测试注入失败删除器——
 // 确定性的跨平台 RemoveAll 失败无法直接构造（Windows 忽略只读位、Unix 忽略打开句柄）。
 var removeTargetTreeFn = removeTargetTree
 
-// handleTarget decides the action for a single target based on the current state + mode + policy.
-// Returns (action, detail, abortErr); abortErr != nil means drift-policy=abort triggered and the
-// caller should abort the entire install.
-//
 // handleTarget 按当前 state + mode + policy 决定对单个目标的动作。
 // 返回 (action, detail, abortErr)；abortErr != nil 表示 drift-policy=abort 触发，调用方应中止整个 install。
 func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string, string, error) {
@@ -651,8 +517,6 @@ func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string
 		return actSkipped, "已是 link（内容同步）", nil
 	case StateCopyInSync:
 		if mode == ModeLink {
-			// copy-in-sync → safely replace with link (delete copy, create link)
-			//
 			// copy-in-sync → 安全替换为 link（删副本建 link）
 			if err := os.RemoveAll(dst); err != nil {
 				return "", "", fmt.Errorf("remove copy %s: %w", dst, err)
@@ -682,10 +546,6 @@ func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string
 		case DriftSkip:
 			return actSkipped, "drift（策略 skip，保留现状）", nil
 		case DriftOverwrite:
-			// Deletion failure must NOT fall through to copyTree/link: the result would be
-			// a new-old hybrid tree reported as a clean overwrite. Return actFailed and let
-			// the Install loop record issue + Failed++ and continue to the next target.
-			//
 			// 删除失败禁止带病继续 copyTree/建 link——否则产出新旧混合树却报告纯净覆盖。
 			// 返回 actFailed，由 Install 主循环记 issue + Failed++ 后继续下一个 target。
 			if err := removeTargetTreeFn(dst); err != nil {
@@ -708,15 +568,6 @@ func handleTarget(src, dst, state string, mode Mode, policy DriftPolicy) (string
 	return "", "", fmt.Errorf("未知 state: %s", state)
 }
 
-// backupTarget backs up the dst about to be overwritten to backupBase/<target>/<skill>.
-// Only real-directory copies are backed up (the user's local customizations); link/junction has no
-// independent content, broken-link/nonexistent/non-directory has no content — all are skipped and
-// return an empty string. Uses a FULL copy (copyTreeFiltered with no skip set — unlike install's
-// copyTree, the backup must snapshot EVERYTHING, .git/node_modules included: it is the rollback
-// copy of the user's local state, and the skip-blind-spot fix means target-side .git now counts
-// as drift → this backup path is exactly what preserves it).
-// Returns an error on failure; the caller decides whether to continue overwriting.
-//
 // backupTarget 把即将被 overwrite 的 dst 备份到 backupBase/<target>/<skill>。
 // 只备份真目录副本（用户的本地定制）；link/junction 无独立内容、断链/不存在/非目录无内容，
 // 一律跳过返回空串。用完整拷贝（copyTreeFiltered 不带跳过集——与 install 的 copyTree
@@ -727,9 +578,6 @@ func backupTarget(dst, backupBase, target, skill string) (string, error) {
 	if backupBase == "" {
 		return "", nil
 	}
-	// link/junction: reparse point has no independent user content (points elsewhere or is broken);
-	// backup is meaningless.
-	//
 	// link/junction：reparse point 无独立用户内容（指向别处或断链），备份无意义。
 	if isJunctionOrLink(dst) {
 		return "", nil
@@ -739,21 +587,12 @@ func backupTarget(dst, backupBase, target, skill string) (string, error) {
 		return "", nil // 断链 os.Stat 失败；单文件（非目录）也不备份
 	}
 	bkDir := filepath.Join(backupBase, target, skill)
-	// Path-injection defense: target/skill must be a canonical basename (not ./.., no separators).
-	// Canonical skill names are inherently safe under filesystem constraints; this is a defensive
-	// fallback — to guard against future canonical sources containing malicious names that write
-	// beyond backupBase.
-	//
 	// 路径注入防御：target/skill 须为规范 basename（非 ./..、无分隔符）。
 	// canonical skill 名受文件系统约束天然安全，此处防御性兜底——防未来 canonical 来源
 	// 含恶意名导致 backupBase 越界写。
 	if !skillsfm.IsValidSkillName(target) || !skillsfm.IsValidSkillName(skill) {
 		return "", fmt.Errorf("非法 target/skill 名（路径注入风险）: %q/%q", target, skill)
 	}
-	// Clear any prior residue before copying, so the backup is a clean point-in-time snapshot —
-	// otherwise on directory reuse, files that existed last time but were deleted this time would
-	// remain and pollute the rollback result (aligned with handleTarget overwrite's remove-then-copy).
-	//
 	// 先清空可能的上次残留再 copy，保证备份是"那一刻的纯净快照"——否则同目录复用时
 	// 上次有、这次删的文件会残留，污染回滚结果（对齐 handleTarget overwrite 先 remove 再 copy 的模式）。
 	_ = os.RemoveAll(bkDir)
@@ -766,11 +605,6 @@ func backupTarget(dst, backupBase, target, skill string) (string, error) {
 	return bkDir, nil
 }
 
-// removeTargetTree deletes the target: for link/junction only the reparse point is removed
-// (source untouched); real directories are removed recursively. Returns the deletion error —
-// callers MUST NOT proceed to copyTree/link on failure, otherwise old and new content mix
-// into a hybrid tree while the report claims a clean overwrite.
-//
 // removeTargetTree 删除目标：link/junction 只删 reparse point（不删源），真目录递归删。
 // 返回删除错误——调用方失败后禁止继续 copyTree/建 link，否则新旧混成混合树，
 // 报告却谎称"纯净覆盖"。
@@ -782,9 +616,6 @@ func removeTargetTree(path string) error {
 	return os.RemoveAll(path)
 }
 
-// detectState detects the target's distribution state relative to canonical (aligned with
-// sync.py target_state).
-//
 // detectState 检测目标相对 canonical 的分发态（对齐 sync.py target_state）。
 func detectState(canonicalSkillDir, targetSkillDir string) string {
 	if _, err := os.Lstat(targetSkillDir); err != nil {
@@ -794,13 +625,6 @@ func detectState(canonicalSkillDir, targetSkillDir string) string {
 		// stat error conservatively treated as drift.
 		return StateDrift // stat 错误保守按 drift
 	}
-	// linked: target, after following, is the same physical directory as canonical (junction/
-	// symlink points to canonical). Use os.SameFile (compares volume serial + file index) instead
-	// of EvalSymlinks—the latter doesn't resolve junctions on Windows (only true symlinks), mis-
-	// judging junctions as copy-in-sync. os.Stat follows junction/symlink to the target physical
-	// directory; SameFile precisely distinguishes "same physical directory" (linked) from
-	// "independent copy" (copy-in-sync/drift).
-	//
 	// linked：target 跟随后与 canonical 是同一物理目录（junction/symlink 指向 canonical）。
 	// 用 os.SameFile（比较 volume serial + file index）而非 EvalSymlinks——后者在 Windows
 	// 不解析 junction（只解析真 symlink），会把 junction 误判为 copy-in-sync。
@@ -811,13 +635,6 @@ func detectState(canonicalSkillDir, targetSkillDir string) string {
 	if errC == nil && errT == nil && os.SameFile(ci, ti) {
 		return StateLinked
 	}
-	// copy-in-sync: the whole tree matches canonical (independent copy, same content).
-	// Must compare the ENTIRE tree, not just SKILL.md: copy mode replicates the whole tree,
-	// and handleTarget deletes the target with os.RemoveAll when switching copy-in-sync →
-	// link. A SKILL.md-only comparison would misjudge a target whose references/ etc. the
-	// user edited (SKILL.md untouched) as in-sync and wipe the edits without backup
-	// (backup only triggers on StateDrift) — silent data loss.
-	//
 	// copy-in-sync：整树与 canonical 一致（独立副本但内容相同）。
 	// 必须全树对比而非只比 SKILL.md：copy 模式复制整棵树，且 handleTarget 在
 	// copy-in-sync → link 时会 os.RemoveAll 整个目标。单文件对比会把"用户在
@@ -828,22 +645,6 @@ func detectState(canonicalSkillDir, targetSkillDir string) string {
 	return StateDrift
 }
 
-// treesInSync reports whether two skill trees have identical content. Walks both
-// trees with copyTree's exact rules (same distSkipDirs, links not followed — but
-// their target strings ARE compared, so a link-only difference is drift), hashes
-// every regular file, and requires the relative-path sets AND per-entry hashes
-// to be equal. Any missing/extra/different entry → not in sync. Any read error →
-// conservatively not in sync (drift), never falsely in-sync.
-//
-// Skip-blind-spot guard (review fix): distSkipDirs are ignored in the CONTENT
-// comparison on both sides, but the TARGET side records which skip dirs exist.
-// A skip dir present only in the target (e.g. the user ran git init inside the
-// installed copy → .git/) is DRIFT — copy-in-sync would otherwise let link mode
-// os.RemoveAll the whole target with no backup (backup only triggers on
-// StateDrift), silently destroying the user's .git. A skip dir present on BOTH
-// sides stays in sync (canonical's copy is not distributed, target's survives
-// copyTree's skip — consistent).
-//
 // treesInSync 判断两棵 skill 树内容是否完全一致。双侧按 copyTree 同款规则遍历
 // （同 distSkipDirs、link 不跟随——但其 target 串参与对比，仅 link 差异也判
 // drift），逐文件算 hash，要求相对路径集合与逐条目 hash 都相等。任一条目
@@ -866,9 +667,6 @@ func treesInSync(src, dst string) bool {
 			return false
 		}
 	}
-	// Target-only skip dirs → the target holds local state canonical does not
-	// have → drift (the caller's backup path then preserves it).
-	//
 	// 目标单侧的被跳过目录 → 目标持有 canonical 没有的本地状态 → drift
 	// （调用方的备份路径随之保住它）。
 	for rel := range dstSkipped {
@@ -879,11 +677,6 @@ func treesInSync(src, dst string) bool {
 	return true
 }
 
-// hashTree walks root and returns rel-path → md5 hex for every regular file
-// (links — symlinks and Windows junctions — contribute a "link-" prefixed hash
-// of their target string), following copyTree's walk rules. Returns nil on any
-// walk/read error (treated as "cannot prove identical" by the caller).
-//
 // hashTree 遍历 root 返回 相对路径 → md5 hex（常规文件；link——symlink 与
 // Windows junction——以其 target 串的 "link-" 前缀 hash 参与），遍历规则与
 // copyTree 一致。任何遍历/读取错误返回 nil（调用方按"无法证明一致"处理）。
@@ -892,10 +685,6 @@ func hashTree(root string) map[string]string {
 	return files
 }
 
-// hashTreeWithSkippedDirs is hashTree plus the set of distSkipDirs-relative
-// paths encountered during the walk (the skip-blind-spot input for treesInSync;
-// see its comment). Returns (nil, nil) on any walk/read error.
-//
 // hashTreeWithSkippedDirs 在 hashTree 之外额外返回遍历中遇到的被跳过目录的相对
 // 路径集合（treesInSync 的 skip 盲区输入，见其注释）。任何遍历/读取错误返
 // (nil, nil)。
@@ -915,16 +704,6 @@ func hashTreeWithSkippedDirs(root string) (map[string]string, map[string]bool) {
 			}
 			return nil
 		}
-		// Do not follow reparse points (same as copyTree: links are not expanded),
-		// but a link is NOT content-free — its target string IS its content.
-		// Skipping links entirely would judge trees differing ONLY by a link
-		// (extra link, different target, single-side link) as in-sync, and
-		// copy-in-sync → link mode deletes the target tree with os.RemoveAll and
-		// no backup. Detect by !IsRegular, not ModeSymlink alone: WalkDir reports
-		// Windows junctions as ModeIrregular (type "?"), not ModeSymlink — but
-		// os.Readlink resolves both. A failed Readlink (or any other non-regular
-		// entry: pipe/socket/device) is an error → conservatively drift.
-		//
 		// 不跟随 reparse point（与 copyTree 一致：link 不展开），但 link 并非
 		// 无内容——其 target 串就是它的内容。完全跳过 link 会把"唯一差异是
 		// link"（新增 link / 指向不同 / 单侧存在）的两棵树误判为同步，而
@@ -962,8 +741,6 @@ func hashTreeWithSkippedDirs(root string) (map[string]string, map[string]bool) {
 	return out, skipped
 }
 
-// md5OfFile returns the file md5 hex (first 10 chars, aligned with sync.py md5[:10]).
-//
 // md5OfFile 返回文件 md5 的 hex（取前 10 字符，对齐 sync.py md5[:10]）。
 func md5OfFile(path string) (string, error) {
 	data, err := os.ReadFile(path)
@@ -974,26 +751,11 @@ func md5OfFile(path string) (string, error) {
 	return hex.EncodeToString(sum[:])[:10], nil
 }
 
-// copyTree copies the whole src tree to dst (atomic writes, skips .git/node_modules etc., does
-// not follow links).
-//
 // copyTree 把 src 整树复制到 dst（原子写，跳过 .git/node_modules 等，不跟随 link）。
 func copyTree(src, dst string) error {
 	return copyTreeFiltered(src, dst, distSkipDirs)
 }
 
-// copyTreeFiltered copies the whole src tree to dst with an optional directory-name
-// skip set (nil = skip nothing — the FULL copy used by backupTarget). Atomic writes;
-// links are not followed and not expanded.
-//
-// Non-regular entries (junction/symlink/pipe/...) are detected by
-// !d.Type().IsRegular() — the SAME rule hashTree uses, NOT ModeSymlink alone:
-// WalkDir reports Windows junctions as ModeIrregular, so the old ModeSymlink-only
-// check let them fall through to os.ReadFile, which fails on a directory
-// reparse point and failed the whole copyTree on Windows. Converging on
-// !IsRegular makes junction entries skip (like symlinks always did) instead of
-// erroring.
-//
 // copyTreeFiltered 把 src 整树复制到 dst，可选按目录名跳过集合（nil = 什么都不跳
 // ——backupTarget 用的完整拷贝）。原子写；link 不跟随、不展开。
 //
@@ -1014,10 +776,6 @@ func copyTreeFiltered(src, dst string, skip map[string]bool) error {
 			}
 			return os.MkdirAll(filepath.Join(dst, rel), 0755)
 		}
-		// Do not follow or expand reparse points / other non-regular entries
-		// (junctions included — see the function comment for why !IsRegular,
-		// not ModeSymlink).
-		//
 		// 不跟随也不展开 reparse point 及其他非常规条目（含 junction——为何用
 		// !IsRegular 而非 ModeSymlink 见函数注释）。
 		if !d.Type().IsRegular() {
@@ -1027,10 +785,6 @@ func copyTreeFiltered(src, dst string, skip map[string]bool) error {
 		if rerr != nil {
 			return rerr
 		}
-		// Preserve source permission bits: hardcoding 0644/0755 would drop 0600 (private)/0444
-		// (read-only) etc. d.Info() returns the FileInfo of the WalkDir entry; Mode().Perm() takes
-		// the rwxrwxrwx permission bits.
-		//
 		// 保留源文件权限位：硬编码 0644/0755 会丢失 0600（私有）/0444（只读）等位。
 		// d.Info() 返回 WalkDir 入口的 FileInfo，Mode().Perm() 取 rwxrwxrwx 权限位。
 		info, ierr := d.Info()
@@ -1041,8 +795,7 @@ func copyTreeFiltered(src, dst string, skip map[string]bool) error {
 	})
 }
 
-// ListSkills returns the names of all direct subdirectories under canonical that contain a
-// SKILL.md (excludes skill-routing/, CONVENTIONS.md, etc.).
+// ListSkills returns the names of all direct subdirectories under canonical that contain a SKILL.md (excludes skill-routing/, CONVENTIONS.md, etc.).
 //
 // ListSkills 返回 canonical 下所有含 SKILL.md 的直接子目录名（排除 skill-routing/、CONVENTIONS.md 等）。
 func ListSkills(canonical string) ([]string, error) {
@@ -1054,12 +807,6 @@ func ListSkills(canonical string) ([]string, error) {
 	for _, e := range entries {
 		name := e.Name()
 		dir := filepath.Join(canonical, name)
-		// e.IsDir() is based on Lstat and returns false for symlink/junction. forge install's
-		// default link mode and external-managed (lark-* junction) skills are links pointing to
-		// real directories—must use os.Stat (follows symlinks) to judge, otherwise many link
-		// skills under ~/.claude/skills are missed (in practice only real dirs like alipay-* are
-		// detected). Symlink loops make os.Stat error → skip, which is safe.
-		//
 		// e.IsDir() 基于 Lstat，对 symlink/junction 返回 false。forge install 默认
 		// link 模式、external managed（lark-* junction）的 skill 都是 link 指向真实
 		// 目录——必须用 os.Stat（跟随 symlink）判断，否则 ~/.claude/skills 下大量
@@ -1077,12 +824,6 @@ func ListSkills(canonical string) ([]string, error) {
 	return names, nil
 }
 
-// filterNames filters skill names by whitelist (preserves canonical order). Any
-// requested name not present in the canonical library is an error — same
-// semantics and message as the CLI layer's filterSkillNames: silently filtering
-// a misspelled --skill down to an empty set would report "0 installed, exit 0",
-// a false green.
-//
 // filterNames 按白名单过滤 skill 名（保持 canonical 顺序）。任何请求的名字不在
 // canonical 库中直接报错——与 CLI 层 filterSkillNames 同款语义与文案：静默把
 // 拼错的 --skill 过滤成空集会报"安装 0 个，exit 0"，假绿。
@@ -1107,10 +848,7 @@ func filterNames(all, want []string) ([]string, error) {
 	return out, nil
 }
 
-// TargetDirs resolves the target-tool → target-skills-directory map. target=all expands to
-// claude/cursor/codex/copilot/agents. Unknown targets are an explicit error (never silently dropped):
-// an empty resolved dir would degrade filepath.Join("", name) into a cwd-relative path and
-// write into the current directory.
+// TargetDirs resolves the target-tool → target-skills-directory map.
 //
 // TargetDirs 解析目标工具→目标 skills 目录的映射。target=all 展开 claude/cursor/codex/copilot/agents。
 // 未知 target 显式报错（绝不静默丢弃）：空目录会让 filepath.Join("", name) 退化为
@@ -1154,11 +892,6 @@ func TargetDirs(targets []Target, global bool, projectSkillsDir string) (map[str
 	return out, nil
 }
 
-// targetDir resolves one target's skills directory. Project mode (global=false) always uses
-// projectSkillsDir. Global mode switches on the known target set; an unknown target is an
-// explicit error — returning "" would let filepath.Join("", name) degrade into a cwd-relative
-// path and silently write skills into whatever directory the user ran forge from.
-//
 // targetDir 解析单个 target 的 skills 目录。项目模式（global=false）统一用 projectSkillsDir。
 // 全局模式按已知 target 集合 switch；未知 target 显式报错——返回 "" 会让
 // filepath.Join("", name) 退化为 cwd 相对路径，把 skill 静默写进用户运行 forge 的目录。
@@ -1172,15 +905,6 @@ func targetDir(name string, global bool, home, projectSkillsDir string) (string,
 	case "cursor":
 		return filepath.Join(home, ".cursor", "skills"), nil
 	case "codex":
-		// Since 2025-12 Codex CLI natively reads ~/.codex/skills/<slug>/SKILL.md (aligned with the
-		// Claude/Cursor format). Note openai/codex#17344: Codex once skipped user skills whose
-		// SKILL.md file itself is a symlink. This tool's makeDirLink creates a directory-level
-		// junction (the whole <slug> directory points to canonical); the SKILL.md inside the
-		// junction is a real file, not a symlink—theoretically unaffected by that bug. But a
-		// junction is a Windows reparse point; Codex's actual follow behavior needs to be tested
-		// on the host. If Codex doesn't recognize a link-distributed skill, fall back to
-		// --mode copy --target codex.
-		//
 		// Codex CLI 2025-12 起原生读 ~/.codex/skills/<slug>/SKILL.md（对齐 Claude/Cursor 格式）。
 		// 注意 openai/codex#17344：Codex 曾跳过"SKILL.md 文件本身是 symlink"的 user skill。
 		// 本工具 makeDirLink 做的是目录级 junction（整个 <slug> 目录指向 canonical），
@@ -1189,18 +913,10 @@ func targetDir(name string, global bool, home, projectSkillsDir string) (string,
 		// 若 Codex 未识别 link 分发的 skill，降级用 --mode copy --target codex。
 		return filepath.Join(home, ".codex", "skills"), nil
 	case "copilot":
-		// GitHub Copilot personal skills (cross-project) live at
-		// ~/.copilot/skills/<slug>/SKILL.md (project-level ones go to .github/skills/, out of
-		// scope here—global personal only). Format is compatible with Claude SKILL.md.
-		//
 		// GitHub Copilot 个人 skill（跨项目）放 ~/.copilot/skills/<slug>/SKILL.md
 		// （项目级放 .github/skills/，这里只管全局个人级）。格式与 Claude SKILL.md 兼容。
 		return filepath.Join(home, ".copilot", "skills"), nil
 	case "agents":
-		// Cross-agent shared directory ~/.agents/skills — the multi-agent convention: any
-		// agent-neutral host reads this single location without per-tool namespaces. Contents
-		// are the same SKILL.md format as claude/cursor/codex/copilot.
-		//
 		// 跨 agent 共享目录 ~/.agents/skills——多 agent 通用约定：任何 agent-neutral
 		// 宿主都读这一个位置，无需按工具分命名空间。内容与 claude/cursor/codex/copilot
 		// 同为 SKILL.md 格式。
@@ -1209,9 +925,6 @@ func targetDir(name string, global bool, home, projectSkillsDir string) (string,
 	return "", fmt.Errorf("未知 target: %q（合法值: claude/cursor/codex/copilot/agents/all）", name)
 }
 
-// orderedTargetNames returns target names in a fixed order (alphabetic
-// agents<claude<codex<copilot<cursor) for stable output.
-//
 // orderedTargetNames 返回固定排序的目标名（字母序 agents<claude<codex<copilot<cursor），输出稳定。
 func orderedTargetNames(m map[string]string) []string {
 	return slices.Sorted(maps.Keys(m))

@@ -10,8 +10,6 @@ import (
 )
 
 // ToolCall records a single AI agent tool call.
-// Stored in DataDir/toollog.jsonl — one JSON object per line. The activity-ratio gate (task-verify)
-// and forge trace consume this data; it no longer participates in scoring.
 //
 // ToolCall 记录 AI agent 的一次 tool 调用。
 // 存于 DataDir/toollog.jsonl——每行一个 JSON 对象。activity-ratio gate（task-verify）
@@ -25,9 +23,7 @@ type ToolCall struct {
 	TaskRef   string    `json:"task_ref,omitempty"`
 	SessionID string    `json:"session_id,omitempty"` // Claude Code session — isolates concurrent sessions
 	Timestamp time.Time `json:"timestamp"`
-	// Stamp carries machine attribution (node_id/seq/ts_hlc/sig), filled by Record via
-	// nodestamp.Next — zero on legacy lines and on fail-open. Flattened into this object.
-	// NOTE: stamped AFTER ID computation in Record so the stable sha1 ID never drifts.
+	// Stamp carries machine attribution (node_id/seq/ts_hlc/sig), filled by Record via nodestamp.Next.
 	//
 	// Stamp 携带机器归因（node_id/seq/ts_hlc/sig），由 Record 经 nodestamp.Next 落章——
 	// 存量行与 fail-open 时为零值。拍平进本对象。注意：Record 里在 ID 计算之后落章，
@@ -35,7 +31,5 @@ type ToolCall struct {
 	nodestamp.Stamp
 }
 
-// maxToolInputLen is the truncation cap for stored tool_input.
-//
 // maxToolInputLen 是 tool_input 存储的截断上限。
 const maxToolInputLen = 500

@@ -10,17 +10,6 @@ import "regexp"
 // 形式匹配，不承诺覆盖全部敏感形态——所以摘录还有长度上限、且挖矿产物在进
 // golden 前仍需人工改写（mine 的 --sanitize 只是把"约定"升为"机械步骤"，不是
 // 人工审核的替代）。
-//
-// redact.go — secret redaction for trigger-audit excerpts (skill-trigger v2).
-//
-// Design boundary (landing of debate R4/R7): excerpts exist only for false-positive
-// triage and golden-case mining, are OFF by default (FORGE_TRIGGER_EXCERPT=1), and
-// even when on must pass this redaction first — the org security policy forbids
-// credentials/PII in logs. This is a best-effort mechanical layer: known token shapes
-// plus assignment forms; it does not promise full sensitive-shape coverage — hence the
-// excerpt length cap, and mined drafts still require human rewrite before entering
-// golden (mine's --sanitize promotes the convention to a mechanical step, not a
-// replacement for human review).
 
 // redactPatterns 已知 secret 形态：OpenAI/Anthropic 风格 key、GitHub token、AWS AKIA、
 // JWT、Slack token、赋值形式（api_key=/token:/secret=/password= 后跟非空白串，允许可选
@@ -33,27 +22,21 @@ var redactPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}`),
 	regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`),
 	// shell/env 赋值形式：API_KEY=xxx / token: xxx（允许可选引号）。
-	// shell/env assignment form: API_KEY=xxx / token: xxx (optional quotes).
 	regexp.MustCompile(`(?i)(api[_-]?key|apikey|token|secret|password|passwd|pwd)\s*[=:]\s*["']?[^\s"',;&]{6,}`),
 	// JSON 键值形式（review M3）："api_key": "hunter2secret"——摘录来源（stdout/prompt）
 	// 里用户粘贴的配置最常见形态，键名后的引号会挡掉上面的赋值正则。
-	// JSON key-value form (review M3): "api_key": "hunter2secret" — the most common
-	// pasted-config shape in excerpts (stdout/prompt); the quote after the key would
-	// block the assignment pattern above.
 	regexp.MustCompile(`(?i)"(api[_-]?key|apikey|token|secret|password|passwd|pwd)"\s*:\s*"[^"]{6,}"`),
 	// XML/YAML 键值形式（review M3）：<password>hunter2</password>。
-	// XML/YAML tag form (review M3): <password>hunter2</password>.
 	regexp.MustCompile(`(?i)<(api[_-]?key|apikey|token|secret|password|passwd|pwd)[^>]*>[^<]{6,}</(api[_-]?key|apikey|token|secret|password|passwd|pwd)>`),
 }
 
 // redactedToken 替换占位符。保持可读（说明被脱敏的类别）而不泄漏长度信息。
 const redactedToken = "[REDACTED]"
 
+// RedactSecrets replaces known secret shapes in the text with [REDACTED].
+//
 // RedactSecrets 把文本中已知形态的 secret 替换为 [REDACTED]。纯函数、无 IO；
 // 摘录采集（cli/skill_trigger.go）与挖矿草稿（skillseval/mine.go）双侧共用。
-//
-// RedactSecrets replaces known secret shapes in the text with [REDACTED]. Pure, no IO;
-// shared by excerpt capture (cli/skill_trigger.go) and mining drafts (skillseval/mine.go).
 func RedactSecrets(s string) string {
 	for _, re := range redactPatterns {
 		s = re.ReplaceAllString(s, redactedToken)

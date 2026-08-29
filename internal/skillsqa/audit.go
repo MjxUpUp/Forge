@@ -24,7 +24,7 @@ type Finding struct {
 	Remediation string  `json:"remediation"`
 }
 
-// Rule is a declarative security rule (aligned with audit.py rule tuples). ExecOnly=true only takes effect for executable scripts.
+// Rule is a declarative security rule (aligned with audit.py rule tuples).
 //
 // Rule 是声明式安全规则（对齐 audit.py 规则元组）。ExecOnly=true 仅对可执行脚本生效。
 type Rule struct {
@@ -39,10 +39,7 @@ type Rule struct {
 	// The dangerous_code rule additionally applies to .html/.htm (browser-side XSS vectors: DC-1 eval / DC-7 browser execution vectors); other DC rules only apply to executable scripts.
 	//
 	HtmlAlso bool // dangerous_code 规则额外在 .html/.htm 生效（浏览器端 XSS 向量：DC-1 eval / DC-7 浏览器执行向量）；其余 DC 只接可执行脚本
-	// The dangerous_code rule additionally applies to .md/.markdown (DC-8/DC-9 remote-script-into-shell /
-	// DC-10 arbitrary-registry-package). SKILL.md is instructions an agent follows verbatim — a line like
-	// `curl <url> | bash` in markdown executes exactly as it would in a script; pre-DC-8 the DC family only
-	// routed through ExecExts and malicious SKILL.md payloads scanned clean (blind spot #3).
+	// The dangerous_code rule additionally applies to .md/.markdown (DC-8/DC-9 remote-script-into-shell / DC-10 arbitrary-registry-package).
 	//
 	// dangerous_code 规则额外在 .md/.markdown 生效（DC-8/DC-9 远端脚本进 shell / DC-10 任意注册表包）。
 	// SKILL.md 是 agent 逐字跟随的指令——markdown 里的 `curl <url> | bash` 与脚本里同等可执行；
@@ -51,18 +48,11 @@ type Rule struct {
 	re     *regexp.Regexp
 }
 
-// skipDirs — directory segments skipped during scanning (aligned with audit.py node_modules/.git/__pycache__/.venv).
-//
 // skipDirs — 扫描时跳过的目录段（对齐 audit.py 的 node_modules/.git/__pycache__/.venv）。
 var skipDirs = map[string]bool{
 	"node_modules": true, ".git": true, "__pycache__": true, ".venv": true,
 }
 
-// auditRules is the set of 21 rules (18 aligned with audit.py + forge-local DC-8/DC-9/DC-10 for the
-// markdown supply-chain blind spot). Regexes have been converted from Python syntax to Go RE2:
-//   - PI-5 zero-width characters → \x{200b} (Go does not support \u)
-//   - Each rule has a (?i) prefix to align with Python re.IGNORECASE
-//
 // auditRules 是 21 条规则（18 条对齐 audit.py + forge 本地 DC-8/DC-9/DC-10 补 markdown 供应链
 // 盲区）。正则已从 Python 语法转为 Go RE2：
 //   - PI-5 零宽字符 → \x{200b}（Go 不支持 \u）
@@ -221,16 +211,6 @@ func mustCompile(in []Rule) []Rule {
 	return out
 }
 
-// auditorsForExt returns the applicable rules by file extension (aligned with audit.py AUDITORS_BY_TYPE,
-// plus forge-local MdAlso routing):
-//   - .md/.markdown → injection + exfil + leak + MdAlso DC rules (DC-8/DC-9/DC-10 — SKILL.md lines
-//     are verbatim agent instructions, supply-chain execution payloads there execute exactly as in a script)
-//   - executable scripts → injection + exfil + dangerous_code
-//   - .html/.htm → injection + exfil (HTML is a prompt injection carrier: PI-4 is designed for hidden
-//     instruction comments) + dangerous_code rules with HtmlAlso=true (DC-1 eval / DC-7 browser execution
-//     vectors); other DC rules (child_process/os.system/subprocess and other backend APIs) are not covered — HTML is not directly
-//     executable, and backend API keywords are prone to false positives in descriptive text.
-//
 // auditorsForExt 按文件后缀返回适用规则（对齐 audit.py AUDITORS_BY_TYPE + forge 本地 MdAlso 路由）：
 //   - .md/.markdown → injection + exfil + leak + MdAlso 的 DC 规则（DC-8/DC-9/DC-10——SKILL.md
 //     的行是 agent 逐字跟随的指令，供应链执行 payload 与脚本里同等生效）

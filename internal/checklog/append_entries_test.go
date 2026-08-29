@@ -9,11 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestAppendEntries_PreservesTimingAndOrder is the cross-machine-import replay contract: entries
-// carried in by a task import must land in the local checklog with their ORIGINAL RecordedAt
-// (source-machine timing) intact and in given order, so `forge trace <ref>` reconstructs the real
-// timeline. AppendEntries deliberately does NOT rewrite RecordedAt (unlike Record, which stamps now).
-//
 // TestAppendEntries_PreservesTimingAndOrder 是跨机器 import 回放契约：任务 import 带入的条目必须以
 // 原始 RecordedAt（源机器时序）落地进本地 checklog 且保持给定顺序，使 forge trace <ref> 重建真实时间线。
 // AppendEntries 刻意不重写 RecordedAt（区别于盖当前时间的 Record）。
@@ -44,10 +39,6 @@ func TestAppendEntries_PreservesTimingAndOrder(t *testing.T) {
 	}
 }
 
-// TestAppendEntries_EmptyIsNoop: a nil/empty slice must not create the checklog file (the import
-// path calls AppendEntries unconditionally when bundle.Checklog is non-empty, but a defensively-empty
-// slice should be a clean no-op, not an empty-file side effect).
-//
 // TestAppendEntries_EmptyIsNoop：nil/空切片不得创建 checklog 文件（import 在 bundle.Checklog 非空时
 // 无条件调 AppendEntries，但防御性的空切片应是干净 no-op，而非留个空文件的副作用）。
 func TestAppendEntries_EmptyIsNoop(t *testing.T) {
@@ -61,11 +52,6 @@ func TestAppendEntries_EmptyIsNoop(t *testing.T) {
 	}
 }
 
-// TestAppendEntries_FillsEmptySourceLevel: a legacy / hand-constructed import entry that never had
-// Source or Level set must land with both inferred by the same fallback as Record — otherwise it
-// buckets inconsistently vs a locally-Recorded compile-pass (e.g. empty Source drops it out of an
-// evidence-chain query that filters by source). Caller-set values always win (verified here too).
-//
 // TestAppendEntries_FillsEmptySourceLevel：legacy/手工构造的 import 条目从未设过 Source/Level 时，必须由
 // 与 Record 同款的兜底推断填上——否则与本地 Record 的 compile-pass 分桶不一致（如空 Source 使其被按来源
 // 过滤的证据链查询漏掉）。调用方设过的值恒优先（此处一并验证）。

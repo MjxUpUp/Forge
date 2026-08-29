@@ -12,15 +12,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
-// strengthWeak / strengthUnverified / strengthNoData align with act.Conclusion.Strength literal values
-// (checklog.EvidenceStrength.String). Literal string comparison rather than importing checklog keeps
-// skillseval dependencies minimal.
-//
-// WeakRate counts NoData as weak too: effectiveness context is exposing evaluation blind spots, NoData (zero run evidence)
-// is blinder than Weak (scant evidence), should be counted. This differs from act.Conclusion.RetrospectiveNudge criterion (only
-// Weak/Unverified trigger retrospective) — Nudge is triggering session retrospective, effectiveness is evaluation blind spot,
-// the two contexts differ, each criterion is sensible on its own.
-//
 // strengthWeak / strengthUnverified / strengthNoData 与 act.Conclusion.Strength 字面值对齐
 // （checklog.EvidenceStrength.String）。字符串字面比较而非 import checklog，保持
 // skillseval 依赖最小。
@@ -35,14 +26,7 @@ const (
 	strengthNoData     = "NoData"
 )
 
-// SkillEffectiveness correlates skill hits (toollog active Skill calls + checklog
-// passive CheckSkillTrigger entries) with task effectiveness (act conclusion).
-//
-// All fields deterministic: hit counts come from toollog (tool-track collection) and
-// checklog (skill-trigger hook), effectiveness from scoring + evidence chain
-// (act conclusion), no agent subjective judgment — sidesteps Agent-as-a-Judge
-// meta-evaluation red line.
-// This is the agent-neutral implementation of the reuse-rate + success-rate signal in Forge.
+// SkillEffectiveness correlates skill hits (toollog active Skill calls + checklog passive CheckSkillTrigger entries) with task effectiveness (act conclusion).
 //
 // SkillEffectiveness 关联 skill 命中（toollog 主动 Skill 调用 + checklog 被动
 // CheckSkillTrigger 条目）与 task 成效（act conclusion）。
@@ -60,8 +44,6 @@ type SkillEffectiveness struct {
 	WeakRate  float64 `json:"weak_rate"`  // Strength=Weak/Unverified/NoData 的 task 占比（分母同 AvgRatio）
 }
 
-// effectivenessAggregator is the internal accumulator (task dedup + effectiveness summation).
-//
 // effectivenessAggregator 内部累加器（task 去重 + 成效求和）。
 type effectivenessAggregator struct {
 	hits     int
@@ -75,33 +57,7 @@ type effectivenessAggregator struct {
 	scoredN int // 其中 Score>0 的 task 数（AvgScore 分母，排除未评分）
 }
 
-// AnalyzeEffectiveness correlates skill hits (toollog active Skill calls + checklog
-// passive CheckSkillTrigger entries) with task effectiveness in act conclusion.
-//
-// Joins per-project data sources by TaskRef (same DataDir): toollog records Skill
-// calls + TaskRef, checklog records CheckSkillTrigger entries + TaskRef, act
-// conclusion records task scoring + evidence strength. Produces per-skill average
-// effectiveness across its involved tasks.
-//
-// The passive join (2026-08-22) closes the "panel shows hit counts only, quality
-// columns empty" gap: most skills are hit via the skill-trigger hook (passive
-// injection) and never via an active Skill tool call — joining only toollog left
-// them absent from effectiveness entirely. Both sources feed the SAME aggregator:
-// per-(skill, task) dedup means a task with both a passive trigger and an active
-// load counts its outcome once, while HitCount sums both signals.
-//
-// agent-neutral (core signal): act conclusion is deterministic for any task run by any agent —
-// scoring + evidence chain, agent-agnostic. Active skill-hit data comes from Skill tool calls in
-// toollog — currently only Claude Code produces them (cursor/codex etc inject skills via
-// mdc/AGENTS.md, no tool-call events); the passive checklog join is what gives every
-// hook-wired host a hit signal. Consistent with the same caveat in usage.go package doc.
-//
-// Cross-task reads go through LoadAllAll (active + archived *.jsonl): forge task start
-// archives the previous task's toollog and checklog, so cross-task effectiveness
-// correlation must read across archives or only the current task is visible.
-//
-// Returns empty slice on missing data, no error — evaluation system still works when data is missing (agent-neutral principle: no hard
-// dependency on agent reports).
+// AnalyzeEffectiveness correlates skill hits (toollog active Skill calls + checklog passive CheckSkillTrigger entries) with task effectiveness in act conclusion.
 //
 // AnalyzeEffectiveness 关联 skill 命中（toollog 主动 Skill 调用 + checklog 被动
 // CheckSkillTrigger 条目）与 act conclusion 的 task 成效。
@@ -131,21 +87,12 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TaskRef maps to the latest Conclusion (a task completed multiple times takes the latest; LoadAll is time-ordered, later overwrites).
-	//
 	// TaskRef → 最新 Conclusion（一个 task 多次完成取最新；LoadAll 已按时序，后者覆盖）
 	byTask := map[string]*act.Conclusion{}
 	for i := range conclusions {
 		byTask[conclusions[i].TaskRef] = &conclusions[i]
 	}
 
-	// Hit sources resolve their data dir via DataDirFor(root): pass p.Root, NOT
-	// p.GitRoot — a non-git project has GitRoot=="" and DataDirFor("") falls back to
-	// the process CWD's git repo (the dashboard runs inside some project), reading
-	// that project's logs and cross-polluting conclusions on TaskRef collision. Git
-	// projects have Root==GitRoot and non-git DataDirFor(Root)==p.DataDir — Root is
-	// correct in both shapes.
-	//
 	// 命中源的数据目录经 DataDirFor(root) 解析：传 p.Root 而非 p.GitRoot——非 git 项目
 	// GitRoot==""，DataDirFor("") 会回落到进程 CWD 所在 git 仓库（dashboard 就跑在某个
 	// 项目里），读到该项目的日志，TaskRef 撞名时跨项目污染 conclusion。git 项目
@@ -156,11 +103,6 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 	}
 
 	stats := map[string]*effectivenessAggregator{}
-	// record feeds one hit (active or passive) into the aggregator: hits always
-	// accumulate; the task's outcome (score/ratio/strength) is folded in only on
-	// first encounter of that (skill, task) pair — dedup across BOTH sources, so a
-	// passive trigger followed by an active load in the same task counts one outcome.
-	//
 	// record 把一次命中（主动或被动）喂进聚合器：hits 恒累加；task 成效（分数/ratio/
 	// 强度）只在首次遇到该 (skill, task) 对时折入——跨两源去重，同 task 内被动触发+
 	// 主动加载只计一次成效。
@@ -171,8 +113,6 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 			stats[name] = a
 		}
 		a.hits++
-		// Effectiveness is accumulated only on first encounter of a task (dedup, avoiding same-task multi-call weight inflation).
-		//
 		// 成效只在首次遇到该 task 时累加一次（去重，避免同 task 多次调用放大权重）
 		if taskRef == "" || a.tasks[taskRef] {
 			return
@@ -185,9 +125,6 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 			if con.Strength == strengthWeak || con.Strength == strengthUnverified || con.Strength == strengthNoData {
 				a.weak++
 			}
-			// AvgScore denominator only counts Score>0: Score==0 is the sentinel from act.BuildConclusion when score==nil
-			// (scoring not run / failed), including it would artificially depress the avg score.
-			//
 			// AvgScore 分母只计 Score>0：Score==0 是 act.BuildConclusion 在 score==nil
 			// 时的哨兵值（评分未跑/失败），计入会人为拉低 avg 分。
 			if con.Score > 0 {
@@ -197,8 +134,6 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 		}
 	}
 
-	// Active: Skill tool calls in toollog.
-	//
 	// 主动：toollog 的 Skill 工具调用。
 	for _, c := range calls {
 		if c.ToolName != "Skill" {
@@ -211,16 +146,8 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 		record(name, c.TaskRef)
 	}
 
-	// Passive: CheckSkillTrigger entries in checklog (skill-trigger hook injections).
-	// Same dedup + outcome folding as the active path; entries without a TaskRef
-	// still count as hits but attach no outcome.
-	//
 	// 被动：checklog 的 CheckSkillTrigger 条目（skill-trigger hook 注入）。与主动路径
 	// 同去重 + 成效折入；无 TaskRef 的条目仍计命中但不挂成效。
-	// Load error degrades to an empty passive source, visibly: checklog.LoadAllAll is
-	// all-or-nothing (unlike toolusage's per-file skip), so one locked/corrupt archive
-	// would blank the whole passive-hit source — warn so the empty columns are
-	// attributable instead of reading as "never triggered".
 	//
 	// 加载错误降级为空被动源，但必须可见：checklog.LoadAllAll 是整体失败（不像
 	// toolusage 的 per-file 跳过），单个被锁/损坏的归档会让整个被动命中源蒸发——
@@ -248,10 +175,6 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 			HitCount:  a.hits,
 			TaskCount: len(a.tasks),
 		}
-		// AvgScore uses scoredN (Score>0); AvgRatio/WeakRate use conN (with conclusion) —
-		// ratio/evidence strength are always valid in conclusion, unscored task Score does not pollute avg but its
-		// evidence strength still participates in weak-rate.
-		//
 		// AvgScore 用 scoredN（Score>0）；AvgRatio/WeakRate 用 conN（有 conclusion）——
 		// ratio/证据强度在 conclusion 里总有效，未评分 task 的 Score 不污染 avg 分但其
 		// 证据强度仍参与弱占比。

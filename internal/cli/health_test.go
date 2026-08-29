@@ -7,8 +7,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/health"
 )
 
-// captureStdout reuses the definition in skills_install_test.go (same package).
-// runForgeStreams reuses the definition in task_nongit_test.go (same package).
+// captureStdout reuses the definition in skills_install_test.go (same package). runForgeStreams reuses the definition in task_nongit_test.go (same package).
 //
 // captureStdout 复用 skills_install_test.go 的定义（同包）。
 // runForgeStreams 复用 task_nongit_test.go 的定义（同包）。
@@ -21,8 +20,6 @@ func TestPrintHealth_Empty(t *testing.T) {
 }
 
 func TestPrintHealth_BlindSpotWarning(t *testing.T) {
-	// Blind-spot rate 2/3 ~= 0.67 >= 0.5 -> must print the systemic blind-spot warning (project-level headline signal).
-	//
 	// 盲区率 2/3 ≈ 0.67 ≥ 0.5 → 必须打印系统性盲区告警（项目级头条信号）。
 	s := health.Summary{
 		TotalTasks:     3,
@@ -42,8 +39,6 @@ func TestPrintHealth_BlindSpotWarning(t *testing.T) {
 }
 
 func TestPrintHealth_NoBlindSpotSilent(t *testing.T) {
-	// Blind-spot rate 0 -> should not show the systemic blind-spot warning (avoid noise).
-	//
 	// 盲区率 0 → 不该出现系统性盲区告警（避免噪声）。
 	s := health.Summary{
 		TotalTasks:     2,
@@ -58,12 +53,7 @@ func TestPrintHealth_NoBlindSpotSilent(t *testing.T) {
 	}
 }
 
-// TestHealth_NonGitFriendlyMessage pins dogfood 5.2: running forge health in a
-// non-git directory must not surface a bare confusing error like "forgedata: cwd
-// is not in a git repository" (AwesomeMutiAgent abandoned after 1 session).
-// After the user-level-assets anchor contract, an unregistered project (no
-// registry entry, no legacy .forge/) exits non-zero — but the message must stay
-// actionable (points at `forge init`), not a raw internals dump.
+// TestHealth_NonGitFriendlyMessage pins dogfood 5.2.
 //
 // TestHealth_NonGitFriendlyMessage 钉死 dogfood 5.2：非 git 目录跑 forge health
 // 不裸报 "forgedata: cwd is not in a git repository" 这类令人困惑的底层 error
@@ -72,26 +62,18 @@ func TestPrintHealth_NoBlindSpotSilent(t *testing.T) {
 // `forge init`），而非内部细节裸奔。
 func TestHealth_NonGitFriendlyMessage(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
-	// Empty registry required — see TestStatusWithoutInit for the rationale.
-	//
 	// 需要空注册表——理由同 TestStatusWithoutInit。
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	tmpDir := t.TempDir()
-	// No git, no .forge — the AwesomeMutiAgent scenario.
-	//
 	// 无 git、无 .forge —— AwesomeMutiAgent 场景
 	_, stderr, code := runForgeStreams(t, tmpDir, "health")
 	if code == 0 {
 		t.Fatal("forge health 未登记项目应 exit 非零（锚点契约：无注册表条目且无 .forge/）")
 	}
-	// The message must be actionable — point the user at forge init.
-	//
 	// 消息必须可行动——指引用户 forge init
 	if !strings.Contains(stderr, "forge init") {
 		t.Errorf("非 git health stderr 应指引 forge init\nstderr: %s", stderr)
 	}
-	// Should not surface the underlying error.
-	//
 	// 不应裸露底层错误
 	if strings.Contains(stderr, "forgedata: cwd is not in a git repository") {
 		t.Errorf("不应裸报底层 error，got: %s", stderr)

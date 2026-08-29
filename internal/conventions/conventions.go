@@ -4,24 +4,6 @@
 // digest on SessionStart/PostCompact, write-time pointers on PreToolUse
 // Write|Edit).
 //
-// Why this package exists (2026-08-28 dogfood finding): forge injected global
-// discipline on every event but had ZERO perception of the target repo's own
-// conventions — `forge init` WRITES CLAUDE.md/AGENTS.md but never READS the ones
-// a project already declares, so code produced in a newly-onboarded repo drifted
-// from its house style (the mechanism gap behind "forge 接入全新项目后代码不符
-// 合该库规范"). This package closes the data flow: discover → profile → inject,
-// with a fingerprint so a stale profile prompts a rescan instead of silently
-// injecting outdated rules.
-//
-// Industry alignment (research 2026-08): AGENTS.md is the converged cross-tool
-// exchange format (60k+ projects; Codex/Cursor/Copilot coding agent all read
-// it) — detection treats it as the primary source. Claude Code reads CLAUDE.md
-// itself, so on claude hosts the digest is partly redundant — the profile's
-// value there is the parts Claude does NOT auto-load (CONVENTIONS.md, copilot
-// instructions, lint commands, staleness) and, on non-claude hosts, the whole
-// digest; the per-host value differences are accepted (advisory layer, one
-// small block per session).
-//
 // Package conventions 实现项目规范档案：机械发现目标仓库**已声明**的编码规范、
 // 过期判定的 fingerprint，以及两个注入 hook 的渲染器（SessionStart/PostCompact
 // 的会话摘要、PreToolUse Write|Edit 的写入时刻指针）。
@@ -53,18 +35,13 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// ProfileVersion is the schema version of Profile. Bump on breaking changes to
-// the JSON shape so LoadProfile can refuse (rather than mis-parse) old files.
+// ProfileVersion is the schema version of Profile.
 //
 // ProfileVersion 是 Profile 的 schema 版本。JSON 形状破坏性变更时递增，
 // LoadProfile 拒读旧文件（而非误解析）。
 const ProfileVersion = 1
 
-// SummaryLineBudget caps the session-digest injection at 15 non-empty lines —
-// the always-on layer must stay minimal (Cursor/Anthropic converge on
-// "bloated always-on rules drown real instructions"; auto-memory's 200-line
-// project cap is the same philosophy at a looser bound). The write-time hook
-// carries the details; the digest only orients.
+// SummaryLineBudget caps the session-digest injection at 15 non-empty lines — the always-on layer must stay minimal.
 //
 // SummaryLineBudget 把会话摘要注入限制在 15 个非空行——always-on 层必须
 // 极小（Cursor/Anthropic 共识：「臃肿的常驻规则会淹没真实指令」；auto-memory
@@ -72,19 +49,14 @@ const ProfileVersion = 1
 // 摘要只负责定向。
 const SummaryLineBudget = 15
 
-// ExemplarMax is how many sibling exemplar files the write-time injection
-// names. Three is the sweet spot from the in-repo-example evidence line
-// (in-context similar-file examples improve style consistency; more names
-// dilute attention without adding pattern coverage).
+// ExemplarMax is how many sibling exemplar files the write-time injection names.
 //
 // ExemplarMax 是写入时刻注入列出的同目录范例文件数上限。三个来自
 // 「仓内相似示例改善风格一致性」证据线的甜点位（再多只是稀释注意力，
 // 不增加模式覆盖）。
 const ExemplarMax = 3
 
-// SourceFile is one fingerprinted convention source: a repo-relative path plus
-// a short content hash. Bytes feeds the "instruction file is huge, read it
-// selectively" hint in renderers.
+// SourceFile is one fingerprinted convention source: a repo-relative path plus a short content hash.
 //
 // SourceFile 是一个计入指纹的规范来源：仓库相对路径 + 短内容哈希。Bytes
 // 供渲染器输出「规范文件很大、选择性阅读」的提示。
@@ -94,10 +66,7 @@ type SourceFile struct {
 	Bytes int64  `json:"bytes"`
 }
 
-// Profile is the machine-scanned conventions profile stored at
-// <DataDir>/conventions/profile.json. The human/agent-editable digest lives
-// separately at summary.md so `forge conventions init` can refresh metadata
-// without clobbering curated extraction content.
+// Profile is the machine-scanned conventions profile stored at <DataDir>/conventions/profile.json.
 //
 // Profile 是存于 <DataDir>/conventions/profile.json 的机械扫描档案。人/agent
 // 可编辑的摘要单独存 summary.md——`forge conventions init` 刷新元数据时不会
@@ -115,12 +84,6 @@ type Profile struct {
 	Updated      string       `json:"updated"` // RFC3339
 }
 
-// instructionFiles is the declared-conventions detection list, in priority
-// order (AGENTS.md first: the converged cross-tool exchange format).
-// .claude/CLAUDE.md and CLAUDE.local.md are deliberately EXCLUDED: forge's own
-// team-mode init writes .claude/CLAUDE.md with the forge quality protocol —
-// hashing it would echo forge's own text back as "project conventions".
-//
 // instructionFiles 是已声明规范的检测清单，按优先级排序（AGENTS.md 居首：
 // 收敛的跨工具交换格式）。刻意排除 .claude/CLAUDE.md 与 CLAUDE.local.md：
 // forge 自己的 team-mode init 会把 forge 质量协议写进 .claude/CLAUDE.md——
@@ -133,12 +96,6 @@ var instructionFiles = []string{
 	"CONVENTIONS.md",
 }
 
-// styleConfigFiles is the lint/format config detection list. These are hashed
-// into the fingerprint (a rule change must mark the profile stale) and listed
-// in the digest (the agent should run the linter, not guess the rules).
-// pyproject.toml rides along because Python lint config (ruff/black) lives
-// there in practice.
-//
 // styleConfigFiles 是 lint/format 配置检测清单。它们计入指纹（规则变更必须
 // 标记档案过期）并列进摘要（agent 应跑 linter，而不是猜规则）。pyproject.toml
 // 随行——实践中 Python 的 lint 配置（ruff/black）就住在里面。
@@ -154,10 +111,6 @@ var styleConfigFiles = []string{
 	"checkstyle.xml",
 }
 
-// stackMarkers maps the toolchain marker file to the stack label. First match
-// wins; the marker itself is hashed into the fingerprint so a stack change
-// (new go.mod, etc.) flips staleness.
-//
 // stackMarkers 把工具链标记文件映射到 stack 标签。首个命中生效；标记文件本身
 // 计入指纹——stack 变化（新增 go.mod 等）会翻转过期状态。
 var stackMarkers = []struct {
@@ -174,24 +127,16 @@ var stackMarkers = []struct {
 	{"build.gradle.kts", "java"},
 }
 
-// nodePackageJSON is the minimal package.json projection for script commands.
-//
 // nodePackageJSON 是取 script 命令所需的最小 package.json 投影。
 type nodePackageJSON struct {
 	Scripts map[string]string `json:"scripts"`
 }
 
-// LoadProfile signals "no profile" with (nil, nil) — callers distinguish it
-// from "broken profile" (real error) without errors.Is plumbing, and Stale's
-// nil-profile pass keeps the hooks silent on unadopted projects.
-//
 // LoadProfile 用 (nil, nil) 表示「无档案」——调用方无需 errors.Is 管道即可
 // 区分「没建过档」与「档案损坏」（真错误），Stale 对 nil 档案直接放行，
 // 未采纳本层的项目保持静默。
 
-// DetectStack returns the repo's stack label ("" when unrecognized). Suffix
-// probes (.sln/.csproj) are checked only when no marker file matched — they
-// need a directory scan, not a stat.
+// DetectStack returns the repo's stack label ("" when unrecognized).
 //
 // DetectStack 返回仓库的 stack 标签（未识别为空串）。后缀探测（.sln/.csproj）
 // 仅在标记文件全未命中时进行——它们需要目录扫描而非 stat。
@@ -215,9 +160,6 @@ func DetectStack(root string) string {
 	return ""
 }
 
-// stackMarkerFile returns the first existing stack marker's repo-relative path
-// ("" when none). Part of the fingerprint input.
-//
 // stackMarkerFile 返回首个存在的 stack 标记文件（仓库相对路径；无则空串）。
 // 指纹输入的一部分。
 func stackMarkerFile(root string) string {
@@ -229,10 +171,6 @@ func stackMarkerFile(root string) string {
 	return ""
 }
 
-// stackCommands derives the conventional lint/test/build commands per stack.
-// node prefers the repo's own package.json scripts over generic fallbacks —
-// a repo that names a lint script has already stated its convention.
-//
 // stackCommands 按 stack 推导惯用 lint/test/build 命令。node 优先仓库自己的
 // package.json scripts 而非通用回落——起了 lint script 的仓库已经声明了它的规范。
 func stackCommands(root, stack string) (lint, test, build string) {
@@ -267,9 +205,6 @@ func stackCommands(root, stack string) (lint, test, build string) {
 	return "", "", ""
 }
 
-// nodeCommands reads package.json scripts; a present script wins over the
-// generic fallback so the profile states what THIS repo runs.
-//
 // nodeCommands 读 package.json scripts；script 在场即胜过通用回落，
 // 档案陈述的是**本仓库**实际跑的东西。
 func nodeCommands(root string) (lint, test, build string) {
@@ -294,10 +229,7 @@ func nodeCommands(root string) (lint, test, build string) {
 	return lint, test, build
 }
 
-// Scan mechanically profiles root: instruction files, style configs, stack
-// commands, cursor rule count, and the fingerprint over all of it. Purely
-// mechanical by design (P0) — the LLM-extraction layer enriches summary.md on
-// top; mixing the two would make `init` non-deterministic and untestable.
+// Scan mechanically profiles root: instruction files, style configs, stack commands, cursor rule count, and the fingerprint over all of it.
 //
 // Scan 机械剖析 root：规范文件、style 配置、stack 命令、cursor 规则计数，
 // 以及对以上全部的指纹。刻意纯机械（P0）——LLM 提取层在其上增补 summary.md；
@@ -330,11 +262,7 @@ func Scan(root string) (*Profile, error) {
 	return p, nil
 }
 
-// Fingerprint hashes the CURRENT tree's convention inputs — instruction
-// files, style configs, the stack marker — straight from the detection tables,
-// NOT from the profile's stored lists: re-hashing stored entries would see
-// neither content edits (stored SHAs are the old ones) nor files added after
-// the scan. Both detection gaps were caught by TestScan_FlipsStaleOnSourceChange.
+// Fingerprint hashes the CURRENT tree's convention inputs — instruction files, style configs, the stack marker — straight from the detection tables, NOT from the profile's stored lists.
 //
 // Fingerprint 对**当前**树的规范输入重算——规范文件、style 配置、stack 标记
 // ——直接走检测表，而非档案里存的清单：重哈希存量条目既看不到内容编辑
@@ -360,10 +288,6 @@ func Fingerprint(root string) string {
 	return fingerprintOf(files)
 }
 
-// fingerprintOf folds sorted "path sha" lines into one hex digest. Sorting
-// makes the digest independent of detection order; the path is hashed WITH the
-// content so file renames also flip staleness.
-//
 // fingerprintOf 把排序后的 "path sha" 行折叠为单个十六进制摘要。排序让摘要
 // 与检测顺序无关；路径与内容一起哈希，文件改名同样翻转过期状态。
 func fingerprintOf(files []SourceFile) string {
@@ -378,9 +302,7 @@ func fingerprintOf(files []SourceFile) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-// Stale reports whether the tree drifted from the profile. It re-detects with
-// the CURRENT tree (so files added after the scan count), not just re-hashing
-// the scanned list.
+// Stale reports whether the tree drifted from the profile.
 //
 // Stale 报告树是否已偏离档案。按当前树重新检测（扫描后新增的文件也算），
 // 而非只重哈希当初扫到的清单。
@@ -393,9 +315,7 @@ func Stale(root string, p *Profile) bool {
 
 // ---- Storage (under <DataDir>/conventions/) ----
 
-// Dir returns the profile directory under a project DataDir. Kept as a
-// function (not a Project method) so forgedata stays ignorant of conventions —
-// dependency points from conventions/hook side toward forgedata only.
+// Dir returns the profile directory under a project DataDir.
 //
 // Dir 返回项目 DataDir 下的档案目录。保持函数（而非 Project 方法），
 // 让 forgedata 对 conventions 无感知——依赖只从 conventions/hook 侧指向
@@ -422,9 +342,7 @@ func SaveProfile(dataDir string, p *Profile) error {
 	return util.AtomicWrite(ProfilePath(dataDir), append(data, '\n'), 0644)
 }
 
-// LoadProfile reads the profile; (nil, nil) when absent, an error when present
-// but unreadable/corrupt (callers treat corrupt as "rebuild" input, not as a
-// silent pass).
+// LoadProfile reads the profile; (nil, nil) when absent, an error when present but unreadable/corrupt.
 //
 // LoadProfile 读档案；不存在返 (nil, nil)，存在但读不出/损坏返错误
 // （调用方把损坏当「重建」输入，不当静默放行）。
@@ -467,9 +385,7 @@ func SaveSummary(dataDir, content string) error {
 	return util.AtomicWrite(SummaryPath(dataDir), []byte(content), 0644)
 }
 
-// SummaryExists reports whether a digest has been written (init or agent
-// enrichment) — distinguishes "profile built but digest empty" from "no
-// profile".
+// SummaryExists reports whether a digest has been written (init or agent enrichment).
 //
 // SummaryExists 报告摘要是否已写过（init 或 agent 增补）——区分「已建档但
 // 摘要为空」与「无档案」。
@@ -482,10 +398,7 @@ func SummaryExists(dataDir string) bool {
 // discipline as failure-track/test-nudge, imperatives read as injected
 // instructions) ----
 
-// GenerateSummary renders the initial digest scaffold: what was detected plus
-// an empty extraction section for the agent to enrich. The 提取要点 section is
-// the P1 hook — `forge conventions init` prints the enrichment instruction;
-// the hook injects whatever ends up here.
+// GenerateSummary renders the initial digest scaffold: what was detected plus an empty extraction section for the agent to enrich.
 //
 // GenerateSummary 渲染初始摘要骨架：检测结果 + 留给 agent 增补的空提取节。
 // 提取要点节是 P1 的挂点——`forge conventions init` 打印增补指引，hook 注入
@@ -518,9 +431,7 @@ func GenerateSummary(p *Profile) string {
 	return b.String()
 }
 
-// SessionInject renders the SessionStart/PostCompact digest block. stale adds
-// the rescan line — a stale digest is worse than none (it confidently states
-// outdated rules), so staleness must be visible in the injection itself.
+// SessionInject renders the SessionStart/PostCompact digest block.
 //
 // SessionInject 渲染 SessionStart/PostCompact 的摘要块。stale 追加重扫行——
 // 过期摘要比没有更糟（它自信地陈述旧规则），过期状态必须在注入内容里可见。
@@ -530,9 +441,6 @@ func SessionInject(p *Profile, summary string, stale bool) string {
 	}
 	body := strings.TrimSpace(summary)
 	if body == "" {
-		// Digest deleted but profile present: fall back to a generated one so
-		// the layer degrades to metadata-only instead of silence.
-		//
 		// 摘要被删而档案仍在：回落到生成版，让本层降级为仅元数据而非静默。
 		body = strings.TrimSpace(GenerateSummary(p))
 	}
@@ -545,9 +453,7 @@ func SessionInject(p *Profile, summary string, stale bool) string {
 	return b.String()
 }
 
-// SuggestInit renders the no-profile suggestion when the repo already declares
-// conventions — adoption is offered, not forced (the layer is advisory; the
-// user decides to build the profile).
+// SuggestInit renders the no-profile suggestion when the repo already declares conventions.
 //
 // SuggestInit 在仓库已声明规范而无档案时渲染建档建议——提供选择而非强制
 // （本层 advisory；是否建档由用户决定）。
@@ -559,9 +465,7 @@ func SuggestInit(names []string) string {
 		strings.Join(names, ", "))
 }
 
-// WriteInject renders the PreToolUse Write|Edit block for one target file:
-// instruction-file pointers plus sibling exemplars. relPath/exemplars are
-// repo-relative. Empty result means "nothing to say" (caller stays silent).
+// WriteInject renders the PreToolUse Write|Edit block for one target file: instruction-file pointers plus sibling exemplars.
 //
 // WriteInject 为单个目标文件渲染 PreToolUse Write|Edit 块：规范文件指针 +
 // 同目录范例。relPath/exemplars 均为仓库相对路径。空结果=「无可奉告」
@@ -594,43 +498,27 @@ func WriteInject(relPath string, p *Profile, stale bool, exemplars []string) str
 //
 // EnrichResult 报告 EnrichSummary 做了什么。
 type EnrichResult struct {
-	// Changed: the digest content actually changed (rule added / placeholder
-	// replaced). false = exact rule line already present (dedupe no-op).
+	// Changed: the digest content actually changed (rule added / placeholder replaced).
 	//
 	// Changed：摘要内容真的变了（新增规则/替换占位符）。false = 完全相同的
 	// 规则行已在（去重空操作）。
 	Changed bool
 	// OverBudget: the digest now exceeds SummaryLineBudget non-empty lines.
-	// The write STILL happened — EnrichSummary never silently drops user
-	// content; the caller surfaces the prune suggestion.
 	//
 	// OverBudget：摘要非空行数已超 SummaryLineBudget。写入照常发生——
 	// EnrichSummary 绝不静默删用户内容；修剪建议由调用方转达。
 	OverBudget bool
 }
 
-// pendingPlaceholder is the scaffold's "nothing extracted yet" line — the
-// first enrichment replaces it instead of appending (a digest that keeps both
-// the placeholder and real rules reads as unfinished).
-//
 // pendingPlaceholder 是骨架的「尚未提取」行——首次增补替换它而非追加
 // （占位符与真实规则并存的摘要读起来像没写完）。
 const pendingPlaceholder = "（待提取）"
 
-// extractHeadingPrefix identifies the extraction section heading (matched by
-// prefix so heading suffix wording can evolve without breaking learn).
-//
 // extractHeadingPrefix 识别提取节的标题（按前缀匹配——标题后缀措辞可演进，
 // learn 不因此破）。
 const extractHeadingPrefix = "## 提取要点"
 
-// EnrichSummary writes one learned rule into summary.md's 提取要点 section —
-// the layer-4 correction write-back (the user/review pointed out a convention
-// violation; the rule lands in the digest so every future session sees it).
-// Precedence: exact-duplicate → no-op; a pending placeholder → replaced;
-// otherwise the rule is inserted right under the 提取要点 heading (newest
-// first). A missing heading appends a fresh section; a missing summary errors
-// (learn before init would create an orphan digest with no profile).
+// EnrichSummary writes one learned rule into summary.md's 提取要点 section — the layer-4 correction write-back.
 //
 // EnrichSummary 把一条学到的规则写进 summary.md 的提取要点节——层 4 的纠正
 // 写回（用户/审查指出规范违规；规则落进摘要，此后每个会话都看得见）。
@@ -640,11 +528,6 @@ const extractHeadingPrefix = "## 提取要点"
 func EnrichSummary(dataDir, rule string) (EnrichResult, error) {
 	// 导出 API 加固：规则是一行一条的契约——内嵌换行会破坏 "- " 行形（CLI 路径
 	// 经 strings.Join(args," ") 不可达，直接调用方可达；对抗审查发现 #5）。
-	//
-	// Exported-API hardening: rules are one-per-line by contract — embedded
-	// newlines would break the "- " line shape (unreachable via the CLI's
-	// strings.Join(args," "), reachable by direct callers; adversarial-review
-	// finding #5).
 	rule = strings.TrimSpace(strings.ReplaceAll(rule, "\n", " "))
 	if rule == "" {
 		return EnrichResult{}, fmt.Errorf("conventions: empty rule")
@@ -665,13 +548,6 @@ func EnrichSummary(dataDir, rule string) (EnrichResult, error) {
 	// 首个占位符行替换；否则插入标题下方（跳过标题后的一个空行）。占位符按
 	// **子串**替换而非整行——手编文件里占位符同行可能有其他文字，整行替换会
 	// 抹掉它（对抗审查发现 #5；stock 骨架整行就是占位符，两种形态都正确）。
-	//
-	// Replace the first placeholder line; otherwise insert under the heading
-	// (skipping one blank line right after the heading). The placeholder is
-	// replaced as a SUBSTRING, not a whole-line swap — a hand-edited line may
-	// carry other text beside the placeholder, and a whole-line swap would
-	// erase it (adversarial-review finding #5; the stock scaffold line IS the
-	// placeholder alone, both shapes come out right).
 	replaced := false
 	for i, l := range lines {
 		if !replaced && strings.Contains(l, pendingPlaceholder) {
@@ -690,9 +566,6 @@ func EnrichSummary(dataDir, rule string) (EnrichResult, error) {
 		}
 		if headingIdx == -1 {
 			// 用户重组过文件：追加全新提取节（learn 不因结构漂移而丢规则）。
-			//
-			// User reorganized the file: append a fresh section (learn must not
-			// drop the rule to structural drift).
 			if len(out) > 0 && strings.TrimSpace(out[len(out)-1]) != "" {
 				out = append(out, "")
 			}
@@ -715,8 +588,6 @@ func EnrichSummary(dataDir, rule string) (EnrichResult, error) {
 	}, nil
 }
 
-// countNonEmpty counts non-empty lines.
-//
 // countNonEmpty 统计非空行数。
 func countNonEmpty(lines []string) int {
 	n := 0
@@ -728,15 +599,7 @@ func countNonEmpty(lines []string) int {
 	return n
 }
 
-// Exemplars picks up to ExemplarMax same-directory, same-extension sibling
-// files of targetPath — the closest style reference for the file being
-// written (recently-modified first: the freshest file best represents current
-// style). Exemplars always match the target's KIND: a source target gets
-// source siblings, a test target gets test siblings — the patterns worth
-// mimicking live on the same side of that line (a test target pointed at
-// source siblings mimics the wrong pattern, exactly as the reverse would;
-// adversarial-review finding, 2026-08-28). Dotfiles and oversized files are
-// always skipped.
+// Exemplars picks up to ExemplarMax same-directory, same-extension sibling files of targetPath — the closest style reference for the file being written.
 //
 // Exemplars 选最多 ExemplarMax 个与 targetPath 同目录、同扩展名、且**同类别**
 // （源码/测试）的兄弟文件——被写文件最贴近的风格参照（最近修改优先：最新
@@ -792,10 +655,6 @@ func Exemplars(root, targetPath string) []string {
 	return out
 }
 
-// likelyTestFile is the local test-file heuristic (mirrors the shape of
-// taskpipeline's classifier; not shared because taskpipeline's version carries
-// whitelist semantics specific to the test-coverage gate).
-//
 // likelyTestFile 是本地的测试文件启发式（形态镜像 taskpipeline 的分类器；
 // 不共享是因为那一份带着 test-coverage 门禁专属的白名单语义）。
 func likelyTestFile(name string) bool {
@@ -808,10 +667,7 @@ func likelyTestFile(name string) bool {
 
 // ---- small helpers ----
 
-// RelPath makes path repo-relative. When path is NOT under root the input is
-// returned as-is — a DISPLAY-only fallback: callers that feed the result into
-// model-facing injections must guard out-of-root targets themselves (the
-// write hook does; an absolute user path must never ride an injection).
+// RelPath makes path repo-relative.
 //
 // RelPath 把 path 转为仓库相对。path 不在 root 下时原样返回——仅作展示
 // 回落：把结果喂进面向模型的注入的调用方必须自行挡掉根外目标（写 hook
@@ -824,9 +680,7 @@ func RelPath(root, path string) string {
 	return rel
 }
 
-// Paths projects a SourceFile list onto its paths (display order = scan
-// order). The single shared projection — the cli layer had two private copies
-// (adversarial-review nit) that would drift from this one.
+// Paths projects a SourceFile list onto its paths (display order = scan order).
 //
 // Paths 把 SourceFile 列表投影为路径列表（展示序=扫描序）。唯一共享投影
 // ——cli 层曾有俩私有拷贝（对抗审查 nit），留着只会漂移。
@@ -838,9 +692,7 @@ func Paths(files []SourceFile) []string {
 	return out
 }
 
-// TrimToLines keeps at most max non-empty lines and appends an ellipsis line
-// when truncation happened (silent truncation would present a partial digest
-// as the whole).
+// TrimToLines keeps at most max non-empty lines and appends an ellipsis line when truncation happened.
 //
 // TrimToLines 最多保留 max 个非空行，截断时追加省略行（静默截断会把部分
 // 摘要当整体呈现）。
@@ -861,14 +713,6 @@ func TrimToLines(s string, max int) string {
 	return strings.Join(all[:max], "\n") + "\n…（摘要超行数上限，全文 forge conventions show）"
 }
 
-// hashInstructionFile hashes an instruction file with forge's marker-wrapped
-// section STRIPPED (team-mode `forge init --project` writes its protocol into
-// root AGENTS.md/CLAUDE.md): without the strip, (a) forge's own text would be
-// fingerprinted as "declared conventions" (the exact echo the .claude/CLAUDE.md
-// exclusion guards against), and (b) every forge upgrade + re-init rewrites the
-// section and permanently marks the profile STALE (adversarial-review finding,
-// 2026-08-28). Style configs skip the strip — forge never writes those.
-//
 // hashInstructionFile 哈希规范文件时剥离 forge 标记包裹段（team-mode
 // `forge init --project` 会把协议写进根 AGENTS.md/CLAUDE.md）：不剥离则
 // (a) forge 自己的文本被当「已声明规范」计入指纹（正是 .claude/CLAUDE.md
@@ -888,10 +732,6 @@ func hashInstructionFile(root, rel string) (SourceFile, bool) {
 	return SourceFile{Path: rel, SHA: hex.EncodeToString(sum[:])[:16], Bytes: info.Size()}, true
 }
 
-// hashFile stats+hashes root/rel into a SourceFile (ok=false when absent or
-// unreadable — detection is existence-driven, unreadable files are skipped,
-// not fatal).
-//
 // hashFile 把 root/rel stat+哈希为 SourceFile（不存在/读不出为 ok=false——
 // 检测以在场为准，读不出的文件跳过、不致命）。
 func hashFile(root, rel string) (SourceFile, bool) {
@@ -908,17 +748,12 @@ func hashFile(root, rel string) (SourceFile, bool) {
 	return SourceFile{Path: rel, SHA: hex.EncodeToString(sum[:])[:16], Bytes: info.Size()}, true
 }
 
-// fileExists is the stat probe shared by detection tables.
-//
 // fileExists 是检测表共用的 stat 探测。
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
 }
 
-// samePath reports path identity via os.SameFile (symlink-robust, the v0.27.2
-// lesson baked into adoptPayloadCwd).
-//
 // samePath 经 os.SameFile 判路径同一性（symlink 鲁棒，adoptPayloadCwd 里
 // v0.27.2 的教训）。
 func samePath(a, b string) (bool, error) {

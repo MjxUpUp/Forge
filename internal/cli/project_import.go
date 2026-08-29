@@ -18,26 +18,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// project_import.go — `forge project import`: land a bundle on this machine.
-//
-// Trust model (lineage-conditional, decided with the user): same derived key =
-// same-identity lineage (the developer's other machine) ⇒ results preserved
-// (scores/completion/gate history) by default, sessions ghosted; key mismatch ⇒
-// full StripForeignGateSignals by default (foreign gate signals never satisfy local
-// gates), --trust-foreign for the explicit informed exception; --untrusted forces
-// the strip even for same-key bundles.
-//
-// Routing: same key → direct merge under per-task locks; key mismatch → same merge
-// after lineage determination, plus a registry sync. When the bundle comes from an
-// ID-identity project and this machine is still path-identity, the default REFUSES
-// with guidance (pull + adopt, or --adopt-id to take the bundle's ID wholesale —
-// which also migrates this machine's existing data to the ID key first).
-//
-// Idempotency: the machine-local ledger (imports.jsonl) skips an already-imported
-// bundle_id (--force redoes); the merge itself is idempotent regardless (exact-line
-// dedup + union semantics) — a crash mid-import leaves no ledger line and re-runs
-// converge.
-//
 // project_import.go —— `forge project import`：把 bundle 落地到本机。
 //
 // 信任模型（lineage 条件判定，已与用户定案）：派生 key 相同 = 同身份 lineage
@@ -106,12 +86,6 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	}
 	defer f.Close()
 
-	// Pass 1 — whole-file digest ONLY. Both the ledger dedup and the trust verdict
-	// key on bytes, so both run BEFORE the attacker-controlled tar.gz is ever
-	// parsed: a team-profile hard-reject must not have already gone through Unpack's
-	// tar path (path traversal / oversized headers / symlink races live there), and
-	// a re-imported bundle must not pay the tar parse at all.
-	//
 	// 第一遍只算整文件摘要。账本查重与信任判定都以字节为键，都在解析攻击者可控
 	// 的 tar.gz 之前执行：团队档硬拒不该已经过 Unpack 的 tar 路径（路径逃逸/超大
 	// 头/symlink 竞争都在那），重复导入的 bundle 更不该付 tar 解析成本。
@@ -138,10 +112,6 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Trust verdict (node-identity.md §3): signed bundles verify against the trust
-	// store; invalid signatures and team-mode unsigned bundles are hard-rejected
-	// here — BEFORE unpacking (see pass-1 comment).
-	//
 	// 信任判定（node-identity.md §3）：签名 bundle 对照 trust store 验真；签名无效
 	// 与团队档未签名在此硬拒——先于解包（见第一遍注释）。
 	if verr := verifyBundleForImport(root, args[0], bundleSHA, out, dryRun); verr != nil {
@@ -156,11 +126,6 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	}
 	defer os.RemoveAll(staging)
 
-	// Pass 2 — unpack through a TeeReader into a SECOND hash: the verdict above ran
-	// on the pass-1 digest; this re-hash proves the bytes that reach Unpack are the
-	// SAME bytes (a local swap between the two passes would otherwise feed unverified
-	// content into the merge while the ledger records the old digest).
-	//
 	// 第二遍——经 TeeReader 进第二个 hash 解包：上面的判定基于第一遍摘要；此重
 	// 哈希证明到达 Unpack 的字节与验签字节相同（否则两遍之间本地换文件会把未验
 	// 签内容送进合并、而账本记的仍是旧摘要）。
@@ -276,13 +241,6 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	// registry.Rekey 会移除/改写本机以该 key 登记的任意条目——伪造 manifest 即可
 	// 篡改机器本地注册表。bundle key 在本机本就不该有条目（同 key 路径才是常态），
 	// 残留漂移由 forge registry audit 检出。
-	//
-	// Cross-key merge deliberately does NOT sync the registry: the bundle's
-	// self-declared Origin.Key is untrusted input, and registry.Rekey would
-	// remove/re-key any local entry carrying it — a forged manifest could rewrite
-	// machine-local registry state. A bundle key should have no local entry in
-	// the first place (same-key is the canonical path); residual drift is caught
-	// by forge registry audit.
 
 	if dryRun {
 		fmt.Fprintln(out, `（dry-run：以上动作未落盘，账本未记）`)
@@ -308,12 +266,6 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// mergeStagingTasks merges staging/data/tasks/*.json into the local DataDir under a
-// per-task lock (load-inside-lock, mirror of task import's lost-update guard).
-// In-memory transforms: GhostForeignSessions ALWAYS; StripForeignGateSignals when
-// !trusted. A staging task that fails to parse as TaskState is skipped with a
-// warning (bundle sha guarantees transport integrity, not schema validity).
-//
 // mergeStagingTasks 在 per-task 锁下把 staging/data/tasks/*.json 合并进本机
 // DataDir（锁内重载，镜像 task import 的防丢更新守卫）。内存变换：
 // GhostForeignSessions 恒做；!trusted 时加 StripForeignGateSignals。不可解析为
@@ -342,12 +294,6 @@ func mergeStagingTasks(root, stagingData string, trusted, dryRun bool) ([]string
 		// 以传入任务内部的 task_ref 为锁/加载目标：文件名经 SanitizeRef 折叠
 		// （feat/x → feat-x.json），按文件名反推 ref 会与 TaskRef 不一致，被
 		// LoadTaskState 的串号校验误判成「本地无此任务」而覆盖本地状态。
-		//
-		// The incoming task's internal task_ref is the lock/load key: the file
-		// name is SanitizeRef-folded (feat/x → feat-x.json), so deriving the ref
-		// from the file name mismatches TaskRef, trips LoadTaskState's
-		// cross-ref guard, and would read as "no local task" — clobbering local
-		// state.
 		ref := incoming.TaskRef
 
 		taskpipeline.GhostForeignSessions(incoming)
@@ -355,13 +301,6 @@ func mergeStagingTasks(root, stagingData string, trusted, dryRun bool) ([]string
 		// 执行闸（AcceptanceForeign && !--trust-foreign 拒绝）只由 Strip 武装，
 		// 若受信路径跳过它，同 key 导入会把 2026-08-15 审查定性的「任意命令执行」
 		// 向量从 sync 路径重新引入。--trust-foreign 是既有逃生口，成本为零。
-		//
-		// The trusted path ALSO marks acceptance foreign: Run is a foreign
-		// executable string — verify-acceptance's execution gate (refuse when
-		// AcceptanceForeign && !--trust-foreign) is armed only by Strip; skipping
-		// it on the sync path would reintroduce the arbitrary-command-execution
-		// vector through the same-key route. --trust-foreign is the existing
-		// escape hatch at zero cost.
 		if len(incoming.Acceptance) > 0 {
 			incoming.AcceptanceForeign = true
 		}
@@ -384,13 +323,6 @@ func mergeStagingTasks(root, stagingData string, trusted, dryRun bool) ([]string
 		// 但内部 TaskRef 与请求 ref 不一致时也报错（SanitizeRef 折叠碰撞：feat/x 与
 		// feat:x 共享 feat-x.json）——那种「碰撞串号」错误若被当成「本机无此任务」，
 		// 下面的 SaveTaskState 会把本地碰撞任务整文件覆盖（静默丢数据）。
-		//
-		// Freshness is decided by FILE EXISTENCE, not by LoadTaskState's error:
-		// LoadTaskState also errors when the file exists but its internal TaskRef
-		// mismatches the requested ref (SanitizeRef folding collisions: feat/x and
-		// feat:x share feat-x.json) — treating that as "no local task" would let
-		// SaveTaskState clobber the colliding local task wholesale (silent data
-		// loss).
 		localPath := filepath.Join(forgedata.DataDirFor(root), `tasks`, taskcontext.SanitizeRef(ref)+`.json`)
 		_, statErr := os.Stat(localPath)
 		switch {
@@ -428,8 +360,6 @@ func trustTag(trusted bool) string {
 	return `并集合并（外来信号已剥离）`
 }
 
-// loadStagingTask parses a staging task file into a TaskState.
-//
 // loadStagingTask 把 staging 任务文件解析为 TaskState。
 func loadStagingTask(path string) (*taskpipeline.TaskState, error) {
 	data, err := os.ReadFile(path)

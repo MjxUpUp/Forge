@@ -12,12 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// completeGenericTask finishes a generic-kind task (research/design/pure handoff):
-// auto-marks the 3 gates as passed (History stays complete for list/dashboard display,
-// but no checks actually run — ExecuteTaskGate short-circuits for generic) + MarkComplete
-// + clears the active-task-ref. Does not score and creates no review — the value of a
-// generic task lives in its persisted continuity fields, not in code-quality gates.
-//
 // completeGenericTask 完成 generic kind 任务（调研/设计/纯接续）：自动标 3 道门禁 passed
 // （History 完整供 list/dashboard 显示，但不跑任何检查——ExecuteTaskGate 对 generic 秒过）+
 // MarkComplete + 清 active-task-ref。不评分、不创建 review——generic 任务的价值在持久化的
@@ -43,9 +37,6 @@ func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 		}
 	}
 	head := taskpipeline.GetHeadCommit(root)
-	// Locked completion write: bare SaveTaskState over the pre-call snapshot would
-	// roll back concurrent writers (the §13 lost-update class this file documents).
-	//
 	// 锁内完成写入：对调用前快照裸 SaveTaskState 会回滚并发写者（本文件已
 	// 记录的 §13 丢失更新类）。
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
@@ -110,8 +101,6 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active task. Run 'forge task start' first")
 	}
 
-	// Validate the gate exists.
-	//
 	// 校验 gate 存在
 	gate := taskpipeline.GateByID(gateID)
 	if gate == nil {
@@ -123,11 +112,6 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Token cost circuit-breaker (advisory): warn when the task's cumulative estimated
-	// tokens exceed the threshold. Makes token accounting more than forge-trace
-	// observability — it becomes a cost-ceiling signal as task gates advance
-	// (loop-engineering cost governance).
-	//
 	// Token 成本熔断（advisory）：task 累计估算 token 超阈值则警示。让 token 计量不止于
 	// forge trace 可观测，而是 task gate 推进时的成本上限信号（loop engineering 成本治理）。
 	if w, _ := toolusage.TaskTokenBreaker(root, state.TaskRef); w != "" {
@@ -142,10 +126,6 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// 过门禁正是管线/分派脱节的前兆——提醒但绝不阻断（编排器代跑合法）。
 	adviseUnclaimedAssignment(root, gateID, result.Passed, state)
 
-	// Node-lease advisory (sync-convergence.md §4): gating a task another machine
-	// holds an active lease on is the dual-machine collision precursor — warn, never
-	// block (TTL leases are UX, not correctness).
-	//
 	// 节点租约 advisory（sync-convergence.md §4）：给他机持有活跃租约的任务过门禁
 	// 是双机互踩的前兆——提醒但绝不阻断（TTL 租约管 UX 不管正确性）。
 	if ls := taskpipeline.LeaseStatusForCurrentNode(state); ls.ForeignActive {
@@ -162,30 +142,10 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// 整个动作（pre-flight → MarkComplete → 评分 → 反馈 → 清 ref）；门禁全过只是它的
 	// 前置条件，不是完成本身。
 	//
-	// Deliberately NO MarkComplete here (dogfood 2026-08-18 deadlock fix): the last gate
-	// used to mark the task complete on pass, but ActiveTaskState returns nil once
-	// CompletedAt is set — and the immediately following `forge task complete` acceptance
-	// pre-flight demands snapshot freshness (then AcceptedHeadCommit==HEAD; since
-	// 2026-08-25 a source-content fingerprint anchored at the task's HeadCommit, see
-	// acceptance.go), refreshable ONLY by
-	// verify-acceptance (active task by default; --ref pins explicitly). Gate pass
-	// deactivated the task → acceptance refresh deadlocked (hit in production by the v2
-	// task: a review-fix commit moved HEAD, complete BLOCKED forever, no CLI path could
-	// revive it). Completion is `forge task complete`'s whole action (pre-flight →
-	// MarkComplete → scoring → feedback → clear ref); all gates passed is its
-	// prerequisite, not completion itself.
-	// Locked gate-result write: the load at the top of runTaskGate predates a
-	// possibly-minutes-long ExecuteTaskGate run — saving that stale snapshot would
-	// silently roll back any concurrent session-link/review/decide write that landed
-	// meanwhile (§13 lost-update; the write path must merge into the in-lock state).
-	//
 	// 锁内门禁结果写入：runTaskGate 顶部的 load 早于可能长达分钟级的 ExecuteTaskGate
 	// 执行——保存那个陈旧快照会静默回滚期间落盘的并发 session-link/盖章/决策写入
 	//（§13 丢失更新；写入路径必须合并进锁内状态）。
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-		// GetHeadCommit (short hash) is the single source of truth for recorded heads —
-		// attribution and doc-gate compare History heads by exact string equality.
-		//
 		// GetHeadCommit（短 hash）是记录 head 的单一真相源——归因与 doc-gate 对
 		// History head 做精确字符串比较。
 		s.RecordGateResult(gateID, result.Passed, taskpipeline.GetHeadCommit(root))
@@ -209,16 +169,6 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runTaskVerifyAcceptance actually runs every acceptance criterion registered for the
-// task (task start --accept), judges each by 'exit code 0 + Expected substring',
-// back-fills Passed/Output onto TaskState, and records a checklog:acceptance entry
-// (deterministic — forge itself runs the command and observes the result, cannot be
-// faked). This is the entry point that turns dev-workflow Plan's 'Run: <cmd>,
-// Expected: <out>' into unfakable run-time evidence, hedging against the blind spot of
-// an agent claiming 'satisfies acceptance' without actually running it (spec-as-gate).
-// Failure does not block the session — it only returns an error so callers/scripts can
-// read the exit code; the Passed field is persisted truthfully + checklog, visible in forge trace.
-//
 // runTaskVerifyAcceptance 实跑任务登记的每条验收标准（task start --accept），按
 // 「退出码 0 + Expected 子串」判定，回填 Passed/Output 到 TaskState 并记一条
 // checklog:acceptance（deterministic——forge 自己跑命令看结果，不可伪造）。这是把
@@ -235,18 +185,6 @@ func runTaskVerifyAcceptance(cmd *cobra.Command, args []string) error {
 	return runTaskVerifyAcceptanceAt(root, explicitRef, trustForeign)
 }
 
-// stdinIsHumanTerminal reports whether stdin is attached to a human terminal (char device) —
-// the discriminator the --trust-foreign gate uses to keep an LLM agent (whose Bash-spawned
-// stdin is a pipe) from self-trusting foreign acceptance commands by simply following the
-// refusal text's own instruction. Var (not func) so tests can inject both sides.
-//
-// KNOWN LIMITATION (review 2026-08-16): mintty (Git Bash's default terminal) hands native
-// processes a named pipe instead of a char device, so a real human is refused there too. No
-// in-place escape hatch is offered on purpose — any env/flag bypass is equally settable by an
-// injected agent, re-opening the self-trust hole this gate exists to close. The refusal message
-// detects TERM_PROGRAM=mintty and tells the human to re-run from a ConPTY terminal (Windows
-// Terminal / PowerShell) instead.
-//
 // stdinIsHumanTerminal 报告 stdin 是否挂在真人终端（char device）上——--trust-foreign 受信门
 // 用来阻止 LLM agent（其 Bash 生成的 stdin 是管道）照拒绝文案自己的指引自我受信外来验收
 // 命令的判别器。用变量（非函数）以便测试注入两侧。
@@ -260,15 +198,6 @@ var stdinIsHumanTerminal = func() bool {
 	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
 }
 
-// runTaskVerifyAcceptanceAt is the root-injected core of runTaskVerifyAcceptance,
-// split out so it can be unit-tested on a temp project (skipping findProjectRoot /
-// cobra). It performs the same actually-run-and-judge acceptance loop and the same
-// deterministic checklog:acceptance recording as runTaskVerifyAcceptance — see that
-// godoc for the spec-as-gate rationale (forge runs each command itself, so the
-// evidence cannot be faked; agents cannot merely assert 'satisfies acceptance').
-// explicitRef pins the task directly (gate-family --ref parity); empty keeps the
-// legacy active-task detection.
-//
 // runTaskVerifyAcceptanceAt 是 runTaskVerifyAcceptance 的 root 注入核心，独立出来便于
 // 在临时项目上单测（不经 findProjectRoot / cobra）。实跑任务登记的每条验收标准
 // （task start --accept），按「退出码 0 + Expected 子串」判定，回填 Passed/Output 到
@@ -298,20 +227,6 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 		return nil
 	}
 
-	// Foreign-acceptance trust gate: Run commands that entered this TaskState via task import or
-	// .forge migrate are attacker-authorable executable strings (a cloned malicious repo / a hostile
-	// bundle). verify-acceptance executes them with full env — running unreviewed foreign commands is
-	// arbitrary command execution steered by the very BLOCKED guidance this tool emits. So the first
-	// execution demands an explicit, review-based opt-in: without --trust-foreign, print the command
-	// list for human review and refuse (the marker is already on disk, so an untrusted refusal is
-	// durable — nothing to persist in that branch); with it, clear the marker once under the
-	// per-task lock (subsequent re-runs are local-verified evidence, not foreign payloads).
-	//
-	// --trust-foreign additionally requires a HUMAN terminal (stdin is a char device): the threat
-	// model of this very fix is hostile content steering an LLM agent, and an injected agent can
-	// simply follow the refusal text's own instruction and add the flag — the char-device check is
-	// the one discriminator between a human shell and an agent's piped stdin.
-	//
 	// 外来验收受信门：经 task import 或 .forge migrate 进入本 TaskState 的 Run 命令是攻击者可
 	// 书写的可执行字符串（clone 恶意仓库 / 敌意 bundle）。verify-acceptance 以完整环境执行它们
 	// ——未审阅就跑外来命令等于被本工具自己的 BLOCKED 指引导向的任意命令执行。故首次执行要求
@@ -332,11 +247,6 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 	}
 	trusted := state.AcceptanceForeign && trustForeign
 	if trusted && !stdinIsHumanTerminal() {
-		// mintty (Git Bash's default terminal) hands native processes a named pipe instead of a
-		// char device — a real human is refused here too, with no in-place escape hatch: an
-		// env/flag bypass an agent could also set would re-open the self-trust hole this gate
-		// exists to close. The actionable path is switching to a ConPTY terminal.
-		//
 		// mintty（Git Bash 默认终端）给原生进程的 stdin 是命名管道而非 char device——真人
 		// 在此同样被拒，且不提供就地逃生舱：agent 也能设置的 env/flag 旁路会重新打开本门
 		// 要堵的自我受信洞。可行动路径是换 ConPTY 终端。
@@ -345,11 +255,6 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 		}
 		return fmt.Errorf("--trust-foreign 是人工审阅决策：须由真人在终端中运行（当前 stdin 非终端——agent/管道环境不得自我受信外来命令）")
 	}
-	// NOTE: the foreign marker is cleared only AFTER the run, together with the result merge below —
-	// clearing it before the run would let a crash mid-run leave unmarked foreign commands runnable
-	// without trust on the next attempt; fail-closed instead (a crash leaves the marker on and
-	// re-demands --trust-foreign).
-	//
 	// 注意：外来标记改为实跑之后、随下方结果合并一并清除——先清后跑会让跑到一半崩溃的下次
 	// 尝试在无受信的情况下执行已去标记的外来命令；改为 fail-closed（崩溃后标记仍在，重跑
 	// 重新要求 --trust-foreign）。
@@ -367,14 +272,6 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 		fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（验收证据未落盘）: %v\n", recErr)
 	}
 
-	// Merge acceptance RESULTS onto the freshest on-disk state under the per-task lock (design
-	// §13): a bare SaveTaskState of the pre-run snapshot would clobber concurrent resume/decide
-	// continuity writes — a lost-update on exactly the data import exists to preserve. MutateTaskState
-	// reloads inside the lock; results are matched onto the fresh acceptance spec by the
-	// (Run, Expected) pair so a concurrently edited spec is never stamped with another command's
-	// outcome, and the foreign marker (trusted branch) flips here too — after the run,
-	// fail-closed (see NOTE above).
-	//
 	// 在 per-task 锁内把验收「结果」合并到最新盘上状态（设计§13）：裸 SaveTaskState 回写实跑前
 	// 快照会覆盖并发 resume/decide 的接续写入——丢的恰是 import 要保的数据。MutateTaskState
 	// 锁内重载；结果按 (Run, Expected) 二元组匹配到最新 acceptance spec 上，并发改过的 spec
@@ -415,10 +312,6 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 	return fmt.Errorf("acceptance verification failed")
 }
 
-// formatAcceptanceDetail builds the Detail summary for checklog:acceptance —
-// 'PASS/FAIL — k/n passed', so forge trace can show the overall acceptance result at
-// a glance without expanding each criterion.
-//
 // formatAcceptanceDetail 生成 checklog:acceptance 的 Detail 摘要——「PASS/FAIL — k/n 通过」，
 // 让 forge trace 不展开每条也能一眼看出验收整体结果。
 func formatAcceptanceDetail(cs []taskpipeline.AcceptanceCriterion) string {

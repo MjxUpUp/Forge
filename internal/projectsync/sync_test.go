@@ -13,17 +13,9 @@ import (
 	"time"
 )
 
-// sync_test.go — security guards for the project bundle transport (project-sync):
-// allowlist default-deny, tar path safety, sha256 integrity, format-version guard,
-// ledger idempotency. Chinese strings use raw literals (Windows quote rule).
-//
 // sync_test.go —— 项目 bundle 传输的安全守卫（project-sync）：allowlist 默认拒绝、
 // tar 路径安全、sha256 完整性、格式版本守卫、账本幂等。中文字符串用 raw 字面量。
 
-// seedDataDir plants a DataDir-shaped tree containing EVERY known file class,
-// portable and machine-local alike — the allowlist must pick exactly the portable
-// subset.
-//
 // seedDataDir 种一个含全部已知文件类的 DataDir 形状目录树——可移植与机器本地
 // 兼备——allowlist 必须精确挑出可移植子集。
 func seedDataDir(t *testing.T) string {
@@ -73,10 +65,6 @@ func seedDataDir(t *testing.T) string {
 	return dir
 }
 
-// TestExportAllowlist_DefaultDeny: the default export list contains EXACTLY the
-// portable set — every machine-local sentinel/anchor/stamp and every sensitive store
-// is excluded; unknown future files fall outside the allowlist by construction.
-//
 // TestExportAllowlist_DefaultDeny：默认导出清单恰好是可移植集——一切机器本地
 // sentinel/锚/戳与敏感 store 均被排除；未来的未知文件按构造落在 allowlist 之外。
 func TestExportAllowlist_DefaultDeny(t *testing.T) {
@@ -116,9 +104,6 @@ func TestExportAllowlist_DefaultDeny(t *testing.T) {
 	}
 }
 
-// TestExportAllowlist_ExplicitIncludes: --include quarantine / hazards opts IN, and
-// only those.
-//
 // TestExportAllowlist_ExplicitIncludes：--include quarantine / hazards 才入，且只入这些。
 func TestExportAllowlist_ExplicitIncludes(t *testing.T) {
 	dir := seedDataDir(t)
@@ -157,11 +142,6 @@ func TestExportAllowlist_ExplicitIncludes(t *testing.T) {
 	}
 }
 
-// TestStripNonAllowlisted_ForgedManifestPayloads: import-side default-deny —
-// everything outside the portable set is removed from staging, INCLUDING the
-// opt-in stores (import has no --include gate to satisfy) and the machine-local
-// files a forged manifest could list.
-//
 // TestStripNonAllowlisted_ForgedManifestPayloads：导入侧默认拒绝——可移植集之外
 // 的一切从 staging 剥除，含选入型 store（import 没有 --include 门槛可满足）与
 // 伪造 manifest 可能列出的机器本地文件。
@@ -197,8 +177,6 @@ func TestStripNonAllowlisted_ForgedManifestPayloads(t *testing.T) {
 	}
 }
 
-// packFixture packs seedDataDir into memory and returns the bytes + manifest.
-//
 // packFixture 把 seedDataDir 打进内存，返回字节与 manifest。
 func packFixture(t *testing.T, extra []string) ([]byte, *Manifest) {
 	t.Helper()
@@ -217,9 +195,6 @@ func packFixture(t *testing.T, extra []string) ([]byte, *Manifest) {
 	return buf.Bytes(), m
 }
 
-// TestPackUnpack_RoundTrip: pack → unpack reproduces every file byte-identically
-// under dest/data/, with manifest integrity fields populated.
-//
 // TestPackUnpack_RoundTrip：pack → unpack 在 dest/data/ 下逐字节还原每个文件，
 // manifest 完整性字段齐备。
 func TestPackUnpack_RoundTrip(t *testing.T) {
@@ -251,9 +226,6 @@ func TestPackUnpack_RoundTrip(t *testing.T) {
 	}
 }
 
-// buildTar builds a raw tar.gz from named entries (bypassing Pack) for adversarial
-// fixtures.
-//
 // buildTar 直接按给定条目构造 tar.gz（绕过 Pack），用于对抗性 fixture。
 func buildTar(t *testing.T, entries []struct {
 	name string
@@ -284,9 +256,6 @@ func buildTar(t *testing.T, entries []struct {
 	return buf.Bytes()
 }
 
-// manifestJSONFor builds a manifest.json body listing the given files with correct
-// hashes, so adversarial tests only vary ONE thing at a time.
-//
 // manifestJSONFor 构造一个哈希正确的 manifest.json 正文，让对抗测试每次只变一个变量。
 func manifestJSONFor(t *testing.T, formatVersion int, files map[string]string) string {
 	t.Helper()

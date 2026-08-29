@@ -20,8 +20,6 @@ func mustWrite(t *testing.T, err error) {
 	}
 }
 
-// makeCanonicalSkill creates a skill in the canonical directory (directory name = frontmatter name).
-//
 // makeCanonicalSkill 在 canonical 目录造一个 skill（目录名 = frontmatter name）。
 func makeCanonicalSkill(t *testing.T, canonical, name string) {
 	t.Helper()
@@ -31,10 +29,6 @@ func makeCanonicalSkill(t *testing.T, canonical, name string) {
 		[]byte(fmt.Sprintf("---\nname: %s\ndescription: d\n---\n\nbody\n", name)), 0644))
 }
 
-// recordSkillCall writes a Skill tool call to toollog.jsonl via toolusage.Record.
-// Goes through the real collection layer (DataDirFor(root)/toollog.jsonl) for closed-loop verification of
-// SkillCountsFromToollog's read path and new data source.
-//
 // recordSkillCall 经 toolusage.Record 写一条 Skill 工具调用到 toollog.jsonl。
 // 走真实采集层（DataDirFor(root)/toollog.jsonl），闭环验证 SkillCountsFromToollog
 // 读取的路径与新数据源。
@@ -129,10 +123,6 @@ func TestAnalyzeUsage(t *testing.T) {
 	}
 }
 
-// TestAnalyzeUsage_FiltersGhostSkills: toollog retains ghost skills already removed from canonical,
-// HotSkills/UsedSkills must filter them — symmetric with NeverTriggered (canonical only).
-// Verifies ghost filtering logic still holds after data source switched to toollog.
-//
 // TestAnalyzeUsage_FiltersGhostSkills：toollog 残留 canonical 已删的「幽灵技能」，
 // HotSkills/UsedSkills 必须过滤——与 NeverTriggered（仅 canonical）对称。
 // 验证数据源切到 toollog 后幽灵过滤逻辑仍成立。
@@ -161,14 +151,6 @@ func TestAnalyzeUsage_FiltersGhostSkills(t *testing.T) {
 	}
 }
 
-// TestSkillCountsFromToollog_ArchiveSurvives: the archived toollog-<ts>.jsonl
-// shape is what historical task-start archival produced. SkillCountsFromToollog
-// must read across archives (LoadAllAll), otherwise historical task Skill calls
-// are lost after archiving — archive blind spot is a prerequisite for
-// cross-task analysis. (The old toolusage.Clear helper used here was deleted as
-// dead code; the archive is simulated by a direct rename — the same on-disk
-// shape.)
-//
 // TestSkillCountsFromToollog_ArchiveSurvives：toollog-<ts>.jsonl 归档形态即历史
 // task-start 归档产出的形态。SkillCountsFromToollog 必须跨归档读（LoadAllAll），
 // 否则归档后历史任务的 Skill 调用全丢——归档盲区是跨任务分析前提。（此处原先
@@ -178,9 +160,6 @@ func TestSkillCountsFromToollog_ArchiveSurvives(t *testing.T) {
 	root := t.TempDir()
 	recordSkillCall(t, root, "old-skill", "t1")
 	recordSkillCall(t, root, "old-skill", "t1")
-	// Simulate task-start archiving: rename the active toollog to a timestamped
-	// archive, then let new calls start a fresh active file.
-	//
 	// 模拟 task-start 归档：把 active toollog 重命名为带时间戳的归档，
 	// 新调用随后落在全新的 active 文件里。
 	dir := forgedata.DataDirFor(root)
@@ -190,8 +169,6 @@ func TestSkillCountsFromToollog_ArchiveSurvives(t *testing.T) {
 	if err := os.Rename(filepath.Join(dir, "toollog.jsonl"), util.ArchivedName(dir, "toollog", time.Now())); err != nil {
 		t.Fatal(err)
 	}
-	// New task active toollog
-	//
 	// 新任务 active toollog
 	recordSkillCall(t, root, "new-skill", "t2")
 
@@ -210,11 +187,6 @@ func TestSkillCountsFromToollog_ArchiveSurvives(t *testing.T) {
 	}
 }
 
-// recordSkillTrigger writes a CheckSkillTrigger entry to checklog via the real Record path, mirroring what
-// cli/recordSkillTriggerHits produces in production. Both go through the single source of truth
-// checklog.DetailForSkillTrigger — this helper no longer hand-mirrors the format string (minor-1: a hand-mirrored
-// format could drift from the reader checklog.SkillFromTriggerDetail and silently drop passive signals).
-//
 // recordSkillTrigger 经真实 Record 路径写一条 CheckSkillTrigger 到 checklog，镜像 cli/recordSkillTriggerHits
 // 在生产的产出。两者都走唯一真相源 checklog.DetailForSkillTrigger——本 helper 不再手工镜像格式串
 // （minor-1：手工镜像格式可能漂离读取方 checklog.SkillFromTriggerDetail、静默丢失被动信号）。
@@ -235,8 +207,6 @@ func TestSkillCountsFromChecklog(t *testing.T) {
 	recordSkillTrigger(t, root, "alpha", "t1")
 	recordSkillTrigger(t, root, "beta", "t2")
 	// 非 CheckSkillTrigger 条目不计入被动触发统计。
-	//
-	// non-CheckSkillTrigger entries do not count toward passive-trigger stats.
 	mustWrite(t, checklog.Record(root, &checklog.Entry{Check: checklog.CheckAutoCompile, Passed: true, Detail: "x"}))
 
 	counts, total, err := SkillCountsFromChecklog(root)
@@ -251,10 +221,6 @@ func TestSkillCountsFromChecklog(t *testing.T) {
 	}
 }
 
-// TestAnalyzeUsage_MergesPassiveTriggers: a skill that fires passively (skill-trigger) but is never explicitly
-// called (no Skill tool event) must NOT appear in NeverTriggered — merging active + passive closes the
-// undertrigger false-positive (the dogfood 0-trigger blind spot on the usage side). Its Count is the passive total.
-//
 // TestAnalyzeUsage_MergesPassiveTriggers：一个被动触发（skill-trigger）但从未显式调用（无 Skill 工具事件）
 // 的 skill 不得进 NeverTriggered——合并主动+被动闭合 undertrigger 假阳性（usage 侧的 dogfood 0 触发盲区）。
 // 其 Count 为被动总数。
@@ -264,8 +230,6 @@ func TestAnalyzeUsage_MergesPassiveTriggers(t *testing.T) {
 	makeCanonicalSkill(t, canonical, "never-used")
 	root := t.TempDir()
 	// passive-only 只被 skill-trigger 触发，无 Skill 工具调用。
-	//
-	// passive-only only fires via skill-trigger, never via the Skill tool.
 	recordSkillTrigger(t, root, "passive-only", "t1")
 	recordSkillTrigger(t, root, "passive-only", "t2")
 

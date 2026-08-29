@@ -17,13 +17,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// task_assignment.go: the multi-agent delegation command layer. A task transitions through an
-// A2A lifecycle — offered (orchestrator assigns) → claimed (worker accepts) → delivered
-// (worker hands back). The state machine lives in types.go (AssignTo/Claim/Deliver/...);
-// these commands are the thin CLI surface that drives it and keep the worker's session
-// anchored to the claimed task (claim = "I take it", which is exactly the multi-directional
-// anchoring "successor attaches" action). mine lets a worker discover what is offered to it.
-//
 // task_assignment.go：多 agent 分派命令层。任务经 A2A 生命周期——offered（编排器分派）→
 // claimed（工作方认领）→ delivered（工作方交回）。状态机在 types.go（AssignTo/Claim/
 // Deliver/...）；本命令是驱动它的薄 CLI 表层，并把工作方 session 锚定到所认领的任务
@@ -60,7 +53,6 @@ var taskMineCmd = &cobra.Command{
 // 失败/回抛/撤回路径（设计阶段2）：question/answer/fail/cancel/reopen。状态机方法在 types.go
 // 已就绪（phase 1 预留 + assignment_test 覆盖），本层是薄 CLI 表层驱动它们——与 assign/claim/
 // deliver 同构（loadTaskOrActive + MutateTaskState + 方法调用 + 输出指引下一步）。
-//
 // Failure/clarify/withdraw paths (design phase 2): question/answer/fail/cancel/reopen. The state-
 // machine methods are already in place in types.go (phase 1 reservation + assignment_test coverage);
 // this layer is the thin CLI surface driving them — isomorphic with assign/claim/deliver
@@ -150,13 +142,6 @@ func init() {
 	taskReclaimCmd.Flags().Bool(`json`, false, `JSON 格式输出`)
 }
 
-// warnIfUnknownAgent writes a warning to w when name is absent from the known-agent set,
-// WITHOUT rejecting — marker-less agents (codebuddy) are legitimate when the user insists.
-// Centralized so `task assign` and `task start --assignee` share ONE black-hole guard: a
-// typo'd --assignee/--to would otherwise silently create a task no `mine` can match (mine
-// filters by Assignment.Agent exact string). Writes to w (stderr) so it never pollutes stdout
-// and JSON consumers stay clean.
-//
 // warnIfUnknownAgent 在 name 不属于已知 agent 集时写 w 警告但不拒绝——无标记 agent（codebuddy）
 // 在用户坚持时合法。集中化使 task assign 与 task start --assignee 共享同一防黑洞守卫：否则拼错的
 // --assignee/--to 会静默创建 mine（按 Assignment.Agent 精确串过滤）匹配不到的任务。写 w（stderr）
@@ -225,11 +210,6 @@ func runTaskClaim(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`认领失败: %w`, err)
 	}
-	// claim is the "successor attaches" action of multi-directional anchoring: the worker now
-	// owns the task, so anchor this session to it (same effect as forge task attach, but
-	// implicit in the claim). Anchor failures are non-fatal — the claim itself already
-	// succeeded and the task state is what continuity reads from.
-	//
 	// claim 即多向锚定的「接手方 attach」：工作方此刻拥有任务，故把当前 session 锚定过去
 	// （等价 forge task attach，但 claim 内含）。锚定失败不致命——认领本身已成功，而任务
 	// state 才是接续读取的真相源。
@@ -249,11 +229,6 @@ func runTaskDeliver(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// --as parity with claim (usage-log fix: `claim --as kimi` succeeded but
-	// `deliver --as kimi` errored "unknown flag", wasting a turn). Deliver needs no
-	// identity for the state machine, so the flag is interface consistency only —
-	// soft-checked against the assigned agent, advisory, never blocks the delivery.
-	//
 	// --as 与 claim 对齐（usage 日志修复：`claim --as kimi` 成功后 `deliver --as kimi`
 	// 报 unknown flag 白跑一轮）。状态机的 Deliver 不需要身份，故该 flag 只是接口
 	// 一致性——与分派 agent 不符时仅提醒，绝不阻断交付。
@@ -410,9 +385,6 @@ func runTaskReclaim(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`读取任务列表失败: %w`, err)
 	}
-	// Detect candidates with the SAME primitive task health uses (IsClaimedStale), so the report
-	// and the reclamation can never disagree on what "claimed zombie" means.
-	//
 	// 用与 task health 相同的原语（IsClaimedStale）检测候选，使报告与回收对「claimed 僵尸」永不分歧。
 	var candidates []string
 	for _, s := range states {
@@ -426,9 +398,6 @@ func runTaskReclaim(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		if asJSON {
-			// nil slice marshals as `null`; normalize to `[]` (convention shared with task mine/health
-			// JSON) so empty results are a stable empty array, not a missing field.
-			//
 			// nil slice 序列化为 `null`；归一化为 `[]`（与 task mine/health JSON 同约定），使空结果是
 			// 稳定的空数组而非缺失字段。
 			refs := candidates
@@ -452,15 +421,6 @@ func runTaskReclaim(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Reclaim each candidate under its own lock. Detection (above) reads each state ONCE at scan
-	// time, but reclamation re-acquires the lock per task, so the staleness verdict can drift in
-	// between — e.g. the claimer writes fresh checklog activity after the scan but before the lock.
-	// That window is the false-positive the TTL rule exists to prevent, so we RE-RUN IsClaimedStale
-	// under the lock (on the freshly-loaded state) and skip — WITHOUT abandoning — any candidate no
-	// longer stale. Abandon() separately guards status drift (claimed→other) via errAbandonNotClaimed.
-	// Both drift cases are skip-not-fail, so a concurrent legitimate claim is never blown away. A
-	// skip-not-mutate returns nil; MutateTaskState then saves the unchanged state (a harmless no-op).
-	//
 	// 每个候选在各自锁内回收。上方检测在扫描时对每个状态只读一次，回收时按 task 重新加锁，故两次之间
 	// 时效判定可能漂移——例如认领方在扫描后、加锁前写入了新的 checklog 活动。该窗口正是 TTL 规则要防的
 	// 假阳性，故在锁内（对新加载的状态）复跑 IsClaimedStale，对不再过期的候选「跳过不回收」。Abandon()
@@ -490,8 +450,6 @@ func runTaskReclaim(cmd *cobra.Command, args []string) error {
 	}
 
 	if asJSON {
-		// Normalize nil→[] (see the dry-run path above) so empty reclaims marshal as `[]` not `null`.
-		//
 		// 归一化 nil→[]（见上方 dry-run 路径），使空回收序列化为 `[]` 而非 `null`。
 		refs := reclaimed
 		if refs == nil {
@@ -519,9 +477,6 @@ func runTaskReclaim(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// reclaimResult is the JSON shape of `forge task reclaim --json` output: the reclaimed refs (or
-// would-be-reclaimed under --dry-run), the dry-run flag, and the count.
-//
 // reclaimResult 是 forge task reclaim --json 输出的 JSON 形状：回收的 ref（或 --dry-run 下将
 // 回收的 ref）、dry-run 标志、数量。
 type reclaimResult struct {
@@ -558,15 +513,6 @@ type pendingDep struct {
 	GateTotal  int    `json:"gate_total"`
 }
 
-// annotateDep describes one pending upstream dependency: collaboration status + gate progress.
-// A delegated dep → its Assignment.Status; an ordinary predecessor → complete/incomplete; a
-// missing/aborted ref → "missing". Gate progress is passed/total over DefaultGates.
-// Cross-repo deps (key:ref, multi-repo workspace Option B) resolve via
-// taskpipeline.LoadDepState — mirroring task_health.go's lookupState — instead of
-// reading as forever-missing: the foreign task can never be in this repo's byRef
-// index, so without the resolution a live cross-repo dep would render "missing"
-// and hide WHERE the worker is actually blocked.
-//
 // annotateDep 描述一条待交付上游依赖：协作状态 + 门禁进度。分派依赖 → 其 Assignment.Status；
 // 普通前序 → complete/incomplete；缺失/已 abort 的 ref → "missing"。门禁进度为 DefaultGates 的 passed/total。
 // 跨仓依赖（key:ref，多仓 workspace Option B）经 taskpipeline.LoadDepState 解析——镜像
@@ -576,11 +522,6 @@ func annotateDep(root string, ref string, byRef map[string]*taskpipeline.TaskSta
 	total = len(taskpipeline.DefaultGates())
 	var s *taskpipeline.TaskState
 	if s = byRef[ref]; s == nil {
-		// Not in this repo's index: a cross-repo ref (key:ref) resolves from the
-		// member repo's data dir; only a FAILED resolution (unknown key, missing/
-		// unreadable state) is "missing" — same conservative shape as the gate's
-		// PendingDependencies.
-		//
 		// 不在本仓索引：跨仓 ref（key:ref）从成员仓数据目录解析；只有解析失败
 		// （key 未知、state 缺失/不可读）才是 "missing"——与门禁 PendingDependencies
 		// 同样的保守形态。
@@ -651,12 +592,6 @@ func adviseUnclaimedAssignment(root, gateID string, passed bool, state *taskpipe
 	}
 }
 
-// scanDelegations collects the delegated tasks matching agent (and optional role/blocked filters)
-// under one project root. It builds a ref→state index so each pending dep can be annotated with its
-// status + gate progress. Returns (nil, err) only when ListTaskStates fails; an empty slice means
-// the agent has no matching delegations under this root. Shared by the single-project and
-// --all-projects paths so the two views never disagree on what matches.
-//
 // scanDelegations 收集某 project root 下匹配 agent（及可选 role/blocked 过滤）的分派任务。建 ref→state
 // 索引使每条待交依赖可标注其状态 + 门禁进度。仅 ListTaskStates 失败返 (nil, err)；空切片表示该 root 下
 // agent 无匹配分派。单 project 与 --all-projects 共用，使两种视图对「匹配」永不分歧。
@@ -665,9 +600,6 @@ func scanDelegations(root, agent, role string, blocked bool, now time.Time) ([]d
 	if err != nil {
 		return nil, err
 	}
-	// Index states by ref so each pending dep can be annotated with its status + gate progress
-	// without a second ListTaskStates pass.
-	//
 	// 按 ref 索引 states，使每条待交依赖无需二次 ListTaskStates 即可标注其状态 + 门禁进度。
 	byRef := make(map[string]*taskpipeline.TaskState, len(states))
 	for _, s := range states {
@@ -683,10 +615,6 @@ func scanDelegations(root, agent, role string, blocked bool, now time.Time) ([]d
 		if role != `` && s.Assignment.Role != role {
 			continue
 		}
-		// Pending upstream deps (design phase 3): a task whose DependsOn is not fully delivered is
-		// blocked at verify/complete. Computed via the same PendingDependencies the gate uses, so mine
-		// and the gate can never disagree on what "blocked" means. --blocked filters to only these.
-		//
 		// 未交付的上游依赖（设计阶段3）：DependsOn 未全交付的 task 在 verify/complete 被阻。用与门禁相同的
 		// PendingDependencies 计算，使 mine 与门禁对「阻塞」永远一致。--blocked 只留这些。
 		var pend []string
@@ -696,9 +624,6 @@ func scanDelegations(root, agent, role string, blocked bool, now time.Time) ([]d
 		if blocked && len(pend) == 0 {
 			continue
 		}
-		// Annotate each pending dep with WHERE it is stuck (design §4): the dep's collaboration
-		// status + gate progress, so the worker knows not just that it is blocked but on whom/what.
-		//
 		// 标注每条待交依赖卡在哪一环（设计§4）：依赖的协作状态 + 门禁进度，
 		// 让工作方不只知被阻塞，更知被谁/什么阻塞。
 		var details []pendingDep
@@ -741,10 +666,6 @@ func scanDelegations(root, agent, role string, blocked bool, now time.Time) ([]d
 	return entries, nil
 }
 
-// formatEntry renders one delegatedEntry as an indented single-line row (status, ref, role,
-// offerer, title, blocking-dep annotations, zombie marker). Shared by the single-project and
-// --all-projects outputs so the two views never drift in row format.
-//
 // formatEntry 把一条 delegatedEntry 渲染为缩进单行（状态/ref/角色/分派方/标题/阻塞依赖标注/僵尸标记）。
 // 单 project 与 --all-projects 共用，使两种视图行格式永不漂移。
 func formatEntry(e delegatedEntry) string {
@@ -779,10 +700,6 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 	allProjects, _ := cmd.Flags().GetBool(`all-projects`)
 	if agent == `` {
 		agent = detectOriginTool(``)
-		// Pointer fallback (single-project mode only): a worker driving forge from
-		// a kimi/codex/... Bash tool has no identity env — the last-session pointer
-		// attributes it. all-projects mode spans roots, so no single pointer applies.
-		//
 		// 指针回落（仅单项目模式）：从 kimi/codex/... 的 Bash 工具驱动 forge 的
 		// worker 没有身份 env——last-session 指针补上归属。all-projects 模式跨
 		// root，无单一指针可用。
@@ -798,10 +715,6 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 	role, _ := cmd.Flags().GetString(`role`)
 	blocked, _ := cmd.Flags().GetBool(`blocked`)
 	asJSON, _ := cmd.Flags().GetBool(`json`)
-	// now is captured once for the zombie scan (offered>7d / claimed>TTL / input-required>7d all
-	// age against the same instant). Reuses taskpipeline.IsZombie so mine, the dashboard, and
-	// `task health` share ONE truth about what "zombie" means (design §12).
-	//
 	// now 只取一次供僵尸扫描（offered>7d / claimed>TTL / input-required>7d 都相对同一时刻老化）。
 	// 复用 taskpipeline.IsZombie，使 mine、看板、task health 对「僵尸」共享同一真相源（设计 §12）。
 	now := time.Now()
@@ -820,9 +733,6 @@ func runTaskMine(cmd *cobra.Command, args []string) error {
 	return printDelegations(entries, agent, role, asJSON)
 }
 
-// printDelegations renders the single-project view: a JSON array, or the human header + one row
-// per entry. Empty → a "no delegations" line.
-//
 // printDelegations 渲染单 project 视图：JSON 数组，或人类可读表头 + 每条一行。空 → 「无分派」行。
 func printDelegations(entries []delegatedEntry, agent, role string, asJSON bool) error {
 	if asJSON {
@@ -849,11 +759,6 @@ func printDelegations(entries []delegatedEntry, agent, role string, asJSON bool)
 	return nil
 }
 
-// runTaskMineAllProjects renders the cross-project view (design §8): scan every registered project
-// for delegations to agent, group by project with a project-key label, and give overview counts +
-// per-project rows. Never auto-resumes (unlike the SessionStart hook — mine is read-only discovery).
-// A failed project is warned on stderr and skipped so one broken root does not blind the global view.
-//
 // runTaskMineAllProjects 渲染跨 project 视图（设计§8）：扫描每个已登记 project 分派给 agent 的任务，
 // 按 project 分组并标 project-key，给概览计数 + 每 project 明细。绝不自动 resume（区别于 SessionStart
 // hook——mine 是只读发现）。失败的 project 在 stderr 警告并跳过，使一个坏 root 不致盲全局视图。

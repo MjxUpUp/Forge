@@ -1,13 +1,5 @@
 package taskpipeline
 
-// Cross-repo impact gate (multi-repo workspace, docs/design/multi-repo-workspace.md):
-// when the task's repo belongs to a multi-repo workspace (~/.forge/workspaces.json),
-// task-verify requires an explicit impact declaration on the task — even a
-// single-repo change must declare "none" (the declaration itself forces explicit
-// thought — the rule-as-code pattern). fail-open by philosophy: the
-// workspace manifest is a global user-level store that can be absent/corrupt on any
-// machine, so every infra failure degrades to a warn-level advisory, never a block.
-//
 // 跨仓影响门禁（多仓 workspace，docs/design/multi-repo-workspace.md）：任务所属
 // repo 属于多仓 workspace（~/.forge/workspaces.json）时，task-verify 要求任务
 // 上有显式影响声明——纯单仓改动也必须声明 "none"（声明动作本身强迫显式思考，
@@ -26,57 +18,31 @@ import (
 	"github.com/MjxUpUp/Forge/internal/workspace"
 )
 
-// crossRepoVerdict classifies one task's declaration against its workspace
-// memberships — the pure decision core of checkCrossRepoImpact, kept IO-free so
-// the classification table is unit-testable without git/protocol fixtures.
-//
 // crossRepoVerdict 把任务的声明对照其 workspace 成员资格分类——
 // checkCrossRepoImpact 的纯判定核心，刻意无 IO，让分类表无需 git/protocol
 // fixture 即可单测。
 type crossRepoVerdict int
 
 const (
-	// crossRepoSkip: no multi-repo membership — the gate does not apply at all
-	// (no checklog entry; silence for the overwhelming single-repo majority).
-	//
 	// crossRepoSkip：无多仓成员资格——门禁整体不适用（不记 checklog；对占
 	// 绝大多数的单仓场景保持静默）。
 	crossRepoSkip crossRepoVerdict = iota
-	// crossRepoOK: declared (none, or multi with valid repos).
-	//
 	// crossRepoOK：已声明（none，或 repos 合法的 multi）。
 	crossRepoOK
-	// crossRepoUndeclared: multi-repo member with no declaration at all.
-	//
 	// crossRepoUndeclared：多仓成员但完全未声明。
 	crossRepoUndeclared
-	// crossRepoMultiEmptyRepos: level=multi but no affected repo listed.
-	//
 	// crossRepoMultiEmptyRepos：level=multi 但没列受影响 repo。
 	crossRepoMultiEmptyRepos
-	// crossRepoMultiForeignRepos: level=multi listing keys outside the
-	// workspace(s) this repo belongs to.
-	//
 	// crossRepoMultiForeignRepos：level=multi 列了本 workspace 之外的 key。
 	crossRepoMultiForeignRepos
-	// crossRepoBadLevel: an unknown level string (hand-edited state file).
-	//
 	// crossRepoBadLevel：未知 level 值（手改 state 文件）。
 	crossRepoBadLevel
 )
 
-// assessCrossRepoImpact is the pure decision: given the workspaces the current
-// repo belongs to and the task's declaration, return the verdict (+ the
-// offending foreign keys for crossRepoMultiForeignRepos). Single-repo
-// memberships never trigger anything — a one-repo workspace is just a label.
-//
 // assessCrossRepoImpact 是纯判定：给定当前 repo 所属的 workspace 列表与任务
 // 声明，返回 verdict（crossRepoMultiForeignRepos 时附带越界 key 列表）。
 // 单仓 workspace 永不触发任何判定——单仓 workspace 只是个标签。
 func assessCrossRepoImpact(memberships []workspace.Workspace, impact *CrossRepoImpact) (crossRepoVerdict, []string) {
-	// Only multi-repo workspaces create the obligation; collect their member
-	// keys as the valid impact target set.
-	//
 	// 只有多仓 workspace 产生声明义务；其成员 key 的并集即合法影响目标集。
 	valid := make(map[string]bool)
 	multi := false
@@ -117,10 +83,6 @@ func assessCrossRepoImpact(memberships []workspace.Workspace, impact *CrossRepoI
 	}
 }
 
-// crossRepoRequired reads the protocol knob (cross_repo_impact: required).
-// Any load failure falls back to advisory — protocol.yml is user-editable and
-// must never turn a config typo into a gate block.
-//
 // crossRepoRequired 读 protocol 配置项（cross_repo_impact: required）。任何
 // 加载失败回落 advisory——protocol.yml 是用户可编辑文件，绝不能因配置笔误
 // 变成门禁阻断。
@@ -132,27 +94,15 @@ func crossRepoRequired(root string) bool {
 	return proto.CrossRepoImpact == `required`
 }
 
-// crossRepoHowTo is the shared HOW segment of the four-part message (the fix is
-// identical for the advisory and the blocked phrasing).
-//
 // crossRepoHowTo 是四段式消息里共享的 HOW 段（advisory 与 blocked 措辞的修法
 // 完全相同）。
 const crossRepoHowTo = `HOW: forge task impact --level none（改动纯本仓）或 forge task impact --level multi --repo <key> [--note <说明>]`
 
-// checkCrossRepoImpact is the task-verify wiring of the cross-repo impact gate:
-// resolve the current repo key → load the workspace manifest → assess →
-// advise/block + recordAudit. Returns a non-nil (GateBlocked) error only in the
-// required+undeclared case; every other path is advisory or silent.
-//
 // checkCrossRepoImpact 是跨仓影响门禁在 task-verify 的接线：解析当前 repo
 // key → 加载 workspace 清单 → 判定 → advise/阻断 + recordAudit。仅
 // required+未声明 一种情况返回非 nil（GateBlocked）；其余路径全是 advisory
 // 或静默。
 func checkCrossRepoImpact(root string, state *TaskState) error {
-	// Key derivation mirrors DataDirFor: git projects get Key, anything else
-	// falls back to PathKey — the same identity the workspace add command
-	// stored, so the lookup cannot split.
-	//
 	// key 推导与 DataDirFor 同款：git 项目用 Key，其余回落 PathKey——与
 	// workspace add 命令存入的身份同源，查找不可能分裂。
 	key, kerr := forgedata.Key(root)
@@ -162,10 +112,6 @@ func checkCrossRepoImpact(root string, state *TaskState) error {
 
 	ws, err := workspace.Load()
 	if err != nil {
-		// fail-open (INFRA): the manifest is a global store outside the project's
-		// control — a corrupt file must degrade to a visible advisory, never block
-		// verification. Checked=false marks the check as not-run (vs. run-and-passed).
-		//
 		// fail-open（INFRA）：清单是项目掌控之外的全局 store——文件损坏必须降级为
 		// 可见 advisory，绝不阻断验证。Checked=false 标记检查未执行（区别于执行且通过）。
 		recordAudit(root, &checklog.Entry{
@@ -183,9 +129,6 @@ func checkCrossRepoImpact(root string, state *TaskState) error {
 	verdict, foreign := assessCrossRepoImpact(ws.WorkspacesFor(key), state.CrossRepoImpact)
 	switch verdict {
 	case crossRepoSkip:
-		// No multi-repo membership: silence, no log — the check is invisible for
-		// the single-repo majority.
-		//
 		// 无多仓成员资格：静默、不记日志——对单仓多数派本检查不可见。
 		return nil
 	case crossRepoOK:
@@ -202,8 +145,6 @@ func checkCrossRepoImpact(root string, state *TaskState) error {
 		})
 		return nil
 	case crossRepoUndeclared:
-		// Four-part message (WHAT/WHY/HOW/REF), the rule-as-code error contract.
-		//
 		// 四段式消息（WHAT/WHY/HOW/REF），规则即代码的报错契约。
 		what := fmt.Sprintf(`WHAT: 本 repo（key %s）属于多仓 workspace，但任务 %s 未声明跨仓影响`, key, state.TaskRef)
 		why := `WHY: 多仓 workspace 的改动可能波及其他 repo——显式声明（none 也是声明）强迫开工前想清楚影响面，避免「改了 A 仓忘了 B 仓接口」的协调事故`
@@ -238,10 +179,6 @@ func checkCrossRepoImpact(root string, state *TaskState) error {
 		fmt.Fprintf(os.Stderr, "%s\n%s\n%s\n%s\n%s\n", GateAdvisory("[task-verify] 未声明跨仓影响"), what, why, crossRepoHowTo, ref)
 		return nil
 	default:
-		// Malformed declaration (empty repos / foreign keys / unknown level):
-		// advisory correction hint — the intent to declare is there, the content
-		// needs fixing; blocking on typos would punish the cooperative agent.
-		//
 		// 声明畸形（repos 空 / 越界 key / 未知 level）：advisory 修正提示——
 		// 声明的意图在，内容要修；因笔误阻断会惩罚配合的 agent。
 		var what string

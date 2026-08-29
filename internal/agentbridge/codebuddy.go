@@ -15,36 +15,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// codebuddy.go — CodeBuddy / WorkBuddy (Tencent @genie/workbuddy-desktop) agent bridge.
-//
-// CodeBuddy is a Claude Code-compatible coding agent whose plugin & hook model is
-// field-identical to Claude Code's: .codebuddy-plugin/marketplace.json +
-// plugins/<name>/.codebuddy-plugin/plugin.json + hooks/hooks.json, where hooks.json uses
-// {hooks:{PreToolUse/PostToolUse/SessionStart/Stop:[{matcher,hooks:[{type:command,command}]}]}}
-// — the SAME schema as hooks.ForgeHookSpec(). Hook scripts read `.tool_input.file_path`
-// from stdin and block via `exit 2` + stderr (verified in CodeBuddy's own all-hooks
-// marketplace: file-protection.md). So CodeBuddy needs NO stdin normalizer and NO output
-// rewriting — it runs the Claude Code protocol verbatim, like opencode. Its commands DO
-// carry `--agent codebuddy` (see BuildCodeBuddyHooksPayload): not for protocol reasons
-// but for attribution — codebuddy has no project marker and no identity env, so the flag
-// is its only way to register/stamp sessions as codebuddy.
-//
-// Wiring model (unlike the 8 file-writing translators): CodeBuddy's settings.json has NO
-// hooks field — hooks load ONLY through an installed plugin. So Translate generates a
-// self-contained "forge-local" directory marketplace under forge's global home, then
-// registers it via the codebuddy CLI (`plugin marketplace add` + `plugin install --scope user`).
-// User-scope plugin = install once, machine-wide, every project — same philosophy as
-// kimi/codex. When the CLI is absent, Translate prints the exact manual commands and
-// returns nil (assets are already on disk; the user runs the two CLI lines).
-//
-// Detection (ParseAgentFlag only, NOT DetectAgents): ~/.workbuddy exists iff WorkBuddy
-// is installed — auto-detect would wire codebuddy on EVERY `forge init` on any machine
-// with WorkBuddy installed (the zcode trap, reverted 2026-08-03: a user-level home that
-// always-exists must NOT be an auto-detect signal). CodeBuddy is opt-in via
-// `forge init --agents codebuddy` only. The generated .codebuddy-plugin/ is likewise NOT
-// a detect signal (forge-generated files must not self-trigger wiring — the AGENTS.md
-// lesson).
-//
 // codebuddy.go — CodeBuddy / WorkBuddy（腾讯 @genie/workbuddy-desktop）agent 桥接。
 //
 // CodeBuddy 是 Claude Code 兼容的 coding agent，其 plugin 与 hook 模型与 Claude Code
@@ -72,18 +42,11 @@ import (
 // 同样不作 detect 信号（forge 生成的文件不得自触发接线——AGENTS.md 教训）。
 
 // CodeBuddyTranslator wires forge hooks into CodeBuddy/WorkBuddy via a user-scope plugin.
-// See the file-header comment for the wiring model and detection rationale.
 //
 // CodeBuddyTranslator 经 user-scope plugin 把 forge hook 接入 CodeBuddy/WorkBuddy。
 // 接线模型与检测理由见文件头注释。
 type CodeBuddyTranslator struct{}
 
-// codebuddyMarketplaceName / codebuddyPluginName are the marketplace & plugin identifiers.
-// The marketplace name "forge-local" is arbitrary but must stay stable: it becomes the
-// `name@marketplace` key (forge@forge-local) in WorkBuddy's settings.json/enabledPlugins
-// and the known_marketplaces.json entry key. The plugin name "forge" matches the kimi
-// precedent (kimiPluginName) and becomes the hooks namespace.
-//
 // codebuddyMarketplaceName / codebuddyPluginName 是 marketplace 与 plugin 标识。
 // marketplace 名 "forge-local" 任意但须稳定：它成为 WorkBuddy settings.json/enabledPlugins
 // 里的 `name@marketplace` key（forge@forge-local）与 known_marketplaces.json 条目 key。
@@ -100,11 +63,7 @@ func (t *CodeBuddyTranslator) AgentType() AgentType {
 	return AgentCodeBuddy
 }
 
-// CodeBuddyHooksPayload is the hooks.json schema: a single top-level "hooks" key wrapping
-// the event→matcher→command map. This is ForgeHookSpec() serialized under one extra key
-// — CodeBuddy's only structural deviation from Claude Code's inline-hooks plugin.json.
-// encoding/json marshals map keys in sorted order, so output is deterministic without an
-// explicit sort (stable across runs → golden-test friendly).
+// CodeBuddyHooksPayload is the hooks.json schema: a single top-level "hooks" key wrapping the event→matcher→command map.
 //
 // CodeBuddyHooksPayload 是 hooks.json schema：单一顶层 "hooks" key 包住 event→matcher→
 // command map。即 ForgeHookSpec() 多包一层 key 序列化——CodeBuddy 与 Claude Code 内联
@@ -114,17 +73,7 @@ type CodeBuddyHooksPayload struct {
 	Hooks map[string][]hooks.HookMatcher `json:"hooks"`
 }
 
-// BuildCodeBuddyHooksPayload derives the hooks.json payload from hooks.ForgeHookSpec() —
-// the single source of truth shared with settings.local.json, the plugin pack, and every
-// other translator. CodeBuddy's hook protocol is byte-identical to Claude Code's (same
-// events, same matchers, same tool names Read/Write/Edit/Bash/Skill, same exit-2 block),
-// so the spec migrates with ONE rewrite: every command gains `--agent codebuddy`.
-// The flag changes nothing about stdin parsing (Claude-shape needs no normalizer) or
-// output (default Claude emitter) — it exists purely for ATTRIBUTION: without it,
-// codebuddy fired hooks with agent=="" and its sessions were never registered or
-// stamped (the fleet-wide gap found in the 2026-08 attribution audit; codebuddy also
-// has no project marker, so --agent is its ONLY identity signal).
-// TestCodeBuddyHooksPayload_MirrorsSpec guards the parity (spec + the one suffix).
+// BuildCodeBuddyHooksPayload derives the hooks.json payload from hooks.ForgeHookSpec() — the single source of truth shared with settings.local.json, the plugin pack, and every other translator.
 //
 // BuildCodeBuddyHooksPayload 从 hooks.ForgeHookSpec() 派生 hooks.json payload——与
 // settings.local.json、plugin pack 及其他 translator 共享的单一真相源。CodeBuddy 的
@@ -152,11 +101,6 @@ func BuildCodeBuddyHooksPayload() CodeBuddyHooksPayload {
 	return CodeBuddyHooksPayload{Hooks: out}
 }
 
-// codebuddyPluginManifest is plugins/forge/.codebuddy-plugin/plugin.json. The hooks field
-// is a relative path to hooks/hooks.json (NOT an inline object like Claude Code's
-// plugin.json) — verified in CodeBuddy's ppt-implement plugin. The relative path is what
-// makes CodeBuddy load hooks/hooks.json; relocating the marketplace dir keeps it valid.
-//
 // codebuddyPluginManifest 是 plugins/forge/.codebuddy-plugin/plugin.json。hooks 字段是
 // 指向 hooks/hooks.json 的相对路径（不像 Claude Code 的 plugin.json 用内联对象）——
 // 已在 CodeBuddy 的 ppt-implement plugin 验证。正是这个相对路径让 CodeBuddy 加载
@@ -168,11 +112,6 @@ type codebuddyPluginManifest struct {
 	Hooks       string `json:"hooks"`
 }
 
-// codebuddyMarketplaceManifest is .codebuddy-plugin/marketplace.json — the thin marketplace
-// manifest pointing at plugins/forge/. Owner is OMITTED: CodeBuddy's directory-type
-// marketplace auto-generates a description and does not require owner (verified in the
-// user-created "experts" marketplace, which has only name/description/plugins).
-//
 // codebuddyMarketplaceManifest 是 .codebuddy-plugin/marketplace.json——指向 plugins/forge/
 // 的薄 marketplace manifest。owner 省略：CodeBuddy 的 directory 类型 marketplace 自动生成
 // description 且不要求 owner（已在用户自建的 "experts" marketplace 验证，它只有
@@ -189,12 +128,7 @@ type codebuddyMarketplaceManifest struct {
 	Plugins     []codebuddyMarketplaceEntry `json:"plugins"`
 }
 
-// CodeBuddyMarketplaceDir returns the directory under forge's global home where the
-// forge-local marketplace assets live: <GlobalHome>/agents/codebuddy/forge-local/.
-// Assets stay under forge's own data root (not inside ~/.workbuddy) — forge manages them,
-// WorkBuddy holds only a directory pointer in its known_marketplaces.json. User-level and
-// project-independent (a user-scope plugin is machine-wide), so this is NOT under the
-// per-project DataDir.
+// CodeBuddyMarketplaceDir returns the directory under forge's global home where the forge-local marketplace assets live: <GlobalHome>/agents/codebuddy/forge-local/.
 //
 // CodeBuddyMarketplaceDir 返回 forge 全局 home 下 forge-local marketplace 资产目录：
 // <GlobalHome>/agents/codebuddy/forge-local/。资产留在 forge 自己的数据根下（不进
@@ -209,15 +143,7 @@ func CodeBuddyMarketplaceDir() (string, error) {
 	return filepath.Join(home, "agents", "codebuddy", codebuddyMarketplaceName), nil
 }
 
-// GenerateCodeBuddyPluginPack writes the forge-local directory marketplace under dir:
-//
-//	<dir>/.codebuddy-plugin/marketplace.json
-//	<dir>/plugins/forge/.codebuddy-plugin/plugin.json     (hooks: ./hooks/hooks.json)
-//	<dir>/plugins/forge/hooks/hooks.json                  (= ForgeHookSpec under "hooks")
-//
-// Idempotent: re-runs overwrite in place. Files use writeJSONIndent (2-space indent, shared
-// with the claude/cursor plugin pack) for golden-test stability. description empty falls
-// back to DefaultPluginDescription.
+// GenerateCodeBuddyPluginPack writes the forge-local directory marketplace under dir.
 //
 // GenerateCodeBuddyPluginPack 在 dir 下写 forge-local directory marketplace：
 //
@@ -262,14 +188,7 @@ func GenerateCodeBuddyPluginPack(dir, description string) error {
 	return nil
 }
 
-// Translate generates the forge-local marketplace under forge's global home, then registers
-// it with WorkBuddy via the codebuddy CLI. projectDir and input are intentionally unused:
-// CodeBuddy wiring is user-level and project-independent (one user-scope plugin covers
-// every project), unlike project-scoped translators. When the CLI is unavailable (not on
-// PATH, not in the WorkBuddy install dir), Translate prints the exact manual commands and
-// returns nil — the on-disk assets are already complete, the user only needs to run the
-// two CLI lines once. This keeps `forge init --agents codebuddy` non-fatal on machines
-// where the codebuddy binary cannot be located automatically.
+// Translate generates the forge-local marketplace under forge's global home and registers it with the codebuddy CLI.
 //
 // Translate 在 forge 全局 home 下生成 forge-local marketplace，再经 codebuddy CLI 注册到
 // WorkBuddy。projectDir 与 input 刻意不用：CodeBuddy 接线是用户级、项目无关（一个
@@ -287,9 +206,6 @@ func (t *CodeBuddyTranslator) Translate(projectDir string, input *TranslationInp
 	}
 	run, err := FindCodeBuddyCLI()
 	if err != nil {
-		// CLI not found — assets are written; print the manual registration commands and
-		// return nil so init stays green. The user runs these once.
-		//
 		// CLI 找不到——资产已写；打印手动注册命令并返回 nil，init 保持绿。用户跑一次即可。
 		printCodeBuddyManualSetup(dir)
 		return nil
@@ -297,10 +213,6 @@ func (t *CodeBuddyTranslator) Translate(projectDir string, input *TranslationInp
 	return registerCodeBuddyPlugin(run, dir)
 }
 
-// printCodeBuddyManualSetup prints the two CLI commands the user must run, plus the
-// marketplace dir, when the codebuddy binary cannot be auto-located. Goes to stdout so the
-// user sees it in the forge init flow.
-//
 // printCodeBuddyManualSetup 在 codebuddy 二进制无法自动定位时，打印用户需手动跑的两条
 // CLI 命令及 marketplace 目录。输出到 stdout，让用户在 forge init 流程里看到。
 func printCodeBuddyManualSetup(dir string) {
@@ -323,12 +235,6 @@ func printCodeBuddyManualSetup(dir string) {
 	fmt.Println(`    codebuddy plugin install ` + codebuddyPluginName + `@` + codebuddyMarketplaceName + ` --scope user`)
 }
 
-// registerCodeBuddyPlugin runs `codebuddy plugin marketplace add` + `plugin install --scope user`
-// via run (which may exec the CLI directly or through a node interpreter — see codebuddyRun).
-// Idempotent in practice: `plugin marketplace add` on an already-registered name updates in place;
-// `plugin install` on an already-installed plugin is a no-op. CLI errors are returned (and
-// surface as a Warning in forge init, which never blocks on translator errors).
-//
 // registerCodeBuddyPlugin 经 run（可能直接 exec CLI 或经 node 解释器，见 codebuddyRun）跑
 // `codebuddy plugin marketplace add` + `plugin install --scope user`。实践中幂等：对已注册名
 // `plugin marketplace add` 就地更新；对已装 plugin `plugin install` 是 no-op。CLI 错误被返回
@@ -357,14 +263,6 @@ func registerCodeBuddyPlugin(run codebuddyRun, dir string) error {
 	return nil
 }
 
-// codebuddyWorkBuddyHome returns the config directory the WorkBuddy desktop app reads plugins
-// from. The app's own workbuddySettingsPath resolves to WORKBUDDY_CONFIG_DIR || ~/.workbuddy;
-// forge mirrors that so the CLI is pointed at whichever home the app actually uses. This is
-// the fix for config separation: the codebuddy CLI binary defaults its write-home to
-// ~/.codebuddy (CODEBUDDY_CONFIG_DIR unset), while the app reads ~/.workbuddy — without
-// redirecting the CLI, registration lands in ~/.codebuddy and the app never loads it (verified
-// end-to-end: stdout reports success yet ~/.workbuddy is untouched).
-//
 // codebuddyWorkBuddyHome 返回 WorkBuddy 桌面 app 读取 plugin 的 config 目录。app 自己的
 // workbuddySettingsPath 解析为 WORKBUDDY_CONFIG_DIR || ~/.workbuddy；forge 照此镜像，把 CLI 指向
 // app 实际使用的 home。这是配置分离的修复：codebuddy CLI 二进制的写入 home 默认是
@@ -381,9 +279,7 @@ func codebuddyWorkBuddyHome() (string, error) {
 	return filepath.Join(home, `.workbuddy`), nil
 }
 
-// CodeBuddyWorkBuddyHome exports codebuddyWorkBuddyHome for cross-agent environment
-// auditing (forge doctor): the config home the WorkBuddy desktop app actually reads
-// plugins from. Same single-source rationale as ClaudeConfigHomeDir.
+// CodeBuddyWorkBuddyHome exports codebuddyWorkBuddyHome for cross-agent environment auditing (forge doctor): the config home the WorkBuddy desktop app actually reads plugins from.
 //
 // CodeBuddyWorkBuddyHome 导出 codebuddyWorkBuddyHome 供跨 agent 环境审计（forge doctor）
 // 使用：WorkBuddy 桌面 app 实际读取 plugin 的 config home。与 ClaudeConfigHomeDir 同一
@@ -392,10 +288,6 @@ func CodeBuddyWorkBuddyHome() (string, error) {
 	return codebuddyWorkBuddyHome()
 }
 
-// withCodeBuddyConfigDir returns env with CODEBUDDY_CONFIG_DIR set to dir, replacing any
-// existing value. Duplicate env keys' last-one-wins behavior is platform-dependent, so the
-// existing entry is stripped first to make the override deterministic.
-//
 // withCodeBuddyConfigDir 返回设了 CODEBUDDY_CONFIG_DIR=dir 的 env，替换已有值。重复 env 键的
 // last-one-wins 行为平台依赖，故先剔除已有项让覆盖确定。
 func withCodeBuddyConfigDir(env []string, dir string) []string {
@@ -411,12 +303,6 @@ func withCodeBuddyConfigDir(env []string, dir string) []string {
 	return append(out, key+`=`+dir)
 }
 
-// codebuddyRun describes how to invoke the codebuddy CLI. WorkBuddy ships the CLI as a bare
-// node shebang script (bin/codebuddy, #!/usr/bin/env node) with NO .cmd/.exe shim, so on
-// Windows it cannot be exec'd directly — node must be the interpreter. argv holds the
-// executable plus any fixed leading args ([exe] or [node, script]); Command splices the
-// subcommand after them.
-//
 // codebuddyRun 描述如何调用 codebuddy CLI。WorkBuddy 把 CLI 作为裸 node shebang 脚本发布
 // （bin/codebuddy，#!/usr/bin/env node），无 .cmd/.exe shim，故 Windows 上无法直接 exec——
 // 必须用 node 当解释器。argv 存可执行文件加固定前缀参数（[exe] 或 [node, script]），
@@ -425,17 +311,12 @@ type codebuddyRun struct {
 	argv []string
 }
 
-// Command builds an exec.Cmd for a codebuddy subcommand. argv[0] is the interpreter/
-// executable; argv[1:] (the script path, when node-interpreted) sits before the subcommand.
+// Command builds an exec.Cmd for a codebuddy subcommand. argv[0] is the interpreter/ executable; argv[1:] (the script path, when node-interpreted) sits before the subcommand.
 //
 // Command 为 codebuddy 子命令构造 exec.Cmd。argv[0] 是解释器/可执行文件；argv[1:]
 // （node 解释时的脚本路径）位于子命令参数之前。
 func (r codebuddyRun) Command(args ...string) *exec.Cmd {
 	if len(r.argv) == 0 {
-		// Defensive: a zero-value codebuddyRun means FindCodeBuddyCLI's error wasn't checked.
-		// exec.Command("") yields a Cmd whose Start fails clearly rather than panicking on
-		// r.argv[0]; the caller surfaces it as a registration error.
-		//
 		// 防御：零值 codebuddyRun 意味着 FindCodeBuddyCLI 的错误没被检查。exec.Command("") 产出
 		// 的 Cmd 其 Start 会明确失败，而非在 r.argv[0] 上 panic；调用方将其报为注册错误。
 		return exec.Command(``, args...)
@@ -446,10 +327,6 @@ func (r codebuddyRun) Command(args ...string) *exec.Cmd {
 	return exec.Command(r.argv[0], full...)
 }
 
-// isWindowsExecutable reports whether a file's extension is one Windows can execute directly
-// via CreateProcess (PATHEXT subset). A bare node shebang script (no extension) is NOT —
-// exec would fail with "executable file not found in %PATH%" (the bug this guard prevents).
-//
 // isWindowsExecutable 判断文件扩展名是否 Windows 可经 CreateProcess 直接执行（PATHEXT 子集）。
 // 裸 node shebang 脚本（无扩展名）不算——exec 会报 "executable file not found in %PATH%"
 // （此守卫防的正是该 bug）。
@@ -461,18 +338,7 @@ func isWindowsExecutable(path string) bool {
 	return false
 }
 
-// FindCodeBuddyCLI locates how to invoke the codebuddy (alias cbc) CLI. Search order:
-//  1. PATH (codebuddy, then cbc) — exec.LookPath honors PATHEXT on Windows, so a hit is
-//     directly executable (machines where the CLI was npm-global-installed or WorkBuddy
-//     added bin to PATH).
-//  2. WorkBuddy install dir — the CLI ships unpacked at
-//     <install>/resources/app.asar.unpacked/cli/bin/codebuddy. A .exe/.cmd shim (if present)
-//     is preferred; otherwise the bare node script is run via the system node interpreter
-//     (WorkBuddy ships codebuddy as #!/usr/bin/env node with NO shim — direct exec fails on
-//     Windows, so node must interpret it).
-//
-// Returns an error only when no invocation is possible (caller prints manual setup): the
-// script is present but node is not on PATH, or nothing is found at all.
+// FindCodeBuddyCLI locates how to invoke the codebuddy (alias cbc) CLI.
 //
 // FindCodeBuddyCLI 定位如何调用 codebuddy（别名 cbc）CLI。搜索顺序：PATH（codebuddy 后 cbc）
 // ——exec.LookPath 在 Windows 遵守 PATHEXT，命中即直接可执行（CLI 经 npm 全局装或 WorkBuddy
@@ -493,14 +359,10 @@ func FindCodeBuddyCLI() (codebuddyRun, error) {
 		if err != nil || info.IsDir() {
 			continue
 		}
-		// A directly-executable shim wins immediately.
-		//
 		// 直接可执行的 shim 立即胜出。
 		if runtime.GOOS != "windows" || isWindowsExecutable(p) {
 			return codebuddyRun{argv: []string{p}}, nil
 		}
-		// Bare script (no PATHEXT extension): remember it as a node-interpreter candidate.
-		//
 		// 裸脚本（无 PATHEXT 扩展名）：记为 node 解释器候选。
 		if script == "" {
 			script = p
@@ -514,12 +376,6 @@ func FindCodeBuddyCLI() (codebuddyRun, error) {
 	return codebuddyRun{}, fmt.Errorf(`codebuddy CLI not found on PATH or in WorkBuddy install dir (script present but node interpreter unavailable)`)
 }
 
-// codebuddyCLIInstallCandidates returns the conventional WorkBuddy desktop install paths
-// where the codebuddy CLI ships unpacked. Windows-first; macOS/Linux best-effort. These
-// are PROBES (stat-checked + filtered by the caller): on Windows each base yields .exe,
-// .cmd, and the bare script — FindCodeBuddyCLI prefers a directly-executable shim and falls
-// back to running the bare script via node.
-//
 // codebuddyCLIInstallCandidates 返回 WorkBuddy 桌面安装的常规路径，codebuddy CLI unpacked
 // 在此。Windows 优先；macOS/Linux 尽力。这些是探测（调用方 stat 检查 + 过滤）：Windows 每个
 // base 产出 .exe、.cmd 与裸脚本——FindCodeBuddyCLI 优先直接可执行的 shim，回落经 node 跑裸脚本。
@@ -552,29 +408,7 @@ func codebuddyCLIInstallCandidates() []string {
 	return cands
 }
 
-// StripCodeBuddyHooks reverses the CodeBuddy/WorkBuddy wiring end-to-end (the
-// uninstall counterpart of CodeBuddyTranslator.Translate). Three seams, all
-// surgical — everything else in the two config files is user-owned and preserved:
-//
-//  1. <workbuddy home>/plugins/known_marketplaces.json — drop the "forge-local"
-//     entry (the directory pointer WorkBuddy holds to forge's marketplace).
-//  2. <workbuddy home>/settings.json — drop enabledPlugins["forge@forge-local"]
-//     (an emptied enabledPlugins object is kept as a shell — same contract as the
-//     claude settings dedupe).
-//  3. <GlobalHome>/agents/codebuddy/forge-local/ — delete the forge-owned assets.
-//
-// changed reports whether ANY seam had something to remove. Missing files/keys are
-// clean no-ops (idempotent re-run). A config file that exists but will not parse
-// returns an error WITHOUT touching it — overwriting a corrupt-but-user-owned file
-// on uninstall would be destruction, not cleanup. Seam errors are collected and
-// joined, never early-returned: seam 3 (forge-OWNED assets) must still run even when
-// a user-owned config file fails to parse — otherwise a corrupt user file shields
-// forge's own directory from removal forever (re-runs hit the same error first).
-//
-// "Preserved" is VALUE-level, not byte-level (review L-3): when a seam fires, the file
-// is re-marshaled (keys alphabetized, 2-space indent, <>& escaped as \uXXXX inside
-// untouched values, duplicate keys merged). Every user VALUE survives; the formatting
-// does not. Same contract as every other forge JSON rewrite.
+// StripCodeBuddyHooks reverses the CodeBuddy/WorkBuddy wiring end-to-end (the uninstall counterpart of CodeBuddyTranslator.Translate).
 //
 // StripCodeBuddyHooks 端到端反转 CodeBuddy/WorkBuddy 接线
 // （CodeBuddyTranslator.Translate 的 uninstall 对应面）。三处，全部外科式——
@@ -601,10 +435,6 @@ func StripCodeBuddyHooks() (bool, error) {
 		return false, fmt.Errorf("codebuddy: resolve WorkBuddy home: %w", err)
 	}
 	changed := false
-	// seamErrs collects per-seam failures so every seam still runs (review finding,
-	// 2026-08-22): seam1/2 guard USER-owned files (error without touching them),
-	// seam3 removes FORGE-owned assets — a seam-1/2 error must not shield seam 3.
-	//
 	// seamErrs 收集各处失败让每一处都执行（复审发现，2026-08-22）：seam1/2 守卫
 	// 用户文件（报错不碰），seam3 删 forge 自有资产——seam1/2 的错误不能挡住 seam3。
 	var seamErrs []error
@@ -671,11 +501,6 @@ func StripCodeBuddyHooks() (bool, error) {
 		seamErrs = append(seamErrs, fmt.Errorf("codebuddy: read %s: %w", setPath, err))
 	}
 
-	// Seam 3: forge-owned marketplace assets under the forge global home. A dir
-	// resolution error is REPORTED (same error style as seam 1/2), not silently
-	// swallowed — a vanished asset dir is a clean no-op, an unresolvable one is a
-	// real failure the operator should see.
-	//
 	// seam 3：forge 全局 home 下的自有 marketplace 资产。目录解析错误同样上报
 	// （与 seam 1/2 同错误风格）而非静默吞掉——资产目录缺席是干净 no-op，
 	// 解析不了是真失败，操作员应该看见。

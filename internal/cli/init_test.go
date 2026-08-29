@@ -11,14 +11,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 )
 
-// init_test.go — guards for the team-mode hooks double-registration fix and the
-// team-mode → default-mode convergence path.
-//
 // init_test.go —— 团队模式 hooks 双注册修复与团队模式→默认模式收敛路径的守卫。
 
-// setupInitEnv builds a real (git) project with isolated user-level homes, so
-// runInitTeamMode/runInitUserLevel never touch the real home.
-//
 // setupInitEnv 构造真实（git）项目并隔离用户级 home，runInitTeamMode /
 // runInitUserLevel 绝不碰真实 home。
 func setupInitEnv(t *testing.T) (root, claudeHome string) {
@@ -31,10 +25,7 @@ func setupInitEnv(t *testing.T) (root, claudeHome string) {
 }
 
 // TestRunInitTeamMode_NoProjectLevelSettingsLocal pins the double-registration
-// fix: team mode must NOT write a project-level .claude/settings.local.json —
-// hooks are registered at USER level (hook commands invoke the forge binary, so
-// teammates install forge anyway; a project-level copy would double-run every
-// hook against autoSync's user-level registration).
+// fix: team mode must NOT write a project-level .claude/settings.local.json.
 //
 // TestRunInitTeamMode_NoProjectLevelSettingsLocal 钉死双注册修复：团队模式不得
 // 写项目级 .claude/settings.local.json——hooks 注册在用户级（hook 命令调用
@@ -74,9 +65,7 @@ func TestRunInitTeamMode_NoProjectLevelSettingsLocal(t *testing.T) {
 
 // TestRunInitUserLevel_ConvergesTeamModeProject pins the convergence fix: a
 // plain `forge init` on a team-mode project is an explicit switch back to the
-// default (zero-project-write) mode — the team-mode marker is removed so the
-// stripper can converge project-level residue. Without the removal the marker
-// permanently exempted the project.
+// default (zero-project-write) mode.
 //
 // TestRunInitUserLevel_ConvergesTeamModeProject 钉死收敛修复：在团队模式项目上
 // 跑普通 `forge init` = 明确切回默认（零项目写入）模式——team-mode 标记被
@@ -128,13 +117,10 @@ func TestRunInitUserLevel_ConvergesTeamModeProject(t *testing.T) {
 	}
 }
 
-// TestInitCmd_HelpDemotesManualInit pins the Phase-3 help demotion: `forge init`'s
-// Long help must tell plugin users they normally do NOT need to run it manually
-// (init-suggest auto-takeover covers git projects), and position manual init as
-// repair / non-plugin / team-mode. Guards help-vs-behavior drift: the hook gained
-// the auto-takeover branch (feat/auto-takeover-init), so a stale help that still
-// frames init as the required per-project step would send plugin users through a
-// redundant manual ritual.
+// TestInitCmd_HelpDemotesManualInit pins the Phase-3 help demotion: `forge
+// init`'s Long help must tell plugin users they normally do NOT need to run it
+// manually (init-suggest auto-takeover covers git projects), and position manual
+// init as repair / non-plugin / team-mode.
 //
 // TestInitCmd_HelpDemotesManualInit 钉死 Phase 3 的 help 降级：`forge init` 的
 // Long 帮助须告知 plugin 用户通常无需手动跑（init-suggest 自动接管覆盖 git
@@ -156,11 +142,7 @@ func TestInitCmd_HelpDemotesManualInit(t *testing.T) {
 	}
 }
 
-// TestAgentSummaryLine pins the init summary's per-agent wiring lines. The
-// regression this guards: a dropped switch case is a SILENT loss of install
-// guidance (nothing fails — the user simply never sees how to wire that
-// agent). dsh in particular exists only as this line (its translator is a
-// deliberate no-op).
+// TestAgentSummaryLine pins the init summary's per-agent wiring lines.
 //
 // TestAgentSummaryLine 钉住 init 摘要的 per-agent 接线行。防的回归：switch
 // 掉一个 case 是**静默**丢失安装指引（没有任何东西报错——用户只是再看不到
@@ -181,9 +163,6 @@ func TestAgentSummaryLine(t *testing.T) {
 		}
 	}
 
-	// The dsh line is the ONLY install channel for the plugin (no-op
-	// translator) — it must carry the actual install command.
-	//
 	// dsh 行是 plugin 的唯一安装通道（no-op translator）——必须携带真实安装命令。
 	line, ok := agentSummaryLine(agentbridge.AgentDsh)
 	if !ok {
@@ -193,9 +172,6 @@ func TestAgentSummaryLine(t *testing.T) {
 		t.Errorf("dsh summary line lacks the install command: %q", line)
 	}
 
-	// Agents with their own summary channel (or wired unconditionally above)
-	// must stay out of this loop.
-	//
 	// 自有摘要通道（或在上面无条件接线）的 agent 必须保持在本循环之外。
 	for _, a := range []agentbridge.AgentType{agentbridge.AgentClaudeCode, agentbridge.AgentCopilot, agentbridge.AgentWindsurf, agentbridge.AgentCline, agentbridge.AgentCodeBuddy, agentbridge.AgentReasonix} {
 		if line, ok := agentSummaryLine(a); ok {

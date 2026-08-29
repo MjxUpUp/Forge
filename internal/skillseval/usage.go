@@ -1,4 +1,6 @@
 // Package skillseval provides skill usage metrics analysis (usage) and eval list generation (skill-eval).
+// Package skillseval provides skill usage metrics analysis (usage) and eval list
+// generation (skill-eval).
 //
 // Package skillseval 提供 skill 使用度量分析（usage）与 eval 清单生成（skill-eval）。
 //
@@ -7,7 +9,6 @@
 // with no tool-call events, naturally producing no records — see ExtractSkillName for parser extension points). Replaces the broken old pi source
 // (~/.pi/research/skill-usage.jsonl, after pi exited specialization no one writes it). The data layer is agent-neutral, consistent with the project's
 // "outer framework must not depend on a specific agent" principle. Cross-task reading goes through LoadAllAll (including archived toollog-*.jsonl).
-//
 // 使用度量基于 toollog（agent-neutral 采集层）：tool-track hook 跨 host 接入，Skill 工具
 // 事件触发时记录（当前仅 Claude Code 有 Skill 工具事件；cursor/codex 等 skill 经 mdc/AGENTS.md
 // 注入、无工具调用事件，自然不产生记录——解析点扩展见 ExtractSkillName）。替代断链的 pi 旧源
@@ -27,13 +28,14 @@ import (
 )
 
 // ExtractSkillName extracts the skill name from the tool_input of a Skill tool call.
+// ExtractSkillName extracts the skill name from the tool_input of a Skill tool
+// call.
 //
 // ExtractSkillName 从 Skill 工具调用的 tool_input 提取 skill 名。
 //
 // Claude Code Skill tool input is JSON {"skill":"<name>","args":"..."}. When tool-track records it
 // tool_input is truncated to 500 chars; the skill name in the JSON front is usually intact. Non-JSON / missing skill field /
 // truncated-corrupted → returns empty (caller skips).
-//
 // Claude Code Skill 工具输入是 JSON {"skill":"<name>","args":"..."}。tool-track 记录时
 // tool_input 截断到 500 字符，skill 名在 JSON 前部一般完好。非 JSON / 无 skill 字段 /
 // 截断损坏 → 返回空（调用方跳过）。
@@ -41,7 +43,6 @@ import (
 // agent-neutral parsing point: if different hosts have different Skill tool input formats, extend this function rather than changing the data source.
 // Hosts lacking the Skill tool concept (cursor/codex etc. inject skills via mdc/AGENTS.md, no tool-call events)
 // naturally produce no records — skillseval still gives an honest undertrigger conclusion when data is missing (all canonical untriggered).
-//
 // agent-neutral 解析点：不同 host 的 Skill 工具输入格式若不同，扩展此函数而非改数据源。
 // 缺少 Skill 工具概念的 host（cursor/codex 等 skill 经 mdc/AGENTS.md 注入，无工具调用事件）
 // 自然不产生记录——skillseval 在数据缺失时仍给出诚实的 undertrigger 结论（全 canonical 未触发）。
@@ -58,10 +59,8 @@ func ExtractSkillName(toolInput string) string {
 	return strings.TrimSpace(v.Skill)
 }
 
-// SkillCountsFromToollog counts Skill tool calls from toollog (agent-neutral data source).
-// Goes through LoadAllAll to read across archives (active + toollog-*.jsonl); otherwise after forge task start archives, cross-task
-// aggregation would only see the current task. Returns skill→count and the total Skill call event count. Bad lines / non-Skill calls / failures to extract
-// skill names are all skipped.
+// SkillCountsFromToollog counts Skill tool calls from toollog (agent-neutral
+// data source).
 //
 // SkillCountsFromToollog 从 toollog 统计 Skill 工具调用次数（agent-neutral 数据源）。
 // 走 LoadAllAll 跨归档读（active + toollog-*.jsonl），否则 forge task start 归档后跨任务
@@ -105,26 +104,24 @@ type UsageReport struct {
 	UsedSkills     int          `json:"used_skills"`
 	NeverTriggered []string     `json:"never_triggered"`
 	HotSkills      []SkillCount `json:"hot_skills"`
-	// Funnel is the passive-trigger funnel (hit → delivered → engaged). Filled only by
-	// AnalyzeUsageWithFunnel (the CLI usage view); AnalyzeUsage leaves it nil — consumers like
-	// weakness analysis only need reach counts, and the join (checklog × toollog) is wasted
-	// work there.
+	// Funnel is the passive-trigger funnel (hit → delivered → engaged).
 	//
 	// Funnel 是被动触发漏斗（命中 → 送达 → 加载）。仅 AnalyzeUsageWithFunnel（CLI usage
 	// 视图）填充；AnalyzeUsage 留 nil——weakness 等消费方只要触达计数，join
 	// （checklog × toollog）在那里是白做的工作。
 	Funnel *FunnelReport `json:"funnel,omitempty"`
-	// Drift is the production-vs-repo trigger-set comparison. Same fill rule as Funnel.
+	// Drift is the production-vs-repo trigger-set comparison.
 	//
 	// Drift 是生产 vs 仓库源的判定集对比。填充规则同 Funnel。
 	Drift *TriggerSetDrift `json:"drift,omitempty"`
 }
 
+// AnalyzeUsageWithFunnel = AnalyzeUsage + the passive-trigger funnel.
+//
 // AnalyzeUsageWithFunnel = AnalyzeUsage + 被动触发漏斗。`forge skills usage` 的入口：
 // 触达计数之外，回答「注入是否送达、命中后是否被加载」。判定集漂移（Drift）由 cli 层
 // 用 skilltrigger.LoadAll 扫两侧目录后经 CompareTriggerSets 赋值——本包 import
 // skilltrigger 会成环（见 drift.go 包注释）。
-//
 // AnalyzeUsageWithFunnel = AnalyzeUsage + the passive-trigger funnel. The `forge skills
 // usage` entry: beyond reach counts, it answers "was the injection delivered, was the skill
 // loaded after the hit". Trigger-set drift (Drift) is assigned by the cli layer after
@@ -143,14 +140,10 @@ func AnalyzeUsageWithFunnel(root, canonical string) (*UsageReport, error) {
 	return rep, nil
 }
 
-// AnalyzeUsage merges two reach signals and crosses them with the canonical skill set to produce an
-// undertrigger analysis: (1) active Skill tool calls from toollog, (2) passive skill-trigger firings from
-// checklog (CheckSkillTrigger). Passive is the larger signal in practice — skill-trigger fires on every
-// matching event while the Skill tool is only invoked on explicit load — so counting only active calls would
-// false-positive NeverTriggered on skills that fire passively but are never explicitly called.
-//
-// Both sources are agent-neutral (tool-track hook + skill-trigger engine, deterministic). The canonical set
-// filters out "ghost skills" (log residue but canonical deleted), symmetric with NeverTriggered (canonical-only).
+// AnalyzeUsage merges two reach signals and crosses them with the canonical
+// skill set to produce an undertrigger analysis: (1) active Skill tool calls
+// from toollog, (2) passive skill-trigger firings from checklog
+// (CheckSkillTrigger).
 //
 // AnalyzeUsage 合并两个触达信号并与 canonical skill 集交叉，产出 undertrigger 分析：（1）toollog 的
 // 主动 Skill 工具调用，（2）checklog 的被动 skill-trigger 触发（CheckSkillTrigger）。实践中被动是更大
@@ -173,12 +166,6 @@ func AnalyzeUsage(root, canonical string) (*UsageReport, error) {
 		return nil, err
 	}
 
-	// Merge active (Skill tool calls, toollog) + passive (skill-trigger firings, checklog) into one reach
-	// signal. skill-trigger injects skills passively via AdditionalContext — the agent then reads SKILL.md via
-	// Read, NOT the Skill tool — so toollog's Skill-tool counts severely undercount skill reach (passive firings
-	// are invisible there). Merging both stops NeverTriggered from false-positive on skills that fire passively
-	// but are never explicitly called (the dogfood 0-trigger blind spot on the usage side).
-	//
 	// 合并主动（Skill 工具调用，toollog）+ 被动（skill-trigger 触发，checklog）为一个触达信号。
 	// skill-trigger 经 AdditionalContext 被动注入——agent 随后用 Read 读 SKILL.md、而非 Skill 工具——
 	// 故 toollog 的 Skill 工具计数严重低估 skill 触达（被动触发在那边不可见）。合并两者避免 NeverTriggered
@@ -200,9 +187,6 @@ func AnalyzeUsage(root, canonical string) (*UsageReport, error) {
 	}
 	slices.Sort(never)
 
-	// Canonical set: HotSkills/UsedSkills count only skills present in canonical, filtering out
-	// "ghost skills" in the log (canonical deleted but log residue) — symmetric with NeverTriggered (canonical-only).
-	//
 	// canonical 集：HotSkills/UsedSkills 只计 canonical 中存在的 skill，过滤日志里的
 	// "幽灵技能"（canonical 已删但日志残留）——与 NeverTriggered（仅 canonical）对称。
 	canonicalSet := make(map[string]bool, len(all))
@@ -237,13 +221,8 @@ func AnalyzeUsage(root, canonical string) (*UsageReport, error) {
 	}, nil
 }
 
-// SkillCountsFromChecklog counts passive skill-trigger firings from checklog (CheckSkillTrigger entries) —
-// the second data source for usage analysis. skill-trigger injects skills passively via AdditionalContext
-// (the agent then reads SKILL.md via Read, NOT the Skill tool), so toollog's Skill-tool counts severely
-// undercount skill reach — passive firings are invisible there. This closes the dogfood 0-trigger blind spot
-// on the usage side. Goes through checklog.LoadAllAll (active + archived) for cross-task coverage, symmetric
-// with SkillCountsFromToollog. Returns skill→count and total trigger events. Detail that fails to parse
-// (format drift / corruption) is skipped.
+// SkillCountsFromChecklog counts passive skill-trigger firings from checklog
+// (CheckSkillTrigger entries).
 //
 // SkillCountsFromChecklog 从 checklog（CheckSkillTrigger 条目）统计被动 skill-trigger 触发——
 // usage 分析的第二数据源。skill-trigger 经 AdditionalContext 被动注入 skill（agent 随后用 Read

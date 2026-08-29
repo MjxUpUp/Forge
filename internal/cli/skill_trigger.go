@@ -1,3 +1,5 @@
+// Package cli skill_trigger.go is the CLI entry + evaluation core of the generic skill-trigger framework.
+//
 // Package cli skill_trigger.go 是通用 skill-trigger 框架的 CLI 入口与判定核心。
 //
 // 设计要点（与 plan §1 的偏离，技术正确性驱动）：
@@ -7,11 +9,6 @@
 // skill-trigger 必须从 HookInput 取 Event/Prompt/Tool/command/exit_code（只能来自 stdin）。
 // 故采用 runHook 特例方案：name=="skill-trigger" 时 Go 内直接判定 + 渲染，复用 runHook 已
 // normalize 的 hookInput 与 agent stdin normalize，不经 bash embed，避开 stdin 透传难题。
-//
-// Package cli skill_trigger.go is the CLI entry + evaluation core of the generic skill-trigger
-// framework. Deviates from plan §1 (driven by technical correctness): the thin-wrapper bash
-// assumption breaks because runHook consumes stdin; skill-trigger needs live HookInput fields,
-// so a runHook special-case evaluates + renders in Go, reusing the already-normalized hookInput.
 package cli
 
 import (
@@ -70,10 +67,6 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 	root, _ := findProjectRoot()
 	// agent 传 ""（→ contextChannelDelivered 走 claude 默认行）：此子命令是调试入口，无
 	// --agent 上下文；生产落章走 runSkillTriggerHook（带真实 agent）。
-	//
-	// agent passes "" (→ contextChannelDelivered takes the claude default row): this
-	// subcommand is a debug entry with no --agent context; production stamping goes through
-	// runSkillTriggerHook (with the real agent).
 	rendered, err := runSkillTriggerCore(hookInput, root, cmd.Root().Version, "", skillTriggerDryRun)
 	if err != nil {
 		return err
@@ -90,18 +83,6 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 // 打 stdout（其余事件 stdout 被 kimi 丢弃——见 internal/agentbridge/kimi-hook-routing.md），
 // 无渲染则静默。
 func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error {
-	// kimi 0.35.0 drops allow-path stdout from the model context for every event except
-	// UserPromptSubmit (verified via wire.jsonl). The engine still RUNS on the other events —
-	// recording each hit to checklog with Delivered=false (stamped by
-	// contextChannelDelivered's kimi row) — so the dashboard feed and the usage funnel see
-	// the full trigger picture instead of a kimi blind spot (2026-08: kimi tasks showed 1
-	// skill-trigger event vs claude's 59, a pure observability artifact). The funnel counts
-	// Delivered=true only (skillseval.SkillFunnel), so these records cannot recreate the
-	// false-prosperity bug the old pre-core bail guarded against — "record honestly, never
-	// deliver silently" replaced "bail before recording". Only the stdout PRINT stays gated
-	// to UserPromptSubmit (the one channel kimi carries into model context); on other events
-	// printing would be bytes dropped by the host anyway.
-	//
 	// kimi 0.35.0 对除 UserPromptSubmit 外的所有事件丢弃 allow 路径 stdout（wire.jsonl
 	// 实证）。引擎在其余事件上仍运行——每条命中以 Delivered=false 落 checklog（由
 	// contextChannelDelivered 的 kimi 行落章）——让看板事件流与 usage 漏斗看到完整的
@@ -119,16 +100,6 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 	// 「送达了」，kimi 只是回到同一语义。若未来要按送达计 cooldown，应对全宿主统一改，
 	// 而非给 kimi 特判。
 	rendered, err := runSkillTriggerCore(hookInput, root, version, agent, false)
-	// Hosts that drop allow-path stdout on some events (hostcap DroppedStdoutEvents;
-	// today kimi): the engine still RUNS and records on those events (Delivered=false
-	// keeps the record honest). The rendered injection itself no longer dies with the
-	// dropped stdout: emitAdvisoryRouted queues it on non-delivered events (kimi
-	// reads PreToolUse stdout as a DENY and drops PostToolUse/Stop/SessionStart
-	// stdout — printing would be bytes dropped or, worse, a phantom block) and
-	// drains the backlog as one batched injection on UserPromptSubmit, ahead of
-	// this hook's own render. Core errors stay swallowed (advisory layer fail-open),
-	// matching the pre-queue behavior.
-	//
 	// 在部分事件上丢弃 allow 路径 stdout 的宿主（hostcap DroppedStdoutEvents；目前
 	// 仅 kimi）：引擎在这些事件上仍运行并记录（Delivered=false 保持记录诚实）。
 	// 渲染出的注入本身不再随被丢的 stdout 湮灭：emitAdvisoryRouted 在不可送达
@@ -142,11 +113,6 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 		}
 		return emitAdvisoryRouted(agent, hookInput.HookEventName, "skill-trigger", root, hookInput.SessionID, true, rendered)
 	}
-	// skill-trigger never blocks (advisory injection) — the allow-with-detail path of
-	// the per-agent emitter picks each host's context channel. The old fixed
-	// `{"decision":"approve"}` envelope was Claude-only shape noise, and codex marks
-	// decision:"approve" as a FAILED hook — the injection would never land there.
-	//
 	// skill-trigger 永不阻断（advisory 注入）——走 per-agent emitter 的
 	// allow-with-detail 路径，按宿主选择上下文通道。旧的固定
 	// `{"decision":"approve"}` envelope 是 Claude 专属形态的噪声，且 codex 会把
@@ -234,10 +200,6 @@ func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRu
 	}
 	// 单次上限（MaxHitsPerEvent）落选的 skill 尾部一句带过——控噪作用于渲染（也即 kimi
 	// advisory 入队）之前，队列不会被重复命中塞满。
-	//
-	// Skills that lost the per-event cap (MaxHitsPerEvent) get a one-line tail mention —
-	// noise control applies BEFORE rendering (and thus before kimi advisory enqueueing),
-	// so the queue cannot be flooded by repeat hits.
 	var overflow []string
 	for _, s := range suppressed {
 		if s.Cause == skilltrigger.SuppressEventCap {
@@ -256,20 +218,6 @@ func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRu
 //     触顶信息量就不再增长）。Passed=true 保持中性，warn 信号走 Level；Detail 刻意不含
 //     " hit (" 标记，SkillFromTriggerDetail 返回 ""，usage/funnel 计数零污染。不带
 //     Delivered/Channel 章（review n5——该事件从未向模型注入任何内容，送达语义不适用）。
-//
-// recordSuppressed handles suppressed events returned by Eval (debate P1):
-//   - cooldown: counter +1, backfilled into Meta at the skill's next actual fire
-//     (SuppressedCounter.Take);
-//   - stop-max-rounds: at most ONE warn advisory per session (review M2: without
-//     throttling, long sessions log an entry per Stop round — conditions like
-//     source_changed_uncommitted are near-always true while coding, so every Stop
-//     past the cap would write one, exactly the log-flooding suppressed.go says it
-//     avoids. Same idea as CheckKimiPluginStale's daily throttle; session granularity
-//     suffices — once the cap trips, the information stops growing). Passed=true
-//     stays neutral, the warn signal rides Level; the Detail deliberately lacks the
-//     " hit (" marker so SkillFromTriggerDetail returns "" — zero pollution of
-//     usage/funnel counts. No Delivered/Channel stamp (review n5 — nothing was ever
-//     injected to the model on this event; delivery semantics do not apply).
 func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skilltrigger.Suppressed, counterDir, agent, version string) {
 	if len(suppressed) == 0 {
 		return
@@ -282,12 +230,6 @@ func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skillt
 			// 三类都进同一抑制计数器（「本会注入但没注」的统一语义）：cooldown 会在下次
 			// 触发回填；session-cap 永无下次触发（G5 缺口天然适用）；event-cap 落选不
 			// Mark、下事件即可命中，回填随之发生。
-			//
-			// All three ride the same suppression counter (the shared "would have
-			// injected but didn't" semantics): cooldown backfills at the next fire;
-			// session-cap never has a next fire (the G5 gap applies by design);
-			// event-cap losers are not Marked and may fire on the very next event,
-			// where the backfill lands.
 			_ = counter.Incr(ctx.SessionID, s.Skill)
 		case skilltrigger.SuppressStopCap:
 			stopCapped = append(stopCapped, s.Skill)
@@ -297,8 +239,6 @@ func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skillt
 		return
 	}
 	// session 级节流 marker：已记过即静默（counter 目录同寿命）。
-	//
-	// Session-level throttle marker: silent once recorded (same lifespan as the counter dir).
 	marker := filepath.Join(counterDir, util.SanitizeSessionID(ctx.SessionID), "stopcap-advisory.marker")
 	if _, err := os.Stat(marker); err == nil {
 		return
@@ -326,9 +266,6 @@ func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skillt
 
 // taskRefForSession 提取 session 绑定的活跃 task ref（与 recordSkillTriggerHits 的判定一致，
 // 抽出为单一实现防两处漂移）。
-//
-// taskRefForSession extracts the active task ref bound to the session (same rule as
-// recordSkillTriggerHits, extracted to a single implementation so the two cannot drift).
 func taskRefForSession(root, sessionID string) string {
 	if active, err := taskpipeline.ActiveTaskState(root, sessionID); err == nil && active != nil {
 		return active.TaskRef
@@ -355,14 +292,6 @@ func buildTriggerContext(hookInput HookInput, root string) skilltrigger.Context 
 	return ctx
 }
 
-// recordSkillTriggerHits records each fired canonical skill to checklog so skill reach is observable downstream
-// (`forge skills usage`/`effectiveness`). skill-trigger otherwise injects silently into AdditionalContext with
-// zero persistent trail — Forge could not answer "which canonical skills actually fired" (the dogfood 0-trigger
-// blind spot). CheckSkillTrigger is deterministic (the engine evaluates declared triggers, agent cannot forge) and
-// excluded from evidence strength (observation, not verification) — see checklog.BuildEvidenceChain. task_ref is
-// attached only when an active (non-completed) task is bound to this session, so post-complete Stop triggers are
-// not misattributed to a finished task.
-//
 // recordSkillTriggerHits 把每个触发的 canonical skill 落进 checklog，让 skill 触达在下游可观测
 // （`forge skills usage`/`effectiveness`）。否则 skill-trigger 经 AdditionalContext 静默注入、零持久轨迹——
 // Forge 无法回答"哪些 canonical skill 真触发过"（dogfood 0 触发盲区）。CheckSkillTrigger 是 deterministic
@@ -374,14 +303,6 @@ func buildTriggerContext(hookInput HookInput, root string) skilltrigger.Context 
 // 身份，sig 抗数组重排）、prompt_hash/prompt_len（项目盐哈希，聚类不存原文）、
 // suppressed_since_last（cooldown 抑制回填）、excerpt（opt-in FORGE_TRIGGER_EXCERPT=1，脱敏
 // ±96 rune 窗口）。缺键语义 = 「未知/不适用」，读方不得当零值。
-//
-// v2 (debate P0): each hit lands a structured evidence payload in Entry.Meta (key contract
-// checklog.MetaKey*, single source of truth) — matched_keyword/match_source (primary key
-// for per-keyword analysis), when, trigger_index/trigger_sig (rule identity, sig survives
-// array reordering), prompt_hash/prompt_len (project-salted hash — clustering without
-// storing raw text), suppressed_since_last (cooldown backfill), excerpt (opt-in
-// FORGE_TRIGGER_EXCERPT=1, redacted ±96-rune window). Absent-key semantics =
-// "unknown/n-a", never zero-value.
 func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skilltrigger.Hit, counterDir, agent, version string) {
 	taskRef := taskRefForSession(root, ctx.SessionID)
 	counter := skilltrigger.NewFileSuppressedCounter(counterDir)
@@ -392,26 +313,11 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 	// 经 advisoryEmissionChannel 盖章（非裸 contextChannelDelivered）：kimi 不可送达事件上的
 	// 命中现经 emitAdvisoryRouted 入队（UserPromptSubmit 攒发），章标 kimi/advisory-queue，
 	// 漏斗据此区分「入队待投」与「永久丢失」。
-	//
-	// L1 delivery stamp: all hits in one hook invocation ride the same (agent, event) channel —
-	// verdict computed once, stamped per entry. Delivered/Channel/ForgeVersion make checklog the
-	// ground truth of "actually reached model context" — the usage funnel's delivery denominator
-	// becomes trustworthy, and dead-channel host hits stop counting as delivered (the all-host
-	// generalization of the kimi 2026-08-15 fix). Stamped via advisoryEmissionChannel (not bare
-	// contextChannelDelivered): hits on kimi's non-delivered events now queue via
-	// emitAdvisoryRouted (UserPromptSubmit drain), stamped kimi/advisory-queue so the funnel
-	// distinguishes "queued, deferred" from "lost forever".
 	delivered, channel := advisoryEmissionChannel(agent, ctx.Event)
 	for _, h := range hits {
 		// 缺键 = 「未知/不适用」契约（review m5）：仅写已知项——condition-only 触发不落
 		// match_source（值恒 "" 与缺键不可分）；prompt_len 只在哈希真的来自 prompt 时落
 		//（tool 事件的回退哈希来自来源文本，prompt_len=0 与之 pairing 是语义错位）。
-		//
-		// Absent-key = "unknown/n-a" contract (review m5): write only what is known —
-		// condition-only triggers carry no match_source (a "" value would be
-		// indistinguishable from an absent key); prompt_len only when the hash truly
-		// came from the prompt (a tool event's fallback hash comes from the source
-		// text — pairing it with prompt_len=0 would be a semantic mismatch).
 		meta := map[string]string{
 			checklog.MetaKeyTriggerIndex: strconv.Itoa(h.TriggerIndex),
 			checklog.MetaKeyTriggerSig:   h.TriggerSig,
@@ -432,19 +338,12 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 			}
 		}
 		// 抑制回填：读取并清零该 skill 本 session 累计的 cooldown 抑制（>0 才落键，条目保持精瘦）。
-		//
-		// Suppression backfill: take-and-reset this skill's accumulated cooldown suppressions
-		// in this session (key written only when >0, keeping entries lean).
 		if n := counter.Take(ctx.SessionID, h.Skill); n > 0 {
 			meta[checklog.MetaKeySuppressedSinceLast] = strconv.Itoa(n)
 		}
 		if excerptOn {
 			// 摘录只记命中来源的那段文本，±96 rune，先过 secret 脱敏再落（默认关——R4/R7
 			// 隐私折中：hash 恒记已足聚类，摘录 opt-in 只服务 triage/挖矿）。
-			//
-			// The excerpt captures only the matched source text, ±96 runes, redacted before
-			// landing (off by default — the R4/R7 privacy compromise: the always-recorded
-			// hash already suffices for clustering; the opt-in excerpt serves triage/mining).
 			if ex := skilltrigger.Excerpt(ctx, h.MatchSource, h.MatchedKeyword, 96); ex != "" {
 				meta[checklog.MetaKeyExcerpt] = util.RedactSecrets(ex)
 			}
@@ -452,10 +351,6 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 		// Detail 经 checklog.DetailForSkillTrigger 单一真相源构造，与读取方
 		// (skillseval.SkillCountsFromChecklog → checklog.SkillFromTriggerDetail) 共契约，杜绝
 		// 两侧手工镜像格式串漂移致被动触发信号静默丢失（minor-1：跨包 stringly-typed 契约）。
-		//
-		// Detail is built via the checklog.DetailForSkillTrigger single source of truth, sharing the contract
-		// with the reader (skillseval.SkillCountsFromChecklog → checklog.SkillFromTriggerDetail), eliminating
-		// hand-mirrored format-string drift that would silently drop passive-trigger signals (minor-1).
 		detail := checklog.DetailForSkillTrigger(h.Skill, ctx.Event, h.Reason)
 		if err := checklog.Record(root, &checklog.Entry{
 			Check:        checklog.CheckSkillTrigger,

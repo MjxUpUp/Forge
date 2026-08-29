@@ -6,14 +6,6 @@ package cli
 // 输出边界（half-automatic）：草稿写 <eval-dir>/mined/<skill>.draft.json，**永不**自动
 // 进 golden（evals/golden/）。策展流程（skill-evolution skill）负责改写降噪 + 合并 +
 // 超限淘汰；本命令对超 GoldenCap 的 golden 集发 advisory（G2 退出机制的告警端）。
-//
-// skills_mine.go — `forge skills mine`: mine production trigger records into golden-case
-// drafts (the CLI entry of skill-trigger v2 / debate P2).
-//
-// Output boundary (half-automatic): drafts go to <eval-dir>/mined/<skill>.draft.json and
-// NEVER auto-enter golden (evals/golden/). The curation flow (skill-evolution skill)
-// handles rewrite-noise-reduction + merge + over-cap eviction; this command raises the
-// advisory for golden sets over GoldenCap (the alarm end of the G2 exit mechanism).
 
 import (
 	"encoding/json"
@@ -55,7 +47,6 @@ func init() {
 
 // runSkillsMine 执行挖矿：load（checklog×toollog）→ MineGoldenDrafts → 草稿落盘 +
 // 原料漏斗打印 + golden 超限 advisory。
-//
 // runSkillsMine does the mining: load (checklog×toollog) → MineGoldenDrafts → draft
 // persistence + raw-material funnel print + golden over-cap advisory.
 func runSkillsMine(cmd *cobra.Command, args []string) error {

@@ -13,18 +13,6 @@
 // 细节按需注入在写入时刻（glob 层的等价物：按目标文件路径命中的指针 + 范例）。
 // PostCompact 重注入不设 marker——压缩刚把上下文清空，此时摘要恰是恢复定向
 // 最便宜的手段，而 SessionStart 的 marker 防的是 resume 场景的重复注入。
-//
-// Package cli hook_conventions.go — the two Go-internal advisory hooks of
-// conventions-profile layer 2 (injection):
-//
-//	conventions-context → SessionStart + PostCompact (session digest: ≤15-line always-on layer)
-//	conventions-write   → PreToolUse Write|Edit (write-time: instruction pointers + sibling exemplars)
-//
-// Both never block (advisory, fail-open); both record a checklog observation
-// (CheckConventionsInject) with a Delivered/Channel stamp ONLY when they
-// actually emit — silent paths stamp nothing (same no-stamp contract as
-// failure-track/subagent-track). Session markers live under $TMPDIR
-// (short-lived, OS-cleaned, F6 — same lifespan choice as skill-trigger/test-nudge).
 package cli
 
 import (
@@ -42,20 +30,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// conventionsMarkerDir is the session-marker home under $TMPDIR. Same lifespan
-// class as skill-trigger's markers: session-scoped, OS-cleaned.
-//
 // conventionsMarkerDir 是 $TMPDIR 下的会话 marker 目录。与 skill-trigger 的
 // marker 同寿命类：会话级、OS 定期清理。
 func conventionsMarkerDir() string { return filepath.Join(os.TempDir(), "forge-conventions") }
 
-// runConventionsContextHook handles SessionStart + PostCompact: injects the
-// conventions digest (profile present) or a one-time init suggestion (profile
-// absent but the repo declares conventions). The SessionStart injection is
-// marker-gated to once per session id (resume re-fires the event with the same
-// id); PostCompact always injects — compaction just wiped the context the
-// digest was part of.
-//
 // runConventionsContextHook 处理 SessionStart + PostCompact：注入规范摘要
 // （有档案），或一次性建档建议（无档案但仓库已声明规范）。SessionStart 注入
 // 按 session id marker 每会话一次（resume 会以同一 id 重发事件）；PostCompact
@@ -67,10 +45,6 @@ func runConventionsContextHook(hookInput HookInput, root, version, agent string)
 	dataDir := forgedata.DataDirFor(root)
 	profile, err := conventions.LoadProfile(dataDir)
 	if err != nil {
-		// Corrupt profile: fail-open with a stderr hint; the advisory layer must
-		// never take a session down, and `forge conventions show` surfaces the
-		// rebuild path for interactive repair.
-		//
 		// 档案损坏：fail-open + stderr 提示；advisory 层绝不拖垮会话，
 		// `forge conventions show` 给交互修复的重建路径。
 		fmt.Fprintf(os.Stderr, "[conventions] warning: profile unreadable (%v) — rebuild with `forge conventions init`\n", err)
@@ -91,9 +65,6 @@ func runConventionsContextHook(hookInput HookInput, root, version, agent string)
 			markKind = "ctx"
 		}
 	} else {
-		// No profile: offer adoption once per session when the repo declares
-		// conventions — a scan tells whether anything is declared.
-		//
 		// 无档案：仓库已声明规范时每会话提供一次建档建议——扫一下才知道
 		// 有没有可建档的东西。
 		if conventionsMarkerExists(hookInput.SessionID, "suggest") {
@@ -119,22 +90,6 @@ func runConventionsContextHook(hookInput HookInput, root, version, agent string)
 	return emitErr
 }
 
-// runConventionsWriteHook handles PreToolUse Write|Edit: for each source/test
-// file being written in a directory NOT yet nudged this session, inject the
-// instruction-file pointers plus sibling exemplars. Silent when the profile is
-// absent (feature unadopted), the target is outside the project root (an
-// absolute user path must never ride an injection), or there is nothing to say
-// (no instructions and no exemplars — the dir is still marked only when
-// something was said).
-//
-// codex reports file edits as the apply_patch tool (hostcap PatchToolName)
-// with the patch in tool_input.command and NO file_path — this hook synthesizes
-// the target from the FIRST patch header via the same applyPatchFilePath the
-// runHook path-gates share (single source; multi-file patches take the first
-// target, same documented limitation). Without it the write-time layer was
-// structurally dead on codex (adversarial-review finding, 2026-08-28; closed
-// same day in conventions-followups).
-//
 // runConventionsWriteHook 处理 PreToolUse Write|Edit：对每目录首个被写的
 // 源/测试文件注入规范文件指针 + 同目录范例。以下情况静默：无档案（未采纳）、
 // 目标在项目根外（用户绝对路径绝不能搭注入的便车）、无可奉告（无规范声明
@@ -154,22 +109,11 @@ func runConventionsWriteHook(hookInput HookInput, root, version, agent string) e
 		if err := json.Unmarshal(hookInput.ToolInput, &fields); err != nil {
 			// 与 runHook 主解析路径同纪律：静默吞掉解析错误会让本 hook 在
 			// 方言异常的宿主上无声空转——stderr 一行，advisory 层不 fail。
-			//
-			// Same discipline as runHook's main parse path: silently swallowing
-			// parse errors would leave this hook silently no-opping on hosts
-			// with dialect quirks — one stderr line, the advisory layer never
-			// fails on it.
 			fmt.Fprintf(os.Stderr, "[conventions] warning: tool_input parse failed: %v\n", err)
 		}
 	}
 	if fields.FilePath == "" && hostcap.IsPatchTool(hookInput.ToolName) {
 		fields.FilePath = applyPatchFilePath(fields.Command)
-		// Patch headers are REPO-RELATIVE (codex apply_patch convention); the
-		// root guard + Exemplars below need an absolute target — join against
-		// root, else the out-of-root guard silently drops the synthesized
-		// relative path (the exact trap TestConventionsWriteHook_ApplyPatchSynthesis
-		// caught).
-		//
 		// patch 头是仓库相对路径（codex apply_patch 约定）；下方根守卫与
 		// Exemplars 需要绝对目标——按 root 拼接，否则根外守卫会静默丢掉合成
 		// 出的相对路径（正是 TestConventionsWriteHook_ApplyPatchSynthesis
@@ -187,10 +131,6 @@ func runConventionsWriteHook(hookInput HookInput, root, version, agent string) e
 	}
 	// 根外目标（如 $HOME、/tmp 下的写入）：不属于本项目，无「本仓库规范」
 	// 可言——静默跳过，也避免绝对路径进注入文本。
-	//
-	// Out-of-root targets (writes into $HOME, /tmp, ...): not this project's
-	// files, no "this repo's conventions" apply — silent skip, and no absolute
-	// path ever rides the injection.
 	if rel, err := filepath.Rel(root, fields.FilePath); err != nil || strings.HasPrefix(rel, "..") {
 		return nil
 	}
@@ -211,10 +151,6 @@ func runConventionsWriteHook(hookInput HookInput, root, version, agent string) e
 	}
 	// 先发射后标记：发射失败时该目录下一次写入仍能拿到注入（与上方 ctx/suggest
 	// marker 的顺序同理——marker 记「已送达」而非「已尝试」）。
-	//
-	// Emit before marking: on emission failure the next write to this dir can
-	// still get the injection (same ordering as the ctx/suggest markers above —
-	// a marker records "delivered", not "attempted").
 	recordConventionsInject(hookInput, root, version, agent,
 		fmt.Sprintf("write-time pointers injected for %s", relPath), map[string]string{"dir": dirKey})
 	if err := emitAdvisoryRouted(agent, hookInput.HookEventName, "conventions-write", root, hookInput.SessionID, true, inject); err != nil {
@@ -224,10 +160,6 @@ func runConventionsWriteHook(hookInput HookInput, root, version, agent string) e
 	return nil
 }
 
-// recordConventionsInject writes the observation entry with the delivery stamp
-// of the channel the emission actually uses (advisoryEmissionChannel covers
-// kimi's queue path — same contract as test-nudge).
-//
 // recordConventionsInject 落观察条目并盖输出实际使用通道的送达章
 // （advisoryEmissionChannel 覆盖 kimi 队列路径——与 test-nudge 同契约）。
 func recordConventionsInject(hookInput HookInput, root, version, agent, detail string, extra map[string]string) {
@@ -258,23 +190,17 @@ func recordConventionsInject(hookInput HookInput, root, version, agent, detail s
 
 // ---- session marker helpers ($TMPDIR/forge-conventions/<sess>/*) ----
 
-// conventionsMarkerPath builds the marker path for session id + kind.
-//
 // conventionsMarkerPath 构造 session id + kind 的 marker 路径。
 func conventionsMarkerPath(sessionID, kind string) string {
 	return filepath.Join(conventionsMarkerDir(), util.SanitizeSessionID(sessionID), kind+".marker")
 }
 
-// conventionsMarkerExists reports whether the (session, kind) marker landed.
-//
 // conventionsMarkerExists 报告 (session, kind) marker 是否已落盘。
 func conventionsMarkerExists(sessionID, kind string) bool {
 	_, err := os.Stat(conventionsMarkerPath(sessionID, kind))
 	return err == nil
 }
 
-// conventionsMarkSession lands the (session, kind) marker (best-effort).
-//
 // conventionsMarkSession 落 (session, kind) marker（尽力而为）。
 func conventionsMarkSession(sessionID, kind string) {
 	path := conventionsMarkerPath(sessionID, kind)
@@ -282,25 +208,18 @@ func conventionsMarkSession(sessionID, kind string) {
 	_ = util.AtomicWrite(path, []byte("1"), 0644)
 }
 
-// conventionsDirState is the write-hook's per-session nudged-directory set,
-// persisted at $TMPDIR/forge-conventions/<sess>/dirs.json.
-//
 // conventionsDirState 是写 hook 的会话级已提示目录集合，持久化在
 // $TMPDIR/forge-conventions/<sess>/dirs.json。
 type conventionsDirState struct {
 	Dirs map[string]bool `json:"dirs"`
 }
 
-// conventionsDirNudged reports whether this session already injected for dir.
-//
 // conventionsDirNudged 报告本会话是否已对 dir 注入过。
 func conventionsDirNudged(sessionID, dir string) bool {
 	state := loadConventionsDirState(sessionID)
 	return state.Dirs[dir]
 }
 
-// conventionsMarkDir records dir as nudged for this session (best-effort).
-//
 // conventionsMarkDir 把 dir 记为本会话已提示（尽力而为）。
 func conventionsMarkDir(sessionID, dir string) {
 	path := filepath.Join(conventionsMarkerDir(), util.SanitizeSessionID(sessionID), "dirs.json")
@@ -313,10 +232,6 @@ func conventionsMarkDir(sessionID, dir string) {
 	_ = util.AtomicWrite(path, mustJSONState(state), 0644)
 }
 
-// loadConventionsDirState reads the session's dir state (zero value on any
-// error — a lost state file degrades to at most one extra injection, never to
-// a lost one).
-//
 // loadConventionsDirState 读会话的目录状态（任何错误都取零值——状态文件丢失
 // 最多多注入一次，绝不会丢一次该有的注入）。
 func loadConventionsDirState(sessionID string) conventionsDirState {

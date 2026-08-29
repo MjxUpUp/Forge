@@ -1,8 +1,5 @@
 package projectsync
 
-// ledger_sha_test.go — HasImportedSHA: digest-level ledger hits (before-unpack
-// dedup), empty-digest never matches, corrupt lines skipped.
-//
 // ledger_sha_test.go —— HasImportedSHA：digest 级账本命中（解包前查重）、空摘要
 // 永不命中、坏行跳过。
 

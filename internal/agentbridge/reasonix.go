@@ -13,52 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// ReasonixTranslator wires forge at USER level into reasonix (DeepSeek-Reasonix) along
-// TWO surfaces, because reasonix is Claude-Code-compatible and ships a full lifecycle-hook
-// system — not just a skill loader:
-//
-//  1. Advisory skill — <reasonix home>/skills/forge-quality/SKILL.md, reasonix's native
-//     skill mechanism (SKILL.md files are loaded into the session skill index).
-//  2. Enforcement hooks — <reasonix home>/settings.json, a FLAT hooks schema
-//     { "hooks": { "<Event>": [ { "match": "<matcher>", "command": "forge hook <name>" } ] } }
-//     derived from hooks.ForgeHookSpec. This is the surface that actually enforces the
-//     quality protocol (task-guard / bash-guard / file-sentinel / read-before-edit /
-//     assertion-check): without it the protocol reaches reasonix only as advisory text
-//     (AGENTS.md) and compliance is inconsistent.
-//
-// reasonix's settings.json schema is flatter than Claude Code's nested
-// {matcher, hooks:[{type,command}]}: the field is `match` (not `matcher`) and the command
-// sits directly on the entry (no `type` wrapper). TWO reasonix-specific divergences from the
-// Claude Code shape are handled here, both load-bearing — without them the hooks fire but
-// enforce nothing (the original "reasonix rarely follows Forge" symptom):
-//  1. Tool names are snake_case. reasonix's tool roster is write_file/edit_file/multi_edit/
-//     move_file/bash/read_file (its [sandbox] config), so ForgeHookSpec's PascalCase matchers
-//     ("Write|Edit", "Bash") are translated by reasonixMatcher — else the Pre/PostToolUse hooks
-//     never match and never fire.
-//  2. The hook STDIN is camelCase ({event, sessionId, cwd, toolName, toolArgs}), not Claude's
-//     {hook_event_name, session_id, cwd, tool_name, tool_input}. So every Pre/PostToolUse command
-//     carries `--agent reasonix`, routing through reasonixNormalize (internal/cli/hook_normalize.go)
-//     — else tool_name/file_path parse empty and the path/command hooks (task-guard,
-//     read-before-edit, bash-guard, file-sentinel) fail open.
-//
-// The exit-code/block-JSON protocol IS Claude-Code-compatible, so forge's existing
-// {"decision":"block",...} + exit 1 output is honored unchanged (no protocol adaptation).
-//
-// No-op when the reasonix home does not exist — Forge never creates an agent's config home
-// (the detection self-poison guard: materializing the home on a machine without reasonix
-// would be wrong, and reasonix's home is not an auto-detect signal anyway — only the
-// project-level .reasonix/ dir is). Both writes are skipped when the home is missing.
-//
-// Merge semantics for settings.json: unknown top-level fields are preserved via
-// json.RawMessage; within the flat hooks section, entries whose command is not forge-sourced
-// are kept byte-for-byte (unknown entry fields intact — see merge_raw.go), and forge entries
-// are replaced wholesale with the current generated set, making Translate idempotent. The
-// first write is backed up (userassets.BackupOriginal) as a rollback anchor for
-// `forge uninstall --restore`, same contract as claude-code's user-level settings.json.
-//
-// Project-level .reasonix/ assets are never written: the default zero-project-write model
-// keeps the project dir clean, and reasonix's global settings/skills are visible in every
-// project anyway.
+// ReasonixTranslator wires forge into reasonix (DeepSeek-Reasonix) at the user level.
 //
 // ReasonixTranslator 在用户级接线 reasonix（DeepSeek-Reasonix），覆盖两个面——因为
 // reasonix 与 Claude Code 兼容、内置完整 lifecycle-hook 系统，而非仅 skill loader：
@@ -105,9 +60,6 @@ func (t *ReasonixTranslator) AgentType() AgentType {
 }
 
 func (t *ReasonixTranslator) Translate(projectDir string, input *TranslationInput) error {
-	// User-level translator: projectDir is intentionally ignored — the registration is
-	// machine-wide (same contract as CursorTranslator/KimiTranslator).
-	//
 	// 用户级 translator：刻意忽略 projectDir——注册是全机器生效（与
 	// CursorTranslator/KimiTranslator 同契约）。
 	if input.Protocol == nil {
@@ -117,12 +69,6 @@ func (t *ReasonixTranslator) Translate(projectDir string, input *TranslationInpu
 	if err != nil {
 		return fmt.Errorf("reasonix: %w", err)
 	}
-	// Detection self-poison guard: Forge must not create reasonix's config home, so both
-	// writes are skipped when the home is missing. Unlike claude-code (which MkdirAlls the
-	// home when its env is explicitly set), reasonix's home is never auto-created here — the
-	// guard is unconditional. Covers both the skill write and the settings.json write; the
-	// skill writer has the same check internally.
-	//
 	// 检测自毒防线：Forge 不创建 reasonix 的配置 home，故 home 缺失时两处写入都跳过。
 	// 与 claude-code（env 显式设置时 MkdirAll home）不同，reasonix 的 home 这里绝不自动
 	// 创建——防线是无条件的。同时覆盖 skill 写入与 settings.json 写入；skill writer 内部
@@ -130,21 +76,10 @@ func (t *ReasonixTranslator) Translate(projectDir string, input *TranslationInpu
 	if info, err := os.Stat(home); err != nil || !info.IsDir() {
 		return nil
 	}
-	// 1. Advisory skill — reasonix's native skill mechanism.
-	//
 	// 1. advisory skill——reasonix 的原生 skill 机制。
 	if err := skillgen.GenerateUserQualitySkillTo(filepath.Join(home, "skills"), input.Protocol); err != nil {
 		return fmt.Errorf("reasonix: %w", err)
 	}
-	// Plugin wins (kimi-style dedupe): when forge is installed as a reasonix plugin
-	// (`reasonix plugin install`), the plugin's reasonix-plugin.json manifest already
-	// registers every hook at the user level — merging into settings.json would double-run
-	// every hook (same dedupe philosophy as kimi.go's config.toml path and claude-code's
-	// plugin vs settings.local.json, internal/hooks/plugin_detect.go). The skill above is
-	// still written (the plugin pack ships no skill — writeReasonixPluginManifest emits only
-	// the hooks manifest), so this strip happens AFTER the skill write. Then we stop: plugin
-	// wins, no double-run.
-	//
 	// Plugin 优先（kimi 式 dedupe）：forge 已作为 reasonix plugin 安装
 	// （`reasonix plugin install`）时，plugin 的 reasonix-plugin.json manifest 已在 user
 	// level 注册全部 hook——再合并进 settings.json 会让每个 hook 双跑（与 kimi.go 的
@@ -158,10 +93,6 @@ func (t *ReasonixTranslator) Translate(projectDir string, input *TranslationInpu
 		}
 		return nil
 	}
-	// 2. Enforcement hooks — settings.json, flat schema derived from ForgeHookSpec. Backup
-	// first so `forge uninstall --restore` can roll back (reasonix's settings.json may hold
-	// user content beyond hooks, same reason claude-code backs up its user-level settings).
-	//
 	// 2. enforcement hooks——settings.json，由 ForgeHookSpec 派生的扁平 schema。先备份，
 	// 供 `forge uninstall --restore` 回滚（reasonix 的 settings.json 可能含 hooks 之外的
 	// 用户内容，与 claude-code 备份其用户级 settings 同理）。
@@ -175,13 +106,7 @@ func (t *ReasonixTranslator) Translate(projectDir string, input *TranslationInpu
 	return nil
 }
 
-// ReasonixConfigHome resolves reasonix's config home: $REASONIX_HOME when set, otherwise the
-// OS user-config dir + "reasonix" — %APPDATA%\reasonix on Windows, ~/.config/reasonix on
-// Linux, ~/Library/Application Support/reasonix on macOS (os.UserConfigDir convention).
-// reasonix reads settings.json from this location (its binary changelog: "Global hooks in
-// settings.json are now migrated to the new config home"), so wiring MUST write here or the
-// hooks never load. Env override doubles as test isolation (same pattern as CODEX_HOME /
-// KIMI_CODE_HOME).
+// ReasonixConfigHome resolves reasonix's config home: $REASONIX_HOME when set, otherwise the OS user-config dir + "reasonix" — %APPDATA%\reasonix on Windows, ~/.config/reasonix on Linux, ~/Library/Application Support/reasonix on macOS (os.UserConfigDir convention). reasonix reads settings.json from this location (its binary changelog: "Global hooks in settings.json are now migrated to the new config home"), so wiring MUST write here or the hooks never load.
 //
 // ReasonixConfigHome 解析 reasonix 的配置 home：设了 $REASONIX_HOME 用它，否则 OS 用户配置
 // 目录 + "reasonix"——Windows 上 %APPDATA%\reasonix、Linux 上 ~/.config/reasonix、macOS 上
@@ -200,12 +125,6 @@ func ReasonixConfigHome() (string, error) {
 	return filepath.Join(base, "reasonix"), nil
 }
 
-// reasonixHookEntry is reasonix's flat hook-entry shape: {match, command}. Mirrors
-// cursorHookEntry but with `match` (reasonix's field name, not cursor's `matcher`) and no
-// type/timeout — reasonix's schema is flatter than Claude Code's nested
-// {matcher, hooks:[{type,command}]}. match is omitempty so session-level events (SessionStart,
-// Stop — no matcher) serialize without the key.
-//
 // reasonixHookEntry 是 reasonix 的扁平 hook 条目形态：{match, command}。镜像
 // cursorHookEntry，但字段是 `match`（reasonix 的字段名，非 cursor 的 `matcher`），且无
 // type/timeout——reasonix 的 schema 比 Claude Code 的嵌套 {matcher, hooks:[{type,command}]}
@@ -216,17 +135,6 @@ type reasonixHookEntry struct {
 	Command string `json:"command"`
 }
 
-// reasonixEventName whitelists the Claude-Code PascalCase events reasonix's hook system
-// accepts. reasonix is CC-compatible and uses the event names verbatim (confirmed: a
-// settings.json with "PreToolUse" produces hook status active), so this is a filter, not a
-// remap. Events outside the whitelist return ok=false so buildReasonixHooks skips them —
-// reasonix may reject the WHOLE file on an unknown event (as it rejected the CC double-nested
-// form), so the set is intentionally conservative: the four classic lifecycle events that
-// carry all hard enforcement (PreToolUse/PostToolUse/Stop/SessionStart). PostCompact and
-// UserPromptSubmit (compact-resume / resume-reinject — re-injection conveniences, not
-// enforcement) are omitted until empirically confirmed supported; expand after probing each
-// via `reasonix hook status --json` (see plan verification).
-//
 // reasonixEventName 白名单化 reasonix hook 系统接受的 Claude-Code PascalCase event。
 // reasonix 与 CC 兼容、原样使用 event 名（已确认：带 "PreToolUse" 的 settings.json 产出
 // hook status active），故这是过滤而非重映射。白名单外的 event 返回 ok=false，供
@@ -244,12 +152,6 @@ func reasonixEventName(event string) (string, bool) {
 	}
 }
 
-// buildReasonixHooks derives reasonix's flat settings.json hooks from hooks.ForgeHookSpec
-// (single source of truth). Clones buildCursorHooks' flatten loop: iterate the spec, skip
-// events failing the reasonix whitelist, and flatten each matcher's hook list to one entry per
-// hook — carrying the matcher onto each entry as `match` and dropping the `type` wrapper
-// (always "command"). No manual copy → no drift vs ForgeHookSpec.
-//
 // buildReasonixHooks 从 hooks.ForgeHookSpec（单一真相源）派生 reasonix 的扁平 settings.json
 // hooks。克隆 buildCursorHooks 的扁平化循环：遍历 spec，跳过未过 reasonix 白名单的 event，
 // 把每个 matcher 的 hook 列表扁平化为每 hook 一个条目——matcher 作为 `match` 带到每个条目，
@@ -262,16 +164,6 @@ func buildReasonixHooks() map[string]any {
 		if !ok {
 			continue
 		}
-		// Tool events (PreToolUse/PostToolUse) carry toolName/toolArgs in reasonix's camelCase
-		// dialect, so their commands carry `--agent reasonix` to route through reasonixNormalize
-		// (without it, tool_name/file_path parse empty and every path/command hook — task-guard,
-		// read-before-edit, bash-guard, file-sentinel — fails open). Session events
-		// (SessionStart/Stop) ALSO carry `--agent reasonix` now: without it they parsed as
-		// Claude-shape stdin, so the camelCase sessionId never mapped to SessionID — every
-		// SessionStart/Stop event landed on the legacy global key, and the session was never
-		// registered/stamped as reasonix (2026-08 attribution audit). reasonixNormalize is
-		// fill-empty and safe on tool-less payloads (it only maps what is present).
-		//
 		// 工具事件（PreToolUse/PostToolUse）在 reasonix 的 camelCase 方言里携带 toolName/toolArgs，
 		// 故其命令带 `--agent reasonix` 走 reasonixNormalize（否则 tool_name/file_path 解析为空，
 		// 每个基于路径/命令的 hook——task-guard、read-before-edit、bash-guard、file-sentinel——
@@ -294,17 +186,6 @@ func buildReasonixHooks() map[string]any {
 	}
 }
 
-// reasonixMatcher translates a Claude-Code tool-name matcher (pipe-separated PascalCase tokens,
-// as in ForgeHookSpec: "Write|Edit", "Bash", "Read|Skill|Agent") into the equivalent reasonix
-// matcher. reasonix's tool surface is snake_case and finer-grained than Claude Code: a single CC
-// Edit covers edit_file + multi_edit + move_file, the shell is bash, and reads are read_file;
-// there is no Skill/Agent tool (those tokens map to nothing — tool-track still fires on
-// read_file). reasonix's `match` is a pipe-separated regex with the same alternation semantics as
-// Claude Code, so translation is a per-token remap joined back with "|". Unknown tokens pass
-// through verbatim (forward-compat). This is the fix for the original "reasonix hooks never fire"
-// root cause: ForgeHookSpec's PascalCase matchers ("Write|Edit") do not match reasonix's
-// snake_case tool names ("edit_file"), so every Pre/PostToolUse hook silently failed to match.
-//
 // reasonixMatcher 把 Claude-Code 工具名 matcher（管道分隔的 PascalCase token，如 ForgeHookSpec
 // 里的 "Write|Edit"、"Bash"、"Read|Skill|Agent"）翻译成等价的 reasonix matcher。reasonix 的工具面
 // 是 snake_case 且比 Claude Code 更细：一个 CC Edit 覆盖 edit_file + multi_edit + move_file，shell
@@ -328,15 +209,6 @@ func reasonixMatcher(matcher string) string {
 	return strings.Join(out, "|")
 }
 
-// reasonixMatcherTokens maps one Claude-Code matcher token to zero or more reasonix tool-name
-// tokens. Verified against reasonix's [sandbox] tool roster (config.toml): write_file is the
-// creator, edit_file/multi_edit/move_file are the editors (all map to CC Edit — the path hooks
-// care about file_path, not the create/edit distinction), bash is the shell, read_file is the
-// reader. Skill/Agent/Grep/Glob have no reasonix equivalent and map to nothing (Grep/Glob joined
-// the tool-track matcher on 2026-08-23; dropping them here — instead of the default
-// passthrough — keeps PascalCase tokens out of reasonix's snake_case tool face, where they
-// would never match AND trip the mixed-casing leak check).
-//
 // reasonixMatcherTokens 把单个 Claude-Code matcher token 映射为零或多个 reasonix 工具名 token。
 // 已对 reasonix 的 [sandbox] 工具名册（config.toml）核实：write_file 是创建器，
 // edit_file/multi_edit/move_file 是编辑器（都映射到 CC Edit——基于路径的 hook 关心 file_path
@@ -360,14 +232,6 @@ func reasonixMatcherTokens(tok string) []string {
 	return []string{tok}
 }
 
-// mergeReasonixHooks merges the generated forge wiring into reasonix's settings.json at path.
-// Mirrors mergeForgeHooksIntoSettings (path-based, RawMessage top-level preservation, backup
-// handled by the caller) but for the FLAT hooks shape: stripForgeFlatEntriesRaw removes stale
-// forge entries (kept user entries byte-verbatim), then the current buildReasonixHooks set is
-// appended per event. Output is deterministic → Translate is idempotent. A missing file is
-// created; a non-NotExist read/parse error is returned (never silently overwrite unreadable
-// user config).
-//
 // mergeReasonixHooks 把生成的 forge 接线合并进 path 处的 reasonix settings.json。镜像
 // mergeForgeHooksIntoSettings（基于 path、RawMessage 顶层保留、备份由调用方处理），但用于
 // 扁平 hooks 形态：stripForgeFlatEntriesRaw 移除陈旧 forge 条目（保留的用户条目逐字节不动），
@@ -408,19 +272,12 @@ func mergeReasonixHooks(path string) error {
 	if err != nil {
 		return fmt.Errorf("marshal settings.json: %w", err)
 	}
-	// Trailing newline matches StripReasonixHooksUserLevel (and the cursor convention) so a
-	// merge→strip→merge cycle leaves the file byte-stable.
-	//
 	// 尾随换行对齐 StripReasonixHooksUserLevel（与 cursor 约定），使 merge→strip→merge
 	// 循环后文件逐字节稳定。
 	return util.AtomicWrite(path, append(data, '\n'), 0644)
 }
 
-// StripReasonixHooksUserLevel removes forge hooks from reasonix's user-level settings.json
-// (uninstall path). Clones StripCursorHooksUserLevel for the flat shape: user-defined entries
-// (unknown fields intact, see merge_raw.go) and unknown top-level fields are preserved; the
-// file itself is never deleted. Reports whether the file was actually modified; a missing file
-// or a file without forge hooks is a clean no-op.
+// StripReasonixHooksUserLevel removes forge hooks from reasonix's user-level settings.json (uninstall path).
 //
 // StripReasonixHooksUserLevel 移除 reasonix 用户级 settings.json 中的 forge hooks（卸载路径）。
 // 克隆 StripCursorHooksUserLevel 用于扁平形态：用户自定义条目（未知字段不丢，见
@@ -470,30 +327,11 @@ func StripReasonixHooksUserLevel() (bool, error) {
 	return true, nil
 }
 
-// reasonixPluginName is the plugin id reasonix registers under. Must stay "forge": the
-// plugin-wins detection keys on it, matching writeReasonixPluginManifest's manifest name.
-//
 // reasonixPluginName 是 reasonix 注册时用的 plugin id。必须保持 "forge"：plugin-wins 检测
 // 以它为 key，与 writeReasonixPluginManifest 的 manifest name 一致。
 const reasonixPluginName = "forge"
 
-// IsReasonixPluginInstalled reports whether the forge plugin is installed (and active) in
-// reasonix, by reading <reasonix home>/plugin-packages.json — the registry reasonix's
-// `reasonix plugin install` writes (configPath surfaced by `--dry-run`). reasonix's
-// plugin add/remove is also exposed via the `/plugins` in-app slash command, so the
-// on-disk registry is the only signal a CLI can read (same situation as IsKimiPluginInstalled).
-//
-// The parse is deliberately TOLERANT and recursive: the exact record schema is not
-// documented (reasonix pre-1.0), and the registry may be a top-level array, an object
-// keyed by plugin name, an object with a `packages`/`plugins` array, or a nested tree.
-// reasonixFindForge walks any such shape looking for a map whose `name` (the manifest
-// field writeReasonixPluginManifest writes) is "forge"; an entry counts only when not
-// explicitly disabled (enabled defaults true — mirrors IsKimiPluginInstalled). The
-// trade-off this accepts: an unrelated third-party plugin also named "forge" (id
-// collision, no source check — checking source would punish forks) would make Translate
-// strip settings.json hooks without that plugin registering forge hooks; judged
-// improbable enough to stay a tolerant read rather than a strict one (same call kimi
-// made). A missing/unreadable/garbled registry is a clean false.
+// IsReasonixPluginInstalled reports whether the forge plugin is installed (and active) in reasonix.
 //
 // IsReasonixPluginInstalled 报告 forge plugin 是否已在 reasonix 安装（且激活），读
 // <reasonix home>/plugin-packages.json——reasonix 的 `reasonix plugin install` 写入的
@@ -523,12 +361,6 @@ func IsReasonixPluginInstalled() bool {
 	return reasonixFindForge(reg)
 }
 
-// reasonixFindForge walks an arbitrary decoded-JSON value looking for an active forge
-// plugin entry (see IsReasonixPluginInstalled). A node that IS a forge entry is a leaf
-// for the search (we never recurse into an entry's own children looking for more entries),
-// so a disabled forge entry returns false from its own call without poisoning the search
-// for an enabled sibling elsewhere in the tree.
-//
 // reasonixFindForge 在任意解码后的 JSON 值里找激活的 forge plugin 条目（见
 // IsReasonixPluginInstalled）。本身是 forge 条目的节点是搜索的叶子（绝不递归进条目自身
 // 的子树找更多条目），故被禁用的 forge 条目从其自身调用返回 false，不会毒化树中别处
@@ -537,10 +369,6 @@ func reasonixFindForge(v any) bool {
 	switch node := v.(type) {
 	case map[string]any:
 		if name, _ := node["name"].(string); name == reasonixPluginName {
-			// This node is a forge entry. It is a search leaf: count it only when active.
-			// Returning false here (disabled) does not abort the enclosing loop — the caller
-			// keeps scanning siblings for an active forge entry.
-			//
 			// 本节点是 forge 条目。它是搜索叶子：仅激活时算数。此处返回 false（被禁用）
 			// 不会中止外层循环——调用方会继续扫兄弟节点找激活的 forge 条目。
 			if enabled, ok := node["enabled"].(bool); ok && !enabled {

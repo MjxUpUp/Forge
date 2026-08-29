@@ -7,29 +7,11 @@ import (
 	"testing"
 )
 
-// al is a shorthand for constructing addedLine (used in detector unit tests).
-//
 // al 是构造 addedLine 的简写（detector 单测用）。
 func al(file string, line int, text string) addedLine {
 	return addedLine{file: file, lineNo: line, text: text}
 }
 
-// TestDetectors table-drives the five single-shot line detectors (type-suppression /
-// error-swallow / dead-branch / comment-debt / path-assumption): each row pins the
-// hit count for one sample line plus the finding shape (pattern / severity / file).
-// Row semantics per group:
-//   - type-suppression: the 7 suppression directives hit, plain lines / literal
-//     mentions do not, multi-directive on one line counts once.
-//   - error-swallow: empty catch / except:pass hit; catch with body is not falsely
-//     reported.
-//   - dead-branch: never-true branches hit; legal conditions are not falsely reported.
-//   - comment-debt: debt markers in added comment lines hit (collocation noise M1
-//     suppressed); marker words in code lines / plain comments are not falsely
-//     reported; pins comment-as-debt (laziness ladder reverse level 0).
-//   - path-assumption: separator-as-matcher fingerprint (the 2026-08-19 Windows CI
-//     incident) — prefix/suffix/contains matching with the OS separator is flagged;
-//     path CONSTRUCTION (TrimRight/Join) is not.
-//
 // TestDetectors 表驱动五个单行检测器（type-suppression / error-swallow /
 // dead-branch / comment-debt / path-assumption）：每行钉一条样本的命中数 + finding
 // 形态（pattern/severity/file）。分组语义：

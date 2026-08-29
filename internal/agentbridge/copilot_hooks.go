@@ -6,34 +6,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// Copilot plugin-hooks wiring (Wave 2c). Copilot officially supports lifecycle hooks
-// (docs.github.com/en/copilot/reference/hooks-reference), and plugins contribute
-// hooks via "each plugin's own hooks.json (or hooks/hooks.json) inside the plugin's
-// installation directory". Forge ships the manifest at the plugin ROOT
-// (plugins/<name>/hooks.json) — deliberately NOT hooks/hooks.json: Claude Code also
-// loads hooks/hooks.json from an installed plugin, and .claude-plugin/plugin.json
-// already carries the same hooks field, so the hooks/ location would make every
-// hook double-fire on Claude. The root location is copilot's other documented
-// plugin-hook path and Claude ignores it.
-//
-// Format: copilot's hook configuration schema {"version":1,"hooks":{<Event>:[entry]}}
-// with PascalCase event keys — copilot's Claude/VS Code compatibility mode, which
-// the docs name as "as used in Claude Code plugins and the Open Plugins format".
-// PascalCase keys give Claude matcher semantics and snake_case payloads, so the
-// stdin side needs no normalizer and Claude tool-name matchers pass through
-// VERBATIM: copilot maps its runtime tools onto Claude names before matching
-// (bash/powershell→Bash, view→Read, create→Write, edit/str_replace_editor/
-// apply_patch→Edit, task→Agent). apply_patch reports as Edit (unlike codex) — no
-// matcher widening needed here.
-//
-// Two copilot-specific deltas vs the spec: commands carry ` --agent copilot`
-// (output-protocol selection — copilot parses no decision:"approve", injects context
-// as top-level camelCase additionalContext on sessionStart/postToolUse only, and
-// agentStop blocks ONLY via stdout {"decision":"block"} + exit 0; see
-// emitCopilotOutput in internal/cli/hook.go), and each entry sets timeoutSec 60
-// (copilot's default 30s risks killing heavier gates — task-verify forks several
-// forge subprocesses).
-//
 // Copilot plugin-hooks wiring（Wave 2c）。Copilot 官方支持 lifecycle hooks
 // （docs.github.com/en/copilot/reference/hooks-reference），plugin 以"plugin 自己的
 // hooks.json（或 hooks/hooks.json），位于 plugin 安装目录内"贡献 hooks。Forge 把
@@ -57,20 +29,6 @@ import (
 // 每个条目设 timeoutSec 60（copilot 默认 30s，重型门禁——task-verify 要 fork 多个
 // forge 子进程——有被杀风险）。
 //
-// KNOWN GAP — VS Code (code review Wave 2c finding, doc-confirmed against
-// code.visualstudio.com/docs/agent-customization/agent-plugins): VS Code
-// auto-detects the plugin FORMAT by the manifest marker — .claude-plugin/plugin.json
-// means CLAUDE format, and Claude-format hooks are read ONLY from hooks/hooks.json;
-// the ROOT hooks.json is the Copilot-format location. Forge ships the Claude marker
-// (needed for Claude Code), so on VS Code the root hooks.json is likely INERT (VS
-// Code resolves hooks/hooks.json, which this pack does not ship). Copilot CLI itself
-// documents "each plugin's own hooks.json (or hooks/hooks.json)" — both paths — so
-// the CLI route works. Shipping hooks/hooks.json to close the VS Code gap would
-// double-fire every hook on Claude Code (it loads hooks/hooks.json alongside the
-// plugin.json hooks field); restructuring safely requires live verification on both
-// hosts, which this environment cannot do — documented honestly here + README until
-// then (same pattern as the codex "not officially confirmed" caveat).
-//
 // 已知缺口——VS Code（Wave 2c 代码审查发现，已对照 code.visualstudio.com/docs/
 // agent-customization/agent-plugins 文档核实）：VS Code 按 manifest 标记自动检测
 // plugin 格式——.claude-plugin/plugin.json 即 CLAUDE 格式，而 Claude 格式的 hooks
@@ -83,12 +41,6 @@ import (
 // 做不到——在此之前在此 + README 诚实文档化（与 codex"未官方确认"caveat 同款
 // 模式）。
 
-// copilotHookEntry is copilot's flat hook-entry shape: {type, command, matcher,
-// timeoutSec}. Copilot's config format is flatter than Claude Code's nested
-// {matcher, hooks:[{type,command}]}: the command sits directly on the entry and the
-// matcher rides along as a sibling field. matcher is omitempty so session-level
-// events (SessionStart, Stop — no matcher) serialize without the key.
-//
 // copilotHookEntry 是 copilot 的扁平 hook 条目形态：{type, command, matcher,
 // timeoutSec}。copilot 的配置格式比 Claude Code 的嵌套 {matcher, hooks:[{type,command}]}
 // 更扁平：command 直接挂在条目上，matcher 作为兄弟字段。matcher 用 omitempty，
@@ -100,24 +52,6 @@ type copilotHookEntry struct {
 	TimeoutSec int    `json:"timeoutSec,omitempty"`
 }
 
-// copilotEventName whitelists the Claude-Code PascalCase events copilot's hook
-// system accepts (PascalCase keys are the documented Claude-compat form of
-// copilot's camelCase roster: preToolUse/postToolUse/agentStop/sessionStart/
-// userPromptSubmitted). PostCompact has NO copilot analogue (the roster ships only
-// the observe-only preCompact, whose output is not processed), so it returns ok=false
-// — shipping an unknown event key risks item-level drops at load. Anything else in
-// the spec without a copilot analogue is filtered the same way.
-//
-// PostToolUseFailure/SubagentStop added 2026-08-22: both are in copilot's official
-// hooks reference (14-event roster, spec-research4), carrying failure-track/
-// subagent-track (#4-A follow-up). Payloads stay Claude-shape snake_case (the
-// PascalCase compat mode documented for the wired events), so the stdin side needs
-// no normalizer. subagentStop can block via stdout {"decision":"block"} + exit 0 —
-// irrelevant for the observe-only subagent-track. postToolUseFailure's documented
-// exit-2-stdout→additionalContext channel is NOT used: failure-track stays
-// allow-path, and that channel requires live verification before wiring (same
-// discipline as the kimi whitelist — unverified channels stay unwired).
-//
 // copilotEventName 白名单化 copilot hook 系统接受的 Claude-Code PascalCase event
 // （PascalCase 键是 copilot camelCase 名册——preToolUse/postToolUse/agentStop/
 // sessionStart/userPromptSubmitted——文档化的 Claude 兼容形态）。PostCompact 无
@@ -143,14 +77,6 @@ func copilotEventName(event string) (string, bool) {
 	}
 }
 
-// buildCopilotHooks derives the copilot plugin-hooks manifest from hooks.ForgeHookSpec
-// (single source of truth). Mirrors buildReasonixHooks' flatten loop: iterate the
-// spec, skip events failing the copilot whitelist, flatten each matcher's hook list
-// to one entry per hook — carrying the matcher onto each entry verbatim (copilot
-// matches Claude tool names, see the file-header comment), wrapping the type, and
-// appending ` --agent copilot` to forge commands (output-protocol selection). No
-// manual copy → no drift vs ForgeHookSpec.
-//
 // buildCopilotHooks 从 hooks.ForgeHookSpec（单一真相源）派生 copilot 的 plugin-hooks
 // manifest。镜像 buildReasonixHooks 的扁平化循环：遍历 spec，跳过未过 copilot 白名单
 // 的 event，把每个 matcher 的 hook 列表扁平化为每 hook 一个条目——matcher 原样带到
@@ -185,14 +111,6 @@ func buildCopilotHooks() map[string]any {
 	}
 }
 
-// writeCopilotHooksManifest writes plugins/<name>/hooks.json — at the plugin ROOT,
-// copilot's documented "each plugin's own hooks.json" location (NOT hooks/hooks.json,
-// which Claude Code would double-fire alongside .claude-plugin/plugin.json's hooks
-// field; see the file-header comment). Copilot is thus the 6th host served by the
-// plugin pack: the marketplace install wires the gate set with no manual init step.
-// TestPluginPack_CommittedCopilotManifestMatchesGenerator guards the committed copy
-// against generator drift.
-//
 // writeCopilotHooksManifest 写 plugins/<name>/hooks.json——位于 plugin 根，即 copilot
 // 文档化的 "每个 plugin 自己的 hooks.json" 位置（不用 hooks/hooks.json——Claude Code
 // 会与 .claude-plugin/plugin.json 的 hooks 字段双跑；见文件头注释）。copilot 由此成为

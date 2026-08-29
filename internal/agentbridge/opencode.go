@@ -8,46 +8,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// OpencodeTranslator installs forge.ts into opencode's USER-LEVEL global plugin
-// directory ($XDG_CONFIG_HOME/opencode/plugins/forge.ts, or
-// ~/.config/opencode/plugins/forge.ts when XDG_CONFIG_HOME is unset — opencode's
-// documented global plugin location, https://opencode.ai/docs/plugins/).
-// opencode (opencode.ai, Bun-based) loads TS plugins from that directory at startup; the plugin's
-// `tool.execute.before` hook runs before each tool call, and throwing inside it short-circuits the Effect so the tool
-// never executes (verified at the opencode packages/opencode/src/session/tools.ts call site and
-// packages/opencode/src/plugin/index.ts trigger). This puts opencode alongside
-// claude-code/codex/cursor/windsurf as an agent where Forge gates can truly be enforced.
-//
-// The user-level location mirrors the kimi/claude-code model: one machine-wide
-// registration instead of a per-project .opencode/plugins/forge.ts copy, so forge
-// init/sync no longer writes into the project directory (user-level assets migration).
-// forge.ts is fully owned by forge — Translate overwrites it outright (no merge);
-// StripOpenCodeUserPlugin deletes it. The project-level .opencode/forge.README.md is
-// no longer written (loading docs live in the forge docs now that the plugin is global).
-//
-// opencode's hook callback builds a Claude-Code-shape stdin (session_id,
-// hook_event_name, tool_name, tool_input, forge_agent), spawns `forge hook <name>`, and throws when forge
-// blocks. No `--agent` normalizer is needed: the plugin emits the dialect forge parses natively.
-// Attribution rides the payload's forge_agent field (HookInput.ForgeAgent) instead of an
-// --agent suffix, keeping the command roster byte-stable for TestOpencodePluginWiring.
-//
-// Field mapping (opencode tool args → Claude tool_input):
-//   - write/edit/applypatch  args.filePath  → tool_input.file_path
-//   - bash                    args.command   → tool_input.command
-//   - write                   args.content   → tool_input.content
-//   - edit                    args.newText   → tool_input.content  (opencode uses newText, not new_string)
-//
-// Event coverage exemption (registered 2026-08-16 continuity audit): this integration
-// wires ONLY opencode's tool.execute.before/after plugin entries (PRE_HOOKS/POST_HOOKS
-// in buildOpencodePlugin). No session-lifecycle entries are wired, so the following
-// ForgeHookSpec groups never fire on opencode: SessionStart group (skill-scan/
-// mcp-scan/init-suggest/task-resume), Stop group (task-verify/review-stop),
-// UserPromptSubmit group (resume-reinject/skill-trigger), and PostCompact
-// (compact-resume). Consequences: no startup security scans or task-resume injection,
-// task-verify/review-stop gates and passive skill triggering are absent on this host —
-// quality enforcement on opencode is limited to the tool-hook gates above. Mirrored in
-// the host-coverage note inside ForgeHookSpec (hooks/settings.go). The skill-trigger
-// absence is additionally pinned by opencodeExemptions in translator_test.go.
+// OpencodeTranslator installs forge.ts into opencode's user-level global plugin directory.
 //
 // OpencodeTranslator 把 forge.ts 装进 opencode 的 user-level 全局 plugin 目录
 // （$XDG_CONFIG_HOME/opencode/plugins/forge.ts；XDG_CONFIG_HOME 未设时为
@@ -90,10 +51,6 @@ import (
 type OpencodeTranslator struct{}
 
 func (t *OpencodeTranslator) Translate(projectDir string, input *TranslationInput) error {
-	// User-level translator: projectDir is intentionally ignored — the registration is
-	// machine-wide (same contract as KimiTranslator). forge.ts is forge-owned, so this
-	// is a plain overwrite (idempotent by construction), not a merge.
-	//
 	// 用户级 translator：刻意忽略 projectDir——注册是全机器生效（与 KimiTranslator
 	// 同契约）。forge.ts 由 forge 拥有，故直接覆盖写（天然幂等），不做 merge。
 	path, err := OpencodePluginPath()
@@ -113,10 +70,7 @@ func (t *OpencodeTranslator) AgentType() AgentType {
 	return AgentOpencode
 }
 
-// OpencodePluginPath resolves the user-level global forge.ts plugin path:
-// $XDG_CONFIG_HOME/opencode/plugins/forge.ts when XDG_CONFIG_HOME is set, otherwise
-// ~/.config/opencode/plugins/forge.ts (opencode resolves its global config dir via
-// the XDG convention, https://opencode.ai/docs/config/).
+// OpencodePluginPath resolves the user-level global forge.ts plugin path.
 //
 // OpencodePluginPath 解析 user-level 全局 forge.ts plugin 路径：设了
 // XDG_CONFIG_HOME 用 $XDG_CONFIG_HOME/opencode/plugins/forge.ts，否则
@@ -134,10 +88,7 @@ func OpencodePluginPath() (string, error) {
 	return filepath.Join(base, "opencode", "plugins", "forge.ts"), nil
 }
 
-// StripOpenCodeUserPlugin deletes the forge-owned user-level global plugin
-// ($XDG_CONFIG_HOME/opencode/plugins/forge.ts or ~/.config/opencode/plugins/forge.ts).
-// Reports whether the file existed and was removed; a missing file is a clean no-op.
-// Nothing else in the plugins directory is touched (other plugins are user-owned).
+// StripOpenCodeUserPlugin deletes the forge-owned user-level global plugin ($XDG_CONFIG_HOME/opencode/plugins/forge.ts or ~/.config/opencode/plugins/forge.ts).
 //
 // StripOpenCodeUserPlugin 删除 forge 拥有的 user-level 全局 plugin
 // （$XDG_CONFIG_HOME/opencode/plugins/forge.ts 或
@@ -157,10 +108,6 @@ func StripOpenCodeUserPlugin() (bool, error) {
 	return true, nil
 }
 
-// buildOpencodePlugin returns the TypeScript plugin source. The PRE_HOOKS /
-// POST_HOOKS rosters embedded in the TS string mirror the per-matcher wiring in hooks.ForgeHookSpec —
-// TestOpencodePluginWiring guards drift by extracting the `forge hook <name>` call sites from this string.
-//
 // buildOpencodePlugin 返回 TypeScript plugin 源码。嵌入 TS 字符串里的 PRE_HOOKS /
 // POST_HOOKS 名单镜像 hooks.ForgeHookSpec 中的 per-matcher 接线——
 // TestOpencodePluginWiring 通过从该字符串中提取 `forge hook <name>` 调用点来守卫 drift。

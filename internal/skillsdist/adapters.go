@@ -7,8 +7,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// AdapterSpec is a single-file distribution definition for a skill-routing adapter (aligned with sync.py ADAPTERS).
-// Codex has no file-based adapter (injected via AGENTS.md text), so only 4 file-based ones exist here.
+// AdapterSpec is a single-file distribution definition for a skill-routing
+// adapter (aligned with sync.py ADAPTERS).
 //
 // AdapterSpec 是一个 skill-routing adapter 单文件分发定义（对齐 sync.py ADAPTERS）。
 // Codex 无文件型 adapter（经 AGENTS.md 文字注入），故此处只有 4 个文件型。
@@ -17,7 +17,8 @@ type AdapterSpec struct {
 	Dst    string // 目标绝对路径（基于 home）
 }
 
-// Adapters returns the 4 skill-routing adapter specs (aligned with the sync.py ADAPTERS constant).
+// Adapters returns the 4 skill-routing adapter specs (aligned with the sync.py
+// ADAPTERS constant).
 //
 // Adapters 返回 4 个 skill-routing adapter 规格（对齐 sync.py ADAPTERS 常量）。
 func Adapters(home string) []AdapterSpec {
@@ -38,7 +39,8 @@ type AdapterAction struct {
 	Detail string
 }
 
-// PlanAdapters compares the canonical source with the target and returns each adapter action (no execution, dry-run).
+// PlanAdapters compares the canonical source with the target and returns each
+// adapter action (no execution, dry-run).
 //
 // PlanAdapters 对比 canonical 源与目标，返回每个 adapter 的动作（不执行，dry-run）。
 func PlanAdapters(canonical, home string) []AdapterAction {
@@ -64,7 +66,8 @@ func PlanAdapters(canonical, home string) []AdapterAction {
 	return out
 }
 
-// DeployAdapters executes all deploy actions (single-file atomic copy), returning the count deployed + the final plan.
+// DeployAdapters executes all deploy actions (single-file atomic copy),
+// returning the count deployed + the final plan.
 //
 // DeployAdapters 执行所有 deploy 动作（单文件原子拷贝），返回部署数 + 最终计划。
 func DeployAdapters(canonical, home string) (int, []AdapterAction, error) {

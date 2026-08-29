@@ -1,8 +1,5 @@
 package cli
 
-// skills_eval_dir_test.go — the --dir persistent flag routes the eval command family
-// at an explicit data dir (repo-level evals/ / CI) instead of the user-level default.
-//
 // skills_eval_dir_test.go —— --dir persistent flag 让 eval 命令族落到显式数据目录
 // （仓库级 evals/ / CI），而非用户级默认。
 

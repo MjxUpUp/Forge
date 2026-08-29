@@ -12,8 +12,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/registry"
 )
 
-// writeRekeyFixture seeds one side of a split-identity data dir pair.
-//
 // writeRekeyFixture 种分裂身份数据目录对的一侧。
 func writeRekeyFixture(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
@@ -28,19 +26,12 @@ func writeRekeyFixture(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
-// checklogLine builds one checklog JSONL line with the given RFC3339 timestamp.
-//
 // checklogLine 造一条带指定 RFC3339 时间戳的 checklog JSONL 行。
 func checklogLine(ts, detail string) string {
 	return `{"check":"task-guard","passed":true,"checked":true,"tool_name":"Edit","detail":"` + detail + `","recorded_at":"` + ts + `"}`
 }
 
-// TestRegistryRekey is the FORGE_DATA_HOME-isolated e2e for `forge registry rekey`:
-// two key data dirs with interleaved-timestamp JSONL logs, conflicting and unique
-// tasks, a live-session anchor, and a protocol.yml conflict. Asserts: merged log is
-// timestamp-ordered with no event lost, tasks are the union with the to-side winning
-// conflicts, dry-run touches nothing, the from-dir survives as a backup (never
-// deleted), and the registry drops the from-key entry.
+// TestRegistryRekey is the FORGE_DATA_HOME-isolated e2e for `forge registry rekey`: two key data dirs with interleaved-timestamp JSONL logs, conflicting and unique tasks, a live-session anchor, and a protocol.yml conflict.
 //
 // TestRegistryRekey 是 `forge registry rekey` 的 FORGE_DATA_HOME 隔离 e2e：两个
 // key 数据目录、时间戳交错的 JSONL 日志、冲突与独有任务、活会话锚文件、
@@ -70,8 +61,6 @@ func TestRegistryRekey(t *testing.T) {
 		`protocol.yml`: `side: to`,
 	})
 
-	// Registry: live project dirs keyed from/to (live = path exists).
-	//
 	// 注册表：from/to key 的活项目目录（存活 = 路径存在）。
 	liveFrom := mkLiveForgeDir(t)
 	liveTo := mkLiveForgeDir(t)
@@ -126,8 +115,6 @@ func TestRegistryRekey(t *testing.T) {
 		t.Fatalf(`RunE: %v`, err)
 	}
 
-	// JSONL merge: 5 events, timestamp-ordered, none lost.
-	//
 	// JSONL 合并：5 个事件、按时间戳有序、不丢。
 	merged, err := os.ReadFile(filepath.Join(toDir, `checklog.jsonl`))
 	if err != nil {
@@ -159,8 +146,6 @@ func TestRegistryRekey(t *testing.T) {
 		}
 	}
 
-	// Tasks union; conflict keeps the to-side.
-	//
 	// tasks 并集；冲突保留 to 侧。
 	if _, err := os.Stat(filepath.Join(toDir, `tasks`, `task-a.json`)); err != nil {
 		t.Errorf(`task-a 应并入 to 侧: %v`, err)
@@ -169,8 +154,6 @@ func TestRegistryRekey(t *testing.T) {
 		t.Errorf(`task-b 冲突应保留 to 侧，实际: %s`, string(data))
 	}
 
-	// Subdir union + anchor moved (to-side had none) + protocol conflict kept to-side.
-	//
 	// 子目录并集 + 锚文件已搬（to 侧原本没有）+ protocol 冲突保留 to 侧。
 	if _, err := os.Stat(filepath.Join(toDir, `sessions`, `s1.json`)); err != nil {
 		t.Errorf(`sessions/s1.json 应并入: %v`, err)
@@ -182,9 +165,6 @@ func TestRegistryRekey(t *testing.T) {
 		t.Errorf(`protocol.yml 冲突应保留 to 侧，实际: %q`, string(data))
 	}
 
-	// From-dir survives as a backup inside to (never deleted), with the conflicted
-	// from-side files preserved.
-	//
 	// from 目录以 to 内备份形式存活（不删除），冲突的 from 侧文件随之保留。
 	if _, err := os.Stat(fromDir); !os.IsNotExist(err) {
 		t.Errorf(`from 目录原位应已不存在（已移入备份）`)
@@ -200,8 +180,6 @@ func TestRegistryRekey(t *testing.T) {
 		t.Errorf(`备份中应保留 from 侧 task-b: data=%q err=%v`, string(data), err)
 	}
 
-	// Registry: from-key entry removed, to-key kept.
-	//
 	// 注册表：from key 条目移除，to key 保留。
 	regAfter, err := os.ReadFile(filepath.Join(home, `projects.json`))
 	if err != nil {

@@ -9,11 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// TestPrune_NonDestructive pins the T1 contract (multi-task-concurrency §5): Prune is the
-// non-destructive half that replaced Clear at task start — it deletes only expired
-// toollog-*.jsonl ARCHIVES, never the active toollog.jsonl, and does nothing when the
-// directory is empty/missing (pre-init degradation).
-//
 // TestPrune_NonDestructive 钉住 T1 契约（multi-task-concurrency §5）：Prune 是 task
 // start 处取代 Clear 的非破坏性半边——只删超期的 toollog-*.jsonl【归档】，绝不碰
 // active toollog.jsonl；目录空/缺失（init 前降级）时为无操作。

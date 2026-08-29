@@ -2,14 +2,7 @@ package taskpipeline
 
 import "reflect"
 
-// trust.go — the single source of truth for stripping FOREIGN gate/trust signals off a TaskState
-// that entered the local DataDir from an untrusted source. Two entry points share it:
-//
-//   - task import (cli/task_port.go): a hand-edited or hostile bundle must never satisfy local
-//     gates without local re-verification;
-//   - .forge migrate (cli/sync.go migrateRuntimeResidue + cli/migrate.go): repo-committed
-//     .forge/tasks/*.json is attacker-authorable content (a cloned malicious repo), promoted into
-//     the trusted DataDir verbatim otherwise.
+// trust.go — the single source of truth for stripping FOREIGN gate/trust signals off a TaskState that entered the local DataDir from an untrusted source.
 //
 // trust.go —— 从不可信源进入本地 DataDir 的 TaskState 上剥离「外来」门禁/信任信号的单一真相源。
 // 两个入口共用：
@@ -18,20 +11,6 @@ import "reflect"
 //   - .forge migrate（cli/sync.go migrateRuntimeResidue + cli/migrate.go）：repo 提交的
 //     .forge/tasks/*.json 是攻击者可书写的内容（clone 恶意仓库即得），否则会被逐字提升为
 //     DataDir 信任状态。
-//
-// The 2026-08-15 review found the original import-time strip cleared RESULT fields
-// (ReviewPassed/Score/acceptance results) but let CONTROL-FLOW fields through:
-//
-//   - CompletedAt: every hard check in executor.go is guarded by `state.CompletedAt == nil`
-//     (review prereq / snapshot consistency / test-coverage backstop / work-activity / DependsOn),
-//     and `gate task-complete` AUTO-PASSES (not refuses) an already-completed task — so a bundle
-//     carrying completed_at + two passed gate History entries disabled all five hard checks after
-//     one gate run;
-//   - Overrides: four hard gates (read-before-edit PreToolUse block included) silently disabled on
-//     the importer, with no disclosure — escape hatches are supposed to be deliberate LOCAL
-//     `forge task override` decisions;
-//   - Acceptance Run: foreign command strings preserved verbatim, executed by verify-acceptance
-//     with full env — arbitrary command execution steered by the tool's own BLOCKED guidance.
 //
 // 2026-08-15 审查发现：原 import 侧剥离只清「结果」字段（ReviewPassed/Score/验收结果），却放行
 // 「控制流」字段：
@@ -45,16 +24,6 @@ import "reflect"
 //   - Acceptance Run：外来命令串原样保留，被 verify-acceptance 以完整环境执行——任意命令执行，
 //     且触发路径正是工具自己的 BLOCKED 指引。
 //
-// StripForeignGateSignals therefore clears BOTH classes. History drops every PASSED entry and
-// keeps only failed ones as provenance: executor.go's gate-prerequisite walk treats a foreign
-// `task-verify: Passed` as satisfying the chain, which would let the importer jump straight to
-// `gate task-complete` and skip every hard check that lives inside task-verify (work-activity,
-// skill-decisions guardrail, cheat-scan, test-coverage). Gate passes must be earned locally;
-// failed entries never satisfy anything and stay as real history. Assignment is dropped too —
-// IsDelivered() reads Assignment.Status==delivered as the DependsOn release signal, so a foreign
-// "delivered" claim must not unblock downstream LOCAL tasks without a local delivery. CurrentGate
-// is re-derived from the surviving History so status display matches reality.
-//
 // StripForeignGateSignals 因此同时清两类字段。History 剔除所有「已通过」条目、只保留失败的作
 // 溯源：executor.go 的门禁前置链会把外来的 `task-verify: Passed` 当作已满足，让导入方直接跳到
 // `gate task-complete`，跳过 task-verify 内部的全部硬检查（work-activity、skill-decisions
@@ -66,13 +35,6 @@ import "reflect"
 // who participated on the SOURCE machine, never a local anchor — HasSession/AddSession
 // ignore ghost links, so a foreign session id must not anchor this machine's session
 // to the task.
-//
-// Split out of StripForeignGateSignals (project-sync) because ghosting is not a trust
-// downgrade but a FACT: after a cross-machine sync the source machine's sessions do
-// not exist locally, whatever the trust posture. Every import path applies it —
-// including the lineage-trusted `forge project import` that deliberately PRESERVES
-// result fields (scores/completion) yet still must not treat foreign session ids as
-// local anchors.
 //
 // GhostForeignSessions 把每条 session 链接标为已导入（「幽灵」）：它记录的是源机器
 // 上谁参与过，永非本机锚点——HasSession/AddSession 忽略幽灵链接，外来 session id
@@ -89,16 +51,10 @@ func GhostForeignSessions(s *TaskState) {
 }
 
 func StripForeignGateSignals(s *TaskState) {
-	// Result-flavored signals (original strip).
-	//
 	// 结果类信号（原有剥离）。
 	s.ReviewPassed = false
 	s.ReviewedHeadCommit = ``
 	s.ReviewedChangeHash = ``
-	// ReviewRounds is the review-pass history — same trust class as the snapshot fields:
-	// foreign review stamps must not inflate the local rework metric (ScoreTask folds
-	// len(ReviewRounds) into Evidence.ReviewPasses).
-	//
 	// ReviewRounds 是 review-pass 历史——与快照字段同信任类：外来 review 打戳不得
 	// 虚增本机返工度量（ScoreTask 会把 len(ReviewRounds) 折进 Evidence.ReviewPasses）。
 	s.ReviewRounds = nil
@@ -110,28 +66,11 @@ func StripForeignGateSignals(s *TaskState) {
 		s.Acceptance[i].AcceptedChangeHash = ``
 		s.Acceptance[i].Output = ``
 	}
-	// Control-flow signals (2026-08-15 fix). CompletedAt is the master switch that disables every
-	// CompletedAt==nil-guarded hard check — and the local invariant "CompletedAt set ⟹ gates passed
-	// locally" is exactly what an untrusted source breaks. Overrides are gate-weakening switches
-	// that must be re-established by a local `forge task override` decision, not inherited.
-	//
 	// 控制流信号（2026-08-15 修复）。CompletedAt 是关掉所有 CompletedAt==nil 守卫硬检查的总开关
 	// ——而「CompletedAt 已设 ⟹ 门禁本机通过过」的本机不变量恰是被不可信源打破的东西。
 	// Overrides 是削弱门禁的开关，必须由本机 `forge task override` 决定重建，不能继承。
 	s.CompletedAt = nil
 	s.Overrides = TaskOverrides{}
-	// Kind=="generic" is the STRONGEST gate-weakening switch of all — stronger than the Overrides
-	// stripped right above: IsGeneric() short-circuits ExecuteTaskGate itself (every hard check
-	// inside all three gates), and runTaskComplete's generic branch sits BEFORE the IsComplete
-	// check and the acceptance pre-flight, going straight into completeGenericTask, which stamps
-	// all three gates Passed at the local HEAD + MarkComplete — IsDelivered() then releases
-	// downstream DependsOn. One foreign string must not carry that power. Same rule as Overrides:
-	// generic is a LOCAL decision — re-establishing it means `forge task abort` (drops the
-	// imported continuity data) then `forge task start --kind generic`, or simply accepting that
-	// the imported task walks the full gates as a code-kind task. Note `task start --kind generic`
-	// on the same ref alone is NOT a path: the imported task file already exists, so start refuses
-	// with "task already exists" (review round 2, 2026-08-16).
-	//
 	// Kind=="generic" 是所有门禁削弱开关里最强的——比上面刚剥的 Overrides 还强：IsGeneric()
 	// 直接短路 ExecuteTaskGate 本体（三道门禁内的全部硬检查），且 runTaskComplete 的 generic
 	// 分支位于 IsComplete 检查与 acceptance pre-flight 之前，直入 completeGenericTask——在本地
@@ -141,12 +80,6 @@ func StripForeignGateSignals(s *TaskState) {
 	// 导入任务作为 code 任务走全量门禁。注意对同一 ref 直接 `task start --kind generic` 不是
 	// 途径：导入的任务文件已存在，start 会以 "task already exists" 拒绝（2026-08-16 二轮复审）。
 	s.Kind = ``
-	// A forged bundle can put passed gate entries in History, which the executor's
-	// gate-prerequisite walk and IsComplete() read as local progress — dropping every PASSED entry
-	// (task-complete included) closes both: the task re-walks all gates locally, and task-verify's
-	// own hard checks re-run on this machine. FAILED entries stay: they never satisfy a
-	// prerequisite and show the real gate progression from the source machine.
-	//
 	// 手改的 bundle 可在 History 塞已通过的门禁条目，executor 的门禁前置链与 IsComplete() 都会
 	// 把它读本机进度——剔除所有「已通过」条目（含 task-complete）同时封掉两条路：任务在本机
 	// 重走全部门禁，task-verify 自身的硬检查在本机重跑。失败条目保留：它们不满足任何前置，
@@ -159,21 +92,8 @@ func StripForeignGateSignals(s *TaskState) {
 		kept = append(kept, h)
 	}
 	s.History = kept
-	// Re-derive the current gate from the surviving History — a forged CurrentGate (e.g.
-	// "task-complete") must not linger in status display. With every passed entry stripped,
-	// NextGate lands on the first gate of DefaultGates (task re-walks from the start).
-	//
 	// 从幸存的 History 重推当前门禁——伪造的 CurrentGate（如 "task-complete"）不得在状态展示中
 	// 残留。所有已通过条目被剥后，NextGate 落在 DefaultGates 的第一个门禁（任务从头重走）。
-	// Default-deny sweep (T5 refactor, 2026-08-29): the explicit strips above document
-	// WHY each named field is untrusted, but the list had already leaked twice
-	// (DocReview/ReportedFindings, 2026-08-29 round; Assignment earlier) — every leak
-	// was "a new field nobody remembered to add". The reflection sweep zeroes every
-	// exported field NOT on the continuity whitelist, so a future field is stripped by
-	// DEFAULT and must be explicitly whitelisted to survive an import — inverting the
-	// failure mode from "forgot to strip" (gate bypass) to "forgot to whitelist"
-	// (lost convenience data, immediately visible). Runs BEFORE this re-derivation:
-	// CurrentGate is derived state, the sweep zeroes it, the re-derive repopulates it.
 	//
 	// 默认拒绝清扫（T5 重构，2026-08-29）：上方的显式剥离记录每个具名字段不可信
 	// 的【原因】，但清单已漏过两次（DocReview/ReportedFindings，2026-08-29 轮；
@@ -184,42 +104,18 @@ func StripForeignGateSignals(s *TaskState) {
 	// 重推回填。
 	stripFieldsNotWhitelisted(s)
 	s.CurrentGate = s.NextGate()
-	// Delegation control-flow: Assignment.Status==delivered is the DependsOn release signal checked
-	// by task-verify/task-complete on DOWNSTREAM local tasks — a foreign "delivered" claim must not
-	// release a local dependency gate without a local delivery. Drop the whole Assignment; the
-	// local side re-assigns (forge task assign) if the work is actually continued here.
-	//
 	// 分派控制流：Assignment.Status==delivered 是下游本机任务 task-verify/task-complete 检查的
 	// DependsOn 放行信号——外来「已交付」声明不得在没有本机交付的情况下放行本机依赖门禁。
 	// 整体剥掉 Assignment；工作若真在本机继续，本机侧重新分派（forge task assign）。
 	s.Assignment = nil
-	// Every session link from a foreign source becomes a GHOST (Imported=true): it records who
-	// participated on the source machine, never a local anchor — HasSession/AddSession ignore
-	// ghost links, so a foreign session id must not anchor this machine's session to the task.
-	// Ghosting lives in GhostForeignSessions (single source) so both the import path and the
-	// migrate path get it — the migrate path previously forgot it (review 2026-08-16).
-	//
 	// 外来源的每条 session 链接都成为幽灵（Imported=true）：它记录源机器谁参与过，永非本机
 	// 锚点——HasSession/AddSession 忽略幽灵链接，外来 session id 不得把本机 session 锚到任务上。
 	// 幽灵化在 GhostForeignSessions（单一真相源）完成，import 与 migrate 两条路都拿到——
 	// migrate 路径此前漏了（2026-08-16 复审）。
 	GhostForeignSessions(s)
-	// The Run commands survive as spec (the handoff carries what to verify), but they are
-	// foreign-authored executable strings — mark them so verify-acceptance demands explicit
-	// review-based trust (--trust-foreign) before the first local execution.
-	//
 	// Run 命令作为 spec 保留（交接需要带上「验什么」），但它们是外来作者的可执行字符串——打上
 	// 标记，使 verify-acceptance 在首次本机执行前要求显式的、基于审阅的受信（--trust-foreign）。
 	s.AcceptanceForeign = len(s.Acceptance) > 0
-	// Doc-review evidence is the ONLY input of the doc gate's L2 hard prerequisite
-	// (CheckDocGate reads state.DocReview freshness/Passed/score). Cross-machine sync
-	// carries the same commit hashes, so a foreign DocReview would satisfy the local
-	// doc gate with zero local re-verification — the same trust class as the
-	// ReviewPassed snapshot stripped at the top. DocReviewHistory (the round audit)
-	// follows it. (2026-08-29 review round: functional probe confirmed an
-	// attacker-attributed DocReview passed task-complete's doc gate via --untrusted
-	// import.)
-	//
 	// Doc-review 证据是 doc 门禁 L2 硬前置的唯一输入（CheckDocGate 读
 	// state.DocReview 的新鲜度/Passed/分数）。跨机同步携带相同 commit hash，外来
 	// DocReview 会在零本机重验的情况下满足本机 doc 门禁——与顶部剥离的
@@ -228,23 +124,12 @@ func StripForeignGateSignals(s *TaskState) {
 	// 导入直接通过 task-complete 的 doc 门禁。）
 	s.DocReview = nil
 	s.DocReviewHistory = nil
-	// ReportedFindings pre-suppresses local advisories by fingerprint
-	// (advisory_dedup's filterUnreported drops anything already in the set) — a
-	// foreign-prefilled set mutes this machine's cheat-scan/unused-scan reports.
-	//
 	// ReportedFindings 按指纹预压制本机 advisory（advisory_dedup 的
 	// filterUnreported 丢弃集合中已存在的指纹）——外来预填集合会让本机的
 	// cheat-scan/unused-scan 报告静音。
 	s.ReportedFindings = nil
 }
 
-// trustContinuityWhitelist is the set of TaskState fields an untrusted import is
-// ALLOWED to carry — continuity/spec data the handoff exists to move. Everything
-// else is zeroed by stripFieldsNotWhitelisted. History/Acceptance/SessionLinks are
-// whitelisted as FIELDS because their trust boundary is per-entry (History keeps
-// FAILED entries only; Acceptance keeps the spec but has results scrubbed;
-// SessionLinks gets ghosted) — those scrubs live in StripForeignGateSignals.
-//
 // trustContinuityWhitelist 是不可信 import 允许携带的 TaskState 字段集——交接
 // 存在的意义就是搬运这些 continuity/spec 数据。其余字段被 stripFieldsNot-
 // Whitelisted 置零。History/Acceptance/SessionLinks 作为【字段】在白名单里，
@@ -268,10 +153,6 @@ var trustContinuityWhitelist = map[string]bool{
 	"History": true, "AcceptanceForeign": true,
 }
 
-// stripFieldsNotWhitelisted zeroes every exported, settable TaskState field not on
-// trustContinuityWhitelist. Unexported fields (integrityBroken) are skipped — they
-// are runtime flags an attacker cannot forge through JSON anyway.
-//
 // stripFieldsNotWhitelisted 把不在 trustContinuityWhitelist 上的全部可设置导出
 // 字段置零。非导出字段（integrityBroken）跳过——那是攻击者无法通过 JSON 伪造的
 // 运行时标记。

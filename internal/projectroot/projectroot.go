@@ -1,17 +1,4 @@
-// Package projectroot resolves the forge project root from the current working
-// directory.
-//
-// After the user-level-assets refactor, the anchor of "is this a forge project" is
-// the GLOBAL REGISTRY (~/.forge/projects.json), not a project-level .forge/ marker:
-// forge init writes nothing into the project by default. Resolution order:
-//  1. registry.IsMember(cwd) — git-key match (worktree-safe) or non-git path-prefix match
-//  2. legacy fallback: walk up for a project-level .forge/ (projects init'd by older
-//     forge versions) — on hit, self-heal by registering the project
-//  3. otherwise: ErrNoForgeConfig
-//
-// Centralizes the "which project am I in" logic in one place to
-// avoid cross-package duplication (originally extracted from cli/root.go and
-// the now-removed mcpserver/server.go; mcpserver removed on 2026-07-24).
+// Package projectroot resolves the forge project root from the current working directory.
 //
 // Package projectroot 从当前工作目录解析 forge project root。
 //
@@ -35,10 +22,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/registry"
 )
 
-// FindProject resolves cwd → *forgedata.Project (Key / Root / GitRoot / DataDir /
-// ConfigDir). Membership is judged via the global registry (with the legacy .forge/
-// walk-up as fallback); the Project itself is derived by forgedata.ProjectFor
-// (ConfigDir = <root>/.forge/ when it exists, else DataDir).
+// FindProject resolves cwd → *forgedata.Project (Key / Root / GitRoot / DataDir / ConfigDir).
 //
 // FindProject 解析 cwd → *forgedata.Project（Key / Root / GitRoot / DataDir /
 // ConfigDir）。成员资格经全局注册表判定（遗留 .forge/ walk-up 兜底）；Project 本身
@@ -51,12 +35,7 @@ func FindProject() (*forgedata.Project, error) {
 	return forgedata.ProjectFor(root)
 }
 
-// Find resolves the current working directory to the forge project root. Returns
-// forgedata.ErrNoForgeConfig when cwd is not inside a forge project.
-//
-// ~/.forge/ under the user home is a GLOBAL state store, not a project root — the
-// legacy walk-up excludes it (a real project's .forge/ is always closer to cwd than
-// home, so this exclusion never shadows a legitimate project).
+// Find resolves the current working directory to the forge project root.
 //
 // Find 把当前工作目录解析到 forge 项目根。cwd 不在 forge 项目内时返回
 // forgedata.ErrNoForgeConfig。
@@ -69,17 +48,11 @@ func Find() (string, error) {
 		return "", err
 	}
 
-	// 1. Registry membership (the post-refactor anchor).
-	//
 	// 1. 注册表成员资格（重构后的锚点）。
 	if root, ok := registry.IsMember(cwd); ok {
 		return root, nil
 	}
 
-	// 2. Legacy fallback: walk up for a project-level .forge/ (projects init'd
-	//    before the user-level-assets refactor). Self-heal: register the project so
-	//    subsequent resolutions hit the fast path (and the entry gains a key).
-	//
 	// 2. 遗留兜底：向上 walk 找项目级 .forge/（user-level-assets 重构前 init 的
 	//    项目）。自愈：登记该项目，后续解析走快路径（条目同时获得 key）。
 	if root, ok := legacyFind(cwd); ok {
@@ -90,17 +63,6 @@ func Find() (string, error) {
 	return "", forgedata.ErrNoForgeConfig
 }
 
-// legacyFind walks up from dir to find the nearest directory containing a project
-// .forge/ subdirectory. Two boundaries prevent mistaking the GLOBAL STORE for a
-// project marker:
-//  1. stop at the effective user home (os.UserHomeDir) — ~/.forge under home is the
-//     global store, never a project;
-//  2. skip any .forge/ that CONTAINS projects.json — that is the global registry
-//     file, so the .forge is the global store itself. This second check is what saves
-//     HOME-overridden environments (tests): the walk can reach the REAL ~/.forge
-//     above the fake home, where the effective-home comparison no longer helps
-//     (observed: forge status in a temp dir resolving to "Project: Administrator").
-//
 // legacyFind 从 dir 向上查找最近的、含项目 .forge/ 子目录的目录。两道边界防止把
 // 全局 store 误认成项目标记：
 //  1. 到有效用户 home（os.UserHomeDir）即停——home 下的 ~/.forge 是全局 store，
@@ -121,15 +83,6 @@ func legacyFind(dir string) (string, bool) {
 		}
 		candidate := filepath.Join(d, ".forge")
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			// Global-store sniff: the user-level store (~/.forge or FORGE_DATA_HOME)
-			// always carries global-only artifacts (projects.json registry and/or the
-			// projects/ per-project data tree and/or skills-cache/), which a project
-			// .forge/ NEVER contains. Checking all three matters: a store created
-			// only by `forge data-dir` MkdirAll has projects/ but no projects.json
-			// yet (observed on CI: runner home's .forge held only projects/, the
-			// projects.json-only sniff let it through, and every temp dir under home
-			// resolved to "Project: runneradmin").
-			//
 			// 全局 store 嗅探：用户级 store（~/.forge 或 FORGE_DATA_HOME）必然带有
 			// 全局独有的产物（projects.json 注册表 和/或 projects/ 按项目数据树
 			// 和/或 skills-cache/），而项目 .forge/ 绝不会包含这些。三者都查是
@@ -150,12 +103,6 @@ func legacyFind(dir string) (string, bool) {
 	}
 }
 
-// samePath reports whether a and b point to the same filesystem path. Uses
-// os.SameFile (device+inode), staying robust across case-insensitivity,
-// symlinks, and separator/style differences (Git Bash form /c/Users vs Windows
-// form C:\Users). Falls back to cleaned lexical compare when either path
-// cannot be stat-ed.
-//
 // samePath 报告 a 与 b 是否指向同一文件系统路径。用 os.SameFile
 // （device+inode），可跨大小写不敏感、symlink、分隔符/风格差异（Git Bash
 // 形如 /c/Users 对 Windows 形如 C:\Users）保持稳健。
@@ -169,12 +116,6 @@ func samePath(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b)
 }
 
-// globalStoreMarkers names artifacts that only the user-level global store
-// (~/.forge or FORGE_DATA_HOME) ever contains: the registry file, the
-// per-project data tree, the skills distribution cache/manifest, file backups,
-// and the init-suggest marker dir. A PROJECT .forge/ holds hooks/, protocol.yml,
-// team-mode, .sync-version — none of these names.
-//
 // globalStoreMarkers 列出只有用户级全局 store（~/.forge 或 FORGE_DATA_HOME）
 // 才会含的产物：注册表文件、按项目数据树、skills 分发缓存/manifest、文件备份、
 // init-suggest 标记目录。项目 .forge/ 装的是 hooks/、protocol.yml、team-mode、
@@ -188,14 +129,6 @@ var globalStoreMarkers = []string{
 	".init-suggested",
 }
 
-// isGlobalForgeStore reports whether a .forge directory is the user-level global
-// store (not a project marker), by content: any globalStoreMarkers entry present
-// means global store. A store created only by `forge data-dir` MkdirAll holds
-// projects/ but no projects.json yet; one touched by skills distribution holds
-// skills-cache/skills-manifest.json — checking the full marker set covers every
-// creator (observed on CI: runner home's .forge let the projects.json-only sniff
-// through, and every temp dir under home resolved to "Project: runneradmin").
-//
 // isGlobalForgeStore 按内容报告一个 .forge 目录是否用户级全局 store（而非项目
 // 标记）：任一 globalStoreMarkers 条目存在即全局 store。仅由 `forge data-dir`
 // MkdirAll 创建的 store 只有 projects/ 还没有 projects.json；被 skills 分发

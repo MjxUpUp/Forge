@@ -12,9 +12,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 )
 
-// withTestIdentity pins FORGE_DATA_HOME to a temp home carrying a node identity, so
-// sign/verify round-trips exercise the real key derivation.
-//
 // withTestIdentity 把 FORGE_DATA_HOME 钉到带 node 身份的临时 home，让签名/验签
 // 往返走真实密钥派生。
 func withTestIdentity(t *testing.T) string {
@@ -55,9 +52,8 @@ func TestTaskStateIntegrity_SignVerifyRoundTrip(t *testing.T) {
 	}
 }
 
-// TestTaskStateIntegrity_TamperedStateFlagged pins the attack path: hand-editing the
-// persisted JSON (the 2026-08-29 functional probe — forged ReviewPassed was fully
-// trusted) must leave the loaded state flagged IntegrityBroken.
+// TestTaskStateIntegrity_TamperedStateFlagged pins the attack path: hand-editing
+// the persisted JSON (the 2026-08-29 functional probe.
 //
 // TestTaskStateIntegrity_TamperedStateFlagged 钉住攻击路径：手改落盘 JSON
 // （2026-08-29 功能探针——伪造的 ReviewPassed 曾被全量采信）必须让加载后的状态
@@ -95,8 +91,8 @@ func TestTaskStateIntegrity_TamperedStateFlagged(t *testing.T) {
 	}
 }
 
-// TestTaskStateIntegrity_LegacyUnsignedAllowed pins compatibility: pre-signing data
-// (no integrity block) loads without the broken flag.
+// TestTaskStateIntegrity_LegacyUnsignedAllowed pins compatibility: pre-signing
+// data (no integrity block) loads without the broken flag.
 //
 // TestTaskStateIntegrity_LegacyUnsignedAllowed 钉住兼容性：签名前的存量数据
 // （无 integrity 块）加载不置 broken 标记。

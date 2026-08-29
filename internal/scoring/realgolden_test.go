@@ -10,10 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
-// goldenRealDir is the golden fixture directory collected from real dogfood tasks, orthogonal to canonical
-// testdata/golden: canonical pins algorithm boundaries (manual clean/poor), golden_real pins
-// real-task scoring shape to prevent drift. LoadGoldenCases is reused, only the dir differs.
-//
 // goldenRealDir 是真实 dogfood 任务采集的 golden fixture 目录，与 canonical
 // testdata/golden 正交：canonical 钉算法边界（人工 clean/poor），golden_real 钉
 // 真实任务评分形状不漂移。LoadGoldenCases 复用，只是 dir 不同。
@@ -26,15 +22,6 @@ func goldenRealDir(t *testing.T) string {
 	return dir
 }
 
-// realCases is the EvaluateInput reverse-engineered from real dogfood tasks, verifying the real-collab-record→golden→CI
-// comparison link. Data from DataDir/tasks/feat-review-snapshot.json's Score.Dimensions:
-// process 100 (3/3 gates, 0 retries) / testing 77 (2/3 src covered, 167 assertions) /
-// scope 80 (166 lines Medium) / efficiency 55 (61 min) / code-quality+assertions 100.
-//
-// GitDiffStat uses 100\t66\tstamp.go to simulate 166 lines (real numstat not in TaskState snapshot,
-// uses equivalent input with same totalLines) — spike validation mechanism; production collector should snapshot real git state at task score completion time
-// (later HeadCommit advances will let diff drift).
-//
 // realCases 是从真实 dogfood 任务反推的 EvaluateInput，验证「真实协作记录→golden→CI
 // 比对」链路。数据来自 DataDir/tasks/feat-review-snapshot.json 的 Score.Dimensions：
 // process 100 (3/3, 0 retries) / testing 77 (2/3 covered, 167 assertions) /
@@ -73,20 +60,10 @@ func realCases() []GoldenCase {
 		&reviewSnapshot,
 		cfg,
 	)
-	// review-snapshot is a precise baseline reverse-engineered by hand from real Score.Dimensions (GitDiffStat uses equivalent
-	// totalLines simulation, not post-hoc collection), all dimensions trustworthy — mark hand-curated, no drift_known.
-	//
 	// review-snapshot 是人工从真实 Score.Dimensions 反推的精确基线（GitDiffStat 用等价
 	// totalLines 模拟，非事后采集），全维度可信——标 hand-curated，无 drift_known。
 	gc.Meta = GoldenMeta{Source: `hand-curated`}
 
-	// chore-fix-ci-cmd-forge: restored from the v1.42-era fixture's stored
-	// input (realCases and the on-disk fixture had drifted apart on main —
-	// the case was dropped from realCases while its fixture stayed, so a
-	// delete+rebuild silently lost it; keeping it here re-pins the
-	// realCases↔fixture invariant). A huge multi-area chore: 80/88 covered,
-	// 1689 assertions, huge diff, assertion-check never ran.
-	//
 	// chore-fix-ci-cmd-forge：从 v1.42 期 fixture 存档的 input 恢复（realCases
 	// 与盘上 fixture 在 main 上已脱节——案例被从 realCases 删掉而 fixture 留存，
 	// delete+rebuild 会静默丢它；在此恢复钉死 realCases↔fixture 不变量）。
@@ -120,10 +97,6 @@ func realCases() []GoldenCase {
 	return []GoldenCase{*gc, *choreGc}
 }
 
-// writeRealFixtures regenerates testdata/golden_real/ from realCases(). Only called when fixture is missing
-// (bootstrap); CI does not silently overwrite existing fixtures. Process to accept intentional scoring change:
-// delete testdata/golden_real/*.json → re-run test to rebuild → review new Expected.
-//
 // writeRealFixtures 从 realCases() 重新生成 testdata/golden_real/。仅在 fixture 缺失时
 // 调用（bootstrap），CI 不静默覆盖已有 fixture。接受 intentional scoring change 的流程：
 // 删 testdata/golden_real/*.json → 重跑测试让它重建 → review 新 Expected。
@@ -145,9 +118,6 @@ func writeRealFixtures(t *testing.T) {
 	}
 }
 
-// TestGoldenReal_FixturesPresent ensures real golden fixtures are on disk. If missing, rebuild and fail,
-// forcing the author to review new Expected (replicates canonical's FixturesPresent semantics).
-//
 // TestGoldenReal_FixturesPresent 确保真实 golden fixture 在盘。缺失则重建并 fail，
 // 强制作者 review 新 Expected（复刻 canonical 的 FixturesPresent 语义）。
 func TestGoldenReal_FixturesPresent(t *testing.T) {
@@ -158,10 +128,6 @@ func TestGoldenReal_FixturesPresent(t *testing.T) {
 	}
 }
 
-// TestGoldenReal_Regression is the real golden regression guard: load each fixture, re-run Evaluate,
-// assert exact match with recorded Expected (deterministic function, no tolerance). On drift reports which dimension/grade
-// drifted and by how much, and tells how to accept intentional change (delete fixture and re-run).
-//
 // TestGoldenReal_Regression 是真实 golden 的回归守卫：load 每个 fixture，重跑 Evaluate，
 // 断言与记录的 Expected 精确一致（deterministic 函数，无容差）。drift 时报哪个维度/grade
 // 漂移、幅度多少，并告知如何接受 intentional change（删 fixture 重跑）。

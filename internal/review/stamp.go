@@ -1,13 +1,8 @@
-// Package review implements the persistent marker and gate decision for code-review-passed,
-// supporting two trigger paths:
-//   - within task flow: ReviewPassed field stored in DataDir/tasks/<ref>.json (managed by taskpipeline)
-//   - non-task flow: diff hash stamp stored in DataDir/stamps/<branch>.stamp (managed by this package)
-//
-// Both serve the same goal: turning code-review-gate from manual human shouts into automatic
-// gate/hook enforcement. This package manages the non-task stamp and exports SourceChangesSince
-// for taskpipeline to compute the post-review code-change snapshot in task mode (task-complete gate
-// enforces re-review based on it). No circular dependency: review only depends on taskcontext+util,
-// never imports taskpipeline; taskpipeline one-way imports review.
+// Package review implements the persistent marker and gate decision for
+// code-review-passed, supporting two trigger paths: - within task flow:
+// ReviewPassed field stored in DataDir/tasks/<ref>.json (managed by
+// taskpipeline) - non-task flow: diff hash stamp stored in
+// DataDir/stamps/<branch>.stamp (managed by this package).
 //
 // Package review 实现「代码审查通过」的持久化标记与门禁决策，支撑两条触发路径：
 //   - task 流程内：ReviewPassed 字段存 DataDir/tasks/<ref>.json（taskpipeline 管）
@@ -37,17 +32,13 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// MaxReviewRounds is the fallback cap for the Stop hook repeatedly blocking the same diff.
-// Beyond this, it advisory-passes to prevent a Stop infinite loop caused by agents never calling
-// forge review pass (task-verify historical lesson: Stop blocks trigger retry-loop; see
-// TaskVerifyHook comments in hooks/embed.go).
-//
 // MaxReviewRounds 是 Stop hook 反复 block 同一 diff 的兜底上限。超过后 advisory
 // 放行——防 agent 不调 forge review pass 导致的 Stop 死循环（task-verify 历史教训：
 // Stop block 会触发 retry-loop，见 hooks/embed.go TaskVerifyHook 注释）。
 const MaxReviewRounds = 3
 
-// Decision is the review decision produced by Evaluate for the non-task current diff.
+// Decision is the review decision produced by Evaluate for the non-task current
+// diff.
 //
 // Decision 是 Evaluate 对非 task 模式当前 diff 的审查决策。
 type Decision int
@@ -76,10 +67,10 @@ type Stamp struct {
 	Note string `json:"note,omitempty"`
 }
 
-// Evaluate is the atomic decision entry for the Stop hook (non-task mode): compute the current
-// diff hash, compare against the stamp, decide pass/need-review/fallback, and on need-review
-// increment block_count and persist it.
-// Returns (decision, human-readable reason).
+// Evaluate is the atomic decision entry for the Stop hook (non-task mode):
+// compute the current diff hash, compare against the stamp, decide
+// pass/need-review/fallback, and on need-review increment block_count and
+// persist it.
 //
 // Evaluate 是 Stop hook（非 task 模式）的原子决策入口：算当前 diff hash →
 // 对比 stamp → 决定放行/需审/兜底，并在需审时累加 block_count 持久化。
@@ -95,20 +86,11 @@ func Evaluate(root string) (Decision, string, error) {
 
 	stamp := loadStamp(root, hash)
 
-	// Same diff already reviewed -> pass
-	//
 	// 同一 diff 已审过 → 放行
 	if stamp.DiffHash == hash && stamp.Reviewed {
 		return DecisionPass, "当前 diff 已通过 code-review-gate", nil
 	}
 
-	// Same diff already reviewed on ANOTHER branch -> pass. A review pass is bound to the code
-	// snapshot (diff hash), not to the branch/mode scope the stamp lives under, so a legitimate
-	// zero-content transition that only changes the scope key — fast-forward merging a reviewed
-	// branch into master then checking out master (identical HEAD + worktree → identical hash) —
-	// must not re-block code that already passed review. Safe: a hash match means byte-identical
-	// source content; differing content differs in hash and still needs review below.
-	//
 	// 同一 diff 已在其他分支审过 → 放行。审查通过绑的是代码快照（diff hash），不是戳所在的
 	// branch/mode scope，故只改 scope key、内容不变的合法迁移——把已审分支 ff-merge 进 master
 	// 再 checkout master（同一 HEAD + 工作区 → 同一 hash）——不该重新 block 已审过的代码。
@@ -121,16 +103,12 @@ func Evaluate(root string) (Decision, string, error) {
 		return DecisionPass, fmt.Sprintf("当前 diff 已在分支 %s 通过 code-review-gate（内容一致，跨分支放行）", branch), nil
 	}
 
-	// Hit max rounds fallback pass (prevents Stop infinite loop)
-	//
 	// 撞 max rounds 兜底放行（防 Stop 死循环）
 	if stamp.DiffHash == hash && stamp.BlockCount >= MaxReviewRounds {
 		return DecisionPassAdvisory,
 			fmt.Sprintf("已达 max review rounds (%d)，advisory 放行——请人工确认未审变更", MaxReviewRounds), nil
 	}
 
-	// Need review: increment block_count and persist (new diff resets counter to 1)
-	//
 	// 需审：累加 block_count 并持久化（新 diff 重置计数从 1 起）
 	next := *stamp
 	if stamp.DiffHash != hash {
@@ -145,8 +123,8 @@ func Evaluate(root string) (Decision, string, error) {
 		fmt.Sprintf("检测到未审查的代码变更（block %d/%d）", next.BlockCount, MaxReviewRounds), nil
 }
 
-// MarkPassed marks the current diff as having passed review (called by forge review pass).
-// Computes the current hash, writes a reviewed stamp, resets block_count.
+// MarkPassed marks the current diff as having passed review (called by forge
+// review pass).
 //
 // MarkPassed 标记当前 diff 已通过审查（forge review pass 调用）。
 // 算当前 hash 写 reviewed stamp，重置 block_count。
@@ -175,14 +153,6 @@ func MarkPassedWithNote(root, note string) error {
 	return saveStamp(root, stamp)
 }
 
-// loadStamp reads the review stamp for the given diff hash: the content-addressed
-// dh-<hash>.stamp first (primary), the legacy <branch>.stamp second (read-compat for
-// pre-migration stamps). Missing/corrupt returns an empty Stamp. By design there is no
-// error return: the stamp is a hint, and every failure mode (absent, unreadable, corrupt)
-// degrades to "empty stamp -> re-review", which is the safe direction. A non-IsNotExist
-// read failure (permission/IO) is logged so it stays observable instead of masquerading
-// as "no stamp yet".
-//
 // loadStamp 读取给定 diff hash 的审查 stamp：先内容寻址 dh-<hash>.stamp（主路径），
 // 后旧 <branch>.stamp（迁移前 stamp 的读兼容）。不存在/损坏返回空 Stamp。设计上没有
 // error 返回：stamp 只是提示，所有失败模式（不存在/不可读/损坏）都降级为「空 stamp →
@@ -206,23 +176,6 @@ func loadStamp(root, hash string) *Stamp {
 	return &Stamp{}
 }
 
-// knownReviewed reports whether the given diff hash has been marked reviewed on ANY branch stamp
-// (not only the current branch). This makes a review pass portable across scope-only transitions
-// (see Evaluate): the same content reviewed elsewhere still counts. Returns the matching stamp so the
-// caller can name the originating branch. Failures (no stamps dir, unreadable/corrupt files) degrade
-// to "not found" — safe direction, re-review.
-//
-// Scan strategy (feat/checklog-janitor): before scanning, pruneStamps sweeps stale dh-*.stamp
-// files (every Stop-block on a new diff leaves one behind; without the sweep both the directory
-// and this full scan grow unbounded). Content-addressed stamps are then matched by FILE NAME —
-// the dh-<hash>.stamp name IS the hash (saveStamp derives the path from s.DiffHash), so
-// non-matching dh-*.stamp files are skipped without a read, dropping the scan from O(N) file
-// reads to at most one. Only legacy <branch>.stamp files (hash lives inside the content) are
-// still read. The single NAME-matching dh- file is still read to confirm Reviewed: Evaluate's
-// block path persists Reviewed=false block-count stamps at the very same content-addressed path,
-// so a filename-only hit would let a diff that was merely BLOCKED masquerade as reviewed —
-// a false pass. (A name/content mismatch never arises from saveStamp; only hand-tampering.)
-//
 // knownReviewed 报告给定 diff hash 是否在【任意】分支 stamp 上被标过已审（不限当前分支）。
 // 这让审查通过跨「只改 scope」的迁移可移植（见 Evaluate）：别处审过的同一内容照样认。返回
 // 命中 stamp 供调用方点名来源分支。失败（无 stamps 目录/不可读/损坏）降级为「未找到」——
@@ -243,9 +196,6 @@ func knownReviewed(root, hash string) (*Stamp, bool) {
 	if err != nil {
 		return nil, false
 	}
-	// The exact content-addressed file name for the wanted hash (SanitizeRef is a no-op on
-	// hex hashes but is applied for exact parity with stampContentPath/saveStamp).
-	//
 	// 目标 hash 对应的内容寻址文件名（SanitizeRef 对十六进制 hash 是 no-op，但为与
 	// stampContentPath/saveStamp 完全对齐仍照做一遍）。
 	wantName := "dh-" + taskcontext.SanitizeRef(hash) + ".stamp"
@@ -254,19 +204,12 @@ func knownReviewed(root, hash string) (*Stamp, bool) {
 			continue
 		}
 		if strings.HasPrefix(e.Name(), "dh-") {
-			// Content-addressed: name IS the hash. Skip every non-matching file unread;
-			// read only the (at most one) name match to confirm Reviewed (block stamps
-			// share the path — see function comment).
-			//
 			// 内容寻址：名即 hash。不匹配的文件一律不读；仅读名字命中的那一枚
 			// （至多一次）以确认 Reviewed（block 戳同路径——见函数注释）。
 			if e.Name() != wantName {
 				continue
 			}
 		}
-		// The name-matching dh- file and every legacy <branch>.stamp reach here and are
-		// content-checked (legacy has no hash in its name).
-		//
 		// 名字命中的 dh- 文件与所有 legacy <branch>.stamp 走到这里做内容校验
 		//（legacy 的名字里没有 hash）。
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
@@ -281,17 +224,6 @@ func knownReviewed(root, hash string) (*Stamp, bool) {
 	return nil, false
 }
 
-// pruneStamps best-effort sweeps stale content-addressed stamps (dh-*.stamp) older than
-// FORGE_STAMP_RETENTION_DAYS (default 30; <=0 disables): every Stop-block on a new diff
-// persists a dh-<hash>.stamp, diffs churn, and nothing else deleted them — the stamps dir
-// grew without bound and knownReviewed paid a full scan per Evaluate. Age is file mtime:
-// util.AtomicWrite (temp+rename) sets it at write time, and a stamp untouched for the
-// retention window marks a diff long superseded — its cross-branch portability guarantee
-// expires with it (a 30-day-old worktree state forcing re-review is the intended retention
-// trade-off, not a regression). Legacy <branch>.stamp files are NOT swept: read-compat only,
-// at most one per branch — an already-bounded set. Failures (glob/stat/remove) are skipped
-// silently: cleanup is a side effect of the lookup, never its outcome.
-//
 // pruneStamps 尽力清扫超过 FORGE_STAMP_RETENTION_DAYS（默认 30；≤0 禁用）的陈旧内容
 // 寻址 stamp（dh-*.stamp）：每个新 diff 的 Stop-block 都持久化一枚 dh-<hash>.stamp，
 // diff 一直在换，却没有任何路径删它们——stamps 目录无界增长，knownReviewed 每次
@@ -319,7 +251,8 @@ func pruneStamps(dir string) {
 	}
 }
 
-// CurrentState returns a human-readable view of the current review state (for forge review status).
+// CurrentState returns a human-readable view of the current review state (for
+// forge review status).
 //
 // CurrentState 返回人读的当前审查状态（forge review status 用）。
 func CurrentState(root string) (string, error) {
@@ -345,9 +278,6 @@ func CurrentState(root string) (string, error) {
 	}
 	fmt.Fprintf(&b, "Block count:   %d/%d\n", stamp.BlockCount, MaxReviewRounds)
 
-	// Cross-branch portability for display: if the current branch has no matching reviewed stamp,
-	// but another branch reviewed this exact hash, surface that (consistent with Evaluate's pass).
-	//
 	// 跨分支可移植的展示：当前分支无匹配已审戳，但别处审过同一 hash 时点出来（与 Evaluate 放行一致）。
 	crossBranch := ""
 	if hasChanges && !(stamp.DiffHash == hash && stamp.Reviewed) {
@@ -372,43 +302,10 @@ func CurrentState(root string) (string, error) {
 	return b.String(), nil
 }
 
-// --- internal implementation ---
-//
 // --- 内部实现 ---
 
-// computeDiffHash/SourceChangesSince compute the source-code change fingerprint (sha256) for review.
-//
-// computeDiffHash computes the [source-code] change fingerprint (sha256) of the current worktree
-// relative to HEAD, used to decide whether this version of code has been reviewed.
-// False-trigger protection (2026-06-27): the review scope counts ONLY source files:
-//   - excludes .forge/ (otherwise writing the stamp changes the diff -> hash changes -> infinite loop)
-//   - excludes non-source extensions (.md/.txt/.yml/.json/.toml etc., docs and configs); editing a
-//     README should not force a code review
-//   - excludes generated artifacts (paths containing .gen./_generated/.pb./vendor/ etc.); auto-
-//     generated code refreshing the hash is meaningless
-//
-// Pure doc/config/generated changes -> changedSourceFiles empty -> ("", false, nil) -> no review needed.
-// Non-git repos likewise -> no review needed.
-//
-// SourceChangesSince computes the [source-code] change fingerprint (sha256) from baseCommit to the
-// current worktree. baseCommit=="" degrades to HEAD (i.e. worktree-relative-to-HEAD, the non-task
-// stamp semantics).
-//
-// False-trigger protection (inherited from computeDiffHash, 2026-06-27): the same source-only
-// scope rule applies here (excludes .forge/, non-source extensions, and generated paths, as above).
-//
-// Key difference from the old computeDiffHash: the fingerprint uses [current file contents] rather
-// than git diff output, so unchanged content means unchanged fingerprint across the untracked-to-
-// tracked transition around a commit. If untracked files were recorded by name only at review time,
-// they would become tracked after commit (diff contains full content) and the two dimensions would
-// differ, producing false positives; reading current worktree contents unifies both paths, so
-// commit only changes git state, not content -> same hash. Tracked changes use
-// git diff --name-only <base> single-tree form (including base..HEAD committed + worktree
-// uncommitted), so commit-then-review flows (clean worktree at review time) can compare correctly.
-//
-// baseCommit unreachable (amend/rebase rewrote history and the git object vanished) -> returns err,
-// caller fail-opens. Pure doc/config/generated changes -> ("", false, nil) -> no review needed.
-// Non-git repos -> no review needed.
+// SourceChangesSince computes the source-code change fingerprint (sha256) from baseCommit
+// to the current worktree.
 //
 // computeDiffHash 算当前工作区相对 HEAD 的【源码】变更指纹（sha256），用于判断「这版代码审过没」。
 // 误触发防护（2026-06-27）：审查范围**只统计源码文件**——
@@ -438,12 +335,10 @@ func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, 
 	return SourceChangesSinceExcluded(root, baseCommit, nil)
 }
 
-// SourceChangesSinceExcluded is SourceChangesSince with an attribution-exclusion set
-// (multi-task-concurrency §6, T3): paths the caller has proven foreign (other incomplete
-// tasks' sessions, via taskpipeline.ForeignAttributedPaths) leave the fingerprint — the
-// review scope is this task's changes, not the whole shared tree's noise. Orphans are NOT
-// excludable here by contract: unexplained changes must be reviewed (fail-safe). nil map =
-// whole tree (pre-L3 behavior; non-task mode passes nil).
+// SourceChangesSinceExcluded is SourceChangesSince with an attribution-exclusion
+// set (multi-task-concurrency §6, T3): paths the caller has proven foreign
+// (other incomplete tasks' sessions, via taskpipeline.ForeignAttributedPaths)
+// leave the fingerprint.
 //
 // SourceChangesSinceExcluded 是带归属排除集的 SourceChangesSince
 // （multi-task-concurrency §6，T3）：调用方已证明外来（其他未完成任务的会话，经
@@ -458,10 +353,6 @@ func SourceChangesSinceExcluded(root, baseCommit string, exclude map[string]bool
 	if base == "" {
 		base = "HEAD"
 	}
-	// Base reachability: after amend/rebase, old commits may be unreachable and git diff/show
-	// would fatal. Verify up front and return err so the caller fail-opens (instead of treating
-	// git stderr as no-changes and wrongly passing).
-	//
 	// 基线可达性：amend/rebase 后旧 commit 可能不可达，git diff/show 会 fatal。提前 verify 返回 err，
 	// 让调用方 fail-open（而非把 git stderr 当「无变更」误判放行）。
 	if out, e := gitOut(root, "rev-parse", "--verify", base+"^{commit}"); e != nil || strings.TrimSpace(out) == "" {
@@ -490,10 +381,6 @@ func SourceChangesSinceExcluded(root, baseCommit string, exclude map[string]bool
 	return hex.EncodeToString(sum[:]), true, nil
 }
 
-// changedSourceFilesSince returns the [source-code] files changed since baseCommit, split into
-// tracked (modified/deleted, including base..HEAD committed + worktree uncommitted) and untracked
-// (newly added). base=="" -> HEAD. Excludes .forge/, non-source extensions, and generated paths.
-//
 // changedSourceFilesSince 返回自 baseCommit 起变更的【源码】文件，分 tracked（修改/删除，含
 // base..HEAD 已提交 + 工作区未提交）和 untracked（新增）。base=="" → HEAD。已排除 .forge/、
 // 非源码扩展、生成物路径。
@@ -519,11 +406,6 @@ func changedSourceFilesSince(root, baseCommit string) (tracked, untracked []stri
 	return tracked, untracked
 }
 
-// fileContentForHash returns the fingerprint content of a changed file: prefers current worktree
-// contents (modified/added); if absent in worktree (deleted/renamed source), uses the base version
-// as a deletion marker. Deletion is also a change and must be included in the fingerprint,
-// otherwise deleting a source file would escape re-review. Shared by task and non-task paths.
-//
 // fileContentForHash 取变更文件的指纹内容：优先工作区当前内容（修改/新增）；工作区无（删除/重命名源）
 // 用 base 版本内容作删除标记——删除也是变更，必须纳入指纹，否则删源码文件逃过复审。task/非 task 共用。
 func fileContentForHash(root, base, path string) string {
@@ -536,20 +418,12 @@ func fileContentForHash(root, base, path string) string {
 	return ""
 }
 
-// computeDiffHash computes the source-code change fingerprint of the worktree relative to HEAD.
-// Degrades to SourceChangesSince(root, ""), the single source of truth: non-task stamps and
-// task-mode snapshots share the same file filtering and hashing logic, avoiding drift.
-//
 // computeDiffHash 算当前工作区相对 HEAD 的源码变更指纹。退化为 SourceChangesSince(root, "")，
 // 单一真相源——非 task 模式 stamp 与 task 模式快照共用同一套文件过滤与哈希逻辑，避免漂移。
 func computeDiffHash(root string) (hash string, hasChanges bool, err error) {
 	return SourceChangesSince(root, "")
 }
 
-// srcExts is the allowlist of source-code extensions under review. Docs (.md/.txt), configs
-// (.yml/.json/.toml/.ini), data (.csv/.log), static assets (.png/.css) etc. are excluded:
-// these changes do not trigger code review (false-trigger protection).
-//
 // srcExts 是受审查的源码扩展名白名单。文档(.md/.txt)/配置(.yml/.json/.toml/.ini)/
 // 数据(.csv/.log)/静态资源(.png/.css)等不在内——这些变更不触发代码审查（误触发防护）。
 var srcExts = map[string]bool{
@@ -562,9 +436,6 @@ var srcExts = map[string]bool{
 	".hs": true, ".ml": true, ".fs": true, ".nim": true, ".zig": true, ".v": true,
 }
 
-// genMarks identifies generated/third-party path fragments: even if the extension is a source
-// extension, these are excluded (auto-generated code refreshing the hash is meaningless).
-//
 // genMarks 标识生成物/三方目录路径片段——即使扩展名是源码也排除（自动生成刷 hash 无意义）。
 var genMarks = []string{".gen.", "_generated", ".pb.", "vendor/", "node_modules/", "third_party/"}
 
@@ -600,8 +471,8 @@ func currentBranch(root string) string {
 	return strings.TrimSpace(out)
 }
 
-// CurrentBranch exports currentBranch for callers that need the branch context of a
-// non-task stamp (e.g. checklog audit detail in cmd `forge review pass`).
+// CurrentBranch exports currentBranch for callers that need the branch context
+// of a non-task stamp (e.g. checklog audit detail in cmd `forge review pass`).
 //
 // CurrentBranch 导出 currentBranch，供需要非 task 戳分支上下文的调用方使用
 // （如 `forge review pass` 命令的 checklog 审计 detail）。
@@ -626,13 +497,6 @@ func stampPath(root string) string {
 	return filepath.Join(forgedata.DataDirFor(root), "stamps", taskcontext.SanitizeRef(branch)+".stamp")
 }
 
-// stampContentPath is the content-addressed stamp location (multi-task-concurrency design
-// §5): stamps/dh-<diffhash>.stamp. The diff hash is the semantic key of a review pass —
-// knownReviewed already matched by hash across branches — so addressing by content makes
-// the primary lookup exact and frees the stamp from branch/worktree collisions (two
-// worktrees on one branch shared one <branch>.stamp and the hash inside was whichever
-// worktree last saved). The legacy <branch>.stamp path is kept read-only for compat.
-//
 // stampContentPath 是内容寻址的 stamp 落点（multi-task-concurrency 设计 §5）：
 // stamps/dh-<diffhash>.stamp。diff hash 本就是审查通过的语义键——knownReviewed 早已按
 // hash 跨分支匹配——按内容寻址让主查找精确化，并把 stamp 从 branch/worktree 碰撞里解
@@ -647,10 +511,6 @@ func saveStamp(root string, s *Stamp) error {
 	if err != nil {
 		return err
 	}
-	// Content-addressed write; the legacy branch path is only a read-compat fallback for
-	// pre-migration stamps (a DiffHash-less stamp has nothing to address on — defensive,
-	// every caller computes the hash before saving).
-	//
 	// 内容寻址写入；旧分支路径仅作迁移前 stamp 的读兼容回落（无 DiffHash 的 stamp 无内容
 	// 可寻址——防御式，所有调用方保存前都先算 hash）。
 	path := stampPath(root)

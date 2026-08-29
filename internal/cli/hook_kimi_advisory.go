@@ -1,22 +1,7 @@
 // kimi advisory pending-queue: kimi 0.35.0 delivers hook stdout to the model
-// ONLY on UserPromptSubmit (wire.jsonl-verified, internal/agentbridge/kimi-hook-routing.md),
-// and reads ANY PreToolUse stdout as a deny (blocks the tool call, edit never
-// lands). So an advisory (passed=true, non-empty detail) fired on
-// PreToolUse/PostToolUse/Stop/SessionStart has NO safe immediate channel: print
-// it and the edit is denied with an "allowed"-worded reason (the 2026-08 P0
-// promotion's self-contradiction), stay silent and the signal evaporates
-// (production checklog: 100% of kimi/no-channel advisories lost — 41
-// skill-trigger + 1 test-nudge in two weeks). This file is the third option:
-// queue the advisory per-project (advisories-pending.jsonl under the forge
-// DataDir) and drain the queue as ONE batched injection on the next
-// UserPromptSubmit — the one channel kimi carries into model context.
-//
-// Blocking results (passed=false: read-before-edit, hazard-guard, freeze-guard)
-// never touch this file — they are designed denies and still ride exit 2.
-// Other hosts never reach the queue either: emitAdvisoryRouted (below) is the
-// single entry point for every hook emission, and it delegates to
-// emitAgentOutput unless agent=="kimi" AND passed — the kimi/allow gate lives
-// INSIDE that router, not at the call sites.
+// ONLY on UserPromptSubmit (wire.jsonl-verified,
+// internal/agentbridge/kimi-hook-routing.md), and reads ANY PreToolUse stdout as
+// a deny (blocks the tool call, edit never lands).
 //
 // kimi advisory pending-queue：kimi 0.35.0 只在 UserPromptSubmit 把 hook stdout
 // 送达模型（wire.jsonl 实证，见 internal/agentbridge/kimi-hook-routing.md），且把
@@ -52,43 +37,25 @@ import (
 )
 
 const (
-	// kimiAdvisoryQueueFile is the per-project pending queue under the forge
-	// DataDir (~/.forge/projects/<key>/).
-	//
 	// kimiAdvisoryQueueFile 是 forge DataDir（~/.forge/projects/<key>/）下的
 	// per-project pending 队列文件名。
 	kimiAdvisoryQueueFile = "advisories-pending.jsonl"
 
-	// kimiAdvisoryDrainCap bounds one batched injection to the NEWEST few
-	// advisories — a UserPromptSubmit injection competes with the user's own
-	// prompt for attention, and anything older is likely already acted on or
-	// stale (the hook that fired it re-fires if the condition persists).
-	//
 	// kimiAdvisoryDrainCap 把单次攒发限制在**最近**几条——UserPromptSubmit 注入
 	// 要与用户自己的 prompt 争夺注意力，更旧的大概率已被处理或过期（条件仍在
 	// 时产生它的 hook 会再触发）。
 	kimiAdvisoryDrainCap = 5
 
-	// kimiAdvisoryMaxTextLen caps one queued entry so a pathological detail
-	// (a full compile log) cannot bloat the queue or the batched injection.
-	//
 	// kimiAdvisoryMaxTextLen 给单条入队文本设上限，防止病态 detail（整段编译
 	// 日志）撑爆队列或攒发注入。
 	kimiAdvisoryMaxTextLen = 2000
 
-	// kimiAdvisoryMaxQueueBytes is the self-reset threshold: a session that
-	// never submits a prompt (fully autonomous run) would otherwise grow the
-	// queue forever. Past the threshold the file starts over — every entry in
-	// it was by definition never drained, so the newest window is what matters.
-	//
 	// kimiAdvisoryMaxQueueBytes 是自重置阈值：从不提交 prompt 的会话（全自动
 	// 运行）否则会让队列无限增长。超过阈值即重来——其中条目按定义都未被
 	// drain 过，只有最近的窗口有价值。
 	kimiAdvisoryMaxQueueBytes = 256 * 1024
 )
 
-// kimiAdvisoryEntry is one queued advisory line (JSONL).
-//
 // kimiAdvisoryEntry 是一条入队 advisory（JSONL 行）。
 type kimiAdvisoryEntry struct {
 	TS      string `json:"ts"`
@@ -98,18 +65,6 @@ type kimiAdvisoryEntry struct {
 	Text    string `json:"text"`
 }
 
-// emitAdvisoryRouted is the single advisory-output router every hook emission
-// call site uses in place of a bare emitAgentOutput. For agent!="kimi" or a
-// block (passed=false) it IS emitAgentOutput — byte-identical behavior. For
-// kimi allow-path output it applies the queue contract:
-//   - UserPromptSubmit (kimi's one delivered channel): drain the pending queue
-//     and PREPEND the batch to the hook's own detail (head placement — the
-//     emitter truncates the TAIL at maxAdditionalContextLen; same F2 rationale
-//     as prependKimiStaleAdvisory).
-//   - every other event: enqueue the detail and stay SILENT (exit 0, no
-//     stdout) — stdout on kimi PreToolUse is read as a deny, and on
-//     PostToolUse/Stop/SessionStart it is dropped before reaching the model.
-//
 // emitAdvisoryRouted 是所有 hook 输出口径处替代裸 emitAgentOutput 的唯一
 // advisory 输出路由器。agent!="kimi" 或阻断（passed=false）时它**就是**
 // emitAgentOutput——逐字节行为一致。kimi 的 allow 路径输出走队列契约：
@@ -140,14 +95,6 @@ func emitAdvisoryRouted(agent, eventName, hookName, root, sessionID string, pass
 	return nil
 }
 
-// kimiAdvisoryQueueChannel is the checklog Channel label stamped on advisory
-// records whose emission rode the pending queue instead of a live channel
-// (kimi, any event whose allow-path channel does not deliver). Delivered stays
-// false — nothing has reached the model YET — but the label lets the usage
-// funnel distinguish "queued, drains on the next UserPromptSubmit" from
-// "produced and lost forever" (kimi/no-channel, the 2026-08 false-prosperity
-// class this queue fixes).
-//
 // kimiAdvisoryQueueChannel 是落在「输出经 pending 队列而非活通道」的 advisory
 // 记录上的 checklog Channel 标签（kimi、allow 通道不可送达的事件）。Delivered
 // 保持 false——尚无任何内容到达模型——但该标签让 usage 漏斗能区分「已入队、
@@ -155,14 +102,6 @@ func emitAdvisoryRouted(agent, eventName, hookName, root, sessionID string, pass
 // 要修的 2026-08 虚假繁荣类）。
 const kimiAdvisoryQueueChannel = "kimi/advisory-queue"
 
-// advisoryEmissionChannel returns the (delivered, channel) stamp for an
-// advisory emission that went through emitAdvisoryRouted: identical to
-// contextChannelDelivered except on kimi's non-delivered events, where the
-// emission is queued for the UserPromptSubmit drain and the channel says so.
-// Record sites that emit via emitAdvisoryRouted MUST stamp through this (not
-// contextChannelDelivered) or the funnel keeps filing queued advisories under
-// "lost forever".
-//
 // advisoryEmissionChannel 返回经 emitAdvisoryRouted 输出的 advisory 的
 // （delivered, channel）章：与 contextChannelDelivered 一致，唯一例外是 kimi
 // 不可送达事件——输出在那里入队待 UserPromptSubmit 攒发，channel 如实标注。
@@ -176,11 +115,6 @@ func advisoryEmissionChannel(agent, eventName string) (bool, string) {
 	return delivered, channel
 }
 
-// kimiAdvisoryQueuePath resolves the per-project queue file ("" when root is
-// empty — global hooks have no project DataDir; their kimi advisories keep the
-// old documented-inert behavior rather than writing into a hash-of-nothing
-// bucket).
-//
 // kimiAdvisoryQueuePath 解析 per-project 队列文件路径（root 为空时返回
 // ""——global hook 没有项目 DataDir，其 kimi advisory 维持既有的「已知失效」
 // 行为，而不是写进一个空哈希桶）。
@@ -191,10 +125,6 @@ func kimiAdvisoryQueuePath(root string) string {
 	return filepath.Join(forgedata.DataDirFor(root), kimiAdvisoryQueueFile)
 }
 
-// enqueueKimiAdvisory appends one advisory to the per-project queue.
-// Best-effort, fail-open: the advisory layer must never take the hook down
-// (same discipline as the checklog record sites).
-//
 // enqueueKimiAdvisory 往 per-project 队列追加一条 advisory。尽力而为、
 // fail-open：advisory 层绝不允许拖垮 hook（与 checklog 记录点同一纪律）。
 func enqueueKimiAdvisory(root, sessionID, hookName, eventName, detail string) {
@@ -227,24 +157,6 @@ func enqueueKimiAdvisory(root, sessionID, hookName, eventName, detail string) {
 	_, _ = f.Write(append(data, '\n'))
 }
 
-// drainKimiAdvisories consumes the per-project queue and renders the batched
-// injection ("" when there is nothing new for this session). Contract:
-//   - dedupe by exact text (a throttled hook re-firing the same advisory must
-//     not repeat it in one batch);
-//   - a text already injected to THIS session is never injected again (the
-//     once-per-session delivered set lives in $TMPDIR, session-keyed, same
-//     lifespan class as the skill-trigger noise markers and the reads log);
-//     id-less sessions (empty sessionID) are EXEMPT from this memory — see
-//     readKimiDeliveredSet for why the shared "session" bucket must never be
-//     written;
-//   - at most kimiAdvisoryDrainCap entries, in chronological order (the queue
-//     is append-ordered; the tail is the newest window);
-//   - the queue file is consumed even when everything in it was already
-//     delivered — the entries belong to whoever drains first. Consumption is
-//     ATOMIC: rename-then-read (not read-then-remove), so an enqueue racing
-//     the drain re-creates the original path via O_CREATE and its entries
-//     survive for the next drain instead of being silently deleted.
-//
 // drainKimiAdvisories 消费 per-project 队列并渲染攒发注入（本会话无新内容时
 // 返回 ""）。契约：
 //   - 按文本精确去重（被节流的 hook 重复触发同一 advisory 不得在一批里重复）；
@@ -297,8 +209,6 @@ func drainKimiAdvisories(root, sessionID string) string {
 	if len(texts) == 0 {
 		return ""
 	}
-	// Newest window: the queue is append-ordered, so the tail is the newest.
-	//
 	// 取最新窗口：队列按追加顺序排列，尾部即最新。
 	if len(texts) > kimiAdvisoryDrainCap {
 		texts = texts[len(texts)-kimiAdvisoryDrainCap:]
@@ -314,9 +224,6 @@ func drainKimiAdvisories(root, sessionID string) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// kimiAdvisoryTextKey is the dedupe/delivered-set identity of one advisory:
-// fnv64a of the exact text (same hash family as projectTagFor).
-//
 // kimiAdvisoryTextKey 是一条 advisory 的去重/delivered 集合身份：精确文本的
 // fnv64a（与 projectTagFor 同一哈希族）。
 func kimiAdvisoryTextKey(text string) string {
@@ -325,13 +232,6 @@ func kimiAdvisoryTextKey(text string) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
-// kimiDeliveredSetPath is the per-(project, session) delivered-set file in $TMPDIR —
-// ephemeral session state, NOT project data (it must not survive into the DataDir's
-// permanent runtime home; a new session re-delivers advisories whose conditions still
-// hold). The project tag keeps the same static-template advisory deliverable once per
-// project (a session that cd's across two projects would otherwise be silenced in the
-// second), mirroring readsFilePath's project bucket.
-//
 // kimiDeliveredSetPath 是 $TMPDIR 下按（project, session）键控的 delivered 集合
 // 文件——临时会话态，**不是**项目数据（不得落进 DataDir 这个永久运行态 home；
 // 新会话对条件仍成立的 advisory 会重新投递）。project tag 使同一静态模板 advisory
@@ -341,15 +241,6 @@ func kimiDeliveredSetPath(root, sessionID string) string {
 	return filepath.Join(os.TempDir(), "forge-kimi-advisories", projectTagFor(root)+"-"+util.SanitizeSessionID(sessionID)+".delivered")
 }
 
-// readKimiDeliveredSet loads the once-per-session delivered set. Empty
-// sessionID disables the memory: SanitizeSessionID collapses "" (and every
-// all-dirty id) to the literal "session", so all id-less sessions on the
-// machine would share ONE "...-session.delivered" file — the first write there
-// would permanently suppress that advisory text for every future id-less
-// session (a machine-global, unbounded silencer). Treating "" as "no history"
-// means every such session re-delivers — the honest default when identity is
-// unknown.
-//
 // readKimiDeliveredSet 读取每会话一次的 delivered 集合。空 sessionID 直接禁用
 // 记忆：SanitizeSessionID 会把 ""（及全脏字符 id）折叠成字面量 "session"，于是
 // 全机所有无 id 会话共享**同一个** "...-session.delivered" 文件——那里的一次写入
@@ -374,11 +265,6 @@ func readKimiDeliveredSet(root, sessionID string) map[string]bool {
 	return set
 }
 
-// appendKimiDeliveredSet records texts into the session's delivered set. Empty
-// sessionID skips the write entirely (same rationale as readKimiDeliveredSet:
-// writing into the shared "session" bucket would silence the text for every
-// id-less session machine-wide; not writing means each drain re-delivers).
-//
 // appendKimiDeliveredSet 把文本记入该会话的 delivered 集合。空 sessionID 完全
 // 不写（理由同 readKimiDeliveredSet：写进共享的 "session" 桶会把该文本对全机
 // 无 id 会话静音；不写则每次 drain 都重新投递）。

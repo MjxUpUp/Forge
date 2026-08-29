@@ -117,15 +117,8 @@ func TestDetectAgents_Codex(t *testing.T) {
 	}
 }
 
-// TestParseAgentFlag_CoversAllTranslators guards ParseAgentFlag's switch against missing
-// an agent. Real bug caught by E2E: the switch listed only 5 agents
-// (claude/cursor/copilot/windsurf/codex), missing opencode, so
-// `forge init --agents opencode` was silently dropped — opencode.json was not generated
-// and users got no forge CLI quality-flow integration. Unit tests (calling Translate
-// directly, bypassing flag parsing) masked this bug. This test derives the full set from
-// AllTranslators() (single source of truth), ensuring any newly added translator's
-// AgentType is automatically recognized by ParseAgentFlag — the add-agent-forget-case
-// drift is no longer possible.
+// TestParseAgentFlag_CoversAllTranslators guards ParseAgentFlag's switch against
+// missing an agent.
 //
 // TestParseAgentFlag_CoversAllTranslators 守卫 ParseAgentFlag 的 switch 漏 agent。
 // E2E 抓到的真实 Bug：switch 只列了 5 个 agent（claude/cursor/copilot/windsurf/codex），
@@ -143,8 +136,6 @@ func TestParseAgentFlag_CoversAllTranslators(t *testing.T) {
 	for _, tr := range translators {
 		known[tr.AgentType()] = true
 	}
-	// Build a flag from each agent's name; ParseAgentFlag must recognize every one as-is.
-	//
 	// 用每个 agent 的名字拼成 flag，ParseAgentFlag 必须原样认回每一个。
 	for at := range known {
 		got := ParseAgentFlag("/nonexistent-dir-for-auto", string(at))
@@ -164,7 +155,7 @@ func TestParseAgentFlag_CoversAllTranslators(t *testing.T) {
 // TestDetectAgents_OpencodeXDGConfigHome pins the XDG fix: opencode's global
 // config dir resolves via $XDG_CONFIG_HOME/opencode (same as OpenCodeConfigDir's
 // write path), so a config home that exists ONLY under XDG_CONFIG_HOME must be
-// detected — looking only at ~/.config/opencode would miss it.
+// detected.
 //
 // TestDetectAgents_OpencodeXDGConfigHome 钉死 XDG 修复：opencode 的全局配置目录
 // 按 $XDG_CONFIG_HOME/opencode 解析（与 OpenCodeConfigDir 的写入路径一致），
@@ -213,10 +204,10 @@ func TestDetectAgents_WindsurfUserLevel(t *testing.T) {
 	}
 }
 
-// TestDetectAgents_ZcodeUserLevel pins the zcode user-level detection:
-// ~/.zcode (the config root ZcodeTranslator writes into) exists iff the ZCode
-// desktop app has run, so it is a detection signal alongside the project-level
-// .zcode marker.
+// TestDetectAgents_ZcodeUserLevel pins the zcode user-level detection: ~/.zcode
+// (the config root ZcodeTranslator writes into) exists iff the ZCode desktop app
+// has run, so it is a detection signal alongside the project-level .zcode
+// marker.
 //
 // TestDetectAgents_ZcodeUserLevel 钉死 zcode 用户级检测：~/.zcode
 // （ZcodeTranslator 写入的配置根）存在 = ZCode 桌面端跑过，与项目级 .zcode
@@ -236,8 +227,7 @@ func TestDetectAgents_ZcodeUserLevel(t *testing.T) {
 // TestDetectAgents_CodexNotTriggeredByAgentsMd: AGENTS.md must NOT trigger codex
 // detection: forge generates AGENTS.md as a universal cross-agent instruction
 // source, so treating it as a codex signal makes every `forge init` self-trigger
-// codex wiring (.codex/ cascade). Codex detection is .codex/ only; pure codex-CLI
-// users pass --agents codex.
+// codex wiring (.codex/ cascade).
 //
 // TestDetectAgents_CodexNotTriggeredByAgentsMd：AGENTS.md 不得触发 codex 检测：
 // forge 把 AGENTS.md 生成为通用跨 agent 指令源，把它当 codex 信号会让每次
@@ -253,12 +243,8 @@ func TestDetectAgents_CodexNotTriggeredByAgentsMd(t *testing.T) {
 }
 
 // TestDetectAgents_ProjectMarkersForAllAgents pins that DetectAgents detects the
-// project-level markers for the agents whose detection was NOT previously covered at
-// this layer (opencode/cline/clinerules/kimi/reasonix). These are now routed through
-// the shared agentsignals table (DetectAgents → agentsignals.ProjectAgentMarkers), so a
-// regression in that delegation would silently drop them — exactly the "53% agent_type
-// missing" failure mode. Each case asserts exactly ONE agent (isolateHome neutralizes
-// user-level detection, so only the project marker counts).
+// project-level markers for the agents whose detection was NOT previously
+// covered at this layer (opencode/cline/clinerules/kimi/reasonix).
 //
 // TestDetectAgents_ProjectMarkersForAllAgents 钉死 DetectAgents 对此前未在本层覆盖的
 // agent（opencode/cline/clinerules/kimi/reasonix）项目级标记的检测。这些现经共享

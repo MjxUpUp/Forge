@@ -12,12 +12,8 @@ import (
 )
 
 var (
-	// useWhenRe captures the segment from Use when: to (SKIP: or end of string).
-	//
 	// useWhenRe 捕获 Use when: 到（SKIP: 或结尾）的段落。
 	useWhenRe = regexp.MustCompile(`(?is)Use when[:：]\s*(.*?)(?:SKIP[:：]|$)`)
-	// skipPartRe captures the segment from SKIP: to end of string.
-	//
 	// skipPartRe 捕获 SKIP: 到结尾的段落。
 	skipPartRe = regexp.MustCompile(`(?is)SKIP[:：]\s*(.*?)$`)
 	// useSplitRe delimits the Use when segment: ideographic comma / CJK or ASCII comma / semicolon / the word or。
@@ -31,7 +27,6 @@ var (
 )
 
 // ExtractTriggers extracts trigger/skip scenarios from the description's Use when / SKIP sections.
-// Aligns with skill-eval.py extract_triggers: triggers≤5, skips≤3, fragments with length≤3 are dropped.
 //
 // ExtractTriggers 从 description 的 Use when / SKIP 段提取触发/排除场景。
 // 对齐 skill-eval.py extract_triggers：triggers≤5、skips≤3，长度≤3 的片段丢弃。
@@ -50,8 +45,6 @@ func ExtractTriggers(description string) (triggers, skips []string) {
 			if utf8.RuneCountInString(p) <= 3 {
 				continue
 			}
-			// Filter prefixes containing the CJK ideograph yong (Python part[:3] includes yong + space).
-			//
 			// 过滤前缀含"用 "（Python part[:3] 含"用 "）
 			if strings.Contains(firstNRunes(p, 3), "用 ") {
 				continue
@@ -68,8 +61,6 @@ func ExtractTriggers(description string) (triggers, skips []string) {
 	return triggers, skips
 }
 
-// trimTriggerPart mirrors Python part.strip().strip(triple-double-quote).strip(): trim space, strip quotes, trim space.
-//
 // trimTriggerPart 对齐 Python part.strip().strip('"""').strip()：去空白→去引号→去空白。
 func trimTriggerPart(s string) string {
 	s = strings.TrimSpace(s)
@@ -87,10 +78,6 @@ func firstNRunes(s string, n int) string {
 }
 
 // GenerateEvalPrompts turns trigger/skip scenarios into should-trigger / should-not-trigger test prompts.
-// Aligns with skill-eval.py generate_eval_prompts (用户说→empty, 用户需要→我需要, 用户要→我要; skip gets miscue prefix).
-//
-// The rendering logic is factored into renderTriggerPrompt/renderSkipPrompt as a single source of truth — EvalCases
-// reuses the same rendering when generating structured cases, ensuring prompts match verbatim between markdown lists and case sets.
 //
 // GenerateEvalPrompts 把触发/排除场景转成 should-trigger / should-not-trigger 测试 prompt。
 // 对齐 skill-eval.py generate_eval_prompts（用户说→空、用户需要→我需要、用户要→我要；skip 加误问前缀）。
@@ -108,8 +95,6 @@ func GenerateEvalPrompts(name, description string) (shouldTrigger, shouldNot []s
 	return shouldTrigger, shouldNot
 }
 
-// renderTriggerPrompt renders a trigger fragment into a test prompt (first-person colloquial).
-//
 // renderTriggerPrompt 渲染 trigger 片段为测试 prompt（第一人称口语化）。
 func renderTriggerPrompt(raw string) string {
 	p := strings.ReplaceAll(raw, "用户说", "")
@@ -118,8 +103,6 @@ func renderTriggerPrompt(raw string) string {
 	return strings.Trim(p, "，。 \"")
 }
 
-// renderSkipPrompt renders a skip fragment into a miscue test prompt (prefixed with a should-use-other-skill hint).
-//
 // renderSkipPrompt 渲染 skip 片段为误问测试 prompt（加「应该用其他 skill」前缀）。
 func renderSkipPrompt(raw string) string {
 	p := strings.ReplaceAll(raw, "用 ", "（这种情况应该用其他 skill，但用户可能误问：）")
@@ -138,10 +121,6 @@ func EvalSkill(canonical, name string) (string, error) {
 	desc := fm.Description
 	shouldTrigger, shouldNot := GenerateEvalPrompts(name, desc)
 
-	// Description display: only truncate with ellipsis when exceeding 200 runes — the original impl always
-	// appended ... unconditionally, producing xxx... even for short descriptions, falsely implying truncation.
-	// GenerateEvalPrompts still uses the full desc (for trigger/skip extraction).
-	//
 	// 描述展示：仅当超 200 rune 才截断并加省略号——原实现无脑追加 "..."，对短描述
 	// 也产生 "xxx..."，误读为被截断。GenerateEvalPrompts 仍用完整 desc（触发/排除提取）。
 	descDisplay := desc

@@ -8,14 +8,6 @@ import (
 	"testing"
 )
 
-// initsuggest_test.go — real-behavior guard for InitSuggestHook (beyond containsString).
-// Runs the real script through each branch, asserting emitted output + side effects (marker
-// file / the AUTO_INIT forge init call). Same approach as skillscan_test: a bash function
-// stub overrides the forge command; HOME/FORGE_CWD/FORGE_CWD_TAG are test-controlled to
-// isolate the real cwd and ~/.forge markers.
-//
-// All string literals use raw strings (backticks) to dodge Windows input-quote corrosion.
-//
 // initsuggest_test.go — InitSuggestHook 的真行为守卫（不止 containsString）。
 // 跑真实脚本过各分支，断言 emitted 输出 + side effect（标记文件 / AUTO_INIT 的
 // forge init 调用）。手法同 skillscan_test：bash function stub 覆盖 forge 命令，
@@ -23,18 +15,6 @@ import (
 //
 // 所有 string literal 用 raw string（反引号）规避 Windows 输入引号腐蚀。
 
-// runInitSuggestHook runs the real InitSuggestHook script, returning stdout+stderr.
-// The forge() stub overrides forge (the AUTO_INIT branch does not really run forge init): on
-// the success path it touches the flag file for assertion; with FORGE_FORGE_FAIL=1 it returns
-// 1 without touching (simulating init-failure echo). init-suggest is designed to exit 0;
-// non-zero means a script bug.
-//
-// Known blind spot (R6): the stub cannot simulate a real forge init partial-state (a
-// half-built .forge before failure that silences the next session's [ -d .forge ]) — the
-// embed.go comment promises stderr echo for exactly this scenario, but this test only covers
-// the failure-echo layer; the partial-state silent logic is uncovered (would need a real
-// forge init run).
-//
 // runInitSuggestHook 跑真实 InitSuggestHook 脚本，返回 stdout+stderr。
 // forge() stub 覆盖 forge（AUTO_INIT 分支不真跑 forge init）：成功路径 touch flag
 // 文件供断言；FORGE_FORGE_FAIL=1 时 return 1 不 touch（模拟 init 失败回显）。
@@ -97,8 +77,6 @@ git() {
 	return string(out)
 }
 
-// mkGitProj builds a temp git project (with .git); withForge=true additionally creates .forge/.
-//
 // mkGitProj 构造临时 git 项目（有 .git）；withForge=true 额外建 .forge/。
 func mkGitProj(t *testing.T, withForge bool) string {
 	t.Helper()
@@ -114,9 +92,6 @@ func mkGitProj(t *testing.T, withForge bool) string {
 	return d
 }
 
-// writeSuggestMarker writes a tag marker into home's marker dir (simulating hook-already-
-// prompted / user-already-declined).
-//
 // writeSuggestMarker 在 home 的标记目录写 tag 标记（模拟 hook 已提示/用户已拒绝）。
 func writeSuggestMarker(t *testing.T, home, tag, value string) {
 	t.Helper()
@@ -129,10 +104,6 @@ func writeSuggestMarker(t *testing.T, home, tag, value string) {
 	}
 }
 
-// TestInitSuggestHook_Branches runs the real script through 18 branches, asserting output +
-// AUTO_INIT/plugin-takeover side effects. If a future edit breaks git-root lookup / marker
-// silencing / the AUTO_INIT branch / plugin auto-takeover, these cases fail.
-//
 // TestInitSuggestHook_Branches 跑真实脚本过 18 个分支，断言输出 + AUTO_INIT/plugin 接管
 // side effect。若未来编辑破坏 git-root 查找 / 标记静默 / AUTO_INIT 分支 / plugin 自动接管，
 // 这些 case 失败。
@@ -188,11 +159,6 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 			// v1.22 零项目写入契约：无 .forge/ 但已登记注册表（forge status exit 0）
 			// → 已启用，静默。这是新成员判定路径（registry 而非 .forge/ 存在性）的
 			// 核心断言——没有它，零写入项目会被反复提示 init。
-			//
-			// v1.22 zero-project-write contract: no .forge/ but registered (forge
-			// status exit 0) → enabled, silent. This pins the new membership path
-			// (registry, not .forge/ existence) — without it, zero-write projects
-			// would be re-prompted to init every session.
 			name:      `有 git 无 .forge 已登记静默`,
 			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
 			statusRC0: true,
@@ -232,9 +198,6 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		// ---- plugin auto-takeover：plugin 已 user-level 安装 = opt-in，git 项目静默自动 init ----
 		{
 			// 安装即接管：plugin 在、git 项目、非成员、无标记 → 直接 forge init（不再询问）。
-			//
-			// Install = opt-in: plugin present, git project, non-member, no marker → straight
-			// forge init (no ask).
 			name:      `有 git plugin 已装自动接管`,
 			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
 			pluginRC0: true,
@@ -243,9 +206,6 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		},
 		{
 			// 每项目退出权高于 plugin 级默认开启：declined 标记拦截自动接管，静默。
-			//
-			// Per-project opt-out beats plugin-wide default-on: the declined marker blocks
-			// auto-takeover, silent.
 			name:      `有 git plugin 已装 declined 退出`,
 			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
 			pluginRC0: true,
@@ -255,9 +215,6 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		},
 		{
 			// suggested 只静音询问、不拦自动接管（plugin 路径没有询问）。
-			//
-			// suggested only mutes the ask; it does not block auto-takeover (there is no
-			// ask on the plugin path).
 			name:      `有 git plugin 已装 suggested 仍自动接管`,
 			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
 			pluginRC0: true,
@@ -267,9 +224,6 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		},
 		{
 			// init 失败回显 stderr 尾部（与 FORGE_AUTO_INIT 同款 partial-state 契约）。
-			//
-			// init failure echoes the stderr tail (same partial-state contract as
-			// FORGE_AUTO_INIT).
 			name:      `有 git plugin 已装 init 失败回显`,
 			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
 			pluginRC0: true,
@@ -279,9 +233,6 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		},
 		{
 			// 非 git 目录不自动 git init（自动创建仓库过于激进）：仍走 advisory 提示。
-			//
-			// Non-git dirs do NOT auto git init (auto-creating a repo is too aggressive):
-			// the advisory prompt stays.
 			name:      `无 git plugin 已装仍提示`,
 			cwdFn:     func(t *testing.T) string { return t.TempDir() },
 			pluginRC0: true,
@@ -290,8 +241,6 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		},
 		{
 			// 成员项目（已登记）在 plugin 分支之前已放行，静默不重复 init。
-			//
-			// Member project (registered) exits before the plugin branch, silent, no re-init.
 			name:      `有 git 已登记且 plugin 已装静默`,
 			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
 			pluginRC0: true,
@@ -340,10 +289,6 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 	}
 }
 
-// TestInitSuggestHook_WritesSuggestedMarker: the first-prompt branch must write the suggested
-// marker so the same project is not prompted again next time (one-prompt contract). Runs the
-// script twice sharing home; the second run should be silent.
-//
 // TestInitSuggestHook_WritesSuggestedMarker：首次提示分支必须写 suggested 标记，
 // 下次同项目不再提示（一次提示契约）。跑两次脚本共享 home，第二次应静默。
 func TestInitSuggestHook_WritesSuggestedMarker(t *testing.T) {
@@ -367,13 +312,6 @@ func TestInitSuggestHook_WritesSuggestedMarker(t *testing.T) {
 	}
 }
 
-// TestInitSuggestHook_ForgeDataHomeOverride nails down refactor-data-home commit E: the hook's
-// SUGGEST_DIR goes through ${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested — when
-// FORGE_DATA_HOME is set, the marker must land on the override root
-// (<dd>/.init-suggested/<tag>), not on HOME/.forge (guards against the hook silently
-// reverting to a $HOME/.forge hardcode or wrong parameter-expansion order; default-path
-// tests would miss such regressions).
-//
 // TestInitSuggestHook_ForgeDataHomeOverride 钉死 refactor-data-home commit E：hook
 // SUGGEST_DIR 走 ${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested——设 FORGE_DATA_HOME 时
 // marker 必须落覆盖根（<dd>/.init-suggested/<tag>），不落 HOME/.forge（防 hook 误改回
@@ -399,11 +337,6 @@ func TestInitSuggestHook_ForgeDataHomeOverride(t *testing.T) {
 	}
 }
 
-// runInitSuggestHookStub runs the real InitSuggestHook script, overriding the forge command
-// with the supplied forge() stub. Used by the dedupe-branch tests — needs a stub that
-// distinguishes the forge plugin status / forge plugin dedupe subcommands (the
-// runInitSuggestHook stub only simulates forge init and cannot cover the dedupe path).
-//
 // runInitSuggestHookStub 跑真实 InitSuggestHook 脚本，用传入的 forge() stub 覆盖 forge
 // 命令。dedupe 分支测试用——需要 stub 区分 forge plugin status / forge plugin dedupe
 // 子命令（runInitSuggestHook 的 stub 只模拟 forge init，无法覆盖 dedupe 路径）。
@@ -435,16 +368,6 @@ func runInitSuggestHookStub(t *testing.T, forgeStub, cwd, tag, home string, extr
 	return string(out)
 }
 
-// dedupeForgeStub — a stub distinguishing forge subcommands:
-//   - forge plugin status: returns 1 when FORGE_PLUGIN_MISSING is non-empty (simulates
-//     not-installed), otherwise returns 0
-//   - forge plugin dedupe <root>: echoes FORGE_DEDUPE_OUT when non-empty (simulates cleanup
-//     with output)
-//   - other forge calls: falls back to init behavior
-//
-// Pure if (no case-action) to dodge the bash 3.2 case-parser pitfall (see
-// hazard-bash32-case-parser).
-//
 // dedupeForgeStub 区分 forge 子命令的 stub：
 //   - forge plugin status：FORGE_PLUGIN_MISSING 非空时 return 1（模拟未装），否则 return 0
 //   - forge plugin dedupe <root>：FORGE_DEDUPE_OUT 非空时 echo 该串（模拟清理有输出）
@@ -467,11 +390,6 @@ forge() {
 }
 `
 
-// TestInitSuggestHook_DedupeBranch guards the legacy-migration branch of init-suggest.sh
-// (after plugin install, already-init'd projects may keep duplicate project-level hooks/MCP;
-// SessionStart auto-dedupes). Three paths: plugin installed + dedupe output -> prompt;
-// plugin not installed -> never enters the branch, silent; installed + no duplicates -> silent.
-//
 // TestInitSuggestHook_DedupeBranch 守护 init-suggest.sh 的存量迁移分支（plugin install
 // 后，已 init 的项目残留 project-level hooks/MCP 重复，SessionStart 自动 dedupe）。
 // 三路径：plugin 已装+dedupe 有输出→提示；plugin 未装→不进分支静默；已装+无重复→静默。
@@ -507,14 +425,6 @@ func TestInitSuggestHook_DedupeBranch(t *testing.T) {
 	})
 }
 
-// TestInitSuggestHook_DedupePassesKeepEmpty: nails down that the init-suggest script's dedupe
-// call passes --keep-empty — the auto path keeps the settings.local.json file shell (user
-// pain point: don't silently delete personal config files). Regression guard: if someone
-// reverts to forge plugin dedupe with ROOT alone (no flag), the SessionStart file-deletion
-// bug returns. The TestInitSuggestHook_DedupeBranch stub forge() only matches $1/$2 and does
-// not validate the --keep-empty string, so an independent string guard is needed (the script
-// source is an embedded string; the build does not validate bash contents).
-//
 // TestInitSuggestHook_DedupePassesKeepEmpty：钉死 init-suggest 脚本的 dedupe 调用传
 // --keep-empty——自动路径保留 settings.local.json 文件壳（用户痛点:不静默删个人配置文件）。
 // 防回归:有人误改回 `forge plugin dedupe "$ROOT"`（无 flag）会重新引入 SessionStart 删文件 bug。

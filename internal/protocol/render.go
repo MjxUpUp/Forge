@@ -6,11 +6,6 @@ import (
 )
 
 // StandardRenderStyle parameterizes how Standards render into markdown bullet lines.
-// The five host renderers (skillgen's quality skill, the cursor/cline/windsurf/copilot
-// translators) share one loop — skip disabled, map severity to a label, optionally
-// format the enforce-hook note, emit one line — and differ only in the labels and the
-// line format. This style struct carries exactly those differences so the loop lives
-// in one place.
 //
 // StandardRenderStyle 参数化 Standards 到 markdown 列表行的渲染。五个 host 渲染器
 // （skillgen 的 quality skill、cursor/cline/windsurf/copilot translator）共享同一个
@@ -47,8 +42,7 @@ func RenderStandards(sb *strings.Builder, standards []Standard, style StandardRe
 	}
 }
 
-// SessionRuleRenderStyle parameterizes how SessionRules render into markdown bullet
-// lines — same five-way dedup as StandardRenderStyle.
+// SessionRuleRenderStyle parameterizes how SessionRules render into markdown bullet lines — same five-way dedup as StandardRenderStyle.
 //
 // SessionRuleRenderStyle 参数化 SessionRules 到 markdown 列表行的渲染——与
 // StandardRenderStyle 同样的五方去重。
@@ -57,15 +51,12 @@ type SessionRuleRenderStyle struct {
 	//
 	// MandatoryLabel 把 SessionRule.Mandatory 映射为展示 label。
 	MandatoryLabel func(mandatory bool) string
-	// TriggerSuffix maps SessionRule.Trigger to an optional display suffix; nil means
-	// the host renders no trigger suffix.
+	// TriggerSuffix maps SessionRule.Trigger to an optional display suffix; nil means the host renders no trigger suffix.
 	//
 	// TriggerSuffix 把 SessionRule.Trigger 映射为可选展示后缀；nil 表示该 host 不渲染
 	// trigger 后缀。
 	TriggerSuffix func(trigger string) string
-	// LineFormat receives (mandatoryLabel, instruction, triggerSuffix) in order. Hosts
-	// that skip the suffix must use explicit argument indexes (e.g. "- %[1]s %[2]s\n") —
-	// once a format uses indexes, unreferenced operands are silently dropped.
+	// LineFormat receives (mandatoryLabel, instruction, triggerSuffix) in order.
 	//
 	// LineFormat 按序接收 (mandatoryLabel, instruction, triggerSuffix)。不用后缀的 host
 	// 必须用显式参数索引（如 "- %[1]s %[2]s\n"）——格式串一旦使用索引，未被引用的
@@ -86,9 +77,7 @@ func RenderSessionRules(sb *strings.Builder, rules []SessionRule, style SessionR
 	}
 }
 
-// EmojiSeverityLabel renders severity as an emoji (error 🔴 / warning 🟡 / info 🔵);
-// unknown severities default to 🔴. Used by the quality skill and the cursor/cline
-// guidance files.
+// EmojiSeverityLabel renders severity as an emoji (error 🔴 / warning 🟡 / info 🔵); unknown severities default to 🔴.
 //
 // EmojiSeverityLabel 把 severity 渲染为 emoji（error 🔴 / warning 🟡 / info 🔵）；
 // 未知 severity 默认 🔴。quality skill 与 cursor/cline guidance 文件使用。
@@ -103,8 +92,7 @@ func EmojiSeverityLabel(severity string) string {
 	}
 }
 
-// WordSeverityLabel renders severity as an upper-case word (ERROR/WARNING/INFO);
-// unknown severities default to ERROR. Used by the windsurf/copilot files.
+// WordSeverityLabel renders severity as an upper-case word (ERROR/WARNING/INFO); unknown severities default to ERROR.
 //
 // WordSeverityLabel 把 severity 渲染为大写单词（ERROR/WARNING/INFO）；未知 severity
 // 默认 ERROR。windsurf/copilot 文件使用。
@@ -129,8 +117,7 @@ func CNMandatoryLabel(mandatory bool) string {
 	return "建议"
 }
 
-// CNTriggerSuffix renders a rule trigger as a Chinese parenthetical (on_edit/on_commit);
-// other triggers get no suffix. Used by the quality skill session rules.
+// CNTriggerSuffix renders a rule trigger as a Chinese parenthetical (on_edit/on_commit); other triggers get no suffix.
 //
 // CNTriggerSuffix 把 rule trigger 渲染为中文括号注记（on_edit/on_commit）；其他
 // trigger 无后缀。quality skill 会话规则使用。

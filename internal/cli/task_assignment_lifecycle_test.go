@@ -1,11 +1,5 @@
 package cli
 
-// task_assignment_lifecycle_test.go — the A2A delegation lifecycle end-to-end:
-// start/assign/claim/question/answer/fail/cancel/reopen/deliver driven through
-// the CLI (setupDelegateProject fixture), plus the DependsOn gate E2Es and the
-// phase-1 offered-block / task-resume auto-claim push (migrated from
-// task_continuity_test.go when that file was split by domain).
-//
 // task_assignment_lifecycle_test.go —— A2A 分派生命周期端到端：经 CLI 驱动
 // start/assign/claim/question/answer/fail/cancel/reopen/deliver
 // （setupDelegateProject 夹具），外加 DependsOn 门禁 E2E 与 phase-1 的
@@ -25,20 +19,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// setupDelegateProject prepares an isolated forge project (git + forge init + initial commit
-// + feat/delegate branch) for delegation E2E tests. CLAUDE_CODE_SESSION_ID is pinned non-empty
-// so claim's SetActiveTaskRef writes a session-scoped active-task-ref that resume can read back
-// (the anchor-side-effect we assert in the lifecycle test). FORGE_DATA_HOME is isolated per
-// test so delegated task states never leak into the real ~/.forge.
-//
 // setupDelegateProject 为分派 E2E 测试准备一个隔离的 forge 项目（git + forge init + 初始提交
 // + feat/delegate 分支）。CLAUDE_CODE_SESSION_ID 钉为非空，使 claim 的 SetActiveTaskRef 写
 // session-scoped active-task-ref 供 resume 读回（生命周期测试断言的锚定副作用）。
 // FORGE_DATA_HOME 每测试隔离，分派 task state 不泄漏进真实 ~/.forge。
-// initGitProject creates a git repo with an initial committed main.go and runs
-// forge init in it — the shared base of setupDelegateProject and the
-// all-projects mine fixture (git identity text is fixture-only, values are
-// irrelevant to every assertion).
 //
 // initGitProject 建一个带初始提交 main.go 的 git 仓并跑 forge init——
 // setupDelegateProject 与 all-projects mine 夹具的共享基底（git 身份文本仅
@@ -72,8 +56,6 @@ func setupDelegateProject(t *testing.T) string {
 	return dir
 }
 
-// startChild starts a task that is a subtask of parent (ParentTaskRef=parent) via the CLI.
-//
 // startChild 经 CLI 启动一个 parent 的子任务（ParentTaskRef=parent）。
 func startChild(t *testing.T, dir, ref, parent string) {
 	t.Helper()
@@ -82,9 +64,6 @@ func startChild(t *testing.T, dir, ref, parent string) {
 	}
 }
 
-// assignClaim drives a task through assign→claim, stopping before deliver —
-// the shared setup of the question/answer and fail-path tests.
-//
 // assignClaim 把任务经 assign→claim 推进，在 deliver 之前停——question/answer
 // 与 fail 路径测试的共享前置。
 func assignClaim(t *testing.T, dir, ref, agent string) {
@@ -100,8 +79,6 @@ func assignClaim(t *testing.T, dir, ref, agent string) {
 	}
 }
 
-// deliverChild drives a subtask through assign→claim→deliver so it reaches the delivered terminal.
-//
 // deliverChild 把子任务经 assign→claim→deliver 推到 delivered 终态。
 func deliverChild(t *testing.T, dir, ref, agent string) {
 	t.Helper()
@@ -129,8 +106,6 @@ func deliverChild(t *testing.T, dir, ref, agent string) {
 func TestCompleteGenericTask_OrchestrationWarn(t *testing.T) {
 	dir := setupDelegateProject(t)
 
-	// Generic parent (the orchestrator) + child-a (delivered, terminal) + child-b (started, pending).
-	//
 	// generic 父任务（编排器）+ child-a（delivered 终态）+ child-b（已 start，pending）。
 	if out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `generic`, `--ref`, `feat/orch`, `--title`, `orch`); code != 0 {
 		t.Fatalf(`start parent exit %d: %s`, code, out)
@@ -139,8 +114,6 @@ func TestCompleteGenericTask_OrchestrationWarn(t *testing.T) {
 	deliverChild(t, dir, `feat/child-a`, `kimi`)
 	startChild(t, dir, `feat/child-b`, `feat/orch`)
 
-	// 1) Complete with child-b pending → advisory WARN on stderr (not stdout), exit 0, parent done.
-	//
 	// 1) child-b pending 时 complete → stderr（非 stdout）advisory 告警，exit 0，父任务完成。
 	stdout, stderr, code := runForgeStreams(t, dir, `task`, `complete`, `--ref`, `feat/orch`)
 	if code != 0 {
@@ -163,8 +136,6 @@ func TestCompleteGenericTask_OrchestrationWarn(t *testing.T) {
 		t.Error(`父任务应已完成（advisory 不阻断）`)
 	}
 
-	// 2) A fresh generic parent whose ONLY child is delivered → completes with NO warn.
-	//
 	// 2) 唯一子任务已 delivered 的全新 generic 父任务 → 无告警完成。
 	if out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `generic`, `--ref`, `feat/orch2`, `--title`, `orch2`); code != 0 {
 		t.Fatalf(`start orch2 exit %d: %s`, code, out)
@@ -180,11 +151,7 @@ func TestCompleteGenericTask_OrchestrationWarn(t *testing.T) {
 	}
 }
 
-// TestTaskAssignClaimDeliver_Lifecycle walks the full A2A delegation lifecycle end-to-end:
-// start → assign (offered) → claim (claimed, session anchored) → deliver (delivered) → mine.
-// It pins the central contract of the multi-agent delegation design — the state machine in
-// types.go driven through the CLI, plus claim's implicit session anchoring (resume with no
-// --ref pulls back the claimed task).
+// TestTaskAssignClaimDeliver_Lifecycle walks the full A2A delegation lifecycle end-to-end: start → assign (offered) → claim (claimed, session anchored) → deliver (delivered) → mine.
 //
 // TestTaskAssignClaimDeliver_Lifecycle 端到端走完整 A2A 分派生命周期：
 // start → assign（offered）→ claim（claimed，session 锚定）→ deliver（delivered）→ mine。
@@ -249,11 +216,7 @@ func TestTaskAssignClaimDeliver_Lifecycle(t *testing.T) {
 	}
 }
 
-// TestTaskDeliver_AsFlag pins the claim/deliver flag parity (usage-log fix: on hosts
-// where agent identity is undetectable, `claim --as kimi` succeeded but
-// `deliver --as kimi` errored "unknown flag: --as", forcing a bare deliver retry).
-// --as on deliver is interface consistency only: a matching identity delivers quietly,
-// a mismatched one still delivers but emits a stderr advisory — never blocks.
+// TestTaskDeliver_AsFlag pins the claim/deliver flag parity on hosts where agent identity is undetectable.
 //
 // TestTaskDeliver_AsFlag 钉住 claim/deliver 的 flag 一致性（usage 日志修复：探测不到
 // agent 身份的宿主上 `claim --as kimi` 成功而 `deliver --as kimi` 报 unknown flag，
@@ -262,8 +225,6 @@ func TestTaskAssignClaimDeliver_Lifecycle(t *testing.T) {
 func TestTaskDeliver_AsFlag(t *testing.T) {
 	dir := setupDelegateProject(t)
 
-	// Matching --as: delivers quietly, no mismatch advisory.
-	//
 	// 相符的 --as：静默交付，无不符 advisory。
 	if stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "as-flag"); code != 0 {
 		t.Fatalf("task start failed: %s", stdout)
@@ -287,8 +248,6 @@ func TestTaskDeliver_AsFlag(t *testing.T) {
 		t.Errorf("deliver --as 后状态应为 delivered, got %+v", state.Assignment)
 	}
 
-	// Mismatched --as: still delivers (advisory only), warning names both identities.
-	//
 	// 不符的 --as：仍交付（仅 advisory），警告须点明两个身份。
 	if stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate-2", "--title", "as-flag-2"); code != 0 {
 		t.Fatalf("task start 2 failed: %s", stdout)
@@ -310,9 +269,7 @@ func TestTaskDeliver_AsFlag(t *testing.T) {
 	}
 }
 
-// TestTaskAssign_UnknownAgentWarnAccepted: an agent absent from the known set (codebuddy,
-// which has no project marker) is warned about but still accepted — the soft-validation
-// contract. The task is created offered so a worker using --as can still claim it explicitly.
+// TestTaskAssign_UnknownAgentWarnAccepted: an agent absent from the known set (codebuddy, which has no project marker) is warned about but still accepted — the soft-validation contract.
 //
 // TestTaskAssign_UnknownAgentWarnAccepted：不在已知集的 agent（codebuddy，无项目标记）被
 // 警告但仍接受——软校验契约。任务创建为 offered，工作方用 --as 仍能显式认领。
@@ -334,8 +291,7 @@ func TestTaskAssign_UnknownAgentWarnAccepted(t *testing.T) {
 	}
 }
 
-// TestTaskAssign_RequiresTo: --to is mandatory; omitting it errors with guidance listing the
-// known agents (so the user discovers the valid set from the error itself).
+// TestTaskAssign_RequiresTo: --to is mandatory; omitting it errors with guidance listing the known agents (so the user discovers the valid set from the error itself).
 //
 // TestTaskAssign_RequiresTo：--to 必填；缺省时报错并列出已知 agent（用户从错误本身即可发现合法集）。
 func TestTaskAssign_RequiresTo(t *testing.T) {
@@ -375,11 +331,7 @@ func TestTaskAssign_WarnsFindingsVisibleToAssignee(t *testing.T) {
 	}
 }
 
-// TestTaskStart_AssigneeWarnAccepted: `task start --assignee` shares the warnIfUnknownAgent
-// guard with `task assign` (Bug 2's whole point — without this test the guard on the start path
-// could be deleted and every test would still stay green). codebuddy is unknown → warn, but the
-// task is still created and offered (exit 0), so a worker using --as can claim it. mine must find
-// it back, proving the offered assignment was actually built.
+// TestTaskStart_AssigneeWarnAccepted pins that `task start --assignee` shares the warnIfUnknownAgent guard.
 //
 // TestTaskStart_AssigneeWarnAccepted：task start --assignee 与 task assign 共享 warnIfUnknownAgent
 // 守卫（Bug 2 的全部意义——无此测试，start 路径的守卫可被删而所有测试仍绿）。codebuddy 未知 → 警告，
@@ -508,9 +460,7 @@ func TestTaskQuestion_RequiresContent(t *testing.T) {
 	}
 }
 
-// TestTaskAnswer_EmptyAllowed: answer with no --content is accepted (resume-only, no Decision
-// recorded) — the design contract that an empty reply still unblocks input-required without forcing
-// the orchestrator to fabricate a rationale.
+// TestTaskAnswer_EmptyAllowed: answer with no --content is accepted (resume-only, no Decision recorded).
 //
 // TestTaskAnswer_EmptyAllowed：answer 无 --content 被接受（仅恢复 claimed 不记 Decision）——设计契约：
 // 空答复仍能解除 input-required 死锁，不强制编排器编造 rationale。
@@ -528,11 +478,7 @@ func TestTaskAnswer_EmptyAllowed(t *testing.T) {
 	}
 }
 
-// TestTaskDependsOn_GateBlocksUntilUpstreamDelivered pins the DependsOn gate (design phase 3): a
-// task cannot pass task-verify while an upstream it DependsOn is not delivered, and unblocks the
-// moment that upstream is delivered. Deliver is via the assignment path (assign→claim→deliver),
-// which sets Assignment.Status=delivered → IsDelivered true without forcing the upstream through
-// its own gates — proving the gate honors all three delivery shapes, not just "complete".
+// TestTaskDependsOn_GateBlocksUntilUpstreamDelivered pins the DependsOn gate (design phase 3).
 //
 // TestTaskDependsOn_GateBlocksUntilUpstreamDelivered 钉住 DependsOn 门禁（设计阶段3）：task 在上游未交付时
 // 不能过 task-verify，上游一交付立即放行。交付走分派路径（assign→claim→deliver），置 Assignment.Status=
@@ -550,10 +496,6 @@ func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
 	if !strings.Contains(stdout, `上游 task 未交付`) || !strings.Contains(stdout, `feat/up`) {
 		t.Errorf(`BLOCKED 信息应含「上游 task 未交付」+ feat/up, got: %s`, stdout)
 	}
-	// The BLOCK must also record a dependency-gate audit entry in the checklog (Passed=false) so the
-	// reason is visible in forge trace — a blocked gate that leaves no evidence is invisible to
-	// observability. Asserts the recordAudit(CheckNameDependencyGate) call in executor.go.
-	//
 	// BLOCK 还必须在 checklog 记一条 dependency-gate 审计条目（Passed=false）使原因在 forge trace
 	// 可见——不留证据的被阻门禁对可观测性是不可见的。断言 executor.go 的 recordAudit(CheckNameDependencyGate) 调用。
 	entries, err := checklog.LoadAll(dir)
@@ -587,10 +529,7 @@ func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
 	}
 }
 
-// TestTaskStart_DependsOnCycleRejected: AddDependency's cycle check has teeth at the CLI. A first
-// task may forward-reference a not-yet-created upstream (the edge is recorded; the gate later
-// treats missing as not-delivered), but closing a ring is rejected: A depends-on B, then B
-// depends-on A would deadlock the ring, so the second start fails with a cycle error.
+// TestTaskStart_DependsOnCycleRejected: AddDependency's cycle check has teeth at the CLI.
 //
 // TestTaskStart_DependsOnCycleRejected：AddDependency 的环检测在 CLI 有牙。首个 task 可前向引用尚未创建
 // 的上游（边已记；门禁后把缺失当未交付），但闭合环被拒：A 依赖 B，再 B 依赖 A 会死锁环，故第二次 start
@@ -609,10 +548,7 @@ func TestTaskStart_DependsOnCycleRejected(t *testing.T) {
 	}
 }
 
-// TestTaskDependsOn_GateCompleteAlsoBlocks is a regression guard: the DependsOn gate condition is
-// `gateID == task-verify || gateID == task-complete`. The other E2E only exercises task-verify, so
-// if task-complete were dropped from the condition this test would catch it — an upstream-locked
-// task must not slip through completion either.
+// TestTaskDependsOn_GateCompleteAlsoBlocks is a regression guard: the DependsOn gate condition is `gateID == task-verify || gateID == task-complete`.
 //
 // TestTaskDependsOn_GateCompleteAlsoBlocks 是回归守卫：DependsOn 门禁条件是
 // `gateID == task-verify || gateID == task-complete`。另一 E2E 只走 task-verify，若 task-complete 被从
@@ -677,11 +613,6 @@ func noOfferedEnv(t *testing.T) {
 	t.Setenv(`FORGE_SESSION_ID`, ``)
 }
 
-// kimiSessionEnv sets the env of a hook-spawned kimi session (FORGE_AGENT=kimi,
-// sid via FORGE_SESSION_ID, claude fallback cleared) and anchors that session's
-// active-task-ref — the shared preamble of the active-in-chain offered-block
-// tests (env order is irrelevant to saveAll, so it may run after the seeding).
-//
 // kimiSessionEnv 设置 hook 派生 kimi session 的 env（FORGE_AGENT=kimi、sid 走
 // FORGE_SESSION_ID、清 claude 兜底）并锚定该 session 的 active-task-ref——
 // active-in-chain offered-block 测试共享的前置（env 顺序对 saveAll 无关，
@@ -954,13 +885,7 @@ func TestOfferedBlock_DoesNotAlterHandoff(t *testing.T) {
 	}
 }
 
-// TestTaskResume_AutoClaim merges the five resume auto-claim scenarios
-// (design §3: resume of an offered-to-me task auto-claims it, killing the
-// manual `task claim` step). Each row preserves the absorbed test's
-// assertions verbatim in its check closure: happy path (offered→claimed +
-// stderr notice + session anchor), plain task not claimed, task offered to
-// another agent not claimed, undetectable agent skips, and --json (claim
-// still lands, notice suppressed, output stays valid JSON).
+// TestTaskResume_AutoClaim merges the five resume auto-claim scenarios (design §3: resume of an offered-to-me task auto-claims it, killing the manual `task claim` step).
 //
 // TestTaskResume_AutoClaim 合并五个 resume 自动认领场景（设计 §3：resume 一个
 // 分派给我的 offered 任务即自动认领，砍掉手动 task claim 步骤）。每行的
@@ -979,8 +904,6 @@ func TestTaskResume_AutoClaim(t *testing.T) {
 		check      func(t *testing.T, dir, out string, st *taskpipeline.TaskState)
 	}{
 		{
-			// Happy path: offered→claimed, stderr notice, session anchored.
-			//
 			// 快乐路径：offered→claimed、stderr 提示、session 锚定。
 			name: "happy path", title: `被分派`, assignTo: `kimi`, assignRole: `frontend`, agent: `kimi`,
 			resumeArgs: []string{`task`, `resume`, `--ref`, `feat/delegate`},
@@ -997,8 +920,6 @@ func TestTaskResume_AutoClaim(t *testing.T) {
 			},
 		},
 		{
-			// A plain (never-assigned) task is not auto-claimed.
-			//
 			// 普通（从未分派的）任务不自动认领。
 			name: "not offered", title: `普通任务`, agent: `kimi`,
 			resumeArgs: []string{`task`, `resume`, `--ref`, `feat/delegate`},
@@ -1012,8 +933,6 @@ func TestTaskResume_AutoClaim(t *testing.T) {
 			},
 		},
 		{
-			// A task offered to reasonix is not auto-claimed by kimi.
-			//
 			// 派给 reasonix 的任务 kimi 不自动认领。
 			name: "other agent", title: `派给 reasonix`, assignTo: `reasonix`, assignRole: `backend`, agent: `kimi`,
 			resumeArgs: []string{`task`, `resume`, `--ref`, `feat/delegate`},
@@ -1027,11 +946,6 @@ func TestTaskResume_AutoClaim(t *testing.T) {
 			},
 		},
 		{
-			// When no agent can be attributed, auto-claim is skipped — the task
-			// stays offered. (A genuine TOCTOU race between IsOfferedTo and Claim
-			// is inherently non-deterministic and is not asserted here; the
-			// non-fatal error path is covered by review.)
-			//
 			// agent 探测不到时跳过自动认领——任务保持 offered。（IsOfferedTo 与
 			// Claim 之间真实的 TOCTOU 竞态本质非确定，此处不断言；非致命错误路径
 			// 由 review 覆盖。）
@@ -1047,9 +961,6 @@ func TestTaskResume_AutoClaim(t *testing.T) {
 			},
 		},
 		{
-			// --json: the auto-claim still takes effect (status reflected in the
-			// JSON) but the stderr notice is suppressed, so the output stays valid JSON.
-			//
 			// --json：auto-claim 照旧生效（状态反映在 JSON）但 stderr 提示被抑制，
 			// 输出保持合法 JSON。
 			name: "json suppresses notice", title: `被分派`, assignTo: `kimi`, assignRole: `frontend`, agent: `kimi`,

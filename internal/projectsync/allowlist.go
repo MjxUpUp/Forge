@@ -9,39 +9,18 @@ import (
 	"strings"
 )
 
-// allowlist.go — the single source of truth for what a project bundle carries.
-// DEFAULT-DENY by design: only the explicitly enumerated portable classes enter;
-// every machine-local file (anchors, sentinels, stamps, backups) and every sensitive
-// store (quarantine source dumps, hazard command lines) stays out unless explicitly
-// included. Future file classes are excluded by construction — a new sentinel or
-// anchor added to forge never leaks into bundles until deliberately allowlisted.
-//
 // allowlist.go —— 项目 bundle 携带内容的单一真相源。按设计默认拒绝：只有显式
 // 枚举的可移植类进入；一切机器本地文件（锚/sentinel/戳/备份）与敏感 store
 // （quarantine 源码倾倒、hazard 命令行）保持在外，除非显式 include。未来文件类
 // 按构造排除——forge 新增的 sentinel 或锚绝不泄进 bundle，直到被刻意加进清单。
 
-// IncludeQuarantine / IncludeHazards are the opt-in sensitive stores.
-//
 // IncludeQuarantine / IncludeHazards 是显式选入的敏感 store。
 const (
 	IncludeQuarantine = `quarantine`
 	IncludeHazards    = `hazards`
 )
 
-// ExportFiles walks dataDir and returns the slash-separated DataDir-relative paths
-// that a bundle carries. extra is a list of opt-in includes (IncludeQuarantine /
-// IncludeHazards); unknown values are an error (fail-closed on typos — silently
-// dropping a typo'd "quarentine" would later surprise the user with a missing
-// store).
-//
-// Portable classes:
-//   - tasks/*.json        (NOT *.lock — per-task lock residue)
-//   - checklog*.jsonl, toollog*.jsonl (active + rotated)
-//   - sessions.jsonl, sessions/*.json
-//   - act/conclusions.jsonl
-//   - stamps/*            (NOT stamps/hook-deploy — machine-local epoch stamp)
-//   - protocol.yml
+// ExportFiles walks dataDir and returns the DataDir-relative paths a bundle carries.
 //
 // ExportFiles 遍历 dataDir，返回 bundle 携带的斜杠分隔 DataDir 相对路径。extra 是
 // 选入的敏感 store（IncludeQuarantine / IncludeHazards）；未知值报错（对 typo
@@ -71,9 +50,6 @@ func ExportFiles(dataDir string, extra []string) ([]string, error) {
 			return err
 		}
 		if d.IsDir() {
-			// Never descend into the whole-dir backups — they contain superseded
-			// copies of everything else and would balloon the bundle.
-			//
 			// 绝不进入整目录备份——它们装着其他一切文件的被替换副本，进 bundle
 			// 只会膨胀。
 			if d.Name() != filepath.Base(dataDir) && strings.HasPrefix(d.Name(), `.rekey-backup-`) {
@@ -99,16 +75,7 @@ func ExportFiles(dataDir string, extra []string) ([]string, error) {
 	return out, nil
 }
 
-// StripNonAllowlisted removes every file under dataDir that the allowlist does
-// not admit, returning the removed rel paths. THE IMPORT-SIDE ENFORCEMENT of
-// default-deny: Unpack validates manifest↔tar consistency, but the manifest
-// itself is untrusted (no signature) — a forged bundle can list
-// imports.jsonl / active-task-ref-* / hooks/* / quarantine/** / hazards/** and
-// datamerge would faithfully move them into the live DataDir (polluting the
-// ledger, hijacking session anchors, bypassing the --include gate for sensitive
-// stores). Opt-in stores are stripped unconditionally here: import has no
-// --include flag in v1, so even a bundle honestly declaring Includes loses those
-// payloads rather than gaining an unrequested sensitive store.
+// StripNonAllowlisted removes every file under dataDir that the allowlist does not admit, returning the removed rel paths.
 //
 // StripNonAllowlisted 删除 dataDir 下 allowlist 不放行的每个文件，返回被删的 rel
 // 路径。这是 allowlist 默认拒绝在导入侧的执行：Unpack 只校验 manifest↔tar 一致，
@@ -144,18 +111,11 @@ func StripNonAllowlisted(dataDir string) ([]string, error) {
 	return removed, err
 }
 
-// allowlistFile classifies one DataDir-relative path: (included, optInStore).
-// optInStore is non-empty only for the sensitive stores, so the caller can admit
-// them when explicitly included.
-//
 // allowlistFile 分类一个 DataDir 相对路径：(纳入, 已知 store)。knownStore 仅对
 // 选入型敏感 store 非空，调用方据此在显式选入时放行。
 func allowlistFile(rel string) (bool, string) {
 	if !strings.ContainsRune(rel, '/') {
 		// DataDir 根级：精确名单 + 两个前缀族（active 与 rotated 日志）。
-		//
-		// DataDir root level: exact names + two prefix families (active and
-		// rotated logs).
 		switch {
 		case rel == `protocol.yml`, rel == `sessions.jsonl`:
 			return true, ``
@@ -169,8 +129,6 @@ func allowlistFile(rel string) (bool, string) {
 	switch top {
 	case `tasks`:
 		// *.json 即任务状态；*.lock 不是（per-task 锁残留）。
-		//
-		// *.json is a task state; *.lock is not (per-task lock residue).
 		return strings.HasSuffix(rel, `.json`), ``
 	case `sessions`:
 		return strings.HasSuffix(rel, `.json`), ``
@@ -178,9 +136,6 @@ func allowlistFile(rel string) (bool, string) {
 		return rel == `act/conclusions.jsonl`, ``
 	case `stamps`:
 		// stamps/hook-deploy 是 hooks/settings.go 写的 epoch+tag 机器本地部署戳。
-		//
-		// stamps/hook-deploy is the machine-local epoch+tag deploy stamp written
-		// by hooks/settings.go.
 		return rel != `stamps/hook-deploy`, ``
 	case `quarantine`:
 		return false, IncludeQuarantine

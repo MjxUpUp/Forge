@@ -8,14 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// forge task impact writes the task's cross-repo impact declaration
-// (TaskState.CrossRepoImpact) — the write side of the task-verify
-// cross-repo-impact gate (crossrepo.go). The declaration goes through
-// MutateTaskState (per-task lock, load→mutate→save), same as the other
-// state-mutating task subcommands. level=none carries no repo list (a
-// single-repo change declaring "no impact elsewhere" — the declaration itself
-// is the point).
-//
 // forge task impact 写任务的跨仓影响声明（TaskState.CrossRepoImpact）——
 // task-verify cross-repo-impact 门禁（crossrepo.go）的写入侧。声明走
 // MutateTaskState（per-task 锁，load→mutate→save），与其他改状态的 task
@@ -49,9 +41,6 @@ func runTaskImpact(cmd *cobra.Command, args []string) error {
 	if level != taskpipeline.CrossRepoNone && level != taskpipeline.CrossRepoMulti {
 		return fmt.Errorf(`--level 必填且只接受 none | multi，got %q`, level)
 	}
-	// level=none ignores --repo by contract: "no impact" carries no target list —
-	// silently dropping would hide a user mistake, so say it out loud.
-	//
 	// level=none 按契约忽略 --repo：「无影响」不携带目标列表——静默丢弃会掩盖
 	// 用户手误，故明说。
 	if level == taskpipeline.CrossRepoNone && len(repos) > 0 {

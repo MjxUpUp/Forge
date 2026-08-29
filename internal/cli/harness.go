@@ -17,18 +17,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// harness.go implements the harness repo (multi-task-concurrency design §3 物理承载 +
-// §11.4): the user-level home becomes a PRIVATE git repository — the process state of
-// every managed repo gains git history, diff, remote sync — while machine-local state,
-// ephemeral sentinels and TRUST ANCHORS (stamps/hazards) are gitignored and NEVER leave
-// the machine (a clone is attacker-controllable input; migrate.go's 2026-08-15 trust
-// boundary review precedent applies verbatim).
-//
-// HITL contract (§13): init's interactive confirmation runs only when stdin is a TTY —
-// an agent's Bash tool has no TTY, so a non-interactive init is REFUSED unless --yes
-// (scripted CI escape; agent discipline forbids self-serving --yes). Configuring a
-// remote and the first push are separate human confirmations (push itself lands with T9).
-//
 // harness.go 实现 harness repo（multi-task-concurrency 设计 §3 物理承载 + §11.4）：
 // 用户级 home 变成私有 git 仓库——所有受管 repo 的过程状态获得 git 史、diff、远端
 // 同步——而机器本地态、短命哨兵与【信任锚】（stamps/hazards）被 gitignore、永不离
@@ -38,10 +26,6 @@ import (
 // 有 TTY，非交互 init 被拒绝，除非 --yes（脚本化 CI 逃生口；agent 纪律禁止自行使
 // 用）。配置远端与首次 push 是独立的人工确认（push 本体随 T9 落地）。
 
-// harnessGitignore is the exclusion list (§11.4): machine-local path bindings, ephemeral
-// sentinels, per-session bookkeeping, deployed config copies, and trust anchors. Anything
-// NOT listed is process state worth versioning and syncing.
-//
 // harnessGitignore 是排除清单（§11.4）：机器本地路径绑定、短命哨兵、会话簿记、部署
 // 副本与信任锚。未列出的即是值得版本化与同步的过程状态。
 const harnessGitignore = `# harness repo 排除清单（multi-task-concurrency §11.4；dogfood 修订 2026-08-27）
@@ -110,7 +94,8 @@ func harnessGit(home string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// HarnessInitialized reports whether the user-level home is already a harness repo.
+// HarnessInitialized reports whether the user-level home is already a harness
+// repo.
 //
 // HarnessInitialized 报告用户级 home 是否已是 harness repo。
 func HarnessInitialized() bool {
@@ -122,12 +107,6 @@ func HarnessInitialized() bool {
 	return err == nil
 }
 
-// stdinIsTTY reports whether stdin is an interactive terminal (the HITL gate: an agent's
-// Bash tool has no TTY, so interactive confirmation cannot be answered by an agent).
-// POSIX: a subshell `test -t 0` inheriting OUR stdin — the shell's own tty check is
-// accurate, unlike Stat heuristics (macOS chains /dev/stdin → /dev/fd/0 → target, which
-// defeats name/mode matching). Windows: char-device heuristic minus NUL (no /bin/sh).
-//
 // stdinIsTTY 报告 stdin 是否交互终端（HITL 门：agent 的 Bash 工具无 TTY，交互确认
 // 无法由 agent 代答）。POSIX：继承【本进程】stdin 的子壳 `test -t 0`——shell 自己
 // 的 tty 判定是准的，Stat 启发式不准（macOS 的 /dev/stdin → /dev/fd/0 → 目标多层
@@ -355,10 +334,6 @@ func harnessStatePath(home string) string {
 	return filepath.Join(home, "harness-state")
 }
 
-// readHarnessState derives the onboarding state: the state file when present, else
-// linked/initialized if the repo already exists (pre-T7 machines that git-init'd by hand),
-// else uninitialized.
-//
 // readHarnessState 推导 onboarding 状态：优先状态文件；repo 已存在时推导
 // initialized/linked（手工 git init 过的存量机器）；否则 uninitialized。
 func readHarnessState(home string) string {
@@ -380,10 +355,8 @@ func readHarnessState(home string) string {
 	return harnessStateUninitialized
 }
 
-// MaybeOfferHarness is the advisory trigger point (multi-task-concurrency §13): called
-// from natural adoption moments (forge init / forge status). Never blocking, cooldown'd
-// (same-day second touch silent), offer-count-capped. Old-version upgraders and new users
-// both land here; the HITL confirmation itself lives in harness init (T6's TTY gate).
+// MaybeOfferHarness is the advisory trigger point (multi-task-concurrency §13):
+// called from natural adoption moments (forge init / forge status).
 //
 // MaybeOfferHarness 是 advisory 触发点（multi-task-concurrency §13）：挂在天然的引导
 // 时机（forge init / forge status）。绝不阻断、有 cooldown（同日第二次触点静默）、有
@@ -430,13 +403,6 @@ func MarkHarnessInitialized(linked bool) {
 	_ = os.WriteFile(harnessStatePath(home), []byte(s), 0o644)
 }
 
-// confirmInteractive runs one HITL confirmation: TTY detection only decides whether the
-// manifest prompt is DISPLAYED (nice-to-have); the security property is carried by
-// "a non-interactive stdin can never produce the answer" — Scanln over EOF fails, the
-// confirmation fails, the action is refused. This holds even where the TTY heuristic
-// misfires (Windows CI consoles are char devices indistinguishable from NUL by Stat —
-// 2026-08-27 branch CI). Refusal reason names the action for actionable guidance.
-//
 // confirmInteractive 执行一次 HITL 确认：TTY 检测只决定是否【展示】清单提示（锦上
 // 添花）；安全性质由「非交互 stdin 永远给不出答案」承载——Scanln 对 EOF 失败、确
 // 认失败、动作拒绝。即使 TTY 启发式误判也成立（Windows CI 的控制台与 NUL 同为字
@@ -454,8 +420,6 @@ func confirmInteractive(showManifest func(), action string) bool {
 	return strings.EqualFold(answer, "yes")
 }
 
-// harnessStateLabel renders the status line label for the onboarding state.
-//
 // harnessStateLabel 渲染 onboarding 状态行的展示标签。
 func harnessStateLabel(state string) string {
 	switch state {

@@ -21,10 +21,7 @@ func loadJSON(t *testing.T, path string, v any) {
 	}
 }
 
-// TestStripForgeMCPServer drives the strip contract over one table: no-op without
-// .mcp.json, whole-file deletion when the file is forge-only, preservation of other
-// servers and top-level fields (with the emptied mcpServers key dropped — no empty
-// object left behind), and no-op when no forge server is present.
+// TestStripForgeMCPServer drives the strip contract over one table: no-op without .mcp.json, whole-file deletion when the file is forge-only, preservation of other servers and top-level fields (with the emptied mcpServers key dropped — no empty object left behind), and no-op when no forge server is present.
 //
 // TestStripForgeMCPServer 用一张表驱动 strip 契约：无 .mcp.json 时 no-op；纯
 // forge 文件删除整个文件；其他 server 与顶层字段保留（清空的 mcpServers 键被

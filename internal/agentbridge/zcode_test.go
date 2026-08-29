@@ -8,10 +8,6 @@ import (
 	"testing"
 )
 
-// zcodeHookCommandsByEvent parses ZCode's ~/.zcode/cli/config.json into
-// event → set(commands), mirroring hookCommandsByEvent for the Claude
-// settings shape (the events level is the only structural delta).
-//
 // zcodeHookCommandsByEvent 把 ZCode 的 ~/.zcode/cli/config.json 解析成
 // event → 命令集合，镜像 Claude settings 形态的 hookCommandsByEvent
 // （events 层是唯一的结构差异）。
@@ -46,10 +42,6 @@ func zcodeHookCommandsByEvent(t *testing.T, path string) map[string]map[string]b
 	return out
 }
 
-// writeZcodeFixture seeds a ZCode config.json at <home>/.zcode/cli/config.json
-// (creating the .zcode install dir, so the translator's self-poison guard sees
-// an "installed" zcode). content is written verbatim.
-//
 // writeZcodeFixture 在 <home>/.zcode/cli/config.json 播种 ZCode config.json
 // （同时创建 .zcode 安装目录，让 translator 的自毒防线看到「已安装」的
 // zcode）。content 逐字节写入。
@@ -65,12 +57,7 @@ func writeZcodeFixture(t *testing.T, home, content string) string {
 	return path
 }
 
-// TestZcodeWiringMirrorsClaudeSettings guards the sync between zcode.go
-// (buildZcodeHooks) and hooks/settings.go (ForgeHookSpec). ZCode reuses
-// Claude's PascalCase event names verbatim, so events map 1:1 — drift between
-// the command sets silently disables a gate on ZCode. Every generated command
-// must carry the ` --agent zcode` attribution suffix. Parallel to
-// TestCursorWiringMirrorsClaudeSettings.
+// TestZcodeWiringMirrorsClaudeSettings guards the sync between zcode.go (buildZcodeHooks) and hooks/settings.go (ForgeHookSpec).
 //
 // TestZcodeWiringMirrorsClaudeSettings 守卫 zcode.go（buildZcodeHooks）与
 // hooks/settings.go（ForgeHookSpec）的同步。ZCode 逐字复用 Claude 的
@@ -100,14 +87,7 @@ func TestZcodeWiringMirrorsClaudeSettings(t *testing.T) {
 	})
 }
 
-// TestZcodeHooks_OnlyLegalZcodeEvents pins the zcode event whitelist against
-// the official roster (zcode.z.ai/en/docs/hooks): SessionStart,
-// UserPromptSubmit, PreToolUse, PermissionRequest, PostToolUse,
-// PostToolUseFailure, Stop. Wiring an event outside that roster never fires
-// (silent no-op). The six ForgeHookSpec events with a ZCode analogue must all
-// be present; PostCompact/SubagentStop (no ZCode analogue) and
-// PermissionRequest (ZCode-only, no spec counterpart) must stay absent.
-// Modeled on TestCodexHooks_OnlyLegalCodexEvents.
+// TestZcodeHooks_OnlyLegalZcodeEvents pins the zcode event whitelist against the official roster (zcode.z.ai/en/docs/hooks): SessionStart, UserPromptSubmit, PreToolUse, PermissionRequest, PostToolUse, PostToolUseFailure, Stop.
 //
 // TestZcodeHooks_OnlyLegalZcodeEvents 把 zcode event 白名单钉在官方名册上
 // （zcode.z.ai/en/docs/hooks）：SessionStart、UserPromptSubmit、PreToolUse、
@@ -133,10 +113,7 @@ func TestZcodeHooks_OnlyLegalZcodeEvents(t *testing.T) {
 		"no analogue on the other side")
 }
 
-// TestZcodeTranslator_GuardNoInstall pins the detection self-poison guard:
-// with no ~/.zcode (zcode not installed), Translate is a nil-error no-op and
-// must NOT create the directory — creating it would make DetectAgents wire a
-// non-existent tool on every later forge init.
+// TestZcodeTranslator_GuardNoInstall pins the detection self-poison guard: with no ~/.zcode (zcode not installed), Translate is a nil-error no-op and must NOT create the directory — creating it would make DetectAgents wire a non-existent tool on every later forge init.
 //
 // TestZcodeTranslator_GuardNoInstall 钉死检测自毒防线：无 ~/.zcode（zcode 未
 // 安装）时 Translate 是 nil 错误 no-op，且不得创建该目录——创建了会让
@@ -151,10 +128,7 @@ func TestZcodeTranslator_GuardNoInstall(t *testing.T) {
 	}
 }
 
-// TestZcodeTranslator_MergePreservesUserContent: existing user settings
-// (top-level keys, hooks.timeoutMs) and user hook entries survive Translate;
-// hooks.enabled is forced true (ZCode executes nothing without it); forge
-// entries land alongside user entries under the same event.
+// TestZcodeTranslator_MergePreservesUserContent: existing user settings (top-level keys, hooks.timeoutMs) and user hook entries survive Translate; hooks.enabled is forced true (ZCode executes nothing without it); forge entries land alongside user entries under the same event.
 //
 // TestZcodeTranslator_MergePreservesUserContent：既有用户设置（顶层键、
 // hooks.timeoutMs）与用户 hook 条目在 Translate 后存活；hooks.enabled 强制为
@@ -217,9 +191,7 @@ func TestZcodeTranslator_MergePreservesUserContent(t *testing.T) {
 	}
 }
 
-// TestZcodeTranslator_NullConfig pins the nil-map guard: a hand-emptied config
-// (`null` body, or `{"hooks": null}`) unmarshals into nil maps — merging must
-// take the fresh-file path (valid wiring written), never panic.
+// TestZcodeTranslator_NullConfig pins the nil-map guard: a hand-emptied config (`null` body, or `{"hooks": null}`) unmarshals into nil maps — merging must take the fresh-file path (valid wiring written), never panic.
 //
 // TestZcodeTranslator_NullConfig 钉死 nil-map 防线：手工清空的配置（`null`
 // 正文或 `{"hooks": null}`）会 unmarshal 成 nil map——merge 必须走全新文件
@@ -244,8 +216,7 @@ func TestZcodeTranslator_NullConfig(t *testing.T) {
 	}
 }
 
-// TestZcodeTranslator_Idempotent: a second Translate is a byte-identical
-// no-op (deterministic output — no spurious rewrites bumping the file mtime).
+// TestZcodeTranslator_Idempotent: a second Translate is a byte-identical no-op (deterministic output — no spurious rewrites bumping the file mtime).
 //
 // TestZcodeTranslator_Idempotent：第二次 Translate 是逐字节不变的 no-op
 // （输出确定——不会因重复写入无谓 bump 文件 mtime）。
@@ -255,9 +226,7 @@ func TestZcodeTranslator_Idempotent(t *testing.T) {
 	assertTranslateIdempotent(t, &ZcodeTranslator{}, path)
 }
 
-// TestStripZcodeHooks covers the uninstall roundtrip: Translate then Strip
-// leaves user content intact with zero forge commands remaining; a second
-// Strip and a missing file are both clean no-ops.
+// TestStripZcodeHooks covers the uninstall roundtrip: Translate then Strip leaves user content intact with zero forge commands remaining; a second Strip and a missing file are both clean no-ops.
 //
 // TestStripZcodeHooks 覆盖卸载往返：Translate 后 Strip 使用户内容完好、forge
 // 命令清零；第二次 Strip 与缺失文件均为干净 no-op。

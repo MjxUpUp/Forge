@@ -1,10 +1,5 @@
 package cli
 
-// skills_eval_loop_test.go — end-to-end serial test of the four commands
-// eval-gen(--cases-only) / eval-record / eval-baseline / eval-report. Isolates home (to
-// avoid polluting the real ~/.pi/research) and canonical, following the runXxx(nil,nil) +
-// stdout-capture pattern from skills_audit_test.go.
-//
 // skills_eval_loop_test.go — eval-gen(--cases-only) / eval-record / eval-baseline /
 // eval-report 四命令的端到端串测。隔离 home（避免污染真实 ~/.pi/research）+ 隔离
 // canonical，照 skills_audit_test.go 的 runXxx(nil,nil) + 捕获 stdout 模式。
@@ -19,10 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
-// evalLoopIsolateHome isolates home into a temp dir so tests never land in the real
-// ~/.pi/research. os.UserHomeDir reads USERPROFILE on Windows and HOME on unix, so both
-// are set.
-//
 // evalLoopIsolateHome 把 home 隔离到临时目录，防测试落到真实 ~/.pi/research。
 // os.UserHomeDir 在 Windows 认 USERPROFILE、unix 认 HOME，两个都设。
 func evalLoopIsolateHome(t *testing.T) {
@@ -40,9 +31,6 @@ func evalLoopWriteSkill(t *testing.T, canonical, name, desc string) {
 		[]byte("---\nname: "+name+"\ndescription: "+desc+"\n---\n\nbody\n"), 0644))
 }
 
-// evalLoopSetup builds a skill, isolates home/canonical, and generates the structured
-// case set. Reuses the prefix.
-//
 // evalLoopSetup 造 skill + 隔离 home/canonical + 生成结构化 case 集。复用前缀。
 func evalLoopSetup(t *testing.T, canonical, skill string) {
 	t.Helper()
@@ -59,9 +47,6 @@ func evalLoopSetup(t *testing.T, canonical, skill string) {
 	skEvalCasesOnly = false
 }
 
-// evalLoopWriteResults writes a slice of SubmitResult to a temp file and returns its path
-// for eval-record --from.
-//
 // evalLoopWriteResults 把一组 SubmitResult 落临时文件，返回路径供 eval-record --from。
 func evalLoopWriteResults(t *testing.T, results []skillseval.SubmitResult) string {
 	t.Helper()
@@ -71,8 +56,6 @@ func evalLoopWriteResults(t *testing.T, results []skillseval.SubmitResult) strin
 	return p
 }
 
-// evalLoopResultsAllRight builds a fully-correct result set (trigger→skill, not→empty).
-//
 // evalLoopResultsAllRight 造一组全对结果（trigger→skill，not→空）。
 func evalLoopResultsAllRight(t *testing.T, canonical, skill string) string {
 	t.Helper()
@@ -88,8 +71,6 @@ func evalLoopResultsAllRight(t *testing.T, canonical, skill string) string {
 	return evalLoopWriteResults(t, results)
 }
 
-// evalLoopRecord runs eval-record once; t.Fatals on error.
-//
 // evalLoopRecord 跑一次 eval-record，失败 t.Fatal。
 func evalLoopRecord(t *testing.T, skill, from, model, ver string) {
 	t.Helper()
@@ -186,8 +167,7 @@ func TestRunSkillsEvalBaseline_DefaultsToLatest(t *testing.T) {
 	}
 }
 
-// TestRunSkillsEvalReport_JSON_ShowRegression: full loop — gen → all-correct record →
-// baseline → a record containing 1 regression → report, asserting NetRegressions=1.
+// TestRunSkillsEvalReport_JSON_ShowRegression: full loop.
 //
 // TestRunSkillsEvalReport_JSON_ShowRegression：完整闭环——gen→全对 record→baseline→
 // 含 1 个 regression 的 record→report，断言 NetRegressions=1。
@@ -196,8 +176,6 @@ func TestRunSkillsEvalReport_JSON_ShowRegression(t *testing.T) {
 	skill := "loop-skill"
 	evalLoopSetup(t, canonical, skill)
 
-	// run1 all correct → set baseline.
-	//
 	// run1 全对 → 设 baseline。
 	evalLoopRecord(t, skill, evalLoopResultsAllRight(t, canonical, skill), "sonnet", "v1")
 	skBaseSkill = skill
@@ -207,8 +185,6 @@ func TestRunSkillsEvalReport_JSON_ShowRegression(t *testing.T) {
 	}
 	skBaseSkill = ""
 
-	// run2: the first trigger case intentionally fails (actual=another skill → regression).
-	//
 	// run2：第一个 trigger case 故意 fail（actual=别的 skill → regression）。
 	cases, _ := skillseval.EvalCases(canonical, skill)
 	results := make([]skillseval.SubmitResult, 0, len(cases))
@@ -227,8 +203,6 @@ func TestRunSkillsEvalReport_JSON_ShowRegression(t *testing.T) {
 	}
 	evalLoopRecord(t, skill, evalLoopWriteResults(t, results), "sonnet", "v1")
 
-	// report --json.
-	//
 	// report --json。
 	skRepSkill = skill
 	skRepJSON = true

@@ -1,12 +1,5 @@
 package cli
 
-// bundle_verify_log_test.go — every import-side trust verdict lands in checklog
-// (bundle-verify) with the right Level/Passed and the STRUCTURED Meta (verdict +
-// signer): the trust decision used to reach only the importing terminal, leaving the
-// dashboard blind to multi-machine trust activity. Pins all five verdicts, including
-// that hard rejects (invalid/rejected) still return their error AND still record —
-// the refusal itself is the event worth seeing.
-//
 // bundle_verify_log_test.go —— 每个导入侧信任判定都以正确的 Level/Passed 与结构化
 // Meta（verdict + signer）落 checklog（bundle-verify）：信任决策此前只到达导入
 // 终端，看板对多机信任活动全盲。钉死全部五种 verdict——含硬拒（invalid/rejected）
@@ -26,9 +19,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/nodeid"
 )
 
-// bundleVerifyFixture builds an isolated home (identity + trust store) + a non-git
-// project root whose checklog lands under the same FORGE_DATA_HOME.
-//
 // bundleVerifyFixture 搭隔离 home（身份 + trust store）+ 非 git 项目 root（其
 // checklog 落在同一 FORGE_DATA_HOME 下）。
 func bundleVerifyFixture(t *testing.T) (root, home, bundle, digestHex string) {

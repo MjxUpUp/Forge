@@ -1,25 +1,6 @@
 package skillseval
 
-// mutex.go — cross-skill mutex-set eval: deriving contrast cases from SKIP delegation edges.
-//
-// The existing eval loop (cases.go/runs.go) is single-skill scoped: trigger/not-trigger cases
-// never say WHERE a misrouted prompt should have gone. But SKILL.md descriptions already
-// declare ownership handoffs in their SKIP section, e.g. "Rust 代码审查（用 rust-code-review）"
-// — the parenthesized （用 X）/（use X) pattern is a directed edge A --skip--> B. A mutex case
-// turns that edge into a contrast assertion: a prompt built from B's OWN trigger fragments
-// (B's domain) must route to B (Positive) and must NOT route to A (Negative).
-//
-// Judgment contract (decided, do not re-litigate): pass iff actual == Positive; actual ==
-// Negative is the first-class confusion row (the exact handoff A declared was violated);
-// actual == anything else is a plain routing miss. mutex-report --gate exits 4 when any
-// confusion row exists, with the BLOCKED line on stderr — stdout stays the pure data channel,
-// aligned with the skills battery --gate contract (internal/cli/skills_battery.go).
-//
-// Case IDs anchor on sha1("mutex:"+A+":"+B+":"+rawTriggerFragment)[:12] — the unrendered
-// fragment, same rationale as cases.go caseID: rendering-rule evolution must not drift IDs
-// en masse and destroy the regression signal.
-//
-// mutex.go — 跨 skill 互斥集 eval：从 SKIP 让渡边派生 contrast case。
+// mutex.go —— 跨 skill 互斥集 eval：从 SKIP 让渡边派生 contrast case。
 //
 // 既有 eval 闭环（cases.go/runs.go）是单 skill 视角：trigger/not-trigger case 从不说
 // 误路由的 prompt「本该去哪」。而 SKILL.md description 的 SKIP 段已声明所有权让渡，
@@ -55,27 +36,15 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// mutexDelegateRe extracts the delegation target from a SKIP parenthetical: both the
-// CJK （用 X） and ASCII (use X) forms appear in the corpus. Only the skill name is
-// captured — trailing qualifiers like "，与门控叠加不替代）" stay out of the edge target
-// (the handoff is to X regardless of the qualifier's semantics).
-//
 // mutexDelegateRe 从 SKIP 括号提取让渡目标：语料里中文（用 X）与英文 (use X) 两种
-// 写法都存在。只捕获 skill 名——「，与门控叠加不替代）」这类尾缀限定不进边目标
+// 写法都存在。只捕获 skill 名——「，与门控叠加不替代」这类尾缀限定不进边目标
 // （让渡对象是 X，与限定语语义无关）。
 var mutexDelegateRe = regexp.MustCompile(`[（(](?:用|use)\s+([a-z0-9-]+)`)
 
-// mutexPromptsPerEdge caps the prompts derived per edge. B's trigger fragments are used
-// in extraction order (the description's own salience ordering); the cap keeps the case
-// set linear in edge count instead of quadratic in fragment count.
-//
 // mutexPromptsPerEdge 每边派生的 prompt 上限。B 的 trigger 片段按提取顺序取（即
 // description 自身的显著度排序）；上限让 case 规模随边数线性增长，而非随片段数膨胀。
 const mutexPromptsPerEdge = 2
 
-// mutexRunMu guards runs.jsonl appends. Separate from runMu (single-skill runs) — the
-// two logs never interleave, so one shared lock would only add false contention.
-//
 // mutexRunMu 保护 runs.jsonl 追加。与 runMu（单 skill runs）分离——两份日志从不
 // 交错，共用一把锁只会增加假竞争。
 var mutexRunMu sync.Mutex
@@ -86,8 +55,7 @@ var mutexRunMu sync.Mutex
 type MutexEdge struct {
 	From string `json:"from"` // A：声明让渡的 skill
 	To   string `json:"to"`   // B：被让渡的目标 skill
-	// Fragment is the raw SKIP fragment carrying the delegation (kept for case-ID
-	// anchoring and human audit).
+	// Fragment is the raw SKIP fragment carrying the delegation (kept for case-ID anchoring and human audit).
 	//
 	// Fragment 是携带让渡的原始 SKIP 片段（供 case ID 锚定与人工审计）。
 	Fragment string `json:"fragment"`
@@ -114,8 +82,6 @@ type MutexResult struct {
 }
 
 // MutexRun is one complete mutex-set run, appended to <dir>/mutex/runs.jsonl.
-// Fields deliberately mirror EvalRun (RunID/Timestamp/ForgeVersion/AgentModel) so
-// cross-version/cross-model comparability guards carry over unchanged.
 //
 // MutexRun 是一次完整的互斥集 run，append 到 <dir>/mutex/runs.jsonl。
 // 字段刻意对齐 EvalRun（RunID/Timestamp/ForgeVersion/AgentModel），跨版本/跨模型
@@ -128,8 +94,7 @@ type MutexRun struct {
 	Results      []MutexResult `json:"results"`
 }
 
-// MutexConfusion is one first-class confusion row: the prompt routed to Negative (A) —
-// exactly the handoff A declared it would not claim.
+// MutexConfusion is one first-class confusion row: the prompt routed to Negative (A) — exactly the handoff A declared it would not claim.
 //
 // MutexConfusion 是一条头号混淆行：prompt 路由到了 Negative（A）——恰是 A 声明过
 // 会让渡的所有权。
@@ -150,8 +115,7 @@ type MutexMatrixCell struct {
 	Count    int    `json:"count"`
 }
 
-// MutexMatrix is the report over the latest run: per-case judgments, the aggregated
-// (positive, actual) matrix, and the confusion list.
+// MutexMatrix is the report over the latest run: per-case judgments, the aggregated (positive, actual) matrix, and the confusion list.
 //
 // MutexMatrix 是基于最新 run 的报告：逐 case 判定、(positive, actual) 聚合矩阵、
 // 混淆清单。
@@ -161,9 +125,7 @@ type MutexMatrix struct {
 	Results    []MutexCaseJudged `json:"results"`
 	Cells      []MutexMatrixCell `json:"cells"`
 	Confusions []MutexConfusion  `json:"confusions,omitempty"`
-	// GateBlocked: any confusion row exists (actual == Negative somewhere). Read by
-	// mutex-report --gate for the exit-4 decision — the judgment lives here, os.Exit
-	// stays in the CLI thin shell.
+	// GateBlocked: any confusion row exists (actual == Negative somewhere).
 	//
 	// GateBlocked：存在任一混淆行（某处 actual == Negative）。mutex-report --gate
 	// 读它做 exit 4 决策——判定在此处，os.Exit 留在 CLI 薄壳。
@@ -186,9 +148,6 @@ func mutexDir(dir string) string       { return filepath.Join(dir, "mutex") }
 func mutexCasesFile(dir string) string { return filepath.Join(mutexDir(dir), "cases.json") }
 func mutexRunsFile(dir string) string  { return filepath.Join(mutexDir(dir), "runs.jsonl") }
 
-// mutexCaseID anchors the case ID on the edge + the unrendered trigger fragment (see
-// file header for the drift rationale).
-//
 // mutexCaseID 把 case ID 锚定在边 + 未渲染 trigger 片段上（漂移理由见文件头注释）。
 func mutexCaseID(from, to, rawFragment string) string {
 	h := sha1.Sum([]byte("mutex:" + from + ":" + to + ":" + rawFragment))
@@ -197,9 +156,7 @@ func mutexCaseID(from, to, rawFragment string) string {
 
 // MutexEdges walks every skill under canonical, parses the SKIP section of each
 // description (same skipPartRe/skipSplitRe extraction as ExtractTriggers), and collects
-// delegation edges. A target not present in ListSkills' result is dropped — a dangling
-// （用 X） reference is a description bug, not an eval edge; testing against it would
-// assert a handoff to a skill that cannot fire.
+// delegation edges.
 //
 // MutexEdges 遍历 canonical 下全部 skill，解析各 description 的 SKIP 段（与
 // ExtractTriggers 同一套 skipPartRe/skipSplitRe 提取），收集让渡边。目标不在
@@ -234,14 +191,10 @@ func MutexEdges(canonical string) ([]MutexEdge, error) {
 			}
 			target := dm[1]
 			if target == name {
-				// Self-delegation is a tautology, not a mutex edge.
-				//
 				// 自我让渡是同义反复，不是互斥边。
 				continue
 			}
 			if !known[target] {
-				// Dangling target: drop the edge (see function header).
-				//
 				// 悬空目标：丢弃该边（见函数头注释）。
 				continue
 			}
@@ -249,10 +202,6 @@ func MutexEdges(canonical string) ([]MutexEdge, error) {
 		}
 	}
 
-	// Dedupe by (From, To, Fragment) — the same delegation may repeat across a
-	// description's phrasing variants. Then sort by (From, To) for a stable,
-	// diff-friendly output order.
-	//
 	// 按 (From, To, Fragment) 去重——同一让渡可能在 description 的不同措辞里
 	// 重复出现。再按 (From, To) 排序，输出稳定、diff 友好。
 	slices.SortFunc(edges, func(a, b MutexEdge) int {
@@ -274,10 +223,7 @@ func MutexEdges(canonical string) ([]MutexEdge, error) {
 	return out, nil
 }
 
-// MutexCases derives contrast cases from the delegation edges: for each edge A→B, up to
-// mutexPromptsPerEdge of B's own trigger fragments are rendered into prompts. Cases from
-// an edge whose B has no extractable triggers are skipped — a prompt must come from B's
-// declared domain, otherwise "must route to B" has no ground truth.
+// MutexCases derives contrast cases from the delegation edges: for each edge A→B, up to mutexPromptsPerEdge of B's own trigger fragments are rendered into prompts.
 //
 // MutexCases 从让渡边派生对比 case：每条边 A→B 取 B 自己的 trigger 片段（至多
 // mutexPromptsPerEdge 个）渲染成 prompt。B 无可提取 trigger 的边跳过——prompt
@@ -288,10 +234,6 @@ func MutexCases(canonical string) ([]MutexCase, error) {
 		return nil, err
 	}
 	triggersBySkill := make(map[string][]string)
-	// seen dedupes by case ID: A may declare the same delegation to B in several SKIP
-	// fragments (phrasing variants), and the ID anchors on (A, B, B's trigger fragment) —
-	// without dedupe each variant edge would re-emit the identical case set.
-	//
 	// seen 按 case ID 去重：A 可能在多个 SKIP 片段里重复声明对 B 的同一让渡（措辞
 	// 变体），而 ID 锚定 (A, B, B 的 trigger 片段)——不去重则每条变体边都会重复
 	// 产出同一组 case。
@@ -328,8 +270,7 @@ func MutexCases(canonical string) ([]MutexCase, error) {
 	return cases, nil
 }
 
-// SaveMutexCases atomically writes the case set to <dir>/mutex/cases.json (MarshalIndent,
-// same style as cases.go). An empty set is a no-op — no empty file is written.
+// SaveMutexCases atomically writes the case set to <dir>/mutex/cases.json (MarshalIndent, same style as cases.go).
 //
 // SaveMutexCases 原子写 case 集到 <dir>/mutex/cases.json（MarshalIndent，风格同
 // cases.go）。空集视为无操作——不写空文件。
@@ -344,8 +285,7 @@ func SaveMutexCases(dir string, cases []MutexCase) error {
 	return util.AtomicWrite(mutexCasesFile(dir), data, 0644)
 }
 
-// LoadMutexCases reads the case set. A missing file returns nil,nil (mutex cases have
-// never been generated).
+// LoadMutexCases reads the case set.
 //
 // LoadMutexCases 读 case 集。文件不存在返回 nil,nil（从未生成过互斥 case）。
 func LoadMutexCases(dir string) ([]MutexCase, error) {
@@ -363,8 +303,7 @@ func LoadMutexCases(dir string) ([]MutexCase, error) {
 	return cases, nil
 }
 
-// JudgeMutexCase is the single-source mutex pass judgment: pass iff actual == Positive
-// (case-insensitive, whitespace-trimmed — same tolerance as judgeResult).
+// JudgeMutexCase is the single-source mutex pass judgment: pass iff actual == Positive (case-insensitive, whitespace-trimmed — same tolerance as judgeResult).
 //
 // JudgeMutexCase 是互斥 pass 判定的单一真相源：actual == Positive 才 pass
 // （大小写不敏感、trim 空白——与 judgeResult 同容忍度）。
@@ -372,11 +311,7 @@ func JudgeMutexCase(c MutexCase, actual string) bool {
 	return strings.EqualFold(strings.TrimSpace(actual), c.Positive)
 }
 
-// RecordMutexRun processes one batch refill of mutex results: normalizes each actual
-// (NormalizeTriggered against the canonical set), judges (JudgeMutexCase), and appends a
-// MutexRun. Unknown case_ids are skipped (the case set changed since dispatch); when ALL
-// are unknown the call fails explicitly — aligned with SubmitRun semantics, so the agent
-// re-fetches the case set instead of persisting an empty run.
+// RecordMutexRun processes one batch refill of mutex results: normalizes each actual (NormalizeTriggered against the canonical set), judges (JudgeMutexCase), and appends a MutexRun.
 //
 // RecordMutexRun 处理一次互斥结果整批回填：归一化每个 actual（对 canonical 集走
 // NormalizeTriggered）、判定（JudgeMutexCase）、append 一条 MutexRun。未知 case_id
@@ -391,8 +326,6 @@ func RecordMutexRun(dir string, cases []MutexCase, canonicalSkills []string, age
 	for _, r := range raw {
 		c, ok := caseByID[r.CaseID]
 		if !ok {
-			// Unknown case_id: the case set has changed (re-run mutex-gen); skip.
-			//
 			// 未知 case_id：case 集已变（重新 mutex-gen），跳过该条。
 			continue
 		}
@@ -419,8 +352,7 @@ func RecordMutexRun(dir string, cases []MutexCase, canonicalSkills []string, age
 	return run, nil
 }
 
-// AppendMutexRun appends a run to <dir>/mutex/runs.jsonl (thread-safe, fsync — replicates
-// runs.go AppendRun: an append-only regression log must survive crashes and stay readable).
+// AppendMutexRun appends a run to <dir>/mutex/runs.jsonl (thread-safe, fsync — replicates runs.go AppendRun: an append-only regression log must survive crashes and stay readable).
 //
 // AppendMutexRun 追加一条 run 到 <dir>/mutex/runs.jsonl（线程安全、fsync——复刻
 // runs.go AppendRun：append-only 回归日志必须崩溃后可读）。
@@ -450,9 +382,7 @@ func AppendMutexRun(dir string, run *MutexRun) error {
 	return f.Close()
 }
 
-// LoadMutexRuns reads all mutex runs (in write order). Returns nil,nil if the file does
-// not exist. Bad lines are skipped; the scanner buffer is enlarged (a run line carries
-// every case result and may be long) — both replicate runs.go LoadRuns.
+// LoadMutexRuns reads all mutex runs (in write order).
 //
 // LoadMutexRuns 读所有互斥 run（按写入顺序）。文件不存在返回 nil,nil。坏行跳过；
 // scanner buffer 增大（一条 run 行携带全部 case 结果，可能很长）——均复刻
@@ -479,8 +409,7 @@ func LoadMutexRuns(dir string) ([]MutexRun, error) {
 	return runs, scanner.Err()
 }
 
-// LatestMutexRun returns the most recent mutex run (last line of the jsonl). Returns
-// nil,nil if there is no run.
+// LatestMutexRun returns the most recent mutex run (last line of the jsonl).
 //
 // LatestMutexRun 返回最新一条互斥 run（jsonl 末行）。无 run 返回 nil,nil。
 func LatestMutexRun(dir string) (*MutexRun, error) {
@@ -494,13 +423,7 @@ func LatestMutexRun(dir string) (*MutexRun, error) {
 	return &runs[len(runs)-1], nil
 }
 
-// ConfusionMatrix builds the report over a run against the case set: per-case judgments,
-// (positive, actual) aggregation, and the confusion list (actual == Negative rows).
-// Results referencing case IDs not in the set (stale run vs regenerated cases) are
-// skipped — the matrix must speak about the current case set, not history.
-//
-// latest == nil yields an empty matrix (Total=0, GateBlocked=false): "nothing checked"
-// is represented by Total==0, never by a vacuous pass.
+// ConfusionMatrix builds the report over a run against the case set: per-case judgments, (positive, actual) aggregation, and the confusion list (actual == Negative rows).
 //
 // ConfusionMatrix 基于 run 与 case 集构建报告：逐 case 判定、(positive, actual)
 // 聚合、混淆清单（actual == Negative 的行）。引用了不在 case 集内 ID 的结果

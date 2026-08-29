@@ -5,13 +5,7 @@ import (
 	"testing"
 )
 
-// TestAutoCompile_SilentInResearchMode dogfood 5.1: when the session never
-// Edit|Write'd source code (AgentFare research/review mode), the auto-compile
-// hook should emit "PASS research-mode session, advisory suppressed" —
-// the advisory occupies AdditionalContext character budget yet adds no value
-// in a pure-research scenario. Under the Wave-1 allow contract an allowing hook
-// emits context (if any) in a {"hookSpecificOutput":{...,"additionalContext":...}}
-// object and never decision:approve; the assertion checks additionalContext.
+// TestAutoCompile_SilentInResearchMode dogfood 5.1.
 //
 // TestAutoCompile_SilentInResearchMode dogfood 5.1：auto-compile hook 在会话
 // 从未 Edit|Write 源码时（AgentFare 调研/审查模式）应输出「PASS research-mode
@@ -43,10 +37,7 @@ func TestAutoCompile_SilentInResearchMode(t *testing.T) {
 	}
 }
 
-// TestBashGuard_SilentOnWriteInResearchMode dogfood 5.1 bash-guard branch:
-// no active task + write cmd + NO source touched in this session → the hook
-// allows (exit 0, no decision:approve — Wave-1 contract) and the output does
-// not carry the "no active task" WARN.
+// TestBashGuard_SilentOnWriteInResearchMode dogfood 5.1 bash-guard branch.
 //
 // TestBashGuard_SilentOnWriteInResearchMode dogfood 5.1 bash-guard branch：
 // no active task + write cmd + NO source touched in this session → 放行

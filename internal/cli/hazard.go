@@ -10,18 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// forge hazard makes the high-risk command interception of on-demand-guards automatic and implements human-in-the-loop.
-//
-// Form (the Forge hook model only has approve/block, and cannot invoke each AI tool private confirmation popup):
-//   - PreToolUse Bash hook hazard-guard detects high-risk commands -> block + additionalContext guidance;
-//     if the user already instructed/confirmed the operation this turn, the agent confirms directly;
-//     otherwise it uses the questioning/confirmation mechanism of its host tool to explain the risk
-//     to the user and obtain explicit confirmation first.
-//   - After obtaining confirmation, the agent runs `forge hazard confirm <command>` to register a time-limited (5min) mark, then retries the original command ->
-//     the hook sees the mark and lets it pass.
-//
-// This command group is the register/query end of the HITL loop; high-risk pattern detection is in hooks/embed.go HazardGuardHook.
-//
 // forge hazard 让 on-demand-guards 的高危命令拦截成为自动挡，并落地 human-in-the-loop。
 //
 // 形态（Forge hook 模型只有 approve/block，调不起各 AI 工具私有的确认弹窗）：
@@ -41,23 +29,12 @@ func init() {
 	hazardCmd.AddCommand(hazardStatusCmd)
 	hazardCmd.AddCommand(hazardLogCmd)
 
-	// --fingerprint: the hook has already computed the fingerprint via forge hazard fingerprint, and the agent directly returns the hex
-	// to register the confirmation. The fingerprint is sha256 hex (only [0-9a-f]), with no risk of quote/escape corruption when copied — whereas returning
-	// the command string will be re-parsed by the agent shell and swallow quotes (e.g. the single quotes of SQL `mysql -e 'DROP TABLE t'`),
-	// inconsistent with the hook original command fingerprint, so it would still be blocked after confirmation. See hazard.ConfirmByFingerprint.
-	//
 	// --fingerprint：hook 已用 forge hazard fingerprint 算好指纹，agent 直接回传 hex
 	// 登记确认。指纹是 sha256 hex（仅 [0-9a-f]），复制无引号/转义失真风险——而回传
 	// 命令串会被 agent shell 重新解析吃掉引号（如 SQL mysql -e 'DROP TABLE t' 的单引号），
 	// 与 hook 原始命令指纹不一致、确认后仍被拦。见 hazard.ConfirmByFingerprint。
 	hazardConfirmCmd.Flags().StringVar(&hazardConfirmFingerprint, "fingerprint", "",
 		"直接按 hook 输出的 hex 指纹登记确认（避免命令串复制失真）")
-	// --last copy-free path: confirm the newest blocked command straight from the events
-	// audit log. Transcription of EITHER the 64-char hex fingerprint or the command
-	// string is a proven distortion source (hand-copy typos; bare-command confirm
-	// mismatching the hook's full-line fingerprint). The block event was written by the
-	// hook itself — its fingerprint needs no copying at all. See hazard.ConfirmLastBlock.
-	//
 	// --last 免复制路径：直接从事件审计日志确认最新被拦命令。64 字符 hex 指纹或命令串
 	// 的转写都已被证实是失真源（手抄错字；裸命令 confirm 与 hook 全行指纹失配）。
 	// block 事件由 hook 自己写入——其指纹根本无需复制。见 hazard.ConfirmLastBlock。
@@ -91,10 +68,6 @@ var hazardConfirmCmd = &cobra.Command{
 	Use:   "confirm <命令>",
 	Short: "登记一次高危命令确认（5min 内同命令重试放行）",
 	Args: func(cmd *cobra.Command, args []string) error {
-		// The --fingerprint path does not need a command argument (the fingerprint already carries the info);
-		// neither does --last (the newest block event carries everything); otherwise a command argument is
-		// required to compute the fingerprint.
-		//
 		// --fingerprint 路径不需要命令参数（指纹已含信息）；--last 也不需要（最新
 		// block 事件已含全部信息）；否则需命令参数算指纹。
 		if cmd.Flags().Changed("fingerprint") || cmd.Flags().Changed("last") {
@@ -108,16 +81,10 @@ var hazardConfirmCmd = &cobra.Command{
 	RunE: runHazardConfirm,
 }
 
-// hazardConfirmFingerprint is injected by the --fingerprint flag. When non-empty, it takes the ConfirmByFingerprint
-// path (the hook has already computed the fingerprint, bypassing command-string copy corruption).
-//
 // hazardConfirmFingerprint 由 --fingerprint flag 注入。非空时走 ConfirmByFingerprint
 // 路径（hook 已算好指纹，绕过命令串复制失真）。
 var hazardConfirmFingerprint string
 
-// hazardConfirmLast is injected by the --last flag: confirm the newest block event from
-// the audit log (copy-free HITL path, see hazard.ConfirmLastBlock).
-//
 // hazardConfirmLast 由 --last flag 注入：确认审计日志中最新一条 block 事件
 // （免复制 HITL 路径，见 hazard.ConfirmLastBlock）。
 var hazardConfirmLast bool
@@ -144,9 +111,6 @@ var hazardStatusCmd = &cobra.Command{
 	RunE:  runHazardStatus,
 }
 
-// hazardLogCmd is invoked internally by the hazard-guard hook to append events to the events.jsonl audit log.
-// Hidden: not user-facing (used by the hook), but kept manually callable for debugging the audit flow.
-//
 // hazardLogCmd 由 hazard-guard hook 内部调用，追加事件到 events.jsonl 审计日志。
 // Hidden：非用户面向（hook 用），但保留可手动调用以便调试审计流。
 var hazardLogCmd = &cobra.Command{
@@ -157,17 +121,9 @@ var hazardLogCmd = &cobra.Command{
 	RunE:   runHazardLog,
 }
 
-// runHazardConfirm registers the confirmation. MinimumNArgs(1) + Join: the agent may pass the whole string with quotes, or without quotes
-// (multiple args are joined by space to restore) — whitespace normalization is done inside hazard.Fingerprint, both forms yield the same fingerprint.
-//
 // runHazardConfirm 登记确认。MinimumNArgs(1) + Join：agent 可引号传整串，也可不引号
 // （多 arg 被空格 join 还原）——空白归一在 hazard.Fingerprint 内做，两种传法同指纹。
 func runHazardConfirm(cmd *cobra.Command, args []string) error {
-	// --last copy-free path: confirm the newest blocked command straight from the event
-	// log (its fingerprint was written by the hook at block time — authoritative by
-	// construction, zero transcription). Checked first: --last names the intent
-	// ("the thing just blocked") and needs no other input.
-	//
 	// --last 免复制路径：直接从事件流确认最新被拦命令（指纹是 hook 拦截时写入的，
 	// 天然权威、零转写）。最先判定：--last 表达的意图就是"刚被拦的那条"，不需要
 	// 其他输入。
@@ -185,10 +141,6 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 			shortFingerprint(fp), ttlMin, command)
 		return nil
 	}
-	// --fingerprint format validation is moved earlier (before findProjectRoot): format validation is pure input validation and does not need
-	// project context. In environments without .forge/ such as CI, this avoids not-in-a-forge-project masking a fingerprint validation failure —
-	// an agent that mis-copies the fingerprint should be explicitly rejected. Same-source validation as ConfirmByFingerprint.
-	//
 	// --fingerprint 格式校验前置（在 findProjectRoot 前）：格式校验是纯输入校验，不需要
 	// 项目上下文。CI 等无 .forge/ 环境下避免 not-in-a-forge-project 掩盖指纹校验失败——
 	// agent 抄错指纹应被明确拒绝。与 ConfirmByFingerprint 同源校验。
@@ -202,8 +154,6 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	ttlMin := int(hazard.ConfirmTTL / time.Minute)
-	// --fingerprint path: the hook has already computed the fingerprint, the agent returns the hex (no copy corruption). The command string is for audit only.
-	//
 	// --fingerprint 路径：hook 已算好指纹，agent 回传 hex（复制无失真）。命令串仅审计用。
 	if hazardConfirmFingerprint != "" {
 		// May be empty (not enforced when --fingerprint is set)
@@ -225,9 +175,6 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runHazardFingerprint only prints the fingerprint (the hook script captures it via $(forge hazard fingerprint ...),
-// the output must be clean — no extra text).
-//
 // runHazardFingerprint 只打印指纹（hook 脚本用 $(forge hazard fingerprint ...) 捕获，
 // 输出必须干净——无额外文字）。
 func runHazardFingerprint(cmd *cobra.Command, args []string) error {
@@ -236,9 +183,6 @@ func runHazardFingerprint(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// runHazardConfirmed conveys the result via exit code (the hook script only reads the exit code). os.Exit bypasses cobra
-// `Error:` stderr noise.
-//
 // runHazardConfirmed 用 exit code 传达结果（hook 脚本只读退出码）。os.Exit 绕过 cobra
 // 的 "Error:" stderr 噪声。
 func runHazardConfirmed(cmd *cobra.Command, args []string) error {
@@ -260,12 +204,6 @@ func runHazardConfirmed(cmd *cobra.Command, args []string) error {
 	return nil // unreachable — 所有路径已 os.Exit
 }
 
-// runHazardLog is invoked by the hazard-guard hook to append an event to events.jsonl. The hook is bash,
-// writing jsonl directly is unsafe (command-string quotes/special characters corrupt JSON), so the Go side does the safe serialization.
-// args[0]=event type (block/release/data), args[1:]=command string (joined to restore, same as confirm).
-// When there is no project root, it silently skips — auditing must not pollute non-forge projects; failures are caught by the hook caller with `|| true`,
-// audit failures must never affect the hook main flow (block/release decisions).
-//
 // runHazardLog 由 hazard-guard hook 调用，追加一条事件到 events.jsonl。hook 是 bash，
 // 直接写 jsonl 不安全（命令串引号/特殊字符破坏 JSON），故由 Go 端安全序列化。
 // args[0]=事件类型（block/release/data），args[1:]=命令串（join 还原，与 confirm 同款）。
@@ -290,9 +228,6 @@ func runHazardStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// Recent 24h event statistics (from the events.jsonl audit log): lets users see the workload of hazard-guard
-	// and the potential false-positive scale, rather than only `current valid confirmations` — fills the gap that the 2026-06 false-positive audit could only dig through checklog.
-	//
 	// 近 24h 事件统计（来自 events.jsonl 审计日志）：让用户看到 hazard-guard 的工作量
 	// 与潜在误伤规模，而非只有"当前有效确认"——补全 2026-06 误伤审计只能扒 checklog 的痛点。
 	since := time.Now().Add(-24 * time.Hour)
@@ -300,9 +235,6 @@ func runHazardStatus(cmd *cobra.Command, args []string) error {
 	releases, rerr := hazard.CountSince(p, hazard.EventRelease, since)
 	data, derr := hazard.CountSince(p, hazard.EventData, since)
 	if berr != nil || rerr != nil || derr != nil {
-		// An unreadable audit log must not render as "zero activity" (the H-1
-		// dead-probe-looks-healthy pattern) — the stats line is withheld instead.
-		//
 		// 审计日志不可读绝不能渲染成"零活动"（H-1 死探针伪装健康模式）——
 		// 撤掉统计行而不是给出误导性数字。
 		fmt.Printf("⚠ 事件日志不可读（%v / %v / %v），24h 统计不可用\n", berr, rerr, derr)
@@ -332,10 +264,6 @@ func runHazardStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// shortFingerprint returns the display prefix of a confirmation fingerprint.
-// The fingerprint is read back from on-disk confirmation files (untrusted
-// input): a short or empty value must not panic on a fixed [:12] slice.
-//
 // shortFingerprint 返回确认指纹的展示前缀。指纹从磁盘确认文件读回（不可信
 // 输入）：过短或空值不能在固定 [:12] 切片上 panic。
 func shortFingerprint(fp string) string {

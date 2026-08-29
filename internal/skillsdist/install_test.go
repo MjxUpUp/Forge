@@ -18,8 +18,6 @@ func mustMk(t *testing.T, err error) {
 	}
 }
 
-// writeCanonicalSkill creates name/SKILL.md under canonical (with a short desc that fails quality, paired with SkipQuality).
-//
 // writeCanonicalSkill 在 canonical 下建 name/SKILL.md（不合格的简短 desc，配 SkipQuality 用）。
 func writeCanonicalSkill(t *testing.T, canonical, name string) string {
 	t.Helper()
@@ -52,8 +50,6 @@ func TestDetectState_MissingCopyInSyncDrift(t *testing.T) {
 		t.Fatalf("missing: got %s", got)
 	}
 
-	// copy-in-sync: copied SKILL.md content matches
-	//
 	// copy-in-sync：拷贝 SKILL.md 内容一致
 	mustMk(t, os.MkdirAll(dst, 0755))
 	data, _ := os.ReadFile(canonSkillMD)
@@ -62,8 +58,6 @@ func TestDetectState_MissingCopyInSyncDrift(t *testing.T) {
 		t.Fatalf("copy-in-sync: got %s", got)
 	}
 
-	// drift: modify target SKILL.md
-	//
 	// drift：改目标 SKILL.md
 	mustMk(t, os.WriteFile(filepath.Join(dst, "SKILL.md"), []byte("---\nname: my-skill\ndescription: drifted\n---\n\nother\n"), 0644))
 	if got := detectState(skillDir, dst); got != StateDrift {
@@ -72,7 +66,6 @@ func TestDetectState_MissingCopyInSyncDrift(t *testing.T) {
 }
 
 // TestDetectState_Linked: link is the core capability for forge cross-drive single source, must work.
-// Windows mklink /J needs no admin; Linux symlink is user-creatable. Both CI ends should pass.
 //
 // TestDetectState_Linked：link 是 forge 跨盘单源的核心能力，必须可用。
 // Windows mklink /J 无需管理员；Linux symlink 普通用户可建。两端 CI 都该通过。
@@ -185,10 +178,7 @@ func TestInstall_QualityBlock(t *testing.T) {
 	}
 }
 
-// TestInstall_BlocksOnSingleCritical is the #4 score-math guard: the install gate used to block
-// only on rec==DO_NOT_INSTALL (score≥50 — reachable with ≥3 CRITICALs). A single CRITICAL finding
-// (e.g. DE-1 conf 0.9 → 22.5) lands in CAUTION and was let through to all targets. Any CRITICAL
-// must block, regardless of the aggregate score.
+// TestInstall_BlocksOnSingleCritical is the #4 score-math guard: the install gate used to block only on rec==DO_NOT_INSTALL (score≥50 — reachable with ≥3 CRITICALs).
 //
 // TestInstall_BlocksOnSingleCritical 是 #4 分数数学守卫：install 门禁此前只在
 // rec==DO_NOT_INSTALL（score≥50——需 ≥3 条 CRITICAL）时阻断。单条 CRITICAL（如 DE-1 conf 0.9 →
@@ -211,9 +201,6 @@ func TestInstall_BlocksOnSingleCritical(t *testing.T) {
 	if rep.Stats.Installed != 0 {
 		t.Fatalf("被阻断的 skill 不应安装到任何 target, installed=%d", rep.Stats.Installed)
 	}
-	// The Issue text must say WHY it blocked (any-CRITICAL), so the failure is diagnosable
-	// from the report without re-running the audit.
-	//
 	// Issue 文案必须说明阻断原因（任一 CRITICAL），让失败无需重跑 audit 即可从报告诊断。
 	var issueText string
 	for _, s := range rep.Skills {
@@ -226,10 +213,7 @@ func TestInstall_BlocksOnSingleCritical(t *testing.T) {
 	}
 }
 
-// TestInstall_CautionSurfacesWarning is the second half of #4: below-block findings (CAUTION band,
-// no CRITICAL) used to be dropped entirely — res.Issues only ever carried ScanSkill results on the
-// blocked path, so a CAUTION skill installed silently. Non-blocking ≠ silent: the findings must
-// surface as a report warning (text-visible) while install proceeds.
+// TestInstall_CautionSurfacesWarning pins that below-block CAUTION findings surface as a report warning while install proceeds.
 //
 // TestInstall_CautionSurfacesWarning 是 #4 的另一半：低于阻断线的 findings（CAUTION 带、无
 // CRITICAL）此前被整体丢弃——res.Issues 只在阻断路径携带 ScanSkill 结果，CAUTION skill 静默
@@ -333,7 +317,6 @@ func TestDriftCheck_TargetOnly(t *testing.T) {
 }
 
 // TestHandleTarget_CopyInSync_ToLink: copy-in-sync + ModeLink → safe replacement with link.
-// Guards the upgrade path when user switches from copy to link single source (delete copy, create link, action=linked).
 //
 // TestHandleTarget_CopyInSync_ToLink：copy-in-sync + ModeLink → 安全替换为 link。
 // 守护用户从 copy 切到 link 单源时的升级路径（删副本建 link，action="linked"）。
@@ -361,7 +344,6 @@ func TestHandleTarget_CopyInSync_ToLink(t *testing.T) {
 }
 
 // TestHandleTarget_Drift_Overwrite_Link: drift + DriftOverwrite + ModeLink → force-create link from canonical.
-// Guards that under drift with overwrite policy, link mode rebuilds link (not copy).
 //
 // TestHandleTarget_Drift_Overwrite_Link：drift + DriftOverwrite + ModeLink → 强制以 canonical 建 link。
 // 守护 drift 时 overwrite 策略下 link 模式重建 link（而非 copy）。
@@ -385,7 +367,6 @@ func TestHandleTarget_Drift_Overwrite_Link(t *testing.T) {
 }
 
 // TestRemoveTargetTree_PreservesCanonicalSource: removing target in linked state must never delete the canonical source.
-// Go 1.24 RemoveAll is safe for junctions (only deletes reparse point), but this is a data safety red line that must be locked by a test.
 //
 // TestRemoveTargetTree_PreservesCanonicalSource：linked 态下删目标绝不能删到 canonical 源。
 // Go 1.24 的 RemoveAll 对 junction 安全（只删 reparse point），但这是数据安全红线，必须有测试锁定。
@@ -407,8 +388,7 @@ func TestRemoveTargetTree_PreservesCanonicalSource(t *testing.T) {
 	}
 }
 
-// TestCopyTree_SkipsVCSAndDeps: copyTree must skip .git/node_modules etc. (distSkipDirs),
-// otherwise VCS metadata / huge dependency trees get copied into target, polluting distribution.
+// TestCopyTree_SkipsVCSAndDeps: copyTree must skip .git/node_modules etc. (distSkipDirs), otherwise VCS metadata / huge dependency trees get copied into target, polluting distribution.
 //
 // TestCopyTree_SkipsVCSAndDeps：copyTree 必须跳过 .git/node_modules 等（distSkipDirs），
 // 否则把 VCS 元数据/依赖巨树复制进目标污染分发。
@@ -507,8 +487,6 @@ func TestBackupTarget_RealDir(t *testing.T) {
 	if rerr != nil || string(data) != "user custom" {
 		t.Fatalf("备份内容应与原副本一致: %v %q", rerr, string(data))
 	}
-	// Independent copy assertion (Suggest#5): after backup, modifying original dst should not change backup content (proves it is a copy not a link, truly preserved).
-	//
 	// 独立副本断言（Suggest#5）：备份后再改原 dst，备份内容不应跟随变化（证明是 copy 非 link，真正留底）。
 	mustMk(t, os.WriteFile(filepath.Join(dst, "SKILL.md"), []byte("changed after backup"), 0644))
 	after, _ := os.ReadFile(filepath.Join(got, "SKILL.md"))
@@ -518,7 +496,6 @@ func TestBackupTarget_RealDir(t *testing.T) {
 }
 
 // TestBackupTarget_PureSnapshot: backup dir has leftover from last time → must clear first to ensure pure snapshot (Fix#1).
-// Otherwise when reusing the same dir, files that existed last time but deleted this time will linger, polluting rollback result.
 //
 // TestBackupTarget_PureSnapshot：备份目录已有上次残留 → 必须先清空，保证纯净快照（Fix#1）。
 // 否则同目录复用时上次有、这次删的文件会残留，污染回滚结果。
@@ -618,8 +595,6 @@ func TestInstall_DriftOverwrite_Backups(t *testing.T) {
 }
 
 // TestTargetDirs_AllExpandsCodexCopilot: TargetAll must expand to include codex/copilot/agents.
-// Guards that target=all does not miss the newly added targets — otherwise user --target all distribution silently drops those tools,
-// skills only install to claude/cursor, loop engineering multi-agent distribution breaks.
 //
 // TestTargetDirs_AllExpandsCodexCopilot：TargetAll 必须展开含 codex/copilot/agents。
 // 守护 target=all 不会漏掉新加的目标——否则用户 --target all 分发会静默漏掉这些工具，
@@ -638,9 +613,6 @@ func TestTargetDirs_AllExpandsCodexCopilot(t *testing.T) {
 }
 
 // TestTargetDir_CodexCopilotPath: codex/copilot/agents global directory paths are correct.
-// Codex CLI reads ~/.codex/skills (official since 2025-12), Copilot personal skill reads ~/.copilot/skills (GitHub Docs),
-// agents target reads the cross-agent shared ~/.agents/skills.
-// Wrong paths would cause distribution to wrong locations, tools cannot detect skills.
 //
 // TestTargetDir_CodexCopilotPath：codex/copilot/agents 全局目录路径正确。
 // Codex CLI 读 ~/.codex/skills（2025-12 起官方），Copilot 个人 skill 读 ~/.copilot/skills（GitHub Docs），
@@ -665,25 +637,16 @@ func TestTargetDir_CodexCopilotPath(t *testing.T) {
 			t.Errorf("targetDir(%q)=%q want %q", name, got, want)
 		}
 	}
-	// Unknown target returns an explicit error (never "" — an empty dir would degrade
-	// filepath.Join("", name) into a cwd-relative write).
-	//
 	// 未知 target 显式报错（绝不返回 ""——空目录会让 filepath.Join("", name) 退化为 cwd 相对写）
 	if got, err := targetDir("unknown-tool", true, home, ""); err == nil || got != "" {
 		t.Errorf("未知 target 应返回错误，got %q err=%v", got, err)
 	}
-	// TargetDirs propagates the unknown-target error.
-	//
 	// TargetDirs 传播未知 target 错误
 	if _, err := TargetDirs([]Target{"unknown-tool"}, true, ""); err == nil {
 		t.Error("TargetDirs 对未知 target 应报错")
 	}
 }
 
-// writePassingSkill creates a skill that passes the full quality gate (R1-R11):
-// kebab name == dir name, desc ≥80 runes with Use when + SKIP, valid metadata.pattern,
-// high-signal body. Paired with SkipQuality=false tests.
-//
 // writePassingSkill 创建一个能过完整质量门控（R1-R11）的 skill：kebab 名 == 目录名、
 // desc ≥80 字符含 Use when + SKIP、合法 metadata.pattern、高信号正文。配 SkipQuality=false 的测试用。
 func writePassingSkill(t *testing.T, canonical, name string) string {
@@ -699,9 +662,6 @@ func writePassingSkill(t *testing.T, canonical, name string) string {
 }
 
 // TestDetectState_FullTreeDrift: copy-in-sync must compare the WHOLE tree, not just SKILL.md.
-// Data-loss regression: user edits target references/foo.md (SKILL.md untouched); a SKILL.md-only
-// comparison would misjudge copy-in-sync, and mode=link handleTarget would os.RemoveAll the whole
-// tree WITHOUT backup (backup only triggers on StateDrift) — silent loss of user edits.
 //
 // TestDetectState_FullTreeDrift：copy-in-sync 必须全树对比而非只比 SKILL.md。
 // 数据丢失回归：用户改了 target 的 references/foo.md（SKILL.md 没动）；单文件对比会误判
@@ -716,23 +676,17 @@ func TestDetectState_FullTreeDrift(t *testing.T) {
 	dst := filepath.Join(target, "my-skill")
 	mustMk(t, copyTree(skillDir, dst))
 
-	// identical full tree → copy-in-sync
-	//
 	// 全树一致 → copy-in-sync
 	if got := detectState(skillDir, dst); got != StateCopyInSync {
 		t.Fatalf("identical tree: got %s, want copy-in-sync", got)
 	}
 
-	// user edits references/foo.md (SKILL.md identical) → MUST be drift, not copy-in-sync
-	//
 	// 用户改 references/foo.md（SKILL.md 相同）→ 必须判 drift 而非 copy-in-sync
 	mustMk(t, os.WriteFile(filepath.Join(dst, "references", "foo.md"), []byte("user local edit"), 0644))
 	if got := detectState(skillDir, dst); got != StateDrift {
 		t.Fatalf("edited references/: got %s, want drift（SKILL.md 相同但子文件被改）", got)
 	}
 
-	// restore, then add an extra file in target → drift
-	//
 	// 恢复后 target 多一个文件 → drift
 	mustMk(t, os.WriteFile(filepath.Join(dst, "references", "foo.md"), []byte("canonical ref"), 0644))
 	mustMk(t, os.WriteFile(filepath.Join(dst, "extra.md"), []byte("user added"), 0644))
@@ -740,8 +694,6 @@ func TestDetectState_FullTreeDrift(t *testing.T) {
 		t.Fatalf("extra file: got %s, want drift（target 多了文件）", got)
 	}
 
-	// remove extra, delete a canonical-copied file in target → drift
-	//
 	// 删掉多余文件，再删 target 里一个 canonical 文件 → drift
 	mustMk(t, os.Remove(filepath.Join(dst, "extra.md")))
 	mustMk(t, os.Remove(filepath.Join(dst, "references", "foo.md")))
@@ -750,9 +702,7 @@ func TestDetectState_FullTreeDrift(t *testing.T) {
 	}
 }
 
-// TestHandleTarget_DriftOverwrite_RemoveFailure: overwrite whose deletion fails must NOT fall
-// through to copyTree — that would produce a new-old hybrid tree reported as a clean overwrite.
-// Expects action=failed, no abortErr (per-target failure, install continues elsewhere).
+// TestHandleTarget_DriftOverwrite_RemoveFailure: overwrite whose deletion fails must NOT fall through to copyTree — that would produce a new-old hybrid tree reported as a clean overwrite.
 //
 // TestHandleTarget_DriftOverwrite_RemoveFailure：删除失败的 overwrite 禁止带病 copy——
 // 否则会产出新旧混合树却报告纯净覆盖。期望 action=failed、无 abortErr（单 target 失败，
@@ -762,9 +712,6 @@ func TestHandleTarget_DriftOverwrite_RemoveFailure(t *testing.T) {
 	skillDir := writeCanonicalSkill(t, canonical, "my-skill")
 	dst := filepath.Join(t.TempDir(), "my-skill")
 
-	// Inject a failing deleter (deterministic cross-platform RemoveAll failure is not
-	// constructible: Windows ignores read-only bits, Unix ignores open file handles).
-	//
 	// 注入失败的删除器（确定性的跨平台 RemoveAll 失败无法直接构造：
 	// Windows 忽略只读位、Unix 忽略打开的文件句柄）。
 	orig := removeTargetTreeFn
@@ -780,10 +727,7 @@ func TestHandleTarget_DriftOverwrite_RemoveFailure(t *testing.T) {
 	}
 }
 
-// TestRemoveTargetTree_Error: removeTargetTree must surface deletion errors (previously
-// swallowed via `_ = os.Remove...`). Failure is made deterministic per-platform: Windows
-// refuses to delete a directory containing an open file; Unix refuses to delete entries
-// inside a directory without write permission.
+// TestRemoveTargetTree_Error: removeTargetTree must surface deletion errors (previously swallowed via `_ = os.Remove...`).
 //
 // TestRemoveTargetTree_Error：removeTargetTree 必须上抛删除错误（原先 `_ = os.Remove...` 吞掉）。
 // 失败按平台确定性构造：Windows 拒绝删除含打开文件的目录；Unix 拒绝删除无写权限目录里的条目。
@@ -803,8 +747,6 @@ func TestRemoveTargetTree_Error(t *testing.T) {
 		t.Fatal("不可删除目录应返回 error，got nil")
 	}
 
-	// happy path: real dir removed without error
-	//
 	// 正常路径：真目录删除无 error
 	dir := filepath.Join(t.TempDir(), "victim2")
 	mustMk(t, os.MkdirAll(dir, 0755))
@@ -813,9 +755,7 @@ func TestRemoveTargetTree_Error(t *testing.T) {
 	}
 }
 
-// TestInstall_ScanSkillError_Blocks: a ScanSkill error must block the skill (issue + Failed++),
-// never be scored on zero findings as clean — the security gate would otherwise pass unreadable
-// skills (skillsqa/audit.go's explicit downstream contract).
+// TestInstall_ScanSkillError_Blocks pins that a ScanSkill error blocks the skill and is never scored as clean.
 //
 // TestInstall_ScanSkillError_Blocks：ScanSkill 出错必须拦截该 skill（记 issue + Failed++），
 // 绝不能在零 findings 上打分报 clean——否则安全门放过不可读 skill（skillsqa/audit.go 明确的下游契约）。
@@ -852,9 +792,7 @@ func TestInstall_ScanSkillError_Blocks(t *testing.T) {
 	}
 }
 
-// TestDriftCheck_SkillFilterNoFalseOrphans: target-only orphan detection must use the FULL
-// canonical name list. With `--skill foo`, other legit skills in the target (bar) must NOT be
-// misreported as orphans.
+// TestDriftCheck_SkillFilterNoFalseOrphans: target-only orphan detection must use the FULL canonical name list.
 //
 // TestDriftCheck_SkillFilterNoFalseOrphans：target-only 孤儿检测必须用过滤前的完整名单。
 // `--skill foo` 时 target 里其他正常 skill（bar）不得被误报孤儿。
@@ -863,8 +801,6 @@ func TestDriftCheck_SkillFilterNoFalseOrphans(t *testing.T) {
 	writeCanonicalSkill(t, canonical, "foo")
 	writeCanonicalSkill(t, canonical, "bar")
 	projectDir := t.TempDir()
-	// bar is present in the target (installed earlier); foo is not.
-	//
 	// bar 在 target 里（之前装过）；foo 不在。
 	mustMk(t, os.MkdirAll(filepath.Join(projectDir, "bar"), 0755))
 	mustMk(t, os.WriteFile(filepath.Join(projectDir, "bar", "SKILL.md"), []byte("x"), 0644))
@@ -878,8 +814,7 @@ func TestDriftCheck_SkillFilterNoFalseOrphans(t *testing.T) {
 	}
 }
 
-// TestDirEntryIsDir: DirEntryIsDir must follow junction/symlink (os.Stat semantics) —
-// e.IsDir() is Lstat-based and drops link-form skills.
+// TestDirEntryIsDir: DirEntryIsDir must follow junction/symlink (os.Stat semantics) — e.IsDir() is Lstat-based and drops link-form skills.
 //
 // TestDirEntryIsDir：DirEntryIsDir 必须跟随 junction/symlink（os.Stat 语义）——
 // e.IsDir() 基于 Lstat，会漏掉 link 形态的 skill。
@@ -907,9 +842,7 @@ func TestDirEntryIsDir(t *testing.T) {
 	}
 }
 
-// TestInstall_TotalCountsEveryProcessedSkill: Total counts every processed skill — including
-// quality-gate-blocked and reserved ones — so the skill-level tier reconciles
-// (Total = passed + failed + reserved).
+// TestInstall_TotalCountsEveryProcessedSkill: Total counts every processed skill — including quality-gate-blocked and reserved ones — so the skill-level tier reconciles (Total = passed + failed + reserved).
 //
 // TestInstall_TotalCountsEveryProcessedSkill：Total 统计每个被处理的 skill——含门控拦截
 // 与保留名——保证 skill 级口径对得上（Total = 通过 + 失败 + 保留）。
@@ -929,11 +862,7 @@ func TestInstall_TotalCountsEveryProcessedSkill(t *testing.T) {
 	}
 }
 
-// TestTreesInSync_SymlinkDifference: a symlink is NOT content-free — its target
-// string participates in the tree comparison. Before the fix, hashTree skipped
-// symlinks entirely, so trees differing ONLY by a symlink (extra link, different
-// target, single-side link) were judged copy-in-sync — and copy-in-sync → link
-// mode deletes the target tree with os.RemoveAll and no backup.
+// TestTreesInSync_SymlinkDifference: a symlink is NOT content-free — its target string participates in the tree comparison.
 //
 // TestTreesInSync_SymlinkDifference：symlink 并非无内容——其 target 串参与整树
 // 对比。修复前 hashTree 完全跳过 symlink，"唯一差异是 symlink"（新增 link /
@@ -998,9 +927,7 @@ func TestTreesInSync_SymlinkDifference(t *testing.T) {
 	})
 }
 
-// TestInstall_UnknownSkillFilterErrors: a misspelled --skill must be an explicit
-// error (same semantics as the CLI layer's filterSkillNames / audit / validate),
-// never silently filtered to an empty set — "0 installed, exit 0" is a false green.
+// TestInstall_UnknownSkillFilterErrors pins that a misspelled --skill is an explicit error, never silently filtered.
 //
 // TestInstall_UnknownSkillFilterErrors：拼错的 --skill 必须显式报错（与 CLI 层
 // filterSkillNames / audit / validate 同款语义），绝不静默过滤成空集——
@@ -1026,13 +953,7 @@ func TestInstall_UnknownSkillFilterErrors(t *testing.T) {
 	}
 }
 
-// TestCopyTree_JunctionEntryNotError pins the copyTree junction fix (review
-// finding): the link detection must use !d.Type().IsRegular() — the SAME rule as
-// hashTree — not ModeSymlink alone. WalkDir reports Windows junctions as
-// ModeIrregular (not ModeSymlink), so the old check let a junction entry fall
-// through to os.ReadFile, which fails on a directory reparse point and failed
-// the whole copyTree on Windows. The junction entry is skipped (like symlinks
-// always were); the regular files around it must still be copied.
+// TestCopyTree_JunctionEntryNotError pins the copyTree junction fix (review finding): the link detection must use !d.Type().IsRegular() — the SAME rule as hashTree — not ModeSymlink alone.
 //
 // TestCopyTree_JunctionEntryNotError 钉死 copyTree 的 junction 修复（审查发现）：
 // link 判定必须用 !d.Type().IsRegular()——与 hashTree 同一规则——而非仅
@@ -1043,9 +964,6 @@ func TestInstall_UnknownSkillFilterErrors(t *testing.T) {
 func TestCopyTree_JunctionEntryNotError(t *testing.T) {
 	src := t.TempDir()
 	mustMk(t, os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("x"), 0655))
-	// A junction (Windows, no admin) / dir symlink (unix) INSIDE the tree —
-	// the entry shape that used to fail the copy on Windows.
-	//
 	// 树内的 junction（Windows 免提权）/目录 symlink（unix）——正是 Windows 上
 	// 曾让 copy 失败的条目形态。
 	linkTarget := t.TempDir()
@@ -1060,24 +978,13 @@ func TestCopyTree_JunctionEntryNotError(t *testing.T) {
 	if rerr != nil || string(data) != "x" {
 		t.Fatalf("常规文件必须照常复制: %v %q", rerr, string(data))
 	}
-	// Non-regular entries are skipped, not expanded (the link itself is not a
-	// copied directory — same semantics symlinks always had).
-	//
 	// 非常规条目被跳过而非展开（link 本身不是被复制的目录——与 symlink 一贯语义一致）。
 	if _, err := os.Lstat(filepath.Join(dst, "ref-link")); !os.IsNotExist(err) {
 		t.Logf("ref-link 在副本中存在（跟随语义）: err=%v", err)
 	}
 }
 
-// TestTreesInSync_TargetOnlySkipDirIsDrift pins the skip-blind-spot fix: a skip
-// dir (distSkipDirs: .git/node_modules/...) present ONLY in the target tree —
-// e.g. the user ran git init inside the installed copy — must judge DRIFT, not
-// copy-in-sync. Before the fix both sides skipped .git in the content hash, so
-// the trees compared equal and link mode's copy-in-sync→link transition
-// os.RemoveAll'd the whole target with NO backup (backup only triggers on
-// StateDrift) — silent destruction of the user's .git. A skip dir present on
-// BOTH sides stays in sync (canonical's copy is not distributed, the target's
-// survives copyTree's skip — consistent).
+// TestTreesInSync_TargetOnlySkipDirIsDrift pins the skip-blind-spot fix.
 //
 // TestTreesInSync_TargetOnlySkipDirIsDrift 钉死 skip 盲区修复：仅目标侧存在的
 // 被跳过目录（distSkipDirs：.git/node_modules/…——如用户在装出的副本里 git init）
@@ -1093,15 +1000,11 @@ func TestTreesInSync_TargetOnlySkipDirIsDrift(t *testing.T) {
 	dst := filepath.Join(target, "my-skill")
 	mustMk(t, copyTree(skillDir, dst))
 
-	// Baseline: identical trees → in sync.
-	//
 	// 基线：两树一致 → 同步。
 	if !treesInSync(skillDir, dst) {
 		t.Fatal("基线：内容一致应判 in-sync")
 	}
 
-	// User ran git init inside the installed copy: target-only .git → drift.
-	//
 	// 用户在装出的副本里 git init：目标单侧 .git → drift。
 	mustMk(t, os.MkdirAll(filepath.Join(dst, ".git", "objects"), 0755))
 	mustMk(t, os.WriteFile(filepath.Join(dst, ".git", "HEAD"), []byte("ref: refs/heads/main"), 0644))
@@ -1112,9 +1015,6 @@ func TestTreesInSync_TargetOnlySkipDirIsDrift(t *testing.T) {
 		t.Fatalf("detectState: got %s, want drift（用户 .git 是本地状态，须走有备份路径）", got)
 	}
 
-	// Same skip dir on BOTH sides → still in sync (no false drift for canonical
-	// trees that legitimately contain a skip dir).
-	//
 	// 双侧同名被跳过目录 → 仍判同步（canonical 本身含被跳过目录时不得误报 drift）。
 	mustMk(t, os.MkdirAll(filepath.Join(skillDir, ".git", "objects"), 0755))
 	mustMk(t, os.WriteFile(filepath.Join(skillDir, ".git", "HEAD"), []byte("ref: refs/heads/main"), 0644))
@@ -1126,11 +1026,7 @@ func TestTreesInSync_TargetOnlySkipDirIsDrift(t *testing.T) {
 	}
 }
 
-// TestBackupTarget_IncludesSkipDirs pins the backup full-copy switch: the
-// overwrite backup must snapshot EVERYTHING — .git/node_modules included — via
-// copyTreeFiltered(nil). Combined with the skip-blind-spot drift fix, this is
-// the rollback path that preserves the user's git init: drift (backup) →
-// overwrite → the .git lands in the backup, not in the void.
+// TestBackupTarget_IncludesSkipDirs pins the backup full-copy switch: the overwrite backup must snapshot EVERYTHING — .git/node_modules included — via copyTreeFiltered(nil).
 //
 // TestBackupTarget_IncludesSkipDirs 钉死备份切换为完整拷贝：overwrite 备份必须
 // 快照全部内容——含 .git/node_modules——经 copyTreeFiltered(nil)。与 skip 盲区

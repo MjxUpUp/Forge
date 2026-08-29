@@ -19,23 +19,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// project_sync.go — `forge project sync init|push|pull|status`: continuous two-way
-// sync over a git transport (docs/design sync plan Phase 1). The channel is a plain
-// git branch (default name forge-sync) on any remote the user already has credentials
-// for — zero new protocol, zero new trust surface. Layout:
+// project_sync.go —— `forge project sync init|push|pull|status`：经 git 传输的
+// 持续双向同步（同步计划 Phase 1）。通道是用户已有凭据的任意 remote 上的一条普通
+// git 分支（默认名 forge-sync）——零新协议、零新信任面。布局：
 //
 //	nodes/<node_id>/<project_key>/bundle.tar.gz
 //
-// Each node writes ONLY its own prefix (git write access is the permission layer)
-// and reads everyone else's; pull imports every other node's bundle through the
-// standard `project import` path, whose ledger makes re-pulls free and whose lineage
-// rules make trust decisions. The bundle file is overwritten per push — history lives
-// in git, not in filenames.
-//
-// project_sync.go —— `forge project sync init|push|pull|status`：经 git 传输的
-// 持续双向同步（同步计划 Phase 1）。通道是用户已有凭据的任意 remote 上的一条普通
-// git 分支（默认名 forge-sync）——零新协议、零新信任面。布局见上。每个节点只写
-// 自己的前缀（git 写权限即权限层）、读所有他人；pull 经标准 `project import`
+// 每个节点只写自己的前缀（git 写权限即权限层）、读所有他人；pull 经标准 `project import`
 // 路径导入每个他机 bundle——账本让重复 pull 免费，lineage 规则裁决信任。
 // bundle 文件每次 push 覆盖——历史留在 git 里，不在文件名里。
 
@@ -58,8 +48,6 @@ var projectSyncCmd = &cobra.Command{
 	RunE: runProjectSync,
 }
 
-// syncStatus is the machine-local sync binding + last-op stamps (DataDir/sync-remote.json).
-//
 // syncStatus 是机器本地的同步绑定 + 最近操作戳（DataDir/sync-remote.json）。
 type syncStatus struct {
 	Remote     string `json:"remote"`
@@ -68,16 +56,11 @@ type syncStatus struct {
 	LastPullAt string `json:"last_pull_at,omitempty"`
 }
 
-// syncBranch is the fixed branch name on the sync remote (immune to each machine's
-// init.defaultBranch drift).
-//
 // syncBranch 是同步 remote 上的固定分支名（免疫各机 init.defaultBranch 漂移）。
 const syncBranch = `forge-sync`
 
 func syncStatusPath(dataDir string) string { return filepath.Join(dataDir, `sync-remote.json`) }
 
-// loadSyncStatus reads the machine-local sync binding.
-//
 // loadSyncStatus 读机器本地同步绑定。
 func loadSyncStatus(dataDir string) (*syncStatus, error) {
 	raw, err := os.ReadFile(syncStatusPath(dataDir))
@@ -91,8 +74,6 @@ func loadSyncStatus(dataDir string) (*syncStatus, error) {
 	return &st, nil
 }
 
-// saveSyncStatus persists the binding atomically.
-//
 // saveSyncStatus 原子持久化绑定。
 func saveSyncStatus(dataDir string, st *syncStatus) error {
 	raw, err := json.MarshalIndent(st, ``, `  `)
@@ -104,8 +85,6 @@ func saveSyncStatus(dataDir string, st *syncStatus) error {
 	return util.AtomicWrite(syncStatusPath(dataDir), raw, 0600)
 }
 
-// gitOut runs git in dir and returns trimmed stdout.
-//
 // gitOut 在 dir 跑 git 并返回裁剪后的 stdout。
 func gitOut(dir string, args ...string) (string, error) {
 	cmd := exec.Command(`git`, args...)
@@ -117,10 +96,6 @@ func gitOut(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// ensureSyncCache clones-or-updates the local cache repo for the remote and leaves it
-// on the sync branch at the remote tip (or a fresh empty branch when the remote does
-// not have it yet).
-//
 // ensureSyncCache 克隆或更新 remote 的本地缓存仓库，并停在同步分支的远端尖端
 // （远端尚无该分支时是全新的空分支）。
 func ensureSyncCache(remote string) (string, error) {
@@ -140,10 +115,6 @@ func ensureSyncCache(remote string) (string, error) {
 			return ``, fmt.Errorf(`git remote add: %w`, err)
 		}
 	}
-	// Distinguish "branch absent on remote" (fine — first push) from "remote
-	// unreachable/auth failed" (must fail loud): bare `git fetch` returns exit 128 for
-	// BOTH, so probing with ls-remote first is what keeps `init`'s fail-fast promise.
-	//
 	// 区分「远端无分支」（正常——首次 push）与「remote 不可达/认证失败」（必须响亮
 	// 失败）：裸 git fetch 对两者都返回 exit 128，先用 ls-remote 探测才能保住
 	// init 的 fail-fast 承诺。
@@ -162,11 +133,6 @@ func ensureSyncCache(remote string) (string, error) {
 	return dir, nil
 }
 
-// syncCommitAll stages ONLY the given prefix (a crashed earlier push can leave
-// .bundle-*.tmp debris — a tree-wide add would commit and push it) and commits with
-// signing/hooks disabled (user-global commit.gpgsign or hooksPath must not break or
-// hang the sync channel). Returns false when clean.
-//
 // syncCommitAll 只暂存给定前缀（此前崩溃的 push 可能留下 .bundle-*.tmp 残骸——
 // 整树 add 会把它提交并推上远端）；提交时关签名与 hooks（用户全局
 // commit.gpgsign 或 hooksPath 不得卡死同步通道）。干净时返回 false。
@@ -189,9 +155,6 @@ func syncCommitAll(dir, prefix, msg string) (bool, error) {
 	return true, nil
 }
 
-// rePackBundle packs the project bundle into dest/bundle.tar.gz (temp + rename), and
-// first sweeps any .bundle-*.tmp debris from a crashed earlier run.
-//
 // rePackBundle 把项目 bundle 打包进 dest/bundle.tar.gz（temp + rename），并先清扫
 // 此前崩溃残留的 .bundle-*.tmp。
 func rePackBundle(cmd *cobra.Command, root, dataDir, dest string) (*projectsync.Manifest, error) {
@@ -243,13 +206,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 	dataDir := forgedata.DataDirFor(root)
 	out := cmd.OutOrStdout()
 
-	// Outcome recording (project-sync, observation class — see CheckProjectSync):
-	// sync-remote.json stamps SUCCESSFUL push/pull only, so a failed op left the old
-	// timestamp standing, invisible off-terminal. One deferred recorder over the
-	// named return: every case's `return <expr>` assigns it before deferred funcs
-	// run. status is read-only — recording each poll would spam the log, so it never
-	// sets syncOp.
-	//
 	// 操作结果落章（project-sync，observation 类——见 CheckProjectSync）：
 	// sync-remote.json 只给成功的 push/pull 打戳，失败操作留着旧时间戳、终端之外
 	// 不可见。在具名返回值上 defer 一个记录器：各 case 的 `return <expr>` 在
@@ -276,9 +232,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		// Validate the remote BEFORE persisting the binding — a failed probe must not
-		// leave a half-written sync-remote.json behind.
-		//
 		// 先校验 remote 再持久化绑定——探测失败不得留下半成品 sync-remote.json。
 		if _, err := ensureSyncCache(args[1]); err != nil {
 			return fmt.Errorf(`remote 不可达: %w`, err)
@@ -308,18 +261,12 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		// Export straight into the cache repo (via temp + rename inside the same dir).
-		//
 		// 直接导出进缓存仓库（同目录 temp + rename）。
 		dest := filepath.Join(dir, `nodes`, id.NodeID, key)
 		manifest, err := rePackBundle(cmd, root, dataDir, dest)
 		if err != nil {
 			return err
 		}
-		// The .sig sidecar travels with the bundle inside the node prefix (peers
-		// verify against their trust stores on pull). Team profile: signing failure
-		// is a hard error (an unsigned push would be rejected by every peer anyway).
-		//
 		// .sig sidecar 随 bundle 一起进节点前缀（对端 pull 时对照各自 trust store
 		// 验真）。团队档：签名失败是硬错误（未签名的推送反正会被每个对端拒收）。
 		if _, _, serr := writeBundleSigRespectingPolicy(filepath.Join(dest, `bundle.tar.gz`)); serr != nil {
@@ -334,24 +281,12 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 			fmt.Fprintln(out, `bundle 无变化——跳过 commit/push`)
 			syncNote = `bundle 无变化`
 		} else {
-			// Push with ONE re-fetch+retry: two machines pushing concurrently make the
-			// loser's push non-fast-forward; re-syncing the cache and re-committing
-			// converges without losing either side (each node writes its own prefix).
-			//
 			// push 带一次重拉重试：双机同时 push 时败者非快进；重同步缓存并重新提交
 			// 即可收敛且不丢任何一侧（各节点只写自己前缀）。
 			if _, err := gitOut(dir, `push`, `origin`, `HEAD:`+syncBranch); err != nil {
 				if _, rerr := ensureSyncCache(st.Remote); rerr != nil {
 					return fmt.Errorf(`git push: %w（重拉缓存也失败: %v）`, err, rerr)
 				}
-				// Re-pack UNCONDITIONALLY from the live DataDir — never Stat-probe the
-				// worktree file. The re-fetch above ran `checkout -B` onto the remote
-				// tip, which REVERTED the worktree copy of our bundle to whatever old
-				// bytes the remote tree already carries under our prefix: the file
-				// exists but is stale, so a Stat probe skips the re-pack and the retry
-				// silently pushes nothing (observed as the convergence hole pinned by
-				// TestProjectSync_PushRetryAfterRemoteMoves).
-				//
 				// 无条件从活 DataDir 重打包——绝不 Stat 探测 worktree 文件。上面的重拉
 				// 已 `checkout -B` 到远端 tip，会把 worktree 里我们前缀下的 bundle 回退
 				// 成远端树上的旧字节：文件存在但是旧的，Stat 探测会跳过重打包，重试就
@@ -408,10 +343,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 		nodesDir := filepath.Join(dir, `nodes`)
 		entries, err := os.ReadDir(nodesDir)
 		if err != nil && !os.IsNotExist(err) {
-			// Folding a permission/IO failure into "zero bundles" would stamp a PASS
-			// sync outcome (LastPullAt + checklog) for a pull that never happened —
-			// the H-1 zero-count-looks-healthy pattern.
-			//
 			// 把权限/IO 失败折叠成"零 bundle"会给一次没发生的同步盖上 PASS
 			//（LastPullAt + checklog）——H-1 零计数伪装健康模式。
 			return fmt.Errorf(`读取同步缓存 nodes/ 失败: %w`, err)
@@ -423,10 +354,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 			if !e.IsDir() || e.Name() == id.NodeID {
 				continue // 自己的前缀不导入
 			}
-			// Remote directory names are attacker-influenceable input — shape-check
-			// before treating one as a node (attribution spoofing / terminal escape
-			// injection via a crafted dir name).
-			//
 			// 远端目录名是攻击者可影响输入——当作节点前先过形态检查（伪造归因 /
 			// 精心构造目录名的终端转义注入）。
 			if !nodeid.ValidNodeID(e.Name()) {
@@ -436,11 +363,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 			bundle := filepath.Join(nodesDir, e.Name(), key, `bundle.tar.gz`)
 			if _, err := os.Stat(bundle); err != nil {
 				if !os.IsNotExist(err) {
-					// A transient stat failure (Windows AV/sharing-violation, unreadable
-					// dir) must NOT route into the key-mismatch branch — that path tells
-					// the user to run `forge project adopt`, an irreversible identity
-					// migration. Skip this node loudly instead.
-					//
 					// 瞬时 stat 失败（Windows 杀软/sharing-violation、目录不可读）
 					// 绝不能落进 key 错位分支——那条路指引用户跑 `forge project
 					// adopt`（不可逆的身份迁移）。改为响亮跳过该节点。
@@ -461,11 +383,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 				continue
 			}
 			fmt.Fprintf(out, `导入节点 %s 的 bundle…`+"\n", e.Name())
-			// Per-node fault ISOLATION (one corrupt bundle must not brick the pull) —
-			// but failures are COLLECTED and reported as a pull-level error at the
-			// end: a policy rejection (team-mode unsigned / invalid signature) is a
-			// silent-nothing sync failure if it only prints a warning and exits 0.
-			//
 			// 逐节点容错隔离（一个坏 bundle 不得 brick 整个 pull）——但失败被收集
 			// 并在结尾作为 pull 级错误报告：策略性拒收（团队档未签/签名无效）若只
 			// 打一行警告就 exit 0，等于静默的同步失败。
@@ -494,8 +411,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 		}
 		fmt.Fprintf(out, `remote:     %s`+"\n"+`node:       %s`+"\n"+`last push:  %s`+"\n"+`last pull:  %s`+"\n",
 			st.Remote, st.NodeID, orDashSync(st.LastPushAt), orDashSync(st.LastPullAt))
-		// Peers visible in the cache (best effort — cache may not exist yet).
-		//
 		// 缓存中可见的对端（尽力而为——缓存可能尚未建立）。
 		home, herr := forgedata.GlobalHome()
 		if herr == nil {
@@ -506,10 +421,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 					if !e.IsDir() {
 						continue
 					}
-					// Same attacker-influenceable input as the pull path: a crafted
-					// directory name (ANSI escapes / newline) must not reach the
-					// terminal raw — shape-check, quote the invalid ones.
-					//
 					// 与 pull 路径同一攻击者可影响输入：精心构造的目录名（ANSI 转义/
 					// 换行）不得原文直达终端——过形态检查，非法名引显。
 					if nodeid.ValidNodeID(e.Name()) {
@@ -527,11 +438,6 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 	return fmt.Errorf(`未知子命令 %q（init|push|pull|status）`, args[0])
 }
 
-// warnPeerKeyMismatch explains a peer prefix carrying bundles under keys none of
-// which is ours — the two-machine key-misalignment case. Without this hint the
-// misalignment is unobservable: pull succeeds with zero bundles, status shows both
-// nodes, and the recovery (forge project adopt) is never suggested.
-//
 // warnPeerKeyMismatch 解释「对端前缀下有 bundle、但没有一个在本机 key 下」的双机
 // key 错位。没有这条提示，错位完全不可观测：pull 零 bundle 成功、status 两机互相
 // 可见，恢复手段（forge project adopt）永远不会被提出。
@@ -545,9 +451,6 @@ func warnPeerKeyMismatch(out io.Writer, nodesDir, peer, key string) {
 		if !e.IsDir() || e.Name() == key {
 			continue // 本机 key 前缀存在但 bundle 缺失是另一种状态，不是 key 错位
 		}
-		// Remote directory names are attacker-influenceable input — quote, never
-		// echo raw (same threat model as the node-name check above).
-		//
 		// 远端目录名是攻击者可影响输入——引显，绝不原文输出（与上方节点名检查
 		// 同一威胁模型）。
 		keys = append(keys, fmt.Sprintf(`%q`, e.Name()))
@@ -565,13 +468,6 @@ func orDashSync(s string) string {
 	return s
 }
 
-// recordSyncOutcome best-effort-logs one sync op outcome (observation class — see
-// CheckProjectSync). The panel's pre-existing sync signal (sync-remote.json) stamps
-// SUCCESSFUL ops only — a failed push left the old timestamp standing and the failure
-// was invisible anywhere but the terminal; this is the failure-visible record.
-// Level: pass on success, fail on error. Best-effort: a logging failure must never
-// break the sync op itself.
-//
 // recordSyncOutcome 尽力落章一次同步操作结果（observation 类——见
 // CheckProjectSync）。面板此前唯一的 sync 信号（sync-remote.json）只给成功操作
 // 打戳——失败的 push 留着旧时间戳，失败在终端之外完全不可见；本函数是让失败

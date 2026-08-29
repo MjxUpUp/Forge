@@ -4,17 +4,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// project.go — the `forge project` command group: cross-machine project-data
-// transport and identity alignment (project-sync).
-//
-//   export  打包项目数据为可搬运 bundle（allowlist 默认拒绝敏感/机器本地文件）
-//   import  把 bundle 落地合并到本机（lineage 信任 + 幂等账本）
-//   adopt   采纳 repo-born 项目 ID（.forge-project-id），跨机器身份对齐
-//
-// The identity model and merge semantics live in forgedata / datamerge /
-// projectsync; these commands are shells over them. All strings use raw literals
-// (Windows quote-corruption rule, registry.go convention).
-//
 // project.go —— `forge project` 命令组：项目数据跨机器传输与身份对齐
 // （project-sync）。
 //

@@ -9,16 +9,6 @@ package cli
 // verify-acceptance（只认 active task）完成 → review 修复 commit 改动源码后 complete
 // 永久 BLOCKED，且 start/claim/attach/resume 无一能复活。修复：完成标记归还
 // `forge task complete`（pre-flight 之后、评分之前），gate 不再 MarkComplete。
-//
-// task_complete_test.go — pins for complete's ordering contract (dogfood 2026-08-18
-// deadlock fix). The deadlock (feat/trigger-audit-v2 task): the LAST gate marked
-// completion on pass → ActiveTaskState returns nil for CompletedAt!=nil → the following
-// `forge task complete` acceptance pre-flight demands a fresh acceptance snapshot (then
-// AcceptedHeadCommit==HEAD; since 2026-08-25 a source-content fingerprint — see
-// CheckAcceptanceFresh in acceptance.go) while the only refresher (verify-acceptance)
-// accepts ACTIVE tasks only → after a review-fix commit changed the source, complete was
-// BLOCKED forever with no revival path. Fix: completion moved back into `forge task
-// complete` (after pre-flight, before scoring); gates no longer MarkComplete.
 
 import (
 	"os"
@@ -33,9 +23,6 @@ import (
 
 // setupDeadlockTask 建一个 git 仓库 + session-scoped active task（三道门禁已过、带验收
 // 标准）——模拟「门禁全过、等待 finalize」的窗口态。
-//
-// setupDeadlockTask builds a git repo + session-scoped active task (all gates passed,
-// with acceptance criteria) — the "gates done, awaiting finalize" window state.
 func setupDeadlockTask(t *testing.T, acceptRaw []string) (dir string) {
 	t.Helper()
 	dir = t.TempDir()
@@ -69,9 +56,6 @@ func setupDeadlockTask(t *testing.T, acceptRaw []string) (dir string) {
 		Acceptance: taskpipeline.ParseAcceptance(acceptRaw),
 	}
 	// 三道门禁全部通过（RecordGateResult）——旧 bug 正是最后这道完成标记把任务打死。
-	//
-	// All three gates passed (RecordGateResult) — the old bug was exactly this last
-	// gate's completion mark deactivating the task.
 	for _, g := range taskpipeline.DefaultGates() {
 		state.RecordGateResult(g.ID, true, head)
 	}
@@ -81,15 +65,12 @@ func setupDeadlockTask(t *testing.T, acceptRaw []string) (dir string) {
 	return dir
 }
 
+// TestTaskComplete_PreflightFailureKeepsTaskActive pins the fix's core contract: a failing pre-flight must leave the task ACTIVE (CompletedAt==nil) so verify-acceptance can refresh the stale snapshots and complete can be retried; on success MarkComplete lands after the pre-flight with scoring in tow; double complete is idempotent.
+//
 // TestTaskComplete_PreflightFailureKeepsTaskActive 钉死死锁修复的核心契约：pre-flight
 // 失败必须保持任务 active（CompletedAt==nil），verify-acceptance 才能刷新过期快照，
 // complete 才能重试通过；成功路径上 MarkComplete 落在 pre-flight 之后、评分随行；
 // 重复 complete 幂等。
-//
-// TestTaskComplete_PreflightFailureKeepsTaskActive pins the fix's core contract: a
-// failing pre-flight must leave the task ACTIVE (CompletedAt==nil) so verify-acceptance
-// can refresh the stale snapshots and complete can be retried; on success MarkComplete
-// lands after the pre-flight with scoring in tow; double complete is idempotent.
 func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	dir := setupDeadlockTask(t, []string{`go version :: go version`})
 	const taskRef = `feat/deadlock`
@@ -104,11 +85,6 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	// 2. 源码变更 + commit（模拟 review 修复改动代码）→ 内容快照过期。
 	//    注意：2026-08-25 起快照绑源码内容指纹而非 HEAD——空 commit 不再使快照
 	//    过期，故此处必须是真实源码改动才能触发 pre-flight 拒绝。
-	//
-	// 2. Source change + commit (a review fix that actually touches code) → the
-	//    content snapshot goes stale. Note: since 2026-08-25 the snapshot binds
-	//    the source-content fingerprint, not HEAD — an empty commit no longer
-	//    stales it, so a REAL source edit is required to trip the pre-flight.
 	if err := os.WriteFile(filepath.Join(dir, `fix.go`), []byte("package main\n\nfunc fix() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -175,11 +151,10 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	}
 }
 
+// TestTaskComplete_IdempotentGuardOnGeneric a completed generic task re-completes idempotently (generic never scores — the guard must key on IsGeneric, not Score).
+//
 // TestTaskComplete_IdempotentGuardOnGeneric 已完成的 generic 任务重复 complete 幂等
 // （generic 不评分，守卫须走 IsGeneric 分支而非 Score）。
-//
-// TestTaskComplete_IdempotentGuardOnGeneric a completed generic task re-completes
-// idempotently (generic never scores — the guard must key on IsGeneric, not Score).
 func TestTaskComplete_IdempotentGuardOnGeneric(t *testing.T) {
 	dir := t.TempDir()
 	const sid = `test-session-generic`
@@ -206,16 +181,12 @@ func TestTaskComplete_IdempotentGuardOnGeneric(t *testing.T) {
 	}
 }
 
+// TestTaskGate_PassesWithoutCompleting E2E: gates no longer MarkComplete — after ALL THREE gates pass (review pass → task-complete), the task must still be active (CompletedAt==nil) and visible to ActiveTaskState.
+//
 // TestTaskGate_PassesWithoutCompleting E2E 钉住 gate 不再 MarkComplete：**三道门禁全部
 // 通过**（review pass → task-complete）后，任务必须仍处 active（CompletedAt==nil）且对
 // ActiveTaskState 可见。死锁修复前最后一道 gate 会在 IsComplete 时标记完成——只测首道
 // gate 钉不住该条件式行为（review m5），必须走满三门。
-//
-// TestTaskGate_PassesWithoutCompleting E2E: gates no longer MarkComplete — after ALL
-// THREE gates pass (review pass → task-complete), the task must still be active
-// (CompletedAt==nil) and visible to ActiveTaskState. Before the fix the LAST gate
-// marked completion on IsComplete — testing only the first gate cannot pin that
-// conditional behavior (review m5); all three gates must run.
 func TestTaskGate_PassesWithoutCompleting(t *testing.T) {
 	t.Setenv(`CLAUDE_CODE_SESSION_ID`, `e2e-gate-active`)
 	dir := t.TempDir()
@@ -224,10 +195,6 @@ func TestTaskGate_PassesWithoutCompleting(t *testing.T) {
 	}
 	// git 仓库：task start 先记录 HeadCommit 基准，之后的真实代码提交构成增量变更
 	//（hasCodeChanges 的判定依据），task-complete 的 review-snapshot 一致性需要 git HEAD。
-	//
-	// Git repo: task start first records the HeadCommit base; the real code commit
-	// AFTER it forms the incremental change (what hasCodeChanges judges), and
-	// task-complete's review-snapshot consistency needs a git HEAD.
 	runGit(t, dir, `init`)
 	runGit(t, dir, `config`, `user.email`, `t@example.com`)
 	runGit(t, dir, `config`, `user.name`, `t`)
@@ -248,8 +215,6 @@ func TestTaskGate_PassesWithoutCompleting(t *testing.T) {
 		}
 	}
 	// task-complete 的 ReviewPassed 硬前置：先 review pass。
-	//
-	// task-complete's ReviewPassed hard prerequisite: review pass first.
 	if out, _, code := runForge(t, dir, `review`, `pass`); code != 0 {
 		t.Fatalf(`forge review pass failed: %s`, out)
 	}

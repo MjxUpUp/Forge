@@ -7,11 +7,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// TestCollectGoldenFromTask_MetaSource guards the Meta annotation of the collector: a scored
-// task processed by CollectGoldenFromTask must yield a golden case tagged source=auto-collected.
-// A temp dir has no git, so GetHeadCommit equals state.HeadCommit equals the empty string,
-// hence no drift_known (the has-drift path is covered end-to-end by the chore-fix-ci-cmd-forge
-// fixture collect-golden, see testdata/golden_real).
+// TestCollectGoldenFromTask_MetaSource guards the Meta annotation of the collector: a scored task processed by CollectGoldenFromTask must yield a golden case tagged source=auto-collected.
 //
 // TestCollectGoldenFromTask_MetaSource 守卫采集器的 Meta 标注：已评分任务经
 // CollectGoldenFromTask 产出的 golden case 须带 source=auto-collected。temp dir 无
@@ -50,8 +46,7 @@ func TestCollectGoldenFromTask_MetaSource(t *testing.T) {
 	}
 }
 
-// TestCollectGoldenFromTask_NotScored guards the precondition: an unscored task should
-// error on collection (avoiding producing a junk fixture with a zero-valued Expected).
+// TestCollectGoldenFromTask_NotScored guards the precondition: an unscored task should error on collection (avoiding producing a junk fixture with a zero-valued Expected).
 //
 // TestCollectGoldenFromTask_NotScored 守卫前置条件：未评分任务采集应报错（避免产
 // Expected 为零值的废 fixture）。

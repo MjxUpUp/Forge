@@ -1,11 +1,5 @@
 package cli
 
-// task_override_test.go — unit tests for describeOverrides. Covers the skill-decisions branch added in
-// component B + the symmetry of the three flags (work-activity/test-coverage/skill-decisions) + empty state.
-// The end-to-end effectiveness of the CLI flag→state.Overrides mapping (the case block of task.go runTaskOverride)
-// is guarded by the executor integration test TestTaskVerify_SkillDecisionsGuardrail_EscapeHatchBypasses
-// (state.Overrides.SkillDecisions=`disable` → not blocked + records CheckEscapeHatch).
-//
 // task_override_test.go — describeOverrides 单元测试。覆盖 B 组件新增的 skill-decisions 分支
 // + 三 flag 对称（work-activity/test-coverage/skill-decisions）+ 空状态。CLI flag→state.Overrides
 // 映射（task.go runTaskOverride 的 case 块）的端到端生效由 executor 集成测试
@@ -46,13 +40,6 @@ func TestDescribeOverrides_Empty(t *testing.T) {
 	}
 }
 
-// TestTaskOverrideCmdShortNoWorkActivityLie guards the override command's Short help
-// against the work-activity strength lie (re-review round 2, 2026-08): the command
-// accepts --work-activity among verification-class hatches, so a blanket "降强度到
-// Weak" claim would lie for work-activity users (it is a rhythm gate —
-// checklog.isRhythmEscapeHatch never caps Strength). The Short must distinguish the
-// two classes, mirroring task.go runTaskOverride's detailed output.
-//
 // TestTaskOverrideCmdShortNoWorkActivityLie 守卫 override 命令的 Short 帮助不得再对
 // work-activity 谎报强度（复审第二轮，2026-08）：该命令在验证类逃生舱之外还接受
 // --work-activity，笼统声称"降强度到 Weak"对 work-activity 用户是谎言（它是节奏

@@ -56,10 +56,6 @@ func sentinelEnv(t *testing.T, sid, tmpdir, qdir string) []string {
 		"FORGE_SESSION_ID": sid,
 		"FORGE_TASK_REF":   "",
 		"TMPDIR":           hookEnvPath(tmpdir),
-		// Pin the DataDir env OFF (empty string falls back to TMPDIR in the
-		// scripts' marker root) — a leaked host FORGE_DATA_DIR would divert the
-		// forge-cmd marker and fake-red the "must plant under tmpdir" assertion.
-		//
 		// 把 DataDir env 钉为关（空串在脚本 marker 根里回落 TMPDIR）——宿主
 		// 泄漏的 FORGE_DATA_DIR 会改道 forge-cmd 标记，让「必落 tmpdir」断言
 		// 假红。
@@ -757,15 +753,10 @@ func TestSentinelScripts_HooksDeployTagMismatchQuarantines(t *testing.T) {
 	}
 }
 
-// TestSentinelScripts_CfgSidecarRaceSkipsComparison pins the .cfg sidecar race fix:
-// a concurrent file-sentinel (parallel Bash tool calls in one session both glob the
-// newest snapshot) can run its cleanup rm between file-sentinel's -f test and the
-// manifest read. Observed 2026-08-17 (checklog 11:59:32): the cat printed
-// "No such file or directory" to stderr AND fed the diff an EMPTY manifest — whose
-// symmetric difference then flags every current config file as drift (the
-// false-quarantine direction). A `cat` shim deletes the sidecar at the exact read
-// moment, deterministically reproducing the interleaving; the fixed script must
-// skip the comparison (PASS, no stderr noise, nothing quarantined).
+// TestSentinelScripts_CfgSidecarRaceSkipsComparison pins the .cfg sidecar race
+// fix: a concurrent file-sentinel (parallel Bash tool calls in one session both
+// glob the newest snapshot) can run its cleanup rm between file-sentinel's -f
+// test and the manifest read.
 //
 // TestSentinelScripts_CfgSidecarRaceSkipsComparison 钉住 .cfg sidecar 竞态修复：
 // 并发的 file-sentinel（同会话并行 Bash 调用同时 glob 最新快照）可能在
@@ -781,11 +772,6 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 	qdir := t.TempDir()
 	env := sentinelEnv(t, sid, tmp, qdir)
 
-	// Read-only command: bash-guard writes the snapshot trio. The repo carries a
-	// gitignored .forge/hooks file, so the manifest has real content — without it
-	// a half-read manifest would be empty-vs-empty and the test could not tell
-	// drift from no-drift.
-	//
 	// 只读命令：bash-guard 写下快照三件套。仓库带一个 gitignored 的
 	// .forge/hooks 文件，manifest 才有真实内容——否则半读的 manifest 是
 	// 空 vs 空，测不出 drift 与 no-drift 的区别。
@@ -797,23 +783,9 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 		t.Fatalf("bash-guard must write the .cfg sidecar (glob: %v, err: %v)", cfgs, err)
 	}
 
-	// cat shim: removes the .cfg sidecar at the exact moment file-sentinel goes
-	// to read it (the concurrent-cleanup interleaving), drops a marker so the
-	// test fails loudly if the shim never fired, and passes every invocation
-	// through to the real cat (the BEFORE_ALL read of the snapshot itself must
-	// be unaffected).
-	//
 	// cat shim：在 file-sentinel 正要读 .cfg 的精确时刻删掉它（并发 cleanup
 	// 交错），留 marker 让 shim 未触发时测试响亮失败，所有调用透传真 cat
 	// （BEFORE_ALL 读快照本尊不受影响）。
-	// BASH_ENV function override, not a PATH shim: the MSYS2 runtime reorders the
-	// Windows PATH on process startup (its own /usr/bin ends up first), so a
-	// prepended shim dir loses — 2026-08-17 Windows CI probe showed
-	// `command -v cat` = /usr/bin/cat despite the prepend. BASH_ENV is sourced by
-	// every non-interactive bash (the hook AND its command substitutions), and a
-	// shell function shadows PATH lookup unconditionally. `command cat` inside the
-	// function bypasses the override for the real read.
-	//
 	// BASH_ENV 函数覆盖，不是 PATH shim：MSYS2 runtime 在进程启动时会重排
 	// Windows PATH（自己的 /usr/bin 排最前），prepend 的 shim 目录会输——
 	// 2026-08-17 Windows CI 探针实证 command -v cat = /usr/bin/cat。BASH_ENV
@@ -841,9 +813,6 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 		"FORGE_SHIM_FIRED="+hookEnvPath(fired),
 		"FORGE_SHIM_LOG="+hookEnvPath(shimLog))
 
-	// NO real drift: hooksFile is untouched. Only the race-injected sidecar
-	// vanish must not fabricate config drift.
-	//
 	// 无真实 drift：hooksFile 未动。只有竞态注入的 sidecar 消失，不得伪造出
 	// config drift。
 	out, err := runSentinelScript(t, FileSentinelHook, dir, raceEnv)
@@ -854,12 +823,6 @@ func TestSentinelScripts_CfgSidecarRaceSkipsComparison(t *testing.T) {
 		t.Errorf("sidecar 消失不应产生 cat 报错噪音:\n%s", out)
 	}
 	if _, statErr := os.Stat(fired); statErr != nil {
-		// Diagnose on failure (Windows CI is the only repro environment): does the
-		// cat function override resolve, does the snapshot glob match under this
-		// TMPDIR, and what did the shim see? The probe writes a fresh
-		// pattern-matching file because file-sentinel's cleanup has consumed the
-		// real snapshot by now.
-		//
 		// 失败时诊断（Windows CI 是唯一复现环境）：cat 函数覆盖是否生效、
 		// 快照 glob 在该 TMPDIR 下是否匹配、shim 看到了什么。探针另写一个
 		// 匹配模式的新文件——真快照已被 file-sentinel cleanup 消费。
@@ -883,10 +846,6 @@ echo "FIRED_PATH=$FORGE_SHIM_FIRED"`
 	if _, statErr := os.Stat(hooksFile); statErr != nil {
 		t.Errorf("无真实 drift 时 hooksFile 不应被隔离: %v\noutput:\n%s", statErr, out)
 	}
-	// quarantine_files preserves the relative path (mv "$f" "${qdir}/${f}") —
-	// assert the NESTED location so this check has teeth: a drift detection
-	// would land at qdir/<sid>/.forge/hooks/task-guard.sh, not qdir/<sid>/.
-	//
 	// quarantine_files 保留相对路径（mv "$f" "${qdir}/${f}"）——断言嵌套位置
 	// 才有检出力：drift 检测会落在 qdir/<sid>/.forge/hooks/task-guard.sh，
 	// 而非 qdir/<sid>/。

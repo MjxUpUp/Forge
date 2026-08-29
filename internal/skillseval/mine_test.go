@@ -2,10 +2,6 @@ package skillseval
 
 // mine_test.go — 挖矿核心的钉子测试：原料漏斗计数、prompt_hash 去重（跨 session）、
 // engaged 正负例分类、stop-cap advisory 不混入、无摘录时的诚实报告。
-//
-// mine_test.go — pins for the mining core: raw-material funnel counts, prompt_hash dedup
-// (cross-session), engaged-based positive/negative classification, stop-cap advisories
-// staying out, honest reporting when excerpts are absent.
 
 import (
 	"fmt"
@@ -32,12 +28,10 @@ func mineEntry(skill, hash, excerpt, session string, at time.Time) checklog.Entr
 	}
 }
 
+// TestMineGoldenDrafts_Basic classification + counts: engaged=true → trigger positive; engaged=false → not-trigger negative; entries without excerpts count toward TotalHits but never become drafts.
+//
 // TestMineGoldenDrafts_Basic 分类 + 计数：engaged=true → trigger 正例；engaged=false →
 // not-trigger 负例；无摘录条目计入 TotalHits 但不进草稿。
-//
-// TestMineGoldenDrafts_Basic classification + counts: engaged=true → trigger positive;
-// engaged=false → not-trigger negative; entries without excerpts count toward
-// TotalHits but never become drafts.
 func TestMineGoldenDrafts_Basic(t *testing.T) {
 	t0 := time.Now()
 	entries := []checklog.Entry{
@@ -80,12 +74,10 @@ func TestMineGoldenDrafts_Basic(t *testing.T) {
 	}
 }
 
+// TestMineGoldenDrafts_DedupedCountsPostCap pins review n2: Deduped counts the drafts that actually survive the per-skill cap — the funnel number must not exceed the artifact count.
+//
 // TestMineGoldenDrafts_DedupedCountsPostCap 钉死 review n2：Deduped 按截断后实际
 // 落盘的草稿计数——漏斗数字不得大于产物数。
-//
-// TestMineGoldenDrafts_DedupedCountsPostCap pins review n2: Deduped counts the
-// drafts that actually survive the per-skill cap — the funnel number must not
-// exceed the artifact count.
 func TestMineGoldenDrafts_DedupedCountsPostCap(t *testing.T) {
 	t0 := time.Now()
 	var entries []checklog.Entry
@@ -98,10 +90,9 @@ func TestMineGoldenDrafts_DedupedCountsPostCap(t *testing.T) {
 	}
 }
 
-// TestMineGoldenDrafts_DedupByHash 同 prompt_hash 跨 session 去重，保留最新命中。
+// TestMineGoldenDrafts_DedupByHash same prompt_hash dedups across sessions, keeping the latest hit.
 //
-// TestMineGoldenDrafts_DedupByHash same prompt_hash dedups across sessions, keeping
-// the latest hit.
+// TestMineGoldenDrafts_DedupByHash 同 prompt_hash 跨 session 去重，保留最新命中。
 func TestMineGoldenDrafts_DedupByHash(t *testing.T) {
 	t0 := time.Now()
 	entries := []checklog.Entry{
@@ -117,12 +108,10 @@ func TestMineGoldenDrafts_DedupByHash(t *testing.T) {
 	}
 }
 
+// TestMineGoldenDrafts_StopCapExcluded a stop-cap warn advisory's Detail carries no " hit (" marker — SkillFromTriggerDetail returns "" and it is naturally excluded from drafts.
+//
 // TestMineGoldenDrafts_StopCapExcluded stop-cap warn advisory 的 Detail 无 " hit ("
 // 标记——SkillFromTriggerDetail 返回 ""，天然排除在草稿外。
-//
-// TestMineGoldenDrafts_StopCapExcluded a stop-cap warn advisory's Detail carries no
-// " hit (" marker — SkillFromTriggerDetail returns "" and it is naturally excluded
-// from drafts.
 func TestMineGoldenDrafts_StopCapExcluded(t *testing.T) {
 	warn := checklog.Entry{
 		Check: checklog.CheckSkillTrigger, SessionID: "s1",
@@ -136,9 +125,9 @@ func TestMineGoldenDrafts_StopCapExcluded(t *testing.T) {
 	}
 }
 
-// TestMineGoldenDrafts_SkillFilter --skill 过滤只挖目标 skill。
-//
 // TestMineGoldenDrafts_SkillFilter --skill filter mines only the target skill.
+//
+// TestMineGoldenDrafts_SkillFilter --skill 过滤只挖目标 skill。
 func TestMineGoldenDrafts_SkillFilter(t *testing.T) {
 	t0 := time.Now()
 	entries := []checklog.Entry{
@@ -154,9 +143,9 @@ func TestMineGoldenDrafts_SkillFilter(t *testing.T) {
 	}
 }
 
-// TestSanitizeDraft 二次脱敏 + home 路径折叠。
-//
 // TestSanitizeDraft second-layer redaction + home-path folding.
+//
+// TestSanitizeDraft 二次脱敏 + home 路径折叠。
 func TestSanitizeDraft(t *testing.T) {
 	out := SanitizeDraft("path /Users/alice/proj 出现 token: ghp_abcdefghij0123456789klmnop", "/Users/alice")
 	if out == "" {

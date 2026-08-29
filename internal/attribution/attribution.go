@@ -1,15 +1,10 @@
+// Package attribution is the L3 change-attribution service of the multi-task-concurrency design (§6).
+//
 // Package attribution is the L3 change-attribution service of the multi-task-concurrency
 // design (§6): a single session→file ledger plus a Stop-time reconciliation view, so every
 // consumer (skill-trigger conditions, HANDOFF现场, review fingerprints, taskChangedFiles)
 // stops reading the working tree raw. Invariant I2: the working tree is untrusted input —
 // it needs attribution filtering before anyone treats it as "this task's state".
-//
-// The honest-degradation contract: attribution is best-effort. Ledger entries exist only
-// for PostToolUse Write/Edit events (and conservatively inferred Bash write targets);
-// anything the ledger cannot explain surfaces as an ORPHAN — never silently attributed,
-// never silently dropped. This is the same stance GitButler and STORM both stop at
-// ("bash-based filesystem writes bypass mediation") — there is no silver bullet, only
-// honest exposure.
 //
 // 包 attribution 是 multi-task-concurrency 设计（§6）的 L3 变更归属服务：单一的
 // 会话→文件台账 + Stop 时对账视图，让所有消费方（skill 触发条件、HANDOFF 现场、
@@ -51,9 +46,7 @@ const (
 	//
 	// KindEdit：Edit/patch 工具调用触碰过该路径。
 	KindEdit Kind = "edit"
-	// KindBashInfer: a Bash command's write target, conservatively parsed from the command
-	// text (sed -i / mv / cp / redirections / tee). Low confidence by construction —
-	// shell is Turing-complete, the parser is a heuristic.
+	// KindBashInfer: a Bash command's write target, conservatively parsed from the command text (sed -i / mv / cp / redirections / tee).
 	//
 	// KindBashInfer：Bash 命令的写目标，从命令文本保守解析（sed -i / mv / cp / 重定向 /
 	// tee）。构造上就是低置信——shell 是图灵完备的，解析器只是启发式。
@@ -70,8 +63,7 @@ type Event struct {
 	Path string    `json:"path"` // repo-relative, forward slashes
 }
 
-// Confidence reports how trustworthy the entry is: Write/Edit observations are direct
-// host-normalized facts; bash-infer is a heuristic guess.
+// Confidence reports how trustworthy the entry is: Write/Edit observations are direct host-normalized facts; bash-infer is a heuristic guess.
 //
 // Confidence 报告条目可信度：Write/Edit 观测是宿主归一化的直接事实；bash-infer 是
 // 启发式猜测。
@@ -82,9 +74,7 @@ func (e Event) Confidence() string {
 	return "high"
 }
 
-// Enabled reports whether the attribution layer is active. FORGE_ATTRIBUTION=0 is the
-// design's escape hatch (multi-task-concurrency §11): every consumer degrades to its
-// pre-L3 whole-tree behavior — one switch, zero partial states.
+// Enabled reports whether the attribution layer is active.
 //
 // Enabled 报告归属层是否启用。FORGE_ATTRIBUTION=0 是设计的逃生舱
 // （multi-task-concurrency §11）：所有消费方降级回 L3 之前的全树行为——一个开关，
@@ -102,9 +92,7 @@ func ledgerMu(root string) *sync.Mutex {
 	return m.(*sync.Mutex)
 }
 
-// Record appends events to the workspace's attribution ledger. Silent-failure by design:
-// attribution is an observability input, a failed append must never break a hook (the
-// path simply degrades to orphan at reconciliation — the honest direction).
+// Record appends events to the workspace's attribution ledger.
 //
 // Record 追加事件到该 workspace 的归属台账。设计上静默失败：归属是可观测性输入，
 // 追加失败绝不能打断 hook（路径只会在对账时降级为无主——诚实方向）。
@@ -139,22 +127,12 @@ func Record(root string, events ...Event) {
 	_ = w.Flush()
 }
 
-// ledgerTTL bounds how long an entry counts (review HIGH finding): without it a
-// months-old event from a zombie task's session can win last-writer over a path the
-// CURRENT task changed via a channel the ledger missed — reclassifying the current
-// work as foreign and hiding it from the review fingerprint. 7d matches the project's
-// session-marker TTL family (markers are pruned at 7d; orphan session pointers guard
-// at 7d). Reading-time filter: cheap, no jsonl rewrite needed in v1.
-//
 // ledgerTTL 限定条目有效期（review HIGH）：不设的话，僵尸任务会话的数月前事件
 // 会在本任务经由台账看不见的通道改同一路径时赢过最后写入者——把当前工作误归类
 // 为外来并藏出 review 指纹。7d 与项目的会话 marker TTL 族对齐（marker 7d 清扫；
 // 孤儿会话指针 7d 守卫）。读时过滤：便宜，v1 无需重写 jsonl。
 const ledgerTTL = 7 * 24 * time.Hour
 
-// loadLedger reads the workspace ledger, filtering expired entries (best-effort;
-// missing file = empty).
-//
 // loadLedger 读 workspace 台账并过滤过期条目（尽力而为；文件缺失 = 空）。
 func loadLedger(root string) []Event {
 	data, err := os.ReadFile(ledgerPath(root))
@@ -179,18 +157,12 @@ func loadLedger(root string) []Event {
 	return events
 }
 
-// ChangedFiles returns the repo-wide uncommitted change set (relative, forward slashes)
-// from `git status --porcelain` — both staged and unstaged, tracked and untracked.
-// Renames contribute their target path. Non-git / git failure = empty set + error.
+// ChangedFiles returns the repo-wide uncommitted change set (relative, forward slashes) from `git status --porcelain` — both staged and unstaged, tracked and untracked.
 //
 // ChangedFiles 返回全仓未提交变更集（相对路径、正斜杠），来自 git status
 // --porcelain——暂存与未暂存、tracked 与 untracked 全含；rename 取目标路径。
 // 非 git / git 失败 = 空集 + error。
 func ChangedFiles(root string) ([]string, error) {
-	// quotepath=off: with the default on, git C-quotes non-ASCII paths ("\346\226\207…"),
-	// which would never match the Unicode paths in the tool-usage ledger and permanently
-	// orphan those files from attribution.
-	//
 	// quotepath=off：默认开启时 git 会 C 转义非 ASCII 路径（"\346\226\207…"），
 	// 永远匹配不上 tool-usage 台账里的 Unicode 路径，这些文件的归因永久落 Orphans。
 	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()
@@ -214,9 +186,7 @@ func ChangedFiles(root string) ([]string, error) {
 	return files, nil
 }
 
-// View is the Stop-time reconciliation result: the working tree's changed set, split by
-// last-writer attribution. Committed changes are NOT here — they belong to the committed
-// range and the existing cross-task attribution (taskpipeline/taskattribution.go).
+// View is the Stop-time reconciliation result: the working tree's changed set, split by last-writer attribution.
 //
 // View 是 Stop 时对账结果：工作树变更集按最后写入者归属拆分。已提交变更不在此——
 // 那属于 committed 区间与既有跨任务归因（taskpipeline/taskattribution.go）。
@@ -227,7 +197,6 @@ type View struct {
 }
 
 // AttributionRate is attributed / (attributed + orphans); 1 when nothing changed.
-// The T2 coverage metric — how often the ledger actually explains reality.
 //
 // AttributionRate = attributed / (attributed + orphans)；无变更时为 1。T2 的覆盖率
 // 度量——台账实际解释现实的频率。
@@ -242,8 +211,7 @@ func (v *View) AttributionRate() float64 {
 	return float64(total-len(v.Orphans)) / float64(total)
 }
 
-// Reconcile builds the View: git status's changed set joined against the ledger,
-// per-path last-writer-wins by timestamp.
+// Reconcile builds the View: git status's changed set joined against the ledger, per-path last-writer-wins by timestamp.
 //
 // Reconcile 构建视图：git status 的变更集与台账按时间戳做每路径最后写入者判定。
 func Reconcile(root string) *View {
@@ -282,9 +250,7 @@ func Reconcile(root string) *View {
 	return v
 }
 
-// SessionTouched returns the set of repo-relative paths this session has ever touched
-// (ledger union, no reconciliation against current status — the fast predicate for
-// trigger conditions like source_changed_uncommitted).
+// SessionTouched returns the set of repo-relative paths this session has ever touched (ledger union, no reconciliation against current status — the fast predicate for trigger conditions like source_changed_uncommitted).
 //
 // SessionTouched 返回本会话触碰过的路径全集（台账并集，不对账当前状态——
 // source_changed_uncommitted 这类触发条件的快速谓词）。

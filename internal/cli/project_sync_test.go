@@ -15,17 +15,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// project_sync_test.go — in-process RunE tests for `forge project adopt/export/
-// import` (project-sync), FORGE_DATA_HOME-isolated. Chinese strings use raw
-// literals (Windows quote rule).
-//
 // project_sync_test.go —— `forge project adopt/export/import` 的进程内 RunE 测试
 // （project-sync），FORGE_DATA_HOME 隔离。中文字符串用 raw 字面量。
 
-// newSyncMachine creates a git-shaped repo (with a legacy .forge dir so
-// findProjectRoot discovers it) and returns its root. The caller drives its own
-// chdir/env switches.
-//
 // newSyncMachine 建一个 git 形状 repo（带 legacy .forge 目录让 findProjectRoot 能
 // 发现）并返回根路径。由调用方自行 chdir/env 切换。
 func newSyncMachine(t *testing.T) string {
@@ -40,10 +32,6 @@ func newSyncMachine(t *testing.T) string {
 	return root
 }
 
-// seedTaskState writes a real TaskState through SaveTaskState (the production
-// path: SanitizeRef-folded file name, MarshalIndent format) so test fixtures land
-// exactly where forge itself puts them. Call within the target "machine" env.
-//
 // seedTaskState 经 SaveTaskState 写真实 TaskState（生产路径：SanitizeRef 折叠的
 // 文件名、MarshalIndent 格式），使 fixture 落在 forge 自己放它的确切位置。须在
 // 目标「机器」env 内调用。
@@ -58,8 +46,6 @@ func seedTaskState(t *testing.T, root, ref string, mutate func(*taskpipeline.Tas
 	}
 }
 
-// withMachine runs fn with cwd=root and FORGE_DATA_HOME=home (the "machine" switch).
-//
 // withMachine 以 cwd=root、FORGE_DATA_HOME=home 跑 fn（「机器」切换）。
 func withMachine(t *testing.T, root, home string, fn func()) {
 	t.Helper()
@@ -76,8 +62,6 @@ func withMachine(t *testing.T, root, home string, fn func()) {
 	fn()
 }
 
-// runAdopt / runExport / runImport drive the cobra RunE bodies with flag sets.
-//
 // runAdopt / runExport / runImport 以 flag 集驱动 cobra RunE 本体。
 func runAdopt(t *testing.T, flags map[string]string) (string, error) {
 	t.Helper()
@@ -118,9 +102,6 @@ func runImport(t *testing.T, flags map[string]string, args ...string) (string, e
 	return buf.String(), err
 }
 
-// resetProjectCmdFlags resets the persistent cobra flag values between tests
-// (flags are process-global on the shared command objects).
-//
 // resetProjectCmdFlags 在测试间重置共享命令对象上的持久 cobra flag 值。
 func resetProjectCmdFlags(t *testing.T) {
 	t.Helper()
@@ -141,10 +122,6 @@ func resetProjectCmdFlags(t *testing.T) {
 	}
 }
 
-// TestProjectAdopt_MigratesDataAndFlipsID: adopt migrates the path-key DataDir to
-// the ID key, writes the ID file at the main root, and syncs the registry — in that
-// effective order (data lands under the new key).
-//
 // TestProjectAdopt_MigratesDataAndFlipsID：adopt 把路径 key 的 DataDir 迁到 ID
 // key，在主根写 ID 文件，并同步注册表（数据最终落在新 key 下）。
 func TestProjectAdopt_MigratesDataAndFlipsID(t *testing.T) {
@@ -199,9 +176,6 @@ func TestProjectAdopt_MigratesDataAndFlipsID(t *testing.T) {
 	})
 }
 
-// TestProjectAdopt_DryRunTouchesNothing: --dry-run lists actions and writes no ID
-// file, no data movement.
-//
 // TestProjectAdopt_DryRunTouchesNothing：--dry-run 列动作，不写 ID 文件、不迁数据。
 func TestProjectAdopt_DryRunTouchesNothing(t *testing.T) {
 	resetProjectCmdFlags(t)
@@ -226,11 +200,6 @@ func TestProjectAdopt_DryRunTouchesNothing(t *testing.T) {
 	})
 }
 
-// TestProjectExportImport_SameKeyRoundTrip: both machines carry the same project ID
-// (the canonical dual-machine posture) → same key → trusted import preserves the
-// completion block; a re-import of the same bundle is skipped by the ledger; jsonl
-// lines are not duplicated across overlapping exports.
-//
 // TestProjectExportImport_SameKeyRoundTrip：两台机器带同一项目 ID（双机标准姿
 // 态）→ 同 key → 受信导入保留完成块；同 bundle 重导入被账本跳过；重叠导出不产
 // 生重复 jsonl 行。
@@ -249,10 +218,6 @@ func TestProjectExportImport_SameKeyRoundTrip(t *testing.T) {
 
 	// 机器 A：完成任务 + 证据，导出。dataDir 必须在 withMachine 内解析——
 	// RootDir 读 FORGE_DATA_HOME，env 外解析会指到真实 home（测试污染）。
-	//
-	// Machine A: completed task + evidence, export. dataDir MUST resolve inside
-	// withMachine — RootDir reads FORGE_DATA_HOME; resolving outside points at the
-	// real home (test pollution).
 	var bundlePath string
 	withMachine(t, machineA, home, func() {
 		dataDir := forgedata.RootDir(key)
@@ -318,10 +283,6 @@ func TestProjectExportImport_SameKeyRoundTrip(t *testing.T) {
 	})
 }
 
-// TestProjectImport_KeyMismatchStripsByDefault: a path-identity bundle from another
-// machine (different key) strips foreign gate/completion signals by default;
-// --trust-foreign preserves them (explicit informed pass).
-//
 // TestProjectImport_KeyMismatchStripsByDefault：来自另一台机器的路径身份 bundle
 // （key 不同）默认剥离外来门禁/完成信号；--trust-foreign 显式放行保留。
 func TestProjectImport_KeyMismatchStripsByDefault(t *testing.T) {
@@ -382,10 +343,6 @@ func TestProjectImport_KeyMismatchStripsByDefault(t *testing.T) {
 	})
 }
 
-// TestProjectImport_IDBundleRefusesThenAdopts: a bundle from an ID-identity project
-// landing on a path-identity machine refuses by default; --adopt-id adopts the
-// bundle's ID (migrating local data) and proceeds as trusted same-key.
-//
 // TestProjectImport_IDBundleRefusesThenAdopts：ID 身份项目的 bundle 落到路径身份
 // 机器默认拒绝；--adopt-id 采纳 bundle 的 ID（迁移本机数据）后按受信同 key 继续。
 func TestProjectImport_IDBundleRefusesThenAdopts(t *testing.T) {
@@ -438,12 +395,6 @@ func TestProjectImport_IDBundleRefusesThenAdopts(t *testing.T) {
 	})
 }
 
-// TestProjectImport_RefCollisionNeverClobbers: a bundle task whose TaskRef
-// folds onto an EXISTING local task file with a different ref (SanitizeRef
-// collision: feat:x vs feat/x share feat-x.json) must be SKIPPED, never written
-// over the local file — the LoadTaskState cross-ref error must not read as "no
-// local task" (review blocker #1).
-//
 // TestProjectImport_RefCollisionNeverClobbers：bundle 任务的 TaskRef 折叠命中一个
 // 已存在但 ref 不同的本地任务文件（SanitizeRef 碰撞：feat:x 与 feat/x 共享
 // feat-x.json）时必须跳过、绝不覆盖本地文件——LoadTaskState 的串号错误不得被
@@ -491,9 +442,6 @@ func TestProjectImport_RefCollisionNeverClobbers(t *testing.T) {
 	})
 }
 
-// TestProjectImport_UntrustedStripsSameKey: --untrusted forces the full strip on
-// the SAME-key (lineage-trusted) path — CompletedAt/Passed history/Score go.
-//
 // TestProjectImport_UntrustedStripsSameKey：--untrusted 对同 key（lineage 受信）
 // 路径也强制完整剥离——CompletedAt/Passed 历史/Score 清空。
 func TestProjectImport_UntrustedStripsSameKey(t *testing.T) {
@@ -544,12 +492,6 @@ func TestProjectImport_UntrustedStripsSameKey(t *testing.T) {
 	})
 }
 
-// TestProjectImport_TrustedMarksAcceptanceForeign: the trusted same-key path
-// PRESERVES result fields but STILL marks foreign acceptance Run commands —
-// verify-acceptance's execution gate must stay armed for foreign executable
-// strings (review major #3: the 2026-08-15 command-execution vector must not
-// re-enter via the sync path).
-//
 // TestProjectImport_TrustedMarksAcceptanceForeign：受信同 key 路径保留结果字段，
 // 但外来验收 Run 命令仍打标记——verify-acceptance 的执行闸对外来可执行字符串必须
 // 保持武装（审查 major #3：2026-08-15 的命令执行向量不得从 sync 路径回潮）。

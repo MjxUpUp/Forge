@@ -7,8 +7,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// withTree registers a temporary command tree to run fn, and restores afterwards (avoids sharing global cmdTreeFn across tests).
-//
 // withTree 注册一个临时命令树运行 fn，测试后还原（避免测试间共享全局 cmdTreeFn）。
 func withTree(t *testing.T, root *cobra.Command, fn func()) {
 	t.Helper()
@@ -24,9 +22,6 @@ func withTree(t *testing.T, root *cobra.Command, fn func()) {
 	fn()
 }
 
-// TestValidateForgePath_Mechanism proves the detection mechanism actually catches drift — rather than a stub that always returns "".
-// Covers parent-exists-child-not (experience propose: experience exists, propose does not) and top-level-not-exists.
-//
 // TestValidateForgePath_Mechanism 证明检测机制真能抓 drift——而非恒返回 "" 的空壳。
 // 含父命令存在子命令不存在（experience propose：experience 有，propose 无）和顶层不存在。
 func TestValidateForgePath_Mechanism(t *testing.T) {
@@ -63,9 +58,6 @@ func TestValidateForgePath_Mechanism(t *testing.T) {
 	})
 }
 
-// TestValidateForgePath_UnregisteredTree must pass through (return "") when the command tree is unregistered, not report false drift.
-// Ensures callers using this package without a registered callback do not get false positives — advisory stays silent rather than noisy.
-//
 // TestValidateForgePath_UnregisteredTree 命令树未注册时必须放行（返回 ""），不报假 drift。
 // 这保证本包被未注册回调的调用方使用时不误报——advisory 宁静默不噪声。
 func TestValidateForgePath_UnregisteredTree(t *testing.T) {
@@ -76,9 +68,6 @@ func TestValidateForgePath_UnregisteredTree(t *testing.T) {
 	})
 }
 
-// TestDriftedCommands end-to-end proof that the pipeline of regex-extracting backtick forge references → ValidateForgePath
-// can catch every ghost from document text: real commands pass, multiple ghosts all caught (order preserved).
-//
 // TestDriftedCommands 端到端证明 regex 抽取反引号 forge 引用 → ValidateForgePath 校验
 // 的管道能从文档文本中抓出所有 ghost：真命令放行，多个 ghost 全抓（顺序保留）。
 func TestDriftedCommands(t *testing.T) {
@@ -102,9 +91,6 @@ func TestDriftedCommands(t *testing.T) {
 	})
 }
 
-// TestDriftedCommands_Dedup reports a drift command only once even if it appears N times in the doc —
-// prevents advisory stderr from repeating the same command ("experience propose, experience propose").
-//
 // TestDriftedCommands_Dedup 同一 drift 命令在文档出现 N 次只报一次——
 // 避免 advisory stderr 重复刷同一命令（"experience propose, experience propose"）。
 func TestDriftedCommands_Dedup(t *testing.T) {
@@ -120,12 +106,6 @@ func TestDriftedCommands_Dedup(t *testing.T) {
 	})
 }
 
-// TestDanglingSkillRefs_Mechanism proves the detection catches a real dangling skill
-// ref while exempting single-segment tokens (tools/keywords) and honoring knownSkills +
-// allowlist. Built with rune(0x60) backtick splicing + raw strings to dodge the Windows
-// quote-corruption that breaks double-quoted Go literals. This is the skill-ref analogue
-// of TestDriftedCommands.
-//
 // TestDanglingSkillRefs_Mechanism 证明检测能抓真 skill 断链，同时豁免单段 token（工具/
 // 关键字）并尊重 knownSkills + allowlist。用 rune(0x60) 反引号拼接 + raw string 构造，
 // 绕过 Windows 双引号腐蚀。这是 TestDriftedCommands 的 skill 引用对应物。
@@ -163,11 +143,6 @@ func TestDanglingSkillRefs_Mechanism(t *testing.T) {
 	}
 }
 
-// TestDriftedCommands_NoCrossLinePhantom: the regex character class excludes \n, so a code
-// span broken by a line break is not spliced into a phantom reference. Before the fix,
-// "`forge experience\npropose`" matched with m[1]="experience\npropose" and was reported as a
-// drifted path that no doc author ever wrote.
-//
 // TestDriftedCommands_NoCrossLinePhantom：正则字符类排除 \n，被换行截断的 code span 不会
 // 被拼成幻影引用。修复前 "`forge experience\npropose`" 会匹配出 m[1]="experience\npropose"，
 // 报出一个文档作者从未写过的 drift 路径。
@@ -186,9 +161,6 @@ func TestDriftedCommands_NoCrossLinePhantom(t *testing.T) {
 	})
 }
 
-// TestAllFlags pins the flag inventory: hidden flags/commands are excluded, the
-// cobra help flag is excluded, and ids are sorted "cmd --flag".
-//
 // TestAllFlags 钉死 flag 清单：隐藏 flag/命令排除，cobra help flag 排除，
 // id 为排序的 "cmd --flag"。
 func TestAllFlags(t *testing.T) {
@@ -207,13 +179,6 @@ func TestAllFlags(t *testing.T) {
 	}
 }
 
-// TestStaleBinaryHint pins the stale-binary suffix appended to "command does not
-// exist" drift advisories (usage-log fix: a README referencing `skills mine` —
-// present at HEAD — tripped the advisory under the PATH-global v1.34.0 binary that
-// predates the command, sending agents to "fix" a doc that was never wrong). With a
-// registered version the hint must name it and point at `forge update`; with none it
-// must still carry the generic stale-binary possibility.
-//
 // TestStaleBinaryHint 钉住追加在「命令不存在」drift advisory 尾部的版本提示（usage
 // 日志修复：README 引用 `skills mine`——HEAD 存在——在 PATH 全局 v1.34.0 旧二进制
 // 下触发 advisory，把 agent 引去「修」一份没错的文档）。注册了版本时提示必须带版本

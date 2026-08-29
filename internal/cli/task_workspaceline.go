@@ -28,11 +28,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/workspace"
 )
 
-// workspaceContextLine returns the one-line workspace context for root's repo,
-// or “ when the line should be omitted (no multi-repo membership, or any
-// manifest trouble — fail-open). root == “ (unit tests without a fixture)
-// omits the line without touching the store.
-//
 // workspaceContextLine 返回 root 所在 repo 的单行 workspace 上下文；应省略时
 // 返回 “（无多仓成员资格，或任何清单故障——fail-open）。root == “（无
 // fixture 的单测）不触碰 store 直接省略。
@@ -44,9 +39,6 @@ func workspaceContextLine(root string, impact *taskpipeline.CrossRepoImpact) str
 	if err != nil {
 		return `` // fail-open：清单损坏静默省略该行，不污染卡片
 	}
-	// One key may belong to several multi-repo workspaces (a shared library
-	// serving two products) — name them all, still one line.
-	//
 	// 一个 key 可能属于多个多仓 workspace（服务两个产品的共享库仓）——全部
 	// 点名，仍保持单行。
 	var parts []string

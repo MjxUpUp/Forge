@@ -1,16 +1,5 @@
 package cli
 
-// skills_eval_dir.go — the --dir persistent flag for the eval command family.
-//
-// Registered on skillsCmd (same pattern as --canonical) so every eval subcommand
-// (eval-gen / eval-cases / eval-record / eval-baseline / eval-report / battery)
-// inherits it without per-command wiring. Resolution priority lives in
-// skillseval.ResolveDir: this flag > FORGE_EVAL_DIR > ~/.forge/evals.
-//
-// Primary consumer: repo-level eval assets (evals/ in VCS) and CI — a checkout
-// points --dir at the repo directory instead of the user-level store, which is
-// what lets `battery --gate` run on a fresh runner without being vacuous.
-//
 // skills_eval_dir.go — eval 命令族的 --dir persistent flag。
 //
 // 注册在 skillsCmd 上（与 --canonical 同模式），全部 eval 子命令
@@ -25,14 +14,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
-// skEvalDirFlag is the value of the skills --dir persistent flag (empty = default resolution).
-//
 // skEvalDirFlag 是 skills --dir persistent flag 的值（空 = 默认解析）。
 var skEvalDirFlag string
 
-// evalDataDir resolves the eval data dir honoring the --dir flag. Single entry for the
-// eval command family (read-side consumers without flag context use skillseval.EvalDir).
-//
 // evalDataDir 按 --dir flag 解析 eval 数据目录。eval 命令族唯一入口
 // （无 flag 上下文的读侧消费方用 skillseval.EvalDir）。
 func evalDataDir() (string, error) {

@@ -10,25 +10,6 @@ import (
 	"strings"
 )
 
-// cheatscan.go — deterministic AI-cheat pattern scanner.
-//
-// Motivation (root cause in the forge-review-deterministic-shift memory): among the 11
-// AI-cheat categories in code-review-gate, the mechanically detectable ones (type-suppression,
-// error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import /
-// path-assumption) were previously all judged by LLM sub-agents.
-// LLMs re-sample the same diff every round, catching different subsets → the source of the
-// perception that every review surfaces new problems.
-//
-// This scanner extracts those mechanical patterns into a deterministic check at task-verify time:
-// scan task-scoped added lines (+ lines), and on hit record a checklog:cheat-scan entry
-// (deterministic, advisory non-blocking). The LLM reviewer accordingly retreats to only
-// semantic judgments (design/architecture/mock hallucinations).
-//
-// Only the added side: cheats almost always live on + lines (new type-suppression directives,
-// new empty catches, new always-false branches). assertion-strip is not in this scanner —
-// assertion-check.sh already covers it deterministically (Step 1 aggregated it into review-time
-// conclusions as a separate task).
-//
 // cheatscan.go — deterministic AI-cheat 模式扫描器。
 //
 // 动机（根因见 forge-review-deterministic-shift memory）：code-review-gate 的
@@ -44,17 +25,13 @@ import (
 // assertion-strip 不在本扫描器——assertion-check.sh 已 deterministic 覆盖（Step 1
 // 把它聚合成 review 时结论是独立任务）。
 
-// CheatPattern identifies a category of AI-cheat pattern detected by the scanner
-// (the mechanically detectable subset).
+// CheatPattern identifies a category of AI-cheat pattern detected by the scanner (the mechanically detectable subset).
 //
 // CheatPattern 标识扫描器检测的一类 AI 作弊模式（机械可检的子集）。
 type CheatPattern string
 
 const (
-	// CheatTypeSuppression: new type/warning suppression directives — TS ts-ignore/ts-nocheck/ts-expect-error,
-	// eslint disable, Rust allow attributes, Python mypy type-ignore, Java SuppressWarnings annotations.
-	// Hiding warnings rather than fixing them. (Comments deliberately do not concatenate the directive sigil;
-	// see the typeSuppressionRe note.)
+	// CheatTypeSuppression: new type/warning suppression directives — TS ts-ignore/ts-nocheck/ts-expect-error, eslint disable, Rust allow attributes, Python mypy type-ignore, Java SuppressWarnings annotations.
 	//
 	// CheatTypeSuppression：新增类型/告警抑制指令——TS 的 ts-ignore/ts-nocheck/ts-expect-error、
 	// eslint 的 disable、Rust 的 allow 属性、Python mypy 的 type-ignore、Java 的
@@ -68,18 +45,12 @@ const (
 	//
 	// CheatDeadBranch：新增永假分支（if(false)/if(0)/if(1===2)）——看起来处理了边界，实际永不执行。
 	CheatDeadBranch CheatPattern = "dead-branch"
-	// CheatCommentOnly: a source file whose added lines are all comments/blank with zero logic change —
-	// suspected claim-a-fix-but-only-added-comments. Heuristic (severity=low): pure-doc tasks may false-fire; advisory prompts review.
+	// CheatCommentOnly: a source file whose added lines are all comments/blank with zero logic change — suspected claim-a-fix-but-only-added-comments.
 	//
 	// CheatCommentOnly：某源码文件的新增行全是注释/空行、零逻辑变更——疑似"声称修复但只加了注释"。
 	// 启发式（severity=low）：纯文档任务可能误报，advisory 提示核查而非定罪。
 	CheatCommentOnly CheatPattern = "comment-only-fix"
-	// CheatCommentDebt: debt markers inside new comment lines — AI lazily flags something is wrong/todo
-	// without resolving it in this change. The reverse-laziness-ladder level 0 (comments replacing action
-	// → code-rot root): looks responsible (annotated) but zero action, no one follows up. severity=low:
-	// legitimate follow-up markers also hit; advisory prompts review (convert to a forge task or fix on
-	// the spot) rather than convict. detectCommentDebt scans only comment lines; marker words are
-	// concatenated via debtMarkerWords so the scanner does not false-flag its own patterns as debt.
+	// CheatCommentDebt: debt markers inside new comment lines — AI lazily flags something is wrong/todo without resolving it in this change.
 	//
 	// CheatCommentDebt：新增注释行里的"债务标记"——AI 偷懒用注释标识"这里有问题/待办"
 	// 但本变更不解决。是懒惰阶梯反第 0 级（注释替代行动 → 屎山根源）：看起来负责任（标注了），
@@ -87,22 +58,14 @@ const (
 	// （转 forge task 跟踪 或 当场修）而非定罪。detectCommentDebt 只扫注释行；标记词用
 	// debtMarkerWords 拼接，避免扫描器扫自身源码时把模式定义/注释里的词误判为债务。
 	CheatCommentDebt CheatPattern = "comment-as-debt"
-	// CheatPhantomImport: new relative imports pointing to files that do not exist on disk —
-	// the mechanically checkable subset of mock-of-hallucination (an import that cannot resolve
-	// fails at runtime for sure). TS/JS relative specifiers and Python relative from-imports only;
-	// external packages (npm registry / go.mod) need manifest or network checks and stay with the
-	// LLM reviewer. severity=high.
+	// CheatPhantomImport: new relative imports pointing to files that do not exist on disk — the mechanically checkable subset of mock-of-hallucination (an import that cannot resolve fails at runtime for sure).
 	//
 	// CheatPhantomImport：新增相对 import 指向磁盘上不存在的文件——mock-of-hallucination
 	// 的机械可检子集（解析不到的 import 运行时必炸）。只覆盖 TS/JS 相对路径与 Python
 	// 相对 from-import；外部包（npm registry / go.mod）需 manifest 或联网校验，仍归
 	// LLM reviewer。severity=high。
 	CheatPhantomImport CheatPattern = "phantom-import"
-	// CheatPathAssumption: using the OS path separator as a CONTENT matcher (prefix/suffix/contains)
-	// rather than for path construction — the fingerprint of cross-platform breakage that only CI
-	// on another OS can catch (real incident 2026-08-19: e2e matched output lines with the separator
-	// prefix, which never matches a drive-letter path on Windows). Path separators belong in
-	// filepath.Join/Split; matching text by separator is a hidden OS assumption. severity=high.
+	// CheatPathAssumption: using the OS path separator as a CONTENT matcher (prefix/suffix/contains).
 	//
 	// CheatPathAssumption：把 OS 路径分隔符当「内容匹配器」用（前/后缀/包含匹配）而非用于
 	// 路径构造——跨平台崩溃的指纹，只有另一平台的 CI 才能抓到（真实事故 2026-08-19：e2e
@@ -111,8 +74,7 @@ const (
 	CheatPathAssumption CheatPattern = "path-assumption"
 )
 
-// CheatFinding is a single mechanically detected suspected cheat. Advisory — detection may
-// false-fire, leaves a trail for review, never blocks.
+// CheatFinding is a single mechanically detected suspected cheat.
 //
 // CheatFinding 是一次机械检测到的疑似作弊。advisory——检测有假阳性可能，留痕供
 // review 核查，绝不阻塞。
@@ -125,9 +87,6 @@ type CheatFinding struct {
 	Severity string `json:"severity"` // "high"（机械高置信）/ "low"（启发式）
 }
 
-// addedLine is a single added line from the task-scoped diff (just the + line content, owning
-// file, and new-file line number).
-//
 // addedLine 是任务范围 diff 的一条新增行（仅 + 行内容 + 归属文件 + 新文件行号）。
 type addedLine struct {
 	file   string
@@ -136,10 +95,6 @@ type addedLine struct {
 }
 
 // ScanCheatPatterns scans task-scoped added lines and mechanically detects 7 AI-cheat patterns.
-// Purely deterministic (computed by the gate, agent cannot forge). Returns findings (empty = clean).
-// Failure-tolerant: on git/file-read errors it skips that source (returning what was collected),
-// never panics — the reliability of advisory detection comes from what-it-catches-is-accurate,
-// not from must-scan-everything.
 //
 // ScanCheatPatterns 扫描任务范围内的新增行，机械检测 7 类 AI 作弊模式（type-suppression /
 // error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import /
@@ -147,24 +102,6 @@ type addedLine struct {
 // 纯 deterministic（gate 实算，agent 无法伪造）。返回 findings（空=干净）。
 // 失败容忍：git/读文件出错时跳过该源（返回已收集的），绝不 panic——advisory 检测
 // 的可靠性来自"扫到了就准"，不来自"必须扫全"。
-//
-// Three precision filters (avoid crying wolf when self-checking):
-//  1. Exclude test files (isTestFile): tests often contain pattern strings as input (e.g. if (false)),
-//     and the most common test-side cheat (assertion weakening) is already covered by assertion-check;
-//     type/dead/error cheats almost only live in production source — excluding tests sharpens
-//     precision with little loss (rare and low-risk).
-//  2. dead-branch/error-swallow skip comment lines: patterns described in comments (// if false {)
-//     are not real cheats.
-//  3. type-suppression uses inStringLiteral to exclude literal mentions (see detectTypeSuppression):
-//     directive names written out in regex/strings (e.g. inside regexp.MustCompile) are naming/
-//     description, not real suppression; Python/Rust directives additionally require their #
-//     prefix to avoid false-fire on plain-text type: ignore.
-//
-// Residual false-positives (doc comments referencing directive syntax, Python single-quote
-// strings) are on the conservative side by design — advisory non-blocking, and deterministic-stable
-// (no per-round LLM re-sampling), so the perception of new problems every round does not recur.
-// That is why comments in this file deliberately avoid concatenating the full directive sigil,
-// lest the scanner false-fire on its own source.
 //
 // 精度三过滤器（避免"自己检自己"时狼来了）：
 //  1. 排除测试文件（isTestFile）：测试常含模式字符串作输入（"if (false)"），
@@ -211,22 +148,8 @@ func ScanCheatPatterns(root string, state *TaskState) []CheatFinding {
 	return findings
 }
 
-// --- Detectors ---
-//
 // --- 检测器 ---
 
-// typeSuppressionRe: type/warning suppression directives, matched anywhere. Paired with
-// inStringLiteral to exclude literal mentions — directive names written out in regex definitions
-// (inside regexp.MustCompile) or strings are naming/description, not real suppression. Real
-// suppressions are either leading annotations (Java SuppressWarnings, Rust allow attributes) or
-// inside comments (TS ts-ignore family, eslint disable, Python mypy type-ignore). Python/Rust
-// require their # prefix to avoid false-fire on plain-text type: ignore.
-//
-// Note: this comment and the CheatTypeSuppression comment deliberately avoid concatenating
-// the full directive sigil (e.g. writing @ together with ts-ignore) — the scanner scans its own
-// source, and a full directive text in a comment would be false-flagged as real suppression.
-// Descriptive writing (directive names without sigil/prefix) does not trigger the regex, so it is safe.
-//
 // typeSuppressionRe：类型/告警抑制指令，任意位置匹配。配 inStringLiteral 排除字面量
 // 提及——正则定义（regexp.MustCompile 里）或字符串里写出的指令名是命名/描述，不是真抑制。
 // 真抑制要么是引领的注解（Java SuppressWarnings、Rust allow 属性），要么在注释里
@@ -251,10 +174,6 @@ var typeSuppressionRe = []*regexp.Regexp{
 	regexp.MustCompile(`#\[allow`), // Rust 属性（要求 #[ 前缀）
 	// Java annotation.
 	regexp.MustCompile(`@SuppressWarnings`), // Java 注解
-	// Go nolint directive (comment-carried suppression, same class as eslint-disable).
-	// Sigil kept split ("nolint" composed from concatenation) so this scanner's own
-	// source mentions don't self-match.
-	//
 	// Go nolint 指令（注释承载的抑制，与 eslint-disable 同类）。sigil 刻意拆开写
 	//（"nolint" 由拼接构成），避免扫描器自身源码里的提及自匹配。
 	regexp.MustCompile(`//\s*nol` + `int`),
@@ -293,11 +212,6 @@ func detectTypeSuppression(added []addedLine) []CheatFinding {
 
 // inStringLiteral reports whether position pos in line falls inside a string literal: counts
 // unescaped " and ` before pos (odd = inside a string). Single quotes do not count — in Go/C/Rust
-// they are character literals (no directive text); Python single-quote strings are rare and an
-// acceptable false-positive. Mechanical approximation: true string awareness needs per-language
-// tokenization, too heavy for advisory detection; this approximation already covers the most
-// common literal mentions (Go raw strings, double-quoted strings).
-//
 // inStringLiteral 报 line 的 pos 位置是否落在字符串字面量内：数 pos 之前未转义的 " 和 `
 // 的奇偶（奇=在串内）。单引号不计——Go/C/Rust 里是字符字面量（不含指令文本），
 // Python 单引号串是少见且可接受的假阳性。机械近似：真正的字符串感知需分语言 tokenize，
@@ -323,8 +237,6 @@ func inStringLiteral(line string, pos int) bool {
 }
 
 var errorSwallowRe = []*regexp.Regexp{
-	// Single-line empty catch: catch {} / catch (e) {} / catch (e: Err) {} — cross-language (JS/TS/Java/C#).
-	//
 	// 空 catch 单行：catch {} / catch (e) {} / catch (e: Err) {} —— 跨语言（JS/TS/Java/C#）。
 	regexp.MustCompile(`\bcatch\s*(\([^)]*\))?\s*\{\s*\}`),
 	// Comment-only catch body: catch (e) { /* ignore */ } / { // 忽略 } — the most
@@ -501,17 +413,6 @@ func detectCommentDebt(added []addedLine) []CheatFinding {
 // 避免在源码里连写完整词——本扫描器会扫自身源码，连写的标记词会被当成真债务误报。
 const debtMarkerWords = "TO" + "DO" + "|FIX" + "ME" + "|XXX|HACK"
 
-// commentDebtRe matches comment-debt markers. The 4 English words use \b word boundaries
-// (case-sensitive — avoids false-fire on lowercase variable names); Chinese has no word boundaries,
-// so isolated high-frequency words need collocation noise reduction: the first branch requires a
-// following action verb, the second limits to two tail characters — avoiding false-fires in normal
-// contexts that dilute the signal. Recall trade-off: collocation under-reports some real debts
-// (action verb interrupted by spacing does not hit) in exchange for not false-firing on frequent
-// normal words — advisory prefers anti-dilution; under-reports silent, false accusations costly.
-// The last branch is an English phrase, case-insensitive, covering sentence-initial capital forms.
-// This comment deliberately avoids spelling out examples (Chinese or English), so the scanner does
-// not false-flag examples as real debt (same handling as debtMarkerWords concat).
-//
 // commentDebtRe 匹配注释债务标记。英文 4 词用 \b 词边界（区分大小写——避免小写变量
 // 名误报）；中文无词边界，孤立高频词须靠 collocation 降噪——前一分支要求紧跟动作词，
 // 后一分支限两个尾字——避免正常语境误报稀释信号。召回权衡：collocation 会漏报少量
@@ -692,15 +593,6 @@ func resolveTargetExists(root, targetRel string, exts []string) bool {
 	return false
 }
 
-// pathAssumptionRe matches the OS separator used as a content matcher. One level of nested
-// parens is tolerated before the separator argument (the common real-world shape is
-// HasPrefix(filepath.Base(p), ...) — a nested construction call as the first arg).
-// The escaped fragments in this definition can never match the definition line itself.
-// Known recall limits (accepted, advisory): indirect variables (sep := ...; HasPrefix(x, sep)),
-// string(os.PathSeparator), IndexAny/ContainsAny with a string charset, and IndexRune with the
-// bare rune are not matched — the high-signal `string(filepath.Separator)`-inside-a-matcher
-// shape is the target; the rest stays with the reviewer.
-//
 // pathAssumptionRe 匹配「OS 分隔符被当内容匹配器」的写法。分隔符实参之前容忍一层嵌套
 // 括号（真实高发形态是 HasPrefix(filepath.Base(p), ...)——首参带嵌套构造调用）。
 // 定义里的转义片段让本行自身永不命中。已知召回边界（接受，advisory）：间接变量
@@ -916,15 +808,6 @@ func readFileAddedLines(full, rel string) []addedLine {
 	return res
 }
 
-// gitTrackedSet returns the full set of tracked files via ONE repo-wide `git ls-files`
-// invocation — the batched replacement for the per-file `git ls-files --error-unmatch`
-// subprocess probe (same verdict, N processes → 1; 2026-08-29 review round). Keys are
-// git's repo-relative forward-slash paths, matching the sourceSet keys built from
-// taskChangedFiles output. Nil on git failure: callers then treat every file as
-// untracked and read it from disk — the same failure direction as the old per-file
-// probe (worst case duplicates lines the diff-parse path already produced; advisory
-// detection stays failure-tolerant, never panics).
-//
 // gitTrackedSet 用【一次】全仓 `git ls-files` 返回全部已跟踪文件集合——逐文件
 // `git ls-files --error-unmatch` 子进程探测的批量化替代（判定不变，进程数 N → 1；
 // 2026-08-29 审查轮）。key 是 git 的仓库相对 forward-slash 路径，与 taskChangedFiles

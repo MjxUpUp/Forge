@@ -9,19 +9,13 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// clineHooksPathUnder joins the cline global hook dir under an isolated home.
-//
 // clineHooksPathUnder 拼出隔离 home 下的 cline 全局 hook 目录。
 func clineHooksPathUnder(home string) string {
 	return filepath.Join(home, "Documents", "Cline", "Rules", "Hooks")
 }
 
-// TestClineTranslator_Translate_WritesWrappers: Translate writes exactly the four
-// wrapper scripts (PreToolUse/PostToolUse/UserPromptSubmit/TaskStart — named exactly
-// the cline hook types, no extension), each carrying the forge marker and the
-// `--agent cline` suffix; Stop/PostCompact (no cline channel) and TaskResume/
-// TaskCancel (no forge analogue) stay unwired; nothing is written into the project
-// dir (zero-project-write contract).
+// TestClineTranslator_Translate_WritesWrappers: Translate writes exactly the
+// four wrapper scripts (PreToolUse/PostToolUse/UserPromptSubmit/TaskStart.
 //
 // TestClineTranslator_Translate_WritesWrappers：Translate 恰好写四个 wrapper 脚本
 // （PreToolUse/PostToolUse/UserPromptSubmit/TaskStart——名字精确等于 cline hook 类型、
@@ -52,9 +46,6 @@ func TestClineTranslator_Translate_WritesWrappers(t *testing.T) {
 			t.Errorf("%s must start with a #!/bin/sh shebang (cline requires executable scripts; macOS /bin/sh is bash-3.2 posix)", event)
 		}
 	}
-	// Events with no cline channel must NOT get a script — a Stop/PostCompact script
-	// would simply never fire, but naming drift here is the regression signal.
-	//
 	// 无 cline 通道的 event 不得有脚本——Stop/PostCompact 脚本只是永不触发，但此处
 	// 命名漂移是回退信号。
 	for _, absent := range []string{"Stop", "PostCompact", "TaskResume", "TaskCancel"} {
@@ -62,8 +53,6 @@ func TestClineTranslator_Translate_WritesWrappers(t *testing.T) {
 			t.Errorf("script %s must not exist (no forge/cline mapping for it)", absent)
 		}
 	}
-	// Zero project writes.
-	//
 	// 零项目写入。
 	entries, err := os.ReadDir(project)
 	if err != nil {
@@ -74,10 +63,9 @@ func TestClineTranslator_Translate_WritesWrappers(t *testing.T) {
 	}
 }
 
-// TestClineTranslator_RosterMirrorsSpec: the per-event hook rosters baked into the
-// wrapper scripts must equal ForgeHookSpec's deduped command sets (single source of
-// truth — a hand-maintained roster would wire different gates than every other host).
-// SessionStart's roster must land on TaskStart.
+// TestClineTranslator_RosterMirrorsSpec: the per-event hook rosters baked into
+// the wrapper scripts must equal ForgeHookSpec's deduped command sets (single
+// source of truth.
 //
 // TestClineTranslator_RosterMirrorsSpec：烘焙进 wrapper 脚本的每 event hook roster
 // 必须等于 ForgeHookSpec 去重后的命令集（单一真相源——手工维护的 roster 会接出与
@@ -100,9 +88,6 @@ func TestClineTranslator_RosterMirrorsSpec(t *testing.T) {
 			t.Errorf("cline %s roster drifted from ForgeHookSpec[%s]:\n  spec:  %s\n  cline: %s", e.clineEvent, e.specEvent, sortedSet(want), sortedSet(got))
 		}
 	}
-	// Order sanity: the roster must be non-empty for every wired event (an empty
-	// roster would make the wrapper a silent no-op).
-	//
 	// 顺序健全性：每个已接线 event 的 roster 必须非空（空 roster 会让 wrapper 静默
 	// 空转）。
 	for _, e := range clineEventMappings {
@@ -112,11 +97,9 @@ func TestClineTranslator_RosterMirrorsSpec(t *testing.T) {
 	}
 }
 
-// TestClineWrapperScript_MergeLogic pins the wrapper's verdict-merge structure: the
-// exit-2 early return forwards the ready-made cancel JSON verbatim, and the envelope
-// surgery lines strip exactly the shape emitClineOutput prints. Structural pin (not
-// executed — cline runs scripts on macOS/Linux only, which go test on Windows cannot
-// verify; the lines are asserted so a change to either side of this pair trips a test).
+// TestClineWrapperScript_MergeLogic pins the wrapper's verdict-merge structure:
+// the exit-2 early return forwards the ready-made cancel JSON verbatim, and the
+// envelope surgery lines strip exactly the shape emitClineOutput prints.
 //
 // TestClineWrapperScript_MergeLogic 钉死 wrapper 的结论合并结构：exit-2 早退原样转发
 // 现成的 cancel JSON，信封手术行精确剥掉 emitClineOutput 打印的形态。结构性钉住
@@ -124,16 +107,10 @@ func TestClineTranslator_RosterMirrorsSpec(t *testing.T) {
 // 使这对契约的任一侧改动都会触发测试）。
 func TestClineWrapperScript_MergeLogic(t *testing.T) {
 	script := buildClineWrapperScript("PreToolUse", []string{"task-guard", "skill-trigger"})
-	// Block path: first exit 2 forwards the hook's stdout and exits.
-	//
 	// 阻断路径：首个 exit 2 转发该 hook 的 stdout 并退出。
 	if !strings.Contains(script, `if [ "$status" -eq 2 ]; then`) {
 		t.Error("wrapper missing the exit-2 block check")
 	}
-	// Envelope surgery: the case pattern and the prefix-strip must match
-	// emitClineOutput's compact emission `{"cancel":false,"contextModification":…}`
-	// character-for-character, or every allow context is silently dropped.
-	//
 	// 信封手术：case pattern 与前缀剥除必须与 emitClineOutput 的紧凑产出
 	// `{"cancel":false,"contextModification":…}` 逐字符一致，否则每条 allow 上下文
 	// 被静默丢弃。
@@ -143,8 +120,6 @@ func TestClineWrapperScript_MergeLogic(t *testing.T) {
 	if !strings.Contains(script, `piece=${out#'{"cancel":false,"contextModification":'}`) {
 		t.Error("wrapper prefix strip no longer matches emitClineOutput's envelope shape")
 	}
-	// The final envelope must be re-composed, not passed through raw.
-	//
 	// 最终信封必须重组，而非原样透传。
 	if !strings.Contains(script, `printf '{"cancel":false,"contextModification":"%s"}\n' "$context"`) {
 		t.Error("wrapper missing the merged contextModification emission")
@@ -161,9 +136,8 @@ func TestClineTranslator_Idempotent(t *testing.T) {
 }
 
 // TestClineTranslator_RefusesUserScript: a pre-existing script WITHOUT the forge
-// marker must make Translate refuse BEFORE writing anything (cline runs one script
-// per event — overwriting would steal the user's channel), and a refresh of a stale
-// forge wrapper (marker present) must succeed.
+// marker must make Translate refuse BEFORE writing anything (cline runs one
+// script per event.
 //
 // TestClineTranslator_RefusesUserScript：已存在且不带 forge 标记的脚本必须让
 // Translate 在写入任何东西之前拒绝（cline 每 event 一个脚本——覆写等于抢用户的通
@@ -182,8 +156,6 @@ func TestClineTranslator_RefusesUserScript(t *testing.T) {
 	if err := (&ClineTranslator{}).Translate(t.TempDir(), testInput()); err == nil {
 		t.Fatal("Translate must refuse when a user script occupies an event slot")
 	}
-	// Refusal must happen before ANY write: no other event got wired.
-	//
 	// 拒绝必须发生在任何写入之前：其他 event 未被接线。
 	for _, e := range clineEventMappings {
 		if e.clineEvent == "PreToolUse" {
@@ -193,16 +165,12 @@ func TestClineTranslator_RefusesUserScript(t *testing.T) {
 			t.Errorf("%s was written despite the conflict refusal (half-wired state)", e.clineEvent)
 		}
 	}
-	// The user script itself is untouched.
-	//
 	// 用户脚本本身未被触碰。
 	data, err := os.ReadFile(user)
 	if err != nil || !strings.Contains(string(data), "my own lint hook") {
 		t.Errorf("user script was modified by the refused Translate: %v", err)
 	}
 
-	// A stale FORGE wrapper (marker present) is refreshable.
-	//
 	// 陈旧的 forge wrapper（带标记）可刷新。
 	if err := os.WriteFile(user, []byte("#!/bin/sh\n"+clineWrapperMarker+" old\nexit 0\n"), 0755); err != nil {
 		t.Fatal(err)
@@ -212,9 +180,8 @@ func TestClineTranslator_RefusesUserScript(t *testing.T) {
 	}
 }
 
-// TestStripClineHooks covers the strip roundtrip: Translate then Strip removes every
-// forge wrapper while preserving user scripts; the emptied dir is removed; a second
-// strip and a missing dir are clean no-ops.
+// TestStripClineHooks covers the strip roundtrip: Translate then Strip removes
+// every forge wrapper while preserving user scripts.
 //
 // TestStripClineHooks 覆盖 strip 往返：Translate 后 Strip 移除全部 forge wrapper、
 // 保留用户脚本；清空的目录被移除；二次 strip 与目录缺失是干净 no-op。
@@ -222,8 +189,6 @@ func TestStripClineHooks(t *testing.T) {
 	home := isolateHome(t)
 	dir := clineHooksPathUnder(home)
 
-	// Missing dir → clean no-op.
-	//
 	// 目录缺失 → 干净 no-op。
 	changed, err := StripClineHooks()
 	if err != nil || changed {
@@ -233,8 +198,6 @@ func TestStripClineHooks(t *testing.T) {
 	if err := (&ClineTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("Translate: %v", err)
 	}
-	// A user script in a slot forge does not wire must survive.
-	//
 	// 用户脚本占着 forge 未接线的槽位，必须幸存。
 	user := filepath.Join(dir, "TaskResume")
 	if err := os.WriteFile(user, []byte("#!/bin/sh\n# user resume hook\nexit 0\n"), 0755); err != nil {
@@ -254,15 +217,11 @@ func TestStripClineHooks(t *testing.T) {
 	if err != nil || !strings.Contains(string(data), "user resume hook") {
 		t.Errorf("user script lost after strip: %v", err)
 	}
-	// The dir stays while a user script populates it.
-	//
 	// 用户脚本还占着目录时目录保留。
 	if _, serr := os.Stat(dir); serr != nil {
 		t.Errorf("dir removed while a user script still populates it: %v", serr)
 	}
 
-	// Second strip → no-op.
-	//
 	// 二次 strip → no-op。
 	changed, err = StripClineHooks()
 	if err != nil || changed {

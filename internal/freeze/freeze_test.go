@@ -9,9 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// testProject builds a Project with an isolated DataDir under a temp root — no
-// FORGE_DATA_HOME needed (Project fields are plain paths).
-//
 // testProject 构造 DataDir 隔离在临时 root 下的 Project——无需
 // FORGE_DATA_HOME（Project 字段就是纯路径）。
 func testProject(t *testing.T) *forgedata.Project {
@@ -175,10 +172,6 @@ func TestCheckCorruptStateFailsOpen(t *testing.T) {
 	}
 }
 
-// TestContainsCaseFold pins Windows semantics (foldCase=true) on any host:
-// same path in different case is the same directory; distinct prefixes still
-// rejected.
-//
 // TestContainsCaseFold 在任意宿主机上钉住 Windows 语义（foldCase=true）：
 // 不同大小写的同路径是同一目录；不同前缀仍拒绝。
 func TestContainsCaseFold(t *testing.T) {
@@ -199,9 +192,6 @@ func TestContainsCaseFold(t *testing.T) {
 	}
 }
 
-// TestCanonicalNormalization pins relative-path normalization: "./x", "a/../b",
-// and redundant separators all converge to one canonical absolute form.
-//
 // TestCanonicalNormalization 钉住相对路径归一化："./x"、"a/../b" 与冗余
 // 分隔符全部收敛到同一 canonical 绝对形式。
 func TestCanonicalNormalization(t *testing.T) {

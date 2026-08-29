@@ -1,14 +1,4 @@
-// Package skillsqa implements SkillsHub quality validation: spec contracts
-// (registry.py R1-R11) and security audit (18 rules aligned with audit.py +
-// weighted scoring, plus forge-local DC-8/DC-9/DC-10 markdown supply-chain
-// extensions — 21 audit rules total).
-// 1:1 alignment with Python semantics ensures per-rule judgments match registry.py
-// --json / audit.py (golden comparison baseline).
-// R12-R18 are forge-local extensions on top of the Python-aligned R1-R11
-// (R12 triggers declarations; R13-R17 from the 2026-08 skills value audit,
-// improvement item 11 — see docs/skills-value-audit-2026-08-02.md; R18 forge
-// reference contract from the 2026-08 dependency-inversion refactor,
-// CONVENTIONS §13).
+// Package skillsqa implements SkillsHub quality validation: spec contracts (registry.py R1-R11) and security audit (18 rules aligned with audit.py + weighted scoring, plus forge-local DC-8/DC-9/DC-10 markdown supply-chain extensions — 21 audit rules total).
 //
 // Package skillsqa 实现 SkillsHub 的质量校验：规范契约（registry.py 的 R1-R11）
 // 与安全审查（18 条规则对齐 audit.py + 加权评分，另有 forge 本地 DC-8/DC-9/DC-10
@@ -28,8 +18,6 @@ import (
 )
 
 // ValidPatterns — legal atomic values for metadata.pattern (registry.py VALID_PATTERNS).
-// Combinations are supported (e.g. `pipeline + gate`): after split('+'), each segment
-// must be in this set.
 //
 // ValidPatterns — metadata.pattern 合法原子值（registry.py VALID_PATTERNS）。
 // 支持组合（如 "pipeline + gate"）：split('+') 后每段都必须在此集合。
@@ -39,15 +27,10 @@ var ValidPatterns = map[string]bool{
 	"routing": true, "fallback": true,
 	// reference — 经验/踩坑记录型（无流程无门控的知识参考），2026-08 新增：
 	// integration-test-architecture 类 skill 原被误标 tool-wrapper。
-	// reference — experience/pitfall-reference skills (no pipeline, no gate).
 	"reference": true,
 }
 
-// HighSignalKW — any one present in body is treated as high-signal content
-// (registry.py HIGH_SIGNAL_KW).
-// Note: Python uses `kw in body_low` substring match, so `when.*try.*because` is a
-// literal string (rarely matched); Go keeps strings.Contains for consistency and does
-// not convert it to a regex.
+// HighSignalKW — any one present in body is treated as high-signal content (registry.py HIGH_SIGNAL_KW).
 //
 // HighSignalKW — body 含任一视为有高信号内容（registry.py HIGH_SIGNAL_KW）。
 // 注意：Python 用 `kw in body_low` 子串匹配，故 "when.*try.*because" 是字面串
@@ -58,13 +41,7 @@ var HighSignalKW = []string{
 	"red flag", "rationaliz", "红旗", "借口",
 }
 
-// CSOWorkflowMarkers — workflow summary words that description should not contain
-// (CSO rule: description only states what + when, never summarizes body workflow,
-// otherwise the model acts on description and skips the SKILL.md body).
-// Heuristic high-confidence Chinese phrases; a hit goes advisory (regression guard,
-// does not block Pass).
-// Additionally: the model weights head/tail heavily and the middle (body) is easily
-// overlooked; stuffing workflow into description further drowns out the body.
+// CSOWorkflowMarkers — workflow summary words that description should not contain.
 //
 // CSOWorkflowMarkers — description 不应含的工作流总结词（CSO 规则：description 只说
 // what + when，不总结 body 工作流，否则模型照 description 行动而跳过 SKILL.md body）。
@@ -74,8 +51,7 @@ var CSOWorkflowMarkers = []string{
 	"完整工作流", "完整流程", "全流程", "完整协议", "完整编排", "全链路", "全工序",
 }
 
-// AllowedFm — top-level frontmatter field whitelist (registry.py ALLOWED_FM,
-// R3 prevents field typos).
+// AllowedFm — top-level frontmatter field whitelist (registry.py ALLOWED_FM, R3 prevents field typos).
 //
 // AllowedFm — frontmatter 顶层字段白名单（registry.py ALLOWED_FM，R3 防字段 typo）。
 var AllowedFm = map[string]bool{
@@ -109,18 +85,13 @@ var ValidConditions = map[string]bool{
 	"skill_file_touched":         true,
 }
 
-// validTriggerEventsSorted returns sorted trigger-event names (R12 issue 文案用).
-//
 // validTriggerEventsSorted 返回排序后的 trigger-event 名（R12 issue 文案用）。
 func validTriggerEventsSorted() []string { return slices.Sorted(maps.Keys(ValidTriggerEvents)) }
 
-// validConditionsSorted returns sorted condition names (R12 issue 文案用).
-//
 // validConditionsSorted 返回排序后的 condition 名（R12 issue 文案用）。
 func validConditionsSorted() []string { return slices.Sorted(maps.Keys(ValidConditions)) }
 
-// ExecExts — executable script suffixes (audit.py EXEC_EXTS); the dangerous_code
-// rule only applies to these.
+// ExecExts — executable script suffixes (audit.py EXEC_EXTS); the dangerous_code rule only applies to these.
 //
 // ExecExts — 可执行脚本后缀（audit.py EXEC_EXTS）；dangerous_code 规则仅对这些生效。
 var ExecExts = map[string]bool{
@@ -128,19 +99,7 @@ var ExecExts = map[string]bool{
 	".mjs": true, ".cjs": true, ".bat": true, ".cmd": true,
 }
 
-// HtmlExts — HTML suffixes; prompt_injection / data_exfiltration rules apply to
-// these, and dangerous_code entries with HtmlAlso=true (DC-1 eval / DC-7 browser
-// execution vectors) also apply.
-// HTML is a high-risk carrier for injection/code execution: PI-4 hidden directive
-// comments, PI-5 zero-width characters, DE exfiltration directives, and inline
-// <script>eval(...)/new Function(...)/document.write(...) in HTML are all real
-// attack surfaces.
-// Other DCs (child_process/os.system and similar backend APIs) do not cover HTML —
-// HTML is not a directly executable suffix, and backend API keywords in descriptive
-// text are prone to false positives.
-// 2026-07: prototype-confirmation introduced the first .html canonical asset, exposing
-// a blind spot — PI-4 previously never scanned real .html; DC-1 eval previously used
-// ExecOnly and also did not scan .html (HTML inline XSS was under-reported).
+// HtmlExts — HTML suffixes; prompt_injection / data_exfiltration rules apply to these, and dangerous_code entries with HtmlAlso=true (DC-1 eval / DC-7 browser execution vectors) also apply.
 //
 // HtmlExts — HTML 后缀；prompt_injection / data_exfiltration 规则对这些生效，
 // dangerous_code 中 HtmlAlso=true 的（DC-1 eval / DC-7 浏览器执行向量）也生效。
@@ -161,16 +120,11 @@ var SeverityWeight = map[string]int{
 	"INFO": 0, "LOW": 3, "MEDIUM": 8, "HIGH": 15, "CRITICAL": 25,
 }
 
-// kebabRe — R1 name legal format (registry.py r'[a-z][a-z0-9-]*' fullmatch).
-//
 // kebabRe — R1 name 合法格式（registry.py r'[a-z][a-z0-9-]*' fullmatch）。
 var kebabRe = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 // imperativeRe — R15 ALL-CAPS 命令式词（整词匹配，仅全大写形式；小写 always/must
 // 是普通叙述不计入）。
-//
-// imperativeRe — R15 ALL-CAPS imperative words (whole-word, uppercase only;
-// lowercase always/must is ordinary prose and does not count).
 var imperativeRe = regexp.MustCompile(`\b(ALWAYS|NEVER|MUST)\b`)
 
 // forgeCmdRe — R18 forge CLI 命令引用（`forge task` / `forge review pass` 形态）。
@@ -178,40 +132,22 @@ var imperativeRe = regexp.MustCompile(`\b(ALWAYS|NEVER|MUST)\b`)
 // 后随小写子命令名——「forge 项目」「forge 环境」类叙述措辞不命中。分隔符用
 // [ \t] 不用 \s：ScanForgeRefs 按整文件内容匹配（非逐行），\s 含 \n/\r 会让
 // 「行尾裸 forge + 下行小写开头」跨行假命中（markdown 换行/CRLF 场景，review M1）。
-//
-// forgeCmdRe — R18 forge CLI command references (`forge task` / `forge review pass`).
-// The leading class excludes [\w./-]: xforge (inside a word), forge/docs, .forge/
-// (paths) are not command references; a lowercase subcommand must follow, so
-// prose like "forge 项目" / "forge 环境" never matches. The separator is [ \t],
-// NOT \s: ScanForgeRefs matches whole-file content (not per line), and \s
-// includes \n/\r, which would produce cross-line false hits when a line ends
-// with a bare "forge" and the next starts lowercase (markdown reflow/CRLF,
-// review M1).
 var forgeCmdRe = regexp.MustCompile(`(?:^|[^\w./-])forge[ \t]+[a-z][a-z-]*`)
 
 // forgeHomePathRe — R18 用户级 forge 目录引用（`~/.forge/`、`$HOME/.forge/`、
 // `${HOME}/.forge/`）。只认 home 前缀形态——项目级裸 `.forge/` 出现在「禁止混入
 // 源码的工具目录」清单这类反向列举里（implementation-discipline），不是依赖。
-//
-// forgeHomePathRe — R18 user-level forge directory references (`~/.forge/`,
-// `$HOME/.forge/`, `${HOME}/.forge/`). Home-prefixed forms only — a bare project
-// `.forge/` appears in reverse listings like implementation-discipline's
-// "tool dirs never commit" list, which is not a dependency.
 var forgeHomePathRe = regexp.MustCompile(`(?:~|\$\{?HOME\}?)/\.forge`)
 
 // forgeEnvRe — R18 forge 环境变量引用（`$FORGE_*` / `${FORGE_*}`）。
-//
-// forgeEnvRe — R18 forge environment variable references (`$FORGE_*` / `${FORGE_*}`).
 var forgeEnvRe = regexp.MustCompile(`\$\{?FORGE_`)
 
 // forgeIntegrationFileRe — R18 forge-integration.md 集成文件指针。2026-08 起该
 // 形态废止（零反向依赖契约）：集成内容整体迁往 forge 侧，存量文件待迁出。
-//
-// forgeIntegrationFileRe — R18 forge-integration.md pointer references. Deprecated
-// since the 2026-08 zero-reverse-dependency contract: integration content moves to
-// the forge side wholesale; remaining files await extraction.
 var forgeIntegrationFileRe = regexp.MustCompile(`forge-integration\.md`)
 
+// R18Grandfathered — legacy exemptions under the R18 zero-reverse-dependency contract (frozen, shrink-only).
+//
 // R18Grandfathered — R18 零反向依赖契约的存量豁免（冻结，只减不增）。这些 skill
 // 在契约收紧（2026-08：advisory→硬校验、扫描面扩到全目录）之前已含操作性行为
 // （forge CLI / ~/.forge 路径 / $FORGE_* / forge-integration.md），按 skill 粒度
@@ -220,17 +156,6 @@ var forgeIntegrationFileRe = regexp.MustCompile(`forge-integration\.md`)
 // 实际命中集合严格相等，双向卡死：加不进无用条目，也漏不掉新违例）。
 // 前置豁免：`metadata.requires_forge: "true"` 的 forge 原生 skill 不查表、整体
 // 跳过 R18（CONVENTIONS §13）。
-//
-// R18Grandfathered — legacy exemptions under the R18 zero-reverse-dependency
-// contract (frozen, shrink-only). These skills already carried operational forge
-// behavior before the contract tightened (2026-08: advisory→hard, scan scope
-// widened to the whole skill dir) and are exempted per-skill so the check stays
-// enforceable; remove an entry each time a skill's integration content is
-// extracted to the forge side. Adding entries breaks the shrink-only discipline
-// (TestR18_Grandfathered_Exact pins the allowlist to the exact set of matches,
-// both directions: no dead entries in, no new violations out). Separate prior
-// exemption: `metadata.requires_forge: "true"` forge-native skills skip R18
-// entirely without consulting this table (CONVENTIONS §13).
 var R18Grandfathered = map[string]bool{
 	// 2026-08 迁移完成：原 10 条存量豁免（code-review-gate / cross-tool-context /
 	// design-artifact-standards / dev-workflow / doc-generator / doc-review /
@@ -238,17 +163,9 @@ var R18Grandfathered = map[string]bool{
 	// session-retrospective）的 forge 集成内容已全部迁出至 internal/skillintegrate
 	// notes/（forge skills integration 查看），表清空。保留空表与机制：若未来再次
 	// 出现需要过渡的存量，仍走此通道并遵守只减不增纪律。
-	//
-	// Migration completed 2026-08: all 10 legacy exemptions had their forge
-	// integration content extracted to internal/skillintegrate notes/ (view via
-	// `forge skills integration`); the table is now empty. The mechanism stays:
-	// any future transition debt goes through here under the shrink-only rule.
 }
 
-// RuleDescriptions — rule ID → rule text definition (exported single source of
-// truth; docs generation greps this table instead of copying rule text, and CLI
-// output stays aligned with it). R1-R11 align with SkillsHub registry.py;
-// R12-R17 are forge-local extensions (see package doc).
+// RuleDescriptions — rule ID → rule text definition (exported single source of truth; docs generation greps this table instead of copying rule text, and CLI output stays aligned with it).
 //
 // RuleDescriptions — 规则编号 → 规则文本定义（可导出的单一真相源；文档生成 grep
 // 本表而非复制规则文本，CLI 输出与之对齐）。R1-R11 对齐 SkillsHub registry.py；
@@ -274,20 +191,11 @@ var RuleDescriptions = map[string]string{
 	"R18": "skill 目录（SKILL.md 正文 + references/ 等，decisions.md/evals 除外）零 forge 反向依赖：不得含 forge CLI 调用、~/.forge 路径、$FORGE_* 变量、forge-integration.md 指针；命中即硬 issue（存量豁免 R18Grandfathered 只减不增；requires_forge 标记的 forge 原生 skill 跳过，CONVENTIONS §13）",
 }
 
-// allowedFmSorted returns the sorted allowed-field list (used in R3 issue text;
-// aligns with Python sorted(ALLOWED_FM)).
-//
 // allowedFmSorted 返回排序后的允许字段列表（R3 issue 文案用，对齐 Python sorted(ALLOWED_FM)）。
 func allowedFmSorted() []string {
 	return slices.Sorted(maps.Keys(AllowedFm))
 }
 
-// markdownExt reports whether the suffix is markdown (audit.py AUDITORS_BY_TYPE
-// .md/.markdown).
-// strings.ToLower performs full Unicode case folding — the old hand-written
-// ASCII-only lower() would miss non-ASCII uppercase letters; routing through the
-// standard library keeps this judgment consistent with the descLow/bodyLow handling.
-//
 // markdownExt 判断是否 markdown 后缀（audit.py AUDITORS_BY_TYPE 的 .md/.markdown）。
 // 用 strings.ToLower 做完整 Unicode 大小写折叠——旧的手写 ASCII-only lower() 会漏掉
 // 非 ASCII 大写字母，统一走标准库与 descLow/bodyLow 的判定口径一致。

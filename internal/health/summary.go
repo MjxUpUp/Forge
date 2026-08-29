@@ -1,7 +1,4 @@
-// Package health rolls up task-level conclusions (act.Conclusion) into project-level quality trends — PDCA at
-// project granularity Act. Single-task blind spots/low scores are isolated cases; cross-task aggregation exposes systemic issues: a dimension repeatedly scoring
-// low indicates a shared gap in that direction, a high blind-spot rate in completion claims shows the agent systematically "claims done without real verification".
-// Fed to session-retrospective to decide at the project level "what to sediment into CLAUDE.md rules / guard tests".
+// Package health rolls up task-level conclusions (act.Conclusion) into project-level quality trends — PDCA at project granularity Act.
 //
 // Package health 把 task 级结论（act.Conclusion）上卷成 project 级质量趋势——PDCA 在
 // project 粒度的 Act。单个任务的盲区/低分是个例，跨任务聚合才暴露系统性问题：某维度反复
@@ -10,7 +7,6 @@
 //
 // All fields are aggregated from act.Conclusion (the conclusion itself derives from checklog evidence + scoring, deterministic),
 // not agent narration — consistent with the evidence chain's unforgeability principle.
-//
 // 全字段从 act.Conclusion 聚合（结论本身源自 checklog 证据 + 评分，deterministic），
 // 非 agent 叙述——与 evidence chain 的不可伪造原则一致。
 package health
@@ -24,14 +20,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// NudgeRecentWindow is the look-back window for Summary.NudgeRecent (windowed nudge count).
-// Rationale (2026-08 alarm-fatigue calibration): NudgeCount is an all-history cumulative with
-// no ack mechanism, so a dashboard fed on it only grows — 56 stale nudges (0 real blind spots)
-// lit the panel red for weeks and would bury any future real signal. NudgeRecent scopes the
-// alert-facing count to conclusions completed within the last 14 days: a nudge older than that
-// has passed its actionable window (session long closed, context gone), while the full count
-// stays available for trend analysis. 14d matches the sprint-ish review cadence.
-//
 // NudgeRecentWindow 是 Summary.NudgeRecent（窗口化 nudge 计数）的回看窗口。
 // 动机（2026-08 告警疲劳校准）：NudgeCount 是无 ack 机制的全量累计，喂给 dashboard 只会
 // 只增不减——56 条陈旧 nudge（0 条真盲区）把面板红灯挂了数周，未来真信号必被淹没。
@@ -55,8 +43,7 @@ type Span struct {
 	Latest   time.Time `json:"latest"`
 }
 
-// Summary is the project-level quality rollup. BlindSpotRate is the headline signal: the proportion of tasks
-// whose completion claims rely on agent self-report (Unverified/Weak) — the project-level LLM-judge blind-spot rate; high = systemic verification gap.
+// Summary is the project-level quality rollup.
 //
 // Summary 是 project 级质量上卷。BlindSpotRate 是头条信号：完成声明主要靠 agent 自述
 // （Unverified/Weak）的任务占比——项目级 LLM-judge 盲区率，高 = 系统性验证缺口。
@@ -67,8 +54,7 @@ type Summary struct {
 	GradeDist      map[string]int `json:"grade_dist"`    // A/B/C/D/F → count
 	StrengthDist   map[string]int `json:"strength_dist"` // Strong/Weak/Unverified/NoData → count
 	BlindSpotCount int            `json:"blind_spot_count"`
-	// CappedWeakCount: Weak conclusions that still carry deterministic evidence —
-	// escape-hatch caps (override cost), distinct from genuine evidence blind spots.
+	// CappedWeakCount: Weak conclusions that still carry deterministic evidence.
 	//
 	// CappedWeakCount：仍带 deterministic 证据的 Weak 结论——逃生舱封顶（override
 	// 代价），与真正的证据盲区区分。
@@ -76,10 +62,7 @@ type Summary struct {
 	BlindSpotRate   float64 `json:"blind_spot_rate"` // 0-1
 	NudgeCount      int     `json:"nudge_count"`     // RetrospectiveNudge=true 任务数（全量真相）
 	// NudgeRecent counts RetrospectiveNudge=true conclusions completed within
-	// NudgeRecentWindow of the SummarizeAt `now` — the alert-facing count that feeds
-	// the dashboard, so stale nudges stop lighting the panel red forever (see
-	// NudgeRecentWindow for the alarm-fatigue calibration). Legacy Summarize (no
-	// `now`) fills NudgeRecent = NudgeCount so no-window callers keep a meaningful value.
+	// NudgeRecentWindow of the SummarizeAt `now`.
 	//
 	// NudgeRecent 数 SummarizeAt 的 `now` 前 NudgeRecentWindow 窗口内完成且
 	// RetrospectiveNudge=true 的结论——喂给 dashboard 的面向告警计数，让陈旧 nudge
@@ -92,9 +75,9 @@ type Summary struct {
 	RecentAvg   float64   `json:"recent_avg"`  // 后半段均分
 	Trend       string    `json:"trend"`       // improving/regressing/stable/insufficient
 
-	// PhasePassRate is the phase-aware quality report (Phase 2 loop integrated).
-	// key = design phase (requirement/api/backend...), value = task pass rate for that phase (0-1).
-	// Used by the R3 advisory loop: review sub-agent calls health_query to read high-frequency issues and inject them into the prompt.
+	// PhasePassRate is the phase-aware quality report (Phase 2 loop integrated). key
+	// = design phase (requirement/api/backend...), value = task pass rate for that
+	// phase (0-1).
 	//
 	// PhasePassRate 是 phase-aware 质量报告（Phase 2 回路接入）。
 	// key=设计阶段（requirement/api/backend...），value=该阶段任务通过率（0-1）。
@@ -102,10 +85,8 @@ type Summary struct {
 	PhasePassRate map[string]float64 `json:"phase_pass_rate,omitempty"`
 }
 
-// Summarize is the legacy no-window entry: equivalent to SummarizeAt with NudgeRecent
-// filled as the all-history NudgeCount (no `now` to window against). Kept for existing
-// callers (cli/health.go, pulse project cards); new alert-facing consumers should
-// prefer SummarizeAt.
+// Summarize is the legacy no-window entry: equivalent to SummarizeAt with
+// NudgeRecent filled as the all-history NudgeCount (no `now` to window against).
 //
 // Summarize 是旧的无窗口入口：等价于 SummarizeAt，只是 NudgeRecent 填全量 NudgeCount
 // （没有 `now` 可开窗）。为既有调用方（cli/health.go、pulse 项目卡）保留；面向告警的新
@@ -116,12 +97,9 @@ func Summarize(cs []act.Conclusion) Summary {
 	return s
 }
 
-// SummarizeAt aggregates like Summarize plus the time-windowed NudgeRecent: nudged
-// conclusions completed within the HALF-OPEN window (now-NudgeRecentWindow, now] are
-// counted — a completion exactly at now-Window falls outside (After is strict; pinned
-// by TestSummarizeAt_NudgeRecentWindow). A zero `now` leaves NudgeRecent at 0 — only
-// the Summarize wrapper (which overrides NudgeRecent=NudgeCount) may pass zero;
-// direct callers must pass a real now. Pure function, disk-free.
+// SummarizeAt aggregates like Summarize plus the time-windowed NudgeRecent:
+// nudged conclusions completed within the HALF-OPEN window
+// (now-NudgeRecentWindow, now] are counted.
 //
 // SummarizeAt 在 Summarize 聚合之上增加时间窗口化的 NudgeRecent：只数完成于半开
 // 窗口 (now-NudgeRecentWindow, now] 内的 nudge 结论——恰好落在 now-Window 的不计
@@ -138,16 +116,12 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 	s.StrengthDist = map[string]int{}
 	lowCounts := map[string]int{}
 	sum := 0.0
-	// Phase tracking: count per (phase, grade), used to compute phase_pass_rate
-	//
 	// Phase 追踪：每个 (phase, grade) 计数，用于计算 phase_pass_rate
 	phaseGrades := map[string]map[string]int{}
 	for _, c := range cs {
 		sum += c.Score
 		if c.Grade != "" {
 			s.GradeDist[c.Grade]++
-			// Group by phase for statistics
-			//
 			// 按 phase 分组统计
 			for _, phase := range c.DesignPhases {
 				if phaseGrades[phase] == nil {
@@ -156,12 +130,6 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 				phaseGrades[phase][c.Grade]++
 			}
 		}
-		// Same non-empty guard as Grade above: an empty Strength must not be counted into a
-		// nameless bucket (and it must never reach BlindSpotCount below). Invariant: the write
-		// side (act.BuildConclusion) always sets Strength from
-		// checklog.EvidenceStrength.String(), which is one of Strong/Weak/Unverified/NoData —
-		// never empty — so this guard only defends against hand-crafted or legacy data.
-		//
 		// 与上面 Grade 同款的非空守卫：空 Strength 不得落入无名桶（也不得进入下方的
 		// BlindSpotCount）。不变量：写入侧（act.BuildConclusion）的 Strength 恒由
 		// checklog.EvidenceStrength.String() 赋值，必为 Strong/Weak/Unverified/NoData
@@ -190,11 +158,6 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 		}
 		if c.RetrospectiveNudge {
 			s.NudgeCount++
-			// Windowed count: completed within the HALF-OPEN (now-Window, now] — exactly
-			// at now-Window falls outside (After is strict; pinned by the window-edge
-			// assertion in TestSummarizeAt_NudgeRecentWindow). Guarded on non-zero now —
-			// the legacy Summarize wrapper passes zero and overrides NudgeRecent afterwards.
-			//
 			// 窗口计数：完成于半开区间 (now-Window, now] 内——恰好落在 now-Window 的不计
 			//（After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 的窗口沿断言钉住）。
 			// now 非零才判定——旧 Summarize 包装传零值，事后会覆写 NudgeRecent。
@@ -212,8 +175,6 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 	for d, n := range lowCounts {
 		s.LowDims = append(s.LowDims, DimFreq{Dimension: d, Count: n})
 	}
-	// Sort by frequency descending; ties by dimension name (stable, reproducible output for assertions).
-	//
 	// 频次降序；同频次按维度名稳定排序（可复现输出，便于断言）。
 	slices.SortFunc(s.LowDims, func(a, b DimFreq) int {
 		if a.Count != b.Count {
@@ -230,8 +191,6 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 	s.Span = Span{Earliest: byTime[0].CompletedAt, Latest: byTime[len(byTime)-1].CompletedAt}
 	s.EarlierAvg, s.RecentAvg, s.Trend = trend(byTime)
 
-	// Compute phase_pass_rate: pass rate = (A+B) share (>=80 treated as pass, consistent with grade thresholds)
-	//
 	// 计算 phase_pass_rate：通过率 = (A+B) 占比（≥80 视为通过，与 grade 分级一致）
 	if len(phaseGrades) > 0 {
 		s.PhasePassRate = map[string]float64{}
@@ -274,9 +233,6 @@ func median(xs []float64) float64 {
 	return (s[n/2-1] + s[n/2]) / 2
 }
 
-// trend splits the slice by completion time in half to compare earlier/later averages. <4 samples marked insufficient (no statistical significance). Threshold of 3 points:
-// difference <3 is treated as stable to avoid noise misdetecting trends.
-//
 // trend 按完成时间对半切比前/后半段均分。<4 样本标 insufficient（无统计意义）。阈值 3 分：
 // 差<3 视为 stable，避免噪声误判趋势。
 func trend(byTime []act.Conclusion) (earlier, recent float64, label string) {

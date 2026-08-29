@@ -5,7 +5,6 @@ package cli
 // 与 hook_track_test.go 同款三维度：checklog 观察落盘（CheckConventionsInject）；
 // 注入只在应发时发、永不阻断；静默契约（无档案→静默、非代码文件→静默、
 // marker 门控：SessionStart 每会话一次 / PostCompact 恒注入 / 每目录一次）。
-//
 // hook_conventions_test.go — guards for the two conventions-profile layer-2
 // injection hooks (conventions-context / conventions-write, hook_conventions.go).
 // Same three dimensions as hook_track_test.go: the checklog observation lands
@@ -27,9 +26,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// convTestProject isolates FORGE_DATA_HOME and returns a temp project root with
-// a declared AGENTS.md + go.mod, ready for profiling.
-//
 // convTestProject 隔离 FORGE_DATA_HOME 并返回带 AGENTS.md + go.mod 的临时
 // 项目根，可直接建档。
 func convTestProject(t *testing.T) string {
@@ -53,9 +49,6 @@ func convWrite(t *testing.T, root, rel, content string) {
 	}
 }
 
-// resetConvMarkers removes the session's marker dir under the real os.TempDir()
-// (production lifespan choice) before and after each test — cross-run isolation.
-//
 // resetConvMarkers 在每个测试前后删除真实 os.TempDir() 下该 session 的 marker
 // 目录（生产寿命选择）——跨运行隔离。
 func resetConvMarkers(t *testing.T, sessionID string) {
@@ -65,8 +58,6 @@ func resetConvMarkers(t *testing.T, sessionID string) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 }
 
-// convProfile builds + persists the profile and digest for root.
-//
 // convProfile 为 root 建档（档案 + 摘要）。
 func convProfile(t *testing.T, root string) *conventions.Profile {
 	t.Helper()
@@ -134,7 +125,7 @@ func TestConventionsContextHook_InjectsDigestAndGatesByMarker(t *testing.T) {
 
 // TestConventionsContextHook_StaleDigestVisible pins that staleness rides the
 // injection itself (a stale digest confidently stating outdated rules is worse
-// than none — it must be visible, not silent).
+// than none.
 //
 // TestConventionsContextHook_StaleDigestVisible 钉住过期状态随注入可见
 // （过期摘要自信陈述旧规则比没有更糟——必须可见，不能静默）。
@@ -158,8 +149,7 @@ func TestConventionsContextHook_StaleDigestVisible(t *testing.T) {
 
 // TestConventionsContextHook_SuggestsInitOnce pins the adoption path: a repo
 // that DECLARES conventions but has no profile gets a once-per-session factual
-// suggestion; a repo with nothing declared stays fully silent (no observation,
-// no marker).
+// suggestion.
 //
 // TestConventionsContextHook_SuggestsInitOnce 钉住采纳路径：已声明规范而无
 // 档案的仓库获得每会话一次的事实性建议；什么都没声明的仓库完全静默
@@ -198,8 +188,7 @@ func TestConventionsContextHook_SuggestsInitOnce(t *testing.T) {
 
 // TestConventionsWriteHook_PointersAndExemplars pins the write-time injection:
 // instruction pointers + sibling exemplars for the first source write in a
-// directory; once per directory per session; silent for non-code files and for
-// unadopted projects.
+// directory.
 //
 // TestConventionsWriteHook_PointersAndExemplars 钉住写入时刻注入：每目录首个
 // 源码写入获得规范指针 + 同目录范例；每目录每会话一次；非代码文件与未采纳
@@ -277,10 +266,7 @@ func TestConventionsWriteHook_PointersAndExemplars(t *testing.T) {
 }
 
 // TestConventionsWriteHook_ApplyPatchSynthesis pins the codex path: apply_patch
-// tool_input carries {command: <patch>} with NO file_path — the hook must
-// synthesize the target from the FIRST patch header (shared applyPatchFilePath)
-// and inject for it. This was the adversarial-review gap closed in
-// conventions-followups.
+// tool_input carries {command: <patch>} with NO file_path.
 //
 // TestConventionsWriteHook_ApplyPatchSynthesis 钉住 codex 路径：apply_patch 的
 // tool_input 只带 {command: <patch>}、无 file_path——hook 必须经首个 patch 头
@@ -313,13 +299,6 @@ func TestConventionsWriteHook_ApplyPatchSynthesis(t *testing.T) {
 	}
 }
 
-// injectedText decodes the hook's stdout JSON envelope and returns the
-// additionalContext with path separators normalized. ToSlash on the RAW
-// envelope is wrong: JSON escapes one backslash into TWO ("internal\\srv"),
-// so slash-converting the envelope yields "internal//srv" — exactly the
-// second CI round's windows failure (2026-08-28). Decode first, then
-// normalize the payload.
-//
 // injectedText 解码 hook stdout 的 JSON 信封，返回按平台归一后的
 // additionalContext。对**原始信封**做 ToSlash 是错的：JSON 把单个反斜杠
 // 转义成两个（"internal\\srv"），信封级转换会产出 "internal//srv"——正是

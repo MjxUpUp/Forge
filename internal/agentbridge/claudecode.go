@@ -7,11 +7,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillgen"
 )
 
-// ClaudeCodeTranslator wires claude-code at USER level: hooks go into
-// ~/.claude/settings.json (skipped when the forge plugin is user-level installed),
-// the quality skill into ~/.claude/skills/forge-quality/, and the protocol section
-// into ~/.claude/CLAUDE.md (backup+append). Project-level claude assets are only
-// written by `forge init --project` (team mode), which bypasses this translator.
+// ClaudeCodeTranslator wires claude-code at USER level: hooks go into ~/.claude/settings.json (skipped when the forge plugin is user-level installed), the quality skill into ~/.claude/skills/forge-quality/, and the protocol section into ~/.claude/CLAUDE.md (backup+append).
 //
 // ClaudeCodeTranslator 在用户级接线 claude-code：hooks 进 ~/.claude/settings.json
 // （forge plugin 已 user-level 安装时跳过），quality skill 进
@@ -20,10 +16,6 @@ import (
 type ClaudeCodeTranslator struct{}
 
 func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationInput) error {
-	// User-level settings.json — only when the plugin is NOT user-level installed.
-	// When the plugin is installed, user-level plugin.json already registers ForgeHookSpec
-	// machine-wide; writing user-level settings hooks again is redundant.
-	//
 	// 用户级 settings.json——仅在 plugin 未 user-level 安装时。plugin 已安装时，
 	// user-level plugin.json 已全机器注册 ForgeHookSpec，再写是冗余。
 	if !hooks.IsClaudePluginInstalled() {
@@ -32,8 +24,6 @@ func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationIn
 		}
 	}
 
-	// User-level quality SKILL.md.
-	//
 	// 用户级 quality SKILL.md
 	if input.Protocol != nil {
 		if err := skillgen.GenerateUserQualitySkill(input.Protocol); err != nil {
@@ -41,8 +31,6 @@ func (t *ClaudeCodeTranslator) Translate(projectDir string, input *TranslationIn
 		}
 	}
 
-	// User-level CLAUDE.md (backup+append, conditional activation preamble).
-	//
 	// 用户级 CLAUDE.md（备份+追加，条件激活前置）。
 	if err := skillgen.GenerateUserClaudeMD(); err != nil {
 		return fmt.Errorf("claude-code: failed to update user-level CLAUDE.md: %w", err)

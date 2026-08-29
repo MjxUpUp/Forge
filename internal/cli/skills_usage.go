@@ -30,10 +30,6 @@ var skillsUsageCmd = &cobra.Command{
 
 // triggerDeclaredSkills 返回 dir 下带 triggers 声明（skilltrigger.LoadAll 引擎会装载）的
 // skill 名集。cli 层职责——skillseval import skilltrigger 会成环（见 skillseval/drift.go）。
-//
-// triggerDeclaredSkills returns the set of skill names under dir carrying trigger
-// declarations (loaded by the engine via skilltrigger.LoadAll). Lives in the cli layer —
-// skillseval importing skilltrigger would cycle (see skillseval/drift.go).
 func triggerDeclaredSkills(dir string) map[string]bool {
 	set := map[string]bool{}
 	for _, st := range skilltrigger.LoadAll(dir) {
@@ -54,12 +50,6 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	// --by-keyword 分支在最前（review m3/m4）：不需要 usage/funnel 报告——放后面会被
 	// --json/--undertrigger 静默吞掉，且 AnalyzeUsageWithFunnel 的双份 LoadAllAll 白跑、
 	// 其失败还会连带 by-keyword 不可用。--json 同样支持（KeywordReport 序列化出口）。
-	//
-	// The --by-keyword branch comes first (review m3/m4): it needs no usage/funnel
-	// report — later placement let --json/--undertrigger silently swallow it, and
-	// AnalyzeUsageWithFunnel's duplicate LoadAllAll runs were wasted whose failure
-	// would also break by-keyword. --json supported here too (KeywordReport's
-	// serialization outlet).
 	if skUseByKeyword {
 		return runSkillsUsageByKeyword(proj.GitRoot, canonical)
 	}
@@ -72,14 +62,6 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	// 翻目录五步确认，此处一行暴露。源目录不存在 → RepoCompared=false（非仓库内运行）；
 	// 目录存在但零个带 triggers 的 skill 同样不可比较——那多半是恰好有 skills/ 目录的
 	// 非 Forge 项目，置成可比会渲染出假的「与仓库源一致」（审查 LOW-1）。
-	//
-	// Trigger-set drift: production canonical vs repo-source skills/. Compared automatically
-	// when running inside a forge repo (dogfood/CI) — the 2026-08-16 15/33 stale cache (build
-	// predating the trigger commit by 8h46m) took five manual directory steps to confirm;
-	// one line exposes it here. Missing source dir → RepoCompared=false (outside a repo); a
-	// present-but-zero-triggers dir is ALSO not comparable — that's usually a non-Forge project
-	// that happens to carry a skills/ directory, and comparing would render a fake "consistent
-	// with repo source" (review LOW-1).
 	repoSet := repoTriggerSet(proj.GitRoot)
 	drift := skillseval.CompareTriggerSets(triggerDeclaredSkills(canonical), repoSet)
 	rep.Drift = &drift
@@ -102,10 +84,6 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	fmt.Printf("总 skill 触达: %d  |  canonical skill 数: %d  |  被用过: %d\n", rep.TotalEvents, rep.TotalSkills, rep.UsedSkills)
 
 	// 漂移行：总是给生产判定集规模；仓库可比较且缺声明时升级为显式警告（发版滞后信号）。
-	//
-	// Drift line: always shows the production trigger-set size; upgrades to an explicit
-	// warning (release-lag signal) when the repo side is comparable and has declarations
-	// missing from production.
 	if rep.Drift != nil {
 		if rep.Drift.RepoCompared {
 			if rep.Drift.HasDrift() {
@@ -139,11 +117,6 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	// 漏斗段：命中 → 送达 → 加载。0/134 盲区（触发臂转了但无法证明注入被照做）的答案——
 	// 加载列 = 命中后 10 分钟内同 session 出现对该 skill 的 Read/Skill 调用（归因信号，
 	// 非遵循证明）。
-	//
-	// Funnel section: hit → delivered → engaged. The answer to the 0/134 blind spot (the
-	// trigger arm fired but nothing proved the injection was acted on) — the engaged column
-	// counts a Read/Skill call on that skill within 10 minutes after the hit, same session
-	// (attribution signal, not proof of following).
 	if rep.Funnel != nil && len(rep.Funnel.Skills) > 0 {
 		fmt.Printf("\n=== 被动触发漏斗（命中 → 送达 → %dmin 内加载）===\n", int(rep.Funnel.Window.Minutes()))
 		fmt.Printf("  %-32s %4s %4s %4s %4s\n", "skill", "命中", "送达", "未知", "加载")
@@ -168,12 +141,6 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 // runSkillsUsageByKeyword 渲染 per-keyword 触发分析（P0.5）：命中/engaged/抑制切片 +
 // 死关键词。宿主偏差标注强制随行（G3）——engaged 信号只在产生工具事件的宿主可见，
 // codex/cursor 等注入型宿主天然零信号，裸报"低遵循率"会把宿主能力差误读为关键词噪声。
-//
-// runSkillsUsageByKeyword renders the per-keyword trigger analysis (P0.5):
-// hits/engaged/suppressed slices + dead keywords. The host-bias caveat is mandatory
-// (G3) — the engagement signal only exists on hosts that emit tool events; injection
-// hosts (codex/cursor etc.) naturally produce none, and a bare "low compliance rate"
-// would misread a host capability gap as keyword noise.
 func runSkillsUsageByKeyword(root, canonical string) error {
 	entries, err := checklog.LoadAllAll(root)
 	if err != nil {
@@ -185,9 +152,6 @@ func runSkillsUsageByKeyword(root, canonical string) error {
 	}
 	// 声明关键词集：skill → 该 skill 全部 triggers 声明的关键词并集（review n2：seen
 	// 预建到 skill 层）。
-	//
-	// Declared keyword sets: skill → union of keywords across all its triggers
-	// (review n2: seen pre-built at the skill level).
 	declared := map[string][]string{}
 	seen := map[string]map[string]bool{}
 	for _, st := range skilltrigger.LoadAll(canonical) {
@@ -249,8 +213,6 @@ func runSkillsUsageByKeyword(root, canonical string) error {
 }
 
 // condTotal/condSkills 汇总 condition-only 行（per-skill）。
-//
-// condTotal/condSkills summarize the per-skill condition-only rows.
 func condTotal(rows []skillseval.KeywordStat) int {
 	n := 0
 	for _, r := range rows {
@@ -271,12 +233,6 @@ func condSkills(rows []skillseval.KeywordStat) string {
 // 两种不可比较：目录不存在（非 forge 仓库内运行），或目录存在但零个带 triggers 的 skill
 // （多半是恰好有 skills/ 目录的非 Forge 项目——置成可比会渲染出假的「与仓库源一致」，
 // 审查 LOW-1）。
-//
-// repoTriggerSet returns the set of skills under repo-source skills/ carrying trigger
-// declarations; nil = not comparable. Two not-comparable cases: the dir is missing (running
-// outside a forge repo), or the dir exists with zero trigger-declared skills (usually a
-// non-Forge project that happens to carry skills/ — comparing would render a fake
-// "consistent with repo source", review LOW-1).
 func repoTriggerSet(gitRoot string) map[string]bool {
 	repoDir := filepath.Join(gitRoot, "skills")
 	st, err := os.Stat(repoDir)
@@ -284,10 +240,6 @@ func repoTriggerSet(gitRoot string) map[string]bool {
 		return nil
 	}
 	out := triggerDeclaredSkills(repoDir)
-	// skills-forge/ (forge-native overlay since the 2026-08 migration) carries its own
-	// trigger declarations — without scanning it, those skills would render as fake
-	// drift lines (present in production canonical, absent from repo source set).
-	//
 	// skills-forge/（2026-08 迁移后的 forge 原生覆盖层）有自己的 triggers 声明——
 	// 不扫它的话这些 skill 会渲染出假漂移行（生产 canonical 有、仓库源集合没有）。
 	forgeDir := filepath.Join(gitRoot, "skills-forge")
@@ -302,9 +254,6 @@ func repoTriggerSet(gitRoot string) map[string]bool {
 	return nil
 }
 
-// ellipsisIf returns " ..." when more items were truncated, else "". Keeps the drift-line
-// printf readable.
-//
 // ellipsisIf 在有截断时返回 " ..."，否则返回 ""。让漂移行的 printf 保持可读。
 func ellipsisIf(more bool) string {
 	if more {

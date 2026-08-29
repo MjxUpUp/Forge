@@ -11,10 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestIsNpmManagedPath pins the channel-detection heuristic across the real
-// layouts forge binaries land in: npm/yarn/pnpm globals all place the binary
-// under node_modules/@agent_forge/forge-<platform>/, while GitHub Release and
-// repo-build installs must keep the GitHub channel.
+// TestIsNpmManagedPath pins the channel-detection heuristic across the real layouts forge binaries land in: npm/yarn/pnpm globals all place the binary under node_modules/@agent_forge/forge-<platform>/, while GitHub Release and repo-build installs must keep the GitHub channel.
 //
 // TestIsNpmManagedPath 钉住通道检测启发式覆盖二进制真实落位：npm/yarn/pnpm
 // 全局安装都在 node_modules/@agent_forge/forge-<platform>/ 下，而 GitHub
@@ -86,9 +83,7 @@ func TestIsNpmManagedPath(t *testing.T) {
 	}
 }
 
-// TestPackageManagerForPath pins the manager inference: pnpm/yarn layouts must
-// map to their own commands — pointing a pnpm user at npm creates a second
-// parallel forge on PATH (the stray-exe mess this split exists to prevent).
+// TestPackageManagerForPath pins the manager inference: pnpm/yarn layouts must map to their own commands — pointing a pnpm user at npm creates a second parallel forge on PATH (the stray-exe mess this split exists to prevent).
 //
 // TestPackageManagerForPath 钉住包管理器推断：pnpm/yarn 布局必须映射到各自
 // 命令——给 pnpm 用户指 npm 会在 PATH 上装出第二份平行 forge（正是本次
@@ -172,20 +167,10 @@ func TestNpmUpdateCommand(t *testing.T) {
 	}
 }
 
-// TestGetLatestVersionFromNPM pins the registry document parsing via a local
-// test server. The server mirrors the real registry's /latest behavior of
-// answering the abbreviated-manifest Accept type with 406 (verified
-// out-of-band against registry.npmjs.org 2026-08-21), so the Accept header
-// is enforced here, not just observed.
-//
 // TestGetLatestVersionFromNPM 用本地测试服务器钉住 registry 文档解析。
 // 服务器复刻真实 registry /latest 端点对缩略 manifest Accept 类型回 406 的
 // 行为（2026-08-21 对 registry.npmjs.org 带外实测），故 Accept 头在这里
 // 是被强制执行的，不只是被看见。
-// npmRegistryServing stands up an httptest server answering every request
-// with a registry manifest carrying version, points FORGE_NPM_REGISTRY at it,
-// and closes it on cleanup — the shared fixture of the happy-path registry
-// tests (the 406-Accept and HTTP-500 shapes stay bespoke).
 //
 // npmRegistryServing 起一个对每个请求都回携带 version 的 registry manifest
 // 的 httptest 服务器，把 FORGE_NPM_REGISTRY 指向它，cleanup 时关闭——各
@@ -227,10 +212,7 @@ func TestGetLatestVersionFromNPM(t *testing.T) {
 	}
 }
 
-// TestGetLatestVersionFromNPMSemverReject pins the injection guard: the
-// registry-sourced version gets pasted into a copy-paste shell command, so
-// metacharacters or non-semver garbage must be rejected before they reach
-// the guidance output.
+// TestGetLatestVersionFromNPMSemverReject pins the injection guard: the registry-sourced version gets pasted into a copy-paste shell command, so metacharacters or non-semver garbage must be rejected before they reach the guidance output.
 //
 // TestGetLatestVersionFromNPMSemverReject 钉住注入防护：来自 registry 的
 // version 会被拼进可复制的 shell 命令，元字符与非 semver 垃圾必须在
@@ -269,9 +251,7 @@ func TestGetLatestVersionFromNPMError(t *testing.T) {
 	}
 }
 
-// TestPrintNpmUpdateGuidance pins the redirect output: the install command
-// must match the detected package manager and pin the checked version so
-// users can copy-paste.
+// TestPrintNpmUpdateGuidance pins the redirect output: the install command must match the detected package manager and pin the checked version so users can copy-paste.
 //
 // TestPrintNpmUpdateGuidance 钉住重定向输出：安装命令必须匹配检出的
 // 包管理器并钉住查到的版本，用户可一键复制。
@@ -289,9 +269,7 @@ func TestPrintNpmUpdateGuidance(t *testing.T) {
 	}
 }
 
-// TestPrintUpdateNotice pins the per-channel notice: npm installs are told to
-// run their package manager (never `forge update`, which would just print the
-// same command again), GitHub installs keep `forge update`.
+// TestPrintUpdateNotice pins the per-channel notice: npm installs are told to run their package manager (never `forge update`, which would just print the same command again), GitHub installs keep `forge update`.
 //
 // TestPrintUpdateNotice 钉住按通道的通知：npm 安装被告知跑自己的包管理器
 // （绝不能是 `forge update`——那只会再打印一次同样的命令），GitHub 安装保持
@@ -313,10 +291,7 @@ func TestPrintUpdateNotice(t *testing.T) {
 	}
 }
 
-// TestRunUpdateNpmRedirect exercises the real runUpdate control flow on the
-// npm channel (via the detectInstallChannelFn indirection): it must consult
-// the npm registry, print the package-manager-matching guidance, write the
-// channel-tagged cache, and never attempt a GitHub download.
+// TestRunUpdateNpmRedirect exercises the real runUpdate control flow on the npm channel (via the detectInstallChannelFn indirection): it must consult the npm registry, print the package-manager-matching guidance, write the channel-tagged cache, and never attempt a GitHub download.
 //
 // TestRunUpdateNpmRedirect 用真实 runUpdate 控制流跑 npm 通道（经
 // detectInstallChannelFn 间接层）：必须查 npm registry、打印匹配包管理器
@@ -351,9 +326,7 @@ func TestRunUpdateNpmRedirect(t *testing.T) {
 	}
 }
 
-// TestRunUpdateNpmPluginFlag pins the --plugin contract on the npm channel:
-// the marketplace-reinstall guidance must print there too, not only on the
-// GitHub download path.
+// TestRunUpdateNpmPluginFlag pins the --plugin contract on the npm channel: the marketplace-reinstall guidance must print there too, not only on the GitHub download path.
 //
 // TestRunUpdateNpmPluginFlag 钉住 npm 通道上的 --plugin 契约：marketplace
 // 重装指引在这里也必须打印，不能只在 GitHub 下载路径有。
@@ -381,9 +354,7 @@ func TestRunUpdateNpmPluginFlag(t *testing.T) {
 	}
 }
 
-// TestUpdateCacheChannelMismatch pins the L-2 guard: a fresh cache entry
-// written by the other channel is not trusted (two-stage releases publish
-// the GitHub tag before npm), while legacy channel-less entries stay usable.
+// TestUpdateCacheChannelMismatch pins the L-2 guard: a fresh cache entry written by the other channel is not trusted (two-stage releases publish the GitHub tag before npm), while legacy channel-less entries stay usable.
 //
 // TestUpdateCacheChannelMismatch 钉住跨通道守卫：另一通道写的新鲜缓存条目
 // 不被信任（两段式发版里 GitHub tag 先于 npm publish），无通道字段的
@@ -409,9 +380,6 @@ func TestUpdateCacheChannelMismatch(t *testing.T) {
 	}
 }
 
-// forceChannel overrides the channel-detection indirection for the test and
-// restores it on cleanup.
-//
 // forceChannel 为测试覆写通道检测间接层，cleanup 时还原。
 func forceChannel(t *testing.T, ch installChannel) {
 	t.Helper()
@@ -420,11 +388,7 @@ func forceChannel(t *testing.T, ch installChannel) {
 	t.Cleanup(func() { detectInstallChannelFn = orig })
 }
 
-// TestCheckForUpdateNpmChannelRequery pins the cross-channel cache guard end
-// to end: a fresh cache entry written by the GitHub channel (which sees the
-// tag before the npm publish in a two-stage release) must not satisfy an
-// npm-channel check — the check re-queries the npm registry, notifies with
-// the npm command, and overwrites the cache with its own channel tag.
+// TestCheckForUpdateNpmChannelRequery pins the cross-channel cache guard end to end: a fresh cache entry written by the GitHub channel (which sees the tag before the npm publish in a two-stage release) must not satisfy an npm-channel check — the check re-queries the npm registry, notifies with the npm command, and overwrites the cache with its own channel tag.
 //
 // TestCheckForUpdateNpmChannelRequery 端到端钉住跨通道缓存守卫：GitHub
 // 通道写的新鲜缓存条目（两段式发版里先见到 tag）不得满足 npm 通道的
@@ -436,9 +400,6 @@ func TestCheckForUpdateNpmChannelRequery(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	forceChannel(t, installChannel{kind: channelNPM, pm: "npm"})
 
-	// Fresh cache entry from the OTHER channel (e.g. a GitHub-channel forge
-	// on the same machine saw 1.41.0 land as a tag before npm published it).
-	//
 	// 来自另一通道的新鲜缓存条目（如同机 GitHub 通道 forge 在 npm publish
 	// 前先见到 1.41.0 tag 落地）。
 	if err := saveUpdateCache("1.41.0", channelGitHub); err != nil {
@@ -450,9 +411,6 @@ func TestCheckForUpdateNpmChannelRequery(t *testing.T) {
 		checkForUpdate("1.39.1 (commit: abc, built: 2026-08-21)", cmd)
 	})
 
-	// The stale cross-channel 1.41.0 must NOT be notified; the npm-registry
-	// answer (1.40.0) must be, with the npm command.
-	//
 	// 不得通知跨通道的陈旧 1.41.0；必须通知 npm registry 的答案（1.40.0），
 	// 且命令是 npm 的。
 	if strings.Contains(out, "1.41.0") {

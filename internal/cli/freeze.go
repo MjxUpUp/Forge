@@ -10,16 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// forge freeze is the activation/lift/query end of the session/project-level write-scope
-// freeze (the forge-side landing of on-demand-guards' /freeze). The enforcement end is the
-// freeze-guard PreToolUse Write|Edit hook (hooks/embed.go), wired BEFORE task-guard in
-// ForgeHookSpec so a freeze block surfaces the freeze reason rather than a task warning.
-//
-// Form (contract, aligned with the skill side — do not change):
-//   - forge freeze <path>...  activate: hard-block Write/Edit outside every frozen path
-//   - forge freeze --off      lift
-//   - forge freeze --status   show the current scope
-//
 // forge freeze 是会话/项目级写入范围冻结的激活/解除/查询端（on-demand-guards
 // /freeze 的 forge 侧落地）。执行端是 freeze-guard PreToolUse Write|Edit hook
 // （hooks/embed.go），在 ForgeHookSpec 中接线在 task-guard 之前——freeze 阻断时
@@ -58,11 +48,6 @@ Write/Edit——「只改这里别动其他」的硬护栏，不依赖 agent 每
 	RunE: runFreeze,
 }
 
-// freezeCheckCmd is invoked by the freeze-guard hook to judge a single Write/Edit
-// target. Exit-code contract (the bash hook forwards it): 0 = allowed (silent),
-// 1 = blocked (reason on stdout), any other exit = check itself failed (the hook
-// fails open). Hidden: not user-facing, but kept manually callable for debugging.
-//
 // freezeCheckCmd 由 freeze-guard hook 调用，判定单个 Write/Edit 目标。退出码
 // 契约（bash hook 转发它）：0 = 放行（静默），1 = 阻断（原因在 stdout），其他
 // 退出码 = check 自身失败（hook fail-open）。Hidden：非用户面向，但保留可手动
@@ -130,11 +115,6 @@ func printFreezeStatus(p *forgedata.Project) error {
 	return nil
 }
 
-// runFreezeCheck conveys the verdict via exit code (the hook only reads the exit
-// code). os.Exit bypasses cobra's "Error:" stderr noise (same pattern as
-// runHazardConfirmed). Fail-open on any infrastructure problem: no project,
-// missing --path, or a corrupt state file must never hard-stop every edit.
-//
 // runFreezeCheck 用退出码传达结论（hook 只读退出码）。os.Exit 绕过 cobra 的
 // "Error:" stderr 噪声（与 runHazardConfirmed 同款模式）。任何基础设施问题都
 // fail-open：无项目、缺 --path、状态文件损坏，都不得硬停每次编辑。
@@ -156,9 +136,6 @@ func runFreezeCheck(cmd *cobra.Command, args []string) error {
 	if allowed {
 		os.Exit(0)
 	}
-	// Blocked: the reason goes to stdout — the hook wraps it into the FAIL line
-	// that becomes additionalContext (the only channel the agent sees).
-	//
 	// 阻断：原因写 stdout——hook 把它包进 FAIL 行，成为 additionalContext
 	// （agent 唯一能看到的通道）。
 	fmt.Printf("目录已 freeze，仅允许写入: %s\n", strings.Join(st.Paths, "; "))

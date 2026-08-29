@@ -15,30 +15,12 @@ const updateCacheDir = ".forge"
 const updateCacheFile = "update-cache.json"
 const updateCheckInterval = 24 * time.Hour
 
-// updateCheckNegativeTTL is the short lifetime of a NEGATIVE cache entry
-// (LatestVersion empty, written on a network failure). A failed check used to
-// leave the cache untouched, so every subsequent command re-paid the full
-// network stall — on an offline (or firewalled) machine that is one 15s hang
-// per forge invocation. 30 minutes is long enough to batch a whole work
-// session of commands yet short enough that a transient outage cannot mask a
-// real release for long.
-//
 // updateCheckNegativeTTL 是负缓存条目（LatestVersion 为空，网络失败时写入）的短
 // 生存期。失败的检查原先不落缓存，后续每条命令都要重付一次完整网络停顿——离线
 // （或被防火墙挡住）的机器上等于每次 forge 调用挂 15 秒。30 分钟长到能覆盖一整
 // 段工作会话的命令批，又短到瞬断不可能长期掩盖真实发版。
 const updateCheckNegativeTTL = 30 * time.Minute
 
-// updateCheckQueryDeadline bounds the STARTUP-path version query (2.5s). The
-// underlying 15s client timeout stays as the last-resort guard (see
-// update_channel.go / update.go); this outer deadline only wraps the
-// best-effort check that runs before every interactive command — a background
-// update notice must never hold the CLI hostage to a slow network. `forge
-// update` (explicit, user-initiated) keeps the full 15s.
-//
-// It is a var (not const) purely so tests can shorten it; production value is
-// 2.5s.
-//
 // updateCheckQueryDeadline 约束**启动路径**的版本查询（2.5 秒）。底层 15 秒
 // client 超时不动（见 update_channel.go / update.go），作为最后兜底；这层短
 // deadline 只包每条交互命令前跑的 best-effort 检查——后台更新通知绝不能让 CLI
@@ -47,11 +29,6 @@ const updateCheckNegativeTTL = 30 * time.Minute
 // 用 var 而非 const 只为测试能缩短它；生产值 2.5 秒。
 var updateCheckQueryDeadline = 2500 * time.Millisecond
 
-// checkForUpdate reports whether a newer version is available. It uses a 24h
-// cache to avoid hitting the version source on every command. Results are
-// printed to stderr as a notification. Errors are silently ignored—this is a
-// best-effort check.
-//
 // checkForUpdate 检查是否有更新版本可用。
 // 用 24h 缓存避免每次命令都打版本源。
 // 结果作为通知打印到 stderr。
@@ -66,24 +43,13 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 		return
 	}
 
-	// The version source and the update command in the notice both follow the
-	// install channel (npm registry for npm installs, GitHub API otherwise).
-	//
 	// 版本源与通知里的更新命令都随安装通道走（npm 安装查 npm registry，
 	// 其余查 GitHub API）。
 	channel := detectInstallChannelFn()
 
-	// Check the cache
-	//
 	// 检查缓存
 	cache, err := loadUpdateCache()
 	if err == nil && !cache.isExpired() && cache.matchesChannel(channel.kind) {
-		// Cache hit—notify only when a newer version exists. Negative entries
-		// (empty LatestVersion, written after a network failure) hit here too:
-		// within updateCheckNegativeTTL they count as "already checked", so no
-		// network request is made and nothing is printed — the same silence a
-		// failed check already produced.
-		//
 		// 缓存命中——仅在存在更新版本时通知。负条目（LatestVersion 为空，
 		// 网络失败后写入）也在此命中：updateCheckNegativeTTL 内视为「已检查
 		// 过」，不再发网络请求、不打印——与失败检查本就产生的静默一致。
@@ -93,23 +59,11 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 		return
 	}
 
-	// Cache expired, missing, or written by the other channel (the GitHub tag
-	// lands before the npm publish in the two-stage release; a cross-channel
-	// hit would notify about a version npm cannot serve yet)—query the
-	// channel-appropriate version source under the startup-path deadline.
-	//
 	// 缓存过期、缺失、或由另一通道写入（两段式发版里 GitHub tag 先于
 	// npm publish 落地；跨通道命中会通知一个 npm 还拿不到的版本）——
 	// 在启动路径短 deadline 下按通道查询版本源。
 	latest, err := queryLatestWithDeadline(channel)
 	if err != nil {
-		// Query failed (network error, or exceeded updateCheckQueryDeadline—
-		// a slow-but-alive network is as bad as a dead one for a startup
-		// path). Write a short-TTL negative entry so the next commands within
-		// updateCheckNegativeTTL skip the network entirely instead of
-		// re-paying the stall. Output-wise this stays the old silence: an
-		// empty LatestVersion never notifies.
-		//
 		// 查询失败（网络错误，或超出 updateCheckQueryDeadline——对启动路径
 		// 而言「慢而未死」的网络与死网络同样糟糕）。写一条短 TTL 负条目，
 		// 让 updateCheckNegativeTTL 内的后续命令完全跳过网络而不是重付停顿。
@@ -118,28 +72,15 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 		return
 	}
 
-	// Save to cache regardless of whether an update is available
-	//
 	// 无论是否更新都保存到缓存
 	_ = saveUpdateCache(latest, channel.kind)
 
-	// Notify when an update is available
-	//
 	// 更新则通知
 	if compareVersions(latest, current) > 0 {
 		printUpdateNotice(os.Stderr, latest, current, channel)
 	}
 }
 
-// queryLatestWithDeadline runs the channel-appropriate version query under the
-// startup-path short deadline. The query functions take no context (they are
-// shared with `forge update`, which keeps the full 15s client timeout), so the
-// deadline is enforced OUTSIDE them: the query runs on a goroutine and this
-// side returns ctx.Err() when the deadline fires first. The goroutine's own
-// send is buffered, so a late result never blocks or leaks it — it lands in
-// the channel and the goroutine exits; at worst the process carries one
-// background HTTP request until its 15s client timeout or process exit.
-//
 // queryLatestWithDeadline 在启动路径短 deadline 下执行按通道的版本查询。查询
 // 函数本身不收 context（与 `forge update` 共用，后者保持完整 15 秒 client 超时
 // ），故 deadline 在**外层**强制：查询跑在 goroutine 上，deadline 先到则本侧返
@@ -176,33 +117,23 @@ func queryLatestWithDeadline(channel installChannel) (string, error) {
 	}
 }
 
-// shouldSkipUpdateCheck returns true when the update check should be skipped.
-//
 // shouldSkipUpdateCheck 在应跳过更新检查时返回 true。
 func shouldSkipUpdateCheck(fullVersion string, cmd *cobra.Command) bool {
-	// Skip when FORGE_SKIP_UPDATE_CHECK is set
-	//
 	// 设置了 FORGE_SKIP_UPDATE_CHECK 时跳过
 	if os.Getenv("FORGE_SKIP_UPDATE_CHECK") != "" {
 		return true
 	}
 
-	// Skip dev builds
-	//
 	// dev 构建跳过
 	if fullVersion == "dev" {
 		return true
 	}
 
-	// Skip hook mode (hooks run on every file edit, must be fast)
-	//
 	// hook 模式跳过（hook 每次文件编辑都跑，必须快）
 	if cmd.Name() == "hook" {
 		return true
 	}
 
-	// Skip gate in silent mode
-	//
 	// silent 模式下的 gate 跳过
 	if cmd.Name() == "gate" {
 		if flag, err := cmd.Flags().GetBool("silent"); err == nil && flag {
@@ -210,8 +141,6 @@ func shouldSkipUpdateCheck(fullVersion string, cmd *cobra.Command) bool {
 		}
 	}
 
-	// Skip the update command itself (avoid recursion)
-	//
 	// update 命令自身跳过（避免递归）
 	if cmd.Name() == "update" {
 		return true
@@ -247,11 +176,6 @@ func (c *updateCache) isExpired() bool {
 	if err != nil {
 		return true
 	}
-	// Negative entries (empty LatestVersion — written after a query failure
-	// by checkForUpdate) expire on the short TTL: they assert "checked, source
-	// unreachable", not "up to date", so they must not silence real checks
-	// for a whole day. Positive entries keep the 24h interval.
-	//
 	// 负条目（LatestVersion 为空——查询失败后由 checkForUpdate 写入）按短 TTL
 	// 过期：它断言的是「已查过、源不可达」而非「已是最新」，不得让真实检查
 	// 静音一整天。正条目维持 24h 间隔。
@@ -262,9 +186,6 @@ func (c *updateCache) isExpired() bool {
 	return time.Since(checked) > ttl
 }
 
-// matchesChannel reports whether a cache entry is usable by the given
-// channel. Legacy entries (empty Channel) predate the field and stay usable.
-//
 // matchesChannel 判断缓存条目对给定通道是否可用。旧条目（Channel 为空）
 // 早于该字段存在，保持可用。
 func (c *updateCache) matchesChannel(kind channelKind) bool {

@@ -9,43 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// Cline wiring (Wave 3b). Cline v3.36+ ships file-based lifecycle hooks: executable
-// scripts NAMED exactly the hook type (no extension) loaded from
-// ~/Documents/Cline/Rules/Hooks/ (global) or .clinerules/hooks/ (project). Six types
-// exist (PreToolUse/PostToolUse/UserPromptSubmit/TaskStart/TaskResume/TaskCancel);
-// a script receives the event JSON on stdin and speaks by printing a single JSON
-// object {"cancel":bool,"errorMessage":...,"contextModification":...} — cancel blocks
-// the action, contextModification injects text into the task. macOS/Linux ONLY
-// (cline does not execute hook scripts on Windows — documented honestly below; the
-// translator still writes the scripts on every platform so mac/linux users get them
-// and the write itself is inert on Windows).
-//
-// Cline runs ONE script per event type, while forge wires SEVERAL hooks per event —
-// so the translator writes a generic wrapper script per event that fans the cline
-// event out to the event's forge hooks (`forge hook <name> --agent cline`) and merges
-// verdicts: any exit 2 → forward that hook's ready-made cancel JSON (emitClineOutput
-// in internal/cli/hook.go already printed it) and stop; otherwise strip the
-// {"cancel":false,"contextModification":...} envelope off each allow-with-context
-// output and join the (already JSON-escaped) payloads into one contextModification.
-// The envelope surgery is safe because forge emits that exact compact shape — the
-// field name never appears inside forge's own allow output by accident (pinned by
-// emitClineOutput's comment contract).
-//
-// Event mapping: PreToolUse/PostToolUse/UserPromptSubmit map 1:1 from the spec;
-// SessionStart's group maps onto TaskStart (a cline task == a session for hook
-// purposes); TaskResume/TaskCancel have no forge analogue and stay unwired. Two spec
-// events have NO cline channel and are documented honestly rather than approximated:
-// Stop (no cline event fires when the agent finishes — task-verify/review-stop cannot
-// enforce there) and PostCompact (no compaction event). Matchers are dropped: cline
-// fires the script for every tool call, so each forge hook's own path/command logic
-// decides relevance (same trade windsurf makes — hooks pass quickly on unrelated
-// tools). The stdin dialect is normalized by clineNormalize (internal/cli/
-// hook_normalize.go); the output dialect by emitClineOutput.
-//
-// The wrapper is POSIX sh (macOS /bin/sh is bash-3.2 in posix mode — no bashisms;
-// inside case actions, avoid the documented bash-3.2 parse-error forms — a nested
-// `case` and `[[ ]] && cmd ;;` — plain assignments and a simple `if..fi` parse fine).
-//
 // Cline 接线（Wave 3b）。Cline v3.36+ 提供基于文件的 lifecycle hooks：以 hook 类型
 // 精确命名（无扩展名）的可执行脚本，从 ~/Documents/Cline/Rules/Hooks/（全局）或
 // .clinerules/hooks/（项目级）加载。六种类型（PreToolUse/PostToolUse/
@@ -77,21 +40,11 @@ import (
 // case action 内避开文档化的 bash-3.2 parse-error 形态——嵌套 `case` 与
 // `[[ ]] && cmd ;;`——纯赋值与简单 `if..fi` 均可正常解析）。
 
-// clineWrapperMarker identifies a wrapper script as forge-generated. Translate only
-// ever overwrites files carrying this marker — a user-authored script named e.g.
-// "PreToolUse" is the user's own hook (cline runs ONE script per event type, so
-// overwriting it would silently steal the channel) and makes Translate refuse.
-//
 // clineWrapperMarker 标识 wrapper 脚本为 forge 生成。Translate 只覆写带此标记的
 // 文件——用户自写的脚本（如名为 "PreToolUse"）是用户自己的 hook（cline 每 event
 // 只跑一个脚本，覆写等于静默抢占通道），会让 Translate 拒绝。
 const clineWrapperMarker = "# forge-generated cline hook wrapper"
 
-// clineEventMappings is the deterministic cline-event ← spec-event table (slice, not
-// map: script write order and test rosters stay stable). Every cline event that has a
-// forge analogue is listed; TaskResume/TaskCancel (no forge analogue), Stop and
-// PostCompact (no cline channel — see the file-header comment) are deliberately absent.
-//
 // clineEventMappings 是确定性的 cline-event ← spec-event 表（用 slice 不用 map：
 // 脚本写入顺序与测试 roster 保持稳定）。有 forge 对应物的 cline event 全部列出；
 // TaskResume/TaskCancel（无 forge 对应物）、Stop 与 PostCompact（无 cline 通道——见
@@ -103,11 +56,6 @@ var clineEventMappings = []struct {
 	{"PreToolUse", "PreToolUse"},
 	{"PostToolUse", "PostToolUse"},
 	{"UserPromptSubmit", "UserPromptSubmit"},
-	// SessionStart → TaskStart: a cline "task" is the session for hook purposes, so
-	// the session-scoped forge hooks (skill-scan/mcp-scan/init-suggest/task-resume)
-	// hang on TaskStart. clineNormalize maps hookEventName TaskStart back to
-	// "SessionStart" so the hooks' own event dispatch still sees the Claude name.
-	//
 	// SessionStart → TaskStart：hook 语境下 cline 的 "task" 即会话，会话级 forge
 	// hook（skill-scan/mcp-scan/init-suggest/task-resume）挂到 TaskStart。
 	// clineNormalize 把 hookEventName TaskStart 映射回 "SessionStart"，让 hook
@@ -115,12 +63,6 @@ var clineEventMappings = []struct {
 	{"TaskStart", "SessionStart"},
 }
 
-// clineRosters derives, per cline event, the ordered deduped forge hook-name roster
-// from ForgeHookSpec (single source of truth — no manual copy to drift). A hook
-// listed under several matchers (skill-trigger sits in both the Write|Edit and Bash
-// groups) runs once: cline has no matchers, so per-event dedupe replaces matcher
-// grouping.
-//
 // clineRosters 从 ForgeHookSpec（单一真相源——无手工副本可漂移）按 cline event 派生
 // 有序去重的 forge hook 名 roster。列在多个 matcher 下的 hook（skill-trigger 同时在
 // Write|Edit 与 Bash 组）只跑一次：cline 无 matcher，按 event 去重取代 matcher 分组。
@@ -143,19 +85,6 @@ func clineRosters() map[string][]string {
 	return rosters
 }
 
-// buildClineWrapperScript renders the POSIX-sh fan-out wrapper for one cline event.
-// Contract (mirrors emitClineOutput's emission shape exactly):
-//   - feed the SAME stdin JSON to every rostered forge hook;
-//   - first exit 2 → print that hook's stdout verbatim (the ready-made
-//     {"cancel":true,"errorMessage":...} object) and exit 0 — cline has no
-//     documented script-exit blocking channel, the JSON object IS the channel;
-//   - otherwise envelope-strip each {"cancel":false,"contextModification":"…"} output
-//     and join the payloads (already JSON-escaped; separator is the two literal
-//     characters \n) into one final object; hooks with no output contribute nothing.
-//
-// Any deviation from forge's emission shape simply fails to match the case pattern
-// and is skipped — fail-open on context injection, never on blocking.
-//
 // buildClineWrapperScript 为一个 cline event 渲染 POSIX sh 扇出 wrapper。契约（与
 // emitClineOutput 的产出形态精确镜像）：
 //   - 把同一份 stdin JSON 喂给 roster 里的每个 forge hook；
@@ -183,11 +112,6 @@ func buildClineWrapperScript(event string, roster []string) string {
 	b.WriteString("\t\tprintf '%s\\n' \"$out\"\n")
 	b.WriteString("\t\texit 0\n")
 	b.WriteString("\tfi\n")
-	// Envelope surgery: strip the fixed prefix and suffix, then the value's outer
-	// quotes, leaving the already-escaped payload — embeddable directly inside a new
-	// JSON string. The case action must avoid the bash-3.2 parse-error forms (nested
-	// `case`, `[[ ]] && cmd ;;`) — assignments and a simple `if..fi` are safe.
-	//
 	// 信封手术：剥掉固定前缀与后缀，再剥值的两侧引号，留下已转义的 payload——可直接
 	// 嵌进新的 JSON 字符串。case action 须避开 bash-3.2 parse-error 形态（嵌套
 	// `case`、`[[ ]] && cmd ;;`）——赋值与简单 `if..fi` 是安全的。
@@ -209,9 +133,7 @@ func buildClineWrapperScript(event string, roster []string) string {
 	return b.String()
 }
 
-// ClineHooksDir resolves cline's GLOBAL hook directory (~/Documents/Cline/Rules/Hooks/
-// — the documented global location; the project location .clinerules/hooks/ is not
-// used because forge writes nothing into projects since v1.22).
+// ClineHooksDir resolves cline's GLOBAL hook directory (~/Documents/Cline/Rules/Hooks/ — the documented global location; the project location .clinerules/hooks/ is not used because forge writes nothing into projects since v1.22).
 //
 // ClineHooksDir 解析 cline 的全局 hook 目录（~/Documents/Cline/Rules/Hooks/——文档化
 // 的全局位置；项目级位置 .clinerules/hooks/ 不用，因 v1.22 起 forge 零项目写入）。
@@ -224,13 +146,6 @@ func ClineHooksDir() (string, error) {
 }
 
 // ClineTranslator writes the forge wrapper scripts into cline's global hook dir.
-// Previously a no-op ("cline has no lifecycle hooks" — true before v3.36); now a real
-// wiring. Refuses (before writing anything) when a target filename already exists
-// WITHOUT the forge marker: cline runs one script per event type, so silently
-// replacing a user script would steal their hook channel, and silently skipping
-// would leave the gate absent — the error names the file so the user can merge
-// manually. macOS/Linux-only at RUNTIME (cline does not execute hook scripts on
-// Windows); the write itself is inert there.
 //
 // ClineTranslator 把 forge wrapper 脚本写进 cline 的全局 hook 目录。此前是 no-op
 // （"cline 无 lifecycle hooks"——v3.36 之前为真）；现在是真接线。当目标文件名已存在
@@ -246,9 +161,6 @@ func (t *ClineTranslator) Translate(projectDir string, input *TranslationInput) 
 		return err
 	}
 	rosters := clineRosters()
-	// Pre-check ALL targets first so a conflict aborts before anything is written
-	// (no half-wired state).
-	//
 	// 先全量预检所有目标，冲突在任何写入前中止（不留半接线状态）。
 	for _, e := range clineEventMappings {
 		target := filepath.Join(dir, e.clineEvent)
@@ -262,11 +174,6 @@ func (t *ClineTranslator) Translate(projectDir string, input *TranslationInput) 
 	}
 	for _, e := range clineEventMappings {
 		script := buildClineWrapperScript(e.clineEvent, rosters[e.clineEvent])
-		// 0755: cline requires the hook script to be executable. NOT AtomicWrite:
-		// renaming onto a script bash is currently executing fails on Windows with
-		// Access Denied, and this rewrite can be triggered from inside that very
-		// script's forge subprocess (see WriteHookTemplates' note).
-		//
 		// 0755：cline 要求 hook 脚本可执行。不用 AtomicWrite：Windows 上 rename
 		// 到正在被 bash 执行的脚本会 Access Denied，而本次重写恰可能由该脚本
 		// 自身的 forge 子进程触发（见 WriteHookTemplates 的说明）。
@@ -281,9 +188,7 @@ func (t *ClineTranslator) AgentType() AgentType {
 	return AgentCline
 }
 
-// StripClineHooks removes the forge wrapper scripts (uninstall path). Marker files
-// are deleted; user scripts are untouched; the hooks dir itself is removed only if
-// left empty. A second strip and a missing dir are clean no-ops.
+// StripClineHooks removes the forge wrapper scripts (uninstall path).
 //
 // StripClineHooks 移除 forge wrapper 脚本（卸载路径）。带标记的文件删除；用户脚本
 // 不动；hook 目录本身只在清空后移除。二次 strip 与目录缺失都是干净的 no-op。
@@ -300,10 +205,6 @@ func StripClineHooks() (bool, error) {
 			if os.IsNotExist(err) {
 				continue // missing → nothing to strip
 			}
-			// Read failures other than missing (lock/permission/IO) must surface —
-			// silently skipping leaves forge wrappers installed while reporting
-			// "nothing to clean" to uninstall (same contract as the sibling Strip funcs).
-			//
 			// 非缺失的读失败（锁/权限/IO）必须上抛——静默跳过会留下仍在运行的
 			// forge wrapper 却向 uninstall 报"无东西可清"（与兄弟 Strip 函数同契约）。
 			return changed, fmt.Errorf("read cline hook %s: %w", e.clineEvent, err)
@@ -317,8 +218,6 @@ func StripClineHooks() (bool, error) {
 		changed = true
 	}
 	if changed {
-		// Best-effort: fails (ignored) when user scripts keep the dir populated.
-		//
 		// 尽力而为：用户脚本仍占着目录时会失败（忽略）。
 		_ = os.Remove(dir)
 	}

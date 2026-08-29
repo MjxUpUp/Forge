@@ -14,10 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// writeChecklogEntries appends entries as JSONL to DataDir/checklog.jsonl — the same file
-// checklog.LoadAllAll globs (checklog*.jsonl). Direct write keeps fixtures deterministic
-// (Record stamps time.Now, fixtures need fixed timestamps).
-//
 // writeChecklogEntries 把条目以 JSONL 追加到 DataDir/checklog.jsonl——checklog.LoadAllAll
 // glob 的同一文件（checklog*.jsonl）。直接写保证 fixture 时间戳确定（Record 会盖 time.Now）。
 func writeChecklogEntries(t *testing.T, dataDir string, entries []checklog.Entry) {
@@ -39,9 +35,6 @@ func writeChecklogEntries(t *testing.T, dataDir string, entries []checklog.Entry
 	}
 }
 
-// feedFixture builds one project with a full event set: task-start (t0), gate pass (t1,
-// implement, head commit), gate fail (t2, verify), skill-trigger (t3), conclusion (t4, A/92).
-//
 // feedFixture 构造一个带全套事件的项目：task-start（t0）、gate 通过（t1，implement，
 // 带 head commit）、gate 失败（t2，verify）、skill-trigger（t3）、结论（t4，A/92）。
 func feedFixture(t *testing.T) (root string, dataDir string, base time.Time) {
@@ -84,9 +77,6 @@ func feedKinds(events []FeedEvent) []string {
 	return out
 }
 
-// TestAggregateFeed_MergeSortsDesc: the four sources merge into one stream, sorted by time
-// descending (most recent first), each event carrying kind/project/taskRef/severity.
-//
 // TestAggregateFeed_MergeSortsDesc：四源归并成单一流，按时间降序（最近在前），
 // 每条带 kind/project/taskRef/severity。
 func TestAggregateFeed_MergeSortsDesc(t *testing.T) {
@@ -121,10 +111,6 @@ func TestAggregateFeed_MergeSortsDesc(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_EventFields pins the per-kind field contract the frontend consumes:
-// gate carries gate/passed/commit (+retry detail), conclusion carries grade (score inlined
-// in the title) + evidence detail, task-start carries origin tool + gate progress in the title.
-//
 // TestAggregateFeed_EventFields 钉住前端消费的 per-kind 字段契约：gate 带
 // gate/passed/commit（+retry detail），conclusion 带 grade（分数内联标题）+ 证据
 // detail，task-start 标题带 origin tool 与 gate 进度。
@@ -188,9 +174,6 @@ func TestAggregateFeed_EventFields(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_SinceFilter: since returns only events with Time strictly after it
-// (polling increment semantics — a since equal to an event's time must not re-emit it).
-//
 // TestAggregateFeed_SinceFilter：since 只返回 Time 严格晚于它的事件（轮询增量语义——
 // since 等于某事件时间时该事件不得重发）。
 func TestAggregateFeed_SinceFilter(t *testing.T) {
@@ -205,9 +188,6 @@ func TestAggregateFeed_SinceFilter(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_ProjectFilter: filtering by project name or by forge key both scope the
-// stream to that project only.
-//
 // TestAggregateFeed_ProjectFilter：按项目名或 forge key 过滤都把流限定到该项目。
 func TestAggregateFeed_ProjectFilter(t *testing.T) {
 	rootA, pA := forgedatatest.RealProject(t)
@@ -248,9 +228,6 @@ func TestAggregateFeed_ProjectFilter(t *testing.T) {
 	_ = pB
 }
 
-// TestAggregateFeed_GlobalMergesProjects: Roots mode merges both projects and each event
-// carries its own project attribution.
-//
 // TestAggregateFeed_GlobalMergesProjects：Roots 模式归并两项目，各事件带自己的项目归属。
 func TestAggregateFeed_GlobalMergesProjects(t *testing.T) {
 	rootA, _ := forgedatatest.RealProject(t)
@@ -278,9 +255,6 @@ func TestAggregateFeed_GlobalMergesProjects(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_ZombieSeverity: a stalled delegation (offered>7d) projects as
-// task-start severity=warn with the zombie duration marked in the title.
-//
 // TestAggregateFeed_ZombieSeverity：停滞分派（offered>7d）投影为 task-start
 // severity=warn，标题标注僵尸时长。
 func TestAggregateFeed_ZombieSeverity(t *testing.T) {
@@ -311,9 +285,6 @@ func TestAggregateFeed_ZombieSeverity(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_ConclusionSeverityMap pins the grade→severity mapping:
-// A/B→ok, C→info, D→warn, F→fail.
-//
 // TestAggregateFeed_ConclusionSeverityMap 钉住 grade→severity 映射：
 // A/B→ok、C→info、D→warn、F→fail。
 func TestAggregateFeed_ConclusionSeverityMap(t *testing.T) {
@@ -350,9 +321,6 @@ func TestAggregateFeed_ConclusionSeverityMap(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_GateRetryDetail: a gate that failed once then passed carries retry info
-// in Detail.
-//
 // TestAggregateFeed_GateRetryDetail：先败后过的 gate 在 Detail 带 retry 信息。
 func TestAggregateFeed_GateRetryDetail(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
@@ -385,8 +353,6 @@ func TestAggregateFeed_GateRetryDetail(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_TaskRefFilter scopes the stream to one task (task.json reuses this).
-//
 // TestAggregateFeed_TaskRefFilter 把流限定到单个 task（task.json 复用本过滤）。
 func TestAggregateFeed_TaskRefFilter(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
@@ -407,10 +373,6 @@ func TestAggregateFeed_TaskRefFilter(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_Limit caps the stream (default 200) so polling never ships a huge body,
-// and Truncated reports the cut so the client can react (full refetch on a truncated
-// incremental poll).
-//
 // TestAggregateFeed_Limit 截断流（默认 200），轮询不会发出大包；Truncated 如实报告
 // 截断，客户端可据此反应（增量轮询被截断时全量重拉）。
 func TestAggregateFeed_Limit(t *testing.T) {
@@ -449,8 +411,6 @@ func TestAggregateFeed_Limit(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_Empty: no data anywhere → empty (non-nil) slice, no error, no panic.
-//
 // TestAggregateFeed_Empty：完全无数据 → 空（非 nil）切片，不报错不 panic。
 func TestAggregateFeed_Empty(t *testing.T) {
 	res, err := AggregateFeed(Options{Root: t.TempDir()}, time.Now(), FeedQuery{})
@@ -472,10 +432,6 @@ func TestAggregateFeed_Empty(t *testing.T) {
 	}
 }
 
-// TestFeedEvent_SkillWireShape: the structured skill field rides the wire only when
-// set (omitempty) — the same compat discipline as node (feed_node_test.go): a Go-level
-// empty string alone would not catch a dropped omitempty.
-//
 // TestFeedEvent_SkillWireShape：结构化 skill 字段仅在有值时上线（omitempty）——与
 // node 同一条兼容纪律（feed_node_test.go）：只断言 Go 层空串逮不到 omitempty 被删。
 func TestFeedEvent_SkillWireShape(t *testing.T) {
@@ -495,11 +451,6 @@ func TestFeedEvent_SkillWireShape(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_SyncEvents: project-sync checklog entries (git-transport op
-// outcomes) project into the feed as sync events — severity from Level (pass/fail →
-// ok/fail), title from the STRUCTURED Meta op + pass/fail. Meta-less lines (hand-written
-// legacy) show "?" — the unknown is surfaced, not papered over.
-//
 // TestAggregateFeed_SyncEvents：project-sync checklog 条目（git 通道操作成败）投影
 // 成 sync 事件进流——severity 取自 Level（pass/fail → ok/fail），标题由结构化
 // Meta 操作名 + 成败构造。无 Meta 的行（手写存量）显示「?」——未知被透出而非

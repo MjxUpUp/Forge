@@ -13,17 +13,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// trust_e2e_test.go — the sign→verify flow across two machines (node-identity.md §3):
-// export stamps a .sig sidecar; import verifies against the importer's trust store
-// (unknown signer → warn-proceed in personal profile; require-signed → hard reject;
-// registered signer → verified).
-//
 // trust_e2e_test.go —— 双机签名→验签流程（node-identity.md §3）：导出产 .sig
 // sidecar；导入对照导入方 trust store 判定（未知签名者 → 个人档告警放行；
 // require-signed → 硬拒；已登记签名者 → verified）。
 
-// exportOnMachine seeds a task and exports a bundle as the given machine/home.
-//
 // exportOnMachine 以指定机器/home 落一条任务并导出 bundle。
 func exportOnMachine(t *testing.T, machine, home, key string) string {
 	t.Helper()
@@ -42,10 +35,6 @@ func exportOnMachine(t *testing.T, machine, home, key string) string {
 	return bundlePath
 }
 
-// twoMachineFixture stands up two sync machines sharing one project id, plus
-// isolated homes and the id-derived key — the A/B preamble of every
-// sign→verify E2E.
-//
 // twoMachineFixture 建两台共享同一 project id 的同步机、隔离 home 与 id 派生
 // key——所有签名→验签 E2E 的 A/B 前置。
 func twoMachineFixture(t *testing.T, id string) (machineA, machineB, homeA, homeB, key string) {
@@ -60,10 +49,6 @@ func twoMachineFixture(t *testing.T, id string) (machineA, machineB, homeA, home
 	return machineA, machineB, homeA, homeB, forgedata.IDKey(id)
 }
 
-// registerSignerOnB loads A's node identity under homeA and registers it into
-// B's trust store as a team signer — so the import verdict is digest/signature
-// driven, not unknown-signer (which personal profile would only warn about).
-//
 // registerSignerOnB 在 homeA 下加载 A 的节点身份并登记进 B 的 trust store 为
 // team signer——使导入判定由摘要/签名驱动，而非未知签名者（个人档对它只警告）。
 func registerSignerOnB(t *testing.T, homeA, machineB, homeB string) {
@@ -87,10 +72,6 @@ func registerSignerOnB(t *testing.T, homeA, machineB, homeB string) {
 	})
 }
 
-// flipBundleByte writes a byte-flipped copy of bundle (breaking gzip) into a
-// fresh temp dir, CARRYING the original .sig sidecar — the digest then no
-// longer matches the signature, isolating the signature layer as the rejecter.
-//
 // flipBundleByte 把 bundle 的翻字节副本（破坏 gzip）写进全新 temp dir，并携带
 // 原 .sig sidecar——摘要与签名失配，从而把拒收隔离到签名层。
 func flipBundleByte(t *testing.T, bundle string) string {
@@ -179,15 +160,11 @@ func TestTrust_SignVerifyFlow(t *testing.T) {
 	})
 }
 
-// TestTrust_TamperedBundleRejected: two rejection layers, both pinned:
-//  1. naive byte-flip (sidecar carried): the digest no longer matches the
-//     signature → SigInvalid rejects BEFORE unpacking (the signature layer fires
-//     first since the verify-before-unpack reorder; without a sidecar the flip is
-//     still caught by Unpack's per-file sha256 — the integrity layer);
-//  2. a REPACKED bundle (valid manifest, passes Unpack) carrying ANOTHER bundle's
-//     sidecar → same digest mismatch → SigInvalid hard-rejects. The earlier
-//     revision only tested layer 1 while claiming layer 2 — a classic fake test
-//     (green for the wrong reason).
+// TestTrust_TamperedBundleRejected: two rejection layers, both pinned: 1. naive
+// byte-flip (sidecar carried): the digest no longer matches the signature →
+// SigInvalid rejects BEFORE unpacking (the signature layer fires first since the
+// verify-before-unpack reorder; without a sidecar the flip is still caught by
+// Unpack's per-file sha256.
 //
 // TestTrust_TamperedBundleRejected：钉死两条拒收防线：
 //  1. 朴素翻字节（携带 sidecar）：摘要与签名不再匹配 → SigInvalid 在解包前拒
@@ -202,16 +179,10 @@ func TestTrust_TamperedBundleRejected(t *testing.T) {
 	machineA, machineB, homeA, homeB, key := twoMachineFixture(t, id)
 	bundle := exportOnMachine(t, machineA, homeA, key)
 
-	// Register A on B so ONLY the signature mismatch can reject (unknown-signer and
-	// require-signed paths are taken off the table).
-	//
 	// 在 B 上登记 A，使唯一可能的拒收原因是签名不匹配（未知签名者与
 	// require-signed 路径被排除）。
 	registerSignerOnB(t, homeA, machineB, homeB)
 
-	// Layer 1: naive byte-flip → Unpack rejects. The sidecar is carried so the
-	// sig layer alone isn't the (first) rejecter.
-	//
 	// 防线 1：朴素翻字节 → Unpack 拒收。携带 sidecar，使 sig 层不是（第一个）拒收方。
 	flipped := flipBundleByte(t, bundle)
 	withMachine(t, machineB, homeB, func() {

@@ -9,10 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hostcap"
 )
 
-// hookEventInput is the minimal hook-payload shape RecordHookEvent needs (declared locally
-// to avoid importing cli — attribution is a leaf service). Field names match cli.HookInput's
-// JSON contract.
-//
 // hookEventInput 是 RecordHookEvent 需要的最小 hook 载荷形状（本地声明避免 import
 // cli——attribution 是叶子服务）。字段名与 cli.HookInput 的 JSON 契约一致。
 type hookEventInput struct {
@@ -27,11 +23,7 @@ type toolInputShape struct {
 	Command  string `json:"command"`
 }
 
-// RecordHookEvent is the dispatcher seam (multi-task-concurrency §6): called for every
-// hook invocation, it turns PostToolUse write-ish events into ledger entries. Silent by
-// design — the ledger is observability input; recording must never break a hook. Skips:
-// non-PostToolUse events, empty session ids (no-identity hosts — degraded mode, nothing
-// to attribute to), read-only tools.
+// RecordHookEvent is the dispatcher seam (multi-task-concurrency §6): called for every hook invocation, it turns PostToolUse write-ish events into ledger entries.
 //
 // RecordHookEvent 是分发器挂点（multi-task-concurrency §6）：每次 hook 调用都会进
 // 来，把 PostToolUse 的写入类事件转成台账条目。设计上静默——台账是可观测性输入，
@@ -58,12 +50,6 @@ func RecordHookEvent(root string, hookEventName, sessionID, toolName string, too
 			Record(root, Event{Ts: now, Sid: sessionID, Kind: KindWrite, Path: fields.FilePath})
 		}
 	case toolName == "Edit" || hostcap.IsPatchTool(toolName):
-		// Patch tools (codex apply_patch) carry the target only inside the patch text
-		// (tool_input.command) — synthesize the FIRST Add/Update/Delete File header's path,
-		// mirroring cli.applyPatchFilePath (duplicated as a leaf package, same discipline
-		// as checklog's Detail-prefix literals; multi-file patches take the first target —
-		// documented limitation).
-		//
 		// patch 工具（codex apply_patch）的目标只在 patch 文本里（tool_input.command）——
 		// 合成第一个 Add/Update/Delete File 头的路径，镜像 cli.applyPatchFilePath
 		//（叶子包内重复，与 checklog 的 Detail 前缀字面量同纪律；多文件 patch 取第一个
@@ -89,11 +75,6 @@ func RecordHookEvent(root string, hookEventName, sessionID, toolName string, too
 	}
 }
 
-// relToRoot normalizes an ABSOLUTE hook-supplied path to its repo-relative form (the
-// ledger/changeset key space); non-absolute paths and paths outside root pass through
-// unchanged (relative input from other hosts stays valid; foreign-absolute stays
-// visibly foreign — it can never match the changeset either way).
-//
 // relToRoot 把宿主给的【绝对】路径归一为 repo 相对形态（台账/变更集的键空间）；
 // 非绝对路径与 root 之外的路径原样通过（他宿主的相对输入本就有效；外来绝对路径
 // 保持可见的外来性——反正匹配不上变更集）。
@@ -111,9 +92,6 @@ func relToRoot(root, p string) string {
 	return p
 }
 
-// patchFilePath extracts the first "*** Add/Update/Delete File: <path>" header from a
-// patch body; empty when none. Mirrors cli.applyPatchFilePath (leaf-package duplication).
-//
 // patchFilePath 从 patch 文本抽第一个 "*** Add/Update/Delete File: <path>" 头；
 // 没有则空。镜像 cli.applyPatchFilePath（叶子包重复）。
 func patchFilePath(patch string) string {

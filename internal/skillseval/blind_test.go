@@ -6,9 +6,7 @@ import (
 	"unicode/utf8"
 )
 
-// TestBlindPreamble_ListingContract pins the blind preamble contract: every canonical
-// skill appears as a "- name: desc" line, descriptions are single-lined and truncated
-// past 200 runes, and the routing question asks "which one" (not "does X trigger").
+// TestBlindPreamble_ListingContract pins the blind preamble contract.
 //
 // TestBlindPreamble_ListingContract 钉住盲测前置契约：每个 canonical skill 都有一行
 // "- name: desc"，description 单行化且超 200 rune 截断，路由问题问「该触发哪个」
@@ -18,8 +16,6 @@ func TestBlindPreamble_ListingContract(t *testing.T) {
 	longDesc := "Use when: " + strings.Repeat("长", 300)
 	writeSkill(t, canonical, "alpha-skill", "Use when: 短描述")
 	writeSkill(t, canonical, "beta-skill", longDesc)
-	// Exactly 200 runes: must NOT be truncated (no ellipsis) — pins the > boundary.
-	//
 	// 恰好 200 rune：不得截断（无省略号）——钉住 > 边界。
 	exactDesc := strings.Repeat("恰", blindDescRunes)
 	writeSkill(t, canonical, "gamma-skill", exactDesc)
@@ -55,8 +51,7 @@ func TestBlindPreamble_ListingContract(t *testing.T) {
 	}
 }
 
-// TestBlindPrompt_SelfContained pins that each blind case prompt carries the preamble +
-// the case prompt (fresh subagents see nothing else).
+// TestBlindPrompt_SelfContained pins that each blind case prompt carries the preamble + the case prompt (fresh subagents see nothing else).
 //
 // TestBlindPrompt_SelfContained 钉住每条盲测 case prompt 自包含（前置 + case prompt），
 // fresh subagent 除此之外什么都看不到。

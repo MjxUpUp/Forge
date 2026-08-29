@@ -26,12 +26,6 @@ import (
 	"testing"
 )
 
-// intentionalRawNL whitelists literals where a literal `\n` IS the payload:
-// regexes (`[^\n]` char classes), a JSON fixture (`"out":"x\n"` needs the JSON
-// escape), a shell printf fixture (the shell interprets \n), and a Windows
-// path (`Z:\no\...`). Matched by prefix; line numbers are deliberately not
-// used so the whitelist survives edits around the sites.
-//
 // intentionalRawNL 白名单：字面 `\n` 本身就是内容的场景——正则（`[^\n]` 字符类）、
 // JSON fixture（`"out":"x\n"` 需要的是 JSON 转义）、shell printf fixture（\n 由
 // shell 解释）、Windows 路径（`Z:\no\...`）。按前缀匹配；刻意不用行号，白名单

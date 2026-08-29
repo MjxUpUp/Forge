@@ -62,11 +62,6 @@ func TestSetActiveTaskRef_AtomicAndReadable(t *testing.T) {
 	}
 }
 
-// completedAt builds a task state with IsComplete()==true and CompletedAt=completedAt, then saves it.
-// All DefaultGates must be filled as passed — MarkComplete only sets CompletedAt / clears CurrentGate,
-// IsComplete() looks at history; when the two disagree, PruneOldTasks follows IsComplete() (stricter, to avoid
-// deleting tasks in abnormal states).
-//
 // completedAt 构造一个 IsComplete()==true 且 CompletedAt=completedAt 的任务状态并存盘。
 // 必须填齐 DefaultGates 全部 passed——MarkComplete 只设 CompletedAt/清 CurrentGate，
 // IsComplete() 看 history，二者不一致时 PruneOldTasks 以 IsComplete() 为准（更严，避免
@@ -84,23 +79,16 @@ func saveCompletedAt(t *testing.T, dir, ref string, completedAt time.Time) {
 	}
 }
 
-// TestPruneOldTasks: only deletes tasks that are IsComplete and whose CompletedAt is before cutoff; recently-completed and
-// in-progress tasks are kept.
+// TestPruneOldTasks: only deletes tasks that are IsComplete and whose CompletedAt is before cutoff; recently-completed and in-progress tasks are kept.
 //
 // TestPruneOldTasks：只删 IsComplete 且 CompletedAt 早于 cutoff 的任务；近期完成与
 // 进行中的任务保留。
 func TestPruneOldTasks(t *testing.T) {
 	dir := t.TempDir()
-	// complete + old (2020) → pruned.
-	//
 	// complete + 老（2020）→ 删
 	saveCompletedAt(t, dir, "feat/old", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
-	// complete + recent → kept.
-	//
 	// complete + 近期 → 保留
 	saveCompletedAt(t, dir, "feat/recent", time.Now())
-	// in-progress (not complete) → kept.
-	//
 	// in-progress（未 complete）→ 保留
 	inprog := &TaskState{TaskRef: "feat/inprog", Branch: "feat/inprog", CurrentGate: "task-implement"}
 	if err := SaveTaskState(dir, inprog); err != nil {
@@ -126,29 +114,20 @@ func TestPruneOldTasks(t *testing.T) {
 	}
 }
 
+// TestPruneOldTasks_GatesDoneNeverCompletedZombie pins pruning of the new straggler class from the 2026-08-18 deadlock fix (review m2): all gates passed but never `forge task complete`d (CompletedAt==nil).
+//
 // TestPruneOldTasks_GatesDoneNeverCompletedZombie 钉住 2026-08-18 死锁修复引入的新滞留类
 // 回收（review m2）：门禁全过但从未 `forge task complete`（CompletedAt==nil）。老化锚是
 // 最后一道 gate 的通过时间——启动早但门禁刚过的长命任务不得被误杀。
-//
-// TestPruneOldTasks_GatesDoneNeverCompletedZombie pins pruning of the new straggler
-// class from the 2026-08-18 deadlock fix (review m2): all gates passed but never
-// `forge task complete`d (CompletedAt==nil). The aging anchor is the LAST gate's pass
-// time — a long-lived task whose gates passed recently must not be culled for having
-// started early.
 func TestPruneOldTasks_GatesDoneNeverCompletedZombie(t *testing.T) {
 	dir := t.TempDir()
 	// 僵尸类：三门全过、无 CompletedAt、最后一道门在 2020 年通过 → 回收。
-	//
-	// Zombie class: all gates passed, no CompletedAt, last gate back in 2020 → pruned.
 	oldGate := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	zombie := &TaskState{TaskRef: "feat/zombie", Branch: "feat/zombie", StartedAt: oldGate}
 	for _, g := range DefaultGates() {
 		zombie.RecordGateResult(g.ID, true, "")
 	}
 	// RecordGateResult 打的是当前时间——把 History 末条时间戳改老，模拟门禁早过。
-	//
-	// RecordGateResult stamps now — age the final History entry to simulate gates
-	// passed long ago.
 	h := zombie.History[len(zombie.History)-1]
 	h.CompletedAt = oldGate
 	zombie.History[len(zombie.History)-1] = h
@@ -156,9 +135,6 @@ func TestPruneOldTasks_GatesDoneNeverCompletedZombie(t *testing.T) {
 		t.Fatalf("SaveTaskState zombie: %v", err)
 	}
 	// 长命任务：启动于 2020、但最后一道门刚通过（now）→ 保留（StartedAt 锚会误杀）。
-	//
-	// Long-lived task: started in 2020 but last gate passed just now → kept (a
-	// StartedAt anchor would cull it wrongly).
 	freshGate := &TaskState{TaskRef: "feat/fresh-gate", Branch: "feat/fresh-gate", StartedAt: oldGate}
 	for _, g := range DefaultGates() {
 		freshGate.RecordGateResult(g.ID, true, "")

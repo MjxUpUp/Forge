@@ -1,21 +1,6 @@
 // Package workspace maintains the user-level multi-repo workspace manifest at
 // ~/.forge/workspaces.json (a sibling of registry's projects.json).
 //
-// A workspace is a LOGICAL grouping of forge project keys (repos that ship
-// together, e.g. an app + its backend + its infra repo). Members reference
-// project KEYS, not paths — paths drift (moves, worktrees, case variants), keys
-// do not; the stored Path is a display cache only, refreshed on add and flagged
-// by Doctor when it diverges from the registry's current path. The store sits
-// ON TOP of the registry (it never feeds projectroot.Find/IsMember hot paths).
-// One key may belong to multiple workspaces — a global tool cannot assume
-// exclusivity; overlap is surfaced by Doctor as an advisory, never hard-refused.
-//
-// File handling replicates the registry.go contract: writes go through
-// util.AtomicWrite (temp + fsync + rename, no half-written JSON); a corrupt
-// file is backed aside to workspaces.json.corrupt-<ts> and rebuilt from empty
-// on the write path (LoadForWrite), while the read path (Load) reports the
-// error so read-only callers (the task-verify gate) can fail open.
-//
 // Package workspace 维护用户级多仓 workspace 清单 ~/.forge/workspaces.json
 // （与 registry 的 projects.json 平级）。
 //
@@ -45,9 +30,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// RepoRef is one workspace member. Key is the forge project key (the identity);
-// Path is a DISPLAY CACHE of where the repo lived at add time — resolution
-// always goes through Key (registry / forgedata.RootDir), never through Path.
+// RepoRef is one workspace member.
 //
 // RepoRef 是一个 workspace 成员。Key 是 forge 项目 key（身份）；Path 是 add
 // 时刻仓库位置的展示缓存——解析永远走 Key（registry / forgedata.RootDir），
@@ -73,11 +56,6 @@ type File struct {
 	Workspaces []Workspace `json:"workspaces"`
 }
 
-// globalPath returns the manifest path. Same rule as registry's projects.json:
-// the global home goes through forgedata.GlobalHome() (FORGE_DATA_HOME first,
-// otherwise ~/.forge) so tests and power users isolate the whole store family
-// with one env.
-//
 // globalPath 返回清单路径。与 registry 的 projects.json 同规则：全局 home 走
 // forgedata.GlobalHome()（FORGE_DATA_HOME 优先，否则 ~/.forge），测试与高级
 // 用户用一个 env 隔离整族 store。
@@ -89,10 +67,7 @@ func globalPath() (string, error) {
 	return filepath.Join(home, `workspaces.json`), nil
 }
 
-// Load reads the manifest (the READ path). A missing file is an empty File,
-// not an error (no workspaces yet); a corrupt JSON is an explicit error so
-// read-only callers (the task-verify cross-repo-impact gate) can fail open
-// with an INFRA advisory instead of silently treating the store as empty.
+// Load reads the manifest (the READ path).
 //
 // Load 读清单（读路径）。文件缺失 = 空 File，非错误（还没有任何 workspace）；
 // JSON 损坏返回显式错误，让只读调用方（task-verify 的 cross-repo-impact
@@ -116,11 +91,7 @@ func Load() (*File, error) {
 	return &f, nil
 }
 
-// LoadForWrite reads the manifest for a mutation (create/add/remove). A
-// corrupt file is backed aside to <path>.corrupt-<ts> with a stderr warning
-// and rebuilt from empty — the registry.Add pattern: never let one unparseable
-// file brick every future workspace command, and never silently drop the
-// evidence either.
+// LoadForWrite reads the manifest for a mutation (create/add/remove).
 //
 // LoadForWrite 为变更（create/add/remove）读清单。损坏文件先备份为
 // <path>.corrupt-<ts>（stderr 告警）再从空重建——registry.Add 同款模式：
@@ -150,12 +121,7 @@ func LoadForWrite() (*File, error) {
 	return &f, nil
 }
 
-// Save atomically writes the manifest via util.AtomicWrite (temp file + fsync +
-// rename) — same crash-safety contract as registry's writeEntries: a reader
-// sees the complete old or new file, never a truncated mix. read-modify-write
-// is not concurrency-safe (two simultaneous writers may lose one update), but
-// local-tool concurrency is rare and a lost entry can be re-added; corrupt JSON
-// is what must be prevented.
+// Save atomically writes the manifest via util.AtomicWrite (temp file + fsync + rename) — same crash-safety contract as registry's writeEntries.
 //
 // Save 原子写清单，走 util.AtomicWrite（临时文件 + fsync + rename）——与
 // registry 的 writeEntries 同一崩溃安全契约：读者只见完整旧版或完整新版，
@@ -173,10 +139,6 @@ func (f *File) Save() error {
 	return util.AtomicWrite(p, append(data, '\n'), 0644)
 }
 
-// validateName rejects names that are empty or carry path separators — the
-// name is a logical label printed in output and (later) usable in refs, so
-// keep it a single clean token.
-//
 // validateName 拒绝空名或带路径分隔符的名——name 是输出里打印的逻辑标签
 // （后续可能进 ref），保持为单个干净 token。
 func validateName(name string) error {
@@ -202,8 +164,6 @@ func (f *File) Find(name string) *Workspace {
 }
 
 // WorkspacesFor returns every workspace that contains the given project key.
-// One key may legitimately belong to several workspaces (a shared library repo
-// serving two products); Doctor flags the overlap as advisory, reads must not.
 //
 // WorkspacesFor 返回包含给定项目 key 的全部 workspace。一个 key 合法地属于
 // 多个 workspace（服务两个产品的共享库仓）；重叠由 Doctor 标 advisory，
@@ -221,8 +181,7 @@ func (f *File) WorkspacesFor(key string) []Workspace {
 	return out
 }
 
-// Create adds a new empty workspace. Duplicate names are refused — the name is
-// the handle every command takes.
+// Create adds a new empty workspace.
 //
 // Create 新增一个空 workspace。重名拒绝——name 是所有命令的句柄。
 func (f *File) Create(name string) error {
@@ -236,10 +195,7 @@ func (f *File) Create(name string) error {
 	return nil
 }
 
-// AddRepo adds repo to the named workspace. Upsert semantics within the
-// workspace: an existing member with the same key gets its display-cache Path
-// refreshed (the repo may have moved); adding the same key twice is therefore
-// idempotent and never duplicates.
+// AddRepo adds repo to the named workspace.
 //
 // AddRepo 把 repo 加进指定 workspace。workspace 内 upsert 语义：同 key 的
 // 既有成员刷新展示缓存 Path（仓库可能搬过家）——故重复 add 同 key 幂等，
@@ -262,9 +218,7 @@ func (f *File) AddRepo(name string, repo RepoRef) error {
 	return nil
 }
 
-// RemoveRepo drops key from the named workspace. Returns false (no error) when
-// the workspace exists but the key is not a member — the caller prints the
-// "not a member" hint; a missing workspace is an error.
+// RemoveRepo drops key from the named workspace.
 //
 // RemoveRepo 从指定 workspace 移除 key。workspace 存在但 key 不是成员时返回
 // false（不报错）——由调用方打印「非成员」提示；workspace 不存在是错误。

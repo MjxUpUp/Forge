@@ -1,11 +1,5 @@
 package cli
 
-// skills_mutex_gen.go — mutex-gen subcommand: derives the cross-skill mutex case set
-// from SKIP delegation edges over the whole canonical library and persists it to
-// <eval-dir>/mutex/cases.json. Single-skill eval cases (eval-gen) never say where a
-// misrouted prompt should have gone; mutex cases assert exactly that (B's domain must
-// route to B, never to the handoff-declaring A).
-//
 // skills_mutex_gen.go — mutex-gen 子命令：对全量 canonical 从 SKIP 让渡边派生跨 skill
 // 互斥 case 集，落盘 <eval-dir>/mutex/cases.json。单 skill eval case（eval-gen）从不
 // 说误路由的 prompt「本该去哪」；互斥 case 正是断言这件事（B 域必须路由到 B、绝不

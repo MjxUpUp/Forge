@@ -9,9 +9,7 @@ import (
 
 // TestRecord_WorktreeSharesMainDataDir pins the store-layer half of finding
 // fdkrxk4e9u3gg: a ToolCall recorded with the worktree root as `root` must be
-// visible to LoadForTask called with the MAIN checkout root — both resolve to
-// the same user-level DataDir (one repo one key), so tool activity performed
-// inside a linked worktree is attributed to the same project the gates read.
+// visible to LoadForTask called with the MAIN checkout root.
 //
 // TestRecord_WorktreeSharesMainDataDir 钉住 finding fdkrxk4e9u3gg 的 store 层
 // 半边：以 worktree 根为 `root` 记录的 ToolCall，必须能被以主 checkout 根调用
@@ -49,8 +47,6 @@ func TestRecord_WorktreeSharesMainDataDir(t *testing.T) {
 	if len(calls) != 1 || calls[0].ToolName != "Read" {
 		t.Fatalf("LoadForTask(main) = %+v, want the 1 Read recorded from the worktree", calls)
 	}
-	// Symmetric direction: main-root record visible from the worktree root.
-	//
 	// 对称方向：主根记录从 worktree 根可见。
 	if err := Record(main, &ToolCall{ToolName: "Edit", TaskRef: "WT"}); err != nil {
 		t.Fatalf("Record(main root): %v", err)

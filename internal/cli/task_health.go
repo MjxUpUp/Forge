@@ -10,21 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// task_health.go: the observability surface for delegation (design §12/§16 phase 5 可观测).
-// `forge task health` scans the whole project for delegation trouble and REPORTS it — it never
-// mutates state. Three classes of problem are surfaced:
-//   - zombies: offered unclaimed >7d / claimed with the claimer gone >7d / input-required
-//     unanswered >7d / a task reclaimed (abandoned) ≥2 times. Shown yellow elsewhere (mine,
-//     dashboard); here they are listed with their reason.
-//   - deadlocks: a DependsOn pointing at a failed/canceled/missing task (废弃链) — the dependent
-//     can never proceed.
-//   - dependency cycles: rejected at AddDependency write time, but import/corruption can still
-//     introduce one; reported defensively.
-//
-// Healthy tasks are omitted from the human output (the point is to surface what's stuck); the
-// JSON output likewise lists only flagged tasks. Detection is the shared taskpipeline.IsZombie /
-// DeadlockedDependency / HasDependencyCycle so mine, dashboard, and health never disagree.
-//
 // task_health.go：分派的可观测表层（设计 §12/§16 阶段5 可观测）。forge task health 扫描全
 // 项目的分派故障并「报告」——绝不改状态。上浮三类问题：
 //   - 僵尸：offered 无人认领超 7d / claimed 认领方失联超 7d / input-required 无人答复超 7d /
@@ -55,8 +40,6 @@ func init() {
 	taskHealthCmd.Flags().Bool(`json`, false, `JSON 格式输出`)
 }
 
-// healthRow is one task's health in `task health --json` output. Only flagged tasks appear.
-//
 // healthRow 是 task health --json 输出中单个任务的健康项。只出现被标记的任务。
 type healthRow struct {
 	TaskRef        string   `json:"task_ref"`
@@ -80,10 +63,6 @@ func runTaskHealth(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf(`读取任务列表失败: %w`, err)
 	}
-	// Build a ref→state index once so dependency-chain and cycle walks resolve in-memory (no
-	// per-ref file load during the scan). A task not in the index = missing (aborted/deleted),
-	// which DeadlockedDependency treats as a dead-chain root.
-	//
 	// 一次性建 ref→state 索引，使依赖链与环遍历在内存解析（扫描期间不逐 ref 读文件）。
 	// 不在索引中的 task = 缺失（abort/删除），DeadlockedDependency 视作死链根。
 	byRef := map[string]*taskpipeline.TaskState{}
@@ -96,11 +75,6 @@ func runTaskHealth(cmd *cobra.Command, args []string) error {
 		if s, ok := byRef[ref]; ok {
 			return s, nil
 		}
-		// Cross-repo dep (key:ref, multi-repo workspace Option B): it can never be in this
-		// same-repo index, so missing-from-index must NOT be read as a dead chain — resolve
-		// the foreign target instead (a genuinely missing/aborted foreign task still errors
-		// and correctly reports deadlocked; an in-flight one no longer false-positives).
-		//
 		// 跨仓依赖（key:ref，多仓 workspace Option B）：它本就不可能进本仓索引，故「不在索引」
 		// 绝不能读作死链——改为解析跨仓目标（真缺失/已 abort 的他仓 task 仍报错、正确判
 		// 死锁；在途的不再误报）。
@@ -187,10 +161,6 @@ func runTaskHealth(cmd *cobra.Command, args []string) error {
 		fmt.Printf(`发现 %d 个需关注任务:`, len(rows))
 		fmt.Println()
 		for _, r := range rows {
-			// NOTE: a raw-string format passed to fmt.Printf does NOT interpret \n (the lexer leaves
-			// raw strings unescaped, and fmt only handles % verbs) — newlines come from Println(),
-			// matching the codebase convention. See task_assignment.go runTaskMine.
-			//
 			// 注意：传给 fmt.Printf 的 raw-string 格式串不解释 \n（词法器不转义 raw string，fmt 只处理
 			// % 动词）——换行来自 Println()，与代码库约定一致。见 task_assignment.go runTaskMine。
 			marks := ``

@@ -1,12 +1,5 @@
 package e2e
 
-// Multi-repo workspace e2e (docs/design/multi-repo-workspace.md): the manifest
-// (~/.forge/workspaces.json), the status aggregation, doctor drift + cross-repo
-// dep-cycle detection, the task-verify cross-repo-impact gate (advisory →
-// protocol-required block → declaration unblock), and cross-repo DependsOn
-// (key:ref pending semantics) — all through the compiled binary with two real
-// git repos sharing one FORGE_DATA_HOME.
-//
 // 多仓 workspace 端到端测试（docs/design/multi-repo-workspace.md）：清单
 // （~/.forge/workspaces.json）、status 聚合、doctor 的 drift 与跨仓依赖环
 // 检出、task-verify 的 cross-repo-impact 门禁（advisory → protocol required
@@ -22,12 +15,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// wsFreshProject is freshProject minus the FORGE_DATA_HOME pinning: a workspace
-// spans several repos, so the caller pins ONE shared home per test instead
-// (freshProject would give each repo its own home and the manifest/registry/
-// DataDirs would split). Includes the initial commit (task start --branch
-// needs a clean base).
-//
 // wsFreshProject 是去掉 FORGE_DATA_HOME 钉设的 freshProject：workspace 横跨
 // 多仓，由调用方统一钉一个共享 home（freshProject 会给每仓各钉一个，清单/
 // 注册表/DataDir 会分裂）。含 initial commit（task start --branch 需要干净
@@ -45,10 +32,6 @@ func wsFreshProject(t *testing.T) string {
 	return dir
 }
 
-// wsFixture creates the two-repo workspace fixture: repos A and B under one
-// shared FORGE_DATA_HOME, workspace "ws" created with both as members.
-// Returns (dirA, dirB, keyA, keyB).
-//
 // wsFixture 建两仓 workspace 夹具：同一共享 FORGE_DATA_HOME 下的仓 A、仓 B，
 // 创建 workspace "ws" 并加入两仓。返回 (dirA, dirB, keyA, keyB)。
 func wsFixture(t *testing.T) (dirA, dirB, keyA, keyB string) {
@@ -69,9 +52,7 @@ func wsFixture(t *testing.T) (dirA, dirB, keyA, keyB string) {
 	return dirA, dirB, keyA, keyB
 }
 
-// TestWorkspaceCreateAddListStatus covers the manifest lifecycle: create → add
-// (default cwd + --path) → list shows both member keys → status aggregates the
-// active task of member A across the two repos.
+// TestWorkspaceCreateAddListStatus covers the manifest lifecycle: create → add (default cwd + --path) → list shows both member keys → status aggregates the active task of member A across the two repos.
 //
 // TestWorkspaceCreateAddListStatus 覆盖清单生命周期：create → add（默认当前
 // 目录 + --path）→ list 列出两个成员 key → status 跨两仓聚合成员 A 的活跃
@@ -84,8 +65,6 @@ func TestWorkspaceCreateAddListStatus(t *testing.T) {
 		t.Errorf("workspace list 应含两仓 key（%s / %s），got:\n%s", keyA, keyB, out)
 	}
 
-	// One active task in repo A → status aggregates it across both members.
-	//
 	// 仓 A 起一个活跃任务 → status 跨两个成员聚到它。
 	forge(t, dirA, "task", "start", "--ref", "feat/ws-a", "--title", "a task", "--branch")
 	out = forge(t, dirA, "workspace", "status", "ws")
@@ -100,18 +79,13 @@ func TestWorkspaceCreateAddListStatus(t *testing.T) {
 	}
 }
 
-// TestWorkspaceDoctorDrift covers drift detection: after a member repo's
-// directory is moved away, the registry prunes it, and doctor must surface the
-// member as not-registered (advisory, exit 0).
+// TestWorkspaceDoctorDrift covers drift detection: after a member repo's directory is moved away, the registry prunes it, and doctor must surface the member as not-registered (advisory, exit 0).
 //
 // TestWorkspaceDoctorDrift 覆盖 drift 检出：成员仓目录被搬走后 registry 将其
 // 精简，doctor 必须把该成员报为 not-registered（advisory，exit 0）。
 func TestWorkspaceDoctorDrift(t *testing.T) {
 	dirA, dirB, _, _ := wsFixture(t)
 
-	// Move repo B away (simulate a delete/move — the manifest still caches the
-	// old path, the registry drops the dead entry).
-	//
 	// 搬走仓 B（模拟删除/移动——清单仍缓存旧路径，registry 丢弃死条目）。
 	if err := os.Rename(dirB, dirB+`-gone`); err != nil {
 		t.Fatalf("move repo B away: %v", err)
@@ -138,9 +112,6 @@ func TestWorkspaceDoctorDrift(t *testing.T) {
 // --level none` 后 verify 恢复通过。同时钉住 Step 4 的卡片行（forge task
 // status 上 未声明 → none）。
 func TestWorkspaceImpactGate(t *testing.T) {
-	// Same gate-timing/work-activity disables as passAllGates (gates run in
-	// rapid sequence here).
-	//
 	// 与 passAllGates 相同的门禁计时/工作活动豁免（这里门禁连跑）。
 	t.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
 	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
@@ -148,24 +119,18 @@ func TestWorkspaceImpactGate(t *testing.T) {
 	dirA, _, _, _ := wsFixture(t)
 	forge(t, dirA, "task", "start", "--ref", "feat/xr", "--title", "cross repo", "--branch")
 
-	// Real code change + commit so task-implement's content check passes.
-	//
 	// 真实改动 + commit，满足 task-implement 的内容检查。
 	writeFile(t, dirA, "xr.go", "package main\n\nfunc XR() int { return 1 }\n")
 	git(t, dirA, "add", "xr.go")
 	git(t, dirA, "commit", "-m", "e2e: cross-repo impact probe")
 	forge(t, dirA, "task", "gate", "task-implement", "--ref", "feat/xr")
 
-	// Step 4 card line: the status card names the workspace + declaration state.
-	//
 	// Step 4 卡片行：status 卡片点名 workspace + 声明状态。
 	out := forge(t, dirA, "task", "status")
 	if !strings.Contains(out, `Workspace: ws（2 repos）· 跨仓影响: 未声明`) {
 		t.Errorf("task status 缺 workspace 上下文行，got:\n%s", out)
 	}
 
-	// Default = advisory: verify passes, the four-part advisory hits stderr.
-	//
 	// 默认 advisory：verify 通过，四段式提醒落 stderr。
 	out, err := forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/xr")
 	if err != nil {
@@ -175,9 +140,6 @@ func TestWorkspaceImpactGate(t *testing.T) {
 		t.Errorf("advisory 输出应含「未声明跨仓影响」，got:\n%s", out)
 	}
 
-	// Upgrade to required via the DataDir protocol.yml (zero-project-write era:
-	// the project tree carries no .forge/protocol.yml).
-	//
 	// 经 DataDir 的 protocol.yml 升级为 required（零项目写入时代：项目树没有
 	// .forge/protocol.yml）。
 	protoPath := filepath.Join(forgedata.DataDirFor(dirA), "protocol.yml")
@@ -192,9 +154,6 @@ func TestWorkspaceImpactGate(t *testing.T) {
 		t.Errorf("阻断输出应含 HARD stop + cross_repo_impact 四段式，got:\n%s", out)
 	}
 
-	// Declare "none" → verify no longer blocks on cross-repo-impact (the gate
-	// passed before required was flipped, so a clean pass is the assertion).
-	//
 	// 声明 none → verify 不再因 cross-repo-impact 阻断（required 翻转前该门禁
 	// 本就能过，故直接断言恢复通过）。
 	forge(t, dirA, "task", "impact", "--level", "none")
@@ -208,11 +167,7 @@ func TestWorkspaceImpactGate(t *testing.T) {
 	}
 }
 
-// TestWorkspaceCrossRepoDependsOn covers key:ref dependencies across repos:
-// task ta in repo A depends on keyB:feat/tb → ta's verify blocks with the raw
-// key:ref in the pending message → once tb is delivered the pending disappears
-// (verify then fails only on the not-yet-passed task-implement prerequisite,
-// never again on the dependency).
+// TestWorkspaceCrossRepoDependsOn covers key:ref dependencies across repos.
 //
 // TestWorkspaceCrossRepoDependsOn 覆盖跨仓 key:ref 依赖：仓 A 的 ta 依赖
 // keyB:feat/tb → ta 的 verify 被阻断且 pending 消息原样携带 key:ref → tb
@@ -221,8 +176,6 @@ func TestWorkspaceImpactGate(t *testing.T) {
 func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
 	dirA, dirB, _, keyB := wsFixture(t)
 
-	// tb exists in repo B first so the write-side validation sees a live target.
-	//
 	// 先在仓 B 建好 tb，让写入侧校验看到存活目标。
 	forge(t, dirB, "task", "start", "--ref", "feat/tb", "--title", "b task", "--branch")
 	dep := keyB + `:feat/tb`
@@ -231,8 +184,6 @@ func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
 		t.Fatalf("跨仓 --depends-on 应被接受: %v\noutput: %s", err, out)
 	}
 
-	// ta verify → DependsOn gate fires BEFORE prerequisites, raw key:ref named.
-	//
 	// ta verify → DependsOn 门禁先于前置检查触发，原样点名 key:ref。
 	out, err = forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/ta")
 	if err == nil {
@@ -242,13 +193,6 @@ func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
 		t.Errorf("阻断输出应原样含 pending 依赖 %s，got:\n%s", dep, out)
 	}
 
-	// Deliver tb through the real command path (passAllGates + task complete,
-	// the TestMasterBranchReminder pattern): IsDelivered for an unassigned task
-	// is IsComplete = all gates passed in History, so a completed_at-only
-	// fixture edit would NOT release the dependent — the gates must actually
-	// pass. Repo B is a multi-repo member, so its verify emits the cross-repo
-	// advisory — advisory only, never blocks.
-	//
 	// 走真实命令路径交付 tb（passAllGates + task complete，
 	// TestMasterBranchReminder 同款）：无分派任务的 IsDelivered = IsComplete =
 	// History 里门禁全过，故只写 completed_at 的夹具手术不会放行依赖方——
@@ -257,9 +201,6 @@ func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
 	passAllGates(t, dirB, "feat/tb")
 	forge(t, dirB, "task", "complete", "--ref", "feat/tb")
 
-	// Re-verify: the cross-repo pending is gone; only the task-implement
-	// prerequisite remains.
-	//
 	// 重跑 verify：跨仓 pending 消失；只剩 task-implement 前置未过。
 	out, _ = forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/ta")
 	if strings.Contains(out, `上游 task 未交付`) || strings.Contains(out, dep) {
@@ -270,10 +211,7 @@ func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
 	}
 }
 
-// TestWorkspaceDoctorDepCycle covers the advisory cross-repo dependency-cycle
-// detection: ta (repo A) depends on keyB:feat/tb and tb (repo B) depends on
-// keyA:feat/ta — a ring no write-side check refuses (AddDependency never walks
-// other repos' graphs) → `forge workspace doctor` must surface dep-cycle.
+// TestWorkspaceDoctorDepCycle covers the advisory cross-repo dependency-cycle detection.
 //
 // TestWorkspaceDoctorDepCycle 覆盖跨仓依赖环的 advisory 检出：仓 A 的 ta 依赖
 // keyB:feat/tb、仓 B 的 tb 依赖 keyA:feat/ta——写入侧任何检查都不拒的环
@@ -282,9 +220,6 @@ func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
 func TestWorkspaceDoctorDepCycle(t *testing.T) {
 	dirA, dirB, keyA, keyB := wsFixture(t)
 
-	// Forward reference first (tb not yet created → tolerated with a stderr
-	// advisory), then the back edge — together they close the ring.
-	//
 	// 先建前向引用（tb 尚未创建 → 容忍，stderr 给 advisory），再建回边——
 	// 两条边闭合成环。
 	forge(t, dirA, "task", "start", "--ref", "feat/ta", "--title", "a task", "--branch", "--depends-on", keyB+`:feat/tb`)

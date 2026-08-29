@@ -1,8 +1,5 @@
 package cli
 
-// skills_eval_cases_test.go guards the eval-cases output view: caseViews emits exactly
-// id/kind/prompt/target — the fields an agent needs to dispatch prompts and refill results.
-//
 // skills_eval_cases_test.go — 守护 eval-cases 输出视图：caseViews 恰好输出
 // id/kind/prompt/target——agent dispatch 跑 prompt 与回填结果所需的字段。
 
@@ -30,8 +27,6 @@ func TestCaseViews_OutputShape(t *testing.T) {
 		t.Errorf("not-trigger 类 Target 应空, got %q", out[1].Target)
 	}
 
-	// Serialized JSON must not carry internal bookkeeping fields (source_fragment / desc_hash).
-	//
 	// 序列化后的 JSON 不应带内部簿记字段（source_fragment / desc_hash）。
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

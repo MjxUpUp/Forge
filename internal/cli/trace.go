@@ -14,10 +14,6 @@ func init() {
 	rootCmd.AddCommand(traceCmd)
 }
 
-// traceCmd implements `forge trace <task-ref>`: replays the full quality-event timeline of a task
-// (tool calls + check results), reducing a single score back into a traceable story. An observability
-// consumption layer on top of checklog/toolusage.
-//
 // traceCmd 实现 `forge trace <task-ref>`：重放任务的完整质量事件时间线
 // （工具调用 + 检查结果），把单个评分还原成可回溯的故事。checklog/toolusage
 // 之上的可观测性消费层。
@@ -33,9 +29,6 @@ var traceCmd = &cobra.Command{
 	RunE: runTrace,
 }
 
-// traceEvent is the unified timeline event merging the two sources checklog and toolusage,
-// normalized onto a single sortable time axis.
-//
 // traceEvent 是合并 checklog 与 toolusage 两源的统一时间线事件，
 // 归一化到单一可排序的时间轴。
 type traceEvent struct {
@@ -53,10 +46,6 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// ForTask reads disk once and aggregates the evidence chain: trace needs both per-event replay (via Entries) and
-	// evidence-bucket summary (via Deterministic/AgentClaim). ForTask is the shared entry of both,
-	// avoiding separate LoadForTask + BuildEvidenceChain calls that would re-read disk.
-	//
 	// ForTask 一次读盘 + 聚合证据链：trace 既要逐事件回放（用 Entries）又要
 	// 证据分桶汇总（用 Deterministic/AgentClaim），ForTask 是两者的共同入口，
 	// 避免分别调 LoadForTask + BuildEvidenceChain 重复读盘。
@@ -73,11 +62,6 @@ func runTrace(cmd *cobra.Command, args []string) error {
 	var events []traceEvent
 	for i := range checks {
 		c := checks[i]
-		// Mark from the structured level (EffectiveLevel derives it for pre-level
-		// archive lines): blocked/fail → ✗, warn/advisory → ⚠, pass → ✓. This makes
-		// the level field the trace classification source instead of re-deriving
-		// from Passed + Detail prose here.
-		//
 		// 标记取结构化 level（EffectiveLevel 对 level 字段引入前的归档行兜底推导）：
 		// blocked/fail → ✗，warn/advisory → ⚠，pass → ✓。trace 的分类真相源是
 		// level 字段，不在此重新解析 Passed + Detail 散文。
@@ -124,10 +108,6 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Evidence-chain bucketing: summarize this task's checks into deterministic (hook/gate actually run, unforgeable) vs
-	// agent-claim (agent self-report). review/scoring uses this to counter the blind spot where an LLM-judge cannot see that an
-	// agent skipped prerequisites then declared completion — the deterministic ratio is the hard signal of completion-claim credibility.
-	//
 	// 证据链分桶：把本任务检查按 deterministic（hook/gate 实跑，不可伪造）vs
 	// agent-claim（agent 自述）汇总。review/评分据此对冲 LLM-judge 看不出「agent
 	// 跳过前置就声明完成」的盲区——deterministic 占比是「完成声明可信度」的硬信号。
@@ -142,10 +122,6 @@ func runTrace(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Token-cost visibility: accumulates the estimated tokens of recorded tool calls (a proxy for loop cost).
-	// Only covers hook-sampled input (auto-compile/tool-track), not the full LLM bill —
-	// the magnitude signal is enough to tell whether the loop is burning tokens, complementing the gate breaker to prevent runaway.
-	//
 	// Token 成本可见性：累计被记录工具调用的估算 token（loop 成本代理）。
 	// 仅含 hook 采样的 input（auto-compile/tool-track），非完整 LLM 账单——
 	// 量级信号足够判断「loop 是否在烧 token」，配合 gate breaker 共同防跑飞。
@@ -155,9 +131,6 @@ func runTrace(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// truncate truncates s to max length (rune-safe), appending ... when over. Originally defined in knowledge.go,
-// moved here after the experience/knowledge loop was removed.
-//
 // truncate 截断 s 到 max 长度（rune 安全），超长加"..."。原 knowledge.go 定义，
 // experience/knowledge 经验闭环移除后迁此。
 func truncate(s string, max int) string {

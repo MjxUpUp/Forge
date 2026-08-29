@@ -25,20 +25,8 @@ func TaskFingerprint(root string, state *TaskState, baseCommit string) (hash str
 	return review.SourceChangesSinceExcluded(root, baseCommit, ForeignAttributedPaths(root, ref))
 }
 
-// ForeignAttributedPaths returns the set of currently-changed working-tree paths that the
-// L3 attribution ledger assigns to sessions anchored on OTHER INCOMPLETE tasks
-// (multi-task-concurrency design §6, T3). This is the provably-foreign portion — the only
-// thing any consumer may exclude. Everything not in this set (the own task's sessions'
-// paths, and orphans the ledger cannot explain) stays visible: attribution is best-effort,
-// and a miss must degrade toward inclusion (fail-safe), never toward hiding changes.
-//
-// Semantics contract for consumers:
-//   - review fingerprints / taskChangedFiles: exclude ONLY this set (orphans stay —
-//     unexplained changes must be reviewed/counted);
-//   - HANDOFF 现场视图: excludes this set AND orphans (with honest count lines) — a
-//     takeover view reconstructs THIS task's scene, not the whole tree's noise.
-//
-// FORGE_ATTRIBUTION=0 → empty set (the escape hatch: everything behaves pre-L3).
+// ForeignAttributedPaths returns the set of currently-changed working-tree paths
+// the L3 attribution ledger assigns to sessions anchored on OTHER INCOMPLETE tasks.
 //
 // ForeignAttributedPaths 返回 L3 归属台账判定为「其他未完成任务的锚定会话」所拥有的
 // 当前工作树变更路径集合（multi-task-concurrency 设计 §6，T3）。这是可证明外来的
@@ -87,13 +75,6 @@ func ForeignAttributedPaths(root, ownTaskRef string) map[string]bool {
 	// 此时该 sid 在 A 视角被误标外来，A 自己的未提交变更会被静默排除出 review
 	// 指纹（review-bypass）与接手视图（藏自己 WIP 在计数行后）。按契约 fail-safe
 	// 向包含降级：判不出归属的宁可保留，绝不藏变更。
-	//
-	// B1 fix (review BLOCKER): a session anchored on BOTH the own task and other tasks
-	// is never foreign — the supported same-window sequential multi-task flow puts one
-	// sid in both tasks' links; treating it as foreign silently excludes the task's own
-	// uncommitted changes from the review fingerprint (review bypass) and hides its WIP
-	// behind the exclusion count line. Fail-safe direction: include on uncertainty,
-	// never hide changes.
 	for sid := range ownSids {
 		delete(foreignSids, sid)
 	}

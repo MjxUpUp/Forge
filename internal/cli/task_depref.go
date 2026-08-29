@@ -1,26 +1,5 @@
 package cli
 
-// Cross-repo --depends-on validation (multi-repo workspace Option B,
-// docs/design/multi-repo-workspace.md): the WRITE side of key:ref deps.
-// `forge task start --depends-on <key:ref>` is validated here before
-// AddDependency persists the edge:
-//
-//   - a key prefix that is not a member of ANY workspace this repo belongs to
-//     is REFUSED (the dep would resolve to a foreign/typo'd DataDir and
-//     deadlock the gate) with a hint to `forge workspace add` or drop the
-//     prefix;
-//   - `<ownkey>:<thisref>` is refused as a self-reference (AddDependency's
-//     raw-string check cannot see through the key prefix);
-//   - an unreadable workspace manifest degrades to a stderr advisory and
-//     ALLOWS the dep (fail-open — the manifest is a global user-level store
-//     that can be absent/corrupt on any machine; infra trouble must never
-//     block task creation);
-//   - a missing cross-repo TARGET task is tolerated (same as same-repo
-//     behavior: forward references to tasks created moments later are legal;
-//     the gate treats missing as pending) but gets a stderr advisory, because
-//     a typo'd key:ref blocks forever at verify/complete and cross-repo typos
-//     are harder to spot than same-repo ones.
-//
 // 跨仓 --depends-on 校验（多仓 workspace Option B，
 // docs/design/multi-repo-workspace.md）：key:ref 依赖的写入侧。
 // `forge task start --depends-on <key:ref>` 在 AddDependency 落边前在此校验：
@@ -45,11 +24,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/workspace"
 )
 
-// ownRepoKey derives this repo's project key with the same fallback the
-// cross-repo-impact gate and `workspace add` use (forgedata.Key, else
-// PathKey) — the identity compared against workspace membership must be the
-// one the manifest stores.
-//
 // ownRepoKey 用与 cross-repo-impact 门禁、`workspace add` 相同的 fallback 推导
 // 本 repo 的项目 key（forgedata.Key，否则 PathKey）——与 workspace 成员资格
 // 比对的身份必须是清单里存的那个。
@@ -61,10 +35,6 @@ func ownRepoKey(root string) string {
 	return key
 }
 
-// unknownDepKeys is the pure membership core: the key prefixes in deps that no
-// workspace containing ownKey lists as a member. Kept IO-free so the decision
-// table is unit-testable without a manifest fixture.
-//
 // unknownDepKeys 是纯成员资格核心：deps 里所有「包含 ownKey 的 workspace 都不
 // 列为成员」的 key 前缀。刻意无 IO，让判定表无需清单 fixture 即可单测。
 func unknownDepKeys(f *workspace.File, ownKey string, deps []string) []string {
@@ -87,11 +57,6 @@ func unknownDepKeys(f *workspace.File, ownKey string, deps []string) []string {
 	return bad
 }
 
-// validateDependsOnRefs wires the validation around unknownDepKeys: loads the
-// manifest (fail-open on error), refuses foreign keys and own-key self-deps,
-// and advisory-warns on currently-missing cross-repo targets. stderr receives
-// the advisories; a non-nil error means the dep set was refused.
-//
 // validateDependsOnRefs 在 unknownDepKeys 外围接线：加载清单（出错 fail-open），
 // 拒绝越界 key 与经本仓 key 的自依赖，并对当前不可读的跨仓目标发 advisory。
 // advisory 走 stderr；返回非 nil error 表示这批依赖被拒绝。
@@ -130,11 +95,6 @@ func validateDependsOnRefs(root, selfRef string, deps []string, stderr io.Writer
 	return nil
 }
 
-// multiRepoMembership reports whether this repo belongs to at least one
-// MULTI-repo workspace — the cheap gate for cross-repo advisories (single-repo
-// users never see cross-repo notes). fail-open: any manifest trouble reads as
-// "no membership" (the note is a courtesy, not a check).
-//
 // multiRepoMembership 报告本 repo 是否属于至少一个多仓 workspace——跨仓提示的
 // 廉价闸门（单仓用户永远看不到跨仓提示）。fail-open：任何清单故障按「无成员
 // 资格」处理（提示是善意提醒，不是检查）。

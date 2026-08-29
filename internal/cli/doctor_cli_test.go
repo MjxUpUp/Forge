@@ -13,9 +13,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/doctor"
 )
 
-// isolateDoctorEnv redirects every agent-bridge path helper + PATH into a temp root so
-// `forge doctor` runs hermetically: all 10 hosts report missing, no real binary is probed.
-//
 // isolateDoctorEnv 把所有 agent-bridge 路径 helper + PATH 重定向进临时根，让
 // `forge doctor` 密封运行：10 个 host 全部 missing，不探测任何真实二进制。
 func isolateDoctorEnv(t *testing.T) string {
@@ -36,9 +33,6 @@ func isolateDoctorEnv(t *testing.T) string {
 
 // TestDoctorCmd_Text human 输出：隔离环境下 10 host 全 missing、标题含版本、无 PATH 段
 // （PATH 无 forge 可执行文件时不打印多副本警告）。
-//
-// TestDoctorCmd_Text human output: isolated env → 10 hosts all missing, header carries
-// the version, no PATH section (no multi-copy warning when PATH holds no forge binary).
 func TestDoctorCmd_Text(t *testing.T) {
 	isolateDoctorEnv(t)
 	var buf bytes.Buffer
@@ -62,9 +56,6 @@ func TestDoctorCmd_Text(t *testing.T) {
 }
 
 // TestDoctorCmd_JSON --json 输出合法 JSON 且 Report 形状正确（self_version + 10 hosts）。
-//
-// TestDoctorCmd_JSON --json emits valid JSON with the right Report shape
-// (self_version + 10 hosts).
 func TestDoctorCmd_JSON(t *testing.T) {
 	isolateDoctorEnv(t)
 	var buf bytes.Buffer
@@ -99,13 +90,6 @@ func TestDoctorCmd_JSON(t *testing.T) {
 // 压缩一行（in sync）；missing/drift 态展开条目并给修复命令。2026-08 审计根因：
 // canonical 新增 skill 后目标静默缺失（subagent-orchestration 缺 5 host）无任何
 // 输出面——doctor 是运营级检查入口，该缝必须在其输出可见。
-//
-// TestPrintDoctorSkillsSection guards the skills-distribution section of doctor's
-// human output: healthy state collapses to one line (in sync); missing/drift
-// expands items with the fix command. 2026-08 audit root cause: skills silently
-// missing from targets after canonical additions (subagent-orchestration absent
-// from 5 hosts) had no output surface — doctor is the ops-grade check, the seam
-// must be visible there.
 func TestPrintDoctorSkillsSection(t *testing.T) {
 	// 健康态：一行 in sync，不展开条目、不给修复行。
 	var buf bytes.Buffer
@@ -200,11 +184,6 @@ func TestPrintDoctorSkillsSection(t *testing.T) {
 	}
 }
 
-// TestSkillsDriftProbe_GatesUninstalledTargets pins the M-3 fix: doctor audits only
-// targets whose agent home exists. In an isolated env with ONLY ~/.claude present, the
-// probe must record cursor/codex/copilot/agents as Skipped (uninstalled — not walls of
-// missing) while still auditing claude (an installed agent's real gaps stay visible).
-//
 // TestSkillsDriftProbe_GatesUninstalledTargets 钉死 M-3 修复：doctor 只审计 agent home
 // 存在的目标。隔离环境里只有 ~/.claude 时，探针必须把 cursor/codex/copilot/agents
 // 记入 Skipped（未安装——不是成墙的 missing），同时仍审计 claude（已安装 agent 的
@@ -290,10 +269,6 @@ func TestSkillsDriftProbe_DamagedHomeSurfaces(t *testing.T) {
 	}
 }
 
-// TestPrintDoctorSkillsSection_SkippedStates pins the renderer for M-3: all-skipped is
-// its own state (zero coverage must never render as a green in-sync — the H-1
-// masquerade), and partial-skip shows the advisory line alongside the normal verdict.
-//
 // TestPrintDoctorSkillsSection_SkippedStates 钉死 M-3 的渲染：全跳过是独立状态（零
 // 覆盖绝不能渲染成绿色 in-sync——H-1 伪装模式）；部分跳过在正常判定旁展示 advisory 行。
 func TestPrintDoctorSkillsSection_SkippedStates(t *testing.T) {

@@ -4,12 +4,6 @@ package cli
 // （prediction→verification 闭环）、battery（回归电池报告 + --gate exit 4）、analyze
 // （弱点挖掘报告，子进程 + 隔离项目）。照 skills_eval_loop_test.go 的 runXxx(nil,nil) +
 // 捕获 stdout 模式；子进程用 runForge（TestMain 已隔离 home/registry）。
-//
-// skills_closure_test.go — paired tests for the new CLI surface: decide --prediction /
-// verify (prediction→verification closure), battery (report + --gate exit 4), analyze
-// (weakness report, subprocess + isolated project). Follows the runXxx(nil,nil) +
-// stdout-capture pattern from skills_eval_loop_test.go; subprocesses use runForge
-// (home/registry isolated by TestMain).
 
 import (
 	"encoding/json"
@@ -25,9 +19,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
-// closureDecide runs `skills decide` in-process with the given prediction; returns the
-// decision ID assigned by AppendDecision (the new ID = set difference vs before).
-//
 // closureDecide 进程内跑一次 `skills decide`（带指定 prediction）；返回 AppendDecision
 // 分配的决策 ID（新 ID = 与调用前的差集）。
 func closureDecide(t *testing.T, skill, prediction string) string {
@@ -68,9 +59,6 @@ func closureDecide(t *testing.T, skill, prediction string) string {
 	return ""
 }
 
-// canonicalEnv returns the FORGE_SKILLS_CANONICAL value the test set (symmetric with
-// evalLoopSetup's t.Setenv; keeps call sites honest about where canonical comes from).
-//
 // canonicalEnv 返回测试设置的 FORGE_SKILLS_CANONICAL 值（与 evalLoopSetup 的 t.Setenv
 // 对称；让调用点明示 canonical 从哪来）。
 func canonicalEnv(t *testing.T) string {
@@ -82,10 +70,6 @@ func canonicalEnv(t *testing.T) string {
 	return v
 }
 
-// closureCanonical isolates the home and seeds the standard closure-skill
-// canonical tree, returning the canonical dir — the shared test header of the
-// verify-closure tests.
-//
 // closureCanonical 隔离 home 并种入标准 closure-skill canonical 树，返回
 // canonical 目录——verify 闭环测试共享的测试头。
 func closureCanonical(t *testing.T) string {
@@ -97,9 +81,6 @@ func closureCanonical(t *testing.T) string {
 	return canonical
 }
 
-// setSkVerVars pins the `skills verify` package vars for one in-process call
-// and restores them when the test ends (flag-bound global state).
-//
 // setSkVerVars 为一次进程内调用钉住 `skills verify` 的包级变量，测试结束时
 // 复位（flag 绑定的全局状态）。
 func setSkVerVars(t *testing.T, skill, decision, result, at string) {
@@ -119,8 +100,6 @@ func setSkVerVars(t *testing.T, skill, decision, result, at string) {
 func TestSkillsDecideVerify_PredictionClosure(t *testing.T) {
 	canonical := closureCanonical(t)
 
-	// Step 1: decide declares a falsifiable prediction at edit time.
-	//
 	// 第一步：decide 在修改时刻声明可检验预测。
 	prediction := `触发率应从 15% 升到 30%`
 	id := closureDecide(t, "closure-skill", prediction)
@@ -132,8 +111,6 @@ func TestSkillsDecideVerify_PredictionClosure(t *testing.T) {
 		t.Fatalf("Prediction=%q want %q（decide --prediction 未落盘）", ds[0].Prediction, prediction)
 	}
 
-	// Step 2: verify backfills the outcome onto that decision.
-	//
 	// 第二步：verify 把真实结果回填到该决策。
 	setSkVerVars(t, "closure-skill", id, `命中：触发率 32%`, "2026-08-16T10:00:00Z")
 	if err := runSkillsVerify(nil, nil); err != nil {
@@ -166,8 +143,6 @@ func TestSkillsVerify_InvalidAt(t *testing.T) {
 func TestSkillsVerify_HistoryLedger(t *testing.T) {
 	closureCanonical(t)
 
-	// d1: with prediction, unverified; d2: with prediction, verified; d3: no prediction.
-	//
 	// d1：带预测未验证；d2：带预测已验证；d3：无预测。
 	d1 := closureDecide(t, "closure-skill", "pred-1")
 	d2 := closureDecide(t, "closure-skill", "pred-2")
@@ -175,9 +150,6 @@ func TestSkillsVerify_HistoryLedger(t *testing.T) {
 	if err := runSkillsVerify(nil, nil); err != nil {
 		t.Fatalf("verify d2: %v", err)
 	}
-	// Mid-test manual reset (history mode runs with the vars cleared; the
-	// helper's cleanup re-resets, which is a no-op then).
-	//
 	// 测试中段手动复位（history 模式在变量清零下运行；helper 的 cleanup 届时
 	// 再复位一次，等于 no-op）。
 	skVerSkill = ""
@@ -186,8 +158,6 @@ func TestSkillsVerify_HistoryLedger(t *testing.T) {
 	skVerAt = ""
 	closureDecide(t, "closure-skill", "") // d3 无预测
 
-	// Text ledger: states render per decision.
-	//
 	// 文本台账：逐决策渲染状态。
 	skVerHistory = true
 	skVerHistoryJSON = false
@@ -204,8 +174,6 @@ func TestSkillsVerify_HistoryLedger(t *testing.T) {
 		t.Fatalf("台账应展示预测文本与无预测标注:\n%s", out)
 	}
 
-	// JSON ledger: machine-readable rows with verified flags.
-	//
 	// JSON 台账：机器可读行 + verified 标志。
 	skVerHistory = false
 	skVerHistoryJSON = true
@@ -234,8 +202,6 @@ func TestSkillsVerify_HistoryLedger(t *testing.T) {
 	}
 }
 
-// closureThirdID finds the row with an empty prediction (the no-prediction decision).
-//
 // closureThirdID 找到预测为空的那行（无预测决策）。
 func closureThirdID(t *testing.T, rows []verifyHistoryRow) string {
 	t.Helper()
@@ -248,8 +214,7 @@ func closureThirdID(t *testing.T, rows []verifyHistoryRow) string {
 	return ""
 }
 
-// TestSkillsBattery_ReportAndGate: full loop — gen → all-correct record → baseline →
-// gate passes (exit 0) → regressed record → report shows reject → --gate exits 4.
+// TestSkillsBattery_ReportAndGate: full loop — gen → all-correct record → baseline → gate passes (exit 0) → regressed record → report shows reject → --gate exits 4.
 //
 // TestSkillsBattery_ReportAndGate：完整闭环——gen→全对 record→baseline→gate 过（exit 0）→
 // 含回归 record→报告 reject→--gate exit 4。
@@ -258,8 +223,6 @@ func TestSkillsBattery_ReportAndGate(t *testing.T) {
 	skill := "batt-skill" // 唯一 skill 名，隔离共享 EvalDir 下的 baselines.json
 	evalLoopSetup(t, canonical, skill)
 
-	// All-correct run → anchor baseline.
-	//
 	// 全对 run → 锚定 baseline。
 	evalLoopRecord(t, skill, evalLoopResultsAllRight(t, canonical, skill), "sonnet", "v1")
 	skBaseSkill = skill
@@ -270,15 +233,11 @@ func TestSkillsBattery_ReportAndGate(t *testing.T) {
 	skBaseSkill = ""
 	skBaseRun = ""
 
-	// No regression yet: gate mode must stay exit 0 (report-only contract).
-	//
 	// 尚无回归：gate 模式须保持 exit 0（纯报告契约）。
 	if _, _, code := runForge(t, t.TempDir(), "skills", "battery", "--gate"); code != 0 {
 		t.Fatalf("无回归时 battery --gate 应 exit 0, got %d", code)
 	}
 
-	// Second run: first trigger case misroutes → regression vs baseline.
-	//
 	// 第二个 run：首个 trigger case 误路由 → 相对 baseline 回归。
 	cases, _ := skillseval.EvalCases(canonical, skill)
 	results := make([]skillseval.SubmitResult, 0, len(cases))
@@ -297,8 +256,6 @@ func TestSkillsBattery_ReportAndGate(t *testing.T) {
 	}
 	evalLoopRecord(t, skill, evalLoopWriteResults(t, results), "sonnet", "v1")
 
-	// Human report: reject row surfaced first.
-	//
 	// 人读报告：reject 行先行。
 	var battErr error
 	out := captureStdout(t, func() { battErr = runSkillsBattery(nil, nil) })
@@ -309,8 +266,6 @@ func TestSkillsBattery_ReportAndGate(t *testing.T) {
 		t.Fatalf("报告应含 reject 行:\n%s", out)
 	}
 
-	// JSON report: GateBlocked=true (machine gate signal).
-	//
 	// JSON 报告：GateBlocked=true（机器门禁信号）。
 	skBattJSON = true
 	out = captureStdout(t, func() { battErr = runSkillsBattery(nil, nil) })
@@ -326,9 +281,6 @@ func TestSkillsBattery_ReportAndGate(t *testing.T) {
 		t.Fatalf("rejected=%d gateBlocked=%v want 1/true", rep.Rejected, rep.GateBlocked)
 	}
 
-	// Gate contract: exit 4 + BLOCKED on STDERR (aligned with skills audit --gate; stdout is
-	// the data channel and must stay pollution-free for `--json --gate | jq .`).
-	//
 	// 门禁契约：exit 4 + BLOCKED 走 STDERR（对齐 skills audit --gate；stdout 是数据通道，
 	// `--json --gate | jq .` 不得吃到非 JSON 字节）。
 	gateOut, gateErr, code := runForgeStreams(t, t.TempDir(), "skills", "battery", "--gate")
@@ -339,9 +291,6 @@ func TestSkillsBattery_ReportAndGate(t *testing.T) {
 		t.Fatalf("BLOCKED 应在 stderr:\nstderr: %s", gateErr)
 	}
 
-	// --json --gate: stdout stays parseable JSON even on reject; the gate signal rides on
-	// exit code + stderr (review F2).
-	//
 	// --json --gate：即便 reject，stdout 仍须是可解析 JSON；门禁信号由退出码 + stderr
 	// 承载（审查 F2）。
 	jsonOut, jsonErr, code := runForgeStreams(t, t.TempDir(), "skills", "battery", "--json", "--gate")
@@ -360,9 +309,7 @@ func TestSkillsBattery_ReportAndGate(t *testing.T) {
 	}
 }
 
-// TestSkillsAnalyze_WeaknessReport: subprocess against an isolated legacy-.forge project
-// seeded with recurring low dims; canonical has 2 never-triggered skills. Asserts the
-// report surfaces weak dims / never-triggered / caveats.
+// TestSkillsAnalyze_WeaknessReport: subprocess against an isolated legacy-.forge project seeded with recurring low dims; canonical has 2 never-triggered skills.
 //
 // TestSkillsAnalyze_WeaknessReport：子进程跑隔离的 legacy-.forge 项目（预置复现低分维度）；
 // canonical 有 2 个从未触发 skill。断言报告浮出维度弱点/从未触发/caveat。

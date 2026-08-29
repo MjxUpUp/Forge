@@ -7,11 +7,6 @@ import (
 
 // TestSanitizeCommand 验证 heredoc body 剥离：body 与终止行被丢弃，marker 行与其余行保留。
 // 这是 PreToolUse keywords 降噪的核心——分析脚本 body 里的 "npm publish" 字样不再参与匹配。
-//
-// TestSanitizeCommand verifies heredoc body stripping: body and terminator lines are
-// dropped, the marker line and all other lines are kept. This is the core of the
-// PreToolUse keyword noise reduction — "npm publish" mentioned inside an analysis
-// script body no longer participates in matching.
 func TestSanitizeCommand(t *testing.T) {
 	cases := []struct {
 		name string
@@ -85,10 +80,6 @@ func TestSanitizeCommand(t *testing.T) {
 
 // TestSanitizeCommand_UnterminatedBody 兜底：heredoc 未终止（命令被截断）时，其后所有行
 // 都按 body 丢弃——宁缺匹配不误报。
-//
-// TestSanitizeCommand_UnterminatedBody guard: when a heredoc is never terminated
-// (truncated command), everything after it is treated as body — prefer missing a
-// match over a false positive.
 func TestSanitizeCommand_UnterminatedBody(t *testing.T) {
 	got := sanitizeCommand("python - <<'EOF'\nprint('git tag')")
 	if got != "python - <<'EOF'" {
@@ -98,10 +89,6 @@ func TestSanitizeCommand_UnterminatedBody(t *testing.T) {
 
 // TestMatchKeywords_HeredocNoise 端到端：关键词只出现在 heredoc body 时不命中；出现在
 // marker 行（真实命令）时命中；stdout 关键词不受 command 剥离影响。
-//
-// TestMatchKeywords_HeredocNoise end-to-end: keywords appearing only inside a heredoc
-// body do not hit; on the marker line (a real command) they do; stdout keywords are
-// unaffected by command stripping.
 func TestMatchKeywords_HeredocNoise(t *testing.T) {
 	kw := []string{"npm publish"}
 	ctx := func(cmd string) Context {

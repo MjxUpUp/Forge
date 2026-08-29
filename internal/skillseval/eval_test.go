@@ -28,8 +28,6 @@ func TestExtractTriggers(t *testing.T) {
 }
 
 func TestExtractTriggers_LimitsAndFilters(t *testing.T) {
-	// triggers<=5, skips<=3, fragments with length<=3 dropped
-	//
 	// triggers≤5、skips≤3，长度≤3 片段丢弃
 	desc := "Use when: a、bb、ccc、dddd、eeee、ffff、gggg。SKIP: s1 或 s2 或 s3 或 s4。"
 	triggers, skips := ExtractTriggers(desc)
@@ -86,7 +84,6 @@ func TestEvalSkill_GeneratesMarkdown(t *testing.T) {
 }
 
 // TestEvalSkill_NoEllipsisOnShortDesc: short description (<=200 rune) should not append ellipsis.
-// Original impl blindly did firstNRunes(desc,200)+ellipsis, misreading complete short description as truncated.
 //
 // TestEvalSkill_NoEllipsisOnShortDesc：短描述（≤200 rune）不应追加"..."。
 // 原实现无脑 firstNRunes(desc,200)+"..."，把完整短描述误读为被截断。

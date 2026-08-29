@@ -17,9 +17,6 @@ var (
 	skAudGate  bool
 )
 
-// exit code contract (with --gate): 0=clean, 4=HIGH/CRITICAL severity band OR any single
-// CRITICAL finding (regardless of aggregate score — #4 fix).
-//
 // exit code 契约（--gate 时）：0=干净，4=HIGH/CRITICAL 严重度带或任一单条 CRITICAL finding
 // （无视聚合分——#4 修复）。
 var skillsAuditCmd = &cobra.Command{
@@ -28,11 +25,6 @@ var skillsAuditCmd = &cobra.Command{
 	RunE:  runSkillsAudit,
 }
 
-// auditGateBlocked decides the --gate block: severity band HIGH/CRITICAL (aggregate) OR any single
-// CRITICAL finding. Extracted from the loop so the decision is unit-testable without the
-// os.Exit(4) process exit, and so the any-CRITICAL half (#4 score-math fix) reads as one named
-// predicate next to skillsqa.HasCritical instead of an inline condition.
-//
 // auditGateBlocked 判定 --gate 阻断：严重度带 HIGH/CRITICAL（聚合）或任一单条 CRITICAL finding。
 // 从循环抽出以便绕开 os.Exit(4) 进程退出做单测，也让 #4 分数数学修复的 any-CRITICAL 半边
 // 成为与 skillsqa.HasCritical 并列的具名谓词，而非内联条件。
@@ -68,11 +60,6 @@ func runSkillsAudit(cmd *cobra.Command, args []string) error {
 	for _, n := range names {
 		fs, serr := skillsqa.ScanSkill(filepath.Join(canonical, n))
 		if serr != nil {
-			// A ScanSkill failure (skill missing/no permission/read error) must be turned into a CRITICAL finding.
-			// Otherwise ScoreFindings(nil)=0/INFO/SAFE would report a broken skill as clean — the --gate
-			// HIGH/CRITICAL detection would then fail (cannot verify = security risk). Symmetric with Install AuditSkill
-			// error handling: an audit failure is itself a block.
-			//
 			// ScanSkill 失败（skill 不存在/无权限/读取错误）必须转成 CRITICAL finding。
 			// 否则 ScoreFindings(nil)=0/INFO/SAFE 会把坏掉的 skill 报为"干净"——--gate 的
 			// HIGH/CRITICAL 检测就此失守（无法验证 = 安全风险）。与 Install 的 AuditSkill
@@ -89,10 +76,6 @@ func runSkillsAudit(cmd *cobra.Command, args []string) error {
 		}
 		score, sev, rec := skillsqa.ScoreFindings(fs)
 		results = append(results, res{n, fs, score, sev, rec})
-		// #4 fix: band-only gating let a single CRITICAL finding (aggregate ≤23.75 → MEDIUM band)
-		// pass as exit 0 — the same score-math hole as the install gate. auditGateBlocked adds
-		// any-CRITICAL on top of the band judgment.
-		//
 		// #4 修复：只看带的门禁会让单条 CRITICAL（聚合 ≤23.75 → MEDIUM 带）以 exit 0 放过——
 		// 与 install 门禁同一分数数学洞。auditGateBlocked 在带判定之上加 any-CRITICAL。
 		if skAudGate && auditGateBlocked(sev, fs) {

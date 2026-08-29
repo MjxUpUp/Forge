@@ -14,8 +14,7 @@ import (
 )
 
 // TestUnknownDepKeys covers the pure membership core: bare refs never
-// participate; keys are valid iff ANY workspace containing ownKey lists them
-// (overlapping memberships union); offenders are deduped.
+// participate.
 //
 // TestUnknownDepKeys 覆盖纯成员资格核心：裸 ref 不参与；key 合法当且仅当任一
 // 包含 ownKey 的 workspace 列其为成员（重叠成员资格取并集）；越界 key 去重。
@@ -51,9 +50,6 @@ func TestUnknownDepKeys(t *testing.T) {
 	}
 }
 
-// depRefFixture isolates FORGE_DATA_HOME and returns (root, ownKey, home) with
-// root a non-git temp dir (ownKey = PathKey, matching DataDirFor's fallback).
-//
 // depRefFixture 隔离 FORGE_DATA_HOME，返回 (root, ownKey, home)；root 为非 git
 // 临时目录（ownKey = PathKey，与 DataDirFor 的回落一致）。
 func depRefFixture(t *testing.T) (root, ownKey, home string) {
@@ -104,11 +100,7 @@ func writeForeignTask(t *testing.T, home, key, ref string, delivered bool) {
 }
 
 // TestValidateDependsOnRefs covers the write-side wiring: same-repo-only deps
-// short-circuit before any manifest read; a foreign key prefix is refused with
-// the workspace-add hint; an unreadable manifest fails OPEN (advisory, dep
-// allowed); a missing cross-repo target is tolerated with an advisory
-// (forward references stay legal, matching same-repo behavior); an existing
-// delivered target is silent; <ownkey>:<selfref> is refused as a self-dep.
+// short-circuit before any manifest read.
 //
 // TestValidateDependsOnRefs 覆盖写入侧接线：纯本仓依赖在读清单前就短路；越界
 // key 前缀带 workspace-add 提示拒绝；清单不可读 fail-OPEN（advisory 放行）；

@@ -14,10 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// feed_node_test.go — Pulse node attribution (multi-machine Phase 3): feed events
-// carry the originating machine's node_id so a synced multi-machine dashboard can
-// answer "which machine did this happen on" at a glance.
-//
 // feed_node_test.go —— Pulse 节点归因（多机器 Phase 3）：feed 事件携带来源机器的
 // node_id，同步后的多机器看板一眼可答「这事发生在哪台机器」。
 
@@ -27,9 +23,6 @@ func TestAggregateFeed_NodeAttribution(t *testing.T) {
 	stampA := nodestamp.Stamp{NodeID: `fnode_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, Seq: 7, TsHLC: `0000001700000000000.0000000001`}
 	stampB := nodestamp.Stamp{NodeID: `fnode_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`, Seq: 3, TsHLC: `0000001700000001000.0000000001`}
 
-	// task-start ← the task's ACTIVE lease holder (who's working it). ClaimedAt is set
-	// so the lease is unexpired at query time (the feed must not show stale holders).
-	//
 	// task-start ← 任务有效租约的持有者（谁在干活）。ClaimedAt 落值使租约在查询时点
 	// 未过期（feed 不得显示过期持有者）。
 	if err := taskpipeline.SaveTaskState(root, &taskpipeline.TaskState{
@@ -53,8 +46,6 @@ func TestAggregateFeed_NodeAttribution(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Expired lease → no node chip (a crashed machine's stale claim must not linger).
-	//
 	// 过期租约 → 无 node chip（崩溃机器的 stale 认领不得滞留）。
 	if err := taskpipeline.SaveTaskState(root, &taskpipeline.TaskState{
 		TaskRef: `feat/expired`, Branch: `feat/expired`, StartedAt: base,
@@ -89,10 +80,6 @@ func TestAggregateFeed_NodeAttribution(t *testing.T) {
 	if got := nodeOf(FeedKindConclusion, `feat/n`); got != stampB.NodeID {
 		t.Errorf("conclusion node = %q, want conclusion stamp", got)
 	}
-	// Legacy unstamped records → empty node, and the WIRE shape is unchanged (no
-	// "node" key after marshal — a Go-level empty string alone would not catch a
-	// dropped omitempty).
-	//
 	// 存量无戳记录 → node 为空，且线上结构不变（marshal 后无 "node" 键——只断言
 	// Go 层空串逮不到 omitempty 被删的情形）。
 	res2, err := AggregateFeed(Options{Root: root2Fixture(t)}, base.Add(5*time.Hour), FeedQuery{})
@@ -113,10 +100,6 @@ func TestAggregateFeed_NodeAttribution(t *testing.T) {
 	}
 }
 
-// root2Fixture builds a second project whose records carry NO stamps (legacy shape).
-// The conclusion line is written DIRECTLY — act.Append would auto-stamp it (that is
-// the event-stamping feature working), and a legacy-record test must bypass it.
-//
 // root2Fixture 构造记录无戳（存量形态）的第二个项目。conclusion 行直接写文件——
 // act.Append 会自动打戳（那正是事件打戳特性在工作），存量记录测试必须绕过它。
 func root2Fixture(t *testing.T) string {
@@ -136,12 +119,6 @@ func root2Fixture(t *testing.T) string {
 	return root
 }
 
-// TestAggregateFeed_SigVerifyEvents: bundle-verify checklog entries (import-side trust
-// verdicts) project into the feed as sig-verify events — severity from the entry's
-// Level (warn/blocked → warn/fail), title from STRUCTURED Meta (verdict + signer short
-// label), node from the entry's stamp (the machine that verified). Unclassifiable
-// Level stays info (severity never escalates by default).
-//
 // TestAggregateFeed_SigVerifyEvents：bundle-verify checklog 条目（导入侧信任判定）
 // 投影成 sig-verify 事件进流——severity 取自条目 Level（warn/blocked → warn/fail），
 // 标题来自结构化 Meta（verdict + signer 短标签），node 取自条目打戳（验签发生的

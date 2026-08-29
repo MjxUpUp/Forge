@@ -1,13 +1,4 @@
-// Package doctor audits the cross-agent forge environment: which agent hosts have
-// forge hooks wired, which forge binary each host's hooks resolve to, and whether
-// those binaries agree on version with the running forge and with each other.
-//
-// Motivation (2026-08 dogfood): version drift between hosts is a recurring real
-// incident class — kimi stuck on 1.28.4 while 1.29.0 shipped, a stray manually-built
-// forge.exe in the npm-global root winning PATHEXT resolution over the run.js shim,
-// stale PATH binaries producing false-positive "README dead link" audits. None of
-// these are visible until a host silently misbehaves; doctor makes them a one-command
-// check.
+// Package doctor audits forge wiring and version consistency across agent hosts.
 //
 // Package doctor 审计跨 agent 的 forge 环境：哪些 agent host 接了 forge hook、各 host
 // 的 hook 解析到哪个 forge 二进制、这些二进制的版本与运行中的 forge 及彼此是否一致。
@@ -33,11 +24,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 )
 
-// Host statuses. "ok" means wired AND version agrees with the running forge;
-// "drift" means wired but version disagrees (the headline finding);
-// "nover" means wired but the binary or its version could not be resolved;
-// "missing" means no forge wiring found for that host.
-//
 // Host 状态。"ok" = 已接线且版本与运行中的 forge 一致；"drift" = 已接线但版本不一致
 // （头条发现）；"nover" = 已接线但二进制或其版本无法解析；"missing" = 该 host 未发现
 // forge 接线。
@@ -81,32 +67,6 @@ type SkillsDriftItem struct {
 }
 
 // SkillsDriftSummary is the skills-distribution section of the doctor report.
-// Counts only actionable states (missing/drift) in Items; linked/copy-in-sync
-// are healthy and only surface as totals. Target-only orphans are excluded —
-// they are usually the user's own non-forge skills and would drown the signal.
-//
-// Error is set when the audit itself could not run (canonical resolve /
-// DriftCheck failure) — zero counts plus a green check would misreport a dead
-// probe as a healthy fleet, the exact silence this section exists to kill.
-// TargetErrors carries per-target partial failures (unreadable dirs etc.) from
-// DriftCheck: the counts are still meaningful, but coverage was not complete.
-//
-// BlindSpots names skill surfaces the drift audit CANNOT see — the reserved
-// names (forge-quality) that install deliberately skips because forge's own
-// skillgen layer manages them. They are absent from the canonical dir, so the
-// canonical×target walk never reaches them, and their target-only signal is
-// excluded from this summary like every orphan — a drifting reserved install is
-// therefore invisible here BY DESIGN. Naming the blind spot keeps the summary
-// honest (a green in-sync line never claims coverage it does not have). Filled
-// by Run (doctor owns the report shape); the text renderer lives in the CLI
-// layer and may not print it yet — the --json output carries it either way.
-//
-// Skipped lists targets NOT audited because the target's agent home does not
-// exist (agent not installed on this machine — M-3, 2026-08-21). Without this
-// gate, `forge doctor` on a single-agent machine reported every canonical skill
-// as missing from every uninstalled target: a wall of unactionable noise that
-// drowned the real gaps. Doctor audits the environment as-installed;
-// `forge skills drift-check` keeps full all-target coverage for the explicit ask.
 //
 // SkillsDriftSummary 是 doctor 报告的 skills 分发节。Items 只收可处置态
 // （missing/drift）；linked/copy-in-sync 健康态仅以总数出现。target-only 孤儿排除
@@ -356,14 +316,6 @@ func hostSpecs() []hostSpec {
 	}
 }
 
-// liveClaudePluginTargets resolves the LIVE forge plugin install(s) claude-code's own
-// registry points at (~/.claude/plugins/installed_plugins.json, schema v2:
-// plugins["forge@forge"][].installPath). Mining stays token-oriented like the rest of
-// doctor — JSON shapes vary and only the path matters. Tokens qualify when they name
-// forge, sit under the cache dir, and actually exist on disk; JSON-escaped doubled
-// backslashes are collapsed. Returns nil (→ full-tree fallback) when the registry is
-// unreadable or names no existing forge path.
-//
 // liveClaudePluginTargets 解析 claude-code 自己的注册表（~/.claude/plugins/
 // installed_plugins.json，schema v2：plugins["forge@forge"][].installPath）指向的
 // 活 forge 插件安装。挖掘保持与 doctor 其余部分同级的 token 导向——JSON 形态多变，
@@ -633,15 +585,6 @@ func auditHost(spec hostSpec, self string, opts Options) HostReport {
 	return r
 }
 
-// expandHookFiles turns a candidate target (file or dir) into the concrete file list to
-// scan. Dirs are walked with the target's depth cap (default defaultScanDepth); walk
-// errors OTHER than not-exist (permissions, locked dirs) are returned so auditHost can
-// surface them in HostReport.Err — a skipped subtree is a coverage gap, not a healthy
-// absence (fix/cleanup-batch, 2026-08-29). File filtering follows the target's mode:
-// extension whitelist by default, basename whitelist when names is set (deep trees).
-// A stat not-exist is still a silent nil (a missing carrier IS the "missing" verdict),
-// as is a stat target that vanished mid-scan.
-//
 // expandHookFiles 把候选目标（文件或目录）展开成待扫描的具体文件列表。目录按目标的
 // 深度上限遍历（默认 defaultScanDepth）；除 not-exist 之外的遍历错误（权限、目录被锁）
 // 会被返回、由 auditHost 上抛进 HostReport.Err——被跳过的子树是覆盖缺口，不是健康
@@ -734,20 +677,6 @@ type binCandidate struct {
 	resolved bool
 }
 
-// scanFile counts lines referencing forge and collects the forge binary tokens they
-// invoke. Line-oriented scanning is format-agnostic across every host's hook
-// schema (nested JSON / flat TOML / shell wrappers) — precision is not needed, the
-// report only has to be right about "wired or not" and "which binary". lookPath is
-// injected (Options.LookPath) so tests control bare-name resolution.
-//
-// Read-failure contract (fix/cleanup-batch, 2026-08-29): a file that exists but
-// cannot be READ (permissions, another process's lock) returns an error shaped
-// "<basename> unreadable: …" so auditHost can put it in HostReport.Err — the
-// "settings.json unreadable" form. Without it, an unreadable carrier scanned as
-// zero commands and was indistinguishable from "no forge wiring" (missing). A
-// not-exist race stays error-free: expandHookFiles already stat-checked the
-// target, and a vanished file IS the missing verdict.
-//
 // scanFile 统计引用 forge 的行数并收集其调用的 forge 二进制 token。按行扫描对各
 // host 的 hook schema（嵌套 JSON/扁平 TOML/shell wrapper）格式无关——不需要精确解析，
 // 报告只需在"接没接"与"哪个二进制"上正确。lookPath 注入（Options.LookPath）让测试
@@ -781,18 +710,6 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 		// 故只认"紧跟在 forge token 后的子命令词位上是 hook/gate"的行——词在任何位置
 		// 出现都不算。否则 plugin 接线坏了但注册表还在的机器会假报 ok（评审 #1 的失效
 		// 场景），bare 词门槛则被 "quality gates" 文案击穿（本轮 E2E 实证）。
-		//
-		// A forge-carrying line is not necessarily wiring: registry/doc lines (kimi
-		// installed.json's "id": "forge", URLs, and descriptions like "Forge
-		// loop-engineering quality gates: …" in codebuddy's known_marketplaces.json) are
-		// metadata/prose. Every host's forge wiring is an invocation of the shape
-		// `forge hook <event>` (--agent variants included; `forge gate <id>` is the
-		// settings layer's accepted equivalent prefix — see the legal-command check in
-		// internal/hooks/settings.go), so only lines with hook/gate in the subcommand
-		// position right after the forge token count — the word appearing anywhere else
-		// doesn't. Otherwise a machine whose plugin hooks broke while the registry stayed
-		// intact false-reports ok (review #1's scenario), and a bare-word gate is defeated
-		// by "quality gates" prose (empirically hit in this round's E2E).
 		if tok, ok := forgeInvocation(ln); ok {
 			cmds++
 			bin, resolved := resolveBin(tok, lookPath)
@@ -845,14 +762,6 @@ func forgeInvocation(line string) (string, bool) {
 	return "", false
 }
 
-// subcommandAt reports whether a legal subcommand sits at a word boundary right after
-// position end in line. JSON/shell separators (quotes, whitespace, commas, colons,
-// equals) between the binary and its argument are skipped; the matched word must also
-// END at a boundary so "gateway"/"hooks" prose doesn't count. Known leniency (accepted,
-// round-3 review): the separator set admits `,=:` (so `forge=hook` counts) and isWordByte
-// excludes `.` (so `forge hook.json` counts) — both contrived for the scanned file
-// types; the empirically observed prose class is rejected.
-//
 // subcommandAt 判定 line 中 end 位之后是否恰好是合法子命令且带词边界。二进制与参数间
 // 的 JSON/shell 分隔符（引号、空白、逗号、冒号、等号）跳过；命中的词还必须在尾部也
 // 有边界——"gateway"/"hooks" 这类文案不算。已知宽容（接受，评审三轮）：分隔集含 `,=:`

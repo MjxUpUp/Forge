@@ -6,14 +6,6 @@ import (
 	"testing"
 )
 
-// TestProtocolRenderConvergence pins the shared protocol.Render* helpers are
-// really wired into the retained renderer (rendered standards present, not
-// bypassed), in the host's own severity style. The cursor arm was removed with
-// buildCursorMDC (dead code, 2026-08-29: Translate stopped writing the .mdc and
-// the skillgen layer renders its own text — the renderer had zero production
-// callers); windsurf's user-level global_rules.md is the remaining Translate-
-// time protocol-section renderer.
-//
 // TestProtocolRenderConvergence 为共享 protocol.Render* helper 在保留的渲染器里
 // 真实接线（有渲染产物，非旁路）钉住，使用本 host 的 severity 风格。cursor 臂随
 // buildCursorMDC 一并移除（死代码，2026-08-29：Translate 早已不写 .mdc、skillgen
@@ -36,9 +28,6 @@ func TestProtocolRenderConvergence(t *testing.T) {
 	}
 	content := string(windsurfData)
 
-	// Rendered standards present (bold names + enforced markers) — the shared
-	// helper is wired in, not bypassed.
-	//
 	// 渲染产物在场（加粗标准名 + enforced 标注）——共享 helper 真实接线、非旁路。
 	if !strings.Contains(content, "**") || !strings.Contains(content, "(enforced: ") {
 		t.Errorf("windsurf 质量标准渲染产物缺失（加粗标准名 + enforced 标注）——共享 helper 可能未接线")

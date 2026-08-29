@@ -38,24 +38,11 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	// Redirect global state root to tmpDir (FORGE_DATA_HOME) to keep init/dashboard
-	// tests from polluting the real ~/.forge (registry projects.json + DataDir
-	// projects/<key>/). Subprocesses (runForge invoking the forge binary) inherit
-	// this env. refactor-data-home commit E: registry unified under FORGE_DATA_HOME.
-	//
 	// 把全局状态根重定向到 tmpDir（FORGE_DATA_HOME），避免 init/dashboard 测试污染真实
 	// ~/.forge（registry projects.json + DataDir projects/<key>/）。子进程（runForge 跑
 	// forge 二进制）继承此 env。refactor-data-home commit E：registry 统一 FORGE_DATA_HOME。
 	os.Setenv("FORGE_DATA_HOME", tmpDir)
 
-	// Isolate Claude plugin detection: force IsClaudePluginInstalled()=false (an empty
-	// CLAUDE_CONFIG_DIR has no plugins/installed_plugins.json). cli tests run init/sync
-	// (including dedupeProjectLevelIfPlugin) without depending on whether the forge
-	// plugin is installed locally — otherwise a locally installed plugin would let init's
-	// dedupe delete settings.local.json, and tests asserting "settings exist" fail
-	// locally but pass in CI (not installed), producing flaky behavior.
-	// Subprocesses (runForge invoking the forge binary) inherit this env.
-	//
 	// 隔离 Claude plugin 检测：强制 IsClaudePluginInstalled()=false（空 CLAUDE_CONFIG_DIR 下
 	// 无 plugins/installed_plugins.json）。cli 测试跑 init/sync（含 dedupeProjectLevelIfPlugin）
 	// 时不依赖本机是否装了 forge plugin——否则本地装了 plugin 会让 init 的 dedupe 删掉
@@ -63,12 +50,6 @@ func TestMain(m *testing.M) {
 	// 子进程（runForge 跑 forge 二进制）继承此 env。
 	os.Setenv("CLAUDE_CONFIG_DIR", tmpDir)
 
-	// Isolate the user HOME for subprocesses: after user-level-assets, init/sync write
-	// user-level assets (~/.codex/AGENTS.md, ~/.cursor/hooks.json, ~/.codeium/...,
-	// ~/.config/opencode/...) and DetectAgents scans user-level install dirs — without
-	// HOME isolation, tests would write into and detect the developer's real home.
-	// Windows uses USERPROFILE, unix HOME; CODEX_HOME is codex's own override.
-	//
 	// 为子进程隔离用户 HOME：user-level-assets 之后 init/sync 会写用户级资产
 	// （~/.codex/AGENTS.md、~/.cursor/hooks.json、~/.codeium/...、
 	// ~/.config/opencode/...），DetectAgents 会扫用户级安装目录——不隔离 HOME，
@@ -111,9 +92,6 @@ func runForge(t *testing.T, dir string, args ...string) (stdout, stderr string, 
 	return output, "", 0
 }
 
-// initProject runs forge init (with the given flags) in dir and fails the test
-// on non-zero exit — the shared boilerplate of every init-based test.
-//
 // initProject 在 dir 跑 forge init（带给定 flags），非零退出即测试失败——所有
 // init 系测试共享的样板。
 func initProject(t *testing.T, dir string, flags ...string) {
@@ -129,15 +107,6 @@ func TestInitCreatesFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	initProject(t, tmpDir, "--mode", "medium")
 
-	// The number of .sh files under DataDir/hooks/ must equal hooks.HookNames() (single
-	// source of truth). Adding/removing a hook only changes HookNames() in settings.go,
-	// and this test follows automatically — to avoid the sync gap of "added a hook but
-	// forgot to update a hardcoded expected count" (we once hand-edited 10 to 11).
-	// History: session-health/test-coverage-check were removed (noise); tool-track was
-	// deleted in 644b142 and restored (task-verify gate depends on its Read records).
-	// user-level-assets: hook reference copies live in the user-level DataDir
-	// (FORGE_DATA_HOME is TestMain-isolated; non-git dir → PathKey).
-	//
 	// DataDir/hooks/ 下的 .sh 数必须等于 hooks.HookNames()（单一真相源）。加/删 hook 只改
 	// settings.go 的 HookNames()，本测试自动跟随——避免"加 hook 后忘改硬编码期望数"的同步漏
 	// （曾因此把 10 手改成 11）。历史：session-health/test-coverage-check 已移除（噪声），
@@ -160,17 +129,12 @@ func TestInitCreatesFiles(t *testing.T) {
 		t.Fatalf("expected %d .sh files in hooks/ (== len(hooks.HookNames())), got %d", want, shCount)
 	}
 
-	// protocol.yml lives in the user-level DataDir (zero-project-write default).
-	//
 	// protocol.yml 在用户级 DataDir（零项目写入默认）。
 	protoFile := filepath.Join(dataDir, "protocol.yml")
 	if _, err := os.Stat(protoFile); err != nil {
 		t.Fatalf("DataDir/protocol.yml not found: %v", err)
 	}
 
-	// Zero project writes: init must leave the project directory untouched — no
-	// .forge/, no .claude/, no AGENTS.md (user-level-assets contract).
-	//
 	// 零项目写入：init 不得动项目目录——无 .forge/、无 .claude/、无 AGENTS.md
 	// （user-level-assets 契约）。
 	for _, name := range []string{".forge", ".claude", "AGENTS.md", ".cursor", ".codex"} {
@@ -182,13 +146,6 @@ func TestInitCreatesFiles(t *testing.T) {
 
 // --------------- Test 5-6 / idempotent / agents: post-init smoke table ---------------
 
-// TestPostInitSmokeCommands merges the per-command exit-0 smoke tests: after
-// init, each command variant must run cleanly (exit 0) and satisfy its row's
-// output assertion. Row semantics preserved one-for-one from the absorbed
-// tests (status smoke, status --json, status --agents, init-twice idempotency).
-// With the project-level pipeline removed, status no longer renders "pending";
-// empty task output is normal, so these stay exit-0 smokes.
-//
 // TestPostInitSmokeCommands 合并逐命令 exit-0 smoke：init 后各命令变体必须干净运行
 // （exit 0）并满足各自行输出断言。行语义逐一保留自被吸收测试（status smoke、
 // status --json、status --agents、二次 init 幂等）。项目级管道删除后 status 不再渲染
@@ -204,8 +161,6 @@ func TestPostInitSmokeCommands(t *testing.T) {
 		{name: "status", initFlags: []string{"--mode", "medium"}, args: []string{"status"}},
 		{name: "status json", initFlags: []string{"--mode", "medium"}, args: []string{"status", "--json"}, wantJSONField: "tasks"},
 		{name: "status agents", initFlags: []string{"--mode", "medium"}, args: []string{"status", "--agents"}, wantIn: "claude-code"},
-		// init twice must both succeed (idempotency).
-		//
 		// 二次 init 必须都成功（幂等）。
 		{name: "init idempotent", initFlags: []string{"--mode", "small"}, args: []string{"init", "--mode", "small"}},
 	}
@@ -236,12 +191,6 @@ func TestPostInitSmokeCommands(t *testing.T) {
 
 // --------------- Test: TestStatusShowsHealthSignal ---------------
 
-// TestStatusShowsHealthSignal pins status integration with project-level quality
-// signals: when completed-task conclusions exist, the status entry point must surface
-// the evidence blind-spot rate and recurring low-score dimensions — to prevent a
-// visibility gap where deterministic signals are computed in forge health but invisible
-// to status (the "where is the project" entry point).
-//
 // TestStatusShowsHealthSignal 钉住 status 接入项目级质量信号：有完成任务结论时，status
 // 主入口必须亮出证据盲区率/复发低分维度——防 deterministic 信号在 forge health 算了但
 // status（"项目在哪"主入口）看不到的可见性缺口。
@@ -249,9 +198,6 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
 	initProject(t, tmpDir, "--mode", "medium")
 
-	// Seed 2 conclusions: 1 Strong + 1 Unverified -> 50% blind-spot rate (triggers the
-	// systemic warning); both carry scope as a low-score dimension.
-	//
 	// 种 2 个结论：1 Strong + 1 Unverified → 盲区率 50%（触发系统性告警）；都带 scope 低分。
 	seed := []act.Conclusion{
 		{TaskRef: `feat/a`, Grade: `A`, Strength: `Strong`, Score: 95, LowDimensions: []string{`scope`}, CompletedAt: time.Now()},
@@ -263,9 +209,6 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 		}
 	}
 
-	// pretty: the quality-signal block, the systemic blind-spot warning, and the scope
-	// recurrence must all appear.
-	//
 	// pretty：质量信号块 + 系统性盲区告警 + scope 复发都必须出现。
 	stdout, _, code := runForge(t, tmpDir, "status")
 	if code != 0 {
@@ -277,8 +220,6 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 		}
 	}
 
-	// json: the health field is present, with blind_spot_rate=0.5 and total_tasks=2.
-	//
 	// json：health 字段在，blind_spot_rate=0.5, total_tasks=2。
 	stdout, _, code = runForge(t, tmpDir, "status", "--json")
 	if code != 0 {
@@ -363,10 +304,6 @@ func TestHelperFunctions(t *testing.T) {
 func TestSystemStatusRequiresForge(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// forge status --system runs system health checks against ~/.forge under the
-	// user home (TestMain-isolated, empty here). Without ~/.forge it must fail
-	// loudly and name the missing dir, not pass silently.
-	//
 	// forge status --system 对用户 home（TestMain 已隔离、此处为空）下的 ~/.forge 跑
 	// 系统级健康检查。没有 ~/.forge 时必须显式失败并点名缺失目录，而非静默通过。
 	out, _, code := runForge(t, tmpDir, "status", "--system")
@@ -381,10 +318,6 @@ func TestSystemStatusRequiresForge(t *testing.T) {
 // --------------- Test: Status without init ---------------
 
 func TestStatusWithoutInit(t *testing.T) {
-	// Hermetic "not a forge project" premise: the package TestMain registry is
-	// shared and accumulates entries from every init test — this test needs an
-	// EMPTY registry, so it gets its own FORGE_DATA_HOME.
-	//
 	// 密封"非 forge 项目"前提：包级 TestMain 的注册表是共享的，会被各 init
 	// 测试累积条目——本测试需要空注册表，故用自己的 FORGE_DATA_HOME。
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
@@ -550,8 +483,6 @@ func TestTaskScoreWorkflow(t *testing.T) {
 			t.Fatalf("forge task gate %s failed: %s", g, stdout)
 		}
 	}
-	// task-complete has a hard ReviewPassed precondition: run review pass first to satisfy it.
-	//
 	// task-complete 的 ReviewPassed 硬前置：先 review pass 满足之。
 	if stdout, _, code = runForge(t, tmpDir, "review", "pass"); code != 0 {
 		t.Fatalf("forge review pass failed: %s", stdout)
@@ -607,10 +538,6 @@ func TestInitWithAgents(t *testing.T) {
 	tmpDir := t.TempDir()
 	initProject(t, tmpDir, "--mode", "medium", "--agents", "cursor,copilot")
 
-	// Cursor registers at user level (~/.cursor/hooks.json) — the project-level
-	// .cursor/rules/forge-quality.mdc is gone (zero-project-write). HOME is
-	// TestMain-isolated.
-	//
 	// Cursor 在用户级注册（~/.cursor/hooks.json）——项目级
 	// .cursor/rules/forge-quality.mdc 已不存在（零项目写入）。HOME 已被 TestMain 隔离。
 	home := os.Getenv("HOME")
@@ -623,9 +550,6 @@ func TestInitWithAgents(t *testing.T) {
 		t.Error("cursor user-level hooks.json missing forge hook wiring")
 	}
 
-	// Zero project writes for both agents: no .cursor/ (cursor guidance moved to
-	// the skillgen/user level), no .github/ (copilot translator is a no-op).
-	//
 	// 两个 agent 都零项目写入：无 .cursor/（cursor guidance 移到 skillgen/用户级），
 	// 无 .github/（copilot translator 是 no-op）。
 	for _, name := range []string{".cursor", ".github"} {

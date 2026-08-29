@@ -7,13 +7,6 @@ import (
 	"testing"
 )
 
-// guardTestSource is the synthetic guard test source written into the temp
-// project's internal/ci/. Standard library only (no yaml.v3) so the temp
-// project is self-contained and compiles independently under go test. It
-// asserts release.yml contains goreleaser `needs: test` — equivalent to the
-// core NeedsChain assertion of the real internal/ci/release_workflow_test.go
-// (guarding the source of CI bypass-via-needs-chain).
-//
 // guardTestSource 是写入临时项目 internal/ci/ 的合成守护测试源码。标准库 only
 // （不引入 yaml.v3），使临时项目自包含、go test 能独立编译。断言 release.yml 含
 // goreleaser `needs: test`——等价于真实 internal/ci/release_workflow_test.go 的
@@ -38,19 +31,6 @@ func TestNeedsChain(t *testing.T) {
 }
 `
 
-// setupGuardProject creates a temp forge project containing
-// .github/workflows/release.yml plus a synthetic internal/ci guard test, so
-// when the hook runs `go test ./internal/ci/` it has a real target.
-//
-// Key: it never touches the repo's real release.yml. `go test ./... -race`
-// schedules internal/e2e and internal/ci concurrently (default -p=GOMAXPROCS);
-// if this test mutated the real release.yml, the three ci-package tests
-// reading the same file could occasionally observe a broken state → CI
-// flaky. Isolating with a temp project eliminates the root cause.
-//
-// intact=true: needs chain intact (goreleaser needs: test) → guard test green.
-// intact=false: needs chain broken (needs: test-broken-by-e2e) → guard test red.
-//
 // setupGuardProject 建一个临时 forge 项目，含 .github/workflows/release.yml +
 // 合成的 internal/ci 守护测试，让 hook 跑 `go test ./internal/ci/` 时有真实目标。
 //

@@ -57,10 +57,7 @@ func TestParse_RejectsMalformed(t *testing.T) {
 	}
 }
 
-// TestString_OrderMatchesCompare pins the property consumers rely on when ts_hlc
-// strings are used as sort keys (sync-convergence §2 merge path): for ALL
-// non-negative values, string order == Compare order — including the wall-width
-// boundary (13→14 digits) and logical values past 6 digits.
+// TestString_OrderMatchesCompare pins the property consumers rely on when ts_hlc strings are used as sort keys (sync-convergence §2 merge path): for ALL non-negative values, string order == Compare order — including the wall-width boundary (13→14 digits) and logical values past 6 digits.
 //
 // TestString_OrderMatchesCompare 钉死消费方把 ts_hlc 字符串当排序键时依赖的性质
 // （sync-convergence §2 合并路径）：所有非负值上字符串序 == Compare 序——含 wall
@@ -87,9 +84,7 @@ func TestString_OrderMatchesCompare(t *testing.T) {
 	}
 }
 
-// TestNow_LogicalSaturationAdvancesWall covers the int32 overflow path: on a frozen
-// wall clock, Logical must NEVER wrap negative (that would silently break
-// monotonicity AND produce unparsable strings) — saturation advances Wall instead.
+// TestNow_LogicalSaturationAdvancesWall covers the int32 overflow path: on a frozen wall clock, Logical must NEVER wrap negative (that would silently break monotonicity AND produce unparsable strings) — saturation advances Wall instead.
 //
 // TestNow_LogicalSaturationAdvancesWall 覆盖 int32 溢出路径：墙钟冻结时 Logical
 // 绝不回绕为负（那会静默破坏单调性且产出不可解析字符串）——饱和改为推进 Wall。
@@ -110,8 +105,7 @@ func TestNow_LogicalSaturationAdvancesWall(t *testing.T) {
 	}
 }
 
-// TestObserve_EqualWallTakesMaxPlusOne directly covers the trickiest recv branch:
-// all walls equal (incl. local wall BEHIND last) → logical = max(local, remote)+1.
+// TestObserve_EqualWallTakesMaxPlusOne directly covers the trickiest recv branch: all walls equal (incl. local wall BEHIND last) → logical = max(local, remote)+1.
 //
 // TestObserve_EqualWallTakesMaxPlusOne 直接覆盖最 tricky 的 recv 分支：三方墙钟
 // 相等（含本地墙钟落后于 last）→ logical = max(本地, 远端)+1。
@@ -139,8 +133,6 @@ func TestTimestamp_ZeroIsUsable(t *testing.T) {
 	}
 }
 
-// fixedClock returns a Clock with a controllable wall source (millis).
-//
 // fixedClock 返回墙钟源可控的 Clock（毫秒）。
 func fixedClock(wall *int64) *Clock {
 	return NewClock(func() time.Time { return time.UnixMilli(*wall) })

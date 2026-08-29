@@ -1,11 +1,5 @@
 package cli
 
-// task_mine_test.go — the worker-facing `task mine` view (empty JSON shape,
-// --blocked pending deps, --all-projects grouping, zombie annotation, the
-// render-reconcile of completed-but-offered tasks) plus its in-process
-// advisers (unclaimed-assignment advisory, cross-repo dep annotation).
-// Migrated from task_assignment_test.go when that file was split by domain.
-//
 // task_mine_test.go —— 工作方视角的 `task mine` 视图（空 JSON 形态、--blocked
 // 待交付依赖、--all-projects 分组、僵尸标注、已完成但悬置 offered 的渲染
 // reconcile）及其进程内 adviser（未认领分派 advisory、跨仓依赖标注）。
@@ -24,8 +18,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// TestTaskMine_EmptyReturnsArray: mine with no matching delegations returns a JSON array
-// (never nil/null) so downstream JSON consumers do not need a null special-case.
+// TestTaskMine_EmptyReturnsArray: mine with no matching delegations returns a JSON array (never nil/null) so downstream JSON consumers do not need a null special-case.
 //
 // TestTaskMine_EmptyReturnsArray：mine 无匹配分派时返回 JSON 数组（绝非 nil/null），
 // 下游 JSON 消费者无需 null 特例处理。
@@ -41,10 +34,7 @@ func TestTaskMine_EmptyReturnsArray(t *testing.T) {
 	}
 }
 
-// TestTaskMine_BlockedShowsPendingDeps: mine --blocked lists only tasks whose DependsOn is not
-// fully delivered, with the pending upstream refs in pending_deps. After the upstream is delivered
-// the task drops out of --blocked. This is the worker-facing view of the same PendingDependencies
-// the gate uses — mine and the gate cannot disagree on "blocked".
+// TestTaskMine_BlockedShowsPendingDeps: mine --blocked lists only tasks whose DependsOn is not fully delivered, with the pending upstream refs in pending_deps.
 //
 // TestTaskMine_BlockedShowsPendingDeps：mine --blocked 只列 DependsOn 未全交付的 task，pending_deps 带未
 // 交付上游 ref。上游交付后该 task 退出 --blocked。这是工作方视角看与门禁相同的 PendingDependencies——
@@ -107,9 +97,7 @@ func TestTaskMine_BlockedAnnotatesDepStatus(t *testing.T) {
 	}
 }
 
-// TestTaskMine_AllProjects: --all-projects scans every registered project (design §8) and groups by
-// project. Two projects each delegate to kimi; the global view lists both with a project label and
-// never auto-resumes. FORGE_DATA_HOME is shared so both forge-init registrations land in one registry.
+// TestTaskMine_AllProjects: --all-projects scans every registered project (design §8) and groups by project.
 //
 // TestTaskMine_AllProjects：--all-projects 扫描每个已登记 project（设计§8）并按 project 分组。两个
 // project 各分派给 kimi；全局视图列两组带 project 标签且绝不自动 resume。共享 FORGE_DATA_HOME 使两次
@@ -138,9 +126,7 @@ func TestTaskMine_AllProjects(t *testing.T) {
 	}
 }
 
-// TestTaskMine_MultipleDepsPendingList: with two upstream deps where one is delivered and the other
-// is not, mine --blocked must list only the still-pending one in pending_deps — the delivered
-// upstream must not appear. This guards PendingDependencies against reporting already-delivered refs.
+// TestTaskMine_MultipleDepsPendingList: with two upstream deps where one is delivered and the other is not, mine --blocked must list only the still-pending one in pending_deps — the delivered upstream must not appear.
 //
 // TestTaskMine_MultipleDepsPendingList：两个上游依赖中一个已交付一个未交付时，mine --blocked 的
 // pending_deps 必须只列仍未交付的那个——已交付的上游不应出现。守卫 PendingDependencies 不误报已交付 ref。
@@ -268,10 +254,6 @@ func TestMineRendersCompletedNotOffered(t *testing.T) {
 	dir := setupDelegateProject(t)
 	saveCompletedOffered(t, dir, `feat/done-suspended`, `kimi`)
 	saveOfferedAgo(t, dir, `feat/still-pending`, `kimi`, time.Now())
-	// Reopened control (review M1): gates passed + delivered + Reopen → claimed with a rework
-	// reason. IsComplete() stays true across the reopen by design, but mine must render the REAL
-	// collaboration status (claimed), not `complete` — a stuck rework must not masquerade as done.
-	//
 	// Reopen 对照（review M1）：门禁全过 + delivered + Reopen → 带返工理由的 claimed。
 	// IsComplete() 跨 reopen 按设计仍为 true，但 mine 必须渲染真实协作状态（claimed）而非
 	// `complete`——卡住的返工不得伪装成已完成。
@@ -337,8 +319,6 @@ func TestMineRendersCompletedNotOffered(t *testing.T) {
 		if idx < 0 {
 			t.Fatalf(`应含 feat/done-suspended 行, got:`+"\n"+`%s`, out)
 		}
-		// Extend back to the line start so the status prefix (`complete  [`) is in view.
-		//
 		// 向前扩到行首，使状态前缀（`complete  [`）进入视野。
 		start := strings.LastIndexByte(out[:idx], '\n') + 1
 		line := out[start:]
@@ -354,10 +334,7 @@ func TestMineRendersCompletedNotOffered(t *testing.T) {
 	})
 }
 
-// TestAdviseUnclaimedAssignment pins the P2 task-implement advisory: gating a task offered to
-// ANOTHER agent that was never claimed emits an ADVISORY checklog trail (never blocks); the
-// assignee gating their own task, a claimed task, an undetectable current agent, and a failed
-// gate all stay silent.
+// TestAdviseUnclaimedAssignment pins the P2 task-implement advisory: gating a task offered to ANOTHER agent that was never claimed emits an ADVISORY checklog trail (never blocks); the assignee gating their own task, a claimed task, an undetectable current agent, and a failed gate all stay silent.
 //
 // TestAdviseUnclaimedAssignment 钉住 P2 task-implement advisory：给「分派给另一个 agent 且
 // 从未认领」的任务过门禁会留下 ADVISORY checklog 痕迹（绝不阻断）；受派方本人过门禁、已
@@ -429,11 +406,6 @@ func TestAdviseUnclaimedAssignment(t *testing.T) {
 	})
 }
 
-// writeCrossRepoDepState writes one task state file into the
-// FORGE_DATA_HOME-relative data dir of the given workspace member key — the
-// on-disk shape taskpipeline.LoadDepState resolves a key:ref dep to (same
-// fixture discipline as taskpipeline/depref_test.go).
-//
 // writeCrossRepoDepState 往指定 workspace 成员 key 的 DataDir（相对
 // FORGE_DATA_HOME）写一个 task state 文件——即 taskpipeline.LoadDepState 解析
 // key:ref 依赖到的磁盘形态（与 taskpipeline/depref_test.go 同款夹具纪律）。
@@ -452,13 +424,7 @@ func writeCrossRepoDepState(t *testing.T, home, key string, s *taskpipeline.Task
 	}
 }
 
-// TestAnnotateDep_CrossRepoResolves pins the cross-repo fix (fix/cleanup-batch,
-// 2026-08-29): a key:ref dependency resolves via taskpipeline.LoadDepState
-// (mirroring task_health.go's lookupState) instead of reading as forever-missing
-// — the foreign task can never appear in this repo's byRef index, so before the
-// fix a live cross-repo dep rendered "missing" and hid where the worker is
-// actually blocked. Failure shapes (unknown key / vanished target) stay
-// conservatively "missing", same as the gate's PendingDependencies.
+// TestAnnotateDep_CrossRepoResolves pins the cross-repo fix (fix/cleanup-batch, 2026-08-29): a key:ref dependency resolves via taskpipeline.LoadDepState (mirroring task_health.go's lookupState) instead of reading as forever-missing — the foreign task can never appear in this repo's byRef index, so before the fix a live cross-repo dep rendered "missing" and hid where the worker is actually blocked.
 //
 // TestAnnotateDep_CrossRepoResolves 钉住跨仓修复（fix/cleanup-batch，
 // 2026-08-29）：key:ref 依赖经 taskpipeline.LoadDepState 解析（镜像
@@ -471,8 +437,6 @@ func TestAnnotateDep_CrossRepoResolves(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, home)
 	root := t.TempDir()
 
-	// Cross-repo member bb0000000002: a delivered delegated dep and a bare WIP one.
-	//
 	// 跨仓成员 bb0000000002：一个已交付的分派依赖 + 一个普通在途依赖。
 	writeCrossRepoDepState(t, home, `bb0000000002`,
 		&taskpipeline.TaskState{TaskRef: `b-done`, Assignment: &taskpipeline.Assignment{Status: taskpipeline.AssignDelivered}})
@@ -481,8 +445,6 @@ func TestAnnotateDep_CrossRepoResolves(t *testing.T) {
 	byRef := map[string]*taskpipeline.TaskState{} // 本仓索引为空：跨仓 ref 永不命中
 	total := len(taskpipeline.DefaultGates())
 
-	// Delivered cross-repo dep → its Assignment.Status, not "missing".
-	//
 	// 已交付的跨仓依赖 → 其 Assignment.Status，而非 "missing"。
 	if st, _, tot := annotateDep(root, `bb0000000002:b-done`, byRef); st != taskpipeline.AssignDelivered {
 		t.Errorf(`cross-repo delivered: status = %q, want %q（跨仓 ref 不得恒 missing）`, st, taskpipeline.AssignDelivered)
@@ -490,8 +452,6 @@ func TestAnnotateDep_CrossRepoResolves(t *testing.T) {
 		t.Errorf(`gate total = %d, want %d`, tot, total)
 	}
 
-	// In-flight cross-repo dep → incomplete with gate progress, not "missing".
-	//
 	// 在途跨仓依赖 → incomplete 带门禁进度，而非 "missing"。
 	if st, passed, _ := annotateDep(root, `bb0000000002:b-wip`, byRef); st != `incomplete` {
 		t.Errorf(`cross-repo wip: status = %q, want "incomplete"`, st)
@@ -499,9 +459,6 @@ func TestAnnotateDep_CrossRepoResolves(t *testing.T) {
 		t.Errorf(`cross-repo wip: gate passed = %d, want 0`, passed)
 	}
 
-	// Conservative failure shapes stay "missing": unknown key, vanished target,
-	// and a same-repo ref absent from the index (regression guard).
-	//
 	// 保守失败形态保持 "missing"：key 未知、目标消失、以及不在索引中的本仓 ref
 	// （回归守卫）。
 	for _, ref := range []string{`cc0000000003:anything`, `bb0000000002:b-ghost`, `local-ghost`} {
@@ -510,8 +467,6 @@ func TestAnnotateDep_CrossRepoResolves(t *testing.T) {
 		}
 	}
 
-	// Same-repo index path unchanged: an indexed predecessor annotates as before.
-	//
 	// 本仓索引路径不变：索引中的前序依赖照旧标注。
 	byRef[`local-wip`] = &taskpipeline.TaskState{TaskRef: `local-wip`}
 	if st, _, _ := annotateDep(root, `local-wip`, byRef); st != `incomplete` {

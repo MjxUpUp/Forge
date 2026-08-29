@@ -1,14 +1,4 @@
-// cache.go — fingerprint-gated read cache for the pulse panel. Every poll cycle (30s)
-// used to re-read and re-parse ALL sources (task states / checklog+toollog archives /
-// act conclusions / eval runs) across every project; the `since` param only filtered
-// in memory after the full load. This cache reloads a source only when the fingerprint
-// of its underlying files (path+mtime+size) changes — stat calls are cheap, JSON parsing
-// is the expensive part.
-//
-// Crucially the cache sits at the DATA-LOAD layer, not the projection layer: zombie
-// detection and severity are time-dependent (IsZombie(now)), so projections still run
-// fresh on every request from the cached raw data. Caching projected events would
-// freeze zombie escalation — a task turns zombie precisely when NOTHING changes on disk.
+// cache.go — fingerprint-gated read cache for the pulse panel.
 //
 // cache.go —— pulse 面板的指纹门控读缓存。此前每个轮询周期（30s）都会把全部项目的
 // 所有源（task state / checklog+toollog 归档 / act 结论 / eval run）重读重解析一遍，
@@ -35,10 +25,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// projectData is the parsed raw source set of one project root. Derived skillseval
-// results (passive/active counts, effectiveness) are computed lazily on first skills
-// request — feed/stats/projects polls never pay for them.
-//
 // projectData 是一个项目根的已解析原始源集。skillseval 派生结果（被动/主动计数、
 // 成效）在首个 skills 请求时才惰性计算——feed/stats/projects 轮询永不为此付费。
 type projectData struct {
@@ -52,9 +38,6 @@ type projectData struct {
 	effs       []skillseval.SkillEffectiveness
 }
 
-// derived lazily memoizes the skillseval aggregations. They are pure functions of the
-// same files the fingerprint covers, so one fingerprint gates both raw and derived data.
-//
 // derived 惰性记忆 skillseval 聚合。它们是指纹所覆盖文件的纯函数，故同一指纹同时
 // 门控原始与派生数据。
 func (d *projectData) derived(root string) {
@@ -73,8 +56,6 @@ func (d *projectData) derived(root string) {
 	})
 }
 
-// skillEvalData is the cached per-skill eval snapshot (runs + baseline + decisions).
-//
 // skillEvalData 是缓存的单 skill eval 快照（runs + baseline + decisions）。
 type skillEvalData struct {
 	runs      []skillseval.EvalRun
@@ -82,11 +63,6 @@ type skillEvalData struct {
 	decisions []skillsdecisions.SkillDecision
 }
 
-// pulseCache is the process-wide cache. The dashboard serves one local user, so a
-// single shared instance is enough; keys are absolute paths (project root /
-// canonical|evalDir|skill), which keeps test fixtures (unique t.TempDir) isolated.
-// loadCounts counts real reloads — tests assert cache hits through it.
-//
 // pulseCache 是进程级缓存。看板只服务一个本地用户，单个共享实例足够；键为绝对路径
 // （项目根 / canonical|evalDir|skill），测试夹具（唯一 t.TempDir）天然隔离。
 // loadCounts 统计真实重载次数——测试经它断言缓存命中。
@@ -99,9 +75,6 @@ type pulseCache struct {
 	loadCounts map[string]int // 观测点：key（root 或 skill key）→ 真实加载次数
 }
 
-// sharedPulseCache backs all pulse handlers (they are constructed per-request as plain
-// funcs, so the cache must live at package level).
-//
 // sharedPulseCache 支撑全部 pulse handler（它们是按请求构造的纯函数，缓存只能挂在
 // 包级）。
 var sharedPulseCache = newPulseCache()
@@ -116,9 +89,6 @@ func newPulseCache() *pulseCache {
 	}
 }
 
-// stampFile appends a path+mtime+size stamp of path to b; a missing file stamps as
-// "path!absent" so its later APPEARANCE also changes the fingerprint.
-//
 // stampFile 把 path 的 路径+mtime+大小 指纹写入 b；缺失文件记为 "path!absent"，使其
 // 之后的「出现」同样改变指纹。
 func stampFile(b *strings.Builder, path string) {
@@ -136,9 +106,6 @@ func stampFile(b *strings.Builder, path string) {
 	b.WriteByte(';')
 }
 
-// projectFingerprint stamps every file a project's aggregates read: DataDir/tasks/*.json,
-// checklog*.jsonl + toollog*.jsonl (active + archives), act/conclusions.jsonl.
-//
 // projectFingerprint 给项目聚合读取的全部文件打指纹：DataDir/tasks/*.json、
 // checklog*.jsonl + toollog*.jsonl（active + 归档）、act/conclusions.jsonl。
 func projectFingerprint(root string) string {
@@ -166,11 +133,6 @@ func projectFingerprint(root string) string {
 	return b.String()
 }
 
-// loadProjectData builds the raw source set of one project, mirroring the per-source
-// failure semantics of the former direct loads: a ListTaskStates error is fatal (feed
-// turns it into a 500), checklog / act failures degrade to empty (one broken source
-// must not blank the panel).
-//
 // loadProjectData 构建单项目的原始源集，沿用此前直接加载的单源失败语义：
 // ListTaskStates 错误致命（feed 转 500），checklog / act 失败降级为空（一个坏源
 // 不应让整面板空白）。
@@ -191,9 +153,6 @@ func loadProjectData(root string) (*projectData, error) {
 	return d, nil
 }
 
-// projectData returns the cached source set of pr, reloading only when the fingerprint
-// changed.
-//
 // projectData 返回 pr 的缓存源集，仅指纹变化时重载。
 func (c *pulseCache) projectData(pr pulseRoot) (*projectData, error) {
 	fp := projectFingerprint(pr.root)
@@ -214,10 +173,6 @@ func (c *pulseCache) projectData(pr pulseRoot) (*projectData, error) {
 	return d, nil
 }
 
-// skillFingerprint stamps the three files one skill's detail view reads: runs jsonl,
-// baselines.json (shared across skills — any skill's baseline change invalidates all),
-// decisions.md.
-//
 // skillFingerprint 给单 skill 详情视图读取的三个文件打指纹：runs jsonl、
 // baselines.json（跨 skill 共享——任何 skill 的 baseline 变更使全部失效）、decisions.md。
 func skillFingerprint(canonical, evalDir, skill string) string {
@@ -232,10 +187,6 @@ func skillFingerprint(canonical, evalDir, skill string) string {
 	return b.String()
 }
 
-// loadSkillEval reads one skill's eval snapshot; per-file failures degrade to empty,
-// mirroring LoadSkillDetail's former semantics (missing runs/baselines/decisions are
-// null sections, never errors).
-//
 // loadSkillEval 读单 skill 的 eval 快照；单文件失败降级为空，沿用 LoadSkillDetail
 // 此前的语义（runs/baselines/decisions 缺失是 null 段落，绝不报错）。
 func loadSkillEval(canonical, evalDir, skill string) *skillEvalData {
@@ -256,10 +207,6 @@ func loadSkillEval(canonical, evalDir, skill string) *skillEvalData {
 	return d
 }
 
-// skillEval returns the cached eval snapshot of one skill, reloading only on fingerprint
-// change. The caller must have validated skill (skillsfm.IsValidSkillName) — the key and
-// the file paths are built from it.
-//
 // skillEval 返回单 skill 的缓存 eval 快照，仅指纹变化时重载。调用方须先校验 skill
 // （skillsfm.IsValidSkillName）——缓存键与文件路径都由它拼出。
 func (c *pulseCache) skillEval(canonical, evalDir, skill string) *skillEvalData {
@@ -279,8 +226,6 @@ func (c *pulseCache) skillEval(canonical, evalDir, skill string) *skillEvalData 
 	return d
 }
 
-// loadCount reports how many real loads happened for key (test observation point).
-//
 // loadCount 报告 key 发生了几次真实加载（测试观测点）。
 func (c *pulseCache) loadCount(key string) int {
 	c.mu.Lock()

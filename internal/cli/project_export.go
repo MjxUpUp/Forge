@@ -13,10 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// project_export.go — `forge project export`: pack the project's portable records
-// into a checksummed tar.gz bundle. The file list comes from projectsync's allowlist
-// (default-deny); sensitive stores are opt-in via --include.
-//
 // project_export.go —— `forge project export`：把项目可移植记录打包成带校验和的
 // tar.gz bundle。文件清单来自 projectsync 的 allowlist（默认拒绝）；敏感 store
 // 经 --include 显式选入。
@@ -103,10 +99,6 @@ func runProjectExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`落盘 %s 失败: %w`, absOut, rerr)
 	}
 
-	// Sign the bundle (node-identity.md §3): the .sig sidecar lets the importing
-	// machine verify provenance against its trust store. Signing is unconditional —
-	// cheap, and verification stays the importer's policy decision.
-	//
 	// 签名 bundle（node-identity.md §3）：.sig sidecar 让导入侧能对照 trust store
 	// 验证来源。签名无条件做——便宜；验不验是导入侧的策略决定。
 	sigPath, signed, serr := writeBundleSigRespectingPolicy(absOut)
@@ -131,8 +123,6 @@ func runProjectExport(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// exportOrigin builds the manifest provenance block for this machine.
-//
 // exportOrigin 构造本机的 manifest 溯源块。
 func exportOrigin(root string) (projectsync.Origin, error) {
 	key, err := forgedata.Key(root)
@@ -159,9 +149,6 @@ func exportOrigin(root string) (projectsync.Origin, error) {
 	return origin, nil
 }
 
-// cleanVersion strips the ldflags decoration ("1.36.0 (commit: .., built: ..)")
-// down to the bare version for the manifest.
-//
 // cleanVersion 把 ldflags 装饰（"1.36.0 (commit: .., built: ..)"）剥成裸版本号
 // 进 manifest。
 func cleanVersion(v string) string {

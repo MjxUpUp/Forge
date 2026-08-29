@@ -7,15 +7,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// TestTaskStart_TTLFlagPersists (#6, design §3/§9 --ttl): --ttl on task start persists into
-// state.TTL, and omitting it leaves the zero value (backward-compatible fallback to the global 7d
-// constant via health.effectiveTTL). Pins the CLI write side of the per-task TTL override — the
-// read side is covered by taskpipeline.TestEffectiveTTL / TestIsOfferedZombie_PerTaskTTL.
-//
-// LoadTaskState takes the PROJECT root (the dir), not a data dir: its dataHome(root) runs
-// forgedata.DataDirFor(root) itself, so passing an already-resolved projects/<key> path would
-// double-wrap. The subprocess (runForge) and this load both derive from the same project dir,
-// hence the same projects/<key>/tasks/<sanitized-ref>.json.
+// TestTaskStart_TTLFlagPersists (#6, design §3/§9 --ttl): --ttl on task start persists into state.TTL, and omitting it leaves the zero value (backward-compatible fallback to the global 7d constant via health.effectiveTTL).
 //
 // TestTaskStart_TTLFlagPersists（#6，设计 §3/§9 --ttl）：task start 的 --ttl 持久化进 state.TTL，
 // 不带时留零值（经 health.effectiveTTL 向后兼容回落全局 7d 常量）。钉住 per-task TTL 覆盖的 CLI
@@ -37,9 +29,6 @@ func TestTaskStart_TTLFlagPersists(t *testing.T) {
 		t.Errorf("state.TTL 应持久化 24h, got=%v want=%v", state.TTL, want)
 	}
 
-	// Omitting --ttl leaves TTL at zero — backward-compatible global fallback (health.effectiveTTL
-	// returns the 7d constant for a zero TTL, so legacy tasks behave exactly as before).
-	//
 	// 不带 --ttl 时 TTL 留零值——向后兼容回落全局（health.effectiveTTL 对零 TTL 返回 7d 常量，
 	// 故 legacy 任务行为完全不变）。
 	if out, _, code := runForge(t, dir, "task", "start", "--ref", "feat/no-ttl", "--title", "no ttl"); code != 0 {

@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// TestCheckSkillsManifest_Missing: a missing manifest should produce 1 warning (prompting the user to install).
-//
 // TestCheckSkillsManifest_Missing：无 manifest 应产 1 warning（提示用户 install）。
 func TestCheckSkillsManifest_Missing(t *testing.T) {
 	var e, w int
@@ -17,8 +15,6 @@ func TestCheckSkillsManifest_Missing(t *testing.T) {
 	}
 }
 
-// TestCheckSkillsManifest_Present: a valid manifest should be clean (no err/warn).
-//
 // TestCheckSkillsManifest_Present：合法 manifest 应 clean（无 err/warn）。
 func TestCheckSkillsManifest_Present(t *testing.T) {
 	home := t.TempDir()
@@ -33,8 +29,6 @@ func TestCheckSkillsManifest_Present(t *testing.T) {
 	}
 }
 
-// TestCheckSkillsManifest_Corrupt: corrupt JSON should produce 1 error.
-//
 // TestCheckSkillsManifest_Corrupt：损坏 JSON 应产 1 error。
 func TestCheckSkillsManifest_Corrupt(t *testing.T) {
 	home := t.TempDir()
@@ -55,12 +49,6 @@ func mustMkdir(t *testing.T, err error) {
 	}
 }
 
-// TestCheckGlobalForge_RealLayout pins the post-refactor-data-home layout:
-// checks cover ~/.forge/projects/ (per-project runtime state) and
-// ~/.forge/skills-cache/ (embedded skills) — the previously checked
-// pipeline-templates/hooks/bin dirs were never created by any code path and
-// produced unfixable warnings.
-//
 // TestCheckGlobalForge_RealLayout 钉住 refactor-data-home 后的真实布局：
 // 检查 ~/.forge/projects/（per-project runtime state）与 ~/.forge/skills-cache/
 // （embedded skills）——此前检查的 pipeline-templates/hooks/bin 无任何代码创建，

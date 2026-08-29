@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// windsurfHooksPathUnder joins the user-level hooks.json path under an isolated home.
-//
 // windsurfHooksPathUnder 拼出隔离 home 下的 user-level hooks.json 路径。
 func windsurfHooksPathUnder(home string) string {
 	return filepath.Join(home, ".codeium", "windsurf", "hooks.json")
@@ -137,10 +135,7 @@ func TestStripWindsurfHooksUserLevel(t *testing.T) {
 	}
 }
 
-// TestWindsurfTranslator_MergePreservesUnknownFields pins the raw-merge fix: user
-// hook entries carrying fields the typed windsurfHookEntry struct does not
-// declare (powershell, working_directory) must survive Translate with values
-// intact — a typed round-trip silently dropped them.
+// TestWindsurfTranslator_MergePreservesUnknownFields pins the raw-merge fix: user hook entries carrying fields the typed windsurfHookEntry struct does not declare (powershell, working_directory) must survive Translate with values intact — a typed round-trip silently dropped them.
 //
 // TestWindsurfTranslator_MergePreservesUnknownFields 钉死 raw-merge 修复：携带
 // 类型化 windsurfHookEntry 未声明字段（powershell、working_directory）的用户
@@ -195,10 +190,7 @@ func TestWindsurfTranslator_MergePreservesUnknownFields(t *testing.T) {
 	}
 }
 
-// TestWindsurfHooks_OnlyLegalCascadeEvents pins the event-name fix: Cascade's
-// official hook roster has NO session_start/session_end — the SessionStart group
-// hangs on pre_user_prompt and the Stop group on post_cascade_response. Any
-// session_* event in the generated wiring would never fire.
+// TestWindsurfHooks_OnlyLegalCascadeEvents pins the event-name fix: Cascade's official hook roster has NO session_start/session_end — the SessionStart group hangs on pre_user_prompt and the Stop group on post_cascade_response.
 //
 // TestWindsurfHooks_OnlyLegalCascadeEvents 钉死事件名修复：Cascade 官方 hook
 // 名册没有 session_start/session_end——SessionStart 组挂 pre_user_prompt、
@@ -234,9 +226,7 @@ func TestWindsurfHooks_OnlyLegalCascadeEvents(t *testing.T) {
 		[]string{"pre_user_prompt", "post_cascade_response"}, nil, "")
 }
 
-// TestWindsurfGlobalRules_ConditionalPreamble pins the conditional-activation
-// preamble: global_rules.md is loaded by Cascade in EVERY workspace, so the
-// forge section must state it applies only to forge-initialized projects.
+// TestWindsurfGlobalRules_ConditionalPreamble pins the conditional-activation preamble: global_rules.md is loaded by Cascade in EVERY workspace, so the forge section must state it applies only to forge-initialized projects.
 //
 // TestWindsurfGlobalRules_ConditionalPreamble 钉死条件激活前置：global_rules.md
 // 被 Cascade 在每个 workspace 加载，forge 段必须声明仅对已 forge init 的项目

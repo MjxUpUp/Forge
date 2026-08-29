@@ -4,9 +4,7 @@ import (
 	"testing"
 )
 
-// TestSourceForCheck pins down default source inference: checks emitted by hook/gate code are deterministic,
-// task-verify gate is semantically advisory (agent self-check) and thus agent-claim, and unknown checks default
-// to deterministic (so future hook record points are not misclassified as agent self-report).
+// TestSourceForCheck pins down default source inference.
 //
 // TestSourceForCheck 锁定默认来源推断：hook/gate 代码产生的检查归 deterministic，
 // task-verify gate 语义上是 advisory（agent 自检）归 agent-claim，未知检查默认
@@ -30,8 +28,7 @@ func TestSourceForCheck(t *testing.T) {
 	}
 }
 
-// TestRecordSetsSourceDefault verifies Record's fallback: when the caller does not explicitly set Source,
-// it is inferred from CheckName and written to disk. This is the key reason legacy record points can join the evidence chain without per-point migration.
+// TestRecordSetsSourceDefault verifies Record's fallback: when the caller does not explicitly set Source, it is inferred from CheckName and written to disk.
 //
 // TestRecordSetsSourceDefault 验证 Record 的兜底：调用方未显式标 Source 时，
 // 按 CheckName 推断写入磁盘。这是历史记录点无需逐个改造即可进证据链的关键。
@@ -58,8 +55,7 @@ func TestRecordSetsSourceDefault(t *testing.T) {
 	}
 }
 
-// TestBuildEvidenceChain_BucketsAndLegacyFallback verifies bucketing + legacy fallback:
-// entries with explicit Source are bucketed by the label; old entries with empty Source are bucketed after fallback via SourceForCheck.
+// TestBuildEvidenceChain_BucketsAndLegacyFallback verifies bucketing + legacy fallback: entries with explicit Source are bucketed by the label; old entries with empty Source are bucketed after fallback via SourceForCheck.
 //
 // TestBuildEvidenceChain_BucketsAndLegacyFallback 验证分桶 + 旧数据兜底：
 // 显式标 Source 的条目按标注分桶，空 Source 的旧条目按 SourceForCheck 兜底后分桶。
@@ -87,42 +83,7 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 	}
 }
 
-// TestBuildEvidenceChain_ObservationChecksExcluded table-drives the observation-check
-// exclusions (the 12 former per-check *Excluded tests, merged 2026-08-30 slim-down).
-// Shared invariant: every check below is an OBSERVATION (advisory finding / process
-// marker / boundary event / distribution-health signal), not "verification evidence"
-// — it must never feed the evidence-strength buckets, or Strength inflates in the
-// wrong direction (negative signals would read as positive evidence, and every task
-// would earn free deterministic entries at birth). Entries are still kept in Entries
-// for forge trace/timeline display; only the bucketing count skips them. The
-// escape-hatch row additionally pins UsedEscapeHatch (skip ≠ flag-less: escape sets
-// the flag for the Strength cap).
-//
-// Row-specific rationale (chronological, from the former tests):
-//   - scope-drift: advisory observation (agent modified source outside the plan);
-//     drift is usually a NEGATIVE signal — counting it as positive is doubly wrong.
-//   - cheat-scan: mechanically detected suspected-cheat hits are negative signals.
-//   - review-pass/plan-first: observation-class stamps — neither says any
-//     verification ran.
-//   - observation-hooks (#4-A): CheckToolFailure/SubagentStop/TestNudge +
-//     conventions hooks record process observations, never task-gate verification.
-//     This is the unknown-check-name trap: only explicitly listed names are excluded.
-//   - unused-scan: suspected wiring miss — a wiring-miss signal must not read as
-//     positive evidence.
-//   - escape-hatch: "skipped some gate", not "performed verification"; SourceForCheck
-//     defaults it to deterministic, so counting it would inflate Strength backwards
-//     (a signal meant to LOWER confidence would raise it). Sets UsedEscapeHatch.
-//   - skill-trigger: a skill firing (passive injection) says nothing about whether
-//     the task's verification ran (code-review era row).
-//   - kimi-plugin-stale: kimi plugin install lags the binary — distribution health,
-//     once-daily warning (code-review F1, 2026-08-15).
-//   - bundle-verify: import-time trust verdict about the MULTI-MACHINE surface
-//     (who signed, was it accepted) — unrelated to THIS task's verification.
-//   - project-sync: git-transport sync op outcome is infrastructure health.
-//   - cross-repo-impact: whether a multi-repo task declared its impact — process
-//     discipline, exactly like scope-drift.
-//   - task-started: the L2 boundary event (multi-task-concurrency §5) — a timeline
-//     marker is not any verification result.
+// TestBuildEvidenceChain_ObservationChecksExcluded table-drives the observation-check exclusions.
 //
 // TestBuildEvidenceChain_ObservationChecksExcluded 表驱动观察类 check 的排除（2026-08-30
 // 瘦身合并原 12 个逐 check 的 *Excluded 测试）。共享不变量：下列 check 都是【观察】
@@ -141,7 +102,8 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 //   - escape-hatch：「跳过了某 gate」非「做了验证」；SourceForCheck 默认归 deterministic，
 //     计入会让本该降信心的信号抬高它。置 UsedEscapeHatch。
 //   - skill-trigger：skill 触发（被动注入）不说明本任务验证真跑过。
-//   - kimi-plugin-stale：kimi plugin 安装落后于二进制——分发健康度，每日一次的告警。
+//   - kimi-plugin-stale：kimi plugin 安装落后于二进制——分发健康度，每日一次的告警
+//     （code-review F1，2026-08-15）。
 //   - bundle-verify：导入侧对多机信任面的判定（谁签名、是否被接受）——与本任务验证无关。
 //   - project-sync：git 通道同步成败是基建健康度。
 //   - cross-repo-impact：多仓任务是否声明了跨仓影响——流程纪律，同 scope-drift。
@@ -232,23 +194,17 @@ func TestBuildEvidenceChain_ObservationChecksExcluded(t *testing.T) {
 	}
 }
 
-// TestStrength_EscapeHatchCapsToWeak pins plan 5: tasks that used an escape hatch have Strength capped at Weak even when deterministic is the
-// majority (which would normally be Strong) — giving escape a cost, countering the "hard gate + global escape =
-// fake hard gate" backlash. Downgrade rather than block, keeping escape legitimate while no longer free.
+// TestStrength_EscapeHatchCapsToWeak pins that escape-hatch use caps Strength at Weak.
 //
 // TestStrength_EscapeHatchCapsToWeak 钉住方案5：用了逃生舱的任务，即便 deterministic 占
 // 多数（本该 Strong），Strength 也 cap 到 Weak——让逃生有代价，对冲"硬门禁 + 全局逃生 =
 // 假硬门禁"反噬。用降档而非阻断，既保逃生合法又让它不再免费。
 func TestStrength_EscapeHatchCapsToWeak(t *testing.T) {
-	// 4 deterministic + 1 agent-claim = ratio 0.8 → would normally be Strong, but escape used → capped to Weak.
-	//
 	// 4 deterministic + 1 agent-claim = ratio 0.8 → 本该 Strong，但用了逃生 → cap Weak
 	ec := EvidenceChain{Deterministic: 4, AgentClaim: 1, UsedEscapeHatch: true}
 	if got := ec.Strength(); got != Weak {
 		t.Fatalf(`escape used + ratio 0.8: Strength=%s, want Weak (capped)`, got)
 	}
-	// Same data without escape → Strong (guard: cap only triggers on escape, does not affect normal tasks).
-	//
 	// 同样数据无逃生 → Strong（守卫：cap 只在逃生时触发，不误伤正常任务）
 	ecNoEsc := EvidenceChain{Deterministic: 4, AgentClaim: 1}
 	if got := ecNoEsc.Strength(); got != Strong {
@@ -295,9 +251,7 @@ func TestStrength_EscapeCapEvidenceAware(t *testing.T) {
 	}
 }
 
-// TestEscapeDowngradedStrength pins the exported predicate consumed by review.go's
-// blind-spot advisory: it must stay in lockstep with Strength()'s cap (single source —
-// review.go derives from it rather than re-encoding the rule).
+// TestEscapeDowngradedStrength pins the exported predicate consumed by review.go's blind-spot advisory.
 //
 // TestEscapeDowngradedStrength 钉住导出谓词（review.go 盲区 ADVISORY 消费）：必须与
 // Strength() 的 cap 完全同步（单一真相源——review.go 派生消费，不重复编码规则）。
@@ -339,10 +293,7 @@ func TestForTask_LoadsAndBuckets(t *testing.T) {
 	}
 }
 
-// TestStrengthClassification locks Strength tiers to Ratio/Total: the credibility of the done claim is discretized
-// by deterministic proportion into review-actionable tiers (NoData/Unverified/Weak/Strong), threshold 0.5.
-// This is the core judgment that upgrades "ratio is only observable" to "drives review calibration" — the tier determines whether to inject
-// "verify whether the claimed verification actually ran" instructions into the reviewer.
+// TestStrengthClassification locks Strength tiers to Ratio/Total: the credibility of the done claim is discretized by deterministic proportion into review-actionable tiers (NoData/Unverified/Weak/Strong), threshold 0.5.
 //
 // TestStrengthClassification 锁定 Strength 档位与 Ratio/Total：完成声明的可信度按
 // deterministic 占比离散成 review 可行动的档位（NoData/Unverified/Weak/Strong），阈值 0.5。
@@ -377,11 +328,7 @@ func TestStrengthClassification(t *testing.T) {
 	}
 }
 
-// TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim pins the forgery-backdoor fix:
-// checklog.jsonl is agent-writable, so an unknown Source value must NEVER fall into the
-// deterministic bucket via a catch-all else. Credibility requires a positive match —
-// anything not explicitly "deterministic" (after the empty-Source SourceForCheck fallback)
-// is counted as agent-claim.
+// TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim pins the forgery-backdoor fix: checklog.jsonl is agent-writable, so an unknown Source value must NEVER fall into the deterministic bucket via a catch-all else.
 //
 // TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim 钉死伪造后门修复：
 // checklog.jsonl 是 agent 可写的，未知 Source 值绝不能经兜底 else 落进
@@ -391,9 +338,6 @@ func TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim(t *testing.T) {
 	entries := []Entry{
 		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckTaskVerify, Source: EvidenceAgentClaim, TaskRef: "t"},
-		// Forged/typoed source strings an agent could write into checklog.jsonl —
-		// must be bucketed as agent-claim, not deterministic.
-		//
 		// agent 可能写进 checklog.jsonl 的伪造/笔误 source 字符串——
 		// 必须计为 agent-claim，不是 deterministic。
 		{Check: CheckAutoCompile, Source: EvidenceSource("deterministic-typo"), TaskRef: "t"},
@@ -412,15 +356,7 @@ func TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim(t *testing.T) {
 	}
 }
 
-// TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap pins the precision fix: work-activity is a RHYTHM gate
-// (requires tool calls between gates — prevents jumping straight to the gate without reading code), NOT a
-// verification gate. Using it does NOT mean the "done" claim rests on skipped verification, so a work-activity
-// escape-hatch entry must NOT set UsedEscapeHatch and Strength must NOT be capped. Refactor/migration/demolition
-// tasks legitimately use the batch-refactor escape and typically have ample deterministic evidence (compiles,
-// assertions, existing tests). Verification-class escapes (test-coverage/acceptance/skill-decisions) still cap.
-//
-// Without this fix, a refactor-heavy week inflates the blind-spot rate to ~50% and mis-fires RetrospectiveNudge on
-// well-evidenced tasks — exactly the false signal this round of review uncovered.
+// TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap pins the precision fix.
 //
 // TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap 钉住精度修复：work-activity 是节奏门禁
 // （要求门禁间有工具调用——防 agent 不读代码直跳门禁），非验证门禁。用它不代表"完成"靠
@@ -431,9 +367,6 @@ func TestBuildEvidenceChain_UnknownSourceCountsAsAgentClaim(t *testing.T) {
 // 无此修复，重构密集周会让盲区率虚高到 ~50%，对证据充分的任务误触
 // RetrospectiveNudge——正是本轮回流审查发现的假信号。
 func TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap(t *testing.T) {
-	// work-activity escape: rhythm gate, must NOT cap. 4 det + 1 escape(work-activity) →
-	// escape excluded from bucketing, ratio stays 4/4=1.0, Strength=Strong (not capped).
-	//
 	// work-activity 逃生：节奏门禁，不得 cap。4 det + 1 escape(work-activity) →
 	// escape 不计入分桶，ratio 仍 4/4=1.0，Strength=Strong（不被 cap）。
 	entries := []Entry{
@@ -452,8 +385,6 @@ func TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap(t *testing.T) {
 		t.Fatalf(`work-activity escape + ratio 1.0: Strength=%s, want Strong（不被 cap）`, got)
 	}
 
-	// Verification-class escape (test-coverage): still caps. Same evidence shape, escape detail is test-coverage.
-	//
 	// 验证类逃生（test-coverage）：仍 cap。同样证据形状，escape detail 是 test-coverage。
 	entriesVerify := []Entry{
 		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
@@ -472,15 +403,7 @@ func TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap(t *testing.T) {
 	}
 }
 
-// TestBuildEvidenceChain_VerificationWhitelist pins the denylist→whitelist
-// inversion (fix/cleanup-batch, 2026-08-29): only positively-listed
-// verification checks may feed evidence strength. A check OUTSIDE the
-// whitelist is skipped whatever its Source says — the fail-safe default for
-// NEW check names (the old 18-clause observation denylist silently bucketed
-// any unlisted name as deterministic evidence, inflating Strength). The
-// taskpipeline-defined verification checks (acceptance / test-run — forge
-// actually ran the suite/criteria, unforgeable) are whitelisted via literals
-// (checklog cannot import taskpipeline: cycle).
+// TestBuildEvidenceChain_VerificationWhitelist pins the denylist-to-whitelist inversion.
 //
 // TestBuildEvidenceChain_VerificationWhitelist 钉住黑名单→白名单反转
 // （fix/cleanup-batch，2026-08-29）：只有正向列名的验证类 check 才可喂给
@@ -491,19 +414,12 @@ func TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap(t *testing.T) {
 // 白名单（checklog 不能 import taskpipeline：会成环）。
 func TestBuildEvidenceChain_VerificationWhitelist(t *testing.T) {
 	entries := []Entry{
-		// Whitelist members: bucketed by Source as before (semantic equivalence
-		// for existing verification checks).
-		//
 		// 白名单成员：照旧按 Source 分桶（对既有验证 check 语义等价）。
 		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckFileSentinel, Source: "", TaskRef: "t"}, // 空 Source 兜底仍生效
 		{Check: CheckTaskVerify, Source: EvidenceAgentClaim, TaskRef: "t"},
 		{Check: CheckName("acceptance"), Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckName("test-run"), Source: EvidenceDeterministic, TaskRef: "t"},
-		// OUTSIDE the whitelist: skipped even with a forged/explicit
-		// Source=deterministic — new and unknown check names default to
-		// observation (fail-safe).
-		//
 		// 白名单之外：即便 Source 显式/伪造为 deterministic 也跳过——
 		// 新增与未知 check 名默认 observation（fail-safe）。
 		{Check: CheckName("some-future-check"), Source: EvidenceDeterministic, TaskRef: "t"},
@@ -517,16 +433,11 @@ func TestBuildEvidenceChain_VerificationWhitelist(t *testing.T) {
 	if ec.AgentClaim != 1 {
 		t.Fatalf(`task-verify 应计 agent-claim: got %d, want 1`, ec.AgentClaim)
 	}
-	// Whitelist-outside entries are preserved for trace but never bucketed.
-	//
 	// 白名单外条目保留供 trace，但绝不分桶。
 	if len(ec.Entries) != 8 {
 		t.Fatalf(`entries preserved: got %d, want 8`, len(ec.Entries))
 	}
 
-	// A whitelist member with an UNKNOWN Source still follows the
-	// forgery-backdoor rule: agent-claim, never deterministic.
-	//
 	// 白名单成员带未知 Source 仍走伪造后门规则：agent-claim，绝不 deterministic。
 	ec2 := BuildEvidenceChain([]Entry{
 		{Check: CheckAutoCompile, Source: EvidenceSource("hook-verified"), TaskRef: "t"},

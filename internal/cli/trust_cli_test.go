@@ -9,9 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// trust_cli_test.go — the `forge trust` command surface: add/list/remove/
-// require-signed via RunE, incl. the node_id↔pubkey consistency rejection.
-//
 // trust_cli_test.go —— `forge trust` 命令面：add/list/remove/require-signed 经
 // RunE，含 node_id↔公钥一致性拒绝。
 

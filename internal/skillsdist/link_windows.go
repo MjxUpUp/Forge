@@ -10,11 +10,6 @@ import (
 	"strings"
 )
 
-// makeDirLink creates a directory junction on Windows via mklink /J.
-// Junction over symlink: symlink requires SeCreateSymbolicLinkPrivilege (admin/developer mode),
-// junction needs no privilege and can cross local drive letters (aligned with sync.py mklink /J).
-// Junctions cannot cross network/UNC paths — on failure it errors explicitly so the caller can suggest --mode copy.
-//
 // makeDirLink 在 Windows 用 mklink /J 创建目录连接点（junction）。
 // 选 junction 而非 symlink：symlink 需 SeCreateSymbolicLinkPrivilege（管理员/开发者模式），
 // junction 无需任何特权，且可跨越本地盘符（对齐 sync.py 的 mklink /J）。
@@ -31,10 +26,6 @@ func makeDirLink(target, source string) error {
 	if err := os.MkdirAll(filepath.Dir(tgt), 0755); err != nil {
 		return err
 	}
-	// mklink /J runs via cmd.exe, where % is expanded as an env var (%USERNAME% etc.).
-	// The paths come from user flags/env (self-inflicted, not a remote vector), but a path containing % would make the junction point
-	// to an unexpected expanded result — reject explicitly with a hint, do not silently produce a wrong link.
-	//
 	// mklink /J 经 cmd.exe 执行，% 在 cmd 下会被当环境变量扩展（%USERNAME% 等）。
 	// 路径来自用户 flag/env（自伤而非远程向量），但含 % 的路径会让 junction 指向
 	// 意外的展开结果——显式拒绝并提示，不静默产生错误链接。
@@ -48,9 +39,6 @@ func makeDirLink(target, source string) error {
 	return nil
 }
 
-// isJunctionOrLink reports whether the path is a junction/symlink (reparse point).
-// os.Readlink succeeds on both junctions (since Go 1.x) and symlinks, and fails on real directories.
-//
 // isJunctionOrLink 检测路径是否为 junction/symlink（reparse point）。
 // os.Readlink 对 junction（Go 1.x 起）和 symlink 都成功，对真目录失败。
 func isJunctionOrLink(path string) bool {

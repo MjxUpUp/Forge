@@ -14,9 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
-// writeCanonicalSkill creates canonical/<name>/SKILL.md (minimal frontmatter body is
-// irrelevant — ListSkills only checks existence).
-//
 // writeCanonicalSkill 建 canonical/<name>/SKILL.md（内容无关紧要——ListSkills 只查存在性）。
 func writeCanonicalSkill(t *testing.T, canonical, name string) {
 	t.Helper()
@@ -29,8 +26,6 @@ func writeCanonicalSkill(t *testing.T, canonical, name string) {
 	}
 }
 
-// writeEvalRuns appends runs to evalDir/runs/<skill>.jsonl (the LoadRuns read path).
-//
 // writeEvalRuns 把 run 追加到 evalDir/runs/<skill>.jsonl（LoadRuns 的读取路径）。
 func writeEvalRuns(t *testing.T, evalDir, skill string, runs []skillseval.EvalRun) {
 	t.Helper()
@@ -52,8 +47,6 @@ func writeEvalRuns(t *testing.T, evalDir, skill string, runs []skillseval.EvalRu
 	}
 }
 
-// writeToollogEntries appends tool calls to DataDir/toollog.jsonl (toolusage.LoadAllAll path).
-//
 // writeToollogEntries 把 tool 调用追加到 DataDir/toollog.jsonl（toolusage.LoadAllAll 路径）。
 func writeToollogEntries(t *testing.T, dataDir string, lines []string) {
 	t.Helper()
@@ -70,11 +63,6 @@ func writeToollogEntries(t *testing.T, dataDir string, lines []string) {
 	}
 }
 
-// skillsFixture builds: canonical {alpha, beta}; project with 2 passive skill-trigger hits
-// (alpha) + 1 active Skill tool call (alpha, task feat/t1) + a scored conclusion for feat/t1
-// (80/B); evalDir with 2 runs for alpha (baseline run-1 all-pass, latest run-2 one trigger
-// regression) + baselines.json anchoring run-1.
-//
 // skillsFixture 构造：canonical {alpha, beta}；项目带 2 次被动 skill-trigger（alpha）+
 // 1 次主动 Skill 调用（alpha，task feat/t1）+ feat/t1 的评分结论（80/B）；evalDir 含
 // alpha 的 2 条 run（baseline run-1 全过，latest run-2 一条 trigger 退化）+ baselines.json 锚 run-1。
@@ -142,8 +130,7 @@ func findSkill(t *testing.T, skills []SkillSummary, name string) SkillSummary {
 	return SkillSummary{}
 }
 
-// TestAggregateSkills_HitsMergeTwoSources: passive checklog firings + active toollog Skill
-// calls merge into one per-skill hit count (2 passive + 1 active = 3).
+// TestAggregateSkills_HitsMergeTwoSources: passive checklog firings + active toollog Skill calls merge into one per-skill hit count (2 passive + 1 active = 3).
 //
 // TestAggregateSkills_HitsMergeTwoSources：被动 checklog 触发 + 主动 toollog Skill 调用
 // 合并成单条 per-skill 命中数（2 被动 + 1 主动 = 3）。
@@ -166,8 +153,7 @@ func TestAggregateSkills_HitsMergeTwoSources(t *testing.T) {
 	}
 }
 
-// TestAggregateSkills_EffectivenessJoin: the active Skill call's TaskRef joins to the act
-// conclusion, giving taskCount=1 / avgScore=80 for alpha.
+// TestAggregateSkills_EffectivenessJoin: the active Skill call's TaskRef joins to the act conclusion, giving taskCount=1 / avgScore=80 for alpha.
 //
 // TestAggregateSkills_EffectivenessJoin：主动 Skill 调用的 TaskRef join 到 act 结论，
 // alpha 得 taskCount=1 / avgScore=80。
@@ -190,8 +176,7 @@ func TestAggregateSkills_EffectivenessJoin(t *testing.T) {
 	}
 }
 
-// TestAggregateSkills_HealthFromLatestRun: health comes from the latest EvalRun (55);
-// a skill without runs gets null health.
+// TestAggregateSkills_HealthFromLatestRun: health comes from the latest EvalRun (55); a skill without runs gets null health.
 //
 // TestAggregateSkills_HealthFromLatestRun：健康分取最新 EvalRun（55）；无 run 的 skill
 // health 为 null。
@@ -211,8 +196,7 @@ func TestAggregateSkills_HealthFromLatestRun(t *testing.T) {
 	}
 }
 
-// TestAggregateSkills_NeverTriggered: canonical skills with zero hits land in
-// neverTriggered; hit skills do not.
+// TestAggregateSkills_NeverTriggered: canonical skills with zero hits land in neverTriggered; hit skills do not.
 //
 // TestAggregateSkills_NeverTriggered：零命中的 canonical skill 进 neverTriggered；
 // 有命中的不进。
@@ -227,8 +211,7 @@ func TestAggregateSkills_NeverTriggered(t *testing.T) {
 	}
 }
 
-// TestAggregateSkills_NoEvalDirDegrades: a nonexistent eval dir (the ~/.pi legacy path
-// never created) must degrade gracefully — empty health, no error.
+// TestAggregateSkills_NoEvalDirDegrades: a nonexistent eval dir (the ~/.pi legacy path never created) must degrade gracefully — empty health, no error.
 //
 // TestAggregateSkills_NoEvalDirDegrades：eval 目录不存在（~/.pi 遗留路径从未建过）必须
 // 优雅降级——health 为空，不报错。
@@ -247,9 +230,7 @@ func TestAggregateSkills_NoEvalDirDegrades(t *testing.T) {
 	}
 }
 
-// TestLoadSkillDetail_RunsSeriesAndCompare: the detail view carries the full run time
-// series (with per-run trigger/not-trigger accuracy), the baseline anchor, and the
-// CompareRuns regression counts.
+// TestLoadSkillDetail_RunsSeriesAndCompare: the detail view carries the full run time series (with per-run trigger/not-trigger accuracy), the baseline anchor, and the CompareRuns regression counts.
 //
 // TestLoadSkillDetail_RunsSeriesAndCompare：详情视图带完整 run 时间序列（含每 run 的
 // trigger/not-trigger 准确率）、baseline 锚点与 CompareRuns 回归计数。
@@ -308,10 +289,7 @@ func TestLoadSkillDetail_Decisions(t *testing.T) {
 	}
 }
 
-// TestLoadSkillDetail_TriggerQualityAndBlindSpot: triggerQuality mirrors the latest
-// run. The live false-positive rate blind spot is NOT a payload field (a placeholder
-// that could never be non-null was dropped from the wire shape) — it is documented by
-// the coverage note and the frontend's honest "N/A" text instead.
+// TestLoadSkillDetail_TriggerQualityAndBlindSpot: triggerQuality mirrors the latest run.
 //
 // TestLoadSkillDetail_TriggerQualityAndBlindSpot：triggerQuality 镜像最新 run。
 // 线上误触发率盲区不是载荷字段（永不可非空的占位字段已从线上形状移除）——由
@@ -333,8 +311,7 @@ func TestLoadSkillDetail_TriggerQualityAndBlindSpot(t *testing.T) {
 	}
 }
 
-// TestLoadSkillDetail_NoRuns: an unknown-but-valid skill name yields an empty view
-// (nil compare / nil triggerQuality), not an error.
+// TestLoadSkillDetail_NoRuns: an unknown-but-valid skill name yields an empty view (nil compare / nil triggerQuality), not an error.
 //
 // TestLoadSkillDetail_NoRuns：合法但无数据的 skill 名给空视图（compare/triggerQuality
 // 为 null），不报错。
@@ -349,11 +326,7 @@ func TestLoadSkillDetail_NoRuns(t *testing.T) {
 	}
 }
 
-// TestAggregateSkills_DeliveryStamps: the overview rows surface the trigger funnel's
-// delivery stamps (checklog Delivered) — confirmed deliveries vs legacy pre-stamp hits
-// (nil, honestly separate) vs explicit not-delivered (false — flips nothing, counts
-// nowhere). Distinct sessions keep the funnel's same-prompt dedupe from collapsing
-// the fixture groups.
+// TestAggregateSkills_DeliveryStamps: the overview rows surface the trigger funnel's delivery stamps (checklog Delivered) — confirmed deliveries vs legacy pre-stamp hits (nil, honestly separate) vs explicit not-delivered (false — flips nothing, counts nowhere).
 //
 // TestAggregateSkills_DeliveryStamps：总览行上板触发漏斗的送达章（checklog
 // Delivered）——确认送达 vs 存量 nil 章（诚实单列）vs 显式未送达（false——不翻转

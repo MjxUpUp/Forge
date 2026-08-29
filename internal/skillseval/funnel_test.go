@@ -26,11 +26,6 @@ func mkHit(session, skill string, at time.Time, delivered *bool) checklog.Entry 
 // mkRead 造一条 Read 工具调用（读某 skill 的 SKILL.md）。形状契约的生产侧一半在
 // TestHookToolTrackRecordsReadFilePath（tool-track 写 {"file_path":...}）——2026-08-16
 // 审查 HIGH-1：两侧曾静默分叉（生产不写、测试手造），join 在真实数据上死亡而单测全绿。
-//
-// mkRead builds one Read tool call (on some skill's SKILL.md). The production half of this
-// shape contract is TestHookToolTrackRecordsReadFilePath (tool-track writing {"file_path":...})
-// — review HIGH-1 (2026-08-16): the two halves once diverged silently (production wrote
-// nothing, tests hand-marshaled), killing the join on real data while unit tests stayed green.
 func mkRead(session, path string, at time.Time) toolusage.ToolCall {
 	ti, _ := json.Marshal(map[string]string{"file_path": path})
 	return toolusage.ToolCall{ToolName: "Read", ToolInput: string(ti), SessionID: session, Timestamp: at}
@@ -45,14 +40,11 @@ func mkSkillCall(session, skill string, at time.Time) toolusage.ToolCall {
 
 func boolPtr(b bool) *bool { return &b }
 
+// TestBuildTriggerFunnel_ReadEngagement pins the join's positive path: after a hit, a same-session Read of that skill's SKILL.md (cache or source path) → Engaged.
+//
 // TestBuildTriggerFunnel_ReadEngagement 钉死 join 核心正向路径：命中后同 session 读该 skill
 // 的 SKILL.md（cache 路径或源路径）→ Engaged。这是 0/134 盲区的解——加载信号本来就在
 // toollog 里，只差这个 join。
-//
-// TestBuildTriggerFunnel_ReadEngagement pins the join's positive path: after a hit, a
-// same-session Read of that skill's SKILL.md (cache or source path) → Engaged. This is the
-// answer to the 0/134 blind spot — the load signal was in toollog all along; only the join
-// was missing.
 func TestBuildTriggerFunnel_ReadEngagement(t *testing.T) {
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
 	delivered := boolPtr(true)
@@ -79,12 +71,10 @@ func TestBuildTriggerFunnel_ReadEngagement(t *testing.T) {
 	}
 }
 
+// TestBuildTriggerFunnel_SkillCallEngagement: an explicit Skill(<name>) call also counts; a call name differing only in case matches too (review LOW-3: aligned with the Read branch's case normalization).
+//
 // TestBuildTriggerFunnel_SkillCallEngagement Skill(<name>) 显式调用也算遵循；仅大小写
 // 差异的调用名同样命中（审查 LOW-3：与 Read 分支的大小写归一对齐）。
-//
-// TestBuildTriggerFunnel_SkillCallEngagement: an explicit Skill(<name>) call also counts;
-// a call name differing only in case matches too (review LOW-3: aligned with the Read
-// branch's case normalization).
 func TestBuildTriggerFunnel_SkillCallEngagement(t *testing.T) {
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
 	rep := BuildTriggerFunnel(
@@ -96,12 +86,10 @@ func TestBuildTriggerFunnel_SkillCallEngagement(t *testing.T) {
 	}
 }
 
+// TestBuildTriggerFunnel_NoFalseEngagement negative cases: different session / different skill / outside the window / Read BEFORE the hit — none count.
+//
 // TestBuildTriggerFunnel_NoFalseEngagement 反向用例：异 session / 异 skill / 窗口外 /
 // 命中前的 Read 都不算遵循——归因宁缺勿滥，否则漏斗变自欺。
-//
-// TestBuildTriggerFunnel_NoFalseEngagement negative cases: different session / different
-// skill / outside the window / Read BEFORE the hit — none count. Attribution must err on
-// the side of missing, or the funnel becomes self-deception.
 func TestBuildTriggerFunnel_NoFalseEngagement(t *testing.T) {
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
 	entries := []checklog.Entry{
@@ -128,14 +116,11 @@ func TestBuildTriggerFunnel_NoFalseEngagement(t *testing.T) {
 	}
 }
 
+// TestBuildTriggerFunnel_PromptDedupe: same-prompt double-fire (two entries, same session and skill, within 60s) collapses to 1 hit; different sessions / beyond 60s do not.
+//
 // TestBuildTriggerFunnel_PromptDedupe 同 prompt 双机制命中（60s 内同 session 同 skill 两
 // 条）折成 1 hit；跨 session / 超 60s 不折。2026-08-16 现场：skill-trigger advisory 与
 // 强制路由同时命中同一 skill——两次命中一次遵循，不去重分母虚增。
-//
-// TestBuildTriggerFunnel_PromptDedupe: same-prompt double-fire (two entries, same session
-// and skill, within 60s) collapses to 1 hit; different sessions / beyond 60s do not.
-// 2026-08-16 live case: skill-trigger advisory and the forced router hit the same skill at
-// once — two hits, one engagement; without dedupe the denominator inflates.
 func TestBuildTriggerFunnel_PromptDedupe(t *testing.T) {
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
 	entries := []checklog.Entry{
@@ -160,13 +145,11 @@ func TestBuildTriggerFunnel_PromptDedupe(t *testing.T) {
 	}
 }
 
+// TestBuildTriggerFunnel_DeliveryBuckets three delivery buckets: true / false / nil (legacy).
+//
 // TestBuildTriggerFunnel_DeliveryBuckets 送达三态分桶：true / false / nil（旧条目）。
 // Delivered 只计 true；false 不进任何桶（保守）；nil 进 DeliveryUnknown——诚实单列，
 // 不假装已送达。
-//
-// TestBuildTriggerFunnel_DeliveryBuckets three delivery buckets: true / false / nil
-// (legacy). Delivered counts only true; false lands in no bucket (conservative); nil goes
-// to DeliveryUnknown — listed honestly, never assumed delivered.
 func TestBuildTriggerFunnel_DeliveryBuckets(t *testing.T) {
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
 	entries := []checklog.Entry{
@@ -184,11 +167,10 @@ func TestBuildTriggerFunnel_DeliveryBuckets(t *testing.T) {
 	}
 }
 
+// TestBuildTriggerFunnel_EmptySessionNotEngaged: empty session (legacy) cannot be attributed — counts as a hit but never Engaged.
+//
 // TestBuildTriggerFunnel_EmptySessionNotEngaged 空 session（旧条目）无法归因——计 hit 但
 // 永不算 Engaged。
-//
-// TestBuildTriggerFunnel_EmptySessionNotEngaged: empty session (legacy) cannot be
-// attributed — counts as a hit but never Engaged.
 func TestBuildTriggerFunnel_EmptySessionNotEngaged(t *testing.T) {
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
 	rep := BuildTriggerFunnel(
@@ -220,13 +202,6 @@ func TestReadFilePath(t *testing.T) {
 // engaged 的全部反向用例（异 session / 异 skill / 窗口外 / 命中前 / 空 session /
 // 截断 JSON / 无关工具），外加大小写与反斜杠路径归一。供 golden 快照与索引等价
 // 两个测试共用。
-//
-// funnelGoldenFixture is one constructed dataset covering every decision branch:
-// multiple skills/sessions, the 60s dedupe boundary (10s folds / 61s does not),
-// all three delivery states, every engaged negative (foreign session / foreign
-// skill / outside window / before hit / empty session / truncated JSON /
-// unrelated tool), plus case and backslash path normalization. Shared by the
-// golden snapshot and the index-equivalence tests below.
 func funnelGoldenFixture() (entries []checklog.Entry, calls []toolusage.ToolCall) {
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)
 	entries = []checklog.Entry{
@@ -261,14 +236,11 @@ func funnelGoldenFixture() (entries []checklog.Entry, calls []toolusage.ToolCall
 	return entries, calls
 }
 
+// TestBuildTriggerFunnel_GoldenJSON pins byte-equivalent output: before vs after the engagedAfter hot-path rework (O(n×m) full rescans → session-bucketed, extract-once), this JSON must stay byte-identical.
+//
 // TestBuildTriggerFunnel_GoldenJSON 是输出字节等价的快照钉：重构 engagedAfter 热路径
 // （O(n×m) 全量重复解析 → 按 session 分桶 + 每 call 预提取一次）前后，本 JSON 必须逐字节
 // 不变。期望值在旧实现上生成并人工核对。
-//
-// TestBuildTriggerFunnel_GoldenJSON pins byte-equivalent output: before vs after the
-// engagedAfter hot-path rework (O(n×m) full rescans → session-bucketed, extract-once),
-// this JSON must stay byte-identical. The expectation was produced on the OLD
-// implementation and hand-verified.
 func TestBuildTriggerFunnel_GoldenJSON(t *testing.T) {
 	entries, calls := funnelGoldenFixture()
 	got, err := json.Marshal(BuildTriggerFunnel(entries, calls))
@@ -285,15 +257,11 @@ func TestBuildTriggerFunnel_GoldenJSON(t *testing.T) {
 	}
 }
 
+// TestEngagedIndexEquivalence brute-force cross-checks the indexed judgment against the per-call one over a full grid: for every (session × skill × time) combination both paths must agree.
+//
 // TestEngagedIndexEquivalence 把索引判定与逐条判定在全网格上暴力对拍：每个
 // (session × skill × 时刻) 组合两条路径必须同真同假。这钉住分桶预提取重构不改变
 // 任何单点判定——golden 快照钉聚合输出，本测试钉判定核本身。
-//
-// TestEngagedIndexEquivalence brute-force cross-checks the indexed judgment
-// against the per-call one over a full grid: for every (session × skill ×
-// time) combination both paths must agree. This pins the
-// bucketed-pre-extraction rework as judgment-neutral — the golden snapshot
-// pins the aggregate output, this pins the judgment core itself.
 func TestEngagedIndexEquivalence(t *testing.T) {
 	_, calls := funnelGoldenFixture()
 	base := time.Date(2026, 8, 16, 10, 0, 0, 0, time.UTC)

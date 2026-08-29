@@ -4,20 +4,6 @@ import (
 	"encoding/json"
 )
 
-// merge_raw.go — raw-JSON merge helpers shared by the codex/cursor/windsurf
-// translators.
-//
-// Why raw: the merge contract is "user-defined hook entries are preserved
-// verbatim". A typed struct round-trip (unmarshal into cursorHookEntry /
-// windsurfHookEntry / hooks.HookMatcher, then re-marshal) silently drops any
-// field the struct does not declare — codex user entries may carry
-// timeout/commandWindows, windsurf entries powershell/working_directory, etc.
-// Losing those fields corrupts the user's own hooks while forge's entries are
-// regenerated — the exact "merge eats user config" class of bug the merge
-// contract exists to prevent. Kept entries therefore stay json.RawMessage;
-// only the command field is inspected (to decide forge-vs-user), and only
-// forge-sourced entries are ever dropped or regenerated.
-//
 // merge_raw.go —— codex/cursor/windsurf 三个 translator 共享的 raw-JSON 合并
 // helper。
 //
@@ -29,10 +15,6 @@ import (
 // 配置"那类 bug。故保留的条目始终是 json.RawMessage：只读 command 字段
 // （判 forge 还是用户），只有 forge 来源条目会被丢弃或重生成。
 
-// hookEntryCommand extracts the "command" field of a raw hook-entry object.
-// Unparseable entries yield "" — which isForgeBridgeCommand treats as
-// user-defined, so damaged user content is kept, never dropped.
-//
 // hookEntryCommand 提取 raw hook 条目对象的 "command" 字段。解析失败的条目
 // 得到 ""——isForgeBridgeCommand 会把它当用户自定义，故损坏的用户内容被保留，
 // 绝不误删。
@@ -46,10 +28,6 @@ func hookEntryCommand(raw json.RawMessage) string {
 	return e.Command
 }
 
-// dropForgeEntries filters forge-sourced entries out of a raw entry list.
-// Kept entries preserve their original bytes. removed reports whether any
-// entry was dropped.
-//
 // dropForgeEntries 从 raw 条目列表中滤掉 forge 来源条目。保留的条目维持
 // 原始字节。removed 报告是否有条目被丢弃。
 func dropForgeEntries(entries []json.RawMessage) (kept []json.RawMessage, removed bool) {
@@ -63,11 +41,6 @@ func dropForgeEntries(entries []json.RawMessage) (kept []json.RawMessage, remove
 	return kept, removed
 }
 
-// stripForgeMatchersRaw handles the NESTED hooks shape (claude/codex):
-// {event: [ {matcher, hooks:[{type,command}]} ]}. Forge-sourced inner entries
-// are removed; matchers/events left empty are dropped; everything user-defined
-// keeps its original bytes. removedAny reports whether anything changed.
-//
 // stripForgeMatchersRaw 处理嵌套 hooks 形态（claude/codex）：
 // {event: [ {matcher, hooks:[{type,command}]} ]}。forge 来源的内层条目被移除；
 // 被掏空的 matcher/event 一并丢弃；所有用户自定义内容保留原始字节。
@@ -117,11 +90,6 @@ func stripForgeMatchersRaw(spec map[string][]json.RawMessage) (kept map[string][
 	return kept, removedAny
 }
 
-// stripForgeFlatEntriesRaw handles the FLAT hooks shape (cursor/windsurf):
-// {event: [ {command, ...} ]}. Forge-sourced entries are removed; events left
-// empty are dropped; user entries keep their original bytes. removedAny
-// reports whether anything changed.
-//
 // stripForgeFlatEntriesRaw 处理扁平 hooks 形态（cursor/windsurf）：
 // {event: [ {command, ...} ]}。forge 来源条目被移除；被掏空的 event 一并丢弃；
 // 用户条目保留原始字节。removedAny 报告是否有改动。
@@ -139,11 +107,6 @@ func stripForgeFlatEntriesRaw(flat map[string][]json.RawMessage) (kept map[strin
 	return kept, removedAny
 }
 
-// rawHooksSection marshals a generated hooks payload (the value of the "hooks"
-// key in a build*Hooks map) into raw per-event entry lists, for merging with
-// the raw kept-user entries. Generated entries carry no unknown fields, so
-// their raw form is exactly what the typed generators would emit.
-//
 // rawHooksSection 把生成的 hooks payload（build*Hooks map 里 "hooks" 键的值）
 // marshal 成按 event 分组的 raw 条目列表，供与 raw 保留的用户条目合并。生成
 // 条目没有未知字段，其 raw 形态与类型化生成器的输出完全一致。

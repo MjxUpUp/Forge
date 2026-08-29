@@ -1,14 +1,3 @@
-// Package forgedata provides unified path / key derivation for forge project data.
-//
-// Design goal: centralize the scattered filepath.Join calls into a single source of truth,
-// so that project data home (tasks / gates / ...) migrates smoothly from project-level `.forge/`
-// to user-level `~/.forge/projects/<hash12>/`. ConfigDir (protocol/CLAUDE.md
-// /hooks) stays at project level (git tracked, user-editable).
-//
-// See docs/plans/refactor-data-home.md for details.
-//
-// Chinese strings use raw strings (backticks) to avoid Windows input quote corruption.
-//
 // Package forgedata 提供 forge 项目数据的统一路径 / key 推导。
 //
 // 设计目标：把当前散落的 `filepath.Join(dir, ".forge", ...)` 集中到一个真相源，
@@ -31,24 +20,19 @@ import (
 	"strings"
 )
 
-// Predefined errors
-//
 // 预定义错误
 var (
-	// ErrNotInGitRepo: cwd is not inside any git repository
+	// ErrNotInGitRepo reports that cwd is not inside any git repository.
 	//
 	// ErrNotInGitRepo: cwd 不在任何 git repo 内
 	ErrNotInGitRepo = errors.New(`forgedata: cwd is not in a git repository`)
 
-	// ErrInvalidGitFile: `.git` file corrupted (empty / missing 'gitdir:' / NUL / looped / beyond fs root)
+	// ErrInvalidGitFile reports that the `.git` file is corrupted (empty / missing 'gitdir:' / NUL / looped / beyond fs root).
 	//
 	// ErrInvalidGitFile: `.git` file 损坏（empty / missing 'gitdir:' / NUL / looped / beyond fs root）
 	ErrInvalidGitFile = errors.New(`forgedata: invalid .git file (worktree/submodule)`)
 
-	// ErrInvalidProjectID: `.forge-project-id` present but malformed (must be
-	// fpid_ + 32 lowercase hex). Key() treats this as "no ID" and falls back to the
-	// path hash (fail-open) — the error surfaces via ReadProjectID for the report
-	// layer (doctor / adopt) where strictness matters.
+	// ErrInvalidProjectID: `.forge-project-id` present but malformed (must be fpid_ + 32 lowercase hex).
 	//
 	// ErrInvalidProjectID：`.forge-project-id` 存在但畸形（须为 fpid_ + 32 位小写
 	// hex）。Key() 将其视同无 ID 回落路径 hash（fail-open）——错误经 ReadProjectID
@@ -56,23 +40,12 @@ var (
 	ErrInvalidProjectID = errors.New(`forgedata: invalid .forge-project-id (want fpid_<32 lowercase hex>)`)
 )
 
-// ProjectIDFileName is the repo-born identity file (project-sync design §A): committed
-// at the MAIN worktree root so it travels with the repo (clone/fork/other machines),
-// making the derived key machine-independent. Deliberately NOT under `.forge/` — the
-// presence of a project-level `.forge/` dir flips ConfigDir into team/legacy mode
-// (see paths.go), a side effect an identity file must never trigger.
-//
 // ProjectIDFileName 是 repo-born 身份文件（project-sync 设计 §A）：committed 在主
 // worktree 根，随仓库旅行（clone/fork/其他机器），使推导 key 与机器无关。刻意不放
 // `.forge/` 下——项目级 `.forge/` 目录的存在会把 ConfigDir 翻进 team/legacy 模式
 // （见 paths.go），身份文件绝不能触发该副作用。
 const ProjectIDFileName = `.forge-project-id`
 
-// idPrefix / idHexLen pin the ID format: `fpid_` + 32 lowercase hex chars (16 bytes
-// from crypto/rand at generation time). Validation is a tight allowlist — the ID is
-// attacker-controllable input (any cloned repo may carry one), so a loose format would
-// let odd content flow into the identity hash.
-//
 // idPrefix / idHexLen 钉死 ID 格式：`fpid_` + 32 位小写 hex（生成时 crypto/rand 的
 // 16 字节）。校验是紧 allowlist——ID 是攻击者可控输入（任意 clone 的仓库都可能带
 // 一个），宽松格式会让奇异内容流进身份 hash。
@@ -82,9 +55,6 @@ const (
 )
 
 // ReadProjectID reads and strictly validates the project ID file under repoRoot.
-// Returns the full token (fpid_<32hex>). Missing file, unreadable file, or malformed
-// content all return ErrInvalidProjectID (or the os error for missing) — callers that
-// only need the fallback path treat ANY error as "no ID".
 //
 // ReadProjectID 读取并严格校验 repoRoot 下的项目 ID 文件。返回完整 token
 // （fpid_<32hex>）。文件缺失、不可读、内容畸形都返回错误（缺失为 os 错误，畸形为
@@ -106,9 +76,6 @@ func ReadProjectID(repoRoot string) (string, error) {
 	return id, nil
 }
 
-// truncateRunesForErr keeps error messages bounded (the file could be arbitrarily
-// large garbage); 24 runes is enough to identify the problem.
-//
 // truncateRunesForErr 限制错误信息长度（文件可能是任意大的垃圾内容）；24 rune
 // 足以定位问题。
 func truncateRunesForErr(s string) string {
@@ -119,11 +86,7 @@ func truncateRunesForErr(s string) string {
 	return string(r[:24]) + `...`
 }
 
-// IDKey derives the identity key from a validated project ID: hash12 of
-// FNV-64a("fpid:" + id). The "fpid:" domain prefix keeps the hash input disjoint from
-// any filesystem path (path keys hash an absolute path string), so an ID can never
-// collide with a legacy path identity by construction. Pure content hash → same key
-// on every OS/filesystem (no path, no case folding in the input).
+// IDKey derives the identity key from a validated project ID: hash12 of FNV-64a("fpid:" + id).
 //
 // IDKey 从已校验的项目 ID 推导身份 key：FNV-64a("fpid:"+id) 的 hash12。"fpid:" 域
 // 前缀使 hash 输入与任何文件系统路径不相交（路径 key hash 的是绝对路径串），
@@ -135,10 +98,6 @@ func IDKey(id string) string {
 	return hash12(h.Sum64())
 }
 
-// keyFromCommonDir is the pre-ID identity derivation: hash12 of the resolved `.git`
-// common dir path. Kept as a named function because adopt needs the OLD key (path
-// regime) alongside the NEW one (ID regime) to migrate data between them.
-//
 // keyFromCommonDir 是 ID 前的身份推导：解析后 `.git` common dir 路径的 hash12。
 // 留作具名函数是因为 adopt 需要同时拿到旧 key（路径体系）与新 key（ID 体系）
 // 在两者之间迁移数据。
@@ -148,11 +107,7 @@ func keyFromCommonDir(resolvedGitDir string) string {
 	return hash12(h.Sum64())
 }
 
-// ResolvedGitDir returns cwd's fully-resolved `.git` common dir — the same resolution
-// Key() performs (worktree/submodule .git file → main repo .git, EvalSymlinks,
-// CanonicalCase). Exported for `forge project adopt`, which needs the MAIN worktree
-// root (its parent dir) to write the ID file, independent of which worktree cwd sits
-// in. Same error contract as Key (ErrNotInGitRepo / ErrInvalidGitFile).
+// ResolvedGitDir returns cwd's fully-resolved `.git` common dir — the same resolution Key() performs (worktree/submodule .git file → main repo .git, EvalSymlinks, CanonicalCase).
 //
 // ResolvedGitDir 返回 cwd 完全解析后的 `.git` common dir——与 Key() 同一解析
 // （worktree/submodule 的 .git file → 主 repo .git、EvalSymlinks、CanonicalCase）。
@@ -163,9 +118,7 @@ func ResolvedGitDir(cwd string) (string, error) {
 	return resolveGitDir(cwd)
 }
 
-// KeyFromPath is the path-regime derivation: the key this repo had BEFORE any
-// project ID existed (and would still have if the ID file were removed). adopt uses
-// it as the migration source key. Same error contract as Key.
+// KeyFromPath is the path-regime derivation: the key this repo had BEFORE any project ID existed (and would still have if the ID file were removed). adopt uses it as the migration source key.
 //
 // KeyFromPath 是路径体系推导：本项目在任何 project ID 存在之前的 key（也是 ID
 // 文件被删后将回到的 key）。adopt 用它作迁移源 key。错误契约与 Key 相同。
@@ -177,9 +130,6 @@ func KeyFromPath(cwd string) (string, error) {
 	return keyFromCommonDir(gitDir), nil
 }
 
-// resolveGitDir is the shared resolution spine of Key/ResolvedGitDir/KeyFromPath:
-// FindGitRoot → .git dir-or-file resolution → EvalSymlinks → CanonicalCase.
-//
 // resolveGitDir 是 Key/ResolvedGitDir/KeyFromPath 共享的解析主干：
 // FindGitRoot → .git 目录或文件解析 → EvalSymlinks → CanonicalCase。
 func resolveGitDir(cwd string) (string, error) {
@@ -196,13 +146,9 @@ func resolveGitDir(cwd string) (string, error) {
 
 	var resolvedGitDir string
 	if info.IsDir() {
-		// Main worktree — .git itself is already stable.
-		//
 		// 主 worktree —— .git 自身已稳定
 		resolvedGitDir = absGit
 	} else {
-		// .git is a file (worktree / submodule)
-		//
 		// .git 是 file（worktree / submodule）
 		resolvedGitDir, err = resolveGitFile(absGit, gitRoot)
 		if err != nil {
@@ -215,8 +161,7 @@ func resolveGitDir(cwd string) (string, error) {
 	return CanonicalCase(resolvedGitDir), nil
 }
 
-// FindGitRoot walks up from dir to the nearest ancestor containing `.git` (dir or file). Returns empty string if not found.
-// Does not depend on forge project existence — just git repo detection.
+// FindGitRoot walks up from dir to the nearest ancestor containing `.git` (dir or file).
 //
 // cli 侧（cli/hook.go 的 suggestTagFor、cli/suggest.go）已复用本函数——单一真相源在此，
 // cli 不再保留私有复制品。
@@ -241,20 +186,6 @@ func FindGitRoot(dir string) string {
 }
 
 // Key derives hash12: the first 12 hex chars of FNV-64a of the `.git` common dir of the git repo containing cwd.
-// Multiple worktrees of the same repo (agent / detached / submodule) share the same key.
-//
-// Algorithm:
-//  1. findGitRoot(cwd) — failure → ErrNotInGitRepo
-//  2. .git is a dir (main worktree) → use directly
-//     .git is a file (worktree/submodule) → read gitdir: line → walk parent chain to find .git ancestor
-//  3. EvalSymlinks post-normalization (symlinked repo gets same key)
-//  4. repo-born ID precedence: a valid `.forge-project-id` at the MAIN worktree root
-//     (Dir of the resolved common .git dir) overrides the path hash → IDKey.
-//     Missing/malformed ID silently falls back to the path hash (fail-open: existing
-//     projects keep their identity; a corrupt file never bricks the hook hot path).
-//  5. fnv-64a(... )[:12]
-//
-// ErrInvalidGitFile is returned when the .git file is corrupted (empty / missing 'gitdir:' / contains NUL / looped / beyond fs root).
 //
 // Key 推导 hash12：cwd 所在 git repo 的 `.git` common dir 的 FNV-64a hex 前 12 字符。
 // 同仓库多 worktree（agent / detached / submodule）共享同一 key。
@@ -276,14 +207,6 @@ func Key(cwd string) (string, error) {
 		return ``, err
 	}
 
-	// CanonicalCase rewrites to the on-disk spelling: on case-insensitive APFS any
-	// case variant of the same repo stats successfully, and EvalSymlinks does not
-	// normalize case — without this, a variant-spelled cwd derives a second identity
-	// for the same project (Forge/forge key split). On case-sensitive filesystems
-	// this is the identity function (exact-match-first rule). Existing canonical-case
-	// registrations keep their key unchanged: the canonical form IS the on-disk
-	// spelling, so only variant spellings converge — zero migration for live data.
-	//
 	// CanonicalCase 回写磁盘真实拼写：大小写不敏感 APFS 上同一 repo 的任意拼写
 	// 都能 stat 成功，而 EvalSymlinks 不归一大小写——没有这步，拼写变体的 cwd
 	// 会给同一项目衍生第二个身份（Forge/forge key 分裂）。大小写敏感文件系统上
@@ -291,14 +214,6 @@ func Key(cwd string) (string, error) {
 	// 形态就是磁盘拼写，只有变体拼写向它收敛——存量数据零迁移。
 	resolvedGitDir = CanonicalCase(resolvedGitDir)
 
-	// Repo-born ID precedence (project-sync §A): read the ID from the MAIN worktree
-	// root — Dir of the resolved common .git dir (for a linked worktree the resolved
-	// dir is the main repo's .git, so all worktrees see the SAME ID file, preserving
-	// the one-repo-one-key contract; an uncommitted ID in the main worktree already
-	// applies). Any read/validation failure = no ID → path hash fallback. The extra
-	// cost is one stat+read on the hook hot path (~µs); no memoization — a cache would
-	// go stale the moment adopt writes or removes the file.
-	//
 	// repo-born ID 优先（project-sync §A）：从主 worktree 根读 ID——解析后 common
 	// .git 目录的父目录（linked worktree 解析到主 repo 的 .git，故所有 worktree
 	// 看到同一个 ID 文件，维持一 repo 一 key 契约；主 worktree 未 commit 的 ID
@@ -313,25 +228,13 @@ func Key(cwd string) (string, error) {
 	return keyFromCommonDir(resolvedGitDir), nil
 }
 
-// hash12 returns the first 12 hex chars of sum, zero-padded. strconv.FormatUint does not
-// zero-pad, so a sum whose hex form is shorter than 12 chars (≈1 in 16^12 per path) would
-// panic on s[:12]; %012x always yields >= 12 chars.
-//
 // hash12 返回 sum 的 hex 前 12 字符（零填充）。strconv.FormatUint 不零填充，
 // hex 不足 12 位的 sum（概率约 16^-12）会在 s[:12] 上 slice 越界 panic；%012x 保证 >= 12 位。
 func hash12(sum uint64) string {
 	return fmt.Sprintf("%012x", sum)[:12]
 }
 
-// PathKey derives a stable key for a NON-git project root: "p" + hash12 of the
-// FNV-64a of the normalized absolute path. Git projects use Key (git common dir
-// hash); non-git projects have no .git to hash, so the absolute path itself is
-// the identity. The "p" prefix keeps the two key namespaces disjoint
-// (a pure-hex git key can never collide with a path key).
-//
-// Windows paths are lower-cased before hashing (case-insensitive filesystem —
-// C:\Proj and c:\proj must share one DataDir). Symlinks are resolved when
-// possible so a symlinked root gets the same key.
+// PathKey derives a stable key for a NON-git project root: "p" + hash12 of the FNV-64a of the normalized absolute path.
 //
 // PathKey 为非 git 项目根推导稳定 key：归一化绝对路径的 FNV-64a hash12 加 "p" 前缀。
 // git 项目用 Key（git common dir hash）；非 git 项目没有 .git 可 hash，
@@ -352,9 +255,6 @@ func PathKey(root string) string {
 	if runtime.GOOS == "windows" {
 		abs = strings.ToLower(abs)
 	} else {
-		// Same canonical-case convergence as Key(): variant spellings of one dir
-		// must share one PathKey on case-insensitive filesystems.
-		//
 		// 与 Key() 相同的 canonical-case 收敛：大小写不敏感文件系统上同一目录
 		// 的拼写变体必须共享同一 PathKey。
 		abs = CanonicalCase(abs)
@@ -364,9 +264,6 @@ func PathKey(root string) string {
 	return "p" + hash12(h.Sum64())
 }
 
-// resolveGitFile parses the gitdir: line of a worktree/submodule `.git` file, walking the parent chain to find the `.git` ancestor.
-// Fault tolerance: empty / missing prefix / NUL / loop / beyond fs root all return ErrInvalidGitFile.
-//
 // resolveGitFile 解析 worktree/submodule `.git` file 的 gitdir: 行，沿 parent 链找 `.git` 祖先。
 // 容错：empty / 缺 prefix / NUL / 循环 / fs 根外 全部返 ErrInvalidGitFile。
 func resolveGitFile(absGitFile, gitRoot string) (string, error) {
@@ -377,8 +274,6 @@ func resolveGitFile(absGitFile, gitRoot string) (string, error) {
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return "", fmt.Errorf(`%w: empty .git file`, ErrInvalidGitFile)
 	}
-	// First line: gitdir: /path/... or gitdir: ../relative
-	//
 	// 第一行 "gitdir: /path/..." 或 "gitdir: ../relative"
 	line := strings.TrimSpace(strings.SplitN(string(data), "\n", 2)[0])
 	if !strings.HasPrefix(line, "gitdir: ") {
@@ -397,14 +292,10 @@ func resolveGitFile(absGitFile, gitRoot string) (string, error) {
 	}
 	target = filepath.Clean(target)
 
-	// Walk parent chain to find the ancestor named `.git`
-	//
 	// 沿 parent 链找含名 `.git` 的祖先
 	const safetyMax = 64
 	candidate := target
 	for safety := safetyMax; filepath.Base(candidate) != ".git"; safety-- {
-		// Termination condition: candidate has degenerated to empty/dot/root
-		//
 		// 终止条件：候选已退化到空/点/根
 		if candidate == `` || candidate == "." || candidate == string(filepath.Separator) || safety <= 0 {
 			return "", fmt.Errorf(`%w: gitdir did not resolve to a .git ancestor: %s`, ErrInvalidGitFile, target)
@@ -419,10 +310,6 @@ func resolveGitFile(absGitFile, gitRoot string) (string, error) {
 }
 
 // RootDir returns the path to `~/.forge/projects/<key>/`.
-//
-// The FORGE_DATA_HOME env overrides the global home (for test isolation + power-user overrides).
-//
-// Empty key returns empty string (caller decides fallback, no forced default).
 //
 // RootDir 返回 `~/.forge/projects/<key>/` 路径。
 //
@@ -473,12 +360,7 @@ func RootDir(key string) string {
 	return filepath.Join(home, "projects", key)
 }
 
-// GlobalHome returns the global home. FORGE_DATA_HOME takes priority (overrides home root), otherwise falls back to UserHomeDir.
-//
-// Design: FORGE_DATA_HOME controls the global home (e.g. ~/.forge); all sub-stores
-// (registry/projects.json, init-suggest marker, knowledge, projects/<key>/) use it.
-// Exported so registry/suggest and other global stores reuse the same source of truth (refactor-data-home commit E:
-// unified FORGE_DATA_HOME, deprecated the old registry FORGE_HOME env).
+// GlobalHome returns the global home.
 //
 // GlobalHome 返全局 home。FORGE_DATA_HOME 优先（覆盖 home root），否则回落 UserHomeDir。
 //

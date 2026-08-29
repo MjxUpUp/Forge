@@ -39,8 +39,7 @@ func TestScoreProcess_NoHistory(t *testing.T) {
 	}
 }
 
-// TestScoreProcess_PartialPassRate pins the pass-rate fix: Passed must participate in scoring —
-// 1/5 gates passed with 0 retries is 20 (100*1/5), not the old free 100 that ignored Passed.
+// TestScoreProcess_PartialPassRate pins the pass-rate fix: Passed must participate in scoring — 1/5 gates passed with 0 retries is 20 (100*1/5), not the old free 100 that ignored Passed.
 //
 // TestScoreProcess_PartialPassRate 钉死通过率修复：Passed 必须参与计分——
 // 1/5 通过 0 retry 得 20（100*1/5），不是旧版无视 Passed 白给的 100。
@@ -79,8 +78,6 @@ func TestScoreTesting_AllCovered(t *testing.T) {
 }
 
 func TestScoreTesting_PartialCoverage(t *testing.T) {
-	// 4/5 source files have paired tests → ratio 0.8 → 30+70*0.8 = 86 (continuous scoring, not binary collapse to 20)
-	//
 	// 4/5 源码文件有配对测试 → ratio 0.8 → 30+70*0.8 = 86（连续打分，非二值塌缩到 20）
 	result := scoreTesting(4, 5, 5, 2, true)
 	if result.Score != 86 {
@@ -89,8 +86,6 @@ func TestScoreTesting_PartialCoverage(t *testing.T) {
 }
 
 func TestScoreTesting_NoneCovered(t *testing.T) {
-	// 0/1 → ratio 0 → 30 (low score but not extreme collapse; covered=0 does not trigger fake-test penalty)
-	//
 	// 0/1 → ratio 0 → 30（低分但不极端塌缩；covered=0 不触发假测试惩罚）
 	result := scoreTesting(0, 1, 0, 0, true)
 	if result.Score != 30 {
@@ -106,8 +101,6 @@ func TestScoreTesting_NotChecked(t *testing.T) {
 }
 
 func TestScoreTesting_NoSourceNeedsTest(t *testing.T) {
-	// No testable source (empty diff / all whitelisted) → 100 (no target should not be penalized)
-	//
 	// 无可测源码（空 diff / 全白名单）→ 100（无对象不该被惩罚）
 	result := scoreTesting(0, 0, 5, 1, true)
 	if result.Score != 100 {
@@ -116,10 +109,6 @@ func TestScoreTesting_NoSourceNeedsTest(t *testing.T) {
 }
 
 func TestScoreTesting_FakeTestPenalty(t *testing.T) {
-	// All paired but 0 assertions = fake test (only setup/log no assertions) → 100 * 0.6 = 60.
-	// testFiles=1: the density collection actually READ a test file and found zero
-	// assertions — the positive-data shape the penalty exists for.
-	//
 	// 全配对但 0 断言 = 假测试（只有 setup/log 无断言）→ 100 * 0.6 = 60。
 	// testFiles=1：密度采集确实读到了测试文件且发现零断言——惩罚为之存在的
 	// 「有数据」形态。
@@ -129,12 +118,7 @@ func TestScoreTesting_FakeTestPenalty(t *testing.T) {
 	}
 }
 
-// TestScoreTesting_FakeTestPenaltySkippedOnDeadProbe pins the penalty guard
-// (fix/cleanup-batch, 2026-08-29): assertionCount==0 with testFiles==0 means
-// the density collection saw NO test files at all — the dead-probe shape
-// (CollectAssertionDensity returns (0,0) with a stderr warning when every git
-// probe fails). "No data" must not read as "data says fake": the ×0.6 penalty
-// is skipped and the score keeps the plain coverage ratio.
+// TestScoreTesting_FakeTestPenaltySkippedOnDeadProbe pins the penalty guard (fix/cleanup-batch, 2026-08-29): assertionCount==0 with testFiles==0 means the density collection saw NO test files at all — the dead-probe shape (CollectAssertionDensity returns (0,0) with a stderr warning when every git probe fails).
 //
 // TestScoreTesting_FakeTestPenaltySkippedOnDeadProbe 钉住惩罚守卫
 // （fix/cleanup-batch，2026-08-29）：assertionCount==0 且 testFiles==0 意为密度
@@ -142,9 +126,6 @@ func TestScoreTesting_FakeTestPenalty(t *testing.T) {
 // CollectAssertionDensity 返回 (0,0) 并打 stderr 警告）。「无数据」不得读作
 // 「数据说是假测试」：跳过 ×0.6 惩罚，分数保持纯覆盖比例。
 func TestScoreTesting_FakeTestPenaltySkippedOnDeadProbe(t *testing.T) {
-	// Same coverage shape as the penalty test (1/1 covered), but zero test
-	// files READ → no penalty: 100, not 60.
-	//
 	// 与惩罚测试同样的覆盖形态（1/1），但读到的测试文件数为 0 → 不惩罚：
 	// 100 而非 60。
 	result := scoreTesting(1, 1, 0, 0, true)
@@ -254,7 +235,6 @@ func TestScoreEfficiency_NegativeDuration(t *testing.T) {
 }
 
 // TestScoreEfficiency_Buckets pins F3: after threshold recalibration 5 tiers full coverage + boundary pinned (dogfood 1.5 core).
-// Uses fixed time (not time.Now) to avoid flaky <=120 boundary due to nanosecond gap between two Now calls.
 //
 // TestScoreEfficiency_Buckets 钉死 F3：阈值重校准后 5 档全覆盖 + 边界 pinned（dogfood 1.5 核心）。
 // 用固定时间（非 time.Now）避免 <=120 边界因两次 Now 调用的纳秒差 flaky。
@@ -374,9 +354,7 @@ func TestGradeFromScore(t *testing.T) {
 	}
 }
 
-// TestBuildEvidenceSummary locks the evidence summary pure function: total=0 returns nil (no evidence data,
-// e.g. old task empty checklog), avoiding zero-value noise; with data computes ratio by deterministic/total.
-// ratio case picks 0/1/0.5 (exact float, no tolerance comparison).
+// TestBuildEvidenceSummary locks the evidence summary pure function: total=0 returns nil (no evidence data, e.g. old task empty checklog), avoiding zero-value noise; with data computes ratio by deterministic/total. ratio case picks 0/1/0.5 (exact float, no tolerance comparison).
 //
 // TestBuildEvidenceSummary 锁定证据摘要纯函数：total=0 返回 nil（无证据数据，
 // 如旧任务 checklog 为空），避免零值噪声；有数据时按 deterministic/total 算 ratio。
@@ -415,8 +393,7 @@ func TestBuildEvidenceSummary(t *testing.T) {
 	}
 }
 
-// TestEvaluate_EvidenceSummary end-to-end: Evaluate injects input's evidence counts into
-// ScoreResult.Evidence. No evidence input → nil (no zero-value output).
+// TestEvaluate_EvidenceSummary end-to-end: Evaluate injects input's evidence counts into ScoreResult.Evidence.
 //
 // TestEvaluate_EvidenceSummary 端到端：Evaluate 把 input 的证据计数注入
 // ScoreResult.Evidence。无证据输入 → nil（不输出零值）。
@@ -445,9 +422,7 @@ func TestEvaluate_EvidenceSummary(t *testing.T) {
 	})
 }
 
-// TestScoreExpression covers the expression (doc-artifact readability) dimension:
-// neutral when no doc deliverables, lint+rubric blend when present, escape cap,
-// and the missing-review floor.
+// TestScoreExpression covers the expression (doc-artifact readability) dimension: neutral when no doc deliverables, lint+rubric blend when present, escape cap, and the missing-review floor.
 //
 // TestScoreExpression 覆盖表达（文档产物可读性）维度：无文档产物时中性、
 // 有产物时 lint+rubric 混合、逃生封顶、未回检地板。
@@ -485,8 +460,6 @@ func TestScoreExpression(t *testing.T) {
 		}
 	}
 
-	// Escape cap: even a clean lint + high rubric cannot exceed 60 when escaped.
-	//
 	// 逃生封顶：即便 lint 全净 + rubric 高分，逃生后也不超过 60。
 	in := EvaluateInput{HasDocDeliverables: true, DocRubricScore: &score80, DocGateEscaped: true}
 	if got := find(&in); got.Score > 60 {
@@ -494,10 +467,7 @@ func TestScoreExpression(t *testing.T) {
 	}
 }
 
-// TestIsTestPath_MirrorsPairingShapes pins the two shapes synced from
-// taskpipeline.isTestFile (T2 golden-set round): the test_ prefix with a real stem
-// and the JUnit camel suffixes — the dimension side must agree with the pairing
-// side or a paired test gets counted as production source.
+// TestIsTestPath_MirrorsPairingShapes pins the two shapes synced from taskpipeline.isTestFile (T2 golden-set round): the test_ prefix with a real stem and the JUnit camel suffixes — the dimension side must agree with the pairing side or a paired test gets counted as production source.
 //
 // TestIsTestPath_MirrorsPairingShapes 钉住与 taskpipeline.isTestFile 同步的两个
 // 形态（T2 黄金用例轮）：带真 stem 的 test_ 前缀与 JUnit 驼峰后缀——维度侧必须

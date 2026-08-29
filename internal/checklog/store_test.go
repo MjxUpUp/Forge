@@ -12,11 +12,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
-// isolateDataHome points the forge global home at a temp dir so DataDirFor
-// resolves under the test sandbox and stores never touch the real ~/.forge.
-// Idempotent within a test: helpers that wrap multiple writes (writeEntry)
-// call it per write, so a second call must not re-point the home elsewhere.
-//
 // isolateDataHome 把 forge 全局 home 指向临时目录，DataDirFor 解析进测试沙盒，
 // store 绝不触碰真实 ~/.forge。测试内幂等：包装多次写入的 helper（writeEntry）
 // 每次写入都调它，第二次调用不得把 home 重新指向别处。
@@ -248,9 +243,11 @@ func TestLoadForTask_NoMatch(t *testing.T) {
 	}
 }
 
-// TestLoadAllAll pins the cross-archive counterpart to LoadAll: it must read the active checklog.jsonl AND
-// every archived checklog-*.jsonl (chronological), so cross-task consumers (skillseval usage reading
-// CheckSkillTrigger across project history) do not see only the current task after forge task start archives.
+// TestLoadAllAll pins the cross-archive counterpart to LoadAll: it must read the
+// active checklog.jsonl AND every archived checklog-*.jsonl (chronological), so
+// cross-task consumers (skillseval usage reading CheckSkillTrigger across
+// project history) do not see only the current task after forge task start
+// archives.
 //
 // TestLoadAllAll 钉死 LoadAll 的跨归档对应：必须读 active checklog.jsonl 与所有归档 checklog-*.jsonl
 // （时间序），让跨任务消费者（skillseval usage 跨项目历史读 CheckSkillTrigger）在 forge task start
@@ -264,10 +261,6 @@ func TestLoadAllAll(t *testing.T) {
 	// active checklog：当前 task 的一条 auto-compile。
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "t-now", Detail: "active"})
 
-	// Archived checklog (what forge task start rotates away): a skill-trigger entry from an older task.
-	// This is exactly the line LoadAll (active-only) would miss and LoadAllAll must surface — the whole
-	// reason skillseval usage needs the cross-archive read.
-	//
 	// 归档 checklog（forge task start 轮转走的）：一条来自旧 task 的 skill-trigger 条目。
 	// 这正是 LoadAll（仅 active）会漏、LoadAllAll 必须暴露的行——skillseval usage 需要跨归档读的全部理由。
 	archivePath := filepath.Join(forgedata.DataDirFor(dir), "checklog-20260101000000.jsonl")
@@ -283,8 +276,6 @@ func TestLoadAllAll(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("expected 2 entries (active + archive), got %d: %+v", len(got), got)
 	}
-	// Sorted ascending by RecordedAt — the archived entry (2026-01-01) is earliest.
-	//
 	// 按 RecordedAt 升序——归档条目（2026-01-01）最早。
 	if got[0].Check != CheckSkillTrigger {
 		t.Errorf("first entry should be the archived skill-trigger, got Check=%q", got[0].Check)
@@ -359,8 +350,9 @@ func TestClear_NanosecondNaming(t *testing.T) {
 	t.Fatal("no checklog-* archive produced by Clear")
 }
 
-// TestClear_PrunesOldArchives: Clear prunes expired archives by FORGE_LOG_RETENTION_DAYS after rotation,
-// keeping recent archives and the active-clear semantics.
+// TestClear_PrunesOldArchives: Clear prunes expired archives by
+// FORGE_LOG_RETENTION_DAYS after rotation, keeping recent archives and the
+// active-clear semantics.
 //
 // TestClear_PrunesOldArchives：Clear 在轮转后按 FORGE_LOG_RETENTION_DAYS 清超期归档，
 // 保留近期归档与 active 清空语义。
@@ -370,12 +362,8 @@ func TestClear_PrunesOldArchives(t *testing.T) {
 	isolateDataHome(t)
 	forgeDir := forgedata.DataDirFor(dir)
 	os.MkdirAll(forgeDir, 0755)
-	// Old archive (year 2000, definitely older than 30 days) → deleted.
-	//
 	// 老归档（2000 年，必然超 30 天）→ 删
 	os.WriteFile(filepath.Join(forgeDir, "checklog-20000101000000.jsonl"), []byte("old"), 0644)
-	// New archive (today's timestamp) → kept.
-	//
 	// 新归档（今天时间戳）→ 保留
 	today := time.Now().Format("20060102150405.000000000")
 	os.WriteFile(filepath.Join(forgeDir, "checklog-"+today+".jsonl"), []byte("new"), 0644)
@@ -396,7 +384,8 @@ func TestClear_PrunesOldArchives(t *testing.T) {
 	}
 }
 
-// TestClear_DisabledRetention: FORGE_LOG_RETENTION_DAYS=0 disables pruning, old archives are kept.
+// TestClear_DisabledRetention: FORGE_LOG_RETENTION_DAYS=0 disables pruning, old
+// archives are kept.
 //
 // TestClear_DisabledRetention：FORGE_LOG_RETENTION_DAYS=0 禁用清理，老归档保留。
 func TestClear_DisabledRetention(t *testing.T) {
@@ -449,9 +438,9 @@ func TestRecord_WritesToDataDir_GitProject(t *testing.T) {
 	}
 }
 
-// TestLoadAll_LongLineOver64KB pins the 1MB scanner buffer: a single entry line larger
-// than bufio.Scanner's default 64KB cap (long Detail payload) must load whole, not fail
-// scoring/trace wholesale with ErrTooLong.
+// TestLoadAll_LongLineOver64KB pins the 1MB scanner buffer: a single entry line
+// larger than bufio.Scanner's default 64KB cap (long Detail payload) must load
+// whole, not fail scoring/trace wholesale with ErrTooLong.
 //
 // TestLoadAll_LongLineOver64KB 钉死 1MB scanner buffer：单条 entry 行超过
 // bufio.Scanner 默认 64KB 上限（长 Detail 载荷）必须完整读出，不能让
@@ -483,9 +472,9 @@ func TestLoadAll_LongLineOver64KB(t *testing.T) {
 	}
 }
 
-// TestLoadForTask_LongLineOver64KB pins the same 1MB cap for the archived-history path
-// (LoadForTask globs checklog*.jsonl), and that scanner errors surface instead of being
-// silently truncated.
+// TestLoadForTask_LongLineOver64KB pins the same 1MB cap for the
+// archived-history path (LoadForTask globs checklog*.jsonl), and that scanner
+// errors surface instead of being silently truncated.
 //
 // TestLoadForTask_LongLineOver64KB 为归档历史路径（LoadForTask glob
 // checklog*.jsonl）钉同样的 1MB 上限，并保证 scanner 错误显式上抛而非静默截断。
@@ -497,8 +486,6 @@ func TestLoadForTask_LongLineOver64KB(t *testing.T) {
 	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, TaskRef: "feat/long", Detail: long}); err != nil {
 		t.Fatalf("Record: %v", err)
 	}
-	// A long line in an archived file must load too.
-	//
 	// 归档文件里的长行同样必须能读出。
 	longEntry := `{"check":"auto-compile","passed":true,"checked":true,"task_ref":"feat/long","detail":"` + long + `","recorded_at":"2026-01-01T00:00:00Z"}` + "\n"
 	if err := os.WriteFile(filepath.Join(forgedata.DataDirFor(dir), "checklog-20260101000000.jsonl"), []byte(longEntry), 0644); err != nil {
@@ -521,8 +508,7 @@ func TestLoadForTask_LongLineOver64KB(t *testing.T) {
 
 // TestRecord_DerivesLevelFallback pins the Record-time Level fallback: entries
 // whose caller leaves Level empty are classified from Passed + Detail prefixes
-// (BLOCKED: / ADVISORY:), mirroring the Source fallback; an explicit Level
-// always wins. The persisted JSON line carries the level field.
+// (BLOCKED: / ADVISORY:), mirroring the Source fallback.
 //
 // TestRecord_DerivesLevelFallback 钉死 Record 时的 Level 兜底：调用方留空
 // Level 的条目按 Passed + Detail 前缀（BLOCKED: / ADVISORY:）分级，与 Source
@@ -571,9 +557,7 @@ func TestRecord_DerivesLevelFallback(t *testing.T) {
 }
 
 // TestEffectiveLevel_OldLinesDerive pins the read-side derive fallback: lines
-// written before the level field existed (no "level" key — history is NOT
-// rewritten) still classify correctly via EffectiveLevel, while Entry.Level
-// stays empty on load (no mutation of the archived data in memory either).
+// written before the level field existed (no "level" key.
 //
 // TestEffectiveLevel_OldLinesDerive 钉死读取侧 derive 兜底：level 字段引入前
 // 写入的行（无 "level" 键——历史不改写）经 EffectiveLevel 仍正确分级，且
@@ -613,10 +597,6 @@ func TestEffectiveLevel_OldLinesDerive(t *testing.T) {
 
 // --- feat/checklog-janitor: active-log size rotation ---
 
-// writeActiveLog overwrites the active checklog.jsonl with raw JSONL lines — test
-// fixture builder for oversized-active scenarios, where growing the file past the
-// tiny test threshold via Record itself would rotate mid-setup.
-//
 // writeActiveLog 用原始 JSONL 行直接覆写 active checklog.jsonl——超阈值 active 场景的
 // 测试夹具构造器：若用 Record 自己长过（测试用的极小）阈值，会在预置中途就轮转。
 func writeActiveLog(t *testing.T, root, content string) {
@@ -634,9 +614,7 @@ func writeActiveLog(t *testing.T, root, content string) {
 // checklog.jsonl exceeds FORGE_CHECKLOG_ROTATE_BYTES, the next Record rotates it
 // into a checklog-*.jsonl archive (the naming pruneArchives globs and
 // archiveTimestamp parses, and loadAllArchives reads), opens a fresh active, and
-// subsequent Records land in the fresh active. Without rotation the active file
-// grew unbounded (15946 lines observed in review evidence) — Clear has no
-// production caller and Prune only globs archives, so nothing else bounds it.
+// subsequent Records land in the fresh active.
 //
 // TestRecord_RotatesOversizedActive 钉死 feat/checklog-janitor：active
 // checklog.jsonl 超过 FORGE_CHECKLOG_ROTATE_BYTES 时，下一次 Record 把它轮转成
@@ -650,8 +628,6 @@ func TestRecord_RotatesOversizedActive(t *testing.T) {
 	isolateDataHome(t)
 	dataDir := forgedata.DataDirFor(dir)
 
-	// Pre-grow the active file past the threshold with ONE valid pre-rotation entry.
-	//
 	// 用一条合法的轮转前条目把 active 预置到超阈值。
 	pre := `{"check":"auto-compile","passed":true,"checked":true,"task_ref":"t-old","detail":"` + strings.Repeat("x", 2900) + `","recorded_at":"2026-01-01T00:00:00Z"}` + "\n"
 	writeActiveLog(t, dir, pre)
@@ -660,16 +636,11 @@ func TestRecord_RotatesOversizedActive(t *testing.T) {
 		t.Fatalf("预置 active 未超阈值: size=%v err=%v", info, err)
 	}
 
-	// The rotation-triggering Record: oversized active is rotated away BEFORE the
-	// append, so this entry lands in the fresh active.
-	//
 	// 触发轮转的 Record：超阈值的 active 在追加前被轮走，本条落进新开的 active。
 	if err := Record(dir, &Entry{Check: CheckAssertion, Passed: true, TaskRef: "t-new", Detail: "fresh-1"}); err != nil {
 		t.Fatalf("Record(触发轮转): %v", err)
 	}
 
-	// Exactly one archive exists, carrying the pre-rotation history.
-	//
 	// 恰好一个归档，承载轮转前历史。
 	archives, err := filepath.Glob(filepath.Join(dataDir, "checklog-*.jsonl"))
 	if err != nil {
@@ -678,9 +649,6 @@ func TestRecord_RotatesOversizedActive(t *testing.T) {
 	if len(archives) != 1 {
 		t.Fatalf("轮转应产生恰好 1 个归档, got %d: %v", len(archives), archives)
 	}
-	// The archive name keeps the nanosecond convention (parseable by pruneArchives'
-	// archiveTimestamp → filename-timestamp retention works on rotation-produced archives).
-	//
 	// 归档名保持纳秒约定（pruneArchives 的 archiveTimestamp 可解析 → 按文件名时间戳的
 	// retention 对轮转产物有效）。
 	name := filepath.Base(archives[0])
@@ -688,8 +656,6 @@ func TestRecord_RotatesOversizedActive(t *testing.T) {
 		t.Errorf("归档名 %q 缺纳秒精度（archiveTimestamp 约定）", name)
 	}
 
-	// Fresh active contains ONLY the new entry.
-	//
 	// 新开的 active 只含新条目。
 	active, err := LoadAll(dir)
 	if err != nil {
@@ -699,8 +665,6 @@ func TestRecord_RotatesOversizedActive(t *testing.T) {
 		t.Fatalf("轮转后 active 应只含新条目, got %+v", active)
 	}
 
-	// Subsequent Records keep landing in the fresh active (no re-rotation below threshold).
-	//
 	// 后续 Record 持续落新 active（阈值以下不再轮转）。
 	if err := Record(dir, &Entry{Check: CheckTaskVerify, Passed: true, TaskRef: "t-new", Detail: "fresh-2"}); err != nil {
 		t.Fatal(err)
@@ -713,8 +677,6 @@ func TestRecord_RotatesOversizedActive(t *testing.T) {
 		t.Fatalf("后续 Record 应落新 active（共 2 条）, got %d", len(active))
 	}
 
-	// Cross-archive readers keep the rotated history: 1 pre-rotation + 2 new.
-	//
 	// 跨归档读者仍见轮转走的历史：1 条轮转前 + 2 条新。
 	all, err := LoadAllAll(dir)
 	if err != nil {
@@ -725,14 +687,12 @@ func TestRecord_RotatesOversizedActive(t *testing.T) {
 	}
 }
 
-// TestRecord_NoRotationBelowThreshold: below the threshold Record appends in place —
-// no archive appears (rotation must not fire on normal-sized logs).
+// TestRecord_NoRotationBelowThreshold: below the threshold Record appends in
+// place — no archive appears (rotation must not fire on normal-sized logs).
 //
 // TestRecord_NoRotationBelowThreshold：阈值以下 Record 原地追加——不产生归档
 // （正常尺寸的日志不得触发轮转）。
 func TestRecord_NoRotationBelowThreshold(t *testing.T) {
-	// 8MB threshold: two small entries can never cross it.
-	//
 	// 8MB 阈值：两条小条目无论如何越不过。
 	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "8388608")
 	dir := t.TempDir()
@@ -760,9 +720,9 @@ func TestRecord_NoRotationBelowThreshold(t *testing.T) {
 	}
 }
 
-// TestRecord_RotationInvalidEnvUsesDefault: a non-numeric FORGE_CHECKLOG_ROTATE_BYTES
-// falls back to the 5MB default (mirrors util.RetentionDays' invalid→default rule) —
-// normal writes never rotate.
+// TestRecord_RotationInvalidEnvUsesDefault: a non-numeric
+// FORGE_CHECKLOG_ROTATE_BYTES falls back to the 5MB default (mirrors
+// util.RetentionDays' invalid→default rule).
 //
 // TestRecord_RotationInvalidEnvUsesDefault：非法数字的 FORGE_CHECKLOG_ROTATE_BYTES
 // 回落到 5MB 默认（镜像 util.RetentionDays 的非法→默认规则）——常规写入不轮转。
@@ -784,9 +744,7 @@ func TestRecord_RotationInvalidEnvUsesDefault(t *testing.T) {
 	}
 }
 
-// TestRecord_RotationDisabled: FORGE_CHECKLOG_ROTATE_BYTES=0 disables rotation — an
-// oversized active is appended to in place (explicit escape hatch back to the legacy
-// unbounded behavior, never data loss).
+// TestRecord_RotationDisabled: FORGE_CHECKLOG_ROTATE_BYTES=0 disables rotation.
 //
 // TestRecord_RotationDisabled：FORGE_CHECKLOG_ROTATE_BYTES=0 禁用轮转——超阈值
 // active 原地继续追加（显式逃生阀，回到旧的无限增长行为，绝不丢数据）。
@@ -818,9 +776,8 @@ func TestRecord_RotationDisabled(t *testing.T) {
 	}
 }
 
-// TestAppendEntries_RotatesOversizedActive: the import path (AppendEntries) carries
-// the same rotation guard — one cross-machine bundle can push the active file past
-// the threshold in a single call.
+// TestAppendEntries_RotatesOversizedActive: the import path (AppendEntries)
+// carries the same rotation guard.
 //
 // TestAppendEntries_RotatesOversizedActive：import 路径（AppendEntries）带同样的
 // 轮转守卫——一次跨机器 bundle 就能把 active 顶过阈值。
@@ -852,9 +809,8 @@ func TestAppendEntries_RotatesOversizedActive(t *testing.T) {
 	}
 }
 
-// TestRecord_ConcurrentRotation: rotation is serialized with Record under the same
-// mutex — concurrent writers at a tiny threshold must not lose entries or error;
-// every Record survives in active-or-archive (LoadAllAll counts them all).
+// TestRecord_ConcurrentRotation: rotation is serialized with Record under the
+// same mutex.
 //
 // TestRecord_ConcurrentRotation：轮转与 Record 同锁串行——极小阈值下的并发写者不得
 // 丢条目、不得报错；每条 Record 都存活在 active 或归档里（LoadAllAll 全数可见）。

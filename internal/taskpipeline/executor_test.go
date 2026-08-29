@@ -288,11 +288,6 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// initRepoWithMainGo creates a temp git repo (default branch) with an initial
-// main.go commit — the hasCodeChanges / work-activity fixture baseline: a clean
-// tracked tree to diff against (git diff HEAD sees main.go, untracked probes see
-// nothing). Replaces the 7-line init boilerplate formerly inlined per test.
-//
 // initRepoWithMainGo 建临时 git 仓库（默认分支）并首次提交 main.go——
 // hasCodeChanges / work-activity 夹具基线：干净的被跟踪树供 diff（git diff HEAD
 // 看得到 main.go，untracked 探测为空）。替代原先逐测试内联的 7 行 init 样板。
@@ -310,11 +305,6 @@ func initRepoWithMainGo(t *testing.T) string {
 	return dir
 }
 
-// initRepoOnBranch creates a temp git repo with an empty initial commit on the
-// default branch, then checks out the given feature branch — the gate-flow
-// fixture (mirrors `forge task start --branch`). See initRepoWithMaster for the
-// testcov-pinned variant.
-//
 // initRepoOnBranch 建临时 git 仓库（默认分支空提交）后 checkout 给定 feature
 // 分支——gate 流程夹具（镜像 `forge task start --branch`）。testcov 固定分支的
 // 变体见 initRepoWithMaster。
@@ -329,10 +319,6 @@ func initRepoOnBranch(t *testing.T, branch string) string {
 	return dir
 }
 
-// initRepoWithTasksDir creates a temp git repo (init + identity only, no commit)
-// with the legacy project-level .forge/tasks dir — the ActiveTaskState fixture
-// shape (resolution probes, no gate flow).
-//
 // initRepoWithTasksDir 建临时 git 仓库（仅 init + 身份配置，无提交）并带遗留的
 // 项目级 .forge/tasks 目录——ActiveTaskState 夹具形态（探测解析，无 gate 流程）。
 func initRepoWithTasksDir(t *testing.T) string {
@@ -345,12 +331,6 @@ func initRepoWithTasksDir(t *testing.T) string {
 	return dir
 }
 
-// firstCheckEntry loads the task's checklog and returns the first entry with the
-// given check name (nil if absent) — the shared scan shape behind the gate-audit
-// assertions (telemetry-missing / escape-hatch / docs-consistency /
-// review-snapshot / gate claims). (The bool-existence variant findCheckEntry
-// lives in complete_advisory_test.go.)
-//
 // firstCheckEntry 加载任务 checklog 并返回首个匹配 check 名的条目（缺则 nil）
 // ——gate 审计断言（telemetry-missing / escape-hatch / docs-consistency /
 // review-snapshot / gate 声明）共用的扫描形态。（bool 存在性变体 findCheckEntry
@@ -398,10 +378,7 @@ func TestHasCodeChanges_WithUncommittedChanges(t *testing.T) {
 	}
 }
 
-// TestHasCodeChanges_UntrackedNewFile pins the untracked-source fix (2026-08-29 review
-// round): a task whose ONLY change is a brand-new, not-yet-git-added file must report
-// code changes — `git diff HEAD` sees no untracked content, so the gate previously
-// hard-blocked such tasks as 'no code changes' forever.
+// TestHasCodeChanges_UntrackedNewFile pins the untracked-source fix (2026-08-29 review round): a task whose ONLY change is a brand-new, not-yet-git-added file must report code changes — `git diff HEAD` sees no untracked content, so the gate previously hard-blocked such tasks as 'no code changes' forever.
 //
 // TestHasCodeChanges_UntrackedNewFile 钉 untracked 源修复（2026-08-29 审查轮）：
 // 唯一改动是新建、尚未 git add 的文件时必须报有代码变更——`git diff HEAD` 看不到
@@ -409,9 +386,6 @@ func TestHasCodeChanges_WithUncommittedChanges(t *testing.T) {
 func TestHasCodeChanges_UntrackedNewFile(t *testing.T) {
 	dir := initRepoWithMainGo(t)
 
-	// The task's ONLY change: a brand-new untracked file (no stage, no commit, no
-	// working-tree modification of tracked files).
-	//
 	// 本任务唯一改动：全新 untracked 文件（未 stage、未 commit、未改任何 tracked 文件）。
 	os.WriteFile(filepath.Join(dir, "feature.go"), []byte("package main\n"), 0644)
 
@@ -436,10 +410,7 @@ func TestHasCodeChanges_FeatureBranchWithCommits(t *testing.T) {
 	}
 }
 
-// TestHasCodeChanges_MainBranchHeadCommit pins the deadlock fix: a task on main whose
-// HeadCommit (recorded at task start) is followed by a mid-task commit must report code
-// changes. Previously Check 2 was gated on Branch != main/master, so after the commit the
-// gate fell through to 'no code changes' and task-implement could never pass.
+// TestHasCodeChanges_MainBranchHeadCommit pins the deadlock fix: a task on main whose HeadCommit (recorded at task start) is followed by a mid-task commit must report code changes.
 //
 // TestHasCodeChanges_MainBranchHeadCommit 钉死死锁修复：main 上的 task 在 HeadCommit
 // （task start 时记录）之后做了中段 commit，必须报有代码变更。此前 Check 2 按
@@ -452,8 +423,6 @@ func TestHasCodeChanges_MainBranchHeadCommit(t *testing.T) {
 		t.Fatal("GetHeadCommit returned empty in a git repo")
 	}
 
-	// Mid-task commit on main (the AGENTS.md flow itself encourages committing mid-task).
-	//
 	// main 上的中段 commit（AGENTS.md 流程本身鼓励中段 commit）
 	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
 	runGit(t, dir, "add", ".")
@@ -465,9 +434,7 @@ func TestHasCodeChanges_MainBranchHeadCommit(t *testing.T) {
 	}
 }
 
-// TestHasCodeChanges_HeadCommitAtHead: HeadCommit == HEAD with a clean tree means no
-// changes since task start — must return false (the HeadCommit path must not degrade
-// into always-true).
+// TestHasCodeChanges_HeadCommitAtHead: HeadCommit == HEAD with a clean tree means no changes since task start — must return false (the HeadCommit path must not degrade into always-true).
 //
 // TestHasCodeChanges_HeadCommitAtHead：HeadCommit == HEAD 且工作树干净 = task 起算
 // 无变更——必须返回 false（HeadCommit 路径不能退化成恒 true）。
@@ -480,11 +447,7 @@ func TestHasCodeChanges_HeadCommitAtHead(t *testing.T) {
 	}
 }
 
-// TestRecordAudit_FailureWarnsOnStderr pins the audit-persistence signal: when
-// checklog.Record fails (here: FORGE_DATA_HOME is a regular file, so the
-// user-level DataDir cannot be created underneath), recordAudit must surface the
-// failure on stderr instead of swallowing it — the persisted evidence is
-// indispensable for score/trace.
+// TestRecordAudit_FailureWarnsOnStderr pins the audit-persistence signal: when checklog.Record fails (here: FORGE_DATA_HOME is a regular file, so the user-level DataDir cannot be created underneath), recordAudit must surface the failure on stderr instead of swallowing it — the persisted evidence is indispensable for score/trace.
 //
 // TestRecordAudit_FailureWarnsOnStderr 钉死审计落盘信号：checklog.Record 失败时
 // （此处 FORGE_DATA_HOME 是普通文件，其下无法建用户级 DataDir），recordAudit
@@ -494,9 +457,6 @@ func TestRecordAudit_FailureWarnsOnStderr(t *testing.T) {
 	if err := os.WriteFile(bogus, []byte("x"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	// Record resolves the user-level DataDir under FORGE_DATA_HOME
-	// (DataDirFor → RootDir); a regular file there makes MkdirAll fail.
-	//
 	// Record 把用户级 DataDir 解析到 FORGE_DATA_HOME 下（DataDirFor →
 	// RootDir）；该处是普通文件时 MkdirAll 必失败。
 	t.Setenv("FORGE_DATA_HOME", bogus)
@@ -551,11 +511,7 @@ func TestSanitizeRefInStatePath(t *testing.T) {
 	}
 }
 
-// TestLoadTaskState_RefCollisionRejected pins the collision guard: SanitizeRef
-// collapses '/', '\\', ':' and spaces to '-', so distinct refs can share one state
-// file. Loading must verify the TaskRef stored INSIDE the file — otherwise task B
-// silently reads task A's History/ReviewPassed/Acceptance and the review hard
-// prerequisite is bypassed via collision.
+// TestLoadTaskState_RefCollisionRejected pins the collision guard: SanitizeRef collapses '/', '\\', ':' and spaces to '-', so distinct refs can share one state file.
 //
 // TestLoadTaskState_RefCollisionRejected 钉死串号防护：SanitizeRef 把 '/'、'\\'、
 // ':'、空格全压成 '-'，不同 ref 可共用同一状态文件。加载必须校验文件内存的
@@ -570,8 +526,6 @@ func TestLoadTaskState_RefCollisionRejected(t *testing.T) {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
 
-	// The exact ref still loads.
-	//
 	// 精确 ref 照常加载
 	loaded, err := LoadTaskState(dir, "feat/foo/bar")
 	if err != nil {
@@ -581,8 +535,6 @@ func TestLoadTaskState_RefCollisionRejected(t *testing.T) {
 		t.Errorf("TaskRef = %q, want feat/foo/bar", loaded.TaskRef)
 	}
 
-	// Colliding refs (same sanitized filename) must be rejected with a clear error.
-	//
 	// 串号 ref（sanitize 后同文件名）必须以明确错误拒绝
 	for _, ref := range []string{"feat/foo bar", "feat/foo:bar", `feat\foo\bar`} {
 		_, err := LoadTaskState(dir, ref)
@@ -620,11 +572,7 @@ func TestLastGateSkipsTiming(t *testing.T) {
 	}
 }
 
-// TestTaskCompleteRequiresReview guards the task-complete hard prereq: when
-// code-review-gate is not passed (ReviewPassed=false), task-complete must be
-// refused. This is the enforcement point of the mandatory-pre-commit review
-// path on the task route — prevents agents from skipping the sub-agent review
-// and going straight to complete.
+// TestTaskCompleteRequiresReview guards the task-complete hard prereq: when code-review-gate is not passed (ReviewPassed=false), task-complete must be refused.
 //
 // TestTaskCompleteRequiresReview 守卫 task-complete 的 review 硬前置——code-review-gate
 // 未通过（ReviewPassed=false）时 task-complete 必须被拒。这是「提交前必审」task 路径的
@@ -635,15 +583,11 @@ func TestTaskCompleteRequiresReview(t *testing.T) {
 	state.RecordGateResult("task-implement", true, "")
 	state.RecordGateResult("task-verify", true, "")
 
-	// ReviewPassed is still false → task-complete must be rejected.
-	//
 	// ReviewPassed 仍 false → task-complete 必须拒绝
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err == nil {
 		t.Fatal("task-complete 应因 ReviewPassed=false 被拒——硬前置失效（agent 可跳过审查直接 complete）")
 	}
 
-	// Mark it as passed → should let through.
-	//
 	// 标记通过后应放行
 	state.MarkReviewPassed("", "")
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
@@ -663,13 +607,7 @@ func TestIsLastGate(t *testing.T) {
 	}
 }
 
-// TestWorkActivityTelemetryMissingDegradesToAdvisory pins the telemetry-missing degrade:
-// when BOTH telemetry channels are empty (toollog file absent/empty AND zero hook-dispatched
-// checklog entries for the task — the signature of a host whose PostToolUse dispatch is not
-// wired, e.g. kimi), the work-activity counts are structurally 0 and the hard gate would be a
-// 100% false positive. The gate must therefore PASS with a stderr advisory and persist a
-// CheckNameTelemetryMissing audit entry, so score/dashboard/trace can see the gate passed on
-// degraded telemetry rather than verified activity.
+// TestWorkActivityTelemetryMissingDegradesToAdvisory pins the telemetry-missing degrade: when BOTH telemetry channels are empty (toollog file absent/empty AND zero hook-dispatched checklog entries for the task — the signature of a host whose PostToolUse dispatch is not wired, e.g. kimi), the work-activity counts are structurally 0 and the hard gate would be a 100% false positive.
 //
 // TestWorkActivityTelemetryMissingDegradesToAdvisory 钉住遥测缺失降级：两条遥测通道都空
 // （toollog 文件缺失/为空 且 checklog 无本任务 hook 条目——host 的 PostToolUse 分发未接的
@@ -686,8 +624,6 @@ func TestWorkActivityTelemetryMissingDegradesToAdvisory(t *testing.T) {
 		Branch:  "feat/test",
 	}
 
-	// Pass task-implement (auto) — but log no Reads/activity afterwards.
-	//
 	// 通过 task-implement（auto）——之后不记任何 Read/活动
 	state.RecordGateResult("task-implement", true, "")
 
@@ -702,23 +638,13 @@ func TestWorkActivityTelemetryMissingDegradesToAdvisory(t *testing.T) {
 		t.Fatalf("stderr 应含 advisory 说明遥测缺失，got: %q", stderr)
 	}
 
-	// Audit trail persisted — the degrade must be visible, not silent.
-	//
 	// 审计已落盘——降级必须可见，不能静默。
 	if firstCheckEntry(t, dir, "test-auto-activity", CheckNameTelemetryMissing) == nil {
 		t.Fatalf("checklog 应有 CheckNameTelemetryMissing 审计条目")
 	}
 }
 
-// TestWorkActivityStillEnforcedAfterAutoGate pins the 3-gate rule documented at the
-// work-activity check in executor.go: the check is intentionally NOT skipped after an
-// auto gate. Under the 3-gate pipeline task-verify immediately follows the auto
-// task-implement, and the implement→verify stretch is exactly the interval where
-// read-before-edit must be enforced — skipping after auto was the old 5-gate-era rule
-// (embodied by the now-deleted isPreviousGateAuto) and would make this check
-// ineffective. When the telemetry channel is ALIVE (a hook-dispatched checklog entry
-// exists for the task) but activity is genuinely zero, task-verify must still be
-// BLOCKED — the telemetry-missing degrade must not become an escape lane.
+// TestWorkActivityStillEnforcedAfterAutoGate pins the 3-gate rule documented at the work-activity check in executor.go: the check is intentionally NOT skipped after an auto gate.
 //
 // TestWorkActivityStillEnforcedAfterAutoGate 钉死 executor.go 工作活动检查处记录的
 // 3-gate 规则：auto gate 之后故意不跳过本检查。3-gate 流水线下 task-verify 紧跟
@@ -736,11 +662,6 @@ func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
 		Branch:  "feat/test",
 	}
 
-	// Telemetry alive: a hook-dispatched checklog entry (ToolName set) exists for this
-	// task. ToolName "Bash" is excluded from WorkActivity's workTools, so activity is
-	// still genuinely 0 — the gate must BLOCK, proving the degrade only fires when BOTH
-	// channels are empty.
-	//
 	// 遥测存活：本任务存在一条 hook 分发的 checklog 条目（带 ToolName）。ToolName
 	// "Bash" 不在 WorkActivity 的 workTools 内，故活动仍确实为 0——门禁必须 BLOCK，
 	// 证明降级只在两条通道都空时触发。
@@ -754,8 +675,6 @@ func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
 		t.Fatalf("checklog.Record: %v", err)
 	}
 
-	// Pass task-implement (auto) — but log no Reads/activity afterwards.
-	//
 	// 通过 task-implement（auto）——之后不记任何 Read/活动
 	state.RecordGateResult("task-implement", true, "")
 
@@ -768,12 +687,7 @@ func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
 	}
 }
 
-// TestWorkActivityExplorationCounts pins the 2026-08-23 doc-implementation drift
-// fix at the executor surface (the surface CLAUDE.md's error table talks about):
-// a pure-exploration stretch (Grep/Glob, zero Read, zero Edit) is real work and
-// must PASS the work-activity gate. Before the fix, Grep/Glob never reached
-// toollog (matcher gap), so the documented advice "explore with Read/Grep/Glob"
-// between gates was a dead promise — the gate stayed blocked until a Read landed.
+// TestWorkActivityExplorationCounts pins the 2026-08-23 doc-implementation drift fix at the executor surface (the surface CLAUDE.md's error table talks about): a pure-exploration stretch (Grep/Glob, zero Read, zero Edit) is real work and must PASS the work-activity gate.
 //
 // TestWorkActivityExplorationCounts 在 executor 表面（即 CLAUDE.md 错误表所说的
 // 那个表面）钉死 2026-08-23 文档-实现漂移修复：纯探索段落（Grep/Glob、零
@@ -790,10 +704,6 @@ func TestWorkActivityExplorationCounts(t *testing.T) {
 		Branch:  "feat/test",
 	}
 
-	// Pure exploration: two Grep calls and one Glob, no Read, no Edit. Recorded
-	// the way the real tool-track hook records them (toollog rows with the
-	// task's ref). Timestamps are Record-time; the task started just before.
-	//
 	// 纯探索：两次 Grep、一次 Glob，零 Read、零 Edit。按真实 tool-track
 	// hook 的记录方式落 toollog（带任务 ref）。时间戳为 Record 时刻；任务
 	// 刚在之前启动。
@@ -812,11 +722,7 @@ func TestWorkActivityExplorationCounts(t *testing.T) {
 	}
 }
 
-// TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit pins the strictness
-// boundary of the same fix: exploration counts toward "was there work", but
-// NEVER toward "did you read before edit". A stretch with an Edit and Grep
-// calls but zero Read must still be BLOCKED — browsing matches is not reading
-// the file you edit.
+// TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit pins the strictness boundary of the same fix: exploration counts toward "was there work", but NEVER toward "did you read before edit".
 //
 // TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit 钉死同一修复的严格
 // 性边界：探索计入「有无工作」，绝不计入「改前是否读过」。有 Edit、有
@@ -849,13 +755,7 @@ func TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit(t *testing.T) {
 	}
 }
 
-// TestWorkActivitySessionAlivePreventsDegrade pins the session-scoped cross-check
-// (code-review 2026-08): toollog.jsonl lives in the agent-writable DataDir, so
-// "toollog empty" alone cannot prove telemetry loss — an agent could delete it to
-// fabricate the degrade for a fresh task with no task-scoped entries. A session
-// whose PostToolUse dispatch works accumulates hook-dispatched entries across
-// tasks; any such entry in the CURRENT session (even under another task ref) must
-// suppress the degrade and keep the HARD stop.
+// TestWorkActivitySessionAlivePreventsDegrade pins the session-scoped cross-check (code-review 2026-08): toollog.jsonl lives in the agent-writable DataDir, so "toollog empty" alone cannot prove telemetry loss — an agent could delete it to fabricate the degrade for a fresh task with no task-scoped entries.
 //
 // TestWorkActivitySessionAlivePreventsDegrade 钉住 session 级交叉验证
 // （code-review 2026-08）：toollog.jsonl 在 agent 可写的 DataDir，「toollog 为空」
@@ -897,11 +797,7 @@ func TestWorkActivitySessionAlivePreventsDegrade(t *testing.T) {
 	}
 }
 
-// TestWorkActivitySessionAliveNotMaskedByGateAudit pins pitfall 3a (code-review
-// 2026-08): the session-alive check must full-scan, not fold to latest-per-check.
-// A gate audit entry (ToolName="") recorded AFTER a hook-dispatched entry under the
-// same check name would mask the hook entry in a latest-per-check map and
-// resurrect the forged degrade in an otherwise clean session.
+// TestWorkActivitySessionAliveNotMaskedByGateAudit pins pitfall 3a (code-review 2026-08): the session-alive check must full-scan, not fold to latest-per-check.
 //
 // TestWorkActivitySessionAliveNotMaskedByGateAudit 钉住坑 3a（code-review 2026-08）：
 // session 存活检查必须全量扫描，不能按 check 折叠到最新一条。同名 check 下、时间
@@ -957,11 +853,7 @@ func TestWorkActivitySessionAliveNotMaskedByGateAudit(t *testing.T) {
 	}
 }
 
-// TestWorkActivityMixedHostKimiStillDegrades pins pitfall 3b (code-review 2026-08):
-// when state.SessionID is empty (kimi/legacy), the session-alive check must count
-// ONLY empty-session hook entries. Session-filtering treats "" as "no filter", so a
-// naive check would count Claude's entries in a mixed-host project as kimi's
-// telemetry — re-introducing the 100% false-positive BLOCK the degrade exists to fix.
+// TestWorkActivityMixedHostKimiStillDegrades pins pitfall 3b (code-review 2026-08): when state.SessionID is empty (kimi/legacy), the session-alive check must count ONLY empty-session hook entries.
 //
 // TestWorkActivityMixedHostKimiStillDegrades 钉住坑 3b（code-review 2026-08）：
 // state.SessionID 为空（kimi/legacy）时，session 存活检查只认空 session 的 hook
@@ -1021,11 +913,6 @@ func TestActiveTaskState_BranchDetection(t *testing.T) {
 	// Checkout matching branch
 	runGit(t, dir, "checkout", "-b", "feat/test-branch")
 
-	// Real commit present so branch detection actually fires. Historically this test
-	// passed via the priority-3 single-incomplete fallback (the unborn HEAD made Detect
-	// return empty) — the fallback was removed by multi-task-concurrency §4, and the
-	// fixture now exercises the branch probe it always claimed to.
-	//
 	// 有真实 commit，分支探测真正生效。历史上本测试实际靠优先级 3 的「唯一未完成
 	// 任务」兜底通过（unborn HEAD 使 Detect 返回空）——该兜底已被 multi-task-
 	// concurrency §4 移除，fixture 现在测的就是它名字所说的分支探测。
@@ -1056,12 +943,6 @@ func TestActiveTaskState_FallbackSingleIncompleteOnMaster(t *testing.T) {
 	state := NewTaskState(ctx)
 	SaveTaskState(dir, state)
 
-	// multi-task-concurrency §4 removed the "single incomplete task" environment
-	// guess: in a multi-task world the only remaining task is at least as likely to
-	// be someone else's. On master with no pointer/binding the resolution is now nil;
-	// the durable anchors are the workspace binding (task start writes it) and the
-	// legacy global pointer bridge.
-	//
 	// multi-task-concurrency §4 移除了「唯一未完成任务」环境猜测：多任务世界里仅剩
 	// 的那个任务至少同样可能是别人的。master 上无指针/无绑定时解析为 nil；持久锚
 	// 是 workspace 绑定（task start 写入）与 legacy 全局指针桥。
@@ -1072,9 +953,6 @@ func TestActiveTaskState_FallbackSingleIncompleteOnMaster(t *testing.T) {
 	if active != nil {
 		t.Fatalf("环境猜测兜底已移除：无指针/绑定时应返回 nil, got %q", active.TaskRef)
 	}
-	// The replacement anchor: bind the cwd to the task and the SAME call resolves it —
-	// the "exit-and-reenter" contract (a new window needs no session to survive).
-	//
 	// 替代锚：把 cwd 绑到任务上，同一调用即解析——「退出重进」契约（新窗口不需要
 	// 任何会话存活）。
 	if err := worktree.BindTask(dir, "fix/skill-sync", "master", ""); err != nil {
@@ -1133,9 +1011,6 @@ func TestActiveTaskState_FallbackIgnoresCompleted(t *testing.T) {
 	}
 	SaveTaskState(dir, NewTaskState(ctx2))
 
-	// multi-task-concurrency §4: completed tasks never anchor and the single-incomplete
-	// environment guess is gone — without a pointer/binding the resolution is nil.
-	//
 	// multi-task-concurrency §4：已完成任务永不作锚，且「唯一未完成任务」环境猜测
 	// 已移除——无指针/绑定时解析为 nil。
 	active, err := ActiveTaskState(dir, "")
@@ -1208,11 +1083,7 @@ func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
 	}
 }
 
-// TestActiveTaskState_BranchProbeLoadFailureFallsThrough pins the priority-2
-// fall-through: when the branch-derived task state file fails to load (corrupt
-// here), the probe must fall through to the priority-3 fallback scan instead of
-// aborting — otherwise an otherwise-unambiguous active task is lost behind a
-// single broken file.
+// TestActiveTaskState_BranchProbeLoadFailureFallsThrough pins the priority-2 fall-through: when the branch-derived task state file fails to load (corrupt here), the probe must fall through to the priority-3 fallback scan instead of aborting — otherwise an otherwise-unambiguous active task is lost behind a single broken file.
 //
 // TestActiveTaskState_BranchProbeLoadFailureFallsThrough 钉死优先级 2 的 fall
 // through：branch 探测到的 task state 文件加载失败（此处为损坏）时，探测必须
@@ -1221,8 +1092,6 @@ func TestActiveTaskState_StaleRefFileFallsThrough(t *testing.T) {
 func TestActiveTaskState_BranchProbeLoadFailureFallsThrough(t *testing.T) {
 	dir := initRepoOnBranch(t, "feat/broken")
 
-	// Corrupt state file named after the branch-derived ref (priority-2 probe target).
-	//
 	// 以 branch 探测 ref 命名的损坏 state 文件（优先级 2 的探测目标）
 	tasksDir := filepath.Join(dataHome(dir), "tasks")
 	if err := os.MkdirAll(tasksDir, 0755); err != nil {
@@ -1233,8 +1102,6 @@ func TestActiveTaskState_BranchProbeLoadFailureFallsThrough(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// One unrelated incomplete task — priority 3 should find it unambiguously.
-	//
 	// 一个无关的未完成 task——优先级 3 应无歧义找到它
 	other := &TaskState{TaskRef: "fix/other", Branch: "master", StartedAt: time.Now()}
 	if err := SaveTaskState(dir, other); err != nil {
@@ -1245,10 +1112,6 @@ func TestActiveTaskState_BranchProbeLoadFailureFallsThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("branch-probe load failure must fall through, not abort the probe: %v", err)
 	}
-	// multi-task-concurrency §4: the fall-through now lands on the legacy pointer bridge
-	// (nil here) — the single-incomplete scan behind a corrupt file was exactly the
-	// misattribution vector the redesign removed.
-	//
 	// multi-task-concurrency §4：fall-through 现在落到 legacy 指针桥（此处为 nil）
 	// ——损坏文件背后靠「唯一未完成任务」扫描捡起无关任务，正是重设计要移除的
 	// 误挂向量。
@@ -1302,23 +1165,14 @@ func TestGateTimingExemptsAutoGates(t *testing.T) {
 	}
 }
 
-// TestTestCoverageCheckScopedToVerifyGate guards the executor.go integration —
-// the test-coverage check fires ONLY at task-verify and never at task-complete
-// (the last gate), so a task carrying an untested source change must still be
-// able to reach task-complete. It also pins the fudge-factor boundary of Plan-A's
-// backstop: task-complete now runs the test-coverage backstop too (closing the
-// advisory gap), but a single-file small change (total=1<3) advisory-passes even
-// with zero assertions — the corrupt-success backstop only fires on big-change
-// (>=3) with zero assertions. bar.go is a single file with no test and no
-// assertion, so the fudge factor lets it through and task-complete still PASSes.
+// TestTestCoverageCheckScopedToVerifyGate guards the executor.go integration — the test-coverage check fires ONLY at task-verify and never at task-complete (the last gate), so a task carrying an untested source change must still be able to reach task-complete.
 //
-// TestTestCoverageCheckScopedToVerifyGate guards the executor.go integration:
-// the test-coverage check runs ONLY at task-verify, never at task-complete (the
-// last gate). A task with an untested source change must still be able to reach
-// TestTestCoverageCheckScopedToVerifyGate 钉死方案 A 兜底的 fudge factor 边界：task-complete
-// 现在也跑 test-coverage 兜底（补 advisory 缺口），但单文件小改（total=1<3）即使零断言也
-// advisory 放行——corrupt success 兜底只拦「大改（≥3）零断言」。bar.go 单文件无测试无断言
-// → fudge factor 放行，task-complete 仍 PASS。
+// TestTestCoverageCheckScopedToVerifyGate 守卫 executor.go 集成：test-coverage 检查
+// 只在 task-verify 跑、绝不在 task-complete（最后一道 gate）跑——带未测试源码改动的
+// 任务仍须能抵达 task-complete。同时钉死方案 A 兜底的 fudge factor 边界：task-complete
+// 现在也跑 test-coverage 兜底（补 advisory 缺口），但单文件小改（total=1<3）即使零断言
+// 也 advisory 放行——corrupt success 兜底只拦「大改（≥3）零断言」。bar.go 单文件无测试
+// 无断言 → fudge factor 放行，task-complete 仍 PASS。
 func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 	dir := initRepoOnBranch(t, "feat/cov")
 	// Source change with NO test — would fail task-verify.
@@ -1342,10 +1196,6 @@ func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 		t.Fatalf("seed Read: %v", err)
 	}
 
-	// The task-complete backstop lets a single-file small change pass (fudge
-	// factor, total=1<3 not blocked). The big-change-with-zero-assertions block
-	// is covered by TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion.
-	//
 	// task-complete 兜底对单文件小改放行（fudge factor，total=1<3 不阻断）。
 	// 大改零断言的阻断见 TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion。
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
@@ -1353,11 +1203,7 @@ func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 	}
 }
 
-// TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion pins Plan-A
-// core: the task-complete backstop hard-blocks big-change-with-zero-assertions —
-// changing >=3 source files with neither paired tests nor any assertion is solid
-// proof of corrupt success (eval evidence: feat/eval-core 0/19, feat/m2 0/25
-// slipped through complete).
+// TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion pins Plan-A core: the task-complete backstop hard-blocks big-change-with-zero-assertions — changing >=3 source files with neither paired tests nor any assertion is solid proof of corrupt success (eval evidence: feat/eval-core 0/19, feat/m2 0/25 slipped through complete).
 //
 // TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion 钉死方案 A 核心：
 // task-complete 兜底对「大改零断言」硬阻断——改了 ≥3 个源文件既无配对测试也无任何断言
@@ -1384,10 +1230,7 @@ func TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion(t *testi
 	}
 }
 
-// TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass: a small change
-// (<=2 files) advisory-passes even with zero assertions — fudge factor, aligning
-// with the industry Sonar <20-line exemption spirit (using file count as a proxy
-// for line count).
+// TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass: a small change (<=2 files) advisory-passes even with zero assertions — fudge factor, aligning with the industry Sonar <20-line exemption spirit (using file count as a proxy for line count).
 //
 // TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass 小改（≤2 文件）即使零断言
 // 也 advisory 放行——fudge factor，对齐业界 Sonar <20 行豁免精神（用文件数代理行数）。
@@ -1408,15 +1251,7 @@ func TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass(t *testing.T) 
 	}
 }
 
-// TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass: a big change
-// (>=3) WITH assertions (tests live elsewhere / refactor scenario) advisory-passes.
-// The assertion signal reuses CollectAssertionDensity: any changed test file
-// containing an assertion counts as a verification trace, no hard block. Sources
-// are split across packages (pkg1-3), the assertion test lives in pkg4 — to avoid
-// same-package _test.go package-level fallback falsely making missing empty and
-// ok=true (which would skip the !ok branch and never reach the
-// testCoverageShouldBlock decision — the test would PASS but never exercise the
-// assertN path).
+// TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass: a big change (>=3) WITH assertions (tests live elsewhere / refactor scenario) advisory-passes.
 //
 // TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass 大改（≥3）但有断言
 // （测试在别处/重构场景）→ advisory 放行。断言信号复用 CollectAssertionDensity：一个被改动的
@@ -1442,9 +1277,7 @@ func TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass(t *testing
 	}
 }
 
-// TestTaskCompleteTestCoverageHardGate_EscapePasses: the escape hatch lets
-// task-complete pass (CheckTestCoverage returns ok=true internally). Escape
-// downgrades evidence to Weak and leaves a trail; it does not block.
+// TestTaskCompleteTestCoverageHardGate_EscapePasses: the escape hatch lets task-complete pass (CheckTestCoverage returns ok=true internally).
 //
 // TestTaskCompleteTestCoverageHardGate_EscapePasses escape 逃生舱 → task-complete 放行
 // （CheckTestCoverage 内部返回 ok=true）。逃生降 evidence Weak 留痕，不阻断。
@@ -1467,12 +1300,7 @@ func TestTaskCompleteTestCoverageHardGate_EscapePasses(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_TaskVerify_PersistsDesignPhases pins the BUG-1 wiring point:
-// the task-verify gate must infer DesignPhases from changed files and persist
-// them via SaveTaskState so downstream consumers (Conclusion/health/review
-// sub-agents) can read them. If someone removes the wiring block, downstream
-// behavior tests only surface implicitly and are hard to localize — this test
-// asserts directly that on-disk state.DesignPhases == [requirement, api].
+// TestExecuteTaskGate_TaskVerify_PersistsDesignPhases pins the BUG-1 wiring point: the task-verify gate must infer DesignPhases from changed files and persist them via SaveTaskState so downstream consumers (Conclusion/health/review sub-agents) can read them.
 //
 // TestExecuteTaskGate_TaskVerify_PersistsDesignPhases 钉死 BUG-1 接通点：task-verify
 // gate 必须按改动文件推断 DesignPhases 并 SaveTaskState 持久化，下游
@@ -1486,21 +1314,9 @@ func TestExecuteTaskGate_TaskVerify_PersistsDesignPhases(t *testing.T) {
 		os.MkdirAll(filepath.Dir(full), 0755)
 		os.WriteFile(full, []byte(body), 0644)
 	}
-	// Trigger both the requirement and api design phases.
-	//
 	// 触发 requirement + api 两个设计阶段。
 	writeFile("docs/prd/feature.md", "# PRD\n## 验收\n- foo\n")
 	writeFile("api/openapi/spec.yaml", "openapi: 3.0\n")
-	// The test ships its own local .gitignore (docs/) to pin the blind-spot
-	// precondition — it does NOT depend on the dev machine's ~/.gitignore_global
-	// (CI / other machines may not have docs/ configured, in which case git would
-	// track docs/prd normally and the test would become a happy path rather than
-	// the fallback). With a local .gitignore in place, git add -A skips
-	// docs/prd/feature.md, taskChangedFiles (git diff) misses it, and
-	// scanDesignArtifacts reads the filesystem directly as a fallback so that
-	// PhaseRequirement can still be derived — verifying the gitignore blind-spot
-	// fix (not bypassing it).
-	//
 	// 测试自带本地 .gitignore（docs/）钉死盲区前提——不依赖开发机 ~/.gitignore_global
 	// （CI/他人机器可能没配 docs/，那时 git 会正常跟踪 docs/prd，测的成 happy path
 	// 而非兜底）。写本地 .gitignore 后 git add -A 跳过 docs/prd/feature.md，
@@ -1509,11 +1325,6 @@ func TestExecuteTaskGate_TaskVerify_PersistsDesignPhases(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("docs/\n"), 0644)
 	runGit(t, dir, "add", "-A")
 	runGit(t, dir, "commit", "-m", "add prd + openapi")
-	// Precondition assertion: docs/prd/feature.md is actually ignored —
-	// otherwise the DesignPhases==[requirement,api] check below would be testing
-	// that git saw it (happy path) rather than the scan fallback. check-ignore -q
-	// returns 0 when the path is ignored.
-	//
 	// 前提断言：docs/prd/feature.md 确实被忽略——否则下面 DesignPhases==[requirement,api]
 	// 测的是 git 看到了它（happy path）而非 scan 兜底。check-ignore -q 被忽略返 0。
 	if err := exec.Command("git", "-C", dir, "check-ignore", "-q", "docs/prd/feature.md").Run(); err != nil {
@@ -1533,9 +1344,6 @@ func TestExecuteTaskGate_TaskVerify_PersistsDesignPhases(t *testing.T) {
 		t.Fatalf("ExecuteTaskGate task-verify: %v", err)
 	}
 
-	// Read it back from disk — verifying the wiring block actually persisted, not
-	// just mutated in-memory state.
-	//
 	// 从盘读回——验证接通块真的持久化了，不是只改内存 state。
 	loaded, err := LoadTaskState(dir, "phase-persist")
 	if err != nil {
@@ -1581,10 +1389,7 @@ func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
 	}
 }
 
-// TestReadBeforeEditFailureIsBlocked guards Plan-1's exit-code contract: an
-// edit-without-read must hard-fail task-verify carrying the BLOCKED prefix rather
-// than soft advisory prose — the BLOCKED token makes the hard stop unambiguous.
-// The test asserts both the BLOCKED: contract prefix and the recognizable reason phrase.
+// TestReadBeforeEditFailureIsBlocked guards Plan-1's exit-code contract: an edit-without-read must hard-fail task-verify carrying the BLOCKED prefix rather than soft advisory prose — the BLOCKED token makes the hard stop unambiguous.
 //
 // TestReadBeforeEditFailureIsBlocked guards 方案1's exit-code contract: editing
 // without reading must hard-fail task-verify with the BLOCKED: prefix, not soft
@@ -1614,11 +1419,7 @@ func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
 	}
 }
 
-// TestTaskComplete_DocsConsistencyAdvisory guards the docs-consistency advisory
-// at task-complete: README drift (a backtick reference to a non-existent forge
-// command) must be recorded to checklog but must NOT block the gate (advisory,
-// not blocking). This is the local-before-push counterpart of CI guard A — drift
-// is surfaced at forge-task-complete time, not only after CI runs.
+// TestTaskComplete_DocsConsistencyAdvisory guards the docs-consistency advisory at task-complete: README drift (a backtick reference to a non-existent forge command) must be recorded to checklog but must NOT block the gate (advisory, not blocking).
 //
 // TestTaskComplete_DocsConsistencyAdvisory guards the task-complete docs-consistency
 // advisory: README drift (反引号引用不存在的 forge 命令) must be recorded to checklog
@@ -1628,8 +1429,6 @@ func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
 func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	dir := initRepoOnBranch(t, "feat/docs")
 
-	// The README references a non-existent forge command → drift.
-	//
 	// README 引用了不存在的 forge 命令 → drift。
 	if err := os.WriteFile(filepath.Join(dir, "README.md"),
 		[]byte("# proj\n\n运行 `forge ghostpropose` 提案。\n"), 0644); err != nil {
@@ -1638,11 +1437,6 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	runGit(t, dir, "add", "-A")
 	runGit(t, dir, "commit", "-m", "readme drift")
 
-	// taskpipeline tests cannot import cli (cyclic); cli init does not run and the
-	// command-tree callback is not registered. Register a mock command tree manually
-	// (forge→init; ghostpropose does not exist → drift); restore nil afterwards to
-	// avoid polluting other tests in the same package.
-	//
 	// taskpipeline 测试不能 import cli（循环），cli init 不跑、命令树回调未注册。
 	// 手动注册一个 mock 命令树（forge→init；ghostpropose 不存在 → drift），测试后还原 nil
 	// 避免污染同包其他测试。
@@ -1658,8 +1452,6 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	state.RecordGateResult("task-verify", true, "")
 	state.MarkReviewPassed("", "") // 满足 review 硬前置
 
-	// docs drift is advisory — task-complete must still be Passed (not blocking).
-	//
 	// docs drift 是 advisory——task-complete 必须仍 Passed（不阻塞）。
 	result, err := ExecuteTaskGate(dir, "task-complete", state)
 	if err != nil {
@@ -1669,9 +1461,6 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 		t.Error("task-complete should pass despite README drift (advisory, not blocking)")
 	}
 
-	// The drift signal must be recorded to checklog (visible via forge trace);
-	// Passed=true indicates the gate still passed.
-	//
 	// drift 信号必须记进 checklog（forge trace 可见），Passed=true 表 gate 仍通过。
 	found := firstCheckEntry(t, dir, "docs-drift", CheckNameDocsConsistency)
 	if found == nil {
@@ -1685,13 +1474,7 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	}
 }
 
-// TestGateAdvancementRecordsAgentClaim guards the evidence-chain agent-claim data
-// source: when an agent advances the task-verify / task-complete gate,
-// ExecuteTaskGate must record that claim to checklog (Source=agent-claim,
-// backstopped by Record's SourceForCheck). Without these two recording points,
-// the agent-claim bucket of the EvidenceChain stays 0 and the claim-vs-
-// deterministic-support comparison breaks — this test pins the data source wiring
-// as a regression check.
+// TestGateAdvancementRecordsAgentClaim guards the evidence-chain agent-claim data source: when an agent advances the task-verify / task-complete gate, ExecuteTaskGate must record that claim to checklog (Source=agent-claim, backstopped by Record's SourceForCheck).
 //
 // TestGateAdvancementRecordsAgentClaim 守卫证据链 agent-claim 数据源：agent 推进
 // task-verify / task-complete gate 时，ExecuteTaskGate 必须把该「声明」记进 checklog
@@ -1701,11 +1484,6 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
 	t.Run("task-verify records agent-claim", func(t *testing.T) {
 		dir := initRepoOnBranch(t, "feat/claim-v")
-		// Take the real read-before-edit path (seed a Read) rather than escaping
-		// via FORGE_WORK_ACTIVITY=disable — ensures the claim recording point is
-		// covered at the end of the real gate flow, guarding against future
-		// early-returns skipping it.
-		//
 		// 走真实 read-before-edit 路径（seed 一个 Read）而非 FORGE_WORK_ACTIVITY=disable
 		// 逃避——确保 claim 记录点在真实 gate 流程末端被覆盖，防 future early-return 漏检。
 		state := &TaskState{TaskRef: "claim-v", Branch: "feat/claim-v", StartedAt: time.Now()}
@@ -1750,8 +1528,6 @@ func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
 // noise). Advisory must fire ONLY on drift, not on every task-complete.
 func TestTaskComplete_DocsConsistencyNoDriftSilent(t *testing.T) {
 	dir := initRepoOnBranch(t, "feat/clean")
-	// The README has no forge-command reference → no drift.
-	//
 	// README 无 forge 命令引用 → 无 drift。
 	if err := os.WriteFile(filepath.Join(dir, "README.md"),
 		[]byte("# proj\n\nclean readme, no forge commands\n"), 0644); err != nil {
@@ -1780,18 +1556,9 @@ func TestTaskComplete_DocsConsistencyNoDriftSilent(t *testing.T) {
 	}
 }
 
-// --- review-snapshot gate tests (review-fix-recheck automation) ---
-// review pass binds the (HEAD, SourceChangesSince(HEAD)) snapshot; task-complete
-// recomputes and compares — code changes after review are refused.
-//
 // --- review-snapshot 门禁测试（审查-修复-复审自动化）---
 // review pass 绑定 (HEAD, SourceChangesSince(HEAD)) 快照；task-complete 重算比对，审查后改码 → 拒。
 
-// initTaskGitRepo creates a temp git repo with an initial commit (.gitkeep) and
-// returns dir (HEAD=C0). Snapshot tests need a real git repo — SourceChangesSince
-// uses git diff/show, which can't be mocked for end-to-end assertions like content
-// fingerprint matching before and after the commit.
-//
 // initTaskGitRepo 建临时 git 仓库并首次提交（.gitkeep），返回 dir（HEAD=C0）。快照测试需真实 git
 // 仓库——SourceChangesSince 走 git diff/show，mock 不了「commit 前后内容指纹一致」这类端到端断言。
 func initTaskGitRepo(t *testing.T) string {
@@ -1808,8 +1575,6 @@ func initTaskGitRepo(t *testing.T) string {
 	return dir
 }
 
-// commitAll commits all working-tree changes (add -A + commit).
-//
 // commitAll 提交工作区全部变更（add -A + commit）。
 func commitAll(t *testing.T, dir, msg string) {
 	t.Helper()
@@ -1817,8 +1582,6 @@ func commitAll(t *testing.T, dir, msg string) {
 	runGit(t, dir, "commit", "-m", msg)
 }
 
-// headShort returns the HEAD short hash (used as the review-snapshot baseline).
-//
 // headShort 返回 HEAD 短 hash（作 review 快照基线）。
 func headShort(t *testing.T, dir string) string {
 	t.Helper()
@@ -1829,8 +1592,6 @@ func headShort(t *testing.T, dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// writeSrc writes a source file (creating parent dirs as needed).
-//
 // writeSrc 写源码文件（含父目录创建）。
 func writeSrc(t *testing.T, dir, rel, content string) {
 	t.Helper()
@@ -1843,9 +1604,6 @@ func writeSrc(t *testing.T, dir, rel, content string) {
 	}
 }
 
-// fullyGatedState builds a state that has passed implement+verify (only
-// task-complete remaining).
-//
 // fullyGatedState 构造已过 implement+verify 的 state（只剩 task-complete）。
 func fullyGatedState(ref string) *TaskState {
 	s := &TaskState{TaskRef: ref, Branch: "feat/" + ref}
@@ -1854,12 +1612,7 @@ func fullyGatedState(ref string) *TaskState {
 	return s
 }
 
-// TestTaskComplete_ReviewSnapshotRejectsPostReviewChange is the core of the
-// review-snapshot loop: after review pass binds the snapshot, changing source
-// (uncommitted) → task-complete must refuse and force a re-review. This is the
-// enforcement point of the review-fix-recheck automation — no longer relying on
-// agent self-discipline to re-review (feat/dashboard-global incident: post-review
-// fix was pushed to complete without re-review, and the gate did not catch it).
+// TestTaskComplete_ReviewSnapshotRejectsPostReviewChange is the core of the review-snapshot loop: after review pass binds the snapshot, changing source (uncommitted) → task-complete must refuse and force a re-review.
 //
 // TestTaskComplete_ReviewSnapshotRejectsPostReviewChange 审查快照闭环核心：review pass 绑定快照后，
 // 改源码（未 commit）→ task-complete 必须拒、强制复审。这是「审查-修复-复审自动化」的强制点——
@@ -1875,8 +1628,6 @@ func TestTaskComplete_ReviewSnapshotRejectsPostReviewChange(t *testing.T) {
 	state := fullyGatedState(`snap-reject`)
 	state.MarkReviewPassed(head, hash)
 
-	// Change code after review (uncommitted in the working tree).
-	//
 	// 审查后改码（工作区未 commit）
 	writeSrc(t, dir, `svc.go`, "package svc\nfunc F() {}")
 
@@ -1889,8 +1640,7 @@ func TestTaskComplete_ReviewSnapshotRejectsPostReviewChange(t *testing.T) {
 	}
 }
 
-// TestTaskComplete_ReviewSnapshotPassWhenUnchanged: no code change after review →
-// task-complete passes (snapshot matches).
+// TestTaskComplete_ReviewSnapshotPassWhenUnchanged: no code change after review → task-complete passes (snapshot matches).
 //
 // TestTaskComplete_ReviewSnapshotPassWhenUnchanged 审查后不改码 → task-complete 过（快照一致）。
 func TestTaskComplete_ReviewSnapshotPassWhenUnchanged(t *testing.T) {
@@ -1906,10 +1656,7 @@ func TestTaskComplete_ReviewSnapshotPassWhenUnchanged(t *testing.T) {
 	}
 }
 
-// TestTaskComplete_ReviewSnapshotEmptyBaselineSkips: an empty baseline
-// (MarkReviewPassed with empty args) skips the snapshot check, keeping only the
-// ReviewPassed hard-prereq semantics (legacy state compatibility / clean
-// working-tree hash in the commit-then-review flow is empty).
+// TestTaskComplete_ReviewSnapshotEmptyBaselineSkips: an empty baseline (MarkReviewPassed with empty args) skips the snapshot check, keeping only the ReviewPassed hard-prereq semantics (legacy state compatibility / clean working-tree hash in the commit-then-review flow is empty).
 //
 // TestTaskComplete_ReviewSnapshotEmptyBaselineSkips 空基线（MarkReviewPassed("","")）→ 跳过快照检查，
 // 仅留 ReviewPassed 硬前置语义（老 state 兼容 / commit-then-review 流审查时工作区干净 hash 空）。
@@ -1924,13 +1671,7 @@ func TestTaskComplete_ReviewSnapshotEmptyBaselineSkips(t *testing.T) {
 	}
 }
 
-// TestTaskComplete_ReviewSnapshotUnreachableFailOpen: an unreachable baseline
-// (amend/rebase rewrote history and the git object is gone) → fail-open pass.
-// amend is a normal workflow; forcing re-review would loop forever; aligns with
-// the fail-open philosophy of review/stamp.go (the asymmetry of strict-when-
-// reachable, lenient-when-not is intentional). And it must leave a checklog
-// trail — so score/dashboard can surface passed-via-fail-open rather than a real
-// review, not just a stderr flash (observability backstop for review feedback).
+// TestTaskComplete_ReviewSnapshotUnreachableFailOpen: an unreachable baseline (amend/rebase rewrote history and the git object is gone) → fail-open pass. amend is a normal workflow; forcing re-review would loop forever; aligns with the fail-open philosophy of review/stamp.go (the asymmetry of strict-when- reachable, lenient-when-not is intentional).
 //
 // TestTaskComplete_ReviewSnapshotUnreachableFailOpen 基线不可达（amend/rebase 改写历史致 git 对象消失）
 // → fail-open 放行。amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
@@ -1944,23 +1685,13 @@ func TestTaskComplete_ReviewSnapshotUnreachableFailOpen(t *testing.T) {
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
 		t.Fatalf(`基线不可达应 fail-open 放行（amend 正常流），got: %v`, err)
 	}
-	// fail-open must land on disk — assert checklog has a CheckNameReviewSnapshot
-	// entry (regression-guard against stderr-only-no-trail).
-	//
 	// fail-open 必须落盘——断言 checklog 有 CheckNameReviewSnapshot 条目（防回归成「只 stderr 无痕迹」）。
 	if firstCheckEntry(t, dir, `snap-unreachable`, CheckNameReviewSnapshot) == nil {
 		t.Fatalf(`fail-open 应落 checklog:%s 留痕，实际无——score/dashboard 照不出"靠 fail-open 而非真复审通过"`, CheckNameReviewSnapshot)
 	}
 }
 
-// TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses: committing the
-// working-tree content that was reviewed → pass. Mirrors the commit-then-review
-// E2E real flow (cli_test.go): at review time the working tree has svc.go
-// (untracked); the agent commits it (without modifying content);
-// SourceChangesSince(baseline) uses a content fingerprint and still equals the
-// recorded hash → pass. Using git diff output as the fingerprint would false-
-// positive on untracked→tracked transitions (already proven in the review
-// package unit tests); this test pins it once more at the gate layer.
+// TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses: committing the working-tree content that was reviewed → pass.
 //
 // TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses commit 审查的工作区内容后 → 过。
 // 镜像 commit-then-review E2E 真实流（cli_test.go）：review 时工作区有 svc.go（untracked），
@@ -1981,11 +1712,7 @@ func TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses(t *testing.T) {
 	}
 }
 
-// TestActiveTaskState_BranchGuardOtherActiveSession pins the P5 guard
-// (multi-task-concurrency §4): the branch-mapped task is skipped when ANOTHER session's
-// pointer still actively names it — two windows sharing a branch name no longer
-// misattribute the task to whichever asked second. A stale pointer (past TTL) does not
-// guard — crashed sessions must not orphan their tasks.
+// TestActiveTaskState_BranchGuardOtherActiveSession pins the P5 guard (multi-task-concurrency §4): the branch-mapped task is skipped when ANOTHER session's pointer still actively names it — two windows sharing a branch name no longer misattribute the task to whichever asked second.
 //
 // TestActiveTaskState_BranchGuardOtherActiveSession 钉住 P5 守卫
 // （multi-task-concurrency §4）：分支映射的任务被【其他】会话的活跃指针持有时跳过

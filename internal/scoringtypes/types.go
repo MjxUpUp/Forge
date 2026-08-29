@@ -1,7 +1,3 @@
-// Package scoringtypes defines shared types for task quality scoring.
-// Zero-dependency — shared by the scoring and taskpipeline packages to avoid
-// circular imports.
-//
 // Package scoringtypes 定义 task 质量评分的共享类型。
 // 零依赖——scoring 与 taskpipeline 两个包共用，避免循环 import。
 package scoringtypes
@@ -41,21 +37,13 @@ type ScoreResult struct {
 	Overall    float64          `json:"overall"` // Weighted average 0-100
 	Grade      string           `json:"grade"`   // A/B/C/D/F
 	ScoredAt   time.Time        `json:"scored_at"`
-	// Evidence summarizes the source distribution of this task's evidence chain
-	// (deterministic vs agent-claim). Observability first, not part of scoring: it lets
-	// review/scoring consumers see how much deterministic evidence backs a completion
-	// claim, hedging against the LLM-judge blind spot where the agent skips prerequisites
-	// and still declares completion. nil = no evidence data.
+	// Evidence summarizes the source distribution of this task's evidence chain (deterministic vs agent-claim).
 	//
 	// Evidence 摘要本任务证据链的来源分布（deterministic vs agent-claim）。可观测先行，
 	// 不参与打分：让 review/评分消费者看到"完成声明背后有多少 deterministic 证据"，
 	// 对冲 LLM-judge 看不出"agent 跳过前置就声明完成"的盲区。nil=无证据数据。
 	Evidence *EvidenceSummary `json:"evidence,omitempty"`
-	// CappedReason, when non-empty, records that Overall was capped after evaluation and why
-	// (currently: the task used an escape hatch — per-task override or env-form escape — so its
-	// total is capped at 89, the top of the B band: escape makes A unreachable, and escape must
-	// have a visible cost instead of still taking home 96-99/A). Observability only; the cap
-	// itself is applied by taskpipeline.ScoreTask, not Evaluate, so golden fixtures are unaffected.
+	// CappedReason records that Overall was capped after evaluation and why.
 	//
 	// CappedReason 非空时记录 Overall 在评分后被封顶及原因（当前：任务用了逃生舱——
 	// per-task override 或 env 形式逃生——总分封顶 89（B 档上限）：逃生拿不到 A，
@@ -65,9 +53,6 @@ type ScoreResult struct {
 }
 
 // EvidenceSummary summarizes the source distribution of a task's evidence chain.
-// Deterministic = hook/gate actually ran (unforgeable); AgentClaim = agent self-report.
-// Ratio = Deterministic/Total, a hard signal for `completion-claim credibility` —
-// downstream steps can use it to trigger review or fold it into scoring.
 //
 // EvidenceSummary 摘要任务证据链的来源分布。Deterministic=hook/gate 实跑（不可伪造），
 // AgentClaim=agent 自述。Ratio=Deterministic/Total，是"完成声明可信度"的硬信号——
@@ -103,10 +88,6 @@ type ScoringConfig struct {
 //
 // DefaultWeights 返回标准维度权重。
 func DefaultWeights() map[string]float64 {
-	// v1.43: expression (0.10) added — taken from process/testing/code-quality/assertions
-	// proportionally; still sums to 1.0. Tasks without doc deliverables score the dimension
-	// neutral 100, so pure-code tasks are unaffected.
-	//
 	// v1.43：新增 expression（0.10）——从 process/testing/code-quality/assertions 按比例
 	// 匀出；合计仍为 1.0。无文档产物的任务该维度打中性 100 分，纯代码任务不受影响。
 	return map[string]float64{
@@ -140,10 +121,6 @@ func GradeFromScore(score float64, thresholds map[string]float64) string {
 	def := DefaultThresholds()
 	for _, grade := range []string{"A", "B", "C", "D", "F"} {
 		v, ok := thresholds[grade]
-		// A missing key would read as 0.0 and let any score >= 0 grab that grade
-		// (partial user config → everything A) — fall back to the default threshold
-		// instead of trusting the zero value.
-		//
 		// 缺键会读成 0.0，任意 score >= 0 直接命中该档（用户部分配置 → 全 A）——
 		// 回退默认阈值而不是信任零值。
 		if !ok {

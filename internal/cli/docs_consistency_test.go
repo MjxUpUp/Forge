@@ -11,16 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 )
 
-// Docs consistency guard — dogfood of the docs-consistency-guard skill.
-//
 // 文档一致性守卫——dogfood docs-consistency-guard skill。
-//
-// Background: on 2026-06-27 we found that skills/code-review-gate/references/experience-loop.md
-// referenced forge commands that did not exist (subcommand-level broken chain). README.md was also behind
-// (missing the skills command family). This kind of drift cannot be caught by manual pre-release checks — the
-// docs-consistency-guard conclusion: use guard tests (run every CI) rather than commands/hooks/skills
-// (commands rely on humans remembering to run = same trap; hooks have no good trigger point;
-// skills depend on agent compliance and will leak).
 //
 // 背景：2026-06-27 发现 skills/code-review-gate/references/experience-loop.md
 // 引用了不存在的 forge 命令（子命令级断链）。README.md 也落后（缺 skills 命令族）。
@@ -28,36 +19,18 @@ import (
 // （每次 CI 跑）而非命令/hook/skill（命令靠人记得跑 = 同一个坑；hook 无合适触发点；
 // skill 靠 agent 遵循会漏）。
 //
-// Source of truth: the cobra command tree of rootCmd (programmatically extractable, see internal/cli/*.go's
-// rootCmd.AddCommand / xxxCmd.AddCommand). Derived docs: root README + npm/README
-// (npm package page) + skills/**/*.md (canonical skill library, distributed to each agent as the source).
-//
 // 真相源：rootCmd 的 cobra 命令树（程序可提取，见 internal/cli/*.go 的
 // rootCmd.AddCommand / xxxCmd.AddCommand）。衍生文档：根 README + npm/README
 // （npm 包页面）+ skills/**/*.md（canonical skill 库，分发到各 agent 的源）。
-//
-// Detection logic (regexp extracts backtick forge references -> validates the command tree level by level) has been
-// pushed down into the shared internal/docsconsistency package so both consumers reuse it: this file (CI guards A/B)
-// + the task-complete advisory in taskpipeline executor.go (local pre-commit reminder). See
-// skills/docs-consistency-guard/SKILL.md for details.
 //
 // 检测逻辑（regexp 抽反引号 forge 引用 → 逐级验证命令树）已下沉到 internal/docsconsistency
 // 共享包，让两处消费方共用：本文件（CI 守卫 A/B）+ taskpipeline executor.go 的
 // task-complete advisory（本地提交前提醒）。详见 skills/docs-consistency-guard/SKILL.md。
 
-// repoRoot walks up two levels from the internal\cli package directory to the repository root (E:\Forge). go test's cwd
-// is the package directory, so tests use relative paths to read the manually maintained docs at the repo root.
-//
 // repoRoot 相对 internal\cli 包目录上溯两级 = 仓库根（E:\Forge）。go test 的 cwd
 // 是包目录，故测试用相对路径读仓库根的手维护文档。
 const repoRoot = "../.."
 
-// guardedDocs collects the manually maintained docs to be guarded: the root README + npm copy + all .md under the
-// canonical skill library AND the forge-native skills-forge/ overlay (moved out of skills/ by the 2026-08
-// zero-reverse-dependency migration — dropping the walk would silently shrink the guard surface).
-// Excludes .claude/ (gitignored generated artifacts whose consistency is guarded by the skillgen generator's
-// content assertion tests).
-//
 // guardedDocs 收集待守卫的手维护文档：根 README + npm 副本 + canonical skill 库全部 .md +
 // forge 原生 skills-forge/ 覆盖层（2026-08 零反向依赖迁移移出 skills/——不补进 walk 会让
 // 守卫面静默缩小）。不含 .claude/（gitignored 生成物，其一致性由 skillgen 生成器的
@@ -84,13 +57,6 @@ func guardedDocs(t *testing.T) []string {
 	return files
 }
 
-// TestValidateForgePath proves under the real rootCmd that docsconsistency.ValidateForgePath catches drift.
-// Mechanism unit tests (mock tree) live in internal/docsconsistency/check_test.go; here we prove real command-tree
-// integration — cli init has registered the command-tree callbacks, so real experience/task/init/skills commands can be
-// validated level by level. In particular it covers the real ghosts missed on 2026-06-27 (experience propose/review:
-// parent command exists but subcommand does not) and the wrong-parent attachments (skills complete: complete is under
-// task). If this fails = callbacks not registered or integration broken.
-//
 // TestValidateForgePath 在真实 rootCmd 下证明 docsconsistency.ValidateForgePath 抓 drift。
 // 机制单测（mock 树）在 internal/docsconsistency/check_test.go；这里证明真实命令树集成——
 // cli init 已注册命令树回调，真实 experience/task/init/skills 等命令可被逐级验证。
@@ -121,12 +87,6 @@ func TestValidateForgePath(t *testing.T) {
 	}
 }
 
-// TestDocs_NoGhostForgeCommands guard A: every backtick-wrapped forge command path in the manually maintained docs
-// must actually exist in the cobra command tree. Subcommand-level precise validation — for `forge experience propose`
-// experience exists but propose is not its subcommand, still caught (this is exactly the drift missed on 2026-06-27).
-// Wrong-parent attachments are also caught (e.g. mistakenly writing `forge skills complete`: complete is under task,
-// not skills). Detection goes through docsconsistency.DriftedCommands (same logic as the task-complete advisory).
-//
 // TestDocs_NoGhostForgeCommands 守卫 A：所有手维护文档里反引号包裹的 forge 命令
 // 路径必须真实存在于 cobra 命令树。子命令级精确验证——`forge experience propose`
 // 里 experience 存在但 propose 不是其子命令，照样抓（这正是 2026-06-27 漏掉的 drift）。
@@ -146,13 +106,6 @@ func TestDocs_NoGhostForgeCommands(t *testing.T) {
 	}
 }
 
-// TestReadme_CoversAllTopLevelCommands guard B: every non-hidden top-level command of rootCmd
-// must appear in the root README. Prevents adding a new command group (e.g. mcp/skills) but forgetting the README
-// command reference. Only guards the root README — npm/README is the slimmed-down npm package page (intentionally
-// lists only the core command groups); its correctness is covered separately by guard A (no ghost commands). Hidden
-// commands (e.g. forge hook, called by scripts not users) and cobra-auto-injected help/completion are not required
-// in the README.
-//
 // TestReadme_CoversAllTopLevelCommands 守卫 B：rootCmd 的每个非隐藏顶层命令
 // 必须出现在根 README。防"新增命令组（如 mcp/skills）但 README 命令参考漏写"。
 // 只守卫根 README——npm/README 是 npm 包页面的精简版（故意只列核心命令组），
@@ -178,13 +131,6 @@ func TestReadme_CoversAllTopLevelCommands(t *testing.T) {
 	}
 }
 
-// flagDocGrandfather pins the flags that are intentionally undocumented in the
-// root README (ratchet baseline, same philosophy as skillRefAllowlist). The
-// README is a command reference, not an exhaustive flag manual — most of these
-// are sub-command detail flags. Any flag NOT in this list must appear in the
-// root README (guard D) — so a NEW user-facing flag fails CI until the author
-// either documents it or consciously adds it here with a reason.
-//
 // flagDocGrandfather 钉住故意不进根 README 的 flag（棘轮基线，与
 // skillRefAllowlist 同哲学）。README 是命令参考而非穷尽式 flag 手册——这里
 // 大多是子命令细节 flag。不在此表的 flag 必须出现在根 README（守卫 D）——
@@ -227,14 +173,6 @@ var flagDocGrandfather = map[string]bool{
 	`verify --collect-golden`: true, `verify --regression`: true, `verify --run-tests`: true, `verify --scenario`: true,
 }
 
-// TestReadme_NewFlagsAreDocumented guard D (ratchet): every non-hidden flag NOT
-// in flagDocGrandfather must appear in the root README. Root-cause fix for the
-// 2026-08 user-level-assets gap: `init --project` and `uninstall --restore`
-// shipped with zero doc coverage — guards A/B only check command references,
-// not the flag layer, so the drift sailed through. Existing undocumented flags
-// are grandfathered (README is not an exhaustive flag manual); the guard only
-// forces a doc decision for NEW flags.
-//
 // TestReadme_NewFlagsAreDocumented 守卫 D（棘轮）：不在 flagDocGrandfather 里的
 // 非隐藏 flag 必须出现在根 README。2026-08 user-level-assets 缺口的根治：
 // `init --project` 与 `uninstall --restore` 零文档上线——守卫 A/B 只查命令
@@ -257,14 +195,6 @@ func TestReadme_NewFlagsAreDocumented(t *testing.T) {
 	}
 }
 
-// skillRefAllowlist codifies the "which backtick multi-segment tokens are NOT skill
-// references" knowledge, gathered by manual audit of canonical skills (the 2026-07
-// frontend dangling-link sweep's false-positive categories). A token here is a
-// confirmed non-skill. Without this the DanglingSkillRefs guard (C) would false-positive
-// on every tool/pattern/example token. A NEW multi-segment backtick token not in
-// knownSkills nor here makes guard C fail — the author then judges: real broken link
-// (fix the doc) or non-skill (add it here with its category).
-//
 // skillRefAllowlist 代码化"哪些反引号多段 token 不是 skill 引用"的知识，由 canonical skills
 // 人工审计得出（2026-07 frontend 断链梳理的 false-positive 类别）。此处 token 是已确认非
 // skill。无此表 DanglingSkillRefs 守卫（C）会对每个工具/模式/示例 token 误报。不在
@@ -326,15 +256,6 @@ var skillRefAllowlist = map[string]bool{
 	`g-`: true,
 }
 
-// TestSkills_NoDanglingSkillRefs guard C: every backtick-wrapped multi-segment kebab
-// token in canonical skill docs must be either a real skill (in the canonical set) or a
-// human-confirmed non-skill (in skillRefAllowlist). Single-segment tokens (tools/keywords)
-// are exempt — see DanglingSkillRefs doc. This is the root-cause fix for the 2026-07
-// frontend dangling-link regression (frontend-development referenced
-// frontend-stack-selection / ai-generated-ui-review / frontend-aesthetics-execution as
-// skills that did not exist). Like guard A, it is hard (CI fails) so drift is caught
-// mechanically, not by agent compliance.
-//
 // TestSkills_NoDanglingSkillRefs 守卫 C：canonical skill 文档里每个反引号多段 kebab token
 // 必须是真 skill（在 canonical 集）或人工确认非 skill（在 skillRefAllowlist）。单段 token
 // （工具/关键字）豁免——见 DanglingSkillRefs 文档。这是 2026-07 frontend 断链回归的根治
@@ -344,11 +265,6 @@ func TestSkills_NoDanglingSkillRefs(t *testing.T) {
 	// known = neutral skills/ ∪ forge-native skills-forge/：6 个中立 skill 的 SKILL.md
 	// 仍引用 skill-authoring-standard 等 forge 原生 skill（forge 用户经合并缓存/插件
 	// 全量可达，非断链——2026-08 迁移后两棵树都是合法引用目标）。
-	//
-	// known = neutral skills/ ∪ forge-native skills-forge/: neutral SKILL.md files
-	// still reference forge-native skills like skill-authoring-standard (reachable
-	// in full for forge users via the merged cache / plugin — not dangling; both
-	// trees are legal reference targets post-2026-08 migration).
 	known := make(map[string]bool)
 	for _, root := range []string{filepath.Join(repoRoot, "skills"), filepath.Join(repoRoot, "skills-forge")} {
 		names, err := skillsdist.ListSkills(root)
@@ -372,13 +288,6 @@ func TestSkills_NoDanglingSkillRefs(t *testing.T) {
 	}
 }
 
-// TestCanonicalSkillNamesAreMultiSegment is the meta-guard for DanglingSkillRefs's
-// single-segment exemption: that exemption is only safe while every canonical skill
-// name is multi-segment kebab (so exempting single-segment tokens never masks a real
-// skill). If a single-segment skill name is ever added, this fails and flags the
-// exemption for review — otherwise the guard would silently miss a dangling
-// single-segment skill ref.
-//
 // TestCanonicalSkillNamesAreMultiSegment 是 DanglingSkillRefs 单段豁免的 meta 守卫：该豁免
 // 仅当所有 canonical skill 名都是多段 kebab 时安全（豁免单段 token 才不会掩盖真 skill）。
 // 若新增单段 skill 名，此测试 fail 并提示复审豁免——否则守卫会静默漏抓单段 skill 断链。

@@ -11,12 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestMain isolates the package's data home: every store write in these tests goes
-// through forgedata.DataDirFor, which is ALWAYS user-level (~/.forge/projects/<key>/)
-// — without isolation each `go test` run spams garbage p* project dirs into the real
-// home (measured: thousands accumulated before this). Per-test isolation is
-// unnecessary: project keys derive from each test's unique t.TempDir root, so tests
-// never collide inside the shared isolated home.
+// TestMain isolates the package's data home: every store write in these tests goes through forgedata.DataDirFor, which is ALWAYS user-level (~/.forge/projects/<key>/) — without isolation each `go test` run spams garbage p* project dirs into the real home (measured: thousands accumulated before this).
 //
 // TestMain 隔离本包测试的 data home：这些测试的所有 store 写入都走
 // forgedata.DataDirFor——恒为用户级（~/.forge/projects/<key>/），不隔离的话每次
@@ -33,13 +28,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// newTestProject constructs a Project whose Root==GitRoot==fresh tempdir: DataDirFor(root)
-// finds no .git to key on, so it lands on PathKey — the SAME user-level dir for act
-// conclusions (p.DataDir) and both LoadAllAll hit sources, enabling closed-loop
-// verification of AnalyzeEffectiveness's two-source (TaskRef) join. The non-git shape
-// (GitRoot=="", Root=path) is pinned separately by NonGitRootPin below. The data home
-// itself is isolated package-wide by TestMain.
-//
 // newTestProject 构造 Root==GitRoot==新 tempdir 的 Project：DataDirFor(root) 无 .git
 // 可 key，落到 PathKey——act 结论（p.DataDir）与两个 LoadAllAll 命中源解析到同一个
 // 用户级目录，AnalyzeEffectiveness 的两源（TaskRef）join 可闭环验证。非 git 形态
@@ -70,7 +58,6 @@ func recordConclusion(t *testing.T, p *forgedata.Project, taskRef string, score 
 }
 
 // TestAnalyzeEffectiveness basic association: two skills each touch one task with conclusion.
-// Verifies hit×effectiveness aggregation + weak-evidence ratio.
 //
 // TestAnalyzeEffectiveness 基础关联：两个 skill 各涉及一个 task，task 有 conclusion。
 // 验证 hit×成效聚合 + 弱证据占比。
@@ -88,8 +75,6 @@ func TestAnalyzeEffectiveness(t *testing.T) {
 	if len(effs) != 2 {
 		t.Fatalf("len=%d want 2: %+v", len(effs), effs)
 	}
-	// Same HitCount=1, sort by Skill alphabetical order: good-skill < weak-skill
-	//
 	// 同 HitCount=1，按 Skill 字母序：good-skill < weak-skill
 	good, weak := effs[0], effs[1]
 	if good.Skill != "good-skill" || weak.Skill != "weak-skill" {
@@ -106,8 +91,7 @@ func TestAnalyzeEffectiveness(t *testing.T) {
 	}
 }
 
-// TestAnalyzeEffectiveness_TaskDedup same skill same task multiple calls: hits accumulate, but effectiveness counts once
-// (prevents same-task multiple calls from inflating weight). Tasks without conclusion are excluded from avg denominator.
+// TestAnalyzeEffectiveness_TaskDedup same skill same task multiple calls: hits accumulate, but effectiveness counts once (prevents same-task multiple calls from inflating weight).
 //
 // TestAnalyzeEffectiveness_TaskDedup 同 skill 同 task 多次调用：hits 累加，但成效只累加一次
 // （防同 task 多次调用放大权重）。无 conclusion 的 task 不计入 avg 分母。
@@ -119,8 +103,6 @@ func TestAnalyzeEffectiveness_TaskDedup(t *testing.T) {
 	recordSkillCall(t, root, "s", "t3") // t3 无 conclusion：计入 TaskCount 但不计 avg 分母
 	recordConclusion(t, proj, "t1", 80, "Strong", 0.8)
 	recordConclusion(t, proj, "t2", 60, "Strong", 0.6)
-	// t3 intentionally has no conclusion
-	//
 	// t3 故意无 conclusion
 
 	effs, err := AnalyzeEffectiveness(proj)
@@ -145,8 +127,7 @@ func TestAnalyzeEffectiveness_TaskDedup(t *testing.T) {
 	}
 }
 
-// TestAnalyzeEffectiveness_Empty no toollog and no conclusion: returns empty slice without error
-// (agent-neutral principle: evaluation system still works when data is missing).
+// TestAnalyzeEffectiveness_Empty no toollog and no conclusion: returns empty slice without error (agent-neutral principle: evaluation system still works when data is missing).
 //
 // TestAnalyzeEffectiveness_Empty 无 toollog 无 conclusion：返回空切片不报错
 // （agent-neutral 原则：数据缺失时评估体系仍工作）。
@@ -161,8 +142,7 @@ func TestAnalyzeEffectiveness_Empty(t *testing.T) {
 	}
 }
 
-// TestAnalyzeEffectiveness_WeakIncludesUnverified Strength=Unverified also counts as weak evidence
-// (consistent with act.RetrospectiveNudge criteria).
+// TestAnalyzeEffectiveness_WeakIncludesUnverified Strength=Unverified also counts as weak evidence (consistent with act.RetrospectiveNudge criteria).
 //
 // TestAnalyzeEffectiveness_WeakIncludesUnverified Strength=Unverified 也算弱证据
 // （与 act.RetrospectiveNudge 判据一致）。
@@ -180,9 +160,7 @@ func TestAnalyzeEffectiveness_WeakIncludesUnverified(t *testing.T) {
 	}
 }
 
-// TestAnalyzeEffectiveness_UnscoredTaskExcluded: Score==0 (unscored, act.BuildConclusion
-// score==nil sentinel) is excluded from AvgScore denominator — otherwise artificially lowers avg. But its evidence strength still counts in
-// AvgRatio/WeakRate denominator (ratio/evidence independent from score).
+// TestAnalyzeEffectiveness_UnscoredTaskExcluded: Score==0 (unscored, act.BuildConclusion score==nil sentinel) is excluded from AvgScore denominator — otherwise artificially lowers avg.
 //
 // TestAnalyzeEffectiveness_UnscoredTaskExcluded：Score==0（未评分，act.BuildConclusion
 // score==nil 哨兵值）不计入 AvgScore 分母——否则人为拉低 avg。但其证据强度仍计入
@@ -207,9 +185,7 @@ func TestAnalyzeEffectiveness_UnscoredTaskExcluded(t *testing.T) {
 	}
 }
 
-// TestAnalyzeEffectiveness_NoDataIsWeak: NoData (zero real-run evidence) counts as weak ratio — effectiveness
-// context is exposing blind spots, NoData is blinder than Weak. Different from RetrospectiveNudge criteria (Nudge only
-// triggers retrospective on Weak/Unverified).
+// TestAnalyzeEffectiveness_NoDataIsWeak: NoData (zero real-run evidence) counts as weak ratio — effectiveness context is exposing blind spots, NoData is blinder than Weak.
 //
 // TestAnalyzeEffectiveness_NoDataIsWeak：NoData（零实跑证据）算入弱占比——effectiveness
 // 语境是暴露盲区，NoData 比 Weak 更盲。与 RetrospectiveNudge 判据不同（Nudge 只
@@ -228,11 +204,6 @@ func TestAnalyzeEffectiveness_NoDataIsWeak(t *testing.T) {
 	}
 }
 
-// recordTrigger persists one CheckSkillTrigger entry — the passive source the 2026-08-22
-// join added. Most skills are hit via the skill-trigger hook and never via an active
-// Skill tool call; before the join those skills were absent from effectiveness entirely
-// (the "panel shows hit counts only, quality columns empty" root cause).
-//
 // recordTrigger 落一条 CheckSkillTrigger 条目——2026-08-22 join 新增的被动源。多数
 // skill 经 skill-trigger hook 命中、从未有主动 Skill 工具调用；join 前这些 skill 在
 // effectiveness 里整体缺席（「面板只显示命中数、质量列全空」的根因）。
@@ -248,10 +219,7 @@ func recordTrigger(t *testing.T, root, skill, taskRef string) {
 	}))
 }
 
-// TestAnalyzeEffectiveness_PassiveTriggerJoin pins the passive join: a skill hit ONLY
-// via a CheckSkillTrigger entry (no active Skill call anywhere) must appear in the
-// report with its hit counted and the task's conclusion folded in. Entries without a
-// TaskRef still count as hits but attach no outcome (TaskCount 0 → avg denominators 0).
+// TestAnalyzeEffectiveness_PassiveTriggerJoin pins the passive join: a skill hit ONLY via a CheckSkillTrigger entry (no active Skill call anywhere) must appear in the report with its hit counted and the task's conclusion folded in.
 //
 // TestAnalyzeEffectiveness_PassiveTriggerJoin 钉死被动 join：只经 CheckSkillTrigger
 // 条目命中（全程无主动 Skill 调用）的 skill 必须出现在报告里，命中被计数、task 的
@@ -282,11 +250,7 @@ func TestAnalyzeEffectiveness_PassiveTriggerJoin(t *testing.T) {
 	}
 }
 
-// TestAnalyzeEffectiveness_PassiveActiveDedup pins the cross-source dedup: the SAME
-// (skill, task) hit both passively (trigger entry) and actively (Skill call) counts
-// HitCount=2 but folds the outcome ONCE — the aggregator's per-(skill, task) dedup
-// spans both sources, so a passive trigger followed by an active load in one task does
-// not double the task's weight.
+// TestAnalyzeEffectiveness_PassiveActiveDedup pins the cross-source dedup: the SAME (skill, task) hit both passively (trigger entry) and actively (Skill call) counts HitCount=2 but folds the outcome ONCE — the aggregator's per-(skill, task) dedup spans both sources, so a passive trigger followed by an active load in one task does not double the task's weight.
 //
 // TestAnalyzeEffectiveness_PassiveActiveDedup 钉死跨源去重：同一 (skill, task) 既被
 // 动（触发条目）又主动（Skill 调用）命中时 HitCount=2 但成效只折入一次——聚合器的
@@ -318,12 +282,7 @@ func TestAnalyzeEffectiveness_PassiveActiveDedup(t *testing.T) {
 	}
 }
 
-// TestAnalyzeEffectiveness_NonGitRootPin pins the data-dir resolution for non-git
-// projects (review M-1): a non-git Project has GitRoot=="" and Root=<registered
-// path>. Both hit sources must resolve via Root — resolving via GitRoot would send
-// DataDirFor("") to the process CWD's git repo (here: the Forge repo's key under the
-// TestMain-isolated home → no logs), silently reading another project's data and
-// blanking the join. Fixture mirrors forgedata.ProjectFor's non-git branch.
+// TestAnalyzeEffectiveness_NonGitRootPin pins the data-dir resolution for non-git projects (review M-1): a non-git Project has GitRoot=="" and Root=<registered path>.
 //
 // TestAnalyzeEffectiveness_NonGitRootPin 钉死非 git 项目的数据目录解析（审查 M-1）：
 // 非 git Project 的 GitRoot==""、Root=<注册路径>。两个命中源必须经 Root 解析——若经

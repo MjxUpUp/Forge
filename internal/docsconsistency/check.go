@@ -1,19 +1,4 @@
-// Package docsconsistency detects whether forge commands referenced by backticks in
-// docs actually exist in the cobra command tree.
-//
-// Two consumers:
-//   - cli/docs_consistency_test.go guards A/B (run by CI on every go test, catches
-//     docs that have already drifted).
-//   - taskpipeline executor.go task-complete advisory (a local pre-commit reminder so
-//     drift is caught early).
-//
-// The source of truth is rootCmd's cobra command tree (in the cli package). This
-// package cannot import cli (a main dependency; would cause an import cycle), so it
-// uses a RegisterCommandTree callback: the cli package injects
-// func(){ return rootCmd } at init time, and this package fetches the tree via the
-// callback. When nothing is registered, ValidateForgePath passes through (returns ""),
-// so the advisory/guard does not false-report — ensuring that callers without a
-// registered callback (e.g. unit tests) do not see phantom drift.
+// Package docsconsistency detects whether forge commands referenced by backticks in docs actually exist in the cobra command tree.
 //
 // Package docsconsistency 检测"文档反引号引用的 forge 命令"是否真实存在于 cobra 命令树。
 //
@@ -52,12 +37,6 @@ var (
 	// 排除 \n：否则字符类可跨行，把被换行隔开的两个独立 code span 拼成幻影引用。
 	forgeBacktickRef = regexp.MustCompile("`forge ([^`\n]+)`")
 
-	// commandNameRe describes a legal cobra command name (the first word of Use).
-	// Non-command tokens — placeholders like <id>, flags like --force, brackets like
-	// [--mode], alternatives like small|medium, or Chinese descriptions — never match;
-	// this is used during level-by-level validation to decide that the command path
-	// ends here and the rest are arguments.
-	//
 	// commandNameRe 描述合法 cobra 命令名（Use 的首词）。非命令 token——占位符 <id>、
 	// flag --force、方括号 [--mode]、分隔符 small|medium、中文说明——一律不匹配，
 	// 用于在逐级验证时判定"命令路径到此结束，剩下都是参数"。
@@ -69,10 +48,6 @@ var (
 )
 
 // RegisterCommandTree registers the callback that returns the rootCmd command tree.
-// It is called from the cli package init to inject func(){ return rootCmd }. This
-// breaks the cli ↔ taskpipeline cycle: this package does not import cli; taskpipeline
-// imports this package to call DriftedInProject, and cli imports this package to
-// register the callback.
 //
 // RegisterCommandTree 注册"获取 rootCmd 命令树"的回调。cli 包 init 调用，注入
 // func(){ return rootCmd }。打破 cli ↔ taskpipeline 循环：本包不 import cli，
@@ -92,11 +67,7 @@ func commandTree() *cobra.Command {
 	return cmdTreeFn()
 }
 
-// RegisterVersion registers the callback returning the running binary's version —
-// same cycle-breaking pattern as RegisterCommandTree (cli init injects
-// func(){ return rootCmd.Version }). StaleBinaryHint consumes it; when nothing is
-// registered the hint degrades to a version-less generic line (never empty, so
-// advisories always carry the stale-binary possibility).
+// RegisterVersion registers the callback returning the running binary's version — same cycle-breaking pattern as RegisterCommandTree (cli init injects func(){ return rootCmd.Version }).
 //
 // RegisterVersion 注册「返回运行中二进制版本」的回调——与 RegisterCommandTree 同款
 // 破循环模式（cli init 注入 func(){ return rootCmd.Version }）。StaleBinaryHint
@@ -107,13 +78,7 @@ func RegisterVersion(fn func() string) {
 	versionFn = fn
 }
 
-// StaleBinaryHint returns the standard suffix for "command does not exist" drift
-// advisories. The drift check compares docs against the RUNNING binary's command
-// tree, so a doc reference to a command added in a newer forge reads as drift when
-// the local binary is stale — the observed 2026-08 case: a README referencing
-// `skills mine` (present at HEAD) triggered the advisory under the PATH-global
-// v1.34.0 binary that predates the command. Telling the agent to check its forge
-// version first saves a pointless doc "fix" for a command that actually exists.
+// StaleBinaryHint returns the standard suffix for "command does not exist" drift advisories.
 //
 // StaleBinaryHint 返回「命令不存在」类 drift advisory 的统一后缀。drift 检查拿文档
 // 与【运行中二进制】的命令树比对，故文档引用新版 forge 才有的命令时，本地旧二进制
@@ -134,10 +99,6 @@ func StaleBinaryHint() string {
 	return fmt.Sprintf("；若这些命令在新版 forge 已存在，可能是本地 forge 版本过旧（当前 %s），先 forge update 再排查", v)
 }
 
-// findSub looks up a direct subcommand of parent by Name. cobra Commands() does not
-// expand aliases, so docs should use the canonical command name (matching the first
-// word of Use).
-//
 // findSub 在 parent 的直接子命令里按 Name 找。cobra Commands() 不展开别名，
 // 故文档应使用 canonical 命令名（与 Use 首词一致）。
 func findSub(parent *cobra.Command, name string) *cobra.Command {
@@ -152,14 +113,7 @@ func findSub(parent *cobra.Command, name string) *cobra.Command {
 	return nil
 }
 
-// ValidateForgePath validates level by level that the command path exists in the
-// cobra tree. ref is the content **after** `forge ` inside the backticks (the
-// `forge ` prefix is already stripped by forgeBacktickRef), so it walks down from
-// rootCmd directly. It stops at the first non-command token (< / -- / [ / Chinese,
-// etc.) — everything after is arguments or description. It returns the name of the
-// first broken-link subcommand; an empty string means the path is complete (including
-// the degenerate case where ref is empty). When the command tree is not registered
-// (callback nil) it returns "" (pass through, no false report).
+// ValidateForgePath validates level by level that the command path exists in the cobra tree.
 //
 // ValidateForgePath 逐级验证命令路径在 cobra 树中存在。ref 是反引号内 "forge " **之后**
 // 的内容（"forge " 前缀已由 forgeBacktickRef 剥离），故直接从 rootCmd 起逐级匹配。
@@ -184,18 +138,12 @@ func ValidateForgePath(ref string) string {
 	return ""
 }
 
-// DriftedCommands scans doc text and returns all forge command paths (the part
-// after `forge `, e.g. `experience propose`) that are referenced in backticks but
-// absent from the command tree. Used by guard A and the task-complete advisory.
-// Returns nil when the command tree is not registered (pass through).
+// DriftedCommands scans doc text and returns all forge command paths (the part after `forge `, e.g. `experience propose`) that are referenced in backticks but absent from the command tree.
 //
 // DriftedCommands 扫文档文本，返回所有反引号引用但命令树中不存在的 forge 命令路径
 // （"forge " 之后的部分，如 "experience propose"）。守卫 A 和 task-complete advisory 用。
 // 命令树未注册时返回 nil（放行）。
 func DriftedCommands(doc string) []string {
-	// Deduplicate: the same drift command reported N times in the doc is reported
-	// once, to avoid the advisory stderr repeating `experience propose, experience propose`.
-	//
 	// 去重：同一 drift 命令在文档出现 N 次只报一次，避免 advisory stderr 重复刷
 	// "experience propose, experience propose"。
 	seen := make(map[string]bool)
@@ -209,12 +157,7 @@ func DriftedCommands(doc string) []string {
 	return drifted
 }
 
-// DriftedInProject scans the user project root README.md and returns forge command
-// references that have drifted. Used by the task-complete gate advisory — it surfaces
-// README references to non-existent forge commands before committing (earlier than
-// the CI guard: reminded locally at complete time, no need to wait for push).
-// Returns nil when there is no README or the command tree is not registered (silent,
-// does not block the gate).
+// DriftedInProject scans the user project root README.md and returns forge command references that have drifted.
 //
 // DriftedInProject 扫用户项目根 README.md，返回 drift 的 forge 命令引用。
 // task-complete 门禁 advisory 用——提交前发现 README 引用了不存在的 forge 命令
@@ -228,10 +171,7 @@ func DriftedInProject(root string) []string {
 	return DriftedCommands(string(body))
 }
 
-// AllFlags returns the sorted "command --flag" identifiers of every non-hidden
-// flag on every non-hidden command in the tree (cobra's auto help flag exempt).
-// Used by the ratchet guard: the test pins a grandfathered baseline, so any NEW
-// flag must be documented in the README or consciously added to the baseline.
+// AllFlags returns the sorted "command --flag" identifiers of every non-hidden flag on every non-hidden command in the tree (cobra's auto help flag exempt).
 //
 // AllFlags 返回树中所有非隐藏命令上的非隐藏 flag 的排序标识（"command --flag"
 // 形式；cobra 自动 help flag 豁免）。供棘轮守卫使用：测试钉住一份豁免基线，
@@ -270,42 +210,13 @@ func AllFlags(root *cobra.Command) []string {
 	return out
 }
 
-// skillBacktickRef matches a kebab-case token wrapped in backticks — the skill-name
-// analogue of forgeBacktickRef (which targets forge-command paths). The backtick
-// delimiter excludes prose, and the lowercase-first kebab shape excludes CamelCase
-// naming examples (MyCard). Built via rune(0x60) + raw string to dodge the Windows
-// input-layer quote corruption that breaks double-quoted Go string literals.
-//
 // skillBacktickRef 匹配反引号包裹的 kebab-case token——forgeBacktickRef（针对 forge
 // 命令路径）的 skill 名对应物。反引号限定排除散文，小写首字母 kebab 形态排除 CamelCase
 // 命名示例（MyCard）。用 rune(0x60) + raw string 构造，绕过 Windows 输入层双引号腐蚀
 // （会破坏双引号 Go 字符串字面量）。
 var skillBacktickRef = regexp.MustCompile(string(rune(0x60)) + `([a-z][a-z0-9-]*)` + string(rune(0x60)))
 
-// DanglingSkillRefs scans text for backtick-wrapped kebab tokens and returns the ones
-// that look like broken skill references — referenced as if a skill but absent from the
-// canonical skill set. Root-cause guard for the 2026-07 frontend dangling-link regression
-// (frontend-development referenced frontend-stack-selection / ai-generated-ui-review /
-// frontend-aesthetics-execution as skills that did not exist).
-//
-// Two-pass discrimination avoids the false-positive storm a naive "every backtick kebab
-// must be a known skill" check would cause — canonical skill docs contain ~150 backtick
-// kebab tokens that are NOT skills (tools grep/curl, keywords any/while, review-pattern
-// names type-suppression, naming examples user-avatar-card, etc.):
-//
-//  1. Single-segment tokens (no hyphen) are exempt. Every canonical Forge skill name is
-//     multi-segment kebab (enforced by the TestCanonicalSkillNamesAreMultiSegment
-//     meta-guard); single-segment tokens in SKILL.md are overwhelmingly tools/keywords/
-//     concept words, uncheckable without a huge deny-list. If a single-segment skill
-//     name is ever added, the meta-guard fails and flags this exemption for review.
-//  2. Multi-segment tokens: pass if in knownSkills (real skill) or allowlist
-//     (human-confirmed non-skill — review-pattern names, sub-agent contracts, hook
-//     names, tools, naming examples, external skills, pattern values, etc.); else
-//     reported as dangling.
-//
-// The allowlist is the codification of the "which backtick tokens are NOT skill refs"
-// audit knowledge (the false-positive categories from the 2026-07 frontend sweep). The
-// caller owns it so this package stays free of a canonical-skills dependency.
+// DanglingSkillRefs scans text for backtick-wrapped kebab tokens and returns the ones that look like broken skill references — referenced as if a skill but absent from the canonical skill set.
 //
 // DanglingSkillRefs 扫文本反引号 kebab token，返回"疑似 skill 断链"——被当 skill 引用
 // 但不在 canonical skill 集的 token。2026-07 frontend 断链回归的根治（frontend-development

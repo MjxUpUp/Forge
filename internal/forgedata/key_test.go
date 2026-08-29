@@ -9,20 +9,12 @@ import (
 	"testing"
 )
 
-// key_test.go — full-behavior guards for Key/FindGitRoot/RootDir (§6.1 + §2 corrupt test matrix).
-// Chinese strings use raw string literals to avoid Windows quote corruption.
-//
 // key_test.go — Key/FindGitRoot/RootDir 全行为守卫（§6.1 + §2 corrupt 测试矩阵）。
 // 中文字符串 raw string 避 Windows 引号腐蚀。
 
-// TestFindGitRoot_StopsAtRoot: findGitRoot stops at the ancestor containing .git,
-// not continuing toward the system drive root (guards against infinite loops, plan §2 safety).
-//
 // TestFindGitRoot_StopsAtRoot：findGitRoot 找到含 .git 的祖先并停止，
 // 不沿系统盘根继续（防死循环，plan §2 safety 段）。
 func TestFindGitRoot_StopsAtRoot(t *testing.T) {
-	// t.TempDir lives under the system Temp (usually no .git ancestor above).
-	//
 	// t.TempDir 在系统 Temp 下（一般非 git repo 上方）
 	d := t.TempDir()
 	got := FindGitRoot(d)
@@ -31,8 +23,6 @@ func TestFindGitRoot_StopsAtRoot(t *testing.T) {
 	}
 }
 
-// TestFindGitRoot_MainGitDir: main worktree .git directory.
-//
 // TestFindGitRoot_MainGitDir：主 worktree .git 目录。
 func TestFindGitRoot_MainGitDir(t *testing.T) {
 	root := t.TempDir()
@@ -40,8 +30,6 @@ func TestFindGitRoot_MainGitDir(t *testing.T) {
 	if err := os.MkdirAll(gitDir, 0755); err != nil {
 		t.Fatalf(`mkdir .git: %v`, err)
 	}
-	// cwd is a subdirectory of .git
-	//
 	// cwd 是 .git 子目录
 	sub := filepath.Join(gitDir, "objects")
 	if err := os.MkdirAll(sub, 0755); err != nil {
@@ -52,20 +40,14 @@ func TestFindGitRoot_MainGitDir(t *testing.T) {
 	}
 }
 
-// TestFindGitRoot_GitAsFile: .git is a file (worktree/submodule).
-//
 // TestFindGitRoot_GitAsFile：.git 是 file（worktree/submodule）。
 func TestFindGitRoot_GitAsFile(t *testing.T) {
-	// main git repository
-	//
 	// 主 git 仓库
 	mainRepo := t.TempDir()
 	mainGit := filepath.Join(mainRepo, ".git")
 	if err := os.MkdirAll(mainGit, 0755); err != nil {
 		t.Fatalf(`mkdir main .git: %v`, err)
 	}
-	// worktree repo: wt/.git is a file pointing to main/.git/worktrees/wt
-	//
 	// worktree 仓库：wt/.git 是 file 指向 main/.git/worktrees/wt
 	wtRepo := t.TempDir()
 	wtGitFile := filepath.Join(wtRepo, ".git")
@@ -76,8 +58,6 @@ func TestFindGitRoot_GitAsFile(t *testing.T) {
 	if err := os.WriteFile(wtGitFile, []byte("gitdir: "+worktreePath+"\n"), 0644); err != nil {
 		t.Fatalf(`write wt .git file: %v`, err)
 	}
-	// worktree cwd subdirectory
-	//
 	// worktree cwd 子目录
 	wtSub := filepath.Join(wtRepo, "src")
 	if err := os.MkdirAll(wtSub, 0755); err != nil {
@@ -87,8 +67,6 @@ func TestFindGitRoot_GitAsFile(t *testing.T) {
 	if got != wtRepo {
 		t.Errorf(`FindGitRoot worktree(%s)=%s，期望 %s`, wtSub, got, wtRepo)
 	}
-	// main repo subdirectory vs worktree subdirectory keys should match
-	//
 	// 主 repo 子目录 vs worktree 子目录 key 应一致
 	keyMain, err := Key(filepath.Join(mainRepo, "src"))
 	if err != nil {
@@ -103,8 +81,6 @@ func TestFindGitRoot_GitAsFile(t *testing.T) {
 	}
 }
 
-// TestKey_NotInGitRepo: non-git projects return ErrNotInGitRepo.
-//
 // TestKey_NotInGitRepo：非 git 项目返 ErrNotInGitRepo。
 func TestKey_NotInGitRepo(t *testing.T) {
 	d := t.TempDir() // 无 .git
@@ -117,16 +93,12 @@ func TestKey_NotInGitRepo(t *testing.T) {
 	}
 }
 
-// TestKey_WorktreeKeyMatchesMain: multiple worktrees of the same repo (worktree + submodule) share the hash.
-//
 // TestKey_WorktreeKeyMatchesMain：同 repo 多 worktree（worktree + 子模块两个）共享 hash。
 func TestKey_WorktreeKeyMatchesMain(t *testing.T) {
 	mainRepo := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(mainRepo, ".git"), 0755); err != nil {
 		t.Fatalf(`mkdir: %v`, err)
 	}
-	// single worktree
-	//
 	// 单 worktree
 	wtRepo := t.TempDir()
 	wtDir := filepath.Join(mainRepo, ".git", "worktrees", "wt")
@@ -136,8 +108,6 @@ func TestKey_WorktreeKeyMatchesMain(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wtRepo, ".git"), []byte("gitdir: "+wtDir+"\n"), 0644); err != nil {
 		t.Fatalf(`write wt .git: %v`, err)
 	}
-	// second worktree
-	//
 	// 第二 worktree
 	wt2Repo := t.TempDir()
 	wt2Dir := filepath.Join(mainRepo, ".git", "worktrees", "wt2")
@@ -147,8 +117,6 @@ func TestKey_WorktreeKeyMatchesMain(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(wt2Repo, ".git"), []byte("gitdir: "+wt2Dir+"\n"), 0644); err != nil {
 		t.Fatalf(`write wt2 .git: %v`, err)
 	}
-	// detached worktree (path is raw, not linked to .git/worktrees subdirectory)
-	//
 	// detached worktree（path 是 raw，不链 .git/worktrees 子目录）
 	detachedRepo := t.TempDir()
 	detachedDir := filepath.Join(mainRepo, ".git", "worktrees", "detached")
@@ -178,10 +146,6 @@ func TestKey_WorktreeKeyMatchesMain(t *testing.T) {
 	}
 }
 
-// TestKey_Submodule: a submodule (.git is a file pointing to parent .git/modules/sub) does not necessarily have a different key from the parent repo after resolution
-// (by design — submodule's .git points to `<parent>/.git/modules/<sub>/`; that path follows the chain to find the .git ancestor,
-// which is `<parent>/.git`, identical to parent's own .git path → keys are equal).
-//
 // TestKey_Submodule：submodule（.git 是 file 指父 .git/modules/sub）解析后与父 repo key 不一定等
 // （设计如此——submodule 的 .git 指向 `<parent>/.git/modules/<sub>/`，该 path 沿 chain 找 .git 祖先
 // 结果是 `<parent>/.git`，与 parent 自己的 .git 路径相同 → key 相等）。
@@ -191,8 +155,6 @@ func TestKey_Submodule(t *testing.T) {
 	if err := os.MkdirAll(parentGit, 0755); err != nil {
 		t.Fatalf(`mkdir parent .git: %v`, err)
 	}
-	// submodule's .git points to parent/.git/modules/<sub>
-	//
 	// submodule 的 .git 指向 parent/.git/modules/<sub>
 	subRepo := t.TempDir()
 	subGitdir := filepath.Join(parentGit, "modules", "sub")
@@ -211,17 +173,12 @@ func TestKey_Submodule(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`Key(sub): %v`, err)
 	}
-	// resolved module .gitdir follows the parent chain to find the .git ancestor, should equal parent .git
-	//
 	// 模块 .gitdir 经解析沿 parent 找 .git 祖先应等于 parent .git
 	if subKey != parentKey {
 		t.Errorf(`submodule key 与 parent 应共享：parent=%s sub=%s`, parentKey, subKey)
 	}
 }
 
-// TestKey_CorruptGitFile (§2 corrupt protection matrix):
-// various corrupted .git file inputs → ErrInvalidGitFile.
-//
 // TestKey_CorruptGitFile（§2 corrupt 防护矩阵）：
 // 各种 .git file 损坏输入 → ErrInvalidGitFile。
 func TestKey_CorruptGitFile(t *testing.T) {
@@ -257,33 +214,21 @@ func TestKey_CorruptGitFile(t *testing.T) {
 	}
 }
 
-// TestKey_LoopedGitDirSafetyCounter: looping gitdir references return ErrInvalidGitFile within the safety counter.
-// Constructing `gitdir: ./a/b/.git/worktrees/foo/.git/...` — a deeply nested path exceeding safetyMax=64.
-//
 // TestKey_LoopedGitDirSafetyCounter：循环 gitdir 引用在 safety counter 内返 ErrInvalidGitFile。
 // 构造"gitdir: ./a/b/.git/worktrees/foo/.git/..."——极深目录超过 safetyMax=64。
 func TestKey_LoopedGitDirSafetyCounter(t *testing.T) {
 	repo := t.TempDir()
-	// construct a .gitdir path deeper than 64 (filled with .git subdirectory names)
-	//
 	// 构造深度超过 64 的 .gitdir 路径（用 .git 子目录名填充）
 	deep := repo
 	for i := 0; i < 70; i++ {
 		deep = filepath.Join(deep, ".git")
 	}
-	// note: deep directories may not exist; create the directory so stat passes but base never reaches .git
-	//
 	// 注意：深层目录可能不存在；放个目录让 stat 通过但 base 永不到 .git
 	for i := 0; i < 69; i++ {
-		// path already contains .git, base() is .git, first while iteration exits
-		// — constructing the correct path is hard; switch to a simpler test: self-referential loop
-		//
 		// 路径中已有 .git，base() 已是 .git，第一次 while 循环 exit
 		// ——构造正确路径不易；改测更简易：循环引用自身
 		_ = i
 	}
-	// real looping gitdir: .git points relatively back to itself
-	//
 	// 真正「循环 gitdir」：.git 指相对路径回自己
 	loopBack := strings.Repeat("../", 50) + "." // 50 层 ../ 回到 repo
 	if err := os.WriteFile(filepath.Join(repo, ".git"), []byte("gitdir: "+loopBack+"\n"), 0644); err != nil {
@@ -294,15 +239,10 @@ func TestKey_LoopedGitDirSafetyCounter(t *testing.T) {
 		t.Error(`循环 gitdir 应返 err（要么 ErrNotInGitRepo 要么 ErrInvalidGitFile）`)
 		return
 	}
-	// may be ErrInvalidGitFile (safety limit tripped) or ErrNotInGitRepo (resolution failure leaves no .git)
-	// do not require a specific type — any non-nil error is fine
-	//
 	// 可能是 ErrInvalidGitFile（safety 触限）或是 ErrNotInGitRepo（解析失败导致 .git 不到）
 	// 不强求具体类型——只要非 nil 就行
 }
 
-// TestKey_SymlinkRepo: symlink to a real repo → EvalSymlinks resolves to the physical path, keys match.
-//
 // TestKey_SymlinkRepo：symlink 指真实 repo → EvalSymlinks 归物理路径 key 一致。
 func TestKey_SymlinkRepo(t *testing.T) {
 	real := t.TempDir()
@@ -328,8 +268,6 @@ func TestKey_SymlinkRepo(t *testing.T) {
 	}
 }
 
-// TestRootDir_FORGE_DATA_HOME override: FORGE_DATA_HOME takes precedence over UserHomeDir.
-//
 // TestRootDir_FORGE_DATA_HOME 覆盖：FORGE_DATA_HOME 优先于 UserHomeDir。
 func TestRootDir_FORGE_DATA_HOME(t *testing.T) {
 	tmp := t.TempDir()
@@ -341,8 +279,6 @@ func TestRootDir_FORGE_DATA_HOME(t *testing.T) {
 	}
 }
 
-// TestRootDir_EmptyKey: empty key returns the empty string without fabricating a path.
-//
 // TestRootDir_EmptyKey：空 key 返""，不构造假路径。
 func TestRootDir_EmptyKey(t *testing.T) {
 	if got := RootDir(``); got != `` {
@@ -350,8 +286,6 @@ func TestRootDir_EmptyKey(t *testing.T) {
 	}
 }
 
-// TestProjectFor full path + ConfigDir walk-up.
-//
 // TestProjectFor 完整路径 + ConfigDir walk-up。
 func TestProjectFor(t *testing.T) {
 	repo := t.TempDir()
@@ -362,8 +296,6 @@ func TestProjectFor(t *testing.T) {
 		t.Fatalf(`mkdir .forge: %v`, err)
 	}
 
-	// cwd is a subdirectory inside repo — should walk-up to find the .forge/ parent
-	//
 	// cwd 是 repo 内子目录——应 walk-up 找到 .forge/ 父目录
 	sub := filepath.Join(repo, `src`, `deep`)
 	if err := os.MkdirAll(sub, 0755); err != nil {
@@ -392,10 +324,6 @@ func TestProjectFor(t *testing.T) {
 	}
 }
 
-// TestProjectFor_NoForgeConfigDir: no project-level .forge/ → ConfigDir falls back
-// to the user-level DataDir (zero-project-write default). ProjectFor is pure
-// derivation and no longer judges init state (that moved to projectroot/registry).
-//
 // TestProjectFor_NoForgeConfigDir：无项目级 .forge/ → ConfigDir 回落用户级
 // DataDir（零项目写入默认）。ProjectFor 是纯推导，不再判定 init 状态
 // （判定移到 projectroot/registry）。
@@ -417,9 +345,6 @@ func TestProjectFor_NoForgeConfigDir(t *testing.T) {
 	}
 }
 
-// TestGlobalHome_ForgeDataHome pins GlobalHome to FORGE_DATA_HOME (exported by refactor-data-home
-// commit E; registry/suggest/uninstall reuse the same source of truth).
-//
 // TestGlobalHome_ForgeDataHome 钉死 GlobalHome 走 FORGE_DATA_HOME（refactor-data-home
 // commit E 导出，registry/suggest/uninstall 复用同一真相源）。
 func TestGlobalHome_ForgeDataHome(t *testing.T) {
@@ -434,8 +359,6 @@ func TestGlobalHome_ForgeDataHome(t *testing.T) {
 	}
 }
 
-// TestGlobalHome_FallsBackToUserHomeDir: without FORGE_DATA_HOME, falls back to ~/.forge.
-//
 // TestGlobalHome_FallsBackToUserHomeDir：无 FORGE_DATA_HOME 时回落 ~/.forge。
 func TestGlobalHome_FallsBackToUserHomeDir(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, ``)
@@ -449,9 +372,6 @@ func TestGlobalHome_FallsBackToUserHomeDir(t *testing.T) {
 	}
 }
 
-// TestHash12_ZeroPadding pins the slice-overrun fix: hex forms shorter than 12 chars must be
-// zero-padded (not panic on s[:12]). 0x123 → "000000000123".
-//
 // TestHash12_ZeroPadding 钉死 slice 越界修复：hex 不足 12 位的值必须零填充（而非 s[:12] panic）。
 // 0x123 → "000000000123"。
 func TestHash12_ZeroPadding(t *testing.T) {
@@ -475,12 +395,6 @@ func TestHash12_ZeroPadding(t *testing.T) {
 	}
 }
 
-// fsCaseInsensitive probes the ACTUAL filesystem (not GOOS): create a probe file
-// under one spelling and stat a case-swapped spelling — success means the FS folds
-// case (macOS default APFS, Windows NTFS). Plan requirement: detect the filesystem
-// rather than trusting GOOS, so the test also does the right thing on case-sensitive
-// APFS volumes or Linux CI.
-//
 // fsCaseInsensitive 探测真实文件系统（而非 GOOS）：按一种拼写建探针文件，再 stat
 // 大小写变体拼写——成功说明 FS 折叠大小写（macOS 默认 APFS、Windows NTFS）。
 // 计划要求探测文件系统而非信任 GOOS，让测试在大小写敏感 APFS 卷或 Linux CI 上
@@ -495,16 +409,6 @@ func fsCaseInsensitive(t *testing.T, dir string) bool {
 	return err == nil
 }
 
-// TestKeyCaseConvergence pins the canonical-case normalization: on a case-insensitive
-// filesystem, a variant-spelled cwd must derive the SAME Key/PathKey as the on-disk
-// spelling (the Forge/forge identity-split bug: FNV of the literal path string split
-// one project into two identities, 8+2 task data split). On a case-sensitive
-// filesystem the exact-match-first rule makes CanonicalCase the identity function —
-// asserted explicitly so two genuinely different dirs are never folded.
-// The CanonicalCase spelling assertions are darwin-only by design (Windows convergence
-// lives in PathKey/registry.pathKey's ToLower branches; off-darwin CanonicalCase is a
-// no-op and pins the identity contract instead).
-//
 // TestKeyCaseConvergence 钉死 canonical-case 归一：大小写不敏感文件系统上，变体
 // 拼写的 cwd 必须推导出与磁盘拼写相同的 Key/PathKey（Forge/forge 身份分裂 bug：
 // 按字面路径 FNV 把同一项目裂成两个身份，8+2 任务数据分裂）。大小写敏感文件系统
@@ -526,9 +430,6 @@ func TestKeyCaseConvergence(t *testing.T) {
 	onDiskPathKey := PathKey(proj)
 
 	if !fsCaseInsensitive(t, base) {
-		// Case-sensitive FS: normalization must be the identity for existing paths —
-		// the exact-match branch resolves every component to itself.
-		//
 		// 大小写敏感 FS：对存在的路径归一必须恒等——精确匹配分支把每个组件
 		// 解析为它自己。
 		if got := CanonicalCase(proj); got != proj {
@@ -537,9 +438,6 @@ func TestKeyCaseConvergence(t *testing.T) {
 		return
 	}
 
-	// Case-insensitive FS: the variant spelling resolves to the same directory, and
-	// must converge to the same identity.
-	//
 	// 大小写不敏感 FS：变体拼写解析到同一目录，必须收敛到同一身份。
 	variantKey, err := Key(variant)
 	if err != nil {
@@ -551,14 +449,6 @@ func TestKeyCaseConvergence(t *testing.T) {
 	if got := PathKey(variant); got != onDiskPathKey {
 		t.Errorf(`PathKey 未收敛：磁盘拼写=%s 变体拼写=%s`, onDiskPathKey, got)
 	}
-	// The canonical form itself is stable (normalization is idempotent on the
-	// on-disk spelling) — existing canonical registrations keep their key.
-	// DARWIN-ONLY by design (confirmed decision): Windows case convergence lives
-	// in the PathKey/registry.pathKey ToLower branches (asserted above via
-	// PathKey), and CanonicalCase is a GOOS-guarded no-op off-darwin — asserting
-	// variant→on-disk spelling unconditionally broke windows-latest CI
-	// (2026-08-18 run 32115959961). Off-darwin we pin the identity contract instead.
-	//
 	// canonical 形态自身稳定（归一对磁盘拼写幂等）——既有 canonical 登记 key 不变。
 	// 按设计仅 darwin（已确认决策）：Windows 的大小写收敛在
 	// PathKey/registry.pathKey 的 ToLower 分支（上面已经由 PathKey 断言），
@@ -582,10 +472,6 @@ func TestKeyCaseConvergence(t *testing.T) {
 	}
 }
 
-// TestValidKeyFormat pins the tight-allowlist shapes a key joined into a
-// filesystem path may have (hash12 / PathKey): anything else — traversal,
-// separators, wrong length, uppercase — is rejected, never sanitized.
-//
 // TestValidKeyFormat 钉住允许拼进文件系统路径的 key 的收紧 allowlist 形态
 // （hash12 / PathKey）：其余——穿越、分隔符、长度错、大写——一律拒绝，绝不
 // 清洗成合法。

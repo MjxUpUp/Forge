@@ -1,24 +1,5 @@
 package ci
 
-// Guards for the release-please layer: release-please-config.json /
-// .release-please-manifest.json / .github/workflows/release-please.yml.
-//
-// Two-layer release pipeline: release-please governs "when to release and at what version"
-// (changelog, version bump, tag, GitHub Release body); release.yml governs "how to build and
-// publish" (goreleaser + npm). The layers are chained via workflow_dispatch. These guards pin
-// the handoff shape so that silent config drift cannot break the chain:
-//   - tag shape must stay v<semver>: release.yml fires on on.push.tags "v*" and the npm job
-//     hardcodes asset URLs releases/download/v<ver>/...;
-//   - extra-files must keep bumping npm/package.json, .kimi-plugin/plugin.json and
-//     plugins/forge-dsh/package.json — the exact files the tag-consistency gate,
-//     TestKimiPluginManifestVersionTracksRelease and the dsh publish step read;
-//   - the manifest version must equal npm/package.json version: manual releases that bypass
-//     release-please desync it and turn this red (the designed nudge back to the release-please
-//     path; release-please computing the next version from a stale one would collide with an
-//     existing tag);
-//   - the action must stay SHA-pinned (same supply-chain posture as release.yml) and the
-//     dispatch step must target release.yml.
-//
 // release-please 层守卫：release-please-config.json / .release-please-manifest.json /
 // .github/workflows/release-please.yml。
 //
@@ -44,8 +25,6 @@ import (
 	"testing"
 )
 
-// readRepoFile reads a repo-root-relative file (go test cwd = internal/ci/).
-//
 // readRepoFile 读仓库根相对路径的文件（go test cwd = internal/ci/）。
 func readRepoFile(t *testing.T, elem ...string) []byte {
 	t.Helper()
@@ -57,8 +36,6 @@ func readRepoFile(t *testing.T, elem ...string) []byte {
 	return data
 }
 
-// releasePleaseExtraFile mirrors one extra-files entry of release-please-config.json.
-//
 // releasePleaseExtraFile 对应 release-please-config.json 的一条 extra-files 配置。
 type releasePleaseExtraFile struct {
 	Type     string `json:"type"`
@@ -66,18 +43,11 @@ type releasePleaseExtraFile struct {
 	JSONPath string `json:"jsonpath"`
 }
 
-// releasePleasePackage is the per-package config; only the fields this guard inspects.
-//
 // releasePleasePackage 是单包配置；只取本守卫检查的字段。
 type releasePleasePackage struct {
 	ExtraFiles []releasePleaseExtraFile `json:"extra-files"`
 }
 
-// releasePleaseConfig holds the root config flags. Booleans are pointers: a missing key and an
-// explicit false must be distinguishable — the guards below assert the flag is PRESENT and set
-// to the required value, not merely falsy (release-please defaults must not silently hold the
-// chain together).
-//
 // releasePleaseConfig 持根配置 flag。布尔用指针：缺 key 与显式 false 必须可区分——
 // 下方守卫断言 flag 存在且取要求值，而非恰好为假（不能靠 release-please 的默认值
 // 撑住发版链）。
@@ -98,10 +68,7 @@ func loadReleasePleaseConfig(t *testing.T) *releasePleaseConfig {
 	return &cfg
 }
 
-// TestReleasePleaseConfig_TagShape: pin the tag format to bare v<semver>.
-// release.yml fires on on.push.tags "v*" and the npm job hardcodes asset URLs
-// releases/download/v${VER}/forge_${VER}_*.tar.gz — a component-prefixed tag (forge-v1.2.3)
-// or a v-less tag (1.2.3) detaches the whole build layer from release-please.
+// TestReleasePleaseConfig_TagShape pins the tag format to bare v<semver>.
 //
 // TestReleasePleaseConfig_TagShape：钉死 tag 格式为裸 v<semver>。
 // release.yml 由 on.push.tags "v*" 触发，npm job 硬编码资产 URL
@@ -122,10 +89,7 @@ func TestReleasePleaseConfig_TagShape(t *testing.T) {
 	}
 }
 
-// TestReleasePleaseConfig_StrategyAndBootstrap: the go strategy needs no in-tree version file
-// (the release version lives in the tag + manifest); node/simple strategies would look for
-// package.json / version.txt at the root and fail the run. bootstrap-sha bounds the commit
-// range of the FIRST release PR (ignored afterwards) — it must be a full 40-char SHA.
+// TestReleasePleaseConfig_StrategyAndBootstrap pins the go strategy and bootstrap-sha requirements.
 //
 // TestReleasePleaseConfig_StrategyAndBootstrap：go 策略无需树内版本文件（发版版本来自
 // tag + manifest）；node/simple 策略会在根目录找 package.json / version.txt 而失败。
@@ -142,12 +106,7 @@ func TestReleasePleaseConfig_StrategyAndBootstrap(t *testing.T) {
 	}
 }
 
-// TestReleasePleaseConfig_ExtraFilesBumpAllManifests: the Release PR must bump the same files
-// the downstream gates read. Dropping npm/package.json breaks the tag-consistency gate in
-// release.yml; dropping .kimi-plugin/plugin.json breaks TestKimiPluginManifestVersionTracksRelease;
-// dropping plugins/forge-dsh/package.json stops the dsh publish step from ever seeing a new
-// version (silent skip — the plugin drifts out of the release train again).
-// Guarding all of them here names the cause at the config layer before the downstream noise.
+// TestReleasePleaseConfig_ExtraFilesBumpAllManifests: the Release PR must bump the same files the downstream gates read.
 //
 // TestReleasePleaseConfig_ExtraFilesBumpAllManifests：Release PR 必须 bump 下游门禁读的
 // 同一批文件。丢 npm/package.json 会破 release.yml 的 tag 对账门禁；丢
@@ -179,10 +138,7 @@ func TestReleasePleaseConfig_ExtraFilesBumpAllManifests(t *testing.T) {
 	}
 }
 
-// TestReleasePleaseManifest_MatchesNpmVersion: .release-please-manifest.json is release-please's
-// "last released version" ledger. Every Release PR updates it together with npm/package.json,
-// so a mismatch means a manual release bypassed release-please (old release.js path — sync the
-// manifest to the released version) or the files were hand-edited apart.
+// TestReleasePleaseManifest_MatchesNpmVersion: .release-please-manifest.json is release-please's "last released version" ledger.
 //
 // TestReleasePleaseManifest_MatchesNpmVersion：.release-please-manifest.json 是 release-please
 // 的「上次已发布版本」账本。每个 Release PR 都会把它与 npm/package.json 一起更新，
@@ -209,11 +165,7 @@ func TestReleasePleaseManifest_MatchesNpmVersion(t *testing.T) {
 	}
 }
 
-// TestReleasePleaseManifest_DshPluginTracksTrain: @agent_forge/forge-dsh rides the main release
-// train — its package.json is in extra-files, so every Release PR bumps it in lockstep with the
-// root version. A drift here means someone hand-edited the plugin version (the old manual-bump
-// path that left the plugin outside automated releases) or dropped the extra-files entry; the
-// dsh publish step in release.yml would then publish a version that disagrees with the tag.
+// TestReleasePleaseManifest_DshPluginTracksTrain: @agent_forge/forge-dsh rides the main release train — its package.json is in extra-files, so every Release PR bumps it in lockstep with the root version.
 //
 // TestReleasePleaseManifest_DshPluginTracksTrain：@agent_forge/forge-dsh 随主发布火车——
 // 它的 package.json 在 extra-files 里，每个 Release PR 都会把它与根版本 lockstep bump。
@@ -240,12 +192,7 @@ func TestReleasePleaseManifest_DshPluginTracksTrain(t *testing.T) {
 	}
 }
 
-// TestReleasePleaseWorkflow_PinnedAndDispatchesRelease: the workflow must (a) pin the action
-// by full SHA — a floating @v5 tag can be repointed upstream (same supply-chain posture as the
-// SHA-pinned actions in release.yml); (b) dispatch release.yml by file name on the freshly
-// created tag — the only link from the release-please layer to the build layer on the
-// GITHUB_TOKEN path; (c) gate the dispatch on release_created so ordinary PR-refresh runs
-// don't dispatch.
+// TestReleasePleaseWorkflow_PinnedAndDispatchesRelease: the workflow must (a) pin the action by full SHA.
 //
 // TestReleasePleaseWorkflow_PinnedAndDispatchesRelease：workflow 必须 (a) pin 完整 SHA——
 // 浮动 @v5 tag 可被上游重指向（与 release.yml 的 action pin 同一供应链姿势）；
@@ -273,12 +220,7 @@ func TestReleasePleaseWorkflow_PinnedAndDispatchesRelease(t *testing.T) {
 	}
 }
 
-// TestReleasePleaseWorkflow_NoSecretsInIf: GitHub statically rejects any `if:` expression that
-// references the secrets context — secrets is not in the steps.if/job.if context allowlist, and
-// the whole workflow file fails validation: run records die at 0s with zero jobs and no logs,
-// while pushes to non-matching branches still spawn failure records (2026-08-19 first-run
-// incident, bisected via scratch-branch pushes). The dual-token path must keep its PAT check
-// inside the run script: env may reference secrets, if: may not.
+// TestReleasePleaseWorkflow_NoSecretsInIf pins that no `if:` expression references the secrets context.
 //
 // TestReleasePleaseWorkflow_NoSecretsInIf：GitHub 静态拒绝任何引用 secrets 上下文的
 // if: 表达式——secrets 不在 steps.if/job.if 的上下文白名单，整个 workflow 文件校验

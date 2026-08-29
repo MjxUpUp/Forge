@@ -1,39 +1,5 @@
 package taskpipeline
 
-// taskattribution.go attributes the committed portion of taskChangedFiles across tasks
-// sharing one branch, so a task's change set only contains files its own work accounts
-// for.
-//
-// Problem (2026-08 usage evidence, fix/gate-loopholes): the committed portion was
-// `git diff HeadCommit..HEAD` — every commit after task start, including commits a
-// PREVIOUS task on the same branch already accounted for at its own completion (the
-// sequential-workflow case: task B starts before task A's commits land, or two
-// parallel tasks step on each other's files). Those foreign commits inflated B's
-// change set: PlanScope could never absorb them cleanly (the agent was pushed to
-// `scope add` files it never touched — the gate incentivized polluting the
-// declaration), test-coverage demanded tests for files A already covered, and one
-// real session saw 6 consecutive scope-drift records from two parallel tasks.
-//
-// Rule: a committed file belongs to the current task unless EVERY commit touching it
-// in HeadCommit..HEAD falls inside another COMPLETED task's recorded span
-// (its HeadCommit → its last passed gate's head). Only completed tasks anchor
-// attribution: an in-progress task's span is open-ended, and two open spans would
-// mutually swallow each other's files (neither side accounting them) — a coverage
-// hole. With completed-only anchors, a file is accounted by exactly one task: the
-// first to complete over its last touching commit. Working-tree and untracked files
-// are never excluded — uncommitted work always belongs to whoever is working now.
-//
-// Known blind spot (accepted tradeoff, pinned by
-// TestTaskChangedFiles_InterleavedFirstToComplete): rev-list spans are commit RANGES,
-// blind to authorship. When B commits BEFORE A completes and A's final head descends
-// from B's commit (same branch), B's commit falls inside A's span and its files are
-// attributed to A — first-to-complete wins over true authorship. Safe because the
-// file was inside A's own diff when A completed, so its scope/test-coverage demand
-// fired exactly once there; B commits made after A's completion are outside A's
-// span and stay with B. The spans also fade with task-state retention
-// (PruneOldTasks), after which the old unfiltered behavior resumes — degraded, never
-// wrong-direction.
-//
 // taskattribution.go 把 taskChangedFiles 的已提交部分在同分支的多任务间归属，使一个
 // 任务的改动集合只含由它自己记账的文件。
 //
@@ -65,13 +31,6 @@ import (
 	"strings"
 )
 
-// completedTaskSpans returns the commit spans (start, end) of COMPLETED sibling
-// tasks (excluding currentTaskRef): start = the task's HeadCommit (recorded at
-// task start), end = the head of its last PASSED gate record (≈ the task's final
-// commit at completion). Tasks missing either anchor (legacy states) contribute
-// no span — conservative direction: no attribution, old behavior. Spans whose
-// commits were since rewritten away fail at rev-list time and are skipped there.
-//
 // completedTaskSpans 返回已完成兄弟任务（排除 currentTaskRef）的 commit 跨度
 // （start, end）：start = 任务的 HeadCommit（任务启动时记录），end = 其最后一
 // 条已通过门禁记录的 head（≈ 任务完成时的最终 commit）。缺任一锚的任务（老
@@ -87,9 +46,6 @@ func completedTaskSpans(root, currentTaskRef string) [][2]string {
 		if s.TaskRef == currentTaskRef || s.CompletedAt == nil || s.HeadCommit == "" {
 			continue
 		}
-		// Last PASSED gate's head = the task's final accounted commit. History is
-		// append-only, so scan backwards.
-		//
 		// 最后一条已通过门禁的 head = 该任务最后记过账的 commit。History 只追加，
 		// 故倒序扫。
 		end := ""
@@ -107,10 +63,6 @@ func completedTaskSpans(root, currentTaskRef string) [][2]string {
 	return spans
 }
 
-// foreignCommitSet unions `git rev-list start..end` over all spans into a set of
-// full commit hashes. Failing spans (rewritten/garbage-collected commits) are
-// skipped individually so one dead span never disables attribution for the rest.
-//
 // foreignCommitSet 把所有跨度的 `git rev-list start..end` 并成一个 full hash 集。
 // 失败的跨度（commit 被改写/回收）单独跳过——一条死跨度不拖垮其余归属。
 func foreignCommitSet(root string, spans [][2]string) map[string]bool {
@@ -135,12 +87,6 @@ func foreignCommitSet(root string, spans [][2]string) map[string]bool {
 	return set
 }
 
-// committedFileCommits maps each file changed in headCommit..HEAD to the full
-// hashes of the commits touching it in that range (one `git log --name-only`).
-// The `commit:` format prefix keeps hash lines unambiguous — a file literally
-// named like a hex string can never be mistaken for a commit line (and the
-// parse is sha1/sha256-length agnostic).
-//
 // committedFileCommits 把 headCommit..HEAD 内变更的每个文件映射到该区间内触及它
 // 的 commit full hash 列表（一次 `git log --name-only`）。`commit:` 格式前缀让
 // hash 行无歧义——恰好像 hex 串的文件名绝不会被误当 commit 行（且解析与
@@ -168,13 +114,6 @@ func committedFileCommits(root, headCommit string) map[string][]string {
 	return m
 }
 
-// excludeForeignCommitted filters the committed portion of the task's changed
-// files, dropping files whose every touching commit in HeadCommit..HEAD belongs
-// to a completed sibling task's span (see the file doc comment for the rule and
-// its rationale). Files with no attributable commit information (git log
-// failure, empty mapping) are kept — the conservative direction keeps demanding
-// coverage/scope for anything we cannot prove foreign.
-//
 // excludeForeignCommitted 过滤任务改动文件的已提交部分：丢弃在 HeadCommit..HEAD
 // 内全部触及 commit 都属于已完成兄弟任务跨度的文件（规则与其理由见文件 doc
 // 注释）。无归属信息可用的文件（git log 失败、映射为空）保留——保守方向：

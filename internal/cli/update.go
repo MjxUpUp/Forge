@@ -26,18 +26,10 @@ func init() {
 	rootCmd.AddCommand(updateCmd)
 }
 
-// updatePluginFlag: the --plugin flag. Reinstalling the plugin marketplace requires interactive runs inside the agent CLI
-// (cannot be scripted). After the binary is updated, print one-click uninstall/reinstall commands.
-//
 // updatePluginFlag --plugin flag：因 plugin marketplace 重装需在 agent CLI 内交互
 // 跑（不可脚本化），更新 binary 后打印一键卸载/重装命令。
 var updatePluginFlag bool
 
-// printPluginReinstallGuidance writes the plugin marketplace reinstall guidance to w.
-// It is intended to be run manually inside the agent CLI (Claude Code/Codex/Cursor/Copilot CLI each use different commands,
-// so it is not auto-executed by update). The guidance is three-step (uninstall -> reinstall); the generator is not scripted (marketplace
-// reinstall must be run interactively inside the agent CLI).
-//
 // printPluginReinstallGuidance 输出 plugin marketplace 重装指引到 w。
 // 在 agent CLI 内手工跑（Claude Code/Codex/Cursor/Copilot CLI 各有不同命令，
 // 故不在 update 自动执行）。三步式（卸载→重装）指引，不脚本化生成器（marketplace
@@ -83,11 +75,8 @@ type githubAsset struct {
 type updateCache struct {
 	LatestVersion string `json:"latest_version"`
 	CheckedAt     string `json:"checked_at"`
-	// Channel records which install channel wrote this entry ("github" |
-	// "npm"; "" = legacy entry written before the field existed). The two
-	// channels can disagree during the two-stage release window (GitHub tag
-	// before npm publish), so a fresh entry from the other channel is
-	// re-queried rather than trusted.
+	// Channel records which install channel wrote this entry ("github" | "npm"; "" =
+	// legacy entry written before the field existed).
 	//
 	// Channel 记录写入本条目的安装通道（"github" | "npm"；"" = 字段存在前
 	// 的旧条目）。两段式发版窗口内两通道可能不一致（GitHub tag 先于
@@ -101,9 +90,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	channel := detectInstallChannelFn()
 
-	// 1. Fetch the latest version from the channel-appropriate source
-	//    (npm registry for npm installs, GitHub API otherwise).
-	//
 	// 1. 按安装通道取最新版本（npm 安装查 npm registry，其余查 GitHub API）
 	fmt.Fprintf(os.Stderr, "正在检查更新...\n")
 	var latest string
@@ -130,8 +116,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Refuse downgrade: only update to a newer version.
-	//
 	// 拒绝降级——只更新到更新版本
 	if compareVersions(latest, current) <= 0 {
 		fmt.Fprintf(os.Stderr, "当前 %s 已是最新或更新版本（远端: %s）\n", current, latest)
@@ -139,16 +123,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// npm channel: redirect to the package manager instead of downloading.
-	// See update_channel.go for why an in-place replace is wrong under npm.
-	//
 	// npm 通道：重定向到包管理器而非下载。为何 npm 下原地替换是错的
 	// 见 update_channel.go。
 	if channel.kind == channelNPM {
 		printNpmUpdateGuidance(os.Stderr, latest, channel.pm)
-		// Same --plugin contract as the GitHub path: the marketplace mirror
-		// needs a reinstall after the (user-run) update either way.
-		//
 		// 与 GitHub 路径同 --plugin 契约：无论哪条路更新后 marketplace
 		// 镜像都可能需要重装。
 		if updatePluginFlag {
@@ -158,8 +136,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// 2. Find the platform asset.
-	//
 	// 2. 找 platform asset
 	asset := findPlatformAsset(release.Assets)
 	if asset == nil {
@@ -167,8 +143,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "下载: %s (%.1f MB)\n", asset.Name, float64(asset.Size)/1024/1024)
 
-	// 3. Download to a temp dir.
-	//
 	// 3. 下载到 temp dir
 	tmpDir, err := os.MkdirTemp("", "forge-update-*")
 	if err != nil {
@@ -178,8 +152,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	// Restrict access to owner only (mitigate TOCTOU).
 	os.Chmod(tmpDir, 0700) // 仅 owner 可访问（防 TOCTOU）
 
-	// #4: Validate the asset name: reject path traversal and drive letters.
-	//
 	// #4：校验 asset name——拒绝路径穿越与盘符
 	archivePath := filepath.Join(tmpDir, asset.Name)
 	if !strings.HasPrefix(filepath.Clean(archivePath), filepath.Clean(tmpDir)+string(os.PathSeparator)) {
@@ -190,8 +162,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "下载完成\n")
 
-	// 4. Verify the checksum.
-	//
 	// 4. 校验 checksum
 	fmt.Fprintf(os.Stderr, "校验 SHA-256...\n")
 	if err := verifyChecksum(release.Assets, asset.Name, archivePath); err != nil {
@@ -199,8 +169,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "校验通过\n")
 
-	// 5. Extract the binary.
-	//
 	// 5. 解压 binary
 	fmt.Fprintf(os.Stderr, "解压...\n")
 	extractedPath, err := extractBinary(archivePath, tmpDir)
@@ -208,16 +176,12 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("解压失败: %w", err)
 	}
 
-	// 6. Self-test.
-	//
 	// 6. 自检（self-test）
 	fmt.Fprintf(os.Stderr, "验证新版本...\n")
 	if err := selfTest(extractedPath); err != nil {
 		return fmt.Errorf("新版本验证失败: %w", err)
 	}
 
-	// 7. Replace the binary.
-	//
 	// 7. 替换 binary
 	exePath, err := getExecutablePath()
 	if err != nil {
@@ -231,13 +195,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "✓ 已更新到 %s\n", latest)
 
-	// Update the cache.
-	//
 	// 更新缓存
 	_ = saveUpdateCache(latest, channel.kind)
 
-	// --plugin flag: prompt plugin reinstallation (marketplace mirror).
-	//
 	// --plugin flag: 提示 plugin 重新安装（marketplace 镜像）
 	if updatePluginFlag {
 		printPluginReinstallGuidance(os.Stderr)
@@ -306,8 +266,6 @@ func findPlatformAsset(assets []githubAsset) *githubAsset {
 		return nil
 	}
 
-	// goreleaser archive naming: forge_{version}_{os}_{arch}.tar.gz
-	//
 	// goreleaser archive 名：forge_{version}_{os}_{arch}.tar.gz
 	for i := range assets {
 		name := assets[i].Name
@@ -363,8 +321,6 @@ func tryDownload(url, dest string) error {
 	}
 	defer f.Close()
 
-	// Progress: write to stderr every 1MB.
-	//
 	// 进度：每 1MB 写 stderr
 	progress := &progressWriter{w: f, total: resp.ContentLength, lastReport: 0}
 	_, err = io.Copy(progress, resp.Body)
@@ -390,15 +346,11 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 }
 
 func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
-	// Find checksums.txt.
-	//
 	// 找 checksums.txt
 	var checksumURL string
 	for _, a := range assets {
 		if a.Name == "checksums.txt" {
 			checksumURL = a.BrowserDownloadURL
-			// When using a mirror, force-fetch checksums.txt from the official GitHub (#2, #3).
-			//
 			// 使用 mirror 时强制从官方 GitHub 取 checksums.txt（#2、#3）
 			if os.Getenv("FORGE_BINARY_HOST") != "" {
 				checksumURL = "https://github.com/MjxUpUp/Forge/releases/latest/download/checksums.txt"
@@ -410,8 +362,6 @@ func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
 		return fmt.Errorf("release 中没有 checksums.txt")
 	}
 
-	// Download checksums.txt.
-	//
 	// 下载 checksums.txt
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Get(checksumURL)
@@ -429,8 +379,6 @@ func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
 		return fmt.Errorf("读取 checksums.txt 失败: %w", err)
 	}
 
-	// Parse checksums.txt: the format is hash followed by two spaces and then the filename.
-	//
 	// 解析 checksums.txt——格式为 hash 后接两个空格再接 filename
 	expectedHash := ""
 	for _, line := range strings.Split(string(data), "\n") {
@@ -448,8 +396,6 @@ func verifyChecksum(assets []githubAsset, assetName, archivePath string) error {
 		return fmt.Errorf("checksums.txt 中没有 %s 的条目", assetName)
 	}
 
-	// Compute the actual hash.
-	//
 	// 算实际 hash
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -499,24 +445,15 @@ func extractBinary(archivePath, destDir string) (string, error) {
 			return "", fmt.Errorf("读取 tar 失败: %w", err)
 		}
 
-		// Reject symlinks and hard links (security: prevent path escape).
-		//
 		// 拒绝 symlink 与 hard link（安全：防路径逃逸）
 		if hdr.Typeflag == tar.TypeSymlink || hdr.Typeflag == tar.TypeLink {
 			continue
 		}
 
-		// Find the forge binary inside the archive.
-		//
 		// 在 archive 中找 forge binary
 		base := filepath.Base(hdr.Name)
 		if base == binaryName && !hdr.FileInfo().IsDir() {
 			outPath := filepath.Join(destDir, "new-"+binaryName)
-			// Strip everything but the permission bits. archive/tar maps
-			// setuid/setgid/sticky onto the high os.FileMode bits
-			// (os.ModeSetuid/...), not the low 12 bits — masking with 0o6000
-			// stripped nothing. Perm() keeps only the rwx bits.
-			//
 			// 只保留权限位。archive/tar 把 setuid/setgid/sticky 映射到
 			// os.FileMode 高位（os.ModeSetuid/...），不在低 12 位——用
 			// 0o6000 掩码剥不掉任何东西。Perm() 只留 rwx 位。
@@ -560,8 +497,6 @@ func getExecutablePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Resolve symlinks (on Unix, the npm wrapper may use a symlink).
-	//
 	// 解析 symlink（Unix 上 npm wrapper 可能用 symlink）
 	exe, err = filepath.EvalSymlinks(exe)
 	if err != nil {
@@ -571,8 +506,6 @@ func getExecutablePath() (string, error) {
 }
 
 func replaceBinary(exePath, newBinaryPath string) error {
-	// Read the new binary data.
-	//
 	// 读新 binary 数据
 	newData, err := os.ReadFile(newBinaryPath)
 	if err != nil {
@@ -588,24 +521,16 @@ func replaceBinary(exePath, newBinaryPath string) error {
 func replaceBinaryWindows(exePath string, newData []byte) error {
 	oldPath := exePath + ".old"
 
-	// Remove any leftover .old file.
-	//
 	// 移除残留的 .old
 	os.Remove(oldPath)
 
-	// Step 1: rename the current exe to .old.
-	//
 	// 步骤 1：把当前 exe 重命名为 .old
 	if err := os.Rename(exePath, oldPath); err != nil {
 		return fmt.Errorf("重命名当前二进制失败: %w", err)
 	}
 
-	// Step 2: write the new binary.
-	//
 	// 步骤 2：写新 binary
 	if err := os.WriteFile(exePath, newData, 0755); err != nil {
-		// Rollback: attempt to restore .old.
-		//
 		// 回滚：尝试还原 .old
 		if rerr := os.Rename(oldPath, exePath); rerr != nil {
 			return fmt.Errorf("写入新二进制失败且回滚也失败: %w (rollback: %v)。无法自动恢复——请手动执行 move %q %q（或等价重命名）恢复旧版后重试更新", err, rerr, oldPath, exePath)
@@ -613,12 +538,8 @@ func replaceBinaryWindows(exePath string, newData []byte) error {
 		return fmt.Errorf("写入新二进制失败（已回滚）: %w", err)
 	}
 
-	// Step 3: run the self-test on the new binary.
-	//
 	// 步骤 3：对新 binary 跑 self-test
 	if err := selfTest(exePath); err != nil {
-		// Rollback: restore .old.
-		//
 		// 回滚：还原 .old
 		if rerr := os.Rename(oldPath, exePath); rerr != nil {
 			return fmt.Errorf("新版本验证失败且回滚也失败: %w (rollback: %v)。无法自动恢复——请手动执行 move %q %q（或等价重命名）恢复旧版后重试更新", err, rerr, oldPath, exePath)
@@ -626,8 +547,6 @@ func replaceBinaryWindows(exePath string, newData []byte) error {
 		return fmt.Errorf("新版本验证失败（已回滚）: %w", err)
 	}
 
-	// Step 4: delete .old (success).
-	//
 	// 步骤 4：删除 .old（成功）
 	os.Remove(oldPath)
 
@@ -635,8 +554,6 @@ func replaceBinaryWindows(exePath string, newData []byte) error {
 }
 
 func replaceBinaryUnix(exePath string, newData []byte) error {
-	// Write to a temp file in the same directory, then atomically rename.
-	//
 	// 写到同目录的 temp file，再 atomic rename
 	dir := filepath.Dir(exePath)
 	tmpPath := filepath.Join(dir, ".forge-update-tmp")
@@ -645,16 +562,12 @@ func replaceBinaryUnix(exePath string, newData []byte) error {
 		return fmt.Errorf("写入临时文件失败: %w", err)
 	}
 
-	// Self-test before replacing.
-	//
 	// 替换前先 self-test
 	if err := selfTest(tmpPath); err != nil {
 		os.Remove(tmpPath)
 		return fmt.Errorf("新版本验证失败: %w", err)
 	}
 
-	// Atomic replacement.
-	//
 	// 原子替换
 	if err := os.Rename(tmpPath, exePath); err != nil {
 		os.Remove(tmpPath)
@@ -664,17 +577,12 @@ func replaceBinaryUnix(exePath string, newData []byte) error {
 	return nil
 }
 
-// getCurrentVersion extracts the bare version number (e.g. 0.11.1) from the full version string
-// set by SetVersion (e.g. X.Y.Z (commit: ..., built: ...)).
-//
 // getCurrentVersion 从 SetVersion 设置的完整 version 串（如 X.Y.Z (commit: ..., built: ...)）
 // 中提取裸版本号（如 0.11.1）。
 func getCurrentVersion(fullVersion string) string {
 	if fullVersion == "dev" {
 		return "dev"
 	}
-	// Extract the version before the first space or parenthesis.
-	//
 	// 在第一个空格/括号前提取 version
 	idx := strings.IndexByte(fullVersion, ' ')
 	if idx > 0 {
@@ -683,14 +591,6 @@ func getCurrentVersion(fullVersion string) string {
 	return fullVersion
 }
 
-// compareVersions compares two semver-style version strings (e.g. 0.11.1 vs 0.12.0).
-// Returns: 1 if a > b, 0 if a == b, -1 if a < b.
-// When the numeric cores are equal, pre-release is tie-broken per semver §11:
-// a release outranks its pre-releases (0.12.0 > 0.12.0-beta.1 — otherwise beta
-// users would never see the GA release), and two pre-releases compare
-// dot-segment-wise (numeric segments numerically, numeric < alphanumeric,
-// alphanumeric ASCII-wise; a shorter set is smaller when all preceding match).
-//
 // compareVersions 比较两个 semver 风格的 version 串（如 0.11.1 对 0.12.0）。
 // 返回：a > b 返 1，a == b 返 0，a < b 返 -1。
 // 数字核心相等时按 semver §11 tie-break pre-release：正式版高于 pre-release
@@ -716,9 +616,6 @@ func compareVersions(a, b string) int {
 	return comparePreReleases(aPre, bPre)
 }
 
-// splitPreRelease splits a version string into its numeric core and the
-// pre-release suffix ("" when absent).
-//
 // splitPreRelease 把 version 串拆成数字核心与 pre-release 后缀（无则 ""）。
 func splitPreRelease(v string) (core, pre string) {
 	if idx := strings.IndexByte(v, '-'); idx > 0 {
@@ -727,8 +624,6 @@ func splitPreRelease(v string) (core, pre string) {
 	return v, ""
 }
 
-// compareVersionCores compares the numeric dot-separated cores.
-//
 // compareVersionCores 比较点分数字核心。
 func compareVersionCores(aCore, bCore string) int {
 	aParts := strings.Split(aCore, ".")
@@ -758,11 +653,6 @@ func compareVersionCores(aCore, bCore string) int {
 	return 0
 }
 
-// comparePreReleases compares two pre-release suffixes per semver §11.4:
-// dot-separated identifiers, numeric identifiers compare numerically and are
-// lower than alphanumeric ones, alphanumeric compare ASCII-wise, and a smaller
-// set of identifiers is lower when all preceding identifiers are equal.
-//
 // comparePreReleases 按 semver §11.4 比较两个 pre-release 后缀：. 分段，
 // 数字段按数值且低于字母段，字母段按 ASCII，前缀段全等时段数少者低。
 func comparePreReleases(aPre, bPre string) int {
@@ -807,9 +697,6 @@ func comparePreReleases(aPre, bPre string) int {
 	return 0
 }
 
-// numericIdentifier reports whether a pre-release identifier is purely numeric,
-// returning its value when it is.
-//
 // numericIdentifier 判断 pre-release 分段是否纯数字，是则返回其数值。
 func numericIdentifier(s string) (int, bool) {
 	if s == "" || s[0] == '+' || s[0] == '-' {
@@ -823,8 +710,6 @@ func numericIdentifier(s string) (int, bool) {
 }
 
 func parseVersionPart(s string) int {
-	// Strip non-numeric prefixes/suffixes (e.g. rc1 must not be counted as 1; return 0 instead).
-	//
 	// 剥离非数字前缀/后缀（如 rc1 错误地算成 1，直接返 0）
 	n := 0
 	for _, c := range s {

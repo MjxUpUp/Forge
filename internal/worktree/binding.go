@@ -43,8 +43,7 @@ func bindingPath(root string) string {
 	return filepath.Join(bindingDir(root), ID(root)+".json")
 }
 
-// Load reads the workspace's binding; nil when absent/corrupt (degrade = no anchor,
-// resolution falls through — the safe direction).
+// Load reads the workspace's binding; nil when absent/corrupt (degrade = no anchor, resolution falls through — the safe direction).
 //
 // Load 读该 workspace 的绑定；缺失/损坏返回 nil（降级 = 无锚，解析穿落——安全方向）。
 func Load(root string) *Binding {
@@ -59,10 +58,7 @@ func Load(root string) *Binding {
 	return &b
 }
 
-// BindTask upserts the cwd→taskRef binding (multi-task-concurrency §4). Re-binding an
-// already-bound workspace re-points it (task start in a bound directory = an explicit
-// switch, last explicit action wins) while preserving original CreatedBy/CreatedAt for
-// traceability.
+// BindTask upserts the cwd→taskRef binding (multi-task-concurrency §4).
 //
 // BindTask upsert cwd→taskRef 绑定（multi-task-concurrency §4）。对已绑定 workspace
 // 重新绑定即改指（在已绑定目录里 task start = 显式切换，最后显式动作胜），但保留
@@ -97,8 +93,7 @@ func BindTask(root, taskRef, branch, sessionID string) error {
 	return util.AtomicWrite(bindingPath(root), data, 0o644)
 }
 
-// Clear removes the workspace binding when it still points at taskRef (a stale clear for
-// another task must not unbind a newer switch — compare before delete).
+// Clear removes the workspace binding when it still points at taskRef (a stale clear for another task must not unbind a newer switch — compare before delete).
 //
 // Clear 仅当绑定仍指向 taskRef 时移除（为别的任务做的过期 clear 不得解掉更新的切换
 // ——先比对再删）。
@@ -117,13 +112,6 @@ func Clear(root, taskRef string) error {
 // project（dogfood 发现 #4，2026-08-27）：finish 先删 worktree 目录再解绑时，原路径
 // 已消失——DataDirFor(消失路径) 的身份推导漂移、Clear 静默 no-op，绑定残留。按
 // ID 直删 + TaskRef 比对，不依赖原路径存活；幂等（文件缺失即成功）。
-//
-// ClearByID removes the binding file by wtid, resolved inside ANY live root of the
-// same project (dogfood finding #4, 2026-08-27): finish deletes the worktree
-// directory BEFORE unbinding, and the vanished path derails Clear's identity
-// derivation into a silent no-op, leaving the binding behind. Deletes by stored ID
-// with a TaskRef comparison — independent of the original path's survival;
-// idempotent (missing file = success).
 func ClearByID(root, id, taskRef string) error {
 	if id == "" {
 		return nil
@@ -147,12 +135,6 @@ func ClearByID(root, id, taskRef string) error {
 // sweep（dogfood #4 深挖，2026-08-27）：abort 一个 --worktree 任务时，cwd 键控的
 // Clear 只能清调用方所在目录的绑定，任务的 worktree 绑定无人清；任务被 abort/
 // 删除后，任何指向它的绑定都是死锚。幂等，静默容忍读取失败。
-//
-// ClearAllForTask removes every binding file whose TaskRef matches — the task-scoped
-// sweep (dogfood #4 deep-dive, 2026-08-27): aborting a --worktree task, the cwd-keyed
-// Clear only unbinds the caller's directory — the task's worktree binding is left
-// orphaned; once a task is aborted/deleted, any binding pointing at it is a dead
-// anchor. Idempotent, read-failure tolerant.
 func ClearAllForTask(root, taskRef string) error {
 	dir := bindingDir(root)
 	entries, err := os.ReadDir(dir)
@@ -180,7 +162,6 @@ func ClearAllForTask(root, taskRef string) error {
 }
 
 // Touch refreshes the heartbeat (display-only; resolution never gates on it).
-// Best-effort silent — the dispatcher calls it on every hook.
 //
 // Touch 刷新心跳（仅展示用；解析从不对它设门）。尽力而为静默——分发器每个 hook
 // 顺带调用。
@@ -195,10 +176,6 @@ func Touch(root string) {
 	}
 	b.LastSeenAt = time.Now()
 	if data, err := json.MarshalIndent(b, "", "  "); err == nil {
-		// CAS-by-content: if the file changed since our read, another writer won —
-		// dropping our LastSeenAt bump is harmless; rewriting would roll back a
-		// concurrent rebind (BindTask is the explicit action, Touch is advisory).
-		//
 		// 按内容 CAS：文件自读取后已变即他人胜出——丢弃本次 LastSeenAt 无害；
 		// 重写会回滚并发的改绑（BindTask 是显式动作，Touch 只是 advisory）。
 		if cur, err := os.ReadFile(bindingPath(root)); err == nil && string(cur) == string(orig) {

@@ -19,16 +19,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// project_adopt.go — `forge project adopt`: adopt a repo-born project ID
-// (.forge-project-id) and migrate this machine's data from the path-derived key to
-// the ID-derived key.
-//
-// ORDERING (correctness-critical, plan pressure-test #1): migrate data FIRST, write
-// the ID file SECOND, sync the registry LAST. Writing the ID file first would flip
-// every concurrent hook's DataDirFor to the new (empty) key dir for the whole
-// migration window. The residual window (ID written ↔ registry synced) is covered by
-// registry's path-fallback matching.
-//
 // project_adopt.go —— `forge project adopt`：采纳 repo-born 项目 ID
 // （.forge-project-id），并把本机数据从路径 key 迁到 ID key。
 //
@@ -132,11 +122,6 @@ func migratedNote(m bool) string {
 	return ``
 }
 
-// applyAdoption is the shared landing sequence of `project adopt` and `project
-// import --adopt-id`: live-session precheck → data migration (oldKey→newKey, legacy
-// to-wins) → write the ID file (the identity flip point) → registry sync. Returns
-// whether data was migrated. The order is correctness-critical — see the file header.
-//
 // applyAdoption 是 `project adopt` 与 `project import --adopt-id` 共享的落地序列：
 // 活会话预检 → 数据迁移（oldKey→newKey，legacy to-wins）→ 写 ID 文件（身份翻转
 // 点）→ 注册表同步。返回是否迁移了数据。顺序是正确性关键——见文件头注。
@@ -186,8 +171,6 @@ func applyAdoption(mainRoot, newID, oldKey, newKey string, dryRun bool, out io.W
 	return migrated, nil
 }
 
-// generateProjectID produces a new fpid_<32hex>.
-//
 // generateProjectID 生成新的 fpid_<32hex>。
 func generateProjectID() (string, error) {
 	var b [16]byte
@@ -197,13 +180,6 @@ func generateProjectID() (string, error) {
 	return `fpid_` + hex.EncodeToString(b[:]), nil
 }
 
-// dirHasContent reports whether dir contains at least one regular file AT ANY
-// DEPTH. Depth matters: a DataDir's payload usually lives in subdirectories
-// (tasks/, act/, sessions/) with only jsonl logs at the top level — a fresh clone's
-// path-key dir can hold JUST tasks/ and nothing else, which a top-level-only probe
-// would call empty, silently skipping the adoption migration (caught by
-// TestProjectImport_IDBundleRefusesThenAdopts). Walk stops at the first hit.
-//
 // dirHasContent 报告 dir 在任意深度上是否含至少一个普通文件。深度很关键：
 // DataDir 的载荷通常在子目录（tasks/、act/、sessions/），顶层只有 jsonl——
 // 全新 clone 的路径 key 目录可能只有 tasks/ 别无他物，只看顶层会误判为空、
@@ -220,10 +196,6 @@ func dirHasContent(dir string) bool {
 		}
 		// 备份壳不算活数据：只剩 .rekey-backup-* 的旧目录不做无意义迁移
 		// （与 registry.Audit 的 dataDirHasPayload 同语义）。
-		//
-		// Backup shells are not live data: an old dir holding only
-		// .rekey-backup-* must not trigger a pointless migration (same
-		// semantics as registry.Audit's dataDirHasPayload).
 		if d.IsDir() && d.Name() != filepath.Base(dir) && strings.HasPrefix(d.Name(), `.rekey-backup-`) {
 			return filepath.SkipDir
 		}
@@ -236,9 +208,6 @@ func dirHasContent(dir string) bool {
 	return found
 }
 
-// liveSessionWarning returns a warning when fresh (<10min) session anchors exist in
-// dataDir — an agent is likely mid-session and writing.
-//
 // liveSessionWarning 在 dataDir 存在新鲜（<10min）会话锚时返回警告——很可能有
 // agent 正在会话中写入。
 func liveSessionWarning(dataDir string) string {
@@ -257,8 +226,6 @@ func liveSessionWarning(dataDir string) string {
 	return ``
 }
 
-// gitIgnored reports whether path is ignored by git in repo (check-ignore).
-//
 // gitIgnored 报告 path 在 repo 内是否被 git ignore（check-ignore）。
 func gitIgnored(repo, path string) (bool, error) {
 	cmd := exec.Command(`git`, `-C`, repo, `check-ignore`, `-q`, path)

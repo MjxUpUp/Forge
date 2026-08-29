@@ -9,9 +9,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/nodeid"
 )
 
-// TestNodeShowCmd_Roundtrip verifies `forge node show --json` emits the persisted
-// identity WITHOUT the private key (display surface must never print secret material)
-// and that repeated runs keep one stable node_id.
+// TestNodeShowCmd_Roundtrip verifies `forge node show --json` emits the persisted identity WITHOUT the private key (display surface must never print secret material) and that repeated runs keep one stable node_id.
 //
 // TestNodeShowCmd_Roundtrip 验证 `forge node show --json` 输出持久化身份且不含私钥
 // （展示面永不打印密钥材料），重复运行保持同一 node_id。

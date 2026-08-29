@@ -14,8 +14,6 @@ func must(t *testing.T, err error) {
 	}
 }
 
-// writeSkill creates name/SKILL.md under dir and returns the skill directory path (dir name = name, satisfying R2).
-//
 // writeSkill 在 dir 下建 name/SKILL.md，返回 skill 目录路径（dir 名 = name，满足 R2）。
 func writeSkill(t *testing.T, dir, name, content string) string {
 	t.Helper()
@@ -25,8 +23,6 @@ func writeSkill(t *testing.T, dir, name, content string) string {
 	return sd
 }
 
-// makeSkill assembles SKILL.md. When pattern is empty the metadata block is omitted (testing R7 missing pattern).
-//
 // makeSkill 组装 SKILL.md。pattern 为空时不写 metadata 块（测 R7 缺 pattern）。
 func makeSkill(name, desc, pattern, body string) string {
 	if pattern == "" {
@@ -36,15 +32,11 @@ func makeSkill(name, desc, pattern, body string) string {
 		"\"\nmetadata:\n  pattern: " + pattern + "\n  domain: testing\n---\n\n" + body
 }
 
-// longDesc includes Use when + SKIP and is >=80 runes (passes R4/R5/R6).
-//
 // longDesc 含 Use when + SKIP 且 ≥80 rune（过 R4/R5/R6）。
 func longDesc() string {
 	return "合格描述前缀。" + strings.Repeat("测试内容段落", 12) + "Use when: 场景触发。SKIP: 跳过场景。"
 }
 
-// signalBody contains high-signal keywords (passes R9).
-//
 // signalBody 含高信号关键词（过 R9）。
 func signalBody() string {
 	return "# 标题\n\n决策树：第一步先做这个。自查清单：检查项。\n"
@@ -85,8 +77,6 @@ func TestAuditSkill_R2_NameDirMismatch(t *testing.T) {
 }
 
 func TestAuditSkill_R3_UnknownField(t *testing.T) {
-	// Top-level unknown field patten (typo), must be in Raw and not in the whitelist.
-	//
 	// 顶层未知字段 patten（typo），必须在 Raw 且不在白名单
 	md := "---\nname: my-skill\npatten: reviewer\ndescription: \"" + longDesc() +
 		"\"\nmetadata:\n  pattern: reviewer\n---\n\n" + signalBody()
@@ -96,8 +86,6 @@ func TestAuditSkill_R3_UnknownField(t *testing.T) {
 }
 
 func TestAuditSkill_R4_DescTooShort(t *testing.T) {
-	// Short description: missing Use when/SKIP also triggers, but R4 length is judged independently.
-	//
 	// 短描述：缺 Use when/SKIP 也会触发，但 R4 长度独立判定
 	sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", "太短 Use when x SKIP y", "pipeline", signalBody()))
 	r, _ := AuditSkill(sd)
@@ -131,8 +119,6 @@ func TestAuditSkill_R7_PatternMissing(t *testing.T) {
 }
 
 func TestAuditSkill_R7_PatternComboValid(t *testing.T) {
-	// Each segment of "inversion + pipeline + reviewer" is valid -> passes R7.
-	//
 	// "inversion + pipeline + reviewer" 每段合法 → 通过 R7
 	sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "inversion + pipeline + reviewer", signalBody()))
 	r, _ := AuditSkill(sd)
@@ -158,8 +144,6 @@ func TestAuditSkill_R9_NoHighSignal(t *testing.T) {
 }
 
 func TestAuditSkill_DescLenIsRuneCount(t *testing.T) {
-	// Lock R4 to rune counting (not bytes): a pure-Chinese description's rune count should be far less than its byte count.
-	//
 	// 锁定 R4 用 rune 计数（非字节）：纯中文描述的 rune 数应远小于字节数
 	desc := strings.Repeat("中", 30) // 30 rune / 90 字节
 	sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", desc+" Use when: x SKIP: y", "pipeline", signalBody()))
@@ -169,8 +153,6 @@ func TestAuditSkill_DescLenIsRuneCount(t *testing.T) {
 	}
 }
 
-// expectAdvisory checks that Advisories (not Issues, does not affect Pass) contain the substring.
-//
 // expectAdvisory 检查 Advisories（非 Issues，不影响 Pass）含子串。
 func expectAdvisory(t *testing.T, r *SkillReport, wantSubstr string) {
 	t.Helper()
@@ -182,8 +164,6 @@ func expectAdvisory(t *testing.T, r *SkillReport, wantSubstr string) {
 	t.Fatalf("expected advisory containing %q, got: %v", wantSubstr, r.Advisories)
 }
 
-// R4 upper bound: description >1024 runes triggers a hard issue (Anthropic skill spec upper bound).
-//
 // R4 上限：description >1024 rune 触发硬 issue（Anthropic skill 规范上限）。
 func TestAuditSkill_R4_DescTooLong(t *testing.T) {
 	desc := strings.Repeat("测试描述内容段", 150) + " Use when: x SKIP: y" // 7*150=1050 >1024
@@ -195,8 +175,6 @@ func TestAuditSkill_R4_DescTooLong(t *testing.T) {
 	}
 }
 
-// R4 slightly long: description >500 and <=1024 goes to advisory, does not affect Pass.
-//
 // R4 偏长：description >500 且 ≤1024 走 advisory，不影响 Pass。
 func TestAuditSkill_R4_DescLongAdvisory(t *testing.T) {
 	desc := strings.Repeat("测试描述内容段", 80) + " Use when: x SKIP: y" // 7*80=560 >500 <1024
@@ -208,8 +186,6 @@ func TestAuditSkill_R4_DescLongAdvisory(t *testing.T) {
 	expectAdvisory(t, r, "偏长")
 }
 
-// R10 CSO: description containing workflow-summary words goes to advisory, does not block Pass.
-//
 // R10 CSO：description 含工作流总结词走 advisory，不阻断 Pass。
 func TestAuditSkill_R10_CSO(t *testing.T) {
 	desc := "这是一个完整工作流的描述。" + strings.Repeat("填充内容", 12) + " Use when: x SKIP: y"
@@ -221,8 +197,6 @@ func TestAuditSkill_R10_CSO(t *testing.T) {
 	expectAdvisory(t, r, "工作流总结词")
 }
 
-// R11 nested references subdirectory: references/ must not contain subdirectories (<=1 level), hard issue.
-//
 // R11 references 嵌套子目录：references/ 下不应有子目录（≤1 level），硬 issue。
 func TestAuditSkill_R11_NestedRefs(t *testing.T) {
 	dir := t.TempDir()
@@ -235,8 +209,6 @@ func TestAuditSkill_R11_NestedRefs(t *testing.T) {
 	}
 }
 
-// R11 references >100 lines without ToC: advisory, does not block Pass.
-//
 // R11 references >100 行无 ToC：advisory，不阻断 Pass。
 func TestAuditSkill_R11_RefNoToC(t *testing.T) {
 	dir := t.TempDir()
@@ -251,8 +223,6 @@ func TestAuditSkill_R11_RefNoToC(t *testing.T) {
 	expectAdvisory(t, r, "缺 ## 目录")
 }
 
-// R11 references >100 lines with ToC: must not trigger the ToC advisory.
-//
 // R11 references >100 行有 ToC：不应触发 ToC advisory。
 func TestAuditSkill_R11_RefWithToC(t *testing.T) {
 	dir := t.TempDir()
@@ -268,8 +238,6 @@ func TestAuditSkill_R11_RefWithToC(t *testing.T) {
 	}
 }
 
-// No references directory: legal, not reported (guards against false positives).
-//
 // 无 references 目录：合法，不报（防 false positive）。
 func TestAuditSkill_R11_NoRefsDir(t *testing.T) {
 	sd := writeSkill(t, t.TempDir(), "my-skill", makeSkill("my-skill", longDesc(), "pipeline", signalBody()))
@@ -284,8 +252,6 @@ func TestAuditSkill_R11_NoRefsDir(t *testing.T) {
 	}
 }
 
-// R4 boundary: pin the strictness of > (=500/=1024 do not trigger, >500/>1024 trigger), preventing accidental change to >=.
-//
 // R4 边界：钉死 > 的严格性（=500/=1024 不触发，>500/>1024 触发），防误改成 >=。
 func TestAuditSkill_R4_Boundaries(t *testing.T) {
 	cases := []struct {
@@ -323,15 +289,9 @@ func TestAuditSkill_R4_Boundaries(t *testing.T) {
 	}
 }
 
-// R12 triggers declaration: advisory-only validation. checkTriggers is exercised
-// directly (unit-level, fast) and via AuditSkill (integration, confirms the
-// advisory never blocks Pass).
-//
 // R12 triggers 声明：advisory 校验。直接测 checkTriggers（单元级，快）+ 经 AuditSkill
 // （集成，确认 advisory 永不阻断 Pass）。
 
-// triggersAdvisories runs checkTriggers on raw and returns the advisories it appends.
-//
 // triggersAdvisories 对 raw 跑 checkTriggers，返回其追加的 advisory。
 func triggersAdvisories(t *testing.T, raw string) []string {
 	t.Helper()
@@ -340,8 +300,6 @@ func triggersAdvisories(t *testing.T, raw string) []string {
 	return adv
 }
 
-// advisoryContains reports whether any advisory contains sub.
-//
 // advisoryContains 判断是否有 advisory 含 sub。
 func advisoryContains(adv []string, sub string) bool {
 	for _, a := range adv {
@@ -430,10 +388,6 @@ func TestCheckTriggers_ToolEventWithKeywordsNoSuggest(t *testing.T) {
 	}
 }
 
-// makeSkillWithTriggers assembles SKILL.md with a metadata.triggers line. triggers
-// must be BARE JSON — frontmatter.go nestedRe does not strip quotes from nested
-// metadata values (only topLevelRe does for top-level fields).
-//
 // makeSkillWithTriggers 组装含 metadata.triggers 行的 SKILL.md。triggers 须为裸 JSON——
 // frontmatter.go nestedRe 不剥嵌套 metadata 引号（仅 topLevelRe 对顶层字段剥）。
 func makeSkillWithTriggers(name, desc, pattern, triggers, body string) string {
@@ -470,7 +424,3 @@ func TestAuditSkill_R12_BadTriggersAdvisoryButPass(t *testing.T) {
 // drift 守卫 TestValidConditions_MatchEngine 见 internal/skilltrigger/conditions_test.go——
 // skillsqa 测试不能 import skilltrigger（经 taskpipeline→skillsdist→skillsqa 成环），故
 // 守卫放在引擎侧（skilltrigger_test→skillsqa 无环）。
-//
-// drift guard TestValidConditions_MatchEngine lives in internal/skilltrigger/conditions_test.go —
-// skillsqa tests cannot import skilltrigger (taskpipeline→skillsdist→skillsqa cycle), so the
-// guard sits on the engine side (skilltrigger_test→skillsqa is acyclic).

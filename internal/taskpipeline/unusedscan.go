@@ -7,23 +7,6 @@ import (
 	"strings"
 )
 
-// unusedscan.go — deterministic "unreferenced exported symbol" scanner (layer-1 wiring detection).
-//
-// Motivation: "feature code done but never wired" — a function/type is implemented, has unit tests
-// (tests pass), but no caller wires it into the real flow. Unit tests verify the implementation
-// (the symbol itself, fed canned inputs), not the wiring (whether production code actually calls it
-// at runtime); a broken wire leaves tests green and the feature dead. This is exactly Forge's own
-// BUG-1: inferDesignPhases had zero production callers — pure dead code — surfaced only by review.
-// Extending cheatscan's philosophy ("mechanical → scanner, semantic → LLM reviewer"): this scanner
-// owns the mechanical layer-1 (symbol defined but zero references); layer-2 (referenced but
-// semantically unwired — registered in a registry but never instantiated in main, a config key read
-// but never consumed) is not mechanically decidable and stays with the LLM reviewer / code-review-gate.
-//
-// Purely deterministic (the gate computes it, agent cannot forge), advisory (never blocks): library
-// / reflective / externally-consumed exports legitimately have no in-repo caller, so hits are
-// "suspected, please review" not "convicted". Excluded from BuildEvidenceChain — an observation,
-// not verification evidence.
-//
 // 动机："功能代码写完但没接线"——函数/类型实现了、有单测（测试过），但无调用方把它接入
 // 真实流程。单测验的是实现（符号本身、喂预制输入），不验接线（生产代码运行时是否真调用
 // 它）；接线一断，测试照绿、功能已死。这正是 Forge 自己的 BUG-1：inferDesignPhases 零生产
@@ -42,11 +25,7 @@ import (
 type UnusedPattern string
 
 const (
-	// UnusedExport: a newly-added exported symbol (Go func/type/method, TS export, Rust pub) with
-	// zero references among this task's production added lines — suspected "implemented but never
-	// wired into the real flow". severity=high: a defined-but-unreferenced export is a strong wiring-
-	// miss signal (vs comment-debt's low). Advisory still, because legitimate external/reflection
-	// consumers exist; the trail is left for review.
+	// UnusedExport: a newly-added exported symbol (Go func/type/method, TS export, Rust pub) with zero references among this task's production added lines — suspected "implemented but never wired into the real flow". severity=high: a defined-but-unreferenced export is a strong wiring- miss signal (vs comment-debt's low).
 	//
 	// UnusedExport：本次新增的导出符号（Go func/type/method、TS export、Rust pub）在本任务
 	// 生产新增行里零引用——疑似"实现了但没接进真实流程"。severity=high：定义了却零引用的导出
@@ -55,9 +34,7 @@ const (
 	UnusedExport UnusedPattern = "unreferenced-export"
 )
 
-// UnusedFinding is a single newly-added exported symbol that no production line in this task
-// references. Advisory — detection may false-fire (external consumer), leaves a trail for review,
-// never blocks.
+// UnusedFinding is a single newly-added exported symbol that no production line in this task references.
 //
 // UnusedFinding 是一个"本任务生产代码零引用"的新增导出符号。advisory——检测有假阳性可能
 // （外部消费者），留痕供 review，绝不阻塞。
@@ -171,14 +148,6 @@ func ScanUnusedSymbols(root string, state *TaskState) []UnusedFinding {
 	return findings
 }
 
-// stripLineComment removes a trailing `//` line comment from a source line (Go / TS / JS / Rust all
-// share `//`). Applied before reference matching so a doc comment mentioning a symbol's own name
-// (e.g. `// Foo does X`) is not counted as a "reference" — exactly the BUG-1 shape (a symbol
-// referenced only in its doc comment, never called in production). Known trade-off: a `//` inside a
-// string literal (e.g. `url := "http://x"`) is also stripped; the residual hit in the code portion of
-// such a line is rare for export-name references and is the accepted recall ceiling. Block comments
-// (`/* */`) spanning lines are not handled (rare for single-line wiring refs).
-//
 // stripLineComment 剥去源码行的尾部 `//` 行注释（Go/TS/JS/Rust 都用 `//`）。在引用匹配前应用，
 // 故 doc comment 提及符号自身名（如 `// Foo does X`）不算"引用"——恰是 BUG-1 形状（符号只在
 // doc comment 被提及、生产从未调用）。已知权衡：字符串字面量内的 `//`（如 `url := "http://x"`）
@@ -216,18 +185,6 @@ func dedupDefs(defs []symbolDef) []symbolDef {
 //
 // --- 符号提取器（分语言）---
 
-// extractExportedSymbols extracts newly-added exported symbol definitions from production added
-// lines, per-language (Go / TypeScript-JavaScript / Rust). Python is intentionally NOT covered:
-// its export model (no `export` keyword; any top-level name is importable) makes "unreferenced"
-// high false-positive and low signal. Adding a language = add a case here + a regexp-based extractor.
-//
-// Coverage caveats per language (intentional; reflective/external consumers still trip advisory, so
-// gaps lower recall, never cause false convictions): Go covers func/method/type but NOT exported
-// const/var (UnusedExport itself is a const, intentionally unscanned). TS/JS covers
-// function/const/let/var/class/type/interface but NOT enum / generator (`function*`). Rust covers
-// pub fn/struct but NOT pub trait/enum/const/mod nor `pub(crate)`. `.mjs`/`.cjs` are NOT covered —
-// collectAddedLines' isSourceFile (sourceExts) excludes them, so they never reach this switch.
-//
 // extractExportedSymbols 从生产新增行按语言提取新增导出符号定义（Go / TS-JS / Rust）。Python
 // 刻意不覆盖：其导出模型（无 `export` 关键字；任意顶层名可 import）使"未引用"高假阳性、低
 // 信号。新增语言 = 在此加 case + 一个基于正则的提取器。

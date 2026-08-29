@@ -2,12 +2,6 @@ package taskpipeline
 
 import "testing"
 
-// TestParseExternalOriginURL locks external issue URL → ExternalOrigin parsing. linear/github types
-// are the key entry of the proof-of-work loop handoff to spawn-style orchestrators (Symphony): the orchestrator
-// passes the issue URL to forge_task_start --from_issue, and the parsed result anchors the task to the external issue.
-// Parsing drift would silently lose the task origin, leaving the orchestrator unable to track tasks by issue.
-// Covers known trackers / non-URL / unknown-tracker degradation.
-//
 // TestParseExternalOriginURL 锁定外部 issue URL → ExternalOrigin 解析。linear/github 两类
 // 是 proof-of-work 闭环衔接 spawn 式编排器（Symphony）的关键入口：编排器把 issue URL 传给
 // forge_task_start --from_issue，解析结果锚定 task 到外部 issue。解析漂移会让 task origin

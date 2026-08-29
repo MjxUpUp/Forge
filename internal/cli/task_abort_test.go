@@ -137,12 +137,10 @@ func TestTaskAbort_NoTaskErrors(t *testing.T) {
 	}
 }
 
-// ---- CLI dependents E2Es (migrated from task_assignment_test.go) ----
-//
 // ---- CLI 依赖方 E2E（自 task_assignment_test.go 迁入）----
+//
 // TestTaskAbort_WarnsReverseDeps: aborting a task that others DependsOn surfaces the dangling
-// edge — the dependent's gate would now block forever on a missing upstream. We do NOT cascade-
-// abort, but the JSON carries dependents_blocked so an orchestrator can re-point or abort them.
+// edge.
 //
 // TestTaskAbort_WarnsReverseDeps：abort 一个被其他 task DependsOn 的 task 会暴露悬空边——依赖方门禁将
 // 因上游缺失永远阻塞。我们不级联 abort，但 JSON 带 dependents_blocked 让编排器可重指或 abort 它们。
@@ -161,8 +159,6 @@ func TestTaskAbort_WarnsReverseDeps(t *testing.T) {
 }
 
 // TestTaskAbort_CascadeAbortsDependents: --cascade aborts the transitive closure of dependents.
-// Chain feat/up <- feat/mid <- feat/down: abort feat/up --cascade deletes all three; cascaded lists
-// mid + down, and a subsequent mine no longer sees the delegated feat/down.
 //
 // TestTaskAbort_CascadeAbortsDependents：--cascade abort 依赖方传递闭包。链 feat/up <- feat/mid <-
 // feat/down：abort feat/up --cascade 删三者；cascaded 列 mid+down，且随后的 mine 不再见已分派的 feat/down。
@@ -183,10 +179,6 @@ func TestTaskAbort_CascadeAbortsDependents(t *testing.T) {
 	if code != 0 {
 		t.Fatalf(`abort --cascade exit %d: %s`, code, out)
 	}
-	// JSON `cascaded` must report EXACTLY the successfully-deleted dependents (cascadedDone), sorted —
-	// not the attempted BFS closure. A loose substring check would pass even if a failed delete were
-	// wrongly listed. Parsing pins the fix: cascaded == [feat/down, feat/mid] (both deleted, sorted).
-	//
 	// JSON `cascaded` 必须精确报实际删除成功的依赖方（cascadedDone）并排序——不是 BFS 试图闭包。
 	// 松散子串检查即便错把失败删除列进去也会过。解析钉死修复：cascaded == [feat/down, feat/mid]（皆删、排序）。
 	var payload map[string]any
@@ -209,9 +201,10 @@ func TestTaskAbort_CascadeAbortsDependents(t *testing.T) {
 	}
 }
 
-// TestTaskAbort_DetachDepsRemovesEdge: --detach-deps removes the edge from each direct dependent,
-// keeping the dependent task alive. feat/up <- feat/down: abort feat/up --detach-deps leaves
-// feat/down still visible to mine but its DependsOn emptied of feat/up (detached lists feat/down).
+// TestTaskAbort_DetachDepsRemovesEdge: --detach-deps removes the edge from each
+// direct dependent, keeping the dependent task alive. feat/up <- feat/down:
+// abort feat/up --detach-deps leaves feat/down still visible to mine but its
+// DependsOn emptied of feat/up (detached lists feat/down).
 //
 // TestTaskAbort_DetachDepsRemovesEdge：--detach-deps 摘掉每个直接依赖方的边，保留依赖方任务。
 // feat/up <- feat/down：abort feat/up --detach-deps 留下 feat/down 仍被 mine 可见，但 DependsOn 不再含
@@ -237,10 +230,9 @@ func TestTaskAbort_DetachDepsRemovesEdge(t *testing.T) {
 	}
 }
 
-// TestTaskAbort_DetachDepsKeepsOtherEdges (L5): --detach-deps rebuilds DependsOn by excluding only the
-// aborted ref, so other edges survive. feat/down depends on feat/up AND feat/other; abort feat/up
-// --detach-deps must leave feat/other in feat/down's DependsOn (mine still shows feat/down blocked on
-// feat/other) while feat/up is gone. Pins the closure's kept-edge correctness.
+// TestTaskAbort_DetachDepsKeepsOtherEdges (L5): --detach-deps rebuilds DependsOn
+// by excluding only the aborted ref, so other edges survive. feat/down depends
+// on feat/up AND feat/other.
 //
 // TestTaskAbort_DetachDepsKeepsOtherEdges（L5）：--detach-deps 重建 DependsOn 时只排除被 abort 的 ref，
 // 其他边存活。feat/down 依赖 feat/up 且 feat/other；abort feat/up --detach-deps 必须保留 feat/other 在
@@ -264,10 +256,9 @@ func TestTaskAbort_DetachDepsKeepsOtherEdges(t *testing.T) {
 	}
 }
 
-// TestTaskAbort_CascadeDiamondTopology (L1): --cascade over a diamond (A<-B, A<-C, B<-D, C<-D) must
-// collect B/C/D with the visited guard preventing D from being entered twice via its two paths. A
-// subsequent mine no longer shows the delegated feat/d. Exercises non-linear topology beyond the
-// linear chain covered by CascadeAbortsDependents.
+// TestTaskAbort_CascadeDiamondTopology (L1): --cascade over a diamond (A<-B,
+// A<-C, B<-D, C<-D) must collect B/C/D with the visited guard preventing D from
+// being entered twice via its two paths.
 //
 // TestTaskAbort_CascadeDiamondTopology（L1）：--cascade 跨钻石拓扑（A<-B, A<-C, B<-D, C<-D）必须收
 // B/C/D，visited 守卫防 D 经两条路径入队两次。随后的 mine 不再见已分派的 feat/d。覆盖 CascadeAbortsDependents
@@ -306,8 +297,8 @@ func TestTaskAbort_CascadeDiamondTopology(t *testing.T) {
 	}
 }
 
-// TestTaskAbort_CascadeAndDetachMutuallyExclusive: the two non-default branches of the design §4
-// three-way abort cannot combine — --cascade deletes dependents, --detach-deps keeps them.
+// TestTaskAbort_CascadeAndDetachMutuallyExclusive: the two non-default branches
+// of the design §4 three-way abort cannot combine.
 //
 // TestTaskAbort_CascadeAndDetachMutuallyExclusive：设计§4 三选一的两个非默认分支不可组合——
 // --cascade 删依赖方，--detach-deps 留依赖方。

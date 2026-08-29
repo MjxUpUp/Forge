@@ -10,14 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillsqa"
 )
 
-// TestRunSkillsAudit_JSONReportsFindings: a skill with PI-1 injection → audit --json output contains a HIGH finding.
-// Covers the main assembly path of runSkillsAudit: ListSkills→ScanSkill→ScoreFindings→result.
-//
-// Note: when ScanSkill returns err it converts to a CRITICAL finding + hasBlock block path; its precondition
-// (ScanSkill returns err rather than nil,nil for bad roots) is locked by
-// skillsqa.TestScan_NonexistentRoot_Propagates; the err→finding conversion inside runSkillsAudit is direct
-// defensive logic whose reachability depends on that contract.
-//
 // TestRunSkillsAudit_JSONReportsFindings：含 PI-1 注入的 skill → audit --json 输出含 HIGH finding。
 // 覆盖 runSkillsAudit 的 ListSkills→ScanSkill→ScoreFindings→result 主装配路径。
 //
@@ -56,12 +48,6 @@ func TestRunSkillsAudit_JSONReportsFindings(t *testing.T) {
 	}
 }
 
-// TestAuditGateBlocked_AnyCritical pins the #4 score-math fix for `forge skills audit --gate`:
-// the gate used to decide on severity BAND alone (HIGH≥30/CRITICAL≥50). A single CRITICAL
-// finding scores ≤23.75 → MEDIUM band → gate passed. auditGateBlocked (extracted so the
-// decision is testable without the os.Exit(4) process exit) must block on band OR any single
-// CRITICAL finding.
-//
 // TestAuditGateBlocked_AnyCritical 钉住 #4 分数数学修复在 `forge skills audit --gate` 的落点：
 // 门禁此前只看严重度带（HIGH≥30/CRITICAL≥50）。单条 CRITICAL 得分 ≤23.75 → MEDIUM 带 →
 // 门禁放行。auditGateBlocked（抽出以便绕开 os.Exit(4) 直接测判定）必须在带命中或存在任一

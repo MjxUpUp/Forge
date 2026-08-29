@@ -10,11 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// setupScoreableTask builds a temp git repo + a fully-gated task state that scores
-// well above the escape cap (process 100 / testing 100 / code-quality 100 /
-// assertions 70 / scope 70 / efficiency 100 ≈ 92), so the cap is observable.
-// Returns (root, state) with the state NOT yet scored.
-//
 // setupScoreableTask 建临时 git 仓库 + 全门禁通过的任务状态，评分远高于逃生舱
 // 上限（process 100 / testing 100 / code-quality 100 / assertions 70 / scope 70 /
 // efficiency 100 ≈ 92），让封顶可观测。返回 (root, state)，state 尚未评分。
@@ -40,12 +35,7 @@ func setupScoreableTask(t *testing.T, ref string) (string, *TaskState) {
 	return dir, state
 }
 
-// TestScoreTask_EscapeOverrideCapsAt89 pins the escape-hatch cost: a task with any
-// per-task override set (forge task override) gets its overall capped at 89 even when
-// the raw evaluation is ~92/A, and the grade is recomputed from the capped value
-// (89 < A floor 90 → B). The cap signal is state.Overrides, not the checklog
-// escape-hatch entry — a task that set an override but never hit the bypass branch
-// leaves no checklog entry, yet must pay the same cost. CappedReason records the cause.
+// TestScoreTask_EscapeOverrideCapsAt89 pins the escape-hatch cost.
 //
 // TestScoreTask_EscapeOverrideCapsAt89 钉住逃生舱代价：设了任一 per-task override
 // （forge task override）的任务，即便原始评分 ~92/A，总分也封顶 89，grade 按封顶值
@@ -69,22 +59,12 @@ func TestScoreTask_EscapeOverrideCapsAt89(t *testing.T) {
 	// 70（见 BuildEvaluateInput），本场景原始分 86.5 天然低于 89 上限，封顶分支不
 	// 触发。契约收敛为「逃生任务恒不可能拿到 A」：要么被 89 封顶压回，要么被中性
 	// 维度拖下；两种途径都不得给出 A 档。CappedReason 只在封顶实际触发时记录。
-	//
-	// 2026-08-29 semantics update: an override exempts the GATE, not measurement
-	// honesty — the testing dimension goes neutral 70, so this scenario's raw 86.5
-	// sits naturally below the 89 cap and the cap branch does not fire. The contract
-	// converges to "an escaped task can never grade A": either the 89 cap forces it
-	// back or the neutral dimension drags it down. CappedReason records only when
-	// capping actually engaged.
 	if state.Score.Overall > escapeCapMaxScore {
 		t.Errorf("用过逃生舱的任务总分不得超过 %v，got %.1f", escapeCapMaxScore, state.Score.Overall)
 	}
 	if state.Score.Grade == "A" {
 		t.Errorf("逃生任务不得拿 A 档，got %s（%.1f）", state.Score.Grade, state.Score.Overall)
 	}
-	// The honest-dimension pin: the testing dimension must SAY it was disabled, not
-	// report "No source files requiring tests".
-	//
 	// 诚实维度钉：testing 维度必须言明被禁用，而不是报「无需测试」。
 	dimFound := false
 	for _, d := range state.Score.Dimensions {
@@ -103,11 +83,7 @@ func TestScoreTask_EscapeOverrideCapsAt89(t *testing.T) {
 	}
 }
 
-// TestScoreTask_EscapeDocGateCapsAt89 keeps the STRICT cap branch pinned after the
-// 2026-08-29 honest-dimension change: a doc-gate override does not touch the testing
-// dimension, so this fixture's raw score stays ~92 and the 89 clamp must engage
-// exactly (==89, CappedReason set, ADVISORY on stderr) — the cap branch must not
-// lose coverage just because test-coverage escapes now score honestly lower.
+// TestScoreTask_EscapeDocGateCapsAt89 keeps the STRICT cap branch pinned after the 2026-08-29 honest-dimension change.
 //
 // TestScoreTask_EscapeDocGateCapsAt89 在 2026-08-29 诚实维度改动后继续钉死严格
 // 封顶分支：doc-gate 逃生不动 testing 维度，本场景原始分仍 ~92，89 钳制必须精确
@@ -139,9 +115,7 @@ func TestScoreTask_EscapeDocGateCapsAt89(t *testing.T) {
 	}
 }
 
-// TestScoreTask_NoOverrideNotCapped is the control: the same fully-gated task without
-// overrides scores above the cap and records no CappedReason — the cap must not leak
-// onto honest tasks.
+// TestScoreTask_NoOverrideNotCapped is the control: the same fully-gated task without overrides scores above the cap and records no CappedReason — the cap must not leak onto honest tasks.
 //
 // TestScoreTask_NoOverrideNotCapped 是对照：同样的全门禁任务不设 override 时评分
 // 高于上限且无 CappedReason——封顶不得泄漏到诚实任务上。
@@ -162,10 +136,7 @@ func TestScoreTask_NoOverrideNotCapped(t *testing.T) {
 	}
 }
 
-// TestScoreTask_EnvEscapeRecordedCapsAt89 pins the second cap signal (code-review
-// 2026-08): env-form escapes (FORGE_TEST_COVERAGE=disable …) bypass via
-// escapeDisabled without touching state.Overrides, but the bypass branch records a
-// CheckEscapeHatch entry. An overrides-only signal would let such tasks take home A.
+// TestScoreTask_EnvEscapeRecordedCapsAt89 pins the second cap signal (code-review 2026-08).
 //
 // TestScoreTask_EnvEscapeRecordedCapsAt89 钉住第二个封顶信号（code-review 2026-08）：
 // env 形式逃生（FORGE_TEST_COVERAGE=disable …）经 escapeDisabled 绕过、不动
@@ -201,12 +172,7 @@ func TestScoreTask_EnvEscapeRecordedCapsAt89(t *testing.T) {
 	}
 }
 
-// TestBuildEvaluateInput_SkipsInfraEntries pins the gate/score coherence fix
-// (code-review 2026-08): an INFRA:-prefixed entry is a fail-open infrastructure
-// failure — the gate does not fail on it, so scoring must not read it as a
-// compile/assertion failure either. Without the skip, a task that zero-edits after
-// task-implement would keep CompilePassed=false from the INFRA entry and get
-// docked on code quality for a WSL/bash glitch.
+// TestBuildEvaluateInput_SkipsInfraEntries pins the gate/score coherence fix (code-review 2026-08).
 //
 // TestBuildEvaluateInput_SkipsInfraEntries 钉住 gate/score 一致性修复
 // （code-review 2026-08）：INFRA: 前缀条目是 fail-open 基建故障——gate 不因它

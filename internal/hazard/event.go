@@ -13,15 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// Event log: records the hazard-guard block/release event stream, completing the "escape code (fingerprint) audit trail".
-//
 // 事件日志：记录 hazard-guard 的拦截/放行事件流，补全"逃生码（指纹）审计记录"。
-//
-// Background: Confirmation (<fp>.json) only records the final state of confirm registrations (valid within the 5min window);
-// block and release events used to flow only into hook stdout/checklog with no structured persistence — when running
-// false-positive audits one could only dig through checklog (the pain point of the 2026-06 hazards audit of 19 FAILs: blocked-but-not-confirm commands had no independent record). events.jsonl persists the full event stream so we can trace 「when something was blocked,
-// what it was, whether it was released by confirm, whether it was judged as data-context release」. Design mirrors checklog/store.go
-// (mutex + O_APPEND append + scanner read).
 //
 // 背景：Confirmation（<fp>.json）只记 confirm 登记的最终态（5min 窗口内有效）；
 // block 拦截和 release 放行事件原本只进 hook stdout/checklog，无结构化落盘——做
@@ -30,27 +22,26 @@ import (
 // 什么、是否被 confirm 放行、是否被判为数据上下文放行"。设计参照 checklog/store.go
 // （mutex + O_APPEND 追加 + scanner 读）。
 
-// Event types.
-//
 // 事件类型。
 const (
-	// EventBlock: hazard-guard blocks a high-risk command (unconfirmed, awaiting HITL).
+	// EventBlock: hazard-guard blocks a high-risk command (unconfirmed, awaiting
+	// HITL).
 	//
 	// EventBlock：hazard-guard 拦截高危命令（未确认，等待 HITL）。
 	EventBlock = "block"
-	// EventRelease: released because forge hazard confirm registered it (within the 5min window).
+	// EventRelease: released because forge hazard confirm registered it (within the
+	// 5min window).
 	//
 	// EventRelease：因 forge hazard confirm 登记（5min 窗口内）而放行。
 	EventRelease = "release"
-	// EventData: context classification judged the dangerous string is only inside quotes (data, not execution) and released it,
-	// e.g. grep `rm -rf` / git commit -m `fix rm -rf bug`.
+	// EventData: context classification judged the dangerous string is only inside
+	// quotes (data, not execution) and released it, e.g. grep `rm -rf` / git commit
+	// -m `fix rm -rf bug`.
 	//
 	// EventData：context classification 判定危险串仅在引号内（数据，非执行）而放行，
 	// 如 grep "rm -rf" / git commit -m "fix rm -rf bug"。
 	EventData = "data"
-	// EventConfirm: a confirmation marker was registered (forge hazard confirm). Appended inside
-	// writeConfirmation itself — not by the hook script — so the forgery path (hand-writing the
-	// marker file) at least cannot fake this event, and every legitimate confirm is auditable.
+	// EventConfirm: a confirmation marker was registered (forge hazard confirm).
 	//
 	// EventConfirm：确认标记被登记（forge hazard confirm）。由 writeConfirmation 内部追加
 	// ——而非 hook 脚本——伪造路径（手写标记文件）至少造不出这条事件，每次合法 confirm 都可审计。
@@ -59,7 +50,8 @@ const (
 
 var eventMu sync.Mutex
 
-// Event records a single hazard-guard event, appended to DataDir/hazards/events.jsonl.
+// Event records a single hazard-guard event, appended to
+// DataDir/hazards/events.jsonl.
 //
 // Event 记录一次 hazard-guard 事件，追加写 DataDir/hazards/events.jsonl。
 type Event struct {
@@ -69,11 +61,7 @@ type Event struct {
 	Command     string    `json:"command"`     // 截断的命令串（审计用，maxCommandStore）
 }
 
-// AppendEvent appends an event to <DataDir>/hazards/events.jsonl. Ts is stamped by this function,
-// Command is truncated to maxCommandStore (consistent with Confirmation) to avoid oversized commands bloating the log.
-// Thread-safe: eventMu serializes within the process. Hooks invoke the `forge hazard log` subprocess across multiple processes,
-// relying on O_APPEND — POSIX guarantees atomic single-line Write; Windows has no PIPE_BUF guarantee, but hook triggers are low-frequency,
-// so interleaving risk is acceptable (audit logs tolerate occasional bad lines; LoadEvents skips corrupted lines).
+// AppendEvent appends an event to <DataDir>/hazards/events.jsonl.
 //
 // AppendEvent 追加一条事件到 <DataDir>/hazards/events.jsonl。Ts 由本函数盖时间戳，
 // Command 截断到 maxCommandStore（与 Confirmation 一致），避免超长命令撑大日志。
@@ -82,7 +70,6 @@ type Event struct {
 // 交错风险可接受（审计日志容忍偶发坏行，LoadEvents 跳过损坏行）。
 //
 // Failure should not affect the hook main flow — callers (hook scripts) tolerate it with `|| true`; audit failure does not block.
-//
 // 失败不应影响 hook 主流程——调用方（hook 脚本）用 `|| true` 容错，审计失败不 block。
 func AppendEvent(p *forgedata.Project, e Event) error {
 	eventMu.Lock()
@@ -109,8 +96,7 @@ func AppendEvent(p *forgedata.Project, e Event) error {
 	return err
 }
 
-// LoadEvents reads all events (in-file time order). Returns the parsed partial result when the file does not exist or has corrupted lines.
-// Corrupted lines are skipped (no error) — audit logs tolerate occasional line corruption and don't discard the whole file for one bad line.
+// LoadEvents reads all events (in-file time order).
 //
 // LoadEvents 读取全部事件（文件内时间序）。文件不存在或损坏行返回已解析的部分。
 // 损坏行跳过（不报错）——审计日志容忍个别行损坏，不因一行坏数据丢弃全量。
@@ -156,30 +142,8 @@ func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, e
 	return n, nil
 }
 
-// ConfirmLastBlock registers a confirmation for the NEWEST block event in the event log
-// and returns its fingerprint and command. This is the copy-free HITL path
-// (`forge hazard confirm --last`): the agent confirms "the command that was just
-// blocked" without transcribing a 64-char hex fingerprint or re-quoting the command
-// string — both transcription forms are proven distortion sources (2026-07 AgentWorld:
-// three hand-copied fingerprints, two corrupt; 2026-08-24 Forge session: confirm of the
-// bare command mismatched the hook's fingerprint over the full command line with pipe
-// suffix). The event log is written by the hook itself at block time, so its
-// fingerprint is authoritative by construction.
-//
-// Semantics: newest EventBlock with a non-empty Fingerprint wins (block events without
-// a fingerprint are unconfirmable anyway); re-confirming an already-confirmed block
-// simply renews the window (same as Confirm). Does not check whether the block was
-// already released — renewal is harmless and keeps the flow single-step.
-//
-// Known race (accepted, disclosed): events.jsonl is shared per project DataDir. If,
-// between the agent's block on command A and its `--last` call, another session/tool
-// in the same project triggers block B, `--last` confirms B — registering a 5min
-// release for a command the user never saw, while A stays blocked. The failure mode
-// self-heals (A re-blocks → HITL again; B's confirmation likely expires unused), and
-// no confirmation is ever created WITHOUT a real block event, so the audit trail stays
-// truthful — the tradeoff for zero-transcription. Single-session flows (the common
-// case) have no window: the hook logs the block event before printing the block
-// message the agent is confirming against.
+// ConfirmLastBlock registers a confirmation for the NEWEST block event in the
+// event log and returns its fingerprint and command.
 //
 // ConfirmLastBlock 为事件日志中最新一条 block 事件登记确认，返回其指纹与命令。
 // 这是免复制的 HITL 路径（`forge hazard confirm --last`）：agent 确认"刚被拦的那条

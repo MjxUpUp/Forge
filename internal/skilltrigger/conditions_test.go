@@ -285,11 +285,7 @@ func TestIsSourcePath(t *testing.T) {
 	}
 }
 
-// TestValidConditions_MatchEngine: drift guard — skilltrigger.Conditions (engine)
-// must stay in sync with skillsqa.ValidConditions (R12 validator). Updating only one
-// side silently breaks either the engine's condition dispatch or R12 validation.
-// Lives here (not in skillsqa tests) because skillsqa cannot import skilltrigger
-// (taskpipeline→skillsdist→skillsqa cycle); this direction is acyclic.
+// TestValidConditions_MatchEngine: drift guard — skilltrigger.Conditions (engine) must stay in sync with skillsqa.ValidConditions (R12 validator).
 //
 // TestValidConditions_MatchEngine：drift 守卫——skilltrigger.Conditions（引擎）必须与
 // skillsqa.ValidConditions（R12 校验器）同步。只改一边会静默破坏引擎 condition 派发或
@@ -312,11 +308,7 @@ func TestValidConditions_MatchEngine(t *testing.T) {
 	}
 }
 
-// TestCondSourceChanged_SessionAttribution pins the L3 attribution filter
-// (multi-task-concurrency §6, T3): the Stop discipline fires only when THIS session's
-// ledger-touched set intersects the changed source set — another window's WIP in the
-// shared working tree no longer nags this window (the user's P1 pain). Escape hatch
-// FORGE_ATTRIBUTION=0 and the no-sid degraded path both fall back to whole-tree.
+// TestCondSourceChanged_SessionAttribution pins the L3 attribution filter (multi-task-concurrency §6, T3): the Stop discipline fires only when THIS session's ledger-touched set intersects the changed source set — another window's WIP in the shared working tree no longer nags this window (the user's P1 pain).
 //
 // TestCondSourceChanged_SessionAttribution 钉住 L3 归属过滤（multi-task-concurrency
 // §6，T3）：Stop 纪律只在「本会话台账触碰集 ∩ 变更源码集」非空时触发——共享工作树

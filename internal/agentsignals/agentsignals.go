@@ -5,21 +5,6 @@ import (
 	"path/filepath"
 )
 
-// agentsignals is a deliberately minimal LEAF package: it holds the project-level
-// agent-marker table and helpers, depends only on the standard library (os/filepath),
-// and carries NO upward dependency on agentbridge, skillgen, or taskpipeline.
-//
-// Why it exists: agentbridge already imports skillgen, and skillgen already imports
-// taskpipeline (agentbridge→skillgen→taskpipeline). taskpipeline therefore cannot
-// import agentbridge without closing an import cycle. But taskpipeline's session
-// attribution (detectAgentType) needs the SAME marker table that agentbridge's
-// DetectAgents uses for wiring — so the table must live somewhere both can reach
-// without a cycle. A zero-upward-dep leaf package is that somewhere.
-//
-// The agent-name strings here ("claude-code", "cursor", ...) match the
-// agentbridge.AgentType constants verbatim; they are kept as plain strings (not
-// agentbridge.AgentType) precisely so this package never has to import agentbridge.
-//
 // agentsignals 是刻意最小化的叶子包：持有项目级 agent 标记表与助手函数，仅依赖标准库
 // （os/filepath），零向上依赖 agentbridge/skillgen/taskpipeline。
 //
@@ -32,9 +17,6 @@ import (
 // 此处的 agent 名字符串（"claude-code"、"cursor"...）与 agentbridge.AgentType 常量逐字
 // 一致；刻意用纯字符串（而非 agentbridge.AgentType）正是为了让本包永不导入 agentbridge。
 
-// projectMarker pairs a project-level path (relative segments + whether it is a file
-// vs a directory) with the agent name it signals.
-//
 // projectMarker 把项目级路径（相对分段 + 文件还是目录）与它所表示的 agent 名配对。
 type projectMarker struct {
 	segments []string
@@ -42,17 +24,6 @@ type projectMarker struct {
 	agent    string
 }
 
-// projectMarkers mirrors agentbridge.DetectAgents' project-level checks in the same
-// order, so first-match precedence (ProjectAgentMarker) and full-set detection
-// (ProjectAgentMarkers) stay consistent with the wiring-time scan.
-//
-// Per-marker rationale lives next to the decision it documents, so this table is the
-// single source of truth for both WHICH markers count and WHY. The recurring theme for
-// kimi/reasonix/codex: these agents' USER-LEVEL config dir exists whenever the tool is
-// installed, so it canNOT be an auto-detect signal (it would wire the agent on every
-// forge init and break test hermeticity); only a PROJECT-level dir — present iff the
-// user has run that agent in this project — is a legitimate "develops-with" signal.
-//
 // projectMarkers 与 agentbridge.DetectAgents 的项目级检查同序镜像，使首次匹配优先级
 // （ProjectAgentMarker）与全集合检测（ProjectAgentMarkers）都与接线期扫描一致。
 // 每条标记的设计理由随附于它记录的决策旁，使本表同时成为"哪些标记算数"与"为何算数"的
@@ -105,9 +76,6 @@ var projectMarkers = []projectMarker{
 	{[]string{`.zcode`}, false, `zcode`},
 }
 
-// markerExists reports whether the marker path exists in projectDir with the correct
-// type (directory unless isFile).
-//
 // markerExists 报告标记路径在 projectDir 中是否存在且类型正确（除非 isFile，否则为目录）。
 func markerExists(projectDir string, m projectMarker) bool {
 	p := filepath.Join(projectDir, filepath.Join(m.segments...))
@@ -121,10 +89,8 @@ func markerExists(projectDir string, m projectMarker) bool {
 	return info.IsDir()
 }
 
-// ProjectAgentMarker returns the agent name of the FIRST matching project-level marker
-// in projectDir, or "" if none match. Precedence follows projectMarkers order
-// (claude-code first). Use this for single-shot session attribution where one agent
-// per session is the model (the dominant marker wins).
+// ProjectAgentMarker returns the agent name of the FIRST matching project-level
+// marker in projectDir, or "" if none match.
 //
 // ProjectAgentMarker 返回 projectDir 中首个命中的项目级标记的 agent 名，无命中返回 ""。
 // 优先级遵循 projectMarkers 顺序（claude-code 在前）。用于单会话单 agent 的归因模型
@@ -138,9 +104,9 @@ func ProjectAgentMarker(projectDir string) string {
 	return ""
 }
 
-// ProjectAgentMarkers returns the deduplicated agent names of ALL matching project-level
-// markers in projectDir, in projectMarkers order (first occurrence wins for dedup). Use
-// this when wiring every detected agent (multiple agents can share a project).
+// ProjectAgentMarkers returns the deduplicated agent names of ALL matching
+// project-level markers in projectDir, in projectMarkers order (first occurrence
+// wins for dedup).
 //
 // ProjectAgentMarkers 返回 projectDir 中所有命中的项目级标记的 agent 名（去重），
 // 顺序遵循 projectMarkers（首次出现者保留）。用于给每个检测到的 agent 接线
@@ -161,12 +127,8 @@ func ProjectAgentMarkers(projectDir string) []string {
 	return agents
 }
 
-// KnownAgents returns the deduplicated list of agent names recognized by project markers,
-// in projectMarkers order (first occurrence wins for dedup). This is the closed set a task
-// can be delegated to — forge task assign validates --assignee against it so an unknown
-// agent does not silently create a task no worker can match (a black hole). Agents that
-// carry no project marker (e.g. codebuddy, signalled only via plugin config) are absent;
-// assign warns but still accepts them when the user insists explicitly.
+// KnownAgents returns the deduplicated list of agent names recognized by project
+// markers, in projectMarkers order (first occurrence wins for dedup).
 //
 // KnownAgents 返回 project markers 识别的 agent 名（去重），顺序遵循 projectMarkers
 // （首次出现保留）。这是 task 可被分派的封闭集——forge task assign 用它校验 --assignee，
@@ -185,9 +147,8 @@ func KnownAgents() []string {
 	return agents
 }
 
-// IsKnownAgent reports whether name is one of the recognized agent names (the closed set
-// drawn from projectMarkers). Cheaper than KnownAgents() for single lookups; used by the
-// assign command to decide warn-but-accept vs silently-valid.
+// IsKnownAgent reports whether name is one of the recognized agent names (the
+// closed set drawn from projectMarkers).
 //
 // IsKnownAgent 报告 name 是否为已知 agent 名（projectMarkers 封闭集）。单次查找比
 // KnownAgents() 更省；assign 命令用它区分「警告后接受」与「静默合法」。

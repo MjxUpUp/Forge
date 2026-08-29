@@ -5,10 +5,7 @@ import (
 	"time"
 )
 
-// TestStripForeignGateSignals_ControlFlow pins the 2026-08-15 trust-boundary fix: the strip must
-// clear CONTROL-FLOW fields (CompletedAt / Overrides / forged task-complete History / stale
-// CurrentGate), not just the result fields — a bundle or repo-committed task file carrying them
-// would otherwise disable every CompletedAt==nil-guarded hard check and auto-pass the complete gate.
+// TestStripForeignGateSignals_ControlFlow pins the 2026-08-15 trust-boundary fix: the strip must clear CONTROL-FLOW fields (CompletedAt / Overrides / forged task-complete History / stale CurrentGate), not just the result fields — a bundle or repo-committed task file carrying them would otherwise disable every CompletedAt==nil-guarded hard check and auto-pass the complete gate.
 //
 // TestStripForeignGateSignals_ControlFlow 钉住 2026-08-15 信任边界修复：剥离必须清「控制流」字段
 // （CompletedAt / Overrides / 伪造的 task-complete History / 陈旧 CurrentGate），而非只有结果字段——
@@ -65,10 +62,6 @@ func TestStripForeignGateSignals_ControlFlow(t *testing.T) {
 		t.Errorf(`Overrides should be zeroed (escape hatches are local decisions), got %+v`, s.Overrides)
 	}
 	for _, h := range s.History {
-		// EVERY passed entry must go, not just task-complete: executor's gate-prerequisite walk
-		// treats a foreign `task-verify: Passed` as satisfying the chain and skips every hard
-		// check living inside task-verify (review follow-up 2026-08-15).
-		//
 		// 所有已通过条目都必须剔除，不只是 task-complete：executor 的门禁前置链会把外来的
 		// `task-verify: Passed` 当已满足，跳过 task-verify 内部的全部硬检查（2026-08-15 复审）。
 		if h.Passed {
@@ -100,9 +93,7 @@ func TestStripForeignGateSignals_ControlFlow(t *testing.T) {
 	}
 }
 
-// TestStripForeignGateSignals_NoAcceptanceNoMarker pins the no-acceptance edge: with zero criteria
-// there is nothing executable to distrust, so AcceptanceForeign stays false (verify-acceptance's
-// trust gate must not fire on an empty spec).
+// TestStripForeignGateSignals_NoAcceptanceNoMarker pins the no-acceptance edge: with zero criteria there is nothing executable to distrust, so AcceptanceForeign stays false (verify-acceptance's trust gate must not fire on an empty spec).
 //
 // TestStripForeignGateSignals_NoAcceptanceNoMarker 钉住无验收边界：零条 criterion 时无可执行物可
 // 不信任，AcceptanceForeign 保持 false（verify-acceptance 的受信门不得对空 spec 触发）。
@@ -119,10 +110,7 @@ func TestStripForeignGateSignals_NoAcceptanceNoMarker(t *testing.T) {
 	}
 }
 
-// TestStripForeignGateSignals_FailedGateHistoryKept pins provenance semantics: a FAILED gate entry
-// (e.g. a task-verify that failed on the source machine) is history, not a trust signal — it is kept
-// verbatim so the import shows the real gate progression. Only task-complete is special (it is the
-// completion CLAIM).
+// TestStripForeignGateSignals_FailedGateHistoryKept pins provenance semantics: a FAILED gate entry (e.g. a task-verify that failed on the source machine) is history, not a trust signal — it is kept verbatim so the import shows the real gate progression.
 //
 // TestStripForeignGateSignals_FailedGateHistoryKept 钉住溯源语义：失败的门禁条目（如源机器上跑挂的
 // task-verify）是历史而非信任信号——原样保留，让 import 显示真实门禁进度。只有 task-complete
@@ -143,11 +131,7 @@ func TestStripForeignGateSignals_FailedGateHistoryKept(t *testing.T) {
 	}
 }
 
-// TestStripForeignGateSignals_DefaultDenySweep pins the T5 default-deny inversion:
-// fields with NO explicit strip line (Lease/TTL/PlanFirstAdvisoryFired — machine-local
-// claims and advisory suppression) must still be zeroed by the reflection sweep, while
-// whitelist cargo (Goal/Decisions) survives. This is the property that makes future
-// fields safe by default.
+// TestStripForeignGateSignals_DefaultDenySweep pins the T5 default-deny inversion: fields with NO explicit strip line (Lease/TTL/PlanFirstAdvisoryFired — machine-local claims and advisory suppression) must still be zeroed by the reflection sweep, while whitelist cargo (Goal/Decisions) survives.
 //
 // TestStripForeignGateSignals_DefaultDenySweep 钉住 T5 的默认拒绝反转：没有显式
 // 剥离行的字段（Lease/TTL/PlanFirstAdvisoryFired——本机声明与 advisory 抑制）也

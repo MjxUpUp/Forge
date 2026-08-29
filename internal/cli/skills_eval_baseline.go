@@ -1,8 +1,5 @@
 package cli
 
-// skills_eval_baseline.go — eval-baseline subcommand: explicitly mark a skill's baseline run.
-// baseline = a verified publishable point, a human decision — not automatic. Without --run-id it defaults to the latest run.
-//
 // skills_eval_baseline.go — eval-baseline 子命令：显式标记某 skill 的 baseline run。
 // baseline = 已验证可发布点，是人工决策——不自动。不带 --run-id 默认标 latest run。
 
@@ -38,8 +35,6 @@ func runSkillsEvalBaseline(cmd *cobra.Command, args []string) error {
 
 	runID := skBaseRun
 	if runID == "" {
-		// Default: mark the latest run.
-		//
 		// 默认标 latest run。
 		latest, err := skillseval.LatestRun(dir, skBaseSkill)
 		if err != nil {
@@ -50,8 +45,6 @@ func runSkillsEvalBaseline(cmd *cobra.Command, args []string) error {
 		}
 		runID = latest.RunID
 	} else {
-		// Explicit run-id requires an existence check.
-		//
 		// 显式 run-id 需校验存在。
 		got, err := skillseval.LoadRunByID(dir, skBaseSkill, runID)
 		if err != nil {

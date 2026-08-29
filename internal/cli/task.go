@@ -38,27 +38,13 @@ func init() {
 	taskScopeCmd.AddCommand(taskScopeShowCmd)
 
 	taskStartCmd.Flags().String("title", "", "任务标题")
-	// StringArray (not StringSlice): cobra/pflag's StringSlice splits on commas by default,
-	// which would break commands containing commas; StringArray keeps each --accept intact.
-	// Acceptance criteria are full 'run :: expected' strings.
-	//
 	// StringArray（非 StringSlice）：cobra/pflag 的 StringSlice 默认按逗号切分，会把
 	// 含逗号的命令拆坏；StringArray 每个 --accept 整条不切。验收标准是完整"run :: expected"串。
 	taskStartCmd.Flags().StringArray("accept", nil, `验收标准（可重复 --accept）：格式 "run :: expected"（expected=输出子串）或裸 "run"（只看退出码 0）。forge task verify-acceptance 实跑回扣。run 为 go test 且带 expected 而未加 -v 时自动补 -v（否则无 PASS 行永不匹配）`)
-	// PlanScope: declare the whitelist of files planned to change before starting work
-	// (planning up-front -> measurable contract). Supports exact paths/globs/directory
-	// prefixes. Advisory: changes beyond the declaration are recorded as scope-drift
-	// (checklog), not blocking (change-impact-analysis recall is only ~44%, scope is a
-	// prediction not a contract).
-	//
 	// PlanScope：开工前声明计划改动的文件白名单（规划前置 → 可度量契约）。
 	// 支持精确路径/glob/目录前缀。advisory：实改超出声明记
 	// scope-drift（checklog），不阻塞（变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract）。
 	taskStartCmd.Flags().StringArray("scope", nil, `计划改动文件白名单（可重复 --scope）：精确路径 internal/cli/task.go / glob internal/cli/*.go / 目录前缀 internal/cli。开工前声明，advisory 检测 scope-drift；中途可用 forge task scope add 追加`)
-	// Continuity flags: persist goal/plan/origin-tool into TaskState at task start,
-	// so forge task resume can pull them back across sessions/tools. Reuses the
-	// 'start persists' pattern of --scope/--accept.
-	//
 	// 接续真相源 flags（continuity）：把 goal/plan/发起工具随 task start 持久化进 TaskState，
 	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的「start 持久化」模式。
 	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）")
@@ -72,10 +58,6 @@ func init() {
 	taskStartCmd.Flags().String(`assignee`, ``, `分派给指定 agent（如 kimi/reasonix/cursor），任务创建即 offered；建议配合 --role 说明角色`)
 	taskStartCmd.Flags().String(`role`, ``, `分派角色（如 frontend/backend/testing），随 --assignee 记入 Assignment.Role`)
 	taskStartCmd.Flags().StringArray(`depends-on`, nil, `依赖的上游 task ref（可重复 --depends-on）：本任务等待它们 delivered 后再开工；支持 key:ref 跨仓依赖（key 须为本 repo 所属 workspace 的成员）`)
-	// Per-task zombie TTL override (design §3/§9 --ttl): a delegation that should expire on its own
-	// clock — faster than the global 7d default (short-fuse), or slower (long runner) — sets this.
-	// Zero (no flag) keeps the global constant, fully backward compatible. health.effectiveTTL reads it.
-	//
 	// Per-task 僵尸 TTL 覆盖（设计 §3/§9 --ttl）：需按自己的时钟失联的分派——比全局 7d 默认更快
 	//（短时效）或更慢（长跑任务）——设此项。零（不带 flag）保持全局常量，完全向后兼容。
 	// health.effectiveTTL 读取它。
@@ -187,12 +169,6 @@ var taskListCmd = &cobra.Command{
 	RunE:  runTaskList,
 }
 
-// taskScopeCmd is the management entry for the PlanScope whitelist (planning
-// up-front -> measurable contract).
-// add: append mid-task (layered, correctable positioning — planning is not locked in once).
-// show: view the declaration + live scope-drift (diff between actual-changed and declared,
-// advisory).
-//
 // taskScopeCmd 是 PlanScope 白名单的管理入口（规划前置 → 可度量契约）。
 // add：中途追加（分层、可修正的定位——规划不是一次锁死）。
 // show：查看声明 + 实时 scope-drift（实改态 vs 声明态差集，advisory）。
@@ -223,11 +199,6 @@ var taskDocReviewCmd = &cobra.Command{
 	RunE:  runTaskDocReview,
 }
 
-// phaseExplosionWarning returns a non-empty warning when the given session already
-// has too many incomplete tasks — the 'phase explosion' anti-pattern (one plan split
-// into N tasks each running the full gate pipeline). Advisory only (non-blocking).
-// Returns ” when no warning is needed (fewer than 3, unknown session, or on error).
-//
 // phaseExplosionWarning 在指定 session 已有过多未完成 task 时返回非空告警——
 // 即「phase 爆炸」反模式（一个 plan 拆成 N 个 task 各跑全套门禁）。仅 advisory
 // （不阻塞）。无需告警时返 ""（少于 3、未知 session 或出错）。
@@ -251,12 +222,6 @@ func phaseExplosionWarning(root, sessionID, currentRef string) string {
 	return ""
 }
 
-// nonGitTaskWarning is the degraded-mode notice printed by 'task start' when the
-// project is not a git repo. Forge is git-optional by design — gates still pass,
-// 'complete' still scores — but the agent must know which scoring dimensions are
-// distorted, lest it read a neutral score as a broken pipeline. Mentions 'abort':
-// a degraded task the user wants to drop is exactly the scenario abort exists for.
-//
 // nonGitTaskWarning 是项目非 git 仓库时 `task start` 打印的降级模式提示。
 // forge 设计上 git-optional——门禁照常过、`complete` 照常评分——但 agent 须
 // 知道哪些评分维度失真，免得把中性分读成管道坏了。提到 `abort`：用户不想继续
@@ -267,13 +232,6 @@ func nonGitTaskWarning() string {
 		"如需完整质量保障，执行 `git init`（任务流程本身可继续）。任务无法推进或临时放弃时用 `forge task abort --ref <ref>` 清理。"
 }
 
-// detectOriginTool returns the task's origin tool (declarative truth, distinct from
-// the directory-snooping weak signal of SessionRecord.AgentType). Probe order:
-// explicit (--origin-tool) > FORGE_AGENT (injected by runHook from the resolved
-// --agent flag, so hook-spawned forge processes on kimi/windsurf know their host) >
-// CLAUDE_CODE_SESSION_ID (claude-code). Lets the task record 'who started it'
-// across tool handoffs; other hosts append their own session+tool via forge task attach.
-//
 // detectOriginTool 返回任务的发起工具（声明式真相，区别于 SessionRecord.AgentType 的目录探测弱信号）。
 // 探测顺序：explicit（--origin-tool）> FORGE_AGENT（runHook 把解析出的 --agent 值注入，
 // 使 kimi/windsurf 上 hook 派生的 forge 进程知道自己的 host）> CLAUDE_CODE_SESSION_ID
@@ -286,9 +244,6 @@ func detectOriginTool(explicit string) string {
 	if agent := os.Getenv("FORGE_AGENT"); agent != "" {
 		return agent
 	}
-	// Host-injected shell env (today only claude-code's CLAUDE_CODE_SESSION_ID) —
-	// registry-driven, see hostcap.Host.ShellSessionEnv.
-	//
 	// 宿主注入的 shell env（目前仅 claude-code 的 CLAUDE_CODE_SESSION_ID）——
 	// 注册表驱动，见 hostcap.Host.ShellSessionEnv。
 	if host, _ := hostcap.ProbeShellIdentity(); host != "" {
@@ -297,14 +252,6 @@ func detectOriginTool(explicit string) string {
 	return ""
 }
 
-// resolveOriginTool is detectOriginTool plus the LAST attribution fallback: the
-// last-session pointer written by the hook dispatcher. A forge command run
-// inside a kimi/codex/cursor/... Bash tool carries no identity env (their
-// shells are bare), so without this every such task/session anchor was
-// unattributed — 9 of 20 tasks in this repo had an empty OriginTool (2026-08
-// audit). The pointer is freshness-gated (taskpipeline.RecentHookSession), so
-// stale agent activity never mislabels a human's manual terminal run.
-//
 // resolveOriginTool 是 detectOriginTool 加最终归因回落：hook 分发器写入的
 // last-session 指针。在 kimi/codex/cursor/... 的 Bash 工具里跑的 forge 命令
 // 不带任何身份 env（它们的 shell 是裸的），故没有本函数这些任务/会话锚定全部
@@ -343,11 +290,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// 绑定锚定【新】路径，会话指针不变。后续步骤失败时刻意保留 worktree（宁留勿
 	// 删）：指引行告知用户如何清理。
 	if useWorktree {
-		// --worktree brings its own branch creation (deriveBranchName inside
-		// createTaskWorktree); combining it with --branch would always fail the
-		// main-checkout guard BELOW the worktree side effect, leaving an orphan
-		// worktree behind. Reject the combination before any disk effect.
-		//
 		// --worktree 自带分支创建（createTaskWorktree 内的 deriveBranchName）；
 		// 与 --branch 组合必在 worktree 副作用【之后】命中主检出守卫而失败，
 		// 留下孤儿 worktree。在任何磁盘副作用前拒绝该组合。
@@ -366,8 +308,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "下一步：cd %s 并重开窗口，或直接 forge task resume 接续\n", wtRoot)
 	}
 
-	// --branch: create a new branch from main/master and switch to it.
-	//
 	// --branch：从 main/master 创建新分支并切过去。
 	if createBranch {
 		if explicitRef == "" {
@@ -409,10 +349,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Check whether the task already exists. Only a confirmed ErrNotExist may fall
-	// through to creation — a ref-collision error (two refs sanitize to the same
-	// filename) must abort, not get overwritten by the new task's SaveTaskState.
-	//
 	// 检查 task 是否已存在。只有确证的 ErrNotExist 才落到创建路径——串号冲突
 	//（两个 ref 折叠到同一文件名）必须中止，而不是被新任务的 SaveTaskState 覆盖。
 	existing, err := taskpipeline.LoadTaskState(root, ctx.TaskRef)
@@ -426,42 +362,25 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 
 	state := taskpipeline.NewTaskState(ctx)
 
-	// Node lease (sync-convergence.md §4): starting work claims the task for this
-	// machine — advisory-only in v1, fail-open (identity problems never block start).
-	//
 	// 节点租约（sync-convergence.md §4）：开工即为本机认领任务——v1 仅 advisory，
 	// fail-open（身份问题绝不阻塞开工）。
 	taskpipeline.ClaimLeaseForCurrentNode(state)
 
-	// Record current HEAD for duplicate detection.
-	//
 	// 记录当前 HEAD 用于重复检测。
 	state.HeadCommit = taskpipeline.GetHeadCommit(root)
 
-	// Persist acceptance criteria (dev-workflow Plan's Run+Expected): the spec no
-	// longer drifts with plan text; verify-acceptance replays them against actual runs.
-	// Empty means no acceptance criteria (does not affect flow).
-	//
 	// 持久化验收标准（dev-workflow Plan 的 Run+Expected）：spec 不再随 plan 文本飘走，
 	// verify-acceptance 据此实跑回扣。空则无验收标准（不影响流程）。
 	if acceptRaw, _ := cmd.Flags().GetStringArray("accept"); len(acceptRaw) > 0 {
 		state.Acceptance = taskpipeline.ParseAcceptance(acceptRaw)
 	}
 
-	// Persist PlanScope (the planned-change whitelist declared before starting work):
-	// turns up-front planning into a measurable contract; file-sentinel/task-guard use
-	// it to advisory-detect scope-drift. Empty means no detection (no declaration = no drift).
-	//
 	// 持久化 PlanScope（开工前声明的计划改动白名单）：把规划前置变成可度量契约，
 	// file-sentinel/task-guard 据此 advisory 检测 scope-drift。空则不检测（无声明=无偏差）。
 	if scopeRaw, _ := cmd.Flags().GetStringArray("scope"); len(scopeRaw) > 0 {
 		state.PlanScope = scopeRaw
 	}
 
-	// Continuity fields: goal/plan/origin-tool are persisted at task start so a fresh
-	// session's 'forge task resume' can pull the full context back in seconds (no need
-	// to parse a discipline-dependent HANDOFF.md).
-	//
 	// 接续真相源字段（continuity）：goal/plan/origin-tool 随 task start 持久化，使新会话
 	// forge task resume 能秒级拉回完整上下文（不必 parse 靠纪律的 HANDOFF.md）。
 	if kind, _ := cmd.Flags().GetString("kind"); kind != "" {
@@ -470,21 +389,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
 		state.Goal = goal
 	}
-	// Per-task TTL override (design §3/§9 --ttl): persists into state.TTL so health.effectiveTTL
-	// surfaces this task as stale on its own clock, independent of the global 7d constant. Zero
-	// (no --ttl) leaves state.TTL at its zero-value fallback — no behavior change for legacy tasks.
-	//
 	// Per-task TTL 覆盖（设计 §3/§9 --ttl）：持久化进 state.TTL，使 health.effectiveTTL 按本任务自己
 	// 的时钟标失联，独立于全局 7d 常量。零（无 --ttl）留 state.TTL 于零值回落——legacy 任务无行为变化。
 	if ttl, _ := cmd.Flags().GetDuration("ttl"); ttl > 0 {
 		state.TTL = ttl
 	}
-	// planAcceptanceAdded: the net count of entries actually added from --plan-file
-	// after extraction (net of duplicates deduped against explicit --accept), used only
-	// to annotate the source in the success output below. Uses the len delta after merge
-	// rather than len(extracted) before — the latter would count entries discarded by
-	// dedup when --accept coexists, misleading users into thinking they entered state.
-	//
 	// planAcceptanceAdded：--plan-file 提取后实际新增入库的条数（净增，扣除与显式 --accept
 	// 去重的部分），仅供下方成功输出标注来源。用 merge 后的 len 差值而非提取前的 len(extracted)——
 	// 后者在 --accept 共存时会数进去被去重丢弃的条目，误导用户以为它们进了 state。
@@ -509,12 +418,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			}
 			state.SpecArtifacts["plan"] = aref
 		}
-		// Auto-extract acceptance criteria from Plan markdown (Run:/Expected: blocks),
-		// closing the gap of hand-copying plan's Run/Expected into --accept (dogfood:
-		// self-disciplined hand-copying always leaks; uncopied criteria leave the
-		// acceptance advisory silent). Explicit --accept wins; plan extraction fills in
-		// by Run-dedup (MergeAcceptance).
-		//
 		// 从 Plan markdown 自动提取验收标准（Run:/Expected: 块），消除把 plan 的 Run/Expected
 		// 手抄到 --accept 的断口（dogfood：靠自觉手抄必漏；没抄时 acceptance advisory 零信号）。
 		// 显式 --accept 优先，plan 提取按 Run 去重补充（MergeAcceptance）。
@@ -524,13 +427,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			planAcceptanceAdded = len(state.Acceptance) - baseBefore
 		}
 	}
-	// go test ergonomics (usage-log fix): a `go test` Run without -v prints no PASS lines,
-	// so an Expected like "PASS" can never match and the agent only finds out at
-	// verify-acceptance time — the recorded failure mode was abort + restart the task.
-	// Auto-insert -v (output-only; exit-code semantics unchanged) and announce it — never
-	// silently rewrite a registered command. Runs with empty Expected (exit-code-only)
-	// are left untouched: they don't need verbose output.
-	//
 	// go test 人体工学（usage 日志修复）：`go test` 不带 -v 时输出没有 PASS 行，Expected
 	// 写 "PASS" 永不匹配，agent 到 verify-acceptance 才发现——真实失败模式是 abort 重开
 	// 任务。自动补 -v（只影响输出、退出码语义不变）并明示——绝不静默改写登记的命令。
@@ -544,22 +440,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	originTool, _ := cmd.Flags().GetString("origin-tool")
 	state.OriginTool = resolveOriginTool(root, originTool)
 
-	// External issue origin: extends the task's source from branch to external issue
-	// (linear/github), bridging spawn-style orchestrators (Symphony-like) — when the
-	// orchestrator spawns a run, the task is naturally linked to the issue, not via branch inference.
-	//
 	// 外部 issue origin：把 task 的来源从 branch 扩展到外部 issue（linear/github），
 	// 衔接 spawn 式编排器（Symphony 类）——编排器拉起 run 时 task 天然关联 issue，不靠 branch 推断。
 	if fromIssue, _ := cmd.Flags().GetString(`from-issue`); fromIssue != `` {
 		state.ExternalOrigin = taskpipeline.ParseExternalOriginURL(fromIssue)
 	}
-	// Delegation: optionally hand this task to a specific agent at creation time. --assignee
-	// drives AssignTo (no-assignment → offered); the orchestrator creates the task already
-	// offered and the worker claims it. --depends-on persists the upstream dependency graph
-	// (fan-in ordering) with cycle detection (DAG enforced via AddDependency); the task-verify /
-	// task-complete gates block until every upstream is delivered (phase 3). Runs after OriginTool
-	// is set so OfferedBy records who actually offered the task.
-	//
 	// 分派：创建时可选把本任务交给指定 agent。--assignee 驱动 AssignTo（无→offered）；
 	// 编排器创建即 offered，工作方认领。--depends-on 持久化上游依赖图（fan-in 顺序）并做环检测
 	// （经 AddDependency 强制 DAG）；task-verify/task-complete 门禁在上游全部交付前阻断（阶段3）。
@@ -572,17 +457,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if deps, _ := cmd.Flags().GetStringArray(`depends-on`); len(deps) > 0 {
-		// AddDependency rejects a self-reference and any ref whose transitive deps lead back to
-		// this task (a cycle would deadlock the ring). lookup loads each ref's state for the DFS;
-		// a missing ref is tolerated here (the edge is recorded; the gate later treats missing as
-		// not-delivered), so a forward reference to a task created moments later is allowed.
-		//
-		// Cross-repo (key:ref, depref.go): membership/existence is validated first
-		// (fail-open — manifest trouble only warns). The lookup deliberately returns nil for
-		// key:ref so the cycle DFS never crosses into another repo's graph (a real-time
-		// cross-repo DFS would need a global graph lock across DataDirs; cross-repo cycles are
-		// doctor-detected instead). Same-repo refs keep the exact pre-workspace DFS behavior.
-		//
 		// AddDependency 拒绝自引用及任何传递依赖指回本 task 的 ref（环会死锁环上 task）。lookup 为
 		// DFS 载入各 ref 的 state；缺失 ref 此处容忍（边已记；门禁后把缺失当未交付），故对稍后创建
 		// 的 task 的前向引用是允许的。
@@ -608,16 +482,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Take the session id once — used to scope active-task-ref and session
-	// records so concurrent sessions on a shared checkout stay isolated. Env
-	// probes cover claude-code (shell env) and hook-spawned wrappers
-	// (FORGE_SESSION_ID); a forge invocation inside any OTHER host's Bash tool
-	// has neither, so fall back to the freshness-gated last-session pointer —
-	// this binds the task to the real host session's scoped record and makes
-	// the active-task-ref write/read keys match the hook side (which reads
-	// scoped by the stdin session id), instead of collapsing onto the legacy
-	// global file where concurrent sessions clobber each other.
-	//
 	// 取一次 session id——用于 scope active-task-ref 与 session record，让共享
 	// checkout 上的并发 session 保持隔离。env 探测覆盖 claude-code（shell
 	// env）与 hook 派生的 wrapper（FORGE_SESSION_ID）；在任何其他宿主的 Bash
@@ -632,8 +496,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Ensure the session exists and link the task to it.
-	//
 	// 确保 session 存在并把 task 链上去。
 	session, err := taskpipeline.EnsureSession(root, sid)
 	if err != nil {
@@ -643,13 +505,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	} else {
 		state.SessionID = session.SessionID
 	}
-	// Creator session anchoring (the starting point of multi-directional anchoring;
-	// successors append their own via forge task attach). Must run after EnsureSession
-	// assigns state.SessionID — before that, SessionID is still empty, AddSession is
-	// never called, and the creator session is left unanchored: the multi-directional
-	// starting point is lost until someone actively resumes/attaches and the first
-	// SessionLink finally appears.
-	//
 	// 创建方 session 锚定（多向锚定起点；接手方 forge task attach 追加自己的）。必须在
 	// EnsureSession 给 state.SessionID 赋值之后——此前 SessionID 仍为空，AddSession 永不被调用，
 	// 创建方 session 漏锚定：多向锚定起点丢失，直到有人主动 resume/attach 才出现首条 SessionLink。
@@ -657,9 +512,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		state.AddSession(state.SessionID, state.OriginTool)
 	}
 
-	// Phase-explosion detection: warn about merging when the same session already has
-	// many incomplete tasks (advisory).
-	//
 	// Phase 爆炸检测：同 session 下已有多个未完成 task 时提醒合并（advisory）。
 	if session != nil {
 		if w := phaseExplosionWarning(root, state.SessionID, ctx.TaskRef); w != "" {
@@ -667,18 +519,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Append a task-started boundary event instead of Clearing the logs
-	// (multi-task-concurrency design §5, L2 event-sourcing). The old Clear was a
-	// destructive truncation with three production failure faces: a task B start
-	// wiped in-flight task A's evidence chain (concurrent tasks share the project
-	// DataDir by design), a crash between tool call and state write left the audit
-	// chain severed, and cross-machine merges lost whatever had been cleared.
-	// Reads were already TaskRef-scoped (checklog.LoadForTask /
-	// LatestByCheckForSession, toolusage.LoadForTask), so segmentation by boundary
-	// event preserves everything Clear protected against — inheritance of a
-	// previous task's evidence — without destroying anything. Retention pruning
-	// (the useful half of Clear) stays, non-destructively.
-	//
 	// 追加 task-started 边界事件，取代清空日志（multi-task-concurrency 设计 §5，L2 事件
 	// 化）。旧 Clear 是破坏性截断，三个生产事故面：任务 B 开工抹掉在途任务 A 的证据链
 	//（并发任务按设计共享项目 DataDir）；工具调用与状态写之间的崩溃断掉审计链；被清
@@ -705,10 +545,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// 绝不逐 hook——延迟预算）。best-effort 静默。
 	HarnessCommitBestEffort("task started: " + ctx.TaskRef)
 
-	// Prune completed task-state files beyond the retention window to keep
-	// DataDir/tasks/ bounded. Same window as log archival, so task metadata is
-	// retired in lockstep with its logs. Best-effort: errors here are not fatal.
-	//
 	// 清理超过 retention 窗口的已完成 task state 文件，保持 DataDir/tasks/ 有界。
 	// 与 log 归档同窗口，让 task 元数据与其 log 同步淘汰。best-effort：此处错误不致命。
 	if days := util.RetentionDays("FORGE_LOG_RETENTION_DAYS", 30); days > 0 {
@@ -719,19 +555,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create task: %w", err)
 	}
 
-	// Mark as active task (so hook detection is unambiguous).
-	// Session-scoped — concurrent sessions do not clobber each other.
-	//
 	// 标记为 active task（让 hook 检测无歧义）。
 	// session-scoped，并发 session 不会互相覆盖。
 	if err := taskpipeline.SetActiveTaskRef(root, sid, ctx.TaskRef); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to set active task ref: %v\n", err)
 	}
 
-	// L1 workspace binding (multi-task-concurrency §4): anchor the cwd to the task so a
-	// NEW window in this directory/worktree resolves it without any session surviving.
-	// Best-effort — a failed bind only degrades to session-pointer/branch resolution.
-	//
 	// L1 workspace 绑定（multi-task-concurrency §4）：把 cwd 锚到任务上，使本目录/
 	// worktree 里的【新】窗口无需任何会话存活即可解析到它。尽力而为——绑定失败只
 	// 降级为会话指针/分支解析。
@@ -739,12 +568,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to bind workspace: %v\n", err)
 	}
 
-	// Graceful degradation for non-git projects — gates still pass, 'complete' still
-	// scores — but git-dependent dimensions collapse to neutral and the task has no
-	// commit to anchor on. This is the missing signal for code-knowledge-base sessions:
-	// without it, an agent starting a task in a bare directory does not know it is in
-	// degraded mode and flails blindly. stderr output keeps --json stdout clean.
-	//
 	// 非 git 项目优雅降级——门禁照常过、`complete` 照常评分——但依赖 git 的维度归中性，
 	// 且 task 无 commit 可锚。这是 code-knowledge-base session 缺失的信号：没有它，
 	// agent 在裸目录里启动 task 时不知自己在降级模式而盲目挣扎。stderr 输出保持 --json 干净。
@@ -818,8 +641,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// validateBranchRef ensures ref is a valid conventional branch name.
-//
 // validateBranchRef 确保 ref 是合法 conventional 分支名。
 func validateBranchRef(ref string) error {
 	validPrefixes := []string{
@@ -835,16 +656,12 @@ func validateBranchRef(ref string) error {
 	return fmt.Errorf("must start with a conventional prefix (feat/, fix/, refactor/, test/, chore/, docs/, ci/, perf/, build/, style/)")
 }
 
-// isMainBranch checks whether the branch name is main or master.
-//
 // isMainBranch 检查分支名是否为 main/master。
 func isMainBranch(branch string) bool {
 	lower := strings.ToLower(branch)
 	return lower == "main" || lower == "master"
 }
 
-// createAndSwitchBranch creates a new git branch and switches to it.
-//
 // createAndSwitchBranch 创建新 git 分支并切过去。
 func createAndSwitchBranch(root, name string) error {
 	cmd := exec.Command("git", "checkout", "-b", name)

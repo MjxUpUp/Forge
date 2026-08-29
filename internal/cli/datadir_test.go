@@ -11,9 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// chdirAndRestore switches cwd to dir and restores it when the test ends. forge data-dir relies on os.Getwd
-// to resolve DataDir, so tests must run inside the constructed temp directory.
-//
 // chdirAndRestore 切 cwd 到 dir 并在测试结束恢复。forge data-dir 依赖 os.Getwd
 // 解析 DataDir，故测试必须切到构造的临时目录跑。
 func chdirAndRestore(t *testing.T, dir string) {
@@ -28,13 +25,6 @@ func chdirAndRestore(t *testing.T, dir string) {
 	t.Cleanup(func() { _ = os.Chdir(old) })
 }
 
-// TestDataDirCmd_NonGitFallback verifies that forge data-dir resolves non-git
-// directories to the user-level DataDir (~/.forge/projects/<p+路径hash>/), the same
-// value forgedata.DataDirFor derives. This is the contract basis for hook bash:
-// TaskVerifyHook / file-sentinel in non-git projects write runtime state
-// (checklog/throttle/quarantine) under DataDirFor — hook and Go store must land on
-// the same path, otherwise the chain breaks.
-//
 // TestDataDirCmd_NonGitFallback 验证 forge data-dir 把非 git 目录解析到用户级
 // DataDir（~/.forge/projects/<p+路径hash>/），与 forgedata.DataDirFor 推导一致。
 // 这是 hook bash 的契约基础：TaskVerifyHook / file-sentinel 在非 git 项目把 runtime
@@ -50,13 +40,6 @@ func TestDataDirCmd_NonGitFallback(t *testing.T) {
 		t.Fatalf("RunE: %v", err)
 	}
 	got := strings.TrimSpace(buf.String())
-	// forge data-dir internally uses os.Getwd() to resolve cwd. On Windows Getwd may return 8.3 short names
-	// (ADMINI~1); on macOS it returns the physical path through symlinks (/private/var), inconsistent with the
-	// logical/long-name paths that t.TempDir() gives — direct string comparison will mismatch (not a product bug,
-	// but a representation sensitivity of the test assertion). chdirAndRestore already switched cwd to dir, so we
-	// build want via os.Getwd() (the same source as the product); both sides come from the same Getwd call,
-	// eliminating path representation divergence.
-	//
 	// forge data-dir 内部用 os.Getwd() 解析 cwd。Windows 上 Getwd 可能返回 8.3 短名
 	// (ADMINI~1)、macOS 上返回穿过 symlink 的物理路径 (/private/var)，与 t.TempDir()
 	// 给的逻辑/长名路径不一致——字符串直比必不等（不是产品 bug，是测试断言的表示敏感）。
@@ -72,13 +55,6 @@ func TestDataDirCmd_NonGitFallback(t *testing.T) {
 	}
 }
 
-// TestDataDirCmd_GitProject verifies that git projects output the user-level DataDir (refactor-data-home).
-// TaskVerifyHook / file-sentinel call forge data-dir to compute checklog/throttle/quarantine paths —
-// git projects must land under ~/.forge/projects/<key>/, matching the Go store (checklog.LoadForTask etc.).
-// A non-git fallback would coincidentally overlap with <cwd>/.forge and mask divergence, so we mux-assert:
-// DataDir must diverge from <dir>/.forge, otherwise the test is meaningless (git init did not take effect
-// or Key degraded).
-//
 // TestDataDirCmd_GitProject 验证 git 项目输出用户级 DataDir（refactor-data-home）。
 // TaskVerifyHook / file-sentinel 调 forge data-dir 算 checklog/throttle/quarantine 路径——
 // git 项目必须落到 ~/.forge/projects/<key>/，与 Go store（checklog.LoadForTask 等）一致。
@@ -104,8 +80,6 @@ func TestDataDirCmd_GitProject(t *testing.T) {
 	if !strings.Contains(got, filepath.Join("projects")) {
 		t.Errorf("data-dir git = %q, want under <home>/projects/<key>/", got)
 	}
-	// Matches forgedata.DataDirFor (single source of truth — both hook and Go store derive from it).
-	//
 	// 与 forgedata.DataDirFor 一致（单一真相源——hook 和 Go store 都派生自它）。
 	want := forgedata.DataDirFor(dir)
 	if got != want {

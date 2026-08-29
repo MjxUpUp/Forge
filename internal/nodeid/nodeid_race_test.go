@@ -1,12 +1,5 @@
 package nodeid
 
-// nodeid_race_test.go — the concurrent first-run contract: N processes hitting
-// LoadOrCreate on a fresh home at the same moment (hooks fire in parallel when an
-// agent issues parallel tool calls) must converge on ONE identity. The loser of a
-// naive load-fail→generate→save race would keep stamping events with a node_id
-// that no longer exists on disk — the attribution fork LoadOrCreate exists to
-// prevent.
-//
 // nodeid_race_test.go —— 并发首跑契约：N 个进程同时在新 home 上 LoadOrCreate
 //（agent 并行发工具调用时 hook 本就并发）必须收敛到同一身份。裸的
 // load-失败→generate→save 竞态败者会继续用磁盘上已不存在的 node_id 打戳——

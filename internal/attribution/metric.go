@@ -11,11 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
-// metricInterval throttles Stop-time coverage recording: every Stop of every session
-// would flood checklog with near-identical snapshots; 10 minutes keeps the T2 bash-infer
-// coverage signal representative without bloat (same throttling family as task-verify's
-// .task-verify-throttle.last).
-//
 // metricInterval 节流 Stop 时覆盖率落章：每会话每个 Stop 都写会把 checklog 灌满近乎
 // 相同的快照；10 分钟足以让 T2 bash-infer 覆盖率信号有代表性而不膨胀（与
 // task-verify 的 .task-verify-throttle.last 同族节流）。
@@ -30,11 +25,7 @@ type MetricSnapshot struct {
 	Rate       float64
 }
 
-// RecordStopMetric reconciles the workspace and records one observation-class checklog
-// entry carrying attribution coverage (multi-task-concurrency §6: the T2 spike decides
-// bash-infer's fate by measured coverage — this is the measurement). Throttled per
-// workspace to metricInterval via a last-run marker. Silent on every failure: metrics
-// must never break the Stop path.
+// RecordStopMetric reconciles the workspace and records one observation-class checklog entry carrying attribution coverage.
 //
 // RecordStopMetric 对账 workspace 并落一条 observation 类 checklog 条目，携带归属
 // 覆盖率（multi-task-concurrency §6：T2 spike 靠实测覆盖率决定 bash-infer 去留——

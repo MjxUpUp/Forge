@@ -1,20 +1,5 @@
 package agentbridge
 
-// Cleans up forge server residue in .mcp.json of already-init'd old projects.
-//
-// History: Forge once offered an MCP server (forge mcp serve); each translator at the
-// end of Translate wrote project-level .mcp.json via write*MCP. The 2026-07-24 dogfood
-// proved MCP had no irreplaceable value (connected server source unclear + iteration
-// friction), so MCP was fully torn out — write*MCP generation logic was deleted. But
-// already-init'd old projects still have forge server entries in .mcp.json that need
-// cleanup: once the plugin is installed at user level, project-level duplication makes
-// Claude Code load the same-named forge server twice. StripForgeMCPServer is called
-// uniformly by the command layer (init/sync's dedupeProjectLevelIfPlugin + forge
-// plugin dedupe).
-//
-// Only deletes the forge entry, preserving the user's other MCP servers. Idempotent:
-// no .mcp.json / no mcpServers / no forge entry → no-op.
-//
 // 清理已 init 旧项目 .mcp.json 的 forge server 残留。
 //
 // 历史：Forge 曾提供 MCP server（forge mcp serve），各 translator 在 Translate 末尾
@@ -37,16 +22,6 @@ import (
 )
 
 // StripForgeMCPServer removes the forge server entry from the project-root .mcp.json.
-// When the forge plugin is installed at user level, the plugin's .mcp.json already
-// registers the same-named forge MCP server (all projects on the machine); keeping it
-// at project level makes Claude Code double-load the same-named forge server.
-//
-// Only deletes the forge entry, preserving the user's other MCP servers. After removal:
-//   - mcpServers empty + no other top-level fields → delete the entire .mcp.json
-//   - mcpServers empty + other top-level fields present → write back (without mcpServers)
-//   - Other servers still present → write back (without forge)
-//
-// Idempotent: no .mcp.json / no mcpServers / no forge entry → no-op (changed=false).
 //
 // StripForgeMCPServer 移除项目根 .mcp.json 的 forge server 条目。当 forge plugin 在
 // user-level 已装，plugin 的 .mcp.json 已注册同名 forge MCP server（全机器所有项目），

@@ -9,13 +9,6 @@ import (
 // doctor（跨 agent 审计）依赖 ClaudeConfigHomeDir 与检测路径 claudeConfigHome 永远
 // 指向同一位置——若有人日后让二者分叉（例如只改其一的 env 约定），该测试立即红。
 // 这是 doctor 不持有第二份 host 路径约定的守卫（见 detect.go 注释）。
-//
-// TestClaudeConfigHomeDir_WrapperContract pins the single-source contract between the
-// exported wrapper and the internal detection path: doctor (cross-agent audit) relies on
-// ClaudeConfigHomeDir and claudeConfigHome always resolving identically — if the two
-// ever diverge (e.g. someone changes only one's env convention), this goes red
-// immediately. This is the guard for doctor carrying no second copy of the host-path
-// convention (see detect.go's comment).
 func TestClaudeConfigHomeDir_WrapperContract(t *testing.T) {
 	isolateHome(t)
 	if ClaudeConfigHomeDir() != claudeConfigHome() {
@@ -30,9 +23,6 @@ func TestClaudeConfigHomeDir_WrapperContract(t *testing.T) {
 
 // TestCodeBuddyWorkBuddyHome_WrapperContract 同上，钉 WorkBuddy config home 的单源
 // 契约：WORKBUDDY_CONFIG_DIR 优先、默认 ~/.workbuddy，导出与内部实现一致。
-//
-// TestCodeBuddyWorkBuddyHome_WrapperContract same as above for the WorkBuddy config
-// home: WORKBUDDY_CONFIG_DIR wins, default ~/.workbuddy, export matches internal.
 func TestCodeBuddyWorkBuddyHome_WrapperContract(t *testing.T) {
 	home := isolateHome(t)
 	if got, err := CodeBuddyWorkBuddyHome(); err != nil || got != filepath.Join(home, ".workbuddy") {

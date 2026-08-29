@@ -19,12 +19,6 @@ import (
 
 var forgeBin string
 
-// forgeBuildDir is the TestMain-owned build dir (defer os.RemoveAll): per-version
-// binaries from buildVersionedForge (kimi_stale_test.go) MUST live here, not in any
-// test's t.TempDir() — a cached path outliving its creating test's cleanup dangles for
-// every later cached caller (hit 2026-08-15: second kimi stale test fork/exec failed on
-// the first test's already-removed temp dir).
-//
 // forgeBuildDir 是 TestMain 持有的构建目录（defer os.RemoveAll）：
 // buildVersionedForge（kimi_stale_test.go）的按版本二进制必须放这里，不能放进任何
 // 测试自己的 t.TempDir()——缓存路径比创建它的测试活得久，后续缓存调用方会拿到悬空
@@ -57,17 +51,6 @@ func TestMain(m *testing.M) {
 
 	forgeBin = binPath
 
-	// Isolate Claude plugin detection: force IsClaudePluginInstalled()=false
-	// (empty CLAUDE_CONFIG_DIR has no plugins/installed_plugins.json). The e2e
-	// runs the forge binary as a subprocess (init/sync include
-	// dedupeProjectLevelIfPlugin); without isolation, when the local machine
-	// has the forge plugin installed, dedupe would rewrite/delete
-	// project-level files (settings.local.json / .mcp.json), perturbing the
-	// behavioral consistency of e2e subprocesses. Current assertions only
-	// check settings.local.json existence (fileExists), but the isolation is
-	// kept to provide determinism for future content assertions and avoid
-	// drift between local (plugin installed) and CI (not installed).
-	//
 	// 隔离 Claude plugin 检测：强制 IsClaudePluginInstalled()=false（空 CLAUDE_CONFIG_DIR 下
 	// 无 plugins/installed_plugins.json）。e2e 跑 forge binary 子进程（init/sync 含
 	// dedupeProjectLevelIfPlugin），不隔离会让本机装了 forge plugin 时 dedupe 改写/删
@@ -76,12 +59,6 @@ func TestMain(m *testing.M) {
 	// 确定性,避免本地（装 plugin）与 CI（未装）飘忽。
 	os.Setenv("CLAUDE_CONFIG_DIR", tmpDir)
 
-	// Isolate the user HOME for subprocesses: after user-level-assets, init/sync write
-	// user-level assets (~/.codex/AGENTS.md, ~/.cursor/hooks.json, ~/.codeium/...,
-	// ~/.config/opencode/...) and DetectAgents scans user-level install dirs — without
-	// HOME isolation, e2e would write into and detect the developer's real home.
-	// Windows uses USERPROFILE, unix HOME; CODEX_HOME is codex's own override.
-	//
 	// 为子进程隔离用户 HOME：user-level-assets 之后 init/sync 会写用户级资产
 	// （~/.codex/AGENTS.md、~/.cursor/hooks.json、~/.codeium/...、
 	// ~/.config/opencode/...），DetectAgents 会扫用户级安装目录——不隔离 HOME，
@@ -213,22 +190,9 @@ func readJSON(t *testing.T, dir, name string, target any) {
 func freshProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	// Redirect the user-level data home to a per-test temp dir: forge
-	// subprocesses (init/hazard/hooks) and this test process's store reads
-	// both resolve DataDir via FORGE_DATA_HOME, so they agree and do not
-	// pollute the real ~/.forge.
-	//
 	// 把用户级 data home 重定向到 per-test temp dir：forge 子进程（init/hazard/hooks）
 	// 与本测试进程的 store 读取都按 FORGE_DATA_HOME 解析 DataDir，二者一致且不污染真实 ~/.forge。
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	// Pin the initial branch name: a bare `git init` inherits the machine's
-	// init.defaultBranch (the macOS system gitconfig at
-	// /Library/Developer/CommandLineTools sets main), but tests built on this
-	// fixture — TestMasterBranchReminder — later run `git checkout master`; on a
-	// main-default machine that checkout fails for environment reasons, not code
-	// reasons. -b needs git >= 2.28 (2020); all CI runners and dev machines are
-	// far past it.
-	//
 	// 钉死初始分支名：裸 `git init` 继承机器的 init.defaultBranch（macOS 系统
 	// gitconfig 在 /Library/Developer/CommandLineTools 里设了 main），而建在这套
 	// 夹具上的测试——TestMasterBranchReminder——之后要 `git checkout master`；在
@@ -259,11 +223,6 @@ func freshProjectOnBranch(t *testing.T, branch string) string {
 func TestFreshInstall(t *testing.T) {
 	dir := freshProject(t)
 
-	// user-level-assets contract: init writes NOTHING into the project (no
-	// .forge/, no .claude/). Hook reference copies + protocol.yml + sync stamp
-	// live in the user-level DataDir (freshProject pins FORGE_DATA_HOME);
-	// claude integration lives under CLAUDE_CONFIG_DIR (TestMain-isolated).
-	//
 	// user-level-assets 契约：init 不写项目目录（无 .forge/、无 .claude/）。
 	// hook 参考副本 + protocol.yml + sync 戳在用户级 DataDir（freshProject 已钉
 	// FORGE_DATA_HOME）；claude 集成在 CLAUDE_CONFIG_DIR 下（TestMain 已隔离）。
@@ -280,8 +239,6 @@ func TestFreshInstall(t *testing.T) {
 		}
 	}
 
-	// Zero project writes.
-	//
 	// 零项目写入。
 	for _, path := range []string{".forge", ".claude"} {
 		if fileExists(t, dir, path) {
@@ -289,9 +246,6 @@ func TestFreshInstall(t *testing.T) {
 		}
 	}
 
-	// User-level claude integration: settings.json wires the forge hooks, the
-	// quality skill is installed, CLAUDE.md carries the forge section.
-	//
 	// 用户级 claude 集成：settings.json 接线 forge hook，质量 skill 已装，
 	// CLAUDE.md 带 forge 段。
 	claudeHome := os.Getenv("CLAUDE_CONFIG_DIR")
@@ -354,14 +308,6 @@ func TestMasterBranchReminder(t *testing.T) {
 	}
 }
 
-// setupLegacyForgeProject creates a git+go project carrying a legacy (pre-
-// user-level-assets) .forge/ layout — the shared fixture of the two upgrade
-// tests (85%-isomorphic setups, extracted 2026-08-30 slim-down): hooks/tasks/
-// gates dirs, pipeline.yml, state.json with the given last_sync_version, the
-// given (user-customized) protocol.yml, and two stale hook reference copies
-// whose echo bodies are the old-content markers the upgrade assertions check
-// against.
-//
 // setupLegacyForgeProject 建 git+go 项目并携带遗留（用户级资产化之前的）.forge/
 // 结构——两个 upgrade 测试的共用夹具（85% 同构 setup，2026-08-30 瘦身抽出）：
 // hooks/tasks/gates 目录、pipeline.yml、带指定 last_sync_version 的 state.json、
@@ -394,8 +340,6 @@ func setupLegacyForgeProject(t *testing.T, lastSyncVersion, pipelineYAML, protoc
 }`, lastSyncVersion))
 	writeFile(t, dir, ".forge/protocol.yml", protocolYAML)
 
-	// Old hooks — the pre-upgrade reference copies.
-	//
 	// 旧 hook——升级前的参考副本。
 	writeFile(t, dir, ".forge/hooks/auto-compile.sh", "#!/bin/bash\necho "+autoHookEcho+"\n")
 	writeFile(t, dir, ".forge/hooks/assertion-check.sh", "#!/bin/bash\necho "+assertHookEcho+"\n")
@@ -453,8 +397,6 @@ scoring:
 		t.Fatalf("forge status output should contain 'Project:', got: %s", out)
 	}
 
-	// Verify: the full current hook set now exists in the user-level DataDir.
-	//
 	// Verify：当前全量 hook 在用户级 DataDir 就位。
 	dataDir := forgedata.DataDirFor(dir)
 	for _, hook := range []string{
@@ -473,9 +415,6 @@ scoring:
 		t.Error("DataDir auto-compile.sh should have been overwritten, still has old content")
 	}
 
-	// Verify: legacy project-level forge writes are stripped (zero-project-write
-	// convergence) — hooks copies, dead pipeline files, sync stamp.
-	//
 	// Verify：遗留项目级 forge 写入被剥除（收敛零项目写入）——hooks 副本、
 	// 死管道文件、sync 戳。
 	for _, path := range []string{
@@ -489,18 +428,12 @@ scoring:
 		}
 	}
 
-	// Verify: quality SKILL.md regenerated at user level (CLAUDE_CONFIG_DIR is
-	// TestMain-isolated).
-	//
 	// Verify：质量 SKILL.md 在用户级重生成（CLAUDE_CONFIG_DIR 已被 TestMain 隔离）。
 	skillContent := readFile(t, os.Getenv("CLAUDE_CONFIG_DIR"), "skills/forge-quality/SKILL.md")
 	if skillContent == "" {
 		t.Error("expected user-level forge-quality SKILL.md to be regenerated")
 	}
 
-	// Verify: protocol.yml NOT overwritten — still has user's custom standard
-	// (customized → kept as the team-shared override layer at project level).
-	//
 	// Verify：protocol.yml 未被覆盖——仍是用户自定义标准（改过 → 作为团队共享
 	// 覆盖层留在项目级）。
 	protoContent := readFile(t, dir, ".forge/protocol.yml")
@@ -511,8 +444,6 @@ scoring:
 		t.Error("protocol.yml should still contain user's custom session rule after upgrade")
 	}
 
-	// Verify: .sync-version stamp written with current binary version (in DataDir).
-	//
 	// Verify：.sync-version 戳写入当前 binary version（在 DataDir）。
 	stamp := readFile(t, dataDir, ".sync-version")
 	if strings.TrimSpace(stamp) == "" {
@@ -584,9 +515,6 @@ scoring:
 		t.Error("protocol.yml should still contain 'review-before-merge' session rule")
 	}
 
-	// Verify: hook reference copies were updated in the user-level DataDir (not
-	// old content), and the legacy project-level copies are stripped.
-	//
 	// Verify：hook 参考副本在用户级 DataDir 更新（非旧内容），遗留项目级副本被剥除。
 	dataDir := forgedata.DataDirFor(dir)
 	for _, hook := range []string{
@@ -606,9 +534,6 @@ scoring:
 		t.Error("legacy .forge/hooks should be stripped after auto-sync")
 	}
 
-	// Verify: user-level claude settings.json wires the forge hooks (project-level
-	// settings.local.json is no longer written).
-	//
 	// Verify：用户级 claude settings.json 接线 forge hook（项目级
 	// settings.local.json 不再写入）。
 	settings := readFile(t, os.Getenv("CLAUDE_CONFIG_DIR"), "settings.json")
@@ -616,9 +541,6 @@ scoring:
 		t.Error("user-level settings.json should wire forge hooks after auto-sync")
 	}
 
-	// Verify: quality SKILL.md updated at user level (the forge-pipeline skill was
-	// retired together with the project-level pipeline).
-	//
 	// Verify：质量 SKILL.md 在用户级更新（forge-pipeline skill 已随项目级管道删除）。
 	if !fileExists(t, os.Getenv("CLAUDE_CONFIG_DIR"), "skills/forge-quality/SKILL.md") {
 		t.Error("user-level forge-quality SKILL.md should exist after auto-sync")
@@ -637,10 +559,6 @@ func passAllGates(t *testing.T, dir, ref string) {
 	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
 	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
 
-	// Make a real file change and commit it — task-implement's code-change
-	// check compares content (git diff HeadCommit..HEAD), so an empty commit
-	// does not satisfy it.
-	//
 	// 制造一次真实的文件变更并 commit——task-implement 的代码变更检查比对
 	// 内容（git diff HeadCommit..HEAD），空 commit 无法满足。
 	scratch := filepath.Join(dir, "e2e-scratch.txt")
@@ -656,11 +574,6 @@ func passAllGates(t *testing.T, dir, ref string) {
 	git(t, dir, "add", "e2e-scratch.txt")
 	git(t, dir, "commit", "-m", "e2e: code change for task-implement")
 
-	// Pass gates sequentially: task-implement, task-verify, then
-	// task-complete. task-complete has a ReviewPassed hard prerequisite —
-	// first call `forge review pass` to set it (task mode writes
-	// TaskState.ReviewPassed), otherwise task-complete is blocked.
-	//
 	// Pass gates in order: task-implement, task-verify, then task-complete.
 	// task-complete 有 ReviewPassed 硬前置——先 forge review pass 标记（task 模式
 	// 写 TaskState.ReviewPassed），否则 task-complete 被拦。

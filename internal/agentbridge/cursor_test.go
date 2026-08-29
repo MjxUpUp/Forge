@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// cursorHooksPathUnder joins the user-level hooks.json path under an isolated home.
-//
 // cursorHooksPathUnder 拼出隔离 home 下的 user-level hooks.json 路径。
 func cursorHooksPathUnder(home string) string {
 	return filepath.Join(home, ".cursor", "hooks.json")
@@ -131,10 +129,7 @@ func TestStripCursorHooksUserLevel(t *testing.T) {
 	}
 }
 
-// TestCursorTranslator_MergePreservesUnknownFields pins the raw-merge fix: user
-// hook entries carrying fields the typed cursorHookEntry struct does not declare
-// (e.g. powershell) must survive Translate with values intact — a typed
-// round-trip silently dropped them.
+// TestCursorTranslator_MergePreservesUnknownFields pins the raw-merge fix.
 //
 // TestCursorTranslator_MergePreservesUnknownFields 钉死 raw-merge 修复：携带
 // 类型化 cursorHookEntry 未声明字段（如 powershell）的用户 hook 条目必须在

@@ -11,12 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// duplicateScoreWarnings returns the warning strings for completed tasks on the same
-// branch that share a HeadCommit with state — i.e. re-scoring over the same commit
-// range. Cross-branch matches are not counted: independent feature branches pulled
-// from the same master HEAD each record the same HeadCommit at task start, but their
-// diffs live on separate branches and do not overlap, so they are not duplicates.
-//
 // duplicateScoreWarnings 返同分支已完成 task 中与 state 共享 HeadCommit 的告警串——
 // 即在相同 commit 范围上的重新评分。跨分支匹配不计：从同一 master HEAD 拉出的
 // 独立 feature 分支都在 task start 时记录同样的 HeadCommit，但它们的 diff 在独立分支
@@ -55,10 +49,6 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load task state: %w", err)
 		}
-		// Fallback: legacy states completed by the OLD gate behavior (the last gate used
-		// to MarkComplete before the 2026-08-18 deadlock fix, deactivating the task for
-		// ActiveTaskState). Load via branch context so those tasks can still finalize.
-		//
 		// 兜底：旧 gate 行为（2026-08-18 死锁修复前，最后一道 gate 即 MarkComplete，任务对
 		// ActiveTaskState 失活）留下的存量状态。经 branch context load，让它们仍能 finalize。
 		if state == nil {
@@ -74,16 +64,6 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 	return runTaskCompleteAt(root, state)
 }
 
-// runTaskCompleteAt is the root-injected core of runTaskComplete (split out for
-// unit-testability, same pattern as runTaskVerifyAcceptanceAt). Everything after task
-// resolution lives here. Ordering contract (dogfood 2026-08-18 deadlock fix):
-// double-complete guard → generic path → IsComplete → acceptance pre-flight →
-// MarkComplete → scoring → feedback → clear ref. MarkComplete happens ONLY after the
-// pre-flight passes — a failing pre-flight must leave the task active so
-// verify-acceptance (active-only) can refresh the stale snapshots and complete can be
-// retried. (Before the fix, the LAST GATE marked completion, so a post-gate commit
-// moved HEAD → pre-flight failed forever with no revival path.)
-//
 // runTaskCompleteAt 是 runTaskComplete 的 root 注入核心（独立可测，与
 // runTaskVerifyAcceptanceAt 同款范式）。task 解析之后的一切都在这里。顺序契约
 // （dogfood 2026-08-18 死锁修复）：重复完成守卫 → generic 路径 → IsComplete →
@@ -93,10 +73,6 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 // 最后一道 gate 就标记完成，gate 后的 commit 一移动 HEAD → pre-flight 永久失败且
 // 无复活路径。）
 func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
-	// Idempotent double-complete guard: a task already finalized (completed + scored,
-	// or a completed generic task which never scores) must not re-run the completion
-	// side effects (re-scoring, duplicate-HEAD warnings, a second Act conclusion).
-	//
 	// 幂等重复完成守卫：已 finalize 的任务（完成且已评分；或从不评分的已完成 generic
 	// 任务）不得重跑完成副作用（重复评分、重复 HEAD 告警、第二条 Act 结论）。
 	if state.CompletedAt != nil && (state.Score != nil || state.IsGeneric()) {
@@ -104,12 +80,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return nil
 	}
 
-	// generic kind (research/design/pure-handoff tasks): skip the gate IsComplete check
-	// and scoring. The value of these tasks is in the persisted plan/decisions/blockers
-	// (continuity truth source), not in code-quality gates. Auto-mark the 3 gates as
-	// passed (keeping History complete for list/dashboard display) + MarkComplete + clear
-	// active-task-ref; no scoring and no review creation.
-	//
 	// generic kind（调研/设计/纯接续任务）：跳过门禁 IsComplete 检查和评分。这类任务的价值在
 	// 持久化的 plan/决策/阻塞（接续真相源），不在代码质量门禁。自动把 3 道门禁标 passed（保持
 	// History 完整供 list/dashboard 显示）+ MarkComplete + 清 active-task-ref，不评分不创建 review。
@@ -125,11 +95,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return fmt.Errorf("task not complete. Missing gates: %s", missingGates(state))
 	}
 
-	// Integrity gate (state-integrity-signing): a signature that failed verification
-	// means the state file was modified outside forge — hand-forged ReviewPassed /
-	// DocReview on such a state must not complete (2026-08-29 functional probe closed
-	// the write side; this is the consumption side).
-	//
 	// 完整性门（state-integrity-signing）：验签失败 = 状态文件在 forge 之外被改
 	// 过——其上手改的 ReviewPassed/DocReview 不得完成（2026-08-29 功能探针封的
 	// 是写入侧，这里是消费侧）。
@@ -137,12 +102,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return fmt.Errorf(`task complete 拒绝：任务状态文件完整性校验失败（在 forge 之外被修改——手改的 review/doc 证据不被采信）。恢复路径：forge task abort 后重新走门禁`)
 	}
 
-	// acceptance pre-flight (proof-of-work consumer): when the task declared acceptance	// criteria, before complete, deterministically verify each is fresh
-	// (AcceptedHeadCommit==HEAD) and Passed. Gives AcceptedHeadCommit a consumer — after
-	// the MCP teardown this field was write-only and orphaned; this check turns it from
-	// a declaration into an affordance gate. Corresponds to Emergence World Proof of
-	// Work: a claim of 'acceptance passed' must have a verifiable consumer.
-	//
 	// acceptance pre-flight（proof-of-work consumer）：task 声明了验收标准时，complete 前
 	// deterministic 校验每条都 fresh（AcceptedHeadCommit==HEAD）且 Passed。给 AcceptedHeadCommit
 	// 补消费方——MCP 拆除后该字段只写不读成孤儿，本检查把它从声明层变 affordance gate。
@@ -157,12 +116,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// ≥75 分）+ 零未决 Critical。无文档产物放行；逃生舱与 acceptance 对称。
 	// 设计：docs/design/output-readability-gates.md（飞书《AI 产物可读性差调研
 	// 设计》落地方案二）。
-	//
-	// doc pre-flight (the process node of the output→re-check loop): when the
-	// task changed markdown deliverables, before complete every changed doc
-	// passes L1 deterministic lint + L2 re-check evidence (DocReview fresh/
-	// Passed/score ≥75) + zero unresolved Criticals. No doc deliverables →
-	// pass; escape hatch symmetric to acceptance.
 	if ok, reasons := taskpipeline.CheckDocGate(root, state); !ok {
 		return fmt.Errorf(`doc gate 未通过（文档产物未过 L1 lint / L2 回检）: %s；流程：forge docs lint <paths> 修 L1 → 按 doc-review skill 评审（产出者不能自检）→ forge task doc-review 记录证据。逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --doc-gate disable 或 FORGE_DOC_GATE=disable`,
 			strings.Join(reasons, `; `))
@@ -174,23 +127,10 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// Score==nil 中间态重试时，再评分是预期恢复，但 CompletedAt 不得被重置（污染
 	// duration 度量）、Act 结论不得二次追加（act.Append 无 TaskRef 去重）。
 	// 先落盘再评分，评分失败也不丢完成状态。
-	//
-	// MarkComplete exactly here (after the pre-flight): completion belongs to `forge
-	// task complete`'s whole action, not to any single gate (the other face of the
-	// dogfood 2026-08-18 deadlock fix — see the matching comment in runTaskGate).
-	// The firstComplete gate (review m1): mark ONLY on the first completion — retrying
-	// the CompletedAt!=nil/Score==nil intermediate state a scoring failure leaves
-	// behind SHOULD re-score (expected recovery), but must not reset CompletedAt
-	// (pollutes duration metrics) nor append a second Act conclusion (act.Append has
-	// no TaskRef dedup). Persist before scoring so a scoring failure cannot lose the
-	// completed state.
 	firstComplete := state.CompletedAt == nil
 	if firstComplete {
 		state.MarkComplete()
 	}
-	// Locked completion write — merge CompletedAt into the in-lock state (§13: a bare
-	// save over this pre-flight-era snapshot rolls back concurrent writers).
-	//
 	// 锁内完成写入——把 CompletedAt 合并进锁内状态（§13：对 pre-flight 前的快照
 	// 裸保存会回滚并发写者）。
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
@@ -202,8 +142,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 
-	// Auto-score the task.
-	//
 	// 自动评分 task
 	if err := scoreTask(root, state); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: scoring failed: %v\n", err)
@@ -212,12 +150,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	if state.Score != nil {
 		fmt.Printf("Task %s completed! Score: %.0f (%s)\n", state.TaskRef, state.Score.Overall, state.Score.Grade)
 
-		// Duplicate-HEAD detection: warn when another completed task on the same branch
-		// shares a HeadCommit (re-scoring over the same commit range) with this one.
-		// Same-branch only to avoid false positives — every feature branch pulled from the
-		// same master HEAD records the same HeadCommit at task start, but their diffs live
-		// on separate branches and do not overlap, so cross-branch matches are not duplicates.
-		//
 		// 重复 HEAD 检测：同一分支上另一个已完成 task 与之共享 HeadCommit（在相同 commit
 		// 范围上重评分）时告警。仅限同分支避免假阳性——每个从同一 master HEAD 拉出的
 		// feature 分支都在 task start 时记同样的 HeadCommit，但它们的 diff 在独立分支上不重叠，
@@ -231,8 +163,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			}
 		}
 
-		// Missing-hook check: warn when a critical quality hook never ran during this task.
-		//
 		// 缺失 hook 检查：关键质量 hook 从未跑过时告警。
 		missingHooks := checkMissingHooks(root, state)
 		hasMissingHooks := len(missingHooks) > 0
@@ -250,16 +180,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
 
-	// Act feedback arm (PDCA Act): build the evidence-driven conclusion, persist it, and
-	// feed it to session-retrospective. Built even when scoring fails (evidence strength
-	// does not depend on the score); on Nudge, prints a one-line retrospective directive
-	// (stderr, so --json stdout stays clean). Only on firstComplete (review m1) — a
-	// scoring-failure retry must not append a second conclusion for the same task.
-	// When no Nudge fires (strong evidence + high score), sedimentReminder still prints
-	// one soft line: clean tasks also produce reusable lessons (the 2026-08-18
-	// case-split/CI-sweep sessions scored A yet yielded several), and before this the
-	// sediment evaluation depended entirely on the user remembering to ask.
-	//
 	// Act 反馈臂（PDCA Act）：构建证据驱动结论落盘，喂给 session-retrospective。
 	// 即使评分失败也建（证据强度不依赖分数）；Nudge 时打印一行回顾指令（stderr，
 	// stdout --json 保持干净）。仅 firstComplete（review m1）——评分失败重试不得为
@@ -274,20 +194,10 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		}
 	}
 
-	// Clear the active task ref — task is complete (session-scoped).
-	//
 	// 清 active task ref——task 完成（session-scoped）
 	if err := taskpipeline.ClearActiveTaskRef(root, taskpipeline.CurrentSessionID()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 	}
-	// dogfood 2.3: post-complete grace sentinel so file-sentinel does not mistake the
-	// natural follow-up git commit for 'no active task + source write' and quarantine it.
-	// The prior flow forced agents to open a chore/*-commit task purely to work around
-	// this pit (DevWorkbench: 3 such tasks, ~600 invocations). The grace window is
-	// bounded (default 5min, see completeGraceWindow); outside the window, quarantine
-	// policy resumes — a 'complete' session still writing source 30+ minutes later is no
-	// longer actually complete and should start a new task.
-	//
 	// dogfood 2.3：post-complete grace sentinel，让 file-sentinel 不把自然的后续
 	// git commit 误判为「无 active task + 源码写入」而 quarantine。此前流程迫使 agent
 	// 开个 chore/*-commit task 纯粹为绕这个坑（DevWorkbench：3 个这种 task，~600 次调用）。
@@ -300,18 +210,12 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	return nil
 }
 
-// checkMissingHooks returns the names of critical quality hooks that never ran during
-// this task (based on checklog entries and gate history).
-//
 // checkMissingHooks 返本任务期间从未跑过的关键质量 hook 名（基于 checklog 条目与 gate 历史）。
 func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 	var missing []string
 
 	latestChecks, err := checklog.LatestByCheckForSessionSince(root, state.SessionID, state.StartedAt)
 	if err != nil || latestChecks == nil {
-		// Cannot read checklog — assume every hook is missing unless gate history shows
-		// it ran.
-		//
 		// 读不到 checklog——除非 gate 历史显示跑过，否则假设所有 hook 都缺失。
 		compileRan := false
 		for _, r := range state.History {
@@ -331,8 +235,6 @@ func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 		missing = append(missing, "assertion-check")
 	}
 	if _, ok := latestChecks[checklog.CheckAutoCompile]; !ok {
-		// Check whether compile ran via the task-implement gate.
-		//
 		// 检查编译是否经 task-implement gate 跑过。
 		compileRan := false
 		for _, r := range state.History {
@@ -364,11 +266,6 @@ func missingGates(state *taskpipeline.TaskState) string {
 	return strings.Join(missing, ", ")
 }
 
-// scoreTask evaluates a completed task and persists its score.
-// scoreTask thin-wrapper: scoring is sunk into taskpipeline.ScoreTask (single source
-// of truth). cli runTaskComplete/runTaskScore and tests reuse it transparently —
-// MCP forge_task_complete goes through the same taskpipeline.ScoreTask.
-//
 // scoreTask 评估已完成的 task 并保存评分。
 // scoreTask thin-wrapper：评分下沉到 taskpipeline.ScoreTask（单一真相源）。cli runTaskComplete
 // /runTaskScore 与测试透明复用——MCP forge_task_complete 走同一 taskpipeline.ScoreTask。
@@ -376,12 +273,6 @@ func scoreTask(root string, state *taskpipeline.TaskState) error {
 	return taskpipeline.ScoreTask(root, state)
 }
 
-// appendConclusion thin-wrapper: Act conclusion build + persist is sunk into
-// taskpipeline.AppendConclusion (single source of truth). cli and MCP
-// forge_task_complete share the same Act feedback arm. The stderr warning is retained
-// by this wrapper (CLI interaction semantics); the taskpipeline layer returns only
-// structured results.
-//
 // appendConclusion thin-wrapper：Act 结论构建+落盘下沉到 taskpipeline.AppendConclusion
 // （单一真相源）。cli 与 MCP forge_task_complete 共用同一 Act 反馈臂。stderr 警告由本 wrapper
 // 保留（CLI 交互语义），taskpipeline 层只返结构化结果。
@@ -394,15 +285,6 @@ func appendConclusion(root string, state *taskpipeline.TaskState) (string, bool)
 	return directive, true
 }
 
-// sedimentReminder decides the single line printed at task complete: the Act
-// directive when a RetrospectiveNudge fired (it already ends with the sediment
-// action entry), otherwise one soft reminder that clean completions can still
-// yield reusable lessons. Deterministic and host-independent — unlike a
-// model-side trigger, it cannot be lost to a dead Stop channel or a forgotten
-// prompt. The judgement of WHAT deserves sediment is delegated to
-// session-retrospective's own no-sediment list (common knowledge / one-off
-// details / anything the code already records), so the line stays noise-bounded.
-//
 // sedimentReminder 决定 task complete 打印的一行：有 RetrospectiveNudge 时原样
 // 返回 Act directive（其结尾已带沉淀行动入口）；否则返回一句轻提醒——干净的
 // 完成同样可能产出可复用教训。确定性、宿主无关——不同于模型侧 trigger，不会

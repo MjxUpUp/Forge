@@ -6,11 +6,8 @@ import (
 )
 
 // TestAutoCompileHook_InjectsCompileFixLoop pins dogfood 4.2: when the
-// auto-compile hook touches source code, its advisory does more than remind
-// the agent to self-check compilation — it names the compile-fix-loop skill.
-// When compilation errors occur, rather than relying on the agent to
-// voluntarily invoke the skill, the hook stdout (AdditionalContext) directly
-// guides loading it. This mirrors the code-review-gate path.
+// auto-compile hook touches source code, its advisory does more than remind the
+// agent to self-check compilation.
 //
 // TestAutoCompileHook_InjectsCompileFixLoop 钉死 dogfood 4.2：auto-compile hook 触及源码时
 // 的 advisory 不只提醒自检编译，还点名 compile-fix-loop skill——编译报错时 agent 不靠自觉

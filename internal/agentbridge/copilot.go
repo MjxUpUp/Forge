@@ -1,16 +1,6 @@
 package agentbridge
 
-// CopilotTranslator is a no-op — but no longer because copilot lacks hooks. Copilot
-// DOES support lifecycle hooks (docs.github.com/en/copilot/reference/hooks-reference),
-// and since Wave 2c the plugin pack ships the gate wiring as plugins/forge/hooks.json
-// at the plugin root (copilot's documented plugin-hook location; see copilot_hooks.go)
-// — the marketplace install wires copilot directly, with no manual init step. What
-// copilot still has no analogue of is a USER-LEVEL config file forge could merge hooks
-// into (its hooks ride plugin manifests / editor settings, not a plain on-disk file),
-// so this translator has nothing to write: `forge init --agents copilot` is a no-op by
-// design and the plugin is the only wiring path. Legacy project files
-// (.github/instructions/) are stripped by stripProjectLevelForgeAssets. AgentCopilot
-// remains a valid --agents value (parse compatibility) but translates to nothing.
+// CopilotTranslator is a no-op — but no longer because copilot lacks hooks.
 //
 // CopilotTranslator 是 no-op——但不再是因为 copilot 没有 hooks。Copilot 确实支持
 // lifecycle hooks（docs.github.com/en/copilot/reference/hooks-reference），且自

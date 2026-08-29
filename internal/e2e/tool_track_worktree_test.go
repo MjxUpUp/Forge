@@ -10,20 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestToolTrack_WorktreeActivityReachesGate is the end-to-end regression pin for
-// finding fdkrxk4e9u3gg: a task worked entirely inside a linked git worktree
-// (whose .git is a FILE pointing at the main repo's common dir) had its
-// work-activity gate report "0 tool uses" even though the agent did
-// Read/Edit/Bash work there — the activity records must flow from the worktree
-// hook invocations into the SAME user-level DataDir the gate reads (one repo
-// one key), and the gate run from the worktree must see them.
-//
-// The test drives the real dispatch: forge task start in the worktree, real
-// `forge hook` PostToolUse calls with the worktree as cwd, then the task-verify
-// gate from the worktree — asserting the gate does NOT report the
-// zero-activity block, and that the toollog landed in the main checkout's
-// DataDir.
-//
 // TestToolTrack_WorktreeActivityReachesGate 是 finding fdkrxk4e9u3gg 的端到端
 // 回归钉：完全在 linked git worktree（其 .git 是指向主 repo common dir 的
 // 文件）里推进的任务，agent 明明做了 Read/Edit/Bash，work-activity 门禁却报
@@ -37,10 +23,6 @@ func TestToolTrack_WorktreeActivityReachesGate(t *testing.T) {
 	dir := freshProjectOnBranch(t, "feature/wt-tooltrack")
 	const sid = "sess-wt-tooltrack"
 
-	// Linked worktree of the temp project. `git worktree add` requires a
-	// committed HEAD (freshProjectOnBranch already committed). The worktree
-	// lives OUTSIDE the main checkout, like the incident's sibling-dir layout.
-	//
 	// 临时项目的 linked worktree。`git worktree add` 需要已有 commit
 	// （freshProjectOnBranch 已提交）。worktree 落在主 checkout 之外，
 	// 复现 incident 的兄弟目录布局。
@@ -53,9 +35,6 @@ func TestToolTrack_WorktreeActivityReachesGate(t *testing.T) {
 			"PATH="+filepath.Dir(forgeBin)+string(os.PathListSeparator)+os.Getenv("PATH"),
 		)
 	}
-	// runWT runs forge from INSIDE the worktree (the incident posture: every
-	// forge invocation happens with the worktree as cwd).
-	//
 	// runWT 从 worktree 内部跑 forge（incident 姿态：所有 forge 调用都以
 	// worktree 为 cwd）。
 	runWT := func(args ...string) {
@@ -70,9 +49,6 @@ func TestToolTrack_WorktreeActivityReachesGate(t *testing.T) {
 
 	runWT("task", "start", "--ref", "WT-TT", "--title", "worktree tool-track test")
 
-	// Work happens in the worktree: a new source file plus the PostToolUse
-	// hooks a host would fire for the Read/Edit pair.
-	//
 	// 工作在 worktree 里发生：新建源码文件 + 宿主会为 Read/Edit 对触发的
 	// PostToolUse hook。
 	writeFile(t, wt, "internal/widget/click.go", "package widget\n\nfunc Click() {}\n")
@@ -85,9 +61,6 @@ func TestToolTrack_WorktreeActivityReachesGate(t *testing.T) {
 		"content":   "package widget\n\nfunc Click() {}\n",
 	}))
 
-	// The records must land in the SHARED DataDir (main checkout's), not a
-	// worktree-specific one — this is the attribution the gate relies on.
-	//
 	// 记录必须落在共享 DataDir（主 checkout 的），不是 worktree 专属的——
 	// 这正是门禁依赖的归因。
 	toollog, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(dir), "toollog.jsonl"))
@@ -98,11 +71,6 @@ func TestToolTrack_WorktreeActivityReachesGate(t *testing.T) {
 		t.Errorf("toollog in shared DataDir has no WT-TT entries — worktree activity misattributed:\n%s", toollog)
 	}
 
-	// The gate run FROM THE WORKTREE must see the activity: pass the
-	// task-implement prerequisite, then task-verify must not complain about
-	// zero work activity (it may emit other advisories; only the
-	// zero-activity false positive is pinned here).
-	//
 	// 从 worktree 里跑的门禁必须看得到活动：先过 task-implement 前置，
 	// 再 task-verify 不得报零活动（可能有别的 advisory；此处只钉零活动
 	// 误报）。

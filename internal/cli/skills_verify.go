@@ -1,11 +1,5 @@
 package cli
 
-// skills_verify.go — verify subcommand: backfills a verification onto a decision's prediction.
-// Prediction→verification closure (AHE decision observability, pillar 3): the prediction was
-// declared at edit time (--prediction of forge skills decide); this command records what the
-// next round's real outcomes showed (hit / miss / inconclusive). A refuted prediction is
-// visibly refuted — the next-round agent sees which directions were falsified.
-//
 // skills_verify.go — verify 子命令：把验证回填到决策的 prediction 上。
 // prediction→验证闭环（AHE 决策可观测，支柱 3）：预测在修改时刻声明（forge skills
 // decide 的 --prediction）；本命令记录下一轮真实结果如何（命中/未命中/不可判）。
@@ -56,16 +50,10 @@ func runSkillsVerify(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	// explicitSource = the user pointed at a source via --canonical /
-	// $FORGE_SKILLS_CANONICAL; such intent always wins over repo auto-detection.
-	//
 	// explicitSource = 用户经 --canonical / $FORGE_SKILLS_CANONICAL 显式指定了源；
 	// 该意图永远优先于仓库自动探测。
 	explicitSource := isExternal
 
-	// History mode: list decisions with their prediction/verification state (which
-	// predictions are still open — the falsifiability ledger). No --decision needed.
-	//
 	// 历史模式：列出各决策的预测/验证状态（哪些预测还悬着——可证伪性台账）。无需 --decision。
 	if skVerHistory || skVerHistoryJSON {
 		return runSkillsVerifyHistory(canonical)
@@ -77,12 +65,6 @@ func runSkillsVerify(cmd *cobra.Command, args []string) error {
 	if err := requireValidSkillName(skVerSkill); err != nil {
 		return err
 	}
-	// In-repo write redirect (review finding): VerifyDecision rewrites decisions.md —
-	// resolving to the embed cache would ✅ succeed and be silently destroyed by the
-	// next version rebuild (the same hazard class as decide's 2026-08-24 incident;
-	// since the 2026-08 migration the 3 forge-native skills live in skills-forge/,
-	// unreachable via the neutral-tree fallback decide uses). Explicit sources win.
-	//
 	// 仓库内写入重定向（review 发现）：VerifyDecision 会重写 decisions.md——解析到
 	// embed 缓存会 ✅ 成功却被下一次版本重建静默销毁（与 decide 的 2026-08-24 事故
 	// 同一危害类；2026-08 迁移后 3 个 forge 原生 skill 住 skills-forge/，decide 用的
@@ -115,9 +97,6 @@ func runSkillsVerify(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// verifyHistoryRow is one row of the falsifiability ledger: a decision with a prediction,
-// its verification state, and the prediction/verification text (truncated for text mode).
-//
 // verifyHistoryRow 是可证伪性台账的一行：带预测的决策、其验证状态、预测/验证文本
 // （文本模式截断展示）。
 type verifyHistoryRow struct {
@@ -130,11 +109,6 @@ type verifyHistoryRow struct {
 }
 
 func runSkillsVerifyHistory(canonical string) error {
-	// --skill filter: without it the ledger mixes EVERY skill's decisions into one
-	// list (code-review-gate's 16 showed up alongside 297 from the whole tree) and
-	// the JSON rows carry no skill field to tell them apart. Filtering at load time
-	// keeps the flat SkillDecision list truthful.
-	//
 	// --skill 过滤：不过滤时台账把【全部】skill 的决策混列（code-review-gate 的
 	// 16 条混在全树 297 条里），且 JSON 行没有 skill 字段可区分。在加载层过滤，
 	// 平铺的 SkillDecision 列表保持真实。
@@ -194,8 +168,6 @@ func runSkillsVerifyHistory(canonical string) error {
 	return nil
 }
 
-// firstLine returns the first line of s, truncated to max runes (for compact ledger display).
-//
 // firstLine 返回 s 的首行并按 max rune 截断（紧凑台账展示）。
 func firstLine(s string, max int) string {
 	for i, r := range s {
@@ -211,10 +183,6 @@ func firstLine(s string, max int) string {
 	return string(runes[:max]) + "…"
 }
 
-// collectAllDecisions walks canonical skills' decisions.md files. Read errors on individual
-// skills are skipped (fail-open for listing — a corrupt file should not hide the rest of the
-// ledger), a canonical-level error propagates.
-//
 // collectAllDecisions 遍历 canonical 下各 skill 的 decisions.md。单 skill 读取错误跳过
 // （列表 fail-open——一个坏文件不该藏起其余台账），canonical 级错误上抛。
 func collectAllDecisions(canonical string) ([]skillsdecisions.SkillDecision, error) {

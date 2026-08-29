@@ -8,10 +8,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
 )
 
-// TestSkillsRevert_AutoAppendsRejectDecision: after a successful scoped revert, a reject decision is auto-appended
-// (spec-as-executable, replacing the advisory print relying on agent self-discipline — dogfood iron rule: pure self-discipline will miss).
-// Under external canonical (--canonical points to the temp git repo skills/), once the revert decision's associated commit
-// succeeds, decisions.md gets one more outcome=reject decision — the next agent knows this optimization was rejected, avoiding repeated exploration.
+// TestSkillsRevert_AutoAppendsRejectDecision: after a successful scoped revert, a reject decision is auto-appended (spec-as-executable, replacing the advisory print relying on agent self-discipline — dogfood iron rule: pure self-discipline will miss).
 //
 // TestSkillsRevert_AutoAppendsRejectDecision：成功 scoped revert 后自动追加 reject 决策
 // （spec-as-executable，取代靠 agent 自觉的 advisory print——dogfood 铁律：纯靠自觉必漏）。
@@ -23,8 +20,6 @@ func TestSkillsRevert_AutoAppendsRejectDecision(t *testing.T) {
 	git(t, repo, "config", "user.email", "test@example.com")
 	git(t, repo, "config", "user.name", "Test")
 
-	// skills/mySk/SKILL.md + commit C1 (decision CommitHash anchor)
-	//
 	// skills/mySk/SKILL.md + commit C1（决策 CommitHash 锚点）
 	writeFile(t, repo, "skills/mySk/SKILL.md", "# mySk\n")
 	git(t, repo, "add", ".")
@@ -32,14 +27,10 @@ func TestSkillsRevert_AutoAppendsRejectDecision(t *testing.T) {
 	c1short := strings.TrimSpace(git(t, repo, "rev-parse", "--short", "HEAD"))
 
 	canonical := filepath.Join(repo, "skills")
-	// forge decide writes an accept decision (commit=C1) to decisions.md
-	//
 	// forge decide 写一条 accept 决策（commit=C1）到 decisions.md
 	forge(t, repo, "skills", "decide", "--canonical", canonical, "--skill", "mySk",
 		"--outcome", "accept", "--diagnosis", "init", "--revision", "v1",
 		"--evidence", "probe ok", "--commit", c1short)
-	// decisions.md written by decide is a working-tree change; commit it so the subsequent revert working tree is clean (git revert requires this).
-	//
 	// decide 写的 decisions.md 是工作区变更，commit 它让后续 revert 工作区干净（git revert 要求）
 	git(t, repo, "add", "skills/mySk/decisions.md")
 	git(t, repo, "commit", "-m", "record accept decision")
@@ -50,14 +41,10 @@ func TestSkillsRevert_AutoAppendsRejectDecision(t *testing.T) {
 	}
 	decID := decs[0].ID
 
-	// scoped revert (revert C1) → success + auto reject decision
-	//
 	// scoped revert（revert C1）→ 成功 + auto reject 决策
 	forge(t, repo, "skills", "revert", "--canonical", canonical,
 		"--skill", "mySk", "--decision", decID)
 
-	// assert decisions.md has one more reject (appended to the end)
-	//
 	// 断言 decisions.md 多一条 reject（append 到末尾）
 	decsAfter, err := skillsdecisions.LoadDecisions(canonical, "mySk")
 	if err != nil {
@@ -78,19 +65,12 @@ func TestSkillsRevert_AutoAppendsRejectDecision(t *testing.T) {
 	}
 }
 
-// TestSkillsRevert_EmbedCache_ActionableError: embed cache (isExternal=false, ~/.forge/skills-cache/
-// embedded) is a read-only snapshot, not in a git repo — scoped revert must give an actionable error
-// (containing --canonical guiding to the forge source repo), rather than a generic not-a-git-repository. embedded skill reverts should operate in the source repo.
+// TestSkillsRevert_EmbedCache_ActionableError: embed cache (isExternal=false, ~/.forge/skills-cache/ embedded) is a read-only snapshot, not in a git repo — scoped revert must give an actionable error (containing --canonical guiding to the forge source repo), rather than a generic not-a-git-repository. embedded skill reverts should operate in the source repo.
 //
 // TestSkillsRevert_EmbedCache_ActionableError：embed 缓存（isExternal=false，~/.forge/skills-cache/
 // embedded）是只读快照、不在 git repo——scoped revert 须给可行动错误（含 --canonical 引导到 forge
 // 源码 repo），而非通用 not-a-git-repository。embedded skill 的 revert 应在源码 repo 操作。
 func TestSkillsRevert_EmbedCache_ActionableError(t *testing.T) {
-	// home isolation (C1): resolveCanonical goes through os.UserHomeDir() (not FORGE_DATA_HOME set by freshProject).
-	// forge init's EnsureEmbeddedCache extracts the embed cache to ~/.forge/skills-cache/embedded (RemoveAll+rebuild on
-	// version mismatch); the fixture below seeds decisions.md into this cache — must redirect USERPROFILE (Windows)/HOME
-	// (Unix) to temp, otherwise the real ~/.forge is polluted. temp home is auto-cleaned by t.TempDir, no manual cleanup needed.
-	//
 	// home 隔离（C1）：resolveCanonical 走 os.UserHomeDir()（不走 freshProject 设的 FORGE_DATA_HOME）。
 	// forge init 的 EnsureEmbeddedCache 解压 embed 缓存到 ~/.forge/skills-cache/embedded（版本不匹配
 	// 时 RemoveAll+重建），下方 fixture 把 decisions.md 播种进该缓存——必须重定向 USERPROFILE
@@ -103,23 +83,11 @@ func TestSkillsRevert_EmbedCache_ActionableError(t *testing.T) {
 	embedCache := filepath.Join(home, ".forge", "skills-cache", "embedded")
 	const skill = "test-revert-embed-probe"
 
-	// Materialize the embed cache FIRST: extraction is lazy — `forge init` does not
-	// extract; the first skills command does (Resolve → EnsureEmbeddedCache). Seeding
-	// before materialization would be wiped by that first extraction in the revert
-	// subprocess. `skills list` is the cheapest cache-materializing read.
-	//
 	// 先物化 embed 缓存：解压是惰性的——`forge init` 不解压，首个 skills 命令才解压
 	// （Resolve → EnsureEmbeddedCache）。物化前播种会被 revert 子进程的首次解压抹掉。
 	// `skills list` 是最便宜的缓存物化读。
 	forge(t, dir, "skills", "list")
 
-	// Seed the decision fixture by writing decisions.md DIRECTLY (skillsdecisions.AppendDecision),
-	// not via the `skills decide` CLI: decide now refuses embed-cache canonical (the snapshot is
-	// version-rebuild-wiped — writing decisions there reported ✅ then silently lost them; see the
-	// guard in runSkillsDecide). The CLI refusal is the correct behavior this test must not depend
-	// on bypassing; the fixture represents "a cache that somehow holds a decision" for the REVERT
-	// behavior under test.
-	//
 	// 直接写 decisions.md 播种 fixture（skillsdecisions.AppendDecision），不走 `skills decide`
 	// CLI：decide 现在拒绝 embed 缓存 canonical（快照会被版本重建抹掉——写进去的决策报过 ✅
 	// 后静默丢失；见 runSkillsDecide 守卫）。CLI 的拒绝是正确行为，本测试不得依赖绕过它；
@@ -135,8 +103,6 @@ func TestSkillsRevert_EmbedCache_ActionableError(t *testing.T) {
 		t.Fatalf("LoadDecisions: err=%v len=%d", err, len(decs))
 	}
 
-	// revert (embed scenario, isExternal=false) → expect non-zero + actionable error
-	//
 	// revert（embed 场景，isExternal=false）→ 期望非 0 + 可行动错误
 	out, err := forgeErr(t, dir, "skills", "revert", "--skill", skill, "--decision", decs[0].ID)
 	if err == nil {

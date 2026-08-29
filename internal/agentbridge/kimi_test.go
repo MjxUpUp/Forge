@@ -9,13 +9,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
-// TestKimiWiringMirrorsClaudeSettings guards that the kimi [[hooks]] block is derived
-// from hooks.ForgeHookSpec (single source of truth): every spec entry on a
-// kimi-supported event appears exactly once, under the same event and matcher, with
-// the command rewritten to carry `--agent kimi`. Events outside kimiSupportedEvents
-// are deliberately ABSENT from the TOML (unverified events can fail kimi's config
-// validation and kill every hook — see BuildKimiHooksTOML), so parity is scoped the
-// same way as the plugin-manifest test. Mirrors TestCodexWiringMirrorsClaudeSettings.
+// TestKimiWiringMirrorsClaudeSettings guards that the kimi [[hooks]] block derives from ForgeHookSpec.
 //
 // TestKimiWiringMirrorsClaudeSettings 守卫 kimi 的 [[hooks]] 块派生自
 // hooks.ForgeHookSpec（单一真相源）：kimi 支持事件上的每条 spec 条目恰好出现
@@ -27,15 +21,10 @@ func TestKimiWiringMirrorsClaudeSettings(t *testing.T) {
 	toml := BuildKimiHooksTOML()
 	spec := hooks.ForgeHookSpec()
 
-	// Index blocks individually: the same command (skill-trigger) legitimately
-	// appears under several events, so position-based lookup would mismatch.
-	//
 	// 逐块索引：同一 command（skill-trigger）合法地出现在多个事件下，按位置
 	// 查找会错配。
 	blocks := strings.Split(toml, "[[hooks]]\n")
 
-	// Unsupported events must be absent entirely, not just uncounted.
-	//
 	// 不支持的事件必须整体缺席，而非仅不计数。
 	for _, banned := range []string{"PostToolUseFailure", "SubagentStop"} {
 		if strings.Contains(toml, "event = "+tomlBasicString(banned)) {
@@ -87,15 +76,7 @@ func TestKimiWiringMirrorsClaudeSettings(t *testing.T) {
 	}
 }
 
-// TestKimiHooks_WireResumeReinjectOnUserPromptSubmit pins the channel dependency of the
-// 2026-08-15 staleness-advisory move: the kimi [[hooks]] block must wire resume-reinject
-// under UserPromptSubmit — the ONE stdout channel kimi 0.35.0 delivers to the model
-// (next-prompt delivery). The plugin-stale advisory rides that hook
-// (cli.kimiStaleRidesHook); if resume-reinject ever drops off UserPromptSubmit (spec
-// edit, event rename), the advisory AND the P3 compaction handoff both go silent on
-// kimi with nothing else failing — this is the only guard. Complements
-// TestKimiWiringMirrorsClaudeSettings (which proves spec↔TOML parity but cannot catch a
-// spec-level regression).
+// TestKimiHooks_WireResumeReinjectOnUserPromptSubmit pins the channel dependency of the staleness-advisory move.
 //
 // TestKimiHooks_WireResumeReinjectOnUserPromptSubmit 钉死 2026-08-15 staleness advisory
 // 迁移的通道依赖：kimi [[hooks]] 块必须把 resume-reinject 接在 UserPromptSubmit 下——

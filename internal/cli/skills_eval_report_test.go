@@ -9,9 +9,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
-// TestFormatJudgeVerdict pins the formatting of the eval-report machine-verdict line — the skill-evolution SKILL
-// reads this line (the verdict line containing accept/reject) to make accept/reject decisions; if the format breaks
-// the SKILL cannot parse the verdict signal and falls back to agent self-report (dogfood rule: pure self-discipline always misses).
+// TestFormatJudgeVerdict pins the formatting of the eval-report machine-verdict line.
 //
 // TestFormatJudgeVerdict 锁定 eval-report 机器判据行的格式化——skill-evolution SKILL 据此
 // 行（「机器判据：accept/reject」）做 accept/reject 决策，格式断裂则 SKILL 解析不到判据信号，

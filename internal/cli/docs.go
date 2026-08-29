@@ -18,9 +18,6 @@ var (
 	docsLintJSON bool
 )
 
-// exit code contract mirrors skills validate: 0=all pass (or advisory-only),
-// 2=hard failure present.
-//
 // exit code 契约与 skills validate 对齐：0=全部通过（或仅建议），
 // 2=存在硬失败。
 var docsLintCmd = &cobra.Command{
@@ -105,14 +102,6 @@ func runDocsLint(cmd *cobra.Command, args []string) error {
 	}
 
 	if hardCount > 0 {
-		// Formerly os.Exit(2) — which bypassed every deferred cleanup in the cobra
-		// chain AND the panic-recovery funnel in Execute (os.Exit skips defers).
-		// Returning the errHardExit sentinel keeps those safety nets alive; Execute
-		// maps it to exit 2 (verdict already printed above — no extra stderr line).
-		// Exit-code contract unchanged: hook hosts only read exit codes of `forge
-		// hook` subcommands; `forge docs lint` consumers (doc-review skill notes)
-		// keep 0=pass / 2=hard-fail.
-		//
 		// 此前是 os.Exit(2)——它会绕过 cobra 链上所有 defer 清理，也绕过 Execute
 		// 的 panic 恢复盘（os.Exit 不执行 defer）。返回 errHardExit 哨兵让这些安全
 		// 网保持生效；Execute 映射为 exit 2（结论已在上方打印——不加多余 stderr 行）。
@@ -123,10 +112,6 @@ func runDocsLint(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// collectLintTargets resolves explicit paths (files or walked dirs) or, with
-// --base, the markdown files changed since the given rev (committed + working
-// tree). Explicit args win over --base.
-//
 // collectLintTargets 解析显式路径（文件或递归目录）；或带 --base 时取该
 // 基线以来变更的 markdown（已提交 + 工作区）。显式参数优先于 --base。
 func collectLintTargets(args []string, base string) ([]string, error) {

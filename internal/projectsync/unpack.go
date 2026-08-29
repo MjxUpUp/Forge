@@ -13,24 +13,13 @@ import (
 	"strings"
 )
 
-// MaxBundleBytes is the total-payload ceiling Unpack enforces (2 GiB): the
-// per-entry size is bounded by the manifest, but a forged manifest could declare
-// a huge total and stream gigabytes to disk (a filler DoS against /tmp). Cheap
-// bound; legitimate project bundles are orders of magnitude below it.
-//
 // MaxBundleBytes 是 Unpack 强制的总载荷上限（2 GiB）：单条目尺寸被 manifest 约束，
 // 但伪造的 manifest 可声明巨大总量向磁盘流数据（对 /tmp 的填充 DoS）。廉价上限；
 // 合法项目 bundle 低于它若干数量级。
 const MaxBundleBytes = 2 << 30
 
-// Unpack reads a bundle stream, validates it against its own manifest, and writes
-// the payloads under <destDir>/data/. Security posture (mirrors cli/update.go
-// extractBinary): regular files only (symlink/hardlink headers rejected), no
-// absolute paths, no `..` traversal, every tar entry must be listed in the manifest
-// and every listed entry must be present, format version double-guarded (0 and
-// >FormatVersion both refused), per-file sha256+size verified while streaming.
-// destDir must be outside FORGE_DATA_HOME (the caller owns that decision — staging
-// must not be discoverable by DataDir scanners).
+// Unpack reads a bundle stream, validates it against its own manifest, and
+// writes the payloads under <destDir>/data/.
 //
 // Unpack 读取 bundle 流，对照其 manifest 校验，把载荷写到 <destDir>/data/ 下。
 // 安全姿态（镜像 cli/update.go extractBinary）：仅普通文件（拒绝 symlink/hardlink
@@ -46,9 +35,6 @@ func Unpack(r io.Reader, destDir string) (*Manifest, error) {
 	defer gz.Close()
 	tr := tar.NewReader(gz)
 
-	// First entry MUST be manifest.json — the guard needs the list before any
-	// payload lands.
-	//
 	// 首条目必须是 manifest.json——守卫需要先有列表再落任何载荷。
 	hdr, err := tr.Next()
 	if err != nil {
@@ -124,9 +110,6 @@ func Unpack(r io.Reader, destDir string) (*Manifest, error) {
 			return nil, fmt.Errorf(`落盘 %s 失败: %w`, rel, werr)
 		}
 		if sum != fe.SHA256 {
-			// The partial file is garbage — remove it so a retry doesn't find a
-			// half-verified artifact.
-			//
 			// 半个文件是垃圾——删除，使重试不会发现半验证产物。
 			os.Remove(dst)
 			return nil, fmt.Errorf(`%s 内容校验失败（sha256 不符，bundle 可能被篡改或损坏）`, rel)
@@ -141,9 +124,6 @@ func Unpack(r io.Reader, destDir string) (*Manifest, error) {
 	return &m, nil
 }
 
-// safeJoin reports whether slash-path rel, joined under base, stays inside base
-// (no leading slash, no `..` segment, no drive/UNC shape on Windows).
-//
 // safeJoin 判断斜杠路径 rel 拼进 base 后是否仍在 base 内（无前导斜杠、无 `..`
 // 段、无 Windows 盘符/UNC 形态）。
 func safeJoin(base, rel string) bool {
@@ -155,12 +135,6 @@ func safeJoin(base, rel string) bool {
 		if seg == `..` || seg == `` {
 			return false
 		}
-		// On Windows a colon in a segment is either a drive letter (C:) or an NTFS
-		// alternate data stream (file.json:stream) — the ADS form would let a bundle
-		// write content INTO a hidden stream of an allowlisted-looking file, invisible
-		// to WalkDir/StripNonAllowlisted, then ride the file-level move into the live
-		// DataDir. Reject ANY colon, both shapes.
-		//
 		// Windows 下段内冒号要么是盘符（C:）要么是 NTFS 备用数据流
 		//（file.json:stream）——ADS 形态会把内容写进看似合法文件的隐藏流，
 		// WalkDir/StripNonAllowlisted 不可见，随后随文件级 move 混进活 DataDir。
@@ -173,9 +147,6 @@ func safeJoin(base, rel string) bool {
 	return strings.HasPrefix(joined, base+string(filepath.Separator))
 }
 
-// verifyAndWrite streams exactly size bytes to dst while hashing; the caller
-// compares the returned hex sha256 against the manifest entry.
-//
 // verifyAndWrite 把恰好 size 字节流到 dst 并同时 hash；调用方将返回的 hex sha256
 // 与 manifest 条目比对。
 func verifyAndWrite(r io.Reader, dst string, size int64) (string, error) {
@@ -184,9 +155,6 @@ func verifyAndWrite(r io.Reader, dst string, size int64) (string, error) {
 		return ``, err
 	}
 	h := sha256.New()
-	// Bound the copy at the declared size: a lying header cannot make us read past
-	// the entry into the next one.
-	//
 	// 拷贝以声明尺寸为界：撒谎的 header 不能让我们读过头闯进下一条目。
 	if _, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(r, size)); err != nil {
 		f.Close()
@@ -199,9 +167,6 @@ func verifyAndWrite(r io.Reader, dst string, size int64) (string, error) {
 	return fmt.Sprintf(`%x`, h.Sum(nil)), nil
 }
 
-// marshalManifest serializes the manifest (stable shape, no HTML escaping of +/-
-// characters in hashes).
-//
 // marshalManifest 序列化 manifest（形状稳定，不转义 hash 里的 +/- 字符）。
 func marshalManifest(m *Manifest) ([]byte, error) {
 	var buf bytes.Buffer

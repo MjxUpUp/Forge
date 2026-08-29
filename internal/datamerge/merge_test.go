@@ -15,15 +15,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// merge_test.go — guards for the Options capabilities beyond legacy rekey semantics
-// (which cli/registry_rekey_test.go pins end-to-end). Chinese strings use raw
-// literals (Windows quote rule).
-//
 // merge_test.go —— Options 在 legacy rekey 语义之外的新能力守卫（legacy 语义由
 // cli/registry_rekey_test.go 端到端钉住）。中文字符串用 raw 字面量。
 
-// seedDir writes rel→content files under dir.
-//
 // seedDir 在 dir 下写 rel→content 文件。
 func seedDir(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
@@ -38,15 +32,11 @@ func seedDir(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
-// logLine builds one timestamped JSONL line.
-//
 // logLine 造一条带时间戳的 JSONL 行。
 func logLine(ts, v string) string {
 	return `{"recorded_at":"` + ts + `","detail":"` + v + `"}`
 }
 
-// taskJSON serializes a minimal real TaskState.
-//
 // taskJSON 序列化一个最小真实 TaskState。
 func taskJSON(ref string, decisions []taskpipeline.Decision) string {
 	s := taskpipeline.TaskState{TaskRef: ref, Decisions: decisions}
@@ -54,12 +44,6 @@ func taskJSON(ref string, decisions []taskpipeline.Decision) string {
 	return string(data)
 }
 
-// TestIsTaskFile_SlashContract: rel paths inside Dirs are normalized to slash
-// form (filepath.ToSlash) before classification — isTaskFile's contract. On
-// Windows filepath.Rel yields backslashes; without the normalization every
-// tasks/*.json fell through to the plain move/skip path. This pins the
-// classifier contract the caller now guarantees.
-//
 // TestIsTaskFile_SlashContract：Dirs 内的 rel 路径在分类前归一为斜杠形态
 // （filepath.ToSlash）——isTaskFile 的契约。Windows 上 filepath.Rel 产出反斜杠；
 // 不做归一所有 tasks/*.json 都会跌进普通搬移/跳过路径。此测试钉住调用方现在
@@ -81,11 +65,6 @@ func TestIsTaskFile_SlashContract(t *testing.T) {
 	}
 }
 
-// TestDirs_DedupExactLinesIdempotent: merging the same source JSONL twice with
-// DedupExactLines leaves the destination byte-identical after the first merge (the
-// second merge dedups every re-offered line away). This is the A→B→A→B re-import
-// guarantee.
-//
 // TestDirs_DedupExactLinesIdempotent：DedupExactLines 下同一源 JSONL 合并两次，
 // 第一次合并后目标字节不变（第二次把重复提供的行全部去重）。这是
 // A→B→A→B 重导入保证。
@@ -125,10 +104,6 @@ func TestDirs_DedupExactLinesIdempotent(t *testing.T) {
 	}
 }
 
-// TestDirs_TaskUnionMergesStates: same-ref task conflict under TaskUnion merges the
-// two TaskStates (decision union, gate heal via MergeTaskStateSync when trusted)
-// instead of keeping the to-side file verbatim.
-//
 // TestDirs_TaskUnionMergesStates：TaskUnion 下同 ref 任务冲突做状态合并（决策并
 // 集、受信时门禁愈合走 MergeTaskStateSync），而非逐字保 to 侧文件。
 func TestDirs_TaskUnionMergesStates(t *testing.T) {
@@ -166,9 +141,6 @@ func TestDirs_TaskUnionMergesStates(t *testing.T) {
 	}
 }
 
-// TestDirs_TaskUnionRefusesGarbageTask: a from-side tasks/*.json that does not parse
-// as TaskState is NOT adopted under TaskUnion (no verbatim entry into tasks/).
-//
 // TestDirs_TaskUnionRefusesGarbageTask：TaskUnion 下不可解析为 TaskState 的
 // tasks/*.json 不被采纳（绝不逐字进 tasks/）。
 func TestDirs_TaskUnionRefusesGarbageTask(t *testing.T) {
@@ -186,9 +158,6 @@ func TestDirs_TaskUnionRefusesGarbageTask(t *testing.T) {
 	}
 }
 
-// TestDirs_TaskSkip: TaskSkip leaves tasks/*.json untouched (neither moved nor
-// merged) for the caller that handles them itself.
-//
 // TestDirs_TaskSkip：TaskSkip 完全不动 tasks/*.json（不搬也不并），留给调用方自理。
 func TestDirs_TaskSkip(t *testing.T) {
 	from := t.TempDir()
@@ -222,11 +191,6 @@ func TestDirs_TaskSkip(t *testing.T) {
 	}
 }
 
-// TestDirs_ConclusionsGatedByOption: legacy rekey (zero-value Options) treats
-// act/conclusions.jsonl as a PLAIN file (conflict keeps the to-side — the exact
-// pre-extraction behavior); only MergeConclusions admits it into the timestamp
-// merge. Guards the "rekey semantics zero-change" contract.
-//
 // TestDirs_ConclusionsGatedByOption：legacy rekey（零值 Options）把
 // act/conclusions.jsonl 当普通文件（冲突保 to 侧——抽包前的精确行为）；
 // 仅 MergeConclusions 才让它进时间戳合并。守住「rekey 语义零变化」契约。
@@ -260,9 +224,6 @@ func TestDirs_ConclusionsGatedByOption(t *testing.T) {
 	}
 }
 
-// TestDirs_NoFromBackupRemovesFromDir: NoFromBackup removes the from-dir after the
-// merge instead of leaving a .rekey-backup inside the live to-dir.
-//
 // TestDirs_NoFromBackupRemovesFromDir：NoFromBackup 合并后删除 from 目录，而不在
 // 活的 to 目录里留 .rekey-backup。
 func TestDirs_NoFromBackupRemovesFromDir(t *testing.T) {
@@ -291,10 +252,6 @@ func TestDirs_NoFromBackupRemovesFromDir(t *testing.T) {
 
 // writeBigFile 写一个 size 字节的伪随机内容文件（异或位移生成，不可压缩——
 // 内容校验不能被「碰巧全零也相等」糊弄）。
-//
-// writeBigFile writes a size-byte pseudo-random file (xorshift-generated,
-// incompressible — content verification must not be fooled by "all zeros
-// happens to match too").
 func writeBigFile(t *testing.T, path string, size int64, seed uint64) {
 	t.Helper()
 	f, err := os.Create(path)
@@ -328,10 +285,6 @@ func writeBigFile(t *testing.T, path string, size int64, seed uint64) {
 
 // fileDigest 是内容一致性校验的基准真值（SHA-256，比逐字节比对省内存——对流式
 // 路径的测试本身也不该整读大文件）。
-//
-// fileDigest is the ground truth for content-equality checks (SHA-256, cheaper
-// in memory than byte compares — the test of a streaming path should not
-// itself whole-read the big file).
 func fileDigest(t *testing.T, path string) string {
 	t.Helper()
 	f, err := os.Open(path)
@@ -351,14 +304,6 @@ func fileDigest(t *testing.T, path string) string {
 // rename 失败注入用「dst 父目录尚不存在」实现（两平台 rename 到缺失父目录必败
 // → 必走 fallback；旧实现的 AtomicWrite 同样先 MkdirAll，故该用例重构前后都过，
 // 兼作前后等价钉）。
-//
-// TestMoveFileStreamingFallbackContentPreserved pins the streaming
-// cross-device fallback: a 10MB file moved through the copy+remove path keeps
-// byte-identical content, the source is removed, and no .tmp-* residue stays
-// in dst's dir. Rename-failure is injected via a not-yet-existing dst parent
-// (renaming into a missing parent fails on BOTH platforms → the fallback always
-// runs; the old AtomicWrite-based code also MkdirAll'd first, so this case
-// passes before AND after the rework — doubling as an equivalence pin).
 func TestMoveFileStreamingFallbackContentPreserved(t *testing.T) {
 	from := t.TempDir()
 	to := t.TempDir()
@@ -367,8 +312,6 @@ func TestMoveFileStreamingFallbackContentPreserved(t *testing.T) {
 	want := fileDigest(t, src)
 
 	// dst 的父目录刻意不存在：首轮 os.Rename 必失败，fallback 路径确定性执行。
-	// The dst parent deliberately does not exist: the first os.Rename must
-	// fail, deterministically exercising the fallback.
 	dst := filepath.Join(to, "tasks", "nested", "payload-copy.bin")
 	if err := MoveFile(src, dst); err != nil {
 		t.Fatalf("MoveFile fallback 失败: %v", err)
@@ -394,10 +337,6 @@ func TestMoveFileStreamingFallbackContentPreserved(t *testing.T) {
 // 消失（open 后即删——Windows 上已打开文件仍可删）不足以让 io.Copy 失败的话，
 // 退而求其次钉「目标不可写的报错路径不残留 temp」。用 dst 父目录是一个**文件**
 // 制造 MkdirAll 失败：helper 必须报错且 to 下无 .tmp-*。
-//
-// TestMoveFileStreamingHelperNoResidueOnError pins the helper's cleanup
-// contract directly: making dst's parent a FILE forces MkdirAll to fail — the
-// helper must error and leave no .tmp-* anywhere under to.
 func TestMoveFileStreamingHelperNoResidueOnError(t *testing.T) {
 	from := t.TempDir()
 	to := t.TempDir()
@@ -406,7 +345,6 @@ func TestMoveFileStreamingHelperNoResidueOnError(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 把 dst 的父目录占成一个文件：MkdirAll 必败。
-	// Occupy dst's parent path with a file: MkdirAll must fail.
 	blocker := filepath.Join(to, "blocked")
 	if err := os.WriteFile(blocker, []byte("not a dir"), 0644); err != nil {
 		t.Fatal(err)
@@ -419,7 +357,6 @@ func TestMoveFileStreamingHelperNoResidueOnError(t *testing.T) {
 		t.Errorf("失败路径不应残留 temp 文件: %v", residue)
 	}
 	// 源文件不动（MoveFile 层才负责 remove src；helper 只管拷贝）。
-	// Source stays (MoveFile owns the src removal; the helper only copies).
 	if _, serr := os.Stat(src); os.IsNotExist(serr) {
 		t.Error("helper 失败时源文件必须原样保留")
 	}
@@ -427,10 +364,6 @@ func TestMoveFileStreamingHelperNoResidueOnError(t *testing.T) {
 
 // TestMoveFileRenamePathUnchanged 钉同卷快速路径：rename 成功时绝不走流式拷贝
 // （dst 内容正确即可——rename 语义天然保内容）。
-//
-// TestMoveFileRenamePathUnchanged pins the same-volume fast path: a successful
-// rename never touches the streaming copy (dst content correct suffices —
-// rename preserves content by definition).
 func TestMoveFileRenamePathUnchanged(t *testing.T) {
 	from := t.TempDir()
 	to := t.TempDir()

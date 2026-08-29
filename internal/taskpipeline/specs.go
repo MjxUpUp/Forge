@@ -17,18 +17,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// specs.go implements the L6 artifact-contract layer (multi-task-concurrency design §9):
-// narrative artifacts (proposal/spec/design/plan) and review attempts live as FILES in
-// the harness repo's per-project specs directory, while TaskState holds only verifiable
-// REFERENCES (path + content hash) — invariant I5: one owning medium (the file), the
-// other side holds hash references. Attempts are write-once: prior review failures are
-// preserved under attempts/round-NNN/ and fed back to the next round
-//（LoopSpec priorAttempts），never deleted; the rollback closure never touches TaskState
-//（持久锚豁免，LoopSpec state.md 语义）。
-//
-// AcceptanceCriterion stays authoritative for gates — tasks.md-style checkboxes are a
-// human view, never a completion signal（防弱类型退化）。
-//
 // specs.go 实现 L6 产物契约层（multi-task-concurrency 设计 §9）：叙事产物
 //（proposal/spec/design/plan）与 review 尝试以【文件】形态落在 harness repo 的每项目
 // specs 目录，TaskState 只持可验证【引用】（路径 + 内容哈希）——不变式 I5：拥有介质
@@ -39,10 +27,7 @@ import (
 // AcceptanceCriterion 对门禁保持权威——tasks.md 式复选框是人读视图，绝不是完成信号
 //（防弱类型退化）。
 
-// ArtifactRef is TaskState's verifiable pointer to a spec file (I5): Path is
-// DataDir-relative (portable across machines — the project key maps to different
-// absolute DataDirs), Hash is the content sha256 (first 16 hex). A mismatch means the
-// file was hand-edited after the reference was taken — surface as drift, never silent.
+// ArtifactRef is TaskState's verifiable pointer to a spec file (I5): Path is DataDir-relative (portable across machines), Hash is the content sha256 (first 16 hex).
 //
 // ArtifactRef 是 TaskState 指向 spec 文件的可验证指针（I5）：Path 相对 DataDir
 // （跨机可移植——project key 在不同机器映射到不同绝对 DataDir），Hash 是内容 sha256
@@ -53,8 +38,7 @@ type ArtifactRef struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// SpecsDir is the task's artifact directory inside the project DataDir (physically inside
-// the harness repo's tracked set once T6 initialized it).
+// SpecsDir is the task's artifact directory inside the project DataDir.
 //
 // SpecsDir 是任务在项目 DataDir 内的产物目录（T6 init 后物理上处于 harness repo 的
 // tracked 集合内）。
@@ -62,9 +46,6 @@ func SpecsDir(root, taskRef string) string {
 	return filepath.Join(forgedata.DataDirFor(root), "specs", taskcontext.SanitizeRef(taskRef))
 }
 
-// artifactFrontmatter renders the identity header every spec file carries: the reference
-// triangle task-ref ↔ stage ↔ hash is verifiable from the file itself.
-//
 // artifactFrontmatter 渲染每个 spec 文件携带的身份头：task-ref ↔ stage ↔ hash 的引用
 // 三角形从文件自身即可校验。
 func artifactFrontmatter(taskRef, stage string, updatedAt time.Time) string {
@@ -72,9 +53,7 @@ func artifactFrontmatter(taskRef, stage string, updatedAt time.Time) string {
 		taskRef, stage, updatedAt.Format(time.RFC3339))
 }
 
-// WriteArtifact writes a stage artifact for the task and returns its ArtifactRef. It does
-// NOT mutate TaskState — callers fold the ref in before their own SaveTaskState（写文件
-// 与改状态分离，锁语义由调用方持有）。
+// WriteArtifact writes a stage artifact for the task and returns its ArtifactRef. It does NOT mutate TaskState.
 //
 // WriteArtifact 写任务的阶段产物并返回其 ArtifactRef。它不改动 TaskState——调用方在
 // 自己的 SaveTaskState 前把引用折进去（写文件与改状态分离，锁语义由调用方持有）。
@@ -94,8 +73,7 @@ func WriteArtifact(root, taskRef, stage, content string) (ArtifactRef, error) {
 	return ArtifactRef{Path: rel, Hash: hex.EncodeToString(sum[:])[:16], UpdatedAt: now}, nil
 }
 
-// VerifyArtifact re-hashes the referenced file and reports whether it still matches the
-// ref — the drift detector (I5's 反 desync：哈希失配即人工改动，触发重新确认).
+// VerifyArtifact re-hashes the referenced file and reports whether it still matches the ref — the drift detector.
 //
 // VerifyArtifact 重算引用文件的哈希并报告是否仍匹配——漂移探测器（I5 的反 desync：
 // 哈希失配即人工改动，触发重新确认）。
@@ -111,8 +89,6 @@ func VerifyArtifact(root string, ref ArtifactRef) bool {
 	return hex.EncodeToString(sum[:])[:16] == ref.Hash
 }
 
-// attemptVerdict is the machine-readable half of an archived attempt round.
-//
 // attemptVerdict 是归档尝试轮次的机器可读半边。
 type attemptVerdict struct {
 	Round      int       `json:"round"`
@@ -122,11 +98,7 @@ type attemptVerdict struct {
 	Findings   int       `json:"findings"`
 }
 
-// ArchiveAttempt preserves one failed review round under specs/<ref>/attempts/round-NNN/
-// （findings.md 人类可读 + verdict.json 机器可读）。Write-once by construction — the
-// round number is derived from the caller's round, and re-archiving the same round
-// REFUSES rather than overwrites（失败上下文永不覆盖，LoopSpec "move, never delete"）。
-// Never touches TaskState（回滚闭包的持久锚豁免）。
+// ArchiveAttempt preserves one failed review round under specs/<ref>/attempts/round-NNN/ (findings.md human-readable + verdict.json machine-readable).
 //
 // ArchiveAttempt 把一个失败的审查轮次保存在 specs/<ref>/attempts/round-NNN/
 // （findings.md 人类可读 + verdict.json 机器可读）。构造上一次写入——轮号由调用方
@@ -162,10 +134,7 @@ func ArchiveAttempt(root, taskRef string, round int, findings []string) error {
 	return util.AtomicWrite(filepath.Join(roundDir, "verdict.json"), v, 0o644)
 }
 
-// PriorAttemptsSummary renders the last N archived rounds' findings as bounded input for
-// the next attempt（LoopSpec priorAttempts：带着「为什么被拒」重做，不重复踩坑）。
-// Empty string when no attempts exist. Char-capped（注入面纪律：回灌内容按数据渲染，
-// 长度有界）。
+// PriorAttemptsSummary renders the last N archived rounds' findings as bounded input for the next attempt.
 //
 // PriorAttemptsSummary 渲染最近 N 个归档轮次的 findings，作为下一次尝试的有界输入
 // （LoopSpec priorAttempts：带着「为什么被拒」重做，不重复踩坑）。无尝试时为空串。
@@ -199,10 +168,6 @@ func PriorAttemptsSummary(root, taskRef string, lastN int, charCap int) string {
 		text := string(data)
 		if b.Len()+len(text) > charCap {
 			cut := max(0, charCap-b.Len())
-			// Back off to a rune boundary: findings.md is mostly CJK and a byte-aligned
-			// cut splits a multi-byte character, feeding mojibake back into the next
-			// round's priorAttempts context.
-			//
 			// 回退到 rune 边界：findings.md 以中文为主，按字节切会劈开多字节字符，
 			// 把乱码喂给下一轮的 priorAttempts 上下文。
 			for cut > 0 && !utf8.RuneStart(text[cut]) {

@@ -4,10 +4,6 @@ import (
 	"testing"
 )
 
-// TestMarkReviewPassed_AppendsReviewRounds pins that every review pass appends a ReviewRound
-// (the rework-metric raw material) while the snapshot fields keep pointing at the LATEST round
-// — the snapshot-check contract (executor.go) is unchanged.
-//
 // TestMarkReviewPassed_AppendsReviewRounds 钉住每次 review pass 都追加一条 ReviewRound
 // （返工度量原料），且快照字段始终指向最新一轮——快照校验契约（executor.go）不变。
 func TestMarkReviewPassed_AppendsReviewRounds(t *testing.T) {
@@ -24,8 +20,6 @@ func TestMarkReviewPassed_AppendsReviewRounds(t *testing.T) {
 	if state.ReviewRounds[0].ReviewedAt.IsZero() {
 		t.Error(`ReviewRound 应带 ReviewedAt 时间戳`)
 	}
-	// Snapshot fields track the latest round (gate contract unchanged).
-	//
 	// 快照字段指向最新一轮（门禁契约不变）。
 	if state.ReviewedHeadCommit != "head2" || state.ReviewedChangeHash != "hash2" {
 		t.Errorf(`快照字段应指向最新一轮, got %s/%s`, state.ReviewedHeadCommit, state.ReviewedChangeHash)
@@ -35,9 +29,6 @@ func TestMarkReviewPassed_AppendsReviewRounds(t *testing.T) {
 	}
 }
 
-// TestReworkRounds pins the derivation: reviewPasses = len(ReviewRounds); completeRejections =
-// failed task-complete entries in History (passed entries and other gates do not count).
-//
 // TestReworkRounds 钉住推导：reviewPasses = len(ReviewRounds)；completeRejections =
 // History 里 task-complete 的失败条数（通过条目与其他门禁不计）。
 func TestReworkRounds(t *testing.T) {
@@ -63,10 +54,6 @@ func TestReworkRounds(t *testing.T) {
 	}
 }
 
-// TestScoreTask_AttachesReworkEvidence pins that ScoreTask folds the rework metric into
-// ScoreResult.Evidence (ReviewPasses / CompleteRejections) — observability only, the weighted
-// score is untouched. Also pins the no-rework case leaves the fields at zero.
-//
 // TestScoreTask_AttachesReworkEvidence 钉住 ScoreTask 把返工度量折进
 // ScoreResult.Evidence（ReviewPasses / CompleteRejections）——仅可观测，加权总分
 // 不受影响。同时钉住无返工时字段保持零值。
@@ -74,9 +61,6 @@ func TestScoreTask_AttachesReworkEvidence(t *testing.T) {
 	dir, state := setupScoreableTask(t, "rework-evidence")
 	state.MarkReviewPassed("h1", "c1")
 	state.MarkReviewPassed("h2", "c2")
-	// Rebuild history with one rejected complete before the pass (setupScoreableTask
-	// recorded a clean pass; re-derive with a rejection to make the metric observable).
-	//
 	// 重建 history：先有一次被拒的 complete 再通过（setupScoreableTask 记的是干净
 	// 通过；加一次拒绝让度量可观测）。
 	state.History = nil
@@ -99,8 +83,6 @@ func TestScoreTask_AttachesReworkEvidence(t *testing.T) {
 		t.Errorf(`CompleteRejections 应为 1, got %d`, state.Score.Evidence.CompleteRejections)
 	}
 
-	// Control: no review/rework → fields stay zero.
-	//
 	// 对照：无审查/返工 → 字段保持零值。
 	dir2, state2 := setupScoreableTask(t, "rework-none")
 	if err := ScoreTask(dir2, state2); err != nil {

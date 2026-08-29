@@ -9,14 +9,6 @@ import (
 	"time"
 )
 
-// The kimi advisory queue (hook_kimi_advisory.go) exists because kimi 0.35.0
-// gives an advisory no safe immediate channel: PreToolUse stdout is read as a
-// DENY (the P0 promotion's "allowed"-worded blocks were this bug), and
-// PostToolUse/Stop/SessionStart stdout is dropped (production checklog: 100% of
-// kimi/no-channel advisories lost). These tests pin the queue contract:
-// silent enqueue on non-delivered events, one batched deduped injection on
-// UserPromptSubmit, once-per-session per advisory text.
-//
 // kimi advisory 队列（hook_kimi_advisory.go）存在的理由：kimi 0.35.0 没给
 // advisory 任何安全的即时通道——PreToolUse 的 stdout 被当 **deny**（P0 提升的
 // 「allowed」文案阻断正是此症），PostToolUse/Stop/SessionStart 的 stdout 被丢
@@ -24,9 +16,6 @@ import (
 // 不可送达事件上静默入队、UserPromptSubmit 上攒成一条去重注入、同一文本每会话
 // 只投一次。
 
-// newKimiAdvisoryFixture isolates the queue (FORGE_DATA_HOME) and the
-// per-session delivered set (TMPDIR), returning the project root.
-//
 // newKimiAdvisoryFixture 隔离队列（FORGE_DATA_HOME）与 per-session delivered
 // 集合（TMPDIR），返回项目根。
 func newKimiAdvisoryFixture(t *testing.T) string {
@@ -74,9 +63,6 @@ func TestKimiAdvisoryDrainOnUserPromptSubmit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UserPromptSubmit must return nil, got %v", err)
 	}
-	// The batch PREPENDS the hook's own detail (head survives the emitter's tail
-	// truncation) and lists both advisories in one message.
-	//
 	// 攒发**前置**于 hook 自己的 detail（头部在 emitter 截尾下存活），且两条
 	// advisory 列在同一条消息里。
 	if !strings.Contains(stdout, "hook advisory") || !strings.Contains(stdout, "compile-fix-loop hit") || !strings.Contains(stdout, "no paired test") {
@@ -85,8 +71,6 @@ func TestKimiAdvisoryDrainOnUserPromptSubmit(t *testing.T) {
 	if strings.Index(stdout, "hook advisory") > strings.Index(stdout, "task 已接续") {
 		t.Errorf("batch must PREPEND the hook's own detail, got %q", stdout)
 	}
-	// The queue is consumed by the drain.
-	//
 	// 队列随 drain 消费。
 	if _, serr := os.Stat(kimiAdvisoryQueuePath(root)); !os.IsNotExist(serr) {
 		t.Errorf("queue file must be consumed after drain, stat err=%v", serr)
@@ -97,8 +81,6 @@ func TestKimiAdvisoryDrainDedupesAndCaps(t *testing.T) {
 	root := newKimiAdvisoryFixture(t)
 	sess := fmt.Sprintf("kimi-c-%d", time.Now().UnixNano())
 
-	// Dedupe first, on a batch small enough to dodge the cap.
-	//
 	// 先在小批量上验去重（避开上限干扰）。
 	enqueueKimiAdvisory(root, sess, "task-guard", "PreToolUse", "dup advisory")
 	enqueueKimiAdvisory(root, sess, "task-guard", "PreToolUse", "dup advisory")
@@ -107,10 +89,6 @@ func TestKimiAdvisoryDrainDedupesAndCaps(t *testing.T) {
 		t.Errorf("identical advisories must dedupe to one, got %q", batch)
 	}
 
-	// Cap: 7 unique texts → kimiAdvisoryDrainCap entries, keeping the NEWEST
-	// window (advisory-5 must survive, advisory-0 must be dropped). Fresh
-	// session so the delivered set does not suppress anything.
-	//
 	// 上限：7 条不同文本 → 截到 kimiAdvisoryDrainCap 条，保留**最新**窗口
 	// （advisory-5 必在，advisory-0 必丢）。换新会话，避免 delivered 集合抑制。
 	sess2 := sess + "-cap"
@@ -134,16 +112,11 @@ func TestKimiAdvisoryOncePerSession(t *testing.T) {
 	if batch := drainKimiAdvisories(root, sess); !strings.Contains(batch, "repeat advisory") {
 		t.Fatalf("first drain must deliver, got %q", batch)
 	}
-	// Re-fired with identical text (e.g. a throttled hook hitting again): the
-	// same session must NOT see it twice.
-	//
 	// 同文本再次触发（如被节流的 hook 再次命中）：同会话不得二次投递。
 	enqueueKimiAdvisory(root, sess, "task-guard", "PreToolUse", "repeat advisory")
 	if batch := drainKimiAdvisories(root, sess); batch != "" {
 		t.Errorf("same advisory text must deliver once per session, got %q", batch)
 	}
-	// A NEW session is a fresh audience and gets it again.
-	//
 	// 新会话是新受众，会再次收到。
 	enqueueKimiAdvisory(root, sess, "task-guard", "PreToolUse", "repeat advisory")
 	if batch := drainKimiAdvisories(root, sess+"-2"); !strings.Contains(batch, "repeat advisory") {
@@ -155,13 +128,6 @@ func TestKimiAdvisoryOncePerSession(t *testing.T) {
 // delivered 记忆整体禁用——SanitizeSessionID 会把 "" 折叠成 "session"，全机所有
 // 无 id 会话共享同一个 delivered 文件；那里一次写入将永久静音同文本 advisory
 // （全机级抑制）。故每次 drain 都必须重新投递，且绝不落盘。
-//
-// TestKimiAdvisoryEmptySessionNoDeliveredMemory pins empty-session isolation:
-// with an empty sessionID the delivered memory is disabled wholesale —
-// SanitizeSessionID collapses "" to "session", making every id-less session on
-// the machine share ONE delivered file; a single write there would permanently
-// silence that advisory text (machine-global suppression). So every drain must
-// re-deliver, and nothing may ever be written to disk.
 func TestKimiAdvisoryEmptySessionNoDeliveredMemory(t *testing.T) {
 	root := newKimiAdvisoryFixture(t)
 
@@ -207,9 +173,6 @@ func TestKimiAdvisoryBlockPathUntouched(t *testing.T) {
 	root := newKimiAdvisoryFixture(t)
 	sess := fmt.Sprintf("kimi-b-%d", time.Now().UnixNano())
 
-	// Designed denies (read-before-edit/hazard-guard/freeze-guard FAILs) still
-	// block with stderr + HookBlockError — the queue never intercepts them.
-	//
 	// 设计内 deny（read-before-edit/hazard-guard/freeze-guard 的 FAIL）仍以
 	// stderr + HookBlockError 阻断——队列绝不拦截它们。
 	_, stderr, err := captureOutput(t, func() error {
@@ -230,9 +193,6 @@ func TestKimiAdvisoryBlockPathUntouched(t *testing.T) {
 func TestEmitAdvisoryRoutedOtherHostsUnchanged(t *testing.T) {
 	root := newKimiAdvisoryFixture(t)
 
-	// claude-compatible hosts keep the bare hookSpecificOutput injection —
-	// no queue, no silence.
-	//
 	// Claude 兼容宿主保持裸 hookSpecificOutput 注入——不入队、不静默。
 	stdout, _, err := captureOutput(t, func() error {
 		return emitAdvisoryRouted("", "PreToolUse", "task-guard", root, "s1", true, "[task-guard] warn")
@@ -263,9 +223,6 @@ func TestKimiAdvisoryEmptyDetailStaysSilent(t *testing.T) {
 
 func TestKimiAdvisoryGlobalHookNoRoot(t *testing.T) {
 	newKimiAdvisoryFixture(t)
-	// root=="" (global hooks): no project DataDir to queue into — silent, no
-	// crash (the documented-inert behavior those hooks already had on kimi).
-	//
 	// root==""（global hook）：没有项目 DataDir 可入队——静默、不崩（这些 hook
 	// 在 kimi 上本就是已文档化的失效行为）。
 	stdout, _, err := captureOutput(t, func() error {
@@ -279,14 +236,6 @@ func TestKimiAdvisoryGlobalHookNoRoot(t *testing.T) {
 	}
 }
 
-// TestKimiTaskGuardE2EQueuesNotBlocks is the full-path regression for the
-// 2026-08 incident class this queue fixes: a kimi session editing source on
-// main with no task. The WARN must (a) NOT block — the pre-queue promotion
-// turned it into an "allowed"-worded exit-2 deny that stopped the edit; (b)
-// print NOTHING on PreToolUse — kimi reads any stdout there as a deny; (c) land
-// in the pending queue exactly once (the script's NOWARN de-noise stays); and
-// (d) surface via the UserPromptSubmit drain, once.
-//
 // TestKimiTaskGuardE2EQueuesNotBlocks 是本队列要修的 2026-08 事件类的全链路
 // 回归：kimi 会话在 main 上无任务改源码。WARN 必须 (a) **不**阻断——引入队列
 // 前的提升把它变成了「allowed」文案的 exit-2 deny、拦停编辑；(b) 在

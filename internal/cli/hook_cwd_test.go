@@ -11,19 +11,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 )
 
-// TestAdoptPayloadCwd pins the kimi plugin-hook cwd fix: kimi runs plugin hooks with the
-// process cwd set to the plugin root (verified on kimi 0.31.0 — matches the docs "each
-// hook runs with its working directory set to the plugin root"), so resolving the forge
-// project from the process cwd fails and every project-scoped hook bails with a silent
-// allow. The payload's cwd (the session's real project dir) must be adopted first.
-//
 // TestAdoptPayloadCwd 钉住 kimi 插件 hook 的 cwd 修复：kimi 以插件根为进程 cwd 拉起
 // 插件 hook（0.31.0 实测，与文档「hook 以插件根为工作目录运行」一致），按进程 cwd
 // 解析 forge 项目会失败、所有项目级 hook 静默放行。必须先采用 payload 的 cwd
 // （会话真实项目目录）。
 func TestAdoptPayloadCwd(t *testing.T) {
-	// A non-project directory to simulate the plugin root.
-	//
 	// 非项目目录，模拟插件根
 	pluginRoot := t.TempDir()
 	t.Chdir(pluginRoot)
@@ -36,10 +28,6 @@ func TestAdoptPayloadCwd(t *testing.T) {
 	if !adoptPayloadCwd(projRoot) {
 		t.Fatal("有效项目目录应被采用（返回 true）")
 	}
-	// Compare directories by identity, not string form: os.Getwd may return the
-	// physical path (macOS /var → /private/var symlink, Windows 8.3 short names)
-	// while projRoot is the unresolved form.
-	//
 	// 按目录同一性比较而非字符串：os.Getwd 可能返回物理路径（macOS 的
 	// /var → /private/var 符号链接、Windows 8.3 短名），而 projRoot 是未解析形式。
 	wd, _ := os.Getwd()
@@ -52,18 +40,12 @@ func TestAdoptPayloadCwd(t *testing.T) {
 		t.Errorf("采用 payload cwd 后应能解析项目根: %v", err)
 	}
 
-	// Same dir again → no-op (returns false, stays put).
-	//
 	// 同目录再调 → 无操作（返回 false，原地不动）
 	if adoptPayloadCwd(projRoot) {
 		t.Error("同目录应为无操作（返回 false）")
 	}
 }
 
-// TestAdoptPayloadCwd_Invalid: empty, relative and nonexistent payload cwd values leave
-// the process cwd untouched (fallback to the old behavior). Relative paths are rejected
-// outright — they would resolve against the process cwd (the plugin root under kimi).
-//
 // TestAdoptPayloadCwd_Invalid：空值、相对路径与不存在的 payload cwd 不动进程 cwd
 // （回落原行为）。相对路径直接拒绝——它会相对进程 cwd（kimi 下即插件根）解析。
 func TestAdoptPayloadCwd_Invalid(t *testing.T) {
@@ -83,10 +65,6 @@ func TestAdoptPayloadCwd_Invalid(t *testing.T) {
 	}
 }
 
-// TestKimiNormalize_PopulatesCwd: kimi's hook payload carries the session project in its
-// cwd field — kimiNormalize must surface it into HookInput.Cwd, or adoptPayloadCwd has
-// nothing to adopt.
-//
 // TestKimiNormalize_PopulatesCwd：kimi 的 hook payload 用 cwd 字段携带会话项目目录
 // ——kimiNormalize 必须把它填进 HookInput.Cwd，否则 adoptPayloadCwd 无值可用。
 func TestKimiNormalize_PopulatesCwd(t *testing.T) {
@@ -97,19 +75,12 @@ func TestKimiNormalize_PopulatesCwd(t *testing.T) {
 	}
 }
 
-// TestRunHook_AdoptsPayloadCwd is the end-to-end wiring for the kimi plugin-hook fix:
-// the process starts in a NON-project directory (simulating the plugin root), the hook
-// payload carries the real project in its cwd field, and the project-scoped hook
-// (tool-track) must take effect there — before the fix it bailed with a silent allow.
-//
 // TestRunHook_AdoptsPayloadCwd 是 kimi 插件 hook 修复的端到端接线：进程从非项目目录
 // （模拟插件根）启动，hook payload 的 cwd 字段携带真实项目，项目级 hook
 // （tool-track）必须在那里生效——修复前它会静默放行。
 func TestRunHook_AdoptsPayloadCwd(t *testing.T) {
 	projRoot, _ := forgedatatest.RealProject(t)
 
-	// Start from a non-project directory (the plugin root under kimi).
-	//
 	// 从非项目目录（kimi 下的插件根）启动
 	pluginRoot := t.TempDir()
 	originalWd, _ := os.Getwd()
@@ -155,12 +126,6 @@ func TestRunHook_AdoptsPayloadCwd(t *testing.T) {
 	}
 }
 
-// TestAdoptPayloadCwd_SymlinkNoop is the cross-platform pin for the macOS
-// /var → /private/var case: chdir into a symlink, os.Getwd resolves to the physical
-// target, but the payload cwd may still carry the symlink form. adoptPayloadCwd must
-// treat them as the same dir (os.SameFile) — a string-only compare chdirs every call.
-// Skipped where symlinks cannot be created (Windows without dev mode / admin).
-//
 // TestAdoptPayloadCwd_SymlinkNoop 是 macOS /var → /private/var 场景的跨平台钉子：
 // chdir 进符号链接后 os.Getwd 解析到物理目标，而 payload cwd 可能仍携带符号链接形式。
 // adoptPayloadCwd 必须按同一目录处理（os.SameFile）——纯字符串比较会每次都 chdir。
@@ -176,20 +141,12 @@ func TestAdoptPayloadCwd_SymlinkNoop(t *testing.T) {
 	if err := os.Chdir(link); err != nil {
 		t.Skipf(`chdir into symlink failed: %v`, err)
 	}
-	// Precondition: this test only matters where Getwd resolves the symlink to the physical
-	// target. On a host whose getcwd doesn't resolve symlinks, wd == link and a string
-	// compare would already pass — SameFile's robustness wouldn't be exercised, so skip to
-	// keep the assertion semantically honest.
-	//
 	// 前置条件：本测试仅在 Getwd 把符号链接解析到物理目标时有意义。在 getcwd 不解析
 	// 符号链接的宿主上，wd == link，纯字符串比较就已通过——SameFile 的鲁棒性根本没被
 	// 验证到，故跳过以保持断言语义诚实。
 	if wd, _ := os.Getwd(); wd == link {
 		t.Skipf(`Getwd 未解析 symlink（wd==link），本平台无此 bug，跳过`)
 	}
-	// Getwd resolves link to realDir (physical); payload cwd carries the symlink form.
-	// SameFile must match → no-op (false). A string compare returns true (the bug).
-	//
 	// Getwd 把 link 解析成 realDir（物理）；payload cwd 携带符号链接形式。
 	// SameFile 必命中 → 无操作（false）。字符串比较返回 true（bug）。
 	if adoptPayloadCwd(link) {

@@ -10,26 +10,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// forge registry rekey merges one project data directory into another:
-// `forge registry rekey --from <old-key> --to <new-key> [--dry-run]`.
-//
-// Root cause it repairs: on macOS's default case-insensitive APFS the same project
-// could be registered under two path spellings (Forge vs forge), deriving two
-// identity keys; tasks/checklog/sessions written under the variant spelling landed in
-// a split data directory (2026-08-18 dogfood: 8+2 task split). After the derivation
-// layer converges to canonical case (forgedata.CanonicalCase), the EXISTING split
-// data still needs an explicit merge — this command. It is deliberately explicit
-// (not a silent lazy migration): merging involves ordered JSONL merges and conflict
-// trade-offs, so it must be dry-runnable, previewable, and backed up for rollback.
-//
-// Merge semantics live in internal/datamerge (project-sync extraction: rekey and
-// `forge project import` share ONE merge implementation). Legacy rekey policy =
-// to-side wins conflicts, JSONL timestamp-ordered merge, and the from-dir survives
-// whole as <to>/.rekey-backup-<ts>/ (never deleted; every replaced/conflicted
-// from-side file is preserved for rollback). Registry sync via registry.Rekey.
-//
-// --dry-run lists every planned action without touching disk.
-//
 // forge registry rekey 把一个项目数据目录并入另一个：
 // `forge registry rekey --from <old-key> --to <new-key> [--dry-run]`。
 //

@@ -8,15 +8,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
-// merge_test.go — guards for the shared merge semantics (task import --merge and
-// project import TaskUnion). Chinese strings use raw literals (Windows quote rule).
-//
 // merge_test.go —— 共享合并语义（task import --merge 与 project import 的
 // TaskUnion）守卫。中文字符串用 raw 字面量（Windows 引号规则）。
 
-// TestUnionDecisions_EmptyIDNotCollapsed: a malformed bundle whose decisions carry
-// empty IDs must NOT have them collapsed into one by the ID-keyed union (silent data
-// loss). Empty-ID entries are appended as-is; non-empty duplicates are still deduped.
+// TestUnionDecisions_EmptyIDNotCollapsed: a malformed bundle whose decisions carry empty IDs must NOT have them collapsed into one by the ID-keyed union (silent data loss).
 //
 // TestUnionDecisions_EmptyIDNotCollapsed：决策带空 ID 的畸形 bundle 不能被按 ID
 // 的并集压成一条（静默丢数据）。空 ID 条目原样追加；非空重复仍去重。
@@ -43,10 +38,7 @@ func TestUnionDecisions_EmptyIDNotCollapsed(t *testing.T) {
 	}
 }
 
-// TestGhostForeignSessions_OnlyGhosts: ghosting marks links Imported and touches
-// NOTHING else — result fields, control-flow fields, and assignment survive intact.
-// This is the contract the lineage-trusted project import relies on (preserve
-// results, ghost sessions).
+// TestGhostForeignSessions_OnlyGhosts: ghosting marks links Imported and touches NOTHING else — result fields, control-flow fields, and assignment survive intact.
 //
 // TestGhostForeignSessions_OnlyGhosts：幽灵化只标 Imported，别的什么都不动——
 // 结果字段、控制流字段、分派都原样保留。这是 lineage 受信的 project import
@@ -80,8 +72,7 @@ func TestGhostForeignSessions_OnlyGhosts(t *testing.T) {
 	}
 }
 
-// TestMergeTaskState_IdentityAuthoritative: MergeTaskState never overwrites local
-// identity/definition fields; collaborative sets union; idempotent on re-merge.
+// TestMergeTaskState_IdentityAuthoritative: MergeTaskState never overwrites local identity/definition fields; collaborative sets union; idempotent on re-merge.
 //
 // TestMergeTaskState_IdentityAuthoritative：MergeTaskState 绝不覆盖本地身份/定义
 // 字段；协作集合并集；重复合并幂等。
@@ -122,18 +113,12 @@ func TestMergeTaskState_IdentityAuthoritative(t *testing.T) {
 	}
 }
 
-// gateResult builds one History entry.
-//
 // gateResult 造一条 History 条目。
 func gateResult(gate string, passed bool) TaskGateResult {
 	return TaskGateResult{Gate: gate, Passed: passed, HeadCommit: `abc1234`}
 }
 
-// TestMergeTaskStateSync_FailedGateHealedByPassed pins the convergence rule the plain
-// local-authoritative union cannot provide: the peer machine re-ran a gate we FAILED
-// and it PASSED — executor's prerequisite walk only counts Passed entries, so keeping
-// the local Failed would deadlock the task on this machine forever. Prefer-Passed
-// takes the incoming Passed entry; CurrentGate is re-derived from the healed history.
+// TestMergeTaskStateSync_FailedGateHealedByPassed pins the convergence rule the plain local-authoritative union cannot provide: the peer machine re-ran a gate we FAILED and it PASSED — executor's prerequisite walk only counts Passed entries, so keeping the local Failed would deadlock the task on this machine forever.
 //
 // TestMergeTaskStateSync_FailedGateHealedByPassed 钉死纯本地权威并集给不了的收敛
 // 规则：对端机器重跑了我们 FAILED 且 PASSED 的门禁——executor 前置链只认 Passed
@@ -171,11 +156,7 @@ func TestMergeTaskStateSync_FailedGateHealedByPassed(t *testing.T) {
 	}
 }
 
-// TestMergeTaskStateSync_CompletionMonotonic: an incoming COMPLETED snapshot of the
-// same task completes the local incomplete copy (whole completion block adopted —
-// CompletedAt/ReviewPassed/Score/Assignment), while a local completion is never
-// downgraded by an incoming incomplete snapshot. Both directions converge; re-merge
-// is a no-op (idempotent).
+// TestMergeTaskStateSync_CompletionMonotonic: an incoming COMPLETED snapshot of the same task completes the local incomplete copy (whole completion block adopted — CompletedAt/ReviewPassed/Score/Assignment), while a local completion is never downgraded by an incoming incomplete snapshot.
 //
 // TestMergeTaskStateSync_CompletionMonotonic：同任务的传入「已完成」快照使本地未完
 // 成副本完成（整块采纳完成字段——CompletedAt/ReviewPassed/Score/Assignment）；

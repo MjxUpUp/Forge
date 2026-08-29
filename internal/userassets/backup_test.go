@@ -59,8 +59,7 @@ func TestBackupOriginal_FirstBackup(t *testing.T) {
 }
 
 // TestBackupOriginal_NeverOverwrites pins the rollback anchor: a second backup
-// after the file changed must NOT overwrite the first backup — the first
-// backup is the pre-forge state the user rolls back to.
+// after the file changed must NOT overwrite the first backup.
 //
 // TestBackupOriginal_NeverOverwrites 钉死回滚锚点：文件变更后的第二次备份
 // 不得覆盖首次备份——首次备份才是用户回滚到的 forge 触碰前状态。
@@ -93,8 +92,8 @@ func TestBackupOriginal_NeverOverwrites(t *testing.T) {
 	}
 }
 
-// TestBackupOriginal_NotExisted guards the forge-created-file branch: backing
-// up a nonexistent path records existed=false and stores NO original file, so
+// TestBackupOriginal_NotExisted guards the forge-created-file branch: backing up
+// a nonexistent path records existed=false and stores NO original file, so
 // rollback knows to delete rather than restore.
 //
 // TestBackupOriginal_NotExisted 守护 forge 创建文件分支：备份不存在的路径记录
@@ -188,8 +187,8 @@ func TestRestoreOriginal_NotExisted(t *testing.T) {
 	}
 }
 
-// TestRestoreOriginal_NoBackup guards the no-op contract: with no backup for
-// the path, restore reports (false, nil) and leaves the file untouched.
+// TestRestoreOriginal_NoBackup guards the no-op contract: with no backup for the
+// path, restore reports (false, nil) and leaves the file untouched.
 //
 // TestRestoreOriginal_NoBackup 守护 no-op 契约：路径无备份时恢复报告
 // (false, nil) 且文件保持不动。
@@ -236,8 +235,6 @@ func TestRestoreAll(t *testing.T) {
 		t.Fatalf(`BackupOriginal(created): %v`, err)
 	}
 
-	// Simulate forge's modifications.
-	//
 	// 模拟 forge 的修改。
 	if err := os.WriteFile(existed, []byte(`modified`), 0644); err != nil {
 		t.Fatalf(`modify existed: %v`, err)
@@ -286,8 +283,7 @@ func TestBackupRoot(t *testing.T) {
 // goroutines (standing in for racing forge processes) back up the same file
 // simultaneously, every call succeeds, exactly one meta.json results, and the
 // stored original still holds the PRE-forge bytes (no goroutine's later write
-// can clobber the anchor — the stat-then-write race this test guards against
-// let a slow writer record already-modified bytes as the "original").
+// can clobber the anchor.
 //
 // TestBackupOriginal_ConcurrentClaims 钉死 O_EXCL 锚点认领：大量 goroutine
 // （模拟竞速的 forge 进程）同时备份同一文件时，全部调用成功，只产生一份
@@ -319,8 +315,6 @@ func TestBackupOriginal_ConcurrentClaims(t *testing.T) {
 		}
 	}
 
-	// Exactly one valid anchor, holding the pre-forge bytes.
-	//
 	// 恰好一份有效锚点，持有 forge 修改前的字节。
 	dir, err := backupDir(target)
 	if err != nil {

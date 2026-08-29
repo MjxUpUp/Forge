@@ -4,12 +4,10 @@ import (
 	"testing"
 )
 
+// TestFilterUnreported pins the dedup helper's contract.
+//
 // TestFilterUnreported 钉住 finding 去重助手的契约：已报告指纹被过滤、新指纹追加进
 // state.ReportedFindings（changed=true）、同批重复指纹只报一次、nil state 退化为不去重。
-//
-// TestFilterUnreported pins the dedup helper's contract: reported fingerprints are
-// filtered out, new ones append to state.ReportedFindings (changed=true), a duplicate
-// fingerprint within one batch reports once, nil state degrades to no dedup.
 func TestFilterUnreported(t *testing.T) {
 	state := &TaskState{TaskRef: "t1"}
 
@@ -46,12 +44,10 @@ func TestFilterUnreported(t *testing.T) {
 	}
 }
 
+// TestFindingKeys pins the fingerprint formats: cheat=rule|file:line; unused=rule|file:line|symbol (the symbol is the finding's identity, so a rename on the same line is not mis-suppressed).
+//
 // TestFindingKeys 钉住指纹格式：cheat=规则|文件：行；unused=规则|文件：行|符号（符号是
 // finding 身份本体，防同行重命名被误抑制）。
-//
-// TestFindingKeys pins the fingerprint formats: cheat=rule|file:line;
-// unused=rule|file:line|symbol (the symbol is the finding's identity, so a rename on the
-// same line is not mis-suppressed).
 func TestFindingKeys(t *testing.T) {
 	c := CheatFinding{Pattern: CheatCommentOnly, File: "f.go", Line: 12}
 	if got := cheatFindingKey(c); got != "comment-only-fix|f.go:12" {

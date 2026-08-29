@@ -2,7 +2,6 @@ package skillseval
 
 // keyword_test.go — per-keyword 分析层的钉子测试：计数/engaged/suppressed 归位、
 // condition-only 分行、死关键词检测、排序稳定性、advisory 排除。
-//
 // keyword_test.go — pins for the per-keyword analysis layer: counts/engaged/
 // suppressed placement, condition-only row separation, dead-keyword detection,
 // sort stability, advisory exclusion.
@@ -31,9 +30,11 @@ func kwEntry(skill, keyword, session string, at time.Time, suppressed string) ch
 	}
 }
 
+// TestAnalyzeKeywords_Basic counts placement: matched_keyword slicing, engaged
+// join, suppressed sum, condition-only separation, TotalHits covers every hit.
+//
 // TestAnalyzeKeywords_Basic 计数归位：matched_keyword 切片、engaged join、suppressed
 // 求和、condition-only 分行、TotalHits 含全部命中。
-//
 // TestAnalyzeKeywords_Basic counts placement: matched_keyword slicing, engaged join,
 // suppressed sum, condition-only separation, TotalHits covers every hit.
 func TestAnalyzeKeywords_Basic(t *testing.T) {
@@ -79,8 +80,10 @@ func TestAnalyzeKeywords_Basic(t *testing.T) {
 	}
 }
 
-// TestAnalyzeKeywords_DeadKeywords 声明 ∖ 命中 = 死关键词（排序稳定、nil declared 跳过）。
+// TestAnalyzeKeywords_DeadKeywords declared ∖ hit = dead keywords (sorted
+// stable, nil declared skips detection).
 //
+// TestAnalyzeKeywords_DeadKeywords 声明 ∖ 命中 = 死关键词（排序稳定、nil declared 跳过）。
 // TestAnalyzeKeywords_DeadKeywords declared ∖ hit = dead keywords (sorted stable,
 // nil declared skips detection).
 func TestAnalyzeKeywords_DeadKeywords(t *testing.T) {
@@ -111,10 +114,12 @@ func TestAnalyzeKeywords_DeadKeywords(t *testing.T) {
 	}
 }
 
+// TestAnalyzeKeywords_DeadGatedOnV2Era the dead-keyword gate: with an all-v1
+// window (no Meta attribution) detection is disabled entirely.
+//
 // TestAnalyzeKeywords_DeadGatedOnV2Era 死关键词门槛：全 v1 窗口（无 Meta 归因）时检测
 // 整体停用——"零命中"混同「从未命中」与「归因上线前命中过」（v2 上线首日 382 个幻影
 // 死词的生产实况）。
-//
 // TestAnalyzeKeywords_DeadGatedOnV2Era the dead-keyword gate: with an all-v1 window
 // (no Meta attribution) detection is disabled entirely — "zero hits" would conflate
 // "never fired" with "fired before attribution existed" (production reality: 382
@@ -139,10 +144,12 @@ func TestAnalyzeKeywords_DeadGatedOnV2Era(t *testing.T) {
 	}
 }
 
+// TestAnalyzeKeywords_MixedWindowDisablesDead the mixed-window gate (review M1):
+// ANY v1 entry in the window disables dead-keyword detection.
+//
 // TestAnalyzeKeywords_MixedWindowDisablesDead 混合窗口门槛（review M1）：窗口内混有
 // 任一 v1 条目即停用死词检测——v1 命中对 hit 集零贡献，某词"最后一次命中落在归因
 // 上线前"会被误判死。retention 30 天内 v2 上线初期窗口必然混合。
-//
 // TestAnalyzeKeywords_MixedWindowDisablesDead the mixed-window gate (review M1): ANY
 // v1 entry in the window disables dead-keyword detection — v1 hits contribute nothing
 // to the hit set, so a word whose last hit predates attribution would falsely read
@@ -169,10 +176,12 @@ func TestAnalyzeKeywords_MixedWindowDisablesDead(t *testing.T) {
 	}
 }
 
+// TestAnalyzeKeywords_ConditionOnlyCountsAsV2 a v2 condition-only hit (no
+// keyword but trigger_index present) counts toward V2Hits.
+//
 // TestAnalyzeKeywords_ConditionOnlyCountsAsV2 v2 的 condition-only 命中（无关键词但有
 // trigger_index）计入 V2Hits——纯 condition 窗口满足归因完备、死词检测开启（载荷路径，
 // review n3）。
-//
 // TestAnalyzeKeywords_ConditionOnlyCountsAsV2 a v2 condition-only hit (no keyword but
 // trigger_index present) counts toward V2Hits — a pure-condition window satisfies
 // attribution completeness and dead detection opens (the load-bearing path, review n3).
@@ -190,8 +199,10 @@ func TestAnalyzeKeywords_ConditionOnlyCountsAsV2(t *testing.T) {
 	}
 }
 
-// TestAnalyzeKeywords_AdvisoryExcluded stop-cap advisory（无 hit 标记）不进任何统计。
+// TestAnalyzeKeywords_AdvisoryExcluded stop-cap advisories (no hit marker) never
+// enter any stat.
 //
+// TestAnalyzeKeywords_AdvisoryExcluded stop-cap advisory（无 hit 标记）不进任何统计。
 // TestAnalyzeKeywords_AdvisoryExcluded stop-cap advisories (no hit marker) never
 // enter any stat.
 func TestAnalyzeKeywords_AdvisoryExcluded(t *testing.T) {

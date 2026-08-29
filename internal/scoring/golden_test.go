@@ -19,11 +19,6 @@ func goldenDir(t *testing.T) string {
 	return dir
 }
 
-// LoadGoldenCases reads each golden_*.json fixture under dir. It returns a slice
-// (not a map) so that filepath.Glob's sort order yields deterministic test ordering.
-// Test-only helper — production persistence of golden cases goes through
-// realgolden.go's GoldenCase JSON format; loading happens only in tests.
-//
 // LoadGoldenCases 读取 dir 下每个 golden_*.json fixture。返回 slice（非 map）
 // 通过 filepath.Glob 的排序保持 deterministic 测试顺序。纯测试 helper——
 // golden case 的生产落盘走 realgolden.go 的 GoldenCase JSON 格式，读取只发生在测试侧。

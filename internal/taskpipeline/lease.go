@@ -1,14 +1,5 @@
 package taskpipeline
 
-// lease.go — cross-machine task leases (docs/design/sync-convergence.md §4).
-//
-// A lease says "node X is actively working this task". v1 semantics are ADVISORY
-// (personal profile): a foreign active lease surfaces a gate-time note, never a
-// block — the Redlock lesson is that TTL leases cannot guarantee mutual exclusion
-// under clock skew/GC pauses, so correctness never depends on them. The fencing
-// counter is what upgrades a claim to a comparable term: higher fencing always wins
-// a merge, so a stale holder's late write cannot displace a newer claim.
-//
 // lease.go —— 跨机器任务租约（docs/design/sync-convergence.md §4）。
 //
 // 租约表达「节点 X 正在处理此任务」。v1 语义是 advisory（个人档）：他机活跃租约
@@ -36,9 +27,7 @@ type Lease struct {
 	ClaimedAt  int64  `json:"claimed_at_unixms"` // 认领时刻墙钟毫秒（TTL 判定用）
 }
 
-// ClaimLease stamps a fresh lease for nodeID: fencing increments monotonically (a
-// re-claim by the same holder is a new term). Fail-soft on bad HLC state is not
-// needed — the clock is caller-provided and always ticks.
+// ClaimLease stamps a fresh lease for nodeID: fencing increments monotonically (a re-claim by the same holder is a new term).
 //
 // ClaimLease 为 nodeID 落新租约：fencing 单调递增（同一持有者再认领也是新任期）。
 func ClaimLease(s *TaskState, nodeID string, clock *hlc.Clock, ttlSec int64) {
@@ -64,8 +53,7 @@ type LeaseState struct {
 	Message       string // 人类可读 advisory（门禁输出用）
 }
 
-// ExpiresAt is the moment the lease lapses (claimed + TTL) — the single source of the
-// expiry formula; ActiveAt / LeaseStatus / the dashboard projection all derive from it.
+// ExpiresAt is the moment the lease lapses (claimed + TTL) — the single source of the expiry formula; ActiveAt / LeaseStatus / the dashboard projection all derive from it.
 //
 // ExpiresAt 是租约过期时刻（认领 + TTL）——过期公式的唯一出处；ActiveAt /
 // LeaseStatus / 看板投影都从它派生。
@@ -76,8 +64,7 @@ func (l *Lease) ExpiresAt() time.Time {
 	return time.UnixMilli(l.ClaimedAt).Add(time.Duration(l.TTLSec) * time.Second)
 }
 
-// ActiveAt reports whether the lease is unexpired at now (the single "expiry means
-// free" rule — LeaseStatus and the dashboard feed both derive from it, no second copy).
+// ActiveAt reports whether the lease is unexpired at now (the single "expiry means free" rule — LeaseStatus and the dashboard feed both derive from it, no second copy).
 //
 // ActiveAt 报告租约在 now 时刻是否未过期（「过期即自由」规则的唯一出处——
 // LeaseStatus 与 dashboard feed 都从它派生，不留第二份拷贝）。
@@ -106,26 +93,14 @@ func LeaseStatus(s *TaskState, nodeID string, now time.Time) LeaseState {
 	}
 }
 
-// defaultLeaseTTLSec is the v1 lease TTL: long enough to cover a work sitting,
-// short enough that a crashed machine's lease frees the task the same day.
-//
 // defaultLeaseTTLSec 是 v1 租约 TTL：长到覆盖一次工作坐段，短到崩溃机器的租约
 // 当天释放任务。
 const defaultLeaseTTLSec = 4 * 3600
 
-// leaseDegradeNoted keeps the fail-open announce to one line per process (both entry
-// points below run in short-lived CLI processes; the mutex-free bool is fine — a
-// duplicate warning is harmless, a missing one is not).
-//
 // leaseDegradeNoted 让 fail-open 告警每进程只打一行（下面两个入口都跑在短命 CLI
 // 进程里；无锁 bool 即可——重复告警无害，漏告警才有害）。
 var leaseDegradeNoted bool
 
-// warnLeaseDegrade surfaces the identity failure behind a fail-open: without it a
-// broken node.json reads as "no foreign lease" at gate time and "no lease" after
-// task start — the cross-machine advisory silently stops working with no way to
-// tell it apart from "nothing to report".
-//
 // warnLeaseDegrade 暴露 fail-open 背后的身份失败：否则损坏的 node.json 在门禁时
 // 读作「无他机租约」、task start 后读作「无租约」——跨机 advisory 静默失效，且与
 // 「没什么可报」无法区分。
@@ -137,8 +112,7 @@ func warnLeaseDegrade(op string, err error) {
 	fmt.Fprintf(os.Stderr, `⚠ forge: %s 跳过租约（fail-open——身份加载失败：%v）`+"\n", op, err)
 }
 
-// ClaimLeaseForCurrentNode claims the task lease for THIS machine, failing open
-// (identity load problems never block task work — a lease is advisory metadata).
+// ClaimLeaseForCurrentNode claims the task lease for THIS machine, failing open (identity load problems never block task work — a lease is advisory metadata).
 //
 // ClaimLeaseForCurrentNode 为本机认领任务租约，fail-open（身份加载问题绝不阻塞
 // 任务工作——租约是 advisory 元数据）。
@@ -151,8 +125,7 @@ func ClaimLeaseForCurrentNode(s *TaskState) {
 	ClaimLease(s, id.NodeID, hlc.NewClock(nil), defaultLeaseTTLSec)
 }
 
-// LeaseStatusForCurrentNode evaluates the lease from THIS machine's perspective
-// (fail-open: identity problems read as "no foreign lease").
+// LeaseStatusForCurrentNode evaluates the lease from THIS machine's perspective (fail-open: identity problems read as "no foreign lease").
 //
 // LeaseStatusForCurrentNode 以本机视角评估租约（fail-open：身份问题按「无他机
 // 租约」处理）。
@@ -165,10 +138,6 @@ func LeaseStatusForCurrentNode(s *TaskState) LeaseState {
 	return LeaseStatus(s, id.NodeID, time.Now())
 }
 
-// mergeLeaseSync resolves lease conflicts: HIGHER FENCING WINS (a newer claim
-// displaces an older one — that is the entire point of a fencing token); equal
-// fencing breaks by holder node id for determinism.
-//
 // mergeLeaseSync 裁决租约冲突：fencing 高者胜（更新的认领取代旧的——这正是 fencing
 // token 的全部意义）；fencing 相等按持有者 node id 字典序保证确定性。
 func mergeLeaseSync(local, incoming *TaskState) {

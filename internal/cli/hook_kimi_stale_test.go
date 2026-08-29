@@ -9,11 +9,6 @@ import (
 	"time"
 )
 
-// writeKimiPluginRecord writes a forge plugin record with the given github.ref into
-// installed.json under home, mirroring agentbridge's installed.json schema (the same
-// shape kimi-code writes on /plugins install). fmt %q avoids hand-writing quotes in the
-// test source.
-//
 // writeKimiPluginRecord 把带指定 github.ref 的 forge plugin 记录写进 home 下的
 // installed.json，镜像 agentbridge 的 installed.json schema（kimi-code 在 /plugins
 // install 时写的同一形状）。用 fmt %q 避免在测试源码里手写引号。
@@ -29,9 +24,10 @@ func writeKimiPluginRecord(t *testing.T, home, refKind, refValue string, enabled
 	}
 }
 
-// TestPrependKimiStaleAdvisoryAt pins the staleness advisory core: now + dataHome are
-// injected so the once-daily throttle and the version compare are asserted without a real
-// clock. installed/ok come from KIMI_CODE_HOME (set per subtest), matching production.
+// TestPrependKimiStaleAdvisoryAt pins the staleness advisory core: now +
+// dataHome are injected so the once-daily throttle and the version compare are
+// asserted without a real clock. installed/ok come from KIMI_CODE_HOME (set per
+// subtest), matching production.
 //
 // TestPrependKimiStaleAdvisoryAt 钉住 staleness advisory 核心：now + dataHome 注入，使按日
 // 节流与版本比对可脱离真实时钟断言。installed/ok 来自 KIMI_CODE_HOME（每子测试设置），
@@ -161,10 +157,6 @@ func TestPrependKimiStaleAdvisoryAt(t *testing.T) {
 		writeKimiPluginRecord(t, home, "tag", "v1.19.0", true)
 		dataHome := t.TempDir()
 		got := prependKimiStaleAdvisoryAt("prior context line", "1.28.3", now, dataHome)
-		// Load-bearing F2 assertion: the advisory sits at the HEAD (survives
-		// emitAgentOutput's 9500-rune TAIL truncation), and the existing detail is
-		// preserved after it — not dropped, not in front.
-		//
 		// F2 承重断言：advisory 位于头部（在 emitAgentOutput 的 9500 rune 截尾下
 		// 存活），既有 detail 保留在其后——不丢、不前置。
 		if !strings.HasPrefix(got, "[forge] 你的 kimi forge plugin") {
@@ -179,13 +171,9 @@ func TestPrependKimiStaleAdvisoryAt(t *testing.T) {
 	})
 }
 
-// TestKimiStaleRidesHook pins the 2026-08-15 channel move at the routing-predicate
-// level: the stale advisory rides resume-reinject (UserPromptSubmit — the one stdout
-// channel kimi delivers to the model) and NOT init-suggest (SessionStart — dropped by
-// kimi; the old triple-invisible ride). The init-suggest=false case is the load-bearing
-// one: keeping that ride would consume the once-daily marker from an inert channel
-// before the visible channel fires. End-to-end pin: internal/e2e TestHook_KimiStale
-// Advisory_RidesUserPromptSubmit.
+// TestKimiStaleRidesHook pins the 2026-08-15 channel move at the
+// routing-predicate level: the stale advisory rides resume-reinject
+// (UserPromptSubmit.
 //
 // TestKimiStaleRidesHook 在路由谓词层钉死 2026-08-15 的通道迁移：stale advisory 搭载
 // resume-reinject（UserPromptSubmit——kimi 唯一把 stdout 送达模型的通道），而非

@@ -14,12 +14,6 @@ import (
 	"time"
 )
 
-// TestProjectName_VolumeRoot tests volume-root projects (e.g. E:\Forge) whose parent is the drive
-// root E:\. On Windows filepath.Base(E:\) returns a single backslash (non-empty, non-dot); the old
-// projectName logic mis-judged and concatenated \/Forge. The volume root itself has no meaningful
-// parent segment, so it should fall back to only the last segment Forge. Volume-name semantics are
-// Windows-only (VolumeName returns empty on POSIX); non-Windows skip.
-//
 // TestProjectName_VolumeRoot 盘根项目（如 E:\Forge）的父目录是盘根 E:\，filepath.Base(E:\)
 // 在 Windows 返回单反斜杠（非空、非 .），旧 projectName 漏判会拼出 \/Forge。盘根本身无有意义的
 // 父段，应回退只取末段 Forge。卷名语义仅 Windows 有（VolumeName 在 POSIX 返空），非 Windows 跳过。
@@ -30,18 +24,12 @@ func TestProjectName_VolumeRoot(t *testing.T) {
 	if got := projectName(`E:\Forge`); got != `Forge` {
 		t.Fatalf(`盘根项目 E:\Forge 应回退末段 Forge，got %q（旧逻辑拼 \/Forge）`, got)
 	}
-	// Intra-drive non-root paths still concatenate the last two segments — confirms this isn't an
-	// over-broad fix that retreats on any path containing a drive letter.
-	//
 	// 盘内非盘根路径仍拼末两段——确认不是凡带盘符都回退的过宽修复。
 	if got := projectName(`D:\code\app`); got != `code/app` {
 		t.Fatalf(`D:\code\app 应拼末两段 code/app，got %q`, got)
 	}
 }
 
-// TestProjectName_NonVolumeRoot ensures non-volume-root paths still concatenate the last two
-// segments — guards against isVolumeRoot mis-judging ordinary multi-level paths.
-//
 // TestProjectName_NonVolumeRoot 非盘根路径仍拼末两段——防 isVolumeRoot 误判普通多级路径。
 func TestProjectName_NonVolumeRoot(t *testing.T) {
 	parent := t.TempDir()
@@ -53,9 +41,6 @@ func TestProjectName_NonVolumeRoot(t *testing.T) {
 	}
 }
 
-// TestServe_HTTP starts an httptest server and verifies / returns the pulse panel page,
-// the legacy /pulse URL redirects to /, and an unmatched path 404s.
-//
 // TestServe_HTTP 起 httptest server，验证 / 返回 pulse 面板页、旧 /pulse 地址重定向到 /、
 // 未匹配路径 404。
 func TestServe_HTTP(t *testing.T) {
@@ -63,8 +48,6 @@ func TestServe_HTTP(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	// Page endpoint.
-	//
 	// 页面端点
 	resp, err := http.Get(srv.URL + "/")
 	if err != nil {
@@ -84,8 +67,6 @@ func TestServe_HTTP(t *testing.T) {
 		}
 	}
 
-	// Legacy /pulse redirects to / (http.Get follows it; assert the final landing).
-	//
 	// 旧 /pulse 重定向到 /（http.Get 自动跟随；断言最终落点）。
 	respPulse, err := http.Get(srv.URL + "/pulse")
 	if err != nil {
@@ -96,8 +77,6 @@ func TestServe_HTTP(t *testing.T) {
 		t.Errorf("GET /pulse → %s status %d, want redirect landing / 200", respPulse.Request.URL.Path, respPulse.StatusCode)
 	}
 
-	// Unmatched path → 404.
-	//
 	// 未匹配路径 → 404
 	resp3, err := http.Get(srv.URL + "/nope")
 	if err != nil {
@@ -109,10 +88,6 @@ func TestServe_HTTP(t *testing.T) {
 	}
 }
 
-// TestServe_GracefulShutdown starts a real Serve (ephemeral port, browser not opened); after ctx is
-// cancelled it must return nil promptly and never block forever (covers the Shutdown→errCh fallback
-// timeout path, guarding against the "need a second Ctrl+C" regression).
-//
 // TestServe_GracefulShutdown 起真实 Serve（临时端口 + 不开浏览器），ctx 取消后必须
 // 及时返回 nil，不得永久阻塞（覆盖 Shutdown→errCh 兜底超时路径，防「需二次 Ctrl+C」回归）。
 func TestServe_GracefulShutdown(t *testing.T) {
@@ -122,8 +97,6 @@ func TestServe_GracefulShutdown(t *testing.T) {
 		done <- Serve(ctx, Options{Root: t.TempDir(), Port: 0, OpenBrowser: false})
 	}()
 
-	// Give net.Listen a moment to start before sending cancel.
-	//
 	// 给 net.Listen 一点时间起监听，再发取消。
 	time.Sleep(150 * time.Millisecond)
 	cancel()
@@ -138,10 +111,6 @@ func TestServe_GracefulShutdown(t *testing.T) {
 	}
 }
 
-// TestIsAddrInUse checks cross-platform port-in-use detection: both POSIX and Windows messages
-// are recognised, and non-port errors are not mis-judged.
-// On Windows errors.Is(syscall.EADDRINUSE) does not hold (verified by E2E), so string fallback is used.
-//
 // TestIsAddrInUse 跨平台端口占用判别：POSIX 与 Windows 消息都识别，非占用错误不误判。
 // Windows 上 errors.Is(syscall.EADDRINUSE) 不成立（E2E 实测），靠字符串兜底。
 func TestIsAddrInUse(t *testing.T) {
@@ -156,10 +125,6 @@ func TestIsAddrInUse(t *testing.T) {
 	}
 }
 
-// TestIsLocalhostHost pins Host validation: localhost / loopback / IPv6 / [::1] / empty are allowed;
-// foreign domains and LAN addresses are rejected.
-// This is the DNS-rebinding defence — port and IPv6 brackets are stripped before equality check.
-//
 // TestIsLocalhostHost 钉住 Host 校验：localhost/回环/IPv6/[::1]/空 放行，外域/局域网拒。
 // 这是 DNS rebinding 防线——去端口、去 IPv6 方括号后判等。
 func TestIsLocalhostHost(t *testing.T) {
@@ -188,11 +153,6 @@ func TestIsLocalhostHost(t *testing.T) {
 	}
 }
 
-// TestSecureHeaders requests through the full middleware stack (Host validation + security headers
-// + mux) and verifies defensive headers are in place. The JSON API carries the middleware CSP
-// (script-src 'none' — no JS on API responses), while the pulse page at / overrides it with
-// script-src 'unsafe-inline' for its inline script and still opens no external origins.
-//
 // TestSecureHeaders 经完整 middleware 栈（Host 校验 + 安全头 + mux）请求，验证防御头就位。
 // JSON API 带 middleware CSP（script-src 'none'——API 响应无 JS）；/ 处的 pulse 页为内联
 // 脚本覆盖为 script-src 'unsafe-inline'，且仍不放行任何外部源。
@@ -215,8 +175,6 @@ func TestSecureHeaders(t *testing.T) {
 			t.Errorf(`header %s = %q, want %q`, c.k, got, c.v)
 		}
 	}
-	// Non-page routes keep the strict CSP (script-src 'none').
-	//
 	// 非页面路由保持严格 CSP（script-src 'none'）。
 	if csp := resp.Header.Get(`Content-Security-Policy`); !strings.Contains(csp, `script-src 'none'`) {
 		t.Errorf(`CSP 缺 script-src 'none': %q`, csp)
@@ -236,9 +194,6 @@ func TestSecureHeaders(t *testing.T) {
 	}
 }
 
-// TestServe_Favicon returns 204 for /favicon.ico, eliminating the console 404 noise from the
-// browser's automatic request.
-//
 // TestServe_Favicon /favicon.ico 返回 204，消除浏览器自动请求的 console 404 噪声。
 func TestServe_Favicon(t *testing.T) {
 	handler := localhostOnly(securityHeaders(newMux(Options{Root: t.TempDir()})))
@@ -255,16 +210,11 @@ func TestServe_Favicon(t *testing.T) {
 	}
 }
 
-// TestWriteRendered_FailureGives500 pins the error-swallow fix: when the render function fails,
-// the client must get a 500 with the neutral message — never a 200 with truncated content.
-//
 // TestWriteRendered_FailureGives500 钉死吞错修复：渲染函数失败时客户端必须拿到 500 +
 // 中性文案——绝不能是 200 + 截断内容。
 func TestWriteRendered_FailureGives500(t *testing.T) {
 	rec := httptest.NewRecorder()
 	writeRendered(rec, `/tmp/root`, `text/html; charset=utf-8`, `渲染看板页面失败`, func(out io.Writer) error {
-		// Partial output before failing — must NOT leak into the response.
-		//
 		// 失败前的半截输出——不得漏进响应。
 		_, _ = io.WriteString(out, `<html>truncated`)
 		return errors.New(`template exec failed`)
@@ -282,9 +232,6 @@ func TestWriteRendered_FailureGives500(t *testing.T) {
 	}
 }
 
-// TestWriteRendered_SuccessWritesBody: successful render sets the content type and copies the
-// full buffered body.
-//
 // TestWriteRendered_SuccessWritesBody：渲染成功时设置 Content-Type 并完整写出 buffer 内容。
 func TestWriteRendered_SuccessWritesBody(t *testing.T) {
 	rec := httptest.NewRecorder()

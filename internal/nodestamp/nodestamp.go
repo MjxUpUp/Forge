@@ -1,21 +1,10 @@
-// Package nodestamp stamps every event line with its machine-attribution fields
-// (docs/design/node-identity.md §4): node_id (pubkey fingerprint), seq (per-node
-// monotonic counter), ts_hlc (HLC tie-break), sig (reserved, v1 always empty).
-//
-// Fail-open is the prime directive: stamping is observability, and the event it rides
-// on is more important than the stamp. ANY failure (identity load, counter I/O, lock
-// contention) yields a zero Stamp — the event is appended unstamped, exactly as
-// pre-stamping versions behaved. The one failure mode we must NOT allow is silently
-// reusing seqs: a corrupt counter therefore disables stamping rather than restarting
-// at 1 (reuse would poison (node_id, seq) dedup across machines).
-//
-// Seq protocol: pre-increment + persist-before-use. A crash after persist leaves a
-// gap (harmless); a crash before persist can never produce reuse. Gaps are fine —
-// (node_id, seq) is a dedup key, not a log sequence.
+// Package nodestamp stamps machine-attribution fields onto every event line.
 //
 // Package nodestamp 给每条事件行打机器归因字段（docs/design/node-identity.md §4）：
 // node_id（公钥指纹）、seq（节点本地单调计数器）、ts_hlc（HLC 决胜戳）、sig
 // （预留，v1 恒空）。
+// Seq 协议：先自增、用前持久化。持久化后崩溃留下空洞（无害）；持久化前崩溃绝不产生
+// 重用。空洞没关系——(node_id, seq) 是去重键，不是日志序列号。
 //
 // fail-open 是第一原则：打戳是可观测性，戳依附的事件比戳重要。任何失败（身份
 // 加载、计数器 IO、锁竞争）都产出零值 Stamp——事件按打戳前版本的原样追加。
@@ -42,9 +31,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// Stamp is the machine-attribution block embedded (flattened) into every event
-// struct. All fields omitempty: a zero Stamp adds ZERO bytes to the JSON line, so
-// legacy-format events and old readers are untouched.
+// Stamp is the machine-attribution block embedded (flattened) into every event struct.
 //
 // Stamp 是内嵌（拍平）进每个事件 struct 的机器归因块。全字段 omitempty：零值
 // Stamp 不给 JSON 行增一个字节，存量格式事件与老读者零感知。

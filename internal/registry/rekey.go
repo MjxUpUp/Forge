@@ -6,17 +6,8 @@ import (
 	"os"
 )
 
-// Rekey synchronizes registry entries after a data-dir rekey (forge registry rekey):
-// entries whose project key equals fromKey are removed; if no entry carries toKey,
-// the first removed entry is re-keyed to toKey (same directory, new identity) so the
-// project does not lose membership. The to-side entry, when present, is kept as-is
-// (its path is the canonical registration).
-//
-// Returns removed = number of fromKey entries dropped. A missing registry file is not
-// an error (0, nil) — same contract as List; a CORRUPT registry IS an explicit error
-// (unlike List): silently skipping the sync here would leave the from-key entry
-// registered while the caller reports success, re-splitting the dashboard view
-// (code-review finding #3). fromKey == toKey is a no-op guard (code-review #5).
+// Rekey synchronizes registry entries after a data-dir rekey (forge registry
+// rekey): entries whose project key equals fromKey are removed.
 //
 // Rekey 在数据目录 rekey（forge registry rekey）后同步注册表条目：key 等于
 // fromKey 的条目被移除；若没有任何条目带 toKey，把第一条被移除的条目改 key 为
@@ -62,8 +53,6 @@ func Rekey(fromKey, toKey string) (removed int, err error) {
 		return 0, nil
 	}
 	if !hasTo && toKey != `` {
-		// No to-side entry: re-key the first dropped entry so membership survives.
-		//
 		// 无 to 侧条目：把第一条被移除条目改 key，保住成员资格。
 		kept = append(kept, Entry{Path: dropped[0].Path, Key: toKey})
 	}

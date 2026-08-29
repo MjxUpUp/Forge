@@ -1,13 +1,4 @@
-// Package registry maintains the global registry of forge projects at ~/.forge/projects.json.
-//
-// After the user-level-assets refactor this registry is THE anchor of "is this a forge
-// project": forge init no longer writes a project-level .forge/ marker by default, so
-// membership here (matched by git key or path prefix) replaces the old .forge/-existence
-// check. projectroot.Find/FindProject resolve the project root via IsMember; the legacy
-// .forge/ walk-up survives only as a backward-compat fallback for projects init'd by
-// older versions (and self-heals by registering them).
-//
-// forge dashboard aggregates the global Pulse panel from List() — this store.
+// Package registry maintains the global registry of forge projects (~/.forge/projects.json).
 //
 // Package registry 维护 forge 项目的全局注册表 ~/.forge/projects.json。
 //
@@ -33,16 +24,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// pathKey normalizes a cleaned absolute path for dedupe/equality. Windows filesystems are
-// case-insensitive, so C:\Proj and c:\proj are the same project — plain string comparison
-// would register them as two entries. macOS's default case-insensitive APFS has the same
-// problem with an extra twist: the filesystem PRESERVES spelling, so variant spellings
-// (Forge vs forge) are two different strings for one directory. Comparison therefore goes
-// through forgedata.CanonicalCase (single source of truth, shared with Key derivation —
-// the old comment's assumption "case matters elsewhere" was factually wrong for APFS).
-// Linux/case-sensitive filesystems: CanonicalCase is the identity function, exact
-// comparison semantics unchanged.
-//
 // pathKey 归一化一个已 Clean 的绝对路径用于去重/相等判断。Windows 文件系统大小写
 // 不敏感，C:\Proj 与 c:\proj 是同一个项目——纯字符串比较会把它们登记成两条。
 // macOS 默认大小写不敏感 APFS 有同样问题且更绕：文件系统保留拼写，变体拼写
@@ -57,9 +38,7 @@ func pathKey(cleanedAbs string) string {
 	return forgedata.CanonicalCase(cleanedAbs)
 }
 
-// Entry is one registered project. Key is the forge project key (git common-dir hash,
-// or PathKey for non-git projects); it may be empty for entries written by older forge
-// versions — those are backfilled lazily at match time (never blocking reads).
+// Entry is one registered project.
 //
 // Entry 是一个已登记项目。Key 是 forge 项目 key（git common-dir hash，非 git 项目
 // 为 PathKey）；老版本 forge 写入的条目可能为空——匹配时惰性补算（不阻塞读）。
@@ -68,8 +47,7 @@ type Entry struct {
 	Key  string `json:"key,omitempty"`
 }
 
-// File is the on-disk structure of ~/.forge/projects.json. Older forge versions wrote
-// {"projects": ["path1", ...]} (plain string list) — UnmarshalJSON accepts both shapes.
+// File is the on-disk structure of ~/.forge/projects.json.
 //
 // File 是 ~/.forge/projects.json 的磁盘结构。老版本 forge 写的是
 // {"projects": ["path1", ...]}（纯字符串列表）——UnmarshalJSON 两种形态都接受。
@@ -77,8 +55,7 @@ type File struct {
 	Projects []Entry `json:"projects"`
 }
 
-// UnmarshalJSON accepts both the current entry-list shape and the legacy string-list
-// shape, so upgrading forge never strands existing registrations.
+// UnmarshalJSON accepts both the current entry-list shape and the legacy string-list shape, so upgrading forge never strands existing registrations.
 //
 // UnmarshalJSON 同时接受当前的 entry 列表形态与遗留的字符串列表形态，
 // 升级 forge 不会丢失既有登记。
@@ -93,9 +70,6 @@ func (f *File) UnmarshalJSON(data []byte) error {
 	for _, r := range raw.Projects {
 		var e Entry
 		if err := json.Unmarshal(r, &e); err == nil {
-			// Defensive: null / {} entries carry no path and can never match —
-			// skip them instead of registering a ghost entry.
-			//
 			// 防御：null / {} 条目没有 path，永远匹配不上——跳过而非登记幽灵条目。
 			if e.Path == `` {
 				continue
@@ -112,10 +86,6 @@ func (f *File) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// globalPath returns the registry path. Global home goes through forgedata.GlobalHome() (FORGE_DATA_HOME first,
-// otherwise ~/.forge) — refactor-data-home commit E unified the source of truth, deprecating the old FORGE_HOME env.
-// Env precedence lets subprocesses (forge binary run via exec) also be isolated in tests — in-process variable injection alone is not inherited by subprocesses.
-//
 // globalPath 返回注册表路径。全局 home 走 forgedata.GlobalHome()（FORGE_DATA_HOME 优先，
 // 否则 ~/.forge）——refactor-data-home commit E 统一真相源，废弃旧的 FORGE_HOME env。
 // env 优先让子进程（forge 二进制经 exec 跑）也能被测试隔离——仅靠进程内变量注入，子进程不继承。
@@ -127,9 +97,6 @@ func globalPath() (string, error) {
 	return filepath.Join(home, `projects.json`), nil
 }
 
-// readFile loads the registry. Missing/corrupt file returns an empty File with ok=false
-// (empty = no projects, not an error — same contract as before).
-//
 // readFile 加载注册表。文件缺失/损坏返回空 File 与 ok=false（空 = 无项目，非错误——
 // 与之前契约一致）。
 func readFile() (File, bool) {
@@ -148,9 +115,6 @@ func readFile() (File, bool) {
 	return f, true
 }
 
-// keyOf returns the entry's project key, backfilling legacy entries (empty Key) by
-// deriving from the entry path. Returns "" when the path is unusable.
-//
 // keyOf 返回条目的项目 key，遗留条目（Key 为空）按条目路径惰性补算。
 // 路径不可用时返 ""。
 func keyOf(e Entry) string {
@@ -166,19 +130,7 @@ func keyOf(e Entry) string {
 	return ``
 }
 
-// List reads registered project paths, dedupes + keeps only those whose path still
-// exists (projects deleted/moved fade out automatically, preventing ghost paths from
-// polluting the global view). Read failure / no registry returns nil (empty = no
-// projects, not an error).
-//
-// Note: the pre-refactor prune condition was ".forge/ still exists"; after
-// user-level-assets, init writes no project-level .forge/ at all, so liveness is
-// judged by the project path itself.
-//
-// Lazy prune: if the registry contains stale entries (projects moved/deleted/duplicated in JSON), write back a pruned version — cleans
-// test pollution (Temp dirs registered by e2e subprocess) + faded projects, so projects.json converges rather than
-// growing unbounded (dogfood measured 1819 entries / 1814 junk). Write only happens when staleness is detected; normal reads do not write,
-// avoiding write overhead on the high-frequency read path.
+// List reads the registered project paths, deduped and existence-filtered.
 //
 // List 读取已登记的项目路径，去重 + 仅保留路径仍存在的（项目被删/移动后自动淡出，
 // 不让幽灵路径污染全局视图）。读失败/无注册表返回 nil（空 = 无项目，非错误）。
@@ -207,11 +159,6 @@ func List() []string {
 			pruned = true // JSON 内重复条目
 			continue
 		}
-		// Keep only entries whose path still exists; moved/deleted ones do not appear
-		// in the global view. Only os.IsNotExist counts as "gone": any other stat
-		// error (permission, invalid path, I/O) means "unreadable right now", not
-		// "disappeared" — pruning on those would silently drop live projects.
-		//
 		// 仅保留路径仍存在的条目；移走/删除的不出现在全局视图。
 		// 只有 os.IsNotExist 算「已消失」：其他 stat 错误（权限、非法路径、I/O）是
 		// 「此刻不可读」而非「不存在」——按那些 prune 会把活项目静默踢出全局注册表。
@@ -235,15 +182,6 @@ func List() []string {
 	return out
 }
 
-// writeEntries atomically writes the registry via util.AtomicWrite (temp file + fsync +
-// rename, with Windows rename retry) — os.WriteFile whole-file overwrite is not atomic,
-// a crash/power loss mid-write leaves a truncated corrupt JSON (making reads fail
-// entirely); rename is atomic (on Windows Go os.Rename goes through MoveFileEx
-// REPLACE_EXISTING). read-modify-write is still not concurrency-safe (two processes
-// writing simultaneously may have the later overwrite the earlier and lose one entry),
-// but local-tool concurrency is rare, lost entries can be re-added by re-running init;
-// corrupt JSON is what must be prevented. Shared by Add and List lazy prune.
-//
 // writeEntries 原子写注册表，走 util.AtomicWrite（临时文件 + fsync + rename，含
 // Windows rename 重试）——os.WriteFile 整文件覆盖非原子，写到一半崩溃/断电会留下
 // 截断的损坏 JSON（让读整个失败）；rename 是原子的（Windows 上 Go os.Rename 走
@@ -263,14 +201,7 @@ func writeEntries(entries []Entry) error {
 	return util.AtomicWrite(p, append(data, '\n'), 0644)
 }
 
-// Add registers absPath into the global registry (deduped, idempotent). Path is
-// normalized via Abs + Clean. The forge project key (git common-dir hash, or PathKey
-// for non-git) is computed and stored so membership checks survive worktrees and
-// match without .forge/. Upsert semantics: an existing entry for the same path gets
-// its key refreshed; an entry with the same key but a different path gets its path
-// updated only when the old path is gone (project moved) — a live old path means we
-// are inside a worktree and the old path is kept. Used by forge init
-// self-registration + dashboard-startup self-registration of the current project.
+// Add registers absPath into the global registry (deduped, idempotent).
 //
 // Add 把 absPath 登记到全局注册表（去重、幂等）。路径会 Abs + Clean 规范化。
 // forge 项目 key（git common-dir hash，非 git 为 PathKey）一并计算存储，让成员
@@ -298,11 +229,6 @@ func Add(absPath string) error {
 	var f File
 	if data, rerr := os.ReadFile(p); rerr == nil {
 		if uerr := json.Unmarshal(data, &f); uerr != nil {
-			// Corrupt registry: back the file aside before rebuilding from empty — the old
-			// code swallowed the error and then atomically overwrote the registry with just
-			// the current project, silently wiping every other registration. Backup + stderr
-			// warning keep the failure explicit and recoverable.
-			//
 			// 注册表损坏：重建前先把文件备份到一边——旧代码吞掉错误后把仅含当前项目的
 			// 表原子覆盖回去，其他所有登记被静默清空。备份 + stderr 告警让失败显式、可恢复。
 			corrupt := fmt.Sprintf("%s.corrupt-%s", p, time.Now().Format("20060102-150405"))
@@ -319,15 +245,6 @@ func Add(absPath string) error {
 		sameKey := key != `` && keyOf(e) == key
 		if samePath || sameKey {
 			if sameKey && !samePath {
-				// Same key but a different path: the project moved, OR this is a
-				// worktree of an already-registered repo. Swap the path only when the
-				// old one is gone (os.Stat IsNotExist) — if it is still alive we are
-				// in a worktree and must keep the old path: overwriting it with the
-				// worktree path would let List prune the whole entry (key included)
-				// once the worktree is deleted, silently stripping the main project's
-				// membership. Any non-IsNotExist stat error means "unreadable right
-				// now", not "gone" — keep the old path then too.
-				//
 				// 同 key 不同路径：项目被移动，或这是已登记 repo 的 worktree。仅当
 				// 旧路径已不存在（os.Stat IsNotExist）才换路径——旧路径仍活说明身处
 				// worktree，必须保留旧路径：换成 worktree 路径会让 List 在 worktree
@@ -338,8 +255,6 @@ func Add(absPath string) error {
 					return writeEntries(f.Projects)
 				}
 			}
-			// Upsert: refresh key (legacy entry) and path (moved project).
-			//
 			// Upsert：刷新 key（遗留条目）与路径（被移动的项目）。
 			f.Projects[i] = Entry{Path: ap, Key: key}
 			return writeEntries(f.Projects)
@@ -349,15 +264,7 @@ func Add(absPath string) error {
 	return writeEntries(f.Projects)
 }
 
-// IsMember reports whether cwd is inside a registered forge project, returning the
-// project root. Match rules:
-//   - git cwd: the repo's forge key (git common-dir hash) equals a registered key —
-//     worktree-safe, .forge/-free. The root returned is the git working-tree root.
-//   - non-git cwd: longest registered path that is cwd itself or its ancestor
-//     (boundary-aware prefix match).
-//
-// Read-only on the hot path (no write-back); legacy entries without a stored key are
-// backfilled in-memory per call — the cost is a few stats per candidate entry.
+// IsMember reports whether cwd is inside a registered forge project, returning the project root.
 //
 // IsMember 报告 cwd 是否在某个已登记 forge 项目内，并返回项目根。匹配规则：
 //   - git cwd：repo 的 forge key（git common-dir hash）等于某个已登记 key——
@@ -376,12 +283,6 @@ func IsMember(cwd string) (root string, ok bool) {
 		return ``, false
 	}
 	abs = filepath.Clean(abs)
-	// Resolve symlinks when possible, matching PathKey semantics: a cwd reached
-	// through a symlink must match the registered physical path. Keep BOTH forms as
-	// match candidates — on systems where the temp/home dir is itself a symlink
-	// (macOS /var → /private/var), entries were registered under the unresolved
-	// form, so matching only the resolved form would break those.
-	//
 	// 可能时解析 symlink，与 PathKey 语义一致：经 symlink 进入的 cwd 必须能
 	// 匹配到已登记的物理路径。两种形态都留作匹配候选——有的系统 temp/home 目录
 	// 本身就是 symlink（macOS /var → /private/var），条目是按未解析形态登记的，
@@ -398,17 +299,6 @@ func IsMember(cwd string) (root string, ok bool) {
 				return gitRoot, true
 			}
 		}
-		// Key-drift path fallback: a project forge-init'd while NON-git stores a PathKey;
-		// after `git init` the computed git-key never matches that stale path-key (keyOf
-		// trusts the stored non-empty key), so the key loop misses and the project is
-		// "forgotten" — forge then reports "not a forge project" and every project-scoped
-		// enforcement hook degrades to allow-and-exit (the AgentOffice bug). Match the
-		// entry's path against the git working-tree root instead: an entry whose registered
-		// path equals the git root is the same project (registered before it became git).
-		// Read-only on purpose — IsMember is a hot path fired from concurrent hook
-		// processes, and a write here would race (writeEntries is not concurrency-safe);
-		// the stale key is re-keyed by the next `forge init` (Add upsert).
-		//
 		// key 漂移路径回退：项目在非 git 状态下 forge init 存的是 PathKey；`git init`
 		// 之后算出的 git-key 永不匹配该陈旧 path-key（keyOf 信任已存的非空 key），于是
 		// key 循环落空、项目被「遗忘」——forge 报「not a forge project」，所有 project-scoped
@@ -428,21 +318,11 @@ func IsMember(cwd string) (root string, ok bool) {
 		return ``, false
 	}
 
-	// Non-git: boundary-aware longest-prefix match. BOTH sides are compared in
-	// lexical + symlink-resolved forms: entries may be registered under the
-	// unresolved form (macOS /var → /private/var temp dirs) while the cwd arrives
-	// through a symlink (or vice versa) — matching only one form per side misses.
-	//
 	// 非 git：边界感知的最长前缀匹配。两侧都按字面 + symlink 解析双形态比较：
 	// 条目可能按未解析形态登记（macOS /var → /private/var 的 temp 目录），而
 	// cwd 经 symlink 到达（或反之）——单边单形态会漏配。
 	best := ``
 	for _, e := range f.Projects {
-		// Dead entries confer no membership (same liveness rule as List's prune):
-		// a deleted/moved project dir must not match — IsMember is read-only and
-		// does NOT prune, so without this check a stale entry whose path happens to
-		// be an ancestor of cwd would resurrect a gone project.
-		//
 		// 死条目不赋予成员资格（与 List 精简同一条存活规则）：已删除/移走的
 		// 项目目录不得命中——IsMember 只读不精简，少了这道检查，一个路径恰好
 		// 是 cwd 祖先的失效条目会把已消失的项目复活。
@@ -451,11 +331,6 @@ func IsMember(cwd string) (root string, ok bool) {
 				continue
 			}
 		}
-		// The returned root is always the entry's LEXICAL registered form (resolved
-		// forms only widen matching) — EvalSymlinks on Windows expands 8.3 short
-		// names, and handing back the long form would surprise callers/tests
-		// comparing against the registered path.
-		//
 		// 返回的根恒为条目的字面登记形态（解析形态只用于放宽匹配）——Windows 上
 		// EvalSymlinks 会展开 8.3 短名，把长名形式返回会让按登记路径比较的
 		// 调用方/测试困惑。
@@ -463,9 +338,6 @@ func IsMember(cwd string) (root string, ok bool) {
 		matched := false
 		for _, ep := range pathForms(e.Path) {
 			for _, af := range absForms {
-				// Exact match goes through pathKey so Windows case variants (C:\Proj vs
-				// c:\proj) hit — plain == would miss them.
-				//
 				// 精确匹配走 pathKey，Windows 大小写变体（C:\Proj vs c:\proj）也能命中——
 				// 裸 == 会漏。
 				if pathKey(ep) == pathKey(af) {
@@ -480,12 +352,6 @@ func IsMember(cwd string) (root string, ok bool) {
 					}
 					continue
 				}
-				// Case-variant prefix match: both sides go through pathKey
-				// (CanonicalCase) so a variant-spelled cwd under a registered root
-				// still matches on case-insensitive filesystems. The separator is
-				// appended AFTER normalization — CanonicalCase strips trailing
-				// separators, so folding it into the key would break the boundary.
-				//
 				// 大小写变体前缀匹配：两侧都过 pathKey（CanonicalCase），大小写
 				// 不敏感文件系统上变体拼写的 cwd 仍能命中已登记根。分隔符在归一
 				// 之后追加——CanonicalCase 会剥掉尾部分隔符，折进 key 里会破坏
@@ -509,11 +375,6 @@ func IsMember(cwd string) (root string, ok bool) {
 	return best, true
 }
 
-// pathForms returns the match-candidate forms of a path: the cleaned lexical form,
-// plus the symlink-resolved physical form when it differs (macOS /var→/private/var,
-// symlinked project dirs). Both IsMember sides (cwd and registry entries) are
-// matched across these forms.
-//
 // pathForms 返回路径的匹配候选形态：Clean 后的字面形态，以及 symlink 解析后的
 // 物理形态（不同时才含；macOS /var→/private/var、symlink 项目目录）。IsMember
 // 的两侧（cwd 与注册条目）都跨这些形态匹配。
@@ -528,15 +389,7 @@ func pathForms(p string) []string {
 	return forms
 }
 
-// Prune explicitly prunes the global registry: removes dead paths (project dir no
-// longer exists) + duplicate entries within JSON, atomically writes back.
-// Returns (pruned, remain): pruned = number of entries removed this time (dead paths + duplicates), remain = number of active projects kept.
-//
-// Same logic as List() lazy prune, but explicitly triggered and returns counts — List only prunes when forge dashboard
-// reads (and that command starts a web server that blocks), so ordinary users have no way to clean up proactively. Prune gives forge registry
-// prune a cleanup entry point that does not start a web server (the root-cause gap for dogfood registry historical-residue cleanup).
-//
-// Returns (0,0,nil) when the registry file is missing or JSON is corrupt — consistent with List (empty = no projects, not an error).
+// Prune explicitly prunes the global registry and atomically writes it back.
 //
 // Prune 显式精简全局注册表：移除项目目录已不存在的死路径 + JSON 内重复条目，原子写回。
 // 返回 (pruned, remain)：pruned=本次移除条数（死路径+重复），remain=保留的活跃项目数。

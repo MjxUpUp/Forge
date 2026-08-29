@@ -1,13 +1,5 @@
 package taskpipeline
 
-// complete_advisory.go implements the two task-complete advisory checks:
-//  (a) branch-merged — completing a task whose feature branch is not yet merged into
-//      the mainline means 'complete' but not 'delivered';
-//  (b) goal↔output coarse match — the task title and the actually-changed files share
-//      no keyword at all, a smell of delivering the wrong thing.
-// Both are advisory only (never block): false positives must be silently absorbed
-// rather than block a legitimate complete.
-//
 // complete_advisory.go 实现 task-complete 的两项 advisory 检查：
 //  (a) 分支归属——feature 分支尚未合入主干时完成任务 = 「完成」不等于「交付」；
 //  (b) 目标↔产出粗匹配——任务标题与实改文件零关键词交集，是交付错内容的信号。
@@ -19,10 +11,6 @@ import (
 	"strings"
 )
 
-// resolveMainlineRef returns "main" when that ref exists, else "master", else ""
-// (no mainline ref — callers fail open). Checked via rev-parse --verify --quiet so a
-// missing ref is an exit code, not stderr noise.
-//
 // resolveMainlineRef 在 main 存在时返回 "main"，否则 "master"，再否则 ""（无主干
 // ref——调用方 fail-open）。经 rev-parse --verify --quiet 判定，缺失的 ref 只体现
 // 在退出码上，不产生 stderr 噪声。
@@ -35,10 +23,6 @@ func resolveMainlineRef(root string) string {
 	return ""
 }
 
-// uncommittedChanges reports how many working-tree changes (staged, unstaged,
-// untracked) exist: determinable=false means the git probe itself failed and the
-// caller must fail open — a probe failure must never fabricate an advisory.
-//
 // uncommittedChanges 返回工作区变更数（已暂存 + 未暂存 + 未跟踪）：
 // determinable=false 表示 git 探测本身失败，调用方必须 fail-open——探测失败
 // 绝不能编造出一条 advisory。
@@ -55,10 +39,6 @@ func uncommittedChanges(root string) (count int, determinable bool) {
 	return count, true
 }
 
-// branchMergedInto reports (merged, determinable): determinable=false means the git
-// probe itself failed (not a repo state we can judge) and the caller must fail open —
-// only a clean exit-1 from merge-base --is-ancestor means 'definitely not merged'.
-//
 // branchMergedInto 返回 (merged, determinable)：determinable=false 表示 git 探测
 // 本身失败（无法判定仓库状态），调用方必须 fail-open——只有 merge-base
 // --is-ancestor 干净的 exit 1 才表示「确定未合入」。
@@ -103,9 +83,6 @@ func goalKeywords(title string) map[string]bool {
 	return words
 }
 
-// asciiWordTokens splits s on non-alphanumeric bytes into lowercase tokens (any
-// length — the >=4 constraint lives on the title side; intersection equality filters).
-//
 // asciiWordTokens 把 s 按非字母数字字节切成小写 token（不限长度——>=4 的约束在
 // 标题侧；交集相等性自然过滤）。
 func asciiWordTokens(s string) []string {
@@ -171,8 +148,6 @@ func pathSegmentKeywords(files []string, scope []string) map[string]bool {
 	return words
 }
 
-// hasIntersection reports whether the two word sets share at least one word.
-//
 // hasIntersection 报告两个词集合是否有至少一个共同词。
 func hasIntersection(a, b map[string]bool) bool {
 	for w := range a {

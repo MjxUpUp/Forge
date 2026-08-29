@@ -1,9 +1,4 @@
-// Package skillsdist implements distribution of the skill library: syncing the
-// canonical source to each tool's target directory (pi/claude/cursor global
-// locations or project .claude/skills), supporting both link and copy modes,
-// detecting distribution drift, deploying the skill-routing adapter as a single
-// file, and maintaining manifest state. Semantics align 1:1 with
-// SkillsHub admin/scripts/sync.py.
+// Package skillsdist implements distribution of the skill library: syncing the canonical source to each tool's target directory.
 //
 // Package skillsdist 实现 skill 库的分发：把 canonical 源同步到各工具目标目录
 // （pi/claude/cursor 的全局位置或项目 .claude/skills），支持 link 与 copy 两种模式，
@@ -82,11 +77,7 @@ func SaveManifest(m *Manifest) error {
 	return util.AtomicWrite(path, data, 0644)
 }
 
-// BuildManifest scans all canonical skills and assembles the distribution-state
-// inventory (registry report plus per-target state). Called after a successful
-// install and SaveManifest, kept as the last-install snapshot for system health
-// checks and queries. Audits independently of install quality gates: the
-// manifest reflects the full canonical set, not the install subset.
+// BuildManifest scans all canonical skills and assembles the distribution-state inventory (registry report plus per-target state).
 //
 // BuildManifest 扫描 canonical 全量 skill，组装分发状态清单（registry 报告 + 各目标态）。
 // install 成功后调用并 SaveManifest，留作"上次安装快照"供 system 健康检查与查询。
@@ -117,8 +108,6 @@ func BuildManifest(canonical string, opts InstallOpts) (*Manifest, error) {
 				passCount++
 			}
 		} else {
-			// SKILL.md unreadable: record the name only, do not block manifest generation.
-			//
 			// SKILL.md 不可读：仅记名，不阻塞 manifest 生成
 			ms.Name = name
 		}

@@ -2,11 +2,8 @@ package checklog
 
 import "testing"
 
-// TestDetailForSkillTrigger_RoundTrip pins the single-source-of-truth contract: every Detail the writer
-// produces must round-trip through the reader. This is the whole point of co-locating them — a format change
-// to DetailForSkillTrigger automatically updates SkillFromTriggerDetail's inverse, so passive skill-trigger
-// signals can never silently vanish from usage analytics the way a hand-mirrored format string on each side
-// could (the minor-1 silent-failure risk the code review surfaced).
+// TestDetailForSkillTrigger_RoundTrip pins the single-source-of-truth contract:
+// every Detail the writer produces must round-trip through the reader.
 //
 // TestDetailForSkillTrigger_RoundTrip 钉死单一真相源契约：写方产出的每个 Detail 必须经读方往返还原。
 // 这正是把两者同位置的全部意义——DetailForSkillTrigger 的格式改动自动更新 SkillFromTriggerDetail 的
@@ -29,9 +26,9 @@ func TestDetailForSkillTrigger_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestSkillFromTriggerDetail_RejectsNonContract pins the parser's fail-safe: Details that do not match the
-// contract (wrong prefix / no marker / empty) return "", so callers skip them rather than crashing or
-// misattributing.
+// TestSkillFromTriggerDetail_RejectsNonContract pins the parser's fail-safe:
+// Details that do not match the contract (wrong prefix / no marker / empty)
+// return "", so callers skip them rather than crashing or misattributing.
 //
 // TestSkillFromTriggerDetail_RejectsNonContract 钉死解析器的 fail-safe：不匹配契约的 Detail（前缀错 /
 // 无 marker / 空）返回 ""，让调用方跳过而非崩溃或误归。
@@ -48,10 +45,8 @@ func TestSkillFromTriggerDetail_RejectsNonContract(t *testing.T) {
 	}
 }
 
-// TestMetaKeyContract pins the MetaKey* contract: all keys non-empty, mutually distinct,
-// and snake_case (stable wire format — writers and readers hand-join on these literals,
-// a typo'd key would silently split the payload). Guards the v2 structured-evidence seam
-// the same way TestDetailForSkillTrigger_RoundTrip guards the Detail seam.
+// TestMetaKeyContract pins the MetaKey* contract: all keys non-empty, mutually
+// distinct, and snake_case (stable wire format.
 //
 // TestMetaKeyContract 钉死 MetaKey* 契约：全部键非空、互异、snake_case（稳定线格式——
 // 写读两侧手工 join 这些字面量，键打错会静默劈裂载荷）。以 TestDetailForSkillTrigger_

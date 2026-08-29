@@ -12,40 +12,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// CodexTranslator wires forge hooks into codex's USER-LEVEL hooks.json
-// (CodexHome()/hooks.json, i.e. $CODEX_HOME/hooks.json or ~/.codex/hooks.json).
-// Codex's hook FILE schema is compatible with Claude Code's — the
-// matcher/hooks/type/command structure is identical and the event names are the same
-// PascalCase; the stdin payload's common fields (session_id/cwd/hook_event_name)
-// match Claude's, so the same `forge hook <name>` commands run. The OUTPUT protocol,
-// however, differs from Claude's: decision:"approve" is parsed-but-unsupported
-// (marks the hook FAILED), hookSpecificOutput.additionalContext is honored only on
-// SessionStart/PreToolUse/PostToolUse/UserPromptSubmit, and the only reliable block
-// channel is stderr + exit 2 — hence every generated command carries
-// `--agent codex` so the dispatcher emits the codex shapes (Wave 1b; see
-// emitCodexOutput in internal/cli/hook.go). The official event roster
-// (https://developers.openai.com/codex/hooks) is SessionStart, SessionEnd,
-// PreToolUse, PermissionRequest, PostToolUse, PreCompact, PostCompact,
-// UserPromptSubmit, SubagentStart, SubagentStop, Stop; buildCodexHooks maps the six
-// of them that have a ForgeHookSpec analogue (see the whitelist there).
-// See CursorTranslator for cursor's flat schema variant.
-//
-// The user-level location mirrors the kimi/claude-code model: one machine-wide registration
-// instead of a per-project .codex/hooks.json copy, so forge init/sync no longer writes into
-// the project directory (user-level assets migration; project-level residue cleanup is
-// handled by the uninstall/cleanup layer, not here). Merge semantics: entries whose command
-// is not forge-sourced (see isForgeBridgeCommand) are preserved verbatim; forge entries are
-// replaced wholesale with the current generated set, making Translate idempotent.
-//
-// Matcher note: Codex compiles the matcher into a regex (against tool_name for
-// PreToolUse/PostToolUse, against source for SessionStart, against trigger for
-// PreCompact/PostCompact), whereas Claude Code treats it as a tool-name match. Plain
-// names (Bash) and alternations (Write|Edit) are both valid regexes and match
-// identically in both, so the Claude wiring migrates over directly. Forge never emits
-// the glob-style `Bash(...)` form — it is not a legal matcher in Codex. Codex reports
-// file edits as tool_name "apply_patch" (patch text in tool_input.command, no
-// file_path), so codexMatchers widens every Write/Edit matcher with |apply_patch —
-// without it every file gate silently no-ops on codex file edits.
+// CodexTranslator wires forge hooks into codex's USER-LEVEL hooks.json.
 //
 // CodexTranslator 把 forge hook 接线进 codex 的 user-level hooks.json
 // （CodexHome()/hooks.json，即 $CODEX_HOME/hooks.json 或 ~/.codex/hooks.json）。Codex 的
@@ -79,9 +46,6 @@ import (
 type CodexTranslator struct{}
 
 func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) error {
-	// User-level translator: projectDir is intentionally ignored — the registration is
-	// machine-wide (same contract as KimiTranslator).
-	//
 	// 用户级 translator：刻意忽略 projectDir——注册是全机器生效（与 KimiTranslator 同契约）。
 	path, err := CodexHooksPath()
 	if err != nil {
@@ -102,10 +66,6 @@ func (t *CodexTranslator) Translate(projectDir string, input *TranslationInput) 
 		return fmt.Errorf("codex: failed to write hooks.json: %w", err)
 	}
 
-	// Codex's lifecycle hooks are gated behind `[features] hooks = true` in
-	// config.toml (official config-reference; default OFF) — a hooks.json alone
-	// is silently inert. Ensure the feature flag alongside the wiring.
-	//
 	// Codex 的 lifecycle hooks 由 config.toml 的 `[features] hooks = true` 门控
 	// （官方 config-reference；默认关）——只写 hooks.json 会静默不生效。接线
 	// 之外必须确保该开关。
@@ -119,8 +79,7 @@ func (t *CodexTranslator) AgentType() AgentType {
 	return AgentCodex
 }
 
-// CodexHome resolves codex's config home: $CODEX_HOME when set (codex CLI's documented
-// convention), otherwise ~/.codex.
+// CodexHome resolves codex's config home: $CODEX_HOME when set, otherwise ~/.codex.
 //
 // CodexHome 解析 codex 的 config home：设了 $CODEX_HOME 用它（codex CLI 的官方约定），
 // 否则 ~/.codex。
@@ -146,15 +105,6 @@ func CodexHooksPath() (string, error) {
 	return filepath.Join(home, "hooks.json"), nil
 }
 
-// mergeCodexHooks merges the generated forge wiring into an existing codex hooks.json.
-// Unknown top-level fields are preserved via json.RawMessage; within the hooks section,
-// entries whose command is not forge-sourced are kept byte-for-byte (unknown entry
-// fields such as timeout/commandWindows intact — see merge_raw.go), and forge entries
-// are replaced wholesale with the current generated set (appended after the user's
-// entries — hook execution order among forge gates is preserved from the spec, and
-// codex runs per-event entries in order). The output is deterministic, so Translate
-// is idempotent. A nil/empty existing input produces a fresh file.
-//
 // mergeCodexHooks 把生成的 forge 接线合并进已有的 codex hooks.json。未知顶层字段经
 // json.RawMessage 保留；hooks 段内，command 非 forge 来源的条目逐字节保留（
 // timeout/commandWindows 等未知条目字段不丢——见 merge_raw.go），forge 条目
@@ -195,12 +145,6 @@ func mergeCodexHooks(existing []byte) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// isForgeBridgeCommand reports whether a hook command is forge-sourced (commands written
-// by the agent translators: forge hook <name> / forge gate ..., optionally carrying an
-// --agent <name> suffix). Mirrors hooks.isForgeHookCommand — duplicated here because the
-// hooks-package helper is unexported and the agentbridge merge paths must not reach into
-// another package's internals.
-//
 // isForgeBridgeCommand 报告 hook command 是否 forge 来源（agent translator 写入的命令：
 // forge hook <name> / forge gate ...，可带 --agent <name> 后缀）。镜像
 // hooks.isForgeHookCommand——因 hooks 包的 helper 未导出而在此复制，agentbridge 的
@@ -211,11 +155,7 @@ func isForgeBridgeCommand(cmd string) bool {
 		cmd == "forge hook" || cmd == "forge gate"
 }
 
-// StripCodexHooksUserLevel removes forge hooks from the user-level ~/.codex/hooks.json
-// (uninstall path). User-defined entries (unknown fields intact, see merge_raw.go) and
-// unknown top-level fields are preserved; the file itself is never deleted. Reports
-// whether the file was actually modified; a missing file or a file without forge hooks
-// is a clean no-op.
+// StripCodexHooksUserLevel removes forge hooks from the user-level ~/.codex/hooks.json (uninstall path).
 //
 // StripCodexHooksUserLevel 移除 user-level ~/.codex/hooks.json 中的 forge hooks
 // （卸载路径）。用户自定义条目（未知字段不丢，见 merge_raw.go）与未知顶层字段保留；
@@ -264,23 +204,6 @@ func StripCodexHooksUserLevel() (bool, error) {
 	return true, nil
 }
 
-// buildCodexHooks derives codex's hooks.json from hooks.ForgeHookSpec — that spec is the single source of truth shared with
-// settings.local.json and the plugin pack. Codex's hook schema is identical to Claude Code's
-// nested {matcher, hooks:[{type,command}]} structure, the event names are the same PascalCase,
-// and the stdin payload carries the same common fields (session_id/cwd/hook_event_name), so the
-// spec maps directly — EXCEPT the two codex-specific deltas applied per-copy by codexMatchers
-// (`--agent codex` on every command for the output protocol; |apply_patch on Write/Edit
-// matchers for codex's edit tool name). The official codex event roster
-// (https://developers.openai.com/codex/hooks) is: SessionStart, SessionEnd, PreToolUse,
-// PermissionRequest, PostToolUse, PreCompact, PostCompact, UserPromptSubmit, SubagentStart,
-// SubagentStop, Stop. We wire exactly the events that have a ForgeHookSpec analogue —
-// PreToolUse/PostToolUse/Stop plus the SessionStart group (skill-scan/mcp-scan/init-suggest/
-// task-resume), the UserPromptSubmit group (resume-reinject), and PostCompact (compact-resume);
-// SessionEnd/PermissionRequest/PreCompact/SubagentStart/SubagentStop have no spec counterpart
-// and stay unwired. No hand-maintained copy → no drift.
-// TestCodexWiringMirrorsClaudeSettings guards command-set parity;
-// TestCodexHooks_OnlyLegalCodexEvents pins the event-name whitelist.
-//
 // buildCodexHooks 从 hooks.ForgeHookSpec 派生 codex 的 hooks.json——该 spec 是与
 // settings.local.json、plugin pack 共享的单一真相源。Codex 的 hook schema 与 Claude Code
 // 的嵌套 {matcher, hooks:[{type,command}]} 结构相同，event 名同为 PascalCase，stdin
@@ -301,23 +224,11 @@ func buildCodexHooks() map[string]any {
 	spec := hooks.ForgeHookSpec()
 	codex := make(map[string][]hooks.HookMatcher, len(spec))
 	for event, matchers := range spec {
-		// Whitelist: the ForgeHookSpec events that exist in codex's official roster
-		// (same PascalCase names — verified against
-		// https://developers.openai.com/codex/hooks). Codex has no SessionEnd/
-		// PermissionRequest/PreCompact/Subagent* analogue in the spec, so those
-		// codex-only events never appear here; any future spec event not in this
-		// list is skipped rather than silently wired into an unsupported event.
-		//
 		// 白名单：ForgeHookSpec 中存在于 codex 官方名册的 event（PascalCase 同名——
 		// 已对 https://developers.openai.com/codex/hooks 核实）。spec 无 SessionEnd/
 		// PermissionRequest/PreCompact/Subagent* 对应物，故这些 codex 侧 event 永不
 		// 出现；未来 spec 新增的不在此表的 event 一律跳过，不静默接进不支持的 event。
 		switch event {
-		// SubagentStop added 2026-08-22 (#4-A): codex's official roster carries it
-		// and forge now wires subagent-track on it (claude-side SubagentStop spec
-		// entry). PostToolUseFailure is NOT here — no verified codex analogue;
-		// skipped by the whitelist rather than wired into an unsupported event.
-		//
 		// SubagentStop 于 2026-08-22 加入（#4-A）：codex 官方名册有它，且 forge
 		// 已在其上接线 subagent-track（claude 侧 SubagentStop spec 条目）。
 		// PostToolUseFailure 不在此——无已验证的 codex 对应物；白名单跳过，
@@ -331,18 +242,6 @@ func buildCodexHooks() map[string]any {
 	}
 }
 
-// codexMatchers deep-copies the shared ForgeHookSpec matchers into codex-local form.
-// It never mutates the spec (single source of truth shared with settings.local.json
-// and the plugin pack); the two codex-specific deltas are applied on the copy:
-//   - every forge command gains ` --agent codex` — codex's stdout/exit-code output
-//     contract differs from Claude's (no decision:"approve", context only on 4 events,
-//     block = stderr+exit 2), so the dispatcher must know the host (Wave 1b);
-//   - matchers containing Write/Edit tokens are widened with apply_patch — codex
-//     reports file edits as tool_name "apply_patch" (single tool, patch text in
-//     tool_input.command), which a plain Write|Edit regex never matches; without the
-//     widening every file gate (task-guard/freeze-guard/auto-compile/...) silently
-//     no-ops on codex file edits.
-//
 // codexMatchers 把共享的 ForgeHookSpec matcher 深拷贝为 codex 本地形态，绝不改动
 // spec（与 settings.local.json、plugin pack 共享的单一真相源）。两个 codex 专属
 // delta 应用在副本上：
@@ -372,11 +271,6 @@ func codexMatchers(matchers []hooks.HookMatcher) []hooks.HookMatcher {
 	return out
 }
 
-// codexApplyPatchMatcher widens a tool-name alternation with apply_patch when it
-// contains a Write or Edit token. Both are plain alternations and stay legal
-// codex regex matchers. Returns the input unchanged otherwise (Bash, Read|Skill|Agent,
-// empty string — SessionStart/Stop groups match events, not tool names).
-//
 // codexApplyPatchMatcher 在 tool-name alternation 含 Write 或 Edit token 时扩上
 // apply_patch。两者都是纯 alternation，仍是合法的 codex regex matcher。其余情形
 // （Bash、Read|Skill|Agent、空串——SessionStart/Stop 组匹配的是事件不是工具名）
@@ -398,14 +292,6 @@ func codexApplyPatchMatcher(matcher string) string {
 	return matcher + "|apply_patch"
 }
 
-// Codex's lifecycle hooks are gated behind a feature flag: config.toml must carry
-// `[features] hooks = true` (official config-reference; the default is off, so a
-// hooks.json without it is silently inert). The project has no TOML dependency
-// (vendored modules), so — following kimi.go's precedent — forge-managed content
-// lives inside `# FORGE:START` / `# FORGE:END` markers when forge adds a whole new
-// [features] table; everything outside the markers (the user's own model/provider
-// config) is preserved byte-for-byte.
-//
 // Codex 的 lifecycle hooks 由特性开关门控：config.toml 必须带 `[features]
 // hooks = true`（官方 config-reference；默认关，缺了它 hooks.json 静默不生效）。
 // 项目无 TOML 依赖（vendored modules），故——沿 kimi.go 先例——forge 加整个新
@@ -416,9 +302,6 @@ const (
 	codexMarkEnd   = "# FORGE:END"
 )
 
-// codexFeaturesHooksBlock is the canonical marked section appended when the user's
-// config.toml has no [features] table at all.
-//
 // codexFeaturesHooksBlock 是用户 config.toml 完全没有 [features] 表时追加的
 //
 //	canonical 标记段。
@@ -427,22 +310,6 @@ const codexFeaturesHooksBlock = codexMarkStart + ` — managed by ` + "`forge in
 hooks = true
 ` + codexMarkEnd + "\n"
 
-// ensureCodexHooksFeature makes sure codex's config.toml enables lifecycle hooks
-// (`[features] hooks = true`). Behavior on an existing config.toml:
-//   - forge markers present        → the marked section is upserted (idempotent).
-//   - [features] with hooks = true → already enabled (by the user) — no-op.
-//   - [features] with hooks set to a non-true value (explicit false) → the user's
-//     choice is respected: nothing is written, a stderr notice explains that codex
-//     hooks stay disabled.
-//   - [features] without a hooks key → `hooks = true` is inserted directly under
-//     the existing table header (appending a second [features] table would be
-//     invalid TOML).
-//   - no [features] table at all   → the canonical marked section is appended.
-//
-// A missing file is created with just the marked section. The original file is
-// backed up via userassets.BackupOriginal before forge's first write (rollback via
-// `forge uninstall --restore`).
-//
 // ensureCodexHooksFeature 确保 codex 的 config.toml 启用 lifecycle hooks
 // （`[features] hooks = true`）。对已有 config.toml 的行为：
 //   - 已有 forge 标记段            → upsert 标记段（幂等）。
@@ -485,12 +352,6 @@ func ensureCodexHooksFeature() error {
 	return nil
 }
 
-// upsertCodexFeaturesHooks computes the new config.toml content (pure function for
-// testability; see ensureCodexHooksFeature for the behavior matrix). respectUser
-// reports the explicit-false case (caller prints a notice and writes nothing).
-// Unpaired or inverted forge markers are reported as corruption instead of guessing
-// (same data-loss guard as kimi's upsertKimiSection).
-//
 // upsertCodexFeaturesHooks 计算新的 config.toml 内容（纯函数，便于测试；行为矩阵
 // 见 ensureCodexHooksFeature）。respectUser 报告显式 false 情形（调用方打印提示、
 // 不写文件）。forge 标记不成对或颠倒时报损坏错误而非猜测（与 kimi 的

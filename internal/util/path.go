@@ -5,24 +5,11 @@ import (
 	"strings"
 )
 
-// sessionCollapseRe is precompiled at package level: SanitizeSessionID runs on hook hot
-// paths (several calls per PreToolUse) and per-call MustCompile is pure waste.
-//
 // sessionCollapseRe 包级预编译：SanitizeSessionID 在 hook 热路径上高频调用，
 // 每次调用重新编译正则是纯浪费。
 var sessionCollapseRe = regexp.MustCompile(`[_-]{2,}`)
 
 // SanitizeSessionID collapses a session id into a filename- and shell-safe character set.
-// It is the single source of truth shared by cli (hook env vars), taskpipeline (session state filenames),
-// and other util callers — do not reimplement it locally.
-//
-// Strategy (allowlist + normalization):
-//   - Keep only [a-zA-Z0-9_-]; every other rune is replaced with '_'. An allowlist is stricter than a denylist —
-//     it neutralizes shell metacharacters (; & $ `) as well as path-traversal dots that a filesystem-only denylist would miss.
-//   - Collapse consecutive separators (_--, __) into a single '_'.
-//   - Trim leading/trailing separators and dashes.
-//   - Truncate to 64 chars (filesystem portability).
-//   - Fall back to session if the result is empty.
 //
 // SanitizeSessionID 把 session id 收敛到文件名与 shell 安全的字符集。
 // 它是 cli（hook env vars）、taskpipeline（session 状态文件名）以及其他 util 调用方
@@ -37,9 +24,6 @@ var sessionCollapseRe = regexp.MustCompile(`[_-]{2,}`)
 //   - 截断到 64 字符（文件系统可移植性）。
 //   - 若结果为空则回退到 session。
 func SanitizeSessionID(id string) string {
-	// No early return for "": empty input falls through to the empty-result fallback below,
-	// so it yields "session" exactly like an all-dirty-characters input — the doc promise.
-	//
 	// 不对 "" 提前返回：空输入一路走到下方的空结果兜底，与「全是脏字符」的输入一样
 	// 得到 "session"——与 doc 承诺一致。
 	var b strings.Builder

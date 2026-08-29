@@ -20,9 +20,6 @@ import (
 // （里程碑：卡住的任务主动暴露）。僵尸时间戳经 taskpipeline.SaveTaskState 直接种入，因 CLI 总盖
 // time.Now()——确定性的「8 天前 offered」只能在进程内设置。
 
-// saveOfferedAgo writes a task offered to agent with OfferedAt forced to `ago` (simulating an
-// offer that has sat unclaimed past the TTL — impossible to produce via the CLI, which stamps now).
-//
 // saveOfferedAgo 写一个 offered 给 agent 的任务，OfferedAt 强制为 ago（模拟无人认领超过 TTL 的
 // 派发——CLI 盖当前时间，产不出此态）。
 func saveOfferedAgo(t *testing.T, dir, ref, agent string, ago time.Time) {
@@ -62,13 +59,9 @@ func saveFailedDependency(t *testing.T, dir, ref, agent string) {
 func TestTaskHealth_ReportsZombiesAndDeadlocks(t *testing.T) {
 	dir := setupDelegateProject(t)
 
-	// 1) Zombie: offered 8 days ago (offered>7d).
-	//
 	// 僵尸：8 天前 offered（offered>7d）。
 	saveOfferedAgo(t, dir, `feat/zombie`, `kimi`, time.Now().Add(-8*24*time.Hour))
 
-	// 2) Deadlock: feat/deadlocked depends on feat/dep-failed (canceled/failed → permanent block).
-	//
 	// 死锁：feat/deadlocked 依赖 feat/dep-failed（失败 → 永久阻塞）。
 	saveFailedDependency(t, dir, `feat/dep-failed`, `reasonix`)
 	dead := &taskpipeline.TaskState{TaskRef: `feat/deadlocked`, Summary: `死锁任务`, DependsOn: []string{`feat/dep-failed`}}
@@ -76,8 +69,6 @@ func TestTaskHealth_ReportsZombiesAndDeadlocks(t *testing.T) {
 		t.Fatalf(`SaveTaskState deadlocked: %v`, err)
 	}
 
-	// 3) Healthy: offered just now — must be OMITTED from the report.
-	//
 	// 健康：刚刚 offered——必须从报告中「省略」。
 	saveOfferedAgo(t, dir, `feat/healthy`, `cursor`, time.Now())
 
@@ -134,8 +125,6 @@ func TestTaskHealth_ReportsZombiesAndDeadlocks(t *testing.T) {
 
 func TestTaskHealth_CleanProjectReportsNothing(t *testing.T) {
 	dir := setupDelegateProject(t)
-	// Only a freshly-offered (healthy) task — no zombies, no deadlocks.
-	//
 	// 仅一个刚 offered（健康）的任务——无僵尸无死锁。
 	saveOfferedAgo(t, dir, `feat/fresh`, `kimi`, time.Now())
 
@@ -148,9 +137,6 @@ func TestTaskHealth_CleanProjectReportsNothing(t *testing.T) {
 	}
 }
 
-// saveDeliveredChild writes a child of parent in the delivered terminal state (assign→claim→deliver
-// in-process), the shape OrchestrationReady counts as terminal.
-//
 // saveDeliveredChild 写一个 parent 的子任务，处于 delivered 终态（进程内 assign→claim→deliver），
 // 即 OrchestrationReady 计为终态的形态。
 func saveDeliveredChild(t *testing.T, dir, ref, parent, agent string) {
@@ -181,8 +167,6 @@ func saveDeliveredChild(t *testing.T, dir, ref, parent, agent string) {
 func TestTaskHealth_ReadyOrchestration(t *testing.T) {
 	dir := setupDelegateProject(t)
 
-	// Generic orchestrator parent + one delivered child → parent ready to complete.
-	//
 	// generic 编排器父任务 + 一个 delivered 子任务 → 父任务可 complete。
 	parent := &taskpipeline.TaskState{TaskRef: `feat/orch`, Summary: `编排任务`, Kind: taskpipeline.TaskKindGeneric}
 	if err := taskpipeline.SaveTaskState(dir, parent); err != nil {
@@ -212,8 +196,6 @@ func TestTaskHealth_ReadyOrchestration(t *testing.T) {
 		if err := taskpipeline.SaveTaskState(dir2, parent2); err != nil {
 			t.Fatalf(`SaveTaskState: %v`, err)
 		}
-		// A claimed (not delivered) child → parent not ready.
-		//
 		// 一个 claimed（未 delivered）的子任务 → 父任务未就绪。
 		pending := &taskpipeline.TaskState{TaskRef: `feat/child`, Summary: `子`, ParentTaskRef: `feat/orch`}
 		if err := pending.AssignTo(`kimi`, `backend`, `claude-code`); err != nil {
@@ -248,8 +230,6 @@ func TestTaskHealth_ReadyOrchestration(t *testing.T) {
 		}
 		startChild(t, dir3, `feat/child`, `feat/orch`)
 		deliverChild(t, dir3, `feat/child`, `kimi`)
-		// Complete the orchestrator first — it is now done.
-		//
 		// 先 complete 编排器——此刻已完成。
 		if out, _, code := runForge(t, dir3, `task`, `complete`, `--ref`, `feat/orch`); code != 0 {
 			t.Fatalf(`complete exit %d: %s`, code, out)

@@ -221,11 +221,6 @@ func TestMatchToolName(t *testing.T) {
 // TestEval_SessionCap 钉住 session 级每 skill 硬封顶（2026-08 噪音审计：单 skill 单
 // session 注入 79 次）：第 1 次完整注入（Reminder=false）、第 2 次短提醒
 // （Reminder=true）、第 3 次起一律 SuppressSessionCap——cooldown 过期也不再放行。
-//
-// TestEval_SessionCap pins the per-session per-skill hard cap (2026-08 noise audit: one
-// skill injected 79 times in a session): 1st full injection (Reminder=false), 2nd short
-// reminder (Reminder=true), 3rd onward SuppressSessionCap — no cooldown expiry lets it
-// through again.
 func TestEval_SessionCap(t *testing.T) {
 	withCond(t, "scap", func(Context) bool { return true })
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "scap"}}}}
@@ -266,11 +261,6 @@ func TestEval_SessionCap(t *testing.T) {
 // TestEval_EventCap 钉住单次事件注入上限（2026-08-18 证据：一条 UserPromptSubmit 6ms
 // 内 6 个 skill 全注入）：超 MaxHitsPerEvent 的按 RankHits 落选（prompt 命中优先于
 // stdout 命中，同类保持声明顺序），归因 SuppressEventCap。
-//
-// TestEval_EventCap pins the per-event injection cap (2026-08-18 evidence: one
-// UserPromptSubmit fired 6 skills within 6ms): beyond MaxHitsPerEvent the RankHits
-// ordering decides (prompt hits before stdout hits, declaration order within a class),
-// losers attributed SuppressEventCap.
 func TestEval_EventCap(t *testing.T) {
 	mk := func(skill string) SkillTriggers {
 		return SkillTriggers{Skill: skill, Triggers: []Trigger{
@@ -301,9 +291,6 @@ func TestEval_EventCap(t *testing.T) {
 	}
 	// 落选者不 Mark：不消耗 cooldown/封顶预算，下个事件仍可命中（SuppressEventCap
 	// 与 SuppressSessionCap 的关键区别）。
-	//
-	// Losers are NOT marked: no cooldown/cap budget burned, still eligible on the next
-	// event (the key difference from SuppressSessionCap).
 	noise := NewInMemoryNoiseController()
 	if _, sup2 := Eval(ctx, all, noise); len(sup2) != 1 {
 		t.Fatalf("复跑应仍落选 s3，got %+v", sup2)

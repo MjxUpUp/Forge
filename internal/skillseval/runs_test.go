@@ -75,14 +75,10 @@ func TestHealthScore(t *testing.T) {
 	if h := HealthScore(mixed, 0); h != 30 {
 		t.Fatalf("mixed health=%v want 30", h)
 	}
-	// All pass but 1 regression → 100-8=92
-	//
 	// 全 pass 但 1 regression → 100-8=92
 	if h := HealthScore(allPass, 1); h != 92 {
 		t.Fatalf("1 regression health=%v want 92", h)
 	}
-	// Only trigger kind → base=triggerAcc*100
-	//
 	// 只 trigger 类 → base=triggerAcc*100
 	onlyTrig := []CaseResult{
 		{Kind: KindTrigger, Pass: true},
@@ -152,8 +148,6 @@ func TestCompareRuns_NotComparableOnModelChange(t *testing.T) {
 	if rep.IncomparableReason == "" {
 		t.Fatal("want incomparable reason")
 	}
-	// Numbers are still computed, but the report is marked incomparable (consumers degrade to advisory based on this)
-	//
 	// 数字仍计算，但 report 标不可比（消费方据此降级为 advisory）
 	if len(rep.Regressions) != 1 {
 		t.Fatalf("regressions still computed=%v want [a]", rep.Regressions)
@@ -178,8 +172,6 @@ func TestSubmitRun_DescHashStalenessRejected(t *testing.T) {
 	cases, _ := EvalCases(canonical, "my-skill")
 	mustWrite(t, SaveCases(dir, "my-skill", cases))
 
-	// Change description (DescHash changes) — the case set goes stale.
-	//
 	// 改 description（DescHash 变），case 集过期。
 	writeSkill(t, canonical, "my-skill", "Use when: 别的场景 or 另一个场景 SKIP: 其他")
 	_, err := SubmitRun(dir, canonical, "my-skill", "m", "v1",
@@ -244,8 +236,6 @@ func TestSubmitRun_RegressionVsBaseline(t *testing.T) {
 		return raw
 	}
 
-	// run1 all correct → set as baseline.
-	//
 	// run1 全对 → 设为 baseline。
 	r1, err := SubmitRun(dir, canonical, "my-skill", "sonnet", "v1", allRight())
 	if err != nil {
@@ -253,8 +243,6 @@ func TestSubmitRun_RegressionVsBaseline(t *testing.T) {
 	}
 	mustWrite(t, SetBaseline(dir, "my-skill", r1.RunID, "test"))
 
-	// run2: the first trigger case intentionally fails (regression).
-	//
 	// run2：第一个 trigger case 故意 fail（regression）。
 	raw2 := allRight()
 	raw2[0].ActualTriggered = "wrong-skill"
@@ -292,9 +280,7 @@ func TestBaselinePersistence(t *testing.T) {
 	}
 }
 
-// TestSubmitRun_AllUnknownCaseIDsRejected: all case_id values are absent from the case set (the set was just rebuilt,
-// the agent holds stale ids) → results empty → fail explicitly; do not silently persist an empty health=0 run that would lead the agent
-// to misread it as 'run succeeded, just all-failed'.
+// TestSubmitRun_AllUnknownCaseIDsRejected pins that an all-unknown case-id run fails explicitly.
 //
 // TestSubmitRun_AllUnknownCaseIDsRejected：所有 case_id 都不在 case 集（集刚重建，
 // agent 拿旧 id）→ results 空 → 明确报错，不静默落一条 health=0 的空 run 让 agent
@@ -330,11 +316,7 @@ func TestCountRegressions(t *testing.T) {
 	}
 }
 
-// TestSubmitRun_CorruptBaselineWarnsAndSkips pins the "unreadable baseline is not no-baseline"
-// contract: a corrupt baselines.json must NOT be silently treated as "nothing to compare"
-// (which would make the regression penalty vanish without a trace). SubmitRun still succeeds
-// and records the run, but skips the regression comparison with an explicit stderr warn: —
-// the failure is visible, BaselineRunID is left unset.
+// TestSubmitRun_CorruptBaselineWarnsAndSkips pins the "unreadable baseline is not no-baseline" contract.
 //
 // TestSubmitRun_CorruptBaselineWarnsAndSkips 钉死「baseline 不可读 ≠ 无 baseline」
 // 契约：baselines.json 损坏绝不能被静默当作「无可比 baseline」（那会让回归惩罚无痕
@@ -347,8 +329,6 @@ func TestSubmitRun_CorruptBaselineWarnsAndSkips(t *testing.T) {
 	cases, _ := EvalCases(canonical, "my-skill")
 	mustWrite(t, SaveCases(dir, "my-skill", cases))
 
-	// Corrupt baselines.json.
-	//
 	// 写坏 baselines.json。
 	if err := os.MkdirAll(filepath.Dir(baselinesFile(dir)), 0755); err != nil {
 		t.Fatal(err)
@@ -357,8 +337,6 @@ func TestSubmitRun_CorruptBaselineWarnsAndSkips(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Capture stderr to assert the explicit warning.
-	//
 	// 捕获 stderr 断言显式告警。
 	old := os.Stderr
 	r, w, err := os.Pipe()
@@ -393,18 +371,13 @@ func TestSubmitRun_CorruptBaselineWarnsAndSkips(t *testing.T) {
 	if !strings.Contains(buf.String(), "warn:") {
 		t.Errorf("stderr 应有 warn: 显式告警（baseline 不可读 ≠ 无 baseline），got %q", buf.String())
 	}
-	// All cases pass, no regression comparison possible → no penalty, health 100.
-	//
 	// 全部通过且无法回归比对 → 无惩罚，health 100。
 	if run.HealthScore != 100 {
 		t.Errorf("health=%v want 100（跳过比对但不对未证实的回归施加惩罚）", run.HealthScore)
 	}
 }
 
-// TestSubmitRun_UnknownKindSkipped pins the demolition hardening: legacy cases
-// with a kind that no longer exists (e.g. "behavior" from the removed
-// behavior-probe dimension) must be skipped rather than silently judged as
-// not-trigger — a vacuous pass would pollute the run.
+// TestSubmitRun_UnknownKindSkipped pins the demolition hardening.
 //
 // TestSubmitRun_UnknownKindSkipped 钉住拆除加固：kind 已不存在的遗留 case
 // （如 behavior-probe 维度拆除后的 "behavior"）必须被跳过，而非按
@@ -414,8 +387,6 @@ func TestSubmitRun_UnknownKindSkipped(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, canonical, "my-skill", testDesc)
 	cases, _ := EvalCases(canonical, "my-skill")
-	// Inject a legacy unknown-kind case alongside the valid ones.
-	//
 	// 在合法 case 中混入一个未知 kind 的遗留 case。
 	legacy := cases[0]
 	legacy.ID = "legacy-behavior-case"

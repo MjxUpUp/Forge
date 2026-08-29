@@ -21,8 +21,6 @@ import (
 // 由 forge task reclaim（cli/task_assignment.go）触发——task health 只把信号上浮，使卡住的任务不致
 // 静默隐形（§16 阶段5 里程碑：卡住的任务主动暴露）。所有基于时间的 helper 都接收 now，使测试可 mock 时钟。
 
-// Zombie / deadlock thresholds (design §3/§12). A delegation idle past these windows is a zombie.
-//
 // 僵尸/死锁阈值（设计 §3/§12）。分派空闲超过这些窗口即为僵尸。
 const (
 	OfferedZombieTTL       = 7 * 24 * time.Hour // offered 自上次（重）派发无人认领超过此时长 → 僵尸
@@ -31,9 +29,7 @@ const (
 	RepeatAbandonThreshold = 2                  // AbandonedCount ≥ 此值 → 反复回收僵尸
 )
 
-// TaskHealth is the read-only health classification of one task's delegation. It carries the
-// signals surfaced by task health / mine / dashboard so all three renderers share ONE truth about
-// what "zombie" and "deadlocked" mean. Empty (no reasons, both flags false) == healthy.
+// TaskHealth is the read-only health classification of one task's delegation.
 //
 // TaskHealth 是单个任务分派的只读健康分类。承载 task health / mine / 看板上浮的信号，使三处
 // 渲染对「僵尸」「死锁」共享同一真相。空（无 reason、两标志皆 false）= 健康。
@@ -45,10 +41,6 @@ type TaskHealth struct {
 	DeadlockReason string   `json:"deadlock_reason,omitempty"`
 }
 
-// pointerTime dereferences a *time.Time, returning the zero time when nil. Centralized so every
-// age calc treats a missing timestamp the same (cannot be aged → not flagged), avoiding a nil
-// deref or a false-positive from a zero-but-present value.
-//
 // pointerTime 解引用 *time.Time，nil 时返回零值。集中化使每个年龄计算对缺失时间戳一致处理
 // （无法老化 → 不标记），避免 nil 解引用或「存在但零值」导致的假阳性。
 func pointerTime(t *time.Time) time.Time {
@@ -112,13 +104,6 @@ func assignmentInFlight(s *TaskState) bool {
 	return false
 }
 
-// effectiveTTL returns the per-task zombie-window override when the task sets one (s.TTL > 0),
-// otherwise the supplied global default. This is the single read point for design §3/§9 --ttl:
-// IsOfferedZombie / IsClaimedStale / IsInputReqStale each pass their own global constant here, so a
-// task with a TTL is overridden uniformly and a task without is untouched. A nil state or
-// non-positive TTL falls back — zero is the omitempty default, so legacy tasks pre-dating the field
-// behave exactly as before.
-//
 // effectiveTTL 在任务设置了 per-task TTL（s.TTL > 0）时返回它，否则返回传入的全局默认。这是设计
 // §3/§9 --ttl 的唯一读取点：IsOfferedZombie / IsClaimedStale / IsInputReqStale 各把自己的全局常量
 // 传进来，设了 TTL 的任务被统一覆盖，没设的任务不受影响。nil state 或非正 TTL 回落——零值是
@@ -130,11 +115,7 @@ func effectiveTTL(s *TaskState, globalDefault time.Duration) time.Duration {
 	return globalDefault
 }
 
-// IsOfferedZombie reports whether an offered task has sat unclaimed past OfferedZombieTTL, and
-// its age since the baseline. The baseline is the NEWEST of OfferedAt and AbandonedAt: Abandon()
-// (claimed→offered recovery) sets AbandonedAt=now, so a freshly-reclaimed task resets its clock
-// and is not falsely flagged until it idles again. A missing OfferedAt (legacy state) cannot be
-// aged → not flagged (avoids false positives).
+// IsOfferedZombie reports whether an offered task has sat unclaimed past OfferedZombieTTL, and its age since the baseline.
 //
 // IsOfferedZombie 报告一个 offered 任务是否无人认领超过 OfferedZombieTTL，及其自基线的年龄。
 // 基线取 OfferedAt 与 AbandonedAt 的最新值：Abandon()（claimed→offered 回收）置 AbandonedAt=now，
@@ -178,16 +159,7 @@ func IsClaimedStale(root string, s *TaskState, now time.Time) (bool, time.Durati
 	return age > effectiveTTL(s, ClaimedZombieTTL), age
 }
 
-// IsInputReqStale reports whether an input-required task has had no progress past InputReqZombieTTL
-// — the question has gone unanswered too long. The baseline is the NEWEST of ClaimedAt, QuestionAt
-// (set by Question()), and last checklog activity. Question() requires Claim(), so ClaimedAt is
-// always set for input-required state and is the fallback baseline when no gate has run yet: a
-// task that was claimed, immediately questioned, then left silent must still surface (the canonical
-// stuck-question case — QuestionAt≈ClaimedAt there, so it still flags — exactly what phase 5 exists
-// to expose). QuestionAt dominating ClaimedAt prevents the symmetric false positive: a task claimed
-// long ago but only recently sent back for clarification is not stale merely because the claim is
-// old. Any newer checklog activity dominates both, so an actively-worked task is never a false
-// positive; a missing ClaimedAt with no activity cannot be aged → not flagged.
+// IsInputReqStale reports whether an input-required task has had no progress past InputReqZombieTTL — the question has gone unanswered too long.
 //
 // IsInputReqStale 报告一个 input-required 任务是否已无进展超过 InputReqZombieTTL——问题已太久未答复。
 // Question() 要求 Claim()，故 input-required 态的 ClaimedAt 总已设置，并在尚未跑过门禁时作为兜底基线：
@@ -198,11 +170,6 @@ func IsInputReqStale(root string, s *TaskState, now time.Time) (bool, time.Durat
 		return false, 0
 	}
 	baseline := pointerTime(s.Assignment.ClaimedAt)
-	// QuestionAt (set by Question()) dominates ClaimedAt when newer: a task claimed long ago but
-	// only recently sent back for clarification should NOT be flagged stale merely because the claim
-	// is old — the question is the freshest signal. In the canonical claim→immediately-question→
-	// silent case, QuestionAt≈ClaimedAt so the stuck task still surfaces.
-	//
 	// QuestionAt（Question() 设置）新于 ClaimedAt 时占优：很久前认领、近期才回抛的任务不应仅因认领
 	// 久远就被标僵尸——回抛才是最新信号。在典型「认领→立即回抛→静默」场景下 QuestionAt≈ClaimedAt，
 	// 故卡住的任务仍上浮。
@@ -219,10 +186,7 @@ func IsInputReqStale(root string, s *TaskState, now time.Time) (bool, time.Durat
 	return age > effectiveTTL(s, InputReqZombieTTL), age
 }
 
-// IsRepeatAbandon reports whether an in-flight task has been reclaimed (claimed→offered via
-// Abandon) RepeatAbandonThreshold or more times — a flaky task no worker keeps claiming.
-// Terminal/complete tasks with an abandonment history are not flagged: the signal is "this is
-// stuck NOW", and a delivered task is not stuck.
+// IsRepeatAbandon reports whether an in-flight task has been reclaimed (claimed→offered via Abandon) RepeatAbandonThreshold or more times — a flaky task no worker keeps claiming.
 //
 // IsRepeatAbandon 报告一个在途任务是否已被回收（claimed→offered 经 Abandon）达到
 // RepeatAbandonThreshold 次或更多——一个无人愿意持续认领的反复任务。带回收历史但已终态/完成的
@@ -235,10 +199,6 @@ func IsRepeatAbandon(s *TaskState) bool {
 }
 
 // IsZombie reports whether a task shows ANY zombie signal, collecting the human-readable reasons.
-// Shared by task mine, the dashboard, and task health so all three agree on "zombie" (a single
-// truth source — never drift between renderers). A task not in flight, or complete, is never a
-// zombie. The reasons use the design's shorthand (offered>7d / claimed>TTL / abandoned_count≥2 /
-// input-required>7d) so the CLI, JSON, and docs all read the same vocabulary.
 //
 // IsZombie 报告一个任务是否有任何僵尸信号，并收集人类可读的 reason。被 task mine、看板、
 // task health 共享，使三处对「僵尸」达成一致（单一真相源——渲染之间永不漂移）。不在途或已完成
@@ -297,14 +257,7 @@ func DeadlockedDependency(s *TaskState, lookup func(string) (*TaskState, error))
 	return ``, false
 }
 
-// HasDependencyCycle does a defensive DFS over a task's transitive DependsOn to detect ANY
-// reachable cycle — one involving the task itself OR one deeper in its dependency subtree (a task
-// whose upstream can never deliver is permanently blocked either way). Cycles are rejected at
-// AddDependency write time, so a cycle in state can only come from import or direct file
-// corruption — this catches it and reports it rather than letting `task mine --blocked` spin
-// forever. Uses a gray-set (in-stack) DFS — the standard back-edge test — so a cycle anywhere in
-// the reachable graph is found; a `done` set bounds the walk on acyclic paths. lookup returns nil
-// for a missing ref (treated as a leaf).
+// HasDependencyCycle does a defensive DFS over a task's transitive DependsOn to detect any reachable cycle.
 //
 // HasDependencyCycle 对任务的传递 DependsOn 做防御性 DFS，检测「任何」可达环——含任务自身的环，或其
 // 依赖子树更深处的环（上游永不可达则任务无论如何都被永久阻塞）。环在 AddDependency 写入时即被拒，故
@@ -344,11 +297,7 @@ func HasDependencyCycle(s *TaskState, lookup func(string) *TaskState) bool {
 	return dfs(s.TaskRef)
 }
 
-// ClassifyTaskHealth computes the full read-only health of one task: its zombie signals (with
-// reasons) plus its first deadlock cause. `root` is needed for checklog-activity judgments;
-// `now` is injected for testability; the dependency lookups take the full state set so chains and
-// cycles can be walked. Returned even for healthy tasks (all flags false) so callers can build a
-// uniform table; IsZombie/Deadlocked flags are the predicates to filter on.
+// ClassifyTaskHealth computes the full read-only health of one task: its zombie signals (with reasons) plus its first deadlock cause.
 //
 // ClassifyTaskHealth 计算单个任务的完整只读健康：僵尸信号（带 reason）+ 首个死锁成因。root
 // 供 checklog 活动判断所需；now 注入便于测试；依赖 lookup 接收完整 state 集使链与环可遍历。

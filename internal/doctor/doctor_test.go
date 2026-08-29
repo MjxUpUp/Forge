@@ -9,10 +9,6 @@ import (
 	"testing"
 )
 
-// isolate redirects every agentbridge path helper into a temp root via env overrides,
-// so tests never touch the real user-level agent configs (the same isolation strategy
-// agentbridge's own tests use). Returns the temp root.
-//
 // isolate 经 env 覆盖把所有 agentbridge 路径 helper 重定向进临时根，测试永不触碰
 // 真实用户级 agent 配置（与 agentbridge 自身测试同一隔离策略）。返回临时根。
 func isolate(t *testing.T) string {
@@ -86,9 +82,6 @@ func TestRun_HostMissing(t *testing.T) {
 		t.Fatalf("missing 不应有 Err，got %q", h.Err)
 	}
 	// 评审二轮 NIT #4：missing 不展示候选首文件当伪证据。
-	//
-	// Round-2 review NIT #4: missing hosts never show the first candidate file as
-	// pseudo-evidence.
 	if h.HookPath != "" {
 		t.Fatalf("missing 时 HookPath 应为空，got %q", h.HookPath)
 	}
@@ -240,11 +233,6 @@ func TestForgeInvocation(t *testing.T) {
 		{("带盘符路径"), `"C:\\tools\\forge.exe" hook`, `C:\\tools\\forge.exe`, true},
 		// JSON 转义形态（生产 settings.json/插件清单的真实字节）：token 吸收转义引号的
 		// 反斜杠成尾缀，Base 剥掉后仍认 forge——钉住该行为，防 tokenRe 改动静默丢合法调用。
-		//
-		// JSON-escaped shape (the real bytes in production settings.json/plugin
-		// manifests): the token absorbs the escape-quote backslash as a tail; Base
-		// strips it and forge still matches — pinned so tokenRe tweaks can't silently
-		// drop legal invocations (round-3 review test gap A).
 		{("json转义引号路径"), `{"command":"\"C:\\tools\\forge.exe\" hook stop"}`, `C:\\tools\\forge.exe\`, true},
 		{("toml赋值"), `command = 'forge hook'`, `forge`, true},
 		{("gate等价前缀"), `forge gate review-pass`, `forge`, true},
@@ -287,16 +275,12 @@ func TestNormalizeVersion(t *testing.T) {
 	}
 }
 
+// TestSanitizeCommand_NonCommand pins the false-positive guard.
+//
 // TestSanitizeCommand_NonCommand 说明性文本（如 "echo forge is great"、codebuddy
 // known_marketplaces.json 的 "quality gates" description——forge 出现但无调用语义）
 // 在调用位判定层被拒：不构成接线。该测试钉住防误报不变量，防止退回 bare 词门槛
 // （"hook"/"gate" 词在任何位置出现即计）——bare 门槛已被 "quality gates" 文案实证击穿。
-//
-// TestSanitizeCommand_NonCommand pins the false-positive guard: prose (like "echo forge
-// is great", or codebuddy known_marketplaces.json's "quality gates" description — forge
-// present, no invocation semantics) is rejected at the invocation-position layer. This
-// prevents regression to a bare-word gate ("hook"/"gate" counted anywhere on the line)
-// — empirically defeated by "quality gates" prose.
 func TestSanitizeCommand_NonCommand(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "known_marketplaces.json")
@@ -324,16 +308,12 @@ func TestScanFile_QuotedJSON(t *testing.T) {
 	}
 }
 
+// TestRun_KimiPluginLayout pins kimi's plugin carrier at its REAL directory depth (regression guard for review #1): hooks live at plugins/managed/forge/.kimi-plugin/ plugin.json (depth-3 dir + file).
+//
 // TestRun_KimiPluginLayout 钉 kimi plugin 载体的真实目录深度（评审 #1 的回归守卫）：
 // hook 在 plugins/managed/forge/.kimi-plugin/plugin.json（深度 3 目录 + 文件）。WalkDir
 // 深度上限若卡 3，.kimi-plugin/ 整棵被剪、plugin.json 永远扫不到——kimi 接线误报
 // missing。config.toml 无 [[hooks]]（plugin 模型机器的真实形态）。
-//
-// TestRun_KimiPluginLayout pins kimi's plugin carrier at its REAL directory depth
-// (regression guard for review #1): hooks live at plugins/managed/forge/.kimi-plugin/
-// plugin.json (depth-3 dir + file). With the WalkDir cap at 3 the whole .kimi-plugin/
-// tree is pruned, plugin.json is never scanned — kimi wiring misreported as missing.
-// config.toml has no [[hooks]] (the real shape of a plugin-model machine).
 func TestRun_KimiPluginLayout(t *testing.T) {
 	root := isolate(t)
 	writeFile(t, filepath.Join(root, ".kimi-code", "config.toml"), "# no hooks section\n")
@@ -349,10 +329,9 @@ func TestRun_KimiPluginLayout(t *testing.T) {
 	}
 }
 
-// TestScanPATH_ProbeCap 版本探测上限（评审 #6）：7 个 forge.exe 只探测前 5 个。
+// TestScanPATH_ProbeCap version-probe cap (review #6): 7 forge.exe files, only the first 5 get probed.
 //
-// TestScanPATH_ProbeCap version-probe cap (review #6): 7 forge.exe files, only the
-// first 5 get probed.
+// TestScanPATH_ProbeCap 版本探测上限（评审 #6）：7 个 forge.exe 只探测前 5 个。
 func TestScanPATH_ProbeCap(t *testing.T) {
 	isolate(t)
 	var dirs []string
@@ -379,12 +358,10 @@ func TestScanPATH_ProbeCap(t *testing.T) {
 	}
 }
 
+// TestAuditHost_UnresolvedTokenNeverProbed review #2 guard: garbage tokens mined out of docs (confirmed by neither Stat nor LookPath) are displayed verbatim but never executed.
+//
 // TestAuditHost_UnresolvedTokenNeverProbed 评审 #2 守卫：文档衍生的垃圾 token
 // （Stat/LookPath 都确认不了）原样展示但绝不执行。
-//
-// TestAuditHost_UnresolvedTokenNeverProbed review #2 guard: garbage tokens mined out
-// of docs (confirmed by neither Stat nor LookPath) are displayed verbatim but never
-// executed.
 func TestAuditHost_UnresolvedTokenNeverProbed(t *testing.T) {
 	root := isolate(t)
 	writeFile(t, filepath.Join(root, ".claude", "settings.json"),
@@ -405,17 +382,12 @@ func TestAuditHost_UnresolvedTokenNeverProbed(t *testing.T) {
 	}
 }
 
+// TestRun_ClaudePluginCache_LiveRegistryPreferred round-3 review MEDIUM-1 guard.
+//
 // TestRun_ClaudePluginCache_LiveRegistryPreferred 评审三轮 MEDIUM-1 守卫：cache 按 sha
 // 累积历史副本（本机 13 个），全树字典序扫描会引用字典序第一个死副本当 HookPath、
 // ForgeCmds 按副本数膨胀。installed_plugins.json 指向活副本时必须只认活副本——字典序
 // 在后的 zzz-live 被点名，aaaa-stale 虽排前且同样带接线也不得贡献计数。
-//
-// TestRun_ClaudePluginCache_LiveRegistryPreferred round-3 review MEDIUM-1 guard: the
-// cache accumulates one copy per historical sha (13 on this machine); a lexical
-// full-tree scan cites whichever stale copy sorts first as HookPath and multiplies
-// ForgeCmds by copy count. When installed_plugins.json names the live copy, only that
-// copy counts — lexically-later zzz-live is named; aaaa-stale sorts first and carries
-// wiring too, yet must not contribute.
 func TestRun_ClaudePluginCache_LiveRegistryPreferred(t *testing.T) {
 	root := isolate(t)
 	writeFile(t, filepath.Join(root, ".claude", "settings.json"), `{"enabledPlugins":{"forge@forge":true}}`)
@@ -429,11 +401,6 @@ func TestRun_ClaudePluginCache_LiveRegistryPreferred(t *testing.T) {
 	// installPath 原生 %q 写入（Windows 上即 JSON 双反斜杠字节）——钉住 liveClaudePluginTargets
 	// 的 \\ 折叠 + ToSlash + 前缀检查链条在真实字节形状下工作；用 ToSlash 会让夹具永远是
 	// 正斜杠、折叠逻辑只在手动 E2E 里被执行（评审四轮 LOW，shape-contract 教训）。
-	//
-	// installPath written natively via %q (on Windows that's the JSON doubled-backslash
-	// bytes) — pins the \\-fold + ToSlash + prefix-check chain in liveClaudePluginTargets
-	// against the REAL byte shape; a ToSlash fixture is always forward slashes, leaving
-	// the fold exercised only by manual E2E (round-4 review LOW, shape-contract lesson).
 	writeFile(t, filepath.Join(root, ".claude", "plugins", "installed_plugins.json"),
 		fmt.Sprintf(`{"version":2,"plugins":{"forge@forge":[{"scope":"user","installPath":%q}]}}`,
 			live))
@@ -450,12 +417,10 @@ func TestRun_ClaudePluginCache_LiveRegistryPreferred(t *testing.T) {
 	}
 }
 
+// TestRun_ClaudePluginCache_RegistryVanished fallback: the registry names a vanished path → fall back to the full-tree deep scan; wiring is still visible (a stale copy beats a blind missing report).
+//
 // TestRun_ClaudePluginCache_RegistryVanished 回退路径：注册表指向的路径已不存在 →
 // 回退全树深扫，接线仍可见（stale 副本总比瞎报 missing 好）。
-//
-// TestRun_ClaudePluginCache_RegistryVanished fallback: the registry names a vanished
-// path → fall back to the full-tree deep scan; wiring is still visible (a stale copy
-// beats a blind missing report).
 func TestRun_ClaudePluginCache_RegistryVanished(t *testing.T) {
 	root := isolate(t)
 	writeFile(t, filepath.Join(root, ".claude", "settings.json"), `{"enabledPlugins":{"forge@forge":true}}`)
@@ -463,8 +428,6 @@ func TestRun_ClaudePluginCache_RegistryVanished(t *testing.T) {
 	writeFile(t, filepath.Join(cache, "abc123def", ".claude-plugin", "plugin.json"),
 		`{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"forge hook --agent claude-code pre-tool-use"}]}]}}`)
 	// 同上：原生 %q，注册表字节形状与生产一致（评审四轮 LOW）。
-	//
-	// Same as above: native %q, registry byte shape matches production (round-4 LOW).
 	writeFile(t, filepath.Join(root, ".claude", "plugins", "installed_plugins.json"),
 		fmt.Sprintf(`{"version":2,"plugins":{"forge@forge":[{"scope":"user","installPath":%q}]}}`,
 			filepath.Join(cache, "deleted0sha")))
@@ -478,18 +441,13 @@ func TestRun_ClaudePluginCache_RegistryVanished(t *testing.T) {
 	}
 }
 
+// TestRun_ClaudePluginCacheLayout regression guard for round-2 review MEDIUM.
+//
 // TestRun_ClaudePluginCacheLayout 评审二轮 MEDIUM 的回归守卫（现钉回退路径）：plugin pack + autotakeover
 // 后的 claude-code 机器上 settings.json 被 dedupe 清干净，hook 全在 plugins/cache/forge/
 // forge/<sha>/ 深树里。doctor 必须经深扫（depth 8 + 基名白名单）到达 plugin.json——只扫
 // settings.json 会把这类机器误报 missing。树里再放一个同深的 golden .json 钉住白名单：
 // 扩展名过滤会把它扫进来，基名过滤必须跳过。
-//
-// TestRun_ClaudePluginCacheLayout regression guard for round-2 review MEDIUM: on a
-// claude-code machine after plugin pack + autotakeover, settings.json is deduped clean
-// and hooks live in the deep plugins/cache/forge/forge/<sha>/ tree. doctor must reach
-// plugin.json via the deep scan (depth 8 + basename whitelist) — settings.json-only
-// misreports such machines as missing. A same-depth golden .json pins the whitelist:
-// an extension filter would sweep it in, the basename filter must skip it.
 func TestRun_ClaudePluginCacheLayout(t *testing.T) {
 	root := isolate(t)
 	writeFile(t, filepath.Join(root, ".claude", "settings.json"), `{"enabledPlugins":{"forge@forge":true}}`)
@@ -511,14 +469,12 @@ func TestRun_ClaudePluginCacheLayout(t *testing.T) {
 	}
 }
 
-// TestScanFile_GatePrefix `forge gate <id>` 是 settings 层认可的等价前缀（internal/cli
-// settings.go 的合法命令判定），接线门槛必须同样接受——否则仅用 gate 接线的 host 假报
-// missing（评审二轮 LOW #1）。
+// TestScanFile_GatePrefix pins that `forge gate <id>` is an accepted equivalent prefix at the settings layer.
 //
-// TestScanFile_GatePrefix `forge gate <id>` is an accepted equivalent prefix at the
-// settings layer (isForgeHookCommand in internal/hooks/settings.go (mirrored in agentbridge/codex.go)); the wiring gate
-// must accept it too — otherwise a host wired only via gate false-reports missing
-// (round-2 review LOW #1).
+// TestScanFile_GatePrefix `forge gate <id>` 是 settings 层认可的等价前缀
+// （internal/hooks/settings.go 的 isForgeHookCommand 判定，agentbridge/codex.go 有镜像），
+// 接线门槛必须同样接受——否则仅用 gate 接线的 host 假报
+// missing（评审二轮 LOW #1）。
 func TestScanFile_GatePrefix(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "hooks.json")
@@ -532,15 +488,11 @@ func TestScanFile_GatePrefix(t *testing.T) {
 	}
 }
 
+// TestRun_RegistryMetadataNotWiring guard for review #1's failure scenario: plugin registry entries ("id": "forge", repo URLs — literally containing forge but with no hook-command semantics) do NOT constitute wiring.
+//
 // TestRun_RegistryMetadataNotWiring 评审 #1 失效场景守卫：plugin 注册表条目
 // （"id": "forge"、repo URL——字面含 forge 但无 hook 命令语义）不构成接线。插件
 // hook 坏了但注册表完好的机器必须报 missing/nover，绝不因注册表元数据假报 ok。
-//
-// TestRun_RegistryMetadataNotWiring guard for review #1's failure scenario: plugin
-// registry entries ("id": "forge", repo URLs — literally containing forge but with no
-// hook-command semantics) do NOT constitute wiring. A machine whose plugin hooks broke
-// while the registry stayed intact must report missing/nover, never a registry-
-// metadata-induced ok.
 func TestRun_RegistryMetadataNotWiring(t *testing.T) {
 	root := isolate(t)
 	writeFile(t, filepath.Join(root, ".kimi-code", "plugins", "installed.json"),
@@ -552,16 +504,12 @@ func TestRun_RegistryMetadataNotWiring(t *testing.T) {
 	}
 }
 
+// TestRun_SkillsDriftProbeOptionalAndSurfaced guards the skills-distribution injection contract: nil probe → Report.Skills absent (hermetic tests keep the old shape); non-nil probe → the summary surfaces verbatim.
+//
 // TestRun_SkillsDriftProbeOptionalAndSurfaced 守卫 skills 分发节的注入契约：
 // probe 为 nil 时 Report.Skills 缺席（密封测试与旧行为兼容）；probe 非 nil 时
 // 摘要原样上报告。探针错误也应呈现为摘要（Canonical 前缀 error:），绝不中止
 // host 审计——这是 doctor.go Options.SkillsDriftProbe 注释承诺的行为。
-//
-// TestRun_SkillsDriftProbeOptionalAndSurfaced guards the skills-distribution
-// injection contract: nil probe → Report.Skills absent (hermetic tests keep the
-// old shape); non-nil probe → the summary surfaces verbatim. Probe errors must
-// surface as a summary (Canonical "error:" prefix), never abort host auditing —
-// the behavior the Options.SkillsDriftProbe comment promises.
 func TestRun_SkillsDriftProbeOptionalAndSurfaced(t *testing.T) {
 	isolate(t)
 	rep := Run("1.30.0", fakeEnv(nil))
@@ -589,10 +537,7 @@ func TestRun_SkillsDriftProbeOptionalAndSurfaced(t *testing.T) {
 	}
 }
 
-// TestSkillsDriftSummarySkippedJSON pins the Skipped field's JSON contract (M-3): wire
-// name "skipped", omitempty — absent when nil (old consumers unchanged), present as an
-// array when targets were skipped. The field is what `forge doctor --json` emits and the
-// dashboard/CI consumers parse; a rename or dropped omitempty would silently break them.
+// TestSkillsDriftSummarySkippedJSON pins the Skipped field's JSON contract (M-3): wire name "skipped", omitempty — absent when nil (old consumers unchanged), present as an array when targets were skipped.
 //
 // TestSkillsDriftSummarySkippedJSON 钉死 Skipped 字段的 JSON 契约（M-3）：线名
 // "skipped"、omitempty——nil 时缺席（旧消费方不受影响）、有跳过目标时以数组出现。
@@ -633,14 +578,7 @@ func TestSkillsDriftSummarySkippedJSON(t *testing.T) {
 	}
 }
 
-// TestScanFile_UnreadableSurfacesError pins the read-failure contract
-// (fix/cleanup-batch, 2026-08-29): a hook carrier that exists but cannot be
-// READ must return an error in the "<basename> unreadable: …" shape instead of
-// scanning as zero commands — without it, a locked settings.json was
-// indistinguishable from "no forge wiring" (missing). The unreadable state is
-// induced with a DIRECTORY at the file path (os.ReadFile on a dir fails on
-// every supported platform with a non-not-exist error — no platform-specific
-// ACL games needed).
+// TestScanFile_UnreadableSurfacesError pins the read-failure contract (fix/cleanup-batch, 2026-08-29).
 //
 // TestScanFile_UnreadableSurfacesError 钉住读失败契约（fix/cleanup-batch，
 // 2026-08-29）：存在但读不了的 hook 载体必须返回 "<基名> unreadable: …" 形态的
@@ -665,11 +603,7 @@ func TestScanFile_UnreadableSurfacesError(t *testing.T) {
 	}
 }
 
-// TestScanFile_NotExistStaysQuiet pins the other half of the contract: a file
-// that vanished mid-scan is the MISSING verdict itself (expandHookFiles already
-// stat-checked the target) — not an error. Only readable-but-refused carriers
-// error; not-exist stays quiet so missing hosts keep their clean "missing"
-// rendering.
+// TestScanFile_NotExistStaysQuiet pins the other half of the contract: a file that vanished mid-scan is the MISSING verdict itself (expandHookFiles already stat-checked the target) — not an error.
 //
 // TestScanFile_NotExistStaysQuiet 钉住契约的另一半：扫描中途消失的文件本身就是
 // missing 结论（expandHookFiles 已对目标做过 stat）——不是 error。只有「可存在
@@ -685,12 +619,7 @@ func TestScanFile_NotExistStaysQuiet(t *testing.T) {
 	}
 }
 
-// TestRun_SkillsBlindSpotsStamped pins the reserved-name blind-spot annotation
-// (fix/cleanup-batch, 2026-08-29): Run stamps SkillsDriftSummary.BlindSpots on
-// every probe result — forge-quality is managed by skillgen, absent from the
-// canonical dir, and therefore invisible to the canonical×target drift walk; a
-// green in-sync line must not claim coverage it does not have. The JSON wire
-// name (blind_spots, omitempty) is part of the contract for --json consumers.
+// TestRun_SkillsBlindSpotsStamped pins the reserved-name blind-spot annotation (fix/cleanup-batch, 2026-08-29).
 //
 // TestRun_SkillsBlindSpotsStamped 钉住保留名盲区标注（fix/cleanup-batch，
 // 2026-08-29）：Run 给每个探针结果盖章 SkillsDriftSummary.BlindSpots——

@@ -58,8 +58,6 @@ func runVerify(cmd *cobra.Command, args []string) error {
 	return runDefaultChecks()
 }
 
-// ---------- Default mode ----------
-//
 // ---------- 默认模式 ----------
 
 type checkResult struct {
@@ -95,8 +93,6 @@ func runDefaultChecks() error {
 		}
 	}
 
-	// Print the results
-	//
 	// 打印结果
 	fmt.Println("Forge 项目完整性检查")
 	fmt.Println()
@@ -120,18 +116,8 @@ func runDefaultChecks() error {
 	return fmt.Errorf("some checks failed")
 }
 
-// ---------- Run-tests mode ----------
-//
 // ---------- Run-tests 模式 ----------
 
-// runProjectTestsMode runs the detected project test suite and records the
-// real pass/fail as deterministic evidence (CheckNameTestRun) into checklog.
-// forge itself executes the command and observes the exit code, so the record
-// cannot be faked—countering the blind spot where an agent claims PASS
-// without running tests. Distinct from the default integrity checks (file
-// existence) and regression mode (forge's own e2e): what runs here is the
-// project's own tests.
-//
 // runProjectTestsMode 运行探测到的项目测试套件，并把真实的 pass/fail 作为
 // deterministic 证据（CheckNameTestRun）写入 checklog。由 forge 自己执行命令
 // 并观察退出码，故记录不可伪造——对抗 agent 不跑测试就声称 PASS 的盲区。区别
@@ -145,10 +131,6 @@ func runProjectTestsMode() error {
 	return runProjectTestsModeAt(root)
 }
 
-// runProjectTestsModeAt is the root-injected core of runProjectTestsMode,
-// split out to make unit testing on a temporary project easy (without
-// depending on findProjectRoot).
-//
 // runProjectTestsModeAt 是 runProjectTestsMode 的 root 注入核心，拆出来便于
 // 在临时 project 上做单元测试（不依赖 findProjectRoot）。
 func runProjectTestsModeAt(root string) error {
@@ -157,14 +139,6 @@ func runProjectTestsModeAt(root string) error {
 		fmt.Println("未检测到项目测试命令（无 go.mod / Cargo.toml / package.json / pytest 配置）—— 无可运行的测试套件。")
 		return nil
 	}
-	// Use CurrentSessionID() (not the empty string) so the record is
-	// attributed via the session-scoped active-task-ref file to this
-	// session's active task. The empty-sessionID path reads the shared legacy
-	// DataDir/active-task-ref, which may carry the previous session's stale
-	// ref (e.g. fix/concurrent-session-race residue), mis-attributing
-	// evidence to the wrong task, and `forge trace <real-task>` will not see
-	// it either. Consistent with review.go / task.go.
-	//
 	// 用 CurrentSessionID()（而非空串），让记录通过 session-scoped
 	// active-task-ref 文件归到本 session 的 active task 上。空 sessionID 路径
 	// 读的是 shared legacy DataDir/active-task-ref，可能残留前一个 session 的
@@ -195,9 +169,6 @@ func runProjectTestsModeAt(root string) error {
 	return fmt.Errorf("test suite failed")
 }
 
-// passFailWord returns PASS/FAIL based on the test-run result—used in the
-// checklog Detail so forge trace shows the suite result at a glance.
-//
 // passFailWord 根据测试运行结果返回 PASS/FAIL——用在 checklog Detail 里，让
 // forge trace 一眼能看出套件结果。
 func passFailWord(passed bool) string {
@@ -207,10 +178,6 @@ func passFailWord(passed bool) string {
 	return "FAIL"
 }
 
-// boundOutput truncates command output to roughly the last 40 lines, preventing
-// a failing suite from flooding the terminal while keeping the actionable tail
-// (go/cargo/npm test failures are all at the end).
-//
 // boundOutput 把命令输出截到末尾约 40 行，避免失败套件刷屏、同时保留可操作的
 // 尾部（go/cargo/npm test 的失败信息都在末尾）。
 func boundOutput(s string) string {
@@ -227,11 +194,6 @@ func boundOutput(s string) string {
 }
 
 func checkHooks(root string) checkResult {
-	// After user-level-assets the canonical hook copies live at DataDir/hooks/
-	// (reference copies of the embedded scripts; runtime never reads them from the
-	// project). Team-mode compatibility: a project-level .forge/hooks/ copy also
-	// counts — those projects deliberately keep project-level assets.
-	//
 	// user-level-assets 之后 hook 副本的正主在 DataDir/hooks/（嵌入脚本的参考
 	// 副本；运行时从不从项目读）。团队模式兼容：项目级 .forge/hooks/ 副本也认——
 	// 那些项目刻意保留项目级资产。
@@ -265,11 +227,6 @@ func checkProtocol(root string) checkResult {
 }
 
 func checkQualitySkill(root string) checkResult {
-	// After user-level-assets the quality skill lives at the user level:
-	// <ClaudeHome>/skills/forge-quality/SKILL.md (ClaudeHome respects
-	// CLAUDE_CONFIG_DIR). Team-mode compatibility: a project-level
-	// .claude/skills/forge-quality/SKILL.md also counts.
-	//
 	// user-level-assets 之后质量 skill 在用户级：<ClaudeHome>/skills/forge-quality/
 	// SKILL.md（ClaudeHome 尊重 CLAUDE_CONFIG_DIR）。团队模式兼容：项目级
 	// .claude/skills/forge-quality/SKILL.md 也认。
@@ -286,12 +243,6 @@ func checkQualitySkill(root string) checkResult {
 }
 
 func checkSettings(root string) checkResult {
-	// After user-level-assets forge hooks are registered in the user-level Claude
-	// settings.json (GenerateUserSettings) — or by the Claude plugin when it is
-	// user-level installed (plugin.json registers ForgeHookSpec machine-wide, so
-	// no settings file is needed). Team-mode compatibility: a project-level
-	// .claude/settings.local.json also counts.
-	//
 	// user-level-assets 之后 forge hook 注册在用户级 Claude settings.json
 	// （GenerateUserSettings）——或由已 user-level 安装的 Claude plugin 接管
 	// （plugin.json 全机器注册 ForgeHookSpec，无需 settings 文件）。团队模式
@@ -314,9 +265,6 @@ func checkSettings(root string) checkResult {
 	return checkResult{name: "Settings 配置", ok: false, msg: "用户级 claude settings.json 不存在或不含 forge hook"}
 }
 
-// containsForgeHook reports whether a settings JSON registers any forge hook
-// (commands written by ForgeHookSpec all start with "forge hook"/"forge gate").
-//
 // containsForgeHook 报告 settings JSON 是否注册了 forge hook（ForgeHookSpec
 // 写入的命令都以 "forge hook"/"forge gate" 开头）。
 func containsForgeHook(data []byte) bool {
@@ -324,13 +272,9 @@ func containsForgeHook(data []byte) bool {
 	return strings.Contains(s, "forge hook ") || strings.Contains(s, "forge gate ")
 }
 
-// ---------- Regression mode ----------
-//
 // ---------- Regression 模式 ----------
 
 func runRegressionMode(scenario string) error {
-	// Build the forge binary to a temporary location
-	//
 	// 把 forge 二进制构建到临时位置
 	tmpDir, err := os.MkdirTemp("", "forge-verify-build")
 	if err != nil {
@@ -351,8 +295,6 @@ func runRegressionMode(scenario string) error {
 		return fmt.Errorf("failed to build forge binary: %v\n%s", err, output)
 	}
 
-	// Collect the scenarios to run
-	//
 	// 收集要运行的 scenario
 	scenarios := map[string]func(string) ScenarioResult{
 		"fresh-install":   runScenarioFreshInstall,
@@ -375,15 +317,11 @@ func runRegressionMode(scenario string) error {
 		return nil
 	}
 
-	// Run all scenarios
-	//
 	// 运行全部 scenario
 	fmt.Println("Forge E2E Regression Tests")
 	fmt.Println()
 
 	results := make([]ScenarioResult, 0, len(scenarios))
-	// deterministic order
-	//
 	// deterministic 顺序
 	order := []string{"fresh-install", "master-reminder", "upgrade-v040", "upgrade-v030"}
 	for _, name := range order {
@@ -400,8 +338,6 @@ func runRegressionMode(scenario string) error {
 		}
 		fmt.Printf("[%s] %s\n", status, result.Duration.Round(time.Millisecond))
 		if !result.Passed {
-			// Indent the output for readability
-			//
 			// 输出缩进以提高可读性
 			for _, line := range splitLines(result.Output) {
 				fmt.Printf("    %s\n", line)

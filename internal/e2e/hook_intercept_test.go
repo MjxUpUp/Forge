@@ -13,18 +13,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hazard"
 )
 
-// 2026-08-30 test slimming: the e2e hazard-guard classification battery was
-// removed here — every scenario lives in faster script-level twins in
-// internal/hooks/hazard_script_test.go (TmpdirEnvExempt / EnvBypassRemoved /
-// MktempSelfCleanupExempt / MultilineQuotedDangerIsData / GitBranchDScope /
-// BlockGuidanceCopy / InterpDeleteBypass). This file keeps: the three wiring
-// smokes through the REAL forge binary (BlocksHazardousCommand /
-// ConfirmReleases / FingerprintReleases), the events.jsonl persistence pair,
-// and the FP regressions the script level does NOT cover
-// (RmFPathNotFlag / TruncatePathNotBlocked / CommentNotBlocked /
-// DataContextNotBlocked / ExecWrappedStillBlocked / RmSubstringInWord /
-// RmFlagWithOtherFlags / ForceWithLeaseAllowed).
-//
 // 2026-08-30 测试瘦身：此处移除 e2e hazard-guard 分类 battery——每个场景都有
 // 更快的脚本级孪生（internal/hooks/hazard_script_test.go：TmpdirEnvExempt /
 // EnvBypassRemoved / MktempSelfCleanupExempt / MultilineQuotedDangerIsData /
@@ -79,14 +67,6 @@ func hookStdin(t *testing.T, sessionID, eventName, toolName string, toolInput ma
 	return string(b)
 }
 
-// assertAllowOutput pins the Wave-1 allow contract for the default (Claude Code)
-// output protocol: an allowing hook exits 0 (asserted by the caller) with stdout
-// that is either empty or a {"hookSpecificOutput":{...,"additionalContext":...}}
-// context object — and NEVER "decision":"approve" (an allow hook must not grant
-// permissions) nor any block marker. The old `{"decision":"approve"}` envelope
-// was removed intentionally in the per-agent output-protocol wave; these
-// assertions pin the new contract, they do not weaken the old one.
-//
 // assertAllowOutput 钉死 Wave-1 默认（Claude Code）输出协议的放行契约：放行的
 // hook 以退出码 0 结束（调用方已断言），stdout 为空或
 // {"hookSpecificOutput":{...,"additionalContext":...}} 上下文对象——绝不能是
@@ -103,16 +83,6 @@ func assertAllowOutput(t *testing.T, stdout string) {
 	}
 }
 
-// TestHook_TaskGuard_BlocksForgeManagedFile verifies the self-protection
-// contract: task-guard must BLOCK any direct write to Forge-managed files
-// (.forge/* except protocol.yml, and .claude/settings*). This is the
-// innermost safety ring — without it, an agent could disable its own oversight
-// by editing Forge internals. No prior test exercised this via the real subprocess
-// path (internal/cli/hook_test.go covers the JSON protocol in-process only).
-// Note: state.json is no longer generated after the project-level pipeline was removed;
-// this serves only as a representative example of a .forge/* managed path —
-// task-guard blocks by path pattern, independent of whether this file exists.
-//
 // 注：state.json 随项目级管道删除已不再生成，此处仅作 .forge/* 受管路径的代表例——
 // task-guard 按路径模式拦截，不依赖该文件是否存在。
 func TestHook_TaskGuard_BlocksForgeManagedFile(t *testing.T) {
@@ -139,17 +109,6 @@ func TestHook_TaskGuard_BlocksForgeManagedFile(t *testing.T) {
 	}
 }
 
-// TestHook_Cline_ProjectResolvedFromWorkspaceRoots pins the runHook ordering that
-// code review exposed on the Wave 3b diff: normalizeAgentStdin must run BEFORE
-// adoptPayloadCwd/findProjectRoot, or cline's workspaceRoots[0]→Cwd mapping is
-// dead code (cline's payload has no cwd field — the mapping is the ONLY source of
-// the project dir). This test simulates the undocumented worst case — cline
-// spawning the wrapper script with a process cwd OUTSIDE the workspace — and
-// asserts the project still resolves: task-guard blocks the .forge write through
-// the cline block protocol (cancel:true + exit 2). Under the old ordering
-// findProjectRoot resolved against the process cwd, failed, and the hook silently
-// allowed — the entire cline gate layer no-opped with zero symptoms.
-//
 // TestHook_Cline_ProjectResolvedFromWorkspaceRoots 钉死 Wave 3b diff 上代码审查
 // 暴露的 runHook 时序：normalizeAgentStdin 必须先于 adoptPayloadCwd/
 // findProjectRoot 执行，否则 cline 的 workspaceRoots[0]→Cwd 映射是死代码
@@ -336,17 +295,11 @@ func TestHook_HazardGuard_RmFPathNotFlag(t *testing.T) {
 	assertAllowOutput(t, stdout)
 }
 
-// TestHook_HazardGuard_ForceWithLeaseAllowed: --force-with-lease is git's recommended
-// safe alternative for --force (refuses if remote advanced), so it must NOT be hard-blocked the way bare
-// --force is. Bare --force still blocks (regression guard).
-//
 // TestHook_HazardGuard_ForceWithLeaseAllowed：--force-with-lease 是 git 推荐的 --force 的安全
 // 替代（远端前进时拒绝），所以不应像裸 --force 那样被硬拦。裸 --force 仍拦（回归保护）。
 func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 	dir := freshProject(t)
 
-	// lease variant approved.
-	//
 	// lease 放行
 	inLease := hookStdin(t, "sess-hazard-lease", "PreToolUse", "Bash", map[string]any{
 		"command": "git push --force-with-lease origin main",
@@ -357,8 +310,6 @@ func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 	}
 	assertAllowOutput(t, stdout)
 
-	// Valued variant --force-with-lease=<ref>:<expect> (most common CI form) is also approved.
-	//
 	// 带值变体 --force-with-lease=<ref>:<expect>（CI 最常用形态）同样放行
 	inLeaseVal := hookStdin(t, "sess-hazard-lease-val", "PreToolUse", "Bash", map[string]any{
 		"command": "git push --force-with-lease=main:abc123 origin main",
@@ -369,8 +320,6 @@ func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 	}
 	assertAllowOutput(t, stdout)
 
-	// Bare --force still blocks (regression guard: the lease allowance must not let bare force slip through).
-	//
 	// 裸 --force 仍拦（回归保护：lease 放行不能导致裸 force 漏拦）
 	inForce := hookStdin(t, "sess-hazard-force", "PreToolUse", "Bash", map[string]any{
 		"command": "git push --force origin main",
@@ -384,10 +333,6 @@ func TestHook_HazardGuard_ForceWithLeaseAllowed(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_RmFlagWithOtherFlags regressions review S1: rm preceded by other flags
-// (-i / --one-file-system / -v) then followed by -rf must still be blocked. These are legal rm
-// forms; an 'rm immediately followed by single cluster' anchor would miss them (true hazard leak).
-//
 // TestHook_HazardGuard_RmFlagWithOtherFlags regressions 审查 S1：rm 前置其他 flag
 // （-i / --one-file-system / -v）再接 -rf 必须仍被拦。这些是合法 rm 写法，「rm 紧跟单簇」
 // 锚定会漏检它们（真高危漏放）。
@@ -411,12 +356,6 @@ func TestHook_HazardGuard_RmFlagWithOtherFlags(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_DataContextNotBlocked: a hazard string only inside quotes (data) is not
-// blocked — context classification. grep 'rm -rf' / git commit -m 'fix rm -rf bug' / echo 'DROP TABLE'
-// all pass the danger string as data, not execution. Root fix for the 2026-06 category-level
-// misjudgement (.lark-report was a single-point symptom). The second case, git commit -m, is the
-// real incident from the start of the session where a commit title containing rm -f was blocked.
-//
 // TestHook_HazardGuard_DataContextNotBlocked: 危险串仅在引号内（数据）不拦——context
 // classification。grep"rm -rf"/ git commit -m"fix rm -rf bug"/ echo"DROP TABLE"都
 // 是把危险串当数据传递，不是执行。根治 2026-06 类别级误判（.lark-report 是单点表现）。
@@ -441,11 +380,6 @@ func TestHook_HazardGuard_DataContextNotBlocked(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_ExecWrappedStillBlocked: wrapped in quotes but enclosed by bash -c /
-// sh -c / eval is real execution; context classification must not pass it — strip_quotes peels
-// the quoted content, and without this fallback real hazards leak (bash -c with rm -rf is the
-// agent truly deleting data).
-//
 // TestHook_HazardGuard_ExecWrappedStillBlocked: 引号内但被 bash -c / sh -c / eval 包裹的是
 // 真执行，context classification 不能放行——strip_quotes 会剥离引号内内容，若无此兜底会
 // 漏检真高危（bash -c"rm -rf"是 agent 真删数据）。
@@ -472,10 +406,6 @@ func TestHook_HazardGuard_ExecWrappedStillBlocked(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_LogsBlockEvent: block events are persisted to events.jsonl for structured
-// traceability — fills the gap of 'blocked commands having no standalone record' (the 2026-06
-// hazards audit of 19 FAILs could only dig through checklog).
-//
 // TestHook_HazardGuard_LogsBlockEvent: block 事件落盘 events.jsonl，可结构化追溯——
 // 补全「被拦命令无独立记录」痛点（2026-06 hazards 审计 19 条 FAIL 只能扒 checklog）。
 func TestHook_HazardGuard_LogsBlockEvent(t *testing.T) {
@@ -505,10 +435,6 @@ func TestHook_HazardGuard_LogsBlockEvent(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_LogsReleaseEvent: the full HITL event flow block → confirm → release is
-// persisted. confirm registration (Confirmation) + release approval events are both recorded, so
-// 'whether a blocked command was later confirmed' is traceable.
-//
 // TestHook_HazardGuard_LogsReleaseEvent: 完整 HITL 事件流 block → confirm → release
 // 均落盘。confirm 登记（Confirmation）+ release 放行事件双记录，可追溯「被拦后是否被确认」。
 func TestHook_HazardGuard_LogsReleaseEvent(t *testing.T) {
@@ -554,14 +480,6 @@ func TestHook_HazardGuard_LogsReleaseEvent(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_RmSubstringInWordNotHazardous regressions the 2026-07 false positive: a
-// bare 'rm ' substring match hits rm inside words like confirm/perform/transform (confirm = confi+rm),
-// combined with the --fingerprint flag detection of -f...r, misclassifying 'go run . hazard confirm
-// --fingerprint' as rm -rf — calls not starting with 'forge hazard' (go run / cd && forge hazard)
-// miss the exemption and reach is_hazardous, getting repeatedly blocked. Fix: rm detection requires
-// rm to be an independent token (preceded by line start or a non-lowercase letter). These commands
-// must pass, and real rm -rf must still block (tightening word boundaries must not release true hazards).
-//
 // TestHook_HazardGuard_RmSubstringInWordNotHazardous regressions 2026-07 误伤：裸
 // 'rm ' 子串匹配会误中 confirm/perform/transform 等词内的 rm（confirm = confi+rm），
 // 叠加 --fingerprint 含 -f...r 的 flag 检测，把 'go run . hazard confirm --fingerprint'
@@ -570,9 +488,6 @@ func TestHook_HazardGuard_LogsReleaseEvent(t *testing.T) {
 // 这些命令必须放行，且真 rm -rf 仍必须 block（词边界收紧不能放过真高危）。
 func TestHook_HazardGuard_RmSubstringInWordNotHazardous(t *testing.T) {
 	dir := freshProject(t)
-	// None starts with 'forge hazard' (no exemption hit), contains rm substring (inside confirm)
-	// + -f...r flag (--fingerprint) — pre-fix this was misjudged as rm -rf, post-fix it must pass.
-	//
 	// 都不以 'forge hazard' 开头（不命中豁免），含 rm 子串（confirm 内）+ -f...r flag
 	// （--fingerprint）——修复前误判 rm -rf，修复后必须放行。
 	pass := []string{
@@ -590,10 +505,6 @@ func TestHook_HazardGuard_RmSubstringInWordNotHazardous(t *testing.T) {
 		}
 	}
 
-	// Regression: real rm -rf (rm is an independent token) must still block — tightening word
-	// boundaries must not release true hazards. Covers both word-boundary branches: rm at line
-	// start (^rm ) and rm preceded by space ([^a-z]rm , e.g. sudo rm -rf).
-	//
 	// 回归：真 rm -rf（rm 是独立 token）仍必须 block——词边界收紧不能放过真高危。
 	// 覆盖词边界两分支：行首 rm（^rm ）与 rm 前空格（[^a-z]rm ，如 sudo rm -rf）。
 	block := []string{
@@ -611,15 +522,6 @@ func TestHook_HazardGuard_RmSubstringInWordNotHazardous(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_CommentNotBlocked pins dogfood 3.2a: a hazard string on a # comment line
-// (not in quotes, at word boundaries) is data not execution, and must pass. The electron-builder
-// '# Clean up' comment containing rm was miscaught as execution (one of the AgentWorld false
-// positives). strip_quotes adds # comment stripping: in 'make build # rm -rf build/' the rm -rf is
-// inside the comment → after stripping is_hazardous does not match → data-context pass.
-// Regression guard: dangerous strings executed after a comment (e.g. '# note ; rm -rf x' with a
-// semicolon continuation) are NOT covered here — left to code-review-gate; the hook only passes
-// pure comment lines (# to end of line with no semicolon continuation).
-//
 // TestHook_HazardGuard_CommentNotBlocked 钉死 dogfood 3.2a：危险串在 # 注释行（非引号内、
 // 词边界处）是数据不执行，应放行。electron-builder"# Clean up"含 rm 的注释被当执行误拦
 // （AgentWorld 误报之一）。strip_quotes 增加 # 注释剥离：make build # rm -rf build/ 中
@@ -644,18 +546,11 @@ func TestHook_HazardGuard_CommentNotBlocked(t *testing.T) {
 	}
 }
 
-// TestHook_HazardGuard_TruncatePathNotBlocked pins dogfood 3.2b: a bare 'truncate' substring
-// match false-fires on path fragments (cd truncate-output/ / --no-truncate flag). After narrowing
-// to a SQL DDL context these must pass, and real TRUNCATE TABLE must still block (narrowing must
-// not release true DDL).
-//
 // TestHook_HazardGuard_TruncatePathNotBlocked 钉死 dogfood 3.2b：裸"truncate"子串匹配
 // 误伤路径片段（cd truncate-output/ / --no-truncate flag）。收窄到 SQL DDL 语境后这些
 // 必须放行，且真 TRUNCATE TABLE 仍必须 block（收窄不能放过真 DDL）。
 func TestHook_HazardGuard_TruncatePathNotBlocked(t *testing.T) {
 	dir := freshProject(t)
-	// Path/flag fragments containing a truncate substring — not SQL DDL, approved.
-	//
 	// 路径/flag 片段含 truncate 子串——非 SQL DDL，放行
 	pass := []string{
 		`cd truncate-output/`,
@@ -671,9 +566,6 @@ func TestHook_HazardGuard_TruncatePathNotBlocked(t *testing.T) {
 			t.Fatalf("hazard-guard must pass %q (truncate is a path/flag fragment, not SQL DDL), got block. stdout:\n%s", cmd, stdout)
 		}
 	}
-	// Regression: real SQL TRUNCATE TABLE must still block — narrowing must not release destructive DDL,
-	// including bare TRUNCATE (MySQL/PG's TABLE keyword is optional, TRUNCATE users ≡ TRUNCATE TABLE users).
-	//
 	// 回归：真 SQL TRUNCATE TABLE 仍必须 block——收窄不能放过破坏性 DDL
 	// 含裸 TRUNCATE（MySQL/PG 的 TABLE 关键字可选，TRUNCATE users ≡ TRUNCATE TABLE users）。
 	block := []string{

@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-// withHome points FORGE_DATA_HOME at a temp dir so the identity store is isolated.
-//
 // withHome 把 FORGE_DATA_HOME 指向临时目录，隔离身份 store。
 func withHome(t *testing.T) string {
 	t.Helper()
@@ -42,13 +40,6 @@ func TestLoadOrCreate_GeneratesValidIdentity(t *testing.T) {
 	assertPrivatePerms(t, filepath.Join(home, "node.json"), "node.json")
 }
 
-// assertPrivatePerms pins 0600 on POSIX only: Windows ACLs are not POSIX mode
-// bits — os.Chmod there just toggles the read-only flag and Mode().Perm() always
-// reports 0666, so the assertion can never hold on windows (surfaced by this
-// batch's first Windows CI run, 2026-08-21). The 0600 write hygiene itself is
-// enforced on every platform by writeIdentityTemp / util.AtomicWrite; this
-// helper only asserts what the platform can represent.
-//
 // assertPrivatePerms 只在 POSIX 上钉 0600：Windows ACL 不是 POSIX mode 位——
 // os.Chmod 在其上只翻转只读标志，Mode().Perm() 恒报 0666，断言在 windows 上
 // 永不可能成立（本批次首个 Windows CI run 暴露）。0600 写入卫生本身由
@@ -170,8 +161,6 @@ func TestValidNodeID(t *testing.T) {
 	}
 }
 
-// rewriteIdentity tampers node.json via fn and returns the mutated raw bytes.
-//
 // rewriteIdentity 经 fn 篡改 node.json 并返回改后字节。
 func rewriteIdentity(t *testing.T, home string, fn func(map[string]any)) {
 	t.Helper()

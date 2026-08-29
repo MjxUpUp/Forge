@@ -26,15 +26,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// adoptPayloadCwd switches the process working directory to the hook payload's cwd when
-// it names an existing directory. Returns true when a chdir happened. See the call site
-// in runHook for why (kimi plugin hooks start from the plugin root, not the project).
-// Relative paths are rejected: they would resolve against the process cwd (the plugin
-// root under kimi) and could chdir to a semantically wrong location — every host sends
-// absolute paths. A chdir failure (e.g. a UNC path on Windows) degrades to the process
-// cwd with a stderr warning, never silently — silent failure here is exactly the
-// "every project hook no-ops" blind spot this fix exists to remove.
-//
 // adoptPayloadCwd 在 hook payload 的 cwd 指向现存目录时把进程工作目录切过去。发生了
 // chdir 则返回 true。原因见 runHook 调用点（kimi 插件 hook 从插件根启动，不是项目）。
 // 拒绝相对路径：它会相对进程 cwd（kimi 下即插件根）解析，可能切到语义错误的位置
@@ -51,15 +42,6 @@ func adoptPayloadCwd(cwd string) bool {
 	}
 	wd, err := os.Getwd()
 	if err == nil {
-		// Same dir → nothing to do. Compare by inode identity (os.SameFile) first,
-		// which is symlink-robust: on macOS os.TempDir/Getwd straddle the
-		// /var → /private/var symlink, so the physical path os.Getwd returns
-		// (/private/var/...) never string-equals the unresolved form the payload cwd
-		// carries (/var/...) — a string-only compare mis-detects "different" and chdirs
-		// every call, breaking the no-op contract (v0.27.2 projectroot, same class).
-		// The cleaned-path fallback below still covers Windows case folding
-		// (E:\Forge vs e:\forge).
-		//
 		// 同目录 → 无事可做。先按 inode 同一性比较（os.SameFile），symlink 鲁棒：
 		// macOS 上 os.TempDir/Getwd 横跨 /var → /private/var 符号链接，os.Getwd 返回
 		// 的物理路径（/private/var/...）永不等 payload cwd 携带的未解析形式
@@ -240,15 +222,6 @@ var hookCmd = &cobra.Command{
 	RunE:          runHook,
 }
 
-// hookAgent specifies the non-Claude-Code host. Each agent's translator sets it via
-// the cross-platform `--agent` flag; it selects BOTH the stdin dialect to normalize
-// (windsurf/kimi/reasonix/cline differ from the Claude shape) AND the output protocol
-// to emit (see emitAgentOutput — codex/cursor/copilot share Claude-shape stdin but
-// parse different stdout/exit-code contracts). opencode/codebuddy construct
-// Claude-shape stdin in-process and speak the Claude protocol, so they carry no flag.
-// FORGE_HOOK_AGENT is the fallback for translators already wired via env (and for
-// TS code that sets the env).
-//
 // hookAgent 指定非 Claude Code 的宿主。由各 agent 的 translator 通过跨平台
 // `--agent` flag 设置；它同时选择要 normalize 的 stdin 方言（windsurf/kimi/
 // reasonix/cline 与 Claude 形状不同）**和**要输出的协议（见 emitAgentOutput——
@@ -263,15 +236,6 @@ func init() {
 	rootCmd.AddCommand(hookCmd)
 }
 
-// resolveHookAgent decides which host agent is speaking. The --agent flag
-// (set by translators, cross-platform — Windows cmd cannot parse ENV=val cmd) takes precedence;
-// FORGE_HOOK_AGENT is the fallback for callers wired via env (and for TS extensions that set the env before
-// spawning forge). The value drives BOTH the stdin normalizer (empty = Claude-Code-shape stdin,
-// no normalization needed) and the output emitter (emitAgentOutput) — codex/cursor/copilot share
-// Claude-shape stdin but speak different stdout/exit-code protocols, so they carry the flag for
-// the output side. An empty string (claude-code, and opencode/codebuddy which construct
-// Claude stdin in-process) means Claude on both sides.
-//
 // resolveHookAgent 决定说话的宿主 agent。--agent flag（由 translator 设置，跨平台
 // ——Windows cmd 无法解析 ENV=val cmd）优先；FORGE_HOOK_AGENT 是改走 env 接线的
 // 调用方（以及在 spawn forge 前设 env 的 TS 扩展）的兜底。该值同时驱动 stdin
@@ -286,16 +250,6 @@ func resolveHookAgent(flagVal, envVal string) string {
 	return envVal
 }
 
-// isGlobalHook decides whether a hook runs independently of a forge project. A global hook scans
-// $HOME-level state (skill-scan -> ~/.claude/skills) or cwd-level state
-// (init-suggest -> detects whether cwd is a forge candidate; mcp-scan -> scans the project-level
-// .mcp.json), all of which are relevant in any project — so when findProjectRoot fails
-// (non-forge project) runHook must not silently skip them. init-suggest and mcp-scan
-// must run inside non-forge projects: init-suggest is exactly where it discovers forge-candidate
-// projects, and mcp-scan catches malicious .mcp.json in user-cloned projects (which may never run forge init).
-// Project-scoped hooks (task-guard, file-sentinel, etc.) keep their original
-// allow-and-exit behavior.
-//
 // isGlobalHook 判断某 hook 是否独立于 forge project 运行。Global hook 扫描
 // $HOME 级别状态（skill-scan → ~/.claude/skills）或 cwd 级别状态
 // （init-suggest → 检测 cwd 是否为 forge candidate；mcp-scan → 扫描项目级
@@ -309,13 +263,6 @@ func isGlobalHook(name string) bool {
 	return name == "skill-scan" || name == "init-suggest" || name == "mcp-scan" || name == "skill-trigger"
 }
 
-// isInProcessHook names the hooks handled entirely in Go inside runHook (no bash
-// embed script): they need live HookInput fields from stdin (skill-trigger: event/
-// prompt/tool_output; failure-track: error text; subagent-track: agent_id/agent_type;
-// test-nudge: file_path; conventions-context/write: event/file_path + forge data),
-// which the thin-wrapper bash can never reach — runHook already consumed the stdin.
-// Each has its dispatch point right after the skill-trigger special case in runHook.
-//
 // isInProcessHook 列出完全在 runHook 内用 Go 处理的 hook（无 bash embed 脚本）：
 // 它们需要 stdin 的实时 HookInput 字段（skill-trigger：event/prompt/tool_output；
 // failure-track：error 文本；subagent-track：agent_id/agent_type；test-nudge：
@@ -1309,18 +1256,6 @@ func shouldRecordCheck(name checklog.CheckName, passed bool) bool {
 	return isScoringCheck(name)
 }
 
-// scoringPassUnchanged reports whether a scoring check's PASS would be a
-// duplicate of the current state: the latest entry for the check (same session
-// scope scoring uses) is already a PASS. In that case the repeat PASS is
-// skipped — scoring's LatestByCheckForSession still resolves to the earlier
-// PASS, so CompilePassed/AssertionPassed semantics do not regress. Returns
-// false (record) when there is no prior entry, the latest is a FAIL (state
-// change FAIL→PASS), the check is non-scoring, or the lookup fails (a lookup
-// error must not silently drop audit data — fail toward recording).
-// Session-filtering caveat (accepted): if the previous PASS belongs to a
-// different session, this session's first PASS is still written — the cross
-// process cost of one entry per session per check is fine.
-//
 // scoringPassUnchanged 报告某 scoring check 的 PASS 是否是当前状态的重复：
 // 该 check 的最新条目（与 scoring 相同的 session 过滤）已是 PASS。此时跳过
 // 重复 PASS——scoring 的 LatestByCheckForSession 仍解析到那条更早的 PASS，
@@ -1348,13 +1283,6 @@ func scoringPassUnchanged(root, sessionID string, name checklog.CheckName) bool 
 	return ok && e.Passed
 }
 
-// isScoringCheck decides whether a hook check's PASS will be consumed by task scoring.
-// scoreTask (task.go) reads LatestByCheckForSession for these checks to populate
-// CompilePassed/AssertionPassed; their PASS must be written to the log so scoring sees
-// checked & passed. Other checks' PASS is dropped by the noise gate (only FAIL is recorded). Note:
-// test-coverage scoring reads a separate test-coverage-gate entry written by taskpipeline at task-verify
-// (not this hook path), so test-coverage-check does not need to write PASS here.
-//
 // isScoringCheck 判断某 hook check 的 PASS 是否会被 task scoring 消费。
 // scoreTask（task.go）对这些 check 读 LatestByCheckForSession 来填
 // CompilePassed/AssertionPassed；它们的 PASS 必须写入 log，scoring 才能看到
@@ -1370,13 +1298,6 @@ func isScoringCheck(name checklog.CheckName) bool {
 	return false
 }
 
-// blockRecordDedupWindow bounds the same-event double-fire suppression: an
-// identical blocked record (same check, session, detail fingerprint) inside the
-// window is a host-side duplicate delivery of ONE tool event, not a new block.
-// Sized from the 2026-08-24 production evidence: kimi PreToolUse double-fired
-// read-before-edit for a single Edit 98ms apart (checklog seq consecutive); the
-// two-week logs show 6 same-(session,file) pairs 0.5~1.9s apart.
-//
 // blockRecordDedupWindow 限定同一事件双发抑制的窗口：窗口内完全相同的阻断记录
 // （同 check、session、detail 指纹）是宿主对**同一个**工具事件的重复投递，
 // 不是新的阻断。窗口按 2026-08-24 生产证据定：kimi PreToolUse 对单个 Edit
@@ -1400,15 +1321,6 @@ func blockRecordMarker(root, sessionID, checkName, detail string) (path, fp stri
 	return path, fp
 }
 
-// duplicateBlockRecord reports whether an identical blocked entry (same check,
-// session, detail fingerprint) was already recorded within
-// blockRecordDedupWindow. Check-only: it never writes the marker — the caller
-// stamps via stampBlockRecord AFTER checklog.Record succeeds (2026-08-25 review
-// minor: stamping first meant a failed Record left the stamp behind, and a
-// retry inside the window was then suppressed — the audit line was lost).
-// Best-effort, fail toward recording: any I/O error returns false — an audit
-// line must never be silently dropped on a marker failure.
-//
 // duplicateBlockRecord 报告完全相同的阻断条目（同 check、session、detail 指纹）
 // 是否已在 blockRecordDedupWindow 内被记录过。只查不写——调用方在
 // checklog.Record 成功后才经 stampBlockRecord 打戳（2026-08-25 review minor：

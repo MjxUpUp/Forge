@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// offeredTask builds a TaskState delegated (offered) to agent — the common starting point for
-// claim/deliver state-transition tests.
-//
 // offeredTask 构造一个已派发（offered）给 agent 的 TaskState——claim/deliver 状态转换测试的常用起点。
 func offeredTask(agent string) *TaskState {
 	s := &TaskState{TaskRef: `feat/x`}
@@ -238,10 +235,6 @@ func TestIsOfferedTo(t *testing.T) {
 	}
 }
 
-// TestAddDependency covers DependsOn append with dedup + cycle detection. The lookup is a plain
-// map (no storage), so the cycle DFS runs in-process — this is why AddDependency takes a lookup
-// func instead of reaching into the storage layer (testability + no import cycle).
-//
 // TestAddDependency 覆盖 DependsOn 追加的去重 + 环检测。lookup 是普通 map（无存储），故环 DFS 在进程内
 // 跑——这正是 AddDependency 取 lookup func 而非直连存储层的原因（可测 + 无 import 环）。
 func TestAddDependency(t *testing.T) {
@@ -302,12 +295,6 @@ func TestAddDependency(t *testing.T) {
 	})
 }
 
-// TestIsDelivered covers the three dependency-target shapes (design §4): assignment-delivered
-// (Status==delivered before own gates done), complete (all gates passed / generic marked), and the
-// non-delivered states (offered/claimed/input-required/plain). The complete branch delegates to
-// IsComplete (independently tested), but is exercised here so the delegation call cannot be
-// silently removed.
-//
 // TestIsDelivered 覆盖三种依赖目标形态（设计 §4）：分派已交付（Status==delivered，自身门禁可能未过）、
 // complete（所有 gate 通过 / generic 标记）、非交付态（offered/claimed/input-required/裸）。complete
 // 分支委托 IsComplete（已有独立测试），此处仍执行以使委托调用无法被静默删除。
@@ -351,13 +338,6 @@ func TestIsDelivered(t *testing.T) {
 	})
 }
 
-// TestIsDelivered_ReopenRevokesAssignmentTask is the M1 regression: an assigned task that has
-// finished all its gates (IsComplete=true) AND been delivered, when reopened (bug found in
-// integration), must drop IsDelivered back to false. IsComplete stays true (gate history is
-// retained), so naively using IsComplete as the delivery signal would falsely unblock dependents
-// while the upstream is actually being redone. The fix: assigned tasks consult Assignment.Status
-// only, not IsComplete.
-//
 // TestIsDelivered_ReopenRevokesAssignmentTask 是 M1 回归：一个过完所有 gate（IsComplete=true）且已
 // deliver 的分派 task，被 reopen（联调发现 bug）后 IsDelivered 必须回 false。IsComplete 仍 true
 // （gate 历史保留），故天真地用 IsComplete 作交付信号会在上游「实际正在重做」时假放行依赖方。修复：
@@ -383,10 +363,6 @@ func TestIsDelivered_ReopenRevokesAssignmentTask(t *testing.T) {
 	}
 }
 
-// TestIsDelivered_FailedCanceledNotDelivered pins that the terminal diversion states (failed /
-// canceled) are not a delivery — a dependent must not unblock on an upstream that failed or was
-// withdrawn. Status≠delivered and (for these) IsComplete is false, so both branches agree.
-//
 // TestIsDelivered_FailedCanceledNotDelivered 钉住终态分流（failed/canceled）不是交付——依赖方不该
 // 因上游失败或撤回而放行。Status≠delivered 且（这些态）IsComplete 为 false，两分支一致。
 func TestIsDelivered_FailedCanceledNotDelivered(t *testing.T) {
@@ -407,10 +383,6 @@ func TestIsDelivered_FailedCanceledNotDelivered(t *testing.T) {
 	})
 }
 
-// TestAddDependency_PartialWriteRollback is the L2 regression: when a multi-ref batch hits a cycle
-// mid-way, the already-validated refs must NOT be left in DependsOn (all-or-nothing). Without this,
-// a caller that persists on a different success path could record a partial dependency edge.
-//
 // TestAddDependency_PartialWriteRollback 是 L2 回归：多 ref 批次中途撞环时，已校验的 ref 不能残留进
 // DependsOn（all-or-nothing）。否则在另一种成功路径上 persist 的调用方可能记下半截依赖边。
 func TestAddDependency_PartialWriteRollback(t *testing.T) {
@@ -428,11 +400,6 @@ func TestAddDependency_PartialWriteRollback(t *testing.T) {
 	}
 }
 
-// TestShouldNotify covers the NotifiedAt dedup rule (design §8 ③): an offered task pushes at most
-// once per offer-baseline, re-notifying only after a genuine re-offer (Abandon bumps AbandonedAt
-// past the prior NotifiedAt). All times derive from fixedNow (never time.Now) so the rule is
-// exercised deterministically. Reuses ptrTime/fixedNow/eightDaysAgo/oneHourAgo from health_test.go.
-//
 // TestShouldNotify 覆盖 NotifiedAt 去重规则（设计 §8 ③）：一个 offered 任务每个派发基线最多推送
 // 一次，只在真正的重新派发（Abandon 把 AbandonedAt 越过旧 NotifiedAt）后重新推送。所有时间
 // 派生自 fixedNow（绝不用 time.Now）使规则被确定地测试。复用 health_test.go 的 ptrTime/

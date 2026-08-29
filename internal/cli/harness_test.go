@@ -7,11 +7,6 @@ import (
 	"testing"
 )
 
-// TestHarness_InitTrustBoundary pins the T6 contract (multi-task-concurrency §11.4):
-// init establishes the repo, the baseline commit carries process state (tasks), and the
-// trust anchors / machine-local stores are gitignored — check-ignore is the assertion
-// (what git would actually track), not our string list.
-//
 // TestHarness_InitTrustBoundary 钉住 T6 契约（multi-task-concurrency §11.4）：init 建立
 // 仓库、基线提交携带过程状态（tasks）、信任锚/机器本地 store 被 gitignore——断言用
 // check-ignore（git 实际会跟踪什么），不对照我们的字符串清单。
@@ -67,9 +62,6 @@ func TestHarness_InitTrustBoundary(t *testing.T) {
 	}
 }
 
-// TestHarness_CommitBestEffort: task-boundary batching commits new tracked state and stays
-// silent when the harness is absent (pre-init degradation).
-//
 // TestHarness_CommitBestEffort：任务边界批量提交新的受管状态；harness 缺席时静默
 // （init 前降级）。
 func TestHarness_CommitBestEffort(t *testing.T) {

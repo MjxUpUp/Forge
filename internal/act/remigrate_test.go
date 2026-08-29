@@ -8,19 +8,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// remAt gives remigrate tests a stable completion moment.
-//
 // remAt 给 remigrate 测试一个稳定完成时刻。
 var remAt = time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
 
-// TestRemigrateConclusion pins the in-place historical-conclusion migration for the
-// 2026-08 evidence-scaled escape cap: a conclusion stored under the OLD flat rule can
-// be re-derived exactly from its stored fields — Strength==Weak && Ratio>=0.5 is the
-// unique fingerprint of an escape-cap (the only path to Weak with ratio>=0.5 under the
-// old rule), so rebuilding an EvidenceChain{UsedEscapeHatch:true} and re-running
-// Strength() yields the new-rule value with zero information loss. RetrospectiveNudge
-// is recomputed with the same criterion as BuildConclusion.
-//
 // TestRemigrateConclusion 钉住 2026-08 证据缩放逃生舱 cap 的历史结论就地迁移：按旧
 // 平价规则落盘的结论可从已存字段精确重推导——Strength==Weak && Ratio>=0.5 是逃生
 // cap 的唯一指纹（旧规则下 ratio>=0.5 却 Weak 只有 cap 一条路），重建
@@ -79,8 +69,6 @@ func TestRemigrateConclusion(t *testing.T) {
 				t.Errorf(`RetrospectiveNudge=%v want %v`, got.RetrospectiveNudge, tc.want.RetrospectiveNudge)
 			}
 			// 无关字段必须逐字保留（迁移不得碰历史事实）
-			//
-			// Unrelated fields must be preserved verbatim (migration must not touch history).
 			if got.TaskRef != tc.in.TaskRef || got.Score != tc.in.Score || got.Grade != tc.in.Grade ||
 				got.Ratio != tc.in.Ratio || got.Deterministic != tc.in.Deterministic ||
 				got.AgentClaim != tc.in.AgentClaim || !got.CompletedAt.Equal(tc.in.CompletedAt) {
@@ -90,9 +78,6 @@ func TestRemigrateConclusion(t *testing.T) {
 	}
 }
 
-// TestRemigrateConclusion_Idempotent pins re-run safety: a remigrated conclusion is a
-// no-op on the second pass (Strength no longer carries the escape-cap fingerprint).
-//
 // TestRemigrateConclusion_Idempotent 钉住重复运行安全：迁移过的结论第二次是 no-op
 // （Strength 不再带 escape-cap 指纹）。
 func TestRemigrateConclusion_Idempotent(t *testing.T) {
@@ -107,10 +92,6 @@ func TestRemigrateConclusion_Idempotent(t *testing.T) {
 	}
 }
 
-// TestRemigrateConclusion_FingerprintGuards pins the fingerprint boundary: Weak with
-// ratio>=0.5 must remigrate through the escape-cap path; Weak below 0.5 must NOT set
-// UsedEscapeHatch implicitly (it was never capped — true weak evidence).
-//
 // TestRemigrateConclusion_FingerprintGuards 钉住指纹边界：Weak 且 ratio>=0.5 走
 // escape-cap 迁移路径；ratio<0.5 的 Weak 不得隐式置 UsedEscapeHatch（它从未被 cap——
 // 真弱证据）。

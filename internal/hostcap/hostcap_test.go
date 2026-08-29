@@ -6,8 +6,7 @@ import (
 )
 
 // TestLookup_CoversAllSupportedHosts pins the registry against the
-// agentbridge.AgentType names — a host missing here falls back to the
-// Claude-compatible default everywhere, silently losing its identity signals.
+// agentbridge.AgentType names.
 //
 // TestLookup_CoversAllSupportedHosts 把注册表钉在 agentbridge.AgentType 名上——
 // 缺失的宿主在所有查表处静默回落 Claude 兼容默认，丢失其身份信号。
@@ -27,9 +26,7 @@ func TestLookup_CoversAllSupportedHosts(t *testing.T) {
 	}
 }
 
-// TestLookup_CursorConversationID pins cursor's two-field session identity —
-// dropping conversation_id here reopens the "cursor events land on the legacy
-// global key" gap.
+// TestLookup_CursorConversationID pins cursor's two-field session identity.
 //
 // TestLookup_CursorConversationID 钉住 cursor 的双字段会话身份——此处丢掉
 // conversation_id 会重开「cursor 事件落 legacy 全局键」的缺口。
@@ -68,8 +65,7 @@ func TestProbeShellIdentity(t *testing.T) {
 
 // TestContextChannel_RowsMatchPreRegistrySwitch pins every ContextChannel row
 // against the exact (agent, event) → (delivered, label) table the cli
-// contextChannelDelivered switch encoded before the phase-2 migration — the
-// migration is behavior-preserving only if this table holds.
+// contextChannelDelivered switch encoded before the phase-2 migration.
 //
 // TestContextChannel_RowsMatchPreRegistrySwitch 把每行 ContextChannel 钉在 cli
 // contextChannelDelivered switch 在阶段 2 迁移前编码的 (agent, event) →
@@ -125,10 +121,7 @@ func TestContextChannel_RowsMatchPreRegistrySwitch(t *testing.T) {
 	}
 }
 
-// TestKimiDroppedStdoutEvents pins kimi's dropped-stdout event list — it drives
-// the SessionStart handoff backfill (cli sessionStartOutputDropped), the stale
-// advisory's re-route (kimiStaleRidesHook) and skill-trigger's print gate, so a
-// drift here silently re-routes (or strands) those advisories.
+// TestKimiDroppedStdoutEvents pins kimi's dropped-stdout event list.
 //
 // TestKimiDroppedStdoutEvents 钉住 kimi 的 stdout 丢弃事件清单——它驱动
 // SessionStart handoff 回填（cli sessionStartOutputDropped）、stale advisory
@@ -147,8 +140,6 @@ func TestKimiDroppedStdoutEvents(t *testing.T) {
 	if h.DropsStdoutEvent("UserPromptSubmit") {
 		t.Error("kimi DropsStdoutEvent(UserPromptSubmit) = true — UserPromptSubmit is kimi's ONE delivered channel")
 	}
-	// No other host drops stdout today: the cli derivations must stay kimi-only.
-	//
 	// 目前没有其他宿主丢 stdout：cli 的派生判断必须保持仅 kimi 命中。
 	for _, name := range []string{"claude-code", "cursor", "copilot", "windsurf", "codex", "opencode", "cline", "codebuddy", "reasonix", "dsh", "zcode"} {
 		if h := Lookup(name); h != nil && h.DropsStdoutEvent("SessionStart") {
@@ -157,13 +148,7 @@ func TestKimiDroppedStdoutEvents(t *testing.T) {
 	}
 }
 
-// TestKimiNoPromoteAdvisory pins the 2026-08-24 retirement of kimi's
-// advisory-promotion rules: a promoted exit-2 deny whose reason self-described
-// as "allowed" was self-contradictory (and kimi reads ANY PreToolUse stdout as
-// a deny, so the honest advisory text had no safe ride either). kimi advisories
-// now queue per-project and drain on UserPromptSubmit (cli
-// hook_kimi_advisory.go) — the registry row must stay rule-free so no future
-// edit silently revives the block path.
+// TestKimiNoPromoteAdvisory pins the 2026-08-24 retirement of kimi's advisory-promotion rules.
 //
 // TestKimiNoPromoteAdvisory 钉住 kimi advisory 提升规则的 2026-08-24 退役：
 // 被提升的 exit-2 deny 的 reason 自述「allowed」，自相矛盾（且 kimi 把
@@ -179,11 +164,6 @@ func TestKimiNoPromoteAdvisory(t *testing.T) {
 	if len(h.PromoteAdvisory) > 0 {
 		t.Errorf("kimi PromoteAdvisory = %v, want empty (advisories queue + drain on UserPromptSubmit, never block)", h.PromoteAdvisory)
 	}
-	// Hosts whose advisory channel both delivers and suffices must carry no
-	// promotion rules. dsh is the documented exception (channel delivers, advisory
-	// empirically ignored — pinned by TestDshTaskGuardPromotion below), so it is
-	// deliberately absent from this list.
-	//
 	// advisory 通道送达且足够的宿主不得带提升规则。dsh 是已文档化的例外（通道
 	// 送达、advisory 被实证无视——由下方 TestDshTaskGuardPromotion 钉死），故刻意
 	// 不在本清单内。
@@ -195,12 +175,7 @@ func TestKimiNoPromoteAdvisory(t *testing.T) {
 }
 
 // TestDshTaskGuardPromotion pins dsh's registry row: task-guard ONLY (admission
-// path (b) — the channel delivers via agent.inject but the advisory was
-// empirically ignored in the 2026-08-22 incident), with the same load-bearing
-// exclusion as kimi (the Auto-created success path must not promote). The scope
-// pins matter: dsh must NOT inherit kimi's bash-guard/assertion-check rules —
-// their consequence chains still work on dsh (file-sentinel quarantines Bash
-// writes; assertion-check advisory delivers).
+// path (b).
 //
 // TestDshTaskGuardPromotion 钉住 dsh 的注册表行：仅 task-guard（准入路径 (b)——
 // 通道经 agent.inject 送达但 advisory 在 2026-08-22 事件中被实证无视），带与 kimi
@@ -216,9 +191,6 @@ func TestDshTaskGuardPromotion(t *testing.T) {
 		hook, detail string
 		want         bool
 	}{
-		// Both wordings promote: the legacy advisory text (already shipped) and the
-		// directive block reason the promoted script path emits.
-		//
 		// 两种文案都提升：已发布的 advisory 旧文案与提升脚本路径输出的指令式
 		// block reason。
 		{"task-guard", "[task-guard] No active task. Source changes are allowed but not tracked by a Forge task.", true},
@@ -233,10 +205,6 @@ func TestDshTaskGuardPromotion(t *testing.T) {
 			t.Errorf("dsh.ShouldPromoteAdvisory(%q, %q) = %v, want %v", c.hook, c.detail, got, c.want)
 		}
 	}
-	// PromotesHook (detail-independent existence) drives cli's FORGE_TASKGUARD_PROMOTED
-	// env: true exactly for the host with a task-guard rule (dsh only — kimi's
-	// promotion was retired 2026-08-24 in favor of the advisory queue).
-	//
 	// PromotesHook（与 detail 无关的存在性）驱动 cli 的 FORGE_TASKGUARD_PROMOTED
 	// env：恰对持 task-guard 规则的宿主为真（仅 dsh——kimi 的提升已于
 	// 2026-08-24 退役，改为 advisory 队列）。
@@ -248,9 +216,6 @@ func TestDshTaskGuardPromotion(t *testing.T) {
 			t.Errorf("%s PromotesHook(task-guard) = true, want false", name)
 		}
 	}
-	// kimi must stay rule-free: its advisories ride the pending queue, not exit-2
-	// denies (see TestKimiNoPromoteAdvisory).
-	//
 	// kimi 必须保持无规则：其 advisory 走 pending 队列而非 exit-2 deny（见
 	// TestKimiNoPromoteAdvisory）。
 	if kk := Lookup("kimi"); kk != nil {
@@ -286,9 +251,7 @@ func TestCodexPatchTool(t *testing.T) {
 }
 
 // TestStdinDialects pins the dialect column against the cli stdinNormalizers map
-// keys (windsurf/kimi/reasonix/cline) and kimi's parse-replacing flag — a drift
-// here silently skips normalization (fail-open blocking hooks) or runs the
-// default unmarshal on kimi's array-shaped prompt (type-error warning per call).
+// keys (windsurf/kimi/reasonix/cline) and kimi's parse-replacing flag.
 //
 // TestStdinDialects 把方言列钉在 cli stdinNormalizers map 的键
 // （windsurf/kimi/reasonix/cline）与 kimi 的替代解析标志上——此处漂移会静默
@@ -314,8 +277,6 @@ func TestStdinDialects(t *testing.T) {
 			t.Errorf("%s StdinReplacesParse = %v, want %v", name, h.StdinReplacesParse, replaces)
 		}
 	}
-	// Every other host must stay Claude-shape (empty dialect).
-	//
 	// 其余宿主必须保持 Claude 形（方言为空）。
 	for _, name := range []string{"claude-code", "cursor", "copilot", "codex", "opencode", "codebuddy", "zcode"} {
 		if h := Lookup(name); h != nil && (h.StdinDialect != "" || h.StdinReplacesParse) {
@@ -358,8 +319,6 @@ func TestInstallIndicators(t *testing.T) {
 			t.Errorf("%s InstallIndicators[0] = %+v, want %+v", name, got, want)
 		}
 	}
-	// Hosts detected only via project markers carry no user-level indicators.
-	//
 	// 仅经项目标记检测的宿主不带用户级指示。
 	for _, name := range []string{"copilot", "cline", "kimi", "codebuddy", "reasonix"} {
 		if h := Lookup(name); h != nil && len(h.InstallIndicators) > 0 {
@@ -367,12 +326,6 @@ func TestInstallIndicators(t *testing.T) {
 		}
 	}
 
-	// Resolve semantics: home fallback, full-dir env override, base-dir env
-	// override — and NO fallback to Path when the env is set. All expectations go
-	// through filepath.Join (never hand-written "/" literals): Resolve joins with
-	// the OS separator, which is a backslash on Windows (CI caught the
-	// forward-slash form — a mac-only green is not proof).
-	//
 	// Resolve 语义：home 回落、整目录 env 覆盖、基目录 env 覆盖——且 env 已设
 	// 时**不**回落 Path。所有期望值经 filepath.Join 构造（绝不手写 "/" 字面
 	// 量）：Resolve 按 OS 分隔符拼接，Windows 上是反斜杠（CI 抓到过正斜杠写
@@ -397,9 +350,7 @@ func TestInstallIndicators(t *testing.T) {
 
 // TestLookup_DshRow pins the dsh registry row: every wired event has an honest
 // delivered context channel (the plugins/forge-dsh wrapper folds or injects
-// allow-path context on all of them — recording Delivered=false would be a
-// false-attribution gap of the kind this registry exists to prevent), and the
-// install indicator follows the DSH_HOME ?? ~/.dsh convention.
+// allow-path context on all of them.
 //
 // TestLookup_DshRow 钉住 dsh 注册表行：每个已接事件都有诚实的 delivered 上下文
 // 通道（plugins/forge-dsh 包装层在全部事件上折叠或注入 allow 路径上下文——记

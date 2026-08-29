@@ -14,24 +14,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// versionedForgeCache memoizes buildVersionedForge per version: two e2e tests share
-// the 9.9.9 binary, and a go build takes seconds — building per call doubles the cost
-// for nothing. First caller builds; concurrent callers may race a duplicate build, which
-// is harmless (both binaries are valid; last Store wins).
-//
 // versionedForgeCache 按版本记忆 buildVersionedForge 的产物：两个 e2e 测试共用 9.9.9
 // 二进制，而一次 go build 要数秒——每次重建纯属浪费。首个调用方构建；并发调用方可能
 // 重复构建一次，无害（两个二进制都有效；最后一次 Store 生效）。
 var versionedForgeCache sync.Map // version string → bin path string
 
-// buildVersionedForge builds a forge binary with a pinned version via -ldflags. The
-// shared forgeBin is a plain `go build` (version "dev"), and prependKimiStaleAdvisory
-// suppresses the advisory on dev builds — the stale path is only exercisable with a
-// versioned binary. Result cached per version for the package run (see
-// versionedForgeCache) and placed in the TestMain-owned forgeBuildDir — NOT in a
-// t.TempDir(): the cache outlives the creating test, whose cleanup would dangle the
-// path for every later cached caller.
-//
 // buildVersionedForge 用 -ldflags 构建带固定版本的 forge 二进制。共享的 forgeBin 是
 // 普通 go build（version "dev"），而 prependKimiStaleAdvisory 对 dev 构建抑制 advisory
 // ——stale 路径只有带版本的二进制才能走通。结果按版本缓存于包运行期（见
@@ -61,12 +48,6 @@ func exeSuffix() string {
 	return ""
 }
 
-// kimiHook runs the versioned forge binary's `forge hook <name> --agent kimi` with
-// kimi-home isolation (fake plugins/installed.json) and the given stdin JSON — the
-// subprocess shape a real kimi 0.35 session produces. Returns (stdout, stderr, err).
-// PATH is prefixed with the versioned bin dir so the resume-reinject thin wrapper's
-// `exec forge task resume --reinject` resolves to the same versioned binary.
-//
 // kimiHook 以 kimi-home 隔离（伪造 plugins/installed.json）+ 指定 stdin 运行带版本的
 // forge 二进制的 `forge hook <name> --agent kimi`——即真实 kimi 0.35 会话产生的子进程
 // 形态。返回 (stdout, stderr, err)。PATH 前置版本化 bin 目录，使 resume-reinject thin
@@ -77,9 +58,6 @@ func kimiHook(t *testing.T, bin, dir, kimiHome, hookName, stdinJSON string) (str
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(stdinJSON)
 	tmp := t.TempDir()
-	// TMP/TEMP alongside TMPDIR: Windows os.TempDir reads TMP then TEMP, never TMPDIR —
-	// setting only TMPDIR leaves the child resolving the real user temp on Windows.
-	//
 	// TMP/TEMP 与 TMPDIR 并设：Windows 的 os.TempDir 读 TMP 再 TEMP、不读 TMPDIR——
 	// 只设 TMPDIR 会让子进程在 Windows 上解析到真实用户 temp。
 	cmd.Env = append(os.Environ(),
@@ -96,9 +74,6 @@ func kimiHook(t *testing.T, bin, dir, kimiHome, hookName, stdinJSON string) (str
 	return stdout.String(), stderr.String(), err
 }
 
-// writeKimiInstalledJSON plants a fake kimi plugins/installed.json locking the forge
-// plugin at the given tag — the shape KimiPluginStaleInfo reads.
-//
 // writeKimiInstalledJSON 植入伪造的 kimi plugins/installed.json，把 forge plugin 锁在
 // 指定 tag——即 KimiPluginStaleInfo 读取的形态。
 func writeKimiInstalledJSON(t *testing.T, kimiHome, tag string) {
@@ -114,15 +89,8 @@ func writeKimiInstalledJSON(t *testing.T, kimiHome, tag string) {
 }
 
 // TestHook_KimiStaleAdvisory_RidesUserPromptSubmit pins the 2026-08-15 staleness
-// channel fix end-to-end: the kimi plugin-stale advisory must ride resume-reinject
-// (UserPromptSubmit — the ONE stdout channel kimi 0.35.0 delivers to the model), NOT
-// init-suggest (SessionStart — stdout dropped by kimi; the old ride was
-// triple-invisible: model/user/logs all silent while the plugin drifted). The ORDER of
-// the two invocations is load-bearing: init-suggest runs FIRST and must neither print
-// the advisory nor consume the once-daily marker — otherwise the inert SessionStart
-// ride would eat the throttle budget before the visible channel fires (the exact bug
-// pattern a "keep both" re-wiring would reintroduce). Also pins the third visibility
-// layer: a kimi-plugin-stale warn checklog entry recorded when the advisory fires.
+// channel fix end-to-end: the kimi plugin-stale advisory must ride
+// resume-reinject (UserPromptSubmit.
 //
 // TestHook_KimiStaleAdvisory_RidesUserPromptSubmit 端到端钉死 2026-08-15 的 staleness
 // 通道修复：kimi plugin 过期 advisory 必须搭载 resume-reinject（UserPromptSubmit——
@@ -134,9 +102,6 @@ func writeKimiInstalledJSON(t *testing.T, kimiHome, tag string) {
 // warn checklog 条目。
 func TestHook_KimiStaleAdvisory_RidesUserPromptSubmit(t *testing.T) {
 	dir := freshProject(t)
-	// The e2e TestMain may parallel-run other tests against forgeBin; this test only
-	// uses its own versioned binary.
-	//
 	// e2e TestMain 可能与其他针对 forgeBin 的测试并行；本测试只用自己的带版本二进制。
 	bin := buildVersionedForge(t, "9.9.9")
 	kimiHome := t.TempDir()
@@ -145,10 +110,6 @@ func TestHook_KimiStaleAdvisory_RidesUserPromptSubmit(t *testing.T) {
 	upsStdin := `{"session_id":"sess-kimi-stale-1","hook_event_name":"UserPromptSubmit","cwd":` + jsonStr(dir) + `,"prompt":[{"type":"text","text":"继续"}]}`
 	ssStdin := `{"session_id":"sess-kimi-stale-1","hook_event_name":"SessionStart","cwd":` + jsonStr(dir) + `}`
 
-	// 1. init-suggest (SessionStart) runs FIRST: the advisory's old ride. It must NOT
-	// print the stale advisory — SessionStart stdout is dropped by kimi, and an append
-	// here would also consume the once-daily marker before the visible channel fires.
-	//
 	// 1. init-suggest（SessionStart）先跑：advisory 的旧通道。它不得打印 stale
 	// advisory——SessionStart stdout 被 kimi 丢弃，且此处追加还会在可见通道触发前
 	// 消耗掉按日 marker。
@@ -160,9 +121,6 @@ func TestHook_KimiStaleAdvisory_RidesUserPromptSubmit(t *testing.T) {
 		t.Errorf("init-suggest (SessionStart) must NOT carry the stale advisory anymore (channel moved to resume-reinject/UserPromptSubmit):\n%s", ssOut)
 	}
 
-	// 2. resume-reinject (UserPromptSubmit): the advisory MUST be on stdout — plain
-	// text, exit 0, the channel kimi delivers to the model on the next prompt.
-	//
 	// 2. resume-reinject（UserPromptSubmit）：advisory 必须出现在 stdout——纯文本、
 	// exit 0，即 kimi 下一 prompt 送达模型的通道。
 	upsOut, upsErr, err := kimiHook(t, bin, dir, kimiHome, "resume-reinject", upsStdin)
@@ -176,10 +134,6 @@ func TestHook_KimiStaleAdvisory_RidesUserPromptSubmit(t *testing.T) {
 		t.Errorf("advisory ride must stay non-blocking allow output (no decision JSON):\n%s", upsOut)
 	}
 
-	// 3. Third visibility layer: the fired advisory must leave a kimi-plugin-stale
-	// warn entry in the DataDir checklog (the noise gate would otherwise drop the
-	// hook's PASS; logDetail is the script's raw stdout and never carries the prepend).
-	//
 	// 3. 第三层可见性：触发的 advisory 必须在 DataDir checklog 留下 kimi-plugin-stale
 	// warn 条目（否则 noise gate 丢掉该 hook 的 PASS；logDetail 是脚本原始 stdout，
 	// 本就不含这里前置的 advisory）。
@@ -195,9 +149,6 @@ func TestHook_KimiStaleAdvisory_RidesUserPromptSubmit(t *testing.T) {
 		t.Errorf("kimi-plugin-stale entry must carry level warn (escape-hatch pattern: warn rides Level, Passed stays neutral):\n%s", logBody)
 	}
 
-	// 4. Once-daily throttle: a second UserPromptSubmit in the same session must be
-	// silent (marker consumed by the first fire).
-	//
 	// 4. 按日节流：同 session 第二次 UserPromptSubmit 必须静默（marker 已被首次触发消耗）。
 	ups2, _, err := kimiHook(t, bin, dir, kimiHome, "resume-reinject", upsStdin)
 	if err != nil {
@@ -214,10 +165,10 @@ func jsonStr(s string) string {
 	return `"` + strings.ReplaceAll(strings.ReplaceAll(s, `\`, `\\`), `"`, `\"`) + `"`
 }
 
-// TestHook_KimiStaleAdvisory_SilentWhenCurrent guards the false-positive direction:
-// when the installed plugin tag matches the binary version, the UserPromptSubmit ride
-// must stay silent (no advisory noise on healthy installs) and no warn checklog entry
-// may appear.
+// TestHook_KimiStaleAdvisory_SilentWhenCurrent guards the false-positive
+// direction: when the installed plugin tag matches the binary version, the
+// UserPromptSubmit ride must stay silent (no advisory noise on healthy installs)
+// and no warn checklog entry may appear.
 //
 // TestHook_KimiStaleAdvisory_SilentWhenCurrent 守护假阳性方向：装着的 plugin tag 与
 // 二进制版本一致时，UserPromptSubmit 通道必须静默（健康安装不出 advisory 噪声），

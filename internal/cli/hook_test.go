@@ -15,10 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newHookProject creates the minimal forge-project fixture shared by the hook
-// output tests (temp dir with .forge/hooks/ + state.json) and chdirs into it
-// for the test's duration; returns the project root.
-//
 // newHookProject 创建 hook 输出测试共享的最小 forge 项目 fixture（temp dir +
 // .forge/hooks/ + state.json）并 chdir 进去（测试期间），返回项目 root。
 func newHookProject(t *testing.T) string {
@@ -38,13 +34,6 @@ func newHookProject(t *testing.T) string {
 	return root
 }
 
-// runHookCapture feeds stdinJSON ("" leaves stdin untouched) to runHook(hookName)
-// while capturing stdout; returns the captured output and the hook error. The
-// caller owns the fixture (project dir / chdir / env) — this helper covers only
-// the stdin+stdout capture boilerplate shared by the hook tests. A bare cobra
-// root is passed (not nil): dispatches that read cmd.Root().Version must not
-// nil-panic.
-//
 // runHookCapture 把 stdinJSON（"" 表示不动 stdin）喂给 runHook(hookName) 并捕获
 // stdout；返回捕获输出与 hook 错误。fixture（项目目录/chdir/env）由调用方自备——
 // 本 helper 只覆盖各 hook 测试共享的 stdin+stdout 捕获样板。传裸 cobra root
@@ -184,12 +173,6 @@ func TestHookOutput_CheckLogRecorded(t *testing.T) {
 	}
 }
 
-// TestFirstNonEmpty documents the checklog-detail contract: the detail fallback must be empty,
-// not a `completed` placeholder. assertion-check/auto-compile pass silently in the common case,
-// and a fake `completed` detail would pollute checklog stats (~713 placeholder entries/week,
-// forge-weekly-audit-2026-08-09). The contract is locked here at the helper level so a call-site
-// regression is caught directly.
-//
 // TestFirstNonEmpty 文档化 checklog-detail 契约：detail 回退须为空，而非 `completed` 占位符。
 // assertion-check/auto-compile 常态静默通过，假的 `completed` detail 会污染 checklog 统计
 // （每周 ~713 条占位条目，forge-weekly-audit-2026-08-09）。契约在 helper 层锁定，调用处
@@ -422,11 +405,6 @@ func TestSanitizeForShell(t *testing.T) {
 		t.Errorf("overlong utf8 produced invalid UTF-8 (mid-rune truncation): %x", gotMulti)
 	}
 
-	// Overlong value whose final 10-byte window is all invalid UTF-8: no
-	// RuneStart exists in the window, so the boundary loop cannot truncate —
-	// the fallback hard-truncation must still cap the length (invalid bytes
-	// are then dropped by the rune-validation pass, so the result only shrinks).
-	//
 	// 超长值且末尾 10 字节窗口全是非法 UTF-8：窗口内找不到 RuneStart，边界
 	// 循环截不断——兜底硬截断必须把长度压住（非法字节随后被 rune 校验剔除，
 	// 结果只会更短）。
@@ -553,12 +531,6 @@ func TestHookOutput_ProjectScopedHookStillSkipsOutsideProject(t *testing.T) {
 	}
 }
 
-// TestReadsFilePath_DeterministicAndFilenameSafe pins the reads-log path contract of scheme 2:
-// resolving the same session id twice must yield the same path (tool-track append and read-before-edit
-// grep each call readsFilePath in different subprocesses; divergence would make the hook miss forever), and the path
-// must contain only filename-safe characters ([A-Za-z0-9._-]) — session ids may contain path separators/spaces and must be
-// collapsed to prevent escaping $TMPDIR or creating unexpected directories.
-//
 // TestReadsFilePath_DeterministicAndFilenameSafe 钉住方案2 的 reads-log 路径契约：
 // 同一 session id 两次解析必须产出同一路径（tool-track append 与 read-before-edit
 // grep 在不同子进程里各自调用 readsFilePath，不一致会让 hook 永远 miss），且路径
@@ -596,10 +568,6 @@ func TestReadsFilePath_DeterministicAndFilenameSafe(t *testing.T) {
 	}
 }
 
-// TestAppendSessionRead_RecordsAndMatches pins the side-channel write/read of scheme 2: after appending
-// a repo-relative path, the file contains that path on its own line; the read-before-edit grep -qxF semantics
-// is line-exact match — so the appended content must be a single line with no extra whitespace.
-//
 // TestAppendSessionRead_RecordsAndMatches 钉住方案2 的 side-channel 写/读：append
 // 一个 repo-relative 路径后，文件按行含该路径；read-before-edit 的 grep -qxF 语义
 // 即"整行精确匹配"——所以追加内容必须是单行无额外空白。
@@ -625,15 +593,6 @@ func TestAppendSessionRead_RecordsAndMatches(t *testing.T) {
 	}
 }
 
-// TestHookStampsResolvedAgentOnSessionRecord is the end-to-end wiring test for the
-// marker-absent attribution fix: a session created with NO project marker (empty
-// agent_type — the kimi/reasonix/codex-without-marker case) gets its authoritative
-// agent stamped by the first hook invocation carrying --agent/FORGE_HOOK_AGENT. This is
-// the only path that attributes marker-absent agents correctly; without it such sessions
-// misattribute to claude-code (the leaked CLAUDE_CODE_SESSION_ID default). The stamp
-// fires right after root resolution, before any hook-specific logic, so it is robust to
-// what the rest of the hook does.
-//
 // TestHookStampsResolvedAgentOnSessionRecord 是无标记归因修复的端到端接线测试：无项目
 // 标记创建的 session（空 agent_type——无标记的 kimi/reasonix/codex 场景）被首个携带
 // --agent/FORGE_HOOK_AGENT 的 hook 调用盖上权威 agent。这是唯一能正确归因无标记 agent
@@ -676,12 +635,6 @@ func TestHookStampsResolvedAgentOnSessionRecord(t *testing.T) {
 	}
 }
 
-// TestScoringPassUnchanged pins the state-change gating of scoring PASS
-// records (weekly-hardening 4b): a repeat PASS of a scoring check is skipped
-// (scoring's LatestByCheck still resolves to the earlier PASS — no regression),
-// while the first PASS, a FAIL→PASS transition, non-scoring checks, and a PASS
-// last seen in a DIFFERENT session are all still recorded.
-//
 // TestScoringPassUnchanged 钉死 scoring PASS 记录的状态变化门控（周复盘加固
 // 4b）：scoring check 的重复 PASS 被跳过（scoring 的 LatestByCheck 仍解析到
 // 更早的 PASS——不回归），而首个 PASS、FAIL→PASS 转换、非 scoring check、
@@ -690,23 +643,16 @@ func TestScoringPassUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 
-	// No prior entry → record (the first PASS must land or scoring sees nothing).
-	//
 	// 无先前条目 → 记录（首个 PASS 必须落盘，否则 scoring 看不到）。
 	if scoringPassUnchanged(dir, "s1", checklog.CheckAutoCompile) {
 		t.Error("no prior entry → must record the first PASS")
 	}
-	// Non-scoring check → never consulted for dedup (its PASS is already dropped
-	// by shouldRecordCheck; the helper must not change that).
-	//
 	// 非 scoring check → 不参与去重（它的 PASS 已被 shouldRecordCheck 丢弃，
 	// helper 不得改变这一点）。
 	if scoringPassUnchanged(dir, "s1", checklog.CheckBashGuard) {
 		t.Error("non-scoring check must return false")
 	}
 
-	// Latest is FAIL → the FAIL→PASS transition is a state change, must record.
-	//
 	// 最新是 FAIL → FAIL→PASS 转换是状态变化，必须记录。
 	if err := checklog.Record(dir, &checklog.Entry{Check: checklog.CheckAutoCompile, Passed: false, SessionID: "s1", Detail: "broke"}); err != nil {
 		t.Fatal(err)
@@ -715,8 +661,6 @@ func TestScoringPassUnchanged(t *testing.T) {
 		t.Error("latest FAIL → PASS transition must be recorded")
 	}
 
-	// Latest is PASS → repeat PASS is skipped.
-	//
 	// 最新是 PASS → 重复 PASS 跳过。
 	if err := checklog.Record(dir, &checklog.Entry{Check: checklog.CheckAutoCompile, Passed: true, SessionID: "s1", Detail: "ok"}); err != nil {
 		t.Fatal(err)
@@ -724,9 +668,6 @@ func TestScoringPassUnchanged(t *testing.T) {
 	if !scoringPassUnchanged(dir, "s1", checklog.CheckAutoCompile) {
 		t.Error("latest PASS → repeat PASS must be skipped")
 	}
-	// ...but only within the same session scope: another session's first PASS is
-	// still written (accepted cost: one entry per session per check).
-	//
 	// ……但只在同一 session 范围内：其他 session 的首个 PASS 仍写（可接受成本：
 	// 每 session 每 check 一条）。
 	if scoringPassUnchanged(dir, "s2", checklog.CheckAutoCompile) {
@@ -734,20 +675,6 @@ func TestScoringPassUnchanged(t *testing.T) {
 	}
 }
 
-// TestSanitizeSessionIDConverges pins the safety property behind runHook's
-// entry-point sanitize (fix/cleanup-batch, 2026-08-29): hookInput.SessionID is
-// sanitized ONCE at the entry, while downstream sites keep their own
-// util.SanitizeSessionID calls (defense in depth) — that double application is
-// safe because the function CONVERGES: sanitize(sanitize(x)) == sanitize applied
-// again, for every input. Realistic session ids (UUIDs with hyphens, hex, dots,
-// >64 chars) are straight-up idempotent; the only divergence is the pathological
-// truncation edge (a >64-char id whose 64th char is a separator: truncation can
-// leave a trailing '-'/'_' that a SECOND application trims — see the ordering of
-// trim-then-truncate in util.SanitizeSessionID), and even there the third
-// application is a no-op. Convergence (not naive idempotence) is exactly what
-// makes "entry sanitize + downstream sanitize" produce one uniform key
-// everywhere, whatever the host sends.
-//
 // TestSanitizeSessionIDConverges 钉住 runHook 入口归一（fix/cleanup-batch，
 // 2026-08-29）背后的安全性质：hookInput.SessionID 在入口归一一次，下游各点保留
 // 自己的 util.SanitizeSessionID 调用（纵深防御）——重复应用之所以安全，是因为
@@ -758,8 +685,6 @@ func TestScoringPassUnchanged(t *testing.T) {
 // 即便如此第三次应用也是 no-op。收敛性（而非朴素幂等）正是「入口归一 + 下游
 // 归一」处处得到同一 key 的保证，无论宿主发什么。
 func TestSanitizeSessionIDConverges(t *testing.T) {
-	// Realistic corpus: straight-up idempotent (sanitize^2 == sanitize^1).
-	//
 	// 现实语料：完全幂等（sanitize² == sanitize¹）。
 	realistic := []string{
 		"3f0c1c9e-8b1a-4c2d-9e0f-1a2b3c4d5e6f", // Claude/kimi UUID（连字符合法字符）
@@ -776,12 +701,6 @@ func TestSanitizeSessionIDConverges(t *testing.T) {
 		}
 	}
 
-	// Universal convergence: sanitize^2 == sanitize^3 for ANY input — including
-	// the 64-boundary separator edge (the one input class where sanitize^1 !=
-	// sanitize^2: truncation leaves a trailing separator the second pass trims).
-	// This is the property the entry-point unification actually relies on: entry
-	// sanitize + any number of downstream sanitizes land on the same key.
-	//
 	// 普适收敛：对任何输入 sanitize² == sanitize³——含 64 边界分隔符边缘（唯一一类
 	// sanitize¹ != sanitize² 的输入：截断留下尾部分隔符、第二遍把它修剪）。入口
 	// 统一真正依赖的正是这条：入口归一 + 任意次下游归一落在同一 key 上。
@@ -795,11 +714,6 @@ func TestSanitizeSessionIDConverges(t *testing.T) {
 		}
 	}
 
-	// The edge case demonstrated: sanitize^1 ends with the separator cut in at
-	// position 64, sanitize^2 trims it, sanitize^3 is stable. If this ever
-	// becomes plain idempotent (trim moved after truncate in util), the test
-	// above still passes — convergence is the contract, not the divergence.
-	//
 	// 边缘形态演示：sanitize¹ 以截断进来的第 64 位分隔符结尾，sanitize² 修剪它，
 	// sanitize³ 稳定。若 util 把 trim 挪到 truncate 之后、此边缘变成完全幂等，
 	// 上面的测试依然通过——契约是收敛，不是发散本身。
@@ -808,14 +722,6 @@ func TestSanitizeSessionIDConverges(t *testing.T) {
 	}
 }
 
-// TestRunHookSanitizesSessionIDAtEntry pins the entry-point unification end to
-// end (fix/cleanup-batch, 2026-08-29): runHook must sanitize hookInput.SessionID
-// right after parsing, so the RAW-id record sites it feeds — hook_track.go's
-// observation hooks record hookInput.SessionID verbatim — write the sanitized
-// form, matching the sanitized keys of session-scoped readers
-// (checklog.LatestByCheckForSession* compares exact strings). A dotted host id
-// is the canonical divergence case (dots are not in the safe charset).
-//
 // TestRunHookSanitizesSessionIDAtEntry 端到端钉住入口统一（fix/cleanup-batch，
 // 2026-08-29）：runHook 必须在解析后立即归一 hookInput.SessionID，使它喂给的
 // 原始值记录点——hook_track.go 的观察 hook 原样记录 hookInput.SessionID——写下的
@@ -823,16 +729,9 @@ func TestSanitizeSessionIDConverges(t *testing.T) {
 // 比较）一致。带点号的宿主 id 是最典型的发散形态（点号不在安全字符集内）。
 func TestRunHookSanitizesSessionIDAtEntry(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
-	// Minimal forge project so findProjectRoot resolves (project-scoped dispatch).
-	//
 	// 最小 forge 项目，让 findProjectRoot 解析成功（项目级分发）。
 	tmpDir := newHookProject(t)
 
-	// PostToolUseFailure with a dotted session id — the failure-track hook records
-	// CheckToolFailure with hookInput.SessionID verbatim (pre-fix: raw id). Stdout
-	// is captured and discarded: failure-track with a non-compile error emits
-	// nothing; the contract under test is the recorded entry, not the emission.
-	//
 	// 带点号 session id 的 PostToolUseFailure——failure-track hook 原样记录
 	// hookInput.SessionID 到 CheckToolFailure（修复前：原始 id）。stdout 捕获后
 	// 丢弃：非编译类错误的 failure-track 不发输出；被测契约是记录的条目，不是发射。

@@ -78,9 +78,6 @@ func TestInferDesignPhases(t *testing.T) {
 			files:    []string{},
 			expected: nil,
 		},
-		// BUG-3 regression guard: dirBase containing"test"substring (latest/testutil) must not be misclassified as PhaseTest.
-		// Old code strings.Contains(dirBase,"test") marked them as test, polluting PhasePassRate.
-		//
 		// BUG-3 回归守卫：dirBase 含"test"子串（latest/testutil）不可误判为 PhaseTest。
 		// 旧代码 strings.Contains(dirBase,"test") 把它们标成 test，污染 PhasePassRate。
 		{
@@ -93,17 +90,12 @@ func TestInferDesignPhases(t *testing.T) {
 			files:    []string{"internal/testutil/setup.go"},
 			expected: []DesignPhase{PhaseBackend},
 		},
-		// After dead-code cleanup: .ts (non-tsx) under components/ still goes frontend (.tsx already taken by first case).
-		//
 		// 死代码清理后：components/ 下的 .ts（非 tsx）仍走 frontend（.tsx 已被首条 case 接走）。
 		{
 			name:     "frontend phase - components ts file",
 			files:    []string{"components/util.ts"},
 			expected: []DesignPhase{PhaseFrontend},
 		},
-		// F1 regression guard: filename containing"test_"substring (latest_feature.go) must not be misclassified as PhaseTest.
-		// Old Contains(base,"test_") would match"la**test_**feature.go", polluting PhasePassRate.
-		//
 		// F1 回归守卫：文件名含"test_"子串（latest_feature.go）不可误判为 PhaseTest。
 		// 旧 Contains(base,"test_") 会匹配"la**test_**feature.go"，污染 PhasePassRate。
 		{
@@ -111,20 +103,12 @@ func TestInferDesignPhases(t *testing.T) {
 			files:    []string{"internal/latest/latest_feature.go"},
 			expected: []DesignPhase{PhaseBackend},
 		},
-		// After HasPrefix fix: Python test_*.py prefix still correctly matches PhaseTest (must not let substring-fix drop real tests).
-		//
 		// HasPrefix 修复后：Python test_*.py 前缀仍正确匹配 PhaseTest（不能因修子串误判漏掉真测试）。
 		{
 			name:     "test phase - python test_ prefix file",
 			files:    []string{"pkg/calc/test_calculator.py"},
 			expected: []DesignPhase{PhaseTest},
 		},
-		// Backend-fallback regression guard: the backend fallback case must exclude test
-		// paths with the SAME segment/base-level predicate as the test-design case — a bare
-		// strings.Contains(slash,"test") mis-excluded latest_feature.go and contest/ even
-		// though they are not under services//domain//internal/ (those hit the earlier
-		// backend case). These files reach the fallback only when outside those dirs.
-		//
 		// backend 兜底回归守卫：backend 兜底 case 必须用与测试设计 case 相同的
 		// segment/base 级判定排除测试路径——裸 strings.Contains(slash,"test") 会误排
 		// latest_feature.go、contest/（它们不在 services//domain//internal/ 下，走不到
@@ -175,8 +159,7 @@ func TestAllDesignPhases(t *testing.T) {
 	}
 }
 
-// TestScanDesignArtifacts_BypassesGitignore pins the gitignore blind-spot fix: docs/prd gitignored
-// → git diff can't see it, scanDesignArtifacts reads filesystem directly and must backfill it.
+// TestScanDesignArtifacts_BypassesGitignore pins the gitignore blind-spot fix: docs/prd gitignored → git diff can't see it, scanDesignArtifacts reads filesystem directly and must backfill it.
 //
 // TestScanDesignArtifacts_BypassesGitignore 钉死 gitignore 盲区修复：docs/prd 被
 // gitignore 时 git diff 看不到，scanDesignArtifacts 直接读文件系统应兜底返回它。
@@ -186,13 +169,9 @@ func TestScanDesignArtifacts_BypassesGitignore(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "docs/prd/feature.md"), []byte("# PRD\n"), 0644)
 	os.MkdirAll(filepath.Join(dir, "api/openapi"), 0755)
 	os.WriteFile(filepath.Join(dir, "api/openapi/spec.yaml"), []byte("openapi: 3.0\n"), 0644)
-	// Non-design directory + non-design ext must not be scanned.
-	//
 	// 非 design 目录 + 非设计 ext 不该扫。
 	os.MkdirAll(filepath.Join(dir, "src"), 0755)
 	os.WriteFile(filepath.Join(dir, "src/main.go"), []byte("package main\n"), 0644)
-	// Non-prd subdirectories under docs/ must not be scanned (only docs/prd).
-	//
 	// docs/ 下非 prd 子目录不该扫（只 docs/prd）。
 	os.MkdirAll(filepath.Join(dir, "docs/notes"), 0755)
 	os.WriteFile(filepath.Join(dir, "docs/notes/x.md"), []byte("notes\n"), 0644)
@@ -212,8 +191,6 @@ func TestScanDesignArtifacts_BypassesGitignore(t *testing.T) {
 			t.Errorf("scanDesignArtifacts 漏掉 %s（gitignore 兜底失效？got=%v）", f, got)
 		}
 	}
-	// src/main.go and docs/notes/x.md must not be scanned (scope restriction).
-	//
 	// src/main.go 和 docs/notes/x.md 不该被扫到（范围限定）。
 	for _, f := range got {
 		if strings.Contains(f, "src/main.go") {

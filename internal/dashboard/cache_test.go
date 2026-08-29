@@ -11,11 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// TestPulseCache_ReloadsOnlyOnChange pins the fingerprint-gating contract: repeated
-// aggregations over unchanged files reuse the cached parse (one real load), and any
-// source-file change (here: a new act conclusion) forces a reload whose result
-// immediately reflects the new data — no stale reads.
-//
 // TestPulseCache_ReloadsOnlyOnChange 钉住指纹门控契约：文件未变的重复聚合复用缓存
 // 解析（只发生一次真实加载）；任何源文件变更（此处：新增 act 结论）强制重载，且
 // 重载结果立即反映新数据——不可读到旧值。
@@ -62,11 +57,6 @@ func TestPulseCache_ReloadsOnlyOnChange(t *testing.T) {
 	}
 }
 
-// TestPulseCache_TimeProjectionStaysFresh pins the cache-layer split: a cache HIT must
-// still re-run the time-dependent projection. Zombie escalation is a pure function of
-// `now` — a task turns zombie precisely when nothing changes on disk, so caching
-// projected events would freeze it forever.
-//
 // TestPulseCache_TimeProjectionStaysFresh 钉住缓存分层：缓存命中仍须重算时间相关投影。
 // 僵尸升级是 now 的纯函数——任务恰恰在盘上毫无变化时变僵尸，若缓存投影结果将永远冻结。
 func TestPulseCache_TimeProjectionStaysFresh(t *testing.T) {
@@ -105,9 +95,6 @@ func TestPulseCache_TimeProjectionStaysFresh(t *testing.T) {
 	}
 }
 
-// TestSkillEvalCache_ReloadsOnlyOnChange pins the same contract for the per-skill eval
-// cache: unchanged runs/baselines/decisions hit the cache; an appended run invalidates.
-//
 // TestSkillEvalCache_ReloadsOnlyOnChange 为单 skill eval 缓存钉住同一契约：
 // runs/baselines/decisions 未变命中缓存；追加 run 触发失效。
 func TestSkillEvalCache_ReloadsOnlyOnChange(t *testing.T) {

@@ -10,16 +10,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestTaskVerifyHook_KimiBranchRoutesToStdout pins the kimi branch of the
-// task-verify Stop script (2026-08-24): on kimi the advisory must go to STDOUT
-// (as "WARN [task-verify] ..." — the Go layer's extractDetail picks it up and
-// queues it for the UserPromptSubmit drain; kimi's Stop stderr/stdout never
-// reach the model directly), exit 0, and the hand-written checklog line must
-// carry the real task_ref/session_id context (the dead-record fix) with the
-// MESSAGES summary as detail. Runs the reference script copy directly (same
-// discipline as TestTaskVerifyHook_SurfacesTestDisciplineAdvisory) with
-// FORGE_AGENT=kimi injected — the env the Go dispatcher sets from --agent.
-//
 // TestTaskVerifyHook_KimiBranchRoutesToStdout 钉住 task-verify Stop 脚本的
 // kimi 分支（2026-08-24）：kimi 下 advisory 必须打到 **stdout**（形如
 // "WARN [task-verify] ..."——Go 层的 extractDetail 拾取后入队，留待
@@ -33,9 +23,6 @@ func TestTaskVerifyHook_KimiBranchRoutesToStdout(t *testing.T) {
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "initial")
 
-	// Staged code change on master with no active task → the master-without-task
-	// check fills MESSAGES (same trigger as TestHook_TaskVerify_ChecklogToDataDir).
-	//
 	// master 上暂存代码变更且无活跃任务 → master-without-task 检查使 MESSAGES
 	// 非空（与 TestHook_TaskVerify_ChecklogToDataDir 同一触发）。
 	writeFile(t, dir, "extra.go", "package main\n")
@@ -57,10 +44,6 @@ func TestTaskVerifyHook_KimiBranchRoutesToStdout(t *testing.T) {
 		t.Fatalf("task-verify hook must exit 0 on kimi (advisory, never blocks): %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
 	}
 
-	// The advisory rides STDOUT as a WARN line (the Go layer strips the WARN
-	// prefix and queues the rest); stderr must NOT carry it — kimi's Stop
-	// stderr is model-invisible, that path was the 100%-loss channel.
-	//
 	// advisory 以 WARN 行上 **stdout**（Go 层剥 WARN 前缀后入队）；stderr 不得
 	// 携带——kimi 的 Stop stderr 对模型不可见，那条路正是 100% 丢失通道。
 	if !strings.Contains(stdout.String(), "WARN [task-verify]") {
@@ -70,10 +53,6 @@ func TestTaskVerifyHook_KimiBranchRoutesToStdout(t *testing.T) {
 		t.Errorf("kimi branch must NOT write the advisory to stderr (model-invisible on kimi), got stderr=%q", stderr.String())
 	}
 
-	// The hand-written checklog line carries the injected context verbatim
-	// (task_ref/session_id) and a real detail summary instead of the old fixed
-	// "advisory: non-blocking issues surfaced to stderr" dead record.
-	//
 	// 手写 checklog 行原样携带注入的上下文（task_ref/session_id），detail 为
 	// 真实摘要而非旧的固定串「advisory: non-blocking issues surfaced to
 	// stderr」死记录。

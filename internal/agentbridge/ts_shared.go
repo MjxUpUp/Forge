@@ -2,33 +2,15 @@ package agentbridge
 
 import _ "embed"
 
-// tsSharedForgeSpawn is the TypeScript `runForge` function embedded into the opencode
-// plugin (opencode.go; the pi translator went through its own native integration, so
-// this is currently single-consumer — kept a shared file because any second TS host
-// must read forge's block verdict from the JSON decision field in exactly this way).
-// The generated TS spawns `forge hook <name>` with Claude-Code-shape stdin;
-// centralizing it here means a change to the spawn protocol (or block-detection
-// contract) lands in one place.
-//
 // tsSharedForgeSpawn 是嵌入 opencode 插件的 TypeScript `runForge` 函数
 // （opencode.go；pi translator 已走自己的原生集成，当前单一消费方——保留共享文件
 // 是因为任何第二个 TS host 都必须以完全相同的方式从 JSON decision 字段读 forge
 // 的 block verdict）。生成的 TS 用 Claude-Code-shape stdin spawn `forge hook <name>`；
 // 在此集中维护意味着 spawn 协议（或 block 检测契约）的变更只改一处。
 //
-// Embedded from forge_spawn.ts (a real .ts file) rather than a Go raw string, so the shared
-// snippet is itself valid TypeScript and is type-checked by the generator test
-// (TestGeneratedTSCompiles) — nesting backticks inside a raw string is fragile and unverified.
-//
 // 从 forge_spawn.ts（真实 .ts 文件）embed，而非用 Go raw string，这样共享片段本身
 // TypeScript 合法、并被 generator 测试（TestGeneratedTSCompiles）类型检查——raw string
 // 里嵌反引号既脆弱又未经验证。
-//
-// Contract (see internal/cli/hook.go runHook): forge always emits one JSON line on stdout,
-// shaped like {decision:`approve`|`block`, hookSpecificOutput?:{additionalContext}}.
-// block is read from decision — not the exit code, because cobra uniformly reports forge's
-// internal errors as exit 1, indistinguishable from deny. Parse failures and spawn errors fail
-// open (allow) so a forge outage does not lock the agent out of its own tools.
 //
 // 契约（见 internal/cli/hook.go runHook）：forge 总是在 stdout 输出一行 JSON，
 // 形如 {decision:`approve`|`block`, hookSpecificOutput?:{additionalContext}}。

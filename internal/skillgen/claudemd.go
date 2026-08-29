@@ -13,11 +13,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// The forge-section markers: the single source of truth lives in util
-// (ForgeSectionStart/End) so runtime packages (conventions, and via it
-// taskpipeline) can consume the contract without importing the generator
-// layer; these file-local aliases keep the in-file call sites unchanged.
-//
 // forge 段标记：单一真相源在 util（ForgeSectionStart/End），runtime 包
 // （conventions，及经它的 taskpipeline）无需 import 生成器层即可消费该契约；
 // 本文件局部别名保持文件内调用点不变。
@@ -26,9 +21,7 @@ const (
 	forgeSectionEnd   = util.ForgeSectionEnd
 )
 
-// GenerateClaudeMD creates or updates .claude/CLAUDE.md, writing the
-// quality protocol section taken over by Forge. When the file already exists, only the marker-wrapped section is replaced —
-// user content is preserved.
+// GenerateClaudeMD creates or updates .claude/CLAUDE.md, writing the quality protocol section taken over by Forge.
 //
 // GenerateClaudeMD 创建或更新 .claude/CLAUDE.md，写入 Forge 接管的
 // 质量协议 section。文件已存在时只替换标记包裹的 section——
@@ -43,11 +36,6 @@ func GenerateClaudeMD(projectDir string) error {
 
 	forgeSection := buildForgeSection(true)
 
-	// If it already exists, read the existing file. Only a confirmed ErrNotExist may
-	// fall through to the create path — treating any read failure (AV lock, sharing
-	// violation, permissions) as "missing" would overwrite the user's entire file
-	// with just the forge section.
-	//
 	// 若已存在则读现有文件。只有确证的 ErrNotExist 才允许落到新建路径——
 	// 把任何读失败（杀软锁、sharing violation、权限）当"不存在"会用仅含
 	// forge 段的内容整体覆盖用户文件。
@@ -56,29 +44,16 @@ func GenerateClaudeMD(projectDir string) error {
 		return fmt.Errorf("skillgen: read %s: %w", path, err)
 	}
 	if err == nil && len(existing) > 0 {
-		// Only update the Forge section.
-		//
 		// 仅更新 Forge section
 		updated := replaceForgeSection(string(existing), forgeSection)
 		return util.AtomicWrite(path, []byte(updated), 0644)
 	}
 
-	// Create a new file, writing only the Forge section.
-	//
 	// 新建文件，仅写入 Forge section
 	return util.AtomicWrite(path, []byte(forgeSection), 0644)
 }
 
-// GenerateAgentsMD creates or updates the project-root AGENTS.md, writing the
-// quality protocol section taken over by Forge. AGENTS.md is the cross-agent instruction spec read by
-// generic agents such as codex/cursor/copilot/windsurf/cline (detect.go identifies codex via .codex/,
-// not via AGENTS.md). Project-root generation only happens in team mode (`forge init --project`);
-// the default zero-project-write init writes the same section to the user-level ~/.codex/AGENTS.md
-// via GenerateUserAgentsMD instead.
-// Unlike CLAUDE.md (claude-specific, references Claude slash command),
-// AGENTS.md carries the agent-agnostic protocol and points to the forge CLI surface. When the file already exists,
-// only the marker-wrapped Forge section is replaced; user content outside the markers is preserved —
-// the same idempotent section-replace contract as CLAUDE.md.
+// GenerateAgentsMD creates or updates the project-root AGENTS.md, writing the quality protocol section taken over by Forge.
 //
 // GenerateAgentsMD 创建或更新项目根 AGENTS.md，写入 Forge 接管的
 // 质量协议 section。AGENTS.md 是 codex/cursor/copilot/windsurf/cline 等
@@ -108,11 +83,6 @@ func buildForgeSection(forClaude bool) string {
 	return buildForgeSectionWithLevel(forClaude, false)
 }
 
-// userLevelPreamble is prepended to the user-level forge section (~/.claude/CLAUDE.md,
-// ~/.codex/AGENTS.md). The user-level file is visible in EVERY project, so the section
-// must not unconditionally assert "this project uses Forge" — it activates only when the
-// current project is forge-initialized, and must be ignored otherwise.
-//
 // userLevelPreamble 前置在用户级 forge 段（~/.claude/CLAUDE.md、~/.codex/AGENTS.md）
 // 段首。用户级文件对所有项目可见，段文本不能无条件断言"本项目使用 Forge"——
 // 仅当当前项目已 init 时才激活，否则必须忽略。
@@ -133,17 +103,10 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("4. **测试伴随变更** — 新代码有对应测试\n")
 	sb.WriteString("5. **提交前确认** — commit 信息描述变更内容和原因\n")
 	sb.WriteString("6. **结束前验证** — 会话结束前运行测试确认无破坏\n")
-	// Rule 7 — reply concision (conclusion-first + banned-phrase pointer). The
-	// phrase examples stay inside backticks: doclint exempts inline-code quoting,
-	// and this generated file must survive its own lint.
-	//
 	// 规则 7——回复详略（结论先行 + 禁令短语指针）。短语示例保持在反引号内：
 	// doclint 豁免行内代码引用，且本生成文件须过它自己的 lint。
 	sb.WriteString("7. **结论先行，禁空转措辞** — 回复第一句给答案/判定/推荐；`综上所述`/`基本可以`/`问题不大` 等禁令短语与档位判据见 forge-quality skill「回复详略规则」，落盘文档用 `forge docs lint` 机器校验\n\n")
 
-	// task workflow — the most critical operating instructions, preventing agents from blindly running into
-	// task-guard/bash-guard interception.
-	//
 	// task workflow——最关键的操作指引，防止 agent 不知所措地撞上
 	// task-guard/bash-guard 拦截。
 	sb.WriteString("## Task 工作流（必读）\n\n")
@@ -165,10 +128,6 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("**门禁退出码契约**：`forge task gate` 非 0 退出 = 硬阻断（输出 `BLOCKED:` 前缀），必须修复后重跑，不是提醒；零退出但见 `ADVISORY:` 前缀 = 软信号（gate 仍过，已记 checklog，应修但不阻断）。按退出码行动，不要靠解析文案判断（硬阻断散文易被误读成提醒而跳过）。\n\n")
 	sb.WriteString("门禁全通过后运行 `forge task complete --ref <ref>` 触发评分。\n\n")
 
-	// Recurrence-driven hardening — the soft↔hard balance. Documents the gate behavior so an agent
-	// knows a recurrent project can have task-verify BLOCKED on test-coverage/scope-drift that would
-	// be mere advisory elsewhere. Without this note an agent hits the BLOCKED message cold.
-	//
 	// 复发驱动升硬——软↔硬平衡。记录门禁行为让 agent 知道：在复发项目里 task-verify 会对别处只是
 	// advisory 的 test-coverage/scope-drift 直接 BLOCKED。无此说明 agent 会冷不丁撞上 BLOCKED。
 	sb.WriteString("### 复发驱动升硬（软↔硬平衡）\n\n")
@@ -178,10 +137,6 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("### 中止任务（清理 ghost/卡住任务）\n\n")
 	sb.WriteString("任务无法推进（如在非 git 项目半启动、门禁死循环、或临时放弃）时，用 `forge task abort --ref <ref>` 删除任务状态文件并清空 active task ref，**不评分**。代码改动保留不动。task-verify 的 test-coverage/编译/断言为 advisory（仅记录不阻塞），但 skill-decisions guardrail（改 SKILL.md 未记决策）与 work-activity 仍 HARD stop；ghost 任务无论是否阻塞都污染 `task list`，需手动 abort 清理。\n\n")
 
-	// Commit timing — without this note an agent will naturally commit only after complete,
-	// and complete clears the active task ref, causing the commit to be
-	// quarantined by file-sentinel (this trap comes from a real DevWorkbench session).
-	//
 	// 提交时机——若无此说明 agent 自然会在 complete 之后才 commit，
 	// 而 complete 会清空 active task ref，导致 commit 被 file-sentinel
 	// quarantine（此 trap 来自一次真实 DevWorkbench 会话）。task-complete
@@ -237,10 +192,6 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	if forClaude {
 		sb.WriteString("使用 `/forge-quality` 查看完整质量协议。\n\n")
 	} else {
-		// AGENTS.md is cross-agent (codex/cursor/copilot/windsurf/cline) — these
-		// agents have no Claude slash command, so they point to the forge CLI surface,
-		// not the /forge-quality skill.
-		//
 		// AGENTS.md 是跨 agent 的（codex/cursor/copilot/windsurf/cline）——这些
 		// agent 没有 Claude slash command，故指向 forge CLI surface，
 		// 而非 /forge-quality skill。
@@ -250,10 +201,6 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	return sb.String()
 }
 
-// replaceForgeSection replaces the content between FORGE:START and FORGE:END markers;
-// all content outside the markers is preserved as-is. Thin wrapper over
-// util.ReplaceMarkedSection (shared with agentbridge's .windsurfrules upsert).
-//
 // replaceForgeSection 替换 FORGE:START 与 FORGE:END 标记之间的内容，
 // 标记外的所有内容原样保留。util.ReplaceMarkedSection 的薄封装
 // （与 agentbridge 的 .windsurfrules upsert 共享）。
@@ -261,10 +208,6 @@ func replaceForgeSection(content, newSection string) string {
 	return util.ReplaceMarkedSection(content, newSection, forgeSectionStart, forgeSectionEnd)
 }
 
-// claudeConfigHome resolves the Claude Code config home: CLAUDE_CONFIG_DIR env
-// first, else ~/.claude — the same convention as internal/hooks/plugin_detect.go
-// ClaudeHome(). Empty string means the home could not be resolved.
-//
 // claudeConfigHome 解析 Claude Code 配置 home：优先 CLAUDE_CONFIG_DIR env，
 // 否则 ~/.claude——与 internal/hooks/plugin_detect.go 的 ClaudeHome() 同一约定。
 // 空串表示无法解析 home。
@@ -279,9 +222,6 @@ func claudeConfigHome() string {
 	return filepath.Join(home, ".claude")
 }
 
-// codexConfigHome resolves the codex config home: CODEX_HOME env first,
-// else ~/.codex. Empty string means the home could not be resolved.
-//
 // codexConfigHome 解析 codex 配置 home：优先 CODEX_HOME env，否则 ~/.codex。
 // 空串表示无法解析 home。
 func codexConfigHome() string {
@@ -295,11 +235,6 @@ func codexConfigHome() string {
 	return filepath.Join(home, ".codex")
 }
 
-// dirExists reports whether path is an existing directory. Used by the user-level
-// generators' detection-self-poison guard: an agent's config home exists iff the
-// tool is installed (DetectAgents' signal), so the generators must only write into
-// homes that already exist.
-//
 // dirExists 报告 path 是否为已存在目录。供用户级生成器的检测自毒防护使用：
 // agent 的 config home 存在 = 该工具已安装（DetectAgents 的信号），故生成器
 // 只往已存在的 home 里写。
@@ -308,11 +243,6 @@ func dirExists(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-// upsertUserForgeSection upserts the conditional (user-level) forge section into
-// a user-level instruction file. Backup-then-append: the original file is backed up
-// via userassets.BackupOriginal BEFORE forge's first write, so the user can roll
-// back. Same idempotent section-replace contract as the project-level generators.
-//
 // upsertUserForgeSection 把条件激活的（用户级）forge 段 upsert 进用户级指令文件。
 // 备份+追加：forge 首次写入前经 userassets.BackupOriginal 备份原文件，用户可回滚。
 // 与项目级生成器同样的幂等 section-replace 契约。
@@ -335,15 +265,7 @@ func upsertUserForgeSection(path string, forClaude bool) error {
 	return util.AtomicWrite(path, []byte(forgeSection), 0644)
 }
 
-// GenerateUserClaudeMD upserts the (conditional) forge section into the user-level
-// ~/.claude/CLAUDE.md — backup-then-append via userassets.BackupOriginal first.
-// Claude home resolution: CLAUDE_CONFIG_DIR env first, else ~/.claude (same
-// convention as internal/hooks/plugin_detect.go ClaudeHome()).
-//
-// No-op when the Claude config home does not exist: the directory's existence is
-// DetectAgents' "claude is installed" signal, so creating it here would poison
-// detection — machines without Claude Code would get wired as if it were installed
-// (detection self-poison). Only installed tools get instruction files.
+// GenerateUserClaudeMD upserts the (conditional) forge section into the user-level ~/.claude/CLAUDE.md — backup-then-append via userassets.BackupOriginal first.
 //
 // GenerateUserClaudeMD 把（条件激活的）forge 段 upsert 进用户级
 // ~/.claude/CLAUDE.md——先经 userassets.BackupOriginal 备份再追加。Claude home
@@ -364,13 +286,7 @@ func GenerateUserClaudeMD() error {
 	return upsertUserForgeSection(filepath.Join(home, "CLAUDE.md"), true)
 }
 
-// GenerateUserAgentsMD upserts the (conditional) forge section into the user-level
-// ~/.codex/AGENTS.md (CODEX_HOME env first, else ~/.codex). Same backup contract
-// as GenerateUserClaudeMD.
-//
-// No-op when the codex config home does not exist — same detection-self-poison
-// guard as GenerateUserClaudeMD (the directory's existence is DetectAgents' "codex
-// is installed" signal).
+// GenerateUserAgentsMD upserts the (conditional) forge section into the user-level ~/.codex/AGENTS.md (CODEX_HOME env first, else ~/.codex).
 //
 // GenerateUserAgentsMD 把（条件激活的）forge 段 upsert 进用户级
 // ~/.codex/AGENTS.md（优先 CODEX_HOME env，否则 ~/.codex）。与
@@ -389,11 +305,7 @@ func GenerateUserAgentsMD() error {
 	return upsertUserForgeSection(filepath.Join(home, "AGENTS.md"), false)
 }
 
-// StripUserInstructions removes the FORGE:START/END marked section from both
-// user-level files (~/.claude/CLAUDE.md and ~/.codex/AGENTS.md), preserving all
-// other content. If the file becomes empty/whitespace and forge created it, the
-// empty file is left in place — userassets.RestoreOriginal handles deletion.
-// Idempotent. Used by forge uninstall.
+// StripUserInstructions removes the FORGE:START/END marked section from both user-level files (~/.claude/CLAUDE.md and ~/.codex/AGENTS.md), preserving all other content.
 //
 // StripUserInstructions 从两个用户级文件（~/.claude/CLAUDE.md 与
 // ~/.codex/AGENTS.md）中移除 FORGE:START/END 标记段，其余内容全部保留。
@@ -426,21 +338,7 @@ func StripUserInstructions() error {
 	return nil
 }
 
-// GenerateUserQualitySkill writes the forge-quality skill to the user-level
-// skill roots from the given protocol — same content as the project-level
-// GenerateQualitySkill, different target dirs. Targets:
-//   - ~/.claude/skills (Claude Code, claudeConfigHome resolution)
-//   - ~/.agents/skills (the cross-agent shared convention dir — kimi and other
-//     agent-neutral hosts read forge-quality from there; same convention as
-//     skillsdist.TargetAgents, no env override)
-//
-// Because the user-level skill is loaded in every project, the unconditional
-// "本项目" wording is adjusted to the conditional form (minimal change).
-//
-// No-op per target when its home does not exist — same detection-self-poison
-// guard as GenerateUserClaudeMD (a config home's existence is the "installed"
-// signal). This also refreshes the orphaned ~/.agents copy left behind by the
-// retired generator (no code path rewrote it since, so its content had rotted).
+// GenerateUserQualitySkill writes the forge-quality skill to the user-level skill roots from the given protocol — same content as the project-level GenerateQualitySkill, different target dirs.
 //
 // GenerateUserQualitySkill 从给定 protocol 生成用户级 forge-quality skill——
 // 内容与项目级 GenerateQualitySkill 相同，仅目标目录不同。目标：
@@ -461,11 +359,6 @@ func GenerateUserQualitySkill(proto *protocol.Protocol) error {
 	if err := GenerateUserQualitySkillTo(filepath.Join(home, "skills"), proto); err != nil {
 		return err
 	}
-	// Best-effort secondary replica: the ~/.agents copy mirrors the canonical
-	// ~/.claude one, so a write failure here (permissions, read-only dir) must
-	// not fail the whole call when the primary target already landed — warn to
-	// stderr instead of returning the error.
-	//
 	// 次要副本尽力而为：~/.agents 副本是 ~/.claude 正本的镜像，此处写失败
 	// （权限、只读目录）不得在主目标已落盘时拖垮整个调用——告警到 stderr，
 	// 不返回 error。
@@ -477,12 +370,7 @@ func GenerateUserQualitySkill(proto *protocol.Protocol) error {
 	return nil
 }
 
-// GenerateUserQualitySkillTo writes the forge-quality skill under the given
-// skills root (e.g. ~/.claude/skills, ~/.agents/skills or ~/.reasonix/skills) —
-// the shared user-level skill writer used by GenerateUserQualitySkill and the
-// reasonix translator. Same conditional-activation content, same self-poison
-// guard: a missing agent home (the parent of skillsRoot) is a no-op, so Forge
-// never creates an agent's config home itself.
+// GenerateUserQualitySkillTo writes the forge-quality skill under the given skills root (e.g. ~/.claude/skills, ~/.agents/skills or ~/.reasonix/skills) — the shared user-level skill writer used by GenerateUserQualitySkill and the reasonix translator.
 //
 // GenerateUserQualitySkillTo 把 forge-quality skill 写到给定 skills root
 // （如 ~/.claude/skills、~/.agents/skills 或 ~/.reasonix/skills）——
@@ -502,17 +390,11 @@ func GenerateUserQualitySkillTo(skillsRoot string, proto *protocol.Protocol) err
 		return fmt.Errorf("failed to create user-level quality skill dir: %w", err)
 	}
 	content := buildQualitySkillContent("", proto)
-	// Conditional activation: the user-level skill is visible in non-forge projects
-	// too, so it must not unconditionally claim "this project".
-	//
 	// 条件激活：用户级 skill 在非 forge 项目中也可见，不能无条件断言"本项目"。
 	content = strings.Replace(content,
 		"你是本项目的质量守护者。以下标准在任何开发会话中都有效。",
 		"你是 Forge 项目的质量守护者。仅当当前项目已执行过 `forge init`（在 Forge 全局项目注册表中）时，以下标准才生效；当前项目未使用 Forge 时忽略本 skill。",
 		1)
-	// The project-info section names one concrete project — meaningless at user
-	// level (the skill serves every project). Drop it.
-	//
 	// 项目信息章节指向单个具体项目——用户级无意义（skill 服务所有项目），移除。
 	if idx := strings.Index(content, "## 当前项目信息"); idx != -1 {
 		content = strings.TrimRight(content[:idx], "\n") + "\n"

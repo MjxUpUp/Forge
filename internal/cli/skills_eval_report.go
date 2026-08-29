@@ -1,9 +1,5 @@
 package cli
 
-// skills_eval_report.go - eval-report subcommand: regression comparison of latest run vs baseline.
-// Defaults to printing only NetRegressions + Regressions + pass-rate delta (signal first);
-// --verbose prints the full three-state breakdown; --json emits machine-readable RegressionReport.
-//
 // skills_eval_report.go — eval-report 子命令：latest run vs baseline 的回归比对。
 // 默认只打 NetRegressions + Regressions + pass-rate delta（信号优先）；--verbose 打
 // 全量三态；--json 输出机器可读 RegressionReport。
@@ -51,8 +47,6 @@ func runSkillsEvalReport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("skill %q 还没有 run——先 eval-record", skRepSkill)
 	}
 
-	// baseline selection: --baseline explicit run-id > skill-marked baseline > none (absolute score).
-	//
 	// baseline 选择：--baseline 显式 run-id > 该 skill 标记的 baseline > 无（绝对分）。
 	baseline, err := resolveReportBaseline(dir, skRepSkill, skRepBaseline)
 	if err != nil {
@@ -116,8 +110,6 @@ func resolveReportBaseline(dir, skill, explicit string) (*skillseval.EvalRun, er
 	return baseline, nil
 }
 
-// printEvalReport emits a human-readable report. Defaults to compact (signal first); verbose prints the full three-state breakdown.
-//
 // printEvalReport 输出人类可读报告。默认精简（信号优先），verbose 打全量三态。
 func printEvalReport(rep *skillseval.RegressionReport, latest, baseline *skillseval.EvalRun, verbose bool) {
 	fmt.Printf("skill: %s\n", rep.Skill)
@@ -154,8 +146,6 @@ func printEvalReport(rep *skillseval.RegressionReport, latest, baseline *skillse
 			}
 		}
 	} else {
-		// Without a baseline, matched/new/removed are meaningless; only absolute pass counts matter.
-		//
 		// 无 baseline 时 matched/new/removed 无意义，只看绝对 pass 数。
 		var pass int
 		for _, r := range latest.Results {
@@ -166,20 +156,11 @@ func printEvalReport(rep *skillseval.RegressionReport, latest, baseline *skillse
 		fmt.Printf("绝对通过：%d/%d\n", pass, len(latest.Results))
 	}
 
-	// Machine verdict (JudgeSkillAccept): deterministic accept/reject + reasons. The
-	// skill-evolution SKILL decides based on this line (not self-report - replaces
-	// agent self-reported accept). Always shown (signal first; visible even without --verbose).
-	//
 	// 机器判据（JudgeSkillAccept）：deterministic accept/reject + reasons。skill-evolution
 	// SKILL 据此行决策（非自述，取代 agent 自报 accept）。永远显示（信号优先，非 verbose 也显）。
 	fmt.Println(formatJudgeVerdict(rep))
 }
 
-// formatJudgeVerdict formats the JudgeSkillAccept verdict into a single-line
-// human-readable string. Extracted for unit testing and to keep printEvalReport
-// focused on printing. The skill-evolution SKILL reads the machine-verdict
-// accept/reject line for its decision.
-//
 // formatJudgeVerdict 把 JudgeSkillAccept 的判据格式化成单行人类可读串。抽出便于单测 +
 // 让 printEvalReport 只管打印。skill-evolution SKILL 读「机器判据：accept/reject」行决策。
 func formatJudgeVerdict(rep *skillseval.RegressionReport) string {
@@ -193,8 +174,6 @@ func formatJudgeVerdict(rep *skillseval.RegressionReport) string {
 	return fmt.Sprintf(`机器判据：reject（%s）`, strings.Join(reasons, `; `))
 }
 
-// formatRateDelta formats the baseline/latest pass-rate into a readable delta. Without a baseline, only the latest is printed.
-//
 // formatRateDelta 把 baseline/latest pass-rate 格式化成可读 delta。无 baseline 时只打 latest。
 func formatRateDelta(base, latest float64, hasBaseline bool) string {
 	if !hasBaseline {

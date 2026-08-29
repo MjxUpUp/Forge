@@ -13,11 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/workspace"
 )
 
-// TestAssessCrossRepoImpact covers the pure decision table: single-repo
-// memberships never trigger; undeclared multi-repo membership flags; declared
-// none/multi-with-valid-repos pass; malformed declarations (empty repos /
-// foreign keys / unknown level) each get their own verdict for the correction
-// advisory.
+// TestAssessCrossRepoImpact covers the pure decision table: single-repo memberships never trigger; undeclared multi-repo membership flags; declared none/multi-with-valid-repos pass; malformed declarations (empty repos / foreign keys / unknown level) each get their own verdict for the correction advisory.
 //
 // TestAssessCrossRepoImpact 覆盖纯判定表：单仓成员资格永不触发；多仓未声明
 // 标记；已声明 none/multi-repos 合法 通过；畸形声明（repos 空 / 越界 key /
@@ -41,20 +37,14 @@ func TestAssessCrossRepoImpact(t *testing.T) {
 		{`无成员资格`, nil, nil, crossRepoSkip, nil},
 		{`仅单仓 workspace`, []workspace.Workspace{ws(`solo`, `me`)}, nil, crossRepoSkip, nil},
 		{`多仓未声明`, []workspace.Workspace{ws(`fleet`, `me`, `other`)}, nil, crossRepoUndeclared, nil},
-		// One single-repo + one multi membership: the multi one obliges.
-		//
 		// 一个单仓 + 一个多仓成员资格：多仓那个产生义务。
 		{`单仓+多仓混合`, []workspace.Workspace{ws(`solo`, `me`), ws(`fleet`, `me`, `other`)}, nil, crossRepoUndeclared, nil},
 		{`声明 none`, []workspace.Workspace{ws(`fleet`, `me`, `other`)}, &CrossRepoImpact{Level: CrossRepoNone}, crossRepoOK, nil},
 		{`multi 合法 repos`, []workspace.Workspace{ws(`fleet`, `me`, `other`)}, &CrossRepoImpact{Level: CrossRepoMulti, Repos: []string{`other`}}, crossRepoOK, nil},
-		// The repo's own key is a valid impact target (self-impact is legal to declare).
-		//
 		// 本仓自身 key 也是合法影响目标（允许声明自我影响）。
 		{`multi 含本仓 key`, []workspace.Workspace{ws(`fleet`, `me`, `other`)}, &CrossRepoImpact{Level: CrossRepoMulti, Repos: []string{`me`}}, crossRepoOK, nil},
 		{`multi 空 repos`, []workspace.Workspace{ws(`fleet`, `me`, `other`)}, &CrossRepoImpact{Level: CrossRepoMulti}, crossRepoMultiEmptyRepos, nil},
 		{`multi 越界 key`, []workspace.Workspace{ws(`fleet`, `me`, `other`)}, &CrossRepoImpact{Level: CrossRepoMulti, Repos: []string{`other`, `stranger`}}, crossRepoMultiForeignRepos, []string{`stranger`}},
-		// Overlapping memberships: keys from ANY multi workspace are valid targets.
-		//
 		// 重叠成员资格：任一多仓 workspace 的 key 都是合法目标。
 		{`重叠 workspace 并集`, []workspace.Workspace{ws(`a`, `me`, `x`), ws(`b`, `me`, `y`)}, &CrossRepoImpact{Level: CrossRepoMulti, Repos: []string{`x`, `y`}}, crossRepoOK, nil},
 		{`未知 level`, []workspace.Workspace{ws(`fleet`, `me`, `other`)}, &CrossRepoImpact{Level: `maybe`}, crossRepoBadLevel, nil},
@@ -70,9 +60,6 @@ func TestAssessCrossRepoImpact(t *testing.T) {
 	}
 }
 
-// setupCrossRepoRepo builds a temp git repo with one commit and returns
-// (root, key) — the shared fixture of the gate integration tests below.
-//
 // setupCrossRepoRepo 建一个带一次提交的临时 git 仓，返回 (root, key)——
 // 下方门禁集成测试共用的 fixture。
 func setupCrossRepoRepo(t *testing.T) (string, string) {
@@ -91,9 +78,6 @@ func setupCrossRepoRepo(t *testing.T) (string, string) {
 	return dir, key
 }
 
-// setupCrossRepoWorkspace writes a two-member workspace manifest (this repo +
-// a phantom member) into the isolated FORGE_DATA_HOME.
-//
 // setupCrossRepoWorkspace 往隔离的 FORGE_DATA_HOME 写一个两成员 workspace
 // 清单（本仓 + 一个幻影成员）。
 func setupCrossRepoWorkspace(t *testing.T, key string) {
@@ -113,9 +97,6 @@ func setupCrossRepoWorkspace(t *testing.T, key string) {
 	}
 }
 
-// crossRepoEntries returns the checklog entries of the cross-repo-impact check
-// for the task.
-//
 // crossRepoEntries 返回本任务 cross-repo-impact 检查的 checklog 条目。
 func crossRepoEntries(t *testing.T, root, ref string) []checklog.Entry {
 	t.Helper()
@@ -132,9 +113,7 @@ func crossRepoEntries(t *testing.T, root, ref string) []checklog.Entry {
 	return out
 }
 
-// TestCrossRepoImpact_SkipsWithoutMembership: no workspace manifest at all →
-// the check stays fully silent (no stderr, no checklog) — the single-repo
-// majority must not pay noise for a feature they never opted into.
+// TestCrossRepoImpact_SkipsWithoutMembership: no workspace manifest at all → the check stays fully silent (no stderr, no checklog) — the single-repo majority must not pay noise for a feature they never opted into.
 //
 // TestCrossRepoImpact_SkipsWithoutMembership：完全没有 workspace 清单 →
 // 检查彻底静默（无 stderr、无 checklog）——单仓多数派不该为从未启用的
@@ -161,10 +140,7 @@ func TestCrossRepoImpact_SkipsWithoutMembership(t *testing.T) {
 	}
 }
 
-// TestCrossRepoImpact_AdvisoryDefault pins the fail-open default: a multi-repo
-// member task without a declaration still PASSES task-verify (advisory on
-// stderr + an advisory-level checklog entry), so enabling workspaces never
-// breaks existing flows until the project opts into `required`.
+// TestCrossRepoImpact_AdvisoryDefault pins the fail-open default: a multi-repo member task without a declaration still PASSES task-verify (advisory on stderr + an advisory-level checklog entry), so enabling workspaces never breaks existing flows until the project opts into `required`.
 //
 // TestCrossRepoImpact_AdvisoryDefault 钉住 fail-open 默认：多仓成员任务未
 // 声明仍通过 task-verify（stderr advisory + advisory 级 checklog 条目）——
@@ -198,11 +174,7 @@ func TestCrossRepoImpact_AdvisoryDefault(t *testing.T) {
 	}
 }
 
-// TestCrossRepoImpact_RequiredBlocks pins the protocol escalation: with
-// cross_repo_impact: required, an undeclared multi-repo task is BLOCKED
-// (four-part message + blocked-level audit); declaring --level none then
-// passes and records a pass entry. Declaring multi with a foreign key stays
-// advisory (correction hint), never a block.
+// TestCrossRepoImpact_RequiredBlocks pins the protocol escalation: with cross_repo_impact: required, an undeclared multi-repo task is BLOCKED (four-part message + blocked-level audit); declaring --level none then passes and records a pass entry.
 //
 // TestCrossRepoImpact_RequiredBlocks 钉住 protocol 升级：配
 // cross_repo_impact: required 时未声明的多仓任务被 BLOCKED（四段式消息 +
@@ -243,8 +215,6 @@ func TestCrossRepoImpact_RequiredBlocks(t *testing.T) {
 		t.Fatalf("应有 1 条 blocked 级未通过条目, got %+v", got)
 	}
 
-	// A malformed declaration (foreign key) is a correction advisory, not a block.
-	//
 	// 畸形声明（越界 key）是修正 advisory，不是阻断。
 	state.CrossRepoImpact = &CrossRepoImpact{Level: CrossRepoMulti, Repos: []string{`stranger`}, DeclaredAt: time.Now()}
 	var gateErr error
@@ -258,8 +228,6 @@ func TestCrossRepoImpact_RequiredBlocks(t *testing.T) {
 		t.Errorf("stderr 应含修正提示, got: %q", stderr)
 	}
 
-	// A proper declaration passes and records a pass entry.
-	//
 	// 正常声明放行并记通过条目。
 	state.CrossRepoImpact = &CrossRepoImpact{Level: CrossRepoNone, DeclaredAt: time.Now()}
 	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
@@ -272,9 +240,7 @@ func TestCrossRepoImpact_RequiredBlocks(t *testing.T) {
 	}
 }
 
-// TestCrossRepoImpact_CorruptManifestFailsOpen: an unreadable workspaces.json
-// degrades the check to a warn-level INFRA entry + pass (never a block) — the
-// manifest is a global store outside the project's control.
+// TestCrossRepoImpact_CorruptManifestFailsOpen: an unreadable workspaces.json degrades the check to a warn-level INFRA entry + pass (never a block) — the manifest is a global store outside the project's control.
 //
 // TestCrossRepoImpact_CorruptManifestFailsOpen：不可读的 workspaces.json 把
 // 检查降级为 warn 级 INFRA 条目并放行（绝不阻断）——清单是项目掌控之外的

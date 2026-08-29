@@ -10,32 +10,11 @@ import (
 	skillsforge "github.com/MjxUpUp/Forge/skills-forge"
 )
 
-// pluginReadmeTemplate is the static three-step first-run plugin README, embedded from
-// a real .md file (same precedent as forge_spawn.ts in ts_shared.go) instead of a
-// strings.Builder chain: the runtime interpolations are the repo slug in the six
-// install-command lines (%[1]s, one operand referenced six times) and the embedded
-// skill count (%[2]d — counted from skills.FS at render time so the advertised number
-// can never drift from the embed, review P3-1).
-//
 // pluginReadmeTemplate 是静态的三步首体验 plugin README，从真实 .md 文件 embed
 // （与 ts_shared.go 的 forge_spawn.ts 同一先例），替代 strings.Builder 长链：
 // 运行时插值有两处——六条安装命令里的 repo slug（%[1]s，一个操作数引用六次）
 // 与内嵌 skill 数量（%[2]d——渲染时从 skills.FS 现数，宣传数字永不与 embed 漂移，
 // review P3-1）。
-//
-// Contracts carried over from the builder version (guarded by TestPluginPack_Readme /
-// TestPluginPack_NoCurlyQuotes):
-//   - Honest capability boundary: the plugin wires user-level hooks; project
-//     registration is covered by init-suggest auto-takeover for plugin users
-//     (step 3 + caveat section make this explicit — no "install once, perfect
-//     everywhere" overclaim beyond what the hook actually does).
-//   - Code blocks use 4-space indent; inline commands use backticks; content has no
-//     curly quotes and no raw double quotes (Windows input-quote corruption guard).
-//   - npm package name is @agent_forge/forge (matching npm/package.json), NOT the
-//     GitHub owner slug — an earlier version wrote @mjxupup/forge, a nonexistent package.
-//   - The Kimi Code table row intentionally keeps the literal MjxUpUp/Forge install URL
-//     (it documents forge's own repo, not the branded spec.RepoSlug) — only the six
-//     step-2 install commands follow the slug.
 //
 // 从 builder 版本继承的契约（由 TestPluginPack_Readme / TestPluginPack_NoCurlyQuotes 守卫）：
 //   - 诚实能力边界：plugin 接用户级 hooks；项目登记由 init-suggest 自动接管覆盖
@@ -51,21 +30,9 @@ import (
 //go:embed assets/plugin_readme.md
 var pluginReadmeTemplate string
 
-// embeddedSkillCount returns the number of canonical skills in the embedded skills.FS
-// (top-level dirs containing SKILL.md — the same truth writePluginSkills ships and
-// tests count against). Interpolated into the plugin README so the advertised count
-// tracks the embed at render time instead of a hardcoded number that silently rots
-// (the historical count moved 30→32→37→38→49).
-//
 // embeddedSkillCount 返回内嵌 skill 总数（中立 skills.FS + forge 原生 skillsforge.FS
 // 的含 SKILL.md 顶层目录——与 writePluginSkills 分发、测试计数的同一真相源）。插值进
 // plugin README，宣传数字在渲染时跟踪 embed，而非硬编码静默腐烂（历史数量 30→32→37→38→49）。
-//
-// embeddedSkillCount returns the total embedded skill count (top-level dirs
-// with SKILL.md across the neutral skills.FS and the forge-native
-// skillsforge.FS — the same truth source as writePluginSkills and the count
-// tests). Interpolated into the plugin README so the advertised number tracks
-// the embed at render time instead of silently rotting (30→32→37→38→49).
 func embeddedSkillCount() int {
 	n := 0
 	for _, lib := range []fs.FS{skills.FS, skillsforge.FS} {
@@ -85,10 +52,6 @@ func embeddedSkillCount() int {
 	return n
 }
 
-// pluginReadme returns the plugin README with the repo slug interpolated into the
-// install commands and the embedded skill count into the skills paragraph.
-// writePluginReadme supplies the default slug when RepoSlug is empty.
-//
 // pluginReadme 返回插值 repo slug（安装命令）与内嵌 skill 数（skills 段）后的
 // plugin README。RepoSlug 为空时由 writePluginReadme 提供默认 slug。
 func pluginReadme(repoSlug string) string {

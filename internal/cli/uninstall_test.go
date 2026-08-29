@@ -12,12 +12,6 @@ import (
 	"testing"
 )
 
-// uninstall_test.go — core side-effect guard for `forge uninstall`.
-// Tests uninstallClearMarkers directly (does not call rootCmd.Execute, to avoid global pollution).
-// refactor-data-home commit E: the marker store goes through forgedata.GlobalHome() (FORGE_DATA_HOME);
-// tests isolate via FORGE_DATA_HOME (no longer via HOME — GlobalHome reads os.UserHomeDir, not the HOME env).
-// All Chinese strings use raw strings to avoid Windows input-quote corruption.
-//
 // uninstall_test.go — `forge uninstall` 的核心 side effect 守卫。
 // 测 uninstallClearMarkers（不调 rootCmd.Execute 避全局污染）。
 // refactor-data-home commit E：marker store 走 forgedata.GlobalHome()（FORGE_DATA_HOME），
@@ -48,8 +42,6 @@ func TestUninstall_ClearsSuggestMarkers(t *testing.T) {
 }
 
 func TestUninstall_IdempotentWhenNoMarkers(t *testing.T) {
-	// When <GlobalHome>/.init-suggested/ does not exist, RemoveAll still returns nil — should return ok=true.
-	//
 	// <GlobalHome>/.init-suggested/ 不存在时 RemoveAll 也返 nil — 应返 ok=true。
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	_, ok := uninstallClearMarkers()
@@ -58,10 +50,7 @@ func TestUninstall_IdempotentWhenNoMarkers(t *testing.T) {
 	}
 }
 
-// TestUninstall_ClearsMarkers_ForgeDataHomeOverride pins commit E: uninstall must clear
-// markers under the FORGE_DATA_HOME override root (not ~/.forge) — it shares the same store
-// as the suggest command and the init-suggest hook. Prevents uninstall from secretly falling
-// back to a hardcoded ~/.forge and clearing the wrong place for FORGE_DATA_HOME users.
+// TestUninstall_ClearsMarkers_ForgeDataHomeOverride pins commit E: uninstall must clear markers under the FORGE_DATA_HOME override root (not ~/.forge) — it shares the same store as the suggest command and the init-suggest hook.
 //
 // TestUninstall_ClearsMarkers_ForgeDataHomeOverride 钉死 commit E：uninstall 必须清
 // FORGE_DATA_HOME 覆盖根下的 marker（不是 ~/.forge）——与 suggest 命令 + init-suggest
@@ -81,10 +70,7 @@ func TestUninstall_ClearsMarkers_ForgeDataHomeOverride(t *testing.T) {
 	}
 }
 
-// TestUninstall_StripsKimiHooks pins the kimi cleanup added with the kimi plugin
-// adapter: uninstall must strip the forge marker section from kimi's user-level
-// config.toml (those entries would otherwise spawn a deleted binary on every kimi
-// tool call) and print the removal guidance for the TUI-only plugin path.
+// TestUninstall_StripsKimiHooks pins the kimi cleanup added with the kimi plugin adapter: uninstall must strip the forge marker section from kimi's user-level config.toml (those entries would otherwise spawn a deleted binary on every kimi tool call) and print the removal guidance for the TUI-only plugin path.
 //
 // TestUninstall_StripsKimiHooks 钉住随 kimi plugin 适配加入的 kimi 清理：uninstall
 // 必须剥除 kimi user-level config.toml 的 forge 标记段（否则这些条目会在每次
@@ -130,12 +116,6 @@ func TestUninstall_StripsKimiHooks(t *testing.T) {
 	}
 }
 
-// isolateAllAgentHomes redirects every agent home (kimi/codex/XDG/claude/
-// workbuddy/reasonix) plus HOME/USERPROFILE and FORGE_DATA_HOME to fresh temp
-// dirs, and sets FORGE_UNINSTALL_SKIP_NPM — the full-RunE isolation the
-// uninstall tests share. Returns the reasonix home, claude config dir,
-// workbuddy config dir, and forge data home for the seams each test seeds.
-//
 // isolateAllAgentHomes 把每个 agent home（kimi/codex/XDG/claude/workbuddy/
 // reasonix）连同 HOME/USERPROFILE 与 FORGE_DATA_HOME 重定向到全新 temp dir，
 // 并置 FORGE_UNINSTALL_SKIP_NPM——uninstall 测试共享的全量 RunE 隔离。返回
@@ -166,11 +146,7 @@ func isolateAllAgentHomes(t *testing.T) (reasonixHome, claudeHome, wbHome, dataH
 	return
 }
 
-// TestUninstall_StripsReasonixHooks pins the reasonix hook-strip wiring: uninstall must
-// remove forge hooks from reasonix's user-level settings.json (flat schema) while preserving
-// user content, and print the removal guidance. Mirrors TestUninstall_StripsKimiHooks; full
-// agent-home isolation (every agent home → TempDir via env + HOME/USERPROFILE) so RunE touches
-// no real config.
+// TestUninstall_StripsReasonixHooks pins the reasonix hook-strip wiring: uninstall must remove forge hooks from reasonix's user-level settings.json (flat schema) while preserving user content, and print the removal guidance.
 //
 // TestUninstall_StripsReasonixHooks 钉死 reasonix hook 剥除接线：uninstall 必须从 reasonix
 // 用户级 settings.json（扁平 schema）移除 forge hooks 同时保留用户内容，并打印清除指引。
@@ -214,18 +190,12 @@ func TestUninstall_StripsReasonixHooks(t *testing.T) {
 	}
 }
 
-// TestUninstall_RemovesUserLevelQualitySkill pins the uninstall gap fix: the
-// user-level ~/.claude/skills/forge-quality/ (written by every init/autoSync)
-// must be removed on uninstall, respecting CLAUDE_CONFIG_DIR.
+// TestUninstall_RemovesUserLevelQualitySkill pins the uninstall gap fix: the user-level ~/.claude/skills/forge-quality/ (written by every init/autoSync) must be removed on uninstall, respecting CLAUDE_CONFIG_DIR.
 //
 // TestUninstall_RemovesUserLevelQualitySkill 钉死 uninstall 漏删修复：用户级
 // ~/.claude/skills/forge-quality/（每次 init/autoSync 都会写）必须在卸载时
 // 删除，且尊重 CLAUDE_CONFIG_DIR。
 func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
-	// Full-RunE isolation; the claude seam is seeded below (REASONIX_HOME is
-	// isolated too — 2c's reasonix strip and 2e's skill removal would otherwise
-	// touch the real %AppData%\reasonix).
-	//
 	// 全量 RunE 隔离；claude 接缝在下面种入（REASONIX_HOME 同样隔离——否则 2c
 	// 的 reasonix strip 与 2e' 的 skill 删除会碰真机 %AppData%\reasonix）。
 	_, claudeHome, _, _ := isolateAllAgentHomes(t)
@@ -253,9 +223,7 @@ func TestUninstall_RemovesUserLevelQualitySkill(t *testing.T) {
 	}
 }
 
-// TestUninstall_RemovesReasonixQualitySkill pins the symmetric reasonix uninstall:
-// the user-level <reasonix home>/skills/forge-quality/ (written by the reasonix
-// translator) must be removed on uninstall, respecting REASONIX_HOME.
+// TestUninstall_RemovesReasonixQualitySkill pins the symmetric reasonix uninstall: the user-level <reasonix home>/skills/forge-quality/ (written by the reasonix translator) must be removed on uninstall, respecting REASONIX_HOME.
 //
 // TestUninstall_RemovesReasonixQualitySkill 钉死对称的 reasonix 卸载：用户级
 // <reasonix home>/skills/forge-quality/（由 reasonix translator 写入）必须在卸载时
@@ -353,12 +321,7 @@ func TestUninstall_StripsCodeBuddyHooks(t *testing.T) {
 	}
 }
 
-// TestUninstall_StripRosterPinned pins the 2c roster's key set (review M-1): every host
-// wired with a user-level Strip function must appear in userLevelStripRoster. Each host
-// is only guarded by its own TestUninstall_StripsXxxHooks — a host missing from the
-// roster (the codebuddy gap, 2026-08-21) silently survived uninstall. Adding a host:
-// update the expected set alongside the roster entry; forgetting both remains possible
-// but now requires ignoring this test's name in the diff.
+// TestUninstall_StripRosterPinned pins the 2c roster's key set (review M-1): every host wired with a user-level Strip function must appear in userLevelStripRoster.
 //
 // TestUninstall_StripRosterPinned 钉死 2c 名册的 key 集合（评审 M-1）：每个有用户级
 // Strip 函数的 host 都必须出现在 userLevelStripRoster。各 host 只被自己的
@@ -423,8 +386,7 @@ func TestRunUserLevelStrips_PartiaFailureReporting(t *testing.T) {
 	}
 }
 
-// TestUninstall_GuidanceNoStaleReset pins the guidance text: it must not reference
-// the removed `forge init --reset` command, and must point at --restore for rollback.
+// TestUninstall_GuidanceNoStaleReset pins the guidance text: it must not reference the removed `forge init --reset` command, and must point at --restore for rollback.
 //
 // TestUninstall_GuidanceNoStaleReset 钉死指引文案：不得引用已删除的
 // `forge init --reset` 命令，且必须指向 --restore 回滚。
@@ -457,9 +419,6 @@ func TestUninstall_GitHubChannel_ManualGuidanceNotNpm(t *testing.T) {
 	detectInstallChannelFn = func() installChannel { return installChannel{kind: channelGitHub} }
 	t.Cleanup(func() { detectInstallChannelFn = orig })
 
-	// PATH isolation (no npm inside): regression to the npm branch fails LookPath
-	// here instead of running a real global npm uninstall.
-	//
 	// PATH 隔离（目录内无 npm）：退化回 npm 分支时 LookPath 在此失败，
 	// 而不是真的跑一次全局 npm uninstall。
 	t.Setenv(`PATH`, t.TempDir())
@@ -511,9 +470,7 @@ func TestUninstall_NpmChannel_RoutesToNpm(t *testing.T) {
 	}
 }
 
-// TestUninstall_SkipNpmHookSkipsWholeStep pins the test hook semantics post-split:
-// FORGE_UNINSTALL_SKIP_NPM=1 skips the ENTIRE binary step for both channels (no npm
-// attempt, no guidance printout) — the existing RunE tests rely on this contract.
+// TestUninstall_SkipNpmHookSkipsWholeStep pins the test hook semantics post-split: FORGE_UNINSTALL_SKIP_NPM=1 skips the ENTIRE binary step for both channels (no npm attempt, no guidance printout) — the existing RunE tests rely on this contract.
 //
 // TestUninstall_SkipNpmHookSkipsWholeStep 钉死分流后的测试钩子语义：
 // FORGE_UNINSTALL_SKIP_NPM=1 对两个通道都跳过整个二进制步骤（不试 npm、不打印指引）

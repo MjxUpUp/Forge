@@ -1,8 +1,5 @@
-// Package worktree owns the Workspace identity of the Task/Session/Workspace triad
-// (multi-task-concurrency design §4, L1). A Workspace is one working tree — the main
-// checkout or one linked git worktree — and its ID (wtid) is the hash12 of the
-// EvalSymlinks-resolved absolute path. Bindings store and attribution ledgers are
-// keyed by wtid: everything path-shaped is machine-local by construction.
+// Package worktree owns the Workspace identity of the Task/Session/Workspace
+// triad (multi-task-concurrency design §4, L1).
 //
 // 包 worktree 承载 Task/Session/Workspace 三元组中的 Workspace 身份
 // （multi-task-concurrency 设计 §4，L1）。一个 Workspace = 一个工作树——主检出或某个
@@ -17,11 +14,7 @@ import (
 )
 
 // ID derives the workspace identity of root: hash12 (fnv-64a, %012x) of the
-// EvalSymlinks-resolved absolute path. Same derivation family as forgedata.Key's path
-// hash (fnv-64a → 12 hex) so the ecosystem reads consistently; deliberately NOT the
-// project key — all worktrees of one repo share a project key but must have distinct
-// wtids, that separation is the whole point of the triad. Resolution failure (path
-// vanished) falls back to the cleaned absolute path: identity must be total.
+// EvalSymlinks-resolved absolute path.
 //
 // ID 推导 root 的 workspace 身份：EvalSymlinks 解析后绝对路径的 hash12（fnv-64a，
 // %012x）。与 forgedata.Key 的路径 hash 同族推导（fnv-64a → 12 hex），生态读起来一

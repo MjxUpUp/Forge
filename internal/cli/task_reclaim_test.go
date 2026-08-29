@@ -1,10 +1,5 @@
 package cli
 
-// task_reclaim_test.go — `task reclaim` (§3 TTL recovery): stale-claim
-// detection seeded in-process (saveClaimedAgo), dry-run immutability, the
-// flip-to-offered recovery, and the stable empty-JSON contract.
-// Migrated from task_assignment_test.go when that file was split by domain.
-//
 // task_reclaim_test.go —— `task reclaim`（§3 TTL 回收）：进程内种入的 stale
 // 认领检测（saveClaimedAgo）、dry-run 不变性、翻回 offered 的回收、稳定的
 // 空 JSON 契约。自 task_assignment_test.go 按域拆分时迁入。
@@ -18,10 +13,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
-// saveClaimedAgo writes a task claimed by agent with ClaimedAt forced to `ago` and NO checklog
-// activity — the exact shape of a claimed zombie (claimer gone) IsClaimedStale detects. The CLI
-// stamps time.Now(), so a deterministic >7d-old claim can only be set in-process.
-//
 // saveClaimedAgo 写一个被 agent 认领的任务，ClaimedAt 强制为 ago 且无 checklog 活动——正是
 // IsClaimedStale 检测的 claimed 僵尸（认领方失联）形态。CLI 盖当前时间，确定性的 >7d 认领只能在进程内设。
 func saveClaimedAgo(t *testing.T, dir, ref, agent string, ago time.Time) {
@@ -39,18 +30,6 @@ func saveClaimedAgo(t *testing.T, dir, ref, agent string, ago time.Time) {
 	}
 }
 
-// TestTaskReclaim end-to-end exercises forge task reclaim — the §3 TTL recovery trigger. Runs as a
-// single linear flow because reclaim mutates state (subtests would couple on order): dry-run lists
-// the stale claim without mutating → reclaim flips it to offered (AbandonedCount++) and leaves a
-// fresh claim + an offered task untouched → a second reclaim finds nothing.
-//
-// Coverage note: this exercises the HAPPY path — state does not drift between the IsClaimedStale
-// scan and the per-task lock, so the in-lock IsClaimedStale re-check (the M2 TOCTOU guard) is a
-// no-op here (it returns the same verdict as the outer scan). Pinning that re-check would require
-// mutating checklog activity in the sub-millisecond window between ListTaskStates and LockTask,
-// which is not deterministic from the CLI; do NOT remove the in-lock check assuming the outer scan
-// suffices — it does not.
-//
 // TestTaskReclaim 端到端跑 forge task reclaim——§3 的 TTL 回收触发。以单一线性流程跑（reclaim
 // 改状态，子测试会顺序耦合）：dry-run 列出 stale 认领但不动 → 回收把它翻为 offered
 // （AbandonedCount++）且不动刚认领 + offered 任务 → 第二次回收无候选。
@@ -62,21 +41,13 @@ func saveClaimedAgo(t *testing.T, dir, ref, agent string, ago time.Time) {
 func TestTaskReclaim(t *testing.T) {
 	dir := setupDelegateProject(t)
 
-	// Stale claimed zombie (8d ago, no checklog) → reclaim candidate.
-	//
 	// claimed 僵尸（8d 前，无 checklog）→ 回收候选。
 	saveClaimedAgo(t, dir, `feat/stale`, `kimi`, time.Now().Add(-8*24*time.Hour))
-	// Fresh claim (now) → NOT stale, must be left alone.
-	//
 	// 刚认领（当前）→ 非僵尸，须不动。
 	saveClaimedAgo(t, dir, `feat/fresh`, `cursor`, time.Now())
-	// Offered task → not claimed, must be left alone (Abandon requires claimed).
-	//
 	// offered 任务 → 非 claimed，须不动（Abandon 要求 claimed）。
 	saveOfferedAgo(t, dir, `feat/offered`, `reasonix`, time.Now())
 
-	// 1) --dry-run lists only the stale claim and does NOT mutate.
-	//
 	// 1) --dry-run 只列 stale 认领且不改状态。
 	dryOut, _, dcode := runForge(t, dir, `task`, `reclaim`, `--dry-run`, `--json`)
 	if dcode != 0 {
@@ -95,9 +66,6 @@ func TestTaskReclaim(t *testing.T) {
 		t.Fatalf(`dry-run 不应改状态, got status=%s count=%d`, st.Assignment.Status, st.Assignment.AbandonedCount)
 	}
 
-	// 2) Real reclaim flips feat/stale → offered, bumps AbandonedCount, clears ClaimedAt, sets
-	//    AbandonedAt; feat/fresh (claimed now) and feat/offered are untouched.
-	//
 	// 2) 真回收把 feat/stale → offered、AbandonedCount++、清 ClaimedAt、置 AbandonedAt；
 	//    feat/fresh（刚认领）与 feat/offered 不受影响。
 	out, _, code := runForge(t, dir, `task`, `reclaim`)
@@ -134,8 +102,6 @@ func TestTaskReclaim(t *testing.T) {
 		t.Errorf(`feat/offered 应不动, got status=%s count=%d`, off.Assignment.Status, off.Assignment.AbandonedCount)
 	}
 
-	// 3) Second reclaim finds no candidates — feat/stale is now offered (not claimed).
-	//
 	// 3) 第二次回收无候选——feat/stale 已 offered（非 claimed）。
 	out2, _, code2 := runForge(t, dir, `task`, `reclaim`)
 	if code2 != 0 {
@@ -146,17 +112,11 @@ func TestTaskReclaim(t *testing.T) {
 	}
 }
 
-// TestTaskReclaim_EmptyJSON pins the M1 fix: reclaim --json with NO stale tasks must emit
-// "reclaimed": [] (a stable empty array), not the Go-default null. Sibling commands (mine/health
-// JSON) share the same convention so consumers can range over the field unconditionally.
-//
 // TestTaskReclaim_EmptyJSON 钉住 M1 修复：无 stale 任务时 reclaim --json 必须输出
 // "reclaimed": []（稳定空数组），而非 Go 默认的 null。兄弟命令（mine/health JSON）同约定，
 // 使消费者可无条件遍历该字段。
 func TestTaskReclaim_EmptyJSON(t *testing.T) {
 	dir := setupDelegateProject(t)
-	// A fresh (non-stale) claim → reclaim finds nothing.
-	//
 	// 刚认领（非僵尸）的任务 → reclaim 无候选。
 	saveClaimedAgo(t, dir, `feat/fresh`, `kimi`, time.Now())
 

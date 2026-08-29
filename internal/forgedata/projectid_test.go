@@ -7,22 +7,12 @@ import (
 	"testing"
 )
 
-// projectid_test.go — repo-born project ID identity layer (project-sync design §A).
-// A committed `.forge-project-id` at the MAIN worktree root overrides the path-derived
-// key: same repo on two machines (different paths) derives the same key once both sides
-// carry the ID file. Missing/invalid ID silently falls back to the path hash (fail-open —
-// existing projects keep their identity until they explicitly adopt).
-//
-// Chinese strings use raw string literals to avoid Windows quote corruption.
-//
 // projectid_test.go — repo-born 项目 ID 身份层（project-sync 设计 §A）。
 // 主 worktree 根下 committed 的 `.forge-project-id` 覆盖路径推导 key：同一仓库在两台
 // 机器（不同路径）只要都带 ID 文件即推导同一 key。缺失/非法 ID 静默回落路径 hash
 // （fail-open——存量项目在显式 adopt 前身份不变）。
 // 中文字符串用 raw string 避 Windows 引号腐蚀。
 
-// seedProjectID writes a valid ID file (fpid_<32hex>) at repoRoot.
-//
 // seedProjectID 在 repoRoot 写合法 ID 文件（fpid_<32hex>）。
 func seedProjectID(t *testing.T, repoRoot, id string) {
 	t.Helper()
@@ -31,8 +21,7 @@ func seedProjectID(t *testing.T, repoRoot, id string) {
 	}
 }
 
-// TestReadProjectID_Validation: strict format contract fpid_[0-9a-f]{32}; trailing
-// whitespace tolerated (TrimSpace), everything else rejected.
+// TestReadProjectID_Validation: strict format contract fpid_[0-9a-f]{32}; trailing whitespace tolerated (TrimSpace), everything else rejected.
 //
 // TestReadProjectID_Validation：严格格式契约 fpid_[0-9a-f]{32}；容忍尾随空白
 // （TrimSpace），其余一律拒绝。
@@ -85,8 +74,7 @@ func TestReadProjectID_Validation(t *testing.T) {
 	}
 }
 
-// TestKey_ProjectIDPriority: a valid ID file at the repo root overrides the path-derived
-// key — Key(repo) == IDKey(id), and differs from the pure path hash (domain separation).
+// TestKey_ProjectIDPriority: a valid ID file at the repo root overrides the path-derived key — Key(repo) == IDKey(id), and differs from the pure path hash (domain separation).
 //
 // TestKey_ProjectIDPriority：repo 根的合法 ID 文件覆盖路径推导 key——
 // Key(repo) == IDKey(id)，且不等于纯路径 hash（域分离）。
@@ -136,10 +124,6 @@ func TestKey_NoOrInvalidIDFallsBackToPath(t *testing.T) {
 			}
 			// Key() 对 resolvedGitDir 先 EvalSymlinks 再 CanonicalCase（t.TempDir 在
 			// macOS 是 /var → /private/var symlink）；期望值必须走同一归一。
-			//
-			// Key() EvalSymlinks-then-CanonicalCase's resolvedGitDir (t.TempDir on
-			// macOS is a /var → /private/var symlink); the expectation must apply the
-			// same normalization.
 			normalized := git
 			if eval, evalErr := filepath.EvalSymlinks(git); evalErr == nil {
 				normalized = eval
@@ -156,10 +140,7 @@ func TestKey_NoOrInvalidIDFallsBackToPath(t *testing.T) {
 	}
 }
 
-// TestKey_ProjectIDWorktreeSharesMain: the ID is read from the MAIN worktree root
-// (Dir of the resolved common .git dir) — an uncommitted ID file in the main worktree
-// still applies to linked worktrees, preserving the "all worktrees share one key"
-// contract under the ID regime.
+// TestKey_ProjectIDWorktreeSharesMain: the ID is read from the MAIN worktree root (Dir of the resolved common .git dir) — an uncommitted ID file in the main worktree still applies to linked worktrees, preserving the "all worktrees share one key" contract under the ID regime.
 //
 // TestKey_ProjectIDWorktreeSharesMain：ID 从主 worktree 根读取（解析后 common .git
 // 目录的父目录）——主 worktree 未 commit 的 ID 文件对 linked worktree 同样生效，
@@ -198,9 +179,7 @@ func TestKey_ProjectIDWorktreeSharesMain(t *testing.T) {
 	}
 }
 
-// TestIDKey_DeterministicAndDistinct: IDKey is a pure content hash — deterministic
-// across calls (hence across GOOS: no path, no case-folding input), 12 lowercase hex
-// chars, distinct inputs give distinct keys (sanity, not collision-proof).
+// TestIDKey_DeterministicAndDistinct: IDKey is a pure content hash — deterministic across calls (hence across GOOS: no path, no case-folding input), 12 lowercase hex chars, distinct inputs give distinct keys (sanity, not collision-proof).
 //
 // TestIDKey_DeterministicAndDistinct：IDKey 是纯内容 hash——跨调用确定（因而跨
 // GOOS 确定：无路径、无大小写折叠输入），12 位小写 hex，不同输入不同 key
@@ -222,11 +201,7 @@ func TestIDKey_DeterministicAndDistinct(t *testing.T) {
 	}
 }
 
-// TestKey_SubmoduleParentIDNotInherited: a submodule shares the parent's common-dir
-// path hash today; under the ID regime the submodule derives from the PARENT repo
-// root's ID file (Dir of parent .git) — i.e. submodule keeps sharing the parent
-// identity. This pins the deliberate semantics (same as path regime) rather than
-// asserting an accident.
+// TestKey_SubmoduleParentIDNotInherited: a submodule shares the parent's common-dir path hash today; under the ID regime the submodule derives from the PARENT repo root's ID file (Dir of parent .git) — i.e. submodule keeps sharing the parent identity.
 //
 // TestKey_SubmoduleParentIDNotInherited：submodule 今天与父 repo 共享 common-dir
 // 路径 hash；ID 体系下 submodule 经「父 .git 的父目录」读父 repo 根的 ID 文件——

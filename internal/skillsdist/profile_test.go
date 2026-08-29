@@ -43,11 +43,7 @@ func TestLoadProfile_Parse(t *testing.T) {
 	}
 }
 
-// TestLoadProfile_InvalidName: a malformed line is a hard error — silently ignoring the profile
-// would distribute the full set while the user believes it is trimmed. Whitespace-bearing and
-// separator-bearing names are rejected (IsValidSkillName deliberately loose, profile tightens:
-// one canonical kebab name per line); non-ASCII but well-formed names fall through to the
-// unknown→warning path instead (harmless if not in canonical).
+// TestLoadProfile_InvalidName: a malformed line is a hard error — silently ignoring the profile would distribute the full set while the user believes it is trimmed.
 //
 // TestLoadProfile_InvalidName：非法行是硬错误——静默忽略画像会让用户以为已裁剪实则全量。
 // 含空白/分隔符的名字拒绝（IsValidSkillName 刻意宽松，画像处收紧：每行一个规范 kebab 名）；
@@ -62,10 +58,7 @@ func TestLoadProfile_InvalidName(t *testing.T) {
 	}
 }
 
-// TestLoadProfile_EmptyFileIsNotNil: a present file with only comments/blank lines is
-// "profile active, allowlist empty" (non-nil empty slice) — NOT the absent-file nil.
-// Downstream distinguishes via != nil; conflating the two would silently widen an
-// all-commented debugging profile back to full distribution (review M1).
+// TestLoadProfile_EmptyFileIsNotNil: a present file with only comments/blank lines is "profile active, allowlist empty" (non-nil empty slice) — NOT the absent-file nil.
 //
 // TestLoadProfile_EmptyFileIsNotNil：文件存在但全注释/空行 = 「画像生效、白名单为空」
 // （非 nil 空 slice）——不是「无画像」的 nil。下游用 != nil 区分；混同二者会让
@@ -95,8 +88,6 @@ func TestFilterByProfile(t *testing.T) {
 	if len(unknown) != 1 || unknown[0] != "nope" {
 		t.Fatalf("unknown=%v want [nope]", unknown)
 	}
-	// empty profile = full set passthrough
-	//
 	// 空画像 = 全量直通
 	kept, unknown = filterByProfile(all, nil)
 	if len(kept) != 3 || len(unknown) != 0 {
@@ -104,9 +95,7 @@ func TestFilterByProfile(t *testing.T) {
 	}
 }
 
-// TestInstall_ProfileTrims: profile restricts distribution to the allowlist; the excluded
-// canonical skill is neither installed nor reported as failure; an unknown profile entry
-// warns instead of erroring (durable config referencing removed skills is legitimate).
+// TestInstall_ProfileTrims pins that profile restricts distribution to the allowlist.
 //
 // TestInstall_ProfileTrims：画像把分发限定在白名单；被排除的 canonical skill 既不装也不计失败；
 // 画像里的未知条目告警不报错（持久配置引用已移除的 skill 是合法状态）。
@@ -131,8 +120,6 @@ func TestInstall_ProfileTrims(t *testing.T) {
 		t.Fatalf("beta 被画像排除，不应安装（err=%v）", err)
 	}
 	// ghost 不在 canonical → 告警不报错
-	//
-	// ghost not in canonical → warn, not error
 	foundGhost := false
 	for _, w := range rep.Warnings {
 		if strings.Contains(w, "ghost") {
@@ -144,9 +131,7 @@ func TestInstall_ProfileTrims(t *testing.T) {
 	}
 }
 
-// TestInstall_ProfileExcludedPresentWarns: a skill already in the target but excluded by the
-// profile must surface as a warning — install never deletes, yet the user must know the trim
-// did not remove the stale copy.
+// TestInstall_ProfileExcludedPresentWarns: a skill already in the target but excluded by the profile must surface as a warning — install never deletes, yet the user must know the trim did not remove the stale copy.
 //
 // TestInstall_ProfileExcludedPresentWarns：已在目标但被画像排除的 skill 必须浮出为告警——
 // install 绝不删除，但用户必须知道裁剪没有移走旧副本。
@@ -156,8 +141,6 @@ func TestInstall_ProfileExcludedPresentWarns(t *testing.T) {
 	writeCanonicalSkill(t, canonical, "beta")
 	projectDir := t.TempDir()
 	// 先全量装一次（beta 落进目标），再启用只含 alpha 的画像装第二次。
-	//
-	// full install first (beta lands in target), then install again with alpha-only profile.
 	rep, err := Install(canonical, copyOpts(projectDir))
 	mustMk(t, err)
 	if rep.Stats.Installed != 2 {
@@ -177,16 +160,12 @@ func TestInstall_ProfileExcludedPresentWarns(t *testing.T) {
 		t.Fatalf("被排除但残留的 beta 应告警，warnings=%v", rep.Warnings)
 	}
 	// beta 内容保留未删（不销毁用户内容）
-	//
-	// beta content preserved (never destroy user content)
 	if _, err := os.Stat(filepath.Join(projectDir, "beta", "SKILL.md")); err != nil {
 		t.Fatalf("beta 应保留未删: %v", err)
 	}
 }
 
-// TestInstall_EmptyProfileInstallsNothing: a non-nil empty profile (all lines commented)
-// installs NOTHING (not everything) and says why — the silent full-distribution fallback
-// is the exact trap review M1 flagged.
+// TestInstall_EmptyProfileInstallsNothing: a non-nil empty profile (all lines commented) installs NOTHING (not everything) and says why — the silent full-distribution fallback is the exact trap review M1 flagged.
 //
 // TestInstall_EmptyProfileInstallsNothing：非 nil 空画像（全行注释）一个不装（而非
 // 全量），且给出原因告警——静默回退全量正是审查 M1 点名的陷阱。
@@ -214,9 +193,7 @@ func TestInstall_EmptyProfileInstallsNothing(t *testing.T) {
 	}
 }
 
-// TestInstall_SkillFilterExcludedByProfileWarns: --skill names an in-canonical skill the
-// profile excludes → the explicit request is dropped; a warning must say so, otherwise
-// the silent Total=0 is unexplainable (review M2).
+// TestInstall_SkillFilterExcludedByProfileWarns pins the warning when --skill names a profile-excluded skill.
 //
 // TestInstall_SkillFilterExcludedByProfileWarns：--skill 点名 canonical 内但被画像
 // 排除的 skill → 显式请求被丢弃；必须告警说明，否则 Total=0 无从解释（审查 M2）。
@@ -249,8 +226,7 @@ func TestInstall_SkillFilterExcludedByProfileWarns(t *testing.T) {
 	}
 }
 
-// TestDriftCheck_ProfileScopes: drift-check walks only profile skills in project scope —
-// excluded canonical skills are not this project's distribution, reporting them is noise.
+// TestDriftCheck_ProfileScopes: drift-check walks only profile skills in project scope — excluded canonical skills are not this project's distribution, reporting them is noise.
 //
 // TestDriftCheck_ProfileScopes：项目范围下 drift-check 只遍历画像内 skill——
 // 被排除的 canonical skill 不归本项目分发管，报告它们是噪声。

@@ -5,12 +5,6 @@ import "testing"
 // TestContextChannelDelivered 钉死每宿主通道判定表——checklog 送达章（Delivered/Channel）
 // 的唯一真相源。每行对应一个 emitXxxOutput 家族的实证语义（出处见 contextChannelDelivered
 // 各 case 注释）。改通道语义（如 kimi 新版本补齐 Stop 通道）须同步这张表与 hook.go。
-//
-// TestContextChannelDelivered pins the per-host channel table — the single source of truth
-// for checklog delivery stamps (Delivered/Channel). Each row mirrors the verified semantics
-// of one emitXxxOutput family member (see the per-case comments in contextChannelDelivered).
-// Changing channel semantics (e.g. a future kimi carrying Stop stdout) must update this table
-// together with hook.go.
 func TestContextChannelDelivered(t *testing.T) {
 	cases := []struct {
 		agent, event string

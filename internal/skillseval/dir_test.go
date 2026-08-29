@@ -1,17 +1,14 @@
 package skillseval
 
-// dir_test.go — resolution-priority chain + one-time legacy migration coverage.
+// dir_test.go — 解析优先级链 + 一次性旧路径迁移覆盖。
 //
-// The legacy tree built by these tests mirrors the real pre-namespace layout:
+// 测试构造的旧树镜像真实的命名空间前布局（见下）：
 //
 //	~/.pi/research/skill-eval/{cases/<s>.json, runs/<s>.jsonl, baselines.json}
 //	~/.pi/research/eval-<name>.md            (eval-gen --save checklists, sibling dir)
 //
-// dir_test.go — 解析优先级链 + 一次性旧路径迁移覆盖。
-//
-// 测试构造的旧树镜像真实的命名空间前布局（见上）。HOME 控制旧路径位置，
-// FORGE_DATA_HOME 控制新根位置，FORGE_EVAL_DIR 控制 env 覆盖——三者的优先级
-// 正是被测行为。
+// HOME 控制旧路径位置，FORGE_DATA_HOME 控制新根位置，FORGE_EVAL_DIR 控制 env
+// 覆盖——三者的优先级正是被测行为。
 
 import (
 	"os"
@@ -20,8 +17,6 @@ import (
 	"testing"
 )
 
-// isolateHome points HOME at a fresh temp dir (legacy paths resolve under it).
-//
 // isolateHome 把 HOME 指向全新临时目录（旧路径随之解析到其下）。
 func isolateHome(t *testing.T) string {
 	t.Helper()
@@ -31,8 +26,6 @@ func isolateHome(t *testing.T) string {
 	return home
 }
 
-// writeLegacyTree creates the pre-namespace layout under home and returns the legacy root.
-//
 // writeLegacyTree 在 home 下造命名空间前布局，返回旧 research 根。
 func writeLegacyTree(t *testing.T, home string) string {
 	t.Helper()
