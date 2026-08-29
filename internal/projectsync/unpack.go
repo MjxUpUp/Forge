@@ -155,7 +155,17 @@ func safeJoin(base, rel string) bool {
 		if seg == `..` || seg == `` {
 			return false
 		}
-		if len(seg) > 1 && seg[1] == ':' { // Windows drive letter (C:...)
+		// On Windows a colon in a segment is either a drive letter (C:) or an NTFS
+		// alternate data stream (file.json:stream) — the ADS form would let a bundle
+		// write content INTO a hidden stream of an allowlisted-looking file, invisible
+		// to WalkDir/StripNonAllowlisted, then ride the file-level move into the live
+		// DataDir. Reject ANY colon, both shapes.
+		//
+		// Windows 下段内冒号要么是盘符（C:）要么是 NTFS 备用数据流
+		//（file.json:stream）——ADS 形态会把内容写进看似合法文件的隐藏流，
+		// WalkDir/StripNonAllowlisted 不可见，随后随文件级 move 混进活 DataDir。
+		// 两种形态一并拒绝。
+		if strings.ContainsRune(seg, ':') {
 			return false
 		}
 	}

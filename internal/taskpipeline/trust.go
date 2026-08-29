@@ -191,4 +191,29 @@ func StripForeignGateSignals(s *TaskState) {
 	// Run 命令作为 spec 保留（交接需要带上「验什么」），但它们是外来作者的可执行字符串——打上
 	// 标记，使 verify-acceptance 在首次本机执行前要求显式的、基于审阅的受信（--trust-foreign）。
 	s.AcceptanceForeign = len(s.Acceptance) > 0
+	// Doc-review evidence is the ONLY input of the doc gate's L2 hard prerequisite
+	// (CheckDocGate reads state.DocReview freshness/Passed/score). Cross-machine sync
+	// carries the same commit hashes, so a foreign DocReview would satisfy the local
+	// doc gate with zero local re-verification — the same trust class as the
+	// ReviewPassed snapshot stripped at the top. DocReviewHistory (the round audit)
+	// follows it. (2026-08-29 review round: functional probe confirmed an
+	// attacker-attributed DocReview passed task-complete's doc gate via --untrusted
+	// import.)
+	//
+	// Doc-review 证据是 doc 门禁 L2 硬前置的唯一输入（CheckDocGate 读
+	// state.DocReview 的新鲜度/Passed/分数）。跨机同步携带相同 commit hash，外来
+	// DocReview 会在零本机重验的情况下满足本机 doc 门禁——与顶部剥离的
+	// ReviewPassed 快照同信任类。DocReviewHistory（轮次审计）随之剥离。
+	//（2026-08-29 审查轮：功能探针实证 attacker 署名的 DocReview 经 --untrusted
+	// 导入直接通过 task-complete 的 doc 门禁。）
+	s.DocReview = nil
+	s.DocReviewHistory = nil
+	// ReportedFindings pre-suppresses local advisories by fingerprint
+	// (advisory_dedup's filterUnreported drops anything already in the set) — a
+	// foreign-prefilled set mutes this machine's cheat-scan/unused-scan reports.
+	//
+	// ReportedFindings 按指纹预压制本机 advisory（advisory_dedup 的
+	// filterUnreported 丢弃集合中已存在的指纹）——外来预填集合会让本机的
+	// cheat-scan/unused-scan 报告静音。
+	s.ReportedFindings = nil
 }

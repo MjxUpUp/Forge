@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
@@ -132,11 +133,22 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// CommitHash comes from repo-committable content (decisions.md travels with the
+	// canonical tree; a hostile clone can hand-write any string there) — validate the
+	// hex shape and pass `--` so a `-`-prefixed value can never be read as a git option.
+	//
+	// CommitHash 来自可提交内容（decisions.md 随 canonical 树分发；恶意 clone 可在
+	// 其中手写任意字符串）——校验 hex 形态并加 `--` 分隔，`-` 开头的值绝不能被
+	// 读成 git 选项。
+	if !validCommitHash(target.CommitHash) {
+		return fmt.Errorf(`决策 %s 的 CommitHash %q 不是合法的 commit hex（7-64 位）——拒绝执行 git revert；该决策条目可能被手改/注入`, target.ID, target.CommitHash)
+	}
+
 	gitArgs := []string{`revert`}
 	if !skRevEdit {
 		gitArgs = append(gitArgs, `--no-edit`)
 	}
-	gitArgs = append(gitArgs, target.CommitHash)
+	gitArgs = append(gitArgs, `--`, target.CommitHash)
 	c := exec.Command(`git`, gitArgs...)
 	c.Dir = gitDir
 	c.Stdout = os.Stdout
@@ -202,6 +214,16 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 //
 // decisionsWithCommit 返回有 CommitHash 的决策（纯函数，便于测试）。无 commit 的决策
 // 无法精准 scoped revert，调用方据此过滤。
+// commitHashRe pins the git object-name shape (7-64 hex chars) before a decision's
+// CommitHash may be handed to `git revert`: decisions.md is repo-committable content
+// and a hostile clone can write any string there.
+//
+// commitHashRe 在决策的 CommitHash 交给 `git revert` 前钉死 git 对象名形态
+//（7-64 位 hex）：decisions.md 是可提交内容，恶意 clone 可在其中写任意字符串。
+var commitHashRe = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
+
+func validCommitHash(h string) bool { return commitHashRe.MatchString(h) }
+
 func decisionsWithCommit(decisions []skillsdecisions.SkillDecision) []skillsdecisions.SkillDecision {
 	var out []skillsdecisions.SkillDecision
 	for _, d := range decisions {

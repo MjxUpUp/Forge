@@ -270,7 +270,7 @@ func drainKimiAdvisories(root, sessionID string) string {
 		return ""
 	}
 
-	delivered := readKimiDeliveredSet(sessionID)
+	delivered := readKimiDeliveredSet(root, sessionID)
 	var texts []string
 	seen := map[string]bool{}
 	for _, line := range strings.Split(string(data), "\n") {
@@ -305,7 +305,7 @@ func drainKimiAdvisories(root, sessionID string) string {
 	for i, text := range texts {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, text)
 	}
-	appendKimiDeliveredSet(sessionID, texts)
+	appendKimiDeliveredSet(root, sessionID, texts)
 	return strings.TrimRight(b.String(), "\n")
 }
 
@@ -320,21 +320,25 @@ func kimiAdvisoryTextKey(text string) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
-// kimiDeliveredSetPath is the per-session delivered-set file in $TMPDIR —
-// ephemeral session state, NOT project data (it must not survive into the
-// DataDir's permanent runtime home; a new session re-delivers advisories whose
-// conditions still hold).
+// kimiDeliveredSetPath is the per-(project, session) delivered-set file in $TMPDIR —
+// ephemeral session state, NOT project data (it must not survive into the DataDir's
+// permanent runtime home; a new session re-delivers advisories whose conditions still
+// hold). The project tag keeps the same static-template advisory deliverable once per
+// project (a session that cd's across two projects would otherwise be silenced in the
+// second), mirroring readsFilePath's project bucket.
 //
-// kimiDeliveredSetPath 是 $TMPDIR 下按会话键控的 delivered 集合文件——临时
-// 会话态，**不是**项目数据（不得落进 DataDir 这个永久运行态 home；新会话对
-// 条件仍成立的 advisory 会重新投递）。
-func kimiDeliveredSetPath(sessionID string) string {
-	return filepath.Join(os.TempDir(), "forge-kimi-advisories", util.SanitizeSessionID(sessionID)+".delivered")
+// kimiDeliveredSetPath 是 $TMPDIR 下按（project, session）键控的 delivered 集合
+// 文件——临时会话态，**不是**项目数据（不得落进 DataDir 这个永久运行态 home；
+// 新会话对条件仍成立的 advisory 会重新投递）。project tag 使同一静态模板 advisory
+// 每个项目可投递一次（否则跨项目 cd 的会话在第二个项目被静音），镜像
+// readsFilePath 的 project 桶。
+func kimiDeliveredSetPath(root, sessionID string) string {
+	return filepath.Join(os.TempDir(), "forge-kimi-advisories", projectTagFor(root)+"-"+util.SanitizeSessionID(sessionID)+".delivered")
 }
 
-func readKimiDeliveredSet(sessionID string) map[string]bool {
+func readKimiDeliveredSet(root, sessionID string) map[string]bool {
 	set := map[string]bool{}
-	f, err := os.Open(kimiDeliveredSetPath(sessionID))
+	f, err := os.Open(kimiDeliveredSetPath(root, sessionID))
 	if err != nil {
 		return set
 	}
@@ -348,8 +352,8 @@ func readKimiDeliveredSet(sessionID string) map[string]bool {
 	return set
 }
 
-func appendKimiDeliveredSet(sessionID string, texts []string) {
-	path := kimiDeliveredSetPath(sessionID)
+func appendKimiDeliveredSet(root, sessionID string, texts []string) {
+	path := kimiDeliveredSetPath(root, sessionID)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return
 	}
