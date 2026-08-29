@@ -428,13 +428,23 @@ func countsAsScope(path string) bool {
 }
 
 // isTestPath reports whether path looks like a test file (same heuristic as taskpipeline.isTestFile).
-// Used to exclude test files in the scope dimension.
+// Used to exclude test files in the scope dimension. Directory detection is SEGMENT-exact
+// (test/tests/__tests__ as whole path segments), not substring: contest/, latest/, attest/
+// must not exempt production code from scope accounting (a registered escape hatch).
 //
 // isTestPath 报告 path 是否疑似测试文件（与 taskpipeline.isTestFile 同启发式）。
-// 用于在 scope 维度排除测试文件。
+// 用于在 scope 维度排除测试文件。目录判定按【路径段整段】匹配（test/tests/
+// __tests__）而非子串——contest/、latest/、attest/ 不得豁免生产代码的 scope 计量
+//（可注册逃逸区，2026-08-29 审查轮功能实证）。
 func isTestPath(path string) bool {
-	for _, pat := range []string{`_test.`, `_spec.`, `.test.`, `.spec.`, `test/`, `tests/`, `__tests__/`} {
-		if strings.Contains(path, pat) {
+	base := filepath.Base(path)
+	for _, pat := range []string{`_test.`, `_spec.`, `.test.`, `.spec.`} {
+		if strings.Contains(base, pat) {
+			return true
+		}
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
+		if seg == "test" || seg == "tests" || seg == "__tests__" {
 			return true
 		}
 	}

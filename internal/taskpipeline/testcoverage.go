@@ -456,10 +456,20 @@ func isSourceFile(path string) bool {
 
 // isTestFile reports whether path itself looks like a test file.
 //
-// isTestFile 报告 path 自身是否疑似测试文件。
+// isTestFile 报告 path 自身是否疑似测试文件。目录判定按【路径段整段】匹配
+//（test/tests/__tests__）而非子串——子串匹配把 contest/、latest/、attest/ 等
+// 生产目录整体判成测试目录，形成"豁免测试义务 + 逃出 cheat/unused 扫描 +
+// scope 评分不计改动量"的可注册逃逸区（2026-08-29 审查轮功能实证）。与
+// phase_detect.go 的 isTestPhasePath 同判据。
 func isTestFile(path string) bool {
-	for _, pat := range []string{"_test.", "_spec.", ".test.", ".spec.", "test/", "tests/", "__tests__/"} {
-		if strings.Contains(path, pat) {
+	base := filepath.Base(path)
+	for _, pat := range []string{"_test.", "_spec.", ".test.", ".spec."} {
+		if strings.Contains(base, pat) {
+			return true
+		}
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
+		if seg == "test" || seg == "tests" || seg == "__tests__" {
 			return true
 		}
 	}
