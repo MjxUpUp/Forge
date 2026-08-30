@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.47.0](https://github.com/MjxUpUp/Forge/compare/v1.46.0...v1.47.0) (2026-08-30)
+
+
+### Features
+
+* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 ([966f52b](https://github.com/MjxUpUp/Forge/commit/966f52b7725ad9685ba97fde7271350ed9cf94a7))
+* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 ([6a235d1](https://github.com/MjxUpUp/Forge/commit/6a235d1bd04e63c9ccc98ef874b6c55ee78d41ed))
+* **T1/T4/T7:** 锁收口 + 状态完整性签名 + 产品语义修正 ([b15e3ef](https://github.com/MjxUpUp/Forge/commit/b15e3efae398d40e1282795691ba7142b052bbef))
+* **T2:** 检测器黄金用例集 + 配对死条件修复 + untracked 源 + 批量 tracked ([1c292a7](https://github.com/MjxUpUp/Forge/commit/1c292a74096159c1a788d6e072238884724b613f))
+* **T3:** checklog 轮转 janitor + stamps 清理——active 无界增长结构性收口 ([3ae37a4](https://github.com/MjxUpUp/Forge/commit/3ae37a409398a52b2f3342738aa74fffed4c69c3))
+* **T8a:** 清理批 A——卸载通道分流/断言结构化/protocol 校验/决策转义/安装盲区 ([8f1afb9](https://github.com/MjxUpUp/Forge/commit/8f1afb93fd2e9e9bbdd085c2e2a379bf9af5840a))
+* **T8b:** 清理批 B——九项收尾：哨兵退出/死代码/session入口统一/跨仓依赖/白名单反转/git探测守卫/infra出口 ([631f3b7](https://github.com/MjxUpUp/Forge/commit/631f3b734d46b23c9ef701be1f6fdae75d1c0236))
+* **T9:** 性能簇——更新负缓存+短超时/funnel 分桶去重复解析/MoveFile 流式/空会话隔离 ([d13228e](https://github.com/MjxUpUp/Forge/commit/d13228ecb78265ac6d9300b3cbab18be5cec3f13))
+
+
+### Bug Fixes
+
+* **make:** premerge 交叉编译步加 CGO_ENABLED=0 ([893d588](https://github.com/MjxUpUp/Forge/commit/893d5885cedc51db9e2fb6bc196046cbf0c8f048))
+* **review-b1:** 两轮审查 B1 快速修复 28 项——静默降级补告警/Windows 平台修复/检测器小补 ([5483e20](https://github.com/MjxUpUp/Forge/commit/5483e20cfdd5f45e3c3a58dd3093a737b5edb489))
+* **review-b2-followup:** 修复 B2 引入的 e2e 回归——可执行脚本副本不可用 rename 原子写 ([32314b4](https://github.com/MjxUpUp/Forge/commit/32314b49d87e23db7f9a1e3f79586ccc27847c38))
+* **review-b2:** 数据丢失/原子写批次——用户资产全部改走 AtomicWrite + 读失败误判修复 ([b4ccd0a](https://github.com/MjxUpUp/Forge/commit/b4ccd0a70b1295b05bd17933429d5f13d3967136))
+* **review-b3:** 锁与并发批次——盖章路径入锁/串号覆盖中止/级联护史/锁身份自愈 ([506bc12](https://github.com/MjxUpUp/Forge/commit/506bc12b7e2868fc3a7955363d21dfd577dc2bef))
+* **review-b4:** 信任与安全批次——--untrusted 剥离补洞/注入面封堵/发版脚本加固 ([158ba63](https://github.com/MjxUpUp/Forge/commit/158ba63e8984075be886ec180bc142639588010a))
+* **review-b5-followup:** srclint 白名单补录注释体 catch 正则 ([70fc13a](https://github.com/MjxUpUp/Forge/commit/70fc13ac71ed190f8ce2c10353b92cdf33a0a44b))
+* **review-b5/b6:** 检测器批次 + 产品语义——消 contest/ 逃逸区/补 Go 族检测/init 自伤修复 ([e4f45b0](https://github.com/MjxUpUp/Forge/commit/e4f45b0489bcd48fcc073fc8e05990d66547ad14))
+* **skills:** review 修复——notes 入库（C1）+ 悬空指针清零（C2）+ 漏迁条件块迁出（C3） ([4f01b25](https://github.com/MjxUpUp/Forge/commit/4f01b25e0d08f687669fb5449fc4b239dae63634))
+
 ## [1.46.0](https://github.com/MjxUpUp/Forge/compare/v1.45.4...v1.46.0) (2026-08-28)
 
 
