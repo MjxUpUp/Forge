@@ -475,11 +475,11 @@ esac
 # Not a source code file — allow
 printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || exit 0
 
-# Session-marker bootstrap（在 test/源码分流之前：两个分支都要写计数/FYI 标记）。
-# dogfood 5.1：session-level source-touched marker. Setting it (when task-guard
-# has confirmed FILE_PATH is source code) lets auto-compile + bash-guard
-# distinguish research-only sessions from dev sessions. Per-session, keyed by
-# FORGE_SESSION_ID.
+# Session-marker bootstrap（在 test/源码分流之前：测试分支也要写计数，bootstrap
+# 须前移到分流之前；有活跃任务时两个分支都不写新标记）。dogfood 5.1：session-level
+# source-touched marker. Setting it (when task-guard has confirmed FILE_PATH is
+# source code) lets auto-compile + bash-guard distinguish research-only sessions
+# from dev sessions. Per-session, keyed by FORGE_SESSION_ID.
 : "${TMPDIR:=/tmp}"
 _SESSION_ID="${FORGE_SESSION_ID:-default}"
 # Session-marker root: FORGE_DATA_DIR first (injected by the Go layer — forge's
@@ -513,9 +513,9 @@ find "$_MARKER_DIR" -maxdepth 1 -type f -name 'forge-*' -mtime +7 -delete 2>/dev
 # Test files — always allow (TDD workflow), but anchored: vNext P0-4 豁免≠不可见。
 # 2026-08-30 事故里两个 _test.go 修复文件在无任务会话连 advisory 都未触发（本
 # 检查先于一切 no-task 逻辑直接 exit 0）。放行语义不变；补一次性 FYI + 每会话
-# 编辑计数（forge-test-edits-<session>，coverage 统计/审计数据源）。FYI 仅在
-# 非提升宿主输出——其文案带 [task-guard] 谓词，提升宿主（exit-2 语义）会把
-# FYI 误变成对测试编辑的阻断。
+# 编辑计数（forge-test-edits-<session>，coverage 统计/审计数据源）。FYI 用独立
+# [task-anchor] 谓词（主屏障——不会被 task-guard 的提升规则命中）且提升宿主
+# 跳过输出（第二重保险——exit-2 语义下提示性文案不该出现），双保险防误阻断。
 if printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)'; then
   if [ -z "$TASK_REF" ]; then
     _TEST_CNT="${_MARKER_DIR}/forge-test-edits-${_SESSION_ID}"

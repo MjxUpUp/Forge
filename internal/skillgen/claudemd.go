@@ -110,7 +110,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	// task workflow——最关键的操作指引，防止 agent 不知所措地撞上
 	// task-guard/bash-guard 拦截。
 	sb.WriteString("## Task 工作流（必读）\n\n")
-	sb.WriteString("**源码变更前必须启动 Forge 任务**——无任务时 Write/Edit 源码触发 task-guard 警告（多数宿主 WARN 不拦截；dsh 宿主提升为阻断，kimi 已退役 promote 改走 advisory 队列攒发），但 Bash 写源码（sed/cat > 等）会被 file-sentinel quarantine。更关键：脱离任务的变更不被门禁追踪和质量评分。纯文档、单行 typo 修复、版本号 bump 除外。\n\n")
+	sb.WriteString("**源码变更前必须启动 Forge 任务**——无任务时 Write/Edit 源码触发 task-guard 警告（多数宿主 WARN 不拦截；dsh/zcode 宿主提升为阻断（双事故实证），kimi 已退役 promote 改走 advisory 队列攒发），但 Bash 写源码（sed/cat > 等）会被 file-sentinel quarantine。更关键：脱离任务的变更不被门禁追踪和质量评分。纯文档、单行 typo 修复、版本号 bump 除外。\n\n")
 	sb.WriteString("### 启动任务\n\n")
 	sb.WriteString("```bash\n")
 	sb.WriteString("# 在 master/main 上：创建新分支 + 启动任务\n")
@@ -147,7 +147,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 
 	sb.WriteString("### 安全机制\n\n")
 	sb.WriteString("- **freeze-guard**（PreToolUse Write|Edit）：`forge freeze` 激活期间只允许写指定路径内文件，越界即硬阻断（`FAIL`）；`forge freeze --status` 看冻结范围，`--off` 解除。排在 task-guard 之前判定（freeze 优先契约）\n")
-	sb.WriteString("- **task-guard**（PreToolUse Write|Edit）：无任务时 Write/Edit 源码 WARN（dsh 宿主提升为阻断，kimi 经 advisory 队列送达；`.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在）；feature 分支无任务时自动建任务\n")
+	sb.WriteString("- **task-guard**（PreToolUse Write|Edit）：无任务时 Write/Edit 源码 WARN（dsh/zcode 宿主提升为阻断，kimi 经 advisory 队列送达；`.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在）；feature 分支无任务时自动建任务\n")
 	sb.WriteString("- **read-before-edit**（PreToolUse Write|Edit，活跃任务内）：编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库。先 Read 再 Edit。豁免：新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。reads-log 落盘随会话存活，压缩后仍累计\n")
 	sb.WriteString("- **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件只 WARN（源码随后可能被 file-sentinel quarantine）\n")
 	sb.WriteString("- **hazard-guard**（PreToolUse Bash）：高危命令（`rm -rf` 深目录/盘根/引号包裹逃逸等指纹）硬阻断，须 human-in-the-loop 确认——授权判定：用户本回合已明确指令/确认过该操作则直接 `forge hazard confirm --last` 放行一次（无需二次确认），否则先用所在工具的提问确认机制向用户说明风险获确认再 confirm；误报可 `forge hazard status` 查看\n")
