@@ -293,9 +293,9 @@ type HookBlockError struct {
 func (e *HookBlockError) Error() string { return e.Reason }
 
 // promoteAdvisory 报告给定 hook 的 advisory（passed=true、detail 非空）结果在给定宿主上
-// 是否应提升为阻断。各 hook 的规则住在 hostcap 注册表（PromoteAdvisory 列——现仅
-// dsh：其通道经 agent.inject 送达但 task-guard advisory 被实证无视——2026-08-22，见
-// dsh 注册表行；kimi 的规则已于 2026-08-24 退役，改为 pending 队列 +
+// 是否应提升为阻断。各 hook 的规则住在 hostcap 注册表（PromoteAdvisory 列——
+// dsh 2026-08-22 与 zcode 2026-08-30 双事故实证入列：通道送达但 task-guard
+// advisory 被实证无视，见各注册表行；kimi 的规则已于 2026-08-24 退役，改为 pending 队列 +
 // UserPromptSubmit 攒发，见 hook_kimi_advisory.go）。规则是声明式
 // Contains/Excludes 对（非裸名字白名单），因为每个 hook 在同一 hook 名下同时发
 // advisory 分支与成功/干净分支——名字白名单会过度阻断（task-guard 的

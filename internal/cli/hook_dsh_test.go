@@ -343,7 +343,7 @@ func TestHook_TaskGuardAdvisorySpectrumOnClaude(t *testing.T) {
 // forge_agent:"zcode" → task-guard advisory 被提升 → 阻断（exit 2），reason 为
 // 指令式文案且带修复命令。
 func TestHook_ZcodeTaskGuardNoTaskBlocks(t *testing.T) {
-	newTaskGuardProject(t)
+	root := newTaskGuardProject(t)
 	sess := fmt.Sprintf("zcode-e2e-%d", time.Now().UnixNano())
 
 	for i := 1; i <= 2; i++ {
@@ -369,6 +369,21 @@ func TestHook_ZcodeTaskGuardNoTaskBlocks(t *testing.T) {
 	}
 	if stdout != "" {
 		t.Errorf("test-file FYI must be skipped on promoted hosts (exit-2 semantics), got stdout %q", stdout)
+	}
+	// F9（P0 审查）：审计数据全宿主、可见性分宿主——FYI 被跳过但编辑计数仍落盘
+	//（计数在 promoted 守卫之外，是 coverage/审计的数据源，不随提示静默而丢）。
+	entries2, derr := os.ReadDir(filepath.Join(forgedata.DataDirFor(root), "markers"))
+	if derr != nil {
+		t.Fatalf("read markers dir: %v", derr)
+	}
+	found := false
+	for _, e := range entries2 {
+		if strings.HasPrefix(e.Name(), "forge-test-edits-") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("test-edit counter must be written even on promoted hosts (audit data is host-uniform), markers dir %s", filepath.Join(forgedata.DataDirFor(root), "markers"))
 	}
 }
 
@@ -414,6 +429,11 @@ func TestHook_TaskGuardTestFileAnchoring(t *testing.T) {
 		}
 		if strings.HasPrefix(e.Name(), "forge-taskguard-ignores-") {
 			t.Errorf("test-file edits must not feed the source ignore counter, found %s", e.Name())
+		}
+		// F5（P0 审查）：marker bootstrap 前移不得改变 source-touched 语义——
+		// 测试文件编辑永远不置 source-touched（research-only 判定输入）。
+		if strings.HasPrefix(e.Name(), "forge-source-touched-") {
+			t.Errorf("test-file edits must never set the source-touched marker, found %s", e.Name())
 		}
 	}
 	if testCnt != 1 {
