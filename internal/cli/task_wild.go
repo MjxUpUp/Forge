@@ -87,9 +87,13 @@ func runTaskWild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	n := countWildDeclarations(dir, entry.Session)
+	scope := "本会话"
+	if entry.Session == "" {
+		scope = "本机累计（无会话身份——宿主未注入 session，所有匿名申报共享计数）"
+	}
 	fmt.Fprintf(cmd.OutOrStdout(),
-		"已记录野外申报（第 %d 条，本会话）：%s\n分支 %s @ %s；审计可经 wild/declarations.jsonl 回溯。\n",
-		n, note, entry.Branch, shortHead(entry.Head))
+		"已记录野外申报（第 %d 条，%s）：%s\n分支 %s @ %s；审计可经 wild/declarations.jsonl 回溯。\n",
+		n, scope, note, entry.Branch, shortHead(entry.Head))
 	return nil
 }
 

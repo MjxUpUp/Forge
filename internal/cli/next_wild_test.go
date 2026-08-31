@@ -139,6 +139,11 @@ func TestTaskWildDeclaresAndCounts(t *testing.T) {
 	if !strings.Contains(out1, "第 1 条") || !strings.Contains(out2, "第 2 条") {
 		t.Errorf("会话计数应递增（1→2），got %q / %q", out1, out2)
 	}
+	// 本测试环境无宿主注入的 session id——空会话必须如实标注"本机累计"而非冒称
+	// 本会话（P2 收尾 F7：所有匿名申报共享计数，文案不得误导）。
+	if !strings.Contains(out1, "本机累计") {
+		t.Errorf("空会话计数的 scope 文案应为「本机累计（无会话身份…）」, got %q", out1)
+	}
 
 	data, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(root), "wild", "declarations.jsonl"))
 	if err != nil {
