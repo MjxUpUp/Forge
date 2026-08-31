@@ -50,6 +50,7 @@ type enforcementReport struct {
 	} `json:"task_guard"`
 	EscalatedSessions int         `json:"escalated_sessions"` // ignores≥2 的会话数（无视升档）
 	MaxIgnores        int         `json:"max_ignores"`        // 单会话无视计数峰值
+	WindowViolations  int         `json:"window_violations"`  // 缓冲窗口超时未补救的会话数（违规记录）
 	TestEditSessions  int         `json:"test_edit_sessions"` // _test.go 无任务编辑的会话数
 	TestEditTotal     int         `json:"test_edit_total"`
 	WildDeclarations  int         `json:"wild_declarations"`
@@ -146,6 +147,7 @@ func buildEnforcementReport(root, dataDir string) enforcementReport {
 			rep.EscalatedSessions++
 		}
 	}
+	rep.WindowViolations = len(readMarkerCounts(dataDir, "forge-taskguard-violation-"))
 	tests := readMarkerCounts(dataDir, "forge-test-edits-")
 	for _, n := range tests {
 		rep.TestEditTotal += n
