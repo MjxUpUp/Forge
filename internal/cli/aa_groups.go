@@ -67,6 +67,8 @@ func init() {
 	reviewCmd.GroupID = "quality"
 	healthCmd.GroupID = "quality"
 	dashboardCmd.GroupID = "quality"
+	// 单命令引导（vNext P1）：任务质量链路的 pull 侧入口——与 task/review 同组。
+	nextCmd.GroupID = "quality"
 	// 文档产物可读性约束（L1 lint；doc gate 的执法在 task complete pre-flight）。
 	docsCmd.GroupID = "quality"
 

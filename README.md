@@ -268,6 +268,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | 命令 | 说明 |
 |------|------|
 | `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-verify/task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理 |
+| `forge next [--json]` | 单命令引导：从 git/任务状态推导**恰好一条**下一步命令+理由（无任务有脏树→task start/wild 申报；门禁链→下一步命令：implement→验收实跑→verify→review pass→complete 门→complete）。agent 不自选下一步——pull 侧引导与 push 侧 hook 执法互补 |
+| `forge task wild "<说明>"` | 野外动作申报：任务管道外的显式留痕出口（比静默绕过诚实、比强制建任务轻）。记会话/分支/HEAD/是否已有任务到 `wild/declarations.jsonl`，累计计数供审计回溯（vNext INV-1 的合法出口之一） |
 | `forge task status` | 查看当前任务门禁状态 |
 | `forge task list` | 列出所有任务 |
 | `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |

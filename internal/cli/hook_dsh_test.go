@@ -34,7 +34,7 @@ func TestPromoteDshTaskGuardAdvisory(t *testing.T) {
 		{"no-task advisory (promote)", "task-guard", true, "[task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch.", true},
 		{"legacy advisory wording (promote)", "task-guard", true, "[task-guard] No active task. Source changes are allowed but not tracked by a Forge task.", true},
 		{"v2 advisory wording (promote)", "task-guard", true, "[task-guard] Untracked source edit — no active task. Why:", true},
-		{"v2 escalation wording (promote)", "task-guard", true, "[task-guard] Second untracked source edit — stop editing and start a task first:", true},
+		{"v2 escalation wording (promote)", "task-guard", true, "[task-guard] Second untracked source edit — stop editing and pick an exit first:", true},
 		{"auto-create success path (must NOT)", "task-guard", true, "[task-guard] Auto-created task 'feat/x' from branch. Source changes tracked.", false},
 		{"bare PASS (empty detail)", "task-guard", true, "", false},
 		{"already blocked (no double-flip)", "task-guard", false, "[task-guard] No active task.", false},
