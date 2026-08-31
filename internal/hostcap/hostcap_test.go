@@ -253,7 +253,7 @@ func TestZcodeTaskGuardPromotion(t *testing.T) {
 		want         bool
 	}{
 		{"task-guard", "[task-guard] Untracked source edit — no active task. Why:", true},
-		{"task-guard", "[task-guard] Second untracked source edit — stop editing and start a task first:", true},
+		{"task-guard", "[task-guard] Second untracked source edit — stop editing and pick an exit first:", true},
 		{"task-guard", "[task-guard] No active task. Source edit DENIED until one exists — run: forge task start ...", true},
 		{"task-guard", "[task-guard] Auto-created task 'feat/x' from branch. Source changes tracked.", false}, // success path
 		{"task-anchor", "[task-anchor] FYI: test-file edits without an active task", false},                   // test-file FYI never promotes (own tag)
