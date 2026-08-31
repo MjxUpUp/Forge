@@ -74,6 +74,8 @@ func init() {
 
 	// skill 治理（experience/knowledge 经验闭环已移除）
 	skillsCmd.GroupID = "governance"
+	// 执法健康报告与随机审计（vNext P2 审计层——S3* 独立通道，只读聚合）
+	enforcementCmd.GroupID = "governance"
 
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
 	hazardCmd.GroupID = "integrate"
