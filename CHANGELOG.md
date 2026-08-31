@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.48.0](https://github.com/MjxUpUp/Forge/compare/v1.47.0...v1.48.0) (2026-08-31)
+
+
+### Features
+
+* **cli:** vNext P1 pull 侧引导——forge next 单命令 + task wild 申报 + 文案接线 ([5005f78](https://github.com/MjxUpUp/Forge/commit/5005f78c5821b599a9b7427bd431b0ff86e88725))
+* **cli:** vNext P2 审计层——forge enforcement 报告+随机审计+双环/降格信号 ([649a314](https://github.com/MjxUpUp/Forge/commit/649a3141103c6cb761ce9223f1d11ccbd12b305e))
+* **hooks:** task-guard 执法谱系 v2——无视计数器+zcode 提升+测试锚定 ([565c2c5](https://github.com/MjxUpUp/Forge/commit/565c2c563195b9a9af9c2662dcab47e9623fd914))
+* **registry:** gc 回收孤儿项目数据目录+测试夹具隔离 ([1282cef](https://github.com/MjxUpUp/Forge/commit/1282cef875d87a7841ef91374e85e0346bb498fa))
+* **task:** vNext P3 三段工件分层 + task-guard 缓冲窗口状态机 ([a5ff2d1](https://github.com/MjxUpUp/Forge/commit/a5ff2d199be929882112ec49639eedc13c6bf843))
+
+
+### Bug Fixes
+
+* **cli:** enforcement 审查收口——全量 checklog/降格降噪/空会话不 join/错误告警 ([903937e](https://github.com/MjxUpUp/Forge/commit/903937eceda47066a4e064efb06bee81bce8fa44))
+* **cli:** next 决策表对齐真实门禁链（P1 审查 FAIL 修正） ([1249dc2](https://github.com/MjxUpUp/Forge/commit/1249dc2bd9478bba7608d5df69f348f421c49e1c))
+* **hooks:** P0 审查收口——dsh-only 陈旧注释/文档同步+不变量补钉 ([1220645](https://github.com/MjxUpUp/Forge/commit/12206456018aca336dcbae1a400d9ede1b46f04f))
+* **registry:** gc dry-run 汇总报计划处置数+Keys godoc 英文首句 ([c137ca4](https://github.com/MjxUpUp/Forge/commit/c137ca4a006d2c4c102be7a5936bb3b344dac4b9))
+* **task:** P3 审查收口——锁内变更/校验前置/wild 清计数/ID 基准/启发式范围 ([717e53d](https://github.com/MjxUpUp/Forge/commit/717e53dbbf450ccb4b95fcf9ca28cbf80f307674))
+
 ## [1.47.0](https://github.com/MjxUpUp/Forge/compare/v1.46.0...v1.47.0) (2026-08-30)
 
 
