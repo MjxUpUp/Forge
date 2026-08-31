@@ -269,6 +269,17 @@ func resolveOriginTool(root, explicit string) string {
 }
 
 func runTaskStart(cmd *cobra.Command, args []string) error {
+	// --invariant 校验前置到一切副作用之前（P3 审查 #2）：原位置在 --branch 切分支
+	// 与 --worktree 之后，非法 invariant 报错时分支已建且重试带 --branch 会因
+	// "can only be used on main/master" 失败——校验必须发生在任何状态改变前。
+	if invRaw, _ := cmd.Flags().GetStringArray("invariant"); len(invRaw) > 0 {
+		for _, v := range invRaw {
+			if err := validateInvariant(v); err != nil {
+				return err
+			}
+		}
+	}
+
 	root, err := findProjectRoot()
 	if err != nil {
 		return err
@@ -373,6 +384,17 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// verify-acceptance 据此实跑回扣。空则无验收标准（不影响流程）。
 	if acceptRaw, _ := cmd.Flags().GetStringArray("accept"); len(acceptRaw) > 0 {
 		state.Acceptance = taskpipeline.ParseAcceptance(acceptRaw)
+	}
+
+	// 析出不变量（vNext P3 三段工件之 instrument 段）：声明期校验（必须可执行），
+	// 追加进 Acceptance——机器对账/freshness/complete pre-flight 全复用既有机制。
+	if invRaw, _ := cmd.Flags().GetStringArray("invariant"); len(invRaw) > 0 {
+		for _, v := range invRaw {
+			if err := validateInvariant(v); err != nil {
+				return err
+			}
+		}
+		state.Acceptance = append(state.Acceptance, taskpipeline.ParseAcceptance(invRaw)...)
 	}
 
 	// 持久化 PlanScope（开工前声明的计划改动白名单）：把规划前置变成可度量契约，

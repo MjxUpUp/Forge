@@ -30,6 +30,11 @@ import (
 // → fail-open 放行 + 警告：amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
 // （可达则严、不可达则松的非对称是设计本意）。
 func checkCompleteReviewPrereqs(root string, state *TaskState) error {
+	// checklist 硬门禁（vNext P3，设计 M5/M6）：勾选状态即进度——未全勾不是完成。
+	// 与 LoopSpec tracked-node 同语义：report 写完不算 done，checkbox 才算。
+	if undone := state.UntickedChecklist(); len(undone) > 0 {
+		return GateBlocked("task-complete requires every checklist item ticked: 未勾 %d 项（首项 #%d %q）——勾选即进度（forge task checklist tick <id>；确认不需要的项先 drop），HARD stop", len(undone), undone[0].ID, truncateAcceptanceOutput(undone[0].Desc))
+	}
 	if !state.ReviewPassed {
 		return GateBlocked("task-complete requires code-review-gate: 派只读子 agent 审查当前 diff 后运行 `forge review pass`（HARD stop，非提醒）")
 	}
