@@ -269,6 +269,9 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 |------|------|
 | `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-verify/task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理 |
 | `forge next [--json]` | 单命令引导：从 git/任务状态推导**恰好一条**下一步命令+理由（无任务有脏树→task start/wild 申报；门禁链→下一步命令：implement→验收实跑→verify→review pass→complete 门→complete）。agent 不自选下一步——pull 侧引导与 push 侧 hook 执法互补 |
+| `forge task intent "<注记>"` | 追加意图注记（三段工件之 intent 段）：append-only——没有覆写/删除入口，意图历史即决策史，防轮次重写导致的语义漂移（rot） |
+| `forge task checklist add/tick/drop` | 操作对账单（checklist 段）：勾选即进度、断点存活，task-complete 硬门禁要求全勾（report 写完不算 done，checkbox 才算） |
+| `forge task start --invariant "run :: expected"` | 析出不变量（instrument 段）：声明期校验必须是可执行命令（叙述性约束被拒并指引降级到 checklist/intent），映射进验收标准——机器对账/freshness/complete 前置全覆盖 |
 | `forge task wild "<说明>"` | 野外动作申报：任务管道外的显式留痕出口（比静默绕过诚实、比强制建任务轻）。记会话/分支/HEAD/是否已有任务到 `wild/declarations.jsonl`，累计计数供审计回溯（vNext INV-1 的合法出口之一） |
 | `forge task status` | 查看当前任务门禁状态 |
 | `forge task list` | 列出所有任务 |
@@ -316,7 +319,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge review pass [--ref <ref>] [--note <文本>] [--acknowledge-changes]` | 标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）；--note 审查结论文本记入 ReviewRound/stamp 与 checklog 审计留痕；距上次基线有源码变更时裸 pass 会被拒——须 --note 记复审结论，或 --acknowledge-changes 显式自我承担（记 WARN 级 self-refresh 审计） |
 | `forge review gate` | 判定当前是否需要审查（Stop hook 调用；exit 0=放行，1=需审 block） |
 | `forge review status` | 显示当前审查状态 |
-| `forge enforcement [--sample N] [--json]` | 执法健康报告（只读聚合 checklog+会话 markers+野外申报）：task-guard advisory/blocked 计数、无视升档会话、无任务测试编辑、wild 申报数；双环信号（升档超阈→审查规则本身而非加码执法）与降格信号（提升规则零阻断零升档→zombie rule 复审）。`--sample N` 随机抽已完成任务 join 其会话遥测——"无视升档仍完成且未被阻断"样本标强制复盘（无灾≠安全）；随机化使审计不可预演 |
+| `forge enforcement [--sample N] [--json]` | 执法健康报告（只读聚合 checklog+会话 markers+野外申报）：task-guard advisory/blocked 计数、无视升档会话、缓冲窗口超时违规（升档后 3 次编辑窗口内未补救——建任务或 wild 申报——则落违规记录）、无任务测试编辑、wild 申报数；双环信号（升档超阈→审查规则本身而非加码执法）与降格信号（提升规则零阻断零升档→zombie rule 复审）。`--sample N` 随机抽已完成任务 join 其会话遥测——"无视升档仍完成且未被阻断"样本标强制复盘（无灾≠安全）；随机化使审计不可预演 |
 
 **高危命令 human-in-the-loop**：`forge hazard` 让高危命令拦截从 session 级 skill 变成 always-on 自动挡——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 获用户明确确认 → `forge hazard confirm` 登记 5min 限时标记 → 重试放行。HITL 而非硬 block：合法高危操作（删 build 产物）确认后能继续；`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用），confirm 链是唯一放行路径。
 
