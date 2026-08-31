@@ -182,6 +182,32 @@ func List() []string {
 	return out
 }
 
+// Keys returns the registered project keys, excluding entries whose path no
+// longer exists——与 List 同存在性语义：只有 IsNotExist 算消失，其他 stat 错误按存在
+// 保留，防权限抖动把活项目判成孤儿。
+// 只读不写（无 List 的惰性精简副作用）——供 registry gc 判定 <home>/projects/<key>
+// 孤儿数据目录：不在集合内的 key 才是 gc 候选。
+func Keys() []string {
+	f, ok := readFile()
+	if !ok {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, e := range f.Projects {
+		if _, err := os.Stat(filepath.Clean(e.Path)); err != nil && os.IsNotExist(err) {
+			continue
+		}
+		k := keyOf(e)
+		if k == `` || seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	return out
+}
+
 // writeEntries 原子写注册表，走 util.AtomicWrite（临时文件 + fsync + rename，含
 // Windows rename 重试）——os.WriteFile 整文件覆盖非原子，写到一半崩溃/断电会留下
 // 截断的损坏 JSON（让读整个失败）；rename 是原子的（Windows 上 Go os.Rename 走
