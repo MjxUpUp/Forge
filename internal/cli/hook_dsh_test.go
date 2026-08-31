@@ -333,6 +333,17 @@ func TestHook_TaskGuardAdvisorySpectrumOnClaude(t *testing.T) {
 	if stdout != "" {
 		t.Errorf("third edit must be silent (anti-spam), got stdout %q", stdout)
 	}
+
+	// 跨会话隔离（P2 收尾，P0 审查 F6）：新会话从零计数——回到三段式首条文案，
+	// 而非继承旧会话的计数（去噪/计数都按会话键控，并发会话互不串扰）。
+	sess2 := fmt.Sprintf("claude-e2e2-%d", time.Now().UnixNano())
+	stdout, _, err = runTaskGuardHookOnce(t, ``, sess2)
+	if err != nil {
+		t.Fatalf("new session first edit must stay allowed, got %v", err)
+	}
+	if !strings.Contains(stdout, "Untracked source edit") || strings.Contains(stdout, "Second untracked") {
+		t.Errorf("new session must restart at the first-copy advisory, got %q", stdout)
+	}
 }
 
 // TestHook_ZcodeTaskGuardNoTaskBlocks 是 zcode 的事件回归测试（2026-08-30：一个
