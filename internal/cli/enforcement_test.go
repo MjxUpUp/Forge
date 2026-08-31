@@ -34,9 +34,10 @@ func seedEnforcementFixture(t *testing.T) (string, string) {
 		t.Fatal(err)
 	}
 	for name, val := range map[string]string{
-		"forge-taskguard-ignores-sessA": "3",
-		"forge-taskguard-ignores-sessB": "1",
-		"forge-test-edits-sessA":        "2",
+		"forge-taskguard-ignores-sessA":   "3",
+		"forge-taskguard-ignores-sessB":   "1",
+		"forge-test-edits-sessA":          "2",
+		"forge-taskguard-violation-sessA": "5",
 	} {
 		if err := os.WriteFile(filepath.Join(mk, name), []byte(val), 0o644); err != nil {
 			t.Fatal(err)
@@ -109,6 +110,9 @@ func TestEnforcementReportAggregates(t *testing.T) {
 	}
 	if rep.TestEditTotal != 2 || rep.TestEditSessions != 1 {
 		t.Errorf("测试编辑 %d 次/%d 会话, want 2/1", rep.TestEditTotal, rep.TestEditSessions)
+	}
+	if rep.WindowViolations != 1 {
+		t.Errorf("窗口超时违规会话 = %d, want 1（sessA）", rep.WindowViolations)
 	}
 	if rep.WildDeclarations != 2 {
 		t.Errorf("野外申报 = %d, want 2", rep.WildDeclarations)
