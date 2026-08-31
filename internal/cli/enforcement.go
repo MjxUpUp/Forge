@@ -130,6 +130,12 @@ func buildEnforcementReport(root, dataDir string) enforcementReport {
 			rep.TaskGuard.Blocked++
 		}
 	}
+	// 数据形态实证（2026-08-31 dogfood，本项目真实 checklog 零 task-guard 行）：
+	// shouldRecordCheck 只记脚本 FAIL 与 scoring 检查的 PASS——task-guard 的
+	// advisory 结果（脚本 exit 0 + WARN）从不进 checklog，生产上 Advisory 计数
+	// 恒 0。advisory 遥测的第一来源是 markers 的无视/测试编辑计数器（下方），
+	// 双环信号也只依赖 markers；Advisory 字段保留是为 FAIL 提升路径（hook.go 记
+	// Passed=true + Level=advisory 的那类）与未来日志策略变化留的直读位。
 
 	ignores := readMarkerCounts(dataDir, "forge-taskguard-ignores-")
 	for _, n := range ignores {
