@@ -182,8 +182,9 @@ func List() []string {
 	return out
 }
 
-// Keys 返回已登记项目的 key 集合（路径已消失的条目除外——与 List 同存在性语义：
-// 只有 IsNotExist 算消失，其他 stat 错误按存在保留，防权限抖动把活项目判成孤儿）。
+// Keys returns the registered project keys, excluding entries whose path no
+// longer exists——与 List 同存在性语义：只有 IsNotExist 算消失，其他 stat 错误按存在
+// 保留，防权限抖动把活项目判成孤儿。
 // 只读不写（无 List 的惰性精简副作用）——供 registry gc 判定 <home>/projects/<key>
 // 孤儿数据目录：不在集合内的 key 才是 gc 候选。
 func Keys() []string {

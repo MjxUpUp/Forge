@@ -163,6 +163,7 @@ func runRegistryGc(cmd *cobra.Command, _ []string) error {
 		switch c.kind {
 		case "empty":
 			if !prune {
+				removed++ // 演练计“计划删除”，与 --prune 的“已删除”共用计数（汇总行在两种模式下语义各自成立）
 				fmt.Fprintf(w, "  · %s（空目录树，将删除）\n", c.key)
 				continue
 			}
@@ -175,6 +176,7 @@ func runRegistryGc(cmd *cobra.Command, _ []string) error {
 			fmt.Fprintf(w, "  ✎ 已删除空目录 %s\n", c.key)
 		case "stale":
 			if !prune {
+				backed++ // 演练计“计划移入备份”，同 empty 的计数策略
 				fmt.Fprintf(w, "  · %s（过期，%d 文件 %s，最新活动 %s，将移入备份）\n",
 					c.key, c.files, humanBytes(c.bytes), c.newest.Format("2006-01-02"))
 				continue
