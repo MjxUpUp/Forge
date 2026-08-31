@@ -316,6 +316,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge review pass [--ref <ref>] [--note <文本>] [--acknowledge-changes]` | 标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）；--note 审查结论文本记入 ReviewRound/stamp 与 checklog 审计留痕；距上次基线有源码变更时裸 pass 会被拒——须 --note 记复审结论，或 --acknowledge-changes 显式自我承担（记 WARN 级 self-refresh 审计） |
 | `forge review gate` | 判定当前是否需要审查（Stop hook 调用；exit 0=放行，1=需审 block） |
 | `forge review status` | 显示当前审查状态 |
+| `forge enforcement [--sample N] [--json]` | 执法健康报告（只读聚合 checklog+会话 markers+野外申报）：task-guard advisory/blocked 计数、无视升档会话、无任务测试编辑、wild 申报数；双环信号（升档超阈→审查规则本身而非加码执法）与降格信号（提升规则零阻断零升档→zombie rule 复审）。`--sample N` 随机抽已完成任务 join 其会话遥测——"无视升档仍完成且未被阻断"样本标强制复盘（无灾≠安全）；随机化使审计不可预演 |
 
 **高危命令 human-in-the-loop**：`forge hazard` 让高危命令拦截从 session 级 skill 变成 always-on 自动挡——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 获用户明确确认 → `forge hazard confirm` 登记 5min 限时标记 → 重试放行。HITL 而非硬 block：合法高危操作（删 build 产物）确认后能继续；`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用），confirm 链是唯一放行路径。
 
