@@ -1268,7 +1268,7 @@ func newContinuityID(prefix string) string {
 }
 
 // IntentEntry 是 intent 段的一条追加式注记（vNext P3）。只有追加入口
-//（cli forge task intent），没有覆写/删除入口——意图的历史即决策史。
+// （cli forge task intent），没有覆写/删除入口——意图的历史即决策史。
 type IntentEntry struct {
 	TS      time.Time `json:"ts"`
 	Text    string    `json:"text"`

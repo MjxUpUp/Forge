@@ -33,19 +33,19 @@ func runIntentCmd(cmd *cobra.Command, args []string) error {
 	if text == "" {
 		return fmt.Errorf("intent 注记不能为空（写 why/约束背景，给人审读）")
 	}
-	st, root, err := loadActiveTaskForMutation()
-	if err != nil {
+	n := 0
+	if err := mutateActiveTask(func(st *taskpipeline.TaskState) error {
+		st.IntentLog = append(st.IntentLog, taskpipeline.IntentEntry{
+			TS:      time.Now(),
+			Text:    text,
+			Session: taskpipeline.CurrentSessionID(),
+		})
+		n = len(st.IntentLog)
+		return nil
+	}); err != nil {
 		return err
 	}
-	st.IntentLog = append(st.IntentLog, taskpipeline.IntentEntry{
-		TS:      time.Now(),
-		Text:    text,
-		Session: taskpipeline.CurrentSessionID(),
-	})
-	if err := taskpipeline.SaveTaskState(root, st); err != nil {
-		return err
-	}
-	fmt.Fprintf(cmd.OutOrStdout(), "intent 追加第 %d 条（append-only，无覆写入口）：%s\n", len(st.IntentLog), text)
+	fmt.Fprintf(cmd.OutOrStdout(), "intent 追加第 %d 条（append-only，无覆写入口）：%s\n", n, text)
 	return nil
 }
 
@@ -66,19 +66,21 @@ func runChecklistAdd(cmd *cobra.Command, args []string) error {
 	if desc == "" {
 		return fmt.Errorf("checklist 条目不能为空")
 	}
-	st, root, err := loadActiveTaskForMutation()
-	if err != nil {
+	next, rem := 0, 0
+	if err := mutateActiveTask(func(st *taskpipeline.TaskState) error {
+		// ID 取 max+1（审查 #7：以尾条为基准会在删尾后复用 ID，stale tick 勾错新条目）。
+		for _, c := range st.Checklist {
+			if c.ID >= next {
+				next = c.ID
+			}
+		}
+		next++
+		st.Checklist = append(st.Checklist, taskpipeline.ChecklistItem{ID: next, Desc: desc})
+		rem = len(st.UntickedChecklist())
+		return nil
+	}); err != nil {
 		return err
 	}
-	next := 1
-	if n := len(st.Checklist); n > 0 {
-		next = st.Checklist[n-1].ID + 1
-	}
-	st.Checklist = append(st.Checklist, taskpipeline.ChecklistItem{ID: next, Desc: desc})
-	if err := taskpipeline.SaveTaskState(root, st); err != nil {
-		return err
-	}
-	rem := len(st.UntickedChecklist())
 	fmt.Fprintf(cmd.OutOrStdout(), "checklist #%d 已追加（未勾 %d 项——task-complete 前须全勾）\n", next, rem)
 	return nil
 }
@@ -93,28 +95,28 @@ var taskChecklistTickCmd = &cobra.Command{
 func runChecklistTick(cmd *cobra.Command, args []string) error {
 	id, err := strconv.Atoi(strings.TrimSpace(args[0]))
 	if err != nil {
-		return fmt.Errorf("checklist tick 需要数字 id（forge task status 查看），got %q", args[0])
+		return fmt.Errorf("checklist tick 需要数字 id（forge task status --json 查看），got %q", args[0])
 	}
-	st, root, err := loadActiveTaskForMutation()
-	if err != nil {
-		return err
-	}
-	now := time.Now()
-	hit := false
-	for i := range st.Checklist {
-		if st.Checklist[i].ID == id {
-			st.Checklist[i].Done = true
-			st.Checklist[i].DoneAt = &now
-			hit = true
+	rem := 0
+	if err := mutateActiveTask(func(st *taskpipeline.TaskState) error {
+		now := time.Now()
+		hit := false
+		for i := range st.Checklist {
+			if st.Checklist[i].ID == id {
+				st.Checklist[i].Done = true
+				st.Checklist[i].DoneAt = &now
+				hit = true
+			}
 		}
-	}
-	if !hit {
-		return fmt.Errorf("checklist #%d 不存在（forge task status 查看当前清单）", id)
-	}
-	if err := taskpipeline.SaveTaskState(root, st); err != nil {
+		if !hit {
+			return fmt.Errorf("checklist #%d 不存在（forge task status --json 查看当前清单）", id)
+		}
+		rem = len(st.UntickedChecklist())
+		return nil
+	}); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "checklist #%d 已勾（剩余未勾 %d 项）\n", id, len(st.UntickedChecklist()))
+	fmt.Fprintf(cmd.OutOrStdout(), "checklist #%d 已勾（剩余未勾 %d 项）\n", id, rem)
 	return nil
 }
 
@@ -130,54 +132,61 @@ func runChecklistDrop(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("checklist drop 需要数字 id，got %q", args[0])
 	}
-	st, root, err := loadActiveTaskForMutation()
-	if err != nil {
-		return err
-	}
-	out := st.Checklist[:0]
-	dropped := false
-	for _, c := range st.Checklist {
-		if c.ID == id {
-			dropped = true
-			continue
+	left := 0
+	if err := mutateActiveTask(func(st *taskpipeline.TaskState) error {
+		out := st.Checklist[:0]
+		dropped := false
+		for _, c := range st.Checklist {
+			if c.ID == id {
+				dropped = true
+				continue
+			}
+			out = append(out, c)
 		}
-		out = append(out, c)
-	}
-	if !dropped {
-		return fmt.Errorf("checklist #%d 不存在", id)
-	}
-	st.Checklist = out
-	if err := taskpipeline.SaveTaskState(root, st); err != nil {
+		if !dropped {
+			return fmt.Errorf("checklist #%d 不存在", id)
+		}
+		st.Checklist = out
+		left = len(st.Checklist)
+		return nil
+	}); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "checklist #%d 已删除（剩余 %d 项）\n", id, len(st.Checklist))
+	fmt.Fprintf(cmd.OutOrStdout(), "checklist #%d 已删除（剩余 %d 项）\n", id, left)
 	return nil
 }
 
-// loadActiveTaskForMutation 取当前活跃任务（含项目根）供工件命令变更并保存。
-func loadActiveTaskForMutation() (*taskpipeline.TaskState, string, error) {
+// mutateActiveTask 在 per-task 锁内重载-变更-保存当前活跃任务（§13 丢更新防护，
+// 与 verify-acceptance/resume/impact 同模式——审查 #3：裸读-改-写会与并发
+// verify-acceptance 回写交错丢更新）。探测活跃任务用 ActiveTaskState，变更走
+// MutateTaskState；fn 返回错误则整个变更不落盘。
+func mutateActiveTask(fn func(*taskpipeline.TaskState) error) error {
 	root, err := findProjectRoot()
 	if err != nil {
-		return nil, "", err
+		return err
 	}
 	st, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	if err != nil {
-		return nil, "", err
+		return err
 	}
 	if st == nil {
-		return nil, "", fmt.Errorf("无活跃任务——工件命令作用于当前任务（forge task start / forge next）")
+		return fmt.Errorf("无活跃任务——工件命令作用于当前任务（forge task start / forge next）")
 	}
-	return st, root, nil
+	return taskpipeline.MutateTaskState(root, st.TaskRef, fn)
 }
 
 // validateInvariant 在声明期校验析出不变量（设计 M5：合同析出段必须映射到可执行
 // validator，映射不到的**显式拒绝**并指引降级——降级发生在声明时而非跑时失败后）。
-// 判据：内容以 CJK 为主的条目按叙述性约束处理（命令语言天然 ASCII 主导；误伤面
-// 是含大量中文注释的命令——罕见，且报错文案给出保留方式：用引号包命令或改 accept）。
+// 判据只算 :: 左侧 Run 段（审查 #4）：Expected 本就是自由文本子串匹配，长中文
+// 期望不应连累命令段被误判。CJK 主导的 Run 段按叙述性约束处理（命令语言天然
+// ASCII 主导）。
 func validateInvariant(v string) error {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return fmt.Errorf("invariant 不能为空")
+	}
+	if i := strings.Index(v, "::"); i >= 0 {
+		v = v[:i]
 	}
 	cjk, total := 0, 0
 	for _, r := range v {
@@ -189,7 +198,7 @@ func validateInvariant(v string) error {
 		}
 	}
 	if total > 0 && cjk*2 > total {
-		return fmt.Errorf("invariant %q 看起来是叙述性约束而非可执行命令——析出段必须映射到 validator（可执行命令）；叙述性约束请用 forge task checklist add（对账单）或 forge task intent（意图注记）承载", v)
+		return fmt.Errorf("invariant 的命令段 %q 看起来是叙述性约束而非可执行命令——析出段必须映射到 validator（可执行命令）；叙述性约束请用 forge task checklist add（对账单）或 forge task intent（意图注记）承载", v)
 	}
 	return nil
 }
