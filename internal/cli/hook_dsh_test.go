@@ -13,11 +13,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// 本文件钉住 dsh advisory 提升落地（2026-08-22 事件：task-guard 的 WARN 经
-// agent.inject 到达了 dsh 模型 inbox 却被无视——其文案自述「allowed」，且所有
-// 下游门禁都 task-scoped）。dsh 仅注册 task-guard（hostcap PromoteAdvisory 的
-// 准入路径 (b)：通道送达，需要执法），故下方范围钉死 bash-guard 与
-// assertion-check 在 dsh 上**不**提升。
+// 本文件钉住 advisory 提升落地（dsh 2026-08-22、zcode 2026-08-30 两起事件：
+// task-guard 的 WARN 经 additionalContext 到达了模型 inbox 却被无视——其文案
+// 自述「allowed」，且所有下游门禁都 task-scoped）。两者均仅注册 task-guard
+// （hostcap PromoteAdvisory 的准入路径 (b)：通道送达，需要执法），故下方范围
+// 钉死 bash-guard 与 assertion-check 在提升宿主上**不**提升。
 
 // TestPromoteDshTaskGuardAdvisory 覆盖 dsh 上的纯函数：真无任务 advisory 提升；
 // Auto-created 成功路径不得提升（它刚放行了该编辑）；且提升范围仅 task-guard
@@ -33,6 +33,8 @@ func TestPromoteDshTaskGuardAdvisory(t *testing.T) {
 	}{
 		{"no-task advisory (promote)", "task-guard", true, "[task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch.", true},
 		{"legacy advisory wording (promote)", "task-guard", true, "[task-guard] No active task. Source changes are allowed but not tracked by a Forge task.", true},
+		{"v2 advisory wording (promote)", "task-guard", true, "[task-guard] Untracked source edit — no active task. Why:", true},
+		{"v2 escalation wording (promote)", "task-guard", true, "[task-guard] Second untracked source edit — stop editing and start a task first:", true},
 		{"auto-create success path (must NOT)", "task-guard", true, "[task-guard] Auto-created task 'feat/x' from branch. Source changes tracked.", false},
 		{"bare PASS (empty detail)", "task-guard", true, "", false},
 		{"already blocked (no double-flip)", "task-guard", false, "[task-guard] No active task.", false},
@@ -58,7 +60,7 @@ func TestPromoteDshTaskGuardAdvisory(t *testing.T) {
 // FORGE_ADVISORY_PROMOTION=soft（随 dsh 加入——所有提升宿主一个开关）与已发布的
 // FORGE_KIMI_ADVISORY=soft（向后兼容，文档具名）。任一设置都必须对所有宿主抑制提升。
 func TestAdvisoryPromotionEscapeHatches(t *testing.T) {
-	for _, host := range []string{"kimi", "dsh"} {
+	for _, host := range []string{"kimi", "dsh", "zcode"} {
 		t.Run("generic/"+host, func(t *testing.T) {
 			t.Setenv("FORGE_ADVISORY_PROMOTION", "soft")
 			if promoteAdvisory(host, "task-guard", true, "[task-guard] No active task.") {
@@ -87,6 +89,7 @@ func TestTaskGuardPromotionActive(t *testing.T) {
 		want  bool
 	}{
 		{"dsh", true},
+		{"zcode", true}, // 2026-08-30 事故入列（同 dsh 准入路径 (b)），2026-08-31
 		{"kimi", false}, // kimi's rules retired 2026-08-24 — advisories queue, never block
 		{"claude-code", false},
 		{"", false},
@@ -134,6 +137,33 @@ func runTaskGuardHookOnce(t *testing.T, agentDecl, sessionID string) (stdout, st
 	})
 }
 
+// runTaskGuardHookTestFileOnce 同 runTaskGuardHookOnce，但被编辑文件命中测试文件
+// 豁免分支（src/main_test.go）——P0-4 锚定行为的 E2E 入口。
+func runTaskGuardHookTestFileOnce(t *testing.T, agentDecl, sessionID string) (stdout, stderr string, err error) {
+	t.Helper()
+	payload := fmt.Sprintf(`{"hook_event_name":"PreToolUse","tool_name":"Edit","session_id":%q,%s"tool_input":{"file_path":"src/main_test.go","old_string":"a","new_string":"b"}}`, sessionID, agentDecl)
+	oldStdin := os.Stdin
+	tmpStdin, ierr := os.CreateTemp("", "hook-stdin-*.json")
+	if ierr != nil {
+		t.Fatal(ierr)
+	}
+	if _, ierr = tmpStdin.WriteString(payload); ierr != nil {
+		t.Fatal(ierr)
+	}
+	if _, ierr = tmpStdin.Seek(0, 0); ierr != nil {
+		t.Fatal(ierr)
+	}
+	os.Stdin = tmpStdin
+	defer func() {
+		os.Stdin = oldStdin
+		tmpStdin.Close()
+		os.Remove(tmpStdin.Name())
+	}()
+	return captureOutput(t, func() error {
+		return runHook(&cobra.Command{}, []string{"task-guard"})
+	})
+}
+
 // newTaskGuardProject 构建本文件 E2E 共用的隔离 fixture：全新 forge 项目 +
 // 隔离 DataHome + 清空的 agent env（归因只受被测 payload 驱动）。返回项目根
 // （测试期间的 cwd），供调用方推导 FORGE_DATA_DIR 解析出的路径。
@@ -157,15 +187,13 @@ func newTaskGuardProject(t *testing.T) string {
 	return root
 }
 
-// TestHook_TaskGuardNowarnMarkerLivesInDataDir 钉住 marker 根目录迁移
-// （2026-08-23）：NOWARN 标记必须落在 FORGE_DATA_DIR（Go 层注入——forge 自己
+// TestHook_TaskGuardIgnoreCounterLivesInDataDir 钉住 marker 根目录迁移
+// （2026-08-23）：无视计数器（vNext P0-3 起取代 NOWARN——首条 advisory 被无视后
+// 继续静默正是 8-30 事故形态）必须落在 FORGE_DATA_DIR（Go 层注入——forge 自己
 // 的可写 data home）下，而非 ${TMPDIR:-/tmp}。在 MSYS /tmp 只读的机器上
-// （Git for Windows 默认装进 Program Files 即如此），`touch ... 2>/dev/null
-// || true` 静默吞掉写错误，标记永不落盘，每会话一次的去噪退化成每次编辑都
-// WARN——恰是 dogfood 3.1 要消灭的刷屏。AdvisoryOncePerSessionOnClaude 在这
-// 类机器上红（CI 的 /tmp 可写故绿）；本测试不依赖机器 tmpdir 权限，独立钉住
-// 根因修复。
-func TestHook_TaskGuardNowarnMarkerLivesInDataDir(t *testing.T) {
+// （Git for Windows 默认装进 Program Files 即如此），写失败被静默吞掉后计数
+// 永不增长，升档文案永不触发。本测试不依赖机器 tmpdir 权限，独立钉住根因。
+func TestHook_TaskGuardIgnoreCounterLivesInDataDir(t *testing.T) {
 	root := newTaskGuardProject(t)
 	sess := fmt.Sprintf("claude-datadir-%d", time.Now().UnixNano())
 
@@ -181,9 +209,9 @@ func TestHook_TaskGuardNowarnMarkerLivesInDataDir(t *testing.T) {
 		t.Fatalf("first edit should surface the WARN advisory, got stdout %q", stdout)
 	}
 
-	// 标记必须存在于 Go 层解析的 DataDir（经 FORGE_DATA_DIR 传入）的 markers/
-	// 子目录下，按 sanitize 后的 session id 键控——用前缀查找而非精确名
-	// （sanitizeForShell 可能改写 id）。
+	// 计数器必须存在于 Go 层解析的 DataDir（经 FORGE_DATA_DIR 传入）的 markers/
+	// 子目录下，按 sanitize 后的 session id 键控，且值恰为 1——用前缀查找而非
+	// 精确名（sanitizeForShell 可能改写 id）。
 	markersDir := filepath.Join(forgedata.DataDirFor(root), "markers")
 	entries, derr := os.ReadDir(markersDir)
 	if derr != nil {
@@ -191,12 +219,19 @@ func TestHook_TaskGuardNowarnMarkerLivesInDataDir(t *testing.T) {
 	}
 	found := false
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "forge-taskguard-nowarn-") {
+		if strings.HasPrefix(e.Name(), "forge-taskguard-ignores-") {
 			found = true
+			got, rerr := os.ReadFile(filepath.Join(markersDir, e.Name()))
+			if rerr != nil {
+				t.Fatalf("read counter: %v", rerr)
+			}
+			if strings.TrimSpace(string(got)) != "1" {
+				t.Errorf("counter must be 1 after first untracked edit, got %q", string(got))
+			}
 		}
 	}
 	if !found {
-		t.Errorf("NOWARN marker must live under FORGE_DATA_DIR/markers (%s) — on read-only-MSYS-/tmp machines the old TMPDIR root silently lost it and de-noise degraded to per-edit WARN spam", markersDir)
+		t.Errorf("ignore counter must live under FORGE_DATA_DIR/markers (%s) — on read-only-MSYS-/tmp machines the fallback root silently loses it and escalation never fires", markersDir)
 	}
 }
 
@@ -256,15 +291,16 @@ func TestHook_TaskGuardScrubPromotedEnvOnClaude(t *testing.T) {
 	}
 }
 
-// TestHook_TaskGuardAdvisoryOncePerSessionOnClaude 钉住反事实：无提升的宿主
-// （Claude 兼容默认）上无任务源码编辑保持放行——首次编辑 WARN 进
-// additionalContext，第二次被 NOWARN 标记静默放行。若此测试破，说明去噪
-// （dogfood 3.1）被全局删掉而非仅限提升宿主。
-func TestHook_TaskGuardAdvisoryOncePerSessionOnClaude(t *testing.T) {
+// TestHook_TaskGuardAdvisorySpectrumOnClaude 钉住无视计数谱系（vNext P0-3，取代
+// 一次性 NOWARN 去噪）：无提升宿主上无任务源码编辑保持放行——第 1 次三段式
+// advisory（Why/Do/Consequence，无 allowed 许可语义），第 2 次升档为指令级 STOP
+// 文案（反偏差正常化：8-30 事故里首条被无视后一切静默），第 3 次起静默继续计数
+// （保留 dogfood 3.1 防刷屏约束）。
+func TestHook_TaskGuardAdvisorySpectrumOnClaude(t *testing.T) {
 	newTaskGuardProject(t)
 	sess := fmt.Sprintf("claude-e2e-%d", time.Now().UnixNano())
 
-	// 首次编辑：放行，WARN 作 additionalContext（advisory 非阻断）。
+	// 第 1 次：放行，三段式 advisory 作 additionalContext。
 	stdout, _, err := runTaskGuardHookOnce(t, ``, sess)
 	if err != nil {
 		var blockErr *HookBlockError
@@ -273,16 +309,114 @@ func TestHook_TaskGuardAdvisoryOncePerSessionOnClaude(t *testing.T) {
 		}
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout, "[task-guard]") {
-		t.Errorf("first edit should surface the WARN advisory, got stdout %q", stdout)
+	if !strings.Contains(stdout, "Untracked source edit") || !strings.Contains(stdout, "Why:") {
+		t.Errorf("first edit should surface the v2 three-part advisory, got stdout %q", stdout)
+	}
+	if strings.Contains(stdout, "are allowed") {
+		t.Errorf("v2 advisory must drop permission wording (\"allowed\" reads as clearance — 8-30 forensic finding), got %q", stdout)
 	}
 
-	// 第二次相同编辑：NOWARN 标记已置 → 静默放行。
+	// 第 2 次：放行，但文案升档为指令级 STOP。
 	stdout, _, err = runTaskGuardHookOnce(t, ``, sess)
 	if err != nil {
 		t.Fatalf("second edit must stay allowed, got %v", err)
 	}
+	if !strings.Contains(stdout, "Second untracked source edit") || !strings.Contains(stdout, "forge task start") {
+		t.Errorf("second edit must escalate to the directive STOP copy, got %q", stdout)
+	}
+
+	// 第 3 次：静默放行（防刷屏；计数继续，供跨会话聚合）。
+	stdout, _, err = runTaskGuardHookOnce(t, ``, sess)
+	if err != nil {
+		t.Fatalf("third edit must stay allowed, got %v", err)
+	}
 	if stdout != "" {
-		t.Errorf("second edit must be silent (NOWARN de-noise), got stdout %q", stdout)
+		t.Errorf("third edit must be silent (anti-spam), got stdout %q", stdout)
+	}
+}
+
+// TestHook_ZcodeTaskGuardNoTaskBlocks 是 zcode 的事件回归测试（2026-08-30：一个
+// zcode 会话在 main 无任务完成 registry gc 全部改动——WARN 附着在工具结果上到达
+// 模型上下文、文案自述 allowed，被无视，116 次工具调用零任务零提交）。取证：
+// ~/.zcode/cli/rollout/model-io-sess_8647540f*.jsonl（2026-08-31 会话四层穿透
+// 分析）。hostcap 准入路径 (b) 双实证后，这条生产路径必须拒绝：payload
+// forge_agent:"zcode" → task-guard advisory 被提升 → 阻断（exit 2），reason 为
+// 指令式文案且带修复命令。
+func TestHook_ZcodeTaskGuardNoTaskBlocks(t *testing.T) {
+	newTaskGuardProject(t)
+	sess := fmt.Sprintf("zcode-e2e-%d", time.Now().UnixNano())
+
+	for i := 1; i <= 2; i++ {
+		stdout, stderr, err := runTaskGuardHookOnce(t, `"forge_agent":"zcode",`, sess)
+		var blockErr *HookBlockError
+		if !errors.As(err, &blockErr) {
+			t.Fatalf("edit #%d must be denied (*HookBlockError → exit 2), got %T %v (stdout=%q stderr=%q)", i, err, err, stdout, stderr)
+		}
+		if !strings.Contains(blockErr.Reason, "DENIED") || !strings.Contains(blockErr.Reason, "forge task start") {
+			t.Errorf("edit #%d block reason must be directive (DENIED + forge task start), got %q", i, blockErr.Reason)
+		}
+	}
+	// 同一提升宿主上测试文件编辑必须放行（TDD 豁免），且 FYI 在提升语义下整体
+	// 跳过（其文案若带 [task-guard] 谓词会被提升误变成对测试编辑的阻断——故
+	// FYI 用独立 [task-anchor] 谓词 + 提升宿主跳过双保险）。
+	stdout, _, err := runTaskGuardHookTestFileOnce(t, `"forge_agent":"zcode",`, sess)
+	if err != nil {
+		var blockErr *HookBlockError
+		if errors.As(err, &blockErr) {
+			t.Fatalf("test-file edit must stay allowed on promoted hosts, got block reason %q", blockErr.Reason)
+		}
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if stdout != "" {
+		t.Errorf("test-file FYI must be skipped on promoted hosts (exit-2 semantics), got stdout %q", stdout)
+	}
+}
+
+// TestHook_TaskGuardTestFileAnchoring 钉住测试文件豁免≠不可见（vNext P0-4）：
+// _test.go 在无任务会话保持放行（TDD），但首次编辑出一次性 FYI、每会话编辑计数
+// 落盘（coverage 统计/审计数据源）。8-30 事故里两个 _test.go 修复文件在 main 上
+// 连 advisory 都未触发——豁免分支先于一切 no-task 逻辑直接 exit 0。
+func TestHook_TaskGuardTestFileAnchoring(t *testing.T) {
+	root := newTaskGuardProject(t)
+	sess := fmt.Sprintf("claude-testfyi-%d", time.Now().UnixNano())
+
+	for i := 1; i <= 2; i++ {
+		stdout, _, err := runTaskGuardHookTestFileOnce(t, ``, sess)
+		if err != nil {
+			var blockErr *HookBlockError
+			if errors.As(err, &blockErr) {
+				t.Fatalf("test-file edit must stay allowed (TDD), got block reason %q", blockErr.Reason)
+			}
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if i == 1 {
+			if !strings.Contains(stdout, "FYI") || !strings.Contains(stdout, "测试编辑已计数") {
+				t.Errorf("first untracked test edit should surface the one-time FYI, got %q", stdout)
+			}
+		} else if stdout != "" {
+			t.Errorf("second test edit must be silent (FYI is once per session), got %q", stdout)
+		}
+	}
+	// 计数文件恰为 2，且不得出现源码计数器（测试编辑不算无视源码 advisory）。
+	markersDir := filepath.Join(forgedata.DataDirFor(root), "markers")
+	entries, derr := os.ReadDir(markersDir)
+	if derr != nil {
+		t.Fatalf("read markers dir: %v", derr)
+	}
+	testCnt := 0
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "forge-test-edits-") {
+			b, _ := os.ReadFile(filepath.Join(markersDir, e.Name()))
+			if strings.TrimSpace(string(b)) != "2" {
+				t.Errorf("test-edit counter must be 2, got %q", string(b))
+			}
+			testCnt++
+		}
+		if strings.HasPrefix(e.Name(), "forge-taskguard-ignores-") {
+			t.Errorf("test-file edits must not feed the source ignore counter, found %s", e.Name())
+		}
+	}
+	if testCnt != 1 {
+		t.Errorf("exactly one test-edit counter file expected, got %d", testCnt)
 	}
 }
