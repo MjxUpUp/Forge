@@ -375,6 +375,17 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		state.Acceptance = taskpipeline.ParseAcceptance(acceptRaw)
 	}
 
+	// 析出不变量（vNext P3 三段工件之 instrument 段）：声明期校验（必须可执行），
+	// 追加进 Acceptance——机器对账/freshness/complete pre-flight 全复用既有机制。
+	if invRaw, _ := cmd.Flags().GetStringArray("invariant"); len(invRaw) > 0 {
+		for _, v := range invRaw {
+			if err := validateInvariant(v); err != nil {
+				return err
+			}
+		}
+		state.Acceptance = append(state.Acceptance, taskpipeline.ParseAcceptance(invRaw)...)
+	}
+
 	// 持久化 PlanScope（开工前声明的计划改动白名单）：把规划前置变成可度量契约，
 	// file-sentinel/task-guard 据此 advisory 检测 scope-drift。空则不检测（无声明=无偏差）。
 	if scopeRaw, _ := cmd.Flags().GetStringArray("scope"); len(scopeRaw) > 0 {

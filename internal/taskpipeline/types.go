@@ -302,6 +302,14 @@ type TaskState struct {
 	// design-artifact-standards 的 references/phase-X.md checklist。空 = 无匹配设计产物，回落到通用 review-checklist.md。
 	DesignPhases []DesignPhase         `json:"design_phases,omitempty"`
 	Acceptance   []AcceptanceCriterion `json:"acceptance,omitempty"` // 验收标准（dev-workflow Plan 的 Run+Expected），verify-acceptance 实跑回扣
+	// 三段工件之 intent/checklist 段（vNext P3，设计 M5 边界物体分层）。第三段
+	// invariants 不设独立存储：`forge task start --invariant` 在声明期校验（必须
+	// 是可执行命令，叙述性约束被显式拒绝并指引降级）后直接落入 Acceptance——
+	// 机器对账/freshness/complete pre-flight 全复用既有验收机制，无双写漂移面。
+	// intent 段 append-only：没有覆写入口，轮次重写（Anthropic rot）在结构上不可
+	// 发生；checklist 段勾选即进度（断点存活），task-complete 硬门禁查全勾。
+	IntentLog []IntentEntry   `json:"intent_log,omitempty"` // 意图注记（why/追加式，永不覆写）
+	Checklist []ChecklistItem `json:"checklist,omitempty"`  // 操作对账单（勾选式；完成前须全勾）
 	// AcceptanceForeign marks that the acceptance Run commands entered this
 	// TaskState from an untrusted source (task import bundle / .forge migrate of
 	// repo-committed state).
@@ -1257,4 +1265,32 @@ func newContinuityID(prefix string) string {
 		return prefix + nano + "-" + strconv.FormatUint(seq, 36)
 	}
 	return prefix + nano + "-" + strconv.FormatUint(seq, 36) + "-" + hex.EncodeToString(b[:])
+}
+
+// IntentEntry 是 intent 段的一条追加式注记（vNext P3）。只有追加入口
+//（cli forge task intent），没有覆写/删除入口——意图的历史即决策史。
+type IntentEntry struct {
+	TS      time.Time `json:"ts"`
+	Text    string    `json:"text"`
+	Session string    `json:"session,omitempty"`
+}
+
+// ChecklistItem 是 checklist 段的一条勾选项。ID 从 1 顺序分配（drop 不复用），
+// 勾选状态即进度——跨会话/断点存活，task-complete 硬门禁消费。
+type ChecklistItem struct {
+	ID     int        `json:"id"`
+	Desc   string     `json:"desc"`
+	Done   bool       `json:"done"`
+	DoneAt *time.Time `json:"done_at,omitempty"`
+}
+
+// UntickedChecklist 返回尚未勾选的 checklist 项（task-complete 硬门禁与测试共用）。
+func (s *TaskState) UntickedChecklist() []ChecklistItem {
+	var out []ChecklistItem
+	for _, c := range s.Checklist {
+		if !c.Done {
+			out = append(out, c)
+		}
+	}
+	return out
 }
