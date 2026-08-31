@@ -24,10 +24,13 @@ type gcFixture struct {
 	freshDir    string
 }
 
-// seedGcFixture 在隔离 GlobalHome（TestMain 已重定向 FORGE_DATA_HOME）下布置 gc
-// 场景。过期孤儿的最新文件 mtime 拨回 20 天前；新鲜孤儿保持当前 mtime。
+// seedGcFixture 在逐测试隔离的 GlobalHome（本测试自设 FORGE_DATA_HOME——包级
+// TestMain 的共享 home 里，先跑的其他测试会留下额外孤儿目录，让 dry-run 汇总
+// 计数断言顺序依赖）下布置 gc 场景。过期孤儿的最新文件 mtime 拨回 20 天前；
+// 新鲜孤儿保持当前 mtime。
 func seedGcFixture(t *testing.T) *gcFixture {
 	t.Helper()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	home, err := forgedata.GlobalHome()
 	if err != nil {
 		t.Fatalf("GlobalHome: %v", err)

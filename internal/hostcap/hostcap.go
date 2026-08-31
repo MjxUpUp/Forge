@@ -331,13 +331,24 @@ var Hosts = []Host{
 		// 事件上读 hookSpecificOutput.additionalContext，exit 2 是阻断捷径——
 		// 故不要 StdinDialect、不进 outputEmitters、不设 ContextChannels 行：
 		// Claude 兼容默认（全事件送达，"claude/additionalContext"）是按文档
-		// 诚实的路由。文档结论、未经 wire 验证——kimi-hook-routing.md 的教训
-		// （文档 ≠ 线上行为）适用：信任 advisory 送达前应在真实 ZCode 安装上
-		// 复查通道。ZCode 独有的执法差异随接线侧记录（agentbridge/zcode.go）：
+		// 诚实的路由。ZCode 独有的执法差异随接线侧记录（agentbridge/zcode.go）：
 		// 无 PostCompact/SubagentStop 事件，Stop 阻断连续 3 轮后强制结束。
+		//
+		// 2026-08-31 wire 实证补记：通道已验证送达（model-io 转录中 WARN 经
+		// additionalContext 附着于工具结果进入模型上下文），但 2026-08-30 事故
+		// 实证 advisory 被无视——其文案自述「allowed」（许可声明而非指令），
+		// agent 读后继续编辑，且所有下游门禁 task-scoped（无任务 ⇒ 静默通过）。
+		// 与 dsh 2026-08-22 同款失效、同属 PromoteAdvisory 准入路径 (b)（通道
+		// 送达但被实证无视），故入列。范围仅 task-guard 的「无任务改源码」事件
+		// 类别（与 dsh 同一条规则）；bash-guard 的 quarantine 后果链在 zcode 上
+		// 仍然有效。取证：~/.zcode/cli/rollout/model-io-sess_8647540f*.jsonl
+		// （四层穿透分析，2026-08-31 会话）。
 		//
 		// ~/.zcode 当且仅当桌面端跑过才存在；ZCode 未文档化 config home 的
 		// env 覆盖。
+		PromoteAdvisory: map[string]AdvisoryRule{
+			"task-guard": {Contains: "[task-guard]", Excludes: "Auto-created"},
+		},
 		InstallIndicators: []InstallIndicator{{Path: "~/.zcode"}},
 	},
 }

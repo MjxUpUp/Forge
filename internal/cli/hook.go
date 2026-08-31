@@ -816,7 +816,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 		shCmd.Env = append(shCmd.Env, "FORGE_WORK_ACTIVITY=disable")
 	}
 	// task-guard promotion pre-configuration: on hosts whose task-guard advisory
-	// promotes to a block (hostcap PromoteAdvisory — dsh only; kimi's rules were
+	// promotes to a block (hostcap PromoteAdvisory — dsh 2026-08-22 & zcode 2026-08-30, both incident-proven; kimi's rules were
 	// retired 2026-08-24 in favor of the advisory queue, see
 	// hook_kimi_advisory.go), the script must
 	// drop its once-per-session NOWARN de-noise and emit the directive block
@@ -828,7 +828,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// with no enforcement behind it).
 	//
 	// task-guard 提升预配置：在把 task-guard advisory 提升为阻断的宿主上
-	// （hostcap PromoteAdvisory——仅 dsh；kimi 的规则已于 2026-08-24 退役，改为
+	// （hostcap PromoteAdvisory——dsh 2026-08-22 与 zcode 2026-08-30 双事故实证入列；kimi 的规则已于 2026-08-24 退役，改为
 	// advisory 队列，见 hook_kimi_advisory.go），脚本必须放弃每会话一次的 NOWARN
 	// 去噪，在**每次**无任务源码编辑上输出指令式 block reason——提升语义下
 	// NOWARN 标记就是旁路（模型盲重试同一编辑，因标记已置而静默放行）。
@@ -957,7 +957,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 5b. Host advisory promotion (hostcap PromoteAdvisory column; dsh only —
+	// 5b. Host advisory promotion (hostcap PromoteAdvisory column; dsh & zcode (incident-proven) —
 	// kimi's rules were retired 2026-08-24: a promoted exit-2 deny whose reason
 	// self-described as "allowed" was self-contradictory, and kimi reads ANY
 	// PreToolUse stdout as a deny, so kimi advisories now queue per-project and
@@ -974,7 +974,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// skill-trigger returned before step 5 and
 	// is unaffected. Escape hatches: FORGE_ADVISORY_PROMOTION / FORGE_KIMI_ADVISORY =soft.
 	//
-	// 5b. 宿主 advisory 提升（hostcap PromoteAdvisory 列；现仅 dsh——kimi 的规则已于
+	// 5b. 宿主 advisory 提升（hostcap PromoteAdvisory 列；dsh/zcode 双事故实证入列——kimi 的规则已于
 	// 2026-08-24 退役：被提升的 exit-2 deny 的 reason 自述「allowed」，自相矛盾，
 	// 且 kimi 把 PreToolUse 上**任何** stdout 当 deny，故 kimi 的 advisory 改为按
 	// 项目入队、UserPromptSubmit 攒发——hook_kimi_advisory.go 的

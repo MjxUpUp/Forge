@@ -244,7 +244,7 @@ func TestTaskGuardHookContainsKeyChecks(t *testing.T) {
 		t.Error("TaskGuardHook missing WARN for pre-design state")
 	}
 	// 提升预配置：在把 task-guard advisory 提升为阻断的宿主上（hostcap
-	// PromoteAdvisory——kimi/dsh），Go 层设置 FORGE_TASKGUARD_PROMOTED，脚本必须
+	// PromoteAdvisory——dsh/zcode 双事故实证），Go 层设置 FORGE_TASKGUARD_PROMOTED，脚本必须
 	// 放弃每会话一次的 NOWARN 去噪（模型盲重试即可绕过的 deny 算不上执法），
 	// 并输出指令式 reason 而非「allowed」的 advisory 文案。
 	if !strings.Contains(TaskGuardHook, "FORGE_TASKGUARD_PROMOTED") {
