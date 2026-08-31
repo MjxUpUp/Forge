@@ -105,6 +105,7 @@ func runEnforcement(cmd *cobra.Command, args []string) error {
 	if rep.TaskGuard.Advisory == 0 && rep.TaskGuard.Blocked == 0 && rep.WildDeclarations == 0 {
 		fmt.Fprintln(w, "（无执法事件记录——干净或未启用）")
 	}
+	fmt.Fprintln(w, "（口径：会话计数为近 7 天滚动窗口（markers 定期清扫）；checklog 计数含归档全量）")
 	return nil
 }
 
@@ -114,7 +115,10 @@ func runEnforcement(cmd *cobra.Command, args []string) error {
 // 要么环境极干净（可接受）要么规则已过时，均值得人看一眼。
 func buildEnforcementReport(root, dataDir string) enforcementReport {
 	var rep enforcementReport
-	entries, _ := checklog.LoadAll(root)
+	entries, lerr := checklog.LoadAllAll(root)
+	if lerr != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: checklog 读取不全（审计口径可能低估）: %v\n", lerr)
+	}
 	for _, e := range entries {
 		if string(e.Check) != "task-guard" {
 			continue
@@ -145,7 +149,9 @@ func buildEnforcementReport(root, dataDir string) enforcementReport {
 	}
 	rep.WildDeclarations = countWildAll(dataDir)
 
-	if states, err := taskpipeline.ListTaskStates(root); err == nil {
+	if states, err := taskpipeline.ListTaskStates(root); err != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: 任务状态读取失败（TasksCompleted 口径可能低估）: %v\n", err)
+	} else {
 		for _, st := range states {
 			if st.CompletedAt != nil {
 				rep.TasksCompleted++
@@ -155,11 +161,15 @@ func buildEnforcementReport(root, dataDir string) enforcementReport {
 
 	if rep.EscalatedSessions > 0 {
 		rep.DoubleLoop = append(rep.DoubleLoop,
-			fmt.Sprintf("task-guard：%d 个会话无视升档仍继续——按双环触发审查规则本身（文案/门槛/出口是否合理），而非继续加码", rep.EscalatedSessions))
+			fmt.Sprintf("task-guard：%d 个会话已进入升档档位（≥2 次无视）——按双环审查规则本身（文案/门槛/出口是否合理），而非继续加码", rep.EscalatedSessions))
 	}
-	if rep.TaskGuard.Blocked == 0 && rep.EscalatedSessions == 0 {
+	// 降格信号只在存在 task-guard 遥测时列（F2：干净/未启用项目恒触发是噪声，且
+	// 与"无执法事件"行同屏矛盾）；措辞不虚断"提升位"——promotion 与否属 hostcap
+	// 配置，本报告只陈述可观测事实（有遥测而零阻断零升档）。
+	hasTelemetry := rep.TaskGuard.Advisory > 0 || rep.TaskGuard.Blocked > 0 || len(ignores) > 0
+	if hasTelemetry && rep.TaskGuard.Blocked == 0 && rep.EscalatedSessions == 0 {
 		rep.DemotionReview = append(rep.DemotionReview,
-			"task-guard（提升位）：零阻断零升档——zombie rule 复审（确认规则仍需要，或降格回 advisory）")
+			"task-guard：有遥测但零阻断零升档——zombie rule 复审（确认规则仍需要，或降格回 advisory）")
 	}
 	return rep
 }
@@ -186,10 +196,19 @@ func sampleCompletedTasks(root, dataDir string, n int) []taskAudit {
 	}
 	ignores := readMarkerCounts(dataDir, "forge-taskguard-ignores-")
 	wild := countWildBySession(dataDir)
-	entries, _ := checklog.LoadAll(root)
+	entries, lerr := checklog.LoadAllAll(root)
+	if lerr != nil {
+		fmt.Fprintf(os.Stderr, "[forge] warning: checklog 读取不全（审计口径可能低估）: %v\n", lerr)
+	}
 	var out []taskAudit
 	for _, st := range done[:n] {
-		a := taskAudit{TaskRef: st.TaskRef, SessionID: st.SessionID, Ignores: ignores[st.SessionID], WildCount: wild[st.SessionID]}
+		a := taskAudit{TaskRef: st.TaskRef, SessionID: st.SessionID}
+		// 空 SessionID 的任务（legacy/未注入宿主）不做 join（F3）：匿名计数器与
+		// 匿名 wild 申报不可归属，挂到任何任务头上都是误报——遥测保持 0 并注明。
+		if st.SessionID != "" {
+			a.Ignores = ignores[st.SessionID]
+			a.WildCount = wild[st.SessionID]
+		}
 		if st.Score != nil {
 			a.ScoreOverall = st.Score.Overall
 		}

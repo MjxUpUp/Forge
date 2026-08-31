@@ -127,13 +127,28 @@ func TestEnforcementReportAggregates(t *testing.T) {
 
 func TestEnforcementDemotionSignal(t *testing.T) {
 	root := newWildGitRepo(t)
+	// 全空数据：无遥测 → 不列降格（F2：干净/未启用项目恒触发是噪声），也不双环。
 	rep := buildEnforcementReport(root, forgedata.DataDirFor(root))
-	// 全空数据：零阻断零升档 → 提升位的 zombie 复审信号必须出现。
-	if len(rep.DemotionReview) == 0 {
-		t.Error("零阻断零升档应列降格复审（zombie rule 信号）")
+	if len(rep.DemotionReview) != 0 {
+		t.Errorf("无遥测不应列降格复审（F2：干净项目恒触发是噪声）, got %v", rep.DemotionReview)
 	}
 	if len(rep.DoubleLoop) != 0 {
 		t.Errorf("无升档会话不应触发双环, got %v", rep.DoubleLoop)
+	}
+
+	// 有遥测（advisory>0）而零阻断零升档 → zombie 复审信号必须出现。
+	if err := checklog.Record(root, &checklog.Entry{
+		Check:   checklog.CheckName("task-guard"),
+		Passed:  true,
+		Checked: true,
+		Level:   checklog.LevelAdvisory,
+		Detail:  "[task-guard] Untracked source edit — no active task.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rep = buildEnforcementReport(root, forgedata.DataDirFor(root))
+	if len(rep.DemotionReview) == 0 {
+		t.Error("有遥测但零阻断零升档应列降格复审（zombie rule 信号）")
 	}
 }
 
