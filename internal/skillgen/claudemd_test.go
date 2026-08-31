@@ -227,8 +227,8 @@ func TestClaudeMDSectionContract(t *testing.T) {
 		}, []string{
 			"先读再改/聚焦变更",
 		}},
-		{"task-guard per-host truth (dsh promotes to block)", []string{
-			"dsh",
+		{"task-guard per-host truth (dsh/zcode promote to block)", []string{
+			"dsh/zcode",
 			"提升为阻断",
 		}, []string{
 			"只触发 task-guard 警告（WARN，不拦截）",

@@ -164,10 +164,11 @@ func TestKimiNoPromoteAdvisory(t *testing.T) {
 	if len(h.PromoteAdvisory) > 0 {
 		t.Errorf("kimi PromoteAdvisory = %v, want empty (advisories queue + drain on UserPromptSubmit, never block)", h.PromoteAdvisory)
 	}
-	// advisory 通道送达且足够的宿主不得带提升规则。dsh 是已文档化的例外（通道
-	// 送达、advisory 被实证无视——由下方 TestDshTaskGuardPromotion 钉死），故刻意
-	// 不在本清单内。
-	for _, name := range []string{"claude-code", "codex", "cursor", "zcode"} {
+	// advisory 通道送达且足够的宿主不得带提升规则。dsh（2026-08-22）与 zcode
+	// （2026-08-30）是已文档化、经取证实证「通道送达但被无视」的例外（准入路径
+	// (b)，由下方 TestDshTaskGuardPromotion/TestZcodeTaskGuardPromotion 钉死），
+	// 故刻意不在本清单内。
+	for _, name := range []string{"claude-code", "codex", "cursor"} {
 		if h := Lookup(name); h != nil && len(h.PromoteAdvisory) > 0 {
 			t.Errorf("%s PromoteAdvisory = %v, want empty", name, h.PromoteAdvisory)
 		}
@@ -206,12 +207,15 @@ func TestDshTaskGuardPromotion(t *testing.T) {
 		}
 	}
 	// PromotesHook（与 detail 无关的存在性）驱动 cli 的 FORGE_TASKGUARD_PROMOTED
-	// env：恰对持 task-guard 规则的宿主为真（仅 dsh——kimi 的提升已于
-	// 2026-08-24 退役，改为 advisory 队列）。
+	// env：恰对持 task-guard 规则的宿主为真（dsh 2026-08-22、zcode 2026-08-30
+	// 双实证入列；kimi 的提升已于 2026-08-24 退役，改为 advisory 队列）。
 	if hh := Lookup("dsh"); hh == nil || !hh.PromotesHook("task-guard") {
 		t.Error("dsh PromotesHook(task-guard) = false, want true")
 	}
-	for _, name := range []string{"claude-code", "codex", "cursor", "copilot", "windsurf", "opencode", "cline", "codebuddy", "reasonix", "zcode", "kimi"} {
+	if hz := Lookup("zcode"); hz == nil || !hz.PromotesHook("task-guard") {
+		t.Error("zcode PromotesHook(task-guard) = false, want true (2026-08-30 incident admission)")
+	}
+	for _, name := range []string{"claude-code", "codex", "cursor", "copilot", "windsurf", "opencode", "cline", "codebuddy", "reasonix", "kimi"} {
 		if hh := Lookup(name); hh != nil && hh.PromotesHook("task-guard") {
 			t.Errorf("%s PromotesHook(task-guard) = true, want false", name)
 		}
@@ -223,6 +227,43 @@ func TestDshTaskGuardPromotion(t *testing.T) {
 			if kk.PromotesHook(hook) {
 				t.Errorf("kimi PromotesHook(%q) = true, want false (kimi advisories queue, never block)", hook)
 			}
+		}
+	}
+}
+
+// TestZcodeTaskGuardPromotion pins zcode's registry row: task-guard ONLY, same
+// rule shape as dsh. Admission path (b) got its second documented instance on
+// 2026-08-30: a zcode session completed the whole registry-gc change set on
+// main with zero task/commit — the WARN reached the model context (attached to
+// the tool result via additionalContext) and was ignored, its copy reading as
+// clearance ("allowed"). Forensics: ~/.zcode/cli/rollout/model-io-sess_8647540f*
+// (four-layer penetration analysis, 2026-08-31 session).
+//
+// TestZcodeTaskGuardPromotion 钉住 zcode 的注册表行：仅 task-guard、与 dsh 同形
+// 的规则（准入路径 (b) 第二例实证：2026-08-30 zcode 会话在 main 无任务完成全部
+// 改动——WARN 送达模型上下文却被无视，文案自述「allowed」被读作放行声明）。
+// 范围钉死：zcode 不得继承 bash-guard/assertion-check 的提升（后果链仍有效）。
+func TestZcodeTaskGuardPromotion(t *testing.T) {
+	h := Lookup("zcode")
+	if h == nil {
+		t.Fatal("zcode row missing")
+	}
+	cases := []struct {
+		hook, detail string
+		want         bool
+	}{
+		{"task-guard", "[task-guard] Untracked source edit — no active task. Why:", true},
+		{"task-guard", "[task-guard] Second untracked source edit — stop editing and start a task first:", true},
+		{"task-guard", "[task-guard] No active task. Source edit DENIED until one exists — run: forge task start ...", true},
+		{"task-guard", "[task-guard] Auto-created task 'feat/x' from branch. Source changes tracked.", false}, // success path
+		{"task-anchor", "[task-anchor] FYI: test-file edits without an active task", false},                   // test-file FYI never promotes (own tag)
+		{"task-guard", "", false}, // bare PASS
+		{"bash-guard", "[bash-guard] Bash write without active task.", false},     // out of scope on zcode
+		{"assertion-check", "Advisory: assertion weakened in foo_test.go", false}, // out of scope on zcode
+	}
+	for _, c := range cases {
+		if got := h.ShouldPromoteAdvisory(c.hook, c.detail); got != c.want {
+			t.Errorf("zcode.ShouldPromoteAdvisory(%q, %q) = %v, want %v", c.hook, c.detail, got, c.want)
 		}
 	}
 }
