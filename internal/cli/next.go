@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// next.go —— `forge next`：单命令引导（vNext P1-2，LoopSpec nextSteps 语义）。
+// next.go —— `forge next`：单命令引导（vNext P1-2，nextSteps 单命令语义——agent 不自选下一步）。
 //
 // 设计依据（2026-08-31 三轮调研）：8-30 事故的第四层是"任务入口自愿"——agent 自
 // 选下一步于是绕开整个生命周期。next 从 git/任务状态推导出**恰好一条**下一步命令
