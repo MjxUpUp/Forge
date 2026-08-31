@@ -121,6 +121,11 @@ func TestRegistryGc_DryRunNoTouch(t *testing.T) {
 	if !strings.Contains(out, "演练") {
 		t.Errorf("dry-run 输出应标明这是演练模式，实得 %q", out)
 	}
+	// P2 回归（2026-08-31 review）：dry-run 汇总行必须报“计划处置数”而非恒 0——
+	// fixture 里恰有一个空孤儿（计划删除）与一个过期孤儿（计划移入备份）。
+	if !strings.Contains(out, "删除空目录 1，移入备份 1") {
+		t.Errorf("dry-run 汇总应报告计划数（删除 1/备份 1），实得 %q", out)
+	}
 	for _, d := range []string{fx.regDir, fx.emptyDir, fx.staleDir, fx.freshDir} {
 		if _, err := os.Stat(d); err != nil {
 			t.Errorf("dry-run 不得改动任何目录，%s 却消失了: %v", d, err)
