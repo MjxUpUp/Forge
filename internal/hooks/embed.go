@@ -578,7 +578,32 @@ if [ -z "$TASK_REF" ]; then
   if [ "$_c" -eq 1 ]; then
     echo "WARN [task-guard] Untracked source edit — no active task. Why: changes outside a task skip verify/review/score gates. Do: run forge task start --ref <ref> --branch --title <title> (or forge task wild \"<note>\" for a deliberate one-off; forge next derives the step for you). Consequence: one more untracked edit this session escalates to a hard stop.（第 1 次提示）"
   elif [ "$_c" -eq 2 ]; then
-    echo "WARN [task-guard] Second untracked source edit — stop editing and pick an exit first: forge task start --ref <ref> --branch --title <title>, or forge task wild \"<note>\" for a deliberate one-off (run forge next for guidance), then retry the edit. Further edits are recorded for review.（已升档：第 2 次）"
+    echo "WARN [task-guard] Second untracked source edit — stop editing and pick an exit first: forge task start --ref <ref> --branch --title <title>, or forge task wild \"<note>\" for a deliberate one-off (run forge next for guidance), then retry the edit. A grace window of 3 more edits is now open — remediate inside it or the breach is recorded.（已升档：第 2 次）"
+    # 缓冲窗口开窗（vNext P3，设计 M2 定位置停止）：升档=拉绳，不是急停——线走到
+    # 固定位（3 次编辑的窗口）才真停。开窗时刻单独立标记（window 计数器每编辑都
+    # 改写，mtime 不可用作开窗时刻），补救判据要用它比对。
+    : > "${_MARKER_DIR}/forge-taskguard-window-opened-${_SESSION_ID}" 2>/dev/null || true
+    echo 0 > "${_MARKER_DIR}/forge-taskguard-window-${_SESSION_ID}" 2>/dev/null || true
+  elif [ "$_c" -gt 2 ]; then
+    # 窗口内：计数递增；补救判据 = wild 申报文件比开窗时刻新（task start 的补救
+    # 走另一条路——建任务后本分支不再到达）。超窗一次落 violation 记录（agent 不
+    # 可写路径由 forge enforcement 消费），文案一次性。
+    _WIN="${_MARKER_DIR}/forge-taskguard-window-${_SESSION_ID}"
+    _WOPEN="${_MARKER_DIR}/forge-taskguard-window-opened-${_SESSION_ID}"
+    _VIOL="${_MARKER_DIR}/forge-taskguard-violation-${_SESSION_ID}"
+    _w=$(cat "$_WIN" 2>/dev/null || true)
+    case "$_w" in ''|*[!0-9]*) _w=0;; esac
+    _w=$(( _w + 1 ))
+    echo "$_w" > "$_WIN" 2>/dev/null || true
+    _WILD="${FORGE_DATA_DIR:-${TMPDIR:-/tmp}}/wild/declarations.jsonl"
+    _remediated=0
+    if [ -f "$_WILD" ] && [ "$_WILD" -nt "$_WOPEN" ]; then
+      _remediated=1
+    fi
+    if [ "$_remediated" -eq 0 ] && [ "$_w" -ge 3 ] && [ ! -f "$_VIOL" ]; then
+      echo "$_c" > "$_VIOL" 2>/dev/null || true
+      echo "WARN [task-guard] Grace window expired: ${_w} untracked edits after escalation with no task start and no wild declaration — breach recorded for audit (forge enforcement). Stop now and pick an exit: forge task start --ref <ref> --branch --title <title>, or forge task wild \"<note>\".（窗口超时：违规已记录）"
+    fi
   fi
   exit 0
 fi
