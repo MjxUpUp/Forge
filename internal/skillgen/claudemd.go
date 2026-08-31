@@ -172,7 +172,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("### 常见错误\n\n")
 	sb.WriteString("| 错误信息 | 原因 | 解决方法 |\n")
 	sb.WriteString("|----------|------|----------|\n")
-	sb.WriteString("| WARN [task-guard] ... allowed but not tracked | 无活跃任务时 Write/Edit 源码（仅警告，不拦截） | 启动任务让变更被追踪和评分 |\n")
+	sb.WriteString("| WARN [task-guard] Untracked source edit（第1次三段式提示，第2次升档 STOP） | 无活跃任务时 Write/Edit 源码（放行但计数升档） | 启动任务让变更被追踪和评分 |\n")
 	sb.WriteString("| WARN [bash-guard] ... Bash write without active task | 无任务时 Bash 写文件（仅警告，但源码会被 file-sentinel quarantine） | 先启动任务 |\n")
 	sb.WriteString("| FAIL [hazard-guard] 高危操作已拦截（需 human-in-the-loop 确认） | Bash 命令命中高危指纹（`rm -rf` 深目录/盘根/引号逃逸等） | 确需执行：用户本回合已明确指令/确认过该操作 → 直接 `forge hazard confirm --last` 放行一次，无需二次确认；否则先用所在工具的提问确认机制说明风险获确认；非误报勿绕过 |\n")
 	sb.WriteString("| FAIL [freeze-guard] ... 路径不在冻结允许清单 | `forge freeze` 激活期间写了清单外路径 | `forge freeze --status` 看允许范围；确实要写：与用户确认后 `forge freeze --off` 解除 |\n")

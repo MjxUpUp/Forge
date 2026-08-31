@@ -30,7 +30,7 @@ func TestKimiAdvisoryEnqueueIsSilentAndQueued(t *testing.T) {
 	sess := fmt.Sprintf("kimi-q-%d", time.Now().UnixNano())
 
 	stdout, _, err := captureOutput(t, func() error {
-		return emitAdvisoryRouted("kimi", "PreToolUse", "task-guard", root, sess, true, "[task-guard] No active task. Source changes are allowed but not tracked.")
+		return emitAdvisoryRouted("kimi", "PreToolUse", "task-guard", root, sess, true, "[task-guard] Untracked source edit — no active task. Why: changes outside a task skip verify/review/score gates.")
 	})
 	if err != nil {
 		t.Fatalf("advisory must stay an allow (nil error), got %v", err)
@@ -43,7 +43,7 @@ func TestKimiAdvisoryEnqueueIsSilentAndQueued(t *testing.T) {
 		t.Fatalf("advisory must be queued at %s: %v", kimiAdvisoryQueuePath(root), rerr)
 	}
 	content := string(data)
-	for _, want := range []string{`"hook":"task-guard"`, `"event":"PreToolUse"`, "No active task"} {
+	for _, want := range []string{`"hook":"task-guard"`, `"event":"PreToolUse"`, "no active task"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("queue entry missing %s, got %q", want, content)
 		}
@@ -239,14 +239,15 @@ func TestKimiAdvisoryGlobalHookNoRoot(t *testing.T) {
 // TestKimiTaskGuardE2EQueuesNotBlocks 是本队列要修的 2026-08 事件类的全链路
 // 回归：kimi 会话在 main 上无任务改源码。WARN 必须 (a) **不**阻断——引入队列
 // 前的提升把它变成了「allowed」文案的 exit-2 deny、拦停编辑；(b) 在
-// PreToolUse 上**零**输出——kimi 把该事件的任何 stdout 当 deny；(c) 恰好入队
-// 一次（脚本的 NOWARN 去噪保留）；(d) 经 UserPromptSubmit 攒发浮现一次。
+// PreToolUse 上**零**输出——kimi 把该事件的任何 stdout 当 deny；(c) 按无视
+// 计数谱系入队（vNext P0-3 取代 NOWARN：第 1 条三段式 + 第 2 条升档 STOP，第 3
+// 次起静默）；(d) 经 UserPromptSubmit 攒发浮现一次。
 func TestKimiTaskGuardE2EQueuesNotBlocks(t *testing.T) {
 	root := newTaskGuardProject(t)
 	t.Setenv("TMPDIR", t.TempDir())
 	sess := fmt.Sprintf("kimi-e2e-%d", time.Now().UnixNano())
 
-	for i := 1; i <= 2; i++ {
+	for i := 1; i <= 3; i++ {
 		stdout, stderr, err := runTaskGuardHookOnce(t, `"forge_agent":"kimi",`, sess)
 		if err != nil {
 			t.Fatalf("edit #%d must be ALLOWED on kimi (queue, not block), got %T %v (stderr=%q)", i, err, err, stderr)
@@ -256,14 +257,17 @@ func TestKimiTaskGuardE2EQueuesNotBlocks(t *testing.T) {
 		}
 	}
 	data, rerr := os.ReadFile(kimiAdvisoryQueuePath(root))
-	if rerr != nil || !strings.Contains(string(data), "No active task") {
+	if rerr != nil || !strings.Contains(string(data), "no active task") {
 		t.Fatalf("WARN must be queued, got %q err=%v", data, rerr)
 	}
-	if n := strings.Count(strings.TrimRight(string(data), "\n"), "\n"); n != 0 {
-		t.Errorf("NOWARN de-noise must keep exactly one queued entry per session, got %d extra lines", n)
+	if !strings.Contains(string(data), "Second untracked source edit") {
+		t.Errorf("ignore counter must queue the escalation copy on edit #2, got %q", data)
+	}
+	if n := strings.Count(strings.TrimRight(string(data), "\n"), "\n"); n != 1 {
+		t.Errorf("spectrum must queue exactly two entries (advisory + escalation), got %d extra lines", n-1)
 	}
 	batch := drainKimiAdvisories(root, sess)
-	if !strings.Contains(batch, "No active task") {
+	if !strings.Contains(batch, "no active task") {
 		t.Errorf("UserPromptSubmit drain must surface the queued WARN, got %q", batch)
 	}
 	if batch2 := drainKimiAdvisories(root, sess); batch2 != "" {
