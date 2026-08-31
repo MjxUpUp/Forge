@@ -475,15 +475,11 @@ esac
 # Not a source code file — allow
 printf '%s' "$FILE_PATH" | grep -qE '\.(go|rs|ts|tsx|js|jsx|py|java|rb|zig|nim)$' || exit 0
 
-# Test files — always allow (TDD workflow)
-printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)' && exit 0
-
-# dogfood 5.1：session-level source-touched marker. Setting it here (when task-guard
-# has confirmed FILE_PATH is source code) means auto-compile + bash-guard can
-# distinguish research-only sessions (AgentFare pattern: no source touches ⇒
-# silent) from dev sessions (marker set ⇒ normal advisory). Per-session, keyed
-# by FORGE_SESSION_ID. The marker is set BEFORE the no-task decisions below so
-# downstream hooks in the same invocation also see it as set.
+# Session-marker bootstrap（在 test/源码分流之前：测试分支也要写计数，bootstrap
+# 须前移到分流之前；有活跃任务时两个分支都不写新标记）。dogfood 5.1：session-level
+# source-touched marker. Setting it (when task-guard has confirmed FILE_PATH is
+# source code) lets auto-compile + bash-guard distinguish research-only sessions
+# from dev sessions. Per-session, keyed by FORGE_SESSION_ID.
 : "${TMPDIR:=/tmp}"
 _SESSION_ID="${FORGE_SESSION_ID:-default}"
 # Session-marker root: FORGE_DATA_DIR first (injected by the Go layer — forge's
@@ -509,11 +505,31 @@ _SESSION_ID="${FORGE_SESSION_ID:-default}"
 _MARKER_DIR="${FORGE_DATA_DIR:-${TMPDIR:-/tmp}}/markers"
 mkdir -p "$_MARKER_DIR" 2>/dev/null || true
 # Prune session markers older than 7 days: a session that old is long over, and
-# its markers (3 per session per project) would otherwise accumulate forever.
+# its markers would otherwise accumulate forever.
 #
-# 清扫超过 7 天的会话 marker：那么老的会话早已结束，其标记（每会话每项目
-# 3 个）否则会永久累积。
+# 清扫超过 7 天的会话 marker：那么老的会话早已结束，其标记否则会永久累积。
 find "$_MARKER_DIR" -maxdepth 1 -type f -name 'forge-*' -mtime +7 -delete 2>/dev/null || true
+
+# Test files — always allow (TDD workflow), but anchored: vNext P0-4 豁免≠不可见。
+# 2026-08-30 事故里两个 _test.go 修复文件在无任务会话连 advisory 都未触发（本
+# 检查先于一切 no-task 逻辑直接 exit 0）。放行语义不变；补一次性 FYI + 每会话
+# 编辑计数（forge-test-edits-<session>，coverage 统计/审计数据源）。FYI 用独立
+# [task-anchor] 谓词（主屏障——不会被 task-guard 的提升规则命中）且提升宿主
+# 跳过输出（第二重保险——exit-2 语义下提示性文案不该出现），双保险防误阻断。
+if printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)'; then
+  if [ -z "$TASK_REF" ]; then
+    _TEST_CNT="${_MARKER_DIR}/forge-test-edits-${_SESSION_ID}"
+    _n=$(cat "$_TEST_CNT" 2>/dev/null || true)
+    case "$_n" in ''|*[!0-9]*) _n=0;; esac
+    echo $(( _n + 1 )) > "$_TEST_CNT" 2>/dev/null || true
+    if [ -z "${FORGE_TASKGUARD_PROMOTED:-}" ] && [ ! -f "${_MARKER_DIR}/forge-test-note-${_SESSION_ID}" ]; then
+      touch "${_MARKER_DIR}/forge-test-note-${_SESSION_ID}" 2>/dev/null || true
+      echo "WARN [task-anchor] FYI: test-file edits without an active task — kept allowed (TDD), untracked/unscored; notice once per session.（测试编辑已计数）"
+    fi
+  fi
+  exit 0
+fi
+
 _TOUCHED_MARKER="${_MARKER_DIR}/forge-source-touched-${_SESSION_ID}"
 touch "$_TOUCHED_MARKER" 2>/dev/null || true
 
@@ -527,35 +543,42 @@ if [ -z "$TASK_REF" ]; then
       exit 0
     fi
   fi
-  # On master/main or auto-creation failed: warn but allow.
-  # dogfood 3.1：每源文件 Edit 注入 WARN 刷屏（AgentWorld 139 次）。会话级标记文件，
-  # 每会话首条 WARN 提示改动不被任务追踪，之后静默。标记键控 FORGE_SESSION_ID 隔离并发会话。
+  # On master/main or auto-creation failed: advisory spectrum with an ignore
+  # counter (vNext P0-1/P0-3).
   #
   # FORGE_TASKGUARD_PROMOTED=1（Go 侧注入：本宿主把 task-guard advisory 提升为阻断
-  # ——仅 dsh，hostcap PromoteAdvisory 列；kimi 的规则已于 2026-08-24 退役，改为
-  # advisory 入队 + UserPromptSubmit 攒发）时，本输出不再是 advisory 而是每次都发
-  # 的 block reason：一次性 NOWARN 标记在阻断语义下是新洞——模型重试同一编辑即静默
-  # 放行（标记已置）；且「allowed」文案作 deny reason 自相矛盾。故提升路径每次输出
-  # 指令式文案（含 Contains 谓词 [task-guard]、不含 Auto-created，仍照常提升）。
+  # ——dsh 2026-08-22 与 zcode 2026-08-30 两例实证「通道送达但被无视」后入列，
+  # hostcap PromoteAdvisory；kimi 的规则已于 2026-08-24 退役，改为 advisory 入队 +
+  # UserPromptSubmit 攒发）时，本输出不再是 advisory 而是每次都发的 block reason：
+  # 一次性标记在阻断语义下是新洞——模型重试同一编辑即静默放行；且许可式文案作
+  # deny reason 自相矛盾。故提升路径每次输出指令式文案（含 Contains 谓词
+  # [task-guard]、不含 Auto-created，仍照常提升）。
   #
   # FORGE_TASKGUARD_PROMOTED=1 (injected by the Go layer: this host promotes the
-  # task-guard advisory to a block — dsh only, hostcap PromoteAdvisory; kimi's
-  # rules were retired 2026-08-24 in favor of the advisory queue +
-  # UserPromptSubmit drain). Under
-  # promotion this output is not an advisory but the block reason, emitted EVERY
-  # time: the once-per-session NOWARN marker becomes a hole under block semantics
-  # — a blind retry of the same edit passes silently (marker already set) — and
-  # the "allowed" wording contradicts a deny. So the promoted path emits a
-  # directive text every time (carries the [task-guard] Contains predicate, no
-  # Auto-created, so it still promotes).
-  NOWARN_FILE="${_MARKER_DIR}/forge-taskguard-nowarn-${FORGE_SESSION_ID:-default}"
+  # task-guard advisory to a block — dsh 2026-08-22 and zcode 2026-08-30, both
+  # documented incidents where the delivered advisory was ignored; kimi's rules
+  # were retired 2026-08-24 in favor of the advisory queue + UserPromptSubmit
+  # drain). Under promotion this output is the block reason, emitted EVERY time.
   if [ -n "${FORGE_TASKGUARD_PROMOTED:-}" ]; then
     echo "WARN [task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch --title <title> (creates branch + task on main/master), then retry the edit."
     exit 0
   fi
-  if [ ! -f "$NOWARN_FILE" ]; then
-    touch "$NOWARN_FILE" 2>/dev/null || true
-    echo "WARN [task-guard] No active task. Source changes are allowed but not tracked by a Forge task.（本会话仅提示一次）"
+  # 无视计数器（P0-3，取代一次性 NOWARN 去噪）：2026-08-30 事故里首条 advisory 被
+  # 无视后，NOWARN 让后续二十余次编辑全部静默——「advisory 可无视」就此滑向偏差
+  # 正常化。现在每次无任务源编辑 +1（首条之后的每次编辑即是对它的无视）：第 1 次
+  # 发三段式 advisory（理由/期望行为/后果预告，清除 allowed 许可语义——8-30 转录
+  # 实证「allowed」被 agent 读作放行声明）；第 2 次升档为指令级 STOP 文案；之后
+  # 静默继续计数（保留 dogfood 3.1 的防刷屏约束；跨会话聚合与 promotion 队列属
+  # P2）。计数文件 forge-taskguard-ignores-<session> 与其他会话 marker 同根同扫。
+  _IGN="${_MARKER_DIR}/forge-taskguard-ignores-${_SESSION_ID}"
+  _c=$(cat "$_IGN" 2>/dev/null || true)
+  case "$_c" in ''|*[!0-9]*) _c=0;; esac
+  _c=$(( _c + 1 ))
+  echo "$_c" > "$_IGN" 2>/dev/null || true
+  if [ "$_c" -eq 1 ]; then
+    echo "WARN [task-guard] Untracked source edit — no active task. Why: changes outside a task skip verify/review/score gates. Do: run forge task start --ref <ref> --branch --title <title>, or continue only if this is deliberate. Consequence: one more untracked edit this session escalates to a hard stop.（第 1 次提示）"
+  elif [ "$_c" -eq 2 ]; then
+    echo "WARN [task-guard] Second untracked source edit — stop editing and start a task first: forge task start --ref <ref> --branch --title <title>, then retry the edit. Further edits are recorded for review.（已升档：第 2 次）"
   fi
   exit 0
 fi

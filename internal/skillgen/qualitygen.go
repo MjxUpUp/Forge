@@ -119,7 +119,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("### 错误恢复\n\n")
 	sb.WriteString("| 错误信息 | 原因 | 解决方法 |\n")
 	sb.WriteString("|----------|------|----------|\n")
-	sb.WriteString("| WARN [task-guard] ... allowed but not tracked | 无活跃任务时 Write/Edit 源码（仅警告） | 启动任务让变更被追踪和评分 |\n")
+	sb.WriteString("| WARN [task-guard] Untracked source edit（第1次三段式提示，第2次升档 STOP） | 无活跃任务时 Write/Edit 源码（放行但计数升档） | 启动任务让变更被追踪和评分 |\n")
 	sb.WriteString("| WARN [bash-guard] ... Bash write without active task | 无任务时 Bash 写文件（仅警告，源码会被 file-sentinel quarantine） | 先启动任务 |\n")
 	sb.WriteString("| BLOCKED: passed without reading any code | task 期间 Read 次数为 0（硬阻断非提醒） | 改代码前先 Read 相关文件理解上下文，再重跑 `forge task gate` |\n")
 	sb.WriteString("| BLOCKED: insufficient work activity | 工具调用 <1 次（硬阻断非提醒） | 用 Read/Grep/Glob 探索代码 |\n")

@@ -221,7 +221,7 @@ func TestKimiAdvisoryNeverPromotes(t *testing.T) {
 		hook   string
 		detail string
 	}{
-		{"task-guard", "[task-guard] No active task. Source changes are allowed but not tracked by a Forge task."},
+		{"task-guard", "[task-guard] Untracked source edit — no active task. Why: changes outside a task skip verify/review/score gates."},
 		{"bash-guard", "[bash-guard] Bash write without active task. Changes are allowed but not tracked."},
 		{"assertion-check", "[assertion-check] Advisory: 疑似断言弱化——[Go] t.Fatal net removed. 请核查。"},
 	}
