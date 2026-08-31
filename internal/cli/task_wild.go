@@ -77,6 +77,21 @@ func runTaskWild(cmd *cobra.Command, args []string) error {
 	if st, terr := taskpipeline.ActiveTaskState(root, entry.Session); terr == nil {
 		entry.TaskActive = st != nil
 	}
+	// 补救语义（P3 审查 #1）：wild 申报是 task-guard 谱系的合法出口——申报即声明
+	// "接下来的无任务编辑是刻意的"。清掉本会话的计数/窗口/违规标记（session 键控，
+	// 与 hook 写端同名），否则第 1 次 advisory 后已申报补救的 agent 在第 2 次编辑仍
+	// 被升档开窗，且窗口补救判据不成立 → 窗口耗尽落伪违规，污染 window_violations
+	// 审计。删除失败不阻断申报（计数器残留最坏是多提示一次）。
+	if sid := entry.Session; sid != "" {
+		markers := filepath.Join(forgedata.DataDirFor(root), "markers")
+		for _, prefix := range []string{
+			"forge-taskguard-ignores-", "forge-taskguard-window-",
+			"forge-taskguard-window-opened-", "forge-taskguard-violation-",
+		} {
+			_ = os.Remove(filepath.Join(markers, prefix+sid))
+		}
+	}
+
 	f, err := os.OpenFile(filepath.Join(dir, "declarations.jsonl"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {

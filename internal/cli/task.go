@@ -269,6 +269,17 @@ func resolveOriginTool(root, explicit string) string {
 }
 
 func runTaskStart(cmd *cobra.Command, args []string) error {
+	// --invariant 校验前置到一切副作用之前（P3 审查 #2）：原位置在 --branch 切分支
+	// 与 --worktree 之后，非法 invariant 报错时分支已建且重试带 --branch 会因
+	// "can only be used on main/master" 失败——校验必须发生在任何状态改变前。
+	if invRaw, _ := cmd.Flags().GetStringArray("invariant"); len(invRaw) > 0 {
+		for _, v := range invRaw {
+			if err := validateInvariant(v); err != nil {
+				return err
+			}
+		}
+	}
+
 	root, err := findProjectRoot()
 	if err != nil {
 		return err
