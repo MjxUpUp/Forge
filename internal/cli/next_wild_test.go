@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -18,8 +17,10 @@ import (
 // next_wild_test.go 钉住 vNext P1 两个新命令：forge next（单命令引导——决策表）
 // 与 forge task wild（野外申报——落盘契约）。
 
-// TestNextDecision 覆盖决策表全行：无任务（脏/净）、门禁链四步、完成收尾两态。
-// nextDecision 是纯函数——git/任务状态的接入由 runNext 负责，此处钉语义。
+// TestNextDecision 覆盖决策表全行：无任务（脏/净）、门禁链逐步（含验收实跑与过门
+// 两分、task-complete gate 在 complete 之前——P1 审查 FAIL 修正的核心行）、乱序
+// 状态、活跃任务忽略脏树。nextDecision 是纯函数——git/任务状态接入由 runNext
+// 负责，此处钉语义。
 func TestNextDecision(t *testing.T) {
 	withGates := func(gates ...string) *taskpipeline.TaskState {
 		st := &taskpipeline.TaskState{TaskRef: "feat/x"}
@@ -28,50 +29,53 @@ func TestNextDecision(t *testing.T) {
 		}
 		return st
 	}
-	completed := func(gates ...string) *taskpipeline.TaskState {
-		st := withGates(gates...)
-		now := time.Now()
-		st.CompletedAt = &now
+	reviewed := func(st *taskpipeline.TaskState) *taskpipeline.TaskState {
+		st.ReviewPassed = true
 		return st
+	}
+	withAcceptance := func(head string) []taskpipeline.AcceptanceCriterion {
+		return []taskpipeline.AcceptanceCriterion{{Run: "go test ./...", AcceptedHeadCommit: head}}
 	}
 	cases := []struct {
 		name   string
 		branch string
 		dirty  bool
 		st     *taskpipeline.TaskState
-		want   string // Next 的关键子串
+		want   string // Next 全等或唯一关键子串
+		exact  bool   // true=Next 必须全等 want
 	}{
-		{"no task + dirty tree", "main", true, nil, "forge task start"},
-		{"no task + clean tree", "main", false, nil, "forge status"},
-		{"task just started", "feat/x", false, withGates(), "forge task gate task-implement"},
-		{"implemented not verified", "feat/x", false, withGates("task-implement"), "forge task verify-acceptance"},
-		{"verified not reviewed", "feat/x", false, withGates("task-implement", "task-verify"), "forge review pass"},
-		{"reviewed not complete", "feat/x", false, func() *taskpipeline.TaskState {
-			st := withGates("task-implement", "task-verify")
-			st.ReviewPassed = true
+		{"no task + dirty tree", "main", true, nil, `forge task start --ref <ref> --branch --title <title>`, true},
+		{"no task + clean tree", "main", false, nil, "forge status", true},
+		{"task just started", "feat/x", false, withGates(), "forge task gate task-implement", true},
+		{"active task ignores dirty tree", "feat/x", true, withGates("task-implement"), "forge task gate task-verify", true},
+		{"acceptance pending → run it first", "feat/x", false, func() *taskpipeline.TaskState {
+			st := withGates("task-implement")
+			st.Acceptance = withAcceptance("")
 			return st
-		}(), "forge task complete"},
-		{"all gates on feature branch", "feat/x", false, func() *taskpipeline.TaskState {
-			st := withGates("task-implement", "task-verify", "task-complete")
-			st.ReviewPassed = true
+		}(), "forge task verify-acceptance", true},
+		{"acceptance run → gate verify", "feat/x", false, func() *taskpipeline.TaskState {
+			st := withGates("task-implement")
+			st.Acceptance = withAcceptance("abc123")
 			return st
-		}(), "forge task finish"},
-		{"all gates on main", "main", false, func() *taskpipeline.TaskState {
-			st := withGates("task-implement", "task-verify", "task-complete")
-			st.ReviewPassed = true
-			return st
-		}(), "forge status"},
-		{"completed + dirty → collect first", "main", true, completed(), "forge task start"},
-		{"completed + clean", "main", false, completed(), "forge status"},
+		}(), "forge task gate task-verify", true},
+		{"no acceptance criteria → straight to verify gate", "feat/x", false, withGates("task-implement"), "forge task gate task-verify", true},
+		{"verified not reviewed", "feat/x", false, withGates("task-implement", "task-verify"), "forge review pass", true},
+		{"reviewed but complete-gate missing → gate first", "feat/x", false, reviewed(withGates("task-implement", "task-verify")), "forge task gate task-complete", true},
+		{"three gates + review → complete", "feat/x", false, reviewed(withGates("task-implement", "task-verify", "task-complete")), "forge task complete", true},
+		{"out-of-order: complete-gate passed, review missing", "feat/x", false, withGates("task-implement", "task-verify", "task-complete"), "forge review pass", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			got := nextDecision(c.branch, c.dirty, c.st)
-			if !strings.Contains(got.Next, c.want) {
-				t.Errorf("nextDecision(%q, dirty=%v) Next = %q, want substring %q (reason: %q)", c.branch, c.dirty, got.Next, c.want, got.Reason)
+			if c.exact && got.Next != c.want || !c.exact && !strings.Contains(got.Next, c.want) {
+				t.Errorf("nextDecision(%q, dirty=%v) Next = %q, want %q (reason: %q)", c.branch, c.dirty, got.Next, c.want, got.Reason)
 			}
-			if got.Next == "" || got.Reason == "" {
-				t.Errorf("Next 与 Reason 恒非空（单命令契约），got %+v", got)
+			// 单命令契约：Next 不得是 &&/; 复合（P1 审查 MEDIUM）。
+			if strings.Contains(got.Next, "&&") || strings.Contains(got.Next, ";") {
+				t.Errorf("Next 必须恰一条命令（无复合），got %q", got.Next)
+			}
+			if got.Reason == "" {
+				t.Errorf("Reason 恒非空（单命令契约），got %+v", got)
 			}
 		})
 	}

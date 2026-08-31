@@ -24,14 +24,14 @@ func init() {
 
 var nextCmd = &cobra.Command{
 	Use:   "next",
-	// GroupID：quality 组（与 task/review 同组——单命令引导是任务质量链路的 pull 侧）。
-	GroupID: "quality",
-	Short:   "推导恰好一条下一步命令（从 git/任务状态——agent 不自选下一步）",
+	Short: "推导恰好一条下一步命令（从 git/任务状态——agent 不自选下一步）",
 	Long: `Derive the single next command from current git + task state.
 
-覆盖：无任务有脏树 → task start（或 wild 申报）；任务进行中 → 下一道门禁命令；
-审前 → 派只读审查后 review pass；门禁齐 → complete；已完成未合并 → finish；
-无事可做 → status。--json 是 agent 的机器接口：{"next","reason","state"}。`,
+覆盖：无任务有脏树 → task start（或 wild 申报）；任务进行中 → 门禁链下一步
+（implement → 验收实跑 → verify → review pass → complete 门 → complete）。
+--json 是 agent 的机器接口：{"next","reason","state"}。ActiveTaskState 对已
+完结任务返回 nil，故完成后的合并收尾不在本命令承诺内（用 forge task list /
+git merge）。`,
 	RunE: runNext,
 }
 
@@ -61,24 +61,27 @@ func runNext(cmd *cobra.Command, args []string) error {
 }
 
 // nextDecision 是纯决策函数（单测锚点）：给定分支、脏树、活跃任务状态，返回恰好
-// 一条命令。门禁顺序实现（implement→verify→review→complete→合并）与 task 门禁
-// 链一致；review 用 ReviewPassed（task-complete 的硬前置）。
+// 一条命令。门禁顺序与真实链严格一致（P1 审查 FAIL 修正：`forge task complete`
+// 自身要求三门禁全过——缺 task-complete gate 时必须先建议 `gate task-complete`；
+// `forge task finish` 要求已完成——收官两步此前错位）：implement →（验收未实跑则
+// verify-acceptance）→ gate task-verify → review pass → gate task-complete →
+// task complete。每条 Next 恰一条命令（无 && 复合）。
 func nextDecision(branch string, dirty bool, st *taskpipeline.TaskState) nextResult {
 	gates := map[string]bool{}
 	for _, h := range stGateHistory(st) {
 		gates[h] = true
 	}
 	state := map[string]any{
-		"branch":         branch,
-		"dirty":          dirty,
-		"active_task":    taskRef(st),
-		"gates_passed":   stGateHistory(st),
-		"review_passed":  stReviewPassed(st),
-		"task_completed": stCompleted(st),
+		"branch":        branch,
+		"dirty":         dirty,
+		"active_task":   taskRef(st),
+		"gates_passed":  stGateHistory(st),
+		"review_passed": stReviewPassed(st),
 	}
 
-	// 已完成/无活跃任务：归属问题优先于一切。
-	if st == nil || st.CompletedAt != nil {
+	// 无活跃任务（ActiveTaskState 对已完成任务返回 nil——完成态经此分支，不承诺
+	// finish 引导）：归属问题优先于一切。
+	if st == nil {
 		if dirty {
 			return nextResult{
 				Next:   `forge task start --ref <ref> --branch --title <title>`,
@@ -93,22 +96,23 @@ func nextDecision(branch string, dirty bool, st *taskpipeline.TaskState) nextRes
 		}
 	}
 
-	// 活跃任务：按门禁链给恰好一条。
+	// 活跃任务：按真实门禁链给恰好一条。
 	switch {
 	case !gates["task-implement"]:
 		return nextResult{Next: "forge task gate task-implement", Reason: "实现未确认（有提交即可过）", State: state}
+	case stAcceptancePending(st):
+		return nextResult{Next: "forge task verify-acceptance", Reason: "验收标准尚未实跑回扣——先实跑（AcceptedHeadCommit 为空的标准待跑）", State: state}
 	case !gates["task-verify"]:
-		return nextResult{Next: "forge task verify-acceptance && forge task gate task-verify", Reason: "验收标准未实跑回扣——先实跑再过验证门", State: state}
+		return nextResult{Next: "forge task gate task-verify", Reason: "验收已实跑——过验证门", State: state}
 	case !stReviewPassed(st):
-		return nextResult{Next: "forge review pass", Reason: "验证已过而审查未过——派只读子代理审查当前 diff 后标记（task-complete 硬前置）", State: state}
-	case !gates["task-complete"] && st.CompletedAt == nil:
-		return nextResult{Next: "forge task complete", Reason: "实现/验证/审查齐备——完结并评分", State: state}
+		return nextResult{Next: "forge review pass", Reason: "验证已过而审查未过——派只读子代理审查当前 diff 后标记（task-complete 门禁硬前置）", State: state}
+	case !gates["task-complete"]:
+		return nextResult{Next: "forge task gate task-complete", Reason: "实现/验证/审查齐备——过第三道门（forge task complete 要求三门禁全过）", State: state}
+	default:
+		// 三门禁齐 + 已过 review：完结（finish 需完结后才有资格，且 ActiveTaskState
+		// 在完结后返回 nil——合并引导不在本命令承诺内，README 已注明）。
+		return nextResult{Next: "forge task complete", Reason: "三门禁与审查齐备——完结并评分（此后手工/finish 合并分支）", State: state}
 	}
-	// 三门禁齐 + 完成标记已有：交付收尾。
-	if branch != "main" && branch != "master" {
-		return nextResult{Next: "forge task finish", Reason: "任务已完成——验证门禁后合并分支（主检出则手工合并）", State: state}
-	}
-	return nextResult{Next: "forge status", Reason: "任务已完成且在主干——查看项目状态", State: state}
 }
 
 // gitDirty 报告工作区是否有变更（porcelain 非空即脏；.gitignore 自动生效）。
@@ -140,6 +144,16 @@ func stReviewPassed(st *taskpipeline.TaskState) bool {
 	return st != nil && st.ReviewPassed
 }
 
-func stCompleted(st *taskpipeline.TaskState) bool {
-	return st != nil && st.CompletedAt != nil
+// stAcceptancePending 报告是否有验收标准尚未实跑（AcceptedHeadCommit 为空）。
+// 未登记验收标准的任务直接跳过 verify-acceptance 引导。
+func stAcceptancePending(st *taskpipeline.TaskState) bool {
+	if st == nil {
+		return false
+	}
+	for _, a := range st.Acceptance {
+		if a.AcceptedHeadCommit == "" {
+			return true
+		}
+	}
+	return false
 }
