@@ -1121,7 +1121,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// command (truncated) — the 2026-08-22 adherence audit found 27.7k Bash invocations with ZERO toollog rows because the
 	// Bash matcher carried no tool-track; the audit (and any future hazard/behavior analysis) needs the command text,
 	// same truncated treatment as Skill/Agent. Read records a minimal
-	// {"file_path":...} (2026-08-16 review HIGH-1: the funnel join — skillseval.BuildTriggerFunnel — matches Read tool_input
+	// {"file_path":...} (2026-08-16 review HIGH-1: the funnel join — skillmetrics.BuildTriggerFunnel — matches Read tool_input
 	// suffixes to attribute "loaded the skill after the trigger hit"; omitting it made that join structurally dead on production
 	// data while unit tests stayed green on hand-marshaled inputs. The lean-toollog tradeoff lost to the observability signal).
 	//
@@ -1135,7 +1135,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 2026-08-22 遵循度审计发现 27.7k 次 Bash 调用在 toollog 零行（Bash matcher 没挂
 	// tool-track）；审计（及未来的 hazard/行为分析）需要命令文本，与 Skill/Agent 同截断待遇。
 	// Read 记最小 {"file_path":...}
-	// （2026-08-16 审查 HIGH-1：漏斗 join——skillseval.BuildTriggerFunnel——靠 Read tool_input 的
+	// （2026-08-16 审查 HIGH-1：漏斗 join——skillmetrics.BuildTriggerFunnel——靠 Read tool_input 的
 	// 后缀匹配归因「命中后加载了该 skill」；省略它使该 join 在生产数据上结构性死亡，而单测用手工
 	// marshal 的输入照样全绿。lean 权衡让位于可观测信号）。
 	if name == "auto-compile" || name == "tool-track" {
@@ -1151,12 +1151,12 @@ func runHook(cmd *cobra.Command, args []string) error {
 			call.EstTokens = toolusage.EstimateTokens(raw)
 		} else if name == "tool-track" && hookInput.ToolName == "Read" && fields.FilePath != "" {
 			// Minimal shape: ONLY file_path (not the full tool input) — the funnel join
-			// (skillseval.BuildTriggerFunnel → readFilePath) suffix-matches this field; every other
+			// (skillmetrics.BuildTriggerFunnel → readFilePath) suffix-matches this field; every other
 			// Read field stays unrecorded. Pinned by TestHookToolTrackRecordsReadFilePath; the two
 			// must not silently diverge again (that divergence was review HIGH-1).
 			//
 			// 最小形状：只记 file_path（非完整 tool input）——漏斗 join
-			// （skillseval.BuildTriggerFunnel → readFilePath）按本字段做后缀匹配；Read 的其余
+			// （skillmetrics.BuildTriggerFunnel → readFilePath）按本字段做后缀匹配；Read 的其余
 			// 字段照旧不记。由 TestHookToolTrackRecordsReadFilePath 钉死；两者不得再静默分叉
 			// （该分叉即审查 HIGH-1）。
 			minimal, _ := json.Marshal(map[string]string{"file_path": fields.FilePath})

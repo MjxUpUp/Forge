@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/skillmetrics"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
@@ -99,7 +100,7 @@ func MineGoldenDrafts(entries []checklog.Entry, calls []toolusage.ToolCall, skil
 			continue
 		}
 		kind := KindNotTrigger
-		if engagedAfter(calls, e.SessionID, name, e.RecordedAt) {
+		if skillmetrics.EngagedAfter(calls, e.SessionID, name, e.RecordedAt) {
 			kind = KindTrigger
 		}
 		dedup[k] = MinedCase{

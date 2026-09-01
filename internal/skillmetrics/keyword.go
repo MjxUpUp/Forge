@@ -1,4 +1,4 @@
-package skillseval
+package skillmetrics
 
 // keyword.go — per-keyword 触发分析（skill-trigger v2 / P0.5 轻量分析层）。
 //
@@ -105,7 +105,7 @@ func AnalyzeKeywords(entries []checklog.Entry, calls []toolusage.ToolCall, decla
 		kw := e.Meta[checklog.MetaKeyMatchedKeyword]
 		st := get(name, kw)
 		st.Hits++
-		if engagedAfter(calls, e.SessionID, name, e.RecordedAt) {
+		if EngagedAfter(calls, e.SessionID, name, e.RecordedAt) {
 			st.Engaged++
 		}
 		if n, err := strconv.Atoi(e.Meta[checklog.MetaKeySuppressedSinceLast]); err == nil && n > 0 {
