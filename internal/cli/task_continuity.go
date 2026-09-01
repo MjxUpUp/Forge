@@ -983,19 +983,9 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// gitPorcelain 返回 git status --porcelain 的行（已改未提交文件）。非 git 仓库或失败返 nil——
-// resume 不依赖 git，仅作「接手方一眼看到工作区状态」的辅助。porcelain 调用经
-// attribution.PorcelainLines 单一入口（2026-09 普查 P3-3：曾三处各自起 git 进程）。
-func gitPorcelain(root string) []string {
-	lines, err := attribution.PorcelainLines(root)
-	if err != nil {
-		return nil
-	}
-	return lines
-}
-
 // attributedPorcelain 是按本任务现场过滤后的 porcelain 行（L3 归属过滤的领域
-// 编排已下沉 taskpipeline.AttributedPorcelain——普查 A1；cli 只剩取行+委托）。
+// 编排已下沉 taskpipeline.AttributedPorcelain——普查 A1 补齐；cli 只剩取行+委托，
+// 原 gitPorcelain 中间包装随迁移消亡）。
 func attributedPorcelain(root string, state *taskpipeline.TaskState) []string {
 	lines, err := attribution.PorcelainLines(root)
 	if err != nil {
