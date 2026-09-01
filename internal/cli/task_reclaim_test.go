@@ -17,17 +17,16 @@ import (
 // IsClaimedStale 检测的 claimed 僵尸（认领方失联）形态。CLI 盖当前时间，确定性的 >7d 认领只能在进程内设。
 func saveClaimedAgo(t *testing.T, dir, ref, agent string, ago time.Time) {
 	t.Helper()
-	s := &taskpipeline.TaskState{TaskRef: ref, Summary: ref + ` 任务`}
-	if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
-		t.Fatalf(`AssignTo %s: %v`, ref, err)
-	}
-	if err := s.Claim(agent); err != nil {
-		t.Fatalf(`Claim %s: %v`, ref, err)
-	}
-	s.Assignment.ClaimedAt = &ago
-	if err := taskpipeline.SaveTaskState(dir, s); err != nil {
-		t.Fatalf(`SaveTaskState %s: %v`, ref, err)
-	}
+	seedTaskState(t, dir, ref, func(s *taskpipeline.TaskState) {
+		s.Summary = ref + ` 任务`
+		if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
+			t.Fatalf(`AssignTo %s: %v`, ref, err)
+		}
+		if err := s.Claim(agent); err != nil {
+			t.Fatalf(`Claim %s: %v`, ref, err)
+		}
+		s.Assignment.ClaimedAt = &ago
+	})
 }
 
 // TestTaskReclaim 端到端跑 forge task reclaim——§3 的 TTL 回收触发。以单一线性流程跑（reclaim

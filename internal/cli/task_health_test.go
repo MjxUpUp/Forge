@@ -24,14 +24,13 @@ import (
 // 派发——CLI 盖当前时间，产不出此态）。
 func saveOfferedAgo(t *testing.T, dir, ref, agent string, ago time.Time) {
 	t.Helper()
-	s := &taskpipeline.TaskState{TaskRef: ref, Summary: ref + ` 任务`}
-	if err := s.AssignTo(agent, `frontend`, `claude-code`); err != nil {
-		t.Fatalf(`AssignTo %s: %v`, ref, err)
-	}
-	s.Assignment.OfferedAt = &ago
-	if err := taskpipeline.SaveTaskState(dir, s); err != nil {
-		t.Fatalf(`SaveTaskState %s: %v`, ref, err)
-	}
+	seedTaskState(t, dir, ref, func(s *taskpipeline.TaskState) {
+		s.Summary = ref + ` 任务`
+		if err := s.AssignTo(agent, `frontend`, `claude-code`); err != nil {
+			t.Fatalf(`AssignTo %s: %v`, ref, err)
+		}
+		s.Assignment.OfferedAt = &ago
+	})
 }
 
 // saveFailedDependency writes a claimed-then-failed task, the kind a DependsOn edge can never
@@ -41,19 +40,18 @@ func saveOfferedAgo(t *testing.T, dir, ref, agent string, ago time.Time) {
 // （设计 §12 废弃链）。
 func saveFailedDependency(t *testing.T, dir, ref, agent string) {
 	t.Helper()
-	s := &taskpipeline.TaskState{TaskRef: ref, Summary: ref + ` 失败依赖`}
-	if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
-		t.Fatalf(`AssignTo %s: %v`, ref, err)
-	}
-	if err := s.Claim(agent); err != nil {
-		t.Fatalf(`Claim %s: %v`, ref, err)
-	}
-	if err := s.Fail(`boom`); err != nil {
-		t.Fatalf(`Fail %s: %v`, ref, err)
-	}
-	if err := taskpipeline.SaveTaskState(dir, s); err != nil {
-		t.Fatalf(`SaveTaskState %s: %v`, ref, err)
-	}
+	seedTaskState(t, dir, ref, func(s *taskpipeline.TaskState) {
+		s.Summary = ref + ` 失败依赖`
+		if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
+			t.Fatalf(`AssignTo %s: %v`, ref, err)
+		}
+		if err := s.Claim(agent); err != nil {
+			t.Fatalf(`Claim %s: %v`, ref, err)
+		}
+		if err := s.Fail(`boom`); err != nil {
+			t.Fatalf(`Fail %s: %v`, ref, err)
+		}
+	})
 }
 
 func TestTaskHealth_ReportsZombiesAndDeadlocks(t *testing.T) {
@@ -141,19 +139,19 @@ func TestTaskHealth_CleanProjectReportsNothing(t *testing.T) {
 // 即 OrchestrationReady 计为终态的形态。
 func saveDeliveredChild(t *testing.T, dir, ref, parent, agent string) {
 	t.Helper()
-	s := &taskpipeline.TaskState{TaskRef: ref, Summary: ref + ` 子任务`, ParentTaskRef: parent}
-	if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
-		t.Fatalf(`AssignTo %s: %v`, ref, err)
-	}
-	if err := s.Claim(agent); err != nil {
-		t.Fatalf(`Claim %s: %v`, ref, err)
-	}
-	if err := s.Deliver(); err != nil {
-		t.Fatalf(`Deliver %s: %v`, ref, err)
-	}
-	if err := taskpipeline.SaveTaskState(dir, s); err != nil {
-		t.Fatalf(`SaveTaskState %s: %v`, ref, err)
-	}
+	seedTaskState(t, dir, ref, func(s *taskpipeline.TaskState) {
+		s.Summary = ref + ` 子任务`
+		s.ParentTaskRef = parent
+		if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
+			t.Fatalf(`AssignTo %s: %v`, ref, err)
+		}
+		if err := s.Claim(agent); err != nil {
+			t.Fatalf(`Claim %s: %v`, ref, err)
+		}
+		if err := s.Deliver(); err != nil {
+			t.Fatalf(`Deliver %s: %v`, ref, err)
+		}
+	})
 }
 
 // TestTaskHealth_ReadyOrchestration covers the design §5 proactive hint: a generic parent whose
