@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"os"
@@ -10,11 +10,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runHookWithStdin chdir 进一个全新的 forge 项目（temp dir + .forge/state.json，
+// RunHookWithStdin chdir 进一个全新的 forge 项目（temp dir + .forge/state.json，
 // 与 TestHookOutput_StructuredJSON 同 fixture 形态），把 stdinJSON 喂给一次 hook
 // 调用，返回项目 root 供 DataDir 断言。FORGE_DATA_HOME 按测试隔离；agent 选择相关
 // 的 env/flag 面被清空，使归因只受被测 payload 驱动。
-func runHookWithStdin(t *testing.T, hookName, stdinJSON string) string {
+func RunHookWithStdin(t *testing.T, hookName, stdinJSON string) string {
 	t.Helper()
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	t.Setenv("FORGE_HOOK_AGENT", "")
@@ -55,7 +55,7 @@ func runHookWithStdin(t *testing.T, hookName, stdinJSON string) string {
 		// auto-compile/tool-track 在裸 temp 项目里嵌脚本可能报错——被测的归因副
 		// 作用在那之前已发生。传最小 cobra root（非 nil）：Go 内 hook 的分派读
 		// cmd.Root().Version，nil 会空指针。
-		_ = runHook(&cobra.Command{}, []string{hookName})
+		_ = RunHook(&cobra.Command{}, []string{hookName})
 	})
 	return root
 }
@@ -67,7 +67,7 @@ func runHookWithStdin(t *testing.T, hookName, stdinJSON string) string {
 // session id、登记会话并刷新 last-session 指针（修复前每个此类事件都坍缩到
 // legacy 全局键，cursor 会话从未被登记）。
 func TestHook_CursorConversationIDRegistersSession(t *testing.T) {
-	root := runHookWithStdin(t, "auto-compile",
+	root := RunHookWithStdin(t, "auto-compile",
 		`{"hook_event_name":"PostToolUse","tool_name":"Write","conversation_id":"conv-cursor-1","tool_input":{"file_path":"src/main.go","content":"package main"}}`)
 
 	sid, _, ok := taskpipeline.RecentHookSession(root)
@@ -89,7 +89,7 @@ func TestHook_CursorConversationIDRegistersSession(t *testing.T) {
 // 构造 Claude 形 stdin 的宿主经 forge_agent payload 字段声明身份（其 wiring
 // 测试钉死命令名册，故不加 --agent 后缀）——会话必须被登记且盖该 agent 的戳。
 func TestHook_ForgeAgentPayloadAttributesSession(t *testing.T) {
-	root := runHookWithStdin(t, "auto-compile",
+	root := RunHookWithStdin(t, "auto-compile",
 		`{"hook_event_name":"PostToolUse","tool_name":"Write","session_id":"oc-sess-1","forge_agent":"opencode","tool_input":{"file_path":"src/main.go","content":"package main"}}`)
 
 	records, err := taskpipeline.LoadSessions(root)
@@ -117,7 +117,7 @@ func TestHook_KimiSessionRegistersWithDeclarativeAgent(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	// runHookWithStdin 会清 FORGE_HOOK_AGENT——在其 fixture 之后、hook 调用之前
+	// RunHookWithStdin 会清 FORGE_HOOK_AGENT——在其 fixture 之后、hook 调用之前
 	// 重新设置。更简单：此处内联整个流程。
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	t.Setenv("FORGE_HOOK_AGENT", "kimi")
@@ -147,7 +147,7 @@ func TestHook_KimiSessionRegistersWithDeclarativeAgent(t *testing.T) {
 	os.Stdin = tmpStdin
 	t.Cleanup(func() { os.Stdin = oldStdin; tmpStdin.Close(); os.Remove(tmpStdin.Name()) })
 
-	captureStdout(t, func() { _ = runHook(nil, []string{"auto-compile"}) })
+	captureStdout(t, func() { _ = RunHook(nil, []string{"auto-compile"}) })
 
 	records, err := taskpipeline.LoadSessions(root)
 	if err != nil || len(records) == 0 {

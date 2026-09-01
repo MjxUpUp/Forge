@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"fmt"
@@ -157,7 +157,7 @@ func TestPrependKimiStaleAdvisoryAt(t *testing.T) {
 		writeKimiPluginRecord(t, home, "tag", "v1.19.0", true)
 		dataHome := t.TempDir()
 		got := prependKimiStaleAdvisoryAt("prior context line", "1.28.3", now, dataHome)
-		// F2 承重断言：advisory 位于头部（在 emitAgentOutput 的 9500 rune 截尾下
+		// F2 承重断言：advisory 位于头部（在 EmitAgentOutput 的 9500 rune 截尾下
 		// 存活），既有 detail 保留在其后——不丢、不前置。
 		if !strings.HasPrefix(got, "[forge] 你的 kimi forge plugin") {
 			t.Errorf("advisory must be the head (F2: head survives tail truncation), got: %q", got)

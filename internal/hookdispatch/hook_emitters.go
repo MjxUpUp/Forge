@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hostcap"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // HookOutput represents the structured JSON that Claude Code expects to receive on stdout.
@@ -18,7 +19,7 @@ type HookOutput struct {
 	//
 	// Decision/reason 均 omitempty：allow 路径发裸 hookSpecificOutput（无 decision），
 	// 不触碰宿主默认流程——decision:"approve" 在 Claude PreToolUse 会绕过权限系统，
-	// 在 codex 会被判 hook failed（见 emitAgentOutput）。
+	// 在 codex 会被判 hook failed（见 EmitAgentOutput）。
 	Decision           string              `json:"decision,omitempty"`
 	Reason             string              `json:"reason,omitempty"`
 	HookSpecificOutput *HookSpecificOutput `json:"hookSpecificOutput,omitempty"`
@@ -75,8 +76,8 @@ var outputEmitters = map[string]func(eventName, hookName string, passed bool, de
 //     warning，decision JSON + exit 0 才是唯一阻断通道）。exit 2 是 codex（stderr+
 //     exit2）、cursor（等价 deny）、copilot preToolUse（deny、fail-closed）共同认可
 //     的阻断码；旧 generic error（exit 1）在它们上面都不构成阻断。
-func emitAgentOutput(agent, eventName, hookName string, passed bool, detail string) error {
-	detail = truncate(detail, maxAdditionalContextLen)
+func EmitAgentOutput(agent, eventName, hookName string, passed bool, detail string) error {
+	detail = util.TruncateRunes(detail, maxAdditionalContextLen)
 	if emit, ok := outputEmitters[agent]; ok {
 		return emit(eventName, hookName, passed, detail)
 	}
@@ -341,7 +342,7 @@ func advisoryPromotionDisabled(host string) bool {
 // taskGuardPromotionActive 报告该宿主的 task-guard advisory 当前是否被提升
 // （hostcap 存在 task-guard 规则且逃生舱关闭）——与 detail 无关，让 runHook 能在
 // 任何脚本输出产生前为脚本设置 FORGE_TASKGUARD_PROMOTED。脚本为何需要知道，见
-// runHook 调用处注释。
+// RunHook 调用处注释。
 func taskGuardPromotionActive(agent string) bool {
 	if advisoryPromotionDisabled(agent) {
 		return false
@@ -384,11 +385,11 @@ func emitKimiOutput(passed bool, detail string) error {
 // Claude schema 要求它，否则 additionalContext 被丢弃）；codex 在四个可带上下文的
 // 事件上发同样的裸形态；cursor 顶层 additional_context；copilot 顶层
 // additionalContext；cline contextModification；windsurf 静默（无 stdout 通道——
-// 可见性与之前一致）。任何宿主都不会收到 decision:"approve"（见 emitAgentOutput）。
+// 可见性与之前一致）。任何宿主都不会收到 decision:"approve"（见 EmitAgentOutput）。
 //
 // 调用点（统一，fix/cleanup-batch 2026-08-29）：step 5 的 bash 起不来/126/127 失败，
 // 以及更早的「脚本永远跑不起来」失败（临时文件创建/写入、findBash）——同一 infra
 // 类，全部 fail-open 并带可见的、按宿主路由的警告。
 func emitInfraAllow(agent, eventName, hookName, root, sessionID, warning string) error {
-	return emitAdvisoryRouted(agent, eventName, hookName, root, sessionID, true, warning)
+	return EmitAdvisoryRouted(agent, eventName, hookName, root, sessionID, true, warning)
 }

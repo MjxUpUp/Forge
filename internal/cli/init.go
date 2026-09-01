@@ -7,6 +7,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/registry"
@@ -105,7 +106,7 @@ func runInitUserLevel(dir string, agents []agentbridge.AgentType, proto *protoco
 	// 4. hook 脚本的参考副本 → DataDir/hooks/（运行时执行嵌入内容，从不读磁盘副本）。
 	//    deploy stamp 先落盘——file-sentinel 只在 grace 窗口内豁免 .forge/hooks/ drift
 	//    （见 autoSync）。stamp 失败仅告警。
-	if err := hooks.WriteHookDeployStamp(forgedata.DataDirFor(dir), projectTagFor(dir)); err != nil {
+	if err := hooks.WriteHookDeployStamp(forgedata.DataDirFor(dir), hookdispatch.ProjectTagFor(dir)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write hook deploy stamp: %v\n", err)
 	}
 	if err := hooks.WriteHookTemplates(forgedata.DataDirFor(dir)); err != nil {
@@ -225,7 +226,7 @@ func runInitTeamMode(dir string, agents []agentbridge.AgentType, proto *protocol
 	// deploy stamp 先落盘：此处重写的是项目级 .forge/hooks/*.sh——正是 file-sentinel
 	// manifest 盯防的 drift；grace marker 防止并发 sentinel 把 Forge 自身写入
 	// quarantine（2026-08-02 事故）。stamp 失败仅告警。
-	if err := hooks.WriteHookDeployStamp(forgedata.DataDirFor(dir), projectTagFor(dir)); err != nil {
+	if err := hooks.WriteHookDeployStamp(forgedata.DataDirFor(dir), hookdispatch.ProjectTagFor(dir)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to write hook deploy stamp: %v\n", err)
 	}
 	if err := hooks.WriteHookTemplates(forgeDir); err != nil {

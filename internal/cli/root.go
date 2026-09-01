@@ -7,6 +7,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/spf13/cobra"
 )
@@ -78,7 +79,7 @@ func SetVersion(v, c, d string) {
 // 硬失败 ⇒ exit 2）。从 RunE 返回它（而非在 RunE 里 os.Exit）让 cobra 的 defer
 // 清理与 Execute 的 panic 恢复盘保持生效——os.Exit 跳过所有 defer，旧的 RunE 内
 // 退出等于裸奔。Execute 把它映射为 os.Exit(2) 且不额外打印：命令已输出自己的
-// 结论，与下方 HookBlockError 分支同形。
+// 结论，与下方 hookdispatch.HookBlockError 分支同形。
 type hardExitError struct{}
 
 func (e *hardExitError) Error() string { return "hard failure (exit 2)" }
@@ -110,7 +111,7 @@ func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		// kimi hook 协议：有意阻断必须 exit 2——其他非零退出码会 fail-open（放行）。
 		// 原因已写在 stderr。
-		var blockErr *HookBlockError
+		var blockErr *hookdispatch.HookBlockError
 		if errors.As(err, &blockErr) {
 			os.Exit(2)
 		}

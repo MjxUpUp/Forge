@@ -1,4 +1,4 @@
-// Package cli hook_conventions.go — conventions-profile 层 2（注入）的两个
+// hook_conventions.go — conventions-profile 层 2（注入）的两个
 // Go 内 advisory hook：
 //
 //	conventions-context → SessionStart + PostCompact（会话摘要：≤15 行 always-on 层）
@@ -13,7 +13,7 @@
 // 细节按需注入在写入时刻（glob 层的等价物：按目标文件路径命中的指针 + 范例）。
 // PostCompact 重注入不设 marker——压缩刚把上下文清空，此时摘要恰是恢复定向
 // 最便宜的手段，而 SessionStart 的 marker 防的是 resume 场景的重复注入。
-package cli
+package hookdispatch
 
 import (
 	"encoding/json"
@@ -83,7 +83,7 @@ func runConventionsContextHook(hookInput HookInput, root, version, agent string)
 	}
 	recordConventionsInject(hookInput, root, version, agent,
 		"session digest injected", extra)
-	emitErr := emitAdvisoryRouted(agent, hookInput.HookEventName, "conventions-context", root, hookInput.SessionID, true, inject)
+	emitErr := EmitAdvisoryRouted(agent, hookInput.HookEventName, "conventions-context", root, hookInput.SessionID, true, inject)
 	if emitErr == nil && markKind != "" {
 		conventionsMarkSession(hookInput.SessionID, markKind)
 	}
@@ -153,7 +153,7 @@ func runConventionsWriteHook(hookInput HookInput, root, version, agent string) e
 	// marker 的顺序同理——marker 记「已送达」而非「已尝试」）。
 	recordConventionsInject(hookInput, root, version, agent,
 		fmt.Sprintf("write-time pointers injected for %s", relPath), map[string]string{"dir": dirKey})
-	if err := emitAdvisoryRouted(agent, hookInput.HookEventName, "conventions-write", root, hookInput.SessionID, true, inject); err != nil {
+	if err := EmitAdvisoryRouted(agent, hookInput.HookEventName, "conventions-write", root, hookInput.SessionID, true, inject); err != nil {
 		return err
 	}
 	conventionsMarkDir(hookInput.SessionID, dirKey)
@@ -161,10 +161,10 @@ func runConventionsWriteHook(hookInput HookInput, root, version, agent string) e
 }
 
 // recordConventionsInject 落观察条目并盖输出实际使用通道的送达章
-// （advisoryEmissionChannel 覆盖 kimi 队列路径——与 test-nudge 同契约）。
+// （AdvisoryEmissionChannel 覆盖 kimi 队列路径——与 test-nudge 同契约）。
 func recordConventionsInject(hookInput HookInput, root, version, agent, detail string, extra map[string]string) {
 	taskRef := taskRefForSession(root, hookInput.SessionID)
-	delivered, channel := advisoryEmissionChannel(agent, hookInput.HookEventName)
+	delivered, channel := AdvisoryEmissionChannel(agent, hookInput.HookEventName)
 	meta := map[string]string{"event": hookInput.HookEventName}
 	for k, v := range extra {
 		meta[k] = v
@@ -241,4 +241,18 @@ func loadConventionsDirState(sessionID string) conventionsDirState {
 		_ = json.Unmarshal(data, &state)
 	}
 	return state
+}
+
+// taskRefForSession resolves the active task ref bound to the session — local
+// copy of cli skill_trigger.go's helper (3 lines over taskpipeline.ActiveTaskState;
+// helpers can't be shared across packages, comments cross-reference).
+//
+// taskRefForSession 解析 session 绑定的活跃 task ref——cli skill_trigger.go 同名
+// 助手的本地副本（对 taskpipeline.ActiveTaskState 的 3 行封装；测试助手/小助手
+// 无法跨包共享，注释互指防漂移）。
+func taskRefForSession(root, sessionID string) string {
+	if active, err := taskpipeline.ActiveTaskState(root, sessionID); err == nil && active != nil {
+		return active.TaskRef
+	}
+	return ""
 }
