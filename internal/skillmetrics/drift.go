@@ -1,4 +1,4 @@
-// Package skillseval drift.go — 生产判定集 vs 仓库源 triggers 声明对比（纯逻辑）。
+// drift.go — 生产判定集 vs 仓库源 triggers 声明对比（纯逻辑）。
 //
 // 背景（2026-08-16 触发臂审查）：v1.32.0 build（8/15 11:07）早于 triggers 补齐提交
 // （8/15 19:53）8h46m，生产 embed cache 只带 15/33 个 triggers——18 个 skill 的触发声明
