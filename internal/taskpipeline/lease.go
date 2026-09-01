@@ -16,17 +16,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/nodeid"
 )
 
-// Lease is one node's claim on a task (TaskState.lease).
-//
-// Lease 是一个节点对任务的认领（TaskState.lease）。
-type Lease struct {
-	HolderNode string `json:"holder_node"`       // fnode_<32hex>
-	TsHLC      string `json:"ts_hlc"`            // 认领时刻 HLC
-	TTLSec     int64  `json:"ttl_sec"`           // 租约时长（秒）
-	Fencing    int64  `json:"fencing"`           // 单调任期号（合并决胜）
-	ClaimedAt  int64  `json:"claimed_at_unixms"` // 认领时刻墙钟毫秒（TTL 判定用）
-}
-
 // ClaimLease stamps a fresh lease for nodeID: fencing increments monotonically (a re-claim by the same holder is a new term).
 //
 // ClaimLease 为 nodeID 落新租约：fencing 单调递增（同一持有者再认领也是新任期）。
@@ -51,28 +40,6 @@ func ClaimLease(s *TaskState, nodeID string, clock *hlc.Clock, ttlSec int64) {
 type LeaseState struct {
 	ForeignActive bool   // 他机持有且未过期
 	Message       string // 人类可读 advisory（门禁输出用）
-}
-
-// ExpiresAt is the moment the lease lapses (claimed + TTL) — the single source of the expiry formula; ActiveAt / LeaseStatus / the dashboard projection all derive from it.
-//
-// ExpiresAt 是租约过期时刻（认领 + TTL）——过期公式的唯一出处；ActiveAt /
-// LeaseStatus / 看板投影都从它派生。
-func (l *Lease) ExpiresAt() time.Time {
-	if l == nil {
-		return time.Time{} // 与 ActiveAt 的 nil-safe 对称——导出方法不留给调用方裸调用陷阱
-	}
-	return time.UnixMilli(l.ClaimedAt).Add(time.Duration(l.TTLSec) * time.Second)
-}
-
-// ActiveAt reports whether the lease is unexpired at now (the single "expiry means free" rule — LeaseStatus and the dashboard feed both derive from it, no second copy).
-//
-// ActiveAt 报告租约在 now 时刻是否未过期（「过期即自由」规则的唯一出处——
-// LeaseStatus 与 dashboard feed 都从它派生，不留第二份拷贝）。
-func (l *Lease) ActiveAt(now time.Time) bool {
-	if l == nil {
-		return false
-	}
-	return now.Before(l.ExpiresAt())
 }
 
 // LeaseStatus evaluates the task's lease from nodeID's perspective at now.

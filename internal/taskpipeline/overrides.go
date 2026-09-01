@@ -6,25 +6,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// TaskOverrides holds the per-task escape-hatch settings.
-//
-// TaskOverrides 承载 per-task 逃生舱设置。优先于全局 env，是方案5 的「防泄漏」机制：
-// 一个任务逃生（经 `forge task override`）不污染同 shell 的其他任务——全局 env
-// FORGE_WORK_ACTIVITY / FORGE_TEST_COVERAGE / FORGE_SKILL_DECISIONS 仍作 CI/测试
-// fallback，但 per-task override 是推荐路径。值"disable"= 禁用对应门禁。
-//
-// 用了验证类逃生舱 → checklog CheckEscapeHatch → evidence Strength cap Weak（让逃生
-// 有代价，对冲「硬门禁 + 全局逃生舱 = 假硬门禁」反噬；2026-08 起证据缩放——
-// ratio>=0.85 且 det>=20 的重证据任务豁免，见 checklog.EscapeDowngradedStrength）。
-// work-activity（节奏门禁）永不 cap Strength。
-type TaskOverrides struct {
-	WorkActivity   string `json:"work_activity,omitempty"`   // "disable" 跳过 read-before-edit / work-activity 门禁
-	TestCoverage   string `json:"test_coverage,omitempty"`   // "disable" 跳过 test-coverage 门禁
-	AcceptanceGate string `json:"acceptance_gate,omitempty"` // "disable" 跳过 task-complete acceptance pre-flight 门禁
-	SkillDecisions string `json:"skill_decisions,omitempty"` // "disable" 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）
-	DocGate        string `json:"doc_gate,omitempty"`        // "disable" 跳过 task-complete doc pre-flight（输出→回检门禁；轮次上限后的放行须人工确认后走这里）
-}
-
 // escapeDisabled 报告 which（"work-activity"/"test-coverage"/"skill-decisions"）逃生舱
 // 对本任务是否生效。per-task Overrides 优先于 process-global env（防泄漏路径）；env 留作
 // CI/测试 fallback。调用方：work-activity 门禁（executor）、test-coverage 门禁（testcoverage）、
