@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
