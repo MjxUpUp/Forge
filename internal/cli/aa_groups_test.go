@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/MjxUpUp/Forge/internal/cliskills"
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"strings"
 	"testing"
 
@@ -46,7 +47,7 @@ func TestCommandGroups(t *testing.T) {
 	}{
 		{"init", initCmd, "lifecycle", "forge init"},
 		{"status", statusCmd, "pipeline", "forge status"},
-		{"task", taskCmd, "quality", "forge task"},
+		{"task", clitask.Root, "quality", "forge task"},
 		{"skills", cliskills.Root, "governance", "forge skills"},
 		{"hazard", hazardCmd, "integrate", "forge hazard"},
 	}
