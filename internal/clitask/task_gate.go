@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// completeGenericTask 完成 generic 任务：编排下沉后的 cli 包装层——领域编排在
-// taskpipeline.CompleteGeneric（2026-09 普查 A1），此处只补 harness 提交钩子
-// （cli 侧会话语义，taskpipeline 不知道 harness）。
+// completeGenericTask 完成 generic 任务：领域编排在 taskpipeline.CompleteGeneric
+// （2026-09 普查 A1 下沉），本包装层补 harness 提交钩子——经 CommitBestEffort
+// 接缝（由 cli 注册器注入；会话语义既不属于执行器也不属于本包）。
 func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 	if err := taskpipeline.CompleteGeneric(root, state); err != nil {
 		return err
