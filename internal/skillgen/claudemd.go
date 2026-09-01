@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/userassets"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -222,17 +223,12 @@ func claudeConfigHome() string {
 	return filepath.Join(home, ".claude")
 }
 
-// codexConfigHome 解析 codex 配置 home：优先 CODEX_HOME env，否则 ~/.codex。
+// codexConfigHome 解析 codex 配置 home——委托 hostcap 注册表（CODEX_HOME 优先，
+// 否则 ~/.codex）。曾本地手拼同一语义，是 hostcap.InstallIndicators 注册行之外
+// 的无守卫镜像，2026-09 代码普查清扫（轨道 B 审查 LOW）收归单一真相源；
 // 空串表示无法解析 home。
 func codexConfigHome() string {
-	if dir := os.Getenv("CODEX_HOME"); dir != "" {
-		return dir
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, ".codex")
+	return hostcap.InstallDir("codex")
 }
 
 // dirExists 报告 path 是否为已存在目录。供用户级生成器的检测自毒防护使用：

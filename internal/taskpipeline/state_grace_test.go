@@ -12,8 +12,9 @@ import (
 )
 
 // TestMarkCompleteGrace_WritesEpochTimestamp dogfood 2.3: MarkCompleteGrace writes
-// the current epoch timestamp at completeGracePath so file-sentinel can compare
-// NOW - stamp < completeGraceWindow to allow the post-complete 'git commit' that
+// the current epoch timestamp at completeGracePath so file-sentinel (internal/hooks
+// embed.go, hardcoded 300s window — bash can't call Go consts) can compare
+// NOW - stamp < 300 to allow the post-complete 'git commit' that
 // would otherwise be quarantined as "no active task + source write". The file
 // content must be a single integer (so bash 'tr -d [:space:]' produces a
 // shell-comparable value) and the file must live under DataDir (project-level
