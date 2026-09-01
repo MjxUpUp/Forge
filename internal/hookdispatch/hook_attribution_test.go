@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runHookWithStdin chdir 进一个全新的 forge 项目（temp dir + .forge/state.json，
+// RunHookWithStdin chdir 进一个全新的 forge 项目（temp dir + .forge/state.json，
 // 与 TestHookOutput_StructuredJSON 同 fixture 形态），把 stdinJSON 喂给一次 hook
 // 调用，返回项目 root 供 DataDir 断言。FORGE_DATA_HOME 按测试隔离；agent 选择相关
 // 的 env/flag 面被清空，使归因只受被测 payload 驱动。
@@ -117,7 +117,7 @@ func TestHook_KimiSessionRegistersWithDeclarativeAgent(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	// runHookWithStdin 会清 FORGE_HOOK_AGENT——在其 fixture 之后、hook 调用之前
+	// RunHookWithStdin 会清 FORGE_HOOK_AGENT——在其 fixture 之后、hook 调用之前
 	// 重新设置。更简单：此处内联整个流程。
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	t.Setenv("FORGE_HOOK_AGENT", "kimi")

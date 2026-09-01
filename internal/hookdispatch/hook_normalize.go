@@ -150,7 +150,7 @@ func firstRawJSON(raws ...json.RawMessage) json.RawMessage {
 //   - 文件类工具（Read/Write/Edit）用 tool_input.path（项目根相对路径）而非 Claude 的
 //     tool_input.file_path——由 remapKimiToolInput 重映射。
 //
-// runHook 对 kimi 用本函数替代默认 unmarshal，故此处填充全部字段。
+// RunHook 对 kimi 用本函数替代默认 unmarshal，故此处填充全部字段。
 func kimiNormalize(stdinData []byte, hookInput *HookInput) {
 	if len(stdinData) == 0 {
 		return
@@ -271,7 +271,7 @@ func remapKimiToolInput(raw json.RawMessage) json.RawMessage {
 // pre_user_prompt / post_cascade_response 的文档化 payload 中没有 cwd 或项目路径
 // 字段（cwd 只在 pre/post_run_command 的 tool_info 里有）。这一点靠结构而非
 // payload 映射兜住：Cascade 以 working_directory 默认 workspace root 执行 hook
-// 命令，而 forge 的 hook 从进程 cwd 取项目上下文（runHook 里 FORGE_CWD =
+// 命令，而 forge 的 hook 从进程 cwd 取项目上下文（RunHook 里 FORGE_CWD =
 // os.Getwd()），故挂在这些 event 上的 SessionStart/Stop 组仍作用于正确项目。
 // 不确定性：文档只给示例 payload 而非版本化 schema——若某 Windsurf 版本缺
 // trajectory_id 或改了字段名，对应字段即为空，hook 退化到既有的无 payload

@@ -205,6 +205,11 @@ type toolInputFields struct {
 // maxChecklogDetail 是 checklog entry detail 的截断上限。
 const maxChecklogDetail = 500
 
+// HookCmd is the hidden `forge hook <name>` command — the dispatcher every
+// host's hook wiring invokes.
+//
+// HookCmd 是隐藏的 `forge hook <name>` 命令——所有 host 的 hook 接线调用的
+// 分发器。
 var HookCmd = &cobra.Command{
 	Use:    "hook <name>",
 	Short:  "Run an embedded hook script by name",
@@ -225,7 +230,7 @@ var HookCmd = &cobra.Command{
 
 // hookAgent 指定非 Claude Code 的宿主。由各 agent 的 translator 通过跨平台
 // `--agent` flag 设置；它同时选择要 normalize 的 stdin 方言（windsurf/kimi/
-// reasonix/cline 与 Claude 形状不同）**和**要输出的协议（见 emitAgentOutput——
+// reasonix/cline 与 Claude 形状不同）**和**要输出的协议（见 EmitAgentOutput——
 // codex/cursor/copilot 的 stdin 与 Claude 同形，但 stdout/退出码契约不同）。
 // opencode/codebuddy 在进程内构造 Claude-shape stdin 且说 Claude 协议，
 // 故不带 flag。FORGE_HOOK_AGENT 是已通过 env 接线的 translator（以及设 env 的
@@ -278,11 +283,17 @@ func isGlobalHook(name string) bool {
 // failure-track：error 文本；subagent-track：agent_id/agent_type；test-nudge：
 // file_path；conventions-context/write：event/file_path + forge 数据），
 // thin-wrapper bash 永远拿不到——runHook 已把 stdin 消费掉。各自的分发点在
-// runHook 里 skill-trigger 特例之后。
+// RunHook 里 skill-trigger 特例之后。
 func isInProcessHook(name string) bool {
 	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge" ||
 		name == "conventions-context" || name == "conventions-write"
 }
+
+// RunHook is the RunE of `forge hook <name>`: reads host stdin JSON, resolves
+// the agent dialect, and dispatches to the named script or in-process hook.
+//
+// RunHook 是 `forge hook <name>` 的 RunE：读 host stdin JSON、解析 agent 方言，
+// 分发到具名脚本或进程内 hook。
 func RunHook(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	content, ok := hooks.EmbeddedContent(name)
@@ -807,13 +818,13 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		"FORGE_DATA_DIR="+sanitizeForShell(dataDirEnv),
 		// The cwd and its git-root-keyed tag, for init-suggest (a global hook) to use:
 		// the hook finds the git root from FORGE_CWD, then writes a per-project marker keyed by FORGE_CWD_TAG.
-		// Keyed by git root (via suggestTagFor), not cwd, so no matter which subdir runs
+		// Keyed by git root (via SuggestTagFor), not cwd, so no matter which subdir runs
 		// `forge suggest decline`, the tag written matches what the hook reads at the project root —
 		// guarding the decline contract.
 		//
 		// cwd 及其按 git root 作 key 的 tag，给 init-suggest（global hook）用：
 		// hook 从 FORGE_CWD 找 git root，再按 FORGE_CWD_TAG 写 per-project marker。
-		// 以 git root 作 key（经 suggestTagFor），不是 cwd，所以从任何 subdir
+		// 以 git root 作 key（经 SuggestTagFor），不是 cwd，所以从任何 subdir
 		// 跑 `forge suggest decline` 写出的 tag 与 hook 在 project root 读到的
 		// 一致——守护 decline 契约。
 		"FORGE_CWD="+cwd,
@@ -910,7 +921,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	//
 	// 5. 把 script 输出解析成 per-host 结论。Script 输出纯文本：PASS [detail] 或
 	// FAIL [reason]；协议塑形（JSON 形态、退出码、哪些事件可带上下文）推迟到知
-	// 道宿主的 emitAgentOutput（step 7）。
+	// 道宿主的 EmitAgentOutput（step 7）。
 	eventName := hookInput.HookEventName
 	var detail string
 	if passed {

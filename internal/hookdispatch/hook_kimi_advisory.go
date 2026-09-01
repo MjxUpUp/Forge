@@ -65,7 +65,7 @@ type kimiAdvisoryEntry struct {
 	Text    string `json:"text"`
 }
 
-// emitAdvisoryRouted 是所有 hook 输出口径处替代裸 emitAgentOutput 的唯一
+// emitAdvisoryRouted 是所有 hook 输出口径处替代裸 EmitAgentOutput 的唯一
 // advisory 输出路由器。agent!="kimi" 或阻断（passed=false）时它**就是**
 // emitAgentOutput——逐字节行为一致。kimi 的 allow 路径输出走队列契约：
 //   - UserPromptSubmit（kimi 唯一送达通道）：drain pending 队列并**前置**到
@@ -225,7 +225,7 @@ func drainKimiAdvisories(root, sessionID string) string {
 }
 
 // kimiAdvisoryTextKey 是一条 advisory 的去重/delivered 集合身份：精确文本的
-// fnv64a（与 projectTagFor 同一哈希族）。
+// fnv64a（与 ProjectTagFor 同一哈希族）。
 func kimiAdvisoryTextKey(text string) string {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(text))
