@@ -59,6 +59,9 @@ const (
 	PhaseTest           = tasktypes.PhaseTest
 )
 
+// Error sentinels re-exported (defined once in tasktypes; taskpipeline tests
+// and callers reference them through this facade).
+//
 // 错误哨兵再导出（定义在 tasktypes，taskpipeline 测试与调用方经此引用）。
 var (
 	ErrAssignmentEmptyAgent = tasktypes.ErrAssignmentEmptyAgent
