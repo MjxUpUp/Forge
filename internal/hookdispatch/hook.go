@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"bytes"
@@ -19,6 +19,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/hostcap"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -204,7 +205,12 @@ type toolInputFields struct {
 // maxChecklogDetail 是 checklog entry detail 的截断上限。
 const maxChecklogDetail = 500
 
-var hookCmd = &cobra.Command{
+// HookCmd is the hidden `forge hook <name>` command — the dispatcher every
+// host's hook wiring invokes.
+//
+// HookCmd 是隐藏的 `forge hook <name>` 命令——所有 host 的 hook 接线调用的
+// 分发器。
+var HookCmd = &cobra.Command{
 	Use:    "hook <name>",
 	Short:  "Run an embedded hook script by name",
 	Long:   "Executes the named hook script embedded in the forge binary. Extracts fields from Claude Code's stdin JSON into env vars, runs the script, and wraps its plain-text output into structured JSON.",
@@ -219,21 +225,30 @@ var hookCmd = &cobra.Command{
 	// 的内容；退出码由 Execute 处理。
 	SilenceErrors: true,
 	SilenceUsage:  true,
-	RunE:          runHook,
+	RunE:          RunHook,
 }
 
 // hookAgent 指定非 Claude Code 的宿主。由各 agent 的 translator 通过跨平台
 // `--agent` flag 设置；它同时选择要 normalize 的 stdin 方言（windsurf/kimi/
-// reasonix/cline 与 Claude 形状不同）**和**要输出的协议（见 emitAgentOutput——
+// reasonix/cline 与 Claude 形状不同）**和**要输出的协议（见 EmitAgentOutput——
 // codex/cursor/copilot 的 stdin 与 Claude 同形，但 stdout/退出码契约不同）。
 // opencode/codebuddy 在进程内构造 Claude-shape stdin 且说 Claude 协议，
 // 故不带 flag。FORGE_HOOK_AGENT 是已通过 env 接线的 translator（以及设 env 的
 // TS 代码）的兜底。
+// SkillTriggerHookFn is the seam for the skill-trigger in-process special path
+// (defined in cli's skill_trigger.go — registered under cliskills.Root). The cli
+// registrar injects it; nil (unit-test binaries without the registrar) silently
+// passes.
+//
+// SkillTriggerHookFn 是 skill-trigger 进程内特例路径的接缝（实现在 cli 的
+// skill_trigger.go——挂在 cliskills.Root 下、依赖 cli 会话上下文），由 cli
+// 注册器注入；nil（无注册器的单测二进制）静默跳过。
+var SkillTriggerHookFn func(hookInput HookInput, root, version, agent string) error
+
 var hookAgent string
 
 func init() {
-	hookCmd.Flags().StringVar(&hookAgent, "agent", "", "host agent: selects the stdin dialect AND the output protocol (windsurf|kimi|reasonix|codex|cursor|copilot|cline|zcode)")
-	rootCmd.AddCommand(hookCmd)
+	HookCmd.Flags().StringVar(&hookAgent, "agent", "", "host agent: selects the stdin dialect AND the output protocol (windsurf|kimi|reasonix|codex|cursor|copilot|cline|zcode)")
 }
 
 // resolveHookAgent 决定说话的宿主 agent。--agent flag（由 translator 设置，跨平台
@@ -268,12 +283,18 @@ func isGlobalHook(name string) bool {
 // failure-track：error 文本；subagent-track：agent_id/agent_type；test-nudge：
 // file_path；conventions-context/write：event/file_path + forge 数据），
 // thin-wrapper bash 永远拿不到——runHook 已把 stdin 消费掉。各自的分发点在
-// runHook 里 skill-trigger 特例之后。
+// RunHook 里 skill-trigger 特例之后。
 func isInProcessHook(name string) bool {
 	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge" ||
 		name == "conventions-context" || name == "conventions-write"
 }
-func runHook(cmd *cobra.Command, args []string) error {
+
+// RunHook is the RunE of `forge hook <name>`: reads host stdin JSON, resolves
+// the agent dialect, and dispatches to the named script or in-process hook.
+//
+// RunHook 是 `forge hook <name>` 的 RunE：读 host stdin JSON、解析 agent 方言，
+// 分发到具名脚本或进程内 hook。
+func RunHook(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	content, ok := hooks.EmbeddedContent(name)
 	// skill-trigger / failure-track / subagent-track / test-nudge 走 runHook 特例
@@ -459,7 +480,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// 不在 forge project 中——输出 allow 并静默退出。
 	// Global hook（skill-scan 扫 $HOME/.claude/skills）在任何 project 都相关，
 	// 故即便没有 forge project root 也要运行。
-	root, err := findProjectRoot()
+	root, err := projectroot.Find()
 	if err != nil {
 		if !isGlobalHook(name) {
 			// Allow silently for every host: exit 0 with no stdout is a legal allow on
@@ -550,7 +571,13 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// live HookInput fields from stdin, which the thin-wrapper bash cannot reach (runHook consumed
 	// stdin). Handling in Go reuses the already-normalized hookInput + agent stdin normalize.
 	if name == "skill-trigger" {
-		return runSkillTriggerHook(hookInput, root, cmd.Root().Version, agent)
+		// skill-trigger 特例路径经接缝回调（2026-09 普查 A2-2）：判定+渲染核心住
+		// cli 的 skill_trigger.go（挂在 cliskills.Root 下、依赖 cli 会话上下文），
+		// 由 cli 注册器注入 SkillTriggerHookFn。
+		if SkillTriggerHookFn == nil {
+			return nil
+		}
+		return SkillTriggerHookFn(hookInput, root, cmd.Root().Version, agent)
 	}
 	// failure-track / subagent-track / test-nudge：与 skill-trigger 同类的 Go 内特例
 	// （见 isInProcessHook）。都复用 runHook 已 normalize 的 hookInput 与已解析的
@@ -787,21 +814,21 @@ func runHook(cmd *cobra.Command, args []string) error {
 		// BSD/GNU cksum 格式之间都不稳定。对 global hook（init-suggest/
 		// skill-scan）来说 root="" ，于是这里哈希的是真实 cwd——init-suggest
 		// 绝不能依赖它（非 forge project 没有 forge root）；改用下面的 FORGE_CWD_TAG。
-		"FORGE_PROJECT_TAG="+projectTagFor(root),
+		"FORGE_PROJECT_TAG="+ProjectTagFor(root),
 		"FORGE_DATA_DIR="+sanitizeForShell(dataDirEnv),
 		// The cwd and its git-root-keyed tag, for init-suggest (a global hook) to use:
 		// the hook finds the git root from FORGE_CWD, then writes a per-project marker keyed by FORGE_CWD_TAG.
-		// Keyed by git root (via suggestTagFor), not cwd, so no matter which subdir runs
+		// Keyed by git root (via SuggestTagFor), not cwd, so no matter which subdir runs
 		// `forge suggest decline`, the tag written matches what the hook reads at the project root —
 		// guarding the decline contract.
 		//
 		// cwd 及其按 git root 作 key 的 tag，给 init-suggest（global hook）用：
 		// hook 从 FORGE_CWD 找 git root，再按 FORGE_CWD_TAG 写 per-project marker。
-		// 以 git root 作 key（经 suggestTagFor），不是 cwd，所以从任何 subdir
+		// 以 git root 作 key（经 SuggestTagFor），不是 cwd，所以从任何 subdir
 		// 跑 `forge suggest decline` 写出的 tag 与 hook 在 project root 读到的
 		// 一致——守护 decline 契约。
 		"FORGE_CWD="+cwd,
-		"FORGE_CWD_TAG="+suggestTagFor(cwd),
+		"FORGE_CWD_TAG="+SuggestTagFor(cwd),
 	)
 	// Scheme 5: expose the active task's per-task work-activity override as
 	// the FORGE_WORK_ACTIVITY env for the hook to check. Forced only when disable —
@@ -894,7 +921,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	//
 	// 5. 把 script 输出解析成 per-host 结论。Script 输出纯文本：PASS [detail] 或
 	// FAIL [reason]；协议塑形（JSON 形态、退出码、哪些事件可带上下文）推迟到知
-	// 道宿主的 emitAgentOutput（step 7）。
+	// 道宿主的 EmitAgentOutput（step 7）。
 	eventName := hookInput.HookEventName
 	var detail string
 	if passed {
@@ -944,7 +971,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 					Level:     checklog.LevelWarn,
 					TaskRef:   activeTaskRef,
 					SessionID: util.SanitizeSessionID(hookInput.SessionID),
-					Detail:    truncate(detail, maxChecklogDetail),
+					Detail:    util.TruncateRunes(detail, maxChecklogDetail),
 				}); err != nil {
 					fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
 				}
@@ -1103,7 +1130,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 			ToolName:  recordedToolName,
 			TaskRef:   taskRef,
 			SessionID: util.SanitizeSessionID(hookInput.SessionID),
-			Detail:    truncate(logDetail, maxChecklogDetail),
+			Detail:    util.TruncateRunes(logDetail, maxChecklogDetail),
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
 		} else if !passed {
@@ -1235,7 +1262,7 @@ func runHook(cmd *cobra.Command, args []string) error {
 	// hookSpecificOutput.additionalContext；cursor：顶层 snake_case
 	// additional_context；copilot：顶层 camelCase additionalContext；kimi：见
 	// internal/agentbridge/kimi-hook-routing.md）。
-	return emitAdvisoryRouted(agent, eventName, name, root, hookInput.SessionID, passed, detail)
+	return EmitAdvisoryRouted(agent, eventName, name, root, hookInput.SessionID, passed, detail)
 }
 
 // shouldRecordCheck decides whether a hook result is worth writing a checklog entry. It is the

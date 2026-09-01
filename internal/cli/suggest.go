@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +18,7 @@ import (
 // 污染用户项目，靠 agent 询问 + 用户拒绝静默）。status 查看，reset 清除重新提示。
 //
 // 标记存储与 init-suggest hook 同一目录（~/.forge/.init-suggested/<tag>）。tag 用
-// projectSuggestTag()=suggestTagFor(cwd)，按 git root 键控（不是 cwd）——与 hook 的
+// projectSuggestTag()=hookdispatch.SuggestTagFor(cwd)，按 git root 键控（不是 cwd）——与 hook 的
 // FORGE_CWD_TAG（cli/hook.go 也调 suggestTagFor）一致，确保命令与 hook 读写同一标记，
 // 无论 agent 从项目根还是子目录跑 decline（F1 修复：原按 cwd 键控，子目录 decline
 // 写错 tag 致永久静默失效）。declined/suggested 两个值：declined=用户拒绝永久静默，
@@ -46,7 +47,7 @@ func suggestStateDir() string {
 // 读写同一标记，无论从项目哪个子目录运行。
 func projectSuggestTag() string {
 	cwd, _ := os.Getwd()
-	return suggestTagFor(cwd)
+	return hookdispatch.SuggestTagFor(cwd)
 }
 
 // suggestProjectName 返回当前项目的可读名称（git root 的 basename；非 git 目录回退
