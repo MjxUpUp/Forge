@@ -313,7 +313,8 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 // renderTaskInventory：有任务在进行给紧凑候选清单，零任务才返 ""（静默）。把
 // findProjectRoot 之外的纯逻辑提出，供 runTaskResume 的 hook 分支与单元测试共用
 // （测试直接传 root，不依赖 cwd）。截断交给 runHook 通用路径
-// （cli/hook_emitters.go 的本地 truncate，detail, maxAdditionalContextLen）。
+// （cli hook 链的本地 truncate——定义在 cli/trace.go、调用在 hook_emitters.go：
+// detail, maxAdditionalContextLen）。
 func renderHookResume(root string) (string, error) {
 	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
 	if state == nil {
@@ -1197,9 +1198,6 @@ func renderGateProgress(state *taskpipeline.TaskState) string {
 	return strings.Join(parts, " ")
 }
 
-// OrDash renders an empty string as an em dash (compact ledger display).
-//
-// OrDash 把空串渲染成破折号（紧凑台账展示）。
 // OrDash renders an empty string as an em dash (compact ledger display).
 //
 // OrDash 把空串渲染成破折号（紧凑台账展示）。
