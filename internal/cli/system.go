@@ -19,6 +19,8 @@ func runSystemStatus() error {
 	if err != nil {
 		return fmt.Errorf("system: resolve forge data home: %w", err)
 	}
+	// ~/.claude 的孤儿 hook 检查是 advisory（缺目录静默跳过），UserHomeDir 失败
+	// 忽略之——与 forgeRoot 的显式报错不对称是刻意的：前者只影响一条 warning。
 	home, _ := os.UserHomeDir()
 	errors := 0
 	warnings := 0

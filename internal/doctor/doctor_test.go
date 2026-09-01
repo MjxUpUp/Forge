@@ -474,7 +474,8 @@ func TestRun_ClaudePluginCacheLayout(t *testing.T) {
 // TestScanFile_GatePrefix pins that `forge gate <id>` is an accepted equivalent prefix at the settings layer.
 //
 // TestScanFile_GatePrefix `forge gate <id>` 是 settings 层认可的等价前缀
-// （internal/hooks/settings.go 的 isForgeHookCommand 判定，agentbridge/codex.go 有镜像），
+// （internal/hooks.IsForgeHookCommand 单一真相源，与 doctor 词表的互钉见
+// TestInvocationSubcommandsMatchHookPredicate），
 // 接线门槛必须同样接受——否则仅用 gate 接线的 host 假报
 // missing（评审二轮 LOW #1）。
 func TestScanFile_GatePrefix(t *testing.T) {

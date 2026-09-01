@@ -204,11 +204,11 @@ func (c *updateCache) matchesChannel(kind channelKind) bool {
 }
 
 func saveUpdateCache(version string, kind channelKind) error {
-	forgeRoot, err := forgedata.GlobalHome()
+	path, err := updateCachePath()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(forgeRoot, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
 
@@ -225,6 +225,5 @@ func saveUpdateCache(version string, kind channelKind) error {
 
 	// AtomicWrite：更新检查在每条命令的启动路径并发可达，写一半的缓存文件会让
 	// 下一次 loadUpdateCache 解析失败白付一次网络查询（2026-09 代码普查 R4）。
-	path := filepath.Join(forgeRoot, updateCacheFile)
 	return util.AtomicWrite(path, data, 0644)
 }
