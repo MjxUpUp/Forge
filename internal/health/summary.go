@@ -1,5 +1,16 @@
 // Package health rolls up task-level conclusions (act.Conclusion) into project-level quality trends — PDCA at project granularity Act.
 //
+// Naming note (2026-09 census P8): "health" appears in three distinct roles —
+// this package (trend rollup), the `forge health` command (cli/health.go,
+// per-project trend report on this package), and task_health (clitask,
+// zombie/deadlock scanning). Same word, three layers: aggregation, reporting,
+// and triage. User-visible renames need a product decision; docs disambiguate.
+//
+// 命名说明（2026-09 普查 P8）：「health」在仓内有三种互不重叠的角色——本包
+// （趋势上卷）、`forge health` 命令（cli/health.go，基于本包的项目级报告）、
+// task_health（clitask，僵尸/死锁扫描）。同一个词、三层职责：聚合、呈现、分诊。
+// 用户可见改名需产品决策，先以文档明示。
+//
 // Package health 把 task 级结论（act.Conclusion）上卷成 project 级质量趋势——PDCA 在
 // project 粒度的 Act。单个任务的盲区/低分是个例，跨任务聚合才暴露系统性问题：某维度反复
 // 低分说明该方向有共性缺口，完成声明盲区率高说明 agent 系统性"声明完成却没真验证"。

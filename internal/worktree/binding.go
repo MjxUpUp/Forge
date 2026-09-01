@@ -35,6 +35,10 @@ type Binding struct {
 	LastSeenAt time.Time `json:"last_seen_at"` // heartbeat（hook dispatcher 顺带刷新；只影响展示不影响解析）
 }
 
+// bindingDir 是 worktree 绑定的存储目录。命名撞车说明（2026-09 普查 P8）：
+// DataDir/workspaces/ 存的是【worktree 绑定】（每绑定一个 <id>.json），与全局
+// 多仓清单 ~/.forge/workspaces.json（workspace.File，workspace 包）是两个不同
+// 概念——包名避开了、存储路径未避开；改路径属迁移工程需产品决策，先注释互指。
 func bindingDir(root string) string {
 	return filepath.Join(forgedata.DataDirFor(root), "workspaces")
 }
