@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -129,8 +130,8 @@ func TestTaskWildDeclaresAndCounts(t *testing.T) {
 		var buf bytes.Buffer
 		cmd := &cobra.Command{}
 		cmd.SetOut(&buf)
-		if err := runTaskWild(cmd, []string{note}); err != nil {
-			t.Fatalf("runTaskWild(%q): %v", note, err)
+		if err := clitask.RunTaskWild(cmd, []string{note}); err != nil {
+			t.Fatalf("clitask.RunTaskWild(%q): %v", note, err)
 		}
 		return buf.String()
 	}
@@ -153,7 +154,7 @@ func TestTaskWildDeclaresAndCounts(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("应恰有 2 条申报, got %d lines", len(lines))
 	}
-	var e wildDeclaration
+	var e clitask.WildDeclaration
 	if err := json.Unmarshal([]byte(lines[0]), &e); err != nil {
 		t.Fatalf("申报行须为合法 JSON: %v", err)
 	}
@@ -174,7 +175,7 @@ func TestTaskWildRequiresNote(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 
-	if err := runTaskWild(&cobra.Command{}, []string{"   "}); err == nil {
+	if err := clitask.RunTaskWild(&cobra.Command{}, []string{"   "}); err == nil {
 		t.Error("空白说明必须被拒绝")
 	}
 }

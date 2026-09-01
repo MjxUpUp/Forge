@@ -69,7 +69,13 @@ func TestMultiTaskConcurrency_Matrix(t *testing.T) {
 	if stateB == nil {
 		t.Fatal("[2] task-b 状态缺失")
 	}
-	lines := attributedPorcelain(tmpDir, stateB)
+	// 行由 attribution.PorcelainLines 单一入口取（原 cli gitPorcelain 包装随
+	// A1/A2-3 迁移消亡），过滤编排走 taskpipeline.AttributedPorcelain。
+	porcelainLines, perr := attribution.PorcelainLines(tmpDir)
+	if perr != nil {
+		t.Fatalf("PorcelainLines: %v", perr)
+	}
+	lines := taskpipeline.AttributedPorcelain(tmpDir, stateB, porcelainLines)
 	joined := strings.Join(lines, "\n")
 	if strings.Contains(joined, "a-wip.go") {
 		t.Errorf("[2] A 的 WIP 泄入 B 的接手现场:\n%s", joined)

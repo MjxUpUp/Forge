@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/workspace"
 	"github.com/spf13/cobra"
@@ -167,6 +168,37 @@ func writeForeignTaskWithDeps(t *testing.T, home, key, ref string, deps []string
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, ref+`.json`), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// depRefFixture/writeDepRefWorkspace 是 task_depref_test.go（已迁 internal/clitask）
+// 同名夹具的姊妹副本（测试助手无法跨包共享，注释互指防漂移）——workspace
+// 依赖环检测的清单 fixture 与 clitask 侧同一布局。
+func depRefFixture(t *testing.T) (root, ownKey, home string) {
+	t.Helper()
+	home = t.TempDir()
+	t.Setenv(`FORGE_DATA_HOME`, home)
+	root = t.TempDir()
+	ownKey = forgedata.PathKey(root)
+	return root, ownKey, home
+}
+
+func writeDepRefWorkspace(t *testing.T, ownKey string, otherKeys ...string) {
+	t.Helper()
+	f := &workspace.File{}
+	if err := f.Create(`fleet`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.AddRepo(`fleet`, workspace.RepoRef{Key: ownKey}); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range otherKeys {
+		if err := f.AddRepo(`fleet`, workspace.RepoRef{Key: k}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.Save(); err != nil {
 		t.Fatal(err)
 	}
 }
