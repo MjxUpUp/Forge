@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.48.1](https://github.com/MjxUpUp/Forge/compare/v1.48.0...v1.48.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **attribution:** porcelain 测试期望改正斜杠字面量（windows CI 实证） ([#38](https://github.com/MjxUpUp/Forge/issues/38)) ([f325d78](https://github.com/MjxUpUp/Forge/commit/f325d7840ce58b5b9ef842e5781f04a4419b4bc6))
+* **review:** A1 补齐收尾——孤儿 gitPorcelain 删除 + 现场过滤测试随领域迁 taskpipeline ([85e78c5](https://github.com/MjxUpUp/Forge/commit/85e78c5eeb329c0475dcdbc72eba6e513a9de07e))
+* **review:** clitask 迁移双轨审查收口——接缝兜底与注释/死链出清 ([f351094](https://github.com/MjxUpUp/Forge/commit/f351094c65bc443bc9f9272d54b3cacc67610014))
+* **review:** hookdispatch 双轨审查 3 建议收口 ([bc6da60](https://github.com/MjxUpUp/Forge/commit/bc6da609229dd3d9e274fcdc9a06e9385e9a44be))
+* **review:** tasktypes 下沉审查收口——3 项装饰项 ([a1ec456](https://github.com/MjxUpUp/Forge/commit/a1ec4565b7857c98df64180006b0531b048ee079))
+* **review:** 任务下沉审查 5 项收口 ([eae19f4](https://github.com/MjxUpUp/Forge/commit/eae19f48c1c8660a45b214b4b01ad856c615cbec))
+* **review:** 双轨审查收口——注释残留出清与死常量裁决 ([f367d4f](https://github.com/MjxUpUp/Forge/commit/f367d4f0ca4e91eb249272d37e41613255cbddb3))
+* **review:** 清扫任务双轨审查收口——4 项 LOW 全解 ([948d473](https://github.com/MjxUpUp/Forge/commit/948d473cc3478de76a9c3bca400fb8bacb1028b3))
+* **review:** 迁移审查收口——Version seam 改惰性闭包（阻断项） ([e56b4a0](https://github.com/MjxUpUp/Forge/commit/e56b4a0ccdc0fc5152d1b3116fe6e3f51577f18d))
+
 ## [1.48.0](https://github.com/MjxUpUp/Forge/compare/v1.47.0...v1.48.0) (2026-08-31)
 
 
