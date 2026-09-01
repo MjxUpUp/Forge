@@ -297,7 +297,7 @@ Forge 从 HANDOFF.md/AI_CONTEXT.md 到结构化字段的升格（types.go:359）
 
 **行为变更**：`task start` 废除 Clear()（写边界事件）；`task resume` 解析链 v2 + HANDOFF 视图 v2（归属过滤 + 无主计数 + artifacts 状态）；`review gate`/`task gate` 证据查询带 task-ref；stamp 内容寻址。
 
-**内部改造点**（约 10 处调用点）：`internal/cli/hook.go`（dispatcher 记 ledger + workspace heartbeat）、`internal/skilltrigger/conditions.go`、`internal/clitask/task_continuity.go`（原 internal/cli，普查 A2-3 迁出）、`internal/review/stamp.go`、`internal/taskpipeline/{testcoverage,state,executor}.go`、`internal/cli/task.go`、新增 `internal/{workspace,attribution}` 两包。
+**内部改造点**（约 10 处调用点）：`internal/cli/hook.go`（dispatcher 记 ledger + workspace heartbeat）、`internal/skilltrigger/conditions.go`、`internal/clitask/task_continuity.go`（原 internal/cli，普查 A2-3 迁出）、`internal/review/stamp.go`、`internal/taskpipeline/{testcoverage,state,executor}.go`、`internal/clitask/task.go`（原 internal/cli/task.go，普查 A2-3 迁出）、新增 `internal/{workspace,attribution}` 两包。
 
 ## 11. 数据模型与迁移
 
