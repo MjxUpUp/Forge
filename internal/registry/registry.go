@@ -98,18 +98,14 @@ func globalPath() (string, error) {
 }
 
 // readFile 加载注册表。文件缺失/损坏返回空 File 与 ok=false（空 = 无项目，非错误——
-// 与之前契约一致）。
+// 与之前契约一致）。读侧经 util.ReadJSONFile 单一入口（2026-09 普查 P3-6）。
 func readFile() (File, bool) {
 	var f File
 	p, err := globalPath()
 	if err != nil {
 		return f, false
 	}
-	data, err := os.ReadFile(p)
-	if err != nil {
-		return f, false
-	}
-	if json.Unmarshal(data, &f) != nil {
+	if err := util.ReadJSONFile(p, &f); err != nil {
 		return File{}, false
 	}
 	return f, true
