@@ -11,8 +11,8 @@ AI 时代单 repo 多任务并发是常态：多个窗口/多个 agent 同时推
 | # | 症状 | 根因（file:line） |
 |---|---|---|
 | P1 | 窗口 B 的 Stop 事件被窗口 A 的未提交改动触发 skill 提示（`Stop · source_changed_uncommitted`） | `condSourceChanged` 全树 `git status --porcelain` 扫描，零会话归属（`internal/skilltrigger/conditions.go:38-61`） |
-| P2 | 接续视图（HANDOFF）把别的任务 WIP 当成本任务现场 | `gitPorcelain` 同样全树扫描（`internal/clitask/task_continuity.go`（原 internal/cli/task_continuity.go，普查 A2-3 迁出））；`taskChangedFiles` 未提交段同病（`internal/taskpipeline/testcoverage.go:359-391`） |
-| P3 | 任务 B 开工抹掉任务 A 的证据链 | `task start` 对项目级 checklog/toollog 的 `Clear()`（`internal/cli/task.go:678-683`） |
+| P2 | 接续视图（HANDOFF）把别的任务 WIP 当成本任务现场 | 工作区全树扫描（porcelain 经 `attribution.PorcelainLines` 单一入口——普查 P3-3 收敛，原 cli gitPorcelain 包装已随 A1/A2-3 消亡）；`taskChangedFiles` 未提交段同病（`internal/taskpipeline/testcoverage.go:359-391`） |
+| P3 | 任务 B 开工抹掉任务 A 的证据链 | `task start` 对项目级 checklog/toollog 的 `Clear()`（`internal/clitask/task.go`（原 internal/cli/task.go:678-683，普查 A2-3 迁出；文中 Clear() 已被「废除 Clear()」改造移除，现行为 active-task ref 直接按完成态跳过）） |
 | P4 | review 印章跨 worktree 同分支串用 | stamp 按 `<branch>.stamp` 键控于共享 DataDir（`internal/review/stamp.go:508-514`） |
 | P5 | 会话→任务绑定误挂 | 兜底"唯一未完成任务"在多任务并发下失效；`last-session.json` 15min 指针双窗口竞态（`internal/taskpipeline/session.go:703-798`） |
 | P6 | 无多任务工作流支持 | 无 worktree 生命周期管理、无文档 |
