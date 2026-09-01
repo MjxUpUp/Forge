@@ -2,14 +2,14 @@
 //
 // Package cli skill_trigger.go 是通用 skill-trigger 框架的 CLI 入口与判定核心。
 // 2026-09 普查 A2-1 迁出 skills 簇时本文件刻意留守 cli：它是 runHook 的特例
-// 路径（进程内判定 + 渲染，依赖 cli 的 HookInput/emitAgentOutput），属 hook 链
+// 路径（进程内判定 + 渲染，依赖 cli 的 hookdispatch.HookInput/emitAgentOutput），属 hook 链
 // 桥接而非 skills 命令面——命令注册仍挂 cliskills.Root。
 //
 // 设计要点（与 plan §1 的偏离，技术正确性驱动）：
 // plan 原假设 thin-wrapper bash（exec forge skill trigger --hook）能透传 stdin，但 runHook
 // (hook.go) 已 io.ReadAll(os.Stdin) 消费 stdin 且未设 shCmd.Stdin，子进程拿到空 stdin。
 // task-resume/resume-reinject 等 thin-wrapper 不依赖 stdin（用 forge data 渲染），故未暴露；
-// skill-trigger 必须从 HookInput 取 Event/Prompt/Tool/command/exit_code（只能来自 stdin）。
+// skill-trigger 必须从 hookdispatch.HookInput 取 Event/Prompt/Tool/command/exit_code（只能来自 stdin）。
 // 故采用 runHook 特例方案：name=="skill-trigger" 时 Go 内直接判定 + 渲染，复用 runHook 已
 // normalize 的 hookInput 与 agent stdin normalize，不经 bash embed，避开 stdin 透传难题。
 package cli
@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/MjxUpUp/Forge/internal/cliskills"
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"io"
 	"os"
 	"path/filepath"
@@ -52,13 +53,13 @@ var skillTriggerCmd = &cobra.Command{
 
 func init() {
 	skillTriggerCmd.Flags().BoolVar(&skillTriggerDryRun, "dry-run", false, "调试：stderr 打扫描/命中详情，不写 marker")
-	skillTriggerCmd.Flags().StringVar(&skillTriggerEvent, "event", "", "覆盖 HookInput 的事件名（调试模拟其他事件）")
+	skillTriggerCmd.Flags().StringVar(&skillTriggerEvent, "event", "", "覆盖 hookdispatch.HookInput 的事件名（调试模拟其他事件）")
 	cliskills.Root.AddCommand(skillTriggerCmd)
 }
 
-// runSkillTriggerCmd 处理 `forge skills trigger`：读 stdin HookInput，调核心，stdout 打渲染结果。
+// runSkillTriggerCmd 处理 `forge skills trigger`：读 stdin hookdispatch.HookInput，调核心，stdout 打渲染结果。
 func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
-	var hookInput HookInput
+	var hookInput hookdispatch.HookInput
 	stdinData, _ := io.ReadAll(os.Stdin)
 	if len(stdinData) > 0 {
 		if err := json.Unmarshal(stdinData, &hookInput); err != nil {
@@ -82,11 +83,11 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 }
 
 // runSkillTriggerHook 是 runHook 的 skill-trigger 特例入口：复用 runHook 已 normalize 的
-// hookInput，Go 内判定 + 渲染 + 输出 HookOutput JSON（不经 bash embed）。
+// hookInput，Go 内判定 + 渲染 + 输出 hookdispatch.HookOutput JSON（不经 bash embed）。
 // kimi 下按 kimi 协议输出：skill-trigger 永不阻断（advisory），渲染文本仅 UserPromptSubmit
 // 打 stdout（其余事件 stdout 被 kimi 丢弃——见 internal/agentbridge/kimi-hook-routing.md），
 // 无渲染则静默。
-func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error {
+func runSkillTriggerHook(hookInput hookdispatch.HookInput, root, version, agent string) error {
 	// kimi 0.35.0 对除 UserPromptSubmit 外的所有事件丢弃 allow 路径 stdout（wire.jsonl
 	// 实证）。引擎在其余事件上仍运行——每条命中以 Delivered=false 落 checklog（由
 	// contextChannelDelivered 的 kimi 行落章）——让看板事件流与 usage 漏斗看到完整的
@@ -115,7 +116,7 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 		if err != nil {
 			return nil
 		}
-		return emitAdvisoryRouted(agent, hookInput.HookEventName, "skill-trigger", root, hookInput.SessionID, true, rendered)
+		return hookdispatch.EmitAdvisoryRouted(agent, hookInput.HookEventName, "skill-trigger", root, hookInput.SessionID, true, rendered)
 	}
 	// skill-trigger 永不阻断（advisory 注入）——走 per-agent emitter 的
 	// allow-with-detail 路径，按宿主选择上下文通道。旧的固定
@@ -125,13 +126,13 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 	if err == nil {
 		detail = rendered
 	}
-	return emitAgentOutput(agent, hookInput.HookEventName, "skill-trigger", true, detail)
+	return hookdispatch.EmitAgentOutput(agent, hookInput.HookEventName, "skill-trigger", true, detail)
 }
 
 // runSkillTriggerCore 是判定 + 渲染核心（hook 链 / 子命令 / dry-run 共用）。
 // 返回渲染文本（无命中返 ""，调用方按需 wrap）。无 canonical 源 / 无 triggers 声明 → 静默 ""。
 // agent 用于落章送达判定（contextChannelDelivered）；"" 走 claude 默认行（调试子命令路径）。
-func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRun bool) (string, error) {
+func runSkillTriggerCore(hookInput hookdispatch.HookInput, root, version, agent string, dryRun bool) (string, error) {
 	// 全局禁用早返——避免仍跑 Resolve+LoadAll（扫所有 SKILL.md 解析 frontmatter）增加 hook 链延迟。
 	if skilltrigger.Disabled() {
 		return "", nil
@@ -277,8 +278,8 @@ func taskRefForSession(root, sessionID string) string {
 	return ""
 }
 
-// buildTriggerContext 把 HookInput 转成引擎 Context（agent-neutral）。
-func buildTriggerContext(hookInput HookInput, root string) skilltrigger.Context {
+// buildTriggerContext 把 hookdispatch.HookInput 转成引擎 Context（agent-neutral）。
+func buildTriggerContext(hookInput hookdispatch.HookInput, root string) skilltrigger.Context {
 	ctx := skilltrigger.Context{
 		Event:       hookInput.HookEventName,
 		Prompt:      hookInput.Prompt,
@@ -314,10 +315,10 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 	// L1 送达章：一次 hook 调用里所有 hit 走同一 (agent, event) 通道，判定一次、逐条落章。
 	// Delivered/Channel/ForgeVersion 让 checklog 成为「真到达模型上下文」的真相源——usage 漏斗的
 	// 送达分母从此可靠，死通道宿主的命中不再虚计成送达（kimi 2026-08-15 修复的全宿主泛化）。
-	// 经 advisoryEmissionChannel 盖章（非裸 contextChannelDelivered）：kimi 不可送达事件上的
+	// 经 hookdispatch.AdvisoryEmissionChannel 盖章（非裸 contextChannelDelivered）：kimi 不可送达事件上的
 	// 命中现经 emitAdvisoryRouted 入队（UserPromptSubmit 攒发），章标 kimi/advisory-queue，
 	// 漏斗据此区分「入队待投」与「永久丢失」。
-	delivered, channel := advisoryEmissionChannel(agent, ctx.Event)
+	delivered, channel := hookdispatch.AdvisoryEmissionChannel(agent, ctx.Event)
 	for _, h := range hits {
 		// 缺键 = 「未知/不适用」契约（review m5）：仅写已知项——condition-only 触发不落
 		// match_source（值恒 "" 与缺键不可分）；prompt_len 只在哈希真的来自 prompt 时落

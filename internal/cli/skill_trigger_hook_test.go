@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 )
 
 // writeSkill 在 canonical dir 下建一个带 triggers 的 skill（裸 JSON——frontmatter.go
@@ -48,7 +49,7 @@ func isolateSkillTriggerTmp(t *testing.T) {
 }
 
 func TestBuildTriggerContext_FieldsMapped(t *testing.T) {
-	hi := HookInput{
+	hi := hookdispatch.HookInput{
 		HookEventName: "PostToolUse",
 		ToolName:      "Bash",
 		Prompt:        "帮我实现",
@@ -77,7 +78,7 @@ func TestBuildTriggerContext_FieldsMapped(t *testing.T) {
 }
 
 func TestBuildTriggerContext_EmptyRawMessage(t *testing.T) {
-	ctx := buildTriggerContext(HookInput{HookEventName: "Stop"}, "")
+	ctx := buildTriggerContext(hookdispatch.HookInput{HookEventName: "Stop"}, "")
 	if ctx.ToolInput != nil || ctx.ToolOutput != nil {
 		t.Errorf("空 RawMessage 应保持 nil map")
 	}
@@ -89,7 +90,7 @@ func TestRunSkillTriggerCore_NoTriggers(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, "no-meta"), 0755)
 	os.WriteFile(filepath.Join(dir, "no-meta", "SKILL.md"), []byte("---\nname: no-meta\n---\n"), 0644)
 
-	rendered, err := runSkillTriggerCore(HookInput{HookEventName: "Stop"}, "", "v", "", true)
+	rendered, err := runSkillTriggerCore(hookdispatch.HookInput{HookEventName: "Stop"}, "", "v", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +103,7 @@ func TestRunSkillTriggerCore_EventMismatch(t *testing.T) {
 	dir := withCanonicalEnv(t)
 	writeSkill(t, dir, "td", `[{"event":"Stop"}]`)
 
-	rendered, err := runSkillTriggerCore(HookInput{HookEventName: "PostToolUse"}, "", "v", "", true)
+	rendered, err := runSkillTriggerCore(hookdispatch.HookInput{HookEventName: "PostToolUse"}, "", "v", "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +117,7 @@ func TestRunSkillTriggerCore_HitCodingIntent(t *testing.T) {
 	writeSkill(t, dir, "implementation-discipline", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
 
 	rendered, err := runSkillTriggerCore(
-		HookInput{HookEventName: "UserPromptSubmit", Prompt: "帮我实现一个排序算法", SessionID: "s1"},
+		hookdispatch.HookInput{HookEventName: "UserPromptSubmit", Prompt: "帮我实现一个排序算法", SessionID: "s1"},
 		"", "v", "", true)
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +134,7 @@ func TestRunSkillTriggerCore_HitTestCommandFailed(t *testing.T) {
 	dir := withCanonicalEnv(t)
 	writeSkill(t, dir, "test-discipline", `[{"event":"PostToolUse","match":"Bash","when":"test_command_failed"}]`)
 
-	rendered, err := runSkillTriggerCore(HookInput{
+	rendered, err := runSkillTriggerCore(hookdispatch.HookInput{
 		HookEventName: "PostToolUse",
 		ToolName:      "Bash",
 		ToolInput:     json.RawMessage(`{"command":"go test ./..."}`),
@@ -152,7 +153,7 @@ func TestRunSkillTriggerCore_TestCommandPassed_NoHit(t *testing.T) {
 	dir := withCanonicalEnv(t)
 	writeSkill(t, dir, "test-discipline", `[{"event":"PostToolUse","match":"Bash","when":"test_command_failed"}]`)
 
-	rendered, err := runSkillTriggerCore(HookInput{
+	rendered, err := runSkillTriggerCore(hookdispatch.HookInput{
 		HookEventName: "PostToolUse",
 		ToolName:      "Bash",
 		ToolInput:     json.RawMessage(`{"command":"go test ./..."}`),
@@ -175,7 +176,7 @@ func TestRunSkillTriggerCore_DryRunStderr(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 	_, err := runSkillTriggerCore(
-		HookInput{HookEventName: "UserPromptSubmit", Prompt: "实现", SessionID: "s1"},
+		hookdispatch.HookInput{HookEventName: "UserPromptSubmit", Prompt: "实现", SessionID: "s1"},
 		"", "v", "", true)
 	w.Close()
 	os.Stderr = old
@@ -198,7 +199,7 @@ func TestRunSkillTriggerHook_HitOutput(t *testing.T) {
 	writeSkill(t, dir, "impl-disc", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
 
 	out := captureStdout(t, func() {
-		if err := runSkillTriggerHook(HookInput{
+		if err := runSkillTriggerHook(hookdispatch.HookInput{
 			HookEventName: "UserPromptSubmit",
 			Prompt:        "帮我实现功能",
 			SessionID:     "cli-test-hook-hit",
@@ -207,9 +208,9 @@ func TestRunSkillTriggerHook_HitOutput(t *testing.T) {
 		}
 	})
 
-	var ho HookOutput
+	var ho hookdispatch.HookOutput
 	if err := json.Unmarshal([]byte(out), &ho); err != nil {
-		t.Fatalf("输出非合法 HookOutput JSON: %v\n%s", err, out)
+		t.Fatalf("输出非合法 hookdispatch.HookOutput JSON: %v\n%s", err, out)
 	}
 	// allow-with-detail 现为裸 hookSpecificOutput——decision 必须为空
 	// （decision:"approve" 会绕过 Claude 权限流程，codex 会判 hook failed）。
@@ -233,7 +234,7 @@ func TestRunSkillTriggerHook_NoHitOutput(t *testing.T) {
 	writeSkill(t, dir, "td", `[{"event":"Stop"}]`)
 
 	out := captureStdout(t, func() {
-		if err := runSkillTriggerHook(HookInput{
+		if err := runSkillTriggerHook(hookdispatch.HookInput{
 			HookEventName: "PostToolUse", // 不匹配 Stop
 			SessionID:     "cli-test-hook-nohit",
 		}, "", "v", ""); err != nil {
@@ -259,7 +260,7 @@ func TestRunSkillTriggerCore_EmbedFallback(t *testing.T) {
 	t.Setenv("FORGE_SKILLS_CANONICAL", "") // 强制 embed fallback（非 env 覆盖）
 
 	rendered, err := runSkillTriggerCore(
-		HookInput{HookEventName: "UserPromptSubmit", Prompt: "帮我实现一个排序算法", SessionID: "embed-fb-test"},
+		hookdispatch.HookInput{HookEventName: "UserPromptSubmit", Prompt: "帮我实现一个排序算法", SessionID: "embed-fb-test"},
 		"", "v", "", true) // dryRun=true 用 InMemory noise，不落盘 marker
 	if err != nil {
 		t.Fatalf("runSkillTriggerCore: %v", err)
@@ -277,7 +278,7 @@ func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 	writeSkill(t, dir, "normal", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
 
 	out := captureStdout(t, func() {
-		runSkillTriggerHook(HookInput{
+		runSkillTriggerHook(hookdispatch.HookInput{
 			HookEventName: "UserPromptSubmit",
 			Prompt:        "实现",
 			SessionID:     "cli-test-deny",
@@ -315,7 +316,7 @@ func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 			writeSkill(t, dir, "probe-skill", fmt.Sprintf(`[{"event":%q,"when":"coding_intent"}]`, ev))
 
 			out := captureStdout(t, func() {
-				if err := runSkillTriggerHook(HookInput{
+				if err := runSkillTriggerHook(hookdispatch.HookInput{
 					HookEventName: ev,
 					Prompt:        "帮我实现功能", // coding_intent true → would trigger
 					SessionID:     "kimi-suppress-" + ev,
@@ -368,7 +369,7 @@ func TestRunSkillTriggerHook_KimiUserPromptSubmitStillInjects(t *testing.T) {
 	writeSkill(t, dir, "probe-skill", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
 
 	out := captureStdout(t, func() {
-		if err := runSkillTriggerHook(HookInput{
+		if err := runSkillTriggerHook(hookdispatch.HookInput{
 			HookEventName: "UserPromptSubmit",
 			Prompt:        "帮我实现功能",
 			SessionID:     "kimi-ups-inject",

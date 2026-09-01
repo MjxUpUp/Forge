@@ -12,7 +12,7 @@
 // 是 task-verify test-coverage 门禁的事中伴随——门禁执法，nudge 提醒。三者都记
 // OBSERVATION 类 checklog 条目、排除出 evidence strength（见
 // checklog.BuildEvidenceChain）——过程观察，绝非验证声明。
-package cli
+package hookdispatch
 
 import (
 	"encoding/json"
@@ -65,7 +65,7 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 			break
 		}
 	}
-	detail := fmt.Sprintf("tool-failure: %s failed (error: %s)", hookInput.ToolName, util.RedactSecrets(truncate(strings.TrimSpace(hookInput.Error), 200)))
+	detail := fmt.Sprintf("tool-failure: %s failed (error: %s)", hookInput.ToolName, util.RedactSecrets(util.TruncateRunes(strings.TrimSpace(hookInput.Error), 200)))
 	meta := map[string]string{
 		"tool": hookInput.ToolName,
 	}
@@ -84,10 +84,10 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 	var delivered *bool
 	var channel string
 	if kind != "" {
-		// advisoryEmissionChannel（非 contextChannelDelivered）：kimi 上本 nudge
+		// AdvisoryEmissionChannel（非 contextChannelDelivered）：kimi 上本 nudge
 		// 经 emitAdvisoryRouted 入队，章须标 kimi/advisory-queue 而非
 		// kimi/no-channel，让漏斗区分「入队待投」与「永久丢失」。
-		d, ch := advisoryEmissionChannel(agent, hookInput.HookEventName)
+		d, ch := AdvisoryEmissionChannel(agent, hookInput.HookEventName)
 		delivered = &d
 		channel = ch
 	}
@@ -124,7 +124,7 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 	// emitAdvisoryRouted：kimi 把本提示入队、留待 UserPromptSubmit 攒发（本 hook
 	// 在 PostToolUse/PostToolUseFailure 上触发，其 stdout 被 kimi 丢弃）；其余
 	// 宿主的输出路径不变。
-	return emitAdvisoryRouted(agent, hookInput.HookEventName, "failure-track", root, hookInput.SessionID, true, nudge)
+	return EmitAdvisoryRouted(agent, hookInput.HookEventName, "failure-track", root, hookInput.SessionID, true, nudge)
 }
 
 // runSubagentTrackHook 处理 SubagentStop：子 agent 结束（cursor 的 subagent_type/
@@ -142,7 +142,7 @@ func runSubagentTrackHook(hookInput HookInput, root, version, agent string) erro
 	if i := strings.IndexByte(msg, '\n'); i >= 0 {
 		firstLine = msg[:i]
 	}
-	firstLine = util.RedactSecrets(truncate(strings.TrimSpace(firstLine), 120))
+	firstLine = util.RedactSecrets(util.TruncateRunes(strings.TrimSpace(firstLine), 120))
 	meta := map[string]string{
 		"message_len": fmt.Sprintf("%d", len(msg)),
 	}
@@ -266,7 +266,7 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	// 都把 allow-detail 送进上下文，但按宿主诚实判定而非假设；kimi 上本 nudge
 	// 走 advisory 队列，章标 kimi/advisory-queue，让漏斗区分「入队待投」与
 	// 「永久丢失」）。
-	delivered, channel := advisoryEmissionChannel(agent, hookInput.HookEventName)
+	delivered, channel := AdvisoryEmissionChannel(agent, hookInput.HookEventName)
 	if err := checklog.Record(root, &checklog.Entry{
 		Check:        checklog.CheckTestNudge,
 		Passed:       true,
@@ -287,7 +287,7 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	// emitAdvisoryRouted：kimi 把提示入队、留待 UserPromptSubmit 攒发
 	// （test-nudge 在 PostToolUse 上触发，其 stdout 被 kimi 丢弃——2026-08
 	// usage 日志审计发现这些记录 100% 未送达）；其余宿主的输出路径不变。
-	return emitAdvisoryRouted(agent, hookInput.HookEventName, "test-nudge", root, hookInput.SessionID, true, nudge)
+	return EmitAdvisoryRouted(agent, hookInput.HookEventName, "test-nudge", root, hookInput.SessionID, true, nudge)
 }
 
 // mustJSONState 序列化 v，失败回落 "{}"——状态文件序列化失败绝不能拖垮 hook
