@@ -1,4 +1,4 @@
-// Package cli hook_conventions.go — conventions-profile 层 2（注入）的两个
+// hook_conventions.go — conventions-profile 层 2（注入）的两个
 // Go 内 advisory hook：
 //
 //	conventions-context → SessionStart + PostCompact（会话摘要：≤15 行 always-on 层）
