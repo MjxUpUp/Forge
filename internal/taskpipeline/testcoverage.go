@@ -309,11 +309,7 @@ func isSourceFile(path string) bool {
 	if strings.Contains(norm, "vendor/") {
 		return false
 	}
-	ext := filepath.Ext(path)
-	if !sourceExts[ext] {
-		return false
-	}
-	return true
+	return sourceExts[filepath.Ext(path)]
 }
 
 // isTestFile 报告 path 自身是否疑似测试文件。目录判定按【路径段整段】匹配

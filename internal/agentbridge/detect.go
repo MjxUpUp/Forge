@@ -74,12 +74,6 @@ func ClaudeConfigHomeDir() string {
 	return claudeConfigHome()
 }
 
-// codexConfigHome 解析 codex 的 config home：CODEX_HOME 优先，否则 ~/.codex。
-// 单一真相源：hostcap 注册表行（InstallIndicators）。
-func codexConfigHome() string {
-	return hostcap.InstallDir("codex")
-}
-
 // ParseAgentFlag parses a comma-separated agent flag value. auto triggers
 // auto-detection; explicit names (e.g. claude-code,cursor) are used directly.
 //

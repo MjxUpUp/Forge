@@ -224,7 +224,9 @@ func TestScan_DangerousCode_DC2_RegExpVsChildProcess(t *testing.T) {
 }
 
 func TestScan_ZeroWidth_PI5(t *testing.T) {
-	zero := "​​​​" // 4 个零宽空格 → {3,} 命中
+	// 零宽空格用转义写法（ST1018：字面 U+200B 在源码中不可见，复制/编辑器
+	// 处理时会静默丢失或腐蚀，转义形式自证字节）。4 个 U+200B → {3,} 命中。
+	zero := "\u200b\u200b\u200b\u200b"
 	sd := writeSkillFiles(t, "x", map[string]string{
 		"SKILL.md": "---\nname: x\ndescription: d\n---\n\nbody" + zero + "end\n",
 	})
