@@ -74,3 +74,24 @@ func captureStderr(t *testing.T, fn func()) string {
 // TestPrintInstallReport_DriftSkipDetail: drift+skip must list details + give a sync reminder.
 //
 // TestPrintInstallReport_DriftSkipDetail：drift+skip 必须列明细 + 给出同步提醒。
+
+// TestVersionFn_LazyAndFallback 钉死版本 seam 契约（2026-09 普查 A2-1 审查发现
+// F1 的回归守卫）：惰性闭包取值（SetVersion 在 main() 才写 rootCmd.Version，
+// init 期拷贝恒空串）+ 未注册时兜底 "dev"（空串会污染 embed 缓存版本标记，
+// 与真实版本永不等值触发无谓全量重建）。
+func TestVersionFn_LazyAndFallback(t *testing.T) {
+	// 未注册：兜底 "dev"，绝不出空串。
+	if got := version(); got != "dev" {
+		t.Fatalf("VersionFn 未注册时 version() = %q, want %q", got, "dev")
+	}
+	// 惰性：注册后每次调用现取——provider 返回值变化能被观察到。
+	VersionFn = func() string { return "1.2.3" }
+	defer func() { VersionFn = nil }()
+	if got := version(); got != "1.2.3" {
+		t.Fatalf("version() = %q, want %q", got, "1.2.3")
+	}
+	VersionFn = func() string { return "9.9.9" }
+	if got := version(); got != "9.9.9" {
+		t.Fatalf("version() 应惰性现取: got %q, want %q", got, "9.9.9")
+	}
+}

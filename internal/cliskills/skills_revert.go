@@ -75,7 +75,7 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 	if skRevDecision == "" {
 		fmt.Printf("skill %s 带 commit 的决策（用 --decision <id> 选择 revert 目标）：\n", skRevSkill)
 		for _, d := range withCommit {
-			fmt.Printf("  %s  [%s]  %s\n    %s\n", d.ID, d.Outcome, d.CommitHash, util.TruncateRunes(d.Diagnosis, 60))
+			fmt.Printf("  %s  [%s]  %s\n    %s\n", d.ID, d.Outcome, d.CommitHash, util.TruncateRunes(d.Diagnosis, 60)) // 迁出收敛：原 cli truncate 保 57+"..."，现保 60+"…"（展示级）
 		}
 		return nil
 	}

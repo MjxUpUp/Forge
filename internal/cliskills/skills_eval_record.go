@@ -65,7 +65,7 @@ func runSkillsEvalRecord(cmd *cobra.Command, args []string) error {
 
 	ver := skRecVer
 	if ver == "" {
-		ver = Version
+		ver = version()
 	}
 
 	run, err := skillseval.SubmitRun(dir, canonical, skRecSkill, skRecModel, ver, raw)
