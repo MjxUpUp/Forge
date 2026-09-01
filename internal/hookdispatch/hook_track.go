@@ -1,6 +1,6 @@
-// Package cli hook_track.go wires three Go-internal observation hooks to previously-uncovered Claude Code hook events.
+// hook_track.go wires three Go-internal observation hooks to previously-uncovered Claude Code hook events.
 //
-// Package cli hook_track.go —— 接线此前未覆盖的 Claude Code hook 事件的三个
+// hook_track.go —— 接线此前未覆盖的 Claude Code hook 事件的三个
 // Go 内观察 hook（#4-A，2026-08-22）：
 //
 //	failure-track  → PostToolUseFailure（matcher Bash）
