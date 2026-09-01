@@ -71,7 +71,6 @@ else
 fi
 `
 
-
 const AssertionCheckHook = `#!/bin/bash
 # assertion-check.sh — PreToolUse hook for Write|Edit (advisory, non-blocking).
 # v0.25: 降级为纯提醒——检测到疑似断言弱化在 stdout PASS detail 提醒（forge hook 把 stdout 作 AdditionalContext 显示给 agent；stderr 不透传），不再 FAIL 阻塞
@@ -268,7 +267,6 @@ else
 fi
 `
 
-
 const TaskVerifyHook = `#!/bin/bash
 # task-verify.sh — Stop hook (advisory).
 # Surfaces quality issues to stderr + checklog (queryable via 'forge trace') but
@@ -390,7 +388,6 @@ fi
 echo "PASS"
 `
 
-
 const ReviewStopHook = `#!/bin/bash
 # review-stop.sh — Stop hook. 让 code-review-gate 自动挡：未审源码变更时 block 会话结束。
 #
@@ -436,7 +433,6 @@ fi
 echo "$OUTPUT"
 exit 2
 `
-
 
 const WorkflowTestGuardHook = `#!/bin/bash
 # workflow-test-guard.sh — PostToolUse hook for Write|Edit.

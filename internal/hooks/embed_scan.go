@@ -18,7 +18,6 @@ const ToolTrackHook = `#!/bin/bash
 echo "PASS"
 `
 
-
 const SkillScanHook = `#!/bin/bash
 # skill-scan.sh — SessionStart hook (advisory, non-blocking).
 # 会话开始扫描 skill 目录安全性（forge audit 21 规则：prompt 注入/数据外发/危险
@@ -73,7 +72,6 @@ else
   echo "PASS [skill-scan] all skills SAFE (advisory, 21 rules)"
 fi
 `
-
 
 const McpScanHook = `#!/bin/bash
 # mcp-scan.sh — SessionStart hook (advisory, non-blocking, global).
@@ -179,4 +177,3 @@ else
   echo "PASS [mcp-scan] 项目级 .mcp.json 无 config 层风险信号 (advisory; runtime tool description 注入不在扫描范围)"
 fi
 `
-
