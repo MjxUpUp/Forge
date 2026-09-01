@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -984,75 +983,15 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// gitPorcelain 返回 git status --porcelain 的行（已改未提交文件）。非 git 仓库或失败返 nil——
-// resume 不依赖 git，仅作「接手方一眼看到工作区状态」的辅助。porcelain 调用经
-// attribution.PorcelainLines 单一入口（2026-09 普查 P3-3：曾三处各自起 git 进程）。
-func gitPorcelain(root string) []string {
+// attributedPorcelain 是按本任务现场过滤后的 porcelain 行（L3 归属过滤的领域
+// 编排已下沉 taskpipeline.AttributedPorcelain——普查 A1 补齐；cli 只剩取行+委托，
+// 原 gitPorcelain 中间包装随迁移消亡）。
+func attributedPorcelain(root string, state *taskpipeline.TaskState) []string {
 	lines, err := attribution.PorcelainLines(root)
 	if err != nil {
 		return nil
 	}
-	return lines
-}
-
-// attributedPorcelain 是按本任务现场过滤后的 gitPorcelain（multi-task-concurrency
-// §6，T3）：L3 台账可证明归属其他未完成任务会话的 porcelain 行被剔除，无主路径同样
-// 剔除——两者都以诚实的计数行补在末尾（接手视图还原的是本任务现场，不是整树噪音）。
-// 降级向旧全树行为 fail-open：归属关闭、台账为空（升级前会话/无身份宿主）或 git
-// 失败都返回未过滤 porcelain——藏掉任务自己的 WIP（空现场）比多显示噪音更糟。
-func attributedPorcelain(root string, state *taskpipeline.TaskState) []string {
-	lines := gitPorcelain(root)
-	if lines == nil {
-		return nil
-	}
-	if !attribution.Enabled() {
-		return lines
-	}
-	view := attribution.Reconcile(root)
-	// fail-open 触发：台账对变更集的归属数为零——升级前会话、无身份宿主、或台账没看
-	// 见的纯 bash 编辑。此时归属不携带任何信息，把全部标成「无主剔除」会渲染出空现场
-	//（藏掉任务自己的 WIP——严格劣于带噪音的旧视图）。至少有一个路径被归属时，
-	// 自己/外来/无主的切分才开始有意义。
-	if len(view.BySession) == 0 {
-		return lines
-	}
-	ref := ""
-	if state != nil {
-		ref = state.TaskRef
-	}
-	foreign := taskpipeline.ForeignAttributedPaths(root, ref)
-	orphanSet := map[string]bool{}
-	for _, p := range view.Orphans {
-		orphanSet[p] = true
-	}
-	kept := make([]string, 0, len(lines))
-	excludedForeign, excludedOrphan := 0, 0
-	for _, l := range lines {
-		if len(l) < 3 {
-			kept = append(kept, l)
-			continue
-		}
-		p := l[3:]
-		if idx := strings.Index(p, " -> "); idx >= 0 {
-			p = p[idx+4:]
-		}
-		p = filepath.ToSlash(filepath.Clean(strings.Trim(p, `"`)))
-		switch {
-		case foreign[p]:
-			excludedForeign++
-		case orphanSet[p]:
-			excludedOrphan++
-		default:
-			kept = append(kept, l)
-		}
-	}
-	if excludedForeign > 0 {
-		kept = append(kept, fmt.Sprintf("· 已排除 %d 个其他任务会话的未提交文件（非本任务现场）", excludedForeign))
-	}
-	if excludedOrphan > 0 {
-		kept = append(kept, fmt.Sprintf("· 已排除 %d 个无归属未提交文件（台账无法解释，git status 可查）", excludedOrphan))
-	}
-	return kept
+	return taskpipeline.AttributedPorcelain(root, state, lines)
 }
 
 // renderResume 把 task 接续字段渲染成 HANDOFF 风格视图。gitChanged 由 caller 传入（解耦 git，
