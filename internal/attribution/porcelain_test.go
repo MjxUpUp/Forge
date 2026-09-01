@@ -49,7 +49,7 @@ func TestPorcelainLines(t *testing.T) {
 	write("a.txt", "x")
 	write("b/.keep", "")
 	git("add", ".")
-	git("commit", "-m", "init")
+	exec.Command("git", "-C", root, "-c", "commit.gpgsign=false", "commit", "-m", "init").Run()
 	if lines, err := PorcelainLines(root); err != nil || lines != nil {
 		t.Fatalf("干净树: got (%v, %v), want (nil, nil)", lines, err)
 	}
@@ -61,8 +61,10 @@ func TestPorcelainLines(t *testing.T) {
 		t.Fatalf("PorcelainLines: %v", err)
 	}
 	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "?? b/") {
-		t.Errorf("未跟踪条目应保留原始状态行, got: %q", joined)
+	// b/ 已跟踪（.keep 入库），未跟踪的是新文件本身——精确断言整行。
+	want := "?? " + filepath.Join("b", "新文件.md")
+	if !strings.Contains(joined, want) {
+		t.Errorf("未跟踪条目应为精确文件行 %q, got: %q", want, joined)
 	}
 	if strings.Contains(joined, `\346`) {
 		t.Errorf("中文路径被 C 转义（quotepath=off 失效）: %q", joined)
