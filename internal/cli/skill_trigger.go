@@ -14,6 +14,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"io"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ var skillTriggerCmd = &cobra.Command{
 func init() {
 	skillTriggerCmd.Flags().BoolVar(&skillTriggerDryRun, "dry-run", false, "调试：stderr 打扫描/命中详情，不写 marker")
 	skillTriggerCmd.Flags().StringVar(&skillTriggerEvent, "event", "", "覆盖 HookInput 的事件名（调试模拟其他事件）")
-	skillsCmd.AddCommand(skillTriggerCmd)
+	cliskills.Root.AddCommand(skillTriggerCmd)
 }
 
 // runSkillTriggerCmd 处理 `forge skills trigger`：读 stdin HookInput，调核心，stdout 打渲染结果。
