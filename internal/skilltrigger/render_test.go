@@ -54,7 +54,9 @@ func TestRender_StripsControlAndFlattens(t *testing.T) {
 func TestRender_TruncatesLongReason(t *testing.T) {
 	long := strings.Repeat("X", 300)
 	out := Render([]Hit{{Skill: "foo", SkillDir: "/x/foo", Reason: long}}, Context{}, nil)
-	if !strings.Contains(out, "...") {
+	// 截断后缀钉 "…"（util.TruncateRunes 的省略号形态）——2026-09 代码普查 P3
+	// 收敛时由本地 "..." 统一为 util 单一实现，宽度契约只有「发生截断」本身。
+	if !strings.Contains(out, "…") {
 		t.Error("长 reason 应被截断")
 	}
 }

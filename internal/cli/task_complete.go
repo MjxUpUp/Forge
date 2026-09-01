@@ -219,7 +219,7 @@ func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 		// 读不到 checklog——除非 gate 历史显示跑过，否则假设所有 hook 都缺失。
 		compileRan := false
 		for _, r := range state.History {
-			if r.Gate == "task-implement" && r.Passed {
+			if r.Gate == taskpipeline.GateImplement && r.Passed {
 				compileRan = true
 				break
 			}
@@ -238,7 +238,7 @@ func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 		// 检查编译是否经 task-implement gate 跑过。
 		compileRan := false
 		for _, r := range state.History {
-			if r.Gate == "task-implement" && r.Passed {
+			if r.Gate == taskpipeline.GateImplement && r.Passed {
 				compileRan = true
 				break
 			}

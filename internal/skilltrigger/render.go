@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillintegrate"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // Render renders hits into additionalContext text (HANDOFF style, cf. renderResume).
@@ -55,7 +56,7 @@ func Render(hits []Hit, ctx Context, overflow []string) string {
 		if reason == "" {
 			reason = "—"
 		}
-		w("    " + truncateRunes(reason, 200))
+		w("    " + util.TruncateRunes(reason, 200))
 		w("    路径：" + filepath.ToSlash(filepath.Join(h.SkillDir, "SKILL.md")))
 		// forge 集成指针：该 skill 有 forge 侧集成笔记时追加一行（零反向依赖契约的
 		// 承接面——skill 正文不含 forge 内容，forge 用户经 forge skills integration 拿
@@ -120,13 +121,4 @@ func reasonOneLine(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
-}
-
-// truncateRunes 按 rune 计数截断（避免切坏 UTF-8 中文），超出加省略号。
-func truncateRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "..."
 }
