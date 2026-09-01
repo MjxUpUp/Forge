@@ -166,7 +166,8 @@ func loadLedger(root string) []Event {
 // (quotepath=off so non-ASCII paths stay UTF-8).
 //
 // PorcelainLines 跑 `git status --porcelain` 返回原始状态行——porcelain 调用的
-// 单一入口（2026-09 普查 P3-3：曾三处各自起 git 进程；quotepath=off 让非 ASCII
+// 单一入口（2026-09 普查 P3-3：曾两处各自起 porcelain 进程——attribution 与
+// cli/task_continuity；quotepath=off 让非 ASCII
 // 路径保持原生 UTF-8 而非 C 转义八进制串，永远匹配得上台账里的 Unicode 路径）。
 func PorcelainLines(root string) ([]string, error) {
 	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()

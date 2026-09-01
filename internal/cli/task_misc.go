@@ -15,7 +15,8 @@ import (
 // resolveTaskState 解析目标任务：--ref 显式指定优先，否则取 session 绑定的活跃
 // 任务。错误策略沿主流形态：显式 ref 失败原样透传、活跃态失败包英文上下文。
 // （2026-09 普查 P3-4：14 处序言实测仅少数纯同构——错误文案/nil 兜底/silent
-// 各异属刻意 UX，只收敛语义完全一致的 raw-err 族，其余保留原地。）
+// 各异属刻意 UX；语义完全一致的 raw-err 族共 3 处全部收敛——本文件 2 处 +
+// task_impact 1 处，其余分化形态保留原地。）
 func resolveTaskState(root, explicitRef string) (*taskpipeline.TaskState, error) {
 	if explicitRef != "" {
 		return taskpipeline.LoadTaskState(root, explicitRef)

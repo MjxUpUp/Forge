@@ -49,17 +49,9 @@ func runTaskImpact(cmd *cobra.Command, args []string) error {
 		repos = nil
 	}
 
-	var state *taskpipeline.TaskState
-	if explicitRef != `` {
-		state, err = taskpipeline.LoadTaskState(root, explicitRef)
-		if err != nil {
-			return err
-		}
-	} else {
-		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-		if err != nil {
-			return fmt.Errorf("failed to load task state: %w", err)
-		}
+	state, err := resolveTaskState(root, explicitRef)
+	if err != nil {
+		return err
 	}
 	if state == nil {
 		return fmt.Errorf("no active task. Run 'forge task start' first")

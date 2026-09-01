@@ -1,7 +1,6 @@
 package taskpipeline
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
@@ -23,6 +22,12 @@ func TestCompleteGeneric(t *testing.T) {
 	if err := SaveTaskState(root, seed); err != nil {
 		t.Fatalf("SaveTaskState: %v", err)
 	}
+	// 预置 active 绑定，让「complete 清 ref」断言有判别力——不预置则 ClearActiveTaskRef
+	// 是 no-op，删掉它测试照样过（审查发现 #2）。
+	sid := CurrentSessionID()
+	if err := SetActiveTaskRef(root, sid, seed.TaskRef); err != nil {
+		t.Fatalf("SetActiveTaskRef: %v", err)
+	}
 
 	if err := CompleteGeneric(root, seed); err != nil {
 		t.Fatalf("CompleteGeneric: %v", err)
@@ -40,11 +45,10 @@ func TestCompleteGeneric(t *testing.T) {
 			t.Errorf("门禁 %s 应自动通过（generic 秒过语义）", id)
 		}
 	}
-	// active-task ref 清空：ActiveTaskState 不再解析到已完结任务。
-	if active, err := ActiveTaskState(root, CurrentSessionID()); err == nil && active != nil && active.TaskRef == seed.TaskRef {
-		t.Errorf("complete 后 active-task ref 应清空，仍解析到 %s", active.TaskRef)
-	}
-	if !strings.HasSuffix(seed.TaskRef, "generic-demo") {
-		t.Fatalf("fixture sanity: unexpected ref %q", seed.TaskRef)
+	// active-task ref 清空：预置的绑定文件被删（ReadActiveTaskRef 返空）——
+	// 直接断言存储而非经 ActiveTaskState（后者对已完成任务本就跳过命中，
+	// 判别力不足）。
+	if got := ReadActiveTaskRef(root, sid); got != "" {
+		t.Errorf("complete 后 active-task ref 应清空, got %q", got)
 	}
 }
