@@ -12,7 +12,11 @@ package cli
 // 在所有 init 之前初始化（Go 规范），故此处设 GroupID 时命令变量已构造完成。
 //
 // help/completion 是 cobra 自动生成的辅助命令，留默认（不分组，显示在末尾）。
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+
+	"github.com/MjxUpUp/Forge/internal/cliskills"
+)
 
 func init() {
 	rootCmd.AddGroup(
@@ -73,7 +77,7 @@ func init() {
 	docsCmd.GroupID = "quality"
 
 	// skill 治理（experience/knowledge 经验闭环已移除）
-	skillsCmd.GroupID = "governance"
+	cliskills.Root.GroupID = "governance"
 	// 执法健康报告与随机审计（vNext P2 审计层——S3* 独立通道，只读聚合）
 	enforcementCmd.GroupID = "governance"
 
