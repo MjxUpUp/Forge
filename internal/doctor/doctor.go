@@ -734,11 +734,12 @@ var tokenRe = regexp.MustCompile(`[A-Za-z0-9_\-./\\:~@]+`)
 
 // invocationSubcommands are the subcommand words that turn a forge token into wiring:
 // `forge hook <event>` (every host's hook wiring) and `forge gate <id>` (the settings
-// layer's accepted equivalent prefix — internal/hooks/settings.go's isForgeHookCommand, mirrored in agentbridge/codex.go).
+// layer's accepted equivalent prefix — internal/hooks.IsForgeHookCommand, the single
+// source all consumers share).
 //
 // invocationSubcommands 是让 forge token 构成接线的子命令词：`forge hook <event>`
 // （所有 host 的 hook 接线）与 `forge gate <id>`（settings 层认可的等价前缀——见
-// internal/hooks/settings.go 的 isForgeHookCommand，agentbridge/codex.go 有镜像）。
+// internal/hooks.IsForgeHookCommand，全仓消费方共用的单一真相源）。
 var invocationSubcommands = []string{"hook", "gate"}
 
 // forgeInvocation extracts the first forge token that sits in an invocation position —

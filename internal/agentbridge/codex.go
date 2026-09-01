@@ -32,7 +32,7 @@ import (
 //
 // 用户级路径对齐 kimi/claude-code 模型：一份全机器注册替代逐项目的 .codex/hooks.json
 // 副本，forge init/sync 不再写项目目录（用户级资产迁移；项目级残留由卸载/清理层
-// 处理，不在此处）。merge 语义：command 非 forge 来源的条目（见 isForgeBridgeCommand）
+// 处理，不在此处）。merge 语义：command 非 forge 来源的条目（见 hooks.IsForgeHookCommand）
 // 原样保留；forge 条目整体替换为当前生成集，Translate 幂等。
 //
 // Matcher 注意：Codex 把 matcher 编译为 regex（PreToolUse/PostToolUse 针对
@@ -145,16 +145,6 @@ func mergeCodexHooks(existing []byte) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-// isForgeBridgeCommand 报告 hook command 是否 forge 来源（agent translator 写入的命令：
-// forge hook <name> / forge gate ...，可带 --agent <name> 后缀）。镜像
-// hooks.isForgeHookCommand——因 hooks 包的 helper 未导出而在此复制，agentbridge 的
-// merge 路径不应跨包探入内部实现。
-func isForgeBridgeCommand(cmd string) bool {
-	return strings.HasPrefix(cmd, "forge hook ") ||
-		strings.HasPrefix(cmd, "forge gate ") ||
-		cmd == "forge hook" || cmd == "forge gate"
-}
-
 // StripCodexHooksUserLevel removes forge hooks from the user-level ~/.codex/hooks.json (uninstall path).
 //
 // StripCodexHooksUserLevel 移除 user-level ~/.codex/hooks.json 中的 forge hooks
@@ -261,7 +251,7 @@ func codexMatchers(matchers []hooks.HookMatcher) []hooks.HookMatcher {
 		}
 		for i, e := range m.Hooks {
 			cmd := e.Command
-			if isForgeBridgeCommand(cmd) {
+			if hooks.IsForgeHookCommand(cmd) {
 				cmd += " --agent codex"
 			}
 			cm.Hooks[i] = hooks.HookEntry{Type: e.Type, Command: cmd}
@@ -295,20 +285,16 @@ func codexApplyPatchMatcher(matcher string) string {
 // Codex 的 lifecycle hooks 由特性开关门控：config.toml 必须带 `[features]
 // hooks = true`（官方 config-reference；默认关，缺了它 hooks.json 静默不生效）。
 // 项目无 TOML 依赖（vendored modules），故——沿 kimi.go 先例——forge 加整个新
-// [features] 表时把内容包在 `# FORGE:START` / `# FORGE:END` 标记段内；标记外
+// [features] 表时把内容包在 tomlForgeMarkStart/End 标记段内；标记外
 // 内容（用户自己的 model/provider 配置）逐字节保留。
-const (
-	codexMarkStart = "# FORGE:START"
-	codexMarkEnd   = "# FORGE:END"
-)
 
 // codexFeaturesHooksBlock 是用户 config.toml 完全没有 [features] 表时追加的
 //
 //	canonical 标记段。
-const codexFeaturesHooksBlock = codexMarkStart + ` — managed by ` + "`forge init --agents codex`" + `; do not edit between markers
+const codexFeaturesHooksBlock = tomlForgeMarkStart + ` — managed by ` + "`forge init --agents codex`" + `; do not edit between markers
 [features]
 hooks = true
-` + codexMarkEnd + "\n"
+` + tomlForgeMarkEnd + "\n"
 
 // ensureCodexHooksFeature 确保 codex 的 config.toml 启用 lifecycle hooks
 // （`[features] hooks = true`）。对已有 config.toml 的行为：
@@ -357,13 +343,13 @@ func ensureCodexHooksFeature() error {
 // 不写文件）。forge 标记不成对或颠倒时报损坏错误而非猜测（与 kimi 的
 // upsertKimiSection 同款防数据丢失守卫）。
 func upsertCodexFeaturesHooks(content string) (updated string, respectUser bool, err error) {
-	start := strings.Index(content, codexMarkStart)
-	end := strings.Index(content, codexMarkEnd)
+	start := strings.Index(content, tomlForgeMarkStart)
+	end := strings.Index(content, tomlForgeMarkEnd)
 	if (start >= 0) != (end >= 0) || (start >= 0 && end <= start) {
-		return "", false, fmt.Errorf("codex: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", codexMarkStart, codexMarkEnd)
+		return "", false, fmt.Errorf("codex: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", tomlForgeMarkStart, tomlForgeMarkEnd)
 	}
 	if start >= 0 {
-		end += len(codexMarkEnd)
+		end += len(tomlForgeMarkEnd)
 		if end < len(content) && content[end] == '\n' {
 			end++
 		}

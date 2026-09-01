@@ -13,6 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/attribution"
 	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -507,7 +508,7 @@ func renderOfferedBlock(active *taskpipeline.TaskState, offered []*taskpipeline.
 			}
 			line := `  ` + mark + `  ` + s.TaskRef
 			if s.Summary != `` {
-				line += ` — ` + truncateRunes(s.Summary, inventoryFieldCap)
+				line += ` — ` + util.TruncateRunes(s.Summary, inventoryFieldCap)
 			}
 			w(line)
 		}
@@ -550,13 +551,8 @@ const inventoryListCap = 8
 // 先切掉。
 const inventoryFieldCap = 60
 
-// truncateRunes 把 s 截到最多 n 个 rune，被截时追加省略号。
-func truncateRunes(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n]) + "…"
-	}
-	return s
-}
+// rune 截断已收敛 util.TruncateRunes（2026-09 代码普查 P3：本地曾是与 util 逐字
+// 相同的拷贝）。
 
 // otherIncompleteTasks 返回 currentRef 之外其他未完成任务的 ref。
 func otherIncompleteTasks(root, currentRef string) []string {
@@ -605,11 +601,11 @@ func renderTaskInventory(root string) string {
 			line += " [分支 " + s.Branch + "]"
 		}
 		if s.Summary != "" {
-			line += " — " + truncateRunes(s.Summary, inventoryFieldCap)
+			line += " — " + util.TruncateRunes(s.Summary, inventoryFieldCap)
 		}
 		line += " — 门禁 " + renderGateProgress(s)
 		if len(s.NextSteps) > 0 {
-			line += " — 下一步: " + truncateRunes(s.NextSteps[0], inventoryFieldCap)
+			line += " — 下一步: " + util.TruncateRunes(s.NextSteps[0], inventoryFieldCap)
 		}
 		w(line)
 	}

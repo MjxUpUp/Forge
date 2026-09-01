@@ -45,11 +45,6 @@ import (
 // 出现在文件任意位置，故追加该段永远合法。
 type KimiTranslator struct{}
 
-const (
-	kimiMarkStart = "# FORGE:START"
-	kimiMarkEnd   = "# FORGE:END"
-)
-
 func (t *KimiTranslator) AgentType() AgentType {
 	return AgentKimi
 }
@@ -186,15 +181,15 @@ func tomlBasicString(s string) string {
 // 或顺序颠倒时报损坏错误而非猜测——孤儿 START 与后续 END 之间的区域是用户配置
 // （model/provider/API key），替换它就是数据丢失。
 func upsertKimiSection(content, block string) (string, error) {
-	section := kimiMarkStart + " — managed by `forge init --agents kimi`; do not edit between markers\n" +
-		block + kimiMarkEnd + "\n"
-	start := strings.Index(content, kimiMarkStart)
-	end := strings.Index(content, kimiMarkEnd)
+	section := tomlForgeMarkStart + " — managed by `forge init --agents kimi`; do not edit between markers\n" +
+		block + tomlForgeMarkEnd + "\n"
+	start := strings.Index(content, tomlForgeMarkStart)
+	end := strings.Index(content, tomlForgeMarkEnd)
 	if (start >= 0) != (end >= 0) || (start >= 0 && end <= start) {
-		return "", fmt.Errorf("kimi: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", kimiMarkStart, kimiMarkEnd)
+		return "", fmt.Errorf("kimi: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", tomlForgeMarkStart, tomlForgeMarkEnd)
 	}
 	if start >= 0 {
-		end += len(kimiMarkEnd)
+		end += len(tomlForgeMarkEnd)
 		if end < len(content) && content[end] == '\n' {
 			end++
 		}
@@ -240,15 +235,15 @@ func StripKimiHooks() (bool, error) {
 // 加入的空行）。标记不成对或颠倒时报损坏错误（与 upsertKimiSection 同款防数据
 // 丢失守卫）；完全没有标记是干净的 (content, false, nil)。
 func removeKimiSection(content string) (string, bool, error) {
-	start := strings.Index(content, kimiMarkStart)
-	end := strings.Index(content, kimiMarkEnd)
+	start := strings.Index(content, tomlForgeMarkStart)
+	end := strings.Index(content, tomlForgeMarkEnd)
 	if (start >= 0) != (end >= 0) || (start >= 0 && end <= start) {
-		return "", false, fmt.Errorf("kimi: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", kimiMarkStart, kimiMarkEnd)
+		return "", false, fmt.Errorf("kimi: config.toml forge marker section corrupt (unpaired or inverted %s/%s); fix or remove the markers manually", tomlForgeMarkStart, tomlForgeMarkEnd)
 	}
 	if start < 0 {
 		return content, false, nil
 	}
-	end += len(kimiMarkEnd)
+	end += len(tomlForgeMarkEnd)
 	if end < len(content) && content[end] == '\n' {
 		end++
 	}

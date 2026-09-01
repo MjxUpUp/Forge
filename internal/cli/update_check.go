@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 )
 
-const updateCacheDir = ".forge"
 const updateCacheFile = "update-cache.json"
 const updateCheckInterval = 24 * time.Hour
 
@@ -149,12 +150,22 @@ func shouldSkipUpdateCheck(fullVersion string, cmd *cobra.Command) bool {
 	return false
 }
 
+// updateCachePath 返回 update 缓存文件路径——随 forgedata.GlobalHome 单一真相源
+// （FORGE_DATA_HOME 优先），2026-09 代码普查 R4：原先 UserHomeDir+".forge" 直拼
+// 让设置了 FORGE_DATA_HOME 的用户读/写错目录。
+func updateCachePath() (string, error) {
+	forgeRoot, err := forgedata.GlobalHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(forgeRoot, updateCacheFile), nil
+}
+
 func loadUpdateCache() (*updateCache, error) {
-	home, err := os.UserHomeDir()
+	path, err := updateCachePath()
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(home, updateCacheDir, updateCacheFile)
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -193,13 +204,11 @@ func (c *updateCache) matchesChannel(kind channelKind) bool {
 }
 
 func saveUpdateCache(version string, kind channelKind) error {
-	home, err := os.UserHomeDir()
+	forgeRoot, err := forgedata.GlobalHome()
 	if err != nil {
 		return err
 	}
-
-	forgeDir := filepath.Join(home, updateCacheDir)
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
+	if err := os.MkdirAll(forgeRoot, 0755); err != nil {
 		return err
 	}
 
@@ -214,6 +223,8 @@ func saveUpdateCache(version string, kind channelKind) error {
 		return err
 	}
 
-	path := filepath.Join(forgeDir, updateCacheFile)
-	return os.WriteFile(path, data, 0644)
+	// AtomicWrite：更新检查在每条命令的启动路径并发可达，写一半的缓存文件会让
+	// 下一次 loadUpdateCache 解析失败白付一次网络查询（2026-09 代码普查 R4）。
+	path := filepath.Join(forgeRoot, updateCacheFile)
+	return util.AtomicWrite(path, data, 0644)
 }

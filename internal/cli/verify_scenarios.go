@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/registry"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
 // ScenarioResult holds the result of a single E2E scenario run.
@@ -662,7 +663,7 @@ func passAllVerifyGates(forgeBin, dir string, env []string, ref string) error {
 		return fmt.Errorf("git commit (verify change) failed: %v\n%s", err, out)
 	}
 
-	for _, g := range []string{"task-implement", "task-verify"} {
+	for _, g := range []string{taskpipeline.GateImplement, taskpipeline.GateVerify} {
 		out, err := verifyRunForgeEnv(forgeBin, dir, env, "task", "gate", g, "--ref", ref)
 		if err != nil {
 			return fmt.Errorf("gate %s failed: %v\n%s", g, err, out)
@@ -675,7 +676,7 @@ func passAllVerifyGates(forgeBin, dir string, env []string, ref string) error {
 	if out, err := verifyRunForgeEnv(forgeBin, dir, env, "review", "pass"); err != nil {
 		return fmt.Errorf("review pass failed: %v\n%s", err, out)
 	}
-	if out, err := verifyRunForgeEnv(forgeBin, dir, env, "task", "gate", "task-complete", "--ref", ref); err != nil {
+	if out, err := verifyRunForgeEnv(forgeBin, dir, env, "task", "gate", taskpipeline.GateComplete, "--ref", ref); err != nil {
 		return fmt.Errorf("gate task-complete failed: %v\n%s", err, out)
 	}
 	return nil

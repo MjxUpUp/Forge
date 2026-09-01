@@ -1001,6 +1001,7 @@ func TestIsForgeHookCommand(t *testing.T) {
 		want bool
 	}{
 		{"forge hook bash-guard", true},
+		{"forge hook skill-trigger --agent windsurf", true}, // translator 带 --agent 后缀的形态
 		{"forge hook", true},
 		{"forge gate task-verify", true},
 		{"forge gate", true},
@@ -1012,8 +1013,8 @@ func TestIsForgeHookCommand(t *testing.T) {
 		{"", false},
 	}
 	for _, c := range cases {
-		if got := isForgeHookCommand(c.cmd); got != c.want {
-			t.Errorf(`isForgeHookCommand(%q) = %v, want %v`, c.cmd, got, c.want)
+		if got := IsForgeHookCommand(c.cmd); got != c.want {
+			t.Errorf(`IsForgeHookCommand(%q) = %v, want %v`, c.cmd, got, c.want)
 		}
 	}
 }

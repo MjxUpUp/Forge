@@ -129,7 +129,7 @@ func runSkillTriggerHook(hookInput HookInput, root, version, agent string) error
 // agent 用于落章送达判定（contextChannelDelivered）；"" 走 claude 默认行（调试子命令路径）。
 func runSkillTriggerCore(hookInput HookInput, root, version, agent string, dryRun bool) (string, error) {
 	// 全局禁用早返——避免仍跑 Resolve+LoadAll（扫所有 SKILL.md 解析 frontmatter）增加 hook 链延迟。
-	if os.Getenv("FORGE_SKILL_TRIGGER") == "0" {
+	if skilltrigger.Disabled() {
 		return "", nil
 	}
 	// ok（isExternal）仅区分 env 覆盖（FORGE_SKILLS_CANONICAL）vs embed cache，二者都是有效

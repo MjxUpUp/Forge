@@ -32,8 +32,11 @@ import (
 func suggestStateDir() string {
 	home, err := forgedata.GlobalHome()
 	if err != nil {
-		home, _ = os.UserHomeDir()
-		home = filepath.Join(home, ".forge")
+		// 降级分支：仅在 UserHomeDir 失败（无 HOME）时到达。保留旧行为的相对
+		// ".forge"，让后续标记读写以显式错误暴露而非静默写别处（2026-09 代码
+		// 普查 R4：err 分支曾再手拼一次 UserHomeDir+".forge"——必然同样失败，
+		// 纯属重复）。
+		home = ".forge"
 	}
 	return filepath.Join(home, ".init-suggested")
 }

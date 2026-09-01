@@ -31,11 +31,12 @@ import (
 //   - 含用户内容的文件绝不删——只剥 forge 来源的条目/段（settings.local.json 留壳、
 //     CLAUDE.md/AGENTS.md 留非 forge 内容、混合 hooks.json 留用户 hook）。
 
-// forge 指令段的标记对（与 skillgen 内未导出的常量同值；cleanup 属 cli 包，
-// 本地持有以避免跨包导出仅为清理服务的符号）。
+// forge 指令段的标记对——util.ForgeSectionStart/End 的别名（单一真相源住在
+// util；此处命名保留本地语义名）。曾本地手写字面量并指向 skillgen 的旧注释
+// 均已出清（2026-09 代码普查 R3）。
 const (
-	forgeSectionStartMarker = "<!-- FORGE:START -->"
-	forgeSectionEndMarker   = "<!-- FORGE:END -->"
+	forgeSectionStartMarker = util.ForgeSectionStart
+	forgeSectionEndMarker   = util.ForgeSectionEnd
 )
 
 // teamModeMarker 是 `forge init --project` 写入的标记文件：团队模式项目刻意
@@ -215,7 +216,7 @@ func stripHooksJSON(path string) {
 						innerKept = append(innerKept, h)
 						continue
 					}
-					if cmd, _ := he[`command`].(string); isForgeCmd(cmd) {
+					if cmd, _ := he[`command`].(string); hooks.IsForgeHookCommand(cmd) {
 						changed = true
 						continue
 					}
@@ -230,7 +231,7 @@ func stripHooksJSON(path string) {
 				continue
 			}
 			// 扁平形态。
-			if cmd, _ := entry[`command`].(string); isForgeCmd(cmd) {
+			if cmd, _ := entry[`command`].(string); hooks.IsForgeHookCommand(cmd) {
 				changed = true
 				continue
 			}
@@ -268,14 +269,6 @@ func stripHooksJSON(path string) {
 	if err := util.AtomicWrite(path, append(out, '\n'), 0644); err != nil {
 		warnCleanup("strip hooks.json "+path, err)
 	}
-}
-
-// isForgeCmd 报告 hook command 是否 forge 来源。与 hooks.isForgeHookCommand
-// （未导出）同判定，供本包剥除 JSON 形态用。
-func isForgeCmd(cmd string) bool {
-	return strings.HasPrefix(cmd, "forge hook ") ||
-		strings.HasPrefix(cmd, "forge gate ") ||
-		cmd == "forge hook" || cmd == "forge gate"
 }
 
 // removeDirIfEmpty 仅在目录无剩余条目时删除它（forge 的文件是最后的内容）。
