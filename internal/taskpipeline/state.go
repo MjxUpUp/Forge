@@ -47,19 +47,17 @@ func LoadTaskState(root, taskRef string) (*TaskState, error) {
 func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	filename := taskcontext.SanitizeRef(taskRef) + ".json"
 	path := filepath.Join(tasksDir, filename)
-	data, err := os.ReadFile(path)
+	// 读侧经 util.ReadJSONFile 单一入口（2026-09 普查 P3-6）；哨兵消息语义保留——
+	// 调用方可用 errors.Is(err, fs.ErrNotExist) 区分「任务不存在」与串号/解析失败
+	// ——把串号守卫的报错当「不存在」会让 task start 直接覆盖同文件的任务状态
+	// （2026-08-29 审查轮功能探针实证）。
+	var s TaskState
+	err := util.ReadJSONFile(path, &s)
 	if err != nil {
-		if os.IsNotExist(err) {
-			// 包装哨兵错误，调用方可用 errors.Is(err, fs.ErrNotExist) 区分「任务不
-			// 存在」与串号/解析失败——把串号守卫的报错当「不存在」会让 task start
-			// 直接覆盖同文件的任务状态（2026-08-29 审查轮功能探针实证）。
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("task %q not found: run 'forge task start' first: %w", taskRef, err)
 		}
-		return nil, fmt.Errorf("failed to read task state: %w", err)
-	}
-	var s TaskState
-	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, fmt.Errorf("failed to parse task state: %w", err)
+		return nil, fmt.Errorf("failed to load task state: %w", err)
 	}
 	if s.TaskRef != taskRef {
 		return nil, fmt.Errorf("state file belongs to different task ref %q (requested %q) — refs sanitize to the same filename; use a different ref (e.g. forge task start --ref <other>)", s.TaskRef, taskRef)
