@@ -18,7 +18,9 @@ package freeze
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -141,18 +143,16 @@ func Deactivate(p *forgedata.Project) error {
 // 状态文件损坏才是错误；fail 方向由调用方决定（hook fail-open，护栏故障不
 // 硬停每次编辑）。
 func Load(p *forgedata.Project) (*State, error) {
-	data, err := os.ReadFile(p.FreezeStatePath())
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("freeze: read state: %w", err)
-	}
 	var st State
-	if err := json.Unmarshal(data, &st); err != nil {
-		return nil, fmt.Errorf("freeze: parse state %s: %w", p.FreezeStatePath(), err)
+	err := util.ReadJSONFile(p.FreezeStatePath(), &st)
+	switch {
+	case err == nil:
+		return &st, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("freeze: %w", err)
 	}
-	return &st, nil
 }
 
 // Check reports whether a Write/Edit of target is allowed under the current freeze state.

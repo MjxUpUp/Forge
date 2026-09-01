@@ -2,7 +2,9 @@ package hooks
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -427,17 +429,15 @@ func StripForgeHooks(projectDir string, keepEmpty bool) (changed bool, err error
 // （init/sync 的 dedupeProjectLevelIfPlugin + plugin dedupe 的 runPluginDedupe,所有写入后
 // 统一调用,覆盖 project-level + user-level）清理——避免单元测试依赖全局 IsClaudePluginInstalled 状态。
 func StripForgeHooksAt(path string, keepEmpty bool) (changed bool, err error) {
-	data, err := os.ReadFile(path)
+	// 读侧经 util.ReadJSONFile 单一入口（2026-09 普查 P3-6）；missing → false,nil
+	// 的语义本站点保留。
+	var settings map[string]json.RawMessage
+	err = util.ReadJSONFile(path, &settings)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return false, nil
 		}
-		return false, fmt.Errorf("read settings.local.json: %w", err)
-	}
-	// 用 json.RawMessage 保留未知顶层字段，只重写 hooks。
-	var settings map[string]json.RawMessage
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return false, fmt.Errorf("parse settings.local.json: %w", err)
+		return false, err
 	}
 	hooksRaw, hasHooks := settings["hooks"]
 	if !hasHooks {
