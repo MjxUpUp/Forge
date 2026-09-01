@@ -356,7 +356,7 @@ func completeGracePath(root, sessionID string) string {
 // MarkCompleteGrace 在 completeGracePath 记录当前 epoch timestamp。
 // 由 forge task complete 在 ClearActiveTaskRef 之后立即调用。文件内容为
 // epoch-seconds 整数（以 newline 结尾）。窗口比对的执法点在 file-sentinel bash
-// hook（embed.go 内硬编码 300s——bash 调不了 Go 常量，Go 侧不保留第二份无守卫
+// hook（internal/hooks/embed.go 硬编码 300s——bash 调不了 Go 常量，Go 侧不保留第二份无守卫
 // 拷贝；2026-09 代码普查清扫：曾镜像此值的 completeGraceWindow 常量已删）。
 // sessionID 为空时静默返回 nil（无 session
 // 上下文 → 无 grace；此种罕见情形只发生有界写入，故不大声失败）。
