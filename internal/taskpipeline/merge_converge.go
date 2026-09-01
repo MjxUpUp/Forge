@@ -144,7 +144,7 @@ func canonBlockLess(incoming, local any) bool {
 	ci, cl := canonicalJSON(incoming), canonicalJSON(local)
 	ei, el := isEmptyCanon(ci), isEmptyCanon(cl)
 	if ei != el {
-		return ei == false // incoming 非空、本地空 → 传入胜
+		return !ei // incoming 非空、本地空 → 传入胜
 	}
 	return ci < cl
 }

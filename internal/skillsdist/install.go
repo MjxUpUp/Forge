@@ -205,9 +205,9 @@ func Install(canonical string, opts InstallOpts) (*InstallReport, error) {
 	// 项目画像：把分发集裁到白名单。画像里未知的条目（上游已移除的 skill）记告警
 	// 不报错——见 filterByProfile。用 `!= nil` 而非 len>0：存在但为空的画像
 	// 意为「白名单为空」，不是「无画像」。
-	profileUnknown := []string{}
 	if opts.Profile != nil {
 		requested := names // --skill 显式点名的集合（画像过滤前）
+		var profileUnknown []string
 		names, profileUnknown = filterByProfile(names, opts.Profile)
 		for _, u := range profileUnknown {
 			report.Warnings = append(report.Warnings, fmt.Sprintf(
