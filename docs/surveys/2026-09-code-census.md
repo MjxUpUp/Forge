@@ -1,6 +1,8 @@
 # 代码普查报告：架构优化与冗余清理（2026-09）
 
 > 普查任务：`survey/code-census-arch-redundancy`（generic）。方法：go build/vet 基线 + deadcode/staticcheck 全仓静态分析 + 三路并行代码考古（架构分层 / 冗余重复 / skills 域），关键发现均经 file:line 抽查核实。只读普查，未改任何代码。
+>
+> **清偿进度**：本报告是普查时点的快照。任务 1（feat/single-source-convergence）已在同分支清偿 R1-R4 与 P3 前两项（截断收敛、SKILL_TRIGGER 禁用判定），并补 guard：taskpipeline/gates_test.go（checklog↔gate 互钉）、doctor_test.go（词表↔谓词互钉）。勘误：普查称 isForgeHookCommand「无任何测试钉扎」不准确——internal/hooks/settings_test.go:998 已有契约测试（普查员检索漏报），本次仅补 --agent 后缀用例。第六节其余任务待后续分支。
 
 ## 总体结论
 
@@ -28,7 +30,7 @@
 - 收敛：cleanup/windsurf 直接用 `util.ForgeSectionStart/End`；agentbridge 包内一处派生 `"# " + util.ForgeSectionStart`，另一处引用。
 
 **R4｜`FORGE_DATA_HOME` 逃生舱口失灵（bug 面）**
-- `forgedata.GlobalHome()`（`internal/forgedata/key.go:371`）是声明的唯一真相源，16 个文件已采用；但 `internal/cli/system.go:35,107`、`internal/cli/update_check.go:14,152,199`、`internal/cli/suggest.go:36`（err 分支兜底）仍 UserHomeDir+`".forge"` 直拼——用户设 `FORGE_DATA_HOME` 后 `forge system`/update-check 检查错目录。
+- `forgedata.GlobalHome()`（`internal/forgedata/key.go:371`）是声明的唯一真相源，16 个文件已采用；但 `internal/cli/system.go:35,107`、`internal/cli/update_check.go:14,153,196`、`internal/cli/suggest.go:36`（err 分支兜底）仍 UserHomeDir+`".forge"` 直拼——用户设 `FORGE_DATA_HOME` 后 `forge system`/update-check 检查错目录。
 - 顺带：`update_check.go:218` 裸 `os.WriteFile` 违反 AtomicWrite 约定。
 
 ## 二、P2 — 架构优化（分批执行）
@@ -54,7 +56,7 @@
 |---|---|---|---|
 | P1 | rune 截断 7 份实现 | `util/text.go:9`（源）；`skilltrigger/render.go:126`、`cli/task_continuity.go:554` 逐字拷贝；`cli/trace.go:136`、`forgedata/key.go:81`、`taskpipeline/acceptance.go:271`、`toolusage/store.go:307` 变体 | 全收敛 `util.TruncateRunes`（可加 suffix 参） |
 | P2 | `FORGE_SKILL_TRIGGER=="0"` 判定 5 处 | `skilltrigger/noise.go:70,121,197,223` + `cli/skill_trigger.go:132` | `skilltrigger.Disabled()` 单一源 |
-| P3 | "本任务改动文件"三处实现 | `cli/task_continuity.go:994` / `taskpipeline/testcoverage.go:207` / `skilltrigger/conditions.go:46`，各自跑 `git status --porcelain` | 收敛 attribution 或 taskpipeline 单一入口 |
+| P3 | "本任务改动文件"三处实现 | `cli/task_continuity.go:994` / `taskpipeline/testcoverage.go:207` / `skilltrigger/conditions.go:46`（前两处直接跑 `git status --porcelain`，skilltrigger 侧经共享包 `attribution.ChangedFiles` 委托） | 收敛 attribution 或 taskpipeline 单一入口 |
 | P4 | task 状态解析序言 14 块 | `if explicitRef != ""` 同构：`task_misc.go`×6、`task_gate.go`×2、review/task_complete/task_abort/task_impact/task_continuity | 仿 `skill_trigger.go:269` `taskRefForSession` 提 `resolveTaskState` |
 | P5 | 测试播种助手 7 份 | cli 各 task 测试自播；`task_depref_test.go:83` writeForeignTask 手写 `projects/<key>/tasks/<ref>.json` 存储布局（镜像两份知识） | 抽 mutate-回调式 `Seed(t,...)`（正面样本 `project_sync_test.go:38`） |
 | P6 | JSON 读侧无共享助手 | "ReadFile→IsNotExist→Unmarshal" 散布 49 文件 | 低优先；`util.ReadJSONFile` |
@@ -64,7 +66,7 @@
 ## 四、死代码与静态告警（deadcode 19 项 / staticcheck 21 条）
 
 - **确认真死（无任何调用方含测试）**：`agentbridge/detect.go:79 codexConfigHome`、`scoring/evaluator.go:410 isSourceExt` → 直接删。
-- **测试可达、生产未接线**（约 15 项）：`hlc.Compare/Parse/Clock.Observe`（sync-convergence.md §3 已自认未接线）、`checklog.LatestByCheckForSession/Clear`、`docsconsistency.AllFlags/DanglingSkillRefs`（guard 机制本体）、`forgedatatest.ForDataDir/RealProject`、`review.MarkPassed`、`taskpipeline.VerifyArtifact`、`skillsdist.hashTree`、`protocol.MustShouldLabel`、`nodestamp.resetForTest`、`projectsync.sha256Hex`、`agentbridge/kimi_plugin.go isSkillTriggerCommand`、`dashboard/pulseCache.loadCount` → 逐项"接线或删除"，hlc 头部补同款警示注释。
+- **测试可达、生产未接线**（17 项）：`hlc.Compare/Parse/Clock.Observe`（sync-convergence.md §3 已自认未接线）、`checklog.LatestByCheckForSession/Clear`、`docsconsistency.AllFlags/DanglingSkillRefs`（guard 机制本体）、`forgedatatest.ForDataDir/RealProject`、`review.MarkPassed`、`taskpipeline.VerifyArtifact`、`skillsdist.hashTree`、`protocol.MustShouldLabel`、`nodestamp.resetForTest`、`projectsync.sha256Hex`、`agentbridge/kimi_plugin.go isSkillTriggerCommand`、`dashboard/pulseCache.loadCount` → 逐项"接线或删除"，hlc 头部补同款警示注释。
 - **staticcheck 21 条**：SA4006×3（其中 `skillsdist/install.go:208` 为死初始化，非 bug；其余 2 条在测试）、S1038×3、ST1005×2（`cli/task_port.go:172,177` 错误串大写）等，均为一行级修复。
 
 ## 五、查过且干净 / 判定不合并的项
@@ -81,5 +83,5 @@
 3. **feat/cliskills-extraction**（A2-1）：skills 簇 26 文件迁出。零纠缠，搬家不改逻辑。
 4. **feat/tasktypes-leaf**（A3）：类型下沉，skillgen/dashboard 等改引叶子包。
 5. **feat/skillmetrics-split**（A4）：skillseval B 簇迁出。
-6. **feat/task-domain-sinking**（A1+A2-3，最大件）：完成编排/continuity 下沉，配 resolveTaskState 序言收敛（P4）与测试播种收敛（P5）。
-7. 可选：hookdispatch 拆分（A2-2）、embed.go 分文件（P7）、命名清理（P8）。
+6. **feat/task-domain-sinking**（A1+A2-3，最大件）：完成编排/continuity 下沉，配 resolveTaskState 序言收敛（P4）、测试播种收敛（P5）与"本任务改动文件"单一入口（P3-3）。
+7. 可选：hookdispatch 拆分（A2-2）、embed.go 分文件（P7）、命名清理（P8）、JSON 读侧助手 `util.ReadJSONFile`（P6，低优先，先覆盖 cli/hooks/taskpipeline 三个高频包）。
