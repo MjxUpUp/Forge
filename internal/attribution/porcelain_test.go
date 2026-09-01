@@ -62,7 +62,7 @@ func TestPorcelainLines(t *testing.T) {
 	}
 	joined := strings.Join(lines, "\n")
 	// b/ 已跟踪（.keep 入库），未跟踪的是新文件本身——精确断言整行。
-	want := "?? " + filepath.Join("b", "新文件.md")
+	want := "?? b/新文件.md"
 	if !strings.Contains(joined, want) {
 		t.Errorf("未跟踪条目应为精确文件行 %q, got: %q", want, joined)
 	}
@@ -74,13 +74,15 @@ func TestPorcelainLines(t *testing.T) {
 	}
 
 	// ChangedFiles 派生：路径提取（剥状态前缀/rename 目标/引号）与入口行为对齐。
+	// git porcelain 输出恒为正斜杠（跨平台归一）——期望值用正斜杠字面量，
+	// 不用 filepath.Join（Windows 会产反斜杠，2026-09-01 CI windows 实证）。
 	files, err := ChangedFiles(root)
 	if err != nil {
 		t.Fatalf("ChangedFiles: %v", err)
 	}
 	found := false
 	for _, f := range files {
-		if f == filepath.Join("b", "新文件.md") {
+		if f == "b/新文件.md" {
 			found = true
 		}
 		if strings.Contains(f, "??") {
