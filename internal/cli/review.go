@@ -418,8 +418,8 @@ func renderReviewStatus(root, explicitRef string) error {
 		// Weak/Unverified 时给 reviewer 注入指令：核验声称的验证是否真跑过，对冲 agent
 		// 跳过前置就声明完成的盲区。Strong 时静默只报数字（避免噪声）。
 		if ec, err := checklog.ForTask(root, state.TaskRef); err == nil && ec.Total() > 0 {
-			fmt.Println(fmt.Sprintf(`证据强度:     ratio=%.2f %s（deterministic=%d agent-claim=%d）`,
-				ec.Ratio(), ec.Strength(), ec.Deterministic, ec.AgentClaim))
+			fmt.Printf(`证据强度:     ratio=%.2f %s（deterministic=%d agent-claim=%d）`+"\n",
+				ec.Ratio(), ec.Strength(), ec.Deterministic, ec.AgentClaim)
 			switch ec.Strength() {
 			case checklog.Unverified:
 				fmt.Println(`→ ⚠ 完成声明无 deterministic 证据：review 必须核验声称的验证是否真发生过（test-run / gate 实跑条目），不能只信 agent 自述`)
