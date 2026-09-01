@@ -37,6 +37,12 @@ func TestReadJSONFile(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("missing file err = %v, want fs.ErrNotExist chain", err)
 	}
+	// 钉「未再包装」性：missing 分支返回原始 PathError——若实现改成再包一层
+	// （fmt.Errorf("read %s: %w")），errors.Is 仍过但消息冗余，此处 fail。
+	var pathErr *fs.PathError
+	if !errors.As(err, &pathErr) {
+		t.Fatalf("missing file err 应为原始 *fs.PathError, got %T: %v", err, err)
+	}
 
 	// 解析失败：带路径包装、非 ErrNotExist。
 	bad := filepath.Join(dir, "bad.json")
