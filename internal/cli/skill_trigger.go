@@ -1,6 +1,9 @@
 // Package cli skill_trigger.go is the CLI entry + evaluation core of the generic skill-trigger framework.
 //
 // Package cli skill_trigger.go 是通用 skill-trigger 框架的 CLI 入口与判定核心。
+// 2026-09 普查 A2-1 迁出 skills 簇时本文件刻意留守 cli：它是 runHook 的特例
+// 路径（进程内判定 + 渲染，依赖 cli 的 HookInput/emitAgentOutput），属 hook 链
+// 桥接而非 skills 命令面——命令注册仍挂 cliskills.Root。
 //
 // 设计要点（与 plan §1 的偏离，技术正确性驱动）：
 // plan 原假设 thin-wrapper bash（exec forge skill trigger --hook）能透传 stdin，但 runHook
@@ -14,6 +17,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"io"
 	"os"
 	"path/filepath"
@@ -49,7 +53,7 @@ var skillTriggerCmd = &cobra.Command{
 func init() {
 	skillTriggerCmd.Flags().BoolVar(&skillTriggerDryRun, "dry-run", false, "调试：stderr 打扫描/命中详情，不写 marker")
 	skillTriggerCmd.Flags().StringVar(&skillTriggerEvent, "event", "", "覆盖 HookInput 的事件名（调试模拟其他事件）")
-	skillsCmd.AddCommand(skillTriggerCmd)
+	cliskills.Root.AddCommand(skillTriggerCmd)
 }
 
 // runSkillTriggerCmd 处理 `forge skills trigger`：读 stdin HookInput，调核心，stdout 打渲染结果。
