@@ -132,7 +132,7 @@ func runTaskGuardHookOnce(t *testing.T, agentDecl, sessionID string) (stdout, st
 	}()
 	return captureOutput(t, func() error {
 		// 最小 cobra root：Go 内 hook 分派读 cmd.Root().Version，nil 会空指针
-		// （同 runHookWithStdin 的注释）。
+		// （同 RunHookWithStdin 的注释）。
 		return RunHook(&cobra.Command{}, []string{"task-guard"})
 	})
 }

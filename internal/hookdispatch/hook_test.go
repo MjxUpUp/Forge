@@ -757,3 +757,18 @@ func TestRunHookSanitizesSessionIDAtEntry(t *testing.T) {
 		t.Fatal("no CheckToolFailure entry recorded — dispatch did not reach failure-track")
 	}
 }
+
+// TestSkillTriggerHookFn_NilSilentSkip 钉死接缝 nil 语义：无注册器注入的二进制
+// （进程内单测）遇到 skill-trigger 分发静默跳过而非 panic——生产由 cli 注册器
+// 注入实路径（2026-09 普查 A2-2）。
+func TestSkillTriggerHookFn_NilSilentSkip(t *testing.T) {
+	defer func(orig func(HookInput, string, string, string) error) {
+		SkillTriggerHookFn = orig
+	}(SkillTriggerHookFn)
+	SkillTriggerHookFn = nil
+
+	err := RunHook(&cobra.Command{}, []string{"skill-trigger"})
+	if err != nil {
+		t.Fatalf("nil 接缝应静默跳过, got err: %v", err)
+	}
+}
