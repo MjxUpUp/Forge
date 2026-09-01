@@ -1,5 +1,14 @@
 // Package workspace maintains the user-level multi-repo workspace manifest at
-// ~/.forge/workspaces.json (a sibling of registry's projects.json).
+// ~/.forge/workspaces.json (a sibling of registry's projects.json). Path-name
+// collision note (2026-09 census P8): per-project worktree BINDINGS live at
+// <project DataDir>/workspaces/<id>.json (internal/worktree) — a different
+// concept sharing the "workspaces" word; package names diverged, storage paths
+// deliberately not (renaming paths is a migration needing a product decision).
+//
+// ~/.forge/workspaces.json（registry projects.json 的同侧邻居）。路径撞车说明
+// （2026-09 普查 P8）：项目内的 worktree【绑定】存于 <DataDir>/workspaces/<id>.json
+// （internal/worktree）——共用 "workspaces" 一词但概念不同；包名刻意区分、存储
+// 路径未区分，改路径属迁移工程需产品决策，先注释互指。
 //
 // Package workspace 维护用户级多仓 workspace 清单 ~/.forge/workspaces.json
 // （与 registry 的 projects.json 平级）。
