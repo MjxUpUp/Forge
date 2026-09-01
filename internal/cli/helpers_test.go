@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
 // helpers_test.go —— cli 测试的共享输出捕获助手。曾住在 skills_install_test.go，
@@ -48,4 +50,19 @@ func captureStderr(t *testing.T, fn func()) string {
 	w.Close() // 触发 goroutine EOF
 	<-done    // 等待读取完成
 	return buf.String()
+}
+
+// seedTaskState 经 SaveTaskState 写真实 TaskState（生产路径：SanitizeRef 折叠的
+// 文件名、签名、MarshalIndent 格式），fixture 落在 forge 自己放它的确切位置。
+// 任务状态机的链式构造（AssignTo→Claim→…）经 mutate 回调表达——各 save* 助手
+// 只声明目标形态，写入路径单一（2026-09 普查 P3-5：曾 7 份近重复）。
+func seedTaskState(t *testing.T, root, ref string, mutate func(*taskpipeline.TaskState)) {
+	t.Helper()
+	s := &taskpipeline.TaskState{TaskRef: ref, Branch: ref, Source: `explicit`}
+	if mutate != nil {
+		mutate(s)
+	}
+	if err := taskpipeline.SaveTaskState(root, s); err != nil {
+		t.Fatal(err)
+	}
 }
