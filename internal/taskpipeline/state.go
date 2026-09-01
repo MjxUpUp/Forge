@@ -340,12 +340,6 @@ func ClearActiveTaskRef(root, sessionID string) error {
 // file-sentinel 比对文件内 epoch 与 NOW。dogfood 2.3。
 const completeGraceFile = ".task-complete-grace"
 
-// completeGraceWindow 限定 forge task complete 之后 file-sentinel 容忍自然顺带的
-// git commit 多久，而不是把它 quarantine 为无 active task + 源码写入。5min 覆盖
-// 现实序列（commit + 可能 push）。更长窗口诱发滥用：complete 后持续 30+ 分钟
-// 写源码的 session 已非 complete——应新开 task。
-const completeGraceWindow = 5 * time.Minute
-
 // completeGracePath 返回 DataDir 下的 per-session sentinel 文件路径。
 // file-sentinel bash hook（embed.go 中）按约定镜像此路径方案——bash 调不了 Go——
 // 并读文件内 timestamp，避免依赖 mtime stat（GNU 与 BSD stat 行为不同）。两处需保持同步。
@@ -361,8 +355,10 @@ func completeGracePath(root, sessionID string) string {
 //
 // MarkCompleteGrace 在 completeGracePath 记录当前 epoch timestamp。
 // 由 forge task complete 在 ClearActiveTaskRef 之后立即调用。文件内容为
-// epoch-seconds 整数（以 newline 结尾），使 file-sentinel 无须 stat 即可比对
-// NOW - stamp < completeGraceWindow。sessionID 为空时静默返回 nil（无 session
+// epoch-seconds 整数（以 newline 结尾）。窗口比对的执法点在 file-sentinel bash
+// hook（internal/hooks/embed.go 硬编码 300s——bash 调不了 Go 常量，Go 侧不保留第二份无守卫
+// 拷贝；2026-09 代码普查清扫：曾镜像此值的 completeGraceWindow 常量已删）。
+// sessionID 为空时静默返回 nil（无 session
 // 上下文 → 无 grace；此种罕见情形只发生有界写入，故不大声失败）。
 func MarkCompleteGrace(root, sessionID string) error {
 	if sessionID == "" {

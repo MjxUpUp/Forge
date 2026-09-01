@@ -522,8 +522,8 @@ func TestTaskImport_RejectsMalformedSchema(t *testing.T) {
 	if code == 0 {
 		t.Fatalf(`schema_version=0 应被拒（非 0 退出），got exit 0: %s`, out)
 	}
-	if !strings.Contains(out, `不被支持`) {
-		t.Errorf(`拒绝信息应含「不被支持」, got: %s`, out)
+	if !strings.Contains(out, `不支持的 schema_version`) {
+		t.Errorf(`拒绝信息应含「不支持的 schema_version」, got: %s`, out)
 	}
 }
 

@@ -406,15 +406,6 @@ func isTestPath(path string) bool {
 	return false
 }
 
-// isSourceExt 镜像配对侧的源扩展门槛，防止 test_ 前缀规则吞掉非源码文件。
-func isSourceExt(ext string) bool {
-	switch ext {
-	case ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".rb", ".zig", ".nim":
-		return true
-	}
-	return false
-}
-
 // parseNumstatLine 解析单行"added\tdeleted\tpath"并同时返回 path 以便调用方
 // 过滤（如把测试文件排除出 scope）。binary 条目（"-\t-\t..."）返 ok=false。
 // 空行或格式错误返 ok=false。

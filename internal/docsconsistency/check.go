@@ -176,6 +176,8 @@ func DriftedInProject(root string) []string {
 // AllFlags 返回树中所有非隐藏命令上的非隐藏 flag 的排序标识（"command --flag"
 // 形式；cobra 自动 help flag 豁免）。供棘轮守卫使用：测试钉住一份豁免基线，
 // 任何新增 flag 必须进 README 或被有意识地加进基线。
+// 状态注记（2026-09 代码普查清扫）：未接进 forge docs lint 主路径（L1 走
+// doclint）；作为 flag 清单守卫机制由本包测试钉住，接线属行为变更另立任务。
 func AllFlags(root *cobra.Command) []string {
 	if root == nil {
 		return nil
@@ -235,6 +237,8 @@ var skillBacktickRef = regexp.MustCompile(string(rune(0x60)) + `([a-z][a-z0-9-]*
 //
 // allowlist 是"哪些反引号 token 不是 skill 引用"的审计知识代码化（2026-07 frontend 梳理的
 // false-positive 类别）。调用方拥有，本包不依赖 canonical-skills。
+// 状态注记（2026-09 代码普查清扫）：未接进 forge docs lint 主路径；断链检测
+// 机制由本包测试钉住（TestDanglingSkillRefs_Mechanism）。
 func DanglingSkillRefs(text string, knownSkills, allowlist map[string]bool) []string {
 	seen := make(map[string]bool)
 	var out []string

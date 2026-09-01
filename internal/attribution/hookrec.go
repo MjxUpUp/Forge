@@ -9,15 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hostcap"
 )
 
-// hookEventInput 是 RecordHookEvent 需要的最小 hook 载荷形状（本地声明避免 import
-// cli——attribution 是叶子服务）。字段名与 cli.HookInput 的 JSON 契约一致。
-type hookEventInput struct {
-	HookEventName string          `json:"hook_event_name"`
-	SessionID     string          `json:"session_id"`
-	ToolName      string          `json:"tool_name"`
-	ToolInput     json.RawMessage `json:"tool_input"`
-}
-
 type toolInputShape struct {
 	FilePath string `json:"file_path"`
 	Command  string `json:"command"`
