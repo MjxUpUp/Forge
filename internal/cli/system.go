@@ -7,9 +7,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 func runSystemStatus() error {
+	// forge 数据根走单一真相源（FORGE_DATA_HOME 优先，refactor-data-home commit E）；
+	// ~/.claude 的孤儿 hook 检查仍需真实用户 home（2026-09 代码普查 R4：原先两处
+	// UserHomeDir+".forge" 直拼让 FORGE_DATA_HOME 逃生舱口在本命令失灵）。
+	forgeRoot, err := forgedata.GlobalHome()
+	if err != nil {
+		return fmt.Errorf("system: resolve forge data home: %w", err)
+	}
 	home, _ := os.UserHomeDir()
 	errors := 0
 	warnings := 0
@@ -17,10 +26,10 @@ func runSystemStatus() error {
 	fmt.Println("=== System Health Check ===")
 	fmt.Println()
 
-	checkGlobalForge(home, &errors, &warnings)
+	checkGlobalForge(forgeRoot, &errors, &warnings)
 	checkForgeInPath(&errors, &warnings)
 	checkOrphanHooks(home, &errors, &warnings)
-	checkSkillsManifest(home, &errors, &warnings)
+	checkSkillsManifest(forgeRoot, &errors, &warnings)
 
 	fmt.Println()
 	fmt.Printf("Results: %d error(s), %d warning(s)\n", errors, warnings)
@@ -31,17 +40,18 @@ func runSystemStatus() error {
 	return nil
 }
 
-func checkGlobalForge(home string, errors, warnings *int) {
-	forgeDir := filepath.Join(home, ".forge")
-	if _, err := os.Stat(forgeDir); os.IsNotExist(err) {
-		fmt.Println("  ~/.forge/ not found — run 'forge init' in a project first")
+// checkGlobalForge 检查 forge 全局数据根（forgedata.GlobalHome 的结果，默认
+// ~/.forge，受 FORGE_DATA_HOME 覆盖）。
+func checkGlobalForge(forgeRoot string, errors, warnings *int) {
+	if _, err := os.Stat(forgeRoot); os.IsNotExist(err) {
+		fmt.Printf("  %s not found — run 'forge init' in a project first\n", forgeRoot)
 		*errors++
 		return
 	}
-	fmt.Println("  ~/.forge/ exists")
+	fmt.Printf("  %s exists\n", forgeRoot)
 
-	// refactor-data-home 后的真实布局：runtime state 在 ~/.forge/projects/<key>/
-	// （per-project DataDir）；embedded skill 解包到 ~/.forge/skills-cache/。
+	// refactor-data-home 后的真实布局：runtime state 在 <root>/projects/<key>/
+	// （per-project DataDir）；embedded skill 解包到 <root>/skills-cache/。
 	// 之前检查的目录（pipeline-templates/hooks/bin）无任何代码创建——每次运行
 	// 都报 3 条永远修不好的 warning。
 	for _, sub := range []struct {
@@ -51,9 +61,9 @@ func checkGlobalForge(home string, errors, warnings *int) {
 		{"projects", "run 'forge task start' in a project to create its runtime-state dir"},
 		{"skills-cache", "run 'forge skills install' to unpack the embedded skill library"},
 	} {
-		path := filepath.Join(forgeDir, sub.name)
+		path := filepath.Join(forgeRoot, sub.name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
-			fmt.Printf("  ~/.forge/%s/ missing — %s\n", sub.name, sub.hint)
+			fmt.Printf("  %s/ missing — %s\n", path, sub.hint)
 			*warnings++
 		}
 	}
@@ -102,12 +112,13 @@ func checkOrphanHooks(home string, errors, warnings *int) {
 	}
 }
 
-// checkSkillsManifest 检查 ~/.forge/skills-manifest.json（上次 forge skills install 的快照）。
-func checkSkillsManifest(home string, errors, warnings *int) {
-	mfPath := filepath.Join(home, ".forge", "skills-manifest.json")
+// checkSkillsManifest 检查全局数据根下的 skills-manifest.json（上次 forge skills
+// install 的快照；路径随 forgedata.GlobalHome，受 FORGE_DATA_HOME 覆盖）。
+func checkSkillsManifest(forgeRoot string, errors, warnings *int) {
+	mfPath := filepath.Join(forgeRoot, "skills-manifest.json")
 	data, err := os.ReadFile(mfPath)
 	if err != nil {
-		fmt.Println("  ~/.forge/skills-manifest.json not found — run 'forge skills install' to distribute skill library")
+		fmt.Printf("  %s not found — run 'forge skills install' to distribute skill library\n", mfPath)
 		*warnings++
 		return
 	}
@@ -120,7 +131,7 @@ func checkSkillsManifest(home string, errors, warnings *int) {
 		} `json:"stats"`
 	}
 	if err := json.Unmarshal(data, &m); err != nil {
-		fmt.Printf("  ~/.forge/skills-manifest.json corrupt: %v\n", err)
+		fmt.Printf("  %s corrupt: %v\n", mfPath, err)
 		*errors++
 		return
 	}
