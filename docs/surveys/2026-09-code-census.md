@@ -8,7 +8,7 @@
 > 3. feat/cliskills-extraction（95/A）——25 源文件+13 测试迁 internal/cliskills；审查拦截 Version init 拷贝恒空串的阻断缺陷后改惰性 seam。
 > 4. feat/tasktypes-leaf（89/B）——数据模型下沉 internal/tasktypes（零反向依赖守卫常驻测试）；skillgen 的 taskpipeline 依赖消亡。
 > 5. feat/skillmetrics-split（89/B）——B 簇 6 文件迁 internal/skillmetrics；EngagedAfter 导出为 engaged 判定单一源。
-> 6. feat/task-domain-sinking（96/A）——CompleteGeneric 完成编排出 cli、attribution.PorcelainLines porcelain 单一入口、序言/播种收敛（P3-4 实测缩幅：14 处仅 3 处纯同构，其余为刻意 UX 分化，已注记）。
+> 6. feat/task-domain-sinking（96/A）+ feat/continuity-attribution-sinking（98/A）——CompleteGeneric 完成编排与 AttributedPorcelain 归属过滤组装双双下沉 taskpipeline（A1 全项闭合）、attribution.PorcelainLines porcelain 单一入口、序言/播种收敛（P3-4 实测缩幅：14 处仅 3 处纯同构，其余为刻意 UX 分化，已注记）。
 >
 > **缓期项（含理由）**：A2-3 task 簇物理搬家（15 文件 6204 行）——耦合测绘显示需随迁 8 个小助手+10 命令注册器+测试 harness 姊妹副本，且落在任务生命周期最关键路径，A1 领域下沉核心已交付，物理搬家留独立任务；A2-2 hookdispatch 同理；P7 embed.go 分文件——hash 守卫已钉内容，重组纯排版收益；P8 命名清理——用户可见改名需产品决策；P3-6 JSON 读侧——普查自评低优先。
 
