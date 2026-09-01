@@ -13,14 +13,13 @@ import (
 type CheckName string
 
 const (
-	CheckAutoCompile   CheckName = "auto-compile"
-	CheckAssertion     CheckName = "assertion-check"
-	CheckTaskImplement CheckName = "task-implement"
-	CheckTaskVerify    CheckName = "task-verify"
-	CheckTaskComplete  CheckName = "task-complete"
-	CheckTaskGuard     CheckName = "task-guard"
-	CheckBashGuard     CheckName = "bash-guard"
-	CheckFileSentinel  CheckName = "file-sentinel"
+	CheckAutoCompile  CheckName = "auto-compile"
+	CheckAssertion    CheckName = "assertion-check"
+	CheckTaskVerify   CheckName = "task-verify"
+	CheckTaskComplete CheckName = "task-complete"
+	CheckTaskGuard    CheckName = "task-guard"
+	CheckBashGuard    CheckName = "bash-guard"
+	CheckFileSentinel CheckName = "file-sentinel"
 	// CheckScopeDrift records advisory scope drift: an agent modified source files not declared in PlanScope.
 	//
 	// CheckScopeDrift 记录 advisory scope 偏差：agent 改了未在 PlanScope 声明的源码文件。

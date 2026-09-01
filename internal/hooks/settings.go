@@ -281,7 +281,7 @@ func GenerateUserSettings() error {
 
 // mergeForgeHooksIntoSettings 读 path 处的 settings 文件，用 json.RawMessage 保留
 // 所有顶层字段（用户 env/model 等）——避免往返序列化改动用户字段格式——并**合并**
-// hooks 段：从既有段中剥除 forge 来源条目（isForgeHookCommand），用户自定义条目
+// hooks 段：从既有段中剥除 forge 来源条目（IsForgeHookCommand），用户自定义条目
 // 原样保留（未知字段不丢——类型化往返会静默剥掉它们），再把当前 ForgeHookSpec
 // 条目按事件追加（同事件下用户条目在前、forge 在后）。先剥后追加使重生成幂等。
 // 整段替换 hooks 会静默销毁用户自己的 hooks；整文件覆盖会丢失用户配置
@@ -330,7 +330,7 @@ func mergeForgeHooksIntoSettings(path string) error {
 }
 
 // stripForgeMatchersRaw 从 Claude-Code 形嵌套 {event: [matcher]} spec 中移除 forge
-// 来源的 hook 条目（isForgeHookCommand）。用户自定义条目保留原始字节（未知字段
+// 来源的 hook 条目（IsForgeHookCommand）。用户自定义条目保留原始字节（未知字段
 // 不丢）；被掏空的 matcher/event 一并移除。镜像 agentbridge 的 raw strip helper——
 // 因那些 helper 未导出且 hooks 不能 import agentbridge（agentbridge 已 import
 // hooks，反向会成环）而在此复制。

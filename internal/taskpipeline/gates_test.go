@@ -30,14 +30,16 @@ func TestGateIDsMatchConstants(t *testing.T) {
 //
 // TestCheckLogGateNameInterlock 把 checklog 的 CheckName 常量与门禁 ID 常量互钉：
 // checklog 被 taskpipeline 依赖、不能反向 import，两侧同值只能靠本测试钉住
-// （2026-09 代码普查 R2：曾散布 26 处手写字面量）。
+// （2026-09 代码普查 R2：曾散布 26 处手写字面量）。只钉 Verify/Complete——这两个
+// gate 的推进记录有 checklog 生产写入方；task-implement gate 的证据走
+// auto-compile/assertion-check 检查名，不产 "task-implement" CheckName（评审裁决：
+// 不为对称性造无生产者的常量）。
 func TestCheckLogGateNameInterlock(t *testing.T) {
 	pairs := []struct {
 		check checklog.CheckName
 		gate  string
 		desc  string
 	}{
-		{checklog.CheckTaskImplement, GateImplement, "implement"},
 		{checklog.CheckTaskVerify, GateVerify, "verify"},
 		{checklog.CheckTaskComplete, GateComplete, "complete"},
 	}
