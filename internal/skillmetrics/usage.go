@@ -1,20 +1,17 @@
-// Package skillseval provides skill usage metrics analysis (usage) and eval list generation (skill-eval).
-// Package skillseval provides skill usage metrics analysis (usage) and eval list
-// generation (skill-eval).
+// Package skillmetrics provides skill usage observability: usage counts,
+// trigger funnel, keyword stats, effectiveness correlation, weakness clusters,
+// and trigger-declaration drift — all read-only analysis over checklog/toollog.
 //
-// Package skillseval 提供 skill 使用度量分析（usage）与 eval 清单生成（skill-eval）。
+// Package skillmetrics 提供 skill 使用度量：使用计数、触发漏斗、关键词统计、
+// 命中×成效关联、弱点聚簇与触发声明漂移——全部是对 checklog/toollog 的只读
+// 分析（2026-09 普查 A4：自 skillseval 拆出，与 eval 案例机器分家；
+// skillseval → skillmetrics 单向依赖，见 TestPackageLeaf 守卫）。
 //
-// Usage metrics are based on toollog (agent-neutral collection layer): the tool-track hook plugs in across hosts, recording when the Skill tool
-// event fires (currently only Claude Code has Skill tool events; cursor/codex etc. inject skills via mdc/AGENTS.md
-// with no tool-call events, naturally producing no records — see ExtractSkillName for parser extension points). Replaces the broken old pi source
-// (~/.pi/research/skill-usage.jsonl, after pi exited specialization no one writes it). The data layer is agent-neutral, consistent with the project's
-// "outer framework must not depend on a specific agent" principle. Cross-task reading goes through LoadAllAll (including archived toollog-*.jsonl).
-// 使用度量基于 toollog（agent-neutral 采集层）：tool-track hook 跨 host 接入，Skill 工具
-// 事件触发时记录（当前仅 Claude Code 有 Skill 工具事件；cursor/codex 等 skill 经 mdc/AGENTS.md
-// 注入、无工具调用事件，自然不产生记录——解析点扩展见 ExtractSkillName）。替代断链的 pi 旧源
-// （~/.pi/research/skill-usage.jsonl，pi 退出专精后无人写）。数据层 agent-neutral，符合项目
-// 「外层框架不得依赖某个 agent」的原则。跨任务读取走 LoadAllAll（含归档 toollog-*.jsonl）。
-package skillseval
+// 数据层 agent-neutral：tool-track hook 跨 host 接入，Skill 工具事件触发时记录
+// （当前仅 Claude Code 有 Skill 工具事件；cursor/codex 等 skill 经 mdc/AGENTS.md
+// 注入、无工具调用事件，自然不产生记录——解析点扩展见 ExtractSkillName）。
+// 跨任务读取走 LoadAllAll（含归档 toollog-*.jsonl）。
+package skillmetrics
 
 import (
 	"cmp"

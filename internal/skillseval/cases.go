@@ -1,3 +1,11 @@
+// Package skillseval provides the skill eval-case lifecycle: case mining from
+// real runs, golden baselines, SKIP-conflict mutex pairs, blind preamble, run
+// records and regression judging.
+//
+// Package skillseval 提供 skill eval 案例生命周期：从实跑挖案例、黄金基线、
+// SKIP 边冲突对照例、盲测 preamble、run 记录与回归判定（2026-09 普查 A4：
+// 使用度量已拆至 internal/skillmetrics，本包只剩案例机器；mine 经
+// skillmetrics.EngagedAfter 判定 engaged）。
 package skillseval
 
 // cases.go 是 skill eval 闭环的数据层之一：结构化 case 集的派生与存读。
