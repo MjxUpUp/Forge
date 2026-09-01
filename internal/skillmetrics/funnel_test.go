@@ -1,4 +1,4 @@
-package skillseval
+package skillmetrics
 
 import (
 	"encoding/json"
@@ -277,7 +277,7 @@ func TestEngagedIndexEquivalence(t *testing.T) {
 	for _, s := range sessions {
 		for _, sk := range skills {
 			for _, at := range times {
-				want := engagedAfter(calls, s, sk, at)
+				want := EngagedAfter(calls, s, sk, at)
 				got := idx.engagedAfter(s, sk, at)
 				if got != want {
 					t.Fatalf("判定分叉：session=%q skill=%q at=%v 索引=%v 逐条=%v", s, sk, at, got, want)
@@ -291,7 +291,7 @@ func TestEngagedIndexEquivalence(t *testing.T) {
 	anyTrue := false
 	for _, s := range sessions {
 		for _, sk := range skills {
-			if engagedAfter(calls, s, sk, base) {
+			if EngagedAfter(calls, s, sk, base) {
 				anyTrue = true
 			}
 		}

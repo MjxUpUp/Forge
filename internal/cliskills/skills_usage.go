@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/skillseval"
+	"github.com/MjxUpUp/Forge/internal/skillmetrics"
 	"github.com/MjxUpUp/Forge/internal/skilltrigger"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/spf13/cobra"
@@ -54,7 +54,7 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	if skUseByKeyword {
 		return runSkillsUsageByKeyword(proj.GitRoot, canonical)
 	}
-	rep, err := skillseval.AnalyzeUsageWithFunnel(proj.GitRoot, canonical)
+	rep, err := skillmetrics.AnalyzeUsageWithFunnel(proj.GitRoot, canonical)
 	if err != nil {
 		return err
 	}
@@ -64,7 +64,7 @@ func runSkillsUsage(cmd *cobra.Command, args []string) error {
 	// 目录存在但零个带 triggers 的 skill 同样不可比较——那多半是恰好有 skills/ 目录的
 	// 非 Forge 项目，置成可比会渲染出假的「与仓库源一致」（审查 LOW-1）。
 	repoSet := repoTriggerSet(proj.GitRoot)
-	drift := skillseval.CompareTriggerSets(triggerDeclaredSkills(canonical), repoSet)
+	drift := skillmetrics.CompareTriggerSets(triggerDeclaredSkills(canonical), repoSet)
 	rep.Drift = &drift
 
 	if skUseJSON {
@@ -170,7 +170,7 @@ func runSkillsUsageByKeyword(root, canonical string) error {
 			}
 		}
 	}
-	rep := skillseval.AnalyzeKeywords(entries, calls, declared)
+	rep := skillmetrics.AnalyzeKeywords(entries, calls, declared)
 
 	if skUseJSON {
 		b, _ := json.MarshalIndent(rep, "", "  ")
@@ -214,7 +214,7 @@ func runSkillsUsageByKeyword(root, canonical string) error {
 }
 
 // condTotal/condSkills 汇总 condition-only 行（per-skill）。
-func condTotal(rows []skillseval.KeywordStat) int {
+func condTotal(rows []skillmetrics.KeywordStat) int {
 	n := 0
 	for _, r := range rows {
 		n += r.Hits
@@ -222,7 +222,7 @@ func condTotal(rows []skillseval.KeywordStat) int {
 	return n
 }
 
-func condSkills(rows []skillseval.KeywordStat) string {
+func condSkills(rows []skillmetrics.KeywordStat) string {
 	names := make([]string, 0, len(rows))
 	for _, r := range rows {
 		names = append(names, fmt.Sprintf("%s×%d", r.Skill, r.Hits))

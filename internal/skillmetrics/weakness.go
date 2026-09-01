@@ -1,4 +1,4 @@
-package skillseval
+package skillmetrics
 
 // weakness.go — 只读弱点挖掘：把项目既有确定信号聚成一册弱点报告（Self-Harness 第一阶段，
 // 只报告）。不决策、不落地——人（或受监督的 evolution 轮）读报告选题；由此产生的变更仍走
