@@ -37,6 +37,7 @@ func TestMain(m *testing.M) {
 	// （子进程继承本进程 env——不隔离则测试写真实 ~/.forge 与 agent 配置）。
 	os.Setenv("FORGE_DATA_HOME", tmpDir)
 	os.Setenv("CLAUDE_CONFIG_DIR", tmpDir)
+	os.Setenv("CODEX_HOME", filepath.Join(tmpDir, "codex-home"))
 	homeDir := filepath.Join(tmpDir, "home")
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create isolated home: %v\n", err)

@@ -4,10 +4,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version 是 forge 主程序的版本号，由 cli 侧注册器在命令树装配时赋值——
-// cliskills 不 import cli（cli 注册本包的命令，反向会成环），版本经此 seam
-// 注入，供 canonical 解析与 eval/mutex 记录落盘使用。
-var Version string
+// VersionFn returns the forge binary's version string; the cli registrar
+// injects the provider at command-tree assembly.
+//
+// VersionFn 返回 forge 二进制版本号，由 cli 侧注册器注入 provider。cliskills
+// 不 import cli（cli 注册本包的命令，反向会成环），版本经此 seam 取用。
+// 刻意是惰性闭包而非 init 期按值拷贝：版本经 SetVersion 在 main() 里才落
+// rootCmd.Version（ldflags 注入），init 期拷贝恒得空串（docsconsistency.
+// RegisterVersion 同款时序论证，见 internal/cli/root.go）。
+var VersionFn func() string
+
+// version 兜底：未注册 provider（单测直接调包内函数）时取 "dev"，避免空串
+// 污染 embed 缓存版本标记（空串标记会让缓存与真实版本永不等值，触发无谓
+// 的全量重建）。
+func version() string {
+	if VersionFn == nil {
+		return "dev"
+	}
+	return VersionFn()
+}
 
 // Root is the `forge skills` parent command.
 //

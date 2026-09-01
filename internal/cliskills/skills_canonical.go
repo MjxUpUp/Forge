@@ -10,15 +10,17 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillsfm"
 )
 
-// resolveCanonical 解析 skill 库源目录（真实文件系统路径）与是否外部真实源。
-// 优先级：--canonical flag > $FORGE_SKILLS_CANONICAL > 内置 embed 库。
-// env/embed 两段下沉到 skillscanonical（供内部包共用），flag 优先级留在 cli 层。
-// 返回 (dir, isExternal, err)。isExternal=false 表示来自 embed 解压的缓存目录。
-// ResolveCanonical resolves the canonical skill-library dir: --canonical flag >
-// $FORGE_SKILLS_CANONICAL > embedded library cache.
+// ResolveCanonical resolves the canonical skill-library dir (real filesystem
+// path) and whether it is an external source. Priority: --canonical flag >
+// $FORGE_SKILLS_CANONICAL > embedded library cache; the env/embed tiers live in
+// skillscanonical (shared by internal packages), the flag tier stays here.
+// Returns (dir, isExternal, err); isExternal=false means the embed-extracted
+// cache dir.
 //
-// ResolveCanonical 解析 canonical skill 库目录：--canonical flag >
-// $FORGE_SKILLS_CANONICAL > 内置 embed 库缓存。
+// ResolveCanonical 解析 skill 库源目录（真实文件系统路径）与是否外部真实源。
+// 优先级：--canonical flag > $FORGE_SKILLS_CANONICAL > 内置 embed 库；env/embed
+// 两段下沉在 skillscanonical（供内部包共用），flag 优先级留在本包。返回
+// (dir, isExternal, err)；isExternal=false 表示来自 embed 解压的缓存目录。
 func ResolveCanonical() (string, bool, error) {
 	if skillsCanonicalFlag != "" {
 		if _, err := os.Stat(skillsCanonicalFlag); err != nil {
@@ -26,7 +28,7 @@ func ResolveCanonical() (string, bool, error) {
 		}
 		return skillsCanonicalFlag, true, nil
 	}
-	return skillscanonical.Resolve(Version)
+	return skillscanonical.Resolve(version())
 }
 
 // detectRepoSkillsDir 在项目根带真实 canonical skill 树时返回 <项目根>/skills，否则
