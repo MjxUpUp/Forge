@@ -14,7 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// projectTagFor 为给定 project root 返回稳定的 hex tag。通过对 canonical
+// ProjectTagFor 为给定 project root 返回稳定的 hex tag。通过对 canonical
 // （绝对、clean 后的）路径做哈希，使 tag 在路径大小写、盘符格式、symlink 之间保持
 // 不变——而 $PWD cksum 还依赖宿主的 cksum 格式（GNU vs BSD）。hook 通过
 // FORGE_PROJECT_TAG env var 读取它来按 project 隔离状态。
@@ -28,7 +28,7 @@ func ProjectTagFor(root string) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
-// suggestTagFor 返回某目录的 init-suggest marker tag，按其 git root 作 key，
+// SuggestTagFor 返回某目录的 init-suggest marker tag，按其 git root 作 key，
 // 这样无论 agent 从哪个 subdir 执行 `forge suggest decline`，同一 project 只会被
 // tag 一次。这守护 decline 契约：此前按 cwd 作 key，从 subdir decline 会写出与
 // hook 在 project root 读到的不同的 tag，使 decline 静默 no-op。非 git 目录回退到
