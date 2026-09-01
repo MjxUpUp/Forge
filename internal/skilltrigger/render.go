@@ -13,7 +13,7 @@ import (
 //
 // Render 把 hits 渲染成 additionalContext 文本（HANDOFF 风格，参考 renderResume）。
 // 无命中返 ""。输出不含 ASCII 双引号字面量（用中文标点，避免终端/引号腐蚀），
-// reason 经 stripControl 压成单行 + truncateRunes(200) 兜底，整体再由 runHook 的
+// reason 经 stripControl 压成单行 + util.TruncateRunes(200) 兜底，整体再由 runHook 的
 // truncate(_, 9500) 二次截断。
 //
 // overflow 是因 MaxHitsPerEvent 单次上限落选、未注入的 skill 名（可为 nil）——尾部一句
