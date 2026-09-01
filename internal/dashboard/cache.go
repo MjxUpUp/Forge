@@ -20,6 +20,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/skillmetrics"
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -35,21 +36,21 @@ type projectData struct {
 	deriveOnce sync.Once
 	passive    map[string]int
 	active     map[string]int
-	effs       []skillseval.SkillEffectiveness
+	effs       []skillmetrics.SkillEffectiveness
 }
 
 // derived 惰性记忆 skillseval 聚合。它们是指纹所覆盖文件的纯函数，故同一指纹同时
 // 门控原始与派生数据。
 func (d *projectData) derived(root string) {
 	d.deriveOnce.Do(func() {
-		if passive, _, err := skillseval.SkillCountsFromChecklog(root); err == nil {
+		if passive, _, err := skillmetrics.SkillCountsFromChecklog(root); err == nil {
 			d.passive = passive
 		}
-		if active, _, err := skillseval.SkillCountsFromToollog(root); err == nil {
+		if active, _, err := skillmetrics.SkillCountsFromToollog(root); err == nil {
 			d.active = active
 		}
 		if proj, err := forgedata.ProjectFor(root); err == nil {
-			if effs, err := skillseval.AnalyzeEffectiveness(proj); err == nil {
+			if effs, err := skillmetrics.AnalyzeEffectiveness(proj); err == nil {
 				d.effs = effs
 			}
 		}

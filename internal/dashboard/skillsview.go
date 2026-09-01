@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/skillmetrics"
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/skillsfm"
@@ -139,7 +140,7 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 		// 送达章经漏斗的去重/成团逻辑（同 prompt 双机制命中算一次）——不从原始条目
 		// 直数，否则 panel 与 forge skills funnel 口径分叉。toollog 传 nil：Engaged
 		// 在此路径恒 0 且不上板（加载转化下钻留在 CLI）。
-		for _, sf := range skillseval.BuildTriggerFunnel(d.checkEntries, nil).Skills {
+		for _, sf := range skillmetrics.BuildTriggerFunnel(d.checkEntries, nil).Skills {
 			delivered[sf.Name] += sf.Delivered
 			deliveryUnknown[sf.Name] += sf.DeliveryUnknown
 		}

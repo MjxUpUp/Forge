@@ -6,7 +6,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"strings"
 
-	"github.com/MjxUpUp/Forge/internal/skillseval"
+	"github.com/MjxUpUp/Forge/internal/skillmetrics"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +31,7 @@ func runSkillsEffectiveness(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	effs, err := skillseval.AnalyzeEffectiveness(proj)
+	effs, err := skillmetrics.AnalyzeEffectiveness(proj)
 	if err != nil {
 		return err
 	}

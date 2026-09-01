@@ -1,11 +1,11 @@
-// Package skillseval funnel.go — 被动触发漏斗（命中 → 送达 → 加载）。
+// funnel.go — 被动触发漏斗（命中 → 送达 → 加载）。
 //
 // 背景（2026-08-16 触发臂审查）：skill-trigger 的可观测原本只到「引擎命中」——134 次命中
 // 0 次可验证转化，无法区分「模型读了注入并照做」与「注入被无视」。但测量信号其实全在盘上：
 // checklog 条目带 session/时间/skill 名，toollog 每条 Read/Skill 带 session/时间/输入。
 // 「模型是否照做」≈ 同 session、命中后 N 分钟内、出现对该 skill SKILL.md 的 Read（或同名
 // Skill 调用）。本文件就是这个 join——零新增运行时埋点，把 0/134 的盲区变成可算的漏斗。
-package skillseval
+package skillmetrics
 
 import (
 	"cmp"
@@ -263,17 +263,23 @@ func (ix *engagedIndex) engagedAfter(session, skill string, at time.Time) bool {
 	return false
 }
 
-// engagedAfter 报告 (session, skill, 命中时刻) 之后 EngageWindow 内是否出现对该 skill 的
+// EngagedAfter 报告 (session, skill, 命中时刻) 之后 EngageWindow 内是否出现对该 skill 的
 // 遵循信号：Read 其 SKILL.md（canonical 路径或 embed cache 路径，Windows 大小写与分隔符
 // 归一后后缀匹配）或 Skill(<skill>) 显式调用。空 session 无法归因（旧条目），返 false。
 //
 // Read 的 tool_input 截断到 500 字符可能截坏 JSON——解析失败按无信号处理（诚实跳过），
 // 与 ExtractSkillName 的失败语义一致。
 //
-// 本函数是兼容入口：keyword.go / mine.go 逐条调用它判定 engaged（单一判定真相源），
+// 本函数是兼容入口：keyword.go / skillseval 的 mine.go 逐条调用它判定 engaged
+// （单一判定真相源），
 // 每次只查一条命中，为其整建索引反而劣化——故保留逐条扫描实现；批量入口
 // （BuildTriggerFunnel）请用 buildEngagedIndex + 索引版 engagedAfter。
-func engagedAfter(calls []toolusage.ToolCall, session, skill string, at time.Time) bool {
+// EngagedAfter reports whether the session showed tool activity in the engage
+// window after the named skill's hit — the single source of the "engaged" verdict.
+//
+// EngagedAfter 报告命中 skill 之后窗口内 session 是否出现工具活动——engaged
+// 判定的单一真相源（2026-09 普查 A4 拆分后导出：skillseval/mine.go 跨包消费）。
+func EngagedAfter(calls []toolusage.ToolCall, session, skill string, at time.Time) bool {
 	if session == "" {
 		return false
 	}
