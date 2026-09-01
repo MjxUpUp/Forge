@@ -78,10 +78,10 @@
 
 ## 六、建议后续任务拆分（每任务独立分支，按序清偿）
 
-1. **feat/single-source-convergence**（P1，R1-R4 + P3-P1/P2）：镜像收敛 + gate/标记常量化 + GlobalHome 三处修复 + truncate/Disabled 收敛。含 guard test。风险低，收益即时。
-2. **feat/deadcode-staticcheck-sweep**（四）：2 真死删除 + 15 项接线/删裁决 + 21 条 staticcheck。
+1. **feat/single-source-convergence**（P1，R1-R4 + P3-1/P3-2）：镜像收敛 + gate/标记常量化 + GlobalHome 三处修复 + truncate/Disabled 收敛。含 guard test。风险低，收益即时。
+2. **feat/deadcode-staticcheck-sweep**（四）：2 真死删除 + 17 项接线/删裁决 + 21 条 staticcheck。
 3. **feat/cliskills-extraction**（A2-1）：skills 簇 26 文件迁出。零纠缠，搬家不改逻辑。
 4. **feat/tasktypes-leaf**（A3）：类型下沉，skillgen/dashboard 等改引叶子包。
 5. **feat/skillmetrics-split**（A4）：skillseval B 簇迁出。
-6. **feat/task-domain-sinking**（A1+A2-3，最大件）：完成编排/continuity 下沉，配 resolveTaskState 序言收敛（P4）、测试播种收敛（P5）与"本任务改动文件"单一入口（P3-3）。
-7. 可选：hookdispatch 拆分（A2-2）、embed.go 分文件（P7）、命名清理（P8）、JSON 读侧助手 `util.ReadJSONFile`（P6，低优先，先覆盖 cli/hooks/taskpipeline 三个高频包）。
+6. **feat/task-domain-sinking**（A1+A2-3，最大件）：完成编排/continuity 下沉，配 resolveTaskState 序言收敛（P3-4）、测试播种收敛（P3-5）与"本任务改动文件"单一入口（P3-3）。
+7. 可选：hookdispatch 拆分（A2-2）、embed.go 分文件（P7）、命名清理（P8）、JSON 读侧助手 `util.ReadJSONFile`（P3-6，低优先，先覆盖 cli/hooks/taskpipeline 三个高频包）。
