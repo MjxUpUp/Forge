@@ -1,4 +1,4 @@
-package taskpipeline
+package tasktypes
 
 // Gate IDs for the 3 standard task-level quality gates — the single source of
 // truth every package (cli rendering, gate dispatch) must consume.

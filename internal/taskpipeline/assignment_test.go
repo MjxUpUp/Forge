@@ -33,14 +33,14 @@ func TestAssignTo(t *testing.T) {
 	})
 	t.Run(`rejects empty agent`, func(t *testing.T) {
 		s := &TaskState{}
-		if !errors.Is(s.AssignTo(``, `frontend`, `claude-code`), errAssignmentEmptyAgent) {
-			t.Fatal(`空 agent 应返回 errAssignmentEmptyAgent`)
+		if !errors.Is(s.AssignTo(``, `frontend`, `claude-code`), ErrAssignmentEmptyAgent) {
+			t.Fatal(`空 agent 应返回 ErrAssignmentEmptyAgent`)
 		}
 	})
 	t.Run(`rejects duplicate`, func(t *testing.T) {
 		s := offeredTask(`kimi`)
-		if !errors.Is(s.AssignTo(`reasonix`, `backend`, `claude-code`), errAssignmentExists) {
-			t.Fatal(`已有 assignment 应返回 errAssignmentExists（改派走 reassign 路径）`)
+		if !errors.Is(s.AssignTo(`reasonix`, `backend`, `claude-code`), ErrAssignmentExists) {
+			t.Fatal(`已有 assignment 应返回 ErrAssignmentExists（改派走 reassign 路径）`)
 		}
 	})
 }
@@ -60,21 +60,21 @@ func TestClaim(t *testing.T) {
 	})
 	t.Run(`wrong agent rejected`, func(t *testing.T) {
 		s := offeredTask(`kimi`)
-		if !errors.Is(s.Claim(`reasonix`), errClaimWrongAgent) {
-			t.Fatal(`不匹配的 agent 认领应返回 errClaimWrongAgent`)
+		if !errors.Is(s.Claim(`reasonix`), ErrClaimWrongAgent) {
+			t.Fatal(`不匹配的 agent 认领应返回 ErrClaimWrongAgent`)
 		}
 	})
 	t.Run(`non-offered rejected`, func(t *testing.T) {
 		s := offeredTask(`kimi`)
 		_ = s.Claim(`kimi`)
-		if !errors.Is(s.Claim(`kimi`), errClaimNotOffered) {
-			t.Fatal(`已 claimed 再 claim 应返回 errClaimNotOffered`)
+		if !errors.Is(s.Claim(`kimi`), ErrClaimNotOffered) {
+			t.Fatal(`已 claimed 再 claim 应返回 ErrClaimNotOffered`)
 		}
 	})
 	t.Run(`no assignment rejected`, func(t *testing.T) {
 		s := &TaskState{}
-		if !errors.Is(s.Claim(`kimi`), errNoAssignment) {
-			t.Fatal(`无 assignment 应返回 errNoAssignment`)
+		if !errors.Is(s.Claim(`kimi`), ErrNoAssignment) {
+			t.Fatal(`无 assignment 应返回 ErrNoAssignment`)
 		}
 	})
 }
@@ -92,8 +92,8 @@ func TestDeliver(t *testing.T) {
 	})
 	t.Run(`offered->delivered skip rejected`, func(t *testing.T) {
 		s := offeredTask(`kimi`)
-		if !errors.Is(s.Deliver(), errDeliverNotClaimed) {
-			t.Fatal(`offered 直接 deliver（跳过 claim）应返回 errDeliverNotClaimed`)
+		if !errors.Is(s.Deliver(), ErrDeliverNotClaimed) {
+			t.Fatal(`offered 直接 deliver（跳过 claim）应返回 ErrDeliverNotClaimed`)
 		}
 	})
 }
@@ -128,8 +128,8 @@ func TestQuestionAnswer(t *testing.T) {
 	t.Run(`answer on non-input-required rejected`, func(t *testing.T) {
 		s := offeredTask(`kimi`)
 		_ = s.Claim(`kimi`)
-		if !errors.Is(s.Answer(`x`), errAnswerNotInputReq) {
-			t.Fatal(`非 input-required 的答复应返回 errAnswerNotInputReq`)
+		if !errors.Is(s.Answer(`x`), ErrAnswerNotInputReq) {
+			t.Fatal(`非 input-required 的答复应返回 ErrAnswerNotInputReq`)
 		}
 	})
 	t.Run(`empty answer still resumes without decision`, func(t *testing.T) {
@@ -180,8 +180,8 @@ func TestCancel(t *testing.T) {
 	s := offeredTask(`kimi`)
 	_ = s.Claim(`kimi`)
 	_ = s.Deliver()
-	if !errors.Is(s.Cancel(`x`), errCancelTerminal) {
-		t.Fatal(`终态（delivered）cancel 应返回 errCancelTerminal`)
+	if !errors.Is(s.Cancel(`x`), ErrCancelTerminal) {
+		t.Fatal(`终态（delivered）cancel 应返回 ErrCancelTerminal`)
 	}
 }
 

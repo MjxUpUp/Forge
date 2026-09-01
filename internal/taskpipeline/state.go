@@ -14,6 +14,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
@@ -67,12 +68,12 @@ func LoadTaskStateInDir(tasksDir, taskRef string) (*TaskState, error) {
 	// 消费方按 IntegrityBroken() 拒采信。无签名（nil）= 签名前的存量数据，放行
 	//（首次保存自动补签）。
 	if s.Integrity != nil {
-		if ok, err := verifyTaskState(&s); err != nil {
+		if ok, err := tasktypes.VerifyTaskState(&s); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: task %s integrity check errored: %v\n", taskRef, err)
-			s.integrityBroken = true
+			s.MarkIntegrityBroken()
 		} else if !ok {
 			fmt.Fprintf(os.Stderr, "[forge] warning: task %s integrity check FAILED — state file was modified outside forge; gate-satisfying fields will not be trusted\n", taskRef)
-			s.integrityBroken = true
+			s.MarkIntegrityBroken()
 		}
 	}
 	return &s, nil
@@ -89,7 +90,7 @@ func SaveTaskState(root string, state *TaskState) error {
 		return fmt.Errorf("failed to create tasks directory: %w", err)
 	}
 
-	if sig, keyID, err := signTaskState(state); err != nil {
+	if sig, keyID, err := tasktypes.SignTaskState(state); err != nil {
 		// Missing identity → quiet unsigned write (legacy-shaped; first forge init
 		// creates the identity and the next save signs). Only UNEXPECTED signing
 		// failures warn — otherwise test/CI envs without an identity spam stderr.

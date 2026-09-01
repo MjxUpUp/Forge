@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/doclint"
@@ -42,26 +41,6 @@ const DocReviewSource = "doc-review"
 // FindingSeverityCritical 标记阻断 doc gate 的文档回检发现。空 Severity
 // （旧版 findings）永不阻断——增量字段，旧状态行为不变。
 const FindingSeverityCritical = "critical"
-
-// DocReview is the L2 evidence recorded by `forge task doc-review` after a rubric review (doc-review skill).
-//
-// DocReview 是 `forge task doc-review` 在 rubric 评审（doc-review skill）后记录的
-// L2 证据。回检者不能是产出者（防作弊纪律 1）；HeadCommit 把评审绑定到代码
-// 快照——评审后改文档则失效（freshness，与 acceptance 同构）。
-type DocReview struct {
-	Passed      bool      `json:"passed"`
-	RubricScore int       `json:"rubric_score"`
-	Round       int       `json:"round"`
-	Reviewer    string    `json:"reviewer,omitempty"`
-	ReviewedAt  time.Time `json:"reviewed_at,omitempty"`
-	HeadCommit  string    `json:"head_commit,omitempty"`
-	// DocsFingerprint pins the reviewed content (sha256 over changed-doc paths + contents, see DocContentFingerprint).
-	//
-	// DocsFingerprint 钉住被评审的内容（变更文档路径+内容的 sha256，见
-	// DocContentFingerprint）。只绑 HEAD 会漏掉评审后 complete 前的未提交
-	// 修改；指纹补上该盲区。v1.43.0 之前的评审为空 → 视为未设置（仅查 HEAD）。
-	DocsFingerprint string `json:"docs_fingerprint,omitempty"`
-}
 
 // changedMarkdownDocs 列出任务的 markdown 产物：自 task 的 HeadCommit 以来变更
 // （已提交 + 工作区）与新增未跟踪的 .md，减去 doclint 豁免路径与已删除文件。

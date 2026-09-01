@@ -6,28 +6,6 @@ import (
 	"strings"
 )
 
-// DesignPhase identifies a design phase involved in a task.
-//
-// DesignPhase 标识任务涉及的设计阶段。
-type DesignPhase string
-
-const (
-	PhaseRequirement DesignPhase = "requirement" // 需求设计（PRD / 需求文档）
-	PhaseAPI         DesignPhase = "api"         // API 设计（OpenAPI / proto / 接口定义）
-	PhaseDatabase    DesignPhase = "database"    // 数据库设计（migrations / schema）
-	PhaseFrontend    DesignPhase = "frontend"    // 前端设计（组件/页面/路由）
-	PhaseBackend     DesignPhase = "backend"     // 后端设计（services / domain / 业务逻辑）
-	PhaseTest        DesignPhase = "test-design" // 测试用例设计（test 文件）
-)
-
-// allDesignPhases 返回全部设计阶段。
-func allDesignPhases() []DesignPhase {
-	return []DesignPhase{
-		PhaseRequirement, PhaseAPI, PhaseDatabase,
-		PhaseFrontend, PhaseBackend, PhaseTest,
-	}
-}
-
 // inferDesignPhases 按文件路径推断任务涉及的设计阶段。
 // 零摩擦：不要求用户声明，自动根据改动文件路径判断。
 // 无匹配时返回空列表（不阻塞）。
@@ -100,7 +78,7 @@ func inferDesignPhases(changedFiles []string) []DesignPhase {
 
 	// 转为有序切片（保持确定性）
 	var result []DesignPhase
-	for _, p := range allDesignPhases() {
+	for _, p := range AllDesignPhases() {
 		if phases[p] {
 			result = append(result, p)
 		}
