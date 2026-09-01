@@ -1,4 +1,4 @@
-package taskpipeline
+package tasktypes
 
 import (
 	"crypto/hmac"
@@ -29,6 +29,16 @@ type StateIntegrity struct {
 // IntegrityBroken 报告加载的状态是否未通过签名校验。满足门禁类的消费方（complete
 // pre-flight、doc gate、审查快照）必须拒采信 broken 状态上的字段。
 func (s *TaskState) IntegrityBroken() bool { return s != nil && s.integrityBroken }
+
+// MarkIntegrityBroken flags the state as having failed its signature check.
+//
+// MarkIntegrityBroken 把 state 标记为未通过签名校验（加载侧验签失败时调用，
+// 消费方按 IntegrityBroken 拒采信门禁满足类字段）。
+func (s *TaskState) MarkIntegrityBroken() {
+	if s != nil {
+		s.integrityBroken = true
+	}
+}
 
 // integrityKey 从本机身份派生 HMAC key：对 node 的 ed25519 私钥字节做 SHA-256。
 // 不新增密钥管理面——nodeid.Load 是既有漏斗，key 不出本机（跨机信任是 bundle
@@ -66,7 +76,10 @@ func canonicalStateJSON(s *TaskState) ([]byte, error) {
 	return data, err
 }
 
-func signTaskState(s *TaskState) (sig, keyID string, err error) {
+// SignTaskState computes the HMAC signature block for the state.
+//
+// SignTaskState 计算 state 的 HMAC 签名块。
+func SignTaskState(s *TaskState) (sig, keyID string, err error) {
 	key, kid, err := integrityKey()
 	if err != nil {
 		return "", "", err
@@ -80,7 +93,10 @@ func signTaskState(s *TaskState) (sig, keyID string, err error) {
 	return base64.StdEncoding.EncodeToString(m.Sum(nil)), kid, nil
 }
 
-func verifyTaskState(s *TaskState) (bool, error) {
+// VerifyTaskState validates the state's integrity signature.
+//
+// VerifyTaskState 校验 state 的完整性签名。
+func VerifyTaskState(s *TaskState) (bool, error) {
 	if s.Integrity == nil || s.Integrity.Sig == "" {
 		return false, errors.New("no signature present")
 	}

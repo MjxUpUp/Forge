@@ -27,17 +27,6 @@ import (
 // AcceptanceCriterion 对门禁保持权威——tasks.md 式复选框是人读视图，绝不是完成信号
 //（防弱类型退化）。
 
-// ArtifactRef is TaskState's verifiable pointer to a spec file (I5): Path is DataDir-relative (portable across machines), Hash is the content sha256 (first 16 hex).
-//
-// ArtifactRef 是 TaskState 指向 spec 文件的可验证指针（I5）：Path 相对 DataDir
-// （跨机可移植——project key 在不同机器映射到不同绝对 DataDir），Hash 是内容 sha256
-// 前 16 hex。失配 = 引用建立后文件被手改——按漂移上浮，绝不静默。
-type ArtifactRef struct {
-	Path      string    `json:"path"`
-	Hash      string    `json:"hash"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
 // SpecsDir is the task's artifact directory inside the project DataDir.
 //
 // SpecsDir 是任务在项目 DataDir 内的产物目录（T6 init 后物理上处于 harness repo 的

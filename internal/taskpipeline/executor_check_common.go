@@ -47,7 +47,7 @@ func checkPrerequisiteGates(gateID string, state *TaskState) error {
 		if g.ID == gateID {
 			break
 		}
-		if !state.gatePassed(g.ID) {
+		if !state.GatePassed(g.ID) {
 			return GateBlocked("prerequisite gate %q has not passed — complete earlier gates first (HARD stop, not a reminder)", g.ID)
 		}
 	}
