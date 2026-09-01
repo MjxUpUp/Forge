@@ -1,12 +1,12 @@
 package taskpipeline
 
 import (
-	"github.com/MjxUpUp/Forge/internal/tasktypes"
-
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 func TestInferDesignPhases(t *testing.T) {

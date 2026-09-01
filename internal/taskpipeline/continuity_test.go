@@ -1,10 +1,10 @@
 package taskpipeline
 
 import (
-	"github.com/MjxUpUp/Forge/internal/tasktypes"
-
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 func TestIsGeneric(t *testing.T) {

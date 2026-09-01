@@ -5,7 +5,7 @@ import "github.com/MjxUpUp/Forge/internal/tasktypes"
 // model_alias.go —— 任务数据模型的再导出门面（2026-09 代码普查 A3）。
 //
 // 纯数据模型（结构体、纯方法、门禁/阶段/状态常量、HMAC 完整性签名）已整体
-// 下沉 internal/tasktypes 叶子包（直接依赖仅 stdlib/scoringtypes/nodeid；经 nodeid 的传递闭包另含 util/forgedata）；本文件用
+// 下沉 internal/tasktypes 叶子包（直接依赖仅 stdlib/scoringtypes/nodeid；经 nodeid 的传递闭包另含 util 与 forgedata 两个包）；本文件用
 // 类型别名 + 常量派生 + 函数委托把模型再导出，全仓既有调用点
 // （cli/dashboard/datamerge/skilltrigger 等）零改动。执法不在模型里：HARD 门禁
 // 执行器（executor）、状态存取（SaveTaskState/ActiveTaskState）仍住本包——
