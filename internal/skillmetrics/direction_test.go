@@ -14,7 +14,7 @@ import (
 //
 // TestPackageLeaf 钉住 2026-09 普查 A4 拆分的架构契约：skillmetrics（使用度量）
 // 永不依赖 skillseval（eval 案例机器）。合法方向是 skillseval → skillmetrics
-//（mine.go 消费 EngagedAfter）；反向 import 会闭合依赖环，把拆开的两批消费方
+// （mine.go 消费 EngagedAfter）；反向 import 会闭合依赖环，把拆开的两批消费方
 // 重新焊死。
 func TestPackageLeaf(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", ".").Output()
