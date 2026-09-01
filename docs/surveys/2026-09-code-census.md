@@ -2,7 +2,15 @@
 
 > 普查任务：`survey/code-census-arch-redundancy`（generic）。方法：go build/vet 基线 + deadcode/staticcheck 全仓静态分析 + 三路并行代码考古（架构分层 / 冗余重复 / skills 域），关键发现均经 file:line 抽查核实。只读普查，未改任何代码。
 >
-> **清偿进度**：本报告是普查时点的快照。任务 1（feat/single-source-convergence）已在同分支清偿 R1-R4 与 P3 前两项（截断收敛、SKILL_TRIGGER 禁用判定），并补 guard：taskpipeline/gates_test.go（checklog↔gate 互钉）、doctor_test.go（词表↔谓词互钉）。勘误：普查称 isForgeHookCommand「无任何测试钉扎」不准确——internal/hooks/settings_test.go:998 已有契约测试（普查员检索漏报），本次仅补 --agent 后缀用例。第六节其余任务待后续分支。
+> **清偿进度（2026-09 全批收尾）**：本报告是普查时点的快照。第六节 6 项任务已全部执行并合入 main：
+> 1. feat/single-source-convergence（95/A）——R1-R4 + P3 前两项清偿，补 checklog↔gate、doctor 词表↔谓词两道互钉 guard。勘误：普查称 isForgeHookCommand「无任何测试钉扎」不准确——settings_test.go:998 已有契约测试（普查员检索漏报）。
+> 2. feat/deadcode-staticcheck-sweep（89/B）——6 处真死删除（含普查漏网的 completeGraceWindow bash 镜像）、17 项裁决注记、staticcheck 21→0；skillgen codexConfigHome 收归 hostcap。
+> 3. feat/cliskills-extraction（95/A）——25 源文件+13 测试迁 internal/cliskills；审查拦截 Version init 拷贝恒空串的阻断缺陷后改惰性 seam。
+> 4. feat/tasktypes-leaf（89/B）——数据模型下沉 internal/tasktypes（零反向依赖守卫常驻测试）；skillgen 的 taskpipeline 依赖消亡。
+> 5. feat/skillmetrics-split（89/B）——B 簇 6 文件迁 internal/skillmetrics；EngagedAfter 导出为 engaged 判定单一源。
+> 6. feat/task-domain-sinking（96/A）——CompleteGeneric 完成编排出 cli、attribution.PorcelainLines porcelain 单一入口、序言/播种收敛（P3-4 实测缩幅：14 处仅 3 处纯同构，其余为刻意 UX 分化，已注记）。
+>
+> **缓期项（含理由）**：A2-3 task 簇物理搬家（15 文件 6204 行）——耦合测绘显示需随迁 8 个小助手+10 命令注册器+测试 harness 姊妹副本，且落在任务生命周期最关键路径，A1 领域下沉核心已交付，物理搬家留独立任务；A2-2 hookdispatch 同理；P7 embed.go 分文件——hash 守卫已钉内容，重组纯排版收益；P8 命名清理——用户可见改名需产品决策；P3-6 JSON 读侧——普查自评低优先。
 
 ## 总体结论
 
