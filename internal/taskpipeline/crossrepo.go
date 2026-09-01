@@ -164,7 +164,7 @@ func checkCrossRepoImpact(root string, state *TaskState) error {
 				Checked: true,
 				Level:   checklog.LevelBlocked,
 				TaskRef: state.TaskRef,
-				Detail:  fmt.Sprintf(`cross_repo_impact: required——任务未声明跨仓影响，task-verify 阻断`),
+				Detail:  `cross_repo_impact: required——任务未声明跨仓影响，task-verify 阻断`,
 			})
 			return GateBlocked("task-verify 拒绝（HARD stop，protocol cross_repo_impact: required）：\n%s\n%s\n%s\n%s", what, why, crossRepoHowTo, ref)
 		}

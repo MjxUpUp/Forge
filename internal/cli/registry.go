@@ -47,9 +47,11 @@ func runRegistryPrune(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if pruned == 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), fmt.Sprintf(`注册表已是最精简，无需清理（%d 个活跃项目）。`, remain))
+		fmt.Fprintf(cmd.OutOrStdout(), `注册表已是最精简，无需清理（%d 个活跃项目）。
+`, remain)
 		return nil
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), fmt.Sprintf(`✅ 已精简全局注册表：移除 %d 条死路径/重复，保留 %d 个活跃项目。`, pruned, remain))
+	fmt.Fprintf(cmd.OutOrStdout(), `✅ 已精简全局注册表：移除 %d 条死路径/重复，保留 %d 个活跃项目。
+`, pruned, remain)
 	return nil
 }
