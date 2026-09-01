@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -49,7 +50,7 @@ func runNext(cmd *cobra.Command, args []string) error {
 	}
 	sid := taskpipeline.CurrentSessionID()
 	st, _ := taskpipeline.ActiveTaskState(root, sid)
-	res := nextDecision(gitLine(root, "rev-parse", "--abbrev-ref", "HEAD"),
+	res := nextDecision(clitask.GitLine(root, "rev-parse", "--abbrev-ref", "HEAD"),
 		gitDirty(root), st)
 
 	asJSON, _ := cmd.Flags().GetBool("json")

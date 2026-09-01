@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -55,7 +56,7 @@ func runActRebuild(cmd *cobra.Command, args []string) error {
 		if state.Score == nil || state.CompletedAt == nil {
 			continue
 		}
-		if _, ok := appendConclusion(root, state); !ok {
+		if _, ok := clitask.AppendConclusion(root, state); !ok {
 			failed++
 		} else {
 			n++

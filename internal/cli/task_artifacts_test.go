@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -17,18 +18,18 @@ import (
 // checklist 勾选门禁、invariant 声明期校验、窗口超时落违规。
 
 func TestValidateInvariant(t *testing.T) {
-	if err := validateInvariant("go build ./..."); err != nil {
+	if err := clitask.ValidateInvariant("go build ./..."); err != nil {
 		t.Errorf("可执行命令应通过: %v", err)
 	}
-	if err := validateInvariant("go test ./internal/cli/ -count=1 :: ok"); err != nil {
+	if err := clitask.ValidateInvariant("go test ./internal/cli/ -count=1 :: ok"); err != nil {
 		t.Errorf("run :: expected 形态应通过: %v", err)
 	}
-	if err := validateInvariant("代码必须优雅，不允许过度设计"); err == nil {
+	if err := clitask.ValidateInvariant("代码必须优雅，不允许过度设计"); err == nil {
 		t.Error("叙述性约束必须被拒绝（析出段必须映射到可执行 validator）")
 	} else if !strings.Contains(err.Error(), "checklist") || !strings.Contains(err.Error(), "intent") {
 		t.Errorf("拒绝文案须指引降级到 checklist/intent, got %v", err)
 	}
-	if err := validateInvariant("   "); err == nil {
+	if err := clitask.ValidateInvariant("   "); err == nil {
 		t.Error("空 invariant 必须被拒绝")
 	}
 }
@@ -61,7 +62,7 @@ func TestTaskArtifactsIntentAppendOnly(t *testing.T) {
 		var buf strings.Builder
 		cmd := &cobra.Command{}
 		cmd.SetOut(&buf)
-		if err := runIntentCmd(cmd, []string{note}); err != nil {
+		if err := clitask.RunIntentCmd(cmd, []string{note}); err != nil {
 			t.Fatalf("intent %q: %v", note, err)
 		}
 		return buf.String()
@@ -85,7 +86,7 @@ func TestTaskArtifactsChecklistLifecycle(t *testing.T) {
 	add := func(desc string) {
 		cmd := &cobra.Command{}
 		cmd.SetOut(&strings.Builder{})
-		if err := runChecklistAdd(cmd, []string{desc}); err != nil {
+		if err := clitask.RunChecklistAdd(cmd, []string{desc}); err != nil {
 			t.Fatalf("checklist add %q: %v", desc, err)
 		}
 	}
@@ -98,7 +99,7 @@ func TestTaskArtifactsChecklistLifecycle(t *testing.T) {
 	}
 	cmd := &cobra.Command{}
 	cmd.SetOut(&strings.Builder{})
-	if err := runChecklistTick(cmd, []string{"1"}); err != nil {
+	if err := clitask.RunChecklistTick(cmd, []string{"1"}); err != nil {
 		t.Fatalf("tick #1: %v", err)
 	}
 	st, _ = taskpipeline.LoadTaskState(root, ref)
@@ -107,7 +108,7 @@ func TestTaskArtifactsChecklistLifecycle(t *testing.T) {
 	}
 	cmd2 := &cobra.Command{}
 	cmd2.SetOut(&strings.Builder{})
-	if err := runChecklistDrop(cmd2, []string{"2"}); err != nil {
+	if err := clitask.RunChecklistDrop(cmd2, []string{"2"}); err != nil {
 		t.Fatalf("drop #2: %v", err)
 	}
 	st, _ = taskpipeline.LoadTaskState(root, ref)
