@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"maps"
 	"os"
 	"path/filepath"
@@ -74,11 +75,11 @@ func init() {
 // 但缺 skills 目录的仍被审计（真缺口）。`forge skills drift-check` 在显式全量
 // 问询下保留不门控的全目标覆盖。
 func skillsDriftProbe() *doctor.SkillsDriftSummary {
-	canonical, _, err := resolveCanonical()
+	canonical, _, err := cliskills.ResolveCanonical()
 	if err != nil {
 		return &doctor.SkillsDriftSummary{Error: err.Error()}
 	}
-	targets, err := parseSkillTargets([]string{"all"})
+	targets, err := cliskills.ParseSkillTargets([]string{"all"})
 	if err != nil {
 		return &doctor.SkillsDriftSummary{Error: err.Error()}
 	}
