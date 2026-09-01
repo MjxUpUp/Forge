@@ -111,9 +111,13 @@ func init() {
 //
 // CommitBestEffort 是 cli 侧 harness 提交钩子的接缝：完成路径在状态迁移后
 // best-effort 调用；由 cli 注册器注入 HarnessCommitBestEffort（会话语义不属于
-// 执行器包——clitask 不 import cli，反向成环）。
-var CommitBestEffort func(reason string)
+// 执行器包——clitask 不 import cli，反向成环）。默认 no-op 兜底（best-effort
+// 语义下未注入即无钩子），进程内单测不经注册器也安全——裸 nil 会 panic。
+var CommitBestEffort = func(reason string) {}
 
+// Root is the `forge task` parent command (task lifecycle + quality gates).
+//
+// Root 是 `forge task` 父命令（任务生命周期 + 质量门禁）。
 var Root = &cobra.Command{
 	Use:   "task",
 	Short: "任务级质量管道管理",

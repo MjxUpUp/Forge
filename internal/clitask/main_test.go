@@ -83,3 +83,23 @@ func runGit(t *testing.T, dir string, args ...string) {
 		t.Fatalf("git %v: %s: %v", args, string(out), err)
 	}
 }
+
+// TestCommitBestEffort_NoopFallback 钉死接缝兜底契约（对齐 cliskills.VersionFn
+// 先例）：包级默认值是可调用的 no-op 而非 nil——clitask 进程内单测不经 cli
+// 注册器、无注入，若默认值是裸 nil，best-effort 调用即 panic。本测试在默认态
+// 直接调用（不设桩）：不 panic 即「默认兜底」契约成立；随后验证注册器路径
+// 可整体替换（注入的钩子会被调用到）。
+func TestCommitBestEffort_NoopFallback(t *testing.T) {
+	if CommitBestEffort == nil {
+		t.Fatal("CommitBestEffort 包级默认值不得是 nil（进程内单测无注册器，裸 nil 即 panic）")
+	}
+	CommitBestEffort("default no-op safe")
+
+	called := ""
+	defer func(orig func(string)) { CommitBestEffort = orig }(CommitBestEffort)
+	CommitBestEffort = func(reason string) { called = reason }
+	CommitBestEffort("injected")
+	if called != "injected" {
+		t.Fatalf("注入的钩子应被调用, got %q", called)
+	}
+}

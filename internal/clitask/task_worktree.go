@@ -380,6 +380,9 @@ func runWorktreeJanitor(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// WorktreeCmd is the root-level `forge worktree` command (L4 isolation lifecycle).
+//
+// WorktreeCmd 是根级 `forge worktree` 命令（L4 隔离生命周期）。
 var WorktreeCmd = &cobra.Command{
 	Use:   "worktree",
 	Short: "workspace/worktree 生命周期（multi-task-concurrency L4）",
