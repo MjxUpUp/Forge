@@ -176,7 +176,7 @@ func buildZcodeHooks() map[string][]zcodeHookGroup {
 			group := zcodeHookGroup{Matcher: m.Matcher}
 			for _, h := range m.Hooks {
 				cmd := h.Command
-				if isForgeBridgeCommand(cmd) {
+				if hooks.IsForgeHookCommand(cmd) {
 					cmd += " --agent zcode"
 				}
 				group.Hooks = append(group.Hooks, zcodeHookEntry{

@@ -340,6 +340,11 @@ func TestReplaceBinaryWindowsRollback(t *testing.T) {
 // and Unix (HOME) correctly.
 func setTestHome(t *testing.T, dir string) {
 	t.Helper()
+	// 同步把 FORGE_DATA_HOME 指到 <dir>/.forge：TestMain 已把全局根重定向到共享
+	// tmpDir，而 update 缓存走 forgedata.GlobalHome（2026-09 代码普查 R4 收敛后）
+	// ——不同步重定向会让本组测试读写共享根（跨测试串扰），也与「HOME 的 .forge
+	// 即数据根」的真实默认布局不符。
+	t.Setenv("FORGE_DATA_HOME", filepath.Join(dir, ".forge"))
 	if runtime.GOOS == "windows" {
 		orig := os.Getenv("USERPROFILE")
 		os.Setenv("USERPROFILE", dir)

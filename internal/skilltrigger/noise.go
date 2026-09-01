@@ -67,7 +67,7 @@ func (n *FileBasedNoiseController) firesPath(sessionID, skill string) string {
 
 // ShouldFire：全局禁用 / per-skill 禁用 / 在 cooldown 内已注入过 → false。
 func (n *FileBasedNoiseController) ShouldFire(sessionID, skill string, cooldown time.Duration, now time.Time) bool {
-	if os.Getenv("FORGE_SKILL_TRIGGER") == "0" {
+	if Disabled() {
 		return false
 	}
 	if isSkillDisabled(skill) {
@@ -118,7 +118,7 @@ func (n *FileBasedNoiseController) FireCount(sessionID, skill string) int {
 
 // StopRoundAllowed：本 session 已注入 Stop 次数 < MaxStopRounds。
 func (n *FileBasedNoiseController) StopRoundAllowed(sessionID string, now time.Time) bool {
-	if os.Getenv("FORGE_SKILL_TRIGGER") == "0" {
+	if Disabled() {
 		return false
 	}
 	data, err := os.ReadFile(n.stopRoundsPath(sessionID))
@@ -142,6 +142,16 @@ func (n *FileBasedNoiseController) IncrStopRound(sessionID string) error {
 	// atomic write（tmp+rename+fsync，见 util.AtomicWrite）防部分写；session-scoped sid 使跨 host RMW 竞态不触发
 	// （各 host 独立 session_id → 不同 sid 落不同文件，无共享计数器碰撞）。
 	return util.AtomicWrite(p, []byte(strconv.Itoa(cnt+1)), 0644)
+}
+
+// Disabled reports whether the global skill-trigger kill switch is active
+// (FORGE_SKILL_TRIGGER=0).
+//
+// Disabled 报告全局 skill-trigger 关闭开关是否生效（FORGE_SKILL_TRIGGER=0）。
+// 判定的单一真相源：本包各 controller 与 cli 的早返路径都消费它，禁止散写
+// env 字面量比较（2026-09 代码普查 P3：曾在 2 个包重复 5 处）。
+func Disabled() bool {
+	return os.Getenv("FORGE_SKILL_TRIGGER") == "0"
 }
 
 // isSkillDisabled 检查 skill 是否在 FORGE_SKILL_TRIGGER_DISABLE 逗号列表中。
@@ -194,7 +204,7 @@ func NewInMemoryNoiseController() *InMemoryNoiseController {
 func noiseKey(sessionID, skill string) string { return sessionID + "|" + skill }
 
 func (m *InMemoryNoiseController) ShouldFire(sessionID, skill string, cooldown time.Duration, now time.Time) bool {
-	if os.Getenv("FORGE_SKILL_TRIGGER") == "0" {
+	if Disabled() {
 		return false
 	}
 	if isSkillDisabled(skill) {
@@ -220,7 +230,7 @@ func (m *InMemoryNoiseController) FireCount(sessionID, skill string) int {
 }
 
 func (m *InMemoryNoiseController) StopRoundAllowed(sessionID string, now time.Time) bool {
-	if os.Getenv("FORGE_SKILL_TRIGGER") == "0" {
+	if Disabled() {
 		return false
 	}
 	return m.StopCount[sessionID] < MaxStopRounds

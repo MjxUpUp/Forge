@@ -128,7 +128,7 @@ func TestKimiTranslator_Translate(t *testing.T) {
 	if !strings.HasPrefix(got, userConfig) {
 		t.Errorf("user config not preserved at head of file:\n%s", got)
 	}
-	for _, want := range []string{kimiMarkStart, kimiMarkEnd, "[[hooks]]", `event = "PreToolUse"`, "--agent kimi"} {
+	for _, want := range []string{tomlForgeMarkStart, tomlForgeMarkEnd, "[[hooks]]", `event = "PreToolUse"`, "--agent kimi"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("merged config missing %q", want)
 		}
@@ -157,7 +157,7 @@ func TestKimiTranslator_Translate_CreatesFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.toml not created: %v", err)
 	}
-	if !strings.Contains(string(data), kimiMarkStart) {
+	if !strings.Contains(string(data), tomlForgeMarkStart) {
 		t.Errorf("created config missing forge section")
 	}
 }
@@ -168,7 +168,7 @@ func TestKimiTranslator_Translate_ReplacesStaleSection(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", home)
 
-	stale := "default_model = \"x\"\n\n" + kimiMarkStart + "\n[[hooks]]\nevent = \"PreToolUse\"\ncommand = \"forge hook stale-hook --agent kimi\"\n" + kimiMarkEnd + "\n\n# user comment after section\n"
+	stale := "default_model = \"x\"\n\n" + tomlForgeMarkStart + "\n[[hooks]]\nevent = \"PreToolUse\"\ncommand = \"forge hook stale-hook --agent kimi\"\n" + tomlForgeMarkEnd + "\n\n# user comment after section\n"
 	path := filepath.Join(home, "config.toml")
 	if err := os.WriteFile(path, []byte(stale), 0644); err != nil {
 		t.Fatal(err)
@@ -182,7 +182,7 @@ func TestKimiTranslator_Translate_ReplacesStaleSection(t *testing.T) {
 	if strings.Contains(got, "stale-hook") {
 		t.Errorf("stale section not replaced")
 	}
-	if strings.Count(got, kimiMarkStart) != 1 || strings.Count(got, kimiMarkEnd) != 1 {
+	if strings.Count(got, tomlForgeMarkStart) != 1 || strings.Count(got, tomlForgeMarkEnd) != 1 {
 		t.Errorf("section duplicated after re-init")
 	}
 	if !strings.HasPrefix(got, "default_model = \"x\"\n") || !strings.HasSuffix(got, "# user comment after section\n") {
@@ -244,9 +244,9 @@ func TestKimiMarkerCorruption(t *testing.T) {
 	path := filepath.Join(home, "config.toml")
 
 	corrupt := map[string]string{
-		"orphan START": "default_model = \"x\"\n" + kimiMarkStart + "\ntelemetry = false\n",
-		"orphan END":   "default_model = \"x\"\n" + kimiMarkEnd + "\n",
-		"inverted":     kimiMarkEnd + "\ndefault_model = \"x\"\n" + kimiMarkStart + "\n",
+		"orphan START": "default_model = \"x\"\n" + tomlForgeMarkStart + "\ntelemetry = false\n",
+		"orphan END":   "default_model = \"x\"\n" + tomlForgeMarkEnd + "\n",
+		"inverted":     tomlForgeMarkEnd + "\ndefault_model = \"x\"\n" + tomlForgeMarkStart + "\n",
 	}
 	for name, content := range corrupt {
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
