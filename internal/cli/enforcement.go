@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -296,7 +297,7 @@ func countWildBySessionLines(dataDir string, withSession bool) []string {
 		if line == "" {
 			continue
 		}
-		var e wildDeclaration
+		var e clitask.WildDeclaration
 		if json.Unmarshal([]byte(line), &e) != nil {
 			continue // 残行容错（并发追加撕裂）——审计消费侧不炸
 		}

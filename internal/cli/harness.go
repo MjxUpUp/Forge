@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/MjxUpUp/Forge/internal/attribution"
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -540,6 +541,6 @@ func attributionCoverageLine(root string) string {
 	}
 	return fmt.Sprintf("%s（attributed %s / orphan %s）",
 		pct,
-		orDash(latest.Meta[checklog.MetaKeyAttributionAttributed]),
-		orDash(latest.Meta[checklog.MetaKeyAttributionOrphans]))
+		clitask.OrDash(latest.Meta[checklog.MetaKeyAttributionAttributed]),
+		clitask.OrDash(latest.Meta[checklog.MetaKeyAttributionOrphans]))
 }

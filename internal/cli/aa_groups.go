@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/MjxUpUp/Forge/internal/cliskills"
+	"github.com/MjxUpUp/Forge/internal/clitask"
 )
 
 func init() {
@@ -55,7 +56,7 @@ func init() {
 	workspaceCmd.GroupID = `lifecycle`
 	// worktree-per-task 生命周期管理（multi-task-concurrency L4：start --worktree /
 	// finish / janitor；workspace 级低频管理，与 workspace/registry 同族）。
-	worktreeCmd.GroupID = `lifecycle`
+	clitask.WorktreeCmd.GroupID = `lifecycle`
 	// Harness repo（multi-task-concurrency T6：git 化用户级台账；项目级低频管理，
 	// 与 migrate/project 同族）。
 	harnessCmd.GroupID = `lifecycle`
@@ -65,7 +66,7 @@ func init() {
 	verifyCmd.GroupID = "pipeline"
 
 	// 任务质量：任务管道 + 质量观测（trace/act/review/health 是看数据，看板会进一步聚合）
-	taskCmd.GroupID = "quality"
+	clitask.Root.GroupID = "quality"
 	traceCmd.GroupID = "quality"
 	actCmd.GroupID = "quality"
 	reviewCmd.GroupID = "quality"
