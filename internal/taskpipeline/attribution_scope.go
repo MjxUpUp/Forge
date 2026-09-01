@@ -1,6 +1,10 @@
 package taskpipeline
 
 import (
+	"fmt"
+	"path/filepath"
+	"strings"
+
 	"github.com/MjxUpUp/Forge/internal/attribution"
 	"github.com/MjxUpUp/Forge/internal/review"
 )
@@ -91,4 +95,68 @@ func ForeignAttributedPaths(root, ownTaskRef string) map[string]bool {
 		}
 	}
 	return foreign
+}
+
+// AttributedPorcelain filters porcelain status lines down to this task's
+// working scene: L3-ledger attribution excludes lines owned by other live task
+// sessions and unattributable paths, each exclusion honestly counted.
+//
+// AttributedPorcelain 把 porcelain 状态行过滤成本任务现场（multi-task-concurrency
+// §6，T3）：L3 台账可证明归属其他未完成任务会话的行被剔除，无主路径同样
+// 剔除——两者都以诚实的计数行补在末尾（接手视图还原的是本任务现场，不是整树噪音）。
+// 降级向旧全树行为 fail-open：归属关闭、台账为空（升级前会话/无身份宿主）或
+// lines 为空都原样返回——藏掉任务自己的 WIP（空现场）比多显示噪音更糟。
+// （2026-09 普查 A1 补齐：自 cli/task_continuity.go 下沉——领域核
+// ForeignAttributedPaths 本就住本包，组装与它同址；行由调用方经
+// attribution.PorcelainLines 取得。）
+func AttributedPorcelain(root string, state *TaskState, lines []string) []string {
+
+	if !attribution.Enabled() {
+		return lines
+	}
+	view := attribution.Reconcile(root)
+	// fail-open 触发：台账对变更集的归属数为零——升级前会话、无身份宿主、或台账没看
+	// 见的纯 bash 编辑。此时归属不携带任何信息，把全部标成「无主剔除」会渲染出空现场
+	//（藏掉任务自己的 WIP——严格劣于带噪音的旧视图）。至少有一个路径被归属时，
+	// 自己/外来/无主的切分才开始有意义。
+	if len(view.BySession) == 0 {
+		return lines
+	}
+	ref := ""
+	if state != nil {
+		ref = state.TaskRef
+	}
+	foreign := ForeignAttributedPaths(root, ref)
+	orphanSet := map[string]bool{}
+	for _, p := range view.Orphans {
+		orphanSet[p] = true
+	}
+	kept := make([]string, 0, len(lines))
+	excludedForeign, excludedOrphan := 0, 0
+	for _, l := range lines {
+		if len(l) < 3 {
+			kept = append(kept, l)
+			continue
+		}
+		p := l[3:]
+		if idx := strings.Index(p, " -> "); idx >= 0 {
+			p = p[idx+4:]
+		}
+		p = filepath.ToSlash(filepath.Clean(strings.Trim(p, `"`)))
+		switch {
+		case foreign[p]:
+			excludedForeign++
+		case orphanSet[p]:
+			excludedOrphan++
+		default:
+			kept = append(kept, l)
+		}
+	}
+	if excludedForeign > 0 {
+		kept = append(kept, fmt.Sprintf("· 已排除 %d 个其他任务会话的未提交文件（非本任务现场）", excludedForeign))
+	}
+	if excludedOrphan > 0 {
+		kept = append(kept, fmt.Sprintf("· 已排除 %d 个无归属未提交文件（台账无法解释，git status 可查）", excludedOrphan))
+	}
+	return kept
 }
