@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"strings"
 	"testing"
 
@@ -46,7 +47,7 @@ func TestCommandGroups(t *testing.T) {
 		{"init", initCmd, "lifecycle", "forge init"},
 		{"status", statusCmd, "pipeline", "forge status"},
 		{"task", taskCmd, "quality", "forge task"},
-		{"skills", skillsCmd, "governance", "forge skills"},
+		{"skills", cliskills.Root, "governance", "forge skills"},
 		{"hazard", hazardCmd, "integrate", "forge hazard"},
 	}
 	for _, c := range cases {
