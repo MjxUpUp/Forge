@@ -1,4 +1,4 @@
-package skillseval
+package skillmetrics
 
 // weakness_test.go — AnalyzeWeaknesses 的测试：四簇信号 join（维度弱点频次过滤、
 // 盲区率、从未触发交叉、低成效过滤）与数据 caveat 的覆盖诚实性。

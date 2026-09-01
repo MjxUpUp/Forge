@@ -1,4 +1,4 @@
-package skillseval
+package skillmetrics
 
 // keyword_test.go — per-keyword 分析层的钉子测试：计数/engaged/suppressed 归位、
 // condition-only 分行、死关键词检测、排序稳定性、advisory 排除。
