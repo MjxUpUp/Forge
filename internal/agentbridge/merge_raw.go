@@ -2,6 +2,8 @@ package agentbridge
 
 import (
 	"encoding/json"
+
+	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
 // merge_raw.go —— codex/cursor/windsurf 三个 translator 共享的 raw-JSON 合并
@@ -16,7 +18,7 @@ import (
 // （判 forge 还是用户），只有 forge 来源条目会被丢弃或重生成。
 
 // hookEntryCommand 提取 raw hook 条目对象的 "command" 字段。解析失败的条目
-// 得到 ""——isForgeBridgeCommand 会把它当用户自定义，故损坏的用户内容被保留，
+// 得到 ""——hooks.IsForgeHookCommand 会把它当用户自定义，故损坏的用户内容被保留，
 // 绝不误删。
 func hookEntryCommand(raw json.RawMessage) string {
 	var e struct {
@@ -32,7 +34,7 @@ func hookEntryCommand(raw json.RawMessage) string {
 // 原始字节。removed 报告是否有条目被丢弃。
 func dropForgeEntries(entries []json.RawMessage) (kept []json.RawMessage, removed bool) {
 	for _, raw := range entries {
-		if isForgeBridgeCommand(hookEntryCommand(raw)) {
+		if hooks.IsForgeHookCommand(hookEntryCommand(raw)) {
 			removed = true
 			continue
 		}

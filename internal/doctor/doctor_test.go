@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/hooks"
 )
 
 // isolate 经 env 覆盖把所有 agentbridge 路径 helper 重定向进临时根，测试永不触碰
@@ -472,7 +474,8 @@ func TestRun_ClaudePluginCacheLayout(t *testing.T) {
 // TestScanFile_GatePrefix pins that `forge gate <id>` is an accepted equivalent prefix at the settings layer.
 //
 // TestScanFile_GatePrefix `forge gate <id>` 是 settings 层认可的等价前缀
-// （internal/hooks/settings.go 的 isForgeHookCommand 判定，agentbridge/codex.go 有镜像），
+// （internal/hooks.IsForgeHookCommand 单一真相源，与 doctor 词表的互钉见
+// TestInvocationSubcommandsMatchHookPredicate），
 // 接线门槛必须同样接受——否则仅用 gate 接线的 host 假报
 // missing（评审二轮 LOW #1）。
 func TestScanFile_GatePrefix(t *testing.T) {
@@ -648,5 +651,23 @@ func TestRun_SkillsBlindSpotsStamped(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"blind_spots"`) {
 		t.Errorf("JSON 应含 blind_spots 字段: %s", data)
+	}
+}
+
+// TestInvocationSubcommandsMatchHookPredicate 互钉 doctor 与 settings 层的同一契约：
+// doctor 只把「hooks.IsForgeHookCommand 认可的命令形态」数作 forge 接线，词表
+// （hook/gate）漂移或谓词漂移都在此失败。此前仅注释声明该对应关系（2026-09 代码
+// 普查 R1 镜像出清时补的跨包 guard——doctor 与 hooks 互不 import，只能测试钉）。
+func TestInvocationSubcommandsMatchHookPredicate(t *testing.T) {
+	for _, w := range invocationSubcommands {
+		if !hooks.IsForgeHookCommand("forge " + w + " task-verify") {
+			t.Errorf("invocationSubcommands 词 %q 构成的命令不被 hooks.IsForgeHookCommand 认可——doctor 接线识别与 settings 写入形态脱钩", w)
+		}
+	}
+	// 反向钉：hooks 谓词认可的裸命令也应被 doctor 识别为接线形态。
+	for _, bare := range []string{"forge hook", "forge gate"} {
+		if _, ok := forgeInvocation(bare); !ok {
+			t.Errorf("forgeInvocation(%q) 应识别为接线形态，与 hooks.IsForgeHookCommand 的裸命令认可一致", bare)
+		}
 	}
 }

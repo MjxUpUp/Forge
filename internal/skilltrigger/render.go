@@ -6,13 +6,14 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillintegrate"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // Render renders hits into additionalContext text (HANDOFF style, cf. renderResume).
 //
 // Render 把 hits 渲染成 additionalContext 文本（HANDOFF 风格，参考 renderResume）。
 // 无命中返 ""。输出不含 ASCII 双引号字面量（用中文标点，避免终端/引号腐蚀），
-// reason 经 stripControl 压成单行 + truncateRunes(200) 兜底，整体再由 runHook 的
+// reason 经 stripControl 压成单行 + util.TruncateRunes(200) 兜底，整体再由 runHook 的
 // truncate(_, 9500) 二次截断。
 //
 // overflow 是因 MaxHitsPerEvent 单次上限落选、未注入的 skill 名（可为 nil）——尾部一句
@@ -55,7 +56,7 @@ func Render(hits []Hit, ctx Context, overflow []string) string {
 		if reason == "" {
 			reason = "—"
 		}
-		w("    " + truncateRunes(reason, 200))
+		w("    " + util.TruncateRunes(reason, 200))
 		w("    路径：" + filepath.ToSlash(filepath.Join(h.SkillDir, "SKILL.md")))
 		// forge 集成指针：该 skill 有 forge 侧集成笔记时追加一行（零反向依赖契约的
 		// 承接面——skill 正文不含 forge 内容，forge 用户经 forge skills integration 拿
@@ -120,13 +121,4 @@ func reasonOneLine(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
-}
-
-// truncateRunes 按 rune 计数截断（避免切坏 UTF-8 中文），超出加省略号。
-func truncateRunes(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n]) + "..."
 }

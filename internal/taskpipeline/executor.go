@@ -126,7 +126,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// task-complete 预检（executor_check_complete.go）：review 硬前置 + 快照一致性、
 	// test-coverage 兜底，再到 complete 时的各 advisory。changedFiles 在兜底内算一次、
 	// advisory 段复用（taskChangedFiles 起多个 git 子进程——不跑第二遍）。
-	if gateID == "task-complete" && state.CompletedAt == nil {
+	if gateID == GateComplete && state.CompletedAt == nil {
 		if err := checkCompleteReviewPrereqs(root, state); err != nil {
 			return nil, err
 		}
@@ -160,7 +160,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// task-verify 检查（executor_check_verify*.go）。gitChanged 在 syncVerifyDesignPhases
 	// 算一次后传给每个消费方；findingsDirty 自 cheat-scan 段流入 unused-scan 段，由后者
 	// 在两段之后统一持久化一次。
-	if gateID == "task-verify" && state.CompletedAt == nil {
+	if gateID == GateVerify && state.CompletedAt == nil {
 		gitChanged := syncVerifyDesignPhases(root, state)
 		if err := checkVerifyTestCoverage(root, state, gitChanged); err != nil {
 			return nil, err
@@ -243,7 +243,7 @@ func PendingDependencies(root string, refs []string) []string {
 // runAutoChecks 跑 task gate 的自动化检查。
 func runAutoChecks(root string, gateID string, state *TaskState) (*ExecuteResult, error) {
 	switch gateID {
-	case "task-implement":
+	case GateImplement:
 		return checkImplement(root, state)
 	default:
 		return &ExecuteResult{
@@ -355,7 +355,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 
 	if !compilePassed && !compileInfra {
 		return &ExecuteResult{
-			GateID:  "task-implement",
+			GateID:  GateImplement,
 			Passed:  false,
 			Message: fmt.Sprintf("build failed: %s", compileOutput),
 		}, nil
@@ -386,7 +386,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 
 	if !assertPassed && !assertInfra {
 		return &ExecuteResult{
-			GateID:  "task-implement",
+			GateID:  GateImplement,
 			Passed:  false,
 			Message: fmt.Sprintf("assertion check failed: %s", assertOutput),
 		}, nil
@@ -395,7 +395,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	// 3. 校验确有代码改动（不仅是预编译的 base）。
 	if !hasCodeChanges(root, state) {
 		return &ExecuteResult{
-			GateID:  "task-implement",
+			GateID:  GateImplement,
 			Passed:  false,
 			Message: "no code changes detected - build passed but no files modified",
 		}, nil
@@ -444,7 +444,7 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 	}
 
 	return &ExecuteResult{
-		GateID:  "task-implement",
+		GateID:  GateImplement,
 		Passed:  true,
 		Message: "code changes present (compile/assertion advisory via hooks)",
 	}, nil

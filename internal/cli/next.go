@@ -98,15 +98,15 @@ func nextDecision(branch string, dirty bool, st *taskpipeline.TaskState) nextRes
 
 	// 活跃任务：按真实门禁链给恰好一条。
 	switch {
-	case !gates["task-implement"]:
+	case !gates[taskpipeline.GateImplement]:
 		return nextResult{Next: "forge task gate task-implement", Reason: "实现未确认（有提交即可过）", State: state}
 	case stAcceptancePending(st):
 		return nextResult{Next: "forge task verify-acceptance", Reason: "验收标准尚未实跑回扣——先实跑（AcceptedHeadCommit 为空的标准待跑）", State: state}
-	case !gates["task-verify"]:
+	case !gates[taskpipeline.GateVerify]:
 		return nextResult{Next: "forge task gate task-verify", Reason: "验收已实跑——过验证门", State: state}
 	case !stReviewPassed(st):
 		return nextResult{Next: "forge review pass", Reason: "验证已过而审查未过——派只读子代理审查当前 diff 后标记（task-complete 门禁硬前置）", State: state}
-	case !gates["task-complete"]:
+	case !gates[taskpipeline.GateComplete]:
 		return nextResult{Next: "forge task gate task-complete", Reason: "实现/验证/审查齐备——过第三道门（forge task complete 要求三门禁全过）", State: state}
 	default:
 		// 三门禁齐 + 已过 review：完结（finish 需完结后才有资格，且 ActiveTaskState

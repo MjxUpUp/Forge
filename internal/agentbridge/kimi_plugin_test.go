@@ -336,7 +336,7 @@ func TestKimiTranslator_PluginWins(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(path)
-	if !bytes.Contains(data, []byte(kimiMarkStart)) {
+	if !bytes.Contains(data, []byte(tomlForgeMarkStart)) {
 		t.Fatal("precondition: marker section should exist before plugin install")
 	}
 
@@ -346,7 +346,7 @@ func TestKimiTranslator_PluginWins(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(path)
-	if bytes.Contains(data, []byte(kimiMarkStart)) {
+	if bytes.Contains(data, []byte(tomlForgeMarkStart)) {
 		t.Errorf("plugin installed but config.toml marker section not stripped:\n%s", data)
 	}
 	if string(data) != userConfig {
@@ -376,7 +376,7 @@ func TestKimiTranslator_PluginWins_Boundary(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("KIMI_CODE_HOME", home)
 		installPlugin(t, home)
-		corrupt := "default_model = \"x\"\n" + kimiMarkStart + "\ntelemetry = false\n"
+		corrupt := "default_model = \"x\"\n" + tomlForgeMarkStart + "\ntelemetry = false\n"
 		if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(corrupt), 0644); err != nil {
 			t.Fatal(err)
 		}

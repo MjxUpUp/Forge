@@ -93,7 +93,7 @@ func buildCopilotHooks() map[string]any {
 		for _, m := range matchers {
 			for _, h := range m.Hooks {
 				cmd := h.Command
-				if isForgeBridgeCommand(cmd) {
+				if hooks.IsForgeHookCommand(cmd) {
 					cmd += " --agent copilot"
 				}
 				hooksMap[ce] = append(hooksMap[ce], copilotHookEntry{

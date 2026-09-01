@@ -218,7 +218,7 @@ func TestCodexTranslator_EnsuresHooksFeature_Fresh(t *testing.T) {
 	if !strings.Contains(content, "[features]") || !strings.Contains(content, "hooks = true") {
 		t.Errorf("config.toml missing [features] hooks = true:\n%s", content)
 	}
-	if !strings.Contains(content, codexMarkStart) || !strings.Contains(content, codexMarkEnd) {
+	if !strings.Contains(content, tomlForgeMarkStart) || !strings.Contains(content, tomlForgeMarkEnd) {
 		t.Error("config.toml forge section missing markers")
 	}
 }
@@ -259,7 +259,7 @@ func TestCodexTranslator_EnsuresHooksFeature_PreservesUserConfig(t *testing.T) {
 	if !strings.Contains(content, `model = "o3"`) || !strings.Contains(content, "[profiles.work]") {
 		t.Error("user config outside markers not preserved")
 	}
-	if !strings.Contains(content, codexMarkStart) {
+	if !strings.Contains(content, tomlForgeMarkStart) {
 		t.Error("marked forge section not appended")
 	}
 

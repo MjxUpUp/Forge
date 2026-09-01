@@ -304,14 +304,16 @@ func TestHelperFunctions(t *testing.T) {
 func TestSystemStatusRequiresForge(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// forge status --system 对用户 home（TestMain 已隔离、此处为空）下的 ~/.forge 跑
-	// 系统级健康检查。没有 ~/.forge 时必须显式失败并点名缺失目录，而非静默通过。
+	// forge status --system 对 FORGE_DATA_HOME 指向的全局根跑系统级健康检查
+	// （TestMain 已把全局根重定向到共享 tmpDir，这里再指到一个不存在的子路径，
+	// 钉住「根缺失必须显式失败并点名缺失目录」——输出为解析后的绝对路径）。
+	t.Setenv("FORGE_DATA_HOME", filepath.Join(tmpDir, "no-forge-root"))
 	out, _, code := runForge(t, tmpDir, "status", "--system")
 	if code == 0 {
-		t.Fatalf("expected non-zero exit when ~/.forge is missing, got 0\noutput:\n%s", out)
+		t.Fatalf("expected non-zero exit when forge root is missing, got 0\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "~/.forge/") {
-		t.Errorf("output should name the missing ~/.forge:\n%s", out)
+	if !strings.Contains(out, "no-forge-root") {
+		t.Errorf("output should name the missing forge root:\n%s", out)
 	}
 }
 

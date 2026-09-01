@@ -687,7 +687,7 @@ func (s *TaskState) MarkReviewPassedWithNote(headCommit, changeHash, note string
 func (s *TaskState) ReworkRounds() (reviewPasses, completeRejections int) {
 	reviewPasses = len(s.ReviewRounds)
 	for _, h := range s.History {
-		if h.Gate == "task-complete" && !h.Passed {
+		if h.Gate == GateComplete && !h.Passed {
 			completeRejections++
 		}
 	}
