@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 // hook_track_test.go —— 三个 #4-A 观察 hook（failure-track / subagent-track /
 // test-nudge，hook_track.go）的守卫。每个 hook 三个维度：checklog 观察落盘
@@ -313,7 +313,7 @@ func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
 func TestHook_FailureTrackCursorPayloadAdapted(t *testing.T) {
 	// 阶段 1：仅分类的 payload（cursor 文档形态）——静默观察，Error 由
 	// failure_type 填空，会话取 conversation_id。
-	root1 := runHookWithStdin(t, "failure-track",
+	root1 := RunHookWithStdin(t, "failure-track",
 		`{"hook_event_name":"PostToolUseFailure","tool_name":"Shell","conversation_id":"conv-cursor-fail-1","failure_type":"timeout"}`)
 	entries := findTrackEntries(t, root1, checklog.CheckToolFailure)
 	if len(entries) != 1 {
@@ -335,7 +335,7 @@ func TestHook_FailureTrackCursorPayloadAdapted(t *testing.T) {
 
 	// 阶段 2：真实错误文本在场——优先于 failure_type（填空语义），编译 marker
 	// 命中，指引连同 Delivered 章一起发出。
-	root2 := runHookWithStdin(t, "failure-track",
+	root2 := RunHookWithStdin(t, "failure-track",
 		`{"hook_event_name":"PostToolUseFailure","tool_name":"Shell","conversation_id":"conv-cursor-fail-2","failure_type":"error","error":"go build ./... failed: undefined: util.Foo"}`)
 	entries2 := findTrackEntries(t, root2, checklog.CheckToolFailure)
 	if len(entries2) != 1 {
@@ -351,7 +351,7 @@ func TestHook_FailureTrackCursorPayloadAdapted(t *testing.T) {
 	// 阶段 3：cursor 文档的双字段形态——error_message 文本与 failure_type 枚举
 	// 同发。文本填 Error（胜过枚举），编译 marker 在真实文本上命中，Meta 仍记录
 	// 分类。
-	root3 := runHookWithStdin(t, "failure-track",
+	root3 := RunHookWithStdin(t, "failure-track",
 		`{"hook_event_name":"PostToolUseFailure","tool_name":"Shell","conversation_id":"conv-cursor-fail-3","failure_type":"error","error_message":"go build ./... failed: undefined: util.Foo"}`)
 	entries3 := findTrackEntries(t, root3, checklog.CheckToolFailure)
 	if len(entries3) != 1 {
@@ -419,7 +419,7 @@ func TestHook_CursorWorkspaceRootsResolvesProject(t *testing.T) {
 	os.Stdin = tmpStdin
 	t.Cleanup(func() { os.Stdin = oldStdin; tmpStdin.Close(); os.Remove(tmpStdin.Name()) })
 
-	captureStdout(t, func() { _ = runHook(&cobra.Command{}, []string{"failure-track"}) })
+	captureStdout(t, func() { _ = RunHook(&cobra.Command{}, []string{"failure-track"}) })
 
 	entries := findTrackEntries(t, projRoot, checklog.CheckToolFailure)
 	if len(entries) != 1 {
@@ -439,7 +439,7 @@ func TestHook_CursorWorkspaceRootsResolvesProject(t *testing.T) {
 // subagent_type/status/result（cursor 拼法）必须抵达 CC schema 字段驱动的归因
 // ——填空之前它们被丢弃，每个 cursor 条目永远记 agent_type=unknown、0 字符。
 func TestHook_SubagentTrackCursorFieldsAdapted(t *testing.T) {
-	root := runHookWithStdin(t, "subagent-track",
+	root := RunHookWithStdin(t, "subagent-track",
 		`{"hook_event_name":"SubagentStop","conversation_id":"conv-cursor-sas-1","subagent_type":"code-reviewer","status":"completed","result":"Reviewed 3 files."}`)
 	entries := findTrackEntries(t, root, checklog.CheckSubagentStop)
 	if len(entries) != 1 {

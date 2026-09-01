@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 // hook_conventions_test.go —— conventions-profile 层 2 两个注入 hook
 // （conventions-context / conventions-write，hook_conventions.go）的守卫。

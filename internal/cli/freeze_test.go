@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
+
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -109,7 +111,7 @@ func TestFreezeCheckExitCodes(t *testing.T) {
 // Claude-Code 形 JSON 结论。hook 的 bash 脚本会 fork `forge freeze check`，
 // 故把已构建 forge 二进制所在目录前置进 PATH（TestMain 已构建；
 // FORGE_DATA_HOME 隔离随之继承）。
-func runFreezeGuardHook(t *testing.T, dir, filePath string) HookOutput {
+func runFreezeGuardHook(t *testing.T, dir, filePath string) hookdispatch.HookOutput {
 	t.Helper()
 	origPath := os.Getenv("PATH")
 	os.Setenv("PATH", filepath.Dir(buildForge(t))+string(os.PathListSeparator)+origPath)
@@ -151,7 +153,7 @@ func runFreezeGuardHook(t *testing.T, dir, filePath string) HookOutput {
 
 	// err 刻意丢弃：本 helper 的契约按 stdout JSON 断言 Decision——静默 allow
 	// （exit 0 无输出）与 block（err 非 nil + 输出）都是调用方要断言的合法形态。
-	_ = runHook(nil, []string{"freeze-guard"})
+	_ = hookdispatch.RunHook(nil, []string{"freeze-guard"})
 
 	w.Close()
 	os.Stdout = oldStdout
@@ -160,8 +162,8 @@ func runFreezeGuardHook(t *testing.T, dir, filePath string) HookOutput {
 	n, _ := r.Read(buf)
 	output := strings.TrimSpace(string(buf[:n]))
 	// Silent allow (exit 0, no stdout) is the legal allow shape since Wave 1 —
-	// returns a zero HookOutput whose Decision is "" (never "block").
-	var result HookOutput
+	// returns a zero hookdispatch.HookOutput whose Decision is "" (never "block").
+	var result hookdispatch.HookOutput
 	if output != "" {
 		if err := json.Unmarshal([]byte(output), &result); err != nil {
 			t.Fatalf("output is not valid JSON: %q, err: %v", output, err)
