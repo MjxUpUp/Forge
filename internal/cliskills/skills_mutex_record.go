@@ -71,7 +71,7 @@ func runSkillsMutexRecord(cmd *cobra.Command, args []string) error {
 
 	ver := skMRecVer
 	if ver == "" {
-		ver = Version
+		ver = version()
 	}
 	run, err := skillseval.RecordMutexRun(dir, cases, canonicalSkills, skMRecModel, ver, raw)
 	if err != nil {

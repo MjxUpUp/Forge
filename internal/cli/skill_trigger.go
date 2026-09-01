@@ -1,6 +1,9 @@
 // Package cli skill_trigger.go is the CLI entry + evaluation core of the generic skill-trigger framework.
 //
 // Package cli skill_trigger.go 是通用 skill-trigger 框架的 CLI 入口与判定核心。
+// 2026-09 普查 A2-1 迁出 skills 簇时本文件刻意留守 cli：它是 runHook 的特例
+// 路径（进程内判定 + 渲染，依赖 cli 的 HookInput/emitAgentOutput），属 hook 链
+// 桥接而非 skills 命令面——命令注册仍挂 cliskills.Root。
 //
 // 设计要点（与 plan §1 的偏离，技术正确性驱动）：
 // plan 原假设 thin-wrapper bash（exec forge skill trigger --hook）能透传 stdin，但 runHook

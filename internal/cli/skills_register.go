@@ -13,7 +13,7 @@ import (
 //     检查——让 skill 分发在非 forge 项目也能跑，语义与迁出前完全一致）；
 //  3. 挂到 rootCmd。
 func init() {
-	cliskills.Version = rootCmd.Version
+	cliskills.VersionFn = func() string { return rootCmd.Version }
 	cliskills.Root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		checkForUpdate(cmd.Root().Version, cmd)
 		return nil
