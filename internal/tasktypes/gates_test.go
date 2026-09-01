@@ -1,4 +1,4 @@
-package taskpipeline
+package tasktypes
 
 import (
 	"testing"

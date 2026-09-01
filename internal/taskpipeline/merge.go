@@ -107,7 +107,7 @@ func gateContentKey(h TaskGateResult) string {
 }
 
 func UnionDecisions(local, incoming []Decision) []Decision {
-	// Forge 恒赋唯一 ID（newContinuityID）；空 ID = 畸形 bundle。空 ID 条目原样追加、
+	// Forge 恒赋唯一 ID（NewContinuityID）；空 ID = 畸形 bundle。空 ID 条目原样追加、
 	// 永不参与去重（去重会把 N 条不同条目压成一条，静默丢数据）。只有非空 ID 进
 	// seen 集合。
 	seen := map[string]bool{}
