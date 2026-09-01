@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"encoding/json"
@@ -139,7 +139,7 @@ func TestHook_RealBlockStillRecordsBlocked(t *testing.T) {
 	}()
 
 	_, _, _ = captureOutput(t, func() error {
-		return runHook(&cobra.Command{}, []string{"hazard-guard"})
+		return RunHook(&cobra.Command{}, []string{"hazard-guard"})
 	})
 
 	found := false

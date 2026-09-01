@@ -19,7 +19,7 @@
 // emitAdvisoryRouted（见下）是所有 hook 输出的唯一入口，除非 agent=="kimi" 且
 // passed，否则一律委派 emitAgentOutput——kimi/allow 判定在路由器**内部**，
 // 而非各调用处。
-package cli
+package hookdispatch
 
 import (
 	"bufio"
@@ -74,9 +74,9 @@ type kimiAdvisoryEntry struct {
 //   - 其余事件：detail 入队并保持**静默**（exit 0、无 stdout）——kimi
 //     PreToolUse 的 stdout 会被当 deny，PostToolUse/Stop/SessionStart 的
 //     stdout 到不了模型。
-func emitAdvisoryRouted(agent, eventName, hookName, root, sessionID string, passed bool, detail string) error {
+func EmitAdvisoryRouted(agent, eventName, hookName, root, sessionID string, passed bool, detail string) error {
 	if agent != "kimi" || !passed {
-		return emitAgentOutput(agent, eventName, hookName, passed, detail)
+		return EmitAgentOutput(agent, eventName, hookName, passed, detail)
 	}
 	if eventName == "UserPromptSubmit" {
 		batch := drainKimiAdvisories(root, sessionID)
@@ -87,7 +87,7 @@ func emitAdvisoryRouted(agent, eventName, hookName, root, sessionID string, pass
 				detail = batch
 			}
 		}
-		return emitAgentOutput(agent, eventName, hookName, passed, detail)
+		return EmitAgentOutput(agent, eventName, hookName, passed, detail)
 	}
 	if strings.TrimSpace(detail) != "" {
 		enqueueKimiAdvisory(root, sessionID, hookName, eventName, detail)
@@ -102,12 +102,12 @@ func emitAdvisoryRouted(agent, eventName, hookName, root, sessionID string, pass
 // 要修的 2026-08 虚假繁荣类）。
 const kimiAdvisoryQueueChannel = "kimi/advisory-queue"
 
-// advisoryEmissionChannel 返回经 emitAdvisoryRouted 输出的 advisory 的
+// AdvisoryEmissionChannel 返回经 emitAdvisoryRouted 输出的 advisory 的
 // （delivered, channel）章：与 contextChannelDelivered 一致，唯一例外是 kimi
 // 不可送达事件——输出在那里入队待 UserPromptSubmit 攒发，channel 如实标注。
 // 经 emitAdvisoryRouted 输出的记录点必须经本函数盖章（而非
 // contextChannelDelivered），否则漏斗会继续把入队的 advisory 计入「永久丢失」。
-func advisoryEmissionChannel(agent, eventName string) (bool, string) {
+func AdvisoryEmissionChannel(agent, eventName string) (bool, string) {
 	delivered, channel := contextChannelDelivered(agent, eventName)
 	if agent == "kimi" && !delivered {
 		channel = kimiAdvisoryQueueChannel
@@ -148,7 +148,7 @@ func enqueueKimiAdvisory(root, sessionID, hookName, eventName, detail string) {
 		Hook:    hookName,
 		Event:   eventName,
 		Session: util.SanitizeSessionID(sessionID),
-		Text:    truncate(strings.TrimSpace(detail), kimiAdvisoryMaxTextLen),
+		Text:    util.TruncateRunes(strings.TrimSpace(detail), kimiAdvisoryMaxTextLen),
 	}
 	data, err := json.Marshal(entry)
 	if err != nil {
@@ -238,7 +238,7 @@ func kimiAdvisoryTextKey(text string) string {
 // 每个项目可投递一次（否则跨项目 cd 的会话在第二个项目被静音），镜像
 // readsFilePath 的 project 桶。
 func kimiDeliveredSetPath(root, sessionID string) string {
-	return filepath.Join(os.TempDir(), "forge-kimi-advisories", projectTagFor(root)+"-"+util.SanitizeSessionID(sessionID)+".delivered")
+	return filepath.Join(os.TempDir(), "forge-kimi-advisories", ProjectTagFor(root)+"-"+util.SanitizeSessionID(sessionID)+".delivered")
 }
 
 // readKimiDeliveredSet 读取每会话一次的 delivered 集合。空 sessionID 直接禁用

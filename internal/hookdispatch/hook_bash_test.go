@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"encoding/json"
@@ -165,7 +165,7 @@ func TestRunHookCreateTempFailureRoutesInfraAllow(t *testing.T) {
 	}()
 
 	stdout, _, err := captureOutput(t, func() error {
-		return runHook(nil, []string{"task-guard"})
+		return RunHook(nil, []string{"task-guard"})
 	})
 	// fail-open 契约：nil error（exit 0），绝不再返回裸 error。
 	if err != nil {

@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"encoding/json"
@@ -253,7 +253,7 @@ func TestEmitClaudeOutput_DefaultAllowSilentAndBlock(t *testing.T) {
 // verdict must render differently per host (stdout shape AND error type).
 func TestEmitAgentOutput_DispatchRoutesByAgent(t *testing.T) {
 	stdout, _, err := captureOutput(t, func() error {
-		return emitAgentOutput("codex", "PreToolUse", "h", true, "d")
+		return EmitAgentOutput("codex", "PreToolUse", "h", true, "d")
 	})
 	if err != nil {
 		t.Fatalf("codex allow via dispatcher must return nil, got %v", err)
@@ -263,19 +263,19 @@ func TestEmitAgentOutput_DispatchRoutesByAgent(t *testing.T) {
 	}
 
 	stdout, _, _ = captureOutput(t, func() error {
-		return emitAgentOutput("cursor", "PostToolUse", "h", true, "d")
+		return EmitAgentOutput("cursor", "PostToolUse", "h", true, "d")
 	})
 	if !strings.Contains(stdout, "additional_context") {
 		t.Errorf("cursor dispatch must reach emitCursorOutput, got %q", stdout)
 	}
 
 	_, _, err = captureOutput(t, func() error {
-		return emitAgentOutput("windsurf", "PreToolUse", "h", false, "denied")
+		return EmitAgentOutput("windsurf", "PreToolUse", "h", false, "denied")
 	})
 	requireBlockErr(t, err, "denied")
 
 	_, _, err = captureOutput(t, func() error {
-		return emitAgentOutput("", "PreToolUse", "h", false, "denied")
+		return EmitAgentOutput("", "PreToolUse", "h", false, "denied")
 	})
 	requireBlockErr(t, err, "denied")
 }
@@ -288,7 +288,7 @@ func TestEmitAgentOutput_AllowNeverApproves(t *testing.T) {
 	for _, agent := range agents {
 		for _, ev := range []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit"} {
 			stdout, _, err := captureOutput(t, func() error {
-				return emitAgentOutput(agent, ev, "h", true, "detail text")
+				return EmitAgentOutput(agent, ev, "h", true, "detail text")
 			})
 			if err != nil {
 				t.Fatalf("agent=%q event=%q allow must return nil, got %v", agent, ev, err)

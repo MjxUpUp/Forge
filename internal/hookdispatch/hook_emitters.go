@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/hostcap"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // HookOutput represents the structured JSON that Claude Code expects to receive on stdout.
@@ -75,8 +76,8 @@ var outputEmitters = map[string]func(eventName, hookName string, passed bool, de
 //     warning，decision JSON + exit 0 才是唯一阻断通道）。exit 2 是 codex（stderr+
 //     exit2）、cursor（等价 deny）、copilot preToolUse（deny、fail-closed）共同认可
 //     的阻断码；旧 generic error（exit 1）在它们上面都不构成阻断。
-func emitAgentOutput(agent, eventName, hookName string, passed bool, detail string) error {
-	detail = truncate(detail, maxAdditionalContextLen)
+func EmitAgentOutput(agent, eventName, hookName string, passed bool, detail string) error {
+	detail = util.TruncateRunes(detail, maxAdditionalContextLen)
 	if emit, ok := outputEmitters[agent]; ok {
 		return emit(eventName, hookName, passed, detail)
 	}
@@ -390,5 +391,5 @@ func emitKimiOutput(passed bool, detail string) error {
 // 以及更早的「脚本永远跑不起来」失败（临时文件创建/写入、findBash）——同一 infra
 // 类，全部 fail-open 并带可见的、按宿主路由的警告。
 func emitInfraAllow(agent, eventName, hookName, root, sessionID, warning string) error {
-	return emitAdvisoryRouted(agent, eventName, hookName, root, sessionID, true, warning)
+	return EmitAdvisoryRouted(agent, eventName, hookName, root, sessionID, true, warning)
 }

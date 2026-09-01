@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hostcap"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // kimiStaleMarker 是 forge data home 下按日节流的 marker。内容为今日日期
@@ -65,11 +66,11 @@ func prependKimiStaleAdvisoryAt(detail, fullForgeVersion string, now time.Time, 
 	if !ok {
 		return detail
 	}
-	current := strings.TrimPrefix(getCurrentVersion(fullForgeVersion), "v")
+	current := strings.TrimPrefix(util.GetCurrentVersion(fullForgeVersion), "v")
 	if current == "dev" || current == "" {
 		return detail
 	}
-	if compareVersions(installed, current) >= 0 {
+	if util.CompareVersions(installed, current) >= 0 {
 		return detail
 	}
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
@@ -39,7 +40,7 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	//    .forge/hooks/ drift——没有它，被监控 Bash 命令 hook 链上的 forge 子进程
 	//    重写 hooks 会被当未授权改写 quarantine（2026-08-02 事故）。stamp 失败仅
 	//    告警：缺失只退回事故前的严格 quarantine，不阻塞 sync。
-	if err := hooks.WriteHookDeployStamp(dataDir, projectTagFor(dir)); err != nil {
+	if err := hooks.WriteHookDeployStamp(dataDir, hookdispatch.ProjectTagFor(dir)); err != nil {
 		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to write hook deploy stamp: %v\n", err)
 	}
 	if err := hooks.WriteHookTemplates(dataDir); err != nil {

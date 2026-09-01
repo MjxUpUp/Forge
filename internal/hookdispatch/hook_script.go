@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ import (
 // （绝对、clean 后的）路径做哈希，使 tag 在路径大小写、盘符格式、symlink 之间保持
 // 不变——而 $PWD cksum 还依赖宿主的 cksum 格式（GNU vs BSD）。hook 通过
 // FORGE_PROJECT_TAG env var 读取它来按 project 隔离状态。
-func projectTagFor(root string) string {
+func ProjectTagFor(root string) string {
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		abs = root
@@ -32,14 +32,14 @@ func projectTagFor(root string) string {
 // 这样无论 agent 从哪个 subdir 执行 `forge suggest decline`，同一 project 只会被
 // tag 一次。这守护 decline 契约：此前按 cwd 作 key，从 subdir decline 会写出与
 // hook 在 project root 读到的不同的 tag，使 decline 静默 no-op。非 git 目录回退到
-// projectTagFor(dir)（仍是稳定的 per-dir tag）。由 init-suggest hook
+// ProjectTagFor(dir)（仍是稳定的 per-dir tag）。由 init-suggest hook
 // （FORGE_CWD_TAG）和 `forge suggest` 共用——两者对同一 project 必须产出相同的
 // tag。
-func suggestTagFor(dir string) string {
+func SuggestTagFor(dir string) string {
 	if root := forgedata.FindGitRoot(dir); root != "" {
-		return projectTagFor(root)
+		return ProjectTagFor(root)
 	}
-	return projectTagFor(dir)
+	return ProjectTagFor(dir)
 }
 
 // maxEnvValueLen 是传给 bash 脚本的 env var value 的最大长度，
@@ -52,11 +52,11 @@ const maxEnvValueLen = 100000
 // （$TMPDIR）。落盘而非存于 context，是为了在 session 内 SURVIVES compaction：
 // compact 之前的 Read 仍计入之后的 Edit，消除基于 context 检查的最大假阳性来源。
 func readsFilePath(root, sessionID string) string {
-	// projectTagFor(root) 把 reads log 按 project 分桶：$TMPDIR 跨项目共享，仅按 session id
+	// ProjectTagFor(root) 把 reads log 按 project 分桶：$TMPDIR 跨项目共享，仅按 session id
 	// 命名会在短/复用 session id（如测试 sid-*）下让 A 项目的 reads log 被 B 项目读到——
 	// read-before-edit hook 会误判 Edit 已 Read 过（假阳性放行）。project tag 是 fnv hex
 	// （文件名安全），与 FORGE_PROJECT_TAG 同源。
-	return filepath.Join(os.TempDir(), "forge-session-reads-"+projectTagFor(root)+"-"+readsFileKey(sessionID)+".log")
+	return filepath.Join(os.TempDir(), "forge-session-reads-"+ProjectTagFor(root)+"-"+readsFileKey(sessionID)+".log")
 }
 
 // readsFileKey 把 session id 收敛为 filename-safe 的 token。SanitizeSessionID

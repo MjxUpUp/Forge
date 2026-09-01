@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"os"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 )
 
 // TestAdoptPayloadCwd 钉住 kimi 插件 hook 的 cwd 修复：kimi 以插件根为进程 cwd 拉起
@@ -20,7 +21,7 @@ func TestAdoptPayloadCwd(t *testing.T) {
 	pluginRoot := t.TempDir()
 	t.Chdir(pluginRoot)
 
-	if _, err := findProjectRoot(); err == nil {
+	if _, err := projectroot.Find(); err == nil {
 		t.Fatal("从非项目目录（模拟插件根）解析项目根应失败")
 	}
 
@@ -36,7 +37,7 @@ func TestAdoptPayloadCwd(t *testing.T) {
 	if !os.SameFile(wdInfo, projInfo) {
 		t.Errorf("chdir 后 cwd = %q, 应与 %q 同一目录", wd, projRoot)
 	}
-	if _, err := findProjectRoot(); err != nil {
+	if _, err := projectroot.Find(); err != nil {
 		t.Errorf("采用 payload cwd 后应能解析项目根: %v", err)
 	}
 
@@ -87,7 +88,7 @@ func TestRunHook_AdoptsPayloadCwd(t *testing.T) {
 	os.Chdir(pluginRoot)
 	defer os.Chdir(originalWd)
 
-	if _, err := findProjectRoot(); err == nil {
+	if _, err := projectroot.Find(); err == nil {
 		t.Fatal("前置：模拟插件根应解析不到项目")
 	}
 
@@ -110,7 +111,7 @@ func TestRunHook_AdoptsPayloadCwd(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runHook(nil, []string{"tool-track"})
+	RunHook(nil, []string{"tool-track"})
 
 	w.Close()
 	os.Stdout = oldStdout

@@ -17,6 +17,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"github.com/MjxUpUp/Forge/internal/clitask"
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 )
 
 func init() {
@@ -85,7 +86,7 @@ func init() {
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
 	hazardCmd.GroupID = "integrate"
 	freezeCmd.GroupID = "integrate"
-	hookCmd.GroupID = "integrate"
+	hookdispatch.HookCmd.GroupID = "integrate"
 	cloneCmd.GroupID = "integrate"
 	pluginCmd.GroupID = "integrate"
 	// 跨 agent 环境一致性审计（只读；多 host 接线 + 版本漂移）
