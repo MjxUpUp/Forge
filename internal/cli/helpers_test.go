@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
@@ -65,4 +69,31 @@ func seedTaskState(t *testing.T, root, ref string, mutate func(*taskpipeline.Tas
 	if err := taskpipeline.SaveTaskState(root, s); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// runForgeStreams 与 runForge 的分流版（stdout/stderr 分开捕获）——与
+// internal/clitask/task_nongit_test.go 的同名助手同实现（迁移自该文件：原定义
+// 随 task 簇走 clitask，health_test 等 cli 侧测试留此副本；注释互指防漂移）。
+func runForgeStreams(t *testing.T, dir string, args ...string) (stdout, stderr string, exitCode int) {
+	t.Helper()
+	cmd := exec.Command(forgeExe, args...)
+	cmd.Dir = dir
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	err := cmd.Run()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return out.String(), errb.String(), exitErr.ExitCode()
+		}
+		return out.String(), errb.String() + err.Error(), -1
+	}
+	return out.String(), errb.String(), 0
+}
+
+// taskStatePath 推导 task state 文件落点（DataDir/tasks/<sanitized>.json）——
+// 与 internal/clitask/task_abort_test.go 的同名助手同实现（迁移自该文件；测试
+// 助手无法跨包共享，注释互指防漂移）。
+func taskStatePath(dir, taskRef string) string {
+	return filepath.Join(forgedata.DataDirFor(dir), "tasks", taskcontext.SanitizeRef(taskRef)+".json")
 }

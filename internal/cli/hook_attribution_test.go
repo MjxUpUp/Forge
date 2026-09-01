@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -167,14 +168,14 @@ func TestResolveOriginTool_PointerFallback(t *testing.T) {
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	root := t.TempDir()
 
-	if got := resolveOriginTool(root, ""); got != "" {
+	if got := clitask.ResolveOriginTool(root, ""); got != "" {
 		t.Errorf("no pointer: got %q, want empty", got)
 	}
 	taskpipeline.TouchLastSession(root, "session_kimi-1", "kimi", "UserPromptSubmit")
-	if got := resolveOriginTool(root, ""); got != "kimi" {
+	if got := clitask.ResolveOriginTool(root, ""); got != "kimi" {
 		t.Errorf("fresh pointer: got %q, want kimi", got)
 	}
-	if got := resolveOriginTool(root, "explicit-tool"); got != "explicit-tool" {
+	if got := clitask.ResolveOriginTool(root, "explicit-tool"); got != "explicit-tool" {
 		t.Errorf("explicit flag must win over pointer, got %q", got)
 	}
 }

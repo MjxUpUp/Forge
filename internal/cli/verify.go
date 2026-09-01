@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
@@ -19,6 +20,9 @@ import (
 )
 
 func init() {
+	// collect-golden 的执行体 RunCollectGoldenMode 住 clitask（task 域，普查 A2-3
+	// 迁出）；flag 属 verify 命令面，故在 verify 域注册。
+	verifyCmd.Flags().String(`collect-golden`, ``, `从已完成任务采集真实 golden case 到 testdata/golden_real/（开发工具：固化真实评分形状进 CI 回归）`)
 	rootCmd.AddCommand(verifyCmd)
 	verifyCmd.Flags().Bool("regression", false, "运行所有 E2E 回归场景")
 	verifyCmd.Flags().Bool("run-tests", false, "运行项目测试套件并把真实结果记为 deterministic 证据（checklog: test-run）")
@@ -46,7 +50,7 @@ func runVerify(cmd *cobra.Command, args []string) error {
 	collectGolden, _ := cmd.Flags().GetString(`collect-golden`)
 
 	if len(collectGolden) > 0 {
-		return runCollectGoldenMode(collectGolden)
+		return clitask.RunCollectGoldenMode(collectGolden)
 	}
 	if runTests {
 		return runProjectTestsMode()
