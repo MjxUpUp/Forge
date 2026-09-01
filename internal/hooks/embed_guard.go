@@ -41,7 +41,6 @@ echo "PASS [freeze-guard] forge freeze check 异常（exit $CODE），fail-open 
 exit 0
 `
 
-
 const ReadBeforeEditHook = `#!/bin/bash
 # read-before-edit.sh — PreToolUse hook for Write|Edit (方案2 shift-left).
 # Blocks editing a source file NOT Read this session — immediate feedback at
@@ -111,7 +110,6 @@ fi
 echo "$MSG_RBE"
 exit 1
 `
-
 
 const BashGuardHook = `#!/bin/bash
 # bash-guard.sh — PreToolUse hook for Bash.
@@ -391,7 +389,6 @@ if [ $IS_FORGE_CMD -eq 1 ]; then
 fi
 
 echo "PASS"`
-
 
 const HazardGuardHook = `#!/bin/bash
 # hazard-guard.sh — PreToolUse hook for Bash. on-demand-guards 自动挡：高危命令
@@ -859,7 +856,6 @@ fi
 exit 1
 `
 
-
 const FileSentinelHook = `#!/bin/bash
 # file-sentinel.sh — PostToolUse hook for Bash.
 # Detects unauthorized file changes after Bash execution.
@@ -1256,4 +1252,3 @@ if [ -z "$TASK_REF" ] && [ -n "$SOURCE_CHANGES" ]; then
 fi
 
 echo "PASS"`
-

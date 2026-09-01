@@ -170,7 +170,6 @@ fi
 echo "PASS"
 `
 
-
 const InitSuggestHook = `#!/bin/bash
 # init-suggest.sh — SessionStart hook (advisory, non-blocking, global).
 # 用户级"项目自动 init"检测：装了 forge（plugin/npm）后，用户在任意 git 项目开
@@ -335,7 +334,6 @@ echo "PASS [init-suggest] Advisory: 检测到 git 项目 '$PROJ' 未启用 forge
 exit 0
 `
 
-
 const TaskResumeHook = `#!/bin/bash
 # task-resume.sh — SessionStart hook (advisory, non-blocking, project-scoped).
 # 会话启动自动注入活跃任务的接续上下文 + 把当前 session 锚定到任务。接手方冷启动即知有
@@ -353,7 +351,6 @@ const TaskResumeHook = `#!/bin/bash
 exec forge task resume --hook
 `
 
-
 const CompactResumeHook = `#!/bin/bash
 # compact-resume.sh — PostCompact hook (advisory, hosts with a compaction lifecycle, gap#2 根治层·设标志半边)。
 # 压缩完成时为本 session 标记"刚压缩过"（有 session ID 写 per-session sentinel，无则置
@@ -370,7 +367,6 @@ const CompactResumeHook = `#!/bin/bash
 exec forge task resume --compact-flag
 `
 
-
 const ResumeReinjectHook = `#!/bin/bash
 # resume-reinject.sh — UserPromptSubmit hook (advisory, hosts with a compaction lifecycle, gap#2 根治层·重注入半边)。
 # 若本 session 刚压缩过（per-session sentinel 或 legacy ResumeStale）→ 输出 PASS+完整接续视图
@@ -384,4 +380,3 @@ const ResumeReinjectHook = `#!/bin/bash
 # Thin wrapper：逻辑在 forge task resume --reinject（Go）。bash 仅 exec 转发。
 exec forge task resume --reinject
 `
-

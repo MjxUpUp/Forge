@@ -15,4 +15,3 @@ package hooks
 //
 // Go 侧把 tool_input 字段提取到 env var（FORGE_FILE_PATH、FORGE_CONTENT、
 // FORGE_COMMAND、FORGE_OLD_STRING、FORGE_NEW_STRING、FORGE_TOOL_NAME），bash 脚本无需自己解析 JSON。
-
