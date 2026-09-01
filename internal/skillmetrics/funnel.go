@@ -1,4 +1,4 @@
-// Package skillseval funnel.go — 被动触发漏斗（命中 → 送达 → 加载）。
+// funnel.go — 被动触发漏斗（命中 → 送达 → 加载）。
 //
 // 背景（2026-08-16 触发臂审查）：skill-trigger 的可观测原本只到「引擎命中」——134 次命中
 // 0 次可验证转化，无法区分「模型读了注入并照做」与「注入被无视」。但测量信号其实全在盘上：
@@ -263,7 +263,7 @@ func (ix *engagedIndex) engagedAfter(session, skill string, at time.Time) bool {
 	return false
 }
 
-// engagedAfter 报告 (session, skill, 命中时刻) 之后 EngageWindow 内是否出现对该 skill 的
+// EngagedAfter 报告 (session, skill, 命中时刻) 之后 EngageWindow 内是否出现对该 skill 的
 // 遵循信号：Read 其 SKILL.md（canonical 路径或 embed cache 路径，Windows 大小写与分隔符
 // 归一后后缀匹配）或 Skill(<skill>) 显式调用。空 session 无法归因（旧条目），返 false。
 //
