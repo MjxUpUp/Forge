@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"errors"
@@ -30,7 +30,7 @@ func TestKimiAdvisoryEnqueueIsSilentAndQueued(t *testing.T) {
 	sess := fmt.Sprintf("kimi-q-%d", time.Now().UnixNano())
 
 	stdout, _, err := captureOutput(t, func() error {
-		return emitAdvisoryRouted("kimi", "PreToolUse", "task-guard", root, sess, true, "[task-guard] Untracked source edit — no active task. Why: changes outside a task skip verify/review/score gates.")
+		return EmitAdvisoryRouted("kimi", "PreToolUse", "task-guard", root, sess, true, "[task-guard] Untracked source edit — no active task. Why: changes outside a task skip verify/review/score gates.")
 	})
 	if err != nil {
 		t.Fatalf("advisory must stay an allow (nil error), got %v", err)
@@ -58,7 +58,7 @@ func TestKimiAdvisoryDrainOnUserPromptSubmit(t *testing.T) {
 	enqueueKimiAdvisory(root, sess, "test-nudge", "PostToolUse", "[forge] 3 source writes with no paired test")
 
 	stdout, _, err := captureOutput(t, func() error {
-		return emitAdvisoryRouted("kimi", "UserPromptSubmit", "resume-reinject", root, sess, true, "task 已接续：feat/xxx")
+		return EmitAdvisoryRouted("kimi", "UserPromptSubmit", "resume-reinject", root, sess, true, "task 已接续：feat/xxx")
 	})
 	if err != nil {
 		t.Fatalf("UserPromptSubmit must return nil, got %v", err)
@@ -176,7 +176,7 @@ func TestKimiAdvisoryBlockPathUntouched(t *testing.T) {
 	// 设计内 deny（read-before-edit/hazard-guard/freeze-guard 的 FAIL）仍以
 	// stderr + HookBlockError 阻断——队列绝不拦截它们。
 	_, stderr, err := captureOutput(t, func() error {
-		return emitAdvisoryRouted("kimi", "PreToolUse", "read-before-edit", root, sess, false, "BLOCKED: 未读即改")
+		return EmitAdvisoryRouted("kimi", "PreToolUse", "read-before-edit", root, sess, false, "BLOCKED: 未读即改")
 	})
 	var blockErr *HookBlockError
 	if !errors.As(err, &blockErr) {
@@ -195,7 +195,7 @@ func TestEmitAdvisoryRoutedOtherHostsUnchanged(t *testing.T) {
 
 	// Claude 兼容宿主保持裸 hookSpecificOutput 注入——不入队、不静默。
 	stdout, _, err := captureOutput(t, func() error {
-		return emitAdvisoryRouted("", "PreToolUse", "task-guard", root, "s1", true, "[task-guard] warn")
+		return EmitAdvisoryRouted("", "PreToolUse", "task-guard", root, "s1", true, "[task-guard] warn")
 	})
 	if err != nil {
 		t.Fatalf("claude allow must return nil, got %v", err)
@@ -211,7 +211,7 @@ func TestEmitAdvisoryRoutedOtherHostsUnchanged(t *testing.T) {
 func TestKimiAdvisoryEmptyDetailStaysSilent(t *testing.T) {
 	root := newKimiAdvisoryFixture(t)
 	stdout, _, err := captureOutput(t, func() error {
-		return emitAdvisoryRouted("kimi", "PostToolUse", "auto-compile", root, "s1", true, "  ")
+		return EmitAdvisoryRouted("kimi", "PostToolUse", "auto-compile", root, "s1", true, "  ")
 	})
 	if err != nil || stdout != "" {
 		t.Errorf("whitespace-only detail must stay silent and unqueued, got stdout=%q err=%v", stdout, err)
@@ -226,7 +226,7 @@ func TestKimiAdvisoryGlobalHookNoRoot(t *testing.T) {
 	// root==""（global hook）：没有项目 DataDir 可入队——静默、不崩（这些 hook
 	// 在 kimi 上本就是已文档化的失效行为）。
 	stdout, _, err := captureOutput(t, func() error {
-		return emitAdvisoryRouted("kimi", "SessionStart", "skill-scan", "", "s1", true, "[skill-scan] advisory")
+		return EmitAdvisoryRouted("kimi", "SessionStart", "skill-scan", "", "s1", true, "[skill-scan] advisory")
 	})
 	if err != nil || stdout != "" {
 		t.Errorf("global-hook advisory on a dropped event must stay silent, got stdout=%q err=%v", stdout, err)

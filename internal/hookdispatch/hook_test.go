@@ -1,4 +1,4 @@
-package cli
+package hookdispatch
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
@@ -34,7 +35,7 @@ func newHookProject(t *testing.T) string {
 	return root
 }
 
-// runHookCapture 把 stdinJSON（"" 表示不动 stdin）喂给 runHook(hookName) 并捕获
+// runHookCapture 把 stdinJSON（"" 表示不动 stdin）喂给 RunHook(hookName) 并捕获
 // stdout；返回捕获输出与 hook 错误。fixture（项目目录/chdir/env）由调用方自备——
 // 本 helper 只覆盖各 hook 测试共享的 stdin+stdout 捕获样板。传裸 cobra root
 // （非 nil）：读 cmd.Root().Version 的分发不得空指针。
@@ -61,7 +62,7 @@ func runHookCapture(t *testing.T, hookName, stdinJSON string) (string, error) {
 	}
 	var hookErr error
 	out := captureStdout(t, func() {
-		hookErr = runHook(&cobra.Command{}, []string{hookName})
+		hookErr = RunHook(&cobra.Command{}, []string{hookName})
 	})
 	return out, hookErr
 }
@@ -89,7 +90,7 @@ func TestHookOutput_AllowOnMissingProject(t *testing.T) {
 }
 
 func TestHookOutput_UnknownHook(t *testing.T) {
-	err := runHook(nil, []string{"nonexistent-hook"})
+	err := RunHook(nil, []string{"nonexistent-hook"})
 	if err == nil {
 		t.Fatal("expected error for unknown hook")
 	}
@@ -341,9 +342,9 @@ func TestProjectTagFor_StableAndCleanInvariant(t *testing.T) {
 		t.Fatalf("Abs: %v", err)
 	}
 
-	tagDirect := projectTagFor(dir)
-	tagAbs := projectTagFor(abs)
-	tagRedundant := projectTagFor(filepath.Join(abs, "x", ".."))
+	tagDirect := ProjectTagFor(dir)
+	tagAbs := ProjectTagFor(abs)
+	tagRedundant := ProjectTagFor(filepath.Join(abs, "x", ".."))
 
 	if tagDirect != tagAbs {
 		t.Errorf("tag differs for temp dir vs absolute form: %q vs %q", tagDirect, tagAbs)
@@ -357,7 +358,7 @@ func TestProjectTagFor_StableAndCleanInvariant(t *testing.T) {
 
 	// Distinct directories must not collide.
 	other := t.TempDir()
-	if projectTagFor(other) == tagDirect {
+	if ProjectTagFor(other) == tagDirect {
 		t.Errorf("two different temp dirs produced the same project tag %q", tagDirect)
 	}
 }
@@ -466,7 +467,7 @@ func chdirToNonForgeRoot(t *testing.T) func() {
 	if err := os.Chdir(root); err != nil {
 		t.Skipf("cannot chdir to %s to simulate non-forge project: %v", root, err)
 	}
-	if _, ferr := findProjectRoot(); ferr == nil {
+	if _, ferr := projectroot.Find(); ferr == nil {
 		os.Chdir(orig)
 		t.Skipf("volume root %s still resolves to a forge project; cannot isolate non-forge scenario", root)
 	}
@@ -754,5 +755,20 @@ func TestRunHookSanitizesSessionIDAtEntry(t *testing.T) {
 	}
 	if !sawToolFailure {
 		t.Fatal("no CheckToolFailure entry recorded — dispatch did not reach failure-track")
+	}
+}
+
+// TestSkillTriggerHookFn_NilSilentSkip 钉死接缝 nil 语义：无注册器注入的二进制
+// （进程内单测）遇到 skill-trigger 分发静默跳过而非 panic——生产由 cli 注册器
+// 注入实路径（2026-09 普查 A2-2）。
+func TestSkillTriggerHookFn_NilSilentSkip(t *testing.T) {
+	defer func(orig func(HookInput, string, string, string) error) {
+		SkillTriggerHookFn = orig
+	}(SkillTriggerHookFn)
+	SkillTriggerHookFn = nil
+
+	err := RunHook(&cobra.Command{}, []string{"skill-trigger"})
+	if err != nil {
+		t.Fatalf("nil 接缝应静默跳过, got err: %v", err)
 	}
 }

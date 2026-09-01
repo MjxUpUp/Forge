@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 )
 
 // suggest_tag_test.go — suggestTagFor / forgedata.FindGitRoot 的 tag 一致性守卫（N4 / F1）。
@@ -33,8 +34,8 @@ func TestSuggestTagFor_GitRootKeyed(t *testing.T) {
 	if err := os.MkdirAll(sub, 0755); err != nil {
 		t.Fatalf(`mkdir sub: %v`, err)
 	}
-	tagRoot := suggestTagFor(root)
-	tagSub := suggestTagFor(sub)
+	tagRoot := hookdispatch.SuggestTagFor(root)
+	tagSub := hookdispatch.SuggestTagFor(sub)
 	if tagRoot == `` {
 		t.Fatal(`root tag empty`)
 	}
@@ -49,7 +50,7 @@ func TestSuggestTagFor_DifferentProjects(t *testing.T) {
 	mkGitProjCLI(t, p1)
 	p2 := t.TempDir()
 	mkGitProjCLI(t, p2)
-	if suggestTagFor(p1) == suggestTagFor(p2) {
+	if hookdispatch.SuggestTagFor(p1) == hookdispatch.SuggestTagFor(p2) {
 		t.Fatalf(`不同 git 项目应不同 tag`)
 	}
 }
@@ -59,8 +60,8 @@ func TestSuggestTagFor_DifferentProjects(t *testing.T) {
 func TestSuggestTagFor_NonGitFallback(t *testing.T) {
 	a := t.TempDir()
 	b := t.TempDir()
-	ta := suggestTagFor(a)
-	tb := suggestTagFor(b)
+	ta := hookdispatch.SuggestTagFor(a)
+	tb := hookdispatch.SuggestTagFor(b)
 	if ta == `` || tb == `` {
 		t.Fatal(`非 git tag empty`)
 	}
