@@ -14,7 +14,7 @@
 // 注入、无工具调用事件，自然不产生记录——解析点扩展见 ExtractSkillName）。替代断链的 pi 旧源
 // （~/.pi/research/skill-usage.jsonl，pi 退出专精后无人写）。数据层 agent-neutral，符合项目
 // 「外层框架不得依赖某个 agent」的原则。跨任务读取走 LoadAllAll（含归档 toollog-*.jsonl）。
-package skillseval
+package skillmetrics
 
 import (
 	"cmp"

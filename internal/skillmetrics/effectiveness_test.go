@@ -1,4 +1,4 @@
-package skillseval
+package skillmetrics
 
 import (
 	"os"

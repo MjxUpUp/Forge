@@ -8,7 +8,7 @@
 //
 // 目录扫描（skilltrigger.LoadAll）在 cli 层做——本包若 import skilltrigger 会成环
 // （skilltrigger → taskpipeline → skillseval），故此处只收 skill 名集做纯对比。
-package skillseval
+package skillmetrics
 
 import (
 	"slices"

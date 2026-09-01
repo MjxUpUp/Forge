@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/act"
-	"github.com/MjxUpUp/Forge/internal/skillseval"
+	"github.com/MjxUpUp/Forge/internal/skillmetrics"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/spf13/cobra"
 )
@@ -189,7 +189,7 @@ func printSkillReach(root, taskRef string) {
 		if c.ToolName != `Skill` {
 			continue
 		}
-		name := skillseval.ExtractSkillName(c.ToolInput)
+		name := skillmetrics.ExtractSkillName(c.ToolInput)
 		if name == "" || seen[name] {
 			continue
 		}

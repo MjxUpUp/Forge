@@ -9,7 +9,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"strings"
 
-	"github.com/MjxUpUp/Forge/internal/skillseval"
+	"github.com/MjxUpUp/Forge/internal/skillmetrics"
 	"github.com/spf13/cobra"
 )
 
@@ -39,7 +39,7 @@ func runSkillsAnalyze(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	rep, err := skillseval.AnalyzeWeaknesses(proj, canonical)
+	rep, err := skillmetrics.AnalyzeWeaknesses(proj, canonical)
 	if err != nil {
 		return err
 	}
@@ -57,7 +57,7 @@ func runSkillsAnalyze(cmd *cobra.Command, args []string) error {
 }
 
 // printWeaknessReport 渲染人读报告：每个信号簇带证据，caveat 收尾（报告看不见什么的诚实性）。
-func printWeaknessReport(rep *skillseval.WeaknessReport) {
+func printWeaknessReport(rep *skillmetrics.WeaknessReport) {
 	fmt.Printf("弱点挖掘报告（只读证据，不裁决——修改走 decide --prediction + battery 闭环）\n")
 	fmt.Printf("任务结论: %d 个  盲区率: %.0f%% (%d)  趋势: %s", rep.TotalTasks, rep.BlindSpotRate*100, rep.BlindSpotCount, rep.Trend)
 	if rep.Trend != "" && rep.Trend != "insufficient" {
