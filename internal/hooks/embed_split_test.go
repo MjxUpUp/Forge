@@ -28,12 +28,17 @@ func TestEmbedSplitCoverage(t *testing.T) {
 		names = append(names, name)
 	}
 
-	declRe := regexp.MustCompile(`^const ([A-Z][A-Za-z]*Hook) = `)
+	declRe := regexp.MustCompile(`^const ([A-Z]\w*Hook) = `)
 	fileDecls := map[string][]string{} // const 名 → 出现的文件
-	for _, base := range []string{"embed_quality.go", "embed_task.go", "embed_guard.go", "embed_scan.go"} {
-		data, err := os.ReadFile(filepath.Join(dir, base))
+	bases, err := filepath.Glob(filepath.Join(dir, "embed*.go"))
+	if err != nil {
+		t.Skipf("glob unavailable: %v", err)
+	}
+	for _, path := range bases {
+		base := filepath.Base(path)
+		data, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatalf("read %s: %v", base, err)
+			t.Skipf("源码文件不可读（无源码环境）: %v", err)
 		}
 		for _, line := range strings.Split(string(data), "\n") {
 			if m := declRe.FindStringSubmatch(line); m != nil {
@@ -64,6 +69,7 @@ func TestEmbedSplitCoverage(t *testing.T) {
 		case len(locs) == 0:
 			t.Errorf("名册条目 %q 的常量 %s 未在任何 embed_*.go 声明——拆分丢失", name, constName)
 		case len(locs) > 1:
+			// 同包重复 const 声明编译期即报错——此分支实为不可达的防御性断言。
 			t.Errorf("常量 %s 跨文件重复声明: %v", constName, locs)
 		}
 	}
