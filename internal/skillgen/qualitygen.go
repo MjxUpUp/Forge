@@ -8,7 +8,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/doclint"
 	"github.com/MjxUpUp/Forge/internal/protocol"
-	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -162,7 +162,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	// task pipeline 章节
 	sb.WriteString("## 任务级管道\n\n")
 	sb.WriteString("当检测到任务上下文（非 main 分支或显式任务）时，执行以下轻量门禁：\n\n")
-	gates := taskpipeline.DefaultGates()
+	gates := tasktypes.DefaultGates()
 	for i, g := range gates {
 		auto := ""
 		if g.Auto {

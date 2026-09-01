@@ -1,4 +1,4 @@
-package taskpipeline
+package tasktypes
 
 import (
 	crand "crypto/rand"
@@ -200,20 +200,20 @@ type Assignment struct {
 }
 
 // 分派状态转换错误。用哨兵值（非 fmt.Errorf 内联），使调用方能精确匹配（如 mine 在 TOCTOU 竞态后
-// 静默跳过 errClaimNotOffered）。
+// 静默跳过 ErrClaimNotOffered）。
 var (
-	errAssignmentEmptyAgent = errors.New(`assignment: assignee agent must not be empty`)
-	errAssignmentExists     = errors.New(`assignment: task already has an assignment (use reassign to change owner)`)
-	errNoAssignment         = errors.New(`assignment: task has no assignment`)
-	errClaimWrongAgent      = errors.New(`assignment: claim agent does not match the offered assignee`)
-	errClaimNotOffered      = errors.New(`assignment: can only claim an offered task`)
-	errDeliverNotClaimed    = errors.New(`assignment: can only deliver a claimed task`)
-	errQuestionNotClaimed   = errors.New(`assignment: can only raise a question on a claimed task`)
-	errAnswerNotInputReq    = errors.New(`assignment: can only answer a task awaiting input (input-required)`)
-	errFailNotClaimed       = errors.New(`assignment: can only fail a claimed task`)
-	errCancelTerminal       = errors.New(`assignment: can only cancel a non-terminal task (offered/claimed/input-required)`)
-	errReopenNotDelivered   = errors.New(`assignment: can only reopen a delivered task`)
-	errAbandonNotClaimed    = errors.New(`assignment: can only abandon a claimed task`)
+	ErrAssignmentEmptyAgent = errors.New(`assignment: assignee agent must not be empty`)
+	ErrAssignmentExists     = errors.New(`assignment: task already has an assignment (use reassign to change owner)`)
+	ErrNoAssignment         = errors.New(`assignment: task has no assignment`)
+	ErrClaimWrongAgent      = errors.New(`assignment: claim agent does not match the offered assignee`)
+	ErrClaimNotOffered      = errors.New(`assignment: can only claim an offered task`)
+	ErrDeliverNotClaimed    = errors.New(`assignment: can only deliver a claimed task`)
+	ErrQuestionNotClaimed   = errors.New(`assignment: can only raise a question on a claimed task`)
+	ErrAnswerNotInputReq    = errors.New(`assignment: can only answer a task awaiting input (input-required)`)
+	ErrFailNotClaimed       = errors.New(`assignment: can only fail a claimed task`)
+	ErrCancelTerminal       = errors.New(`assignment: can only cancel a non-terminal task (offered/claimed/input-required)`)
+	ErrReopenNotDelivered   = errors.New(`assignment: can only reopen a delivered task`)
+	ErrAbandonNotClaimed    = errors.New(`assignment: can only abandon a claimed task`)
 )
 
 // SessionLink is the anchoring of a task to an agent session (one item of
@@ -497,7 +497,7 @@ func (s *TaskState) IsComplete() bool {
 	}
 	gates := DefaultGates()
 	for _, g := range gates {
-		if !s.gatePassed(g.ID) {
+		if !s.GatePassed(g.ID) {
 			return false
 		}
 	}
@@ -511,7 +511,7 @@ func (s *TaskState) IsComplete() bool {
 func (s *TaskState) NextGate() string {
 	gates := DefaultGates()
 	for _, g := range gates {
-		if !s.gatePassed(g.ID) {
+		if !s.GatePassed(g.ID) {
 			return g.ID
 		}
 	}
@@ -703,7 +703,7 @@ func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit stri
 	// Skip if this gate already passed — prevents stop-hook from repeatedly verifying the same gate and producing 25x duplicate entries.
 	// 本 gate 已通过则跳过——防止 stop hook 反复 verify 同一 gate 产生 25 倍重复
 	// 条目。
-	if passed && s.gatePassed(gateID) {
+	if passed && s.GatePassed(gateID) {
 		return
 	}
 
@@ -721,7 +721,10 @@ func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit stri
 }
 
 // gatePassed 检查指定 gate 是否通过。
-func (s *TaskState) gatePassed(gateID string) bool {
+// GatePassed reports whether the named gate has a passing result.
+//
+// GatePassed 报告指定 gate 是否已有通过结果。
+func (s *TaskState) GatePassed(gateID string) bool {
 	for _, r := range s.History {
 		if r.Gate == gateID && r.Passed {
 			return true
@@ -736,7 +739,7 @@ func (s *TaskState) gatePassed(gateID string) bool {
 func (s *TaskState) CompletedGates() []string {
 	var result []string
 	for _, g := range DefaultGates() {
-		if s.gatePassed(g.ID) {
+		if s.GatePassed(g.ID) {
 			result = append(result, g.ID)
 		}
 	}
@@ -877,7 +880,7 @@ func (s *TaskState) HasAnySession(sid string) bool {
 // AddDecision 追加一条决策（自动补 ID 和时间）。
 func (s *TaskState) AddDecision(d Decision) {
 	if d.ID == "" {
-		d.ID = newContinuityID("d")
+		d.ID = NewContinuityID("d")
 	}
 	if d.DecidedAt.IsZero() {
 		d.DecidedAt = time.Now()
@@ -900,7 +903,7 @@ func (s *TaskState) AddNext(step string) {
 // AddBlocker 追加一条阻塞（默认 open）。
 func (s *TaskState) AddBlocker(b Blocker) {
 	if b.ID == "" {
-		b.ID = newContinuityID("b")
+		b.ID = NewContinuityID("b")
 	}
 	if b.RaisedAt.IsZero() {
 		b.RaisedAt = time.Now()
@@ -944,7 +947,7 @@ func (s *TaskState) OpenBlockers() []Blocker {
 // AddFinding 追加一条跨工具发现。
 func (s *TaskState) AddFinding(f Finding) {
 	if f.ID == "" {
-		f.ID = newContinuityID("f")
+		f.ID = NewContinuityID("f")
 	}
 	if f.RaisedAt.IsZero() {
 		f.RaisedAt = time.Now()
@@ -953,24 +956,6 @@ func (s *TaskState) AddFinding(f Finding) {
 		f.Status = "open"
 	}
 	s.Findings = append(s.Findings, f)
-}
-
-// EnrichFinding stamps the review context (Round + ChangeHash — see Finding)
-// onto a finding about to be recorded.
-//
-// EnrichFinding 把审查上下文（Round + ChangeHash——见 Finding）打到即将记录的
-// finding 上。best-effort 且 fail-open：非 git 目录或 hash 出错时 ChangeHash 留空，
-// 绝不阻断记录。仅当 finding 属于非当前周期（导入/回填）时调用方才显式传
-// Round/ChangeHash；零值字段一律在此推导。
-func EnrichFinding(root string, s *TaskState, f *Finding) {
-	if f.Round == 0 {
-		f.Round = len(s.ReviewRounds) + 1
-	}
-	if f.ChangeHash == "" {
-		if h, _, err := TaskFingerprint(root, s, GetHeadCommit(root)); err == nil {
-			f.ChangeHash = h
-		}
-	}
 }
 
 // ResolveFinding marks the finding with the given ID as fixed.
@@ -1049,10 +1034,10 @@ func (a *Assignment) ShouldNotify(now time.Time) bool {
 // 的 reassign 路径以记录原 owner），故 task 绝不静默易主。by 是发起派发的编排器 agent。
 func (s *TaskState) AssignTo(agent, role, by string) error {
 	if agent == `` {
-		return errAssignmentEmptyAgent
+		return ErrAssignmentEmptyAgent
 	}
 	if s.Assignment != nil {
-		return errAssignmentExists
+		return ErrAssignmentExists
 	}
 	now := time.Now()
 	s.Assignment = &Assignment{
@@ -1072,13 +1057,13 @@ func (s *TaskState) AssignTo(agent, role, by string) error {
 // （CLI 层）设 session 的 active-task-ref（认领 = 开始工作）——不放存储方法，使方法不耦合 session/root。
 func (s *TaskState) Claim(agent string) error {
 	if s.Assignment == nil {
-		return errNoAssignment
+		return ErrNoAssignment
 	}
 	if s.Assignment.Agent != agent {
-		return errClaimWrongAgent
+		return ErrClaimWrongAgent
 	}
 	if s.Assignment.Status != AssignOffered {
-		return errClaimNotOffered
+		return ErrClaimNotOffered
 	}
 	now := time.Now()
 	s.Assignment.Status = AssignClaimed
@@ -1091,10 +1076,10 @@ func (s *TaskState) Claim(agent string) error {
 // Deliver 把 claimed→delivered——这是放行依赖方的信号。要求 claimed（禁止 offered→delivered 跳跃）。设 DeliveredAt。
 func (s *TaskState) Deliver() error {
 	if s.Assignment == nil {
-		return errNoAssignment
+		return ErrNoAssignment
 	}
 	if s.Assignment.Status != AssignClaimed {
-		return errDeliverNotClaimed
+		return ErrDeliverNotClaimed
 	}
 	now := time.Now()
 	s.Assignment.Status = AssignDelivered
@@ -1110,10 +1095,10 @@ func (s *TaskState) Deliver() error {
 // 编排器的答复（task answer）会把这个 question 追加进 Decisions，使决议可追溯。
 func (s *TaskState) Question(content string) error {
 	if s.Assignment == nil {
-		return errNoAssignment
+		return ErrNoAssignment
 	}
 	if s.Assignment.Status != AssignClaimed {
-		return errQuestionNotClaimed
+		return ErrQuestionNotClaimed
 	}
 	now := time.Now()
 	s.Assignment.Status = AssignInputRequired
@@ -1128,10 +1113,10 @@ func (s *TaskState) Question(content string) error {
 // Answer 把 input-required→claimed，把编排器的答复记成一条 Decision，使回抛的结局持久（抗压缩、跨工具可见）。要求 input-required。
 func (s *TaskState) Answer(content string) error {
 	if s.Assignment == nil {
-		return errNoAssignment
+		return ErrNoAssignment
 	}
 	if s.Assignment.Status != AssignInputRequired {
-		return errAnswerNotInputReq
+		return ErrAnswerNotInputReq
 	}
 	s.Assignment.Status = AssignClaimed
 	if content != `` {
@@ -1154,10 +1139,10 @@ func (s *TaskState) Answer(content string) error {
 // Fail 把 claimed→failed，记录 owner 为何无法完成。要求 claimed。
 func (s *TaskState) Fail(reason string) error {
 	if s.Assignment == nil {
-		return errNoAssignment
+		return ErrNoAssignment
 	}
 	if s.Assignment.Status != AssignClaimed {
-		return errFailNotClaimed
+		return ErrFailNotClaimed
 	}
 	s.Assignment.Status = AssignFailed
 	s.Assignment.FailReason = reason
@@ -1171,7 +1156,7 @@ func (s *TaskState) Fail(reason string) error {
 // Cancel 把非终态 task（offered/claimed/input-required）→canceled，记录编排器撤回分派的原因。终态（delivered/failed/canceled）不能 cancel。
 func (s *TaskState) Cancel(reason string) error {
 	if s.Assignment == nil {
-		return errNoAssignment
+		return ErrNoAssignment
 	}
 	switch s.Assignment.Status {
 	case AssignOffered, AssignClaimed, AssignInputRequired:
@@ -1179,7 +1164,7 @@ func (s *TaskState) Cancel(reason string) error {
 		s.Assignment.CancelReason = reason
 		return nil
 	default:
-		return errCancelTerminal
+		return ErrCancelTerminal
 	}
 }
 
@@ -1189,10 +1174,10 @@ func (s *TaskState) Cancel(reason string) error {
 // Reopen 把 delivered→claimed，用于交付后发现 bug。原因记入 assignment 供追溯。
 func (s *TaskState) Reopen(reason string) error {
 	if s.Assignment == nil {
-		return errNoAssignment
+		return ErrNoAssignment
 	}
 	if s.Assignment.Status != AssignDelivered {
-		return errReopenNotDelivered
+		return ErrReopenNotDelivered
 	}
 	s.Assignment.Status = AssignClaimed
 	s.Assignment.DeliveredAt = nil
@@ -1231,10 +1216,10 @@ func (s *TaskState) IsReopened() bool {
 // （cli/task_assignment.go runTaskReclaim），它扫描 IsClaimedStale 任务并调用本方法。
 func (s *TaskState) Abandon() error {
 	if s.Assignment == nil {
-		return errNoAssignment
+		return ErrNoAssignment
 	}
 	if s.Assignment.Status != AssignClaimed {
-		return errAbandonNotClaimed
+		return ErrAbandonNotClaimed
 	}
 	s.Assignment.Status = AssignOffered
 	s.Assignment.ClaimedAt = nil
@@ -1253,9 +1238,13 @@ func (s *TaskState) Abandon() error {
 // crypto/rand 后缀彻底去碰撞（跨进程碰撞概率从 15ms 并行窗口降到 2^-32）。
 var continuityCounter uint64
 
-// newContinuityID 生成 continuity 实体（Decision/Blocker/Finding）的短唯一 ID：前缀 +
+// NewContinuityID generates a short unique ID for continuity entities
+// (Decision/Blocker/Finding): prefix + UnixNano base36 (time-monotonic) +
+// atomic seq (in-process same-nano dedup) + 4 random bytes (cross-process).
+//
+// NewContinuityID 生成 continuity 实体（Decision/Blocker/Finding）的短唯一 ID：前缀 +
 // UnixNano base36（时间序单调）+ 原子 seq（进程内同纳秒去重）+ 4 字节随机（跨进程去碰撞）。
-func newContinuityID(prefix string) string {
+func NewContinuityID(prefix string) string {
 	seq := atomic.AddUint64(&continuityCounter, 1)
 	nano := strconv.FormatInt(time.Now().UnixNano(), 36)
 	var b [4]byte

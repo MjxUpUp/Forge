@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,7 +154,7 @@ func TestInferDesignPhases(t *testing.T) {
 }
 
 func TestAllDesignPhases(t *testing.T) {
-	all := allDesignPhases()
+	all := tasktypes.AllDesignPhases()
 	if len(all) != 6 {
 		t.Errorf("expected 6 design phases, got %d", len(all))
 	}

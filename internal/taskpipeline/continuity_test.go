@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"strings"
 	"testing"
 )
@@ -142,7 +143,7 @@ func TestAddFindingAutoFill(t *testing.T) {
 func TestNewContinuityID_NoCollision(t *testing.T) {
 	seen := make(map[string]bool, 500)
 	for i := 0; i < 500; i++ {
-		id := newContinuityID("d")
+		id := tasktypes.NewContinuityID("d")
 		if id == "" || !strings.HasPrefix(id, "d") {
 			t.Fatalf("ID 格式异常（应以 d 开头）: %q", id)
 		}
@@ -152,8 +153,8 @@ func TestNewContinuityID_NoCollision(t *testing.T) {
 		seen[id] = true
 	}
 	// 不同前缀各自唯一，且互不干扰。
-	b1 := newContinuityID("b")
-	f1 := newContinuityID("f")
+	b1 := tasktypes.NewContinuityID("b")
+	f1 := tasktypes.NewContinuityID("f")
 	if !strings.HasPrefix(b1, "b") || !strings.HasPrefix(f1, "f") {
 		t.Fatalf("前缀异常: b=%q f=%q", b1, f1)
 	}
