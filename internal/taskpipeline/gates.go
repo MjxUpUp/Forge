@@ -1,5 +1,22 @@
 package taskpipeline
 
+// Gate IDs for the 3 standard task-level quality gates — the single source of
+// truth every package (cli rendering, gate dispatch) must consume.
+//
+// 3 个标准 task 级质量 gate 的 ID——单一真相源，所有消费方（cli 渲染、gate
+// 分发）一律引这里的常量，禁止手写字面量。checklog 侧与 gate 同名的
+// CheckName（Verify/Complete）由 gates_test.go 互钉；implement 无同名
+// CheckName（其证据走 auto-compile/assertion-check），见该测试注释
+// （2026-09 代码普查 R2）。
+const (
+	// GateImplement is the ID of the implement gate (代码实现).
+	GateImplement = "task-implement"
+	// GateVerify is the ID of the verify gate (测试验证).
+	GateVerify = "task-verify"
+	// GateComplete is the ID of the complete gate (完成确认).
+	GateComplete = "task-complete"
+)
+
 // DefaultGates returns the 3 standard task-level quality gates (v0.17: trimmed from 5).
 //
 // DefaultGates 返回 3 个标准 task 级质量 gate（v0.17：从 5 个精简而来）。这些 gate
@@ -9,19 +26,19 @@ func DefaultGates() []TaskGate {
 	// 内部工作流步骤，不再是强制 gate。
 	return []TaskGate{
 		{
-			ID:          "task-implement",
+			ID:          GateImplement,
 			Name:        "代码实现",
 			Description: "代码已实现（编译/断言改 advisory，由 agent 自检）",
 			Auto:        true, // v0.25 advisory: auto-compile.sh + assertion-check.sh 只提醒不阻塞
 		},
 		{
-			ID:          "task-verify",
+			ID:          GateVerify,
 			Name:        "测试验证",
 			Description: "测试伴随变更（advisory 提醒，由 agent 自检）",
 			Auto:        false,
 		},
 		{
-			ID:          "task-complete",
+			ID:          GateComplete,
 			Name:        "完成确认",
 			Description: "端到端确认功能可用",
 			Auto:        false,

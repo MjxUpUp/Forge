@@ -706,7 +706,7 @@ func scanFile(path string, lookPath func(string) (string, error)) (int, []binCan
 		// "id": "forge"、URL、codebuddy known_marketplaces.json 里 "Forge loop-engineering
 		// quality gates: …" 这类 description）只是元数据/文案。各 host 的 forge 接线
 		// 命令一律是 `forge hook <event>` 的调用形态（含 --agent 变体；`forge gate <id>`
-		// 是 settings 层认可的等价前缀，见 internal/hooks/settings.go isForgeHookCommand 的合法命令判定），
+		// 是 settings 层认可的等价前缀，见 internal/hooks.IsForgeHookCommand 的合法命令判定），
 		// 故只认"紧跟在 forge token 后的子命令词位上是 hook/gate"的行——词在任何位置
 		// 出现都不算。否则 plugin 接线坏了但注册表还在的机器会假报 ok（评审 #1 的失效
 		// 场景），bare 词门槛则被 "quality gates" 文案击穿（本轮 E2E 实证）。
@@ -734,11 +734,12 @@ var tokenRe = regexp.MustCompile(`[A-Za-z0-9_\-./\\:~@]+`)
 
 // invocationSubcommands are the subcommand words that turn a forge token into wiring:
 // `forge hook <event>` (every host's hook wiring) and `forge gate <id>` (the settings
-// layer's accepted equivalent prefix — internal/hooks/settings.go's isForgeHookCommand, mirrored in agentbridge/codex.go).
+// layer's accepted equivalent prefix — internal/hooks.IsForgeHookCommand, the single
+// source all consumers share).
 //
 // invocationSubcommands 是让 forge token 构成接线的子命令词：`forge hook <event>`
 // （所有 host 的 hook 接线）与 `forge gate <id>`（settings 层认可的等价前缀——见
-// internal/hooks/settings.go 的 isForgeHookCommand，agentbridge/codex.go 有镜像）。
+// internal/hooks.IsForgeHookCommand，全仓消费方共用的单一真相源）。
 var invocationSubcommands = []string{"hook", "gate"}
 
 // forgeInvocation extracts the first forge token that sits in an invocation position —

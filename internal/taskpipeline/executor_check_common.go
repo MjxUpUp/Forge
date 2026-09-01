@@ -61,7 +61,7 @@ func checkPrerequisiteGates(gateID string, state *TaskState) error {
 // 未完成时记录（重检 completed 任务不重复声明）。
 func recordAgentClaimAudit(root string, gateID string, state *TaskState) {
 	switch gateID {
-	case "task-verify":
+	case GateVerify:
 		recordAudit(root, &checklog.Entry{
 			Check:   checklog.CheckTaskVerify,
 			Passed:  true,
@@ -69,7 +69,7 @@ func recordAgentClaimAudit(root string, gateID string, state *TaskState) {
 			TaskRef: state.TaskRef,
 			Detail:  `agent-claim: 通过 task-verify gate（agent 自述验证完成）`,
 		})
-	case "task-complete":
+	case GateComplete:
 		recordAudit(root, &checklog.Entry{
 			Check:   checklog.CheckTaskComplete,
 			Passed:  true,

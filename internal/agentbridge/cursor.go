@@ -24,7 +24,7 @@ import (
 // guidance 文件也不再由此生成——指令文本由 skillgen 层统一处理。既有项目级文件不动
 // （清理由卸载/清理层负责，translator 不管）。
 //
-// merge 语义：command 非 forge 来源的条目（见 isForgeBridgeCommand）原样保留；
+// merge 语义：command 非 forge 来源的条目（见 hooks.IsForgeHookCommand）原样保留；
 // forge 条目整体替换为当前生成集，Translate 幂等。
 type CursorTranslator struct{}
 
@@ -209,7 +209,7 @@ func buildCursorHooks() map[string]any {
 			}
 			for _, h := range m.Hooks {
 				cmd := h.Command
-				if isForgeBridgeCommand(cmd) {
+				if hooks.IsForgeHookCommand(cmd) {
 					cmd += " --agent cursor"
 				}
 				hooksMap[ce] = append(hooksMap[ce], cursorHookEntry{

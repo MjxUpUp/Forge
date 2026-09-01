@@ -29,7 +29,7 @@ import (
 //
 // 用户级路径对齐 kimi/claude-code 模型：一份全机器注册替代逐项目的
 // .windsurf/hooks.json 副本，forge init/sync 不再往项目目录写 hook 配置（用户级
-// 资产迁移）。merge 语义：command 非 forge 来源的条目（见 isForgeBridgeCommand）
+// 资产迁移）。merge 语义：command 非 forge 来源的条目（见 hooks.IsForgeHookCommand）
 // 原样保留；forge 条目整体替换为当前生成集，Translate 幂等。
 type WindsurfTranslator struct{}
 
@@ -345,9 +345,11 @@ func buildWindsurfHooks() map[string]any {
 	}
 }
 
+// forgeRulesStart/End 是 windsurf global_rules.md 托管段的 HTML 注释标记——
+// util.ForgeSectionStart/End（单一真相源）的别名（2026-09 代码普查 R3）。
 const (
-	forgeRulesStart = "<!-- FORGE:START -->"
-	forgeRulesEnd   = "<!-- FORGE:END -->"
+	forgeRulesStart = util.ForgeSectionStart
+	forgeRulesEnd   = util.ForgeSectionEnd
 )
 
 // windsurfUserLevelPreamble 前置在写入用户级 global_rules.md 的 forge 段段首。

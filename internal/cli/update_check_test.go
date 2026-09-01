@@ -33,7 +33,9 @@ func deadRegistryServer() string {
 // 31 分钟），用于验证过期后恢复查询。
 func ageNegativeCache(t *testing.T, home string) {
 	t.Helper()
-	path := filepath.Join(home, updateCacheDir, updateCacheFile)
+	// 测试侧刻意用字面量拼出缓存布局（<home>/.forge/update-cache.json）——钉住
+	// saveUpdateCache 经 forgedata.GlobalHome 落盘的真实位置。
+	path := filepath.Join(home, ".forge", updateCacheFile)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("负缓存文件须先存在: %v", err)
 	}
