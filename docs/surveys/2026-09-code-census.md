@@ -10,7 +10,11 @@
 > 5. feat/skillmetrics-split（89/B）——B 簇 6 文件迁 internal/skillmetrics；EngagedAfter 导出为 engaged 判定单一源。
 > 6. feat/task-domain-sinking（96/A）+ feat/continuity-attribution-sinking（98/A）——CompleteGeneric 完成编排与 AttributedPorcelain 归属过滤组装双双下沉 taskpipeline（A1 全项闭合）、attribution.PorcelainLines porcelain 单一入口、序言/播种收敛（P3-4 实测缩幅：14 处仅 3 处纯同构，其余为刻意 UX 分化，已注记）。
 >
-> **缓期项（含理由）**：~~A2-3 task 簇物理搬家~~ **已于 feat/clitask-extraction（95/A）执行完毕**——函数级重测绘推翻了缓期时的预估（簇对非簇真实依赖仅 7 助手，runHook/extractDetail 系标识符级测绘噪音），16 源文件+22 测试迁 internal/clitask，CommitBestEffort 接缝 + 16 导出符号；剩余缓期：A2-2 hookdispatch（runHook dispatcher 仍住 cli，现可经接缝评估）；P7 embed.go 分文件——hash 守卫已钉内容，重组纯排版收益；P8 命名清理——用户可见改名需产品决策；P3-6 JSON 读侧——普查自评低优先。
+> **缓期项（含理由）**：~~A2-3 task 簇物理搬家~~ **已于 feat/clitask-extraction（95/A）执行完毕**——函数级重测绘推翻了缓期时的预估（簇对非簇真实依赖仅 7 助手，runHook/extractDetail 系标识符级测绘噪音），16 源文件+22 测试迁 internal/clitask，CommitBestEffort 接缝 + 16 导出符号。
+>
+> **第二批（2026-09 全部落地）**：~~A2-2 hookdispatch~~ **feat/hookdispatch-extraction（89/B）**——9 源文件+14 测试迁 internal/hookdispatch，资产/执行两分闭合；SkillTriggerHookFn 接缝；compareVersions 家族下沉 util（semver.go）；~~P7 embed.go 分文件~~ **feat/hooks-embed-split（94/A）**——四文件按职能拆分，18 脚本逐字节等价 + TestEmbedSplitCoverage 结构守卫；~~P3-6 JSON 读侧~~ **feat/readjson-helper（86/B）**——util.ReadJSONFile 单一入口 + 四样板站点采纳（missing 语义各异故不做 49 站点盲替）；~~P8 命名清理~~ **docs/p8-naming-clarify（89/B）**——health 三义与 workspaces 路径撞车文档明示（用户可见改名/存储路径迁移仍留产品决策， cens 判定不变）。
+>
+> 至此本普查全部发现处置完毕：P1×4、P2×4、P3 表 8 项、死代码/staticcheck、A1-A4 全部执行或有据缓期。
 
 ## 总体结论
 
