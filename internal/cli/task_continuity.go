@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -986,19 +985,14 @@ func runTaskAttach(cmd *cobra.Command, args []string) error {
 }
 
 // gitPorcelain 返回 git status --porcelain 的行（已改未提交文件）。非 git 仓库或失败返 nil——
-// resume 不依赖 git，仅作「接手方一眼看到工作区状态」的辅助。
+// resume 不依赖 git，仅作「接手方一眼看到工作区状态」的辅助。porcelain 调用经
+// attribution.PorcelainLines 单一入口（2026-09 普查 P3-3：曾三处各自起 git 进程）。
 func gitPorcelain(root string) []string {
-	// quotepath=off 让非 ASCII（中文）路径保持原生 UTF-8 而非 C 转义八进制串，
-	// 接手方看到的是真实路径（与 attribution.ChangedFiles 同款修复）。
-	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()
+	lines, err := attribution.PorcelainLines(root)
 	if err != nil {
 		return nil
 	}
-	trimmed := strings.TrimSpace(string(out))
-	if trimmed == "" {
-		return nil
-	}
-	return strings.Split(trimmed, "\n")
+	return lines
 }
 
 // attributedPorcelain 是按本任务现场过滤后的 gitPorcelain（multi-task-concurrency

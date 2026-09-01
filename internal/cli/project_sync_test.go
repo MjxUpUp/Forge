@@ -32,20 +32,6 @@ func newSyncMachine(t *testing.T) string {
 	return root
 }
 
-// seedTaskState 经 SaveTaskState 写真实 TaskState（生产路径：SanitizeRef 折叠的
-// 文件名、MarshalIndent 格式），使 fixture 落在 forge 自己放它的确切位置。须在
-// 目标「机器」env 内调用。
-func seedTaskState(t *testing.T, root, ref string, mutate func(*taskpipeline.TaskState)) {
-	t.Helper()
-	s := &taskpipeline.TaskState{TaskRef: ref, Branch: ref, Source: `explicit`}
-	if mutate != nil {
-		mutate(s)
-	}
-	if err := taskpipeline.SaveTaskState(root, s); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // withMachine 以 cwd=root、FORGE_DATA_HOME=home 跑 fn（「机器」切换）。
 func withMachine(t *testing.T, root, home string, fn func()) {
 	t.Helper()
