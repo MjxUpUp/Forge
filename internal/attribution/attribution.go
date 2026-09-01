@@ -162,15 +162,35 @@ func loadLedger(root string) []Event {
 // ChangedFiles 返回全仓未提交变更集（相对路径、正斜杠），来自 git status
 // --porcelain——暂存与未暂存、tracked 与 untracked 全含；rename 取目标路径。
 // 非 git / git 失败 = 空集 + error。
-func ChangedFiles(root string) ([]string, error) {
-	// quotepath=off：默认开启时 git 会 C 转义非 ASCII 路径（"\346\226\207…"），
-	// 永远匹配不上 tool-usage 台账里的 Unicode 路径，这些文件的归因永久落 Orphans。
+// PorcelainLines runs `git status --porcelain` and returns the raw status lines
+// (quotepath=off so non-ASCII paths stay UTF-8).
+//
+// PorcelainLines 跑 `git status --porcelain` 返回原始状态行——porcelain 调用的
+// 单一入口（2026-09 普查 P3-3：曾三处各自起 git 进程；quotepath=off 让非 ASCII
+// 路径保持原生 UTF-8 而非 C 转义八进制串，永远匹配得上台账里的 Unicode 路径）。
+func PorcelainLines(root string) ([]string, error) {
 	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()
 	if err != nil {
 		return nil, err
 	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil, nil
+	}
+	return strings.Split(trimmed, "\n"), nil
+}
+
+// ChangedFiles returns the working-tree changed file paths parsed from
+// PorcelainLines (rename target taken, quotes stripped).
+//
+// ChangedFiles 返回工作区变更文件路径——自 PorcelainLines 派生（rename 取目标、剥引号）。
+func ChangedFiles(root string) ([]string, error) {
+	lines, err := PorcelainLines(root)
+	if err != nil {
+		return nil, err
+	}
 	var files []string
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+	for _, line := range lines {
 		if len(line) < 3 {
 			continue
 		}

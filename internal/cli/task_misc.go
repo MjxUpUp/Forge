@@ -12,6 +12,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// resolveTaskState 解析目标任务：--ref 显式指定优先，否则取 session 绑定的活跃
+// 任务。错误策略沿主流形态：显式 ref 失败原样透传、活跃态失败包英文上下文。
+// （2026-09 普查 P3-4：14 处序言实测仅少数纯同构——错误文案/nil 兜底/silent
+// 各异属刻意 UX，只收敛语义完全一致的 raw-err 族，其余保留原地。）
+func resolveTaskState(root, explicitRef string) (*taskpipeline.TaskState, error) {
+	if explicitRef != "" {
+		return taskpipeline.LoadTaskState(root, explicitRef)
+	}
+	state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	if err != nil {
+		return nil, fmt.Errorf("failed to load task state: %w", err)
+	}
+	return state, nil
+}
+
 func runTaskStatus(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 	explicitRef, _ := cmd.Flags().GetString("ref")
@@ -21,17 +36,9 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var state *taskpipeline.TaskState
-	if explicitRef != "" {
-		state, err = taskpipeline.LoadTaskState(root, explicitRef)
-		if err != nil {
-			return err
-		}
-	} else {
-		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-		if err != nil {
-			return fmt.Errorf("failed to load task state: %w", err)
-		}
+	state, err := resolveTaskState(root, explicitRef)
+	if err != nil {
+		return err
 	}
 	if state == nil {
 		if asJSON {
@@ -210,17 +217,9 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 	ag, _ := cmd.Flags().GetString(`acceptance-gate`)
 	sd, _ := cmd.Flags().GetString("skill-decisions")
 
-	var state *taskpipeline.TaskState
-	if explicitRef != "" {
-		state, err = taskpipeline.LoadTaskState(root, explicitRef)
-		if err != nil {
-			return err
-		}
-	} else {
-		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-		if err != nil {
-			return fmt.Errorf("failed to load task state: %w", err)
-		}
+	state, err := resolveTaskState(root, explicitRef)
+	if err != nil {
+		return err
 	}
 	if state == nil {
 		return fmt.Errorf("no active task. Run 'forge task start' first")

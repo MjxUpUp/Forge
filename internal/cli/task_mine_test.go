@@ -228,16 +228,15 @@ func TestTaskMine_AnnotatesZombie(t *testing.T) {
 // MarkComplete 也不回收分派）。用于钉住 mine 的渲染 reconcile。
 func saveCompletedOffered(t *testing.T, dir, ref, agent string) {
 	t.Helper()
-	s := &taskpipeline.TaskState{TaskRef: ref, Summary: ref + ` 任务`}
-	if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
-		t.Fatalf(`AssignTo %s: %v`, ref, err)
-	}
-	for _, g := range taskpipeline.DefaultGates() {
-		s.RecordGateResult(g.ID, true, ``)
-	}
-	if err := taskpipeline.SaveTaskState(dir, s); err != nil {
-		t.Fatalf(`SaveTaskState %s: %v`, ref, err)
-	}
+	seedTaskState(t, dir, ref, func(s *taskpipeline.TaskState) {
+		s.Summary = ref + ` 任务`
+		if err := s.AssignTo(agent, `backend`, `claude-code`); err != nil {
+			t.Fatalf(`AssignTo %s: %v`, ref, err)
+		}
+		for _, g := range taskpipeline.DefaultGates() {
+			s.RecordGateResult(g.ID, true, ``)
+		}
+	})
 }
 
 // TestMineRendersCompletedNotOffered pins the P1 render-reconcile: a completed task whose

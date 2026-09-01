@@ -82,7 +82,11 @@ func writeDepRefWorkspace(t *testing.T, ownKey string, otherKeys ...string) {
 
 func writeForeignTask(t *testing.T, home, key, ref string, delivered bool) {
 	t.Helper()
-	dir := filepath.Join(home, `projects`, key, `tasks`)
+	// 布局经 forgedata.RootDir 派生（projects/<key> 段不再手拼）；"tasks" 段镜像
+	// taskpipeline/state.go:88 的 SaveTaskState 落点——伪造的 foreign key 无法走
+	// SaveTaskState（其 DataDir 从真实 git root 派生），保留手写 marshal（未签名
+	// 形态 LoadTaskState 按 legacy 放行）。
+	dir := filepath.Join(forgedata.RootDir(key), `tasks`)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
