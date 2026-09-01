@@ -725,11 +725,8 @@ func parseGitAddedLines(root string, args []string, sourceSet map[string]bool) [
 			// +++ b/<path>  or  +++ /dev/null (deletion, no + lines)
 			//
 			// +++ b/<path>  或  +++ /dev/null（删除，无 + 行）
-			p := strings.TrimPrefix(raw, "+++ ")
-			p = strings.TrimSpace(p)
-			if strings.HasPrefix(p, "b/") {
-				p = p[2:]
-			}
+			p := strings.TrimSpace(strings.TrimPrefix(raw, "+++ "))
+			p = strings.TrimPrefix(p, "b/")
 			if p == "/dev/null" {
 				curFile = ""
 			} else if sourceSet[filepath.ToSlash(p)] {

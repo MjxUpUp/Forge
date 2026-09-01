@@ -5,7 +5,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -124,15 +123,6 @@ func git(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
-// gitErr runs a git command and returns (output, error) without fatalling.
-func gitErr(t *testing.T, dir string, args ...string) (string, error) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
 // initGoProject creates a minimal Go project in dir.
 func initGoProject(t *testing.T, dir string) {
 	t.Helper()
@@ -171,18 +161,6 @@ func readFile(t *testing.T, dir, name string) string {
 		t.Fatalf("failed to read %s: %v", name, err)
 	}
 	return string(data)
-}
-
-// readJSON reads a JSON file inside dir into target.
-func readJSON(t *testing.T, dir, name string, target any) {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, name))
-	if err != nil {
-		t.Fatalf("failed to read %s: %v", name, err)
-	}
-	if err := json.Unmarshal(data, target); err != nil {
-		t.Fatalf("failed to parse %s: %v", name, err)
-	}
 }
 
 // freshProject creates a temp dir with git init + go project + forge init.

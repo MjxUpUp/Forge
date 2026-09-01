@@ -101,9 +101,7 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`扫描反向依赖失败，未执行 --cascade/--detach-deps：%v（请重试）`, listErr)
 	}
 	var dependents []string
-	for _, dep := range dependentsMap[taskRef] {
-		dependents = append(dependents, dep)
-	}
+	dependents = append(dependents, dependentsMap[taskRef]...)
 	// cascade 闭包：传递依赖方（直接 + 间接），对反向 map 广度优先。依赖方上游已没，门禁永远过不了，
 	// 故 cascade 清除死链。cascaded = 试图集（BFS 闭包，驱动删除循环）；cascadedDone = 实际删除成功的。
 	// 删除可能因权限/Windows 文件锁失败——该依赖方在循环内发一条内联 per-item stderr Warning（并非后续回读

@@ -189,7 +189,8 @@ func TestEval_StopCapSkipsDisabled(t *testing.T) {
 // TestTriggerSig_StableAndDistinct sig 对声明内容稳定（两次计算一致）、对不同规则可区分。
 func TestTriggerSig_StableAndDistinct(t *testing.T) {
 	a := Trigger{Event: "Stop", Keywords: []string{"x"}}
-	if triggerSig(a) != triggerSig(a) {
+	sig1, sig2 := triggerSig(a), triggerSig(a)
+	if sig1 != sig2 {
 		t.Fatal("同规则 sig 不稳定")
 	}
 	b := Trigger{Event: "Stop", Keywords: []string{"y"}}

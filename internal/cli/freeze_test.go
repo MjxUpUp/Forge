@@ -149,7 +149,9 @@ func runFreezeGuardHook(t *testing.T, dir, filePath string) HookOutput {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err = runHook(nil, []string{"freeze-guard"})
+	// err 刻意丢弃：本 helper 的契约按 stdout JSON 断言 Decision——静默 allow
+	// （exit 0 无输出）与 block（err 非 nil + 输出）都是调用方要断言的合法形态。
+	_ = runHook(nil, []string{"freeze-guard"})
 
 	w.Close()
 	os.Stdout = oldStdout

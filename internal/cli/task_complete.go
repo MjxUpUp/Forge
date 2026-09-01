@@ -201,7 +201,8 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// dogfood 2.3：post-complete grace sentinel，让 file-sentinel 不把自然的后续
 	// git commit 误判为「无 active task + 源码写入」而 quarantine。此前流程迫使 agent
 	// 开个 chore/*-commit task 纯粹为绕这个坑（DevWorkbench：3 个这种 task，~600 次调用）。
-	// grace 窗口有界（默认 5min，见 completeGraceWindow）；窗口外恢复 quarantine 策略——
+	// grace 窗口有界（默认 5min，执法点在 file-sentinel bash hook 的 300s 字面量）；
+	// 窗口外恢复 quarantine 策略——
 	// 一个"complete"的 session 持续写源码 30+ 分钟已不再 complete，应开新 task。
 	if err := taskpipeline.MarkCompleteGrace(root, taskpipeline.CurrentSessionID()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to mark complete grace: %v\n", err)

@@ -237,6 +237,10 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 //   - sessionID 为空（legacy / 无 session）：不过滤——每条都计入。
 //   - sessionID 非空：SessionID 非空且与 sessionID 不同的条目被排除。
 //     SessionID 为空（全局/legacy）的条目始终保留，让全局适用的 check 仍能登记。
+//
+// 状态注记（2026-09 代码普查清扫）：本读方当前无生产接线——会话级归一 key
+// 契约由 cli/hook_test 引用、由本包测试钉住。接线前它是文档化的 API 面，
+// 非死代码回收对象。
 func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, error) {
 	return LatestByCheckForSessionSince(root, sessionID, time.Time{})
 }

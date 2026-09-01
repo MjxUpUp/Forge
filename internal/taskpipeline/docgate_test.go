@@ -148,6 +148,9 @@ func TestCheckDocGateCriticalFindings(t *testing.T) {
 	if ok {
 		t.Fatal("未决 Critical 应阻断")
 	}
+	if len(reasons) == 0 {
+		t.Fatal("阻断时必须给出原因（doc gate 输出供人跟进）")
+	}
 	if len(state.Findings) == 0 || state.Findings[0].ID == "" {
 		t.Fatal("AddFinding 应生成 ID")
 	}

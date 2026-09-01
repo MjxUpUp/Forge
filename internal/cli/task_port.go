@@ -166,15 +166,15 @@ func runTaskImport(cmd *cobra.Command, args []string) error {
 	}
 	var bundle taskBundle
 	if err := json.Unmarshal(data, &bundle); err != nil {
-		return fmt.Errorf(`解析 Bundle 失败（确认是 forge task export 产出）: %w`, err)
+		return fmt.Errorf(`不是 forge task export 产出的 Bundle（解析失败）: %w`, err)
 	}
 	if bundle.Task == nil || bundle.Task.TaskRef == `` {
-		return fmt.Errorf(`Bundle 缺少 task 或 task_ref（文件损坏或非 Forge Bundle）`)
+		return fmt.Errorf(`bundle 缺少 task 或 task_ref（文件损坏或非 forge 产出的 bundle）`)
 	}
 	// == 0 (字段缺失/手改的畸形 bundle) 与 > current（未来格式）都不被接受：前者会让前向兼容守卫
 	// 形同虚设（缺 schema_version 的文档被当 v1 解析），后者给出明确的升级提示。
 	if bundle.SchemaVersion == 0 || bundle.SchemaVersion > taskBundleSchemaVersion {
-		return fmt.Errorf(`Bundle schema_version=%d 不被支持（本机支持 %d）；确认是 forge task export 产出，或升级 Forge 后再导入`, bundle.SchemaVersion, taskBundleSchemaVersion)
+		return fmt.Errorf(`不支持的 schema_version=%d（本机支持 %d）；确认是 forge task export 产出，或升级 Forge 后再导入`, bundle.SchemaVersion, taskBundleSchemaVersion)
 	}
 	root, err := findProjectRoot()
 	if err != nil {
