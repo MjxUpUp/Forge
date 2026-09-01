@@ -11,7 +11,8 @@ import (
 // P3-6; the write side has long been single-sourced on AtomicWrite).
 //
 // Contract:
-//   - file missing → bare os.ErrNotExist (callers branch on errors.Is(err, fs.ErrNotExist))
+//   - file missing → the raw *fs.PathError (matches fs.ErrNotExist via
+//     errors.Is — direct == comparison will NOT work)
 //   - read failure → error wrapped with the path
 //   - parse failure → error wrapped with the path
 //
@@ -22,7 +23,8 @@ import (
 // 模式的读侧单一入口（2026-09 普查 P3-6；写侧早已单一源 AtomicWrite）。
 //
 // 契约：
-//   - 文件不存在 → 裸 os.ErrNotExist（调用方用 errors.Is(err, fs.ErrNotExist) 分支）
+//   - 文件不存在 → 原始 *fs.PathError（errors.Is(err, fs.ErrNotExist) 可分支；
+//     直接 == 比较不可用）
 //   - 读失败 → 带路径包装的错误
 //   - 解析失败 → 带路径包装的错误
 //
