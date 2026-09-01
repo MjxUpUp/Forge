@@ -105,12 +105,11 @@ func ForeignAttributedPaths(root, ownTaskRef string) map[string]bool {
 // §6，T3）：L3 台账可证明归属其他未完成任务会话的行被剔除，无主路径同样
 // 剔除——两者都以诚实的计数行补在末尾（接手视图还原的是本任务现场，不是整树噪音）。
 // 降级向旧全树行为 fail-open：归属关闭、台账为空（升级前会话/无身份宿主）或
-// lines 为空都原样返回——藏掉任务自己的 WIP（空现场）比多显示噪音更糟。
+// 空集自然穿透（无行可滤）——藏掉任务自己的 WIP（空现场）比多显示噪音更糟。
 // （2026-09 普查 A1 补齐：自 cli/task_continuity.go 下沉——领域核
 // ForeignAttributedPaths 本就住本包，组装与它同址；行由调用方经
 // attribution.PorcelainLines 取得。）
 func AttributedPorcelain(root string, state *TaskState, lines []string) []string {
-
 	if !attribution.Enabled() {
 		return lines
 	}
