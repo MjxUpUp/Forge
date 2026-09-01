@@ -200,7 +200,7 @@ func TestTaskImport_ForceOverwrites(t *testing.T) {
 // TestTaskImport_MergeUnions: --merge keeps the local task's identity/definition and unions the collaborative records by ID.
 //
 // TestTaskImport_MergeUnions：--merge 保留本地任务身份/定义，按 ID 并集协作记录。决策 ID 全局唯一
-// （newContinuityID：nano + seq + 4 字节随机），故 A 与 B 的决策不碰撞——并集后都在。
+// （NewContinuityID：nano + seq + 4 字节随机），故 A 与 B 的决策不碰撞——并集后都在。
 func TestTaskImport_MergeUnions(t *testing.T) {
 	_, bundlePath := exportDelegatedTask(t, `merge`, func(dirA string) {
 		runForge(t, dirA, `task`, `decide`, `--ref`, `feat/delegate`, `--content`, `remote-decision`, `--by`, `claude-code`)
