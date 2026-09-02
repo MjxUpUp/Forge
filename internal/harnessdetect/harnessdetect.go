@@ -4,11 +4,10 @@
 // Package harnessdetect 检测项目根里的外来 AI 编码 harness（Project Policy
 // Layer P4）。
 //
-// 设计（docs/design/project-policy-layer.md + 调研 dive_02）：高置信目录级信号
+// 设计（docs/design/project-policy-layer.md）：高置信目录级信号
 // 命中时 forge 默认让位（declined, by=foreign-harness），显式 forge on 可恢复。
 // 判定纪律：宁可漏判（漏判代价 = 多问一次），不可误判（误判 = 错误接管自有
-// harness 的项目，用户感知不可逆）——mise 对外来声明文件"只读兼容 + 默认关闭"
-// 的同款原则。信号表是单一真相源；新增信号必须同步本表与测试。
+// harness 的项目，用户感知不可逆）。信号表是单一真相源；新增信号必须同步本表与测试。
 package harnessdetect
 
 import (

@@ -88,7 +88,8 @@ func buildForgeSection(forClaude bool) string {
 // 对所有项目可见且运行时关不掉，只能承载"机制/指针"——激活判据锚定到 managed
 // 会话横幅（task-resume hook 输出的 [forge-session] 行，模型可见的机械信号），
 // 协议细节交回受管通道（forge-quality skill 与 hook 即时提示，渐进披露）。
-// spec-kit 共识：共享指令文件最多放一行指针，不放整份协议拷贝。
+// 共享指令文件最多放一行指针、不放整份协议拷贝（业界共识：整份拷贝是多
+// harness 冲突与版本漂移的第一来源）。
 func buildUserPointerSection(forClaude bool) string {
 	var sb strings.Builder
 	sb.WriteString(forgeSectionStart + "\n\n")

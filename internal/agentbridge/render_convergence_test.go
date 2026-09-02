@@ -13,8 +13,8 @@ import (
 // TestProtocolRenderConvergence 为共享 protocol.Render* helper 在保留的渲染器里
 // 真实接线（有渲染产物，非旁路）钉住。渲染器宿主迁移史：cursor 臂随 buildCursorMDC
 // 移除（死代码）；windsurf 臂随 P3 指针化移除（用户级 global_rules 只承载指针，
-// 不再拷贝 standards——spec-kit 共识）；现锚定 skillgen 的 forge-quality skill
-//（标准清单的受管通道载体，项目级与用户级同一生成器）。
+// 不再拷贝 standards，业界共识）；现锚定 skillgen 的 forge-quality skill
+// （标准清单的受管通道载体，项目级与用户级同一生成器）。
 func TestProtocolRenderConvergence(t *testing.T) {
 	home := t.TempDir()
 	skillsRoot := filepath.Join(home, "skills", "forge-quality")
