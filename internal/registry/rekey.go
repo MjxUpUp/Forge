@@ -54,7 +54,11 @@ func Rekey(fromKey, toKey string) (removed int, err error) {
 	}
 	if !hasTo && toKey != `` {
 		// 无 to 侧条目：把第一条被移除条目改 key，保住成员资格。
-		kept = append(kept, Entry{Path: dropped[0].Path, Key: toKey})
+		// 整条目迁移（保留 Status/决策字段）：重建 Entry{Path,Key} 会丢 declined 状态，
+		// rekey 后项目被静默复活接管（Project Policy Layer P1，对抗复查 M7）。
+		e := dropped[0]
+		e.Key = toKey
+		kept = append(kept, e)
 	}
 	if werr := writeEntries(kept); werr != nil {
 		return 0, werr

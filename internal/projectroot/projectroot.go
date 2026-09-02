@@ -55,7 +55,13 @@ func Find() (string, error) {
 
 	// 2. 遗留兜底：向上 walk 找项目级 .forge/（user-level-assets 重构前 init 的
 	//    项目）。自愈：登记该项目，后续解析走快路径（条目同时获得 key）。
+	//    Project Policy Layer P1：declined 的遗留项目不自愈——退出一票否决，返回
+	//    registry.ErrDeclinedProject（hook 分发对任何 Find 失败都静默放行，无需特判；
+	//    CLI 侧该错误文案即面向用户的 declined 提示）。
 	if root, ok := legacyFind(cwd); ok {
+		if _, state := registry.State(root); state == registry.StatusDeclined {
+			return "", registry.ErrDeclinedProject
+		}
 		_ = registry.Add(root) // 自愈登记，失败不阻断
 		return root, nil
 	}
