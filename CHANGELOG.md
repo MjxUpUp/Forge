@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.49.0](https://github.com/MjxUpUp/Forge/compare/v1.48.1...v1.49.0) (2026-09-02)
+
+
+### ⚠️ 行为变更（Behavior Change）
+
+* **接管默认策略翻转（Project Policy Layer）**：出厂 takeover 默认由"静默自动接管所有 git 项目"改为**每项目首次询问一次（ask）**——安装 plugin 授予的是能力，不再等于对每个仓库行使接管。declined（`forge off`）、`.forge-decline` 团队声明（`forge off --commit`）、外来 harness 让位（`forge policy yield`）不可被任何默认路径穿透；恢复唯一通道 `forge on`。需要旧的无感静默接管：`forge config set` takeover 为 auto（或 env `FORGE_TAKEOVER=auto`；legacy `FORGE_AUTO_INIT=1` 仍等价 auto）。新命令族：`forge off [--all] [--commit]` / `forge on` / `forge config get/set takeover` / `forge policy state|yield`。用户级指令段（CLAUDE.md/AGENTS.md/global_rules.md）收缩为指针段，激活判据锚定 `[forge-session]` 会话横幅（autoSync 版本变更后自动重刷）。
+
+### Features
+
+* **policy:** Project Policy Layer P1——按项目退出/恢复接管（forge off/on） ([6d26e5a](https://github.com/MjxUpUp/Forge/commit/6d26e5aab6b74ca5caf37b32bd89694c5efeecb7))
+* **policy:** Project Policy Layer P2-P4——默认 ask 翻转 + 全局通道感知 + 外来 harness 让位 + 注册表写锁 ([1c6230d](https://github.com/MjxUpUp/Forge/commit/1c6230d46fb2e543319b94cb4bfc5ab15827d0a5))
+
+
+### Bug Fixes
+
+* **policy:** forge policy state 对 managed 打印字面值——StatusManaged 空串的显示层映射 ([4ff41d0](https://github.com/MjxUpUp/Forge/commit/4ff41d0cb924bb49ba9baa9b8f8b42c96be84bc0))
+* **policy:** plugin README 退出文案改走生成器单一真相源——资产源 + 新二进制重生成 ([5068806](https://github.com/MjxUpUp/Forge/commit/5068806420544e7627cb449fc890d23ec012cd88))
+
 ## [1.48.1](https://github.com/MjxUpUp/Forge/compare/v1.48.0...v1.48.1) (2026-09-01)
 
 
