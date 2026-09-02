@@ -22,46 +22,54 @@ func Rekey(fromKey, toKey string) (removed int, err error) {
 	if fromKey == toKey {
 		return 0, nil // 同 key：无可同步
 	}
-	p, err := globalPath()
-	if err != nil {
-		return 0, err
-	}
-	data, err := os.ReadFile(p)
-	if err != nil {
-		return 0, nil // 无注册表文件：无事可做
-	}
-	var f File
-	if uerr := json.Unmarshal(data, &f); uerr != nil {
-		return 0, fmt.Errorf(`registry: 注册表 JSON 损坏，rekey 同步中止（数据合并不受影响）: %w`, uerr)
-	}
-	var kept []Entry
-	var dropped []Entry
-	hasTo := false
-	for _, e := range f.Projects {
-		k := keyOf(e)
-		switch {
-		case fromKey != `` && k == fromKey:
-			dropped = append(dropped, e)
-		default:
-			if toKey != `` && k == toKey {
-				hasTo = true
+	// 读-改-写整体入锁（P2-P4 收口）：只锁写回段时读快照可被并发写者更新，
+	// 写回整文件覆盖丢条目（MAJOR 复查发现）。removed 用命名返回值（闭包内赋值）。
+	if err := withLock(func() error {
+		p, gerr := globalPath()
+		if gerr != nil {
+			return gerr
+		}
+		data, rerr := os.ReadFile(p)
+		if rerr != nil {
+			return nil // 无注册表文件：无事可做
+		}
+		var f File
+		if uerr := json.Unmarshal(data, &f); uerr != nil {
+			return fmt.Errorf(`registry: 注册表 JSON 损坏，rekey 同步中止（数据合并不受影响）: %w`, uerr)
+		}
+		var kept []Entry
+		var dropped []Entry
+		hasTo := false
+		for _, e := range f.Projects {
+			k := keyOf(e)
+			switch {
+			case fromKey != `` && k == fromKey:
+				dropped = append(dropped, e)
+			default:
+				if toKey != `` && k == toKey {
+					hasTo = true
+				}
+				kept = append(kept, e)
 			}
+		}
+		if len(dropped) == 0 {
+			return nil
+		}
+		if !hasTo && toKey != `` {
+			// 无 to 侧条目：把第一条被移除条目改 key，保住成员资格。
+			// 整条目迁移（保留 Status/决策字段）：重建 Entry{Path,Key} 会丢 declined 状态，
+			// rekey 后项目被静默复活接管（Project Policy Layer P1，对抗复查 M7）。
+			e := dropped[0]
+			e.Key = toKey
 			kept = append(kept, e)
 		}
+		if werr := writeEntries(kept); werr != nil {
+			return werr
+		}
+		removed = len(dropped)
+		return nil
+	}); err != nil {
+		return 0, err
 	}
-	if len(dropped) == 0 {
-		return 0, nil
-	}
-	if !hasTo && toKey != `` {
-		// 无 to 侧条目：把第一条被移除条目改 key，保住成员资格。
-		// 整条目迁移（保留 Status/决策字段）：重建 Entry{Path,Key} 会丢 declined 状态，
-		// rekey 后项目被静默复活接管（Project Policy Layer P1，对抗复查 M7）。
-		e := dropped[0]
-		e.Key = toKey
-		kept = append(kept, e)
-	}
-	if werr := writeEntries(kept); werr != nil {
-		return 0, werr
-	}
-	return len(dropped), nil
+	return removed, nil
 }

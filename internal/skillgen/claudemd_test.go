@@ -471,8 +471,8 @@ func TestGenerateUserQualitySkillTo(t *testing.T) {
 		t.Fatalf("read SKILL.md: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "仅当当前项目已执行过 `forge init`") {
-		t.Errorf("user-level skill 必须是条件激活措辞")
+	if !strings.Contains(content, "[forge-session]") {
+		t.Errorf("user-level skill 必须是条件激活措辞（P3：锚定 managed 会话横幅）")
 	}
 	if strings.Contains(content, "## 当前项目信息") {
 		t.Errorf("user-level skill 必须移除项目信息章节")

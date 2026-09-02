@@ -49,9 +49,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// declined 项目 Find 失败（IsMember 不认 declined）——把通用的"非 forge
 		// 项目"错误换成面向用户的 declined 提示（指向 forge on）。status 非热路径，
-		// 一次额外 State 查询可接受。
+		// 一次额外 State 查询可接受。--json 消费者拿 JSON 错误包裹（stdout），
+		// cobra 的 Error: 行仍走 stderr 不污染机器可读输出。
 		if cwd, gerr := os.Getwd(); gerr == nil {
 			if _, state := registry.State(cwd); state == registry.StatusDeclined {
+				if asJSON {
+					msg, _ := json.Marshal(map[string]string{"error": registry.ErrDeclinedProject.Error(), "takeover": "declined"})
+					fmt.Println(string(msg))
+				}
 				return registry.ErrDeclinedProject
 			}
 		}

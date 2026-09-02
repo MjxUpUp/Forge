@@ -105,8 +105,8 @@ func TestAutoSyncRefreshesAgentsQualitySkill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("autoSync must regenerate ~/.agents/skills/forge-quality/SKILL.md: %v", err)
 	}
-	if !strings.Contains(string(data), "仅当当前项目已执行过 `forge init`") {
-		t.Error("~/.agents copy must carry the conditional-activation wording (fresh generator output, not the rotted orphan)")
+	if !strings.Contains(string(data), "[forge-session]") {
+		t.Error("~/.agents copy must carry the banner-anchored conditional wording (fresh generator output, not the rotted orphan)")
 	}
 }
 

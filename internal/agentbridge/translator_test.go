@@ -475,8 +475,13 @@ func TestWindsurfTranslator_Translate(t *testing.T) {
 	if !strings.Contains(content, forgeRulesEnd) {
 		t.Error("missing FORGE:END marker")
 	}
-	if !strings.Contains(content, "代码编译") {
-		t.Error("missing compile standard")
+	// P3 指针化：用户级 global_rules 只承载指针（激活锚定 [forge-session] 横幅），
+	// 不再拷贝 standards 清单——standard 的宿主是受管通道（hook 提示 + skill）。
+	if !strings.Contains(content, "[forge-session]") {
+		t.Error("missing managed-session banner anchor（P3 pointer section）")
+	}
+	if strings.Contains(content, "代码编译") {
+		t.Error("pointer section must not carry the standards copy（spec-kit 共识：共享文件最多放指针）")
 	}
 }
 

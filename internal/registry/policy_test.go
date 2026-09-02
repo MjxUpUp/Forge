@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -228,5 +229,49 @@ func TestSetStatus_ErrDeclinedProject(t *testing.T) {
 	wrapped := fmt.Errorf(`projectroot: %w`, ErrDeclinedProject)
 	if !errors.Is(wrapped, ErrDeclinedProject) {
 		t.Fatal(`errors.Is must see through %w wrapping`)
+	}
+}
+
+// TestConcurrentAddsNoLostEntries 写锁守卫：并发 Add 不丢条目（P2 起 projects.json
+// 是多宿主热写目标；无锁时 read-modify-write 后写覆盖先写）。同时并发 Add +
+// SetStatus 同一项目：终态一致（managed 或 declined 之一），文件不损坏。
+func TestConcurrentAddsNoLostEntries(t *testing.T) {
+	useTempHome(t)
+	const n = 24
+	projects := make([]string, n)
+	for i := range projects {
+		projects[i] = mkForgeProject(t)
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, n*2)
+	for _, p := range projects {
+		wg.Add(1)
+		go func(p string) {
+			defer wg.Done()
+			errCh <- Add(p)
+		}(p)
+	}
+	// 混入对第一个项目的并发状态翻转（真实场景：hook 自登记与 forge off 并发）。
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		errCh <- SetStatus(projects[0], StatusDeclined, `race-off`)
+	}()
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf(`并发写失败: %v`, err)
+		}
+	}
+
+	// 终态断言：全部条目在场（无丢失）+ 文件可解析。
+	got := List()
+	if len(got) != n {
+		t.Fatalf(`并发 Add 丢条目：want %d, got %d (%v)`, n, len(got), got)
+	}
+	if _, state := State(projects[0]); state != StatusDeclined {
+		t.Errorf(`SetStatus 与 Add 竞态后状态 = %q, want declined（锁应保 SetStatus 后写胜出）`, state)
 	}
 }
