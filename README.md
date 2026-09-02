@@ -82,7 +82,7 @@ forge init
 | `~/.forge/projects.json` | 全局项目注册表（forge 项目锚点） |
 | `~/.forge/projects/<key>/` | protocol.yml + runtime state（任务状态/hook 参考副本，key=git hash 或路径 hash） |
 | `~/.claude/settings.json` | Claude Code hooks（plugin 已装则由 plugin 接管，跳过此文件） |
-| `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` | 质量协议（备份+追加、条件激活，`forge uninstall --restore` 可回滚） |
+| `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`、windsurf `global_rules.md` | 指针段（备份+幂等替换；激活判据锚定 `[forge-session]` managed 会话横幅，协议细节在 forge-quality skill 与 hook 即时提示，`forge uninstall --restore` 可回滚；版本变更后 autoSync 自动重刷新） |
 | `~/.claude/skills/forge-quality/` | 质量协议 Skill |
 | `~/.codex/hooks.json`、`~/.cursor/hooks.json` 等 | 其他 agent 的用户级 hook 接线（按检测到的工具） |
 
@@ -212,7 +212,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策；并发会话检测——其他 session 有活跃任务时放行（调研 session 不被拦） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
-| **init-suggest** | 会话开始 | advisory：检测到未启用 forge 的 git 项目时，首次提示 agent 询问是否启用（用户拒绝→`forge off` 永久退出接管；设 `FORGE_AUTO_INIT=1` 处处自动 init，但 declined 项目不可被穿透——恢复唯一通道 `forge on`；v1.22 起 init 零项目写入，不再对项目产生任何文件变更），全局 hook，补"每项目手动 init"缺口，实现一次安装后项目自动登记 |
+| **init-suggest** | 会话开始 | advisory，接管决策引擎（P2 起默认 **ask**）：declined（标记+注册表双检）→静默；已接管→顺带 dedupe；外来 harness 信号（P4）→让位并记 declined；takeover 偏好 auto（`FORGE_TAKEOVER`/`forge config`/legacy `FORGE_AUTO_INIT=1`）→静默 init；off→静默；ask→每项目首次询问一次（拒绝→`forge off`；全程询问 →`forge config set` takeover 为 auto）。v1.22 起 init 零项目写入 |
 | **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步，无需手动 forge task resume；无活跃任务静默；项目级 hook |
 | **compact-resume** | 压缩后（claude-code only） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
 | **resume-reinject** | 用户提交时（claude-code only） | 检测 `ResumeStale=true`（刚压缩过）→ 输出完整接续上下文并清标志。补 task-resume 缺口（SessionStart 只注入一次，会话中途压缩不补），context-rot 抗机制根治层·重注入半边 |
@@ -231,7 +231,9 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge status [--json] [--system]` | 查看项目状态（任务管道 + 质量信号）；`--system` 跑系统级健康检查（~/.forge、PATH、孤儿 hook、skills manifest） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge update [--plugin]` | 检查并更新到最新版本（按安装通道分流：npm 安装自动检测包管理器 npm/pnpm/yarn，查 npm registry 并打印对应更新命令——npm 包不可变，原地替换会被下次 install 还原，故不代下载，可用 `FORGE_NPM_REGISTRY` 覆盖 registry；GitHub Release/手动安装从 GitHub 下载自替换）；加 `--plugin` 在更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
-| `forge off [--all]` 或 `forge on` | 按项目退出/恢复接管（Project Policy Layer）：`off` 把当前项目（git 根）置为 declined——项目级 hook 全部静默、`forge init`/`FORGE_AUTO_INIT`/plugin 自动接管拒绝（退出不被任何默认路径重置），同步写 legacy 提示标记；`--all` 一键全退；`on` 是 declined→managed 的唯一恢复通道（清标记，从未 init 的项目提示先 `forge init`）。状态存注册表条目（含决策来源/时间审计），`forge status` 退出码即「是否 managed」 |
+| `forge off [--all] [--commit]` 或 `forge on` | 按项目退出/恢复接管（Project Policy Layer）：`off` 把当前项目（git 根）置为 declined——项目级 hook 全部静默、`forge init`/`FORGE_AUTO_INIT`/自动接管拒绝（退出不被任何默认路径重置）；`--all` 一键全退；`--commit` 额外在仓库根写 `.forge-decline` 团队声明（committed 后对所有协作者让位，deny-wins）；`on` 是 declined→managed 的唯一恢复通道（清标记与声明文件，从未 init 的项目提示先 `forge init`）。状态存注册表条目（含决策来源/时间审计），`forge status` 退出码即「是否 managed」 |
+| `forge config get/set takeover` | 用户级接管偏好（`~/.forge/config.json`）：**ask（出厂默认）**每项目首次接触询问一次；**auto** 静默接管全部 git 项目（P2 之前的行为；declined 与外来 harness 让位仍生效）；**off** 不接管不询问。env 覆盖：`FORGE_TAKEOVER=ask\|auto\|off`（legacy `FORGE_AUTO_INIT=1` ≡ auto）；`--raw` 只输出值供脚本消费 |
+| `forge policy state` / `forge policy yield` | 接管策略快查/外来 harness 让位：`state` 打印当前目录三态（managed\|declined\|unknown，退出码恒 0，init-suggest bash 以此分流）；`yield` 检测外来 harness 高置信信号（`.specify/`、`.claude/commands`、`.claude/settings.json` 含 hooks/permissions、`.cursor/rules`——单一真相源 internal/harnessdetect），命中即让位（declined, by=foreign-harness）并打印说明，`forge on` 显式覆盖 |
 | `forge suggest decline/status/reset` | `forge off`/`forge on` 的兼容别名：decline 等价 `forge off`（注册表 + 标记双写），reset 在 declined 时等价 `forge on`；status 查看 legacy 提示标记 |
 | `forge conventions init [--force]` | 项目规范档案（conventions-profile）：机械扫描本仓库**已声明**的规范——AGENTS.md/CLAUDE.md/.github/copilot-instructions.md 等规范文件、lint/format 配置、stack 工具链命令——写入用户级档案 `~/.forge/projects/<key>/conventions/`；此后 hook 按宿主能力注入：会话开始注入 ≤15 行摘要（支持 PostCompact 的宿主压缩后重注入），写源码文件时注入规范文件指针+同目录范例（advisory 不阻断；同一份档案跨宿主共享）；摘要的「提取要点」节由 agent 代码考古增补，重跑 init 保留提炼内容（`--force` 才重建骨架）；规范源文件变化后指纹翻转，注入与 show 均提示重扫；task-verify 会提醒「档案声明的 lint 命令本任务未跑」（advisory，提醒与 checklog 审计行经 `FORGE_CONVENTIONS_LINT=disable` 一并静默） |
 | `forge conventions show` | 查看规范档案：stack/lint/test/build 命令、规范声明文件与 lint 配置清单、fingerprint 与过期状态（STALE=源已漂移，重跑 `forge conventions init` 刷新）、摘要全文 |
@@ -425,7 +427,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。项目登记无需手动：plugin 已装（= 显式 opt-in）时，init-suggest SessionStart hook 会在任意 git 项目首次会话静默自动 `forge init`（v1.22 起零项目写入——协议与 runtime state 全在用户级 `~/.forge/projects/<key>/`，只对用户级配置生效；`forge off` 可按项目退出且不被任何默认路径重置，`forge on` 恢复）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册；存量老项目残留的旧版项目级写入（`.forge/hooks/`、`.claude/settings.local.json` 的 forge hooks、CLAUDE.md/AGENTS.md 的 forge 段）由 autoSync 与 init-suggest SessionStart hook 自动收敛。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。项目登记按 takeover 偏好（P2 起出厂默认 **ask**）：init-suggest SessionStart hook 在未接管项目首次会话**询问一次**（同意→`forge init`；拒绝→`forge off`）；要"装好即用"的无感体验→`forge config set` takeover 为 auto（静默接管所有 git 项目；declined、`.forge-decline` 团队声明与外来 harness 让位仍然生效；v1.22 起零项目写入——协议与 runtime state 全在用户级 `~/.forge/projects/<key>/`）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册；存量老项目残留的旧版项目级写入（`.forge/hooks/`、`.claude/settings.local.json` 的 forge hooks、CLAUDE.md/AGENTS.md 的 forge 段）由 autoSync 与 init-suggest SessionStart hook 自动收敛。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 </details>
 

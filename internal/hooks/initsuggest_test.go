@@ -37,6 +37,9 @@ forge() {
   # (default 1 = unregistered); projects with .forge/ are covered by the script's
   # own [ -d .forge ] fallback branch, bypassing status.
   if [ "$1" = "status" ]; then return "${FORGE_STATUS_RC:-1}"; fi
+  # P2：policy state / config get 是接管决策的只读快查——stub 返回空输出
+  #（state 非 declined、takeover 回落 ask），不得落进下方的 init 兜底。
+  if [ "$1" = "policy" ] || [ "$1" = "config" ]; then return 0; fi
   if [ -n "$FORGE_FORGE_FAIL" ]; then return 1; fi
   touch "$FORGE_INIT_FLAG" 2>/dev/null
   return 0
@@ -109,15 +112,16 @@ func writeSuggestMarker(t *testing.T, home, tag, value string) {
 // 这些 case 失败。
 func TestInitSuggestHook_Branches(t *testing.T) {
 	cases := []struct {
-		name      string
-		cwdFn     func(t *testing.T) string
-		marker    string // "", "suggested", "declined"
-		autoInit  bool
-		failForge bool   // stub forge 返回 1（模拟 init 失败，验 partial-state 回显）
-		statusRC0 bool   // stub forge status 返回 0（模拟已登记注册表，验零写入成员判定）
-		pluginRC0 bool   // stub forge plugin status 返回 0（模拟 plugin 已 user-level 安装，验自动接管）
-		wantSub   string // 期望输出子串；空=期望静默（无"未启用 forge"）
-		wantInit  bool   // 期望 forge init 被调（flag 文件存在）
+		name        string
+		cwdFn       func(t *testing.T) string
+		marker      string // "", "suggested", "declined"
+		takeoverEnv string // FORGE_TAKEOVER 覆盖（P2 三档）
+		autoInit    bool   // FORGE_AUTO_INIT=1（legacy auto 等价）
+		failForge   bool   // stub forge 返回 1（模拟 init 失败，验 partial-state 回显）
+		statusRC0   bool   // stub forge status 返回 0（模拟已登记注册表，验零写入成员判定）
+		pluginRC0   bool   // stub forge plugin status 返回 0（plugin 已装——P2 后仅影响成员分支 dedupe）
+		wantSub     string // 期望输出子串；空=期望静默（无"未启用 forge"）
+		wantInit    bool   // 期望 forge init 被调（flag 文件存在）
 	}{
 		{
 			name:    `无 git 目录提示 git init`,
@@ -197,12 +201,38 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		},
 		// ---- plugin auto-takeover：plugin 已 user-level 安装 = opt-in，git 项目静默自动 init ----
 		{
-			// 安装即接管：plugin 在、git 项目、非成员、无标记 → 直接 forge init（不再询问）。
-			name:      `有 git plugin 已装自动接管`,
+			// P2 默认值翻转钉子：plugin 已装 + 出厂 ask → 询问一次而非静默接管。
+			name:      `有 git plugin 已装默认 ask 询问`,
 			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
 			pluginRC0: true,
-			wantSub:   `自动启用 forge`,
-			wantInit:  true,
+			wantSub:   `询问用户是否让 forge 接管`,
+			wantInit:  false,
+		},
+		{
+			// 显式 auto：静默接管（P1 及之前的行为，经偏好选择）。
+			name:        `有 git takeover=auto 静默接管`,
+			cwdFn:       func(t *testing.T) string { return mkGitProj(t, false) },
+			takeoverEnv: `auto`,
+			wantSub:     `takeover=auto: 已在`,
+			wantInit:    true,
+		},
+		{
+			// off：不接管不询问，完全静默。
+			name:        `有 git takeover=off 静默`,
+			cwdFn:       func(t *testing.T) string { return mkGitProj(t, false) },
+			takeoverEnv: `off`,
+			wantSub:     ``,
+			wantInit:    false,
+		},
+		{
+			// env 优先级钉子（审查 MAJOR）：FORGE_TAKEOVER=off 压过 FORGE_AUTO_INIT=1
+			//——bash 解析前置后与 Go 侧 userconfig.TakeoverMode 同链。
+			name:        `有 git takeover=off 压过 AUTO_INIT`,
+			cwdFn:       func(t *testing.T) string { return mkGitProj(t, false) },
+			takeoverEnv: `off`,
+			autoInit:    true,
+			wantSub:     ``,
+			wantInit:    false,
 		},
 		{
 			// 每项目退出权高于 plugin 级默认开启：declined 标记拦截自动接管，静默。
@@ -215,21 +245,24 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 		},
 		{
 			// suggested 只静音询问、不拦自动接管（plugin 路径没有询问）。
-			name:      `有 git plugin 已装 suggested 仍自动接管`,
+			// P2 语义翻转：ask 档下 suggested = 已问过 → 静默（旧"接管无询问故
+			// suggested 不拦"的语义随静默接管一起只活在 auto 档）。
+			name:      `有 git plugin 已装 suggested 问过静默`,
 			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
 			pluginRC0: true,
 			marker:    `suggested`,
-			wantSub:   `自动启用 forge`,
-			wantInit:  true,
+			wantSub:   ``,
+			wantInit:  false,
 		},
 		{
 			// init 失败回显 stderr 尾部（与 FORGE_AUTO_INIT 同款 partial-state 契约）。
-			name:      `有 git plugin 已装 init 失败回显`,
-			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
-			pluginRC0: true,
-			failForge: true,
-			wantSub:   `失败`,
-			wantInit:  false,
+			// P2：静默接管路径改为经 takeover=auto 显式触发。
+			name:        `有 git takeover=auto init 失败回显`,
+			cwdFn:       func(t *testing.T) string { return mkGitProj(t, false) },
+			takeoverEnv: `auto`,
+			failForge:   true,
+			wantSub:     `失败`,
+			wantInit:    false,
 		},
 		{
 			// 非 git 目录不自动 git init（自动创建仓库过于激进）：仍走 advisory 提示。
@@ -270,6 +303,9 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 			}
 			initFlag := filepath.Join(home, `init-flag`)
 			var extra []string
+			if c.takeoverEnv != `` {
+				extra = append(extra, `FORGE_TAKEOVER=`+c.takeoverEnv)
+			}
 			if c.autoInit {
 				extra = append(extra, `FORGE_AUTO_INIT=1`)
 			}

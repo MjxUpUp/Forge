@@ -60,32 +60,56 @@ func runInitSuggestScript(t *testing.T, proj, tag, claudeHome string, extraEnv .
 	return string(out)
 }
 
-// TestInitSuggestPluginAutoTakeover：plugin 已装 + 全新 git 项目 → hook 静默跑真
-// forge init；项目成为注册表成员（forge status exit 0），项目目录零写入，第二次
-// 会话启动静默（成员分支，不重复 init）。
-func TestInitSuggestPluginAutoTakeover(t *testing.T) {
+// TestInitSuggestDefaultAsk：P2 默认值翻转钉子——plugin 已装 + 全新 git 项目 +
+// 无偏好配置 → hook 询问一次（不静默接管、不登记、项目零写入）。
+func TestInitSuggestDefaultAsk(t *testing.T) {
 	proj := t.TempDir()
 	git(t, proj, "init")
 	claudeHome := fakePluginInstalled(t)
+	cfgHome := t.TempDir() // 隔离 config.json：无 FORGE_TAKEOVER env 时读这里
 
-	out := runInitSuggestScript(t, proj, "tag_e2e_takeover", claudeHome)
-	if !strings.Contains(out, "plugin auto-takeover") {
-		t.Fatalf("expected plugin auto-takeover line, got: %s", out)
+	out := runInitSuggestScript(t, proj, "tag_e2e_ask", claudeHome, `FORGE_DATA_HOME=`+cfgHome)
+	if !strings.Contains(out, "询问用户是否让 forge 接管") {
+		t.Fatalf("expected ask-once advisory under default ask, got: %s", out)
 	}
-
-	// 完整闭环证明：项目现在已是注册表成员（真 forge status 必须 exit 0），且项目
-	// 目录从未被写入（零项目写入契约）。
-	if _, err := forgeErr(t, proj, "status"); err != nil {
-		t.Errorf("project should be registered after auto-takeover (forge status exit 0), got err: %v", err)
+	if _, err := forgeErr(t, proj, "status"); err == nil {
+		t.Errorf("default ask must NOT register the project, but forge status exited 0")
 	}
 	if _, err := os.Stat(filepath.Join(proj, ".forge")); err == nil {
-		t.Errorf("auto-takeover must keep zero project writes, but .forge/ was created in %s", proj)
+		t.Errorf("ask must keep zero project writes, but .forge/ was created in %s", proj)
 	}
 
-	// 第二次会话启动：成员分支 → 无接管行，不重复。
-	out2 := runInitSuggestScript(t, proj, "tag_e2e_takeover", claudeHome)
-	if strings.Contains(out2, "plugin auto-takeover") {
-		t.Errorf("second session must not re-init (member branch), got: %s", out2)
+	// 第二次会话：suggested 标记 → 静默（问过即闭嘴）。
+	out2 := runInitSuggestScript(t, proj, "tag_e2e_ask", claudeHome, `FORGE_DATA_HOME=`+cfgHome)
+	if strings.Contains(out2, "询问用户") {
+		t.Errorf("second session must be silent after suggested marker, got: %s", out2)
+	}
+}
+
+// TestInitSuggestTakeoverAutoViaConfig：偏好落盘（forge config set takeover auto）
+// 后静默接管——钉 config get --raw 在真二进制下的接线（env 路径由 unit stub 钉）。
+func TestInitSuggestTakeoverAutoViaConfig(t *testing.T) {
+	proj := t.TempDir()
+	git(t, proj, "init")
+	claudeHome := fakePluginInstalled(t)
+	cfgHome := t.TempDir()
+
+	// 真二进制落盘偏好（隔离 FORGE_DATA_HOME——config.json 与注册表同根）。
+	if out, err := forgeEnv(t, cfgHome, proj, "config", "set", "takeover", "auto"); err != nil {
+		t.Fatalf("config set takeover auto: %v (%s)", err, out)
+	}
+
+	out := runInitSuggestScript(t, proj, "tag_e2e_auto_cfg", claudeHome, `FORGE_DATA_HOME=`+cfgHome)
+	if !strings.Contains(out, "takeover=auto: 已在") {
+		t.Fatalf("expected silent takeover under persisted auto preference, got: %s", out)
+	}
+	if _, err := forgeEnv(t, cfgHome, proj, "status"); err != nil {
+		t.Errorf("auto preference should register the project, got err: %v", err)
+	}
+	// 第二次会话：成员分支静默。
+	out2 := runInitSuggestScript(t, proj, "tag_e2e_auto_cfg", claudeHome, `FORGE_DATA_HOME=`+cfgHome)
+	if strings.Contains(out2, "takeover=auto") {
+		t.Errorf("second session must be silent (member branch), got: %s", out2)
 	}
 }
 
@@ -125,9 +149,9 @@ func TestInitSuggestPluginDeclinedBlocksTakeover(t *testing.T) {
 	// 对照侧排除这种假绿。
 	control := t.TempDir()
 	git(t, control, "init")
-	cout := runInitSuggestScript(t, control, "tag_e2e_declined_control", claudeHome)
-	if !strings.Contains(cout, "plugin auto-takeover") {
-		t.Errorf("control project (no marker, plugin installed) must be auto-taken-over — otherwise the declined assertions above are a false green. got: %s", cout)
+	cout := runInitSuggestScript(t, control, "tag_e2e_declined_control", claudeHome, `FORGE_TAKEOVER=auto`)
+	if !strings.Contains(cout, "takeover=auto: 已在") {
+		t.Errorf("control project (no marker, explicit auto) must be auto-taken-over — otherwise the declined assertions above are a false green. got: %s", cout)
 	}
 }
 
@@ -169,4 +193,15 @@ func TestInitSuggestDeclinedBlocksAutoInitEnv(t *testing.T) {
 	if !strings.Contains(cout, "FORGE_AUTO_INIT=1: 已在") {
 		t.Errorf("control project (no marker) must be auto-inited under FORGE_AUTO_INIT=1 — otherwise the declined assertions above are a false green. got: %s", cout)
 	}
+}
+
+// forgeEnv runs a forge command with an isolated FORGE_DATA_HOME (config.json 与
+// 注册表同根——偏好落盘与后续读取必须同一 store）。
+func forgeEnv(t *testing.T, dataHome, dir string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command(forgeBin, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), `FORGE_DATA_HOME=`+dataHome)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }

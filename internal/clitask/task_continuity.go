@@ -199,7 +199,16 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "[forge] task-resume advisory hook failed: %v\n", err)
 			return nil
 		}
-		fmt.Print(out) // 无活跃任务 out="" 静默；有则 "PASS\n<handoff>"
+		// P3 managed 会话横幅：managed 项目 SessionStart 恒输出一行激活信号——
+		// 用户级指令段（~/.claude/CLAUDE.md 等）的激活判据锚定在这里（模型可见的
+		// 机械信号，取代"是否已 init"这种模型无法判定的条件）。无活跃任务时原
+		// 静默，现输出横幅（每会话一行，噪声预算内）。
+		banner := "[forge-session] 本项目由 forge 管理（managed）——forge 质量协议生效（用户级指令段以本行为激活信号）；退出运行 forge off。"
+		if out == "" {
+			fmt.Print("PASS\n" + banner + "\n")
+		} else {
+			fmt.Print("PASS\n" + banner + "\n" + strings.TrimPrefix(out, "PASS\n"))
+		}
 		return nil
 	}
 

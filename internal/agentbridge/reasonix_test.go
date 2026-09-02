@@ -44,7 +44,7 @@ func TestReasonixTranslator_Translate(t *testing.T) {
 		"name: forge-quality",
 		"## 质量标准",
 		"## Task Bridge Protocol",
-		"仅当当前项目已执行过 `forge init`", // conditional activation, not unconditional "本项目"
+		"[forge-session]", // conditional activation anchored to the managed-session banner（P3）
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("skill content missing %q", want)

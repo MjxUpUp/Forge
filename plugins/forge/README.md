@@ -4,7 +4,7 @@ Forge brings loop-engineering quality gates to your AI coding agent: task-tracke
 
 ## Three-step setup
 
-Forge has two parts: a Go binary (the engine that hooks spawn) and this plugin (the wiring that tells your agent where to call it). Install the binary first, then the plugin — project registration is automatic: opening any git project in a session auto-initializes forge there (see step 3).
+Forge has two parts: a Go binary (the engine that hooks spawn) and this plugin (the wiring that tells your agent where to call it). Install the binary first, then the plugin — project registration follows the takeover preference: with the shipped default (ask) the init-suggest hook asks once per project on first session; with `forge config set` takeover to auto it auto-initializes every git project silently (see step 3).
 
 ### 1. Install the forge binary (required, once per machine)
 
@@ -86,7 +86,7 @@ Other hosts: the plugin is the distribution entry point (marketplace listing); u
 
 ## Caveat: projects you do not want forge in
 
-User-level hooks fire in every Claude Code project. With the plugin installed, the **init-suggest** SessionStart hook auto-initializes any git project on first session (install = opt-in). Without the plugin (npm-only), it prompts the agent to ask instead (one-shot `suggested` marker so it asks only once). Since v1.22 `forge init` writes nothing into the project, takeover costs the repo nothing. Per-project opt-out beats plugin-wide default-on: run `forge off` in a project to keep it out permanently — auto-takeover, `FORGE_AUTO_INIT`, and the prompt all go silent there, and `forge init` refuses until you run `forge on` (`forge suggest decline` still works as the legacy alias). To remove forge machine-wide, uninstall the plugin or run `forge uninstall` (add `--restore` to roll user-level files back to their pre-forge bytes, from `~/.forge/backups/`). If you move or delete a project directory, clean up its stale registry entry with `forge registry prune`.
+User-level hooks fire in every Claude Code project. Since P2 the takeover default is **ask**: the **init-suggest** SessionStart hook asks once per project on first session (consent → `forge init`, decline → `forge off`) — installing the plugin grants the capability, not takeover of every repo. Prefer zero-friction? `forge config set` takeover to auto restores silent auto-takeover of every git project (`FORGE_TAKEOVER=auto` per-invocation). Projects with their own harness (spec-kit, project-level `.claude` wiring, `.cursor/rules`) are detected and yielded to automatically (`forge on` overrides). Since v1.22 `forge init` writes nothing into the project, takeover costs the repo nothing. Per-project opt-out beats any default: run `forge off` in a project to keep it out permanently — auto-takeover, `FORGE_AUTO_INIT`, and the prompt all go silent there, and `forge init` refuses until you run `forge on` (`forge suggest decline` still works as the legacy alias; `forge off --commit` writes a committed `.forge-decline` team declaration). To remove forge machine-wide, uninstall the plugin or run `forge uninstall` (add `--restore` to roll user-level files back to their pre-forge bytes, from `~/.forge/backups/`). If you move or delete a project directory, clean up its stale registry entry with `forge registry prune`.
 
 ## Supported hosts (out of the box)
 
