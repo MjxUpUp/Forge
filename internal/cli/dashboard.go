@@ -54,9 +54,11 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	roots := registry.List()
+	// Project Policy Layer P1：declined 项目退出聚合视图（ListManaged 过滤）；
+	// 上方自登记 Add 保留——upsert 不复活 declined 条目。
+	roots := registry.ListManaged()
 	if len(roots) == 0 {
-		return fmt.Errorf(`无已登记项目——在项目目录跑 forge init 登记后再启动看板`)
+		return fmt.Errorf(`无已接管（managed）项目——在项目目录跑 forge init 登记后再启动看板；forge off 退出的项目不聚合`)
 	}
 
 	opts := dashboard.Options{Port: port, OpenBrowser: !noOpen, Roots: roots}

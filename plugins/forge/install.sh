@@ -80,6 +80,6 @@ Next step: install the plugin inside your agent CLI (interactive; not scriptable
 
 After plugin install, opening any git project in your agent lets the
 init-suggest SessionStart hook silently enable forge there (auto-takeover;
-run 'forge suggest decline' in a project to keep it out). On a Windows
+run 'forge off' in a project to keep it out; 'forge suggest decline' still works as the legacy alias). On a Windows
 machine, run install.ps1 instead.
 NEXT

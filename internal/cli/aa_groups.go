@@ -36,6 +36,11 @@ func init() {
 	// init-suggest hook prompt-state management (semantic extension of init).
 	//
 	suggestCmd.GroupID = "lifecycle" // init-suggest hook 的提示状态管理（init 的语义延伸）
+	// Project Policy Layer P1: symmetric per-project takeover on/off (semantic
+	// sibling of init/suggest — per-project 接入管理的开关对).
+	//
+	offCmd.GroupID = "lifecycle" // 按项目退出接管（对称命令面，见 docs/design/project-policy-layer.md）
+	onCmd.GroupID = "lifecycle"  // 恢复接管（declined → managed 唯一通道）
 	// 项目规范档案（conventions-profile 层 1 建档入口：init 扫描/show 查看；
 	// 与 init/suggest 同族的项目级接入管理——先 init 进 forge，再 conventions 建档）。
 	conventionsCmd.GroupID = "lifecycle"
