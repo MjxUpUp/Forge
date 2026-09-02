@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.49.0](https://github.com/MjxUpUp/Forge/compare/v1.48.1...v1.49.0) (2026-09-02)
+
+
+### Features
+
+* **policy:** Project Policy Layer P1——按项目退出/恢复接管（forge off/on） ([6d26e5a](https://github.com/MjxUpUp/Forge/commit/6d26e5aab6b74ca5caf37b32bd89694c5efeecb7))
+* **policy:** Project Policy Layer P2-P4——默认 ask 翻转 + 全局通道感知 + 外来 harness 让位 + 注册表写锁 ([1c6230d](https://github.com/MjxUpUp/Forge/commit/1c6230d46fb2e543319b94cb4bfc5ab15827d0a5))
+
+
+### Bug Fixes
+
+* **policy:** forge policy state 对 managed 打印字面值——StatusManaged 空串的显示层映射 ([4ff41d0](https://github.com/MjxUpUp/Forge/commit/4ff41d0cb924bb49ba9baa9b8f8b42c96be84bc0))
+* **policy:** plugin README 退出文案改走生成器单一真相源——资产源 + 新二进制重生成 ([5068806](https://github.com/MjxUpUp/Forge/commit/5068806420544e7627cb449fc890d23ec012cd88))
+
 ## [1.48.1](https://github.com/MjxUpUp/Forge/compare/v1.48.0...v1.48.1) (2026-09-01)
 
 
