@@ -42,9 +42,24 @@ func pathKey(cleanedAbs string) string {
 //
 // Entry 是一个已登记项目。Key 是 forge 项目 key（git common-dir hash，非 git 项目
 // 为 PathKey）；老版本 forge 写入的条目可能为空——匹配时惰性补算（不阻塞读）。
+// Status/DecisionBy/DecisionAt 是 Project Policy Layer 的接管状态与决策审计
+// （见 policy.go）：Status 空串（零值）= managed——存量 JSON 无此字段，升级不改变
+// 任何既有项目的成员资格；"declined" = 已退出接管（IsMember 不再命中）。
 type Entry struct {
 	Path string `json:"path"`
 	Key  string `json:"key,omitempty"`
+	// Status is the takeover status: empty = managed (zero-value compat), "declined" = opted out. See policy.go.
+	//
+	// Status 是接管状态：空 = managed（零值兼容存量条目），"declined" = 已退出接管。
+	Status string `json:"status,omitempty"`
+	// DecisionBy records who/what made the latest status decision (e.g. "forge off").
+	//
+	// DecisionBy 记录最近一次状态决策的来源（如 "forge off"）。
+	DecisionBy string `json:"decision_by,omitempty"`
+	// DecisionAt records when the latest status decision was made.
+	//
+	// DecisionAt 记录最近一次状态决策的时间。
+	DecisionAt time.Time `json:"decision_at,omitempty"`
 }
 
 // File is the on-disk structure of ~/.forge/projects.json.
@@ -209,7 +224,7 @@ func Keys() []string {
 // 截断的损坏 JSON（让读整个失败）；rename 是原子的（Windows 上 Go os.Rename 走
 // MoveFileEx REPLACE_EXISTING）。read-modify-write 仍非并发安全（两进程同时写可能
 // 后写覆盖先写丢一条），但本地工具并发概率低，丢失重跑 init 可补；损坏 JSON 才是
-// 必防的。供 Add 和 List 惰性精简共用。
+// 必防的。供 Add/SetStatus（经 loadForWrite）和 List 惰性精简共用。
 func writeEntries(entries []Entry) error {
 	p, err := globalPath()
 	if err != nil {
@@ -230,6 +245,9 @@ func writeEntries(entries []Entry) error {
 // 检查跨 worktree 命中、无需 .forge/。Upsert 语义：同路径条目刷新 key；同 key
 // 不同路径的条目仅当旧路径已消失（项目被移动）才更新路径——旧路径仍活说明身处
 // worktree，保留旧路径。用于 forge init 自登记 + dashboard 启动时自登记当前项目。
+//
+// P1 契约：upsert **保留既有 Status/Decision 字段**——declined 条目不得被自登记/
+// 自愈复活；declined→managed 的唯一通道是 SetStatus（forge on）。
 func Add(absPath string) error {
 	ap, err := filepath.Abs(absPath)
 	if err != nil {
@@ -237,30 +255,11 @@ func Add(absPath string) error {
 	}
 	ap = filepath.Clean(ap)
 
-	key := ``
-	if k, kerr := forgedata.Key(ap); kerr == nil {
-		key = k
-	} else {
-		key = forgedata.PathKey(ap)
-	}
+	key := entryKey(ap)
 
-	p, err := globalPath()
+	f, err := loadForWrite()
 	if err != nil {
 		return err
-	}
-	var f File
-	if data, rerr := os.ReadFile(p); rerr == nil {
-		if uerr := json.Unmarshal(data, &f); uerr != nil {
-			// 注册表损坏：重建前先把文件备份到一边——旧代码吞掉错误后把仅含当前项目的
-			// 表原子覆盖回去，其他所有登记被静默清空。备份 + stderr 告警让失败显式、可恢复。
-			corrupt := fmt.Sprintf("%s.corrupt-%s", p, time.Now().Format("20060102-150405"))
-			if cerr := os.Rename(p, corrupt); cerr != nil {
-				fmt.Fprintf(os.Stderr, "warn: 备份损坏的注册表 %s 失败: %v\n", p, cerr)
-			} else {
-				fmt.Fprintf(os.Stderr, "warn: 注册表 JSON 损坏（%v），已备份到 %s，从空表重建\n", uerr, corrupt)
-			}
-			f = File{}
-		}
 	}
 	for i, e := range f.Projects {
 		samePath := pathKey(filepath.Clean(e.Path)) == pathKey(ap)
@@ -273,12 +272,17 @@ func Add(absPath string) error {
 				// 删除后把整条（含 key）prune 掉，主项目静默丢成员资格。其他
 				// 非 IsNotExist 的 stat 错误是「此刻不可读」而非「已消失」，同样保留。
 				if _, serr := os.Stat(filepath.Clean(e.Path)); !os.IsNotExist(serr) {
-					f.Projects[i] = Entry{Path: filepath.Clean(e.Path), Key: key}
+					ne := e // 保留 Status/决策字段：自登记不复活 declined
+					ne.Key = key
+					f.Projects[i] = ne
 					return writeEntries(f.Projects)
 				}
 			}
-			// Upsert：刷新 key（遗留条目）与路径（被移动的项目）。
-			f.Projects[i] = Entry{Path: ap, Key: key}
+			// Upsert：刷新 key（遗留条目）与路径（被移动的项目）；状态字段保留。
+			ne := e
+			ne.Path = ap
+			ne.Key = key
+			f.Projects[i] = ne
 			return writeEntries(f.Projects)
 		}
 	}
@@ -286,9 +290,42 @@ func Add(absPath string) error {
 	return writeEntries(f.Projects)
 }
 
-// IsMember reports whether cwd is inside a registered forge project, returning the project root.
+// entryKey computes the forge project key for a cleaned absolute path: git
+// common-dir hash when resolvable, else PathKey. Shared by Add and SetStatus so
+// the two write paths can never derive different keys for the same project.
 //
-// IsMember 报告 cwd 是否在某个已登记 forge 项目内，并返回项目根。匹配规则：
+// entryKey 为已 Clean 的绝对路径计算 forge 项目 key：可解析 git 时取 common-dir
+// hash，否则 PathKey。Add 与 SetStatus 共享，两条写路径对同一项目不可能推出不同的 key。
+func entryKey(ap string) string {
+	if k, kerr := forgedata.Key(ap); kerr == nil {
+		return k
+	}
+	return forgedata.PathKey(ap)
+}
+
+// backupCorrupt is the corrupt-registry contract shared by all mutators: rename the
+// damaged file aside (recoverable) and warn on stderr — never silently overwrite.
+//
+// backupCorrupt 是所有变更方共享的注册表损坏处置契约：把损坏文件改名挪开（可恢复）
+// 并在 stderr 告警——绝不静默覆盖后丢失全部登记。
+func backupCorrupt(p string, uerr error) {
+	corrupt := fmt.Sprintf("%s.corrupt-%s", p, time.Now().Format("20060102-150405"))
+	if cerr := os.Rename(p, corrupt); cerr != nil {
+		fmt.Fprintf(os.Stderr, "warn: 备份损坏的注册表 %s 失败: %v\n", p, cerr)
+	} else {
+		fmt.Fprintf(os.Stderr, "warn: 注册表 JSON 损坏（%v），已备份到 %s，从空表重建\n", uerr, corrupt)
+	}
+}
+
+// IsMember reports whether cwd is inside a registered AND managed forge project,
+// returning the project root. Declined entries do not confer membership (Project
+// Policy Layer P1): every project-scoped hook gates through this call, so on this
+// surface a declined project is indistinguishable from an unregistered one.
+//
+// IsMember 报告 cwd 是否在某个已登记且 managed 的 forge 项目内，并返回项目根。
+// declined 条目不赋予成员资格（Project Policy Layer P1）：所有 project-scoped
+// hook 都经本调用闸门，declined 项目在此表面上与未登记项目不可区分。匹配规则与
+// State 共享同一 lookup 核心，成员资格与状态判定不会漂移：
 //   - git cwd：repo 的 forge key（git common-dir hash）等于某个已登记 key——
 //     跨 worktree 安全、无需 .forge/。返回的根是 git working tree 根。
 //   - 非 git cwd：等于 cwd 或为其祖先的最长已登记路径（边界感知前缀匹配）。
@@ -296,13 +333,30 @@ func Add(absPath string) error {
 // 热路径只读（不写回）；无存储 key 的遗留条目每次调用在内存补算——代价是每个
 // 候选条目几次 stat。
 func IsMember(cwd string) (root string, ok bool) {
+	root, e, ok := lookup(cwd)
+	if !ok || e.IsDeclined() {
+		return ``, false
+	}
+	return root, true
+}
+
+// lookup is the shared matching core of IsMember/State/ListManaged: it resolves cwd
+// to the matched registry entry (managed or declined alike) or reports no match.
+// The returned root is the matched project's root; callers derive membership from
+// the entry's Status. Matching semantics live here exactly once (P1: IsMember 与
+// State 的判定单一真相源).
+//
+// lookup 是 IsMember/State/ListManaged 共享的匹配核心：把 cwd 解析到命中的注册表
+// 条目（无论 managed/declined）或报告未命中。返回的 root 是命中项目的根；调用方
+// 自行从条目 Status 推导成员资格。匹配语义只在此处存在一份。
+func lookup(cwd string) (root string, entry Entry, ok bool) {
 	f, valid := readFile()
 	if !valid || len(f.Projects) == 0 {
-		return ``, false
+		return ``, Entry{}, false
 	}
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
-		return ``, false
+		return ``, Entry{}, false
 	}
 	abs = filepath.Clean(abs)
 	// 可能时解析 symlink，与 PathKey 语义一致：经 symlink 进入的 cwd 必须能
@@ -314,11 +368,11 @@ func IsMember(cwd string) (root string, ok bool) {
 	if gitRoot := forgedata.FindGitRoot(abs); gitRoot != `` {
 		k, kerr := forgedata.Key(abs)
 		if kerr != nil {
-			return ``, false
+			return ``, Entry{}, false
 		}
 		for _, e := range f.Projects {
 			if keyOf(e) == k {
-				return gitRoot, true
+				return gitRoot, e, true
 			}
 		}
 		// key 漂移路径回退：项目在非 git 状态下 forge init 存的是 PathKey；`git init`
@@ -332,18 +386,19 @@ func IsMember(cwd string) (root string, ok bool) {
 			for _, ep := range pathForms(e.Path) {
 				for _, grf := range pathForms(gitRoot) {
 					if pathKey(ep) == pathKey(grf) {
-						return gitRoot, true
+						return gitRoot, e, true
 					}
 				}
 			}
 		}
-		return ``, false
+		return ``, Entry{}, false
 	}
 
 	// 非 git：边界感知的最长前缀匹配。两侧都按字面 + symlink 解析双形态比较：
 	// 条目可能按未解析形态登记（macOS /var → /private/var 的 temp 目录），而
 	// cwd 经 symlink 到达（或反之）——单边单形态会漏配。
 	best := ``
+	var bestE Entry
 	for _, e := range f.Projects {
 		// 死条目不赋予成员资格（与 List 精简同一条存活规则）：已删除/移走的
 		// 项目目录不得命中——IsMember 只读不精简，少了这道检查，一个路径恰好
@@ -389,12 +444,13 @@ func IsMember(cwd string) (root string, ok bool) {
 		}
 		if matched && len(epLexical) > len(best) {
 			best = epLexical
+			bestE = e
 		}
 	}
 	if best == `` {
-		return ``, false
+		return ``, Entry{}, false
 	}
-	return best, true
+	return best, bestE, true
 }
 
 // pathForms 返回路径的匹配候选形态：Clean 后的字面形态，以及 symlink 解析后的

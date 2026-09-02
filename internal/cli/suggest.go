@@ -8,6 +8,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hookdispatch"
+	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -87,18 +88,39 @@ init-suggest hook 在新 git 项目首次会话时提示 agent 询问是否启�
 status 查看当前标记状态，reset 清除标记重新允许提示。`,
 }
 
+// writeSuggestMarker 写 legacy 提示标记（declined/suggested）。off.go 的双写垫片
+// 与本命令族共用——标记值的单一真相源在 init-suggest hook（bash）。
+func writeSuggestMarker(tag, value string) error {
+	dir := suggestStateDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf(`create suggest state dir: %w`, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, tag), []byte(value), 0644); err != nil {
+		return fmt.Errorf(`write suggest marker: %w`, err)
+	}
+	return nil
+}
+
+// removeSuggestMarker 清除 legacy 提示标记；不存在不算错（幂等）。
+func removeSuggestMarker(tag string) error {
+	if err := os.Remove(filepath.Join(suggestStateDir(), tag)); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf(`clear suggest marker: %w`, err)
+	}
+	return nil
+}
+
 var suggestDeclineCmd = &cobra.Command{
 	Use:   `decline`,
-	Short: `永久静默当前项目的 forge init 提示`,
+	Short: `永久静默当前项目的 forge 接管（= forge off 的兼容别名）`,
+	Long: `forge suggest decline 是 forge off 的兼容别名：注册表置 declined + 写 legacy
+标记，init-suggest hook 不再提示、init/自动接管拒绝。恢复用 'forge on'
+（或 'forge suggest reset'）。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dir := suggestStateDir()
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf(`create suggest state dir: %w`, err)
+		root := policyRoot()
+		if err := declineProject(root, `forge suggest decline`); err != nil {
+			return err
 		}
-		if err := os.WriteFile(filepath.Join(dir, projectSuggestTag()), []byte(`declined`), 0644); err != nil {
-			return fmt.Errorf(`write decline marker: %w`, err)
-		}
-		fmt.Printf(`已标记项目 '%s'：不再提示 forge init。如需重新启用，运行 'forge suggest reset' 后 'forge init'。`+"\n", suggestProjectName())
+		fmt.Printf(`已标记项目 '%s'：退出 forge 接管（declined），init 提示与自动接管不再生效。如需恢复，运行 'forge on'。`+"\n", suggestProjectName())
 		return nil
 	},
 }
@@ -133,13 +155,21 @@ var suggestStatusCmd = &cobra.Command{
 
 var suggestResetCmd = &cobra.Command{
 	Use:   `reset`,
-	Short: `清除当前项目的提示标记（重新允许提示）`,
+	Short: `清除当前项目的提示/退出标记（重新允许接管）`,
+	Long: `forge suggest reset 清除当前项目的 legacy 提示标记；若注册表状态为 declined
+（曾 forge off / suggest decline），同步恢复为 managed——否则 init 会被 declined
+门禁拒绝，reset 语义（重新允许）落空。等价于 'forge on'。`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		marker := filepath.Join(suggestStateDir(), projectSuggestTag())
-		// 报告真实错误（P3：原 Remove 失败也打印"已清除"，silently wrong）。
-		// 文件不存在不算错误（reset 本就是要清除，幂等）。
-		if err := os.Remove(marker); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf(`clear suggest marker: %w`, err)
+		root := policyRoot()
+		if _, state := registry.State(root); state == registry.StatusDeclined {
+			if err := resumeProject(root, `forge suggest reset`); err != nil {
+				return err
+			}
+			fmt.Printf(`项目 '%s' 已恢复接管（managed），下次会话 init-suggest 正常运作。`+"\n", suggestProjectName())
+			return nil
+		}
+		if err := removeSuggestMarker(projectSuggestTag()); err != nil {
+			return err
 		}
 		fmt.Printf(`已清除项目 '%s' 的标记。下次会话开始会重新提示 forge init。`+"\n", suggestProjectName())
 		return nil

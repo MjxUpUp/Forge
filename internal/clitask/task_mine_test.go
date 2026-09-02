@@ -126,6 +126,34 @@ func TestTaskMine_AllProjects(t *testing.T) {
 	}
 }
 
+// TestTaskMine_AllProjects_ExcludesDeclined：Project Policy Layer P1——forge off
+// 退出的项目不进跨项目任务视图（runTaskMineAllProjects 经 registry.ListManaged
+// 聚合）。守卫 declined 项目既不出现在分组里、也不让同任务名的 managed 项目失明。
+func TestTaskMine_AllProjects_ExcludesDeclined(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "declproj-sid")
+	makeProject := func(ref string) string {
+		d := t.TempDir()
+		initGitProject(t, d)
+		runForge(t, d, "task", "start", "--ref", ref, "--assignee", "kimi", "--title", ref)
+		return d
+	}
+	dirA := makeProject("feat/keep")
+	dirB := makeProject("feat/gone")
+	runForge(t, dirB, "off") // dirB 退出接管
+
+	out, _, code := runForge(t, dirA, "task", "mine", "--agent", "kimi", "--all-projects", "--json")
+	if code != 0 {
+		t.Fatalf(`mine --all-projects exit %d: %s`, code, out)
+	}
+	if !strings.Contains(out, "feat/keep") {
+		t.Errorf(`managed 项目 feat/keep 应在跨项目视图, got: %s`, out)
+	}
+	if strings.Contains(out, "feat/gone") {
+		t.Errorf(`declined 项目 feat/gone 不应出现在跨项目视图, got: %s`, out)
+	}
+}
+
 // TestTaskMine_MultipleDepsPendingList: with two upstream deps where one is delivered and the other is not, mine --blocked must list only the still-pending one in pending_deps — the delivered upstream must not appear.
 //
 // TestTaskMine_MultipleDepsPendingList：两个上游依赖中一个已交付一个未交付时，mine --blocked 的

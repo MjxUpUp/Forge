@@ -130,3 +130,43 @@ func TestInitSuggestPluginDeclinedBlocksTakeover(t *testing.T) {
 		t.Errorf("control project (no marker, plugin installed) must be auto-taken-over — otherwise the declined assertions above are a false green. got: %s", cout)
 	}
 }
+
+// TestInitSuggestDeclinedBlocksAutoInitEnv：Project Policy Layer P1 的 G-1 修复钉子
+// ——declined 标记必须拦住 FORGE_AUTO_INIT=1（原实现 AUTO_INIT 分支在 declined
+// 检查之前，"显式 env 不拦 declined"语义自 P1 废除：退出不可被 env 穿透）。对照
+// 项目（无标记 + AUTO_INIT）必须照常自动 init，排除 declined 断言的假绿。
+func TestInitSuggestDeclinedBlocksAutoInitEnv(t *testing.T) {
+	proj := t.TempDir()
+	git(t, proj, "init")
+	claudeHome := fakePluginInstalled(t)
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("user home: %v", err)
+	}
+	markerDir := filepath.Join(home, ".forge", ".init-suggested")
+	if err := os.MkdirAll(markerDir, 0755); err != nil {
+		t.Fatalf("mkdir marker dir: %v", err)
+	}
+	tag := "tag_e2e_auto_init_declined"
+	if err := os.WriteFile(filepath.Join(markerDir, tag), []byte("declined"), 0644); err != nil {
+		t.Fatalf("write declined marker: %v", err)
+	}
+
+	out := runInitSuggestScript(t, proj, tag, claudeHome, `FORGE_AUTO_INIT=1`)
+	if strings.Contains(out, "FORGE_AUTO_INIT=1: 已在") {
+		t.Errorf("declined project must not be auto-inited even with FORGE_AUTO_INIT=1, got: %s", out)
+	}
+	if _, err := forgeErr(t, proj, "status"); err == nil {
+		t.Errorf("declined project must stay unregistered under FORGE_AUTO_INIT=1, but forge status exited 0")
+	}
+
+	// 对照：无标记 + AUTO_INIT → 自动 init 必须发生（否则上面两条断言在
+	// AUTO_INIT 分支整体失效时也通过——对照侧排除假绿）。
+	control := t.TempDir()
+	git(t, control, "init")
+	cout := runInitSuggestScript(t, control, "tag_e2e_auto_init_control", claudeHome, `FORGE_AUTO_INIT=1`)
+	if !strings.Contains(cout, "FORGE_AUTO_INIT=1: 已在") {
+		t.Errorf("control project (no marker) must be auto-inited under FORGE_AUTO_INIT=1 — otherwise the declined assertions above are a false green. got: %s", cout)
+	}
+}

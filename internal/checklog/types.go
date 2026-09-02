@@ -186,6 +186,17 @@ const (
 	// 覆盖率是基建健康度，非任务验证——排除出证据强度分桶。计数走
 	// Meta[MetaKeyAttribution*]。
 	CheckAttribution CheckName = "attribution"
+	// CheckTakeoverPolicy records per-project takeover state flips (forge on/off,
+	// Project Policy Layer P1). Observation class: the audit trail of "who turned
+	// takeover off/on and when" — never task verification, excluded from evidence-
+	// strength bucketing. Written only when the project already has a DataDir; for
+	// never-initialized projects the registry Entry decision fields are the audit.
+	//
+	// CheckTakeoverPolicy 记录 per-project 接管状态翻转（forge on/off，Project
+	// Policy Layer P1）。观察类："谁在何时开/关了接管"的审计轨迹——绝非任务验证，
+	// 排除出证据强度分桶。仅在项目已有 DataDir 时落盘；从未 init 的项目以注册表
+	// Entry 决策字段为审计。
+	CheckTakeoverPolicy CheckName = "takeover-policy"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
