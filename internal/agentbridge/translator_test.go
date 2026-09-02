@@ -481,7 +481,7 @@ func TestWindsurfTranslator_Translate(t *testing.T) {
 		t.Error("missing managed-session banner anchor（P3 pointer section）")
 	}
 	if strings.Contains(content, "代码编译") {
-		t.Error("pointer section must not carry the standards copy（spec-kit 共识：共享文件最多放指针）")
+		t.Error("pointer section must not carry the standards copy（共享文件最多放指针，业界共识）")
 	}
 }
 
