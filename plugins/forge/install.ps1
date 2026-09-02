@@ -67,8 +67,9 @@ Next step: install the plugin inside your agent CLI (interactive; not scriptable
     copilot plugin marketplace add $repo
     copilot plugin install forge@forge
 
-After plugin install, opening any git project in your agent lets the
-init-suggest SessionStart hook silently enable forge there (auto-takeover;
-run 'forge off' in a project to keep it out; 'forge suggest decline' still works as the legacy alias). On macOS / Linux,
+After plugin install, forge asks once per project on first session (shipped
+default). For silent auto-takeover of every git project run 'forge config set
+takeover auto'; run 'forge off' in a project to keep it out permanently
+('forge suggest decline' still works as the legacy alias). On macOS / Linux,
 run install.sh instead.
 "@

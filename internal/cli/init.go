@@ -7,6 +7,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/harnessdetect"
 	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
@@ -59,6 +60,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err := ensureNotDeclined(dir); err != nil {
 		return err
 	}
+
+	// P4：外来 harness 信号 → 手动 init 是显式用户意图，继续但警告（覆盖默认
+	// 让位是知情选择）。注意 .forge-decline 声明项目在上方门禁已被拒。
+	warnForeignHarness(policyRoot())
 
 	teamMode, _ := cmd.Flags().GetBool("project")
 	agentsFlag, _ := cmd.Flags().GetString("agents")
@@ -308,4 +313,16 @@ func runInitTeamMode(dir string, agents []agentbridge.AgentType, proto *protocol
 	fmt.Println("队友各自安装 forge 并跑过一次 init 即具备同样的 hooks；项目级不再写")
 	fmt.Println("settings.local.json（避免与用户级注册双跑）。")
 	return nil
+}
+
+// warnForeignHarness prints an advisory when the project shows foreign-harness
+// signals — manual init overrides the default yield, and that override should
+// be an informed choice (P4). Advisory only; never blocks.
+//
+// warnForeignHarness 在项目带外来 harness 信号时打印警告——手动 init 覆盖默认
+// 让位应是知情选择（P4）。仅 advisory，永不阻断。
+func warnForeignHarness(root string) {
+	if signal, hit := harnessdetect.Detect(root); hit {
+		fmt.Fprintf(os.Stderr, "Warning: 检测到自有 harness 信号（%s）——默认让位已被本次手动 init 覆盖；若非本意请运行 'forge off'。\n", signal)
+	}
 }

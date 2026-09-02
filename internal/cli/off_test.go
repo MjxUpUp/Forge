@@ -220,3 +220,121 @@ func writeTestProtocol(proj string) error {
 	}
 	return os.WriteFile(filepath.Join(dir, `protocol.yml`), []byte("stack: go\n"), 0644)
 }
+
+// TestPolicyYield_ForeignHarnessLetsGo P4 让位：高置信信号命中 → declined（by
+// 带信号名）+ 输出让位说明；无信号输出为空且不改变状态。
+func TestPolicyYield_ForeignHarnessLetsGo(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	proj := t.TempDir()
+	t.Chdir(proj)
+	if err := os.MkdirAll(filepath.Join(proj, `.specify`), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := captureOutput(t, func() error {
+		return policyYieldCmd.RunE(policyYieldCmd, nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, `已让位`) || !strings.Contains(stdout, `.specify`) {
+		t.Errorf(`yield 输出缺让位说明: %q`, stdout)
+	}
+	assertState(t, proj, registry.StatusDeclined)
+
+	// 无信号：空输出、不改状态（unknown 保持）。
+	clean := t.TempDir()
+	t.Chdir(clean)
+	stdout2, _, err := captureOutput(t, func() error {
+		return policyYieldCmd.RunE(policyYieldCmd, nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(stdout2) != `` {
+		t.Errorf(`无信号应静默，实得 %q`, stdout2)
+	}
+	assertState(t, clean, registry.StatusUnknown)
+}
+
+// TestOffCommit_WritesDeclineFile / TestOn_RemovesDeclineFile 团队声明文件
+// （.forge-decline，deny-wins）：off --commit 写入；on 移除并翻转。
+func TestOffCommit_WritesDeclineFile(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	proj := t.TempDir()
+	mkGitProjCLI(t, proj) // --commit 声明按 git 根键控，非 git 仓库被拒
+	t.Chdir(proj)
+
+	if err := offCmd.Flags().Set(`commit`, `true`); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = offCmd.Flags().Set(`commit`, `false`) }()
+	if err := runOff(offCmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(proj, registry.DeclineFileName)); err != nil {
+		t.Fatalf(`.forge-decline not written: %v`, err)
+	}
+	assertState(t, proj, registry.StatusDeclined)
+}
+
+func TestDeclineFile_DenyWinsOverManagedRegistry(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	proj := t.TempDir()
+	mkGitProjCLI(t, proj) // 声明文件按 git 根键控——deny-wins 只在 git 分支生效
+	t.Chdir(proj)
+
+	// 注册表 managed + 声明文件存在 → State=declined（deny-wins），IsMember false。
+	if err := registry.SetStatus(proj, registry.StatusManaged, `forge on`); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(proj, registry.DeclineFileName), []byte(`x`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := registry.IsMember(proj); ok {
+		t.Error(`声明文件存在时 IsMember 必须为假（deny-wins）`)
+	}
+	if _, state := registry.State(proj); state != registry.StatusDeclined {
+		t.Errorf(`State = %q, want declined（声明文件压制）`, state)
+	}
+
+	// forge on：移除声明文件 + 翻转 → managed。
+	if err := runOn(onCmd, nil); err != nil {
+		t.Fatalf(`forge on under decline file: %v`, err)
+	}
+	if _, err := os.Stat(filepath.Join(proj, registry.DeclineFileName)); !os.IsNotExist(err) {
+		t.Errorf(`forge on 未移除声明文件 (err=%v)`, err)
+	}
+	assertState(t, proj, registry.StatusManaged)
+}
+
+// TestWarnForeignHarness 手动 init 的外来 harness 警告（P4）：命中信号打警告
+// （不阻断——init 接线由 runInit 调用本 helper，这里单测 helper 本体；runInit 的
+// 全量路径写用户级 agent 资产，不在 cli 单测里跑）。
+func TestWarnForeignHarness(t *testing.T) {
+	proj := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(proj, `.specify`), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, err := captureOutput(t, func() error {
+		warnForeignHarness(proj)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr, `自有 harness 信号`) || !strings.Contains(stderr, `.specify`) {
+		t.Errorf(`警告缺信号说明: %q`, stderr)
+	}
+
+	// 无信号静默。
+	clean := t.TempDir()
+	_, stderr2, _ := captureOutput(t, func() error {
+		warnForeignHarness(clean)
+		return nil
+	})
+	if strings.TrimSpace(stderr2) != `` {
+		t.Errorf(`无信号应静默，实得 %q`, stderr2)
+	}
+}

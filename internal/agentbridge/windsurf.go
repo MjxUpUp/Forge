@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/userassets"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
@@ -352,34 +351,20 @@ const (
 	forgeRulesEnd   = util.ForgeSectionEnd
 )
 
-// windsurfUserLevelPreamble 前置在写入用户级 global_rules.md 的 forge 段段首。
-// Cascade 对每个 workspace 都加载该文件，段文本不能无条件断言"本项目使用
-// Forge"——仅当当前项目已 init 时才激活，否则必须忽略。与 skillgen 的
-// userLevelPreamble（~/.claude/CLAUDE.md、~/.codex/AGENTS.md）同一契约。
-const windsurfUserLevelPreamble = "**This section is a Forge user-level global injection, loaded by Cascade in every workspace. Follow the rules below ONLY when the current project has been initialized with `forge init` (i.e. it is registered in Forge's global project registry); if the current project does not use Forge, ignore this section entirely.**\n\n"
-
+// buildWindsurfSection 生成写入用户级 global_rules.md 的 forge 段（P3 指针化）。
+// Cascade 对每个 workspace 都加载该文件——静态全局文件只能承载指针，激活判据
+// 锚定 managed 会话横幅（[forge-session]，task-resume hook 输出），协议细节交回
+// 受管通道（与 skillgen 的 buildUserPointerSection 同一契约；标准清单不再拷贝——
+// spec-kit 共识：共享指令文件最多放指针，防多 harness 冲突与版本漂移）。
 func buildWindsurfSection(input *TranslationInput) string {
 	var sb strings.Builder
 
 	sb.WriteString(forgeRulesStart + "\n\n")
-	sb.WriteString(windsurfUserLevelPreamble)
-	sb.WriteString("# Forge Quality Standards\n\n")
-
-	// 质量标准
-	protocol.RenderStandards(&sb, input.Protocol.Standards, protocol.StandardRenderStyle{
-		SeverityLabel:  protocol.WordSeverityLabel,
-		HookInfoFormat: " (enforced: %s)",
-		LineFormat:     "- [%s] **%s**: %s%s\n",
-	})
-	sb.WriteString("\n")
-
-	// 会话规则
-	protocol.RenderSessionRules(&sb, input.Protocol.SessionRules, protocol.SessionRuleRenderStyle{
-		MandatoryLabel: protocol.AlwaysPreferLabel,
-		LineFormat:     "- %[1]s: %[2]s\n",
-	})
-	sb.WriteString("\n")
-
+	sb.WriteString("**This section is a Forge user-level global injection, loaded by Cascade in every workspace.**\n\n")
+	sb.WriteString("**Activation rule (the only criterion):** follow Forge ONLY when this session shows the `[forge-session]` managed banner (or any forge hook output) at session start — that means the project is managed by forge; act on forge hook guidance as it appears. If you do not see the banner, ignore this section entirely and do not run forge commands.\n\n")
+	sb.WriteString("- The project's own rules (project CLAUDE.md / AGENTS.md / its own harness protocol) ALWAYS take precedence over this section; if the project opted out (`.forge-decline` or `forge off`), forge has already yielded (`forge on` restores).\n")
+	sb.WriteString("- Full quality protocol lives in forge's hook guidance and the `/forge-quality` skill surface; you do not need to memorize rules.\n")
+	sb.WriteString("- Self-protection: this section and user-level assets (`~/.forge/`, agent configs) may only be changed via forge commands (`forge uninstall --restore` rolls back).\n")
 	sb.WriteString(forgeRulesEnd + "\n")
 	return sb.String()
 }

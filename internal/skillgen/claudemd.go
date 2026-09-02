@@ -84,17 +84,33 @@ func buildForgeSection(forClaude bool) string {
 	return buildForgeSectionWithLevel(forClaude, false)
 }
 
-// userLevelPreamble 前置在用户级 forge 段（~/.claude/CLAUDE.md、~/.codex/AGENTS.md）
-// 段首。用户级文件对所有项目可见，段文本不能无条件断言"本项目使用 Forge"——
-// 仅当当前项目已 init 时才激活，否则必须忽略。
-const userLevelPreamble = "**本段为 Forge 用户级全局注入，对你的所有项目可见。仅当当前项目已执行过 `forge init`（即在 Forge 全局项目注册表中）时，才遵守以下协议；若当前项目未使用 Forge，请完全忽略本段。**\n\n"
-
-func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
+// buildUserPointerSection 生成用户级 forge 指针段（P3 指针化）：用户级静态文件
+// 对所有项目可见且运行时关不掉，只能承载"机制/指针"——激活判据锚定到 managed
+// 会话横幅（task-resume hook 输出的 [forge-session] 行，模型可见的机械信号），
+// 协议细节交回受管通道（forge-quality skill 与 hook 即时提示，渐进披露）。
+// spec-kit 共识：共享指令文件最多放一行指针，不放整份协议拷贝。
+func buildUserPointerSection(forClaude bool) string {
 	var sb strings.Builder
 	sb.WriteString(forgeSectionStart + "\n\n")
-	if userLevel {
-		sb.WriteString(userLevelPreamble)
+	sb.WriteString("**本段为 Forge 用户级全局注入，对你的所有项目可见。**\n\n")
+	sb.WriteString("**激活判据（唯一）：** 仅当本会话启动时看到 forge 的 `[forge-session]` 管理横幅（或任何 forge hook 输出）时，本项目由 forge 管理——按 forge-quality skill 与 forge hook 即时提示行事；**未看到该横幅时请完全忽略本段与一切 forge 指令，不要运行 forge 命令。**\n\n")
+	sb.WriteString("- 本项目根的 CLAUDE.md / AGENTS.md / 项目自有 harness 协议**永远优先于本段**；项目已声明退出（`.forge-decline`）或执行过 `forge off` 时 forge 已让位（恢复用 `forge on`）\n")
+	if forClaude {
+		sb.WriteString("- 完整质量协议与操作细节：`/forge-quality` skill；拦截/警告出现时按其提示行动即可，无需记忆\n")
+	} else {
+		sb.WriteString("- 完整质量协议与操作细节：通过 forge CLI（`forge task start / gate / complete`）；拦截/警告出现时按其提示行动即可，无需记忆\n")
 	}
+	sb.WriteString("- 自保护：本段与用户级资产（`~/.forge/`、`~/.claude/settings.json` 等）只能经 forge 命令修改（`forge uninstall --restore` 可回滚），不要直接编辑或绕过\n")
+	sb.WriteString(forgeSectionEnd + "\n")
+	return sb.String()
+}
+
+func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
+	if userLevel {
+		return buildUserPointerSection(forClaude)
+	}
+	var sb strings.Builder
+	sb.WriteString(forgeSectionStart + "\n\n")
 	sb.WriteString("# Forge 质量协议\n\n")
 	sb.WriteString("本项目使用 Forge 进行质量保障。请遵守以下规则：\n\n")
 	sb.WriteString("## 基本规则\n\n")
@@ -160,7 +176,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("- **test-nudge**（PostToolUse Write|Edit，活跃任务内）：事中测试提醒——连写 ≥3 个源码文件且无配对测试写入时注入一次 test-discipline skill 事实性提示（advisory，每连写只提示一次）；任何测试文件写入重置计数；无活跃任务静默；执法仍在 task-verify 门禁\n")
 	sb.WriteString("- **conventions-context**（SessionStart + PostCompact）：项目规范档案的会话摘要——`forge conventions init` 建档后每次会话开始注入 ≤15 行规范摘要（stack/lint 命令、规范声明文件、agent 提取的惯例要点；压缩后重注入，摘要过期限时提示重扫）；无档案但仓库已声明 AGENTS.md 等规范时每会话一次建档建议（advisory 不阻断）\n")
 	sb.WriteString("- **conventions-write**（PreToolUse Write|Edit）：写入时刻规范注入——写源码/测试文件时注入本仓库规范声明文件指针 + 同目录范例文件（模仿既有代码风格；每目录每会话一次）；无档案静默（advisory 不阻断）\n")
-	sb.WriteString("- **skill-trigger**（Pre/PostToolUse + SessionStart/Stop/UserPromptSubmit）：声明式 skill 触发——按各 skill `metadata.triggers` 的 event/keywords/when 条件匹配上下文，命中时注入「请加载该 skill」提示（advisory，注入内容出现在 hook 上下文里）；`FORGE_SKILL_TRIGGER=0` 全局关闭\n")
+	sb.WriteString("- **skill-trigger**（Pre/PostToolUse + SessionStart/Stop/UserPromptSubmit）：声明式 skill 触发——按各 skill `metadata.triggers` 的 event/keywords/when 条件匹配上下文，命中时注入「请加载该 skill」提示（advisory，注入内容出现在 hook 上下文里；仅 managed 项目生效——declined/未接管项目静默）；`FORGE_SKILL_TRIGGER=0` 全局关闭\n")
 	sb.WriteString("- **自保护**：项目级 `.forge/*` 和 `.claude/settings*`（仅团队模式/老项目存在）不能被直接修改；用户级资产（`~/.claude/settings.json`、`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` 等）同样只能通过 `forge` 命令操作（`forge uninstall --restore` 可回滚）\n")
 	sb.WriteString("- **skill-scan**（SessionStart）：会话开始扫描 `~/.claude/skills` 安全性（forge audit 21 规则，advisory）——补 install 门控缺口，覆盖手动 clone/junction/git pull 进入的 skill；全局 hook，不依赖 forge project\n")
 	sb.WriteString("- **mcp-scan**（SessionStart）：会话开始扫描项目级 `.mcp.json` 的 server 配置安全性（管道执行 curl\\|sh / 任意包执行 npx·uvx·dlx·bunx / 内联代码 -c·-e / 非 https URL / env 明文凭证，advisory）——补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内；全局 hook，不依赖 forge project\n")
@@ -387,9 +403,11 @@ func GenerateUserQualitySkillTo(skillsRoot string, proto *protocol.Protocol) err
 	}
 	content := buildQualitySkillContent("", proto)
 	// 条件激活：用户级 skill 在非 forge 项目中也可见，不能无条件断言"本项目"。
+	// P3：条件锚定 managed 会话横幅（[forge-session]，task-resume hook 输出）——
+	// 模型可见的机械信号，取代"是否已 forge init"这种会话内不可判定的状态。
 	content = strings.Replace(content,
 		"你是本项目的质量守护者。以下标准在任何开发会话中都有效。",
-		"你是 Forge 项目的质量守护者。仅当当前项目已执行过 `forge init`（在 Forge 全局项目注册表中）时，以下标准才生效；当前项目未使用 Forge 时忽略本 skill。",
+		"你是 Forge 项目的质量守护者。仅当本会话出现 `[forge-session]` 管理横幅（或任何 forge hook 输出）时，以下标准才生效；未见该横幅时忽略本 skill。",
 		1)
 	// 项目信息章节指向单个具体项目——用户级无意义（skill 服务所有项目），移除。
 	if idx := strings.Index(content, "## 当前项目信息"); idx != -1 {

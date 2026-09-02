@@ -242,8 +242,8 @@ func TestGenerateUserQualitySkill(t *testing.T) {
 	if !strings.Contains(got, `编译必须通过`) {
 		t.Error(`user-level SKILL.md missing protocol standards content`)
 	}
-	if !strings.Contains(got, `forge init`) {
-		t.Error(`user-level SKILL.md missing the conditional-activation wording`)
+	if !strings.Contains(got, `[forge-session]`) {
+		t.Error(`user-level SKILL.md missing the banner-anchored conditional wording（P3：激活判据锚定会话横幅）`)
 	}
 	if strings.Contains(got, `你是本项目的质量守护者`) {
 		t.Error(`user-level SKILL.md must not unconditionally claim "本项目"`)
@@ -289,8 +289,8 @@ func TestGenerateUserQualitySkill_Targets(t *testing.T) {
 	if string(agentsBytes) != string(claudeBytes) {
 		t.Error(`~/.agents copy must be byte-identical to the ~/.claude copy (same generator, same conditional wording)`)
 	}
-	if !strings.Contains(string(agentsBytes), "仅当当前项目已执行过 `forge init`") {
-		t.Error(`~/.agents copy missing the conditional-activation wording`)
+	if !strings.Contains(string(agentsBytes), "[forge-session]") {
+		t.Error(`~/.agents copy missing the banner-anchored conditional wording`)
 	}
 }
 

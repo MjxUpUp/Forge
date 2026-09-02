@@ -154,6 +154,18 @@ func keyOf(e Entry) string {
 // 无限膨胀（dogfood 实测 1819 条/1814 垃圾）。写仅在检测到失效时发生，常态读不写，
 // 避免给高频读路径加写开销。
 func List() []string {
+	// 读-判定-惰性写回整体入锁：只锁写回段时读快照可在入锁前被并发写者更新，
+	// 写回仍整文件覆盖丢条目（审查 MAJOR）。List 调用方低频（dashboard/assignment）。
+	var out []string
+	_ = withLock(func() error {
+		out = listLocked()
+		return nil
+	})
+	return out
+}
+
+// listLocked 是 List 的锁内实现（读 + 去重 + 存活过滤 + 惰性精简写回）。
+func listLocked() []string {
 	f, ok := readFile()
 	if !ok {
 		return nil
@@ -187,7 +199,8 @@ func List() []string {
 	// Stable order, dashboard rendering is reproducible.
 	slices.Sort(out) // 稳定顺序，看板渲染可复现
 	if pruned {
-		// Lazy prune, write failure does not affect reads.
+		// Lazy prune, write failure does not affect reads. 锁内直调（listLocked 已在
+		// List 的 withLock 内——withLock 非重入，嵌套会空转 2s 后走放弃路径）。
 		_ = writeEntries(kept) // 惰性精简，写失败不影响读
 	}
 	return out
@@ -257,37 +270,39 @@ func Add(absPath string) error {
 
 	key := entryKey(ap)
 
-	f, err := loadForWrite()
-	if err != nil {
-		return err
-	}
-	for i, e := range f.Projects {
-		samePath := pathKey(filepath.Clean(e.Path)) == pathKey(ap)
-		sameKey := key != `` && keyOf(e) == key
-		if samePath || sameKey {
-			if sameKey && !samePath {
-				// 同 key 不同路径：项目被移动，或这是已登记 repo 的 worktree。仅当
-				// 旧路径已不存在（os.Stat IsNotExist）才换路径——旧路径仍活说明身处
-				// worktree，必须保留旧路径：换成 worktree 路径会让 List 在 worktree
-				// 删除后把整条（含 key）prune 掉，主项目静默丢成员资格。其他
-				// 非 IsNotExist 的 stat 错误是「此刻不可读」而非「已消失」，同样保留。
-				if _, serr := os.Stat(filepath.Clean(e.Path)); !os.IsNotExist(serr) {
-					ne := e // 保留 Status/决策字段：自登记不复活 declined
-					ne.Key = key
-					f.Projects[i] = ne
-					return writeEntries(f.Projects)
-				}
-			}
-			// Upsert：刷新 key（遗留条目）与路径（被移动的项目）；状态字段保留。
-			ne := e
-			ne.Path = ap
-			ne.Key = key
-			f.Projects[i] = ne
-			return writeEntries(f.Projects)
+	return withLock(func() error {
+		f, err := loadForWrite()
+		if err != nil {
+			return err
 		}
-	}
-	f.Projects = append(f.Projects, Entry{Path: ap, Key: key})
-	return writeEntries(f.Projects)
+		for i, e := range f.Projects {
+			samePath := pathKey(filepath.Clean(e.Path)) == pathKey(ap)
+			sameKey := key != `` && keyOf(e) == key
+			if samePath || sameKey {
+				if sameKey && !samePath {
+					// 同 key 不同路径：项目被移动，或这是已登记 repo 的 worktree。仅当
+					// 旧路径已不存在（os.Stat IsNotExist）才换路径——旧路径仍活说明身处
+					// worktree，必须保留旧路径：换成 worktree 路径会让 List 在 worktree
+					// 删除后把整条（含 key）prune 掉，主项目静默丢成员资格。其他
+					// 非 IsNotExist 的 stat 错误是「此刻不可读」而非「已消失」，同样保留。
+					if _, serr := os.Stat(filepath.Clean(e.Path)); !os.IsNotExist(serr) {
+						ne := e // 保留 Status/决策字段：自登记不复活 declined
+						ne.Key = key
+						f.Projects[i] = ne
+						return writeEntries(f.Projects)
+					}
+				}
+				// Upsert：刷新 key（遗留条目）与路径（被移动的项目）；状态字段保留。
+				ne := e
+				ne.Path = ap
+				ne.Key = key
+				f.Projects[i] = ne
+				return writeEntries(f.Projects)
+			}
+		}
+		f.Projects = append(f.Projects, Entry{Path: ap, Key: key})
+		return writeEntries(f.Projects)
+	})
 }
 
 // entryKey computes the forge project key for a cleaned absolute path: git
@@ -340,6 +355,18 @@ func IsMember(cwd string) (root string, ok bool) {
 	return root, true
 }
 
+// DeclineFileName is the committed team-declaration marker at the repo root:
+// its existence means the repo is managed by its own harness and forge must
+// yield (deny-wins over any managed state). Written by `forge off --commit`
+// (the team commits it); removed by `forge on`. Lives in registry (not cli)
+// because lookup enforces it on the hot path.
+//
+// DeclineFileName 是仓库根的 committed 团队声明标记：存在即"本仓归自己 harness
+// 管"，forge 让位（deny-wins 压过 managed 状态）。`forge off --commit` 写入（团队
+// 提交该文件）；`forge on` 移除。定义在 registry（非 cli）是因为 lookup 热路径
+// 执行该判定。
+const DeclineFileName = `.forge-decline`
+
 // lookup is the shared matching core of IsMember/State/ListManaged: it resolves cwd
 // to the matched registry entry (managed or declined alike) or reports no match.
 // The returned root is the matched project's root; callers derive membership from
@@ -350,22 +377,36 @@ func IsMember(cwd string) (root string, ok bool) {
 // 条目（无论 managed/declined）或报告未命中。返回的 root 是命中项目的根；调用方
 // 自行从条目 Status 推导成员资格。匹配语义只在此处存在一份。
 func lookup(cwd string) (root string, entry Entry, ok bool) {
-	f, valid := readFile()
-	if !valid || len(f.Projects) == 0 {
-		return ``, Entry{}, false
-	}
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		return ``, Entry{}, false
 	}
 	abs = filepath.Clean(abs)
+
+	// Project Policy Layer P4：仓库根的 .forge-decline 文件是团队级"本仓归自己
+	// harness 管"的 committed 声明——deny-wins（个人/团队否决一票终审），压过注册表
+	// managed 状态。检查**前置且不依赖注册表存在**：fresh teammate clone 带声明的
+	// 仓时 projects.json 尚不存在，若只在注册表非空时生效，deny-wins 在核心场景
+	// fail-open（审查 BLOCKER）。合成 declined 条目（真实条目可能不存在——未接管的
+	// 项目也可声明）。forge on 移除该文件；forge off --commit 写入。
+	gitRoot := forgedata.FindGitRoot(abs)
+	if gitRoot != `` {
+		if _, derr := os.Stat(filepath.Join(gitRoot, DeclineFileName)); derr == nil {
+			return gitRoot, Entry{Path: gitRoot, Status: StatusDeclined, DecisionBy: `committed .forge-decline`}, true
+		}
+	}
+
+	f, valid := readFile()
+	if !valid || len(f.Projects) == 0 {
+		return ``, Entry{}, false
+	}
 	// 可能时解析 symlink，与 PathKey 语义一致：经 symlink 进入的 cwd 必须能
 	// 匹配到已登记的物理路径。两种形态都留作匹配候选——有的系统 temp/home 目录
 	// 本身就是 symlink（macOS /var → /private/var），条目是按未解析形态登记的，
 	// 只按解析后形态匹配会把它们弄丢。
 	absForms := pathForms(abs)
 
-	if gitRoot := forgedata.FindGitRoot(abs); gitRoot != `` {
+	if gitRoot != `` {
 		k, kerr := forgedata.Key(abs)
 		if kerr != nil {
 			return ``, Entry{}, false
