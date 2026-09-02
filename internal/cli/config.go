@@ -100,6 +100,12 @@ var policyStateCmd = &cobra.Command{
 	Short: `打印当前目录接管状态（managed|declined|unknown；退出码恒 0）`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		_, state := registry.State(policyRoot())
+		if state == registry.StatusManaged {
+			// StatusManaged 是空串（零值兼容存量 JSON）——显示层映射为字面
+			// "managed"，与帮助文案一致；bash 消费方只判 "declined"，不受影响。
+			fmt.Println(`managed`)
+			return nil
+		}
 		fmt.Println(state)
 		return nil
 	},

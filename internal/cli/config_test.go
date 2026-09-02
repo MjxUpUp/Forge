@@ -69,7 +69,8 @@ func TestPolicyState_TriState(t *testing.T) {
 	if err := registry.SetStatus(proj, registry.StatusManaged, `forge on`); err != nil {
 		t.Fatal(err)
 	}
-	if got := run(); got != registry.StatusManaged {
-		t.Fatalf(`managed state = %q, want managed`, got)
+	// 显示层映射：StatusManaged 空串 → 字面 "managed"（与帮助文案一致）。
+	if got := run(); got != `managed` {
+		t.Fatalf(`managed state display = %q, want "managed"`, got)
 	}
 }
