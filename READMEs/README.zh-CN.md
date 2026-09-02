@@ -28,7 +28,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-装完 plugin 后，**每个 git 项目开 Claude Code 都会被 init-suggest SessionStart hook 自动检测**：项目未启用 forge → 首次提示 agent 询问是否 `forge init`（写一次标记不重复）。同意 → agent 自动 init；拒绝 → agent 跑 `forge suggest decline` 永久静默该项目。
+装完 plugin 后，**每个 git 项目开 Claude Code 都会被 init-suggest SessionStart hook 自动检测**：项目未启用 forge → 首次提示 agent 询问是否 `forge init`（写一次标记不重复）。同意 → agent 自动 init；拒绝 → agent 跑 `forge off` 永久退出该项目接管（兼容旧命令 `forge suggest decline`）。
 
 > v1.22 起 `forge init` **零项目写入**：不创建 `.forge/`、`CLAUDE.md` 等任何项目文件，只登记全局注册表并把 hooks/协议/skill 写到用户级（`~/.forge/projects/<key>/` 等）。要团队 git 共享协议用 `forge init --project`（团队模式）。
 
@@ -63,7 +63,7 @@ forge task complete               # 🏁 任务完结（自动评分 + 清 activ
 forge task score                  # 质量评分
 ```
 
-`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge suggest decline | status | reset` 管理 init-suggest 标记。详见根 README 命令参考表。
+`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge off [--all] | on` 按项目退出/恢复接管（declined 不被 FORGE_AUTO_INIT/plugin 自动接管穿透）；`forge suggest decline | status | reset` 为兼容别名。详见根 README 命令参考表。
 
 ## 卸载
 
@@ -79,7 +79,7 @@ Forge 为 12 个宿主落地接线：Claude Code / Codex / Cursor / Copilot / Ki
 
 ## 常见问题
 
-- **装完 plugin 后项目一直在 task-guard WARN 报"allowed but not tracked"** → 项目未启用 forge（未登记注册表）。跑 `forge init`（零项目写入）或 `forge suggest decline` 静默。
+- **装完 plugin 后项目一直在 task-guard WARN 报"allowed but not tracked"** → 项目未启用 forge（未登记注册表）。跑 `forge init`（零项目写入）或 `forge off` 退出该项目。
 - **`forge` 命令 not found** → npm 全局安装目录不在 PATH。`npm bin -g` 看路径，加入 shell rc。
 - **二审 reviewer 反复冒新问题** → `forge task gate task-verify` 含 cheat-scan deterministic 扫描（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption），机械模式一次判准，LLM-reviewer 退到只做语义判断。
 
