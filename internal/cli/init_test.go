@@ -132,7 +132,7 @@ func TestInitCmd_HelpDemotesManualInit(t *testing.T) {
 		`无需手动跑本命令`,
 		`init-suggest`,
 		`plugin`,
-		`forge suggest decline`,
+		`forge off`, // P1：按项目退出的主命令（旧钉 forge suggest decline，现钉其上游语义）
 		`修复`,
 		`团队模式`,
 	} {

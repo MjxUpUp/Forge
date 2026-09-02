@@ -248,6 +248,17 @@ func TestInitSuggestHook_Branches(t *testing.T) {
 			wantSub:   ``,
 			wantInit:  false,
 		},
+		{
+			// Project Policy Layer P1（G-1 修复）：declined 前置检查先于 AUTO_INIT
+			// 分支——退出不可被 env 穿透（原"AUTO_INIT 不拦 declined"语义已废除）。
+			// e2e 有真二进制对照钉子，此处为同包快速回归钉。
+			name:     `有 git declined 拦 FORGE_AUTO_INIT`,
+			cwdFn:    func(t *testing.T) string { return mkGitProj(t, false) },
+			marker:   `declined`,
+			autoInit: true,
+			wantSub:  ``,
+			wantInit: false,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

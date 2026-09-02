@@ -11,6 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
+	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -46,16 +47,27 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	root, err := findProjectRoot()
 	if err != nil {
+		// declined 项目 Find 失败（IsMember 不认 declined）——把通用的"非 forge
+		// 项目"错误换成面向用户的 declined 提示（指向 forge on）。status 非热路径，
+		// 一次额外 State 查询可接受。
+		if cwd, gerr := os.Getwd(); gerr == nil {
+			if _, state := registry.State(cwd); state == registry.StatusDeclined {
+				return registry.ErrDeclinedProject
+			}
+		}
 		return err
 	}
 
 	// harness repo 状态行 + onboarding 引导（multi-task-concurrency §13：常态显示，
 	// cooldown 防重复提示）。JSON 输出不混入 advisory。
+	// 接管状态行（Project Policy Layer P1）：能走到这里的状态必然是 managed——
+	// declined 已被上方 Find 分支拦截提示，此处无需分叉。
 	if !asJSON {
 		if home, herr := forgedata.GlobalHome(); herr == nil {
 			fmt.Printf("Harness:       %s\n", harnessStateLabel(readHarnessState(home)))
 		}
 		fmt.Printf("归属覆盖:      %s\n", attributionCoverageLine(root))
+		fmt.Printf("接管状态:      managed（forge 接管中）\n")
 		MaybeOfferHarness("forge status")
 	}
 
