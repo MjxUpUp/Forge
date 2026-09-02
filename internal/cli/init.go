@@ -38,7 +38,7 @@ protocol.yml 与 runtime state 在 ~/.forge/projects/<key>/。
 
 装了 forge plugin 的用户通常无需手动跑本命令：init-suggest SessionStart hook
 检测到 user-level plugin 已装（= 显式 opt-in）时，会在 git 项目首次打开会话
-静默自动 init（declined 标记仍可每项目退出，见 forge suggest decline）。
+静默自动 init（declined 项目不可被穿透——forge off 按项目退出，forge on 恢复）。
 手动 init 的定位：修复/补登记（自动接管失败、非 plugin 的 npm 用户）、
 非 git 环境显式接入、以及下面的团队模式。
 
@@ -51,6 +51,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Project Policy Layer P1 硬门禁：declined 项目拒绝（重新）初始化——plugin
+	// auto-takeover / FORGE_AUTO_INIT 都以 `forge init` 落地，此门禁兜底"退出
+	// 不被静默重置"；恢复唯一通道是 forge on。
+	if err := ensureNotDeclined(dir); err != nil {
+		return err
 	}
 
 	teamMode, _ := cmd.Flags().GetBool("project")

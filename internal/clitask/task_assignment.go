@@ -764,9 +764,9 @@ func printDelegations(entries []delegatedEntry, agent, role string, asJSON bool)
 // 按 project 分组并标 project-key，给概览计数 + 每 project 明细。绝不自动 resume（区别于 SessionStart
 // hook——mine 是只读发现）。失败的 project 在 stderr 警告并跳过，使一个坏 root 不致盲全局视图。
 func runTaskMineAllProjects(agent, role string, blocked bool, now time.Time, asJSON bool) error {
-	roots := registry.List()
+	roots := registry.ListManaged() // Project Policy Layer P1：declined 项目不参与全局任务视图
 	if len(roots) == 0 {
-		return fmt.Errorf(`全局视图无已登记项目——在项目目录跑 forge init 登记后重试`)
+		return fmt.Errorf(`全局视图无已接管（managed）项目——在项目目录跑 forge init 登记后重试；forge off 退出的项目不参与`)
 	}
 	type projectGroup struct {
 		Project string           `json:"project"`
