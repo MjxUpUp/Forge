@@ -78,28 +78,30 @@ func SetStatus(absPath, status, decidedBy string) error {
 	ap = filepath.Clean(ap)
 	key := entryKey(ap)
 
-	f, err := loadForWrite()
-	if err != nil {
-		return err
-	}
-	now := time.Now()
-	for i, e := range f.Projects {
-		samePath := pathKey(filepath.Clean(e.Path)) == pathKey(ap)
-		sameKey := key != `` && keyOf(e) == key
-		if samePath || sameKey {
-			// 只改状态与决策字段；Path/Key 保留既有值（key 惰性补算的遗留条目除外），
-			// 不触发 Add 的路径迁移分支——状态翻转不应顺带移动登记路径。
-			if e.Key == `` && key != `` {
-				f.Projects[i].Key = key
-			}
-			f.Projects[i].Status = status
-			f.Projects[i].DecisionBy = decidedBy
-			f.Projects[i].DecisionAt = now
-			return writeEntries(f.Projects)
+	return withLock(func() error {
+		f, err := loadForWrite()
+		if err != nil {
+			return err
 		}
-	}
-	f.Projects = append(f.Projects, Entry{Path: ap, Key: key, Status: status, DecisionBy: decidedBy, DecisionAt: now})
-	return writeEntries(f.Projects)
+		now := time.Now()
+		for i, e := range f.Projects {
+			samePath := pathKey(filepath.Clean(e.Path)) == pathKey(ap)
+			sameKey := key != `` && keyOf(e) == key
+			if samePath || sameKey {
+				// 只改状态与决策字段；Path/Key 保留既有值（key 惰性补算的遗留条目除外），
+				// 不触发 Add 的路径迁移分支——状态翻转不应顺带移动登记路径。
+				if e.Key == `` && key != `` {
+					f.Projects[i].Key = key
+				}
+				f.Projects[i].Status = status
+				f.Projects[i].DecisionBy = decidedBy
+				f.Projects[i].DecisionAt = now
+				return writeEntries(f.Projects)
+			}
+		}
+		f.Projects = append(f.Projects, Entry{Path: ap, Key: key, Status: status, DecisionBy: decidedBy, DecisionAt: now})
+		return writeEntries(f.Projects)
+	})
 }
 
 // State resolves the takeover state of cwd: StatusManaged / StatusDeclined (with

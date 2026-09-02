@@ -70,6 +70,10 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 		hookInput.HookEventName = skillTriggerEvent
 	}
 	root, _ := findProjectRoot()
+	// P3：调试入口与生产同门——非 managed 项目（含 declined）root 为空，静默。
+	if root == "" {
+		return nil
+	}
 	// agent 传 ""（→ contextChannelDelivered 走 claude 默认行）：此子命令是调试入口，无
 	// --agent 上下文；生产落章走 runSkillTriggerHook（带真实 agent）。
 	rendered, err := runSkillTriggerCore(hookInput, root, cmd.Root().Version, "", skillTriggerDryRun)
@@ -88,6 +92,13 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 // 打 stdout（其余事件 stdout 被 kimi 丢弃——见 internal/agentbridge/kimi-hook-routing.md），
 // 无渲染则静默。
 func runSkillTriggerHook(hookInput hookdispatch.HookInput, root, version, agent string) error {
+	// P3 全局通道感知：skill-trigger 是协议注入通道——仅 managed 项目生效。
+	// 非成员/declined 的 root 为空串（runHook 全局 hook 分支），静默放行：
+	// 未请求的会话内注入是开发者容忍度最低的行为（npm funds 教训），declined
+	// 项目退出后仍弹技能提示 = 退出失灵。
+	if root == "" {
+		return nil
+	}
 	// kimi 0.35.0 对除 UserPromptSubmit 外的所有事件丢弃 allow 路径 stdout（wire.jsonl
 	// 实证）。引擎在其余事件上仍运行——每条命中以 Delivered=false 落 checklog（由
 	// contextChannelDelivered 的 kimi 行落章）——让看板事件流与 usage 漏斗看到完整的

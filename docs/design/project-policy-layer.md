@@ -1,6 +1,6 @@
 # Project Policy Layer —— 按项目接管策略（P1 落地设计）
 
-- 状态：P1 实施中（2026-09-02）· 分支 `feat/project-policy-p1`
+- 状态：P1 已交付（feat/project-policy-p1）；P2-P4 已落地（2026-09-02，feat/project-policy-p234）
 - 背景：全局 forge 安装（plugin/npm）后 init-suggest 对所有 git 项目自动接管，暴露三个弊端——项目自带 harness 冲突、项目试验新 harness、用户想按项目控制。完整调研（业界学界证据 + 代码考古 + 对抗复查）见 `~/.forge/research/global-forge-optout-20260902-0958/report.md`；本文只记录 P1 落地的设计决策。
 - 总原则（调研结论）：**机制全局，行使本地**——装 plugin = 机制存在；接管某项目 = 策略授权；每次 hook 触发 = 仲裁检查。P1 是策略面的地基：状态模型 + 对称命令 + 旁路收编。
 
@@ -19,14 +19,30 @@
 5. **可见性**：`forge status` 头部增加接管状态行；declined 项目 `forge status` 以 `ErrDeclinedProject` 的可读文案退出非零（退出码 = "是否 managed 成员"的既有契约保持不变，init-suggest 脚本依赖它）。
 6. **审计**：on/off 落 checklog 行（`takeover-policy`）+ Entry 决策字段（by/at）。
 
-## P1 明确不做（out，留后续）
+## P2-P4 落地状态（原"P1 明确不做"清单——已全部完成，feat/project-policy-p234）
 
-- **P2 默认值翻转**（auto-takeover → ask-once）与 takeover 三档偏好——独立发布。
-- **P3 全局通道感知**（skill-trigger per-project 化、用户级指令文件指针化、managed 会话横幅）。
-- **P4 外来 harness 检测让位**。
-- **注册表写锁**：维持现状立场（原子写 + 接受本地工具低概率并发丢失，writeEntries 注释自认）；on/off 是人触发的低频命令，风险增量小。留后续任务。
-- **key 统一迁移**（SuggestTagFor worktree-root tag → common-dir）：P1 双写垫片下两者并存一致；P2 统一。
-- dashboard / task-assignment 聚合的 declined 过滤：随 P1 顺带（`ListManaged()`），workspace doctor 保留全量（declined 项目仍有 DataDir，漂移检测需要看到它们）。
+- **P2 默认值翻转 + takeover 三档偏好** ✅：`internal/userconfig`（`~/.forge/config.json`）+ `forge config get/set takeover`；env 链 `FORGE_TAKEOVER > FORGE_AUTO_INIT=1(≡auto) > 配置 > ask`。init-suggest 按三档分流（off 静默 / auto 静默 init / ask 询问一次——含接管内容摘要与 forge config 指引）。
+- **key 读侧统一** ✅：init-suggest declined 门补 `forge policy state` 注册表权威读侧（common-dir 键），闭合 linked-worktree 下 marker（工作树根键）漏判；写侧双写垫片保留。
+- **P3 全局通道感知** ✅：skill-trigger 在生产/调试入口按 root 判 managed（runSkillTriggerHook/runSkillTriggerCmd）；task-resume hook 恒输出 `[forge-session]` managed 会话横幅（用户级指令段与 forge-quality skill 的激活判据锚定于此，取代不可判定的"已 init"条件）；用户级指令段全类指针化（skillgen CLAUDE.md/AGENTS.md + windsurf global_rules.md；spec-kit"一行指针"共识）；**update 后重刷新由既有 autoSync 版本戳机制保证**（版本变更后下一条命令自动重写用户级段，无需新代码）。
+- **P4 外来 harness 检测让位** ✅：`internal/harnessdetect` 信号表（`.specify/`、`.claude/commands` 非空、`.claude/settings.json` 含 hooks/permissions、`.cursor/rules` 非空——宁可漏判不误判）；`forge policy yield` 命中即让位（declined, by=foreign-harness）+ bash 分支（压过 auto/AUTO_INIT）；手动 init 打警告继续（显式覆盖是知情选择）；`forge off --commit` 写 `.forge-decline` 团队声明（committed，deny-wins 压过注册表 managed），`forge on` 移除。
+- **注册表写锁** ✅：`internal/registry/lock.go`（O_EXCL + 10s 过期破锁 + 2s 有限重试，放弃时退化到无锁行为不阻断命令）；Add/SetStatus 整体入锁，Rekey/List 惰性精简的写回段入锁；并发守卫测试（24 并发 Add + SetStatus 竞态；`-count=3` 复跑验证）。
+- dashboard / task-assignment 聚合过滤：P1 已随 `ListManaged()` 落地（workspace doctor 保留全量）。
+
+### P2-P4 行为契约补充（测试钉住的终态）
+
+| 场景 | 行为 |
+|---|---|
+| 出厂默认（无配置无 env） | ask：未接管项目首次会话询问一次，不登记 |
+| `FORGE_TAKEOVER=off` / 配置 off | 非成员静默；成员不受影响 |
+| `FORGE_TAKEOVER=auto` / 配置 auto / `FORGE_AUTO_INIT=1` | 静默 init（declined/yield 仍拦） |
+| 外来 harness 信号（非成员首会话） | 让位：declined(by=foreign-harness) + 一行说明；`forge on` 覆盖 |
+| 外来 harness 信号 + 手动 `forge init` | 警告但继续（warnForeignHarness，advisory） |
+| `.forge-decline` 存在（git 根） | State=declined、IsMember=false（deny-wins 压过 managed）；`forge on` 移除文件 |
+| skill-trigger（非 managed / declined） | 静默（生产与调试入口同门） |
+| managed 项目 SessionStart | 恒输出 `[forge-session]` 横幅（有/无活跃任务都出，单 PASS 协议） |
+| 用户级 CLAUDE.md/AGENTS.md/global_rules.md | 指针段（横幅锚定 + 项目协议优先 + 自保护）；版本变更后 autoSync 重刷新 |
+| 并发写注册表 | 写锁保不丢条目；SetStatus 后写胜出 |
+| declined 项目 `forge status --json` | stdout 输出 JSON 错误包裹（`{"error":...,"takeover":"declined"}`）|
 
 ## 行为契约（测试钉住的终态）
 

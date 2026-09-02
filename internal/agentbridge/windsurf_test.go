@@ -245,8 +245,8 @@ func TestWindsurfGlobalRules_ConditionalPreamble(t *testing.T) {
 		t.Fatalf("global_rules.md not created: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "forge init") {
-		t.Error("global_rules.md preamble must condition activation on `forge init`")
+	if !strings.Contains(content, "[forge-session]") {
+		t.Error("global_rules.md preamble must anchor activation to the managed-session banner（P3）")
 	}
 	if !strings.Contains(content, "ignore this section entirely") {
 		t.Error("global_rules.md preamble must tell agents to ignore the section outside forge projects")
