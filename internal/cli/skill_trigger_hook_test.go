@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/registry"
 	"io"
 	"os"
 	"path/filepath"
@@ -195,6 +196,11 @@ func TestRunSkillTriggerCore_DryRunStderr(t *testing.T) {
 
 func TestRunSkillTriggerHook_HitOutput(t *testing.T) {
 	dir := withCanonicalEnv(t)
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	managedRoot := t.TempDir()
+	if err := registry.Add(managedRoot); err != nil {
+		t.Fatal(err)
+	}
 	isolateSkillTriggerTmp(t)
 	writeSkill(t, dir, "impl-disc", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
 
@@ -203,7 +209,7 @@ func TestRunSkillTriggerHook_HitOutput(t *testing.T) {
 			HookEventName: "UserPromptSubmit",
 			Prompt:        "帮我实现功能",
 			SessionID:     "cli-test-hook-hit",
-		}, "", "v", ""); err != nil {
+		}, managedRoot, "v", ""); err != nil {
 			t.Errorf("runSkillTriggerHook: %v", err)
 		}
 	})
@@ -272,6 +278,11 @@ func TestRunSkillTriggerCore_EmbedFallback(t *testing.T) {
 
 func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 	dir := withCanonicalEnv(t)
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	managedRoot := t.TempDir()
+	if err := registry.Add(managedRoot); err != nil {
+		t.Fatal(err)
+	}
 	isolateSkillTriggerTmp(t)
 	// code-review-gate 在 DeniedSkills——即便声明 triggers 也不注入
 	writeSkill(t, dir, "code-review-gate", `[{"event":"UserPromptSubmit","when":"coding_intent"}]`)
@@ -282,7 +293,7 @@ func TestRunSkillTriggerHook_DeniedSkillSkipped(t *testing.T) {
 			HookEventName: "UserPromptSubmit",
 			Prompt:        "实现",
 			SessionID:     "cli-test-deny",
-		}, "", "v", "")
+		}, managedRoot, "v", "")
 	})
 	if strings.Contains(out, "code-review-gate") {
 		t.Errorf("denied skill 不应注入，got:\n%s", out)

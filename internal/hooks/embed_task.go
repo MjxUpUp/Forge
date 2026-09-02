@@ -175,14 +175,17 @@ const InitSuggestHook = `#!/bin/bash
 # 用户级"项目自动 init"检测：装了 forge（plugin/npm）后，用户在任意 git 项目开
 # Claude Code，若无 .forge/ 且未登记 → 首次输出提示给 agent，引导询问用户是否启用 forge。
 # 拒绝则永久静默（forge off / forge suggest decline 写 declined 标记 + 注册表状态，
-# Project Policy Layer P1）。FORGE_AUTO_INIT=1 时直接 forge init（处处无感模式，
-# 但 declined 不可被穿透——恢复唯一通道 forge on）。plugin auto-takeover：
-# user-level plugin 已装时 git 项目静默自动 forge init（安装即 opt-in，declined
-# 仍可每项目退出；v1.22 起 init 零项目写入，自动 init 不再污染项目）。补"每项目
-# 手动 init"缺口——plugin install 接用户级 hooks+MCP+skills，项目注册表登记仍需
-# forge init，本 hook 让这步从"用户记得敲"变"自动完成（plugin 用户）或 agent 主动
-# 询问（npm 用户）"。advisory：默认不自动写文件（除 FORGE_AUTO_INIT 与 plugin
-# auto-takeover），exit 0 不阻塞会话。
+# Project Policy Layer P1）。P2 默认值翻转：出厂 takeover=ask——每项目首次接触询问
+# 一次（同意 → forge init；拒绝 → forge off），不再"装了 plugin 就静默接管"。
+# 三档偏好（FORGE_TAKEOVER > forge config > ask）：auto = 静默自动接管（P1 之前的
+# 行为，declined/让位仍生效）；ask = 出厂默认；off = 不接管不询问。
+# FORGE_AUTO_INIT=1 是 legacy 的 auto 等价物（且覆盖非 git 目录的 git init）。
+# declined 不可被任何默认路径穿透——恢复唯一通道 forge on；v1.22 起 init 零项目
+# 写入，自动 init 不污染项目。补"每项目手动 init"缺口——项目注册表登记仍需
+# forge init，本 hook 让这步从"用户记得敲"变"按偏好自动完成或 agent 主动询问"。
+# advisory：默认不自动写文件（除 auto/FORGE_AUTO_INIT 与 suggested 标记），
+# exit 0 不阻塞会话。写盘面：suggested 标记（ask 首问）、declined 标记+注册表
+#（forge off / policy yield）。
 #
 # 全局 hook：在非 forge 项目正是要发现它们（isGlobalHook）。不依赖 forge project root。
 # 一次标记（${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested/<tag>）避免重复提示：suggested=提示过不重复，
@@ -216,6 +219,10 @@ if [ -z "$ROOT" ]; then
   SUGGEST_DIR="${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested"
   MARKER="$SUGGEST_DIR/$TAG"
   if [ -n "$TAG" ] && [ -f "$MARKER" ]; then
+    exit 0
+  fi
+  # 注册表权威读侧（与 git 分支同款；非 git 走路径键）。
+  if [ "$(forge policy state 2>/dev/null | tr -d '[:space:]')" = "declined" ]; then
     exit 0
   fi
   # 自动模式：FORGE_AUTO_INIT=1 → git init + forge init（与 git 项目一致的无感体验）。
@@ -252,6 +259,11 @@ DMARKER="${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested/$TAG0"
 if [ -n "$TAG0" ] && [ "$(cat "$DMARKER" 2>/dev/null)" = "declined" ]; then
   exit 0
 fi
+# 注册表权威读侧（P2 key 统一）：registry 按仓库身份（git common-dir）键控，
+# linked worktree 下 marker（工作树根键）会漏——policy state 补齐这一缝。
+if [ "$(forge policy state 2>/dev/null | tr -d '[:space:]')" = "declined" ]; then
+  exit 0
+fi
 
 # 已启用 forge（registry 成员或遗留 .forge/）→ 跳过建议。v1.22 起 init 默认
 # 零项目写入（无 .forge/），成员资格必须问注册表——forge status 在已登记项目
@@ -267,6 +279,35 @@ if forge status >/dev/null 2>&1 || [ -d "$ROOT/.forge" ]; then
       echo "PASS [init-suggest] $DEDUPE"
     fi
   fi
+  exit 0
+fi
+
+# Takeover 偏好解析（P2，env 链与 Go 侧 userconfig.TakeoverMode 一致）：
+# FORGE_TAKEOVER > FORGE_AUTO_INIT=1（legacy ≡ auto）> forge config > ask。
+# 解析整体前置：off 门须先于 yield/AUTO_INIT/auto 分支（否则 off 档仍会写
+# declined+标记并打印让位说明——审查 MINOR；AUTO_INIT 也会越过 off——MAJOR）。
+TAKEOVER="${FORGE_TAKEOVER:-}"
+if [ -z "$TAKEOVER" ] && [ "${FORGE_AUTO_INIT}" = "1" ]; then
+  TAKEOVER="auto"
+fi
+if [ -z "$TAKEOVER" ]; then
+  TAKEOVER=$(forge config get takeover --raw 2>/dev/null)
+fi
+if [ "$TAKEOVER" != "auto" ] && [ "$TAKEOVER" != "off" ]; then
+  TAKEOVER="ask"
+fi
+if [ "$TAKEOVER" = "off" ]; then
+  exit 0
+fi
+
+# 外来 harness 让位（P4）：高置信"项目有自己的 harness"信号（spec-kit、项目级
+# .claude 接线、.cursor/rules 等——信号表单一真相源在 internal/harnessdetect，
+# forge policy yield 命中即记 declined+标记并输出让位说明）。让位压过一切默认
+# 接管路径（含 AUTO_INIT——同 declined 语义）；显式 forge on 覆盖（探索共存）。
+# 置于成员检查后（已接管项目后加的自有 harness 不追溯让位）、AUTO_INIT 前。
+YIELD=$(forge policy yield 2>/dev/null)
+if [ -n "$YIELD" ]; then
+  echo "PASS [init-suggest] $YIELD"
   exit 0
 fi
 
@@ -291,27 +332,24 @@ if [ "${FORGE_AUTO_INIT}" = "1" ]; then
   exit 0
 fi
 
-# Plugin auto-takeover：user-level 装了 forge plugin = 显式 opt-in，git 项目静默自动
-# forge init（v1.22 起 init 零项目写入，全部资产落 ~/.forge，自动 init 不污染仓库本身，
-# "污染换无感"的历史顾虑已不成立）。declined 已被本函数顶部的前置检查拦截（P1：
-# 每项目退出权高于一切默认开启路径）；suggested 标记不拦截（它只是静音询问，而这里
-# 没有询问）。非成员才走到本分支（上方 forge status/[ -d .forge ] 已放行成员）。
-# 失败回显 stderr 尾部（与 FORGE_AUTO_INIT 同款 partial-state 契约）；declined 项目
-# 即便经旁路到达此处，Go 侧 init 门禁（ensureNotDeclined）也会拒绝——双层防线。
-if forge plugin status >/dev/null 2>&1; then
+# auto：静默接管（用户显式选择的无感模式——forge config set takeover auto 或
+# FORGE_TAKEOVER=auto；FORGE_AUTO_INIT=1 在更上方同效）。plugin 与否不再分支：
+# 偏好本身就是 opt-in，不必再以 plugin 安装推断。失败回显 stderr 尾部
+#（partial-state 契约）；declined 项目即便经旁路到达，Go 侧 init 门禁也拒绝。
+if [ "$TAKEOVER" = "auto" ]; then
   INIT_OUT=$( { cd "$ROOT" && forge init; } 2>&1 )
   RC="$?"
   if [ "$RC" = "0" ]; then
-    echo "PASS [init-suggest] plugin auto-takeover: 已在 $ROOT 自动启用 forge（plugin 安装即接管；forge off 可退出该项目）。"
+    echo "PASS [init-suggest] takeover=auto: 已在 $ROOT 自动启用 forge（forge off 可退出该项目）。"
   else
     TAIL=$(printf '%s' "$INIT_OUT" | tail -c 400 | tr '\n' ' ')
     [ -z "$TAIL" ] && TAIL="(无 stderr 输出)"
-    echo "PASS [init-suggest] Advisory: plugin 自动接管时 forge init 失败（exit $RC），请手动 'forge init'。错误尾部: $TAIL"
+    echo "PASS [init-suggest] Advisory: takeover=auto 但 forge init 失败（exit $RC），请手动 'forge init'。错误尾部: $TAIL"
   fi
   exit 0
 fi
 
-# 提示模式：检查一次标记（declined/suggested 都静默）。
+# ask（出厂默认）：每项目首次接触询问一次——marker（suggested/declined）静默。
 TAG="${FORGE_CWD_TAG:-}"
 SUGGEST_DIR="${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested"
 MARKER="$SUGGEST_DIR/$TAG"
@@ -326,9 +364,8 @@ if [ -n "$TAG" ]; then
 fi
 
 PROJ=$(basename "$ROOT")
-echo "PASS [init-suggest] Advisory: 检测到 git 项目 '$PROJ' 未启用 forge。询问用户是否启用 forge 质量门禁（task-gated 源码变更 + 断言守卫 + 评分）。用户同意 → 运行 'forge init'；拒绝 → 运行 'forge off' 永久退出该项目接管（兼容旧命令 'forge suggest decline'）。forge 默认不自动写文件（设 FORGE_AUTO_INIT=1 可处处自动 init；declined 项目不可被任何默认路径复活，恢复用 forge on）。"
-exit 0
-`
+echo "PASS [init-suggest] Advisory: 检测到 git 项目 '$PROJ' 未启用 forge。请询问用户是否让 forge 接管本项目（本次询问一次，此后不再问）。接管后 forge 将注入任务门禁与质量 hook（task-guard/断言守卫等）和技能提示，全部状态在用户级 ~/.forge（项目零写入，forge off 可随时按项目退出、forge on 恢复）。用户同意 → 运行 'forge init'；拒绝 → 运行 'forge off'。若用户希望所有项目无询问自动接管 → 'forge config set takeover auto'。"
+exit 0`
 
 const TaskResumeHook = `#!/bin/bash
 # task-resume.sh — SessionStart hook (advisory, non-blocking, project-scoped).
