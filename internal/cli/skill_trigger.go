@@ -94,7 +94,7 @@ func runSkillTriggerCmd(cmd *cobra.Command, args []string) error {
 func runSkillTriggerHook(hookInput hookdispatch.HookInput, root, version, agent string) error {
 	// P3 全局通道感知：skill-trigger 是协议注入通道——仅 managed 项目生效。
 	// 非成员/declined 的 root 为空串（runHook 全局 hook 分支），静默放行：
-	// 未请求的会话内注入是开发者容忍度最低的行为（npm funds 教训），declined
+	// 未请求的会话内注入是开发者容忍度最低的行为（业界同类注入事故的共识），declined
 	// 项目退出后仍弹技能提示 = 退出失灵。
 	if root == "" {
 		return nil

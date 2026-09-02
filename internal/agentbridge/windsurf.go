@@ -355,7 +355,7 @@ const (
 // Cascade 对每个 workspace 都加载该文件——静态全局文件只能承载指针，激活判据
 // 锚定 managed 会话横幅（[forge-session]，task-resume hook 输出），协议细节交回
 // 受管通道（与 skillgen 的 buildUserPointerSection 同一契约；标准清单不再拷贝——
-// spec-kit 共识：共享指令文件最多放指针，防多 harness 冲突与版本漂移）。
+// 共享指令文件最多放指针，防多 harness 冲突与版本漂移）。
 func buildWindsurfSection(input *TranslationInput) string {
 	var sb strings.Builder
 
