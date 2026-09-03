@@ -1,0 +1,26 @@
+# 干净样本：写完即 commit（工作树回到干净）→ 无未提交漂移，放行。
+id: filesentinel-allows-committed-work
+gate: file-sentinel
+kind: clean
+expect: clean
+description: "写 + commit 在同一命令内完成 → 无未提交漂移，放行"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.committed
+
+      go 1.25
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+probe_argv:
+  - "sh"
+  - -c
+  - 'pre=$(printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"session_id\":\"gs\",\"tool_input\":{\"command\":\"git add -A\"}}" | "{forge}" hook bash-guard --agent claude); printf "package main\\nfunc X() {}\\n" > committed.go && git add committed.go && git -c commit.gpgsign=false commit -qm drill; printf "%s" "{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Bash\",\"session_id\":\"gs\",\"tool_input\":{\"command\":\"git commit\"}}" | "{forge}" hook file-sentinel --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [file-sentinel]"
+  - "stdout_contains:quarantine"

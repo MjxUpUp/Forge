@@ -104,17 +104,35 @@ func (s *RunSpec) Validate() error {
 	return nil
 }
 
-// BenchTask is one task of a command-suite manifest.
+// BenchTask is one task of a manifest. Two backends share the schema:
+// command-suite tasks carry `command` (exit 0 = pass); Terminal-Bench frozen
+// tasks carry image/run_cmd/test_cmd (executed in the task container, pass =
+// test exit 0). A task may carry both — the command then doubles as the
+// fallback when Docker is unavailable (scorecard annotates the degradation).
 //
-// BenchTask 是命令套件 manifest 的一个任务。
+// BenchTask 是 manifest 的一个任务。两种后端共用 schema：命令套件任务带
+// `command`（退出码 0=通过）；Terminal-Bench 冻结任务带 image/run_cmd/test_cmd
+// （任务容器内执行，test 退出 0=通过）。任务可同时携带两者——command 兼作
+// Docker 不可用时的回退（scorecard 标注降级）。
 type BenchTask struct {
 	ID      string `yaml:"id"      json:"id"`
-	Command string `yaml:"command" json:"command"` // 退出码 0 = 通过
+	Command string `yaml:"command" json:"command"` // 退出码 0 = 通过（回退后端）
+	// Image/RunCmd/TestCmd are the Terminal-Bench frozen (Harbor-style) task shape.
+	//
+	// Image/RunCmd/TestCmd 是 Terminal-Bench 冻结（Harbor 风格）任务形态。
+	Image   string `yaml:"image,omitempty"   json:"image,omitempty"`
+	RunCmd  string `yaml:"run_cmd,omitempty"  json:"run_cmd,omitempty"`
+	TestCmd string `yaml:"test_cmd,omitempty" json:"test_cmd,omitempty"`
 	// DifficultyBand is the stratification label (kept from the sampling plan).
 	DifficultyBand string `yaml:"difficulty_band" json:"difficulty_band"`
 	// PollutionFlag marks contamination risk (empty = none).
 	PollutionFlag string `yaml:"pollution_flag,omitempty" json:"pollution_flag,omitempty"`
 }
+
+// HasDockerShape reports whether the task declares the container backend.
+//
+// HasDockerShape 报告任务是否声明了容器后端。
+func (t BenchTask) HasDockerShape() bool { return t.Image != "" }
 
 // BenchmarkManifest is a versioned, fingerprinted task set.
 //
@@ -269,6 +287,13 @@ type Scorecard struct {
 	Spec         RunSpec   `json:"spec"`
 	ManifestFP   string    `json:"manifest_fingerprint"`
 	GeneratedAt  time.Time `json:"generated_at"`
+	// Sandbox states the execution backend: scripted / exec / docker /
+	// fallback-exec. fallback-* means the primary backend was unavailable and
+	// the scorecard is annotating the degradation per the design contract.
+	//
+	// Sandbox 声明执行后端：scripted / exec / docker / fallback-exec。
+	// fallback-* 表示主后端不可用，scorecard 按设计契约标注降级。
+	Sandbox      string    `json:"sandbox"`
 	Header       string    `json:"header"` // 渲染契约的第一行
 	Pass1        RateValue `json:"pass1"`
 	PassKCurve   []PassKPoint `json:"pass_k_curve"`
@@ -313,13 +338,15 @@ func RunBenchmark(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 			}
 		}
 	}
-	return buildScorecard(spec, manifest, attempts, tokens, cost, cuts), nil
+	sc := buildScorecard(spec, manifest, attempts, tokens, cost, cuts, sandboxLabel(runner))
+	sc.Sandbox = sandboxLabel(runner)
+	return sc, nil
 }
 
 // buildScorecard aggregates attempts into pass@1 and the pass^k curve.
 //
 // buildScorecard 把 attempts 聚合成 pass@1 与 pass^k 曲线。
-func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attempt, tokens int, cost float64, cuts int) *Scorecard {
+func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attempt, tokens int, cost float64, cuts int, sandbox string) *Scorecard {
 	byTask := map[string][]bool{}
 	for _, a := range attempts {
 		byTask[a.TaskID] = append(byTask[a.TaskID], a.Pass)
@@ -355,11 +382,12 @@ func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attemp
 	}
 	sc := &Scorecard{
 		Spec: spec, ManifestFP: manifest.Fingerprint(), GeneratedAt: time.Now().UTC(),
+
 		Pass1: newRateValue(&MetricDef{ID: "e2e_pass1", MinSamples: 1}, passFirst, len(taskIDs)),
 		PassKCurve: curve, TotalTokens: tokens, TotalCostUSD: cost, BudgetCuts: cuts,
 	}
-	sc.Header = fmt.Sprintf("profile=%s model=%s benchmark=%s@%s forge_ref=%s — 本分数为 forge×model 组合评测（评测对象声明，ABC III.6）",
-		spec.Profile, spec.Model, spec.Benchmark, spec.Split, spec.ForgeRef)
+	sc.Header = fmt.Sprintf("profile=%s model=%s benchmark=%s@%s forge_ref=%s sandbox=%s — 本分数为 forge×model 组合评测（评测对象声明，ABC III.6）",
+		spec.Profile, spec.Model, spec.Benchmark, spec.Split, spec.ForgeRef, sandbox)
 	if cuts > 0 {
 		sc.Note = fmt.Sprintf("预算截断 %d 次——截断任务计入 budget-cut，未计入 fail", cuts)
 	}
@@ -397,3 +425,159 @@ func PersistScorecard(evalDir string, repoRoot string, sc *Scorecard) (string, e
 // SmokeManifestEnv 是武装真实（非 scripted）基准执行的逃生舱——外部效应绝不
 // 隐式触发。
 const SmokeManifestEnv = "FORGE_EVAL_SMOKE"
+
+
+// dockerAvailableFunc is the indirection seam for Docker detection (tests stub
+// it; production calls `docker info` once per process and caches).
+//
+// dockerAvailableFunc 是 Docker 检测的间接缝（测试打桩；生产每进程调用一次
+// `docker info` 并缓存）。
+var dockerAvailableFunc = func() bool {
+	err := exec.Command("docker", "info").Run()
+	return err == nil
+}
+
+var (
+	dockerChecked bool
+	dockerUsable  bool
+)
+
+// DockerAvailable reports whether the Docker CLI is usable (cached per process).
+//
+// DockerAvailable 报告 Docker CLI 是否可用（每进程缓存）。
+func DockerAvailable() bool {
+	if !dockerChecked {
+		dockerUsable = dockerAvailableFunc()
+		dockerChecked = true
+	}
+	return dockerUsable
+}
+
+// DockerRunner executes Terminal-Bench frozen tasks in their declared
+// container: `docker run --rm <image> sh -c "<run_cmd> && <test_cmd>"`; pass =
+// test exit 0. Wallclock budget applies via ctx.
+//
+// DockerRunner 在声明的容器里执行 Terminal-Bench 冻结任务：`docker run --rm
+// <image> sh -c "<run_cmd> && <test_cmd>"`；test 退出 0 = 通过。墙钟预算经 ctx
+// 生效。
+type DockerRunner struct{}
+
+// SandboxLabel implements the sandbox annotation.
+//
+// SandboxLabel 实现沙箱标注。
+func (DockerRunner) SandboxLabel() string { return "docker" }
+
+// RunTask implements TaskRunner.
+//
+// RunTask 实现 TaskRunner。
+func (DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (TaskResult, error) {
+	res := TaskResult{TaskID: task.ID}
+	if !DockerAvailable() {
+		return res, fmt.Errorf("evalkit: docker 不可用——容器任务 %s 无法执行", task.ID)
+	}
+	if spec.Budget.WallclockEach > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, spec.Budget.WallclockEach)
+		defer cancel()
+	}
+	start := time.Now()
+	inner := task.RunCmd
+	if inner != "" {
+		inner += " && "
+	}
+	inner += task.TestCmd
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm", task.Image, "sh", "-c", inner)
+	cmd.Env = append(os.Environ(),
+		"FORGE_EVAL_PROFILE="+string(spec.Profile),
+		"FORGE_EVAL_MODEL="+spec.Model)
+	_, err := cmd.CombinedOutput()
+	res.Duration = time.Since(start)
+	switch {
+	case ctx.Err() != nil:
+		res.BudgetCut = true
+		res.Error = "wallclock budget exceeded"
+	case err != nil:
+		res.Pass = false
+	default:
+		res.Pass = true
+	}
+	return res, nil
+}
+
+// Sandbox labels (single source of truth for the scorecard annotation).
+//
+// 沙箱标签（scorecard 标注的单一真相源）。
+const (
+	SandboxScripted     = "scripted"       // 确定性离线替身
+	SandboxExec         = "exec"           // 命令套件真实执行
+	SandboxDocker       = "docker"         // 容器内执行（Terminal-Bench 冻结任务）
+	SandboxFallbackExec = "fallback-exec"  // 容器不可用，回退命令套件（降级标注）
+)
+
+// sandboxLabeled is implemented by runners that declare their sandbox.
+//
+// sandboxLabeled 由声明自身沙箱的 runner 实现。
+type sandboxLabeled interface{ SandboxLabel() string }
+
+func sandboxLabel(r TaskRunner) string {
+	if l, ok := r.(sandboxLabeled); ok {
+		return l.SandboxLabel()
+	}
+	return SandboxScripted
+}
+
+// SandboxLabel implements the sandbox annotation.
+//
+// SandboxLabel 实现沙箱标注。
+func (ScriptedRunner) SandboxLabel() string { return SandboxScripted }
+
+// SandboxLabel implements the sandbox annotation.
+//
+// SandboxLabel 实现沙箱标注。
+func (ExecRunner) SandboxLabel() string { return SandboxExec }
+
+// degradedRunner wraps the fallback backend so the scorecard annotation keeps
+// the degradation visible (label fallback-exec, not the wrapped runner's own).
+//
+// degradedRunner 包装回退后端，使 scorecard 标注保持降级可见（标签 fallback-exec，
+// 而非被包装 runner 自己的标签）。
+type degradedRunner struct{ TaskRunner }
+
+// SandboxLabel implements the sandbox annotation with the degradation label.
+//
+// SandboxLabel 以降级标签实现沙箱标注。
+func (degradedRunner) SandboxLabel() string { return SandboxFallbackExec }
+
+// SelectRunner picks the backend per the manifest shape and environment, and
+// reports the sandbox label plus whether the choice is a degradation. Ladder:
+// docker tasks + smoke + docker usable → DockerRunner; docker tasks + smoke but
+// no docker → ExecRunner on the task command (fallback-exec, degraded —
+// scorecard annotates); docker tasks without smoke → ScriptedRunner; plain
+// command manifests: smoke → ExecRunner, else ScriptedRunner.
+//
+// SelectRunner 按 manifest 形态与环境挑后端，并给出沙箱标签与是否降级。阶梯：
+// 容器任务 + smoke + docker 可用 → DockerRunner；容器任务 + smoke 但无 docker →
+// 命令回退（fallback-exec，降级——scorecard 标注）；容器任务无 smoke →
+// ScriptedRunner；纯命令 manifest：smoke → ExecRunner，否则 ScriptedRunner。
+func SelectRunner(manifest *BenchmarkManifest, smoke bool) (TaskRunner, string, bool) {
+	hasDockerTask := false
+	for _, t := range manifest.Tasks {
+		if t.HasDockerShape() {
+			hasDockerTask = true
+			break
+		}
+	}
+	if !hasDockerTask {
+		if smoke {
+			return ExecRunner{}, SandboxExec, false
+		}
+		return ScriptedRunner{}, SandboxScripted, false
+	}
+	if !smoke {
+		return ScriptedRunner{}, SandboxScripted, false
+	}
+	if DockerAvailable() {
+		return DockerRunner{}, SandboxDocker, false
+	}
+	return degradedRunner{ExecRunner{}}, SandboxFallbackExec, true
+}

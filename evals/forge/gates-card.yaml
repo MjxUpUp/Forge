@@ -47,6 +47,6 @@ escapes:
   - "FORGE_EVAL_GOLDEN / FORGE_EVAL_TRAPS（评测自身，本体系新增）"
 blind_spots:
   - "审计行签名（nodestamp Sig）v1 恒空——伪造 checklog 审计行当前不可检测（eval traps 实测确认，action item）"
-  - "门禁 precision/recall 尚无完整标注基线——golden v1 仅覆盖 auto-compile 种子用例"
+  - "门禁 precision/recall 标注基线仍在爬坡——golden v1 已覆盖 auto-compile/task-guard/file-sentinel 三门禁 12 例（设计目标 20-30 例/门禁）"
   - "确认等待轮次（wait_turns）无生产数据源——摩擦指标 v1 不可测"
   - "注册表路径成员匹配在符号链接/路径别名场景未审计"

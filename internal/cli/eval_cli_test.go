@@ -48,7 +48,9 @@ func TestEvalGoldenRunE2E(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("golden run 应通过（exit %d）：%s", code, out)
 	}
-	if !strings.Contains(out, "precision 1/1") || !strings.Contains(out, "autocompile-reminder-contract") {
+	// 12 用例集（auto-compile 2 + task-guard 5 + file-sentinel 5）：
+	// precision 5/5、fpr 0/7、全部确定性重放一致。
+	if !strings.Contains(out, "precision 5/5") || !strings.Contains(out, "fpr 0/7") || !strings.Contains(out, "taskguard-blocks-forge-runtime-write") {
 		t.Fatalf("输出缺 precision 基线/用例行: %s", out)
 	}
 	// 指纹一致性：二次运行不得因 manifest 拒绝。
@@ -69,7 +71,7 @@ func TestEvalRunScriptedE2E(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("eval run 应通过（exit %d）：%s", code, out)
 	}
-	for _, want := range []string{"SCORECARD | profile=full model=smoke-model benchmark=smoke-v1@frozen forge_ref=test-ref", "组合评测", "pass^k"} {
+	for _, want := range []string{"SCORECARD | profile=full model=smoke-model benchmark=smoke-v1@frozen forge_ref=test-ref sandbox=scripted", "组合评测", "pass^k"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("scorecard 缺 %q：%s", want, out)
 		}

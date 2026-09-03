@@ -1,0 +1,20 @@
+# 干净样本：测试文件永远放行（TDD 工作流豁免，先于 no-task 逻辑 exit 0）。
+id: taskguard-allows-test-file
+gate: task-guard
+kind: clean
+expect: clean
+description: "写 main_test.go（无活跃任务）→ TDD 豁免放行"
+deterministic: true
+files:
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+probe_argv:
+  - "sh"
+  - -c
+  - 'printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Write\",\"session_id\":\"gs\",\"tool_input\":{\"file_path\":\"main_test.go\"}}" | "{forge}" hook task-guard --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [task-guard]"
