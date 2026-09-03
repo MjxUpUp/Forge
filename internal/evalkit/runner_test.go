@@ -259,3 +259,59 @@ steps:
 		t.Fatalf("保真度应 1: %+v %v", fid, err)
 	}
 }
+
+func TestSelectRunnerLadder(t *testing.T) {
+	dockerManifest := func() *BenchmarkManifest {
+		return &BenchmarkManifest{ID: "tb", Version: "1", Split: "frozen", Tasks: []BenchTask{
+			{ID: "t1", Image: "alpine:3.20", RunCmd: "echo", TestCmd: "true", Command: "true"},
+		}}
+	}
+	plainManifest := &BenchmarkManifest{ID: "cs", Version: "1", Split: "frozen", Tasks: []BenchTask{{ID: "t1", Command: "true"}}}
+
+	// 未武装 smoke：一律确定性替身（容器任务也不跑）。
+	r, label, degraded := SelectRunner(dockerManifest(), false)
+	if _, ok := r.(ScriptedRunner); !ok || label != SandboxScripted || degraded {
+		t.Fatalf("无 smoke 应 scripted 不降级: %T %s %v", r, label, degraded)
+	}
+	// 纯命令 manifest + smoke → exec（真实命令执行）。
+	r, label, degraded = SelectRunner(plainManifest, true)
+	if _, ok := r.(ExecRunner); !ok || label != SandboxExec || degraded {
+		t.Fatalf("纯命令 + smoke 应 exec: %T %s %v", r, label, degraded)
+	}
+	// 容器 manifest + smoke + docker 打桩为不可用 → 回退 exec 并标注降级。
+	orig := dockerAvailableFunc
+	dockerAvailableFunc = func() bool { return false }
+	dockerChecked = false // 清缓存：可用性每进程只探测一次，桩切换必须重置
+	defer func() { dockerAvailableFunc = orig; dockerChecked = false }()
+	r, label, degraded = SelectRunner(dockerManifest(), true)
+	if label != SandboxFallbackExec || !degraded {
+		t.Fatalf("docker 不可用应回退并标注 fallback-exec: %T %s %v", r, label, degraded)
+	}
+	if sl, ok := r.(sandboxLabeled); !ok || sl.SandboxLabel() != SandboxFallbackExec {
+		t.Fatalf("降级标签必须经 sandboxLabeled 透传到 scorecard: %v", ok)
+	}
+	// docker 打桩为可用 → DockerRunner。
+	dockerAvailableFunc = func() bool { return true }
+	dockerChecked = false
+	r, label, degraded = SelectRunner(dockerManifest(), true)
+	if _, ok := r.(DockerRunner); !ok || label != SandboxDocker || degraded {
+		t.Fatalf("docker 可用应容器执行: %T %s %v", r, label, degraded)
+	}
+}
+
+func TestFallbackExecAnnotatedInScorecard(t *testing.T) {
+	spec := RunSpec{Profile: ProfileFull, Model: "m", Benchmark: "b", Split: "frozen",
+		Repeats: 1, ForgeRef: "r", Budget: Budget{WallclockEach: time.Second}}
+	manifest := &BenchmarkManifest{ID: "b", Version: "1", Split: "frozen", fingerprint: "fp",
+		Tasks: []BenchTask{{ID: "t1", Command: "true", Image: "alpine:3.20", TestCmd: "true"}}}
+	sc, err := RunBenchmark(context.Background(), spec, manifest, ExecRunner{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sc.Sandbox != SandboxFallbackExec && sc.Sandbox != SandboxExec {
+		t.Fatalf("sandbox 应为 exec/fallback-exec 之一: %s", sc.Sandbox)
+	}
+	if !strings.Contains(sc.Header, "sandbox=") {
+		t.Fatalf("头部应带 sandbox 标注: %s", sc.Header)
+	}
+}

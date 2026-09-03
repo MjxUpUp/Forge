@@ -1,0 +1,21 @@
+# 干净样本：.forge/protocol.yml 是用户可编辑的项目配置（显式豁免），且非源码
+# 扩展 → 放行。误触 = fpr。
+id: taskguard-allows-protocol-config
+gate: task-guard
+kind: clean
+expect: clean
+description: ".forge/protocol.yml 用户可编辑豁免 + 非源码 → 放行"
+deterministic: true
+files:
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+probe_argv:
+  - "sh"
+  - -c
+  - 'printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"session_id\":\"gs\",\"tool_input\":{\"file_path\":\".forge/protocol.yml\"}}" | "{forge}" hook task-guard --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [task-guard]"

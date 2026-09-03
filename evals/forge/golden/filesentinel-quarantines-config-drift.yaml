@@ -1,0 +1,22 @@
+# file-sentinel 自保护契约：.claude/settings* 走 git 无关的 .cfg manifest 比对，
+# 命令改配置 → 漂移被隔离。
+id: filesentinel-quarantines-config-drift
+gate: file-sentinel
+kind: defective
+expect: flagged
+description: "Bash 命令改 .claude/settings.json → .cfg manifest 漂移被隔离"
+deterministic: true
+files:
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+probe_argv:
+  - "sh"
+  - -c
+  - 'pre=$(printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"session_id\":\"gs\",\"tool_input\":{\"command\":\"echo {} > .claude/settings.json\"}}" | "{forge}" hook bash-guard --agent claude); mkdir -p .claude && echo modified > .claude/settings.json; printf "%s" "{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Bash\",\"session_id\":\"gs\",\"tool_input\":{\"command\":\"echo {} > .claude/settings.json\"}}" | "{forge}" hook file-sentinel --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [file-sentinel]"
+  - "stdout_contains:quarantine"
