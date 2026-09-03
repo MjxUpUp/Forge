@@ -1,0 +1,26 @@
+# golden 用例：research-mode 抑制契约（干净样本/fpr 基线）。
+# 契约：无 source-touched marker 的会话（调研/审查场景）→ 编译提醒被抑制，
+# 不得污染 AdditionalContext 字符配额。误触 = fpr。
+id: autocompile-research-suppressed
+gate: auto-compile
+kind: clean
+expect: clean
+description: "无 marker 的会话写源码 → 提醒必须被抑制（research-mode）"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.suppressed
+
+      go 1.25
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+probe_argv:
+  - "sh"
+  - -c
+  - 'printf "%s" "{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Write\",\"session_id\":\"golden-nomarker\",\"tool_input\":{\"file_path\":\"main.go\"}}" | "{forge}" hook auto-compile --agent claude'
+detect_any:
+  - "stdout_contains:Advisory: 已修改源码"
