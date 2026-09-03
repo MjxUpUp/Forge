@@ -1,0 +1,52 @@
+# Forge 治理披露卡（docs/design/forge-evaluation-system.md §四）
+# 对外声明：Forge 作为广义 harness 占据 ETCSOVG 七层中的四层，以什么机制改变
+# 宿主行为；校验 fail-closed（缺任一节尤其"已知盲区"即 BLOCKED）。
+version: 1
+layers:
+  - layer: Context
+    mechanisms:
+      - "skills 触发注入（UserPromptSubmit 命中关键词时经 AdditionalContext 注入方法论）"
+      - "conventions profile 摘要注入（SessionStart/PostCompact）"
+      - "任务接续上下文（forge session / HANDOFF 结构化字段）"
+  - layer: Scheduling
+    mechanisms:
+      - "taskpipeline 三门（task-implement/task-verify/task-complete）塑形任务循环"
+      - "多任务并发编排与 active-task-ref 指针"
+  - layer: Verification
+    mechanisms:
+      - "auto-compile / assertion-check 写时 hook（advisory）"
+      - "test-coverage / work-activity / acceptance / doc-gate 校验（verify 门）"
+      - "cheat-scan / unused-scan 机械作弊扫描（advisory）"
+  - layer: Governance
+    mechanisms:
+      - "project policy（takeover/declined/写锁/外来 harness 让位）"
+      - "checklog/toollog 审计与 escape-hatch 留痕（证据封顶 Weak）"
+hooks:
+  - "auto-compile（PostToolUse 写时编译，advisory）"
+  - "assertion-check（断言弱化扫描，advisory）"
+  - "bash-guard / file-sentinel / task-guard（拦截类，exit 2）"
+  - "skill-trigger（关键词触发注入，advisory）"
+  - "test-nudge（事中测试提醒，advisory）"
+  - "conventions-inject / conventions-lint（档案注入与 lint 提醒，advisory）"
+  - "mcp-scan / skill-scan（集成安全扫描，advisory）"
+  - "tool-track / subagent-stop / failure-track（观测记录）"
+gates:
+  - { id: task-implement, kind: hard, where: "任务首个门（唯一硬失败：无代码改动）" }
+  - { id: task-verify, kind: advisory, where: "验证门（test-coverage/work-activity/cheat-scan 等默认 advisory）" }
+  - { id: task-complete, kind: advisory, where: "完成门（acceptance/doc-gate 默认 advisory；protocol 可升级）" }
+escapes:
+  - "FORGE_TEST_COVERAGE"
+  - "FORGE_WORK_ACTIVITY"
+  - "FORGE_DOC_GATE"
+  - "FORGE_ACCEPTANCE_GATE"
+  - "FORGE_TASK_GATE"
+  - "FORGE_SKIP_VERIFY"
+  - "FORGE_SKILL_TRIGGER"
+  - "FORGE_ADVISORY_PROMOTION"
+  - "FORGE_CONVENTIONS_LINT"
+  - "FORGE_EVAL_GOLDEN / FORGE_EVAL_TRAPS（评测自身，本体系新增）"
+blind_spots:
+  - "审计行签名（nodestamp Sig）v1 恒空——伪造 checklog 审计行当前不可检测（eval traps 实测确认，action item）"
+  - "门禁 precision/recall 尚无完整标注基线——golden v1 仅覆盖 auto-compile 种子用例"
+  - "确认等待轮次（wait_turns）无生产数据源——摩擦指标 v1 不可测"
+  - "注册表路径成员匹配在符号链接/路径别名场景未审计"

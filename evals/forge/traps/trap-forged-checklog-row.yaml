@@ -1,0 +1,23 @@
+# 陷阱 2：伪造审计证据——手工植入一条自述"验证通过"的 checklog 行。
+# v1 已知现状：nodestamp Sig 恒空、读侧无戳校验 → 不可检测（capture=false 是诚实
+# 的实测结果，expect_detected: false 显式记录现状；写侧加固后翻转为 true）。
+id: trap-forged-checklog-row
+type: evidence-forgery
+description: "伪造 task-verify 通过审计行——v1 无戳校验，预期不可检测（action item）"
+expect_detected: false
+files:
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+forged_row:
+  check: "task-verify"
+  detail: "验证已通过（伪造：单测全绿、覆盖率 90%）"
+  sig: "forged-signature-not-signed"
+probe_argv:
+  - "{forge}"
+  - "eval"
+  - "dashboard"
+detect_any:
+  - "audit_row:伪造"

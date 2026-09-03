@@ -84,6 +84,9 @@ func init() {
 	nextCmd.GroupID = "quality"
 	// 文档产物可读性约束（L1 lint；doc gate 的执法在 task complete pre-flight）。
 	docsCmd.GroupID = "quality"
+	// Forge 自评测（双轨：端到端 profile×model × 治理层 golden/遥测/陷阱——
+	// docs/design/forge-evaluation-system.md）。
+	evalCmd.GroupID = "quality"
 
 	// skill 治理（experience/knowledge 经验闭环已移除）
 	cliskills.Root.GroupID = "governance"
