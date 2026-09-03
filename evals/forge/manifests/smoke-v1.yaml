@@ -1,0 +1,15 @@
+# Track A 冒烟 manifest（命令套件后端 v1）：确定性 shell 命令即任务，
+# 退出码 0=通过。离线可跑（无网络/无模型）；FORGE_EVAL_SMOKE 武装真实执行。
+id: smoke-v1
+version: 1.0.0
+split: frozen
+tasks:
+  - id: pass-always
+    command: "true"
+    difficulty_band: easy
+  - id: pass-file-check
+    command: "test -n \"$FORGE_EVAL_PROFILE\" && test -n \"$FORGE_EVAL_MODEL\""
+    difficulty_band: easy
+  - id: fail-always
+    command: "false"
+    difficulty_band: easy

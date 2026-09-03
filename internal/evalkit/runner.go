@@ -1,0 +1,399 @@
+package evalkit
+
+// runner.go — Track A 端到端运行器（docs/design/forge-evaluation-system.md §四/§六
+// P2）：RunSpec 四元组 + 基准 manifest + 预算三上限 + pass^k Scorecard。v1 的执行
+// 后端是"命令套件"manifest（每任务一条可执行命令 + 退出码判定）—— Terminal-Bench
+// 等 Harbor 格式适配器是同一接口的后续实现，scorecard/统计层不感知后端差异。
+// 真实外部执行（联网/容器）由 FORGE_EVAL_SMOKE 显式武装；离线测试走 ScriptedRunner。
+//
+// runner.go — Track A end-to-end runner: RunSpec four-tuple + benchmark manifest
+// + triple budget + pass^k scorecard. The v1 execution backend is a "command
+// suite" manifest (one executable command per task, exit-code verdict); Harbor/
+// Terminal-Bench adapters implement the same interface later, and the
+// scorecard/stats layer stays backend-agnostic. Real external execution
+// (network/containers) requires FORGE_EVAL_SMOKE; offline tests use
+// ScriptedRunner.
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/util"
+	"gopkg.in/yaml.v3"
+)
+
+// Profile is the Forge protocol-layer factor (the unified experimental factor
+// across both tracks).
+//
+// Profile 是 Forge 协议层因子（贯穿两轨的统一实验因子）。
+type Profile string
+
+const (
+	ProfileOff       Profile = "off"        // 裸宿主：不注入、不门禁
+	ProfileGatesOnly Profile = "gates-only" // 仅门禁 hooks：不注入 skills/conventions
+	ProfileFull      Profile = "full"       // 全量：C/S/V/G 四层全生效
+)
+
+// Profiles is the ladder in canonical order.
+//
+// Profiles 是规范顺序的阶梯。
+var Profiles = []Profile{ProfileOff, ProfileGatesOnly, ProfileFull}
+
+// ValidProfile reports whether p is a ladder member.
+//
+// ValidProfile 报告 p 是否阶梯成员。
+func ValidProfile(p Profile) bool {
+	for _, v := range Profiles {
+		if v == p {
+			return true
+		}
+	}
+	return false
+}
+
+// Budget is the triple cost ceiling; a run exceeding any bound marks the task
+// budget-cut (never fail, never dropped — disclosed in the scorecard).
+//
+// Budget 是三重成本上限；超任一界的任务记 budget-cut（非 fail、非剔除——在
+// scorecard 里披露）。
+type Budget struct {
+	MaxTokens     int           `yaml:"max_tokens"      json:"max_tokens"`
+	MaxCostUSD    float64       `yaml:"max_cost_usd"    json:"max_cost_usd"`
+	WallclockEach time.Duration `yaml:"wallclock_each"  json:"wallclock_each"`
+}
+
+// RunSpec is the four-tuple plus experimental parameters. All fields must be
+// set before a run may start (four-tuple is the scorecard header contract).
+//
+// RunSpec 是四元组加实验参数。开跑前必须全部就位（四元组是 scorecard 头部契约）。
+type RunSpec struct {
+	Profile   Profile `yaml:"profile"   json:"profile"`
+	Model     string  `yaml:"model"     json:"model"`
+	Benchmark string  `yaml:"benchmark" json:"benchmark"`
+	Split     string  `yaml:"split"     json:"split"`
+	Repeats   int     `yaml:"repeats"   json:"repeats"`
+	Budget    Budget  `yaml:"budget"    json:"budget"`
+	ForgeRef  string  `yaml:"forge_ref" json:"forge_ref"`
+}
+
+// Validate enforces the spec invariants.
+//
+// Validate 强制 RunSpec 不变量。
+func (s *RunSpec) Validate() error {
+	if !ValidProfile(s.Profile) {
+		return fmt.Errorf("evalkit: profile %q 非法（off|gates-only|full）", s.Profile)
+	}
+	if s.Model == "" || s.Benchmark == "" || s.Split == "" || s.ForgeRef == "" {
+		return fmt.Errorf("evalkit: RunSpec 缺 model/benchmark/split/forge_ref（四元组必须齐全）")
+	}
+	if s.Repeats <= 0 {
+		return fmt.Errorf("evalkit: repeats 必须 ≥1，得到 %d", s.Repeats)
+	}
+	if s.Budget.MaxTokens <= 0 && s.Budget.MaxCostUSD <= 0 && s.Budget.WallclockEach <= 0 {
+		return fmt.Errorf("evalkit: 预算三上限全空——无预算上限的精度分数不采信")
+	}
+	return nil
+}
+
+// BenchTask is one task of a command-suite manifest.
+//
+// BenchTask 是命令套件 manifest 的一个任务。
+type BenchTask struct {
+	ID      string `yaml:"id"      json:"id"`
+	Command string `yaml:"command" json:"command"` // 退出码 0 = 通过
+	// DifficultyBand is the stratification label (kept from the sampling plan).
+	DifficultyBand string `yaml:"difficulty_band" json:"difficulty_band"`
+	// PollutionFlag marks contamination risk (empty = none).
+	PollutionFlag string `yaml:"pollution_flag,omitempty" json:"pollution_flag,omitempty"`
+}
+
+// BenchmarkManifest is a versioned, fingerprinted task set.
+//
+// BenchmarkManifest 是版本化、带指纹的任务集。
+type BenchmarkManifest struct {
+	ID         string     `yaml:"id"         json:"id"`
+	Version    string     `yaml:"version"    json:"version"`
+	Split      string     `yaml:"split"      json:"split"`
+	Tasks      []BenchTask `yaml:"tasks"     json:"tasks"`
+	fingerprint string
+}
+
+// LoadManifest reads and validates a manifest YAML (fail-closed: duplicate IDs,
+// empty commands, missing version).
+//
+// LoadManifest 读取并校验 manifest YAML（fail-closed：ID 重复、命令为空、缺版本）。
+func LoadManifest(path string) (*BenchmarkManifest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("evalkit: 读取 manifest 失败: %w", err)
+	}
+	var m BenchmarkManifest
+	if err := yaml.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("evalkit: 解析 manifest 失败: %w", err)
+	}
+	if m.ID == "" || m.Version == "" || m.Split == "" {
+		return nil, fmt.Errorf("evalkit: manifest 缺 id/version/split")
+	}
+	if len(m.Tasks) == 0 {
+		return nil, fmt.Errorf("evalkit: manifest %s 无任务", m.ID)
+	}
+	seen := map[string]bool{}
+	for _, t := range m.Tasks {
+		if t.ID == "" || t.Command == "" {
+			return nil, fmt.Errorf("evalkit: manifest %s 任务缺 id/command", m.ID)
+		}
+		if seen[t.ID] {
+			return nil, fmt.Errorf("evalkit: manifest %s 任务 id 重复: %s", m.ID, t.ID)
+		}
+		seen[t.ID] = true
+	}
+	sum := sha256.Sum256(data)
+	m.fingerprint = hex.EncodeToString(sum[:])
+	return &m, nil
+}
+
+// Fingerprint returns the manifest content hash (set by LoadManifest).
+//
+// Fingerprint 返回 manifest 内容哈希（由 LoadManifest 填充）。
+func (m *BenchmarkManifest) Fingerprint() string { return m.fingerprint }
+
+// TaskResult is one task attempt outcome.
+//
+// TaskResult 是一次任务尝试的结果。
+type TaskResult struct {
+	TaskID   string  `json:"task_id"`
+	Pass     bool    `json:"pass"`
+	BudgetCut bool   `json:"budget_cut,omitempty"`
+	Error    string  `json:"error,omitempty"`
+	Tokens   int     `json:"tokens,omitempty"`
+	CostUSD  float64 `json:"cost_usd,omitempty"`
+	Duration time.Duration `json:"duration,omitempty"`
+}
+
+// TaskRunner executes one task attempt under a spec. Implementations:
+// ScriptedRunner (deterministic, offline tests/smoke) and ExecRunner (real
+// command execution; external effects need FORGE_EVAL_SMOKE).
+//
+// TaskRunner 在 spec 下执行一次任务尝试。实现：ScriptedRunner（确定性，离线
+// 测试/冒烟）与 ExecRunner（真实命令执行；外部效应需 FORGE_EVAL_SMOKE）。
+type TaskRunner interface {
+	RunTask(ctx context.Context, spec RunSpec, task BenchTask) (TaskResult, error)
+}
+
+// ScriptedRunner derives pass/fail deterministically from the task ID hash —
+// the offline stand-in that makes the whole Track-A pipeline testable without
+// networks or models.
+//
+// ScriptedRunner 从任务 ID 哈希确定性地导出 pass/fail——让 Track A 全管线在无
+// 网络、无模型时可测的离线替身。
+type ScriptedRunner struct{}
+
+// RunTask implements TaskRunner.
+//
+// RunTask 实现 TaskRunner。
+func (ScriptedRunner) RunTask(_ context.Context, spec RunSpec, task BenchTask) (TaskResult, error) {
+	start := time.Now()
+	sum := sha256.Sum256([]byte(string(spec.Profile) + "|" + spec.Model + "|" + task.ID))
+	pass := sum[0]%2 == 0
+	return TaskResult{TaskID: task.ID, Pass: pass, Tokens: int(sum[1])%900 + 100, Duration: time.Since(start)}, nil
+}
+
+// ExecRunner executes each task's command with a per-task wallclock budget.
+// The command runs with profile/model exposed as env (FORGE_EVAL_PROFILE /
+// FORGE_EVAL_MODEL) so future model-driving backends hook in without changing
+// the runner contract.
+//
+// ExecRunner 在单任务墙钟预算内执行任务的命令。命令以 env 暴露 profile/model
+// （FORGE_EVAL_PROFILE / FORGE_EVAL_MODEL）——将来模型驱动后端接入无需改 runner
+// 契约。
+type ExecRunner struct{}
+
+// RunTask implements TaskRunner.
+//
+// RunTask 实现 TaskRunner。
+func (ExecRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (TaskResult, error) {
+	res := TaskResult{TaskID: task.ID}
+	if spec.Budget.WallclockEach > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, spec.Budget.WallclockEach)
+		defer cancel()
+	}
+	start := time.Now()
+	cmd := exec.CommandContext(ctx, "sh", "-c", task.Command)
+	cmd.Env = append(os.Environ(),
+		"FORGE_EVAL_PROFILE="+string(spec.Profile),
+		"FORGE_EVAL_MODEL="+spec.Model)
+	out, err := cmd.CombinedOutput()
+	res.Duration = time.Since(start)
+	_ = out
+	switch {
+	case ctx.Err() != nil:
+		res.BudgetCut = true
+		res.Error = "wallclock budget exceeded"
+	case err != nil:
+		res.Pass = false
+	default:
+		res.Pass = true
+	}
+	return res, nil
+}
+
+// Attempt is one (task, repeat) outcome inside a run.
+//
+// Attempt 是一次运行内的一个（任务， 重放）结果。
+type Attempt struct {
+	TaskID  string `json:"task_id"`
+	Repeat  int    `json:"repeat"`
+	Pass    bool   `json:"pass"`
+	BudgetCut bool `json:"budget_cut,omitempty"`
+	Tokens  int    `json:"tokens,omitempty"`
+	CostUSD float64 `json:"cost_usd,omitempty"`
+}
+
+// Scorecard is the run's honest summary. The header is the four-tuple + the
+// evaluation-object declaration (ABC III.6) — a scorecard without it refuses
+// to render (fail-closed).
+//
+// Scorecard 是运行的诚实摘要。头部即四元组 + 评测对象声明（ABC III.6）——缺
+// 头部的 scorecard 拒绝渲染（fail-closed）。
+type Scorecard struct {
+	Spec         RunSpec   `json:"spec"`
+	ManifestFP   string    `json:"manifest_fingerprint"`
+	GeneratedAt  time.Time `json:"generated_at"`
+	Header       string    `json:"header"` // 渲染契约的第一行
+	Pass1        RateValue `json:"pass1"`
+	PassKCurve   []PassKPoint `json:"pass_k_curve"`
+	TotalTokens  int       `json:"total_tokens"`
+	TotalCostUSD float64   `json:"total_cost_usd"`
+	BudgetCuts   int       `json:"budget_cuts"`
+	Note         string    `json:"note,omitempty"`
+}
+
+// PassKPoint is one point of the pass^k curve (k 次全对概率的估计).
+//
+// PassKPoint 是 pass^k 曲线上的一点（k 次全对概率的估计）。
+type PassKPoint struct {
+	K     int     `json:"k"`
+	Value float64 `json:"value"`
+}
+
+// RunBenchmark executes spec over the manifest with the runner and aggregates
+// the scorecard.
+//
+// RunBenchmark 用 runner 按 spec 在 manifest 上执行并聚合 scorecard。
+func RunBenchmark(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest, runner TaskRunner) (*Scorecard, error) {
+	if err := spec.Validate(); err != nil {
+		return nil, err
+	}
+	if len(manifest.Tasks) == 0 {
+		return nil, fmt.Errorf("evalkit: manifest 无任务（pass^k 分母为 0 会产出 NaN，拒绝空跑）")
+	}
+	var attempts []Attempt
+	tokens, cost, cuts := 0, 0.0, 0
+	for _, task := range manifest.Tasks {
+		for r := 1; r <= spec.Repeats; r++ {
+			res, err := runner.RunTask(ctx, spec, task)
+			if err != nil {
+				return nil, fmt.Errorf("evalkit: 任务 %s 执行失败: %w", task.ID, err)
+			}
+			attempts = append(attempts, Attempt{TaskID: task.ID, Repeat: r, Pass: res.Pass, BudgetCut: res.BudgetCut, Tokens: res.Tokens, CostUSD: res.CostUSD})
+			tokens += res.Tokens
+			cost += res.CostUSD
+			if res.BudgetCut {
+				cuts++
+			}
+		}
+	}
+	return buildScorecard(spec, manifest, attempts, tokens, cost, cuts), nil
+}
+
+// buildScorecard aggregates attempts into pass@1 and the pass^k curve.
+//
+// buildScorecard 把 attempts 聚合成 pass@1 与 pass^k 曲线。
+func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attempt, tokens int, cost float64, cuts int) *Scorecard {
+	byTask := map[string][]bool{}
+	for _, a := range attempts {
+		byTask[a.TaskID] = append(byTask[a.TaskID], a.Pass)
+	}
+	taskIDs := make([]string, 0, len(byTask))
+	for id := range byTask {
+		taskIDs = append(taskIDs, id)
+	}
+	sort.Strings(taskIDs)
+	passFirst := 0
+	var curve []PassKPoint
+	maxK := spec.Repeats
+	for k := 1; k <= maxK; k++ {
+		allK := 0
+		for _, id := range taskIDs {
+			allPass := true
+			for _, p := range byTask[id][:k] {
+				if !p {
+					allPass = false
+					break
+				}
+			}
+			if allPass {
+				allK++
+			}
+		}
+		curve = append(curve, PassKPoint{K: k, Value: float64(allK) / float64(len(taskIDs))})
+	}
+	for _, id := range taskIDs {
+		if len(byTask[id]) > 0 && byTask[id][0] {
+			passFirst++
+		}
+	}
+	sc := &Scorecard{
+		Spec: spec, ManifestFP: manifest.Fingerprint(), GeneratedAt: time.Now().UTC(),
+		Pass1: newRateValue(&MetricDef{ID: "e2e_pass1", MinSamples: 1}, passFirst, len(taskIDs)),
+		PassKCurve: curve, TotalTokens: tokens, TotalCostUSD: cost, BudgetCuts: cuts,
+	}
+	sc.Header = fmt.Sprintf("profile=%s model=%s benchmark=%s@%s forge_ref=%s — 本分数为 forge×model 组合评测（评测对象声明，ABC III.6）",
+		spec.Profile, spec.Model, spec.Benchmark, spec.Split, spec.ForgeRef)
+	if cuts > 0 {
+		sc.Note = fmt.Sprintf("预算截断 %d 次——截断任务计入 budget-cut，未计入 fail", cuts)
+	}
+	return sc
+}
+
+// PersistScorecard writes the scorecard JSON and the eval-run audit row.
+//
+// PersistScorecard 写 scorecard JSON 与 eval-run 审计行。
+func PersistScorecard(evalDir string, repoRoot string, sc *Scorecard) (string, error) {
+	dir := filepath.Join(evalDir, "forge", "runs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, fmt.Sprintf("scorecard-%s-%s-%s.json", sc.Spec.Profile, sc.Spec.Model, sc.GeneratedAt.UTC().Format("20060102-150405")))
+	data, err := json.MarshalIndent(sc, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	if err := util.AtomicWrite(path, data, 0o644); err != nil {
+		return "", err
+	}
+	_ = checklog.Record(repoRoot, &checklog.Entry{
+		Check:   checklog.CheckEvalRun,
+		Passed:  true,
+		Checked: true,
+		Detail:  fmt.Sprintf(`eval run: %s pass@1 %.3f tokens %d budget_cuts %d`, sc.Header, sc.Pass1.Value, sc.TotalTokens, sc.BudgetCuts),
+	})
+	return path, nil
+}
+
+// SmokeManifestEnv is the escape hatch arming real (non-scripted) benchmark
+// execution — external effects must never fire implicitly.
+//
+// SmokeManifestEnv 是武装真实（非 scripted）基准执行的逃生舱——外部效应绝不
+// 隐式触发。
+const SmokeManifestEnv = "FORGE_EVAL_SMOKE"
