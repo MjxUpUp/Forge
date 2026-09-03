@@ -23,11 +23,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// DrillStep is one command of a drill with its stdout expectations.
+// DrillStep is one command of a drill with its stdout expectations. Env keys
+// are appended to the child environment (e.g. FORGE_WORK_ACTIVITY=disable for
+// gate-advance drills — the escape-hatch path, whose score cap the drill then
+// observes honestly).
 //
-// DrillStep 是演练的一条命令及其 stdout 期望。
+// DrillStep 是演练的一条命令及其 stdout 期望。Env 追加进子进程环境（如
+// FORGE_WORK_ACTIVITY=disable——门禁推进演练走的逃生舱路径，其分数封顶会被
+// 演练如实观察到）。
 type DrillStep struct {
 	Argv          []string `yaml:"argv"           json:"argv"` // {forge} 占位
+	Env           []string `yaml:"env"            json:"env,omitempty"`
 	ExpectContains []string `yaml:"expect_contains" json:"expect_contains"`
 }
 
@@ -119,21 +125,22 @@ func RunResumeDrills(drills []ResumeDrill, forgeBin string) ([]DrillResult, erro
 				}
 			}
 			env := append(os.Environ(), "HOME="+tmp, "FORGE_DATA_HOME="+dataHome)
-			run := func(argv []string) (string, int) {
+			run := func(argv []string, stepEnv []string) (string, int) {
 				cmd := exec.Command(argv[0], argv[1:]...)
 				cmd.Dir = fixture
-				cmd.Env = env
+				// 隔离环境（HOME/FORGE_DATA_HOME）打底，step.Env 叠加其上。
+				cmd.Env = append(append(os.Environ(), env...), stepEnv...)
 				var out strings.Builder
 				cmd.Stdout = &out
 				cmd.Stderr = &out
 				err := cmd.Run()
 				return out.String(), exitCode(err)
 			}
-			if out, code := run([]string{"git", "init", "-q"}); code != 0 {
+			if out, code := run([]string{"git", "init", "-q"}, nil); code != 0 {
 				res.Error = "git init: " + out
 				return
 			}
-			if out, code := run([]string{forgeBin, "init"}); code != 0 {
+			if out, code := run([]string{forgeBin, "init"}, nil); code != 0 {
 				res.Error = "forge init: " + out
 				return
 			}
@@ -142,7 +149,7 @@ func RunResumeDrills(drills []ResumeDrill, forgeBin string) ([]DrillResult, erro
 				for j, a := range step.Argv {
 					argv[j] = strings.ReplaceAll(a, "{forge}", forgeBin)
 				}
-				out, code := run(argv)
+				out, code := run(argv, step.Env)
 				if code != 0 {
 					res.Passed = false
 					res.FailedAt = fmt.Sprintf("step %d exit %d", i+1, code)

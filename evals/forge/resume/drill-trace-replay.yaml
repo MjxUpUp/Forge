@@ -1,0 +1,17 @@
+# 接续演练 3：审计时间线回放（C3）——任务边界与门禁推进事件落在 checklog，
+# forge trace 按任务 ref 可完整回放（校准：Trace for task + task-started 行）。
+id: drill-trace-timeline-replay
+description: "task start + 门禁推进后，forge trace 按 ref 回放审计时间线"
+files:
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+steps:
+  - argv: ["{forge}", "task", "start", "--ref", "EVAL-C3", "--title", "时间线回放演练"]
+    expect_contains: ["EVAL-C3"]
+  - argv: ["sh", "-c", "printf 'package main\\n\\nfunc W() int { return 2 }\\n' > w.go && git add w.go && git -c commit.gpgsign=false commit -qm drill"]
+  - argv: ["{forge}", "task", "gate", "task-implement", "--ref", "EVAL-C3"]
+  - argv: ["{forge}", "trace", "EVAL-C3"]
+    expect_contains: ["Trace for task", "task-started"]

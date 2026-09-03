@@ -361,12 +361,11 @@ func runEvalRun(cmd *cobra.Command, args []string) error {
 	if err := spec.Validate(); err != nil {
 		return fmt.Errorf("BLOCKED: %v", err)
 	}
-	var runner evalkit.TaskRunner = evalkit.ScriptedRunner{}
-	if os.Getenv(evalkit.SmokeManifestEnv) != "" {
-		runner = evalkit.ExecRunner{}
-		fmt.Println("FORGE_EVAL_SMOKE 已武装：真实命令执行")
+	runner, sandbox, degraded := evalkit.SelectRunner(manifest, os.Getenv(evalkit.SmokeManifestEnv) != "")
+	if degraded {
+		fmt.Println("⚠ sandbox 降级：docker 不可用——容器任务回退命令套件（scorecard 已标注 fallback-exec）")
 	} else {
-		fmt.Println("未设 FORGE_EVAL_SMOKE：scripted runner（确定性离线替身）")
+		fmt.Printf("sandbox=%s\n", sandbox)
 	}
 	sc, err := evalkit.RunBenchmark(cmd.Context(), spec, manifest, runner)
 	if err != nil {
@@ -416,9 +415,11 @@ func runEvalDecompose(cmd *cobra.Command, args []string) error {
 		Model: "grid", Benchmark: manifest.ID, Split: manifest.Split, Repeats: repeats,
 		ForgeRef: "decompose", Budget: evalkit.Budget{WallclockEach: wallclock},
 	}
-	var runner evalkit.TaskRunner = evalkit.ScriptedRunner{}
-	if os.Getenv(evalkit.SmokeManifestEnv) != "" {
-		runner = evalkit.ExecRunner{}
+	runner, sandbox, degraded := evalkit.SelectRunner(manifest, os.Getenv(evalkit.SmokeManifestEnv) != "")
+	if degraded {
+		fmt.Println("⚠ sandbox 降级：docker 不可用——回退命令套件（报告已标注）")
+	} else {
+		fmt.Printf("sandbox=%s\n", sandbox)
 	}
 	rep, err := evalkit.RunDecompose(cmd.Context(), grid, spec, manifest, runner)
 	if err != nil {
