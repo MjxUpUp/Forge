@@ -346,3 +346,66 @@ func TestFallbackExecAnnotatedInScorecard(t *testing.T) {
 		t.Fatalf("头部应带 sandbox 标注: %s", sc.Header)
 	}
 }
+
+// TestSummarizeSandboxes 钉住沙箱标签粒度规则（环境无关纯函数）：
+// 单一后端 → 该标签；混合 → mixed（宿主 exec 不得躲在 docker 标签后）；
+// 降级声明优先（fallback-exec 顶层保留，mix 仍展示真实分布）。
+func TestSummarizeSandboxes(t *testing.T) {
+	label, mix := summarizeSandboxes(SandboxDocker, map[string]string{
+		"t1": SandboxDocker, "t2": SandboxDocker,
+	})
+	if label != SandboxDocker || mix[SandboxDocker] != 2 {
+		t.Fatalf("纯容器跑应标 docker: %s %v", label, mix)
+	}
+	label, mix = summarizeSandboxes(SandboxDocker, map[string]string{
+		"t1": SandboxDocker, "t2": SandboxExec,
+	})
+	if label != "mixed" || mix[SandboxDocker] != 1 || mix[SandboxExec] != 1 {
+		t.Fatalf("混合跑应标 mixed 且分布如实: %s %v", label, mix)
+	}
+	label, mix = summarizeSandboxes(SandboxFallbackExec, map[string]string{
+		"t1": SandboxDocker, "t2": SandboxExec,
+	})
+	if label != SandboxFallbackExec || mix[SandboxDocker] != 1 {
+		t.Fatalf("降级声明优先，mix 展示真实分布: %s %v", label, mix)
+	}
+	label, _ = summarizeSandboxes(SandboxScripted, nil)
+	if label != SandboxScripted {
+		t.Fatalf("无任务数据时用 runner 声明: %s", label)
+	}
+}
+
+// TestDockerRunnerMixedDispatchTaskSandbox 钉住混合分派下的任务级标签：
+// 纯命令任务在 DockerRunner 下回退 ExecRunner 执行并如实标注 exec
+// （不依赖 docker 可用性——命令路径不触碰 docker）。
+func TestDockerRunnerMixedDispatchTaskSandbox(t *testing.T) {
+	spec := RunSpec{Profile: ProfileFull, Model: "m", Benchmark: "b", Split: "s",
+		Repeats: 1, ForgeRef: "t", Budget: Budget{WallclockEach: 5 * time.Second}}
+	res, err := DockerRunner{}.RunTask(context.Background(), spec,
+		BenchTask{ID: "cmd-only", Command: "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Pass || res.Sandbox != SandboxExec {
+		t.Fatalf("命令任务应回退 exec 并标注: %+v", res)
+	}
+}
+
+// TestScorecardMixedSandboxSurfaces 钉住 scorecard/header 消费面：
+// 混合分布时顶层 mixed 且 header 可见（防标签只在 JSON 里、头部照旧骗人）。
+func TestScorecardMixedSandboxSurfaces(t *testing.T) {
+	spec := RunSpec{Profile: ProfileFull, Model: "m", Benchmark: "b", Split: "s",
+		Repeats: 1, ForgeRef: "t", Budget: Budget{WallclockEach: time.Second}}
+	manifest := &BenchmarkManifest{ID: "b", Version: "1", Split: "s", fingerprint: "fp",
+		Tasks: []BenchTask{{ID: "t1", Image: "alpine:3.20", TestCmd: "true"}, {ID: "t2", Command: "true"}}}
+	attempts := []Attempt{{TaskID: "t1", Repeat: 1, Pass: true}, {TaskID: "t2", Repeat: 1, Pass: true}}
+	// 真正的混合：docker 形态任务跑容器 + 命令任务跑宿主 exec。
+	sc := buildScorecard(spec, manifest, attempts, 0, 0, 0, SandboxDocker,
+		map[string]string{"t1": SandboxDocker, "t2": SandboxExec})
+	if sc.Sandbox != "mixed" || sc.SandboxMix[SandboxExec] != 1 {
+		t.Fatalf("混合应顶层 mixed + 分布: %s %v", sc.Sandbox, sc.SandboxMix)
+	}
+	if !strings.Contains(sc.Header, "sandbox=mixed") {
+		t.Fatalf("header 必须可见 mixed: %s", sc.Header)
+	}
+}
