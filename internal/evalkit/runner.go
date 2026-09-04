@@ -296,12 +296,6 @@ type Scorecard struct {
 	Spec        RunSpec   `json:"spec"`
 	ManifestFP  string    `json:"manifest_fingerprint"`
 	GeneratedAt time.Time `json:"generated_at"`
-	// Sandbox states the execution backend: scripted / exec / docker /
-	// fallback-exec. fallback-* means the primary backend was unavailable and
-	// the scorecard is annotating the degradation per the design contract.
-	//
-	// Sandbox 声明执行后端：scripted / exec / docker / fallback-exec。
-	// fallback-* 表示主后端不可用，scorecard 按设计契约标注降级。
 	// Sandbox 声明执行后端：scripted / exec / docker / fallback-exec / mixed。
 	// fallback-exec = 主后端不可用的降级；mixed = 混合 manifest 任务级后端
 	// 不一致（分布见 SandboxMix——宿主 exec 任务不得躲在 docker 标签后，

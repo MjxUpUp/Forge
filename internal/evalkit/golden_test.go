@@ -194,6 +194,9 @@ func TestDataDirPlaceholderHardFails(t *testing.T) {
 	if !strings.Contains(rep.Traps[0].Error, "{dataDir}") {
 		t.Fatalf("陷阱 Error 应明示 {dataDir} 解析失败: %q", rep.Traps[0].Error)
 	}
+	if rep.Traps[0].Captured {
+		t.Fatal("setup 错误的陷阱不得计入 captured（pristine 反转须跳过 errored 陷阱——否则环境失败虚增 capture rate）")
+	}
 	// 不引用占位符的 argv 不受解析失败影响。
 	okTrap := TrapCase{
 		ID: "tdd2", Type: TrapPristineFalsePositive, Description: "d",
