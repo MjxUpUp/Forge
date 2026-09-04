@@ -49,9 +49,17 @@ func TestEvalGoldenRunE2E(t *testing.T) {
 		t.Fatalf("golden run 应通过（exit %d）：%s", code, out)
 	}
 	// 16 用例集（auto-compile 2 + task-guard 5 + file-sentinel 5 + read-before-edit 2
-	// + hazard-guard 2 历史反哺）：recall 7/7、fpr 0/9、全部确定性重放一致。
-	if !strings.Contains(out, "recall 7/7") || !strings.Contains(out, "fpr 0/9") || !strings.Contains(out, "rbe-blocks-unread-edit") {
-		t.Fatalf("输出缺 precision 基线/用例行: %s", out)
+	// + hazard-guard 2 历史反哺；Windows 跳过 config-drift 1 例）。断言锚行为
+	// 语义而非平台相关计数（recall/fpr 全捕获、零误报、零确定性 finding）——
+	// 第二轮 replace 曾静默未生效（锚文本不匹配），CI 抓回（Windows 6/6 红）。
+	if strings.Contains(out, "→ missed") || strings.Contains(out, "→ false_positive") {
+		t.Fatalf("存在漏拦/误报: %s", out)
+	}
+	if strings.Contains(out, "确定性门禁") && strings.Contains(out, "记 bug") {
+		t.Fatalf("存在确定性 finding: %s", out)
+	}
+	if !strings.Contains(out, "fpr 0/") || !strings.Contains(out, "rbe-blocks-unread-edit") {
+		t.Fatalf("输出缺 fpr 基线/用例行: %s", out)
 	}
 	// 指纹一致性：二次运行不得因 manifest 拒绝。
 	_, _, code = runForge(t, repoRoot, "eval", "golden", "run")
