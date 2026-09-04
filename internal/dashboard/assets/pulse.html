@@ -475,8 +475,8 @@ function dotClass(e) {
   if (e.kind === 'skill-trigger') return 'accent';
   return { ok: 'ok', warn: 'warn', fail: 'fail', info: 'info' }[e.severity] || 'info';
 }
-var KIND_LABEL = { 'task-start': 'task', 'gate': 'gate', 'skill-trigger': 'skill-trigger', 'conclusion': 'conclusion', 'sig-verify': 'sig-verify', 'sync': 'sync' };
-var KIND_CLASS = { 'task-start': 'kind-task', 'gate': 'kind-gate', 'skill-trigger': 'kind-skill', 'conclusion': 'kind-conclusion', 'sig-verify': 'kind-gate', 'sync': 'kind-other' };
+var KIND_LABEL = { 'task-start': 'task', 'gate': 'gate', 'skill-trigger': 'skill-trigger', 'conclusion': 'conclusion', 'sig-verify': 'sig-verify', 'sync': 'sync', 'eval': 'eval' };
+var KIND_CLASS = { 'task-start': 'kind-task', 'gate': 'kind-gate', 'skill-trigger': 'kind-skill', 'conclusion': 'kind-conclusion', 'sig-verify': 'kind-gate', 'sync': 'kind-other', 'eval': 'kind-skill' };
 function evtHTML(e, opts) {
   opts = opts || {};
   var head = '<span class="evt-kind ' + (KIND_CLASS[e.kind] || 'kind-other') + '">' +
