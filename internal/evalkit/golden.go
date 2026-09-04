@@ -11,6 +11,8 @@ package evalkit
 // a deterministic gate replaying below 1.0 agreement is recorded as a bug finding.
 
 import (
+	"runtime"
+
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -51,6 +53,12 @@ type GoldenCase struct {
 	ProbeStdin    string     `yaml:"probe_stdin"   json:"probe_stdin"`
 	DetectAny     []string   `yaml:"detect_any"    json:"detect_any"`    // exit_nonzero | stdout:PREFIX | stdout_contains:S
 	Deterministic bool       `yaml:"deterministic" json:"deterministic"` // true → 重放一致率必须 1.0
+	// SkipPlatforms lists GOOS values where this case must not run (a real,
+	// disclosed platform boundary of the gate under test — e.g. file-sentinel's
+	// snapshot pairing is non-deterministic on Windows/git-bash, GitHub runner
+	// 实测 2/3 判定漂移). Skipped cases report outcome "skipped-platform" and
+	// stay out of recall/fpr denominators.
+	SkipPlatforms []string `yaml:"skip_platforms,omitempty" json:"skip_platforms,omitempty"`
 }
 
 // FileSpec is one fixture file laid into the case's temp repo.
@@ -241,6 +249,13 @@ func RunGolden(goldenDir string, cases []GoldenCase, opts GoldenOptions) (*Golde
 	cleanClean, cleanFlagged := 0, 0
 
 	for _, c := range cases {
+		if skipsPlatform(c.SkipPlatforms) {
+			rep.Cases = append(rep.Cases, GoldenCaseResult{
+				ID: c.ID, Gate: c.Gate, Kind: c.Kind, Outcome: "skipped-platform",
+				Agreement: 1, ReplayOutcomes: []string{"skipped-platform"},
+			})
+			continue
+		}
 		res := GoldenCaseResult{ID: c.ID, Gate: c.Gate, Kind: c.Kind}
 		for r := 0; r < opts.Repetitions; r++ {
 			pr, err := runGoldenProbe(c, opts)
@@ -304,6 +319,18 @@ func RunGolden(goldenDir string, cases []GoldenCase, opts GoldenOptions) (*Golde
 	// 注释契约对齐，对抗审查 I2 修正：此前 defective 的 setup_error 被计入分母）。
 	rep.FalsePositive = newRateValue(&MetricDef{ID: "golden_run_fpr", MinSamples: 1}, cleanFlagged, cleanClean+cleanFlagged)
 	return rep, nil
+}
+
+// skipsPlatform reports whether the current GOOS is in the skip list.
+//
+// skipsPlatform 报告当前 GOOS 是否在跳过清单内。
+func skipsPlatform(list []string) bool {
+	for _, p := range list {
+		if p == runtime.GOOS {
+			return true
+		}
+	}
+	return false
 }
 
 func firstOutcome(xs []string) string {
