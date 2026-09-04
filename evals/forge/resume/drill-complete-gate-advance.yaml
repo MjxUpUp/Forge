@@ -1,0 +1,25 @@
+# 接续演练 2：三门推进 + review 前置 + 完成（C3）。
+# 链路：task start → 真实代码变更提交 → gate task-implement → gate task-verify
+# （FORGE_WORK_ACTIVITY=disable 逃生舱——演练会如实观察到分数封顶）→ forge review
+# pass（code-review-gate 是 task-complete 的 HARD 前置）→ gate task-complete →
+# task complete。校准自真实二进制（2026-09-03，Score 89/B 封顶可见）。
+id: drill-complete-gate-advance
+description: "三门推进 + review pass + 完成确认——完整任务闭环跨会话可推进"
+files:
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+steps:
+  - argv: ["{forge}", "task", "start", "--ref", "EVAL-C2", "--title", "门禁推进演练"]
+    expect_contains: ["EVAL-C2"]
+  - argv: ["sh", "-c", "printf 'package main\\n\\nfunc V() int { return 1 }\\n' > v.go && git add v.go && git -c user.name=evalkit -c user.email=evalkit@localhost -c commit.gpgsign=false commit -qm drill"]
+  - argv: ["{forge}", "task", "gate", "task-implement", "--ref", "EVAL-C2"]
+  - argv: ["{forge}", "task", "gate", "task-verify", "--ref", "EVAL-C2"]
+    env: ["FORGE_WORK_ACTIVITY=disable"]
+  - argv: ["{forge}", "review", "pass"]
+    expect_contains: ["code-review-gate 已通过"]
+  - argv: ["{forge}", "task", "gate", "task-complete", "--ref", "EVAL-C2"]
+  - argv: ["{forge}", "task", "complete"]
+    expect_contains: ["completed"]

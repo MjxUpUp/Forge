@@ -1,0 +1,246 @@
+package evalkit
+
+// golden/traps_test.go — 用假 forge 二进制（shell 脚本）驱动重放机器，离线验证
+// 检测信号语义、precision/fpr 聚合与陷阱 capture 语义（含 pristine 的语义反转）。
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func writeFakeForge(t *testing.T, dir, body string) string {
+	t.Helper()
+	return writeFakeForgeNamed(t, dir, "fakeforge", body)
+}
+
+// writeFakeForgeNamed 每个假二进制独立文件名——同名复写会让先前句柄指向新内容
+// （曾致"误触应记 fpr"用例读到被覆写后的 exit 0 脚本）。双形态：POSIX 写 .sh、
+// Windows 写 .bat——.sh 在 Win32 不可执行（Windows CI 实锤"%1 is not a valid
+// Win32 application"，对抗审查 M10）。body 是 POSIX 片段，按已知语义自动翻译
+// 为 bat 等价（exit N / echo 分流 / data-dir 分流），未知片段测试期硬失败防静默错译。
+func writeFakeForgeNamed(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		p := filepath.Join(dir, name+".sh")
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	bat := translateFakeForgeToBat(t, body)
+	p := filepath.Join(dir, name+".bat")
+	if err := os.WriteFile(p, []byte(bat), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// translateFakeForgeToBat 整段匹配受控词汇表——逐行翻译在分流体上会丢语义
+// （曾把 data-dir 分流翻成只剩 pwd），整段匹配保证每种形态双平台语义等价；
+// 未知形态测试期硬失败防静默错译（错译 = 假绿）。
+func translateFakeForgeToBat(t *testing.T, body string) string {
+	switch strings.TrimSpace(body) {
+	case "exit 0":
+		return "@echo off\n@exit /b 0\n"
+	case "exit 2":
+		return "@echo off\n@exit /b 2\n"
+	case "exit 1":
+		return "@echo off\n@exit /b 1\n"
+	case `if [ "$1" = "data-dir" ]; then pwd; else echo "${TRAP_OUT:-}"; fi; exit 0`:
+		return "@echo off\n@if \"%1\"==\"data-dir\" (@cd) else (@echo %TRAP_OUT%)\n@exit /b 0\n"
+	case `case "$1" in data-dir) exit 1;; *) exit 0;; esac`:
+		return "@echo off\n@if \"%1\"==\"data-dir\" exit /b 1\n@exit /b 0\n"
+	case `echo "start EVAL-DRILL-9 $*"`, `echo "start EVAL-DRILL-9 $*"; exit 0`:
+		return "@echo off\n@echo start EVAL-DRILL-9 %*\n@exit /b 0\n"
+	default:
+		t.Fatalf("translateFakeForgeToBat: 未覆盖的 POSIX 片段 %q——请扩展受控词汇表并双平台验证", body)
+		return ""
+	}
+}
+
+func goldenDefectiveCase() GoldenCase {
+	return GoldenCase{
+		ID: "d1", Gate: "g", Kind: GoldenDefective, Expect: "flagged",
+		Description: "defective", ProbeArgv: []string{"{forge}"},
+		DetectAny: []string{"exit_nonzero"}, Deterministic: true,
+	}
+}
+
+func goldenCleanCase() GoldenCase {
+	c := goldenDefectiveCase()
+	c.ID = "c1"
+	c.Kind = GoldenClean
+	c.Expect = "clean"
+	return c
+}
+
+func TestRunGoldenDetection(t *testing.T) {
+	dir := t.TempDir()
+	// 缺陷样本：假 forge 退出 2（模拟 BLOCKED）→ captured。
+	failBin := writeFakeForge(t, dir, "exit 2")
+	rep, err := RunGolden(dir, []GoldenCase{goldenDefectiveCase()}, GoldenOptions{ForgeBin: failBin, Repetitions: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Cases[0].Outcome != OutcomeCaptured || rep.Recall.Value != 1 {
+		t.Fatalf("缺陷应被捕获: %+v", rep.Cases[0])
+	}
+	if rep.Cases[0].Agreement != 1 {
+		t.Fatalf("确定性重放应一致: %+v", rep.Cases[0])
+	}
+	// 干净样本：假 forge 退出 0 无输出 → clean；误触脚本 → false positive。
+	okBin := writeFakeForgeNamed(t, dir, "fakeforge-ok", "exit 0")
+	rep2, err := RunGolden(dir, []GoldenCase{goldenCleanCase()}, GoldenOptions{ForgeBin: okBin, Repetitions: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep2.Cases[0].Outcome != OutcomeCaptured || rep2.FalsePositive.Value != 0 {
+		t.Fatalf("干净样本应放行: %+v", rep2.Cases[0])
+	}
+	flagBin := writeFakeForgeNamed(t, dir, "fakeforge-flag", "exit 2")
+	rep3, err := RunGolden(dir, []GoldenCase{goldenCleanCase()}, GoldenOptions{ForgeBin: flagBin, Repetitions: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep3.Cases[0].Outcome != OutcomeFalsePositive || rep3.FalsePositive.Value != 1 {
+		t.Fatalf("干净样本误触应记 fpr: %+v", rep3.Cases[0])
+	}
+	// 缺陷样本遇到"不拦截"的 forge → missed。
+	rep4, err := RunGolden(dir, []GoldenCase{goldenDefectiveCase()}, GoldenOptions{ForgeBin: okBin, Repetitions: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep4.Cases[0].Outcome != OutcomeMissed || rep4.Recall.Value != 0 {
+		t.Fatalf("缺陷漏拦应记 missed: %+v", rep4.Cases[0])
+	}
+}
+
+func TestRunGoldenSetupError(t *testing.T) {
+	rep, err := RunGolden(t.TempDir(), []GoldenCase{goldenDefectiveCase()}, GoldenOptions{ForgeBin: "/nonexistent-binary-evalkit", Repetitions: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Cases[0].Outcome != OutcomeSetupError {
+		t.Fatalf("不可执行二进制应记 setup_error: %+v", rep.Cases[0])
+	}
+}
+
+func TestGoldenLoaderFailClosed(t *testing.T) {
+	dir := t.TempDir()
+	bad := "id: x\ngate: g\nkind: weird\nexpect: flagged\ndescription: d\nprobe_argv: [a]\ndetect_any: [exit_nonzero]\n"
+	if err := os.WriteFile(filepath.Join(dir, "bad.yaml"), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadGoldenDir(dir); err == nil || !strings.Contains(err.Error(), "kind") {
+		t.Fatalf("非法 kind 应 fail-closed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dup.yaml"), []byte(bad), 0o644); err == nil {
+		_ = err
+	}
+	_ = os.WriteFile(filepath.Join(dir, "dup.yaml"), []byte(bad), 0o644)
+	if _, err := LoadGoldenDir(dir); err == nil {
+		t.Fatal("目录仍含坏用例应报错")
+	}
+	empty := t.TempDir()
+	if _, err := LoadGoldenDir(empty); err == nil {
+		t.Fatal("空目录应报错")
+	}
+}
+
+func TestGoldenFingerprintStability(t *testing.T) {
+	c := goldenDefectiveCase()
+	a := GoldenFingerprint([]GoldenCase{c})
+	b := GoldenFingerprint([]GoldenCase{c})
+	if a != b {
+		t.Fatal("同内容指纹应稳定")
+	}
+	c.Description = "changed"
+	if GoldenFingerprint([]GoldenCase{c}) == a {
+		t.Fatal("内容变更指纹应变化")
+	}
+}
+
+func TestRunTrapsCaptureSemantics(t *testing.T) {
+	dir := t.TempDir()
+	// 假二进制按调用分流：data-dir 返回 fixture 路径（cwd），探测输出走 TRAP_OUT。
+	silentBin := writeFakeForge(t, dir, `if [ "$1" = "data-dir" ]; then pwd; else echo "${TRAP_OUT:-}"; fi; exit 0`)
+	t.Setenv("TRAP_OUT", "")
+	flaggingBin := writeFakeForge(t, dir, `if [ "$1" = "data-dir" ]; then pwd; else echo "${TRAP_OUT:-}"; fi; exit 0`)
+	// pristine 陷阱：无触发 = 识破。
+	pristine := TrapCase{
+		ID: "t1", Type: TrapPristineFalsePositive, Description: "d",
+		ProbeArgv: []string{"{forge}"}, DetectAny: []string{"exit_nonzero"},
+	}
+	rep, err := RunTraps([]TrapCase{pristine}, GoldenOptions{ForgeBin: silentBin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Traps[0].Captured || rep.CaptureRate.Value != 1 {
+		t.Fatalf("pristine 无触发应记识破: %+v", rep.Traps[0])
+	}
+	// forged 陷阱：探测无信号 = 未识破（v1 无戳校验的现状）。
+	forge := TrapCase{
+		ID: "t2", Type: TrapEvidenceForgery, Description: "d",
+		ForgedRow: &ForgedChecklogRow{Check: "task-verify", Detail: "fake", Sig: "bad"},
+		ProbeArgv: []string{"{forge}"}, DetectAny: []string{"audit_row:forged"},
+	}
+	t.Setenv("TRAP_OUT", "")
+	rep2, err := RunTraps([]TrapCase{forge}, GoldenOptions{ForgeBin: silentBin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep2.Traps[0].Captured {
+		t.Fatalf("v1 无戳校验，伪造不应被识破: %+v", rep2.Traps[0])
+	}
+	// 信号命中路径：探测输出包含标记串 → 识破。
+	t.Setenv("TRAP_OUT", "audit_row:forged")
+	rep3, err := RunTraps([]TrapCase{forge}, GoldenOptions{ForgeBin: flaggingBin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep3.Traps[0].Captured {
+		t.Fatalf("检测信号命中应记识破: %+v", rep3.Traps[0])
+	}
+}
+
+// TestDataDirPlaceholderHardFails 钉住 {dataDir} 解析失败的硬报错：
+// 探测命令引用占位符而 data-dir 不可解析时，绝不静默注入空路径
+// （假阴性防线——探测错位置然后"通过"是最危险的失败形态）。
+func TestDataDirPlaceholderHardFails(t *testing.T) {
+	dir := t.TempDir()
+	// 分流假二进制：init/data-dir 之外成功，data-dir 失败——probe 必须先过
+	// init 才能到达 {dataDir} 占位符检查。
+	falseBin := writeFakeForgeNamed(t, dir, "fakeforge-datadir-fail",
+		`case "$1" in data-dir) exit 1;; *) exit 0;; esac`)
+	trap := TrapCase{
+		ID: "tdd", Type: TrapPristineFalsePositive, Description: "d",
+		// {dataDir} 放在参数位（不依赖 shell——Windows 无 POSIX shell；
+		// 占位符检查作用于 argv 字符串本身，参数是否被执行不影响触发）。
+		ProbeArgv: []string{"{forge}", "probe", "{dataDir}/checklog.jsonl"},
+		DetectAny: []string{"exit_nonzero"},
+	}
+	// probe 级错误走 setup_error 通道（与其他环境失败同契约，不冒泡为 RunTraps
+	// 错误）——断言该陷阱的 Error 明示 {dataDir} 原因、结果可区分。
+	rep, err := RunTraps([]TrapCase{trap}, GoldenOptions{ForgeBin: falseBin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rep.Traps[0].Error, "{dataDir}") {
+		t.Fatalf("陷阱 Error 应明示 {dataDir} 解析失败: %q", rep.Traps[0].Error)
+	}
+	if rep.Traps[0].Captured {
+		t.Fatal("setup 错误的陷阱不得计入 captured（pristine 反转须跳过 errored 陷阱——否则环境失败虚增 capture rate）")
+	}
+	// 不引用占位符的 argv 不受解析失败影响。
+	okTrap := TrapCase{
+		ID: "tdd2", Type: TrapPristineFalsePositive, Description: "d",
+		ProbeArgv: []string{writeFakeForgeNamed(t, dir, "fakeforge-plain", "exit 0")},
+		DetectAny: []string{"exit_nonzero"},
+	}
+	if _, err := RunTraps([]TrapCase{okTrap}, GoldenOptions{ForgeBin: falseBin}); err != nil {
+		t.Fatalf("不引用 {dataDir} 的陷阱不应受解析失败影响: %v", err)
+	}
+}

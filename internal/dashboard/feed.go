@@ -23,6 +23,7 @@ const (
 	FeedKindConclusion   = "conclusion"
 	FeedKindSigVerify    = "sig-verify" // bundle 验签判定（bundle-verify checklog 条目）
 	FeedKindSync         = "sync"       // git 通道同步操作结果（project-sync checklog 条目）
+	FeedKindEval         = "eval"       // 自评测观察行（forge eval 命令族的 eval-* checklog 条目）
 
 	FeedSeverityOK   = "ok"
 	FeedSeverityWarn = "warn"
@@ -186,6 +187,12 @@ func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 			events = append(events, sigVerifyEvent(pr, e))
 		case checklog.CheckProjectSync:
 			events = append(events, syncOutcomeEvent(pr, e))
+		case checklog.CheckEvalGoldenRun, checklog.CheckEvalGoldenRotate,
+			checklog.CheckEvalTrapsRun, checklog.CheckEvalRun,
+			checklog.CheckEvalDecompose, checklog.CheckEvalJudgeWeak,
+			checklog.CheckEvalResumeDrill, checklog.CheckEvalMetricsIncomplete,
+			checklog.CheckEvalAuditForged:
+			events = append(events, evalEvent(pr, e))
 		}
 	}
 
@@ -260,6 +267,34 @@ func syncOutcomeEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
 		TaskRef: e.TaskRef, Severity: levelSeverity(e.EffectiveLevel()),
 		Title: `sync ` + op + ` ` + outcome, Detail: e.Detail,
 		Node: e.NodeID, // 操作发生的机器
+	}
+}
+
+// evalEvent 把 forge eval 命令族落下的观察行投影进流：标题按 Check 名的结构化
+// 映射构造（check 名是 roster 契约，不反解 Detail 散文——与 sigVerifyEvent 同款
+// 纪律），数值摘要取 Detail 首段供展开阅读；severity 走 EffectiveLevel
+// （eval-judge-weak 落 fail、eval-metrics-incomplete 落 fail、其余 pass→ok）。
+func evalEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
+	titles := map[checklog.CheckName]string{
+		checklog.CheckEvalGoldenRun:         `golden 基线运行`,
+		checklog.CheckEvalGoldenRotate:      `golden 季度轮换`,
+		checklog.CheckEvalTrapsRun:          `对抗陷阱重放`,
+		checklog.CheckEvalRun:               `基准运行（Track A）`,
+		checklog.CheckEvalDecompose:         `方差分解`,
+		checklog.CheckEvalJudgeWeak:         `判分器审计告警`,
+		checklog.CheckEvalResumeDrill:       `接续演练`,
+		checklog.CheckEvalMetricsIncomplete: `评测字典校验失败`,
+		checklog.CheckEvalAuditForged:       `审计行完整性告警（伪造/重放）`,
+	}
+	title, ok := titles[e.Check]
+	if !ok {
+		title = `自评测事件`
+	}
+	return FeedEvent{
+		Time: e.RecordedAt, Kind: FeedKindEval, Project: pr.name,
+		TaskRef: e.TaskRef, Severity: levelSeverity(e.EffectiveLevel()),
+		Title: title, Detail: e.Detail,
+		Node: e.NodeID, // 评测运行的机器
 	}
 }
 

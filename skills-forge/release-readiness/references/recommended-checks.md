@@ -60,3 +60,16 @@
   # 灰度配置实际存在（feature flag service / load balancer rule）
   ```
 - **不通过怎么办**：补灰度计划；无法灰度的服务（如 CLI 二进制）→ 至少做内部 dogfood 一周。
+
+## R6. 质量门禁基线回归（Forge 项目适用）
+
+- **检查什么**：本次发布未让门禁质量回归——golden 标注集 precision/fpr 基线全绿，审计时间线无伪造行。
+- **怎么查**：
+  ```bash
+  # 在 Forge 仓库根（golden 资产 evals/forge/golden/）：
+  forge eval golden run        # precision/fpr/确定性重放；missed 或 false_positive 即回归
+  forge eval audit-verify      # 假签名/戳重放审计行 >0 会 BLOCKED
+  forge status                 # "自评测" 行快速看最近基线摘要与告警
+  ```
+- **判定**：golden run 无 missed/false_positive finding 且 findings 为空；audit-verify 退出 0（覆盖边界：空签伪造与伪装他机行不在检测范围——见 gates-card 已知盲区，不要把它当完整的防伪门）。另：golden e2e 把当期测量值钉进断言，--rewrite-manifest + 改用例可同时保绿——基线变更必须走 git review 确认，这是 R6 的人工环节。
+- **不通过怎么办**：missed/false_positive 说明门禁行为变了——先修门禁（或确属契约变更则轮换 golden 并 `--rewrite-manifest` 显式钉新指纹），不带着回归发版；audit-verify 非零按其 BLOCKED 指引溯源。非 Forge 仓库（无 eval 资产）跳过本项并在发布说明记录"不适用"。
