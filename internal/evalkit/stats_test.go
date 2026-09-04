@@ -3,6 +3,8 @@ package evalkit
 // stats_test.go — 统计计算的固定输入输出黄金值（数学段逐段钉住）。
 
 import (
+	"reflect"
+
 	"math"
 	"testing"
 )
@@ -26,6 +28,12 @@ func TestCohenKappa(t *testing.T) {
 	k, err := CohenKappa([]string{"a", "a", "b", "b"}, []string{"a", "a", "b", "b"})
 	if err != nil || math.Abs(k-1) > 1e-9 {
 		t.Fatalf("完全一致 k 应为 1: %v %v", k, err)
+	}
+	// 真正的退化：单一类别完全一致（expected=1，分母 0）→ κ 无定义，
+	// 返回错误而非满分（对抗审查 M8）。注意 [a,b] vs [a,b] 是合法输入 κ=1
+	//（observed=1、expected=0.5）——"同边际"不等于"退化"，勿混淆。
+	if k2, err2 := CohenKappa([]string{"a", "a"}, []string{"a", "a"}); err2 == nil {
+		t.Fatalf("单类别完全一致应报无定义错误: %v", k2)
 	}
 	k, err = CohenKappa([]string{"a", "a", "b", "b"}, []string{"a", "b", "a", "b"})
 	if err != nil || math.Abs(k) > 1e-9 {
@@ -72,9 +80,26 @@ func TestDecomposeVariancePaperGrid(t *testing.T) {
 	if dec.Reversals != 6 || dec.PairComparisons != 9 {
 		t.Fatalf("翻转应为 6/9: %d/%d", dec.Reversals, dec.PairComparisons)
 	}
-	if dec.EtaSquaredP <= 0 || dec.EtaSquaredP >= 1 {
-		t.Fatalf("η²_p 应在 (0,1): %f", dec.EtaSquaredP)
+	// η²_p 已移除：单观测格下恒 0.5 的废数（对抗审查 C2）——结构上不允许再出现。
+	if _, has := anyField(dec, "EtaSquaredP"); has {
+		t.Fatal("EtaSquaredP 不应存在于分解结果")
 	}
+}
+
+// anyField 反射探测字段名（仅测试用——钉住"废统计量不得回归"）。
+func anyField(v any, name string) (any, bool) {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if !rv.IsValid() || rv.Kind() != reflect.Struct {
+		return nil, false
+	}
+	f := rv.FieldByName(name)
+	if !f.IsValid() {
+		return nil, false
+	}
+	return f.Interface(), true
 }
 
 func TestDecomposeVarianceDegenerateGrid(t *testing.T) {

@@ -13,6 +13,8 @@ package cli
 // docsconsistency tree audit.
 
 import (
+	"os/exec"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,10 +51,21 @@ func recordEvalRow(check checklog.CheckName, passed bool, detail string) {
 // 在 Forge 仓库内运行）。
 func evalAssetPath(rel string) string { return filepath.Join("evals", "forge", rel) }
 
-// evalRepoRoot is the repo root for checklog audit rows (cwd).
+// evalRepoRoot resolves the repo root via git (cwd fallback) — audit rows must
+// land in the repository's own project bucket even when the command runs from
+// a subdirectory (adversarial review M13: bare cwd keyed the wrong bucket).
 //
-// evalRepoRoot 是 checklog 审计行的仓库根（cwd）。
-func evalRepoRoot() string { cwd, _ := os.Getwd(); return cwd }
+// evalRepoRoot 经 git 解析仓库根（cwd 兜底）——审计行必须落在仓库自己的项目桶，
+// 子目录运行时裸 cwd 会按子目录 key 归桶（对抗审查 M13）。
+func evalRepoRoot() string {
+	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
+		if root := strings.TrimSpace(string(out)); root != "" {
+			return root
+		}
+	}
+	cwd, _ := os.Getwd()
+	return cwd
+}
 
 func runEvalCard(cmd *cobra.Command, args []string) error {
 	render, _ := cmd.Flags().GetBool("render")
@@ -162,7 +175,7 @@ func runEvalGoldenRun(cmd *cobra.Command, args []string) error {
 		if err := evalkit.RewriteGoldenManifest(dir, cases); err != nil {
 			return err
 		}
-		fmt.Println("已写入 golden manifest 基线（首跑钉指纹）")
+		fmt.Println("⚠ golden manifest 缺失——已自动钉基线。若这不是首跑，说明防篡改基线被删除过（git 历史可核对），请人工确认用例集未被篡改。")
 	} else if pinned != fp {
 		if !rewrite {
 			return fmt.Errorf("BLOCKED: golden 指纹不符（期望 %s… 实际 %s…）——改样本凑数字被拒；确属轮换用 --rewrite-manifest", pinned[:12], fp[:12])
@@ -192,8 +205,8 @@ func runEvalGoldenRun(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(data))
 		return nil
 	}
-	fmt.Printf("golden run：precision %d/%d（Wilson %.2f–%.2f） fpr %d/%d（%.2f–%.2f）\n",
-		rep.Precision.Numerator, rep.Precision.Denominator, rep.Precision.Lo, rep.Precision.Hi,
+	fmt.Printf("golden run：recall %d/%d（Wilson %.2f–%.2f） fpr %d/%d（%.2f–%.2f）\n",
+		rep.Recall.Numerator, rep.Recall.Denominator, rep.Recall.Lo, rep.Recall.Hi,
 		rep.FalsePositive.Numerator, rep.FalsePositive.Denominator, rep.FalsePositive.Lo, rep.FalsePositive.Hi)
 	for _, f := range rep.Findings {
 		fmt.Printf("  FINDING: %s\n", f)
@@ -457,12 +470,12 @@ func runEvalAuditVerify(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("BLOCKED: %v", err)
 	}
-	fmt.Printf("审计行验签：valid %d / unsigned-legacy %d / foreign-node %d / forged %d\n",
-		sum.Valid, sum.UnsignedLegacy, sum.ForeignNode, sum.Forged)
-	if sum.Forged > 0 {
-		recordEvalRow(checklog.CheckEvalJudgeWeak, false,
-			fmt.Sprintf(`伪造审计行 %d 条（本机可归属行验签失败）`, sum.Forged))
-		return fmt.Errorf("BLOCKED: 伪造审计行 %d 条——本机可归属行验签失败，审计时间线已被污染，立即溯源（他机行需公钥注册表，v1 边界）", sum.Forged)
+	fmt.Printf("审计行验签：valid %d / unsigned-legacy %d / foreign-node %d / forged %d / replayed-stamps %d\n",
+		sum.Valid, sum.UnsignedLegacy, sum.ForeignNode, sum.Forged, sum.ReplayedStamps)
+	if sum.Forged > 0 || sum.ReplayedStamps > 0 {
+		recordEvalRow(checklog.CheckEvalAuditForged, false,
+			fmt.Sprintf(`伪造/重放审计行：forged %d，replayed %d`, sum.Forged, sum.ReplayedStamps))
+		return fmt.Errorf("BLOCKED: 审计行异常——forged %d（本机可归属行验签失败）/ replayed %d（(node_id,seq) 戳重复，逐字节重放）。已知边界：空签伪造行与伪装他机 node_id 的行不在此列（见 gates-card 已知盲区）", sum.Forged, sum.ReplayedStamps)
 	}
 	return nil
 }

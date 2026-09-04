@@ -37,27 +37,53 @@ type RateValue struct {
 	MisuseNote   string  `json:"misuse_note"`
 }
 
-// SignatureAuditSummary counts the per-verdict audit-row signature scan.
+// SignatureAuditSummary counts the per-verdict audit-row signature scan plus
+// stamp-replay detection (duplicate (node_id,seq) pairs — byte-replayed or
+// copied rows; genuine Next() never reuses a seq).
 //
-// SignatureAuditSummary 按裁决统计审计行验签扫描。
+// SignatureAuditSummary 按裁决统计审计行验签扫描，并含戳重放检测（(node_id,seq)
+// 对重复——逐字节重放/复制的行；真实 Next() 绝不复用 seq）。
 type SignatureAuditSummary struct {
 	Valid          int `json:"valid"`
 	Forged         int `json:"forged"`
 	ForeignNode    int `json:"foreign_node"`
 	UnsignedLegacy int `json:"unsigned_legacy"`
+	ReplayedStamps int `json:"replayed_stamps"`
+}
+
+// countReplayedStamps 报告带戳行中 (node_id,seq) 对的重复计数——同一对出现
+// >1 次即重放（复制/重放合法行是签名验证覆盖不到的形态，戳唯一性是独立防线）。
+//
+// countReplayedStamps reports duplicate (node_id,seq) pairs among stamped rows —
+// a pair seen more than once is a replay (copy/replay of a legitimate row is
+// invisible to signature verification; stamp uniqueness is the separate line).
+func countReplayedStamps(entries []checklog.Entry) int {
+	seen := map[string]int{}
+	replays := 0
+	for i := range entries {
+		if entries[i].NodeID == "" || entries[i].Seq == 0 {
+			continue
+		}
+		key := fmt.Sprintf("%s#%d", entries[i].NodeID, entries[i].Seq)
+		seen[key]++
+		if seen[key] == 2 {
+			replays++
+		}
+	}
+	return replays
 }
 
 // TelemetryReport is one aggregation snapshot (immutable once produced).
 //
 // TelemetryReport 是一份聚合快照（产出后不可变）。
 type TelemetryReport struct {
-	GeneratedAt time.Time      `json:"generated_at"`
-	RepoRoot    string         `json:"repo_root"`
-	Entries     int            `json:"entries"`      // 聚合的 checklog 条目数
-	Sessions    int            `json:"sessions"`     // 去重 session 数（空 session 不计）
-	Weeks       []WeekRate     `json:"weeks"`        // 门禁触发的周趋势
-	Rates       []RateValue    `json:"rates"`        // 汇总比率
-	DictionaVersion int        `json:"dictionary_version"`
+	GeneratedAt     time.Time             `json:"generated_at"`
+	RepoRoot        string                `json:"repo_root"`
+	Entries         int                   `json:"entries"`  // 聚合的 checklog 条目数
+	Sessions        int                   `json:"sessions"` // 去重 session 数（空 session 不计）
+	Weeks           []WeekRate            `json:"weeks"`    // 门禁触发的周趋势
+	Rates           []RateValue           `json:"rates"`    // 汇总比率
+	DictionaVersion int                   `json:"dictionary_version"`
 	SignatureAudit  SignatureAuditSummary `json:"signature_audit"`
 }
 
@@ -96,7 +122,10 @@ func Aggregate(root string, dict *Dictionary, now time.Time) (*TelemetryReport, 
 			legacy++
 		}
 	}
-	rep.SignatureAudit = SignatureAuditSummary{Forged: forged, ForeignNode: foreign, UnsignedLegacy: legacy}
+	rep.SignatureAudit = SignatureAuditSummary{
+		Forged: forged, ForeignNode: foreign, UnsignedLegacy: legacy,
+		ReplayedStamps: countReplayedStamps(entries),
+	}
 
 	sessions := map[string]bool{}
 	gateBlocked, gateAdvisory := 0, 0
@@ -173,7 +202,7 @@ func Aggregate(root string, dict *Dictionary, now time.Time) (*TelemetryReport, 
 	if m, ok := dict.Find("gate_fire_rate"); ok {
 		rep.Rates = append(rep.Rates, RateValue{
 			MetricID: m.ID, Numerator: gateBlocked + gateAdvisory, Denominator: 1,
-			Value: float64(gateBlocked + gateAdvisory),
+			Value:      float64(gateBlocked + gateAdvisory),
 			Note:       fmt.Sprintf("blocked %d / advisory %d（周趋势见 weeks）", gateBlocked, gateAdvisory),
 			MisuseNote: m.MisuseNote,
 		})
@@ -250,6 +279,7 @@ func VerifyAuditRows(root string) (SignatureAuditSummary, error) {
 			sum.UnsignedLegacy++
 		}
 	}
+	sum.ReplayedStamps = countReplayedStamps(entries)
 	return sum, nil
 }
 

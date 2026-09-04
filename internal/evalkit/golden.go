@@ -41,16 +41,16 @@ const (
 // GoldenCase 是一个标注门禁用例：fixture 文件 + 对真实 forge 二进制的探测命令 +
 // 标记"门禁触发"的检测信号。
 type GoldenCase struct {
-	ID           string        `yaml:"id"            json:"id"`
-	Gate         string        `yaml:"gate"          json:"gate"`
-	Kind         string        `yaml:"kind"          json:"kind"`   // defective | clean
-	Expect       string        `yaml:"expect"        json:"expect"` // flagged | clean
-	Description  string        `yaml:"description"   json:"description"`
-	Files        []FileSpec    `yaml:"files"         json:"files"`
-	ProbeArgv    []string      `yaml:"probe_argv"    json:"probe_argv"`    // {forge} 占位
-	ProbeStdin   string        `yaml:"probe_stdin"   json:"probe_stdin"`
-	DetectAny    []string      `yaml:"detect_any"    json:"detect_any"`    // exit_nonzero | stdout:PREFIX | stdout_contains:S
-	Deterministic bool         `yaml:"deterministic" json:"deterministic"` // true → 重放一致率必须 1.0
+	ID            string     `yaml:"id"            json:"id"`
+	Gate          string     `yaml:"gate"          json:"gate"`
+	Kind          string     `yaml:"kind"          json:"kind"`   // defective | clean
+	Expect        string     `yaml:"expect"        json:"expect"` // flagged | clean
+	Description   string     `yaml:"description"   json:"description"`
+	Files         []FileSpec `yaml:"files"         json:"files"`
+	ProbeArgv     []string   `yaml:"probe_argv"    json:"probe_argv"` // {forge} 占位
+	ProbeStdin    string     `yaml:"probe_stdin"   json:"probe_stdin"`
+	DetectAny     []string   `yaml:"detect_any"    json:"detect_any"`    // exit_nonzero | stdout:PREFIX | stdout_contains:S
+	Deterministic bool       `yaml:"deterministic" json:"deterministic"` // true → 重放一致率必须 1.0
 }
 
 // FileSpec is one fixture file laid into the case's temp repo.
@@ -167,26 +167,26 @@ func RewriteGoldenManifest(goldenDir string, cases []GoldenCase) error {
 //
 // GoldenOutcome 标注一个用例的重放判定。
 const (
-	OutcomeCaptured     = "captured"      // 缺陷被拦 / 干净被放过
-	OutcomeMissed       = "missed"        // 缺陷未被拦（recall 缺口）
+	OutcomeCaptured      = "captured"       // 缺陷被拦 / 干净被放过
+	OutcomeMissed        = "missed"         // 缺陷未被拦（recall 缺口）
 	OutcomeFalsePositive = "false_positive" // 干净被误触（fpr）
-	OutcomeSetupError   = "setup_error"   // fixture/环境失败（不计入 precision/fpr，单独暴露）
+	OutcomeSetupError    = "setup_error"    // fixture/环境失败（不计入 precision/fpr，单独暴露）
 )
 
 // GoldenCaseResult is one case's aggregated replay outcome.
 //
 // GoldenCaseResult 是一个用例聚合后的重放结果。
 type GoldenCaseResult struct {
-	ID            string   `json:"id"`
-	Gate          string   `json:"gate"`
-	Kind          string   `json:"kind"`
-	Outcome       string   `json:"outcome"`
-	Signals       []string `json:"signals,omitempty"`
+	ID             string   `json:"id"`
+	Gate           string   `json:"gate"`
+	Kind           string   `json:"kind"`
+	Outcome        string   `json:"outcome"`
+	Signals        []string `json:"signals,omitempty"`
 	ReplayOutcomes []string `json:"replay_outcomes"`
-	Agreement     float64  `json:"agreement"`
-	Distinct      int      `json:"distinct"`
-	DeterminismBug bool    `json:"determinism_bug,omitempty"`
-	Error         string   `json:"error,omitempty"`
+	Agreement      float64  `json:"agreement"`
+	Distinct       int      `json:"distinct"`
+	DeterminismBug bool     `json:"determinism_bug,omitempty"`
+	Error          string   `json:"error,omitempty"`
 }
 
 // GoldenReport aggregates a full set replay.
@@ -196,7 +196,7 @@ type GoldenReport struct {
 	GeneratedAt   time.Time          `json:"generated_at"`
 	Fingerprint   string             `json:"fingerprint"`
 	Repetitions   int                `json:"repetitions"`
-	Precision     RateValue          `json:"precision"` // 缺陷被拦比例
+	Recall        RateValue          `json:"recall"`         // 缺陷被拦比例（gate_recall；命名修正于对抗审查 I2——旧名 precision 名实不符）
 	FalsePositive RateValue          `json:"false_positive"` // 干净误触比例
 	Cases         []GoldenCaseResult `json:"cases"`
 	Findings      []string           `json:"findings,omitempty"`
@@ -272,13 +272,16 @@ func RunGolden(goldenDir string, cases []GoldenCase, opts GoldenOptions) (*Golde
 			first := firstOutcome(res.ReplayOutcomes)
 			switch c.Kind {
 			case GoldenDefective:
-				defectiveTotal++
 				if first == "flagged" {
+					defectiveTotal++
 					defectiveCaptured++
 					res.Outcome = OutcomeCaptured
 				} else if first == "setup_error" {
+					// setup_error 不进 recall 分母（评测环境失败 ≠ 门禁漏拦）——
+					// 与 OutcomeSetupError 注释契约对齐（对抗审查 I2：此前计入）。
 					res.Outcome = OutcomeSetupError
 				} else {
+					defectiveTotal++
 					res.Outcome = OutcomeMissed
 				}
 			case GoldenClean:
@@ -295,9 +298,11 @@ func RunGolden(goldenDir string, cases []GoldenCase, opts GoldenOptions) (*Golde
 		}
 		rep.Cases = append(rep.Cases, res)
 	}
-	rep.Precision = newRateValue(&MetricDef{ID: "golden_precision", MinSamples: 1}, defectiveCaptured, defectiveTotal)
-	// fpr 分母 = 全部干净样本（含被误触的——它们正是假阳性本身）。
-	rep.FalsePositive = newRateValue(&MetricDef{ID: "golden_fpr", MinSamples: 1}, cleanFlagged, cleanClean+cleanFlagged)
+	rep.Recall = newRateValue(&MetricDef{ID: "golden_run_recall", MinSamples: 1}, defectiveCaptured, defectiveTotal)
+	// fpr 分母 = 全部干净样本（含被误触的——它们正是假阳性本身）；
+	// setup_error 两类样本都不进 precision/fpr 分母（单独暴露——与 OutcomeSetupError
+	// 注释契约对齐，对抗审查 I2 修正：此前 defective 的 setup_error 被计入分母）。
+	rep.FalsePositive = newRateValue(&MetricDef{ID: "golden_run_fpr", MinSamples: 1}, cleanFlagged, cleanClean+cleanFlagged)
 	return rep, nil
 }
 
@@ -466,12 +471,12 @@ func PersistGoldenReport(evalDir string, repoRoot string, rep *GoldenReport) (st
 	if err := util.AtomicWrite(path, data, 0o644); err != nil {
 		return "", err
 	}
-	def := rep.Precision
+	def := rep.Recall
 	_ = checklog.Record(repoRoot, &checklog.Entry{
-		Check:  checklog.CheckEvalGoldenRun,
-		Passed: true,
+		Check:   checklog.CheckEvalGoldenRun,
+		Passed:  true,
 		Checked: true,
-		Detail: fmt.Sprintf(`golden run: fingerprint %.12s… precision %d/%d fpr %d/%d cases %d findings %d`,
+		Detail: fmt.Sprintf(`golden run: fingerprint %.12s… recall %d/%d fpr %d/%d cases %d findings %d`,
 			rep.Fingerprint, int(def.Value*float64(def.Denominator)), def.Denominator,
 			rep.FalsePositive.Numerator, rep.FalsePositive.Denominator, len(rep.Cases), len(rep.Findings)),
 	})

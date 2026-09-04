@@ -4,7 +4,6 @@ package checklog
 // 他机行 foreign。隔离 HOME/FORGE_DATA_HOME（身份与计数器都进临时 home）。
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -82,11 +81,10 @@ func stampWith(nodeID string, seq int64, ts, sig string) nodestamp.Stamp {
 func TestRecordedEntriesCarrySignatures(t *testing.T) {
 	isolateHome(t)
 	root := t.TempDir()
-	for i, check := range []CheckName{CheckTaskVerify, CheckCheatScan, CheckEvalGoldenRun} {
+	for _, check := range []CheckName{CheckTaskVerify, CheckCheatScan, CheckEvalGoldenRun} {
 		if err := Record(root, &Entry{Check: check, Passed: true, Checked: true, Detail: "d"}); err != nil {
 			t.Fatal(err)
 		}
-		_ = i
 	}
 	entries, err := LoadAll(root)
 	if err != nil {
@@ -103,5 +101,4 @@ func TestRecordedEntriesCarrySignatures(t *testing.T) {
 	if !strings.HasPrefix(entries[0].NodeID, "fnode_") && entries[0].NodeID != "" {
 		t.Fatalf("node_id 形态异常: %q", entries[0].NodeID)
 	}
-	_ = os.Environ()
 }

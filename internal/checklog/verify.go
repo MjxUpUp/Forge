@@ -18,8 +18,8 @@ package checklog
 import (
 	"encoding/json"
 
-	"github.com/MjxUpUp/Forge/internal/nodestamp"
 	"github.com/MjxUpUp/Forge/internal/nodeid"
+	"github.com/MjxUpUp/Forge/internal/nodestamp"
 )
 
 // EntryVerdict is the three-state outcome of auditing one entry's signature.

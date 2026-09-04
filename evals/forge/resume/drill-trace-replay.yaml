@@ -11,7 +11,7 @@ files:
 steps:
   - argv: ["{forge}", "task", "start", "--ref", "EVAL-C3", "--title", "时间线回放演练"]
     expect_contains: ["EVAL-C3"]
-  - argv: ["sh", "-c", "printf 'package main\\n\\nfunc W() int { return 2 }\\n' > w.go && git add w.go && git -c commit.gpgsign=false commit -qm drill"]
+  - argv: ["sh", "-c", "printf 'package main\\n\\nfunc W() int { return 2 }\\n' > w.go && git add w.go && git -c user.name=evalkit -c user.email=evalkit@localhost -c commit.gpgsign=false commit -qm drill"]
   - argv: ["{forge}", "task", "gate", "task-implement", "--ref", "EVAL-C3"]
   - argv: ["{forge}", "trace", "EVAL-C3"]
     expect_contains: ["Trace for task", "task-started"]

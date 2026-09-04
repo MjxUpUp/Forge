@@ -50,7 +50,7 @@ func TestRunGoldenDetection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.Cases[0].Outcome != OutcomeCaptured || rep.Precision.Value != 1 {
+	if rep.Cases[0].Outcome != OutcomeCaptured || rep.Recall.Value != 1 {
 		t.Fatalf("缺陷应被捕获: %+v", rep.Cases[0])
 	}
 	if rep.Cases[0].Agreement != 1 {
@@ -78,7 +78,7 @@ func TestRunGoldenDetection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep4.Cases[0].Outcome != OutcomeMissed || rep4.Precision.Value != 0 {
+	if rep4.Cases[0].Outcome != OutcomeMissed || rep4.Recall.Value != 0 {
 		t.Fatalf("缺陷漏拦应记 missed: %+v", rep4.Cases[0])
 	}
 }

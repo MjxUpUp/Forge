@@ -48,12 +48,12 @@ type GateRow struct {
 // GatesCard 是解析后的 gates-card.yaml：如实声明 Forge 改了宿主的什么，让用户
 // 可审计、可关闭。
 type GatesCard struct {
-	Version    int         `yaml:"version"     json:"version"`
+	Version    int          `yaml:"version"     json:"version"`
 	LayerClaim []LayerClaim `yaml:"layers"      json:"layers"`
-	Hooks      []string    `yaml:"hooks"       json:"hooks"`
-	Gates      []GateRow   `yaml:"gates"       json:"gates"`
-	Escapes    []string    `yaml:"escapes"     json:"escapes"`
-	BlindSpots []string    `yaml:"blind_spots" json:"blind_spots"`
+	Hooks      []string     `yaml:"hooks"       json:"hooks"`
+	Gates      []GateRow    `yaml:"gates"       json:"gates"`
+	Escapes    []string     `yaml:"escapes"     json:"escapes"`
+	BlindSpots []string     `yaml:"blind_spots" json:"blind_spots"`
 }
 
 // Validate enforces the card's invariants: version positive, every claimed

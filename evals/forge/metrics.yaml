@@ -138,6 +138,43 @@ metrics:
     source: "forge skills eval-report / usage（internal/skillseval）"
     misuse_note: 健康度是 skill 级信号，不外推为 harness 级结论；触发未达 ≠ skill 无用（可能路由缺失）
     min_samples: 5
+  # ── 运行级全集指标（对抗审查 I3：聚合处曾内联 MinSamples:1 绕过字典——
+  #    运行输出的是全集非抽样，下限为 1；趋势充分性下限仍由上面的任务级条目管）──
+  - id: golden_run_recall
+    claim: C1
+    track: track-b
+    definition: 单次 golden run 的缺陷捕获比例（全集指标——该次运行的全部缺陷样本）
+    source: forge eval golden run
+    misuse_note: 全集非抽样：单次运行的 Wilson 区间反映该集内部确定性，不外推总体 recall
+    min_samples: 1
+  - id: golden_run_fpr
+    claim: C1
+    track: track-b
+    definition: 单次 golden run 的干净样本误触比例（全集）
+    source: forge eval golden run
+    misuse_note: 全集非抽样；跨版本比较需同一指纹的样本集
+    min_samples: 1
+  - id: trap_run_capture
+    claim: C2
+    track: track-b
+    definition: 单次陷阱重放的识破比例（全集）
+    source: forge eval traps run
+    misuse_note: 陷阱集覆盖有限，单次 capture 高不是安全证明
+    min_samples: 1
+  - id: resume_drill_fidelity
+    claim: C3
+    track: track-b
+    definition: 单批接续演练通过比例（全集）
+    source: forge eval resume-drill
+    misuse_note: 演练≠真实复杂度；仅回归对比
+    min_samples: 1
+  - id: e2e_run_pass1
+    claim: C1
+    track: track-a
+    definition: 单次基准运行的 pass@1（全集；趋势充分性看 e2e_pass1 的下限 20）
+    source: evalkit runner scorecard
+    misuse_note: 单次运行的区间不含跨运行方差；多运行趋势用 e2e_pass1
+    min_samples: 1
   - id: injection_block_rate
     claim: C6
     track: track-b

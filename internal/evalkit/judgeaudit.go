@@ -37,34 +37,34 @@ const JudgeAuditKappaFloor = 0.6
 // JudgeAuditEntry 是一份文档的记录分数：judge 的 k 次重放与人工标注（按判分器
 // 自己的工作阈值二值化）。
 type JudgeAuditEntry struct {
-	DocID       string  `yaml:"doc_id"       json:"doc_id"`
-	JudgeScores []int   `yaml:"judge_scores" json:"judge_scores"`
-	HumanScore  int     `yaml:"human_score"  json:"human_score"`
-	Threshold   int     `yaml:"threshold"    json:"threshold"`
+	DocID       string `yaml:"doc_id"       json:"doc_id"`
+	JudgeScores []int  `yaml:"judge_scores" json:"judge_scores"`
+	HumanScore  int    `yaml:"human_score"  json:"human_score"`
+	Threshold   int    `yaml:"threshold"    json:"threshold"`
 }
 
 // JudgeAuditReport is the audit's honest output.
 //
 // JudgeAuditReport 是审计的诚实输出。
 type JudgeAuditReport struct {
-	GeneratedAt  time.Time        `json:"generated_at"`
-	Entries      []JudgeEntryStat `json:"entries"`
-	Kappa        float64          `json:"kappa"`
-	KappaValid   bool             `json:"kappa_valid"`
-	JudgeReliable bool            `json:"judge_reliable"`
-	Findings     []string         `json:"findings,omitempty"`
+	GeneratedAt   time.Time        `json:"generated_at"`
+	Entries       []JudgeEntryStat `json:"entries"`
+	Kappa         float64          `json:"kappa"`
+	KappaValid    bool             `json:"kappa_valid"`
+	JudgeReliable bool             `json:"judge_reliable"`
+	Findings      []string         `json:"findings,omitempty"`
 }
 
 // JudgeEntryStat is one document's replay variance summary.
 //
 // JudgeEntryStat 是一份文档的重放方差摘要。
 type JudgeEntryStat struct {
-	DocID   string  `json:"doc_id"`
-	Mean    float64 `json:"mean"`
-	Std     float64 `json:"std"`
-	Range   int     `json:"range"`
-	Binomial string `json:"binomial"` // 人类阈值下的 pass/fail 判定（judge 首次重放口径）
-	MatchesHuman bool `json:"matches_human"`
+	DocID        string  `json:"doc_id"`
+	Mean         float64 `json:"mean"`
+	Std          float64 `json:"std"`
+	Range        int     `json:"range"`
+	Binomial     string  `json:"binomial"` // 人类阈值下的 pass/fail 判定（judge 首次重放口径）
+	MatchesHuman bool    `json:"matches_human"`
 }
 
 // LoadJudgeScores reads the scores JSON file (produced by the external rubric

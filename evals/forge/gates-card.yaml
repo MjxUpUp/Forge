@@ -44,9 +44,8 @@ escapes:
   - "FORGE_SKILL_TRIGGER"
   - "FORGE_ADVISORY_PROMOTION"
   - "FORGE_CONVENTIONS_LINT"
-  - "FORGE_EVAL_GOLDEN / FORGE_EVAL_TRAPS（评测自身，本体系新增）"
 blind_spots:
-  - "跨机审计行验签需公钥注册表（TrustStore TOFU 职责）——伪装他机 node_id 可绕过本机验证（v1 已知边界；本机可归属行的伪造已可检：forge eval audit-verify）"
+  - "审计行验签的覆盖边界（forge eval audit-verify 实测）：可检=本机可归属行的假签名、(node_id,seq) 戳重放；不可检=空签伪造行（与历史无签行不可区分，而 task-verify hook 至今写无签行）、伪装他机 node_id 的行（需公钥注册表/TrustStore）、删除行的静默移除——伪造可检的完整声称需要 hook 侧全量签名 + 公钥注册表 + 链式哈希，均未落地"
   - "门禁 precision/recall 标注基线仍在爬坡——golden v1 已覆盖 auto-compile/task-guard/file-sentinel 三门禁 12 例（设计目标 20-30 例/门禁）"
   - "确认等待轮次（wait_turns）无生产数据源——摩擦指标 v1 不可测"
   - "恒真断言检测（TAUTO_PAT）是启发式——覆盖 if true/assert true 家族；更复杂的等价恒真（如 if len(x)>=0）仍靠 LLM review"

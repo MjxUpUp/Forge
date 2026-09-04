@@ -190,7 +190,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 // + 判分器/验签告警有无。数据全部来自 eval-* 观察行（forge eval 命令族落下的
 // checklog），无任何现场计算——status 是只读快照入口，评测本体走 forge eval。
 func evalHealthLine(root string) string {
-	entries, err := checklog.LoadAll(root)
+	// LoadAllAll：跨归档读全史（janitor 轮转后历史告警仍可见——对抗审查 I8）。
+	entries, err := checklog.LoadAllAll(root)
 	if err != nil {
 		return "未度量"
 	}
@@ -205,8 +206,8 @@ func evalHealthLine(root string) string {
 			if !e.Passed {
 				judgeWeak = true
 			}
-		case checklog.CheckEvalRun:
-			if strings.Contains(e.Detail, "伪造") && !e.Passed {
+		case checklog.CheckEvalAuditForged:
+			if !e.Passed {
 				forged = true
 			}
 		}

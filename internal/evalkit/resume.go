@@ -32,8 +32,8 @@ import (
 // FORGE_WORK_ACTIVITY=disable——门禁推进演练走的逃生舱路径，其分数封顶会被
 // 演练如实观察到）。
 type DrillStep struct {
-	Argv          []string `yaml:"argv"           json:"argv"` // {forge} 占位
-	Env           []string `yaml:"env"            json:"env,omitempty"`
+	Argv           []string `yaml:"argv"           json:"argv"` // {forge} 占位
+	Env            []string `yaml:"env"            json:"env,omitempty"`
 	ExpectContains []string `yaml:"expect_contains" json:"expect_contains"`
 }
 
@@ -51,12 +51,12 @@ type ResumeDrill struct {
 //
 // DrillResult 是一个演练的结果。
 type DrillResult struct {
-	ID      string   `json:"id"`
-	Passed  bool     `json:"passed"`
-	FailedAt string  `json:"failed_at,omitempty"`
-	Expect  []string `json:"expect,omitempty"`
-	Got     string   `json:"got,omitempty"`
-	Error   string   `json:"error,omitempty"`
+	ID       string   `json:"id"`
+	Passed   bool     `json:"passed"`
+	FailedAt string   `json:"failed_at,omitempty"`
+	Expect   []string `json:"expect,omitempty"`
+	Got      string   `json:"got,omitempty"`
+	Error    string   `json:"error,omitempty"`
 }
 
 // LoadResumeDrills loads drill YAML files (fail-closed).
@@ -191,7 +191,7 @@ func ResumeFidelity(results []DrillResult) (RateValue, error) {
 			pass++
 		}
 	}
-	return newRateValue(&MetricDef{ID: "resume_fidelity", MinSamples: 1}, pass, len(results)), nil
+	return newRateValue(&MetricDef{ID: "resume_drill_fidelity", MinSamples: 1}, pass, len(results)), nil
 }
 
 // PersistResumeReport writes the drill report and the audit row.
@@ -210,7 +210,7 @@ func PersistResumeReport(evalDir string, repoRoot string, results []DrillResult,
 	}
 	_ = checklog.Record(repoRoot, &checklog.Entry{
 		Check:   checklog.CheckEvalResumeDrill,
-		Passed:  fidelity.Insufficient || fidelity.Value >= 1,
+		Passed:  fidelity.Value >= 1, // insufficient ≠ 通过（对抗审查 M7：此前语义倒置）
 		Checked: true,
 		Detail:  fmt.Sprintf(`resume drills: %d/%d passed`, fidelity.Numerator, fidelity.Denominator),
 	})
