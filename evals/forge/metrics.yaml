@@ -42,7 +42,7 @@ metrics:
   - id: hv_mv_ratio
     claim: C1
     track: track-a
-    definition: harness(profile) 方差 / model 方差 + 排名翻转数 + η²_p（三必报）
+    definition: harness(profile) 方差 / model 方差 + 排名翻转数（两必报；η²_p 需格内重复数据，当前格均值 API 不可定义）
     source: evalkit decompose
     misuse_note: 非普适常数——随任务水平程与 profile 对比度变化，必附实验规格（任务集/格数/成本）
     min_samples: 4

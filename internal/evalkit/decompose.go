@@ -1,9 +1,10 @@
 package evalkit
 
 // decompose.go — 方差分解编排（Track A · docs/design/forge-evaluation-system.md
-// §六 P3）：在 profile×model 网格上跑同一 frozen manifest，产出三必报统计量
-// （HV̄/MV̄、排名翻转数、η²_p）与三档差值（full−off 整体贡献、full−gates-only
-// context 注入层贡献、gates-only−off 纯门禁代价）。
+// §六 P3）：在 profile×model 网格上跑同一 frozen manifest，产出两必报统计量
+// （HV̄/MV̄、排名翻转数；η²_p 需格内重复数据，单观测格下数学不可定义——见
+// stats.go 注释）与三档差值（full−off 整体贡献、full−gates-only context 注入层
+// 贡献、gates-only−off 纯门禁代价）。
 //
 // decompose.go — variance-decomposition orchestration: run the same frozen
 // manifest across the profile×model grid and produce the three mandatory
@@ -157,7 +158,6 @@ func PersistDecomposeReport(evalDir string, repoRoot string, rep *DecomposeRepor
 	if rep.Decomposition.HvOverMvUndefined {
 		detailHV = "undefined(MV=0)"
 	}
-	_ = detailHV // 保留下方统一拼接
 	_ = checklog.Record(repoRoot, &checklog.Entry{
 		Check:   checklog.CheckEvalDecompose,
 		Passed:  true,

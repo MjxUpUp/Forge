@@ -115,7 +115,7 @@ evals/forge/                 # VCS 资产
 
 1. **Track A**：每格 ≥2 次、全量 ≥5 重复；主指标 pass^k 曲线、pass@1 仅参考；双源噪声 CI（运行间 + 任务抽样二项，最低 Student's t，默认 bootstrap-over-tasks）；确定性配置 0 误差 = 计算错误告警。
 2. **profile_delta**：full − off 配对差 + bootstrap CI；CI 跨零 → 结论固定为"未检测到显著差异"，禁止挑选单侧表述。
-3. **方差分解**：必报 HV̄/MV̄、排名翻转数、η²_p（与翻转数配对），附任务集与格次数声明。
+3. **方差分解**：必报 HV̄/MV̄ 与排名翻转数（η²_p 单观测格不可定义，暂不产出）（与翻转数配对），附任务集与格次数声明。
 4. **Track B**：比例一律 Wilson 95% 区间，n<min_samples 出 `insufficient`；judge 一致性 κ<0.6 → 下游自动降级 ADVISORY 并标注。
 5. **预算截断**：记 budget-cut（非 fail 非剔除），Scorecard 披露截断率；成本比较一律对齐预算。
 
