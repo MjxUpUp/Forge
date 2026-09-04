@@ -6,6 +6,7 @@ package evalkit
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -16,14 +17,48 @@ func writeFakeForge(t *testing.T, dir, body string) string {
 }
 
 // writeFakeForgeNamed 每个假二进制独立文件名——同名复写会让先前句柄指向新内容
-// （曾致"误触应记 fpr"用例读到被覆写后的 exit 0 脚本）。
+// （曾致"误触应记 fpr"用例读到被覆写后的 exit 0 脚本）。双形态：POSIX 写 .sh、
+// Windows 写 .bat——.sh 在 Win32 不可执行（Windows CI 实锤"%1 is not a valid
+// Win32 application"，对抗审查 M10）。body 是 POSIX 片段，按已知语义自动翻译
+// 为 bat 等价（exit N / echo 分流 / data-dir 分流），未知片段测试期硬失败防静默错译。
 func writeFakeForgeNamed(t *testing.T, dir, name, body string) string {
 	t.Helper()
-	p := filepath.Join(dir, name+".sh")
-	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+	if runtime.GOOS != "windows" {
+		p := filepath.Join(dir, name+".sh")
+		if err := os.WriteFile(p, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	bat := translateFakeForgeToBat(t, body)
+	p := filepath.Join(dir, name+".bat")
+	if err := os.WriteFile(p, []byte(bat), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// translateFakeForgeToBat 整段匹配受控词汇表——逐行翻译在分流体上会丢语义
+// （曾把 data-dir 分流翻成只剩 pwd），整段匹配保证每种形态双平台语义等价；
+// 未知形态测试期硬失败防静默错译（错译 = 假绿）。
+func translateFakeForgeToBat(t *testing.T, body string) string {
+	switch strings.TrimSpace(body) {
+	case "exit 0":
+		return "@echo off\n@exit /b 0\n"
+	case "exit 2":
+		return "@echo off\n@exit /b 2\n"
+	case "exit 1":
+		return "@echo off\n@exit /b 1\n"
+	case `if [ "$1" = "data-dir" ]; then pwd; else echo "${TRAP_OUT:-}"; fi; exit 0`:
+		return "@echo off\n@if \"%1\"==\"data-dir\" (@cd) else (@echo %TRAP_OUT%)\n@exit /b 0\n"
+	case `case "$1" in data-dir) exit 1;; *) exit 0;; esac`:
+		return "@echo off\n@if \"%1\"==\"data-dir\" exit /b 1\n@exit /b 0\n"
+	case `echo "start EVAL-DRILL-9 $*"`:
+		return "@echo off\n@echo start EVAL-DRILL-9 %*\n"
+	default:
+		t.Fatalf("translateFakeForgeToBat: 未覆盖的 POSIX 片段 %q——请扩展受控词汇表并双平台验证", body)
+		return ""
+	}
 }
 
 func goldenDefectiveCase() GoldenCase {
@@ -182,7 +217,9 @@ func TestDataDirPlaceholderHardFails(t *testing.T) {
 		`case "$1" in data-dir) exit 1;; *) exit 0;; esac`)
 	trap := TrapCase{
 		ID: "tdd", Type: TrapPristineFalsePositive, Description: "d",
-		ProbeArgv: []string{"sh", "-c", "cat {dataDir}/checklog.jsonl"},
+		// {dataDir} 放在参数位（不依赖 shell——Windows 无 POSIX shell；
+		// 占位符检查作用于 argv 字符串本身，参数是否被执行不影响触发）。
+		ProbeArgv: []string{"{forge}", "probe", "{dataDir}/checklog.jsonl"},
 		DetectAny: []string{"exit_nonzero"},
 	}
 	// probe 级错误走 setup_error 通道（与其他环境失败同契约，不冒泡为 RunTraps
