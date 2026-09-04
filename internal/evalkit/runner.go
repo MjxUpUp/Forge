@@ -195,6 +195,17 @@ type TaskResult struct {
 	Tokens    int           `json:"tokens,omitempty"`
 	CostUSD   float64       `json:"cost_usd,omitempty"`
 	Duration  time.Duration `json:"duration,omitempty"`
+	// Sandbox is the backend THIS task actually ran on — per-task granularity
+	// for mixed manifests (docker-shaped tasks → docker, command tasks in the
+	// same run → exec). The scorecard aggregates into SandboxMix and flips its
+	// top-level label to "mixed" so a host-exec task can never hide behind a
+	// docker label (adversarial-review residue fix).
+	//
+	// Sandbox 是本任务实际执行的后端——混合 manifest 的任务级粒度（docker 形态
+	// 任务→docker，同跑里的命令任务→exec）。scorecard 聚合成 SandboxMix，并在
+	// 混合时把顶层标签翻成 mixed——宿主 exec 任务不得躲在 docker 标签后面
+	// （对抗审查遗留修复）。
+	Sandbox string `json:"sandbox,omitempty"`
 }
 
 // TaskRunner executes one task attempt under a spec. Implementations:
@@ -222,7 +233,7 @@ func (ScriptedRunner) RunTask(_ context.Context, spec RunSpec, task BenchTask) (
 	start := time.Now()
 	sum := sha256.Sum256([]byte(string(spec.Profile) + "|" + spec.Model + "|" + task.ID))
 	pass := sum[0]%2 == 0
-	return TaskResult{TaskID: task.ID, Pass: pass, Tokens: int(sum[1])%900 + 100, Duration: time.Since(start)}, nil
+	return TaskResult{TaskID: task.ID, Pass: pass, Tokens: int(sum[1])%900 + 100, Duration: time.Since(start), Sandbox: SandboxScripted}, nil
 }
 
 // ExecRunner executes each task's command with a per-task wallclock budget.
@@ -239,7 +250,7 @@ type ExecRunner struct{}
 //
 // RunTask 实现 TaskRunner。
 func (ExecRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (TaskResult, error) {
-	res := TaskResult{TaskID: task.ID}
+	res := TaskResult{TaskID: task.ID, Sandbox: SandboxExec}
 	if spec.Budget.WallclockEach > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, spec.Budget.WallclockEach)
@@ -291,14 +302,19 @@ type Scorecard struct {
 	//
 	// Sandbox 声明执行后端：scripted / exec / docker / fallback-exec。
 	// fallback-* 表示主后端不可用，scorecard 按设计契约标注降级。
-	Sandbox      string       `json:"sandbox"`
-	Header       string       `json:"header"` // 渲染契约的第一行
-	Pass1        RateValue    `json:"pass1"`
-	PassKCurve   []PassKPoint `json:"pass_k_curve"`
-	TotalTokens  int          `json:"total_tokens"`
-	TotalCostUSD float64      `json:"total_cost_usd"`
-	BudgetCuts   int          `json:"budget_cuts"`
-	Note         string       `json:"note,omitempty"`
+	// Sandbox 声明执行后端：scripted / exec / docker / fallback-exec / mixed。
+	// fallback-exec = 主后端不可用的降级；mixed = 混合 manifest 任务级后端
+	// 不一致（分布见 SandboxMix——宿主 exec 任务不得躲在 docker 标签后，
+	// 对抗审查遗留修复）。
+	Sandbox      string         `json:"sandbox"`
+	SandboxMix   map[string]int `json:"sandbox_mix,omitempty"`
+	Header       string         `json:"header"` // 渲染契约的第一行
+	Pass1        RateValue      `json:"pass1"`
+	PassKCurve   []PassKPoint   `json:"pass_k_curve"`
+	TotalTokens  int            `json:"total_tokens"`
+	TotalCostUSD float64        `json:"total_cost_usd"`
+	BudgetCuts   int            `json:"budget_cuts"`
+	Note         string         `json:"note,omitempty"`
 }
 
 // PassKPoint is one point of the pass^k curve (k 次全对概率的估计).
@@ -322,11 +338,15 @@ func RunBenchmark(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 	}
 	var attempts []Attempt
 	tokens, cost, cuts := 0, 0.0, 0
+	taskSandbox := map[string]string{} // taskID → 该任务实际执行的后端（首试口径）
 	for _, task := range manifest.Tasks {
 		for r := 1; r <= spec.Repeats; r++ {
 			res, err := runner.RunTask(ctx, spec, task)
 			if err != nil {
 				return nil, fmt.Errorf("evalkit: 任务 %s 执行失败: %w", task.ID, err)
+			}
+			if r == 1 && res.Sandbox != "" {
+				taskSandbox[task.ID] = res.Sandbox
 			}
 			attempts = append(attempts, Attempt{TaskID: task.ID, Repeat: r, Pass: res.Pass, BudgetCut: res.BudgetCut, Tokens: res.Tokens, CostUSD: res.CostUSD})
 			tokens += res.Tokens
@@ -336,15 +356,41 @@ func RunBenchmark(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 			}
 		}
 	}
-	sc := buildScorecard(spec, manifest, attempts, tokens, cost, cuts, sandboxLabel(runner))
-	sc.Sandbox = sandboxLabel(runner)
-	return sc, nil
+	return buildScorecard(spec, manifest, attempts, tokens, cost, cuts, sandboxLabel(runner), taskSandbox), nil
+}
+
+// summarizeSandboxes aggregates per-task sandbox labels into a mix histogram
+// and the honest top-level label: uniform → that label; mixed (and not an
+// already-degraded fallback) → "mixed" — a host-exec task must never present
+// behind a docker banner (adversarial-review residue fix).
+//
+// summarizeSandboxes 把任务级沙箱标签聚合成分布与诚实的顶层标签：单一 → 该
+// 标签；混合（且 runner 声明不是已降级的 fallback）→ mixed——宿主 exec 任务
+// 不得顶着 docker 横幅出现（对抗审查遗留修复）。
+func summarizeSandboxes(runnerLabel string, taskSandbox map[string]string) (string, map[string]int) {
+	mix := make(map[string]int, len(taskSandbox))
+	for _, sb := range taskSandbox {
+		mix[sb]++
+	}
+	if runnerLabel == SandboxFallbackExec {
+		return runnerLabel, mix // 降级声明优先：顶层保留 fallback-exec，mix 展示真实分布
+	}
+	if len(mix) > 1 {
+		return "mixed", mix
+	}
+	if len(mix) == 1 {
+		for k := range mix {
+			return k, mix
+		}
+	}
+	return runnerLabel, mix
 }
 
 // buildScorecard aggregates attempts into pass@1 and the pass^k curve.
 //
 // buildScorecard 把 attempts 聚合成 pass@1 与 pass^k 曲线。
-func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attempt, tokens int, cost float64, cuts int, sandbox string) *Scorecard {
+func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attempt, tokens int, cost float64, cuts int, runnerLabel string, taskSandbox map[string]string) *Scorecard {
+	sandbox, mix := summarizeSandboxes(runnerLabel, taskSandbox)
 	byTask := map[string][]bool{}
 	for _, a := range attempts {
 		byTask[a.TaskID] = append(byTask[a.TaskID], a.Pass)
@@ -382,6 +428,7 @@ func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attemp
 	}
 	sc := &Scorecard{
 		Spec: spec, ManifestFP: manifest.Fingerprint(), GeneratedAt: time.Now().UTC(),
+		Sandbox: sandbox, SandboxMix: mix,
 
 		Pass1:      newRateValue(&MetricDef{ID: "e2e_run_pass1", MinSamples: 1}, passFirst, len(taskIDs)),
 		PassKCurve: curve, TotalTokens: tokens, TotalCostUSD: cost, BudgetCuts: cuts,
@@ -490,7 +537,7 @@ func (d DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask)
 	if !task.HasDockerShape() {
 		return ExecRunner{}.RunTask(ctx, spec, task)
 	}
-	res := TaskResult{TaskID: task.ID}
+	res := TaskResult{TaskID: task.ID, Sandbox: SandboxDocker}
 	if !DockerAvailable() {
 		return res, fmt.Errorf("evalkit: docker 不可用——容器任务 %s 无法执行", task.ID)
 	}
