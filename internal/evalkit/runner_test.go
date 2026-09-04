@@ -135,6 +135,37 @@ func TestJudgeAudit(t *testing.T) {
 		{DocID: "d1", JudgeScores: []int{80, 80}, HumanScore: 60, Threshold: 75},
 		{DocID: "d2", JudgeScores: []int{60, 61}, HumanScore: 80, Threshold: 75},
 	}
+	// 阈值同侧抖动不是 finding（首轮实测修正：2-5 分正常噪声不得报"自洽性
+	// 不足"）；跨阈值抖动才是。
+	sameSide := []JudgeAuditEntry{
+		{DocID: "s1", JudgeScores: []int{88, 90, 87}, HumanScore: 80, Threshold: 75},
+		{DocID: "s2", JudgeScores: []int{78, 80, 77}, HumanScore: 80, Threshold: 75},
+	}
+	repSS, err := RunJudgeAudit(sameSide)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range repSS.Findings {
+		if strings.Contains(f, "自洽性") || strings.Contains(f, "不稳定") {
+			t.Fatalf("阈值同侧抖动不得报 finding: %s", f)
+		}
+	}
+	crossing := []JudgeAuditEntry{
+		{DocID: "c1", JudgeScores: []int{78, 80, 74}, HumanScore: 80, Threshold: 75},
+	}
+	repC, err := RunJudgeAudit(crossing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, f := range repC.Findings {
+		if strings.Contains(f, "c1") && strings.Contains(f, "跨越阈值") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("跨阈值抖动必须报 finding: %v", repC.Findings)
+	}
 	rep2, err := RunJudgeAudit(bad)
 	if err != nil {
 		t.Fatal(err)
