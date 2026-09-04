@@ -53,8 +53,8 @@ func translateFakeForgeToBat(t *testing.T, body string) string {
 		return "@echo off\n@if \"%1\"==\"data-dir\" (@cd) else (@echo %TRAP_OUT%)\n@exit /b 0\n"
 	case `case "$1" in data-dir) exit 1;; *) exit 0;; esac`:
 		return "@echo off\n@if \"%1\"==\"data-dir\" exit /b 1\n@exit /b 0\n"
-	case `echo "start EVAL-DRILL-9 $*"`:
-		return "@echo off\n@echo start EVAL-DRILL-9 %*\n"
+	case `echo "start EVAL-DRILL-9 $*"`, `echo "start EVAL-DRILL-9 $*"; exit 0`:
+		return "@echo off\n@echo start EVAL-DRILL-9 %*\n@exit /b 0\n"
 	default:
 		t.Fatalf("translateFakeForgeToBat: 未覆盖的 POSIX 片段 %q——请扩展受控词汇表并双平台验证", body)
 		return ""
