@@ -244,7 +244,11 @@ func runTrapProbe(t TrapCase, opts GoldenOptions) (*probeResult, error) {
 	argv := make([]string, len(t.ProbeArgv))
 	for i, a := range t.ProbeArgv {
 		// {dataDir} 解析为 fixture 的实际 DataDir（对抗审查 M4：此前替换为空串
-		// 是死缝——文档宣称的占位符谁用谁拿到空路径）。
+		// 是死缝）。解析失败且 argv 实际引用该占位符时硬报错——静默注入空路径
+		// 会把陷阱变成"探测了一个错误的位置然后通过"的假阴性（复审遗留修复）。
+		if strings.Contains(a, "{dataDir}") && dataDir == "" {
+			return nil, fmt.Errorf("陷阱 %s 的探测命令引用 {dataDir} 但 forge data-dir 解析失败——拒绝以空路径执行", t.ID)
+		}
 		argv[i] = strings.NewReplacer("{forge}", opts.ForgeBin, "{dataDir}", dataDir).Replace(a)
 	}
 	stdout, stderr, code := run(argv, t.ProbeStdin)

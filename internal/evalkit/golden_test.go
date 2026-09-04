@@ -170,3 +170,37 @@ func TestRunTrapsCaptureSemantics(t *testing.T) {
 		t.Fatalf("检测信号命中应记识破: %+v", rep3.Traps[0])
 	}
 }
+
+// TestDataDirPlaceholderHardFails 钉住 {dataDir} 解析失败的硬报错：
+// 探测命令引用占位符而 data-dir 不可解析时，绝不静默注入空路径
+// （假阴性防线——探测错位置然后"通过"是最危险的失败形态）。
+func TestDataDirPlaceholderHardFails(t *testing.T) {
+	dir := t.TempDir()
+	// 分流假二进制：init/data-dir 之外成功，data-dir 失败——probe 必须先过
+	// init 才能到达 {dataDir} 占位符检查。
+	falseBin := writeFakeForgeNamed(t, dir, "fakeforge-datadir-fail",
+		`case "$1" in data-dir) exit 1;; *) exit 0;; esac`)
+	trap := TrapCase{
+		ID: "tdd", Type: TrapPristineFalsePositive, Description: "d",
+		ProbeArgv: []string{"sh", "-c", "cat {dataDir}/checklog.jsonl"},
+		DetectAny: []string{"exit_nonzero"},
+	}
+	// probe 级错误走 setup_error 通道（与其他环境失败同契约，不冒泡为 RunTraps
+	// 错误）——断言该陷阱的 Error 明示 {dataDir} 原因、结果可区分。
+	rep, err := RunTraps([]TrapCase{trap}, GoldenOptions{ForgeBin: falseBin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(rep.Traps[0].Error, "{dataDir}") {
+		t.Fatalf("陷阱 Error 应明示 {dataDir} 解析失败: %q", rep.Traps[0].Error)
+	}
+	// 不引用占位符的 argv 不受解析失败影响。
+	okTrap := TrapCase{
+		ID: "tdd2", Type: TrapPristineFalsePositive, Description: "d",
+		ProbeArgv: []string{writeFakeForgeNamed(t, dir, "fakeforge-plain", "exit 0")},
+		DetectAny: []string{"exit_nonzero"},
+	}
+	if _, err := RunTraps([]TrapCase{okTrap}, GoldenOptions{ForgeBin: falseBin}); err != nil {
+		t.Fatalf("不引用 {dataDir} 的陷阱不应受解析失败影响: %v", err)
+	}
+}
