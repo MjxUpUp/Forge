@@ -1,0 +1,17 @@
+# 接续演练 1：任务状态跨会话可见（C3）——task start 后，状态查询仍指向该 ref。
+# 断言的是状态机持久化，不是"理解力"；数字只做回归对比（误用注记）。
+id: drill-state-persists-across-session
+description: "task start 后，task status/--json 跨会话仍指向同一 ref（状态持久化）"
+files:
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+steps:
+  - argv: ["{forge}", "task", "start", "--ref", "EVAL-DRILL-1", "--title", "接续演练"]
+    expect_contains: ["EVAL-DRILL-1"]
+  - argv: ["{forge}", "task", "status", "--json"]
+    expect_contains: ["EVAL-DRILL-1"]
+  - argv: ["{forge}", "task", "list", "--json"]
+    expect_contains: ["EVAL-DRILL-1"]

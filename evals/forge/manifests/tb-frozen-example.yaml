@@ -1,0 +1,21 @@
+# Terminal-Bench 冻结 manifest（Harbor 风格任务的冻结快照形态）示例。
+# 形态：容器任务（image/run_cmd/test_cmd）+ 命令回退（command）。
+# 执行矩阵：
+#   FORGE_EVAL_SMOKE=1 + docker 可用  → 容器内执行（sandbox=docker）
+#   FORGE_EVAL_SMOKE=1 + docker 不可用 → 回退 command 套件（sandbox=fallback-exec，
+#                                        scorecard 标注降级）
+#   未设 FORGE_EVAL_SMOKE             → 确定性 scripted 替身（sandbox=scripted）
+# 真实 TB 任务包的接入方式：把 Harbor task 目录的 instruction/environment/tests
+# 冻结成行（image 预拉取，test_cmd 为TB 测试入口），按 difficulty_band 分层抽样
+# 后追加任务行；frozen split 指纹由 LoadManifest 内容哈希承载。
+id: tb-frozen-example
+version: 1.0.0
+split: frozen
+tasks:
+  - id: tb-hello-container
+    image: "alpine:3.20"
+    run_cmd: "echo container-ok"
+    test_cmd: "test -f /etc/os-release"
+    command: "true"
+    difficulty_band: easy
+    pollution_flag: ""

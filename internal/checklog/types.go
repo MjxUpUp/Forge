@@ -197,6 +197,71 @@ const (
 	// 排除出证据强度分桶。仅在项目已有 DataDir 时落盘；从未 init 的项目以注册表
 	// Entry 决策字段为审计。
 	CheckTakeoverPolicy CheckName = "takeover-policy"
+	// CheckEvalMetricsIncomplete records a fail-closed rejection of the eval metrics
+	// dictionary (docs/design/forge-evaluation-system.md P0): a metrics.yaml entry is
+	// missing one of its mandatory fields (claim/track/definition/source/misuse_note/
+	// min_samples). Observation class — the eval tooling refusing to run on an
+	// incomplete dictionary is itself an eval-infrastructure audit trail, never task
+	// verification; excluded from evidence-strength bucketing.
+	//
+	// CheckEvalMetricsIncomplete 记录评测指标字典的 fail-closed 拒绝
+	// （docs/design/forge-evaluation-system.md P0）：metrics.yaml 条目缺失任一必填
+	// 字段（claim/track/definition/source/misuse_note/min_samples）。观察类——评测
+	// 工具拒跑不完整字典这件事本身就是评测基建的审计轨迹，绝非任务验证，排除出
+	// 证据强度分桶。
+	CheckEvalMetricsIncomplete CheckName = "eval-metrics-incomplete"
+	// CheckEvalGoldenRun records one `forge eval golden run` outcome (precision/recall
+	// baseline over the labeled gate cases). Observation class — eval evidence about
+	// the gates, never about the current task; excluded from evidence-strength
+	// bucketing.
+	//
+	// CheckEvalGoldenRun 记录一次 `forge eval golden run` 的结果（golden 标注集上
+	// 的 precision/recall 基线）。观察类——是关于门禁的评测证据，与当前任务无关，
+	// 排除出证据强度分桶。
+	CheckEvalGoldenRun CheckName = "eval-golden-run"
+	// CheckEvalGoldenRotate records one quarterly golden-set rotation (cases swapped
+	// in/out, retirement reasons). Observation class — dataset governance audit.
+	//
+	// CheckEvalGoldenRotate 记录一次季度 golden 集轮换（换入/换出用例与退役原因）。
+	// 观察类——数据集治理审计。
+	CheckEvalGoldenRotate CheckName = "eval-golden-rotate"
+	// CheckEvalJudgeWeak records that a judge's agreement audit fell below the
+	// reliability bar (Cohen's kappa < threshold), degrading downstream decisions to
+	// advisory. Observation class.
+	//
+	// CheckEvalJudgeWeak 记录某判分器的一致性审计低于可靠性阈值（Cohen's kappa
+	// 低于阈值），其下游决策降级为 advisory。观察类。
+	CheckEvalJudgeWeak CheckName = "eval-judge-weak"
+	// CheckEvalTrapsRun records one `forge eval traps run` outcome (adversarial trap
+	// capture rate). Observation class.
+	//
+	// CheckEvalTrapsRun 记录一次 `forge eval traps run` 的结果（对抗陷阱识破率）。
+	// 观察类。
+	CheckEvalTrapsRun CheckName = "eval-traps-run"
+	// CheckEvalRun records one Track-A benchmark run (`forge eval run`) with its
+	// four-tuple (profile×model×benchmark×split) headline. Observation class.
+	//
+	// CheckEvalRun 记录一次 Track A 基准运行（`forge eval run`），头部带四元组
+	// （profile×model×benchmark×split）摘要。观察类。
+	CheckEvalRun CheckName = "eval-run"
+	// CheckEvalDecompose records one variance-decomposition campaign
+	// (`forge eval decompose`). Observation class.
+	//
+	// CheckEvalDecompose 记录一次方差分解战役（`forge eval decompose`）。观察类。
+	CheckEvalDecompose CheckName = "eval-decompose"
+	// CheckEvalResumeDrill records one continuity-drill batch (`forge eval
+	// resume-drill`). Observation class.
+	//
+	// CheckEvalResumeDrill 记录一批接续演练（`forge eval resume-drill`）。观察类。
+	CheckEvalResumeDrill CheckName = "eval-resume-drill"
+	// CheckEvalAuditForged records an audit-row integrity failure surfaced by
+	// `forge eval audit-verify` (forged signature or replayed stamp). Security-
+	// adjacent observation — never task verification; excluded from evidence-
+	// strength bucketing.
+	//
+	// CheckEvalAuditForged 记录 `forge eval audit-verify` 上浮的审计行完整性失败
+	//（签名伪造或戳重放）。安全邻接观察——绝非任务验证，排除出证据强度分桶。
+	CheckEvalAuditForged CheckName = "eval-audit-forged"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go

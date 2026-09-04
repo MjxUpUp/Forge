@@ -1,0 +1,27 @@
+# 陷阱 1："什么都不做"攻击——干净仓库上门禁误触即失守（pristine-false-positive）
+# capture 语义：无任何门禁触发 = 系统扛住 = 识破；误触 = false positive。
+id: trap-pristine-repo
+type: pristine-false-positive
+description: "干净 Go module——什么都不做，门禁不得误触（τ-bench do-nothing 38% 教训）"
+files:
+  - path: go.mod
+    content: |
+      module evalkit.trap.pristine
+
+      go 1.25
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+probe_argv:
+  - "{forge}"
+  - "hook"
+  - "auto-compile"
+  - "--agent"
+  - "claude"
+probe_stdin: '{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"main.go"}}'
+detect_any:
+  - "exit_nonzero"
+  - "stdout:BLOCKED:"
+  - "stdout:ADVISORY:"

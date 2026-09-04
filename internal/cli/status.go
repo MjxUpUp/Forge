@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"github.com/MjxUpUp/Forge/internal/checklog"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -72,6 +74,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Harness:       %s\n", harnessStateLabel(readHarnessState(home)))
 		}
 		fmt.Printf("归属覆盖:      %s\n", attributionCoverageLine(root))
+		fmt.Printf("自评测:        %s\n", evalHealthLine(root))
 		fmt.Printf("接管状态:      managed（forge 接管中）\n")
 		MaybeOfferHarness("forge status")
 	}
@@ -181,4 +184,47 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// evalHealthLine 渲染 `forge status` 的自评测健康行：最近一次 golden 基线摘要
+// + 判分器/验签告警有无。数据全部来自 eval-* 观察行（forge eval 命令族落下的
+// checklog），无任何现场计算——status 是只读快照入口，评测本体走 forge eval。
+func evalHealthLine(root string) string {
+	// LoadAllAll：跨归档读全史（janitor 轮转后历史告警仍可见——对抗审查 I8）。
+	entries, err := checklog.LoadAllAll(root)
+	if err != nil {
+		return "未度量"
+	}
+	var latestGolden *checklog.Entry
+	judgeWeak, forged := false, false
+	for i := range entries {
+		e := &entries[i]
+		switch e.Check {
+		case checklog.CheckEvalGoldenRun:
+			latestGolden = e
+		case checklog.CheckEvalJudgeWeak:
+			if !e.Passed {
+				judgeWeak = true
+			}
+		case checklog.CheckEvalAuditForged:
+			if !e.Passed {
+				forged = true
+			}
+		}
+	}
+	if latestGolden == nil {
+		if judgeWeak || forged {
+			return "有告警（判分器降级/伪造审计行）——forge eval dashboard 查看详情"
+		}
+		return "未度量（forge eval golden run 建立基线）"
+	}
+	detail := strings.TrimPrefix(latestGolden.Detail, "golden run: ")
+	line := fmt.Sprintf("golden %s（%s）", detail, latestGolden.RecordedAt.Format("01-02 15:04"))
+	switch {
+	case forged:
+		line += " · ⚠ 伪造审计行待溯源（forge eval audit-verify）"
+	case judgeWeak:
+		line += " · ⚠ 判分器降级 ADVISORY（κ<0.6）"
+	}
+	return line
 }

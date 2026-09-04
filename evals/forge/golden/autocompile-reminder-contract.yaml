@@ -1,0 +1,30 @@
+# golden 用例：auto-compile 提醒契约（v0.25 真实语义）。
+# 契约：有 source-touched marker 的会话 + stdin 携带源码写入事件 → 必须输出
+# 编译自检提醒（additionalContext 含 "Advisory: 已修改源码"）。
+# 注意：v0.25 的 auto-compile 不跑编译器（loop engineering，编译自检委托 agent）——
+# "编译错误被拦截"不是当前主张；本用例钉住的是提醒管线本身。
+# 探测细节：runHook 以 stdin 的 session_id/file_path 覆盖同名 env，故 marker 文件名
+# 与 stdin 必须一致（manual 校准 2026-09-03）。
+id: autocompile-reminder-contract
+gate: auto-compile
+kind: defective
+expect: flagged
+description: "活跃会话写源码 → auto-compile 必须输出编译自检提醒"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.reminder
+
+      go 1.25
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+probe_argv:
+  - "sh"
+  - -c
+  - 'dd=$("{forge}" data-dir) && mkdir -p "$dd/markers" && touch "$dd/markers/forge-source-touched-golden-s1" && printf "%s" "{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Write\",\"session_id\":\"golden-s1\",\"tool_input\":{\"file_path\":\"main.go\"}}" | "{forge}" hook auto-compile --agent claude'
+detect_any:
+  - "stdout_contains:Advisory: 已修改源码"

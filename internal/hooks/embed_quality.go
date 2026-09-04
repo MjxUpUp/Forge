@@ -111,6 +111,11 @@ VIOLATIONS=""
 # 裸 t.Skip() / 单词消息（"flaky"）才是弱化。
 SKIP_RATIONALE_PAT='t\.Skip(f)?\([[:space:]]*"[^"]*([ ]|(regenerate|bootstrap|intentional|first run|update flag))[^"]*"'
 
+# 恒真断言/条件模式（2026-09-03，eval traps 实测缺口：真条件被换成 if true /
+# assert!(true) 曾不可检）。误报控制：恒真须长得像测试条件/断言（后随 { 或 :
+# 或行尾），孤立注释里的 "if true" 不命中。
+TAUTO_PAT='(if[[:space:]]*\(?[[:space:]]*true[[:space:]]*\)?([[:space:]]*[{:]|$)|if[[:space:]]+1[[:space:]]*==[[:space:]]*1([[:space:]]*[{:]|$)|assert[[:space:]]*!?\(?[[:space:]]*(true|True)[[:space:]]*\)?([[:space:]]*[{:;)]|$)|assert[[:space:]]+1[[:space:]]*==[[:space:]]*1)'
+
 # --- Per-edit mode (hook-triggered by the host: FILE_PATH set) ---
 if [ -n "$FILE_PATH" ]; then
 # Only check source code files
@@ -180,6 +185,16 @@ asrt_new=$(printf '%s' "$NEW_TEXT" | grep -cE 'assert(_eq|_ne)?!\(' 2>/dev/null 
 if [ "${asrt_old:-0}" -gt "${asrt_new:-0}" ]; then
   VIOLATIONS="${VIOLATIONS}[Rust] assert! net removed by this edit. "
 fi
+
+# 恒真替换（eval traps 缺口闭环）：NEW_TEXT 出现恒真条件/断言，且 OLD_TEXT 含
+# 比较运算符（真条件被替换）或为空（Write 造出恒真测试）→ 报。只看测试文件
+# （上方已分流），生产代码里 if true 的清理由编译器/lint 承担。
+if printf '%s' "$NEW_TEXT" | grep -qE "$TAUTO_PAT" 2>/dev/null; then
+  _cond_old=$(printf '%s' "$OLD_TEXT" | grep -cE '(==|!=|>=|<=|<|>)' 2>/dev/null || true)
+  if [ "${_cond_old:-0}" -gt 0 ] || [ -z "$OLD_TEXT" ]; then
+    VIOLATIONS="${VIOLATIONS}[Tautology] 恒真断言/条件替换了真实条件${_cond_old:+（真条件被替换）}. "
+  fi
+fi
 fi
 
 # --- Batch mode (task-implement gate: no FILE_PATH) — full-diff scan ---
@@ -217,6 +232,11 @@ if [ -z "$FILE_PATH" ] && git rev-parse --git-dir >/dev/null 2>&1; then
       VIOLATIONS="${VIOLATIONS}[Rust] #[ignore] added in ${label}. "
     printf '%s' "$diff" | grep -qE '^\+.*\b(test|it|describe)\.skip\(' 2>/dev/null && \
       VIOLATIONS="${VIOLATIONS}[TS/JS] .skip() added in ${label}. "
+    local tauto_add
+    tauto_add=$(printf '%s' "$diff" | grep -cE "^\+.*${TAUTO_PAT}" 2>/dev/null || true)
+    if [ "${tauto_add:-0}" -gt 0 ]; then
+      VIOLATIONS="${VIOLATIONS}[Tautology] 恒真断言/条件新增 ${tauto_add} 行 in ${label}. "
+    fi
     : # always return 0 — grep misses are not errors
   }
 

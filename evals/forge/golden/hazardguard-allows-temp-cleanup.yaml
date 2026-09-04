@@ -1,0 +1,21 @@
+# 历史反哺干净面（豁免规则同为契约，2026-08 usage 复盘产物）：
+# rm 目标全在一次性临时区（/tmp 等子路径）→ 自动豁免放行，不消耗 HITL。
+id: hazardguard-allows-temp-cleanup
+gate: hazard-guard
+kind: clean
+expect: clean
+description: "清理 /tmp 子路径 → 临时区豁免放行"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.hz2
+
+      go 1.25
+probe_argv:
+  - "sh"
+  - -c
+  - 'printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"session_id\":\"hzs\",\"tool_input\":{\"command\":\"rm -rf /tmp/build-cache\"}}" | "{forge}" hook hazard-guard --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [hazard-guard]"

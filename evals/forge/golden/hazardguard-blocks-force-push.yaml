@@ -1,0 +1,20 @@
+# 历史反哺用例（checklog 54 次拦截家族，2026-09-04 摘录）：高危命令 → HITL 拦截。
+id: hazardguard-blocks-force-push
+gate: hazard-guard
+kind: defective
+expect: flagged
+description: "git push --force → FAIL [hazard-guard]（HITL 确认闭环入口）"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.hz
+
+      go 1.25
+probe_argv:
+  - "sh"
+  - -c
+  - 'printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"session_id\":\"hzs\",\"tool_input\":{\"command\":\"git push --force origin main\"}}" | "{forge}" hook hazard-guard --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [hazard-guard]"

@@ -4,6 +4,8 @@ description: "发布/上线前的 readiness 门禁清单（能安全上线吗）
 metadata:
   pattern: gate
   domain: operations
+  # requires_forge: R6 引用 forge eval golden run/audit-verify（跨项目复用时该检查项跳过并记录）
+  requires_forge: "true"
   composes: [docs-consistency-guard]
   triggers: [{"event":"PreToolUse","match":"Bash","keywords":["git tag","npm publish","goreleaser","docker push","cargo publish"],"cooldown":300}]
 ---
@@ -190,6 +192,7 @@ metadata:
 | R3 发布后观测 | 仪表盘/告警存在；日志保留 ≥7 天覆盖回滚调查窗口 | 建最小可观测盘（错误率/p95/部署标记）+ 至少设错误率告警 |
 | R4 通知与公告 | 发版窗口通知、breaking change 公告、文档站更新 | 补 Release Notes；breaking 未公告推迟一个版本 |
 | R5 灰度计划 | 灰度档位（1%→10%→50%→100%）+ 每档回退判断点 | 补灰度计划；无法灰度（如 CLI 二进制）至少内部 dogfood 一周 |
+| R6 质量门禁基线回归（Forge 项目适用） | `forge eval golden run` 无 missed/false-positive finding（门禁 precision/fpr 基线未回归）；`forge eval audit-verify` 伪造审计行 0 | 基线回归先修门禁再发；audit-verify 非零 = 审计时间线被污染，按 BLOCKED 指引溯源后重跑；无 eval 资产的项目跳过并记录 |
 
 每项的完整检查命令与通过标准：见 [references/recommended-checks.md](references/recommended-checks.md)。
 

@@ -42,7 +42,8 @@ func Record(root string, entry *Entry) error {
 	entry.RecordedAt = time.Now()
 	// 机器归因戳（node-identity.md §4）：仅当调用方留零值时落章——import/merge
 	// 路径携带的是源节点戳，必须保留。
-	if entry.Stamp == (nodestamp.Stamp{}) {
+	presetStamp := entry.Stamp != (nodestamp.Stamp{})
+	if !presetStamp {
 		entry.Stamp = nodestamp.Next()
 	}
 	// 兜底推断证据来源：调用方未显式标注 Source 时，按 CheckName 给默认值。
@@ -54,6 +55,13 @@ func Record(root string, entry *Entry) error {
 	// （BLOCKED: / ADVISORY:）推导，与上方 Source 兜底同款模式。显式 Level 恒优先。
 	if entry.Level == "" {
 		entry.Level = DeriveLevel(entry)
+	}
+	// 事件签名（verify.go）：所有兜底定稿后、marshal 前对 canonical 字节签名——
+	// Sig 覆盖最终落盘态。仅签本机新戳的行：预设戳是 import/merge 携带的源节点
+	// 行（AppendEntries 契约"原样保留"），本机重签会造成他机 node_id 配本机
+	// 签名的错配归属。任何失败降级为空 Sig（记录绝不阻塞）。
+	if !presetStamp {
+		signEntry(entry)
 	}
 
 	path := filePath(root)
