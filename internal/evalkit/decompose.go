@@ -147,13 +147,17 @@ func PersistDecomposeReport(evalDir string, repoRoot string, rep *DecomposeRepor
 	if err := atomicWriteFile(path, data); err != nil {
 		return "", err
 	}
+	detailHV := fmt.Sprintf("%.2f", rep.Decomposition.HvOverMv)
+	if rep.Decomposition.HvOverMvUndefined {
+		detailHV = "undefined(MV=0)"
+	}
 	_ = checklog.Record(repoRoot, &checklog.Entry{
 		Check:   checklog.CheckEvalDecompose,
 		Passed:  true,
 		Checked: true,
-		Detail: fmt.Sprintf(`decompose: benchmark %s@%s profiles %d models %d HV/MV %.2f reversals %d/%d eta2 %.3f`,
+		Detail: fmt.Sprintf(`decompose: benchmark %s@%s profiles %d models %d HV/MV %s reversals %d/%d eta2 %.3f`,
 			rep.Benchmark, rep.Split, len(rep.Grid.Profiles), len(rep.Grid.Models),
-			rep.Decomposition.HvOverMv, rep.Decomposition.Reversals, rep.Decomposition.PairComparisons, rep.Decomposition.EtaSquaredP),
+			detailHV, rep.Decomposition.Reversals, rep.Decomposition.PairComparisons, rep.Decomposition.EtaSquaredP),
 	})
 	return path, nil
 }
@@ -164,7 +168,11 @@ func PersistDecomposeReport(evalDir string, repoRoot string, rep *DecomposeRepor
 // RenderDecomposeMarkdown 渲染区间式摘要（绝不出单侧数字；跨零差值如实表述）。
 func (r *DecomposeReport) RenderDecomposeMarkdown() string {
 	s := fmt.Sprintf("# 方差分解报告（%s@%s）\n\n", r.Benchmark, r.Split)
-	s += fmt.Sprintf("- HV̄/MV̄ = %.2f（跨 %d 个 profile × %d 个模型）\n", r.Decomposition.HvOverMv, len(r.Grid.Profiles), len(r.Grid.Models))
+	if r.Decomposition.HvOverMvUndefined {
+		s += fmt.Sprintf("- HV̄/MV̄ = 未定义（模型方差为 0——模型在各 profile 同分，网格退化；跨 %d 个 profile × %d 个模型）\n", len(r.Grid.Profiles), len(r.Grid.Models))
+	} else {
+		s += fmt.Sprintf("- HV̄/MV̄ = %.2f（跨 %d 个 profile × %d 个模型）\n", r.Decomposition.HvOverMv, len(r.Grid.Profiles), len(r.Grid.Models))
+	}
 	s += fmt.Sprintf("- 排名翻转 %d / %d 个 model-pair×profile-pair 比较\n", r.Decomposition.Reversals, r.Decomposition.PairComparisons)
 	s += fmt.Sprintf("- η²_p（交互项，与翻转数配对报告）= %.3f\n\n", r.Decomposition.EtaSquaredP)
 	render := func(name string, deltas []ModelDelta) {

@@ -48,9 +48,9 @@ func TestEvalGoldenRunE2E(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("golden run 应通过（exit %d）：%s", code, out)
 	}
-	// 12 用例集（auto-compile 2 + task-guard 5 + file-sentinel 5）：
-	// precision 5/5、fpr 0/7、全部确定性重放一致。
-	if !strings.Contains(out, "precision 5/5") || !strings.Contains(out, "fpr 0/7") || !strings.Contains(out, "taskguard-blocks-forge-runtime-write") {
+	// 16 用例集（auto-compile 2 + task-guard 5 + file-sentinel 5 + read-before-edit 2
+	// + hazard-guard 2 历史反哺）：precision 7/7、fpr 0/9、全部确定性重放一致。
+	if !strings.Contains(out, "precision 7/7") || !strings.Contains(out, "fpr 0/9") || !strings.Contains(out, "rbe-blocks-unread-edit") {
 		t.Fatalf("输出缺 precision 基线/用例行: %s", out)
 	}
 	// 指纹一致性：二次运行不得因 manifest 拒绝。

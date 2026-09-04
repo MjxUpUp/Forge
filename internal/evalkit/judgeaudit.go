@@ -144,10 +144,22 @@ func RunJudgeAudit(entries []JudgeAuditEntry) (*JudgeAuditReport, error) {
 	if rep.KappaValid && !rep.JudgeReliable {
 		rep.Findings = append(rep.Findings, fmt.Sprintf("judge κ=%.2f 低于 %.2f 阈值——该判分器的 BLOCKED 决策降级为 ADVISORY，75 分阈值在当前 judge 下视为噪声", rep.Kappa, JudgeAuditKappaFloor))
 	}
-	// 重放方差 finding：任何文档重放极差非零 → 自洽性不足。
-	for _, e := range rep.Entries {
-		if e.Range > 0 {
-			rep.Findings = append(rep.Findings, fmt.Sprintf("文档 %s 重放极差 %d 分（跨重放不稳定，自洽性不足）", e.DocID, e.Range))
+	// 重放方差 finding：仅当重放分数跨越工作阈值（pass/fail 判定翻转）才报——
+	// 判定不稳定是决策风险；阈值同侧的 2-5 分抖动是 LLM 评审的正常噪声，报了
+	// 就是狼来了（judge-audit 首轮实测 2026-09-04：κ=1.00 但全部文档被误标
+	// "自洽性不足"，正是本规则修正的动机）。极差数值仍在 entries 里展示。
+	for _, e := range entries {
+		lo, hi := e.JudgeScores[0], e.JudgeScores[0]
+		for _, s := range e.JudgeScores {
+			if s < lo {
+				lo = s
+			}
+			if s > hi {
+				hi = s
+			}
+		}
+		if lo < e.Threshold && hi >= e.Threshold {
+			rep.Findings = append(rep.Findings, fmt.Sprintf("文档 %s 重放分数 [%d,%d] 跨越阈值 %d——pass/fail 判定不稳定，下游决策不可依赖", e.DocID, lo, hi, e.Threshold))
 		}
 	}
 	return rep, nil

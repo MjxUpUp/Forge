@@ -37,6 +37,16 @@ type RateValue struct {
 	MisuseNote   string  `json:"misuse_note"`
 }
 
+// SignatureAuditSummary counts the per-verdict audit-row signature scan.
+//
+// SignatureAuditSummary 按裁决统计审计行验签扫描。
+type SignatureAuditSummary struct {
+	Valid          int `json:"valid"`
+	Forged         int `json:"forged"`
+	ForeignNode    int `json:"foreign_node"`
+	UnsignedLegacy int `json:"unsigned_legacy"`
+}
+
 // TelemetryReport is one aggregation snapshot (immutable once produced).
 //
 // TelemetryReport 是一份聚合快照（产出后不可变）。
@@ -48,6 +58,7 @@ type TelemetryReport struct {
 	Weeks       []WeekRate     `json:"weeks"`        // 门禁触发的周趋势
 	Rates       []RateValue    `json:"rates"`        // 汇总比率
 	DictionaVersion int        `json:"dictionary_version"`
+	SignatureAudit  SignatureAuditSummary `json:"signature_audit"`
 }
 
 // WeekRate is one weekly bucket of gate-fire counts (blocked/advisory).
@@ -71,6 +82,21 @@ func Aggregate(root string, dict *Dictionary, now time.Time) (*TelemetryReport, 
 		return nil, fmt.Errorf("evalkit: 读取 checklog 失败: %w", err)
 	}
 	rep := &TelemetryReport{GeneratedAt: now, RepoRoot: root, Entries: len(entries), DictionaVersion: dict.Version}
+
+	// 审计行验签扫描（checklog.AuditEntry）：可归属本机的行上验签失败 = 伪造。
+	// 他机行（foreign）与历史行（legacy）单列计数，绝不混入伪造。
+	forged, foreign, legacy := 0, 0, 0
+	for i := range entries {
+		switch checklog.AuditEntry(&entries[i]) {
+		case checklog.VerdictForged:
+			forged++
+		case checklog.VerdictForeignNode:
+			foreign++
+		case checklog.VerdictUnsignedLegacy:
+			legacy++
+		}
+	}
+	rep.SignatureAudit = SignatureAuditSummary{Forged: forged, ForeignNode: foreign, UnsignedLegacy: legacy}
 
 	sessions := map[string]bool{}
 	gateBlocked, gateAdvisory := 0, 0
@@ -199,6 +225,32 @@ func weekStart(t time.Time) string {
 	offset := (int(u.Weekday()) + 6) % 7 // 周一=0 … 周日=6
 	monday := u.AddDate(0, 0, -offset)
 	return monday.Format("2006-01-02")
+}
+
+// VerifyAuditRows scans one project's audit rows and returns the per-verdict
+// signature summary (no dictionary dependency — usable on any machine).
+//
+// VerifyAuditRows 扫描一个项目的审计行，返回按裁决的签名统计（不依赖字典——
+// 任意机器可用）。
+func VerifyAuditRows(root string) (SignatureAuditSummary, error) {
+	entries, err := checklog.LoadAllAll(root)
+	if err != nil {
+		return SignatureAuditSummary{}, fmt.Errorf("evalkit: 读取 checklog 失败: %w", err)
+	}
+	var sum SignatureAuditSummary
+	for i := range entries {
+		switch checklog.AuditEntry(&entries[i]) {
+		case checklog.VerdictValid:
+			sum.Valid++
+		case checklog.VerdictForged:
+			sum.Forged++
+		case checklog.VerdictForeignNode:
+			sum.ForeignNode++
+		case checklog.VerdictUnsignedLegacy:
+			sum.UnsignedLegacy++
+		}
+	}
+	return sum, nil
 }
 
 // LoadToolCalls is a thin indirection over toolusage for future wait-turn
