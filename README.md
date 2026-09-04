@@ -284,6 +284,16 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task verify-acceptance [--ref <ref>] [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行） |
 | `forge task doc-review --passed <pass\|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <发现>]` | 记录 L2 文档回检证据（输出→回检循环）：按 doc-review skill 四维评审后落档（产出者不能自检）；`--score` 为 0-100 总分、`--round` 轮次（≥3 轮未过升级人工确认）、`--critical` 落 Critical findings（未决阻断 complete）。task-complete 的 doc gate 消费该证据 |
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D7：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
+| `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、hook/门禁/逃生舱清单与已知盲区（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
+| `forge eval dashboard [--dry-run] [--json]` | Track B 遥测（C4/C7）：escape 率/off_churn/自举通过率（Wilson 95% CI + 误用注记；样本低于字典下限只出 INSUFFICIENT）。快照落 `~/.forge/evals/forge/snapshots/` |
+| `forge eval golden run [--dir <dir>] [--repeats N] [--rewrite-manifest] [--json]` | 门禁 golden 标注集重放：precision/fpr（Wilson 区间）+ 确定性重放一致率；用例集指纹钉在 `evals/forge/golden/MANIFEST.sha256`，不符拒绝运行（`--rewrite-manifest` 仅限显式轮换） |
+| `forge eval golden private-init` / `rotate [--max-cases N]` | 私有 golden 子集（0700，永不进 VCS）与季度轮换（oracle 复验 + 最老优先淘汰 + 审计行） |
+| `forge eval traps run [--dir <dir>]` | 对抗陷阱重放（测试削弱/伪造审计证据/虚假完成——ImpossibleBench 思想）；capture 率与行动清单 |
+| `forge eval judge-audit --scores <file>` | 判分器受审：重放极差 + 与人工标注 Cohen's κ；κ<0.6 该判分器 BLOCKED 决策降级 ADVISORY |
+| `forge eval resume-drill [--dir <dir>]` | 接续演练（C3）：脚本化断点续做断言（仅回归对比，绝对值不外宣） |
+| `forge eval run --manifest <file> --profile <off\|gates-only\|full> --model <m> [--repeats N] [--wallclock <d>] [--forge-ref <ref>]` | Track A 端到端基准运行（四元组 scorecard + pass^k 曲线 + 预算截断披露；`--forge-ref` 标注被测 forge 版本，四元组之一）；真实执行需 `FORGE_EVAL_SMOKE=1`，否则确定性 scripted 替身 |
+| `forge eval decompose --manifest <file> --models <a,b> [--profiles off,gates-only,full] [--repeats N]` | 方差分解大体检：HV̄/MV̄ + 排名翻转数 + η²_p + 三档差值（full−off 整体贡献 / full−gates-only 注入层 / gates-only−off 纯门禁代价）；结论只做区间表述 |
+| `forge eval report [--quarter 2026-Q3]` | 季度自评测报告（汇编已落盘证据；缺失如实标注，绝不补造） |
 | `forge task scope add <glob> [--ref <ref>]` | 追加计划改动文件到白名单（支持中途迭代；--ref 指定任务，不依赖活跃任务检测） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
 | `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions\|--doc-gate] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计。验证类（test-coverage/acceptance-gate/skill-decisions/doc-gate）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度。doc-gate 的放行须在 doc-review 轮次上限后经人工确认再走 |
