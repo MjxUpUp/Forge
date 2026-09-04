@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.50.0](https://github.com/MjxUpUp/Forge/compare/v1.49.0...v1.50.0) (2026-09-04)
+
+
+### Features
+
+* **eval:** Forge 自评测体系 P0-P4 落地——forge eval 命令族 + internal/evalkit 双轨评测栈 ([bbfa97a](https://github.com/MjxUpUp/Forge/commit/bbfa97a35af294055d49a8e9ff1e0cdae74d0606))
+* **eval:** 爬坡项落地——两 trap 洞闭环 + 历史反哺 golden + judge-audit 首轮 + docker 首跑 ([9563843](https://github.com/MjxUpUp/Forge/commit/95638433bd8fa977e5c9c2fca866fe5d76d7c56e))
+* **eval:** 补齐设计量纲——golden 三门禁 12 例 + 接续演练 3 条 + Terminal-Bench 冻结 manifest 适配器 ([5c6db1a](https://github.com/MjxUpUp/Forge/commit/5c6db1a5dd522918533f40f35df99b6a6d53619e))
+* **eval:** 评测可见性与触发点接线——Pulse 看板事件 + status 健康行 + release-readiness R6 ([46fd466](https://github.com/MjxUpUp/Forge/commit/46fd466ac6ce855fdd5261867c9c974c40702508))
+
+
+### Bug Fixes
+
+* **eval:** golden e2e 断言跨平台化（真正落地——上一轮 replace 静默未生效被 CI 抓回） ([4549711](https://github.com/MjxUpUp/Forge/commit/4549711c9d5044276042e1ffb3fb5b3c6234fba9))
+* **eval:** Windows CI 第二轮——golden 平台跳过机制 + e2e 断言跨平台化 + 词汇表补形态 ([6a324b4](https://github.com/MjxUpUp/Forge/commit/6a324b4ccc05fb44f966fb72b0f3d07b38f57b7d))
+* **eval:** Windows 三平台兼容——假二进制双形态 + 权限检查 GOOS 感知 + 测试去 sh 化 ([f829508](https://github.com/MjxUpUp/Forge/commit/f82950853bece322840ce1095263ae5f69564bd3))
+* **eval:** 两项审查遗留修复——混合 manifest 沙箱标签任务级粒度 + {dataDir} 硬报错 ([ccd58ad](https://github.com/MjxUpUp/Forge/commit/ccd58adba8ea04f5c669d52b2aff67daa6d0fc3b))
+* **eval:** 复审残留清理 + review 盖章（对抗审查闭环） ([b8c229c](https://github.com/MjxUpUp/Forge/commit/b8c229c347735d23e5a6ffe0cb8151d9598423c4))
+* **eval:** 对抗性审查修复——C1-C3 全修 + I1-I8 全修 + Minor 挑修 ([94bec29](https://github.com/MjxUpUp/Forge/commit/94bec2931270e94510f9c1e04a8f2ce7bf89c84d))
+
 ## [1.49.0](https://github.com/MjxUpUp/Forge/compare/v1.48.1...v1.49.0) (2026-09-02)
 
 
