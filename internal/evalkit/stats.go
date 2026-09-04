@@ -136,8 +136,16 @@ type VarianceDecomposition struct {
 	HVPerModel []float64 // HVPerModel[k] = 模型 k 跨 harness 的总体方差
 	// MVPerHarness[k] = population variance across models for harness k.
 	MVPerHarness []float64 // MVPerHarness[k] = harness k 跨模型的总体方差
-	// HvOverMv = mean(HVPerModel) / mean(MVPerHarness); +Inf when mean MV is 0.
-	HvOverMv float64 // HvOverMv = mean(HV)/mean(MV)；mean MV 为 0 时为 +Inf
+	// HvOverMv = mean(HVPerModel) / mean(MVPerHarness); 0 with HvOverMvUndefined
+	// when mean MV is 0 (degenerate grid — models tie on every harness, e.g. a
+	// single-task manifest; the ratio has no meaning and +Inf is unserializable).
+	//
+	// HvOverMv = mean(HV)/mean(MV)；mean MV 为 0 时置 0 并标 HvOverMvUndefined
+	// （退化网格——模型在每个 harness 上同分，如单任务 manifest；比值无意义且
+	// +Inf 不可 JSON 序列化——docker decompose 首跑实测 2026-09-04）。
+	HvOverMv float64
+	// HvOverMvUndefined marks a degenerate grid (mean MV == 0).
+	HvOverMvUndefined bool `json:"hv_over_mv_undefined,omitempty"`
 	// Reversals = ranking flips across all model-pair×harness-pair comparisons.
 	Reversals int // Reversals = 所有 model-pair×harness-pair 比较中的翻转数
 	// PairComparisons = total number of those comparisons.
@@ -204,7 +212,8 @@ func DecomposeVariance(models []ModelScores) (*VarianceDecomposition, error) {
 	meanHV, _ := MeanAndStd(out.HVPerModel)
 	meanMV, _ := MeanAndStd(out.MVPerHarness)
 	if meanMV == 0 {
-		out.HvOverMv = math.Inf(1)
+		out.HvOverMv = 0
+		out.HvOverMvUndefined = true
 	} else {
 		out.HvOverMv = meanHV / meanMV
 	}

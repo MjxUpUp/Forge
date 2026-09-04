@@ -75,6 +75,25 @@ func TestDecomposeVariancePaperGrid(t *testing.T) {
 	}
 }
 
+func TestDecomposeVarianceDegenerateGrid(t *testing.T) {
+	// 单任务/同分网格：MV=0 → 比值未定义（哨兵语义而非 +Inf——+Inf 不可 JSON
+	// 序列化，docker decompose 首跑实测 2026-09-04）。
+	models := []ModelScores{
+		{Name: "a", ScoresByHarness: map[string]float64{"off": 1, "full": 1}},
+		{Name: "b", ScoresByHarness: map[string]float64{"off": 1, "full": 1}},
+	}
+	dec, err := DecomposeVariance(models)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dec.HvOverMvUndefined || dec.HvOverMv != 0 {
+		t.Fatalf("退化网格应标 undefined: %+v", dec)
+	}
+	if math.IsInf(dec.HvOverMv, 0) {
+		t.Fatal("不得返回 Inf（JSON 序列化失败）")
+	}
+}
+
 func TestDecomposeVarianceErrors(t *testing.T) {
 	oneModel := []ModelScores{{Name: "a", ScoresByHarness: map[string]float64{"p": 1, "q": 2}}}
 	if _, err := DecomposeVariance(oneModel); err == nil {

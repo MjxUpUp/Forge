@@ -18,4 +18,3 @@ probe_argv:
 detect_any:
   - "exit_nonzero"
   - "stdout_contains:FAIL [file-sentinel]"
-  - "stdout_contains:quarantine"

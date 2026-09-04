@@ -120,6 +120,10 @@ func runEvalDashboard(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Forge 自评测仪表盘（%s；字典 v%d；checklog %d 条 / %d sessions）\n",
 		rep.GeneratedAt.Format("2006-01-02 15:04"), dict.Version, rep.Entries, rep.Sessions)
+	if rep.SignatureAudit.Forged > 0 {
+		fmt.Printf("⚠ 伪造审计行 %d 条（本机可归属行验签失败）——C6 安全事件，立即溯源（他机行 %d / 历史无签行 %d 不在此列）\n",
+			rep.SignatureAudit.Forged, rep.SignatureAudit.ForeignNode, rep.SignatureAudit.UnsignedLegacy)
+	}
 	for _, w := range rep.Weeks {
 		fmt.Printf("  周 %s：blocked %d / advisory %d\n", w.WeekStart, w.Blocked, w.Advisory)
 	}
@@ -448,6 +452,21 @@ func splitCSV(s string) []string {
 	return out
 }
 
+func runEvalAuditVerify(cmd *cobra.Command, args []string) error {
+	sum, err := evalkit.VerifyAuditRows(evalRepoRoot())
+	if err != nil {
+		return fmt.Errorf("BLOCKED: %v", err)
+	}
+	fmt.Printf("审计行验签：valid %d / unsigned-legacy %d / foreign-node %d / forged %d\n",
+		sum.Valid, sum.UnsignedLegacy, sum.ForeignNode, sum.Forged)
+	if sum.Forged > 0 {
+		recordEvalRow(checklog.CheckEvalJudgeWeak, false,
+			fmt.Sprintf(`伪造审计行 %d 条（本机可归属行验签失败）`, sum.Forged))
+		return fmt.Errorf("BLOCKED: 伪造审计行 %d 条——本机可归属行验签失败，审计时间线已被污染，立即溯源（他机行需公钥注册表，v1 边界）", sum.Forged)
+	}
+	return nil
+}
+
 func runEvalReport(cmd *cobra.Command, args []string) error {
 	quarter, _ := cmd.Flags().GetString("quarter")
 	if quarter == "" {
@@ -562,6 +581,13 @@ func init() {
 	decompose.Flags().Int("repeats", 2, "每格重复次数")
 	decompose.Flags().Duration("wallclock", 10*time.Second, "单任务墙钟预算")
 	evalCmd.AddCommand(decompose)
+
+	auditVerify := &cobra.Command{
+		Use:   "audit-verify",
+		Short: "审计行验签：伪造审计行 >0 即 BLOCKED（签名/验签闭环的读侧）",
+		RunE:  runEvalAuditVerify,
+	}
+	evalCmd.AddCommand(auditVerify)
 
 	report := &cobra.Command{
 		Use:   "report [--quarter 2026-Q3]",
