@@ -71,7 +71,9 @@ func CohenKappa(raters, truth []string) (float64, error) {
 		expected += (pr / float64(len(truth))) * (pt / float64(len(truth)))
 	}
 	if expected >= 1 {
-		return 1, nil
+		// 两列完全同分布 → 分母为 0，κ 数学上无定义。返回错误而非满分（对抗
+		// 审查 M8：满分是把"无法判定"伪装成"完美一致"）。
+		return 0, fmt.Errorf("evalkit: κ 无定义（两列边际分布相同，期望一致率=1）")
 	}
 	return (observed - expected) / (1 - expected), nil
 }
@@ -150,15 +152,18 @@ type VarianceDecomposition struct {
 	Reversals int // Reversals = 所有 model-pair×harness-pair 比较中的翻转数
 	// PairComparisons = total number of those comparisons.
 	PairComparisons int // PairComparisons = 这些比较的总数
-	// EtaSquaredP = SS_interaction/(SS_interaction+SS_error) on the two-way grid.
-	EtaSquaredP float64 // EtaSquaredP = 二元网格上的 SS_interaction/(SS_interaction+SS_error)
+	// EtaSquaredP: REMOVED 2026-09-04 (adversarial review C2). With one
+	// observation per cell (pre-aggregated means) SS_error ≡ 0 and
+	// SS_interaction ≡ SS_cells, so η²_p ≡ 0.5 — a constant dressed as a
+	// statistic. A real interaction η²_p needs within-cell repeats; the API
+	// must accept raw per-attempt scores first. 三必报变两必报（HV̄/MV̄ + 翻转数）。
 }
 
 // ModelScores holds one model's mean scores keyed by harness/profile.
 //
 // ModelScores 保存一个模型按 harness/profile 键控的均值分。
 type ModelScores struct {
-	Name           string             `json:"name"`
+	Name            string             `json:"name"`
 	ScoresByHarness map[string]float64 `json:"scores_by_harness"`
 }
 
@@ -235,50 +240,7 @@ func DecomposeVariance(models []ModelScores) (*VarianceDecomposition, error) {
 		}
 	}
 
-	// η²_p（交互项）：二元 ANOVA 的 SS_interaction/(SS_interaction+SS_error)。
-	// 固定效应口径，与 2605.23950 Eq.(2) 一致；小网格正偏——恒与 Reversals 配对
-	// 报告。
-	nM, nH := float64(len(grid)), float64(len(harnesses))
-	gm := 0.0
-	for mi := range grid {
-		for hi := range harnesses {
-			gm += grid[mi][hi]
-		}
-	}
-	gm /= nM * nH
-	var ssModel, ssHarness float64
-	rowMeans := make([]float64, len(grid))
-	colMeans := make([]float64, len(harnesses))
-	for mi := range grid {
-		m, _ := MeanAndStd(grid[mi])
-		rowMeans[mi] = m
-		ssModel += nH * (m - gm) * (m - gm)
-	}
-	for hi := range harnesses {
-		col := make([]float64, len(grid))
-		for mi := range grid {
-			col[mi] = grid[mi][hi]
-		}
-		m, _ := MeanAndStd(col)
-		colMeans[hi] = m
-		ssHarness += nM * (m - gm) * (m - gm)
-	}
-	var ssTotal, ssCells float64
-	for mi := range grid {
-		for hi := range harnesses {
-			d := grid[mi][hi] - gm
-			ssTotal += d * d
-			c := grid[mi][hi] - rowMeans[mi] - colMeans[hi] + gm
-			ssCells += c * c
-		}
-	}
-	ssInter := ssTotal - ssModel - ssHarness
-	if ssInter < 0 {
-		ssInter = 0
-	}
-	if ssInter+ssCells > 0 {
-		out.EtaSquaredP = ssInter / (ssInter + ssCells)
-	}
+	// （η²_p 计算已移除——见 struct 注释：单观测格下恒为 0.5 的废数。）
 	return out, nil
 }
 

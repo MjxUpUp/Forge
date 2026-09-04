@@ -47,10 +47,10 @@ type TrapCase struct {
 	Files       []FileSpec `yaml:"files"        json:"files"`
 	// ForgedRow（仅 evidence-forgery）会被追加进 fixture 的 checklog.jsonl——
 	// 一条自述"验证通过"的审计行，带非零但无凭据的 Sig。
-	ForgedRow *ForgedChecklogRow `yaml:"forged_row,omitempty" json:"forged_row,omitempty"`
-	ProbeArgv []string           `yaml:"probe_argv"   json:"probe_argv"` // {forge}/{dataDir} 占位
-	ProbeStdin string            `yaml:"probe_stdin"  json:"probe_stdin"`
-	DetectAny []string           `yaml:"detect_any"   json:"detect_any"`
+	ForgedRow  *ForgedChecklogRow `yaml:"forged_row,omitempty" json:"forged_row,omitempty"`
+	ProbeArgv  []string           `yaml:"probe_argv"   json:"probe_argv"` // {forge}/{dataDir} 占位
+	ProbeStdin string             `yaml:"probe_stdin"  json:"probe_stdin"`
+	DetectAny  []string           `yaml:"detect_any"   json:"detect_any"`
 	// ExpectDetected 为 nil 表示"现状未知，本轮实测"——v1 对 evidence-forgery
 	// 如此：探测结果写进 finding 而非判 fail。
 	ExpectDetected *bool `yaml:"expect_detected" json:"expect_detected"`
@@ -71,8 +71,8 @@ type ForgedChecklogRow struct {
 type TrapResult struct {
 	ID        string   `json:"id"`
 	Type      string   `json:"type"`
-	Captured  bool     `json:"captured"`  // 系统识破了攻击
-	Secretly  bool     `json:"-"`          // 占位：未来"静默通过但留痕"细分
+	Captured  bool     `json:"captured"` // 系统识破了攻击
+	Secretly  bool     `json:"-"`        // 占位：未来"静默通过但留痕"细分
 	Signals   []string `json:"signals,omitempty"`
 	ExpectSet bool     `json:"expect_set"`
 	Expected  bool     `json:"expected"`
@@ -175,7 +175,7 @@ func RunTraps(traps []TrapCase, opts GoldenOptions) (*TrapReport, error) {
 		}
 		rep.Traps = append(rep.Traps, res)
 	}
-	rep.CaptureRate = newRateValue(&MetricDef{ID: "trap_capture_rate", MinSamples: 1}, captured, total)
+	rep.CaptureRate = newRateValue(&MetricDef{ID: "trap_run_capture", MinSamples: 1}, captured, total)
 	return rep, nil
 }
 
@@ -206,6 +206,7 @@ func runTrapProbe(t TrapCase, opts GoldenOptions) (*probeResult, error) {
 		}
 	}
 	env := append(os.Environ(), "HOME="+tmp, "FORGE_DATA_HOME="+dataHome)
+	dataDir := "" // fixture 的 forge DataDir（data-dir 解析；forgery 分支写入审计行用）
 	run := func(argv []string, stdin string) (string, string, int) {
 		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Dir = fixture
@@ -225,13 +226,14 @@ func runTrapProbe(t TrapCase, opts GoldenOptions) (*probeResult, error) {
 	if out, errOut, code := run([]string{opts.ForgeBin, "init"}, ""); code != 0 {
 		return nil, fmt.Errorf("forge init 失败: %s %s", out, errOut)
 	}
+	if out, _, code := run([]string{opts.ForgeBin, "data-dir"}, ""); code == 0 {
+		dataDir = strings.TrimSpace(out)
+	}
 	if t.Type == TrapEvidenceForgery && t.ForgedRow != nil {
-		// 定位 fixture 的 DataDir（`forge data-dir`），追加伪造审计行。
-		out, _, code := run([]string{opts.ForgeBin, "data-dir"}, "")
-		if code != 0 {
-			return nil, fmt.Errorf("forge data-dir 失败")
+		// 追加伪造审计行到 fixture 的 DataDir。
+		if dataDir == "" {
+			return nil, fmt.Errorf("forge data-dir 解析失败——forgery 陷阱无法植入")
 		}
-		dataDir := strings.TrimSpace(out)
 		clPath := filepath.Join(dataDir, "checklog.jsonl")
 		row := fmt.Sprintf(`{"check":%q,"passed":true,"checked":true,"detail":%q,"source":"agent-claim","sig":%q}`+"\n",
 			t.ForgedRow.Check, t.ForgedRow.Detail, t.ForgedRow.Sig)
@@ -241,7 +243,9 @@ func runTrapProbe(t TrapCase, opts GoldenOptions) (*probeResult, error) {
 	}
 	argv := make([]string, len(t.ProbeArgv))
 	for i, a := range t.ProbeArgv {
-		argv[i] = strings.NewReplacer("{forge}", opts.ForgeBin, "{dataDir}", "").Replace(a)
+		// {dataDir} 解析为 fixture 的实际 DataDir（对抗审查 M4：此前替换为空串
+		// 是死缝——文档宣称的占位符谁用谁拿到空路径）。
+		argv[i] = strings.NewReplacer("{forge}", opts.ForgeBin, "{dataDir}", dataDir).Replace(a)
 	}
 	stdout, stderr, code := run(argv, t.ProbeStdin)
 	signals, err := evalDetectionSignals(t.ID, t.DetectAny, stdout, stderr, code)

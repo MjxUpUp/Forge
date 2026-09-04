@@ -82,18 +82,18 @@ func InitPrivateGolden(evalDir string) (string, error) {
 //
 // RotationRecord 是一次轮换的审计载荷。
 type RotationRecord struct {
-	RotatedAt time.Time          `json:"rotated_at"`
-	Retired   []string           `json:"retired"`
-	Invalid   []InvalidCase      `json:"invalid"`
-	Kept      int                `json:"kept"`
+	RotatedAt time.Time     `json:"rotated_at"`
+	Retired   []string      `json:"retired"`
+	Invalid   []InvalidCase `json:"invalid"`
+	Kept      int           `json:"kept"`
 }
 
 // InvalidCase is a case that failed oracle revalidation.
 //
 // InvalidCase 是未通过 oracle 复验的用例。
 type InvalidCase struct {
-	ID      string `json:"id"`
-	Reason  string `json:"reason"`
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
 }
 
 // RotatePrivateGolden runs one rotation: revalidate every surviving case
@@ -121,7 +121,7 @@ func RotatePrivateGolden(evalDir string, maxCases int, repoRoot string) (*Rotati
 	for _, c := range cases {
 		if reason := oracleRevalidate(c); reason != "" {
 			rec.Invalid = append(rec.Invalid, InvalidCase{ID: c.ID, Reason: reason})
-			if err := os.Rename(filepath.Join(dir, c.ID+".yaml"), filepath.Join(dir, c.ID+".retired-"+time.Now().UTC().Format("20060102")+".yaml")); err != nil {
+			if err := retireCase(dir, c.ID); err != nil {
 				return nil, "", err
 			}
 			rec.Retired = append(rec.Retired, c.ID)
@@ -134,7 +134,7 @@ func RotatePrivateGolden(evalDir string, maxCases int, repoRoot string) (*Rotati
 		// 失效淘汰同一出口。
 		sort.Slice(kept, func(i, j int) bool { return kept[i].ID < kept[j].ID })
 		for _, c := range kept[:excess] {
-			if err := os.Rename(filepath.Join(dir, c.ID+".yaml"), filepath.Join(dir, c.ID+".retired-"+time.Now().UTC().Format("20060102")+".yaml")); err != nil {
+			if err := retireCase(dir, c.ID); err != nil {
 				return nil, "", err
 			}
 			rec.Retired = append(rec.Retired, c.ID)
@@ -166,6 +166,19 @@ func RotatePrivateGolden(evalDir string, maxCases int, repoRoot string) (*Rotati
 // the next golden run's job — this only retires cases the current system can
 // no longer even express.
 //
+// retireCase 把用例移入 retired/ 子目录——留在同目录改名会被 LoadGoldenDir 的
+// *.yaml glob 捞回活跃集（对抗审查 I4：退役即复活，私有集治理失效）。
+//
+// retireCase moves a case into the retired/ subdirectory — renaming in place
+// gets globbed back into the active set by LoadGoldenDir's *.yaml pattern.
+func retireCase(dir, id string) error {
+	retiredDir := filepath.Join(dir, "retired")
+	if err := os.MkdirAll(retiredDir, 0o700); err != nil {
+		return err
+	}
+	return os.Rename(filepath.Join(dir, id+".yaml"), filepath.Join(retiredDir, id+".yaml"))
+}
+
 // oracleRevalidate 是结构级 oracle：用例必须在当前校验规则下仍可干净加载，且
 // 探测命令不引用未知占位符。语义有效性（门禁是否仍按标注行为）是下一次
 // golden run 的事——这里只淘汰当前系统已经无法表达的用例。

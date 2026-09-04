@@ -49,8 +49,8 @@ func TestEvalGoldenRunE2E(t *testing.T) {
 		t.Fatalf("golden run 应通过（exit %d）：%s", code, out)
 	}
 	// 16 用例集（auto-compile 2 + task-guard 5 + file-sentinel 5 + read-before-edit 2
-	// + hazard-guard 2 历史反哺）：precision 7/7、fpr 0/9、全部确定性重放一致。
-	if !strings.Contains(out, "precision 7/7") || !strings.Contains(out, "fpr 0/9") || !strings.Contains(out, "rbe-blocks-unread-edit") {
+	// + hazard-guard 2 历史反哺）：recall 7/7、fpr 0/9、全部确定性重放一致。
+	if !strings.Contains(out, "recall 7/7") || !strings.Contains(out, "fpr 0/9") || !strings.Contains(out, "rbe-blocks-unread-edit") {
 		t.Fatalf("输出缺 precision 基线/用例行: %s", out)
 	}
 	// 指纹一致性：二次运行不得因 manifest 拒绝。
@@ -90,5 +90,44 @@ func TestEvalReportE2E(t *testing.T) {
 	}
 	if !strings.Contains(out, "缺失证据") {
 		t.Fatalf("报告应含缺失证据节: %s", out)
+	}
+}
+
+// TestEvalTrapsE2E 钉住三陷阱的 capture 现状（两洞闭环后 3/3；任何一门检测被
+// 删除，本测试或 trap FINDING 立刻转红——对抗审查 I1：此前只有手工首跑无回归钉）。
+func TestEvalTrapsE2E(t *testing.T) {
+	out, _, code := runForge(t, repoRoot, "eval", "traps", "run")
+	if code != 0 {
+		t.Fatalf("traps run 应通过（exit %d）：%s", code, out)
+	}
+	if !strings.Contains(out, "capture 3/3") {
+		t.Fatalf("三陷阱应全部识破: %s", out)
+	}
+	if strings.Contains(out, "FINDING") {
+		t.Fatalf("闭环后不应有 FINDING: %s", out)
+	}
+}
+
+// TestEvalAuditVerifyE2E 钉住验签读侧：真实仓库历史行为 legacy/valid、零伪造、
+// 零重放（重放检测的回归钉——见 countReplayedStamps）。
+func TestEvalAuditVerifyE2E(t *testing.T) {
+	out, _, code := runForge(t, repoRoot, "eval", "audit-verify")
+	if code != 0 {
+		t.Fatalf("audit-verify 应通过（exit %d）：%s", code, out)
+	}
+	if !strings.Contains(out, "审计行验签") {
+		t.Fatalf("输出缺验签统计: %s", out)
+	}
+}
+
+// TestEvalResumeDrillE2E 钉住接续演练全套通过（含内联 git 身份修复——
+// 对抗审查 I1：干净机器上 git 身份缺失曾致 2/3 FAIL 而完成度声明仍为 3 条）。
+func TestEvalResumeDrillE2E(t *testing.T) {
+	out, _, code := runForge(t, repoRoot, "eval", "resume-drill")
+	if code != 0 {
+		t.Fatalf("resume-drill 应通过（exit %d）：%s", code, out)
+	}
+	if !strings.Contains(out, "3/3 passed") {
+		t.Fatalf("三条演练应全过: %s", out)
 	}
 }
