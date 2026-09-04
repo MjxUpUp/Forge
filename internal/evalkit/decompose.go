@@ -44,22 +44,27 @@ func (g *DecomposeGrid) Validate() error {
 }
 
 // DecomposeReport is the campaign's result: the grid means, the decomposition,
-// and the three deltas with their honest-interval framing.
+// and the three deltas with their honest-interval framing. Sandbox records the
+// execution backend — a scripted report is offline-stand-in data and must be
+// visibly labeled wherever consumed (adversarial review I6).
 //
 // DecomposeReport 是战役结果：网格均值、分解统计量，以及三档差值的区间式表述。
+// Sandbox 记录执行后端——scripted 报告是离线替身数据，任何消费面都必须可见地
+// 标注（对抗审查 I6）。
 type DecomposeReport struct {
-	GeneratedAt  time.Time               `json:"generated_at"`
-	Grid         DecomposeGrid           `json:"grid"`
-	Benchmark    string                  `json:"benchmark"`
-	Split        string                  `json:"split"`
-	ManifestFP   string                  `json:"manifest_fingerprint"`
-	CellMeans    map[string]float64      `json:"cell_means"`            // "profile|model" → mean pass
+	GeneratedAt   time.Time              `json:"generated_at"`
+	Grid          DecomposeGrid          `json:"grid"`
+	Benchmark     string                 `json:"benchmark"`
+	Split         string                 `json:"split"`
+	Sandbox       string                 `json:"sandbox"`
+	ManifestFP    string                 `json:"manifest_fingerprint"`
+	CellMeans     map[string]float64     `json:"cell_means"` // "profile|model" → mean pass
 	Decomposition *VarianceDecomposition `json:"decomposition"`
 	// DeltaFullOff / DeltaFullGates / DeltaGatesOff: per-model paired deltas with
 	// per-model values (interval statements — never single-side numbers).
-	DeltaFullOff     []ModelDelta `json:"delta_full_off"`
-	DeltaFullGates   []ModelDelta `json:"delta_full_gates"`
-	DeltaGatesOff    []ModelDelta `json:"delta_gates_off"`
+	DeltaFullOff   []ModelDelta `json:"delta_full_off"`
+	DeltaFullGates []ModelDelta `json:"delta_full_gates"`
+	DeltaGatesOff  []ModelDelta `json:"delta_gates_off"`
 }
 
 // ModelDelta is one model's paired difference between two profiles.
@@ -90,6 +95,7 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 		Grid:        grid,
 		Benchmark:   spec.Benchmark,
 		Split:       spec.Split,
+		Sandbox:     sandboxLabel(runner),
 		ManifestFP:  manifest.Fingerprint(),
 		CellMeans:   map[string]float64{},
 	}
@@ -151,13 +157,14 @@ func PersistDecomposeReport(evalDir string, repoRoot string, rep *DecomposeRepor
 	if rep.Decomposition.HvOverMvUndefined {
 		detailHV = "undefined(MV=0)"
 	}
+	_ = detailHV // 保留下方统一拼接
 	_ = checklog.Record(repoRoot, &checklog.Entry{
 		Check:   checklog.CheckEvalDecompose,
 		Passed:  true,
 		Checked: true,
-		Detail: fmt.Sprintf(`decompose: benchmark %s@%s profiles %d models %d HV/MV %s reversals %d/%d eta2 %.3f`,
-			rep.Benchmark, rep.Split, len(rep.Grid.Profiles), len(rep.Grid.Models),
-			detailHV, rep.Decomposition.Reversals, rep.Decomposition.PairComparisons, rep.Decomposition.EtaSquaredP),
+		Detail: fmt.Sprintf(`decompose: benchmark %s@%s sandbox=%s profiles %d models %d HV/MV %s reversals %d/%d（eta2 单观测格不可定义，未产出）`,
+			rep.Benchmark, rep.Split, rep.Sandbox, len(rep.Grid.Profiles), len(rep.Grid.Models),
+			detailHV, rep.Decomposition.Reversals, rep.Decomposition.PairComparisons),
 	})
 	return path, nil
 }
@@ -167,14 +174,17 @@ func PersistDecomposeReport(evalDir string, repoRoot string, rep *DecomposeRepor
 //
 // RenderDecomposeMarkdown 渲染区间式摘要（绝不出单侧数字；跨零差值如实表述）。
 func (r *DecomposeReport) RenderDecomposeMarkdown() string {
-	s := fmt.Sprintf("# 方差分解报告（%s@%s）\n\n", r.Benchmark, r.Split)
+	s := fmt.Sprintf("# 方差分解报告（%s@%s，sandbox=%s）\n\n", r.Benchmark, r.Split, r.Sandbox)
+	if r.Sandbox == SandboxScripted {
+		s += "> ⚠ sandbox=scripted——离线确定性替身数据，仅供管线自检，不得作为性能结论引用或入季度报告。\n\n"
+	}
 	if r.Decomposition.HvOverMvUndefined {
 		s += fmt.Sprintf("- HV̄/MV̄ = 未定义（模型方差为 0——模型在各 profile 同分，网格退化；跨 %d 个 profile × %d 个模型）\n", len(r.Grid.Profiles), len(r.Grid.Models))
 	} else {
 		s += fmt.Sprintf("- HV̄/MV̄ = %.2f（跨 %d 个 profile × %d 个模型）\n", r.Decomposition.HvOverMv, len(r.Grid.Profiles), len(r.Grid.Models))
 	}
 	s += fmt.Sprintf("- 排名翻转 %d / %d 个 model-pair×profile-pair 比较\n", r.Decomposition.Reversals, r.Decomposition.PairComparisons)
-	s += fmt.Sprintf("- η²_p（交互项，与翻转数配对报告）= %.3f\n\n", r.Decomposition.EtaSquaredP)
+	s += "- η²_p：单观测格（格均值输入）下数学不可定义（SS_error≡0）——未产出；接入格内重复数据后再补\n\n"
 	render := func(name string, deltas []ModelDelta) {
 		s += fmt.Sprintf("## %s\n\n", name)
 		for _, d := range deltas {

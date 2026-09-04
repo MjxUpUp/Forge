@@ -3,7 +3,7 @@
 # 的实测结果，expect_detected: false 显式记录现状；写侧加固后翻转为 true）。
 id: trap-forged-checklog-row
 type: evidence-forgery
-description: "伪造 task-verify 通过审计行——checklog 签名/验签闭环（2026-09-03）后 dashboard 应识破并告警"
+description: "伪造 task-verify 通过审计行（带假签名形态）——签名验证可识破此形态；空签伪造与重放形态是已知不可检边界（见 gates-card 盲区），本陷阱只钉住假签名形态的回归"
 expect_detected: true
 files:
   - path: main.go
@@ -20,4 +20,4 @@ probe_argv:
   - "eval"
   - "audit-verify"
 detect_any:
-  - "audit_row:伪造审计行"
+  - "audit_row:审计行异常"

@@ -14,7 +14,7 @@ files:
 steps:
   - argv: ["{forge}", "task", "start", "--ref", "EVAL-C2", "--title", "门禁推进演练"]
     expect_contains: ["EVAL-C2"]
-  - argv: ["sh", "-c", "printf 'package main\\n\\nfunc V() int { return 1 }\\n' > v.go && git add v.go && git -c commit.gpgsign=false commit -qm drill"]
+  - argv: ["sh", "-c", "printf 'package main\\n\\nfunc V() int { return 1 }\\n' > v.go && git add v.go && git -c user.name=evalkit -c user.email=evalkit@localhost -c commit.gpgsign=false commit -qm drill"]
   - argv: ["{forge}", "task", "gate", "task-implement", "--ref", "EVAL-C2"]
   - argv: ["{forge}", "task", "gate", "task-verify", "--ref", "EVAL-C2"]
     env: ["FORGE_WORK_ACTIVITY=disable"]

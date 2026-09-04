@@ -138,10 +138,10 @@ func (t BenchTask) HasDockerShape() bool { return t.Image != "" }
 //
 // BenchmarkManifest 是版本化、带指纹的任务集。
 type BenchmarkManifest struct {
-	ID         string     `yaml:"id"         json:"id"`
-	Version    string     `yaml:"version"    json:"version"`
-	Split      string     `yaml:"split"      json:"split"`
-	Tasks      []BenchTask `yaml:"tasks"     json:"tasks"`
+	ID          string      `yaml:"id"         json:"id"`
+	Version     string      `yaml:"version"    json:"version"`
+	Split       string      `yaml:"split"      json:"split"`
+	Tasks       []BenchTask `yaml:"tasks"     json:"tasks"`
 	fingerprint string
 }
 
@@ -188,13 +188,13 @@ func (m *BenchmarkManifest) Fingerprint() string { return m.fingerprint }
 //
 // TaskResult 是一次任务尝试的结果。
 type TaskResult struct {
-	TaskID   string  `json:"task_id"`
-	Pass     bool    `json:"pass"`
-	BudgetCut bool   `json:"budget_cut,omitempty"`
-	Error    string  `json:"error,omitempty"`
-	Tokens   int     `json:"tokens,omitempty"`
-	CostUSD  float64 `json:"cost_usd,omitempty"`
-	Duration time.Duration `json:"duration,omitempty"`
+	TaskID    string        `json:"task_id"`
+	Pass      bool          `json:"pass"`
+	BudgetCut bool          `json:"budget_cut,omitempty"`
+	Error     string        `json:"error,omitempty"`
+	Tokens    int           `json:"tokens,omitempty"`
+	CostUSD   float64       `json:"cost_usd,omitempty"`
+	Duration  time.Duration `json:"duration,omitempty"`
 }
 
 // TaskRunner executes one task attempt under a spec. Implementations:
@@ -247,9 +247,7 @@ func (ExecRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (Ta
 	}
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, "sh", "-c", task.Command)
-	cmd.Env = append(os.Environ(),
-		"FORGE_EVAL_PROFILE="+string(spec.Profile),
-		"FORGE_EVAL_MODEL="+spec.Model)
+	cmd.Env = minimalEvalEnv(spec)
 	out, err := cmd.CombinedOutput()
 	res.Duration = time.Since(start)
 	_ = out
@@ -269,12 +267,12 @@ func (ExecRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (Ta
 //
 // Attempt 是一次运行内的一个（任务， 重放）结果。
 type Attempt struct {
-	TaskID  string `json:"task_id"`
-	Repeat  int    `json:"repeat"`
-	Pass    bool   `json:"pass"`
-	BudgetCut bool `json:"budget_cut,omitempty"`
-	Tokens  int    `json:"tokens,omitempty"`
-	CostUSD float64 `json:"cost_usd,omitempty"`
+	TaskID    string  `json:"task_id"`
+	Repeat    int     `json:"repeat"`
+	Pass      bool    `json:"pass"`
+	BudgetCut bool    `json:"budget_cut,omitempty"`
+	Tokens    int     `json:"tokens,omitempty"`
+	CostUSD   float64 `json:"cost_usd,omitempty"`
 }
 
 // Scorecard is the run's honest summary. The header is the four-tuple + the
@@ -284,23 +282,23 @@ type Attempt struct {
 // Scorecard 是运行的诚实摘要。头部即四元组 + 评测对象声明（ABC III.6）——缺
 // 头部的 scorecard 拒绝渲染（fail-closed）。
 type Scorecard struct {
-	Spec         RunSpec   `json:"spec"`
-	ManifestFP   string    `json:"manifest_fingerprint"`
-	GeneratedAt  time.Time `json:"generated_at"`
+	Spec        RunSpec   `json:"spec"`
+	ManifestFP  string    `json:"manifest_fingerprint"`
+	GeneratedAt time.Time `json:"generated_at"`
 	// Sandbox states the execution backend: scripted / exec / docker /
 	// fallback-exec. fallback-* means the primary backend was unavailable and
 	// the scorecard is annotating the degradation per the design contract.
 	//
 	// Sandbox 声明执行后端：scripted / exec / docker / fallback-exec。
 	// fallback-* 表示主后端不可用，scorecard 按设计契约标注降级。
-	Sandbox      string    `json:"sandbox"`
-	Header       string    `json:"header"` // 渲染契约的第一行
-	Pass1        RateValue `json:"pass1"`
+	Sandbox      string       `json:"sandbox"`
+	Header       string       `json:"header"` // 渲染契约的第一行
+	Pass1        RateValue    `json:"pass1"`
 	PassKCurve   []PassKPoint `json:"pass_k_curve"`
-	TotalTokens  int       `json:"total_tokens"`
-	TotalCostUSD float64   `json:"total_cost_usd"`
-	BudgetCuts   int       `json:"budget_cuts"`
-	Note         string    `json:"note,omitempty"`
+	TotalTokens  int          `json:"total_tokens"`
+	TotalCostUSD float64      `json:"total_cost_usd"`
+	BudgetCuts   int          `json:"budget_cuts"`
+	Note         string       `json:"note,omitempty"`
 }
 
 // PassKPoint is one point of the pass^k curve (k 次全对概率的估计).
@@ -358,22 +356,24 @@ func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attemp
 	sort.Strings(taskIDs)
 	passFirst := 0
 	var curve []PassKPoint
+	// pass^k 用组合无偏估计 E_task[C(c,k)/C(n,k)]（τ-bench 同式）——此前的"前 k
+	// 次全对"实现系统性低估且对重放顺序敏感（对抗审查 M9）。
 	maxK := spec.Repeats
 	for k := 1; k <= maxK; k++ {
-		allK := 0
+		sum := 0.0
 		for _, id := range taskIDs {
-			allPass := true
-			for _, p := range byTask[id][:k] {
-				if !p {
-					allPass = false
-					break
+			n := len(byTask[id])
+			c := 0
+			for _, p := range byTask[id] {
+				if p {
+					c++
 				}
 			}
-			if allPass {
-				allK++
+			if c >= k {
+				sum += combRatio(c, k, n)
 			}
 		}
-		curve = append(curve, PassKPoint{K: k, Value: float64(allK) / float64(len(taskIDs))})
+		curve = append(curve, PassKPoint{K: k, Value: sum / float64(len(taskIDs))})
 	}
 	for _, id := range taskIDs {
 		if len(byTask[id]) > 0 && byTask[id][0] {
@@ -383,7 +383,7 @@ func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attemp
 	sc := &Scorecard{
 		Spec: spec, ManifestFP: manifest.Fingerprint(), GeneratedAt: time.Now().UTC(),
 
-		Pass1: newRateValue(&MetricDef{ID: "e2e_pass1", MinSamples: 1}, passFirst, len(taskIDs)),
+		Pass1:      newRateValue(&MetricDef{ID: "e2e_run_pass1", MinSamples: 1}, passFirst, len(taskIDs)),
 		PassKCurve: curve, TotalTokens: tokens, TotalCostUSD: cost, BudgetCuts: cuts,
 	}
 	sc.Header = fmt.Sprintf("profile=%s model=%s benchmark=%s@%s forge_ref=%s sandbox=%s — 本分数为 forge×model 组合评测（评测对象声明，ABC III.6）",
@@ -392,6 +392,20 @@ func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attemp
 		sc.Note = fmt.Sprintf("预算截断 %d 次——截断任务计入 budget-cut，未计入 fail", cuts)
 	}
 	return sc
+}
+
+// combRatio returns C(c,k)/C(n,k) for the pass^k unbiased estimator.
+//
+// combRatio 返回 pass^k 无偏估计用的 C(c,k)/C(n,k)。
+func combRatio(c, k, n int) float64 {
+	if k > n || c < k {
+		return 0
+	}
+	r := 1.0
+	for i := 0; i < k; i++ {
+		r *= float64(c-i) / float64(n-i)
+	}
+	return r
 }
 
 // PersistScorecard writes the scorecard JSON and the eval-run audit row.
@@ -414,7 +428,7 @@ func PersistScorecard(evalDir string, repoRoot string, sc *Scorecard) (string, e
 		Check:   checklog.CheckEvalRun,
 		Passed:  true,
 		Checked: true,
-		Detail:  fmt.Sprintf(`eval run: %s pass@1 %.3f tokens %d budget_cuts %d`, sc.Header, sc.Pass1.Value, sc.TotalTokens, sc.BudgetCuts),
+		Detail:  fmt.Sprintf(`eval run: %s pass@1 %.3f tokens %d budget_cuts %d`, sc.Header, sc.Pass1.Value, sc.TotalTokens, sc.BudgetCuts) + fmt.Sprintf(` sandbox=%s`, sc.Sandbox),
 	})
 	return path, nil
 }
@@ -425,7 +439,6 @@ func PersistScorecard(evalDir string, repoRoot string, sc *Scorecard) (string, e
 // SmokeManifestEnv 是武装真实（非 scripted）基准执行的逃生舱——外部效应绝不
 // 隐式触发。
 const SmokeManifestEnv = "FORGE_EVAL_SMOKE"
-
 
 // dockerAvailableFunc is the indirection seam for Docker detection (tests stub
 // it; production calls `docker info` once per process and caches).
@@ -467,10 +480,16 @@ type DockerRunner struct{}
 // SandboxLabel 实现沙箱标注。
 func (DockerRunner) SandboxLabel() string { return "docker" }
 
-// RunTask implements TaskRunner.
+// RunTask implements TaskRunner. Mixed manifests are dispatched per task:
+// a command-suite task inside a docker-selected run falls back to ExecRunner
+// instead of executing against an empty image (adversarial review I5).
 //
-// RunTask 实现 TaskRunner。
-func (DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (TaskResult, error) {
+// RunTask 实现 TaskRunner。混合 manifest 按任务分派：docker 被选中的运行里，
+// 纯命令任务回退 ExecRunner，而不是对着空镜像执行（对抗审查 I5）。
+func (d DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (TaskResult, error) {
+	if !task.HasDockerShape() {
+		return ExecRunner{}.RunTask(ctx, spec, task)
+	}
 	res := TaskResult{TaskID: task.ID}
 	if !DockerAvailable() {
 		return res, fmt.Errorf("evalkit: docker 不可用——容器任务 %s 无法执行", task.ID)
@@ -486,10 +505,12 @@ func (DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (
 		inner += " && "
 	}
 	inner += task.TestCmd
-	cmd := exec.CommandContext(ctx, "docker", "run", "--rm", task.Image, "sh", "-c", inner)
-	cmd.Env = append(os.Environ(),
-		"FORGE_EVAL_PROFILE="+string(spec.Profile),
-		"FORGE_EVAL_MODEL="+spec.Model)
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
+		"-e", "FORGE_EVAL_PROFILE="+string(spec.Profile),
+		"-e", "FORGE_EVAL_MODEL="+spec.Model,
+		"--network", "none", // 冻结任务自包含；评测容器默认无网（需要网的任务在 manifest 显式声明前不得静默放行）
+		task.Image, "sh", "-c", inner)
+	cmd.Env = minimalEvalEnv(spec)
 	_, err := cmd.CombinedOutput()
 	res.Duration = time.Since(start)
 	switch {
@@ -504,14 +525,30 @@ func (DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (
 	return res, nil
 }
 
+// minimalEvalEnv is the whitelist passed to benchmark commands — full
+// os.Environ() would hand manifest-controlled processes every secret in the
+// operator's environment (adversarial review M1).
+//
+// minimalEvalEnv 是传给基准命令的环境白名单——完整 os.Environ() 会把操作者
+// 环境里的全部密钥交给 manifest 控制的进程（对抗审查 M1）。
+func minimalEvalEnv(spec RunSpec) []string {
+	return []string{
+		"PATH=" + os.Getenv("PATH"),
+		"LANG=" + os.Getenv("LANG"),
+		"TMPDIR=" + os.Getenv("TMPDIR"),
+		"FORGE_EVAL_PROFILE=" + string(spec.Profile),
+		"FORGE_EVAL_MODEL=" + spec.Model,
+	}
+}
+
 // Sandbox labels (single source of truth for the scorecard annotation).
 //
 // 沙箱标签（scorecard 标注的单一真相源）。
 const (
-	SandboxScripted     = "scripted"       // 确定性离线替身
-	SandboxExec         = "exec"           // 命令套件真实执行
-	SandboxDocker       = "docker"         // 容器内执行（Terminal-Bench 冻结任务）
-	SandboxFallbackExec = "fallback-exec"  // 容器不可用，回退命令套件（降级标注）
+	SandboxScripted     = "scripted"      // 确定性离线替身
+	SandboxExec         = "exec"          // 命令套件真实执行
+	SandboxDocker       = "docker"        // 容器内执行（Terminal-Bench 冻结任务）
+	SandboxFallbackExec = "fallback-exec" // 容器不可用，回退命令套件（降级标注）
 )
 
 // sandboxLabeled is implemented by runners that declare their sandbox.

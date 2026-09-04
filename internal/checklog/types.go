@@ -254,6 +254,14 @@ const (
 	//
 	// CheckEvalResumeDrill 记录一批接续演练（`forge eval resume-drill`）。观察类。
 	CheckEvalResumeDrill CheckName = "eval-resume-drill"
+	// CheckEvalAuditForged records an audit-row integrity failure surfaced by
+	// `forge eval audit-verify` (forged signature or replayed stamp). Security-
+	// adjacent observation — never task verification; excluded from evidence-
+	// strength bucketing.
+	//
+	// CheckEvalAuditForged 记录 `forge eval audit-verify` 上浮的审计行完整性失败
+	//（签名伪造或戳重放）。安全邻接观察——绝非任务验证，排除出证据强度分桶。
+	CheckEvalAuditForged CheckName = "eval-audit-forged"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
