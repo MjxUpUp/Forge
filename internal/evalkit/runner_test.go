@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -204,21 +205,25 @@ func TestRotatePrivateGoldenPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	posix := runtime.GOOS != "windows" // Windows 无 POSIX 权限位：权限断言仅 POSIX（生产侧同步降级，见 rotate.go）
 	// 目录未建用例：加载报错（轮换要求可解析集合）。
 	if _, _, err := RotatePrivateGolden(evalDir, 10, t.TempDir()); err == nil {
 		t.Fatal("空私有集应报错")
 	}
-	// 写一个 0644 的用例 → 权限检查拒绝。
+	// 写一个 0644 的用例 → 权限检查拒绝（仅 POSIX——Windows chmod 无效果且
+	// 生产侧已降级为存在性检查）。
 	caseYaml := "id: p1\ngate: g\nkind: clean\nexpect: clean\ndescription: d\nprobe_argv: [x]\ndetect_any: [exit_nonzero]\n"
 	if err := os.WriteFile(filepath.Join(dir, "p1.yaml"), []byte(caseYaml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := RotatePrivateGolden(evalDir, 10, t.TempDir()); err == nil || !strings.Contains(err.Error(), "0600") {
-		t.Fatalf("0644 私有用例应被拒: %v", err)
-	}
-	// 修正为 0600 → 轮换保留。
-	if err := os.Chmod(filepath.Join(dir, "p1.yaml"), 0o600); err != nil {
-		t.Fatal(err)
+	if posix {
+		if _, _, err := RotatePrivateGolden(evalDir, 10, t.TempDir()); err == nil || !strings.Contains(err.Error(), "0600") {
+			t.Fatalf("0644 私有用例应被拒: %v", err)
+		}
+		// 修正为 0600 → 轮换保留。
+		if err := os.Chmod(filepath.Join(dir, "p1.yaml"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	rec, _, err := RotatePrivateGolden(evalDir, 10, t.TempDir())
 	if err != nil {
@@ -261,6 +266,8 @@ func TestBuildQuarterlyReport(t *testing.T) {
 func TestLoadResumeDrillsAndRun(t *testing.T) {
 	dir := t.TempDir()
 	bin := writeFakeForge(t, dir, `echo "start EVAL-DRILL-9 $*"; exit 0`)
+	// 步骤只用 {forge} 序列（无 sh/printf——Windows 无 POSIX shell；
+	// 假 forge 对任意子命令输出同一标记串，跨平台等价）。
 	drillYaml := `id: d1
 description: fake
 steps:

@@ -11,6 +11,8 @@ package evalkit
 // cases — non-revalidatable cases retire).
 
 import (
+	"runtime"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,13 +36,24 @@ func PrivateGoldenDir(evalDir string) string {
 	return filepath.Join(evalDataDir(evalDir), PrivateGoldenDirName)
 }
 
-// CheckPrivatePermissions enforces 0600 on the private dir and its case files.
-// Mode mismatch is a hard rejection — a leaky private set poisons both the
-// anti-overfitting signal and any public claim built on it.
+// CheckPrivatePermissions enforces 0700/0600 on the private dir and its case
+// files (POSIX). Mode mismatch is a hard rejection — a leaky private set
+// poisons both the anti-overfitting signal and any public claim built on it.
+// Windows has no POSIX permission bits (modes read back as 0777) — the check
+// degrades to existence-only there; ACL hardening is the Windows-side
+// follow-up, disclosed in gates-card blind spots.
 //
-// CheckPrivatePermissions 强制私有目录与用例文件 0600。权限不符即硬拒绝——
-// 泄漏的私有集同时毒化防过拟合信号与建立在它之上的公开声明。
+// CheckPrivatePermissions 强制私有目录与用例文件 0700/0600（POSIX）。权限不符即
+// 硬拒绝——泄漏的私有集同时毒化防过拟合信号与公开声明。Windows 无 POSIX 权限位
+// （模式读回恒 0777）——在该平台降级为仅存在性检查；ACL 加固是 Windows 侧后续，
+// 已披露进 gates-card 盲区。
 func CheckPrivatePermissions(dir string) error {
+	if runtime.GOOS == "windows" {
+		if _, err := os.Stat(dir); err != nil {
+			return fmt.Errorf("evalkit: 私有 golden 目录不存在（先 init）： %s", dir)
+		}
+		return nil
+	}
 	info, err := os.Stat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
