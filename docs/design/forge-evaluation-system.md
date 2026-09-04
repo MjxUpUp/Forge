@@ -1,7 +1,7 @@
 # Forge 自评测体系（Forge Evaluation System）设计方案
 
 状态：设计稿 v3（合成 v1 端到端轨与 v2 治理轨；v1/v2 均废弃。建议分支 `feat/forge-eval-p0-p4`，按 P0→P4 分期合入）
-依据：调研报告《Harness 评测深度调研》2026-09-03（`~/.forge/research/harness-eval-20260903-0942/report.md`，已发布飞书）。
+依据：调研报告《Harness 评测深度调研》2026-09-03（本地调研工件，~/.forge/research/harness-eval-*/report.md）。
 
 ---
 

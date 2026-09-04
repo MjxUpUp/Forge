@@ -11,8 +11,9 @@
 - **human 侧（ground truth）**：维护者判定 6 pass / 2 fail（辅助锚：
   `forge docs lint`——注意首轮实测发现 lint 对"无证据结论"语义弱，两份坏样本
   只触发建议不触发硬失败，human 判定因此以人工为准）。
-- **judge 侧**：GLM-5.3 agent 按 docgate 可读性 rubric 独立评 3 轮（0-100，
-  threshold=75）。
+- **judge 侧**：维护者会话内的 LLM 评审者按 docgate 可读性 rubric 独立评 3 轮
+  （0-100，threshold=75）。judge 具体型号/版本记录于本地运行日志，公开仓库
+  脱敏（脱敏纪律：公开工件不落维护者模型栈/内部路径/外部系统名）。
 
 ## 首轮结果（scores-v1.json）
 

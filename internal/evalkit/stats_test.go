@@ -48,6 +48,8 @@ func TestReplayAgreement(t *testing.T) {
 }
 
 // golden 网格直接取自 arXiv 2605.23950 §4.2 的 3×3 实验数值——数学段与文献对表。
+// 模型名 glm/gpt/kimi 是论文公开发表的实验对象（文献引用，非维护者技术栈——
+// 脱敏纪律不适用于学术对表数据）。
 func TestDecomposeVariancePaperGrid(t *testing.T) {
 	models := []ModelScores{
 		{Name: "glm", ScoresByHarness: map[string]float64{"H1": 52.5, "H2": 56.5, "H3": 65.5}},
