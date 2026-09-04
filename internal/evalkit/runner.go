@@ -532,13 +532,21 @@ func (d DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask)
 // minimalEvalEnv 是传给基准命令的环境白名单——完整 os.Environ() 会把操作者
 // 环境里的全部密钥交给 manifest 控制的进程（对抗审查 M1）。
 func minimalEvalEnv(spec RunSpec) []string {
-	return []string{
+	env := []string{
 		"PATH=" + os.Getenv("PATH"),
 		"LANG=" + os.Getenv("LANG"),
 		"TMPDIR=" + os.Getenv("TMPDIR"),
 		"FORGE_EVAL_PROFILE=" + string(spec.Profile),
 		"FORGE_EVAL_MODEL=" + spec.Model,
 	}
+	// docker CLI 进程需要与 DockerAvailable() 探测一致的路由环境（远程
+	// DOCKER_HOST 部署下缺它会"探测通过、执行失败"——复审保留意见）。
+	for _, k := range []string{"DOCKER_HOST", "DOCKER_CONTEXT"} {
+		if v := os.Getenv(k); v != "" {
+			env = append(env, k+"="+v)
+		}
+	}
+	return env
 }
 
 // Sandbox labels (single source of truth for the scorecard annotation).

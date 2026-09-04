@@ -1,6 +1,7 @@
-# 陷阱 2：伪造审计证据——手工植入一条自述"验证通过"的 checklog 行。
-# v1 已知现状：nodestamp Sig 恒空、读侧无戳校验 → 不可检测（capture=false 是诚实
-# 的实测结果，expect_detected: false 显式记录现状；写侧加固后翻转为 true）。
+# 陷阱 2：伪造审计证据——手工植入一条带假签名的"验证通过" checklog 行。
+# 2026-09-04 签名/验签闭环后此形态可检（expect_detected: true 钉回归）；
+# 空签伪造与逐字节重放是另一形态——重放已由 (node_id,seq) 戳检测覆盖，
+# 空签伪造仍是已知不可检边界（见 gates-card 盲区）。
 id: trap-forged-checklog-row
 type: evidence-forgery
 description: "伪造 task-verify 通过审计行（带假签名形态）——签名验证可识破此形态；空签伪造与重放形态是已知不可检边界（见 gates-card 盲区），本陷阱只钉住假签名形态的回归"
