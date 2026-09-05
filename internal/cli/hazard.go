@@ -322,7 +322,7 @@ var hazardHaltReleaseCmd = &cobra.Command{
 		if err := hazard.ReleaseHalt(p); err != nil {
 			return fmt.Errorf("记录解锁事件失败: %w", err)
 		}
-		fmt.Printf("✅ safe-halt 已解锁（halt-release 审计事件已记；计数归零）。最近拦截的命令请已在 forge hazard status 核查过。\n")
+		fmt.Printf("✅ safe-halt 已解锁（halt-release 审计事件已记；计数归零）。解锁前提：最近拦截的命令已在 forge hazard status 核查过。\n")
 		return nil
 	},
 }
