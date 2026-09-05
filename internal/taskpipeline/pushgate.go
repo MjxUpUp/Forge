@@ -63,6 +63,7 @@ func RunPushGate(root, ref string) PushGateResult {
 			Check: checklog.CheckEscapeHatch, Passed: true, Checked: true,
 			Level:  checklog.LevelWarn,
 			Detail: `escape-hatch: push gate bypassed (FORGE_GATE_PUSH=disable)`,
+			Meta:   map[string]string{"escape.gate": "gate-push", "escape.reason": checklog.EscapeReasonEnv, "escape.owner": "env"},
 		})
 		writePushSnapshot(root, res)
 		return res

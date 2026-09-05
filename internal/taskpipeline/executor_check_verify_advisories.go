@@ -76,6 +76,7 @@ func checkSkillDecisions(root string, state *TaskState, gitChanged []string) err
 				Level:   checklog.LevelWarn,
 				TaskRef: state.TaskRef,
 				Detail:  `escape-hatch: skill-decisions guardrail bypassed (per-task override or FORGE_SKILL_DECISIONS=disable): ` + strings.Join(blocking, ", "),
+				Meta:    map[string]string{"escape.gate": "skill-decisions", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": state.TaskRef},
 			})
 			// escape 文案专用：blocking 集是改了 SKILL.md（行为契约）的 skill，非辅助资源——
 			// 不能复用 formatSkillDecisionsAdvisory（那是辅助资源/trivial 场景文案，语义错位）。

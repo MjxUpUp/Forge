@@ -85,6 +85,9 @@ type TelemetryReport struct {
 	Rates           []RateValue           `json:"rates"`    // 汇总比率
 	DictionaVersion int                   `json:"dictionary_version"`
 	SignatureAudit  SignatureAuditSummary `json:"signature_audit"`
+	// EscapeInventory 是逃生舱库存与 unfulfilled-waiver 复查（mechanism-hardening
+	// P1-2，expect 语义 v1）——按 gate 聚合豁免行 + 永久化/候选两个信号。
+	EscapeInventory *EscapeInventory `json:"escape_inventory,omitempty"`
 }
 
 // WeekRate is one weekly bucket of gate-fire counts (blocked/advisory).
@@ -188,6 +191,10 @@ func Aggregate(root string, dict *Dictionary, now time.Time) (*TelemetryReport, 
 		}
 	}
 	rate("gate_escape_rate", escapeCount, rep.Sessions)
+
+	// 逃生舱库存（P1-2）：同一份 entries 已在手上，聚合零额外 IO。
+	inv := BuildEscapeInventory(entries, now)
+	rep.EscapeInventory = &inv
 	count("off_churn", offCount)
 	rate("self_gate_pass_rate", verifyPass, verifyTotal)
 	// wait_turns：v1 无生产数据源——如实 insufficient（0 与无数据是不同事实）。
