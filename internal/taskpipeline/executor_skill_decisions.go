@@ -61,6 +61,29 @@ func skillDecisionsBlockingAffected(changed []string) []string {
 	return out
 }
 
+// skillDirFromSkillPath 从变更路径解析 (skill 名, 路径剩余部分, 是否命中 skill 树)。
+// 与 skillNameFromSkillPath 同两棵树识别，但接受任意文件（供 advisory 面用）。
+func skillDirFromSkillPath(f string) (string, string, bool) {
+	rest := ""
+	switch {
+	case strings.HasPrefix(f, "skills/"):
+		rest = strings.TrimPrefix(f, "skills/")
+	case strings.HasPrefix(f, "plugins/"):
+		i := strings.Index(f, "/skills/")
+		if i < 0 {
+			return "", "", false
+		}
+		rest = f[i+len("/skills/"):]
+	default:
+		return "", "", false
+	}
+	i := strings.IndexByte(rest, '/')
+	if i < 0 {
+		return "", "", false
+	}
+	return rest[:i], rest[i+1:], true
+}
+
 // skillNameFromSkillPath 从变更路径解析 (skill 名, 是否 SKILL.md 顶层契约)。
 // 识别两棵树：canonical skills/<name>/SKILL.md 与 pack plugins/<pack>/skills/<name>/SKILL.md。
 func skillNameFromSkillPath(f string) (string, bool) {
@@ -100,25 +123,19 @@ func skillDecisionsAdvisoryAffected(changed []string) []string {
 	seen := make(map[string]bool)
 	for _, f := range changed {
 		f = filepath.ToSlash(f)
-		if !strings.HasPrefix(f, "skills/") {
-			continue
-		}
-		rest := strings.TrimPrefix(f, "skills/")
-		i := strings.IndexByte(rest, '/')
-		if i < 0 {
-			continue
-		}
-		name := rest[:i]
-		if name == "" || seen[name] {
+		name, dir, ok := skillDirFromSkillPath(f)
+		if !ok || name == "" || seen[name] {
 			continue
 		}
 		if bset[name] {
 			continue
 		}
-		// 只排除 decisions.md（记录载体，非改动信号）。canonical SKILL.md（skills/<name>/SKILL.md）
+		// 只排除 decisions.md（记录载体，非改动信号）。canonical SKILL.md（<tree>/<name>/SKILL.md）
 		// 的 skill 已被 bset 覆盖（在 blocking 集，上面 continue 了），到不了这里；子目录 SKILL.md
-		// （skills/<name>/archive/SKILL.md 等非 canonical）不应排除——走 advisory 避免零信号溜过。
-		base := filepath.Base(f)
+		// （<tree>/<name>/archive/SKILL.md 等非 canonical）不应排除——走 advisory 避免零信号溜过。
+		// 2026-09 拆包：advisory 面与 blocking 面同步扩双树（canonical + plugins pack）——
+		// 拆包后 pack 内辅助资源改动不得零信号（对抗审查 should-fix）。
+		base := filepath.Base(dir)
 		if base == "decisions.md" {
 			continue
 		}

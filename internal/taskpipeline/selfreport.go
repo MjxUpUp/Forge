@@ -190,8 +190,10 @@ func CheckSelfReport(root string, state *TaskState) SelfReportResult {
 	if len(tests)+len(builds) == 0 {
 		return res // 无验证类声称 → 无可比对（描述性 checklist 不设障）
 	}
-	// 诚实边界：toollog 整体无数据 = 宿主 hook 遥测未接，比对无从谈起。
-	if !toolusage.ToollogHasData(root) {
+	// 诚实边界：active 与归档全空 = 宿主 hook 遥测未接，比对无从谈起。探测用
+	// ToollogAnyData（含归档）——另一 task start 归档 active 后仅看 active 会误判
+	// "遥测未接"而静默跳过（对抗审查 should-fix）。
+	if !toolusage.ToollogAnyData(root) {
 		return res
 	}
 	calls, err := toolusage.LoadForTaskAll(root, state.TaskRef)

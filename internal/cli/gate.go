@@ -103,7 +103,9 @@ func runGatePush(cmd *cobra.Command, args []string) error {
 		fmt.Println("（--dry-run：不阻断，仅报告）")
 		return nil
 	}
-	return fmt.Errorf("BLOCKED: 推送边界检查未通过——修复上述问题后重推；紧急放行（留痕）: FORGE_GATE_PUSH=disable")
+	// 文档承诺 exit 2（BLOCKED 契约）：结论已打印，走 hardExitError 哨兵让 CI
+	// 按退出码判定的消费方读对（对抗审查 should-fix；与 docs lint 同机制）。
+	return errHardExit
 }
 
 func runGateHooks(cmd *cobra.Command, args []string) error {
