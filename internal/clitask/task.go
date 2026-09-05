@@ -42,6 +42,9 @@ func init() {
 	// StringArray（非 StringSlice）：cobra/pflag 的 StringSlice 默认按逗号切分，会把
 	// 含逗号的命令拆坏；StringArray 每个 --accept 整条不切。验收标准是完整"run :: expected"串。
 	taskStartCmd.Flags().StringArray("accept", nil, `验收标准（可重复 --accept）：格式 "run :: expected"（expected=输出子串）或裸 "run"（只看退出码 0）。forge task verify-acceptance 实跑回扣。run 为 go test 且带 expected 而未加 -v 时自动补 -v（否则无 PASS 行永不匹配）`)
+	// held-out 套件（SpecBench 双套件思想）：保留集不进 TaskState（task status 不展示），
+	// 登记到 DataDir 侧车；可见验收全过而 held-out 挂 = test-generalization gap。
+	taskStartCmd.Flags().String("heldout", "", `held-out 保留验收集（文件路径，每行一条 "run :: expected"，# 注释）：登记进 DataDir 侧车不进任务状态；verify-acceptance 与 task-complete 实跑，可见全过而保留集挂即 BLOCKED（SpecBench gap 形态）`)
 	// PlanScope：开工前声明计划改动的文件白名单（规划前置 → 可度量契约）。
 	// 支持精确路径/glob/目录前缀。advisory：实改超出声明记
 	// scope-drift（checklog），不阻塞（变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract）。
@@ -416,6 +419,29 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			}
 		}
 		state.Acceptance = append(state.Acceptance, taskpipeline.ParseAcceptance(invRaw)...)
+	}
+
+	// held-out 验收套件（focus-batches §2a，SpecBench 双套件）：登记到 DataDir 侧车
+	// 而非 TaskState——task status/trace 不展示，agent 常读的任务状态里看不到保留集。
+	// verify-acceptance / task-complete 实跑并记 gap（可见全过而 held-out 挂 =
+	// test-generalization gap，cheat-suspect）。
+	if heldoutFile, _ := cmd.Flags().GetString("heldout"); heldoutFile != "" {
+		raw, err := os.ReadFile(heldoutFile)
+		if err != nil {
+			return fmt.Errorf("读取 --heldout %q 失败: %w", heldoutFile, err)
+		}
+		var lines []string
+		for _, l := range strings.Split(string(raw), "\n") {
+			if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+				lines = append(lines, l)
+			}
+		}
+		if len(lines) == 0 {
+			return fmt.Errorf("--heldout 文件 %q 无有效条目（每行一条 \"run :: expected\"，# 注释）", heldoutFile)
+		}
+		if err := taskpipeline.SaveHeldout(root, state.TaskRef, taskpipeline.ParseAcceptance(lines)); err != nil {
+			return fmt.Errorf("登记 held-out 套件失败: %w", err)
+		}
 	}
 
 	// 持久化 PlanScope（开工前声明的计划改动白名单）：把规划前置变成可度量契约，

@@ -112,6 +112,14 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
+	// held-out pre-flight（focus-batches §2a）：登记了保留集的任务在完成边界复跑
+	// 双套件——防"验收后改码"staleness 的最强形态就是 complete 时再跑一次测试。
+	// 可见全过而保留集挂 = test-generalization gap（SpecBench 形态）→ 拒绝完成。
+	if ok, reasons := taskpipeline.CheckHeldoutFresh(root, state); !ok {
+		return fmt.Errorf(`held-out gap 未通过：%s——可见验收过了但保留集没过（测试泛化缺口，修真实行为而非保留集）。逃生（落 checklog 审计）: FORGE_HELDOUT=disable`,
+			strings.Join(reasons, `; `))
+	}
+
 	// doc pre-flight（输出→回检循环的流程节点）：任务变更了 markdown 产物时，
 	// complete 前 L1 确定性 lint 全过 + L2 回检证据（DocReview fresh/Passed/
 	// ≥75 分）+ 零未决 Critical。无文档产物放行；逃生舱与 acceptance 对称。
