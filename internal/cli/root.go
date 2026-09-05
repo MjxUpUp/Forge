@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hookdispatch"
@@ -120,6 +121,11 @@ func Execute() {
 		// 2=硬失败）相对旧的 RunE 内 os.Exit(2) 零变化。
 		var hex *hardExitError
 		if errors.As(err, &hex) {
+			os.Exit(2)
+		}
+		// cliskills 下游命令的同款契约（skills inventory --verify 的漂移阻断）：
+		// 哨兵在 cliskills 导出，本处映射——依赖方向 cli→cliskills 合法。
+		if errors.Is(err, cliskills.ErrHardExit) {
 			os.Exit(2)
 		}
 		fmt.Fprintln(os.Stderr, err)
