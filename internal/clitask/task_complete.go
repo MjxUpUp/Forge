@@ -122,6 +122,16 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
+	// self-report pre-flight（focus-batches §1b，方向 B）：checklist 已勾选项声称
+	// 执行过的验证类命令 vs toollog 实测 Bash 集。测试类声称任务全程零匹配 =
+	// inaccurate self-reporting 形态（arXiv 2605.29442）→ 拒绝完成；非测试类
+	// 差集只留 advisory 痕（checklog warn）。toollog 缺失（宿主遥测未接）跳过——
+	// 区分"无法验证"与"验证通过"。
+	if sr := taskpipeline.CheckSelfReport(root, state); sr.Blocked {
+		return fmt.Errorf(`self-report consistency 未通过：checklist 声称的验证命令在任务全程 Bash 记录中零证据（%s）——虚报进度的形态。修复：真实跑通声称的命令后重新 complete，或修正 checklist 描述。逃生（落 checklog 审计）: FORGE_SELF_REPORT=disable`,
+			strings.Join(sr.UnmatchedTests, `; `))
+	}
+
 	// MarkComplete 恰在此处（pre-flight 之后）：完成标记属于 `forge task complete` 的整个
 	// 动作而非某道 gate（dogfood 2026-08-18 死锁修复的另一面——见 runTaskGate 的对应注释）。
 	// firstComplete 门控（review m1）：仅首次完成时标记——评分失败留下的 CompletedAt!=nil、
