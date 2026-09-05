@@ -15,6 +15,12 @@ func SeedEntryForSchema() any {
 		SessionID: "s", Detail: "d", Level: LevelPass, Source: EvidenceDeterministic,
 		RecordedAt: time.Now(), Meta: map[string]string{"k": "v"},
 	}
+	// 内嵌 Stamp 的全部字段填满（对抗审查 should-fix：node_id/seq/ts_hlc/sig
+	// 都是承诺面序列化键，零值 omitempty 会漏出键集合）。
+	e.Stamp.NodeID = "fnode_x"
+	e.Stamp.Seq = 1
+	e.Stamp.TsHLC = "t"
+	e.Stamp.Sig = "s"
 	delivered := true
 	e.Delivered = &delivered
 	return e
