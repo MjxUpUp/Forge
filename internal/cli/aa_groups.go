@@ -87,6 +87,8 @@ func init() {
 	// Forge 自评测（双轨：端到端 profile×model × 治理层 golden/遥测/陷阱——
 	// docs/design/forge-evaluation-system.md）。
 	evalCmd.GroupID = "quality"
+	// git 推送边界门禁（治理随 git 走——focus-batches §1c）。
+	gateCmd.GroupID = "quality"
 
 	// skill 治理（experience/knowledge 经验闭环已移除）
 	cliskills.Root.GroupID = "governance"

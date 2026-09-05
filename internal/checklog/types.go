@@ -280,6 +280,19 @@ const (
 	// 在任务全程零匹配——虚报进度的形态）。关于任务自身诚实度的观察类，喂给
 	// review 与评分上下文。
 	CheckSelfReport CheckName = "self-report-consistency"
+	// CheckGatePush records one `forge gate push` outcome (push-boundary gate:
+	// cheat-scan re-run over base...HEAD + unresolved BLOCKED tasks on the
+	// branch; focus-batches §1c). Deterministic (gate re-computes from git and
+	// the ledgers, independent of whether local hooks ever fired — the Codex
+	// #28365 telemetry-spoof lesson: local self-report needs upper-layer
+	// re-verification). Push evidence snapshot lands in DataDir/pushes/.
+	//
+	// CheckGatePush 记录一次 `forge gate push` 的结果（推送边界门禁：对
+	// base...HEAD 重跑 cheat-scan + 本分支未消解 BLOCKED 任务；focus-batches
+	// §1c）。deterministic（门禁从 git 与台账重算，不依赖本地 hook 是否生效——
+	// Codex #28365 遥测欺骗的教训：本地自我报告需上层复核）。推送证据快照落
+	// DataDir/pushes/。
+	CheckGatePush CheckName = "gate-push"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go

@@ -295,6 +295,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge eval decompose --manifest <file> --models <a,b> [--profiles off,gates-only,full] [--repeats N]` | 方差分解大体检：HV̄/MV̄ + 排名翻转数 + η²_p + 三档差值（full−off 整体贡献 / full−gates-only 注入层 / gates-only−off 纯门禁代价）；结论只做区间表述 |
 | `forge eval report [--quarter 2026-Q3]` | 季度自评测报告（汇编已落盘证据；缺失如实标注，绝不补造） |
 | `forge eval otel [--out <file>] [--limit N]` | checklog → OTLP/JSON 导出（OpenTelemetry 通道：审计行进企业 SIEM/APM；scope=forge.checklog versioned mapper，`--limit` 只导最新 N 条） |
+| `forge gate push [--ref <branch>] [--dry-run]` | git 推送边界门禁：merge-base...HEAD 重跑确定性 cheat-scan + 本分支未消解 BLOCKED 任务（不依赖本地 hook 是否生效——云端 agent 分支同受治理）；证据快照落 DataDir/pushes/，CI 里复跑同套判定兜底；阻断 exit 2 |
+| `forge gate hooks install [--uninstall]` | 安装 git pre-push 钩子（core.hooksPath=.forge/git-hooks，调 `forge gate push`；forge 不在 PATH 时 fail-open 放行）——治理随 git 走的本地接线 |
 | `forge task scope add <glob> [--ref <ref>]` | 追加计划改动文件到白名单（支持中途迭代；--ref 指定任务，不依赖活跃任务检测） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
 | `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions\|--doc-gate] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计。验证类（test-coverage/acceptance-gate/skill-decisions/doc-gate）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度。doc-gate 的放行须在 doc-review 轮次上限后经人工确认再走 |

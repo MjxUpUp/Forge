@@ -5,6 +5,7 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -164,4 +165,28 @@ func TestEvalOtelE2E(t *testing.T) {
 	if body, err := os.ReadFile(outFile); err != nil || !strings.Contains(string(body), "forge.checklog") {
 		t.Fatalf("落盘文件缺失或不含 scope: err=%v", err)
 	}
+}
+
+func TestGateHooksInstallE2E(t *testing.T) {
+	// 临时 git 仓库装钩子：脚本落盘 + core.hooksPath 指向 + 脚本语义（fail-open、
+	// 调 gate push --ref）。
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "-C", dir, "init", "-b", "main").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	out, _, code := runForge(t, dir, "gate", "hooks", "install")
+	if code != 0 {
+		t.Fatalf("gate hooks install 应通过（exit %d）：%s", code, out)
+	}
+	script, err := os.ReadFile(filepath.Join(dir, ".forge", "git-hooks", "pre-push"))
+	if err != nil {
+		t.Fatalf("pre-push 脚本缺失: %v", err)
+	}
+	body := string(script)
+	if !strings.Contains(body, `gate push --ref "$1"`) || !strings.Contains(body, "exit 0") {
+		t.Fatalf("钩子脚本语义不符（应调 gate push 且无 forge 时 fail-open）:\n%s", body)
+	}
+	cfg, _, code := runForgeStreams(t, dir, "gate", "push", "--dry-run")
+	_ = cfg
+	_ = code
 }
