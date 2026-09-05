@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: "项目领域语言治理：构建并打磨 CONTEXT.md 术语表（ubiquitous language），让 agent 与用户用同一套精确词汇。Use when: 用户用词模糊或一词多义时、同义词混用（客户/用户/账号）时、设计讨论中术语需要钉死时、命名模块/变量缺统一语言时、代码行为与口头描述矛盾时、想降低 agent 啰嗦表达时。SKIP: 只读术语表查词（直接读 CONTEXT.md 即可，无需加载本 skill）、写架构决策记录（用 architecture-decision-record）、澄清模糊需求或需求级一次性术语消歧（用 requirement-clarification——其产出落在需求规格的术语消歧段，本 skill 管项目级长期术语表 CONTEXT.md）、跨 AI 工具交接上下文（用 cross-tool-context，其 AI_CONTEXT.md 是工具间交接载体，与领域术语表职责不同）。"
+description: "项目领域语言治理：构建并打磨 CONTEXT.md 术语表（ubiquitous language），让 agent 与用户用同一套精确词汇。Use when: 用户用词模糊或一词多义时、同义词混用（客户/用户/账号）时、设计讨论中术语需要钉死时、命名模块/变量缺统一语言时、代码行为与口头描述矛盾时、想降低 agent 啰嗦表达时。SKIP: 只读术语表查词（直接读 CONTEXT.md 即可，无需加载本 skill）、写架构决策记录（用 architecture-decision-record）、澄清模糊需求或需求级一次性术语消歧（用 requirement-clarification——其产出落在需求规格的术语消歧段，本 skill 管项目级长期术语表 CONTEXT.md）、跨 AI 工具交接上下文（用 cross-tool-context，其共享载体是任务锚定/AI_CONTEXT.md，与领域术语表职责不同）。"
 metadata:
   pattern: tool-wrapper
   domain: architecture

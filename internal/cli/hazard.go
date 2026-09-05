@@ -273,3 +273,62 @@ func shortFingerprint(fp string) string {
 	}
 	return fp
 }
+
+// hazardHaltCmd — safe-halt 状态与人工解锁（focus-batches §2b）：hazard-guard
+// 连续拦截 ≥3 次（自最近一次 confirm/release）→ 会话进入 safe-halt：停止自修复、
+// 人审解锁（forge hazard halt release）。ASE 2026（547 起真实安全事件）的护栏
+// 三要素之一：environmental constraints / failure transparency / safe-halt。
+var hazardHaltCmd = &cobra.Command{
+	Use:   "halt",
+	Short: "safe-halt 状态：连续高危拦截达阈值的会话须人审解锁后才能继续高危操作",
+}
+
+var hazardHaltStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "查看 safe-halt 状态（连续拦截计数 / 是否停机）",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := findProject()
+		if err != nil {
+			return err
+		}
+		st := hazard.CheckHalt(p)
+		if st.Halted {
+			fmt.Printf("🔴 SAFE-HALT：自最近重置以来连续高危拦截 %d 次（阈值 %d）——停止自修复尝试，人工核查最近拦截的命令（forge hazard status / events.jsonl）后解锁：forge hazard halt release --yes\n",
+				st.Blocks, hazard.HaltThreshold)
+			return nil
+		}
+		fmt.Printf("✅ 未停机（连续拦截 %d/%d；confirm 与 halt release 会重置计数）\n", st.Blocks, hazard.HaltThreshold)
+		return nil
+	},
+}
+
+var hazardHaltReleaseCmd = &cobra.Command{
+	Use:   "release --yes",
+	Short: "人工解锁 safe-halt（记 halt-release 审计事件）",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		yes, _ := cmd.Flags().GetBool("yes")
+		if !yes {
+			return fmt.Errorf("release 是人工审阅决策：核查最近拦截命令后加 --yes 执行（agent 不得自我解锁）")
+		}
+		p, err := findProject()
+		if err != nil {
+			return err
+		}
+		st := hazard.CheckHalt(p)
+		if !st.Halted {
+			fmt.Printf("未处于 safe-halt（连续拦截 %d/%d），无需解锁。\n", st.Blocks, hazard.HaltThreshold)
+			return nil
+		}
+		if err := hazard.ReleaseHalt(p); err != nil {
+			return fmt.Errorf("记录解锁事件失败: %w", err)
+		}
+		fmt.Printf("✅ safe-halt 已解锁（halt-release 审计事件已记；计数归零）。最近拦截的命令请已在 forge hazard status 核查过。\n")
+		return nil
+	},
+}
+
+func init() {
+	hazardHaltReleaseCmd.Flags().Bool("yes", false, "确认已人工核查最近拦截的命令")
+	hazardHaltCmd.AddCommand(hazardHaltStatusCmd, hazardHaltReleaseCmd)
+	hazardCmd.AddCommand(hazardHaltCmd)
+}

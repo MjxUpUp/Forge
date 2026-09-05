@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/spf13/cobra"
 )
@@ -18,15 +19,23 @@ func init() {
 // （工具调用 + 检查结果），把单个评分还原成可回溯的故事。checklog/toolusage
 // 之上的可观测性消费层。
 var traceCmd = &cobra.Command{
-	Use:   "trace <task-ref>",
+	Use:   "trace <task-ref> [--window <chars>]",
 	Short: "查看任务的完整质量事件时间线",
 	Long: `forge trace 重放一个任务从开始到完成的所有质量事件：
 工具调用、检查结果、门禁推进。把"一个评分"还原成"一条可回溯的时间线"。
 
 数据源：DataDir/checklog*.jsonl（检查事件，含已归档）+ DataDir/toollog.jsonl（工具调用）。
-	DataDir：git 项目 ~/.forge/projects/<key>/，非 git 项目 <root>/.forge/。`,
+	DataDir：git 项目 ~/.forge/projects/<key>/，非 git 项目 <root>/.forge/。
+
+--window <chars> 输出分段监控窗口（每窗事件行 ≤ 该字符预算，头部周期性重注入守卫
+摘要）——下游 LLM judge/取证消费长轨迹时按窗取输入，禁止全量塞上下文（Classifier
+Context Rot 缓解，arXiv 2605.12366；focus-batches §1b）。`,
 	Args: cobra.ExactArgs(1),
 	RunE: runTrace,
+}
+
+func init() {
+	traceCmd.Flags().Int("window", 0, "分段监控窗口的每窗字符预算（0=不分段，全量时间线）")
 }
 
 // traceEvent 是合并 checklog 与 toolusage 两源的统一时间线事件，
@@ -97,6 +106,22 @@ func runTrace(cmd *cobra.Command, args []string) error {
 	slices.SortFunc(events, func(a, b traceEvent) int {
 		return a.ts.Compare(b.ts)
 	})
+
+	// 分段监控模式（--window）：输出预切好的窗口而非全量时间线——下游 judge 消费
+	// 按窗取输入（Context Rot 纪律）。复用 taskpipeline.SegmentEvents 的确定性切片。
+	if window, _ := cmd.Flags().GetInt("window"); window > 0 {
+		windows := taskpipeline.SegmentEvents(checks, calls, window, "")
+		fmt.Printf("Trace for task %q — %d events in %d 监控窗口（每窗 ≤%d 字符，头部守卫重注入）\n\n",
+			ref, len(events), len(windows), window)
+		for i, w := range windows {
+			fmt.Printf("── 窗口 %d/%d ──\n%s\n", i+1, len(windows), w.Header)
+			for _, line := range w.Lines {
+				fmt.Printf("  %s\n", line)
+			}
+			fmt.Println()
+		}
+		return nil
+	}
 
 	fmt.Printf("Trace for task %q — %d events (%d checks, %d tool calls)\n",
 		ref, len(events), len(checks), len(calls))

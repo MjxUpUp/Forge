@@ -72,6 +72,9 @@ const (
 	escapeAcceptanceGate = "acceptance-gate"
 	escapeSkillDecisions = "skill-decisions"
 	escapeDocGate        = "doc-gate"
+	// escapeSelfReport：自报一致性门禁的 which 键。v1 仅 env 逃生（上方 switch 无
+	// case——per-task override flag 留给需要时再扩 TaskOverrides 面）。
+	escapeSelfReport = "self-report"
 	// envWorkActivity: the global env for the work-activity escape hatch (executor getDisableWorkActivity).
 	// envWorkActivity: work-activity 逃生舱对应的全局 env（executor getDisableWorkActivity）。
 	envWorkActivity = "FORGE_WORK_ACTIVITY"
