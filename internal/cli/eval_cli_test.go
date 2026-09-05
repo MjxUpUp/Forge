@@ -4,6 +4,7 @@ package cli
 // 经预构建二进制跑真实命令表面。目标表面 = CLI 输出 + 退出码（非内部函数）。
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -137,5 +138,30 @@ func TestEvalResumeDrillE2E(t *testing.T) {
 	}
 	if !strings.Contains(out, "3/3 passed") {
 		t.Fatalf("三条演练应全过: %s", out)
+	}
+}
+
+func TestEvalOtelE2E(t *testing.T) {
+	// --limit 1 最小化输出；断言 OTLP 骨架与 scope 契约（versioned mapper 形状）。
+	// 隔离 HOME 下 checklog 可能为空——span 级断言（forge.session/events 属性）由
+	// otelout 包级测试覆盖，e2e 只钉命令表面与骨架。
+	out, _, code := runForge(t, repoRoot, "eval", "otel", "--limit", "1")
+	if code != 0 {
+		t.Fatalf("eval otel 应通过（exit %d）：%s", code, out)
+	}
+	for _, want := range []string{`"resourceSpans"`, `"forge.checklog"`, `"service.name"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("OTLP 输出缺 %q:\n%s", want, out)
+		}
+	}
+	// --out 落盘路径：AtomicWrite 产物可读回且仍是合法骨架。
+	tmp := t.TempDir()
+	outFile := filepath.Join(tmp, "otel.json")
+	out, _, code = runForge(t, repoRoot, "eval", "otel", "--limit", "1", "--out", outFile)
+	if code != 0 {
+		t.Fatalf("eval otel --out 应通过（exit %d）：%s", code, out)
+	}
+	if body, err := os.ReadFile(outFile); err != nil || !strings.Contains(string(body), "forge.checklog") {
+		t.Fatalf("落盘文件缺失或不含 scope: err=%v", err)
 	}
 }
