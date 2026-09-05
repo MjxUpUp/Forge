@@ -158,10 +158,12 @@ func TestAllCheckNamesSorted(t *testing.T) {
 	if len(names) < 30 {
 		t.Fatalf("roster 异常小: %d", len(names))
 	}
-	// 源对照：checklog/types.go 里 `CheckXxx CheckName = "y"` 声明集。
-	body, err := os.ReadFile(filepath.Join("types.go"))
+	// 源对照：checklog/types.go 里 `CheckXxx CheckName = "y"` 声明集（复审
+	// 发现原实现读 internal/compat/types.go（不存在）+ 正则双重转义，双
+	// fail-open 静默虚设——修正为正确路径与双引号形态）。
+	body, err := os.ReadFile(filepath.Join("..", "checklog", "types.go"))
 	if err == nil {
-		re := regexp.MustCompile("Check\\\\w+\\\\s+CheckName\\\\s*=\\\\s*`([\\\\w-]+)`")
+		re := regexp.MustCompile("Check\\w+\\s+CheckName\\s*=\\s*\"([\\w-]+)\"")
 		declared := map[string]bool{}
 		for _, m := range re.FindAllStringSubmatch(string(body), -1) {
 			declared[m[1]] = true

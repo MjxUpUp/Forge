@@ -21,6 +21,9 @@ func SeedEntryForSchema() any {
 	e.Stamp.Seq = 1
 	e.Stamp.TsHLC = "t"
 	e.Stamp.Sig = "s"
+	// 复审发现的遗漏键（channel/forge_version 均为承诺面序列化键）。
+	e.Channel = "ch"
+	e.ForgeVersion = "v"
 	delivered := true
 	e.Delivered = &delivered
 	return e
