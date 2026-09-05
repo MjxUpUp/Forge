@@ -9,6 +9,7 @@
 package userconfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,6 +44,10 @@ const (
 // 出现第二个键时实现读-合并-写，避免新旧版本互抹对方的键。
 type file struct {
 	Takeover string `json:"takeover,omitempty"`
+	// Compat 是本机的兼容基线声明（mechanism-hardening P2-1，指纹分流 v1）：
+	// 声明"我的行为按哪个 forge 版本的默认走"（GODEBUG 的 go 行声明的轻量版）。
+	// 空 = 跟最新（不钉）。完整分流机制刻意不做（见 compat-commitments.md §四）。
+	Compat string `json:"compat,omitempty"`
 }
 
 // configPath resolves the store path under forgedata.GlobalHome (FORGE_DATA_HOME
@@ -106,6 +111,30 @@ func SetTakeover(v string) error {
 	if !validTakeover(v) {
 		return fmt.Errorf(`userconfig: invalid takeover %q (want ask|auto|off)`, v)
 	}
+	return mutate(func(f *file) { f.Takeover = v })
+}
+
+// CompatPref returns the persisted compat baseline declaration ("" when unset
+// = follow latest, no pinning).
+//
+// CompatPref 返回持久化的兼容基线声明（空 = 跟最新，不钉）。
+func CompatPref() string {
+	return read().Compat
+}
+
+// SetCompat sets the compat baseline declaration (mechanism-hardening P2-1，
+// GODEBUG 的 go 行声明的轻量版). Accepts a version string or "" to clear.
+//
+// SetCompat 设置兼容基线声明。接受版本串或空串清除。
+func SetCompat(v string) error {
+	return mutate(func(f *file) { f.Compat = v })
+}
+
+// mutate 读-改-写：字段级 setter 共用通道（SetTakeover 曾全量覆写单字段——
+// 新增 Compat 后任何单字段覆写都会抹掉另一字段，读改写保共存）。
+func mutate(fn func(*file)) error {
+	f := read()
+	fn(&f)
 	p, err := configPath()
 	if err != nil {
 		return err
@@ -113,7 +142,11 @@ func SetTakeover(v string) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return err
 	}
-	return util.AtomicWrite(p, []byte(fmt.Sprintf("{\n  \"takeover\": %q\n}\n", v)), 0644)
+	body, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		return err
+	}
+	return util.AtomicWrite(p, append(body, '\n'), 0644)
 }
 
 // TakeoverPref returns the persisted preference ("" when unset) for display.

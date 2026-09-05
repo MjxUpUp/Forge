@@ -75,6 +75,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("归属覆盖:      %s\n", attributionCoverageLine(root))
 		fmt.Printf("自评测:        %s\n", evalHealthLine(root))
+		fmt.Printf("兼容基线:      %s\n", compatStatusLine())
 		fmt.Printf("接管状态:      managed（forge 接管中）\n")
 		MaybeOfferHarness("forge status")
 	}

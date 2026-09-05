@@ -89,6 +89,8 @@ func init() {
 	evalCmd.GroupID = "quality"
 	// git 推送边界门禁（治理随 git 走——focus-batches §1c）。
 	gateCmd.GroupID = "quality"
+	// 可执行兼容工件（mechanism-hardening P1-1：六面快照与跨版本 diff）。
+	compatCmd.GroupID = "quality"
 
 	// skill 治理（experience/knowledge 经验闭环已移除）
 	cliskills.Root.GroupID = "governance"

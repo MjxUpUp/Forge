@@ -1,5 +1,7 @@
 package checklog
 
+import "sort"
+
 // escape.go — 逃生舱行的构造助手（mechanism-hardening P1-2，豁免治理学落地）。
 // 依据：FSE 2025 实证 50.8% 的豁免是幽灵豁免（不抑制任何告警）且只增不减；
 // 好豁免八要素中 forge 缺 reason（结构化原因）与 owner（谁豁免的）两项。
@@ -72,4 +74,30 @@ func EscapeReasonOf(e *Entry) string {
 		return EscapeReasonUnspecified
 	}
 	return e.Meta["escape.reason"]
+}
+
+// allCheckNames 是 CheckName 常量 roster 的显式清单（compat 面 2 的单一真相源；
+// 与 types.go 常量同步——guard：compat 测试对比 AllCheckNames 与 types.go 源扫描）。
+var allCheckNames = []CheckName{
+	CheckAutoCompile, CheckAssertion, CheckTaskVerify, CheckTaskComplete, CheckTaskGuard,
+	CheckBashGuard, CheckFileSentinel, CheckScopeDrift, CheckCheatScan, CheckUnusedScan,
+	CheckEscapeHatch, CheckSkillTrigger, CheckKimiPluginStale, CheckReviewPass, CheckPlanFirst,
+	CheckToolFailure, CheckSubagentStop, CheckTestNudge, CheckTakeoverPolicy,
+	CheckAttribution, CheckBundleVerify, CheckConventionsInject, CheckConventionsLint,
+	CheckCrossRepoImpact, CheckProjectSync, CheckTaskStarted,
+	CheckEvalMetricsIncomplete, CheckEvalGoldenRun, CheckEvalGoldenRotate, CheckEvalJudgeWeak,
+	CheckEvalTrapsRun, CheckEvalRun, CheckEvalDecompose, CheckEvalResumeDrill, CheckEvalAuditForged,
+	CheckSelfReport, CheckGatePush, CheckTaskStalled, CheckSyncVersionSkew,
+}
+
+// AllCheckNames 返回 CheckName roster 的排序副本（compat 面 2 / dashboards 消费）。
+//
+// AllCheckNames returns the sorted CheckName roster.
+func AllCheckNames() []string {
+	out := make([]string, 0, len(allCheckNames))
+	for _, c := range allCheckNames {
+		out = append(out, string(c))
+	}
+	sort.Strings(out)
+	return out
 }
