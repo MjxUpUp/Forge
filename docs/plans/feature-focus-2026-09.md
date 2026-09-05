@@ -33,7 +33,7 @@
 | 对象 | 审计判决 | 聚焦语境处置 |
 |---|---|---|
 | maintainability-and-readability（298 行） | 合并：唯一真增量 §2.7 双语注释规范 | 【已合并 2026-08-09（commit f09e524）：§2.7 已入 code-review-gate/references/review-checklist.md「注释规范」节，目录已删】执行合并：§2.7 并入 code-review-gate，其余废弃 |
-| system-architecture（审计口径 245 行）/ backend-development（审计口径 203 行）/ resilience-and-observability（审计口径 274 行；执行时点 276） | 改进（大幅瘦身）：70%+ 教科书对强模型零增量 | 【已瘦身 2026-09-05：245→128 / 203→168（前次已瘦身大半）/ 274→137 行】瘦到"决策点+反模式+Gotchas"密度（各 ~100-120 行），或降级为 code-review-gate 的 references |
+| system-architecture（审计口径 245 行）/ backend-development（审计口径 203 行）/ resilience-and-observability（审计口径 274 行；执行时点 275） | 改进（大幅瘦身）：70%+ 教科书对强模型零增量 | 【已瘦身 2026-09-05：245→128 / 203→168（前次已瘦身大半）/ 274→137 行】瘦到"决策点+反模式+Gotchas"密度（各 ~100-120 行），或降级为 code-review-gate 的 references |
 | secure-coding（审计口径 277 行；执行时点 307） | 改进：基线停在 OWASP 2021、零 agent 时代威胁 | 【已重写 2026-09-05：307→150 行，OWASP 2025 变化要点 + Agent/LLM 威胁节（prompt injection/MCP tool poisoning/skill 供应链，Snyk ToxicSkills 3,984 扫描 1,467 缺陷/76 恶意）+ 压缩清单】重写时**只保留** agent/LLM 威胁节（prompt injection/MCP/skill 供应链）——这才是"模型已内化知识"之外的真增量，且与方向 B 同频 |
 | design-system-migration / integration-test-architecture / reverse-engineering-patterns | 单一项目实录 60-90% / 承诺与交付落差 | 前者【已随设计族拆包至 forge-design】；后两者案例下沉 references、正文压缩（未在本批执行） |
 
