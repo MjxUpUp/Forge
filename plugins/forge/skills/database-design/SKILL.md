@@ -1,6 +1,6 @@
 ---
 name: database-design
-description: "数据库 schema / migration / 索引 / 查询优化 / ORM 选型强制规范。Use when: 设计新 schema、写 migration、加索引、调慢查询、选 ORM/查询库、写数据库相关 ADR 时。SKIP: 应用层业务逻辑（用 backend-development）/ 表单/UI（用 frontend-feature-development）/ 后端 API 设计（用 backend-development）。"
+description: "数据库 schema / migration / 索引 / 查询优化 / ORM 选型强制规范。Use when: 设计新 schema、写 migration、加索引、调慢查询、选 ORM/查询库、写数据库相关 ADR 时。SKIP: 应用层业务逻辑（用 backend-development）/ 表单/UI（前端 skill 属 forge-design pack，未安装则忽略）/ 后端 API 设计（用 backend-development）。"
 metadata:
   pattern: tool-wrapper
   domain: backend
@@ -10,7 +10,7 @@ metadata:
 
 # 数据库设计规范
 
-> **本 skill 不重复**: 应用层业务逻辑（service/repo 分层）→ `backend-development`；性能 e2e → `integration-test-architecture`；API 契约 → `backend-development`；机械可检规则（迁移无 DOWN / 无 WHERE DELETE / DROP 无复核 / 索引策略）→ `design-artifact-standards` 的 references/phase-database.md。本 skill 解决"按 SOP 设计/迁移/调优 schema"的工作流纪律，覆盖 SQL（PostgreSQL/MySQL/SQLite）+ NoSQL 适配场景。
+> **本 skill 不重复**: 应用层业务逻辑（service/repo 分层）→ `backend-development`；性能 e2e → `integration-test-architecture`；API 契约 → `backend-development`；机械可检规则（迁移无 DOWN / 无 WHERE DELETE / DROP 无复核 / 索引策略）→ `design-artifact-standards` 的 references/phase-database.md（该 skill 属 forge-design pack，未安装则按本 skill §6 逐条自查）。本 skill 解决"按 SOP 设计/迁移/调优 schema"的工作流纪律，覆盖 SQL（PostgreSQL/MySQL/SQLite）+ NoSQL 适配场景。
 
 ## 1. 决策树（数据库开发路径）
 
@@ -140,7 +140,7 @@ SQL 跑超过 100ms？
 
 ## 4. Post-Generation 自查清单
 
-机械可检规则（迁移无 DOWN / 无 WHERE DELETE / DROP 无复核 / 索引策略 / 字段类型）由 `design-artifact-standards` 的 references/phase-database.md 守卫，此处不重复。
+机械可检规则（迁移无 DOWN / 无 WHERE DELETE / DROP 无复核 / 索引策略 / 字段类型）由 `design-artifact-standards` 的 references/phase-database.md 守卫（属 forge-design pack，未安装则按下表逐项机械自查），此处不重复。
 
 - [ ] schema 设计 ER 图与 ADR 同步
 - [ ] 索引 EXPLAIN 验证命中

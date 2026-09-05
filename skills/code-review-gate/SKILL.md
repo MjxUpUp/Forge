@@ -82,7 +82,7 @@ git diff --cached                  # 看已暂存的变更
 2. **三种符号变动都要查**：改名（假重构高发：符号改了名但调用者没更新 → 运行时 ReferenceError 或死代码）、删符号、改签名（参数 / 返回值变化让旧调用方静默失效）。
 3. **完成判定**：grep 结果零残留旧符号引用才算同步完成；有残留即发现（必须解决，不是建议）。
 
-> 设计阶段产物审查（PRD/API 契约/建表/前端设计等，非纯代码实现）：加载 design-artifact-standards 的对应 phase-*.md 清单作为补充检查项（同一份标准，编写期当骨架、审查期当 checklist），不替换双轨。
+> 设计阶段产物审查（PRD/API 契约/建表/前端设计等，非纯代码实现）：加载 design-artifact-standards 的对应 phase-*.md 清单作为补充检查项（同一份标准，编写期当骨架、审查期当 checklist），不替换双轨。design-artifact-standards 属 forge-design pack——未安装该 pack 则跳过本补充项，按双轨执行。
 
 ### 步骤 2 前置：证据强度校准
 
@@ -119,7 +119,7 @@ git diff --cached                  # 看已暂存的变更
 
 **不分级**：不给发现打 block/fix/suggest 或 major/minor/nit 标签。分级会暗示"低级别可忽略或推迟"，导致 suggest/nit 永不被修——而 AI 屎山常藏在这些"看着不大"的细节里（单行 `@ts-ignore`、空 catch、删断言）。每个发现都是真实问题，都需认真回应。
 
-**叠加专项审查的输出协议（裁决）**：专项审查 skill（rust-code-review / frontend-code-review / ai-generated-ui-review）保留 block/fix/suggest 分级，但与本 gate 叠加执行时，分级只表达处理顺序、不表达可忽略——**block 以下级别（fix/suggest）也必须逐条显式回应**（修复，或结合背景论证不需修），最终门控以步骤 5「全部解决才可提交」为准。不允许把专项的 suggest 当"可选"悬置。
+**叠加专项审查的输出协议（裁决）**：专项审查 skill（rust-code-review，以及 forge-design pack 的 frontend-code-review / ai-generated-ui-review）保留 block/fix/suggest 分级，但与本 gate 叠加执行时，分级只表达处理顺序、不表达可忽略——**block 以下级别（fix/suggest）也必须逐条显式回应**（修复，或结合背景论证不需修），最终门控以步骤 5「全部解决才可提交」为准。不允许把专项的 suggest 当"可选"悬置。
 
 ### 步骤 4：产出结构化报告（发现清单，不分组分级）
 
@@ -250,7 +250,8 @@ git diff --cached                  # 看已暂存的变更
 - **test-discipline**：测试质量守卫（断言防注水）。本 skill 检测到 `assertion-strip` 时可联动深查。
 - **compile-fix-loop**：编译报错修复。本 skill 不处理编译错误（那是另一类问题）。
 - **systematic-debugging**：审查中发现的运行时 bug 用它排查根因。
-- **rust-code-review / frontend-code-review / ai-generated-ui-review**：语言与来源专项审查，保留 block/fix/suggest 分级——叠加时输出协议按步骤 3 的裁决段执行（block 以下也必须显式回应）。
+- **rust-code-review**：语言专项审查（保留 block/fix/suggest 分级——叠加时输出协议按步骤 3 的裁决段执行，block 以下也必须显式回应）。
+- **forge-design pack 专项**（frontend-code-review / ai-generated-ui-review，未安装 pack 则忽略）：前端与 AI 生成代码来源专项——叠加时同一输出协议。
 - **doc-review**：文档产物的质量审查与 L2 评分门控（PR 描述/commit body/测试报告/复盘报告），与本 skill 是兄弟门控——改码 + 改文档的任务各自独立执行。
 - **evidence-based-proposal**：审查给出的修复建议要基于实际，不凭空想。
 - **dev-lookup**：审查中遇到不确定的 API 签名/库用法，用它快速确认。

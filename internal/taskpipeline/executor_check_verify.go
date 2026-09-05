@@ -14,7 +14,8 @@ import (
 
 // phase-aware（设计 3.2/3.6）：按改动文件推断设计阶段，写回 state.DesignPhases 并持久化。
 // 回路接通点——下游 phaseKeys→Conclusion.DesignPhases→health.PhasePassRate 据此填充；
-// review 子 agent 读 state.DesignPhases 加载对应 design-artifact-standards 的 references/phase-X.md checklist。零摩擦
+// review 子 agent 读 state.DesignPhases 加载对应 design-artifact-standards 的 references/phase-X.md checklist
+// （该 skill 2026-09 拆包至 plugins/forge-design，未装 pack 时回落通用清单——见 skillintegrate notes）。零摩擦
 // （路径推断，不要求声明）。仅 phases 变化时写盘，避免每次 verify 无谓 IO。inferDesignPhases
 // 此前零生产调用致整条回路死代码（review BUG-1），此处接通让它名副其实。
 // taskChangedFiles 跑多个 git 子进程（testcoverage.go），在此块算一次。

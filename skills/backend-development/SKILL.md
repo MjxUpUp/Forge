@@ -1,6 +1,6 @@
 ---
 name: backend-development
-description: "后端开发强制规范：API 设计 / service 层 / 鉴权 / 数据校验 / 错误处理 / 性能 / 测试 / 可观测。Use when: 写 API endpoint/service 层、设计 schema 业务层、加鉴权/中间件、写 e2e 测试、排查性能瓶颈、debug 后端 bug、写后端任务给 agent 时。SKIP: 数据库 schema/迁移（用 database-design）/ 纯 UI（用 frontend-feature-development）/ 部署/CI（用 release-readiness）。"
+description: "后端开发强制规范：API 设计 / service 层 / 鉴权 / 数据校验 / 错误处理 / 性能 / 测试 / 可观测。Use when: 写 API endpoint/service 层、设计 schema 业务层、加鉴权/中间件、写 e2e 测试、排查性能瓶颈、debug 后端 bug、写后端任务给 agent 时。SKIP: 数据库 schema/迁移（用 database-design）/ 纯 UI（前端 skill 属 forge-design pack，未安装则忽略）/ 部署/CI（用 release-readiness）。"
 metadata:
   pattern: tool-wrapper
   domain: backend
@@ -161,7 +161,7 @@ ruff check + bandit
 | Node | eslint + tsgo | jest/vitest --coverage | prisma / drizzle |
 | Python | ruff + mypy | pytest --cov | sqlalchemy + alembic |
 
-注：前端栈选型见 `frontend-stack-selection` skill（本仓库仅此一个 stack-selection skill）。
+注：前端栈选型见 forge-design pack 的 `frontend-stack-selection`（未安装则忽略；核心库无 stack-selection skill）。
 
 ## 参考
 
