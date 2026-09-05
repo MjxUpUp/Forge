@@ -21,6 +21,7 @@ import (
 func init() {
 	taskMirrorGithubCmd.Flags().String("repo", "", "目标仓库 owner/name（缺省 gh 上下文仓库）")
 	taskMirrorGithubCmd.Flags().Bool("dry-run", false, "只打印镜像计划，不调 gh")
+	taskMirrorCmd.AddCommand(taskMirrorGithubCmd)
 	Root.AddCommand(taskMirrorCmd)
 }
 

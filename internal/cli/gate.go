@@ -33,9 +33,11 @@ func gateRoot() (string, error) {
 func init() {
 	gatePushCmd.Flags().String("ref", "", "分支名（缺省当前分支）")
 	gatePushCmd.Flags().Bool("dry-run", false, "只报告不阻断（exit 0）")
-	gateHooksCmd.Flags().Bool("uninstall", false, "移除 pre-push 钩子")
+	gateHooksInstallCmd.Flags().Bool("uninstall", false, "移除 pre-push 钩子")
+	gateCmd.AddCommand(gatePushCmd)
+	gateHooksCmd.AddCommand(gateHooksInstallCmd)
+	gateCmd.AddCommand(gateHooksCmd)
 	rootCmd.AddCommand(gateCmd)
-	gateCmd.AddCommand(gatePushCmd, gateHooksCmd)
 }
 
 var gateCmd = &cobra.Command{
@@ -59,7 +61,12 @@ CI 复跑形态：CI job 里直接跑本命令（同套判定两处生效，本�
 }
 
 var gateHooksCmd = &cobra.Command{
-	Use:   "hooks install [--uninstall]",
+	Use:   "hooks",
+	Short: "git 钩子安装/卸载（pre-push 调 forge gate push）",
+}
+
+var gateHooksInstallCmd = &cobra.Command{
+	Use:   "install [--uninstall]",
 	Short: "安装/卸载 git pre-push 钩子（core.hooksPath=.forge/git-hooks，调 forge gate push）",
 	RunE:  runGateHooks,
 }
