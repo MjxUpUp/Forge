@@ -159,6 +159,7 @@ func checkWorkActivity(root string, gateID string, state *TaskState) error {
 			Level:   checklog.LevelWarn,
 			TaskRef: state.TaskRef,
 			Detail:  "escape-hatch: work-activity gate bypassed (per-task override or FORGE_WORK_ACTIVITY=disable)",
+			Meta:    map[string]string{"escape.gate": "work-activity", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": state.TaskRef},
 		})
 	}
 	return nil

@@ -135,6 +135,21 @@ func runEvalDashboard(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(data))
 		return nil
 	}
+	// 逃生舱库存节（P1-2 接线收尾——对抗审查 should-fix：原只进 JSON 半程，
+	// 文本模式零出口）：Total + per-gate + findings（永久化/unfulfilled 候选）。
+	if rep.EscapeInventory != nil && rep.EscapeInventory.Total > 0 {
+		fmt.Printf("逃生舱库存：%d 次\n", rep.EscapeInventory.Total)
+		for _, g := range rep.EscapeInventory.Gates {
+			line := fmt.Sprintf("  %-18s %d 次 / %d 任务", g.Gate, g.Count, g.Tasks)
+			if g.UnfulfilledCandidates > 0 {
+				line += fmt.Sprintf(" / %d unfulfilled 候选", g.UnfulfilledCandidates)
+			}
+			fmt.Println(line)
+		}
+		for _, f := range rep.EscapeInventory.Findings {
+			fmt.Printf("  ⚠ %s\n", f)
+		}
+	}
 	fmt.Printf("Forge 自评测仪表盘（%s；字典 v%d；checklog %d 条 / %d sessions）\n",
 		rep.GeneratedAt.Format("2006-01-02 15:04"), dict.Version, rep.Entries, rep.Sessions)
 	if rep.SignatureAudit.Forged > 0 {

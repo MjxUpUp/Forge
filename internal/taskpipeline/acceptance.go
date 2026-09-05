@@ -325,14 +325,10 @@ func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []str
 		return true, nil
 	}
 	if escapeDisabled(state, escapeAcceptanceGate, acceptanceGateDisableEnv) {
-		recordAudit(root, &checklog.Entry{
-			Check:   checklog.CheckEscapeHatch,
-			Passed:  true,
-			Checked: true,
-			Level:   checklog.LevelWarn,
-			TaskRef: state.TaskRef,
-			Detail:  `escape-hatch: acceptance gate bypassed (per-task override or FORGE_ACCEPTANCE_GATE=disable)`,
-		})
+		row := checklog.EscapeHatchEntry("acceptance-gate", checklog.EscapeReasonOverride, state.TaskRef,
+			`escape-hatch: acceptance gate bypassed (per-task override or FORGE_ACCEPTANCE_GATE=disable)`)
+		row.TaskRef = state.TaskRef
+		recordAudit(root, row)
 		return true, nil
 	}
 	head := GetHeadCommit(root)

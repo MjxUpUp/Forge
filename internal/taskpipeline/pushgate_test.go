@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
@@ -179,5 +180,38 @@ func TestBlockedTasksOnBranch(t *testing.T) {
 	got = blockedTasksOnBranch(dir, "feat/bt")
 	if len(got) != 0 {
 		t.Fatalf("消解后不应列出: %v", got)
+	}
+}
+
+// TestProducersOnBranch 生产者声明聚合（P2-2）：OriginTool + 台账 NodeID 去重。
+func TestProducersOnBranch(t *testing.T) {
+	dir := newPushRepo(t) // 需 seed commit 才能建分支
+	gitBranch(t, dir, "feat/pp")
+	// 两个未完成任务：不同 OriginTool；一个任务带 NodeID。
+	s1 := &TaskState{TaskRef: "t/p1", Branch: "feat/pp", OriginTool: "zcode"}
+	SaveTaskState(dir, s1)
+	s2 := &TaskState{TaskRef: "t/p2", Branch: "feat/pp", OriginTool: "claude-code"}
+	SaveTaskState(dir, s2)
+	s3 := &TaskState{TaskRef: "t/done", Branch: "feat/pp", OriginTool: "old-tool"}
+	now := time.Now()
+	s3.CompletedAt = &now // 完成任务不计
+	SaveTaskState(dir, s3)
+	// NodeID 经内嵌 nodestamp.Stamp 提升——Record 落盘 node_id 字段。
+	seed := checklog.Entry{Check: checklog.CheckTaskVerify, Passed: true, TaskRef: "t/p1"}
+	seed.Stamp.NodeID = "fnode_aa"
+	seed.RecordedAt = time.Now()
+	checklog.Record(dir, &seed)
+	seed2 := seed
+	seed2.RecordedAt = time.Now().Add(time.Second) // 同 node 去重
+	checklog.Record(dir, &seed2)
+	got := producersOnBranch(dir, "feat/pp")
+	want := []string{"node:fnode_aa", "tool:claude-code", "tool:zcode"}
+	if len(got) != len(want) {
+		t.Fatalf("聚合不符: %v（期望 %v）", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("第 %d 项不符: %v", i, got)
+		}
 	}
 }

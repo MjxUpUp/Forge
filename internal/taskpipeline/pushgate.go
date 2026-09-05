@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -39,6 +40,10 @@ type PushGateResult struct {
 	Dirty        bool           `json:"dirty"`
 	Findings     []CheatFinding `json:"findings,omitempty"`
 	BlockedTasks []string       `json:"blocked_tasks,omitempty"`
+	// Producers 是推送范围内产出的生产者声明（P2-2，门禁第五代：归因入证据）
+	// ——本分支未完成任务的 OriginTool 与台账 NodeID 去重聚合（"tool:<名>"/
+	// "node:<id>"），写入证据快照与 gate-push 行。
+	Producers []string `json:"producers,omitempty"`
 	// Skipped=true 表示门禁未运行（非 git 仓库 / 无基准 / 逃生舱）——区分
 	// "未检查"与"检查通过"（insufficient ≠ pass 的诚实边界）。
 	Skipped bool      `json:"skipped"`
@@ -63,6 +68,7 @@ func RunPushGate(root, ref string) PushGateResult {
 			Check: checklog.CheckEscapeHatch, Passed: true, Checked: true,
 			Level:  checklog.LevelWarn,
 			Detail: `escape-hatch: push gate bypassed (FORGE_GATE_PUSH=disable)`,
+			Meta:   map[string]string{"escape.gate": "gate-push", "escape.reason": checklog.EscapeReasonEnv, "escape.owner": "env"},
 		})
 		writePushSnapshot(root, res)
 		return res
@@ -96,6 +102,7 @@ func RunPushGate(root, ref string) PushGateResult {
 	}
 	res.Findings = ScanCheatPatternsRange(root, res.Base+"...HEAD")
 	res.BlockedTasks = blockedTasksOnBranch(root, ref)
+	res.Producers = producersOnBranch(root, ref)
 
 	recordPushGate(root, res)
 	writePushSnapshot(root, res)
@@ -178,6 +185,43 @@ func blockedTasksOnBranch(root, branch string) []string {
 	return out
 }
 
+// producersOnBranch 聚合本分支未完成任务的生产者声明（OriginTool + 台账
+// NodeID 去重）。门禁第五代的输入面：机器生产的代码在离开本地前，"谁/什么
+// 写的"进入证据链（与 OTel 导出的 forge.check.node_id 属性族对齐）。
+func producersOnBranch(root, branch string) []string {
+	states, err := ListTaskStates(root)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range states {
+		if s.Branch != branch || s.CompletedAt != nil {
+			continue
+		}
+		if s.OriginTool != "" {
+			k := "tool:" + s.OriginTool
+			if !seen[k] {
+				seen[k] = true
+				out = append(out, k)
+			}
+		}
+		if rows, err := checklog.LoadForTask(root, s.TaskRef); err == nil {
+			for _, e := range rows {
+				if e.NodeID != "" {
+					k := "node:" + e.NodeID
+					if !seen[k] {
+						seen[k] = true
+						out = append(out, k)
+					}
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // resolvePushBase 依序尝试推送基（@{push} 合并基优先——那正是本次要推的范围）。
 func resolvePushBase(root string) string {
 	candidates := []string{
@@ -221,6 +265,9 @@ func recordPushGate(root string, res PushGateResult) {
 		Checked: !res.Skipped,
 	}
 	var parts []string
+	if len(res.Producers) > 0 {
+		parts = append(parts, "producers: "+strings.Join(res.Producers, ","))
+	}
 	for _, f := range res.Findings {
 		parts = append(parts, fmt.Sprintf("cheat:%s(%s)", f.Pattern, f.File))
 	}

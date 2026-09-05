@@ -174,6 +174,7 @@ func CheckSelfReport(root string, state *TaskState) SelfReportResult {
 			Level:   checklog.LevelWarn,
 			TaskRef: state.TaskRef,
 			Detail:  `escape-hatch: self-report check bypassed (FORGE_SELF_REPORT=disable)`,
+			Meta:    map[string]string{"escape.gate": "self-report", "escape.reason": checklog.EscapeReasonEnv, "escape.owner": "env"},
 		})
 		return res
 	}

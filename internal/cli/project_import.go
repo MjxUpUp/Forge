@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/datamerge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/projectsync"
@@ -140,6 +141,20 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(out, `bundle：%s`+"\n"+`  来源：%s@%s %s（key=%s mode=%s）`+"\n"+`  文件：%d 个，导出于 %s`+"\n",
 		manifest.BundleID, manifest.Origin.User, manifest.Origin.Hostname, manifest.Origin.Root,
 		manifest.Origin.Key, manifest.Origin.KeyMode, len(manifest.Files), manifest.ExportedAt.Format(`2006-01-02 15:04`))
+
+	// 版本偏移感知（mechanism-hardening P0-1）：bundle 比本机新时警告不硬拒——
+	// 本机 re-export 会静默裁剪较新字段（旧版本反序列化丢弃未知键）。K8s 偏移
+	// 窗口语义：无声变有声，幂等导入体验不变。sync pull 走同一导入核心，同受覆盖。
+	if skew := projectsync.VersionSkew(cleanVersion(cmd.Root().Version), manifest.ForgeVersion); skew != "" {
+		fmt.Fprintf(out, `⚠ 版本偏移：%s`+"\n", skew)
+		_ = checklog.Record(root, &checklog.Entry{
+			Check:   checklog.CheckSyncVersionSkew,
+			Passed:  true, // 偏移不是导入失败——观察类留痕（warn 走 Level）
+			Checked: true,
+			Level:   checklog.LevelWarn,
+			Detail:  "ADVISORY: " + skew,
+		})
+	}
 
 	// 导入侧 allowlist 强制：manifest 本身不可信（无签名），Unpack 只保证
 	// manifest↔tar 一致——清单里伪造的 imports.jsonl / 锚文件 / hooks / 敏感 store

@@ -3,6 +3,7 @@ package clitask
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -197,6 +198,34 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 
 	} else {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
+	}
+
+	// 逃生舱库存行（mechanism-hardening P1-2）：本任务用了几次逃生舱、哪些 gate
+	// ——库存进任务报告（Fowler 库存观：可见是治理的第一步）。读侧零额外 IO
+	//（checklog 已按任务过滤的 LoadForTask）。
+	if escRows, eerr := checklog.LoadForTask(root, state.TaskRef); eerr == nil {
+		gates := map[string]int{}
+		for _, er := range escRows {
+			if er.Check == checklog.CheckEscapeHatch {
+				g := checklog.EscapeGateOf(&er)
+				if g == "" {
+					g = "(legacy)"
+				}
+				gates[g]++
+			}
+		}
+		if len(gates) > 0 {
+			parts := make([]string, 0, len(gates))
+			for g, n := range gates {
+				parts = append(parts, fmt.Sprintf("%s×%d", g, n))
+			}
+			sort.Strings(parts)
+			total := 0
+			for _, n := range gates {
+				total += n
+			}
+			fmt.Fprintf(os.Stderr, "🚪 逃生舱使用：%d 次（%s）——已留 checklog 审计、evidence 封顶 Weak\n", total, strings.Join(parts, ", "))
+		}
 	}
 
 	// Act 反馈臂（PDCA Act）：构建证据驱动结论落盘，喂给 session-retrospective。

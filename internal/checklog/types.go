@@ -304,6 +304,18 @@ const (
 	// 观察类——僵尸认领与 overnight 会话失联的 always-on 治理信号；marker 节流每
 	// 任务每小时至多一条。
 	CheckTaskStalled CheckName = "task-stalled"
+	// CheckSyncVersionSkew records a bundle forward-version-skew observation on
+	// import (mechanism-hardening P0-1): the bundle was exported by a NEWER forge
+	// than the local binary — local re-export would silently clip newer fields
+	// (old-version unmarshal drops unknown keys). Observation class; warn-level,
+	// never blocks (K8s version-skew semantics: audible, not hard-rejecting —
+	// idempotent re-import stays free).
+	//
+	// CheckSyncVersionSkew 记录导入侧的 bundle 前向版本偏移观察
+	//（mechanism-hardening P0-1）：bundle 由比本机新的 forge 导出——本机
+	// re-export 会静默裁剪较新字段（旧版本反序列化丢弃未知键）。观察类；warn
+	// 级、绝不硬拒（K8s 偏移窗口语义：无声变有声，幂等导入体验不变）。
+	CheckSyncVersionSkew CheckName = "sync-version-skew"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
