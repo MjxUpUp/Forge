@@ -12,15 +12,19 @@ import (
 	"path/filepath"
 )
 
-// FS is the compile-time-embedded skill library virtual filesystem (paths relative to the skills/ root, slash-separated).
-// `*` matches the direct children of the current dir (CONVENTIONS.md + each canonical skill dir); matched dirs recursively embed all their contents.
+// FS 是编译期嵌入的 skill 库虚拟文件系统（路径相对 skills/ 根，正斜杠分隔）。
+// `*` 匹配当前目录直接子项（CONVENTIONS.md + 各 canonical skill 目录），目录匹配后递归嵌入全部内容。
 // Note: the number of skill dirs grows/shrinks with distribution — no hard-coded count here, to keep the comment from drifting again.
+// Design-family split (2026-09): the 12 frontend/design skills live in plugins/forge-design/skills/
+// (a standalone pack) and are deliberately NOT embedded here — core embeds the general-purpose set only.
 // embed rules: .go files carrying build directives (this file embed.go) are auto-excluded; but .go without directives
 // (embed_test.go) is embedded, so ExtractTo explicitly skips .go. skills/ is confirmed free of .git/hidden-file pollution.
 //
 // FS 是编译期嵌入的 skill 库虚拟文件系统（路径相对 skills/ 根，正斜杠分隔）。
 // `*` 匹配当前目录直接子项（CONVENTIONS.md + 各 canonical skill 目录），目录匹配后递归嵌入全部内容。
 // 注：skill 目录数量随分发增减——不在此写死数字，避免注释与实际再次漂移。
+// 设计族拆包（2026-09）：前端/设计 12 skill 住 plugins/forge-design/skills/（独立 pack），
+// 刻意不进本 embed——核心只嵌通用集。
 // embed 规则：含 build 指令的 .go 文件（本文件 embed.go）被自动排除；但无指令的 .go
 // （embed_test.go）会被嵌入，故 ExtractTo 显式跳过 .go。skills/ 已确认无 .git/隐藏文件污染。
 //

@@ -254,6 +254,14 @@ var skillRefAllowlist = map[string]bool{
 	`sk-xxx`: true,
 	// eval 黄金集策展 case 的 ID 前缀约定（g-<skill>-t1，非 skill）
 	`g-`: true,
+	// forge-design pack skill（2026-09 设计族拆包至 plugins/forge-design，非核心 canonical；
+	// 核心 skill 以反引号指针引用它们——"属 forge-design pack，未安装则忽略"，真引用非断链）
+	`frontend-feature-development`: true, `frontend-stack-selection`: true,
+	`frontend-aesthetics-execution`: true, `frontend-code-review`: true,
+	`ai-generated-ui-review`: true, `ai-ui-generation-workflow`: true,
+	`design-system-workflow`: true, `design-system-migration`: true,
+	`design-review-snapshot`: true, `design-artifact-standards`: true,
+	`design-audit`: true, `ui-iteration-feedback-loop`: true,
 }
 
 // TestSkills_NoDanglingSkillRefs 守卫 C：canonical skill 文档里每个反引号多段 kebab token

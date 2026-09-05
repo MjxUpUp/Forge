@@ -1,6 +1,6 @@
 ---
 name: doc-review
-description: "文档质量审查与 L2 评分门控（PR 描述/commit body/测试报告/复盘报告/落盘文档）。Use when: 审查文档质量、给文档评分、说\"帮我审下这份文档\"\"这文档写得怎么样\"\"文档太长了帮我看看\"时、文档回检（L2）时。SKIP: 代码审查（用 code-review-gate）、设计产物按环节清单搭骨架自查（用 design-artifact-standards）、按模板生成文档（用 doc-generator）、文档与代码真相源的一致性守卫（用 docs-consistency-guard）、机器可判的禁令/结构/篇幅 lint（L1 lint 工具）。"
+description: "文档质量审查与 L2 评分门控（PR 描述/commit body/测试报告/复盘报告/落盘文档）。Use when: 审查文档质量、给文档评分、说\"帮我审下这份文档\"\"这文档写得怎么样\"\"文档太长了帮我看看\"时、文档回检（L2）时。SKIP: 代码审查（用 code-review-gate）、设计产物按环节清单搭骨架自查（design-artifact-standards 属 forge-design pack，未安装则忽略）、按模板生成文档（用 doc-generator）、文档与代码真相源的一致性守卫（用 docs-consistency-guard）、机器可判的禁令/结构/篇幅 lint（L1 lint 工具）。"
 metadata:
   pattern: reviewer + gate
   domain: documentation
@@ -26,7 +26,7 @@ metadata:
 
 **SKIP（路由到更专业的 skill）:**
 - **代码审查** → `code-review-gate`（兄弟门控，管代码不管文档）
-- **设计产物该有什么**（章节骨架/维度覆盖自查）→ `design-artifact-standards`（编写期标准；先骨架后评分，两者构成 producer-chain——先按标准产出、再按门控评审）
+- **设计产物该有什么**（章节骨架/维度覆盖自查）→ `design-artifact-standards`（编写期标准；先骨架后评分，两者构成 producer-chain——先按标准产出、再按门控评审。该 skill 属 forge-design pack，未安装则本 skill 独立评分）
 - **按模板生成文档** → `doc-generator`（producer，本 skill 是 reviewer）
 - **文档与代码是否一致**（命令表漂移/计数过期）→ `docs-consistency-guard`（管对不对，本 skill 管写得好不好）
 - **机器可判的结构问题**（禁令短语/必填章节/结论枚举/篇幅）→ L1 lint，命中直接打回修，不进本 skill 评分
@@ -112,7 +112,7 @@ metadata:
 ## 与其他 skill 的分工
 
 - **code-review-gate**：兄弟门控，管代码。两者叠加时（改码 + 改文档的任务）各自独立执行。
-- **design-artifact-standards**：编写期管「该有什么」（骨架/维度覆盖），本 skill 审查期管「写得怎么样」。producer-chain：先按标准搭骨架，再按本 skill 评分。
+- **design-artifact-standards**（属 forge-design pack，未安装则忽略）：编写期管「该有什么」（骨架/维度覆盖），本 skill 审查期管「写得怎么样」。producer-chain：先按标准搭骨架，再按本 skill 评分。
 - **doc-generator**：按模板生成（producer），本 skill 评审（reviewer）。
 - **docs-consistency-guard**：管文档与代码真相源的一致性（命令表/计数漂移），与质量维度正交。
 - **session-retrospective**：文档回检模式提炼（同类打回 ≥3 次升 L1 规则）是本 skill rubric 的进化机制。

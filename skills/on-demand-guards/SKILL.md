@@ -13,7 +13,7 @@ metadata:
 | 层 | 覆盖 | 形态 |
 |---|---|---|
 | **always-on（自动挡）** | `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE\|TABLE\|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE\|UPDATE` | 宿主高危命令 hook（PreToolUse Bash，如已接线）自动 block + HITL 确认登记后放行 |
-| **session 级（本 skill）** | /freeze 目录锁定 + 自动挡未覆盖的危险模式（`chmod -R 777` / `curl … \| sh` / `git clean -fd` / `npm publish` 等） | 正文纪律——每次匹配操作前 STOP 确认；宿主有 freeze 类 hook 时升级为硬阻断 |
+| **session 级（本 skill）** | /freeze 目录锁定 + 自动挡未覆盖的危险模式（`chmod -R 777` / `curl … \| sh` / `git clean -fd` / `npm publish` 等） | /freeze 优先宿主 freeze 类 hook（PreToolUse 硬阻断执法）；无 hook 时正文纪律降级——每次匹配操作前 STOP 确认 |
 
 **核心原则：激活后，每次匹配危险模式的操作前必须 STOP 确认，直到用户说"解除"。**
 
@@ -66,11 +66,13 @@ ssh prod-host     # 直接操作生产机（命令在远程执行，本地 hook 
 
 **解除**：用户说"解除 careful""不用小心了""恢复正常"。
 
-## /freeze — 目录锁定
+## /freeze — 目录锁定（写入范围冻结）
 
 **激活条件**：用户说"锁住 X 目录""只改这里""/freeze src/"。
 
-**STOP 纪律模拟**（宿主无 freeze 类 hook 时的主路径）：激活后每次 Edit/Write 到锁定目录外的文件前 STOP 确认：
+**主路径：宿主的 freeze 真 hook**（如已提供）——激活后由 PreToolUse 写入门禁**硬阻断**锁定范围外的 Edit/Write，执法在 hook 层，不依赖 agent 每回合自检；长会话/上下文压缩后依然生效。状态由 hook 持有（可查询、有解除命令），agent 只负责按用户意图激活/解除。**有 hook 就不要用下面的纪律模拟。**
+
+**降级路径：STOP 纪律模拟**（宿主无 freeze 类 hook 时）——激活后每次 Edit/Write 到锁定目录外的文件前 STOP 确认：
 
 ```
 ⚠️ /freeze 已激活（锁定目录：src/），检测到目录外修改：
@@ -78,9 +80,7 @@ ssh prod-host     # 直接操作生产机（命令在远程执行，本地 hook 
 确认修改？说"确认"继续，或其他取消。
 ```
 
-**宿主有 freeze 类 hook 时优先用 hook**（硬阻断，不依赖 agent 每回合自检）。
-
-**可靠性上限（诚实声明）**：prompt 型护栏的可靠性 = agent 每回合记得自检。长会话/上下文压缩后激活状态必然漂移——恰是它要防的场景。宿主有 hook 就不要依赖纯纪律；用纪律路径就把冻结范围告诉用户，请用户在发现越界时直接纠正。
+**可靠性上限（诚实声明）**：纪律路径的可靠性 = agent 每回合记得自检。长会话/上下文压缩后激活状态必然漂移——恰是它要防的场景。走降级路径时把冻结范围告诉用户，请用户在发现越界时直接纠正。
 
 **典型场景**：调试时"我只加日志，别让我不小心改了无关代码"——freeze 后只允许改指定目录。
 

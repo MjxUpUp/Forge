@@ -30,7 +30,7 @@ metadata:
 对每个被审查的文件，检查每条适用规则。对每个发现：
 
 - **行号**：问题所在位置
-- **严重性**：`block`（合并前必须修复）、`fix`（应当修复）、`suggest`（建议考虑）——与 frontend-code-review / ai-generated-ui-review 统一标签（旧 error/warning/info 分别映射为 block/fix/suggest）
+- **严重性**：`block`（合并前必须修复）、`fix`（应当修复）、`suggest`（建议考虑）——与 forge-design pack 的 frontend-code-review / ai-generated-ui-review 统一标签（旧 error/warning/info 分别映射为 block/fix/suggest；pack 未安装则按本 skill 标签独立执行）
 - **规则**：违反了清单的哪一项
 - **原因**：解释**为什么**是问题，不只是说**什么**有问题
 - **修复**：给出具体的修正代码

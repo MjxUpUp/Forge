@@ -71,22 +71,6 @@
   },
   {
     "match": [
-      "前端",
-      "前端开发",
-      "frontend",
-      "写组件",
-      "写页面",
-      "UI 组件",
-      "状态管理",
-      "前端测试",
-      "前端 a11y",
-      "前端性能"
-    ],
-    "skill": "frontend-feature-development",
-    "reason": "前端开发规范（组件/状态/a11y/测试/性能）"
-  },
-  {
-    "match": [
       "后端",
       "后端开发",
       "backend",
