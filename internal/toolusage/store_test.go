@@ -361,3 +361,23 @@ func TestToollogHasData(t *testing.T) {
 		t.Fatal("记入条目后应为 true")
 	}
 }
+
+// TestToollogAnyData 探测面含归档（对抗审查 should-fix 的回归钉）：active 空但归档
+// 非空 → true；两者全空/不存在 → false。
+func TestToollogAnyData(t *testing.T) {
+	dir := t.TempDir()
+	if ToollogAnyData(dir) {
+		t.Fatal("无任何 toollog 应 false")
+	}
+	// 仅归档非空（active 被另一 task start 归档后的形态）。
+	arch := filepath.Join(dataDir(dir), "toollog-20260905-000000.000.jsonl")
+	if err := os.MkdirAll(filepath.Dir(arch), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(arch, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !ToollogAnyData(dir) {
+		t.Fatal("归档非空应 true——只看 active 会把该形态误判遥测未接")
+	}
+}
