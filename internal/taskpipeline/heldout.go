@@ -169,6 +169,7 @@ func CheckHeldoutFresh(root string, state *TaskState) (ok bool, reasons []string
 			Level:   checklog.LevelWarn,
 			TaskRef: state.TaskRef,
 			Detail:  `escape-hatch: held-out gate bypassed (FORGE_HELDOUT=disable)`,
+			Meta:    map[string]string{"escape.gate": "held-out", "escape.reason": checklog.EscapeReasonEnv, "escape.owner": "env"},
 		})
 		return true, nil
 	}

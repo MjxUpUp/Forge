@@ -169,7 +169,6 @@ func TestTaskVerify_SkillDecisionsGuardrail_FailOpenDetailHonest(t *testing.T) {
 	}
 }
 
-
 // TestSkillDecisionsDualTree 复审 note 覆盖缺口：blocking 与 advisory 面都识别
 // plugins/<pack>/skills/<name>/ 路径（2026-09 拆包后 pack 内改动不再零信号）。
 func TestSkillDecisionsDualTree(t *testing.T) {

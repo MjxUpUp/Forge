@@ -89,6 +89,9 @@ func runGatePush(cmd *cobra.Command, args []string) error {
 		fmt.Print(" · ⚠ 工作树有未提交变更")
 	}
 	fmt.Println()
+	if len(res.Producers) > 0 {
+		fmt.Printf("  生产者：%s\n", strings.Join(res.Producers, ", "))
+	}
 	for _, f := range res.Findings {
 		fmt.Printf("  CHEAT: %s %s:%d — %s\n", f.Pattern, f.File, f.Line, truncate(f.Snippet, 60))
 	}
