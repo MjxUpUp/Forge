@@ -147,7 +147,18 @@ func VerifyHeldout(root string, state *TaskState) HeldoutResult {
 // FORGE_HELDOUT=disable 落 escape-hatch 留痕。
 func CheckHeldoutFresh(root string, state *TaskState) (ok bool, reasons []string) {
 	criteria, err := LoadHeldout(root, state.TaskRef)
-	if err != nil || len(criteria) == 0 {
+	if err != nil {
+		// 侧车损坏与未登记不同（复审 note）：已登记的保留集读不回来是治理信号，
+		// 留 warn 痕后放行——complete 路径与 verify 路径（VerifyHeldout 的 warn）对称。
+		recordAudit(root, &checklog.Entry{
+			Check: CheckNameHeldoutGap, Passed: false, Checked: false,
+			Level:   checklog.LevelWarn,
+			TaskRef: state.TaskRef,
+			Detail:  "ADVISORY: held-out 侧车存在但损坏，complete 边界门禁未运行：" + err.Error(),
+		})
+		return true, nil
+	}
+	if len(criteria) == 0 {
 		return true, nil
 	}
 	if os.Getenv(heldoutDisableEnv) == "disable" {

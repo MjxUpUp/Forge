@@ -83,11 +83,13 @@ func runTaskMirrorGithub(cmd *cobra.Command, args []string) error {
 	}
 	for i := range plan {
 		if err := execMirrorAction(root, repo, &plan[i], mapping); err != nil {
-			return fmt.Errorf("动作 %s 失败（已执行的动作与映射保留）: %w", plan[i].TaskRef, err)
+			// 每条 create 成功后已即时持久化映射——中途失败不丢已建 issue 编号，
+			// 重跑不会重复建 issue（对抗审查 should-fix，复审轮确认旧代码未修）。
+			return fmt.Errorf("动作 %s 失败（已建 issue 的映射已落盘，重跑续做）: %w", plan[i].TaskRef, err)
 		}
-	}
-	if err := taskpipeline.SaveMirrorMapping(root, mapping); err != nil {
-		return err
+		if err := taskpipeline.SaveMirrorMapping(root, mapping); err != nil {
+			return fmt.Errorf("映射持久化失败（已建 issue 编号见上方输出，可手工补 DataDir/mirror-gh.json）: %w", err)
+		}
 	}
 	fmt.Printf("完成：映射表已更新（%d 条）→ DataDir/mirror-gh.json\n", len(mapping))
 	return nil
