@@ -15,6 +15,8 @@ package cli
 import (
 	"os/exec"
 
+	"github.com/MjxUpUp/Forge/internal/aatout"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -491,6 +493,34 @@ func runEvalOtel(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// runEvalAAT 导出 checklog 为 IETF draft-sharif-agent-audit-trail 形状的
+// JSONL（方向 D2 标准卡位：versioned mapper，meta 头声明全部有意的偏离）。
+func runEvalAAT(cmd *cobra.Command, args []string) error {
+	out, _ := cmd.Flags().GetString("out")
+	limit, _ := cmd.Flags().GetInt("limit")
+	root := evalRepoRoot()
+	entries, err := checklog.LoadAllAll(root)
+	if err != nil {
+		return fmt.Errorf("BLOCKED: 读取 checklog 失败: %v", err)
+	}
+	if limit > 0 && len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+	var buf strings.Builder
+	if err := aatout.WriteExport(&buf, entries, aatout.Options{AgentVersion: rootCmd.Version}); err != nil {
+		return err
+	}
+	if out == "" {
+		fmt.Print(buf.String())
+		return nil
+	}
+	if err := util.AtomicWrite(out, []byte(buf.String()), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("AAT 导出：%d 条记录 → %s（mapper v%s，meta 头含偏离声明）\n", len(entries), out, "1")
+	return nil
+}
+
 func splitCSV(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {
@@ -654,6 +684,15 @@ func init() {
 	otel.Flags().String("out", "", "输出文件（缺省 stdout；AtomicWrite 落盘）")
 	otel.Flags().Int("limit", 0, "仅导出最新 N 条（0=全部）")
 	evalCmd.AddCommand(otel)
+
+	aat := &cobra.Command{
+		Use:   "aat [--out <file>] [--limit N]",
+		Short: "checklog → IETF agent-audit-trail 形状 JSONL（versioned mapper，链式 prev_hash）",
+		RunE:  runEvalAAT,
+	}
+	aat.Flags().String("out", "", "输出文件（缺省 stdout；AtomicWrite 落盘）")
+	aat.Flags().Int("limit", 0, "仅导出最新 N 条（0=全部）")
+	evalCmd.AddCommand(aat)
 
 	rootCmd.AddCommand(evalCmd)
 }
