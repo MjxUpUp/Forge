@@ -299,6 +299,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge eval decompose --manifest <file> --models <a,b> [--profiles off,gates-only,full] [--repeats N]` | 方差分解大体检：HV̄/MV̄ + 排名翻转数 + η²_p + 三档差值（full−off 整体贡献 / full−gates-only 注入层 / gates-only−off 纯门禁代价）；结论只做区间表述 |
 | `forge eval report [--quarter 2026-Q3]` | 季度自评测报告（汇编已落盘证据；缺失如实标注，绝不补造） |
 | `forge eval otel [--out <file>] [--limit N]` | checklog → OTLP/JSON 导出（OpenTelemetry 通道：审计行进企业 SIEM/APM；scope=forge.checklog versioned mapper，`--limit` 只导最新 N 条） |
+| `forge eval aat [--out <file>] [--limit N]` | checklog → IETF agent-audit-trail 形状 JSONL（链式 prev_hash + trust_level L0-L3；versioned mapper，meta 头声明全部有意偏离——标准卡位，见 docs/compliance/standards-crosswalk.md） |
+| `forge skills inventory [--lock\|--verify] [--json]` | AST10 对齐的 skill 清单与内容指纹：枚举 canonical + pack 树、每个 SKILL.md 的 sha256；`--lock` 钉基线（skills-inventory.lock 提交进仓），`--verify` 对照锁文件核对（漂移/未知/缺项 exit 2——OWASP AST07 "immutable pinning, hash verification" 机械落地） |
 | `forge gate push [--ref <branch>] [--dry-run]` | git 推送边界门禁：merge-base...HEAD 重跑确定性 cheat-scan + 本分支未消解 BLOCKED 任务（不依赖本地 hook 是否生效——云端 agent 分支同受治理）；证据快照落 DataDir/pushes/，CI 里复跑同套判定兜底；阻断 exit 2 |
 | `forge gate hooks install [--uninstall]` | 安装 git pre-push 钩子（core.hooksPath=.forge/git-hooks，调 `forge gate push`；forge 不在 PATH 时 fail-open 放行）——治理随 git 走的本地接线 |
 | `forge task scope add <glob> [--ref <ref>]` | 追加计划改动文件到白名单（支持中途迭代；--ref 指定任务，不依赖活跃任务检测） |
