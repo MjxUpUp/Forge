@@ -24,6 +24,8 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/evalkit"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/otelout"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
@@ -455,6 +457,40 @@ func runEvalDecompose(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// runEvalOtel 导出 checklog 审计行为 OTLP/JSON（方向 D1：进入企业 SIEM/APM 的
+// OpenTelemetry 通道）。读全史（跨归档），按 --limit 截尾（最新 N 条），--out 落盘
+// （AtomicWrite）否则 stdout。这是导出器不是评测——归在 eval 族下因共用"证据外送"
+// 语义与 evalRepoRoot 项目解析。
+func runEvalOtel(cmd *cobra.Command, args []string) error {
+	out, _ := cmd.Flags().GetString("out")
+	limit, _ := cmd.Flags().GetInt("limit")
+	root := evalRepoRoot()
+	entries, err := checklog.LoadAllAll(root)
+	if err != nil {
+		return fmt.Errorf("BLOCKED: 读取 checklog 失败: %v", err)
+	}
+	if limit > 0 && len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+	opts := otelout.Options{ServiceVersion: rootCmd.Version}
+	if key, err := forgedata.Key(root); err == nil {
+		opts.ProjectKey = key
+	}
+	var buf strings.Builder
+	if err := otelout.WriteOTLP(&buf, entries, opts); err != nil {
+		return err
+	}
+	if out == "" {
+		fmt.Print(buf.String())
+		return nil
+	}
+	if err := util.AtomicWrite(out, []byte(buf.String()), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("OTLP/JSON 已导出：%d 条审计行 → %s（scope forge.checklog v%s）\n", len(entries), out, "1")
+	return nil
+}
+
 func splitCSV(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {
@@ -609,6 +645,15 @@ func init() {
 	}
 	report.Flags().String("quarter", "", "季度标签（默认当前季）")
 	evalCmd.AddCommand(report)
+
+	otel := &cobra.Command{
+		Use:   "otel [--out <file>] [--limit N]",
+		Short: "checklog → OTLP/JSON 导出（OpenTelemetry 通道，进 SIEM/APM）",
+		RunE:  runEvalOtel,
+	}
+	otel.Flags().String("out", "", "输出文件（缺省 stdout；AtomicWrite 落盘）")
+	otel.Flags().Int("limit", 0, "仅导出最新 N 条（0=全部）")
+	evalCmd.AddCommand(otel)
 
 	rootCmd.AddCommand(evalCmd)
 }
