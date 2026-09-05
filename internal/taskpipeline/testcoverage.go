@@ -113,6 +113,7 @@ func coverageEscapeActive(root string, state *TaskState) bool {
 		Level:   checklog.LevelWarn, // 逃生舱使用是 warn 语义（bypass 已生效但须留痕），derive 只会给 pass
 		TaskRef: taskRef,
 		Detail:  "escape-hatch: test-coverage gate bypassed (per-task override or FORGE_TEST_COVERAGE=disable)",
+		Meta:    map[string]string{"escape.gate": "test-coverage", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": state.TaskRef},
 	})
 	return true
 }

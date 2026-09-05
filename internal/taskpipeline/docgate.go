@@ -171,6 +171,7 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 			Level:   checklog.LevelWarn,
 			TaskRef: state.TaskRef,
 			Detail:  `escape-hatch: doc gate bypassed (per-task override or FORGE_DOC_GATE=disable); changed docs: ` + strings.Join(docs, ", "),
+			Meta:    map[string]string{"escape.gate": "doc-gate", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": state.TaskRef},
 		})
 		return true, nil
 	}
