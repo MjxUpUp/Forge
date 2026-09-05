@@ -5,6 +5,7 @@ package compat
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -75,14 +76,71 @@ func TestScanBlockings(t *testing.T) {
 	}
 }
 
-// TestEscapeRosterComplete 守卫：compat.EscapeEnvs 与 taskpipeline 源里
-// escapeDisabled 消费的 env 常量对齐（新增逃生舱必须同步 roster）。
+// TestEscapeRosterComplete 守卫（对抗审查 should-fix：原注释宣称源对照而实际
+// 只查非空——执法点虚设）：源扫描 taskpipeline 里 escapeDisabled 使用的
+// *DisableEnv 常量与 EscapeEnvs 双向对齐。
 func TestEscapeRosterComplete(t *testing.T) {
-	// 守卫 A：roster 非空且无重复。完整性由 golden 钉——snapshot 的 escapes 面
-	// 任何变化都在 compat.snapshot.json diff 里显式（新增逃生舱必须同步 roster
-	// 才能过 golden 守卫）。
 	if len(EscapeEnvs) == 0 {
 		t.Fatal("逃生舱 roster 不应为空")
+	}
+	// 源扫描：taskpipeline 各文件里 `xxxDisableEnv = "FORGE_..."` 常量。
+	srcDir := filepath.Join("..", "taskpipeline")
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		t.Fatalf("读 taskpipeline 源目录失败（守卫需在仓内运行）: %v", err)
+	}
+	// 匹配任意 "FORGE_*" 字符串常量声明（DisableEnv 后缀与 envXxx 两种命名
+	// 形态都命中；常量声明用双引号，hook 脚本嵌 Bash 字符串另有反引号形态——
+	// 双形态都命中）；已知非逃生舱的 env（阈值调节）显式排除。
+	re := regexp.MustCompile("[\"`](FORGE_[A-Z_]+)[\"`]")
+	nonEscape := map[string]bool{
+		// 非逃生舱类 env（白名单——命中源扫描但不属"gate-bypass 逃生舱"语义）：
+		"FORGE_RECURRENT_THRESHOLD": true, // 阈值调节（recurrent-harden 强度）
+		"FORGE_RECURRENT_HARDEN":    true, // 强度回退（advisory 化偏好，非 gate-bypass）
+		"FORGE_CONVENTIONS_LINT":    true, // 功能开关（conventions lint 启停）
+		"FORGE_TOOL_NAME":           true, // hook 协议字段（hook stdin 传值，非用户 env）
+		"FORGE_FILE_PATH":           true, // hook 协议字段（同上）
+		"FORGE_COMMAND":             true, // hook 协议字段（同上）
+		"FORGE_CONTENT":             true, // hook 协议字段（同上）
+		"FORGE_OLD_STRING":          true, // hook 协议字段（同上）
+		"FORGE_NEW_STRING":          true, // hook 协议字段（同上）
+		"FORGE_SESSION_ID":          true, // 会话标识（hook 传值）
+		"FORGE_ATTRIBUTION":         true, // 归属通道选择（非 gate-bypass）
+		"FORGE_LOG_RETENTION_DAYS":  true, // 日志保留期参数
+		"FORGE_TEST_TIMEOUT":        true, // 测试参数
+	}
+	inSrc := map[string]bool{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(srcDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		for _, m := range re.FindAllStringSubmatch(string(body), -1) {
+			inSrc[m[1]] = true
+		}
+	}
+	if len(inSrc) == 0 {
+		t.Fatal("源扫描零命中——守卫正则可能失配（检查常量命名形态）")
+	}
+	roster := map[string]bool{}
+	for _, e := range EscapeEnvs {
+		roster[e] = true
+	}
+	for env := range inSrc {
+		if nonEscape[env] {
+			continue
+		}
+		if !roster[env] {
+			t.Errorf("taskpipeline 源里的逃生舱 %s 不在 compat.EscapeEnvs roster——新增逃生舱必须同步 roster（快照面 3）", env)
+		}
+	}
+	for env := range roster {
+		if !inSrc[env] {
+			t.Errorf("roster 里的 %s 在 taskpipeline 源中无对应常量（逃生舱已删除？同步 roster）", env)
+		}
 	}
 	sorted := append([]string(nil), EscapeEnvs...)
 	sort.Strings(sorted)
@@ -93,11 +151,35 @@ func TestEscapeRosterComplete(t *testing.T) {
 	}
 }
 
-// TestAllCheckNamesSorted roster 排序且非空。
+// TestAllCheckNamesSorted roster 排序非空 + 源对照（types.go 常量与显式清单
+// 双向对齐——对抗审查 should-fix：原注释宣称守卫而未实现）。
 func TestAllCheckNamesSorted(t *testing.T) {
 	names := AllCheckNames()
 	if len(names) < 30 {
 		t.Fatalf("roster 异常小: %d", len(names))
+	}
+	// 源对照：checklog/types.go 里 `CheckXxx CheckName = "y"` 声明集。
+	body, err := os.ReadFile(filepath.Join("types.go"))
+	if err == nil {
+		re := regexp.MustCompile("Check\\\\w+\\\\s+CheckName\\\\s*=\\\\s*`([\\\\w-]+)`")
+		declared := map[string]bool{}
+		for _, m := range re.FindAllStringSubmatch(string(body), -1) {
+			declared[m[1]] = true
+		}
+		listed := map[string]bool{}
+		for _, n := range names {
+			listed[n] = true
+		}
+		for c := range declared {
+			if !listed[c] {
+				t.Errorf("types.go 声明的 %s 不在 AllCheckNames 清单——同步 escape.go 的 allCheckNames", c)
+			}
+		}
+		for c := range listed {
+			if !declared[c] {
+				t.Errorf("清单里的 %s 在 types.go 无声明（已删除？同步清单）", c)
+			}
+		}
 	}
 	if !sort.StringsAreSorted(names) {
 		t.Fatal("roster 未排序")

@@ -27,19 +27,19 @@ const PerpetuationThreshold = 3
 
 // EscapeInventory 是逃生舱库存快照。
 type EscapeInventory struct {
-	GeneratedAt time.Time          `json:"generated_at"`
-	Total       int                `json:"total"`
-	Gates       []EscapeGateStats  `json:"gates"`
-	Findings    []string           `json:"findings,omitempty"`
+	GeneratedAt time.Time         `json:"generated_at"`
+	Total       int               `json:"total"`
+	Gates       []EscapeGateStats `json:"gates"`
+	Findings    []string          `json:"findings,omitempty"`
 }
 
 // EscapeGateStats 是单个 gate 的豁免统计。
 type EscapeGateStats struct {
-	Gate        string            `json:"gate"`          // Meta 命名；旧行按 Detail 首词兜底
-	Count       int               `json:"count"`
-	Tasks       int               `json:"tasks"`         // 涉及任务数（去重）
-	Reasons     map[string]int     `json:"reasons,omitempty"`
-	UnfulfilledCandidates int      `json:"unfulfilled_candidates,omitempty"` // 后续 pass 且无新 escape 的任务数
+	Gate                  string         `json:"gate"` // Meta 命名；旧行按 Detail 首词兜底
+	Count                 int            `json:"count"`
+	Tasks                 int            `json:"tasks"` // 涉及任务数（去重）
+	Reasons               map[string]int `json:"reasons,omitempty"`
+	UnfulfilledCandidates int            `json:"unfulfilled_candidates,omitempty"` // 后续 pass 且无新 escape 的任务数
 }
 
 // BuildEscapeInventory 聚合全史 escape 行成库存。
@@ -95,22 +95,35 @@ func BuildEscapeInventory(entries []checklog.Entry, now time.Time) EscapeInvento
 		if _, ok := gateTasks[g][key]; !ok {
 			gateTasks[g][key] = &taskState{}
 		}
-		gateTasks[g][key].escaped = true
-		gateTasks[g][key].passed = false // 重置：最新 escape 之后的 pass 才算
 	}
-	// 第二遍：escape 之后同任务的 pass 行（同 gate 粗匹配）→ unfulfilled 候选。
-	// entries 时间序（LoadAllAll 契约）。pass 行的 gate 匹配：pass 行没有 escape
-	// Meta——按 Check 名与 gate 名的映射（doc-gate→doc-lint? 不对齐）。
-	// 诚实边界：v1 用"同任务在最后一次 escape 后存在任一 PASS 级行"作候选信号
-	//（任务整体走绿了，被豁免的门禁大概率也过了）——粗但方向对，输出标"候选"。
+	// 单遍时序扫描（对抗审查 should-fix：原两遍实现对"escape 之后"零校验——
+	// pass 行早于 escape 也置位，候选信号退化为常数噪声）。entries 时间序
+	//（LoadAllAll 契约）。诚实边界：v1 用"同任务在最后一次 escape 后存在任一
+	// PASS 级行"作候选信号（任务整体走绿了，被豁免的门禁大概率也过了）——粗但
+	// 方向对，输出标"候选"。
+	//
+	// 语义：escape 行 → escaped=true 且清 passed（重新等后续 pass）；pass 行
+	//（该任务任一 check）→ 若 escaped 则 passed=true。循环结束后 escaped&&passed
+	// 即"最后一次 escape 之后又 pass 过"的任务。
 	for i := range entries {
 		e := &entries[i]
-		if e.TaskRef == "" || e.Passed != true || e.Check == checklog.CheckEscapeHatch {
+		if e.TaskRef == "" {
+			continue
+		}
+		if e.Check == checklog.CheckEscapeHatch {
+			g := gateOf(*e)
+			if ts, ok := gateTasks[g][e.TaskRef]; ok {
+				ts.escaped = true
+				ts.passed = false
+			}
+			continue
+		}
+		if !e.Passed {
 			continue
 		}
 		for g, tasks := range gateTasks {
-			if ts, ok := tasks[e.TaskRef]; ok && ts.escaped && !ts.passed {
-				_ = g
+			_ = g
+			if ts, ok := tasks[e.TaskRef]; ok && ts.escaped {
 				ts.passed = true
 			}
 		}

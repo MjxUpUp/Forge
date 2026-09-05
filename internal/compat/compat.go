@@ -289,7 +289,8 @@ func Diff(base, cur *Snapshot) []Change {
 			out = append(out, Change{Surface: "schemas", Kind: "added", Item: key + "（新结构）"})
 		}
 	}
-	// blockings
+	// blockings：共有文件计数增长 + cur 新增文件（新增 BLOCKED 位点的最常见
+	// 形态——对抗审查 should-fix：原实现漏掉新文件，恰是该面的存在目的）。
 	baseB := map[string]int{}
 	for _, b := range base.Blockings {
 		baseB[b.File] = b.Count
@@ -299,6 +300,10 @@ func Diff(base, cur *Snapshot) []Change {
 			if b.Count > bc {
 				out = append(out, Change{Surface: "blockings", Kind: "changed", Item: fmt.Sprintf("%s（阻断位点 %d→%d——按文案契约须附预告版本或首发声明）", b.File, bc, b.Count)})
 			}
+		} else {
+			// 基线里没有该文件=新增阻断文件（对抗审查 should-fix：新 BLOCKED
+			// 位点的最常见形态，原实现完全漏掉）。
+			out = append(out, Change{Surface: "blockings", Kind: "changed", Item: fmt.Sprintf("%s（新文件含 %d 个阻断位点——按文案契约须附预告版本或首发声明）", b.File, b.Count)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {

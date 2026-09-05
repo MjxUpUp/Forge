@@ -26,6 +26,9 @@ func passRow(task string, at time.Time) checklog.Entry {
 func TestBuildEscapeInventory(t *testing.T) {
 	base := time.Date(2026, 9, 6, 10, 0, 0, 0, time.UTC)
 	entries := []checklog.Entry{
+		// pre-escape pass 行不算（对抗审查回归：时序校验）——t/e 只有 escape 前的 pass。
+		passRow("t/e", base.Add(-time.Minute)),
+		escRow("doc-gate", "t/e", "escape-hatch: doc gate bypassed", base),
 		// doc-gate：3 个任务 → 永久化信号；其中 1 个后来 pass → unfulfilled 候选。
 		escRow("doc-gate", "t/a", "escape-hatch: doc gate bypassed", base),
 		passRow("t/a", base.Add(time.Minute)),
@@ -39,7 +42,7 @@ func TestBuildEscapeInventory(t *testing.T) {
 		escRow("test-coverage", "t/x", "escape-hatch: test-coverage gate bypassed", base.Add(5*time.Minute)),
 	}
 	inv := BuildEscapeInventory(entries, base.Add(time.Hour))
-	if inv.Total != 5 {
+	if inv.Total != 6 {
 		t.Fatalf("总豁免数应 5: %+v", inv)
 	}
 	var doc *EscapeGateStats
@@ -54,7 +57,7 @@ func TestBuildEscapeInventory(t *testing.T) {
 	// 新行按 Meta 聚合（doc-gate）；旧行按散文兜底聚合为独立桶 "doc gate"
 	//（空格形态，与连字符 Meta 名不同键——诚实分离而非强并，聚合口径注释在
 	// escapeaudit.go 的 gateOf）。
-	if doc.Count != 3 || doc.Tasks != 3 {
+	if doc.Count != 4 || doc.Tasks != 4 {
 		t.Fatalf("doc-gate（Meta 形态）count/tasks 不符: %+v", doc)
 	}
 	var legacyDoc *EscapeGateStats

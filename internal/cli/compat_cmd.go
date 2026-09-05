@@ -119,7 +119,10 @@ func runCompatReport(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if breaking > 0 {
-		return fmt.Errorf("BLOCKED: %d 项破坏性变更（对下面的强承诺面：命令/检查/逃生舱/载荷/schema 的 removed|changed）——按 docs/design/compat-commitments.md 处置：恢复该面或走预告流程（CHANGELOG 行为变更节 + 承诺表更新）", breaking)
+		// 退出码契约（命令 Long/README/承诺表：0=过 / 2=破坏性 / 1=工具故障）：
+		// 结论已由上方清单打印，走 errHardExit 哨兵（对抗审查 blocker——普通
+		// error 会落 exit 1，契约虚设）。
+		return errHardExit
 	}
 	if len(changes) > 0 {
 		fmt.Println("（added/changed 非破坏项：同步 README/承诺表后 forge compat snapshot 重钉 golden）")
