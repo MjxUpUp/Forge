@@ -112,6 +112,14 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
+	// held-out pre-flight（focus-batches §2a）：登记了保留集的任务在完成边界复跑
+	// 双套件——防"验收后改码"staleness 的最强形态就是 complete 时再跑一次测试。
+	// 可见全过而保留集挂 = test-generalization gap（SpecBench 形态）→ 拒绝完成。
+	if ok, reasons := taskpipeline.CheckHeldoutFresh(root, state); !ok {
+		return fmt.Errorf(`held-out gap 未通过：%s——可见验收过了但保留集没过（测试泛化缺口，修真实行为而非保留集）。逃生（落 checklog 审计）: FORGE_HELDOUT=disable`,
+			strings.Join(reasons, `; `))
+	}
+
 	// doc pre-flight（输出→回检循环的流程节点）：任务变更了 markdown 产物时，
 	// complete 前 L1 确定性 lint 全过 + L2 回检证据（DocReview fresh/Passed/
 	// ≥75 分）+ 零未决 Critical。无文档产物放行；逃生舱与 acceptance 对称。
@@ -120,6 +128,16 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	if ok, reasons := taskpipeline.CheckDocGate(root, state); !ok {
 		return fmt.Errorf(`doc gate 未通过（文档产物未过 L1 lint / L2 回检）: %s；流程：forge docs lint <paths> 修 L1 → 按 doc-review skill 评审（产出者不能自检）→ forge task doc-review 记录证据。逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --doc-gate disable 或 FORGE_DOC_GATE=disable`,
 			strings.Join(reasons, `; `))
+	}
+
+	// self-report pre-flight（focus-batches §1b，方向 B）：checklist 已勾选项声称
+	// 执行过的验证类命令 vs toollog 实测 Bash 集。测试类声称任务全程零匹配 =
+	// inaccurate self-reporting 形态（arXiv 2605.29442）→ 拒绝完成；非测试类
+	// 差集只留 advisory 痕（checklog warn）。toollog 缺失（宿主遥测未接）跳过——
+	// 区分"无法验证"与"验证通过"。
+	if sr := taskpipeline.CheckSelfReport(root, state); sr.Blocked {
+		return fmt.Errorf(`self-report consistency 未通过：checklist 声称的验证命令在任务全程 Bash 记录中零证据（%s）——虚报进度的形态。修复：真实跑通声称的命令后重新 complete，或修正 checklist 描述。逃生（落 checklog 审计）: FORGE_SELF_REPORT=disable`,
+			strings.Join(sr.UnmatchedTests, `; `))
 	}
 
 	// MarkComplete 恰在此处（pre-flight 之后）：完成标记属于 `forge task complete` 的整个

@@ -262,6 +262,48 @@ const (
 	// CheckEvalAuditForged 记录 `forge eval audit-verify` 上浮的审计行完整性失败
 	//（签名伪造或戳重放）。安全邻接观察——绝非任务验证，排除出证据强度分桶。
 	CheckEvalAuditForged CheckName = "eval-audit-forged"
+	// CheckSelfReport records the task-complete self-report consistency check:
+	// verify-class commands claimed as done in the checklist are matched against
+	// the Bash commands the toollog actually recorded for this task (focus-batches
+	// §1b, arXiv 2605.29442 "inaccurate self-reporting"). Deterministic (gate
+	// compares two local ledgers, the agent cannot forge the toollog side).
+	// Verdicts: pass (all claims evidenced) / warn (non-test claims unmatched) /
+	// fail (test-class claims with zero matching Bash evidence across the whole
+	// task — the inaccurate-self-reporting shape). Observation class about the
+	// task's own honesty, feeding review and scoring context.
+	//
+	// CheckSelfReport 记录 task-complete 的自报一致性检查：checklist 已勾选项里
+	// 声称执行过的验证类命令，与 toollog 为本任务实际记录的 Bash 命令集比对
+	//（focus-batches §1b，arXiv 2605.29442 "inaccurate self-reporting"）。
+	// deterministic（门禁比对两份本地台账，agent 无法伪造 toollog 侧）。
+	// 判定：pass（全部声称有据）/ warn（非测试类声称未匹配）/ fail（测试类声称
+	// 在任务全程零匹配——虚报进度的形态）。关于任务自身诚实度的观察类，喂给
+	// review 与评分上下文。
+	CheckSelfReport CheckName = "self-report-consistency"
+	// CheckGatePush records one `forge gate push` outcome (push-boundary gate:
+	// cheat-scan re-run over base...HEAD + unresolved BLOCKED tasks on the
+	// branch; focus-batches §1c). Deterministic (gate re-computes from git and
+	// the ledgers, independent of whether local hooks ever fired — the Codex
+	// #28365 telemetry-spoof lesson: local self-report needs upper-layer
+	// re-verification). Push evidence snapshot lands in DataDir/pushes/.
+	//
+	// CheckGatePush 记录一次 `forge gate push` 的结果（推送边界门禁：对
+	// base...HEAD 重跑 cheat-scan + 本分支未消解 BLOCKED 任务；focus-batches
+	// §1c）。deterministic（门禁从 git 与台账重算，不依赖本地 hook 是否生效——
+	// Codex #28365 遥测欺骗的教训：本地自我报告需上层复核）。推送证据快照落
+	// DataDir/pushes/。
+	CheckGatePush CheckName = "gate-push"
+	// CheckTaskStalled records a watchdog stall observation (focus-batches §2d):
+	// an incomplete task whose last ledger activity (checklog/toollog rows with
+	// its TaskRef) is older than the stall threshold. Observation class — the
+	// always-on governance signal for zombie claims and disconnected overnight
+	// sessions; marker-throttled to at most one row per task per hour.
+	//
+	// CheckTaskStalled 记录 watchdog 的停滞观察（focus-batches §2d）：未完成任务
+	// 在两份台账（checklog/toollog 带 TaskRef 的行）里的最后活动时间超过停滞阈值。
+	// 观察类——僵尸认领与 overnight 会话失联的 always-on 治理信号；marker 节流每
+	// 任务每小时至多一条。
+	CheckTaskStalled CheckName = "task-stalled"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go

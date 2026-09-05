@@ -1,16 +1,16 @@
 ---
 name: system-architecture
-description: "系统架构强制规范：服务拆分（单体/模块化/微服务，带阈值信号）/ Bounded Context（DDD strategic）/ 跨服务集成模式（同步/异步/事件）。Use when: 设计新系统、拆分微服务边界、画架构图、写/审 ADR、决定单体 vs 模块化 vs 微服务、评估技术栈生死抉择时。SKIP: 单个 API 设计（用 backend-development）/ 写组件级代码（用 frontend-feature-development 或 backend-development）/ 部署 CI/CD（用 release-readiness）。"
+description: "系统架构强制规范：服务拆分（单体/模块化/微服务，带阈值信号）/ Bounded Context（DDD strategic）/ 跨服务集成模式（同步/异步/事件）。Use when: 设计新系统、拆分微服务边界、画架构图、写/审 ADR、决定单体 vs 模块化 vs 微服务、评估技术栈生死抉择时。SKIP: 单个 API 设计（用 backend-development）/ 写组件级代码（前端 skill 属 forge-design pack，未安装则用 backend-development）/ 部署 CI/CD（用 release-readiness）。"
 metadata:
   pattern: tool-wrapper
   domain: architecture
-  composes: [architecture-decision-record, evidence-based-proposal, dev-workflow, requirement-clarification, backend-development, database-design]
+  composes: [architecture-decision-record, evidence-based-proposal, backend-development, database-design]
   triggers: [{"event":"UserPromptSubmit","keywords":["系统架构","架构设计","服务拆分","微服务","单体还是","high-level design","系统设计","拆服务","服务怎么拆","画架构图"],"cooldown":300}]
 ---
 
 # 系统架构规范
 
-> **本 skill 不重复**: 单 API 设计 → `backend-development`；数据 schema → `database-design`；ADR 流程与模板 → `architecture-decision-record`（本 skill 不自带模板）；CI/CD → `release-readiness`；C4/12-factor/SOLID 等通识 → 官方原文，本 skill 不复述。本 skill 只留带阈值的判断规则和决策树。
+> **本 skill 不重复**: 单 API 设计 → `backend-development`；数据 schema → `database-design`；ADR 流程与模板 → `architecture-decision-record`（唯一真相源，本 skill 不自带模板）；CI/CD → `release-readiness`；可观测/SLO → `resilience-and-observability`；安全信任边界 → `secure-coding`；提交前审查 → `code-review-gate`；C4/12-factor/SOLID 等通识 → 官方原文。本 skill 只留带阈值的判断规则和决策树。
 
 ## 1. 决策树（架构路径）
 
@@ -19,8 +19,7 @@ metadata:
 ├─ 新系统从零设计 → §2.1 架构设计流程
 ├─ 现有系统拆分（单体 → 模块化/微服务）→ §2.2 拆分 5 信号（≥2 才拆）
 ├─ 微服务边界争议 → §2.3 Bounded Context 识别
-├─ 跨服务契约纠纷 → §2.4 集成模式（同步/异步/事件）
-└─ 重要技术选型争议 → architecture-decision-record（ADR 模板唯一真相源）
+└─ 跨服务契约纠纷 → §2.4 集成模式（同步/异步/事件）
 ```
 
 ## 2. 路径规范
@@ -28,7 +27,7 @@ metadata:
 ### 2.1 新系统设计流程（顺序）
 
 1. **需求建模**：用户故事 + 业务规则（**不要**上来就选技术栈）
-2. **战略 DDD**：识别 Bounded Context（业务域边界）+ Context Map（§2.3）
+2. **战略 DDD**：识别 Bounded Context + Context Map（§2.3）
 3. **战术 DDD**：聚合根/实体/值对象 + 应用分层（handler 薄只解析 / service 编排事务与跨 repo / repo 单表不写业务 / domain 纯函数不依赖框架）
 4. **架构决策**：单体/模块化/微服务/事件驱动 → 重大决策记 ADR（走 `architecture-decision-record`）
 5. **画图沟通**：一张图只给一个受众；元素 ≤ 10 个（多就拆图）；实线 = 同步、虚线 = 异步；每条关系标技术 + 方向（A → B "REST API"）
@@ -106,7 +105,6 @@ metadata:
 - [ ] 服务边界清晰到团队级（Conway's Law）
 - [ ] 集成模式（同步/异步）有 ADR 支撑
 - [ ] 非功能性需求（性能/可用/合规）在架构层明确
-- [ ] 文档同步（README/ADR index）
 
 ## 5. Gotchas（实操易错点）
 
@@ -123,26 +121,6 @@ metadata:
 **G6**: "上分布式事务" → 全局锁变系统瓶颈。预防：Saga 或最终一致性，不强求 ACID 跨服务。
 
 **G7**: 服务数量爆炸（50+ 微服务）→ 运维灾难。预防：定期合并低 QPS 服务（start simple, evolve）。
-
-## 6. 提交前必跑
-
-架构 skill 的交付物是文档/图，不是代码——无编译步骤：
-
-```bash
-# 1. ADR 索引更新检查：docs/adr/README.md 含新 ADR 条目
-# 2. 架构 review
-# 提交前审查：code-review-gate 门控（宿主有审查盖章机制时由其标记已审）
-```
-
-不过 → §4 自查清单补足；过 → commit + 通知相关团队。
-
-## 7. 与其他 skill 的协作
-
-- **ADR**：`architecture-decision-record` — ADR 流程与模板唯一真相源，本 skill 不复述
-- **战术层**：`backend-development` + `database-design` — 用本 skill 拆好服务/边界后，应用层做
-- **可观测**：`resilience-and-observability` — 本 skill 的集成模式（同步/异步）+ 它的 SLO/error budget
-- **安全**：`secure-coding` — 跨服务信任边界 + OWASP 实践
-- **审查**：`code-review-gate` — 提交前审查门禁
 
 ## 参考
 

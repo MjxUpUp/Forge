@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -300,15 +301,20 @@ type Scorecard struct {
 	// fallback-exec = 主后端不可用的降级；mixed = 混合 manifest 任务级后端
 	// 不一致（分布见 SandboxMix——宿主 exec 任务不得躲在 docker 标签后，
 	// 对抗审查遗留修复）。
-	Sandbox      string         `json:"sandbox"`
-	SandboxMix   map[string]int `json:"sandbox_mix,omitempty"`
-	Header       string         `json:"header"` // 渲染契约的第一行
-	Pass1        RateValue      `json:"pass1"`
-	PassKCurve   []PassKPoint   `json:"pass_k_curve"`
-	TotalTokens  int            `json:"total_tokens"`
-	TotalCostUSD float64        `json:"total_cost_usd"`
-	BudgetCuts   int            `json:"budget_cuts"`
-	Note         string         `json:"note,omitempty"`
+	Sandbox    string         `json:"sandbox"`
+	SandboxMix map[string]int `json:"sandbox_mix,omitempty"`
+	Header     string         `json:"header"` // 渲染契约的第一行
+	// HarnessDisclosure 是 harness 披露清单（focus-batches §2e，方向 E）：对齐
+	// arXiv 2605.23950 呼吁的披露协议——harness 影响可实质超过模型方差，跨 run
+	// 比较必须披露 harness 规格。逐行 checklist 渲染进 scorecard（消费者可比对
+	// 两次 run 的披露差异再谈分数差异）。
+	HarnessDisclosure []string     `json:"harness_disclosure"`
+	Pass1             RateValue    `json:"pass1"`
+	PassKCurve        []PassKPoint `json:"pass_k_curve"`
+	TotalTokens       int          `json:"total_tokens"`
+	TotalCostUSD      float64      `json:"total_cost_usd"`
+	BudgetCuts        int          `json:"budget_cuts"`
+	Note              string       `json:"note,omitempty"`
 }
 
 // PassKPoint is one point of the pass^k curve (k 次全对概率的估计).
@@ -429,10 +435,37 @@ func buildScorecard(spec RunSpec, manifest *BenchmarkManifest, attempts []Attemp
 	}
 	sc.Header = fmt.Sprintf("profile=%s model=%s benchmark=%s@%s forge_ref=%s sandbox=%s — 本分数为 forge×model 组合评测（评测对象声明，ABC III.6）",
 		spec.Profile, spec.Model, spec.Benchmark, spec.Split, spec.ForgeRef, sandbox)
+	sc.HarnessDisclosure = harnessDisclosure(spec, sandbox, mix)
 	if cuts > 0 {
 		sc.Note = fmt.Sprintf("预算截断 %d 次——截断任务计入 budget-cut，未计入 fail", cuts)
 	}
 	return sc
+}
+
+// harnessDisclosure 生成披露清单（arXiv 2605.23950 披露协议的 Forge 侧
+// 落地）：harness 身份/版本、生效层（profile）、执行后端与混合分布、预算与重复数。
+// 每行 "key: value" 形态——机器可比对，人可读。
+func harnessDisclosure(spec RunSpec, sandbox string, mix map[string]int) []string {
+	lines := []string{
+		"harness: forge (" + spec.ForgeRef + ")",
+		"layer-profile: " + string(spec.Profile) + "（off=仅宿主 / gates-only=S/V/G 门禁 / full=C/S/V/G 全生效）",
+		"sandbox-backend: " + sandbox,
+		"repeats-per-task: " + fmt.Sprintf("%d", spec.Repeats),
+		"budget-wallclock-each: " + spec.Budget.WallclockEach.String(),
+	}
+	if len(mix) > 0 {
+		keys := make([]string, 0, len(mix))
+		for k := range mix {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s=%d", k, mix[k]))
+		}
+		lines = append(lines, "sandbox-mix: "+strings.Join(parts, ", "))
+	}
+	return lines
 }
 
 // combRatio returns C(c,k)/C(n,k) for the pass^k unbiased estimator.

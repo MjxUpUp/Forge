@@ -168,3 +168,23 @@ func TestTaskVerify_SkillDecisionsGuardrail_FailOpenDetailHonest(t *testing.T) {
 		t.Fatalf(`fail-open 不应宣称"已记决策"（未真验证 recorded），got: %q`, detail)
 	}
 }
+
+
+// TestSkillDecisionsDualTree 复审 note 覆盖缺口：blocking 与 advisory 面都识别
+// plugins/<pack>/skills/<name>/ 路径（2026-09 拆包后 pack 内改动不再零信号）。
+func TestSkillDecisionsDualTree(t *testing.T) {
+	blocking := skillDecisionsBlockingAffected([]string{
+		"plugins/forge-design/skills/frontend-code-review/SKILL.md",
+		"skills/secure-coding/SKILL.md",
+		"plugins/forge-design/skills/frontend-code-review/references/x.md",
+	})
+	if len(blocking) != 2 {
+		t.Fatalf("blocking 双树应识别 2 个（pack+canonical），实际 %v", blocking)
+	}
+	advisory := skillDecisionsAdvisoryAffected([]string{
+		"plugins/forge-design/skills/frontend-code-review/references/x.md",
+	})
+	if len(advisory) != 1 || advisory[0] != "frontend-code-review" {
+		t.Fatalf("pack 内辅助资源改动应有 advisory 信号: %v", advisory)
+	}
+}

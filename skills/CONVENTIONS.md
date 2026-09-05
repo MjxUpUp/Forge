@@ -31,6 +31,8 @@ skill-name/                # 目录名 = skill id = frontmatter.name
 
 > **退役 skill 存档**：目录中仅有 `decisions.md` 而无 `SKILL.md` 的（如 `fact-research/`、`web-search-bridge/`）是退役 skill 的决策存档——append-only 决策历史保留供审计。过滤发生在 plugin pack / install 层：两者只认带 `SKILL.md` 的目录（无 `SKILL.md` 的孤儿目录跳过，`internal/agentbridge/pluginpack.go` / `internal/skillsdist` ListSkills）；`skills/embed.go` 的 `//go:embed *` 是全量嵌入——退役目录的 `decisions.md` 字节虽随二进制分发，但不被任何消费方加载。退役一个 skill 时删除其 `SKILL.md`/`references/` 等分发内容，但保留 `decisions.md`。
 
+> **设计族拆包（2026-09）**：前端/设计族 12 个 skill（frontend-* / ai-*-ui-* / design-* / ui-iteration-feedback-loop）整体迁至 `plugins/forge-design/skills/`——独立 skill pack，不进 `skills/embed.go` 二进制（决策记录 docs/plans/feature-focus-2026-09.md §2.1）。核心 `skills/` 只留通用验证/流程/编排/检索；核心 skill 引用这 12 个名字时一律是"属 forge-design pack，未安装则忽略"的指针语义。
+
 ## 4. Frontmatter 规范（机器校验项）
 
 ```yaml
@@ -119,7 +121,7 @@ metadata:
 
 ## 12. Skills Loop 闭环（实测机制，与 §11 目标态对照）
 
-37 个 canonical skill + 6 个 Go 包族（`skillscanonical` / `skillgen` / `skillsdist` / `skillsqa` / `skillsfm`(frontmatter YAML 解析，**不是**用度聚合) / `skillseval`）构成 8 阶段 loop：[1] Authoring → [2] Canonical Resolve → [3] Project Generate → [4] Distribute → [5] Usage in Loop → [6] Audit + Track → [7] Eval → [8] Feedback → 回 [1]。Forge 自身定位（README:17-25）= 给 coding agent loop 补验证/状态两层，**不替代循环**。
+37 个 canonical skill 分两棵源树（中立 `skills/` 通用集 + forge 原生 `skills-forge/`，设计族另在 `plugins/forge-design` pack）+ 6 个 Go 包族（`skillscanonical` / `skillgen` / `skillsdist` / `skillsqa` / `skillsfm`(frontmatter YAML 解析，**不是**用度聚合) / `skillseval`）构成 8 阶段 loop：[1] Authoring → [2] Canonical Resolve → [3] Project Generate → [4] Distribute → [5] Usage in Loop → [6] Audit + Track → [7] Eval → [8] Feedback → 回 [1]。Forge 自身定位（README:17-25）= 给 coding agent loop 补验证/状态两层，**不替代循环**。
 
 ### 强制路由（skill-routing 实测强度）
 

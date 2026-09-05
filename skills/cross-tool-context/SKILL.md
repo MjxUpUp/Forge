@@ -1,6 +1,6 @@
 ---
 name: cross-tool-context
-description: "跨 AI 工具上下文接续：项目根 AI_CONTEXT.md 共享约定，让各 AI 工具（Claude Code / Cursor / Codex / Cline 等）发现的问题、修改、决策互相可见，消除手动复制粘贴。Use when: 同时用多个 AI 工具开发同一项目时、把 A 工具的分析结果搬给 B 工具时、说\"其他 agent 分析出的问题\"\"把这个给别的工具看\"\"工具间传递上下文\"时、多工具协作发现信息不对称时。SKIP: 单工具内跨会话恢复（用 session-continuity）、纯新项目无多工具协作、临时单次问题直接口头说即可。"
+description: "跨 AI 工具上下文接续：以结构化任务系统做双向锚定（各工具写进同一任务、开工前拉回目标/决策/发现/下一步/阻塞），让各 AI 工具（Claude Code / Cursor / Codex / Cline 等）互相可见，消除手动复制粘贴；无任务系统时降级为项目根 AI_CONTEXT.md 共享文件约定。Use when: 同时用多个 AI 工具开发同一项目时、把 A 工具的分析结果搬给 B 工具时、说\"其他 agent 分析出的问题\"\"把这个给别的工具看\"\"工具间传递上下文\"时、多工具协作发现信息不对称时。SKIP: 单工具内跨会话恢复（用 session-continuity）、纯新项目无多工具协作、临时单次问题直接口头说即可。"
 metadata:
   pattern: tool-wrapper
   domain: workflow
@@ -9,68 +9,42 @@ metadata:
 
 # 跨工具上下文接续
 
-解决"多个 AI 工具并行开发同一项目，但互不感知"的效率瓶颈。当前最大浪费：A 工具发现的问题/做的修改，要靠用户手动复制粘贴给 B 工具，B 还不知道 A 改了什么文件。
+解决"多个 AI 工具并行开发同一项目，但互不感知"的效率瓶颈：A 工具发现的问题/做的修改要靠用户手动复制粘贴给 B，B 还不知道 A 改了什么文件。
 
-## 核心机制：共享真相源
+## 主路径：结构化任务系统双向锚定
 
-跨工具接续 = 各工具把信息写进同一个**共享真相源**（可查询、抗压缩丢失、跨工具双向锚定），任意工具开工前拉回：目标 / 决策 / 发现 / 下一步 / 阻塞。
+跨工具接续 = 各工具把信息**写进同一个结构化任务**（决策、发现、下一步、阻塞各有落位；参与工具可登记/查询），任意工具开工前**拉回**完整状态。状态由任务系统持有——可查询、抗上下文压缩丢失、不靠任何一方的纪律维护。
 
-> 项目有结构化任务系统且各工具都能访问时，可用它做共享真相源（状态由工具持有、不靠纪律维护）；没有时用下方的 AI_CONTEXT.md 文件约定——两条路承载同一套信息结构。
+项目有各工具都能访问的结构化任务系统时**必须走这条路**（工具持有状态 > 文件约定）。
 
-## 落地路径：AI_CONTEXT.md 共享文件
+锚定动作（任何任务系统下的等价操作）：
 
-在**项目根目录**维护一份 `AI_CONTEXT.md`（单文件，git 可追踪），所有工具读写同一份。任何工具开始工作前先读它，发现/修改/决策后追加到它。
+- **开工前**：拉回任务上下文（目标/已确认决策/未决发现/下一步/阻塞 + 参与过哪些工具）
+- **做了决策** → 写进任务决策记录；**发现问题** → 写进任务发现列表（带来源工具与证据）；**当前工具锚定到任务**（让后续工具知道"谁在用什么工具参与"）
+- **交接视图**：导出 markdown 供人类阅读或喂给无任务系统访问权的工具
 
-**为什么用文件而不是服务**：文件系统是所有工具的共同底座（任意 agent 都能读写文件），零基础设施依赖。这正是 Skill 的设计哲学（见 skill-authoring-standard §1）。注意它是靠纪律维护的文本——无工具强制，长期有漂移风险；项目引入可强制执行的任务系统后应迁过去。
+## 降级方案：AI_CONTEXT.md 共享文件（无结构化任务系统时）
 
-### 标准结构
+在**项目根目录**维护一份 `AI_CONTEXT.md`（单文件，git 可追踪），所有工具读写同一份：开工前先读，发现/修改/决策后用 edit 精确追加。文件系统是所有工具的共同底座，零基础设施依赖——但它是**靠纪律维护的文本，无工具强制，长期有漂移风险**（本节 Gotchas 全是纪律失败的自供状）；项目引入可强制执行的任务系统后应迁移并让文件退役。
 
 ```markdown
 # AI_CONTEXT — <项目名>
-
-> 本文件是多 AI 工具协作的共同上下文。任何工具开工前先读，有产出后追加。
-> 最后更新：@<工具名> <YYYY-MM-DD HH:MM>
-
-## Current Handoff（当前交接状态）
-[当前主线任务 + 进度 + 下一步，格式见 session-continuity 的 references/handoff-format.md]
-
-## Decisions（已确认的决策）
-- [日期] <决策内容> — 由 <工具/人> 确认，影响 <文件/模块>
-
-## Findings（各工具发现的问题，未决）
-- [日期][<来源工具>] <问题> — 状态: open/fixed/wontfix
-  - 证据: <文件:行 / 命令输出>
-  - 影响: <哪些模块>
-
-## Changes（近期文件修改记录）
-- [日期][<工具>] <文件> — <改了什么，是否验证>
-
-## Open Questions（待各工具/人确认）
-- [ ] <问题> — 阻塞 <什么>
+> 多 AI 工具协作的共同上下文。开工前先读，有产出后追加。最后更新：@<工具名> <时间>
+## Current Handoff（格式见 session-continuity 的 references/handoff-format.md）
+## Decisions：- [日期] <决策> — 由 <工具/人> 确认，影响 <文件/模块>
+## Findings：- [日期][<来源工具>] <问题> — 状态 open/fixed/wontfix + 证据 file:line
+## Changes：- [日期][<工具>] <文件> — <改了什么，是否验证>
+## Open Questions：- [ ] <问题> — 阻塞 <什么>
 ```
 
-### 工作流
-
-- **开工前**（任何工具，任何会话）：先读 `AI_CONTEXT.md`——Current Handoff 知进度、Decisions 不推翻、Findings 别重复发现、Changes 别覆盖他人改动。
-- **工作中**：发现 bug → 追加 `## Findings`；做了决策 → `## Decisions`；改了文件 → `## Changes`；不确定 → `## Open Questions`。每条**必须标来源工具**（如 `[claude-code]`/`[cursor]`），用 edit 精确追加，不重写全文。
-- **会话结束/切换工具**：更新 `## Current Handoff`（格式见 session-continuity 的 references/handoff-format.md），让下一个工具冷启动能续做。
-- **只在本工具会话内相关的信息不必写**，口头说即可——"其他工具会遇到吗？"会才记。
-
-### Gotchas
-
-- **别把 AI_CONTEXT.md 当日志记流水账**：每次 read/write 都记一条，文件膨胀到几千行没人读。只记跨工具有价值的信息：决策、未决问题、关键修改。
-- **格式必须统一**：统一用上面的标准结构（markdown 章节 + 每条带 `[日期][工具]` 前缀），所有工具都能读 markdown。
-- **忘记读就开始干 = 覆盖别人改动**：改文件前 `git status` + 读 AI_CONTEXT 双确认。
-- **别和 HANDOFF.md 搞混**：AI_CONTEXT.md 是**项目级长期**共同上下文；HANDOFF 是**任务级临时**交接。可以把 Current Handoff 节直接放 AI_CONTEXT.md 里，不必分两文件。
+工作流纪律（降级路径下）：每条必须标来源工具（`[claude-code]`/`[cursor]`）；只记跨工具有价值的信息（"其他工具会遇到吗？"会才记），别记流水账；改文件前 `git status` + 读 AI_CONTEXT 双确认。AI_CONTEXT.md 是**项目级长期**上下文，HANDOFF 是**任务级临时**交接——Current Handoff 节可直接放 AI_CONTEXT.md 里，不必分两文件。
 
 ## 与其他 skill 的分工
 
-- **session-continuity**：单工具内跨会话恢复。本 skill 是跨工具。两者用同一套 HANDOFF 格式（定义在 session-continuity 的 references/handoff-format.md，本 skill 复用）
-- **session-retrospective**：把教训写进记忆文件（AGENTS.md/CLAUDE.md）。本 skill 管项目级跨工具上下文（共享真相源 AI_CONTEXT.md，或项目选定的结构化任务系统），非全局记忆
+- **session-continuity**：单工具内跨会话恢复；本 skill 是跨工具。两者用同一套 HANDOFF 格式（定义在 session-continuity 的 references/handoff-format.md）
+- **session-retrospective**：把教训写进记忆文件（AGENTS.md/CLAUDE.md）；本 skill 管项目级跨工具上下文
 
 ## 适用边界
 
-- ✅ 多工具开发同一项目（如 Claude Code + Cursor + Codex 协作同一仓库）
-- ✅ 把 A 工具分析喂给 B 工具决策（review 证据：另一工具 prompt"其他 agent 分析出的问题"）
-- ❌ 单工具单会话（不需要，上下文在会话内）
-- ❌ 临时一次性问题（直接说，不必落文件）
+- ✅ 多工具开发同一项目；把 A 工具分析喂给 B 工具决策
+- ❌ 单工具单会话（上下文在会话内）；临时一次性问题（直接说，不落文件/任务）
