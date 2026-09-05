@@ -12,12 +12,12 @@ import (
 
 func mkEntry(check checklog.CheckName, passed bool, detail, session, task string, at time.Time) checklog.Entry {
 	e := checklog.Entry{
-		Check:     check,
-		Passed:    passed,
-		Checked:   true,
-		Detail:    detail,
-		SessionID: session,
-		TaskRef:   task,
+		Check:      check,
+		Passed:     passed,
+		Checked:    true,
+		Detail:     detail,
+		SessionID:  session,
+		TaskRef:    task,
 		RecordedAt: at,
 	}
 	return e
