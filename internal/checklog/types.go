@@ -293,6 +293,17 @@ const (
 	// Codex #28365 遥测欺骗的教训：本地自我报告需上层复核）。推送证据快照落
 	// DataDir/pushes/。
 	CheckGatePush CheckName = "gate-push"
+	// CheckTaskStalled records a watchdog stall observation (focus-batches §2d):
+	// an incomplete task whose last ledger activity (checklog/toollog rows with
+	// its TaskRef) is older than the stall threshold. Observation class — the
+	// always-on governance signal for zombie claims and disconnected overnight
+	// sessions; marker-throttled to at most one row per task per hour.
+	//
+	// CheckTaskStalled 记录 watchdog 的停滞观察（focus-batches §2d）：未完成任务
+	// 在两份台账（checklog/toollog 带 TaskRef 的行）里的最后活动时间超过停滞阈值。
+	// 观察类——僵尸认领与 overnight 会话失联的 always-on 治理信号；marker 节流每
+	// 任务每小时至多一条。
+	CheckTaskStalled CheckName = "task-stalled"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go

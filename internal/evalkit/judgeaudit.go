@@ -41,6 +41,16 @@ type JudgeAuditEntry struct {
 	JudgeScores []int  `yaml:"judge_scores" json:"judge_scores"`
 	HumanScore  int    `yaml:"human_score"  json:"human_score"`
 	Threshold   int    `yaml:"threshold"    json:"threshold"`
+	// MVVP 可选轮次（focus-batches §2e，方向 E）：对齐 arXiv 2606.19544 提出的
+	// Minimum Viable Validation Protocol——"reliability without validity" 的对策是
+	// 四项协议：chance-corrected κ（已有）+ test-retest + position bias + cue 敏感度。
+	// 三组轮次全部可选（旧 scores 文件零字段照跑）：
+	//   RetestScores  —— 同输入第二轮（时间上分离的重放）：binarized 判定不一致率
+	//   SwappedScores —— 位置交换呈现（A/B 顺序对调）：均值差 = position bias 幅度
+	//   CueScores     —— 提示词微扰（措辞偏好注入）：binarized 翻转率 >10% → 冻结建议
+	RetestScores  []int `yaml:"retest_scores,omitempty"  json:"retest_scores,omitempty"`
+	SwappedScores []int `yaml:"swapped_scores,omitempty" json:"swapped_scores,omitempty"`
+	CueScores     []int `yaml:"cue_scores,omitempty"     json:"cue_scores,omitempty"`
 }
 
 // JudgeAuditReport is the audit's honest output.
@@ -52,7 +62,11 @@ type JudgeAuditReport struct {
 	Kappa         float64          `json:"kappa"`
 	KappaValid    bool             `json:"kappa_valid"`
 	JudgeReliable bool             `json:"judge_reliable"`
-	Findings      []string         `json:"findings,omitempty"`
+	// MVVP 三项（可选轮次存在时才计算；-1 = 该协议未运行——区分"没测"与"完美"）。
+	RetestAgreement float64  `json:"retest_agreement"` // binarized 重放一致率
+	PositionBias    float64  `json:"position_bias"`    // 均值差（swap − original）
+	CueFlipRate     float64  `json:"cue_flip_rate"`    // binarized 翻转率
+	Findings        []string `json:"findings,omitempty"`
 }
 
 // JudgeEntryStat is one document's replay variance summary.
@@ -143,6 +157,64 @@ func RunJudgeAudit(entries []JudgeAuditEntry) (*JudgeAuditReport, error) {
 	}
 	if rep.KappaValid && !rep.JudgeReliable {
 		rep.Findings = append(rep.Findings, fmt.Sprintf("judge κ=%.2f 低于 %.2f 阈值——该判分器的 BLOCKED 决策降级为 ADVISORY，75 分阈值在当前 judge 下视为噪声", rep.Kappa, JudgeAuditKappaFloor))
+	}
+	// MVVP 三项（可选轮次；arXiv 2606.19544：test-retest / position bias / cue 敏感度）。
+	// 默认 -1 = 该协议未运行——诚实区分"没测"与"完美"（insufficient ≠ pass）。
+	rep.RetestAgreement, rep.PositionBias, rep.CueFlipRate = -1, -1, -1
+	var hasRetest, hasSwapped, hasCue bool
+	retestAgree, retestTotal := 0, 0
+	var origSum, swapSum float64
+	swapCount := 0
+	cueFlips, cueTotal := 0, 0
+	for _, e := range entries {
+		if len(e.RetestScores) > 0 && len(e.JudgeScores) > 0 {
+			hasRetest = true
+			a := e.JudgeScores[0] >= e.Threshold
+			for _, r := range e.RetestScores {
+				retestTotal++
+				if (r >= e.Threshold) == a {
+					retestAgree++
+				}
+			}
+		}
+		if len(e.SwappedScores) > 0 && len(e.JudgeScores) > 0 {
+			hasSwapped = true
+			origSum += float64(e.JudgeScores[0])
+			m := float64(e.SwappedScores[0])
+			for _, s := range e.SwappedScores[1:] {
+				m += float64(s)
+			}
+			m /= float64(len(e.SwappedScores))
+			swapSum += m
+			swapCount++
+		}
+		if len(e.CueScores) > 0 && len(e.JudgeScores) > 0 {
+			hasCue = true
+			a := e.JudgeScores[0] >= e.Threshold
+			cueTotal++
+			if (e.CueScores[0] >= e.Threshold) != a {
+				cueFlips++
+			}
+		}
+	}
+	if hasRetest && retestTotal > 0 {
+		rep.RetestAgreement = float64(retestAgree) / float64(retestTotal)
+		if rep.RetestAgreement < 0.9 {
+			rep.Findings = append(rep.Findings, fmt.Sprintf("MVVP test-retest 一致率 %.2f（<0.90）——judge 对同一输入的判定随时间漂移，冻结 judge prompt 并查采样温度", rep.RetestAgreement))
+		}
+	}
+	if hasCue && cueTotal > 0 {
+		rep.CueFlipRate = float64(cueFlips) / float64(cueTotal)
+		if rep.CueFlipRate > 0.10 {
+			rep.Findings = append(rep.Findings, fmt.Sprintf("MVVP cue 敏感度：扰动翻转率 %.2f（>0.10）——judge 判定可被提示词措辞改变，冻结该 judge prompt 版本并回归校准", rep.CueFlipRate))
+		}
+	}
+	// position bias：mean(swapped) − mean(original first scores)（呈现顺序的均值影响）。
+	if hasSwapped && swapCount > 0 {
+		rep.PositionBias = swapSum/float64(swapCount) - origSum/float64(swapCount)
+		if math.Abs(rep.PositionBias) >= 5 {
+			rep.Findings = append(rep.Findings, fmt.Sprintf("MVVP position bias：位置交换均值差 %.1f 分（|Δ|≥5）——判定受呈现顺序影响，A/B 对照呈现进评审流程", rep.PositionBias))
+		}
 	}
 	// 重放方差 finding：仅当重放分数跨越工作阈值（pass/fail 判定翻转）才报——
 	// 判定不稳定是决策风险；阈值同侧的 2-5 分抖动是 LLM 评审的正常噪声，报了
