@@ -25,7 +25,7 @@ OWASP 对 skill 供应链的缓解措施钦定了 ed25519 签名、skill invento
 
 ## 三、IETF draft-sharif-agent-audit-trail（-02）
 
-`forge eval aat [--out] [--limit]`：checklog → AAT 形状 JSONL（链式 prev_hash、record_id、trust_level L0-L3、outcome/escalation 语义）。四项有意偏离在每份导出 meta 头声明（确定性 UUID、JCS 近似、ed25519 直通、无 TSA）——versioned mapper，-03 演进时递增 mapper_version 重写。IPR 提示：草案有专利披露，本导出器保持可摘除（独立包 internal/aatout，不改内核存储）。
+`forge eval aat [--out] [--limit]`：checklog → AAT 形状 JSONL（对齐草案 -02 时点快照；关联草案仍引用 -01，版本随上游演进——这正是 mapper versioned 的原因）（链式 prev_hash、record_id、trust_level 产出 L0/L1/L3——L2 预留给跨机验签后的中间档，v1 不产出；outcome/escalation 语义）。四项有意偏离在每份导出 meta 头声明（确定性 UUID、JCS 近似、ed25519 直通、无 TSA）——versioned mapper，-03 演进时递增 mapper_version 重写。IPR 提示：草案有专利披露，本导出器保持可摘除（独立包 internal/aatout，不改内核存储）。
 
 ## 四、OpenTelemetry GenAI semconv
 
@@ -33,7 +33,7 @@ OWASP 对 skill 供应链的缓解措施钦定了 ed25519 签名、skill invento
 
 ## 五、NIST CAISI 评估作弊示例库（叙事背书）
 
-Forge 的证据强度分级（deterministic > agent-claim）与 CAISI "agent 评测可被作弊绕过、需要 transcript 取证"结论同构：cheat-scan / held-out gap / self-report 一致性三件套正是该叙事的产品化。对外文档引用 NIST 叙事时锚定其官方示例库 URL。
+Forge 的证据强度分级（deterministic > agent-claim）与 CAISI "agent 评测可被作弊绕过、需要 transcript 取证"结论同构：cheat-scan / held-out gap / self-report 一致性三件套正是该叙事的产品化。对外文档引用 NIST 叙事时锚定其官方示例库：https://www.nist.gov/caisi/cheating-ai-agent-evaluations/2-examples-cheating-caisis-agent-evaluations
 
 ## 六、信通院「可信AI智能编码工具」评估（16 能力项）
 

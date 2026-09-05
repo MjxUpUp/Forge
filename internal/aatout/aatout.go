@@ -28,11 +28,12 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// mapperVersion 是 AAT mapper 的语义版本（AATVersion 常量的对应物）：字段映射或
-// 规范化变化必须递增——消费方据此降级处理。
-const mapperVersion = "1"
+// MapperVersion 是 AAT mapper 的语义版本：字段映射或规范化变化必须递增——
+// 消费方据此降级处理（CLI 输出与 meta 头共用此常量，防版本漂移失真）。
+const MapperVersion = "1"
 
 // Action/outcome 映射（AAT action_type registry：tool_call/tool_response/
 // decision/delegation/escalation/error/lifecycle；outcome：success/failure/
@@ -99,13 +100,14 @@ type Options struct {
 const genesisHash = "0000000000000000000000000000000000000000000000000000000000000000"
 
 // BuildExport 把 checklog 行转为 meta + AAT 记录序列（链式 prev_hash）。
-// 确定性：同一输入两次导出字节一致（record_id/prev_hash 全部从内容派生）——
-// 下游可以 diff 两份导出定位增量。
+// 确定性（记录行）：同一输入两次导出的记录行逐字节一致（record_id/prev_hash
+// 全部从内容派生）——下游可以 diff 两份导出定位增量；meta 行含 GeneratedAt
+// 时间戳，刻意不参与确定性契约（它是导出动作的属性，不是证据的属性）。
 func BuildExport(entries []checklog.Entry, opts Options) ([]byte, error) {
 	var b strings.Builder
 	meta := ExportMeta{
 		Meta:      "forge-aat-export",
-		MapperVer: mapperVersion,
+		MapperVer: MapperVersion,
 		AATDraft:  "draft-sharif-agent-audit-trail-02",
 		Deviations: []string{
 			"record_id: deterministic UUIDv5-shape from record identity (draft says UUIDv4; idempotent re-export is a feature)",
@@ -149,10 +151,10 @@ func BuildExport(entries []checklog.Entry, opts Options) ([]byte, error) {
 // toRecord 单行映射（不碰链字段——BuildExport 统一填）。
 func toRecord(e checklog.Entry, opts Options) AATRecord {
 	actionType, outcome := classify(e.Check, e.EffectiveLevel())
-	detail := strings.TrimSpace(e.Detail)
-	if len(detail) > 300 {
-		detail = detail[:300] + "…"
-	}
+	// rune 安全截断（util.TruncateRunes）——按字节切会切开中文 rune，json.Marshal
+	// 以 U+FFFD 替换致 action_detail 静默腐化（对抗审查 note）；input_hash 用
+	// 全量原文计算不受截断影响。
+	detail := util.TruncateRunes(strings.TrimSpace(e.Detail), 300)
 	ad := "forge:" + string(e.Check)
 	if detail != "" {
 		ad += " — " + detail

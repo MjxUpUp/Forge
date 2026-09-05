@@ -7,7 +7,7 @@ package cliskills
 //     每个 skill 输出 SKILL.md 的 sha256 内容指纹（inventory）
 //   - --lock：把当前清单钉进 skills-inventory.lock（提交进仓 = 团队/CI 锚点）
 //   - --verify：对照锁文件逐项核对 hash，漂移（skill 被改/被换/新增未知）即
-//     exit 2——CI 消费形态：锁文件过期或内容漂移都过不去
+//     exit 2（ErrHardExit 哨兵 → cli.Execute 映射）——CI 消费形态
 //
 // 边界：hash 只覆盖 SKILL.md（行为契约本体）；references/scripts 漂移由 skills
 // drift-check 既有机制管。pack 树纳入清单（2026-09 拆包后设计族在
@@ -17,6 +17,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,6 +28,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/spf13/cobra"
 )
+
+// ErrHardExit 是「硬失败 ⇒ exit 2」退出码契约的哨兵（对齐 cli 包 docs lint 的
+// 同款机制；本包在 cli 下游，cli.Execute 对本哨兵 errors.Is 映射 exit 2——
+// verify 的漂移阻断是 CI 消费形态，退出码契约必须与文档一致）。
+var ErrHardExit = errors.New("hard failure (exit 2)")
 
 func init() {
 	skillsInventoryCmd.Flags().Bool("lock", false, "把当前清单写入 skills-inventory.lock（钉基线）")
@@ -47,13 +53,17 @@ plugin pack 树的 skill，输出每个 SKILL.md 的 sha256 内容指纹。
 	RunE: runSkillsInventory,
 }
 
-// inventoryItem 是清单中的一条（skill 名在树内唯一；tree 区分来源树）。
+// inventoryItem 是清单中的一条。复合身份是 (Tree, Name)——跨树同名 skill
+// （canonical 与 plugin 分发拷贝）是不同清单项，单 Name 键会让锁内后行覆盖前行、
+// 跨树分叉漏报 unknown（对抗审查 should-fix）。
 type inventoryItem struct {
 	Name string `json:"name"`
 	Tree string `json:"tree"`   // canonical | forge | pack:<name>
 	Path string `json:"path"`   // 仓内相对路径（SKILL.md）
 	Hash string `json:"sha256"` // SKILL.md 内容指纹
 }
+
+func (it inventoryItem) key() string { return it.Tree + "\x00" + it.Name }
 
 // inventoryLockFile 是锁文件位置（仓根，提交进仓）。
 const inventoryLockFile = "skills-inventory.lock"
@@ -152,14 +162,16 @@ func scanSkillTree(root, dir, label string) ([]inventoryItem, error) {
 			continue
 		}
 		sum := sha256.Sum256(data)
-		out = append(out, inventoryItem{
+		it := inventoryItem{
 			Name: e.Name(), Tree: label,
 			Path: filepath.ToSlash(rel), Hash: hex.EncodeToString(sum[:]),
-		})
+		}
+		out = append(out, it)
 	}
 	return out, nil
 }
 
+// renderInventory 写出锁文件体（制表符四列；parseInventory 按同格式读回）。
 func renderInventory(items []inventoryItem) (string, error) {
 	var b strings.Builder
 	b.WriteString("# forge skills inventory — AST10 hash pinning（forge skills inventory --lock 再生成）\n")
@@ -169,8 +181,26 @@ func renderInventory(items []inventoryItem) (string, error) {
 	return b.String(), nil
 }
 
+// parseInventory 读回锁文件（树\t名\thash\tpath 四列制表符分隔——strings.Fields
+// 会在路径含空格时静默丢行误报缺项，对抗审查 note）。
+func parseInventory(body string) map[string]inventoryItem {
+	locked := map[string]inventoryItem{}
+	for _, line := range strings.Split(body, "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) != 4 {
+			continue
+		}
+		it := inventoryItem{Tree: fields[0], Name: fields[1], Hash: fields[2], Path: fields[3]}
+		locked[it.key()] = it
+	}
+	return locked
+}
+
 // verifyInventory 三态差集：漂移（hash 变）/未知新增（锁外 skill）/缺项（锁内
-// skill 消失）。任一非空 → exit 2（走 errors 语义：打印后返回硬失败）。
+// skill 消失）。任一非空 → ErrHardExit（exit 2——文档承诺的 CI 契约）。
 func verifyInventory(root string, current []inventoryItem) error {
 	body, err := os.ReadFile(filepath.Join(root, inventoryLockFile))
 	if os.IsNotExist(err) {
@@ -179,32 +209,22 @@ func verifyInventory(root string, current []inventoryItem) error {
 	if err != nil {
 		return err
 	}
-	locked := map[string]inventoryItem{}
-	for _, line := range strings.Split(string(body), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) != 4 || fields[0] == "#" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		locked[fields[1]] = inventoryItem{Tree: fields[0], Name: fields[1], Hash: fields[2], Path: fields[3]}
-	}
+	locked := parseInventory(string(body))
 	var drifted, unknown, missing []string
-	for _, cur := range current {
-		key := cur.Name
-		if lk, ok := locked[key]; ok {
-			if lk.Hash != cur.Hash {
-				drifted = append(drifted, fmt.Sprintf("%s（%s → %s）", cur.Name, lk.Hash[:12], cur.Hash[:12]))
-			}
-		} else {
-			unknown = append(unknown, cur.Name+"（"+cur.Tree+"）")
-		}
-	}
 	currentSet := map[string]bool{}
 	for _, c := range current {
-		currentSet[c.Name] = true
+		currentSet[c.key()] = true
+		if lk, ok := locked[c.key()]; ok {
+			if lk.Hash != c.Hash {
+				drifted = append(drifted, fmt.Sprintf("%s/%s（%s → %s）", c.Tree, c.Name, lk.Hash[:12], c.Hash[:12]))
+			}
+		} else {
+			unknown = append(unknown, c.Name+"（"+c.Tree+"）")
+		}
 	}
-	for name := range locked {
-		if !currentSet[name] {
-			missing = append(missing, name)
+	for key, lk := range locked {
+		if !currentSet[key] {
+			missing = append(missing, lk.Tree+"/"+lk.Name)
 		}
 	}
 	if len(drifted)+len(unknown)+len(missing) == 0 {
@@ -220,20 +240,22 @@ func verifyInventory(root string, current []inventoryItem) error {
 	for _, m := range missing {
 		fmt.Printf("  ⚠ 锁内缺项：%s\n", m)
 	}
-	return fmt.Errorf("BLOCKED: skills 清单与 %s 不一致（漂移 %d / 未知 %d / 缺项 %d）——审阅后 forge skills inventory --lock 重钉（AST07 update-drift 语义）",
-		inventoryLockFile, len(drifted), len(unknown), len(missing))
+	return fmt.Errorf("BLOCKED: %w：skills 清单与 %s 不一致（漂移 %d / 未知 %d / 缺项 %d）——审阅后 forge skills inventory --lock 重钉（AST07 update-drift 语义）",
+		ErrHardExit, inventoryLockFile, len(drifted), len(unknown), len(missing))
 }
 
-// repoRoot 解析仓根：projectroot（forge 项目）优先，git 顶层兜底（AST10 验证的
-// CI 形态可能在未 forge init 的 checkout 里跑——inventory 不应强制 init）。
+// repoRoot 解析仓根：git 顶层优先，forge 注册表兜底。锁文件是仓内工件——git
+// 锚定更精确（projectroot 的注册表可能把非预期祖先解析为根，使 --lock 落错
+// 位置——对抗审查 should-fix，实测触发过 HOME 被注册为根的形态）。
 func repoRoot() (string, error) {
+	cwd, _ := os.Getwd()
+	if out, err := exec.Command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output(); err == nil {
+		if top := strings.TrimSpace(string(out)); top != "" {
+			return top, nil
+		}
+	}
 	if root, err := projectroot.Find(); err == nil {
 		return root, nil
 	}
-	cwd, _ := os.Getwd()
-	out, err := exec.Command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		return cwd, nil // 非 git：cwd 兜底（个人 skills 目录场景）
-	}
-	return strings.TrimSpace(string(out)), nil
+	return cwd, nil // 非 git 非 forge：cwd 兜底（个人 skills 目录场景）
 }

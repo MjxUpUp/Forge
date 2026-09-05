@@ -60,7 +60,7 @@ func TestBuildExport_ChainIntegrity(t *testing.T) {
 		t.Fatal(err)
 	}
 	meta, recs := parseExport(t, body)
-	if meta.Meta != "forge-aat-export" || meta.MapperVer != mapperVersion || len(meta.Deviations) != 4 {
+	if meta.Meta != "forge-aat-export" || meta.MapperVer != MapperVersion || len(meta.Deviations) != 4 {
 		t.Fatalf("meta 契约不符: %+v", meta)
 	}
 	if len(recs) != 3 {
