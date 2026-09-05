@@ -9,6 +9,7 @@ package taskpipeline
 import (
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
@@ -54,5 +55,31 @@ func SeedTaskStateForSchema() any {
 		NotifiedAt: &now, AbandonedCount: 1, AbandonedAt: &now, AutoDelivered: true,
 	}
 	s.Lease = &tasktypes.Lease{HolderNode: "n", TsHLC: "t", TTLSec: 60, Fencing: 1, ClaimedAt: 1}
+	// 复审发现的 17 个顶层遗漏键逐一填满（score/cross_repo_impact/spec_artifacts/
+	// session_links/decisions/next_steps/blockers/artifacts/parent_task_ref/
+	// depends_on/kind/ttl/resume_stale/reviewed_head_commit/reviewed_change_hash/
+	// acceptance_foreign/plan_first_advisory_fired）+ 嵌套 note/round/change_hash。
+	s.Score = &scoringtypes.ScoreResult{
+		TaskRef: "seed/ref", Overall: 90, Grade: "A", ScoredAt: now,
+		Dimensions: []scoringtypes.DimensionScore{{Dimension: "verification", Score: 90, Detail: "d"}},
+	}
+	s.CrossRepoImpact = &tasktypes.CrossRepoImpact{Level: "multi", Repos: []string{"r"}, Note: "n", DeclaredAt: now}
+	s.SpecArtifacts = map[string]tasktypes.ArtifactRef{"intent": {Path: "p", Hash: "h", UpdatedAt: now}}
+	s.SessionLinks = []tasktypes.SessionLink{{SessionID: "sess", Tool: "seed", JoinedAt: now}}
+	s.Decisions = []tasktypes.Decision{{ID: "d1", Content: "c", DecidedAt: now, By: "seed", Affects: []string{"x"}, Rationale: "r"}}
+	s.NextSteps = []string{"n"}
+	s.Blockers = []tasktypes.Blocker{{ID: "b1", Content: "c", RaisedAt: now, Status: "open", Resolution: "r", By: "seed"}}
+	s.Artifacts = []tasktypes.Artifact{{Path: "p", Kind: "file", Note: "n"}}
+	s.ParentTaskRef = "seed/parent"
+	s.DependsOn = []string{"seed/dep"}
+	s.Kind = "code"
+	s.TTL = time.Minute
+	s.ResumeStale = true
+	s.ReviewedHeadCommit = "abc"
+	s.AcceptanceForeign = true
+	s.PlanFirstAdvisoryFired = true
+	// findings/review_rounds 的嵌套可选键（round/change_hash/note）。
+	s.Findings = append(s.Findings, tasktypes.Finding{ID: "f2", Content: "c", Source: "s", Status: "open", Round: 1, ChangeHash: "h"})
+	s.ReviewRounds = append(s.ReviewRounds, tasktypes.ReviewRound{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now, Note: "n"})
 	return s
 }
