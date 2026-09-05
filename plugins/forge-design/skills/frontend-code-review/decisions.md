@@ -2,105 +2,36 @@
 
 persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结果)，让下一轮 agent 理解「为什么这么改」，避免重复探索已失败方向。审计/可复现，非泛化学习。append-only：新决策追加到末尾。
 
-## [d-18c6bc8992312330-97e549f2] accept
+## [d-18d2537c3e45c4d4-a9f3a8cb] accept
 
 - **Skill**: frontend-code-review
-- **DecidedAt**: 2026-07-29T10:40:01Z
-- **By**: claude-code
+- **DecidedAt**: 2026-09-05T04:49:55Z
 
 ### Diagnosis
 
-用户全局specialist skill(按Forge规范有metadata.pattern/domain/composes互引成体系)原不在canonical;被frontend-development等引用致断链
+功能聚焦批次一线2：按 skills 价值审计（docs/skills-value-audit-2026-08-02.md）与聚焦决策（docs/plans/feature-focus-2026-09.md）执行拆包/瘦身/引用清理
 
 ### Revision
 
-纳入canonical:从用户全局复制SKILL.md及references到skills/frontend-code-review
+拆包至 plugins/forge-design（设计族 12 个）或教科书瘦身/死机制清理（详见 96e0182 提交）
 
 ### Evidence
 
-forge skills validate R1-R11通过;forge skills audit 0 finding;守卫C验证互引自洽
+docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
 
-## [d-18c7729c5759c2c0-815ed260] accept
+## [d-18d25390ee33d480-869ff695] accept
 
 - **Skill**: frontend-code-review
-- **DecidedAt**: 2026-07-31T18:16:33Z
+- **DecidedAt**: 2026-09-05T04:51:23Z
 
 ### Diagnosis
 
-复审发现 composes 标量写法库内 11 处分裂（此前只统一了 2 处），且原决策证据声称多数已是 flow list 与事实相反——一次性根治
+功能聚焦批次一线2：设计族拆包至 plugins/forge-design（git mv 零内容变更）
 
 ### Revision
 
-composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
+迁移非改写；引用清理见 96e0182
 
 ### Evidence
 
-grep 确认全库 composes 已无标量残留；forge skills validate 50/50
-
-## [d-18c7e5a63cf54698-b310fbd5] accept
-
-- **Skill**: frontend-code-review
-- **DecidedAt**: 2026-08-02T05:24:39Z
-
-### Diagnosis
-
-skills 库价值审计 13 项改进落地
-
-### Revision
-
-删 N/10 评分统一 block/fix/suggest；叠加 gate 裁决指针；:134 补 shadcn-ui/ui#3579 来源；:137 无来源数字改定性表述
-
-### Evidence
-
-docs/skills-value-audit-2026-08-02.md 逐项价值审计
-
-## [d-18c7e620b030289c-cd710767] accept
-
-- **Skill**: frontend-code-review
-- **DecidedAt**: 2026-08-02T05:33:25Z
-
-### Diagnosis
-
-项10 description 审计+触发回归
-
-### Revision
-
-description 三段式合格未改动;新建 evals/evals.json(5正+4负)
-
-### Evidence
-
-docs/skills-value-audit-2026-08-02.md
-
-## [d-18c7e7b349568654-b689f877] accept
-
-- **Skill**: frontend-code-review
-- **DecidedAt**: 2026-08-02T06:02:14Z
-
-### Diagnosis
-
-composes 与 frontend-feature-development 互引成环，加载语义不清
-
-### Revision
-
-composes 移除 frontend-feature-development（单向化：开发→审查）；正文分工节已有普通文本指针不丢信息
-
-### Evidence
-
-task-complete 审查子 agent 发现（旧账）；全库 composes 机检
-
-## [d-18cc4bec0d0eb954-bbb87303] accept
-
-- **Skill**: frontend-code-review
-- **DecidedAt**: 2026-08-16T13:23:49Z
-
-### Diagnosis
-
-同UI族:前端审查请求无触发
-
-### Revision
-
-metadata.triggers新增UserPromptSubmit关键词(前端 code review/前端 review/审查前端/前端审查/a11y/无障碍检查),cooldown 600
-
-### Evidence
-
-前端审查请求多次出现,触发覆盖缺口
+docs/plans/feature-focus-2026-09.md §2.1

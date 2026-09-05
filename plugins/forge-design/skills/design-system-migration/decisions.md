@@ -2,106 +2,19 @@
 
 persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结果)，让下一轮 agent 理解「为什么这么改」，避免重复探索已失败方向。审计/可复现，非泛化学习。append-only：新决策追加到末尾。
 
-## [d-18c6bc89a0f6b218-62501d48] accept
+## [d-18d253730d21ef30-dd663711] accept
 
 - **Skill**: design-system-migration
-- **DecidedAt**: 2026-07-29T10:40:01Z
-- **By**: claude-code
+- **DecidedAt**: 2026-09-05T04:49:15Z
 
 ### Diagnosis
 
-用户全局specialist skill(按Forge规范有metadata.pattern/domain/composes互引成体系)原不在canonical;被frontend-development等引用致断链
+功能聚焦批次一线2：按 skills 价值审计（docs/skills-value-audit-2026-08-02.md）与聚焦决策（docs/plans/feature-focus-2026-09.md）执行拆包/瘦身/引用清理
 
 ### Revision
 
-纳入canonical:从用户全局复制SKILL.md及references到skills/design-system-migration
+拆包至 plugins/forge-design（设计族 12 个）或教科书瘦身/死机制清理（详见 96e0182 提交）
 
 ### Evidence
 
-forge skills validate R1-R11通过;forge skills audit 0 finding;守卫C验证互引自洽
-
-## [d-18c771b895565118-d161014b] accept
-
-- **Skill**: design-system-migration
-- **DecidedAt**: 2026-07-31T18:00:14Z
-
-### Diagnosis
-
-整体审查发现 frontmatter steps: 7 与正文 Phase 0/1/2/3-N/N 结构不符（流程本非固定步数）
-
-### Revision
-
-删除 steps 字段
-
-### Evidence
-
-grep 章节标题确认正文为 Phase 0/1/2/3-N/N 开放结构，无固定步数可填
-
-## [d-18c7729c37576b30-efb4e999] accept
-
-- **Skill**: design-system-migration
-- **DecidedAt**: 2026-07-31T18:16:32Z
-
-### Diagnosis
-
-复审发现 composes 标量写法库内 11 处分裂（此前只统一了 2 处），且原决策证据声称多数已是 flow list 与事实相反——一次性根治
-
-### Revision
-
-composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
-
-### Evidence
-
-grep 确认全库 composes 已无标量残留；forge skills validate 50/50
-
-## [d-18c7e5a6831463c0-5837dddb] accept
-
-- **Skill**: design-system-migration
-- **DecidedAt**: 2026-08-02T05:24:40Z
-
-### Diagnosis
-
-skills 库价值审计 13 项改进落地
-
-### Revision
-
-单一项目实录下沉 references/case-study.md，主文件 322→122 行只留可迁移方法论
-
-### Evidence
-
-docs/skills-value-audit-2026-08-02.md 逐项价值审计
-
-## [d-18c7e62b17db942c-309a30cd] accept
-
-- **Skill**: design-system-migration
-- **DecidedAt**: 2026-08-02T05:34:10Z
-
-### Diagnosis
-
-项10 description 审计+触发回归
-
-### Revision
-
-description 审计合格未改动 + evals.json 建立
-
-### Evidence
-
-docs/skills-value-audit-2026-08-02.md
-
-## [d-18d1f4e8a0b6c318-1a2b3c4d] accept
-
-- **Skill**: design-system-migration
-- **DecidedAt**: 2026-08-16T12:00:00Z
-- **By**: claude-code
-
-### Diagnosis
-
-接续审计发现全网唯一入边是 design-system-workflow description 的 SKIP 括号一句，无 triggers 无 routes 无 hook，最弱触达节点
-
-### Revision
-
-frontmatter metadata.triggers 新增 UserPromptSubmit 关键词触发器（设计系统迁移/换色板域）
-
-### Evidence
-
-2026-08-16 功能点接续审计：14 个弱触达 skill 中入边数最少（1）且唯一入边非正向分发
+docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交

@@ -23,7 +23,7 @@
 
 **付费墙内**（企业价值 = 组织规模下的治理与合规）：
 
-| 能能 | 对应调研证据 | 付费形态 |
+| 能力 | 对应调研证据 | 付费形态 |
 |---|---|---|
 | SSO/SAML + RBAC（组织成员与角色） | CodeRabbit 高档定价锚（$48/dev/mo 含 SSO+audit） | 席位功能 |
 | 审计导出与留存合规（auditor-grade evidence：OTLP/SOC2/AAT 格式包、保留策略、法务持有） | Drata "auditor-grade evidence" 话术；IETF AAT mapper | 席位功能 + 用量超额 |

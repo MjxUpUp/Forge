@@ -2,123 +2,19 @@
 
 persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结果)，让下一轮 agent 理解「为什么这么改」，避免重复探索已失败方向。审计/可复现，非泛化学习。append-only：新决策追加到末尾。
 
-## [d-18c6bc898ac41f08-de352f63] accept
+## [d-18d2536548ef9480-31e121a2] accept
 
 - **Skill**: ai-generated-ui-review
-- **DecidedAt**: 2026-07-29T10:40:01Z
-- **By**: claude-code
+- **DecidedAt**: 2026-09-05T04:48:16Z
 
 ### Diagnosis
 
-用户全局specialist skill(按Forge规范有metadata.pattern/domain/composes互引成体系)原不在canonical;被frontend-development等引用致断链
+功能聚焦批次一线2：按 skills 价值审计（docs/skills-value-audit-2026-08-02.md）与聚焦决策（docs/plans/feature-focus-2026-09.md）执行拆包/瘦身/引用清理
 
 ### Revision
 
-纳入canonical:从用户全局复制SKILL.md及references到skills/ai-generated-ui-review
+拆包至 plugins/forge-design（设计族 12 个）或教科书瘦身/死机制清理（详见 96e0182 提交）
 
 ### Evidence
 
-forge skills validate R1-R11通过;forge skills audit 0 finding;守卫C验证互引自洽
-
-## [d-18c771b01570cc74-a28539ed] accept
-
-- **Skill**: ai-generated-ui-review
-- **DecidedAt**: 2026-07-31T17:59:38Z
-
-### Diagnosis
-
-整体审查发现编辑残留：:133 与 :169 两个同名 '## Common Rationalizations' 章节（:169 还有'塔借口'错别字），:18-26 与 :161-167 '与其他 skill 的分工'出现两次
-
-### Revision
-
-两 Rationalizations 表合并为一张（10 行无重复，修错别字）；两分工节合并为一节（顶部表补齐 ai-ui-generation-workflow/design-system-workflow/frontend-feature-development 三行），删重复节
-
-### Evidence
-
-合并前全文 grep 确认两表无重复行；合并后章节名唯一
-
-## [d-18c7729c1e52a230-86b0a45b] accept
-
-- **Skill**: ai-generated-ui-review
-- **DecidedAt**: 2026-07-31T18:16:32Z
-
-### Diagnosis
-
-复审发现 composes 标量写法库内 11 处分裂（此前只统一了 2 处），且原决策证据声称多数已是 flow list 与事实相反——一次性根治
-
-### Revision
-
-composes 标量逗号写法改 flow list [a, b]，对齐 CONVENTIONS §4
-
-### Evidence
-
-grep 确认全库 composes 已无标量残留；forge skills validate 50/50
-
-## [d-18c7e5a645aa7808-2937d793] accept
-
-- **Skill**: ai-generated-ui-review
-- **DecidedAt**: 2026-08-02T05:24:39Z
-
-### Diagnosis
-
-skills 库价值审计 13 项改进落地
-
-### Revision
-
-删与 frontend-code-review 重复维度 1/3/4 改指针，保留四个独有块；解除对 ai-ui-generation-workflow 循环 composes(D2)；arXiv/CVE 数据核实补链接
-
-### Evidence
-
-docs/skills-value-audit-2026-08-02.md 逐项价值审计
-
-## [d-18c7e620b5e24658-92b20ce6] accept
-
-- **Skill**: ai-generated-ui-review
-- **DecidedAt**: 2026-08-02T05:33:25Z
-
-### Diagnosis
-
-项10 description 审计+触发回归
-
-### Revision
-
-description 三段式合格未改动;新建 evals/evals.json(5正+4负)
-
-### Evidence
-
-docs/skills-value-audit-2026-08-02.md
-
-## [d-18cc4be8334ceab8-0f697264] accept
-
-- **Skill**: ai-generated-ui-review
-- **DecidedAt**: 2026-08-16T13:23:32Z
-
-### Diagnosis
-
-UI/设计族12个skill全无trigger,协作记录中AI生成UI审查类请求高频(vibe coding/Lovable/Bolt产物能否上生产)
-
-### Revision
-
-metadata.triggers新增UserPromptSubmit关键词(AI 生成的/AI生成的/AI 写的前端/vibe coding/Lovable/Bolt.new/能上生产吗/AI 生成 UI),cooldown 600
-
-### Evidence
-
-2026-08-16扫描:UI设计类请求为跨项目第三高频簇;触发覆盖47/51,本族全在缺失名单
-
-## [d-18ce9b9cb24de884-4c3623cd] accept
-
-- **Skill**: ai-generated-ui-review
-- **DecidedAt**: 2026-08-24T02:06:39Z
-- **By**: zcode
-
-### Diagnosis
-
-audit DC-10 共 4 处 MEDIUM：SKILL.md/references 的 npx+shadcn-add 警示文本 + npx+jscpd/complexity-report 检测命令——SKILL.md 行是逐字 agent 指令，未锁版本的注册表即时拉取是供应链执行面
-
-### Revision
-
-警示文本改写为不含可复制执行的 npx-包名字面序列；检测命令改为 npm i -D 装 devDependency（lockfile 锁定）后 npm exec 本地运行；审查他库时安装痕迹跑完还原（npm i 会写被审项目的 package.json/lockfile）
-
-### Evidence
-
-forge skills audit 全库 finding 9→0（含本条决策文本规避自回引后复扫）；validate 52/52
+docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交

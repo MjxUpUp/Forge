@@ -51,7 +51,7 @@ Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创�
 <table>
   <tr>
     <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
-    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>19 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
+    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>22 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
   </tr>
   <tr>
     <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。Agent 无法经 bash 绕道篡改。</td>
@@ -286,6 +286,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task mirror github [--repo owner/name] [--dry-run]` | 分派任务镜像到 GitHub Issues（Forge 台账为主真相、issue 为组织可见面；offered→建 issue 打 forge:状态 label，终态→关闭；映射存 DataDir/mirror-gh.json；经 gh CLI，无 gh 明确报错）——Symphony 验证的组织面入口需求 |
 | `forge task watchdog [--stall 45m] [--release]` | 长时任务停滞检测（always-on 治理）：从 checklog/toollog 取未完成任务的最后活动，超阈报停滞（task-stalled advisory，marker 节流每小时一条）；`--release` 清停滞任务租约；顺带展示 token 熔断信号 |
 | `forge task doc-review --passed <pass\|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <发现>]` | 记录 L2 文档回检证据（输出→回检循环）：按 doc-review skill 四维评审后落档（产出者不能自检）；`--score` 为 0-100 总分、`--round` 轮次（≥3 轮未过升级人工确认）、`--critical` 落 Critical findings（未决阻断 complete）。task-complete 的 doc gate 消费该证据 |
+| task-complete 自报一致性门禁（自动） | checklist 已勾选项里声称执行过的验证类命令（go test/pytest/cargo test 等）与 toollog 实测 Bash 集比对：测试类声称任务全程零匹配 = 虚报进度形态（arXiv 2605.29442）→ 拒绝完成；非测试类差集只留 advisory 痕；toollog 缺失（宿主遥测未接）跳过——区分"无法验证"与"验证通过"；逃生（留痕）`FORGE_SELF_REPORT=disable` |
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D7：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
 | `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、hook/门禁/逃生舱清单与已知盲区（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
 | `forge eval dashboard [--dry-run] [--json]` | Track B 遥测（C4/C7）：escape 率/off_churn/自举通过率（Wilson 95% CI + 误用注记；样本低于字典下限只出 INSUFFICIENT）。快照落 `~/.forge/evals/forge/snapshots/` |
