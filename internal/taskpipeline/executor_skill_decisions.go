@@ -39,25 +39,16 @@ import (
 const CheckNameSkillDecisions checklog.CheckName = "skill-decisions-advisory"
 
 // skillDecisionsBlockingAffected 返回改了 SKILL.md（行为变更 → guardrail）的 skill 名。
-// 只匹配 skills/<name>/SKILL.md（精确文件名 SKILL.md）——SKILL.md 是行为契约，改它触发
-// guardrail。其他文件（scripts/references/cases/decisions.md）不进 blocking。
+// 匹配 skills/<name>/SKILL.md 与插件 pack 树 plugins/<pack>/skills/<name>/SKILL.md
+// （2026-09 设计族拆包引入——pack 里的 SKILL.md 同样是行为契约，改它同样触发
+// guardrail；决策查找见 skillDecisionsRecorded 的双树候选）。其他文件
+// （scripts/references/cases/decisions.md）不进 blocking。
 func skillDecisionsBlockingAffected(changed []string) []string {
 	seen := make(map[string]bool)
 	for _, f := range changed {
 		f = filepath.ToSlash(f)
-		if !strings.HasPrefix(f, "skills/") {
-			continue
-		}
-		rest := strings.TrimPrefix(f, "skills/")
-		i := strings.IndexByte(rest, '/')
-		if i < 0 {
-			continue
-		}
-		name := rest[:i]
-		if name == "" || seen[name] {
-			continue
-		}
-		if rest[i+1:] != "SKILL.md" {
+		name, ok := skillNameFromSkillPath(f)
+		if !ok || seen[name] {
 			continue
 		}
 		seen[name] = true
@@ -68,6 +59,33 @@ func skillDecisionsBlockingAffected(changed []string) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// skillNameFromSkillPath 从变更路径解析 (skill 名, 是否 SKILL.md 顶层契约)。
+// 识别两棵树：canonical skills/<name>/SKILL.md 与 pack plugins/<pack>/skills/<name>/SKILL.md。
+func skillNameFromSkillPath(f string) (string, bool) {
+	rest := ""
+	switch {
+	case strings.HasPrefix(f, "skills/"):
+		rest = strings.TrimPrefix(f, "skills/")
+	case strings.HasPrefix(f, "plugins/"):
+		i := strings.Index(f, "/skills/")
+		if i < 0 {
+			return "", false
+		}
+		rest = f[i+len("/skills/"):]
+	default:
+		return "", false
+	}
+	i := strings.IndexByte(rest, '/')
+	if i < 0 {
+		return "", false
+	}
+	name := rest[:i]
+	if name == "" || rest[i+1:] != "SKILL.md" {
+		return "", false
+	}
+	return name, true
 }
 
 // skillDecisionsAdvisoryAffected 返回改了辅助资源（scripts/references/cases，非 SKILL.md
@@ -130,9 +148,38 @@ func skillDecisionsRecorded(root, base, skill string) (recorded, failopen bool) 
 	if err := exec.Command("git", "-C", root, "cat-file", "-e", base+"^{commit}").Run(); err != nil {
 		return false, true
 	}
-	cur := countDecisionEntries(currentDecisionsContent(root, skill))
-	old := countDecisionEntries(gitShowPath(root, base, "skills/"+skill+"/decisions.md"))
-	return cur > old, false
+	// 双树候选（2026-09 拆包）：canonical skills/<s>/decisions.md 与 pack
+	// plugins/*/skills/<s>/decisions.md——skill 在哪棵树，决策就记在哪棵树旁。
+	// 逐路径判净增（任一路径条目数比 base 净增即已记），绝不对路径求和——拆包迁移
+	// 场景 canonical 旧条目被整体搬到 pack：求和会把「搬运」误算进基线（cur(pack)=
+	// old(canonical)+1 时总和不变，漏判已记）。
+	candidates := decisionsCandidates(root, skill)
+	for _, path := range candidates {
+		cur := 0
+		if data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path))); err == nil {
+			cur = countDecisionEntries(string(data))
+		}
+		old := countDecisionEntries(gitShowPath(root, base, path))
+		if cur > old {
+			return true, false
+		}
+	}
+	return false, false
+}
+
+// decisionsCandidates 列 skill 的 decisions.md 候选路径（canonical + 仓内全部
+// plugin pack）。pack 用 glob 现查——pack 目录名不固定（forge-design / 未来更多）。
+func decisionsCandidates(root, skill string) []string {
+	out := []string{"skills/" + skill + "/decisions.md"}
+	matches, _ := filepath.Glob(filepath.Join(root, "plugins", "*", "skills", skill, "decisions.md"))
+	for _, m := range matches {
+		rel, err := filepath.Rel(root, m)
+		if err != nil {
+			continue
+		}
+		out = append(out, filepath.ToSlash(rel))
+	}
+	return out
 }
 
 // countDecisionEntries 数 content 里 `## [d-` 决策条目标记数（skillsdecisions.AppendDecision
@@ -143,17 +190,6 @@ func countDecisionEntries(content string) int {
 		return 0
 	}
 	return strings.Count(content, "## [d-")
-}
-
-// currentDecisionsContent 读工作区 skills/<skill>/decisions.md 当前内容（不存在返空）。
-// 读文件而非 git HEAD——agent 记决策后可能未立即 commit，读 git HEAD 会漏掉未提交条目
-// 误判「未记」。
-func currentDecisionsContent(root, skill string) string {
-	data, err := os.ReadFile(filepath.Join(root, "skills", skill, "decisions.md"))
-	if err != nil {
-		return ""
-	}
-	return string(data)
 }
 
 // gitShowPath 读 base 版本的 path 内容（git show <base>:<path>）。base 时 path 不存在

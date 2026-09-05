@@ -32,7 +32,7 @@
 - **目标**：门禁终裁从本地会话扩到 git 推送边界——所有产出（含云端 agent 分支）在 push 时过同一套确定性检查。
 - **设计**：新命令族 `forge gate`：
   - `forge gate push [--ref <branch>] [--dry-run]`：①工作树未提交变更（warn）；②本分支相对 base 的累积 diff 跑 cheat-scan 批量模式（复用 ScanCheatPatterns）；③本分支关联任务的未决 BLOCKED 行检查；④写 checklog `gate-push` 行 + 推送证据快照 DataDir/pushes/<ts>.json（AtomicWrite）。命中阻断项 exit 2（BLOCKED 契约）。
-  - `forge gate hooks install|status`：写 `.forge/git-hooks/pre-push`（bash，调 `forge gate push`）并 `git config core.hooksPath .forge/git-hooks`；`--ci` 用法文档化（CI 复跑形态）。
+  - `forge gate hooks install [--uninstall]`：写 `.forge/git-hooks/pre-push`（bash，调 `forge gate push`）并 `git config core.hooksPath .forge/git-hooks`；`--ci` 用法文档化（CI 复跑形态）。
 - **落点**：internal/cli/gate.go + hooks 脚本资产（internal/hooks 或 cli 内嵌字符串）+ CheckName `gate-push` + 测试（临时 git 仓库夹具：dirty/干净/cheat 命中/未命中四态）。
 - **验收**：pre-push 钩子在真实 push 前触发且阻断可复现；checklog 留痕；README 同步。
 
@@ -61,14 +61,14 @@
 ### 2a. held-out gap 门禁（方向 B · SpecBench arXiv 2605.21384）
 
 - **目标**：验收双套件——可见测试（agent 可见）+ held-out 测试（只在 DataDir 任务记录里，verify-acceptance 执行时才展开）；可见过而 held-out 挂 → cheat-suspect BLOCKED；gap 数字进 checklog。
-- **设计**：`forge task start --heldout <file>`（命令清单导入 TaskState.HeldoutAcceptance，存用户级 DataDir——结构上与仓库分离）；`forge task verify-acceptance` 同时跑两套，记录 `acceptance`（可见）与 `acceptance-heldout-gap`（gap=visiblePass∧¬heldoutPass → fail；无 heldout → Checked=false 跳过）。gap 阈值：v1 二值判定（任一 heldout 失败即 fail），分桶阈值留给 eval 校准。
+- **设计**：`forge task start --heldout <file>`（命令清单导入 DataDir/heldout/<ref>.json 侧车——刻意不进 TaskState，task status/trace 不展示，结构上与 agent 常读的任务状态分离）；`forge task verify-acceptance` 同时跑两套，记录 `acceptance`（可见）与 `acceptance-heldout-gap`（gap=visiblePass∧¬heldoutPass → fail；无 heldout → Checked=false 跳过）。gap 阈值：v1 二值判定（任一 heldout 失败即 fail），分桶阈值留给 eval 校准。
 - **落点**：tasktypes TaskState 字段 + taskpipeline/acceptance.go + clitask 导入/执行 + 测试。
 - **验收**：golden——可见过+heldout 挂 → BLOCKED 且 detail 含 gap 描述；无 heldout 声明 → 不新增检查负担。
 
 ### 2b. safe-halt 语义（方向 B · ASE 2026）
 
 - **目标**：hazard 连续拦截 ≥3 次的会话进入 safe-halt：停止自修复、要求人审解锁（failure transparency）。
-- **设计**：hazard 包新增 halted 判定（从 checklog 当前会话 hazard-guard blocked 行计数）+ markers 落盘；task-verify 与 review-stop 输出 safe-halt advisory；`forge hazard halt status|release` 人审解锁（release 记 checklog，Source=deterministic）。逃生舱 FORGE_SAFE_HALT=disable。
+- **设计**：hazard 包 halted 判定（events.jsonl 自最近 confirm/halt-release 的连续 EventBlock 计数，阈值 3）；task gate 推进时输出 safe-halt advisory；`forge hazard halt status` / `forge hazard halt release --yes` 人审解锁（记 halt-release 审计事件）。刻意无 env 逃生舱——解锁是人工审阅决策（agent 不得自我解锁），与既有 hazard confirm 同 philosophy。
 - **落点**：internal/hazard/halt.go + clitask/hazard 子命令 + task-verify 接线 + 测试。
 
 ### 2c. issue-tracker 镜像（方向 C）
@@ -107,7 +107,7 @@
 | B1L1 | 1c git 收口 | `forge gate push/hooks`、`gate-push` | 临时 git 仓库四态 |
 | B1L2 | 1d-1f | — | skills validate/audit + grep 残留 |
 | B2 | 2a held-out | `acceptance-heldout-gap` | golden 双态 |
-| B2 | 2b safe-halt | `safe-halt` | 计数/解锁 |
+| B2 | 2b safe-halt | （task gate advisory + halt-release 事件） | 计数/解锁 |
 | B2 | 2c mirror | `forge task mirror github` | fake gh |
 | B2 | 2d watchdog | `task-stalled` | 旧时间戳夹具 |
 | B2 | 2e eval | — | 披露渲染/MVVP 计算 |

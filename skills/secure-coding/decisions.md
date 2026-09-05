@@ -114,3 +114,20 @@ doc-review L2 发现两处残留：:220 条件块未随迁移中性化；:261 �
 ### Evidence
 
 复审确认锚点实存（code-review-gate:161 有宿主盖章措辞）且双树逐字节一致；L2 复审 PASS
+
+## [d-18d25386f040da34-2dc564a6] accept
+
+- **Skill**: secure-coding
+- **DecidedAt**: 2026-09-05T04:50:41Z
+
+### Diagnosis
+
+功能聚焦批次一线2：按 skills 价值审计（docs/skills-value-audit-2026-08-02.md）与聚焦决策（docs/plans/feature-focus-2026-09.md）执行拆包/瘦身/引用清理
+
+### Revision
+
+拆包至 plugins/forge-design（设计族 12 个）或教科书瘦身/死机制清理（详见 96e0182 提交）
+
+### Evidence
+
+docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交

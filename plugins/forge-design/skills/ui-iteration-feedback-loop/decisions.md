@@ -2,19 +2,19 @@
 
 persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结果)，让下一轮 agent 理解「为什么这么改」，避免重复探索已失败方向。审计/可复现，非泛化学习。append-only：新决策追加到末尾。
 
-## [d-18cbf5f4036a4f88-e5948d23] accept
+## [d-18d25389ff208e20-1f1c21a9] accept
 
 - **Skill**: ui-iteration-feedback-loop
-- **DecidedAt**: 2026-08-15T11:08:25Z
+- **DecidedAt**: 2026-09-05T04:50:54Z
 
 ### Diagnosis
 
-pi侧35条UI反馈+191条编号反馈+决策码批量回选,用户亲口要求将前端优化过程沉淀为skills
+功能聚焦批次一线2：按 skills 价值审计（docs/skills-value-audit-2026-08-02.md）与聚焦决策（docs/plans/feature-focus-2026-09.md）执行拆包/瘦身/引用清理
 
 ### Revision
 
-新增pipeline交互协议skill:交付带编号决策点(≤5)+双主题变体,反馈逐条映射处置表零静默丢弃
+拆包至 plugins/forge-design（设计族 12 个）或教科书瘦身/死机制清理（详见 96e0182 提交）
 
 ### Evidence
 
-mine-pi跨2项目(DevWorkbench/HarmonyProject);用户元请求:将前端优化重构过程沉淀为skills
+docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
