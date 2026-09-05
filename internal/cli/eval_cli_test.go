@@ -186,7 +186,10 @@ func TestGateHooksInstallE2E(t *testing.T) {
 	if !strings.Contains(body, `gate push --ref "$1"`) || !strings.Contains(body, "exit 0") {
 		t.Fatalf("钩子脚本语义不符（应调 gate push 且无 forge 时 fail-open）:\n%s", body)
 	}
+	// gate push --dry-run 在该临时仓库应可运行（无 forge 数据也可：git root 兜底），
+	// 输出含计划骨架行（skipped 或通过两态之一——无任务无遥测的环境按 skipped 处理）。
 	cfg, _, code := runForgeStreams(t, dir, "gate", "push", "--dry-run")
-	_ = cfg
-	_ = code
+	if code != 0 || !strings.Contains(cfg, "push gate") {
+		t.Fatalf("gate push --dry-run 输出/退出码异常（exit %d）：%s", code, cfg)
+	}
 }

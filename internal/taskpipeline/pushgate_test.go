@@ -135,3 +135,49 @@ func TestScanCheatPatternsRange_RangeOnly(t *testing.T) {
 		t.Fatalf("无新增源码行应零 finding: %+v", res)
 	}
 }
+
+// TestRunPushGate_FullyQualifiedRef 归一化回归（对抗审查 blocker）：pre-push 钩子
+// 传入 refs/heads/<branch>，TaskState.Branch 存裸名——不剥前缀则任务检查静默失效。
+func TestRunPushGate_FullyQualifiedRef(t *testing.T) {
+	dir := newPushRepo(t)
+	gitBranch(t, dir, "feat/fqr")
+	commitFile(t, dir, "ok.go", "package main\n", "ok")
+	// 带 refs/heads/ 前缀调用——Ref 字段必须归一化为裸分支名。
+	res := RunPushGate(dir, "refs/heads/feat/fqr")
+	if res.Skipped {
+		t.Fatalf("不应 skipped: %+v", res)
+	}
+	if res.Ref != "feat/fqr" {
+		t.Fatalf("ref 应归一化为裸分支名，实际 %q（全限定 ref 会让 blockedTasksOnBranch 永不命中——对抗审查 blocker）", res.Ref)
+	}
+}
+
+// TestBlockedTasksOnBranch 未消解 BLOCKED 行的分支任务应被列出（回归覆盖：新增源码
+// 分支此前零覆盖）。latest-per-check 语义：同一 check 后续 pass 行消解早先 blocked。
+func TestBlockedTasksOnBranch(t *testing.T) {
+	dir := t.TempDir()
+	// 直接种一份带 blocked 行的任务状态 + checklog（不经完整 task start 编排）。
+	s := &TaskState{TaskRef: "t/b1", Branch: "feat/bt"}
+	s.Checklist = []ChecklistItem{{ID: 1, Desc: "x", Done: true}}
+	if err := SaveTaskState(dir, s); err != nil {
+		t.Fatal(err)
+	}
+	checklog.Record(dir, &checklog.Entry{
+		Check: checklog.CheckTaskGuard, Passed: false, Checked: true,
+		Level: checklog.LevelBlocked, TaskRef: "t/b1",
+		Detail: "BLOCKED: test",
+	})
+	got := blockedTasksOnBranch(dir, "feat/bt")
+	if len(got) != 1 || got[0] != "t/b1" {
+		t.Fatalf("应列出未消解任务: %v", got)
+	}
+	// 后续同 check pass 行消解。
+	checklog.Record(dir, &checklog.Entry{
+		Check: checklog.CheckTaskGuard, Passed: true, Checked: true,
+		Level: checklog.LevelPass, TaskRef: "t/b1", Detail: "pass",
+	})
+	got = blockedTasksOnBranch(dir, "feat/bt")
+	if len(got) != 0 {
+		t.Fatalf("消解后不应列出: %v", got)
+	}
+}

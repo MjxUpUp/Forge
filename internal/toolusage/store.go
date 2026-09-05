@@ -159,6 +159,31 @@ func ToollogHasData(root string) bool {
 	return err == nil && info.Size() > 0
 }
 
+// ToollogAnyData reports whether the active toollog or ANY archived
+// toollog-*.jsonl exists and is non-empty. ToollogHasData only stats the
+// active file — after another task start archives it (and no call arrived
+// since), that probe would misreport "telemetry never wired" for a caller
+// that is about to read cross-archive evidence via LoadForTaskAll. Honest
+// gates must not silently skip on that shape (adversarial review should-fix).
+//
+// ToollogAnyData 报告 active toollog 或任一归档 toollog-*.jsonl 是否存在且非空。
+// ToollogHasData 只 stat active 文件——另一 task start 把它归档后（且此后零调用），
+// 即将经 LoadForTaskAll 读跨归档证据的调用方会被该探针误报"遥测未接"。诚实
+// 门禁不得在该形态下静默跳过（对抗审查 should-fix）。
+func ToollogAnyData(root string) bool {
+	dir := dataDir(root)
+	if info, err := os.Stat(filepath.Join(dir, toollogFile)); err == nil && info.Size() > 0 {
+		return true
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, "toollog-*.jsonl"))
+	for _, m := range matches {
+		if info, err := os.Stat(m); err == nil && info.Size() > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // ReadEditCounts returns Read and Edit/Write tool call counts from toollog.jsonl
 // since the given time, scoped to a task.
 //

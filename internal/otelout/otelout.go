@@ -199,6 +199,7 @@ func BuildExport(entries []checklog.Entry, opts Options) Export {
 	var ss otlpScopeSpans
 	ss.Scope.Name = "forge.checklog"
 	ss.Scope.Version = mapperVersion
+	ss.Spans = []otlpSpan{} // 空也序列化为 []——proto3 JSON repeated 不出 null，严格 OTLP 接收器拒收 null
 	for _, k := range order {
 		sp := groups[k]
 		sp.Attributes = append(sp.Attributes, intAttr("forge.entries", len(sp.Events)))

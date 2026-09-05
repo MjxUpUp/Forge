@@ -92,10 +92,10 @@ func TestBuildExport_GoldenShape(t *testing.T) {
 	if got := evAttr["forge.check.detail"].(map[string]any)["stringValue"].(string); !strings.Contains(got, "type-suppression") {
 		t.Fatalf("detail 应保留关键词: %q", got)
 	}
-	if _, ok := evAttr["forge.check.evidence_source"]; !ok {
-		// Source 为零值时 Record 会兜底填充；BuildExport 对空 Source 省略——两种都合法，
-		// 此处只断言"存在时是字符串"由 JSON 结构保证。留空分支防误钉。
-		_ = ok
+	// Source 非零时必带 evidence_source 属性（mkEntry 未设 Source → 本夹具省略，
+	// 断言负形态：不存在）。Record 兜底填充的行为由 checklog 包自测覆盖。
+	if _, ok := evAttr["forge.check.evidence_source"]; ok {
+		t.Fatalf("未设 Source 的条目不应带 evidence_source 属性")
 	}
 	// 第二个 span：task 分组（无 session）
 	sp2 := spans[1].(map[string]any)
@@ -125,8 +125,11 @@ func TestBuildExport_EmptyEntries(t *testing.T) {
 		t.Fatalf("空输入也应有 ResourceSpans 骨架")
 	}
 	spans := out.ResourceSpans[0].ScopeSpans[0].Spans
-	if spans != nil {
-		t.Fatalf("空输入 spans 应为 nil，实际 %v", spans)
+	if spans == nil {
+		t.Fatalf("空输入 spans 应为空数组（proto3 JSON repeated 不出 null——严格 OTLP 接收器拒收）")
+	}
+	if len(spans) != 0 {
+		t.Fatalf("空输入 spans 应长度 0，实际 %v", spans)
 	}
 }
 

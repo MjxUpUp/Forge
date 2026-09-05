@@ -85,8 +85,20 @@ func LoadHeldout(root, ref string) ([]AcceptanceCriterion, error) {
 func VerifyHeldout(root string, state *TaskState) HeldoutResult {
 	var res HeldoutResult
 	criteria, err := LoadHeldout(root, state.TaskRef)
-	if err != nil || len(criteria) == 0 {
-		return res // 未登记 / 读失败：门禁未运行（Checked=false）
+	if err != nil {
+		// 侧车损坏与"未登记"不同：已登记过的保留集读不回来是治理信号，留 warn 痕
+		// （与 FORGE_HELDOUT=disable 必留 escape-hatch 痕对称——对抗审查 note）。侧车
+		// 被删除（IsNotExist）与从未登记不可区分，v1 无法探测删除，诚实写在注释。
+		recordAudit(root, &checklog.Entry{
+			Check: CheckNameHeldoutGap, Passed: false, Checked: false,
+			Level:   checklog.LevelWarn,
+			TaskRef: state.TaskRef,
+			Detail:  "ADVISORY: held-out 侧车存在但损坏，门禁未运行：" + err.Error(),
+		})
+		return res
+	}
+	if len(criteria) == 0 {
+		return res // 未登记：门禁未运行（Checked=false）
 	}
 	res.Checked = true
 	res.VisiblePassed = state.AllAcceptancePassed()

@@ -80,6 +80,11 @@ func RunPushGate(root, ref string) PushGateResult {
 			return res
 		}
 	}
+	// 归一化：git pre-push 钩子传入全限定 ref（refs/heads/<branch>），而
+	// TaskState.Branch 存裸分支名（task start 经 rev-parse --abbrev-ref 写入）——
+	// 不剥前缀则 blockedTasksOnBranch 永不命中，推送门禁主执法路径静默失效
+	// （对抗审查 blocker）。
+	ref = strings.TrimPrefix(ref, "refs/heads/")
 	res.Ref = ref
 	res.Dirty = gitStatusDirty(root)
 	res.Base = resolvePushBase(root)
