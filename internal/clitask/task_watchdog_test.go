@@ -53,8 +53,11 @@ func TestLastActivityFor(t *testing.T) {
 
 func TestRecordStalled_Throttle(t *testing.T) {
 	dir := t.TempDir()
-	st := stalledTask{Ref: "t/th", Idle: time.Hour, LastActive: time.Now().Add(-time.Hour)}
-	now := time.Now()
+	// 固定时钟：now 取整点后 10 分，+5min 必同小时（marker 桶名 06010215 按小时
+	// 分桶——真实时钟在 HH:56-59 运行时 +5min 跨小时致桶名翻转，CI 实证）。
+	hourStart := time.Now().Truncate(time.Hour)
+	now := hourStart.Add(10 * time.Minute)
+	st := stalledTask{Ref: "t/th", Idle: time.Hour, LastActive: now.Add(-time.Hour)}
 	recordStalled(dir, st, now)
 	rows, _ := checklog.LoadAll(dir)
 	if len(rows) != 1 || rows[0].Check != checklog.CheckTaskStalled {
