@@ -134,21 +134,6 @@ func BuildKimiPluginHooks() []KimiPluginHook {
 	return out
 }
 
-// isSkillTriggerCommand 报告某 hook command 是否为 skill-trigger hook。manifest 守卫
-// 测试对 agent 翻译后的 manifest 命令（"forge hook skill-trigger --agent kimi"）与裸
-// spec 命令（"forge hook skill-trigger"）调用。token 后的字边界（字符串尾或空格）
-// 两种形式都接受，同时拒绝纯 Contains 会误匹配的假设性未来 "forge hook
-// skill-trigger-v2"。
-func isSkillTriggerCommand(cmd string) bool {
-	const token = "forge hook skill-trigger"
-	i := strings.Index(cmd, token)
-	if i < 0 {
-		return false
-	}
-	rest := cmd[i+len(token):]
-	return rest == "" || strings.HasPrefix(rest, " ")
-}
-
 // BuildKimiPluginManifest renders the full manifest. version is the plugin's
 // display version, now tracked to the forge release (scripts/release.js syncs
 // it.

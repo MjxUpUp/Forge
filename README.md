@@ -234,7 +234,6 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge off [--all] [--commit]` 或 `forge on` | 按项目退出/恢复接管（Project Policy Layer）：`off` 把当前项目（git 根）置为 declined——项目级 hook 全部静默、`forge init`/`FORGE_AUTO_INIT`/自动接管拒绝（退出不被任何默认路径重置）；`--all` 一键全退；`--commit` 额外在仓库根写 `.forge-decline` 团队声明（committed 后对所有协作者让位，deny-wins）；`on` 是 declined→managed 的唯一恢复通道（清标记与声明文件，从未 init 的项目提示先 `forge init`）。状态存注册表条目（含决策来源/时间审计），`forge status` 退出码即「是否 managed」 |
 | `forge config get/set takeover` | 用户级接管偏好（`~/.forge/config.json`）：**ask（出厂默认）**每项目首次接触询问一次；**auto** 静默接管全部 git 项目（P2 之前的行为；declined 与外来 harness 让位仍生效）；**off** 不接管不询问。env 覆盖：`FORGE_TAKEOVER=ask\|auto\|off`（legacy `FORGE_AUTO_INIT=1` ≡ auto）；`--raw` 只输出值供脚本消费 |
 | `forge policy state` / `forge policy yield` | 接管策略快查/外来 harness 让位：`state` 打印当前目录三态（managed\|declined\|unknown，退出码恒 0，init-suggest bash 以此分流）；`yield` 检测外来 harness 高置信信号（`.specify/`、`.claude/commands`、`.claude/settings.json` 含 hooks/permissions、`.cursor/rules`——单一真相源 internal/harnessdetect），命中即让位（declined, by=foreign-harness）并打印说明，`forge on` 显式覆盖 |
-| `forge suggest decline/status/reset` | `forge off`/`forge on` 的兼容别名：decline 等价 `forge off`（注册表 + 标记双写），reset 在 declined 时等价 `forge on`；status 查看 legacy 提示标记 |
 | `forge conventions init [--force]` | 项目规范档案（conventions-profile）：机械扫描本仓库**已声明**的规范——AGENTS.md/CLAUDE.md/.github/copilot-instructions.md 等规范文件、lint/format 配置、stack 工具链命令——写入用户级档案 `~/.forge/projects/<key>/conventions/`；此后 hook 按宿主能力注入：会话开始注入 ≤15 行摘要（支持 PostCompact 的宿主压缩后重注入），写源码文件时注入规范文件指针+同目录范例（advisory 不阻断；同一份档案跨宿主共享）；摘要的「提取要点」节由 agent 代码考古增补，重跑 init 保留提炼内容（`--force` 才重建骨架）；规范源文件变化后指纹翻转，注入与 show 均提示重扫；task-verify 会提醒「档案声明的 lint 命令本任务未跑」（advisory，提醒与 checklog 审计行经 `FORGE_CONVENTIONS_LINT=disable` 一并静默） |
 | `forge conventions show` | 查看规范档案：stack/lint/test/build 命令、规范声明文件与 lint 配置清单、fingerprint 与过期状态（STALE=源已漂移，重跑 `forge conventions init` 刷新）、摘要全文 |
 | `forge conventions learn <rule>` | 纠正增量写回（conventions-profile）：用户/审查指出规范违规时当场把该规则写进摘要提取要点节（一字不差去重、替换待提取占位、超 15 行预算警告——注入截断至 15 行，全文仍在 summary.md）——纠正离开会话上下文进持久档案，下个会话注入即生效 |
@@ -387,7 +386,6 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |
 | `forge skills usage --by-keyword` | per-keyword 触发分析：命中/加载/抑制切片（v2 Meta 的 matched_keyword）+ 死关键词检测（声明未命中；窗口无 v2 证据条目时自动停用并说明）。加载列带宿主偏差标注（注入型宿主无工具事件信号） |
-| `forge skills mine [--skill X]` | 生产触发记录 → golden case 草稿挖矿（precision 侧）：engaged=true 正例 / engaged=false near-miss 负例候选，prompt_hash 跨 session 去重；需 opt-in 摘录（`FORGE_TRIGGER_EXCERPT=1`）；草稿永不自动进 golden（人工改写后策展） |
 | `forge skills effectiveness` | 技能命中×任务成效关联（命中数/task数/avg分/弱占比，agent-neutral） |
 | `forge skills --dir <path>` | eval 命令族公共 flag：指定 eval 数据目录（默认 `~/.forge/evals`，`FORGE_EVAL_DIR` 可覆盖；首次默认解析自动从旧 `~/.pi/research/skill-eval` 一次性迁移。仓库内 `evals/` 或 CI 用） |
 | `forge skills eval-gen [--save] [--cases-only]` | 生成 eval 清单；`--save`/`--cases-only` 额外落结构化 case 集（回归闭环基准） |
@@ -400,7 +398,6 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills mutex-gen` | 生成跨 skill 互斥 case 集（从 description SKIP 段的（用 X）让渡边派生：B 域 prompt 必须路由到 B、不得路由回声明让渡的 A；落盘 mutex/cases.json） |
 | `forge skills mutex-record --from <file/->` | 回填一次互斥集 run（actual==Positive 才 pass；`--agent-model`/`--forge-version` 盖章防跨模型/版本假回归） |
 | `forge skills mutex-report [--gate] [--json]` | 互斥集混淆矩阵（actual==Negative 为头号混淆行；`--gate` 任一混淆即 BLOCKED(stderr)+exit 4） |
-| `forge skills analyze [--json]` | 弱点挖掘报告（只读）：低分维度聚簇/验证盲区率/从未触发 skill/低成效 skill + 数据 caveat，供人选题 |
 | `forge skills decide [<skill>] --diagnosis ... --prediction <p>` | 记录 skill 决策四元组（skill 名可用位置参数或 --skill；在带 skills/ 树的仓库内默认写仓库 canonical 而非 embed 缓存）；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣 |
 | `forge skills verify --skill X --decision <id> --result <r>` | 回填决策验证结果（预测→验证闭环第二步；`--at` 指定时间、`--history`/`--history-json` 查全量可证伪台账） |
 | `forge skills revert --skill X --decision <id> [--edit] [--dry-run]` | Scoped revert：按 decisions.md 的 CommitHash 撤销某条决策关联的 commit（决策闭环的撤销臂） |
@@ -418,7 +415,6 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge trace <task-ref> [--window <chars>]` | 查看任务的完整质量事件时间线（checklog + toollog + token）；`--window` 输出分段监控窗口（每窗 ≤ 预算字符、头部周期性守卫重注入——下游 LLM judge/取证按窗取输入，禁止全量轨迹塞上下文，Classifier Context Rot 缓解） |
 | `forge dashboard [--port <n>] [--no-open]` | 本地全局质量看板（Pulse 面板）——在任意目录运行都聚合 `~/.forge/projects.json` 登记的全部项目（`forge init` 自登记），渲染事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合（localhost 只读，自动开浏览器，Ctrl+C 退出，面板内按项目过滤）；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |
 | `forge sync [--force]` | 同步 forge 资产到当前二进制版本（用户级 hooks/指令/skill 重生成 + 存量项目级残留收敛；注意：名字易误读——跨机器迁移项目数据用 `forge project export/import`，与本命令无关） |
-| `forge clone check` | 检测文件代码克隆 |
 | `forge plugin pack [--out <dir>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest + reasonix native manifest + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
 | `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + 旧项目 .mcp.json forge server 残留，并清理 user-level `settings.local.json` 的重复 forge hooks；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留项目 `settings.local.json` 为 `{}`）；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件 |

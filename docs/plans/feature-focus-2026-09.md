@@ -41,9 +41,9 @@
 
 | 对象 | 理由 |
 |---|---|
-| `forge clone check`（token 级 Jaccard 重复检测，internal/clone） | checklog 无使用痕迹；与方向 B 的 unused-scan/cheat-scan 职责部分重叠。先冻结一个版本周期观察，无外部使用反馈则移除 |
-| `forge suggest` | 使用证据缺失；与 forge next（单命令引导）职责重叠——next 是 vNext 设计钦定的入口，suggest 是前代产物。冻结并评估并入 next |
-| skills 治理命令长尾中的 `skills analyze` / `skills mine` | 与 usage/effectiveness 功能邻接、使用证据弱；冻结评估合并 |
+| `forge clone check`（token 级 Jaccard 重复检测，internal/clone） | checklog 无使用痕迹；与方向 B 的 unused-scan/cheat-scan 职责部分重叠。先冻结一个版本周期观察，无外部使用反馈则移除【已执行移除 2026-09-06 死代码清扫：冻结期无使用反馈（本机 checklog 零痕迹、npm 未发含冻结标注的版本），clone check 与 internal/clone 整体删除】 |
+| `forge suggest` | 使用证据缺失；与 forge next（单命令引导）职责重叠——next 是 vNext 设计钦定的入口，suggest 是前代产物。冻结并评估并入 next【已执行移除 2026-09-06：decline/reset 与 forge off/on 完全重复、status 零使用；marker 助手保留（off/on 双写垫片消费）】 |
+| skills 治理命令长尾中的 `skills analyze` / `skills mine` | 与 usage/effectiveness 功能邻接、使用证据弱；冻结评估合并【已执行移除 2026-09-06】 |
 
 ### 2.4 机制级砍除（删约定不改代码的"死机制"）
 

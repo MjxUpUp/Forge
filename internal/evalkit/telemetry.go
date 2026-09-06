@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
 // RateValue is one computed rate metric with its Wilson interval and
@@ -288,14 +287,4 @@ func VerifyAuditRows(root string) (SignatureAuditSummary, error) {
 	}
 	sum.ReplayedStamps = countReplayedStamps(entries)
 	return sum, nil
-}
-
-// LoadToolCalls is a thin indirection over toolusage for future wait-turn
-// mining; v1 telemetry does not consume it (keeps the import seam explicit so
-// the wait_turns producer plugs in without touching callers).
-//
-// LoadToolCalls 是 toolusage 的薄间接（为将来 wait-turn 挖矿预留的显式接缝）；
-// v1 遥测不消费它——wait_turns 的生产者接入时无需改动调用方。
-func LoadToolCalls(root string) ([]toolusage.ToolCall, error) {
-	return toolusage.LoadAll(root)
 }

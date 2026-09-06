@@ -8,13 +8,10 @@ package cliskills
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/act"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
@@ -306,50 +303,5 @@ func TestSkillsBattery_ReportAndGate(t *testing.T) {
 	}
 	if !gateRep.GateBlocked {
 		t.Fatal("gate 报告应 GateBlocked=true")
-	}
-}
-
-// TestSkillsAnalyze_WeaknessReport: subprocess against an isolated legacy-.forge project seeded with recurring low dims; canonical has 2 never-triggered skills.
-//
-// TestSkillsAnalyze_WeaknessReport：子进程跑隔离的 legacy-.forge 项目（预置复现低分维度）；
-// canonical 有 2 个从未触发 skill。断言报告浮出维度弱点/从未触发/caveat。
-func TestSkillsAnalyze_WeaknessReport(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".forge"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	proj, err := forgedata.ProjectFor(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// testing 低分复现 2 次（达到 weakDimMinCount）；scope 1 次（噪声过滤）。
-	for _, ref := range []string{"t1", "t2"} {
-		if err := act.Append(proj, &act.Conclusion{
-			TaskRef:       ref,
-			Score:         60,
-			Grade:         "C",
-			Strength:      "Strong",
-			Ratio:         0.9,
-			LowDimensions: []string{"testing"},
-			CompletedAt:   time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC),
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	canonical := t.TempDir()
-	evalLoopIsolateHome(t)
-	evalLoopWriteSkill(t, canonical, "alpha", "Use when: 编写 React 组件 SKIP: 选型")
-	evalLoopWriteSkill(t, canonical, "beta", "Use when: 数据分析 SKIP: 选型")
-	t.Setenv("FORGE_SKILLS_CANONICAL", canonical)
-
-	out, _, code := runForge(t, dir, "skills", "analyze")
-	if code != 0 {
-		t.Fatalf("skills analyze exit %d:\n%s", code, out)
-	}
-	for _, want := range []string{"弱点挖掘报告", "testing", "从未触发", "⚠"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("报告缺 %q:\n%s", want, out)
-		}
 	}
 }

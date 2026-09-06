@@ -167,7 +167,7 @@ func TestEvaluate_PassThenSameDiffPasses(t *testing.T) {
 	if dec, _, _ := Evaluate(dir); dec != DecisionNeedReview {
 		t.Fatalf("首次应 NeedReview，实际 %v", dec)
 	}
-	if err := MarkPassed(dir); err != nil {
+	if err := MarkPassedWithNote(dir, ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 	dec, reason, err := Evaluate(dir)
@@ -201,7 +201,7 @@ func TestMarkPassedWithNote(t *testing.T) {
 	}
 
 	// 裸 MarkPassed 保持 note 为空（旧形状）。
-	if err := MarkPassed(dir); err != nil {
+	if err := MarkPassedWithNote(dir, ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 	if got := loadStamped().Note; got != "" {
@@ -213,7 +213,7 @@ func TestMarkPassedWithNote(t *testing.T) {
 func TestEvaluate_NewDiffReTriggers(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
-	if err := MarkPassed(dir); err != nil {
+	if err := MarkPassedWithNote(dir, ""); err != nil {
 		t.Fatal(err)
 	}
 	// 改出新内容 → 新 hash
@@ -239,7 +239,7 @@ func TestEvaluate_CrossBranchSameHashPasses(t *testing.T) {
 
 	// 建特性分支（同一 HEAD，a.go 仍 untracked）并在其上标记审查通过。
 	gitCheckout(t, dir, "checkout", "-b", "feat/x")
-	if err := MarkPassed(dir); err != nil {
+	if err := MarkPassedWithNote(dir, ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 
@@ -262,7 +262,7 @@ func TestEvaluate_CrossBranchDifferentHashStillNeedsReview(t *testing.T) {
 	defaultBranch := currentGitBranch(t, dir)
 	write(t, dir, "a.go", "package a\n")
 	gitCheckout(t, dir, "checkout", "-b", "feat/x")
-	if err := MarkPassed(dir); err != nil {
+	if err := MarkPassedWithNote(dir, ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 	gitCheckout(t, dir, "checkout", defaultBranch)
@@ -292,7 +292,7 @@ func TestEvaluate_OwnBranchBlockingButCrossBranchReviewedRescues(t *testing.T) {
 
 	// 兄弟分支，同一内容 → 在其上标记已审。
 	gitCheckout(t, dir, "checkout", "-b", "feat/x")
-	if err := MarkPassed(dir); err != nil {
+	if err := MarkPassedWithNote(dir, ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 
@@ -336,7 +336,7 @@ func TestEvaluate_MaxRoundsAdvisory(t *testing.T) {
 func TestEvaluate_StampExcludesForge(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
-	if err := MarkPassed(dir); err != nil {
+	if err := MarkPassedWithNote(dir, ""); err != nil {
 		t.Fatal(err)
 	}
 	// stamp 落盘在 DataDir/stamps/（refactor-data-home：git 项目用户级）
@@ -544,7 +544,7 @@ func TestLoadStamp(t *testing.T) {
 	t.Run("persisted stamp round-trips", func(t *testing.T) {
 		root := initGitRepo(t)
 		write(t, root, "a.go", "package main\n")
-		if err := MarkPassed(root); err != nil {
+		if err := MarkPassedWithNote(root, ""); err != nil {
 			t.Fatalf("MarkPassed: %v", err)
 		}
 		hash, _, err := computeDiffHash(root)
@@ -589,7 +589,7 @@ func TestMarkPassed_ContentAddressed(t *testing.T) {
 	if err != nil || !hasChanges {
 		t.Fatalf("computeDiffHash: err=%v hasChanges=%v", err, hasChanges)
 	}
-	if err := MarkPassed(dir); err != nil {
+	if err := MarkPassedWithNote(dir, ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 	if _, err := os.Stat(stampContentPath(dir, hash)); err != nil {

@@ -108,3 +108,20 @@ feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R
 ### Rationale
 
 依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令
+
+## [d-18d253792c37c204-7aafcb93] accept
+
+- **Skill**: domain-modeling
+- **DecidedAt**: 2026-09-05T04:49:41Z
+
+### Diagnosis
+
+功能聚焦批次一线2：按 skills 价值审计（docs/skills-value-audit-2026-08-02.md）与聚焦决策（docs/plans/feature-focus-2026-09.md）执行拆包/瘦身/引用清理
+
+### Revision
+
+拆包至 plugins/forge-design（设计族 12 个）或教科书瘦身/死机制清理（详见 96e0182 提交）
+
+### Evidence
+
+docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
