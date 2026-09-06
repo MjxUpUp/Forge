@@ -5,9 +5,15 @@ package cli
 // 完全重复、status 无使用证据；本文件保留 off/on 双写垫片消费的 marker 助手，
 // 标记值的单一真相源仍在 init-suggest hook（bash））。
 //
-// 标记存储与 init-suggest hook 同一目录（~/.forge/.init-suggested/<tag>）。tag 用
-// projectSuggestTag()=hookdispatch.SuggestTagFor(cwd)，按 git root 键控（不是
-// cwd）——与 hook 的 FORGE_CWD_TAG 一致，确保命令与 hook 读写同一标记（F1 修复：
+// 标记存储与 init-suggest hook 同一目录（~/.forge/.init-suggested/<tag>）。tag 由
+// hookdispatch.SuggestTagFor 产出（按 git root 键控——调用方 off.go 传 root，
+// 与 hook 的 FORGE_CWD_TAG 同一函数，F1 修复：原按 cwd 键控，子目录 decline
+// 写错 tag 致永久静默失效）。
+//
+// 中文字符串用 raw string（反引号）包裹，规避 Windows 输入引号腐蚀。
+// 标记存储与 init-suggest hook 同一目录（~/.forge/.init-suggested/<tag>）。tag 由
+// hookdispatch.SuggestTagFor 产出（按 git root 键控——调用方 off.go 传 root；
+// cwd）——与 hook 的 FORGE_CWD_TAG 一致，确保与 hook 读写同一标记（F1 修复：
 // 原按 cwd 键控，子目录 decline 写错 tag 致永久静默失效）。
 //
 // 中文字符串用 raw string（反引号）包裹，规避 Windows 输入引号腐蚀。

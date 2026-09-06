@@ -145,7 +145,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("以下规则原为 runtime hook，现已下沉为声明式文本——agent 可读可循，去判断性噪音。违反不阻塞，但会降低任务评分。\n\n")
 	sb.WriteString("- **先读再改**：修改代码前先 Read 理解上下文。read-before-edit hook 已在活跃任务内硬阻断编辑未 Read 过的现存源文件（见上）；此条覆盖 hook 之外的场景（非任务编辑、跨会话接手）——凭记忆/Grep 片段就改既有代码是错改入库的温床。\n")
 	sb.WriteString("- **聚焦变更**：单次任务累计变更 >400 行需自检是否聚焦；>2000 行考虑拆分提交以便 review。\n")
-	sb.WriteString("- **避免重复**：文件重复行占比高（unique 行 <30%）时主动去重；精确检测用 `forge clone check`。\n\n")
+	sb.WriteString("- **避免重复**：文件重复行占比高（unique 行 <30%）时主动去重；批量粘贴/复制型变更会被 task-verify 的 cheat-scan 与 unused-scan 标记（advisory）。\n\n")
 
 	// 回复详略规则——L1 禁令清单从 internal/doclint 渲染（单一真相源；
 	// 此处手抄短语表会漂移）。啰嗦是对齐训练的长度偏差而非单次 prompt
