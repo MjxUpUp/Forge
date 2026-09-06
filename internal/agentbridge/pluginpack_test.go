@@ -249,7 +249,7 @@ func TestPluginPack_Readme(t *testing.T) {
 		// step 3（Phase 3 新契约）：plugin 用户登记自动化 + 手动 init 的三个残留场景 + 退出/清理指引
 		"automatic for plugin users", // init-suggest 自动接管（装即 opt-in）
 		"forge registry prune",       // 项目目录移动后的死路径清理指引
-		"forge suggest decline",      // 每项目退出指引（退出权高于默认开启）
+		"forge off --commit",         // 每项目退出指引（退出权高于默认开启；suggest 族已删）
 		"forge init --project",       // 团队模式仍走手动 init
 		// skills 段（P3-1）：宣传数量运行时从 embed 现数（%[2]d 插值），渲染结果必须
 		// 携带真实数量且无 fmt 动词误用残渣（"%!d"）——钉住插值接线，防数量硬编码回潮。
