@@ -56,6 +56,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -169,6 +170,13 @@ func ownerMap(spec PluginPackSpec) map[string]string {
 // writeMarketplace 写一份 marketplace.json（claude 与 cursor 各一份，格式相同，仅目录不同）。
 // 结构遵循 claude marketplace schema：{name, description, owner, plugins:[{name, description, source, author}]}。
 // source 跟随 PluginName（非硬编码），省略 version（git SHA 驱动自动更新）。
+//
+// 多 pack 条目（2026-09 设计族拆包落地）：除主 forge 条目外，扫描 plugins/ 下
+// 其他含 .claude-plugin/plugin.json 的 pack 目录（如 forge-design）追加条目——
+// 生成器与手工条目的 drift 曾两次互相碾掉（96e0182 手工加条目被再生成覆写、
+// dead-code-sweep 又手工恢复，CI 的 git diff --exit-code 守卫抓住），故收编
+// 进生成器：单一真相源回到 `forge plugin pack`。副 pack 的 description 取其
+// plugin.json 的同名字段。
 func writeMarketplace(spec PluginPackSpec, dir string) error {
 	// name 必有，email 可选——复用一次填 owner 与 author
 	owner := ownerMap(spec) // name 必有，email 可选——复用一次填 owner 与 author
@@ -178,13 +186,54 @@ func writeMarketplace(spec PluginPackSpec, dir string) error {
 		"source":      "./plugins/" + spec.PluginName,
 		"author":      owner,
 	}
+	plugins := []map[string]any{entry}
+	for _, extra := range secondaryPackEntries(spec) {
+		plugins = append(plugins, extra)
+	}
 	mp := map[string]any{
 		"name":        spec.MarketplaceName,
 		"description": "Forge plugin marketplace",
 		"owner":       owner,
-		"plugins":     []map[string]any{entry},
+		"plugins":     plugins,
 	}
 	return writeJSONIndent(filepath.Join(dir, "marketplace.json"), mp)
+}
+
+// secondaryPackEntries 扫描 plugins/ 下除主 pack 外的 pack 目录（含
+// .claude-plugin/plugin.json 者），产出 marketplace 条目（名字排序保确定性）。
+// 副 pack 无 owner 概念——沿用主 pack owner（同一仓库出品）。
+func secondaryPackEntries(spec PluginPackSpec) []map[string]any {
+	owner := ownerMap(spec)
+	packsRoot := filepath.Join(spec.RepoDir, "plugins")
+	entries, err := os.ReadDir(packsRoot)
+	if err != nil {
+		return nil
+	}
+	var out []map[string]any
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == spec.PluginName {
+			continue
+		}
+		manifestPath := filepath.Join(packsRoot, e.Name(), ".claude-plugin", "plugin.json")
+		body, err := os.ReadFile(manifestPath)
+		if err != nil {
+			continue // 非 pack 目录（无 manifest）不进 marketplace
+		}
+		var manifest struct {
+			Description string `json:"description"`
+		}
+		if err := json.Unmarshal(body, &manifest); err != nil || manifest.Description == "" {
+			continue
+		}
+		out = append(out, map[string]any{
+			"name":        e.Name(),
+			"description": manifest.Description,
+			"source":      "./plugins/" + e.Name(),
+			"author":      owner,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i]["name"].(string) < out[j]["name"].(string) })
+	return out
 }
 
 // writeClaudePluginManifest 写 plugins/<name>/.claude-plugin/plugin.json。hooks 字段是
