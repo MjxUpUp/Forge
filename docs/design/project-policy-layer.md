@@ -15,7 +15,7 @@
    - `registry.Rekey` 改 key 时整条目迁移（原实现重建 `Entry{Path,Key}` 丢 status——对抗复查 M7）；
    - init-suggest bash：declined 标记检查前置到成员检查与 FORGE_AUTO_INIT 之前（修复"git 分支 AUTO_INIT 旁路 declined"——G-1；非 git 分支本就先检标记，不动）；
    - `forge init` Go 侧硬门禁：State=declined 时拒绝执行，提示 `forge on`（declined→managed 的唯一路径是显式 `forge on`）。
-4. **命令面**：`forge off` 同时写 legacy `.init-suggested/<tag>` declined 标记（init-suggest bash 仍读标记——迁移垫片，P2 把 init-suggest 改为 registry 驱动后移除）；`forge on` 清标记 + 若从未 init（DataDir 无 protocol.yml）则提示运行 `forge init` 补全（不自动跑）；`forge suggest decline/reset` 委托同一核心，语义不破。
+4. **命令面**：`forge off` 同时写 legacy `.init-suggested/<tag>` declined 标记（init-suggest bash 仍读标记——迁移垫片，P2 把 init-suggest 改为 registry 驱动后移除）；`forge on` 清标记 + 若从未 init（DataDir 无 protocol.yml）则提示运行 `forge init` 补全（不自动跑）；（历史注记：`forge suggest decline/reset` 曾委托同一核心——命令族已于 2026-09 死代码清扫删除。）
 5. **可见性**：`forge status` 头部增加接管状态行；declined 项目 `forge status` 以 `ErrDeclinedProject` 的可读文案退出非零（退出码 = "是否 managed 成员"的既有契约保持不变，init-suggest 脚本依赖它）。
 6. **审计**：on/off 落 checklog 行（`takeover-policy`）+ Entry 决策字段（by/at）。
 

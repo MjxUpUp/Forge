@@ -29,6 +29,8 @@ npm install -g @agent_forge/forge
 ```
 
 
+装完 plugin 后，init-suggest SessionStart hook 按 takeover 偏好接管（P2 起出厂默认 **ask**）：未接管项目首次会话**询问一次**——同意 → `forge init`；拒绝 → `forge off` 永久退出。要无询问静默接管所有 git 项目 → `forge config set` takeover 为 auto；declined、`.forge-decline` 团队声明（`forge off --commit` 写入）与外来 harness（spec-kit/项目级 .claude 接线等，`forge policy yield`）自动让位，`forge on` 显式恢复。
+
 > v1.22 起 `forge init` **零项目写入**：不创建 `.forge/`、`CLAUDE.md` 等任何项目文件，只登记全局注册表并把 hooks/协议/skill 写到用户级（`~/.forge/projects/<key>/` 等）。要团队 git 共享协议用 `forge init --project`（团队模式）。
 
 ## 想"处处无感"自动 init
@@ -62,6 +64,8 @@ forge task complete               # 🏁 任务完结（自动评分 + 清 activ
 forge task score                  # 质量评分
 ```
 
+
+`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge off [--all] | on` 按项目退出/恢复接管（declined 不被 FORGE_AUTO_INIT/plugin 自动接管穿透）；`forge config get/set takeover` 管接管偏好（ask/auto/off）；`forge policy state|yield` 快查状态/外来 harness 让位。详见根 README 命令参考表。
 
 ## 卸载
 
