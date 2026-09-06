@@ -70,6 +70,6 @@ Next step: install the plugin inside your agent CLI (interactive; not scriptable
 After plugin install, forge asks once per project on first session (shipped
 default). For silent auto-takeover of every git project run 'forge config set
 takeover auto'; run 'forge off' in a project to keep it out permanently
-('forge suggest decline' still works as the legacy alias). On macOS / Linux,
+On macOS / Linux,
 run install.sh instead.
 "@
