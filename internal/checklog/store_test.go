@@ -114,55 +114,25 @@ func TestLatestByCheckForSession_LatestWins(t *testing.T) {
 	}
 }
 
-func TestClear(t *testing.T) {
-	dir := t.TempDir()
-	isolateDataHome(t)
-	logPath := filepath.Join(forgedata.DataDirFor(dir), "checklog.jsonl")
-
-	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "ok"})
-
-	// File should exist
-	if _, err := os.Stat(logPath); os.IsNotExist(err) {
-		t.Fatal("checklog.jsonl should exist after Record")
-	}
-
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear: %v", err)
-	}
-
-	// File should be gone
-	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
-		t.Fatal("checklog.jsonl should be removed after Clear")
-	}
-
-	// Clear on nonexistent file should not error
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear on nonexistent: %v", err)
-	}
-}
-
-func TestClear_RotatesArchive(t *testing.T) {
+func TestRecord_RotatesArchiveWhenOversized(t *testing.T) {
 	dir := t.TempDir()
 	isolateDataHome(t)
 	dataDir := forgedata.DataDirFor(dir)
 
+	// 生产轮转路径：FORGE_CHECKLOG_ROTATE_BYTES=1 使首条 Record 即触发
+	// rotateIfOversizedLocked（旧的破坏性 Clear 已删——归档行为经此路径覆盖）。
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "1")
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "ok"})
 
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear: %v", err)
-	}
+	// 首条写入前 active 不存在→不轮转（rotate 只在超限时动作）；补第二条使其
+	// 超过 1 字节阈值→轮转成 timestamped 归档。
+	Record(dir, &Entry{Check: CheckAssertion, Passed: true, Detail: "second"})
 
-	// Original file should be gone
-	if _, err := os.Stat(filepath.Join(dataDir, "checklog.jsonl")); !os.IsNotExist(err) {
-		t.Fatal("checklog.jsonl should not exist after Clear")
-	}
-
-	// Timestamped archive should exist
+	found := false
 	entries, err := os.ReadDir(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), "checklog-") && strings.HasSuffix(e.Name(), ".jsonl") {
 			found = true
@@ -170,12 +140,11 @@ func TestClear_RotatesArchive(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("no timestamped archive found in DataDir")
+		t.Fatal("no timestamped archive found in DataDir after oversized Record")
 	}
-
-	// Clear on nonexistent should be idempotent
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear on nonexistent: %v", err)
+	// active 文件仍在（轮转后新开）且含最后一条。
+	if _, err := os.Stat(filepath.Join(dataDir, "checklog.jsonl")); err != nil {
+		t.Fatalf("active checklog 应在轮转后新开: %v", err)
 	}
 }
 
@@ -285,13 +254,13 @@ func TestLoadAllAll(t *testing.T) {
 	}
 }
 
-// TestRecordAndClear_ConcurrentNoDeadlock guards the C2 fix: checklog Clear
-// holds the same mutex as Record. archiveLocked (split out of the since-removed
-// Archive export) lets Clear archive-then-remove under one lock WITHOUT re-entering
-// the non-reentrant mutex (a re-entry would deadlock; the timeout surfaces it).
-func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
+// TestRecord_ConcurrentRotateNoDeadlock guards the C2 fix lineage: Record 的
+// rotateIfOversizedLocked 与追加同持 mu 且不重入（旧 Clear 的 archive+remove
+// 已删，锁竞争改经生产轮转路径施压——同把锁、同 rename 风暴形态）。
+func TestRecord_ConcurrentRotateNoDeadlock(t *testing.T) {
 	dir := t.TempDir()
 	isolateDataHome(t)
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "1") // 每条 Record 都可能走轮转分支
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Add(2)
@@ -303,34 +272,36 @@ func TestRecordAndClear_ConcurrentNoDeadlock(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			_ = Clear(dir)
+			for j := 0; j < 5; j++ {
+				_ = Record(dir, &Entry{Check: CheckAssertion, Passed: true, TaskRef: "t2"})
+			}
 		}()
 	}
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
 	select {
 	case <-done:
-	// 30s：Windows FS + race 下 250 次 Record（含 fsync）+ 50 次 Clear（archive
-	// rename 风暴）合法地远超 5s（首个 Windows CI run 误报死锁）；真死锁永不完成，
-	// 30s 仍必然拦截，且受 go test 包超时兜底。
+	// 30s：Windows FS + race 下 500 次 Record（含轮转 rename 风暴）合法地远超
+	// 5s；真死锁永不完成，30s 仍必然拦截，且受 go test 包超时兜底。
 	case <-time.After(30 * time.Second):
-		t.Fatal("Record/Clear deadlocked (Clear→archiveLocked mutex re-entry?)")
+		t.Fatal("concurrent Record/rotate deadlocked (rotate→archiveLocked mutex re-entry?)")
 	}
 	if _, err := LoadAll(dir); err != nil {
-		t.Fatalf("LoadAll after concurrent Record/Clear: %v", err)
+		t.Fatalf("LoadAll after concurrent Record/rotate: %v", err)
 	}
 }
 
 // TestClear_NanosecondNaming guards the C3 fix: archive names carry nanosecond
 // precision so two same-second rotations don't collide.
-func TestClear_NanosecondNaming(t *testing.T) {
+func TestRotate_NanosecondNaming(t *testing.T) {
 	dir := t.TempDir()
 	isolateDataHome(t)
+	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "1")
 	if err := Record(dir, &Entry{Check: CheckAutoCompile, Passed: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear: %v", err)
+	if err := Record(dir, &Entry{Check: CheckAssertion, Passed: true}); err != nil {
+		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(forgedata.DataDirFor(dir))
 	if err != nil {
@@ -347,16 +318,16 @@ func TestClear_NanosecondNaming(t *testing.T) {
 		}
 		return
 	}
-	t.Fatal("no checklog-* archive produced by Clear")
+	t.Fatal("no checklog-* archive produced by rotation")
 }
 
 // TestClear_PrunesOldArchives: Clear prunes expired archives by
 // FORGE_LOG_RETENTION_DAYS after rotation, keeping recent archives and the
 // active-clear semantics.
 //
-// TestClear_PrunesOldArchives：Clear 在轮转后按 FORGE_LOG_RETENTION_DAYS 清超期归档，
-// 保留近期归档与 active 清空语义。
-func TestClear_PrunesOldArchives(t *testing.T) {
+// TestPrune_PrunesOldArchives：Prune 按 FORGE_LOG_RETENTION_DAYS 清超期归档，
+// 保留近期归档与 active（非破坏性——只动归档集）。
+func TestPrune_PrunesOldArchives(t *testing.T) {
 	t.Setenv("FORGE_LOG_RETENTION_DAYS", "30")
 	dir := t.TempDir()
 	isolateDataHome(t)
@@ -370,17 +341,15 @@ func TestClear_PrunesOldArchives(t *testing.T) {
 	// active
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true})
 
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear: %v", err)
-	}
+	Prune(dir)
 	if _, err := os.Stat(filepath.Join(forgeDir, "checklog-20000101000000.jsonl")); !os.IsNotExist(err) {
-		t.Error("old archive should be pruned after Clear")
+		t.Error("old archive should be pruned")
 	}
 	if _, err := os.Stat(filepath.Join(forgeDir, "checklog-"+today+".jsonl")); err != nil {
 		t.Error("recent archive should be kept")
 	}
-	if _, err := os.Stat(filepath.Join(forgeDir, "checklog.jsonl")); !os.IsNotExist(err) {
-		t.Error("active should be removed after Clear")
+	if _, err := os.Stat(filepath.Join(forgeDir, "checklog.jsonl")); err != nil {
+		t.Error("active must survive Prune (non-destructive)")
 	}
 }
 
@@ -388,7 +357,7 @@ func TestClear_PrunesOldArchives(t *testing.T) {
 // archives are kept.
 //
 // TestClear_DisabledRetention：FORGE_LOG_RETENTION_DAYS=0 禁用清理，老归档保留。
-func TestClear_DisabledRetention(t *testing.T) {
+func TestPrune_DisabledRetention(t *testing.T) {
 	t.Setenv("FORGE_LOG_RETENTION_DAYS", "0")
 	dir := t.TempDir()
 	isolateDataHome(t)
@@ -397,9 +366,7 @@ func TestClear_DisabledRetention(t *testing.T) {
 	os.WriteFile(filepath.Join(forgeDir, "checklog-20000101000000.jsonl"), []byte("old"), 0644)
 	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true})
 
-	if err := Clear(dir); err != nil {
-		t.Fatalf("Clear: %v", err)
-	}
+	Prune(dir)
 	if _, err := os.Stat(filepath.Join(forgeDir, "checklog-20000101000000.jsonl")); err != nil {
 		t.Error("with retention disabled, old archive should be kept")
 	}

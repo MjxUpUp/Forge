@@ -82,7 +82,7 @@ func RegisterVersion(fn func() string) {
 //
 // StaleBinaryHint 返回「命令不存在」类 drift advisory 的统一后缀。drift 检查拿文档
 // 与【运行中二进制】的命令树比对，故文档引用新版 forge 才有的命令时，本地旧二进制
-// 会误报 drift——2026-08 实证：README 引用 `skills mine`（HEAD 存在）在 PATH 全局
+// 会误报 drift——2026-08 实证：README 引用 `skills mine`（当时存在，命令已于 2026-09 清扫删除）在 PATH 全局
 // v1.34.0 旧二进制下触发 advisory。先提示查 forge 版本，省得为真实存在的命令做无谓
 // 的文档「修复」。
 func StaleBinaryHint() string {

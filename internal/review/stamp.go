@@ -123,17 +123,9 @@ func Evaluate(root string) (Decision, string, error) {
 		fmt.Sprintf("检测到未审查的代码变更（block %d/%d）", next.BlockCount, MaxReviewRounds), nil
 }
 
-// MarkPassed marks the current diff as having passed review (called by forge
-// review pass).
-//
-// MarkPassed 标记当前 diff 已通过审查（forge review pass 调用）。
-// 算当前 hash 写 reviewed stamp，重置 block_count。
-func MarkPassed(root string) error {
-	return MarkPassedWithNote(root, "")
-}
-
-// MarkPassedWithNote is MarkPassed plus the optional reviewer conclusion text
-// (`forge review pass --note`) persisted on the stamp.
+// MarkPassedWithNote marks the current diff as having passed review (`forge
+// review pass [--note]`) — computes the diff hash, writes the reviewed stamp
+// with the optional reviewer conclusion text, and resets block_count.
 //
 // MarkPassedWithNote 在 MarkPassed 之上把可选审查结论文本
 // （`forge review pass --note`）持久化进 stamp。

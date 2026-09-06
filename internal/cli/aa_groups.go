@@ -35,7 +35,6 @@ func init() {
 	updateCmd.GroupID = "lifecycle"
 	// init-suggest hook prompt-state management (semantic extension of init).
 	//
-	suggestCmd.GroupID = "lifecycle" // init-suggest hook 的提示状态管理（init 的语义延伸）
 	// Project Policy Layer P1: symmetric per-project takeover on/off (semantic
 	// sibling of init/suggest — per-project 接入管理的开关对).
 	//
@@ -101,7 +100,6 @@ func init() {
 	hazardCmd.GroupID = "integrate"
 	freezeCmd.GroupID = "integrate"
 	hookdispatch.HookCmd.GroupID = "integrate"
-	cloneCmd.GroupID = "integrate"
 	pluginCmd.GroupID = "integrate"
 	// 跨 agent 环境一致性审计（只读；多 host 接线 + 版本漂移）
 	doctorCmd.GroupID = "integrate"

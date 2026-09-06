@@ -106,22 +106,6 @@ func TestInit_RefusesDeclined(t *testing.T) {
 	assertState(t, proj, registry.StatusDeclined)
 }
 
-// TestSuggestDecline_DelegatesToRegistry forge suggest decline 与 forge off 写同一
-// 状态（双通道一致，防"标记 declined 但注册表 managed"的漂移）。
-func TestSuggestDecline_DelegatesToRegistry(t *testing.T) {
-	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
-	proj := t.TempDir()
-	t.Chdir(proj)
-
-	if err := suggestDeclineCmd.RunE(suggestDeclineCmd, nil); err != nil {
-		t.Fatalf(`suggest decline: %v`, err)
-	}
-	assertState(t, proj, registry.StatusDeclined)
-	if data, err := os.ReadFile(markerPathOf(proj)); err != nil || strings.TrimSpace(string(data)) != `declined` {
-		t.Errorf(`marker = (%q, %v), want declined`, string(data), err)
-	}
-}
-
 // TestOffAll_FlipsEveryAliveEntry off --all 把全部存活条目置 declined（含逐条
 // legacy 标记）；declined-only 条目幂等重跑无害。
 func TestOffAll_FlipsEveryAliveEntry(t *testing.T) {
@@ -184,29 +168,6 @@ func TestStatus_DeclinedFriendlyError(t *testing.T) {
 	err := runStatus(statusCmd, nil)
 	if !errors.Is(err, registry.ErrDeclinedProject) {
 		t.Fatalf(`runStatus err = %v, want ErrDeclinedProject`, err)
-	}
-}
-
-// TestSuggestReset_ResumesDeclined suggest reset 在 declined 时 ≡ forge on
-// （否则 reset 清了标记但注册表仍 declined，init 被门禁拒绝——reset 语义落空）。
-func TestSuggestReset_ResumesDeclined(t *testing.T) {
-	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
-	proj := t.TempDir()
-	t.Chdir(proj)
-
-	if err := registry.SetStatus(proj, registry.StatusDeclined, `forge off`); err != nil {
-		t.Fatal(err)
-	}
-	if err := writeSuggestMarker(hookdispatch.SuggestTagFor(proj), `declined`); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := suggestResetCmd.RunE(suggestResetCmd, nil); err != nil {
-		t.Fatalf(`suggest reset: %v`, err)
-	}
-	assertState(t, proj, registry.StatusManaged)
-	if _, err := os.Stat(markerPathOf(proj)); !os.IsNotExist(err) {
-		t.Errorf(`marker not removed by suggest reset (err=%v)`, err)
 	}
 }
 
