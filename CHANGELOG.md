@@ -7,6 +7,36 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.51.0](https://github.com/MjxUpUp/Forge/compare/v1.50.0...v1.51.0) (2026-09-06)
+
+
+### Features
+
+* **focus-b1:** git/PR 收口 v1——forge gate push + pre-push 钩子（方向 A P0） ([28fda45](https://github.com/MjxUpUp/Forge/commit/28fda45eb4d1711fd2c996e91d3f5c1ab32f9bc0))
+* **focus-b1l2:** 设计族拆包 + 教科书瘦身 + 死机制清理（方向 A 内容线） ([96e0182](https://github.com/MjxUpUp/Forge/commit/96e018216130a09fd2ea56aa6367f0f90006077a))
+* **focus-b1:** OTel GenAI exporter——checklog→OTLP/JSON 导出器（方向 D1） ([5f65b8c](https://github.com/MjxUpUp/Forge/commit/5f65b8c03ac34aafcddc875fe4213aecc79dd58d))
+* **focus-b1:** 自报一致性门禁 + 监控分段落地（方向 B P0） ([46262db](https://github.com/MjxUpUp/Forge/commit/46262db8cc8d7b7e192d3988c33ac201aede39bc))
+* **focus-b2cde:** issue-tracker 镜像 + task watchdog + eval 升级；B3 商业化设计（方向 C/E/F） ([b967906](https://github.com/MjxUpUp/Forge/commit/b96790609f8a584be06fe3cb2378ccf64c8645ea))
+* **focus-b2:** held-out gap 门禁 + safe-halt 语义（方向 B） ([8444093](https://github.com/MjxUpUp/Forge/commit/84440931a262982b308bdb5f49f01435b26a60d3))
+* **focus-d2:** 标准卡位补齐——AAT mapper + skills inventory + 合规对照（P1 D2，批次切分漏项） ([9826c58](https://github.com/MjxUpUp/Forge/commit/9826c58e241f2e9058e612d2ec2383de235f76fb))
+* **mechanism-p012:** P0 版本纪律 + P1-2/3 逃生舱升级与承诺表 ([e544c4a](https://github.com/MjxUpUp/Forge/commit/e544c4acd996d275cb5925f2a027eaf5c8ac4d28))
+* **mechanism-p012:** P1-1 compat 工件 + P2 指纹分流与生产者声明 ([f5c05e5](https://github.com/MjxUpUp/Forge/commit/f5c05e5e2aebf180d35bc6671ed532d71bb0c952))
+
+
+### Bug Fixes
+
+* **ci:** watchdog 节流测试跨小时边界稳定化 + pluginpack 多 pack marketplace 生成器 ([a1938a1](https://github.com/MjxUpUp/Forge/commit/a1938a1b0594f03a08d1e0751c3348861a80f293))
+* **dead-code-sweep:** pluginpack README 守卫断言随 suggest 出清更新（forge off --commit 替位） ([9503796](https://github.com/MjxUpUp/Forge/commit/9503796706b84cd1901e7fcb244a089a0ba45178))
+* **dead-code-sweep:** 审查修复——marketplace 条目恢复 + 残留引用出清 + 承诺表裁决记录 ([fb8b53a](https://github.com/MjxUpUp/Forge/commit/fb8b53a3161b3a00b1838c6579da5a1f40559e5b))
+* **focus-b1l2:** skill-decisions 门禁 pack 树适配 + L2 回检发现修正 ([f285d26](https://github.com/MjxUpUp/Forge/commit/f285d26c0c8f07ee0dae77d448b4d7b3710ca970))
+* **focus-b1:** 命令树补全——gate hooks install 子命令化 + mirror 挂 github 子命令 ([5c278c2](https://github.com/MjxUpUp/Forge/commit/5c278c2b5a779d6de5b00e74ca6758ed81322fd5))
+* **focus-b1:** 复审轮修复——mirror 持久化真修 + heldout complete 路径留痕 + 覆盖缺口 ([714df36](https://github.com/MjxUpUp/Forge/commit/714df3665dde127bae23acd29ea83198803c4ab3))
+* **focus-b1:** 对抗审查修复——blocker 全清 + should-fix 4 项 + notes 3 项 ([f04ee36](https://github.com/MjxUpUp/Forge/commit/f04ee362ae3caf246b1403c0ad128b1a3f7b52c4))
+* **focus-d2:** 审查修复——exit 2 契约 + 复合键 + 根解析 + rune 截断 + 文档诚实化 ([1061315](https://github.com/MjxUpUp/Forge/commit/1061315842b10e66d9a54658d850a4c6c244fa0f))
+* **hazard:** halt release 文案语病——解锁前提表述修正 ([bd8fba9](https://github.com/MjxUpUp/Forge/commit/bd8fba9d5069bdcaa5da717e2b4302dd022f02d9))
+* **mechanism-p012:** 复审轮修复——AllCheckNames 守卫去虚设 + schema 种子真填满 + 文档诚实注记 ([d927f45](https://github.com/MjxUpUp/Forge/commit/d927f45dfd0fe3e7c1f983c2e5b06d7d64fc7732))
+* **mechanism-p012:** 对抗审查修复——blocker + 5 项 should-fix ([e24aa54](https://github.com/MjxUpUp/Forge/commit/e24aa54cab2e180397008415c20707d32f4e4bc2))
+
 ## [1.50.0](https://github.com/MjxUpUp/Forge/compare/v1.49.0...v1.50.0) (2026-09-04)
 
 
