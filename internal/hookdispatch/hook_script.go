@@ -29,11 +29,11 @@ func ProjectTagFor(root string) string {
 }
 
 // SuggestTagFor 返回某目录的 init-suggest marker tag，按其 git root 作 key，
-// 这样无论 agent 从哪个 subdir 执行 `forge suggest decline`，同一 project 只会被
+// 这样无论 agent 从哪个 subdir 执行 `forge off`，同一 project 只会被
 // tag 一次。这守护 decline 契约：此前按 cwd 作 key，从 subdir decline 会写出与
 // hook 在 project root 读到的不同的 tag，使 decline 静默 no-op。非 git 目录回退到
 // ProjectTagFor(dir)（仍是稳定的 per-dir tag）。由 init-suggest hook
-// （FORGE_CWD_TAG）和 `forge suggest` 共用——两者对同一 project 必须产出相同的
+// （FORGE_CWD_TAG）和 off/on 的 marker 助手共用——两者对同一 project 必须产出相同的
 // tag。
 func SuggestTagFor(dir string) string {
 	if root := forgedata.FindGitRoot(dir); root != "" {

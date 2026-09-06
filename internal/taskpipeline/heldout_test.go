@@ -5,29 +5,10 @@ package taskpipeline
 //（echo / exit 1）——RunTestCommand 实跑，不 mock。
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
-
-func writeHeldoutFile(t *testing.T, lines ...string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "heldout.txt")
-	if err := os.WriteFile(path, []byte(joinLines(lines)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func joinLines(lines []string) string {
-	out := ""
-	for _, l := range lines {
-		out += l + "\n"
-	}
-	return out
-}
 
 func TestHeldoutRoundTrip(t *testing.T) {
 	dir := t.TempDir()

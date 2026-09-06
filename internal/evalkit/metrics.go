@@ -15,7 +15,6 @@ package evalkit
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -185,14 +184,4 @@ func (d *Dictionary) Find(id string) (*MetricDef, bool) {
 		}
 	}
 	return nil, false
-}
-
-// VCSAssetDir resolves the in-repo eval assets directory (evals/forge/) from
-// the forge repo root. Callers pass the repo root they operate on; the assets
-// live under <root>/evals/forge per the design's layout.
-//
-// VCSAssetDir 从 forge 仓库根解析仓内评测资产目录（evals/forge/）。调用方传入
-// 所操作的仓库根；资产按设计的布局位于 <root>/evals/forge。
-func VCSAssetDir(repoRoot string) string {
-	return filepath.Join(repoRoot, "evals", "forge")
 }

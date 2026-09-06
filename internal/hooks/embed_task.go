@@ -174,7 +174,7 @@ const InitSuggestHook = `#!/bin/bash
 # init-suggest.sh — SessionStart hook (advisory, non-blocking, global).
 # 用户级"项目自动 init"检测：装了 forge（plugin/npm）后，用户在任意 git 项目开
 # Claude Code，若无 .forge/ 且未登记 → 首次输出提示给 agent，引导询问用户是否启用 forge。
-# 拒绝则永久静默（forge off / forge suggest decline 写 declined 标记 + 注册表状态，
+# 拒绝则永久静默（forge off 写 declined 标记 + 注册表状态，
 # Project Policy Layer P1）。P2 默认值翻转：出厂 takeover=ask——每项目首次接触询问
 # 一次（同意 → forge init；拒绝 → forge off），不再"装了 plugin 就静默接管"。
 # 三档偏好（FORGE_TAKEOVER > forge config > ask）：auto = 静默自动接管（P1 之前的
@@ -243,7 +243,7 @@ if [ -z "$ROOT" ]; then
     echo "suggested" > "$MARKER" 2>/dev/null
   fi
   DIR_NAME=$(basename "$START")
-  echo "PASS [init-suggest] Advisory: 当前目录 '${DIR_NAME}' 不是 Git 仓库。建议先运行 'git init' 初始化版本控制，再运行 'forge init' 启用质量门禁（task-gated 源码变更 + 断言守卫 + 评分）。如不需要，运行 'forge off' 永久退出接管（兼容旧命令 'forge suggest decline'）。"
+  echo "PASS [init-suggest] Advisory: 当前目录 '${DIR_NAME}' 不是 Git 仓库。建议先运行 'git init' 初始化版本控制，再运行 'forge init' 启用质量门禁（task-gated 源码变更 + 断言守卫 + 评分）。如不需要，运行 'forge off' 永久退出接管。"
   exit 0
 fi
 
@@ -251,7 +251,7 @@ fi
 # auto-takeover（Project Policy Layer P1）：declined 一票否决，任何默认开启路径
 # （含 FORGE_AUTO_INIT——原"显式 env 不拦 declined"语义自 P1 起废除：退出不可被
 # env 穿透，恢复唯一通道 forge on）都不得复活已退出项目。标记由 forge off /
-# forge suggest decline 写入（注册表状态与标记双写，此检查在 P2 改为注册表驱动）。
+# forge off 写入（注册表状态与标记双写，此检查在 P2 改为注册表驱动）。
 # declined 检查读标记内容（= "declined"）而非仅存在——suggested 只静音询问，
 # 不构成退出。
 TAG0="${FORGE_CWD_TAG:-}"

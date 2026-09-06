@@ -91,3 +91,20 @@ metadata.triggers新增UserPromptSubmit关键词(Rust review/review Rust/审查 
 ### Evidence
 
 Rust项目审查请求出现,触发覆盖缺口
+
+## [d-18d25385692ff6fc-35928957] accept
+
+- **Skill**: rust-code-review
+- **DecidedAt**: 2026-09-05T04:50:34Z
+
+### Diagnosis
+
+功能聚焦批次一线2：按 skills 价值审计（docs/skills-value-audit-2026-08-02.md）与聚焦决策（docs/plans/feature-focus-2026-09.md）执行拆包/瘦身/引用清理
+
+### Revision
+
+拆包至 plugins/forge-design（设计族 12 个）或教科书瘦身/死机制清理（详见 96e0182 提交）
+
+### Evidence
+
+docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
