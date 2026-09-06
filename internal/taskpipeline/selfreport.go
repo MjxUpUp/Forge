@@ -273,9 +273,3 @@ func recordSelfReport(root string, state *TaskState, res SelfReportResult) {
 	}
 	recordAudit(root, e)
 }
-
-// SelfReportEscapeDisabled 暴露逃生舱判定供 CLI 文案提示（与 acceptance/doc gate
-// 的导出面同款）。
-func SelfReportEscapeDisabled(state *TaskState) bool {
-	return escapeDisabled(state, escapeSelfReport, selfReportDisableEnv)
-}

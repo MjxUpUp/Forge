@@ -12,14 +12,6 @@
       "description": "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents.",
       "name": "forge",
       "source": "./plugins/forge"
-    },
-    {
-      "author": {
-        "name": "MjxUpUp"
-      },
-      "description": "Forge design pack: frontend/design-domain skills (12 skills: feature development, stack selection, aesthetics, AI-UI generation/review, design-system workflow/migration, artifact standards, audit, snapshot, iteration loop).",
-      "name": "forge-design",
-      "source": "./plugins/forge-design"
     }
   ]
 }

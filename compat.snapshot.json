@@ -31,16 +31,6 @@
       ]
     },
     {
-      "path": "forge clone"
-    },
-    {
-      "path": "forge clone check",
-      "flags": [
-        "file",
-        "threshold"
-      ]
-    },
-    {
       "path": "forge compat"
     },
     {
@@ -461,12 +451,6 @@
       ]
     },
     {
-      "path": "forge skills analyze",
-      "flags": [
-        "json"
-      ]
-    },
-    {
       "path": "forge skills audit",
       "flags": [
         "gate",
@@ -585,12 +569,6 @@
       ]
     },
     {
-      "path": "forge skills mine",
-      "flags": [
-        "skill"
-      ]
-    },
-    {
       "path": "forge skills mutex-gen"
     },
     {
@@ -652,18 +630,6 @@
         "system",
         "tasks"
       ]
-    },
-    {
-      "path": "forge suggest"
-    },
-    {
-      "path": "forge suggest decline"
-    },
-    {
-      "path": "forge suggest reset"
-    },
-    {
-      "path": "forge suggest status"
     },
     {
       "path": "forge sync",

@@ -135,7 +135,7 @@ func (c *GatesCard) RenderMarkdown() (string, error) {
 	}
 	var b strings.Builder
 	b.WriteString("# Forge 治理披露卡\n\n")
-	b.WriteString(fmt.Sprintf("> 本分数/本卡为 forge×model 组合声明：以下列出的机制改变你的宿主行为；全部可通过清单中的逃生舱或 `forge off` 关闭。\n\n"))
+	b.WriteString("> 本分数/本卡为 forge×model 组合声明：以下列出的机制改变你的宿主行为；全部可通过清单中的逃生舱或 `forge off` 关闭。\n\n")
 	b.WriteString("## 占层声明（ETCSOVG）\n\n")
 	b.WriteString("| 层 | 机制 |\n|---|---|\n")
 	for _, lc := range c.LayerClaim {
