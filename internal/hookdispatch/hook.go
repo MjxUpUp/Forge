@@ -819,13 +819,13 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		// The cwd and its git-root-keyed tag, for init-suggest (a global hook) to use:
 		// the hook finds the git root from FORGE_CWD, then writes a per-project marker keyed by FORGE_CWD_TAG.
 		// Keyed by git root (via SuggestTagFor), not cwd, so no matter which subdir runs
-		// `forge suggest decline`, the tag written matches what the hook reads at the project root —
+		// `forge off`, the tag written matches what the hook reads at the project root —
 		// guarding the decline contract.
 		//
 		// cwd 及其按 git root 作 key 的 tag，给 init-suggest（global hook）用：
 		// hook 从 FORGE_CWD 找 git root，再按 FORGE_CWD_TAG 写 per-project marker。
 		// 以 git root 作 key（经 SuggestTagFor），不是 cwd，所以从任何 subdir
-		// 跑 `forge suggest decline` 写出的 tag 与 hook 在 project root 读到的
+		// 跑 `forge off` 写出的 tag 与 hook 在 project root 读到的
 		// 一致——守护 decline 契约。
 		"FORGE_CWD="+cwd,
 		"FORGE_CWD_TAG="+SuggestTagFor(cwd),

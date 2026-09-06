@@ -28,6 +28,10 @@
 - 本契约自首个含本文档的版本生效。本批新增门禁（held-out / self-report / gate push 等）与契约同版本首发——按第 2 节②无预告义务；1.50.0 及更早的已发布版本不含它们，无存量用户暴露。
 - 既有逃生舱（FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY / FORGE_ACCEPTANCE_GATE / FORGE_DOC_GATE / FORGE_SKILL_DECISIONS / FORGE_SELF_REPORT / FORGE_HELDOUT / FORGE_GATE_PUSH）：**不设 TTL**（env 传入式 = 不传即失效），但 dashboard 逃生舱库存提供永久化与 unfulfilled 候选信号（复查而非过期——调研反框架律：衰减靠复查不靠硬过期）。
 
+### 存量处理裁决记录
+
+- **2026-09-06 死代码清扫批**：移除 4 个命令（clone check / suggest 族 / skills analyze、mine）未走 ≥2 minor 预告。可辩护依据：① 零使用证据（本机 checklog 全史无痕迹 + npm 从未发布含冻结标注的版本——冻结声明从未出海，无存量用户接触）；② 决策文档 feature-focus §2.3 冻结决议留痕在先；③ CHANGELOG 行为变更节 + 迁移指引齐备。**援引边界**：此裁决不可作为常规命令删除的先例——若无同等零使用证据，命令删除必须走预告流程。）
+
 ## 四、刻意不做（记录裁决，防重新发明）
 
 - **事前审批门禁**：DORA 实证外部审批与交付绩效负相关——用事后审计+自动化复查承接。

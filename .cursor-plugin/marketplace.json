@@ -12,6 +12,11 @@
       "description": "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents.",
       "name": "forge",
       "source": "./plugins/forge"
+    },
+    {
+      "name": "forge-design",
+      "source": "./plugins/forge-design",
+      "description": "前端/设计专项 skill pack（12 skill：frontend 全族 + design 全族）——按 Agent Skills 开放规范分发；核心 forge 插件只携带通用验证/流程/编排 skill"
     }
   ]
 }
