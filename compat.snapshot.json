@@ -114,6 +114,9 @@
       ]
     },
     {
+      "path": "forge eval artifact-drill"
+    },
+    {
       "path": "forge eval audit-verify"
     },
     {
@@ -1081,6 +1084,7 @@
     "conventions-lint",
     "cross-repo-impact",
     "escape-hatch",
+    "eval-artifact-drill",
     "eval-audit-forged",
     "eval-decompose",
     "eval-golden-rotate",
