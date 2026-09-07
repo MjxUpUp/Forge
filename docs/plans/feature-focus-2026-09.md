@@ -76,3 +76,7 @@
 - 使用数据来源：本机 dogfooding（E:\Forge 项目 DataDir，2026-08-23 起的 checklog），单人单项目——对"核心项目工作流"代表性好，对前端/多宿主场景无代表性，故前端族处置主要依据审计+方向而非零触发本身。
 - 砍/冻结判定未获得 npm 侧用户数据佐证（无下载量与 issue 反馈渠道数据）；冻结类处置设计为可逆（先冻结后移除），拆包类不删除任何内容。
 - 本文档为决策记录；执行时按批次另开任务（task start）走门禁。
+
+## 五、自举预算（L5 杠杆，2026-09-07 起；依据 docs/design/leverage-points-landing.md）
+
+每个 infra 批次（release 编排 / npm-guard / pluginpack / compat 机械 / watchdog 等自举治理）须**同 milestone 携带一个 L1-L4 产品批次**——预算对齐而非禁止：单人 dogfood 下自举基建有真实价值，但约一半产能投入"管自己流程"已挤占外部验证（当前最窄颈口）的预算。当前对应产品批次：leverage-points-landing.md 的 P0（L1 wedge-drill + L2 spec-as-gate v2 数据形状），与 compat 冻结节（compat-commitments §五）同批落地。
