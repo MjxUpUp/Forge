@@ -26,6 +26,11 @@ func SeedTaskStateForSchema() any {
 		Acceptance: []tasktypes.AcceptanceCriterion{{
 			Run: "r", Expected: "e", Passed: true, Output: "o",
 			AcceptedHeadCommit: "abc", AcceptedBaseCommit: "abc", AcceptedChangeHash: "h",
+			// spec-as-gate v2（leverage-points-landing.md L2）：断言集的嵌套键必须
+			// 在种子中出现——漏填的键不在序列化承诺面，删改不会触发 golden 棘轮。
+			// Arg/Negate 填非零值：零值会被 omitempty 吞掉，键就退出承诺面（种子
+			// 纪律"值无意义、键必须满"）。
+			Assertions: []tasktypes.Assertion{{Type: "contains", Arg: "a", Expected: "e", Negate: true}},
 		}},
 	}
 	s.CompletedAt = &now

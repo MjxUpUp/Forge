@@ -63,6 +63,38 @@ type AcceptanceCriterion struct {
 	// 旧的 HEAD 相等检查。
 	AcceptedBaseCommit string `json:"accepted_base_commit,omitempty"`
 	AcceptedChangeHash string `json:"accepted_change_hash,omitempty"`
+	// Assertions is the optional v2 structured assertion set (spec-as-gate v2,
+	// docs/design/leverage-points-landing.md L2). Empty = v1 semantics: the
+	// criterion is judged by exit code + Expected substring only — byte-identical
+	// behavior for existing states (compat: schema keys added, never removed).
+	// Judging dispatch lives in taskpipeline; this batch persists the shape only.
+	//
+	// Assertions 是可选的 v2 结构化断言集（spec-as-gate v2，
+	// docs/design/leverage-points-landing.md L2）。空 = v1 语义：仅按退出码 +
+	// Expected 子串判定——存量 state 行为逐字节一致（compat：仅新增键，不删不改）。
+	// 判定分派在 taskpipeline；本批只落数据形状。
+	Assertions []Assertion `json:"assertions,omitempty"`
+}
+
+// Assertion is one structured, mechanically checkable assertion within a v2
+// acceptance criterion. First-wave types are stack-agnostic and deterministic:
+// exit / contains / not-contains / file-changed / file-untouched. Regex is
+// deliberately excluded (ReDoS + non-deterministic judging — opinion does not
+// walk hard); coverage is deferred (stack-specific, awaits the conventions
+// profile). The judgment dispatch arrives with the P1 batch; this shape batch
+// only guarantees persistence round-trip and identity (see
+// MergeAcceptanceResults' matching key).
+//
+// Assertion 是 v2 验收标准里的一条结构化、机械可判断言。首发类型栈无关且确定性：
+// exit / contains / not-contains / file-changed / file-untouched。regex 刻意排除
+// （ReDoS + 判定不可机械化——意见不走 hard）；coverage 暂缓（栈相关，待 conventions
+// 档案接命令后评估）。判定分派随 P1 批次到达；本形状批只保证持久化 round-trip
+// 与身份（见 MergeAcceptanceResults 的匹配键）。
+type Assertion struct {
+	Type     string `json:"type"`               // exit | contains | not-contains | file-changed | file-untouched
+	Arg      string `json:"arg,omitempty"`      // 断言参数（glob / 锚点；exit 型为空）
+	Expected string `json:"expected,omitempty"` // 期望值（contains 的子串 / exit 的期望输出片段）
+	Negate   bool   `json:"negate,omitempty"`   // 取反判定（预留；首发类型自带反义型时不用）
 }
 
 // ExternalOrigin is the external work source of a task (an issue-tracker issue).

@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"encoding/json"
 	"os/exec"
 	"strings"
 	"testing"
@@ -394,4 +395,76 @@ func TestMergeAcceptanceResults(t *testing.T) {
 	if !other.AcceptanceForeign {
 		t.Error(`clearForeign=false must keep the foreign marker`)
 	}
+}
+
+// TestMergeAcceptanceResults_AssertionsKey 钉住 spec-as-gate v2 的匹配键扩展
+// （leverage-points-landing.md L2）：Assertions 与 (Run, Expected) 同为 spec 身份——
+// 同 Run 同 Expected 但断言集不同的两条是两个不同检查，单看二元组会把通过的
+// 结果盖到断言集不同的那条上（与 Expected 变体的 fake-green 同构）。v1 条目
+// （nil）共享空键——二元组语义不变。
+func TestMergeAcceptanceResults_AssertionsKey(t *testing.T) {
+	fresh := &TaskState{TaskRef: `feat/v2merge`}
+	fresh.Acceptance = []AcceptanceCriterion{
+		{Run: `go test ./...`, Expected: `ok`}, // v1（nil 断言）→ 收 v1 结果
+		{Run: `go test ./...`, Expected: `ok`, Assertions: []Assertion{{Type: `contains`, Expected: `ok`}}},                           // v2-A → 收 v2-A 结果
+		{Run: `go test ./...`, Expected: `ok`, Assertions: []Assertion{{Type: `not-contains`, Arg: `*_test.go`, Expected: `t.Skip`}}}, // v2-B → 不被盖
+	}
+	results := []AcceptanceCriterion{
+		{Run: `go test ./...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `aaa`},
+		{Run: `go test ./...`, Expected: `ok`, Assertions: []Assertion{{Type: `contains`, Expected: `ok`}}, Passed: true, AcceptedHeadCommit: `bbb`},
+		{Run: `go test ./...`, Expected: `ok`, Assertions: []Assertion{{Type: `contains`, Expected: `ok`}}, Passed: false, AcceptedHeadCommit: `ccc`}, // 断言集不匹配 v2-B → 不得盖上
+	}
+	MergeAcceptanceResults(fresh, results, false)
+
+	if !fresh.Acceptance[0].Passed || fresh.Acceptance[0].AcceptedHeadCommit != `aaa` {
+		t.Errorf(`v1 条目应按 (Run,Expected) 原语义合并，got %+v`, fresh.Acceptance[0])
+	}
+	if !fresh.Acceptance[1].Passed || fresh.Acceptance[1].AcceptedHeadCommit != `bbb` {
+		t.Errorf(`断言集相同的 v2 条目应正常合并，got %+v`, fresh.Acceptance[1])
+	}
+	if fresh.Acceptance[2].Passed || fresh.Acceptance[2].AcceptedHeadCommit != `` {
+		t.Errorf(`断言集不同的条目不得被盖上另一条的结果（三元组键缺失会 fake-green），got %+v`, fresh.Acceptance[2])
+	}
+}
+
+// TestAcceptanceCriterion_V1ShapeUnchanged 钉住 v1 兼容形状（L2 P0 的 compat 承诺）：
+// 无断言的条目序列化不含 assertions 键（存量 state 字节不变）；老 v1 JSON 反序列化后
+// Assertions 为 nil；带断言的条目 round-trip 保真。任一断裂 = 存量任务 JSON 漂移。
+func TestAcceptanceCriterion_V1ShapeUnchanged(t *testing.T) {
+	t.Run(`v1 序列化无 assertions 键`, func(t *testing.T) {
+		body, err := json.Marshal(AcceptanceCriterion{Run: `go version`, Expected: `go version`})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(body), `assertions`) {
+			t.Errorf(`v1 条目序列化不得出现 assertions 键：%s`, body)
+		}
+	})
+	t.Run(`v1 JSON 反序列化 Assertions 为 nil`, func(t *testing.T) {
+		var c AcceptanceCriterion
+		if err := json.Unmarshal([]byte(`{"run":"go version","expected":"go version"}`), &c); err != nil {
+			t.Fatal(err)
+		}
+		if c.Assertions != nil {
+			t.Errorf(`老 JSON 反序列化后 Assertions 应为 nil，got %+v`, c.Assertions)
+		}
+	})
+	t.Run(`v2 round-trip 保真`, func(t *testing.T) {
+		in := AcceptanceCriterion{Run: `go test ./...`, Expected: `ok`, Assertions: []Assertion{
+			{Type: `contains`, Expected: `ok`},
+			{Type: `not-contains`, Arg: `*_test.go`, Expected: `t.Skip`},
+			{Type: `exit`, Expected: `0`},
+		}}
+		body, err := json.Marshal(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out AcceptanceCriterion
+		if err := json.Unmarshal(body, &out); err != nil {
+			t.Fatal(err)
+		}
+		if assertionsKey(out.Assertions) != assertionsKey(in.Assertions) || len(out.Assertions) != 3 {
+			t.Errorf(`round-trip 后断言集不一致：in=%v out=%v`, in.Assertions, out.Assertions)
+		}
+	})
 }
