@@ -110,6 +110,16 @@ func runCompatReport(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(body))
 	} else {
 		fmt.Printf("compat report（base=%s）：共 %d 项变更，破坏性 %d 项\n", base, len(changes), breaking)
+		// net-added 计数行（L5 命令面冻结的软仪表，docs/design/leverage-points-landing.md）：
+		// 只展示不强断——预算执法走承诺表 §五 的评审流程（单 minor 净增 ≤2 且须附设计链接），
+		// 硬阻断会把"参数级执法"再引入命令面，恰是冻结要遏制的形态。
+		netAdded := 0
+		for _, c := range changes {
+			if c.Surface == "commands" && c.Kind == "added" {
+				netAdded++
+			}
+		}
+		fmt.Printf("net-added commands: %d（命令面冻结节：单 minor 净增 ≤2，见 compat-commitments §五）\n", netAdded)
 		for _, c := range changes {
 			mark := "  +"
 			if c.Breaking {

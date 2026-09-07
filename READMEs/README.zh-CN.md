@@ -52,6 +52,17 @@ forge init
 
 但这样每次进新 git 项目都要手动 init，丢了 init-suggest 的自动提示。
 
+## 60 秒拿到第一个证据
+
+```bash
+cd your-project && forge init
+forge task start --ref feat/demo --branch --accept "git log -1 :: commit"
+forge task verify-acceptance    # 实跑验收标准 → 不可伪造的证据
+forge trace feat/demo           # 查看证据链
+```
+
+`forge eval wedge-drill` 可在任何机器自检这条路径（隔离环境）。
+
 ## 日常使用（任务门禁）
 
 ```bash
