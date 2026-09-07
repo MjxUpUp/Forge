@@ -16,6 +16,7 @@ import "github.com/MjxUpUp/Forge/internal/tasktypes"
 type (
 	TaskGate            = tasktypes.TaskGate
 	AcceptanceCriterion = tasktypes.AcceptanceCriterion
+	Assertion           = tasktypes.Assertion
 	ExternalOrigin      = tasktypes.ExternalOrigin
 	Decision            = tasktypes.Decision
 	Blocker             = tasktypes.Blocker
