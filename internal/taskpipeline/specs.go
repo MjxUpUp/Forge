@@ -70,12 +70,26 @@ func VerifyArtifact(root string, ref ArtifactRef) bool {
 	if ref.Path == "" || ref.Hash == "" {
 		return false
 	}
+	cur := ArtifactCurrentHash(root, ref)
+	return cur != "" && cur == ref.Hash
+}
+
+// ArtifactCurrentHash re-hashes the referenced file and returns the ref-format
+// hash ("" when unreadable). Consumed by the artifact-chain gate's human tier
+// (approval-hash match is a fact) and the complete drift pre-flight.
+//
+// ArtifactCurrentHash 重算引用文件哈希并返回 ref 同格式哈希（不可读返回空串）。
+// 消费方：产物链 gate 的 human 档（审批哈希匹配是事实）与 complete 漂移 pre-flight。
+func ArtifactCurrentHash(root string, ref ArtifactRef) string {
+	if ref.Path == "" {
+		return ""
+	}
 	data, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(root), filepath.FromSlash(ref.Path)))
 	if err != nil {
-		return false
+		return ""
 	}
 	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])[:16] == ref.Hash
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // attemptVerdict 是归档尝试轮次的机器可读半边。
