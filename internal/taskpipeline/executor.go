@@ -401,6 +401,15 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		}, nil
 	}
 
+	// 3.5 产物链分档执法（artifact-chain-workflow.md §2）：rubric/human/hard 档
+	// 按事实阻断（缺失/L1 lint/审批/漂移），默认链只发一次性 advisory 汇总——
+	// 放在方案前置（4）之前：链阻断时本轮不再叠加 plan-first 提示（噪音纪律），
+	// 修复产物后的重试轮再走 4。fail-open：坏 schema 回落默认链，绝不因配置错误
+	// 阻断；逃生舱 env/override 落 CheckEscapeHatch 审计行。
+	if block := CheckArtifactChainGate(root, state, taskRef); block != nil {
+		return block, nil
+	}
+
 	// 4. 方案前置记录（shift-left）：产出了真实改动但 Plan/Goal 皆空的代码任务 = 跳过
 	// 方案阶段——方向错误会拖到审查环节才暴露，那是 实现→审查→返工 循环最贵的一端。
 	// 放在代码改动校验之后：失败/空改的 implement 重试不会每轮刷日志。无方案仅

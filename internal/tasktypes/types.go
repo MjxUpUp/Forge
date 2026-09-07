@@ -444,6 +444,28 @@ type TaskState struct {
 	// 每任务一次的保证跨 `forge task implement` 调用存活（每次都从磁盘重载 state）。
 	PlanFirstAdvisoryFired bool `json:"plan_first_advisory_fired,omitempty"`
 
+	// ArtifactAdvisoryFired marks that the artifact-chain advisory aggregate
+	// (task-implement, missing chain stages, artifact-chain-workflow.md §2)
+	// already fired once — same once-per-task noise discipline as
+	// PlanFirstAdvisoryFired. Blocking tiers (rubric/human/hard) re-check every
+	// gate run; only the advisory aggregate is throttled.
+	//
+	// ArtifactAdvisoryFired 标记产物链 advisory 汇总（task-implement，链节点缺失，
+	// artifact-chain-workflow.md §2）已为 本任务发过一次——与 PlanFirstAdvisoryFired
+	// 同款每任务一次的噪音纪律。阻断档（rubric/human/hard）每次 gate 都重查；
+	// 只有 advisory 汇总被节流。
+	ArtifactAdvisoryFired bool `json:"artifact_advisory_fired,omitempty"`
+
+	// ArtifactApprovals holds the human-tier approvals of chain stage artifacts
+	// (artifact-chain-workflow.md §2): stage → approval. The approval signs the
+	// content hash at approval time; drift voids it (complete pre-flight §5
+	// deletes entries whose Hash no longer matches the file).
+	//
+	// ArtifactApprovals 承载链 stage 产物的 human 档审批（artifact-chain-workflow.md
+	// §2）：stage → 审批。审批签的是审批时刻的内容哈希；漂移即作废（complete
+	// pre-flight §5 删除哈希不再匹配文件的条目）。
+	ArtifactApprovals map[string]ArtifactApproval `json:"artifact_approvals,omitempty"`
+
 	// ReportedFindings is the set of advisory finding fingerprints already shown to
 	// the agent by this task's verify scans (see advisory_dedup.go): cheat-scan
 	// fingerprints are two-part (ruleID|file:line); unused-scan fingerprints are

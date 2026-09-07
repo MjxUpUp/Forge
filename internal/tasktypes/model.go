@@ -70,6 +70,21 @@ type ArtifactRef struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// ArtifactApproval is the human-approval record for a chain stage's artifact
+// (artifact-chain-workflow.md §2 human tier): the approver signed the CONTENT
+// (Hash = the ArtifactRef hash at approval time). Any later file change makes
+// Hash mismatch → the approval is void (a hash that no longer matches the
+// file is not an approval).
+//
+// ArtifactApproval 是产物链 stage 的人工审批记录（artifact-chain-workflow.md §2
+// human 档）：审批签的是内容（Hash = 审批时刻的 ArtifactRef 哈希）。此后文件
+// 一经改动哈希即失配 → 审批作废（与文件不再匹配的哈希不是审批）。
+type ArtifactApproval struct {
+	By   string    `json:"by"`
+	At   time.Time `json:"at"`
+	Hash string    `json:"hash"`
+}
+
 // TaskOverrides holds the per-task escape-hatch settings.
 //
 // TaskOverrides 承载 per-task 逃生舱设置。优先于全局 env，是方案5 的「防泄漏」机制：
@@ -87,6 +102,7 @@ type TaskOverrides struct {
 	AcceptanceGate string `json:"acceptance_gate,omitempty"` // "disable" 跳过 task-complete acceptance pre-flight 门禁
 	SkillDecisions string `json:"skill_decisions,omitempty"` // "disable" 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）
 	DocGate        string `json:"doc_gate,omitempty"`        // "disable" 跳过 task-complete doc pre-flight（输出→回检门禁；轮次上限后的放行须人工确认后走这里）
+	ArtifactChain  string `json:"artifact_chain,omitempty"`  // "disable" 跳过产物链分档执法与漂移 pre-flight（artifact-chain-workflow.md §2/§5 逃生舱）
 }
 
 // DesignPhase identifies a design phase involved in a task.
