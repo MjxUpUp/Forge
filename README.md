@@ -286,8 +286,9 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task checklist add/tick/drop` | 操作对账单（checklist 段）：勾选即进度、断点存活，task-complete 硬门禁要求全勾（report 写完不算 done，checkbox 才算） |
 | `forge task start --invariant "run :: expected"` | 析出不变量（instrument 段）：声明期校验必须是可执行命令（叙述性约束被拒并指引降级到 checklist/intent），映射进验收标准——机器对账/freshness/complete 前置全覆盖 |
 | `forge task wild "<说明>"` | 野外动作申报：任务管道外的显式留痕出口（比静默绕过诚实、比强制建任务轻）。记会话/分支/HEAD/是否已有任务到 `wild/declarations.jsonl`，累计计数供审计回溯（vNext INV-1 的合法出口之一） |
-| `forge task status` | 查看当前任务门禁状态 |
-| `forge task list` | 列出所有任务 |
+| `forge task status` | 查看当前任务门禁状态（含已登记产物链产物与漂移/审批态） |
+| `forge task list --plan-conversion` | plan-first advisory 转化率报告（先测量再翻转）：已发/发后已补方案/发后仍无方案/未发自带方案四计数 + 转化率——叙事 stage 是否升档由数据决定而非直觉 |
+| `forge task artifact --set <stage> --file <path> \| --list \| --verify \| --approve <stage> \| --extract` | 产物链操作（L6 契约层，docs/design/artifact-chain-workflow.md）：登记阶段产物（哈希引用，漂移探测）/ 查看链态 / 漂移校验 / 人工审批（human 档签内容哈希，内容再改即作废）/ 从产物提取验收标准（`accept: <cmd> :: <expected>` 行与 \`\`\`accept 围栏编译成验收门禁——产物成为硬门禁的源码）。链与档位（advisory\|rubric\|human\|hard，HARD 只守事实）由 `<DataDir>/schemas/schema.yaml` 声明（缺省默认链 proposal→spec→design→plan 全 advisory 零阻断）；`task start --artifact "<stage>=<path>"` 开工即登记并就地提取验收；complete 前漂移 pre-flight：hard/human 档漂移阻断、advisory/rubric 留痕、漂移一律作废审批；逃生（落审计）`FORGE_ARTIFACT_CHAIN=disable` 或 `forge task override --artifact-chain disable` |
 | `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |
 | `forge task gate <gate-id>` | 验证单道任务门禁 |
 | `forge task impact --level none\|multi [--repo <key>]... [--note <说明>] [--ref <ref>]` | 声明当前任务的跨仓影响（多仓 workspace 成员的 verify 前置，单仓改动也须显式声明）：`--level none` 改动限定本仓；`--level multi --repo <key>` 波及指定成员 repo（`--repo` 可重复）。默认 advisory（未声明只提醒），protocol.yml 配 `cross_repo_impact: required` 升级为 HARD stop（四段式 WHAT/WHY/HOW/REF 报错），详见 docs/design/multi-repo-workspace.md |

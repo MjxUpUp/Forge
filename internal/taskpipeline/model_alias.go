@@ -33,6 +33,7 @@ type (
 	StateIntegrity      = tasktypes.StateIntegrity
 	DesignPhase         = tasktypes.DesignPhase
 	ArtifactRef         = tasktypes.ArtifactRef
+	ArtifactApproval    = tasktypes.ArtifactApproval
 	TaskOverrides       = tasktypes.TaskOverrides
 	DocReview           = tasktypes.DocReview
 	Lease               = tasktypes.Lease

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -118,6 +119,27 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 				exp = "(退出码 0)"
 			}
 			fmt.Printf("  %s [%d] %s :: %s — %s\n", mark, i+1, c.Run, exp, status)
+		}
+		fmt.Println(strings.Repeat("─", 40))
+	}
+
+	if len(state.SpecArtifacts) > 0 {
+		fmt.Printf("产物链（L6 契约层，%d 个已登记）：\n", len(state.SpecArtifacts))
+		names := make([]string, 0, len(state.SpecArtifacts))
+		for name := range state.SpecArtifacts {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			ref := state.SpecArtifacts[name]
+			line := fmt.Sprintf("  %s → %s (%s)", name, ref.Path, ref.Hash)
+			if taskpipeline.ArtifactCurrentHash(root, ref) != ref.Hash {
+				line += " ⚠️漂移（重登记: forge task artifact --set）"
+			}
+			if apr, has := state.ArtifactApprovals[name]; has {
+				line += fmt.Sprintf(" [已审批 by %s]", apr.By)
+			}
+			fmt.Println(line)
 		}
 		fmt.Println(strings.Repeat("─", 40))
 	}
@@ -264,6 +286,14 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 		state.Overrides.DocGate = "disable"
 		changed = true
 	}
+	ac, _ := cmd.Flags().GetString("artifact-chain")
+	if ac != "" {
+		if ac != "disable" {
+			return fmt.Errorf(`--artifact-chain 只接受 disable，got %q`, ac)
+		}
+		state.Overrides.ArtifactChain = "disable"
+		changed = true
+	}
 	if !changed {
 		fmt.Printf("当前 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
 		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable / --skill-decisions disable（验证类逃生降评分强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
@@ -297,6 +327,9 @@ func describeOverrides(o taskpipeline.TaskOverrides) string {
 	}
 	if o.DocGate == "disable" {
 		parts = append(parts, "doc-gate=disable")
+	}
+	if o.ArtifactChain == "disable" {
+		parts = append(parts, "artifact-chain=disable")
 	}
 	if len(parts) == 0 {
 		return "（无）"
@@ -550,6 +583,11 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 
 	asJSON, _ := cmd.Flags().GetBool("json")
 	timeline, _ := cmd.Flags().GetBool("timeline")
+	planConversion, _ := cmd.Flags().GetBool("plan-conversion")
+
+	if planConversion {
+		return runPlanConversionReport(states)
+	}
 
 	if asJSON {
 		output, _ := json.MarshalIndent(states, "", "  ")
