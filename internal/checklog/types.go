@@ -325,6 +325,30 @@ const (
 	// re-export 会静默裁剪较新字段（旧版本反序列化丢弃未知键）。观察类；warn
 	// 级、绝不硬拒（K8s 偏移窗口语义：无声变有声，幂等导入体验不变）。
 	CheckSyncVersionSkew CheckName = "sync-version-skew"
+	// CheckArtifactChain records the artifact-chain check at task-implement
+	// (artifact-chain-workflow.md §2): one entry per gate run covering the
+	// declared chain — either the one-shot advisory aggregate (default chain,
+	// Passed=false when stages are missing) or the tiered enforcement verdict
+	// (rubric/human/hard: missing artifact / failed L1 lint / absent or
+	// hash-mismatched approval / drifted reference → gate BLOCKED).
+	//
+	// CheckArtifactChain 记录 task-implement 的产物链检查（artifact-chain-workflow.md
+	// §2）：每次 gate 跑一条，覆盖声明的链——要么一次性 advisory 汇总（默认链，
+	// 有节点缺失时 Passed=false），要么分档执法判定（rubric/human/hard：产物缺失 /
+	// L1 lint 不过 / 审批缺失或哈希失配 / 引用漂移 → gate BLOCKED）。hard 只守事实
+	//（存在+哈希+审批匹配），意见类判断不进本门禁。
+	CheckArtifactChain CheckName = "artifact-chain"
+	// CheckArtifactDrift records artifact-reference drift found at complete
+	// pre-flight (artifact-chain-workflow.md §5): a SpecArtifacts ref whose file
+	// hash no longer matches (VerifyArtifact). Drift voids that stage's approval
+	// unconditionally; for hard/human tiers it also blocks complete. warn-level
+	// for advisory/rubric tiers (auditable, non-blocking).
+	//
+	// CheckArtifactDrift 记录 complete pre-flight 发现的产物引用漂移
+	//（artifact-chain-workflow.md §5）：SpecArtifacts 引用的文件哈希失配
+	//（VerifyArtifact）。漂移一律作废该 stage 审批；hard/human 档同时阻断
+	// complete；advisory/rubric 档仅 warn（留痕不拦）。
+	CheckArtifactDrift CheckName = "artifact-drift"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go

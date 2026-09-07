@@ -95,6 +95,8 @@ func init() {
 	taskOverrideCmd.Flags().String("acceptance-gate", "", `设为 disable 跳过 task-complete 的 acceptance pre-flight 门禁`)
 	taskOverrideCmd.Flags().String("skill-decisions", "", `设为 disable 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）`)
 	taskOverrideCmd.Flags().String("doc-gate", "", `设为 disable 跳过 task-complete 的 doc pre-flight（输出→回检门禁；轮次上限后的放行须人工确认后走这里）`)
+	taskOverrideCmd.Flags().String("artifact-chain", "", `设为 disable 跳过产物链分档执法与漂移 pre-flight（落 checklog 审计，降 evidence 强度）`)
+	taskListCmd.Flags().Bool("plan-conversion", false, "输出 plan-first advisory 转化率报告（已发/已转化/未转化/未发有方案四计数）")
 	taskScopeAddCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	taskImpactCmd.Flags().String(`level`, ``, `跨仓影响级别：none（纯本仓）| multi（波及其他 repo）——必填`)
 	taskImpactCmd.Flags().StringArray(`repo`, nil, `受影响的项目 key（可重复 --repo；仅 level=multi 携带，none 下忽略）`)
@@ -494,6 +496,36 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			baseBefore := len(state.Acceptance)
 			state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, extracted)
 			planAcceptanceAdded = len(state.Acceptance) - baseBefore
+		}
+	}
+	// 产物链开工登记（artifact-chain-workflow.md §3 --artifact）：spec-kit 式「先写
+	// spec 再开工」——既有产物读内容落 specs（WriteArtifact 归一 frontmatter+哈希），
+	// 折引用进 state；并像 --plan-file 一样就地提取验收标准（产物编译成门禁的
+	// start 侧入口；后续增量用 forge task artifact --extract）。
+	if artifactRaw, _ := cmd.Flags().GetStringArray("artifact"); len(artifactRaw) > 0 {
+		for _, spec := range artifactRaw {
+			stage, path, ok := strings.Cut(spec, "=")
+			stage, path = strings.TrimSpace(stage), strings.TrimSpace(path)
+			if !ok || stage == "" || path == "" {
+				return fmt.Errorf("--artifact 格式为 \"<stage>=<path>\"，got %q", spec)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("读取 --artifact %q 失败: %w", spec, err)
+			}
+			if aref, aerr := taskpipeline.WriteArtifact(root, ctx.TaskRef, stage, string(data)); aerr == nil {
+				if state.SpecArtifacts == nil {
+					state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
+				}
+				state.SpecArtifacts[stage] = aref
+				if extracted := taskpipeline.ParseAcceptanceFromArtifact(string(data)); len(extracted) > 0 {
+					baseBefore := len(state.Acceptance)
+					state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, extracted)
+					planAcceptanceAdded += len(state.Acceptance) - baseBefore
+				}
+			}
+			// 产物写失败不阻断任务创建——与 --plan-file 的 best-effort 语义一致；
+			// 之后可用 forge task artifact --set 重登记。
 		}
 	}
 	// go test 人体工学（usage 日志修复）：`go test` 不带 -v 时输出没有 PASS 行，Expected
