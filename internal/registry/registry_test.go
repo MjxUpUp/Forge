@@ -2,6 +2,7 @@ package registry
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -739,5 +740,88 @@ func TestCaseVariantDedupe(t *testing.T) {
 	}
 	if root, ok := IsMember(sub); !ok || filepath.Clean(root) != filepath.Clean(rootC) {
 		t.Errorf(`变体子目录 IsMember=(%q,%v)，期望 root=%q`, root, ok, rootC)
+	}
+}
+
+// TestAdd_RefusesReservedRoots 钉住保留根守卫：home 与系统临时根永不入册。
+// 事故背景（2026-09）：home 目录被注册成项目后，lookup 的祖先前缀匹配把 home 下
+// 一切目录（包括所有测试临时目录）判成"在项目内"，项目级 hook 随处开火——同一份
+// 代码，注册表脏的机器确定性红、干净机器与 CI 绿。守卫在 Add 单点拦住三条写路径
+// （init/自愈/dashboard 自登记）。守卫只拒根本身：home 下层的真实项目子目录照常注册。
+func TestAdd_RefusesReservedRoots(t *testing.T) {
+	useTempHome(t)
+
+	// home 覆写到测试自有的临时目录（HOME/USERPROFILE 双设，跨 OS 命中
+	// os.UserHomeDir）——守卫与断言全程不触碰真实用户目录。
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("USERPROFILE", fakeHome)
+
+	if err := Add(fakeHome); !errors.Is(err, ErrReservedPath) {
+		t.Errorf(`Add(home) err = %v, want ErrReservedPath`, err)
+	}
+	if err := Add(os.TempDir()); !errors.Is(err, ErrReservedPath) {
+		t.Errorf(`Add(TempDir) err = %v, want ErrReservedPath`, err)
+	}
+	// 形态变体同样拦住：EvalSymlinks 展开 8.3 短名/解析符号链接后的 home 仍被拒——
+	// lookup 的 absForms 会用解析形态放宽匹配，守卫必须同款鲁棒。
+	if expanded, eerr := filepath.EvalSymlinks(fakeHome); eerr == nil && pathKey(expanded) != pathKey(fakeHome) {
+		if err := Add(expanded); !errors.Is(err, ErrReservedPath) {
+			t.Errorf(`Add(解析形态 home %q) err = %v, want ErrReservedPath`, expanded, err)
+		}
+	}
+	// 守卫只拒根本身：home 下层的真实子目录照常入册（子目录真实存在——List 的
+	// 存活过滤会清死路径，假想路径活不过断言）。
+	sub := filepath.Join(fakeHome, `proj`)
+	if err := os.MkdirAll(sub, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(sub); err != nil {
+		t.Errorf(`Add(home 子目录 %q) err = %v, want nil（守卫只拒根本身）`, sub, err)
+	}
+	if got := List(); len(got) != 1 {
+		t.Errorf(`List len = %d, want 1（仅子目录条目）: %v`, len(got), got)
+	}
+}
+
+// TestRemove 钉住具名移除契约：精确命中删除、其余条目保留、未命中 (false,nil) 不报错、
+// 移除后再删幂等。与 Prune 互补——prune 清死路径，活着的伪根（如误注册的 home）只能
+// 具名移除（forge registry remove）。
+func TestRemove(t *testing.T) {
+	useTempHome(t)
+	a := mkForgeProject(t)
+	b := mkForgeProject(t)
+	if err := Add(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := Add(b); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := Remove(a)
+	if err != nil || !removed {
+		t.Fatalf(`Remove(a) = (%v, %v), want (true, nil)`, removed, err)
+	}
+	got := List()
+	if len(got) != 1 || got[0] != filepath.Clean(b) {
+		t.Errorf(`Remove 后 List = %v, want 仅保留 b (%s)`, got, filepath.Clean(b))
+	}
+
+	// 再删同一路径：无命中返回 (false, nil)——调用方据此区分"删了"与"本来就没有"。
+	removed, err = Remove(a)
+	if err != nil || removed {
+		t.Errorf(`重复 Remove(a) = (%v, %v), want (false, nil)`, removed, err)
+	}
+
+	// 形态容忍：大小写变体命中同一条（pathKey 归一；8.3 短名/符号链接解析形态走
+	// pathForms 双侧展开）——条目侧形态匹配的回归没有此钉不可见（审查 P3-4）。
+	if runtime.GOOS == `windows` {
+		removed, err = Remove(strings.ToLower(b))
+		if err != nil || !removed {
+			t.Fatalf(`Remove(大小写变体) = (%v, %v), want (true, nil)`, removed, err)
+		}
+		if got := List(); len(got) != 0 {
+			t.Errorf(`变体移除后 List = %v, want 空`, got)
+		}
 	}
 }

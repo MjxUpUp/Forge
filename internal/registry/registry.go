@@ -12,6 +12,7 @@ package registry
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -261,12 +262,63 @@ func writeEntries(entries []Entry) error {
 //
 // P1 契约：upsert **保留既有 Status/Decision 字段**——declined 条目不得被自登记/
 // 自愈复活；declined→managed 的唯一通道是 SetStatus（forge on）。
+// ErrReservedPath is returned by Add when the path is a reserved root that must
+// never become a registered project: the user home directory or the system temp
+// root. A registered home is project-poisoning at machine scale: the lookup
+// ancestor-prefix match then claims EVERY directory under home (including all
+// test temp dirs) as "inside a project", so project-gated hooks fire everywhere
+// and test outcomes drift with developer-machine state (2026-09 incident: home
+// registered on a Windows dev box → hookdispatch tests failed there while green
+// on CI, both deterministic — the flakiness was an observation artifact).
+//
+// ErrReservedPath 在路径属于保留根（用户 home 目录、系统临时根）时由 Add 返回——
+// 两者永不构成合法项目。home 被注册是机器尺度的项目毒化：lookup 的祖先前缀匹配
+// 会把 home 下的一切目录（包括所有测试临时目录）判成"在项目内"，项目级 hook 随处
+// 开火，测试结果随开发机注册表内容漂移（2026-09 实例：Windows 开发机 home 被注册
+// →hookdispatch 测试本机确定性双红而 CI 全绿——所谓 flaky 是观察截断的假象）。
+var ErrReservedPath = errors.New(`registry: 拒绝把保留根注册为项目（用户 home 目录 / 系统临时根）——若确有需要请先核实路径`)
+
+// isReservedRoot reports whether ap IS (in any path form) the user home
+// directory or the system temp root. Comparison goes through pathForms on both
+// sides: EvalSymlinks expands Windows 8.3 short names (ADMINI~1) and resolves
+// macOS /var → /private/var, so the guard holds regardless of which form a
+// caller passes — the same robustness lookup's absForms already rely on.
+//
+// isReservedRoot 判断 ap 是否（任一路径形态）等于用户 home 或系统临时根。两侧都过
+// pathForms：EvalSymlinks 展开 Windows 8.3 短名（ADMINI~1）、解析 macOS /var →
+// /private/var 符号链接，调用方传哪种形态都拦得住——与 lookup 的 absForms 同款鲁棒性。
+func isReservedRoot(ap string) bool {
+	candidates := map[string]bool{}
+	tempDir := os.TempDir
+	for _, cand := range []func() (string, error){os.UserHomeDir, func() (string, error) { return tempDir(), nil }} {
+		r, err := cand()
+		if err != nil || r == `` {
+			continue
+		}
+		for _, pf := range pathForms(filepath.Clean(r)) {
+			candidates[pathKey(pf)] = true
+		}
+	}
+	for _, af := range pathForms(ap) {
+		if candidates[pathKey(af)] {
+			return true
+		}
+	}
+	return false
+}
+
+// Add 除既有 upsert 契约外，先过保留根守卫（ErrReservedPath）——init/自愈/
+// dashboard 三条写路径共用 Add 这一单点，守卫放此处即全入口生效。
 func Add(absPath string) error {
 	ap, err := filepath.Abs(absPath)
 	if err != nil {
 		return err
 	}
 	ap = filepath.Clean(ap)
+
+	if isReservedRoot(ap) {
+		return ErrReservedPath
+	}
 
 	key := entryKey(ap)
 
@@ -538,4 +590,62 @@ func Prune() (pruned, remain int, err error) {
 	// List prunes and writes back (removes dead paths + dedup + sort + atomic rename).
 	remain = len(List()) // List 精简写回（去死路径+去重+排序+原子 rename）
 	return before - remain, remain, nil
+}
+
+// Remove drops the registry entry whose registered path matches absPath exactly
+// (path-form and case tolerant via pathForms/pathKey — 8.3 short names and case
+// variants hit the same entry). Prefix is deliberately NOT matched: removal is
+// a precise surgical act, a prefix variant could nuke every project under the
+// target. It complements Prune: prune can only drop DEAD paths, but an
+// alive-yet-bogus registered root (the user home — see Add's reserved-root
+// guard and its 2026-09 incident note) survives every prune and needs an
+// explicit exit. Returns whether an entry was removed.
+//
+// Remove 按注册路径精确移除条目（经 pathForms/pathKey 容忍路径形态与大小写变体）。
+// 刻意不做前缀匹配——移除是精确手术，前缀变体可能误杀目标下全部项目。与 Prune
+// 互补：prune 只能清死路径，活着的伪根（用户 home——见 Add 守卫的 2026-09 事故注记）
+// 任何 prune 都清不掉，必须有具名出口。返回是否确有移除。
+func Remove(absPath string) (bool, error) {
+	ap, err := filepath.Abs(absPath)
+	if err != nil {
+		return false, err
+	}
+	ap = filepath.Clean(ap)
+
+	target := map[string]bool{}
+	for _, pf := range pathForms(ap) {
+		target[pathKey(pf)] = true
+	}
+
+	removed := false
+	err = withLock(func() error {
+		f, err := loadForWrite()
+		if err != nil {
+			return err
+		}
+		kept := make([]Entry, 0, len(f.Projects))
+		for _, e := range f.Projects {
+			// 条目侧同走 pathForms（与 lookup 单一真相源同款）：存量条目可能按
+			// 8.3 短名/符号链接形态登记（老版本 forge 从短名 cwd 运行过），只比
+			// 字面形态会漏——文档声称的形态容忍必须双向成立。
+			hit := false
+			for _, ep := range pathForms(filepath.Clean(e.Path)) {
+				if target[pathKey(ep)] {
+					hit = true
+					break
+				}
+			}
+			if hit {
+				removed = true
+				continue
+			}
+			kept = append(kept, e)
+		}
+		if !removed {
+			return nil // 无命中不写回
+		}
+		f.Projects = kept
+		return writeEntries(f.Projects)
+	})
+	return removed, err
 }
