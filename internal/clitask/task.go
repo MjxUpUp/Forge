@@ -513,19 +513,21 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("读取 --artifact %q 失败: %w", spec, err)
 			}
-			if aref, aerr := taskpipeline.WriteArtifact(root, ctx.TaskRef, stage, string(data)); aerr == nil {
-				if state.SpecArtifacts == nil {
-					state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
-				}
-				state.SpecArtifacts[stage] = aref
-				if extracted := taskpipeline.ParseAcceptanceFromArtifact(string(data)); len(extracted) > 0 {
-					baseBefore := len(state.Acceptance)
-					state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, extracted)
-					planAcceptanceAdded += len(state.Acceptance) - baseBefore
-				}
+			aref, aerr := taskpipeline.WriteArtifact(root, ctx.TaskRef, stage, string(data))
+			if aerr != nil {
+				// 审查 P2-4：写失败至少 stderr 一行——静默跳过会让用户以为登记成功。
+				fmt.Fprintf(cmd.ErrOrStderr(), "⚠️ --artifact %q 登记失败（%v）——之后可用 forge task artifact --set %s 重登记\n", spec, aerr, stage)
+				continue
 			}
-			// 产物写失败不阻断任务创建——与 --plan-file 的 best-effort 语义一致；
-			// 之后可用 forge task artifact --set 重登记。
+			if state.SpecArtifacts == nil {
+				state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
+			}
+			state.SpecArtifacts[stage] = aref
+			if extracted := taskpipeline.ParseAcceptanceFromArtifact(string(data)); len(extracted) > 0 {
+				baseBefore := len(state.Acceptance)
+				state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, extracted)
+				planAcceptanceAdded += len(state.Acceptance) - baseBefore
+			}
 		}
 	}
 	// go test 人体工学（usage 日志修复）：`go test` 不带 -v 时输出没有 PASS 行，Expected
