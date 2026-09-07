@@ -42,8 +42,25 @@ jobs:
             fi
           done
 
-  goreleaser:
+  # 行为级冒烟门禁（发布物在 publish 前必须真实跑过——forge 理念：验收 = 实跑
+  # 证据，不是"构建成功"）：wedge-drill 验首证据链，artifact-drill 验产物链分档
+  # 执法。goreleaser（GitHub Release + 签名产物）与 npm（registry 发布）都在本
+  # job 之后——演练红则发布链整体不放行。
+  drill:
     needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - run: go build -o /tmp/forge ./cmd/forge/
+      - run: /tmp/forge eval wedge-drill
+      - run: /tmp/forge eval artifact-drill
+
+  goreleaser:
+    needs: [test, drill]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -218,3 +235,10 @@ jobs:
             exit 1
           fi
           echo "npm-verify passed: forge $GOT == tag v$WANT"
+      # 装机行为级验收（版本对上 ≠ 行为对）：用户真实安装路径上跑双 drill——
+      # 首证据链 + 产物链分档执法。npm 包自带二进制，这里跑的就是用户会拿到的
+      # 那个二进制（v1.52.0 发版审计：装机验证曾只验版本号，行为级缺口）。
+      - name: Behavioral smoke on installed binary
+        run: |
+          forge eval wedge-drill
+          forge eval artifact-drill
