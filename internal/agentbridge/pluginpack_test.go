@@ -144,6 +144,61 @@ func TestPluginPack_Marketplace(t *testing.T) {
 	}
 }
 
+// TestPluginPack_MarketplaceSecondaryPacks：主 pack 外的副 pack（plugins/ 下含
+// .claude-plugin/plugin.json 且 description 非空者）追加进 marketplace 条目——
+// 主条目恒在首位，副条目按名字排序保确定性；无 manifest 或空 description 的
+// 目录不进。钉死 writeMarketplace 的主+副条目合并路径（2026-09 重构为一次性
+// append 展开后防行为漂移）。
+func TestPluginPack_MarketplaceSecondaryPacks(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest := func(packName, description string) {
+		t.Helper()
+		manifestDir := filepath.Join(dir, "plugins", packName, ".claude-plugin")
+		if err := os.MkdirAll(manifestDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := fmt.Sprintf(`{"name": %q, "description": %q}`, packName, description)
+		if err := os.WriteFile(filepath.Join(manifestDir, "plugin.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeManifest("zeta-pack", "Zeta 副包")
+	writeManifest("alpha-pack", "Alpha 副包")
+	writeManifest("no-manifest", "无 manifest 文件") // 目录建了但只写 decoy，见下
+	if err := os.Remove(filepath.Join(dir, "plugins", "no-manifest", ".claude-plugin", "plugin.json")); err != nil {
+		t.Fatal(err)
+	}
+	writeManifest("empty-desc", "")
+	if err := GeneratePluginPack(DefaultPluginPack(dir)); err != nil {
+		t.Fatalf("GeneratePluginPack: %v", err)
+	}
+	var cfg map[string]any
+	loadJSON(t, filepath.Join(dir, ".claude-plugin", "marketplace.json"), &cfg)
+	plugins, ok := cfg["plugins"].([]any)
+	if !ok {
+		t.Fatalf("marketplace plugins not an array: %v", cfg["plugins"])
+	}
+	// forge（主）+ alpha-pack + zeta-pack；no-manifest 与 empty-desc 被排除。
+	wantOrder := []string{"forge", "alpha-pack", "zeta-pack"}
+	if len(plugins) != len(wantOrder) {
+		t.Fatalf("marketplace plugins = %d entries (%v), want %d", len(plugins), plugins, len(wantOrder))
+	}
+	for i, want := range wantOrder {
+		entry, _ := plugins[i].(map[string]any)
+		if entry["name"] != want {
+			t.Errorf("plugins[%d].name = %v, want %s", i, entry["name"], want)
+		}
+	}
+	// 副条目沿用主 pack owner（同一仓库出品）。
+	secondary, _ := plugins[1].(map[string]any)
+	if secondary["source"] != "./plugins/alpha-pack" {
+		t.Errorf("secondary source = %v, want ./plugins/alpha-pack", secondary["source"])
+	}
+	if secondary["description"] != "Alpha 副包" {
+		t.Errorf("secondary description = %v, want Alpha 副包", secondary["description"])
+	}
+}
+
 // TestPluginPack_OwnerIsRequired：OwnerName 空时 GeneratePluginPack 必须报错（claude marketplace
 // schema 把 owner 标为 required，省略会让 `claude plugin validate` 拒载）。
 func TestPluginPack_OwnerIsRequired(t *testing.T) {

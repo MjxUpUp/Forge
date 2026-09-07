@@ -186,10 +186,7 @@ func writeMarketplace(spec PluginPackSpec, dir string) error {
 		"source":      "./plugins/" + spec.PluginName,
 		"author":      owner,
 	}
-	plugins := []map[string]any{entry}
-	for _, extra := range secondaryPackEntries(spec) {
-		plugins = append(plugins, extra)
-	}
+	plugins := append([]map[string]any{entry}, secondaryPackEntries(spec)...)
 	mp := map[string]any{
 		"name":        spec.MarketplaceName,
 		"description": "Forge plugin marketplace",

@@ -40,6 +40,12 @@ jobs:
       # `! gofmt -l ... | grep .`：违规文件名直接进 CI 日志（test -z 会吞掉输出，失败只见 exit 1）。
       - if: matrix.os == 'ubuntu-latest'
         run: "! gofmt -l cmd internal skills | grep ."
+      # 死代码金丝雀（staticcheck + deadcode 双零）：防死代码存量在清扫后悄悄
+      # 回流——dead-code-sweep（5dd3ae8）的一次性人工双零固化为常驻门禁。
+      # 工具版本与口径的唯一真相源在 Makefile canary 目标（deadcode 必须带
+      # -test：测试可达算活代码）。结果与 OS 无关，ubuntu 跑一份即可（gofmt 同例）。
+      - if: matrix.os == 'ubuntu-latest'
+        run: make canary
 
   # 发版脚本（scripts/release.js）的 node:test 测试。原来只存在于本地，CI 不跑 = 没测试。
   # forge-dsh 套件必须加 windows：win32 走 cmd.exe spawn 路径（npm 只装 forge.cmd
