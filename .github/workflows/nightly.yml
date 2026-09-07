@@ -30,3 +30,8 @@ jobs:
       - run: /tmp/forge doctor
       # 分发分叉检测（canonical vs 已分发）。
       - run: /tmp/forge skills drift-check
+      # 行为级演练（隔离环境脚本化断言）：首证据链 + 产物链分档执法——每日行为
+      # 回归，补 PR CI 只跑单元测试的缺口（v1.52.0 发版审计：产物链行为级零
+      # 覆盖，drill 沉淀后此处常态跑）。
+      - run: /tmp/forge eval wedge-drill
+      - run: /tmp/forge eval artifact-drill

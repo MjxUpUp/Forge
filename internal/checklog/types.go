@@ -349,6 +349,19 @@ const (
 	//（VerifyArtifact）。漂移一律作废该 stage 审批；hard/human 档同时阻断
 	// complete；advisory/rubric 档仅 warn（留痕不拦）。
 	CheckArtifactDrift CheckName = "artifact-drift"
+	// CheckArtifactDrill records one `forge eval artifact-drill` outcome
+	// (artifact-chain behavioral drill: scripted replay of register → tiered
+	// blocks → approve → extracted-acceptance real-run → drift intercept →
+	// repair → complete). Deterministic (scripted assertions, no LLM); the
+	// release workflow's drill gate and nightly consume it as the behavioral
+	// smoke for the artifact chain.
+	//
+	// CheckArtifactDrill 记录一次 `forge eval artifact-drill` 结果（产物链行为
+	// 级演练：脚本化重放 登记→分档阻断→审批→提取验收实跑→漂移拦截→修复→完成）。
+	// deterministic（脚本化断言，无 LLM）；release workflow 的 drill 门禁位与
+	// nightly 消费它作为产物链的行为级冒烟。与 artifact-drift（漂移观测）是两个
+	// 概念：本名是演练执行记录。
+	CheckArtifactDrill CheckName = "eval-artifact-drill"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
