@@ -7,7 +7,7 @@ import (
 )
 
 // TestArtifactApprovalAndOverridesSerialization 钉住产物链新键的序列化承诺面
-//（schema 键只增不删的 golden 棘轮依赖这些字段落盘）：artifact_approvals 嵌套键
+// （schema 键只增不删的 golden 棘轮依赖这些字段落盘）：artifact_approvals 嵌套键
 // 与 overrides.artifact_chain 必须出现；反序列化回读等价（状态文件兼容性）。
 func TestArtifactApprovalAndOverridesSerialization(t *testing.T) {
 	now := time.Now()

@@ -10,6 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/artifactchain"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/spf13/pflag"
 )
 
 // setupChainTask 建 session 绑定的活跃任务（task_chain CLI 动作的作用对象），
@@ -174,6 +175,62 @@ func TestArtifactApproveRejectsWrongTier(t *testing.T) {
 			t.Fatalf("漂移产物审批应被拒: %v", err)
 		}
 	})
+}
+
+// TestArtifactCmdCobraSurface 经 cobra SetArgs 全链路驱动（审查 P0-1 的回归钉：
+// 此前九个 flag 未注册——单测直调 runner 绕过 cobra 解析，测试与 compat 快照
+// 双双失察）。钉住：flag 已注册可解析、动作互斥在解析面生效、--set 全链路落盘。
+func TestArtifactCmdCobraSurface(t *testing.T) {
+	dir, taskRef := setupChainTask(t, "")
+	src := filepath.Join(dir, "spec.md")
+	if err := os.WriteFile(src, []byte("# 规格\n\n- accept: echo e2e :: e2e\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(args ...string) error {
+		// 经 Root 全链路（Root→artifact）：子命令直调 Execute() 会冒泡到父级打
+		// 帮助页——真实调用路径就是从 forge 根解析下来的。
+		// 同进程多次 Execute 时 cobra flag 值会残留（真实进程每次全新）——先重置
+		// 回默认，否则上一次 --set 的值会泄进下一次动作互斥判定。
+		taskArtifactCmd.Flags().VisitAll(func(f *pflag.Flag) {
+			f.Changed = false
+			_ = f.Value.Set(f.DefValue)
+		})
+		full := append([]string{"artifact"}, args...)
+		Root.SetArgs(full)
+		Root.SetOut(nil)
+		Root.SetErr(nil)
+		return Root.Execute()
+	}
+
+	// 零动作 → 解析通过但报动作缺失（证明 flags 解析面已注册）。
+	if err := run(); err == nil || !strings.Contains(err.Error(), "恰好一个动作") {
+		t.Fatalf("零动作应报动作缺失: %v", err)
+	}
+	// --set 全链路（cobra 解析 → runner → 落盘折引用）。
+	if err := run("--set", "spec", "--file", src); err != nil {
+		t.Fatalf("--set 经 cobra 应成功: %v", err)
+	}
+	state, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, has := state.SpecArtifacts["spec"]; !has {
+		t.Fatal("cobra 链路登记应落 state")
+	}
+	// --verify 动作面。
+	out := captureStdout(t, func() {
+		if err := run("--verify"); err != nil {
+			t.Fatalf("--verify: %v", err)
+		}
+	})
+	if !strings.Contains(out, "无漂移") {
+		t.Errorf("--verify 输出应确认无漂移: %q", out)
+	}
+	// 未注册 flag → unknown flag（守住「测试绕过解析面」的漏洞不再复发）。
+	if err := run("--no-such-flag"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("未知 flag 应报 unknown flag: %v", err)
+	}
 }
 
 // TestArtifactSetActionExclusivity 钉住动作互斥：零动作或双动作都拒绝。
