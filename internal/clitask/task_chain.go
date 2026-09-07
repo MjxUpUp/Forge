@@ -21,6 +21,18 @@ import (
 // 审批签内容哈希（漂移即作废）；提取把产物验收标准编译进既有验收管道。
 func init() {
 	Root.AddCommand(taskArtifactCmd)
+	// 动作与参数 flags（审查 P0-1 修正：九个 flag 此前未注册——单测直调 runner
+	// 绕过 cobra 解析致三重护栏全盲。CLI 级测试见 task_chain_test.go 的
+	// TestArtifactCmdCobraSurface，经 SetArgs 全链路钉住 flag 面）。
+	taskArtifactCmd.Flags().String("set", "", "登记产物：<stage>（读 --file 或 --stdin 内容落 specs 目录并折哈希引用进任务）")
+	taskArtifactCmd.Flags().String("file", "", "--set 的内容来源文件路径")
+	taskArtifactCmd.Flags().Bool("stdin", false, "--set 从 stdin 读内容（与 --file 二选一）")
+	taskArtifactCmd.Flags().Bool("list", false, "渲染产物链状态表（stage/mode/漂移/审批）")
+	taskArtifactCmd.Flags().Bool("json", false, "--list 以 JSON 输出")
+	taskArtifactCmd.Flags().Bool("verify", false, "全 ref 重算哈希校验漂移（漂移落 artifact-drift 审计行）")
+	taskArtifactCmd.Flags().String("approve", "", "human 档人工审批：<stage>（签当前登记内容哈希，内容再改即作废）")
+	taskArtifactCmd.Flags().String("by", "", "审批人标识（缺省取当前 session id；审批必须可归因到人）")
+	taskArtifactCmd.Flags().Bool("extract", false, "从已登记产物提取验收标准合并进任务（accept:/Run:/```accept 三形态）")
 	taskStartCmd.Flags().StringArray("artifact", nil, `开工即登记产物（可重复 --artifact "<stage>=<path>"）：读文件内容落 specs 目录并折哈希引用进任务（spec-kit 式「先写 spec 再开工」路径）`)
 }
 

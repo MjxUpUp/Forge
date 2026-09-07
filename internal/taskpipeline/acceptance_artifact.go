@@ -47,16 +47,18 @@ func ParseAcceptanceFromArtifact(text string) []AcceptanceCriterion {
 		fenceAccept
 	)
 	fence := fenceNone
+	openMarker := "" // 开围栏字符（``` 或 ~~~）——闭围栏须同字符（CommonMark；审查 P2-1）
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	// 对齐 plan 解析器的 scanner 纪律：单行上限扩到 1MB + Err 后返回已扫描部分
 	//（超长行只丢自身，不吞前面的合法条目）。
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if isFenceMarker(line) {
-			// 围栏边界：none→按语言开（accept 专用围栏或普通代码围栏）；已开→关
-			//（accept 围栏的闭 marker 是裸 ```，不带语言）。
+		if isFenceMarker(line) && (openMarker == "" || strings.HasPrefix(line, openMarker)) {
+			// 围栏边界：none→按语言开（accept 专用围栏或普通代码围栏），记开字符；
+			// 已开→同字符才关（accept 围栏的闭 marker 是裸 ```，不带语言）。
 			if fence == fenceNone {
+				openMarker = line[:3]
 				if fenceLanguage(line) == "accept" {
 					fence = fenceAccept
 				} else {
@@ -64,16 +66,19 @@ func ParseAcceptanceFromArtifact(text string) []AcceptanceCriterion {
 				}
 			} else {
 				fence = fenceNone
+				openMarker = ""
 			}
 			continue
 		}
 		switch fence {
 		case fenceAccept:
 			// accept 围栏内每非空行 = 一条验收声明（裸命令 = 只看退出码 0，
-			// 与裸 accept: 行同规）；空行跳过。
-			if line != "" {
-				out = append(out, parseOneAcceptance(line))
+			// 与裸 accept: 行同规）；空行跳过；Run:/Expected: 是别的解析器的行形态，
+			// 整行编译成命令必败（审查 P2-1）——跳过。
+			if line == "" || strings.HasPrefix(line, "Run:") || strings.HasPrefix(line, "Expected:") {
+				continue
 			}
+			out = append(out, parseOneAcceptance(line))
 		case fenceGeneric:
 			// 普通代码围栏内的 Run:/Expected: 是示例，跳过。
 			continue

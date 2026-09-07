@@ -660,7 +660,18 @@
       ]
     },
     {
-      "path": "forge task artifact"
+      "path": "forge task artifact",
+      "flags": [
+        "approve",
+        "by",
+        "extract",
+        "file",
+        "json",
+        "list",
+        "set",
+        "stdin",
+        "verify"
+      ]
     },
     {
       "path": "forge task assign",

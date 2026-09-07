@@ -42,7 +42,7 @@ func ArtifactAbsPath(root string, ref ArtifactRef) string {
 // chainIssuesForStage checks one stage against its declared tier. missing 前置
 // 与本体事实分开报——「进入下一节点先查上一节点产物」的链序语义落在 blocking
 // 档的前置检查上（advisory 档的前置由汇总提示覆盖，不单独执法）。
-func chainIssuesForStage(root string, s artifactchain.Stage, state *TaskState) []chainIssue {
+func chainIssuesForStage(root string, chain *artifactchain.Chain, s artifactchain.Stage, state *TaskState) []chainIssue {
 	ref, ok := state.SpecArtifacts[s.Name]
 	if !ok {
 		return []chainIssue{{
@@ -56,10 +56,14 @@ func chainIssuesForStage(root string, s artifactchain.Stage, state *TaskState) [
 	// 意味着本产物建立时跳过了上游节点，链的「上一节点有人读」承诺失效。
 	for _, r := range s.Requires {
 		if _, has := state.SpecArtifacts[r]; !has {
+			produces := r + ".md"
+			if upstream, known := chain.StageByName(r); known {
+				produces = upstream.Produces
+			}
 			issues = append(issues, chainIssue{
 				Stage: s.Name, Mode: s.Mode,
 				Reason: fmt.Sprintf("前置 stage %q 产物未登记（先产出上游节点）", r),
-				Next:   fmt.Sprintf("forge task artifact --set %s --file <%s 文件>", r, r+".md"),
+				Next:   fmt.Sprintf("forge task artifact --set %s --file <%s 文件>", r, produces),
 			})
 		}
 	}
@@ -147,7 +151,14 @@ func CheckArtifactChainGate(root string, state *TaskState, taskRef string) *Exec
 	if state == nil {
 		return nil
 	}
-	if escapeDisabled(state, escapeArtifactChain, artifactChainDisableEnv) {
+	chain, warns := artifactchain.Load(root)
+	for _, w := range warns {
+		fmt.Fprintln(os.Stderr, w)
+	}
+	// 逃生舱检查放在 Load 之后：纯 advisory 链（Enforcement=false）被 bypass 无实质
+	// 绕过（本来就只提醒），不落夸大的 escape-hatch 行（审查 P2-6b）；有阻断档时
+	// 每次绕过落审计行——审计与 doc-gate/acceptance 逃生同款每次留痕。
+	if chain.Enforcement() && escapeDisabled(state, escapeArtifactChain, artifactChainDisableEnv) {
 		recordAudit(root, &checklog.Entry{
 			Check:   checklog.CheckEscapeHatch,
 			Passed:  true,
@@ -159,10 +170,6 @@ func CheckArtifactChainGate(root string, state *TaskState, taskRef string) *Exec
 		})
 		return nil
 	}
-	chain, warns := artifactchain.Load(root)
-	for _, w := range warns {
-		fmt.Fprintln(os.Stderr, w)
-	}
 
 	// 1) blocking 档执法：任一事实缺失 → gate BLOCKED（每次 gate 都重查，无节流
 	// ——阻断不是提醒，重复失败重复报）。纯 advisory 链（Enforcement=false）整段
@@ -173,7 +180,7 @@ func CheckArtifactChainGate(root string, state *TaskState, taskRef string) *Exec
 			if !s.Mode.Blocking() {
 				continue
 			}
-			issues = append(issues, chainIssuesForStage(root, s, state)...)
+			issues = append(issues, chainIssuesForStage(root, chain, s, state)...)
 		}
 	}
 	entry := &checklog.Entry{
@@ -285,10 +292,13 @@ func VerifyArtifactsReport(root string, state *TaskState) []string {
 // (artifact-chain-workflow.md §5). It verifies every SpecArtifacts ref:
 // drift voids the stage's approval unconditionally and blocks complete for
 // hard/human tiers; advisory/rubric tiers get a warn row. Returned strings are
-// blocking reasons (empty = pass). The approval-void mutation persists
-// best-effort inside this function.
+// blocking reasons (empty = pass).
+//
+// 审查 P1-1 修正：整段扫描跑在 MergeOrPersistTaskState 锁内（重载盘上最新
+// state），漂移判定与审批作废基于并发一致的引用——complete 前另一 session
+// 重登记+重审批的场景不再被旧快照误判漂移、误删有效审批。
 func CheckArtifactChainDrift(root string, state *TaskState) []string {
-	if state == nil || len(state.SpecArtifacts) == 0 {
+	if state == nil {
 		return nil
 	}
 	if escapeDisabled(state, escapeArtifactChain, artifactChainDisableEnv) {
@@ -299,7 +309,7 @@ func CheckArtifactChainDrift(root string, state *TaskState) []string {
 			Level:   checklog.LevelWarn,
 			TaskRef: state.TaskRef,
 			Detail:  "escape-hatch: artifact drift pre-flight bypassed (per-task override or FORGE_ARTIFACT_CHAIN=disable)",
-			Meta:    map[string]string{"escape.gate": "artifact-chain-drift", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": state.TaskRef},
+			Meta:    map[string]string{"escape.gate": "artifact-chain", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": state.TaskRef},
 		})
 		return nil
 	}
@@ -308,55 +318,55 @@ func CheckArtifactChainDrift(root string, state *TaskState) []string {
 		fmt.Fprintln(os.Stderr, w)
 	}
 
-	var blocked []string
-	var drifted []string
-	voidedApprovals := false
-	for stageName, ref := range state.SpecArtifacts {
-		if ArtifactCurrentHash(root, ref) == ref.Hash {
-			continue
+	var (
+		blocked []string
+		drifted []string
+		rows    []checklog.Entry
+	)
+	// 锁内重载-扫描-作废：漂移判定、审批删除、blocked 结论共用同一份锁内快照
+	//（锁外 state 形参只作入口判断，不作判定依据）。
+	if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
+		blocked, drifted, rows = nil, nil, nil
+		for stageName, ref := range s.SpecArtifacts {
+			if ArtifactCurrentHash(root, ref) == ref.Hash {
+				continue
+			}
+			mode := artifactchain.ModeAdvisory // 链外产物（legacy/手动注册）按 advisory 处理——漂移留痕不拦
+			if st, ok := chain.StageByName(stageName); ok {
+				mode = st.Mode
+			}
+			drifted = append(drifted, stageName)
+			// 漂移一律作废审批：哈希不再匹配文件的审批不是审批（§5 事实语义）。
+			delete(s.ArtifactApprovals, stageName)
+			if mode.Blocking() {
+				blocked = append(blocked, fmt.Sprintf("%s（%s）: 引用漂移——重登记 %s 并重审批", stageName, mode, stageName))
+				rows = append(rows, checklog.Entry{
+					Check:   checklog.CheckArtifactDrift,
+					Passed:  false,
+					Checked: true,
+					TaskRef: s.TaskRef,
+					Detail:  fmt.Sprintf("artifact %q drifted (ref hash %s no longer matches file), tier %s blocks complete", stageName, ref.Hash, mode),
+				})
+			} else {
+				rows = append(rows, checklog.Entry{
+					Check:   checklog.CheckArtifactDrift,
+					Passed:  true,
+					Checked: true,
+					Level:   checklog.LevelWarn,
+					TaskRef: s.TaskRef,
+					Detail:  fmt.Sprintf("artifact %q drifted (ref hash %s no longer matches file), tier %s: warn only", stageName, ref.Hash, mode),
+				})
+			}
 		}
-		mode := artifactchain.ModeAdvisory // 链外产物（legacy/手动注册）按 advisory 处理——漂移留痕不拦
-		if s, ok := chain.StageByName(stageName); ok {
-			mode = s.Mode
-		}
-		drifted = append(drifted, stageName)
-		// 漂移一律作废审批：哈希不再匹配文件的审批不是审批（§5 事实语义）。
-		if _, has := state.ArtifactApprovals[stageName]; has {
-			delete(state.ArtifactApprovals, stageName)
-			voidedApprovals = true
-		}
-		if mode.Blocking() {
-			blocked = append(blocked, fmt.Sprintf("%s（%s）: 引用漂移——重登记 %s 并重审批", stageName, mode, stageName))
-			recordAudit(root, &checklog.Entry{
-				Check:   checklog.CheckArtifactDrift,
-				Passed:  false,
-				Checked: true,
-				TaskRef: state.TaskRef,
-				Detail:  fmt.Sprintf("artifact %q drifted (ref hash %s no longer matches file), tier %s blocks complete", stageName, ref.Hash, mode),
-			})
-		} else {
-			recordAudit(root, &checklog.Entry{
-				Check:   checklog.CheckArtifactDrift,
-				Passed:  true,
-				Checked: true,
-				Level:   checklog.LevelWarn,
-				TaskRef: state.TaskRef,
-				Detail:  fmt.Sprintf("artifact %q drifted (ref hash %s no longer matches file), tier %s: warn only", stageName, ref.Hash, mode),
-			})
-		}
+		return nil
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, "[task-complete] artifact drift scan failed (fail-open 放行，留痕):", err)
+		return nil
 	}
-	if voidedApprovals {
-		if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
-			if s.ArtifactApprovals == nil {
-				return nil
-			}
-			for _, name := range drifted {
-				delete(s.ArtifactApprovals, name)
-			}
-			return nil
-		}); err != nil {
-			fmt.Fprintln(os.Stderr, "[task-complete] approval void persist failed:", err)
-		}
+	for i := range rows {
+		recordAudit(root, &rows[i])
+	}
+	if len(drifted) > 0 {
 		fmt.Fprintf(os.Stderr, "[task-complete] 漂移产物审批已作废: %s（重登记后 forge task artifact --approve <stage>）\n", strings.Join(drifted, ", "))
 	}
 	return blocked

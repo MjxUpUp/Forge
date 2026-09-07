@@ -586,6 +586,9 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 	planConversion, _ := cmd.Flags().GetBool("plan-conversion")
 
 	if planConversion {
+		if asJSON {
+			return fmt.Errorf("--plan-conversion 暂不支持 --json（报告为纯文本面）；二选一")
+		}
 		return runPlanConversionReport(states)
 	}
 
