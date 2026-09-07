@@ -254,6 +254,15 @@ const (
 	//
 	// CheckEvalResumeDrill 记录一批接续演练（`forge eval resume-drill`）。观察类。
 	CheckEvalResumeDrill CheckName = "eval-resume-drill"
+	// CheckWedgeDrill records one wedge-drill batch (`forge eval wedge-drill`):
+	// the scripted first-evidence path (init → accept → red → fix → green →
+	// trace) doubling as a release smoke (leverage-points-landing.md L1).
+	// Observation class.
+	//
+	// CheckWedgeDrill 记录一批楔子演练（`forge eval wedge-drill`）——脚本化的
+	// 首证据路径（init → accept → 红 → 修 → 绿 → trace），兼作发布冒烟
+	//（leverage-points-landing.md L1）。观察类。
+	CheckWedgeDrill CheckName = "eval-wedge-drill"
 	// CheckEvalAuditForged records an audit-row integrity failure surfaced by
 	// `forge eval audit-verify` (forged signature or replayed stamp). Security-
 	// adjacent observation — never task verification; excluded from evidence-

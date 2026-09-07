@@ -243,12 +243,15 @@ func VerifyAcceptance(root string, state *TaskState) {
 func MergeAcceptanceResults(s *TaskState, results []AcceptanceCriterion, clearForeign bool) {
 	for i := range s.Acceptance {
 		for j := range results {
-			// 匹配键是 (Run, Expected) 二元组，不是单 Run（2026-08-16 二轮复审）：同 Run 不同
-			// Expected 的两条 criterion（如 `go version :: go version` 与
-			// `go version :: NONEXISTENT`）是两个不同检查——单 Run 键会把第一条的结果盖到
-			// 第二条上，实际失败的第二条被持久化成 Passed=true。完全相同的重复条目无论用哪个键
-			// 结果都一样，二元组安全。
-			if results[j].Run != s.Acceptance[i].Run || results[j].Expected != s.Acceptance[i].Expected {
+			// 匹配键是 (Run, Expected, Assertions) 三元组，不是单 Run（2026-08-16 二轮复审 +
+			// spec-as-gate v2，leverage-points-landing.md L2）：同 Run 不同 Expected 的两条
+			// criterion（如 `go version :: go version` 与 `go version :: NONEXISTENT`）是两个
+			// 不同检查——单 Run 键会把第一条的结果盖到第二条上，实际失败的第二条被持久化成
+			// Passed=true。v2 起 Assertions 同理是 spec 身份的一部分：同 Run 同 Expected 但
+			// 断言集不同的两条是两个不同检查（assertionsKey 区分）。完全相同的重复条目无论用
+			// 哪个键结果都一样，三元组安全。
+			if results[j].Run != s.Acceptance[i].Run || results[j].Expected != s.Acceptance[i].Expected ||
+				assertionsKey(results[j].Assertions) != assertionsKey(s.Acceptance[i].Assertions) {
 				continue
 			}
 			s.Acceptance[i].Passed = results[j].Passed
@@ -262,6 +265,25 @@ func MergeAcceptanceResults(s *TaskState, results []AcceptanceCriterion, clearFo
 	if clearForeign {
 		s.AcceptanceForeign = false
 	}
+}
+
+// assertionsKey renders an assertion set as a canonical string key for result
+// matching in MergeAcceptanceResults. Order-sensitive: the persisted slice is
+// the spec identity — the same assertions in a different order is a different
+// spec edit (and re-running verify-acceptance must not silently reuse a result
+// merged under the old order). nil (v1 criteria) shares the empty key with
+// other v1 criteria, so the v1 (Run, Expected) semantics are unchanged.
+//
+// assertionsKey 把断言集渲染成规范字符串键，供 MergeAcceptanceResults 的结果匹配。
+// 顺序敏感：持久化的 slice 即 spec 身份——相同断言不同顺序视为一次 spec 编辑
+// （重跑 verify-acceptance 不得静默复用按旧顺序合并的结果）。nil（v1 条目）与其他
+// v1 条目共享空键——v1 的 (Run, Expected) 语义不变。
+func assertionsKey(as []Assertion) string {
+	var b strings.Builder
+	for _, a := range as {
+		fmt.Fprintf(&b, "%s\x1f%s\x1f%s\x1f%t\x1e", a.Type, a.Arg, a.Expected, a.Negate)
+	}
+	return b.String()
 }
 
 // truncateAcceptanceOutput 截断实跑输出到末尾 ~500 字节：失败信息在输出尾部，
