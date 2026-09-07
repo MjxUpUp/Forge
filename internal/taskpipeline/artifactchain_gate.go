@@ -155,19 +155,21 @@ func CheckArtifactChainGate(root string, state *TaskState, taskRef string) *Exec
 	for _, w := range warns {
 		fmt.Fprintln(os.Stderr, w)
 	}
-	// 逃生舱检查放在 Load 之后：纯 advisory 链（Enforcement=false）被 bypass 无实质
-	// 绕过（本来就只提醒），不落夸大的 escape-hatch 行（审查 P2-6b）；有阻断档时
-	// 每次绕过落审计行——审计与 doc-gate/acceptance 逃生同款每次留痕。
-	if chain.Enforcement() && escapeDisabled(state, escapeArtifactChain, artifactChainDisableEnv) {
-		recordAudit(root, &checklog.Entry{
-			Check:   checklog.CheckEscapeHatch,
-			Passed:  true,
-			Checked: true,
-			Level:   checklog.LevelWarn,
-			TaskRef: taskRef,
-			Detail:  "escape-hatch: artifact chain bypassed (per-task override or FORGE_ARTIFACT_CHAIN=disable)",
-			Meta:    map[string]string{"escape.gate": "artifact-chain", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": taskRef},
-		})
+	// 逃生舱 bypass 整段链检查（执法与 advisory 汇总都跳过——逃生意图即静默）。
+	// 审计行只在有实质绕过时落（阻断档在场；纯 advisory 链本就零阻断，落行是
+	// 夸大——审查 P2-6b/P2-D）。
+	if escapeDisabled(state, escapeArtifactChain, artifactChainDisableEnv) {
+		if chain.Enforcement() {
+			recordAudit(root, &checklog.Entry{
+				Check:   checklog.CheckEscapeHatch,
+				Passed:  true,
+				Checked: true,
+				Level:   checklog.LevelWarn,
+				TaskRef: taskRef,
+				Detail:  "escape-hatch: artifact chain bypassed (per-task override or FORGE_ARTIFACT_CHAIN=disable)",
+				Meta:    map[string]string{"escape.gate": "artifact-chain", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": taskRef},
+			})
+		}
 		return nil
 	}
 
@@ -298,7 +300,7 @@ func VerifyArtifactsReport(root string, state *TaskState) []string {
 // state），漂移判定与审批作废基于并发一致的引用——complete 前另一 session
 // 重登记+重审批的场景不再被旧快照误判漂移、误删有效审批。
 func CheckArtifactChainDrift(root string, state *TaskState) []string {
-	if state == nil {
+	if state == nil || len(state.SpecArtifacts) == 0 {
 		return nil
 	}
 	if escapeDisabled(state, escapeArtifactChain, artifactChainDisableEnv) {
@@ -337,7 +339,12 @@ func CheckArtifactChainDrift(root string, state *TaskState) []string {
 			}
 			drifted = append(drifted, stageName)
 			// 漂移一律作废审批：哈希不再匹配文件的审批不是审批（§5 事实语义）。
+			// 双侧删除：锁内副本（持久化）+ 调用方快照（complete 尾部 ScoreTask
+			// 整包回写以调用方快照为源——只删副本会被旧快照「复活」，审查 P2-A）。
 			delete(s.ArtifactApprovals, stageName)
+			if state.ArtifactApprovals != nil {
+				delete(state.ArtifactApprovals, stageName)
+			}
 			if mode.Blocking() {
 				blocked = append(blocked, fmt.Sprintf("%s（%s）: 引用漂移——重登记 %s 并重审批", stageName, mode, stageName))
 				rows = append(rows, checklog.Entry{
@@ -360,7 +367,17 @@ func CheckArtifactChainDrift(root string, state *TaskState) []string {
 		}
 		return nil
 	}); err != nil {
-		fmt.Fprintln(os.Stderr, "[task-complete] artifact drift scan failed (fail-open 放行，留痕):", err)
+		// fail-open（基建错误不是事实结论，下次 complete 会重查）——但「留痕」
+		// 要真留：warn 级审计行落 checklog（审查 P2-B）。
+		recordAudit(root, &checklog.Entry{
+			Check:   checklog.CheckArtifactDrift,
+			Passed:  true,
+			Checked: false,
+			Level:   checklog.LevelWarn,
+			TaskRef: state.TaskRef,
+			Detail:  fmt.Sprintf("artifact drift scan failed (fail-open): %v", err),
+		})
+		fmt.Fprintln(os.Stderr, "[task-complete] artifact drift scan failed (fail-open 放行，已落审计行):", err)
 		return nil
 	}
 	for i := range rows {
