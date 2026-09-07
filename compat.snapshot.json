@@ -660,6 +660,20 @@
       ]
     },
     {
+      "path": "forge task artifact",
+      "flags": [
+        "approve",
+        "by",
+        "extract",
+        "file",
+        "json",
+        "list",
+        "set",
+        "stdin",
+        "verify"
+      ]
+    },
+    {
       "path": "forge task assign",
       "flags": [
         "by",
@@ -822,6 +836,7 @@
       "path": "forge task list",
       "flags": [
         "json",
+        "plan-conversion",
         "timeline"
       ]
     },
@@ -855,6 +870,7 @@
       "path": "forge task override",
       "flags": [
         "acceptance-gate",
+        "artifact-chain",
         "doc-gate",
         "ref",
         "skill-decisions",
@@ -918,6 +934,7 @@
       "path": "forge task start",
       "flags": [
         "accept",
+        "artifact",
         "assignee",
         "base",
         "branch",
@@ -1052,6 +1069,8 @@
     }
   ],
   "checks": [
+    "artifact-chain",
+    "artifact-drift",
     "assertion-check",
     "attribution",
     "auto-compile",
@@ -1095,6 +1114,7 @@
   ],
   "escapes": [
     "FORGE_ACCEPTANCE_GATE",
+    "FORGE_ARTIFACT_CHAIN",
     "FORGE_DOC_GATE",
     "FORGE_GATE_PUSH",
     "FORGE_HELDOUT",
@@ -1347,6 +1367,12 @@
       "acceptance[].passed",
       "acceptance[].run",
       "acceptance_foreign",
+      "artifact_advisory_fired",
+      "artifact_approvals",
+      "artifact_approvals.spec",
+      "artifact_approvals.spec.at",
+      "artifact_approvals.spec.by",
+      "artifact_approvals.spec.hash",
       "artifacts",
       "artifacts[].kind",
       "artifacts[].note",
@@ -1458,6 +1484,7 @@
       "origin_tool",
       "overrides",
       "overrides.acceptance_gate",
+      "overrides.artifact_chain",
       "overrides.doc_gate",
       "overrides.skill_decisions",
       "overrides.test_coverage",

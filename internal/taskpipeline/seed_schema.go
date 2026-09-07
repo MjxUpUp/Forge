@@ -50,7 +50,7 @@ func SeedTaskStateForSchema() any {
 	s.Integrity = &tasktypes.StateIntegrity{KeyID: "k", Alg: "a", Sig: "s"}
 	s.Overrides = tasktypes.TaskOverrides{
 		WorkActivity: "disable", TestCoverage: "disable", AcceptanceGate: "disable",
-		SkillDecisions: "disable", DocGate: "disable",
+		SkillDecisions: "disable", DocGate: "disable", ArtifactChain: "disable",
 	}
 	s.ExternalOrigin = tasktypes.ExternalOrigin{Tracker: "github", IssueID: "1", Identifier: "org/repo#1", URL: "u"}
 	s.Assignment = &tasktypes.Assignment{
@@ -83,6 +83,11 @@ func SeedTaskStateForSchema() any {
 	s.ReviewedHeadCommit = "abc"
 	s.AcceptanceForeign = true
 	s.PlanFirstAdvisoryFired = true
+	// 产物链工作流（artifact-chain-workflow.md §7 seed 纪律）：artifact_advisory_fired /
+	// artifact_approvals（含嵌套 by/at/hash）/ overrides.artifact_chain 三键必须出现在
+	// 序列化承诺面——漏填 = 棘轮盲区（见文件头注释）。
+	s.ArtifactAdvisoryFired = true
+	s.ArtifactApprovals = map[string]tasktypes.ArtifactApproval{"spec": {By: "seed", At: now, Hash: "h"}}
 	// findings/review_rounds 的嵌套可选键（round/change_hash/note）。
 	s.Findings = append(s.Findings, tasktypes.Finding{ID: "f2", Content: "c", Source: "s", Status: "open", Round: 1, ChangeHash: "h"})
 	s.ReviewRounds = append(s.ReviewRounds, tasktypes.ReviewRound{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now, Note: "n"})
