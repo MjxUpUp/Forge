@@ -35,3 +35,21 @@ func TestEscapeLegacyRowFallback(t *testing.T) {
 		t.Fatal("nil 行兜底")
 	}
 }
+
+// TestWedgeDrillInRoster 钉住 eval-wedge-drill 的 roster 注册（compat 面 2 承诺面）：
+// 常量值与 AllCheckNames 清单双向一致且不重复——新增 CheckName 漏进 roster 时
+// compat 的源对照 guard 会红，本测试在同一目录把契约钉住（测试伴随变更纪律）。
+func TestWedgeDrillInRoster(t *testing.T) {
+	if CheckWedgeDrill != "eval-wedge-drill" {
+		t.Fatalf("CheckWedgeDrill = %q, want %q", CheckWedgeDrill, "eval-wedge-drill")
+	}
+	found := 0
+	for _, name := range AllCheckNames() {
+		if name == string(CheckWedgeDrill) {
+			found++
+		}
+	}
+	if found != 1 {
+		t.Fatalf("eval-wedge-drill 在 AllCheckNames 中出现 %d 次, want 1（漏注 or 重复注册）", found)
+	}
+}

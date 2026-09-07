@@ -206,6 +206,9 @@
       ]
     },
     {
+      "path": "forge eval wedge-drill"
+    },
+    {
       "path": "forge freeze",
       "flags": [
         "off",
@@ -1068,6 +1071,7 @@
     "eval-resume-drill",
     "eval-run",
     "eval-traps-run",
+    "eval-wedge-drill",
     "file-sentinel",
     "gate-push",
     "kimi-plugin-stale",
@@ -1333,6 +1337,11 @@
       "acceptance[].accepted_base_commit",
       "acceptance[].accepted_change_hash",
       "acceptance[].accepted_head_commit",
+      "acceptance[].assertions",
+      "acceptance[].assertions[].arg",
+      "acceptance[].assertions[].expected",
+      "acceptance[].assertions[].negate",
+      "acceptance[].assertions[].type",
       "acceptance[].expected",
       "acceptance[].output",
       "acceptance[].passed",

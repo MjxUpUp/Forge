@@ -46,6 +46,17 @@ Stop trusting AI-generated code. Start gating it.
 
 Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创建到代码提交，确保每一步产出物都经过验证。配合 Claude Code 的 Hook 系统实现实时拦截，不需要你手动检查。
 
+**⚡ 60 秒拿到第一个证据**：
+
+```bash
+forge init
+forge task start --ref feat/demo --branch --accept "git log -1 :: commit"
+forge task verify-acceptance    # 实跑验收标准 → 不可伪造的 deterministic 证据
+forge trace feat/demo           # 查看任务的完整证据链
+```
+
+跑 `forge eval wedge-drill` 可在任何机器上自检这条首证据路径（隔离环境，60 秒）。
+
 ## ✨ 核心功能
 
 <table>
