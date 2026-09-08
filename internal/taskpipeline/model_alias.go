@@ -34,6 +34,7 @@ type (
 	DesignPhase         = tasktypes.DesignPhase
 	ArtifactRef         = tasktypes.ArtifactRef
 	ArtifactApproval    = tasktypes.ArtifactApproval
+	LoopExhaustion      = tasktypes.LoopExhaustion
 	TaskOverrides       = tasktypes.TaskOverrides
 	DocReview           = tasktypes.DocReview
 	Lease               = tasktypes.Lease
@@ -41,24 +42,26 @@ type (
 
 // 常量派生（值在 tasktypes 单一定义，此处只是再导出名）。
 const (
-	GateImplement       = tasktypes.GateImplement
-	GateVerify          = tasktypes.GateVerify
-	GateComplete        = tasktypes.GateComplete
-	TaskKindGeneric     = tasktypes.TaskKindGeneric
-	AssignOffered       = tasktypes.AssignOffered
-	AssignClaimed       = tasktypes.AssignClaimed
-	AssignInputRequired = tasktypes.AssignInputRequired
-	AssignDelivered     = tasktypes.AssignDelivered
-	AssignFailed        = tasktypes.AssignFailed
-	AssignCanceled      = tasktypes.AssignCanceled
-	CrossRepoNone       = tasktypes.CrossRepoNone
-	CrossRepoMulti      = tasktypes.CrossRepoMulti
-	PhaseRequirement    = tasktypes.PhaseRequirement
-	PhaseAPI            = tasktypes.PhaseAPI
-	PhaseDatabase       = tasktypes.PhaseDatabase
-	PhaseFrontend       = tasktypes.PhaseFrontend
-	PhaseBackend        = tasktypes.PhaseBackend
-	PhaseTest           = tasktypes.PhaseTest
+	GateImplement        = tasktypes.GateImplement
+	GateVerify           = tasktypes.GateVerify
+	GateComplete         = tasktypes.GateComplete
+	TaskKindGeneric      = tasktypes.TaskKindGeneric
+	LoopReasonRounds     = tasktypes.LoopReasonRounds
+	LoopReasonRecurrence = tasktypes.LoopReasonRecurrence
+	AssignOffered        = tasktypes.AssignOffered
+	AssignClaimed        = tasktypes.AssignClaimed
+	AssignInputRequired  = tasktypes.AssignInputRequired
+	AssignDelivered      = tasktypes.AssignDelivered
+	AssignFailed         = tasktypes.AssignFailed
+	AssignCanceled       = tasktypes.AssignCanceled
+	CrossRepoNone        = tasktypes.CrossRepoNone
+	CrossRepoMulti       = tasktypes.CrossRepoMulti
+	PhaseRequirement     = tasktypes.PhaseRequirement
+	PhaseAPI             = tasktypes.PhaseAPI
+	PhaseDatabase        = tasktypes.PhaseDatabase
+	PhaseFrontend        = tasktypes.PhaseFrontend
+	PhaseBackend         = tasktypes.PhaseBackend
+	PhaseTest            = tasktypes.PhaseTest
 )
 
 // Error sentinels re-exported (defined once in tasktypes; taskpipeline tests

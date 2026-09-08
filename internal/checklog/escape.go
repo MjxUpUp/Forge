@@ -89,6 +89,7 @@ var allCheckNames = []CheckName{
 	CheckEvalTrapsRun, CheckEvalRun, CheckEvalDecompose, CheckEvalResumeDrill, CheckEvalAuditForged,
 	CheckWedgeDrill,
 	CheckSelfReport, CheckGatePush, CheckTaskStalled, CheckSyncVersionSkew,
+	CheckLoopExhausted,
 	CheckArtifactChain, CheckArtifactDrift, CheckArtifactDrill,
 }
 
