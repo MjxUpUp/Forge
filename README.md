@@ -55,7 +55,7 @@ forge task verify-acceptance    # 实跑验收标准 → 不可伪造的 determi
 forge trace feat/demo           # 查看任务的完整证据链
 ```
 
-跑 `forge eval wedge-drill` 可在任何机器上自检这条首证据路径（隔离环境，60 秒）。
+跑 `forge eval wedge-drill` 可在任何机器上自检这条首证据路径（隔离环境，60 秒）；`forge eval artifact-drill` 自检产物链分档执法全链（登记→hard/human 阻断→审批→提取验收实跑→漂移拦截→修复）。两者是发版 workflow 的行为级冒烟门禁与 nightly 的每日行为回归。
 
 ## ✨ 核心功能
 
@@ -328,7 +328,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task decide --content` | 记录已确认决策（持久化进 task，跨会话/跨工具不再推翻） |
 | `forge task next <step>` | 追加下一步（可多条） |
 | `forge task block --content/--resolve <id>` | 登记阻塞或解决阻塞（open→resolved） |
-| `forge task finding --content/--resolve <id>` | 记录跨工具发现（带来源工具）或标 fixed |
+| `forge task finding --content/--resolve <id>` \| `--reset-loop --note` | 记录跨工具发现（带来源工具）、标 fixed（指纹入 ResolvedPrints 记忆）；**审查回环**（回边语义，docs/design/artifact-chain-workflow.md）：open finding 跨过 schema 回边 max_rounds 次复核、或已解决 finding 同指纹再登记（复活）→ 回环耗尽，complete 被拦升级人工；人工裁决 `--reset-loop --note` 重开（审计行落地）。耗尽后唯一出口是人——终止权外置 |
 | `forge task attach --ref --tool` | 锚定 session+工具到 task（跨工具多向锚定：pi 起、claude-code 接） |
 | `forge task assign --ref <ref> --to <agent> [--role] [--by]` | 把任务分派给指定 agent（offered 起步，编排器侧；未知 agent 警告但接受） |
 | `forge task claim --ref <ref> [--as <agent>]` | 工作方认领分派给自己的任务（offered→claimed，自动锚定 session） |

@@ -104,6 +104,14 @@ func RunWedgeDrill(forgeBin string) (WedgeDrillResult, error) {
 		return WedgeDrillResult{}, err
 	}
 	defer os.RemoveAll(tmp)
+	return runDrill(tmp, wedgeScript(forgeBin))
+}
+
+// runDrill 是脚本化演练的通用执行器（artifact-drill 与 wedge-drill 共用）：在
+// tmp 下建隔离环境（fixture repo + FORGE_DATA_HOME，宿主零接线），逐步执行
+// steps 并做机械判定（退出码 + expectContains 子串；expectFail 步骤以非零退出
+// 为期望判定——红态如实挂掉才算过）。首个失败步骤短路返回，带 FailedAt/Got。
+func runDrill(tmp string, steps []wedgeStep) (WedgeDrillResult, error) {
 	fixture := filepath.Join(tmp, "repo")
 	dataHome := filepath.Join(tmp, "data")
 	for _, dir := range []string{fixture, dataHome} {
@@ -126,7 +134,7 @@ func RunWedgeDrill(forgeBin string) (WedgeDrillResult, error) {
 	}
 	res := WedgeDrillResult{}
 	start := time.Now()
-	for _, st := range wedgeScript(forgeBin) {
+	for _, st := range steps {
 		t0 := time.Now()
 		out, code := run(st.argv, st.env)
 		dur := time.Since(t0).Round(time.Millisecond)
