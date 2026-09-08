@@ -155,3 +155,36 @@ func TestStageByName(t *testing.T) {
 		t.Fatal("ghost 不应命中")
 	}
 }
+
+// TestEdgeDeclarationAndValidation 钉住回边声明语义（「回边语义」节）：缺省值
+// 归一（max_rounds=3 / exhaustion=escalate / progress=fingerprint）、重复回边
+// 拒绝、非法耗尽语义拒绝、EdgeByFrom 查找。
+func TestEdgeDeclarationAndValidation(t *testing.T) {
+	t.Run("缺省归一与查找", func(t *testing.T) {
+		c, err := Parse([]byte("version: 1\nstages:\n  - name: a\nedges:\n  - from: review\n    to: implement\n"))
+		if err != nil {
+			t.Fatalf("合法回边不应报错: %v", err)
+		}
+		e, ok := c.EdgeByFrom("review")
+		if !ok {
+			t.Fatal("review 回边应可查")
+		}
+		if e.MaxRounds != 3 || e.Exhaustion != ExhaustionEscalate || e.Progress != "fingerprint" {
+			t.Fatalf("缺省归一不符: %+v", e)
+		}
+	})
+	t.Run("非法耗尽语义与重复回边拒绝", func(t *testing.T) {
+		if _, err := Parse([]byte("version: 1\nstages:\n  - name: a\nedges:\n  - from: review\n    to: implement\n    exhaustion: forever\n")); err == nil || !strings.Contains(err.Error(), "escalate") {
+			t.Fatalf("非法 exhaustion 应报错: %v", err)
+		}
+		dup := "version: 1\nstages:\n  - name: a\nedges:\n  - from: review\n    to: implement\n  - from: review\n    to: implement\n"
+		if _, err := Parse([]byte(dup)); err == nil || !strings.Contains(err.Error(), "重复") {
+			t.Fatalf("重复回边应报错: %v", err)
+		}
+	})
+	t.Run("负预算拒绝", func(t *testing.T) {
+		if _, err := Parse([]byte("version: 1\nstages:\n  - name: a\nedges:\n  - from: review\n    to: implement\n    max_rounds: -1\n")); err == nil {
+			t.Fatal("负 max_rounds 应报错")
+		}
+	})
+}

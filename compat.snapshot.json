@@ -790,7 +790,9 @@
       "flags": [
         "content",
         "evidence",
+        "note",
         "ref",
+        "reset-loop",
         "resolve",
         "source"
       ]
@@ -1098,6 +1100,7 @@
     "file-sentinel",
     "gate-push",
     "kimi-plugin-stale",
+    "loop-exhausted",
     "plan-first",
     "project-sync",
     "review-pass",
@@ -1484,6 +1487,10 @@
       "lease.holder_node",
       "lease.ts_hlc",
       "lease.ttl_sec",
+      "loop_exhausted",
+      "loop_exhausted.at",
+      "loop_exhausted.detail",
+      "loop_exhausted.reason",
       "next_steps",
       "origin_tool",
       "overrides",
@@ -1498,6 +1505,7 @@
       "plan_first_advisory_fired",
       "plan_scope",
       "reported_findings",
+      "resolved_prints",
       "resume_stale",
       "review_passed",
       "review_rounds",
