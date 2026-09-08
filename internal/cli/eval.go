@@ -378,13 +378,85 @@ func runEvalResumeDrill(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// runEvalWedgeDrill 驱动楔子演练（隔离临时目录），打印逐步耗时与总判定，报告落
+// evals 数据目录 + 记 eval-wedge-drill 审计行。失败走非零退出——发布冒烟契约：
+// 红了必须让 CI/验收看见，绝不静默通过。
+func runEvalWedgeDrill(cmd *cobra.Command, args []string) error {
+	bin, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	res, err := evalkit.RunWedgeDrill(bin)
+	if err != nil {
+		return fmt.Errorf("BLOCKED: %v", err)
+	}
+	evalDir, err := skillseval.EvalDir()
+	if err != nil {
+		return err
+	}
+	path, err := evalkit.PersistWedgeReport(evalDir, evalRepoRoot(), res)
+	if err != nil {
+		return err
+	}
+	for _, s := range res.Steps {
+		mark := "✅"
+		if !s.Passed {
+			mark = "❌"
+		}
+		fmt.Printf("  %s %-22s %s\n", mark, s.Name, s.Duration)
+	}
+	if res.Passed {
+		fmt.Printf("WEDGE-DRILL PASS — %d steps, total %s\n", len(res.Steps), res.Total)
+		fmt.Printf("报告：%s\n", path)
+		return nil
+	}
+	fmt.Printf("WEDGE-DRILL FAIL at %q\n%s\n报告：%s\n", res.FailedAt, res.Got, path)
+	return fmt.Errorf("wedge drill failed at %s", res.FailedAt)
+}
+
+// runEvalArtifactDrill 驱动产物链演练（隔离临时目录），逐步耗时与总判定，报告落
+// evals 数据目录 + 记 eval-artifact-drill 审计行。失败非零退出——发布冒烟契约与
+// wedge-drill 同款：红了必须让 CI/验收看见。
+func runEvalArtifactDrill(cmd *cobra.Command, args []string) error {
+	bin, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	res, err := evalkit.RunArtifactDrill(bin)
+	if err != nil {
+		return fmt.Errorf("BLOCKED: %v", err)
+	}
+	evalDir, err := skillseval.EvalDir()
+	if err != nil {
+		return err
+	}
+	path, err := evalkit.PersistArtifactReport(evalDir, evalRepoRoot(), res)
+	if err != nil {
+		return err
+	}
+	for _, s := range res.Steps {
+		mark := "✅"
+		if !s.Passed {
+			mark = "❌"
+		}
+		fmt.Printf("  %s %-30s %s\n", mark, s.Name, s.Duration)
+	}
+	if res.Passed {
+		fmt.Printf("ARTIFACT-DRILL PASS — %d steps, total %s\n", len(res.Steps), res.Total)
+		fmt.Printf("报告：%s\n", path)
+		return nil
+	}
+	fmt.Printf("ARTIFACT-DRILL FAIL at %q\n%s\n报告：%s\n", res.FailedAt, res.Got, path)
+	return fmt.Errorf("artifact drill failed at %s", res.FailedAt)
+}
+
 func runEvalRun(cmd *cobra.Command, args []string) error {
-	manifestPath, _ := cmd.Flags().GetString("manifest")
 	profile, _ := cmd.Flags().GetString("profile")
 	model, _ := cmd.Flags().GetString("model")
 	repeats, _ := cmd.Flags().GetInt("repeats")
 	wallclock, _ := cmd.Flags().GetDuration("wallclock")
 	forgeRef, _ := cmd.Flags().GetString("forge-ref")
+	manifestPath, _ := cmd.Flags().GetString("manifest")
 	manifest, err := evalkit.LoadManifest(manifestPath)
 	if err != nil {
 		return fmt.Errorf("BLOCKED: %v", err)
@@ -650,6 +722,20 @@ func init() {
 	}
 	resume.Flags().String("dir", "", "演练目录（默认 evals/forge/resume）")
 	evalCmd.AddCommand(resume)
+
+	wedge := &cobra.Command{
+		Use:   "wedge-drill",
+		Short: "楔子演练：60 秒首证据路径自检（init→accept→红→修→绿→trace；兼发布冒烟）",
+		RunE:  runEvalWedgeDrill,
+	}
+	evalCmd.AddCommand(wedge)
+
+	artifact := &cobra.Command{
+		Use:   "artifact-drill",
+		Short: "产物链演练：分档执法全链自检（登记→hard/human 阻断→审批→提取验收实跑→漂移拦截→修复；发布冒烟）",
+		RunE:  runEvalArtifactDrill,
+	}
+	evalCmd.AddCommand(artifact)
 
 	runCmd := &cobra.Command{
 		Use:   "run --manifest <file> --profile <p> --model <m>",

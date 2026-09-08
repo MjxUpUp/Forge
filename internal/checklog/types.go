@@ -254,6 +254,15 @@ const (
 	//
 	// CheckEvalResumeDrill 记录一批接续演练（`forge eval resume-drill`）。观察类。
 	CheckEvalResumeDrill CheckName = "eval-resume-drill"
+	// CheckWedgeDrill records one wedge-drill batch (`forge eval wedge-drill`):
+	// the scripted first-evidence path (init → accept → red → fix → green →
+	// trace) doubling as a release smoke (leverage-points-landing.md L1).
+	// Observation class.
+	//
+	// CheckWedgeDrill 记录一批楔子演练（`forge eval wedge-drill`）——脚本化的
+	// 首证据路径（init → accept → 红 → 修 → 绿 → trace），兼作发布冒烟
+	//（leverage-points-landing.md L1）。观察类。
+	CheckWedgeDrill CheckName = "eval-wedge-drill"
 	// CheckEvalAuditForged records an audit-row integrity failure surfaced by
 	// `forge eval audit-verify` (forged signature or replayed stamp). Security-
 	// adjacent observation — never task verification; excluded from evidence-
@@ -316,6 +325,56 @@ const (
 	// re-export 会静默裁剪较新字段（旧版本反序列化丢弃未知键）。观察类；warn
 	// 级、绝不硬拒（K8s 偏移窗口语义：无声变有声，幂等导入体验不变）。
 	CheckSyncVersionSkew CheckName = "sync-version-skew"
+	// CheckArtifactChain records the artifact-chain check at task-implement
+	// (artifact-chain-workflow.md §2): one entry per gate run covering the
+	// declared chain — either the one-shot advisory aggregate (default chain,
+	// Passed=false when stages are missing) or the tiered enforcement verdict
+	// (rubric/human/hard: missing artifact / failed L1 lint / absent or
+	// hash-mismatched approval / drifted reference → gate BLOCKED).
+	//
+	// CheckArtifactChain 记录 task-implement 的产物链检查（artifact-chain-workflow.md
+	// §2）：每次 gate 跑一条，覆盖声明的链——要么一次性 advisory 汇总（默认链，
+	// 有节点缺失时 Passed=false），要么分档执法判定（rubric/human/hard：产物缺失 /
+	// L1 lint 不过 / 审批缺失或哈希失配 / 引用漂移 → gate BLOCKED）。hard 只守事实
+	//（存在+哈希+审批匹配），意见类判断不进本门禁。
+	CheckArtifactChain CheckName = "artifact-chain"
+	// CheckArtifactDrift records artifact-reference drift found at complete
+	// pre-flight (artifact-chain-workflow.md §5): a SpecArtifacts ref whose file
+	// hash no longer matches (VerifyArtifact). Drift voids that stage's approval
+	// unconditionally; for hard/human tiers it also blocks complete. warn-level
+	// for advisory/rubric tiers (auditable, non-blocking).
+	//
+	// CheckArtifactDrift 记录 complete pre-flight 发现的产物引用漂移
+	//（artifact-chain-workflow.md §5）：SpecArtifacts 引用的文件哈希失配
+	//（VerifyArtifact）。漂移一律作废该 stage 审批；hard/human 档同时阻断
+	// complete；advisory/rubric 档仅 warn（留痕不拦）。
+	CheckArtifactDrift CheckName = "artifact-drift"
+	// CheckArtifactDrill records one `forge eval artifact-drill` outcome
+	// (artifact-chain behavioral drill: scripted replay of register → tiered
+	// blocks → approve → extracted-acceptance real-run → drift intercept →
+	// repair → complete). Deterministic (scripted assertions, no LLM); the
+	// release workflow's drill gate and nightly consume it as the behavioral
+	// smoke for the artifact chain.
+	//
+	// CheckArtifactDrill 记录一次 `forge eval artifact-drill` 结果（产物链行为
+	// 级演练：脚本化重放 登记→分档阻断→审批→提取验收实跑→漂移拦截→修复→完成）。
+	// deterministic（脚本化断言，无 LLM）；release workflow 的 drill 门禁位与
+	// nightly 消费它作为产物链的行为级冒烟。与 artifact-drift（漂移观测）是两个
+	// 概念：本名是演练执行记录。
+	CheckArtifactDrill CheckName = "eval-artifact-drill"
+	// CheckLoopExhausted records the review→implement loop exhaustion state
+	// (artifact-chain-workflow.md「回边语义」节): Passed=false rows are the
+	// escalation record when complete is blocked (round budget spent on an open
+	// finding, or a resolved finding revived); Passed=true Level=warn rows are
+	// the human reset decision (`forge task finding --reset-loop --note`).
+	// Deterministic — both rows come from forge's own ledger arithmetic, not
+	// agent claims.
+	//
+	// CheckLoopExhausted 记录审查回环耗尽状态（「回边语义」节）：Passed=false 为
+	// complete 被拦时的升级记录（轮次预算耗尽或已解决 finding 复活）；
+	// Passed=true + warn 为人工重置裁决（forge task finding --reset-loop --note）。
+	// deterministic——两类行都出自 forge 自身账本运算，非 agent 自述。
+	CheckLoopExhausted CheckName = "loop-exhausted"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
