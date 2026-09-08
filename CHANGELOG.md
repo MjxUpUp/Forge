@@ -19,8 +19,8 @@
 
 * **canary:** S1011——吸收 main 新增 artifactdrill 用例的循环 append(main 无金丝雀门禁带入,合并后金丝雀抓住) ([47e0881](https://github.com/MjxUpUp/Forge/commit/47e088120115d9a1a156a74923cd8f581e1e4c8b))
 * **golden:** artifact-chain 用例 Windows 可移植——{forge} 双引号包裹防 sh 反斜杠转义 ([8e28c24](https://github.com/MjxUpUp/Forge/commit/8e28c24ec91bd9ee1d0d1309781a3a48ab92a92f))
-* **registry:** 写锁同进程互斥 + 竞争退化可观测——CI 实证 24 并发 Add 丢条目根因 ([04321eb](https://github.com/MjxUpUp/Forge/commit/04321eb54f18b770a0f68ac9eab0fdb357e90dda))
 * **test:** 合并 main 的语义消解——TestMain 单点化 + 管道捕获并发排水利族修复 ([392147f](https://github.com/MjxUpUp/Forge/commit/392147f73ded76bcef7e7b747bd16edbc766760a))
+* **env:** 环境性测试失败类根治——保留根守卫（registry.Add 拒绝注册 home/系统临时根）+ 测试密闭默认化（hookdispatch TestMain 隔离）+ `forge registry remove` 具名出口 ([8f8534e](https://github.com/MjxUpUp/Forge/commit/8f8534ed96da799d48b9e70f746edde0beffff0f))
 
 ## [1.53.0](https://github.com/MjxUpUp/Forge/compare/v1.52.0...v1.53.0) (2026-09-08)
 
