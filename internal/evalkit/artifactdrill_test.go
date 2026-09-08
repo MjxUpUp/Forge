@@ -145,8 +145,13 @@ func TestArtifactScriptFixtureCommandsExecute(t *testing.T) {
 	if !strings.Contains(string(spec), "accept: sh main_check.sh :: ALL-GOOD") {
 		t.Fatalf("spec.txt 缺 accept 行: %s", spec)
 	}
-	if err := exec.Command("sh", "main_check.sh").Run(); err == nil {
-		t.Fatal("红态 check 脚本必须失败")
+	// 红态断言必须在 fixture 目录跑（缺 Dir 会跑在测试进程 cwd、对缺失文件恒失败
+	// ——复审指出的死断言），并断言输出正是红态文案。
+	red := exec.Command("sh", "main_check.sh")
+	red.Dir = dir
+	redOut, redErr := red.Output()
+	if redErr == nil || !strings.Contains(string(redOut), "NOT-READY") {
+		t.Fatalf("红态 check 脚本必须失败且输出 NOT-READY: out=%q err=%v", redOut, redErr)
 	}
 	// 绿态 fixture：转义改写后 check 脚本必须输出 ALL-GOOD（\\n 在 sh printf 展开为换行）。
 	runSH(t, *green, dir, nil)
