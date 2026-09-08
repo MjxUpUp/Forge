@@ -267,8 +267,10 @@ jobs:
           VER="${GITHUB_REF_NAME#v}"
           curl -fsSL -o checksums.txt "https://github.com/${REPO}/releases/download/v${VER}/checksums.txt"
           curl -fsSL -o checksums.txt.sigstore.json "https://github.com/${REPO}/releases/download/v${VER}/checksums.txt.sigstore.json"
+          # 身份硬化（审计遗留 #2）：精确锚定本仓 release workflow + 语义化 tag ref，
+          # 点号转义——同 owner 下任何其他仓库/其他 workflow 的签名一律拒验。
           cosign verify-blob --bundle checksums.txt.sigstore.json \
-            --certificate-identity-regexp "^https://github.com/${REPO}" \
+            --certificate-identity-regexp "^https://github\.com/${REPO}/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" \
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             checksums.txt
-          echo "signature verified: v${VER} checksums.txt (keyless, ${{ github.repository }} workflow identity)"
+          echo "signature verified: v${VER} checksums.txt (keyless, release.yml workflow identity)"
