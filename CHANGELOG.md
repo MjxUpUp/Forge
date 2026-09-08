@@ -7,6 +7,21 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.54.0](https://github.com/MjxUpUp/Forge/compare/v1.53.0...v1.54.0) (2026-09-08)
+
+
+### Features
+
+* **loopedge:** 审查回环回边——轮次预算/复发检测/exhausted 升级人工（G2 落地） ([e13e1b6](https://github.com/MjxUpUp/Forge/commit/e13e1b695936970de5151e16f760ed5ee297ffdd))
+
+
+### Bug Fixes
+
+* **canary:** S1011——吸收 main 新增 artifactdrill 用例的循环 append(main 无金丝雀门禁带入,合并后金丝雀抓住) ([47e0881](https://github.com/MjxUpUp/Forge/commit/47e088120115d9a1a156a74923cd8f581e1e4c8b))
+* **golden:** artifact-chain 用例 Windows 可移植——{forge} 双引号包裹防 sh 反斜杠转义 ([8e28c24](https://github.com/MjxUpUp/Forge/commit/8e28c24ec91bd9ee1d0d1309781a3a48ab92a92f))
+* **registry:** 写锁同进程互斥 + 竞争退化可观测——CI 实证 24 并发 Add 丢条目根因 ([04321eb](https://github.com/MjxUpUp/Forge/commit/04321eb54f18b770a0f68ac9eab0fdb357e90dda))
+* **test:** 合并 main 的语义消解——TestMain 单点化 + 管道捕获并发排水利族修复 ([392147f](https://github.com/MjxUpUp/Forge/commit/392147f73ded76bcef7e7b747bd16edbc766760a))
+
 ## [1.53.0](https://github.com/MjxUpUp/Forge/compare/v1.52.0...v1.53.0) (2026-09-08)
 
 
