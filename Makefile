@@ -1,4 +1,4 @@
-.PHONY: build test clean install premerge
+.PHONY: build test clean install premerge npm-align
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
@@ -31,6 +31,18 @@ premerge:
 
 clean:
 	rm -rf bin/
+
+# npm-align：发版前把平台子包 version 与主包 optionalDependencies pins 同步到
+# 主包当前版本（release-please 只 bump 主包 version；extra-files 已纳入平台包
+# version，但 pins 的逐键 bump 无法用 jsonpath 表达——发版打 tag 前手动跑一次，
+# npm_versions_test 守卫多版本漂移）。
+npm-align:
+	@VER=$$(node -p "require('./npm/package.json').version"); \
+	for f in npm/platforms/*/package.json; do \
+		jq --arg v "$$VER" '.version = $$v' "$$f" > /tmp/npm-align.json && mv /tmp/npm-align.json "$$f"; \
+	done; \
+	jq --arg v "$$VER" '.optionalDependencies |= with_entries(.value = $$v)' npm/package.json > /tmp/npm-align.json && mv /tmp/npm-align.json npm/package.json; \
+	echo "npm manifests aligned to $$VER"
 
 install: build
 	cp bin/forge.exe ~/.harness/bin/forge.exe 2>/dev/null || mkdir -p ~/.harness/bin && cp bin/forge.exe ~/.harness/bin/forge.exe

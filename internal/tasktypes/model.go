@@ -85,6 +85,26 @@ type ArtifactApproval struct {
 	Hash string    `json:"hash"`
 }
 
+// LoopExhaustion marks that the review→implement repair loop spent its budget
+// or hit a recurrence, and machine-side iteration is over: the next complete
+// attempt is blocked until a human resets the loop (终止权外置——循环的出口是
+// 人，不是更多轮次；artifact-chain-workflow.md「回边语义」节机制一/二)。
+//
+// LoopExhaustion 标记审查回环耗尽：轮次预算用完或已解决 finding 复活——机器侧
+// 迭代到此为止，下一次 complete 被拦，直到人工重置回环（终止权外置——循环的
+// 出口是人，不是更多轮次；见「回边语义」节机制一/二）。
+type LoopExhaustion struct {
+	Reason string    `json:"reason"` // "rounds-exhausted" | "finding-recurrence"
+	Detail string    `json:"detail,omitempty"`
+	At     time.Time `json:"at"`
+}
+
+// Loop exhaustion reasons（机器可判定的两类耗尽：预算到顶 / 已解决 finding 复活）。
+const (
+	LoopReasonRounds     = "rounds-exhausted"
+	LoopReasonRecurrence = "finding-recurrence"
+)
+
 // TaskOverrides holds the per-task escape-hatch settings.
 //
 // TaskOverrides 承载 per-task 逃生舱设置。优先于全局 env，是方案5 的「防泄漏」机制：
