@@ -27,7 +27,8 @@ type releaseJob struct {
 	// 再由 needsList 归一化。GitHub Actions 两种写法都合法。
 	Needs yaml.Node `yaml:"needs"`
 	Steps []struct {
-		Run string `yaml:"run"`
+		Run  string `yaml:"run"`
+		Uses string `yaml:"uses"`
 	} `yaml:"steps"`
 }
 
@@ -115,6 +116,12 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 			t.Fatalf("drill job 必须跑 %s（缺则发布链丢行为级冒烟）: %s", want, drillRuns)
 		}
 	}
+	// 演练报告留痕（审计漏点 #3 解法）：报告必须上传为 workflow artifacts——
+	// 发布过程在 forge 台账之外，报告是唯一可追溯载体。
+	drillUses := jobStepUses(drill)
+	if !strings.Contains(drillUses, "upload-artifact") {
+		t.Fatalf("drill job 必须以 upload-artifact 上传演练报告——发布审计载体缺失: %s", drillUses)
+	}
 
 	goreleaser, ok := wf.Jobs["goreleaser"]
 	if !ok {
@@ -158,6 +165,10 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 			t.Fatalf("npm-verify 必须在装机上跑 %s（装机行为级验收——只验版本号不够）: %s", want, verifyRuns)
 		}
 	}
+	// 签名验证闭环（审计漏点 #1 解法）：cosign 只签不验 = 供应链证据无消费方。
+	if !strings.Contains(verifyRuns, "cosign verify-blob") {
+		t.Fatal("npm-verify 必须 cosign verify-blob 验证 checksums 签名（只签不验 = 签名形同虚设）")
+	}
 }
 
 // jobStepRuns concatenates all run-script bodies of a job's steps (guard-side
@@ -168,6 +179,18 @@ func jobStepRuns(job releaseJob) string {
 	var b strings.Builder
 	for _, s := range job.Steps {
 		b.WriteString(s.Run)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// jobStepUses concatenates all `uses:` actions of a job's steps.
+//
+// jobStepUses 拼接 job 全部步骤引用的 action（uses:）。
+func jobStepUses(job releaseJob) string {
+	var b strings.Builder
+	for _, s := range job.Steps {
+		b.WriteString(s.Uses)
 		b.WriteString("\n")
 	}
 	return b.String()
