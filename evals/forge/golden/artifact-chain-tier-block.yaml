@@ -44,10 +44,12 @@ probe_argv:
   - -c
   - |
     git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init || exit 1
-    {forge} task start --ref golden/chain --branch --artifact "spec=spec-src.txt" >/dev/null 2>&1 || exit 1
+    # {forge} 在 Windows 上是含反斜杠的 exe 路径——必须双引号包裹（sh 保留字面
+    # 反斜杠，exec 接受；不引号会被当转义符吞掉，Windows 重放必挂）。
+    "{forge}" task start --ref golden/chain --branch --artifact "spec=spec-src.txt" >/dev/null 2>&1 || exit 1
     for d in "$FORGE_DATA_HOME"/projects/*/; do mkdir -p "$d/schemas"; cp schema-src.yaml "$d/schemas/schema.yaml"; done
     printf 'package main\n\nfunc main() { println("g2") }\n' > main.go
-    {forge} task gate task-implement 2>&1
+    "{forge}" task gate task-implement 2>&1
 detect_any:
   - "stdout_contains:BLOCKED"
   - "stdout_contains:proposal"
