@@ -169,6 +169,11 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	if !strings.Contains(verifyRuns, "cosign verify-blob") {
 		t.Fatal("npm-verify 必须 cosign verify-blob 验证 checksums 签名（只签不验 = 签名形同虚设）")
 	}
+	// 身份硬化（审计遗留 #2）：regexp 必须锚定 release workflow 精确路径（点号转义
+	// + refs/tags 锚定）——前缀形态会让同 owner 任意仓库的签名过验。
+	if !strings.Contains(verifyRuns, `github\.com/`) {
+		t.Fatal("cosign identity regexp 未硬化（须转义点号并锚定 release.yml@refs/tags/vX.Y.Z 精确路径）")
+	}
 }
 
 // jobStepRuns concatenates all run-script bodies of a job's steps (guard-side
