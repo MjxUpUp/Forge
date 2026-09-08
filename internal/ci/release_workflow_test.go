@@ -94,21 +94,35 @@ func TestReleaseWorkflow_TagTriggered(t *testing.T) {
 	}
 }
 
-// TestReleaseWorkflow_NeedsChain: guard the test→goreleaser→npm hard-dependency chain.
+// TestReleaseWorkflow_NeedsChain: guard the test→drill→goreleaser→npm→npm-verify hard-dependency chain.
 //
-// TestReleaseWorkflow_NeedsChain：守护 test→goreleaser→npm 强依赖链。
-// 这是"CI 防绕过"机制核心——只要发版走 release.yml，test 失败则 goreleaser/npm 都不跑，
+// TestReleaseWorkflow_NeedsChain：守护 test→drill→goreleaser→npm→npm-verify 强依赖链。
+// 这是"CI 防绕过"机制核心——只要发版走 release.yml，test/drill 失败则 goreleaser/npm 都不跑，
 // 不会发出坏包。沙盒验证：本测试解析 yaml 断言 needs，无需触发真实 release。
 func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	wf := loadReleaseWorkflow(t)
+
+	// drill：行为级冒烟门禁（wedge-drill + artifact-drill）——发布物必须真实跑过，
+	// 不是"构建成功"就发（forge 理念：验收 = 实跑证据）。排在 goreleaser 之前，
+	// 演练红则 GitHub Release 与 npm 发布整体不放行。
+	drill, ok := wf.Jobs["drill"]
+	if !ok {
+		t.Fatal("release.yml 缺 drill job（发布前行为级冒烟——发布物必须真实跑过）")
+	}
+	drillRuns := jobStepRuns(drill)
+	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
+		if !strings.Contains(drillRuns, want) {
+			t.Fatalf("drill job 必须跑 %s（缺则发布链丢行为级冒烟）: %s", want, drillRuns)
+		}
+	}
 
 	goreleaser, ok := wf.Jobs["goreleaser"]
 	if !ok {
 		t.Fatal("release.yml 缺 goreleaser job（发二进制）")
 	}
-	if got := needsList(goreleaser.Needs); len(got) != 1 || got[0] != "test" {
-		t.Fatalf("goreleaser 必须 needs: [test]（test 失败则不发二进制），got %v——"+
-			"删掉此 needs 会让 test 失败仍发版，破坏 CI 防绕过链", got)
+	if got := needsList(goreleaser.Needs); len(got) != 2 || got[0] != "test" || got[1] != "drill" {
+		t.Fatalf("goreleaser 必须 needs: [test, drill]（test 或 drill 失败则不发二进制），got %v——"+
+			"删掉任一 needs 会让失败仍发版，破坏 CI 防绕过链", got)
 	}
 
 	npm, ok := wf.Jobs["npm"]
@@ -121,6 +135,7 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 
 	// npm-verify：发布后从 npmjs 装回并断言 forge --version == tag——
 	// 「发布后装机无人验证」缺口的收口。必须在 npm 之后（装的是 npm 刚发的版本）。
+	// 且必须跑双 drill（装机行为级验收——版本对上 ≠ 行为对，v1.52.0 审计缺口）。
 	npmVerify, ok := wf.Jobs["npm-verify"]
 	if !ok {
 		t.Fatal("release.yml 缺 npm-verify job（发布后装机验证——npm 发出去不代表用户装得回、版本对得上）")
@@ -137,6 +152,25 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	if !hasInstallAssert {
 		t.Fatal("npm-verify 必须 npm i -g 装回并断言 forge --version（缺断言则装机验证名存实亡）")
 	}
+	verifyRuns := jobStepRuns(npmVerify)
+	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
+		if !strings.Contains(verifyRuns, want) {
+			t.Fatalf("npm-verify 必须在装机上跑 %s（装机行为级验收——只验版本号不够）: %s", want, verifyRuns)
+		}
+	}
+}
+
+// jobStepRuns concatenates all run-script bodies of a job's steps (guard-side
+// helper: assert behavioral content, not step ordering).
+//
+// jobStepRuns 拼接 job 全部步骤的 run 脚本体（守卫侧助手：断言行为内容而非步骤顺序）。
+func jobStepRuns(job releaseJob) string {
+	var b strings.Builder
+	for _, s := range job.Steps {
+		b.WriteString(s.Run)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // TestReleaseWorkflow_TestJobIsGateSource: the test job is the source of the needs chain — if it degrades (drops go test, drops -race), the whole anti-bypass chain becomes nominal (goreleaser needs an empty test).
