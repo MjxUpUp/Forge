@@ -20,6 +20,7 @@ import (
 func init() {
 	rootCmd.AddCommand(registryCmd)
 	registryCmd.AddCommand(registryPruneCmd)
+	registryCmd.AddCommand(registryRemoveCmd)
 }
 
 var registryCmd = &cobra.Command{
@@ -32,7 +33,29 @@ var registryCmd = &cobra.Command{
 
 子命令：
   prune  精简注册表——移除项目路径已不存在的死路径与重复条目，原子写回
+  remove 按路径移除单条条目——活路径也可删（prune 只能清死路径；误注册的
+         保留根如用户 home 目录只能具名移除）
   rekey  把 from key 的项目数据目录并入 to key（修复大小写身份分裂的存量数据，--dry-run 可预览）`,
+}
+
+var registryRemoveCmd = &cobra.Command{
+	Use:   `remove <path>`,
+	Short: `按路径移除单条注册表条目（精确匹配，不做前缀）`,
+	Args:  cobra.ExactArgs(1),
+	RunE:  runRegistryRemove,
+}
+
+func runRegistryRemove(cmd *cobra.Command, args []string) error {
+	removed, err := registry.Remove(args[0])
+	if err != nil {
+		return err
+	}
+	if !removed {
+		return fmt.Errorf(`注册表中没有命中 %s 的条目（按路径形态与大小写归一比较）——可查阅注册表文件（FORGE_DATA_HOME/projects.json，默认 ~/.forge/projects.json）核对现存条目的登记拼写`, args[0])
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), `✅ 已移除注册表条目：%s
+`, args[0])
+	return nil
 }
 
 var registryPruneCmd = &cobra.Command{
