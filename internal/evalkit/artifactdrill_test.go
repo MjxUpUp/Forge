@@ -105,9 +105,7 @@ func TestArtifactScriptFixtureCommandsExecute(t *testing.T) {
 			}
 			cmd.Env = append(cmd.Env, e)
 		}
-		for _, e := range st.env {
-			cmd.Env = append(cmd.Env, e)
-		}
+		cmd.Env = append(cmd.Env, st.env...)
 		for k, v := range env {
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
