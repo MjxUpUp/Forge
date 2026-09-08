@@ -58,6 +58,17 @@ jobs:
       - run: go build -o /tmp/forge ./cmd/forge/
       - run: /tmp/forge eval wedge-drill
       - run: /tmp/forge eval artifact-drill
+      # 演练报告作为发布证据留痕（审计漏点 #3：发布过程在 forge 台账之外——
+      # 报告挂 workflow artifacts 补上可追溯载体；发布审计 = 报告 + 对账输出）。
+      - name: Upload drill reports (release evidence)
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: drill-reports
+          path: |
+            ~/.forge/evals/forge/wedge-drill-*.json
+            ~/.forge/evals/forge/artifact-drill-*.json
+          if-no-files-found: warn
 
   goreleaser:
     needs: [test, drill]
@@ -242,3 +253,22 @@ jobs:
         run: |
           forge eval wedge-drill
           forge eval artifact-drill
+      # 签名验证闭环（审计漏点 #1：cosign 只签不验）——goreleaser keyless 签的
+      # checksums.txt 必须有人验过才算供应链证据。identity 匹配本仓 workflow 的
+      # OIDC 身份；Verify 失败 = 发布资产被篡改或签名链异常，发布判定失败。
+      - name: Verify checksums signature (cosign keyless)
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Verify checksums.txt signature
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          curl -fsSL -o checksums.txt "https://github.com/${REPO}/releases/download/v${VER}/checksums.txt"
+          curl -fsSL -o checksums.txt.sigstore.json "https://github.com/${REPO}/releases/download/v${VER}/checksums.txt.sigstore.json"
+          cosign verify-blob --bundle checksums.txt.sigstore.json \
+            --certificate-identity-regexp "^https://github.com/${REPO}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            checksums.txt
+          echo "signature verified: v${VER} checksums.txt (keyless, ${{ github.repository }} workflow identity)"
