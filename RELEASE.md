@@ -48,15 +48,16 @@ workflow run（GitHub 防递归），所以靠 workflow_dispatch 显式调度构
 
 ## 发版必须走 release.yml（不手动绕过）
 
-Release PR 合并 → dispatch → `.github/workflows/release.yml` 跑 **test → goreleaser →
-npm → npm-verify** 四段强依赖链：
+Release PR 合并 → dispatch → `.github/workflows/release.yml` 跑 **test → drill → goreleaser →
+npm → npm-verify** 五段强依赖链：
 
 | job | 作用 | needs |
 |-----|------|-------|
 | **test** | `go test ./... -race` + `go vet` + tag↔版本对账 | （源头） |
-| **goreleaser** | 跨平台二进制 + SBOM + cosign 签名 → GitHub Release 资产 | `test` |
+| **drill** | `eval wedge-drill` + `eval artifact-drill`——行为级冒烟（发布物必须真实跑过） | `test` |
+| **goreleaser** | 跨平台二进制 + SBOM + cosign 签名 → GitHub Release 资产 | `test, drill` |
 | **npm** | 发 `@agent_forge/forge` + 5 平台子包 + `@agent_forge/forge-dsh` 到 npmjs.org（带 provenance） | `goreleaser` |
-| **npm-verify** | npm 装回并断言 `forge --version` == tag | `npm` |
+| **npm-verify** | npm 装回并断言 `forge --version` == tag，**且在装机上跑双 drill**（行为级装机验收） | `npm` |
 
 - needs 链由 `internal/ci/release_workflow_test.go` 沙盒守护
 - goreleaser `release.mode: keep-existing`：保留 release-please 的 changelog 正文，
@@ -64,6 +65,10 @@ npm → npm-verify** 四段强依赖链：
 - **版本对账门禁**（test job）：tag 必须等于 `npm/package.json` 与
   `plugins/forge-dsh/package.json` 的 version——Release PR 已保证一致，此门禁防手动
   打 tag 路径"二进制是 tag 的、包版本号是 package.json 的"货不对板
+- **npm 平台子包版本**：平台子包 version 由 release-please extra-files 随 Release PR
+  自动 bump（v1.53.0 起纳入）；主包 `optionalDependencies` pins 的逐键 bump 无法用
+  jsonpath 表达——**打 tag 前跑 `make npm-align`**（守卫 `TestNpmPlatformVersionsAligned`
+  抓多版本漂移，v1.53.0 发布曾被它拦下）
 - **npm** 先发 5 平台子包（主包 optionalDependencies 依赖它们）再发主包；
   `NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
 
