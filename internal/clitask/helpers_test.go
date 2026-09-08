@@ -19,12 +19,19 @@ func captureStdout(t *testing.T, fn func()) string {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
+	// 并发排水必须先于 fn 启动：Windows os.Pipe 缓冲约 4KB，捕获输出超限时
+	// 「先跑后读」会让 fn 的 stdout 写永久阻塞（2026-09 hazard 阻断信封 ~4.7KB
+	// 实测挂死）。三包同实现拷贝（普查 A2-2）须同款修复。
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		done <- buf.String()
+	}()
 	fn()
 	w.Close()
 	os.Stdout = old
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	return buf.String()
+	return <-done
 }
 
 // captureStderr 临时重定向 os.Stderr 捕获告警输出（与 cli 版同款 panic 安全收尾）。

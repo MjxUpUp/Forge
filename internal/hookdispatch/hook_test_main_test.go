@@ -9,6 +9,7 @@ package hookdispatch
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -21,4 +22,27 @@ func TestMain(m *testing.M) {
 	os.Setenv("HOME", tmp)
 	os.Setenv("FORGE_DATA_HOME", tmp)
 	os.Exit(m.Run())
+}
+
+// TestTestingDataHomeIsolated 钉死 TestMain 的密闭性契约：包内任何测试执行时
+// HOME/FORGE_DATA_HOME 必须已指向非真实用户数据的隔离目录。删掉上面的隔离逻辑、
+// 本测试即红。双事故注记：①FORGE_DATA_HOME 裸读真实注册表——home 目录被注册成
+// 项目后（2026-09 本机实例），前缀匹配把一切临时目录判成"在项目内"，hook 在测试
+// 里开火，测试结果随开发机注册表内容漂移；②HOME 裸读真实用户目录——checklog 经
+// DataDirFor 落真实 store（2026-09-08 审计遗留 #3，1159 个孤儿目录）。测试结果
+// 不得随开发机状态漂移——「Windows 跑通、换环境就挂」的机制性防线。
+func TestTestingDataHomeIsolated(t *testing.T) {
+	// Windows 上 USERPROFILE 未被 TestMain 改写，可对照真实 home 判"指向真实数据
+	// 目录"；unix 上 HOME 已被改写，该对照退化为恒过——非空检查是主防线，此处
+	// 尽力而为不假装更强。
+	real := os.Getenv("USERPROFILE")
+	for _, key := range []string{"HOME", "FORGE_DATA_HOME"} {
+		got := os.Getenv(key)
+		if got == "" {
+			t.Fatalf("%s 未设置——TestMain 的密闭隔离失效，包内 hook 测试将读取真实用户级状态，结果随开发机漂移", key)
+		}
+		if real != "" && filepath.Join(got, "projects.json") == filepath.Join(real, ".forge", "projects.json") {
+			t.Fatalf("%s=%q 指向真实用户数据目录——隔离失效", key, got)
+		}
+	}
 }
