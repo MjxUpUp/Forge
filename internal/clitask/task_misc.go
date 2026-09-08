@@ -144,6 +144,15 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println(strings.Repeat("─", 40))
 	}
 
+	// 回环状态（artifact-chain-workflow.md「回边语义」节）：耗尽即升级人工——
+	// 这行是给 agent 与人看的显式路标。
+	if state.LoopExhausted != nil {
+		fmt.Printf("回环耗尽（%s）: %s —— 升级人工：forge task finding --reset-loop --note \"<裁决>\"\n",
+			state.LoopExhausted.Reason, state.LoopExhausted.Detail)
+		fmt.Println(strings.Repeat("─", 40))
+	}
+
+
 	if len(state.PlanScope) > 0 {
 		fmt.Printf("计划改动白名单（%d 条）：\n", len(state.PlanScope))
 		for _, s := range state.PlanScope {
