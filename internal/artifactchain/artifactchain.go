@@ -62,10 +62,40 @@ type Stage struct {
 	Instruction string   `yaml:"instruction,omitempty" json:"instruction,omitempty"`
 }
 
-// Chain is the declared artifact chain: ordered stages forming a DAG.
+// Chain is the declared artifact chain: ordered stages forming a DAG, plus
+// declarative loop-back edges (回边语义, artifact-chain-workflow.md「回边语义」节).
 type Chain struct {
 	Version int     `yaml:"version" json:"version"`
 	Stages  []Stage `yaml:"stages" json:"stages"`
+	Edges   []Edge  `yaml:"edges,omitempty" json:"edges,omitempty"`
+}
+
+// 回边连接的是流程门禁位（review→implement），不是产物 stage——两者不同命名
+// 空间。v1 仅识别 review→implement 一条回边（审查回环）；其余 from/to 声明
+// 保留不执法（stderr 提示，向前兼容未来回边）。
+const (
+	EdgeFromReview   = "review"
+	EdgeToImplement  = "implement"
+	DefaultMaxRounds = 3
+)
+
+// Exhaustion semantics for a loop-back edge when its budget is spent.
+//
+// 耗尽语义：escalate = 升级人工（唯一出口是人）；stop = 直接停机。
+const (
+	ExhaustionEscalate = "escalate"
+	ExhaustionStop     = "stop"
+)
+
+// Edge is a declarative loop-back edge: a repair loop with a round budget,
+// an exhaustion semantic, and a convergence test. 无限循环在声明层不可表达——
+// 每条回边必须携带预算与耗尽出口，否则校验拒绝。
+type Edge struct {
+	From       string `yaml:"from" json:"from"`
+	To         string `yaml:"to" json:"to"`
+	MaxRounds  int    `yaml:"max_rounds,omitempty" json:"max_rounds,omitempty"`
+	Exhaustion string `yaml:"exhaustion,omitempty" json:"exhaustion,omitempty"`
+	Progress   string `yaml:"progress,omitempty" json:"progress,omitempty"`
 }
 
 // SchemaPath returns the project-level chain schema location:
@@ -189,7 +219,59 @@ func (c *Chain) Validate() error {
 	if cyc := findCycle(c.Stages); cyc != "" {
 		return fmt.Errorf("chain: requires 成环（经 %q）——产物链必须是 DAG", cyc)
 	}
+	if err := validateEdges(c.Edges); err != nil {
+		return err
+	}
 	return nil
+}
+
+// validateEdges 校验回边声明（回边语义 v1）：from/to 必填、预算 ≥1、耗尽语义
+// 合法、progress 仅支持 fingerprint、无重复回边。无限循环在声明层不可表达——
+// 缺 max_rounds 用缺省 3（doc gate 先例），缺 exhaustion 用 escalate。
+func validateEdges(edges []Edge) error {
+	seenEdge := make(map[string]struct{}, len(edges))
+	for i := range edges {
+		e := &edges[i]
+		if strings.TrimSpace(e.From) == "" || strings.TrimSpace(e.To) == "" {
+			return fmt.Errorf("chain: edges[%d] from/to 不能为空", i)
+		}
+		key := e.From + "->" + e.To
+		if _, dup := seenEdge[key]; dup {
+			return fmt.Errorf("chain: 回边 %q 重复声明", key)
+		}
+		seenEdge[key] = struct{}{}
+		if e.MaxRounds < 0 {
+			return fmt.Errorf("chain: 回边 %q max_rounds 不能为负", key)
+		}
+		if e.MaxRounds == 0 {
+			e.MaxRounds = DefaultMaxRounds
+		}
+		if e.Exhaustion == "" {
+			e.Exhaustion = ExhaustionEscalate
+		}
+		if e.Exhaustion != ExhaustionEscalate && e.Exhaustion != ExhaustionStop {
+			return fmt.Errorf("chain: 回边 %q exhaustion %q 非法（escalate|stop）", key, e.Exhaustion)
+		}
+		if e.Progress != "" && e.Progress != "fingerprint" {
+			return fmt.Errorf("chain: 回边 %q progress %q 非法（v1 仅 fingerprint）", key, e.Progress)
+		}
+		if e.Progress == "" {
+			e.Progress = "fingerprint"
+		}
+	}
+	return nil
+}
+
+// EdgeByFrom returns the declared loop-back edge originating at from (v1:
+// exactly one review→implement edge is enforced; other declarations are
+// preserved but not enforced).
+func (c *Chain) EdgeByFrom(from string) (Edge, bool) {
+	for _, e := range c.Edges {
+		if e.From == from {
+			return e, true
+		}
+	}
+	return Edge{}, false
 }
 
 // validateProduces enforces specs-dir-relative path safety: the produced file

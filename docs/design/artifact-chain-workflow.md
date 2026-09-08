@@ -102,3 +102,50 @@
 - 自动生成产物（gate 只守事实，不代笔）。
 - tasks.md 节点与 `specs.projection=branch` 投影（Checklist 已承担；投影属 §9 可选项，待需求出现）。
 - 跨项目 schema 共享、遥测、phone-home。
+
+---
+
+## 自举（2026-09-08 追记）
+
+Forge 仓启用自身产物链（v1.53.0 审计遗留 #4 收口）：schema 实件落
+`<DataDir>/schemas/schema.yaml`（用户级数据目录不入 VCS，内容在此存档）——
+`proposal`(advisory) / `spec`(**hard**, requires proposal) / `design`(advisory) /
+`plan`(advisory)。自本节合并起，本仓代码任务的 task-implement gate 要求 spec 产物
+先于 proposal 登记（`forge task artifact --set`），advisory 三节点随任务自愿。
+同批收口：产物链 golden 用例 `artifact-chain-tier-block`（标注集 16→17）、
+release.yml cosign 身份硬化（精确锚定 release.yml@refs/tags/vX.Y.Z）+ 演练报告
+workflow artifacts 留痕、hookdispatch 包级测试隔离（用户级 store 1159 孤儿目录
+污染源根治）。
+
+---
+
+## 回边语义（2026-09-08 定稿，G2 审查回环落地）
+
+无限循环在架构上不可「防止」（循环终止判定等价于停机问题），只能**不可表达**——每条回边必须声明预算、耗尽出口与收敛判据，缺一即校验拒绝。三种循环形态与对应机制：
+
+| 循环形态 | 机制 |
+|---|---|
+| 评审乒乓（修 A 坏 B） | 轮次预算 + 复发检测（指纹隔轮复活 = 修复无效，直接升级） |
+| 规格共演振荡 | 同上（复用同一预算语义） |
+| 验收稀释（挪门柱） | 反稀释护栏：记因 + 强度不降 + 非产出方单方（v2，schema `guard: anti-dilution` 位已预留） |
+
+**三条机械判定**（复用既有轮次结构 ReviewRounds / Finding.Round，零新计数器）：
+
+1. **轮龄**：open finding 存活轮龄 = len(ReviewRounds) - Finding.Round + 1；轮龄 ≥ 回边 max_rounds → exhausted（rounds-exhausted）。
+2. **复发**：finding 指纹 = 规范化内容 sha256[0:16]；标 fixed/wontfix 时指纹入 ResolvedPrints；同指纹再登记 = 复活 → 立即耗尽（finding-recurrence）且 ResolvedPrints 保留。
+3. **exhausted → complete BLOCKED（升级人工）**：耗尽后唯一出口是 `forge task finding --reset-loop --note "<人工裁决>"`（审计行）或 abort；agent 不得自宣收敛、不得重置预算（终止权外置）。
+
+**schema 声明**：
+
+```yaml
+edges:
+  - from: review
+    to: implement
+    max_rounds: 3        # 缺省 3（doc gate 先例）
+    exhaustion: escalate # escalate | stop（缺省 escalate）
+    progress: fingerprint
+```
+
+校验规则：from/to 必填、max_rounds ≥ 0（0 → 归一缺省 3）、exhaustion ∈ escalate|stop（缺省 escalate）、progress 仅 fingerprint、回边不重复。真伪缺陷分流：实现缺陷走有界修复轮；规格缺陷退出修复循环走 spec 修正 → 失效传播（G6，v2 预留 invalidate 字段）。豁免：FORGE_ARTIFACT_CHAIN / override --artifact-chain（chain 与 loop 同一声明子系统共用逃生舱）。
+
+已实现落点：`internal/artifactchain`（edges 解析）→ `internal/taskpipeline/loopedge.go`（轮龄/复发/exhausted）→ `forge review pass`（轮次评估）→ `forge task finding`（指纹/复活/--reset-loop）→ `forge task complete`（耗尽 pre-flight）→ `forge task status`（回环状态渲染）。
