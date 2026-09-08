@@ -33,6 +33,10 @@ func escapeDisabled(state *TaskState, which, envVar string) bool {
 			if state.Overrides.DocGate == "disable" {
 				return true
 			}
+		case "artifact-chain":
+			if state.Overrides.ArtifactChain == "disable" {
+				return true
+			}
 		}
 	}
 	return os.Getenv(envVar) == "disable"
@@ -45,7 +49,7 @@ func escapeDisabled(state *TaskState, which, envVar string) bool {
 func usedAnyOverride(o TaskOverrides) bool {
 	return o.WorkActivity == "disable" || o.TestCoverage == "disable" ||
 		o.AcceptanceGate == "disable" || o.SkillDecisions == "disable" ||
-		o.DocGate == "disable"
+		o.DocGate == "disable" || o.ArtifactChain == "disable"
 }
 
 // taskEscapeHatchRecorded 报告任务的 checklog 是否含任一 CheckEscapeHatch 条目。
@@ -72,6 +76,9 @@ const (
 	escapeAcceptanceGate = "acceptance-gate"
 	escapeSkillDecisions = "skill-decisions"
 	escapeDocGate        = "doc-gate"
+	// escapeArtifactChain：产物链分档执法与漂移 pre-flight 的 which 键
+	//（artifact-chain-workflow.md §2/§5 逃生舱）。
+	escapeArtifactChain = "artifact-chain"
 	// escapeSelfReport：自报一致性门禁的 which 键。v1 仅 env 逃生（上方 switch 无
 	// case——per-task override flag 留给需要时再扩 TaskOverrides 面）。
 	escapeSelfReport = "self-report"

@@ -63,6 +63,38 @@ type AcceptanceCriterion struct {
 	// 旧的 HEAD 相等检查。
 	AcceptedBaseCommit string `json:"accepted_base_commit,omitempty"`
 	AcceptedChangeHash string `json:"accepted_change_hash,omitempty"`
+	// Assertions is the optional v2 structured assertion set (spec-as-gate v2,
+	// docs/design/leverage-points-landing.md L2). Empty = v1 semantics: the
+	// criterion is judged by exit code + Expected substring only — byte-identical
+	// behavior for existing states (compat: schema keys added, never removed).
+	// Judging dispatch lives in taskpipeline; this batch persists the shape only.
+	//
+	// Assertions 是可选的 v2 结构化断言集（spec-as-gate v2，
+	// docs/design/leverage-points-landing.md L2）。空 = v1 语义：仅按退出码 +
+	// Expected 子串判定——存量 state 行为逐字节一致（compat：仅新增键，不删不改）。
+	// 判定分派在 taskpipeline；本批只落数据形状。
+	Assertions []Assertion `json:"assertions,omitempty"`
+}
+
+// Assertion is one structured, mechanically checkable assertion within a v2
+// acceptance criterion. First-wave types are stack-agnostic and deterministic:
+// exit / contains / not-contains / file-changed / file-untouched. Regex is
+// deliberately excluded (ReDoS + non-deterministic judging — opinion does not
+// walk hard); coverage is deferred (stack-specific, awaits the conventions
+// profile). The judgment dispatch arrives with the P1 batch; this shape batch
+// only guarantees persistence round-trip and identity (see
+// MergeAcceptanceResults' matching key).
+//
+// Assertion 是 v2 验收标准里的一条结构化、机械可判断言。首发类型栈无关且确定性：
+// exit / contains / not-contains / file-changed / file-untouched。regex 刻意排除
+// （ReDoS + 判定不可机械化——意见不走 hard）；coverage 暂缓（栈相关，待 conventions
+// 档案接命令后评估）。判定分派随 P1 批次到达；本形状批只保证持久化 round-trip
+// 与身份（见 MergeAcceptanceResults 的匹配键）。
+type Assertion struct {
+	Type     string `json:"type"`               // exit | contains | not-contains | file-changed | file-untouched
+	Arg      string `json:"arg,omitempty"`      // 断言参数（glob / 锚点；exit 型为空）
+	Expected string `json:"expected,omitempty"` // 期望值（contains 的子串 / exit 的期望输出片段）
+	Negate   bool   `json:"negate,omitempty"`   // 取反判定（预留；首发类型自带反义型时不用）
 }
 
 // ExternalOrigin is the external work source of a task (an issue-tracker issue).
@@ -411,6 +443,60 @@ type TaskState struct {
 	// 30 条全同文案）——每任务提示一次足够，重复纯噪音。持久化在 task state 里，使
 	// 每任务一次的保证跨 `forge task implement` 调用存活（每次都从磁盘重载 state）。
 	PlanFirstAdvisoryFired bool `json:"plan_first_advisory_fired,omitempty"`
+
+	// ArtifactAdvisoryFired marks that the artifact-chain advisory aggregate
+	// (task-implement, missing chain stages, artifact-chain-workflow.md §2)
+	// already fired once — same once-per-task noise discipline as
+	// PlanFirstAdvisoryFired. Blocking tiers (rubric/human/hard) re-check every
+	// gate run; only the advisory aggregate is throttled.
+	//
+	// ArtifactAdvisoryFired 标记产物链 advisory 汇总（task-implement，链节点缺失，
+	// artifact-chain-workflow.md §2）已为 本任务发过一次——与 PlanFirstAdvisoryFired
+	// 同款每任务一次的噪音纪律。阻断档（rubric/human/hard）每次 gate 都重查；
+	// 只有 advisory 汇总被节流。
+	ArtifactAdvisoryFired bool `json:"artifact_advisory_fired,omitempty"`
+
+	// ArtifactApprovals holds the human-tier approvals of chain stage artifacts
+	// (artifact-chain-workflow.md §2): stage → approval. The approval signs the
+	// content hash at approval time; drift voids it (complete pre-flight §5
+	// deletes entries whose Hash no longer matches the file).
+	//
+	// ArtifactApprovals 承载链 stage 产物的 human 档审批（artifact-chain-workflow.md
+	// §2）：stage → 审批。审批签的是审批时刻的内容哈希；漂移即作废（complete
+	// pre-flight §5 删除哈希不再匹配文件的条目）。
+	ArtifactApprovals map[string]ArtifactApproval `json:"artifact_approvals,omitempty"`
+
+	// RepairRounds counts review-pass cycles that ran while open findings
+	// existed (loop-back edge review→implement, artifact-chain-workflow.md
+	// 「回边语义」节). When it reaches the schema edge's max_rounds with open
+	// findings remaining, the loop is exhausted → complete is blocked and the
+	// task escalates to a human.
+	//
+	// RepairRounds 统计「带已知问题的复核通过」次数（回边 review→implement，
+	// artifact-chain-workflow.md「回边语义」节）。达到 schema 回边 max_rounds 且
+	// 仍有 open findings → 回环耗尽 → complete 被拦、任务升级人工。
+	RepairRounds int `json:"repair_rounds,omitempty"`
+
+	// ResolvedPrints holds content fingerprints of findings that were resolved
+	// (normalized content sha256[0:16]). A NEW finding whose fingerprint is in
+	// this set is a REVIVAL — the same issue came back after being declared
+	// fixed — which immediately exhausts the loop (progress: fingerprint).
+	//
+	// ResolvedPrints 存放已解决 finding 的内容指纹（规范化内容 sha256[0:16]）。
+	// 新登记 finding 的指纹命中本集 = 复活——同一问题在宣称修复后回来了——立即
+	// 回环耗尽（progress: fingerprint）。
+	ResolvedPrints []string `json:"resolved_prints,omitempty"`
+
+	// LoopExhausted is set when the review→implement repair loop can no longer
+	// converge machine-side: round budget spent, or a resolved finding revived.
+	// It blocks task-complete (escalate to a human); only a human reset
+	// (`forge task finding --reset-loop`) or task abort clears it. nil = 循环
+	// 未耗尽。
+	//
+	// LoopExhausted 标记审查回环机器侧已无法收敛：轮次预算耗尽，或已解决 finding
+	// 复活。阻断 task-complete（升级人工）；仅人工重置（forge task finding
+	// --reset-loop）或 abort 可清除。nil = 循环未耗尽。
+	LoopExhausted *LoopExhaustion `json:"loop_exhausted,omitempty"`
 
 	// ReportedFindings is the set of advisory finding fingerprints already shown to
 	// the agent by this task's verify scans (see advisory_dedup.go): cheat-scan

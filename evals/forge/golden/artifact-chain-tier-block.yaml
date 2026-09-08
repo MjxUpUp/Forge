@@ -1,0 +1,55 @@
+# golden 用例：产物链分档执法（artifact-chain-workflow.md 落地收尾）。
+# 契约：schema 声明 hard 档（requires 前置）时，未登记前置产物的代码任务到达
+# task-implement 必须被 BLOCKED（"前置 stage"），且逃生舱文案在场。
+# 审计溯源：v1.53.0 发版审计「验证门禁族 0 golden 覆盖产物链」缺口的收口用例。
+# 探测：probe 一个 sh -c 完成 任务启动(--artifact 登记 spec)→schema 注入→
+#       代码改动→gate。schema 源经 files 落 fixture（schema-src.yaml）再拷入
+#       FORGE_DATA_HOME/projects/* glob（task start 落 state 时创建目录）。
+#       git 身份内联（隔离 HOME 无全局 gitconfig，wedge 同款）。
+id: artifact-chain-tier-block
+gate: task-implement
+kind: defective
+expect: flagged
+description: "hard 档前置产物缺失 → task-implement 必须 BLOCKED（前置缺失/产物未登记）"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.chain
+
+      go 1.25
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("g") }
+  - path: spec-src.txt
+    content: |
+      # spec
+
+      - accept: sh check.sh :: OK
+  - path: schema-src.yaml
+    content: |
+      version: 1
+      stages:
+        - name: proposal
+        - name: spec
+          mode: hard
+          requires: [proposal]
+        - name: design
+          mode: human
+          requires: [spec]
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init || exit 1
+    # {forge} 在 Windows 上是含反斜杠的 exe 路径——必须双引号包裹（sh 保留字面
+    # 反斜杠，exec 接受；不引号会被当转义符吞掉，Windows 重放必挂）。
+    "{forge}" task start --ref golden/chain --branch --artifact "spec=spec-src.txt" >/dev/null 2>&1 || exit 1
+    for d in "$FORGE_DATA_HOME"/projects/*/; do mkdir -p "$d/schemas"; cp schema-src.yaml "$d/schemas/schema.yaml"; done
+    printf 'package main\n\nfunc main() { println("g2") }\n' > main.go
+    "{forge}" task gate task-implement 2>&1
+detect_any:
+  - "stdout_contains:BLOCKED"
+  - "stdout_contains:proposal"

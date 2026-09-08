@@ -42,11 +42,42 @@ func artifactFrontmatter(taskRef, stage string, updatedAt time.Time) string {
 		taskRef, stage, updatedAt.Format(time.RFC3339))
 }
 
+// ValidateStageName rejects stage names that could escape the specs directory
+// or collide with reserved entries: stage lands in
+// specs/<ref>/<stage>.md via WriteArtifact, so path separators/whitespace (CLI
+// -supplied, NOT schema-validated — audit P1-2) are refused here at the single
+// choke point that protects every caller.
+//
+// ValidateStageName 拒绝可能越出 specs 目录或撞保留条目的 stage 名：stage 直落
+// specs/<ref>/<stage>.md（来自 CLI 参数，不经 schema 校验——审查 P1-2），在此
+// 唯一咽喉点统一防护所有调用方。禁路径分隔符与空白、禁 . 开头（隐藏文件）、
+// 禁保留名 attempts（审查失败归档目录）。
+func ValidateStageName(stage string) error {
+	switch {
+	case strings.TrimSpace(stage) == "":
+		return fmt.Errorf("stage 名不能为空")
+	case stage == reservedAttemptsDir:
+		return fmt.Errorf("stage 名 %q 保留（审查失败归档目录）", stage)
+	case strings.ContainsAny(stage, "/\\ \t\n\r"):
+		return fmt.Errorf("stage 名 %q 含非法字符（禁路径分隔符与空白——越出 specs 目录的写入被拒绝）", stage)
+	case strings.HasPrefix(stage, "."):
+		return fmt.Errorf("stage 名 %q 以 . 开头（隐藏文件）", stage)
+	}
+	return nil
+}
+
+// reservedAttemptsDir 是 specs/<ref>/ 内的审查归档目录名（ArchiveAttempt 写入侧
+// 同名常量的语义锚点；目录名由 round-%03d 模板拼接）。
+const reservedAttemptsDir = "attempts"
+
 // WriteArtifact writes a stage artifact for the task and returns its ArtifactRef. It does NOT mutate TaskState.
 //
 // WriteArtifact 写任务的阶段产物并返回其 ArtifactRef。它不改动 TaskState——调用方在
 // 自己的 SaveTaskState 前把引用折进去（写文件与改状态分离，锁语义由调用方持有）。
 func WriteArtifact(root, taskRef, stage, content string) (ArtifactRef, error) {
+	if err := ValidateStageName(stage); err != nil {
+		return ArtifactRef{}, err
+	}
 	dir := SpecsDir(root, taskRef)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ArtifactRef{}, err
@@ -70,12 +101,26 @@ func VerifyArtifact(root string, ref ArtifactRef) bool {
 	if ref.Path == "" || ref.Hash == "" {
 		return false
 	}
+	cur := ArtifactCurrentHash(root, ref)
+	return cur != "" && cur == ref.Hash
+}
+
+// ArtifactCurrentHash re-hashes the referenced file and returns the ref-format
+// hash ("" when unreadable). Consumed by the artifact-chain gate's human tier
+// (approval-hash match is a fact) and the complete drift pre-flight.
+//
+// ArtifactCurrentHash 重算引用文件哈希并返回 ref 同格式哈希（不可读返回空串）。
+// 消费方：产物链 gate 的 human 档（审批哈希匹配是事实）与 complete 漂移 pre-flight。
+func ArtifactCurrentHash(root string, ref ArtifactRef) string {
+	if ref.Path == "" {
+		return ""
+	}
 	data, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(root), filepath.FromSlash(ref.Path)))
 	if err != nil {
-		return false
+		return ""
 	}
 	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])[:16] == ref.Hash
+	return hex.EncodeToString(sum[:])[:16]
 }
 
 // attemptVerdict 是归档尝试轮次的机器可读半边。

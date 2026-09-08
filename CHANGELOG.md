@@ -7,6 +7,32 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.53.0](https://github.com/MjxUpUp/Forge/compare/v1.52.0...v1.53.0) (2026-09-08)
+
+
+### Features
+
+* **artifact-drill:** forge eval artifact-drill——产物链行为级演练沉淀 + 发版链路接线 ([963db17](https://github.com/MjxUpUp/Forge/commit/963db177747a504d058b892fe452818a24e4b817))
+
+
+### Bug Fixes
+
+* **artifact-drill:** CI 守卫修正——release needs 链守卫纳入 drill 位 + raw string 字面 \n 改写 ([6b61df5](https://github.com/MjxUpUp/Forge/commit/6b61df5808f82564996ea6eed8a9fde159b3d3a7))
+
+## [1.52.0](https://github.com/MjxUpUp/Forge/compare/v1.51.0...v1.52.0) (2026-09-07)
+
+
+### Features
+
+* **artifact-chain:** 产物链工作流化——L6 接线 + schema.yaml 分档门禁 + spec→acceptance 提取 ([43b9467](https://github.com/MjxUpUp/Forge/commit/43b94679f635c18ee2dfae683585f89e0d72e3de))
+* **leverage-p0:** 六杠杆点 P0 批次——L5 命令面冻结仪表 + L1 楔子演练 + L2 spec-as-gate v2 数据形状 ([3af1301](https://github.com/MjxUpUp/Forge/commit/3af1301f4be515f8d1747143a2e2d05f4e2e6323))
+
+
+### Bug Fixes
+
+* **artifact-chain:** 复核 P2 修正——审批作废双侧删除防 ScoreTask 回写复活 + fail-open 补审计行 + escape 全段跳过语义 ([f0d4bd5](https://github.com/MjxUpUp/Forge/commit/f0d4bd53df6dcaefdd8843d524c7d39d81adc8a2))
+* **artifact-chain:** 独立审查修正——P0 flags 未注册 + P1 审批误杀/路径穿越 ([fa50594](https://github.com/MjxUpUp/Forge/commit/fa5059403189a9725771e6ba8da999339fe71a0e))
+
 ## [1.51.0](https://github.com/MjxUpUp/Forge/compare/v1.50.0...v1.51.0) (2026-09-06)
 
 

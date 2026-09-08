@@ -21,6 +21,31 @@
           "type": "json",
           "path": "plugins/forge-dsh/package.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/platforms/darwin-arm64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/platforms/darwin-x64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/platforms/linux-arm64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/platforms/linux-x64/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "npm/platforms/win32-x64/package.json",
+          "jsonpath": "$.version"
         }
       ]
     }

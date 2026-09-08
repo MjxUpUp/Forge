@@ -87,7 +87,10 @@ var allCheckNames = []CheckName{
 	CheckCrossRepoImpact, CheckProjectSync, CheckTaskStarted,
 	CheckEvalMetricsIncomplete, CheckEvalGoldenRun, CheckEvalGoldenRotate, CheckEvalJudgeWeak,
 	CheckEvalTrapsRun, CheckEvalRun, CheckEvalDecompose, CheckEvalResumeDrill, CheckEvalAuditForged,
+	CheckWedgeDrill,
 	CheckSelfReport, CheckGatePush, CheckTaskStalled, CheckSyncVersionSkew,
+	CheckLoopExhausted,
+	CheckArtifactChain, CheckArtifactDrift, CheckArtifactDrill,
 }
 
 // AllCheckNames 返回 CheckName roster 的排序副本（compat 面 2 / dashboards 消费）。

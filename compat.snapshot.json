@@ -114,6 +114,9 @@
       ]
     },
     {
+      "path": "forge eval artifact-drill"
+    },
+    {
       "path": "forge eval audit-verify"
     },
     {
@@ -204,6 +207,9 @@
       "flags": [
         "dir"
       ]
+    },
+    {
+      "path": "forge eval wedge-drill"
     },
     {
       "path": "forge freeze",
@@ -657,6 +663,20 @@
       ]
     },
     {
+      "path": "forge task artifact",
+      "flags": [
+        "approve",
+        "by",
+        "extract",
+        "file",
+        "json",
+        "list",
+        "set",
+        "stdin",
+        "verify"
+      ]
+    },
+    {
       "path": "forge task assign",
       "flags": [
         "by",
@@ -770,7 +790,9 @@
       "flags": [
         "content",
         "evidence",
+        "note",
         "ref",
+        "reset-loop",
         "resolve",
         "source"
       ]
@@ -819,6 +841,7 @@
       "path": "forge task list",
       "flags": [
         "json",
+        "plan-conversion",
         "timeline"
       ]
     },
@@ -852,6 +875,7 @@
       "path": "forge task override",
       "flags": [
         "acceptance-gate",
+        "artifact-chain",
         "doc-gate",
         "ref",
         "skill-decisions",
@@ -915,6 +939,7 @@
       "path": "forge task start",
       "flags": [
         "accept",
+        "artifact",
         "assignee",
         "base",
         "branch",
@@ -1049,6 +1074,8 @@
     }
   ],
   "checks": [
+    "artifact-chain",
+    "artifact-drift",
     "assertion-check",
     "attribution",
     "auto-compile",
@@ -1059,6 +1086,7 @@
     "conventions-lint",
     "cross-repo-impact",
     "escape-hatch",
+    "eval-artifact-drill",
     "eval-audit-forged",
     "eval-decompose",
     "eval-golden-rotate",
@@ -1068,9 +1096,11 @@
     "eval-resume-drill",
     "eval-run",
     "eval-traps-run",
+    "eval-wedge-drill",
     "file-sentinel",
     "gate-push",
     "kimi-plugin-stale",
+    "loop-exhausted",
     "plan-first",
     "project-sync",
     "review-pass",
@@ -1091,6 +1121,7 @@
   ],
   "escapes": [
     "FORGE_ACCEPTANCE_GATE",
+    "FORGE_ARTIFACT_CHAIN",
     "FORGE_DOC_GATE",
     "FORGE_GATE_PUSH",
     "FORGE_HELDOUT",
@@ -1333,11 +1364,22 @@
       "acceptance[].accepted_base_commit",
       "acceptance[].accepted_change_hash",
       "acceptance[].accepted_head_commit",
+      "acceptance[].assertions",
+      "acceptance[].assertions[].arg",
+      "acceptance[].assertions[].expected",
+      "acceptance[].assertions[].negate",
+      "acceptance[].assertions[].type",
       "acceptance[].expected",
       "acceptance[].output",
       "acceptance[].passed",
       "acceptance[].run",
       "acceptance_foreign",
+      "artifact_advisory_fired",
+      "artifact_approvals",
+      "artifact_approvals.spec",
+      "artifact_approvals.spec.at",
+      "artifact_approvals.spec.by",
+      "artifact_approvals.spec.hash",
       "artifacts",
       "artifacts[].kind",
       "artifacts[].note",
@@ -1445,10 +1487,15 @@
       "lease.holder_node",
       "lease.ts_hlc",
       "lease.ttl_sec",
+      "loop_exhausted",
+      "loop_exhausted.at",
+      "loop_exhausted.detail",
+      "loop_exhausted.reason",
       "next_steps",
       "origin_tool",
       "overrides",
       "overrides.acceptance_gate",
+      "overrides.artifact_chain",
       "overrides.doc_gate",
       "overrides.skill_decisions",
       "overrides.test_coverage",
@@ -1458,6 +1505,7 @@
       "plan_first_advisory_fired",
       "plan_scope",
       "reported_findings",
+      "resolved_prints",
       "resume_stale",
       "review_passed",
       "review_rounds",

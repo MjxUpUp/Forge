@@ -121,6 +121,22 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
+	// artifact-chain drift pre-flight（artifact-chain-workflow.md §5）：产物引用在
+	// 登记后被手改 = 登记的事实失效——hard/human 档阻断 complete；advisory/rubric
+	// 档 warn 留痕；漂移一律作废该 stage 审批（在 CheckArtifactChainDrift 内）。
+	if driftReasons := taskpipeline.CheckArtifactChainDrift(root, state); len(driftReasons) > 0 {
+		return fmt.Errorf(`产物链漂移 pre-flight 未通过: %s；修复: forge task artifact --set <stage> --file <path> 重登记（human 档再 --approve）。逃生（落 checklog 审计，降 evidence 强度）: forge task override --artifact-chain disable 或 FORGE_ARTIFACT_CHAIN=disable`,
+			strings.Join(driftReasons, `; `))
+	}
+
+	// 回环耗尽 pre-flight（artifact-chain-workflow.md「回边语义」节）：审查回环
+	// 轮次预算耗尽或已解决 finding 复活 = 机器侧迭代到此为止——升级人工，complete
+	// 被拦。终止权外置：耗尽后唯一出口是人（--reset-loop / abort）。
+	if loopReasons := taskpipeline.CheckLoopExhausted(root, state); len(loopReasons) > 0 {
+		return fmt.Errorf(`回环耗尽 pre-flight 未通过: %s；人工裁决出口: forge task finding --reset-loop --note "<裁决>"（审计行落地）后重试，或 forge task abort。逃生（落 checklog 审计，降 evidence 强度）: FORGE_ARTIFACT_CHAIN=disable`,
+			strings.Join(loopReasons, `; `))
+	}
+
 	// doc pre-flight（输出→回检循环的流程节点）：任务变更了 markdown 产物时，
 	// complete 前 L1 确定性 lint 全过 + L2 回检证据（DocReview fresh/Passed/
 	// ≥75 分）+ 零未决 Critical。无文档产物放行；逃生舱与 acceptance 对称。

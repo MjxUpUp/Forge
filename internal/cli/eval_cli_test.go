@@ -142,6 +142,38 @@ func TestEvalResumeDrillE2E(t *testing.T) {
 	}
 }
 
+// TestEvalWedgeDrillE2E 钉住楔子演练全套通过（L1，leverage-points-landing.md）：
+// 首证据路径 init→accept(红)→verify 如实挂→修→verify 绿→trace 证据链，在隔离
+// HOME 下端到端可走通——TTFE（首证据时间）的机器可验形态，兼 P0 批次发布冒烟。
+// 失败路径被刻意钉住：只见过通过的证据不是证据，verify 红态必须如实挂。
+func TestEvalWedgeDrillE2E(t *testing.T) {
+	out, _, code := runForge(t, repoRoot, "eval", "wedge-drill")
+	if code != 0 {
+		t.Fatalf("wedge-drill 应通过（exit %d）：%s", code, out)
+	}
+	for _, want := range []string{"WEDGE-DRILL PASS", "verify(红·如实挂)", "trace 证据链"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("输出缺 %q: %s", want, out)
+		}
+	}
+}
+
+// TestEvalArtifactDrillE2E 钉住产物链演练全套通过（artifact-chain-workflow.md
+// 落地收尾）：登记→hard 前置阻断→human 产物/审批阻断→链齐放行→提取的验收实跑
+// →手改产物 complete 漂移拦截→修复后放行，在隔离 HOME 下端到端可走通——发布
+// workflow 的 drill 门禁位与 nightly 消费的同一条链。
+func TestEvalArtifactDrillE2E(t *testing.T) {
+	out, _, code := runForge(t, repoRoot, "eval", "artifact-drill")
+	if code != 0 {
+		t.Fatalf("artifact-drill 应通过（exit %d）：%s", code, out)
+	}
+	for _, want := range []string{"ARTIFACT-DRILL PASS", "gate(阻断·hard 前置缺失)", "gate(阻断·审批缺失)", "complete(阻断·漂移)", "complete(修复后放行)"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("输出缺 %q: %s", want, out)
+		}
+	}
+}
+
 func TestEvalOtelE2E(t *testing.T) {
 	// --limit 1 最小化输出；断言 OTLP 骨架与 scope 契约（versioned mapper 形状）。
 	// 隔离 HOME 下 checklog 可能为空——span 级断言（forge.session/events 属性）由

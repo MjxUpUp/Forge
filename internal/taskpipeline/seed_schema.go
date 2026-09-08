@@ -26,6 +26,11 @@ func SeedTaskStateForSchema() any {
 		Acceptance: []tasktypes.AcceptanceCriterion{{
 			Run: "r", Expected: "e", Passed: true, Output: "o",
 			AcceptedHeadCommit: "abc", AcceptedBaseCommit: "abc", AcceptedChangeHash: "h",
+			// spec-as-gate v2（leverage-points-landing.md L2）：断言集的嵌套键必须
+			// 在种子中出现——漏填的键不在序列化承诺面，删改不会触发 golden 棘轮。
+			// Arg/Negate 填非零值：零值会被 omitempty 吞掉，键就退出承诺面（种子
+			// 纪律"值无意义、键必须满"）。
+			Assertions: []tasktypes.Assertion{{Type: "contains", Arg: "a", Expected: "e", Negate: true}},
 		}},
 	}
 	s.CompletedAt = &now
@@ -45,7 +50,7 @@ func SeedTaskStateForSchema() any {
 	s.Integrity = &tasktypes.StateIntegrity{KeyID: "k", Alg: "a", Sig: "s"}
 	s.Overrides = tasktypes.TaskOverrides{
 		WorkActivity: "disable", TestCoverage: "disable", AcceptanceGate: "disable",
-		SkillDecisions: "disable", DocGate: "disable",
+		SkillDecisions: "disable", DocGate: "disable", ArtifactChain: "disable",
 	}
 	s.ExternalOrigin = tasktypes.ExternalOrigin{Tracker: "github", IssueID: "1", Identifier: "org/repo#1", URL: "u"}
 	s.Assignment = &tasktypes.Assignment{
@@ -78,6 +83,15 @@ func SeedTaskStateForSchema() any {
 	s.ReviewedHeadCommit = "abc"
 	s.AcceptanceForeign = true
 	s.PlanFirstAdvisoryFired = true
+	// 产物链工作流（artifact-chain-workflow.md §7 seed 纪律）：artifact_advisory_fired /
+	// artifact_approvals（含嵌套 by/at/hash）/ overrides.artifact_chain 三键必须出现在
+	// 序列化承诺面——漏填 = 棘轮盲区（见文件头注释）。
+	s.ArtifactAdvisoryFired = true
+	s.ArtifactApprovals = map[string]tasktypes.ArtifactApproval{"spec": {By: "seed", At: now, Hash: "h"}}
+	// 回边语义（artifact-chain-workflow.md「回边语义」节 seed 纪律）：
+	// resolved_prints / loop_exhausted（含嵌套 reason/detail/at）键必须在承诺面。
+	s.ResolvedPrints = []string{"seedprint"}
+	s.LoopExhausted = &tasktypes.LoopExhaustion{Reason: tasktypes.LoopReasonRounds, Detail: "d", At: now}
 	// findings/review_rounds 的嵌套可选键（round/change_hash/note）。
 	s.Findings = append(s.Findings, tasktypes.Finding{ID: "f2", Content: "c", Source: "s", Status: "open", Round: 1, ChangeHash: "h"})
 	s.ReviewRounds = append(s.ReviewRounds, tasktypes.ReviewRound{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now, Note: "n"})
