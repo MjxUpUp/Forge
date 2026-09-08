@@ -152,7 +152,6 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println(strings.Repeat("─", 40))
 	}
 
-
 	if len(state.PlanScope) > 0 {
 		fmt.Printf("计划改动白名单（%d 条）：\n", len(state.PlanScope))
 		for _, s := range state.PlanScope {
