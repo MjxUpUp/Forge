@@ -102,3 +102,17 @@
 - 自动生成产物（gate 只守事实，不代笔）。
 - tasks.md 节点与 `specs.projection=branch` 投影（Checklist 已承担；投影属 §9 可选项，待需求出现）。
 - 跨项目 schema 共享、遥测、phone-home。
+
+---
+
+## 自举（2026-09-08 追记）
+
+Forge 仓启用自身产物链（v1.53.0 审计遗留 #4 收口）：schema 实件落
+`<DataDir>/schemas/schema.yaml`（用户级数据目录不入 VCS，内容在此存档）——
+`proposal`(advisory) / `spec`(**hard**, requires proposal) / `design`(advisory) /
+`plan`(advisory)。自本节合并起，本仓代码任务的 task-implement gate 要求 spec 产物
+先于 proposal 登记（`forge task artifact --set`），advisory 三节点随任务自愿。
+同批收口：产物链 golden 用例 `artifact-chain-tier-block`（标注集 16→17）、
+release.yml cosign 身份硬化（精确锚定 release.yml@refs/tags/vX.Y.Z）+ 演练报告
+workflow artifacts 留痕、hookdispatch 包级测试隔离（用户级 store 1159 孤儿目录
+污染源根治）。
