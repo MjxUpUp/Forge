@@ -1,6 +1,7 @@
 package hookdispatch
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -110,12 +111,15 @@ func TestRunHook_AdoptsPayloadCwd(t *testing.T) {
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
+	// 并发排水（同 captureStdout 家族修复）：先跑后读在输出超管道缓冲时死锁。
+	done := make(chan []byte, 1)
+	go func() { b, _ := io.ReadAll(r); done <- b }()
 
 	RunHook(nil, []string{"tool-track"})
 
 	w.Close()
 	os.Stdout = oldStdout
-	r.Read(make([]byte, 8192))
+	<-done
 
 	toollogPath := filepath.Join(forgedata.DataDirFor(projRoot), "toollog.jsonl")
 	data, err := os.ReadFile(toollogPath)
