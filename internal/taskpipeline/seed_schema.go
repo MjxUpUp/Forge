@@ -88,6 +88,10 @@ func SeedTaskStateForSchema() any {
 	// 序列化承诺面——漏填 = 棘轮盲区（见文件头注释）。
 	s.ArtifactAdvisoryFired = true
 	s.ArtifactApprovals = map[string]tasktypes.ArtifactApproval{"spec": {By: "seed", At: now, Hash: "h"}}
+	// 回边语义（artifact-chain-workflow.md「回边语义」节 seed 纪律）：
+	// resolved_prints / loop_exhausted（含嵌套 reason/detail/at）键必须在承诺面。
+	s.ResolvedPrints = []string{"seedprint"}
+	s.LoopExhausted = &tasktypes.LoopExhaustion{Reason: tasktypes.LoopReasonRounds, Detail: "d", At: now}
 	// findings/review_rounds 的嵌套可选键（round/change_hash/note）。
 	s.Findings = append(s.Findings, tasktypes.Finding{ID: "f2", Content: "c", Source: "s", Status: "open", Round: 1, ChangeHash: "h"})
 	s.ReviewRounds = append(s.ReviewRounds, tasktypes.ReviewRound{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now, Note: "n"})

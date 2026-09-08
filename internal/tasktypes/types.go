@@ -466,6 +466,38 @@ type TaskState struct {
 	// pre-flight §5 删除哈希不再匹配文件的条目）。
 	ArtifactApprovals map[string]ArtifactApproval `json:"artifact_approvals,omitempty"`
 
+	// RepairRounds counts review-pass cycles that ran while open findings
+	// existed (loop-back edge review→implement, artifact-chain-workflow.md
+	// 「回边语义」节). When it reaches the schema edge's max_rounds with open
+	// findings remaining, the loop is exhausted → complete is blocked and the
+	// task escalates to a human.
+	//
+	// RepairRounds 统计「带已知问题的复核通过」次数（回边 review→implement，
+	// artifact-chain-workflow.md「回边语义」节）。达到 schema 回边 max_rounds 且
+	// 仍有 open findings → 回环耗尽 → complete 被拦、任务升级人工。
+	RepairRounds int `json:"repair_rounds,omitempty"`
+
+	// ResolvedPrints holds content fingerprints of findings that were resolved
+	// (normalized content sha256[0:16]). A NEW finding whose fingerprint is in
+	// this set is a REVIVAL — the same issue came back after being declared
+	// fixed — which immediately exhausts the loop (progress: fingerprint).
+	//
+	// ResolvedPrints 存放已解决 finding 的内容指纹（规范化内容 sha256[0:16]）。
+	// 新登记 finding 的指纹命中本集 = 复活——同一问题在宣称修复后回来了——立即
+	// 回环耗尽（progress: fingerprint）。
+	ResolvedPrints []string `json:"resolved_prints,omitempty"`
+
+	// LoopExhausted is set when the review→implement repair loop can no longer
+	// converge machine-side: round budget spent, or a resolved finding revived.
+	// It blocks task-complete (escalate to a human); only a human reset
+	// (`forge task finding --reset-loop`) or task abort clears it. nil = 循环
+	// 未耗尽。
+	//
+	// LoopExhausted 标记审查回环机器侧已无法收敛：轮次预算耗尽，或已解决 finding
+	// 复活。阻断 task-complete（升级人工）；仅人工重置（forge task finding
+	// --reset-loop）或 abort 可清除。nil = 循环未耗尽。
+	LoopExhausted *LoopExhaustion `json:"loop_exhausted,omitempty"`
+
 	// ReportedFindings is the set of advisory finding fingerprints already shown to
 	// the agent by this task's verify scans (see advisory_dedup.go): cheat-scan
 	// fingerprints are two-part (ruleID|file:line); unused-scan fingerprints are

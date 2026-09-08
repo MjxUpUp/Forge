@@ -107,6 +107,8 @@ func init() {
 	taskFindingCmd.Flags().String("evidence", "", "证据（文件:行 / 命令输出）")
 	taskFindingCmd.Flags().String("resolve", "", "要标 fixed 的发现 ID（与 --content 互斥）")
 	taskFindingCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
+	taskFindingCmd.Flags().Bool("reset-loop", false, "人工裁决：清除回环耗尽态并清零修复轮次（--note 必填；审计行落地，终止权外置的唯一出口）")
+	taskFindingCmd.Flags().String("note", "", "--reset-loop 的人工裁决说明（必填，可审计）")
 
 	taskAttachCmd.Flags().String("ref", "", "任务引用（必填：要锚定到哪个任务）")
 	taskAttachCmd.Flags().String("tool", "", "该 session 所属工具（默认探测当前工具）")
@@ -890,16 +892,38 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// 回环人工重置（「回边语义」机制三·终止权外置）：exhausted 后唯一出口是人。
+	// --note 必填（裁决可审计），审计行落地。
+	if resetLoop, _ := cmd.Flags().GetBool("reset-loop"); resetLoop {
+		note, _ := cmd.Flags().GetString("note")
+		if strings.TrimSpace(note) == "" {
+			return fmt.Errorf("--reset-loop 需要 --note <人工裁决说明>（裁决必须可审计）")
+		}
+		if err := taskpipeline.ResetLoopExhaustion(root, state, note); err != nil {
+			return err
+		}
+		fmt.Println("✓ 回环已重置（轮次清零、耗尽态清除）——ResolvedPrints 保留，复活仍会被抓")
+		return nil
+	}
 	if resolveID, _ := cmd.Flags().GetString("resolve"); resolveID != "" {
+		var resolvedContent string
 		err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 			if !s.ResolveFinding(resolveID) {
 				return fmt.Errorf("未找到发现 ID %q（forge task resume 查看现有 ID）", resolveID)
+			}
+			// 记住被解决 finding 的内容指纹（回边语义·progress: fingerprint）：
+			// 同一问题此后再登记 = 复活 → 回环立即耗尽。
+			for i := range s.Findings {
+				if s.Findings[i].ID == resolveID {
+					resolvedContent = s.Findings[i].Content
+				}
 			}
 			return nil
 		})
 		if err != nil {
 			return err
 		}
+		taskpipeline.RecordResolvedPrint(root, state, resolvedContent)
 		fmt.Printf("✓ 发现 [%s] 已标 fixed\n", resolveID)
 		return nil
 	}
@@ -907,6 +931,9 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 	if content == "" {
 		return fmt.Errorf("需要 --content <text> 新增发现，或 --resolve <id> 标 fixed")
 	}
+	// 复发检测（回边语义·progress: fingerprint）：指纹命中 ResolvedPrints =
+	// 已解决 finding 复活 → 回环立即耗尽（持久化在 CheckFindingRevival 内）。
+	taskpipeline.CheckFindingRevival(root, state, content)
 	source, _ := cmd.Flags().GetString("source")
 	if source == "" {
 		source = ResolveOriginTool(root, "")

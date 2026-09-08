@@ -362,6 +362,19 @@ const (
 	// nightly 消费它作为产物链的行为级冒烟。与 artifact-drift（漂移观测）是两个
 	// 概念：本名是演练执行记录。
 	CheckArtifactDrill CheckName = "eval-artifact-drill"
+	// CheckLoopExhausted records the review→implement loop exhaustion state
+	// (artifact-chain-workflow.md「回边语义」节): Passed=false rows are the
+	// escalation record when complete is blocked (round budget spent on an open
+	// finding, or a resolved finding revived); Passed=true Level=warn rows are
+	// the human reset decision (`forge task finding --reset-loop --note`).
+	// Deterministic — both rows come from forge's own ledger arithmetic, not
+	// agent claims.
+	//
+	// CheckLoopExhausted 记录审查回环耗尽状态（「回边语义」节）：Passed=false 为
+	// complete 被拦时的升级记录（轮次预算耗尽或已解决 finding 复活）；
+	// Passed=true + warn 为人工重置裁决（forge task finding --reset-loop --note）。
+	// deterministic——两类行都出自 forge 自身账本运算，非 agent 自述。
+	CheckLoopExhausted CheckName = "loop-exhausted"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
