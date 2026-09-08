@@ -201,6 +201,13 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（review-pass 未落盘）: %v\n", recErr)
 		}
 		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=%s）\n", state.TaskRef, head)
+		// 回边（review→implement，artifact-chain-workflow.md「回边语义」节）：
+		// open findings 存在的复核通过计一轮修复轮——轮龄达到 schema 回边预算
+		// （max_rounds，缺省 3）→ 回环耗尽标记持久化，complete 被拦升级人工。
+		// 全机械判定：轮龄 = len(ReviewRounds) - Finding.Round + 1，复用既有轮次结构。
+		if marker := taskpipeline.MarkLoopExhaustedIfDue(root, state); marker != nil {
+			fmt.Printf("🚪 回环耗尽（%s: %s）——升级人工：forge task finding --reset-loop --note \"<人工裁决>\"\n", marker.Reason, marker.Detail)
+		}
 		if selfRefresh {
 			if selfRefreshViaNote {
 				fmt.Println("⚠ 本次为带 --note 的基线刷新（内容已变更）：--note 是自供文本、forge 无法验证复审真发生过，已记 self-refresh WARN 审计区分于普通轮次。")
