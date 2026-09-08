@@ -6,6 +6,9 @@ package evalkit
 // 同款纪律）。
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -81,5 +84,95 @@ func TestArtifactScriptShape(t *testing.T) {
 	}
 	if !startFound {
 		t.Fatal("缺 start --artifact 登记步骤")
+	}
+}
+
+// TestArtifactScriptFixtureCommandsExecute 真实执行脚本里改写过\\n转义的三条
+// sh 命令（fixture 红/绿、tamper），断言落盘内容——转义写法改坏时此处红，而非
+// 等到 CI 深处的 drill 全链才红。
+func TestArtifactScriptFixtureCommandsExecute(t *testing.T) {
+	steps := artifactScript("/fake/forge", t.TempDir())
+	runSH := func(t *testing.T, st wedgeStep, dir string, env map[string]string) {
+		t.Helper()
+		// st.argv 形如 ["sh", "-c", "<script>"]——剥掉前两个元素后整体透传。
+		args := append([]string{"sh", "-c"}, st.argv[2:]...)
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		for _, e := range os.Environ() {
+			// 宿主的 FORGE_DATA_HOME 会遮蔽测试注入的同名键（getenv 取首个）——滤掉。
+			if strings.HasPrefix(e, "FORGE_DATA_HOME=") {
+				continue
+			}
+			cmd.Env = append(cmd.Env, e)
+		}
+		for _, e := range st.env {
+			cmd.Env = append(cmd.Env, e)
+		}
+		for k, v := range env {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("sh 执行失败: %v\n%s", err, out)
+		}
+	}
+
+	dir := t.TempDir()
+	// fixture 步含 git add/commit——先建仓（身份由步内联 -c 提供，与真演练一致）。
+	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	var fixture, green, tamper *wedgeStep
+	for i := range steps {
+		switch steps[i].name {
+		case "fixture":
+			fixture = &steps[i]
+		case "fixture(绿)":
+			green = &steps[i]
+		case "tamper(手改产物)":
+			tamper = &steps[i]
+		}
+	}
+	if fixture == nil || green == nil || tamper == nil {
+		t.Fatal("三条 sh 步骤缺失")
+	}
+
+	// 红态 fixture：check 脚本如实失败 + 三个产物源文件就位。
+	runSH(t, *fixture, dir, map[string]string{"SRC": filepath.Join(dir, "src")})
+	if _, err := os.Stat(filepath.Join(dir, "src", "spec.txt")); err != nil {
+		t.Fatalf("spec.txt 未落盘: %v", err)
+	}
+	spec, _ := os.ReadFile(filepath.Join(dir, "src", "spec.txt"))
+	if !strings.Contains(string(spec), "accept: sh main_check.sh :: ALL-GOOD") {
+		t.Fatalf("spec.txt 缺 accept 行: %s", spec)
+	}
+	// 红态断言必须在 fixture 目录跑（缺 Dir 会跑在测试进程 cwd、对缺失文件恒失败
+	// ——复审指出的死断言），并断言输出正是红态文案。
+	red := exec.Command("sh", "main_check.sh")
+	red.Dir = dir
+	redOut, redErr := red.Output()
+	if redErr == nil || !strings.Contains(string(redOut), "NOT-READY") {
+		t.Fatalf("红态 check 脚本必须失败且输出 NOT-READY: out=%q err=%v", redOut, redErr)
+	}
+	// 绿态 fixture：转义改写后 check 脚本必须输出 ALL-GOOD（\\n 在 sh printf 展开为换行）。
+	runSH(t, *green, dir, nil)
+	check := exec.Command("sh", "main_check.sh")
+	check.Dir = dir
+	out, err := check.Output()
+	if err != nil || string(out) != "ALL-GOOD\n" {
+		t.Fatalf("绿态 check 输出不符: %q err=%v", out, err)
+	}
+	// tamper：对 glob 文件追加内容（无匹配时必须非零，不静默成功）。
+	home := t.TempDir()
+	art := filepath.Join(home, "projects", "k", "specs", "test-artifact-drill", "design.md")
+	if err := os.MkdirAll(filepath.Dir(art), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(art, []byte("# design\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runSH(t, *tamper, dir, map[string]string{"FORGE_DATA_HOME": home})
+	tampered, err := os.ReadFile(art)
+	if err != nil || !strings.Contains(string(tampered), "tampered") {
+		t.Fatalf("tamper 应经 glob 追加到产物: %q err=%v", tampered, err)
 	}
 }
