@@ -20,6 +20,7 @@
   ×2（未读即 Edit 拦 / Read 后 Edit 放行）+ hazard-guard ×2（force push 拦 /
   临时区清理豁免）——五门禁 16 例，recall 7/7、fpr 0/9、确定性 1.0。
   历史反哺纪律：拦截事件只反哺 recall 侧；"该拦没拦"的逃逸样本需人工补。
+- 2026-09-08 产物链扩集（v1.53.0 审计遗留收口）：artifact-chain ×1（hard 档前置缺失必拦）——六门禁 17 例，recall 8/8、fpr 0/9、确定性 1.0。
 - 探测卫生教训（2026-09-04）：detect 信号用 FAIL [gate] 前缀而非 quarantine
   子串——后者会命中 file-sentinel 的 fail-open WARN 文案（"跳过隔离保护用户
   工作"恰是正确行为）；fixture 的 git commit 必须内联身份（隔离 HOME 无全局
