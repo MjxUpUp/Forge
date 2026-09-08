@@ -425,6 +425,9 @@
       ]
     },
     {
+      "path": "forge registry remove"
+    },
+    {
       "path": "forge review"
     },
     {

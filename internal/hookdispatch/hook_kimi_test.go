@@ -148,13 +148,18 @@ func captureOutput(t *testing.T, fn func() error) (stdout, stderr string, err er
 	os.Stdout, os.Stderr = wOut, wErr
 	defer func() { os.Stdout, os.Stderr = oldOut, oldErr }()
 
+	// 并发排水先于 fn（rationale 同 captureStdout：管道缓冲 ~4KB，hazard 阻断
+	// 信封 ~4.7KB，「先跑后读」实测死锁）。
+	outCh := make(chan []byte, 1)
+	errCh := make(chan []byte, 1)
+	go func() { b, _ := io.ReadAll(rOut); outCh <- b }()
+	go func() { b, _ := io.ReadAll(rErr); errCh <- b }()
+
 	err = fn()
 
 	wOut.Close()
 	wErr.Close()
-	outBytes, _ := io.ReadAll(rOut)
-	errBytes, _ := io.ReadAll(rErr)
-	return string(outBytes), string(errBytes), err
+	return string(<-outCh), string(<-errCh), err
 }
 
 func TestEmitKimiOutput_Pass(t *testing.T) {
