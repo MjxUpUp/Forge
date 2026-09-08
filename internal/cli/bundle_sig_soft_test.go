@@ -32,12 +32,14 @@ func TestWriteBundleSigRespectingPolicy_SoftPathKeepsReason(t *testing.T) {
 	}
 	old := os.Stderr
 	os.Stderr = w
+	sigDone := make(chan []byte, 1)
+	go func() { b, _ := io.ReadAll(r); sigDone <- b }()
 	sigPath, signed, serr := writeBundleSigRespectingPolicy(bundle)
 	os.Stderr = old
 	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	stderr, err := io.ReadAll(r)
+	stderr := <-sigDone
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,12 +61,14 @@ func TestWriteBundleSigRespectingPolicy_SoftPathKeepsReason(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stderr = w2
+	sigDone2 := make(chan []byte, 1)
+	go func() { b, _ := io.ReadAll(r2); sigDone2 <- b }()
 	_, signed, serr = writeBundleSigRespectingPolicy(bundle)
 	os.Stderr = old
 	if err := w2.Close(); err != nil {
 		t.Fatal(err)
 	}
-	stderr2, err := io.ReadAll(r2)
+	stderr2 := <-sigDone2
 	if err != nil {
 		t.Fatal(err)
 	}
