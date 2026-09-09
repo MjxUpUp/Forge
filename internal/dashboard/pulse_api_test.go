@@ -585,6 +585,15 @@ func TestServe_PulseStats(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// 窗口内降档 Weak（ratio 0.75 本该 Strong，det 6 < 豁免沿 20）：计 nudges 拆解、
+	// 不计 alerts——钉住 2026-09 告警分级在 API 面生效（alerts 只数可行动分量）。
+	if err := act.Append(p, &act.Conclusion{
+		TaskRef: "feat/capped", Score: 89, Grade: "B", Strength: "Weak", Ratio: 0.75,
+		Deterministic: 6, AgentClaim: 2, RetrospectiveNudge: true,
+		CompletedAt: now.Add(-30 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	srv2 := pulseServer(t, Options{Root: root})
 	code, body = pulseGet(t, srv2.URL+"/api/pulse/stats.json")
 	if code != 200 {
@@ -599,28 +608,32 @@ func TestServe_PulseStats(t *testing.T) {
 		Trend             string   `json:"trend"`
 		Alerts            int      `json:"alerts"`
 		Nudges            int      `json:"nudges"`
+		NudgesActionable  int      `json:"nudgesActionable"`
 		EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
 	}
 	if err := json.Unmarshal(body, &stats); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
-	if stats.AvgScore == nil || *stats.AvgScore < 66.6 || *stats.AvgScore > 66.7 {
-		t.Errorf("avgScore = %v, want ≈66.67（(80+60+60)/3）", stats.AvgScore)
+	if stats.AvgScore == nil || *stats.AvgScore < 72.24 || *stats.AvgScore > 72.26 {
+		t.Errorf("avgScore = %v, want ≈72.25（(80+60+60+89)/4）", stats.AvgScore)
 	}
-	if stats.MedianScore == nil || *stats.MedianScore != 60 {
-		t.Errorf("medianScore = %v, want 60", stats.MedianScore)
+	if stats.MedianScore == nil || *stats.MedianScore != 70 {
+		t.Errorf("medianScore = %v, want 70（排序 [60,60,80,89] 取 (60+80)/2）", stats.MedianScore)
 	}
 	if stats.Trend == "" {
 		t.Error("trend 不得为空串")
 	}
-	if stats.Alerts != 1 { // 1 条窗口内 RetrospectiveNudge（stale 的被窗口滤除）
+	if stats.Alerts != 1 { // 窗口内真弱 feat/b 计；capped 降档与 stale 窗外均不计
 		t.Errorf("alerts = %d, want 1", stats.Alerts)
 	}
-	if stats.Nudges != 1 { // alerts = zombies + nudges 的拆解分量（窗口内）
-		t.Errorf("nudges = %d, want 1", stats.Nudges)
+	if stats.Nudges != 2 { // alerts 拆解：窗口内 nudge 总量（feat/b + feat/capped）
+		t.Errorf("nudges = %d, want 2", stats.Nudges)
 	}
-	if stats.EvidenceBlindRate == nil || *stats.EvidenceBlindRate < 0.65 || *stats.EvidenceBlindRate > 0.67 {
-		t.Errorf("evidenceBlindRate = %v, want ≈0.66（Weak 2/3，stale 也计入全量盲区率）", stats.EvidenceBlindRate)
+	if stats.NudgesActionable != 1 { // 告警分量 = 窗口内非降档 nudge（仅 feat/b）
+		t.Errorf("nudgesActionable = %d, want 1", stats.NudgesActionable)
+	}
+	if stats.EvidenceBlindRate == nil || *stats.EvidenceBlindRate < 0.49 || *stats.EvidenceBlindRate > 0.51 {
+		t.Errorf("evidenceBlindRate = %v, want ≈0.5（盲区 b+stale 2/4；capped 带 det 是封顶非盲区，stale 也计入全量盲区率）", stats.EvidenceBlindRate)
 	}
 }
 
