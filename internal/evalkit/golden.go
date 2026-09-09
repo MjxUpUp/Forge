@@ -368,7 +368,7 @@ func runGoldenProbe(c GoldenCase, opts GoldenOptions) (*probeResult, error) {
 			return nil, err
 		}
 	}
-	env := append(os.Environ(), "HOME="+tmp, "FORGE_DATA_HOME="+dataHome)
+	env := drillEnv(tmp, dataHome)
 	run := func(argv []string, stdin string) (string, string, int, error) {
 		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Dir = fixture
