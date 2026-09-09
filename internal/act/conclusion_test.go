@@ -412,3 +412,25 @@ func TestEscapeCapped_PinsChecklogStrength(t *testing.T) {
 		})
 	}
 }
+
+// TestDirective_ContainsRetroDoneInstruction 钉住 Directive 的收尾落章契约（2026-09
+// 证据式 ack）：nudge 触发的指令必须带 `forge act retro-done` 完整调用形态（含本任务
+// ref 与载体枚举）——具体命令放 forge 侧生成面而非 canonical skill（§13 零反向依赖），
+// 这里就是它唯一的机器钉。干净完成（非 nudge）仍静默。
+func TestDirective_ContainsRetroDoneInstruction(t *testing.T) {
+	nudged := BuildConclusion(`feat/ack-pin`, `s1`, score(65, `D`), ec(1, 3), 0, 0, fixedTime, nil)
+	d := nudged.Directive()
+	if !strings.Contains(d, `forge act retro-done --ref feat/ack-pin`) {
+		t.Errorf(`Directive 缺 retro-done 调用（含本任务 ref），got: %s`, d)
+	}
+	if !strings.Contains(d, `--carrier <memory|skill|claudemd|code|hook|ci|none>`) {
+		t.Errorf(`Directive 缺载体枚举（与 Carriers 单一真相源一致），got: %s`, d)
+	}
+	if !strings.Contains(d, `nudge 留面板`) {
+		t.Errorf(`Directive 缺忘调用后果（错过的回顾可见），got: %s`, d)
+	}
+	clean := BuildConclusion(`feat/clean`, `s1`, score(92, `A`), ec(3, 1), 0, 0, fixedTime, nil)
+	if clean.Directive() != `` {
+		t.Errorf(`干净完成应静默，got: %s`, clean.Directive())
+	}
+}
