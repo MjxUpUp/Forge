@@ -27,6 +27,30 @@ import (
 
 var mu sync.Mutex
 
+// strongRatioFloor 是 checklog.Strength 的 Strong 档 ratio 阈值（Ratio >= 0.5 → Strong，
+// 否则 Weak）在 act 侧的镜像常量——EscapeCapped 的推导依赖它。checklog 内部以字面量
+// 编码该阈值且未导出；此处镜像由 TestEscapeCapped_PinsChecklogStrength 守护测试对
+// checklog.EvidenceChain.Strength() 的实际行为交叉钉住：checklog 改阈值 ⇒ 守护测试
+// 红 ⇒ 强制重新推导，绝不静默漂移（惯例：镜像派生自单一真相源并被钉住，不手抄即忘）。
+const strongRatioFloor = 0.5
+
+// EscapeCapped reports whether this conclusion's Weak strength came from the
+// verification-class escape-hatch cap — i.e. it would be Strong without the
+// hatch (Ratio >= 0.5), so its "weak evidence" is an escape TAX already
+// collected at scoring time, not a real evidence gap. Derived purely from
+// persisted fields (Strength + Ratio): Weak && Ratio >= 0.5 ⟺ capped, because
+// ratio >= 0.5 rates Strong unless EscapeDowngradedStrength caps it. Works
+// retroactively on stored conclusions — zero schema change, zero migration.
+//
+// EscapeCapped 报告本结论的 Weak 是否来自验证类逃生舱降档——即若无逃生舱本该 Strong
+// （Ratio >= 0.5），其「证据弱」是评分时刻已收的逃生【税】，不是真证据缺口。纯由
+// 持久化字段（Strength + Ratio）推导：Weak 且 Ratio >= 0.5 ⟺ 被降档，因为 ratio >= 0.5
+// 本评 Strong、只有 EscapeDowngradedStrength 会把它压回 Weak。对存量结论向后生效
+// ——零 schema 变更、零迁移。消费方：health.NudgeActionable（告警分级，2026-09）。
+func (c Conclusion) EscapeCapped() bool {
+	return c.Strength == checklog.Weak.String() && c.Ratio >= strongRatioFloor
+}
+
 // Conclusion is a traceable conclusion for a completed task — score + evidence strength + acceptance pass-rate + low-score dimensions.
 //
 // Conclusion 是一个完成任务的可追溯结论——score + 证据强度 + 验收通过率 + 低分维度。
