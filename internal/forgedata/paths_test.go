@@ -14,16 +14,20 @@ func TestSurvivingAccessors(t *testing.T) {
 	p := &Project{Key: "abc123", GitRoot: "/repo", DataDir: filepath.Join("/home", ".forge", "projects", "abc123")}
 
 	for name, got := range map[string]string{
-		"MetaPath":           p.MetaPath(),
-		"HazardsEventsPath":  p.HazardsEventsPath(),
-		"HazardsConfirmPath": p.HazardsConfirmPath("deadbeef"),
-		"ActConclusionsPath": p.ActConclusionsPath(),
-		"FreezeDir":          p.FreezeDir(),
-		"FreezeStatePath":    p.FreezeStatePath(),
+		"MetaPath":            p.MetaPath(),
+		"HazardsEventsPath":   p.HazardsEventsPath(),
+		"HazardsConfirmPath":  p.HazardsConfirmPath("deadbeef"),
+		"ActConclusionsPath":  p.ActConclusionsPath(),
+		"ActDispositionsPath": p.ActDispositionsPath(),
+		"FreezeDir":           p.FreezeDir(),
+		"FreezeStatePath":     p.FreezeStatePath(),
 	} {
 		if !strings.HasPrefix(got, p.DataDir+string(filepath.Separator)) {
 			t.Errorf("%s escapes DataDir: %q", name, got)
 		}
+	}
+	if got := p.ActDispositionsPath(); got != filepath.Join(p.ActDir(), "dispositions.jsonl") {
+		t.Errorf("ActDispositionsPath = %q, want <ActDir>/dispositions.jsonl", got)
 	}
 	if got := p.HazardsConfirmPath("deadbeef"); filepath.Base(got) != "deadbeef.json" {
 		t.Errorf("HazardsConfirmPath filename = %q, want deadbeef.json", filepath.Base(got))
