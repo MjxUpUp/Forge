@@ -6,7 +6,7 @@ package hazard
 // forgedatatest.ForDataDir 直指临时目录，本不泄漏）。FORGE_DATA_HOME 未隔离时，
 // 每次全量 go test 泄 3 个孤儿目录（p* 前缀，仅含 hazards/ 子目录）。HOME 与
 // FORGE_DATA_HOME 指向包级共享临时目录后，测试数据零落真实 store。范式同
-// hookdispatch/hook_test_main_test.go（审计遗留 #3 根治）。
+// hookdispatch/hook_test_main_test.go（该范式源于审计遗留 #3 根治）。
 
 import (
 	"os"

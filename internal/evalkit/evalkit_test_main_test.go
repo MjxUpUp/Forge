@@ -1,12 +1,13 @@
 package evalkit
 
 // evalkit_test_main_test.go — 包级测试隔离（test-home-leak-sweep，2026-09-09）：
-// telemetry/runner/golden 测试经 checklog.Record(t.TempDir(), ...) 落用户级
-// store——Record 的 root 只决定 path-key，存储位置始终是 DataDirFor 解析的
-// GlobalHome。FORGE_DATA_HOME 未隔离时，每次全量 go test 泄 3 个孤儿目录
-// （p* 前缀 path-key，单文件 checklog.jsonl，本机累计 171 个孤儿目录的增量主源
-// 之一）。HOME 与 FORGE_DATA_HOME 指向包级共享临时目录后，测试数据零落真实
-// store。范式同 hookdispatch/hook_test_main_test.go（审计遗留 #3 根治）。
+// telemetry 测试直接调 checklog.Record(t.TempDir(), ...)，runner/golden 经 Run
+// 内部以 repoRoot 调 Record——Record 的 root 只决定 path-key，存储位置始终是
+// DataDirFor 解析的 GlobalHome。FORGE_DATA_HOME 未隔离时，每次全量 go test 泄
+// 3 个孤儿目录（p* 前缀 path-key，单文件 checklog.jsonl，本机累计 171 个孤儿
+// 目录的增量主源之一）。HOME 与 FORGE_DATA_HOME 指向包级共享临时目录后，测试
+// 数据零落真实 store。范式同 hookdispatch/hook_test_main_test.go（该范式源于
+// 审计遗留 #3 根治）。
 
 import (
 	"os"
