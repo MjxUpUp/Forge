@@ -205,7 +205,7 @@ func runTrapProbe(t TrapCase, opts GoldenOptions) (*probeResult, error) {
 			return nil, err
 		}
 	}
-	env := append(os.Environ(), "HOME="+tmp, "FORGE_DATA_HOME="+dataHome)
+	env := drillEnv(tmp, dataHome)
 	dataDir := "" // fixture 的 forge DataDir（data-dir 解析；forgery 分支写入审计行用）
 	run := func(argv []string, stdin string) (string, string, int) {
 		cmd := exec.Command(argv[0], argv[1:]...)
