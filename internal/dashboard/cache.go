@@ -32,6 +32,7 @@ type projectData struct {
 	states       []*taskpipeline.TaskState
 	checkEntries []checklog.Entry
 	conclusions  []act.Conclusion
+	dispositions []act.Disposition // retro-done ack（证据式 ack——stats join 用；缺失文件=空切片）
 
 	deriveOnce sync.Once
 	passive    map[string]int
@@ -108,7 +109,9 @@ func stampFile(b *strings.Builder, path string) {
 }
 
 // projectFingerprint 给项目聚合读取的全部文件打指纹：DataDir/tasks/*.json、
-// checklog*.jsonl + toollog*.jsonl（active + 归档）、act/conclusions.jsonl。
+// checklog*.jsonl + toollog*.jsonl（active + 归档）、act/conclusions.jsonl、
+// act/dispositions.jsonl（retro-done ack——新 ack 必须让缓存失效，否则面板
+// 30s 轮询看不到告警消退）。
 func projectFingerprint(root string) string {
 	var b strings.Builder
 	dataDir := forgedata.DataDirFor(root)
@@ -131,6 +134,7 @@ func projectFingerprint(root string) string {
 		}
 	}
 	stampFile(&b, filepath.Join(dataDir, "act", "conclusions.jsonl"))
+	stampFile(&b, filepath.Join(dataDir, "act", "dispositions.jsonl"))
 	return b.String()
 }
 
@@ -149,6 +153,9 @@ func loadProjectData(root string) (*projectData, error) {
 	if proj, err := forgedata.ProjectFor(root); err == nil {
 		if cs, err := act.LoadAll(proj); err == nil {
 			d.conclusions = cs
+		}
+		if ds, err := act.LoadDispositions(proj); err == nil {
+			d.dispositions = ds // 读失败降级为空（无 ack）：告警保守多留，不误消
 		}
 	}
 	return d, nil
