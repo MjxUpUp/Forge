@@ -304,3 +304,25 @@ forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfat
 ### Evidence
 
 docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
+
+## [d-18d39c7d90534440-3d3a3754] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-09-09T09:19:00Z
+- **Commit**: 461ef57
+
+### Diagnosis
+
+审查缺变更结构维度：行为变更（修 bug/新功能）与结构变更（重构/改名）混车时两种验证证明都不成立；大迁移无 expand→migrate→contract 编舞约束，删除常与新增混提交（不可独立回滚）。会话回顾裁断为三个真缺口中唯一的审查面空白（抽象交租/删除预算已由 over-engineering-checklist 覆盖，不重复落）
+
+### Revision
+
+SKILL.md：步骤 1 diff 尺寸纪律后新增「变更结构纪律：行为与结构不混车（迁移编舞）」段（混车拆分再审 + expand-contract 三步 + 删除独立提交）；Red Flags 补「重构和修复顺手一起改了」1 条。升格实验登记于 docs/design/evolution-discipline-norms.md §四（触发条件①②③ + 复验日期 2026-12-09 + 周度回顾节律）
+
+### Evidence
+
+docs/design/evolution-discipline-norms.md §二③/§四；仓内实践先例（registry 迁移、paths.go 僵尸 accessor 清理）；inventory --verify 通过、audit 0 finding、守卫测试全绿
+
+### Rationale
+
+先落清单级验证价值，升格走三要素判据（deferred 承诺合法形态的自身应用）——若 90 天窗命中即按 skill-authoring-standard 升格独立 skill

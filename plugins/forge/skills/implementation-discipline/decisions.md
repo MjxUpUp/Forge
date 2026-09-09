@@ -203,3 +203,25 @@ doc-review L2 复审发现 :112 门控顺序块漏迁（task-implement→task-ve
 ### Evidence
 
 复审 grep skills/ 零「Forge 项目」块；forge docs lint 87 文件 0 硬失败；L2 复审 PASS 96/100（C3 resolved）
+
+## [d-18d39c795488a4e0-31ae85e6] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-09-09T09:18:41Z
+- **Commit**: 461ef57
+
+### Diagnosis
+
+会话回顾裁断出两个缺口：①阶段 0 门控只问'解决什么断点'，不问成功如何度量——事前无声明的度量，改完无法区分优化与退化（适应度函数缺口）；②反第 0 级只管 TODO 注释，'以后再说'类 deferred 承诺（降级试运行/以后升格）无载体即腐烂——用户实证追问'谁来知道要升格'暴露该缺口
+
+### Revision
+
+SKILL.md：阶段 0 门控补可测判据要求（指向 evidence-based-proposal 第三必答题）；反第 0 级补「以后的三要素」（触发条件+阈值/复验日期+复验节律，缺一视同已丢弃）；Rationalizations 补 2 行（无触发条件升格/未声明度量就优化）；Red Flags 补 2 条
+
+### Evidence
+
+docs/design/evolution-discipline-norms.md 裁断表；本机 11 告警实证（8 逃生舱税 + 3 真弱同维度）；skills inventory --verify 通过、skill audit 0 finding、cliskills/agentbridge/skillscanonical 守卫测试全绿
+
+### Rationale
+
+两缺口均为会话实证暴露（非投机），且载体裁断走的是仓内既有单一来源原则——细节放 evidence-based-proposal、门控一行留在本 skill，不另建新 skill
