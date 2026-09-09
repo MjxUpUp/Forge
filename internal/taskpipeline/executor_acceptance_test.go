@@ -69,9 +69,11 @@ func TestExecuteTaskGate_TaskVerifyAcceptanceSilentWhenAllPassed(t *testing.T) {
 	}
 }
 
-// TestExecuteTaskGate_TaskVerifyNoAcceptanceSilent 钉住：未登记验收标准的任务，task-verify
-// 不发 acceptance advisory（无 spec 可回扣，静默）。
-func TestExecuteTaskGate_TaskVerifyNoAcceptanceSilent(t *testing.T) {
+// TestExecuteTaskGate_TaskVerifyNoAcceptanceAdvises 钉住：门禁任务未登记验收标准时，
+// task-verify 发零验收 advisory（2026-09 反转旧「静默」契约——静默正是缺口不可见的
+// 根因：project-policy-p234 以 ratio 0.08 完成，CheckAcceptanceFresh 对空验收放行，
+// agent 直到事后 nudge 才知道证据自述主导）。提醒给后补路径（spec accept 围栏）。
+func TestExecuteTaskGate_TaskVerifyNoAcceptanceAdvises(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv(`FORGE_WORK_ACTIVITY`, `disable`)
 
@@ -81,7 +83,10 @@ func TestExecuteTaskGate_TaskVerifyNoAcceptanceSilent(t *testing.T) {
 
 	stderr := captureStderr(t, func() { _, _ = ExecuteTaskGate(dir, `task-verify`, state) })
 
-	if strings.Contains(stderr, `verify-acceptance`) {
-		t.Errorf(`无验收标准时不应发 acceptance advisory: %s`, stderr)
+	if !strings.Contains(stderr, `自述主导`) {
+		t.Errorf(`零验收门禁任务应发零验收 advisory（证据将自述主导）：got %s`, stderr)
+	}
+	if !strings.Contains(stderr, `accept`) {
+		t.Errorf(`advisory 应给后补路径（spec accept 围栏）：got %s`, stderr)
 	}
 }
