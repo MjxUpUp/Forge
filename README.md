@@ -380,6 +380,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge act show [--ref <ref>]` | 查看最新（或指定）任务结论（含 skill 触达画像——该 task 期间触发了哪些 skill） |
 | `forge act list [--json]` | 列出所有任务结论 |
 | `forge act nudge` | 最新结论有回顾 nudge 时输出一行（否则静默）——供 task-verify 会话结束 hook 消费 |
+| `forge act retro-done --ref <ref> --carrier <memory/skill/claudemd/code/hook/ci/none> [--lesson <教训>]` | 证据式 ack：session-retrospective 沉淀完经验后记录「回顾已发生」，被 ack 的 nudge 退出面板告警（`--lesson` 一句话教训；忘调用则 nudge 留面板——错过的回顾可见） |
 | `forge act rebuild` | 从 tasks/*.json 重建 conclusions.jsonl（迁移 act 上线前的旧任务） |
 
 </details>

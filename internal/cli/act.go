@@ -16,8 +16,12 @@ func init() {
 	actCmd.AddCommand(actShowCmd)
 	actCmd.AddCommand(actListCmd)
 	actCmd.AddCommand(actNudgeCmd)
+	actCmd.AddCommand(actRetroDoneCmd)
 	actShowCmd.Flags().String("ref", "", "指定任务引用（默认最新结论）")
 	actListCmd.Flags().Bool("json", false, "JSON 格式输出")
+	actRetroDoneCmd.Flags().String("ref", "", "要 ack 的任务引用（必填）")
+	actRetroDoneCmd.Flags().String("carrier", "", "回顾载体（必填）："+strings.Join(act.Carriers, "/"))
+	actRetroDoneCmd.Flags().String("lesson", "", "一句话提炼的教训（可选）")
 }
 
 var actCmd = &cobra.Command{
@@ -53,6 +57,66 @@ RetrospectiveNudge（证据弱 Unverified/Weak 或低分 <70）则输出一行�
 工作淹没），也在会话结束的质量信号面 surface，确保"高分但没真验证"的盲区到达回顾真正发生
 的检查点（task-verify 已收 task-gate/pending-review/main-branch 全部质量信号，唯独缺 Act 信号）。`,
 	RunE: runActNudge,
+}
+
+var actRetroDoneCmd = &cobra.Command{
+	Use:   "retro-done --ref <ref> --carrier <carrier> [--lesson <text>]",
+	Short: "记录回顾已发生（证据式 ack）——session-retrospective 收尾一步，被 ack 的 nudge 退出面板告警",
+	Long: `forge act retro-done 是「回顾是否真发生」的最小诚实信号：session-retrospective
+按载体决策树沉淀完经验后，按 --ref 定位最新结论，把 identity（ref+session+完成时刻）
+与载体/教训落一行 dispositions.jsonl（append-only）。dashboard 聚合时被 ack 的 nudge
+退出告警（Nudges/NudgesActionable），全量 NudgeCount 不动——ack 是「已处理」标记，
+不是历史篡改。
+
+忘记调用 ⇒ nudge 留在面板——「错过的回顾」第一次可见，这恰是特性而非缺陷。
+载体封闭词汇表：` + strings.Join(act.Carriers, " / ") + `。`,
+	RunE: runActRetroDone,
+}
+
+// runActRetroDone 落证据式 ack：按 ref 取最新结论（同 ref 多次完成 ack 最新——与
+// act show 同语义），identity 三元组从结论逐字复制（任务重做的旧 ack 不误伤新结论），
+// 载体白名单校验失败在写边界拒绝（不落盘）。
+func runActRetroDone(cmd *cobra.Command, args []string) error {
+	proj, err := findProject()
+	if err != nil {
+		return err
+	}
+	ref, _ := cmd.Flags().GetString("ref")
+	if ref == "" {
+		return fmt.Errorf("--ref 必填：要 ack 的任务引用（forge act list 查看）")
+	}
+	carrier, _ := cmd.Flags().GetString("carrier")
+	if !act.IsValidCarrier(carrier) {
+		return fmt.Errorf("invalid carrier %q：合法值 %s", carrier, strings.Join(act.Carriers, "/"))
+	}
+	lesson, _ := cmd.Flags().GetString("lesson")
+
+	cs, err := act.LoadAll(proj)
+	if err != nil {
+		return err
+	}
+	var found *act.Conclusion
+	for i := range cs {
+		if cs[i].TaskRef == ref {
+			found = &cs[i] // 多次完成取最新（最后一个匹配，与 act show 同语义）
+		}
+	}
+	if found == nil {
+		return fmt.Errorf("no act conclusion for task %q", ref)
+	}
+	d := act.Disposition{
+		TaskRef:     found.TaskRef,
+		SessionID:   found.SessionID,
+		CompletedAt: found.CompletedAt,
+		Carrier:     carrier,
+		Lesson:      lesson,
+	}
+	if err := act.AppendDisposition(proj, &d); err != nil {
+		return err
+	}
+	fmt.Printf("已记录回顾（ack）：%s @ %s → 载体 %s。该 nudge 已退出面板告警。\n",
+		found.TaskRef, found.CompletedAt.Format("2006-01-02 15:04"), carrier)
+	return nil
 }
 
 func runActShow(cmd *cobra.Command, args []string) error {

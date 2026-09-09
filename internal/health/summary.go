@@ -134,14 +134,36 @@ func Summarize(cs []act.Conclusion) Summary {
 
 // SummarizeAt aggregates like Summarize plus the time-windowed NudgeRecent:
 // nudged conclusions completed within the HALF-OPEN window
-// (now-NudgeRecentWindow, now] are counted.
+// (now-NudgeRecentWindow, now] are counted. Equivalent to SummarizeAtAcked
+// with a nil ack predicate.
 //
 // SummarizeAt 在 Summarize 聚合之上增加时间窗口化的 NudgeRecent：只数完成于半开
 // 窗口 (now-NudgeRecentWindow, now] 内的 nudge 结论——恰好落在 now-Window 的不计
 // （After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 钉住）。`now` 为零值时
 // NudgeRecent 保持 0——只有事后覆写 NudgeRecent=NudgeCount 的 Summarize 包装可以
-// 传零；直接调用方必须传真实 now。纯函数、不碰磁盘。
+// 传零；直接调用方必须传真实 now。等价于 ack 谓词为 nil 的 SummarizeAtAcked。
+// 纯函数、不碰磁盘。
 func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
+	return SummarizeAtAcked(cs, now, nil)
+}
+
+// SummarizeAtAcked aggregates like SummarizeAt plus evidence-based ack
+// filtering: conclusions for which ack(c) returns true are EXCLUDED from the
+// alert-facing windowed counts (NudgeRecent / NudgeActionable) — their
+// retrospective was processed (act.Disposition, written by `forge act
+// retro-done` at session-retrospective wrap-up). NudgeCount (all-history
+// truth) and every other aggregate (avg/median/blind-rate/…) are unaffected:
+// ack is a "processed" marker, not history rewriting. nil ack ≡ SummarizeAt.
+// An un-acked nudge stays on the panel — a MISSED retrospective becomes
+// visible for the first time.
+//
+// SummarizeAtAcked 在 SummarizeAt 之上增加证据式 ack 过滤：ack(c) 为真的结论退出
+// 面向告警的窗口计数（NudgeRecent / NudgeActionable）——其回顾已被处理
+// （act.Disposition，由 session-retrospective 收尾的 `forge act retro-done` 写入）。
+// NudgeCount（全量真相）与其余聚合（均分/中位/盲区率/…）不受影响：ack 是
+// 「已处理」标记，不是历史篡改。nil ack ≡ SummarizeAt。未 ack 的 nudge 留在
+// 面板——「错过的回顾」第一次可见。纯函数、不碰磁盘。
+func SummarizeAtAcked(cs []act.Conclusion, now time.Time, ack func(act.Conclusion) bool) Summary {
 	var s Summary
 	s.TotalTasks = len(cs)
 	if len(cs) == 0 {
@@ -196,7 +218,10 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 			// 窗口计数：完成于半开区间 (now-Window, now] 内——恰好落在 now-Window 的不计
 			//（After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 的窗口沿断言钉住）。
 			// now 非零才判定——旧 Summarize 包装传零值，事后会覆写 NudgeRecent。
-			if !now.IsZero() && c.CompletedAt.After(now.Add(-NudgeRecentWindow)) && !c.CompletedAt.After(now) {
+			// 证据式 ack（2026-09）：被 ack（已回顾）的 nudge 退出窗口计数——告警只留
+			// 未处理的；全量真相 NudgeCount 不动。
+			acked := ack != nil && ack(c)
+			if !acked && !now.IsZero() && c.CompletedAt.After(now.Add(-NudgeRecentWindow)) && !c.CompletedAt.After(now) {
 				s.NudgeRecent++
 				// 告警分级（2026-09）：降档 Weak 不进告警分量——税已收，重复展示是噪音。
 				if !c.EscapeCapped() {
