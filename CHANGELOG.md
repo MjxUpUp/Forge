@@ -7,6 +7,41 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.55.1](https://github.com/MjxUpUp/Forge/compare/v1.55.0...v1.55.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **taskpipeline:** task-verify 增零验收 advisory——重任务证据自述化的开工点拦截 ([5290057](https://github.com/MjxUpUp/Forge/commit/5290057473a1acb2b7d7fc068a58bea2bf187b9e))
+
+## [1.55.0](https://github.com/MjxUpUp/Forge/compare/v1.54.0...v1.55.0) (2026-09-09)
+
+
+### Features
+
+* **act:** 证据式 ack——forge act retro-done 落 dispositions，已回顾 nudge 退出面板告警 ([f3f84df](https://github.com/MjxUpUp/Forge/commit/f3f84dfbce64772b983a265fd4b78141ce6e294c))
+
+
+### Bug Fixes
+
+* **dashboard:** 告警分级——alerts 只数可行动 nudge，降档噪音退出人面通道 ([ceee1ba](https://github.com/MjxUpUp/Forge/commit/ceee1bac54e695795fcf198a06745e5be51d7887))
+* **skills:** R18 修复——5.5 步去 forge 化，retro-done 命令移至 Directive 生成面 ([dfa28d5](https://github.com/MjxUpUp/Forge/commit/dfa28d5e80f17633128d68684d0dc807a18520ac))
+
+## [1.54.0](https://github.com/MjxUpUp/Forge/compare/v1.53.0...v1.54.0) (2026-09-08)
+
+
+### Features
+
+* **loopedge:** 审查回环回边——轮次预算/复发检测/exhausted 升级人工（G2 落地） ([e13e1b6](https://github.com/MjxUpUp/Forge/commit/e13e1b695936970de5151e16f760ed5ee297ffdd))
+
+
+### Bug Fixes
+
+* **canary:** S1011——吸收 main 新增 artifactdrill 用例的循环 append(main 无金丝雀门禁带入,合并后金丝雀抓住) ([47e0881](https://github.com/MjxUpUp/Forge/commit/47e088120115d9a1a156a74923cd8f581e1e4c8b))
+* **golden:** artifact-chain 用例 Windows 可移植——{forge} 双引号包裹防 sh 反斜杠转义 ([8e28c24](https://github.com/MjxUpUp/Forge/commit/8e28c24ec91bd9ee1d0d1309781a3a48ab92a92f))
+* **test:** 合并 main 的语义消解——TestMain 单点化 + 管道捕获并发排水利族修复 ([392147f](https://github.com/MjxUpUp/Forge/commit/392147f73ded76bcef7e7b747bd16edbc766760a))
+* **env:** 环境性测试失败类根治——保留根守卫（registry.Add 拒绝注册 home/系统临时根）+ 测试密闭默认化（hookdispatch TestMain 隔离）+ `forge registry remove` 具名出口 ([8f8534e](https://github.com/MjxUpUp/Forge/commit/8f8534ed96da799d48b9e70f746edde0beffff0f))
+
 ## [1.53.0](https://github.com/MjxUpUp/Forge/compare/v1.52.0...v1.53.0) (2026-09-08)
 
 

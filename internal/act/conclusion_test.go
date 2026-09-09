@@ -374,3 +374,63 @@ func TestAppendLoadAll_DesignPhasesRoundTrip(t *testing.T) {
 		t.Errorf(`DesignPhases round-trip 丢失：got=%v want [requirement api]`, got[0].DesignPhases)
 	}
 }
+
+// TestEscapeCapped_PinsChecklogStrength 守护 EscapeCapped 的推导定理：
+// Weak && Ratio >= strongRatioFloor ⟺ 该 Weak 来自逃生舱降档。对每组
+// EvidenceChain 实跑 checklog.Strength() 构造出真实 Conclusion，再断言
+// EscapeCapped() 与「无逃生舱同证据会评 Strong」逐例一致——checklog 改
+// Strong 阈值或降档规则时本测试红，强制重新推导 strongRatioFloor 镜像，
+// 绝不静默漂移（2026-09 告警分级引入）。
+func TestEscapeCapped_PinsChecklogStrength(t *testing.T) {
+	cases := []struct {
+		name string
+		ec   checklog.EvidenceChain
+	}{
+		{`降档 Weak：逃生舱+ratio 0.8+det<20`, checklog.EvidenceChain{Deterministic: 4, AgentClaim: 1, UsedEscapeHatch: true}},
+		{`降档沿：逃生舱+ratio 恰 0.5`, checklog.EvidenceChain{Deterministic: 2, AgentClaim: 2, UsedEscapeHatch: true}},
+		{`豁免：逃生舱+压倒性证据不降档`, checklog.EvidenceChain{Deterministic: 100, AgentClaim: 2, UsedEscapeHatch: true}},
+		{`真弱：ratio 0.25 无逃生舱`, checklog.EvidenceChain{Deterministic: 1, AgentClaim: 3}},
+		{`真强：ratio 0.75 无逃生舱`, checklog.EvidenceChain{Deterministic: 3, AgentClaim: 1}},
+		{`Unverified：零 deterministic`, checklog.EvidenceChain{Deterministic: 0, AgentClaim: 2}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			capped := BuildConclusion(`feat/x`, `s`, score(89, `B`), tc.ec, 0, 0, fixedTime, nil)
+			// 定理：EscapeCapped ⟺ 实际 Weak 且无逃生舱的同证据链会评 Strong
+			//（豁免档未降档、实际 Strong，不在定理内——合取的第二项必须含「实际 Weak」）。
+			noHatch := tc.ec
+			noHatch.UsedEscapeHatch = false
+			want := capped.Strength == checklog.Weak.String() && noHatch.Strength() == checklog.Strong
+			derived := capped.Strength == checklog.Weak.String() && capped.Ratio >= strongRatioFloor
+			if derived != capped.EscapeCapped() {
+				t.Errorf(`EscapeCapped=%v 与推导式不一致（Strength=%s Ratio=%.2f）`, capped.EscapeCapped(), capped.Strength, capped.Ratio)
+			}
+			if capped.EscapeCapped() != want {
+				t.Errorf(`EscapeCapped=%v 但「实际 Weak 且无逃生舱同证据评 %s」=%v（定理断裂：checklog 规则变了？强制重推导）`,
+					capped.EscapeCapped(), noHatch.Strength(), want)
+			}
+		})
+	}
+}
+
+// TestDirective_ContainsRetroDoneInstruction 钉住 Directive 的收尾落章契约（2026-09
+// 证据式 ack）：nudge 触发的指令必须带 `forge act retro-done` 完整调用形态（含本任务
+// ref 与载体枚举）——具体命令放 forge 侧生成面而非 canonical skill（§13 零反向依赖），
+// 这里就是它唯一的机器钉。干净完成（非 nudge）仍静默。
+func TestDirective_ContainsRetroDoneInstruction(t *testing.T) {
+	nudged := BuildConclusion(`feat/ack-pin`, `s1`, score(65, `D`), ec(1, 3), 0, 0, fixedTime, nil)
+	d := nudged.Directive()
+	if !strings.Contains(d, `forge act retro-done --ref feat/ack-pin`) {
+		t.Errorf(`Directive 缺 retro-done 调用（含本任务 ref），got: %s`, d)
+	}
+	if !strings.Contains(d, `--carrier <memory|skill|claudemd|code|hook|ci|none>`) {
+		t.Errorf(`Directive 缺载体枚举（与 Carriers 单一真相源一致），got: %s`, d)
+	}
+	if !strings.Contains(d, `nudge 留面板`) {
+		t.Errorf(`Directive 缺忘调用后果（错过的回顾可见），got: %s`, d)
+	}
+	clean := BuildConclusion(`feat/clean`, `s1`, score(92, `A`), ec(3, 1), 0, 0, fixedTime, nil)
+	if clean.Directive() != `` {
+		t.Errorf(`干净完成应静默，got: %s`, clean.Directive())
+	}
+}

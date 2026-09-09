@@ -215,3 +215,98 @@ func archiveToollogForTest(t *testing.T, root string) error {
 		util.ArchivedName(dir, `toollog`, time.Now()),
 	)
 }
+
+// TestActRetroDone 钉住 forge act retro-done 的证据式 ack 契约：按 --ref 定位最新
+// 结论、校验载体白名单、落 dispositions.jsonl；未知 ref / 非法载体为错误。
+// 这是「回顾是否真发生」的最小诚实信号——session-retrospective 收尾一步调用。
+func TestActRetroDone(t *testing.T) {
+	t.Run(`happy_path_writes_disposition`, func(t *testing.T) {
+		tmpDir, p := forgedatatest.RealProject(t)
+		if out, _, code := runForge(t, tmpDir, `init`, `--mode`, `medium`); code != 0 {
+			t.Fatalf(`init: %s`, out)
+		}
+		c := act.Conclusion{
+			TaskRef: `feat/weak`, SessionID: `sess-9`, Grade: `B`, Strength: `Weak`,
+			Score: 86, Ratio: 0.44, RetrospectiveNudge: true,
+			CompletedAt: time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC),
+		}
+		if err := act.Append(p, &c); err != nil {
+			t.Fatalf(`seed: %v`, err)
+		}
+		out, _, code := runForge(t, tmpDir, `act`, `retro-done`,
+			`--ref`, `feat/weak`, `--carrier`, `skill`, `--lesson`, `验证声明前先跑全量测试`)
+		if code != 0 {
+			t.Fatalf(`retro-done exit %d: %s`, code, out)
+		}
+		ds, err := act.LoadDispositions(p)
+		if err != nil {
+			t.Fatalf(`LoadDispositions: %v`, err)
+		}
+		if len(ds) != 1 {
+			t.Fatalf(`dispositions len=%d want 1`, len(ds))
+		}
+		d := ds[0]
+		if d.TaskRef != `feat/weak` || d.SessionID != `sess-9` || d.Carrier != `skill` ||
+			d.Lesson != `验证声明前先跑全量测试` {
+			t.Errorf(`disposition 失真：got %+v`, d)
+		}
+		if !d.CompletedAt.Equal(c.CompletedAt) {
+			t.Errorf(`identity：CompletedAt 应从结论继承，got %v want %v`, d.CompletedAt, c.CompletedAt)
+		}
+	})
+
+	t.Run(`same_ref_picks_latest_conclusion`, func(t *testing.T) {
+		tmpDir, p := forgedatatest.RealProject(t)
+		runForge(t, tmpDir, `init`, `--mode`, `medium`)
+		older := act.Conclusion{TaskRef: `feat/redo`, SessionID: `s1`, Grade: `B`,
+			Strength: `Weak`, Score: 86, RetrospectiveNudge: true,
+			CompletedAt: time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)}
+		newer := older
+		newer.SessionID = `s2`
+		newer.CompletedAt = time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+		if err := act.Append(p, &older); err != nil {
+			t.Fatal(err)
+		}
+		if err := act.Append(p, &newer); err != nil {
+			t.Fatal(err)
+		}
+		out, _, code := runForge(t, tmpDir, `act`, `retro-done`, `--ref`, `feat/redo`, `--carrier`, `memory`)
+		if code != 0 {
+			t.Fatalf(`exit %d: %s`, code, out)
+		}
+		ds, _ := act.LoadDispositions(p)
+		if len(ds) != 1 || ds[0].SessionID != `s2` {
+			t.Errorf(`同 ref 多结论应 ack 最新（s2），got %+v`, ds)
+		}
+	})
+
+	t.Run(`unknown_ref_errors`, func(t *testing.T) {
+		tmpDir, _ := forgedatatest.RealProject(t)
+		runForge(t, tmpDir, `init`, `--mode`, `medium`)
+		out, _, code := runForge(t, tmpDir, `act`, `retro-done`, `--ref`, `feat/ghost`, `--carrier`, `skill`)
+		if code == 0 {
+			t.Fatalf(`未知 ref 应非零退出，got: %s`, out)
+		}
+	})
+
+	t.Run(`invalid_carrier_errors`, func(t *testing.T) {
+		tmpDir, p := forgedatatest.RealProject(t)
+		runForge(t, tmpDir, `init`, `--mode`, `medium`)
+		c := act.Conclusion{TaskRef: `feat/x`, Grade: `B`, Strength: `Weak`, Score: 86,
+			RetrospectiveNudge: true, CompletedAt: time.Now()}
+		if err := act.Append(p, &c); err != nil {
+			t.Fatal(err)
+		}
+		out, _, code := runForge(t, tmpDir, `act`, `retro-done`, `--ref`, `feat/x`, `--carrier`, `wiki`)
+		if code == 0 {
+			t.Fatalf(`非法载体应非零退出，got: %s`, out)
+		}
+		if !strings.Contains(out, `carrier`) {
+			t.Errorf(`错误信息应点名 carrier，got: %s`, out)
+		}
+		// 失败不得落盘。
+		if ds, _ := act.LoadDispositions(p); len(ds) != 0 {
+			t.Errorf(`校验失败不得写 dispositions，got %d 条`, len(ds))
+		}
+	})
+}

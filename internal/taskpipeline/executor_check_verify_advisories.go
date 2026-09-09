@@ -154,13 +154,44 @@ func checkSkillDecisions(root string, state *TaskState, gitChanged []string) err
 	return nil
 }
 
-// adviseAcceptance 是 acceptance advisory（spec-as-gate）：任务登记了验收标准（task start
-// --accept）但未全部通过 → 提醒先跑 'forge task verify-acceptance' 把 spec 变成实跑证据。
-// 纯 advisory 不阻塞、不 return error。关键：这里**只读 state 上次结果提醒**，
-// 绝不记 CheckNameAcceptance 条目——该条目专属于 verify-acceptance 的真实实跑
+// adviseAcceptance 打印 acceptance advisory（两分支，文案单一真相源在
+// acceptanceAdvisory）：门禁任务零验收（证据将自述主导）或已登记未全跑
+// （spec-as-gate）。纯 advisory 不阻塞、不 return error。绝不记
+// CheckNameAcceptance 条目——该条目专属于 verify-acceptance 的真实实跑
 // （deterministic 不可伪造），gate 里不跑命令就不能伪称跑过。
 func adviseAcceptance(state *TaskState) {
-	if state.HasAcceptance() && !state.AllAcceptancePassed() {
-		fmt.Fprintf(os.Stderr, "%s任务登记了 %d 条验收标准但未全部通过——先跑 'forge task verify-acceptance' 实跑回扣（spec-as-gate）\n", GateAdvisory("[task-verify] "), len(state.Acceptance))
+	if msg := acceptanceAdvisory(state); msg != "" {
+		fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), msg)
 	}
+}
+
+// acceptanceAdvisory builds the acceptance advisory text (pure, testable):
+// (a) gated (non-generic) task with ZERO acceptance criteria — completing without
+// any leaves the evidence chain claim-dominated: the only unforgeable whitelisted
+// evidence (acceptance/test-run) requires criteria registered at start (or later
+// via a spec artifact's accept fence), and CheckAcceptanceFresh passes silently
+// on empty, so the gap is invisible to the agent until the post-hoc nudge.
+// Real-world: 2026-09-07 project-policy-p234 completed at ratio 0.08 (4 det /
+// 47 agent-claim) purely because none was registered;
+// (b) registered but not all passed — existing spec-as-gate reminder.
+// Generic tasks are exempt (research/handoff legitimately carry no specs).
+//
+// acceptanceAdvisory 构造 acceptance advisory 文案（纯函数可测）：
+// （a）门禁任务（非 generic）零验收——零验收完成时证据链必然自述主导：白名单里
+// 不可伪造的 acceptance/test-run 证据前提是开工登记（或事后经 spec 产物的 accept
+// 围栏补登），而 CheckAcceptanceFresh 对空验收静默放行，缺口在事后 nudge 前对
+// agent 不可见。实证：2026-09-07 project-policy-p234 以 ratio 0.08（4 det /
+// 47 agent-claim）完成，根因就是零登记；
+// （b）登记了但未全通过——既有 spec-as-gate 提醒。generic 任务豁免。
+func acceptanceAdvisory(state *TaskState) string {
+	if state.IsGeneric() {
+		return ""
+	}
+	if !state.HasAcceptance() {
+		return "任务未登记任何验收标准——完成时证据链将自述主导（白名单不可伪造的 acceptance/test-run 证据为零，CheckAcceptanceFresh 对空验收静默放行）。补登三步：`forge task artifact --set spec --file <spec.md>`（含 ```accept 围栏）→ `forge task artifact --extract`（围栏编译进验收标准——--set 只折引用不落 state）→ `forge task verify-acceptance` 实跑；或确认本任务确无机器可验标准"
+	}
+	if !state.AllAcceptancePassed() {
+		return fmt.Sprintf("任务登记了 %d 条验收标准但未全部通过——先跑 'forge task verify-acceptance' 实跑回扣（spec-as-gate）", len(state.Acceptance))
+	}
+	return ""
 }
