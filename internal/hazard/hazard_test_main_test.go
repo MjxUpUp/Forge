@@ -1,11 +1,11 @@
 package hazard
 
 // hazard_test_main_test.go — 包级测试隔离（test-home-leak-sweep，2026-09-09）：
-// hazard 测试经 forgedata Project.HazardsDir()（hazards/events.jsonl、审批
-// 条目）落用户级 store——DataDirFor 解析的 root 是 t.TempDir()，但存储位置
-// 始终在 GlobalHome 下。FORGE_DATA_HOME 未隔离时，每次全量 go test 泄 3 个
-// 孤儿目录（p* 前缀 path-key，仅含 hazards/ 子目录）。HOME 与 FORGE_DATA_HOME
-// 指向包级共享临时目录后，测试数据零落真实 store。范式同
+// hazard 泄写源在 halt_test.go 的 newHaltProject——forgedata.ProjectFor(t.TempDir())
+// 把 DataDir 解析到 GlobalHome 下的 path-key 目录（event/stamp 测试走
+// forgedatatest.ForDataDir 直指临时目录，本不泄漏）。FORGE_DATA_HOME 未隔离时，
+// 每次全量 go test 泄 3 个孤儿目录（p* 前缀，仅含 hazards/ 子目录）。HOME 与
+// FORGE_DATA_HOME 指向包级共享临时目录后，测试数据零落真实 store。范式同
 // hookdispatch/hook_test_main_test.go（审计遗留 #3 根治）。
 
 import (
@@ -19,10 +19,13 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmp)
 	os.Setenv("HOME", tmp)
 	os.Setenv("FORGE_DATA_HOME", tmp)
-	os.Exit(m.Run())
+	// 显式清理再退出：os.Exit 跳过 defer，defer os.RemoveAll 是死代码
+	// （只读子 agent 审查 SUGGEST-1，连范式 hookdispatch 一并根治）。
+	code := m.Run()
+	os.RemoveAll(tmp)
+	os.Exit(code)
 }
 
 // TestTestingDataHomeIsolated 钉死 TestMain 的密闭性契约：包内任何测试执行时
