@@ -523,16 +523,20 @@ type pulseStats struct {
 	MedianScore       *float64 `json:"medianScore"`
 	Trend             string   `json:"trend"`
 	Alerts            int      `json:"alerts"`
-	Nudges            int      `json:"nudges"` // 需回顾结论数·14天窗口（alerts = zombies + nudges 的拆解，前端分开展示；全量见 health.nudge_count）
+	Nudges            int      `json:"nudges"`           // 窗口内 nudge 总量·14天（透明拆解分量；全量见 health.nudge_count）
+	NudgesActionable  int      `json:"nudgesActionable"` // 告警分量：窗口内非降档 nudge（真弱/Unverified/低分；alerts = zombies + 此值）
 	EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
 }
 
-// aggregatePulseStats 跨范围合并结论，复用 health.SummarizeAt 算均分/中位/趋势/盲区率
-// （与质量看板单一真相）；alerts = 僵尸任务数 + 窗口化回顾结论数（NudgeRecent，14 天
-// ——见 health.NudgeRecentWindow）。源数据取自指纹门控缓存。
+// aggregatePulseStats 跨范围合并结论，复用 health.SummarizeAtAcked 算均分/中位/趋势/盲区率
+// （与质量看板单一真相）；alerts = 僵尸任务数 + 窗口化【可行动】结论数
+// （NudgeActionable，14 天——见 health.NudgeRecentWindow）。降档 Weak（逃生税已收）
+// 不进告警、只留 Nudges 拆解（2026-09 告警疲劳分级：8/11 面板告警是降档噪音）。
+// 源数据取自指纹门控缓存。
 func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	stats := pulseStats{Trend: "insufficient"}
 	var cs []act.Conclusion
+	var disps []act.Disposition
 	for _, pr := range resolvePulseRoots(opts) {
 		stats.Projects++
 		d, err := sharedPulseCache.projectData(pr)
@@ -549,6 +553,7 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 			}
 		}
 		cs = append(cs, d.conclusions...)
+		disps = append(disps, d.dispositions...)
 	}
 	stats.Alerts = stats.Zombies
 	if len(cs) == 0 {
@@ -557,7 +562,12 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	// 窗口化 summary（2026-08 告警疲劳校准）：面向告警的 Nudges 用 NudgeRecent
 	//（14 天窗口）而非全量 NudgeCount——陈旧 nudge（session 早已关闭、历史上无 ack
 	// 机制）不得把面板红灯永远挂着。全量计数仍留在 health/查询面供趋势分析。
-	summary := health.SummarizeAt(cs, now)
+	// 2026-09 分级：alerts 只加 NudgeActionable（非降档）——降档 Weak 的逃生税已在
+	// 评分时收取，人面通道重复展示是噪音；Nudges 保留窗口总量作拆解。
+	// 2026-09 证据式 ack：被 retro-done disposition（identity 匹配，匹配器单一真相源
+	// 在 act.AckMatcher）ack 的 nudge 退出 Nudges/NudgesActionable——已回顾的不占
+	// 告警，未回顾的留在面板（「错过的回顾」可见）。
+	summary := health.SummarizeAtAcked(cs, now, act.AckMatcher(disps))
 	avg := summary.AvgScore
 	median := summary.MedianScore
 	blind := summary.BlindSpotRate
@@ -568,7 +578,8 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 		stats.Trend = summary.Trend
 	}
 	stats.Nudges = summary.NudgeRecent
-	stats.Alerts += summary.NudgeRecent
+	stats.NudgesActionable = summary.NudgeActionable
+	stats.Alerts += summary.NudgeActionable
 	return stats
 }
 

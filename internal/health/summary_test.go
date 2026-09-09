@@ -1,6 +1,7 @@
 package health
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -170,6 +171,85 @@ func TestSummarizeAt_NudgeRecentWindow(t *testing.T) {
 	}
 }
 
+// TestSummarizeAt_NudgeActionable pins the alert-facing tiered nudge count:
+// NudgeActionable counts only windowed nudges that are NOT escape-hatch-capped
+// Weak. Capped Weak (Strength=Weak && Ratio>=0.5 — would be Strong without the
+// verification-class escape hatch) already paid its tax at scoring time; the
+// human-facing alert channel re-displaying it adds no information (2026-09
+// finding: 8/11 dashboard alerts were capped-Weak noise, evidenceBlindRate 0).
+//
+// TestSummarizeAt_NudgeActionable 钉住面向告警的分级 nudge 计数：NudgeActionable
+// 只数窗口内且【非】逃生舱降档 Weak 的 nudge。降档 Weak（Strength=Weak 且
+// Ratio>=0.5——若无验证类逃生舱本该 Strong）的代价已在评分时刻收取，人面告警通道
+// 重复展示零信息量（2026-09 实测：11 条面板告警中 8 条是降档噪音，盲区率 0）。
+// 分类是持久化字段的纯函数（Weak && ratio>=0.5 ⟺ 被降档），不碰磁盘、零迁移。
+func TestSummarizeAt_NudgeActionable(t *testing.T) {
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	mk := func(ref string, strength string, ratio float64, score float64) act.Conclusion {
+		return act.Conclusion{
+			TaskRef: ref, Grade: `B`, Strength: strength, Score: score,
+			Ratio: ratio, RetrospectiveNudge: true,
+			CompletedAt: now.Add(-24 * time.Hour),
+		}
+	}
+	cases := []struct {
+		name       string
+		c          act.Conclusion
+		actionable bool
+	}{
+		{`降档 Weak（ratio 0.75）不计`, mk(`capped`, `Weak`, 0.75, 89), false},
+		{`降档沿（ratio 恰 0.5）不计`, mk(`capped-edge`, `Weak`, 0.50, 89), false},
+		{`真弱（ratio 0.49）计`, mk(`true-weak`, `Weak`, 0.49, 86), true},
+		{`真弱（ratio 0.08 自述占绝大多数）计`, mk(`claim-heavy`, `Weak`, 0.08, 86), true},
+		{`Unverified 计`, mk(`unverified`, `Unverified`, 0, 95), true},
+		{`Strong 低分计`, mk(`low-score`, `Strong`, 0.9, 60), true},
+		{`Strong 高分非 nudge 不计`, act.Conclusion{
+			TaskRef: `clean`, Grade: `A`, Strength: `Strong`, Score: 95, Ratio: 0.9,
+			CompletedAt: now.Add(-24 * time.Hour),
+		}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := SummarizeAt([]act.Conclusion{tc.c}, now)
+			if tc.c.RetrospectiveNudge {
+				if s.NudgeRecent != 1 {
+					t.Errorf(`NudgeRecent=%d want 1（nudge 样本仍计窗口总量——透明拆解不丢信息）`, s.NudgeRecent)
+				}
+			} else if s.NudgeRecent != 0 {
+				t.Errorf(`NudgeRecent=%d want 0（非 nudge 样本）`, s.NudgeRecent)
+			}
+			if tc.actionable && s.NudgeActionable != 1 {
+				t.Errorf(`NudgeActionable=%d want 1`, s.NudgeActionable)
+			}
+			if !tc.actionable && s.NudgeActionable != 0 {
+				t.Errorf(`NudgeActionable=%d want 0`, s.NudgeActionable)
+			}
+		})
+	}
+	// 窗口外降档/真弱均不计 actionable；stale 真弱也不点亮面板。
+	stale := SummarizeAt([]act.Conclusion{completedAt(mk(`stale`, `Weak`, 0.44, 86), now.Add(-15*24*time.Hour))}, now)
+	if stale.NudgeActionable != 0 || stale.NudgeRecent != 0 {
+		t.Errorf(`窗口外应全不计，got actionable=%d recent=%d`, stale.NudgeActionable, stale.NudgeRecent)
+	}
+	// 混合快照：3 真弱 + 8 降档（2026-09 实测形态）→ recent=11、actionable=3。
+	mix := []act.Conclusion{
+		mk(`w1`, `Weak`, 0.44, 86), mk(`w2`, `Weak`, 0.08, 86), mk(`w3`, `Weak`, 0.33, 86),
+	}
+	for i := 0; i < 8; i++ {
+		mix = append(mix, mk(fmt.Sprintf("c%d", i), `Weak`, 0.75, 89))
+	}
+	s := SummarizeAt(mix, now)
+	if s.NudgeRecent != 11 || s.NudgeActionable != 3 {
+		t.Errorf(`实测形态：recent=%d want 11、actionable=%d want 3`, s.NudgeRecent, s.NudgeActionable)
+	}
+}
+
+// completedAt 返回替换完成时刻的副本（窗口外样本构造用，不改 mk 主体）。
+func completedAt(c act.Conclusion, t time.Time) act.Conclusion {
+	c.CompletedAt = t
+	return c
+}
+
 // TestSummarizeAt_MatchesSummarizeOnNonWindowedFields pins the equivalence
 // contract: apart from NudgeRecent (window-scoped), SummarizeAt(cs, anyTime)
 // must produce the same aggregates as the legacy Summarize.
@@ -271,5 +351,47 @@ func TestSummarize_EmptyStrengthGuard(t *testing.T) {
 	}
 	if s.TotalTasks != 2 {
 		t.Errorf(`TotalTasks=%d want 2（空 Strength 任务仍计入总数）`, s.TotalTasks)
+	}
+}
+
+// TestSummarizeAtAcked 钉住证据式 ack 的聚合语义：被 ack 的 nudge 退出窗口化的
+// NudgeRecent/NudgeActionable（告警面），但 NudgeCount（全量真相）与其余聚合
+// （均分/盲区等）不受影响——ack 是「已处理」标记，不是历史篡改。
+func TestSummarizeAtAcked(t *testing.T) {
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	mk := func(ref string, strength string, ratio float64) act.Conclusion {
+		return act.Conclusion{
+			TaskRef: ref, Grade: `B`, Strength: strength, Score: 86, Ratio: ratio,
+			RetrospectiveNudge: true, CompletedAt: now.Add(-24 * time.Hour),
+		}
+	}
+	cs := []act.Conclusion{
+		mk(`weak-acked`, `Weak`, 0.44),   // 真弱，已回顾 → 退出告警
+		mk(`weak-pending`, `Weak`, 0.33), // 真弱，未回顾 → 留在告警
+		mk(`capped-acked`, `Weak`, 0.75), // 降档，已回顾（不影响：本就不在告警）
+	}
+	acked := func(c act.Conclusion) bool {
+		return c.TaskRef == `weak-acked` || c.TaskRef == `capped-acked`
+	}
+	s := SummarizeAtAcked(cs, now, acked)
+	if s.NudgeCount != 3 {
+		t.Errorf(`NudgeCount=%d want 3（全量真相不受 ack 影响）`, s.NudgeCount)
+	}
+	if s.NudgeRecent != 1 {
+		t.Errorf(`NudgeRecent=%d want 1（仅 weak-pending；weak-acked/capped-acked 均被 ack 退出）`, s.NudgeRecent)
+	}
+	if s.NudgeActionable != 1 {
+		t.Errorf(`NudgeActionable=%d want 1（仅 weak-pending；capped-acked 被 ack 且降档本就不计）`, s.NudgeActionable)
+	}
+	// 均分不受 ack 影响（历史不篡改）。
+	if s.AvgScore != 86 {
+		t.Errorf(`AvgScore=%v want 86`, s.AvgScore)
+	}
+	// nil matcher ≡ SummarizeAt（无 ack 的既有语义逐字节不变）。
+	got := SummarizeAtAcked(cs, now, nil)
+	want := SummarizeAt(cs, now)
+	if got.NudgeRecent != want.NudgeRecent || got.NudgeActionable != want.NudgeActionable ||
+		got.NudgeCount != want.NudgeCount || got.AvgScore != want.AvgScore {
+		t.Errorf(`nil matcher 应 ≡ SummarizeAt：got %+v want %+v`, got, want)
 	}
 }

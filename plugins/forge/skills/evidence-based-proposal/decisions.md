@@ -69,3 +69,25 @@ metadata.triggers新增UserPromptSubmit关键词(方案依据/凭什么/备选�
 ### Evidence
 
 选型论证请求高频(研究类簇),触发覆盖缺口
+
+## [d-18d39c7d8f2061c0-f27b0b42] accept
+
+- **Skill**: evidence-based-proposal
+- **DecidedAt**: 2026-09-09T09:19:00Z
+- **Commit**: 461ef57
+
+### Diagnosis
+
+两个必答题只验证'环境假设成立'与'解决哪个断点'，缺'改完后更好如何判定'——会话回顾实证：无适应度函数门的改进声明与退化不可区分（2026-08 dc10 自指证据失效同源：测量时刻与声称时刻不同态）
+
+### Revision
+
+SKILL.md：新增第三必答题（成功度量——事前声明可测判据、同数据集/表面 before/after、证据测量与声称同态）；禁止反模式补「声称优化却无声明的度量」；Red Flags 补 1 条
+
+### Evidence
+
+docs/design/evolution-discipline-norms.md §二①；inventory --verify 通过、audit 0 finding、守卫测试全绿
+
+### Rationale
+
+度量必答题是 evidence-based-proposal 的本位职责（方案依据的最后一环：改了凭什么说更好），与既有两问同构，非新职责
