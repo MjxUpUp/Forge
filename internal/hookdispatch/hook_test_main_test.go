@@ -18,10 +18,13 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		os.Exit(1)
 	}
-	defer os.RemoveAll(tmp)
 	os.Setenv("HOME", tmp)
 	os.Setenv("FORGE_DATA_HOME", tmp)
-	os.Exit(m.Run())
+	// 显式清理再退出：os.Exit 跳过 defer，defer os.RemoveAll 是死代码
+	// （test-home-leak-sweep 审查 SUGGEST-1 顺带根治范式本体）。
+	code := m.Run()
+	os.RemoveAll(tmp)
+	os.Exit(code)
 }
 
 // TestTestingDataHomeIsolated 钉死 TestMain 的密闭性契约：包内任何测试执行时
