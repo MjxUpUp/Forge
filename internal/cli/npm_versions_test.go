@@ -36,7 +36,7 @@ func TestNpmPlatformVersionsAligned(t *testing.T) {
 	// ——所以「主包=下一版、平台包=上一版」是每个发布窗口的**合法中间态**。
 	// 守卫抓的是**多版本漂移**（1.50.0 vs 1.28.2 那种 22 个 minor 的遗忘）
 	// 与平台包间互不一致；单版本滞后放行。
-	prev, ok := previousMinor(main.Version)
+	prev, ok := previousVersion(main.Version)
 	if !ok {
 		t.Fatalf("主包版本 %q 非语义化 X.Y.Z", main.Version)
 	}
@@ -71,16 +71,44 @@ func TestNpmPlatformVersionsAligned(t *testing.T) {
 	}
 }
 
-// previousMinor 返回 X.Y.Z 的前一 minor 版本串（X.Y-1.0；Y=0 时回退
-// "X-1.<任意>" 不可表达——返回 ok=false 由调用方按非法处理；主包 major=0 或
-// Y=0 的场景本仓不存在，不值得为此建全 semver 库）。
-func previousMinor(v string) (string, bool) {
-	var maj, min int
-	if _, err := fmt.Sscanf(v, "%d.%d.0", &maj, &min); err == nil && min > 0 {
-		return fmt.Sprintf("%d.%d.0", maj, min-1), true
+// previousVersion 返回 X.Y.Z 的上一版串——发布窗口「合法滞后一版」的判定基线：
+// patch>0 时为同 minor 前一 patch（1.55.1 → 1.55.0），否则退一 minor（1.55.0 →
+// 1.54.0）。Y=0 且 patch=0 时回退不可表达，返回 ok=false 由调用方按非法处理
+// （主包 major=0 或 Y=0 的场景本仓不存在，不值得为此建全 semver 库）。
+// 2026-09-09 修复：旧实现两个 Sscanf 分支都只认 ".0" 结尾（%d.%d.%*s 还因无
+// 接收操作数被 Sscanf 拒绝），1.55.1——守卫上线以来首个非零 patch 版本——被
+// 误判「非语义化」，发版火车 test job 必红。
+func previousVersion(v string) (string, bool) {
+	var maj, min, patch int
+	if _, err := fmt.Sscanf(v, "%d.%d.%d", &maj, &min, &patch); err != nil {
+		return "", false
 	}
-	if _, err := fmt.Sscanf(v, "%d.%d.%*s", &maj, &min); err == nil && min > 0 {
+	if patch > 0 {
+		return fmt.Sprintf("%d.%d.%d", maj, min, patch-1), true
+	}
+	if min > 0 {
 		return fmt.Sprintf("%d.%d.0", maj, min-1), true
 	}
 	return "", false
+}
+
+// TestPreviousVersion 钉住合法滞后基线的版本算术：非零 patch 退 patch（1.55.1 是
+// 守卫上线以来首个触发旧实现双分支全灭的 patch 版本）、.0 结尾退 minor、非法串拒。
+func TestPreviousVersion(t *testing.T) {
+	cases := []struct {
+		in, want string
+		ok       bool
+	}{
+		{`1.55.1`, `1.55.0`, true},
+		{`2.3.7`, `2.3.6`, true},
+		{`1.55.0`, `1.54.0`, true},
+		{`1.0.0`, ``, false},
+		{`dev`, ``, false},
+	}
+	for _, c := range cases {
+		got, ok := previousVersion(c.in)
+		if got != c.want || ok != c.ok {
+			t.Errorf(`previousVersion(%q) = (%q,%v) want (%q,%v)`, c.in, got, ok, c.want, c.ok)
+		}
+	}
 }
