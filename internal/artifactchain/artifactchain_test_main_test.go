@@ -1,12 +1,12 @@
 package artifactchain
 
 // artifactchain_test_main_test.go — 包级测试隔离（test-home-leak-sweep，
-// 2026-09-09）：artifactchain 测试经 schemaPath（forgedata.DataDirFor(root)
+// 2026-09-09）：artifactchain 测试经 SchemaPath（forgedata.DataDirFor(root)
 // 下的 schemas/schema.yaml）落用户级 store——root 是 t.TempDir() 时派生
 // path-key 目录仍建在真实 GlobalHome 下。FORGE_DATA_HOME 未隔离时，每次全量
 // go test 泄 2 个孤儿目录（p* 前缀，仅含 schemas/ 子目录）。HOME 与
 // FORGE_DATA_HOME 指向包级共享临时目录后，测试数据零落真实 store。范式同
-// hookdispatch/hook_test_main_test.go（审计遗留 #3 根治）。
+// hookdispatch/hook_test_main_test.go（该范式源于审计遗留 #3 根治）。
 
 import (
 	"os"
