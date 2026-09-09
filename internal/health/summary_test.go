@@ -353,3 +353,45 @@ func TestSummarize_EmptyStrengthGuard(t *testing.T) {
 		t.Errorf(`TotalTasks=%d want 2（空 Strength 任务仍计入总数）`, s.TotalTasks)
 	}
 }
+
+// TestSummarizeAtAcked 钉住证据式 ack 的聚合语义：被 ack 的 nudge 退出窗口化的
+// NudgeRecent/NudgeActionable（告警面），但 NudgeCount（全量真相）与其余聚合
+// （均分/盲区等）不受影响——ack 是「已处理」标记，不是历史篡改。
+func TestSummarizeAtAcked(t *testing.T) {
+	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
+	mk := func(ref string, strength string, ratio float64) act.Conclusion {
+		return act.Conclusion{
+			TaskRef: ref, Grade: `B`, Strength: strength, Score: 86, Ratio: ratio,
+			RetrospectiveNudge: true, CompletedAt: now.Add(-24 * time.Hour),
+		}
+	}
+	cs := []act.Conclusion{
+		mk(`weak-acked`, `Weak`, 0.44),   // 真弱，已回顾 → 退出告警
+		mk(`weak-pending`, `Weak`, 0.33), // 真弱，未回顾 → 留在告警
+		mk(`capped-acked`, `Weak`, 0.75), // 降档，已回顾（不影响：本就不在告警）
+	}
+	acked := func(c act.Conclusion) bool {
+		return c.TaskRef == `weak-acked` || c.TaskRef == `capped-acked`
+	}
+	s := SummarizeAtAcked(cs, now, acked)
+	if s.NudgeCount != 3 {
+		t.Errorf(`NudgeCount=%d want 3（全量真相不受 ack 影响）`, s.NudgeCount)
+	}
+	if s.NudgeRecent != 1 {
+		t.Errorf(`NudgeRecent=%d want 1（仅 weak-pending；weak-acked/capped-acked 均被 ack 退出）`, s.NudgeRecent)
+	}
+	if s.NudgeActionable != 1 {
+		t.Errorf(`NudgeActionable=%d want 1（仅 weak-pending；capped-acked 被 ack 且降档本就不计）`, s.NudgeActionable)
+	}
+	// 均分不受 ack 影响（历史不篡改）。
+	if s.AvgScore != 86 {
+		t.Errorf(`AvgScore=%v want 86`, s.AvgScore)
+	}
+	// nil matcher ≡ SummarizeAt（无 ack 的既有语义逐字节不变）。
+	got := SummarizeAtAcked(cs, now, nil)
+	want := SummarizeAt(cs, now)
+	if got.NudgeRecent != want.NudgeRecent || got.NudgeActionable != want.NudgeActionable ||
+		got.NudgeCount != want.NudgeCount || got.AvgScore != want.AvgScore {
+		t.Errorf(`nil matcher 应 ≡ SummarizeAt：got %+v want %+v`, got, want)
+	}
+}

@@ -1034,3 +1034,55 @@ func TestPulseDocReview_ReviewedAtOmitEmpty(t *testing.T) {
 		t.Fatalf(`有值 ReviewedAt 须出现在序列化结果: %s`, data)
 	}
 }
+
+// TestServe_PulseStats_AckedNudgeExcluded 钉住证据式 ack 在 stats API 面的语义：
+// 有 retro-done disposition（identity 三元组匹配）的窗口内 nudge 退出
+// nudges/nudgesActionable/alerts；同 ref 不同 session（任务重做）不受旧 ack 误伤。
+func TestServe_PulseStats_AckedNudgeExcluded(t *testing.T) {
+	root, p := forgedatatest.RealProject(t)
+	now := time.Now()
+	// 真弱（ratio 0.44）+ 已回顾 → 退出告警。
+	if err := act.Append(p, &act.Conclusion{
+		TaskRef: "feat/acked", SessionID: "s1", Score: 86, Grade: "B", Strength: "Weak",
+		Ratio: 0.44, RetrospectiveNudge: true, CompletedAt: now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 真弱 + 未回顾 → 留在告警。
+	if err := act.Append(p, &act.Conclusion{
+		TaskRef: "feat/pending", SessionID: "s2", Score: 86, Grade: "B", Strength: "Weak",
+		Ratio: 0.33, RetrospectiveNudge: true, CompletedAt: now.Add(-1 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 同 ref 不同 session（重做）+ 未回顾 → 不被旧 ack 误伤，留在告警。
+	if err := act.Append(p, &act.Conclusion{
+		TaskRef: "feat/acked", SessionID: "s3", Score: 86, Grade: "B", Strength: "Weak",
+		Ratio: 0.40, RetrospectiveNudge: true, CompletedAt: now.Add(-30 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ackedAt := now.Add(-2 * time.Hour)
+	if err := act.AppendDisposition(p, &act.Disposition{
+		TaskRef: "feat/acked", SessionID: "s1", CompletedAt: ackedAt,
+		Carrier: "skill", RecordedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv := pulseServer(t, Options{Root: root})
+	_, body := pulseGet(t, srv.URL+"/api/pulse/stats.json")
+	var stats struct {
+		Alerts           int `json:"alerts"`
+		Nudges           int `json:"nudges"`
+		NudgesActionable int `json:"nudgesActionable"`
+	}
+	if err := json.Unmarshal(body, &stats); err != nil {
+		t.Fatalf("decode: %v\n%s", err, body)
+	}
+	if stats.Nudges != 2 { // pending + 重做(s3)；acked(s1) 退出
+		t.Errorf("nudges = %d, want 2", stats.Nudges)
+	}
+	if stats.NudgesActionable != 2 || stats.Alerts != 2 { // 两条真弱都未 ack
+		t.Errorf("actionable=%d alerts=%d, want 2/2（ack 只除 feat/acked@s1）", stats.NudgesActionable, stats.Alerts)
+	}
+}
