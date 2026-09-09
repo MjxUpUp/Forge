@@ -135,3 +135,20 @@ forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfat
 ### Rationale
 
 依赖单向化：方法论完整留在中立库，forge 增强完整在 forge 侧；forge 用户体验经集成笔记+触发指针承接
+
+## [d-18d38e3d71c45b70-424d312d] accept
+
+- **Skill**: session-retrospective
+- **DecidedAt**: 2026-09-09T04:57:51Z
+
+### Diagnosis
+
+5.5 收尾落章步把 forge 命令字面写进 canonical skill 正文，触发 R18 零反向依赖硬校验（豁免只减不增），且违反 CONVENTIONS §13 分层
+
+### Revision
+
+5.5 改环境中性表述：结论系统有 ack 入口必落章/忘落章=提醒留面板/无入口跳过/具体命令以会话内注入指令为准；具体 forge 命令移至 Conclusion.Directive() 生成面（task complete+会话结束 hook 打印）
+
+### Evidence
+
+TestR18_Grandfathered_Exact 红→绿；TestDirective_ContainsRetroDoneInstruction 钉住 Directive 侧命令契约；全量 go test EXIT=0
