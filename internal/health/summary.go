@@ -81,12 +81,28 @@ type Summary struct {
 	// RetrospectiveNudge=true 的结论——喂给 dashboard 的面向告警计数，让陈旧 nudge
 	// 不再把面板红灯永远挂着（告警疲劳校准见 NudgeRecentWindow）。旧 Summarize
 	//（无 `now`）填 NudgeRecent = NudgeCount，无窗口调用方字段语义仍完整。
-	NudgeRecent int       `json:"nudge_recent"`
-	LowDims     []DimFreq `json:"low_dims,omitempty"`
-	Span        Span      `json:"span"`
-	EarlierAvg  float64   `json:"earlier_avg"` // 前半段均分
-	RecentAvg   float64   `json:"recent_avg"`  // 后半段均分
-	Trend       string    `json:"trend"`       // improving/regressing/stable/insufficient
+	NudgeRecent int `json:"nudge_recent"`
+	// NudgeActionable counts windowed nudges that are NOT escape-hatch-capped
+	// Weak — i.e. the human-facing ALERT share of NudgeRecent: true-weak claims
+	// (Ratio < 0.5), Unverified, or low score (<70). A capped Weak already paid
+	// its escape tax at scoring time (Strength downgraded Strong→Weak); the
+	// dashboard re-displaying it adds no information (2026-09 finding: 8/11
+	// alerts were capped noise, blind-spot rate 0). Window semantics are
+	// identical to NudgeRecent ((now-Window, now]); NudgeRecent keeps the full
+	// windowed total for transparent breakdown — alerts = zombies + actionable.
+	//
+	// NudgeActionable 数窗口内且【非】逃生舱降档 Weak 的 nudge——即 NudgeRecent 中
+	// 面向人的【告警】分量：真弱声明（Ratio < 0.5）、Unverified 或低分（<70）。降档
+	// Weak 的逃生税已在评分时刻收取（Strong→Weak 降档），dashboard 重复展示零信息量
+	// （2026-09 实测：11 条告警中 8 条降档噪音、盲区率 0）。窗口语义与 NudgeRecent
+	// 完全一致（(now-Window, now]）；NudgeRecent 保留窗口总量作透明拆解——
+	// alerts = zombies + actionable。分类谓词单一真相源：act.Conclusion.EscapeCapped。
+	NudgeActionable int       `json:"nudge_actionable"`
+	LowDims         []DimFreq `json:"low_dims,omitempty"`
+	Span            Span      `json:"span"`
+	EarlierAvg      float64   `json:"earlier_avg"` // 前半段均分
+	RecentAvg       float64   `json:"recent_avg"`  // 后半段均分
+	Trend           string    `json:"trend"`       // improving/regressing/stable/insufficient
 
 	// PhasePassRate is the phase-aware quality report (Phase 2 loop integrated). key
 	// = design phase (requirement/api/backend...), value = task pass rate for that
@@ -99,14 +115,20 @@ type Summary struct {
 }
 
 // Summarize is the legacy no-window entry: equivalent to SummarizeAt with
-// NudgeRecent filled as the all-history NudgeCount (no `now` to window against).
+// NudgeRecent filled as the all-history NudgeCount and NudgeActionable as the
+// all-history non-capped nudge count (no `now` to window against).
 //
-// Summarize 是旧的无窗口入口：等价于 SummarizeAt，只是 NudgeRecent 填全量 NudgeCount
-// （没有 `now` 可开窗）。为既有调用方（cli/health.go、pulse 项目卡）保留；面向告警的新
-// 消费方应优先 SummarizeAt。
+// Summarize 是旧的无窗口入口：等价于 SummarizeAt，只是 NudgeRecent 填全量 NudgeCount、
+// NudgeActionable 填全量非降档 nudge 数（没有 `now` 可开窗）。为既有调用方
+// （cli/health.go、pulse 项目卡）保留；面向告警的新消费方应优先 SummarizeAt。
 func Summarize(cs []act.Conclusion) Summary {
 	s := SummarizeAt(cs, time.Time{})
 	s.NudgeRecent = s.NudgeCount
+	for _, c := range cs {
+		if c.RetrospectiveNudge && !c.EscapeCapped() {
+			s.NudgeActionable++
+		}
+	}
 	return s
 }
 
@@ -176,6 +198,10 @@ func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 			// now 非零才判定——旧 Summarize 包装传零值，事后会覆写 NudgeRecent。
 			if !now.IsZero() && c.CompletedAt.After(now.Add(-NudgeRecentWindow)) && !c.CompletedAt.After(now) {
 				s.NudgeRecent++
+				// 告警分级（2026-09）：降档 Weak 不进告警分量——税已收，重复展示是噪音。
+				if !c.EscapeCapped() {
+					s.NudgeActionable++
+				}
 			}
 		}
 		for _, d := range c.LowDimensions {
