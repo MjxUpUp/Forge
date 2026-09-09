@@ -121,7 +121,7 @@ func runDrill(tmp string, steps []wedgeStep) (WedgeDrillResult, error) {
 	}
 	// 隔离打底（HOME/FORGE_DATA_HOME → 临时目录；宿主零接线）：与 RunResumeDrills
 	// 同构。git 身份由步骤内联 -c 提供，不依赖环境。
-	baseEnv := append(os.Environ(), "HOME="+tmp, "FORGE_DATA_HOME="+dataHome)
+	baseEnv := drillEnv(tmp, dataHome)
 	run := func(argv, stepEnv []string) (string, int) {
 		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Dir = fixture

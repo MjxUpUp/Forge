@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -124,12 +125,13 @@ func RunResumeDrills(drills []ResumeDrill, forgeBin string) ([]DrillResult, erro
 					return
 				}
 			}
-			env := append(os.Environ(), "HOME="+tmp, "FORGE_DATA_HOME="+dataHome)
+			env := drillEnv(tmp, dataHome)
 			run := func(argv []string, stepEnv []string) (string, int) {
 				cmd := exec.Command(argv[0], argv[1:]...)
 				cmd.Dir = fixture
-				// 隔离环境（HOME/FORGE_DATA_HOME）打底，step.Env 叠加其上。
-				cmd.Env = append(append(os.Environ(), env...), stepEnv...)
+				// 隔离环境（HOME/FORGE_DATA_HOME）打底，step.Env 叠加其上——
+				// env 已含基环境，直接拼接（原先双重 os.Environ() 打底产生重复键）。
+				cmd.Env = slices.Concat(env, stepEnv)
 				var out strings.Builder
 				cmd.Stdout = &out
 				cmd.Stderr = &out
