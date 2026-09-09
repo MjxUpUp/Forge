@@ -178,3 +178,13 @@ func (p *Project) FreezeStatePath() string {
 func (p *Project) ActConclusionsPath() string {
 	return filepath.Join(p.DataDir, "act", "conclusions.jsonl")
 }
+
+// ActDispositionsPath returns DataDir/act/dispositions.jsonl — the append-only
+// record of retro-done acks (evidence-based ack of RetrospectiveNudge; see
+// act.Disposition).
+//
+// ActDispositionsPath 返回 DataDir/act/dispositions.jsonl——retro-done ack 的
+// append-only 记录（RetrospectiveNudge 的证据式 ack；见 act.Disposition）。
+func (p *Project) ActDispositionsPath() string {
+	return filepath.Join(p.DataDir, "act", "dispositions.jsonl")
+}
