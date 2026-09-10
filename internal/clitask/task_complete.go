@@ -258,9 +258,14 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		}
 	}
 
-	// 清 active task ref——task 完成（session-scoped）
+	// 清 active task ref——task 完成。先清当前会话（session-scoped），再清所有仍指向本
+	// 任务的其他会话指针 / legacy 全局 / workspace 绑定（E.3）：多会话任务只清自己会让
+	// 其他会话（及无 session 的 CLI 调用经 workspace 绑定）继续把 hook 行归到已完成任务。
 	if err := taskpipeline.ClearActiveTaskRef(root, taskpipeline.CurrentSessionID()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
+	}
+	if err := taskpipeline.ClearActiveTaskRefsForTask(root, state.TaskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear task anchors: %v\n", err)
 	}
 	// dogfood 2.3：post-complete grace sentinel，让 file-sentinel 不把自然的后续
 	// git commit 误判为「无 active task + 源码写入」而 quarantine。此前流程迫使 agent
