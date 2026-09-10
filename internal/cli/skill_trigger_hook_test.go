@@ -133,7 +133,8 @@ func TestRunSkillTriggerCore_HitCodingIntent(t *testing.T) {
 
 func TestRunSkillTriggerCore_HitTestCommandFailed(t *testing.T) {
 	dir := withCanonicalEnv(t)
-	writeSkill(t, dir, "test-discipline", `[{"event":"PostToolUse","match":"Bash","when":"test_command_failed"}]`)
+	// 设计 A：动作点 trigger 需声明 inline 才命中——夹具补 inline（渲染形态从完整块变一行）。
+	writeSkill(t, dir, "test-discipline", `[{"event":"PostToolUse","match":"Bash","when":"test_command_failed","inline":"测试失败——先判断是行为 bug 还是测试本身，端到端复现后再改","follow":"go test"}]`)
 
 	rendered, err := runSkillTriggerCore(hookdispatch.HookInput{
 		HookEventName: "PostToolUse",
@@ -152,7 +153,7 @@ func TestRunSkillTriggerCore_HitTestCommandFailed(t *testing.T) {
 
 func TestRunSkillTriggerCore_TestCommandPassed_NoHit(t *testing.T) {
 	dir := withCanonicalEnv(t)
-	writeSkill(t, dir, "test-discipline", `[{"event":"PostToolUse","match":"Bash","when":"test_command_failed"}]`)
+	writeSkill(t, dir, "test-discipline", `[{"event":"PostToolUse","match":"Bash","when":"test_command_failed","inline":"测试失败——先判断是行为 bug 还是测试本身","follow":"go test"}]`)
 
 	rendered, err := runSkillTriggerCore(hookdispatch.HookInput{
 		HookEventName: "PostToolUse",
@@ -324,7 +325,12 @@ func TestRunSkillTriggerHook_KimiSuppressedOffUserPromptSubmit(t *testing.T) {
 			isolateSkillTriggerTmp(t)
 			root := t.TempDir()
 			// A skill that WOULD trigger on this event — the delivery guard applies regardless.
-			writeSkill(t, dir, "probe-skill", fmt.Sprintf(`[{"event":%q,"when":"coding_intent"}]`, ev))
+			// 设计 A：动作点事件（Pre/Post/Stop）需 inline 才命中；SessionStart 是决策点保持 load。
+			inline := ""
+			if ev != "UserPromptSubmit" && ev != "SessionStart" {
+				inline = `,"inline":"按 test-nudge 形态给一行动作","follow":"go test"`
+			}
+			writeSkill(t, dir, "probe-skill", fmt.Sprintf(`[{"event":%q,"when":"coding_intent"%s}]`, ev, inline))
 
 			out := captureStdout(t, func() {
 				if err := runSkillTriggerHook(hookdispatch.HookInput{

@@ -420,7 +420,7 @@ func NextHintMetrics(entries []checklog.Entry, calls []toolusage.ToolCall, cal C
 			continue
 		}
 		st.Hints++
-		want := normalizeCmd(e.Meta[checklog.MetaKeySuggested])
+		want := suggestedMatchForm(e.Meta[checklog.MetaKeySuggested])
 		if want == "" {
 			continue
 		}
@@ -438,6 +438,22 @@ func NextHintMetrics(entries []checklog.Entry, calls []toolusage.ToolCall, cal C
 
 func normalizeCmd(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// suggestedMatchForm normalizes a suggested command for adoption matching: `<ref>`/`<title>` style
+// placeholders are truncated at the first placeholder token — the agent necessarily substitutes real
+// values, so a Contains against the raw form never matches (B2-1 review: task-start hints with
+// placeholders would structurally score 0 and dilute B1's denominator).
+//
+// suggestedMatchForm 把建议命令归一成可匹配形态：`<ref>`/`<title>` 类占位符在首个占位 token
+// 处截断——agent 必然填实值，对着原文 Contains 永假（B2-1 评审：task start 的占位符提示会
+// 结构性计 0 并稀释 B1 分母）。
+func suggestedMatchForm(s string) string {
+	s = normalizeCmd(s)
+	if i := strings.Index(s, "<"); i > 0 {
+		s = strings.TrimSpace(strings.TrimSuffix(s[:i], " --"))
+	}
+	return s
 }
 
 // GateCmdFormMetrics computes C1–C3 (and the B2/B3 shares) over Bash calls that embed a gate command.

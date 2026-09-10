@@ -40,6 +40,11 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 		"review_passed": nextReviewPassed(st),
 	}
 
+	// 已完结任务（status --ref 的展示路径会把 CompletedAt!=nil 的状态喂进来）：完成态不
+	// 建议「再跑 complete」，与 ActiveTaskState 返回 nil 的完成态同分支处理。
+	if st != nil && st.CompletedAt != nil {
+		st = nil
+	}
 	// 无活跃任务（ActiveTaskState 对已完成任务返回 nil——完成态经此分支）：归属问题优先。
 	if st == nil {
 		if dirty {
@@ -80,14 +85,7 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 // next-hint 行的建议命令在 10 分钟内被执行的比例）。branch/dirty 经 git 实算；记录失败只打
 // stderr 不影响调用方输出。
 func NextHint(root string, st *TaskState) NextResult {
-	branch := ""
-	if out, err := exec.Command("git", "-C", root, "rev-parse", "--abbrev-ref", "HEAD").Output(); err == nil {
-		branch = strings.TrimSpace(string(out))
-	}
-	dirty := false
-	if out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output(); err == nil {
-		dirty = strings.TrimSpace(string(out)) != ""
-	}
+	branch, dirty := GitBranchDirty(root)
 	res := NextDecision(branch, dirty, st)
 	entry := &checklog.Entry{
 		Check:     checklog.CheckNextHint,

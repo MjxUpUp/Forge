@@ -104,6 +104,25 @@ func TestNextHintMetrics_Adoption(t *testing.T) {
 	}
 }
 
+// TestNextHintMetrics_PlaceholderSuggestionAdoption pins the B1 caliber fix: a suggested
+// command with `<ref>`-style placeholders matches by its prefix (the agent substitutes real
+// values), while the full literal form never would.
+//
+// TestNextHintMetrics_PlaceholderSuggestionAdoption 钉住 B1 口径修复：含 `<ref>` 类占位符的
+// 建议命令按前缀匹配采纳（agent 必然填实值），整串字面匹配永假。
+func TestNextHintMetrics_PlaceholderSuggestionAdoption(t *testing.T) {
+	entries := []checklog.Entry{
+		{Check: checklog.CheckNextHint, SessionID: "s1", RecordedAt: t0, Meta: map[string]string{checklog.MetaKeySuggested: "forge task start --ref <ref> --branch --title <title>"}},
+	}
+	calls := []toolusage.ToolCall{
+		call("Bash", "s1", `{"command":"cd E:/Forge && forge task start --ref feat/x --branch --title "x""}`, t0.Add(time.Minute)),
+	}
+	m := NextHintMetrics(entries, calls, DefaultCaliber())
+	if m.Adoption.Num != 1 || m.Adoption.Den != 1 {
+		t.Fatalf("placeholder suggestion adoption = %+v, want 1/1 (prefix match)", m.Adoption)
+	}
+}
+
 func TestGateCmdFormMetrics(t *testing.T) {
 	calls := []toolusage.ToolCall{
 		call("Bash", "s", `{"command":"forge task gate task-verify --ref x"}`, t0),

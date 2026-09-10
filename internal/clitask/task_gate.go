@@ -135,7 +135,12 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		// 看到」；NextHint 同时落 checklog next-hint 行（B1 采纳率 = 建议命令 10 分钟内被执行）。
 		// BLOCKED 后同样给出（过/拦两种出口的下一步都明确）；状态在 MutateTaskState 之后取，
 		// 反映刚写入的盖章。
-		if st, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID()); err == nil {
+		// LoadTaskState(root, state.TaskRef) 重载刚盖章的那个任务——ActiveTaskState 按
+		// CurrentSessionID 解析，gate --ref 指向非本会话活跃任务时会取错对象（评审）。
+		st, stErr := taskpipeline.LoadTaskState(root, state.TaskRef)
+		if stErr != nil {
+			fmt.Fprintf(os.Stderr, "[forge] warning: next-hint skipped (task state unreadable): %v\n", stErr)
+		} else {
 			hint := taskpipeline.NextHint(root, st)
 			fmt.Printf("  → next: %s（%s）\n", hint.Next, hint.Reason)
 		}
