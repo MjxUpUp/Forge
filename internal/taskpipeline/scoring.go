@@ -14,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
 // BuildEvaluateInput builds the scoring input from TaskState + checklog + git.
@@ -63,7 +64,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		// Weak 证据体现。
 		testCoverageChecked = false
 	}
-	if latestChecks, err := checklog.LatestByCheckForSessionSince(root, state.SessionID, state.StartedAt); err == nil {
+	if latestChecks, err := checklog.LatestByCheckForTaskWindow(root, state.SessionID, state.TaskRef, state.StartedAt, state.SealedAt()); err == nil {
 		// INFRA:-prefixed entries are fail-open infrastructure failures (bash spawn
 		// error / WSL exit 126/127), not quality verdicts — the gate treats them as
 		// fail-open, so scoring must not read them as compile/assertion failures
@@ -129,12 +130,17 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	testAssertionCount, testFileCount := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
 
 	// 证据链来源分布：从 checklog 聚合 deterministic/agent-claim，供 ScoreResult.Evidence
-	// 可观测（不参与打分）。ForTask 与 forge trace 同源。
+	// 可观测（不参与打分）。以封印时刻截断（E.4）——与 AppendConclusion 同窗口。
 	evDeterministic, evAgentClaim := 0, 0
-	if ec, err := checklog.ForTask(root, state.TaskRef); err == nil {
+	if ec, err := checklog.ForTaskUntil(root, state.TaskRef, state.SealedAt()); err == nil {
 		evDeterministic = ec.Deterministic
 		evAgentClaim = ec.AgentClaim
 	}
+
+	// 活跃工作跨度（E.4 评分口径）：任务时间窗内首末 toollog 事件距。挂钟
+	// started→completed 会把 doc-gate 卡住的空闲两天算成「拖沓」（乙机实录 efficiency
+	// 35）；无 toollog（<2 条）回落挂钟，由 scoreEfficiencyWithSpan 处理。
+	activeSpan := taskActiveSpan(root, state)
 
 	// 表达维度输入（输出→回检循环度量锚点）：评分时实时重算——与 doc gate 同
 	// doclint + changedMarkdownDocs 逻辑，维度与门禁结论不会不一致。
@@ -165,6 +171,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		},
 		StartedAt:             state.StartedAt,
 		CompletedAt:           completedAt,
+		ActiveSpan:            activeSpan,
 		GitDiffStat:           gitDiffStat,
 		TestCoveragePassed:    testCoveragePassed,
 		TestCoverageChecked:   testCoverageChecked,
@@ -265,7 +272,7 @@ func ScoreTask(root string, state *TaskState) error {
 // state.Acceptance 通过率 + state.Score，调 act.BuildConclusion。从 cli/task.go 下沉，
 // 让 MCP complete 与 CLI 共用 Act 反馈臂。
 func AppendConclusion(root string, state *TaskState) (act.Conclusion, string, error) {
-	ec, err := checklog.ForTask(root, state.TaskRef)
+	ec, err := checklog.ForTaskUntil(root, state.TaskRef, state.SealedAt())
 	if err != nil {
 		// An unreadable evidence chain would otherwise be silently persisted as a
 		// "zero-evidence completion" — warn so the IO failure stays attributable.
@@ -303,4 +310,40 @@ func phaseKeys(phases []DesignPhase) []string {
 		out[i] = string(p)
 	}
 	return out
+}
+
+// taskActiveSpan 从 toollog 取任务的活跃工作跨度（首末工具调用距），窗口
+// [StartedAt, SealedAt]（封印零值=无上界）。读失败或不足 2 条返回 0——调用方回落挂钟。
+func taskActiveSpan(root string, state *TaskState) time.Duration {
+	calls, err := toolusage.LoadForTaskAll(root, state.TaskRef)
+	if err != nil {
+		return 0
+	}
+	return activeSpanFromCalls(calls, state.StartedAt, state.SealedAt())
+}
+
+// activeSpanFromCalls is the pure core of taskActiveSpan: span between the earliest and latest call inside [since, until]; 0 when fewer than two calls fall in the window.
+//
+// activeSpanFromCalls 是 taskActiveSpan 的纯函数核：窗口 [since, until] 内最早与最晚
+// 调用的时间差；窗口内不足 2 条返回 0（无法定义跨度，回落挂钟）。until 零值 = 无上界。
+func activeSpanFromCalls(calls []toolusage.ToolCall, since, until time.Time) time.Duration {
+	var first, last time.Time
+	n := 0
+	for _, c := range calls {
+		ts := c.Timestamp
+		if ts.IsZero() || (!since.IsZero() && ts.Before(since)) || (!until.IsZero() && ts.After(until)) {
+			continue
+		}
+		if n == 0 || ts.Before(first) {
+			first = ts
+		}
+		if n == 0 || ts.After(last) {
+			last = ts
+		}
+		n++
+	}
+	if n < 2 {
+		return 0
+	}
+	return last.Sub(first)
 }

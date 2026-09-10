@@ -1,6 +1,9 @@
 package checklog
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // EvidenceChain aggregates a task’s scattered checklog evidence entries into a structured view of claimed verifications and deterministic support.
 //
@@ -247,11 +250,20 @@ func isRhythmEscapeHatch(detail string) bool {
 
 // ForTask loads all evidence for a task from disk (including archived checklog-*.jsonl) and aggregates it.
 //
-// ForTask 从磁盘加载一个任务的全部证据（含归档 checklog-*.jsonl）并聚合。
-// 等价于 LoadForTask + BuildEvidenceChain。当前消费者：forge trace；预留给
-// 未来评分/review 子 agent 一行取到证据链（避免各自重复 LoadForTask+分桶）。
+// ForTask 从磁盘加载一个任务的全部证据（含归档 checklog-*.jsonl）并聚合，无时间上界
+// （forge trace 语义）。评分与 Act 结论走 ForTaskUntil 以封印时刻截断。
 func ForTask(root, taskRef string) (EvidenceChain, error) {
-	entries, err := LoadForTask(root, taskRef)
+	return ForTaskUntil(root, taskRef, time.Time{})
+}
+
+// ForTaskUntil is ForTask bounded by until (zero = unbounded): the completion-claim evidence chain must stop at the seal instant.
+//
+// ForTaskUntil 是带上界的 ForTask（until 零值 = 无界）：完成声明的证据链必须止于封印
+// 时刻（TaskState.SealedAt）。乙机实录：task-complete 门禁通过后 doc-gate 卡了两天，
+// 期间 10 次重复 verify 自述 + 13 条异会话 hazard 拦截把 ratio 从 0.75 压到 0.22、
+// 误判 Weak 并误触 RetrospectiveNudge（docs/design/harness-fixes-a-g-2026-09.md E.4）。
+func ForTaskUntil(root, taskRef string, until time.Time) (EvidenceChain, error) {
+	entries, err := LoadForTaskUntil(root, taskRef, until)
 	if err != nil {
 		return EvidenceChain{}, err
 	}

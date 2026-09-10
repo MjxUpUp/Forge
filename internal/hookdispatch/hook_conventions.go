@@ -163,18 +163,18 @@ func runConventionsWriteHook(hookInput HookInput, root, version, agent string) e
 // recordConventionsInject 落观察条目并盖输出实际使用通道的送达章
 // （AdvisoryEmissionChannel 覆盖 kimi 队列路径——与 test-nudge 同契约）。
 func recordConventionsInject(hookInput HookInput, root, version, agent, detail string, extra map[string]string) {
-	taskRef := taskRefForSession(root, hookInput.SessionID)
+	attr := taskAttributionForSession(root, hookInput.SessionID)
 	delivered, channel := AdvisoryEmissionChannel(agent, hookInput.HookEventName)
 	meta := map[string]string{"event": hookInput.HookEventName}
 	for k, v := range extra {
 		meta[k] = v
 	}
-	if err := checklog.Record(root, &checklog.Entry{
+	entry := &checklog.Entry{
 		Check:        checklog.CheckConventionsInject,
 		Passed:       true,
 		Checked:      true,
 		ToolName:     hookInput.ToolName,
-		TaskRef:      taskRef,
+		TaskRef:      attr.TaskRef,
 		SessionID:    hookInput.SessionID,
 		Detail:       detail,
 		Source:       checklog.EvidenceDeterministic,
@@ -183,7 +183,9 @@ func recordConventionsInject(hookInput HookInput, root, version, agent, detail s
 		Channel:      channel,
 		ForgeVersion: version,
 		Meta:         meta,
-	}); err != nil {
+	}
+	attr.stamp(entry)
+	if err := checklog.Record(root, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "[conventions] warning: checklog record failed: %v\n", err)
 	}
 }
@@ -243,16 +245,6 @@ func loadConventionsDirState(sessionID string) conventionsDirState {
 	return state
 }
 
-// taskRefForSession resolves the active task ref bound to the session — local
-// copy of cli skill_trigger.go's helper (3 lines over taskpipeline.ActiveTaskState;
-// helpers can't be shared across packages, comments cross-reference).
-//
-// taskRefForSession 解析 session 绑定的活跃 task ref——cli skill_trigger.go 同名
-// 助手的本地副本（对 taskpipeline.ActiveTaskState 的 3 行封装；测试助手/小助手
-// 无法跨包共享，注释互指防漂移）。
-func taskRefForSession(root, sessionID string) string {
-	if active, err := taskpipeline.ActiveTaskState(root, sessionID); err == nil && active != nil {
-		return active.TaskRef
-	}
-	return ""
-}
+// 活跃任务 ref 的解析统一走 hook_attribution_meta.go 的 taskAttributionForSession（写
+// checklog 行必须同时打归因探针，故不再有只取 ref 的包装）；cli skill_trigger.go 的
+// taskRefForSession 是另一包对 taskpipeline.ActiveTaskState 的本地 3 行封装，注释互指防漂移。

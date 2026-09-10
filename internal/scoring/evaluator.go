@@ -21,7 +21,7 @@ func Evaluate(input *EvaluateInput, config *scoringtypes.ScoringConfig) *scoring
 		scoreCodeQuality(input.CompilePassed, input.CompileChecked),
 		scoreAssertions(input.AssertionPassed, input.AssertionChecked),
 		scoreScope(input.GitDiffStat),
-		scoreEfficiency(input.StartedAt, input.CompletedAt),
+		scoreEfficiencyWithSpan(input.StartedAt, input.CompletedAt, input.ActiveSpan),
 		scoreExpression(input),
 	}
 
@@ -220,7 +220,24 @@ func scoreScope(diffStat string) scoringtypes.DimensionScore {
 	}
 }
 
-func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionScore {
+// scoreEfficiencyWithSpan scores efficiency on the tool-activity span when known (>0), else on the wall clock; a negative span is untrustworthy → neutral 70, never a wall-clock fallback.
+//
+// scoreEfficiencyWithSpan：activeSpan>0 按活跃工作跨度打分，否则按挂钟
+// startedAt→completedAt。负跨度（toollog 时间戳被改/时钟回拨）与负挂钟同待遇——中性 70，
+// 不回落挂钟白拿分。乙机实录：任务活跃 56 分钟、挂钟 46 小时（doc-gate 卡两天），
+// 挂钟口径判 35 分「拖沓」；活跃口径 75 才是工作本身的效率
+// （docs/design/harness-fixes-a-g-2026-09.md E.4，评分口径变更见 CHANGELOG）。
+func scoreEfficiencyWithSpan(startedAt, completedAt time.Time, activeSpan time.Duration) scoringtypes.DimensionScore {
+	if activeSpan < 0 {
+		return scoringtypes.DimensionScore{
+			Dimension: scoringtypes.DimensionEfficiency,
+			Score:     70,
+			Detail:    fmt.Sprintf(`Time data untrustworthy (negative active span %.0f minutes)`, activeSpan.Minutes()),
+		}
+	}
+	if activeSpan > 0 {
+		return efficiencyBucket(activeSpan, `Active work span %.0f minutes (tool activity, idle excluded)`)
+	}
 	if startedAt.IsZero() || completedAt.IsZero() {
 		return scoringtypes.DimensionScore{
 			Dimension: scoringtypes.DimensionEfficiency,
@@ -241,7 +258,13 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 			Detail:    fmt.Sprintf(`Time data untrustworthy (negative duration %.0f minutes)`, duration.Minutes()),
 		}
 	}
+	return efficiencyBucket(duration, `Completed in %.0f minutes`)
+}
 
+// efficiencyBucket maps a duration onto the five efficiency tiers; detailFmt carries one %.0f placeholder (minutes).
+//
+// efficiencyBucket 把时长映射到 efficiency 五档；detailFmt 带一个 %.0f 占位（分钟）。
+func efficiencyBucket(duration time.Duration, detailFmt string) scoringtypes.DimensionScore {
 	minutes := duration.Minutes()
 
 	// 阈值重校准（dogfood 实测旧阈值脱离实际：≤5min=100/≤60=60/>60=40 把 80% 真实 AI 任务
@@ -264,7 +287,7 @@ func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionSco
 	return scoringtypes.DimensionScore{
 		Dimension: scoringtypes.DimensionEfficiency,
 		Score:     score,
-		Detail:    fmt.Sprintf(`Completed in %.0f minutes`, minutes),
+		Detail:    fmt.Sprintf(detailFmt, minutes),
 	}
 }
 
