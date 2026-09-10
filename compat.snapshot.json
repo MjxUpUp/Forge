@@ -1303,7 +1303,7 @@
     {
       "tree": "canonical",
       "name": "subagent-orchestration",
-      "sha256": "46f82bfce9202d6a1e7786499a7f661957514772dcbb0bdc0ba1d780df4976d2"
+      "sha256": "7a7455cf38109e9edf519c135e292c809ff1c6fe0912296e7beffaf5ac27652a"
     },
     {
       "tree": "canonical",
@@ -1338,7 +1338,7 @@
     {
       "tree": "forge",
       "name": "release-readiness",
-      "sha256": "936fa3a164e708bb2ce70e1954ceefc3fab4ab8e2ae18d774f79917a5da59b4e"
+      "sha256": "f7ac93f325036cb3917b34863865275dac98b93e599247faa4191e3489ad78c0"
     },
     {
       "tree": "forge",
