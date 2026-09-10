@@ -91,3 +91,20 @@ forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dr
 ### Rationale
 
 扩展 trigger 覆盖是 2026-08 审计 P1 优化项；声明式触发是把 skill 从被动文档转主动注入的唯一可靠手段（见 dogfood 发现）
+
+## [d-18d41476036c38f4-3b562823] accept
+
+- **Skill**: release-readiness
+- **DecidedAt**: 2026-09-10T21:57:29Z
+
+### Diagnosis
+
+同设计 A 通道重构批次——skills-forge 原生树同步
+
+### Revision
+
+triggers 增加 inline/follow 声明（release-readiness 的 follow 收窄去掉 git log 例行命令）
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md A 节；B2-1 评审的 A4 灌水向量分析

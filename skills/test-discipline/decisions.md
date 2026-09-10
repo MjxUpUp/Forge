@@ -75,3 +75,20 @@ feat/skills-boundary-inversion Phase 3（工程原则增强）：会话研究结
 ### Rationale
 
 属性来自规格而非实现，打破 AI 自证环——业界 2025-2026 共识方向（Anthropic PBT 研究/spec-driven development）
+
+## [d-18d41475eff086f4-83dc5729] accept
+
+- **Skill**: test-discipline
+- **DecidedAt**: 2026-09-10T21:57:28Z
+
+### Diagnosis
+
+动作点加载式推送两机实测转化 0-2%（机器甲 kimi 遥测/机器乙 harness-audit A2），按设计 A（docs/design/harness-fixes-a-g-2026-09.md）通道重构
+
+### Revision
+
+triggers 增加 inline（一行动作指令）与 follow（A4 跟随匹配器）声明，正文零改动
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md A 节 + evals/harness-audit-8db5-baseline-202609.json a_skill_trigger.by_event（PreToolUse 0/52、PostToolUse 1/48）
