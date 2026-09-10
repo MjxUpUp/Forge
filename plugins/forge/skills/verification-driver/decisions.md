@@ -93,3 +93,20 @@ forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dr
 ### Rationale
 
 扩展 trigger 覆盖是 2026-08 审计 P1 优化项；声明式触发是把 skill 从被动文档转主动注入的唯一可靠手段（见 dogfood 发现）
+
+## [d-18d41475f67f0b58-4823dfca] accept
+
+- **Skill**: verification-driver
+- **DecidedAt**: 2026-09-10T21:57:28Z
+
+### Diagnosis
+
+动作点加载式推送两机实测转化 0-2%（机器甲 kimi 遥测/机器乙 harness-audit A2），按设计 A（docs/design/harness-fixes-a-g-2026-09.md）通道重构
+
+### Revision
+
+triggers 增加 inline（一行动作指令）与 follow（A4 跟随匹配器）声明，正文零改动
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md A 节 + evals/harness-audit-8db5-baseline-202609.json a_skill_trigger.by_event（PreToolUse 0/52、PostToolUse 1/48）
