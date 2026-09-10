@@ -74,8 +74,8 @@ func TestSkillTriggerMetrics_ChannelConversionAndPrecision(t *testing.T) {
 	if m.Conversion.Num != 1 || m.Conversion.Den != 6 {
 		t.Fatalf("overall conversion = %+v, want 1/6", m.Conversion)
 	}
-	if m.VerificationDriverPrecision.Num != 1 || m.VerificationDriverPrecision.Den != 2 {
-		t.Fatalf("verification-driver precision = %+v, want 1/2", m.VerificationDriverPrecision)
+	if m.VerificationDriverTestCmdPrecision.Num != 1 || m.VerificationDriverTestCmdPrecision.Den != 2 {
+		t.Fatalf("verification-driver test-cmd precision = %+v, want 1/2", m.VerificationDriverTestCmdPrecision)
 	}
 	if m.InlineFollow == nil || m.InlineFollow.Num != 1 || m.InlineFollow.Den != 1 {
 		t.Fatalf("inline follow = %+v, want 1/1", m.InlineFollow)
@@ -130,26 +130,31 @@ func sealedTask(ref string, start time.Time, sealAfter time.Duration) *tasktypes
 	return s
 }
 
-func TestAttributionMetrics_PostSealAndSessionShare(t *testing.T) {
-	task := sealedTask("fix/x", t0, time.Hour)
+func TestAttributionMetrics_PostSealBySessionOwnership(t *testing.T) {
+	task := sealedTask("fix/x", t0, time.Hour) // SessionID "owner"
 	seal := t0.Add(time.Hour)
 	entries := []checklog.Entry{
 		{Check: checklog.CheckTaskVerify, TaskRef: "fix/x", SessionID: "owner", RecordedAt: t0.Add(30 * time.Minute), Meta: map[string]string{checklog.MetaKeyResolvePath: "active-file"}},
-		// complete 仪式行：封印后 1 分钟（宽限内）——探针会打标，但不算泄漏
+		// owner 会话封印后的行：complete 仪式 / doc-gate 卡两天后 owner 自己重跑——不是泄漏
 		{Check: checklog.CheckTaskComplete, TaskRef: "fix/x", SessionID: "owner", RecordedAt: seal.Add(time.Minute), Meta: map[string]string{checklog.MetaKeyPostSeal: "true"}},
-		{Check: checklog.CheckTaskVerify, TaskRef: "fix/x", SessionID: "", RecordedAt: t0.Add(20 * time.Hour), Meta: map[string]string{checklog.MetaKeyPostSeal: "true", checklog.MetaKeyResolvePath: "workspace"}},
-		{Check: checklog.CheckTaskVerify, TaskRef: "fix/x", SessionID: "", RecordedAt: t0.Add(21 * time.Hour)}, // 修复前的旧行：无探针但落在封印后
+		{Check: checklog.CheckTaskVerify, TaskRef: "fix/x", SessionID: "owner", RecordedAt: seal.Add(40 * time.Hour)},
+		// 无 session / 他会话封印后的行：泄漏（env-hermetic-registry 实录形态），无论多快
+		{Check: checklog.CheckTaskVerify, TaskRef: "fix/x", SessionID: "", RecordedAt: seal.Add(2 * time.Minute), Meta: map[string]string{checklog.MetaKeyPostSeal: "true", checklog.MetaKeyResolvePath: "workspace"}},
+		{Check: checklog.CheckName("hazard-guard"), TaskRef: "fix/x", SessionID: "other", RecordedAt: seal.Add(20 * time.Hour)},
 		{Check: checklog.CheckAutoCompile, TaskRef: "", SessionID: "", RecordedAt: t0.Add(2 * time.Minute)},
 	}
-	m := AttributionMetrics(entries, []*tasktypes.TaskState{task}, DefaultCaliber())
+	m := AttributionMetrics(entries, []*tasktypes.TaskState{task})
 	if m.PostSealRows != 2 || m.TasksWithPostSealRows != 1 {
-		t.Fatalf("post-seal leak = %d rows / %d tasks, want 2 / 1 (ceremony row inside grace excluded)", m.PostSealRows, m.TasksWithPostSealRows)
+		t.Fatalf("leak = %d rows / %d tasks, want 2 / 1 (no-session + other-session rows after seal, regardless of delay)", m.PostSealRows, m.TasksWithPostSealRows)
+	}
+	if m.PostSealOwnerRows != 2 {
+		t.Fatalf("owner post-seal rows = %d, want 2 (ceremony + 40h-later owner rerun are not leaks)", m.PostSealOwnerRows)
 	}
 	if m.ProbeFlaggedRows != 2 {
-		t.Fatalf("probe flagged = %d, want 2 (raw Meta count includes the ceremony row)", m.ProbeFlaggedRows)
+		t.Fatalf("probe flagged = %d, want 2", m.ProbeFlaggedRows)
 	}
-	if m.NoSessionShare.Num != 3 || m.NoSessionShare.Den != 5 {
-		t.Fatalf("no-session share = %+v, want 3/5", m.NoSessionShare)
+	if m.NoSessionShare.Num != 2 || m.NoSessionShare.Den != 6 {
+		t.Fatalf("no-session share = %+v, want 2/6", m.NoSessionShare)
 	}
 	if m.ResolvePathCounts["active-file"] != 1 || m.ResolvePathCounts["workspace"] != 1 {
 		t.Fatalf("resolve_path counts = %v", m.ResolvePathCounts)
@@ -171,6 +176,65 @@ func TestHazardMetrics_DedupAndRelease(t *testing.T) {
 	}
 	if m.ReleasedIncidents.Num != 1 || m.ReleasedIncidents.Den != 2 {
 		t.Fatalf("released = %+v, want 1/2", m.ReleasedIncidents)
+	}
+}
+
+// TestHazardMetrics_WriterRuleInterveningEvent pins parity with hazard.AppendEvent: the writer only
+// compares against the LAST event of any type, so block / data / block(2s) is two incidents (the
+// data row breaks the pair) — an audit rule that skipped non-block rows would undercount incidents.
+//
+// TestHazardMetrics_WriterRuleInterveningEvent 钉住与 hazard.AppendEvent 的同规则：写侧只比对
+// 末行任意类型事件，block / data / block(2s) 是两起事件（data 行打断配对）——跳过非 block 行
+// 的审计规则会少计事件。
+func TestHazardMetrics_WriterRuleInterveningEvent(t *testing.T) {
+	fp := hazard.Fingerprint("kubectl delete ns prod")
+	events := []hazard.Event{
+		{Ts: t0, Type: hazard.EventBlock, Fingerprint: fp, SessionID: "s1"},
+		{Ts: t0.Add(time.Second), Type: hazard.EventData, Fingerprint: fp},
+		{Ts: t0.Add(2 * time.Second), Type: hazard.EventBlock, Fingerprint: fp, SessionID: "s1"},
+	}
+	m := HazardMetrics(events, DefaultCaliber())
+	if m.Blocks != 2 || m.DoubleDeliveries != 0 || m.Incidents != 2 {
+		t.Fatalf("blocks=%d dup=%d incidents=%d, want 2/0/2 (intervening data row breaks the pair, as the writer would record)", m.Blocks, m.DoubleDeliveries, m.Incidents)
+	}
+}
+
+func TestRefsCriticalMetrics_PerHostDrill(t *testing.T) {
+	refs := map[string][]string{
+		"transcript-forensics": {"references/transcript-formats.md"},
+		"release-readiness":    {"./references/recommended-checks.md", "references/decision-tree.md"},
+	}
+	hostOf := func(ref string) string {
+		return map[string]string{"t/zcode": "zcode", "t/kimi": "kimi"}[ref]
+	}
+	calls := []toolusage.ToolCall{
+		// zcode：Read SKILL.md 加载 → 5 分钟内 Read 到 references（Windows 反斜杠路径）→ 下钻
+		{ToolName: "Read", SessionID: "s1", TaskRef: "t/zcode", Timestamp: t0, ToolInput: `{"file_path":"C:\\Users\\x\\skills-cache\\transcript-forensics\\SKILL.md"}`},
+		{ToolName: "Read", SessionID: "s1", TaskRef: "t/zcode", Timestamp: t0.Add(5 * time.Minute), ToolInput: `{"file_path":"C:\\Users\\x\\skills-cache\\transcript-forensics\\references\\transcript-formats.md"}`},
+		// kimi：Skill 调用加载 release-readiness → 窗口内只读了无关文件 → 未下钻
+		{ToolName: "Skill", SessionID: "s2", TaskRef: "t/kimi", Timestamp: t0, ToolInput: `{"skill":"release-readiness"}`},
+		{ToolName: "Read", SessionID: "s2", TaskRef: "t/kimi", Timestamp: t0.Add(3 * time.Minute), ToolInput: `{"file_path":"E:/Forge/README.md"}`},
+		// kimi：第二次加载后 30 分钟才读 reference → 超 DrillWindow(20m)，不算
+		{ToolName: "Skill", SessionID: "s3", TaskRef: "t/kimi", Timestamp: t0.Add(time.Hour), ToolInput: `{"skill":"release-readiness"}`},
+		{ToolName: "Read", SessionID: "s3", TaskRef: "t/kimi", Timestamp: t0.Add(time.Hour + 30*time.Minute), ToolInput: `{"file_path":"E:/Forge/skills-forge/release-readiness/references/decision-tree.md"}`},
+		// 未声明 refs_critical 的 skill：不进分母
+		{ToolName: "Read", SessionID: "s1", TaskRef: "t/zcode", Timestamp: t0.Add(time.Hour), ToolInput: `{"file_path":"E:/Forge/skills/dev-workflow/SKILL.md"}`},
+	}
+	m := RefsCriticalMetrics(calls, refs, hostOf, DefaultCaliber())
+	if m.Declared != 2 {
+		t.Fatalf("declared = %d, want 2", m.Declared)
+	}
+	if m.Overall.Num != 1 || m.Overall.Den != 3 {
+		t.Fatalf("overall drill = %+v, want 1/3", m.Overall)
+	}
+	if z := m.PerHost["zcode"]; z.Num != 1 || z.Den != 1 {
+		t.Fatalf("zcode = %+v, want 1/1", z)
+	}
+	if k := m.PerHost["kimi"]; k.Num != 0 || k.Den != 2 {
+		t.Fatalf("kimi = %+v, want 0/2 (unrelated read; out-of-window read)", k)
+	}
+	if na := RefsCriticalMetrics(calls, nil, hostOf, DefaultCaliber()); na.Declared != 0 || na.PerHost != nil {
+		t.Fatalf("no declarations must be n/a, got %+v", na)
 	}
 }
 

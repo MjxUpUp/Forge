@@ -35,6 +35,21 @@ func TestClassify_Forms(t *testing.T) {
 			Form{Gates: 1, OrChain: true}},
 		{"no gate command", `go test ./... 2>&1 | tail -3`, Form{}},
 		{"gate mentioned inside quotes is data", `git commit -m "run forge task gate task-verify later"`, Form{}},
+		// 评审补的绕过面/拼写口径夹具（docs/design/harness-fixes-a-g-2026-09.md C 风险节）
+		{"bash -c wrapper body is an invocation", `bash -c "forge task gate task-verify --ref x 2>&1 | tail -3"`,
+			Form{Gates: 1, PipeTruncated: true}},
+		{"sh -c wrapper standalone inside", `sh -c 'forge task gate task-verify --ref x'`,
+			Form{Gates: 1, Standalone: true, Compliant: true}},
+		{"backtick substitution", "OUT=`forge task gate task-verify --ref x`",
+			Form{Gates: 1, Standalone: true, Compliant: true}},
+		{"absolute path dev binary", `/e/Forge/bin/forge-dev.exe task gate task-verify --ref x`,
+			Form{Gates: 1, Standalone: true, Compliant: true}},
+		{"forge.exe spelling", `forge.exe task complete --ref x`,
+			Form{Gates: 1, Standalone: true, Compliant: true}},
+		{"heredoc body is data", "cat > run.sh <<'EOF'\nforge task gate task-verify --ref x | tail -1\nEOF\ngo build ./...",
+			Form{}},
+		{"heredoc body data but real gate after", "cat > run.sh <<EOF\nforge task complete --ref x\nEOF\nforge task gate task-verify --ref x",
+			Form{Gates: 1, Semicolon: true}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

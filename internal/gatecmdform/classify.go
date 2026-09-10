@@ -32,9 +32,13 @@ type Form struct {
 
 // gateRe matches forge gate-family subcommands, including the dev-binary spelling.
 //
-// gateRe 匹配 forge 门禁族子命令（含 ./bin/forge-dev(.exe) 拼写）：task gate / task
-// complete / task verify-acceptance / review pass / docs lint / task doc-review。
-var gateRe = regexp.MustCompile(`(?:^|[\s;&|(])(?:\./bin/)?forge(?:-dev(?:\.exe)?)?\s+(?:task\s+gate|task\s+complete|task\s+verify-acceptance|review\s+pass|docs\s+lint|task\s+doc-review)\b`)
+// gateRe 匹配 forge 门禁族子命令。计入的拼写口径（1.58 BLOCKED 前必须钉死——评审指出
+// 引号/反引号包装是可发现绕过）：`forge` / `forge.exe` / `forge-dev` / `forge-dev.exe` /
+// `./bin/forge-dev(.exe)`，前缀为行首、空白、`;&|(`、反引号或 `/`（绝对/相对路径调用）。
+// 已知边界（有意取舍，包注释「计入清单」）：`ssh host "forge ..."` 的远端调用不计；
+// 纯数据引用（commit message / echo）经 quoteBlanked 排除，但 `bash -c "..."` /
+// `sh -c '...'` 的包装体是真实调用，quoteBlanked 保留其体内文本。
+var gateRe = regexp.MustCompile("(?:^|[\\s;&|(`/\"'])(?:\\./bin/)?forge(?:-dev)?(?:\\.exe)?\\s+(?:task\\s+gate|task\\s+complete|task\\s+verify-acceptance|review\\s+pass|docs\\s+lint|task\\s+doc-review)\\b")
 
 var (
 	cdPrefixRe  = regexp.MustCompile(`^\s*cd\s+\S+\s*&&\s*`)
@@ -42,7 +46,62 @@ var (
 	grepMaskRe  = regexp.MustCompile(`\|\s*grep\b`)
 	semicolonRe = regexp.MustCompile(`;\s*\S`)
 	quotedRe    = regexp.MustCompile(`"[^"]*"|'[^']*'`)
+	// shellWrapRe 识别 `bash -c "…"` / `sh -c '…'` 包装：包裹的是待执行命令而非数据——
+	// 引号体保留参与匹配（cheat-detector：无差别置空会让包装调用从 C1–C3 静默消失，
+	// 也是 1.58 执法的绕过面）。
+	shellWrapRe = regexp.MustCompile(`(?:^|[\s;&|(]|` + "`" + `)(?:ba|z|da|k)?sh\s+-c\s+("[^"]*"|'[^']*')`)
+	// heredocOpenRe 匹配 `<<[-]['"]?TAG['"]?`；正文到独占一行的 TAG 为止（RE2 无反向引用，
+	// 配对由 stripHeredocs 过程式完成）。写给脚本/解释器的文本是数据（与
+	// skilltrigger.sanitizeCommand、hazard-guard 数据上下文同哲学）。
+	heredocOpenRe = regexp.MustCompile(`<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?`)
 )
+
+// stripHeredocs blanks heredoc bodies (text fed to an interpreter is data, not an invocation); the opening line (with any trailing `| tail`) is kept.
+//
+// stripHeredocs 置空 heredoc 正文（喂给解释器/脚本文件的文本是数据，不是调用）；保留
+// 开头那一行（含 `<<TAG` 之后的 `| tail` 等连接符），只挖掉正文到结束 TAG 行。
+func stripHeredocs(cmd string) string {
+	lines := strings.Split(cmd, "\n")
+	for i := 0; i < len(lines); i++ {
+		m := heredocOpenRe.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		tag := m[1]
+		end := -1
+		for j := i + 1; j < len(lines); j++ {
+			if strings.TrimSpace(lines[j]) == tag {
+				end = j
+				break
+			}
+		}
+		if end < 0 {
+			continue // 无结束标记：保守不动
+		}
+		for j := i + 1; j < end; j++ {
+			lines[j] = ""
+		}
+		i = end
+	}
+	return strings.Join(lines, "\n")
+}
+
+// blankQuotes blanks quoted segments EXCEPT shell-wrapper bodies (bash -c "…" wraps an invocation, not data).
+//
+// blankQuotes 置空引号段，但 shell 包装体（bash -c "…"）除外——它包裹的是调用不是数据。
+func blankQuotes(cmd string) string {
+	preserve := map[string]string{}
+	out := shellWrapRe.ReplaceAllStringFunc(cmd, func(m string) string {
+		key := "\x00" + string(rune(len(preserve))) + "\x00"
+		preserve[key] = m
+		return key
+	})
+	out = quotedRe.ReplaceAllStringFunc(out, func(s string) string { return strings.Repeat(" ", len(s)) })
+	for k, v := range preserve {
+		out = strings.ReplaceAll(out, k, v)
+	}
+	return out
+}
 
 // Classify classifies one shell command line. Quoted segments are blanked before matching so a gate command mentioned inside a string (commit message, echo) is data, not an invocation.
 //
@@ -51,7 +110,7 @@ var (
 // 分号续行（与 hazard-guard 的段切分一致）。
 func Classify(cmd string) Form {
 	var f Form
-	text := quotedRe.ReplaceAllStringFunc(cmd, func(s string) string { return strings.Repeat(" ", len(s)) })
+	text := blankQuotes(stripHeredocs(cmd))
 	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", " ; ")
 	f.Gates = len(gateRe.FindAllStringIndex(text, -1))
 	if f.Gates == 0 {
