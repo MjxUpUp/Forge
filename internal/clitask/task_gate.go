@@ -130,6 +130,15 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("  ❌ %s — BLOCKED: %s\n", gate.Name, result.Message)
 		}
+		// 设计 B（docs/design/harness-fixes-a-g-2026-09.md）：门禁输出是唯一被确定性阅读的
+		// 界面（gate 拦截后 100% 重跑），next 行挂在此处把「问下一步」变成「读门禁输出时顺手
+		// 看到」；NextHint 同时落 checklog next-hint 行（B1 采纳率 = 建议命令 10 分钟内被执行）。
+		// BLOCKED 后同样给出（过/拦两种出口的下一步都明确）；状态在 MutateTaskState 之后取，
+		// 反映刚写入的盖章。
+		if st, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID()); err == nil {
+			hint := taskpipeline.NextHint(root, st)
+			fmt.Printf("  → next: %s（%s）\n", hint.Next, hint.Reason)
+		}
 	}
 
 	if !result.Passed {

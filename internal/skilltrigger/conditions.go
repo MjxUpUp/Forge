@@ -87,7 +87,9 @@ func IsTestCommand(cmd string) bool {
 // condTestCommandFailed：刚跑的 Bash 是测试命令（command 含测试信号）且失败
 // （exit_code≠0 或 interrupted=true）。缺 exit_code（部分宿主如 kimi 不带该字段）
 // → 降级为输出文本的失败签名判定（failSignatureRe）；连失败签名也没有 → false
-// （保守不触发）。
+// condTestCommandFailed：刚跑的 Bash 是测试命令（command 含测试信号）且失败
+// （exit_code≠0 或 interrupted=true）。缺 exit_code（部分宿主如 kimi 不带该字段）
+// 时降级扫输出失败签名（保守不触发）。
 func condTestCommandFailed(ctx Context) bool {
 	cmd, _ := ctx.ToolInput["command"].(string)
 	if cmd == "" {
@@ -96,6 +98,15 @@ func condTestCommandFailed(ctx Context) bool {
 	if !testCmdRe.MatchString(cmd) {
 		return false
 	}
+	return ToolFailureSignal(ctx)
+}
+
+// ToolFailureSignal reports whether the tool call's output signals failure: interrupted, non-zero exit code, or (when the host omits exit codes) a line-anchored failure signature in the output text. Shared by condTestCommandFailed and the output-source keyword gate in matchKeywords (design A: keywords in stdout/stderr/output only count on failed tools).
+//
+// ToolFailureSignal 报告工具调用的输出是否指示失败：interrupted、非零退出码，或（宿主
+// 不带退出码时）输出文本的行首失败签名。condTestCommandFailed 与 matchKeywords 的输出源
+// 关键词门共用（设计 A：stdout/stderr/output 里的关键词仅在工具失败时计数）。
+func ToolFailureSignal(ctx Context) bool {
 	if interrupted, ok := ctx.ToolOutput["interrupted"].(bool); ok && interrupted {
 		return true
 	}

@@ -327,7 +327,7 @@ func TestCheckTriggers_InvalidJSON(t *testing.T) {
 }
 
 func TestCheckTriggers_Valid(t *testing.T) {
-	raw := `[{"event":"Stop","when":"task_active_no_review"},{"event":"UserPromptSubmit","when":"coding_intent"}]`
+	raw := `[{"event":"Stop","when":"task_active_no_review","inline":"收尾前跑聚焦测试","follow":"go test"},{"event":"UserPromptSubmit","when":"coding_intent"}]`
 	if adv := triggersAdvisories(t, raw); len(adv) != 0 {
 		t.Errorf("合法 triggers 应无 advisory，got %v", adv)
 	}
@@ -397,7 +397,7 @@ func makeSkillWithTriggers(name, desc, pattern, triggers, body string) string {
 
 // TestAuditSkill_R12_ValidTriggersNoAdvisory: 合法 triggers 经 AuditSkill 后无 R12 advisory。
 func TestAuditSkill_R12_ValidTriggersNoAdvisory(t *testing.T) {
-	raw := `[{"event":"Stop","when":"task_active_no_review"}]`
+	raw := `[{"event":"Stop","when":"task_active_no_review","inline":"收尾前跑聚焦测试","follow":"go test"}]`
 	sd := writeSkill(t, t.TempDir(), "r12-valid", makeSkillWithTriggers("r12-valid", longDesc(), "tool-wrapper", raw, signalBody()))
 	r, err := AuditSkill(sd)
 	must(t, err)

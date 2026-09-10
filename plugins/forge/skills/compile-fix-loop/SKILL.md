@@ -4,7 +4,7 @@ description: "编译报错修复闭环方法论。Use when: 用户粘贴编译�
 metadata:
   pattern: pipeline
   domain: development
-  triggers: [{"event":"PostToolUse","match":"Bash","keywords":["compile error","build failed","undefined reference","cannot find","语法错误"],"cooldown":60}]
+  triggers: [{"event":"PostToolUse","match":"Bash","keywords":["compile error","build failed","undefined reference","cannot find","语法错误"],"cooldown":60,"inline":"编译失败——先读首条完整错误定位根因再改，禁随机试改","follow":"go build|cargo check|npm run build|tsc"}]
 ---
 
 # 编译报错修复闭环
