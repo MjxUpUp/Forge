@@ -2,6 +2,7 @@ package scoring
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,7 +205,7 @@ func TestScoreScope_VeryLarge(t *testing.T) {
 func TestScoreEfficiency_Fast(t *testing.T) {
 	start := time.Now().Add(-3 * time.Minute)
 	end := time.Now()
-	result := scoreEfficiency(start, end)
+	result := scoreEfficiencyWithSpan(start, end, 0)
 	if result.Score != 100 {
 		t.Fatalf("expected 100 (fast), got %d: %s", result.Score, result.Detail)
 	}
@@ -213,7 +214,7 @@ func TestScoreEfficiency_Fast(t *testing.T) {
 func TestScoreEfficiency_Slow(t *testing.T) {
 	start := time.Now().Add(-90 * time.Minute)
 	end := time.Now()
-	result := scoreEfficiency(start, end)
+	result := scoreEfficiencyWithSpan(start, end, 0)
 	if result.Score != 55 {
 		t.Fatalf("expected 55 (slow, 90min ≤120 bucket), got %d: %s", result.Score, result.Detail)
 	}
@@ -228,9 +229,32 @@ func TestScoreEfficiency_Slow(t *testing.T) {
 func TestScoreEfficiency_NegativeDuration(t *testing.T) {
 	start := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
 	end := start.Add(-5 * time.Minute) // completed "before" it started
-	result := scoreEfficiency(start, end)
+	result := scoreEfficiencyWithSpan(start, end, 0)
 	if result.Score != 70 {
 		t.Fatalf("expected 70 (neutral, negative duration), got %d: %s", result.Score, result.Detail)
+	}
+}
+
+// TestScoreEfficiency_ActiveSpanPreferred 钉死 E.4 评分口径：有 toollog 活跃跨度时按它打分，
+// 挂钟只作回落——doc-gate 卡两天的任务不再因空闲时间被判「拖沓」（乙机 env-hermetic-registry
+// 实录：活跃 56 分钟、挂钟 46 小时、efficiency 35）。
+func TestScoreEfficiency_ActiveSpanPreferred(t *testing.T) {
+	start := time.Date(2026, 9, 7, 22, 50, 0, 0, time.UTC)
+	end := start.Add(46 * time.Hour)
+	wall := scoreEfficiencyWithSpan(start, end, 0)
+	if wall.Score != 35 {
+		t.Fatalf("no span → wall clock 46h must score 35, got %d: %s", wall.Score, wall.Detail)
+	}
+	active := scoreEfficiencyWithSpan(start, end, 56*time.Minute)
+	if active.Score != 75 {
+		t.Fatalf("56m active span must score 75 (≤60 bucket), got %d: %s", active.Score, active.Detail)
+	}
+	if !strings.Contains(active.Detail, "Active work span") {
+		t.Fatalf("detail must state the active-span basis, got %q", active.Detail)
+	}
+	// 负跨度 = 不可信，与负挂钟同待遇：中性 70，不回落挂钟白拿分。
+	if bad := scoreEfficiencyWithSpan(start, end, -time.Minute); bad.Score != 70 {
+		t.Fatalf("negative span must be neutral 70, got %d", bad.Score)
 	}
 }
 
@@ -255,7 +279,7 @@ func TestScoreEfficiency_Buckets(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			start := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
 			end := start.Add(time.Duration(c.mins) * time.Minute)
-			result := scoreEfficiency(start, end)
+			result := scoreEfficiencyWithSpan(start, end, 0)
 			if result.Score != c.want {
 				t.Fatalf("%s (%dmin): got %d, want %d: %s", c.name, c.mins, result.Score, c.want, result.Detail)
 			}

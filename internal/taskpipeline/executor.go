@@ -1,7 +1,9 @@
 package taskpipeline
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,9 +67,48 @@ const skillDecisionsEscapeAdvisoryFmt = `skill %s 的 SKILL.md 改动已用 --sk
 // 被丢掉（调用读起来像纯副作用），但落盘证据不可缺——score/dashboard/trace 都读
 // 这些条目，静默写失败会让「task 为何卡在某门禁」无信号。按包内既有 warning 风格
 // 打 stderr 后继续：审计自身绝不阻断门禁。
+//
+// 归因补全（docs/design/harness-fixes-a-g-2026-09.md E.2/E.4）：条目带 TaskRef 时按
+// 任务状态回填——SessionID 为空取任务创建会话（乙机 59% 的 checklog 行无 session，
+// 评分的会话级读方只能靠 TaskRef 归属）；任务已封印（task-complete 门禁已过）则打
+// Meta[post_seal]=true，行保留供 trace，评分/结论按 SealedAt 截断不计。状态读失败
+// 静默跳过——补全是尽力而为，审计行本身绝不因它丢失。
 func recordAudit(root string, entry *checklog.Entry) {
+	annotateAttribution(root, entry)
 	if err := checklog.Record(root, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
+	}
+}
+
+// annotateAttribution backfills SessionID from the task's creating session and flags rows landing after the evidence seal; best-effort — a missing task is silent, a read error is warned so the probe's absence stays attributable.
+//
+// annotateAttribution 按 TaskRef 对应的任务状态回填 SessionID 并标记 post_seal。尽力而为：
+// 任务不存在（正常，如无 ref 的观察行）静默；状态文件读失败打 stderr——post_seal 是
+// M 度量 E1 的数据源，IO 失败导致的「未打标」若无迹可查会被审计误读为「未封印」。
+// 成本：每条带 TaskRef 的审计行一次小 JSON 读；门禁运行每次数十行、进程秒级，远低于
+// hook 热路径（那边解析一次 state 后复用）。
+func annotateAttribution(root string, entry *checklog.Entry) {
+	if entry == nil || entry.TaskRef == "" {
+		return
+	}
+	state, err := LoadTaskState(root, entry.TaskRef)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "[forge] warning: attribution annotate skipped for %s: %v\n", entry.TaskRef, err)
+		}
+		return
+	}
+	if state == nil {
+		return
+	}
+	if entry.SessionID == "" {
+		entry.SessionID = state.SessionID
+	}
+	if state.EvidenceSealed() {
+		if entry.Meta == nil {
+			entry.Meta = map[string]string{}
+		}
+		entry.Meta[checklog.MetaKeyPostSeal] = "true"
 	}
 }
 

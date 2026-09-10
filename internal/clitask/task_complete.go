@@ -258,9 +258,12 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		}
 	}
 
-	// 清 active task ref——task 完成（session-scoped）
-	if err := taskpipeline.ClearActiveTaskRef(root, taskpipeline.CurrentSessionID()); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
+	// 清所有仍指向本任务的锚点——当前会话与其他会话的指针、legacy 全局、workspace 绑定
+	// （E.3，按内容匹配）：多会话任务只清自己会让其他会话（及无 session 的 CLI 调用经
+	// workspace 绑定）继续把 hook 行归到已完成任务；按内容匹配也避免了旧的按路径清除
+	// 在「当前会话指针指向别的任务」（异会话 complete --ref）时误清无关任务。
+	if err := taskpipeline.ClearActiveTaskRefsForTask(root, state.TaskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear task anchors: %v\n", err)
 	}
 	// dogfood 2.3：post-complete grace sentinel，让 file-sentinel 不把自然的后续
 	// git commit 误判为「无 active task + 源码写入」而 quarantine。此前流程迫使 agent
@@ -276,10 +279,12 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 }
 
 // checkMissingHooks 返本任务期间从未跑过的关键质量 hook 名（基于 checklog 条目与 gate 历史）。
+// 读取口径与评分读方一致（LatestByCheckForTaskWindow：空 session 行按 TaskRef 归属、上界取
+// 封印时刻）——complete 报告说的「缺了什么 hook」与评分依据的是同一份数据。
 func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
 	var missing []string
 
-	latestChecks, err := checklog.LatestByCheckForSessionSince(root, state.SessionID, state.StartedAt)
+	latestChecks, err := checklog.LatestByCheckForTaskWindow(root, state.SessionID, state.TaskRef, state.StartedAt, state.SealedAt())
 	if err != nil || latestChecks == nil {
 		// 读不到 checklog——除非 gate 历史显示跑过，否则假设所有 hook 都缺失。
 		compileRan := false

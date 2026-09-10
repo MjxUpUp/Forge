@@ -9,7 +9,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
-	"github.com/MjxUpUp/Forge/internal/worktree"
 	"github.com/spf13/cobra"
 )
 
@@ -131,17 +130,12 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 
 	// 若 active-task-ref 仍指向被 abort 的 task 则清掉。
 	// session-scoped，并发 session 不受干扰。
-	sid := taskpipeline.CurrentSessionID()
-	if ref := taskpipeline.ReadActiveTaskRef(root, sid); ref == taskRef {
-		if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
-		}
-	}
-	// L1（#4 深挖修订）：abort 按任务清扫【全部】绑定——任务即将删除，任何指向
-	// 它的绑定（含其 worktree 的 wtid 键控绑定，abort 常从主检出发起、cwd 键控
-	// 的 Clear 够不到）都是死锚。best-effort。
-	if err := worktree.ClearAllForTask(root, taskRef); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace bindings: %v\n", err)
+	// L1（#4 深挖修订）：abort 按任务清扫【全部】锚点——任务即将删除，任何指向它的
+	// 会话指针（本会话 / 其他会话 / legacy 全局）与绑定（含其 worktree 的 wtid 键控绑定，
+	// abort 常从主检出发起、cwd 键控的 Clear 够不到）都是死锚。按内容匹配，本会话指针
+	// 指向别的任务时不动它。best-effort。
+	if err := taskpipeline.ClearActiveTaskRefsForTask(root, taskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear task anchors: %v\n", err)
 	}
 
 	// --cascade：abort 每个传递依赖方并清其 active-task-ref。在主 delete 之后；各 DeleteTaskState 容忍 ENOENT。
@@ -156,13 +150,11 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			continue // 删除失败：留 stderr Warning，不计入 cascadedDone（JSON 只报实际已删）
 		}
 		cascadedDone = append(cascadedDone, depRef)
-		if ref := taskpipeline.ReadActiveTaskRef(root, sid); ref == depRef {
-			// 清依赖方的 active-task-ref 失败时记 stderr 而非吞掉：该 ref 仍指向一个已删任务，会让
-			// 下一次 `forge task status` / resume 锚定到幽灵。删除本身已成功，故不计入 cascade 失败，
-			// 只作为非致命告警暴露出来。
-			if err := taskpipeline.ClearActiveTaskRef(root, sid); err != nil {
-				fmt.Fprintf(os.Stderr, `Warning: cascade-aborted %s but failed to clear its active task ref: %v`+"\n", depRef, err)
-			}
+		// 清依赖方的全部锚点（按内容匹配，所有会话 + legacy + 绑定）。失败时记 stderr 而非吞掉：
+		// 残留 ref 仍指向一个已删任务，会让下一次 `forge task status` / resume 锚定到幽灵。删除
+		// 本身已成功，故不计入 cascade 失败，只作为非致命告警暴露出来。
+		if err := taskpipeline.ClearActiveTaskRefsForTask(root, depRef); err != nil {
+			fmt.Fprintf(os.Stderr, `Warning: cascade-aborted %s but failed to clear its task anchors: %v`+"\n", depRef, err)
 		}
 	}
 

@@ -221,18 +221,33 @@ func LoadAllAll(root string) ([]Entry, error) {
 // LoadForTask filters by task ref across the active checklog and all archived checklog-*.jsonl, returning matches in chronological order.
 //
 // LoadForTask 按 task ref 跨 active checklog 与所有归档 checklog-*.jsonl 过滤，按时间序返回命中。
-// 供 forge trace <ref> 重建 task 完整事件时间线。基于 loadAllArchives（active + 归档一次读全）；
-// TaskRef 不一致的条目被排除。
+// 供 forge trace <ref> 重建 task 完整事件时间线（无时间上界：trace 要全史）。评分/结论
+// 读取用 LoadForTaskUntil 以封印时刻截断。
 func LoadForTask(root, taskRef string) ([]Entry, error) {
+	return LoadForTaskUntil(root, taskRef, time.Time{})
+}
+
+// LoadForTaskUntil is LoadForTask with an upper time bound: entries recorded after until are excluded; zero until = unbounded.
+//
+// LoadForTaskUntil 是带时间上界的 LoadForTask：RecordedAt 晚于 until 的条目被排除；
+// until 零值 = 无界（trace 语义）。评分与 Act 结论传任务的封印时刻
+// （TaskState.SealedAt）——task-complete 门禁通过之后仍落到该任务名下的行（异会话
+// hazard 拦截、重复 verify 自述）不得进完成声明的证据链
+// （docs/design/harness-fixes-a-g-2026-09.md E.4）。
+func LoadForTaskUntil(root, taskRef string, until time.Time) ([]Entry, error) {
 	all, err := loadAllArchives(root)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]Entry, 0, len(all))
 	for _, e := range all {
-		if e.TaskRef == taskRef {
-			out = append(out, e)
+		if e.TaskRef != taskRef {
+			continue
 		}
+		if !until.IsZero() && e.RecordedAt.After(until) {
+			continue
+		}
+		out = append(out, e)
 	}
 	return out, nil
 }
@@ -246,10 +261,11 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 //   - sessionID 非空：SessionID 非空且与 sessionID 不同的条目被排除。
 //     SessionID 为空（全局/legacy）的条目始终保留，让全局适用的 check 仍能登记。
 //
-// 状态注记（2026-09 代码普查清扫）：生产读方走 LatestByCheckForSessionSince
-// （cli/hook.go），本便捷包装当前无生产接线——会话级归一 key 契约被
-// cli/hook_test.go 的注释引用、由本包测试钉住。接线前它是文档化的 API 面，
-// 非死代码回收对象。
+// 状态注记（2026-09 代码普查清扫；2026-09-10 E.4 更新）：三个生产读方（taskpipeline
+// BuildEvaluateInput / clitask checkMissingHooks / hookdispatch scoringPassUnchanged）已全部
+// 改走 LatestByCheckForTaskWindow（空 session 行按 TaskRef 归属 + 封印上界）；本函数与
+// LatestByCheckForSessionSince 当前均无生产读方，仅由本包测试钉住「空 session 无条件保留、
+// 无上界」的旧语义作兼容面。保留为文档化 API（会话全史读方的形态），非死代码回收对象。
 func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, error) {
 	return LatestByCheckForSessionSince(root, sessionID, time.Time{})
 }
@@ -261,8 +277,22 @@ func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, erro
 // 间线（task start 不再 Clear）——意图是「本任务期间」的会话级读方必须同时按任务
 // StartedAt 设界，否则新任务继承上一任务的 PASS 与评分信用。since 零值 = 旧的无界
 // 行为（真正想要会话全史的调用方）。SessionID 为空的旧条目依旧总是保留（与父函数
-// 同语义）。
+// 同语义）。评分类读方请用 LatestByCheckForTaskWindow（见上方状态注记）。
 func LatestByCheckForSessionSince(root, sessionID string, since time.Time) (map[CheckName]*Entry, error) {
+	return LatestByCheckForTaskWindow(root, sessionID, "", since, time.Time{})
+}
+
+// LatestByCheckForTaskWindow is the task-aware, time-bounded form of LatestByCheckForSessionSince.
+//
+// LatestByCheckForTaskWindow 是 LatestByCheckForSessionSince 的任务感知、带上界形态：
+//   - taskRef 非空时，SessionID 为空的条目只在 TaskRef 等于 taskRef 时保留——旧语义
+//     「空 session 无条件保留」让 CLI 无 session 调用产生的他任务条目按时间覆盖本任务
+//     的最新值（乙机 59% 的 checklog 行无 session_id，是评分输入被污染的主通道）；
+//     taskRef 为空退化为旧语义（兼容包装）。
+//   - until 非零时，RecordedAt 晚于 until 的条目排除（评分传封印时刻）。
+//
+// docs/design/harness-fixes-a-g-2026-09.md E.4。
+func LatestByCheckForTaskWindow(root, sessionID, taskRef string, since, until time.Time) (map[CheckName]*Entry, error) {
 	entries, err := LoadAll(root)
 	if err != nil {
 		return nil, err
@@ -274,7 +304,13 @@ func LatestByCheckForSessionSince(root, sessionID string, since time.Time) (map[
 		if sessionID != "" && e.SessionID != "" && e.SessionID != sessionID {
 			continue
 		}
+		if taskRef != "" && e.SessionID == "" && e.TaskRef != taskRef {
+			continue
+		}
 		if !since.IsZero() && e.RecordedAt.Before(since) {
+			continue
+		}
+		if !until.IsZero() && e.RecordedAt.After(until) {
 			continue
 		}
 		if existing, ok := result[e.Check]; !ok || e.RecordedAt.After(existing.RecordedAt) {

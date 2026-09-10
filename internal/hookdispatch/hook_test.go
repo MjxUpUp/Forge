@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -673,6 +674,41 @@ func TestScoringPassUnchanged(t *testing.T) {
 	// 每 session 每 check 一条）。
 	if scoringPassUnchanged(dir, "s2", checklog.CheckAutoCompile) {
 		t.Error("previous PASS belongs to another session → this session's first PASS must record")
+	}
+}
+
+// TestScoringPassUnchanged_ForeignEmptySessionPassDoesNotSuppress pins the E.4 reader-parity
+// fix: the skip-write decision must read checklog with the same caliber as scoring
+// (LatestByCheckForTaskWindow) — an empty-session PASS attributed to ANOTHER task must not
+// suppress this task's own PASS (scoring would then see no PASS in its window → false
+// negative), while an empty-session PASS attributed to THIS task still counts as unchanged.
+//
+// TestScoringPassUnchanged_ForeignEmptySessionPassDoesNotSuppress 钉死 E.4 读方同口径修复：
+// 跳写判定必须与评分读方同口径——归属他任务的空 session PASS 不得抑制本任务自己的 PASS
+// 写入（否则评分窗口内无 PASS，假阴性）；归属本任务的空 session PASS 仍算「未变化」。
+func TestScoringPassUnchanged_ForeignEmptySessionPassDoesNotSuppress(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	const sid, ref = "s1", "feat/own"
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{TaskRef: ref, Branch: ref, SessionID: sid, StartedAt: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := taskpipeline.SetActiveTaskRef(dir, sid, ref); err != nil {
+		t.Fatal(err)
+	}
+	// 他任务、空 session 的最新 PASS：旧口径无条件保留 → 误判「未变化」跳写。
+	if err := checklog.Record(dir, &checklog.Entry{Check: checklog.CheckAutoCompile, Passed: true, SessionID: "", TaskRef: "chore/other", Detail: "foreign ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if scoringPassUnchanged(dir, sid, checklog.CheckAutoCompile) {
+		t.Fatal("foreign empty-session PASS must not suppress this task's PASS write")
+	}
+	// 本任务、空 session 的 PASS（CLI 无 session 调用）：仍视为未变化。
+	if err := checklog.Record(dir, &checklog.Entry{Check: checklog.CheckAutoCompile, Passed: true, SessionID: "", TaskRef: ref, Detail: "own ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if !scoringPassUnchanged(dir, sid, checklog.CheckAutoCompile) {
+		t.Fatal("own-task empty-session PASS must count as unchanged")
 	}
 }
 
