@@ -184,10 +184,12 @@ type RefsCriticalStats struct {
 // （doc-gate 卡两天时 owner 修文档、重跑 verify），单列 PostSealOwnerRows 不算泄漏。按
 // 会话归属而非时间宽限区分（评审：时间宽限既藏快泄漏、又拦不住慢仪式）。
 type AttributionStats struct {
-	PostSealRows          int            `json:"post_seal_rows"`            // E1 泄漏行：封印后 + 非创建会话（含无 session）
-	TasksWithPostSealRows int            `json:"tasks_with_post_seal_rows"` // E1 泄漏任务数
-	PostSealOwnerRows     int            `json:"post_seal_owner_rows"`      // 封印后创建会话自己的行（仪式/续作，不算泄漏）
-	ProbeFlaggedRows      int            `json:"probe_flagged_rows"`        // Meta[post_seal]=true 原始计数（探针覆盖度，含仪式行）
+	PostSealRows          int            `json:"post_seal_rows"`               // E1 泄漏行 = NoSession + OtherSession（封印后 + 非创建会话）
+	PostSealNoSessionRows int            `json:"post_seal_no_session_rows"`    // 泄漏中无 session 的行——E2 回填修的就是这条通道
+	PostSealOtherRows     int            `json:"post_seal_other_session_rows"` // 泄漏中确属他会话的行——外来归因通道，与无 session 噪声分列（评审：97% 泄漏是无 session 行，不拆则外来通道被淹没）
+	TasksWithPostSealRows int            `json:"tasks_with_post_seal_rows"`    // E1 泄漏任务数
+	PostSealOwnerRows     int            `json:"post_seal_owner_rows"`         // 封印后创建会话自己的行（仪式/续作，不算泄漏）
+	ProbeFlaggedRows      int            `json:"probe_flagged_rows"`           // Meta[post_seal]=true 原始计数（探针覆盖度，含仪式行）
 	NoSessionShare        Ratio          `json:"no_session_share"`
 	ResolvePathCounts     map[string]int `json:"resolve_path_counts"`
 }
@@ -627,6 +629,11 @@ func AttributionMetrics(entries []checklog.Entry, tasks []*tasktypes.TaskState) 
 			continue
 		}
 		st.PostSealRows++
+		if e.SessionID == "" {
+			st.PostSealNoSessionRows++
+		} else {
+			st.PostSealOtherRows++
+		}
 		leakTasks[e.TaskRef] = true
 	}
 	st.TasksWithPostSealRows = len(leakTasks)
@@ -792,8 +799,8 @@ func Render(r *Report) string {
 			fmt.Fprintf(&b, "   %-14s %s\n", h, pct(r.D.PerHost[h]))
 		}
 	}
-	fmt.Fprintf(&b, "E 归因: 封印后泄漏行 %d（%d 任务，非创建会话）  owner 续作行 %d  探针标记 %d  无 session 占比 %s  resolve_path %v\n",
-		r.E.PostSealRows, r.E.TasksWithPostSealRows, r.E.PostSealOwnerRows, r.E.ProbeFlaggedRows, pct(r.E.NoSessionShare), r.E.ResolvePathCounts)
+	fmt.Fprintf(&b, "E 归因: 封印后泄漏行 %d（%d 任务；无 session %d / 他会话 %d）  owner 续作行 %d  探针标记 %d  无 session 占比 %s  resolve_path %v\n",
+		r.E.PostSealRows, r.E.TasksWithPostSealRows, r.E.PostSealNoSessionRows, r.E.PostSealOtherRows, r.E.PostSealOwnerRows, r.E.ProbeFlaggedRows, pct(r.E.NoSessionShare), r.E.ResolvePathCounts)
 	fmt.Fprintf(&b, "F hazard: block %d  双投递 %d  事件 %d  放行 %s\n", r.F.Blocks, r.F.DoubleDeliveries, r.F.Incidents, pct(r.F.ReleasedIncidents))
 	fmt.Fprintf(&b, "G 软门禁: coverage fail %d → 转 pass %s  cheat-scan fail %d  unused-scan fail %d\n",
 		r.G.CoverageFails, pct(r.G.CoverageFixAfterFail), r.G.CheatScanFails, r.G.UnusedScanFails)
