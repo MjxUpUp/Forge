@@ -976,7 +976,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 					Checked:   true,
 					Level:     checklog.LevelWarn,
 					TaskRef:   activeTaskRef,
-					SessionID: util.SanitizeSessionID(hookInput.SessionID),
+					SessionID: hookInput.SessionID, // 入口（1b-2）已归一且空保持空；下游再 sanitize 会把空变占位符 "session"，令 stamp 回填失效
 					Detail:    util.TruncateRunes(detail, maxChecklogDetail),
 				}
 				attr.stamp(staleEntry)
@@ -1138,7 +1138,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 				Level:     level,
 				ToolName:  recordedToolName,
 				TaskRef:   taskRef,
-				SessionID: util.SanitizeSessionID(hookInput.SessionID),
+				SessionID: hookInput.SessionID, // 入口（1b-2）已归一且空保持空；下游再 sanitize 会把空变占位符 "session"，令 stamp 回填失效
 				Detail:    util.TruncateRunes(logDetail, maxChecklogDetail),
 			}
 			attr.stamp(entry)
