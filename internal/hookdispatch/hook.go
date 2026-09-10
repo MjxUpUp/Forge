@@ -968,22 +968,22 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		// 不可见（日志可见性）；否则 noise gate 会丢掉本 hook 的 PASS，且 logDetail 取自
 		// 脚本原始 stdout，本就不含这里前置的 advisory。
 		if kimiStaleRidesHook(agent, name) {
-				if prepended := prependKimiStaleAdvisory(detail, cmd.Root().Version); prepended != detail {
-					detail = prepended
-					staleEntry := &checklog.Entry{
-						Check:     checklog.CheckKimiPluginStale,
-						Passed:    true, // escape-hatch pattern: the warn rides Level, Passed stays neutral
-						Checked:   true,
-						Level:     checklog.LevelWarn,
-						TaskRef:   activeTaskRef,
-						SessionID: util.SanitizeSessionID(hookInput.SessionID),
-						Detail:    util.TruncateRunes(detail, maxChecklogDetail),
-					}
-					attr.stamp(staleEntry)
-					if err := checklog.Record(root, staleEntry); err != nil {
-						fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
-					}
+			if prepended := prependKimiStaleAdvisory(detail, cmd.Root().Version); prepended != detail {
+				detail = prepended
+				staleEntry := &checklog.Entry{
+					Check:     checklog.CheckKimiPluginStale,
+					Passed:    true, // escape-hatch pattern: the warn rides Level, Passed stays neutral
+					Checked:   true,
+					Level:     checklog.LevelWarn,
+					TaskRef:   activeTaskRef,
+					SessionID: util.SanitizeSessionID(hookInput.SessionID),
+					Detail:    util.TruncateRunes(detail, maxChecklogDetail),
 				}
+				attr.stamp(staleEntry)
+				if err := checklog.Record(root, staleEntry); err != nil {
+					fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
+				}
+			}
 		}
 	} else {
 		detail = stdout
