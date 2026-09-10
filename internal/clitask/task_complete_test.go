@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
 // setupDeadlockTask 建一个 git 仓库 + session-scoped active task（三道门禁已过、带验收
@@ -148,6 +149,49 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	_ = captureStdout(t, func() { again = runTaskCompleteAt(dir, done) })
 	if again != nil {
 		t.Fatalf(`重复 complete 应幂等跳过, got %v`, again)
+	}
+}
+
+// TestTaskComplete_ClearsAllTaskAnchors pins E.3 (docs/design/harness-fixes-a-g-2026-09.md): completing a task clears every pointer that still names it — other sessions' active-task-ref files, the legacy global file, and the workspace binding — not just the completing session's own pointer.
+//
+// TestTaskComplete_ClearsAllTaskAnchors 钉死 E.3：complete 清掉所有仍指向该任务的锚点
+// ——其他会话的 active-task-ref、legacy 全局文件、workspace 绑定——而非只清自己会话的
+// 指针。乙机实录：多会话任务（session_links≥2）漏清后，异会话/无 session 的 hook 行
+// 继续归到已封印任务名下两天。
+func TestTaskComplete_ClearsAllTaskAnchors(t *testing.T) {
+	dir := setupDeadlockTask(t, nil)
+	const taskRef = `feat/deadlock`
+	for _, sid := range []string{`other-session-a`, `other-session-b`, ``} {
+		if err := taskpipeline.SetActiveTaskRef(dir, sid, taskRef); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := taskpipeline.SetActiveTaskRef(dir, `unrelated-session`, `feat/unrelated`); err != nil {
+		t.Fatal(err)
+	}
+	if err := worktree.BindTask(dir, taskRef, `feat/deadlock`, `other-session-a`); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var runErr error
+	_ = captureStdout(t, func() { runErr = runTaskCompleteAt(dir, state) })
+	if runErr != nil {
+		t.Fatalf(`complete should pass: %v`, runErr)
+	}
+	for _, sid := range []string{`test-session-deadlock`, `other-session-a`, `other-session-b`, ``} {
+		if got := taskpipeline.ReadActiveTaskRef(dir, sid); got != "" {
+			t.Errorf(`pointer for session %q still names %q after complete`, sid, got)
+		}
+	}
+	if got := taskpipeline.ReadActiveTaskRef(dir, `unrelated-session`); got != `feat/unrelated` {
+		t.Errorf(`unrelated task's pointer must survive, got %q`, got)
+	}
+	if b := worktree.Load(dir); b != nil && b.TaskRef == taskRef {
+		t.Errorf(`workspace binding must be cleared on complete, got %+v`, b)
 	}
 }
 
