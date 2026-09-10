@@ -219,12 +219,18 @@ func runHazardLog(cmd *cobra.Command, args []string) error {
 	command := strings.Join(args[1:], " ")
 	// SessionID 取 hook 派生环境的 FORGE_SESSION_ID（hookdispatch 注入给脚本）：双投递去重
 	// 键与 checklog 侧 blockRecordMarker 对齐到 (session, type, fingerprint)——两个并行
-	// 会话 3s 内各拦一次同命令是两起事件，不是一次双投递。人类终端直跑无该 env，留空。
+	// 会话 3s 内各拦一次同命令是两起事件，不是一次双投递。人类终端直跑无该 env，留空
+	// （SanitizeSessionID("") 会返回占位符 "session"，故只对非空值归一——空保持空是
+	// isDoubleDelivery「一侧为空则不比会话」退化规则的前提）。
+	var sid string
+	if raw := os.Getenv("FORGE_SESSION_ID"); raw != "" {
+		sid = util.SanitizeSessionID(raw)
+	}
 	return hazard.AppendEvent(p, hazard.Event{
 		Type:        eventType,
 		Fingerprint: hazard.Fingerprint(command),
 		Command:     command,
-		SessionID:   util.SanitizeSessionID(os.Getenv("FORGE_SESSION_ID")),
+		SessionID:   sid,
 	})
 }
 

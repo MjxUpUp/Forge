@@ -1,10 +1,74 @@
 package hookdispatch
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
+
+// TestHookOutput_EmptySessionRowBackfilledFromTask is the end-to-end pin for E.4 on the main
+// noise-gate record path: a host payload without session_id, resolved to an active task through
+// the legacy global pointer, must land a checklog row whose SessionID is the task's creating
+// session and whose Meta carries resolve_path=legacy (no post_seal while unsealed). Before this
+// fix the row was written with an empty (or, via a downstream SanitizeSessionID(""), a placeholder
+// "session") session id and no probe.
+//
+// TestHookOutput_EmptySessionRowBackfilledFromTask 是 E.4 在主噪声门记录路径上的端到端钉子：
+// 宿主 payload 无 session_id、经 legacy 全局指针解析到活跃任务时，落盘行的 SessionID 必须是
+// 任务创建会话、Meta 带 resolve_path=legacy（未封印无 post_seal）。修复前该行 session 为空
+// （或经下游 SanitizeSessionID("") 变成占位符 "session"）且无探针。
+func TestHookOutput_EmptySessionRowBackfilledFromTask(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_SESSION_ID", "")
+	tmpDir := newHookProject(t)
+	const ref = "feat/backfill"
+	if err := taskpipeline.SaveTaskState(tmpDir, &taskpipeline.TaskState{TaskRef: ref, Branch: ref, SessionID: "sess-owner", StartedAt: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := taskpipeline.SetActiveTaskRef(tmpDir, "", ref); err != nil {
+		t.Fatal(err)
+	}
+
+	runHookCapture(t, "auto-compile",
+		`{"hook_event_name":"PostToolUse","tool_name":"Write","tool_input":{"file_path":"README.md","content":"hello"}}`)
+
+	data, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(tmpDir), "checklog.jsonl"))
+	if err != nil {
+		t.Fatalf("checklog.jsonl not created: %v", err)
+	}
+	var row checklog.Entry
+	found := false
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var e checklog.Entry
+		if json.Unmarshal([]byte(line), &e) == nil && e.Check == checklog.CheckAutoCompile {
+			row, found = e, true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("no auto-compile row recorded; checklog:\n%s", data)
+	}
+	if row.TaskRef != ref {
+		t.Fatalf("row TaskRef = %q, want %q", row.TaskRef, ref)
+	}
+	if row.SessionID != "sess-owner" {
+		t.Fatalf("empty host session must be backfilled from the task, got %q", row.SessionID)
+	}
+	if row.Meta[checklog.MetaKeyResolvePath] != taskpipeline.ResolvePathLegacy {
+		t.Fatalf("resolve_path = %q, want %q (meta=%v)", row.Meta[checklog.MetaKeyResolvePath], taskpipeline.ResolvePathLegacy, row.Meta)
+	}
+	if _, sealed := row.Meta[checklog.MetaKeyPostSeal]; sealed {
+		t.Fatalf("unsealed task must not carry post_seal: %v", row.Meta)
+	}
+}
 
 // Attribution probe (docs/design/harness-fixes-a-g-2026-09.md E.1/E.2): every hook-produced
 // checklog row records which path resolved the active task and whether it was already
