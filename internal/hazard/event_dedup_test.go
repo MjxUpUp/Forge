@@ -130,6 +130,36 @@ func TestAppendEvent_DedupeWindowExpires(t *testing.T) {
 	}
 }
 
+// TestIsDoubleDelivery_Table pins the exported double-delivery predicate (shared with
+// harness-audit's F2 metric): type+fingerprint must match, session only when both carry one,
+// window half-open [0,3s), clock skew never dedupes.
+//
+// TestIsDoubleDelivery_Table 钉住导出的双投递谓词（与 harness-audit 的 F2 度量共用）：
+// type+指纹须同、会话仅双方都带才比、窗口半开 [0,3s)、时钟回拨不去重。
+func TestIsDoubleDelivery_Table(t *testing.T) {
+	t0 := time.Date(2026, 9, 7, 22, 50, 0, 0, time.UTC)
+	fp := Fingerprint("git reset --hard origin/main")
+	base := Event{Ts: t0, Type: EventBlock, Fingerprint: fp, SessionID: "s1"}
+	cases := []struct {
+		name string
+		next Event
+		want bool
+	}{
+		{"same within window", Event{Ts: t0.Add(2 * time.Second), Type: EventBlock, Fingerprint: fp, SessionID: "s1"}, true},
+		{"boundary 3s excluded", Event{Ts: t0.Add(3 * time.Second), Type: EventBlock, Fingerprint: fp, SessionID: "s1"}, false},
+		{"different type", Event{Ts: t0.Add(time.Second), Type: EventData, Fingerprint: fp, SessionID: "s1"}, false},
+		{"different fingerprint", Event{Ts: t0.Add(time.Second), Type: EventBlock, Fingerprint: Fingerprint("other"), SessionID: "s1"}, false},
+		{"different session", Event{Ts: t0.Add(time.Second), Type: EventBlock, Fingerprint: fp, SessionID: "s2"}, false},
+		{"one side sessionless dedupes", Event{Ts: t0.Add(time.Second), Type: EventBlock, Fingerprint: fp}, true},
+		{"clock skew never dedupes", Event{Ts: t0.Add(-time.Second), Type: EventBlock, Fingerprint: fp, SessionID: "s1"}, false},
+	}
+	for _, c := range cases {
+		if got := IsDoubleDelivery(base, c.next); got != c.want {
+			t.Errorf("%s: IsDoubleDelivery = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestCheckHalt_CountsDedupedBlocksOnce(t *testing.T) {
 	p := forgedatatest.ForDataDir(t.TempDir())
 	// 3 条逻辑拦截各被双投递：未去重会记 6 次；去重后 3 次恰到阈值——语义与 halt_test

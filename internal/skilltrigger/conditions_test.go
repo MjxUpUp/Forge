@@ -74,6 +74,41 @@ func TestCondSourceChanged(t *testing.T) {
 	}
 }
 
+// TestIsTestCommand pins the exported test-runner signal shared with harness-audit (design M/A3):
+// the same word-boundary regex condTestCommandFailed gates on, so the audit's "trigger precision"
+// uses the trigger's own definition instead of a second hand-copied pattern.
+//
+// TestIsTestCommand 钉住导出给 harness-audit 的测试命令信号（设计 M/A3）：与
+// condTestCommandFailed 同一词边界正则，审计侧的「触发精度」用触发器自己的定义而非手抄
+// 第二份正则。
+func TestIsTestCommand(t *testing.T) {
+	yes := []string{
+		"go test ./internal/x/ 2>&1 | tail -3",
+		"cd E:/Forge && go test ./...",
+		"cargo test --workspace",
+		"npm test",
+		"python -m pytest tests/",
+		"GO TEST ./... ", // 大小写不敏感
+	}
+	no := []string{
+		"grep -rn compile ./",
+		"lngo test",                   // 词边界：不是 go test
+		"go testbed",                  // 词边界：不是 go test
+		"git commit -m \"add tests\"", // 提及 tests 不是测试命令
+		"",
+	}
+	for _, c := range yes {
+		if !IsTestCommand(c) {
+			t.Errorf("IsTestCommand(%q) = false, want true", c)
+		}
+	}
+	for _, c := range no {
+		if IsTestCommand(c) {
+			t.Errorf("IsTestCommand(%q) = true, want false", c)
+		}
+	}
+}
+
 func TestCondTestCommandFailed(t *testing.T) {
 	tests := []struct {
 		name string
