@@ -75,11 +75,3 @@ func Classify(cmd string) Form {
 	f.Compliant = (f.Standalone || f.AndChain) && !f.OrChain && !f.Semicolon && !singlePipe && !f.MultiGate
 	return f
 }
-
-// IsGateCommand reports whether the command line invokes any forge gate-family subcommand (outside quotes).
-//
-// IsGateCommand 报告命令行是否（引号外）调用了任一 forge 门禁族子命令——hook 侧的快速
-// 前置判断，避免对每条 Bash 都做完整分类。
-func IsGateCommand(cmd string) bool {
-	return Classify(cmd).Gates > 0
-}
