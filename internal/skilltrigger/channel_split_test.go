@@ -25,7 +25,8 @@ func TestEval_ActionPointChannelSplit(t *testing.T) {
 	}
 	ctx := Context{Event: "PreToolUse", ToolName: "Bash", SessionID: "s1", Now: time.Now(),
 		ToolInput: map[string]any{"command": "git commit -m x"}}
-	hits, sup := Eval(ctx, all, NewInMemoryNoiseController())
+	noise := NewInMemoryNoiseController()
+	hits, sup := Eval(ctx, all, noise)
 	if len(hits) != 1 || hits[0].Skill != "with-inline" {
 		t.Fatalf("action point must keep only the Inline-declaring trigger, hits=%+v", hits)
 	}
@@ -37,7 +38,9 @@ func TestEval_ActionPointChannelSplit(t *testing.T) {
 	}
 	// 被分流的命中不消耗 cooldown：no-inline 在 PreToolUse 被分流后，同 session 的决策点
 	//（其另一条 UPS 规则）仍可命中——若分流烧了 cooldown，这里会是 suppressed。
-	upHits, upSup := Eval(Context{Event: "UserPromptSubmit", Prompt: "准备发版", SessionID: "s1", Now: time.Now()}, all, nil)
+	// 同一 noise 实例：nil 控制器会短路 ShouldFire 使断言恒真（评审）——复用首调用的
+	// 实例，分流若（回归性地）走到 ShouldFire/Mark 语义，这里会因 cooldown 被拦。
+	upHits, upSup := Eval(Context{Event: "UserPromptSubmit", Prompt: "准备发版", SessionID: "s1", Now: time.Now()}, all, noise)
 	if len(upHits) != 1 || upHits[0].Skill != "no-inline" || upHits[0].Mode != "load" {
 		t.Fatalf("decision point keeps load mode with budget intact, hits=%+v sup=%+v", upHits, upSup)
 	}
@@ -76,5 +79,31 @@ func TestRender_InlineOneLine(t *testing.T) {
 	}
 	if !strings.Contains(out, "merge-release-choreography/SKILL.md") {
 		t.Fatalf("load-mode hit keeps the full pointer block:\n%s", out)
+	}
+}
+
+// TestMatchKeywords_OutputFailureGate_Negative pins the negative side of the output-source
+// failure gate (design A acceptance item): a keyword in stdout must NOT match when the tool
+// succeeded (exit_code 0) or when the host omits exit codes and the output carries no
+// line-anchored failure signature — the exact noise shapes this gate exists to kill
+// (review text mentioning "compile error", audit-script heredoc bodies).
+//
+// TestMatchKeywords_OutputFailureGate_Negative 钉住输出源失败门的负向面（设计 A 验收项）：
+// 工具成功（exit_code 0）或宿主缺退出码且输出无行首失败签名时，stdout 里的关键词不得命中
+// ——正是本门要杀的噪声形态（评审文本含 compile error 字样、审计脚本 heredoc 正文）。
+func TestMatchKeywords_OutputFailureGate_Negative(t *testing.T) {
+	kw := []string{"compile error"}
+	mk := func(out map[string]any) (keywordMatch, bool) {
+		return matchKeywords(kw, Context{Event: "PostToolUse", ToolName: "Bash",
+			ToolInput: map[string]any{"command": "go build ./..."}, ToolOutput: out})
+	}
+	if _, ok := mk(map[string]any{"stdout": "main.go:10: compile error mentioned in review", "exit_code": 0}); ok {
+		t.Fatal("exit_code 0 + keyword in stdout must NOT match (tool succeeded)")
+	}
+	if _, ok := mk(map[string]any{"stdout": "compile error appears in passing output"}); ok {
+		t.Fatal("missing exit_code + no line-anchored failure signature must NOT match")
+	}
+	if m, ok := mk(map[string]any{"stdout": "compile error here", "exit_code": 1}); !ok || m.Source != MatchSourceStdout {
+		t.Fatalf("exit_code 1 + keyword in stdout must match with stdout attribution, got %+v ok=%v", m, ok)
 	}
 }

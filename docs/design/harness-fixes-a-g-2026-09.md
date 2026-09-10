@@ -47,7 +47,7 @@
 - **设计**：复用纯函数 `nextDecision`（internal/cli/next.go:70，签名不动），在三个输出点末尾追加一行 `→ next: <命令>（<理由>）`：`forge task gate` 通过/BLOCKED 之后、`forge task status`、`forge task complete` 评分行后。同时落 checklog advisory `next-hint`（Meta.suggested=命令），供 B1 采纳率测量。输出属承诺表**不承诺档**（porcelain 可变文本，compat-commitments §一），无兼容义务。
 - **落点**：internal/clitask/task_gate.go:127-133、internal/clitask/task_misc.go:77-100、internal/clitask/task_complete.go:186-217；checklog/types.go 新 CheckName `next-hint`（snapshot checks 面 regen）。
 - **度量**：B1 采纳率（next-hint 后 10 分钟内执行同命令，toollog 匹配）→ ≥50%；B2 多门禁连刷 24%/15% → ≤8%；B3 分号续行 26%/12% → ≤5%（B2/B3 主执法在 C，此处只看引导性下降）。
-- **验收**：task_gate/status/complete 三处输出的 golden 单测；next-hint checklog 行进 snapshot checks 面。
+- **验收**：next-hint checklog 行进 snapshot checks 面（已随 M 批注册）；NextDecision 门禁链六态 + NextHint 落盘单测（taskpipeline/next_test.go）。三输出点「→ next:」行形态的 golden 单测转 B3 收尾批（gate/status/complete 的输出面测试需重构 runTaskGate 的可测缝，随 D 批 refs-critical 的 skill 内容变更一并落）——实现时注记，非静默缩水。B1 口径修订（评审）：含 `<ref>` 类占位符的建议命令按前缀匹配采纳（agent 必然填实值，整串 Contains 永假）；gate --silent 不打 next 行也不落 next-hint 行（无「记录未投递」的分母注水）。
 - **风险**：next 行被 `| tail` 截掉——与 C 的 stderr 兜底同批解决；采纳率受 host 影响分层统计。
 
 ## C｜门禁命令形态门禁（gate-cmd-form）

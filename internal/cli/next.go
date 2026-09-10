@@ -3,8 +3,6 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -65,47 +63,4 @@ func runNext(cmd *cobra.Command, args []string) error {
 // taskpipeline/next_test.go。
 func nextDecision(branch string, dirty bool, st *taskpipeline.TaskState) taskpipeline.NextResult {
 	return taskpipeline.NextDecision(branch, dirty, st)
-}
-
-// gitDirty 报告工作区是否有变更（porcelain 非空即脏；.gitignore 自动生效）。
-func gitDirty(root string) bool {
-	out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
-	return err == nil && strings.TrimSpace(string(out)) != ""
-}
-
-// 下四个小函数把 *TaskState 的字段访问收拢一处，nil 安全且让决策函数可读。
-func stGateHistory(st *taskpipeline.TaskState) []string {
-	if st == nil {
-		return nil
-	}
-	var out []string
-	for _, h := range st.History {
-		out = append(out, h.Gate)
-	}
-	return out
-}
-
-func taskRef(st *taskpipeline.TaskState) string {
-	if st == nil {
-		return ""
-	}
-	return st.TaskRef
-}
-
-func stReviewPassed(st *taskpipeline.TaskState) bool {
-	return st != nil && st.ReviewPassed
-}
-
-// stAcceptancePending 报告是否有验收标准尚未实跑（AcceptedHeadCommit 为空）。
-// 未登记验收标准的任务直接跳过 verify-acceptance 引导。
-func stAcceptancePending(st *taskpipeline.TaskState) bool {
-	if st == nil {
-		return false
-	}
-	for _, a := range st.Acceptance {
-		if a.AcceptedHeadCommit == "" {
-			return true
-		}
-	}
-	return false
 }
