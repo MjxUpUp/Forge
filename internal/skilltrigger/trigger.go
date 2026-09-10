@@ -342,13 +342,22 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 			if !ok {
 				continue
 			}
-			if matched.Event == "" {
+			firstMatch := matched.Event == ""
+			if firstMatch {
 				matched = t
 				matchedIdx = i
 				kw = km
 			}
 			if strings.TrimSpace(t.Inline) != "" {
 				anyInline = true
+				// 载荷侧（评审确认轮）：动作点上首个声明 inline 的命中条目提升为载荷
+				// trigger——否则「首条无 inline、次条有」的形态会以 mode=inline 却渲染
+				// 完整加载块（设计 A 要消灭的噪声原样回归），FollowPattern 也取空掉出 A4。
+				if !decisionPointEvent(ctx.Event) && (firstMatch || strings.TrimSpace(matched.Inline) == "") {
+					matched = t
+					matchedIdx = i
+					kw = km
+				}
 			}
 			cd := t.Cooldown
 			if cd <= 0 {

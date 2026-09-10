@@ -319,7 +319,7 @@ func checkTriggers(raw string, advisories *[]string) {
 }
 
 // highFrequencyFollowRe 识别「高频例行命令」形态的 follow 声明（B2-1 评审的 A4 灌水向量）。
-var highFrequencyFollowRe = regexp.MustCompile(`(?:git\s+(?:log|status|diff)|ls|cat|pwd|echo)`)
+var highFrequencyFollowRe = regexp.MustCompile(`\bgit\s+(?:log|status|diff)\b|\b(?:ls|cat|pwd|echo)\b`)
 
 // checkBodyLines 执行 R13：SKILL.md 正文（frontmatter 块之后的全部内容）
 // ≤500 行（硬 issue）。计行口径与 R8 一致（换行数 + 1）；空正文计 0 行。
