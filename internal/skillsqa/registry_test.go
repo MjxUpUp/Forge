@@ -333,6 +333,25 @@ func TestCheckTriggers_Valid(t *testing.T) {
 	}
 }
 
+// TestCheckTriggers_HighFrequencyFollowBoundaries pins the word boundaries of the
+// high-frequency-follow advisory (confirmation round): "skills" contains "ls" as a substring and
+// must NOT fire; a bare "git log" follow must.
+//
+// TestCheckTriggers_HighFrequencyFollowBoundaries 钉住高频 follow advisory 的词边界（确认轮）：
+// "skills" 含子串 "ls" 不得误报；裸 "git log" follow 应报。
+func TestCheckTriggers_HighFrequencyFollowBoundaries(t *testing.T) {
+	good := `[{"event":"PostToolUse","match":"Bash","keywords":["k"],"inline":"i","follow":"forge skills validate|forge skills audit"}]`
+	for _, adv := range triggersAdvisories(t, good) {
+		if strings.Contains(adv, "高频例行命令") {
+			t.Errorf("skill-authoring-shaped follow must not fire the advisory, got %v", adv)
+		}
+	}
+	bad := `[{"event":"PostToolUse","match":"Bash","keywords":["k"],"inline":"i","follow":"git log"}]`
+	if !advisoryContains(triggersAdvisories(t, bad), "高频例行命令") {
+		t.Errorf("bare git log follow must fire the advisory")
+	}
+}
+
 func TestCheckTriggers_BadEvent(t *testing.T) {
 	raw := `[{"event":"Foo","when":"coding_intent"}]`
 	adv := triggersAdvisories(t, raw)
