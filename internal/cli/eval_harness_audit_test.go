@@ -42,9 +42,10 @@ func TestEvalHarnessAudit_JSONOnEmptyProject(t *testing.T) {
 	if rep.A.Total != 0 {
 		t.Fatalf("empty project must report zero data, got A=%+v", rep.A)
 	}
-	if len(rep.LoaderWarnings) == 0 {
-		// 空项目上四源都应加载成功（hazard 缺文件 = (nil,nil) 非错误）。
-		t.Logf("loader warnings: %v (expected none)", rep.LoaderWarnings)
+	// 空项目上四源都应加载成功（hazard 缺文件 = (nil,nil) 非错误）——loader_warnings
+	// 必须为空：降级输入不得被当成干净基线。
+	if len(rep.LoaderWarnings) != 0 {
+		t.Fatalf("loader warnings on a healthy empty project = %v, want none", rep.LoaderWarnings)
 	}
 
 	plain := &cobra.Command{}

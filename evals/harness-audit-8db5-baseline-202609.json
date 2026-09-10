@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-11T03:54:05.6256723+08:00",
+  "generated_at": "2026-09-11T04:07:24.9078201+08:00",
   "forge_version": "dev",
   "caliber": {
     "dedup_window": 2000000000,
@@ -11,12 +11,12 @@
   },
   "window": {
     "from": "2026-08-23T20:32:35.5250401+08:00",
-    "to": "2026-09-11T03:53:31.5002476+08:00",
-    "days": 18.306203416753473
+    "to": "2026-09-11T03:58:02.0734944+08:00",
+    "days": 18.3093350515544
   },
   "a_skill_trigger": {
     "total": 170,
-    "daily_triggers": 9.286469516908099,
+    "daily_triggers": 9.284881156050918,
     "by_event": {
       "PostToolUse": {
         "hits": 48,
@@ -92,6 +92,8 @@
   },
   "e_attribution": {
     "post_seal_rows": 110,
+    "post_seal_no_session_rows": 107,
+    "post_seal_other_session_rows": 3,
     "tasks_with_post_seal_rows": 15,
     "post_seal_owner_rows": 30,
     "probe_flagged_rows": 0,

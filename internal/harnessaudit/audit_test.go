@@ -147,6 +147,9 @@ func TestAttributionMetrics_PostSealBySessionOwnership(t *testing.T) {
 	if m.PostSealRows != 2 || m.TasksWithPostSealRows != 1 {
 		t.Fatalf("leak = %d rows / %d tasks, want 2 / 1 (no-session + other-session rows after seal, regardless of delay)", m.PostSealRows, m.TasksWithPostSealRows)
 	}
+	if m.PostSealNoSessionRows != 1 || m.PostSealOtherRows != 1 {
+		t.Fatalf("leak split = no-session %d / other %d, want 1/1（外来归因通道独立可观测）", m.PostSealNoSessionRows, m.PostSealOtherRows)
+	}
 	if m.PostSealOwnerRows != 2 {
 		t.Fatalf("owner post-seal rows = %d, want 2 (ceremony + 40h-later owner rerun are not leaks)", m.PostSealOwnerRows)
 	}
