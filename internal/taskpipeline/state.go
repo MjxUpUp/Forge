@@ -364,7 +364,9 @@ func ClearActiveTaskRef(root, sessionID string) error {
 // 此前只清当前会话的指针（ClearActiveTaskRef）——多会话参与的任务（session_links ≥2）
 // 会留下其他会话的指针，之后那些会话（或无 session 的 CLI 调用经 workspace 绑定）
 // 的 hook 行继续归到已封印/已完成的任务名下
-// （docs/design/harness-fixes-a-g-2026-09.md E.3）。其他任务的指针不动。
+// （docs/design/harness-fixes-a-g-2026-09.md E.3）。其他任务的指针不动。按内容匹配
+// 而非按路径删除，故当前会话指针若指向别的任务不会被误清。读失败（非不存在）与删
+// 失败同样并入返回错误——读不到的指针文件与漏清后果相同，不能静默。
 func ClearActiveTaskRefsForTask(root, taskRef string) error {
 	if taskRef == "" {
 		return nil
@@ -375,6 +377,11 @@ func ClearActiveTaskRefsForTask(root, taskRef string) error {
 		return err
 	}
 	var firstErr error
+	note := func(e error) {
+		if e != nil && !os.IsNotExist(e) && firstErr == nil {
+			firstErr = e
+		}
+	}
 	for _, e := range entries {
 		name := e.Name()
 		if name != activeTaskRefFile && !strings.HasPrefix(name, activeTaskRefFile+"-") {
@@ -382,16 +389,16 @@ func ClearActiveTaskRefsForTask(root, taskRef string) error {
 		}
 		p := filepath.Join(dir, name)
 		data, rerr := os.ReadFile(p)
-		if rerr != nil || strings.TrimSpace(string(data)) != taskRef {
+		if rerr != nil {
+			note(rerr)
 			continue
 		}
-		if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) && firstErr == nil {
-			firstErr = rmErr
+		if strings.TrimSpace(string(data)) != taskRef {
+			continue
 		}
+		note(os.Remove(p))
 	}
-	if berr := worktree.ClearAllForTask(root, taskRef); berr != nil && firstErr == nil {
-		firstErr = berr
-	}
+	note(worktree.ClearAllForTask(root, taskRef))
 	return firstErr
 }
 

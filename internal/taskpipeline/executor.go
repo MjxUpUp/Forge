@@ -1,7 +1,9 @@
 package taskpipeline
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,13 +80,25 @@ func recordAudit(root string, entry *checklog.Entry) {
 	}
 }
 
-// annotateAttribution 按 TaskRef 对应的任务状态回填 SessionID 并标记 post_seal。
+// annotateAttribution backfills SessionID from the task's creating session and flags rows landing after the evidence seal; best-effort — a missing task is silent, a read error is warned so the probe's absence stays attributable.
+//
+// annotateAttribution 按 TaskRef 对应的任务状态回填 SessionID 并标记 post_seal。尽力而为：
+// 任务不存在（正常，如无 ref 的观察行）静默；状态文件读失败打 stderr——post_seal 是
+// M 度量 E1 的数据源，IO 失败导致的「未打标」若无迹可查会被审计误读为「未封印」。
+// 成本：每条带 TaskRef 的审计行一次小 JSON 读；门禁运行每次数十行、进程秒级，远低于
+// hook 热路径（那边解析一次 state 后复用）。
 func annotateAttribution(root string, entry *checklog.Entry) {
 	if entry == nil || entry.TaskRef == "" {
 		return
 	}
 	state, err := LoadTaskState(root, entry.TaskRef)
-	if err != nil || state == nil {
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "[forge] warning: attribution annotate skipped for %s: %v\n", entry.TaskRef, err)
+		}
+		return
+	}
+	if state == nil {
 		return
 	}
 	if entry.SessionID == "" {

@@ -11,6 +11,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
+// Attribution freeze (docs/design/harness-fixes-a-g-2026-09.md E): completing a task clears
+// every session pointer and workspace binding that names it; audit rows backfill the session
+// and carry the resolve_path / post_seal probe; efficiency uses the toollog active span
+// instead of the wall clock.
+//
 // 归因冻结（docs/design/harness-fixes-a-g-2026-09.md E）：完成时清掉所有指向该任务的
 // 会话指针 + workspace 绑定；审计行回填 session 并打 resolve_path / post_seal 探针；
 // efficiency 用 toollog 活跃跨度替代挂钟。

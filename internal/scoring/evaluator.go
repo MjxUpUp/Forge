@@ -220,10 +220,6 @@ func scoreScope(diffStat string) scoringtypes.DimensionScore {
 	}
 }
 
-func scoreEfficiency(startedAt, completedAt time.Time) scoringtypes.DimensionScore {
-	return scoreEfficiencyWithSpan(startedAt, completedAt, 0)
-}
-
 // scoreEfficiencyWithSpan scores efficiency on the tool-activity span when known (>0), else on the wall clock; a negative span is untrustworthy → neutral 70, never a wall-clock fallback.
 //
 // scoreEfficiencyWithSpan：activeSpan>0 按活跃工作跨度打分，否则按挂钟
@@ -265,7 +261,9 @@ func scoreEfficiencyWithSpan(startedAt, completedAt time.Time, activeSpan time.D
 	return efficiencyBucket(duration, `Completed in %.0f minutes`)
 }
 
-// efficiencyBucket 把时长映射到 efficiency 档位；detailFmt 带一个 %.0f 占位（分钟）。
+// efficiencyBucket maps a duration onto the five efficiency tiers; detailFmt carries one %.0f placeholder (minutes).
+//
+// efficiencyBucket 把时长映射到 efficiency 五档；detailFmt 带一个 %.0f 占位（分钟）。
 func efficiencyBucket(duration time.Duration, detailFmt string) scoringtypes.DimensionScore {
 	minutes := duration.Minutes()
 

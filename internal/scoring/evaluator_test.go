@@ -205,7 +205,7 @@ func TestScoreScope_VeryLarge(t *testing.T) {
 func TestScoreEfficiency_Fast(t *testing.T) {
 	start := time.Now().Add(-3 * time.Minute)
 	end := time.Now()
-	result := scoreEfficiency(start, end)
+	result := scoreEfficiencyWithSpan(start, end, 0)
 	if result.Score != 100 {
 		t.Fatalf("expected 100 (fast), got %d: %s", result.Score, result.Detail)
 	}
@@ -214,7 +214,7 @@ func TestScoreEfficiency_Fast(t *testing.T) {
 func TestScoreEfficiency_Slow(t *testing.T) {
 	start := time.Now().Add(-90 * time.Minute)
 	end := time.Now()
-	result := scoreEfficiency(start, end)
+	result := scoreEfficiencyWithSpan(start, end, 0)
 	if result.Score != 55 {
 		t.Fatalf("expected 55 (slow, 90min ≤120 bucket), got %d: %s", result.Score, result.Detail)
 	}
@@ -229,7 +229,7 @@ func TestScoreEfficiency_Slow(t *testing.T) {
 func TestScoreEfficiency_NegativeDuration(t *testing.T) {
 	start := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
 	end := start.Add(-5 * time.Minute) // completed "before" it started
-	result := scoreEfficiency(start, end)
+	result := scoreEfficiencyWithSpan(start, end, 0)
 	if result.Score != 70 {
 		t.Fatalf("expected 70 (neutral, negative duration), got %d: %s", result.Score, result.Detail)
 	}
@@ -279,7 +279,7 @@ func TestScoreEfficiency_Buckets(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			start := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
 			end := start.Add(time.Duration(c.mins) * time.Minute)
-			result := scoreEfficiency(start, end)
+			result := scoreEfficiencyWithSpan(start, end, 0)
 			if result.Score != c.want {
 				t.Fatalf("%s (%dmin): got %d, want %d: %s", c.name, c.mins, result.Score, c.want, result.Detail)
 			}
