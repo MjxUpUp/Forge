@@ -112,6 +112,12 @@
     {
       "event": "PreToolUse",
       "matcher": "Bash",
+      "command": "forge hook gate-cmd-form --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PreToolUse",
+      "matcher": "Bash",
       "command": "forge hook skill-trigger --agent kimi",
       "timeout": 30
     },
