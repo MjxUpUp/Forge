@@ -9,6 +9,8 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
 // taskStatePath returns the DataDir/tasks/<sanitized-ref>.json path for dir,
@@ -78,6 +80,58 @@ func TestTaskAbort_ExplicitRef(t *testing.T) {
 	stdout, _, code = runForge(t, tmpDir, "task", "abort", "--ref", "feature/test-abort")
 	if code != 0 {
 		t.Fatalf("re-abort of missing task should be idempotent, got exit %d: %s", code, stdout)
+	}
+}
+
+// TestTaskAbort_ClearsOtherSessionsAnchors pins E.3 for the abort path: pointers left by
+// other sessions (and the workspace binding) that still name the aborted task are dead
+// anchors and must go with it; another task's pointer is untouched.
+//
+// TestTaskAbort_ClearsOtherSessionsAnchors 钉死 abort 路径的 E.3：其他会话留下的、仍指向
+// 被 abort 任务的指针与 workspace 绑定都是死锚，随任务一并清；他任务指针不动。
+func TestTaskAbort_ClearsOtherSessionsAnchors(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	tmpDir := t.TempDir()
+	runGit(t, tmpDir, "init")
+	runGit(t, tmpDir, "config", "user.email", "test@test.com")
+	runGit(t, tmpDir, "config", "user.name", "Test")
+	if stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium"); code != 0 {
+		t.Fatalf("forge init failed: %s", stdout)
+	}
+	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\nfunc main() {}\n"), 0644)
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "initial")
+	runGit(t, tmpDir, "checkout", "-b", "feature/anchors")
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "feature/anchors", "--title", "anchors probe"); code != 0 {
+		t.Fatalf("forge task start failed: %s", stdout)
+	}
+	const ref = "feature/anchors"
+	for _, sid := range []string{"sess-x", "sess-y"} {
+		if err := taskpipeline.SetActiveTaskRef(tmpDir, sid, ref); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := taskpipeline.SetActiveTaskRef(tmpDir, "sess-z", "feature/other"); err != nil {
+		t.Fatal(err)
+	}
+	if err := worktree.BindTask(tmpDir, ref, ref, "sess-x"); err != nil {
+		t.Fatal(err)
+	}
+
+	if stdout, _, code := runForge(t, tmpDir, "task", "abort", "--ref", ref); code != 0 {
+		t.Fatalf("forge task abort exit %d: %s", code, stdout)
+	}
+	for _, sid := range []string{"sess-x", "sess-y", ""} {
+		if got := taskpipeline.ReadActiveTaskRef(tmpDir, sid); got != "" {
+			t.Errorf("pointer for session %q still names %q after abort", sid, got)
+		}
+	}
+	if got := taskpipeline.ReadActiveTaskRef(tmpDir, "sess-z"); got != "feature/other" {
+		t.Errorf("other task's pointer must survive abort, got %q", got)
+	}
+	if b := worktree.Load(tmpDir); b != nil && b.TaskRef == ref {
+		t.Errorf("workspace binding must be cleared on abort, got %+v", b)
 	}
 }
 
