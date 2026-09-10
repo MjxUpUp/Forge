@@ -225,3 +225,20 @@ docs/design/evolution-discipline-norms.md 裁断表；本机 11 告警实证（8
 ### Rationale
 
 两缺口均为会话实证暴露（非投机），且载体裁断走的是仓内既有单一来源原则——细节放 evidence-based-proposal、门控一行留在本 skill，不另建新 skill
+
+## [d-18d41475e9809584-09859494] accept
+
+- **Skill**: implementation-discipline
+- **DecidedAt**: 2026-09-10T21:57:28Z
+
+### Diagnosis
+
+动作点加载式推送两机实测转化 0-2%（机器甲 kimi 遥测/机器乙 harness-audit A2），按设计 A（docs/design/harness-fixes-a-g-2026-09.md）通道重构
+
+### Revision
+
+triggers 增加 inline（一行动作指令）与 follow（A4 跟随匹配器）声明，正文零改动
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md A 节 + evals/harness-audit-8db5-baseline-202609.json a_skill_trigger.by_event（PreToolUse 0/52、PostToolUse 1/48）
