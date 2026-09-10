@@ -11,11 +11,11 @@ import (
 )
 
 // next-line output tests (design B): the status and gate output surfaces must append a
-// "→ next:" line. The complete-output surface is exercised by the e2e abort/complete suites;
-// the golden full-set lands with the B3 batch (design doc note).
+// "→ next:" line. The complete-output surface has NO golden assertion yet — deferred to the
+// B3 batch (explicitly noted in the design doc's acceptance section, not a silent cut).
 //
-// next 行输出测试（设计 B）：status 与 gate 输出面必须追加「→ next:」行。complete 输出面由
-// e2e abort/complete 套件覆盖；完整 golden 集随 B3 批落（设计文档注记）。
+// next 行输出测试（设计 B）：status 与 gate 输出面必须追加「→ next:」行。complete 输出面的
+// golden 断言随 B3 批落（当前未覆盖——设计文档验收节已显式延期，非静默缩水）。
 
 func setupNextProject(t *testing.T) string {
 	t.Helper()

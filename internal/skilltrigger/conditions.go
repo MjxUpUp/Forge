@@ -122,7 +122,7 @@ func ToolFailureSignal(ctx Context) bool {
 // 编译器族签名（B2-1 评审：输出关键词门复用本正则后，无 exit_code 宿主（kimi）上
 // go/cargo/gradle 的编译失败输出不在签名集里——compile-fix-loop 的主通道被静默关死）：
 // error[E[、error: could not compile、BUILD FAILED、cannot find package、undefined:。
-var failSignatureRe = regexp.MustCompile(`(?m)^(--- FAIL|FAIL|FAILED|npm ERR!|panic: |exit status [1-9][0-9]*|Compilation failed|error\[E[0-9]+\]|error: could not compile|BUILD FAILED|(?:\S+:\d+(?::\d+)?: )?(?:undefined: |cannot find package)|测试失|编译失)`)
+var failSignatureRe = regexp.MustCompile(`(?m)^(--- FAIL|FAIL|FAILED|npm ERR!|panic: |exit status [1-9][0-9]*|Compilation failed|error\[E[0-9]+\]|error: could not compile|BUILD FAILED|(?:\S+:\d+(?::\d+)?: )?(?:undefined: |cannot find package)|测试失败|编译失败)`)
 
 // outputTextOf 拼接 tool_output 的文本槽位（output/stdout/stderr）。
 func outputTextOf(out map[string]any) string {
