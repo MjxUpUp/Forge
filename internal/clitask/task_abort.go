@@ -9,7 +9,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
-	"github.com/MjxUpUp/Forge/internal/worktree"
 	"github.com/spf13/cobra"
 )
 
@@ -137,11 +136,11 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "Warning: failed to clear active task ref: %v\n", err)
 		}
 	}
-	// L1（#4 深挖修订）：abort 按任务清扫【全部】绑定——任务即将删除，任何指向
-	// 它的绑定（含其 worktree 的 wtid 键控绑定，abort 常从主检出发起、cwd 键控
-	// 的 Clear 够不到）都是死锚。best-effort。
-	if err := worktree.ClearAllForTask(root, taskRef); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to clear workspace bindings: %v\n", err)
+	// L1（#4 深挖修订）：abort 按任务清扫【全部】锚点——任务即将删除，任何指向它的
+	// 会话指针（其他会话 / legacy 全局）与绑定（含其 worktree 的 wtid 键控绑定，abort
+	// 常从主检出发起、cwd 键控的 Clear 够不到）都是死锚。best-effort。
+	if err := taskpipeline.ClearActiveTaskRefsForTask(root, taskRef); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to clear task anchors: %v\n", err)
 	}
 
 	// --cascade：abort 每个传递依赖方并清其 active-task-ref。在主 delete 之后；各 DeleteTaskState 容忍 ENOENT。

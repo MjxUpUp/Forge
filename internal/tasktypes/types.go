@@ -605,6 +605,49 @@ func (s *TaskState) NextGate() string {
 	return ""
 }
 
+// EvidenceSealed reports whether the task's completion evidence is sealed: every pipeline gate has passed (or, for gate-less generic tasks, the task is completed).
+//
+// EvidenceSealed 报告任务的完成证据是否已封印：全部门禁通过（generic 任务无门禁，以
+// CompletedAt 为准）。封印点是 task-complete 门禁通过那一刻而非 `forge task complete`
+// 成功那一刻——两者之间可能隔着 doc-gate 卡住的两天，期间落到任务名下的行（异会话
+// 的 hazard 拦截、重复 verify 自述）不属于完成声明的证据
+// （docs/design/harness-fixes-a-g-2026-09.md E，乙机 fix/env-hermetic-registry 实录）。
+func (s *TaskState) EvidenceSealed() bool {
+	if s == nil {
+		return false
+	}
+	if s.CompletedAt != nil {
+		return true
+	}
+	if s.IsGeneric() {
+		return false
+	}
+	return s.IsComplete()
+}
+
+// SealedAt returns the evidence-seal instant: the task-complete gate's pass time; CompletedAt for generic tasks; zero while unsealed.
+//
+// SealedAt 返回证据封印时刻：task-complete 门禁的通过时间；generic 任务取 CompletedAt；
+// 未封印返回零值。评分/结论的证据读取用它作时间上界（checklog.ForTaskUntil /
+// LatestByCheckForTaskWindow）。CompletedAt 晚于门禁时间时仍取门禁时间——那才是
+// 「完成声明」成立的时刻。
+func (s *TaskState) SealedAt() time.Time {
+	if s == nil {
+		return time.Time{}
+	}
+	if !s.IsGeneric() {
+		for _, r := range s.History {
+			if r.Gate == GateComplete && r.Passed {
+				return r.CompletedAt
+			}
+		}
+	}
+	if s.CompletedAt != nil {
+		return *s.CompletedAt
+	}
+	return time.Time{}
+}
+
 // MarkComplete records the task completion time. It also reconciles the assignment state
 // machine with the task pipeline (dogfood 2026-08-18 脱节修复): a task can finish its gates
 // without anyone running claim/deliver, leaving the assignment suspended at offered — mine

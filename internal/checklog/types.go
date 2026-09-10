@@ -401,6 +401,19 @@ const (
 	MetaKeySyncOp = "sync_op"
 )
 
+// MetaKeyResolvePath / MetaKeyPostSeal 是任务归因探针的机器载荷命名空间
+// （docs/design/harness-fixes-a-g-2026-09.md E.1/E.2）：任何 check 的行都可携带。
+// 写方 hookdispatch（hook 行）与 taskpipeline.recordAudit（执行器行），读方
+// `forge eval harness-audit`（泄漏计数）——单一真相源，与上方 MetaKey* 同款契约缝。
+const (
+	// MetaKeyResolvePath 记录 active task 经哪条路径解析到：active-file / workspace /
+	// branch / legacy（taskpipeline.ResolvePath* 常量）。
+	MetaKeyResolvePath = "resolve_path"
+	// MetaKeyPostSeal = "true" 标记该行落在任务证据封印（task-complete 门禁通过）之后
+	// ——行保留供 trace，但评分/结论按 TaskState.SealedAt 截断不计入。
+	MetaKeyPostSeal = "post_seal"
+)
+
 // EvidenceSource marks the source of a checklog evidence entry, distinguishing deterministic from agent-claim.
 //
 // EvidenceSource 标注一条 checklog 证据的来源，区分 deterministic（hook/外部

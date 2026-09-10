@@ -122,11 +122,34 @@ func SaveTaskState(root string, state *TaskState) error {
 //  3. 兜底：扫 DataDir/tasks/ 找单个未完成 task
 //     （多 task 时歧义——返回 nil 以免误匹配）
 func ActiveTaskState(root, sessionID string) (*TaskState, error) {
+	st, _, err := ActiveTaskStateWithPath(root, sessionID)
+	return st, err
+}
+
+// ResolvePath* label which detection path resolved the active task (attribution probe, checklog Meta[MetaKeyResolvePath]).
+//
+// ResolvePath* 标注 active task 是经哪条探测路径解析到的——归因探针
+// （docs/design/harness-fixes-a-g-2026-09.md E.1），随 hook / 执行器审计行落进
+// checklog Meta[MetaKeyResolvePath]，让「这行为什么算到这个任务头上」从考古变成
+// 数据。值与 ActiveTaskStateWithPath 的四条路径一一对应。
+const (
+	ResolvePathActiveFile = "active-file"
+	ResolvePathWorkspace  = "workspace"
+	ResolvePathBranch     = "branch"
+	ResolvePathLegacy     = "legacy"
+)
+
+// ActiveTaskStateWithPath is ActiveTaskState that also reports the resolution path label (empty when nothing resolved).
+//
+// ActiveTaskStateWithPath 是 ActiveTaskState 的带路径标签形态：第二个返回值是
+// ResolvePath* 之一，未解析到任务时为空串。探测优先级与语义与 ActiveTaskState 完全
+// 一致（它只是本函数的薄包装）。
+func ActiveTaskStateWithPath(root, sessionID string) (*TaskState, string, error) {
 	// 优先级 1：显式 active task ref 文件
 	if ref := ReadActiveTaskRef(root, sessionID); ref != "" {
 		state, err := LoadTaskState(root, ref)
 		if err == nil && state != nil && state.CompletedAt == nil {
-			return state, nil
+			return state, ResolvePathActiveFile, nil
 		}
 		// ref 文件过期——fall through
 	}
@@ -137,7 +160,7 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 	// 存在即锚（设新鲜度门会把崩溃会话变成丢任务）。
 	if b := worktree.Load(root); b != nil && b.TaskRef != "" {
 		if state, err := LoadTaskState(root, b.TaskRef); err == nil && state != nil && state.CompletedAt == nil {
-			return state, nil
+			return state, ResolvePathWorkspace, nil
 		}
 		// 绑定过期（任务已完成/中止）——fall through；task start/finish/abort 维护
 		// 绑定，这里是崩溃窗口的兜底。
@@ -151,7 +174,7 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 	if ctx.IsSet() {
 		if state, err := LoadTaskState(root, ctx.TaskRef); err == nil && state != nil {
 			if state.CompletedAt == nil && !taskAnchoredByOtherActiveSession(root, state, sessionID) {
-				return state, nil
+				return state, ResolvePathBranch, nil
 			}
 			// 已完成或正被其他会话持有——fall through
 		}
@@ -182,10 +205,10 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 					_ = ClearActiveTaskRef(root, "")
 				}
 			}
-			return state, nil
+			return state, ResolvePathLegacy, nil
 		}
 	}
-	return nil, nil
+	return nil, "", nil
 }
 
 // IsMainCheckout reports whether root is the project's main checkout (vs a linked worktree).
@@ -332,6 +355,44 @@ func ClearActiveTaskRef(root, sessionID string) error {
 		return err
 	}
 	return nil
+}
+
+// ClearActiveTaskRefsForTask removes every pointer that still names taskRef: all session-scoped active-task-ref-* files, the legacy global file, and the workspace bindings.
+//
+// ClearActiveTaskRefsForTask 清掉所有仍指向 taskRef 的锚点：全部 session-scoped
+// active-task-ref-* 文件、legacy 全局文件、以及 workspace 绑定。`forge task complete`
+// 此前只清当前会话的指针（ClearActiveTaskRef）——多会话参与的任务（session_links ≥2）
+// 会留下其他会话的指针，之后那些会话（或无 session 的 CLI 调用经 workspace 绑定）
+// 的 hook 行继续归到已封印/已完成的任务名下
+// （docs/design/harness-fixes-a-g-2026-09.md E.3）。其他任务的指针不动。
+func ClearActiveTaskRefsForTask(root, taskRef string) error {
+	if taskRef == "" {
+		return nil
+	}
+	dir := dataHome(root)
+	entries, err := os.ReadDir(dir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var firstErr error
+	for _, e := range entries {
+		name := e.Name()
+		if name != activeTaskRefFile && !strings.HasPrefix(name, activeTaskRefFile+"-") {
+			continue
+		}
+		p := filepath.Join(dir, name)
+		data, rerr := os.ReadFile(p)
+		if rerr != nil || strings.TrimSpace(string(data)) != taskRef {
+			continue
+		}
+		if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) && firstErr == nil {
+			firstErr = rmErr
+		}
+	}
+	if berr := worktree.ClearAllForTask(root, taskRef); berr != nil && firstErr == nil {
+		firstErr = berr
+	}
+	return firstErr
 }
 
 // completeGraceFile 是 MarkCompleteGrace 在 DataDir 内写的 sentinel 名（带前缀）。
