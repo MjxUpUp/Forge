@@ -4,7 +4,7 @@
 
 ## 通用约束
 
-- **兼容纪律**（docs/design/compat-commitments.md）：已发布 advisory 转 BLOCKED 预告期 ≥2 个 minor；新 BLOCKED 拒绝文案含预告版本或「首发即 blocked」+ 指向承诺表；每个 BLOCKED 门禁配 `FORGE_*` env 或 per-task override 逃生舱（逃生留痕 + 评分封顶）；`compat.snapshot.json` 六面 golden 随新 CheckName/命令/逃生舱/BLOCKED 位点显式重生成。**版本映射：1.56 = 数据修正 + advisory 批；1.58 = ratchet BLOCKED 批**（1.57 观察）。
+- **兼容纪律**（docs/design/compat-commitments.md）：已发布 advisory 转 BLOCKED 预告期 ≥2 个 minor；新 BLOCKED 拒绝文案含预告版本或「首发即 blocked」+ 指向承诺表；每个 BLOCKED 门禁配 `FORGE_*` env 或 per-task override 逃生舱（逃生留痕 + 评分封顶）；`compat.snapshot.json` 六面 golden 随新 CheckName/命令/逃生舱/BLOCKED 位点显式重生成。**版本映射：1.56 = 数据修正 + advisory 批；1.58 = ratchet BLOCKED 批**（1.57 观察；F.2a 首发即 blocked 例外见 B2 行）。
 - **命令预算**：单 minor 命令净增 ≤2——本设计新增命令仅 1 个（`forge eval harness-audit`，见 M）。
 - **实现纪律**：判定逻辑抽纯函数作单测锚点（`nextDecision`/`BuildConclusion` 先例）；嵌出门禁输出必须走 `GateBlocked`/`GateAdvisory` 前缀（internal/taskpipeline/gate_message.go:33）；新 advisory check 过 `shouldRecordCheck` 噪声门（internal/hookdispatch/hook.go:1279）。
 - **两机指标斜杠约定**：`乙/甲` = 乙机（8db5a0d1b70f，33 任务）/ 甲机（6d5e51a0f9d4，90 任务）；单机内部比例写「乙：x/y」明示，不用斜杠。
@@ -80,8 +80,8 @@
   3. **清除面**：`ClearActiveTaskRef` 扫 `DataDir/active-task-ref-*` 全部指向该任务的 session 文件 + legacy 全局文件一并清（现按单一 sessionID 清，task_complete.go:262；session_links 多会话任务漏清即候选源）；task_abort 同步。
   4. **评分窗口（两个读取点各修一处）**：`ForTask` 增 `until` 参数——结论链传 CompletedAt 截断 `RecordedAt ≤ CompletedAt`，`forge trace` 传零值保持全史；`LatestByCheckForSessionSince` 对 SessionID 为空的条目改为仅当 `e.TaskRef == 被评任务` 才保留（增 taskRef 参数）。`checklog.Record` 时 SessionID 为空且 TaskRef 非空 → 回填该任务 TaskState.SessionID。efficiency 维度输入从挂钟（started→completed）改为活跃工作跨度（任务时间窗内首末 toollog 事件距，无 toollog 回落挂钟）——评分口径变更，进 CHANGELOG 行为变更节。
 - **度量**：E1 完成后归因泄漏任务数 2 → 0；E2 无 session_id 记录占比 59% → ≤10%；E3 Weak 误判（机制产物型）2 → 0（以 resolve_path 探针复算为准）。防伪：checklog 总行数不得异常下降（drop 行带 Meta 计数进 M 输出）。
-- **验收**：单测夹具——完成任务后 hook 归因返回空 / session 回填 / 多 session 文件全清 / LoadForTask 时间窗截断；e2e 式复演 env-hermetic 场景（完成→异 session verify）断言零追加。
-- **风险**：读侧断言过严可能让合法续接（reopen 前）丢归因——reopen 流程有独立写路径（task_continuity.go:388 重设 active ref），不受影响；M 周报监控 drop 计数。
+- **验收**：单测夹具——完成任务后 hook 归因返回空 / session 回填 / 多 session 文件全清 / `ForTask` 时间窗截断（until=CompletedAt 与零值两夹具）/ 空 SessionID 条目按 taskRef 过滤；e2e 式复演 env-hermetic 场景（完成→异 session verify）断言零追加。
+- **风险**：写侧 drop 过严可能让合法续接（reopen 前）丢归因——reopen 流程有独立写路径（task_continuity.go:388 重设 active ref），不受影响；M 周报监控 drop 计数。
 
 ## F｜hazard-guard 提精度 + 确认真人化
 
@@ -104,7 +104,7 @@
   2. **G.2 cheat-scan 上下文抑制**：comment-only-fix 发现量与任务注释占比一致（改动行 ≥90% 为注释/空白——numstat+注释启发式已有同源实现在 scoring scope 排除逻辑）→ 抑制为 suppressed 记录（保留审计行带 suppressed 标记，不进 fail 计数）。
   3. **G.3 unused-scan 可行动化**：detail 附证据（符号名 + 仓内 grep 引用计数 0 的搜索串），维持 advisory——先提可行动性观察转化率，不动阻断。
 - **落点**：internal/taskpipeline/{testcoverage.go,cheatscan.go,unusedscan.go,executor_check_verify_scans.go,executor_check_complete.go}。
-- **度量**：G1 coverage 拦后转 pass `18.5%` → ≥60%；G2 testing<70 任务 4/33 → ≤1/25；G3 cheat-scan 注释任务误报（夹具）→ 0；unused-scan 转化率由 M 钉基线后另定目标。
+- **度量**：G1 coverage 拦后转 pass `18.5%` → ≥60%；G2 testing<70 任务 乙：4/33 → ≤1/25；G3 cheat-scan 注释任务误报（夹具）→ 0；unused-scan 转化率由 M 钉基线后另定目标。
 - **验收**：阈值表驱动单测（3/2/1 × 断言 0/正 的矩阵）；comment-dedup 场景夹具抑制；两机审计实录的缺测任务清单作回归样本。
 - **风险**：1.58 阻断对重构/纯配置任务误伤——既有断言豁免（assertN>0 放行）+ override 逃生 + 预告期 advisory 命中监控（M 输出按任务类型分层）。
 
