@@ -194,7 +194,7 @@ feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R
 
 ### Revision
 
-triggers 增加 inline/follow 声明（release-readiness 的 follow 收窄去掉 git log 例行命令）
+triggers 增加 inline（改 SKILL.md 前先读 R1-R18 清单）与 follow（forge skills validate|forge skills audit）声明
 
 ### Evidence
 
