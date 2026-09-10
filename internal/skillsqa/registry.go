@@ -269,6 +269,8 @@ func checkTriggers(raw string, advisories *[]string) {
 		Keywords []string `json:"keywords"`
 		When     string   `json:"when"`
 		Match    string   `json:"match"`
+		Inline   string   `json:"inline"`
+		Follow   string   `json:"follow"`
 	}
 	if err := json.Unmarshal([]byte(raw), &triggers); err != nil {
 		*advisories = append(*advisories, fmt.Sprintf(`metadata.triggers 非合法 JSON: %v`, err))
@@ -294,6 +296,20 @@ func checkTriggers(raw string, advisories *[]string) {
 		}
 		if isToolEvent && t.Match == "" && len(t.Keywords) == 0 {
 			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] PreToolUse/PostToolUse 建议带 match（限定 tool_name），否则对所有 tool 命中`, idx))
+		}
+		// 设计 A（docs/design/harness-fixes-a-g-2026-09.md）：动作点事件（PreToolUse/
+		// PostToolUse/Stop）未声明 inline 的 trigger 会被通道分流抑制——声明了才有效。
+		isActionPoint := isToolEvent || t.Event == "Stop"
+		if isActionPoint && t.Inline == "" {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] 动作点事件(%s)未声明 inline——将被通道分流抑制；要么补 inline（一行动作指令），要么把规则挪到 UserPromptSubmit`, idx, t.Event))
+		}
+		if t.Follow != "" {
+			if _, err := regexp.Compile(t.Follow); err != nil {
+				*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] follow 非合法正则: %v`, idx, err))
+			}
+		}
+		if t.Inline != "" && t.Follow == "" {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] 声明了 inline 但缺 follow 匹配器——该命中不进 A4（inline 跟随率）分母`, idx))
 		}
 	}
 }

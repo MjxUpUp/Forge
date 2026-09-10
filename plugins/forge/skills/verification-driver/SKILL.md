@@ -4,7 +4,7 @@ description: "驱动外部工具对产物做端到端验证（API 实测、CLI �
 metadata:
   pattern: pipeline + reviewer
   domain: testing
-  triggers: [{"event":"PostToolUse","match":"Bash","when":"test_command_failed","reason":"测试命令失败——加载 verification-driver：先确认失败的是真实行为问题还是测试本身，做端到端验证而非直接改测试/弱化断言"}]
+  triggers: [{"event":"PostToolUse","match":"Bash","when":"test_command_failed","reason":"测试命令失败——加载 verification-driver：先确认失败的是真实行为问题还是测试本身，做端到端验证而非直接改测试/弱化断言","inline":"测试失败——先判断是行为 bug 还是测试本身，端到端复现后再改","follow":"go test|npm test|cargo test|pytest"}]
 ---
 
 # Verification Driver — 产物端到端验证驱动
