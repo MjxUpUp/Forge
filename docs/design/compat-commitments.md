@@ -20,7 +20,7 @@
 
 1. **新增 BLOCKED 门禁的拒绝文案必须包含其一**：①预告版本（"自 vX.Y 起 advisory 转 blocked"——若该门禁曾以 advisory 形态发布过）；②"首发即 blocked"声明 + 指向本文档（若门禁与含它的版本同首发，无存量暴露则无预告义务）。
 2. **时间承诺**：已发布的 advisory 门禁转 blocked，**预告期 ≥2 个 minor 版本**（PEP 387 口径；期间文案持续显示预告版本）。
-3. **逃生舱纪律**：每个 BLOCKED 门禁必须有 `FORGE_*` env 或 per-task override 逃生舱，逃生留 checklog 痕 + evidence 封顶 Weak；豁免行携带 reason/owner 元数据（v1 简化：reason 为机制枚举值——`per-task override` / `env`——尚无自由文本 `--reason` flag，owner 在 env 逃生时记 "env" 而非委托任务；升级为设计文档 P1-2 的后续项）。**形态门禁豁免（2026-09-10 裁决）**：拒绝「命令组合形态」而非「操作本身」的门禁（合规形态即放行、拒绝文案指明放行形态）**不强制**配独立逃生舱——放行被禁形态本身的逃生舱等于取消门禁；是否配置按存量暴露风险自选（F.2a hazard confirm 链式分离：新形态无存量、不配；C gate-cmd-form：存量脚本可能嵌门禁连刷、保留 override 作过渡）。两例均见 docs/design/harness-fixes-a-g-2026-09.md。
+3. **逃生舱纪律**：每个 BLOCKED 门禁必须有 `FORGE_*` env 或 per-task override 逃生舱（形态门禁豁免见本条末），逃生留 checklog 痕 + evidence 封顶 Weak；豁免行携带 reason/owner 元数据（v1 简化：reason 为机制枚举值——`per-task override` / `env`——尚无自由文本 `--reason` flag，owner 在 env 逃生时记 "env" 而非委托任务；升级为设计文档 P1-2 的后续项）。**形态门禁豁免（2026-09-10 裁决）**：拒绝「命令组合形态」而非「操作本身」的门禁（合规形态即放行、拒绝文案指明放行形态）**不强制**配独立逃生舱——放行被禁形态本身的逃生舱等于取消门禁；是否配置按存量暴露风险自选（F.2a hazard confirm 链式分离：新形态无存量、不配；C gate-cmd-form：存量脚本可能嵌门禁连刷、保留 override 作过渡）。两例均见 docs/design/harness-fixes-a-g-2026-09.md。
 4. **机械执法**：`forge compat report` 的 blocking-sites 面使新增 BLOCKED 位点在 golden diff 里显式可见——新增须同时更新本文档或 CHANGELOG 行为变更节，否则 report 以 warn 提示。
 
 ## 三、生效口径与存量处理
