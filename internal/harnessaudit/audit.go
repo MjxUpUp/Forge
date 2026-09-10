@@ -22,6 +22,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/skillmetrics"
 	"github.com/MjxUpUp/Forge/internal/skillsfm"
 	"github.com/MjxUpUp/Forge/internal/skilltrigger"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
@@ -36,11 +37,10 @@ type Caliber struct {
 	FollowWindow      time.Duration `json:"follow_window"`       // inline 指令→跟随动作
 	DrillWindow       time.Duration `json:"drill_window"`        // skill 加载→references 下钻
 	PairWindow        time.Duration `json:"pair_window"`         // PostToolUse 触发 ↔ 其工具调用的配对
-	HazardDedupWindow time.Duration `json:"hazard_dedup_window"` // hazard 双投递
-	PostSealGrace     time.Duration `json:"post_seal_grace"`     // 封印后多久内的行视为 complete 仪式（doc-gate/attribution/escape 库存等），不算泄漏
+	HazardDedupWindow time.Duration `json:"hazard_dedup_window"` // hazard 双投递（= hazard.EventDedupWindow，判定复用 hazard.IsDoubleDelivery）
 }
 
-// DefaultCaliber is the caliber both audits used (toollog 2s dedupe, 10-minute join, 30-minute follow, 20-minute drill, 3s pairing / hazard dedupe, 10-minute post-seal grace).
+// DefaultCaliber is the caliber both audits used (toollog 2s dedupe, 10-minute join, 30-minute follow, 20-minute drill, 3s pairing / hazard dedupe).
 //
 // DefaultCaliber 是两机审计共用的口径。
 func DefaultCaliber() Caliber {
@@ -51,7 +51,6 @@ func DefaultCaliber() Caliber {
 		DrillWindow:       20 * time.Minute,
 		PairWindow:        3 * time.Second,
 		HazardDedupWindow: hazard.EventDedupWindow,
-		PostSealGrace:     10 * time.Minute,
 	}
 }
 
@@ -84,23 +83,29 @@ type Input struct {
 	Version      string
 	Now          time.Time
 	Caliber      *Caliber // nil = DefaultCaliber
+	// LoaderWarnings lists data sources the caller failed to load (degraded input); serialized so a baseline JSON is self-describing — an all-zero F/D/E section from a failed load must never pass as a real zero.
+	//
+	// LoaderWarnings 是调用方加载失败的数据源清单（降级输入）；随报告序列化，让基线 JSON
+	// 自证——加载失败导致的 F/D/E 全零绝不能被当成真零（E1/F2 的目标恰好是 0）。
+	LoaderWarnings []string
 }
 
 // Report is the JSON/table output of one audit run.
 //
 // Report 是一次审计的 JSON/表格输出。
 type Report struct {
-	GeneratedAt  time.Time         `json:"generated_at"`
-	ForgeVersion string            `json:"forge_version"`
-	Caliber      Caliber           `json:"caliber"`
-	Window       Window            `json:"window"`
-	A            SkillTriggerStats `json:"a_skill_trigger"`
-	B            NextHintStats     `json:"b_next_hint"`
-	C            GateCmdFormStats  `json:"c_gate_cmd_form"`
-	D            RefsCriticalStats `json:"d_refs_critical"`
-	E            AttributionStats  `json:"e_attribution"`
-	F            HazardStats       `json:"f_hazard"`
-	G            CoverageStats     `json:"g_coverage"`
+	GeneratedAt    time.Time         `json:"generated_at"`
+	ForgeVersion   string            `json:"forge_version"`
+	Caliber        Caliber           `json:"caliber"`
+	Window         Window            `json:"window"`
+	LoaderWarnings []string          `json:"loader_warnings,omitempty"` // 非空 = 降级输入，不得作基线
+	A              SkillTriggerStats `json:"a_skill_trigger"`
+	B              NextHintStats     `json:"b_next_hint"`
+	C              GateCmdFormStats  `json:"c_gate_cmd_form"`
+	D              RefsCriticalStats `json:"d_refs_critical"`
+	E              AttributionStats  `json:"e_attribution"`
+	F              HazardStats       `json:"f_hazard"`
+	G              CoverageStats     `json:"g_coverage"`
 }
 
 // Window is the observed data span.
@@ -125,12 +130,17 @@ type ChannelStat struct {
 //
 // SkillTriggerStats 覆盖 A1–A4：日均触发、按通道转化、verification-driver 精度、inline 跟随。
 type SkillTriggerStats struct {
-	Total                       int                    `json:"total"`
-	DailyTriggers               float64                `json:"daily_triggers"` // A1
-	ByEvent                     map[string]ChannelStat `json:"by_event"`       // A2 按通道
-	Conversion                  Ratio                  `json:"conversion"`     // A2 总转化
-	VerificationDriverPrecision Ratio                  `json:"verification_driver_precision"`
-	InlineFollow                *Ratio                 `json:"inline_follow,omitempty"` // A4；无 inline 行 = nil（n/a）
+	Total         int                    `json:"total"`
+	DailyTriggers float64                `json:"daily_triggers"` // A1
+	ByEvent       map[string]ChannelStat `json:"by_event"`       // A2 按通道
+	Conversion    Ratio                  `json:"conversion"`     // A2 总转化
+	// VerificationDriverTestCmdPrecision is A3 under the caliber this ledger can support: the PostToolUse hit's paired Bash IS a test command. The design's "failing test command" half is unmeasurable from toollog (no exit codes) — the field name discloses the narrowing; the ≥80% target rebinds to this caliber (design M/A3 note).
+	//
+	// VerificationDriverTestCmdPrecision 是账本能支撑的 A3 口径：PostToolUse 命中配对到的 Bash
+	// 是测试命令。设计原文的「失败的测试命令」一半在 toollog 里不可测（无退出码）——字段名
+	// 直接披露收窄，≥80% 目标按本口径重绑（设计 M/A3 注记）。
+	VerificationDriverTestCmdPrecision Ratio  `json:"verification_driver_testcmd_precision"`
+	InlineFollow                       *Ratio `json:"inline_follow,omitempty"` // A4；无 inline 行 = nil（n/a）
 }
 
 // NextHintStats covers B1.
@@ -169,12 +179,15 @@ type RefsCriticalStats struct {
 
 // AttributionStats covers E1–E2.
 //
-// AttributionStats 覆盖 E1–E2：封印后泄漏行（超出 PostSealGrace 的归因行——探针标记或按
-// SealedAt 时间窗判定）、探针原始标记数、无 session 占比、解析路径分布。
+// AttributionStats 覆盖 E1–E2。E1 泄漏 = 落在任务证据封印之后、且不属于任务创建会话的
+// 归因行（无 session 或其他会话）；创建会话自己封印后的行是 complete 仪式 / owner 续作
+// （doc-gate 卡两天时 owner 修文档、重跑 verify），单列 PostSealOwnerRows 不算泄漏。按
+// 会话归属而非时间宽限区分（评审：时间宽限既藏快泄漏、又拦不住慢仪式）。
 type AttributionStats struct {
-	PostSealRows          int            `json:"post_seal_rows"`            // 超出宽限期的封印后行（E1 泄漏量）
+	PostSealRows          int            `json:"post_seal_rows"`            // E1 泄漏行：封印后 + 非创建会话（含无 session）
 	TasksWithPostSealRows int            `json:"tasks_with_post_seal_rows"` // E1 泄漏任务数
-	ProbeFlaggedRows      int            `json:"probe_flagged_rows"`        // Meta[post_seal]=true 原始计数（含仪式行；探针覆盖度）
+	PostSealOwnerRows     int            `json:"post_seal_owner_rows"`      // 封印后创建会话自己的行（仪式/续作，不算泄漏）
+	ProbeFlaggedRows      int            `json:"probe_flagged_rows"`        // Meta[post_seal]=true 原始计数（探针覆盖度，含仪式行）
 	NoSessionShare        Ratio          `json:"no_session_share"`
 	ResolvePathCounts     map[string]int `json:"resolve_path_counts"`
 }
@@ -216,17 +229,18 @@ func Build(in Input) *Report {
 	win := observedWindow(in.Entries, calls)
 	hostOf := hostResolver(in.Tasks)
 	return &Report{
-		GeneratedAt:  now,
-		ForgeVersion: in.Version,
-		Caliber:      cal,
-		Window:       win,
-		A:            SkillTriggerMetrics(in.Entries, calls, win.Days, cal),
-		B:            NextHintMetrics(in.Entries, calls, cal),
-		C:            GateCmdFormMetrics(calls),
-		D:            RefsCriticalMetrics(calls, in.RefsCritical, hostOf, cal),
-		E:            AttributionMetrics(in.Entries, in.Tasks, cal),
-		F:            HazardMetrics(in.Hazards, cal),
-		G:            CoverageMetrics(in.Entries),
+		GeneratedAt:    now,
+		ForgeVersion:   in.Version,
+		Caliber:        cal,
+		Window:         win,
+		LoaderWarnings: in.LoaderWarnings,
+		A:              SkillTriggerMetrics(in.Entries, calls, win.Days, cal),
+		B:              NextHintMetrics(in.Entries, calls, cal),
+		C:              GateCmdFormMetrics(calls),
+		D:              RefsCriticalMetrics(calls, in.RefsCritical, hostOf, cal),
+		E:              AttributionMetrics(in.Entries, in.Tasks),
+		F:              HazardMetrics(in.Hazards, cal),
+		G:              CoverageMetrics(in.Entries),
 	}
 }
 
@@ -356,7 +370,7 @@ func SkillTriggerMetrics(entries []checklog.Entry, calls []toolusage.ToolCall, d
 		st.DailyTriggers = float64(st.Total) / days
 	}
 	st.Conversion = ratio(loaded, st.Total)
-	st.VerificationDriverPrecision = ratio(vdNum, vdDen)
+	st.VerificationDriverTestCmdPrecision = ratio(vdNum, vdDen)
 	if inlDen > 0 {
 		r := ratio(inlNum, inlDen)
 		st.InlineFollow = &r
@@ -442,8 +456,8 @@ func GateCmdFormMetrics(calls []toolusage.ToolCall) GateCmdFormStats {
 		if f.Standalone {
 			st.Standalone++
 		}
-		if f.AndChain && !f.Semicolon && !f.PipeTruncated && !f.OrChain {
-			st.AndChainOnly++
+		if f.Compliant && !f.Standalone {
+			st.AndChainOnly++ // 合规的 && 链——与 Standalone 加和恰为 C3 分子，三数自洽
 		}
 		if f.MultiGate {
 			st.MultiGate++
@@ -569,23 +583,27 @@ func hostResolver(tasks []*tasktypes.TaskState) func(string) string {
 	}
 }
 
-// AttributionMetrics computes E1–E2: rows landing after a task's evidence seal beyond the ceremony grace (SealedAt + PostSealGrace — `forge task complete` itself writes rows after the gate seal), the raw probe count, the no-session share, and the resolve_path distribution.
+// AttributionMetrics computes E1–E2: rows landing after a task's evidence seal are split by session ownership — the task's creating session (ceremony / owner follow-up) vs any other or no session (leak) — plus the raw probe count, the no-session share, and the resolve_path distribution.
 //
-// AttributionMetrics 算 E1–E2：落在任务证据封印之后、且超出仪式宽限期（SealedAt +
-// PostSealGrace——`forge task complete` 自己的 doc-gate/attribution/escape 库存行天然在门禁
-// 封印之后）的行为泄漏行；探针原始计数单列；另算无 session 占比与 resolve_path 分布。
-func AttributionMetrics(entries []checklog.Entry, tasks []*tasktypes.TaskState, cal Caliber) AttributionStats {
+// AttributionMetrics 算 E1–E2：封印后落到任务名下的行按会话归属拆分——创建会话（仪式 /
+// owner 续作）vs 其他会话或无会话（泄漏）；另算探针原始计数、无 session 占比与
+// resolve_path 分布。封印时刻与所属会话来自 TaskState（SealedAt / SessionID）。
+func AttributionMetrics(entries []checklog.Entry, tasks []*tasktypes.TaskState) AttributionStats {
 	st := AttributionStats{ResolvePathCounts: map[string]int{}}
-	sealAt := map[string]time.Time{}
+	type sealInfo struct {
+		at    time.Time
+		owner string
+	}
+	seals := map[string]sealInfo{}
 	for _, t := range tasks {
 		if t == nil {
 			continue
 		}
 		if s := t.SealedAt(); !s.IsZero() {
-			sealAt[t.TaskRef] = s
+			seals[t.TaskRef] = sealInfo{at: s, owner: t.SessionID}
 		}
 	}
-	postSealTasks := map[string]bool{}
+	leakTasks := map[string]bool{}
 	noSession := 0
 	for _, e := range entries {
 		if e.SessionID == "" {
@@ -600,21 +618,28 @@ func AttributionMetrics(entries []checklog.Entry, tasks []*tasktypes.TaskState, 
 		if e.TaskRef == "" {
 			continue
 		}
-		if s, ok := sealAt[e.TaskRef]; ok && e.RecordedAt.After(s.Add(cal.PostSealGrace)) {
-			st.PostSealRows++
-			postSealTasks[e.TaskRef] = true
+		si, ok := seals[e.TaskRef]
+		if !ok || !e.RecordedAt.After(si.at) {
+			continue
 		}
+		if si.owner != "" && e.SessionID == si.owner {
+			st.PostSealOwnerRows++
+			continue
+		}
+		st.PostSealRows++
+		leakTasks[e.TaskRef] = true
 	}
-	st.TasksWithPostSealRows = len(postSealTasks)
+	st.TasksWithPostSealRows = len(leakTasks)
 	st.NoSessionShare = ratio(noSession, len(entries))
 	return st
 }
 
-// HazardMetrics computes F from the hazard event stream.
+// HazardMetrics computes F from the hazard event stream with the writer's own dedupe rule (hazard.IsDoubleDelivery against the previous event of ANY type) so pre-fix history is rebuilt exactly as the fixed writer would have recorded it.
 //
-// HazardMetrics 从 hazard 事件流算 F：双投递按 (session, type, fingerprint) 连续同键且间隔
-// < HazardDedupWindow 判定（与 hazard.AppendEvent 的去重同规则——修复后新数据应为 0，
-// 历史数据给出基线）；事件 = block − 双投递；已放行 = 其指纹随后出现 confirm/release/data。
+// HazardMetrics 从 hazard 事件流算 F。双投递判定直接复用写侧 hazard.IsDoubleDelivery，且与
+// 写侧一样只比对「上一条任意类型事件」（写侧只看文件末行）——修复前的历史按修复后写方
+// 会落盘的形态重建，F2 前后对比同口径。事件 = block − 双投递；已放行 = 其指纹随后出现
+// confirm/release/data。
 func HazardMetrics(events []hazard.Event, cal Caliber) HazardStats {
 	var st HazardStats
 	sorted := make([]hazard.Event, len(events))
@@ -630,27 +655,20 @@ func HazardMetrics(events []hazard.Event, cal Caliber) HazardStats {
 	incidentsReleased := 0
 	for i := range sorted {
 		e := &sorted[i]
-		if e.Type != hazard.EventBlock {
-			continue
-		}
-		st.Blocks++
-		dup := false
-		if prev != nil && prev.Fingerprint == e.Fingerprint && e.Fingerprint != "" &&
-			(prev.SessionID == "" || e.SessionID == "" || prev.SessionID == e.SessionID) {
-			if d := e.Ts.Sub(prev.Ts); d >= 0 && d < cal.HazardDedupWindow {
-				dup = true
-			}
-		}
-		if dup {
-			st.DoubleDeliveries++
-		} else {
-			st.Incidents++
-			if released[e.Fingerprint] {
-				incidentsReleased++
+		if e.Type == hazard.EventBlock {
+			st.Blocks++
+			if prev != nil && e.Fingerprint != "" && hazard.IsDoubleDelivery(*prev, *e) {
+				st.DoubleDeliveries++
+			} else {
+				st.Incidents++
+				if released[e.Fingerprint] {
+					incidentsReleased++
+				}
 			}
 		}
 		prev = e
 	}
+	_ = cal // 窗口由 hazard.IsDoubleDelivery 内的 EventDedupWindow 决定；Caliber 字段仅作报告披露
 	st.ReleasedIncidents = ratio(incidentsReleased, st.Incidents)
 	return st
 }
@@ -661,7 +679,7 @@ func HazardMetrics(events []hazard.Event, cal Caliber) HazardStats {
 // 以及 cheat-scan / unused-scan 的 fail 计数。
 func CoverageMetrics(entries []checklog.Entry) CoverageStats {
 	var st CoverageStats
-	const coverage = checklog.CheckName("test-coverage-gate")
+	const coverage = taskpipeline.CheckNameTestCoverage
 	byTask := map[string][]checklog.Entry{}
 	for _, e := range entries {
 		failed := e.EffectiveLevel().IsFailure()
@@ -739,8 +757,11 @@ func Render(r *Report) string {
 	fmt.Fprintf(&b, "Harness 审计（forge %s，%s ~ %s，%.1f 天；口径 dedup=%s join=%s follow=%s drill=%s）\n",
 		r.ForgeVersion, r.Window.From.Format("2006-01-02"), r.Window.To.Format("2006-01-02"), r.Window.Days,
 		r.Caliber.DedupWindow, r.Caliber.JoinWindow, r.Caliber.FollowWindow, r.Caliber.DrillWindow)
-	fmt.Fprintf(&b, "A skill-trigger: 触发 %d（A1 日均 %.1f）  A2 总转化 %s  A3 verification-driver 精度 %s\n",
-		r.A.Total, r.A.DailyTriggers, pct(r.A.Conversion), pct(r.A.VerificationDriverPrecision))
+	if len(r.LoaderWarnings) > 0 {
+		fmt.Fprintf(&b, "⚠ 降级输入（不得作基线）：%s\n", strings.Join(r.LoaderWarnings, "；"))
+	}
+	fmt.Fprintf(&b, "A skill-trigger: 触发 %d（A1 日均 %.1f）  A2 总转化 %s  A3 verification-driver 配对命令为测试命令 %s（口径：不含成败，toollog 无退出码）\n",
+		r.A.Total, r.A.DailyTriggers, pct(r.A.Conversion), pct(r.A.VerificationDriverTestCmdPrecision))
 	events := make([]string, 0, len(r.A.ByEvent))
 	for ev := range r.A.ByEvent {
 		events = append(events, ev)
@@ -771,8 +792,8 @@ func Render(r *Report) string {
 			fmt.Fprintf(&b, "   %-14s %s\n", h, pct(r.D.PerHost[h]))
 		}
 	}
-	fmt.Fprintf(&b, "E 归因: 封印后泄漏行 %d（%d 任务，宽限 %s）  探针标记 %d  无 session 占比 %s  resolve_path %v\n",
-		r.E.PostSealRows, r.E.TasksWithPostSealRows, r.Caliber.PostSealGrace, r.E.ProbeFlaggedRows, pct(r.E.NoSessionShare), r.E.ResolvePathCounts)
+	fmt.Fprintf(&b, "E 归因: 封印后泄漏行 %d（%d 任务，非创建会话）  owner 续作行 %d  探针标记 %d  无 session 占比 %s  resolve_path %v\n",
+		r.E.PostSealRows, r.E.TasksWithPostSealRows, r.E.PostSealOwnerRows, r.E.ProbeFlaggedRows, pct(r.E.NoSessionShare), r.E.ResolvePathCounts)
 	fmt.Fprintf(&b, "F hazard: block %d  双投递 %d  事件 %d  放行 %s\n", r.F.Blocks, r.F.DoubleDeliveries, r.F.Incidents, pct(r.F.ReleasedIncidents))
 	fmt.Fprintf(&b, "G 软门禁: coverage fail %d → 转 pass %s  cheat-scan fail %d  unused-scan fail %d\n",
 		r.G.CoverageFails, pct(r.G.CoverageFixAfterFail), r.G.CheatScanFails, r.G.UnusedScanFails)

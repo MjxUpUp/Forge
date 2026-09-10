@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-11T03:08:02.1015708+08:00",
+  "generated_at": "2026-09-11T03:54:05.6256723+08:00",
   "forge_version": "dev",
   "caliber": {
     "dedup_window": 2000000000,
@@ -7,17 +7,16 @@
     "follow_window": 1800000000000,
     "drill_window": 1200000000000,
     "pair_window": 3000000000,
-    "hazard_dedup_window": 3000000000,
-    "post_seal_grace": 600000000000
+    "hazard_dedup_window": 3000000000
   },
   "window": {
     "from": "2026-08-23T20:32:35.5250401+08:00",
-    "to": "2026-09-11T03:07:14.5408326+08:00",
-    "days": 18.274062682783565
+    "to": "2026-09-11T03:53:31.5002476+08:00",
+    "days": 18.306203416753473
   },
   "a_skill_trigger": {
     "total": 170,
-    "daily_triggers": 9.302802718311845,
+    "daily_triggers": 9.286469516908099,
     "by_event": {
       "PostToolUse": {
         "hits": 48,
@@ -45,7 +44,7 @@
       "den": 170,
       "rate": 0.08823529411764706
     },
-    "verification_driver_precision": {
+    "verification_driver_testcmd_precision": {
       "num": 23,
       "den": 26,
       "rate": 0.8846153846153846
@@ -60,27 +59,27 @@
     }
   },
   "c_gate_cmd_form": {
-    "total": 113,
-    "standalone": 23,
-    "and_chain_only": 3,
-    "multi_gate": 44,
-    "semicolon": 30,
-    "pipe_truncated": 85,
-    "grep_masked": 7,
+    "total": 156,
+    "standalone": 27,
+    "and_chain_only": 2,
+    "multi_gate": 61,
+    "semicolon": 40,
+    "pipe_truncated": 122,
+    "grep_masked": 13,
     "c1_semicolon_or_grep": {
-      "num": 31,
-      "den": 113,
-      "rate": 0.2743362831858407
+      "num": 45,
+      "den": 156,
+      "rate": 0.28846153846153844
     },
     "c2_pipe_truncated": {
-      "num": 85,
-      "den": 113,
-      "rate": 0.7522123893805309
+      "num": 122,
+      "den": 156,
+      "rate": 0.782051282051282
     },
     "c3_compliant": {
-      "num": 25,
-      "den": 113,
-      "rate": 0.22123893805309736
+      "num": 29,
+      "den": 156,
+      "rate": 0.1858974358974359
     }
   },
   "d_refs_critical": {
@@ -92,34 +91,35 @@
     }
   },
   "e_attribution": {
-    "post_seal_rows": 82,
-    "tasks_with_post_seal_rows": 4,
+    "post_seal_rows": 110,
+    "tasks_with_post_seal_rows": 15,
+    "post_seal_owner_rows": 30,
     "probe_flagged_rows": 0,
     "no_session_share": {
-      "num": 804,
-      "den": 1344,
-      "rate": 0.5982142857142857
+      "num": 814,
+      "den": 1358,
+      "rate": 0.5994108983799705
     },
     "resolve_path_counts": {}
   },
   "f_hazard": {
-    "blocks": 52,
+    "blocks": 54,
     "double_deliveries": 5,
-    "incidents": 47,
+    "incidents": 49,
     "released_incidents": {
       "num": 9,
-      "den": 47,
-      "rate": 0.19148936170212766
+      "den": 49,
+      "rate": 0.1836734693877551
     }
   },
   "g_coverage": {
-    "coverage_fails": 29,
+    "coverage_fails": 30,
     "coverage_fix_after_fail": {
-      "num": 7,
-      "den": 29,
-      "rate": 0.2413793103448276
+      "num": 8,
+      "den": 30,
+      "rate": 0.26666666666666666
     },
     "cheat_scan_fails": 11,
-    "unused_scan_fails": 9
+    "unused_scan_fails": 10
   }
 }

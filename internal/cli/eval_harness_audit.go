@@ -42,6 +42,8 @@ func runEvalHarnessAudit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	asJSON, _ := cmd.Flags().GetBool("json")
+	// 降级输入清单：非空时这轮输出不得当基线（JSON loader_warnings 自证，人读面打 ⚠ 行）。
+	var warnings []string
 
 	entries, err := checklog.LoadAllAll(root)
 	if err != nil {
@@ -54,25 +56,36 @@ func runEvalHarnessAudit(cmd *cobra.Command, args []string) error {
 	tasks, err := taskpipeline.ListTaskStates(root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[forge] warning: task states unavailable (%v) — E post-seal window and D host stratification degrade\n", err)
+		warnings = append(warnings, "task-states")
 	}
 	var events []hazard.Event
 	if p, perr := findProject(); perr == nil {
 		if evs, lerr := hazard.LoadEvents(p); lerr == nil {
 			events = evs
+		} else {
+			fmt.Fprintf(os.Stderr, "[forge] warning: hazard events unavailable (%v) — F section degrades\n", lerr)
+			warnings = append(warnings, "hazard-events")
 		}
+	} else {
+		fmt.Fprintf(os.Stderr, "[forge] warning: project unresolved (%v) — F section degrades\n", perr)
+		warnings = append(warnings, "hazard-events")
 	}
 	refs := map[string][]string{}
 	if dir, _, rerr := skillscanonical.Resolve(cmd.Root().Version); rerr == nil && dir != "" {
 		refs = harnessaudit.LoadRefsCritical(dir)
+	} else {
+		fmt.Fprintf(os.Stderr, "[forge] warning: canonical skills unresolved (%v) — D declared-count may read 0 on a load failure\n", rerr)
+		warnings = append(warnings, "refs-critical")
 	}
 
 	rep := harnessaudit.Build(harnessaudit.Input{
-		Entries:      entries,
-		Calls:        calls,
-		Tasks:        tasks,
-		Hazards:      events,
-		RefsCritical: refs,
-		Version:      cleanVersion(cmd.Root().Version),
+		Entries:        entries,
+		Calls:          calls,
+		Tasks:          tasks,
+		Hazards:        events,
+		RefsCritical:   refs,
+		Version:        cleanVersion(cmd.Root().Version),
+		LoaderWarnings: warnings,
 	})
 	if asJSON {
 		enc := json.NewEncoder(os.Stdout)
