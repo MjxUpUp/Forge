@@ -292,6 +292,7 @@ func buildWindsurfHooks() map[string]any {
 			"pre_run_command": {
 				{Command: "forge hook bash-guard --agent windsurf", ShowOutput: false},
 				{Command: "forge hook hazard-guard --agent windsurf", ShowOutput: false},
+				{Command: "forge hook gate-cmd-form --agent windsurf", ShowOutput: false},
 				{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
 			},
 			"post_write_code": {

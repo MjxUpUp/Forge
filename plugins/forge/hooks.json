@@ -109,6 +109,12 @@
       },
       {
         "type": "command",
+        "command": "forge hook gate-cmd-form --agent copilot",
+        "matcher": "Bash",
+        "timeoutSec": 60
+      },
+      {
+        "type": "command",
         "command": "forge hook skill-trigger --agent copilot",
         "matcher": "Bash",
         "timeoutSec": 60

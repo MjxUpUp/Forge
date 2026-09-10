@@ -796,6 +796,24 @@ if ! is_hazardous "$COMMAND" && ! is_interp_delete_bypass "$COMMAND"; then
   exit 0
 fi
 
+
+# strip_interp_heredoc_bodies（F.1）：heredoc 喂给非 shell 解释器（python/node/ruby/perl）
+# 且正文不含执行原语时，正文是数据——预先挖掉正文（保留 <<TAG 行与其后连接符），让
+# is_hazardous/strip_quotes 只判真正会执行的头部。乙机实录：分析脚本的 heredoc 体提及
+# 危险命令字样即被拦（本设计撰写会话两次实测）。正文真会调 shell 的（subprocess/
+# os.system/child_process/exec(/spawn(/system(/pipe-shell）保持原判定。
+strip_interp_heredoc_bodies() {
+  local cmd="$1" tag body
+  printf '%s' "$cmd" | grep -qiE '(python3?|node|ruby|perl) +[^|;&]*<<-?' || { printf '%s' "$cmd"; return; }
+  tag=$(printf '%s' "$cmd" | grep -oE "<<-?['\"]?[A-Za-z_][A-Za-z0-9_]*" | head -1 | grep -oE '[A-Za-z_][A-Za-z0-9_]*$')
+  [ -n "$tag" ] || { printf '%s' "$cmd"; return; }
+  body=$(printf '%s' "$cmd" | awk -v t="$tag" 'f && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {f=0} f {print} /<<-?/ {f=1}')
+  printf '%s' "$body" | grep -qiE 'subprocess|os\.system|os\.popen|child_process|exec\(|spawn\(|system\(|sh -c|bash -c' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$cmd" | awk -v t="$tag" 'BEGIN{inbody=0} inbody && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {inbody=0; print; next} inbody {next} {print} /<<-?/ {inbody=1}'
+}
+
+COMMAND=$(strip_interp_heredoc_bodies "$COMMAND")
+
 # --- context classification：危险串是数据（引号内 / 注释行）还是执行 ---
 # is_hazardous 命中后，剥离引号与注释再判一次：剥离后不再命中 → 危险串都在引号里或注释里
 # （数据上下文），且命令非执行包裹（bash -c/eval/pipe-shell）→ 放行。根治 grep "rm -rf" /

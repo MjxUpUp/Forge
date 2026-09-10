@@ -71,6 +71,10 @@
       },
       {
         "match": "bash",
+        "command": "forge hook gate-cmd-form --agent reasonix"
+      },
+      {
+        "match": "bash",
         "command": "forge hook skill-trigger --agent reasonix"
       }
     ],
