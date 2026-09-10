@@ -100,6 +100,10 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println(strings.Repeat("─", 40))
+	// 设计 B：status 与 gate/complete 同款 next 行——agent 读状态时顺手看到恰好一条下一步。
+	hint := taskpipeline.NextHint(root, state)
+	fmt.Printf("→ next: %s（%s）\n", hint.Next, hint.Reason)
+	fmt.Println(strings.Repeat("─", 40))
 
 	if state.HasAcceptance() {
 		fmt.Println("验收标准:")

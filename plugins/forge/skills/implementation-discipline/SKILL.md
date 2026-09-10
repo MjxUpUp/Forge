@@ -5,7 +5,7 @@ metadata:
   pattern: pipeline + gate
   domain: development
   composes: [prototype-confirmation, evidence-based-proposal, tdd-cycle, test-discipline, verification-driver, code-review-gate, systematic-debugging, dev-lookup, release-readiness]
-  triggers: [{"event":"UserPromptSubmit","when":"coding_intent"},{"event":"Stop","when":"source_changed_uncommitted"}]
+  triggers: [{"event":"UserPromptSubmit","when":"coding_intent"},{"event":"Stop","when":"source_changed_uncommitted","inline":"结束前跑聚焦测试确认没破坏已有功能","follow":"go test|npm test|cargo test|pytest"}]
 ---
 
 # 代码实施纪律链

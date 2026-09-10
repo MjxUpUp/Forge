@@ -4,7 +4,7 @@ description: "测试质量守卫（提交前 diff 审查 + 断言防注水）。
 metadata:
   pattern: reviewer
   domain: testing
-  triggers: [{"event":"PreToolUse","match":"Bash","keywords":["git commit","git push"],"cooldown":120}]
+  triggers: [{"event":"PreToolUse","match":"Bash","keywords":["git commit","git push"],"cooldown":120,"inline":"提交前先跑聚焦测试：改动包的 go test / npm test","follow":"go test|npm test|cargo test|pytest"}]
 ---
 
 # 测试质量守卫

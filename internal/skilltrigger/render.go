@@ -39,6 +39,12 @@ func Render(hits []Hit, ctx Context, overflow []string) string {
 	w(fmt.Sprintf("Skill 触发（%d）：本次事件与以下 skill 的触发条件匹配，供参考", len(hits)))
 	w(bar)
 	for _, h := range hits {
+		// 动作点 inline 形态（设计 A）：一行动作指令、无 skill 路径、无「请加载」指引——
+		// test-nudge 同款（两机实证内联跟随 80% vs 加载式 5–13%）。重复注入同样保持单行。
+		if h.Mode == "inline" && h.Trigger.Inline != "" {
+			w(fmt.Sprintf("  【%s】 %s", h.Skill, util.TruncateRunes(reasonOneLine(h.Trigger.Inline), 200)))
+			continue
+		}
 		cond := h.Trigger.When
 		if cond == "" {
 			cond = "keywords"

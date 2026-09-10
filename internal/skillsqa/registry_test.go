@@ -327,9 +327,28 @@ func TestCheckTriggers_InvalidJSON(t *testing.T) {
 }
 
 func TestCheckTriggers_Valid(t *testing.T) {
-	raw := `[{"event":"Stop","when":"task_active_no_review"},{"event":"UserPromptSubmit","when":"coding_intent"}]`
+	raw := `[{"event":"Stop","when":"task_active_no_review","inline":"收尾前跑聚焦测试","follow":"go test"},{"event":"UserPromptSubmit","when":"coding_intent"}]`
 	if adv := triggersAdvisories(t, raw); len(adv) != 0 {
 		t.Errorf("合法 triggers 应无 advisory，got %v", adv)
+	}
+}
+
+// TestCheckTriggers_HighFrequencyFollowBoundaries pins the word boundaries of the
+// high-frequency-follow advisory (confirmation round): "skills" contains "ls" as a substring and
+// must NOT fire; a bare "git log" follow must.
+//
+// TestCheckTriggers_HighFrequencyFollowBoundaries 钉住高频 follow advisory 的词边界（确认轮）：
+// "skills" 含子串 "ls" 不得误报；裸 "git log" follow 应报。
+func TestCheckTriggers_HighFrequencyFollowBoundaries(t *testing.T) {
+	good := `[{"event":"PostToolUse","match":"Bash","keywords":["k"],"inline":"i","follow":"forge skills validate|forge skills audit"}]`
+	for _, adv := range triggersAdvisories(t, good) {
+		if strings.Contains(adv, "高频例行命令") {
+			t.Errorf("skill-authoring-shaped follow must not fire the advisory, got %v", adv)
+		}
+	}
+	bad := `[{"event":"PostToolUse","match":"Bash","keywords":["k"],"inline":"i","follow":"git log"}]`
+	if !advisoryContains(triggersAdvisories(t, bad), "高频例行命令") {
+		t.Errorf("bare git log follow must fire the advisory")
 	}
 }
 
@@ -397,7 +416,7 @@ func makeSkillWithTriggers(name, desc, pattern, triggers, body string) string {
 
 // TestAuditSkill_R12_ValidTriggersNoAdvisory: 合法 triggers 经 AuditSkill 后无 R12 advisory。
 func TestAuditSkill_R12_ValidTriggersNoAdvisory(t *testing.T) {
-	raw := `[{"event":"Stop","when":"task_active_no_review"}]`
+	raw := `[{"event":"Stop","when":"task_active_no_review","inline":"收尾前跑聚焦测试","follow":"go test"}]`
 	sd := writeSkill(t, t.TempDir(), "r12-valid", makeSkillWithTriggers("r12-valid", longDesc(), "tool-wrapper", raw, signalBody()))
 	r, err := AuditSkill(sd)
 	must(t, err)

@@ -10,6 +10,8 @@
 package skilltrigger
 
 import (
+	"github.com/MjxUpUp/Forge/internal/checklog"
+
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -34,6 +36,17 @@ type Trigger struct {
 	Match    string   `json:"match,omitempty"`    // tool_name matcher（PreToolUse/PostToolUse；| 分隔）
 	Reason   string   `json:"reason,omitempty"`   // 注入理由（覆盖默认模板）
 	Cooldown int      `json:"cooldown,omitempty"` // per-session per-skill 冷却秒数（默认 DefaultCooldown）
+	// Inline is the one-line action instruction for action-point events (PreToolUse/PostToolUse/Stop): rendered without the skill path — the test-nudge form (two-machine evidence: inline instruction follow 80%/80% vs load-skill conversion 5–13%). A trigger without Inline is suppressed on action-point events (design A, docs/design/harness-fixes-a-g-2026-09.md).
+	//
+	// Inline 是动作点事件（PreToolUse/PostToolUse/Stop）的一行动作指令：渲染时不带 skill
+	// 路径——test-nudge 形态（两机实证：内联指令跟随 80%/80%，加载式转化仅 5–13%）。
+	// 动作点事件上未声明 Inline 的 trigger 被抑制（设计 A）。
+	Inline string `json:"inline,omitempty"`
+	// Follow declares the regexp (over subsequent Bash commands) that counts as following the inline instruction — the A4 measurable; hits without it stay out of A4's denominator.
+	//
+	// Follow 声明「跟随了该 inline 指令」的后续 Bash 命令正则——A4 的可测性锚点；未声明的
+	// 命中不进 A4 分母。
+	Follow string `json:"follow,omitempty"`
 }
 
 // SkillTriggers 是一个 skill 的全部 triggers。
@@ -125,6 +138,15 @@ type Hit struct {
 	// ——渲染层把它压成一行短提醒而非完整块（agent 上下文中已有该 skill；2026-08 wire
 	// 证据：重复注入从不被重读）。
 	Reminder bool
+	// Mode is the delivery mode: load (full skill pointer — decision-point channel) or inline (one-line action — action-point channel). Empty on rows written before the channel split (design A; checklog MetaKeyTriggerMode is the persisted form).
+	//
+	// Mode 是投递模式：load（完整 skill 指引——决策点通道）或 inline（一行动作——动作点
+	// 通道）。通道拆分前的旧行为空（设计 A；落盘形态为 checklog MetaKeyTriggerMode）。
+	Mode string
+	// FollowPattern carries the declared Follow regexp (A4 matcher; "" = hit not in A4 denominator).
+	//
+	// FollowPattern 携带声明的 Follow 正则（A4 匹配器；空 = 该命中不进 A4 分母）。
+	FollowPattern string
 }
 
 // MatchSource* name the source text a keyword hit (priority order for attribution).
@@ -171,6 +193,12 @@ const (
 	// SuppressEventCap：该 skill 本次事件命中但在 MaxHitsPerEvent 单次上限排序中落选
 	// ——不 Mark（不消耗 cooldown），下个事件仍可命中。计入抑制计数器供观测。
 	SuppressEventCap = "event-cap"
+	// SuppressNonDecisionPoint: the trigger matched on an action-point event (PreToolUse/PostToolUse/Stop) but declares no Inline — "please load the skill" only works at decision points (UserPromptSubmit/SessionStart); two-machine evidence: action-point load-mode conversion 0–2%. Not marked (no cooldown burned); counted for A1 volume tuning.
+	//
+	// SuppressNonDecisionPoint：trigger 在动作点事件（PreToolUse/PostToolUse/Stop）命中但未
+	// 声明 Inline——「请加载 skill」只在决策点（UserPromptSubmit/SessionStart）有效，两机
+	// 实证动作点加载式转化 0–2%。不 Mark（不消耗 cooldown）；计数供 A1 调参（设计 A）。
+	SuppressNonDecisionPoint = "non-decision-point"
 )
 
 // MaxHitsPerEvent 单次事件最多注入的 skill 数（2026-08-18 证据：一条 UserPromptSubmit
@@ -196,7 +224,7 @@ const MaxHitsPerEvent = 3
 type Suppressed struct {
 	Skill   string
 	Trigger Trigger
-	Cause   string // SuppressCooldown | SuppressStopCap
+	Cause   string // 抑制原因（Suppress* 常量组：cooldown/stop-max-rounds/session-cap/event-cap/non-decision-point）
 }
 
 // DeniedSkills 有专用 driver 的 skill——框架强制忽略其 triggers，避免双重注入。
@@ -308,15 +336,28 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 		matchedIdx := 0
 		var kw keywordMatch
 		maxCD := 0
+		anyInline := false
 		for i, t := range st.Triggers {
 			km, ok := triggerMatches(t, ctx)
 			if !ok {
 				continue
 			}
-			if matched.Event == "" {
+			firstMatch := matched.Event == ""
+			if firstMatch {
 				matched = t
 				matchedIdx = i
 				kw = km
+			}
+			if strings.TrimSpace(t.Inline) != "" {
+				anyInline = true
+				// 载荷侧（评审确认轮）：动作点上首个声明 inline 的命中条目提升为载荷
+				// trigger——否则「首条无 inline、次条有」的形态会以 mode=inline 却渲染
+				// 完整加载块（设计 A 要消灭的噪声原样回归），FollowPattern 也取空掉出 A4。
+				if !decisionPointEvent(ctx.Event) && (firstMatch || strings.TrimSpace(matched.Inline) == "") {
+					matched = t
+					matchedIdx = i
+					kw = km
+				}
 			}
 			cd := t.Cooldown
 			if cd <= 0 {
@@ -337,6 +378,17 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 		// branch, or explicitly-disabled skills would show up as "suppressed
 		// would-be injections").
 		if isSkillDisabled(st.Skill) {
+			continue
+		}
+		// 通道分流（设计 A）：决策点（UserPromptSubmit/SessionStart）保持完整加载式推送；
+		// 动作点上未声明 Inline 的 trigger 降级抑制——「请加载」在动作执行中是噪声（两机
+		// 实证转化 0–2%）。判定在 stop-cap/cooldown 之前：被分流的不消耗任何预算，A1 的
+		// 分母（真实注入量）随之下降，这正是 A1 目标（≤8/日）的实现路径。
+		// anyInline（任一命中条目声明即过，与 maxCD 同法聚合）：只看首条会让数组顺序决定
+		// 分流结果——同 skill 双动作点 trigger 一有一无时，顺序对调即整个 skill 被吞（评审）。
+		if !decisionPointEvent(ctx.Event) && !anyInline {
+			suppressed = append(suppressed, Suppressed{Skill: st.Skill, Trigger: matched, Cause: SuppressNonDecisionPoint})
+			seen[st.Skill] = true
 			continue
 		}
 		// stop-cap 拦截整事件：全部命中降级为 suppressed（cause 归因 stop-max-rounds——
@@ -388,6 +440,10 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 		if reason == "" {
 			reason = defaultReason(st.Skill, matched)
 		}
+		mode := checklog.TriggerModeLoad
+		if !decisionPointEvent(ctx.Event) {
+			mode = checklog.TriggerModeInline
+		}
 		hits = append(hits, Hit{
 			Skill:          st.Skill,
 			SkillDir:       st.SkillDir,
@@ -400,6 +456,8 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 			PromptHash:     inputHash,
 			PromptLen:      utf8.RuneCountInString(ctx.Prompt),
 			Reminder:       reminder,
+			Mode:           mode,
+			FollowPattern:  matched.Follow,
 		})
 		seen[st.Skill] = true
 	}
@@ -462,6 +520,15 @@ func hitRank(h Hit) int {
 	return 50
 }
 
+// decisionPointEvent reports whether the event is a decision point where a full "load the skill" injection can still act (UserPromptSubmit / SessionStart). Action points (PreToolUse/PostToolUse/Stop) only accept inline one-line instructions (design A).
+//
+// decisionPointEvent 报告事件是否为决策点——完整「加载 skill」注入仍能起作用的时机
+// （UserPromptSubmit / SessionStart）。动作点（PreToolUse/PostToolUse/Stop）只接受 inline
+// 一行指令（设计 A）。
+func decisionPointEvent(event string) bool {
+	return event == "UserPromptSubmit" || event == "SessionStart"
+}
+
 // triggerMatches 判定单条 trigger 是否命中当前 context（event + match + when + keywords），
 // v2 同时返回关键词匹配证据（keyword-only 触发 km 为零值）。
 func triggerMatches(t Trigger, ctx Context) (keywordMatch, bool) {
@@ -519,6 +586,13 @@ type keywordMatch struct {
 // 是**有意的语义变更**（非增量），battery 预期呈现相应命中变化。
 func matchKeywords(keywords []string, ctx Context) (keywordMatch, bool) {
 	for _, src := range []string{MatchSourcePrompt, MatchSourceCommand, MatchSourceStdout, MatchSourceStderr, MatchSourceOutput} {
+		// 输出类来源（stdout/stderr/output）的关键词仅在工具失败时参与匹配（设计 A 精度
+		// 项）：成功输出里引用「compile error」等词样是纯噪声——本会话两次实录（评审输出
+		// 文本含 compile error、审计脚本 heredoc 含高危命令字样）即此形态。prompt/command
+		// 来源不受影响（用户说的、要执行的命令本身就是信号）。
+		if src != MatchSourcePrompt && src != MatchSourceCommand && !ToolFailureSignal(ctx) {
+			continue
+		}
 		h := strings.ToLower(sourceText(ctx, src))
 		if strings.TrimSpace(h) == "" {
 			continue
