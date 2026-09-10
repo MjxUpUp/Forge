@@ -43,3 +43,4 @@
 - 单个 minor 内 commands **净增 ≤2**，且每个新增命令的 PR 须附设计文档链接。`forge compat report` 的 `net-added commands` 行是该预算的软仪表——只展示不强断：硬阻断命令新增会用"参数级执法"对冲冻结本身要遏制的形态（Meadows 杠杆点 12 的堆积病），预算执法走本节的评审流程。
 - 超预算须在本节追加裁决记录（援引边界与 §三存量处理裁决同格式），否则按违例评审。
 - 首发预算记账：leverage-p0 批次净增 +1（`forge eval wedge-drill`，L1 楔子演练）。
+- 1.56 批次记账：净增 +1（`forge eval harness-audit`，A–G 修复的可复算度量；设计 docs/design/harness-fixes-a-g-2026-09.md M，该设计声明本 minor 仅此一个新命令，预算用 1/2）。

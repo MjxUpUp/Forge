@@ -304,7 +304,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D7：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
 | `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、hook/门禁/逃生舱清单与已知盲区（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
 | `forge eval dashboard [--dry-run] [--json]` | Track B 遥测（C4/C7）：escape 率/off_churn/自举通过率（Wilson 95% CI + 误用注记；样本低于字典下限只出 INSUFFICIENT）。快照落 `~/.forge/evals/forge/snapshots/` |
-| `forge eval harness-audit [--json]` | A–G harness 修复的事前/事后度量（docs/design/harness-fixes-a-g-2026-09.md M）：checklog × toollog（2s 双记去重）× 任务 × hazard 一次算出 skill-trigger 按通道转化/verification-driver 精度、next-hint 采纳、门禁命令形态 C1–C3、refs-critical 下钻（按 host）、封印后归因泄漏、hazard 双投递、coverage 拦后转 pass；`--json` 带口径字段，两机回测只比同口径基线（`evals/harness-audit-*-baseline-*.json`） |
+| `forge eval harness-audit [--json]` | A–G harness 修复的事前/事后度量（docs/design/harness-fixes-a-g-2026-09.md M）：checklog × toollog（2s 双记去重）× 任务 × hazard 一次算出 skill-trigger 日均触发/按通道转化/inline 跟随/verification-driver 精度、next-hint 采纳、门禁命令形态 C1–C3、refs-critical 下钻（按 host）、封印后归因泄漏、hazard 双投递、coverage 拦后转 pass；`--json` 带口径字段，两机回测只比同口径基线（`evals/harness-audit-*-baseline-*.json`） |
 | `forge eval golden run [--dir <dir>] [--repeats N] [--rewrite-manifest] [--json]` | 门禁 golden 标注集重放：precision/fpr（Wilson 区间）+ 确定性重放一致率；用例集指纹钉在 `evals/forge/golden/MANIFEST.sha256`，不符拒绝运行（`--rewrite-manifest` 仅限显式轮换） |
 | `forge eval golden private-init` / `rotate [--max-cases N]` | 私有 golden 子集（0700，永不进 VCS）与季度轮换（oracle 复验 + 最老优先淘汰 + 审计行） |
 | `forge eval traps run [--dir <dir>]` | 对抗陷阱重放（测试削弱/伪造审计证据/虚假完成——ImpossibleBench 思想）；capture 率与行动清单 |
