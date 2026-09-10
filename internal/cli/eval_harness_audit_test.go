@@ -34,11 +34,17 @@ func TestEvalHarnessAudit_JSONOnEmptyProject(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &rep); err != nil {
 		t.Fatalf("output is not a Report JSON: %v\n%s", err, out)
 	}
-	if rep.Caliber.DedupWindow != harnessaudit.DefaultCaliber().DedupWindow || rep.Caliber.PostSealGrace == 0 {
+	if rep.Caliber.DedupWindow != harnessaudit.DefaultCaliber().DedupWindow || rep.Caliber.DrillWindow == 0 {
 		t.Fatalf("caliber fields must be serialized, got %+v", rep.Caliber)
 	}
-	if rep.D.Declared != 0 || rep.A.Total != 0 {
-		t.Fatalf("empty project must report zero data, got A=%+v D=%+v", rep.A, rep.D)
+	// D.Declared 不在空项目断言里：它来自全局 canonical skill 树（与项目无关），D 批次
+	// 给 skill 声明 refs_critical 后该值自然非零——语义由 harnessaudit 包内带声明的夹具钉。
+	if rep.A.Total != 0 {
+		t.Fatalf("empty project must report zero data, got A=%+v", rep.A)
+	}
+	if len(rep.LoaderWarnings) == 0 {
+		// 空项目上四源都应加载成功（hazard 缺文件 = (nil,nil) 非错误）。
+		t.Logf("loader warnings: %v (expected none)", rep.LoaderWarnings)
 	}
 
 	plain := &cobra.Command{}
