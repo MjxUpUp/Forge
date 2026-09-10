@@ -5,7 +5,7 @@ metadata:
   pattern: tool-wrapper
   domain: skill-engineering
   requires_forge: "true"
-  triggers: [{"event":"PreToolUse","match":"Write|Edit","when":"skill_file_touched","reason":"编辑 SKILL.md 时须遵守编写规范（description/结构/行数/决策记录）","cooldown":0}]
+  triggers: [{"event":"PreToolUse","match":"Write|Edit","when":"skill_file_touched","reason":"编辑 SKILL.md 时须遵守编写规范（description/结构/行数/决策记录）","cooldown":0,"inline":"改 SKILL.md 前先读 R1-R18 清单——写完跑 forge skills validate","follow":"forge skills validate|forge skills audit"}]
 ---
 
 # Skill 编写规范

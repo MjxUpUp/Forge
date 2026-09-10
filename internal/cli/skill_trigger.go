@@ -347,6 +347,14 @@ func recordSkillTriggerHits(root string, ctx skilltrigger.Context, hits []skillt
 		if h.Trigger.When != "" {
 			meta[checklog.MetaKeyWhen] = h.Trigger.When
 		}
+		// 通道模式（设计 A）：load（决策点完整推送）/ inline（动作点一行动作）——
+		// harness-audit A2 按通道算转化、A4 按 follow 匹配器算跟随的读侧契约。
+		if h.Mode != "" {
+			meta[checklog.MetaKeyTriggerMode] = h.Mode
+		}
+		if h.FollowPattern != "" {
+			meta[checklog.MetaKeyFollowPattern] = h.FollowPattern
+		}
 		if h.PromptHash != "" {
 			meta[checklog.MetaKeyPromptHash] = h.PromptHash
 			if ctx.Prompt != "" {
