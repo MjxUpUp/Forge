@@ -401,14 +401,20 @@ const (
 	MetaKeySyncOp = "sync_op"
 )
 
+// MetaKeyResolvePath / MetaKeyPostSeal namespace the task-attribution probe payload (docs/design/harness-fixes-a-g-2026-09.md E.1/E.2); any check's row may carry them. Writers: hookdispatch (hook rows) and taskpipeline.recordAudit (executor rows); reader: `forge eval harness-audit` — one source of truth, same contract-seam discipline as the MetaKey* constants above.
+//
 // MetaKeyResolvePath / MetaKeyPostSeal 是任务归因探针的机器载荷命名空间
 // （docs/design/harness-fixes-a-g-2026-09.md E.1/E.2）：任何 check 的行都可携带。
 // 写方 hookdispatch（hook 行）与 taskpipeline.recordAudit（执行器行），读方
 // `forge eval harness-audit`（泄漏计数）——单一真相源，与上方 MetaKey* 同款契约缝。
 const (
+	// MetaKeyResolvePath records which detection path resolved the active task: active-file / workspace / branch / legacy (taskpipeline.ResolvePath*).
+	//
 	// MetaKeyResolvePath 记录 active task 经哪条路径解析到：active-file / workspace /
 	// branch / legacy（taskpipeline.ResolvePath* 常量）。
 	MetaKeyResolvePath = "resolve_path"
+	// MetaKeyPostSeal = "true" marks a row landing after the task's evidence seal (task-complete gate passed) — kept for trace, excluded from scoring/conclusion by the TaskState.SealedAt window.
+	//
 	// MetaKeyPostSeal = "true" 标记该行落在任务证据封印（task-complete 门禁通过）之后
 	// ——行保留供 trace，但评分/结论按 TaskState.SealedAt 截断不计入。
 	MetaKeyPostSeal = "post_seal"

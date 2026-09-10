@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+// TestTaskState_SealedAt pins the evidence-seal semantics (docs/design/harness-fixes-a-g-2026-09.md
+// E): the seal is the instant the task-complete GATE passed, not when `forge task complete`
+// succeeded — rows landing on the task between the two (the two days doc-gate held it) are not
+// evidence for the completion claim.
+//
 // TestTaskState_SealedAt 钉住证据封印点语义（docs/design/harness-fixes-a-g-2026-09.md E）：
 // 封印 = task-complete 门禁通过那一刻，不是 forge task complete 成功那一刻——两者之间
 // （doc-gate 卡住的两天）落到任务名下的行不属于完成声明的证据。

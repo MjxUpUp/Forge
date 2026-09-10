@@ -50,7 +50,8 @@ var compileFailureMarkers = []string{
 // 指南：陈述事实；祈使句会被读成注入指令、可能触发 prompt-injection 防御
 // （与 #5 banner 修复同类）。
 func runFailureTrackHook(hookInput HookInput, root, version, agent string) error {
-	taskRef := taskRefForSession(root, hookInput.SessionID)
+	attr := taskAttributionForSession(root, hookInput.SessionID)
+	taskRef := attr.TaskRef
 	// 启发式文本 = 宿主 error + tool_response 尾部（部分宿主把失败输出放在那里）。
 	// 有界读取：只做 marker 匹配，不存全文。
 	text := hookInput.Error
@@ -91,7 +92,7 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 		delivered = &d
 		channel = ch
 	}
-	if err := checklog.Record(root, &checklog.Entry{
+	entry := &checklog.Entry{
 		Check:        checklog.CheckToolFailure,
 		Passed:       true, // 观察语义非裁定：失败不是 hook 的 pass/fail 主张
 		Checked:      true,
@@ -105,7 +106,9 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 		Channel:      channel,
 		ForgeVersion: version,
 		Meta:         meta,
-	}); err != nil {
+	}
+	attr.stamp(entry)
+	if err := checklog.Record(root, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "[failure-track] warning: checklog record failed: %v\n", err)
 	}
 	if kind == "" {
@@ -136,7 +139,8 @@ func runFailureTrackHook(hookInput HookInput, root, version, agent string) error
 // 都是被丢弃的字节。交付摘要只存长度+脱敏首行，绝不存全文（checklog 不是消息
 // 归档）。
 func runSubagentTrackHook(hookInput HookInput, root, version, agent string) error {
-	taskRef := taskRefForSession(root, hookInput.SessionID)
+	attr := taskAttributionForSession(root, hookInput.SessionID)
+	taskRef := attr.TaskRef
 	msg := strings.TrimSpace(hookInput.LastAssistantMessage)
 	firstLine := msg
 	if i := strings.IndexByte(msg, '\n'); i >= 0 {
@@ -166,7 +170,7 @@ func runSubagentTrackHook(hookInput HookInput, root, version, agent string) erro
 	}
 	// 刻意省略 Delivered 章（nil）：任何东西都没被注入——与 recordSuppressed 的
 	// 不落章规则同契约（对从不向模型携带内容的事件，送达语义不适用）。
-	if err := checklog.Record(root, &checklog.Entry{
+	entry := &checklog.Entry{
 		Check:        checklog.CheckSubagentStop,
 		Passed:       true,
 		Checked:      true,
@@ -177,7 +181,9 @@ func runSubagentTrackHook(hookInput HookInput, root, version, agent string) erro
 		Level:        checklog.LevelAdvisory,
 		ForgeVersion: version,
 		Meta:         meta,
-	}); err != nil {
+	}
+	attr.stamp(entry)
+	if err := checklog.Record(root, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "[subagent-track] warning: checklog record failed: %v\n", err)
 	}
 	_ = agent
@@ -211,7 +217,8 @@ const testNudgeThreshold = 3
 // 永不阻断：task-verify 的门禁执法；nudge 只是把修复提前（代码还热时改最便宜）。
 func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	// 先做活跃任务门控：任务外静默（连计数器文件都不落）。
-	taskRef := taskRefForSession(root, hookInput.SessionID)
+	attr := taskAttributionForSession(root, hookInput.SessionID)
+	taskRef := attr.TaskRef
 	if taskRef == "" {
 		return nil
 	}
@@ -267,7 +274,7 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	// 走 advisory 队列，章标 kimi/advisory-queue，让漏斗区分「入队待投」与
 	// 「永久丢失」）。
 	delivered, channel := AdvisoryEmissionChannel(agent, hookInput.HookEventName)
-	if err := checklog.Record(root, &checklog.Entry{
+	entry := &checklog.Entry{
 		Check:        checklog.CheckTestNudge,
 		Passed:       true,
 		Checked:      true,
@@ -281,7 +288,9 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 		Channel:      channel,
 		ForgeVersion: version,
 		Meta:         map[string]string{"source_writes": fmt.Sprintf("%d", state.SourceWrites)},
-	}); err != nil {
+	}
+	attr.stamp(entry)
+	if err := checklog.Record(root, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "[test-nudge] warning: checklog record failed: %v\n", err)
 	}
 	// emitAdvisoryRouted：kimi 把提示入队、留待 UserPromptSubmit 攒发

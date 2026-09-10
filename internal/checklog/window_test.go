@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+// Evidence-window tests (docs/design/harness-fixes-a-g-2026-09.md E.4): one fix per scoring
+// reader — ① ForTask gains until so the conclusion chain stops at the seal instant; ② the
+// session-level latest-value reader keeps empty-SessionID rows only when they belong to the
+// task being scored, instead of unconditionally mixing them into any task.
+//
 // 证据窗口测试（docs/design/harness-fixes-a-g-2026-09.md E.4）：两个评分读取点各修一处——
 // ① ForTask 增 until，结论证据链截断在封印时刻之后追加的行；② 会话级最新值读方对
 // SessionID 为空的条目改为按 TaskRef 归属保留，不再无条件混入任意任务。

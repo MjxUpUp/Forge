@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/hazard"
+	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -216,10 +217,14 @@ func runHazardLog(cmd *cobra.Command, args []string) error {
 	}
 	eventType := args[0]
 	command := strings.Join(args[1:], " ")
+	// SessionID 取 hook 派生环境的 FORGE_SESSION_ID（hookdispatch 注入给脚本）：双投递去重
+	// 键与 checklog 侧 blockRecordMarker 对齐到 (session, type, fingerprint)——两个并行
+	// 会话 3s 内各拦一次同命令是两起事件，不是一次双投递。人类终端直跑无该 env，留空。
 	return hazard.AppendEvent(p, hazard.Event{
 		Type:        eventType,
 		Fingerprint: hazard.Fingerprint(command),
 		Command:     command,
+		SessionID:   util.SanitizeSessionID(os.Getenv("FORGE_SESSION_ID")),
 	})
 }
 
