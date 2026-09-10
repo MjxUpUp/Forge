@@ -689,9 +689,15 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// escape 必须端到端生效，否则算不上 escape（fake hard gate 反噬：gate 放行
 	// 但 PreToolUse 仍拒绝 edit）。
 	var workActivityOverride string
-	if active, err := taskpipeline.ActiveTaskState(root, util.SanitizeSessionID(hookInput.SessionID)); err == nil && active != nil {
+	// 归因探针（docs/design/harness-fixes-a-g-2026-09.md E.1/E.2）：解析路径、封印态与任务
+	// 创建会话打包成 attr，随本次 hook 的两处 checklog 写点（主噪声门记录、kimi-plugin-stale）
+	// 经 attr.stamp 落 Meta / 回填空 session——与 hook_track/hook_conventions 的四处写点
+	// 同一份归因（taskAttributionForSession），探针覆盖面是全集。
+	var attr taskAttribution
+	if active, path, err := taskpipeline.ActiveTaskStateWithPath(root, util.SanitizeSessionID(hookInput.SessionID)); err == nil && active != nil {
 		activeTaskRef = active.TaskRef
 		activeTaskGate = active.CurrentGate
+		attr = taskAttribution{TaskRef: active.TaskRef, ResolvePath: path, TaskSession: active.SessionID, Sealed: active.EvidenceSealed()}
 		if active.Overrides.WorkActivity == "disable" {
 			workActivityOverride = "disable"
 		}
@@ -964,15 +970,17 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		if kimiStaleRidesHook(agent, name) {
 			if prepended := prependKimiStaleAdvisory(detail, cmd.Root().Version); prepended != detail {
 				detail = prepended
-				if err := checklog.Record(root, &checklog.Entry{
+				staleEntry := &checklog.Entry{
 					Check:     checklog.CheckKimiPluginStale,
 					Passed:    true, // escape-hatch pattern: the warn rides Level, Passed stays neutral
 					Checked:   true,
 					Level:     checklog.LevelWarn,
 					TaskRef:   activeTaskRef,
-					SessionID: util.SanitizeSessionID(hookInput.SessionID),
+					SessionID: hookInput.SessionID, // 入口（1b-2）已归一且空保持空；下游再 sanitize 会把空变占位符 "session"，令 stamp 回填失效
 					Detail:    util.TruncateRunes(detail, maxChecklogDetail),
-				}); err != nil {
+				}
+				attr.stamp(staleEntry)
+				if err := checklog.Record(root, staleEntry); err != nil {
 					fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
 				}
 			}
@@ -1122,19 +1130,23 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		// 成功之后（Record 失败不留戳，窗口内重试照常记录，不丢审计行）。
 		if !passed && duplicateBlockRecord(root, hookInput.SessionID, string(checkName), logDetail) {
 			// 窗口内同指纹重复：跳过记录
-		} else if err := checklog.Record(root, &checklog.Entry{
-			Check:     checkName,
-			Passed:    recordedPassed,
-			Checked:   true,
-			Level:     level,
-			ToolName:  recordedToolName,
-			TaskRef:   taskRef,
-			SessionID: util.SanitizeSessionID(hookInput.SessionID),
-			Detail:    util.TruncateRunes(logDetail, maxChecklogDetail),
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
-		} else if !passed {
-			stampBlockRecord(root, hookInput.SessionID, string(checkName), logDetail)
+		} else {
+			entry := &checklog.Entry{
+				Check:     checkName,
+				Passed:    recordedPassed,
+				Checked:   true,
+				Level:     level,
+				ToolName:  recordedToolName,
+				TaskRef:   taskRef,
+				SessionID: hookInput.SessionID, // 入口（1b-2）已归一且空保持空；下游再 sanitize 会把空变占位符 "session"，令 stamp 回填失效
+				Detail:    util.TruncateRunes(logDetail, maxChecklogDetail),
+			}
+			attr.stamp(entry)
+			if err := checklog.Record(root, entry); err != nil {
+				fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
+			} else if !passed {
+				stampBlockRecord(root, hookInput.SessionID, string(checkName), logDetail)
+			}
 		}
 	}
 
@@ -1298,11 +1310,19 @@ func scoringPassUnchanged(root, sessionID string, name checklog.CheckName) bool 
 	// M2（review）：since 取本任务 StartedAt——active 日志跨任务累积后，无界的会话
 	// 级查询会让新任务继承上一任务的 PASS、跳过本该重写的证据条目。无活跃任务时
 	// 零值回落无界（旧行为）。
+	//
+	// 读取口径必须与评分读方（taskpipeline.BuildEvaluateInput → LatestByCheckForTaskWindow）
+	// 完全一致：本函数存在的理由是「评分仍能解析到那条更早的 PASS」，口径分叉时
+	// 他任务/无归属的空 session PASS 行会在这里可见、在评分里被丢弃——跳写本任务
+	// 自己的 PASS 后评分窗口内无 PASS，CompilePassed/AssertionPassed 假阴性
+	// （E.4 审查发现，docs/design/harness-fixes-a-g-2026-09.md）。
 	var since time.Time
+	var taskRef string
 	if st, err := taskpipeline.ActiveTaskState(root, sessionID); err == nil && st != nil {
 		since = st.StartedAt
+		taskRef = st.TaskRef
 	}
-	latest, err := checklog.LatestByCheckForSessionSince(root, sessionID, since)
+	latest, err := checklog.LatestByCheckForTaskWindow(root, sessionID, taskRef, since, time.Time{})
 	if err != nil {
 		return false
 	}

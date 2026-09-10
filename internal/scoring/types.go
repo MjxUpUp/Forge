@@ -16,6 +16,12 @@ type EvaluateInput struct {
 	// 时间范围，用于 efficiency 打分。
 	StartedAt   time.Time
 	CompletedAt time.Time
+	// ActiveSpan is the tool-activity span inside the task window (first→last toollog call); when >0 it replaces the wall clock for efficiency, 0 = unknown (fall back to StartedAt→CompletedAt).
+	//
+	// ActiveSpan 是任务时间窗内的工具活跃跨度（toollog 首末调用距）；>0 时替代挂钟作
+	// efficiency 输入，0 = 未知（回落 StartedAt→CompletedAt）。挂钟会把 doc-gate 卡住
+	// 的空闲两天算成「拖沓」（docs/design/harness-fixes-a-g-2026-09.md E.4）。
+	ActiveSpan time.Duration
 
 	// Git diff data — empty string means `unavailable` (non-fatal).
 	//
