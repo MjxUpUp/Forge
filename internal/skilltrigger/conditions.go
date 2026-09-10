@@ -75,6 +75,15 @@ func isSourcePath(p string) bool {
 // \b prevents "cargo test" matching "go test" or "lngo test" false positives.
 var testCmdRe = regexp.MustCompile(`(?i)\b(go test|python -m pytest|pytest|cargo test|npm run test|npm test|yarn test|pnpm test|mvn test|gradle test|jest|vitest|mocha|rake test|deno test|elm-test|stack test|cabal test|dotnet test|xcodebuild test|flutter test)\b`)
 
+// IsTestCommand reports whether a shell command line invokes a known test runner — the same signal condTestCommandFailed gates on, exported so harness-audit measures verification-driver trigger precision with the trigger's own definition of "test command" (design M/A3).
+//
+// IsTestCommand 报告命令行是否调用了已知测试运行器——与 condTestCommandFailed 用同一信号，
+// 导出给 harness-audit 按 trigger 自己的「测试命令」定义测 verification-driver 触发精度
+// （设计 M/A3），避免审计侧手抄第二份正则漂移。
+func IsTestCommand(cmd string) bool {
+	return testCmdRe.MatchString(cmd)
+}
+
 // condTestCommandFailed：刚跑的 Bash 是测试命令（command 含测试信号）且失败
 // （exit_code≠0 或 interrupted=true）。缺 exit_code（部分宿主如 kimi 不带该字段）
 // → 降级为输出文本的失败签名判定（failSignatureRe）；连失败签名也没有 → false
