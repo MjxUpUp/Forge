@@ -245,6 +245,6 @@ func loadConventionsDirState(sessionID string) conventionsDirState {
 	return state
 }
 
-// taskRefForSession 现定义于 hook_attribution_meta.go（taskAttributionForSession 的薄包装）——
-// cli skill_trigger.go 的同名助手仍是对 taskpipeline.ActiveTaskState 的本地 3 行封装，
-// 注释互指防漂移。
+// 活跃任务 ref 的解析统一走 hook_attribution_meta.go 的 taskAttributionForSession（写
+// checklog 行必须同时打归因探针，故不再有只取 ref 的包装）；cli skill_trigger.go 的
+// taskRefForSession 是另一包对 taskpipeline.ActiveTaskState 的本地 3 行封装，注释互指防漂移。

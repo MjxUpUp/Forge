@@ -23,7 +23,9 @@ type taskAttribution struct {
 // taskAttributionForSession resolves the active task for a host session once (ActiveTaskStateWithPath) and packages the attribution fields.
 //
 // taskAttributionForSession 为宿主 session 解析一次活跃任务（ActiveTaskStateWithPath）并打包
-// 归因字段；未解析到任务返回零值（stamp 为 no-op）。
+// 归因字段；未解析到任务返回零值（stamp 为 no-op）。hookdispatch 内所有 checklog 写点都
+// 经它取 TaskRef（不再有只取 ref 的独立包装——cli/skill_trigger.go 的 taskRefForSession 是
+// 另一包对 taskpipeline.ActiveTaskState 的本地 3 行封装，注释互指防漂移）。
 func taskAttributionForSession(root, sessionID string) taskAttribution {
 	active, path, err := taskpipeline.ActiveTaskStateWithPath(root, sessionID)
 	if err != nil || active == nil {
@@ -35,14 +37,6 @@ func taskAttributionForSession(root, sessionID string) taskAttribution {
 		TaskSession: active.SessionID,
 		Sealed:      active.EvidenceSealed(),
 	}
-}
-
-// taskRefForSession returns the active task ref for a session ("" when none) — thin wrapper kept for the call sites that only need the ref.
-//
-// taskRefForSession 返回 session 的活跃任务 ref（无则空串）——只需 ref 的调用点沿用的
-// 薄包装。写 checklog 行的调用点应改用 taskAttributionForSession + stamp，否则探针缺失。
-func taskRefForSession(root, sessionID string) string {
-	return taskAttributionForSession(root, sessionID).TaskRef
 }
 
 // stamp merges the attribution probe into e.Meta (existing keys kept) and backfills an empty SessionID from the task's creating session; no-op without a resolved task.
