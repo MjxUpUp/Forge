@@ -689,9 +689,16 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// escape 必须端到端生效，否则算不上 escape（fake hard gate 反噬：gate 放行
 	// 但 PreToolUse 仍拒绝 edit）。
 	var workActivityOverride string
-	if active, err := taskpipeline.ActiveTaskState(root, util.SanitizeSessionID(hookInput.SessionID)); err == nil && active != nil {
+	// 归因探针（docs/design/harness-fixes-a-g-2026-09.md E.1/E.2）：记下解析路径与封印态，
+	// 随本次 hook 的 checklog 行落 Meta；任务创建会话作为空 session 行的回填来源。
+	var activeResolvePath, activeTaskSession string
+	var activeSealed bool
+	if active, path, err := taskpipeline.ActiveTaskStateWithPath(root, util.SanitizeSessionID(hookInput.SessionID)); err == nil && active != nil {
 		activeTaskRef = active.TaskRef
 		activeTaskGate = active.CurrentGate
+		activeResolvePath = path
+		activeTaskSession = active.SessionID
+		activeSealed = active.EvidenceSealed()
 		if active.Overrides.WorkActivity == "disable" {
 			workActivityOverride = "disable"
 		}
@@ -1129,8 +1136,9 @@ func RunHook(cmd *cobra.Command, args []string) error {
 			Level:     level,
 			ToolName:  recordedToolName,
 			TaskRef:   taskRef,
-			SessionID: util.SanitizeSessionID(hookInput.SessionID),
+			SessionID: attributedSession(util.SanitizeSessionID(hookInput.SessionID), taskRef, activeTaskSession),
 			Detail:    util.TruncateRunes(logDetail, maxChecklogDetail),
+			Meta:      attributionMeta(activeResolvePath, activeSealed),
 		}); err != nil {
 			fmt.Fprintf(os.Stderr, "[forge] warning: checklog record failed: %v\n", err)
 		} else if !passed {
