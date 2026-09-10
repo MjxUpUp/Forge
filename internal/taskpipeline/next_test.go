@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
@@ -51,6 +52,15 @@ func TestNextDecision_GateChain(t *testing.T) {
 		if strings.Contains(got.Next, "&&") {
 			t.Errorf("Next must be a single command, got %q", got.Next)
 		}
+	}
+
+	// 已完结任务（status --ref 展示路径喂进 CompletedAt!=nil）：视同无活跃任务——
+	// 不建议「再跑 complete」。
+	done := withGates(true, "abc123", GateImplement, GateVerify, GateComplete)
+	now := time.Now()
+	done.CompletedAt = &now
+	if got := NextDecision("feat/x", false, done); got.Next == "forge task complete" {
+		t.Fatal("completed task must not be told to run complete again")
 	}
 
 	// 无活跃任务：脏树 → 建任务收编；干净 → status。

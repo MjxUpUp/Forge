@@ -107,3 +107,55 @@ func TestMatchKeywords_OutputFailureGate_Negative(t *testing.T) {
 		t.Fatalf("exit_code 1 + keyword in stdout must match with stdout attribution, got %+v ok=%v", m, ok)
 	}
 }
+
+// TestEval_MixedOrderInlinePayload pins the payload side of anyInline (confirmation round):
+// when the first matching trigger lacks Inline but a later one declares it, the payload trigger
+// is the inline-declaring one — one-line render, non-empty FollowPattern — not the bare first.
+//
+// TestEval_MixedOrderInlinePayload 钉住 anyInline 的载荷侧（确认轮）：首条命中无 inline、
+// 次条有时，载荷 trigger 取声明 inline 的那条——单行渲染、FollowPattern 非空，而非裸首条。
+func TestEval_MixedOrderInlinePayload(t *testing.T) {
+	all := []SkillTriggers{{Skill: "s", Triggers: []Trigger{
+		{Event: "PreToolUse", Match: "Bash", Keywords: []string{"git commit"}},
+		{Event: "PreToolUse", Match: "Bash", Keywords: []string{"git commit"}, Inline: "提交前先跑聚焦测试", Follow: "go test"},
+	}}}
+	hits, sup := Eval(Context{Event: "PreToolUse", ToolName: "Bash", SessionID: "s1", Now: time.Now(),
+		ToolInput: map[string]any{"command": "git commit -m x"}}, all, NewInMemoryNoiseController())
+	if len(hits) != 1 || len(sup) != 0 {
+		t.Fatalf("mixed-order double trigger: hits=%d sup=%d, want 1/0", len(hits), len(sup))
+	}
+	if hits[0].Trigger.Inline == "" || hits[0].FollowPattern == "" {
+		t.Fatalf("payload trigger must be the inline-declaring one, got inline=%q follow=%q", hits[0].Trigger.Inline, hits[0].FollowPattern)
+	}
+}
+
+// TestToolFailureSignal_CompilerSignatures pins the compiler-family additions (confirmation
+// round): go's file:line:col-prefixed forms, cargo's error[E…]/could not compile, gradle's
+// BUILD FAILED — hosts without exit codes (kimi) key on these.
+//
+// TestToolFailureSignal_CompilerSignatures 钉住编译器族签名（确认轮）：go 的
+// file:line:col 前缀形态、cargo 的 error[E…]/could not compile、gradle 的 BUILD FAILED
+// ——无退出码宿主（kimi）依赖这些签名。
+func TestToolFailureSignal_CompilerSignatures(t *testing.T) {
+	yes := []string{
+		".\\main.go:4:2: undefined: undefinedFunc",
+		"main.go:10: cannot find package \"x\"",
+		"error[E0432]: unresolved import",
+		"error: could not compile `foo` due to 1 error",
+		"BUILD FAILED in 2s",
+	}
+	for _, out := range yes {
+		if !ToolFailureSignal(Context{ToolOutput: map[string]any{"stdout": out}}) {
+			t.Errorf("compiler failure output should signal: %q", out)
+		}
+	}
+	no := []string{
+		"undefined behavior mentioned in passing output", // 无位置前缀且非行首 undefined:
+		"ok  all tests passed",
+	}
+	for _, out := range no {
+		if ToolFailureSignal(Context{ToolOutput: map[string]any{"stdout": out}}) {
+			t.Errorf("passing output must not signal: %q", out)
+		}
+	}
+}
