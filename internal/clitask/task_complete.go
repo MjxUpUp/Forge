@@ -216,6 +216,12 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
 
+	// 设计 B：complete 输出末尾的 next 行——任务完结后的下一步（通常是合并分支/开新任务）
+	// 顺手可见；ActiveTaskState 对已完成任务返回 nil，NextHint 走「无活跃任务」分支。
+	if hint := taskpipeline.NextHint(root, nil); hint.Next != "" {
+		fmt.Printf("→ next: %s（%s）\n", hint.Next, hint.Reason)
+	}
+
 	// 逃生舱库存行（mechanism-hardening P1-2）：本任务用了几次逃生舱、哪些 gate
 	// ——库存进任务报告（Fowler 库存观：可见是治理的第一步）。读侧零额外 IO
 	//（checklog 已按任务过滤的 LoadForTask）。

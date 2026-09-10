@@ -88,3 +88,20 @@ audit DC-10：TypeScript 编译命令 `npx`+tsc 形态 1 处 MEDIUM——npx 运
 ### Evidence
 
 forge skills audit 全库 finding 9→0（含本条决策文本规避自回引后复扫）；validate 52/52；eval-report vs baseline（run-1787537020-c7b56032）：trigger 100%→100%、not-trigger 100%→100%、净回归 0（机器判据 accept）
+
+## [d-18d41475e0f7b820-6458c1a4] accept
+
+- **Skill**: compile-fix-loop
+- **DecidedAt**: 2026-09-10T21:57:28Z
+
+### Diagnosis
+
+动作点加载式推送两机实测转化 0-2%（机器甲 kimi 遥测/机器乙 harness-audit A2），按设计 A（docs/design/harness-fixes-a-g-2026-09.md）通道重构
+
+### Revision
+
+triggers 增加 inline（一行动作指令）与 follow（A4 跟随匹配器）声明，正文零改动
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md A 节 + evals/harness-audit-8db5-baseline-202609.json a_skill_trigger.by_event（PreToolUse 0/52、PostToolUse 1/48）

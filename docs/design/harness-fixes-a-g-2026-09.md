@@ -32,22 +32,22 @@
 - **现状（证据）**：总转化 12.7%/5%；通道归因一致——UserPromptSubmit 是唯一有效通道（33%/10%），PreToolUse 0%/1%、PostToolUse 2%/0%；merge-release-choreography 在 UPS 上 67%/40%（低频+场景强绑定+决策点三条件成立的实证）；test-nudge 内联指令跟随两机同为 `80%`。噪声源实证：PostToolUse 输出关键词——本设计撰写会话中，输出文本含 `compile error` 字样即触发 compile-fix-loop（skills/compile-fix-loop/SKILL.md:7 keywords 匹配标准输出，无退出码门槛）；test-discipline 的 PreToolUse 关键词 `git commit/git push`（skills/test-discipline/SKILL.md:7）命中 35 次零加载。
 - **设计**：按事件分流，改 `internal/skilltrigger/trigger.go` + `render.go`：
   1. **UPS = 决策点**：保持现有完整推送（路径+集成行）。
-  2. **PreToolUse/PostToolUse/Stop = 动作点**：仅当 trigger 声明 `inline`（新可选字段，≤2 行动作指令，风格对齐 test-nudge 的 hook_track.go:260）才渲染，形态为 `[forge] <inline>` 一行、无路径无「请加载」；无 `inline` 的动作点 trigger 降级为 Suppressed（cause=non-decision-point，进现有 suppressed 统计，checklog detail 不带 ` hit (` 标记——沿用 recordSuppressed 惯例 skill_trigger.go:237）。
+  2. **PreToolUse/PostToolUse/Stop = 动作点**：仅当 trigger 声明 `inline`（新可选字段，≤2 行动作指令，风格对齐 test-nudge 的 hook_track.go:260）才渲染，形态为 `【skill】<inline>` 一行、无路径无「请加载」；无 `inline` 的动作点 trigger 降级为 Suppressed（cause=non-decision-point，进现有 suppressed 统计，checklog detail 不带 ` hit (` 标记——沿用 recordSuppressed 惯例 skill_trigger.go:237）。实现时细化：任一命中条目声明 inline 即提升为载荷 trigger（anyInline 聚合，与 maxCD 同法——只看首条会让数组顺序决定分流与载荷）。
   3. **PostToolUse 关键词精度**：关键词源含输出文本的 trigger（compile-fix-loop）仅在工具退出码非零时评估（退出码取法同 conditions.go:93 exitCodeOf）；`when: test_command_failed` 已是退出码口径（conditions.go:82），保留。
   4. **首批 inline 配置**：test-discipline（"提交前先跑聚焦测试：`go test ./<改动的包>`"）、compile-fix-loop（"编译失败——先读首条完整错误定位根因，禁随机试改"）、verification-driver（"测试失败——先判断是行为 bug 还是测试本身，端到端复现后再改"）。
   5. `trigger.go:630 defaultReason` 的「请加载该 skill」文案随动作点模式一并退场（仅 UPS 保留加载指引）。
 - **落点**：internal/skilltrigger/{trigger.go(Trigger struct +inline/follow 字段),render.go(两形态),noise.go}、internal/skillsqa/rules.go ValidConditions 同步、checklog/skill_trigger_detail.go Meta 增 channel-mode、skillmetrics/funnel.go 增 inline 跟随列；canonical skills 的 triggers frontmatter 改 3 处。
-- **度量（事前门）**：A1 日均 9/24.3 → ≤8（防伪：≥3——不得靠砍事件清零换转化）；A2 UPS 转化 33%/10% → ≥25%；A3 verification-driver 触发精度——基线：甲 proxy 口径 38%，M 首跑按「触发时点即失败测试命令」口径重钉两机 → ≥80%；A4 inline 跟随（trigger 声明 `follow` 匹配器——如 test-discipline 配 `go test` 命令匹配，30 分钟窗口）——基线：新通道无存量数据，以 M 首跑（1.56 发布后首周）为基线 → ≥50%（test-nudge 80% 为可达性上限参照）。
+- **度量（事前门）**：A1 日均 9/24.3 → ≤8（防伪：≥3——不得靠砍事件清零换转化）；A2 UPS 转化 33%/10% → ≥25%（前值为两机审计口径；**回测以 M 命令钉的 harness-audit 口径为准**——乙 A1 9.3/日、UPS 12/57=21.1%，M 验收节与基线 JSON 是唯一比对源，本行审计口径仅作背景）；A3 verification-driver 触发精度——基线：甲 proxy 口径 38%，M 首跑按「触发时点即失败测试命令」口径重钉两机 → ≥80%；A4 inline 跟随（trigger 声明 `follow` 匹配器——如 test-discipline 配 `go test` 命令匹配，30 分钟窗口）——基线：新通道无存量数据，以 M 首跑（1.56 发布后首周）为基线 → ≥50%（test-nudge 80% 为可达性上限参照）。
 - **验收**：trigger_test 夹具——UPS 全文/动作点 inline/无 inline 降级/输出关键词零退出码不触发；两 skills 的 eval-gen case 集指纹不变（DescHash，cases.go:92）——keywords 未动，证明零漂移。
 - **风险与回滚**：动作点流量骤降可能压掉真实需要的推送——防伪护栏 A1 下限 + 每周 M 复查；回滚 = frontmatter 去掉 inline 字段即回到现状（代码向后兼容旧 triggers）。
 
 ## B｜forge next 推送化：挂到门禁输出末尾
 
 - **现状（证据）**：`forge next` 真实调用两机均为 0，而 verify-acceptance 用了 22/57 次——agent 走有产出物的命令；门禁输出是唯一被确定性阅读的界面（甲：139 次 gate 运行、拦截后 `100%` 重跑）；范式漂移的实证是多门禁连刷 24%/15% 与分号续行 26%/12%。
-- **设计**：复用纯函数 `nextDecision`（internal/cli/next.go:70，签名不动），在三个输出点末尾追加一行 `→ next: <命令>（<理由>）`：`forge task gate` 通过/BLOCKED 之后、`forge task status`、`forge task complete` 评分行后。同时落 checklog advisory `next-hint`（Meta.suggested=命令），供 B1 采纳率测量。输出属承诺表**不承诺档**（porcelain 可变文本，compat-commitments §一），无兼容义务。
-- **落点**：internal/clitask/task_gate.go:127-133、internal/clitask/task_misc.go:77-100、internal/clitask/task_complete.go:186-217；checklog/types.go 新 CheckName `next-hint`（snapshot checks 面 regen）。
+- **设计**：复用纯函数 `NextDecision`（internal/taskpipeline/next.go:30，实现时从 cli/next.go 提升——clitask 输出点不能反向 import cli，签名不动），在三个输出点末尾追加一行 `→ next: <命令>（<理由>）`：`forge task gate` 通过/BLOCKED 之后、`forge task status`、`forge task complete` 评分行后。同时落 checklog advisory `next-hint`（Meta.suggested=命令），供 B1 采纳率测量。输出属承诺表**不承诺档**（porcelain 可变文本，compat-commitments §一），无兼容义务。
+- **落点**：internal/clitask/task_gate.go:127-148（next 行落于块末 :144，pass/BLOCKED 双出口）、internal/clitask/task_misc.go:77-105、internal/clitask/task_complete.go:186-222（next 行 :221）；checklog CheckName `next-hint`（已随 M 批注册）。
 - **度量**：B1 采纳率（next-hint 后 10 分钟内执行同命令，toollog 匹配）→ ≥50%；B2 多门禁连刷 24%/15% → ≤8%；B3 分号续行 26%/12% → ≤5%（B2/B3 主执法在 C，此处只看引导性下降）。
-- **验收**：task_gate/status/complete 三处输出的 golden 单测；next-hint checklog 行进 snapshot checks 面。
+- **验收**：next-hint checklog 行进 snapshot checks 面（已随 M 批注册）；NextDecision 门禁链六态 + NextHint 落盘单测（taskpipeline/next_test.go）。三输出点「→ next:」行形态的 golden 单测转 B3 收尾批（gate/status/complete 的输出面测试需重构 runTaskGate 的可测缝，随 D 批 refs-critical 的 skill 内容变更一并落）——实现时注记，非静默缩水。B1 口径修订（评审）：含 `<ref>` 类占位符的建议命令按前缀匹配采纳（agent 必然填实值，整串 Contains 永假）；gate --silent 不打 next 行也不落 next-hint 行（无「记录未投递」的分母注水）。
 - **风险**：next 行被 `| tail` 截掉——与 C 的 stderr 兜底同批解决；采纳率受 host 影响分层统计。
 
 ## C｜门禁命令形态门禁（gate-cmd-form）
