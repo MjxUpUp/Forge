@@ -15,7 +15,7 @@
 |---|---|---|---|
 | B0 数据完整性 | 1.56 | E、F.3 | 修度量与归因，无 agent 可见面变更（评分口径变更单列） |
 | B1 度量基建 | 1.56 | M | 新命令，钉死全部基线，两机同脚本可复算 |
-| B2 行为 advisory | 1.56 | A、B、C(adv)、F.1、F.2a、F.2b(adv)、G.2 | 触发/输出面变更，advisory 均带 1.58 预告文案；F.2a 例外——首发即 blocked（承诺表 §二.1②，新形态无存量暴露） |
+| B2 行为 advisory | 1.56 | A、B、C(adv)、F.1、F.2a、F.2b(adv)、G.1(adv)、G.2 | 触发/输出面变更，advisory 均带 1.58 预告文案；F.2a 例外——首发即 blocked（承诺表 §二.1②，新形态无存量暴露） |
 | B3 内容+校验 | 1.56 | D | skills 内容 + R19 校验规则 |
 | B4 ratchet | 1.58 | C(block)、G(阈值)、F.2b | 新 BLOCKED 位点，过 compat golden |
 
@@ -44,7 +44,7 @@
 ## B｜forge next 推送化：挂到门禁输出末尾
 
 - **现状（证据）**：`forge next` 真实调用两机均为 0，而 verify-acceptance 用了 22/57 次——agent 走有产出物的命令；门禁输出是唯一被确定性阅读的界面（甲：139 次 gate 运行、拦截后 `100%` 重跑）；范式漂移的实证是多门禁连刷 24%/15% 与分号续行 26%/12%。
-- **设计**：复用纯函数 `nextDecision`（internal/cli/next.go:70，签名不动），在三个输出点末尾追加一行 `→ next: <命令>（<理由>）`：`forge task gate` 通过/BLOCKED 之后、`forge task status`、`forge task complete` 评分行后。同时落 checklog advisory `next-hint`（Meta.suggested=命令），供 B1 采纳率测量。输出为 porcelain 可变文本（承诺表弱承诺档），无兼容义务。
+- **设计**：复用纯函数 `nextDecision`（internal/cli/next.go:70，签名不动），在三个输出点末尾追加一行 `→ next: <命令>（<理由>）`：`forge task gate` 通过/BLOCKED 之后、`forge task status`、`forge task complete` 评分行后。同时落 checklog advisory `next-hint`（Meta.suggested=命令），供 B1 采纳率测量。输出属承诺表**不承诺档**（porcelain 可变文本，compat-commitments §一），无兼容义务。
 - **落点**：internal/clitask/task_gate.go:127-133、internal/clitask/task_misc.go:77-100、internal/clitask/task_complete.go:186-217；checklog/types.go 新 CheckName `next-hint`（snapshot checks 面 regen）。
 - **度量**：B1 采纳率（next-hint 后 10 分钟内执行同命令，toollog 匹配）→ ≥50%；B2 多门禁连刷 24%/15% → ≤8%；B3 分号续行 26%/12% → ≤5%（B2/B3 主执法在 C，此处只看引导性下降）。
 - **验收**：task_gate/status/complete 三处输出的 golden 单测；next-hint checklog 行进 snapshot checks 面。
@@ -54,7 +54,7 @@
 
 - **现状（证据）**：standalone 两机 0%/1%；C1 分号+grep 掩蔽 37%/13%；C2 管道截断 84%/27%（乙机 `2>&1 | tail -N` 习惯根深蒂固）；C3 合规形态 7%/46%。后果实证（甲）：complete 输出接 `grep -E "completed|Score"` 时 BLOCKED 行被吞，agent 靠「没看到预期输出→重跑」恢复；分号续行让前一门禁 BLOCKED 后链条照走。
 - **设计**（按 session-retrospective 载体决策树第 1 档——能程序化的不进 skill）：
-  1. **形态分类器**（纯函数）：识别命令中的 forge 门禁子命令（`forge task gate|complete`、`forge task verify-acceptance`、`forge review pass`、`forge docs lint|review`，含 ./bin/forge-dev 前缀变体），分类 standalone / `cd && ` 前缀 / `&&` 尾段 / 分号续行 / 管道截断（`|` 接 tail/head/grep/cut/sed）/ 多门禁同刷。
+  1. **形态分类器**（纯函数）：识别命令中的 forge 门禁子命令（`forge task gate|complete`、`forge task verify-acceptance`、`forge review pass`、`forge docs lint`、`forge task doc-review`，含 ./bin/forge-dev 前缀变体），分类 standalone / `cd && ` 前缀 / `&&` 尾段 / 分号续行 / 管道截断（`|` 接 tail/head/grep/cut/sed）/ 多门禁同刷。
   2. **in-process hook**（PreToolUse Bash，仿 test-nudge 的挂载 hook_track.go:207 + settings.go:93）：1.56 advisory——stderr 一行 `ADVISORY: gate-cmd-form …（自 1.58 起 BLOCKED）` + checklog `gate-cmd-form` warn；1.58 转 BLOCKED（规则：门禁命令之后不得接 `;`、`|`、`||`，不得多门禁同刷；`cd X && gate` 与 `gate && 后续` 保留放行——退出码契约仍成立）。逃生舱：`FORGE_GATE_CMD_FORM=0` env + per-task override `--gate-cmd-form disable`（进 overrides.go 枚举与 escapes 面）。
   3. **stderr 兜底**：`forge task gate` 检测 stdout 非 TTY 时（char-device 判定改造自 task_gate.go:166 `stdinIsHumanTerminal` 的 stdin 版——本项判 stdout，是适配不是直接复用），BLOCKED 摘要行同时写 stderr——管道截断不再能吞掉退出码契约的文本面。
 - **落点**：internal/taskpipeline/gatecmdform.go（新，分类器+hook）、internal/hooks/settings.go 注册、internal/clitask/task_gate.go stderr 兜底、overrides.go、compat snapshot（checks/escapes/blockings 三面 regen）。
@@ -66,7 +66,7 @@
 
 - **现状（证据）**：总下钻率分歧大（乙 56% / 甲 7%，host 构成不同——乙 zcode/codex、甲 kimi/claude-code/dsh 占多）；refs-critical 两个 skill 两机均为低（transcript-forensics 1/2 与 0/2、release-readiness 0/1 与 0/5）——核心交付物就在 references 里等于没按 skill 执行。
 - **设计**：frontmatter 新增 `metadata.refs_critical: [相对路径]`（声明该 skill 不读某 reference 即无法执行核心流程）；R19 校验（internal/skillsqa/registry.go 新规则）：声明 refs_critical 的 SKILL.md 正文必须含「步骤 0」必读块，逐路径点名、整块 ≤5 行；正文其余部分不参与触发匹配的既有约定不变。首批声明：transcript-forensics（references/transcript-formats.md——格式字典是解析前提）、release-readiness（其清单文件，实现时按实际目录补齐——乙机当前无该目录，需先核实内容在何处）。防膨胀三道：R19 机械规则；SKILL.md 行数增量守卫（task-verify 时 SKILL.md 在变更集且声明 refs_critical → 新增 >5 行 warn，挂 skill-decisions 现位点 internal/taskpipeline/executor_skill_decisions.go:39）；eval-gen case 集指纹不变（refs_critical 不进触发匹配，DescHash 不动）。
-- **落点**：internal/skillsqa/registry.go（R19）+ rules.go；internal/cliskills/skills_validate.go 输出；skills/{transcript-forensics,release-readiness}/SKILL.md 步骤 0 块；internal/skillmetrics/funnel.go D1 列（加载后 20 分钟内 Read 任一 refs_critical 路径，按 origin_tool 分层）。
+- **落点**：internal/skillsqa/registry.go（R19）+ rules.go；internal/cliskills/skills_validate.go 输出；skills/transcript-forensics/SKILL.md 与 skills-forge/release-readiness/SKILL.md 步骤 0 块（release-readiness 属 forge 原生树——本仓已核实其 references 四件：recommended-checks/decision-tree/checklist-template/gotchas-and-rationalizations，此前「乙机无该目录」是分发镜像差异，源头树齐全；若插件镜像需同步则注明双树）；internal/skillmetrics/funnel.go D1 列（加载后 20 分钟内 Read 任一 refs_critical 路径，按 origin_tool 分层）。
 - **度量**：D1 refs-critical 下钻（乙 1/3、甲 0/7）→ ≥50%；D2 单次 SKILL.md 行数增量 ≤5；D3 eval case 指纹不变。防伪：D1 不得靠一次性全读实现（单次加载后 Read refs ≤2 个/会话）。
 - **验收**：R19 夹具（有声明无步骤 0 → fail；块超 5 行 → fail）；两 skill validate 过；M 的 D1 分层输出。
 - **风险**：refs_critical 滥用成「把 references 搬进正文」的口子——R19 行数上限 + 行数增量守卫双闸。
@@ -88,7 +88,7 @@
 - **现状（证据，两机）**：确认全部 agent 自助发起（乙 13/13、甲 53/53，多条与目标命令同 Bash 调用）；乙 52 条 block 60s 窗去重后 28 起（双记 24 条），28 起中仅 6 起确认放行、12 起为「脚本文本误命中」（本设计撰写会话的分析 heredoc 两次被拦——heredoc 体未被当数据）；`CheckHalt` 按原始 EventBlock 计数（halt.go:48），双记直接放大 safe-halt。
 - **设计**（三件）：
   1. **F.1 解释器 heredoc 数据上下文**：heredoc 喂给非 shell 解释器（python/node/ruby/perl）且体不含执行原语（subprocess/os.system/os.popen/child_process/exec(/spawn(/system(/sh -c/bash -c）→ 走既有数据上下文放行 + `forge hazard log data`（embed_guard.go:807 路径）；含执行原语仍拦。strip_quotes 已是跨行引号状态机（:671），本项在其上补 heredoc 体白名单判定。
-  2. **F.2a confirm 链式分离**（1.56 首发即 blocked，拒绝文案指向承诺表 §二.1②——新形态、无存量暴露；无需逃生舱：单独执行 confirm 即放行，拒绝的是形态不是操作）：`forge hazard confirm` 与其他命令以 `&&`/`;`/`|` 同调用 → 拒绝并提示单独执行（甲机实证的「confirm && 危险命令」自助闭环被切断）；豁免前缀 `cd X &&`。
+  2. **F.2a confirm 链式分离**（1.56 首发即 blocked，拒绝文案指向承诺表 §二.1②；存量口径：两机链式 confirm 命中全部是 dogfooding 会话内 agent 自助闭环（甲 53/53、乙 1/13），无用户脚本/CI 依赖面——故视为无存量暴露；无需逃生舱：单独执行 confirm 即放行，拒绝的是形态不是操作）：`forge hazard confirm` 与其他命令以 `&&`/`;`/`|` 同调用 → 拒绝并提示单独执行（甲机实证的「confirm && 危险命令」自助闭环被切断）；豁免前缀 `cd X &&`。
   3. **F.2b confirm 真人化**（1.56 advisory → 1.58 blocked，满足 §二.2 两 minor 预告）：confirm 的 stdin 非人类终端（复用 task_gate.go:166 char-device 判定）时，1.56 打 `ADVISORY: 自 1.58 起 hazard confirm 需在用户终端执行` 仍放行；1.58 拒绝并输出「请在用户终端运行：forge hazard confirm --last」。逃生舱走 per-task override `forge task override --hazard-agent-confirm disable`（留痕 + 评分封顶，§二.3 形态）——不用 env 旁路：task_gate.go:158-165 已为同一 TTY 判定否决过 env/flag 旁路（被注入的 agent 同样设得了 env），本项沿用该裁决。
   4. **F.3 事件去重**：`hazard.AppendEvent` 同指纹同 type 短窗（与 hook.go duplicateBlockRecord 标记共享）只记一条；`CheckHalt` 按去重后事件计数。
 - **落点**：internal/hooks/embed_guard.go（HazardGuardHook 串）、internal/hazard/{event.go,stamp.go,halt.go}、internal/cli/hazard.go（confirm 入口）、overrides.go（新 override 键）、compat snapshot（checks/escapes/blockings 面）。
@@ -101,7 +101,7 @@
 - **现状（证据，乙机）**：coverage 门禁 27 次 fail 仅 `18.5%` 后续转 pass，13 个被标任务 100% 照常完成；4 个 testing<70 任务（registry-gc 65 / focus-d2-standards 53 / dead-code-sweep 67 / ci-fix-release 30）各有 2-3 次 fail、0 次 pass，缺测文件被点名未补；甲机唯一 C 级 fix/ci-red-sweep（416 行零测试）同链。现阻断条件 `missingN>=3 && assertN==0`（testcoverage.go:193）过松——fudge 放走 1-2 文件缺测。cheat-scan 误报实证：comment-only-fix 对 `chore/comment-dedup`（任务本意即清注释）报 160 条；unused-scan 拦后 0% 转化（细节无证据不可行动）。
 - **设计**：
   1. **G.1 阈值收紧**：1.56 起 verify/complete 的 advisory 文案带「自 1.58 起 missingN≥2 且零断言将 BLOCKED」；1.58 将 `testCoverageHardGateThreshold` 3→2（逃生舱既有：`FORGE_TEST_COVERAGE` + per-task override，承诺表 §二.3 已满足）。
-  2. **G.2 cheat-scan 上下文抑制**：comment-only-fix 发现量与任务注释占比一致（改动行 ≥90% 为注释/空白——numstat+注释启发式已有同源实现在 scoring scope 排除逻辑）→ 抑制为 suppressed 记录（保留审计行带 suppressed 标记，不进 fail 计数）。
+  2. **G.2 cheat-scan 上下文抑制**：comment-only-fix 发现量与任务注释占比一致（改动行 ≥90% 为注释/空白——numstat 管线已有同源实现可复用（scoring scope 排除，evaluator.go:345）；注释/空白占比启发式**需新实现并配夹具**，仓内无现成组件）→ 抑制为 suppressed 记录（保留审计行带 suppressed 标记，不进 fail 计数）。
   3. **G.3 unused-scan 可行动化**：detail 附证据（符号名 + 仓内 grep 引用计数 0 的搜索串），维持 advisory——先提可行动性观察转化率，不动阻断。
 - **落点**：internal/taskpipeline/{testcoverage.go,cheatscan.go,unusedscan.go,executor_check_verify_scans.go,executor_check_complete.go}。
 - **度量**：G1 coverage 拦后转 pass `18.5%` → ≥60%；G2 testing<70 任务 乙：4/33 → ≤1/25；G3 cheat-scan 注释任务误报（夹具）→ 0；unused-scan 转化率由 M 钉基线后另定目标。
