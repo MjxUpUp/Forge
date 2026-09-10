@@ -306,6 +306,10 @@ func checkTriggers(raw string, advisories *[]string) {
 		if t.Follow != "" {
 			if _, err := regexp.Compile(t.Follow); err != nil {
 				*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] follow 非合法正则: %v`, idx, err))
+			} else if highFrequencyFollowRe.MatchString(t.Follow) {
+				// A4 灌水向量（B2-1 评审）：follow 含高频例行命令（git log/status 等）会让
+				// 每次命中都被例行动作判为「已跟随」，A4 ≥50% 目标被常规行为灌水满足。
+				*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] follow 含高频例行命令（git log/git status/ls 等）——A4 跟随率会被例行动作灌水，锚定该 inline 指令特有的动作`, idx))
 			}
 		}
 		if t.Inline != "" && t.Follow == "" {
@@ -313,6 +317,9 @@ func checkTriggers(raw string, advisories *[]string) {
 		}
 	}
 }
+
+// highFrequencyFollowRe 识别「高频例行命令」形态的 follow 声明（B2-1 评审的 A4 灌水向量）。
+var highFrequencyFollowRe = regexp.MustCompile(`(?:git\s+(?:log|status|diff)|ls|cat|pwd|echo)`)
 
 // checkBodyLines 执行 R13：SKILL.md 正文（frontmatter 块之后的全部内容）
 // ≤500 行（硬 issue）。计行口径与 R8 一致（换行数 + 1）；空正文计 0 行。

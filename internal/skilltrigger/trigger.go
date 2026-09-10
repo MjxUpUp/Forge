@@ -10,6 +10,8 @@
 package skilltrigger
 
 import (
+	"github.com/MjxUpUp/Forge/internal/checklog"
+
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -222,7 +224,7 @@ const MaxHitsPerEvent = 3
 type Suppressed struct {
 	Skill   string
 	Trigger Trigger
-	Cause   string // SuppressCooldown | SuppressStopCap
+	Cause   string // 抑制原因（Suppress* 常量组：cooldown/stop-max-rounds/session-cap/event-cap/non-decision-point）
 }
 
 // DeniedSkills 有专用 driver 的 skill——框架强制忽略其 triggers，避免双重注入。
@@ -334,6 +336,7 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 		matchedIdx := 0
 		var kw keywordMatch
 		maxCD := 0
+		anyInline := false
 		for i, t := range st.Triggers {
 			km, ok := triggerMatches(t, ctx)
 			if !ok {
@@ -343,6 +346,9 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 				matched = t
 				matchedIdx = i
 				kw = km
+			}
+			if strings.TrimSpace(t.Inline) != "" {
+				anyInline = true
 			}
 			cd := t.Cooldown
 			if cd <= 0 {
@@ -369,7 +375,9 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 		// 动作点上未声明 Inline 的 trigger 降级抑制——「请加载」在动作执行中是噪声（两机
 		// 实证转化 0–2%）。判定在 stop-cap/cooldown 之前：被分流的不消耗任何预算，A1 的
 		// 分母（真实注入量）随之下降，这正是 A1 目标（≤8/日）的实现路径。
-		if !decisionPointEvent(ctx.Event) && strings.TrimSpace(matched.Inline) == "" {
+		// anyInline（任一命中条目声明即过，与 maxCD 同法聚合）：只看首条会让数组顺序决定
+		// 分流结果——同 skill 双动作点 trigger 一有一无时，顺序对调即整个 skill 被吞（评审）。
+		if !decisionPointEvent(ctx.Event) && !anyInline {
 			suppressed = append(suppressed, Suppressed{Skill: st.Skill, Trigger: matched, Cause: SuppressNonDecisionPoint})
 			seen[st.Skill] = true
 			continue
@@ -423,9 +431,9 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 		if reason == "" {
 			reason = defaultReason(st.Skill, matched)
 		}
-		mode := "load"
+		mode := checklog.TriggerModeLoad
 		if !decisionPointEvent(ctx.Event) {
-			mode = "inline"
+			mode = checklog.TriggerModeInline
 		}
 		hits = append(hits, Hit{
 			Skill:          st.Skill,
@@ -503,8 +511,6 @@ func hitRank(h Hit) int {
 	return 50
 }
 
-// triggerMatches 判定单条 trigger 是否命中当前 context（event + match + when + keywords），
-// v2 同时返回关键词匹配证据（keyword-only 触发 km 为零值）。
 // decisionPointEvent reports whether the event is a decision point where a full "load the skill" injection can still act (UserPromptSubmit / SessionStart). Action points (PreToolUse/PostToolUse/Stop) only accept inline one-line instructions (design A).
 //
 // decisionPointEvent 报告事件是否为决策点——完整「加载 skill」注入仍能起作用的时机
@@ -514,6 +520,8 @@ func decisionPointEvent(event string) bool {
 	return event == "UserPromptSubmit" || event == "SessionStart"
 }
 
+// triggerMatches 判定单条 trigger 是否命中当前 context（event + match + when + keywords），
+// v2 同时返回关键词匹配证据（keyword-only 触发 km 为零值）。
 func triggerMatches(t Trigger, ctx Context) (keywordMatch, bool) {
 	if t.Event != ctx.Event {
 		return keywordMatch{}, false

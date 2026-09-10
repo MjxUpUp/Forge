@@ -242,10 +242,12 @@ func recordSuppressed(root string, ctx skilltrigger.Context, suppressed []skillt
 	var stopCapped []string
 	for _, s := range suppressed {
 		switch s.Cause {
-		case skilltrigger.SuppressCooldown, skilltrigger.SuppressSessionCap, skilltrigger.SuppressEventCap:
-			// 三类都进同一抑制计数器（「本会注入但没注」的统一语义）：cooldown 会在下次
+		case skilltrigger.SuppressCooldown, skilltrigger.SuppressSessionCap, skilltrigger.SuppressEventCap, skilltrigger.SuppressNonDecisionPoint:
+			// 四类都进同一抑制计数器（「本会注入但没注」的统一语义）：cooldown 会在下次
 			// 触发回填；session-cap 永无下次触发（G5 缺口天然适用）；event-cap 落选不
-			// Mark、下事件即可命中，回填随之发生。
+			// Mark、下事件即可命中，回填随之发生；non-decision-point 是通道分流的预期
+			// 抑制——A1 的防伪护栏（≥3 下限）须能区分「按设计抑制」与「无触发」，计数
+			// 在下次真实命中时经 suppressed_since_last 回填进 checklog（设计 A）。
 			_ = counter.Incr(ctx.SessionID, s.Skill)
 		case skilltrigger.SuppressStopCap:
 			stopCapped = append(stopCapped, s.Skill)

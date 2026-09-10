@@ -86,10 +86,7 @@ func IsTestCommand(cmd string) bool {
 
 // condTestCommandFailed：刚跑的 Bash 是测试命令（command 含测试信号）且失败
 // （exit_code≠0 或 interrupted=true）。缺 exit_code（部分宿主如 kimi 不带该字段）
-// → 降级为输出文本的失败签名判定（failSignatureRe）；连失败签名也没有 → false
-// condTestCommandFailed：刚跑的 Bash 是测试命令（command 含测试信号）且失败
-// （exit_code≠0 或 interrupted=true）。缺 exit_code（部分宿主如 kimi 不带该字段）
-// 时降级扫输出失败签名（保守不触发）。
+// → 降级为输出文本的失败签名判定（failSignatureRe）；连失败签名也没有 → false。
 func condTestCommandFailed(ctx Context) bool {
 	cmd, _ := ctx.ToolInput["command"].(string)
 	if cmd == "" {
@@ -122,7 +119,10 @@ func ToolFailureSignal(ctx Context) bool {
 
 // failSignatureRe 输出文本失败签名（行首锚定；大小写敏感——go test 摘要行 FAIL、
 // pytest FAILED 天然大写，小写 error 等常见于成功输出中的无关词，不收录）。
-var failSignatureRe = regexp.MustCompile(`(?m)^(--- FAIL|FAIL|FAILED|npm ERR!|panic: |exit status [1-9][0-9]*|Compilation failed|测试失败|编译失败)`)
+// 编译器族签名（B2-1 评审：输出关键词门复用本正则后，无 exit_code 宿主（kimi）上
+// go/cargo/gradle 的编译失败输出不在签名集里——compile-fix-loop 的主通道被静默关死）：
+// error[E[、error: could not compile、BUILD FAILED、cannot find package、undefined:。
+var failSignatureRe = regexp.MustCompile(`(?m)^(--- FAIL|FAIL|FAILED|npm ERR!|panic: |exit status [1-9][0-9]*|Compilation failed|error\[E[0-9]+\]|error: could not compile|BUILD FAILED|cannot find package|undefined: |测试失败|编译失败)`)
 
 // outputTextOf 拼接 tool_output 的文本槽位（output/stdout/stderr）。
 func outputTextOf(out map[string]any) string {
