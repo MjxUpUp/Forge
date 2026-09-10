@@ -23,6 +23,20 @@ func TestDetailForSkillTrigger_RoundTrip(t *testing.T) {
 			t.Fatalf("round-trip DetailForSkillTrigger(%q,%q,%q) = %q, SkillFromTriggerDetail = %q, want %q",
 				c.skill, c.event, c.reason, detail, got, c.skill)
 		}
+		// 事件槽位同样可反转（harness-audit 按通道归因的唯一事件来源）。
+		if ev := EventFromTriggerDetail(detail); ev != c.event {
+			t.Fatalf("EventFromTriggerDetail(%q) = %q, want %q", detail, ev, c.event)
+		}
+	}
+	// 不合契约的 Detail：事件为空，不崩溃、不误归。
+	for _, bad := range []string{"", "skill-trigger: x", "other: y hit (event=Stop z)", "skill-trigger: stop-round-cap 达到上限，抑制 1 个潜在注入（implementation-discipline）"} {
+		if ev := EventFromTriggerDetail(bad); ev != "" {
+			t.Fatalf("EventFromTriggerDetail(%q) = %q, want empty", bad, ev)
+		}
+	}
+	// 真实生产形态（reason 含中文与括号）——事件截到第一个空格。
+	if ev := EventFromTriggerDetail("skill-trigger: session-retrospective hit (event=UserPromptSubmit session-retrospective 触发条件 keywords 命中，请加载该 skill)"); ev != "UserPromptSubmit" {
+		t.Fatalf("production-shaped detail event = %q", ev)
 	}
 }
 

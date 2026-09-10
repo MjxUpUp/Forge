@@ -172,6 +172,12 @@
       ]
     },
     {
+      "path": "forge eval harness-audit",
+      "flags": [
+        "json"
+      ]
+    },
+    {
       "path": "forge eval judge-audit",
       "flags": [
         "scores"
@@ -1109,9 +1115,11 @@
     "eval-traps-run",
     "eval-wedge-drill",
     "file-sentinel",
+    "gate-cmd-form",
     "gate-push",
     "kimi-plugin-stale",
     "loop-exhausted",
+    "next-hint",
     "plan-first",
     "project-sync",
     "review-pass",
