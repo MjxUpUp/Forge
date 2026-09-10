@@ -182,3 +182,20 @@ feat/skills-boundary-inversion Phase 2：CONVENTIONS §13 forge 引用契约 + R
 ### Rationale
 
 依赖倒置：skill 是独立方法论资产，forge 是可选增强层——skills-only 分发用户不应看到不可执行的 forge 指令
+
+## [d-18d4147609bdb908-5d037a47] accept
+
+- **Skill**: skill-authoring-standard
+- **DecidedAt**: 2026-09-10T21:57:29Z
+
+### Diagnosis
+
+同设计 A 通道重构批次——skills-forge 原生树同步
+
+### Revision
+
+triggers 增加 inline（改 SKILL.md 前先读 R1-R18 清单）与 follow（forge skills validate|forge skills audit）声明
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md A 节；B2-1 评审的 A4 灌水向量分析

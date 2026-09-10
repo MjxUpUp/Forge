@@ -40,3 +40,20 @@ forge skills validate --canonical ./skills 复跑 52 通过 0 失败、零 advis
 ### Rationale
 
 5 个合法 when 中唯一不依赖 prompt、PreToolUse 时刻可真实求值的条件；契合编码期 fan-out 失控核心场景。代价：干净工作区的纯调研会话不再走 PreToolUse 注入，UserPromptSubmit 关键词路径仍覆盖
+
+## [d-18d41475fcddc55c-01fdc4b9] accept
+
+- **Skill**: subagent-orchestration
+- **DecidedAt**: 2026-09-10T21:57:28Z
+
+### Diagnosis
+
+动作点加载式推送两机实测转化 0-2%（机器甲 kimi 遥测/机器乙 harness-audit A2），按设计 A（docs/design/harness-fixes-a-g-2026-09.md）通道重构
+
+### Revision
+
+triggers 增加 inline（一行动作指令）与 follow（A4 跟随匹配器）声明，正文零改动
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md A 节 + evals/harness-audit-8db5-baseline-202609.json a_skill_trigger.by_event（PreToolUse 0/52、PostToolUse 1/48）

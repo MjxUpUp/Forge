@@ -38,7 +38,7 @@ func withCond(t *testing.T, name string, fn func(Context) bool) {
 
 func TestEval_FilterByEvent(t *testing.T) {
 	withCond(t, "c1", func(Context) bool { return true })
-	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "c1"}}}}
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "c1", Inline: "act"}}}}
 	if hits, _ := Eval(Context{Event: "UserPromptSubmit"}, all, nil); len(hits) != 0 {
 		t.Fatalf("event 不匹配应 0 命中，got %d", len(hits))
 	}
@@ -85,9 +85,9 @@ func TestEval_KeywordsAndCondition(t *testing.T) {
 func TestEval_DeniedSkills(t *testing.T) {
 	withCond(t, "d", func(Context) bool { return true })
 	all := []SkillTriggers{
-		{Skill: "code-review-gate", Triggers: []Trigger{{Event: "Stop", When: "d"}}},
-		{Skill: "skill-routing", Triggers: []Trigger{{Event: "Stop", When: "d"}}},
-		{Skill: "normal", Triggers: []Trigger{{Event: "Stop", When: "d"}}},
+		{Skill: "code-review-gate", Triggers: []Trigger{{Event: "Stop", When: "d", Inline: "act"}}},
+		{Skill: "skill-routing", Triggers: []Trigger{{Event: "Stop", When: "d", Inline: "act"}}},
+		{Skill: "normal", Triggers: []Trigger{{Event: "Stop", When: "d", Inline: "act"}}},
 	}
 	hits, _ := Eval(Context{Event: "Stop"}, all, nil)
 	if len(hits) != 1 || hits[0].Skill != "normal" {
@@ -97,7 +97,7 @@ func TestEval_DeniedSkills(t *testing.T) {
 
 func TestEval_StopMaxRounds(t *testing.T) {
 	withCond(t, "s", func(Context) bool { return true })
-	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "s"}}}}
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "s", Inline: "act"}}}}
 	noise := NewInMemoryNoiseController()
 	now := time.Now()
 	for i := 0; i < MaxStopRounds; i++ {
@@ -114,7 +114,7 @@ func TestEval_StopMaxRounds(t *testing.T) {
 
 func TestEval_Cooldown(t *testing.T) {
 	withCond(t, "c", func(Context) bool { return true })
-	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "c"}}}}
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "c", Inline: "act"}}}}
 	noise := NewInMemoryNoiseController()
 	t0 := time.Now()
 	hits, _ := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0}, all, noise)
@@ -132,8 +132,8 @@ func TestEval_MultiTriggerCooldownMax(t *testing.T) {
 	// 若实现退化回首条 cooldown，90s（>首条60 但 <max120）会误命中，测试即暴露。
 	withCond(t, "c", func(Context) bool { return true })
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{
-		{Event: "Stop", When: "c", Cooldown: 60},  // 短冷却
-		{Event: "Stop", When: "c", Cooldown: 120}, // 长冷却
+		{Event: "Stop", When: "c", Cooldown: 60, Inline: "act"}, // 短冷却
+		{Event: "Stop", When: "c", Cooldown: 120},               // 长冷却
 	}}}
 	noise := NewInMemoryNoiseController()
 	t0 := time.Now()
@@ -156,7 +156,7 @@ func TestEval_MultiTriggerCooldownMax(t *testing.T) {
 func TestEval_MatchToolName(t *testing.T) {
 	withCond(t, "c", func(Context) bool { return true })
 	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{
-		{Event: "PostToolUse", Match: "Bash", When: "c"},
+		{Event: "PostToolUse", Match: "Bash", When: "c", Inline: "act"},
 	}}}
 	if hits, _ := Eval(Context{Event: "PostToolUse", ToolName: "Bash"}, all, nil); len(hits) != 1 {
 		t.Fatal("Bash 应命中")
@@ -223,7 +223,7 @@ func TestMatchToolName(t *testing.T) {
 // （Reminder=true）、第 3 次起一律 SuppressSessionCap——cooldown 过期也不再放行。
 func TestEval_SessionCap(t *testing.T) {
 	withCond(t, "scap", func(Context) bool { return true })
-	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "scap"}}}}
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", When: "scap", Inline: "act"}}}}
 	noise := NewInMemoryNoiseController()
 	t0 := time.Now()
 
@@ -264,16 +264,17 @@ func TestEval_SessionCap(t *testing.T) {
 func TestEval_EventCap(t *testing.T) {
 	mk := func(skill string) SkillTriggers {
 		return SkillTriggers{Skill: skill, Triggers: []Trigger{
-			{Event: "PostToolUse", Keywords: []string{"kw-" + skill}},
+			{Event: "PostToolUse", Keywords: []string{"kw-" + skill}, Inline: "act"},
 		}}
 	}
 	all := []SkillTriggers{mk("s1"), mk("s2"), mk("s3"), mk("s4")}
 	// s2/s4 命中 prompt，s1/s3 命中 stdout → 注入序应为 s2, s4, s1（prompt 优先），s3 落选。
 	ctx := Context{
-		Event:      "PostToolUse",
-		SessionID:  "s1",
-		Prompt:     "kw-s2 kw-s4",
-		ToolOutput: map[string]any{"stdout": "kw-s1 kw-s3"},
+		Event:     "PostToolUse",
+		SessionID: "s1",
+		Prompt:    "kw-s2 kw-s4",
+		// exit_code 1：stdout 关键词（s1/s3）按设计 A 仅在失败工具上计数。
+		ToolOutput: map[string]any{"stdout": "kw-s1 kw-s3", "exit_code": 1},
 	}
 	hits, suppressed := Eval(ctx, all, NewInMemoryNoiseController())
 	if len(hits) != MaxHitsPerEvent {

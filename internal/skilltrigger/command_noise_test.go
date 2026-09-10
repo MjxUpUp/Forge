@@ -104,13 +104,15 @@ func TestMatchKeywords_HeredocNoise(t *testing.T) {
 		t.Fatal("marker 行关键词应命中（'goreleaser' 类关键词在命令位）")
 	}
 	post := Context{
-		Event:      "PostToolUse",
-		ToolName:   "Bash",
+		Event:    "PostToolUse",
+		ToolName: "Bash",
+		// 设计 A：stdout 关键词仅在工具失败时计数——本测试主题是「stdout 不被 heredoc 剥离」，
+		// 语义保存的方式是给上下文一个失败信号（exit_code 1）。
 		ToolInput:  map[string]any{"command": "python - <<'EOF'\nprint('npm publish')\nEOF"},
-		ToolOutput: map[string]any{"stdout": "npm publish ok"},
+		ToolOutput: map[string]any{"stdout": "npm publish failed", "exit_code": 1},
 	}
 	if _, ok := matchKeywords(kw, post); !ok {
-		t.Fatal("stdout 内关键词应命中（stdout 不剥离）")
+		t.Fatal("stdout 内关键词应命中（stdout 不剥离；失败工具的 stdout 参与匹配）")
 	}
 }
 

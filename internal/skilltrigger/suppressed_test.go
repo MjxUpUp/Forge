@@ -33,10 +33,11 @@ func TestMatchKeywords_PerSource_Boundary(t *testing.T) {
 	}
 	// 完整落在 stdout → 命中且归因 stdout（compile-fix-loop 的真实场景：编译输出命中）。
 	out := Context{
-		Event:      "PostToolUse",
-		ToolName:   "Bash",
-		ToolInput:  map[string]any{"command": "go build ./..."},
-		ToolOutput: map[string]any{"stdout": "main.go:10:2: compile error"},
+		Event:     "PostToolUse",
+		ToolName:  "Bash",
+		ToolInput: map[string]any{"command": "go build ./..."},
+		// 设计 A：stdout 关键词仅在失败工具上计数——编译输出场景天然带失败信号。
+		ToolOutput: map[string]any{"stdout": "main.go:10:2: compile error", "exit_code": 1},
 	}
 	m, ok = matchKeywords(kw, out)
 	if !ok || m.Source != MatchSourceStdout {
@@ -63,7 +64,7 @@ func TestMatchKeywords_SourcePriority(t *testing.T) {
 // TestEval_SuppressedCooldown cooldown 抑制必须以 Suppressed 返回（cause=cooldown），
 // 命中计数不再静默吞掉被抑制的近似命中。
 func TestEval_SuppressedCooldown(t *testing.T) {
-	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop"}}}}
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", Inline: "act"}}}}
 	noise := NewInMemoryNoiseController()
 	t0 := time.Now()
 	hits, sup := Eval(Context{Event: "Stop", SessionID: "s1", Now: t0}, all, noise)
@@ -79,7 +80,7 @@ func TestEval_SuppressedCooldown(t *testing.T) {
 
 // TestEval_SuppressedStopCap Stop 触顶后的「本会命中」以 cause=stop-max-rounds 返回。
 func TestEval_SuppressedStopCap(t *testing.T) {
-	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop"}}}}
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", Inline: "act"}}}}
 	noise := NewInMemoryNoiseController()
 	now := time.Now()
 	for i := 0; i < MaxStopRounds; i++ {
@@ -126,8 +127,9 @@ func TestEval_EvidenceFields(t *testing.T) {
 	}
 	// tool 事件（无 prompt）：hash 回退到命中来源文本（review m4——stdout 命中同样
 	// 可挖矿去重），PromptLen 仍为 0（记录的是 prompt 长度）。
-	toolAll := []SkillTriggers{{Skill: "bar", Triggers: []Trigger{{Event: "PostToolUse", Match: "Bash", Keywords: []string{"fail"}}}}}
-	th, _ := Eval(Context{Event: "PostToolUse", ToolName: "Bash", ProjectRoot: "/proj/a", ToolOutput: map[string]any{"stdout": "build fail"}, SessionID: "s"}, toolAll, nil)
+	// Inline 补齐（设计 A：动作点需声明）；exit_code 1 使 stdout 关键词按新门计数。
+	toolAll := []SkillTriggers{{Skill: "bar", Triggers: []Trigger{{Event: "PostToolUse", Match: "Bash", Keywords: []string{"fail"}, Inline: "act"}}}}
+	th, _ := Eval(Context{Event: "PostToolUse", ToolName: "Bash", ProjectRoot: "/proj/a", ToolOutput: map[string]any{"stdout": "build fail", "exit_code": 1}, SessionID: "s"}, toolAll, nil)
 	if len(th) != 1 || th[0].PromptHash == "" || th[0].PromptLen != 0 {
 		t.Fatalf("tool 事件应有来源回退 hash 且 PromptLen=0: %+v", th)
 	}
@@ -173,7 +175,7 @@ func TestEval_NoRootNoHash(t *testing.T) {
 // TestEval_StopCapSkipsDisabled 钉死 review m1：显式禁用的 skill 在 stop-cap 触顶时
 // 不得被记成"被抑制的潜在注入"。
 func TestEval_StopCapSkipsDisabled(t *testing.T) {
-	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop"}}}}
+	all := []SkillTriggers{{Skill: "foo", Triggers: []Trigger{{Event: "Stop", Inline: "act"}}}}
 	noise := NewInMemoryNoiseController()
 	now := time.Now()
 	for i := 0; i < MaxStopRounds; i++ {

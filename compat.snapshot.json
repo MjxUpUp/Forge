@@ -1178,7 +1178,7 @@
     {
       "tree": "canonical",
       "name": "compile-fix-loop",
-      "sha256": "5f8a5111a195c0dc40a1d5a44fcf0097af12b61eec6592d31d27ddef527c450f"
+      "sha256": "b58ca4dbd9c879023e393be08c299a31db8b7121f05e860890d08b620fc449b2"
     },
     {
       "tree": "canonical",
@@ -1228,7 +1228,7 @@
     {
       "tree": "canonical",
       "name": "implementation-discipline",
-      "sha256": "cc79c28fc747cc33dc00ac627a92f045627dec8412a52b60d06d0deb121090d5"
+      "sha256": "f02392316163c0f07f2e9bc7d49e5b0b61fcb354ecaa3d1854bd7fad0dc9459c"
     },
     {
       "tree": "canonical",
@@ -1303,7 +1303,7 @@
     {
       "tree": "canonical",
       "name": "subagent-orchestration",
-      "sha256": "c67bfb4a1af606b0af928009e45b14a2d6a8ea2417ba3e21ef0a860d3df3ff1a"
+      "sha256": "7a7455cf38109e9edf519c135e292c809ff1c6fe0912296e7beffaf5ac27652a"
     },
     {
       "tree": "canonical",
@@ -1323,7 +1323,7 @@
     {
       "tree": "canonical",
       "name": "test-discipline",
-      "sha256": "a50555fe3bffd7813863dbfb5e0d820c6dfe61234781b33861f2a804ac3e213f"
+      "sha256": "d8563c0e3d1a2fbc743e322069d9f28347dffbe997ca769b6718689ee5acc8dd"
     },
     {
       "tree": "canonical",
@@ -1333,17 +1333,17 @@
     {
       "tree": "canonical",
       "name": "verification-driver",
-      "sha256": "77b60c3ca58ae9266afa34e9252ff3d13651a022b9f0ba15892069276e0dfcf4"
+      "sha256": "3085d31fd00394143a9c4f12320605885707fda7f7986c52a5d34768eb1c2f75"
     },
     {
       "tree": "forge",
       "name": "release-readiness",
-      "sha256": "5fab44d424e85b166f96ea350c7419f5982bb30af55b780d6c12403290f15ec0"
+      "sha256": "f7ac93f325036cb3917b34863865275dac98b93e599247faa4191e3489ad78c0"
     },
     {
       "tree": "forge",
       "name": "skill-authoring-standard",
-      "sha256": "7c584ab8fee5c2936e5606aff4546433de73aa522db612c32ef09ff64fe0046a"
+      "sha256": "50c3b084abd19f8cf8720934e985f902290c8406e32a6be9fb9280dcd376d7e7"
     },
     {
       "tree": "forge",
