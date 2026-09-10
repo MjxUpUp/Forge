@@ -23,9 +23,9 @@
 
 - **现状**：两审计的指标靠一次性 python 脚本（toollog 2s 去重口径），不可复算、两机易漂移；对方回测流程明确要求「基线同款脚本原样复用」。
 - **设计**：新命令读项目 DataDir（toollog×checklog×tasks 三方交叉，2 秒 Pre/Post 双记去重），一次输出 JSON/表格，覆盖全部修复项的事前/事后指标：A1 日均触发、A2 UPS 转化、A3 verification-driver 精度（触发时点是否真为失败测试命令——按 toollog 实测，替代对方「前 5 分钟存在测试命令」的粗 proxy）、A4 inline 跟随、B1 next 采纳（next-hint 记录后 10 分钟内同命令执行）、B2/B3、C1-C3（门禁命令形态分类器）、D1 refs-critical 下钻（按 origin_tool 分层）、E 泄漏任务数与无 session 记录占比、F 双记率与放行率、G coverage 拦后转 pass 率。判定逻辑全部为 internal/ 下的纯函数（复用 internal/skillmetrics/funnel.go:69 的 join 口径），命令只是渲染层。
-- **落点**：internal/skillmetrics/harnessaudit.go（新）+ internal/cliskills 或 eval 命令族挂载（实现时按命令树归属定）；compat snapshot commands/checks 面 regen。
-- **验收**：两机各跑一次产出 JSON 入库 `evals/harness-audit-{6d5e,8db5}-baseline-202609.json`；纯函数单测覆盖分类器（standalone/&&/;/管道/多门禁 五形态夹具）。
-- **风险**：口径漂移会重造两机分歧——JSON 输出携带 `dedup_window_ms`/`join_window_s`/命令版本字段，回测只对同版本同口径的两份 JSON 作差；A3/A4/F1 的基线由本命令首跑钉死（见各项度量）。
+- **落点**（实现定稿）：internal/harnessaudit（纯函数 + Caliber）+ internal/gatecmdform（C 共用分类器）+ internal/cli/eval_harness_audit.go 挂 `forge eval harness-audit [--json]`；checklog 新增 CheckNextHint/CheckGateCmdForm/MetaKey*（写方在 B/C 批落地）、EventFromTriggerDetail、Level.IsFailure；skilltrigger 导出 IsTestCommand；compat snapshot +1 命令 +2 CheckName。
+- **验收**：两机各跑一次产出 JSON 入库 `evals/harness-audit-{6d5e,8db5}-baseline-202609.json`；纯函数单测覆盖分类器（五形态 + 包装体/反引号/绝对路径/heredoc 数据夹具）与全部指标。**乙机基线已钉**（2026-09-11，`evals/harness-audit-8db5-baseline-202609.json`）：A1 9.3/日、A2 UPS 12/57=21.1%、A3 23/26=88.5%（**口径：配对命令为测试命令，不含成败**——toollog 无退出码，「失败的测试命令」半边不可测，字段名 verification_driver_testcmd_precision 披露；对方 38% proxy 与 88.5% 实测的差异主要在 proxy 低估，A3 ≥80% 目标按本口径重绑）、C 总量 156 / C1 28.8% / C2 78.2% / C3 18.6%（**拼写口径**：forge(.exe)/forge-dev(.exe)/./bin/ 变体、反引号与 `$(` 前缀、绝对路径；`bash -c "…"` 包装体计入（是调用不是数据）；heredoc 正文是数据不计）、E1 110 行/15 任务（无 session 107 / 他会话 3 分列——外来归因通道不被无 session 噪声淹没）+ owner 续作 30 行（**E1 口径：封印后非创建会话（含无 session）的归因行 = 泄漏；创建会话自己的行单列**——时间宽限方案被否：既藏快泄漏又拦不住慢仪式）、E2 59.9%、F2 双投递 5/54（3s 键=会话+type+指纹）、G 8/30=26.7%。
+- **风险**：口径漂移会重造两机分歧——JSON 携带完整 Caliber（dedup/join/follow/drill/pair/hazard 窗口）+ loader_warnings，回测只对同口径两份 JSON 作差，**loader_warnings 非空的输出不得作基线**（降级加载的全零与真零不可区分）；A3/A4/F1 基线由本命令首跑钉死（见各项度量）。
 
 ## A｜skill-trigger 通道重构：决策点推送 + 动作点内联
 
@@ -61,6 +61,7 @@
 - **度量**：C1 37%/13% → ≤2%；C2 84%/27% → ≤15%；C3 7%/46% → ≥80%。防伪：拦截后重跑率不得劣化（甲基线 `100%`）；单任务 Bash 中位数上浮 ≤30%（乙机现值由 M 钉基线）。
 - **验收**：分类器五形态夹具单测；advisory→BLOCKED 文案含「自 1.58 起」字样（承诺表 §二.1 ①）；e2e 式：`forge task gate … | tail -1` 场景下 stderr 可见 BLOCKED。
 - **风险**：存量脚本/CI 内嵌门禁连刷会被 1.58 拦——预告期 + 逃生舱 + M 周报监控 advisory 命中存量形态清单，必要时 1.58 只拦「分号+管道」不拦 `&&`（分级 ratchet）。
+- **绕过面（B1 评审发现，分类器已同步收窄）**：引号包装是天然逃逸形态——`bash -c "gate … | tail"` 包裹的是调用不是数据。gatecmdform 已把 `bash/sh -c` 包装体保留计入、heredoc 正文按数据剥离、`forge.exe`/反引号/绝对路径前缀补进拼写口径；1.58 BLOCKED 生效前该口径由 M 的 C 面周报监控（总量骤降 = 绕过模式）。
 
 ## D｜references 下钻：refs-critical 声明 + 步骤 0 必读
 

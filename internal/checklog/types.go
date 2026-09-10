@@ -375,6 +375,18 @@ const (
 	// Passed=true + warn 为人工重置裁决（forge task finding --reset-loop --note）。
 	// deterministic——两类行都出自 forge 自身账本运算，非 agent 自述。
 	CheckLoopExhausted CheckName = "loop-exhausted"
+	// CheckNextHint records one "→ next:" line appended to gate/status/complete output (design B); Meta["suggested"] carries the suggested command so harness-audit B1 can measure adoption (same command run within 10 minutes).
+	//
+	// CheckNextHint 记录一次挂在 gate/status/complete 输出末尾的「→ next:」行（设计 B）：
+	// Meta["suggested"] 携带建议命令，harness-audit B1 据此测采纳率（10 分钟内执行同命令）。
+	// deterministic（forge 自身渲染）但属引导层 OBSERVATION——排除出证据强度分桶。
+	CheckNextHint CheckName = "next-hint"
+	// CheckGateCmdForm records the gate-cmd-form verdict for a Bash command that embeds a forge gate subcommand (design C): advisory in 1.56, BLOCKED from 1.58; Meta carries the classified form flags.
+	//
+	// CheckGateCmdForm 记录嵌有 forge 门禁子命令的 Bash 命令的形态判定（设计 C）：1.56
+	// advisory、1.58 起 BLOCKED；Meta 携带形态标志（semicolon/pipe/multi_gate…）。
+	// deterministic（gatecmdform 纯函数判定）；属过程形态 OBSERVATION——排除出证据强度分桶。
+	CheckGateCmdForm CheckName = "gate-cmd-form"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
@@ -418,6 +430,11 @@ const (
 	// MetaKeyPostSeal = "true" 标记该行落在任务证据封印（task-complete 门禁通过）之后
 	// ——行保留供 trace，但评分/结论按 TaskState.SealedAt 截断不计入。
 	MetaKeyPostSeal = "post_seal"
+	// MetaKeySuggested carries the command a next-hint row proposed (design B); harness-audit B1 matches it against the session's subsequent Bash calls.
+	//
+	// MetaKeySuggested 携带 next-hint 行建议的命令（设计 B）；harness-audit B1 用它与会话
+	// 随后的 Bash 调用比对算采纳率。写方 clitask 门禁输出，读方 harnessaudit。
+	MetaKeySuggested = "suggested"
 )
 
 // EvidenceSource marks the source of a checklog evidence entry, distinguishing deterministic from agent-claim.
@@ -530,6 +547,15 @@ func (e *Entry) EffectiveLevel() Level {
 		return e.Level
 	}
 	return DeriveLevel(e)
+}
+
+// IsFailure reports whether the level denotes a failed verdict (fail or blocked) — the read-side predicate analysis surfaces use so they never spell the blocked level themselves (the compat blocking-sites face scans source for producers of blocked outcomes; readers must not look like producers).
+//
+// IsFailure 报告该级别是否为失败判定（fail 或 blocked）——分析面的读侧谓词。读方统一走
+// 本方法而不自己拼 blocked 级别：compat 快照的 blocking-sites 面按源码扫描「产出阻断」的
+// 位点，读方若出现同名 token 会被误计为新阻断位点。
+func (l Level) IsFailure() bool {
+	return l == LevelFail || l == LevelBlocked
 }
 
 // Entry records the result of a single hook execution.

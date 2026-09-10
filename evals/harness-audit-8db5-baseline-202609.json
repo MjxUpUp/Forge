@@ -1,0 +1,127 @@
+{
+  "generated_at": "2026-09-11T04:07:24.9078201+08:00",
+  "forge_version": "dev",
+  "caliber": {
+    "dedup_window": 2000000000,
+    "join_window": 600000000000,
+    "follow_window": 1800000000000,
+    "drill_window": 1200000000000,
+    "pair_window": 3000000000,
+    "hazard_dedup_window": 3000000000
+  },
+  "window": {
+    "from": "2026-08-23T20:32:35.5250401+08:00",
+    "to": "2026-09-11T03:58:02.0734944+08:00",
+    "days": 18.3093350515544
+  },
+  "a_skill_trigger": {
+    "total": 170,
+    "daily_triggers": 9.284881156050918,
+    "by_event": {
+      "PostToolUse": {
+        "hits": 48,
+        "loaded": 1,
+        "rate": 0.020833333333333332
+      },
+      "PreToolUse": {
+        "hits": 52,
+        "loaded": 0,
+        "rate": 0
+      },
+      "Stop": {
+        "hits": 13,
+        "loaded": 2,
+        "rate": 0.15384615384615385
+      },
+      "UserPromptSubmit": {
+        "hits": 57,
+        "loaded": 12,
+        "rate": 0.21052631578947367
+      }
+    },
+    "conversion": {
+      "num": 15,
+      "den": 170,
+      "rate": 0.08823529411764706
+    },
+    "verification_driver_testcmd_precision": {
+      "num": 23,
+      "den": 26,
+      "rate": 0.8846153846153846
+    }
+  },
+  "b_next_hint": {
+    "hints": 0,
+    "adoption": {
+      "num": 0,
+      "den": 0,
+      "rate": 0
+    }
+  },
+  "c_gate_cmd_form": {
+    "total": 156,
+    "standalone": 27,
+    "and_chain_only": 2,
+    "multi_gate": 61,
+    "semicolon": 40,
+    "pipe_truncated": 122,
+    "grep_masked": 13,
+    "c1_semicolon_or_grep": {
+      "num": 45,
+      "den": 156,
+      "rate": 0.28846153846153844
+    },
+    "c2_pipe_truncated": {
+      "num": 122,
+      "den": 156,
+      "rate": 0.782051282051282
+    },
+    "c3_compliant": {
+      "num": 29,
+      "den": 156,
+      "rate": 0.1858974358974359
+    }
+  },
+  "d_refs_critical": {
+    "declared_skills": 0,
+    "overall": {
+      "num": 0,
+      "den": 0,
+      "rate": 0
+    }
+  },
+  "e_attribution": {
+    "post_seal_rows": 110,
+    "post_seal_no_session_rows": 107,
+    "post_seal_other_session_rows": 3,
+    "tasks_with_post_seal_rows": 15,
+    "post_seal_owner_rows": 30,
+    "probe_flagged_rows": 0,
+    "no_session_share": {
+      "num": 814,
+      "den": 1358,
+      "rate": 0.5994108983799705
+    },
+    "resolve_path_counts": {}
+  },
+  "f_hazard": {
+    "blocks": 54,
+    "double_deliveries": 5,
+    "incidents": 49,
+    "released_incidents": {
+      "num": 9,
+      "den": 49,
+      "rate": 0.1836734693877551
+    }
+  },
+  "g_coverage": {
+    "coverage_fails": 30,
+    "coverage_fix_after_fail": {
+      "num": 8,
+      "den": 30,
+      "rate": 0.26666666666666666
+    },
+    "cheat_scan_fails": 11,
+    "unused_scan_fails": 10
+  }
+}

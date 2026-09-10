@@ -101,7 +101,7 @@ func AppendEvent(p *forgedata.Project, e Event) error {
 
 	path := p.HazardsEventsPath()
 	if e.Fingerprint != "" {
-		if last, ok := lastEvent(path); ok && isDoubleDelivery(last, e) {
+		if last, ok := lastEvent(path); ok && IsDoubleDelivery(last, e) {
 			return nil
 		}
 	}
@@ -122,11 +122,12 @@ func AppendEvent(p *forgedata.Project, e Event) error {
 	return err
 }
 
-// isDoubleDelivery reports whether next is a host double-delivery of last: same type and fingerprint, same session when both carry one, within EventDedupWindow (clock-skew negative gaps never dedupe).
+// IsDoubleDelivery reports whether next is a host double-delivery of last: same type and fingerprint, same session when both carry one, within EventDedupWindow (clock-skew negative gaps never dedupe). Exported so harness-audit rebuilds historical double-deliveries with the writer's exact rule.
 //
-// isDoubleDelivery 判断 next 是否 last 的宿主双投递：同 type 同指纹、双方都带会话时同会话、
-// 间隔在 EventDedupWindow 内（时钟回拨的负间隔不去重，fail-open）。
-func isDoubleDelivery(last, next Event) bool {
+// IsDoubleDelivery 判断 next 是否 last 的宿主双投递：同 type 同指纹、双方都带会话时同会话、
+// 间隔在 EventDedupWindow 内（时钟回拨的负间隔不去重，fail-open）。导出给 harness-audit
+// 按写侧同一规则重建历史双投递（F2 基线）——审计侧不得手抄第二份规则。
+func IsDoubleDelivery(last, next Event) bool {
 	if last.Type != next.Type || last.Fingerprint != next.Fingerprint {
 		return false
 	}
