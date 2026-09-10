@@ -4,6 +4,9 @@
 
 ### ⚠️ 行为变更（Behavior Change）
 
+* **efficiency 维度评分口径：挂钟 → 工具活跃跨度**（docs/design/harness-fixes-a-g-2026-09.md E.4）：`efficiency` 的输入从 `started_at→completed_at` 挂钟改为任务时间窗内 toollog 首末调用距（`EvaluateInput.ActiveSpan`）；toollog 不足 2 条回落挂钟，负跨度按不可信数据给中性 70。动机：doc-gate 卡住两天的任务此前因空闲时间被判「拖沓」（乙机实录活跃 56 分钟、挂钟 46 小时、维度 35 分）。**历史分数不可与新分数直接比较**；旧 golden 夹具无该字段仍走挂钟路径，行为不变。
+* **完成声明证据以 task-complete 门禁通过时刻封印**（同设计 E）：Act 结论与评分的证据链读取（`checklog.ForTaskUntil` / `LatestByCheckForTaskWindow`）截断在 `TaskState.SealedAt`，封印后落到任务名下的行（异会话 hazard 拦截、重复 `task verify` 自述）保留供 `forge trace` 但不计入证据强度；空 session 的 checklog 行只在 TaskRef 归属被评任务时参与评分。hook 与执行器审计行新增 `Meta[resolve_path]`/`Meta[post_seal]` 归因探针并回填空 session。`forge task complete`/`abort` 清除**所有**指向该任务的会话指针、legacy 全局指针与 workspace 绑定（此前只清当前会话）。
+* **hazard 事件双投递去重**（同设计 F.3）：`forge hazard log` 对同会话、同类型、同指纹且间隔 <3s 的事件只记一条（宿主对同一 Bash 调用双发 PreToolUse 的形态），safe-halt 计数不再被双记翻倍；事件新增 `session_id` 字段（hook 环境 `FORGE_SESSION_ID`），旧行/终端直跑为空时退化为不比会话。
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 

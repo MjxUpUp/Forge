@@ -32,10 +32,16 @@ func rewindLastEvent(t *testing.T, p *forgedata.Project, delta time.Duration) {
 	}
 }
 
+// Host double-delivery dedupe (docs/design/harness-fixes-a-g-2026-09.md F.3): when a host fires
+// PreToolUse twice for one Bash call, the hook script calls `forge hazard log block` twice —
+// on machine 乙, 24 of 52 block rows were same-fingerprint short-window repeats, doubling the
+// safe-halt counter (3 logical blocks recorded as 6, tripping the threshold of 3). Key is
+// (Session, Type, Fingerprint); the window matches hookdispatch's blockRecordDedupWindow.
+//
 // 宿主双投递去重（docs/design/harness-fixes-a-g-2026-09.md F.3）：同一 Bash 调用被宿主
 // 双发 PreToolUse 时，hook 脚本会两次调 `forge hazard log block`——乙机实录 52 条 block
 // 里 24 条是同指纹短窗重复，把 safe-halt 计数直接翻倍（3 次逻辑拦截被记成 6 次越过阈值）。
-// 去重键 (Type, Fingerprint)，窗口与 hookdispatch 的 blockRecordDedupWindow 同量级。
+// 去重键 (Session, Type, Fingerprint)，窗口与 hookdispatch 的 blockRecordDedupWindow 同量级。
 
 func TestAppendEvent_DedupesSameFingerprintWithinWindow(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
@@ -73,6 +79,36 @@ func TestAppendEvent_EmptyFingerprintNeverDedupes(t *testing.T) {
 	events, _ := LoadEvents(root)
 	if len(events) != 3 {
 		t.Fatalf("events without fingerprint must all be kept, got %d", len(events))
+	}
+}
+
+// TestAppendEvent_DifferentSessionsNotDeduped pins the session dimension of the dedupe key
+// (aligned with hookdispatch blockRecordMarker): two parallel sessions blocked on the identical
+// command within the window are two incidents; a legacy row without a session still dedupes
+// against a same-fingerprint follow-up.
+//
+// TestAppendEvent_DifferentSessionsNotDeduped 钉住去重键的会话维度（与 hookdispatch
+// blockRecordMarker 对齐）：两个并行会话 3s 内各拦一次同命令是两起事件；无会话的旧行
+// 与随后同指纹行仍按双投递合并。
+func TestAppendEvent_DifferentSessionsNotDeduped(t *testing.T) {
+	root := forgedatatest.ForDataDir(t.TempDir())
+	fp := Fingerprint("git reset --hard origin/main")
+	for _, sid := range []string{"sess-a", "sess-b"} {
+		if err := AppendEvent(root, Event{Type: EventBlock, Fingerprint: fp, Command: "c", SessionID: sid}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, _ := LoadEvents(root)
+	if len(events) != 2 {
+		t.Fatalf("two sessions blocked on the same command must yield 2 rows, got %d", len(events))
+	}
+	// 会话任一侧为空：退化为只比 type+指纹
+	if err := AppendEvent(root, Event{Type: EventBlock, Fingerprint: fp, Command: "c"}); err != nil {
+		t.Fatal(err)
+	}
+	events, _ = LoadEvents(root)
+	if len(events) != 2 {
+		t.Fatalf("session-less follow-up of sess-b's block must dedupe, got %d rows", len(events))
 	}
 }
 

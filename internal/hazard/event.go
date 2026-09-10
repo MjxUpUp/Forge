@@ -61,15 +61,22 @@ type Event struct {
 	Type        string    `json:"type"`        // EventBlock/EventRelease/EventData/EventConfirm
 	Fingerprint string    `json:"fingerprint"` // Fingerprint(command)；算不出时为空
 	Command     string    `json:"command"`     // 截断的命令串（审计用，maxCommandStore）
+	// SessionID is the host session that produced the event (from FORGE_SESSION_ID in the hook environment); empty for terminal-run commands and rows written before this field existed.
+	//
+	// SessionID 是产生事件的宿主会话（hook 环境的 FORGE_SESSION_ID）；人类终端直跑与本字段
+	// 引入前的旧行为空。参与双投递去重键（与 checklog 侧 blockRecordMarker 的 session 维度
+	// 对齐）；任一侧为空时退化为只比 (Type, Fingerprint)。
+	SessionID string `json:"session_id,omitempty"`
 }
 
-// EventDedupWindow is the window within which a same-type, same-fingerprint event is treated as a host double-delivery of one logical hook call and not appended again.
+// EventDedupWindow is the window within which a same-session, same-type, same-fingerprint event is treated as a host double-delivery of one logical hook call and not appended again.
 //
-// EventDedupWindow 内同 type 同指纹的事件视为宿主对同一逻辑 hook 调用的双投递，不再
-// 追加。乙机实录 52 条 block 里 24 条是短窗同指纹重复（kimi PreToolUse 98ms 双发的
+// EventDedupWindow 内同会话、同 type、同指纹的事件视为宿主对同一逻辑 hook 调用的双投递，
+// 不再追加。乙机实录 52 条 block 里 24 条是短窗同指纹重复（kimi PreToolUse 98ms 双发的
 // hazard 版），safe-halt 按原始事件计数被直接翻倍——3 次逻辑拦截记成 6 次越过阈值 3。
-// 窗口与 hookdispatch.blockRecordDedupWindow 同量级（3s）；空指纹（算不出）永不去重。
-// docs/design/harness-fixes-a-g-2026-09.md F.3。
+// 窗口与 hookdispatch.blockRecordDedupWindow 同量级（3s）；空指纹（算不出）永不去重；
+// 会话维度任一侧为空（旧行/终端直跑）退化为不比会话——两个并行会话 3s 内各拦一次同命令
+// 各记一条。docs/design/harness-fixes-a-g-2026-09.md F.3。
 const EventDedupWindow = 3 * time.Second
 
 // AppendEvent appends an event to <DataDir>/hazards/events.jsonl.
@@ -94,10 +101,8 @@ func AppendEvent(p *forgedata.Project, e Event) error {
 
 	path := p.HazardsEventsPath()
 	if e.Fingerprint != "" {
-		if last, ok := lastEvent(path); ok && last.Type == e.Type && last.Fingerprint == e.Fingerprint {
-			if d := e.Ts.Sub(last.Ts); d >= 0 && d < EventDedupWindow {
-				return nil
-			}
+		if last, ok := lastEvent(path); ok && isDoubleDelivery(last, e) {
+			return nil
 		}
 	}
 	dir := filepath.Dir(path)
@@ -117,6 +122,23 @@ func AppendEvent(p *forgedata.Project, e Event) error {
 	return err
 }
 
+// isDoubleDelivery reports whether next is a host double-delivery of last: same type and fingerprint, same session when both carry one, within EventDedupWindow (clock-skew negative gaps never dedupe).
+//
+// isDoubleDelivery 判断 next 是否 last 的宿主双投递：同 type 同指纹、双方都带会话时同会话、
+// 间隔在 EventDedupWindow 内（时钟回拨的负间隔不去重，fail-open）。
+func isDoubleDelivery(last, next Event) bool {
+	if last.Type != next.Type || last.Fingerprint != next.Fingerprint {
+		return false
+	}
+	if last.SessionID != "" && next.SessionID != "" && last.SessionID != next.SessionID {
+		return false
+	}
+	d := next.Ts.Sub(last.Ts)
+	return d >= 0 && d < EventDedupWindow
+}
+
+// lastEvent reads the last valid event line of events.jsonl (dedupe input); ok=false when the file is missing/empty or the tail line is corrupt — dedupe is best-effort, an unreadable tail means append as usual (over-record rather than lose an audit row). Only the trailing 4KB is read.
+//
 // lastEvent 读取 events.jsonl 的末条有效事件（双投递去重用）。文件缺失/空/末行损坏
 // 返回 ok=false——去重尽力而为，读不到就照常追加（宁多记不丢审计行）。只读文件尾
 // 4KB：单条事件远小于此，避免每次追加全量读盘。
