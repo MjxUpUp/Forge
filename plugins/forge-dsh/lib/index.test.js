@@ -68,7 +68,7 @@ test("pre-execute: clean bash delegates; skill-trigger advisory reaches agent.in
   const exec = { name: "bash", arguments: { command: "go build ./..." }, agent };
   const d = await ctx.waterfall("tools/pre-execute", exec, async () => ({ kind: "allow" }));
   assert.deepEqual(d, { kind: "allow" });
-  assert.deepEqual(hookCalls().map((c) => c.hook), ["bash-guard", "hazard-guard", "skill-trigger"]);
+  assert.deepEqual(hookCalls().map((c) => c.hook), ["bash-guard", "hazard-guard", "gate-cmd-form", "skill-trigger"]);
   assert.equal(calls.injected.length, 1);
   assert.equal(calls.injected[0].source.plugin, "forge-quality");
   assert.equal(calls.steered.length, 0);
