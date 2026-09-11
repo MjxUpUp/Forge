@@ -231,7 +231,8 @@ jobs:
   npm-verify:
     needs: npm
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 退避窗 8×45s≈6min（v1.56.6 实录主包读路径滞后 ~5min）+ 双 drill + 签名验证的余量。
+    timeout-minutes: 15
     steps:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -239,26 +240,30 @@ jobs:
       - name: Install from npmjs and assert version == tag
         run: |
           WANT="${GITHUB_REF_NAME#v}"
-          # registry read-after-write 传播竞态退避（v1.56.5 实录：npm job 已发布且官方
-          # API 可查，装回仍在数秒内 ETARGET，rerun 才过）——装回失败先官方 registry
-          # API 核实版本存在性：存在 = 传播竞态，30s 退避重试（≤5 次）；不存在 = npm
-          # job 未真正发布，立即报错（重试不得掩盖真发布失败）。API 必须走
-          # registry.npmjs.org——镜像源滞后会误判（RELEASE.md Gotcha）。
-          for i in 1 2 3 4 5; do
+          # v1.56.6 实录修正（v1.56.5 设计的两处误判）：registry 读路径可滞后写路径
+          # 约 5 分钟（平台包秒级可见、主包 packument ~5min），且 API 同样滞后——
+          # 「API 404 = 未发布，立即退出」把传播滞后误判成发布失败；5×30s 退避窗也不够。
+          # 改为无条件退避重试（7×45s≈5.3min 间隔 + 8 次尝试耗时，自发布起累计 ≈7min，
+          # 覆盖实测滞后量级）；API 查询降级为信息性日志（辅助诊断，不决定重试）；重试
+          # 用尽才失败，失败信息带 API 终态。「防掩盖真失败」由最终诊断承载（visible=
+          # 装回问题；not-visible=疑 npm job 未发布或网络故障）。
+          API_STATE="unknown"
+          for i in 1 2 3 4 5 6 7 8; do
             if npm i -g "@agent_forge/forge@$WANT"; then
+              echo "installed on attempt $i/8 (registry API: $API_STATE)"
               break
             fi
-            if curl -fsSL "https://registry.npmjs.org/@agent_forge/forge/$WANT" | grep "\"version\":\"$WANT\"" >/dev/null; then
-              echo "attempt $i/5: version visible on registry.npmjs.org but install failed (propagation race) — backoff 30s"
-              if [ "$i" = 5 ]; then
-                echo "::error::registry API 可见但 5 次装回均失败——非传播竞态，排查 npm/网络"
-                exit 1
-              fi
-              sleep 30
+            if curl -fsS --max-time 10 "https://registry.npmjs.org/@agent_forge/forge/$WANT" | grep "\"version\":\"$WANT\"" >/dev/null; then
+              API_STATE="visible"
             else
-              echo "::error::@agent_forge/forge@$WANT 不在官方 registry——npm job 未真正发布（不重试掩盖）"
+              API_STATE="not-visible(404-or-network)"
+            fi
+            if [ "$i" = 8 ]; then
+              echo "::error::8 次装回均失败（registry API 终态: $API_STATE）——visible 则排查 npm/网络；not-visible 则疑 npm job 未真正发布或网络故障，核查其日志"
               exit 1
             fi
+            echo "attempt $i/8 failed (registry API: $API_STATE) — backoff 45s"
+            sleep 45
           done
           GOT=$(forge --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
           if [ "$GOT" != "$WANT" ]; then
