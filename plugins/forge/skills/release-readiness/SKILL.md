@@ -15,9 +15,6 @@ metadata:
 
 执行前先读 `references/recommended-checks.md`——前置知识，不读无法执行。
 
-
-
-
 # 发布 Readiness 门禁
 
 发布/上线前的强制 go/no-go 清单。"代码写完了"（project-acceptance 管的）不等于"能安全上线"（本 skill 管的）——发布是**不可逆动作**（tag 推上去、镜像发出去、迁移跑了），门禁必须在按下按钮前逐项过完。
