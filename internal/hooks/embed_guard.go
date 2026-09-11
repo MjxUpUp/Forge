@@ -428,7 +428,17 @@ COMMAND="${FORGE_COMMAND:-}"
 # 这个 Bash 命令的 FORGE_COMMAND 含 "rm -rf" 会被自己拦——必须豁免 forge hazard 前缀。
 # forge hazard 只登记/查询标记，不执行传入的命令串，豁免安全。
 case "$COMMAND" in
-  "forge hazard "*|"forge hazard") echo "PASS"; exit 0 ;;
+  "forge hazard "*|"forge hazard")
+    # F.2a 链式分离（首发即 blocked，承诺表 §二.1②/§二.3 形态门禁豁免）：豁免段内出现
+    # 连接符续段时——confirm 与目标命令同调用是自助闭环形态（甲机 53/53 实录）——仅对
+    # confirm 子命令拒绝；log/status/confirmed 等 hook 内部写不带闭环语义，豁免不变。
+    case "$COMMAND" in
+      "forge hazard confirm"*"&&"*|*"forge hazard confirm"*";"*|*"forge hazard confirm"*"|"*)
+        echo "FAIL [hazard-guard] hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这是拦截要切断的自助闭环（首发即 blocked，docs/design/compat-commitments.md §二.1②/§二.3 形态门禁豁免）。请单独执行：forge hazard confirm --last"
+        exit 1
+        ;;
+    esac
+    echo "PASS"; exit 0 ;;
 esac
 
 # --- rm 临时目录白名单 helpers（2026-08 两周 usage 复盘：mktemp/自建临时目录清理约占
@@ -800,19 +810,57 @@ fi
 # strip_interp_heredoc_bodies（F.1）：heredoc 喂给非 shell 解释器（python/node/ruby/perl）
 # 且正文不含执行原语时，正文是数据——预先挖掉正文（保留 <<TAG 行与其后连接符），让
 # is_hazardous/strip_quotes 只判真正会执行的头部。乙机实录：分析脚本的 heredoc 体提及
-# 危险命令字样即被拦（本设计撰写会话两次实测）。正文真会调 shell 的（subprocess/
-# os.system/child_process/exec(/spawn(/system(/pipe-shell）保持原判定。
+# 危险命令字样即被拦。BSD 家规：case-glob 判解释器（无 grep -E 交替——本文件头注与
+# bash-guard 同源教训）；原语扫描用独立 grep -qi（BRE 子串），异常方向 fail-closed
+# （任何 grep 失败 → 原样返回原串，剥离不发生）。
+# 原语清单（评审实证补全）：subprocess / os.system / os.popen / os.exec / popen2 /
+# getoutput / child_process / exec( / spawn( / system( / sh -c / bash -c / ruby 反引号
+# 与 %x[ / perl qx{ 与反引号——正文真会调 shell 的保持原判定。
+# HEREDOC_ORIG 保留原始命令：判定用剥离文本，指纹/事件/展示一律用原文（审计与 confirm
+# 不与 agent 所见文本漂移）。
 strip_interp_heredoc_bodies() {
   local cmd="$1" tag body
-  printf '%s' "$cmd" | grep -qiE '(python3?|node|ruby|perl) +[^|;&]*<<-?' || { printf '%s' "$cmd"; return; }
+  case "$cmd" in
+    *python*"<<"*|*node*"<<"*|*ruby*"<<"*|*perl*"<<"*) ;;
+    *) printf '%s' "$cmd"; return ;;
+  esac
   tag=$(printf '%s' "$cmd" | grep -oE "<<-?['\"]?[A-Za-z_][A-Za-z0-9_]*" | head -1 | grep -oE '[A-Za-z_][A-Za-z0-9_]*$')
   [ -n "$tag" ] || { printf '%s' "$cmd"; return; }
   body=$(printf '%s' "$cmd" | awk -v t="$tag" 'f && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {f=0} f {print} /<<-?/ {f=1}')
-  printf '%s' "$body" | grep -qiE 'subprocess|os\.system|os\.popen|child_process|exec\(|spawn\(|system\(|sh -c|bash -c' && { printf '%s' "$cmd"; return; }
+  # 执行原语：任一命中即原样返回。独立 grep -qi（BRE），&& 短路保证 fail-closed。
+  printf '%s' "$body" | grep -qi 'subprocess' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'os\.system' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'os\.popen' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'os\.exec' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'popen2' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'getoutput' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'child_process' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'exec(' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'spawn(' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'system(' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'sh -c' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qi 'bash -c' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qiF '%x[' && { printf '%s' "$cmd"; return; }
+  printf '%s' "$body" | grep -qiF 'qx{' && { printf '%s' "$cmd"; return; }
+  # ruby/perl 反引号：正文含反引号即视为会执行 shell。Go 原始字符串内不能写字面
+  # 反引号——检测用 printf '\140'（八进制反引号，仓内既有惯例），对比变量展开。
+  _BT=$(printf '\140')
+  case "$body" in *"$_BT"*) printf '%s' "$cmd"; return ;; esac
   printf '%s' "$cmd" | awk -v t="$tag" 'BEGIN{inbody=0} inbody && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {inbody=0; print; next} inbody {next} {print} /<<-?/ {inbody=1}'
 }
 
+HEREDOC_ORIG="$COMMAND"
 COMMAND=$(strip_interp_heredoc_bodies "$COMMAND")
+
+# F.1 的放行独立判定：剥离发生过（判定文本变短）→ 危险串在被挖掉的 heredoc 正文里
+# （数据上下文）→ 直接 data 放行，不依赖 STRIPPED!=COMMAND（裸 tag 场景剥离后无引号可剥，
+# 该条件恒假——评审实证主路径失效）。
+if [ "$COMMAND" != "$HEREDOC_ORIG" ] && ! is_hazardous "$COMMAND" && ! is_exec_wrapped "$HEREDOC_ORIG"; then
+  forge hazard log data "$HEREDOC_ORIG" >/dev/null 2>&1 || true
+  echo "PASS [hazard-guard] 解释器 heredoc 正文为数据上下文（无执行原语），放行"
+  exit 0
+fi
+
 
 # --- context classification：危险串是数据（引号内 / 注释行）还是执行 ---
 # is_hazardous 命中后，剥离引号与注释再判一次：剥离后不再命中 → 危险串都在引号里或注释里
@@ -834,11 +882,11 @@ fi
 # confirmed exit 0=已确认放行；exit 1 多为"未确认"（正常路径），但若它打了 stderr
 # （[hazard] 错误），说明确认链本身异常——kimi 30s 超时/autoSync 拖慢 forge 启动/环境
 # 问题——把 stderr 前 200 字符带进 block 输出，失败可诊断。
-FP=$(forge hazard fingerprint "$COMMAND" 2>/dev/null)
+FP=$(forge hazard fingerprint "$HEREDOC_ORIG" 2>/dev/null)
 _CONFIRM_DIAG=""
 if [ -n "$FP" ]; then
   if _CONFIRM_STDERR=$(forge hazard confirmed "$FP" 2>&1 >/dev/null); then
-    forge hazard log release "$COMMAND" >/dev/null 2>&1 || true
+    forge hazard log release "$HEREDOC_ORIG" >/dev/null 2>&1 || true
     echo "PASS [hazard-guard] 已确认放行（5min 窗口内）: $COMMAND"
     exit 0
   fi
@@ -848,9 +896,9 @@ if [ -n "$FP" ]; then
 fi
 
 # --- 未确认：block + HITL 指引（落盘 block 事件供审计追溯） ---
-forge hazard log block "$COMMAND" >/dev/null 2>&1 || true
+forge hazard log block "$HEREDOC_ORIG" >/dev/null 2>&1 || true
 echo "FAIL [hazard-guard] 高危操作已拦截（需 human-in-the-loop 确认）"
-echo "命令: $COMMAND"
+echo "命令: $HEREDOC_ORIG"
 echo "指纹: ${FP:-<unknown>}"
 echo ""
 echo "如确需执行："
