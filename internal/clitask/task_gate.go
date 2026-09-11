@@ -125,10 +125,20 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	}
 
 	if !silent {
+		// C.3 镜像判定一次算清（BLOCKED 行与 next 行共用——next 行镜像依据设计 B 风险节
+		// 「next 行被 | tail 截掉——与 C 的 stderr 兜底同批解决」）。
+		mirror := mirrorBlockedToStderr(result.Passed, silent, stdoutIsTerminal())
 		if result.Passed {
 			fmt.Printf("  ✅ %s — passed\n", gate.Name)
 		} else {
-			fmt.Printf("  ❌ %s — BLOCKED: %s\n", gate.Name, result.Message)
+			fmt.Print(blockedResultLine(gate.Name, result.Message))
+			// stderr 兜底（设计 C.3）：stdout 接管道时（`| tail/head/grep` 截断是两机审计
+			// 实测主形态），BLOCKED 详情行同时写 stderr——退出码契约的文本面不再能被管道
+			// 吞掉。真终端不镜像（避免双写噪音）；只镜像 BLOCKED 出口——passed 路径退出码 0
+			// 已是完整契约。
+			if mirror {
+				fmt.Fprint(os.Stderr, blockedResultLine(gate.Name, result.Message))
+			}
 		}
 		// 设计 B（docs/design/harness-fixes-a-g-2026-09.md）：门禁输出是唯一被确定性阅读的
 		// 界面（gate 拦截后 100% 重跑），next 行挂在此处把「问下一步」变成「读门禁输出时顺手
@@ -142,7 +152,12 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "[forge] warning: next-hint skipped (task state unreadable): %v\n", stErr)
 		} else {
 			hint := taskpipeline.NextHint(root, st)
-			fmt.Printf("  → next: %s（%s）\n", hint.Next, hint.Reason)
+			fmt.Print(nextHintLine(hint.Next, hint.Reason))
+			// next 行同镜像（设计 B 风险节：「next 行被 | tail 截掉——与 C 的 stderr 兜底
+			// 同批解决」）：BLOCKED 出口的恢复路径必须和拦截原因一样可见。
+			if mirror {
+				fmt.Fprint(os.Stderr, nextHintLine(hint.Next, hint.Reason))
+			}
 		}
 	}
 
@@ -180,6 +195,34 @@ func runTaskVerifyAcceptance(cmd *cobra.Command, args []string) error {
 var stdinIsHumanTerminal = func() bool {
 	fi, err := os.Stdin.Stat()
 	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
+}
+
+// stdoutIsTerminal 报告 stdout 是否挂在终端（char device）上——C.3 stderr 兜底的判定器
+// （docs/design/harness-fixes-a-g-2026-09.md）：agent 的 Bash 普遍以管道接收 stdout
+// （`forge task gate … | tail -N` 是两机审计实测的最常见形态，甲机 C2 95.7%），BLOCKED
+// 详情行可能被截断管道吞掉。真终端形态由 mirrorBlockedToStderr 纯函数单测覆盖，
+// 本判定器只负责子进程内探测 char device。局限同源：mintty 下真人的 stdout 也是
+// 管道——误判方向只是多镜像一次 stderr，无害。
+var stdoutIsTerminal = func() bool {
+	fi, err := os.Stdout.Stat()
+	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
+}
+
+// mirrorBlockedToStderr 是 C.3 的镜像判定（纯函数锚点）：仅 BLOCKED 出口 + 非 silent +
+// stdout 非 TTY 时镜像到 stderr。真终端不镜像（防双写噪音）、passed 路径不镜像（退出码
+// 0 已是完整契约）、silent 不镜像（hook 退出码契约不带文本面）。
+func mirrorBlockedToStderr(passed, silent, stdoutTTY bool) bool {
+	return !passed && !silent && !stdoutTTY
+}
+
+// blockedResultLine 与 nextHintLine 是 gate 结果行/next 行的单一格式化真相源——stdout
+// 与 stderr 镜像两侧共用，防止两处格式漂移（C.3 的纯函数锚点）。
+func blockedResultLine(gateName, message string) string {
+	return fmt.Sprintf("  ❌ %s — BLOCKED: %s\n", gateName, message)
+}
+
+func nextHintLine(next, reason string) string {
+	return fmt.Sprintf("  → next: %s（%s）\n", next, reason)
 }
 
 // runTaskVerifyAcceptanceAt 是 runTaskVerifyAcceptance 的 root 注入核心，独立出来便于
