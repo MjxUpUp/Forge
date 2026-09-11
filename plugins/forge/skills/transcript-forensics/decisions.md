@@ -18,3 +18,20 @@ persistent decision history：每条决策记 (诊断, 修订, 脱敏证据, 结
 ### Evidence
 
 mine-claude 27次/3项目;kimi侧1-2次;本目标执行过程本身即实例
+
+## [d-18d420aa5c263e64-ae8b443f] accept
+
+- **Skill**: transcript-forensics
+- **DecidedAt**: 2026-09-11T01:41:08Z
+
+### Diagnosis
+
+两机审计 refs-critical skill 零下钻（transcript-forensics 乙 1/2 甲 0/2）——核心交付物就在 references 里等于没按 skill 执行
+
+### Revision
+
+frontmatter metadata 段增 refs_critical 声明 + 正文头部增步骤 0 必读块（3 行）
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md D 节 + audit 兄弟页 3.3

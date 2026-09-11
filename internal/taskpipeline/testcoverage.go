@@ -508,10 +508,13 @@ func testCoverageDetail(ok bool, missing []string) string {
 	if ok {
 		return "all changed source files have corresponding tests"
 	}
+	// G.1 预告（设计 G，承诺表 §二.1①——1.56 起 advisory 文案持续显示预告版本）：
+	// 1.58 起 backstop 阈值 3→2（缺测 ≥2 且零断言即 BLOCKED）。
+	notice := " (自 1.58 起 missingN>=2 且零断言将 BLOCKED——补测试或 forge task override --test-coverage disable)"
 	if len(missing) > 3 {
-		return fmt.Sprintf("missing tests for %d files: %s ...", len(missing), strings.Join(missing[:3], ", "))
+		return fmt.Sprintf("missing tests for %d files: %s ...%s", len(missing), strings.Join(missing[:3], ", "), notice)
 	}
-	return "missing tests for: " + strings.Join(missing, ", ")
+	return "missing tests for: " + strings.Join(missing, ", ") + notice
 }
 
 // formatMissing 产出面向用户的门禁失败消息。
