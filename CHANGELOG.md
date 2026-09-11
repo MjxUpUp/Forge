@@ -10,6 +10,14 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.56.5](https://github.com/MjxUpUp/Forge/compare/v1.56.4...v1.56.5) (2026-09-11)
+
+
+### Bug Fixes
+
+* **clitask:** C.3 stderr 兜底——stdout 非 TTY 时 BLOCKED/next 行镜像 stderr ([3d703a7](https://github.com/MjxUpUp/Forge/commit/3d703a757265af3d6340573169e114e56ba150bb))
+* **clitask:** C.3 评审回应——镜像判定抽纯函数 + TTY/silent 漏测补齐 + 基线文档 Critical 修复 ([259ef08](https://github.com/MjxUpUp/Forge/commit/259ef08e9a512fca6e386f656880547817202d6d))
+
 ## [1.56.4](https://github.com/MjxUpUp/Forge/compare/v1.56.3...v1.56.4) (2026-09-11)
 
 
