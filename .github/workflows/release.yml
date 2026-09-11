@@ -248,7 +248,7 @@ jobs:
             if npm i -g "@agent_forge/forge@$WANT"; then
               break
             fi
-            if curl -fsSL "https://registry.npmjs.org/@agent_forge/forge/$WANT" | grep -q '"name":"@agent_forge/forge"'; then
+            if curl -fsSL "https://registry.npmjs.org/@agent_forge/forge/$WANT" | grep "\"version\":\"$WANT\"" >/dev/null; then
               echo "attempt $i/5: version visible on registry.npmjs.org but install failed (propagation race) — backoff 30s"
               if [ "$i" = 5 ]; then
                 echo "::error::registry API 可见但 5 次装回均失败——非传播竞态，排查 npm/网络"
