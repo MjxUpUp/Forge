@@ -62,8 +62,11 @@ func TestNpmPlatformVersionsAligned(t *testing.T) {
 			t.Errorf("解析 %s: %v", platPath, err)
 			continue
 		}
-		if plat.Version != pinned {
-			t.Errorf("平台包 %s 提交态版本 %s != optionalDependencies 钉的 %s——两处清单本身不一致（发布时会注入，但清单互斥漂移说明有人绕过单一真相源手改）", short, plat.Version, pinned)
+		// release-please 不 bump optionalDependencies 钉——主包/平台包已到新版而钉
+		// 滞后一版是每次 release PR 的合法瞬态（1.56.0/1.56.1 两轮发版实证）。仅当
+		// 钉不在「当前或前一版」合法窗口时才视为两处清单互斥漂移。
+		if plat.Version != pinned && pinned != main.Version && pinned != prev {
+			t.Errorf("平台包 %s 提交态版本 %s != optionalDependencies 钉的 %s（钉既非当前 %s 也非前一版 %s）——两处清单互斥漂移说明有人绕过单一真相源手改", short, plat.Version, pinned, main.Version, prev)
 		}
 		if plat.Version != main.Version && plat.Version != prev {
 			t.Errorf("平台包 %s 提交态版本 %s 相对主包 %s 超出单版本发布窗口（多版本漂移——上一轮 1.50.0 vs 1.28.2 的形态）", short, plat.Version, main.Version)
