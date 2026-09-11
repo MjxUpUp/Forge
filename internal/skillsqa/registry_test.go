@@ -1,6 +1,7 @@
 package skillsqa
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -443,3 +444,51 @@ func TestAuditSkill_R12_BadTriggersAdvisoryButPass(t *testing.T) {
 // drift 守卫 TestValidConditions_MatchEngine 见 internal/skilltrigger/conditions_test.go——
 // skillsqa 测试不能 import skilltrigger（经 taskpipeline→skillsdist→skillsqa 成环），故
 // 守卫放在引擎侧（skilltrigger_test→skillsqa 无环）。
+
+// TestCheckRefsCritical pins R19 (design D): a declared refs_critical path must be named in a
+// 步骤 0 block; missing path or missing block → advisory; no declaration → silence.
+//
+// TestCheckRefsCritical 钉住 R19（设计 D）：声明的 refs_critical 路径须在步骤 0 块点名；
+// 路径缺失或无块 → advisory；无声明 → 静默。
+func TestCheckRefsCritical(t *testing.T) {
+	dir := t.TempDir()
+	writeSKILL := func(fmExtra, body string) string {
+		d := filepath.Join(dir, fmt.Sprintf("s%d", writeSKILLSeq))
+		writeSKILLSeq++
+		os.MkdirAll(d, 0o755)
+		fm := "---\nname: s\ndescription: d\n" + fmExtra + "---\n"
+		os.WriteFile(filepath.Join(d, "SKILL.md"), []byte(fm+body), 0o644)
+		return d
+	}
+	// 有声明有步骤 0 点名 → 静默
+	d := writeSKILL("  refs_critical: [\"references/x.md\"]\n", "\n## 步骤 0：必读\n先读 x.md。\n")
+	rep, err := AuditSkill(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Advisories) != 0 {
+		t.Fatalf("declared + step-0 named should be silent, got %v", rep.Advisories)
+	}
+	// 有声明无点名 → advisory
+	d2 := writeSKILL("  refs_critical: [\"references/x.md\"]\n", "\n## 步骤 0：必读\n（漏点名）\n")
+	rep2, _ := AuditSkill(d2)
+	found := false
+	for _, a := range rep2.Advisories {
+		if strings.Contains(a, "x.md") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("missing path naming must produce advisory, got %v", rep2.Advisories)
+	}
+	// 无声明 → 静默
+	d3 := writeSKILL("", "\n正文\n")
+	rep3, _ := AuditSkill(d3)
+	for _, a := range rep3.Advisories {
+		if strings.Contains(a, "refs_critical") {
+			t.Fatalf("no declaration must be silent, got %v", rep3.Advisories)
+		}
+	}
+}
+
+var writeSKILLSeq int
