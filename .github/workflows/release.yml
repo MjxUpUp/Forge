@@ -239,7 +239,27 @@ jobs:
       - name: Install from npmjs and assert version == tag
         run: |
           WANT="${GITHUB_REF_NAME#v}"
-          npm i -g "@agent_forge/forge@$WANT"
+          # registry read-after-write 传播竞态退避（v1.56.5 实录：npm job 已发布且官方
+          # API 可查，装回仍在数秒内 ETARGET，rerun 才过）——装回失败先官方 registry
+          # API 核实版本存在性：存在 = 传播竞态，30s 退避重试（≤5 次）；不存在 = npm
+          # job 未真正发布，立即报错（重试不得掩盖真发布失败）。API 必须走
+          # registry.npmjs.org——镜像源滞后会误判（RELEASE.md Gotcha）。
+          for i in 1 2 3 4 5; do
+            if npm i -g "@agent_forge/forge@$WANT"; then
+              break
+            fi
+            if curl -fsSL "https://registry.npmjs.org/@agent_forge/forge/$WANT" | grep "\"version\":\"$WANT\"" >/dev/null; then
+              echo "attempt $i/5: version visible on registry.npmjs.org but install failed (propagation race) — backoff 30s"
+              if [ "$i" = 5 ]; then
+                echo "::error::registry API 可见但 5 次装回均失败——非传播竞态，排查 npm/网络"
+                exit 1
+              fi
+              sleep 30
+            else
+              echo "::error::@agent_forge/forge@$WANT 不在官方 registry——npm job 未真正发布（不重试掩盖）"
+              exit 1
+            fi
+          done
           GOT=$(forge --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
           if [ "$GOT" != "$WANT" ]; then
             echo "::error::npm 装回的 forge 版本 $GOT != tag $WANT——发布产物货不对板"
