@@ -159,11 +159,11 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	if !hasInstallAssert {
 		t.Fatal("npm-verify 必须 npm i -g 装回并断言 forge --version（缺断言则装机验证名存实亡）")
 	}
-	// 传播竞态退避（v1.56.5 实录）：装回失败先官方 registry API 核实版本存在性，存在才
-	// 30s 退避重试——防 read-after-write 竞态把已成功发布误判为失败，也防重试掩盖真发布
-	// 失败（API 查不到必须立即报错）。官方源锚点 registry.npmjs.org 必须在——镜像滞后误判。
-	// 「不在官方 registry」锚定 else 分支的立即报错串：只删该分支让重试变无条件时，本
-	// 锚点红（防掩盖语义与注释声明对齐）。
+	// 无条件退避重试（v1.56.5/v1.56.6 两轮实录收敛）：registry 读路径可滞后写路径
+	// ~5 分钟且 API 同样滞后——「API 404 = 未发布立即退出」把传播滞后误判为发布失败。
+	// 装回失败必须无条件 8×45s 退避（≈6min 覆盖实测滞后）；API 查询仅信息性（URL 锚点
+	// 钉官方源，镜像滞后误判）；重试用尽才失败（终态诊断串锚点钉住「防掩盖」语义——
+	// 失败输出必须区分 visible/404 两种排查方向）。
 	installRun := ""
 	for _, s := range npmVerify.Steps {
 		if strings.Contains(s.Run, "npm i -g") {
@@ -171,12 +171,12 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 		}
 	}
 	for _, anchor := range []string{
-		"registry.npmjs.org/@agent_forge/forge", // 官方源核实（非镜像）
-		"sleep 30",                              // 退避重试
-		"不在官方 registry",                         // API 查不到立即报错（防重试掩盖真失败）
+		"registry.npmjs.org/@agent_forge/forge", // 官方源诊断查询（非镜像）
+		"sleep 45",                              // 退避重试（8×45s≈6min）
+		"8 次装回均失败",                              // 重试用尽的终态诊断（防掩盖：区分装回问题 vs 未发布）
 	} {
 		if !strings.Contains(installRun, anchor) {
-			t.Fatalf("npm-verify 装回步骤缺传播竞态退避锚点 %q——v1.56.5 实录竞态的防回归（官方 API 核实 + 退避重试 + 不掩盖真失败三件缺一）", anchor)
+			t.Fatalf("npm-verify 装回步骤缺无条件退避锚点 %q——v1.56.6 实录（读路径滞后~5min、API 亦滞后）的防回归三件缺一", anchor)
 		}
 	}
 	verifyRuns := jobStepRuns(npmVerify)
