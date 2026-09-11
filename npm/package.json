@@ -6,11 +6,11 @@
     "forge": "run.js"
   },
   "optionalDependencies": {
-    "@agent_forge/forge-darwin-arm64": "1.56.6",
-    "@agent_forge/forge-darwin-x64": "1.56.6",
-    "@agent_forge/forge-linux-arm64": "1.56.6",
-    "@agent_forge/forge-linux-x64": "1.56.6",
-    "@agent_forge/forge-win32-x64": "1.56.6"
+    "@agent_forge/forge-darwin-arm64": "1.56.7",
+    "@agent_forge/forge-darwin-x64": "1.56.7",
+    "@agent_forge/forge-linux-arm64": "1.56.7",
+    "@agent_forge/forge-linux-x64": "1.56.7",
+    "@agent_forge/forge-win32-x64": "1.56.7"
   },
   "files": [
     "run.js",
