@@ -125,6 +125,9 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	}
 
 	if !silent {
+		// C.3 镜像判定一次算清（BLOCKED 行与 next 行共用——next 行镜像依据设计 B 风险节
+		// 「next 行被 | tail 截掉——与 C 的 stderr 兜底同批解决」）。
+		mirror := mirrorBlockedToStderr(result.Passed, silent, stdoutIsTerminal())
 		if result.Passed {
 			fmt.Printf("  ✅ %s — passed\n", gate.Name)
 		} else {
@@ -133,7 +136,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 			// 实测主形态），BLOCKED 详情行同时写 stderr——退出码契约的文本面不再能被管道
 			// 吞掉。真终端不镜像（避免双写噪音）；只镜像 BLOCKED 出口——passed 路径退出码 0
 			// 已是完整契约。
-			if !stdoutIsTerminal() {
+			if mirror {
 				fmt.Fprint(os.Stderr, blockedResultLine(gate.Name, result.Message))
 			}
 		}
@@ -152,7 +155,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 			fmt.Print(nextHintLine(hint.Next, hint.Reason))
 			// next 行同镜像（设计 B 风险节：「next 行被 | tail 截掉——与 C 的 stderr 兜底
 			// 同批解决」）：BLOCKED 出口的恢复路径必须和拦截原因一样可见。
-			if !result.Passed && !stdoutIsTerminal() {
+			if mirror {
 				fmt.Fprint(os.Stderr, nextHintLine(hint.Next, hint.Reason))
 			}
 		}
@@ -197,11 +200,19 @@ var stdinIsHumanTerminal = func() bool {
 // stdoutIsTerminal 报告 stdout 是否挂在终端（char device）上——C.3 stderr 兜底的判定器
 // （docs/design/harness-fixes-a-g-2026-09.md）：agent 的 Bash 普遍以管道接收 stdout
 // （`forge task gate … | tail -N` 是两机审计实测的最常见形态，甲机 C2 95.7%），BLOCKED
-// 详情行可能被截断管道吞掉。用变量（非函数）以便测试注入两侧，与 stdinIsHumanTerminal
-// 同法。局限同源：mintty 下真人的 stdout 也是管道——误判方向只是多镜像一次 stderr，无害。
+// 详情行可能被截断管道吞掉。真终端形态由 mirrorBlockedToStderr 纯函数单测覆盖，
+// 本判定器只负责子进程内探测 char device。局限同源：mintty 下真人的 stdout 也是
+// 管道——误判方向只是多镜像一次 stderr，无害。
 var stdoutIsTerminal = func() bool {
 	fi, err := os.Stdout.Stat()
 	return err == nil && (fi.Mode()&os.ModeCharDevice) != 0
+}
+
+// mirrorBlockedToStderr 是 C.3 的镜像判定（纯函数锚点）：仅 BLOCKED 出口 + 非 silent +
+// stdout 非 TTY 时镜像到 stderr。真终端不镜像（防双写噪音）、passed 路径不镜像（退出码
+// 0 已是完整契约）、silent 不镜像（hook 退出码契约不带文本面）。
+func mirrorBlockedToStderr(passed, silent, stdoutTTY bool) bool {
+	return !passed && !silent && !stdoutTTY
 }
 
 // blockedResultLine 与 nextHintLine 是 gate 结果行/next 行的单一格式化真相源——stdout
