@@ -243,25 +243,26 @@ jobs:
           # v1.56.6 实录修正（v1.56.5 设计的两处误判）：registry 读路径可滞后写路径
           # 约 5 分钟（平台包秒级可见、主包 packument ~5min），且 API 同样滞后——
           # 「API 404 = 未发布，立即退出」把传播滞后误判成发布失败；5×30s 退避窗也不够。
-          # 改为无条件退避重试（8×45s ≈ 6min，覆盖实测滞后量级）；API 查询降级为信息
-          # 性日志（辅助诊断，不决定重试）；重试用尽才失败，失败信息带 API 终态。
-          # 「防掩盖真失败」由最终诊断承载（API 可见=装回问题；404=疑 npm job 未发布）。
+          # 改为无条件退避重试（7×45s≈5.3min 间隔 + 8 次尝试耗时，自发布起累计 ≈7min，
+          # 覆盖实测滞后量级）；API 查询降级为信息性日志（辅助诊断，不决定重试）；重试
+          # 用尽才失败，失败信息带 API 终态。「防掩盖真失败」由最终诊断承载（visible=
+          # 装回问题；not-visible=疑 npm job 未发布或网络故障）。
           API_STATE="unknown"
           for i in 1 2 3 4 5 6 7 8; do
             if npm i -g "@agent_forge/forge@$WANT"; then
               echo "installed on attempt $i/8 (registry API: $API_STATE)"
               break
             fi
-            if curl -fsSL "https://registry.npmjs.org/@agent_forge/forge/$WANT" | grep "\"version\":\"$WANT\"" >/dev/null; then
+            if curl -fsS --max-time 10 "https://registry.npmjs.org/@agent_forge/forge/$WANT" | grep "\"version\":\"$WANT\"" >/dev/null; then
               API_STATE="visible"
             else
-              API_STATE="404-still-propagating"
+              API_STATE="not-visible(404-or-network)"
             fi
-            echo "attempt $i/8 failed (registry API: $API_STATE) — backoff 45s"
             if [ "$i" = 8 ]; then
-              echo "::error::8 次装回均失败（registry API 终态: $API_STATE）——visible 则排查 npm/网络；404 则疑 npm job 未真正发布，核查其日志"
+              echo "::error::8 次装回均失败（registry API 终态: $API_STATE）——visible 则排查 npm/网络；not-visible 则疑 npm job 未真正发布或网络故障，核查其日志"
               exit 1
             fi
+            echo "attempt $i/8 failed (registry API: $API_STATE) — backoff 45s"
             sleep 45
           done
           GOT=$(forge --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)

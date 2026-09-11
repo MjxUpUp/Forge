@@ -26,7 +26,9 @@ type releaseJob struct {
 	// needs 可能是标量（needs: test）或序列（needs: [a, b]），用 yaml.Node 原样接收，
 	// 再由 needsList 归一化。GitHub Actions 两种写法都合法。
 	Needs yaml.Node `yaml:"needs"`
-	Steps []struct {
+	// TimeoutMinutes 供 npm-verify 退避算术守卫（结构性断言，见 TestReleaseWorkflow_NeedsChain）。
+	TimeoutMinutes int `yaml:"timeout-minutes"`
+	Steps          []struct {
 		Run  string `yaml:"run"`
 		Uses string `yaml:"uses"`
 	} `yaml:"steps"`
@@ -161,9 +163,12 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	}
 	// 无条件退避重试（v1.56.5/v1.56.6 两轮实录收敛）：registry 读路径可滞后写路径
 	// ~5 分钟且 API 同样滞后——「API 404 = 未发布立即退出」把传播滞后误判为发布失败。
-	// 装回失败必须无条件 8×45s 退避（≈6min 覆盖实测滞后）；API 查询仅信息性（URL 锚点
-	// 钉官方源，镜像滞后误判）；重试用尽才失败（终态诊断串锚点钉住「防掩盖」语义——
-	// 失败输出必须区分 visible/404 两种排查方向）。
+	// 装回失败必须无条件退避（7×45s≈5.3min 间隔 + 8 次尝试，自发布累计 ≈7min）；
+	// API 查询仅信息性（URL 锚点钉官方源，镜像滞后误判）；重试用尽才失败（终态诊断串
+	// 锚住「防掩盖」——失败输出区分 visible / not-visible 两个排查方向）。
+	// 结构性断言钉住「无条件」属性本身：exit 1 恰好 2 处（i=8 终态 + 版本不符）——
+	// 中途加回任何提前退出（如 404 立即失败）会变 3 处而红；循环上界 8 显式锚定，
+	// 缩回 5 轮但保留终态文案的回归也会红。
 	installRun := ""
 	for _, s := range npmVerify.Steps {
 		if strings.Contains(s.Run, "npm i -g") {
@@ -172,12 +177,21 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	}
 	for _, anchor := range []string{
 		"registry.npmjs.org/@agent_forge/forge", // 官方源诊断查询（非镜像）
-		"sleep 45",                              // 退避重试（8×45s≈6min）
+		"sleep 45",                              // 退避重试（7×45s≈5.3min 间隔）
 		"8 次装回均失败",                              // 重试用尽的终态诊断（防掩盖：区分装回问题 vs 未发布）
+		"for i in 1 2 3 4 5 6 7 8",              // 循环上界（缩窗但保留文案的回归）
 	} {
 		if !strings.Contains(installRun, anchor) {
-			t.Fatalf("npm-verify 装回步骤缺无条件退避锚点 %q——v1.56.6 实录（读路径滞后~5min、API 亦滞后）的防回归三件缺一", anchor)
+			t.Fatalf("npm-verify 装回步骤缺无条件退避锚点 %q——v1.56.6 实录（读路径滞后~5min、API 亦滞后）的防回归四件缺一", anchor)
 		}
+	}
+	if n := strings.Count(installRun, "exit 1"); n != 2 {
+		t.Fatalf("npm-verify 装回步骤 exit 1 必须恰好 2 处（i=8 终态 + 版本不符），got %d——中途提前退出（如 404 立即失败）破坏无条件退避（v1.56.6 实录误判形态）", n)
+	}
+	// 退避算术的预算面：timeout 必须 ≥15min——回退到 10 会让最坏退避路径死于通用超时
+	// 消息，专门设计的 visible/not-visible 终态诊断被吞（防掩盖语义静默退化）。
+	if npmVerify.TimeoutMinutes < 15 {
+		t.Fatalf("npm-verify timeout-minutes 必须 ≥15（退避最坏 ≈7min + 双 drill + cosign 验签余量），got %d", npmVerify.TimeoutMinutes)
 	}
 	verifyRuns := jobStepRuns(npmVerify)
 	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
