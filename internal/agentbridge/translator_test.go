@@ -492,6 +492,7 @@ func TestWindsurfTranslator_Translate(t *testing.T) {
 // wiring to a command set and compare per Claude event. `--agent windsurf` must
 // be present on every intercept hook (task-guard/bash-guard/etc.) since
 // Windsurf's stdin schema differs from Claude Code's.
+// (gate-cmd-form roster sync in windsurf.go is covered by this test — it failed before the sync.)
 func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 	// Windsurf registers at user level (~/.codeium/windsurf/hooks.json) — isolate the home.
 	home := isolateHome(t)
