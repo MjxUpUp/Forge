@@ -49,12 +49,62 @@ func TestTaskGate_PassedDoesNotMirrorToStderr(t *testing.T) {
 		}
 	}
 	run("commit", "--allow-empty", "-m", "impl")
-	_, stderr, code := runForgeStreams(t, root, "task", "gate", "task-implement", "--ref", "feat/next-line")
+	stdout, stderr, code := runForgeStreams(t, root, "task", "gate", "task-implement", "--ref", "feat/next-line")
 	if code != 0 {
 		t.Fatalf("implement gate with a fresh commit should pass, exit %d:\n%s", code, stderr)
 	}
+	// 正向断言先把行为钉成 stdout-only（而非「哪都不出现」——verdict 行被整体删除时负向
+	// 断言不报警，评审漏测清单第 3 条）。
+	if !strings.Contains(stdout, "— passed") || !strings.Contains(stdout, "→ next:") {
+		t.Fatalf("passed path must print verdict and next line to stdout:\n%s", stdout)
+	}
 	if strings.Contains(stderr, "— passed") || strings.Contains(stderr, "→ next:") {
 		t.Fatalf("passed path must stay stdout-only (no stderr mirror):\nstderr: %s", stderr)
+	}
+}
+
+// TestTaskGate_SilentBlockedNoMirrorOutput pins the silent path: --silent is the hook
+// exit-code contract (text-free by design) — a BLOCKED exit must not print the verdict
+// line or mirror anything to stderr.
+//
+// TestTaskGate_SilentBlockedNoMirrorOutput 钉住 silent 路径：--silent 是 hook 的退出码
+// 契约（设计上无文本面）——BLOCKED 出口不得打印判定行，也不得镜像到 stderr。
+func TestTaskGate_SilentBlockedNoMirrorOutput(t *testing.T) {
+	root := setupNextProject(t)
+	stdout, stderr, code := runForgeStreams(t, root, "task", "gate", "task-implement", "--ref", "feat/next-line", "--silent")
+	if code == 0 {
+		t.Fatalf("empty-branch implement gate must BLOCK (exit != 0), got 0:\n%s", stdout)
+	}
+	for _, s := range []string{"❌", "→ next:", "BLOCKED"} {
+		if strings.Contains(stdout, s) {
+			t.Fatalf("silent mode must not print %q to stdout:\n%s", s, stdout)
+		}
+		if strings.Contains(stderr, s) {
+			t.Fatalf("silent mode must not mirror %q to stderr:\n%s", s, stderr)
+		}
+	}
+}
+
+// TestMirrorBlockedToStderrDecision pins the C.3 decision table (pure-function anchor —
+// the TTY side cannot be exercised by the piped subprocess e2e above).
+//
+// TestMirrorBlockedToStderrDecision 钉住 C.3 判定表（纯函数锚点——TTY 一侧无法由上面
+// 管道子进程 e2e 走到）。
+func TestMirrorBlockedToStderrDecision(t *testing.T) {
+	cases := []struct {
+		name                string
+		passed, silent, tty bool
+		want                bool
+	}{
+		{"piped blocked mirrors", false, false, false, true},
+		{"tty blocked does not mirror (noise guard)", false, false, true, false},
+		{"piped passed does not mirror (contract complete)", true, false, false, false},
+		{"silent blocked does not mirror (hook contract is text-free)", false, true, false, false},
+	}
+	for _, c := range cases {
+		if got := mirrorBlockedToStderr(c.passed, c.silent, c.tty); got != c.want {
+			t.Errorf("%s: mirrorBlockedToStderr(%v,%v,%v) = %v, want %v", c.name, c.passed, c.silent, c.tty, got, c.want)
+		}
 	}
 }
 
