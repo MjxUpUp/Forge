@@ -148,7 +148,7 @@ func ScanCheatPatternsRange(root, gitRange string) []CheatFinding {
 	findings = append(findings, detectTypeSuppression(prod)...)
 	findings = append(findings, detectErrorSwallow(code)...)
 	findings = append(findings, detectDeadBranch(code)...)
-	findings = append(findings, detectCommentOnly(prod)...)
+	findings = append(findings, detectCommentOnly(prod, commentCleanupTask(prod))...)
 	findings = append(findings, detectCommentDebt(prod)...)
 	findings = append(findings, detectPhantomImport(root, code)...)
 	findings = append(findings, detectPathAssumption(code)...)

@@ -8,7 +8,15 @@ metadata:
   requires_forge: "true"
   composes: [docs-consistency-guard]
   triggers: [{"event":"PreToolUse","match":"Bash","keywords":["git tag","npm publish","goreleaser","docker push","cargo publish"],"cooldown":300,"inline":"发布动作前过 release-readiness 清单（M1-M7）——不可逆操作先验证","follow":"forge release|forge docs lint"}]
+  refs_critical: ["references/recommended-checks.md"]
 ---
+
+## 步骤 0：必读
+
+执行前先读 `references/recommended-checks.md`——前置知识，不读无法执行。
+
+
+
 
 # 发布 Readiness 门禁
 

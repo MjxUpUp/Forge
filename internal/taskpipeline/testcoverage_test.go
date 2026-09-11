@@ -819,3 +819,18 @@ func TestClassifyChangedPath(t *testing.T) {
 		}
 	}
 }
+
+// TestTestCoverageDetail_Carries1_58Notice pins G.1: the advisory detail carries the 1.58
+// ratchet notice per compat commitments §二.1① (advisory text continuously shows the version).
+//
+// TestTestCoverageDetail_Carries1_58Notice 钉住 G.1：advisory detail 携带 1.58 ratchet 预告
+// （承诺表 §二.1①——advisory 文案持续显示预告版本）。
+func TestTestCoverageDetail_Carries1_58Notice(t *testing.T) {
+	got := testCoverageDetail(false, []string{"internal/x/a.go", "internal/y/b.go"})
+	if !strings.Contains(got, "1.58") || !strings.Contains(got, "BLOCKED") {
+		t.Fatalf("coverage advisory must carry the 1.58 ratchet notice, got: %s", got)
+	}
+	if got := testCoverageDetail(true, nil); strings.Contains(got, "1.58") {
+		t.Fatalf("passing detail must not carry the notice, got: %s", got)
+	}
+}

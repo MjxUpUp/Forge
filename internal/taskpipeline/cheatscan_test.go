@@ -118,7 +118,7 @@ func TestDetectCommentOnly(t *testing.T) {
 		al("only_doc.go", 1, "// 这是个修复"),
 		al("only_doc.go", 2, ""),
 		al("only_doc.go", 3, "// 见 issue #42"),
-	})
+	}, false)
 	if len(got) != 1 || got[0].File != "only_doc.go" || got[0].Severity != "low" {
 		t.Fatalf(`全注释文件应命中 comment-only (low): %+v`, got)
 	}
@@ -128,7 +128,7 @@ func TestDetectCommentOnly(t *testing.T) {
 	got = detectCommentOnly([]addedLine{
 		al("real_fix.go", 1, "// fix bug"),
 		al("real_fix.go", 2, "return nil"),
-	})
+	}, false)
 	if len(got) != 0 {
 		t.Fatalf(`混入逻辑行不应命中: %+v`, got)
 	}
@@ -138,7 +138,7 @@ func TestDetectCommentOnly(t *testing.T) {
 	got = detectCommentOnly([]addedLine{
 		al("a.go", 1, "// doc only"),
 		al("b.go", 1, "x := 1"),
-	})
+	}, false)
 	if len(got) != 1 || got[0].File != "a.go" {
 		t.Fatalf(`应只标 a.go: %+v`, got)
 	}
@@ -458,5 +458,35 @@ func TestDetectPhantomImport(t *testing.T) {
 				t.Errorf(`%s: bad finding %+v`, c.name, f)
 			}
 		}
+	}
+}
+
+// TestDetectCommentOnly_CleanupTaskSuppressed pins G.2: when ≥90% of added lines are
+// comments/blanks (a deliberate comment-cleanup task — machine-乙's chore/comment-dedup with
+// 160 false findings), the entire pattern class is suppressed; a normal task with one
+// comment-only file still flags.
+//
+// TestDetectCommentOnly_CleanupTaskSuppressed 钉住 G.2：任务变更 ≥90% 为注释/空行
+// （注释清理任务形态——乙机 chore/comment-dedup 160 条误报实录）时整类抑制；
+// 普通任务的单个 comment-only 文件仍标。
+func TestDetectCommentOnly_CleanupTaskSuppressed(t *testing.T) {
+	cleanup := make([]addedLine, 12)
+	for i := range cleanup {
+		cleanup[i] = al("docs.go", i+1, "// cleanup note")
+	}
+	if got := detectCommentOnly(cleanup, commentCleanupTask(cleanup)); len(got) != 0 {
+		t.Fatalf("cleanup-shaped task must suppress the class, got %d findings", len(got))
+	}
+	mixed := []addedLine{
+		al("a.go", 1, "// note"),
+		al("b.go", 1, "x := 1"),
+	}
+	if got := detectCommentOnly(mixed, commentCleanupTask(mixed)); len(got) != 1 {
+		t.Fatalf("normal task still flags the comment-only file, got %d", len(got))
+	}
+	// 少于 10 行不足判形态——不抑制
+	short := []addedLine{al("a.go", 1, "// only")}
+	if commentCleanupTask(short) {
+		t.Fatal("under 10 lines must not classify as cleanup")
 	}
 }

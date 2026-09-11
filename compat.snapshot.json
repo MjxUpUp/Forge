@@ -1328,7 +1328,7 @@
     {
       "tree": "canonical",
       "name": "transcript-forensics",
-      "sha256": "256167f4510a3f520bba85bcd7013c46430f8164a58e7629ba432fb69dd959d9"
+      "sha256": "f727a8a07047987f95c30194479dc13519bc2d7c34b0596137e0d8c464b952d9"
     },
     {
       "tree": "canonical",
@@ -1338,7 +1338,7 @@
     {
       "tree": "forge",
       "name": "release-readiness",
-      "sha256": "f7ac93f325036cb3917b34863865275dac98b93e599247faa4191e3489ad78c0"
+      "sha256": "3ab4d7f5173b98a3e0b8798c43bff230eecb3fc4880f29345d4c7c7ff9f5d3d1"
     },
     {
       "tree": "forge",
