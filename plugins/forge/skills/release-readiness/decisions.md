@@ -108,3 +108,20 @@ triggers 增加 inline/follow 声明（release-readiness 的 follow 收窄去掉
 ### Evidence
 
 docs/design/harness-fixes-a-g-2026-09.md A 节；B2-1 评审的 A4 灌水向量分析
+
+## [d-18d420aa62a68e74-c74ed312] accept
+
+- **Skill**: release-readiness
+- **DecidedAt**: 2026-09-11T01:41:08Z
+
+### Diagnosis
+
+同上——release-readiness 甲 0/5 加载零下钻
+
+### Revision
+
+frontmatter metadata 段增 refs_critical + 步骤 0 必读块
+
+### Evidence
+
+docs/design/harness-fixes-a-g-2026-09.md D 节
