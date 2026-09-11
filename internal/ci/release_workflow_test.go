@@ -162,16 +162,22 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	// 传播竞态退避（v1.56.5 实录）：装回失败先官方 registry API 核实版本存在性，存在才
 	// 30s 退避重试——防 read-after-write 竞态把已成功发布误判为失败，也防重试掩盖真发布
 	// 失败（API 查不到必须立即报错）。官方源锚点 registry.npmjs.org 必须在——镜像滞后误判。
-	hasRaceRetry := false
+	// 「不在官方 registry」锚定 else 分支的立即报错串：只删该分支让重试变无条件时，本
+	// 锚点红（防掩盖语义与注释声明对齐）。
+	installRun := ""
 	for _, s := range npmVerify.Steps {
-		if strings.Contains(s.Run, "npm i -g") &&
-			strings.Contains(s.Run, "registry.npmjs.org/@agent_forge/forge") &&
-			strings.Contains(s.Run, "sleep 30") {
-			hasRaceRetry = true
+		if strings.Contains(s.Run, "npm i -g") {
+			installRun = s.Run
 		}
 	}
-	if !hasRaceRetry {
-		t.Fatal("npm-verify 的 npm i -g 步骤必须含 registry 传播竞态退避（官方 API 核实 + sleep 30 重试）——v1.56.5 实录竞态的防回归锚点")
+	for _, anchor := range []string{
+		"registry.npmjs.org/@agent_forge/forge", // 官方源核实（非镜像）
+		"sleep 30",                              // 退避重试
+		"不在官方 registry",                      // API 查不到立即报错（防重试掩盖真失败）
+	} {
+		if !strings.Contains(installRun, anchor) {
+			t.Fatalf("npm-verify 装回步骤缺传播竞态退避锚点 %q——v1.56.5 实录竞态的防回归（官方 API 核实 + 退避重试 + 不掩盖真失败三件缺一）", anchor)
+		}
 	}
 	verifyRuns := jobStepRuns(npmVerify)
 	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
