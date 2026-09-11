@@ -62,7 +62,7 @@ forge trace feat/demo           # 查看任务的完整证据链
 <table>
   <tr>
     <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
-    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>22 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
+    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>23 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
   </tr>
   <tr>
     <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。Agent 无法经 bash 绕道篡改。</td>
@@ -202,7 +202,7 @@ Layer 3: 会话结束验证
 Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
 
 <details>
-<summary><b>📖 内置 Hook 完整清单（22 个）</b></summary>
+<summary><b>📖 内置 Hook 完整清单（23 个）</b></summary>
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|

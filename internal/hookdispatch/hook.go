@@ -286,7 +286,7 @@ func isGlobalHook(name string) bool {
 // RunHook 里 skill-trigger 特例之后。
 func isInProcessHook(name string) bool {
 	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge" ||
-		name == "conventions-context" || name == "conventions-write"
+		name == "conventions-context" || name == "conventions-write" || name == "gate-cmd-form"
 }
 
 // RunHook is the RunE of `forge hook <name>`: reads host stdin JSON, resolves
