@@ -173,7 +173,7 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	for _, anchor := range []string{
 		"registry.npmjs.org/@agent_forge/forge", // 官方源核实（非镜像）
 		"sleep 30",                              // 退避重试
-		"不在官方 registry",                      // API 查不到立即报错（防重试掩盖真失败）
+		"不在官方 registry",                         // API 查不到立即报错（防重试掩盖真失败）
 	} {
 		if !strings.Contains(installRun, anchor) {
 			t.Fatalf("npm-verify 装回步骤缺传播竞态退避锚点 %q——v1.56.5 实录竞态的防回归（官方 API 核实 + 退避重试 + 不掩盖真失败三件缺一）", anchor)
