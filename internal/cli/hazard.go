@@ -79,7 +79,37 @@ var hazardConfirmCmd = &cobra.Command{
 		}
 		return nil
 	},
+	// F.2a confirm 链式分离（设计 F，首发即 blocked 指向承诺表 §二.1②）：
+	// --last / --fingerprint / 命令参数之后不得再接 ; / | / && 等连接符——confirm 与目标
+	// 危险命令同一 Bash 调用是「自助闭环」形态（甲机 53/53 实录）。命令参数本身可能含
+	// 连接符（确认的恰是那条复合命令），故只拦 confirm 自身被链式续行的形态：参数串中
+	// 出现「独立段以 confirm 开头且后面还有连接符续段」时拒绝。简化判定（覆盖实录形态）：
+	// 参数首段之前存在连接符（confirm 嵌在链条中段/尾段），或参数串以连接符结尾。
+	// PreToolUse 首行快速判定更可靠——这里在 CLI 层兜底（直接终端调用绕过 hook 的场景）。
 	RunE: runHazardConfirm,
+}
+
+// confirmChainSeparated reports whether the confirm invocation is chained with other commands
+// (F.2a): a leading connector before the confirm argument means confirm rides mid/late in a
+// compound line — the self-service loop the design severs.
+//
+// confirmChainSeparated 报告 confirm 调用是否被链式续行（F.2a）：confirm 参数前存在连接符
+// = confirm 嵌在复合命令的中/尾段——设计要切断的自助闭环形态。
+func confirmChainSeparated(rawArgs []string) bool {
+	if len(rawArgs) == 0 {
+		return false
+	}
+	joined := strings.Join(rawArgs, " ")
+	head := strings.TrimSpace(joined)
+	lower := strings.ToLower(head)
+	// confirm 自身在链条中段/尾段：前导 && / ; / | （cd X && forge hazard confirm … 形态
+	// 由 hook 层的 cd 前缀豁免覆盖；CLI 层只看参数本身的连接符）。
+	for _, prefix := range []string{"&& ", "; ", "| ", "|| "} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // hazardConfirmFingerprint 由 --fingerprint flag 注入。非空时走 ConfirmByFingerprint
@@ -125,6 +155,21 @@ var hazardLogCmd = &cobra.Command{
 // runHazardConfirm 登记确认。MinimumNArgs(1) + Join：agent 可引号传整串，也可不引号
 // （多 arg 被空格 join 还原）——空白归一在 hazard.Fingerprint 内做，两种传法同指纹。
 func runHazardConfirm(cmd *cobra.Command, args []string) error {
+	// F.2a confirm 链式分离（设计 F，首发即 blocked——承诺表 §二.1②，形态门禁豁免见
+	// §二.3 裁决）：confirm 参数以连接符开头 = confirm 嵌在复合命令的中/尾段（甲机 53/53
+	// 自助闭环实录形态）。拒绝并指引单独执行——拒绝的是形态不是操作，单独跑 confirm 即放行。
+	if confirmChainSeparated(args) {
+		return fmt.Errorf("BLOCKED: hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这正是拦截要切断的自助闭环。请单独执行：forge hazard confirm --last")
+	}
+	// F.2b confirm 真人化（设计 F）：1.56 advisory——agent Bash 调用（stdin 非终端）里
+	// confirm 是自助确认，打预告行；1.58 起拒绝（BLOCKED）并要求用户终端执行，逃生舱
+	// per-task override（承诺表 §二.2 两 minor 预告）。stdinIsHumanTerminal 复用
+	// task_gate 的 char-device 判定。
+	// stdin 终端判定与 clitask.stdinIsHumanTerminal 同款（char device）；本地副本因
+	// clitask 的版本是可注入变量（测试态），hook 场景需要真判定。
+	if fi, err := os.Stdin.Stat(); err == nil && (fi.Mode()&os.ModeCharDevice) == 0 {
+		fmt.Fprintf(os.Stderr, "ADVISORY: hazard confirm 正在 agent Bash（非用户终端）中执行——自 1.58 起将要求在用户终端运行（forge hazard confirm --last）或经 per-task override 登记\n")
+	}
 	// --last 免复制路径：直接从事件流确认最新被拦命令（指纹是 hook 拦截时写入的，
 	// 天然权威、零转写）。最先判定：--last 表达的意图就是"刚被拦的那条"，不需要
 	// 其他输入。

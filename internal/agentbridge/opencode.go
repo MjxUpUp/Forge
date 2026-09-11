@@ -151,7 +151,7 @@ const CLAUDE_TOOL: Record<string, string> = {
 const PRE_HOOKS: Record<string, string[]> = {
   Write: ["forge hook freeze-guard", "forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit", "forge hook conventions-write"],
   Edit: ["forge hook freeze-guard", "forge hook task-guard", "forge hook assertion-check", "forge hook read-before-edit", "forge hook conventions-write"],
-  Bash: ["forge hook bash-guard", "forge hook hazard-guard"],
+  Bash: ["forge hook bash-guard", "forge hook hazard-guard", "forge hook gate-cmd-form"],
 };
 const POST_HOOKS: Record<string, string[]> = {
   // test-nudge: mid-task test reminder (#4-E, advisory); tool-track on Bash: the

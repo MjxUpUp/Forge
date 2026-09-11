@@ -286,7 +286,7 @@ func isGlobalHook(name string) bool {
 // RunHook 里 skill-trigger 特例之后。
 func isInProcessHook(name string) bool {
 	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge" ||
-		name == "conventions-context" || name == "conventions-write"
+		name == "conventions-context" || name == "conventions-write" || name == "gate-cmd-form"
 }
 
 // RunHook is the RunE of `forge hook <name>`: reads host stdin JSON, resolves
@@ -598,6 +598,12 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	}
 	if name == "test-nudge" {
 		return runTestNudgeHook(hookInput, root, cmd.Root().Version, agent)
+	}
+	// gate-cmd-form（设计 C）：PreToolUse Bash 的进程内 hook——门禁命令嵌分号/截断管道/
+	// 多门禁连刷时 advisory 提示（1.56）+ checklog warn 行；1.58 ratchet BLOCKED。永不阻断
+	// 于本版本（承诺表 ≥2 minor 预告）。
+	if name == "gate-cmd-form" {
+		return runGateCmdFormHook(hookInput, root, cmd.Root().Version, agent)
 	}
 	// conventions-context / conventions-write：conventions-profile 层 2 的注入
 	// hook（hook_conventions.go），与上面同类——advisory、永不阻断、需要 stdin 的
