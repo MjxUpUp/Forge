@@ -18,6 +18,7 @@ import (
 // CLAUDE.md / AGENTS.md forge 段中。守护的根因：2026-08 审计发现 9 个已接线 hook
 // （含 hazard-guard / freeze-guard 两个硬阻断与 review-stop exit-2 阻断）文档缺席
 // ——agent 冷撞 BLOCKED 无解法。此后加 hook 不写文档会在这里红，不再静默出仓。
+// (gate-cmd-form hook/error-table rows in claudemd.go are guarded by this anchor test — failed before the sync, green after.)
 func TestClaudeMDCoversAllWiredHooks(t *testing.T) {
 	wired := map[string]bool{}
 	for _, groups := range hooks.ForgeHookSpec() {

@@ -149,6 +149,7 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook bash-guard"},
 					{Type: "command", Command: "forge hook hazard-guard"},
+					{Type: "command", Command: "forge hook gate-cmd-form"},
 					{Type: "command", Command: "forge hook skill-trigger"},
 				},
 			},
