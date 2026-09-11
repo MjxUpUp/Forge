@@ -10,6 +10,35 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.56.0](https://github.com/MjxUpUp/Forge/compare/v1.55.1...v1.56.0) (2026-09-11)
+
+
+### Features
+
+* **eval:** forge eval harness-audit——A-G 修复的可复算度量 + 门禁命令形态分类器（设计 B1/M） ([74d74cf](https://github.com/MjxUpUp/Forge/commit/74d74cf3b6066e86e0d593a49c2011a608570de6))
+* **hooks:** C gate-cmd-form advisory hook + F.1 解释器 heredoc 数据上下文 + F.2a confirm 链式分离 + F.2b advisory（设计 B2 批） ([8f8ddbe](https://github.com/MjxUpUp/Forge/commit/8f8ddbedad0e227839f8ed7d325f8809d59bc9a6))
+* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 ([01a46d9](https://github.com/MjxUpUp/Forge/commit/01a46d935ab1cd32b8bded9b2719feeea5a0aed8))
+* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 ([461ef57](https://github.com/MjxUpUp/Forge/commit/461ef5795de1154ce1252df22f635cea91784d96))
+* **skilltrigger:** A 通道重构——决策点加载/动作点内联 + 输出失败门；B next 推送化 ([c875b8a](https://github.com/MjxUpUp/Forge/commit/c875b8abab1f22052ef9d8f233a8a88c5861e7cc))
+* **taskpipeline,skillsqa:** G.1 覆盖预告 + G.2 注释清理抑制 + D refs_critical/R19/步骤 0（设计 B2-3+B3 批） ([3811583](https://github.com/MjxUpUp/Forge/commit/38115831154dd994b2f1d229978a432a0060a817))
+
+
+### Bug Fixes
+
+* **attribution:** code-review 回应——同口径读方补齐 + 探针覆盖全部 hook 写点 + hazard 去重加会话维度 ([c6db533](https://github.com/MjxUpUp/Forge/commit/c6db533dc1c8f1c70cebad9850c38662740c093c))
+* **attribution:** E 完成即冻结归因 + F.3 hazard 事件去重（设计 B0 批） ([35b1cdb](https://github.com/MjxUpUp/Forge/commit/35b1cdb401a5000bedeb389e30811d31a51f4ac3))
+* **attribution:** 空 session 不得被 sanitize 成占位符——runHazardLog 与 hook 主记录点直用入口归一值 ([9221bb8](https://github.com/MjxUpUp/Forge/commit/9221bb8aa9ea16233fbfd3fc18c54ab567077aba))
+* **eval:** B1 双轨评审回应——基线自证 + 分类器绕过面收窄 + E1/F2/A3 口径与设计对齐 ([5fd2642](https://github.com/MjxUpUp/Forge/commit/5fd26426f3386ab3fcc0c7a26e07295546bd3e07))
+* **eval:** 确认轮两小项——loader_warnings 守卫反转为真断言 + E1 泄漏拆无 session/他会话两字段 ([057ec20](https://github.com/MjxUpUp/Forge/commit/057ec207ae692995779b8339ac06c731511e95ac))
+* **hooks:** B2-2 双轨评审回应——hook 分派接线 + F.1 裸 tag 主路径 + F.2a hook 层执法 + recall 补全 ([c937344](https://github.com/MjxUpUp/Forge/commit/c937344cc29fe1179044bbea1cc6f0b7e924e6c4))
+* **skills:** decisions.md 补入 pack 镜像 + compat 快照重钉 ([563d0b5](https://github.com/MjxUpUp/Forge/commit/563d0b5d9d50dd157baa2e0c8ac7e028cbe3834d))
+* **skilltrigger:** B2-1 双轨评审回应——抑制计数接线/anyInline 聚合/编译器失败签名/B1 占位符口径等 ([0d64789](https://github.com/MjxUpUp/Forge/commit/0d64789b2bd51de6bae09341973a102d1cd9788b))
+* **skilltrigger:** 确认轮 9 条新发现——anyInline 载荷侧/go 编译签名/词边界/夹具补齐 ([4d61a30](https://github.com/MjxUpUp/Forge/commit/4d61a30c4fbf3740d1c6aa6bad4dc55aa57e474b))
+* **skilltrigger:** 终审轮 3 条——next_line_test 注释如实（complete 面未覆盖）、decisions.md 误抄两树修正、中文失败签名恢复全词（测试失败|编译失败） ([d1bd632](https://github.com/MjxUpUp/Forge/commit/d1bd632fc1602d9e1360c5ffa399e5bad6b3374e))
+* **test:** next-line 测试夹具补 git identity——CI 无全局 git config 时 commit exit 128 ([896ac0b](https://github.com/MjxUpUp/Forge/commit/896ac0b48c46e7a54123e55c9461791daf40583a))
+* **test:** 三包 TestMain 隔离 FORGE_DATA_HOME——根治孤儿目录泄写 ([ee03257](https://github.com/MjxUpUp/Forge/commit/ee032571410646a04338cf3c75514dd5163e4dd6))
+* **test:** 审查回应——TestMain 显式清理替换 defer 死代码 ([1b06575](https://github.com/MjxUpUp/Forge/commit/1b0657594595380040d16e4c934a78b6a1083d13))
+
 ## [1.55.1](https://github.com/MjxUpUp/Forge/compare/v1.55.0...v1.55.1) (2026-09-09)
 
 
