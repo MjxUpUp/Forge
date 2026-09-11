@@ -26,6 +26,8 @@ func setupNextProject(t *testing.T) string {
 			t.Fatalf("git %v: %v", args, err)
 		}
 	}
+	run("config", "user.email", "t@example.com")
+	run("config", "user.name", "t")
 	run("commit", "--allow-empty", "-m", "init")
 	run("checkout", "-b", "feat/next-line")
 	st := &taskpipeline.TaskState{TaskRef: "feat/next-line", Branch: "feat/next-line", SessionID: "s", StartedAt: time.Now()}
