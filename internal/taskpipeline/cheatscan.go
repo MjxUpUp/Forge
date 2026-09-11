@@ -141,7 +141,7 @@ func ScanCheatPatterns(root string, state *TaskState) []CheatFinding {
 	findings = append(findings, detectTypeSuppression(prod)...)
 	findings = append(findings, detectErrorSwallow(code)...)
 	findings = append(findings, detectDeadBranch(code)...)
-	findings = append(findings, detectCommentOnly(prod)...)
+	findings = append(findings, detectCommentOnly(prod, commentCleanupTask(prod))...)
 	findings = append(findings, detectCommentDebt(prod)...)
 	findings = append(findings, detectPhantomImport(root, code)...)
 	findings = append(findings, detectPathAssumption(code)...)
@@ -341,7 +341,13 @@ func isCommentOrBlank(text string) bool {
 // detectCommentOnly：逐源码文件看新增行——若某文件的新增行全是注释/空行、零逻辑
 // 变更，疑似"声称修复但只加注释"。per-file 而非 per-task：更精确（只标问题文件），
 // 也减少噪声（3 文件改 1 个 comment-only 只标那 1 个）。
-func detectCommentOnly(added []addedLine) []CheatFinding {
+func detectCommentOnly(added []addedLine, suppressed bool) []CheatFinding {
+	// G.2 上下文抑制（设计 G，乙机实录：chore/comment-dedup 报 160 条 comment-only——
+	// 该任务本意即清注释，全量误报）。suppressed=true（任务变更 ≥90% 为注释/空行——
+	// 注释清理任务）时整类抑制（调用方算比例），避免噪声淹没真信号。
+	if suppressed {
+		return nil
+	}
 	byFile := make(map[string][]addedLine)
 	for _, a := range added {
 		byFile[a.file] = append(byFile[a.file], a)
@@ -366,6 +372,24 @@ func detectCommentOnly(added []addedLine) []CheatFinding {
 		}
 	}
 	return out
+}
+
+// commentCleanupTask reports whether ≥90% of the task's added lines are comments/blanks —
+// the shape of a deliberate comment-cleanup task, where comment-only findings are noise (G.2).
+//
+// commentCleanupTask 报告任务的变更行是否 ≥90% 为注释/空行——注释清理任务的形态，
+// 该形态下 comment-only 发现是噪声（G.2）。
+func commentCleanupTask(added []addedLine) bool {
+	if len(added) < 10 {
+		return false // 太少不足判形态
+	}
+	comment := 0
+	for _, a := range added {
+		if isCommentOrBlank(a.text) {
+			comment++
+		}
+	}
+	return comment*10 >= len(added)*9
 }
 
 // detectCommentDebt detects debt markers inside new comment lines — flagging problems without

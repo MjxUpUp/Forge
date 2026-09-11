@@ -192,6 +192,7 @@ func AuditSkill(skillDir string) (*SkillReport, error) {
 	// 运行时依赖，本规则不针对措辞、只针对操作性行为。存量豁免见 R18Grandfathered
 	// （冻结只减不增）；`metadata.requires_forge: "true"` 的 forge 原生 skill 整体跳过。
 	checkForgeRefs(skillDir, fm, &issues, &advisories)
+	checkRefsCritical(skillDir, fm, &advisories)
 
 	return &SkillReport{
 		Name:        name,
@@ -490,4 +491,36 @@ func checkForgeRefs(skillDir string, fm *skillsfm.Frontmatter, issues, advisorie
 		return
 	}
 	*issues = append(*issues, fmt.Sprintf(`forge 反向依赖违例(%v)——skills 零反向依赖契约：不得含 forge CLI 调用/~/.forge 路径/$FORGE_* 变量/forge-integration.md 指针，集成知识放 forge 侧（CONVENTIONS §13，R18）`, rendered))
+}
+
+// checkRefsCritical (R19, advisory): a skill declaring metadata.refs_critical (JSON array of
+// reference paths that are prerequisites to executing the skill — design D) must carry a
+// 步骤 0 must-read block in its body naming every declared path; the block is capped at 5
+// lines to prevent the declaration becoming a content-bloat vector (the reference's body
+// stays in references/, the SKILL.md carries only the pointer).
+//
+// checkRefsCritical（R19，advisory）：声明 metadata.refs_critical（JSON 数组——执行该
+// skill 的前置 reference 路径，设计 D）的 skill，正文必须含「步骤 0」必读块逐路径点名；
+// 块上限 5 行——防声明变成正文膨胀向量（reference 正文留在 references/，SKILL.md 只带指针）。
+func checkRefsCritical(skillDir string, fm *skillsfm.Frontmatter, advisories *[]string) {
+	raw := fm.Metadata["refs_critical"]
+	if strings.TrimSpace(raw) == "" {
+		return
+	}
+	var paths []string
+	if err := json.Unmarshal([]byte(raw), &paths); err != nil || len(paths) == 0 {
+		*advisories = append(*advisories, "refs_critical 非合法 JSON 数组（如 [\"references/x.md\"]）")
+		return
+	}
+	// 只查正文（fm.Body 已剥 frontmatter）——声明在 frontmatter 里含路径，全文搜会自匹配。
+	body := strings.ToLower(fm.Body)
+	for _, p := range paths {
+		base := filepath.Base(strings.ToLower(p))
+		if !strings.Contains(body, base) {
+			*advisories = append(*advisories, fmt.Sprintf("refs_critical 声明 %s 但正文步骤 0 必读块未点名该文件——不读该 reference 无法执行核心流程（设计 D）", p))
+		}
+	}
+	if !strings.Contains(body, "步骤 0") && !strings.Contains(body, "step 0") {
+		*advisories = append(*advisories, "声明 refs_critical 的 skill 正文须有「步骤 0」必读块（≤5 行，逐路径点名）")
+	}
 }

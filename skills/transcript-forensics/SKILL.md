@@ -7,7 +7,12 @@ metadata:
   steps: 5
   composes: [systematic-debugging]
   triggers: [{"event":"UserPromptSubmit","keywords":["检查会话","检查这个会话","会话记录","协作记录","会话审计","复盘会话","token 消耗","烧 token","工具调用循环","不断的工具调用","session jsonl","transcript"],"cooldown":600}]
+  refs_critical: ["references/transcript-formats.md"]
 ---
+
+## 步骤 0：必读
+
+执行前先读 `references/transcript-formats.md`——前置知识，不读无法执行。
 
 # 会话转录取证
 
