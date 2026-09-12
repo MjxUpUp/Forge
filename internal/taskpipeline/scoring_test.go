@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
 // setupScoreableTask 建临时 git 仓库 + 全门禁通过的任务状态，评分远高于逃生舱
@@ -205,5 +207,110 @@ func TestBuildEvaluateInput_SkipsInfraEntries(t *testing.T) {
 	}
 	if !input.CompileChecked {
 		t.Error("CompileChecked 应保持 gate 历史的 true")
+	}
+}
+
+// TestScoreTask_EvidenceBundle_UntestedAndRisks pins P4: the evidence bundle
+// must state what was NOT verified (changed source file without paired test →
+// UntestedAreas) and the residual risk left behind (open findings →
+// RemainingRisks as "severity: content"). Both are disclosure-only — the score
+// itself must be unchanged by their presence (fixture without them scores the
+// same as the escape tests' ~86.5 baseline).
+//
+// TestScoreTask_EvidenceBundle_UntestedAndRisks 钉死 P4：证据束必须声明「什么没
+// 被验证」（改源码无配对测试 → UntestedAreas）与「剩余风险」（open 发现 →
+// RemainingRisks，"severity: content"）。两者仅披露——字段存在与否不得改变分
+// 数（对照逃生舱测试的 ~86.5 基线）。封顶：open 发现超过 scoringtypes.RemainingRisksCap 时
+// 以汇总行占位，不静默丢弃。
+func TestScoreTask_EvidenceBundle_UntestedAndRisks(t *testing.T) {
+	dir, state := setupScoreableTask(t, "evidence-p4")
+	// 任务期改动一个源文件，无配对测试（工作树未提交形态，taskChangedFiles 计入）。
+	if err := os.WriteFile(filepath.Join(dir, "handler.go"), []byte("package main\n\nfunc H() int { return 1 }\n"), 0644); err != nil {
+		t.Fatalf("write handler.go: %v", err)
+	}
+	// 两条 open 发现 + 一条 fixed（fixed 不算残余）。
+	state.AddFinding(Finding{Content: "并发窗口未加锁", Severity: "critical", Status: "open"})
+	state.AddFinding(Finding{Content: "日志可能含敏感字段", Severity: "minor", Status: "fixed"})
+
+	if err := ScoreTask(dir, state); err != nil {
+		t.Fatalf("ScoreTask: %v", err)
+	}
+	ev := state.Score.Evidence
+	if ev == nil {
+		t.Fatal("评分应带 EvidenceSummary")
+	}
+	foundHandler := false
+	for _, f := range ev.UntestedAreas {
+		if filepath.ToSlash(f) == "handler.go" {
+			foundHandler = true
+		}
+		if strings.HasSuffix(f, "_test.go") {
+			t.Errorf("UntestedAreas 不应含测试文件: %q", f)
+		}
+	}
+	if !foundHandler {
+		t.Errorf("UntestedAreas 应含 handler.go，got %v", ev.UntestedAreas)
+	}
+	if len(ev.RemainingRisks) != 1 || !strings.Contains(ev.RemainingRisks[0], "critical") || !strings.Contains(ev.RemainingRisks[0], "并发窗口未加锁") {
+		t.Errorf("RemainingRisks 应恰含 open 的 critical 发现（fixed 不入），got %v", ev.RemainingRisks)
+	}
+}
+
+// TestScoreTask_EvidenceBundle_RisksCapped pins the evidence-size budget:
+// open findings beyond scoringtypes.RemainingRisksCap collapse into a summary line instead of
+// echoing unboundedly (evidence bundle bloat is the same debt as code bloat).
+//
+// TestScoreTask_EvidenceBundle_RisksCapped 钉死证据体量预算：open 发现超过
+// scoringtypes.RemainingRisksCap 时折叠为汇总行——证据束无界膨胀与代码膨胀同属债务。
+func TestScoreTask_EvidenceBundle_RisksCapped(t *testing.T) {
+	dir, state := setupScoreableTask(t, "evidence-cap")
+	for i := 0; i < scoringtypes.RemainingRisksCap+3; i++ {
+		state.AddFinding(Finding{Content: fmt.Sprintf("风险 %d", i), Severity: "minor", Status: "open"})
+	}
+	if err := ScoreTask(dir, state); err != nil {
+		t.Fatalf("ScoreTask: %v", err)
+	}
+	risks := state.Score.Evidence.RemainingRisks
+	if len(risks) != scoringtypes.RemainingRisksCap+1 {
+		t.Fatalf("应恰为 %d 条（cap + 1 汇总行），got %d", scoringtypes.RemainingRisksCap+1, len(risks))
+	}
+	last := risks[len(risks)-1]
+	if !strings.Contains(last, "未逐条列出") || !strings.Contains(last, "3") {
+		t.Errorf("末行应是超限汇总（3 条未列），got %q", last)
+	}
+}
+
+// TestScoreTask_EvidenceBundle_UntestedUnderEscape pins the M3 honesty fix
+// (2026-09-12 review): with the test-coverage escape active, the gate path's
+// CoverageMissing is nil-by-design — the disclosure must recompute with the
+// escape-ignoring pairing instead of laundering the gap as "fully tested"
+// (this repo has a precedent of exactly this whitewash regression). Regression
+// to `return covered` must turn this test red.
+//
+// TestScoreTask_EvidenceBundle_UntestedUnderEscape 钉死 M3 诚实性修复（2026-09-12
+// 审查）：test-coverage 逃生激活时，门禁路径的 CoverageMissing 按设计为 nil——
+// 披露必须用无视逃生的配对口径现算，而不是把缺口洗成「全部有测」（本仓库有
+// 同型洗白回归前科）。回归成 `return covered` 时本测试必须变红。
+func TestScoreTask_EvidenceBundle_UntestedUnderEscape(t *testing.T) {
+	dir, state := setupScoreableTask(t, "evidence-escape-honest")
+	state.Overrides.TestCoverage = "disable"
+	if err := os.WriteFile(filepath.Join(dir, "uncovered.go"), []byte("package main\n\nfunc U() int { return 2 }\n"), 0644); err != nil {
+		t.Fatalf("write uncovered.go: %v", err)
+	}
+	if err := ScoreTask(dir, state); err != nil {
+		t.Fatalf("ScoreTask: %v", err)
+	}
+	ev := state.Score.Evidence
+	if ev == nil {
+		t.Fatal("评分应带 EvidenceSummary")
+	}
+	found := false
+	for _, f := range ev.UntestedAreas {
+		if filepath.ToSlash(f) == "uncovered.go" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("逃生激活时 UntestedAreas 仍须如实列出未测源文件（不得洗白为空），got %v", ev.UntestedAreas)
 	}
 }
