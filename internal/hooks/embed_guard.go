@@ -801,9 +801,383 @@ is_exec_wrapped() {
   return 1
 }
 
+# GuardFall 语义分词层（canonicalize-then-check，2026-09 W1）：
+# is_hazardous 在原始串上做 case-glob/grep 匹配，与 GuardFall（Adversa AI
+# 2026-06-30，11 个开源 agent 的命令 guard 10 个被绕过）的阵亡者同构——
+# 引号并词（r"m" → rm）、$IFS 分裂（rm$IFS-rf → rm -rf）、命令替换
+# （$(echo rm) -rf）、管道进 shell（base64 -d | sh）、替代 argv（find -delete /
+# dd of=/dev/*）在原始串上全都词法不可见。本层把命令 bash-词法规范化成
+# token（引号字符剥离内容保留=词合并、未引用 $IFS 当分词符、$()/反引号取
+# 内层递归扫描、命令位不可解析→fail-closed），只补原始层的结构性漏放；
+# 原始层与白名单/confirm 链一律不动（两层互补：原始层漏的语义层补，
+# 语义层 fail-open 的（歧义 broken）原始层仍在）。已知边界（confirm 链是
+# 真门禁）：ANSI-C 引用 $'\x20'、sq 内 $IFS、算术替换内的歧义按 broken
+# 处理（语义层让位原始层）；bash-guard 的 write 检测不在本层范围（其后盾
+# 是 file-sentinel 事后对账）。
+MK_MARK=$(printf '\001unresolved')
+
+# hazard_tokens 把命令文本 token 化（BSD/GNU awk 兼容；仓内既定 \x27 惯例）。
+# 输出行协议：S=新段开始（未引用 ; | & 与换行）；M=命令位替换 marker 词；
+# W<词>=普通词（引号字符已剥离、内容保留、内部空格保留=引号包裹的参数词
+# 不散架）；I<文本>=命令替换内层文本（由调用方递归扫描）。
+hazard_tokens() {
+  printf '%s' "$1" | awk '
+    BEGIN { sq = 0; dq = 0; esc = 0; hdtag = ""; broken = 0; wbuf = ""; prev = ""; multi = 0; bt = sprintf("%c", 96) }
+    function flushword() {
+      if (wbuf != "") { printf "W%s\n", tolower(wbuf); wbuf = "" }
+    }
+    function extract_sub(line, start, kind,  n, i, depth, c, out) {
+      n = length(line); i = start; depth = 1; out = ""
+      while (i <= n) {
+        c = substr(line, i, 1)
+        if (kind == "paren") {
+          if (c == "(") depth++
+          else if (c == ")") { depth--; if (depth == 0) { pos = i; return out } }
+        } else {
+          if (c == bt) { pos = i; return out }
+        }
+        if (c == "\n") out = out " "; else out = out c
+        i++
+      }
+      pos = n + 1
+      return out
+    }
+    {
+      if (broken) { next }
+      if (hdtag != "") {
+        line = $0
+        sub(/^[ \t]+/, "", line)
+        if (line == hdtag) { hdtag = ""; print "S" }
+        next
+      }
+      line = $0
+      n = length(line)
+      i = 1
+      lt = 0
+      while (i <= n) {
+        c = substr(line, i, 1)
+        if (esc) { wbuf = wbuf c; esc = 0; prev = c; i++; continue }
+        if (!sq && c == "\\") { esc = 1; i++; continue }
+        if (!dq && c == "\x27") { sq = !sq; prev = c; i++; continue }
+        if (!sq && c == "\"") { dq = !dq; prev = c; i++; continue }
+        if (!sq && !dq) {
+          if (c == "#" && wbuf == "" && (prev == "" || prev == " " || prev == "\t" || prev == ";" || prev == "|" || prev == "&")) break
+          if (c == " " || c == "\t") { flushword(); prev = c; i++; continue }
+          if (c == ";" || c == "|" || c == "&") {
+            # 分隔符分级（审查 M2）：单个 | 是管道（P），下一段是管道终点；
+            # ; & 与双写 || && 是顺序/列表（S），下一段不是管道终点。
+            flushword()
+            nxt = substr(line, i + 1, 1)
+            if ((c == "|" || c == "&") && nxt == c) { print "S"; prev = c; i += 2; continue }
+            if (c == "|") print "P"; else print "S"
+            prev = c
+            i++
+            continue
+          }
+          if (c == "$") {
+            if (substr(line, i, 4) == "$IFS") { flushword(); i += 4; continue }
+            if (substr(line, i, 6) == "${IFS}") { flushword(); i += 6; continue }
+            if (substr(line, i, 2) == "$(") {
+              # 赋值值里的替换（name=$(...)）不产生 marker——命令位仍是后续词
+              # （FOO=$(date) echo hi 的命令是 echo）。判定用 tolower 后的词
+              # （小写化发生在 flush 时，此刻词还是原文大小写）。
+              is_assign = 0
+              if (length(wbuf) > 0) {
+                lbuf = tolower(wbuf)
+                lastc = substr(lbuf, length(lbuf), 1)
+                if (lastc == "=" && lbuf ~ /^[a-z_]/ && lbuf !~ /[^a-z0-9_=]/) is_assign = 1
+              }
+              if (is_assign) { flushword() }
+              else { flushword(); print "M" }
+              inner = extract_sub(line, i + 2, "paren")
+              print "I" inner
+              i = pos + 1
+              continue
+            }
+          }
+          if (c == bt) {
+            is_assign = 0
+            if (length(wbuf) > 0) {
+              lbuf = tolower(wbuf)
+              lastc = substr(lbuf, length(lbuf), 1)
+              if (lastc == "=" && lbuf ~ /^[a-z_]/ && lbuf !~ /[^a-z0-9_=]/) is_assign = 1
+            }
+            if (is_assign) { flushword() }
+            else { flushword(); print "M" }
+            inner = extract_sub(line, i + 1, "bt")
+            print "I" inner
+            i = pos + 1
+            continue
+          }
+          if (c == "<" && substr(line, i + 1, 1) == "<") {
+            if (lt > 0) multi = 1
+            else lt = i
+          }
+        }
+        wbuf = wbuf c
+        prev = c
+        i++
+      }
+      if (multi) { broken = 1 }
+      if (!broken && lt > 0) {
+        rest = substr(line, lt + 2)
+        if (substr(rest, 1, 1) != "<") {
+          sub(/^[ \t]+/, "", rest)
+          sub(/^-/, "", rest)
+          sub(/^[ \t]+/, "", rest)
+          q = substr(rest, 1, 1)
+          if (q == "\x27" || q == "\"") rest = substr(rest, 2)
+          if (match(rest, /^[A-Za-z0-9_.-]+/)) {
+            tag = substr(rest, RSTART, RLENGTH)
+            if (tag ~ /^[0-9]/) broken = 1
+            else hdtag = tag
+          } else broken = 1
+        }
+      }
+      # 行界即段界（审查 C1）：换行是 bash 分隔符，命令位判定必须按行切开——
+      # 否则 echo start<NL>r"m" -rf x 的良性首行把危险词洗成参数位。例外：
+      # 引号跨行（换行是词内字面，词与段都继续）与反斜杠续行（\<NL> 被 bash
+      # 移除，词继续）。heredoc 分隔行闭合后的 S 已在上面补发。broken（多
+      # opener/数字 tag 歧义）时语义层整体让位原始层，不再产出 token。
+      if (!broken) {
+        if (sq || dq) { prev = "" }
+        else if (esc) { esc = 0 }
+        else { flushword(); print "S" }
+      }
+    }
+  '
+}
+
+# hazard_semantic_eval 评估一个段（$1=管道终点标志：1=本段是管道右侧，载荷
+# 词法不可见类规则生效；$2..=词序列）。命中写 SEM_HIT（非空=拦截原因）。
+# 全函数纯 if [[ ]] + glob、零 case——bash 3.2（macOS CI，2007 年版）case
+# parser 对分支体里的单行 [ ] && cmd ;; 与嵌套 case 有 parser bug（已踩两次：
+# a6199a4/bab0f6e，is_tmp_rm_target 同款教训）。
+hazard_semantic_eval() {
+  local piped="$1"
+  shift
+  local -a ws=("$@")
+  local n=${#ws[@]}
+  [ "$n" -eq 0 ] && return 0
+  local i=0
+  # 跳过环境赋值前缀（name=value 词；含 name= 替换值形态）
+  while [ "$i" -lt "$n" ] && [[ "${ws[$i]}" =~ ^[a-z_][a-z0-9_]*= ]]; do
+    i=$((i + 1))
+  done
+  [ "$i" -lt "$n" ] || return 0
+  local cmd="${ws[$i]}"
+  # 命令位不可解析（替换 marker / 未解析变量）→ fail-closed（Lexing is not
+  # evaluation 的教训：解析不出的命令身份不猜，交 confirm 链裁决）
+  if [[ $cmd == "$MK_MARK"* ]]; then
+    SEM_HIT="命令位是命令替换输出（实际命令词法不可判定）"
+    return 0
+  fi
+  if [[ $cmd == *'$'* ]]; then
+    SEM_HIT="命令位含未解析变量（实际命令词法不可判定）"
+    return 0
+  fi
+  local base="${cmd##*/}"
+  # sudo 前缀解包（审查 M1）：真正的命令是 sudo 后第一个非 flag 词——不解包
+  # 则 sudo find/dd 这类原始层无规则的家族整段漏放。每次递归至少消耗一个词，
+  # 必然终止；sudo 的 flag 带值形态（-u user cmd）user 会被误当命令词放行，
+  # 属已知边界（spec 披露；原始层对其中含 rm 的形态仍有子串兜底）。
+  if [ "$base" = "sudo" ]; then
+    local tj=$((i + 1))
+    while [ "$tj" -lt "$n" ] && [[ ${ws[$tj]} == -* ]]; do
+      tj=$((tj + 1))
+    done
+    if [ "$tj" -lt "$n" ]; then
+      local -a sudo_tail=("${ws[@]:$tj}")
+      hazard_semantic_eval "$piped" "${sudo_tail[@]}"
+    fi
+    return 0
+  fi
+  # 管道终点是解释器：payload 词法不可见（base64 -d | sh / curl | bash /
+  # echo SQL | psql），HITL 确认。判据用管道标志而非段序号（审查 M2）：
+  # cd x && bash y / make; sh bootstrap 是顺序执行、stdin 不是上游载荷，
+  # 与「… 管到 sh」的载荷注入面不同，不得混拦。
+  if [[ $base == sh || $base == bash || $base == zsh || $base == dash || $base == ash || $base == ksh ]]; then
+    if [ "$piped" -eq 1 ]; then
+      SEM_HIT="管道终点是 shell 解释器（载荷不可静态扫描）"
+    fi
+    return 0
+  fi
+  if [[ $base == psql || $base == mysql || $base == mariadb || $base == sqlite3 ]]; then
+    if [ "$piped" -eq 1 ]; then
+      SEM_HIT="管道终点是 SQL 解释器（文本将被当作 SQL 执行；只读查询也被拦，confirm 可豁免）"
+    fi
+    return 0
+  fi
+  local j w sub rf=0 alltmp=1 havg=0 pastdd=0 start=-1 hasdel=0 fpath="" lease=0 gsub=""
+  if [[ $base == rm || $base == xargs ]]; then
+    if [ "$base" = "rm" ]; then
+      start=$i
+    else
+      for ((j = i + 1; j < n; j++)); do
+        if [[ ${ws[$j]##*/} == rm ]]; then start=$j; break; fi
+      done
+      if [ "$start" -lt 0 ]; then return 0; fi
+    fi
+    for ((j = start + 1; j < n; j++)); do
+      w="${ws[$j]}"
+      if [[ $w == -- ]]; then
+        pastdd=1
+      elif [[ $w == -* && $pastdd -eq 0 ]]; then
+        # -- 终止符前的 -rf 簇是 flag；flag 词含 r 与 f 即递归+强制。长选项
+        # 同由字母簇覆盖：--force 剥杠后含 f…r → rf=1；--recursive 无 f →
+        # 仅 --recursive 不拦（与旧行为一致：rm -r 无 -f 交互确认仍生效）。
+        sub="${w#-}"
+        if [[ $sub == *r*f* || $sub == *f*r* ]]; then rf=1; fi
+      else
+        # -- 终止符后的 -x 是字面文件名（rm 真删），按目标查白名单
+        havg=1
+        is_tmp_rm_target "$w" || alltmp=0
+      fi
+    done
+    if [ "$rf" -eq 1 ]; then
+      if [ "$base" = "xargs" ]; then
+        SEM_HIT="xargs 递归强删（stdin 目标不可静态枚举）"
+      elif [ "$havg" -eq 1 ] && [ "$alltmp" -eq 0 ]; then
+        SEM_HIT="rm 递归强删（存在不可验证为一次性临时区的目标）"
+      fi
+    fi
+    return 0
+  fi
+  if [ "$base" = "find" ]; then
+    for ((j = i + 1; j < n; j++)); do
+      w="${ws[$j]}"
+      if [[ $w == -delete ]]; then
+        hasdel=1
+      elif [[ $w == -* ]]; then
+        :
+      elif [ -z "$fpath" ]; then
+        fpath="$w"
+      fi
+    done
+    if [ "$hasdel" -eq 1 ]; then
+      # 搜索根落在一次性临时区（含目录本身：find /tmp ... -delete 清临时文件
+      # 是常规清理；is_tmp_rm_target 只认子路径形态，目录根在此补判）
+      if [ "$fpath" = "/tmp" ] || [ "$fpath" = "/var/folders" ] || [ "$fpath" = "/private/tmp" ] || [ "$fpath" = "\$tmpdir" ] || [ "$fpath" = "\${tmpdir}" ]; then
+        :
+      elif [ -z "$fpath" ] || ! is_tmp_rm_target "$fpath"; then
+        SEM_HIT="find -delete（搜索根不在一次性临时区）"
+      fi
+    fi
+    return 0
+  fi
+  if [ "$base" = "dd" ]; then
+    for ((j = i + 1; j < n; j++)); do
+      if [[ ${ws[$j]} == of=/dev/* ]]; then
+        SEM_HIT="dd 直写块设备"
+        return 0
+      fi
+    done
+    return 0
+  fi
+  if [ "$base" = "git" ]; then
+    # 子命令全词扫描而非邻接位（审查 M1 附带）：git -C x reset --hard /
+    # git -c a=b push --force 的子命令不在 i+1。词等值匹配（带空格的引号
+    # 词如 commit message 整词不会撞 push/reset）。
+    for ((j = i + 1; j < n; j++)); do
+      if [[ ${ws[$j]} == --force-with-lease ]]; then lease=1; fi
+      if [ "${ws[$j]}" = "push" ] || [ "${ws[$j]}" = "reset" ]; then gsub="${ws[$j]}"; break; fi
+    done
+    if [ "$gsub" = "push" ]; then
+      if [ "$lease" -eq 0 ]; then
+        for ((j = i + 1; j < n; j++)); do
+          w="${ws[$j]}"
+          if [[ $w == --force || $w == -f || $w == --delete ]]; then
+            SEM_HIT="git push 强推/远端删除（--force-with-lease 是安全替代）"
+            return 0
+          fi
+        done
+      fi
+    elif [ "$gsub" = "reset" ]; then
+      for ((j = i + 1; j < n; j++)); do
+        if [[ ${ws[$j]} == --hard ]]; then
+          SEM_HIT="git reset --hard 丢弃工作区改动"
+          return 0
+        fi
+      done
+    fi
+    return 0
+  fi
+  if [ "$base" = "kubectl" ]; then
+    if [ "${ws[$((i + 1))]}" = "delete" ]; then
+      SEM_HIT="kubectl delete 删除集群资源"
+    fi
+    return 0
+  fi
+  if [ "$base" = "docker" ]; then
+    for ((j = i + 1; j < n; j++)); do
+      w="${ws[$j]}"
+      if [ "$w" = "system" ] && [ "$((j + 1))" -lt "$n" ] && [ "${ws[$((j + 1))]}" = "prune" ]; then
+        SEM_HIT="docker system prune 清理全部悬空资源"
+        return 0
+      fi
+      if [ "$w" = "volume" ] && [ "$((j + 1))" -lt "$n" ] && [ "${ws[$((j + 1))]}" = "rm" ]; then
+        SEM_HIT="docker volume rm 删除数据卷"
+        return 0
+      fi
+      if [ "$w" = "rm" ]; then
+        for ((sub = j + 1; sub < n; sub++)); do
+          if [[ ${ws[$sub]} == -f || ${ws[$sub]} == --force ]]; then
+            SEM_HIT="docker rm -f 强制删除容器"
+            return 0
+          fi
+        done
+      fi
+    done
+    return 0
+  fi
+  return 0
+}
+
+# hazard_semantic_scan token 化并逐段评估；$1=命令文本 $2=替换内层递归深度。
+# 命中置 SEM_HIT。I 行内层文本递归扫描（深度 ≤2）。S=顺序/列表分隔（下一段
+# 非管道终点），P=管道分隔（下一段是管道终点）。纯 if 分派（bash 3.2
+# case parser bug 同上）。
+hazard_semantic_scan() {
+  local depth="${2:-0}"
+  local line r2 pipe_next=0
+  local -a words=()
+  while IFS= read -r line; do
+    if [[ $line == "S" || $line == "P" ]]; then
+      hazard_semantic_eval "$pipe_next" "${words[@]}"
+      words=()
+      if [[ $line == "P" ]]; then pipe_next=1; else pipe_next=0; fi
+    elif [[ $line == "M" ]]; then
+      words+=("$MK_MARK")
+    elif [[ $line == "I"* ]]; then
+      if [ "$depth" -lt 2 ]; then
+        hazard_semantic_scan "${line#I}" $((depth + 1))
+        r2=$SEM_HIT
+        if [ -n "$r2" ]; then
+          SEM_HIT="命令替换内层：$r2"
+          return 0
+        fi
+      fi
+    elif [[ $line == "W"* ]]; then
+      words+=("${line#W}")
+    fi
+    if [ -n "$SEM_HIT" ]; then return 0; fi
+  done <<< "$(hazard_tokens "$1")"
+  hazard_semantic_eval "$pipe_next" "${words[@]}"
+  return 0
+}
+
 if ! is_hazardous "$COMMAND" && ! is_interp_delete_bypass "$COMMAND"; then
-  echo "PASS"
-  exit 0
+  # 原始层未命中 → 语义层补漏（只在 raw-miss 路径多花一次 awk：raw 命中的
+  # 热路径零新增开销）。白名单变量在此计算（is_tmp_rm_target 动态作用域读
+  # 全局 mktemp_vars；is_hazardous 内部各自 local，互不串扰）。
+  mktemp_vars=$(safe_mktemp_vars "$COMMAND")
+  # 扫描函数经变量（SEM_HIT）而非 stdout 报命中——捕获须显式带出（命令替换
+  # 是子 shell，函数内变量不出壳）。
+  SEM_REASON=$(hazard_semantic_scan "$COMMAND" 0; printf '%s' "$SEM_HIT")
+  if [ -z "$SEM_REASON" ]; then
+    echo "PASS"
+    exit 0
+  fi
 fi
 
 
@@ -854,8 +1228,9 @@ COMMAND=$(strip_interp_heredoc_bodies "$COMMAND")
 
 # F.1 的放行独立判定：剥离发生过（判定文本变短）→ 危险串在被挖掉的 heredoc 正文里
 # （数据上下文）→ 直接 data 放行，不依赖 STRIPPED!=COMMAND（裸 tag 场景剥离后无引号可剥，
-# 该条件恒假——评审实证主路径失效）。
-if [ "$COMMAND" != "$HEREDOC_ORIG" ] && ! is_hazardous "$COMMAND" && ! is_exec_wrapped "$HEREDOC_ORIG"; then
+# 该条件恒假——评审实证主路径失效）。SEM_REASON 非空（语义层命中）时不得放行：
+# 词法层认定命令位不可解析/替换成立时，heredoc 剥离不能洗白它。
+if [ "$COMMAND" != "$HEREDOC_ORIG" ] && [ -z "$SEM_REASON" ] && ! is_hazardous "$COMMAND" && ! is_exec_wrapped "$HEREDOC_ORIG"; then
   forge hazard log data "$HEREDOC_ORIG" >/dev/null 2>&1 || true
   echo "PASS [hazard-guard] 解释器 heredoc 正文为数据上下文（无执行原语），放行"
   exit 0
@@ -870,8 +1245,10 @@ fi
 # STRIPPED 用 nowl 复检（关 rm 白名单）：引号剥走目标后剩零目标的 rm -rf（原命令是
 # rm -rf "$HOME" 这类"目标在引号里的执行"，不是"危险串在引号内"）必须维持拦截——
 # 否则 rm -rf "$TMPDIR/../etc" / rm -rf "$HOME" 经此路径漏放。
+# SEM_REASON 非空（语义层命中）时同样不放行：r"m" -rf 这类词合并形态经 strip_quotes
+# 剥走引号内内容后会伪装成数据上下文，语义层的词级判定才是权威。
 STRIPPED=$(strip_quotes "$COMMAND")
-if [ "$STRIPPED" != "$COMMAND" ] && ! is_hazardous "$STRIPPED" nowl && ! is_exec_wrapped "$COMMAND"; then
+if [ "$STRIPPED" != "$COMMAND" ] && [ -z "$SEM_REASON" ] && ! is_hazardous "$STRIPPED" nowl && ! is_exec_wrapped "$COMMAND"; then
   forge hazard log data "$COMMAND" >/dev/null 2>&1 || true
   echo "PASS [hazard-guard] 危险串仅在引号内或注释行（数据上下文），放行: $COMMAND"
   exit 0
@@ -898,6 +1275,9 @@ fi
 # --- 未确认：block + HITL 指引（落盘 block 事件供审计追溯） ---
 forge hazard log block "$HEREDOC_ORIG" >/dev/null 2>&1 || true
 echo "FAIL [hazard-guard] 高危操作已拦截（需 human-in-the-loop 确认）"
+if [ -n "$SEM_REASON" ]; then
+  echo "拦截原因（语义层）: $SEM_REASON"
+fi
 echo "命令: $HEREDOC_ORIG"
 echo "指纹: ${FP:-<unknown>}"
 echo ""

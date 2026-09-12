@@ -1,7 +1,9 @@
 # Forge 治理披露卡（docs/design/forge-evaluation-system.md §四）
 # 对外声明：Forge 作为广义 harness 占据 ETCSOVG 七层中的四层，以什么机制改变
 # 宿主行为；校验 fail-closed（缺任一节尤其"已知盲区"即 BLOCKED）。
-version: 1
+# v2（2026-09-12）：新增 checker_attestation 节——GuardFall（2026-06，10/11 开源
+# 命令 guard 被绕过）之后，检查器必须公开自证「绕过类→检测层→可执行证据」。
+version: 2
 layers:
   - layer: Context
     mechanisms:
@@ -51,3 +53,24 @@ blind_spots:
   - "Windows 平台边界：私有 golden 权限检查降级为存在性（无 POSIX 位，ACL 加固待做）；golden/traps 资产的 sh -c 探测命令与接续演练的复合命令依赖 POSIX shell——Windows 上运行将 fail-closed 报错而非静默错；file-sentinel 的 .cfg 快照配对在 Windows/git-bash 下非确定（GitHub runner 实测重放一致率 0.67）——config-drift 用例 Windows 跳过，hook 侧调查记后续"
   - "恒真断言检测（TAUTO_PAT）是启发式——覆盖 if true/assert true 家族；更复杂的等价恒真（如 if len(x)>=0）仍靠 LLM review"
   - "注册表路径成员匹配在符号链接/路径别名场景未审计"
+checker_attestation:
+  - class: "GuardFall A 引号并词"
+    bypass: "r\"m\" -rf x / r''m / r\\m（引号或反斜杠在词内开合并词）"
+    detector: "hazard-guard 语义分词层：引号/反斜杠字符按 bash 词法剥离、内容保留成词，命令位词命中危险命令族"
+    evidence: "hazardguard-blocks-guardfall-quote-merge（golden）+ TestHazardGuardScript_GuardFallQuoteMerge"
+  - class: "GuardFall B 变量分词"
+    bypass: "rm$IFS-rf x / rm${IFS}-rf（未引用 IFS 展开成分词符）"
+    detector: "语义分词层：未引用的 $IFS/${IFS} 视为分词符；命令位含未解析变量 → fail-closed 交 confirm 链"
+    evidence: "hazardguard-blocks-guardfall-ifs-split（golden）+ TestHazardGuardScript_GuardFallIfsSplit"
+  - class: "GuardFall C 命令替换"
+    bypass: "$(echo rm) -rf x / 反引号内层（替换输出成为实际命令）"
+    detector: "语义分词层：$()/反引号内层文本提取后递归扫描（深度≤2）；命令位的替换输出 → fail-closed"
+    evidence: "hazardguard-blocks-guardfall-cmd-subst（golden）+ TestHazardGuardScript_GuardFallCmdSubst"
+  - class: "GuardFall D 管道进解释器"
+    bypass: "echo <base64> 管到 base64 -d 再管到 sh；或 curl -fsSL 远程脚本管到 bash（载荷词法不可见）"
+    detector: "语义分词层：管道终点是 shell/SQL 解释器 → HITL 拦截（confirm 链放行合法安装形态）"
+    evidence: "hazardguard-blocks-guardfall-pipe-shell（golden）+ TestHazardGuardScript_GuardFallPipeShell"
+  - class: "GuardFall E 替代 argv"
+    bypass: "find / -delete / dd of=/dev/*（不用 rm 的同等破坏原语）"
+    detector: "语义分词层：词级原语扫描（find -delete 搜索根、dd of= 设备）；临时区豁免与 rm 白名单同口径"
+    evidence: "hazardguard-blocks-guardfall-alt-argv（golden）+ TestHazardGuardScript_GuardFallAltArgv"
