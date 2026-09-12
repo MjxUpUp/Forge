@@ -137,6 +137,10 @@ func TestReadme_CoversAllTopLevelCommands(t *testing.T) {
 // 新增用户可见 flag 不进 README 就会让 CI 挂，作者二选一：补文档，或注明
 // 理由后加进本表。
 var flagDocGrandfather = map[string]bool{
+	// W0.2 batch 单入口的接线内部 flag——由 ForgeHookWiring 自动写入接线，
+	// 用户不手输（hook 名册的增删走棘轮/普查，不走文档）。
+	`batch --event`:   true,
+	`batch --matcher`: true,
 	`adapters --apply`:   true,
 	`attach --session`:   true,
 	`audit --gate`:       true,

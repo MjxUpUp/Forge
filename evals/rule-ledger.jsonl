@@ -1,0 +1,2 @@
+{"ts":"2026-09-13T03:10:58.842907+08:00","kind":"claim","rule":"w5/self-demo","claim":"台账自身可记录并可 verify 通过","probe":"go test ./internal/cli/ -run TestRuleLedgerRoundTrip"}
+{"ts":"2026-09-13T03:11:01.166943+08:00","kind":"verify","rule":"w5/self-demo","probe":"go test ./internal/cli/ -run TestRuleLedgerRoundTrip","pass":true,"verge":"ok  \tgithub.com/MjxUpUp/Forge/internal/cli\t1.124s\n"}

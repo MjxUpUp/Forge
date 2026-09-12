@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeFakeForge(t *testing.T, dir, body string) string {
@@ -242,5 +243,37 @@ func TestDataDirPlaceholderHardFails(t *testing.T) {
 	}
 	if _, err := RunTraps([]TrapCase{okTrap}, GoldenOptions{ForgeBin: falseBin}); err != nil {
 		t.Fatalf("不引用 {dataDir} 的陷阱不应受解析失败影响: %v", err)
+	}
+}
+
+// TestFrictionProbeArm_ExtraEnvReachesProbe：W2 双臂的基座——extraEnv 必须真达
+// 探针环境（OFF 臂的逃生舱注入依赖它），且 single-owner 滤除后 base env 不被污染。
+// 用探针自身按 FORGE_TASK_GATE 取行为来钉「env 真的进去了」：OFF 臂 disable →
+// exit 0 不 flagged；ON 臂（未设）→ exit 2 → flagged。
+func TestFrictionProbeArm_ExtraEnvReachesProbe(t *testing.T) {
+	c := GoldenCase{
+		ID:        "arm-env-probe",
+		Gate:      "task-guard",
+		Kind:      "defective",
+		ProbeArgv: []string{"sh", "-c", `[ "$FORGE_TASK_GATE" = disable ] && exit 0 || exit 2`},
+		DetectAny: []string{"exit_nonzero"},
+	}
+	// runGoldenProbe 的 fixture 流程会先跑 forge init——用空 shim 满足该步
+	// （本探针不含 {forge} token，shim 不参与判定）。
+	shimDir := t.TempDir()
+	shim := filepath.Join(shimDir, "forge")
+	if err := os.WriteFile(shim, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	flagged, _, err := FrictionProbeArm(c, shim, nil, 30*time.Second)
+	if err != nil || !flagged {
+		t.Fatalf("ON 臂（无 disable）应 flagged，got %v/%v", flagged, err)
+	}
+	flagged, _, err = FrictionProbeArm(c, shim, []string{"FORGE_TASK_GATE=disable"}, 30*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flagged {
+		t.Error("OFF 臂（FORGE_TASK_GATE=disable 注入）不应 flagged——extraEnv 未达探针环境")
 	}
 }

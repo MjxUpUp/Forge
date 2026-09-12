@@ -17,6 +17,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Setenv("FORGE_DATA_HOME", dir)
+	// W0.3 密闭性：档位默认 standard（个别档位测试用 t.Setenv 覆盖）——防开发机
+	// shell 导出的 FORGE_PROFILE=lite 泄漏进镜像/接线测试造成假红。
+	os.Setenv("FORGE_PROFILE", "standard")
 	code := m.Run()
 	os.RemoveAll(dir) // defer won't run before os.Exit — clean up explicitly
 	os.Exit(code)

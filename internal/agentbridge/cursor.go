@@ -192,7 +192,10 @@ type cursorHookEntry struct {
 // 无手工副本 → 无 drift。TestCursorWiringMirrorsClaudeSettings 守卫命令集对等；
 // TestCursorHooks_OnlyLegalCursorEvents 钉死 event 名白名单。
 func buildCursorHooks() map[string]any {
-	spec := hooks.ForgeHookSpec()
+	// W0.3：cursor 是 forge 自有写渠（~/.cursor/hooks.json，非插件载荷）——
+	// 按档位过滤（审查 M2；运行时门对宿主拉起次数无能为力，条目级裁剪必须在
+	// 写渠做）。
+	spec := hooks.ForgeHookWiring()
 	hooksMap := map[string][]cursorHookEntry{}
 	for event, matchers := range spec {
 		ce, ok := cursorEventName(event)

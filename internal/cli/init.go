@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -19,6 +20,7 @@ import (
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().String("agents", "auto", "AI 编码工具: auto（自动检测）, 或逗号分隔如 claude-code,cursor,kimi")
+	initCmd.Flags().String("profile", "", "接线档位 (W0.3): lite（拦截+管线+状态最小集）/ standard（完整现行，默认）/ full——持久化到 ~/.forge/profile，hook 拉起运行时生效")
 	initCmd.Flags().Bool("project", false, "团队模式：资产写入项目目录（.forge/protocol.yml 等可 git 共享），默认零项目写入")
 	// Deprecated no-op flags. 项目级管道删除后 mode/fresh 已无意义，保留为隐藏 no-op
 	// 维持向后兼容：旧脚本/测试的 `forge init --mode medium` 不报错，只是无效。
@@ -67,8 +69,24 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	teamMode, _ := cmd.Flags().GetBool("project")
 	agentsFlag, _ := cmd.Flags().GetString("agents")
+	profileFlag, _ := cmd.Flags().GetString("profile")
 	agents := agentbridge.ParseAgentFlag(dir, agentsFlag)
 	proto := protocol.DefaultProtocol()
+
+	// W0.3：档位选择持久化到 ~/.forge/profile——此后每次 hook 拉起经
+	// hooks.ActiveProfile 读它（运行时门），后续 init/sync 重写接线也按同档
+	// 过滤（ForgeHookSpecForProfile）。显式 flag 才写；未指定时尊重已持久值。
+	if profileFlag != "" {
+		// 显式输入走严格校验（读侧 ParseProfile 的 fail-open 契约不适用于写侧）：
+		// 手误 token 静默落成 standard 是最坑的失败形态。
+		profile := hooks.ParseProfile(profileFlag)
+		if string(profile) != strings.ToLower(strings.TrimSpace(profileFlag)) {
+			return fmt.Errorf("unknown wiring profile %q (lite|standard|full)", profileFlag)
+		}
+		if err := hooks.WriteGlobalProfile(profile); err != nil {
+			return fmt.Errorf("persist wiring profile: %w", err)
+		}
+	}
 
 	if teamMode {
 		return runInitTeamMode(dir, agents, proto)

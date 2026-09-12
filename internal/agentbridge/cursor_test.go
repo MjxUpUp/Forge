@@ -68,8 +68,9 @@ func TestCursorTranslator_MergePreservesUserEntries(t *testing.T) {
 	if strings.Contains(content, "stale-removed-hook") {
 		t.Error("stale forge hook entry not replaced")
 	}
-	if n := strings.Count(content, `"forge hook task-guard --agent cursor"`); n != 1 {
-		t.Errorf("forge hook task-guard appears %d times, want 1", n)
+	// W0.2 batch 接线：断言改为每事件一条 batch 单入口。
+	if n := strings.Count(content, `"forge hook batch --event`); n < 2 {
+		t.Errorf("cursor wiring batch entries = %d, want >= 2", n)
 	}
 }
 

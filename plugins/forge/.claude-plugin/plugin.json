@@ -6,11 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge hook compact-resume"
-          },
-          {
-            "type": "command",
-            "command": "forge hook conventions-context"
+            "command": "forge hook batch --event PostCompact --matcher \"\""
           }
         ]
       }
@@ -21,19 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge hook auto-compile"
-          },
-          {
-            "type": "command",
-            "command": "forge hook workflow-test-guard"
-          },
-          {
-            "type": "command",
-            "command": "forge hook skill-trigger"
-          },
-          {
-            "type": "command",
-            "command": "forge hook test-nudge"
+            "command": "forge hook batch --event PostToolUse --matcher \"Write|Edit\""
           }
         ]
       },
@@ -42,15 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge hook file-sentinel"
-          },
-          {
-            "type": "command",
-            "command": "forge hook tool-track"
-          },
-          {
-            "type": "command",
-            "command": "forge hook skill-trigger"
+            "command": "forge hook batch --event PostToolUse --matcher \"Bash\""
           }
         ]
       },
@@ -81,27 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge hook freeze-guard"
-          },
-          {
-            "type": "command",
-            "command": "forge hook task-guard"
-          },
-          {
-            "type": "command",
-            "command": "forge hook assertion-check"
-          },
-          {
-            "type": "command",
-            "command": "forge hook read-before-edit"
-          },
-          {
-            "type": "command",
-            "command": "forge hook skill-trigger"
-          },
-          {
-            "type": "command",
-            "command": "forge hook conventions-write"
+            "command": "forge hook batch --event PreToolUse --matcher \"Write|Edit\""
           }
         ]
       },
@@ -110,19 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge hook bash-guard"
-          },
-          {
-            "type": "command",
-            "command": "forge hook hazard-guard"
-          },
-          {
-            "type": "command",
-            "command": "forge hook gate-cmd-form"
-          },
-          {
-            "type": "command",
-            "command": "forge hook skill-trigger"
+            "command": "forge hook batch --event PreToolUse --matcher \"Bash\""
           }
         ]
       }
@@ -132,27 +76,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge hook skill-scan"
-          },
-          {
-            "type": "command",
-            "command": "forge hook mcp-scan"
-          },
-          {
-            "type": "command",
-            "command": "forge hook init-suggest"
-          },
-          {
-            "type": "command",
-            "command": "forge hook task-resume"
-          },
-          {
-            "type": "command",
-            "command": "forge hook skill-trigger"
-          },
-          {
-            "type": "command",
-            "command": "forge hook conventions-context"
+            "command": "forge hook batch --event SessionStart --matcher \"\""
           }
         ]
       }
@@ -162,15 +86,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge hook task-verify"
-          },
-          {
-            "type": "command",
-            "command": "forge hook review-stop"
-          },
-          {
-            "type": "command",
-            "command": "forge hook skill-trigger"
+            "command": "forge hook batch --event Stop --matcher \"\""
           }
         ]
       }
@@ -190,11 +106,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "forge hook resume-reinject"
-          },
-          {
-            "type": "command",
-            "command": "forge hook skill-trigger"
+            "command": "forge hook batch --event UserPromptSubmit --matcher \"\""
           }
         ]
       }

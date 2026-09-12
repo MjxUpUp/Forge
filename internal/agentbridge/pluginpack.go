@@ -241,7 +241,7 @@ func writeClaudePluginManifest(spec PluginPackSpec, pluginDir string) error {
 	manifest := map[string]any{
 		"name":        spec.PluginName,
 		"description": spec.Description,
-		"hooks":       hooks.ForgeHookSpec(),
+		"hooks":       hooks.ForgeHookWiringForProfile(hooks.ProfileStandard), // W0.2：发布载荷显式钉 standard 档 batch 接线（不随运行机 profile 漂移；lite 裁剪由运行时门兜底）
 	}
 	return writeJSONIndent(filepath.Join(pluginDir, ".claude-plugin", "plugin.json"), manifest)
 }
