@@ -42,18 +42,37 @@ type GateRow struct {
 	Where string `yaml:"where" json:"where"` // 触发面（如 task-verify）
 }
 
+// CheckerAttestationRow is one row of the checker-architecture attestation: a
+// known bypass class, its concrete form, the detector layer that answers it,
+// and the executable evidence (golden id) pinning the answer. Public
+// self-attestation instead of silence — the GuardFall lesson (10/11 open-source
+// command guards bypassed, 2026-06) is that a guard that cannot state its own
+// architecture is structurally in the casualties' seat.
+//
+// CheckerAttestationRow 是检查器架构自证的一行：已知的绕过类、具体形态、回应
+// 它的检测层、钉住回应的可执行证据（golden id）。公开自证而非沉默——GuardFall
+// 的教训（2026-06，11 个开源命令 guard 10 个被绕过）是：说不清自己检查架构的
+// guard 就站在阵亡者的结构位上。
+type CheckerAttestationRow struct {
+	Class    string `yaml:"class"    json:"class"`    // 绕过类（如 GuardFall A 引号并词）
+	Bypass   string `yaml:"bypass"   json:"bypass"`   // 具体形态（如 r"m" -rf）
+	Detector string `yaml:"detector" json:"detector"` // 回应的检测层
+	Evidence string `yaml:"evidence" json:"evidence"` // 可执行证据（golden id / 测试名）
+}
+
 // GatesCard is the parsed gates-card.yaml: what Forge changes about the host,
 // stated so a user can audit it and turn it off.
 //
 // GatesCard 是解析后的 gates-card.yaml：如实声明 Forge 改了宿主的什么，让用户
 // 可审计、可关闭。
 type GatesCard struct {
-	Version    int          `yaml:"version"     json:"version"`
-	LayerClaim []LayerClaim `yaml:"layers"      json:"layers"`
-	Hooks      []string     `yaml:"hooks"       json:"hooks"`
-	Gates      []GateRow    `yaml:"gates"       json:"gates"`
-	Escapes    []string     `yaml:"escapes"     json:"escapes"`
-	BlindSpots []string     `yaml:"blind_spots" json:"blind_spots"`
+	Version    int                     `yaml:"version"     json:"version"`
+	LayerClaim []LayerClaim            `yaml:"layers"      json:"layers"`
+	Hooks      []string                `yaml:"hooks"       json:"hooks"`
+	Gates      []GateRow               `yaml:"gates"       json:"gates"`
+	Escapes    []string                `yaml:"escapes"     json:"escapes"`
+	BlindSpots []string                `yaml:"blind_spots" json:"blind_spots"`
+	Attest     []CheckerAttestationRow `yaml:"checker_attestation" json:"checker_attestation"`
 }
 
 // Validate enforces the card's invariants: version positive, every claimed
@@ -101,6 +120,16 @@ func (c *GatesCard) Validate() error {
 	}
 	if len(c.BlindSpots) == 0 {
 		return fmt.Errorf("evalkit: 披露卡缺已知盲区节（诚实呈现的最低要求）")
+	}
+	// 检查器架构自证节 fail-closed：guard 必须公开自证「哪类绕过、怎么回应、
+	// 证据在哪」——缺节或行内缺字段即拒绝（与盲区节同级的诚实底线）。
+	if len(c.Attest) == 0 {
+		return fmt.Errorf("evalkit: 披露卡缺检查器架构自证节（checker_attestation）")
+	}
+	for _, a := range c.Attest {
+		if a.Class == "" || a.Bypass == "" || a.Detector == "" || a.Evidence == "" {
+			return fmt.Errorf("evalkit: 检查器架构自证行缺字段（class/bypass/detector/evidence 全必填）: %+v", a)
+		}
 	}
 	return nil
 }
@@ -157,6 +186,11 @@ func (c *GatesCard) RenderMarkdown() (string, error) {
 	b.WriteString("\n## 已知盲区\n\n")
 	for _, bs := range c.BlindSpots {
 		b.WriteString(fmt.Sprintf("- %s\n", bs))
+	}
+	b.WriteString("\n## 检查器架构自证（canonicalize-then-check；绕过类 → 检测层 → 可执行证据）\n\n")
+	b.WriteString("| 绕过类 | 具体形态 | 检测层 | 证据 |\n|---|---|---|---|\n")
+	for _, a := range c.Attest {
+		b.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n", a.Class, a.Bypass, a.Detector, a.Evidence))
 	}
 	return b.String(), nil
 }

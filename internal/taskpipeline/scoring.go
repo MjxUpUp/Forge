@@ -14,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
 
@@ -177,6 +178,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		TestCoverageChecked:   testCoverageChecked,
 		TestCoverageCovered:   tcCovered,
 		TestCoverageTotal:     tcTotal,
+		CoverageMissing:       tcMissing,
 		TestAssertionCount:    testAssertionCount,
 		TestFileCount:         testFileCount,
 		CompilePassed:         compilePassed,
@@ -226,6 +228,23 @@ func ScoreTask(root string, state *TaskState) error {
 		result.Evidence.CompleteRejections = rejections
 	}
 
+	// 证据束补「未测区域 / 剩余风险」两字段（deterministic 门禁设计原则 P4：
+	// 证据束必须声明「什么没被验证」与「剩余风险」，见 arXiv:2605.18747
+	// §5.2.2）。未测区域复用与门禁同一趟 CheckTestCoverage 的结果
+	// （input.CoverageMissing，零额外 git 枚举）；逃生激活时门禁结果是逃生
+	// 盲区（nil=谎），改用无视逃生的披露配对口径现算（审查 M3：逃生场景恰是
+	// 最需要披露「什么没验证」的时刻）。剩余风险取 open 状态发现，封顶
+	// scoringtypes.RemainingRisksCap。仅披露面，不改分数。
+	untested := evidenceUntestedAreas(root, state, input.CoverageMissing)
+	risks := evidenceRemainingRisks(state)
+	if len(untested) > 0 || len(risks) > 0 {
+		if result.Evidence == nil {
+			result.Evidence = &scoringtypes.EvidenceSummary{}
+		}
+		result.Evidence.UntestedAreas = untested
+		result.Evidence.RemainingRisks = risks
+	}
+
 	// 逃生舱代价：用过任一逃生舱的任务总分封顶 escapeCapMaxScore，并按封顶值重算
 	// grade——Weak 证据不能照拿 96-99/A。两个互补信号（code-review 2026-08）：
 	//  - state.Overrides：设了 per-task override 但没走 bypass 分支的任务 checklog
@@ -259,6 +278,57 @@ func ScoreTask(root string, state *TaskState) error {
 
 	state.Score = result
 	return SaveTaskState(root, state)
+}
+
+// evidenceUntestedAreas returns the task's changed source files with no paired
+// test change. covered is the gate path's own result (same CheckTestCoverage
+// pass, zero extra git enumeration); under the test-coverage escape that result
+// is the escape's blind spot (nil would read as "fully tested"), so the
+// disclosure recomputes with the escape-ignoring pairing. Best-effort: nil on
+// git failure, never an error (scoring must not fail over a disclosure field).
+//
+// evidenceUntestedAreas 返回本任务改了但无配对测试改动的源文件。covered 是门禁
+// 路径自己的结果（同一次 CheckTestCoverage，零额外 git 枚举）；test-coverage
+// 逃生激活时该结果是逃生盲区（nil 会被读成「全部有测」），披露改用无视逃生
+// 的配对口径现算。尽力而为：git 失败返回 nil 不返回错误（评分不得因披露字段
+// 失败）。
+func evidenceUntestedAreas(root string, state *TaskState, covered []string) []string {
+	if len(covered) == 0 && escapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
+		return CoveragePairingForDisclosure(root, state)
+	}
+	return covered
+}
+
+// evidenceRemainingRisks renders the task's open findings as "severity: content"
+// lines, capped at scoringtypes.RemainingRisksCap (overflow noted in a trailing
+// summary line — never silently dropped: an evidence bundle that hides risks it
+// knows about is lying by omission). The overflow count is OPEN findings only
+// (fixed/wontfix were never candidates).
+//
+// evidenceRemainingRisks 把任务仍 open 的发现渲染成 "severity: content" 行，
+// 封顶 scoringtypes.RemainingRisksCap 条（超限在末尾以汇总行占位——绝不静默
+// 丢弃：证据束明知有风险却只字不提等于因 omission 撒谎）。超限计数只统计
+// open 发现（fixed/wontfix 本就不在候选里）。
+func evidenceRemainingRisks(state *TaskState) []string {
+	var open []tasktypes.Finding
+	for _, f := range state.Findings {
+		if f.Status == "open" {
+			open = append(open, f)
+		}
+	}
+	var out []string
+	for i, f := range open {
+		if i >= scoringtypes.RemainingRisksCap {
+			out = append(out, fmt.Sprintf("（其余 %d 条 open 发现未逐条列出——用 forge task context 查全量）", len(open)-scoringtypes.RemainingRisksCap))
+			break
+		}
+		sev := f.Severity
+		if sev == "" {
+			sev = "unrated"
+		}
+		out = append(out, sev+": "+f.Content)
+	}
+	return out
 }
 
 // AppendConclusion builds + persists an Act conclusion for a completed task

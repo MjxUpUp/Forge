@@ -22,13 +22,17 @@ func TestEvalCardE2E(t *testing.T) {
 	if !strings.Contains(out, "gates-card") {
 		t.Fatalf("输出缺校验行: %s", out)
 	}
+	// v2 起六节校验（2026-09 W6：新增 checker_attestation 节，缺节 fail-closed）。
+	if !strings.Contains(out, "六节校验") {
+		t.Fatalf("输出应是六节校验口径（v2 卡）: %s", out)
+	}
 	out, _, code = runForge(t, repoRoot, "eval", "card", "--render")
 	if code != 0 {
 		t.Fatalf("eval card --render 应通过（exit %d）：%s", code, out)
 	}
-	for _, want := range []string{"已知盲区", "占层声明", "逃生舱"} {
+	for _, want := range []string{"已知盲区", "占层声明", "逃生舱", "检查器架构自证", "GuardFall A 引号并词", "GuardFall E 替代 argv"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("渲染缺节 %q", want)
+			t.Fatalf("渲染缺节/缺行 %q", want)
 		}
 	}
 }

@@ -74,7 +74,44 @@ type EvidenceSummary struct {
 	// 填充；零值 = 无审查/返工记录。
 	ReviewPasses       int `json:"review_passes,omitempty"`
 	CompleteRejections int `json:"complete_rejections,omitempty"`
+	// UntestedAreas lists the task's changed source files with no paired test
+	// change (P4 of the deterministic-gate design principles: an evidence bundle
+	// must state what was NOT verified, not only what passed — arXiv:2605.18747
+	// §5.2.2). Reuses the task-verify test-coverage pairing (same whitelist and
+	// escape semantics); empty = every changed source file has paired tests.
+	// Observability/disclosure only — deliberately NOT a scoring dimension (the
+	// testing dimension already scores coverage; duplicating it would double-count).
+	// Filled by taskpipeline.ScoreTask.
+	//
+	// UntestedAreas 列出本任务改了但无配对测试改动的源文件（deterministic 门禁设计
+	// 原则 P4：证据束必须声明「什么没被验证」而不只是「什么过了」——arXiv:2605.18747
+	// §5.2.2）。复用 task-verify 的测试配对口径（同一白名单与逃生语义）；空 =
+	// 改动源文件全部有配对测试。仅披露面——刻意不进评分维度（testing 维度已对
+	// 覆盖打分，重复计分会双罚）。由 taskpipeline.ScoreTask 填充。
+	UntestedAreas []string `json:"untested_areas,omitempty"`
+	// RemainingRisks lists the task's open findings (Status==open) at complete
+	// time as "severity: content" — the evidence bundle's residual-risk statement
+	// (P4). fixed/resolved/wontfix findings are not residual. Capped at
+	// remainingRisksCap entries to bound evidence size (overflow noted in a
+	// summary line, never silently dropped); empty = no open findings. Filled by
+	// taskpipeline.ScoreTask.
+	//
+	// RemainingRisks 列出完成时点仍 open 的发现（Status==open），格式
+	// "severity: content"——证据束的剩余风险声明（P4）。fixed/wontfix 不算残余。
+	// 上限 remainingRisksCap 条以防证据体膨胀（超限以汇总行占位，不静默丢弃）；
+	// 空 = 无未决发现。由 taskpipeline.ScoreTask 填充。
+	RemainingRisks []string `json:"remaining_risks,omitempty"`
 }
+
+// RemainingRisksCap bounds EvidenceSummary.RemainingRisks (evidence-size budget:
+// an evidence bundle that echoes every finding ever raised grows unboundedly).
+// Exported: the filler (taskpipeline.ScoreTask) and consumers (dashboard/trace)
+// must agree on the same budget from this single source.
+//
+// RemainingRisksCap 是 RemainingRisks 的条目上限（证据体量预算：不设限的证据束
+// 会随发现累积无界膨胀）。导出：填充方（taskpipeline.ScoreTask）与消费方
+// （dashboard/trace）必须从这里这一单一事实源取同一预算。
+const RemainingRisksCap = 10
 
 // ScoringConfig controls dimension weights and grade thresholds.
 //

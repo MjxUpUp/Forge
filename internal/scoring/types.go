@@ -48,6 +48,16 @@ type EvaluateInput struct {
 	TestCoverageCovered int // 有配对测试的源码文件数
 	// TestCoverageTotal: number of source files that should have paired tests.
 	TestCoverageTotal int // 应配对测试的源码文件数
+	// CoverageMissing is the raw changed-source list lacking paired tests, from
+	// the same CheckTestCoverage pass (threaded through so the evidence bundle's
+	// disclosure can reuse it without a second git enumeration). Under the
+	// test-coverage escape it is nil-by-design (the gate path short-circuits);
+	// the disclosure must then recompute via the escape-ignoring pairing.
+	//
+	// CoverageMissing 是同一次 CheckTestCoverage 算出的「无配对测试的改动源文件」
+	// 原始清单（穿透传递给证据束披露复用，避免第二次 git 枚举）。test-coverage
+	// 逃生激活时按门禁路径语义为 nil——此时披露须用无视逃生的配对口径重算。
+	CoverageMissing []string
 
 	// Assertion-density signal, used for fake-test detection (industry STREW Assertion-McCabe ratio).
 	//

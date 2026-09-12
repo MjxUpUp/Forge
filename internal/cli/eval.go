@@ -87,7 +87,7 @@ func runEvalCard(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("BLOCKED: 披露卡不完整: %v", err)
 	}
 	if !render {
-		fmt.Println("✅ gates-card — passed（五节校验通过；--render 查看全文）")
+		fmt.Println("✅ gates-card — passed（六节校验通过；--render 查看全文）")
 		return nil
 	}
 	out, err := card.RenderMarkdown()

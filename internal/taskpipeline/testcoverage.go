@@ -153,7 +153,22 @@ func checkTestCoverageChanged(root string, state *TaskState, changed []string) (
 	if len(changed) == 0 {
 		return true, nil, 0
 	}
+	missing, total = coveragePairing(changed)
+	return len(missing) == 0, missing, total
+}
 
+// coveragePairing is the pure source↔test pairing pass shared by the gate path
+// (checkTestCoverageChanged, behind the escape early-out) and the disclosure
+// path (CoveragePairingForDisclosure, deliberately WITHOUT the escape
+// early-out): both surfaces must use the identical pairing or the evidence
+// bundle would contradict the gate. No audit writes here — audit is the
+// gate path's concern (coverageEscapeActive).
+//
+// coveragePairing 是源码↔测试配对的纯计算 pass，被门禁路径（checkTestCoverage-
+// Changed，逃生早退之后）与披露路径（CoveragePairingForDisclosure，刻意【不做】
+// 逃生早退）共享：两个面必须同一配对口径，否则证据束会与门禁互相矛盾。此处
+// 不写审计行——留痕是门禁路径（coverageEscapeActive）的职责。
+func coveragePairing(changed []string) (missing []string, total int) {
 	changedSet := make(map[string]bool, len(changed))
 	for _, f := range changed {
 		changedSet[f] = true
@@ -172,8 +187,23 @@ func checkTestCoverageChanged(root string, state *TaskState, changed []string) (
 		}
 		missing = append(missing, f)
 	}
+	return missing, total
+}
 
-	return len(missing) == 0, missing, total
+// CoveragePairingForDisclosure computes the untested-area list for the evidence
+// bundle, deliberately IGNORING the test-coverage escape: the gate may be
+// bypassed, but the disclosure must still state what was not verified (the
+// honesty rule "override 免的是门禁，不是报告的诚实性" — an empty
+// UntestedAreas under an active escape would launder the gap). No audit rows —
+// the escape usage is already recorded once by the gate path.
+//
+// CoveragePairingForDisclosure 为证据束计算未测区域，刻意【无视】test-coverage
+// 逃生：门禁可以被绕过，但披露仍须声明什么没被验证（诚实规则「override 免的
+// 是门禁，不是报告的诚实性」——逃生激活时 UntestedAreas 为空等于把缺口洗白）。
+// 不写审计行——逃生使用已由门禁路径记录过一次。
+func CoveragePairingForDisclosure(root string, state *TaskState) []string {
+	missing, _ := coveragePairing(taskChangedFiles(root, state))
+	return missing
 }
 
 // testCoverageHardGateThreshold 是 task-complete 兜底硬阻断的最小「无配对测试的源文件数」。
