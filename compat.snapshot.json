@@ -141,6 +141,13 @@
       ]
     },
     {
+      "path": "forge eval dead-checks",
+      "flags": [
+        "json",
+        "window"
+      ]
+    },
+    {
       "path": "forge eval decompose",
       "flags": [
         "manifest",
@@ -314,6 +321,7 @@
         "agents",
         "fresh",
         "mode",
+        "profile",
         "project"
       ]
     },

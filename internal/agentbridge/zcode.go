@@ -161,7 +161,7 @@ func ZcodeConfigPath() (string, error) {
 // （encoding/json）保证输出确定。TestZcodeWiringMirrorsClaudeSettings 守卫
 // 受支持事件上的命令集对等。
 func buildZcodeHooks() map[string][]zcodeHookGroup {
-	spec := hooks.ForgeHookSpec()
+	spec := hooks.ForgeHookSpecForProfile(hooks.ActiveProfile())
 	events := make([]string, 0, len(spec))
 	for ev := range spec {
 		if zcodeSupportedEvents[ev] {

@@ -119,7 +119,7 @@ func KimiConfigPath() (string, error) {
 // 失败类）并排序保证输出确定（否则 map 迭代顺序会破坏幂等与 golden 测试）。
 // TestKimiWiringMirrorsClaudeSettings 守卫受支持事件上的命令集对等。
 func BuildKimiHooksTOML() string {
-	spec := hooks.ForgeHookSpec()
+	spec := hooks.ForgeHookSpecForProfile(hooks.ActiveProfile())
 	events := make([]string, 0, len(spec))
 	for ev := range spec {
 		if !kimiSupportedEvents[ev] {
