@@ -70,10 +70,11 @@ func TestCodexTranslator_MergePreservesUserEntries(t *testing.T) {
 	}
 	// Forge wiring present exactly once per command. Since Wave 1b every generated
 	// command carries the --agent codex suffix (output-protocol selection).
-	if n := strings.Count(content, `"forge hook task-guard --agent codex"`); n != 1 {
-		t.Errorf("forge hook task-guard appears %d times, want 1", n)
+	// W0.2 batch 接线：逐 hook 条目收敛为每事件一条 batch——断言随之改为组形态。
+	if n := strings.Count(content, `"forge hook batch --event`); n < 3 {
+		t.Errorf("codex wiring batch entries = %d, want >= 3", n)
 	}
-	if !strings.Contains(content, "forge hook bash-guard --agent codex") {
+	if !strings.Contains(content, "forge hook batch --event PostToolUse") {
 		t.Error("generated forge wiring missing")
 	}
 }

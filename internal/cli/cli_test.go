@@ -30,6 +30,8 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
 		os.Exit(1)
 	}
+	// W0.3 密闭性：档位默认 standard，防 shell 导出的 FORGE_PROFILE 泄漏假红。
+	os.Setenv("FORGE_PROFILE", "standard")
 	forgeExe = filepath.Join(tmpDir, exeName)
 
 	cmd := exec.Command("go", "build", "-o", forgeExe, "../../cmd/forge")
@@ -548,7 +550,7 @@ func TestInitWithAgents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cursor user-level hooks.json not created: %v", err)
 	}
-	if !strings.Contains(string(data), "forge hook task-guard") {
+	if !strings.Contains(string(data), "forge hook batch --event PreToolUse") {
 		t.Error("cursor user-level hooks.json missing forge hook wiring")
 	}
 
