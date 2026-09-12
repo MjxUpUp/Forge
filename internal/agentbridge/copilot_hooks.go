@@ -83,7 +83,7 @@ func copilotEventName(event string) (string, bool) {
 // 每个条目（copilot 匹配 Claude 工具名，见文件头注释），补上 type 包装，并给 forge
 // 命令追加 ` --agent copilot`（输出协议选择）。无手工副本 → 与 ForgeHookSpec 无 drift。
 func buildCopilotHooks() map[string]any {
-	spec := hooks.ForgeHookSpec()
+	spec := hooks.ForgeHookSpecForProfile(hooks.ActiveProfile())
 	hooksMap := map[string][]copilotHookEntry{}
 	for event, matchers := range spec {
 		ce, ok := copilotEventName(event)

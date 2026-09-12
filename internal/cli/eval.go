@@ -663,6 +663,15 @@ func init() {
 	cardCmd.Flags().Bool("render", false, "渲染 Markdown 全文")
 	evalCmd.AddCommand(cardCmd)
 
+	deadChecks := &cobra.Command{
+		Use:   "dead-checks [--window 90d] [--json]",
+		Short: "W0.1 死检查报告：按台账分 live / dead-candidate / insufficient-data（hook 瘦身的数据面）",
+		RunE:  runEvalDeadChecks,
+	}
+	deadChecks.Flags().String("window", "90d", "观察窗（90d / 2160h）")
+	deadChecks.Flags().Bool("json", false, "JSON 输出")
+	evalCmd.AddCommand(deadChecks)
+
 	dash := &cobra.Command{
 		Use:   "dashboard [--dry-run] [--json]",
 		Short: "Track B 遥测仪表盘（C4/C7：override/escape/wait/off_churn + Wilson 区间 + 误用注记）",
