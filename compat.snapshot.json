@@ -141,6 +141,13 @@
       ]
     },
     {
+      "path": "forge eval dead-checks",
+      "flags": [
+        "json",
+        "window"
+      ]
+    },
+    {
       "path": "forge eval decompose",
       "flags": [
         "manifest",
@@ -148,6 +155,14 @@
         "profiles",
         "repeats",
         "wallclock"
+      ]
+    },
+    {
+      "path": "forge eval friction",
+      "flags": [
+        "corpus",
+        "json",
+        "timeout"
       ]
     },
     {
@@ -200,6 +215,17 @@
       "path": "forge eval resume-drill",
       "flags": [
         "dir"
+      ]
+    },
+    {
+      "path": "forge eval rule-ledger",
+      "flags": [
+        "claim",
+        "list",
+        "probe",
+        "record",
+        "rule",
+        "verify"
       ]
     },
     {
@@ -314,6 +340,7 @@
         "agents",
         "fresh",
         "mode",
+        "profile",
         "project"
       ]
     },

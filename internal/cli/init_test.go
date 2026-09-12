@@ -51,7 +51,7 @@ func TestRunInitTeamMode_NoProjectLevelSettingsLocal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("user-level settings.json not written: %v", err)
 	}
-	if !strings.Contains(string(data), "forge hook task-guard") {
+	if !strings.Contains(string(data), "forge hook batch --event PreToolUse") {
 		t.Error("user-level settings.json missing forge hooks")
 	}
 	// The git-shared instruction layer is still written to the project.
@@ -112,7 +112,7 @@ func TestRunInitUserLevel_ConvergesTeamModeProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("user-level settings.json not written: %v", err)
 	}
-	if !strings.Contains(string(userData), "forge hook task-guard") {
+	if !strings.Contains(string(userData), "forge hook batch --event PreToolUse") {
 		t.Error("user-level settings.json missing forge hooks")
 	}
 }
