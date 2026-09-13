@@ -481,6 +481,15 @@ func chdirToNonForgeRoot(t *testing.T) func() {
 	return func() { os.Chdir(orig) }
 }
 
+// 非 forge 场景 helper 的入口自愈：前序测试删除 chdir 目录后 getwd 会以 ENOENT
+// 贯穿后续用例（CI -race 实证 hook_test.go:493/527）——进入本 helper 先重锚到
+// 新鲜临时目录，保证 Find/Getwd 起点可解析。
+func reanchorCwd(t *testing.T) {
+	if _, err := os.Getwd(); err != nil {
+		_ = os.Chdir(t.TempDir())
+	}
+}
+
 // TestHookOutput_GlobalHookRunsOutsideProject guards the global-hook path in
 // runHook: skill-scan scans $HOME/.claude/skills (project-independent), so it
 // MUST NOT be silently skipped by the non-forge-project allow-and-exit. In a
@@ -490,6 +499,7 @@ func chdirToNonForgeRoot(t *testing.T) func() {
 // (catch skills that entered outside the install gate, which is exactly the
 // non-forge-project / global case).
 func TestHookOutput_GlobalHookRunsOutsideProject(t *testing.T) {
+	reanchorCwd(t)
 	restore := chdirToNonForgeRoot(t) // findProjectRoot fails → exercises isGlobalHook branch
 	defer restore()
 	// No ~/.claude/skills under this HOME → skill-scan takes the "no skills" PASS
@@ -524,6 +534,7 @@ func TestHookOutput_GlobalHookRunsOutsideProject(t *testing.T) {
 // allow-and-exit silently (no AdditionalContext). The global-hook carve-out
 // must not leak to other hooks.
 func TestHookOutput_ProjectScopedHookStillSkipsOutsideProject(t *testing.T) {
+	reanchorCwd(t)
 	restore := chdirToNonForgeRoot(t) // findProjectRoot fails → project-scoped hook must allow-and-exit
 	defer restore()
 
