@@ -306,6 +306,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | task-complete 自报一致性门禁（自动） | checklist 已勾选项里声称执行过的验证类命令（go test/pytest/cargo test 等）与 toollog 实测 Bash 集比对：测试类声称任务全程零匹配 = 虚报进度形态（arXiv 2605.29442）→ 拒绝完成；非测试类差集只留 advisory 痕；toollog 缺失（宿主遥测未接）跳过——区分"无法验证"与"验证通过"；逃生（留痕）`FORGE_SELF_REPORT=disable` |
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D7：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
 | `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、hook/门禁/逃生舱清单与已知盲区（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
+| `forge eval dead-checks [--window 90d] [--json]` | W0.1 死检查报告：聚合 checklog+hazard 台账，按检查分 live / dead-candidate / insufficient-data（hook 瘦身的数据面；嵌入式 hook 的 PASS 不逐次落账，触发率为下界——输出内明示） |
+| `forge eval friction [--corpus <dir>] [--timeout 120s] [--json]` | W2 摩擦净值实验（脚本化双臂）：诱饵语料在「门禁开 / 既有逃生舱全开」两臂下实跑，量拦截率、残余与检查器开销（ON-OFF 墙钟）；端到端 agent 臂走 FORGE_EVAL_MODEL 通道 |
+| `forge eval rule-ledger --record --rule <id> --claim <预测> --probe <命令>` / `--verify --rule <id>` / `--list` | W5 门禁规则可证伪台账：规则变更带预测声明 + 可执行 probe，verify 实跑落账结论（`evals/rule-ledger.jsonl` 随库提交；损坏行 fail-closed） |
+| `forge init --profile <lite\|standard\|full>` | W0.3 接线档位：lite=拦截+管线+状态最小集（12 hook/6 事件），standard=完整现行（默认），full=预留位；持久化 `~/.forge/profile`，FORGE_PROFILE env 可覆盖，运行时门即时生效 |
 | `forge eval dashboard [--dry-run] [--json]` | Track B 遥测（C4/C7）：escape 率/off_churn/自举通过率（Wilson 95% CI + 误用注记；样本低于字典下限只出 INSUFFICIENT）。快照落 `~/.forge/evals/forge/snapshots/` |
 | `forge eval harness-audit [--json]` | A–G harness 修复的事前/事后度量（docs/design/harness-fixes-a-g-2026-09.md M）：checklog × toollog（2s 双记去重）× 任务 × hazard 一次算出 skill-trigger 日均触发/按通道转化/inline 跟随/verification-driver 精度、next-hint 采纳、门禁命令形态 C1–C3、refs-critical 下钻（按 host）、封印后归因泄漏、hazard 双投递、coverage 拦后转 pass；`--json` 带口径字段，两机回测只比同口径基线（`evals/harness-audit-*-baseline-*.json`） |
 | `forge eval golden run [--dir <dir>] [--repeats N] [--rewrite-manifest] [--json]` | 门禁 golden 标注集重放：precision/fpr（Wilson 区间）+ 确定性重放一致率；用例集指纹钉在 `evals/forge/golden/MANIFEST.sha256`，不符拒绝运行（`--rewrite-manifest` 仅限显式轮换） |

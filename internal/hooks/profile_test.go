@@ -2,6 +2,7 @@ package hooks
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -135,5 +136,39 @@ func TestProfileAllowsHook(t *testing.T) {
 	}
 	if !ProfileAllowsHook("hazard-guard", ProfileLite) {
 		t.Error("lite 必须允许 hazard-guard（HITL 核心）")
+	}
+}
+
+// TestForgeHookWiring_BatchTransform：W0.2 单入口分派的接线变换——多 hook
+// matcher 组收敛为一条 `forge hook batch --event E --matcher M`（进程拉起从
+// N 降到 1）；单 hook matcher 保持原条目；档位过滤在变换前生效（lite 的接线
+// 更小）。变换本体（batch 命令）已实现（hookdispatch.hook_batch.go），本测试
+// 钉住接线形态供 flip 批次消费。
+func TestForgeHookWiring_BatchTransform(t *testing.T) {
+	t.Setenv("FORGE_PROFILE", "standard")
+	wiring := ForgeHookWiring()
+	fullE, fullM, fullN := specStats(ForgeHookSpec())
+	wE, wM, wN := specStats(wiring)
+	if wE != fullE {
+		t.Errorf("事件数不变（8），got %d", wE)
+	}
+	if wM != fullM {
+		t.Errorf("matcher 数不变（11），got %d", wM)
+	}
+	if wN >= fullN {
+		t.Errorf("batch 变换必须减少条目数（33 → 每 matcher 一条），got %d", wN)
+	}
+	// PreToolUse/Write|Edit 组（6 hook）收敛后恰一条 batch 条目，且命令含
+	// 事件与 matcher（shell 引号安全由 %q 保证）。
+	var found bool
+	for _, ms := range wiring["PreToolUse"] {
+		for _, h := range ms.Hooks {
+			if ms.Matcher == "Write|Edit" && strings.HasPrefix(h.Command, "forge hook batch --event PreToolUse --matcher") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("PreToolUse/Write|Edit 组未收敛为 batch 单入口条目")
 	}
 }

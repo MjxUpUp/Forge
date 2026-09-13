@@ -157,7 +157,7 @@ func reasonixEventName(event string) (string, bool) {
 // 把每个 matcher 的 hook 列表扁平化为每 hook 一个条目——matcher 作为 `match` 带到每个条目，
 // 丢掉 `type` 包装（恒为 "command"）。无手工副本 → 与 ForgeHookSpec 无 drift。
 func buildReasonixHooks() map[string]any {
-	spec := hooks.ForgeHookSpecForProfile(hooks.ActiveProfile())
+	spec := hooks.ForgeHookWiring()
 	hooksMap := map[string][]reasonixHookEntry{}
 	for event, matchers := range spec {
 		re, ok := reasonixEventName(event)

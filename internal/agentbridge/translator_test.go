@@ -416,9 +416,9 @@ func TestCursorTranslator_Translate(t *testing.T) {
 		`"preToolUse"`,
 		`"postToolUse"`,
 		`"stop"`,
-		`forge hook task-guard`,
-		`forge hook bash-guard`,
-		`forge hook review-stop`,
+		`forge hook batch --event PreToolUse`,
+		`forge hook batch --event PostToolUse`,
+		`forge hook batch --event Stop`,
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("cursor user-level hooks.json missing %q", want)
@@ -500,7 +500,8 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 	// Windsurf registers at user level (~/.codeium/windsurf/hooks.json) — isolate the home.
 	home := isolateHome(t)
 	claudeDir := t.TempDir()
-	writeClaudeSettingsFixture(t, claudeDir)
+	// windsurf 名册硬编码未批量化（已知边界）——镜像比对用 per-hook 名册。
+	writeClaudeSettingsFixtureWithSpec(t, claudeDir, hooks.ForgeHookSpec())
 	if err := (&WindsurfTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("windsurf Translate: %v", err)
 	}
@@ -728,17 +729,15 @@ func TestCodexTranslator_Translate(t *testing.T) {
 	// Codex hooks.json must mirror the Claude Code wiring so Forge gates
 	// actually enforce on Codex. All three lifecycle events + the
 	// gate-enforcing commands must be present.
+	// W0.2 batch 接线：命令面收敛为每事件一条 `forge hook batch --event E
+	// --matcher M`——hook 级存在性由 spec 级测试钉住，这里钉事件面 + batch 形态。
 	for _, want := range []string{
 		`"PreToolUse"`,
 		`"PostToolUse"`,
 		`"Stop"`,
-		`forge hook task-guard`,
-		`forge hook auto-compile`,
-		`forge hook file-sentinel`,
-		`forge hook bash-guard`,
-		`forge hook hazard-guard`,
-		`forge hook review-stop`,
-		`forge hook task-verify`,
+		`forge hook batch --event PreToolUse`,
+		`forge hook batch --event PostToolUse`,
+		`forge hook batch --event Stop`,
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("codex hooks.json missing %q", want)
@@ -972,7 +971,8 @@ func readOrFail(t *testing.T, path string) string {
 // host parity 测试把它读作 Claude Code 接线基准。
 func writeClaudeSettingsFixture(t *testing.T, dir string) {
 	t.Helper()
-	data, err := json.Marshal(map[string]any{"hooks": hooks.ForgeHookSpec()})
+	// W0.2：claude 接线为 batch 单入口（与 GenerateUserSettings/写渠同源）。
+	data, err := json.Marshal(map[string]any{"hooks": hooks.ForgeHookWiring()})
 	if err != nil {
 		t.Fatalf("marshal ForgeHookSpec: %v", err)
 	}
@@ -1018,5 +1018,21 @@ func TestConventionsHooks_MirrorWiringPinned(t *testing.T) {
 	}
 	if !has("pre_user_prompt", "conventions-context") {
 		t.Error("windsurf pre_user_prompt must carry conventions-context (the SessionStart group's Cascade mount)")
+	}
+}
+
+// writeClaudeSettingsFixtureWithSpec 以给定名册写 claude settings fixture
+// （windsurf 等未批量化宿主的镜像比对用）。
+func writeClaudeSettingsFixtureWithSpec(t *testing.T, dir string, spec map[string][]hooks.HookMatcher) {
+	data, err := json.Marshal(map[string]any{"hooks": spec})
+	if err != nil {
+		t.Fatalf("marshal spec: %v", err)
+	}
+	path := filepath.Join(dir, ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir .claude: %v", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		t.Fatalf("write settings.local.json: %v", err)
 	}
 }
