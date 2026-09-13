@@ -42,6 +42,12 @@ func newHookProject(t *testing.T) string {
 // （非 nil）：读 cmd.Root().Version 的分发不得空指针。
 func runHookCapture(t *testing.T, hookName, stdinJSON string) (string, error) {
 	t.Helper()
+	// cwd 自愈：前序测试删除了自己 chdir 进的目录时，本进程 cwd 悬空——
+	// 内部 RunHook 的 projectroot.Find 会以 getwd 失败炸掉全组后续用例
+	// （CI -race 实证）。落到新临时目录恢复可解析状态。
+	if _, err := os.Getwd(); err != nil {
+		_ = os.Chdir(t.TempDir())
+	}
 	if stdinJSON != "" {
 		oldStdin := os.Stdin
 		tmpStdin, err := os.CreateTemp("", "hook-stdin-*.json")
