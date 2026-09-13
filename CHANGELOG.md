@@ -10,6 +10,15 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.57.0](https://github.com/MjxUpUp/Forge/compare/v1.56.7...v1.57.0) (2026-09-13)
+
+
+### Features
+
+* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 ([12a7752](https://github.com/MjxUpUp/Forge/commit/12a775276182249fa659e76afc69a14dbf3c0b02))
+* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 ([fa330b6](https://github.com/MjxUpUp/Forge/commit/fa330b698285248be88de8987c4a14ac860f1944))
+* **hooks:** hazard-guard 语义分词层——GuardFall 五类绕过补漏（W1 门禁可证化） ([cfe7835](https://github.com/MjxUpUp/Forge/commit/cfe7835618e1aaa65b97be86a5dae6b85ff0e698))
+
 ## [1.56.7](https://github.com/MjxUpUp/Forge/compare/v1.56.6...v1.56.7) (2026-09-11)
 
 
