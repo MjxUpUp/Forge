@@ -67,7 +67,7 @@ var clineEventMappings = []struct {
 // 有序去重的 forge hook 名 roster。列在多个 matcher 下的 hook（skill-trigger 同时在
 // Write|Edit 与 Bash 组）只跑一次：cline 无 matcher，按 event 去重取代 matcher 分组。
 func clineRosters() map[string][]string {
-	spec := hooks.ForgeHookSpec()
+	spec := hooks.ForgeHookSpecForProfile(hooks.ActiveProfile())
 	rosters := map[string][]string{}
 	for _, e := range clineEventMappings {
 		seen := map[string]bool{}

@@ -379,6 +379,19 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		normalizeAgentStdin(agent, stdinData, &hookInput)
 	}
 
+	// W0.3 档位门（运行时兜底层）：接线过滤（init 写 user-level settings 与各
+	// translator 时按 ForgeHookSpecForProfile 裁剪）覆盖 forge init/sync 渠道；
+	// 插件渠道用户的接线来自完整 plugin payload（forge 无权删改宿主缓存），档位
+	// 在这里秒过——不在 ActiveProfile 白名单内的 hook 走宿主各自的 allow 通道
+	// 静默放行，零 bash 拉起、零检查开销。CLI 门禁（taskpipeline executor 的
+	// runEmbeddedHook）不经本函数——lite 只瘦会话内常驻面，CLI 门禁保持完整。
+	// 位置在 stdin 解析/归一化之后：EmitAgentOutput 需要 agent 与 eventName。
+	if !hooks.ProfileAllowsHook(name, hooks.ActiveProfile()) {
+		// 空 detail：档位放行必须静默（非空 detail 会经 SessionStart 等上下文
+		// 通道注成 additionalContext 噪音——恰是 W0 要消掉的东西）。
+		return EmitAgentOutput(agent, hookInput.HookEventName, name, true, "")
+	}
+
 	// Payload-borne identity/dialect fallbacks (need the parsed stdin, so they run
 	// after normalize): cursor's conversation_id fills an empty SessionID (its
 	// tool/Stop/prompt events carry no session_id); opencode's forge_agent fills

@@ -424,6 +424,10 @@ func TestTaskGuardHookSelfProtection(t *testing.T) {
 // TestForgeHookSpec_Gap2ReinjectChain（PostCompact/UserPromptSubmit 链）、
 // TestForgeHookSpecObservationHooks（观察事件）、TestFreezeGuardRegisteredFirst（freeze 优先序）。
 func TestGenerateSettingsHooksMirrorForgeHookSpec(t *testing.T) {
+	// 本测试钉的是【完整名册】的镜像等价——显式钉 standard 档，使测试在开发机
+	// 持久化 lite 档（~/.forge/profile）时保持封闭（W0.3；否则镜像与档位过滤
+	// 互相打架，假红）。
+	t.Setenv("FORGE_PROFILE", "standard")
 	var parsed struct {
 		Hooks map[string][]HookMatcher `json:"hooks"`
 	}
