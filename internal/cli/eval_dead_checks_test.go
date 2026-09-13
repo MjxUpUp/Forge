@@ -34,19 +34,46 @@ func TestParseDeadCheckWindow(t *testing.T) {
 // 包装成「已证死」）；观察充足且零拦截 → dead-candidate；有拦截 → live。
 func TestClassifyDeadCheck(t *testing.T) {
 	cases := []struct {
+		kind              string
 		observed, blocked int
 		want              string
 	}{
-		{10, 0, "insufficient-data"},
-		{29, 0, "insufficient-data"},
-		{30, 0, "dead-candidate"},
-		{100, 0, "dead-candidate"},
-		{100, 3, "live"},
-		{5, 1, "live"},
+		{kind: "blocking", observed: 10, blocked: 0, want: "insufficient-data"},
+		{kind: "blocking", observed: 29, blocked: 0, want: "insufficient-data"},
+		{kind: "blocking", observed: 30, blocked: 0, want: "dead-candidate"},
+		{kind: "blocking", observed: 100, blocked: 0, want: "dead-candidate"},
+		{kind: "blocking", observed: 100, blocked: 3, want: "live"},
+		{kind: "blocking", observed: 5, blocked: 1, want: "live"},
+		{kind: "advisory", observed: 100, blocked: 0, want: "advisory-pass-only"},
+		{kind: "advisory", observed: 100, blocked: 2, want: "advisory-signal"},
+		{kind: "advisory", observed: 10, blocked: 0, want: "insufficient-data"},
+		{kind: "gate", observed: 100, blocked: 0, want: "gate-healthy"},
+		{kind: "gate", observed: 100, blocked: 3, want: "live"},
+		{kind: "pipeline", observed: 100, blocked: 9, want: "pipeline-marker"},
 	}
 	for _, tc := range cases {
-		if got := classifyDeadCheck(tc.observed, tc.blocked); got != tc.want {
-			t.Errorf("classifyDeadCheck(%d, %d) = %q, want %q", tc.observed, tc.blocked, got, tc.want)
+		if got := classifyDeadCheck(tc.kind, tc.observed, tc.blocked); got != tc.want {
+			t.Errorf("classifyDeadCheck(%q, %d, %d) = %q, want %q", tc.kind, tc.observed, tc.blocked, got, tc.want)
+		}
+	}
+}
+
+// TestClassifyCheckKind：类别映射的锚点抽查——review 文档
+// docs/surveys/w0-dead-checks-review.md 的三类代表 + 未列名默认 blocking。
+func TestClassifyCheckKind(t *testing.T) {
+	for check, want := range map[string]string{
+		"skill-trigger":         "advisory",
+		"auto-compile":          "advisory",
+		"review-pass":           "pipeline",
+		"task-started":          "pipeline",
+		"task-verify":           "gate",
+		"task-complete":         "gate",
+		"hazard-guard":          "blocking",
+		"cheat-scan":            "blocking",
+		"some-future-new-check": "blocking",
+	} {
+		if got := classifyCheckKind(check); got != want {
+			t.Errorf("classifyCheckKind(%q) = %q, want %q", check, got, want)
 		}
 	}
 }
