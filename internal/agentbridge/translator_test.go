@@ -494,6 +494,9 @@ func TestWindsurfTranslator_Translate(t *testing.T) {
 // Windsurf's stdin schema differs from Claude Code's.
 // (gate-cmd-form roster sync in windsurf.go is covered by this test — it failed before the sync.)
 func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
+	// 本测试钉【完整名册】的 windsurf 镜像——显式钉 standard 档保持封闭
+	// （W0.3：lite 档下 buildWindsurfHooks 会按白名单裁剪，镜像比对会假红）。
+	t.Setenv("FORGE_PROFILE", "standard")
 	// Windsurf registers at user level (~/.codeium/windsurf/hooks.json) — isolate the home.
 	home := isolateHome(t)
 	claudeDir := t.TempDir()
