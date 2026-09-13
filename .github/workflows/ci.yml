@@ -86,7 +86,9 @@ jobs:
       - run: /tmp/forge skills audit --canonical ./skills --gate
       # 生成物漂移门禁：pack 默认写 cwd（重新生成 .claude-plugin/.cursor-plugin），
       # 再 git diff 比对——有人改了生成物源头却没重跑 pack，这里立刻红。
-      - run: /tmp/forge plugin pack && git diff --exit-code -- .claude-plugin .cursor-plugin
+      # pathspec 必须覆盖 plugins/ 下两份载荷（plugin.json/reasonix-plugin.json）
+      # ——W0.2 审查实证：只盖根级 marketplace 时载荷 stale 而 CI 绿。
+      - run: /tmp/forge plugin pack && git diff --exit-code -- .claude-plugin .cursor-plugin plugins
       # eval 回归电池 + 互斥集混淆矩阵。空电池/无 run 打 vacuous 提示不拦
       # （「未检查」不是「已验证无回归」——范围诚实性，见 battery 语义）。
       - run: /tmp/forge skills battery --dir evals --gate

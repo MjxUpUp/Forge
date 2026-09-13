@@ -109,7 +109,7 @@ func runEvalDeadChecks(cmd *cobra.Command, args []string) error {
 			Check: check, Observed: a.observed, Blocked: a.blocked, Warn: a.warn,
 			Pass: a.pass, Skipped: a.skipped,
 			FirstSeen: a.first.Format("2006-01-02"), LastSeen: a.last.Format("2006-01-02"),
-			Verdict: classifyDeadCheck(a.observed, a.blocked),
+			Verdict: classifyDeadCheck(classifyCheckKind(check), a.observed, a.blocked),
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -163,10 +163,14 @@ func runEvalDeadChecks(cmd *cobra.Command, args []string) error {
 		switch r.Verdict {
 		case "dead-candidate":
 			marker = " ← 减法候选（观察充足、拦截为零）"
-		case "live":
-			marker = ""
-		default:
-			marker = " （观察不足，继续观察）"
+		case "advisory-pass-only":
+			marker = " （advisory：零拦截为设计；质量口径=warn/送达/命中）"
+		case "advisory-signal":
+			marker = " （advisory 有信号）"
+		case "gate-healthy":
+			marker = " （gate 通过率健康；死法靠 canary/WARN 判定）"
+		case "pipeline-marker":
+			marker = " （状态机留痕，排除出判定）"
 		}
 		fmt.Printf("  %-28s 观察 %4d / 拦截 %3d / warn %3d / pass %4d / 跳过 %3d  [%s]%s\n",
 			r.Check, r.Observed, r.Blocked, r.Warn, r.Pass, r.Skipped, r.Verdict, marker)
@@ -181,17 +185,67 @@ func runEvalDeadChecks(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// classifyDeadCheck 三态判定（纯函数，单测钉住）：有拦截/fail 即 live（拦截是
-// 存在性的决定性证据，与观察量无关）；零拦截但观察不足 → insufficient-data
-// （绝不把无数据包装成「已证死」）；观察充足且零拦截 → dead-candidate。
-func classifyDeadCheck(observed, blocked int) string {
-	if blocked > 0 {
-		return "live"
+// checkKinds 是检查类别单一来源（W0.1 v2，归因复核
+// docs/surveys/w0-dead-checks-review.md 的落地）：v1 的「拦截」口径只对
+// blocking 类有意义——advisory 类设计上永不阻断（拦截 0 非死证据），管线
+// 事件标记不是检查（排除出判定）。未列名的新检查默认 blocking（保守：
+// 保留 v1 dead-detection 而非静默豁免）。
+var checkKinds = map[string]string{
+	// advisory：提醒/注入/触发通道——健康度口径 = warn 率/送达/命中
+	"skill-trigger": "advisory", "auto-compile": "advisory", "test-nudge": "advisory",
+	"plan-first": "advisory", "next-hint": "advisory", "doc-lint": "advisory",
+	"branch-unmerged": "advisory", "conventions-inject": "advisory",
+	"test-capability-scan": "advisory",
+	// gate：advisory-default 门（protocol 可升级）——拦截 0 = 通过率好
+	"task-verify": "gate", "task-complete": "gate", "docs-consistency-gate": "gate",
+	// pipeline：状态机事件留痕，非检查
+	"review-pass": "pipeline", "task-started": "pipeline",
+}
+
+// classifyCheckKind 返回检查类别；未列名 → blocking（v1 保守口径）。
+func classifyCheckKind(check string) string {
+	if k, ok := checkKinds[check]; ok {
+		return k
 	}
-	if observed < deadCheckMinObservations {
-		return "insufficient-data"
+	return "blocking"
+}
+
+// classifyDeadCheck 按类别三/四态判定（纯函数，单测钉住）：
+//   - blocking：有拦截/fail 即 live；零拦截但观察不足 → insufficient-data
+//     （绝不把无数据包装成「已证死」）；观察充足且零拦截 → dead-candidate。
+//   - advisory：零拦截是设计使然——只区分 advisory-signal（有 warn 信号）
+//     与 advisory-pass-only（纯通过，质量口径需 canary/命中评估），永不判死。
+//   - gate：拦截 0 = 通过率好（gate-healthy）；有拦截 = live。
+//   - pipeline：状态机留痕，排除出判定。
+func classifyDeadCheck(kind string, observed, blocked int) string {
+	switch kind {
+	case "pipeline":
+		return "pipeline-marker"
+	case "advisory":
+		if observed < deadCheckMinObservations {
+			return "insufficient-data"
+		}
+		if blocked > 0 {
+			return "advisory-signal"
+		}
+		return "advisory-pass-only"
+	case "gate":
+		if blocked > 0 {
+			return "live"
+		}
+		if observed < deadCheckMinObservations {
+			return "insufficient-data"
+		}
+		return "gate-healthy"
+	default: // blocking
+		if blocked > 0 {
+			return "live"
+		}
+		if observed < deadCheckMinObservations {
+			return "insufficient-data"
+		}
+		return "dead-candidate"
 	}
-	return "dead-candidate"
 }
 
 // parseDeadCheckWindow 解析观察窗（"90d" / "720h" / 裸天数），非法输入 fail-closed。
