@@ -75,7 +75,7 @@ func TestReasonixTranslator_TranslateWritesHooks(t *testing.T) {
 	body := string(data)
 	for _, want := range []string{
 		`"hooks"`,
-		`forge hook batch --event PreToolUse`, // PreToolUse enforcement（batch 单入口）
+		`forge hook batch --event PreToolUse`,   // PreToolUse enforcement（batch 单入口）
 		`forge hook batch --event SessionStart`, // SessionStart
 	} {
 		if !strings.Contains(body, want) {
