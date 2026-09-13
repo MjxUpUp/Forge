@@ -5,31 +5,11 @@
     "PostToolUse": [
       {
         "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook auto-compile --agent reasonix"
-      },
-      {
-        "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook workflow-test-guard --agent reasonix"
-      },
-      {
-        "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook skill-trigger --agent reasonix"
-      },
-      {
-        "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook test-nudge --agent reasonix"
+        "command": "forge hook batch --event PostToolUse --matcher \"Write|Edit\" --agent reasonix"
       },
       {
         "match": "bash",
-        "command": "forge hook file-sentinel --agent reasonix"
-      },
-      {
-        "match": "bash",
-        "command": "forge hook tool-track --agent reasonix"
-      },
-      {
-        "match": "bash",
-        "command": "forge hook skill-trigger --agent reasonix"
+        "command": "forge hook batch --event PostToolUse --matcher \"Bash\" --agent reasonix"
       },
       {
         "match": "read_file",
@@ -39,74 +19,21 @@
     "PreToolUse": [
       {
         "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook freeze-guard --agent reasonix"
-      },
-      {
-        "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook task-guard --agent reasonix"
-      },
-      {
-        "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook assertion-check --agent reasonix"
-      },
-      {
-        "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook read-before-edit --agent reasonix"
-      },
-      {
-        "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook skill-trigger --agent reasonix"
-      },
-      {
-        "match": "write_file|edit_file|multi_edit|move_file",
-        "command": "forge hook conventions-write --agent reasonix"
+        "command": "forge hook batch --event PreToolUse --matcher \"Write|Edit\" --agent reasonix"
       },
       {
         "match": "bash",
-        "command": "forge hook bash-guard --agent reasonix"
-      },
-      {
-        "match": "bash",
-        "command": "forge hook hazard-guard --agent reasonix"
-      },
-      {
-        "match": "bash",
-        "command": "forge hook gate-cmd-form --agent reasonix"
-      },
-      {
-        "match": "bash",
-        "command": "forge hook skill-trigger --agent reasonix"
+        "command": "forge hook batch --event PreToolUse --matcher \"Bash\" --agent reasonix"
       }
     ],
     "SessionStart": [
       {
-        "command": "forge hook skill-scan --agent reasonix"
-      },
-      {
-        "command": "forge hook mcp-scan --agent reasonix"
-      },
-      {
-        "command": "forge hook init-suggest --agent reasonix"
-      },
-      {
-        "command": "forge hook task-resume --agent reasonix"
-      },
-      {
-        "command": "forge hook skill-trigger --agent reasonix"
-      },
-      {
-        "command": "forge hook conventions-context --agent reasonix"
+        "command": "forge hook batch --event SessionStart --matcher \"\" --agent reasonix"
       }
     ],
     "Stop": [
       {
-        "command": "forge hook task-verify --agent reasonix"
-      },
-      {
-        "command": "forge hook review-stop --agent reasonix"
-      },
-      {
-        "command": "forge hook skill-trigger --agent reasonix"
+        "command": "forge hook batch --event Stop --matcher \"\" --agent reasonix"
       }
     ]
   },

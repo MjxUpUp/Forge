@@ -186,8 +186,9 @@ func TestZcodeTranslator_MergePreservesUserContent(t *testing.T) {
 	if cmds["PreToolUse"]["forge hook stale-removed-hook --agent zcode"] {
 		t.Error("stale forge entry survived — merge must replace forge entries wholesale")
 	}
-	if !cmds["PreToolUse"]["forge hook task-guard --agent zcode"] {
-		t.Error("generated forge entry missing after merge")
+	// W0.2 batch 接线：task-guard 随 PreToolUse 组进入 batch 单入口条目。
+	if !cmds["PreToolUse"]["forge hook batch --event PreToolUse --matcher \"Write|Edit\" --agent zcode"] {
+		t.Error("generated forge entry missing after merge (batch entry)")
 	}
 }
 
@@ -205,7 +206,7 @@ func TestZcodeTranslator_NullConfig(t *testing.T) {
 				t.Fatalf("Translate on %s: %v", body, err)
 			}
 			cmds := zcodeHookCommandsByEvent(t, path)
-			if !cmds["PreToolUse"]["forge hook task-guard --agent zcode"] {
+			if !cmds["PreToolUse"]["forge hook batch --event PreToolUse --matcher \"Write|Edit\" --agent zcode"] {
 				t.Errorf("generated wiring missing after merge onto %s", body)
 			}
 			data, _ := os.ReadFile(path)

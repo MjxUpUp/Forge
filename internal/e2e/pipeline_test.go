@@ -128,8 +128,9 @@ func TestE2E_InitMultiAgent(t *testing.T) {
 		t.Error("init --agents claude-code,cursor: user-level settings.json missing forge hooks")
 	}
 	cursorHooks := readFile(t, os.Getenv("HOME"), ".cursor/hooks.json")
-	if !strings.Contains(cursorHooks, "forge hook task-guard") {
-		t.Error("init --agents claude-code,cursor: user-level cursor hooks.json missing forge wiring")
+	// W0.2 batch 接线：cursor 渠道收敛为每事件一条 batch 单入口。
+	if !strings.Contains(cursorHooks, "forge hook batch --event") {
+		t.Error("init --agents claude-code,cursor: user-level cursor hooks.json missing forge wiring (batch entry)")
 	}
 
 	// Zero project writes for either backend.
@@ -163,7 +164,7 @@ func TestE2E_InitCodex(t *testing.T) {
 		t.Fatalf("init --agents codex did not generate user-level $CODEX_HOME/hooks.json: %v", err)
 	}
 	content := string(data)
-	for _, want := range []string{`"PreToolUse"`, `"PostToolUse"`, `"Stop"`, "forge hook task-guard"} {
+	for _, want := range []string{`"PreToolUse"`, `"PostToolUse"`, `"Stop"`, "forge hook batch --event PreToolUse", "forge hook batch --event Stop"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("codex hooks.json missing %q", want)
 		}

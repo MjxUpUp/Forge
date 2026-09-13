@@ -211,7 +211,7 @@ func StripCodexHooksUserLevel() (bool, error) {
 // 无手工副本 → 无 drift。TestCodexWiringMirrorsClaudeSettings 守卫命令集对等；
 // TestCodexHooks_OnlyLegalCodexEvents 钉死 event 名白名单。
 func buildCodexHooks() map[string]any {
-	spec := hooks.ForgeHookSpecForProfile(hooks.ActiveProfile())
+	spec := hooks.ForgeHookWiring()
 	codex := make(map[string][]hooks.HookMatcher, len(spec))
 	for event, matchers := range spec {
 		// 白名单：ForgeHookSpec 中存在于 codex 官方名册的 event（PascalCase 同名——

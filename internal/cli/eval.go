@@ -672,6 +672,29 @@ func init() {
 	deadChecks.Flags().Bool("json", false, "JSON 输出")
 	evalCmd.AddCommand(deadChecks)
 
+	friction := &cobra.Command{
+		Use:   "friction [--corpus <dir>] [--timeout 120s] [--json]",
+		Short: "W2 摩擦净值实验（脚本化双臂）：诱饵语料 ON/OFF 逃生舱对照 + 检查器开销",
+		RunE:  runEvalFriction,
+	}
+	friction.Flags().String("corpus", "", "诱饵语料目录（默认 evals/forge/golden 的 defective 用例）")
+	friction.Flags().String("timeout", "120s", "单探针超时")
+	friction.Flags().Bool("json", false, "JSON 输出")
+	evalCmd.AddCommand(friction)
+
+	ruleLedger := &cobra.Command{
+		Use:   "rule-ledger (--record --rule <id> --claim <预测> --probe <命令>) | (--verify --rule <id>) | --list",
+		Short: "W5 门禁规则可证伪台账：claim + 可执行 probe + verify 结论落账",
+		RunE:  runEvalRuleLedger,
+	}
+	ruleLedger.Flags().Bool("list", false, "列出台账")
+	ruleLedger.Flags().Bool("record", false, "记录 claim（配合 --rule/--claim/--probe）")
+	ruleLedger.Flags().String("rule", "", "规则 id")
+	ruleLedger.Flags().String("claim", "", "预测声明（变更应产生的可观察效果）")
+	ruleLedger.Flags().String("probe", "", "可执行验证命令（仓库根 sh -c 实跑）")
+	ruleLedger.Flags().Bool("verify", false, "实跑该规则最近 claim 的 probe 并落账结论")
+	evalCmd.AddCommand(ruleLedger)
+
 	dash := &cobra.Command{
 		Use:   "dashboard [--dry-run] [--json]",
 		Short: "Track B 遥测仪表盘（C4/C7：override/escape/wait/off_churn + Wilson 区间 + 误用注记）",

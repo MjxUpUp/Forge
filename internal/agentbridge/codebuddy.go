@@ -85,7 +85,7 @@ type CodeBuddyHooksPayload struct {
 // 标记，故 --agent 是它唯一的身份信号）。
 // TestCodeBuddyHooksPayload_MirrorsSpec 守卫此对等（spec + 唯一后缀）。
 func BuildCodeBuddyHooksPayload() CodeBuddyHooksPayload {
-	spec := hooks.ForgeHookSpec()
+	spec := hooks.ForgeHookWiring()
 	out := make(map[string][]hooks.HookMatcher, len(spec))
 	for event, matchers := range spec {
 		ms := make([]hooks.HookMatcher, len(matchers))

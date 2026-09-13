@@ -42,7 +42,7 @@ func setupWorkBuddyEnv(t *testing.T) (wb, forgeHome string) {
 func TestCodeBuddyHooksPayload_MirrorsSpec(t *testing.T) {
 	payload := BuildCodeBuddyHooksPayload()
 	a, _ := json.Marshal(payload.Hooks)
-	spec := hooks.ForgeHookSpec()
+	spec := hooks.ForgeHookWiring()
 	withAgent := make(map[string][]hooks.HookMatcher, len(spec))
 	for event, matchers := range spec {
 		ms := make([]hooks.HookMatcher, len(matchers))

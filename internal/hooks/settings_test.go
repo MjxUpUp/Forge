@@ -105,11 +105,16 @@ func TestGenerateSettingsUsesForgeHook(t *testing.T) {
 	_, data := generateAndRead(t)
 	content := string(data)
 
-	// All hook invocations should route through "forge hook <name>"
-	for _, name := range []string{"auto-compile", "assertion-check", "task-verify", "task-guard", "read-before-edit", "bash-guard", "file-sentinel", "skill-scan", "workflow-test-guard"} {
-		expected := "forge hook " + name
-		if !strings.Contains(content, expected) {
-			t.Errorf("settings missing %q command", expected)
+	// W0.2 batch 接线：所有 hook 调用收敛为每 matcher 一条 batch 命令——
+	// hook 级存在性由 ForgeHookSpec 名册测试钉住，这里钉 batch 形态 + 事件面。
+	for _, want := range []string{
+		"forge hook batch --event PreToolUse",
+		"forge hook batch --event PostToolUse",
+		"forge hook batch --event Stop",
+		"forge hook batch --event SessionStart",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("settings missing %q command", want)
 		}
 	}
 }
@@ -194,7 +199,8 @@ func TestStopHooksIncludeTaskVerify(t *testing.T) {
 	found := false
 	for _, group := range stopHooks {
 		for _, h := range group.Hooks {
-			if strings.Contains(h.Command, "forge hook task-verify") {
+			// W0.2：Stop 组收敛为 batch 单入口——task-verify 随组在 batch 命令里。
+			if strings.Contains(h.Command, "forge hook batch") || strings.Contains(h.Command, "forge hook task-verify") {
 				found = true
 			}
 		}
@@ -432,10 +438,10 @@ func TestGenerateSettingsHooksMirrorForgeHookSpec(t *testing.T) {
 		Hooks map[string][]HookMatcher `json:"hooks"`
 	}
 	generateAndParse(t, &parsed)
-	if !reflect.DeepEqual(parsed.Hooks, ForgeHookSpec()) {
+	if !reflect.DeepEqual(parsed.Hooks, ForgeHookWiring()) {
 		a, _ := json.Marshal(parsed.Hooks)
-		b, _ := json.Marshal(ForgeHookSpec())
-		t.Errorf("settings.local.json hooks != ForgeHookSpec() (registration drift):\n written: %s\n spec:    %s", a, b)
+		b, _ := json.Marshal(ForgeHookWiring())
+		t.Errorf("settings hooks != ForgeHookWiring() (registration drift):\n written: %s\n wiring:   %s", a, b)
 	}
 }
 
@@ -1093,7 +1099,7 @@ func TestGenerateUserSettings_CreatesFile(t *testing.T) {
 		t.Fatalf("settings.json not created: %v", err)
 	}
 	body := string(data)
-	for _, want := range []string{`"hooks"`, "forge hook task-guard", "forge hook skill-scan"} {
+	for _, want := range []string{`"hooks"`, "forge hook batch --event PreToolUse", "forge hook batch --event SessionStart"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("user-level settings.json missing %q", want)
 		}
@@ -1226,9 +1232,10 @@ func TestGenerateUserSettings_MergePreservesUserHooks(t *testing.T) {
 	if strings.Contains(content, "stale-removed-hook") {
 		t.Error("stale forge hook entry not replaced")
 	}
-	// Forge wiring present exactly once per command.
-	if n := strings.Count(content, `"forge hook task-guard"`); n != 1 {
-		t.Errorf("forge hook task-guard appears %d times, want 1", n)
+	// W0.2 batch 接线：forge 条目收敛为每 matcher 一条 batch——PreToolUse 两组
+	// 各一条，幂等合并不重复。
+	if n := strings.Count(content, `"forge hook batch --event PreToolUse`); n != 2 {
+		t.Errorf("forge hook batch (PreToolUse) appears %d times, want 2", n)
 	}
 
 	// Within PreToolUse, the user entry must precede the forge entries.
@@ -1253,7 +1260,7 @@ func TestGenerateUserSettings_MergePreservesUserHooks(t *testing.T) {
 		if c == "./scripts/lint.sh" && ui == -1 {
 			ui = i
 		}
-		if c == "forge hook task-guard" && fi == -1 {
+		if strings.HasPrefix(c, "forge hook batch --event PreToolUse") && fi == -1 {
 			fi = i
 		}
 	}

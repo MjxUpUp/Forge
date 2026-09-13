@@ -26,6 +26,7 @@ package hooks
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -176,4 +177,50 @@ func WriteGlobalProfile(p Profile) error {
 		return fmt.Errorf("cannot resolve global home for profile file")
 	}
 	return util.AtomicWrite(path, []byte(string(p)+"\n"), 0o644)
+}
+
+// ForgeHookWiring returns the spec as actually wired (W0.2): every matcher
+// group with more than one hook collapses to a single `forge hook batch
+// --event E --matcher M` entry — one process spawn per tool call instead of
+// one per hook. Single-hook matchers keep their entry unchanged. Consumers:
+// GenerateUserSettings (user-level settings) and the plugin pack payload —
+// both claude channels. Other translators keep per-hook wiring until the batch
+// path is proven on the primary channels (documented known boundary).
+//
+// ForgeHookWiring 返回实际接线的 spec（W0.2）：超过一条 hook 的 matcher 组收敛
+// 为一条 `forge hook batch` 条目——每次工具调用一次进程拉起，而非逐 hook 一次。
+// 单 hook matcher 保持原条目。消费方：GenerateUserSettings（用户级 settings）
+// 与插件包载荷——两个 claude 渠道。其余 translator 在 batch 路径于主渠道验证
+// 后再迁（已知边界，见 spec）。
+func ForgeHookWiring() map[string][]HookMatcher {
+	return ForgeHookWiringForProfile(ActiveProfile())
+}
+
+// ForgeHookWiringForProfile is ForgeHookWiring for an explicit profile — the
+// plugin-pack generator pins ProfileStandard so published payloads never drift
+// with the building machine's runtime profile.
+//
+// ForgeHookWiringForProfile 是显式档位版本——插件包生成器钉 ProfileStandard，
+// 发布产物不随构建机的运行时档位漂移。
+func ForgeHookWiringForProfile(p Profile) map[string][]HookMatcher {
+	spec := ForgeHookSpecForProfile(p)
+	out := make(map[string][]HookMatcher, len(spec))
+	for ev, ms := range spec {
+		var batched []HookMatcher
+		for _, m := range ms {
+			if len(m.Hooks) > 1 {
+				batched = append(batched, HookMatcher{
+					Matcher: m.Matcher,
+					Hooks: []HookEntry{{
+						Type:    "command",
+						Command: fmt.Sprintf("forge hook batch --event %s --matcher %s", ev, strconv.Quote(m.Matcher)),
+					}},
+				})
+				continue
+			}
+			batched = append(batched, m)
+		}
+		out[ev] = batched
+	}
+	return out
 }

@@ -310,7 +310,7 @@ func mergeForgeHooksIntoSettings(path string) error {
 	}
 	// W0.3：用户级接线按档位过滤（默认 standard 与全量名册等价，行为不变；
 	// lite 只写白名单内的 hook——「太多太重」痛点的条目级减法）。
-	for event, matchers := range ForgeHookSpecForProfile(ActiveProfile()) {
+	for event, matchers := range ForgeHookWiring() {
 		raw, err := json.Marshal(matchers)
 		if err != nil {
 			return fmt.Errorf("marshal generated hooks: %w", err)

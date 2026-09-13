@@ -19,7 +19,8 @@ import (
 // manifest 测试同样收窄。对齐 TestCodexWiringMirrorsClaudeSettings。
 func TestKimiWiringMirrorsClaudeSettings(t *testing.T) {
 	toml := BuildKimiHooksTOML()
-	spec := hooks.ForgeHookSpec()
+	// W0.2：kimi settings 接线与 claude 同形——batch 单入口（每 matcher 一条）。
+	spec := hooks.ForgeHookWiring()
 
 	// 逐块索引：同一 command（skill-trigger）合法地出现在多个事件下，按位置
 	// 查找会错配。
@@ -92,7 +93,11 @@ func TestKimiHooks_WireResumeReinjectOnUserPromptSubmit(t *testing.T) {
 		if !strings.Contains(block, "event = "+tomlBasicString("UserPromptSubmit")) {
 			continue
 		}
-		if strings.Contains(block, "command = "+tomlBasicString(kimiCommand("forge hook resume-reinject"))) {
+		// W0.2 batch 接线：resume-reinject 随 UserPromptSubmit 组进入 batch
+		// 单入口条目（kimiCommand 追加 --agent kimi 到 batch 命令）。
+		// W0.2 batch 接线：UserPromptSubmit 组收敛为一条 batch 命令（含 --matcher
+		// 参数，引号随 TOML 转义）——按前缀匹配。
+		if strings.Contains(block, `command = "forge hook batch --event UserPromptSubmit`) {
 			found = true
 			break
 		}

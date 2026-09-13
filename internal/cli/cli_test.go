@@ -550,7 +550,7 @@ func TestInitWithAgents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cursor user-level hooks.json not created: %v", err)
 	}
-	if !strings.Contains(string(data), "forge hook task-guard") {
+	if !strings.Contains(string(data), "forge hook batch --event PreToolUse") {
 		t.Error("cursor user-level hooks.json missing forge hook wiring")
 	}
 
