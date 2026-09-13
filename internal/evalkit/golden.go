@@ -258,7 +258,7 @@ func RunGolden(goldenDir string, cases []GoldenCase, opts GoldenOptions) (*Golde
 		}
 		res := GoldenCaseResult{ID: c.ID, Gate: c.Gate, Kind: c.Kind}
 		for r := 0; r < opts.Repetitions; r++ {
-			pr, err := runGoldenProbe(c, opts)
+			pr, err := runGoldenProbe(c, opts, nil)
 			if err != nil {
 				res.Error = err.Error()
 				res.ReplayOutcomes = append(res.ReplayOutcomes, "setup_error")
@@ -346,7 +346,7 @@ const outcomeClean = "clean"
 // env, and evaluates the detection signals.
 //
 // runGoldenProbe 铺设 fixture，在隔离环境跑 forge init + 探测命令，并评估检测信号。
-func runGoldenProbe(c GoldenCase, opts GoldenOptions) (*probeResult, error) {
+func runGoldenProbe(c GoldenCase, opts GoldenOptions, extraEnv []string) (*probeResult, error) {
 	tmp, err := os.MkdirTemp("", "evalkit-golden-")
 	if err != nil {
 		return nil, err
@@ -368,7 +368,23 @@ func runGoldenProbe(c GoldenCase, opts GoldenOptions) (*probeResult, error) {
 			return nil, err
 		}
 	}
-	env := drillEnv(tmp, dataHome)
+	base := drillEnv(tmp, dataHome)
+	// 单一所有者契约（env.go）：extraEnv 的键必须先从 base 滤除，否则宿主 shell
+	// 导出的同名 FORGE_* 变量（取首个）会遮蔽 OFF 臂注入的逃生舱 env——对照组
+	// 隔离不成立。
+	for _, kv := range extraEnv {
+		if i := strings.Index(kv, "="); i > 0 {
+			key := kv[:i] + "="
+			kept := base[:0]
+			for _, b := range base {
+				if !strings.HasPrefix(b, key) {
+					kept = append(kept, b)
+				}
+			}
+			base = kept
+		}
+	}
+	env := append(base, extraEnv...)
 	run := func(argv []string, stdin string) (string, string, int, error) {
 		cmd := exec.Command(argv[0], argv[1:]...)
 		cmd.Dir = fixture
@@ -508,4 +524,24 @@ func PersistGoldenReport(evalDir string, repoRoot string, rep *GoldenReport) (st
 			rep.FalsePositive.Numerator, rep.FalsePositive.Denominator, len(rep.Cases), len(rep.Findings)),
 	})
 	return path, nil
+}
+
+// FrictionProbeArm runs one golden probe in a fresh fixture with extraEnv
+// appended to the isolated sandbox env, returning whether the probe was
+// flagged plus wall time. This is the W2 friction-harness arm primitive: the
+// same bait executed with gates ON (nil extraEnv) vs OFF (escape-hatch envs)
+// — the SpecBench gap ON/OFF comparison at scripted scale.
+//
+// FrictionProbeArm 在全新 fixture 中以追加 env 的方式实跑一条 golden 探针，
+// 返回是否 flagged 与墙钟耗时。这是 W2 摩擦实验架的臂原语：同一诱饵在门禁
+// 开（nil extraEnv）与关（逃生舱 env 全开）两臂下的 SpecBench gap 对照
+// （脚本化规模）。
+func FrictionProbeArm(c GoldenCase, forgeBin string, extraEnv []string, timeout time.Duration) (flagged bool, wall time.Duration, err error) {
+	start := time.Now()
+	pr, err := runGoldenProbe(c, GoldenOptions{ForgeBin: forgeBin, Timeout: timeout}, extraEnv)
+	wall = time.Since(start)
+	if err != nil {
+		return false, wall, err
+	}
+	return pr.Flagged, wall, nil
 }

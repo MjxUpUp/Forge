@@ -75,8 +75,8 @@ func TestReasonixTranslator_TranslateWritesHooks(t *testing.T) {
 	body := string(data)
 	for _, want := range []string{
 		`"hooks"`,
-		`forge hook task-guard`, // PreToolUse enforcement
-		`forge hook skill-scan`, // SessionStart
+		`forge hook batch --event PreToolUse`, // PreToolUse enforcement（batch 单入口）
+		`forge hook batch --event SessionStart`, // SessionStart
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("settings.json missing %q", want)
@@ -128,8 +128,9 @@ func TestReasonixTranslator_HooksMergePreservesUserContent(t *testing.T) {
 		t.Errorf("user hook / unknown field not preserved verbatim: %s", body)
 	}
 	// Forge hooks appended exactly once (strip-then-append → no duplicates).
-	if got := strings.Count(body, `forge hook task-guard`); got != 1 {
-		t.Errorf("forge hook task-guard appears %d times, want 1 (idempotent merge): %s", got, body)
+	// 两个 matcher 组（Write|Edit 与 Bash）各一条 batch，幂等合并后恰 2 条。
+	if got := strings.Count(body, `forge hook batch --event PreToolUse`); got != 2 {
+		t.Errorf("forge hook batch (PreToolUse) appears %d times, want 2 (idempotent merge): %s", got, body)
 	}
 }
 
