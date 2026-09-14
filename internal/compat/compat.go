@@ -76,6 +76,7 @@ var EscapeEnvs = []string{
 	"FORGE_HELDOUT",
 	"FORGE_GATE_PUSH",
 	"FORGE_ARTIFACT_CHAIN",
+	"FORGE_REQ_HYGIENE",
 }
 
 // AllCheckNames 返回 checklog 常量 roster 的排序列表。
