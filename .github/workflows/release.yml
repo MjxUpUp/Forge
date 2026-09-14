@@ -23,7 +23,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: node -p "require('./npm/package.json').version" # npm-align 前置：版本不对时此处一眼可见
-- run: go test ./... -count=1 -race
+      - run: go test ./... -count=1 -race
       - run: go vet ./...
       # 版本对账门禁放在 needs 链源头：tag 必须等于 npm/package.json 的 version，
       # 不一致 1 分钟内终止整条链（放在 npm job 则 goreleaser 白跑 30min 才拦）。
