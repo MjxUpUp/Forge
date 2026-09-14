@@ -51,3 +51,10 @@ gate 的死法是「该拦的没拦」，要靠 canary/warn 信号判定）。�
 (b) ForgeHookSpec 挂载面与 advisory/硬阻断分层（settings.go / 卡片 hooks 节）；
 (c) 台账行为分布（pass/warn/skip 构成）。skip 单列不计观察（审查 m2 修正已
 落地，故表内 observed 未含 skip——task-verify 的 144 skip 单独列示）。
+
+## 附：skill-trigger 送达 warn 8 条归因（2026-09-13 排查）
+
+台账按通道聚合：claude/additionalContext 184（正常）、codex/hookSpecificOutput 15（正常）、
+kimi/advisory-queue 5 + kimi/stdout-UserPromptSubmit 1（正常）、(none) advisory 8 + (none) warn 2。
+**8 条 warn 全部为 Channel 字段引入前的 legacy 无通道行**——非活通道故障，当前通道健康。
+处置：无需修复；kimiStaleRidesHook 的迁移已把可见性修到 UserPromptSubmit（2026-08-15 修复）。
