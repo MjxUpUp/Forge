@@ -7,8 +7,8 @@ import (
 // TestScanSpecText_AmbiguityMarkers 钉住三类确定性歧义标记的扫描。
 func TestScanSpecText_AmbiguityMarkers(t *testing.T) {
 	cases := []struct {
-		input    string
-		wantCat  string
+		input       string
+		wantCat     string
 		wantContain string
 	}{
 		{input: "用户登录使用 TBD 方案", wantCat: "ambiguity", wantContain: "TBD"},
