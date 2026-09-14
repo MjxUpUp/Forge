@@ -3,6 +3,7 @@ package hookdispatch
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
 	"time"
@@ -24,6 +25,9 @@ import (
 func TestPreToolUseBash_LatencyBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("short 模式跳过耗时预算（本地/夜间跑全量时生效）")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows Git Bash 进程持有 TempDir 文件锁，RemoveAll cleanup 会误报——Windows hook 耗时特征不同，需独立基线")
 	}
 	t.Setenv("FORGE_PROFILE", "standard")
 	dir := t.TempDir()

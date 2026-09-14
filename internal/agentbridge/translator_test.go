@@ -505,24 +505,55 @@ func TestWindsurfWiringMirrorsClaudeSettings(t *testing.T) {
 	if err := (&WindsurfTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
 		t.Fatalf("windsurf Translate: %v", err)
 	}
-	claude := hookCommandsByEvent(t, filepath.Join(claudeDir, ".claude", "settings.local.json"))
+	// W0.2 batch 接线：windsurf 每事件收敛为一条 batch 单入口（宿主逐条拉起 →
+	// 每事件一次拉起）。镜像断言从「逐 hook 命令集对等」升级为「batch 命令 +
+	// 事件/matcher 映射正确」——hook 级存在性由 ForgeHookSpec 名册测试与
+	// batchHookNames（hookdispatch）钉住。
 	windsurf := windsurfHookCommandsByClaudeEvent(t, filepath.Join(home, ".codeium", "windsurf", "hooks.json"))
 
 	// Every forge command must carry --agent windsurf. Before Wave 2b the two
 	// session-lifecycle groups (pre_user_prompt / post_cascade_response) were
 	// missing the flag — those hooks then emitted Claude-protocol stdout on a host
-	// with no stdout channel. Tightened to ALL forge commands (stdin normalization
-	// AND output protocol both need the host); the helper enforces the suffix on
-	// every command of every mapped event, which is all of them here.
-	assertHostMirrorsClaude(t, "windsurf", windsurf, claude, map[string]string{
-		"PreToolUse": "PreToolUse", "PostToolUse": "PostToolUse",
-		"Stop": "Stop", "SessionStart": "SessionStart",
-	})
+	// with no stdout channel（stdin 归一化与输出协议都需要宿主标定）。W0.2 batch
+	// 后 windsurf 全部命令即 batch 单入口，逐条校验后缀。
+	// W0.2：PostToolUse 下多条 batch 是三个 windsurf 源事件（Write|Edit/Bash/
+	// Read…）各自的 matcher 组——单次工具调用只命中一个 matcher，拉起数 = 1。
+	for evt, cmds := range windsurf {
+		if len(cmds) == 0 {
+			t.Errorf("windsurf %s batch 条目为空", evt)
+			continue
+		}
+		for cmd := range cmds {
+			if !strings.HasPrefix(cmd, "forge hook batch --event") || !strings.HasSuffix(cmd, "--agent windsurf") {
+				t.Errorf("windsurf %s 命令应为 batch 单入口且带 --agent windsurf: %q", evt, cmd)
+			}
+		}
+	}
 	// 在场钉住：折叠后的 map 必须带全四个 Claude 侧组——helper 只访问 host 已接
 	// 的事件，静默丢掉的组需要这条显式检查（旧固定方向循环靠空集比对抓它）。
 	for _, evt := range []string{"PreToolUse", "PostToolUse", "Stop", "SessionStart"} {
 		if len(windsurf[evt]) == 0 {
 			t.Errorf("windsurf must wire the claude %s group (folded map came back empty)", evt)
+		}
+	}
+
+	// W0.2 batch 契约：每个已接 windsurf 事件恰一条 `forge hook batch --event
+	// <claude事件> --matcher <组>` 条目（post_cascade_response/pre_user_prompt
+	// 无 matcher）。
+	for evt, wantCmdPrefix := range map[string]string{
+		"PreToolUse":  "forge hook batch --event PreToolUse",
+		"PostToolUse": "forge hook batch --event PostToolUse",
+		"Stop":        "forge hook batch --event Stop",
+	} {
+		cmds := windsurf[evt]
+		if len(cmds) == 0 {
+			t.Errorf("windsurf %s batch 条目为空", evt)
+			continue
+		}
+		for cmd := range cmds {
+			if !strings.HasPrefix(cmd, wantCmdPrefix) {
+				t.Errorf("windsurf %s batch 命令前缀不符: got %q want prefix %q", evt, cmd, wantCmdPrefix)
+			}
 		}
 	}
 
@@ -1005,19 +1036,21 @@ func TestConventionsHooks_MirrorWiringPinned(t *testing.T) {
 
 	raw := buildWindsurfHooks()
 	entries, _ := raw["hooks"].(map[string][]windsurfHookEntry)
-	has := func(event, hookName string) bool {
+	// W0.2 batch 接线：windsurf 名册收敛为 batch 单入口，conventions 双 hook
+	// 的在场性断言改为 batch 条目前缀（挂点映射由 buildWindsurfHooks 内表钉住）。
+	has := func(event, needle string) bool {
 		for _, e := range entries[event] {
-			if strings.Contains(e.Command, "forge hook "+hookName) {
+			if strings.Contains(e.Command, needle) {
 				return true
 			}
 		}
 		return false
 	}
-	if !has("pre_write_code", "conventions-write") {
-		t.Error("windsurf pre_write_code must carry conventions-write")
+	if !has("pre_write_code", "forge hook batch --event PreToolUse") {
+		t.Error("windsurf pre_write_code must carry conventions layer (batch entry)")
 	}
-	if !has("pre_user_prompt", "conventions-context") {
-		t.Error("windsurf pre_user_prompt must carry conventions-context (the SessionStart group's Cascade mount)")
+	if !has("pre_user_prompt", "forge hook batch --event UserPromptSubmit") {
+		t.Error("windsurf pre_user_prompt must carry conventions-context (batch entry)")
 	}
 }
 

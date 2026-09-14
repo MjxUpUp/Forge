@@ -17,7 +17,7 @@
       "event": "PostToolUse",
       "matcher": "Write|Edit",
       "command": "forge hook auto-compile --agent kimi",
-      "timeout": 60
+      "timeout": 30
     },
     {
       "event": "PostToolUse",

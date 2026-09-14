@@ -1,5 +1,7 @@
 package forgedata
 
+import "path/filepath"
+
 // GlobalProfile() is the path of the global wiring-profile file (~/.forge/profile).
 // The file holds one bare token (lite|standard|full). Deliberately a plain file,
 // not JSON: it is read by every forge hook spawn via the profile gate, so the
@@ -15,5 +17,5 @@ func GlobalProfile() string {
 	if err != nil {
 		return "" // RootDir 同款：home 不可解析时空串，读侧回落默认档
 	}
-	return home + "/profile"
+	return filepath.Join(home, "profile")
 }

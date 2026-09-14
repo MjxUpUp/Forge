@@ -28,7 +28,7 @@ func TestWindsurfTranslator_Translate_CreatesFile(t *testing.T) {
 		t.Fatalf("user-level hooks.json not created: %v", err)
 	}
 	content := string(data)
-	for _, want := range []string{`"pre_write_code"`, `"pre_run_command"`, "forge hook task-guard --agent windsurf"} {
+	for _, want := range []string{`"pre_write_code"`, `"pre_run_command"`, "forge hook batch --event PreToolUse"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("windsurf user-level hooks.json missing %q", want)
 		}
@@ -76,8 +76,9 @@ func TestWindsurfTranslator_MergePreservesUserEntries(t *testing.T) {
 	if strings.Contains(content, "stale-removed-hook") {
 		t.Error("stale forge hook entry not replaced")
 	}
-	if n := strings.Count(content, `"forge hook task-guard --agent windsurf"`); n != 1 {
-		t.Errorf("forge hook task-guard appears %d times, want 1", n)
+	// W0.2 batch：task-guard 随 PreToolUse/Write|Edit 组进入 batch 单入口条目。
+	if n := strings.Count(content, `"forge hook batch --event PreToolUse --matcher \"Write|Edit\" --agent windsurf"`); n != 1 {
+		t.Errorf("forge hook batch (PreToolUse/Write|Edit) appears %d times, want 1", n)
 	}
 }
 
