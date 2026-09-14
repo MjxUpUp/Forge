@@ -163,9 +163,9 @@ func kimiCommand(cmd string) string {
 // 保留 60s 是无害余量：kimi 超时 fail-open，更大预算的代价只是极端慢机器
 // （Windows 进程创建风暴）上提醒晚到一点，而超时会让提醒静默丢失。
 func kimiTimeout(cmd string) int {
-	if strings.HasPrefix(cmd, "forge hook auto-compile") {
-		return 60
-	}
+	// W0.2 batch 化后 kimi 名册只剩 batch 单入口命令（每 matcher 组共享一个
+	// timeout），per-hook 60s（auto-compile 编译场景）分支随接线消亡。
+	_ = cmd
 	return 30
 }
 
