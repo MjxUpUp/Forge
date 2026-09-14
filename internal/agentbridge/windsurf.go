@@ -272,76 +272,38 @@ func buildWindsurfHooks() map[string]any {
 	// task-guard 与 assertion-check 都 gate 写操作；Windsurf 按顺序跑同 event 的所有
 	// 条目，故单个 pre_write_code 列表里放两者是正确的（Windsurf 用 command 而非 event
 	// 匹配，与 Claude Code 的 per-event 独立 matcher 不同）。
-	hooksMap := map[string][]windsurfHookEntry{
-		"pre_write_code": {
-			{Command: "forge hook freeze-guard --agent windsurf", ShowOutput: false},
-			{Command: "forge hook task-guard --agent windsurf", ShowOutput: false},
-			{Command: "forge hook assertion-check --agent windsurf", ShowOutput: false},
-			{Command: "forge hook read-before-edit --agent windsurf", ShowOutput: false},
-			{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
-			// conventions-profile 写入时刻注入（2026-08-28）：advisory。windsurf 当前
-			// 无 allow-stdout 上下文通道（hostcap），接线遵循「诚实记录、绝不静默
-			// 投递」——Delivered=false 落账，宿主补通道即生效（skill-trigger 同款）。
-			// conventions-profile write-time injection (2026-08-28): advisory.
-			// windsurf has no allow-stdout context channel today (hostcap); wiring
-			// follows "record honestly, never deliver silently" — lands stamped
-			// Delivered=false, activates the day the host adds the channel (same
-			// as skill-trigger).
-			{Command: "forge hook conventions-write --agent windsurf", ShowOutput: false},
-		},
-		"pre_run_command": {
-			{Command: "forge hook bash-guard --agent windsurf", ShowOutput: false},
-			{Command: "forge hook hazard-guard --agent windsurf", ShowOutput: false},
-			{Command: "forge hook gate-cmd-form --agent windsurf", ShowOutput: false},
-			{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
-		},
-		"post_write_code": {
-			{Command: "forge hook auto-compile --agent windsurf", ShowOutput: false},
-			{Command: "forge hook workflow-test-guard --agent windsurf", ShowOutput: false},
-			{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
-			// 事中测试提醒（#4-E）。与同组 hook 一样 advisory；归一化的 stdin
-			// （windsurf 方言 → file_path）以 auto-compile 同款方式到达进程内 hook。
-			{Command: "forge hook test-nudge --agent windsurf", ShowOutput: false},
-		},
-		"post_run_command": {
-			{Command: "forge hook file-sentinel --agent windsurf", ShowOutput: false},
-			{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
-		},
-		"post_read_code": {
-			{Command: "forge hook tool-track --agent windsurf", ShowOutput: false},
-		},
-		// Cascade 没有 session_start：SessionStart 组（skill-scan / mcp-scan /
-		// init-suggest / task-resume / skill-trigger）改挂 pre_user_prompt——
-		// 每个会话首个 prompt 时触发。--agent windsurf 后缀（Wave 2b 诚实化
-		// 修复）：缺了它这些 hook 会在无 stdout 通道的宿主上发 Claude 协议的
-		// stdout——恰好这两组漏了后缀，是早期给 enforcement 事件补后缀时的
-		// 疏漏。
-		"pre_user_prompt": {
-			{Command: "forge hook skill-scan --agent windsurf", ShowOutput: false},
-			{Command: "forge hook mcp-scan --agent windsurf", ShowOutput: false},
-			{Command: "forge hook init-suggest --agent windsurf", ShowOutput: false},
-			{Command: "forge hook task-resume --agent windsurf", ShowOutput: false},
-			{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
-			// conventions-profile 会话摘要（2026-08-28）：SessionStart 组在 windsurf
-			// 的挂点即 pre_user_prompt；通道诚实性与 skill-trigger 同款。
-			// conventions-profile session digest (2026-08-28): pre_user_prompt is
-			// the SessionStart group's windsurf mount; channel honesty same as
-			// skill-trigger.
-			{Command: "forge hook conventions-context --agent windsurf", ShowOutput: false},
-		},
-		// Cascade 没有 session_end：Stop 组（task-verify / review-stop /
-		// skill-trigger）改挂 post_cascade_response——Cascade 真实存在的、
-		// 最接近会话结束的事件。诚实化说明（Wave 2b）：post_cascade_response 是
-		// **异步** post-hook——它在 cascade 已经应答之后才触发，exit 2 在那里
-		// **无法阻断**或强制再来一轮，只能把 stderr 原因以 advisory 形式上浮给
-		// agent。故 task-verify/review-stop 门禁在 Windsurf 上是 advisory-only
-		// （与 Claude 的 Stop 可阻断不同）。如实文档化，不藏着。
-		"post_cascade_response": {
-			{Command: "forge hook task-verify --agent windsurf", ShowOutput: false},
-			{Command: "forge hook review-stop --agent windsurf", ShowOutput: false},
-			{Command: "forge hook skill-trigger --agent windsurf", ShowOutput: false},
-		},
+	// W0.2 batch 推广：每个 windsurf 事件收敛为一条 `forge hook batch` 单入口
+	// （宿主逐条目拉起进程 → 每事件一次拉起）。映射表锁定 windsurf 事件 ↔
+	// claude 事件 + matcher 组的对应关系；hook 级名册由 ForgeHookSpec 单一来源
+	// 经 batch 内部现查（profile 档位门在 inner RunHook 逐 hook 生效）。
+	windsurfEventBatch := []struct {
+		windsurfEvent string
+		claudeEvent   string
+		matcher       string
+	}{
+		{"pre_write_code", "PreToolUse", "Write|Edit"},
+		{"pre_run_command", "PreToolUse", "Bash"},
+		{"post_write_code", "PostToolUse", "Write|Edit"},
+		{"post_run_command", "PostToolUse", "Bash"},
+		{"post_read_code", "PostToolUse", "Read|Skill|Agent|Grep|Glob"},
+		// Cascade 没有 session_start：SessionStart 组挂 pre_user_prompt（每个
+		// 会话首个 prompt 时触发）。详见上方历史注释。
+		{"pre_user_prompt", "UserPromptSubmit", ""},
+		// Cascade 没有 session_end：Stop 组挂 post_cascade_response——异步
+		// post-hook，exit 2 无法阻断，task-verify/review-stop 在 windsurf 上
+		// 是 advisory-only（如实文档化，不藏着）。
+		{"post_cascade_response", "Stop", ""},
 	}
+	hooksMap := map[string][]windsurfHookEntry{}
+	for _, m := range windsurfEventBatch {
+		cmd := "forge hook batch --event " + m.claudeEvent
+		if m.matcher != "" {
+			cmd += " --matcher \"" + m.matcher + "\""
+		}
+		cmd += " --agent windsurf"
+		hooksMap[m.windsurfEvent] = []windsurfHookEntry{{Command: cmd, ShowOutput: false}}
+	}
+
 	// W0.3 档位过滤：windsurf 名册硬编码、不走 ForgeHookSpecForProfile 的统一
 	// 过滤，故在出口按 hook 名过滤——lite 下非白名单条目不进接线。运行时门
 	// （runHook 档位秒过）仍是 plugin 渠道与遗漏路径的兜底。命令形态恒为
@@ -349,6 +311,13 @@ func buildWindsurfHooks() map[string]any {
 	for ev, entries := range hooksMap {
 		kept := entries[:0]
 		for _, e := range entries {
+			// batch 单入口条目不受档位过滤——lite 的逐 hook 裁剪由 batch 内部
+			// 的 inner RunHook 档位门生效（这里删掉 batch 条目会让 windsurf
+			// 整个事件组静默失明）。
+			if strings.Contains(e.Command, "forge hook batch") {
+				kept = append(kept, e)
+				continue
+			}
 			parts := strings.SplitN(e.Command, " ", 4)
 			if len(parts) < 3 || hooks.ProfileAllowsHook(parts[2], hooks.ActiveProfile()) {
 				kept = append(kept, e)

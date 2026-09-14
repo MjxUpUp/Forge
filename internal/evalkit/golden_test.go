@@ -261,8 +261,15 @@ func TestFrictionProbeArm_ExtraEnvReachesProbe(t *testing.T) {
 	// runGoldenProbe 的 fixture 流程会先跑 forge init——用空 shim 满足该步
 	// （本探针不含 {forge} token，shim 不参与判定）。
 	shimDir := t.TempDir()
+	// Windows 上 shebang 脚本不可直接执行——按平台选 shim 形态（.bat 由
+	// cmd.exe 解释，unix 走 shebang）。
 	shim := filepath.Join(shimDir, "forge")
-	if err := os.WriteFile(shim, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if runtime.GOOS == "windows" {
+		shim += ".bat"
+		if err := os.WriteFile(shim, []byte("@echo off\r\nexit /b 0\r\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := os.WriteFile(shim, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	flagged, _, err := FrictionProbeArm(c, shim, nil, 30*time.Second)

@@ -232,8 +232,9 @@ func TestKimiCommandAndTimeout(t *testing.T) {
 	if got := kimiCommand("forge task gate x"); got != "forge task gate x" {
 		t.Errorf("non-hook command must stay untouched, got %q", got)
 	}
-	if got := kimiTimeout("forge hook auto-compile"); got != 60 {
-		t.Errorf("auto-compile timeout = %d, want 60", got)
+	// W0.2 batch 化后 kimi 名册恒 30s（原 auto-compile 60s 分支随接线消亡）。
+	if got := kimiTimeout("forge hook batch --event PreToolUse --agent kimi"); got != 30 {
+		t.Errorf("batch entry timeout = %d, want 30", got)
 	}
 	if got := kimiTimeout("forge hook task-guard"); got != 30 {
 		t.Errorf("default timeout = %d, want 30", got)
