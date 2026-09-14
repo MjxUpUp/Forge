@@ -10,6 +10,13 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.59.1](https://github.com/MjxUpUp/Forge/compare/v1.59.0...v1.59.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **compat:** EscapeEnvs 补 FORGE_REQ_HYGIENE——req-hygiene 逃生舱须同步 roster（快照面 3 守卫） ([5586af1](https://github.com/MjxUpUp/Forge/commit/5586af19cf28cae0ed96b43f29fab87a7a2cf508))
+
 ## [1.59.0](https://github.com/MjxUpUp/Forge/compare/v1.58.1...v1.59.0) (2026-09-14)
 
 
