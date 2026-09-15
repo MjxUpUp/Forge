@@ -152,6 +152,66 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	}
 }
 
+// TestTaskComplete_UnusedGateBlocksUnwiredInternalExport pins the unused-gate mount
+// (task_complete.go, after doc gate): a task-added exported Go func under internal/
+// with zero references must fail complete with the unused-gate message, and the task
+// must stay ACTIVE (same keeps-active contract as the deadlock fix). The gate's own
+// semantics live in taskpipeline (executor_unusedgate_test.go); this pins the WIRING
+// — the 2026-09-14 RunReqHygiene incident was precisely a wiring miss.
+//
+// TestTaskComplete_UnusedGateBlocksUnwiredInternalExport 钉死 unused-gate 挂载
+// （task_complete.go，doc gate 之后）：任务新增、internal/ 下、零引用的导出 Go 函数
+// 必须让 complete 以 unused-gate 文案失败，且任务保持 active（与死锁修复同一契约）。
+// 门自身的语义在 taskpipeline 侧（executor_unusedgate_test.go）；这里钉的是挂载——
+// 2026-09-14 RunReqHygiene 事故正是挂载缺失。
+func TestTaskComplete_UnusedGateBlocksUnwiredInternalExport(t *testing.T) {
+	dir := setupDeadlockTask(t, []string{`go version :: go version`})
+	const taskRef = `feat/deadlock`
+
+	// 任务内 commit 一个 internal/ 下零引用的导出函数（BUG-1 形态样本）。
+	probeDir := filepath.Join(dir, `internal`, `probe`)
+	if err := os.MkdirAll(probeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(probeDir, `probe.go`), []byte("package probe\n\nfunc Lonely() int { return 2 }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	add := exec.Command(`git`, `add`, `.`)
+	add.Dir = dir
+	if out, err := add.CombinedOutput(); err != nil {
+		t.Fatalf(`git add: %v`+"\n"+`%s`, err, out)
+	}
+	commit := exec.Command(`git`, `commit`, `-m`, `add unwired export`)
+	commit.Dir = dir
+	if out, err := commit.CombinedOutput(); err != nil {
+		t.Fatalf(`commit: %v`+"\n"+`%s`, err, out)
+	}
+
+	// 验收快照刷新到新 HEAD（acceptance pre-flight 在 unused gate 之前，先排掉）。
+	var runErr error
+	_ = captureStdout(t, func() { runErr = runTaskVerifyAcceptanceAt(dir, "", false) })
+	if runErr != nil {
+		t.Fatalf(`verify-acceptance 应通过: %v`, runErr)
+	}
+	state, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// complete 被 unused-gate 拒绝（文案可指路），任务保持 active。
+	_ = captureStdout(t, func() { runErr = runTaskCompleteAt(dir, state) })
+	if runErr == nil || !strings.Contains(runErr.Error(), `unused-gate`) || !strings.Contains(runErr.Error(), `Lonely`) {
+		t.Fatalf(`internal/ 零引用导出应被 unused-gate 拒绝（文案含门名与符号）, got %v`, runErr)
+	}
+	reloaded, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.CompletedAt != nil {
+		t.Fatal(`unused-gate 拒绝不得标记完成——任务保持 active 以便接线后重试`)
+	}
+}
+
 // TestTaskComplete_ClearsAllTaskAnchors pins E.3 (docs/design/harness-fixes-a-g-2026-09.md): completing a task clears every pointer that still names it — other sessions' active-task-ref files, the legacy global file, and the workspace binding — not just the completing session's own pointer.
 //
 // TestTaskComplete_ClearsAllTaskAnchors 钉死 E.3：complete 清掉所有仍指向该任务的锚点
