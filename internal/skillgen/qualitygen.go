@@ -155,7 +155,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("AI 啰嗦是对齐训练的系统偏差（RLHF/DPO 长度偏差），不是个别 prompt 问题——靠自觉不可解，须遵守以下外部约束。适用于所有给人即时阅读的产物（对话回复、PR 描述、issue、分析结论）：\n\n")
 	sb.WriteString("- **结论先行**：第一句给答案/判定/推荐，过程与理由随后——读者最关心的放最前\n")
 	sb.WriteString("- **枚举化结论**：判定用可枚举值（通过/不通过、GO/NO-GO、推荐 A/B/C），不用形容词\n")
-	sb.WriteString("- **微观文风**：同义词不轮换（一个概念一个词）；加粗只标真重点；「**标签：**复述标签内容」式列表改散文；一句话放到任何其他项目文档里都成立，就删\n")
+	sb.WriteString("- **微观文风**：同义词不轮换（一个概念一个词）；加粗只标真重点；「**标签：**复述标签内容」式列表改散文；一句话放到任何其他项目文档里也成立 = 不载信息，删\n")
 	sb.WriteString("- **判定带立场**：推荐给理由、风险说大小——干净但没立场的文档不算结论前置\n")
 	sb.WriteString("- **禁令清单**（`forge docs lint` 机器可查，命中即打回；引用短语用反引号包裹可豁免）：\n\n")
 	sb.WriteString(doclint.RenderBannedPhrasesForSkill())
