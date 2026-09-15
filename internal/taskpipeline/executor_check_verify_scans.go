@@ -157,6 +157,11 @@ func scanUnusedFindings(root string, state *TaskState, findingsDirty bool) {
 				fmt.Fprintf(os.Stderr, "  ⚠ [%s] %s — %s\n", u.Kind, loc, u.Symbol)
 			}
 		}
+		// complete 硬拦截提前量（doc-gate advise 同款模式）：internal/ 下零引用的
+		// Go 导出会在 complete 的 unused-gate 被拦——verify 阶段就告知，修在撞墙前。
+		if n := len(blockingUnusedFindings(unused)); n > 0 {
+			fmt.Fprintf(os.Stderr, "%s"+`其中 %d 个为 internal/ 下的 Go 导出——task-complete 的 unused-gate 将硬拦：接线进真实调用链或删除；确属反射/注册表消费，FORGE_UNUSED_SCAN=disable 逃生（落审计）`+"\n", GateAdvisory("[task-verify] "), n)
+		}
 	}
 	// 两段扫描若有新指纹入集合，持久化一次（best-effort；失败最坏下次重报一遍，
 	// 优于阻塞 gate）。与 DesignPhases 持久化同款模式。
