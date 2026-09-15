@@ -10,6 +10,24 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.61.0](https://github.com/MjxUpUp/Forge/compare/v1.60.0...v1.61.0) (2026-09-15)
+
+
+### Features
+
+* **doclint:** 可读性门禁二期 P0——D8 结论位置 + D1/D2 清单二期 + 评委偏差防线 ([0115a76](https://github.com/MjxUpUp/Forge/commit/0115a76a67855dfca6bc615fbf9bcfbcf1e62f25))
+* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook ([f96ad46](https://github.com/MjxUpUp/Forge/commit/f96ad46cb3ee1ec947eecce51dbf08412d38875d))
+* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook ([0f03938](https://github.com/MjxUpUp/Forge/commit/0f03938cf33bb887dbec6e5ecc659b3c93b1651b))
+
+
+### Bug Fixes
+
+* **cli:** docs lint 帮助逐规则枚举（D5/D6/D7 独立可见，配对测试可断言） ([fe6bb19](https://github.com/MjxUpUp/Forge/commit/fe6bb19a999410088b55fc4f31c2db6356f90b02))
+* **doc-review:** round-2 两条 Minor 收尾——L41 枚举补结论位置、L47 压成指针句消双维护（93/100 PASS 遗留） ([c26049a](https://github.com/MjxUpUp/Forge/commit/c26049a88db4f50012265ce6a0a55bf0ce65357e))
+* **doc-review:** 独立评审 round-1 六条发现修复（89/100 PASS → 未决项清零） ([6794a0c](https://github.com/MjxUpUp/Forge/commit/6794a0c028fc86a982c207db649c9cf5b50613c4))
+* **p1:** 代码审查三条修复——SecondScore 去 omitempty（合法 0 分不丢）、co-score 越界显式拒绝、tag: 后空内容 critical 拒绝（含测试） ([c47f0c1](https://github.com/MjxUpUp/Forge/commit/c47f0c15baacb669e792b092866f4ebf4f3a30f2))
+* **review:** 代码审查 1C3M 修复——锁 pack 行重钉（verify exit 0）、看起来正常补测试、帮助断言 bullet 级+Short、v2 状态行推进 ([8c0cac9](https://github.com/MjxUpUp/Forge/commit/8c0cac962377dac84b25e9a4ed37146b9a8a070f))
+
 ## [1.60.0](https://github.com/MjxUpUp/Forge/compare/v1.59.1...v1.60.0) (2026-09-15)
 
 
