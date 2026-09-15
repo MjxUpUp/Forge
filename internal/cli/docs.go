@@ -27,8 +27,8 @@ var docsLintCmd = &cobra.Command{
   - D1/D2 禁令短语与无证据整体结论（hard）
   - D3 围栏外复述 diff（advisory）
   - D4 通过性断言无证据标记（advisory）
-  - D5-D7 按文件名命中的类型化规则（必填章节/结论枚举 hard、篇幅 advisory）
-  - D8 结论位置：必填章节/结论枚举靠前（advisory，typed docs）
+  - D5/D6 类型化规则：必填章节/结论枚举（hard，按文件名命中）
+  - D7 类型化篇幅上限、D8 结论位置（advisory，typed docs）
 
 路径参数为文件或目录（目录递归收集 .md）；--base <rev> 改为 lint
 该基线以来变更的 .md（已提交 + 工作区 + 未跟踪，与 doc gate 同一集合——
