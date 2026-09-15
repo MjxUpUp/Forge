@@ -176,6 +176,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("- **failure-track**（PostToolUseFailure Bash）：命令失败后记录 CheckToolFailure 观察；失败文本命中编译/测试类指纹（undefined:/error TS/error[E/FAIL 等）时注入 compile-fix-loop skill 事实性指针（advisory 不阻断——失败已发生，阻断无意义）\n")
 	sb.WriteString("- **subagent-track**（SubagentStop）：子 agent 结束时记录 agent_id/agent_type/交付长度+首行摘要到 checklog（归因数据——此前子 agent 活动 forge 侧零记录）；纯观察，无输出无阻断\n")
 	sb.WriteString("- **test-nudge**（PostToolUse Write|Edit，活跃任务内）：事中测试提醒——连写 ≥3 个源码文件且无配对测试写入时注入一次 test-discipline skill 事实性提示（advisory，每连写只提示一次）；任何测试文件写入重置计数；无活跃任务静默；执法仍在 task-verify 门禁\n")
+	sb.WriteString("- **doc-lint**（PostToolUse Write|Edit）：写时文档反馈——被写的 .md 命中 D1-D8 L1 规则时注入命中清单（规则/行号/修复方向；`forge docs lint <file>` 可复现），按命中签名会话内去重（advisory 不阻断，执法在 task-complete doc gate）\n")
 	sb.WriteString("- **conventions-context**（SessionStart + PostCompact）：项目规范档案的会话摘要——`forge conventions init` 建档后每次会话开始注入 ≤15 行规范摘要（stack/lint 命令、规范声明文件、agent 提取的惯例要点；压缩后重注入，摘要过期限时提示重扫）；无档案但仓库已声明 AGENTS.md 等规范时每会话一次建档建议（advisory 不阻断）\n")
 	sb.WriteString("- **conventions-write**（PreToolUse Write|Edit）：写入时刻规范注入——写源码/测试文件时注入本仓库规范声明文件指针 + 同目录范例文件（模仿既有代码风格；每目录每会话一次）；无档案静默（advisory 不阻断）\n")
 	sb.WriteString("- **skill-trigger**（Pre/PostToolUse + SessionStart/Stop/UserPromptSubmit）：声明式 skill 触发——按各 skill `metadata.triggers` 的 event/keywords/when 条件匹配上下文，命中时注入「请加载该 skill」提示（advisory，注入内容出现在 hook 上下文里；仅 managed 项目生效——declined/未接管项目静默）；`FORGE_SKILL_TRIGGER=0` 全局关闭\n")
