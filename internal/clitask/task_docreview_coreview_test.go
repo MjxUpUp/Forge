@@ -106,14 +106,14 @@ func TestFinding_TagValidatedAndStats(t *testing.T) {
 		t.Fatalf(`stats exit %d: %s / %s`, code, out, stderr)
 	}
 	if !strings.Contains(out, `padding`) || !strings.Contains(out, `total 3`) {
-		t.Errorf(`stats 缺 padding total 3 行, got:\n%s`, out)
+		t.Errorf("stats 缺 padding total 3 行, got:\n%s", out)
 	}
 	// source 过滤后 stats-b（other-tool）无匹配发现，不计入任务数。
 	if !strings.Contains(out, `1 任务`) {
-		t.Errorf(`stats 应报 1 个有匹配发现的任务, got:\n%s`, out)
+		t.Errorf("stats 应报 1 个有匹配发现的任务, got:\n%s", out)
 	}
 	if strings.Contains(out, `other-tool`) {
-		t.Errorf(`source 过滤失效, got:\n%s`, out)
+		t.Errorf("source 过滤失效, got:\n%s", out)
 	}
 
 	// 非法 tag 拒绝。
