@@ -262,6 +262,12 @@ func TestQualitySkillReplyConcisionRules(t *testing.T) {
 	if !strings.Contains(content, "结论先行") {
 		t.Error("quality SKILL.md missing conclusion-first principle")
 	}
+	// v2 P0-B：微观文风与「判定带立场」两条正面条款（禁令之外的该怎样写）。
+	for _, want := range []string{"微观文风", "判定带立场"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("quality SKILL.md 回复详略规则缺 %q 条款（渲染漂移）", want)
+		}
+	}
 	if !strings.Contains(content, "forge docs lint") {
 		t.Error("quality SKILL.md missing forge docs lint pointer")
 	}

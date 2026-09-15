@@ -33,9 +33,84 @@ func TestLintTextBannedPhrases(t *testing.T) {
 }
 
 func TestLintTextEvidenceFreeConclusion(t *testing.T) {
-	issues := LintText("review.md", "审查完成，整体良好。\n看起来没有问题。\n")
+	issues := LintText("review.md", "审查完成，整体良好。\n看起来没有问题。\n基本没问题。\n大体正常。\n看起来正常。\n")
 	if !ruleIDs(issues)["D2"] {
 		t.Fatalf("D2 应命中无证据整体结论，got %v", ruleIDs(issues))
+	}
+	if got := len(issues); got != 5 {
+		t.Errorf("五行五判词应各命中一次，got %d: %v", got, issues)
+	}
+}
+
+func TestLintTextBannedPhrasesPhase2(t *testing.T) {
+	// D1 清单二期（v2 P0-B）：空转引导/模糊总结/推断伪装/无出处断言。
+	issues := LintText("notes.md", "值得注意的是，方案有取舍。\n总的来说，本次迁移顺利。\n不难发现瓶颈在 IO。\n众所周知这个库很稳。\n")
+	if !ruleIDs(issues)["D1"] {
+		t.Fatalf("D1 应命中二期空转短语，got %v", ruleIDs(issues))
+	}
+	if got := len(issues); got != 4 {
+		t.Errorf("四行四短语应各命中一次，got %d: %v", got, issues)
+	}
+	for _, i := range issues {
+		if i.Rule == "D1" && !i.Hard() {
+			t.Errorf("二期短语应与 D1 同级为 hard")
+		}
+	}
+}
+
+func TestLintTextD8HeadingPosition(t *testing.T) {
+	// D8（v2 P0-A）：D5/D6 判有无，D8 判靠前——必填章节拖到第 4 个标题之后。
+	late := "# 测试报告\n## 背景\n## 方法\n## 明细\n## 结论\n通过率 100%（`forge verify`）。\n"
+	issues := LintText("e2e-test-report.md", late)
+	if ruleIDs(issues)["D5"] {
+		t.Fatalf("结论章节存在时不应报 D5")
+	}
+	d8 := 0
+	for _, i := range issues {
+		if i.Rule == "D8" {
+			d8++
+			if i.Hard() {
+				t.Errorf("D8 应为 advisory")
+			}
+		}
+	}
+	if d8 == 0 {
+		t.Fatalf("结论章节排第 5 应命中 D8，got %v", issues)
+	}
+
+	early := "# 测试报告\n## 结论\n通过率 100%（`forge verify`）。\n"
+	if ids := ruleIDs(LintText("e2e-test-report.md", early)); ids["D8"] {
+		t.Fatalf("结论章节在前 3 个标题内不应命中 D8，got %v", ids)
+	}
+
+	// 模板文件豁免实例规则——D8 与 D5/D7 同 scope。
+	tmpl := "# 模板\n## 背景\n## 方法\n## 明细\n## 结论\n通过率\n"
+	if ids := ruleIDs(LintText("template-test-report.md", tmpl)); ids["D8"] || ids["D5"] {
+		t.Fatalf("模板文件应豁免 D8，got %v", ids)
+	}
+}
+
+func TestLintTextD8EnumPosition(t *testing.T) {
+	// 枚举在 = D6 过；枚举只出现在前 10 行散文之后 = D8 命中。
+	late := "# 发布清单\n\n" + strings.Repeat("- [x] 步骤\n", 12) + "结论：GO\n"
+	issues := LintText("release-checklist.md", late)
+	if ruleIDs(issues)["D6"] {
+		t.Fatalf("含 GO 枚举不应报 D6")
+	}
+	if !ruleIDs(issues)["D8"] {
+		t.Fatalf("枚举在第 14 行才出现应命中 D8，got %v", issues)
+	}
+
+	early := "# 发布清单\n结论：GO\n\n" + strings.Repeat("- [x] 步骤\n", 12)
+	if ids := ruleIDs(LintText("release-checklist.md", early)); ids["D8"] {
+		t.Fatalf("枚举在首行不应命中 D8，got %v", ids)
+	}
+
+	// 缺枚举 = D6 硬失败管，D8 不重复出手。
+	none := "# 发布清单\n" + strings.Repeat("- [x] 步骤\n", 12)
+	ids := ruleIDs(LintText("release-checklist.md", none))
+	if !ids["D6"] || ids["D8"] {
+		t.Fatalf("缺枚举应只报 D6，got %v", ids)
 	}
 }
 
@@ -212,6 +287,9 @@ func TestMatchDocTypeBaseNameOnly(t *testing.T) {
 	}
 	if !PathExempt("skills/doc-generator/decisions.md") {
 		t.Error("decisions.md 是 append-only 治理日志，应豁免（逐字引用诊断散文）")
+	}
+	if !PathExempt("internal/skillintegrate/notes/session-retrospective.md") {
+		t.Error("skillintegrate 集成笔记是内嵌治理记录且文件名即 skill 名，应豁免（BASE 名永久撞 retrospective 类型）")
 	}
 }
 

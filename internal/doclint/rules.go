@@ -43,6 +43,10 @@ var BannedPhrases = []bannedPhrase{
 	// 功能实证，init 自伤）。
 	{regexp.MustCompile(`大致没问题`), "模糊限定语——同 `问题不大`"},
 	{regexp.MustCompile(`差不多可以`), "模糊限定语——同 `基本可以`"},
+	{regexp.MustCompile(`值得注意的是`), "空转引导词——补充应内联进相关论述，不以套话另起一段"},
+	{regexp.MustCompile(`总的来说`), "模糊总结词——总结应压缩为可执行结论，给出明确判定"},
+	{regexp.MustCompile(`不难发现`), "推断伪装观察——给出指向结论的证据或命令，不写「不难」"},
+	{regexp.MustCompile(`众所周知`), "无出处断言——常识也要给指针，给不出就删"},
 }
 
 // EvidenceFreeConclusions are D2 无证据整体性结论: whole-document verdicts that preempt evidence.
@@ -55,6 +59,9 @@ var EvidenceFreeConclusions = []bannedPhrase{
 	{regexp.MustCompile(`看起来没有问题`), "主观推断判词——「看起来」不是验证，给出实跑证据"},
 	{regexp.MustCompile(`应该没有问题`), "主观推断判词——「应该」不是验证，给出实跑证据"},
 	{regexp.MustCompile(`一切正常`), "无证据整体判词——正常项逐条列出"},
+	{regexp.MustCompile(`基本没问题`), "无证据整体判词——同 `整体良好`，逐项给出验证结果"},
+	{regexp.MustCompile(`大体正常`), "无证据整体判词——正常项逐条列出"},
+	{regexp.MustCompile(`看起来正常`), "主观推断判词——同 `看起来没有问题`，给出实跑证据"},
 }
 
 // diffFingerprints 识别围栏外的原始 unified diff 粘贴（D3）。

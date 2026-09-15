@@ -60,3 +60,47 @@ forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfat
 ### Evidence
 
 docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
+
+## [d-18d56e4b7f13bdf8-ea75006a] accept
+
+- **Skill**: doc-review
+- **DecidedAt**: 2026-09-15T07:34:57Z
+- **By**: claude-code
+
+### Diagnosis
+
+L2 评委与产出方模型同源时继承自偏好偏差（arXiv 2410.21819），borderline 分数（70-79）可能被同家族评委单独放行——调研（output-readability-gates-v2.md G3）确认缺少偏差防线条款
+
+### Revision
+
+SKILL.md 步骤 2 增补「评委家族声明」段：评审上下文声明产出方家族，同家族 borderline 须第二评委复核（--reviewer 记两家 id，不一致取低分并各带 delete-list）；rubric-docs.md 评分纪律同步加第 6 条评委偏差防线（详略与篇幅脱钩）
+
+### Evidence
+
+forge skills validate 41/41 通过；rubric 变更为档位锚点文本，L1 lint 0 命中；语义与调研结论一致（评委偏差五类缓解清单）
+
+### Rationale
+
+P0 无 schema 变更的评委去偏纪律，机器强制（CoReview 字段）留 P1 攒分歧率数据后决策
+
+## [d-18d5707b4426ad90-10ca2002] accept
+
+- **Skill**: doc-review
+- **DecidedAt**: 2026-09-15T08:15:01Z
+- **By**: claude-code
+
+### Diagnosis
+
+独立 L2 评审（round 1，89/100 PASS）六条发现：F1 纪律条款含当前 CLI 不可执行的 --reviewer 双值指令（CoReview 属 P1）；F2 SKILL 两处 L1 范围枚举漏更 D8 结论位置；F3 v1 文档自称现状权威未指向 v2；F4 sweep 命中定性过窄（Rationalization 表→含红线条款）；F5 双评/plain-speech 规则多处手抄；F6 判据两处重复成文
+
+### Revision
+
+F1/F5：SKILL 评委家族声明与 rubric 第 6 条改「两家 id 与分数落档于评审记录（--co-reviewer 为 P1 规划）」+ SKILL 压成指针句；F2：SKILL L32/L39 枚举补结论位置；F3：v1 头部加 v2 增量指针 + v2 加时界；F4：定性改为「借口/禁令示例（Rationalization 表与红线条款）」；F6：P0-A 判据改指针 + 删重复口号
+
+### Evidence
+
+round-1 评审 89/100 PASS 零 Critical；修复后 forge skills validate 41/41、docs lint --base HEAD 6 文件 0 命中、skillgen guard test 绿
+
+### Rationale
+
+Important/Minor 未决项按 doc-review 纪律须显式回应，六条全部采纳修复
