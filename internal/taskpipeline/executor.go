@@ -223,6 +223,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		findingsDirty := scanCheatFindings(root, state)
 		adviseVerifyDocGate(root, state)
 		scanUnusedFindings(root, state, findingsDirty)
+		adviseReqHygiene(root, state)
 		adviseConventionsLint(root, state)
 		adviseTestCapability(root, state)
 		adviseSkillEval(root, state, gitChanged)
