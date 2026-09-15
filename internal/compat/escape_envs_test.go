@@ -16,3 +16,17 @@ func TestArtifactChainEscapeEnvRegistered(t *testing.T) {
 		t.Fatal("EscapeEnvs 缺 FORGE_ARTIFACT_CHAIN——compat.go 清单未同步")
 	}
 }
+
+// TestUnusedScanEscapeEnvRegistered 钉住 unused-gate 逃生舱进 EscapeEnvs 清单
+// （与 FORGE_ARTIFACT_CHAIN 同款契约）：漏登记 = env 逃生生效但不进快照承诺面。
+func TestUnusedScanEscapeEnvRegistered(t *testing.T) {
+	found := false
+	for _, e := range EscapeEnvs {
+		if e == "FORGE_UNUSED_SCAN" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("EscapeEnvs 缺 FORGE_UNUSED_SCAN——compat.go 清单未同步")
+	}
+}
