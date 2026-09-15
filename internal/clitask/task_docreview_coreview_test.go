@@ -50,6 +50,32 @@ func TestDocReview_CoReviewPairingRequired(t *testing.T) {
 		`--co-score`, `70`); code == 0 {
 		t.Fatalf(`只有 co-score 应被拒: %s`, stderr)
 	}
+	// -5 既非 -1 哨兵也非合法分——须显式报错而非静默吞掉。
+	if _, stderr, code := runForge(t, dir, `task`, `doc-review`,
+		`--ref`, `feat/coreview-pair`, `--passed`, `pass`, `--score`, `75`,
+		`--co-score`, `-5`); code == 0 {
+		t.Fatalf(`越界负分应显式拒绝: %s`, stderr)
+	}
+}
+
+// TestDocReview_CriticalEmptyContentAfterTag 打标后内容为空的 critical 拒绝——
+// 空 critical 会阻断 doc gate 但没人看得懂要修什么。
+func TestDocReview_CriticalEmptyContentAfterTag(t *testing.T) {
+	dir := setupDelegateProject(t)
+	seedTaskState(t, dir, `feat/coreview-empty`, nil)
+
+	if _, stderr, code := runForge(t, dir, `task`, `doc-review`,
+		`--ref`, `feat/coreview-empty`, `--passed`, `fail`, `--score`, `60`,
+		`--critical`, `style:`); code == 0 {
+		t.Fatalf(`打标后空内容应被拒: %s`, stderr)
+	}
+	state, err := taskpipeline.LoadTaskState(dir, `feat/coreview-empty`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Findings) != 0 {
+		t.Fatalf(`被拒的调用不得留下 findings, got %+v`, state.Findings)
+	}
 }
 
 // TestDocReview_CriticalTagPrefix --critical 支持「tag: 内容」前缀打标；未知

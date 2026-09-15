@@ -376,12 +376,13 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--score 取值 0-100（rubric 四维各 0-25），got %d", score)
 	}
 	// 双评成对校验：co-score 未给（-1 哨兵）时 co-reviewer 必须为空，反之亦然
-	// ——半份双评记录比没有更糟（分歧率统计会被残缺行污染）。
+	// ——半份双评记录比没有更糟（分歧率统计会被残缺行污染）。哨兵之外的一律
+	// 进 0-100 校验：越界负分（如 -5）静默吞掉会让输入错误拿到成功回执。
+	if coScore != -1 && (coScore < 0 || coScore > 100) {
+		return fmt.Errorf("--co-score 取值 0-100，got %d", coScore)
+	}
 	if (coReviewer != "") != (coScore >= 0) {
 		return fmt.Errorf("--co-reviewer 与 --co-score 须成对给出（同家族 borderline 双评，rubric 评分纪律 6）；got co-reviewer=%q co-score=%d", coReviewer, coScore)
-	}
-	if coScore > 100 {
-		return fmt.Errorf("--co-score 取值 0-100，got %d", coScore)
 	}
 
 	var state *taskpipeline.TaskState
@@ -415,6 +416,12 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		for _, c := range criticals {
 			content, tag := tasktypes.SplitFindingTag(c)
+			if strings.TrimSpace(content) == "" {
+				// "style:" 这类打标后内容为空的输入会落一条空 critical——
+				// 阻断 doc gate 但没人看得懂要修什么（finding 命令对空 content
+				// 同款必填校验）。
+				return fmt.Errorf("--critical %q 打标后内容为空——补内容或去掉 tag: 前缀", c)
+			}
 			nf := taskpipeline.Finding{
 				Content:  content,
 				Tag:      tag,
