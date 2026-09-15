@@ -65,8 +65,10 @@ type DocReview struct {
 	// skill 层执行，落档的 RubricScore 已是低分）。gate 不消费本字段——机器
 	// 只负责让分歧率可统计（output-readability-gates-v2.md P1-A），分歧率高
 	// 说明评委不稳，届时再决策升级 ensemble。零值 = 未双评（旧记录行为不变）。
+	// SecondScore 不用 omitempty：0 是合法分，omitempty 会把它从 JSON 丢弃，
+	// 留下 SecondReviewer 非空而分数消失的半份双评（恰是 CLI 成对校验要拦的形态）。
 	SecondReviewer string `json:"second_reviewer,omitempty"`
-	SecondScore    int    `json:"second_score,omitempty"`
+	SecondScore    int    `json:"second_score"`
 }
 
 // ArtifactRef is TaskState's verifiable pointer to a spec file (I5): Path is DataDir-relative (portable across machines), Hash is the content sha256 (first 16 hex).
