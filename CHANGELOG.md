@@ -10,6 +10,21 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.60.0](https://github.com/MjxUpUp/Forge/compare/v1.59.1...v1.60.0) (2026-09-15)
+
+
+### Features
+
+* **taskpipeline:** req-hygiene 接线 task-verify——补 63a9457 缺失的生产调用 ([d44a65e](https://github.com/MjxUpUp/Forge/commit/d44a65e16a9caf92ba9760169c4a4a48e14229be))
+* **taskpipeline:** unused-gate——internal/ 零引用 Go 导出升格 complete 硬前置 ([e422dc2](https://github.com/MjxUpUp/Forge/commit/e422dc213299bf8fbd976620cc67d43fdfe2d024))
+
+
+### Bug Fixes
+
+* **ci:** deadcode 金丝雀补牙——纯报告器 exit 0，须判 stdout 非空才 fail ([a986c50](https://github.com/MjxUpUp/Forge/commit/a986c50cf212edfc3eb015e3800bcb9556c776d0))
+* **review:** 审查轮 4 项修复——逃生舱错位/词表真相源/无效测试/CI 诊断 ([d38838c](https://github.com/MjxUpUp/Forge/commit/d38838ce021cad761ec3cdffc290d88807bd23df))
+* 死代码三重放行执法补强——req-hygiene 接线 / canary 补牙 / unused-gate / 存量清扫 ([600f052](https://github.com/MjxUpUp/Forge/commit/600f052d0c55e4bcc0b2af9e2ded01ecf1925bf7))
+
 ## [1.59.1](https://github.com/MjxUpUp/Forge/compare/v1.59.0...v1.59.1) (2026-09-14)
 
 
