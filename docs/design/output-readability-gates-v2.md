@@ -1,7 +1,7 @@
 # 输出可读性门禁二期（output-readability-gates v2）
 
 > 状态：设计（待实施）。来源：业界学界调研（2026-09 会话，学结论已内联引用）+ v1 落地后的剩余缺口分析。
-> v1 设计与现状证据索引：[output-readability-gates.md](output-readability-gates.md)。本文档只写增量，不复制 v1 内容。
+> v1 设计与现状证据索引（截至 v2 前）：[output-readability-gates.md](output-readability-gates.md)。本文档只写增量，不复制 v1 内容。
 
 ## 结论（先读这个）
 
@@ -59,13 +59,13 @@ v1 建立了 L1 lint / L2 rubric / 门禁证据链三层，架构方向被调研
 - DocType 有 `RequiredHeadings` → 必填章节标题须出现在前 3 个 heading 内（advisory）——D5 判「有」，D8 判「靠前」
 - DocType 有 `ConclusionEnum` → 枚举 token 须出现在前 10 个非围栏散文行内（advisory）——D6 判「有」，D8 判「靠前」
 
-**判据**：存量 sweep（全仓 `forge docs lint` 人工分类命中）precision ≥80% 才考虑升 hard；低于则维持 advisory 并收窄规则。
+**判据**：见收敛判据 2（存量 sweep precision ≥80%，人工抽检 ≥30 命中）。
 **边界**：D8 是结论前置的代理不是判据本身——「位置对但内容空」仍由 L2 维度 1 把关；通用文档的结论前置不进 L1（见不做清单）。
 
 ### P0-B：D1/D2 中文清单二期 + 写作期微观文风（G2）
 
 **D1 空转引导词增补 4 条**：`值得注意的是`（离题补充引导）、`总的来说`（模糊总结开场）、`不难发现`（推断伪装成观察）、`众所周知`（无出处断言）。
-**D2 无证据判词增补 3 条**：`基本没问题`、`大体正常`、`看起来正常`（补齐 v1「看起来」系列的短形态）。`应该没问题` 落选：存量 sweep 20 处命中全是 skill 文档 Rationalization 表里带引号的借口引文（数据引用形态），短形态与引文撞车，完整形态 `应该没有问题` 已在表——按「存量 sweep 误伤 0」判据删除。
+**D2 无证据判词增补 3 条**：`基本没问题`、`大体正常`、`看起来正常`（补齐 v1「看起来」系列的短形态）。`应该没问题` 落选：存量 sweep 20 处命中全部是 skill 文档内带引号的借口/禁令示例（Rationalization 表与红线条款），非正文使用——短形态与引文形态撞车，完整形态 `应该没有问题` 已在表，按「存量 sweep 误伤 0」判据删除。
 **豁免增补**：`skillintegrate/notes/` 进 doclint 豁免路径（go:embed 集成记录，文件名即 skill 名——BASE 名永久撞 retrospective 类型，D8 存量 sweep 的唯一命中即此，判定为文件名碰撞误伤）。
 
 落地约束（继承 v1）：
@@ -137,7 +137,7 @@ SecondScore    int    `json:"second_score,omitempty"`    // 第二评委分数�
 - 评委身份与家族是自报的，机器无法强制（v1 边界延续，CoReview 同样）；防线靠 rubric 纪律条款 + 分歧率数据外显
 - D8 只覆盖 typed docs；通用文档结论前置无 L1 代理是有意为之（不做清单）
 - 写时 hook 是 WARN 提示，模型可以无视——它的价值是把违规可见性从 complete 提前到落盘，不是新执法点
-- 中文短语清单的误伤风险由存量 sweep + 反引号豁免 + SkipMarker 三层兜底；新短语必须走「≥3 次打回 → 进表」的进化路径，不一次性穷举
+- 中文短语清单的误伤风险由存量 sweep + 反引号豁免 + SkipMarker 三层兜底；新短语必须走「≥3 次打回 → 进表」的进化路径
 - 本文档自身引用禁令短语处全部反引号包裹（引用是数据不是使用）——它也要能过自己设计出的门禁
 
 ## 来源（load-bearing 子集）
