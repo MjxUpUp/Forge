@@ -75,7 +75,6 @@ type Chain struct {
 // 保留不执法（stderr 提示，向前兼容未来回边）。
 const (
 	EdgeFromReview   = "review"
-	EdgeToImplement  = "implement"
 	DefaultMaxRounds = 3
 )
 

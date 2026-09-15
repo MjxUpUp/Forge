@@ -23,23 +23,6 @@ const (
 	Advisory Severity = "advisory"
 )
 
-// RuleDescriptions mirrors skillsqa.RuleDescriptions: exported rule ID → text definition, grepped by docs generation and CLI output so prose cannot drift from enforcement.
-//
-// RuleDescriptions 与 skillsqa.RuleDescriptions 同构：可导出的规则编号 →
-// 文本定义，供文档生成与 CLI 输出 grep，保证文案与执法不漂移。D1-D4 为
-// 通用规则（对所有被 lint 的 markdown 生效）；D5-D7 仅在 DocType 按文件名
-// 命中时生效。
-var RuleDescriptions = map[string]string{
-	"D1": "禁令短语（综上所述/基本可以/问题不大等空转措辞）命中即 hard；行内代码引用（反引号包裹）与代码块内引用不算使用",
-	"D2": "无证据整体性结论（整体良好/看起来没有问题等）命中即 hard；同 D1 的引用豁免",
-	"D3": "围栏外出现原始 unified diff 指纹（diff --git/+++ b//@@ 行 ≥3）判为复述 diff（advisory）",
-	"D4": "含通过性断言（测试通过/已验证等）但全文无任何证据标记（反引号命令、file:line、URL、百分比）判为无引用断言（advisory，报首个断言行）",
-	"D5": "类型化必填章节缺失（按 DocType 的文件名匹配，hard）",
-	"D6": "类型化结论枚举缺失（如发布 checklist 须含 GO/NO-GO 之一，hard）",
-	"D7": "类型化篇幅上限超出（advisory；只数非围栏行——骨架管结构不管膨胀，上限兜底散文）",
-	"IO": "文件读取失败（hard；路径不可读——CLI 层的 IO 兜底，非内容规则）",
-}
-
 // bannedPhrase 是一条 D1/D2 规则：正则 + 禁用理由。
 type bannedPhrase struct {
 	Pattern *regexp.Regexp
