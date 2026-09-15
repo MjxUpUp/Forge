@@ -60,15 +60,14 @@ type SkillTriggers struct {
 // Context 是一次 hook 调用传给引擎的全部上下文（agent-neutral）。
 // Context carries the full context of one hook invocation into the engine.
 type Context struct {
-	Event        string
-	Prompt       string         // UserPromptSubmit 的 prompt
-	ToolName     string         // hook_input.tool_name
-	ToolInput    map[string]any // 已解析的 tool_input（file_path/command/content）
-	ToolOutput   map[string]any // 已解析的 tool_output（exit_code/stdout/stderr/interrupted）
-	SessionID    string
-	ProjectRoot  string // "" 表示非 forge project（condition 优雅降级）
-	CanonicalDir string
-	Now          time.Time // 注入测试可控时间
+	Event       string
+	Prompt      string         // UserPromptSubmit 的 prompt
+	ToolName    string         // hook_input.tool_name
+	ToolInput   map[string]any // 已解析的 tool_input（file_path/command/content）
+	ToolOutput  map[string]any // 已解析的 tool_output（exit_code/stdout/stderr/interrupted）
+	SessionID   string
+	ProjectRoot string    // "" 表示非 forge project（condition 优雅降级）
+	Now         time.Time // 注入测试可控时间
 }
 
 // Hit 是一次命中的结果。Hit is one positive match.
