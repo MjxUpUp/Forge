@@ -44,7 +44,7 @@ metadata:
 
 派**只读独立子代理**执行评审，对抗立场（默认「有问题，找出来」，不是「确认没问题」）。子代理契约：只读不写、按 rubric 四维逐维打分、发现按步骤 4 格式输出。
 
-**评委家族声明**：同家族 borderline 双评纪律见 rubric 评分纪律第 6 条（`--co-reviewer <id> --co-score <N>` 落档两家记录）；产出方模型家族须写入子代理上下文（可得时）——评委与产出同源继承自偏好偏差。
+**评委家族声明**：同家族 borderline 双评纪律见 rubric 评分纪律第 6 条（`--co-reviewer <id> --co-score <N>` 落档两家记录；无任务门禁的宿主记于评审报告头部）；产出方模型家族须写入子代理上下文（可得时）——评委与产出同源继承自偏好偏差。
 
 ### 步骤 3：四维评分 + 类型特化
 
@@ -55,13 +55,13 @@ metadata:
 
 ### 步骤 4：发现五要素
 
-每条发现缺一不可（与 code-review-gate 同协议）：
+前四项缺一不可（与 code-review-gate 同协议）；第 5 项按宿主能力选配：
 
 1. **位置**（行号 `L12`）
 2. **问题**（引用原文片段，不是泛泛而谈）
 3. **背景分析**：为什么是问题——结合这篇文档的类型、受众、它服务的决策
 4. **解决方向**：delete-list 格式（删哪句/压成几行/换成什么），可执行
-5. **Tag（可选打标）**：枚举 `padding/conclusion/template/false-precision/disclaimer/evidence/style`——宿主有任务门禁时以 `tag:` 前缀随 Critical 发现落档；宿主聚合命令按 Tag×Round 跨任务计数，喂进化判据（同 Tag ≥3 次 → 升 L1 规则；forge 侧命令见集成笔记）
+5. **Tag（可选打标）**：枚举 `padding/conclusion/template/false-precision/disclaimer/evidence/style`（速查表六类短形 + 微观文风）——宿主有任务门禁时以 `tag:` 前缀随 Critical 发现落档；宿主聚合命令按 Tag×Round 跨任务计数，喂进化判据（同 Tag ≥3 次 → 升 L1 规则；forge 侧命令见集成笔记）
 
 ### 步骤 5：门控决策与收敛
 
