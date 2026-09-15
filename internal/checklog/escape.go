@@ -13,13 +13,11 @@ import "sort"
 // env 无任务上下文时诚实标 env）。
 
 // 逃生舱 reason 枚举（FSE 2025 动机分析的分类 + forge 场景扩展）。
+// 未消费的枚举值不预定义（yagni）——补消费方时随值一起落。
 const (
 	EscapeReasonOverride    = "per-task override" // 显式 per-task 关闭（forge task override）
 	EscapeReasonEnv         = "env"               // 环境变量形式（CI/测试/一次性）
-	EscapeReasonFalsePos    = "false-positive"    // 操作者判定为误报
-	EscapeReasonOutOfScope  = "out-of-scope"      // 检查不适用本任务场景
 	EscapeReasonTimebox     = "timebox"           // 时间盒内暂时跳过
-	EscapeReasonUpstream    = "upstream-issue"    // 上游/宿主问题所致
 	EscapeReasonUnspecified = "unspecified"       // 未声明（默认——聚合时单独计数，推动补 reason）
 )
 

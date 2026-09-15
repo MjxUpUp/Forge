@@ -16,15 +16,6 @@ import (
 // task-verify 的 .task-verify-throttle.last 同族节流）。
 const metricInterval = 10 * time.Minute
 
-// MetricSnapshot is the structured coverage payload (rides checklog Meta).
-//
-// MetricSnapshot 是结构化覆盖率载荷（走 checklog Meta）。
-type MetricSnapshot struct {
-	Attributed int
-	Orphans    int
-	Rate       float64
-}
-
 // RecordStopMetric reconciles the workspace and records one observation-class checklog entry carrying attribution coverage.
 //
 // RecordStopMetric 对账 workspace 并落一条 observation 类 checklog 条目，携带归属
