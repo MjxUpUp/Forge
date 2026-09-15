@@ -21,7 +21,7 @@
 
 ## 两条对架构直接相关的学界定论
 
-1. **内在自纠错已被证伪，独立评审是共识**：Huang et al.（ICLR 2024，~1370 引）实证无外部反馈的 self-correction 常把对的改成错的；Kamoi et al.（TACL 2024）综述同结论，失败集中在「发现错误」环节。Forge「产出者不能自检」站在实证正确一侧；`unslop` 类 skill 的 self-audit 步骤是已证伪模式。
+1. **内在自纠错已被证伪，独立评审是共识**：Huang et al.（ICLR 2024）实证无外部反馈的 self-correction 常把对的改成错的；Kamoi et al.（TACL 2024）综述同结论，失败集中在「发现错误」环节。Forge「产出者不能自检」站在实证正确一侧；`unslop` 类 skill 的 self-audit 步骤是已证伪模式。
 2. **评委偏差五类，各有缓解**：位置（IJCNLP 2025）、自偏好（arXiv 2410.21819）、长度、格式、参考——缓解手段有 position swap、长度归一、证据锚定判分、跨家族评委、多评委集成。Forge 的带行号 + delete-list 纪律已是「证据锚定判分」，但同家族评委/无长度控制/单评委三点敞开。
 
 ## 吸收清单（→ v2 设计 P0/P1）
@@ -40,6 +40,6 @@
 
 - IFEval（arXiv 2311.07911）；饱和再审视（arXiv 2512.14754）
 - 自纠错证伪：Huang et al. ICLR 2024（openreview IkmD3fKBPQ）；Kamoi et al. TACL 2024（arXiv 2406.01297）
-- 评委偏差：IJCNLP 2025 位置偏差系统研究；自偏好 arXiv 2410.21819；长度偏差治理 arXiv 2505.12843
+- 评委偏差：IJCNLP 2025 位置偏差系统研究；自偏好 arXiv 2410.21819；长度偏差治理 arXiv 2505.12843；五类偏差与生产级缓解盘点（futureagi LLM-Judge Bias Mitigation 2026）
 - 动态 rubric：Rubrics as Rewards（arXiv 2507.17746）
 - 业界：Vale（vale.sh）、NeMo Guardrails / Guardrails AI、GPT-5 verbosity / Claude effort 参数、Writer Voice / Grammarly Business、unslop / no-ai-slop 社区 skill
