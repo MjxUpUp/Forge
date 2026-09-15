@@ -147,6 +147,15 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
+	// unused wiring pre-flight（unusedgate.go）：本任务新增、位于 internal/ 且零引用
+	// 的 Go 导出 = 实现了但没接线（BUG-1 形态；2026-09-14 RunReqHygiene 事故实证
+	// advisory 链路拦不住它）。complete 前硬拦——接线或删除；Go internal 包规则使
+	// 「外部消费者」豁免对该子集不成立，反射/注册表误报走逃生舱（落审计）。
+	if ok, reasons := taskpipeline.CheckUnusedGate(root, state); !ok {
+		return fmt.Errorf(`unused-gate 未通过（internal/ 下 Go 导出零引用——实现了但没接线）: %s。逃生（落 checklog 审计）: FORGE_UNUSED_SCAN=disable`,
+			strings.Join(reasons, `; `))
+	}
+
 	// self-report pre-flight（focus-batches §1b，方向 B）：checklist 已勾选项声称
 	// 执行过的验证类命令 vs toollog 实测 Bash 集。测试类声称任务全程零匹配 =
 	// inaccurate self-reporting 形态（arXiv 2605.29442）→ 拒绝完成；非测试类
