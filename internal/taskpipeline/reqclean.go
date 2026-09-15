@@ -110,9 +110,10 @@ func hasSpecArtifacts(state *TaskState) bool {
 }
 
 // RunReqHygiene 实跑需求卫生扫描并落 checklog（advisory——永不阻断）。
-// 逃生：FORGE_REQ_HYGIENE=disable 落 escape-hatch 留痕。
+// 逃生：FORGE_REQ_HYGIENE=disable 落 escape-hatch 留痕（v1 仅 env——which 键
+// escapeReqHygiene 独立于 doc-gate，防 --doc-gate disable 连带关闭本检查）。
 func RunReqHygiene(root string, state *TaskState) {
-	if escapeDisabled(state, escapeDocGate, reqHygieneDisableEnv) {
+	if escapeDisabled(state, escapeReqHygiene, reqHygieneDisableEnv) {
 		recordAudit(root, &checklog.Entry{
 			Check:   CheckNameReqHygiene,
 			Passed:  true,

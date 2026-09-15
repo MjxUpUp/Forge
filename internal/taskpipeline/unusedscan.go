@@ -235,6 +235,20 @@ var goFuncRe = regexp.MustCompile(`^func\s+(?:\([^)]*\)\s+)?([A-Za-z_][A-Za-z0-9
 // （已大写锚定——只关心导出类型）。
 var goTypeRe = regexp.MustCompile(`^type\s+([A-Z][A-Za-z0-9_]*)\b`)
 
+// isGoExportKind reports whether a finding Kind denotes a Go export (func/method/type,
+// exactly what extractGo emits) — the single source for that vocabulary. Consumers
+// needing "is this a Go symbol" (unusedgate.go 的升格判定) must reuse this helper,
+// not re-declare the literal set: extractGo extending its kind coverage (const/var
+// 是其注释自述的已知缺口) must not fork silently.
+//
+// isGoExportKind 报告某 finding Kind 是否 Go 导出（func/method/type——恰好是
+// extractGo 产出的词表），是该词表的单一真相源。需要「这是不是 Go 符号」的
+// 消费方（unusedgate.go 的升格判定）必须复用本函数而非重写字面量集合：
+// extractGo 将来扩 kind 覆盖（const/var 是已知缺口）时不允许静默分叉。
+func isGoExportKind(kind string) bool {
+	return kind == "func" || kind == "method" || kind == "type"
+}
+
 // extractGo extracts exported func/method/type definitions from a Go + line.
 //
 // extractGo 从一条 Go + 行提取导出 func/method/type 定义。

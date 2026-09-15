@@ -20,15 +20,18 @@ test:
 # go run pkg@version 从模块缓存解析工具，不写入 go.mod、不进 vendor。
 # 补牙（2026-09-15）：deadcode 是纯报告器——有发现也 exit 0，只读退出码的旧写法
 # 让「双零门禁」的死代码半边无牙（reqclean.go RunReqHygiene 不可达时 CI 日志
-# ##[error] 标注、job 仍 success 实锤）。现判 stdout 非空即 fail；只收 stdout——
-# 「go: downloading」进度行走 stderr，混收会在冷缓存 CI 上假阳性。
+# ##[error] 标注、job 仍 success 实锤）。现判 stdout 非空即 fail；只判 stdout——
+# 「go: downloading」进度行走 stderr，混收会在冷缓存 CI 上假阳性。stderr 存临时
+# 文件、仅失败时回放——工具真挂时 CI 日志有诊断可定位，成功路径零噪音。
 canary:
 	go run honnef.co/go/tools/cmd/staticcheck@2026.1 ./...
-	@out=$$(go run golang.org/x/tools/cmd/deadcode@v0.49.0 -test ./... 2>/dev/null); st=$$?; \
+	@errf=$$(mktemp); out=$$(go run golang.org/x/tools/cmd/deadcode@v0.49.0 -test ./... 2>"$$errf"); st=$$?; \
 	if [ $$st -ne 0 ]; then \
-		echo "deadcode 工具本身失败（exit $$st）——本地去掉 2>/dev/null 重跑看诊断"; \
+		echo "deadcode 工具本身失败（exit $$st），stderr："; \
+		cat "$$errf"; rm -f "$$errf"; \
 		exit $$st; \
 	fi; \
+	rm -f "$$errf"; \
 	if [ -n "$$out" ]; then \
 		printf '%s\n' "$$out"; \
 		echo "deadcode 双零门禁失败：发现不可达函数（见上）——接线进调用链或删除（git 里有历史）"; \
