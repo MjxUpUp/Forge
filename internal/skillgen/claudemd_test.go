@@ -19,6 +19,18 @@ import (
 // （含 hazard-guard / freeze-guard 两个硬阻断与 review-stop exit-2 阻断）文档缺席
 // ——agent 冷撞 BLOCKED 无解法。此后加 hook 不写文档会在这里红，不再静默出仓。
 // (gate-cmd-form hook/error-table rows in claudemd.go are guarded by this anchor test — failed before the sync, green after.)
+// TestClaudeMDDocumentsDocLintHook 钉住 doc-lint 写时反馈的文档行（P1-C）：
+// wired-hook 守卫只查名字出现，这里锚定完整锚形与关键语义（advisory + doc gate 执法指向）。
+func TestClaudeMDDocumentsDocLintHook(t *testing.T) {
+	body := buildForgeSection(true)
+	if !strings.Contains(body, "**doc-lint**") {
+		t.Fatal("forge 段缺 **doc-lint** 文档行")
+	}
+	if !strings.Contains(body, "D1-D8") || !strings.Contains(body, "doc gate") {
+		t.Fatal("doc-lint 文档行缺 D1-D8 规则面或执法指向")
+	}
+}
+
 func TestClaudeMDCoversAllWiredHooks(t *testing.T) {
 	wired := map[string]bool{}
 	for _, groups := range hooks.ForgeHookSpec() {

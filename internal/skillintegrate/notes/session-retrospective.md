@@ -14,7 +14,8 @@
 ## 步骤 6 的回检数据源与升级落点
 
 - 素材源：`forge task finding` 里 Source=doc-review 的未决项、DocReviewHistory 轮次得分趋势（两轮之间 Critical/rubric 不收敛即异常）。
-- 升级落点：禁令短语/结构/篇幅规则进 `internal/doclint`（D1-D8 表）、模板缺章节进 doc-generator 对应模板。
+- **升级判据的机器来源**：`forge task finding --stats --source doc-review`——跨任务按 Tag×Round 聚合打回计数（含已修复项），同 Tag ≥3 即满足「同类打回 ≥3 次」。
+- 升级落点：禁令短语/结构/篇幅/结论位置规则进 `internal/doclint`（D1-D8 表）、模板缺章节进 doc-generator 对应模板。
 - 升级后两查都绿才算不误伤：`forge docs lint` 扫 skills/ docs/ plugins/ 存量 + `go test ./internal/doclint/` 验规则行为。
 
 ## 行动

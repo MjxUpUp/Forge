@@ -230,6 +230,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步，无需手动 forge task resume；无活跃任务静默；项目级 hook |
 | **compact-resume** | 压缩后（claude-code only） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
 | **resume-reinject** | 用户提交时（claude-code only） | 检测 `ResumeStale=true`（刚压缩过）→ 输出完整接续上下文并清标志。补 task-resume 缺口（SessionStart 只注入一次，会话中途压缩不补），context-rot 抗机制根治层·重注入半边 |
+| **doc-lint** | PostToolUse（Write\|Edit） | advisory：被写的 .md 命中 D1-D8 L1 规则时注入命中清单（规则/行号/修复方向，按命中签名会话内去重），写时反馈提前于 complete 的 doc gate（output-readability-gates-v2.md P1-C），Go 原生实现 |
 | **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（failure-track/subagent-track/test-nudge 亦然，其余 18 个为内嵌 bash 脚本） |
 
 </details>
@@ -302,9 +303,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge compat snapshot [--out <file>]` / `forge compat report [--base <ref>] [--json]` | 可执行兼容工件（六面快照：命令树+flags / CheckName roster / 逃生舱 env / 内嵌载荷 sha256 / 序列化 schema 键 / 阻断位点计数）——golden（compat.snapshot.json）入库、PR diff 呈现；report 对比基线：破坏性变更（removed/changed）exit 2、added 提示同步文档（cargo-semver-checks 契约本地化：0=过 / 2=违规 / 1=工具故障）；承诺表见 docs/design/compat-commitments.md |
 | `forge config get/set compat <版本>` | 兼容基线声明（指纹分流 v1，GODEBUG go 行声明的轻量版）：声明"行为按哪个版本的默认走"（v1 为声明性锚点 + 落后提醒，暂不分派行为——完整分流机制见承诺表"刻意不做"）；`forge status` 显示兼容基线行与落后 minor 数；遥测回读（逃生舱使用聚合）见 `forge eval dashboard` |
 | `forge task watchdog [--stall 45m] [--release]` | 长时任务停滞检测（always-on 治理）：从 checklog/toollog 取未完成任务的最后活动，超阈报停滞（task-stalled advisory，marker 节流每小时一条）；`--release` 清停滞任务租约；顺带展示 token 熔断信号 |
-| `forge task doc-review --passed <pass\|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <发现>]` | 记录 L2 文档回检证据（输出→回检循环）：按 doc-review skill 四维评审后落档（产出者不能自检）；`--score` 为 0-100 总分、`--round` 轮次（≥3 轮未过升级人工确认）、`--critical` 落 Critical findings（未决阻断 complete）。task-complete 的 doc gate 消费该证据 |
+| `forge task doc-review --passed <pass\|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <tag:发现>] [--co-reviewer <id> --co-score <N>]` | 记录 L2 文档回检证据（输出→回检循环）：按 doc-review skill 四维评审后落档（产出者不能自检）；`--score` 为 0-100 总分、`--round` 轮次（≥3 轮未过升级人工确认）、`--critical` 落 Critical findings（未决阻断 complete；`tag:` 前缀打标供进化判据聚合）、`--co-reviewer/--co-score` 落同家族 borderline 双评记录（gate 不消费，只作分歧率观测）。task-complete 的 doc gate 消费该证据 |
+| `forge task finding --content <text> [--tag <枚举>] \| --resolve <id> \| --stats [--source <source>]` | 记录发现/标 fixed/跨任务聚合：`--tag` 打类别标（padding/conclusion/template/false-precision/disclaimer/evidence/style）；`--stats --source doc-review` 按 Tag×Round 跨任务聚合计数——session-retrospective「同类打回 ≥3 次」升级判据的机器来源 |
 | task-complete 自报一致性门禁（自动） | checklist 已勾选项里声称执行过的验证类命令（go test/pytest/cargo test 等）与 toollog 实测 Bash 集比对：测试类声称任务全程零匹配 = 虚报进度形态（arXiv 2605.29442）→ 拒绝完成；非测试类差集只留 advisory 痕；toollog 缺失（宿主遥测未接）跳过——区分"无法验证"与"验证通过"；逃生（留痕）`FORGE_SELF_REPORT=disable` |
-| `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D7：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
+| `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D8：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅/结论位置）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
 | `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、hook/门禁/逃生舱清单与已知盲区（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
 | `forge eval dead-checks [--window 90d] [--json]` | W0.1 死检查报告：聚合 checklog+hazard 台账，按检查分 live / dead-candidate / insufficient-data（hook 瘦身的数据面；嵌入式 hook 的 PASS 不逐次落账，触发率为下界——输出内明示） |
 | `forge eval friction [--corpus <dir>] [--timeout 120s] [--json]` | W2 摩擦净值实验（脚本化双臂）：诱饵语料在「门禁开 / 既有逃生舱全开」两臂下实跑，量拦截率、残余与检查器开销（ON-OFF 墙钟）；端到端 agent 臂走 FORGE_EVAL_MODEL 通道 |
