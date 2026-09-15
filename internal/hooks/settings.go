@@ -91,6 +91,10 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					// 重置）。advisory——执法在 task-verify test-coverage 门禁；
 					// 本 hook 只把修复提前到代码还热的时机。
 					{Type: "command", Command: "forge hook test-nudge"},
+					// doc-lint 写时反馈（output-readability-gates-v2.md P1-C）：被写的
+					// .md 命中 L1 规则以 advisory 提示——把违规可见性从 complete 的
+					// doc gate 提前到落盘时刻。Go 进程内 hook（hook_doclint.go）。
+					{Type: "command", Command: "forge hook doc-lint"},
 				},
 			},
 			{

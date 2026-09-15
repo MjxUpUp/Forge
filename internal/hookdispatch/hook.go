@@ -635,6 +635,12 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	if name == "conventions-write" {
 		return runConventionsWriteHook(hookInput, root, cmd.Root().Version, agent)
 	}
+	// doc-lint（output-readability-gates-v2.md P1-C）：PostToolUse Write|Edit 的
+	// 写时 doclint advisory（hook_doclint.go），与 conventions-write 同类——
+	// advisory、永不阻断、需要 stdin 的 file_path。
+	if name == "doc-lint" {
+		return runDocLintHook(hookInput, root, cmd.Root().Version, agent)
+	}
 
 	// 1c. Patch-tool exemption for read-before-edit (codex reports file edits as
 	// tool_name "apply_patch" — hostcap PatchToolName column — single tool, patch

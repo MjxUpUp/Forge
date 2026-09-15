@@ -1,6 +1,6 @@
 # 输出可读性门禁二期（output-readability-gates v2）
 
-> 状态：P0 已实施（2026-09，本仓分支）；P1 待实施。来源：业界学界调研（2026-09 会话，学结论已内联引用）+ v1 落地后的剩余缺口分析。
+> 状态：P0/P1 已实施（2026-09，本仓）。来源：业界学界调研（2026-09 会话，学结论已内联引用）+ v1 落地后的剩余缺口分析。
 > v1 设计与现状证据索引（截至 v2 前）：[output-readability-gates.md](output-readability-gates.md)。本文档只写增量，不复制 v1 内容。
 
 ## 结论（先读这个）
@@ -35,7 +35,7 @@ v1 建立了 L1 lint / L2 rubric / 门禁证据链三层，架构方向被调研
 | G2 | D1/D2 中文清单二期 + 写作期注入微观文风章节 | L1+写作期 | P0 | `internal/doclint` + `internal/skillgen` |
 | G3 | 评委偏差防线条款 + borderline 双评纪律 | L2 | P0 | `rubric-docs.md` + `doc-review/SKILL.md` |
 | G3 | 双评记录 schema（CoReview 增量字段） | 状态 | P1 | `internal/tasktypes` + CLI |
-| G4 | Finding.Tag 打标 + `forge task findings --stats` 聚合 | 进化 | P1 | `internal/tasktypes` + CLI + session-retrospective |
+| G4 | Finding.Tag 打标 + `forge task finding --stats` 聚合 | 进化 | P1 | `internal/tasktypes` + CLI + session-retrospective |
 | G5 | doc-lint advisory hook（写时 WARN 提示） | 写时 | P1 | `internal/hookdispatch` |
 
 ### 不做清单（调研后显式拒绝，防反复重提）
@@ -111,8 +111,8 @@ SecondScore    int    `json:"second_score,omitempty"`    // 第二评委分数�
 ### P1-B：Finding.Tag + 聚合 CLI（G4）
 
 - `Finding` 增 `Tag string omitempty`，枚举对齐 doc-review 作弊速查表六类 + 微观文风：`padding | conclusion | template | false-precision | disclaimer | evidence | style`
-- doc-review 步骤 4（发现四要素）增第 5 项可选 Tag（评审时打标；旧 findings 空 Tag 不影响）
-- CLI：`forge task findings --stats --source doc-review` 输出 Tag × Round 聚合计数
+- doc-review 步骤 4（发现五要素）增第 5 项可选 Tag（评审时打标；旧 findings 空 Tag 不影响）
+- CLI：`forge task finding --stats --source doc-review` 输出 Tag × Round 聚合计数
 - `session-retrospective` 步骤 6 的「同类打回 ≥3 次」判据从人工记忆改为：`--stats` 输出中同 Tag 同类型计数 ≥3，升级动作不变（进 doclint 表 / 进模板章节）
 - 判据：一次真实 retrospective 能仅凭 `--stats` 输出完成（或不完成）升级判定——机器可复核
 

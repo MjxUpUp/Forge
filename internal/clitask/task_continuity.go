@@ -12,6 +12,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 )
@@ -59,8 +60,8 @@ var taskBlockCmd = &cobra.Command{
 }
 
 var taskFindingCmd = &cobra.Command{
-	Use:   "finding --content <text> [--source <tool>] [--evidence <text>] | --resolve <id> [--ref <ref>]",
-	Short: "记录跨工具发现的问题/风险（带来源工具），或标 fixed",
+	Use:   "finding --content <text> [--source <tool>] [--tag <enum>] [--evidence <text>] | --resolve <id> | --stats [--source <source>] [--ref <ref>]",
+	Short: "记录跨工具发现的问题/风险（带来源工具），或标 fixed，或跨任务聚合统计",
 	RunE:  runTaskFinding,
 }
 
@@ -104,9 +105,11 @@ func init() {
 
 	taskFindingCmd.Flags().String("content", "", "发现内容（新增时必填）")
 	taskFindingCmd.Flags().String("source", "", "来源工具（默认探测当前工具）")
+	taskFindingCmd.Flags().String("tag", "", "类别打标（枚举：padding/conclusion/template/false-precision/disclaimer/evidence/style；doc-review 打回打标，供 --stats 进化判据计数）")
 	taskFindingCmd.Flags().String("evidence", "", "证据（文件:行 / 命令输出）")
 	taskFindingCmd.Flags().String("resolve", "", "要标 fixed 的发现 ID（与 --content 互斥）")
-	taskFindingCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
+	taskFindingCmd.Flags().String("ref", "", "指定任务引用（--stats 时省略 = 跨全部任务聚合）")
+	taskFindingCmd.Flags().Bool("stats", false, "跨任务聚合统计：按 Tag×Round 计数（session-retrospective 升级判据「同类打回 ≥3 次」的机器来源）")
 	taskFindingCmd.Flags().Bool("reset-loop", false, "人工裁决：清除回环耗尽态并清零修复轮次（--note 必填；审计行落地，终止权外置的唯一出口）")
 	taskFindingCmd.Flags().String("note", "", "--reset-loop 的人工裁决说明（必填，可审计）")
 
@@ -888,6 +891,12 @@ func runTaskBlock(cmd *cobra.Command, args []string) error {
 }
 
 func runTaskFinding(cmd *cobra.Command, args []string) error {
+	// --stats 是跨任务聚合（进化判据「同类打回 ≥3 次」的机器来源，P1-B）：
+	// 不依赖活跃任务，先于 loadTaskOrActive 处理。
+	if stats, _ := cmd.Flags().GetBool("stats"); stats {
+		sourceFilter, _ := cmd.Flags().GetString("source")
+		return runFindingStats(cmd, sourceFilter)
+	}
 	state, root, err := loadTaskOrActive(cmd)
 	if err != nil {
 		return err
@@ -939,6 +948,10 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 		source = ResolveOriginTool(root, "")
 	}
 	evidence, _ := cmd.Flags().GetString("evidence")
+	tag, _ := cmd.Flags().GetString("tag")
+	if tag != "" && !tasktypes.IsValidFindingTag(tag) {
+		return fmt.Errorf("--tag 须为枚举值之一（%s），got %q", strings.Join(tasktypes.FindingTags, "/"), tag)
+	}
 	var f taskpipeline.Finding
 	var open []string
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
@@ -946,6 +959,7 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 			Content:  content,
 			Source:   source,
 			Evidence: evidence,
+			Tag:      tag,
 		}
 		taskpipeline.EnrichFinding(root, s, &nf)
 		s.AddFinding(nf)
@@ -969,6 +983,101 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 	round := len(state.ReviewRounds) + 1
 	_ = taskpipeline.ArchiveAttempt(root, state.TaskRef, round, open)
 	fmt.Printf("✓ 发现已记 [%s] (%s): %s\n", f.ID, source, content)
+	return nil
+}
+
+// runFindingStats 跨任务聚合 finding 计数（Tag×Round）——session-retrospective
+// 「同类打回 ≥3 次升 L1 规则」进化判据的机器来源（output-readability-gates-v2.md
+// P1-B）：此前该判据靠复盘者翻任务记忆，聚合后一条命令可复核。计数口径：全部
+// 曾提出的发现（含已 fixed/wontfix）——「被打回过」本身就是重复信号，按当前
+// status 过滤会吃掉复发模式的证据。Tag 空 = 未打标（旧 findings/不打标调用），
+// 单列 (untagged) 桶让打标覆盖率可见。
+func runFindingStats(cmd *cobra.Command, sourceFilter string) error {
+	root, err := projectroot.Find()
+	if err != nil {
+		return err
+	}
+	states, err := taskpipeline.ListTaskStates(root)
+	if err != nil {
+		return fmt.Errorf("遍历任务状态失败: %w", err)
+	}
+	refOverride, _ := cmd.Flags().GetString("ref")
+	type tagRound struct {
+		tag   string
+		round int
+	}
+	counts := map[tagRound]int{}
+	taskRefs := map[string]bool{}
+	total := 0
+	for _, s := range states {
+		if refOverride != "" && s.TaskRef != refOverride {
+			continue
+		}
+		matched := false
+		for _, f := range s.Findings {
+			if sourceFilter != "" && f.Source != sourceFilter {
+				continue
+			}
+			counts[tagRound{tag: f.Tag, round: f.Round}]++
+			total++
+			matched = true
+		}
+		if matched {
+			taskRefs[s.TaskRef] = true
+		}
+	}
+	if total == 0 {
+		filterNote := ""
+		if sourceFilter != "" {
+			filterNote = fmt.Sprintf("（source=%s）", sourceFilter)
+		}
+		fmt.Printf("无匹配发现%s——聚合需先有 doc-review 打回记录（--critical tag:内容）。\n", filterNote)
+		return nil
+	}
+	// 汇总 per-tag 总量并按总量降序、tag 字典序破平。
+	type tagRow struct {
+		tag     string
+		byRound map[int]int
+		total   int
+	}
+	rows := map[string]*tagRow{}
+	for kr, n := range counts {
+		r, ok := rows[kr.tag]
+		if !ok {
+			r = &tagRow{tag: kr.tag, byRound: map[int]int{}}
+			rows[kr.tag] = r
+		}
+		r.byRound[kr.round] += n
+		r.total += n
+	}
+	ordered := make([]*tagRow, 0, len(rows))
+	for _, r := range rows {
+		ordered = append(ordered, r)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].total != ordered[j].total {
+			return ordered[i].total > ordered[j].total
+		}
+		return ordered[i].tag < ordered[j].tag
+	})
+	fmt.Printf("finding 聚合：%d 任务 / %d 条发现（Tag×Round；Tag 空 = 未打标，进 (untagged)）\n", len(taskRefs), total)
+	for _, r := range ordered {
+		tag := r.tag
+		if tag == "" {
+			tag = "(untagged)"
+		}
+		var parts []string
+		rounds := make([]int, 0, len(r.byRound))
+		for round := range r.byRound {
+			rounds = append(rounds, round)
+		}
+		sort.Ints(rounds)
+		for _, round := range rounds {
+			parts = append(parts, fmt.Sprintf("r%d×%d", round, r.byRound[round]))
+		}
+		fmt.Printf("  %-16s %-28s total %d\n", tag, strings.Join(parts, " "), r.total)
+	}
+	fmt.Println("升级判据：同 Tag 计数 ≥3（一次是噪声，三次是模式）→ 升级落点见 session-retrospective 步骤 6。")
 	return nil
 }
 

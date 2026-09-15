@@ -152,3 +152,25 @@ forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfat
 ### Evidence
 
 TestR18_Grandfathered_Exact 红→绿；TestDirective_ContainsRetroDoneInstruction 钉住 Directive 侧命令契约；全量 go test EXIT=0
+
+## [d-18d576f3987aa850-7b04d41c] accept
+
+- **Skill**: session-retrospective
+- **DecidedAt**: 2026-09-15T10:13:35Z
+- **By**: claude-code
+
+### Diagnosis
+
+进化判据「同类打回 ≥3 次」此前靠人工翻任务记忆
+
+### Revision
+
+步骤 6 加 forge task finding --stats --source doc-review 指针——升级判定以聚合输出为准
+
+### Evidence
+
+Finding.Tag 打标 + --stats 聚合已落地（clitask 测试全绿）
+
+### Rationale
+
+P1-B：把判据的计数从人工记忆搬到机器
