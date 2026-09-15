@@ -285,9 +285,13 @@ func isGlobalHook(name string) bool {
 // file_path；conventions-context/write：event/file_path + forge 数据），
 // thin-wrapper bash 永远拿不到——runHook 已把 stdin 消费掉。各自的分发点在
 // RunHook 里 skill-trigger 特例之后。
+// 漏登记的代价是「unknown hook」：分发分支存在但入口先拒（2026-09-15 验收
+// 实锤 doc-lint，v1.61.0 装机接线全死）——TestHookWiring_EveryNameResolvable
+// 守卫名册完备性。
 func isInProcessHook(name string) bool {
 	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge" ||
-		name == "conventions-context" || name == "conventions-write" || name == "gate-cmd-form"
+		name == "conventions-context" || name == "conventions-write" || name == "gate-cmd-form" ||
+		name == "doc-lint"
 }
 
 // RunHook is the RunE of `forge hook <name>`: reads host stdin JSON, resolves
