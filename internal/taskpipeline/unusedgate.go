@@ -34,10 +34,6 @@ const unusedGateDisableEnv = "FORGE_UNUSED_SCAN"
 // （per-task override 需要扩 TaskOverrides 面时再加 case，self-report 同款注释）。
 const escapeUnusedGate = "unused-gate"
 
-// goExportKinds 是 unused-scan Kind 中属于 Go 导出符号的取值（unusedscan.go
-// extractGo：func/method/type；export=TS、fn/struct=Rust，均不适用 Go internal 规则）。
-var goExportKinds = map[string]bool{"func": true, "method": true, "type": true}
-
 // underInternalDir 报告仓内相对路径是否落在 internal/ 路径段下（前缀或任一路径
 // 段为 internal）。"x/internal.go" 不算——internal 必须是目录段。
 func underInternalDir(file string) bool {
@@ -49,13 +45,14 @@ func underInternalDir(file string) bool {
 }
 
 // blockingUnusedFindings 筛出 unused-scan findings 中可硬拦的子集：Go 导出符号
-// （func/method/type）且位于 internal/ 路径段。Go 的 internal 包规则使模块外
-// import 不可能——「外部消费者」豁免对此子集不成立；TS/Rust 导出与非 internal
-// 路径维持纯 advisory（外部消费/外部 API 面的豁免理由仍然有效）。
+// （isGoExportKind——词表单一真相源在 unusedscan.go extractGo 旁）且位于 internal/
+// 路径段。Go 的 internal 包规则使模块外 import 不可能——「外部消费者」豁免对此
+// 子集不成立；TS/Rust 导出与非 internal 路径维持纯 advisory（外部消费/外部 API
+// 面的豁免理由仍然有效）。
 func blockingUnusedFindings(unused []UnusedFinding) []UnusedFinding {
 	var blocking []UnusedFinding
 	for _, u := range unused {
-		if !goExportKinds[u.Kind] {
+		if !isGoExportKind(u.Kind) {
 			continue
 		}
 		if underInternalDir(u.File) {
