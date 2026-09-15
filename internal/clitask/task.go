@@ -107,7 +107,9 @@ func init() {
 	taskDocReviewCmd.Flags().Int("score", 0, "rubric 四维总分 0-100（判据见 doc-review skill）")
 	taskDocReviewCmd.Flags().Int("round", 0, "本轮次编号（从 1 递增；≥3 轮未过升级人工确认）")
 	taskDocReviewCmd.Flags().String("reviewer", "", "评审者标识（子代理/session id——产出者不能当回检者）")
-	taskDocReviewCmd.Flags().StringSlice("critical", nil, "Critical 发现内容（可重复；未决将阻断 doc gate，须 forge task finding resolve 解决）")
+	taskDocReviewCmd.Flags().StringSlice("critical", nil, "Critical 发现内容（可重复；未决将阻断 doc gate，须 forge task finding resolve 解决）。支持 tag: 内容前缀打标（tag ∈ padding/conclusion/template/false-precision/disclaimer/evidence/style，冒号后为内容）")
+	taskDocReviewCmd.Flags().String("co-reviewer", "", "第二评委 id（同家族 borderline 双评，rubric 评分纪律 6；与 --co-score 成对）")
+	taskDocReviewCmd.Flags().Int("co-score", -1, "第二评委 rubric 总分 0-100（与 --co-reviewer 成对；落档可观测，gate 不消费）")
 }
 
 // CommitBestEffort is the seam for the cli-side harness commit hook: completion
@@ -213,7 +215,7 @@ var taskOverrideCmd = &cobra.Command{
 }
 
 var taskDocReviewCmd = &cobra.Command{
-	Use:   "doc-review --passed <pass|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <发现>]",
+	Use:   "doc-review --passed <pass|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <tag:发现>] [--co-reviewer <id> --co-score <N>]",
 	Short: "记录 L2 文档回检证据（按 doc-review skill 评审后落档；doc gate 消费）",
 	RunE:  runTaskDocReview,
 }

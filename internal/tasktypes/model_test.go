@@ -2,6 +2,7 @@ package tasktypes
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -79,4 +80,33 @@ func indexOfFrom(data []byte, sub string, from int) int {
 		}
 	}
 	return -1
+}
+
+// TestDocReview_SecondScoreRoundTrip 钉住 P1-A 审查修复：SecondScore 无
+// omitempty——0 是合法分，Marshal 后必须保留（否则 SecondReviewer 非空而
+// 分数消失，磁盘记录退化成 CLI 成对校验要拦的半份双评）。
+func TestDocReview_SecondScoreRoundTrip(t *testing.T) {
+	dr := DocReview{SecondReviewer: "judge-b", SecondScore: 0}
+	data, err := json.Marshal(dr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"second_score":0`) {
+		t.Fatalf("second_score 0 被 JSON 丢弃: %s", data)
+	}
+	var back DocReview
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.SecondReviewer != "judge-b" || back.SecondScore != 0 {
+		t.Fatalf("round trip 失真: %+v", back)
+	}
+	// 旧记录（两字段皆缺）反序列化为零值 = 未双评，行为不变。
+	var old DocReview
+	if err := json.Unmarshal([]byte(`{"passed":true}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	if old.SecondReviewer != "" || old.SecondScore != 0 {
+		t.Fatalf("旧记录应零值: %+v", old)
+	}
 }

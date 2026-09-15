@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -154,6 +155,11 @@ type Finding struct {
 	Severity string    `json:"severity,omitempty"` // "" | critical | important | minor——doc-review 的 critical 未决会阻断 doc gate；空（旧 findings）永不阻断
 	Status   string    `json:"status"`             // open | fixed | wontfix
 	RaisedAt time.Time `json:"raised_at"`
+	// Tag 是发现的类别打标（可选，枚举 FindingTags）：doc-review 评审打回时打标，
+	// `forge task finding --stats` 按 Tag×Round 聚合——「同类打回 ≥3 次升 L1 规则」
+	// 的进化判据（output-readability-gates-v2.md P1-B）从人工记忆变为机器计数。
+	// 空 = 未打标（旧 findings 与不打标的调用不受影响，永不参与枚举校验）。
+	Tag string `json:"tag,omitempty"`
 	// Round is the review cycle the finding was raised in (len(ReviewRounds)+1 at
 	// raise time — 1 before the first review pass, 2 after it, …).
 	//
@@ -166,6 +172,57 @@ type Finding struct {
 	// 零值 = 字段引入前的旧 finding 或非 git 环境（fail-open，不阻断记录）。
 	Round      int    `json:"round,omitempty"`
 	ChangeHash string `json:"change_hash,omitempty"`
+}
+
+// FindingTags is the closed enum for Finding.Tag, aligned with doc-review's
+// cheat-pattern table (padding/conclusion-dodging/template-speak/false-precision/
+// disclaimer-stacking/evidence-free-claim) plus style for micro-style findings.
+// Closed enum, not open string: the evolution rule ("same tag rejected ≥3 times
+// → promote to L1") counts across tasks, and an open vocabulary would fragment
+// counts into near-duplicates that never reach the threshold.
+//
+// FindingTags 是 Finding.Tag 的封闭枚举，对齐 doc-review 作弊速查表六类
+// 加微观文风一类。封闭枚举而非开放字符串：进化判据（同 Tag ≥3 次 → 升
+// L1）跨任务计数，开放词表会把计数碎成永远到不了阈值的近重复。
+var FindingTags = []string{
+	"padding",
+	"conclusion",
+	"template",
+	"false-precision",
+	"disclaimer",
+	"evidence",
+	"style",
+}
+
+// IsValidFindingTag reports whether s is a member of FindingTags.
+//
+// IsValidFindingTag 报告 s 是否为 FindingTags 合法成员（空串按未打标处理，
+// 由调用方决定放行与否——打标本身可选）。
+func IsValidFindingTag(s string) bool {
+	for _, t := range FindingTags {
+		if t == s {
+			return true
+		}
+	}
+	return false
+}
+
+// SplitFindingTag splits an optional "<tag>:<content>" prefix off a finding
+// value: a known tag followed by ":" sets the tag; anything else is content
+// verbatim (a colon in free prose must not silently eat the head of the text).
+//
+// SplitFindingTag 从发现值里拆出可选的「<tag>:<内容>」前缀：已知 tag 后跟
+// 冒号则取为打标；其余原样作为内容（自由散文里的冒号不得吞掉句头）。
+func SplitFindingTag(v string) (content, tag string) {
+	i := strings.Index(v, ":")
+	if i <= 0 {
+		return v, ""
+	}
+	candidate := v[:i]
+	if IsValidFindingTag(candidate) {
+		return strings.TrimSpace(v[i+1:]), candidate
+	}
+	return v, ""
 }
 
 // Artifact is a reference to a task-related artifact (file / command output /

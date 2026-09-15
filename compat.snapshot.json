@@ -805,6 +805,8 @@
     {
       "path": "forge task doc-review",
       "flags": [
+        "co-reviewer",
+        "co-score",
         "critical",
         "passed",
         "ref",
@@ -838,7 +840,9 @@
         "ref",
         "reset-loop",
         "resolve",
-        "source"
+        "source",
+        "stats",
+        "tag"
       ]
     },
     {
@@ -1237,7 +1241,7 @@
     {
       "tree": "canonical",
       "name": "doc-review",
-      "sha256": "51f0646848299d353f03112556b05ed4ad1e86a060566c1d1fcafe22a458b1c1"
+      "sha256": "7e160613de4e78d07b6466ab8f8435f37a522f1bb0f3afbd150bde0473624c62"
     },
     {
       "tree": "canonical",
@@ -1327,7 +1331,7 @@
     {
       "tree": "canonical",
       "name": "session-retrospective",
-      "sha256": "721ef13d1ae98bf0fca5c29b130844e25138565b2c4cd8c4d75f5ae2a35306b2"
+      "sha256": "95c2f99c557c611ffa036b2d1d6e5eb74fdacda13530888f75b5bd39c7de810c"
     },
     {
       "tree": "canonical",
@@ -1485,6 +1489,7 @@
       "doc_review.reviewer",
       "doc_review.round",
       "doc_review.rubric_score",
+      "doc_review.second_score",
       "doc_review_history",
       "doc_review_history[].docs_fingerprint",
       "doc_review_history[].head_commit",
@@ -1493,6 +1498,7 @@
       "doc_review_history[].reviewer",
       "doc_review_history[].round",
       "doc_review_history[].rubric_score",
+      "doc_review_history[].second_score",
       "external_origin",
       "external_origin.identifier",
       "external_origin.issue_id",
