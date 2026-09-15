@@ -19,15 +19,6 @@ import (
 	"time"
 )
 
-// ReportSection is one assembled evidence section.
-//
-// ReportSection 是报告的一个证据小节。
-type ReportSection struct {
-	Kind string // dashboard | golden | traps | decompose
-	Path string
-	Body string
-}
-
 // BuildQuarterlyReport scans <evalDir>/forge/ for the latest report of each
 // kind and renders the quarterly Markdown. Missing evidence is stated as
 // missing (never backfilled).

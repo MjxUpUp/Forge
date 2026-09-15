@@ -4,6 +4,7 @@
 package dashboard
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -303,7 +304,7 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 		}
 	}
 
-	res, err := AggregateFeed(opts, now, FeedQuery{Project: firstNonEmpty(pr.key, pr.name), TaskRef: state.TaskRef})
+	res, err := AggregateFeed(opts, now, FeedQuery{Project: cmp.Or(pr.key, pr.name), TaskRef: state.TaskRef})
 	if err != nil {
 		return pulseTaskResponse{}, err
 	}
@@ -421,13 +422,6 @@ func toPulseScore(s *scoringtypes.ScoreResult) *pulseScore {
 		}
 	}
 	return out
-}
-
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 // pulseProject 是 /api/pulse/projects.json 的一行。

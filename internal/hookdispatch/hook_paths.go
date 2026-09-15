@@ -4,15 +4,6 @@ import (
 	"path/filepath"
 )
 
-func firstNonEmpty(ss ...string) string {
-	for _, s := range ss {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
-}
-
 // toRelPath 把绝对文件路径转换为以 project root 为基准、用正斜杠分隔的相对
 // 路径。这样 shell 脚本里的 .forge/* 等模式才能无视 OS 路径格式正确匹配。
 // 转换失败时原样返回。

@@ -76,6 +76,10 @@ const (
 	escapeAcceptanceGate = "acceptance-gate"
 	escapeSkillDecisions = "skill-decisions"
 	escapeDocGate        = "doc-gate"
+	// escapeReqHygiene：需求卫生检查的 which 键。v1 仅 env 逃生（switch 无 case，
+	// self-report 同款）——不得借用 escapeDocGate：否则 per-task override --doc-gate
+	// disable 会连带静默关闭 req-hygiene（2026-09-15 审查轮 finding 1）。
+	escapeReqHygiene = "req-hygiene"
 	// escapeArtifactChain：产物链分档执法与漂移 pre-flight 的 which 键
 	//（artifact-chain-workflow.md §2/§5 逃生舱）。
 	escapeArtifactChain = "artifact-chain"

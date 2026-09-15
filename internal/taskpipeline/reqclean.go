@@ -36,9 +36,11 @@ const CheckNameReqHygiene checklog.CheckName = "req-hygiene"
 // reqHygieneDisableEnv 是需求卫生检查的逃生舱（沿 FORGE_DOC_GATE 模式）。
 const reqHygieneDisableEnv = "FORGE_REQ_HYGIENE"
 
-// reqHygieneAmbiguityMarkers 匹配显式歧义标记（TBD/待定/待补/可能…）。
-// CJK 标记不用 \b——Go regexp 的 \b 仅识别 ASCII word boundary，
-// 对 CJK 字符无效。ASCII 标记（TBD/TODO）保留 \b 防词内误匹配。
+// reqHygieneAmbiguityMarkers 匹配显式歧义标记（完整词表见下方正则——本注释不连写
+// 具体标记词：cheat-scan 的 comment-as-debt 会扫本仓自身源码，注释里连写债务词形
+// 即自噬误报，同 cheatscan.go debtMarkerWords 的拆写纪律）。
+// CJK 标记不用 \b——Go regexp 的 \b 仅识别 ASCII word boundary，对 CJK 字符无效；
+// ASCII 缩写类标记保留 \b 防词内误匹配。
 var reqHygieneAmbiguityMarkers = regexp.MustCompile(
 	`(?i)(\bTBD\b|\bTODO\b|待定|待补|待确认|待讨论|可能|大概|也许|或许|视情况|后续确定|需考虑|酌情)`,
 )
@@ -108,9 +110,10 @@ func hasSpecArtifacts(state *TaskState) bool {
 }
 
 // RunReqHygiene 实跑需求卫生扫描并落 checklog（advisory——永不阻断）。
-// 逃生：FORGE_REQ_HYGIENE=disable 落 escape-hatch 留痕。
+// 逃生：FORGE_REQ_HYGIENE=disable 落 escape-hatch 留痕（v1 仅 env——which 键
+// escapeReqHygiene 独立于 doc-gate，防 --doc-gate disable 连带关闭本检查）。
 func RunReqHygiene(root string, state *TaskState) {
-	if escapeDisabled(state, escapeDocGate, reqHygieneDisableEnv) {
+	if escapeDisabled(state, escapeReqHygiene, reqHygieneDisableEnv) {
 		recordAudit(root, &checklog.Entry{
 			Check:   CheckNameReqHygiene,
 			Passed:  true,
