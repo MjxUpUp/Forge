@@ -21,9 +21,9 @@ type Issue struct {
 	Message  string   `json:"message"`
 }
 
-// Hard reports whether the issue blocks (D1/D2/D5/D6 hard; D3/D4/D7 advisory).
+// Hard reports whether the issue blocks (D1/D2/D5/D6 hard; D3/D4/D7/D8 advisory).
 //
-// Hard 报告该条是否阻断（D1/D2/D5/D6 硬；D3/D4/D7 建议）。
+// Hard 报告该条是否阻断（D1/D2/D5/D6 硬；D3/D4/D7/D8 建议）。
 func (i Issue) Hard() bool { return i.Severity == Hard }
 
 // SkipMarker 让整个文件退出 doc lint（检查前 SkipScanLines 行）。
@@ -34,13 +34,25 @@ const SkipMarker = "forge-doc-lint: skip"
 // SkipScanLines 是扫描 SkipMarker 的头部行数。
 const SkipScanLines = 10
 
+// D8 结论前置窗口（typed docs）：必填标题看前 3 个 heading，结论枚举看前
+// 10 行非围栏散文。D5/D6 判「有无」，D8 判「靠前」——D8 只在对应 D5/D6
+// 通过时才出手，缺章节/缺枚举由硬规则兜底。
+const (
+	earlyHeadingLimit = 3
+	earlyProseWindow  = 10
+)
+
 // exemptPathFrags 是永不 lint 的路径片段：依赖、构建产物、agent 会话状态、
 // 归档、生成的 changelog、测试夹具（夹具为测 linter 刻意包含禁令短语）、
 // append-only 决策日志（decisions.md 逐字引用诊断散文，由 skill-decisions
 // guardrail 机器消费——是治理记录不是给人即时阅读的交付物）。
+// skillintegrate/notes/ 同理：go:embed 的集成记录经 `forge skills integration`
+// 供读，文件名即 skill 名——「session-retrospective.md」会按 BASE 名永久撞上
+// retrospective 类型（D5-D8 对记录文本索要交付物结构）。
 var exemptPathFrags = []string{
 	"vendor/", "node_modules/", "dist/", ".git/", ".zcode/", "testdata/",
 	"docs/skillhub-archive/", "changelog.md", "decisions.md",
+	"skillintegrate/notes/",
 }
 
 // PathExempt reports whether a slash-normalized relative path is exempt.
@@ -79,9 +91,9 @@ func LintFile(path string) ([]Issue, error) {
 	return LintText(path, text), nil
 }
 
-// LintText runs D1-D7 over text. filename is used only for DocType matching.
+// LintText runs D1-D8 over text. filename is used only for DocType matching.
 //
-// LintText 对文本跑 D1-D7。filename 只用于 DocType 匹配。
+// LintText 对文本跑 D1-D8。filename 只用于 DocType 匹配。
 func LintText(filename, text string) []Issue {
 	lines := strings.Split(text, "\n")
 	var issues []Issue
@@ -94,6 +106,9 @@ func LintText(filename, text string) []Issue {
 	// nonFenced 只收集散文行：D4 证据标记与 D7 篇幅上限不得被围栏代码满足/
 	// 撑大（围栏里的命令块是示例，不是「断言被实跑过」的证据）。
 	var nonFenced strings.Builder
+	// earlyProse 是前 earlyProseWindow 行非围栏散文（D8 结论位置窗口）。
+	var earlyProse strings.Builder
+	proseLines := 0
 	// firstClaimLine 是散文中首个通过性断言的原文件行号（D4 触发；0=无）。
 	firstClaimLine := 0
 	// fenceRunLen 是开栏围栏的标记长度（≥3 个反引号/波浪号）。CommonMark 仅以
@@ -123,6 +138,11 @@ func LintText(filename, text string) []Issue {
 		}
 		nonFenced.WriteString(raw)
 		nonFenced.WriteByte('\n')
+		proseLines++
+		if proseLines <= earlyProseWindow {
+			earlyProse.WriteString(raw)
+			earlyProse.WriteByte('\n')
+		}
 
 		if firstClaimLine == 0 && passClaimRe.MatchString(raw) {
 			firstClaimLine = lineNo
@@ -204,7 +224,7 @@ func LintText(filename, text string) []Issue {
 	// 不是冗长。
 	if dt := matchDocType(filename); dt != nil && !isTemplateFile(filename) {
 		nonFencedLines := strings.Count(nonFenced.String(), "\n")
-		issues = append(issues, lintDocType(*dt, headings, text, nonFencedLines)...)
+		issues = append(issues, lintDocType(*dt, headings, text, nonFencedLines, earlyProse.String())...)
 	}
 
 	return issues
@@ -262,23 +282,32 @@ func isTemplateFile(filename string) bool {
 	return strings.HasPrefix(strings.ToLower(filepath.Base(filename)), "template-")
 }
 
-// lintDocType 应用 D5（必填章节）、D6（结论枚举）与 D7（篇幅上限）。
-func lintDocType(dt DocType, headings []string, text string, lineCount int) []Issue {
+// lintDocType 应用 D5（必填章节）、D6（结论枚举）、D7（篇幅上限）与 D8
+// （结论位置——D5/D6 判有无，D8 判靠前；earlyProse 是前 earlyProseWindow
+// 行非围栏散文）。
+func lintDocType(dt DocType, headings []string, text string, lineCount int, earlyProse string) []Issue {
 	var issues []Issue
 	lowerText := strings.ToLower(text)
 
 	for _, want := range dt.RequiredHeadings {
-		found := false
-		for _, h := range headings {
+		foundAt := -1
+		for idx, h := range headings {
 			if strings.Contains(h, strings.ToLower(want)) {
-				found = true
+				foundAt = idx
 				break
 			}
 		}
-		if !found {
+		if foundAt < 0 {
 			issues = append(issues, Issue{
 				Line: 1, Rule: "D5", Severity: Hard,
 				Message: fmt.Sprintf("%s 缺必填章节「%s」", dt.ID, want),
+			})
+			continue
+		}
+		if foundAt >= earlyHeadingLimit {
+			issues = append(issues, Issue{
+				Line: 1, Rule: "D8", Severity: Advisory,
+				Message: fmt.Sprintf("%s 必填章节「%s」排在第 %d 个标题——结论章节须在前 %d 个标题内（结论前置）", dt.ID, want, foundAt+1, earlyHeadingLimit),
 			})
 		}
 	}
@@ -296,6 +325,22 @@ func lintDocType(dt DocType, headings []string, text string, lineCount int) []Is
 				Line: 1, Rule: "D6", Severity: Hard,
 				Message: fmt.Sprintf("%s 缺结论枚举（须含 %s 之一）", dt.ID, strings.Join(dt.ConclusionEnum, " / ")),
 			})
+		} else {
+			// D6 已判「有」，D8 判「靠前」：枚举拖到文档后部 = 结论后置。
+			lowerEarly := strings.ToLower(earlyProse)
+			inEarly := false
+			for _, tok := range dt.ConclusionEnum {
+				if enumTokenPresent(lowerEarly, tok) {
+					inEarly = true
+					break
+				}
+			}
+			if !inEarly {
+				issues = append(issues, Issue{
+					Line: 1, Rule: "D8", Severity: Advisory,
+					Message: fmt.Sprintf("%s 结论枚举直到文档后部才出现——判定须在前 %d 行散文内（结论前置）", dt.ID, earlyProseWindow),
+				})
+			}
 		}
 	}
 
