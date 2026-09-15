@@ -22,7 +22,7 @@ var (
 // 2=存在硬失败。
 var docsLintCmd = &cobra.Command{
 	Use:   "lint [paths...] [--base <rev>]",
-	Short: "L1 文档 lint：禁令短语/必填章节/结论枚举/篇幅（exit code: 0=通过 2=硬失败）",
+	Short: "L1 文档 lint：禁令短语/必填章节/结论枚举/篇幅/结论位置（exit code: 0=通过 2=硬失败）",
 	Long: `forge docs lint 对 markdown 产物跑 L1 确定性检查（D1-D8）：
   - D1/D2 禁令短语与无证据整体结论（hard）
   - D3 围栏外复述 diff（advisory）

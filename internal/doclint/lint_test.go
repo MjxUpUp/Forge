@@ -33,9 +33,12 @@ func TestLintTextBannedPhrases(t *testing.T) {
 }
 
 func TestLintTextEvidenceFreeConclusion(t *testing.T) {
-	issues := LintText("review.md", "审查完成，整体良好。\n看起来没有问题。\n基本没问题。\n大体正常。\n")
+	issues := LintText("review.md", "审查完成，整体良好。\n看起来没有问题。\n基本没问题。\n大体正常。\n看起来正常。\n")
 	if !ruleIDs(issues)["D2"] {
 		t.Fatalf("D2 应命中无证据整体结论，got %v", ruleIDs(issues))
+	}
+	if got := len(issues); got != 5 {
+		t.Errorf("五行五判词应各命中一次，got %d: %v", got, issues)
 	}
 }
 
