@@ -22,9 +22,16 @@ import (
 // 一致」（防漂移），本测试钉「spec 规模不暗增」（防膨胀）。两者缺一不可。
 func TestHookWiring_FreezeRatchet(t *testing.T) {
 	// 2026-09-12 基线（W1 语义分词层落地时点）。只许调低或有记录地调高。
+	// 2026-09-15 bump 33→34：doc-lint 写时反馈（output-readability-gates-v2.md
+	// P1-C）。不能挂进既有条目的理由：Write|Edit matcher 上现有一条目各有专属
+	// 检查域（auto-compile=编译、workflow-test-guard=测试接线、skill-trigger=
+	// 技能路由、test-nudge=测试配对节流），doc-lint 是独立检查面（doclint L1 规则
+	// 集，仅 .md 触发、带会话内去重），且执行体不同（Go 进程内 vs bash embed）。
+	// 会话增重评估：仅 .md 写入触发、静默路径零输出、去重防重复注入——增量
+	// 集中在写文档的场景，恰是 v2 要治理的场景。
 	const wantEvents = 8
 	const wantMatchers = 11
-	const wantEntries = 33
+	const wantEntries = 34
 
 	spec := ForgeHookSpec()
 	events, matchers, entries := 0, 0, 0

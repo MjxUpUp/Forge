@@ -36,8 +36,10 @@ func specHookNames(spec map[string][]HookMatcher) map[string]bool {
 // 明显小于 full；standard/full 与完整名册逐条相等。
 func TestForgeHookSpecForProfile_Tiers(t *testing.T) {
 	fullEvents, fullMatchers, fullEntries := specStats(ForgeHookSpec())
-	if fullEvents != 8 || fullMatchers != 11 || fullEntries != 33 {
-		t.Fatalf("完整名册基线漂移（棘轮与档位测试同源钉 8/11/33），got %d/%d/%d", fullEvents, fullMatchers, fullEntries)
+	// 33→34：doc-lint 写时反馈（2026-09-15，与 hook_freeze_ratchet_test 同源 bump，
+	// 理由见彼处注释）。
+	if fullEvents != 8 || fullMatchers != 11 || fullEntries != 34 {
+		t.Fatalf("完整名册基线漂移（棘轮与档位测试同源钉 8/11/34），got %d/%d/%d", fullEvents, fullMatchers, fullEntries)
 	}
 
 	std := ForgeHookSpecForProfile(ProfileStandard)
