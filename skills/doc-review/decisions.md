@@ -104,3 +104,25 @@ round-1 评审 89/100 PASS 零 Critical；修复后 forge skills validate 41/41�
 ### Rationale
 
 Important/Minor 未决项按 doc-review 纪律须显式回应，六条全部采纳修复
+
+## [d-18d576f3942a0340-fb331c82] accept
+
+- **Skill**: doc-review
+- **DecidedAt**: 2026-09-15T10:13:35Z
+- **By**: claude-code
+
+### Diagnosis
+
+P1-A/B 落地（output-readability-gates-v2.md）：--co-reviewer/--co-score 双评 CLI 已存在（P0 时是规划）；进化判据需要 findings 带 Tag 供 --stats 聚合
+
+### Revision
+
+SKILL 步骤 2 双评指引改用真 flag；步骤 4 四要素→五要素（+Tag 打标：--critical tag:前缀，--stats 聚合）；rubric 第 6 条同步真 flag
+
+### Evidence
+
+forge skills validate 41/41；clitask 端到端测试（CoReviewPersisted/PairingRequired/CriticalTagPrefix/TagValidatedAndStats）全绿
+
+### Rationale
+
+skill 文本与实现同步，消灭「规划中 flag」的悬空引用

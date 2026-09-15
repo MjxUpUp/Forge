@@ -57,6 +57,16 @@ type DocReview struct {
 	// DocContentFingerprint）。只绑 HEAD 会漏掉评审后 complete 前的未提交
 	// 修改；指纹补上该盲区。v1.43.0 之前的评审为空 → 视为未设置（仅查 HEAD）。
 	DocsFingerprint string `json:"docs_fingerprint,omitempty"`
+	// SecondReviewer/SecondScore record the second judge for same-family borderline
+	// reviews (rubric scoring discipline 6). The gate does NOT consume them.
+	//
+	// SecondReviewer/SecondScore 记录同家族 borderline（70-79）双评的第二评委
+	// （rubric 评分纪律第 6 条：两家 id 与分数落档，不一致取低分——取低分在
+	// skill 层执行，落档的 RubricScore 已是低分）。gate 不消费本字段——机器
+	// 只负责让分歧率可统计（output-readability-gates-v2.md P1-A），分歧率高
+	// 说明评委不稳，届时再决策升级 ensemble。零值 = 未双评（旧记录行为不变）。
+	SecondReviewer string `json:"second_reviewer,omitempty"`
+	SecondScore    int    `json:"second_score,omitempty"`
 }
 
 // ArtifactRef is TaskState's verifiable pointer to a spec file (I5): Path is DataDir-relative (portable across machines), Hash is the content sha256 (first 16 hex).

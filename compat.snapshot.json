@@ -805,6 +805,8 @@
     {
       "path": "forge task doc-review",
       "flags": [
+        "co-reviewer",
+        "co-score",
         "critical",
         "passed",
         "ref",
@@ -838,7 +840,9 @@
         "ref",
         "reset-loop",
         "resolve",
-        "source"
+        "source",
+        "stats",
+        "tag"
       ]
     },
     {
@@ -1237,7 +1241,7 @@
     {
       "tree": "canonical",
       "name": "doc-review",
-      "sha256": "51f0646848299d353f03112556b05ed4ad1e86a060566c1d1fcafe22a458b1c1"
+      "sha256": "0cd88f0e2d36ddec251ebeb1a0e8e8d4a3e50095149fadb289884b69062945df"
     },
     {
       "tree": "canonical",
@@ -1327,7 +1331,7 @@
     {
       "tree": "canonical",
       "name": "session-retrospective",
-      "sha256": "721ef13d1ae98bf0fca5c29b130844e25138565b2c4cd8c4d75f5ae2a35306b2"
+      "sha256": "95c2f99c557c611ffa036b2d1d6e5eb74fdacda13530888f75b5bd39c7de810c"
     },
     {
       "tree": "canonical",

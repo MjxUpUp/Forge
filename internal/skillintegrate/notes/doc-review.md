@@ -16,6 +16,12 @@
 1. **L1**：落盘 .md 跑 `forge docs lint <paths>`，硬失败先修（PR 描述/commit body 不落盘，按模板结构核对）。
 2. **L2**：按 skill 正文流程派独立子代理评分（产出者不能自检），产出四维得分 + 分级发现。
 3. **落档**：`forge task doc-review --passed pass --score <N>`（`--passed failed --note "<原因>"` 记录未过），自动带轮次与证据关联。
+4. **双评**（同家族 borderline 70-79 必做）：`--co-reviewer <id> --co-score <N>` 落档两家记录——gate 不消费，只作分歧率观测（output-readability-gates-v2.md P1-A）。
+5. **打标**：Critical 发现用 `tag:` 前缀携带类别（枚举 padding/conclusion/template/false-precision/disclaimer/evidence/style），如 `--critical "padding: 大段复述前文"`。
+
+## 进化判据聚合（session-retrospective 步骤 6 的机器来源）
+
+`forge task finding --stats --source doc-review` 跨任务按 Tag×Round 聚合打回计数（含已 fixed/wontfix——被打回过本身就是重复信号）；同 Tag 计数 ≥3 即满足升级判据，升级落点见 session-retrospective。
 
 ## doc gate 规则（complete 前的硬前置）
 
