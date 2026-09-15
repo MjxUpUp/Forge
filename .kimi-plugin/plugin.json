@@ -39,6 +39,12 @@
     },
     {
       "event": "PostToolUse",
+      "matcher": "Write|Edit",
+      "command": "forge hook doc-lint --agent kimi",
+      "timeout": 30
+    },
+    {
+      "event": "PostToolUse",
       "matcher": "Bash",
       "command": "forge hook file-sentinel --agent kimi",
       "timeout": 30

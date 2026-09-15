@@ -11,6 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/spf13/cobra"
 )
 
@@ -365,12 +366,22 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	round, _ := cmd.Flags().GetInt("round")
 	reviewer, _ := cmd.Flags().GetString("reviewer")
 	criticals, _ := cmd.Flags().GetStringSlice("critical")
+	coReviewer, _ := cmd.Flags().GetString("co-reviewer")
+	coScore, _ := cmd.Flags().GetInt("co-score")
 
 	if passedFlag != "pass" && passedFlag != "fail" {
 		return fmt.Errorf(`--passed 必填且只接受 pass | fail，got %q（先按 doc-review skill 评审——产出者不能当回检者）`, passedFlag)
 	}
 	if score < 0 || score > 100 {
 		return fmt.Errorf("--score 取值 0-100（rubric 四维各 0-25），got %d", score)
+	}
+	// 双评成对校验：co-score 未给（-1 哨兵）时 co-reviewer 必须为空，反之亦然
+	// ——半份双评记录比没有更糟（分歧率统计会被残缺行污染）。
+	if (coReviewer != "") != (coScore >= 0) {
+		return fmt.Errorf("--co-reviewer 与 --co-score 须成对给出（同家族 borderline 双评，rubric 评分纪律 6）；got co-reviewer=%q co-score=%d", coReviewer, coScore)
+	}
+	if coScore > 100 {
+		return fmt.Errorf("--co-score 取值 0-100，got %d", coScore)
 	}
 
 	var state *taskpipeline.TaskState
@@ -394,30 +405,35 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	for _, c := range criticals {
-		nf := taskpipeline.Finding{
-			Content:  c,
-			Source:   taskpipeline.DocReviewSource,
-			Severity: taskpipeline.FindingSeverityCritical,
-			Evidence: fmt.Sprintf("round %d rubric=%d", round, score),
-		}
-		taskpipeline.EnrichFinding(root, state, &nf)
-		state.AddFinding(nf)
-	}
-
 	// 轮次历史保留（循环的可观测收敛）：历史轮次留在 DocReviewHistory，得分
 	// 趋势可从任务状态查询——「两轮之间 Critical 不降」是异常信号而非散文。
 	// 截断保留最近 10 轮（内存卫生）。
-	// 锁内 doc-review 写入——DocReview 与轮次历史在锁内合并（§13；历史滚动也
-	// 必须落在锁内状态上，而非陈旧快照）。
+	// 锁内 doc-review 写入——DocReview、轮次历史与 critical findings 都必须在
+	// 锁内状态上写入：MutateTaskState 锁内重载最新盘上状态，曾加在锁外旧快照上
+	// 的 findings 会被静默丢弃（2026-09-15 测试实锤——--critical 此前从未真正
+	// 落档，critical 拦截形同虚设）。
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+		for _, c := range criticals {
+			content, tag := tasktypes.SplitFindingTag(c)
+			nf := taskpipeline.Finding{
+				Content:  content,
+				Tag:      tag,
+				Source:   taskpipeline.DocReviewSource,
+				Severity: taskpipeline.FindingSeverityCritical,
+				Evidence: fmt.Sprintf("round %d rubric=%d", round, score),
+			}
+			taskpipeline.EnrichFinding(root, s, &nf)
+			s.AddFinding(nf)
+		}
 		if s.DocReview != nil && !s.DocReview.ReviewedAt.IsZero() {
 			s.DocReviewHistory = append(s.DocReviewHistory, *s.DocReview)
 			if len(s.DocReviewHistory) > 10 {
 				s.DocReviewHistory = s.DocReviewHistory[len(s.DocReviewHistory)-10:]
 			}
 		}
-		s.DocReview = &taskpipeline.DocReview{
+		// 双评只在成对给出时落档：SecondScore 不落 -1 哨兵（零值 = 未双评的
+		// 契约见 DocReview 字段注释）。
+		docReview := &taskpipeline.DocReview{
 			Passed:          passedFlag == "pass",
 			RubricScore:     score,
 			Round:           round,
@@ -426,12 +442,21 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 			HeadCommit:      taskpipeline.GetHeadCommit(root),
 			DocsFingerprint: taskpipeline.DocContentFingerprint(root, s),
 		}
+		if coReviewer != "" {
+			docReview.SecondReviewer = coReviewer
+			docReview.SecondScore = coScore
+		}
+		s.DocReview = docReview
 		return nil
 	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 
-	fmt.Printf("doc-review 已记录（round %d，score %d，verdict %s，critical +%d）。\n", round, score, passedFlag, len(criticals))
+	coNote := ""
+	if coReviewer != "" {
+		coNote = fmt.Sprintf("，co-reviewer %s（%d）", coReviewer, coScore)
+	}
+	fmt.Printf("doc-review 已记录（round %d，score %d，verdict %s，critical +%d%s）。\n", round, score, passedFlag, len(criticals), coNote)
 	if passedFlag == "pass" && score < taskpipeline.DocRubricThreshold {
 		fmt.Printf("注意：verdict=pass 但 score %d < 阈值 %d——doc gate 仍会拦截（得分与结论矛盾，复评）。\n", score, taskpipeline.DocRubricThreshold)
 	}

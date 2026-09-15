@@ -156,8 +156,10 @@ const PRE_HOOKS: Record<string, string[]> = {
 const POST_HOOKS: Record<string, string[]> = {
   // test-nudge: mid-task test reminder (#4-E, advisory); tool-track on Bash: the
   // adherence audit's largest toollog hole (27.7k Bash calls, zero rows).
-  Write: ["forge hook auto-compile", "forge hook workflow-test-guard", "forge hook test-nudge"],
-  Edit: ["forge hook auto-compile", "forge hook workflow-test-guard", "forge hook test-nudge"],
+  // doc-lint (2026-09, readability-gates-v2 P1-C): write-time doclint advisory
+  // for .md files — same shift-left rationale as conventions-write.
+  Write: ["forge hook auto-compile", "forge hook workflow-test-guard", "forge hook test-nudge", "forge hook doc-lint"],
+  Edit: ["forge hook auto-compile", "forge hook workflow-test-guard", "forge hook test-nudge", "forge hook doc-lint"],
   Bash: ["forge hook file-sentinel", "forge hook tool-track"],
   Read: ["forge hook tool-track"],
 };
