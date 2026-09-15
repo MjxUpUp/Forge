@@ -213,10 +213,3 @@ func PriorAttemptsSummary(root, taskRef string, lastN int, charCap int) string {
 	}
 	return b.String()
 }
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

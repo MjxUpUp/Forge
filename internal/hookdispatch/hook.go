@@ -2,6 +2,7 @@ package hookdispatch
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -929,7 +930,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// 此时阻断会因环境问题硬停 kimi 的每一轮（exit 2）或 Claude 的每次编辑，而这
 	// 并非质量失败。改为 fail-open 放行并给出可见警告。
 	if isHookInfraFailure(exitErr) {
-		warning := fmt.Sprintf("[forge] hook %s 基础设施失败（%v: %s），fail-open 放行", name, exitErr, firstNonEmpty(stderr, "no output"))
+		warning := fmt.Sprintf("[forge] hook %s 基础设施失败（%v: %s），fail-open 放行", name, exitErr, cmp.Or(stderr, "no output"))
 		return emitInfraAllow(agent, hookInput.HookEventName, name, root, hookInput.SessionID, warning)
 	}
 
@@ -1059,7 +1060,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// 常态，假的 `completed` detail 污染 checklog 统计（每周 ~713 条占位条目，
 	// forge-weekly-audit-2026-08-09）。空 detail 诚实——条目仍带 Passed/Checked（scoring 的
 	// LatestByCheck 读这俩）与 TaskRef（forge trace 桶用）；只去掉无意义的 Detail 文本。
-	logDetail := firstNonEmpty(stderr, stdout)
+	logDetail := cmp.Or(stderr, stdout)
 
 	// Reuse the task ref detected earlier for audit traceability.
 	//

@@ -1,7 +1,8 @@
 package taskpipeline
 
 // executor_check_verify_scans.go — ExecuteTaskGate 拆分（refactor/executor-pipeline 第一步）：
-// task-verify 的机械扫描段（cheat-scan / doc-gate 提前量 / unused-scan / conventions-lint）。
+// task-verify 的机械扫描段（cheat-scan / doc-gate 提前量 / unused-scan / req-hygiene /
+// conventions-lint）。
 // 代码体自 executor.go 的 ExecuteTaskGate 原样提取，行为等价——仅变量引用改为参数名
 // （findingsDirty 由 scanCheatFindings 产出、经参数传入 scanUnusedFindings，两段之后的
 // 持久化保持在 unused-scan 段末尾原位执行，顺序不变）。
@@ -156,6 +157,11 @@ func scanUnusedFindings(root string, state *TaskState, findingsDirty bool) {
 				fmt.Fprintf(os.Stderr, "  ⚠ [%s] %s — %s\n", u.Kind, loc, u.Symbol)
 			}
 		}
+		// complete 硬拦截提前量（doc-gate advise 同款模式）：internal/ 下零引用的
+		// Go 导出会在 complete 的 unused-gate 被拦——verify 阶段就告知，修在撞墙前。
+		if n := len(blockingUnusedFindings(unused)); n > 0 {
+			fmt.Fprintf(os.Stderr, "%s"+`其中 %d 个为 internal/ 下的 Go 导出——task-complete 的 unused-gate 将硬拦：接线进真实调用链或删除；确属反射/注册表消费，FORGE_UNUSED_SCAN=disable 逃生（落审计）`+"\n", GateAdvisory("[task-verify] "), n)
+		}
 	}
 	// 两段扫描若有新指纹入集合，持久化一次（best-effort；失败最坏下次重报一遍，
 	// 优于阻塞 gate）。与 DesignPhases 持久化同款模式。
@@ -167,6 +173,19 @@ func scanUnusedFindings(root string, state *TaskState, findingsDirty bool) {
 			fmt.Fprintln(os.Stderr, "[task-verify] reported-findings persist failed:", err)
 		}
 	}
+}
+
+// adviseReqHygiene 跑 req-hygiene（advisory，reqclean.go）：对任务登记的 spec 产物做
+// 确定性卫生扫描（歧义标记/模糊量词/验收缺失）。无 spec 产物的任务静默跳过、不落
+// checklog——检查对象不存在时保持静默是 conventions-lint 同款先例（信号密度优先）。
+// 这是 RunReqHygiene 的唯一生产接线：63a9457 落地特性后本调用缺失，入口函数零调用方
+// （deadcode 实锤、CI ##[error] 标注仍 success）——"实现了但没接线"恰是该扫描器
+// 自己定义的 BUG-1 形态。
+func adviseReqHygiene(root string, state *TaskState) {
+	if !hasSpecArtifacts(state) {
+		return
+	}
+	RunReqHygiene(root, state)
 }
 
 // adviseConventionsLint 是 conventions-lint（advisory）：项目规范档案声明了 lint 命令

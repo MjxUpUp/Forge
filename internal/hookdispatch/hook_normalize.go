@@ -1,6 +1,7 @@
 package hookdispatch
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -88,14 +89,14 @@ func clineNormalize(stdinData []byte, hookInput *HookInput) {
 	}
 	// 候选在场时无条件覆盖——为何此处不能用填空，见函数注释（填空会保留默认
 	// unmarshal 已填入的未映射 snake_case 名）。
-	if name := firstNonEmpty(c.ToolNameSnake, c.ToolNameCamel, c.Tool); name != "" {
+	if name := cmp.Or(c.ToolNameSnake, c.ToolNameCamel, c.Tool); name != "" {
 		hookInput.ToolName = clineToCCToolName(name)
 	}
 	if raw := firstRawJSON(c.ToolInputSnake, c.ToolInputCamel, c.Parameters); len(raw) > 0 {
 		hookInput.ToolInput = remapKimiToolInput(raw)
 	}
 	if hookInput.Prompt == "" {
-		hookInput.Prompt = firstNonEmpty(c.Prompt, c.UserPrompt, c.Question)
+		hookInput.Prompt = cmp.Or(c.Prompt, c.UserPrompt, c.Question)
 	}
 }
 
@@ -130,8 +131,8 @@ func clineToCCToolName(name string) string {
 	return name
 }
 
-// firstRawJSON 返回首个非空的 RawMessage 实参（全空时返回 nil）。字符串版的
-// firstNonEmpty 已在 hook.go。
+// firstRawJSON 返回首个非空的 RawMessage 实参（全空时返回 nil）——json.RawMessage
+// 不满足 cmp.Or 的 comparable 约束（切片），故保留手写；字符串版已由 cmp.Or 取代。
 func firstRawJSON(raws ...json.RawMessage) json.RawMessage {
 	for _, r := range raws {
 		if len(r) > 0 {
