@@ -833,6 +833,11 @@ func TestOpencodePluginWiring(t *testing.T) {
 	post := opencodeTSRoster(t, ts, "POST_HOOKS")
 	assertOpencodeRosterParity(t, "PreToolUse", pre)
 	assertOpencodeRosterParity(t, "PostToolUse", post)
+	// P1-C 显式断言：doc-lint 写时反馈必须进 opencode 的 Write/Edit 名册
+	// （parity 测试只保证两份名册一致，这里钉「doc-lint 真的接上了」）。
+	if !post["Write"]["forge hook doc-lint"] || !post["Edit"]["forge hook doc-lint"] {
+		t.Error("opencode POST_HOOKS 的 Write/Edit 缺 doc-lint——写时反馈在该宿主结构性死码")
+	}
 }
 
 // opencodeExemptions lists spec hook commands intentionally NOT wired into the
