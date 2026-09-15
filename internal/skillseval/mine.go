@@ -13,9 +13,9 @@ package skillseval
 //     不假装。
 //   - 草稿永不自动进 golden：机械改写+脱敏（SanitizeDraft，无条件执行）是把「真实话语改写」从注释约定升为
 //     机械步骤（R4），但人工策展仍在环上（half-automatic，与 skillseval 定位一致）。
-//   - golden 集退出机制（辩论 G2，防 AWM 式 ever-growing）：GoldenCap 告警——策展合并
-//     时超上限必须先淘汰旧 case；本命令对超限 golden 集发 advisory，淘汰本身由策展
-//     流程（skill-evolution skill）执行。
+//   - golden 集退出机制（辩论 G2，防 AWM 式 ever-growing）：挖矿产出有界
+//     （MaxMinedPerSkill）；golden 集淘汰由策展流程（skill-evolution skill）执行，
+//     本命令不设告警线（原 GoldenCap 常量零消费方已删——承诺的告警从未接线）。
 
 import (
 	"cmp"
@@ -34,12 +34,6 @@ import (
 // MaxMinedPerSkill 每次 mine 每 skill 的草稿上限（G2 同源约束：挖矿产出本身有界，
 // 防一次跑出无界草稿清单淹没策展）。
 const MaxMinedPerSkill = 20
-
-// GoldenCap advisory threshold for golden sets.
-//
-// GoldenCap golden 集上限告警阈值。超限的 golden 集是 ever-growing 信号——合并新草稿
-// 前必须先淘汰（策展流程执行；本常量是 advisory 的判定线，不是硬门禁）。
-const GoldenCap = 100
 
 // MinedCase is one mined golden-draft candidate (redacted excerpt + attribution metadata).
 //

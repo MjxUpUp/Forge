@@ -1,6 +1,7 @@
 package hookdispatch
 
 import (
+	"cmp"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -186,14 +187,15 @@ func TestHookOutput_CheckLogRecorded(t *testing.T) {
 // （每周 ~713 条占位条目，forge-weekly-audit-2026-08-09）。契约在 helper 层锁定，调用处
 // 回归能被直接捕获。
 func TestFirstNonEmpty(t *testing.T) {
-	if got := firstNonEmpty("", ""); got != "" {
-		t.Errorf("firstNonEmpty(empty, empty) = %q, want empty (no placeholder fallback)", got)
+	// firstNonEmpty 已删（cmp.Or 替代）；语义钉住不变——调用点依赖这三条契约。
+	if got := cmp.Or("", ""); got != "" {
+		t.Errorf("cmp.Or(empty, empty) = %q, want empty (no placeholder fallback)", got)
 	}
-	if got := firstNonEmpty("warn", "out"); got != "warn" {
-		t.Errorf("firstNonEmpty(warn, out) = %q, want warn (stderr precedence)", got)
+	if got := cmp.Or("warn", "out"); got != "warn" {
+		t.Errorf("cmp.Or(warn, out) = %q, want warn (stderr precedence)", got)
 	}
-	if got := firstNonEmpty("", "PASS"); got != "PASS" {
-		t.Errorf("firstNonEmpty(empty, PASS) = %q, want PASS", got)
+	if got := cmp.Or("", "PASS"); got != "PASS" {
+		t.Errorf("cmp.Or(empty, PASS) = %q, want PASS", got)
 	}
 }
 

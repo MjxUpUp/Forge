@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"net/url"
+	"slices"
 	"strings"
 )
 
@@ -30,14 +31,14 @@ func ParseExternalOriginURL(rawURL string) ExternalOrigin {
 	case strings.HasSuffix(host, "linear.app"):
 		// linear.app/<team>/issue/<IDENTIFIER>（IDENTIFIER 形如 ABC-123）
 		o.Tracker = "linear"
-		if i := indexOfSeg(segs, "issue"); i >= 0 && i+1 < len(segs) {
+		if i := slices.Index(segs, "issue"); i >= 0 && i+1 < len(segs) {
 			o.Identifier = segs[i+1]
 			o.IssueID = o.Identifier
 		}
 	case host == "github.com":
 		// github.com/<org>/<repo>/issues/<num>（数字 issue id）
 		o.Tracker = "github"
-		if i := indexOfSeg(segs, "issues"); i >= 0 && i+1 < len(segs) {
+		if i := slices.Index(segs, "issues"); i >= 0 && i+1 < len(segs) {
 			o.IssueID = segs[i+1]
 			if i >= 2 { // i-2=org, i-1=repo
 				o.Identifier = segs[i-2] + "/" + segs[i-1] + "#" + segs[i+1]
@@ -56,14 +57,4 @@ func splitPathSegments(p string) []string {
 		}
 	}
 	return out
-}
-
-// indexOfSeg 返回 seg 在 segs 中的下标，不存在返 -1。
-func indexOfSeg(segs []string, seg string) int {
-	for i, s := range segs {
-		if s == seg {
-			return i
-		}
-	}
-	return -1
 }

@@ -1101,13 +1101,6 @@ func (s *TaskState) ResolveFinding(id string) bool {
 	return false
 }
 
-// AddArtifact appends an artifact reference.
-//
-// AddArtifact 追加一条产物引用。
-func (s *TaskState) AddArtifact(a Artifact) {
-	s.Artifacts = append(s.Artifacts, a)
-}
-
 // --- 分派方法（assignment）---
 
 // HasAssignment reports whether the task is delegated to an agent (Assignment !=
