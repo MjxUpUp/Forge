@@ -19,7 +19,7 @@ Forge 的扩展面是**执法协议**，不是功能市场。因此：
 三条独立论据（任一单独成立即可否决，实际三条同时成立）：
 
 1. **语义相反**。Cordis 的服务模型是 fail-silent 惰性激活："直到此服务的值变为 truthy 为止，该插件的函数体不会被加载"、服务缺失让插件静默 pending、"ctx 上服务凭空出现"（cordis.moe《服务与依赖》；iceyao 源码解读）。门禁需要的是 **fail-visible**：检查缺失、遥测缺失、依赖缺失都必须响亮（现有先例：遥测缺失时硬门禁降级 advisory 并落 `telemetry-missing` 审计行）。把 DI 语义搬进门禁 = 把错误推迟到最不可见的时刻。
-2. **审计性是快照执法的前提**。compat 六面快照的执法力来自"位点集合有限且静态"——`forge compat report` 能把"新增一个 BLOCKED 位点"变成 PR diff 里必须被审阅的一行。若门禁可运行时动态注册，位点集合无限，快照退化为合影，棘轮失去棘齿。dsh 自己也承认这条边界：其 `capability-seams.md` 把服务显式分为 **core spine service（不可换）**、swappable capability seam、bundle composition point 三类——口号是"一切皆插件"，结构是"分层标注哪些不可插"。
+2. **审计性是快照执法的前提**。compat 七面快照的执法力来自"位点集合有限且静态"——`forge compat report` 能把"新增一个 BLOCKED 位点"变成 PR diff 里必须被审阅的一行。若门禁可运行时动态注册，位点集合无限，快照退化为合影，棘轮失去棘齿。dsh 自己也承认这条边界：其 `capability-seams.md` 把服务显式分为 **core spine service（不可换）**、swappable capability seam、bundle composition point 三类——口号是"一切皆插件"，结构是"分层标注哪些不可插"。
 3. **谱系证据一边倒**。VSCode 用"静态声明（contributes）先行 + 惰性激活分离"换来了可审计的扩展面；OSGi 的 classloader 地狱、K8s CRD 的 YAML 泥潭、"工具越多 Agent 反而越弱"（dsh 社区对第一版的核心批评）、openEuler 的"先单体，复杂了再拆"——全部指向同一结论：暴露给调用方的扩展面必须少而统一。
 
 ### 裁断表："一切皆插件"的子主张逐条裁决
@@ -62,7 +62,7 @@ Forge 的扩展面是**执法协议**，不是功能市场。因此：
 | **composition point**（数据声明组合） | 用户/配置在运行时组合，无需改内核 | schema.yaml 产物链档位、skill frontmatter triggers（半开：命名 condition 词汇表在内核）、conventions profile、per-task override、profile 三档 |
 | **外部桥**（新增第四格，Forge 特有） | 内核外进程内接线层，双端契约 | plugins/forge-dsh（Cordis 包装层）、plugins/forge 宿主接线包 |
 
-配套规则三条：(1) spine 变更必须出现在 compat 快照 diff（已执行）；(2) seam 变更收敛为"注册表加行 + 守卫测试钉完整性"（见 `hostcap-behavior-registry.md`）；(3) **"plugin"一词的语义辨析写进 README**——Forge 的 plugin=宿主接线打包（分发层），dsh/Cordis 的 plugin=运行时可装卸组件（运行时层），同名不同物，forge-dsh 恰好横跨两者（是前者的打包、后者的消费者）。
+配套规则三条：(1) spine 变更必须出现在 compat 快照 diff（已执行）；(2) seam 变更收敛为"注册表加行 + 守卫测试钉完整性"（见 `hostcap-behavior-registry.md`）；(3) **"plugin"一词的语义辨析写进 README**（待办——主 README 尚无此文本，随 README 下一次结构性修订补入；触发条件：任一外部贡献者混淆两种 plugin 语义）——Forge 的 plugin=宿主接线打包（分发层），dsh/Cordis 的 plugin=运行时可装卸组件（运行时层），同名不同物，forge-dsh 恰好横跨两者（是前者的打包、后者的消费者）。
 
 ## 五、明确不采纳清单
 
