@@ -85,15 +85,20 @@ var knownEvents = map[string]bool{
 }
 
 var (
-	reName   = regexp.MustCompile(`\bname\s*=\s*["']([^"']+)["']`)
+	reName   = regexp.MustCompile(`(?m)^\s*(?:export\s+)?(?:const|let|var)\s+name\s*=\s*["']([^"']+)["']`)
 	reInject = regexp.MustCompile(`\binject\s*=\s*\[([^\]]*)\]`)
 	reApply  = regexp.MustCompile(`(?:function\s+apply\s*\()|(?:apply\s*[:=]\s*(?:async\s*)?\()`)
 	reStr    = regexp.MustCompile(`["']([\w.$-]+)["']`)
 	reCtxKey = regexp.MustCompile(`\bctx\.([A-Za-z_$][\w$]*)`)
-	reProv   = regexp.MustCompile(`\.provide\(\s*["']([\w.$-]+)["']`)
-	reOn     = regexp.MustCompile(`\bctx\.on\(\s*["']([\w./-]+)["']`)
-	reImp    = regexp.MustCompile("\\b(?:import[\\s(]+|require\\s*\\(\\s*)[^\"'\\n]*[\"']([^\"'\\n]+)[\"']")
-	reDupReg = regexp.MustCompile(`name:\s*["']([\w.-]+)["']`)
+	reCtxBr  = regexp.MustCompile(`\bctx\[["']([\w.$-]+)["']\)`)
+
+	// blockCommentRe 剥 /* ... */（跨行）——散文式块注释里的 import/require
+	// 假阳性来源。
+	blockCommentRe = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	reProv         = regexp.MustCompile(`\.provide\(\s*["']([\w.$-]+)["']`)
+	reOn           = regexp.MustCompile(`\bctx\.on\(\s*["']([\w./-]+)["']`)
+	reImp          = regexp.MustCompile("\\b(?:import|export)\\b[^\"';\\n]*\\bfrom\\s*[\"']([^\"'\\n]+)[\"']|\\bimport\\s*\\(\\s*[\"']([^\"'\\n]+)[\"']|\\brequire\\s*\\(\\s*[\"']([^\"'\\n]+)[\"']|\\bimport\\s+[\"']([^\"'\\n]+)[\"']")
+	reDupReg       = regexp.MustCompile(`name:\s*["']([\w.-]+)["']`)
 )
 
 type sourceFile struct {
@@ -155,6 +160,9 @@ func VerifyPluginDir(dir string) (*Report, error) {
 	if entryRel == "" {
 		entryRel = "index.js"
 	}
+	// "./index.js" 是真实包最常见的 main 写法——与 collectSources 的 rel 键
+	// （无 ./ 前缀）对齐前先归一化，否则合法包被误判入口缺失（审查 P1）。
+	entryRel = strings.TrimPrefix(entryRel, "./")
 	entryBody, ok := readFileLoose(files, entryRel)
 	if !ok {
 		report.add(SevError, "entry", "package.json main 指向的 "+entryRel+" 不存在（或未在扫描面内）")
@@ -188,21 +196,28 @@ func VerifyPluginDir(dir string) (*Report, error) {
 	externals := map[string]bool{}
 	vendored := map[string]bool{}
 	for _, f := range files {
-		// 逐行扫描并跳过纯注释行——runner.js 的注释里有 "require"+"utf8"
-		// 同行共存的散文（2026-09-16 dogfood 实证），全文扫描会把注释当 import。
+		// 先剥块注释，再逐行跳过纯注释行——runner.js 的注释里有 "require"+
+		// "utf8" 同行共存的散文（2026-09-16 dogfood 实证），全文扫描会把注释
+		// 当 import。行尾 // 不剥（字符串内 // 误伤面大，留作已知边界）。
+		code := blockCommentRe.ReplaceAllString(f.body, "")
 		var codeLines []string
-		for _, line := range strings.Split(f.body, "\n") {
+		for _, line := range strings.Split(code, "\n") {
 			if !strings.HasPrefix(strings.TrimSpace(line), "//") {
 				codeLines = append(codeLines, line)
 			}
 		}
-		code := strings.Join(codeLines, "\n")
+		code = strings.Join(codeLines, "\n")
 		for _, m := range reCtxKey.FindAllStringSubmatch(code, -1) {
 			key := m[1]
 			if contextMethods[key] {
 				continue
 			}
 			used[key] = true
+		}
+		// ctx["key"] 括号形态与 ctx.key 同判（盲区声明：ctx[expr] 计算键取
+		// 不到——与 ctx.get 宽容查找一样留待 H2b 运行时面）。
+		for _, m := range reCtxBr.FindAllStringSubmatch(code, -1) {
+			used[m[1]] = true
 		}
 		for _, m := range reProv.FindAllStringSubmatch(code, -1) {
 			provided[m[1]] = true
@@ -217,6 +232,18 @@ func VerifyPluginDir(dir string) (*Report, error) {
 		}
 		for _, m := range reImp.FindAllStringSubmatch(code, -1) {
 			spec := m[1]
+			if spec == "" {
+				spec = m[2]
+			}
+			if spec == "" {
+				spec = m[3]
+			}
+			if spec == "" {
+				spec = m[4]
+			}
+			if spec == "" {
+				continue // 分支未参与（RE2 多捕获组：未参与的组为空串）
+			}
 			switch {
 			case strings.HasPrefix(spec, ".") || strings.HasPrefix(spec, "node:") ||
 				strings.HasPrefix(spec, "/") || spec == "node":
@@ -315,7 +342,8 @@ func collectSources(dir string) ([]sourceFile, error) {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".js") && !strings.HasSuffix(path, ".mjs") && !strings.HasSuffix(path, ".cjs") {
+		if !strings.HasSuffix(path, ".js") && !strings.HasSuffix(path, ".mjs") && !strings.HasSuffix(path, ".cjs") &&
+			!strings.HasSuffix(path, ".mts") && !strings.HasSuffix(path, ".cts") {
 			return nil
 		}
 		// 测试文件排除：fixture 对象（exec/name 字段）与 dev-only import

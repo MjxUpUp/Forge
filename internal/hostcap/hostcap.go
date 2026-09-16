@@ -26,12 +26,12 @@
 // 每一行对应一个机械执法点，漏任何一步会被指名的守卫测试/快照拦下（依据：
 // docs/design/hostcap-behavior-registry.md）：
 //  1. 本注册表加一行 Host——缺 StdinDialect 对应 normalizer →
-//    hookdispatch.TestHostcapDialectRegistry 红；无 emitter 且未登记 Claude
-//    默认 → TestHostcapEmitterRegistry 红；新增 agent=="x" 字面量特判 →
-//    TestNoHostLiteralGates 红（豁免须带理由登记）。
+//     hookdispatch.TestHostcapDialectRegistry 红；无 emitter 且未登记 Claude
+//     默认 → TestHostcapEmitterRegistry 红；新增 agent=="x" 字面量特判 →
+//     TestNoHostLiteralGates 红（豁免须带理由登记）。
 //  2. internal/agentbridge 加 Translator 文件并接入 AllTranslators。
 //  3. ForgeHookSpec 接线（internal/hooks/settings.go）+ 镜像守卫
-//    （TestPluginPack_HooksMirrorSettings / TestDshPluginSpecMirrorsSpec 同族）。
+//     （TestPluginPack_HooksMirrorSettings / TestDshPluginSpecMirrorsSpec 同族）。
 //  4. README 多 agent 支持表加行。
 //  5. forge compat snapshot 重钉（compat.snapshot.json 的变更进 PR diff 显式审阅）。
 package hostcap

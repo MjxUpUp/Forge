@@ -29,6 +29,10 @@ dsh 生态四个已实证的缺口（全部一手来源，见第五节），恰�
 
 ### H2 验证器（启动判据见第四节；预计 1-2 月粒度）
 
+> **启动记录（override，明文）**：owner 于 2026-09-16 会话显式拍板提前启动 H2——拍板时判据 (a)(b)(c) 均未命中，记录在案不抹除；H2b（动态重放）的复验纪律不受本次 override 影响，仍按第四节判据与日期执行。
+>
+> **H2a 已落地 2026-09-16**：`forge bridge verify <dir>`（internal/bridgeverify，零依赖 grep 级静态检查）——manifest/入口三件套/inject 一致性/同名注册/@deepseek-ai vendored 耦合/未知事件/外部依赖，error→exit 2；dogfood 基准：plugins/forge-dsh 自身零发现。dogfood 过程修正三处检查器误报源（ctx.plugin 方法、测试 fixture 与 test 目录排除、import.meta 正则误配），另按独立审查补 `./` main 归一化、多行 import/export-from 扫描与 dup-register fixture。
+
 新增 `forge bridge verify`（暂名，亦可挂 `forge plugin verify --host dsh`）——对**任意 dsh 插件包**跑两级检查：
 
 1. **静态**：inject 声明 vs 实际 ctx 取用一致性、同名注册冲突、decision 形状合法性（对照 contract.json 的枚举）、配置 schema 完整性——直接映射 #1884 的四大事故模式。
