@@ -355,3 +355,42 @@ func TestGoreleaserReleaseMode_KeepsExisting(t *testing.T) {
 			"replace 会把正文覆盖成裸 commit 列表", cfg.Release.Mode)
 	}
 }
+
+// TestReleaseWorkflow_NoStepLevelPermissions 钉住 permissions 键位合法性：
+// GitHub Actions 的 permissions 只支持 workflow/job 两级，step 级是非法键——
+// actionlint 报错且 Actions 解析期拒绝整个 workflow（每次发版即炸）。2026-09-15
+// 实录：pins 对齐步把 contents:write 写成 step 级，internal/ci 既有守卫对
+// permissions 零覆盖致其溜到远端 CI 才被人工复审抓住——本测试封该盲区。
+func TestReleaseWorkflow_NoStepLevelPermissions(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wf struct {
+		Jobs map[string]yaml.Node `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &wf); err != nil {
+		t.Fatalf("解析 release.yml: %v", err)
+	}
+	for jobName, jn := range wf.Jobs {
+		var job struct {
+			Permissions yaml.Node   `yaml:"permissions"`
+			Steps       []yaml.Node `yaml:"steps"`
+		}
+		if err := jn.Decode(&job); err != nil {
+			t.Fatalf("解析 job %s: %v", jobName, err)
+		}
+		if job.Permissions.Kind != 0 && job.Permissions.Kind != yaml.MappingNode {
+			t.Errorf("job %s 的 permissions 须为 mapping（job 级合法形态），got kind %v", jobName, job.Permissions.Kind)
+		}
+		for i, sn := range job.Steps {
+			var step map[string]yaml.Node
+			if err := sn.Decode(&step); err != nil {
+				continue
+			}
+			if _, ok := step["permissions"]; ok {
+				t.Errorf("job %s 第 %d 个 step 含 step 级 permissions——非法键，Actions 解析期拒绝整个 workflow（提为 job 级）", jobName, i+1)
+			}
+		}
+	}
+}
