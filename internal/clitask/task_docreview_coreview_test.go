@@ -59,15 +59,33 @@ func TestDocReview_CoReviewPairingRequired(t *testing.T) {
 }
 
 // TestDocReview_CriticalEmptyContentAfterTag 打标后内容为空的 critical 拒绝——
-// 空 critical 会阻断 doc gate 但没人看得懂要修什么。
+// 空 critical 会阻断 doc gate 但没人看得懂要修什么；文案按有无 tag 区分
+// （裸空串不得提示「去掉 tag: 前缀」——那对该场景是误导）。
 func TestDocReview_CriticalEmptyContentAfterTag(t *testing.T) {
 	dir := setupDelegateProject(t)
 	seedTaskState(t, dir, `feat/coreview-empty`, nil)
 
-	if _, stderr, code := runForge(t, dir, `task`, `doc-review`,
+	// runForge 返回 CombinedOutput——RunE 错误文案在 out 里（stderr 形参恒空）。
+	if out, _, code := runForge(t, dir, `task`, `doc-review`,
 		`--ref`, `feat/coreview-empty`, `--passed`, `fail`, `--score`, `60`,
 		`--critical`, `style:`); code == 0 {
-		t.Fatalf(`打标后空内容应被拒: %s`, stderr)
+		t.Fatalf(`打标后空内容应被拒: %s`, out)
+	} else if !strings.Contains(out, `打标后内容为空`) {
+		t.Errorf(`打标场景文案应指向补内容, got: %s`, out)
+	}
+	// cobra 语义：--critical "" 解析为空切片 = 无事发生（critical +0），不进守卫；
+	// 空白串才作为值传入 → 无 tag 守卫接管，文案是「内容为空」而非「去掉 tag」。
+	if out, _, code := runForge(t, dir, `task`, `doc-review`,
+		`--ref`, `feat/coreview-empty`, `--passed`, `fail`, `--score`, `60`,
+		`--critical`, ``); code != 0 || !strings.Contains(out, `critical +0`) {
+		t.Fatalf(`裸空串应为 no-op 成功, out: %s`, out)
+	}
+	if out, _, code := runForge(t, dir, `task`, `doc-review`,
+		`--ref`, `feat/coreview-empty`, `--passed`, `fail`, `--score`, `60`,
+		`--critical`, ` `); code == 0 {
+		t.Fatalf(`空白串应被拒: %s`, out)
+	} else if strings.Contains(out, `去掉 tag`) {
+		t.Errorf(`无 tag 场景文案不得建议「去掉 tag」, got: %s`, out)
 	}
 	state, err := taskpipeline.LoadTaskState(dir, `feat/coreview-empty`)
 	if err != nil {
