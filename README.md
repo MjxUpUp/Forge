@@ -458,6 +458,15 @@ npm install -g @agent_forge/forge
 # 支持平台：macOS (x86_64/ARM64)、Linux (x86_64/ARM64)、Windows (x86_64)
 ```
 
+> **「plugin」一词在 Forge 语境里有两层含义，勿混淆**（设计共识见
+> [docs/design/plugin-philosophy.md](docs/design/plugin-philosophy.md)）：
+> **Forge 的 plugin** = 宿主接线**打包**（分发层）——`plugins/forge`（Claude
+> marketplace pack）与 `plugins/forge-dsh`（dsh 桥）这类"薄 manifest + 共享
+> payload"，宿主 agent 加载它们，Forge 二进制自身不加载任何运行时插件；
+> **dsh/Cordis 的 plugin** = 运行时可装卸的**扩展组件**（运行时层）。同名不同物，
+> `plugins/forge-dsh` 恰好横跨两者——它以 Cordis 插件的形态被 dsh 运行时加载，
+> 本体却只是 forge CLI 的接线包。
+
 <details>
 <summary><b>📖 通过 Claude Code plugin marketplace（用户级，一次性接线）</b></summary>
 
