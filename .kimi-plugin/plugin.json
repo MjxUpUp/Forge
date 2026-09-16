@@ -1,6 +1,6 @@
 {
   "name": "forge",
-  "version": "1.61.2",
+  "version": "1.61.3",
   "description": "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents.",
   "hooks": [
     {
