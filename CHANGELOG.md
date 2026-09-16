@@ -10,6 +10,14 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.61.2](https://github.com/MjxUpUp/Forge/compare/v1.61.1...v1.61.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **ci:** permissions 提为 npm-verify job 级（step 级非法键，actionlint 实证整个 workflow 解析失败）+ 封守卫盲区（TestReleaseWorkflow_NoStepLevelPermissions，突变验证） ([9005291](https://github.com/MjxUpUp/Forge/commit/9005291ac87c18c28cd3f7e6617a61f35b0b2cf6))
+* **release:** 发布链三项验收修复——npm-verify 显式平台同装、发布后 pins 自动对齐、空 critical 文案分流 ([b85a0a0](https://github.com/MjxUpUp/Forge/commit/b85a0a0f32d3630122762486b96755e6a712f77b))
+
 ## [1.61.1](https://github.com/MjxUpUp/Forge/compare/v1.61.0...v1.61.1) (2026-09-15)
 
 
