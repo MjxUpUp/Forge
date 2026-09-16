@@ -49,6 +49,10 @@ func TestBrokenPlugin_PatternFindings(t *testing.T) {
 	if !hasCheck(report, SevWarn, "ctx-usage", "ctx.sessions") {
 		t.Errorf("缺 ctx.sessions 未声明声明的 warn: %+v", report.Findings)
 	}
+	// 括号取用形态 ctx["network"] 与点取用同判（回检 86 的 P2 修复覆盖面）。
+	if !hasCheck(report, SevWarn, "ctx-usage", "ctx.network") {
+		t.Errorf("缺 ctx.network 括号取用 warn: %+v", report.Findings)
+	}
 	// 入口缺 name → error。
 	if !hasCheck(report, SevError, "entry", "插件名") {
 		t.Errorf("缺 name 应报 error: %+v", report.Findings)
