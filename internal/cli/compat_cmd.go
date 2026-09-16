@@ -31,7 +31,7 @@ func init() {
 
 var compatCmd = &cobra.Command{
 	Use:   "compat",
-	Short: "兼容性工件：六面快照与跨版本 diff（golden 入库，破坏性变更显式评审）",
+	Short: "兼容性工件：七面快照与跨版本 diff（golden 入库，破坏性变更显式评审）",
 }
 
 var compatSnapshotCmd = &cobra.Command{

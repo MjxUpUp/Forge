@@ -92,6 +92,11 @@ func TestHostcapEmitterRegistry(t *testing.T) {
 			t.Errorf("outputEmitters 死键 %q：hostcap 注册表无此宿主", key)
 		}
 	}
+	for key := range claudeDefaultEmitters {
+		if !hosts[key] {
+			t.Errorf("claudeDefaultEmitters 死键 %q：hostcap 注册表无此宿主（宿主已删除/改名，名单未同步）", key)
+		}
+	}
 }
 
 // noHostLiteralAllowlist 是字面量棘轮的显式豁免清单（文件 → 预期命中数 + 理由）。
@@ -109,6 +114,9 @@ var noHostLiteralAllowlist = map[string]struct {
 // TestNoHostLiteralGates 字面量棘轮：internal/ 生产代码（非测试、非纯注释行）
 // 禁止出现按宿主名的 ==/!= 字面量门控——新宿主差异必须走 hostcap 注册表，
 // 而非散落 if。宿主名词表直接来自 hostcap.Hosts（注册表即词表）。
+// 已知盲区（诚实边界，2026-09-16 审查）：switch case "kimi":、跨行比较、
+// strings.Contains/EqualFold(agent, ...)、map 键取用 m["kimi"] 与 cmd/ 目录
+// 不在本正则扫描面——审查时对高频宿主分支点补 grep。
 func TestNoHostLiteralGates(t *testing.T) {
 	root := repoRoot(t)
 	names := make([]string, 0, len(hostcap.Hosts))

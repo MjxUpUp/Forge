@@ -37,7 +37,7 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 - [插件哲学](../docs/design/plugin-philosophy.md) — 扩展面少而统一、静态可审计：不学"一切皆插件"，采纳 Cordis 的 disposer 契约与 seam 三分法
 - [演化纪律规范](../docs/design/evolution-discipline-norms.md) — 适应度函数门、deferred 三要素、expand-contract 迁移编舞
 - [机制加固](../docs/design/mechanism-hardening.md) — 逃生舱治理与 advisory→BLOCKED 升档承诺
-- [兼容承诺](../docs/design/compat-commitments.md) — 兼容快照棘轮（六面 + 外部桥契约面），数据只增不删
+- [兼容承诺](../docs/design/compat-commitments.md) — 兼容快照棘轮（七面盘点，含外部桥契约面），数据只增不删
 
 ## 多 agent 支持
 
