@@ -241,6 +241,7 @@ jobs:
       - name: Install from npmjs and assert version == tag
         run: |
           WANT="${GITHUB_REF_NAME#v}"
+          PLATFORM="$(node -p "process.platform")-$(node -p "process.arch")"
           # v1.56.6 实录修正（v1.56.5 设计的两处误判）：registry 读路径可滞后写路径
           # 约 5 分钟（平台包秒级可见、主包 packument ~5min），且 API 同样滞后——
           # 「API 404 = 未发布，立即退出」把传播滞后误判成发布失败；5×30s 退避窗也不够。
@@ -248,9 +249,14 @@ jobs:
           # 覆盖实测滞后量级）；API 查询降级为信息性日志（辅助诊断，不决定重试）；重试
           # 用尽才失败，失败信息带 API 终态。「防掩盖真失败」由最终诊断承载（visible=
           # 装回问题；not-visible=疑 npm job 未发布或网络故障）。
+          # v1.61.1 实录修正（验收轮发现）：只装主包时，传播窗内平台子包 packument
+          # 尚未可见 → npm 对 optionalDependencies **静默跳过**（日志 "added 1
+          # package"），主包孤装无二进制 → forge --version 输出空 → 货不对板断言
+          # 必失败。改为主包+当前平台子包**显式同装**：显式依赖缺版本会 ETARGET
+          # 进重试循环，不再被 optional 语义吞掉。
           API_STATE="unknown"
           for i in 1 2 3 4 5 6 7 8; do
-            if npm i -g "@agent_forge/forge@$WANT"; then
+            if npm i -g "@agent_forge/forge@$WANT" "@agent_forge/forge-$PLATFORM@$WANT"; then
               echo "installed on attempt $i/8 (registry API: $API_STATE)"
               break
             fi
@@ -272,6 +278,31 @@ jobs:
             exit 1
           fi
           echo "npm-verify passed: forge $GOT == tag v$WANT"
+      # 发布后 pins 对齐（验收轮落地，消灭手工「make npm-align」惯例依赖）：npm job
+      # 只注入发布面的版本（发布出去的包自洽），仓内 npm/package.json 的
+      # optionalDependencies 钉保留在上一版——那是每个发布窗口的合法中间态，但
+      # 依赖「发布后有人记得跑 npm-align」（v1.61.1 实锤：同日双发版时 pins 落在
+      # 合法窗外、release 分支 CI 红）。发布成功即自动对齐并提交回 main，让下一轮
+      # 发版从对齐态起步。GITHUB_TOKEN push 不触发 CI（防递归）——纯版本 chore 可
+      # 接受；失败不回滚发布（best-effort，下次发布窗口的对账 test 兜底）。
+      - name: Checkout main for pins alignment
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+      - name: Align npm pins in repo (post-release)
+        permissions:
+          contents: write
+        run: |
+          git config user.name "forge-release-bot"
+          git config user.email "bot@users.noreply.github.com"
+          make npm-align
+          if git diff --quiet; then
+            echo "pins already aligned — nothing to commit"
+          else
+            git add -A
+            git commit -m "chore(release): npm-align pins 对齐 ${GITHUB_REF_NAME#v}"
+            git push origin HEAD:main
+          fi
       # 装机行为级验收（版本对上 ≠ 行为对）：用户真实安装路径上跑双 drill——
       # 首证据链 + 产物链分档执法。npm 包自带二进制，这里跑的就是用户会拿到的
       # 那个二进制（v1.52.0 发版审计：装机验证曾只验版本号，行为级缺口）。
