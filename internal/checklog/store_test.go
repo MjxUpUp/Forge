@@ -281,9 +281,12 @@ func TestRecord_ConcurrentRotateNoDeadlock(t *testing.T) {
 	go func() { wg.Wait(); close(done) }()
 	select {
 	case <-done:
-	// 30s：Windows FS + race 下 500 次 Record（含轮转 rename 风暴）合法地远超
-	// 5s；真死锁永不完成，30s 仍必然拦截，且受 go test 包超时兜底。
-	case <-time.After(30 * time.Second):
+	// 90s：Windows FS + race 下 500 次 Record（含轮转 rename 风暴）合法地远超
+	// 5s；真死锁永不完成，超时守卫仍必然拦截，且受 go test 包超时兜底。
+	// 30→90s（2026-09-16）：release 分支 CI 慢 windows runner 实测 30.53s/34.92s
+	// 两次撞线（同代码 main 三平台绿过——runner 负载波动，非回归）；死锁守卫
+	// 的价值在「拦永不完成」，延迟只换 flake 风险，给足余量。
+	case <-time.After(90 * time.Second):
 		t.Fatal("concurrent Record/rotate deadlocked (rotate→archiveLocked mutex re-entry?)")
 	}
 	if _, err := LoadAll(dir); err != nil {
