@@ -2,7 +2,7 @@
 
 状态：生效中（自首个含本文档的发版起；证据链：机制史调研 ~/.forge/research/forge-mechanisms-20260905-1752/report.md §六/§八，K8s deprecation policy / PEP 387 / GODEBUG 形态先例）。
 
-本文是 forge 对外的兼容契约——三向 × 三档承诺矩阵 + 门禁文案契约。机械执法点：`forge compat snapshot/report`（六面盘点，任何面变更显式过 golden）；`TestNpmPlatformVersionsAligned`（分发对齐）；导入侧版本偏移警示（`sync-version-skew`）。
+本文是 forge 对外的兼容契约——三向 × 三档承诺矩阵 + 门禁文案契约。机械执法点：`forge compat snapshot/report`（七面盘点——六面 + 外部桥契约面 bridges，见 compat-bridge-face.md；任何面变更显式过 golden）；`TestNpmPlatformVersionsAligned`（分发对齐）；导入侧版本偏移警示（`sync-version-skew`）。
 
 ## 一、三向 × 三档承诺矩阵
 

@@ -300,7 +300,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task verify-acceptance [--ref <ref>] [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行）；登记了 held-out 保留集（`task start --heldout <file>`）时同时实跑双套件并记 gap——可见全过而保留集挂 = test-generalization gap（SpecBench 形态，`FORGE_HELDOUT=disable` 逃生留痕），task-complete 边界复跑 |
 | `forge hazard halt status` / `forge hazard halt release --yes` | safe-halt 语义：hazard-guard 连续拦截 ≥3 次（自最近 confirm/release）→ 会话停机（停止自修复盲试，task gate 推进时明示）；人工核查最近拦截命令后 `release --yes` 解锁（记 halt-release 审计事件，agent 不得自我解锁） |
 | `forge task mirror github [--repo owner/name] [--dry-run]` | 分派任务镜像到 GitHub Issues（Forge 台账为主真相、issue 为组织可见面；offered→建 issue 打 forge:状态 label，终态→关闭；映射存 DataDir/mirror-gh.json；经 gh CLI，无 gh 明确报错）——Symphony 验证的组织面入口需求 |
-| `forge compat snapshot [--out <file>]` / `forge compat report [--base <ref>] [--json]` | 可执行兼容工件（六面快照：命令树+flags / CheckName roster / 逃生舱 env / 内嵌载荷 sha256 / 序列化 schema 键 / 阻断位点计数）——golden（compat.snapshot.json）入库、PR diff 呈现；report 对比基线：破坏性变更（removed/changed）exit 2、added 提示同步文档（cargo-semver-checks 契约本地化：0=过 / 2=违规 / 1=工具故障）；承诺表见 docs/design/compat-commitments.md |
+| `forge compat snapshot [--out <file>]` / `forge compat report [--base <ref>] [--json]` | 可执行兼容工件（七面快照：命令树+flags / CheckName roster / 逃生舱 env / 内嵌载荷 sha256 / 序列化 schema 键 / 阻断位点计数 / 外部桥契约）——golden（compat.snapshot.json）入库、PR diff 呈现；report 对比基线：破坏性变更（removed/changed）exit 2、added 提示同步文档（cargo-semver-checks 契约本地化：0=过 / 2=违规 / 1=工具故障）；承诺表见 docs/design/compat-commitments.md |
 | `forge config get/set compat <版本>` | 兼容基线声明（指纹分流 v1，GODEBUG go 行声明的轻量版）：声明"行为按哪个版本的默认走"（v1 为声明性锚点 + 落后提醒，暂不分派行为——完整分流机制见承诺表"刻意不做"）；`forge status` 显示兼容基线行与落后 minor 数；遥测回读（逃生舱使用聚合）见 `forge eval dashboard` |
 | `forge task watchdog [--stall 45m] [--release]` | 长时任务停滞检测（always-on 治理）：从 checklog/toollog 取未完成任务的最后活动，超阈报停滞（task-stalled advisory，marker 节流每小时一条）；`--release` 清停滞任务租约；顺带展示 token 熔断信号 |
 | `forge task doc-review --passed <pass\|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <tag:发现>] [--co-reviewer <id> --co-score <N>]` | 记录 L2 文档回检证据（输出→回检循环）：按 doc-review skill 四维评审后落档（产出者不能自检）；`--score` 为 0-100 总分、`--round` 轮次（≥3 轮未过升级人工确认）、`--critical` 落 Critical findings（未决阻断 complete；`tag:` 前缀打标供进化判据聚合）、`--co-reviewer/--co-score` 落同家族 borderline 双评记录（gate 不消费，只作分歧率观测）。task-complete 的 doc gate 消费该证据 |
@@ -440,6 +440,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge dashboard [--port <n>] [--no-open]` | 本地全局质量看板（Pulse 面板）——在任意目录运行都聚合 `~/.forge/projects.json` 登记的全部项目（`forge init` 自登记），渲染事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合（localhost 只读，自动开浏览器，Ctrl+C 退出，面板内按项目过滤）；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |
 | `forge sync [--force]` | 同步 forge 资产到当前二进制版本（用户级 hooks/指令/skill 重生成 + 存量项目级残留收敛；注意：名字易误读——跨机器迁移项目数据用 `forge project export/import`，与本命令无关） |
 | `forge plugin pack [--out <dir>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest + reasonix native manifest + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
+| `forge bridge verify <dir> [--json]` | 对一个 dsh 插件包跑静态检查（#1884 四大事故模式：inject 一致性 / 同名注册 / @deepseek-ai vendored 耦合 / 未知事件），error → exit 2——dsh 插件作者发布前自检用（roadmap H2a，见 docs/design/forge-dsh-provider-roadmap.md） |
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
 | `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + 旧项目 .mcp.json forge server 残留，并清理 user-level `settings.local.json` 的重复 forge hooks；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留项目 `settings.local.json` 为 `{}`）；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件 |
 | `forge plugin kimi-manifest [--write]` | 渲染/再生成已提交的 kimi plugin manifest（`.kimi-plugin/plugin.json`）——version 读 `npm/package.json`（单一真相源）、hooks 从 ForgeHookSpec 派生、description 与守卫测试共享常量；默认打印 + 报漂移（退出码恒 0，执法归 `TestKimiPluginManifestMirrorsSpec`），`--write` 逐字节比对后重写（in sync 不改写）；forge 仓库维护命令（从 cwd 向上找 `npm/package.json`） |
@@ -457,6 +458,15 @@ npm install -g @agent_forge/forge
 
 # 支持平台：macOS (x86_64/ARM64)、Linux (x86_64/ARM64)、Windows (x86_64)
 ```
+
+> **「plugin」一词在 Forge 语境里有两层含义，勿混淆**（设计共识见
+> [docs/design/plugin-philosophy.md](docs/design/plugin-philosophy.md)）：
+> **Forge 的 plugin** = 宿主接线**打包**（分发层）——`plugins/forge`（Claude
+> marketplace pack）与 `plugins/forge-dsh`（dsh 桥）这类"薄 manifest + 共享
+> payload"，宿主 agent 加载它们，Forge 二进制自身不加载任何运行时插件；
+> **dsh/Cordis 的 plugin** = 运行时可装卸的**扩展组件**（运行时层）。同名不同物，
+> `plugins/forge-dsh` 恰好横跨两者——它以 Cordis 插件的形态被 dsh 运行时加载，
+> 本体却只是 forge CLI 的接线包。
 
 <details>
 <summary><b>📖 通过 Claude Code plugin marketplace（用户级，一次性接线）</b></summary>
