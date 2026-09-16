@@ -90,14 +90,14 @@ var (
 	reApply  = regexp.MustCompile(`(?:function\s+apply\s*\()|(?:apply\s*[:=]\s*(?:async\s*)?\()`)
 	reStr    = regexp.MustCompile(`["']([\w.$-]+)["']`)
 	reCtxKey = regexp.MustCompile(`\bctx\.([A-Za-z_$][\w$]*)`)
-	reCtxBr  = regexp.MustCompile(`\bctx\[["']([\w.$-]+)["']\)`)
+	reCtxBr  = regexp.MustCompile(`\bctx\[["']([\w.$-]+)["']\]`)
 
 	// blockCommentRe 剥 /* ... */（跨行）——散文式块注释里的 import/require
 	// 假阳性来源。
 	blockCommentRe = regexp.MustCompile(`(?s)/\*.*?\*/`)
 	reProv         = regexp.MustCompile(`\.provide\(\s*["']([\w.$-]+)["']`)
 	reOn           = regexp.MustCompile(`\bctx\.on\(\s*["']([\w./-]+)["']`)
-	reImp          = regexp.MustCompile("\\b(?:import|export)\\b[^\"';\\n]*\\bfrom\\s*[\"']([^\"'\\n]+)[\"']|\\bimport\\s*\\(\\s*[\"']([^\"'\\n]+)[\"']|\\brequire\\s*\\(\\s*[\"']([^\"'\\n]+)[\"']|\\bimport\\s+[\"']([^\"'\\n]+)[\"']")
+	reImp          = regexp.MustCompile("\\b(?:import|export)\\b[^\"';]*\\bfrom\\s*[\"']([^\"'\\n]+)[\"']|\\bimport\\s*\\(\\s*[\"']([^\"'\\n]+)[\"']|\\brequire\\s*\\(\\s*[\"']([^\"'\\n]+)[\"']|\\bimport\\s+[\"']([^\"'\\n]+)[\"']")
 	reDupReg       = regexp.MustCompile(`name:\s*["']([\w.-]+)["']`)
 )
 
@@ -265,9 +265,6 @@ func VerifyPluginDir(dir string) (*Report, error) {
 	// 不查"inject 声明未取用"：注入只为等目标服务就绪、从不属性访问是 Cordis
 	// 合法惯用法（forge-dsh 本尊 inject ["tools"] 即此形态——2026-09-16 dogfood
 	// 实证误报后移除）。
-	// 同名注册：同一包内同一注册名出现 ≥2 处（跨文件）→ warn（#1884 模式 2：
-	// 同名注册互相覆盖）。同一文件内多行拼一个对象不算（按 文件::名 聚合后
-	// 再按 名 跨文件聚合）。
 	// 同名注册：同一包内同一注册名跨 ≥2 个文件出现 → warn（#1884 模式 2：
 	// 同名注册互相覆盖；同文件内的同名片多为一个对象的多行拼写，不误报）。
 	byName := map[string]map[string]bool{}
