@@ -91,6 +91,9 @@ func init() {
 	// 可执行兼容工件（mechanism-hardening P1-1：七面快照与跨版本 diff）。
 	compatCmd.GroupID = "quality"
 
+	// dsh 插件生态工具（bridge verify 静态检查器，roadmap H2a）
+	bridgeCmd.GroupID = "integrate"
+
 	// skill 治理（experience/knowledge 经验闭环已移除）
 	cliskills.Root.GroupID = "governance"
 	// 执法健康报告与随机审计（vNext P2 审计层——S3* 独立通道，只读聚合）
