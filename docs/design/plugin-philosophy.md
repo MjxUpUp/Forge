@@ -62,7 +62,7 @@ Forge 的扩展面是**执法协议**，不是功能市场。因此：
 | **composition point**（数据声明组合） | 用户/配置在运行时组合，无需改内核 | schema.yaml 产物链档位、skill frontmatter triggers（半开：命名 condition 词汇表在内核）、conventions profile、per-task override、profile 三档 |
 | **外部桥**（新增第四格，Forge 特有） | 内核外进程内接线层，双端契约 | plugins/forge-dsh（Cordis 包装层）、plugins/forge 宿主接线包 |
 
-配套规则三条：(1) spine 变更必须出现在 compat 快照 diff（已执行）；(2) seam 变更收敛为"注册表加行 + 守卫测试钉完整性"（见 `hostcap-behavior-registry.md`）；(3) **"plugin"一词的语义辨析写进 README**（待办——主 README 尚无此文本，随 README 下一次结构性修订补入；触发条件：任一外部贡献者混淆两种 plugin 语义）——Forge 的 plugin=宿主接线打包（分发层），dsh/Cordis 的 plugin=运行时可装卸组件（运行时层），同名不同物，forge-dsh 恰好横跨两者（是前者的打包、后者的消费者）。
+配套规则三条：(1) spine 变更必须出现在 compat 快照 diff（已执行）；(2) seam 变更收敛为"注册表加行 + 守卫测试钉完整性"（见 `hostcap-behavior-registry.md`）；(3) **"plugin"一词的语义辨析写进 README**（已执行 2026-09-16：README 安装节 blockquote，触发条件提前达成——本分支正引入第二种 plugin 语义的实例 forge-dsh）——Forge 的 plugin=宿主接线打包（分发层），dsh/Cordis 的 plugin=运行时可装卸组件（运行时层），同名不同物，forge-dsh 恰好横跨两者（是前者的打包、后者的消费者）。
 
 ## 五、明确不采纳清单
 
