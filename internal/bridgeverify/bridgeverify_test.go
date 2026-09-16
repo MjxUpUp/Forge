@@ -86,6 +86,18 @@ func TestMissingDir_IsToolFault(t *testing.T) {
 	}
 }
 
+func TestDupRegister_WarnAcrossFiles(t *testing.T) {
+	report, err := VerifyPluginDir("testdata/dup-register")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// #1884 模式 2：同包跨文件同名注册互相覆盖（a.js 与 extra.js 都注册
+	// dup-tool）→ warn；index.js 的 sample-dup 不参与（导出名非注册名）。
+	if !hasCheck(report, SevWarn, "dup-register", `"dup-tool"`) {
+		t.Errorf("缺跨文件同名注册 warn: %+v", report.Findings)
+	}
+}
+
 func TestReportDeterministic(t *testing.T) {
 	a, err := VerifyPluginDir("testdata/broken-plugin")
 	if err != nil {
