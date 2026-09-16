@@ -387,10 +387,14 @@ func Diff(base, cur *Snapshot) []Change {
 				out = append(out, Change{Surface: "bridges", Kind: "removed", Item: cb.Bridge + "/failOpen", Breaking: true})
 			}
 		}
+		added := 0
 		for s := range curFo {
 			if !baseFo[s] {
-				out = append(out, Change{Surface: "bridges", Kind: "added", Item: cb.Bridge + "/failOpen"})
+				added++
 			}
+		}
+		if added > 0 {
+			out = append(out, Change{Surface: "bridges", Kind: "added", Item: cb.Bridge + "/failOpen"})
 		}
 	}
 	curBr := map[string]bool{}
