@@ -234,11 +234,12 @@ jobs:
     runs-on: ubuntu-latest
     # 退避窗 8×45s≈6min（v1.56.6 实录主包读路径滞后 ~5min）+ 双 drill + 签名验证的余量。
     timeout-minutes: 15
-    # job 级 contents:write 供尾部 pins 对齐步提交回 main——permissions 只支持
-    # workflow/job 两级，写在 step 级是非法键（actionlint 实证，整个 workflow
-    # 解析期即失败）。
+    # job 级 contents:write + pull-requests:write 供尾部 pins 对齐步开 PR——
+    # permissions 只支持 workflow/job 两级，写在 step 级是非法键（actionlint
+    # 实证，整个 workflow 解析期即失败）。
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -295,17 +296,31 @@ jobs:
         with:
           ref: main
       - name: Align npm pins in repo (post-release)
+        # 直推 main 被分支保护拒（必需检查 6/6，2026-09-16 实录）——改推
+        # chore/npm-align-<ver> 分支 + 开 PR，由人合并（对齐只动版本清单，
+        # CI 可判）。best-effort：失败 warn 不连坐 npm-verify（发布已完成，
+        # 下轮发布窗口的对账 test 兜底）。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          VER="${GITHUB_REF_NAME#v}"
           git config user.name "forge-release-bot"
           git config user.email "bot@users.noreply.github.com"
           make npm-align
           if git diff --quiet; then
             echo "pins already aligned — nothing to commit"
-          else
-            git add -A
-            git commit -m "chore(release): npm-align pins 对齐 ${GITHUB_REF_NAME#v}"
-            git push origin HEAD:main
+            exit 0
           fi
+          BRANCH="chore/npm-align-$VER"
+          git checkout -b "$BRANCH"
+          git commit -am "chore(release): npm-align pins 对齐 $VER"
+          if gh pr list --head "$BRANCH" --state open --json number -q 'length' | grep -qv 0; then
+            echo "align PR already open — skip"
+            exit 0
+          fi
+          git push -u origin "$BRANCH" && gh pr create --base main --head "$BRANCH" \
+            --title "chore(release): npm-align pins 对齐 $VER" \
+            --body "发布后自动对齐 npm pins（发布 workflow 收尾步；合并后下一轮发版从对齐态起步）"
       # 装机行为级验收（版本对上 ≠ 行为对）：用户真实安装路径上跑双 drill——
       # 首证据链 + 产物链分档执法。npm 包自带二进制，这里跑的就是用户会拿到的
       # 那个二进制（v1.52.0 发版审计：装机验证曾只验版本号，行为级缺口）。
