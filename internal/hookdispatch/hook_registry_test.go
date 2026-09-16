@@ -107,7 +107,7 @@ var noHostLiteralAllowlist = map[string]struct {
 	want   int
 	reason string
 }{
-	"internal/hookdispatch/hook_emitters.go": {1, "advisoryPromotionDisabled：FORGE_KIMI_ADVISORY 的 env 名即已发布契约，soft 语义刻意仅限 kimi、不得静默波及其他提升宿主（见该函数注释）"},
+	"internal/hookdispatch/hook_emitters.go":      {1, "advisoryPromotionDisabled：FORGE_KIMI_ADVISORY 的 env 名即已发布契约，soft 语义刻意仅限 kimi、不得静默波及其他提升宿主（见该函数注释）"},
 	"internal/hookdispatch/hook_kimi_advisory.go": {2, "kimi 专精 advisory 队列：EmitAdvisoryRouted 的 kimi 分支（UserPromptSubmit 攒发/其余事件入队静默）与 AdvisoryEmissionChannel 的通道标注——队列机制本体就是 per-host 专精件"},
 }
 

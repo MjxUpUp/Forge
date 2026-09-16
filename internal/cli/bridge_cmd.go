@@ -2,8 +2,9 @@ package cli
 
 // bridge_cmd.go — H2a 静态级插件检查器（docs/design/forge-dsh-provider-roadmap.md
 // §H2）：`forge bridge verify <dir>` 对一个 dsh 插件包跑 bridgeverify 的静态
-// 检查面（#1884 四大事故模式）。判级口径对齐 compat report：error → exit 2，
-// warn/info → exit 0，工具故障 → exit 1（errHardExit 哨兵，结论已先行打印）。
+// 检查面（#1884 四大事故模式）。判级口径对齐 compat report：error → exit 2
+// （errHardExit 哨兵，结论已先行打印）；warn/info → exit 0；目录不可读等
+// 工具故障以普通 error 返回 → exit 1。
 
 import (
 	"encoding/json"
