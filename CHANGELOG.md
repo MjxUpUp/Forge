@@ -10,6 +10,19 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.62.0](https://github.com/MjxUpUp/Forge/compare/v1.61.3...v1.62.0) (2026-09-16)
+
+
+### Features
+
+* **bridge-verify:** H2a 静态级 dsh 插件检查器（owner 拍板提前启动 H2） ([ac2281a](https://github.com/MjxUpUp/Forge/commit/ac2281a4d6cf133590fb7e324c0ef9ae80c5c638))
+* **extensibility:** hostcap 行为注册表守卫 + compat 第七面外部桥契约 + forge-dsh H1 ([b5ee64c](https://github.com/MjxUpUp/Forge/commit/b5ee64c1415b84326559711c134c44d2be1ec2d5))
+
+
+### Bug Fixes
+
+* **bridge-verify:** 回检 86 分残留收口——多行 import/括号取用/README --json ([52ae4fe](https://github.com/MjxUpUp/Forge/commit/52ae4fe9408e2cfb0c136e048afb3e54b9637abb))
+
 ## [1.61.3](https://github.com/MjxUpUp/Forge/compare/v1.61.2...v1.61.3) (2026-09-16)
 
 
