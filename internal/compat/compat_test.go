@@ -1,6 +1,6 @@
 package compat
 
-// compat_test.go — 六面快照的确定性契约 + Diff 判级规则 + roster 完整性守卫。
+// compat_test.go — 七面快照的确定性契约 + Diff 判级规则 + roster 完整性守卫。
 
 import (
 	"os"

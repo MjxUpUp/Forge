@@ -1,7 +1,7 @@
 package cli
 
 // compat_cmd.go — `forge compat snapshot|report`（mechanism-hardening P1-1，
-// 可执行兼容工件）：六面确定性快照（golden 入库）+ 跨版本 diff。API Extractor
+// 可执行兼容工件）：七面确定性快照（golden 入库）+ 跨版本 diff。API Extractor
 // 模型：golden 进仓 → PR diff 呈现 → 破坏性变更显式评审。
 
 import (
@@ -36,10 +36,11 @@ var compatCmd = &cobra.Command{
 
 var compatSnapshotCmd = &cobra.Command{
 	Use:   "snapshot [--out <file>]",
-	Short: "实算六面兼容快照（确定性：同树两次实算字节一致）",
-	Long: `forge compat snapshot 实算六面快照：
+	Short: "实算七面兼容快照（确定性：同树两次实算字节一致）",
+	Long: `forge compat snapshot 实算七面快照：
 命令树（path+flags）/ CheckName roster / 逃生舱 env 清单 / 内嵌载荷（skills
-两树 SKILL.md sha256）/ 序列化 schema 键集合 / 阻断位点计数。
+两树 SKILL.md sha256）/ 序列化 schema 键集合 / 阻断位点计数 / 外部桥契约
+（plugins/*/contract.json，见 docs/design/compat-bridge-face.md）。
 
 快照提交入库（compat.snapshot.json）——任何面的变更在 PR diff 里显式可见
 （API Extractor 模型）。每面附检测边界（工件 diff 的已知盲区，诚实呈现）。`,
@@ -78,8 +79,8 @@ func runCompatSnapshot(cmd *cobra.Command, args []string) error {
 	if err := os.WriteFile(out, append(body, '\n'), 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("六面快照：%d 命令 / %d 检查 / %d 逃生舱 / %d 载荷项 / %d schema / %d 阻断文件 → %s\n",
-		len(snap.Commands), len(snap.Checks), len(snap.Escapes), len(snap.Payload), len(snap.Schemas), len(snap.Blockings), out)
+	fmt.Printf("七面快照：%d 命令 / %d 检查 / %d 逃生舱 / %d 载荷项 / %d schema / %d 阻断文件 / %d 桥契约 → %s\n",
+		len(snap.Commands), len(snap.Checks), len(snap.Escapes), len(snap.Payload), len(snap.Schemas), len(snap.Blockings), len(snap.Bridges), out)
 	fmt.Println("提交入库即 golden（PR diff 呈现；破坏性变更须过 forge compat report）")
 	return nil
 }

@@ -231,4 +231,33 @@ test("/forge-status command renders wired groups and recent runs", async (t) => 
   assert.match(reply.text, /forgeBin:/);
   assert.match(reply.text, /pre-execute/);
   assert.match(reply.text, /blocked-by=forge hook task-guard/);
+  // verdict summary (H1 契约加固): at-a-glance counts over the whole ring buffer
+  assert.match(reply.text, /Verdict summary \(last 2 runs\)/);
+  assert.match(reply.text, /runs=2  blocked=1  fail-open=0  contexts=/);
+});
+
+test("contract.json is the two-sided contract: spec groups ↔ event rows ↔ decision vocabulary", async () => {
+  const contract = JSON.parse(readFileSync(new URL("../contract.json", import.meta.url), "utf8"));
+  const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
+  const wired = new Set(Object.keys(spec));
+  const named = new Set(contract.events.map((e) => e.forge));
+  // PostCompact 的条件触发必须在 session-start 行的 note 里声明
+  //（DSH rc.7 没有专压缩点——丢了 note，快照 diff 里就看不见这条隐式映射）。
+  assert.ok(
+    contract.events.some((e) => e.forge === "SessionStart" && (e.note ?? "").includes("PostCompact")),
+    "PostCompact 的条件触发须在 session-start 映射行的 note 里声明",
+  );
+  for (const f of named) {
+    assert.ok(wired.has(f), `contract names forge event ${f} but spec.json wires no such group`);
+  }
+  for (const f of wired) {
+    if (f === "PostCompact" || (contract.inert ?? []).includes(f)) continue;
+    assert.ok(named.has(f), `spec.json wires ${f} but contract.json does not name it (add a row, an inert entry, or a note)`);
+  }
+  for (const e of contract.events) {
+    assert.ok(["deny", "block", "reject", "inject", "steer"].includes(e.decision), `unknown decision kind: ${e.decision}`);
+  }
+  // fail-open 契约至少钉住「decision 只读 stdout」与「基础设施故障放行」两条。
+  assert.ok(contract.failOpen.some((s) => s.includes("decision field")), "failOpen 必须钉住 decision 只读 stdout JSON");
+  assert.ok(contract.failOpen.some((s) => s.includes("fails open")), "failOpen 必须钉住基础设施故障放行");
 });
