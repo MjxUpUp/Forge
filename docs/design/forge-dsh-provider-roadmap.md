@@ -25,7 +25,7 @@ dsh 生态四个已实证的缺口（全部一手来源，见第五节），恰�
 
 - `contract.json` + compat 第七面 + README 双端契约标注（见 `compat-bridge-face.md`，不重复）。
 - `/forge-status` 补 fail-open 可查性：ring buffer 已有，补**verdict 摘要行**（runs/blocked/fail-open/contexts 聚合，覆盖整个 50 条 ring buffer）——对照 cordis-primer 的"每个注册都应有对应的 disposer"，桥侧对应物是"每次 fail-open 都应有对应的可见面"。（checklog 侧 verdict 摘要事件仍开放：插件侧 fail-open 发生时 forge 进程往往不可达，需要下一次成功调用回带——留待 H2 的 bridge verify 一并设计。）
-- 出口判据：桥行为变更 100% 被快照 diff 捕获（结构性保证，非流程保证）——已达成（contract.json 变更必然出现在 compat.report 的 bridges 面）。
+- 出口判据：契约的**映射与 failOpen 承诺**变更 100% 被快照 diff 捕获（结构性保证，非流程保证）——已达成。边界（2026-09-16 审查修正，初稿 overclaim）：inert 名单与 dshVerified 版本对表不入 diff，由 JS 侧契约交叉验证测试与人工对表兜底。
 
 ### H2 验证器（启动判据见第四节；预计 1-2 月粒度）
 

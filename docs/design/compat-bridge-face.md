@@ -44,7 +44,7 @@ forge-dsh 的桥语义现散在三处，执法强度递减：
 
    工具名映射（write→Write 等）与 wiredHooks 名册**不进** contract.json：前者属协议方言（已在 hostcap/translator 语义内），后者已有 spec.json+Go 守卫，两层不合并。
 
-2. **JS 侧锚定**：`index.test.js` 现有 wiring 断言（dispatch 顺序、短路语义、决策映射）改为**从 contract.json 驱动**生成用例——行为测试从"实现自证"变为"实现符合契约"；contract.json 变更必须显式改测试（契约变更即 diff 可见）。
+2. **JS 侧锚定**：在 `index.test.js` 新增独立契约交叉验证测试（contract.json ↔ spec.json 组键 ↔ decision 词表 ↔ failOpen 内容，含 inert 豁免与 PostCompact note 检查）；既有 wiring 断言（dispatch 顺序、短路语义、决策映射）保持实现自证。落地修正（2026-09-16 审查）：初稿的"改为从 contract.json 驱动生成用例"未按文执行——目标是等价的（契约变更必须显式改测试），手段是加测试而非改造既有测试。
 
 3. **README 标注为双端契约**：事件映射表与 Fail-open contract 节头部加一行——"本表镜像 `contract.json`，属双端契约；改动须同步 contract.json + 两侧测试，并出现在 `forge compat report` diff 中"。
 
