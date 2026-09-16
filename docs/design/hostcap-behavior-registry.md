@@ -27,7 +27,7 @@
 
 1. **`TestHostcapDialectRegistry`（hookdispatch）**：遍历 `hostcap.Hosts`——`StdinDialect != ""` ⇒ `stdinNormalizers` 必有同名键；反向——`stdinNormalizers` 的每个键必须命中某个 Host 的 StdinDialect（死键即信号）。把 hook_normalize.go 现有注释"键须与 StdinDialect 一致"从注释升为断言。
 2. **`TestHostcapEmitterRegistry`（hookdispatch）**：每个 `Host.Name` 必须在输出分派表有显式条目，或该宿主显式走 Claude 兼容默认（与 ContextChannel 的默认语义对齐：未知宿主=Claude 兼容，已知宿主=必须显式声明走默认还是走专属 emitter）。两个 map 的键集合由此获得与 `Checks` roster 同级的执法。
-3. **字面量棘轮 `TestNoHostLiteralGates`**：扫 `internal/` 生产代码中 `== "<已知宿主名>"` 形态的字面量比较（allowlist：空串判断、`_test.go`、hostcap 自身的 Lookup），新增即红。宿主名清单直接来自 `hostcap.Hosts`——注册表即词表。
+3. **字面量棘轮 `TestNoHostLiteralGates`**：扫 `internal/` 生产代码中 `==/!= "<已知宿主名>"` 形态的字面量比较（排除：`_test.go` 与整行注释；豁免=`noHostLiteralAllowlist` 显式表——文件 × 预期命中数 + 理由；空串判断因不在词表自然不命中，hostcap 包自身无命中故无需显式豁免），新增即红。宿主名清单直接来自 `hostcap.Hosts`——注册表即词表。
 4. **接新宿主清单（ONBOARDING）写进 hostcap 包文档**：hostcap 行 → translator → ForgeHookSpec 接线 + 镜像守卫（`TestPluginPack_HooksMirrorSettings` / `TestDshPluginSpecMirrorsSpec` 同族）→ normalizer/emitter（按需，第 1/2 步守卫逼出）→ README 多 agent 表 → compat 快照重钉。清单的每一行都对应一个已存在的机械执法点，清单本身不是执法、是路线图。
 
 ## 四、明确不做（裁断留痕）
