@@ -30,6 +30,15 @@ npm install -g @agent_forge/forge
 
 Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环：写代码 → 跑 → 读反馈 → 修正 → 再写。**Forge 不替代循环本身**，它补上循环最容易缺的两层：每一轮的产出物是否真可信（验证）、跨轮的状态是否持久可追（状态）。
 
+## 设计原则
+
+执法协议的设计共识，四篇可链接的设计文档（对应 dsh 官网把理论论文放在导航位的做法——设计资产即门面）：
+
+- [插件哲学](../docs/design/plugin-philosophy.md) — 扩展面少而统一、静态可审计：不学"一切皆插件"，采纳 Cordis 的 disposer 契约与 seam 三分法
+- [演化纪律规范](../docs/design/evolution-discipline-norms.md) — 适应度函数门、deferred 三要素、expand-contract 迁移编舞
+- [机制加固](../docs/design/mechanism-hardening.md) — 逃生舱治理与 advisory→BLOCKED 升档承诺
+- [兼容承诺](../docs/design/compat-commitments.md) — 兼容快照棘轮（六面 + 外部桥契约面），数据只增不删
+
 ## 多 agent 支持
 
 | Agent | 安装方式 | 接入 |
