@@ -135,8 +135,8 @@ function apply(ctx, config = {}) {
     return turnStoppingOutcome(outcome, agent);
   }), "forge: turn-stopping");
 
-  // /forge-status — wired groups + recent runs (the only place fail-open
-  // infrastructure errors surface without debug:true).
+  // /forge-status — wired groups + verdict summary + recent runs (the only
+  // place fail-open infrastructure errors surface without debug:true).
   const commands = ctx.get("commands");
   if (commands !== undefined) {
     ctx.effect(() => commands.register({
@@ -146,6 +146,21 @@ function apply(ctx, config = {}) {
         const groups = Object.entries(spec)
           .map(([event, gs]) => `  ${event}: ${gs.flatMap((g) => g.hooks.map((h) => h.command.replace("forge hook ", ""))).join(", ")}`)
           .join("\n");
+        // Verdict summary over the whole ring buffer (50 runs): the at-a-glance
+        // health line — how many runs forge blocked, and how many hook runs
+        // FAILED OPEN (infra errors, e.g. timeout) and thus lost that run's
+        // feedback. A rising fail-open count on a big project means timeoutMs
+        // needs raising.
+        const summary = recentRuns.reduce(
+          (acc, r) => {
+            acc.runs += 1;
+            if (r.blocked) acc.blocked += 1;
+            if (r.errors.length > 0) acc.failOpen += 1;
+            acc.contexts += r.contexts;
+            return acc;
+          },
+          { runs: 0, blocked: 0, failOpen: 0, contexts: 0 },
+        );
         const runs = recentRuns.length === 0
           ? "  (no hook runs yet)"
           : recentRuns.slice(-10).map((r) => {
@@ -157,7 +172,7 @@ function apply(ctx, config = {}) {
             }).join("\n");
         return {
           kind: "success",
-          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin}  timeoutMs: ${opts.timeoutMs}\n\n## Wired groups\n${groups}\n\n## Recent runs (last 10)\n${runs}`,
+          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin}  timeoutMs: ${opts.timeoutMs}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
         };
       },
     }), "forge: status command");

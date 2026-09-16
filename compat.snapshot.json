@@ -1688,5 +1688,44 @@
       "file": "internal/taskpipeline/pushgate.go",
       "count": 1
     }
+  ],
+  "bridges": [
+    {
+      "bridge": "forge-dsh",
+      "dshVerified": "0.1.0-rc.7",
+      "events": [
+        {
+          "dsh": "tools/pre-execute",
+          "forge": "PreToolUse",
+          "decision": "deny"
+        },
+        {
+          "dsh": "tools/post-execute",
+          "forge": "PostToolUse",
+          "decision": "block"
+        },
+        {
+          "dsh": "agent/pre-step",
+          "forge": "UserPromptSubmit",
+          "decision": "reject"
+        },
+        {
+          "dsh": "agent/session-start",
+          "forge": "SessionStart",
+          "decision": "inject",
+          "note": "source:'compact' additionally fires the PostCompact group — DSH rc.7 exposes no dedicated compaction point"
+        },
+        {
+          "dsh": "agent/turn-stopping",
+          "forge": "Stop",
+          "decision": "steer"
+        }
+      ],
+      "failOpen": [
+        "block is read ONLY from the stdout JSON decision field, never from exit codes",
+        "every infrastructure failure (forge missing, spawn error, unparseable output, timeout) fails open silently",
+        "the only visibility is /forge-status (50-entry ring buffer) and debug:true"
+      ]
+    }
   ]
 }
