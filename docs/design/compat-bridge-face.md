@@ -1,6 +1,6 @@
 # compat 第七面：外部桥契约（2026-09）
 
-- 依据：`compat-commitments.md` 六面承诺 + `plugins/forge-dsh/README.md` 的双端语义 + 插件哲学调研 insight I3（"vendor+台账 与 棘轮+快照 在哲学上撞车"）。
+- 依据：`compat-commitments.md` 兼容承诺（现自称七面盘点）+ `plugins/forge-dsh/README.md` 的双端语义 + 插件哲学调研 insight I3（"vendor+台账 与 棘轮+快照 在哲学上撞车"）。
 - 范围：给 compat 快照加第七面 `bridges`——把 forge-dsh 桥的**行为契约**（事件映射、决策形状、fail-open 规则）从"散在三处的文档+行为"升为快照执法面；同时把 README 事件映射表标注为双端契约。
 - 定位：`plugin-philosophy.md` seam 表中"外部桥"格的执法落地。
 
@@ -63,7 +63,7 @@ forge-dsh 的桥语义现散在三处，执法强度递减：
 
 - 面名 `bridges` **不限 dsh**：判定标准 = "forge 内核之外的进程内接线层，其行为语义由本仓文档承诺"。未来若出现第二个外部桥（如宿主侧 SDK 嵌入形态），同列同执法。
 - **不做**：把 contract.json 塞进 npm 包让 dsh 侧运行时消费（契约的消费者是本仓的执法面与测试，不是 dsh 运行时）；不给 contract.json 加 schema 版本字段（首个版本即 v1，compat 棘轮本身就是版本执法）。
-- 适应度函数：此后任何"改了 index.js 行为但没动 contract.json"的 PR 会在 JS 测试红；"改了 contract.json"的 PR 必然出现在 `forge compat report` diff——漂移从静默变为结构性不可能。
+- 适应度函数（2026-09-16 回检收窄表述）：**非预期回归**（改了 index.js 行为、既没动 contract.json 也没正当理由地动了 wiring 测试）会被契约交叉验证测试与 wiring 测试的合取拦下；**契约变更**（改 contract.json）必然出现在 `forge compat report` diff。两半合起来，漂移不再静默。
 
 ## 四、证据与出处
 
