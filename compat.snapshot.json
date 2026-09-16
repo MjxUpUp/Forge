@@ -39,6 +39,15 @@
       ]
     },
     {
+      "path": "forge bridge"
+    },
+    {
+      "path": "forge bridge verify",
+      "flags": [
+        "json"
+      ]
+    },
+    {
       "path": "forge compat"
     },
     {
