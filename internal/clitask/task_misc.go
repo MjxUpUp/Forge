@@ -419,8 +419,12 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 			if strings.TrimSpace(content) == "" {
 				// "style:" 这类打标后内容为空的输入会落一条空 critical——
 				// 阻断 doc gate 但没人看得懂要修什么（finding 命令对空 content
-				// 同款必填校验）。
-				return fmt.Errorf("--critical %q 打标后内容为空——补内容或去掉 tag: 前缀", c)
+				// 同款必填校验）。文案按有无 tag 区分：裸空串的「去掉前缀」提示
+				// 是误导（评审 observation，2026-09-15）。
+				if tag != "" {
+					return fmt.Errorf("--critical %q 打标后内容为空——tag 后补上发现内容", c)
+				}
+				return fmt.Errorf("--critical 内容为空——写清要修什么（发现必须有内容）")
 			}
 			nf := taskpipeline.Finding{
 				Content:  content,
