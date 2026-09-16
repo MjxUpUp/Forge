@@ -234,6 +234,11 @@ jobs:
     runs-on: ubuntu-latest
     # 退避窗 8×45s≈6min（v1.56.6 实录主包读路径滞后 ~5min）+ 双 drill + 签名验证的余量。
     timeout-minutes: 15
+    # job 级 contents:write 供尾部 pins 对齐步提交回 main——permissions 只支持
+    # workflow/job 两级，写在 step 级是非法键（actionlint 实证，整个 workflow
+    # 解析期即失败）。
+    permissions:
+      contents: write
     steps:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -290,8 +295,6 @@ jobs:
         with:
           ref: main
       - name: Align npm pins in repo (post-release)
-        permissions:
-          contents: write
         run: |
           git config user.name "forge-release-bot"
           git config user.email "bot@users.noreply.github.com"
