@@ -1,13 +1,13 @@
 // Package compat implements forge's executable compatibility artifact
-// (mechanism-hardening P1-1): a deterministic six-surface snapshot of forge's
+// (mechanism-hardening P1-1): a deterministic seven-surface snapshot of forge's
 // externally visible contract, diffable across versions like API Extractor's
 // *.api.md golden files.
 //
-// Package compat 实现 forge 的可执行兼容工件（mechanism-hardening P1-1）：六面
+// Package compat 实现 forge 的可执行兼容工件（mechanism-hardening P1-1）：七面
 // 确定性快照 + 跨版本 diff——API Extractor 模型（golden 入库 + PR diff 呈现 +
 // 破坏性变更显式评审）。
 //
-// 六面（每面附检测边界——工件 diff 的已知盲区按机制史调研写明，诚实呈现）：
+// 七面（每面附检测边界——工件 diff 的已知盲区按机制史调研写明，诚实呈现）：
 //  1. commands   — cobra 树的命令路径 + flag 名（检测边界：flag 语义变化不可见）
 //  2. checks     — checklog CheckName roster（边界：Detail 散文语义不可见）
 //  3. escapes    — FORGE_* 逃生舱 env 清单（边界：默认值变化不可见）
@@ -15,6 +15,9 @@
 //  5. schemas    — 序列化结构的键集合（边界：字段类型变化在键不变时不可见）
 //  6. blockings  — internal/ 源码中 GateBlocked(/LevelBlocked 位点计数（边界：
 //     hook 脚本内的阻断不可见——bash 字符串不在 Go 源扫描面）
+//  7. bridges    — 外部桥契约（plugins/*/contract.json 的事件映射 + fail-open
+//     承诺；边界：桥的 JS 行为实现与契约的符合性由插件侧 wiring 测试钉住，
+//     本面只执法契约文件的自身变更——见 compat-bridge-face.md）
 //
 // 确定性契约：同一棵树两次实算字节一致（排序键、无时间戳）——下游可 diff 两份
 // 快照定位增量（AAT 导出同款哲学）。
@@ -35,7 +38,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// Snapshot 是六面快照（确定性序列化：map 一律转排序 slice）。
+// Snapshot 是七面快照（确定性序列化：map 一律转排序 slice）。
 type Snapshot struct {
 	Commands  []CommandSurface    `json:"commands"`
 	Checks    []string            `json:"checks"`
@@ -43,6 +46,7 @@ type Snapshot struct {
 	Payload   []PayloadItem       `json:"payload"`
 	Schemas   map[string][]string `json:"schemas"`
 	Blockings []BlockingSite      `json:"blockings"`
+	Bridges   []BridgeContract    `json:"bridges"`
 }
 
 // CommandSurface 是一条命令的表面（路径 + 排序后的 flag 名）。
@@ -62,6 +66,25 @@ type PayloadItem struct {
 type BlockingSite struct {
 	File  string `json:"file"`
 	Count int    `json:"count"`
+}
+
+// BridgeContract 是一个外部桥（内核外进程内接线层，如 plugins/forge-dsh）的
+// 行为契约快照：事件映射 + fail-open 承诺。契约文件是桥两端（宿主插件 ↔ forge
+// 内核）的单一真相源，README 的人类可读表格镜像自它（compat-bridge-face.md）。
+type BridgeContract struct {
+	Bridge      string        `json:"bridge"`
+	DshVerified string        `json:"dshVerified,omitempty"`
+	Events      []BridgeEvent `json:"events"`
+	FailOpen    []string      `json:"failOpen,omitempty"`
+}
+
+// BridgeEvent 是桥的一行事件映射（dsh 事件 → forge hook 事件 → 决策形状）。
+// Note 是注释非契约——不参与 Diff 判级。
+type BridgeEvent struct {
+	Dsh      string `json:"dsh"`
+	Forge    string `json:"forge"`
+	Decision string `json:"decision"`
+	Note     string `json:"note,omitempty"`
 }
 
 // EscapeEnvs 是逃生舱 env 清单（显式列表——单一真相源；新增逃生舱必须同步此处，
@@ -87,7 +110,7 @@ func AllCheckNames() []string {
 	return checklog.AllCheckNames()
 }
 
-// BuildSnapshot 在 root（仓根）上实算六面。rootCmd 从 docsconsistency 的注册
+// BuildSnapshot 在 root（仓根）上实算七面。rootCmd 从 docsconsistency 的注册
 // 回调拿（cli 包注入；compat 不 import cli——依赖方向）。
 func BuildSnapshot(root string, rootCmd *cobra.Command) (*Snapshot, error) {
 	snap := &Snapshot{Schemas: map[string][]string{}}
@@ -168,6 +191,14 @@ func BuildSnapshot(root string, rootCmd *cobra.Command) (*Snapshot, error) {
 		return nil, err
 	}
 	snap.Blockings = blockings
+
+	// 面7：外部桥契约（plugins/*/contract.json；缺失容错为空面——与 payload 面
+	// 同款，但文件存在而损坏时 fail loud）。
+	bridges, err := scanBridges(root)
+	if err != nil {
+		return nil, err
+	}
+	snap.Bridges = bridges
 	return snap, nil
 }
 
@@ -307,6 +338,72 @@ func Diff(base, cur *Snapshot) []Change {
 			// 基线里没有该文件=新增阻断文件（对抗审查 should-fix：新 BLOCKED
 			// 位点的最常见形态，原实现完全漏掉）。
 			out = append(out, Change{Surface: "blockings", Kind: "changed", Item: fmt.Sprintf("%s（新文件含 %d 个阻断位点——按文案契约须附预告版本或首发声明）", b.File, b.Count)})
+		}
+	}
+	// bridges：按桥名定位，行按 Dsh 事件定位。映射 removed / forge 事件或
+	// decision 形状 changed → Breaking（桥两端任一端单独升级即断）；failOpen
+	// 承诺 removed/changed → Breaking（执法承诺，收紧方向须走预告）；一切
+	// added → 非 Breaking。Note 是注释非契约，不参与 diff。
+	baseBr := map[string]BridgeContract{}
+	for _, b := range base.Bridges {
+		baseBr[b.Bridge] = b
+	}
+	for _, cb := range cur.Bridges {
+		bb, ok := baseBr[cb.Bridge]
+		if !ok {
+			out = append(out, Change{Surface: "bridges", Kind: "added", Item: cb.Bridge})
+			continue
+		}
+		baseEv := map[string]BridgeEvent{}
+		for _, e := range bb.Events {
+			baseEv[e.Dsh] = e
+		}
+		curEv := map[string]BridgeEvent{}
+		for _, e := range cb.Events {
+			curEv[e.Dsh] = e
+		}
+		for dsh, be := range baseEv {
+			ce, ok := curEv[dsh]
+			if !ok {
+				out = append(out, Change{Surface: "bridges", Kind: "removed", Item: cb.Bridge + "/" + dsh, Breaking: true})
+			} else if ce.Forge != be.Forge || ce.Decision != be.Decision {
+				out = append(out, Change{Surface: "bridges", Kind: "changed", Item: cb.Bridge + "/" + dsh + "（forge 事件或 decision 形状变更）", Breaking: true})
+			}
+		}
+		for dsh := range curEv {
+			if _, ok := baseEv[dsh]; !ok {
+				out = append(out, Change{Surface: "bridges", Kind: "added", Item: cb.Bridge + "/" + dsh})
+			}
+		}
+		baseFo, curFo := map[string]bool{}, map[string]bool{}
+		for _, s := range bb.FailOpen {
+			baseFo[s] = true
+		}
+		for _, s := range cb.FailOpen {
+			curFo[s] = true
+		}
+		for s := range baseFo {
+			if !curFo[s] {
+				out = append(out, Change{Surface: "bridges", Kind: "removed", Item: cb.Bridge + "/failOpen", Breaking: true})
+			}
+		}
+		added := 0
+		for s := range curFo {
+			if !baseFo[s] {
+				added++
+			}
+		}
+		if added > 0 {
+			out = append(out, Change{Surface: "bridges", Kind: "added", Item: cb.Bridge + "/failOpen"})
+		}
+	}
+	curBr := map[string]bool{}
+	for _, cb := range cur.Bridges {
+		curBr[cb.Bridge] = true
+	}
+	for _, bb := range base.Bridges {
+		if !curBr[bb.Bridge] {
+			out = append(out, Change{Surface: "bridges", Kind: "removed", Item: bb.Bridge, Breaking: true})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {

@@ -11,6 +11,12 @@ the forge binary — the plugin itself has **zero runtime dependencies**.
 
 ## How it works
 
+> The mapping table below and the fail-open contract at the end of this README
+> are the **two-sided bridge contract**, mirrored machine-readably in
+> [`contract.json`](./contract.json) and enforced by forge's compat snapshot
+> (surface `bridges`). Change all three together: `contract.json`, this README,
+> and the tests on both sides.
+
 | DSH interception point | forge hook event | A forge block becomes |
 |---|---|---|
 | `tools/pre-execute` | `PreToolUse` | `{kind:'deny', reason}` |

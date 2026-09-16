@@ -6,6 +6,8 @@ package compat
 
 import (
 	"bufio"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -65,3 +67,32 @@ var (
 	// SeedToolCallForSchema 返回全填充 ToolCall。
 	SeedToolCallForSchema = func() any { return nil }
 )
+
+// scanBridges 读 plugins/*/contract.json（外部桥契约，compat-bridge-face.md）
+// 组装第七面。契约文件缺失 → 空面（与 payload 面同款容错：不是所有检出都有
+// 插件目录）；文件存在但损坏 → error（fail-visible——契约是已提交工件，静默
+// 空面会掩盖漂移）。确定性：桥按名排序；事件保持契约文件内的声明序（waterfall
+// 顺序是语义的一部分，不重排）。
+func scanBridges(root string) ([]BridgeContract, error) {
+	matches, err := filepath.Glob(filepath.Join(root, "plugins", "*", "contract.json"))
+	if err != nil {
+		return nil, err
+	}
+	var out []BridgeContract
+	for _, path := range matches {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var bc BridgeContract
+		if err := json.Unmarshal(body, &bc); err != nil {
+			return nil, fmt.Errorf("桥契约 %s 解析失败: %w", filepath.ToSlash(path), err)
+		}
+		if bc.Bridge == "" {
+			return nil, fmt.Errorf("桥契约 %s 缺少 bridge 字段", filepath.ToSlash(path))
+		}
+		out = append(out, bc)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Bridge < out[j].Bridge })
+	return out, nil
+}
