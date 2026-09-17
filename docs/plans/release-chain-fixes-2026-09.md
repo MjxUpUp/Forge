@@ -1,12 +1,14 @@
 # 提案+规格：发布链三项验收修复
 
+> 状态：已实施（随 db391d3 合入 main；实跑证据见文末验收）
+
 ## 提案（为什么做）
 
 1.61.1 发版实测 npm-verify 失败：传播窗内平台子包 packument（registry 元数据
 文档）滞后，npm 对 optionalDependencies 静默跳过致主包孤装——推翻「重试窗口
 过短」的原始误诊（run 34986576299 日志实证：installed on attempt 8/8 +
 added 1 package，退避窗工作正常、孤装才是死因；窗定义见
-.github/workflows/release.yml npm-verify job）；同日双发版时仓内 pins 依赖
+.github/workflows/release.yml npm-verify job——8 次尝试 + 7×45s 退避间隔）；同日双发版时仓内 pins 依赖
 手工 npm-align，实锤 pins 落在旧版；--critical 空内容报错文案不分场景——
 裸空串提示「去掉 tag 前缀」纯属误导（真裸空串与「style: 打标后为空」是两种修法）。
 
@@ -30,5 +32,5 @@ added 1 package，退避窗工作正常、孤装才是死因；窗定义见
   （TestDocReview_CriticalEmptyContentAfterTag 断言文案分流）
 - 实跑：1.61.3 发版后自动对齐步产出 2a1bba8（forge-release-bot 署名，
   chore/npm-align-1.61.3 分支）并经 PR #69 人审合并——全路径首跑实证；
-  1.62.0 run 命中「已对齐」no-op 分支（同格式的 07e862d 系人工提交，
-  不得作为本步证据）
+  1.62.0 run 命中「已对齐」no-op 分支，因 07e862d 人工对齐（13:04:57Z）
+  早于 run 启动（13:05:19Z）22 秒——该提交系人工，不得作为本步证据
