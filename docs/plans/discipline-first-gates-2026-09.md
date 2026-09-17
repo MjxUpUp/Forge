@@ -60,22 +60,7 @@ P2-P5 各自立项时补本格式 spec；本文只钉 P1 的设计与验收。
    `checkVerifyScopeDrift` 失败时恒 `discovery`（今日无上游信号——如实记录第一
    防线缺口，为 P3 的 nudge 前移提供依据）。
 
-**验收标准**：
-
-```
-Run: go test ./internal/checklog/ -run TestEntryOutcomeRoundTrip
-Expected: PASS
-```
-
-```
-Run: go test ./internal/taskpipeline/ -run TestCheckVerifyTestCoverage
-Expected: PASS（新增分支：无先导 nudge → outcome=discovery；有已送达 nudge → confirmation）
-```
-
-```
-Run: go test ./internal/taskpipeline/ -run TestNudgeDeliveredForTask
-Expected: PASS
-```
+验收命令见下方「P1 总验收」的 accept 围栏（verify-acceptance 实跑口径）。
 
 ## P1-B test-nudge：事件计数器 → 文件级跨档信号
 
@@ -106,29 +91,23 @@ verify。措辞无文件名、无档位、无后果，重复即噪声。
 5. **不变式**：活跃任务门控（任务外静默不落状态文件）、永不 block、每档一次、
    Delivered 章按宿主通道如实盖。
 
-**验收标准**：
+验收命令见下方「P1 总验收」的 accept 围栏（verify-acceptance 实跑口径）。
 
-```
-Run: go test ./internal/hookdispatch/ -run TestRunTestNudgeHook
-Expected: PASS（覆盖：跨档 3/5/8 单次触发；配对移除与档位回落重武装；消息点名文件；meta 键；永不 block）
-```
+## P1 总验收（verify-acceptance 实跑口径；裸命令 = 退出码 0 判定）
 
-```
-Run: go test ./internal/taskpipeline/ -run TestTestPairsSource
-Expected: PASS
-```
-
-## P1 总验收（全量回归 + lint）
-
-```
-Run: go test ./...
-Expected: PASS（无 skip 异常、无 flake）
+```accept
+go test ./internal/checklog/ -run TestEntryOutcomeRoundTrip
+go test ./internal/taskpipeline/ -run TestCheckVerifyTestCoverage
+go test ./internal/taskpipeline/ -run TestNudgeDeliveredForTask
+go test ./internal/hookdispatch/ -run TestRunTestNudgeHook
+go test ./internal/taskpipeline/ -run TestTestPairsSource
+go test ./...
+go vet ./...
 ```
 
-```
-Run: golangci-lint run
-Expected: exit 0（零告警）
-```
+lint 口径：`golangci-lint run` 对本任务 diff **零新增**（存量 65 issues 为 main
+既有债务，不在本任务范围——仓库纪律：lint 只修它标记当前 diff 的部分；比对证据
+为 main worktree 同配额 65 issues 的对照组实测）。
 
 ## 回测流程
 
