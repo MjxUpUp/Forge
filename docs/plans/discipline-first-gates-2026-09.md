@@ -118,6 +118,10 @@ verify。措辞无文件名、无档位、无后果，重复即噪声。
 4. **1.58 同步义务**：tier3 事实句锚定 `testCoverageHardGateThreshold`（当前
    3，1.58 计划降 2）且 BLOCK 点在 task-complete 兜底——阈值变更必须同步
    `hook_track.go` 的 tier3 文案与注释，否则事实性通道违规（审查 P1-1 已修一次）。
+5. **逃生路径计数为 0**：test-coverage 逃生激活（per-task override 或
+   FORGE_TEST_COVERAGE）时 verify 条目 `missing_files` 恒为 0——D2 逐任务对比
+   必须按 CheckEscapeHatch 条目的 `escape.gate=test-coverage` 过滤逃生任务，
+   否则会把「逃生」误读为「agent 已配对」。
 
 ## P1 总验收（verify-acceptance 实跑口径；裸命令 = 退出码 0 判定）
 
