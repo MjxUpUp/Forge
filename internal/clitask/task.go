@@ -253,6 +253,19 @@ func nonGitTaskWarning() string {
 		"如需完整质量保障，执行 `git init`（任务流程本身可继续）。任务无法推进或临时放弃时用 `forge task abort --ref <ref>` 清理。"
 }
 
+// artifactStartHint 渲染 task start 的开工前产物链提示（discipline-first P3）：
+// 探针语义在 taskpipeline.ArtifactChainExpectation（与 implement gate 同一真相源），
+// 此处只钉呈现——缺节点时单行（链序 → 连接 + 先产出指引 + 执法预告），链完整或
+// 逃生时空串（静默与意图一致）。
+func artifactStartHint(root string, state *taskpipeline.TaskState) string {
+	missing, next := taskpipeline.ArtifactChainExpectation(root, state)
+	if len(missing) == 0 {
+		return ""
+	}
+	return "提示：本任务产物链预期节点未登记（" + strings.Join(missing, "→") +
+		"）——开工前产出最便宜（方向错误在产物阶段拦下）；先产出：" + next + "。implement gate 将按档执法"
+}
+
 // detectOriginTool 返回任务的发起工具（声明式真相，区别于 SessionRecord.AgentType 的目录探测弱信号）。
 // 探测顺序：explicit（--origin-tool）> FORGE_AGENT（runHook 把解析出的 --agent 值注入，
 // 使 kimi/windsurf 上 hook 派生的 forge 进程知道自己的 host）> CLAUDE_CODE_SESSION_ID
@@ -709,8 +722,8 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// P3 开工前产物链提示（discipline-first-gates）：预期节点未登记在 start 就说
 	// （implement gate 才拦就晚了——代码已写完）。同一真相源（ArtifactChainExpectation
 	// ← artifactchain.Load）；只提示不阻断、不动 implement 轮的一次性标记。
-	if missing, next := taskpipeline.ArtifactChainExpectation(root, state); len(missing) > 0 {
-		fmt.Fprintf(os.Stderr, "提示：本任务产物链预期节点未登记（%s）——开工前产出最便宜（方向错误在产物阶段拦下）；先产出：%s。implement gate 将按档执法\n", strings.Join(missing, "→"), next)
+	if line := artifactStartHint(root, state); line != "" {
+		fmt.Fprintf(os.Stderr, "%s\n", line)
 	}
 	fmt.Println()
 	fmt.Println("Task gates:")
