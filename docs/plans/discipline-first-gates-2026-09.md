@@ -63,8 +63,10 @@ conventions-lint / cross-repo-impact 的失败条目 v1 不分类（D1 分母自
 2. **行为**：发现项逐行输出 + 计数汇总 + 下一步指引（写配对测试 / scope add）；
    干净输出一行确认。退出码：干净 0，有发现 1（agent 可感知）——selfcheck 是
    自检不是门禁，退出码只反映事实。
-3. **落痕**：checklog 新 Check 名 `selfcheck-pairing` / `selfcheck-scope`，与门禁
-   条目同口径 Meta（`missing_files`/`missing_list`；`drift`/`drift_files`）。
+3. **落痕**：checklog 新 Check 名 `selfcheck-pairing` / `selfcheck-scope`。
+   pairing 侧与门禁条目同口径 Meta（`missing_files`/`missing_list`）；scope 侧
+   `drift`/`drift_files` 是 **selfcheck 侧键**——门禁的 scope-drift 条目 v1 无
+   结构化 Meta（仅 Detail 散文，回测脚本不得依赖；补齐属后续项）。
    carve-out：PlanScope 未声明时 scope 探针空转**不落痕**（无可镜像的声明——
    与 pairing 侧 0 文件也落 Passed=true 不对称，是刻意省略）。
    Passed 如实、TaskRef 必带、deterministic 源。
@@ -73,9 +75,10 @@ conventions-lint / cross-repo-impact 的失败条目 v1 不分类（D1 分母自
    **有交集**（守护监督 P2-1：任意结果计入 = agent 跑一次干净 selfcheck 即给
    全任务镀 confirmation 层，D3 变可刷量指标——交集封死该通道）。干净自检后
    漂移的新文件落 discovery：agent 从未被告知过它们。
-5. **时机训练**：NextDecision 的 verify-acceptance 待跑分支，Reason 追加自检提示
-   （当 task 无 selfcheck-pairing 条目时）：建议先 `forge selfcheck pairing` 镜像
-   自检。Next 命令本体不变（每行恰一条命令的纪律保持）。
+5. **时机训练**：NextHint 对 NextDecision 判定为 verify-acceptance 待跑的任务
+   （且 task 无 selfcheck-pairing 条目时）在 Reason 追加自检提示：建议先
+   `forge selfcheck pairing` 镜像自检。Next 命令本体不变（每行恰一条命令的
+   纪律保持）；判定锚 `res.Next`（NextDecision 归一化后的事实分支）。
 
 验收（accept 围栏在「P2-P4 总验收」）：
 
@@ -104,7 +107,8 @@ Expected: PASS（selfcheck 条目在场 → verify 失败 outcome=confirmation�
 1. **重复 advisory 折叠（v1 收窄至 test-coverage；scope-drift 等其他 advisory
    暂不折叠**——remin 实证只复现 test-coverage 的 3 连跑噪音）：同一 task 的
    verify 里，与**最近一次**披露的**全量 missing 集合**相同（排序后比对，
-   >8 文件一律不折叠）才折叠为一行 `…(unchanged since last verify)`——Detail
+   >8 文件一律不折叠）才折叠为一行 unchanged 摘要（含 N 计数与「修复后输出
+   将恢复完整」提示）——Detail
    在 >3 文件时只含前 3 名，作折叠键会假折叠换血文件（复审 P2-1）。checklog
    照记（审计轨迹不变薄，打断预算下降——原则 2）。
 2. **BLOCKED 还债指引**：`GateBlocked` 消息统一追加一行 skill-evolution 还债
@@ -198,7 +202,7 @@ verify。措辞无文件名、无档位、无后果，重复即噪声。
    FORGE_TEST_COVERAGE）时 verify 条目 `missing_files` 恒为 0——D2 逐任务对比
    必须按 CheckEscapeHatch 条目的 `escape.gate=test-coverage` 过滤逃生任务，
    否则会把「逃生」误读为「agent 已配对」（selfcheck 在逃生下仍报事实并显式
-   标注口径差，见 TestCoverageEscapeActive）。
+   标注口径差，见 internal/cli 的 TestSelfcheckPairingEscapeActive）。
 6. **观察通道 ≠ 门禁通道**（守护审计 P1-3）：nudge 只观察 PostToolUse
    Write|Edit，门禁看 git 全量——Bash 写入（heredoc/sed/cat>）的源码对 nudge
    完全不可见，纯 Bash 写文件的任务 nudge=0 而 missing=8，方向可反转；这同时
@@ -219,7 +223,7 @@ verify。措辞无文件名、无档位、无后果，重复即噪声。
 ```accept
 go test ./internal/checklog/ -run TestEntryOutcomeRoundTrip
 go test ./internal/taskpipeline/ -run TestCheckVerifyTestCoverage
-go test ./internal/taskpipeline/ -run TestNudgeDeliveredForTask
+go test ./internal/taskpipeline/ -run TestFirstLineHoldsFact
 go test ./internal/hookdispatch/ -run TestRunTestNudgeHook
 go test ./internal/taskpipeline/ -run TestTestPairsSource
 go test ./...
