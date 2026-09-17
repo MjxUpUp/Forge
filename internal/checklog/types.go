@@ -507,6 +507,34 @@ const (
 	LevelAdvisory Level = "advisory"
 )
 
+// GateOutcome classifies a FAILED verify-time gate entry by who surfaced the fact
+// first — the discipline-first measurement axis (discipline-first-gates 2026-09
+// P1-A). The metric it enables: discovery rate must fall as first-line signals
+// (nudges, selfcheck) take hold; a rising confirmation share means signals are
+// delivered but not acted on.
+//
+// GateOutcome 按「谁先披露事实」分类**失败**的 verify 期门禁条目——纪律优先
+// 度的度量轴（discipline-first-gates 2026-09 P1-A）。它点亮的指标：discovery
+// rate 应随第一防线信号（nudge、selfcheck）扎根而下降；confirmation 占比上升
+// 则说明信号送达了但没有被执行。
+type GateOutcome string
+
+const (
+	// OutcomeDiscovery: the gate is the first disclosure of this fact to the agent —
+	// no prior delivered first-line signal exists in the task. First line missing.
+	//
+	// OutcomeDiscovery：门禁是对 agent 的第一披露点——task 内不存在已送达的第一
+	// 防线信号。第一防线缺位。
+	OutcomeDiscovery GateOutcome = "discovery"
+	// OutcomeConfirmation: a first-line signal (e.g. test-nudge) was already
+	// delivered for this fact and not acted on — the gate confirms realized
+	// discipline debt. First line present, discipline not executed.
+	//
+	// OutcomeConfirmation：该事实的第一防线信号（如 test-nudge）已送达但未行动——
+	// 门禁确认的是已兑现的纪律债。第一防线在，纪律未执行。
+	OutcomeConfirmation GateOutcome = "confirmation"
+)
+
 // Detail prefixes mirrored from taskpipeline/gate_message.go (blockedPrefix /
 // advisoryPrefix). Duplicated as literals because checklog is a leaf package —
 // importing taskpipeline would create a cycle (taskpipeline imports checklog).
@@ -580,6 +608,13 @@ type Entry struct {
 	// Source 标注证据来源（deterministic vs agent-claim）。Record 时若留空，
 	// 按 SourceForCheck 兜底推断，故历史记录点无需逐个改造也能进证据链分桶。
 	Source     EvidenceSource `json:"source,omitempty"`
+	// Outcome classifies a FAILED verify-time gate entry by who surfaced the fact
+	// first (see GateOutcome). Empty on passing and legacy entries; readers must
+	// treat empty as unclassified, never as discovery.
+	//
+	// Outcome 按「谁先披露」分类**失败**的 verify 期门禁条目（见 GateOutcome）。
+	// 通过与历史条目留空；读方必须把空当未分类，绝不当 discovery。
+	Outcome    GateOutcome    `json:"outcome,omitempty"`
 	RecordedAt time.Time      `json:"recorded_at"`
 	// Delivered reports whether an advisory injection actually reached the model's context on that host's channel.
 	//
