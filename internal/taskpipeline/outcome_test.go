@@ -1,7 +1,6 @@
 package taskpipeline
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -103,8 +102,8 @@ func TestCheckVerifyTestCoverage_OutcomeStamp(t *testing.T) {
 		if e.Meta["missing_files"] != "2" {
 			t.Errorf("missing_files meta = %q, want 2", e.Meta["missing_files"])
 		}
-		if !strings.Contains(e.Meta["missing_list"], "internal/audit/audit.go") {
-			t.Errorf("missing_list meta must carry the file paths, got: %q", e.Meta["missing_list"])
+		if want := "internal/audit/audit.go,internal/cli/cmd_export.go"; e.Meta["missing_list"] != want {
+			t.Errorf("missing_list meta = %q, want exact %q (coveragePairing 按 changed 顺序)", e.Meta["missing_list"], want)
 		}
 	})
 
@@ -139,6 +138,10 @@ func TestCheckVerifyTestCoverage_OutcomeStamp(t *testing.T) {
 		}
 		if e.Outcome != "" {
 			t.Errorf("passing entry must stay unclassified, got %q", e.Outcome)
+		}
+		// pass 分支同样结构化落 Meta（missing=0）——未来回归成仅失败分支落盘时此钉变红。
+		if e.Meta["missing_files"] != "0" {
+			t.Errorf("passing entry missing_files = %q, want 0", e.Meta["missing_files"])
 		}
 	})
 }
