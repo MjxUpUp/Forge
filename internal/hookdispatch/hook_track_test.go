@@ -771,3 +771,39 @@ func TestRunTestNudgeHook_TaskBoundaryResets(t *testing.T) {
 		t.Errorf("task B nudge unpaired = %q, want 3 (no carry-over)", entries[1].Meta["unpaired_files"])
 	}
 }
+
+// TestNudgeMetaFilesCarriesNewest pins the Meta/Detail ordering contract: at
+// fire time the unpaired set is exactly the crossed tier threshold (3/5/8 —
+// the >8 truncation branch is defensive, unreachable while thresholds hold),
+// so Meta["files"] is the FULL set and Detail names its newest 3 — the
+// fact-level intersection (which reads Meta) can never miss a named file.
+//
+// TestNudgeMetaFilesCarriesNewest 钉住 Meta/Detail 序契约：触发时未配对集合
+// 恰为跨档阈值（3/5/8——>8 截断分支是防御性的，阈值不变则不可达），故
+// Meta["files"] 是**全量**集合、Detail 点名其最新 3——事实级交集（读 Meta）
+// 永不漏掉任何被点名过的文件。
+func TestNudgeMetaFilesCarriesNewest(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-meta9"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/nudge-meta9")
+
+	for i := 0; i < 9; i++ {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, fmt.Sprintf("f%d.go", i)))
+	}
+	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
+	if len(entries) != 3 {
+		t.Fatalf("entries = %d, want 3 (tiers 1/2/3; the 9th file crosses no new tier)", len(entries))
+	}
+	last := entries[2] // tier3 在第 8 个文件触发——集合恰 f0..f7
+	// Meta 全量：f0..f7 一个不少（交集判定的数据面）。
+	if want := "f0.go,f1.go,f2.go,f3.go,f4.go,f5.go,f6.go,f7.go"; last.Meta["files"] != want {
+		t.Errorf("tier-3 Meta files = %q, want full set %q", last.Meta["files"], want)
+	}
+	// Detail 点名最新 3（f5/f6/f7）且 ⊆ Meta——点名面与数据面同尾序。
+	for _, named := range []string{"f5.go", "f6.go", "f7.go"} {
+		if !strings.Contains(last.Detail, named) {
+			t.Errorf("tier-3 Detail must name newest %s, got: %q", named, last.Detail)
+		}
+	}
+}

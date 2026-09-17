@@ -8,6 +8,7 @@ package taskpipeline
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -84,9 +85,13 @@ func testCoverageEntry(root string, state *TaskState, ok bool, missing []string)
 func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string) error {
 	ok, missing, _ := checkTestCoverageChanged(root, state, gitChanged)
 	entry := testCoverageEntry(root, state, ok, missing)
-	// P4 折叠判据必须在 recordAudit **之前**取——查的是「上轮」同 check 同 Detail，
-	// 先落盘再查会匹配到本轮自己（首条 advisory 即被折叠的自匹配 bug）。
-	folded := !ok && priorIdenticalAdvisory(root, state.TaskRef, CheckNameTestCoverage, entry.Detail)
+	// P4 重复折叠：与**最近一次**同 check 披露的**全量 missing 集合**相同才折叠
+	// （复审 P2-1：Detail 在 >3 文件时只含计数+前 3 名，作折叠键会把「换血的第 4
+	// 个文件」假折叠成 unchanged——新文件名永不披露，正是 P1-B 要治的无名信号。
+	// Meta missing_list 是全量（≤8 截断），且 >8 时**不折叠**——保守方向：宁可
+	// 重复完整输出，不可吞掉第一披露）。checklog 条目已在上方照原文落盘——
+	// 审计轨迹不变薄。
+	folded := !ok && priorCoverageUnchanged(root, state.TaskRef, missing)
 	recordAudit(root, entry)
 	if !ok {
 		// 复发驱动升硬（recurrent.go）：advisory→hard 仅当两轴皆真才触发——项目 testing 维度历史
@@ -111,19 +116,51 @@ func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string)
 	return nil
 }
 
-// priorIdenticalAdvisory 报告同 task 是否已存在同 check 同 Detail 的先导条目
-// （P4 折叠判据：内容完全未变才折叠——missing 清单变化即恢复完整输出）。
-func priorIdenticalAdvisory(root, taskRef string, check checklog.CheckName, detail string) bool {
+// priorCoverageUnchanged 报告本批 missing 与该 task **最近一条** test-coverage
+// 条目披露的全量集合是否相同（P4 折叠判据）。三点纪律（复审 P2-1/P3-3）：
+// (1) 比对 Meta missing_list（全量、≤8 截断）而非 Detail（>3 文件只含前 3 名，
+//     作键会假折叠换血文件）；
+// (2) 只与最近一条比，不与任意先前条目比——轮次回绕（X→Y→X）不折叠；
+// (3) >8 文件（清单被截断）一律不折叠——保守方向：宁可重复完整输出，不可吞掉
+//     第一披露。
+func priorCoverageUnchanged(root, taskRef string, missing []string) bool {
+	if len(missing) == 0 || len(missing) > 8 {
+		return false
+	}
 	entries, err := checklog.LoadForTask(root, taskRef)
 	if err != nil {
 		return false
 	}
+	var last string
+	found := false
 	for _, e := range entries {
-		if e.Check == check && e.Detail == detail {
-			return true
+		if e.Check == CheckNameTestCoverage && e.Meta["missing_list"] != "" {
+			last = e.Meta["missing_list"]
+			found = true
 		}
 	}
-	return false
+	if !found {
+		return false
+	}
+	return sortedJoin(missing) == sortedJoin(splitList(last))
+}
+
+// splitList 把逗号分隔清单拆为切片（trimmed、跳过空段）。
+func splitList(list string) []string {
+	var out []string
+	for _, f := range strings.Split(list, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// sortedJoin 把清单排序后连接——集合相等性判定与顺序无关。
+func sortedJoin(items []string) string {
+	sorted := append([]string(nil), items...)
+	slices.Sort(sorted)
+	return strings.Join(sorted, ",")
 }
 
 // checkVerifyScopeDrift 是 task-verify 的 scope-drift advisory（PlanScope whitelist）：任务
