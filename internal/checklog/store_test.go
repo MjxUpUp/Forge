@@ -261,6 +261,7 @@ func TestRecord_ConcurrentRotateNoDeadlock(t *testing.T) {
 	dir := t.TempDir()
 	isolateDataHome(t)
 	t.Setenv("FORGE_CHECKLOG_ROTATE_BYTES", "1") // 每条 Record 都可能走轮转分支
+	start := time.Now()
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Add(2)
@@ -287,7 +288,7 @@ func TestRecord_ConcurrentRotateNoDeadlock(t *testing.T) {
 	// 两次撞线（同代码 main 三平台绿过——runner 负载波动，非回归）；死锁守卫
 	// 的价值在「拦永不完成」，延迟只换 flake 风险，给足余量。
 	case <-time.After(90 * time.Second):
-		t.Fatal("concurrent Record/rotate deadlocked (rotate→archiveLocked mutex re-entry?)")
+		t.Fatalf("concurrent Record/rotate deadlocked, elapsed %s, guard 90s (rotate→archiveLocked mutex re-entry?)", time.Since(start).Round(time.Millisecond))
 	}
 	if _, err := LoadAll(dir); err != nil {
 		t.Fatalf("LoadAll after concurrent Record/rotate: %v", err)

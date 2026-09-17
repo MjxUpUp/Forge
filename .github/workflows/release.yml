@@ -232,7 +232,7 @@ jobs:
   npm-verify:
     needs: npm
     runs-on: ubuntu-latest
-    # 退避窗 8×45s≈6min（v1.56.6 实录主包读路径滞后 ~5min）+ 双 drill + 签名验证的余量。
+    # 退避重试 8 次尝试 + 7×45s 间隔（自发布累计 ≈7min；v1.56.6 实录主包读路径滞后 ~5min）+ 双 drill + 签名验证的余量。
     timeout-minutes: 15
     # job 级 contents:write + pull-requests:write 供尾部 pins 对齐步开 PR——
     # permissions 只支持 workflow/job 两级，写在 step 级是非法键（actionlint
