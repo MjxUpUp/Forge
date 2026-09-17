@@ -352,6 +352,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task export --ref <ref> [-o\|--output file] [--include-checklog] [--redact]` | 把任务导出为跨机器 JSON Bundle（task state 存于用户级 DataDir 不随仓库走，跨机器交接需此载体；--include-checklog 附带证据链；--redact 抹除 issue/agent/commit/证据供对外分享） |
 | `forge task import --file <bundle> [--force\|--merge]` | 从 Bundle 导入任务到本地（导入 session 标记幽灵仅溯源；默认同 ref 拒绝，--force 覆盖，--merge 按 ID 并集协作记录；含 checklog 则回放进本地 trace） |
 | `forge task health [--json]` | 扫描全 project 上浮僵尸/死锁/长期未答复任务（只读告警，不改状态）：offered>7d / claimed>TTL（无 checklog 活动）/ input-required>7d / abandoned_count≥2 标黄，DependsOn 指向 failed/canceled/缺失的死锁链与环主动报；与 mine/看板共享同一检测真相源 |
+| `forge selfcheck pairing` / `forge selfcheck scope` | 门禁镜像自检（discipline-first-gates）：对当前活跃任务跑与 task-verify **同一计算路径**的秒级自检——`pairing` 镜像 test-coverage 配对检查、`scope` 镜像 PlanScope 漂移；发现项逐文件列出 + 修复指引（exit 1 供脚本感知，非阻断），每次运行落 `selfcheck-pairing`/`selfcheck-scope` 观察条目——其后失败的 verify 门禁按事实级交集归 confirmation（agent 已被告知这批文件）而非 discovery。逃生激活时显式标注「门禁已豁免、以下为事实」。`forge next` 在验收待跑且未自检时提示先行自检 |
 
 </details>
 
