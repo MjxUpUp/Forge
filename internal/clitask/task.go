@@ -706,6 +706,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	if !hasPlanInput {
 		fmt.Fprintf(os.Stderr, "提示：本任务无 --plan-file/--goal——接续字段将为空（压缩/换窗口后现场靠 git 猜）；建议 task start 带 --plan-file <方案> 或 --goal <目标>，中途用 forge task decide/next 落盘（multi-task-concurrency L6）\n")
 	}
+	// P3 开工前产物链提示（discipline-first-gates）：预期节点未登记在 start 就说
+	// （implement gate 才拦就晚了——代码已写完）。同一真相源（ArtifactChainExpectation
+	// ← artifactchain.Load）；只提示不阻断、不动 implement 轮的一次性标记。
+	if missing, next := taskpipeline.ArtifactChainExpectation(root, state); len(missing) > 0 {
+		fmt.Fprintf(os.Stderr, "提示：本任务产物链预期节点未登记（%s）——开工前产出最便宜（方向错误在产物阶段拦下）；先产出：%s。implement gate 将按档执法\n", strings.Join(missing, "→"), next)
+	}
 	fmt.Println()
 	fmt.Println("Task gates:")
 	gates := taskpipeline.DefaultGates()

@@ -81,13 +81,10 @@ func checkCompleteReviewPrereqs(root string, state *TaskState) error {
 func checkTestCoverageBackstop(root string, state *TaskState) (changedFiles []string, err error) {
 	changedFiles = taskChangedFiles(root, state)
 	ok, missing, total := checkTestCoverageChanged(root, state, changedFiles)
-	recordAudit(root, &checklog.Entry{
-		Check:   CheckNameTestCoverage,
-		Passed:  ok,
-		Checked: true,
-		TaskRef: state.TaskRef,
-		Detail:  testCoverageDetail(ok, missing),
-	})
+	// 守护审计 P1-2（2026-09-17）：backstop 是真正 BLOCK 的执法层，条目与 verify
+	// 同口径（共享 testCoverageEntry——Meta + 失败 outcome 章）——D1-D3 由此覆盖
+	// advisory 层与 blocking 层，不再只见前者。
+	recordAudit(root, testCoverageEntry(root, state, ok, missing))
 	if !ok && len(missing) > 0 {
 		assertN, _ := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
 		if testCoverageShouldBlock(len(missing), assertN) {

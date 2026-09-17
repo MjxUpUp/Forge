@@ -222,12 +222,13 @@ type testNudgeState struct {
 	// pairing removals relax it downward (0 = fully re-armed) so a re-crossing
 	// re-fires. One fire per tier — no per-write spam. Oscillation (pair one,
 	// add one, cross the same tier again) re-fires each round by design; the
-	// anti-gaming guardrail (nudge 总量 ≤ 基线 1.5×) bounds the worst case.
+	// anti-gaming guardrail lives in the spec (fires ≤ source-write events ×
+	// 0.5, computed from checklog — discipline-first-gates 防伪护栏行).
 	//
 	// FiredTier 是对当前未配对集合已触发过的最高档位；配对移除使它回落
 	// （0 = 完全重新武装），再次跨档会重新触发。每档一次——不逐写刷屏。振荡
-	// （配一个又加一个，反复跨同档）按设计会每轮重触发；防伪护栏（nudge 总量
-	// ≤ 基线 1.5×）兜住最坏情形。
+	// （配一个又加一个，反复跨同档）按设计会每轮重触发；防伪护栏在 spec 定义
+	// （触发数 ≤ 源码写入事件数 × 0.5，从 checklog 实算——单一口径真相源）。
 	FiredTier int `json:"fired_tier"`
 }
 
@@ -366,9 +367,11 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	// 都把 allow-detail 送进上下文，但按宿主诚实判定而非假设；kimi 上本 nudge
 	// 走 advisory 队列，章标 kimi/advisory-queue，让漏斗区分「入队待投」与
 	// 「永久丢失」）。
+	// Meta 的 files 与 Detail 同序取**最新**侧（守护审计 P3：最早 8 + 最新 3 两序
+	// 交错时交集不完整——outcome 的事实级判定读 files，序必须与点名面一致）。
 	metaFiles := state.UnpairedFiles
 	if len(metaFiles) > 8 {
-		metaFiles = metaFiles[:8]
+		metaFiles = metaFiles[len(metaFiles)-8:]
 	}
 	delivered, channel := AdvisoryEmissionChannel(agent, hookInput.HookEventName)
 	entry := &checklog.Entry{

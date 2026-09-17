@@ -24,10 +24,10 @@
 
 | 指标 | 定义 | 数据源 | 基线 | 目标 |
 |---|---|---|---|---|
-| D1 discovery rate | `discovery/(discovery+confirmation)`（分母只含已分类的失败条目；未分类=历史/通过，排除） | checklog `outcome` 字段 | 无字段（本 spec 前不可测） | 周切片环比不升，连续 4 周趋势下降 |
+| D1 discovery rate | `discovery/(discovery+confirmation)`（分母只含已分类的失败条目；未分类=历史/通过，排除。verify 与 complete backstop 两相位同口径落 outcome——BLOCK 层不缺位） | checklog `outcome` 字段 | 无字段（本 spec 前不可测） | 周切片环比不升，连续 4 周趋势下降 |
 | D2 nudge 分档命中率 | nudge 跨档时的 `unpaired_files` vs 同任务 verify 条目 `missing_files`（两侧均结构化 Meta 键） | checklog `unpaired_files` vs `missing_files`/`missing_list` | 无（nudge 数写入事件不数文件） | tier3 触发数 ≥ verify missing≥8 任务数（nudge 先于门禁看到同一事实） |
-| D3 纪律债兑现率 | `confirmation/(discovery+confirmation)`（与 D1 同分母） | checklog `outcome` | 无 | 观察指标：升=信号有效但未被执行，降+D1 降=双好 |
-| 防伪护栏 | assertion density（scoring.CollectAssertionDensity）、cheat-scan 命中率不得恶化；test-nudge 触发总量 ≤ 同期非测试源码 Write/Edit 事件数 × 0.5（activity 度量：checklog test-nudge 观察轴上的源码写入事件；P1-B 跨档后每任务至多 3 次触发，该比值>0.5 即异常刷量） | scoring / checklog | 合入后首月用 `forge eval harness-audit` 钉数值基线并落盘 evals/（不预填数字） | 护栏越线 → 对应改动 reject |
+| D3 纪律债兑现率 | `confirmation/(discovery+confirmation)`（与 D1 同分母；confirmation 是**事实级**——第一防线清单与该批 missing 有文件交集，task 级"曾有过信号"不算，防早 nudge 兑现后尾段新欠虚高 D3） | checklog `outcome` | 无 | 观察指标：升=信号有效但未被执行，降+D1 降=双好 |
+| 防伪护栏 | assertion density（scoring.CollectAssertionDensity）、cheat-scan 命中率不得恶化；test-nudge 触发总量 ≤ 同期非测试源码 Write/Edit 事件数 × 0.5（activity 度量=checklog/toollog 的源码写入事件；振荡路径（配一个再加一个）每轮重触发同档、**无上界**——守护审计 P1-1 实证，故护栏必须按事件比值实算，不得用"每任务至多 N 次"的假上界） | scoring / checklog | 合入后首月用 `forge eval harness-audit` 钉数值基线并落盘 evals/（不预填数字） | 护栏越线 → 对应改动 reject |
 
 **P1-A 分类覆盖清单（v1）**：仅 `test-coverage-gate`（对 test-nudge）与
 `scope-drift` 的**失败**条目盖 outcome 章；cheat-scan / unused-scan /
@@ -36,17 +36,88 @@ conventions-lint / cross-repo-impact 的失败条目 v1 不分类（D1 分母自
 
 ## 分期
 
-- **P1（本文件落地范围）**：度量地基 + test-nudge 从"事件计数器"升级为"文件级跨档信号"。
-- **P2**：`forge selfcheck pairing|scope|unused` 镜像命令（包 `ClassifyChangedPath`/
-  `ScopeDrift` 纯函数，新 CLI 非新逻辑）+ verify 前无 selfcheck 记录时的时机训练提示。
-- **P3**：artifact-chain 前移 task start（缺 spec/design 开工前说）；plan-first 归位
-  implement gate（审计时机从 verify 前移）。
-- **P4**：门禁输出分级（clean streak N → 一行绿；discovery → verbose + 信任重置）；
-  BLOCKED 强制触发 skill-evolution 还债条目。
-- **P5（视 D1 数据决定）**：RED 运行证据（实现前失败运行记录，挂 task-implement
-  gate）；新建源码文件配对测试脚手架。
+- **P1（已落地，2026-09-17，90/A）**：度量地基 + test-nudge 从"事件计数器"升级为
+  "文件级跨档信号"。
+- **P2（本文件落地范围，契约见下）**：`forge selfcheck pairing|scope` 镜像命令 +
+  selfcheck 条目接入 outcome 分类 + next-hint 时机训练提示。
+- **P3（本文件落地范围，契约见下）**：artifact-chain 的 task start 开工前 advisory。
+  修正记录：plan-first **已在** implement gate（executor.go:465 shift-left advisory，
+  每任务一次）——remin 时间线里的 plan-first 条目实为 implement 时刻产物，原始
+  诊断"挤在 verify 批"对该项误读，无需迁移。
+- **P4（本文件落地范围，契约见下）**：同任务重复 verify 的 advisory 折叠 +
+  BLOCKED 还债指引。原 P4 的「clean streak N → 一行绿」**显式暂缓**：pass 态
+  在现 verify 输出形态下本已静默（无逐 check 绿行），无证据表明需要 streak
+  行；D1 数据积累一个窗口后重估（守护监督清单 P4-1 的静默腐化风险——escape
+  与 confirmation 均不断 streak——也要求等数据再上）。
+- **P5（暂不立项）**：RED 运行证据、配对测试脚手架——按本 spec 回测流程，待 D1
+  discovery rate 积累一个窗口（30 天或 25 任务）后由数据决定；无数据前不新增
+  执法能力（原则 3：调整优先于新增）。
 
-P2-P5 各自立项时补本格式 spec；本文只钉 P1 的设计与验收。
+### P2 契约
+
+1. **命令**：`forge selfcheck pairing` 与 `forge selfcheck scope`（顶级命令，
+   internal/cli/selfcheck.go）。对**当前活跃任务**的改动集跑与门禁同一代码路径的
+   纯计算：pairing = `taskChangedFiles` + `coveragePairing`；scope =
+   `taskChangedFiles` + `ScopeDrift(PlanScope)`。无活跃任务 → 报错退出 1（无任务
+   即无门禁可预演）。
+2. **行为**：发现项逐行输出 + 计数汇总 + 下一步指引（写配对测试 / scope add）；
+   干净输出一行确认。退出码：干净 0，有发现 1（agent 可感知）——selfcheck 是
+   自检不是门禁，退出码只反映事实。
+3. **落痕**：checklog 新 Check 名 `selfcheck-pairing` / `selfcheck-scope`，与门禁
+   条目同口径 Meta（`missing_files`/`missing_list`；`drift`/`drift_files`）。
+   Passed 如实、TaskRef 必带、deterministic 源。
+4. **outcome 接入（事实级）**：confirmation 判定 = 已送达 test-nudge 的 files
+   清单 **或** selfcheck-pairing 条目的 missing_list 清单，与该批 missing 文件
+   **有交集**（守护监督 P2-1：任意结果计入 = agent 跑一次干净 selfcheck 即给
+   全任务镀 confirmation 层，D3 变可刷量指标——交集封死该通道）。干净自检后
+   漂移的新文件落 discovery：agent 从未被告知过它们。
+5. **时机训练**：NextDecision 的 verify-acceptance 待跑分支，Reason 追加自检提示
+   （当 task 无 selfcheck-pairing 条目时）：建议先 `forge selfcheck pairing` 镜像
+   自检。Next 命令本体不变（每行恰一条命令的纪律保持）。
+
+验收（accept 围栏在「P2-P4 总验收」）：
+
+```
+Run: go test ./internal/cli/ -run TestSelfcheck
+Expected: PASS（无任务拒绝；配对发现项输出+落痕+退出码 1；干净输出+退出码 0）
+```
+
+```
+Run: go test ./internal/taskpipeline/ -run TestOutcomeSelfcheck
+Expected: PASS（selfcheck 条目在场 → verify 失败 outcome=confirmation）
+```
+
+### P3 契约
+
+1. `forge task start` 输出尾部追加开工前 advisory：按 protocol 产物链（与
+   implement gate 的 CheckArtifactChainGate 同一真相源）列出**预期而未登记**的
+   节点，提示"开工前产出最便宜"；链完整或无链要求则不输出。只提示不阻断、
+   不置 ArtifactAdvisoryFired 标记（implement 轮的一次性语义不变）。**每个新
+   任务必发一次是设计而非噪声**：产物链是任务纪律的组成部分，start 提示
+   是其开工引导（守护监督 P3-2 的 false-positive 担忧按此口径解读）。
+2. 验收：`go test ./internal/clitask/ -run TestTaskStart.*Artifact` PASS。
+
+### P4 契约
+
+1. **重复 advisory 折叠**：同一 task 的第 2+ 次 task-verify 里，与上轮**同 check
+   同 Detail** 的 advisory stderr 输出折叠为一行 `…(unchanged since last verify)`，
+   checklog 照记（审计轨迹不变薄，打断预算下降——原则 2）。
+2. **BLOCKED 还债指引**：`GateBlocked` 消息统一追加一行 skill-evolution 还债
+   提示（`forge skills decide` 记教训），把拦截转化为纪律资产输入。
+3. 验收：`go test ./internal/taskpipeline/ -run TestFoldRepeatAdvisory` 与
+   `go test ./internal/taskpipeline/ -run TestGateBlockedDebtHint` PASS。
+
+### P2-P4 总验收（verify-acceptance 实跑口径）
+
+```accept
+go test ./internal/cli/ -run TestSelfcheck
+go test ./internal/taskpipeline/ -run "TestOutcomeSelfcheck|TestFoldRepeatAdvisory|TestGateBlockedDebtHint"
+go test ./internal/clitask/ -run TestTaskStart
+go test ./...
+go vet ./...
+```
+
+## 回测流程
 
 ## P1-A checklog `outcome` 字段（confirmation / discovery）
 
@@ -121,7 +192,22 @@ verify。措辞无文件名、无档位、无后果，重复即噪声。
 5. **逃生路径计数为 0**：test-coverage 逃生激活（per-task override 或
    FORGE_TEST_COVERAGE）时 verify 条目 `missing_files` 恒为 0——D2 逐任务对比
    必须按 CheckEscapeHatch 条目的 `escape.gate=test-coverage` 过滤逃生任务，
-   否则会把「逃生」误读为「agent 已配对」。
+   否则会把「逃生」误读为「agent 已配对」（selfcheck 在逃生下仍报事实并显式
+   标注口径差，见 TestCoverageEscapeActive）。
+6. **观察通道 ≠ 门禁通道**（守护审计 P1-3）：nudge 只观察 PostToolUse
+   Write|Edit，门禁看 git 全量——Bash 写入（heredoc/sed/cat>）的源码对 nudge
+   完全不可见，纯 Bash 写文件的任务 nudge=0 而 missing=8，方向可反转；这同时
+   是 evasion 通道（零 tier 触发、全部洗成 discovery）。D2 解读须把 Bash 写入
+   量列为混杂变量；代码级修复（Bash 写入观察）另立项。
+7. **队列宿主的结构性偏差**（守护审计 P2-2）：kimi 上 nudge 恒
+   Delivered=false（advisory-queue 攒发且无回填章）——队列宿主的 D1/D3 被
+   host 构成主导。回测首切片维度定为 channel（checklog `channel` 键）。
+8. **事实级交集的截断盲区**：nudge 的 files Meta 与 selfcheck 的 missing_list
+   均 ≤8 截断——>8 文件时交集可能漏报，方向偏 discovery（保守：不虚增
+   confirmation）。
+9. **大小写不敏感文件系统**：nudge 状态按精确路径去重，a.go/A.go 在
+   case-insensitive FS 上是同一文件却计 2 个未配对（幽灵点名）。不归一化是
+   刻意的（case-sensitive FS 上归一会误合并真不同文件）。
 
 ## P1 总验收（verify-acceptance 实跑口径；裸命令 = 退出码 0 判定）
 
@@ -144,7 +230,8 @@ main 数，本任务实测为 0。
 ## 回测流程
 
 1. 合入后首个 30 天或 25 个完成任务（先到为准）用 checklog 全量算 D1-D3（一次性
-   脚本即可，字段已结构化）。
+   脚本即可，字段已结构化）。注意：`internal/aatout` 的条目也带裸 `outcome`
+   JSON 键（不同语义）——回测 join 必须按 `check` 名 + `outcome` 双键过滤。
 2. D1 无下降 + D3 上升 → 说明信号送达但执行断裂，优先评估 P2（selfcheck 降低守纪
    摩擦）而非加信号。
 3. 防伪护栏任一越线 → 按 skill-evolution reject 记决策并 scoped revert 对应改动。
