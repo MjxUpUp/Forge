@@ -87,10 +87,13 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 func NextHint(root string, st *TaskState) NextResult {
 	branch, dirty := GitBranchDirty(root)
 	res := NextDecision(branch, dirty, st)
-	// P2 时机训练：验收待跑（verify 链即将开始）而 task 尚未跑过 pairing 自检 →
-	// Reason 追加镜像自检建议。Next 命令本体不变（每行恰一条命令的纪律保持）；
-	// 跑过即消失——习惯训练恰好训练到它存在为止。
-	if st != nil && !st.IsDelivered() && nextAcceptancePending(st) && st.TaskRef != "" &&
+	// P2 时机训练：NextDecision 归一化后的**事实分支**是 verify-acceptance 待跑
+	// 且 task 尚未跑过 pairing 自检 → Reason 追加镜像自检建议（复审 P2-2：手工
+	// 重组条件三重偏差——implement 窗口的空跑会永久消费提示、completed 展示路径
+	// 错误追加、delivered-but-active 被错误抑制——按 res.Next 判定一并消除）。
+	// Next 命令本体不变（每行恰一条命令的纪律保持）；跑过即消失——习惯训练
+	// 恰好训练到它存在为止。
+	if st != nil && res.Next == "forge task verify-acceptance" && st.TaskRef != "" &&
 		!selfcheckRanForTask(root, st.TaskRef) {
 		res.Reason += "；可先 forge selfcheck pairing 镜像自检（与门禁同口径，秒级）"
 	}

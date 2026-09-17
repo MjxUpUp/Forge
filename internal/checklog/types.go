@@ -131,26 +131,34 @@ const (
 	CheckTestNudge CheckName = "test-nudge"
 	// CheckSelfcheckPairing records one `forge selfcheck pairing` run: the agent
 	// proactively ran the mirror computation of the test-coverage gate over its
-	// own task's change set (discipline-first-gates P2). ANY result counts as
-	// the first line holding the fact — a later failing gate with this entry
-	// present is classified confirmation (agent knew and did not act), not
-	// discovery. deterministic（同一计算路径）但属自检观察，排除出 evidence
-	// strength——它声明的是「agent 看过这个事实」，不是「事实已被修复」。
+	// own task's change set (discipline-first-gates P2). Fact-level: the entry's
+	// missing_list intersecting a later failing gate's missing set upgrades that
+	// gate to confirmation (agent was shown these files and did not act) — a
+	// clean selfcheck (empty list) never upgrades anything. Agent-asserted
+	// observation, NOT forge-guaranteed: checklog is an unauthenticated JSONL
+	// (entries can be minted via import/direct write — same trust boundary as
+	// trust.go's forged-gate posture); the only forgery direction launders
+	// discovery→confirmation, i.e. self-incrimination. Excluded from evidence
+	// strength — it asserts "the agent saw this fact", never "the fact is fixed". 
 	//
 	// CheckSelfcheckPairing 记录一次 `forge selfcheck pairing` 运行：agent 对
 	// 自己任务的改动集主动跑了 test-coverage 门禁的镜像计算
-	// （discipline-first-gates P2）。任意结果都算第一防线已持有该事实——其后
-	// 失败的门禁在该条在场时归 confirmation（已知未行动）而非 discovery。
-	// deterministic（同一计算路径）但属自检观察，排除出 evidence strength——
-	// 它声明「agent 看过这个事实」，不声明「事实已被修复」。
+	// （discipline-first-gates P2）。事实级：条目的 missing_list 与其后失败门禁
+	// 的 missing 集合有交集才升 confirmation（这批文件展示过而未行动）——干净
+	// 自检（空清单）永不升级。agent 自述观察、非 forge 担保：checklog 是无鉴权
+	// JSONL（可经 import/直写铸造——与 trust.go 的伪造门禁姿态同信任边界）；可
+	// 伪造方向只能把 discovery 洗成 confirmation，即自证其罪。排除出 evidence
+	// strength——它声明「agent 看过这个事实」，不声明「事实已被修复」。
 	CheckSelfcheckPairing CheckName = "selfcheck-pairing"
 	// CheckSelfcheckScope records one `forge selfcheck scope` run — the
-	// PlanScope-drift mirror probe (discipline-first-gates P2). Same
-	// confirmation-classification contract as CheckSelfcheckPairing.
+	// PlanScope-drift mirror probe (discipline-first-gates P2). NOTE: unlike
+	// pairing, this entry does NOT feed the outcome classification (scope-drift
+	// failures stay discovery — no upstream-signal wiring for scope yet).
 	//
 	// CheckSelfcheckScope 记录一次 `forge selfcheck scope` 运行——PlanScope
-	// 漂移的镜像探针（discipline-first-gates P2）。与 CheckSelfcheckPairing
-	// 同款 confirmation 分类契约。
+	// 漂移的镜像探针（discipline-first-gates P2）。注意：与 pairing 不同，
+	// 本条目**不**参与 outcome 分类（scope-drift 失败仍恒 discovery——scope 侧
+	// 尚无上游信号接线）。
 	CheckSelfcheckScope CheckName = "selfcheck-scope"
 	// CheckConventionsInject records one conventions-layer injection fired by the conventions hooks (2026-08-28).
 	//

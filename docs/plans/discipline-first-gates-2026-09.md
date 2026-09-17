@@ -65,6 +65,8 @@ conventions-lint / cross-repo-impact 的失败条目 v1 不分类（D1 分母自
    自检不是门禁，退出码只反映事实。
 3. **落痕**：checklog 新 Check 名 `selfcheck-pairing` / `selfcheck-scope`，与门禁
    条目同口径 Meta（`missing_files`/`missing_list`；`drift`/`drift_files`）。
+   carve-out：PlanScope 未声明时 scope 探针空转**不落痕**（无可镜像的声明——
+   与 pairing 侧 0 文件也落 Passed=true 不对称，是刻意省略）。
    Passed 如实、TaskRef 必带、deterministic 源。
 4. **outcome 接入（事实级）**：confirmation 判定 = 已送达 test-nudge 的 files
    清单 **或** selfcheck-pairing 条目的 missing_list 清单，与该批 missing 文件
@@ -95,13 +97,16 @@ Expected: PASS（selfcheck 条目在场 → verify 失败 outcome=confirmation�
    不置 ArtifactAdvisoryFired 标记（implement 轮的一次性语义不变）。**每个新
    任务必发一次是设计而非噪声**：产物链是任务纪律的组成部分，start 提示
    是其开工引导（守护监督 P3-2 的 false-positive 担忧按此口径解读）。
-2. 验收：`go test ./internal/clitask/ -run TestTaskStart.*Artifact` PASS。
+2. 验收：`go test ./internal/clitask/ -run TestTaskStart_ArtifactHint` PASS。
 
 ### P4 契约
 
-1. **重复 advisory 折叠**：同一 task 的第 2+ 次 task-verify 里，与上轮**同 check
-   同 Detail** 的 advisory stderr 输出折叠为一行 `…(unchanged since last verify)`，
-   checklog 照记（审计轨迹不变薄，打断预算下降——原则 2）。
+1. **重复 advisory 折叠（v1 收窄至 test-coverage；scope-drift 等其他 advisory
+   暂不折叠**——remin 实证只复现 test-coverage 的 3 连跑噪音）：同一 task 的
+   verify 里，与**最近一次**披露的**全量 missing 集合**相同（排序后比对，
+   >8 文件一律不折叠）才折叠为一行 `…(unchanged since last verify)`——Detail
+   在 >3 文件时只含前 3 名，作折叠键会假折叠换血文件（复审 P2-1）。checklog
+   照记（审计轨迹不变薄，打断预算下降——原则 2）。
 2. **BLOCKED 还债指引**：`GateBlocked` 消息统一追加一行 skill-evolution 还债
    提示（`forge skills decide` 记教训），把拦截转化为纪律资产输入。
 3. 验收：`go test ./internal/taskpipeline/ -run TestFoldRepeatAdvisory` 与
