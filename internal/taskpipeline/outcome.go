@@ -1,28 +1,59 @@
 package taskpipeline
 
-// outcome.go — 纪律优先度量轴（discipline-first-gates 2026-09 P1-A）：失败门禁
-// 条目按「谁先披露」分类。discovery=门禁是第一披露点（第一防线缺位）；
-// confirmation=第一防线信号已送达但未行动（纪律债兑现）。此处只提供查询助手，
-// 盖章点在各 checkVerify* 的失败分支——通过与历史条目永不分类。
+// outcome.go — 纪律优先度量轴（discipline-first-gates 2026-09）：失败门禁条目按
+// 「谁先披露**该事实**」分类。discovery=门禁是第一披露点（第一防线缺位）；
+// confirmation=第一防线信号已送达**同一批文件**而未行动（纪律债兑现）。
+// 刻意事实级而非 task 级：早 nudge 兑现后尾段新欠的文件，agent 从未被告知，
+// 记 confirmation 会系统性虚高 D3（守护审计 P2-1，2026-09-17）。
 
 import (
+	"strings"
+
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// nudgeDeliveredForTask 报告该 task 内是否存过**已送达**的 test-nudge（Delivered
-// 章非 nil 且为 true）。它是 test-coverage-gate 失败时 outcome 分类的唯一输入：
-// 送达过的 nudge 在先 → confirmation（agent 被告知过）；否则 → discovery（门禁是
-// 第一披露点）。nil/false 都不算送达——把死 advisory 通道计成「已告知」会把
-// 第一防线缺位洗白成纪律未执行，度量随之失真（与 Entry.Delivered 的 nil 语义
-// 契约一致）。读失败按无信号处理（fail-open 不阻断门禁，只让 outcome 落在
-// discovery 侧——保守方向：不虚增 confirmation）。
-func nudgeDeliveredForTask(root, taskRef string) bool {
+// firstLineHoldsFact 报告该批 missing 文件是否曾被第一防线**点名过**：
+// (a) 已送达的 test-nudge（Delivered 章 true）且其 files 集合与 missing 有交集；
+// (b) selfcheck-pairing 条目的 missing_list 与 missing 有交集（任意 Passed——
+//     Passed=false 即自检亲眼见过这批文件；Passed=true 则 missing_list 为空、
+//     天然无交集，自检后漂移的新文件正确落 discovery）。
+// Meta 截断盲区如实接受：nudge/selfcheck 清单 ≤8 截断，>8 时交集可能漏报——
+// 方向偏 discovery（保守：不虚增 confirmation）。读失败同向。
+func firstLineHoldsFact(root, taskRef string, missing []string) bool {
+	if len(missing) == 0 {
+		return false
+	}
+	missingSet := make(map[string]bool, len(missing))
+	for _, f := range missing {
+		missingSet[f] = true
+	}
 	entries, err := checklog.LoadForTask(root, taskRef)
 	if err != nil {
 		return false
 	}
 	for _, e := range entries {
-		if e.Check == checklog.CheckTestNudge && e.Delivered != nil && *e.Delivered {
+		switch e.Check {
+		case checklog.CheckTestNudge:
+			if e.Delivered == nil || !*e.Delivered {
+				continue // 未送达（nil/false）不算——死通道不能洗白成「已告知」
+			}
+			if metaIntersects(e.Meta["files"], missingSet) {
+				return true
+			}
+		case checklog.CheckSelfcheckPairing:
+			if metaIntersects(e.Meta["missing_list"], missingSet) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// metaIntersects 报告逗号分隔的 Meta 清单与 missing 集合是否有交集。
+func metaIntersects(list string, missingSet map[string]bool) bool {
+	for _, f := range strings.Split(list, ",") {
+		f = strings.TrimSpace(f)
+		if f != "" && missingSet[f] {
 			return true
 		}
 	}

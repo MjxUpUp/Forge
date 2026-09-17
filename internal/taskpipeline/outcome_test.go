@@ -28,47 +28,82 @@ func lastCoverageEntry(t *testing.T, root, taskRef string) checklog.Entry {
 	return last
 }
 
-// TestNudgeDeliveredForTask pins the first-line-signal lookup feeding outcome
-// classification: only a DELIVERED test-nudge counts (nil/false = never reached
-// the model's context — counting it would launder a dead advisory channel into
-// "confirmation"); entries of other checks never count.
+// TestFirstLineHoldsFact pins the FACT-level first-line lookup (guard audit
+// P2-1, 2026-09-17): confirmation requires the signal to have NAMED one of the
+// missing files — a delivered nudge without file overlap (early streak, files
+// since paired) does not count; a clean selfcheck (empty missing_list) does
+// not count either (post-drift files were never shown to the agent).
 //
-// TestNudgeDeliveredForTask 钉住 outcome 分类的第一防线信号查询：只有**已送达**的
-// test-nudge 才算数（nil/false=从未到达模型上下文——把它计入 confirmation 会把死
-// advisory 通道洗白成「已告知」）；其他 check 的条目永不计数。
-func TestNudgeDeliveredForTask(t *testing.T) {
+// TestFirstLineHoldsFact 钉住**事实级**的第一防线查询（守护审计 P2-1）：
+// confirmation 要求信号**点名过** missing 中的文件——已送达但 files 无交集的
+// nudge（早段连写、文件其后已配上）不算；干净 selfcheck（missing_list 空）也不算
+// （自检后漂移的新文件从未展示给 agent）。
+func TestFirstLineHoldsFact(t *testing.T) {
 	root := t.TempDir()
-	const ref = "feat/outcome-lookup"
+	const ref = "feat/holdfact"
+	missing := []string{"internal/x/a.go", "internal/y/b.go"}
 
-	if nudgeDeliveredForTask(root, ref) {
-		t.Fatal("empty task log → false (no first-line signal)")
-	}
-
-	// 未送达（nil）与送达失败（false）都不算：信号没进上下文。
-	if err := checklog.Record(root, &checklog.Entry{Check: checklog.CheckTestNudge, TaskRef: ref, Passed: true}); err != nil {
-		t.Fatal(err)
-	}
-	if err := checklog.Record(root, &checklog.Entry{Check: checklog.CheckTestNudge, TaskRef: ref, Passed: true, Delivered: deliveredPtr(false)}); err != nil {
-		t.Fatal(err)
-	}
-	if nudgeDeliveredForTask(root, ref) {
-		t.Fatal("undelivered nudges (nil/false) must not count as first-line delivery")
+	if firstLineHoldsFact(root, ref, missing) {
+		t.Fatal("empty task log → false")
 	}
 
-	if err := checklog.Record(root, &checklog.Entry{Check: checklog.CheckTestNudge, TaskRef: ref, Passed: true, Delivered: deliveredPtr(true)}); err != nil {
+	// 已送达但无交集（nudge 点的是别的文件）→ 不算。
+	if err := checklog.Record(root, &checklog.Entry{
+		Check: checklog.CheckTestNudge, TaskRef: ref, Passed: true,
+		Delivered: deliveredPtr(true), Meta: map[string]string{"files": "other/c.go"},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if !nudgeDeliveredForTask(root, ref) {
-		t.Fatal("delivered nudge → true")
+	if firstLineHoldsFact(root, ref, missing) {
+		t.Fatal("delivered nudge without file overlap must not count")
 	}
 
-	// 同 root 其他 task 的 nudge 不串号（LoadForTask 按 TaskRef 过滤——outcome
-	// 判定依赖的真轴；跨 root 隔离由 store 层路径分离保证，不在此重复钉）。
-	if err := checklog.Record(root, &checklog.Entry{Check: checklog.CheckTestNudge, TaskRef: "feat/other-task", Passed: true, Delivered: deliveredPtr(true)}); err != nil {
+	// 未送达（nil/false）即便有交集也不算——死通道不能洗白成「已告知」。
+	if err := checklog.Record(root, &checklog.Entry{
+		Check: checklog.CheckTestNudge, TaskRef: ref, Passed: true,
+		Meta: map[string]string{"files": "internal/x/a.go"},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if nudgeDeliveredForTask(root, "feat/third-task") {
-		t.Fatal("another task's delivered nudge in the same root must not leak into this task's lookup")
+	if firstLineHoldsFact(root, ref, missing) {
+		t.Fatal("undelivered nudge must not count even with file overlap")
+	}
+
+	// 已送达且有交集 → 算。
+	if err := checklog.Record(root, &checklog.Entry{
+		Check: checklog.CheckTestNudge, TaskRef: ref, Passed: true,
+		Delivered: deliveredPtr(true), Meta: map[string]string{"files": "internal/x/a.go,other/d.go"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !firstLineHoldsFact(root, ref, missing) {
+		t.Fatal("delivered nudge naming a missing file → true")
+	}
+
+	// selfcheck：missing_list 有交集 → 算（任意 Passed）。
+	root2 := t.TempDir()
+	const ref2 = "feat/holdfact-sc"
+	if err := checklog.Record(root2, &checklog.Entry{
+		Check: checklog.CheckSelfcheckPairing, TaskRef: ref2, Passed: false,
+		Meta: map[string]string{"missing_list": "internal/y/b.go"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !firstLineHoldsFact(root2, ref2, missing) {
+		t.Fatal("selfcheck that saw a missing file → true")
+	}
+
+	// selfcheck 干净（missing_list 空）→ 不算（自检后漂移是新事实）。
+	root3 := t.TempDir()
+	const ref3 = "feat/holdfact-sc2"
+	if err := checklog.Record(root3, &checklog.Entry{
+		Check: checklog.CheckSelfcheckPairing, TaskRef: ref3, Passed: true,
+		Meta: map[string]string{"missing_list": ""},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if firstLineHoldsFact(root3, ref3, missing) {
+		t.Fatal("clean selfcheck (empty list) must not count as holding the fact")
 	}
 }
 
@@ -110,9 +145,11 @@ func TestCheckVerifyTestCoverage_OutcomeStamp(t *testing.T) {
 	t.Run("delivered_nudge_marks_confirmation", func(t *testing.T) {
 		root := t.TempDir()
 		st := &TaskState{TaskRef: "feat/outcome-conf"}
+		// 事实级：nudge 必须点名过本轮 missing 中的文件（守护 P2-1）。
 		if err := checklog.Record(root, &checklog.Entry{
 			Check: checklog.CheckTestNudge, TaskRef: st.TaskRef, Passed: true,
 			Delivered: deliveredPtr(true),
+			Meta: map[string]string{"files": "internal/audit/audit.go"},
 		}); err != nil {
 			t.Fatal(err)
 		}
