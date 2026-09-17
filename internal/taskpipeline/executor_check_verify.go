@@ -8,6 +8,7 @@ package taskpipeline
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
@@ -59,6 +60,17 @@ func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string)
 		Checked: true,
 		TaskRef: state.TaskRef,
 		Detail:  testCoverageDetail(ok, missing),
+	}
+	// D2 度量数据源（doc-review L2 Major-1）：missing 计数/清单结构化落 Meta——
+	// Detail 散文无解析契约，回测脚本不得依赖；与 nudge 侧 unpaired_files/files
+	// 同口径、清单 ≤8 截断（Meta 值保持短字符串纪律）。
+	metaList := missing
+	if len(metaList) > 8 {
+		metaList = metaList[:8]
+	}
+	entry.Meta = map[string]string{
+		"missing_files": fmt.Sprintf("%d", len(missing)),
+		"missing_list":  strings.Join(metaList, ","),
 	}
 	if !ok {
 		// 纪律优先分类（P1-A）：task 内送达过 test-nudge → confirmation（信号在、
