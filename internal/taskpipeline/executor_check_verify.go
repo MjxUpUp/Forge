@@ -53,13 +53,23 @@ func syncVerifyDesignPhases(root string, state *TaskState) (gitChanged []string)
 // 不得再跑一次 taskChangedFiles（2026-08-29 审查轮：双算消除）。
 func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string) error {
 	ok, missing, _ := checkTestCoverageChanged(root, state, gitChanged)
-	recordAudit(root, &checklog.Entry{
+	entry := &checklog.Entry{
 		Check:   CheckNameTestCoverage,
 		Passed:  ok,
 		Checked: true,
 		TaskRef: state.TaskRef,
 		Detail:  testCoverageDetail(ok, missing),
-	})
+	}
+	if !ok {
+		// 纪律优先分类（P1-A）：task 内送达过 test-nudge → confirmation（信号在、
+		// 未行动）；否则 → discovery（门禁是第一披露点）。通过条目不分类。
+		if nudgeDeliveredForTask(root, state.TaskRef) {
+			entry.Outcome = checklog.OutcomeConfirmation
+		} else {
+			entry.Outcome = checklog.OutcomeDiscovery
+		}
+	}
+	recordAudit(root, entry)
 	if !ok {
 		// 复发驱动升硬（recurrent.go）：advisory→hard 仅当两轴皆真才触发——项目 testing 维度历史
 		// 低分 ≥阈值次（advisory 自律在此已被证明失效）且本任务仍有未测源码。test-coverage 自身
@@ -86,13 +96,19 @@ func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string)
 func checkVerifyScopeDrift(root string, state *TaskState, gitChanged []string) error {
 	if len(state.PlanScope) > 0 {
 		drift := ScopeDrift(gitChanged, state.PlanScope)
-		recordAudit(root, &checklog.Entry{
+		entry := &checklog.Entry{
 			Check:   checklog.CheckScopeDrift,
 			Passed:  len(drift) == 0,
 			Checked: true,
 			TaskRef: state.TaskRef,
 			Detail:  scopeDriftDetail(drift),
-		})
+		}
+		if len(drift) > 0 {
+			// 纪律优先分类（P1-A）：今日无 scope 的第一防线信号，失败恒为
+			// discovery——如实记录缺口，让度量指出哪些门禁还缺上游覆盖（P3 依据）。
+			entry.Outcome = checklog.OutcomeDiscovery
+		}
+		recordAudit(root, entry)
 		if len(drift) > 0 {
 			// 复发驱动升硬（recurrent.go）：scope-drift 设计上 advisory（影响预测召回率 ~44%，硬拦会
 			// 拒一半合法改动）。仅当项目 scope 复发 且 本次 drift 实质（≥严重阈值文件）两者皆真时升

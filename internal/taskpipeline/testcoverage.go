@@ -398,8 +398,88 @@ func isWhitelisted(path string) bool {
 	return false
 }
 
+// testCandidates 列出 src 的惯用**直接配对**测试路径（按语言惯例，同目录精确
+// 配对为主 + py 的 tests/ 变体）。单一约定表：门禁（hasMatchingTest，对 changed
+// 集合判存在）与 nudge（TestPairsSource，单文件探针）共用——两侧约定漂移会让
+// nudge 预演的门禁与实际执行的门禁分叉（testcoverage.go 的单一真相源契约）。
+func testCandidates(src string) []string {
+	src = filepath.ToSlash(src)
+	base := strings.TrimSuffix(src, filepath.Ext(src))
+	ext := filepath.Ext(src)
+	dir := filepath.ToSlash(filepath.Dir(src))
+	name := filepath.ToSlash(filepath.Base(src))
+	d := ""
+	if dir != "." && dir != "" {
+		d = dir + "/"
+	}
+	stem := filepath.ToSlash(filepath.Base(base))
+
+	switch ext {
+	case ".go":
+		return []string{base + "_test.go"}
+	case ".rs":
+		return []string{base + "_test.rs"}
+	case ".ts", ".tsx":
+		// 四形态全列（与历史行为一致——a.ts 的测试允许以 a.test.tsx 形态出现）。
+		return []string{base + ".test.ts", base + ".test.tsx", base + ".spec.ts", base + ".spec.tsx"}
+	case ".js", ".jsx":
+		return []string{base + ".test.js", base + ".test.jsx", base + ".spec.js", base + ".spec.jsx"}
+	case ".py":
+		// base 已含目录（pkg/mod）——同目录 foo_test.py 形态不得再叠目录前缀
+		// （历史实现 pyDir+base 双拼出 pkg/pkg/mod_test.py，永不命中的死候选，
+		// 由 TestTestPairsSource 2026-09-17 钉出修正）。
+		return []string{d + "test_" + name, base + "_test.py", "tests/test_" + name}
+	default:
+		// java/rb 的语言特定精确候选；zig/nim 的 stem+"_test."+自身扩展形态由
+		// hasMatchingTest 的前缀扫描 / TestPairsSource 的前缀判定覆盖（无法枚举）。
+		switch ext {
+		case ".java":
+			return []string{d + stem + "Test.java", d + stem + "Tests.java", d + stem + "IT.java"}
+		case ".rb":
+			return []string{d + stem + "_spec.rb", d + stem + "_test.rb", d + "test_" + name}
+		}
+		return nil
+	}
+}
+
+// TestPairsSource reports whether testPath is an idiomatic direct pairing test for
+// srcPath (discipline-first-gates P1-B): the nudge side's single-file probe. Paths
+// are repo-relative forward-slash forms. Shares testCandidates with the gate's
+// hasMatchingTest so a nudge-removed file is exactly a file the gate would stop
+// counting as missing.
+//
+// TestPairsSource 报告 testPath 是否是 srcPath 的惯用直接配对测试
+// （discipline-first-gates P1-B）：nudge 侧的单文件探针。路径为仓库相对
+// forward-slash 形态。与门禁侧 hasMatchingTest 共用 testCandidates——nudge 移除的
+// 文件恰是门禁将不再计为 missing 的文件。
+func TestPairsSource(testPath, srcPath string) bool {
+	testPath = filepath.ToSlash(testPath)
+	for _, p := range testCandidates(srcPath) {
+		if p == testPath {
+			return true
+		}
+	}
+	// default 语言（zig/nim/java 小写形态等）的 stem+"_test."+测试自身扩展：
+	// 同目录前缀限定，兄弟源码的测试永不配对。
+	srcPath = filepath.ToSlash(srcPath)
+	ext := filepath.Ext(srcPath)
+	switch ext {
+	case ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".py":
+		return false // 这些语言的候选已在上方精确判过
+	}
+	base := strings.TrimSuffix(srcPath, ext)
+	dir := filepath.ToSlash(filepath.Dir(srcPath))
+	d := ""
+	if dir != "." && dir != "" {
+		d = dir + "/"
+	}
+	prefix := d + filepath.ToSlash(filepath.Base(base)) + "_test."
+	return len(testPath) > len(prefix) && strings.HasPrefix(testPath, prefix)
+}
+
 // hasMatchingTest 推断改动源码文件的惯用测试文件路径，并在改动集合里查它
-// （各语言惯例见下）。
+// （各语言惯例见 testCandidates；Go 的 package 级兜底与 default 语言的前缀扫描
+// 依赖 changed 集合，留在本函数）。
 func hasMatchingTest(src string, changed map[string]bool) bool {
 	// git 在所有平台都以 forward slashes 报仓库相对路径。
 	// 归一源码路径以匹配：filepath.Dir 跑 Clean，Windows 下会把 '/' 转成
@@ -407,17 +487,16 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 	// 下面的 package-level 兜底在 Windows 上静默永不命中——破坏门控
 	// （及 scoreTask 的 B3 live 兜底）对任何多目录 package 的判定。
 	src = filepath.ToSlash(src)
-	base := strings.TrimSuffix(src, filepath.Ext(src))
+	for _, p := range testCandidates(src) {
+		if changed[p] {
+			return true
+		}
+	}
 	ext := filepath.Ext(src)
 	dir := filepath.ToSlash(filepath.Dir(src))
-	name := filepath.ToSlash(filepath.Base(src))
 
 	switch ext {
 	case ".go":
-		// 惯例：foo.go ↔ foo_test.go（首选、最精确）。
-		if changed[base+"_test.go"] {
-			return true
-		}
 		// Package-level 兜底：Go 测试惯例 package-scoped，故源码同目录下的
 		// 测试文件即便名字不配对也覆盖它（如 executor.go 的测试在
 		// testcoverage_test.go 里）。无此兜底，门控会把测试命名按兄弟概念
@@ -444,73 +523,19 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 			}
 		}
 		return false
-	case ".rs":
-		if changed[base+"_test.rs"] {
-			return true
-		}
-		// Rust inline #[cfg(test)] module 也可接受——但此处只能看文件名，
-		// 故仅接受同文件名的 _test.rs。
-		return false
-	case ".ts", ".tsx":
-		for _, p := range []string{base + ".test.ts", base + ".test.tsx", base + ".spec.ts", base + ".spec.tsx"} {
-			if changed[p] {
-				return true
-			}
-		}
-		return false
-	case ".js", ".jsx":
-		for _, p := range []string{base + ".test.js", base + ".test.jsx", base + ".spec.js", base + ".spec.jsx"} {
-			if changed[p] {
-				return true
-			}
-		}
-		return false
-	case ".py":
-		// 根目录源码的 dir（filepath.Dir 返回 "."）归一为 ""，候选保持无前缀形态
-		//（"test_foo.py"）以匹配 git 路径键——与 Go 分支的 root-level 处理对齐；
-		// 否则 "./test_foo.py" 永远匹配不上 "test_foo.py"。
-		pyDir := ""
-		if dir != "." && dir != "" {
-			pyDir = dir + "/"
-		}
-		for _, p := range []string{pyDir + "test_" + name, pyDir + base + "_test.py", "tests/test_" + name} {
-			if changed[p] {
-				return true
-			}
-		}
+	case ".rs", ".ts", ".tsx", ".js", ".jsx", ".py":
+		// 直接候选已判——这些语言无集合级兜底。
 		return false
 	default:
-		// java/rb/zig/nim —— 同目录精确配对，与 Go/.py 分支同构：计算源码的 dir+stem，
-		// 只接受同目录下的惯用测试文件名。（2026-08-29 审查轮：旧匹配器的第二析取是
-		// 死代码——name 带源扩展名，dir+"/"+name 永不以 "_test" 结尾——第一析取又过松：
-		// HasPrefix(f, "src/poller") 让 src/poller_daemon_spec.rb 假配对 src/poller.rb。
-		// 死条件已删；松前缀换成精确候选。）
-		stem := filepath.ToSlash(filepath.Base(base)) // 源文件去扩展名的主名 / stem without extension
-		// 根目录源码的 dir（filepath.Dir 返回 "."）归一为 ""，候选保持无前缀形态、
-		// 匹配 git 的 forward-slash 路径键（与 .py 分支对齐）。
+		// java/rb/zig/nim——同目录 stem+"_test."+任意扩展（zig foo_test.zig、nim
+		// foo_test.nim、java foo_test.java……）。前缀被 d+"/" 限定，兄弟源码的
+		// spec（poller_daemon_spec.rb）永不匹配 poller。
+		base := strings.TrimSuffix(src, ext)
+		stem := filepath.ToSlash(filepath.Base(base))
 		d := ""
 		if dir != "." && dir != "" {
 			d = dir + "/"
 		}
-		// 语言特定的精确候选（仅同目录）：
-		//   java：JUnit 驼峰——Main.java ↔ MainTest.java（2026-08-29 验收用例），
-		//         另有 FooTests.java / FooIT.java（集成）变体。
-		//   rb：  RSpec foo_spec.rb、foo_test.rb、minitest/test-unit 的 test_foo.rb。
-		var cands []string
-		switch ext {
-		case ".java":
-			cands = []string{d + stem + "Test.java", d + stem + "Tests.java", d + stem + "IT.java"}
-		case ".rb":
-			cands = []string{d + stem + "_spec.rb", d + stem + "_test.rb", d + "test_" + name}
-		}
-		for _, p := range cands {
-			if changed[p] {
-				return true
-			}
-		}
-		// 所有语言：同目录下 stem+"_test."+任意扩展（zig foo_test.zig、nim
-		// foo_test.nim、java foo_test.java……）。前缀被 d+"/" 限定，兄弟源码的
-		// spec（poller_daemon_spec.rb）永不匹配 poller。
 		prefix := d + stem + "_test."
 		for f := range changed {
 			if len(f) > len(prefix) && strings.HasPrefix(f, prefix) {

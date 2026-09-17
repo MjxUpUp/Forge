@@ -249,13 +249,21 @@ func TestRunTestNudgeHook_SilentWithoutTask(t *testing.T) {
 	}
 }
 
-// TestRunTestNudgeHook_ThresholdNudgeAndReset pins the streak contract end-to-end: writes 1..2 are silent, the 3rd fires ONE factual reminder (test-discipline), the 4th stays silent (per-streak single nudge — no spam), a test-file write resets the streak, and the next 3-source-write streak fires again.
+// TestRunTestNudgeHook_TierEscalationAndPairingRemoval pins the file-level tier
+// contract (discipline-first-gates P1-B): the nudge counts UNPAIRED FILES, not
+// write events — tier 1 fires at 3 (naming the files), tier 2 at 5; a paired
+// test write removes only its source from the set; per-tier single fire (no
+// per-write spam); the entry meta carries unpaired_files/tier/files for the D2
+// metric. Replaces the pre-P1 streak-counter contract (one test write reset
+// everything while 8 files stayed unpaired — remin m0, 2026-09-17).
 //
-// TestRunTestNudgeHook_ThresholdNudgeAndReset 端到端钉住连写契约：第 1..2 次
-// 写入静默，第 3 次发出一次事实性提醒（test-discipline），第 4 次仍静默（每连写
-// 只提示一次——不刷屏），测试文件写入重置连写，之后 3 次源码写入再次触发。
-// 观察以 CheckTestNudge 连带计数落盘。
-func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
+// TestRunTestNudgeHook_TierEscalationAndPairingRemoval 钉住文件级跨档契约
+// （discipline-first-gates P1-B）：nudge 数的是**未配对文件**而非写入事件——tier1
+// 在 3 个时触发（点名文件），tier2 在 5 个；配对测试写入只移除它配对的源文件；
+// 每档只发一次（不逐写刷屏）；条目 meta 携带 unpaired_files/tier/files 供 D2 度量。
+// 取代 P1 前的连写计数器契约（一个测试写入全量重置，8 个文件照旧无配对——
+// remin m0，2026-09-17）。
+func TestRunTestNudgeHook_TierEscalationAndPairingRemoval(t *testing.T) {
 	root := trackTestProject(t)
 	const sid = "sess-tn-1"
 	resetNudgeState(t, sid)
@@ -264,8 +272,14 @@ func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
 	wantSilent(t, `write #1 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "a.go")))
 	wantSilent(t, `write #2 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "b.go")))
 	out3 := writeSourceForNudge(t, root, sid, filepath.Join(root, "c.go"))
-	if !strings.Contains(out3, "test-discipline") {
-		t.Errorf("write #3 (threshold) must fire the test-discipline reminder, got: %q", out3)
+	if !strings.Contains(out3, "3 unpaired source files") {
+		t.Errorf("3rd unpaired file must fire the tier-1 reminder, got: %q", out3)
+	}
+	// 跨档信号必须点名文件——无文件名的信号不可行动（remin 病灶）。
+	for _, f := range []string{"a.go", "b.go", "c.go"} {
+		if !strings.Contains(out3, f) {
+			t.Errorf("tier-1 nudge must name %s, got: %q", f, out3)
+		}
 	}
 	// 与 failure-track 同款只给 skill 名的契约（2026-08-25 文案修复）：自然语言
 	// 引用 skill，不含仓库相对 skills/ 路径。
@@ -278,25 +292,93 @@ func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
 	if strings.Contains(out3, `"decision":"block"`) {
 		t.Errorf("test-nudge must never block, got block JSON: %q", out3)
 	}
-	wantSilent(t, `write #4 after the nudge must stay silent (one nudge per streak)`, writeSourceForNudge(t, root, sid, filepath.Join(root, "d.go")))
+	wantSilent(t, `write #4 within tier 1 must stay silent (one fire per tier)`, writeSourceForNudge(t, root, sid, filepath.Join(root, "d.go")))
 
-	// 测试写入重置连写并重新武装提示。
-	wantSilent(t, `test-file write must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "a_test.go")))
-	wantSilent(t, `post-reset write #1 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "e.go")))
-	wantSilent(t, `post-reset write #2 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "f.go")))
-	if out := writeSourceForNudge(t, root, sid, filepath.Join(root, "g.go")); !strings.Contains(out, "test-discipline") {
-		t.Errorf("post-reset write #3 must re-fire the reminder, got: %q", out)
+	// 配对移除：a_test.go 只配走 a.go → 未配对 {b,c,d}=3，档位不动 → 静默。
+	wantSilent(t, `paired test write must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "a_test.go")))
+	wantSilent(t, `4 unpaired files stay within tier 1`, writeSourceForNudge(t, root, sid, filepath.Join(root, "e.go")))
+	out6 := writeSourceForNudge(t, root, sid, filepath.Join(root, "f.go"))
+	if !strings.Contains(out6, "5 unpaired source files") {
+		t.Errorf("5th unpaired file must fire the tier-2 reminder, got: %q", out6)
 	}
 
 	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
 	if len(entries) != 2 {
-		t.Fatalf("CheckTestNudge entries = %d, want 2 (two streaks, one nudge each)", len(entries))
+		t.Fatalf("CheckTestNudge entries = %d, want 2 (tier 1 + tier 2, one fire each)", len(entries))
 	}
-	if entries[0].Meta["source_writes"] != "3" {
-		t.Errorf("first nudge source_writes = %q, want 3", entries[0].Meta["source_writes"])
+	if entries[0].Meta["tier"] != "1" || entries[0].Meta["unpaired_files"] != "3" {
+		t.Errorf("first nudge tier/unpaired = %q/%q, want 1/3", entries[0].Meta["tier"], entries[0].Meta["unpaired_files"])
+	}
+	if !strings.Contains(entries[0].Meta["files"], "a.go") || !strings.Contains(entries[0].Meta["files"], "c.go") {
+		t.Errorf("first nudge meta files must carry the unpaired set, got: %q", entries[0].Meta["files"])
+	}
+	if entries[1].Meta["tier"] != "2" || entries[1].Meta["unpaired_files"] != "5" {
+		t.Errorf("second nudge tier/unpaired = %q/%q, want 2/5", entries[1].Meta["tier"], entries[1].Meta["unpaired_files"])
 	}
 	if entries[0].TaskRef != "feat/nudge-test" {
 		t.Errorf("nudge entry must carry the active task ref, got %q", entries[0].TaskRef)
+	}
+}
+
+// TestRunTestNudgeHook_Tier3GateConsequence pins the tier-3 contract: at 8 unpaired
+// files (remin m0's verify-time missing count) the nudge states the gate consequence
+// fact — task-verify BLOCKs at >=2 untested files with zero assertions — so the
+// signal previews the exact failure mode the gate would realize.
+//
+// TestRunTestNudgeHook_Tier3GateConsequence 钉住 tier3 契约：8 个未配对文件
+// （remin m0 verify 实报的 missing 数）时 nudge 陈述门禁后果事实——task-verify 在
+// ≥2 未测文件且零断言时 BLOCK——信号预演的正是门禁将兑现的失败形态。
+func TestRunTestNudgeHook_Tier3GateConsequence(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-3"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/nudge-tier3")
+
+	for i := 0; i < 7; i++ {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, fmt.Sprintf("f%d.go", i)))
+	}
+	out8 := writeSourceForNudge(t, root, sid, filepath.Join(root, "f7.go"))
+	if !strings.Contains(out8, "8 unpaired source files") {
+		t.Errorf("8th unpaired file must fire the tier-3 reminder, got: %q", out8)
+	}
+	if !strings.Contains(out8, "BLOCKs the task") {
+		t.Errorf("tier-3 nudge must state the gate consequence fact, got: %q", out8)
+	}
+	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
+	if len(entries) != 3 {
+		t.Fatalf("CheckTestNudge entries = %d, want 3 (tiers 1/2/3)", len(entries))
+	}
+	if entries[2].Meta["tier"] != "3" || entries[2].Meta["unpaired_files"] != "8" {
+		t.Errorf("tier-3 entry tier/unpaired = %q/%q, want 3/8", entries[2].Meta["tier"], entries[2].Meta["unpaired_files"])
+	}
+}
+
+// TestRunTestNudgeHook_FullPairingRearms pins the relax-and-rearm rule: pairing
+// EVERY unpaired file takes the tier to 0 (full re-arm); the next 3 fresh files
+// fire tier 1 again — the nudge follows the task's real coverage state, not a
+// write-event streak.
+//
+// TestRunTestNudgeHook_FullPairingRearms 钉住回落重武装规则：把每个未配对文件
+// 都配上 → 档位归 0（完全重新武装）；之后 3 个新文件再次触发 tier1——nudge 跟随
+// task 的真实覆盖状态，而非写入事件连写。
+func TestRunTestNudgeHook_FullPairingRearms(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-4"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/nudge-rearm")
+
+	for _, f := range []string{"a.go", "b.go", "c.go"} {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, f))
+	}
+	// 全配对：三个测试文件配走三个源文件。
+	for _, f := range []string{"a_test.go", "b_test.go", "c_test.go"} {
+		wantSilent(t, `test write must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, f)))
+	}
+	// 完全重新武装：新 3 个文件再次触发 tier1。
+	wantSilent(t, `fresh write #1 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "d.go")))
+	wantSilent(t, `fresh write #2 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "e.go")))
+	if out := writeSourceForNudge(t, root, sid, filepath.Join(root, "f.go")); !strings.Contains(out, "3 unpaired source files") {
+		t.Errorf("full pairing must re-arm tier 1 (fires at the 3rd fresh file), got: %q", out)
 	}
 }
 
