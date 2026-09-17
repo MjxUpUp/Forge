@@ -12,8 +12,10 @@ import (
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
-// TestArtifactStartHint 钉住开工前提示的渲染契约。
-func TestArtifactStartHint(t *testing.T) {
+// TestTaskStart_ArtifactHint 钉住开工前提示的渲染契约（命名对齐 spec P3 验收
+// 围栏 `-run TestTaskStart`——复审 P3-2：TestArtifactStartHint 匹配不到围栏，
+// 假绿）。
+func TestTaskStart_ArtifactHint(t *testing.T) {
 	root := t.TempDir() // 无 schema.yaml → 默认链 proposal→spec→design→plan
 
 	st := &taskpipeline.TaskState{TaskRef: "feat/hint"}

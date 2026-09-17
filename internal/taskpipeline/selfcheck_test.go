@@ -319,3 +319,37 @@ func TestBackstopEntrySharesVerifyShape(t *testing.T) {
 		t.Errorf("no first-line signal → discovery on the backstop layer too, got %q", e.Outcome)
 	}
 }
+
+// TestFoldRepeatAdvisory_ResultSetChangeRefolds pins review P2-1: with >3
+// missing files the Detail shows only the count + first 3 names — the fold
+// decision must compare the FULL set (via Meta), so swapping the 4th file
+// (same count, same head-3) must NOT fold: the new file's name must reach
+// stderr (the nameless-signal failure mode P1-B exists to kill).
+//
+// TestFoldRepeatAdvisory_ResultSetChangeRefolds 钉住复审 P2-1：>3 缺测文件时
+// Detail 只含计数+前 3 名——折叠判定必须比对**全量集合**（走 Meta），第 4 个文件
+// 换血（计数同、前 3 同）不得折叠：新文件名必须到达 stderr（P1-B 要消灭的正是
+// 无名信号）。
+func TestFoldRepeatAdvisory_ResultSetChangeRefolds(t *testing.T) {
+	root := t.TempDir()
+	st := &TaskState{TaskRef: "feat/fold-swap"}
+	first := []string{"a.go", "b.go", "c.go", "d.go"}
+
+	out1 := captureVerifyStderr(t, root, st, first)
+	if !strings.Contains(out1, "a.go") {
+		t.Fatalf("first advisory must list files, got: %q", out1)
+	}
+	// 换血：d 修掉、e 新增——计数 4 不变、前 3（a,b,c）不变，Detail 完全相同。
+	out2 := captureVerifyStderr(t, root, st, []string{"a.go", "b.go", "c.go", "e.go"})
+	if strings.Contains(out2, "unchanged since last verify") {
+		t.Fatalf("swapped 4th file must NOT fold (full-set compare), got: %q", out2)
+	}
+	if !strings.Contains(out2, "e.go") {
+		t.Errorf("the new file's name must reach stderr on the first disclosure, got: %q", out2)
+	}
+	// 真正集合不变（顺序不同）→ 折叠。
+	out3 := captureVerifyStderr(t, root, st, []string{"c.go", "e.go", "a.go", "b.go"})
+	if !strings.Contains(out3, "unchanged since last verify") {
+		t.Errorf("same full set (reordered) must fold, got: %q", out3)
+	}
+}
