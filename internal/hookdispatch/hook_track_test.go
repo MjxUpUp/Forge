@@ -332,12 +332,16 @@ func TestRunTestNudgeHook_TierEscalationAndPairingRemoval(t *testing.T) {
 
 // TestRunTestNudgeHook_Tier3GateConsequence pins the tier-3 contract: at 8 unpaired
 // files (remin m0's verify-time missing count) the nudge states the gate consequence
-// fact — task-verify BLOCKs at >=2 untested files with zero assertions — so the
-// signal previews the exact failure mode the gate would realize.
+// fact — the TASK-COMPLETE BACKSTOP BLOCKs at >=3 untested files with zero assertions
+// (testCoverageHardGateThreshold) — so the signal previews the exact failure mode the
+// gate would realize. The assertion pins the FULL sentence: threshold/gate-name drift
+// (known-limitation 4's sync duty) turns this test red.
 //
 // TestRunTestNudgeHook_Tier3GateConsequence 钉住 tier3 契约：8 个未配对文件
-// （remin m0 verify 实报的 missing 数）时 nudge 陈述门禁后果事实——task-verify 在
-// ≥2 未测文件且零断言时 BLOCK——信号预演的正是门禁将兑现的失败形态。
+// （remin m0 verify 实报的 missing 数）时 nudge 陈述门禁后果事实——task-complete
+// 兜底在 ≥3 未测文件且零断言时 BLOCK（锚 testCoverageHardGateThreshold）——信号
+// 预演的正是门禁将兑现的失败形态。断言钉**完整事实句**：阈值/门禁名漂移（已知
+// 限制 4 的同步义务）会让本测试变红。
 func TestRunTestNudgeHook_Tier3GateConsequence(t *testing.T) {
 	root := trackTestProject(t)
 	const sid = "sess-tn-3"
@@ -351,8 +355,18 @@ func TestRunTestNudgeHook_Tier3GateConsequence(t *testing.T) {
 	if !strings.Contains(out8, "8 unpaired source files") {
 		t.Errorf("8th unpaired file must fire the tier-3 reminder, got: %q", out8)
 	}
-	if !strings.Contains(out8, "BLOCKs the task") {
-		t.Errorf("tier-3 nudge must state the gate consequence fact, got: %q", out8)
+	// 解码 additionalContext 再断言完整事实句：>= 在 JSON 序列化里是 \u003e=，
+	// 直接 Contains 原句会因转义假阴。
+	var payload struct {
+		HookSpecificOutput struct {
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(out8), &payload); err != nil {
+		t.Fatalf("nudge output must be hook JSON, got %q: %v", out8, err)
+	}
+	if msg := payload.HookSpecificOutput.AdditionalContext; !strings.Contains(msg, "At >=3 untested source files with zero assertions, the task-complete backstop BLOCKs the task.") {
+		t.Errorf("tier-3 nudge must state the FULL gate-consequence fact (>=3, task-complete backstop), got: %q", msg)
 	}
 	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
 	if len(entries) != 3 {

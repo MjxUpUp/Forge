@@ -52,8 +52,12 @@ func syncVerifyDesignPhases(root string, state *TaskState) (gitChanged []string)
 // （缺测试时 Passed=false），让 forge trace 保留信号，只是不再用它阻断会话。
 // 预计算列表变体：gitChanged 已在 syncVerifyDesignPhases 为 phase 推断算过——覆盖门禁
 // 不得再跑一次 taskChangedFiles（2026-08-29 审查轮：双算消除）。
-func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string) error {
-	ok, missing, _ := checkTestCoverageChanged(root, state, gitChanged)
+// testCoverageEntry 构建 test-coverage 门禁条目（verify 与 complete backstop
+// 共用，守护审计 P1-2：两 gate 相位同口径，D1-D3 不再有「只见 advisory 层」的盲区）：
+// (1) D2 数据源——missing 计数/清单结构化落 Meta（Detail 散文无解析契约，回测脚本
+// 不得依赖；与 nudge 侧 unpaired_files/files 同口径、清单 ≤8 截断）；
+// (2) 失败时按事实级第一防线判定盖 outcome 章；通过条目不分类。
+func testCoverageEntry(root string, state *TaskState, ok bool, missing []string) *checklog.Entry {
 	entry := &checklog.Entry{
 		Check:   CheckNameTestCoverage,
 		Passed:  ok,
@@ -61,9 +65,6 @@ func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string)
 		TaskRef: state.TaskRef,
 		Detail:  testCoverageDetail(ok, missing),
 	}
-	// D2 度量数据源（doc-review L2 Major-1）：missing 计数/清单结构化落 Meta——
-	// Detail 散文无解析契约，回测脚本不得依赖；与 nudge 侧 unpaired_files/files
-	// 同口径、清单 ≤8 截断（Meta 值保持短字符串纪律）。
 	metaList := missing
 	if len(metaList) > 8 {
 		metaList = metaList[:8]
@@ -72,15 +73,20 @@ func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string)
 		"missing_files": fmt.Sprintf("%d", len(missing)),
 		"missing_list":  strings.Join(metaList, ","),
 	}
-	if !ok {
-		// 纪律优先分类（P1-A）：task 内送达过 test-nudge → confirmation（信号在、
-		// 未行动）；否则 → discovery（门禁是第一披露点）。通过条目不分类。
-		if nudgeDeliveredForTask(root, state.TaskRef) {
-			entry.Outcome = checklog.OutcomeConfirmation
-		} else {
-			entry.Outcome = checklog.OutcomeDiscovery
-		}
+	if !ok && firstLineHoldsFact(root, state.TaskRef, missing) {
+		entry.Outcome = checklog.OutcomeConfirmation
+	} else if !ok {
+		entry.Outcome = checklog.OutcomeDiscovery
 	}
+	return entry
+}
+
+func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string) error {
+	ok, missing, _ := checkTestCoverageChanged(root, state, gitChanged)
+	entry := testCoverageEntry(root, state, ok, missing)
+	// P4 折叠判据必须在 recordAudit **之前**取——查的是「上轮」同 check 同 Detail，
+	// 先落盘再查会匹配到本轮自己（首条 advisory 即被折叠的自匹配 bug）。
+	folded := !ok && priorIdenticalAdvisory(root, state.TaskRef, CheckNameTestCoverage, entry.Detail)
 	recordAudit(root, entry)
 	if !ok {
 		// 复发驱动升硬（recurrent.go）：advisory→hard 仅当两轴皆真才触发——项目 testing 维度历史
@@ -93,9 +99,31 @@ func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string)
 				return GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 testing 维度已 %d 次低分（达到阈值 %d）——advisory 靠自律在此项目已被证明失效，本次 %d 个源文件仍无配对测试。%s出路：补测试后重跑；或 FORGE_TEST_COVERAGE=disable（降 evidence Weak；重证据任务按证据缩放豁免）；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, lowDimCounts(cs)[dimTesting], recurrentThreshold(), len(missing), formatMissing(missing))
 			}
 		}
+		// P4 重复折叠：同 task 上轮 verify 的同 check 条目 Detail 与本轮完全相同 →
+		// stderr 只出 unchanged 一行（remin 实证：agent 原地 3 连跑，逐文件罗列重复
+		// 淹没信号）。checklog 条目已在上方照原文落盘——审计轨迹不变薄。
+		if folded {
+			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), fmt.Sprintf("test-coverage advisory unchanged since last verify（%d 个源文件仍无配对测试）——修复后输出将恢复完整", len(missing)))
+			return nil
+		}
 		fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), formatMissing(missing))
 	}
 	return nil
+}
+
+// priorIdenticalAdvisory 报告同 task 是否已存在同 check 同 Detail 的先导条目
+// （P4 折叠判据：内容完全未变才折叠——missing 清单变化即恢复完整输出）。
+func priorIdenticalAdvisory(root, taskRef string, check checklog.CheckName, detail string) bool {
+	entries, err := checklog.LoadForTask(root, taskRef)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.Check == check && e.Detail == detail {
+			return true
+		}
+	}
+	return false
 }
 
 // checkVerifyScopeDrift 是 task-verify 的 scope-drift advisory（PlanScope whitelist）：任务

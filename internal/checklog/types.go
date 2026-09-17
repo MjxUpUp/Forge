@@ -114,15 +114,44 @@ const (
 	// 子 agent 活动此前在 forge 侧零记录，sessions.jsonl 约 53% 会话缺 agent_type
 	// （2026-08 归因审计）。
 	CheckSubagentStop CheckName = "subagent-stop"
-	// CheckTestNudge records one mid-task test reminder fired by the test-nudge hook (2026-08-22, #4-E): the session counter saw >=3 non-test source writes with zero paired test writes since the last reset.
+	// CheckTestNudge records one mid-task test reminder fired by the test-nudge hook
+	// (2026-08-22 #4-E; discipline-first P1-B 2026-09-17): the task-scoped unpaired-
+	// FILE set crossed an escalation tier (3/5/8). Meta carries unpaired_files (count),
+	// tier, and files (newest ≤8, forward-slash repo-relative) — the fact-level
+	// confirmation lookup intersects this list against a failing gate's missing set.
 	//
-	// CheckTestNudge 记录 test-nudge hook 发出的一次事中测试提醒（2026-08-22，
-	// #4-E）：会话计数器看到自上次重置以来 >=3 次非测试源码写入且 0 次配对测试
-	// 写入。它是 task-verify test-coverage 门禁的事中伴随（门禁只在 verify 时刻
-	// 触发，往往在代码写完数小时后）；nudge 在 agent 还能便宜修复的时机抓住漂移。
-	// deterministic（计数器在 hook 侧，agent 无法伪造）但属过程漂移的 OBSERVATION
-	// 而非任何验证——与其他条目一样排除出 evidence strength。
+	// CheckTestNudge 记录 test-nudge hook 发出的一次事中测试提醒（2026-08-22
+	// #4-E；discipline-first P1-B 2026-09-17）：任务作用域的未配对**文件**集合跨过
+	// 升级档位（3/5/8）。Meta 携带 unpaired_files（计数）、tier、files（最新 ≤8、
+	// 仓库相对 forward-slash）——事实级 confirmation 判定拿这份清单与失败门禁的
+	// missing 集合求交集。它是 task-verify test-coverage 门禁的事中伴随（门禁只在
+	// verify 时刻触发，往往在代码写完数小时后）；nudge 在 agent 还能便宜修复的
+	// 时机抓住漂移。deterministic（hook 侧实算，agent 无法伪造）但属过程漂移的
+	// OBSERVATION 而非任何验证——与其他条目一样排除出 evidence strength。
 	CheckTestNudge CheckName = "test-nudge"
+	// CheckSelfcheckPairing records one `forge selfcheck pairing` run: the agent
+	// proactively ran the mirror computation of the test-coverage gate over its
+	// own task's change set (discipline-first-gates P2). ANY result counts as
+	// the first line holding the fact — a later failing gate with this entry
+	// present is classified confirmation (agent knew and did not act), not
+	// discovery. deterministic（同一计算路径）但属自检观察，排除出 evidence
+	// strength——它声明的是「agent 看过这个事实」，不是「事实已被修复」。
+	//
+	// CheckSelfcheckPairing 记录一次 `forge selfcheck pairing` 运行：agent 对
+	// 自己任务的改动集主动跑了 test-coverage 门禁的镜像计算
+	// （discipline-first-gates P2）。任意结果都算第一防线已持有该事实——其后
+	// 失败的门禁在该条在场时归 confirmation（已知未行动）而非 discovery。
+	// deterministic（同一计算路径）但属自检观察，排除出 evidence strength——
+	// 它声明「agent 看过这个事实」，不声明「事实已被修复」。
+	CheckSelfcheckPairing CheckName = "selfcheck-pairing"
+	// CheckSelfcheckScope records one `forge selfcheck scope` run — the
+	// PlanScope-drift mirror probe (discipline-first-gates P2). Same
+	// confirmation-classification contract as CheckSelfcheckPairing.
+	//
+	// CheckSelfcheckScope 记录一次 `forge selfcheck scope` 运行——PlanScope
+	// 漂移的镜像探针（discipline-first-gates P2）。与 CheckSelfcheckPairing
+	// 同款 confirmation 分类契约。
+	CheckSelfcheckScope CheckName = "selfcheck-scope"
 	// CheckConventionsInject records one conventions-layer injection fired by the conventions hooks (2026-08-28).
 	//
 	// CheckConventionsInject 记录 conventions 层的一次注入（2026-08-28，
