@@ -126,8 +126,6 @@ go test ./...
 go vet ./...
 ```
 
-## 回测流程
-
 ## P1-A checklog `outcome` 字段（confirmation / discovery）
 
 **语义**（只盖在**失败**的 verify 期门禁条目上；通过/历史条目留空=未分类）：
