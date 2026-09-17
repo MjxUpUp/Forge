@@ -352,4 +352,14 @@ func TestFoldRepeatAdvisory_ResultSetChangeRefolds(t *testing.T) {
 	if !strings.Contains(out3, "unchanged since last verify") {
 		t.Errorf("same full set (reordered) must fold, got: %q", out3)
 	}
+	// PASS 穿插（增量复审 P3）：FAIL{a,b}→PASS→FAIL{a,b}——最近披露是空集，
+	// "unchanged" 是假陈述，且复发集合的第一披露（文件名）不得被吞。
+	captureVerifyStderr(t, root, st, nil) // 干净一轮（PASS，missing=0）
+	out4 := captureVerifyStderr(t, root, st, []string{"a.go", "b.go", "c.go", "e.go"})
+	if strings.Contains(out4, "unchanged since last verify") {
+		t.Fatalf("recurrence after a PASS round must NOT fold (last disclosure was empty), got: %q", out4)
+	}
+	if !strings.Contains(out4, "a.go") {
+		t.Errorf("recurred set must re-disclose file names in full, got: %q", out4)
+	}
 }

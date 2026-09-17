@@ -117,32 +117,41 @@ func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string)
 }
 
 // priorCoverageUnchanged 报告本批 missing 与该 task **最近一条** test-coverage
-// 条目披露的全量集合是否相同（P4 折叠判据）。三点纪律（复审 P2-1/P3-3）：
+// 条目披露的全量集合是否相同（P4 折叠判据）。纪律（复审 P2-1/P3-3 + 增量复审 P3）：
 // (1) 比对 Meta missing_list（全量、≤8 截断）而非 Detail（>3 文件只含前 3 名，
 //     作键会假折叠换血文件）；
 // (2) 只与最近一条比，不与任意先前条目比——轮次回绕（X→Y→X）不折叠；
-// (3) >8 文件（清单被截断）一律不折叠——保守方向：宁可重复完整输出，不可吞掉
-//     第一披露。
+// (3) **计数守卫**：最近条目的 missing_files 计数与本轮相同才比清单——封死
+//     PASS 穿插（FAIL→PASS→FAIL 同集：最近披露是空集，"unchanged" 是假陈述）
+//     与前驱 >8 截断（12 个截成 8、恰与本轮 8 个排序相等的假折叠）；
+// (4) 文件名含 ","（Meta 逗号编码歧义）或本轮 >8（清单截断）一律不折叠——
+//     保守方向：宁可重复完整输出，不可吞掉第一披露。
 func priorCoverageUnchanged(root, taskRef string, missing []string) bool {
 	if len(missing) == 0 || len(missing) > 8 {
 		return false
+	}
+	for _, f := range missing {
+		if strings.Contains(f, ",") {
+			return false
+		}
 	}
 	entries, err := checklog.LoadForTask(root, taskRef)
 	if err != nil {
 		return false
 	}
-	var last string
+	var lastList, lastCount string
 	found := false
 	for _, e := range entries {
-		if e.Check == CheckNameTestCoverage && e.Meta["missing_list"] != "" {
-			last = e.Meta["missing_list"]
-			found = true
+		if e.Check == CheckNameTestCoverage {
+			// 取最近一条（含 PASS——计数守卫拦下空集）；Meta 缺失的
+			// 历史条目视作不可比。
+			lastList, lastCount, found = e.Meta["missing_list"], e.Meta["missing_files"], true
 		}
 	}
-	if !found {
+	if !found || lastCount != fmt.Sprintf("%d", len(missing)) {
 		return false
 	}
-	return sortedJoin(missing) == sortedJoin(splitList(last))
+	return sortedJoin(missing) == sortedJoin(splitList(lastList))
 }
 
 // splitList 把逗号分隔清单拆为切片（trimmed、跳过空段）。
