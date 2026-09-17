@@ -62,14 +62,13 @@ func TestNudgeDeliveredForTask(t *testing.T) {
 		t.Fatal("delivered nudge → true")
 	}
 
-	// 其他 task 的 nudge 不串号。
-	other := t.TempDir()
-	const ref2 = "feat/other-task"
-	if err := checklog.Record(other, &checklog.Entry{Check: checklog.CheckTestNudge, TaskRef: ref2, Passed: true, Delivered: deliveredPtr(true)}); err != nil {
+	// 同 root 其他 task 的 nudge 不串号（LoadForTask 按 TaskRef 过滤——outcome
+	// 判定依赖的真轴；跨 root 隔离由 store 层路径分离保证，不在此重复钉）。
+	if err := checklog.Record(root, &checklog.Entry{Check: checklog.CheckTestNudge, TaskRef: "feat/other-task", Passed: true, Delivered: deliveredPtr(true)}); err != nil {
 		t.Fatal(err)
 	}
-	if nudgeDeliveredForTask(root, ref2) {
-		t.Fatal("entries in another root must not leak into this task's lookup")
+	if nudgeDeliveredForTask(root, "feat/third-task") {
+		t.Fatal("another task's delivered nudge in the same root must not leak into this task's lookup")
 	}
 }
 
