@@ -1,9 +1,12 @@
 # 纪律第一防线：门禁时间再分布（2026-09-17 立项）
 
-> 背景：remin 项目（`~/.forge/projects/9fe95966d4ec`，2026-09-17 单会话 6 任务）的
-> checklog 审计证实：全部 115 次门禁类触发中 83% 落在 task-start/verify/complete
-> 锚点 ±60s 内；m0 编码 26 分钟门禁零反馈，verify 时 12+ 门禁 15 秒内倾泻，报
-> "missing tests for 8 files" 后花 31 分钟补救性补测。结论：门禁系统只有两种时间
+> 背景（remin，`~/.forge/projects/9fe95966d4ec`，2026-09-17 单会话 7 个 task_ref，
+> checklog 300 行）：按本节口径，门禁类 check ∈ {test-coverage-gate, scope-drift,
+> cheat-scan, unused-scan, test-capability-scan, acceptance, artifact-chain,
+> plan-first, unused-gate, doc-gate, doc-lint, review-pass, branch-unmerged} 共触发
+> 115 次，其中 96 次（83%）落在 task-started/task-verify/task-complete 锚点 ±60s
+> 内；m0 编码 26 分钟门禁零反馈，verify 时 12+ 门禁 15 秒内倾泻，报
+> "missing tests for 8 files" 后花 ~31 分钟补救性补测。结论：门禁系统只有两种时间
 > 模式——工作期低语（可忽略）、终点一次性咆哮（为时已晚）。
 
 ## 原则（本 spec 的全部改动不得违反）
@@ -21,10 +24,15 @@
 
 | 指标 | 定义 | 数据源 | 基线 | 目标 |
 |---|---|---|---|---|
-| D1 discovery rate | 失败门禁条目中 `outcome=discovery` 占比（discovery/(discovery+confirmation)） | checklog `outcome` 字段 | 无字段（本 spec 前不可测） | 30 天窗口内单调下降 |
-| D2 nudge 分档命中率 | test-nudge 跨档触发时点 task 的未配对文件数 vs 该任务 verify 时 missing 数 | checklog `unpaired_files` vs test-coverage detail | 无（nudge 数写入事件不数文件） | tier3 触发数 ≥ verify missing≥8 任务数（nudge 先于门禁看到同一事实） |
-| D3 纪律债兑现率 | `outcome=confirmation` 的条目占比（agent 被告知过但未行动） | checklog `outcome` | 无 | 观察指标：升=信号有效但未被执行，降+discovery 降=双好 |
-| 防伪护栏 | assertion density（scoring.CollectAssertionDensity）、cheat-scan 命中率不得恶化；test-nudge 触发总量不得超基线同 activity 水平的 1.5× | scoring / checklog | 2026-09 Forge 自举基线 | 护栏越线 → 对应改动 reject |
+| D1 discovery rate | `discovery/(discovery+confirmation)`（分母只含已分类的失败条目；未分类=历史/通过，排除） | checklog `outcome` 字段 | 无字段（本 spec 前不可测） | 周切片环比不升，连续 4 周趋势下降 |
+| D2 nudge 分档命中率 | nudge 跨档时的 `unpaired_files` vs 同任务 verify 条目 `missing_files`（两侧均结构化 Meta 键） | checklog `unpaired_files` vs `missing_files`/`missing_list` | 无（nudge 数写入事件不数文件） | tier3 触发数 ≥ verify missing≥8 任务数（nudge 先于门禁看到同一事实） |
+| D3 纪律债兑现率 | `confirmation/(discovery+confirmation)`（与 D1 同分母） | checklog `outcome` | 无 | 观察指标：升=信号有效但未被执行，降+D1 降=双好 |
+| 防伪护栏 | assertion density（scoring.CollectAssertionDensity）、cheat-scan 命中率不得恶化；test-nudge 触发总量 ≤ 同期非测试源码 Write/Edit 事件数 × 0.5（activity 度量：checklog test-nudge 观察轴上的源码写入事件；P1-B 跨档后每任务至多 3 次触发，该比值>0.5 即异常刷量） | scoring / checklog | 合入后首月用 `forge eval harness-audit` 钉数值基线并落盘 evals/（不预填数字） | 护栏越线 → 对应改动 reject |
+
+**P1-A 分类覆盖清单（v1）**：仅 `test-coverage-gate`（对 test-nudge）与
+`scope-drift` 的**失败**条目盖 outcome 章；cheat-scan / unused-scan /
+conventions-lint / cross-repo-impact 的失败条目 v1 不分类（D1 分母自动排除，
+不为它们虚标 discovery——补分类属 P3/P4 范围）。
 
 ## 分期
 
@@ -58,7 +66,9 @@ P2-P5 各自立项时补本格式 spec；本文只钉 P1 的设计与验收。
    `!ok` 时查 `checklog.LoadForTask` 中是否存在 `CheckTestNudge` 且 `Delivered=true`
    的先于本条目的记录——有则 `confirmation`，无则 `discovery`。
    `checkVerifyScopeDrift` 失败时恒 `discovery`（今日无上游信号——如实记录第一
-   防线缺口，为 P3 的 nudge 前移提供依据）。
+   防线缺口，为 P3 的 nudge 前移提供依据）。test-coverage 条目同步补结构化
+   Meta（`missing_files` 计数 + `missing_list` 清单 ≤8 截断）——D2 度量的门禁侧
+   数据源，回测脚本不解析无契约的 Detail 散文。
 
 验收命令见下方「P1 总验收」的 accept 围栏（verify-acceptance 实跑口径）。
 
@@ -95,6 +105,20 @@ verify。措辞无文件名、无档位、无后果，重复即噪声。
 
 验收命令见下方「P1 总验收」的 accept 围栏（verify-acceptance 实跑口径）。
 
+## 已知限制（如实披露，直接影响 D2 解读）
+
+1. **无锁读-改-写**（`hook_track.go` 状态文件）：并发 PostToolUse 的丢失窗口
+   最坏漏一次跨档触发（档位低报）——fail-open 方向，main 既有模式，未加锁。
+2. **Go 配对单向不对称**：门禁 `hasMatchingTest` 有 Go package 级兜底（同目录
+   任意 `_test.go` 即覆盖），nudge 侧 `TestPairsSource` 刻意不镜像（方向安全：
+   nudge 命中 ⊆ 门禁命中）——**nudge 的 unpaired 系统性 ≥ 门禁的 missing**，
+   D2 两侧对比时须计入此偏高。
+3. **SessionID 键控**：状态按会话隔离，同任务多会话并发时各自只见部分写入
+   （nudge 低报方向；task 内单会话为主流形态，remin 即如此）。
+4. **1.58 同步义务**：tier3 事实句锚定 `testCoverageHardGateThreshold`（当前
+   3，1.58 计划降 2）且 BLOCK 点在 task-complete 兜底——阈值变更必须同步
+   `hook_track.go` 的 tier3 文案与注释，否则事实性通道违规（审查 P1-1 已修一次）。
+
 ## P1 总验收（verify-acceptance 实跑口径；裸命令 = 退出码 0 判定）
 
 ```accept
@@ -107,9 +131,11 @@ go test ./...
 go vet ./...
 ```
 
-lint 口径：`golangci-lint run` 对本任务 diff **零新增**（存量 65 issues 为 main
-既有债务，不在本任务范围——仓库纪律：lint 只修它标记当前 diff 的部分；比对证据
-为 main worktree 同配额 65 issues 的对照组实测）。
+lint 口径：`golangci-lint run` 对本任务 diff **零新增**（存量 issues 为 main 既有
+债务，不在本任务范围——仓库纪律：lint 只修它标记当前 diff 的部分）。复算命令
+（对照组实测 65 issues，2026-09-17）：`git worktree add /tmp/x main` 后在
+`/tmp/x` 运行 `golangci-lint run`，与本分支同命令输出比对——新增数 = 分支数 −
+main 数，本任务实测为 0。
 
 ## 回测流程
 

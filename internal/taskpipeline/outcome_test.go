@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -96,6 +97,14 @@ func TestCheckVerifyTestCoverage_OutcomeStamp(t *testing.T) {
 		}
 		if e.Outcome != checklog.OutcomeDiscovery {
 			t.Errorf("no prior delivered nudge → outcome=discovery, got %q", e.Outcome)
+		}
+		// D2 度量数据源：missing 计数/清单必须结构化落 Meta——回测脚本不得
+		// 解析无契约的 Detail 散文（doc-review L2 Major-1）。
+		if e.Meta["missing_files"] != "2" {
+			t.Errorf("missing_files meta = %q, want 2", e.Meta["missing_files"])
+		}
+		if !strings.Contains(e.Meta["missing_list"], "internal/audit/audit.go") {
+			t.Errorf("missing_list meta must carry the file paths, got: %q", e.Meta["missing_list"])
 		}
 	})
 
