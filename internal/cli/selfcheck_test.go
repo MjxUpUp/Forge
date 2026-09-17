@@ -136,3 +136,59 @@ func TestSelfcheckScopeWithoutDeclarationIsNoop(t *testing.T) {
 		t.Errorf("output must explain the undeclared scope, got: %q", out)
 	}
 }
+
+// TestSelfcheckPairingEscapeActive pins the mirror-honesty contract (guard
+// supervision P2-3): under an active escape the GATE waives the check while
+// selfcheck still reports facts — the command must label that divergence AND
+// keep listing the files, or it teaches "escape = all clean" backwards. The
+// entry is still recorded (Passed=false, real missing_list).
+//
+// TestSelfcheckPairingEscapeActive 钉住镜像诚实契约（守护监督 P2-3）：逃生激活下
+// **门禁**豁免本检查而 selfcheck 照报事实——命令必须标注口径差**且**继续列文件，
+// 否则反向教出「逃生=全干净」。条目照落（Passed=false、真实 missing_list）。
+func TestSelfcheckPairingEscapeActive(t *testing.T) {
+	root := selfcheckGitProject(t)
+	bindSelfcheckTask(t, root, "sess-sc-esc", "feat/sc-escape")
+	// 激活 per-task 逃生（与 override --test-coverage disable 同一字段语义）。
+	st, err := taskpipeline.LoadTaskState(root, "feat/sc-escape")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Overrides.TestCoverage = "disable"
+	if err := taskpipeline.SaveTaskState(root, st); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "x.go"), []byte("package p\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = runSelfcheckPairing(selfcheckPairingCmd, nil)
+	})
+	if !strings.Contains(out, "escape active") {
+		t.Errorf("escape must be labeled, got: %q", out)
+	}
+	if !strings.Contains(out, "x.go") {
+		t.Errorf("facts must still be reported (file listed) under escape, got: %q", out)
+	}
+	if runErr == nil {
+		t.Error("unpaired files under escape still exit non-nil (fact, not gate)")
+	}
+	entries, err := checklog.LoadForTask(root, "feat/sc-escape")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Check == checklog.CheckSelfcheckPairing {
+			found = true
+			if e.Passed || e.Meta["missing_list"] != "x.go" {
+				t.Errorf("entry must record the real fact (Passed=false, missing_list=x.go), got %+v", e.Meta)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("selfcheck-pairing entry must be recorded under escape")
+	}
+}
