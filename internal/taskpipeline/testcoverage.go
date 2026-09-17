@@ -448,10 +448,22 @@ func testCandidates(src string) []string {
 // hasMatchingTest so a nudge-removed file is exactly a file the gate would stop
 // counting as missing.
 //
+// Known one-way asymmetry (by design, review P3): hasMatchingTest's Go
+// package-level fallback (ANY _test.go in the same dir covers the source) has no
+// mirror here — the nudge may keep naming a Go file the gate already considers
+// covered via a sibling test. Direction is safe (TestPairsSource hits ⊆
+// hasMatchingTest hits); do NOT "complete" it without revisiting the session-state
+// pairing semantics.
+//
 // TestPairsSource 报告 testPath 是否是 srcPath 的惯用直接配对测试
 // （discipline-first-gates P1-B）：nudge 侧的单文件探针。路径为仓库相对
 // forward-slash 形态。与门禁侧 hasMatchingTest 共用 testCandidates——nudge 移除的
 // 文件恰是门禁将不再计为 missing 的文件。
+//
+// 已知的单向不对称（设计如此，审查 P3）：hasMatchingTest 的 Go package 级兜底
+// （同目录任意 _test.go 即覆盖源码）在此无镜像——nudge 可能持续点名门禁已经
+// 视为已覆盖的 Go 文件。方向安全（TestPairsSource 命中 ⊆ hasMatchingTest 命中）；
+// 未重新审视会话态配对语义前不得「补齐」。
 func TestPairsSource(testPath, srcPath string) bool {
 	testPath = filepath.ToSlash(testPath)
 	for _, p := range testCandidates(srcPath) {

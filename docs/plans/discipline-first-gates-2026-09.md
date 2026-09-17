@@ -84,8 +84,10 @@ verify。措辞无文件名、无档位、无后果，重复即噪声。
      (task gate task-verify checks this pairing; whitelist: entry
      points/generated/pure types). Load the test-discipline skill …"
    - tier2（5）：同上 + 未配对文件名换新。
-   - tier3（8）：追加门禁后果事实："at ≥2 untested source files with zero
-     assertions task-verify BLOCKs the task"。
+   - tier3（8）：追加门禁后果事实（与 taskpipeline 真实规则同步锚定：
+     `testCoverageHardGateThreshold`，当前 3，BLOCK 点在 task-complete 兜底）——
+     "at >=3 untested source files with zero assertions the task-complete
+     backstop BLOCKs the task"。
 4. **Meta**：`unpaired_files`（数）、`tier`、`files`（逗号清单，≤8）。
    `Detail`：`test-nudge: N unpaired source files (tier T): a.go, b.go …`。
 5. **不变式**：活跃任务门控（任务外静默不落状态文件）、永不 block、每档一次、

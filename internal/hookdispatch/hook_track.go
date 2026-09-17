@@ -192,9 +192,21 @@ func runSubagentTrackHook(hookInput HookInput, root, version, agent string) erro
 }
 
 // testNudgeState 是持久化在 $TMPDIR/forge-testnudge/<sanitized-session>.json 的
-// 会话级计数器。与 skill-trigger marker 同寿命选择：会话 scope、短命、OS 定期
-// 清理（F6）——绝不进 GlobalHome（无 GC、无限增长）。
+// 未配对文件状态：**会话持久、任务作用域**——文件跨 task 存活（OS 定期清理的
+// 短命选择与 skill-trigger marker 同款，绝不进 GlobalHome），但集合语义属于单个
+// task：TaskRef 变更（同会话切任务，remin 常态）即整体重置。读-改-写无锁是
+// main 既有模式：并发 PostToolUse 的丢失窗口最坏漏一次跨档触发（档位低报），
+// fail-open 方向可接受；「每档一次」由 FiredTier 幂等性兜住大半。
 type testNudgeState struct {
+	// TaskRef scopes the unpaired set: a mismatch on read (session switched
+	// tasks) resets files and tier — carrying old files into a new task's nudges
+	// would name dead files "in this task" (false fact), stamp the new TaskRef
+	// on them, and corrupt the outcome-confirmation metric.
+	//
+	// TaskRef 给未配对集合定界：读取时不匹配（会话换了任务）即重置文件与档位
+	// ——把旧文件带进新任务的 nudge 会以新 task 名义点名死文件（假事实）、给
+	// 它们盖新 TaskRef，并污染 outcome 的 confirmation 度量。
+	TaskRef string `json:"task_ref"`
 	// UnpairedFiles lists the repo-relative (forward-slash) source paths written
 	// in this task that still have no paired test. File-level on purpose: the
 	// pre-P1 shape counted write EVENTS — one test write reset the whole streak
@@ -208,10 +220,14 @@ type testNudgeState struct {
 	UnpairedFiles []string `json:"unpaired_files"`
 	// FiredTier is the highest tier already fired for the current unpaired set;
 	// pairing removals relax it downward (0 = fully re-armed) so a re-crossing
-	// re-fires. One fire per tier — no per-write spam.
+	// re-fires. One fire per tier — no per-write spam. Oscillation (pair one,
+	// add one, cross the same tier again) re-fires each round by design; the
+	// anti-gaming guardrail (nudge 总量 ≤ 基线 1.5×) bounds the worst case.
 	//
 	// FiredTier 是对当前未配对集合已触发过的最高档位；配对移除使它回落
-	// （0 = 完全重新武装），再次跨档会重新触发。每档一次——不逐写刷屏。
+	// （0 = 完全重新武装），再次跨档会重新触发。每档一次——不逐写刷屏。振荡
+	// （配一个又加一个，反复跨同档）按设计会每轮重触发；防伪护栏（nudge 总量
+	// ≤ 基线 1.5×）兜住最坏情形。
 	FiredTier int `json:"fired_tier"`
 }
 
@@ -281,9 +297,15 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	if data, err := os.ReadFile(statePath); err == nil {
 		_ = json.Unmarshal(data, &state)
 	}
+	// 任务边界重置：状态文件随 session 存活，但集合属于当前 task——TaskRef
+	// 不匹配即清空（见 testNudgeState.TaskRef 的假事实/度量污染论证）。
+	if state.TaskRef != taskRef {
+		state = testNudgeState{TaskRef: taskRef}
+	}
 	rel := nudgeRelPath(root, fields.FilePath)
 
 	tier := 0
+	fire := false
 	if test {
 		// 配对移除：测试写入只带走它按惯例配对的源文件（TestPairsSource 与门禁
 		// hasMatchingTest 共用同一约定表——nudge 移除的恰是门禁将不再计 missing
@@ -306,22 +328,22 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 		tier = nudgeTier(len(state.UnpairedFiles))
 		if tier > state.FiredTier {
 			state.FiredTier = tier
-		} else {
-			tier = 0 // 未跨新档：本写静默（tier 0 = 不发）
+			fire = true
 		}
 	}
 	_ = os.MkdirAll(stateDir, 0755)
 	_ = util.AtomicWrite(statePath, mustJSONState(state), 0644)
-	if tier == 0 {
+	if !fire {
 		return nil
 	}
 
 	// 事实性提醒，非祈使（与 failure-track 同措辞纪律）。点名文件——无文件名的
 	// 信号不可行动（remin 病灶：19 条匿名计数全部被无视）。措辞用「unpaired
-	// source files」（文件级事实）；清单最多展示 3 个 + 溢出计数。
+	// source files」（文件级事实）；清单展示**最新** 3 个 + 溢出计数——tier2/3
+	// 的新增肇事文件必须可见，已在低档点名过的旧文件不重复。
 	shown := state.UnpairedFiles
 	if len(shown) > 3 {
-		shown = shown[:3]
+		shown = shown[len(shown)-3:]
 	}
 	filesList := strings.Join(shown, ", ")
 	more := ""
@@ -334,8 +356,11 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 			"Load the test-discipline skill for test quality guards: unit vs e2e split, assertion preservation, fake-test detection.",
 		len(state.UnpairedFiles), filesList, more)
 	if tier >= 3 {
-		// tier3：陈述门禁后果事实（非恐吓——正是 task-verify 将执行的规则）。
-		nudge += " At >=2 untested source files with zero assertions, task-verify BLOCKs the task."
+		// tier3：陈述门禁后果事实。阈值与 BLOCK 点须与 taskpipeline 真实规则
+		// 同步：testCoverageHardGateThreshold（当前 3；1.58 计划降 2）且兜底
+		// 在 task-complete（executor_check_complete.go），非 task-verify 自身。
+		// 改那边不改这里是事实性通道违规（审查 P1-1）。
+		nudge += " At >=3 untested source files with zero assertions, the task-complete backstop BLOCKs the task."
 	}
 	// 记录观察（Delivered 用与输出同一通道判定盖章——PostToolUse 上已接线的宿主
 	// 都把 allow-detail 送进上下文，但按宿主诚实判定而非假设；kimi 上本 nudge

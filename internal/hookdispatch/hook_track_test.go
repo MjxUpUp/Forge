@@ -301,6 +301,16 @@ func TestRunTestNudgeHook_TierEscalationAndPairingRemoval(t *testing.T) {
 	if !strings.Contains(out6, "5 unpaired source files") {
 		t.Errorf("5th unpaired file must fire the tier-2 reminder, got: %q", out6)
 	}
+	// tier2 点名**最新**的肇事文件（d/e/f）——永远只点名最早 3 个会让新增文件
+	// 不可行动（spec P1-B：tier2 未配对文件名换新）。
+	for _, fresh := range []string{"d.go", "e.go", "f.go"} {
+		if !strings.Contains(out6, fresh) {
+			t.Errorf("tier-2 nudge must name the newest file %s, got: %q", fresh, out6)
+		}
+	}
+	if strings.Contains(out6, "b.go") {
+		t.Errorf("tier-2 nudge must not re-name files already named at tier 1, got: %q", out6)
+	}
 
 	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
 	if len(entries) != 2 {
@@ -692,5 +702,58 @@ func TestHookToolTrackRecordsGrepInput(t *testing.T) {
 	}
 	if !strings.Contains(body, "DSH_HOME") || !strings.Contains(body, "internal/") {
 		t.Errorf("Grep 的 tool_input 须记 pattern+path（审计载荷，与 Bash/Skill/Agent 同待遇）, got: %s", body)
+	}
+}
+
+// TestRunTestNudgeHook_TaskBoundaryResets pins the task-scoped contract: the
+// unpaired set belongs to ONE task — a session switching tasks (remin: 6 tasks
+// in one session) must not carry old files into the new task's nudges. A stale
+// carry-over would name dead files "in this task" (false fact), stamp the new
+// TaskRef on them, and corrupt the D1/D3 confirmation metric.
+//
+// TestRunTestNudgeHook_TaskBoundaryResets 钉住任务作用域契约：未配对集合属于
+// **单个** task——会话切换任务（remin：单会话 6 任务）不得把旧文件带进新任务的
+// nudge。陈旧携带会以新 task 名义点名已死文件（假事实）、给它们盖新 TaskRef、
+// 并污染 D1/D3 的 confirmation 度量。
+func TestRunTestNudgeHook_TaskBoundaryResets(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-5"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/task-a")
+
+	// task A：3 个文件触发 tier1。
+	for _, f := range []string{"a.go", "b.go", "c.go"} {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, f))
+	}
+
+	// 同一 session 切换到 task B：集合必须归零重置。
+	startTrackTask(t, root, sid, "feat/task-b")
+	wantSilent(t, `fresh task's first write must be silent (set reset at task boundary)`,
+		writeSourceForNudge(t, root, sid, filepath.Join(root, "d.go")))
+	wantSilent(t, `second write below tier 1`, writeSourceForNudge(t, root, sid, filepath.Join(root, "e.go")))
+	outF := writeSourceForNudge(t, root, sid, filepath.Join(root, "f.go"))
+	if !strings.Contains(outF, "3 unpaired source files") {
+		t.Errorf("task B's 3rd file must fire tier 1 fresh, got: %q", outF)
+	}
+	// 新任务的 nudge 只点名本任务文件——旧任务文件绝不再出现（假事实防线）。
+	for _, stale := range []string{"a.go", "b.go", "c.go"} {
+		if strings.Contains(outF, stale) {
+			t.Errorf("nudge for task B must not name task A's stale file %s, got: %q", stale, outF)
+		}
+	}
+	for _, fresh := range []string{"d.go", "e.go", "f.go"} {
+		if !strings.Contains(outF, fresh) {
+			t.Errorf("nudge for task B must name %s, got: %q", fresh, outF)
+		}
+	}
+	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
+	if len(entries) != 2 {
+		t.Fatalf("CheckTestNudge entries = %d, want 2 (one per task)", len(entries))
+	}
+	if entries[1].TaskRef != "feat/task-b" {
+		t.Errorf("second nudge must carry task B's ref, got %q", entries[1].TaskRef)
+	}
+	if entries[1].Meta["unpaired_files"] != "3" {
+		t.Errorf("task B nudge unpaired = %q, want 3 (no carry-over)", entries[1].Meta["unpaired_files"])
 	}
 }
