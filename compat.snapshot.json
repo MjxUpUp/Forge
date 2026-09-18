@@ -501,6 +501,15 @@
       ]
     },
     {
+      "path": "forge selfcheck"
+    },
+    {
+      "path": "forge selfcheck pairing"
+    },
+    {
+      "path": "forge selfcheck scope"
+    },
+    {
       "path": "forge skills"
     },
     {
@@ -1165,6 +1174,8 @@
     "review-pass",
     "scope-drift",
     "self-report-consistency",
+    "selfcheck-pairing",
+    "selfcheck-scope",
     "skill-trigger",
     "subagent-stop",
     "sync-version-skew",

@@ -28,3 +28,28 @@ func TestArtifactChainChecksInRoster(t *testing.T) {
 		}
 	}
 }
+
+// TestSelfcheckChecksInRoster 钉住 selfcheck 两 CheckName 进 roster（discipline-first
+// P2）：漏登记 = selfcheck 条目落盘但 compat 面/看板看不到——镜像自检的落痕对分析
+// 面不可见。
+func TestSelfcheckChecksInRoster(t *testing.T) {
+	want := map[CheckName]string{
+		CheckSelfcheckPairing: "selfcheck-pairing",
+		CheckSelfcheckScope:   "selfcheck-scope",
+	}
+	for name, lit := range want {
+		if string(name) != lit {
+			t.Errorf("常量值漂移: %q != %q", name, lit)
+		}
+	}
+	roster := AllCheckNames()
+	seen := make(map[string]bool, len(roster))
+	for _, n := range roster {
+		seen[n] = true
+	}
+	for _, lit := range want {
+		if !seen[lit] {
+			t.Errorf("AllCheckNames 缺 %q——escape.go allCheckNames 未同步", lit)
+		}
+	}
+}
