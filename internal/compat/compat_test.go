@@ -76,6 +76,14 @@ func TestScanBlockings(t *testing.T) {
 	}
 }
 
+// rosterExtraSources 登记 EscapeEnvs 中常量不在 taskpipeline 扫描面的条目
+// (env → 所在源文件)。守卫不放松:文件必须存在且字面量在场——搬家/改名/
+// 删除都会红。新增条目须带一句所在层的理由。
+var rosterExtraSources = map[string]string{
+	"FORGE_TASK_DRIFT":       "../hookdispatch/hook_task_drift.go", // hookdispatch 层:task-drift BLOCK ratchet 的逃生
+	"FORGE_TASK_VERIFY_STOP": "../hooks/embed_quality.go",          // bash embed 层:task-verify Stop 有界阻断的逃生
+}
+
 // TestEscapeRosterComplete 守卫（对抗审查 should-fix：原注释宣称源对照而实际
 // 只查非空——执法点虚设）：源扫描 taskpipeline 里 escapeDisabled 使用的
 // *DisableEnv 常量与 EscapeEnvs 双向对齐。
@@ -138,9 +146,21 @@ func TestEscapeRosterComplete(t *testing.T) {
 		}
 	}
 	for env := range roster {
-		if !inSrc[env] {
-			t.Errorf("roster 里的 %s 在 taskpipeline 源中无对应常量（逃生舱已删除？同步 roster）", env)
+		if inSrc[env] {
+			continue
 		}
+		// rosterExtraSources:常量不在 taskpipeline 扫描面的逃生舱的显式登记
+		// (env → 所在源文件)。守卫不放松:文件必须存在**且**字面量在场——
+		// 搬家/改名/删除都会红(escape-hatch-hardening P1:FORGE_TASK_DRIFT 在
+		// hookdispatch,FORGE_TASK_VERIFY_STOP 在 bash embed 字符串)。
+		if f, ok := rosterExtraSources[env]; ok {
+			if body, err := os.ReadFile(f); err == nil && strings.Contains(string(body), env) {
+				continue
+			}
+			t.Errorf("roster 条目 %s 登记的外部源 %s 缺失或不再包含该字面量（逃生舱搬家/改名?同步登记）", env, f)
+			continue
+		}
+		t.Errorf("roster 里的 %s 在 taskpipeline 源中无对应常量（逃生舱已删除？同步 roster）", env)
 	}
 	sorted := append([]string(nil), EscapeEnvs...)
 	sort.Strings(sorted)

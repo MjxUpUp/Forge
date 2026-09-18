@@ -160,6 +160,37 @@ const (
 	// 本条目**不**参与 outcome 分类（scope-drift 失败仍恒 discovery——scope 侧
 	// 尚无上游信号接线）。
 	CheckSelfcheckScope CheckName = "selfcheck-scope"
+	// CheckTestNudgeState records one throttled AUDIT row from the test-nudge
+	// hook's suppressed path (escape-hatch-hardening P0-A): after the tier
+	// ceiling is reached, every 20th non-escalating source-write evaluation
+	// leaves this row so the audit trail never goes silent (discipline-first
+	// principle 2; 2026-09-18 forensics: 150+ writes past the ceiling produced
+	// zero records). Delivered is explicitly false — audit-only, never injected.
+	// Distinct check name on purpose: the D1-D3 metrics and anti-gaming guard
+	// count check name `test-nudge`; state rows must not pollute their
+	// denominators.
+	//
+	// CheckTestNudgeState 记录 test-nudge 压制路径的节流审计行
+	// （escape-hatch-hardening P0-A）：tier 天花板打满后,每累计 20 次非升档
+	// 源码写入评估落一行本条目——审计轨迹永不静默（discipline-first 原则 2；
+	// 2026-09-18 取证:天花板后 150+ 次写入零记录）。Delivered 显式
+	// false——纯审计,绝不注入。刻意用独立 check 名：D1-D3 度量与防伪护栏
+	// 按 check 名 `test-nudge` 统计,状态行不得污染其分母。
+	CheckTestNudgeState CheckName = "test-nudge-state"
+	// CheckTaskDrift records one task-drift advisory (escape-hatch-hardening
+	// P0-B): a git boundary verb (commit/merge/branch/checkout -b/switch -c)
+	// executed while the repo sits OUTSIDE the active task's branch. Passed=
+	// false, Level=warn, never blocks in P0. The 2026-09-18 forensics: the
+	// agent ran 5 commits + 3 branch creations + 2 merges beyond the task
+	// branch with zero mediation — the pipeline's only choke point was a verb
+	// the agent never used.
+	//
+	// CheckTaskDrift 记录一次 task-drift advisory（escape-hatch-hardening
+	// P0-B）：git 边界动词（commit/merge/branch/checkout -b/switch -c）在
+	// 活跃任务分支之外执行。Passed=false、Level=warn、P0 永不阻断。
+	// 2026-09-18 取证:agent 在任务分支之外 5 次 commit + 3 次建分支 + 2 次
+	// merge 全程无中介——管线唯一的 choke point 挂在 agent 不会用的动词上。
+	CheckTaskDrift CheckName = "task-drift"
 	// CheckConventionsInject records one conventions-layer injection fired by the conventions hooks (2026-08-28).
 	//
 	// CheckConventionsInject 记录 conventions 层的一次注入（2026-08-28，

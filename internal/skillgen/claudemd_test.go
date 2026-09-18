@@ -546,3 +546,31 @@ func TestForgeSectionMarkersAliasUtil(t *testing.T) {
 		t.Fatalf("marker literal drifted: %q/%q", forgeSectionStart, forgeSectionEnd)
 	}
 }
+
+// TestClaudeMDDocumentsTaskDriftHook 钉住 task-drift 的文档行（escape-hatch-
+// hardening P0-B,与 TestClaudeMDDocumentsDocLintHook 同锚定形态）:wired-hook
+// 守卫只查名字出现,这里锚定关键语义——advisory 不阻断 + 三条出口（回任务
+// 分支/gate/abort）——agent 冷撞 advisory 时有解法可读。
+func TestClaudeMDDocumentsTaskDriftHook(t *testing.T) {
+	body := buildForgeSection(true)
+	if !strings.Contains(body, "**task-drift**") {
+		t.Fatal("forge 段缺 **task-drift** 文档行")
+	}
+	for _, want := range []string{"任务分支之外", "forge task abort"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task-drift 文档行缺关键语义 %q（漂移判定或显式弃任务出口）", want)
+		}
+	}
+}
+
+// TestClaudeMDDocumentsStopBoundedBlock 钉住 task-verify Stop 有界阻断的文档行
+// (escape-hatch-hardening P1):wired-hook 守卫不覆盖门禁顺序段,这里锚定
+// 限额/逃生语义——agent 冷撞 Stop 阻断时有解法可读。
+func TestClaudeMDDocumentsStopBoundedBlock(t *testing.T) {
+	body := buildForgeSection(true)
+	for _, want := range []string{"Stop 有界阻断", "FORGE_TASK_VERIFY_STOP=0", "forge task abort"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task-verify 文档行缺关键语义 %q(限额/逃生/弃任务出口)", want)
+		}
+	}
+}

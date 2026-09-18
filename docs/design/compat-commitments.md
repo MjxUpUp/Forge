@@ -26,10 +26,11 @@
 ## 三、生效口径与存量处理
 
 - 本契约自首个含本文档的版本生效。本批新增门禁（held-out / self-report / gate push 等）与契约同版本首发——按第 2 节②无预告义务；1.50.0 及更早的已发布版本不含它们，无存量用户暴露。
-- 既有逃生舱（FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY / FORGE_ACCEPTANCE_GATE / FORGE_DOC_GATE / FORGE_SKILL_DECISIONS / FORGE_SELF_REPORT / FORGE_HELDOUT / FORGE_GATE_PUSH）：**不设 TTL**（env 传入式 = 不传即失效），但 dashboard 逃生舱库存提供永久化与 unfulfilled 候选信号（复查而非过期——调研反框架律：衰减靠复查不靠硬过期）。
+- 既有逃生舱（FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY / FORGE_ACCEPTANCE_GATE / FORGE_DOC_GATE / FORGE_SKILL_DECISIONS / FORGE_SELF_REPORT / FORGE_HELDOUT / FORGE_GATE_PUSH / FORGE_TASK_DRIFT / FORGE_TASK_VERIFY_STOP）：**不设 TTL**（env 传入式 = 不传即失效），但 dashboard 逃生舱库存提供永久化与 unfulfilled 候选信号（复查而非过期——调研反框架律：衰减靠复查不靠硬过期）。基础设施旋钮（非门禁逃生,不列舱位）：FORGE_HOOK_DEDUP_WINDOW（dispatch 幂等窗口,0=禁用）。
 
 ### 存量处理裁决记录
 
+- **2026-09-18 task-drift BLOCK ratchet（机械版本门先例）**：task-drift（escape-hatch-hardening P1）1.64 以 advisory 首发,预告文案载明「自 1.66 起 advisory 转 BLOCK」,**且 ratchet 以代码内版本门机械生效**（`util.CompareVersions(version, "1.66.0")`——非 gate-cmd-form 式「文案承诺、实现另行跟进」的软预告;后者 1.58 承诺至今未兑现,记为已知债）。逃生舱 `FORGE_TASK_DRIFT=0`（留 checklog escape-hatch 行,evidence 封顶 Weak）;另有**会话阻断上限 5 次**（超限自动降级 advisory——有界阻断,防 deny 死循环;CC Stop hook 8 次强制放行同哲学）。
 - **2026-09-06 死代码清扫批**：移除 4 个命令（clone check / suggest 族 / skills analyze、mine）未走 ≥2 minor 预告。可辩护依据：① 零使用证据（本机 checklog 全史无痕迹 + npm 从未发布含冻结标注的版本——冻结声明从未出海，无存量用户接触）；② 决策文档 feature-focus §2.3 冻结决议留痕在先；③ CHANGELOG 行为变更节 + 迁移指引齐备。**援引边界**：此裁决不可作为常规命令删除的先例——若无同等零使用证据，命令删除必须走预告流程。
 
 ## 四、刻意不做（记录裁决，防重新发明）

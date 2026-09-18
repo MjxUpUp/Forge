@@ -101,6 +101,8 @@ var EscapeEnvs = []string{
 	"FORGE_ARTIFACT_CHAIN",
 	"FORGE_REQ_HYGIENE",
 	"FORGE_UNUSED_SCAN",
+	"FORGE_TASK_DRIFT",
+	"FORGE_TASK_VERIFY_STOP",
 }
 
 // AllCheckNames 返回 checklog 常量 roster 的排序列表。

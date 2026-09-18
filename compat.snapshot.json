@@ -1182,11 +1182,13 @@
     "sync-version-skew",
     "takeover-policy",
     "task-complete",
+    "task-drift",
     "task-guard",
     "task-stalled",
     "task-started",
     "task-verify",
     "test-nudge",
+    "test-nudge-state",
     "tool-failure",
     "unused-scan"
   ],
@@ -1199,6 +1201,8 @@
     "FORGE_REQ_HYGIENE",
     "FORGE_SELF_REPORT",
     "FORGE_SKILL_DECISIONS",
+    "FORGE_TASK_DRIFT",
+    "FORGE_TASK_VERIFY_STOP",
     "FORGE_TEST_COVERAGE",
     "FORGE_UNUSED_SCAN",
     "FORGE_WORK_ACTIVITY"

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -204,4 +205,56 @@ func newWildGitRepo(t *testing.T) string {
 		}
 	}
 	return root
+}
+
+// TestTaskWildEscalatesOverQuotaAndRecordsEscapeHatch 钉住 AC-3(10) 受审计
+// 逃生补强(escape-hatch-hardening P2):①每条申报落 checklog escape-hatch 行
+// (gate=task-wild/reason=declarative/owner,进统一漏斗);②超会话限额(3)后
+// 输出升级提示(不拒绝——逃生舱永在);③有活跃任务时的更强异常信号行。
+func TestTaskWildEscalatesOverQuotaAndRecordsEscapeHatch(t *testing.T) {
+	root := newWildGitRepo(t)
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+
+	run := func(note string) string {
+		var buf bytes.Buffer
+		cmd := &cobra.Command{}
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+		if err := clitask.RunTaskWild(cmd, []string{note}); err != nil {
+			t.Fatalf("RunTaskWild(%q): %v", note, err)
+		}
+		return buf.String()
+	}
+
+	within := run("第1条")
+	if strings.Contains(within, "超限额") {
+		t.Errorf("quota 内不得升级, got %q", within)
+	}
+	run("第2条")
+	run("第3条")
+	over := run("第4条")
+	if !strings.Contains(over, "超限额") || !strings.Contains(over, "forge task start") {
+		t.Errorf("第 4 条(>3)必须升级提示建任务, got %q", over)
+	}
+
+	hatch := 0
+	all, err := checklog.LoadAllAll(root)
+	if err != nil {
+		t.Fatalf("LoadAllAll: %v", err)
+	}
+	for _, e := range all {
+		if e.Check == checklog.CheckEscapeHatch && e.Meta["gate"] == "task-wild" {
+			hatch++
+			if e.Meta["reason"] != "declarative" || e.Meta["owner"] != "anonymous" {
+				t.Errorf("escape row meta = %v, want reason=declarative owner=anonymous(空会话)", e.Meta)
+			}
+		}
+	}
+	if hatch != 4 {
+		t.Errorf("每条申报须落一行 escape-hatch, got %d/4", hatch)
+	}
 }

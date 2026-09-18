@@ -128,6 +128,12 @@
       "timeout": 30
     },
     {
+      "event": "PreToolUse",
+      "matcher": "Bash",
+      "command": "forge hook task-drift --agent kimi",
+      "timeout": 30
+    },
+    {
       "event": "SessionStart",
       "command": "forge hook skill-scan --agent kimi",
       "timeout": 30
