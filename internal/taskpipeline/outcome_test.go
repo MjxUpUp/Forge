@@ -149,7 +149,7 @@ func TestCheckVerifyTestCoverage_OutcomeStamp(t *testing.T) {
 		if err := checklog.Record(root, &checklog.Entry{
 			Check: checklog.CheckTestNudge, TaskRef: st.TaskRef, Passed: true,
 			Delivered: deliveredPtr(true),
-			Meta: map[string]string{"files": "internal/audit/audit.go"},
+			Meta:      map[string]string{"files": "internal/audit/audit.go"},
 		}); err != nil {
 			t.Fatal(err)
 		}
