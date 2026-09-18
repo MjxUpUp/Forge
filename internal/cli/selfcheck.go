@@ -133,7 +133,7 @@ func runSelfcheckScope(cmd *cobra.Command, args []string) error {
 	recordSelfcheckEntry(root, state.TaskRef, checklog.CheckSelfcheckScope, len(drift) == 0,
 		fmt.Sprintf("selfcheck scope: %d drifted / scope %s", len(drift), strings.Join(state.PlanScope, ",")),
 		map[string]string{
-			"drift":      fmt.Sprintf("%d", len(drift)),
+			"drift":       fmt.Sprintf("%d", len(drift)),
 			"drift_files": strings.Join(metaList, ","),
 		})
 	if len(drift) == 0 {
