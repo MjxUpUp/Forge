@@ -10,6 +10,19 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.64.0](https://github.com/MjxUpUp/Forge/compare/v1.63.0...v1.64.0) (2026-09-18)
+
+
+### Features
+
+* **release-flow:** 发布流程硬化 P-A/P-B/P-C——update --apply/写入时刻 gofmt/dedup 窗口旋钮 ([fb9d371](https://github.com/MjxUpUp/Forge/commit/fb9d3719cf5ace19472632d306d256dc2e0f275c))
+
+
+### Bug Fixes
+
+* **release-flow:** L2 F1 接线修复——apply 生产路径改 npmInstallArgs 直构（argv+semver 消费点复验）+ Windows --plugin 契约 + spec 复审变更记录 ([b984512](https://github.com/MjxUpUp/Forge/commit/b98451289c992fbad2a33abad09e0faafc1eb4fb))
+* **release-flow:** 复审 P2+P3×8 收口——去重窗口真钳制/apply argv 直构+semver 消费点复验/自验精确比较/安装超时/Windows plugin 契约/gofmt 块短路/env 恢复/注释同步 ([a17cd5a](https://github.com/MjxUpUp/Forge/commit/a17cd5afbdc815b1fb855712a6b480ea9a7dd462))
+
 ## [1.63.0](https://github.com/MjxUpUp/Forge/compare/v1.62.0...v1.63.0) (2026-09-18)
 
 
