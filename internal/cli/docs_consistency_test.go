@@ -205,6 +205,8 @@ func TestReadme_NewFlagsAreDocumented(t *testing.T) {
 // knownSkills 也不在此表的新增多段反引号 token 使守卫 C fail——作者判断：真断链（改文档）
 // 或非 skill（加此表并注明类别）。
 var skillRefAllowlist = map[string]bool{
+	// checklog 观察条目名（forge selfcheck 落痕，非 skill）
+	`selfcheck-pairing`: true, `selfcheck-scope`: true,
 	// review 模式名（cheat-scan deterministic 分类标签，非 skill）
 	`assertion-strip`: true, `comment-only-fix`: true, `complexity-report`: true,
 	`dead-branch`: true, `error-swallow`: true, `type-suppression`: true, `test-run`: true,

@@ -114,15 +114,52 @@ const (
 	// 子 agent 活动此前在 forge 侧零记录，sessions.jsonl 约 53% 会话缺 agent_type
 	// （2026-08 归因审计）。
 	CheckSubagentStop CheckName = "subagent-stop"
-	// CheckTestNudge records one mid-task test reminder fired by the test-nudge hook (2026-08-22, #4-E): the session counter saw >=3 non-test source writes with zero paired test writes since the last reset.
+	// CheckTestNudge records one mid-task test reminder fired by the test-nudge hook
+	// (2026-08-22 #4-E; discipline-first P1-B 2026-09-17): the task-scoped unpaired-
+	// FILE set crossed an escalation tier (3/5/8). Meta carries unpaired_files (count),
+	// tier, and files (newest ≤8, forward-slash repo-relative) — the fact-level
+	// confirmation lookup intersects this list against a failing gate's missing set.
 	//
-	// CheckTestNudge 记录 test-nudge hook 发出的一次事中测试提醒（2026-08-22，
-	// #4-E）：会话计数器看到自上次重置以来 >=3 次非测试源码写入且 0 次配对测试
-	// 写入。它是 task-verify test-coverage 门禁的事中伴随（门禁只在 verify 时刻
-	// 触发，往往在代码写完数小时后）；nudge 在 agent 还能便宜修复的时机抓住漂移。
-	// deterministic（计数器在 hook 侧，agent 无法伪造）但属过程漂移的 OBSERVATION
-	// 而非任何验证——与其他条目一样排除出 evidence strength。
+	// CheckTestNudge 记录 test-nudge hook 发出的一次事中测试提醒（2026-08-22
+	// #4-E；discipline-first P1-B 2026-09-17）：任务作用域的未配对**文件**集合跨过
+	// 升级档位（3/5/8）。Meta 携带 unpaired_files（计数）、tier、files（最新 ≤8、
+	// 仓库相对 forward-slash）——事实级 confirmation 判定拿这份清单与失败门禁的
+	// missing 集合求交集。它是 task-verify test-coverage 门禁的事中伴随（门禁只在
+	// verify 时刻触发，往往在代码写完数小时后）；nudge 在 agent 还能便宜修复的
+	// 时机抓住漂移。deterministic（hook 侧实算，agent 无法伪造）但属过程漂移的
+	// OBSERVATION 而非任何验证——与其他条目一样排除出 evidence strength。
 	CheckTestNudge CheckName = "test-nudge"
+	// CheckSelfcheckPairing records one `forge selfcheck pairing` run: the agent
+	// proactively ran the mirror computation of the test-coverage gate over its
+	// own task's change set (discipline-first-gates P2). Fact-level: the entry's
+	// missing_list intersecting a later failing gate's missing set upgrades that
+	// gate to confirmation (agent was shown these files and did not act) — a
+	// clean selfcheck (empty list) never upgrades anything. Agent-asserted
+	// observation, NOT forge-guaranteed: checklog is an unauthenticated JSONL
+	// (entries can be minted via import/direct write — same trust boundary as
+	// trust.go's forged-gate posture); the only forgery direction launders
+	// discovery→confirmation, i.e. self-incrimination. Excluded from evidence
+	// strength — it asserts "the agent saw this fact", never "the fact is fixed".
+	//
+	// CheckSelfcheckPairing 记录一次 `forge selfcheck pairing` 运行：agent 对
+	// 自己任务的改动集主动跑了 test-coverage 门禁的镜像计算
+	// （discipline-first-gates P2）。事实级：条目的 missing_list 与其后失败门禁
+	// 的 missing 集合有交集才升 confirmation（这批文件展示过而未行动）——干净
+	// 自检（空清单）永不升级。agent 自述观察、非 forge 担保：checklog 是无鉴权
+	// JSONL（可经 import/直写铸造——与 trust.go 的伪造门禁姿态同信任边界）；可
+	// 伪造方向只能把 discovery 洗成 confirmation，即自证其罪。排除出 evidence
+	// strength——它声明「agent 看过这个事实」，不声明「事实已被修复」。
+	CheckSelfcheckPairing CheckName = "selfcheck-pairing"
+	// CheckSelfcheckScope records one `forge selfcheck scope` run — the
+	// PlanScope-drift mirror probe (discipline-first-gates P2). NOTE: unlike
+	// pairing, this entry does NOT feed the outcome classification (scope-drift
+	// failures stay discovery — no upstream-signal wiring for scope yet).
+	//
+	// CheckSelfcheckScope 记录一次 `forge selfcheck scope` 运行——PlanScope
+	// 漂移的镜像探针（discipline-first-gates P2）。注意：与 pairing 不同，
+	// 本条目**不**参与 outcome 分类（scope-drift 失败仍恒 discovery——scope 侧
+	// 尚无上游信号接线）。
+	CheckSelfcheckScope CheckName = "selfcheck-scope"
 	// CheckConventionsInject records one conventions-layer injection fired by the conventions hooks (2026-08-28).
 	//
 	// CheckConventionsInject 记录 conventions 层的一次注入（2026-08-28，
@@ -507,6 +544,34 @@ const (
 	LevelAdvisory Level = "advisory"
 )
 
+// GateOutcome classifies a FAILED verify-time gate entry by who surfaced the fact
+// first — the discipline-first measurement axis (discipline-first-gates 2026-09
+// P1-A). The metric it enables: discovery rate must fall as first-line signals
+// (nudges, selfcheck) take hold; a rising confirmation share means signals are
+// delivered but not acted on.
+//
+// GateOutcome 按「谁先披露事实」分类**失败**的 verify 期门禁条目——纪律优先
+// 度的度量轴（discipline-first-gates 2026-09 P1-A）。它点亮的指标：discovery
+// rate 应随第一防线信号（nudge、selfcheck）扎根而下降；confirmation 占比上升
+// 则说明信号送达了但没有被执行。
+type GateOutcome string
+
+const (
+	// OutcomeDiscovery: the gate is the first disclosure of this fact to the agent —
+	// no prior delivered first-line signal exists in the task. First line missing.
+	//
+	// OutcomeDiscovery：门禁是对 agent 的第一披露点——task 内不存在已送达的第一
+	// 防线信号。第一防线缺位。
+	OutcomeDiscovery GateOutcome = "discovery"
+	// OutcomeConfirmation: a first-line signal (e.g. test-nudge) was already
+	// delivered for this fact and not acted on — the gate confirms realized
+	// discipline debt. First line present, discipline not executed.
+	//
+	// OutcomeConfirmation：该事实的第一防线信号（如 test-nudge）已送达但未行动——
+	// 门禁确认的是已兑现的纪律债。第一防线在，纪律未执行。
+	OutcomeConfirmation GateOutcome = "confirmation"
+)
+
 // Detail prefixes mirrored from taskpipeline/gate_message.go (blockedPrefix /
 // advisoryPrefix). Duplicated as literals because checklog is a leaf package —
 // importing taskpipeline would create a cycle (taskpipeline imports checklog).
@@ -579,8 +644,15 @@ type Entry struct {
 	//
 	// Source 标注证据来源（deterministic vs agent-claim）。Record 时若留空，
 	// 按 SourceForCheck 兜底推断，故历史记录点无需逐个改造也能进证据链分桶。
-	Source     EvidenceSource `json:"source,omitempty"`
-	RecordedAt time.Time      `json:"recorded_at"`
+	Source EvidenceSource `json:"source,omitempty"`
+	// Outcome classifies a FAILED verify-time gate entry by who surfaced the fact
+	// first (see GateOutcome). Empty on passing and legacy entries; readers must
+	// treat empty as unclassified, never as discovery.
+	//
+	// Outcome 按「谁先披露」分类**失败**的 verify 期门禁条目（见 GateOutcome）。
+	// 通过与历史条目留空；读方必须把空当未分类，绝不当 discovery。
+	Outcome    GateOutcome `json:"outcome,omitempty"`
+	RecordedAt time.Time   `json:"recorded_at"`
 	// Delivered reports whether an advisory injection actually reached the model's context on that host's channel.
 	//
 	// Delivered 报告一条 advisory 注入是否真到达该宿主通道的模型上下文（skill-trigger L1 送达
