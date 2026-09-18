@@ -517,6 +517,16 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
 	}
 
+	// P0-C 双通道幂等守卫(escape-hatch-hardening):zcode 等宿主上用户级接线与
+	// Claude 格式插件两条通道同时投递同一 (hook,event,tool,session,input)——
+	// 窗口内完全一致的重复调用静默跳过(2× 进程/双注入/toollog 双行的根因,见
+	// hook_idempotency.go 头注的实证)。**仅观测型钩子**(isObservationOnlyHook
+	// 白名单):skip=allow,阻断型钩子(hazard-guard/task-guard/…)永不跳过——
+	// 否则 deny 后窗口内逐字重试被静默放行(只读审查必改项 1)。
+	if skipDuplicateHookRun(root, name, hookInput) {
+		return nil
+	}
+
 	// Register the hook-observed session and stamp the resolved agent onto it,
 	// best-effort. Previously this was stamp-ONLY (fill an empty AgentType on a
 	// record created elsewhere) — but the only registration point was the CLI

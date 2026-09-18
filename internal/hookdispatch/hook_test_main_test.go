@@ -23,6 +23,10 @@ func TestMain(m *testing.M) {
 	// W0.3 密闭性：档位默认 standard，防 shell 导出的 FORGE_PROFILE 泄漏假红
 	// （档位相关测试用 t.Setenv 覆盖）。
 	os.Setenv("FORGE_PROFILE", "standard")
+	// P0-C 幂等守卫确定性：包内既有测试存在「同 payload 短时间内重复 RunHook」的
+	// 合法形态,守卫默认窗口会让第二次静默跳过 → 结果漂移。全局关掉;守卫自身的
+	// 测试用 t.Setenv 显式开窗(hook_idempotency_test.go)。
+	os.Setenv("FORGE_HOOK_DEDUP_WINDOW", "0")
 	// 显式清理再退出：os.Exit 跳过 defer，defer os.RemoveAll 是死代码
 	// （只读子 agent 审查 SUGGEST-1 顺带根治范式本体）。
 	code := m.Run()

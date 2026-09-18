@@ -391,12 +391,70 @@ if [ -n "${NUDGE}" ]; then
   MESSAGES="${MESSAGES}${NUDGE} "
 fi
 
+# ── P1 HITL 等人态(escape-hatch-hardening,2026-09-18)────────────────
+# 本会话的高危拦截若未经人工确认,Stop 面必须可见:拦截时刻只有 agent 收到
+# deny——自主会话里 agent 可能改写绕行(取证 sess_7e05f7e1:9 秒后换 mktemp
+# 形态),人会话回看的第一落点是会话结束面。计数近似:block − (release+
+# confirm),会话维度双子串匹配(提醒语义,不追求审计精度;审计走
+# forge hazard status/events.jsonl)。grep -c 零匹配时打印 0 且退 1——用
+# || true 防双零。
+_HAZEV="$_DATA_DIR/hazards/events.jsonl"
+_SID_H="${FORGE_SESSION_ID:-}"
+if [ -n "$_SID_H" ] && [ -f "$_HAZEV" ]; then
+  _HB=$(grep -F '"type":"block"' "$_HAZEV" 2>/dev/null | grep -cF "\"session_id\":\"$_SID_H\"" || true)
+  _HR=$( { grep -F '"type":"release"' "$_HAZEV" 2>/dev/null; grep -F '"type":"confirm"' "$_HAZEV" 2>/dev/null; } | grep -cF "\"session_id\":\"$_SID_H\"" || true)
+  case "$_HB" in ''|*[!0-9]*) _HB=0;; esac
+  case "$_HR" in ''|*[!0-9]*) _HR=0;; esac
+  if [ "$_HB" -gt "$_HR" ]; then
+    MESSAGES="${MESSAGES}HITL 等人:本会话 $(( _HB - _HR )) 个高危拦截未经人工确认——forge hazard status 核查,forge hazard confirm --last 确认放行(或维持拦截)。"
+  fi
+fi
+
+# ── P1 有界阻断(escape-hatch-hardening,2026-09-18)────────────────────
+# 窄条件:活跃任务 + 工作区有未提交**代码**变更(含 untracked 新代码文件——
+# 「新建未 add」是最常见的未落盘形态,只看 diff 会漏,只读审查必改项)。
+# 工作在飞未落盘 = 2026-09-18 取证 sess_7e05f7e1 的 runaway 签名(M3 半途、
+# 未提交、门停 task-implement)。复活阻断(本文件头注的历史事故是无条件阻断
+# 致 stop-retry 死循环)的三重界:①会话限额 3 次,超限自动回落 advisory 并
+# 一次性说明——本段置于 advisory flush/kimi 早退**之前**,执法面宿主均匀;
+# ②block 时清除 60s 节流戳——连续阻断由限额封顶(至多 3 连),而非被节流
+# 削弱成每分钟一次的急停提示(语义诚实化,只读审查披露项);
+# ③逃生 FORGE_TASK_VERIFY_STOP=0。gate PASS 不豁免:advisory 门(test-coverage)
+# 通过 ≠ 工作已落盘。每次 block 落一行 checklog fail(与 task-drift block 行
+# 对称——审计不可静默,spec 原则 1 的 block 面)。参照 CC Stop hook 8 次强制
+# 放行 / review-stop MaxReviewRounds=3——限额而非永不阻断。
+if [ "${FORGE_TASK_VERIFY_STOP:-1}" != "0" ] && [ -n "${FORGE_TASK_REF:-}" ]; then
+  _UNCOMMITTED=$( { git diff --name-only 2>/dev/null; git diff --cached --name-only 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | while IFS= read -r _f; do is_code_file "$_f" && printf '%s\n' "$_f"; done | sort -u || true)
+  if [ -n "$_UNCOMMITTED" ]; then
+    _BLOCKS="$_DATA_DIR/markers/taskverify-stop-blocks-${FORGE_SESSION_ID:-default}"
+    mkdir -p "$_DATA_DIR/markers" 2>/dev/null || true
+    _n=$(cat "$_BLOCKS" 2>/dev/null || echo 0)
+    case "$_n" in ''|*[!0-9]*) _n=0;; esac
+    if [ "$_n" -lt 3 ]; then
+      echo $(( _n + 1 )) > "$_BLOCKS" 2>/dev/null || true
+      _NOW2=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
+      if [ -n "$_NOW2" ]; then
+        _TASK_REF_J2=$(printf '%s' "${FORGE_TASK_REF:-}" | tr -d '"\\' | tr -d '[:cntrl:]')
+        _SESSION_ID_J2=$(printf '%s' "${FORGE_SESSION_ID:-}" | tr -d '"\\' | tr -d '[:cntrl:]')
+        printf '{"check":"task-verify","passed":false,"checked":true,"detail":"bounded stop block %s/3: active task with uncommitted code changes","level":"fail","task_ref":"%s","session_id":"%s","recorded_at":"%s"}\n' \
+          "$(( _n + 1 ))" "$_TASK_REF_J2" "$_SESSION_ID_J2" "$_NOW2" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
+      fi
+      rm -f "$_STAMP" 2>/dev/null || true
+      echo "[task-verify] 活跃任务 ${FORGE_TASK_REF} 有未提交代码变更——先落盘再停:过门禁(forge task gate task-verify --ref <ref>)后 git commit,或 forge task abort --ref <ref> 显式弃任务。本会话第 $(( _n + 1 ))/3 次有界阻断;逃生 FORGE_TASK_VERIFY_STOP=0。"
+      exit 2
+    elif [ "$_n" = "3" ]; then
+      echo 4 > "$_BLOCKS" 2>/dev/null || true
+      echo "[task-verify] 会话阻断限额已耗尽——回落 advisory 本次放行(未提交工作仍在,forge trace 可查)。" >&2
+    fi
+  fi
+fi
+
 # Advisory: always PASS, never block. Surface issues to stderr (user-visible)
 # and checklog (trace-queryable).
 # level 显式写 "advisory"（checklog Level 字段）：Detail 无 ADVISORY: 前缀，
 # 读取侧 derive 只会给 pass——本条目实为 advisory 语义，必须显式标注。
 # checklog 行携带真实上下文（2026-08-24 死记录修复：此前 detail 是固定串
-# "advisory: non-blocking issues surfaced to stderr"、checked=false、无
+# "advisory: non-blocking issues surfaced at stderr"、checked=false、无
 # task_ref/session_id——占 task-verify 记录约 45% 且零诊断价值）。detail 取
 # MESSAGES 摘要：去引号/反斜杠（JSON 安全）、换行压空格、去其余控制字符
 #（tab 等——手写 JSONL 不转义，控制字符会产出非法 JSON）、截 200 字符。
@@ -414,7 +472,8 @@ if [ -n "$MESSAGES" ]; then
   # kimi 的 Stop stdout/stderr 都到不了模型（见 agentbridge/kimi-hook-routing.md），
   # 但 Go 层会把本 hook 的 advisory stdout 入队、下次 UserPromptSubmit 攒发
   # （hook_kimi_advisory.go）——故 kimi 下把消息打到 stdout（WARN 前缀供
-  # extractDetail 剥离）。其余宿主维持 stderr（user-visible）不动。
+  # extractDetail 剥离）。其余宿主维持 stderr（user-visible）不动。有界阻断段
+  # 已在本段之前——kimi 早退不再跳过执法。
   if [ "${FORGE_AGENT:-}" = "kimi" ]; then
     echo "WARN [task-verify] ${MESSAGES}"
     exit 0

@@ -140,7 +140,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 
 	sb.WriteString("### 门禁顺序（必须按序推进，所有命令带 `--ref <ref>`）\n\n")
 	sb.WriteString("1. `task-implement` — 代码写完后运行（确认有代码变更；编译/断言改为 advisory 提醒，由 agent 自检）\n")
-	sb.WriteString("2. `task-verify` — 测试伴随变更（advisory）+ skill-decisions guardrail（改 SKILL.md 须记决策）与 work-activity（门禁间无工具调用）HARD stop；编译/断言 advisory 由 agent 自检\n")
+	sb.WriteString("2. `task-verify` — 测试伴随变更（advisory）+ skill-decisions guardrail（改 SKILL.md 须记决策）与 work-activity（门禁间无工具调用）HARD stop；编译/断言 advisory 由 agent 自检。**Stop 有界阻断**：活跃任务 + 未提交代码变更时 Stop 会话结束被拦（每会话最多 3 次，超限回落 advisory；逃生 `FORGE_TASK_VERIFY_STOP=0`）——先过门禁 commit 落盘或 `forge task abort` 弃任务再停\n")
 	sb.WriteString("3. `task-complete` — E2E 验证通过后运行（`forge task gate task-complete --ref <ref>`）\n\n")
 	sb.WriteString("每个门禁命令：`forge task gate <id> --ref <ref>`\n\n")
 	sb.WriteString("**门禁退出码契约**：`forge task gate` 非 0 退出 = 硬阻断（输出 `BLOCKED:` 前缀），必须修复后重跑，不是提醒；零退出但见 `ADVISORY:` 前缀 = 软信号（gate 仍过，已记 checklog，应修但不阻断）。按退出码行动，不要靠解析文案判断（硬阻断散文易被误读成提醒而跳过）。\n\n")
@@ -169,7 +169,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("- **read-before-edit**（PreToolUse Write|Edit，活跃任务内）：编辑本会话未 Read 过的现存源文件 → 硬阻断（`BLOCKED`）。Edit 需精确匹配旧文本，未读即凭记忆盲改——old_string 撞中即错改入库。先 Read 再 Edit。豁免：新建文件/测试文件/非源码；批量重构逃生 `forge task override --work-activity disable`（记 checklog 审计；work-activity 是节奏门禁，不降 evidence 强度）。reads-log 落盘随会话存活，压缩后仍累计\n")
 	sb.WriteString("- **bash-guard**（PreToolUse Bash）：无任务时 Bash 写文件只 WARN（源码随后可能被 file-sentinel quarantine）\n")
 	sb.WriteString("- **gate-cmd-form**（PreToolUse Bash）：forge 门禁命令嵌组合形态（分号续行/截断管道 `| tail`/grep 掩蔽/`||` 链/多门禁连刷）时 stderr 提示单独执行——分号让前一门禁 BLOCKED 后链条照走、截断管道吞掉 BLOCKED 文本面，退出码契约被削弱（1.56 advisory；自 1.58 起 BLOCKED，届时逃生 `FORGE_GATE_CMD_FORM=0` env 或 per-task override（1.58 起提供））\n")
-	sb.WriteString("- **task-drift**（PreToolUse Bash，活跃任务内）：git 边界命令（commit/merge/建分支）发生在任务分支之外时 advisory（1/2/10n 阶梯节流）——任务分支外的提交不进门禁追踪与评分；出口：回任务分支提交、推进 `forge task gate`、或 `forge task abort` 显式弃任务（advisory 不阻断；任务分支上的 commit 是合法顺序，零打扰）\n")
+	sb.WriteString("- **task-drift**（PreToolUse Bash，活跃任务内）：git 边界命令（commit/merge/建分支）发生在任务分支之外时 advisory（1/2/10n 阶梯节流）——任务分支外的提交不进门禁追踪与评分；出口：回任务分支提交、推进 `forge task gate`、或 `forge task abort` 显式弃任务（任务分支上的 commit 是合法顺序，零打扰）。**自 1.66 起 advisory 转 BLOCK（机械版本门）**：拦截漂移命令，逃生 `FORGE_TASK_DRIFT=0`（留 checklog 审计）或按出口行动；会话阻断上限 5 次后自动降回 advisory\n")
 	sb.WriteString("- **hazard-guard**（PreToolUse Bash）：高危命令（`rm -rf` 深目录/盘根/引号包裹逃逸等指纹）硬阻断，须 human-in-the-loop 确认——授权判定：用户本回合已明确指令/确认过该操作则直接 `forge hazard confirm --last` 放行一次（无需二次确认），否则先用所在工具的提问确认机制向用户说明风险获确认再 confirm；误报可 `forge hazard status` 查看\n")
 	sb.WriteString("- **file-sentinel**（PostToolUse Bash）：对比 Bash 前后文件状态，未授权源码变更 quarantine 到用户级 DataDir/quarantine/（`forge data-dir` 查看路径）\n")
 	sb.WriteString("- **workflow-test-guard**（PostToolUse Write|Edit）：改 `.github/workflows/*.yml` 后自动跑 internal/ci 守护测试——CI workflow 沙盒异常的实时反馈层（fail 输出提示修复方向，不阻断写入）\n")

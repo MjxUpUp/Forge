@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -118,7 +119,62 @@ func RunTaskWild(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(),
 		"已记录野外申报（第 %d 条，%s）：%s\n分支 %s @ %s；审计可经 wild/declarations.jsonl 回溯。\n",
 		n, scope, note, entry.Branch, shortHead(entry.Head))
+
+	// AC-3(10) 受审计逃生补强(escape-hatch-hardening P2,2026-09-18):申报
+	// 除账本外落一条标准 checklog escape-hatch 行——逃生可见性进统一漏斗
+	// (此前只有 side ledger,forge trace/dashboard 看不到 wild 的使用)。
+	// reason/owner 遵循承诺表 v1 枚举:declarative / 会话身份(匿名=anonymous)。
+	owner := entry.Session
+	if owner == "" {
+		owner = "anonymous"
+	}
+	hatchEntry := &checklog.Entry{
+		Check:     checklog.CheckEscapeHatch,
+		Passed:    true,
+		Checked:   true,
+		Detail:    fmt.Sprintf("escape-hatch: task wild 申报(第 %d 条,%s)——%s", n, scope, truncRunes(note, 120)),
+		SessionID: entry.Session,
+		Source:    checklog.EvidenceDeterministic,
+		Level:     checklog.LevelWarn,
+		Meta: map[string]string{
+			"gate": "task-wild", "reason": "declarative", "owner": owner,
+			"count": fmt.Sprintf("%d", n), "task_active": fmt.Sprintf("%t", entry.TaskActive),
+		},
+	}
+	if err := checklog.Record(root, hatchEntry); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: wild escape-hatch checklog record failed: %v\n", err)
+	}
+	// 限额(AC-3(10) 条件限定):超过 wildQuotaPerSession 后输出升级——wild 是
+	// 逃生舱不是常态出口,连发即流程问题(该建任务)。不拒绝申报(逃生舱永在),
+	// 但把超额事实说出口;checklog 行已带 count,审计面可聚合。
+	if n > wildQuotaPerSession {
+		fmt.Fprintf(cmd.OutOrStdout(),
+			"⚠ 本%s野生申报已超限额（%d/%d）——一次性例外不该成为工作方式;继续请 forge task start --ref <ref> --branch --title <title> 建任务,超额使用已在审计面标记。\n",
+			scopeLabel(entry.Session), n, wildQuotaPerSession)
+	}
+	if entry.TaskActive {
+		fmt.Fprintln(cmd.OutOrStdout(), "⚠ 注意:当前存在活跃任务——有任务却申报 wild 是更强异常信号(已记录 task_active=true),请确认这不是任务内工作的事后补票。")
+	}
 	return nil
+}
+
+// wildQuotaPerSession 是会话级野生申报限额(AC-3(10) 条件限定面)——超出不
+// 拒绝但升级提示;量纲:一次性小修/紧急 hotfix 的合理密度,3 条封顶。
+const wildQuotaPerSession = 3
+
+func scopeLabel(session string) string {
+	if session == "" {
+		return "机"
+	}
+	return "会话"
+}
+
+func truncRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 // gitLine 跑一条只读 git 命令取首行，失败返回 "?"（申报不因 git 环境缺失去败）。
