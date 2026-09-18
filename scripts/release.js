@@ -101,6 +101,20 @@ function replaceManifestVersion(content, next) {
   return { content: content.replace(re, `$1"${next}"`), ok: true };
 }
 
+// replacePlatformPins 把主包 optionalDependencies 里 5 个 @agent_forge/forge-<plat>
+// 钉全部替换为 next。钉随 release-please extra-files 自动 bump 后,严格相等守卫
+// (TestNpmPlatformVersionsAligned)对钉滞后零容忍(旧「滞后一版合法」宽容已退役)
+// ——逃生舱发版必须同样对齐,否则发完 main 即红。返回 {content, ok}:ok=false
+// 表示命中数 != 5(键被增删的事故级信号,宁拦勿静默)。
+function replacePlatformPins(content, next) {
+  let hits = 0;
+  const out = content.replace(/("@agent_forge\/forge-[a-z0-9-]+":\s*)"[^"]+"/g, (_, k) => {
+    hits++;
+    return `${k}"${next}"`;
+  });
+  return { content: out, ok: hits === 5 };
+}
+
 // readCommitMessages 取 range 内所有 commit 的完整 message。可选 cwdRoot 供测试
 // 注入临时仓库(默认用 release.js 所在的项目根),让 readCommitMessages 能端到端测。
 function readCommitMessages(range, cwdRoot = ROOT) {
@@ -170,7 +184,7 @@ function main() {
   }
 
   if (dryRun) {
-    console.log('(dry-run, no changes — would bump npm/package.json + .kimi-plugin/plugin.json + plugins/forge-dsh/package.json + .release-please-manifest.json)');
+    console.log('(dry-run, no changes — would bump npm/package.json(含 optionalDependencies 钉) + 5 平台子包 + .kimi-plugin/plugin.json + plugins/forge-dsh/package.json + .release-please-manifest.json)');
     return;
   }
 
@@ -221,13 +235,50 @@ function main() {
     process.exit(1);
   }
 
-  // --- all four patterns matched: write them all ---
-  fs.writeFileSync(PKG, pkgNext.content);
+  // --- sync optionalDependencies pins + 5 platform package.jsons (严格相等守卫) ---
+  // 主路径由 release-please extra-files 同 PR bump;逃生舱必须等价对齐,否则
+  // TestNpmPlatformVersionsAligned(严格相等)发完即红。
+  const pinsNext = replacePlatformPins(pkgNext.content, next);
+  if (!pinsNext.ok) {
+    console.error(`failed to replace optionalDependencies pins in ${REL_PKG} (want 5 hits)`);
+    process.exit(1);
+  }
+  const PLATFORMS = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64'];
+  const platNext = {};
+  for (const p of PLATFORMS) {
+    const file = path.join(ROOT, 'npm', 'platforms', p, 'package.json');
+    const r = replaceVersionField(fs.readFileSync(file, 'utf8'), next);
+    if (!r.ok) {
+      console.error(`failed to replace version field in npm/platforms/${p}/package.json`);
+      process.exit(1);
+    }
+    platNext[p] = { file, content: r.content };
+  }
+
+  // --- all patterns matched: write them all ---
+  fs.writeFileSync(PKG, pinsNext.content);
   fs.writeFileSync(KIMI_PLUGIN, kimiNext.content);
   fs.writeFileSync(DSH_PKG, dshNext.content);
   fs.writeFileSync(MANIFEST, manifestNext.content);
+  for (const p of PLATFORMS) {
+    fs.writeFileSync(platNext[p].file, platNext[p].content);
+  }
 
-  // --- verify round-trip (all four files must read back exactly next) ---
+  // --- verify round-trip (every touched file must read back exactly next) ---
+  const pinsActual = JSON.parse(fs.readFileSync(PKG, 'utf8')).optionalDependencies;
+  for (const [k, v] of Object.entries(pinsActual)) {
+    if (v !== next) {
+      console.error(`optionalDependencies pin ${k}: expected ${next}, got ${v}`);
+      process.exit(1);
+    }
+  }
+  for (const p of PLATFORMS) {
+    const actual = (fs.readFileSync(platNext[p].file, 'utf8').match(/"version":\s*"([^"]+)"/) || [])[1];
+    if (actual !== next) {
+      console.error(`version mismatch in npm/platforms/${p}/package.json: expected ${next}, got ${actual}`);
+      process.exit(1);
+    }
+  }
   for (const [file, rel] of [[PKG, REL_PKG], [KIMI_PLUGIN, REL_KIMI], [DSH_PKG, REL_DSH]]) {
     const actual = (fs.readFileSync(file, 'utf8').match(/"version":\s*"([^"]+)"/) || [])[1];
     if (actual !== next) {
@@ -252,7 +303,7 @@ function main() {
   console.log(`  git push origin v${next}`);
 }
 
-module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion };
+module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins };
 
 if (require.main === module) {
   main();

@@ -14,6 +14,31 @@
         },
         {
           "type": "json",
+          "path": "npm/package.json",
+          "jsonpath": "$.optionalDependencies['@agent_forge/forge-darwin-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/package.json",
+          "jsonpath": "$.optionalDependencies['@agent_forge/forge-darwin-x64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/package.json",
+          "jsonpath": "$.optionalDependencies['@agent_forge/forge-linux-arm64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/package.json",
+          "jsonpath": "$.optionalDependencies['@agent_forge/forge-linux-x64']"
+        },
+        {
+          "type": "json",
+          "path": "npm/package.json",
+          "jsonpath": "$.optionalDependencies['@agent_forge/forge-win32-x64']"
+        },
+        {
+          "type": "json",
           "path": ".kimi-plugin/plugin.json",
           "jsonpath": "$.version"
         },

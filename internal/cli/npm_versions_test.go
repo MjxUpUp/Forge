@@ -31,18 +31,27 @@ func TestNpmPlatformVersionsAligned(t *testing.T) {
 	if main.Version == "" {
 		t.Fatal("主包无版本号")
 	}
-	// 发布窗口语义（v1.51.0 发版实证）：release-please 只 bump 主包
-	// package.json，平台子包的提交态版本由发布 workflow 在 publish 时用 jq 注入
-	// ——所以「主包=下一版、平台包=上一版」是每个发布窗口的**合法中间态**。
-	// 守卫抓的是**多版本漂移**（1.50.0 vs 1.28.2 那种 22 个 minor 的遗忘）
-	// 与平台包间互不一致；单版本滞后放行。
-	prev, ok := previousVersion(main.Version)
-	if !ok {
+	// 键集完整性:严格相等循环只遍历**存在的**键——键被删则守卫静默缩圈。
+	// 5 平台键与 config 侧 5 条 jsonpath、release.js 的 hits===5 三方互锁。
+	if len(main.Optional) != 5 {
+		t.Fatalf("optionalDependencies 键数 %d != 5（键被增删——与 release-please-config 的 5 条 jsonpath 及 scripts/release.js 的 replacePlatformPins 三方互锁,增删须同步三处）", len(main.Optional))
+	}
+	// 语义化 X.Y.Z 格式面保留(原 previousVersion 解析旁的检查):格式坏会让
+	// release-please/manifest 同步守卫的对照全部失真,这里先红。
+	var maj, min, patch int
+	if _, err := fmt.Sscanf(main.Version, "%d.%d.%d", &maj, &min, &patch); err != nil {
 		t.Fatalf("主包版本 %q 非语义化 X.Y.Z", main.Version)
 	}
+	// 严格相等契约（2026-09-18 收紧）:optionalDependencies 钉随 release 火车自动
+	// bump（release-please-config.json 的 5 条 optionalDependencies jsonpath,
+	// fix/npm-pins-automation)后,Release PR 内 version/钉/平台包三者同步移动——
+	// 提交态任何不相等都是漂移。旧的「滞后一版合法」宽容是为手工对齐仪式留的
+	// 瞬态窗口（#72/#74/#77 三轮 npm-align 的债务根源,曾致 v1.65.0 发布失败）
+	// ——自动化落地后宽容口即漏洞口:钉停在前一版而该版未发布(如被跳过的
+	// 1.65.0)会让安装时 optionalDependencies 解析不到平台包。
 	for pkg, pinned := range main.Optional {
-		if pinned != main.Version && pinned != prev {
-			t.Errorf("optionalDependencies[%s] 钉在 %s，主包 %s（合法态：相等或前一版 %s——更大差距为提交态漂移）", pkg, pinned, main.Version, prev)
+		if pinned != main.Version {
+			t.Errorf("optionalDependencies[%s] 钉在 %s，主包 %s（严格相等契约——火车自动 bump 后不相等即漂移；若 Release PR 漏 bump 钉,查 release-please-config.json 的 optionalDependencies jsonpath 是否被删）", pkg, pinned, main.Version)
 		}
 		short := strings.TrimPrefix(pkg, "@agent_forge/forge-")
 		if short == pkg {
@@ -62,56 +71,13 @@ func TestNpmPlatformVersionsAligned(t *testing.T) {
 			t.Errorf("解析 %s: %v", platPath, err)
 			continue
 		}
-		// release-please 不 bump optionalDependencies 钉——主包/平台包已到新版而钉
-		// 滞后一版是每次 release PR 的合法瞬态（1.56.0/1.56.1 两轮发版实证）。仅当
-		// 钉不在「当前或前一版」合法窗口时才视为两处清单互斥漂移。
-		if plat.Version != pinned && pinned != main.Version && pinned != prev {
-			t.Errorf("平台包 %s 提交态版本 %s != optionalDependencies 钉的 %s（钉既非当前 %s 也非前一版 %s）——两处清单互斥漂移说明有人绕过单一真相源手改", short, plat.Version, pinned, main.Version, prev)
-		}
-		if plat.Version != main.Version && plat.Version != prev {
-			t.Errorf("平台包 %s 提交态版本 %s 相对主包 %s 超出单版本发布窗口（多版本漂移——上一轮 1.50.0 vs 1.28.2 的形态）", short, plat.Version, main.Version)
+		if plat.Version != main.Version {
+			t.Errorf("平台包 %s 提交态版本 %s != 主包 %s（严格相等契约——extra-files 同 PR bump,不相等即绕过单一真相源手改）", short, plat.Version, main.Version)
 		}
 	}
 }
 
-// previousVersion 返回 X.Y.Z 的上一版串——发布窗口「合法滞后一版」的判定基线：
-// patch>0 时为同 minor 前一 patch（1.55.1 → 1.55.0），否则退一 minor（1.55.0 →
-// 1.54.0）。Y=0 且 patch=0 时回退不可表达，返回 ok=false 由调用方按非法处理
-// （主包 major=0 或 Y=0 的场景本仓不存在，不值得为此建全 semver 库）。
-// 2026-09-09 修复：旧实现两个 Sscanf 分支都只认 ".0" 结尾（%d.%d.%*s 还因无
-// 接收操作数被 Sscanf 拒绝），1.55.1——守卫上线以来首个非零 patch 版本——被
-// 误判「非语义化」，发版火车 test job 必红。
-func previousVersion(v string) (string, bool) {
-	var maj, min, patch int
-	if _, err := fmt.Sscanf(v, "%d.%d.%d", &maj, &min, &patch); err != nil {
-		return "", false
-	}
-	if patch > 0 {
-		return fmt.Sprintf("%d.%d.%d", maj, min, patch-1), true
-	}
-	if min > 0 {
-		return fmt.Sprintf("%d.%d.0", maj, min-1), true
-	}
-	return "", false
-}
-
-// TestPreviousVersion 钉住合法滞后基线的版本算术：非零 patch 退 patch（1.55.1 是
-// 守卫上线以来首个触发旧实现双分支全灭的 patch 版本）、.0 结尾退 minor、非法串拒。
-func TestPreviousVersion(t *testing.T) {
-	cases := []struct {
-		in, want string
-		ok       bool
-	}{
-		{`1.55.1`, `1.55.0`, true},
-		{`2.3.7`, `2.3.6`, true},
-		{`1.55.0`, `1.54.0`, true},
-		{`1.0.0`, ``, false},
-		{`dev`, ``, false},
-	}
-	for _, c := range cases {
-		got, ok := previousVersion(c.in)
-		if got != c.want || ok != c.ok {
-			t.Errorf(`previousVersion(%q) = (%q,%v) want (%q,%v)`, c.in, got, ok, c.want, c.ok)
-		}
-	}
-}
+// previousVersion（「合法滞后一版」基线算术）随宽容口径一并退役:火车自动 bump
+// 钉后严格相等是唯一合法态,滞后即红。历史:2026-09-09 修复其 Sscanf 双分支只认
+// ".0" 结尾的 bug(1.55.1 误判非语义化,发版 test job 必红)——教训由上方的
+// 格式面检查继续承载。
