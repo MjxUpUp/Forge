@@ -38,12 +38,21 @@ func driftGitProject(t *testing.T) string {
 	return root
 }
 
-// resetDriftMarker 清除会话阶梯计数文件（跨运行隔离,同 resetNudgeState）。
+// resetDriftMarker 清除会话阶梯/阻断计数文件（跨运行隔离,同 resetNudgeState）。
 func resetDriftMarker(t *testing.T, root, sessionID string) {
 	t.Helper()
-	path := filepath.Join(forgedata.DataDirFor(root), "markers", "forge-taskdrift-"+util.SanitizeSessionID(sessionID))
-	_ = os.Remove(path)
-	t.Cleanup(func() { _ = os.Remove(path) })
+	dir := filepath.Join(forgedata.DataDirFor(root), "markers")
+	ladder := filepath.Join(dir, "forge-taskdrift-"+util.SanitizeSessionID(sessionID))
+	blocks := filepath.Join(dir, "forge-taskdrift-blocks-"+util.SanitizeSessionID(sessionID))
+	escape := filepath.Join(dir, "forge-taskdrift-escape-"+util.SanitizeSessionID(sessionID))
+	for _, f := range []string{ladder, blocks, escape} {
+		_ = os.Remove(f)
+	}
+	t.Cleanup(func() {
+		for _, f := range []string{ladder, blocks, escape} {
+			_ = os.Remove(f)
+		}
+	})
 }
 
 // runDriftHook 模拟一次经 runTaskDriftHook 的 PreToolUse Bash 事件,返回捕获
@@ -262,4 +271,87 @@ func TestRunTaskDriftHook_QueryAndFlagForms(t *testing.T) {
 	if out := runDriftHook(t, root, sid, "forge task gate --ref $(git commit -m wip)"); !strings.Contains(out, "[task-drift]") {
 		t.Errorf("command-substitution form must NOT be exempt, got: %q", out)
 	}
+}
+
+// TestTaskDriftBlockRatchet 钉住 P1 机械版本门:<1.66 advisory(含垃圾版本防御
+// 回落);≥1.66 BLOCK(deny 发射 + Level=fail 行);FORGE_TASK_DRIFT=0 逃生降级
+// 且落 escape-hatch 行;会话第 6 次起超上限降回 advisory(有界)。
+func TestTaskDriftBlockRatchet(t *testing.T) {
+	root := driftGitProject(t)
+	const sid = "sess-td-ratchet"
+	resetDriftMarker(t, root, sid)
+	startTrackTask(t, root, sid, "feat/x")
+	if out, err := exec.Command("git", "-C", root, "checkout", "-q", "-b", "ratchet/y").CombinedOutput(); err != nil {
+		t.Fatalf("git checkout -b: %v\n%s", err, out)
+	}
+	in := driftInput(t, "git commit --allow-empty -m wip")
+
+	run := func(version string) (string, error) {
+		var errOut error
+		out := captureStdout(t, func() {
+			errOut = runTaskDriftHook(in, root, version, "")
+		})
+		return out, errOut
+	}
+
+	// < 1.66:advisory(现有行为),无 error。
+	out, err := run("1.65.0")
+	if err != nil || !strings.Contains(out, "[task-drift]") {
+		t.Errorf("1.65 must stay advisory, err=%v out=%q", err, out)
+	}
+	// 垃圾版本(测试默认 "test")防御性回落 advisory。
+	resetDriftMarker(t, root, sid)
+	if out, err := run("test"); err != nil || !strings.Contains(out, "[task-drift]") {
+		t.Errorf("garbage version must fall back to advisory, err=%v out=%q", err, out)
+	}
+
+	// ≥ 1.66:BLOCK——deny 发射 + 非 nil error(HookBlockError 形态)。
+	resetDriftMarker(t, root, sid)
+	out, err = run("1.66.0")
+	if err == nil {
+		t.Error("1.66 must return a block error (exit-2 class)")
+	}
+	if !strings.Contains(out, "permissionDecision") || !strings.Contains(out, "deny") {
+		t.Errorf("block emission must carry deny JSON, got: %q", out)
+	}
+	// deny 文案必须自足(审查必改项 2 的回归钉):含出口动词与逃生,不依赖
+	// "上文"——n=3..9 阶梯空档时 taskDriftAdvisory 为空,deny 不能拿空底拼话。
+	if !strings.Contains(out, "出口") || !strings.Contains(out, "FORGE_TASK_DRIFT=0") {
+		t.Errorf("deny text must be self-contained (exits + escape), got: %q", out)
+	}
+	if rows := findDriftEntries(t, root); len(rows) == 0 || rows[len(rows)-1].Level != "fail" {
+		t.Errorf("block row must be Level=fail, got %+v", rows)
+	}
+
+	// env 逃生:降级 advisory + escape-hatch 行。
+	resetDriftMarker(t, root, sid)
+	t.Setenv(forgeTaskDriftEnv, "0")
+	if out, err := run("1.66.0"); err != nil || !strings.Contains(out, "[task-drift]") {
+		t.Errorf("FORGE_TASK_DRIFT=0 must downgrade to advisory, err=%v out=%q", err, out)
+	}
+	if escapes := findTrackEntries(t, root, checklog.CheckEscapeHatch); len(escapes) == 0 {
+		t.Error("env escape must record an escape-hatch row")
+	} else if escapes[len(escapes)-1].Meta["gate"] != "task-drift" {
+		t.Errorf("escape row meta gate = %v, want task-drift", escapes[len(escapes)-1].Meta)
+	}
+
+	// 会话上限:连跑 5 次 BLOCK 后第 6 次降级 advisory(有界防死循环)。
+	t.Setenv(forgeTaskDriftEnv, "")
+	blocked := 0
+	for i := 0; i < 7; i++ {
+		_, err := run("1.66.0")
+		if err != nil {
+			blocked++
+		}
+	}
+	if blocked != 5 {
+		t.Errorf("session block cap must bound BLOCKs to %d, got %d", taskDriftBlockCap, blocked)
+	}
+}
+
+// driftInput 构造漂移判定的 Bash HookInput(测试助手,匹配 runDriftHook 的输入形状)。
+func driftInput(t *testing.T, command string) HookInput {
+	t.Helper()
+	raw, _ := json.Marshal(map[string]string{"command": command})
+	return HookInput{HookEventName: "PreToolUse", SessionID: "sess-td-ratchet", ToolName: "Bash", ToolInput: raw}
 }
