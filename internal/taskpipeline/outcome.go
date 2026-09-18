@@ -15,8 +15,10 @@ import (
 // firstLineHoldsFact 报告该批 missing 文件是否曾被第一防线**点名过**：
 // (a) 已送达的 test-nudge（Delivered 章 true）且其 files 集合与 missing 有交集；
 // (b) selfcheck-pairing 条目的 missing_list 与 missing 有交集（任意 Passed——
-//     Passed=false 即自检亲眼见过这批文件；Passed=true 则 missing_list 为空、
-//     天然无交集，自检后漂移的新文件正确落 discovery）。
+//
+//	Passed=false 即自检亲眼见过这批文件；Passed=true 则 missing_list 为空、
+//	天然无交集，自检后漂移的新文件正确落 discovery）。
+//
 // Meta 截断盲区如实接受：nudge/selfcheck 清单 ≤8 截断，>8 时交集可能漏报——
 // 方向偏 discovery（保守：不虚增 confirmation）。读失败同向。
 func firstLineHoldsFact(root, taskRef string, missing []string) bool {

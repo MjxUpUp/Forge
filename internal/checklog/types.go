@@ -139,7 +139,7 @@ const (
 	// (entries can be minted via import/direct write — same trust boundary as
 	// trust.go's forged-gate posture); the only forgery direction launders
 	// discovery→confirmation, i.e. self-incrimination. Excluded from evidence
-	// strength — it asserts "the agent saw this fact", never "the fact is fixed". 
+	// strength — it asserts "the agent saw this fact", never "the fact is fixed".
 	//
 	// CheckSelfcheckPairing 记录一次 `forge selfcheck pairing` 运行：agent 对
 	// 自己任务的改动集主动跑了 test-coverage 门禁的镜像计算
@@ -644,15 +644,15 @@ type Entry struct {
 	//
 	// Source 标注证据来源（deterministic vs agent-claim）。Record 时若留空，
 	// 按 SourceForCheck 兜底推断，故历史记录点无需逐个改造也能进证据链分桶。
-	Source     EvidenceSource `json:"source,omitempty"`
+	Source EvidenceSource `json:"source,omitempty"`
 	// Outcome classifies a FAILED verify-time gate entry by who surfaced the fact
 	// first (see GateOutcome). Empty on passing and legacy entries; readers must
 	// treat empty as unclassified, never as discovery.
 	//
 	// Outcome 按「谁先披露」分类**失败**的 verify 期门禁条目（见 GateOutcome）。
 	// 通过与历史条目留空；读方必须把空当未分类，绝不当 discovery。
-	Outcome    GateOutcome    `json:"outcome,omitempty"`
-	RecordedAt time.Time      `json:"recorded_at"`
+	Outcome    GateOutcome `json:"outcome,omitempty"`
+	RecordedAt time.Time   `json:"recorded_at"`
 	// Delivered reports whether an advisory injection actually reached the model's context on that host's channel.
 	//
 	// Delivered 报告一条 advisory 注入是否真到达该宿主通道的模型上下文（skill-trigger L1 送达
