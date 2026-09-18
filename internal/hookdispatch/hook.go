@@ -1387,8 +1387,12 @@ func isScoringCheck(name checklog.CheckName) bool {
 // 重复投递（审计去噪方向），绝不隐藏阻断判定——理智约束而非安全约束。
 const blockRecordDedupWindowBase = 3 * time.Second
 
-// blockDedupWindow 解析当前生效的去重窗口（env 旋钮 + 钳制，非法值回落默认）。
+// blockDedupWindow 解析当前生效的去重窗口（env 旋钮 + 真钳制，非法/空值回落
+// 默认）。钳制先作用于 ms 数值再乘 Duration——先乘后钳在巨大 ms 下有 int64
+// 回绕风险；越界值压到边界而非弃用（复审 P2：弃用会让后来者调 90000 试图
+// 放宽时静默拿回 3s，本旋钮要修的 flaky 换形态回归）。
 func blockDedupWindow() time.Duration {
+	const minMS, maxMS = 1000, 60000
 	raw := strings.TrimSpace(os.Getenv("FORGE_BLOCK_DEDUP_WINDOW_MS"))
 	if raw == "" {
 		return blockRecordDedupWindowBase
@@ -1397,11 +1401,13 @@ func blockDedupWindow() time.Duration {
 	if err != nil {
 		return blockRecordDedupWindowBase
 	}
-	d := time.Duration(ms) * time.Millisecond
-	if d < time.Second || d > 60*time.Second {
-		return blockRecordDedupWindowBase
+	switch {
+	case ms < minMS:
+		ms = minMS
+	case ms > maxMS:
+		ms = maxMS
 	}
-	return d
+	return time.Duration(ms) * time.Millisecond
 }
 
 // blockRecordMarker resolves the dedupe marker path and the detail fingerprint

@@ -74,7 +74,7 @@ type Event struct {
 // EventDedupWindow 内同会话、同 type、同指纹的事件视为宿主对同一逻辑 hook 调用的双投递，
 // 不再追加。乙机实录 52 条 block 里 24 条是短窗同指纹重复（kimi PreToolUse 98ms 双发的
 // hazard 版），safe-halt 按原始事件计数被直接翻倍——3 次逻辑拦截记成 6 次越过阈值 3。
-// 窗口与 hookdispatch.blockRecordDedupWindow 同量级（3s）；空指纹（算不出）永不去重；
+// 窗口与 hookdispatch.blockDedupWindow 同量级（3s）；空指纹（算不出）永不去重；
 // 会话维度任一侧为空（旧行/终端直跑）退化为不比会话——两个并行会话 3s 内各拦一次同命令
 // 各记一条。docs/design/harness-fixes-a-g-2026-09.md F.3。
 const EventDedupWindow = 3 * time.Second
