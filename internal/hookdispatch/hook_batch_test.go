@@ -18,7 +18,10 @@ import (
 func TestBatchHookNames(t *testing.T) {
 	t.Setenv("FORGE_PROFILE", "standard")
 	got := batchHookNames("PreToolUse", "Bash")
-	want := []string{"bash-guard", "hazard-guard", "gate-cmd-form", "skill-trigger"}
+	// task-drift 追加于 2026-09-18（escape-hatch-hardening P0-B——git 边界
+	// 动词 × 任务分支漂移的 choke-point advisory,见 hook_freeze_ratchet_test
+	// 的 bump 注释）。
+	want := []string{"bash-guard", "hazard-guard", "gate-cmd-form", "skill-trigger", "task-drift"}
 	if len(got) != len(want) {
 		t.Fatalf("PreToolUse/Bash 组应含 %v，got %v", want, got)
 	}

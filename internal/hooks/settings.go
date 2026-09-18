@@ -155,6 +155,12 @@ func ForgeHookSpec() map[string][]HookMatcher {
 					{Type: "command", Command: "forge hook hazard-guard"},
 					{Type: "command", Command: "forge hook gate-cmd-form"},
 					{Type: "command", Command: "forge hook skill-trigger"},
+					// task-drift（escape-hatch-hardening P0-B）：git 边界动词 ×
+					// 任务分支漂移的 choke-point advisory。放在 bash-guard/
+					// hazard-guard 之后——先过写检测与高危拦截,漂移是纪律层
+					// 观察非安全层。advisory 永不阻断（P0）,故不入
+					// profileLiteHooks（lite 准入 = 管线完整性或拦截/HITL 决策点）。
+					{Type: "command", Command: "forge hook task-drift"},
 				},
 			},
 		},

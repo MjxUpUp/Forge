@@ -807,3 +807,68 @@ func TestNudgeMetaFilesCarriesNewest(t *testing.T) {
 		}
 	}
 }
+
+// TestRunTestNudgeHook_CeilingAuditRows pins the escape-hatch-hardening P0-A
+// contract (docs/plans/escape-hatch-hardening-2026-09.md, M1): after the tier
+// ceiling is reached (tier 3 fired), the audit trail must NOT go silent — every
+// 20th suppressed (non-escalating) source-write evaluation leaves exactly one
+// test-nudge-state row (audit-only: Delivered=false, no context injection),
+// and the counter resets after each row. The 2026-09-18 sess_7e05f7e1
+// forensics: 150+ writes past the ceiling produced zero records — the
+// "silence the nudge" work had also silenced the audit (spec principle 2
+// violation).
+//
+// TestRunTestNudgeHook_CeilingAuditRows 钉住 escape-hatch-hardening P0-A 契约
+// （M1）：tier 天花板触发后审计不得静默——每累计 20 次非升档源码写入评估恰好
+// 落一行 test-nudge-state（纯审计：Delivered=false、不注入上下文），落行后计数器
+// 归零。2026-09-18 sess_7e05f7e1 取证：天花板后 150+ 次写入零记录——「让 nudge
+// 安静」的改动把审计也静音了（违反 spec 原则 2）。
+func TestRunTestNudgeHook_CeilingAuditRows(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-ceiling"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/ceiling")
+
+	// a..h：8 个未配对文件，第 8 个触发 tier3（此后天花板压制一切 nudge）。
+	for _, name := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, name+".go"))
+	}
+	if rows := findTrackEntries(t, root, checklog.CheckTestNudgeState); len(rows) != 0 {
+		t.Fatalf("fire path itself must not emit state rows, got %d", len(rows))
+	}
+	// 天花板下的 19 次写入：静默且无审计行（19 < 20）。
+	for i := 0; i < 19; i++ {
+		wantSilent(t, "ceiling write must stay silent",
+			writeSourceForNudge(t, root, sid, filepath.Join(root, fmt.Sprintf("s%02d.go", i))))
+	}
+	if rows := findTrackEntries(t, root, checklog.CheckTestNudgeState); len(rows) != 0 {
+		t.Fatalf("19 suppressed writes must not yet leave a state row, got %d", len(rows))
+	}
+	// 第 20 次被压制的写入：恰好一行审计（M1），且不注入上下文。
+	wantSilent(t, "state row is audit-only, no context injection",
+		writeSourceForNudge(t, root, sid, filepath.Join(root, "s19.go")))
+	rows := findTrackEntries(t, root, checklog.CheckTestNudgeState)
+	if len(rows) != 1 {
+		t.Fatalf("20th suppressed write must leave exactly 1 test-nudge-state row, got %d", len(rows))
+	}
+	r := rows[0]
+	if r.TaskRef != "feat/ceiling" {
+		t.Errorf("state row must carry TaskRef (task-scoped readers), got %q", r.TaskRef)
+	}
+	if r.Meta["unpaired_files"] != "28" || r.Meta["tier"] != "3" || r.Meta["fired_tier"] != "3" || r.Meta["suppressed_writes"] != "20" {
+		t.Errorf("state row meta = %v, want unpaired_files=28 tier=3 fired_tier=3 suppressed_writes=20", r.Meta)
+	}
+	if r.Delivered == nil || *r.Delivered {
+		t.Errorf("state row must be explicitly Delivered=false (audit-only), got %v", r.Delivered)
+	}
+	if !r.Passed || !r.Checked {
+		t.Errorf("state row must be Passed=true Checked=true (observation, not violation), got passed=%v checked=%v", r.Passed, r.Checked)
+	}
+	// 落行后计数器归零：再来 19 次仍只有 1 行。
+	for i := 0; i < 19; i++ {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, fmt.Sprintf("t%02d.go", i)))
+	}
+	if rows := findTrackEntries(t, root, checklog.CheckTestNudgeState); len(rows) != 1 {
+		t.Errorf("counter must reset after a state row, got %d rows", len(rows))
+	}
+}
