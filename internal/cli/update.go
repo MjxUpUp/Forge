@@ -171,12 +171,21 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			if runtime.GOOS == "windows" {
 				// 运行中的二进制被 Windows 文件锁挡住——npm 无法替换，代跑必败。
 				fmt.Fprintf(os.Stderr, "Windows 上运行中的 forge 二进制会被文件锁挡住 npm 替换——请退出本次会话后手动执行：\n  %s\n", npmUpdateCommand(channel.pm, latest))
+				if updatePluginFlag { // 复审 P3-4：与 unix apply 路径同 flag 契约。
+					printPluginReinstallGuidance(os.Stderr)
+				}
 				_ = saveUpdateCache(latest, channel.kind)
 				return nil
 			}
-			installCmd := npmUpdateCommand(channel.pm, latest)
-			fmt.Fprintf(os.Stderr, "执行: %s\n", installCmd)
-			out, err := updateApplyInstallFn(strings.Fields(installCmd))
+			// 复审 P3-1（L2 F1 接线修复）：直接构造 argv 并在消费点复验 semver
+			// ——不解析给人看的展示串；展示与执行的逐字节一致由
+			// TestNpmInstallArgsMatchesGuidanceCommand 钉住。
+			installArgs, aerr := npmInstallArgs(channel.pm, latest)
+			if aerr != nil {
+				return aerr
+			}
+			fmt.Fprintf(os.Stderr, "执行: %s\n", strings.Join(installArgs, " "))
+			out, err := updateApplyInstallFn(installArgs)
 			if err != nil {
 				return fmt.Errorf("npm 更新失败: %w\n%s", err, out)
 			}
