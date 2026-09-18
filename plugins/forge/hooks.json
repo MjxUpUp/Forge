@@ -124,6 +124,12 @@
         "command": "forge hook skill-trigger --agent copilot",
         "matcher": "Bash",
         "timeoutSec": 60
+      },
+      {
+        "type": "command",
+        "command": "forge hook task-drift --agent copilot",
+        "matcher": "Bash",
+        "timeoutSec": 60
       }
     ],
     "SessionStart": [
