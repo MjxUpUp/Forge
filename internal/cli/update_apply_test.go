@@ -77,8 +77,37 @@ func patchUpdateDeps(t *testing.T, ch installChannel, latest string) func() {
 	detectInstallChannelFn = func() installChannel { return ch }
 	updateLatestFromNPMFn = func() (string, error) { return latest, nil }
 	updateApplyInstallFn = func(args []string) (string, error) { return "", nil }
-	_ = os.Unsetenv("FORGE_NPM_REGISTRY")
+	if oldReg, ok := os.LookupEnv("FORGE_NPM_REGISTRY"); ok {
+		t.Cleanup(func() { _ = os.Setenv("FORGE_NPM_REGISTRY", oldReg) })
+	}
+	_ = os.Unsetenv("FORGE_NPM_REGISTRY") // 复审 P3-6：保存旧值恢复，不向后续用例泄漏
 	return func() {
 		detectInstallChannelFn, updateLatestFromNPMFn, updateApplyInstallFn = oldChannel, oldLatest, oldApply
+	}
+}
+
+// TestNpmInstallArgsMatchesGuidanceCommand pins the two command constructions
+// against drift: npmUpdateCommand renders what the user is TOLD to run,
+// npmInstallArgs builds what --apply ACTUALLY runs — the printed command must
+// stay byte-equal to the executed argv or --apply loses its "no surprise" trust.
+//
+// TestNpmInstallArgsMatchesGuidanceCommand 钉住两份命令构造不漂移：
+// npmUpdateCommand 渲染「告诉用户跑什么」，npmInstallArgs 构造 --apply「实际
+// 跑什么」——展示串与执行 argv 必须逐字节一致，否则 --apply 失去"所见即所跑"
+// 的信任。
+func TestNpmInstallArgsMatchesGuidanceCommand(t *testing.T) {
+	for _, pm := range []string{"npm", "pnpm", "yarn", "bun", "unknown-fallback"} {
+		version := "9.9.9"
+		args, err := npmInstallArgs(pm, version)
+		if err != nil {
+			t.Fatalf("pm %q: %v", pm, err)
+		}
+		if got, want := strings.Join(args, " "), npmUpdateCommand(pm, version); got != want {
+			t.Errorf("pm %q: executed argv %q != printed guidance %q (drift!)", pm, got, want)
+		}
+	}
+	// 非 semver 版本：消费点拒绝（防御纵深，不依赖生产 seam 内部校验）。
+	if _, err := npmInstallArgs("npm", "9.9.9; rm -rf /"); err == nil {
+		t.Fatal("non-semver version must be rejected at the consumption point")
 	}
 }

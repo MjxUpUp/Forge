@@ -66,7 +66,7 @@ _TOUCHED="${_MARKER_DIR}/forge-source-touched-${SESSION_ID}"
 # 文件穿过开发期全链（门禁/验收/审查/lint——golangci v2 默认不启格式 linter），
 # 直到 make premerge 的 gofmt 才被拦——把拦截点从发版前移到敲代码的那一刻。
 GOFMT_NOTE=""
-if [ "$TOUCHED_SOURCE" = "1" ]; then
+if [ "$TOUCHED_SOURCE" = "1" ] && [ -f "$_TOUCHED" ]; then
   case "$FILE_PATH" in
     *.go)
       if command -v gofmt >/dev/null 2>&1 && [ -f "$FILE_PATH" ]; then
