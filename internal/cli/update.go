@@ -74,11 +74,33 @@ var updateApplyFlag bool
 var (
 	updateLatestFromNPMFn = getLatestVersionFromNPM
 	updateApplyInstallFn  = func(args []string) (string, error) {
-		cmd := exec.Command(args[0], args[1:]...)
-		out, err := cmd.CombinedOutput()
+		// P3-3：安装 exec 带超时——npm 网络挂起/凭证提示不得让 --apply 无限
+		// 挂死（发布流程脚本化场景的隐性卡点）；分钟级对齐安装体量。
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		out, err := exec.CommandContext(ctx, args[0], args[1:]...).CombinedOutput()
 		return string(out), err
 	}
 )
+
+// npmInstallArgs 直接构造安装命令 argv（复审 P3-1：不解析给人看的
+// npmUpdateCommand 展示串——其安全性依赖 semver 校验在生产 seam 内部的间接
+// 不变量；此处消费点复验 semver，未来新增版本源也不会失去保证）。
+func npmInstallArgs(pm, latest string) ([]string, error) {
+	if !semverPattern.MatchString(latest) {
+		return nil, fmt.Errorf("远端版本非纯 semver，拒绝代执行安装: %q", latest)
+	}
+	switch pm {
+	case "pnpm":
+		return []string{"pnpm", "add", "-g", "@agent_forge/forge@" + latest}, nil
+	case "yarn":
+		return []string{"yarn", "global", "add", "@agent_forge/forge@" + latest}, nil
+	case "bun":
+		return []string{"bun", "add", "-g", "@agent_forge/forge@" + latest}, nil
+	default:
+		return []string{"npm", "install", "-g", "@agent_forge/forge@" + latest}, nil
+	}
+}
 
 type githubRelease struct {
 	TagName string        `json:"tag_name"`
@@ -161,7 +183,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			// 装后自验（warning 级）：os.Executable 即 npm 刚替换的 shim/二进制
 			// 路径——PATH 层（游离 exe/PATHEXT）会造成假阴，故只警示不报错。
 			if exe, aerr := os.Executable(); aerr == nil {
-				if vout, verr := exec.Command(exe, "--version").CombinedOutput(); verr == nil && strings.Contains(string(vout), latest) {
+				// 复审 P3-2：精确版本段比较——Contains 会让 latest=9.9.9 命中
+				// 9.9.90 的前缀误报，掩盖 PATH 游离二进制病灶。
+				if vout, verr := exec.Command(exe, "--version").CombinedOutput(); verr == nil && util.GetCurrentVersion(string(vout)) == latest {
 					fmt.Fprintf(os.Stderr, "✅ 已更新: %s\n", strings.TrimSpace(string(vout)))
 				} else {
 					fmt.Fprintf(os.Stderr, "⚠ 安装命令成功但版本自验未确认 %s——若 `forge --version` 仍报旧版，检查 PATH 上是否有游离的旧二进制（PATHEXT/手动 exe）\n", latest)
