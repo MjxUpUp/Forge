@@ -8,6 +8,7 @@ package cli
 import (
 	"errors"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -57,6 +58,20 @@ func TestUpdateApplyRunsNpmInstall(t *testing.T) {
 	}
 
 	// 失败路径：安装器输出随 error 上抛（error 由调用方打印，不经本函数 stderr）。
+	// 平台契约分流（Windows CI 实证 2026-09-18）：Windows 上 --apply 走文件锁
+	// 提示分支 return nil、永不调安装器——失败路径断言只对 unix 成立；Windows
+	// 分支单独钉住「提示手动命令 + 成功返回」的契约。
+	if runtime.GOOS == "windows" {
+		stderr = captureStderr(t, func() {
+			if err := runUpdate(updateCmd, nil); err != nil {
+				t.Fatalf("windows lock branch must return nil with manual-command hint, got %v", err)
+			}
+		})
+		if !strings.Contains(stderr, "文件锁") || !strings.Contains(stderr, "npm install -g @agent_forge/forge@9.9.9") {
+			t.Errorf("windows branch must print the lock reason + manual command, got: %q", stderr)
+		}
+		return
+	}
 	installErr = errors.New("EPERM")
 	var runErr error
 	captureStderr(t, func() {
