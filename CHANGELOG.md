@@ -10,6 +10,23 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.63.0](https://github.com/MjxUpUp/Forge/compare/v1.62.0...v1.63.0) (2026-09-18)
+
+
+### Features
+
+* **discipline-first:** P1 落地——checklog outcome 分类 + test-nudge 文件级跨档升级 ([122fe1c](https://github.com/MjxUpUp/Forge/commit/122fe1c99208e1da3d61a192180c04be4778ab54))
+* **discipline-first:** P2-P4 落地 + 守护审计 3P1/3P2 修复 ([81a8e10](https://github.com/MjxUpUp/Forge/commit/81a8e107ab507ba491531ae80bf80c5280e9d02b))
+
+
+### Bug Fixes
+
+* **discipline-first:** compat 快照重钉（+3 命令/+2 检查，非破坏新增）+ skillRefAllowlist 收录 selfcheck 条目名 ([82f3756](https://github.com/MjxUpUp/Forge/commit/82f375662654d8bb1f0edbe6b5cf58e1cd0d5f64))
+* **discipline-first:** 同步清单——allCheckNames roster + README 命令表 + 命令归组 quality ([b51f601](https://github.com/MjxUpUp/Forge/commit/b51f6018c4d855b5854a3ac1c9d925f09df27511))
+* **discipline-first:** 增量复审 P3×3 收口——折叠计数守卫（PASS 穿插/&gt;8 前驱截断假折叠）+ 逗号编码守卫 + nextCmdVerifyAcceptance 常量单源 ([cd8501f](https://github.com/MjxUpUp/Forge/commit/cd8501f87c8e955ce149930a755730c81b8213a7))
+* **discipline-first:** 复审 P2×2/P3×7 修复——折叠全量集合比对/next-hint 事实分支/注释如实化/围栏对齐 ([ff2f95f](https://github.com/MjxUpUp/Forge/commit/ff2f95f2a6c352715d5a50de30005a96e66dfdee))
+* **discipline-first:** 审查 P1/P2/P3 修复——任务边界重置/门禁事实锚定/最新文件点名 ([1ed30c8](https://github.com/MjxUpUp/Forge/commit/1ed30c88ef34ec4764945a141468194eab299309))
+
 ## [1.62.0](https://github.com/MjxUpUp/Forge/compare/v1.61.3...v1.62.0) (2026-09-16)
 
 
