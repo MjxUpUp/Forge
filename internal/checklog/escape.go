@@ -91,6 +91,7 @@ var allCheckNames = []CheckName{
 	CheckArtifactChain, CheckArtifactDrift, CheckArtifactDrill,
 	CheckNextHint, CheckGateCmdForm,
 	CheckSelfcheckPairing, CheckSelfcheckScope,
+	CheckTestNudgeState, CheckTaskDrift,
 }
 
 // AllCheckNames 返回 CheckName roster 的排序副本（compat 面 2 / dashboards 消费）。

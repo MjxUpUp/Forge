@@ -230,6 +230,18 @@ type testNudgeState struct {
 	// （配一个又加一个，反复跨同档）按设计会每轮重触发；防伪护栏在 spec 定义
 	// （触发数 ≤ 源码写入事件数 × 0.5，从 checklog 实算——单一口径真相源）。
 	FiredTier int `json:"fired_tier"`
+	// SuppressedWrites counts non-escalating source-write evaluations since the
+	// last fire OR the last state row (escape-hatch-hardening P0-A): reaching
+	// testNudgeStateRowEvery emits one audit-only test-nudge-state row and
+	// resets. Task-boundary reset rebuilds the state (implicit zero); every
+	// fire also zeroes it — the audit measures the silent stretch, not the
+	// loud moments.
+	//
+	// SuppressedWrites 计自上次发射或上次审计行以来的非升档源码写入评估数
+	// （escape-hatch-hardening P0-A）：到达 testNudgeStateRowEvery 落一行纯审计
+	// 的 test-nudge-state 并归零。任务边界重置重建状态（隐式归零）；每次发射
+	// 同样归零——审计量的是静默段,不是发声时刻。
+	SuppressedWrites int `json:"suppressed_writes"`
 }
 
 // 跨档阈值：3/5/8 个未配对源文件。3 对齐 task-verify 的小改 fudge factor；
@@ -239,6 +251,11 @@ const (
 	testNudgeTier1Files = 3
 	testNudgeTier2Files = 5
 	testNudgeTier3Files = 8
+	// testNudgeStateRowEvery（P0-A）：非升档评估累计到该数落一行审计。20 的量纲
+	// 来自 2026-09-18 取证会话（天花板后 ~116 次真实写入 → 5-6 行/35 分钟——
+	// 可审计不刷屏）；纯审计行不占打断预算,调小无噪声代价,防 gaming 由
+	// 「audit-only 不注入」结构性排除（行再多也换不来 agent 行为变化）。
+	testNudgeStateRowEvery = 20
 )
 
 // nudgeTier 把未配对文件数映射到升级档位（0 = 低于 tier1）。
@@ -331,9 +348,27 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 			state.FiredTier = tier
 			fire = true
 		}
+		if !fire {
+			state.SuppressedWrites++
+		}
+	}
+	// P0-A 审计节流（escape-hatch-hardening）：非升档路径不再 return nil 直走
+	// ——每累计 testNudgeStateRowEvery 次被压制的源码写入评估,落一行
+	// test-nudge-state（纯审计、不注入）后计数归零;发射（升档）同样归零。修
+	// 「tier 天花板后 checklog 断流」：2026-09-18 取证 150+ 次写入零记录,
+	// 违反 discipline-first 原则 2（静默化不得删审计落盘）。
+	stateRow := false
+	if fire {
+		state.SuppressedWrites = 0
+	} else if state.SuppressedWrites >= testNudgeStateRowEvery {
+		state.SuppressedWrites = 0
+		stateRow = true
 	}
 	_ = os.MkdirAll(stateDir, 0755)
 	_ = util.AtomicWrite(statePath, mustJSONState(state), 0644)
+	if stateRow {
+		recordTestNudgeStateRow(hookInput, root, version, attr, &state, tier)
+	}
 	if !fire {
 		return nil
 	}
@@ -401,6 +436,39 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 	// （test-nudge 在 PostToolUse 上触发，其 stdout 被 kimi 丢弃——2026-08
 	// usage 日志审计发现这些记录 100% 未送达）；其余宿主的输出路径不变。
 	return EmitAdvisoryRouted(agent, hookInput.HookEventName, "test-nudge", root, hookInput.SessionID, true, nudge)
+}
+
+// recordTestNudgeStateRow 落一行 test-nudge-state 审计行（escape-hatch-hardening
+// P0-A）。Delivered 显式 false——纯审计、绝不注入（与 nudge 行的 Delivered 语义
+// 相反,读方可区分「送达」与「留痕」）;meta 键与 nudge 行同族（unpaired_files/
+// tier/fired_tier + suppressed_writes）,漏斗可把两行关联到同一事实。刻意不设
+// Channel（无投递即无通道）。
+func recordTestNudgeStateRow(hookInput HookInput, root, version string, attr taskAttribution, state *testNudgeState, tier int) {
+	no := false
+	entry := &checklog.Entry{
+		Check:     checklog.CheckTestNudgeState,
+		Passed:    true,
+		Checked:   true,
+		ToolName:  hookInput.ToolName,
+		SessionID: hookInput.SessionID,
+		TaskRef:   attr.TaskRef, // 与 fire 行同键——ForTask/trace 等按任务过滤的读方才能看到 state 行（审查必改项）
+		Detail: fmt.Sprintf("test-nudge-state: ceiling audit — %d unpaired source files (tier %d, fired_tier %d); reminder suppressed, audit-only row every %d suppressed evaluations",
+			len(state.UnpairedFiles), tier, state.FiredTier, testNudgeStateRowEvery),
+		Source:       checklog.EvidenceDeterministic,
+		Level:        checklog.LevelAdvisory,
+		Delivered:    &no,
+		ForgeVersion: version,
+		Meta: map[string]string{
+			"unpaired_files":    fmt.Sprintf("%d", len(state.UnpairedFiles)),
+			"tier":              fmt.Sprintf("%d", tier),
+			"fired_tier":        fmt.Sprintf("%d", state.FiredTier),
+			"suppressed_writes": fmt.Sprintf("%d", testNudgeStateRowEvery),
+		},
+	}
+	attr.stamp(entry)
+	if err := checklog.Record(root, entry); err != nil {
+		fmt.Fprintf(os.Stderr, "[test-nudge-state] warning: checklog record failed: %v\n", err)
+	}
 }
 
 // mustJSONState 序列化 v，失败回落 "{}"——状态文件序列化失败绝不能拖垮 hook
