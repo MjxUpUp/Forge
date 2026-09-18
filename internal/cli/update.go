@@ -23,6 +23,7 @@ import (
 )
 
 func init() {
+	updateCmd.Flags().BoolVar(&updateApplyFlag, "apply", false, "npm 通道代跑包管理器安装命令并自验版本（GitHub 通道默认即执行）")
 	updateCmd.Flags().BoolVar(&updatePluginFlag, "plugin", false, "更新 binary 后打印 plugin marketplace 重装指引（不脚本化，agent CLI 内交互运行）")
 	rootCmd.AddCommand(updateCmd)
 }
@@ -48,19 +49,36 @@ var updateCmd = &cobra.Command{
 	Short: "自更新 Forge 到最新版本",
 	Long: `检查并更新 Forge 到最新版本（安装通道自动检测）。
 
-- npm 安装（二进制位于 node_modules/@agent_forge 下）：查 npm registry 最新版本，
-  打印对应包管理器（npm/pnpm/yarn/bun 自动检测）的更新命令。npm 包不可变，
-  原地替换会被下次 npm install 还原，故不代下载（可用 FORGE_NPM_REGISTRY 覆盖
-  registry）。
+- npm 安装（二进制位于 node_modules/@agent_forge 下）：查 npm registry 最新版本。
+  默认打印对应包管理器（npm/pnpm/yarn/bun 自动检测）的更新命令（npm 包不可变，
+  原地替换会被下次 npm install 还原，故默认不代执行；可用 FORGE_NPM_REGISTRY
+  覆盖 registry）。加 --apply 直接代跑安装命令并自验新版本（发布流程排查
+  P1-1：发版后发布者本机停在旧版直到人工质疑——打印的命令不等于装上的版本）。
+  Windows 上运行中的二进制会被文件锁挡住 npm 替换，--apply 提示手动命令。
 - 其他（GitHub Release / 手动放置）：从 GitHub Releases 下载并原地替换，
-  支持 SHA-256 校验和验证。Windows 上更新前先把旧二进制重命名为 .old、成功后
-  删除；若替换与回滚都失败，需按错误提示手动 move .old 还原（forge 不会在下次
-  启动时自动恢复）。
+  支持 SHA-256 校验和验证（本通道默认即执行安装，--apply 无附加作用）。
+  Windows 上更新前先把旧二进制重命名为 .old、成功后删除；若替换与回滚都
+  失败，需按错误提示手动 move .old 还原（forge 不会在下次启动时自动恢复）。
 
 可加 --plugin 触发后打印 plugin marketplace 重装指引（marketplace 含的 plugin.json
 镜像 Go 变更时建议重装以同步）。`,
 	RunE: runUpdate,
 }
+
+// updateApplyFlag --apply：npm 通道代跑包管理器安装命令（GitHub 通道默认即
+// 代装，本 flag 对其无附加作用）。
+var updateApplyFlag bool
+
+// updateLatestFromNPMFn / updateApplyInstallFn 可注入 seam：版本源与安装器
+// 执行（update_apply_test 覆盖 apply 路径不打真网络/真全局安装）。
+var (
+	updateLatestFromNPMFn = getLatestVersionFromNPM
+	updateApplyInstallFn  = func(args []string) (string, error) {
+		cmd := exec.Command(args[0], args[1:]...)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+)
 
 type githubRelease struct {
 	TagName string        `json:"tag_name"`
@@ -96,7 +114,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	var latest string
 	var release *githubRelease
 	if channel.kind == channelNPM {
-		v, err := getLatestVersionFromNPM()
+		v, err := updateLatestFromNPMFn()
 		if err != nil {
 			return fmt.Errorf("检查更新失败（npm registry）: %w", err)
 		}
@@ -124,9 +142,37 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// npm 通道：重定向到包管理器而非下载。为何 npm 下原地替换是错的
-	// 见 update_channel.go。
+	// npm 通道：默认重定向到包管理器而非下载（为何 npm 下原地替换是错的见
+	// update_channel.go）；--apply 代跑安装命令并自验（P1-1）。
 	if channel.kind == channelNPM {
+		if updateApplyFlag {
+			if runtime.GOOS == "windows" {
+				// 运行中的二进制被 Windows 文件锁挡住——npm 无法替换，代跑必败。
+				fmt.Fprintf(os.Stderr, "Windows 上运行中的 forge 二进制会被文件锁挡住 npm 替换——请退出本次会话后手动执行：\n  %s\n", npmUpdateCommand(channel.pm, latest))
+				_ = saveUpdateCache(latest, channel.kind)
+				return nil
+			}
+			installCmd := npmUpdateCommand(channel.pm, latest)
+			fmt.Fprintf(os.Stderr, "执行: %s\n", installCmd)
+			out, err := updateApplyInstallFn(strings.Fields(installCmd))
+			if err != nil {
+				return fmt.Errorf("npm 更新失败: %w\n%s", err, out)
+			}
+			// 装后自验（warning 级）：os.Executable 即 npm 刚替换的 shim/二进制
+			// 路径——PATH 层（游离 exe/PATHEXT）会造成假阴，故只警示不报错。
+			if exe, aerr := os.Executable(); aerr == nil {
+				if vout, verr := exec.Command(exe, "--version").CombinedOutput(); verr == nil && strings.Contains(string(vout), latest) {
+					fmt.Fprintf(os.Stderr, "✅ 已更新: %s\n", strings.TrimSpace(string(vout)))
+				} else {
+					fmt.Fprintf(os.Stderr, "⚠ 安装命令成功但版本自验未确认 %s——若 `forge --version` 仍报旧版，检查 PATH 上是否有游离的旧二进制（PATHEXT/手动 exe）\n", latest)
+				}
+			}
+			if updatePluginFlag {
+				printPluginReinstallGuidance(os.Stderr)
+			}
+			_ = saveUpdateCache(latest, channel.kind)
+			return nil
+		}
 		printNpmUpdateGuidance(os.Stderr, latest, channel.pm)
 		// 与 GitHub 路径同 --plugin 契约：无论哪条路更新后 marketplace
 		// 镜像都可能需要重装。
