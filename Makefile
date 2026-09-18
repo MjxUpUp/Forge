@@ -58,10 +58,11 @@ premerge: canary
 clean:
 	rm -rf bin/
 
-# npm-align：发版前把平台子包 version 与主包 optionalDependencies pins 同步到
-# 主包当前版本（release-please 只 bump 主包 version；extra-files 已纳入平台包
-# version，但 pins 的逐键 bump 无法用 jsonpath 表达——发版打 tag 前手动跑一次，
-# npm_versions_test 守卫多版本漂移）。
+# npm-align：【应急工具,常规流程已不需要】把平台子包 version 与主包
+# optionalDependencies pins 同步到主包当前版本。v1.66.1 起 release-please
+# extra-files 已逐键 bump 5 个平台钉（方括号 jsonpath,守卫在
+# internal/ci/release_please_test.go）——仅在自动化失效（Release PR 漏 bump 钉、
+# TestNpmPlatformVersionsAligned 严格相等红灯）时手动跑一次并随 PR 提交。
 npm-align:
 	@VER=$$(node -p "require('./npm/package.json').version"); \
 	for f in npm/platforms/*/package.json; do \

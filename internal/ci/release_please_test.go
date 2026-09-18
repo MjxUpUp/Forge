@@ -8,9 +8,10 @@ package ci
 // workflow_dispatch 串联。本组守卫钉住交接形状，防配置漂移悄悄断链：
 //   - tag 形状必须保持 v<semver>：release.yml 由 on.push.tags "v*" 触发，npm job 硬编码
 //     资产 URL releases/download/v<ver>/...；
-//   - extra-files 必须持续 bump npm/package.json、.kimi-plugin/plugin.json 与
-//     plugins/forge-dsh/package.json——正是 tag 对账门禁、
-//     TestKimiPluginManifestVersionTracksRelease 与 dsh 发布步读的三个文件；
+//   - extra-files 必须持续 bump 全部 json 条目:主包 $.version + 5 个
+//     optionalDependencies 平台钉 + kimi/dsh 插件 + 5 平台子包——正是 tag 对账
+//     门禁、TestKimiPluginManifestVersionTracksRelease、dsh 发布步与严格相等
+//     提交态守卫(TestNpmPlatformVersionsAligned)共同读的面；
 //   - manifest 版本必须等于 npm/package.json 版本：绕过 release-please 的手动发版会让
 //     它失同步而变红（刻意的设计——把人推回 release-please 路径；release-please 从旧
 //     版本起算下一版会撞已存在 tag）；
@@ -119,21 +120,32 @@ func TestReleasePleaseConfig_ExtraFilesBumpAllManifests(t *testing.T) {
 	if !ok {
 		t.Fatal(`release-please-config.json 缺根包 packages["."]（本仓单包发版，版本 bump 挂在根包）`)
 	}
-	bumped := map[string]string{}
+	// 同文件多 jsonpath（npm/package.json 的 $.version + 5 个 optionalDependencies
+	// 钉）合法——按 path|jsonpath 二元组收集,不按 path 折叠。
+	bumped := map[string]bool{}
 	for _, f := range pkg.ExtraFiles {
 		if f.Type == "json" {
-			bumped[f.Path] = f.JSONPath
+			bumped[f.Path+"|"+f.JSONPath] = true
 		}
 	}
-	for path, wantJSONPath := range map[string]string{
-		"npm/package.json":               "$.version",
-		".kimi-plugin/plugin.json":       "$.version",
-		"plugins/forge-dsh/package.json": "$.version",
+	for _, want := range []string{
+		"npm/package.json|$.version",
+		".kimi-plugin/plugin.json|$.version",
+		"plugins/forge-dsh/package.json|$.version",
+		// optionalDependencies 平台包钉随火车自动 bump(2026-09-18 根治):
+		// release-please 不 bump map 值的缺口曾致 v1.65.0 发布失败与
+		// #72/#74/#77 三轮手工 npm-align 债务。方括号键 + 同文件多 jsonpath
+		// 是 release-please 支持的既有模式(borkfork/spicedb-embedded 同款)。
+		// 删任何一条 = Release PR 漏 bump 钉 → 提交态守卫(TestNpmPlatformVersionsAligned)
+		// 与发布 test job 双红灯。
+		"npm/package.json|$.optionalDependencies['@agent_forge/forge-darwin-arm64']",
+		"npm/package.json|$.optionalDependencies['@agent_forge/forge-darwin-x64']",
+		"npm/package.json|$.optionalDependencies['@agent_forge/forge-linux-arm64']",
+		"npm/package.json|$.optionalDependencies['@agent_forge/forge-linux-x64']",
+		"npm/package.json|$.optionalDependencies['@agent_forge/forge-win32-x64']",
 	} {
-		if bumped[path] != wantJSONPath {
-			t.Fatalf("extra-files 缺 {type:json, path:%s, jsonpath:%s}——Release PR 不再 bump 此文件，"+
-				"下游 tag 对账门禁/TestKimiPluginManifestVersionTracksRelease/dsh 发布步会红; got extra-files %+v",
-				path, wantJSONPath, pkg.ExtraFiles)
+		if !bumped[want] {
+			t.Fatalf("extra-files 缺 {type:json, %s}——Release PR 不再 bump 此处,提交态/发布态版本对齐守卫会红; got extra-files %+v", want, pkg.ExtraFiles)
 		}
 	}
 }
