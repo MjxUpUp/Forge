@@ -31,8 +31,8 @@ workflow run（GitHub 防递归），所以靠 workflow_dispatch 显式调度构
 触发 release.yml（dispatch 步自停，防双跑），无需改任何文件。
 
 发版形状由 `internal/ci/release_please_test.go` 守卫：tag 形状必须 `v<semver>`（构建层
-触发条件与 npm 资产 URL 都依赖）、extra-files 必须持续 bump 三个版本文件
-（`npm/package.json`、`.kimi-plugin/plugin.json`、`plugins/forge-dsh/package.json`）、
+触发条件与 npm 资产 URL 都依赖）、extra-files 必须持续 bump 全部 11 个 json 条目
+（主包 `$.version` + 5 个 optionalDependencies 钉 + kimi/dsh 插件 + 5 平台子包）、
 `.release-please-manifest.json` 必须与 `npm/package.json` 同版本（手动发版不同步会被
 测试拦下）。
 
@@ -65,10 +65,15 @@ npm → npm-verify** 五段强依赖链：
 - **版本对账门禁**（test job）：tag 必须等于 `npm/package.json` 与
   `plugins/forge-dsh/package.json` 的 version——Release PR 已保证一致，此门禁防手动
   打 tag 路径"二进制是 tag 的、包版本号是 package.json 的"货不对板
-- **npm 平台子包版本**：平台子包 version 由 release-please extra-files 随 Release PR
-  自动 bump（v1.53.0 起纳入）；主包 `optionalDependencies` pins 的逐键 bump 无法用
-  jsonpath 表达——**打 tag 前跑 `make npm-align`**（守卫 `TestNpmPlatformVersionsAligned`
-  抓多版本漂移，v1.53.0 发布曾被它拦下）
+- **npm 平台子包版本与 optionalDependencies 钉**：平台子包 version 与主包
+  `optionalDependencies` 的 5 个平台钉均由 release-please extra-files 随 Release PR
+  **同 PR 自动 bump**（v1.66.1 起逐键 jsonpath `$.optionalDependencies['…']` 纳入——
+  此前「无法用 jsonpath 表达」的断言过时,方括号键是受支持模式,spicedb-embedded/
+  ifchange 同款;守卫 `TestReleasePleaseConfig_ExtraFilesBumpAllManifests` 钉住 5 条
+  jsonpath 不被删）。提交态守卫 `TestNpmPlatformVersionsAligned` 已收紧**严格相等**
+  ——「滞后一版合法」宽容随自动化退役(#72/#74/#77 三轮手工 npm-align 的债务根源,
+  曾致 v1.65.0 发布失败)。`make npm-align` 保留为自动化失效时的应急工具(用法
+  不变:对齐到 npm/package.json 当前 version 后随 PR 提交)。
 - **npm** 先发 5 平台子包（主包 optionalDependencies 依赖它们）再发主包；
   `NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
 
