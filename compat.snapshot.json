@@ -1182,11 +1182,13 @@
     "sync-version-skew",
     "takeover-policy",
     "task-complete",
+    "task-drift",
     "task-guard",
     "task-stalled",
     "task-started",
     "task-verify",
     "test-nudge",
+    "test-nudge-state",
     "tool-failure",
     "unused-scan"
   ],

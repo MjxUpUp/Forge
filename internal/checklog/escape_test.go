@@ -53,3 +53,27 @@ func TestWedgeDrillInRoster(t *testing.T) {
 		t.Fatalf("eval-wedge-drill 在 AllCheckNames 中出现 %d 次, want 1（漏注 or 重复注册）", found)
 	}
 }
+
+// TestEscapeHatchHardeningChecksInRoster 钉住 escape-hatch-hardening P0 两个新
+// CheckName 的 roster 注册（与 TestWedgeDrillInRoster 同契约：常量值与
+// AllCheckNames 双向一致且不重复）——漏注 roster 时 compat 源对照 guard 也会红,
+// 本测试把契约钉在本目录（测试伴随变更纪律）。
+func TestEscapeHatchHardeningChecksInRoster(t *testing.T) {
+	for check, want := range map[CheckName]string{
+		CheckTestNudgeState: "test-nudge-state",
+		CheckTaskDrift:      "task-drift",
+	} {
+		if check != CheckName(want) {
+			t.Fatalf("check %q 常量值 = %q", want, check)
+		}
+		found := 0
+		for _, name := range AllCheckNames() {
+			if name == want {
+				found++
+			}
+		}
+		if found != 1 {
+			t.Fatalf("%s 在 AllCheckNames 中出现 %d 次, want 1（漏注 or 重复注册）", want, found)
+		}
+	}
+}

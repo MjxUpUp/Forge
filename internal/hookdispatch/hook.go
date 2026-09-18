@@ -291,7 +291,7 @@ func isGlobalHook(name string) bool {
 func isInProcessHook(name string) bool {
 	return name == "skill-trigger" || name == "failure-track" || name == "subagent-track" || name == "test-nudge" ||
 		name == "conventions-context" || name == "conventions-write" || name == "gate-cmd-form" ||
-		name == "doc-lint"
+		name == "doc-lint" || name == "task-drift"
 }
 
 // RunHook is the RunE of `forge hook <name>`: reads host stdin JSON, resolves
@@ -622,6 +622,13 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// 于本版本（承诺表 ≥2 minor 预告）。
 	if name == "gate-cmd-form" {
 		return runGateCmdFormHook(hookInput, root, cmd.Root().Version, agent)
+	}
+	// task-drift（escape-hatch-hardening P0-B）：PreToolUse Bash 的进程内
+	// choke-point hook——git 边界动词发生在活跃任务分支之外时 advisory
+	// （1/2/10n 阶梯）+ checklog warn 行。P0 永不阻断;BLOCK ratchet 属 P1
+	// （≥2 minor 预告,与 gate-cmd-form 同承诺纪律）。
+	if name == "task-drift" {
+		return runTaskDriftHook(hookInput, root, cmd.Root().Version, agent)
 	}
 	// conventions-context / conventions-write：conventions-profile 层 2 的注入
 	// hook（hook_conventions.go），与上面同类——advisory、永不阻断、需要 stdin 的

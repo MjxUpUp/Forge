@@ -89,3 +89,22 @@ func TestStripOpenCodeUserPlugin(t *testing.T) {
 		t.Fatalf("second strip: removed=%v err=%v, want false/nil", removed, err)
 	}
 }
+
+// TestOpencodePlugin_CarriesTaskDrift 钉住 Bash PRE_HOOKS 携带 task-drift
+// （escape-hatch-hardening P0-B 的 opencode 通道）。translator_test 的
+// TestOpencodePluginWiring 做 spec↔TS 全量对照;本测试在配对文件层锚定
+// choke point 不被手改 TS 名册时静默丢弃（测试伴随变更纪律）。
+func TestOpencodePlugin_CarriesTaskDrift(t *testing.T) {
+	home := isolateHome(t)
+	path := filepath.Join(home, ".config", "opencode", "plugins", "forge.ts")
+	if err := (&OpencodeTranslator{}).Translate(t.TempDir(), testInput()); err != nil {
+		t.Fatalf("Translate failed: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("forge.ts not created: %v", err)
+	}
+	if !strings.Contains(string(data), "forge hook task-drift") {
+		t.Error("forge.ts 的 Bash pre 链缺 task-drift——choke point 在 opencode 通道被丢弃")
+	}
+}
