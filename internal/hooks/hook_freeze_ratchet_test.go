@@ -29,9 +29,16 @@ func TestHookWiring_FreezeRatchet(t *testing.T) {
 	// 集，仅 .md 触发、带会话内去重），且执行体不同（Go 进程内 vs bash embed）。
 	// 会话增重评估：仅 .md 写入触发、静默路径零输出、去重防重复注入——增量
 	// 集中在写文档的场景，恰是 v2 要治理的场景。
+	// 2026-09-18 bump 34→35：task-drift choke point（escape-hatch-hardening
+	// P0-B，docs/plans/escape-hatch-hardening-2026-09.md）。挂 PreToolUse Bash
+	// matcher 新条目而非并入 bash-guard 的理由：bash-guard 是 bash embed 脚本
+	// （写检测+快照域），task-drift 是 Go 进程内检查（需读 stdin 实时 command
+	// + 任务态 + 真实 git 分支）——与 gate-cmd-form 同款形态先例。会话增重
+	// 评估：非 git 边界动词零开销直回;漂移时 1/2/10n 阶梯,静默段 marker 计数
+	// 零输出;git 分支查询仅边界动词时发生（每 commit/merge/建分支一次）。
 	const wantEvents = 8
 	const wantMatchers = 11
-	const wantEntries = 34
+	const wantEntries = 35
 
 	spec := ForgeHookSpec()
 	events, matchers, entries := 0, 0, 0
