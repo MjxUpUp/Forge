@@ -16,10 +16,16 @@
 
 ## P-A `forge update --apply`（断层修复）
 
-npm 通道 `--apply` 代跑包管理器安装命令（`npmUpdateCommand` 单一真相源构造，
-shell-free 切分执行）+ 装后 `--version` 自验（warning 级——PATH 层假阴只警示）；
-Windows 上运行中二进制被文件锁挡住 npm 替换，提示手动命令不代跑。GitHub 通道
-默认即执行安装，`--apply` 无附加作用。
+npm 通道 `--apply` 代跑包管理器安装命令 + 装后 `--version` 自验（warning 级
+——PATH 层假阴只警示，精确版本段比较防 9.9.9 前缀命中 9.9.90）；Windows 上
+运行中二进制被文件锁挡住 npm 替换，提示手动命令不代跑（同 flag 的 --plugin
+指引两平台一致）。GitHub 通道默认即执行安装，`--apply` 无附加作用。
+
+> **复审变更记录（2026-09-18，L2 F1 + code 复审 P2/P3）**：安装 argv 改
+> `npmInstallArgs` 直构 + semver 消费点复验（不解析展示串；展示与执行逐字节
+> 一致由 TestNpmInstallArgsMatchesGuidanceCommand 钉住）；安装 exec 5min 超时；
+> 去重旋钮改真钳制（越界压边界，非静默弃用）。初版"npmUpdateCommand 单一
+> 真相源 + shell-free 切分"的表述随 P3-1 接线废弃。
 
 ## P-B auto-compile hook 的写入时刻 gofmt 检查（断层修复）
 
@@ -38,13 +44,16 @@ e2e double-fire 场景注入 60s 宽窗：串行复放的两次投递间隔 = ho
 
 配置后 Release PR 自动跑 CI、tag push 直接触发 release.yml——消除每版
 `--admin` 绕过与幽灵失败 run（RELEASE.md 既定路径）。需用户创建 PAT
-（contents:write + pull-requests:write）设置 repo secret，非代码交付。
+（contents:write + pull-requests:write）设置 repo secret，非代码交付。**生效
+验证**：release-please workflow 日志出现 "RELEASE_PLEASE_TOKEN configured -
+tag push triggers release.yml directly" 且下次 Release PR 带 checks 即生效。
 
 ## 验收（verify-acceptance 实跑口径）
 
 ```accept
 go test ./internal/hooks/ -run TestAutoCompileHook_GofmtAdvisory
 go test ./internal/cli/ -run TestUpdateApply
+go test ./internal/cli/ -run TestNpmInstallArgsMatchesGuidanceCommand
 go test ./internal/hookdispatch/ -run TestBlockDedupWindowEnvOverride
 go test ./internal/e2e/ -run TestHook_ReadBeforeEdit
 go test ./...
