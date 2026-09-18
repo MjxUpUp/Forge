@@ -1375,12 +1375,34 @@ func isScoringCheck(name checklog.CheckName) bool {
 	return false
 }
 
-// blockRecordDedupWindow 限定同一事件双发抑制的窗口：窗口内完全相同的阻断记录
-// （同 check、session、detail 指纹）是宿主对**同一个**工具事件的重复投递，
-// 不是新的阻断。窗口按 2026-08-24 生产证据定：kimi PreToolUse 对单个 Edit
+// blockRecordDedupWindowBase 限定同一事件双发抑制的默认窗口：窗口内完全相同的
+// 阻断记录（同 check、session、detail 指纹）是宿主对**同一个**工具事件的重复
+// 投递，不是新的阻断。默认按 2026-08-24 生产证据定：kimi PreToolUse 对单个 Edit
 // 98ms 内双发 read-before-edit（checklog seq 连号）；两周日志有 6 组同
 // (session,file) 记录间隔 0.5~1.9s。
-const blockRecordDedupWindow = 3 * time.Second
+//
+// FORGE_BLOCK_DEDUP_WINDOW_MS 旋钮（发布流程排查 P2-2）：e2e 串行复放 double-
+// fire 时两次 hook 进程的间隔 = 进程启动耗时——慢 runner（Windows CI）一跑就
+// 超过 3s 默认窗，去重不生效、断言 flaky。旋钮钳制 [1s, 60s]：调宽只会少记
+// 重复投递（审计去噪方向），绝不隐藏阻断判定——理智约束而非安全约束。
+const blockRecordDedupWindowBase = 3 * time.Second
+
+// blockDedupWindow 解析当前生效的去重窗口（env 旋钮 + 钳制，非法值回落默认）。
+func blockDedupWindow() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("FORGE_BLOCK_DEDUP_WINDOW_MS"))
+	if raw == "" {
+		return blockRecordDedupWindowBase
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil {
+		return blockRecordDedupWindowBase
+	}
+	d := time.Duration(ms) * time.Millisecond
+	if d < time.Second || d > 60*time.Second {
+		return blockRecordDedupWindowBase
+	}
+	return d
+}
 
 // blockRecordMarker resolves the dedupe marker path and the detail fingerprint
 // for one (check, session, detail) triple. "" path when root is empty.
@@ -1399,7 +1421,7 @@ func blockRecordMarker(root, sessionID, checkName, detail string) (path, fp stri
 }
 
 // duplicateBlockRecord 报告完全相同的阻断条目（同 check、session、detail 指纹）
-// 是否已在 blockRecordDedupWindow 内被记录过。只查不写——调用方在
+// 是否已在 blockDedupWindow() 内被记录过。只查不写——调用方在
 // checklog.Record 成功后才经 stampBlockRecord 打戳（2026-08-25 review minor：
 // 先打戳的话 Record 失败会留下戳，窗口内的重试随后被抑制——审计行丢失）。
 // 尽力而为、宁多记：任何 I/O 错误返回 false——审计行绝不可因 marker 故障被
@@ -1413,7 +1435,7 @@ func duplicateBlockRecord(root, sessionID, checkName, detail string) bool {
 		parts := strings.Fields(string(data))
 		if len(parts) == 2 && parts[1] == fp {
 			if ts, perr := strconv.ParseInt(parts[0], 10, 64); perr == nil {
-				if since := time.Since(time.Unix(ts, 0)); since >= 0 && since < blockRecordDedupWindow {
+				if since := time.Since(time.Unix(ts, 0)); since >= 0 && since < blockDedupWindow() {
 					return true
 				}
 			}
