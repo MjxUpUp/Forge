@@ -10,6 +10,15 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.65.0](https://github.com/MjxUpUp/Forge/compare/v1.64.0...v1.65.0) (2026-09-18)
+
+
+### Features
+
+* **escape-hatch:** P0 修复——test-nudge 天花板审计行 + task-drift choke point ([db82842](https://github.com/MjxUpUp/Forge/commit/db82842a9c073b1e743ee9597b217b438f966d1e))
+* **escape-hatch:** P1 落地——dispatch 幂等守卫 + ratchet/Stop 有界阻断 + HITL/wild 补强 ([ae7f476](https://github.com/MjxUpUp/Forge/commit/ae7f47674229e5d990733dd9716cb95108bd790a))
+* **escape-hatch:** 门禁逃生口加固 P0+P1——审计不静默/choke point/幂等守卫/有界阻断 ([7403b2f](https://github.com/MjxUpUp/Forge/commit/7403b2f570bf33562b41399d9f4d224f5283f727))
+
 ## [1.64.0](https://github.com/MjxUpUp/Forge/compare/v1.63.0...v1.64.0) (2026-09-18)
 
 
