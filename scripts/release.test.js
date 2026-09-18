@@ -12,7 +12,7 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion } = require('./release.js');
+const { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins } = require('./release.js');
 
 const SCRIPT = path.join(__dirname, 'release.js');
 const PKG = path.join(__dirname, '..', 'npm', 'package.json');
@@ -236,4 +236,34 @@ test('未知参数退出码非零', () => {
     code = e.status;
   }
   assert.notStrictEqual(code, 0, 'unknown arg must exit non-zero');
+});
+
+// --- replacePlatformPins:逃生舱发版的钉对齐(严格相等守卫配套) ---
+// 2026-09-18:钉随 release-please extra-files 自动 bump 后,「滞后一版合法」宽容
+// 退役——逃生舱 scripts/release.js 必须同批对齐钉,本纯函数是其可测核心。
+test('replacePlatformPins 替换全部 5 个平台钉且不动其他键', () => {
+  const src = JSON.stringify({
+    name: '@agent_forge/forge',
+    version: '1.66.0',
+    optionalDependencies: {
+      '@agent_forge/forge-darwin-arm64': '1.66.0',
+      '@agent_forge/forge-darwin-x64': '1.66.0',
+      '@agent_forge/forge-linux-arm64': '1.66.0',
+      '@agent_forge/forge-linux-x64': '1.66.0',
+      '@agent_forge/forge-win32-x64': '1.66.0',
+    },
+  }, null, 2);
+  const { content, ok } = replacePlatformPins(src, '1.66.1');
+  assert.ok(ok, '5 钉应全部命中');
+  const parsed = JSON.parse(content);
+  for (const [k, v] of Object.entries(parsed.optionalDependencies)) {
+    assert.equal(v, '1.66.1', `${k} 应替换为 1.66.1`);
+  }
+  assert.equal(parsed.name, '@agent_forge/forge', '非钉键不得被误伤');
+});
+
+test('replacePlatformPins 命中数 != 5 时拒绝(ok=false)', () => {
+  const four = '"@agent_forge/forge-darwin-arm64": "1.0.0",\n"@agent_forge/forge-darwin-x64": "1.0.0"';
+  assert.equal(replacePlatformPins(four, '2.0.0').ok, false, '4 钉必须拒绝(键集漂移的事故信号)');
+  assert.equal(replacePlatformPins('{}', '2.0.0').ok, false, '0 钉必须拒绝');
 });
