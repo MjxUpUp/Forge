@@ -28,20 +28,40 @@ func TestTaskVerifyHook_KimiBranchRoutesToStdout(t *testing.T) {
 	writeFile(t, dir, "extra.go", "package main\n")
 	git(t, dir, "add", "extra.go")
 
-	hookPath := filepath.Join(forgedata.DataDirFor(dir), "hooks", "task-verify.sh")
-	cmd := exec.Command("bash", hookPath)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"FORGE_AGENT=kimi",
-		"FORGE_TASK_REF=feat/kimi-tv",
-		"FORGE_SESSION_ID=sess-kimi-tv",
-		"PATH="+filepath.Dir(forgeBin)+string(os.PathListSeparator)+os.Getenv("PATH"),
-	)
 	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("task-verify hook must exit 0 on kimi (advisory, never blocks): %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
+
+	// escape-hatch-hardening P1(审查项 4):有界阻断段在 kimi 早退**之前**——
+	// 活跃任务 + 未提交代码(FORGE_TASK_REF 注入 + extra.go 暂存未提交)时
+	// kimi 也被均匀执法:exit 2 + 指引走 stdout(block 面不受 advisory 通道
+	// 路由影响)。先钉新契约,再去掉任务注入钉 advisory 的 WARN-stdout 路由
+	// (无任务 → 不拦;master + 暂存代码 → master-without-task advisory)。
+	runHook := func(withTaskRef bool) error {
+		stdout.Reset()
+		stderr.Reset()
+		c := exec.Command("bash", filepath.Join(forgedata.DataDirFor(dir), "hooks", "task-verify.sh"))
+		c.Dir = dir
+		env := append(os.Environ(),
+			"FORGE_AGENT=kimi",
+			"FORGE_SESSION_ID=sess-kimi-tv",
+			"PATH="+filepath.Dir(forgeBin)+string(os.PathListSeparator)+os.Getenv("PATH"),
+		)
+		if withTaskRef {
+			env = append(env, "FORGE_TASK_REF=feat/kimi-tv")
+		}
+		c.Env = env
+		c.Stdout = &stdout
+		c.Stderr = &stderr
+		return c.Run()
+	}
+	if err := runHook(true); err == nil {
+		t.Fatalf("kimi + active task + uncommitted code must bounded-block (uniform enforcement), stdout=%s", stdout.String())
+	} else if !strings.Contains(stdout.String(), "有未提交代码变更") {
+		t.Fatalf("block guidance must ride stdout, got stdout=%s stderr=%s", stdout.String(), stderr.String())
+	}
+
+	_ = os.Remove(filepath.Join(forgedata.DataDirFor(dir), ".task-verify-throttle.last"))
+	if err := runHook(false); err != nil {
+		t.Fatalf("no-task + staged code + kimi advisory must exit 0: %v\nstdout=%s\nstderr=%s", err, stdout.String(), stderr.String())
 	}
 
 	// advisory 以 WARN 行上 **stdout**（Go 层剥 WARN 前缀后入队）；stderr 不得

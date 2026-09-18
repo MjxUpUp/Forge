@@ -69,29 +69,58 @@ commit/branch/merge 全程无中介,agent 越出任务分支狂奔不可见。
    (advisory 不满足 lite 准入规则)。
 7. 排除:命令本身是 `forge ` 前缀(任务 CLI 自建分支合法)。
 
-## P0-C:zcode 双挂载(查因不改码)
+## P0-C:zcode 双挂载(已落地,2026-09-18 P1 批)
 
-**实证**:toollog 228/456 精确成对;本会话 SessionStart 注入双份;两个接线源
-同时生效(~/.zcode/cli/config.json 用户级 batch + ~/.zcode/cli/plugins/cache/
-forge/forge/0.0.0/hooks.json 全量 per-hook,标 `--agent copilot`)。
-**候选修法**(P1 落地前需确认 zcode 插件 hooks 语义):a) 插件载荷按目标宿主
-剥离 hooks.json;b) zcode translator 检测插件存在时跳过用户级接线;
-c) dispatch 层 (session,event,tool,input-hash) 短窗幂等(风险:并行同参调用
-误去重)。**spec 结论:未钉死 zcode 行为前不动码。**
+**根因(实证钉死)**:forge 钩子经两条通道同时进入 zcode——① zcode
+translator 写的用户级 `~/.zcode/cli/config.json`(batch 接线,--agent zcode);
+② 用户以 Claude Code 插件格式安装的 plugins/forge 载荷
+(`.claude-plugin/plugin.json` 全量 per-hook;installed_plugins.json 载明
+source=./plugins/forge)。zcode 两条都执行且对 matcher 不敏感(实证:两侧
+Write|Edit 组均不含 tool-track,toollog 的 Write/Edit 行仍精确 2×——钩子组按
+事件全量触发)。后果:每次工具调用 2× 进程拉起、SessionStart 注入双份、
+toollog 双行、抑制计数双记。
 
-## P1(预告,不在本轮)
+**落地修法(候选 c,审查修正后收敛)**:dispatch 层短窗幂等守卫
+(`hook_idempotency.go`)——runHook 对 (hook,event,tool,session,input) 完全
+一致的重复调用,窗口内(默认 3s,`FORGE_HOOK_DEDUP_WINDOW` 旋钮,0=禁用,
+钳制 ≤10s)静默跳过。**仅观测型钩子**(isObservationOnlyHook 白名单:注入/
+观察类)——首版全量去重被只读审查推翻:skip=allow 对阻断型钩子是执法反转
+(deny 后 3s 内逐字重试被静默放行,实证打挂 hazard release 与 task-guard
+阶梯 e2e)。阻断型钩子双投递无害(重复 deny 同一命令,各钩子自带去重)。
+跨通道去重(key 刻意不含 agent);marker 落 DataDir/markers/hook-dedup/。
+候选 a/b 弃(需卸载插件/破坏归因)。已知代价:并行同参调用的第二条少记一行
+toollog(本就去重对象);竞态双读双跑=良性 fail-open 退回现状。
 
-- task-drift BLOCK ratchet(≥2 minor 预告);
-- task-verify Stop 有界阻断(参照 CC 8-consecutive cap;Forge 起点
-  MaxReviewRounds=3 先例,自设上限低于宿主强制上限);
-- hazard HITL 等人态(block → 暂停 + 上报,不再留给 agent 绕行);
-- P0-C 落地。
+## P1(已落地,2026-09-18 P1 批)
 
-## P2(方向)
+- **task-drift BLOCK ratchet**:机械版本门 `util.CompareVersions(version,
+  "1.66.0")`(1.64 advisory 首发 → 1.66 自动转 BLOCK,不留 gate-cmd-form 式
+  文字债);逃生 `FORGE_TASK_DRIFT=0`(落 escape-hatch 行);会话阻断上限
+  5 次(超限自动降级 advisory——有界)。承诺表已登记(2026-09-18 裁决记录,
+  兼作「机械版本门」先例)。
+- **task-verify Stop 有界阻断**:窄条件=活跃任务+未提交代码变更(**含
+  untracked 新代码文件**;工作在飞未落盘,runaway 签名;gate PASS 不豁免
+  ——advisory 门通过 ≠ 工作落盘)。三重界:①会话限额 3 次,超限回落
+  advisory+一次性说明;②block 时清 60s 节流戳——连续阻断由限额封顶(至多
+  3 连),而非节流削弱成每分钟一次的急停提示(审查披露项;段位在 kimi 早退
+  之前,执法面宿主均匀);③逃生 `FORGE_TASK_VERIFY_STOP=0`。每次 block 落
+  一行 checklog fail(与 task-drift block 行对称,原则 1 的 block 面)。
+  历史教训(无条件阻断致死循环)以「限额」而非「永不阻断」回应。
+- **hazard HITL 等人态**:拦截时刻只有 agent 收到 deny(自主会话里 agent 可
+  能改写绕行,取证 9 秒绕行);Stop 面新增 HITL 提醒——本会话 block−(release
+  +confirm)>0 时输出「N 个高危拦截未经人工确认」(会话维度,task-verify.sh;
+  近似计数,审计走 forge hazard status)。
+- **P0-C 落地**(见上节)。
 
-- 规则分层暴露:执法判定逻辑不进 agent 上下文(METR 43× 警示);
-- AC-3(10) 式受审计逃生:`forge task wild` 补结构化理由 + 限额
-  (业界无人做,Forge 可首创)。
+## P2(wild 已落地;分层暴露仍为方向)
+
+- **AC-3(10) 受审计逃生(已落地)**:`forge task wild` 每条申报落 checklog
+  escape-hatch 行(gate=task-wild/reason=declarative/owner,进统一漏斗);
+  会话限额 3 条,超额升级提示建任务(不拒绝——逃生舱永在);有活跃任务时
+  申报输出更强异常信号行。
+- **规则分层暴露(仍为方向,未立项)**:执法判定逻辑不进 agent 上下文
+  (METR 43× 警示)——教学面(点名文件)与执法面(判定规则)分离,需要
+  独立 spec 定义暴露面清单,不在本 spec 范围。
 
 ## 度量(回测口径)
 
@@ -104,11 +133,12 @@ c) dispatch 层 (session,event,tool,input-hash) 短窗幂等(风险:并行同参
 ## 总验收(verify-acceptance 实跑口径)
 
 ```accept
-go test ./internal/hookdispatch/ -run 'TestRunTestNudgeHook_CeilingAuditRows|TestRunTaskDriftHook'
+go test ./internal/hookdispatch/ -run 'TestRunTestNudgeHook_CeilingAuditRows|TestRunTaskDriftHook|TestTaskDriftBlockRatchet|TestHookDedup|TestSkipDuplicate|TestRunHook_DuplicateInvocationSkippedSecond'
 go test ./internal/checklog/ -run TestEscapeHatchHardeningChecksInRoster
 go test ./internal/agentbridge/ -run 'TestOpencodePlugin_CarriesTaskDrift|TestOpencodePluginWiring|TestDshPluginSpecMirrorsSpec|TestKimiPluginManifestMirrorsSpec|TestPluginPack_Committed'
 go test ./internal/skillgen/ -run TestClaudeMDDocumentsTaskDriftHook
 go test ./internal/hooks/ -run 'TestForgeHookSpecForProfile_Tiers|TestHookWiring_FreezeRatchet'
-go test ./internal/compat/ ./internal/cli/ -run 'TestAllCheckNamesSorted|TestCompatSnapshotMatchesGolden'
+go test ./internal/compat/ ./internal/cli/ -run 'TestAllCheckNamesSorted|TestCompatSnapshotMatchesGolden|TestTaskWild'
+go test ./internal/e2e/ -run TestTaskVerifyStopHook
 go vet ./...
 ```

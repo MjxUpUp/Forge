@@ -562,3 +562,15 @@ func TestClaudeMDDocumentsTaskDriftHook(t *testing.T) {
 		}
 	}
 }
+
+// TestClaudeMDDocumentsStopBoundedBlock 钉住 task-verify Stop 有界阻断的文档行
+// (escape-hatch-hardening P1):wired-hook 守卫不覆盖门禁顺序段,这里锚定
+// 限额/逃生语义——agent 冷撞 Stop 阻断时有解法可读。
+func TestClaudeMDDocumentsStopBoundedBlock(t *testing.T) {
+	body := buildForgeSection(true)
+	for _, want := range []string{"Stop 有界阻断", "FORGE_TASK_VERIFY_STOP=0", "forge task abort"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("task-verify 文档行缺关键语义 %q(限额/逃生/弃任务出口)", want)
+		}
+	}
+}
