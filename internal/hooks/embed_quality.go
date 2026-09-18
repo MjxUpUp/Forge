@@ -60,11 +60,28 @@ fi
 # 输出——研究场景"自己用编译命令自检"完全无关，PASS detail 只占 AdditionalContext 字符
 # 配额。一旦 task-guard 看到源 Edit/Write 即设 marker，本会话后续 advisory 正常输出。
 _TOUCHED="${_MARKER_DIR}/forge-source-touched-${SESSION_ID}"
+# GOFMT_NOTE（发布流程排查 P2-1）：写入时刻的单文件格式检查——只在 gofmt 在
+# PATH 且本次触及的是 .go 文件时跑 gofmt -l（毫秒级），未格式化则提醒。技术栈
+# 无关契约保持：非 Go 文件/无 gofmt 环境零影响。2026-09-18 实证：5 个未格式式
+# 文件穿过开发期全链（门禁/验收/审查/lint——golangci v2 默认不启格式 linter），
+# 直到 make premerge 的 gofmt 才被拦——把拦截点从发版前移到敲代码的那一刻。
+GOFMT_NOTE=""
+if [ "$TOUCHED_SOURCE" = "1" ]; then
+  case "$FILE_PATH" in
+    *.go)
+      if command -v gofmt >/dev/null 2>&1 && [ -f "$FILE_PATH" ]; then
+        if [ -n "$(gofmt -l "$FILE_PATH" 2>/dev/null)" ]; then
+          GOFMT_NOTE=" 另：gofmt 报告该文件未格式化——gofmt -w $FILE_PATH 修掉，别拖到 premerge。"
+        fi
+      fi
+      ;;
+  esac
+fi
 if [ ! -f "$_TOUCHED" ]; then
   echo "PASS [auto-compile] research-mode session, advisory suppressed (set by Edit|Write of source)"
 else
   if [ "$TOUCHED_SOURCE" = "1" ]; then
-    echo "PASS [auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过（go build ./... / cargo check / mvn -o compile / tsc --noEmit 等）。编译报错时加载 compile-fix-loop skill：编译错误修复闭环方法论，按语言分类定位根因。forge 不再强制编译，适配 loop engineering，由 agent 自检。"
+    echo "PASS [auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过（go build ./... / cargo check / mvn -o compile / tsc --noEmit 等）。编译报错时加载 compile-fix-loop skill：编译错误修复闭环方法论，按语言分类定位根因。forge 不再强制编译，适配 loop engineering，由 agent 自检。${GOFMT_NOTE}"
   else
     echo "PASS [auto-compile] no source touched (compile self-check delegated to agent)"
   fi

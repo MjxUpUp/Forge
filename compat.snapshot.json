@@ -1086,6 +1086,7 @@
     {
       "path": "forge update",
       "flags": [
+        "apply",
         "plugin"
       ]
     },

@@ -676,6 +676,7 @@ func TestHook_ReadBeforeEdit(t *testing.T) {
 		tool        string // PreToolUse tool under test (Edit | Write)
 		toolInput   func(dir string) map[string]any
 		fires       int  // deliveries of the same event (kimi double-fire)
+		wideDedup   bool // widen the block-record dedup window (serial replays exceed the 3s default on slow runners)
 		wantBlock   bool // expected verdict per delivery
 		wantStdout  []string
 		wantLogN    int // read-before-edit checklog entries; -1 = skip
@@ -755,7 +756,12 @@ func TestHook_ReadBeforeEdit(t *testing.T) {
 			},
 		},
 		{
-			name: "double-fire", startTask: true,
+			name: "double-fire", startTask: true, wideDedup: true,
+			// 发布流程排查 P2-2：串行复放 double-fire 的两次投递间隔 = hook 进程
+			// 启动耗时，慢 runner（Windows CI）超 3s 生产默认窗 → 去重不生效 →
+			// wantLogN flaky。注入宽窗旋钮（钳制上限 60s）让本场景稳定钉住
+			// 「窗口内双发只记一条」的真实契约；生产默认 3s 不变（见
+			// hookdispatch.blockDedupWindow）。
 			// 现存源文件、本会话未 Read → 两次投递都阻断。
 			seedFile: "target.go", seedContent: "package main\n\nfunc old() {}\n",
 			tool: "Edit", toolInput: editTarget, fires: 2, wantBlock: true,
@@ -769,6 +775,9 @@ func TestHook_ReadBeforeEdit(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.wideDedup {
+				t.Setenv("FORGE_BLOCK_DEDUP_WINDOW_MS", "60000")
+			}
 			dir := freshProject(t)
 			tmp := t.TempDir()
 			sid := "sess-rbe-" + tc.name
