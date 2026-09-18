@@ -249,13 +249,21 @@ func TestRunTestNudgeHook_SilentWithoutTask(t *testing.T) {
 	}
 }
 
-// TestRunTestNudgeHook_ThresholdNudgeAndReset pins the streak contract end-to-end: writes 1..2 are silent, the 3rd fires ONE factual reminder (test-discipline), the 4th stays silent (per-streak single nudge — no spam), a test-file write resets the streak, and the next 3-source-write streak fires again.
+// TestRunTestNudgeHook_TierEscalationAndPairingRemoval pins the file-level tier
+// contract (discipline-first-gates P1-B): the nudge counts UNPAIRED FILES, not
+// write events — tier 1 fires at 3 (naming the files), tier 2 at 5; a paired
+// test write removes only its source from the set; per-tier single fire (no
+// per-write spam); the entry meta carries unpaired_files/tier/files for the D2
+// metric. Replaces the pre-P1 streak-counter contract (one test write reset
+// everything while 8 files stayed unpaired — remin m0, 2026-09-17).
 //
-// TestRunTestNudgeHook_ThresholdNudgeAndReset 端到端钉住连写契约：第 1..2 次
-// 写入静默，第 3 次发出一次事实性提醒（test-discipline），第 4 次仍静默（每连写
-// 只提示一次——不刷屏），测试文件写入重置连写，之后 3 次源码写入再次触发。
-// 观察以 CheckTestNudge 连带计数落盘。
-func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
+// TestRunTestNudgeHook_TierEscalationAndPairingRemoval 钉住文件级跨档契约
+// （discipline-first-gates P1-B）：nudge 数的是**未配对文件**而非写入事件——tier1
+// 在 3 个时触发（点名文件），tier2 在 5 个；配对测试写入只移除它配对的源文件；
+// 每档只发一次（不逐写刷屏）；条目 meta 携带 unpaired_files/tier/files 供 D2 度量。
+// 取代 P1 前的连写计数器契约（一个测试写入全量重置，8 个文件照旧无配对——
+// remin m0，2026-09-17）。
+func TestRunTestNudgeHook_TierEscalationAndPairingRemoval(t *testing.T) {
 	root := trackTestProject(t)
 	const sid = "sess-tn-1"
 	resetNudgeState(t, sid)
@@ -264,8 +272,14 @@ func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
 	wantSilent(t, `write #1 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "a.go")))
 	wantSilent(t, `write #2 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "b.go")))
 	out3 := writeSourceForNudge(t, root, sid, filepath.Join(root, "c.go"))
-	if !strings.Contains(out3, "test-discipline") {
-		t.Errorf("write #3 (threshold) must fire the test-discipline reminder, got: %q", out3)
+	if !strings.Contains(out3, "3 unpaired source files") {
+		t.Errorf("3rd unpaired file must fire the tier-1 reminder, got: %q", out3)
+	}
+	// 跨档信号必须点名文件——无文件名的信号不可行动（remin 病灶）。
+	for _, f := range []string{"a.go", "b.go", "c.go"} {
+		if !strings.Contains(out3, f) {
+			t.Errorf("tier-1 nudge must name %s, got: %q", f, out3)
+		}
 	}
 	// 与 failure-track 同款只给 skill 名的契约（2026-08-25 文案修复）：自然语言
 	// 引用 skill，不含仓库相对 skills/ 路径。
@@ -278,25 +292,117 @@ func TestRunTestNudgeHook_ThresholdNudgeAndReset(t *testing.T) {
 	if strings.Contains(out3, `"decision":"block"`) {
 		t.Errorf("test-nudge must never block, got block JSON: %q", out3)
 	}
-	wantSilent(t, `write #4 after the nudge must stay silent (one nudge per streak)`, writeSourceForNudge(t, root, sid, filepath.Join(root, "d.go")))
+	wantSilent(t, `write #4 within tier 1 must stay silent (one fire per tier)`, writeSourceForNudge(t, root, sid, filepath.Join(root, "d.go")))
 
-	// 测试写入重置连写并重新武装提示。
-	wantSilent(t, `test-file write must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "a_test.go")))
-	wantSilent(t, `post-reset write #1 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "e.go")))
-	wantSilent(t, `post-reset write #2 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "f.go")))
-	if out := writeSourceForNudge(t, root, sid, filepath.Join(root, "g.go")); !strings.Contains(out, "test-discipline") {
-		t.Errorf("post-reset write #3 must re-fire the reminder, got: %q", out)
+	// 配对移除：a_test.go 只配走 a.go → 未配对 {b,c,d}=3，档位不动 → 静默。
+	wantSilent(t, `paired test write must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "a_test.go")))
+	wantSilent(t, `4 unpaired files stay within tier 1`, writeSourceForNudge(t, root, sid, filepath.Join(root, "e.go")))
+	out6 := writeSourceForNudge(t, root, sid, filepath.Join(root, "f.go"))
+	if !strings.Contains(out6, "5 unpaired source files") {
+		t.Errorf("5th unpaired file must fire the tier-2 reminder, got: %q", out6)
+	}
+	// tier2 点名**最新**的肇事文件（d/e/f）——永远只点名最早 3 个会让新增文件
+	// 不可行动（spec P1-B：tier2 未配对文件名换新）。
+	for _, fresh := range []string{"d.go", "e.go", "f.go"} {
+		if !strings.Contains(out6, fresh) {
+			t.Errorf("tier-2 nudge must name the newest file %s, got: %q", fresh, out6)
+		}
+	}
+	if strings.Contains(out6, "b.go") {
+		t.Errorf("tier-2 nudge must not re-name files already named at tier 1, got: %q", out6)
 	}
 
 	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
 	if len(entries) != 2 {
-		t.Fatalf("CheckTestNudge entries = %d, want 2 (two streaks, one nudge each)", len(entries))
+		t.Fatalf("CheckTestNudge entries = %d, want 2 (tier 1 + tier 2, one fire each)", len(entries))
 	}
-	if entries[0].Meta["source_writes"] != "3" {
-		t.Errorf("first nudge source_writes = %q, want 3", entries[0].Meta["source_writes"])
+	if entries[0].Meta["tier"] != "1" || entries[0].Meta["unpaired_files"] != "3" {
+		t.Errorf("first nudge tier/unpaired = %q/%q, want 1/3", entries[0].Meta["tier"], entries[0].Meta["unpaired_files"])
+	}
+	if !strings.Contains(entries[0].Meta["files"], "a.go") || !strings.Contains(entries[0].Meta["files"], "c.go") {
+		t.Errorf("first nudge meta files must carry the unpaired set, got: %q", entries[0].Meta["files"])
+	}
+	if entries[1].Meta["tier"] != "2" || entries[1].Meta["unpaired_files"] != "5" {
+		t.Errorf("second nudge tier/unpaired = %q/%q, want 2/5", entries[1].Meta["tier"], entries[1].Meta["unpaired_files"])
 	}
 	if entries[0].TaskRef != "feat/nudge-test" {
 		t.Errorf("nudge entry must carry the active task ref, got %q", entries[0].TaskRef)
+	}
+}
+
+// TestRunTestNudgeHook_Tier3GateConsequence pins the tier-3 contract: at 8 unpaired
+// files (remin m0's verify-time missing count) the nudge states the gate consequence
+// fact — the TASK-COMPLETE BACKSTOP BLOCKs at >=3 untested files with zero assertions
+// (testCoverageHardGateThreshold) — so the signal previews the exact failure mode the
+// gate would realize. The assertion pins the FULL sentence: threshold/gate-name drift
+// (known-limitation 4's sync duty) turns this test red.
+//
+// TestRunTestNudgeHook_Tier3GateConsequence 钉住 tier3 契约：8 个未配对文件
+// （remin m0 verify 实报的 missing 数）时 nudge 陈述门禁后果事实——task-complete
+// 兜底在 ≥3 未测文件且零断言时 BLOCK（锚 testCoverageHardGateThreshold）——信号
+// 预演的正是门禁将兑现的失败形态。断言钉**完整事实句**：阈值/门禁名漂移（已知
+// 限制 4 的同步义务）会让本测试变红。
+func TestRunTestNudgeHook_Tier3GateConsequence(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-3"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/nudge-tier3")
+
+	for i := 0; i < 7; i++ {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, fmt.Sprintf("f%d.go", i)))
+	}
+	out8 := writeSourceForNudge(t, root, sid, filepath.Join(root, "f7.go"))
+	if !strings.Contains(out8, "8 unpaired source files") {
+		t.Errorf("8th unpaired file must fire the tier-3 reminder, got: %q", out8)
+	}
+	// 解码 additionalContext 再断言完整事实句：>= 在 JSON 序列化里是 \u003e=，
+	// 直接 Contains 原句会因转义假阴。
+	var payload struct {
+		HookSpecificOutput struct {
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	if err := json.Unmarshal([]byte(out8), &payload); err != nil {
+		t.Fatalf("nudge output must be hook JSON, got %q: %v", out8, err)
+	}
+	if msg := payload.HookSpecificOutput.AdditionalContext; !strings.Contains(msg, "At >=3 untested source files with zero assertions, the task-complete backstop BLOCKs the task.") {
+		t.Errorf("tier-3 nudge must state the FULL gate-consequence fact (>=3, task-complete backstop), got: %q", msg)
+	}
+	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
+	if len(entries) != 3 {
+		t.Fatalf("CheckTestNudge entries = %d, want 3 (tiers 1/2/3)", len(entries))
+	}
+	if entries[2].Meta["tier"] != "3" || entries[2].Meta["unpaired_files"] != "8" {
+		t.Errorf("tier-3 entry tier/unpaired = %q/%q, want 3/8", entries[2].Meta["tier"], entries[2].Meta["unpaired_files"])
+	}
+}
+
+// TestRunTestNudgeHook_FullPairingRearms pins the relax-and-rearm rule: pairing
+// EVERY unpaired file takes the tier to 0 (full re-arm); the next 3 fresh files
+// fire tier 1 again — the nudge follows the task's real coverage state, not a
+// write-event streak.
+//
+// TestRunTestNudgeHook_FullPairingRearms 钉住回落重武装规则：把每个未配对文件
+// 都配上 → 档位归 0（完全重新武装）；之后 3 个新文件再次触发 tier1——nudge 跟随
+// task 的真实覆盖状态，而非写入事件连写。
+func TestRunTestNudgeHook_FullPairingRearms(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-4"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/nudge-rearm")
+
+	for _, f := range []string{"a.go", "b.go", "c.go"} {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, f))
+	}
+	// 全配对：三个测试文件配走三个源文件。
+	for _, f := range []string{"a_test.go", "b_test.go", "c_test.go"} {
+		wantSilent(t, `test write must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, f)))
+	}
+	// 完全重新武装：新 3 个文件再次触发 tier1。
+	wantSilent(t, `fresh write #1 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "d.go")))
+	wantSilent(t, `fresh write #2 must be silent`, writeSourceForNudge(t, root, sid, filepath.Join(root, "e.go")))
+	if out := writeSourceForNudge(t, root, sid, filepath.Join(root, "f.go")); !strings.Contains(out, "3 unpaired source files") {
+		t.Errorf("full pairing must re-arm tier 1 (fires at the 3rd fresh file), got: %q", out)
 	}
 }
 
@@ -610,5 +716,94 @@ func TestHookToolTrackRecordsGrepInput(t *testing.T) {
 	}
 	if !strings.Contains(body, "DSH_HOME") || !strings.Contains(body, "internal/") {
 		t.Errorf("Grep 的 tool_input 须记 pattern+path（审计载荷，与 Bash/Skill/Agent 同待遇）, got: %s", body)
+	}
+}
+
+// TestRunTestNudgeHook_TaskBoundaryResets pins the task-scoped contract: the
+// unpaired set belongs to ONE task — a session switching tasks (remin: 6 tasks
+// in one session) must not carry old files into the new task's nudges. A stale
+// carry-over would name dead files "in this task" (false fact), stamp the new
+// TaskRef on them, and corrupt the D1/D3 confirmation metric.
+//
+// TestRunTestNudgeHook_TaskBoundaryResets 钉住任务作用域契约：未配对集合属于
+// **单个** task——会话切换任务（remin：单会话 6 任务）不得把旧文件带进新任务的
+// nudge。陈旧携带会以新 task 名义点名已死文件（假事实）、给它们盖新 TaskRef、
+// 并污染 D1/D3 的 confirmation 度量。
+func TestRunTestNudgeHook_TaskBoundaryResets(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-5"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/task-a")
+
+	// task A：3 个文件触发 tier1。
+	for _, f := range []string{"a.go", "b.go", "c.go"} {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, f))
+	}
+
+	// 同一 session 切换到 task B：集合必须归零重置。
+	startTrackTask(t, root, sid, "feat/task-b")
+	wantSilent(t, `fresh task's first write must be silent (set reset at task boundary)`,
+		writeSourceForNudge(t, root, sid, filepath.Join(root, "d.go")))
+	wantSilent(t, `second write below tier 1`, writeSourceForNudge(t, root, sid, filepath.Join(root, "e.go")))
+	outF := writeSourceForNudge(t, root, sid, filepath.Join(root, "f.go"))
+	if !strings.Contains(outF, "3 unpaired source files") {
+		t.Errorf("task B's 3rd file must fire tier 1 fresh, got: %q", outF)
+	}
+	// 新任务的 nudge 只点名本任务文件——旧任务文件绝不再出现（假事实防线）。
+	for _, stale := range []string{"a.go", "b.go", "c.go"} {
+		if strings.Contains(outF, stale) {
+			t.Errorf("nudge for task B must not name task A's stale file %s, got: %q", stale, outF)
+		}
+	}
+	for _, fresh := range []string{"d.go", "e.go", "f.go"} {
+		if !strings.Contains(outF, fresh) {
+			t.Errorf("nudge for task B must name %s, got: %q", fresh, outF)
+		}
+	}
+	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
+	if len(entries) != 2 {
+		t.Fatalf("CheckTestNudge entries = %d, want 2 (one per task)", len(entries))
+	}
+	if entries[1].TaskRef != "feat/task-b" {
+		t.Errorf("second nudge must carry task B's ref, got %q", entries[1].TaskRef)
+	}
+	if entries[1].Meta["unpaired_files"] != "3" {
+		t.Errorf("task B nudge unpaired = %q, want 3 (no carry-over)", entries[1].Meta["unpaired_files"])
+	}
+}
+
+// TestNudgeMetaFilesCarriesNewest pins the Meta/Detail ordering contract: at
+// fire time the unpaired set is exactly the crossed tier threshold (3/5/8 —
+// the >8 truncation branch is defensive, unreachable while thresholds hold),
+// so Meta["files"] is the FULL set and Detail names its newest 3 — the
+// fact-level intersection (which reads Meta) can never miss a named file.
+//
+// TestNudgeMetaFilesCarriesNewest 钉住 Meta/Detail 序契约：触发时未配对集合
+// 恰为跨档阈值（3/5/8——>8 截断分支是防御性的，阈值不变则不可达），故
+// Meta["files"] 是**全量**集合、Detail 点名其最新 3——事实级交集（读 Meta）
+// 永不漏掉任何被点名过的文件。
+func TestNudgeMetaFilesCarriesNewest(t *testing.T) {
+	root := trackTestProject(t)
+	const sid = "sess-tn-meta9"
+	resetNudgeState(t, sid)
+	startTrackTask(t, root, sid, "feat/nudge-meta9")
+
+	for i := 0; i < 9; i++ {
+		writeSourceForNudge(t, root, sid, filepath.Join(root, fmt.Sprintf("f%d.go", i)))
+	}
+	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
+	if len(entries) != 3 {
+		t.Fatalf("entries = %d, want 3 (tiers 1/2/3; the 9th file crosses no new tier)", len(entries))
+	}
+	last := entries[2] // tier3 在第 8 个文件触发——集合恰 f0..f7
+	// Meta 全量：f0..f7 一个不少（交集判定的数据面）。
+	if want := "f0.go,f1.go,f2.go,f3.go,f4.go,f5.go,f6.go,f7.go"; last.Meta["files"] != want {
+		t.Errorf("tier-3 Meta files = %q, want full set %q", last.Meta["files"], want)
+	}
+	// Detail 点名最新 3（f5/f6/f7）且 ⊆ Meta——点名面与数据面同尾序。
+	for _, named := range []string{"f5.go", "f6.go", "f7.go"} {
+		if !strings.Contains(last.Detail, named) {
+			t.Errorf("tier-3 Detail must name newest %s, got: %q", named, last.Detail)
+		}
 	}
 }

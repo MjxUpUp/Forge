@@ -25,6 +25,11 @@ type NextResult struct {
 }
 
 // NextDecision 是纯决策函数（单测锚点）：给定分支、脏树、活跃任务状态，返回恰好一条命令。
+// nextCmdVerifyAcceptance 是 verify-acceptance 建议命令的单一真相源——生产
+// （NextDecision）与 selfcheck 提示的锚（NextHint）同用一字面量，改名时两处
+// 不会静默漂移（增量复审 P3-4）。
+const nextCmdVerifyAcceptance = "forge task verify-acceptance"
+
 // 门禁顺序与真实链严格一致：implement →（验收未实跑则 verify-acceptance）→ gate task-verify
 // → review pass → gate task-complete → task complete。每条 Next 恰一条命令（无 && 复合）。
 func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
@@ -66,7 +71,7 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 	case !gates[GateImplement]:
 		return NextResult{Next: "forge task gate task-implement", Reason: "实现未确认（有提交即可过）", State: state}
 	case nextAcceptancePending(st):
-		return NextResult{Next: "forge task verify-acceptance", Reason: "验收标准尚未实跑回扣——先实跑（AcceptedHeadCommit 为空的标准待跑）", State: state}
+		return NextResult{Next: nextCmdVerifyAcceptance, Reason: "验收标准尚未实跑回扣——先实跑（AcceptedHeadCommit 为空的标准待跑）", State: state}
 	case !gates[GateVerify]:
 		return NextResult{Next: "forge task gate task-verify", Reason: "验收已实跑——过验证门", State: state}
 	case !nextReviewPassed(st):
@@ -87,6 +92,16 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 func NextHint(root string, st *TaskState) NextResult {
 	branch, dirty := GitBranchDirty(root)
 	res := NextDecision(branch, dirty, st)
+	// P2 时机训练：NextDecision 归一化后的**事实分支**是 verify-acceptance 待跑
+	// 且 task 尚未跑过 pairing 自检 → Reason 追加镜像自检建议（复审 P2-2：手工
+	// 重组条件三重偏差——implement 窗口的空跑会永久消费提示、completed 展示路径
+	// 错误追加、delivered-but-active 被错误抑制——按 res.Next 判定一并消除）。
+	// Next 命令本体不变（每行恰一条命令的纪律保持）；跑过即消失——习惯训练
+	// 恰好训练到它存在为止。
+	if st != nil && res.Next == nextCmdVerifyAcceptance && st.TaskRef != "" &&
+		!selfcheckRanForTask(root, st.TaskRef) {
+		res.Reason += "；可先 forge selfcheck pairing 镜像自检（与门禁同口径，秒级）"
+	}
 	entry := &checklog.Entry{
 		Check:     checklog.CheckNextHint,
 		Passed:    true,

@@ -30,8 +30,12 @@ const (
 // 到非零进程退出；前缀使阻断无歧义，不会被误读为软提醒。用于行为门禁
 // （read-before-edit、work-activity、prerequisites、review）——不用于基础设施
 // 错误（未知 gate id、命令执行失败），后者保持普通 fmt.Errorf。
+//
+// P4 还债指引：每条 BLOCKED 统一追加 skill-evolution 提示——拦截必须喂给纪律层
+// （记教训，防同类拦截复发），而不是只修眼前实例；门禁的终极 KPI 是让自己
+// 失业（discipline-first-gates 原则）。
 func GateBlocked(format string, args ...any) error {
-	return fmt.Errorf(blockedPrefix+format, args...)
+	return fmt.Errorf(blockedPrefix+format+"\n还债：修复后以 forge skills decide --outcome reject --diagnosis <根因> 记教训，防同类拦截复发（拦截喂纪律层，门禁才越来越少拦）", args...)
 }
 
 // GateAdvisory formats a soft, non-blocking gate signal.

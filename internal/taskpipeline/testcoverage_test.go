@@ -834,3 +834,53 @@ func TestTestCoverageDetail_Carries1_58Notice(t *testing.T) {
 		t.Fatalf("passing detail must not carry the notice, got: %s", got)
 	}
 }
+
+// TestTestPairsSource pins the exported single-file pairing probe (discipline-first-gates
+// P1-B): the nudge side asks "does THIS test file pair THIS source file" while the gate
+// side (hasMatchingTest) asks the same convention over a changed set — both must share
+// testCandidates or the nudge would rehearse a different gate than the one that runs.
+//
+// TestTestPairsSource 钉住导出的单文件配对探针（discipline-first-gates P1-B）：nudge 侧
+// 问「这个测试文件是否配对这个源文件」，门禁侧（hasMatchingTest）按同一约定问
+// changed 集合——两者必须共用 testCandidates，否则 nudge 预演的门禁与实际执行的分叉。
+func TestTestPairsSource(t *testing.T) {
+	cases := []struct {
+		test string
+		src  string
+		want bool
+	}{
+		// Go：同目录 foo.go ↔ foo_test.go。
+		{"internal/audit/audit_test.go", "internal/audit/audit.go", true},
+		{"internal/audit/other_test.go", "internal/audit/audit.go", false},
+		{"audit_test.go", "internal/audit/audit.go", false},
+		// TS/JS 四形态（镜像 hasMatchingTest 的宽松集）。
+		{"src/a.test.ts", "src/a.ts", true},
+		{"src/a.spec.ts", "src/a.ts", true},
+		{"src/a.test.tsx", "src/a.tsx", true},
+		{"src/a.test.js", "src/a.js", true},
+		{"src/a.spec.jsx", "src/a.jsx", true},
+		{"src/a.test.ts", "src/a.js", false},
+		// Rust。
+		{"src/main_test.rs", "src/main.rs", true},
+		// Python 三候选。
+		{"pkg/test_mod.py", "pkg/mod.py", true},
+		{"pkg/mod_test.py", "pkg/mod.py", true},
+		{"tests/test_mod.py", "pkg/mod.py", true},
+		// Java 驼峰三形态。
+		{"src/MainTest.java", "src/Main.java", true},
+		{"src/MainTests.java", "src/Main.java", true},
+		{"src/MainIT.java", "src/Main.java", true},
+		// Ruby。
+		{"app/models/user_spec.rb", "app/models/user.rb", true},
+		// default 语言（zig）：同目录 stem+"_test."+任意扩展。
+		{"src/foo_test.zig", "src/foo.zig", true},
+		// 无关文件永不配对。
+		{"src/a_test.go", "src/b.go", false},
+		{"src/a.md", "src/a.go", false},
+	}
+	for _, c := range cases {
+		if got := TestPairsSource(c.test, c.src); got != c.want {
+			t.Errorf("TestPairsSource(%q, %q) = %v, want %v", c.test, c.src, got, c.want)
+		}
+	}
+}
