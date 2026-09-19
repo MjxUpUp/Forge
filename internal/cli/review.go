@@ -3,12 +3,63 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
+
+// checkTestDiff 是 test-diff 隔离审查的观察行名（oracle-pipeline 阶段三）。
+// cli 侧字面量：观察类不入验证白名单（负向嫌疑信号不得读作正向证据）。
+const checkTestDiff checklog.CheckName = "test-diff"
+
+// reviewTestTouchedFiles 列出【审查窗口】内的测试文件变更——「修测试使过」
+// 嫌疑的披露数据面。priorBaseline 是盖章【前】捕获的旧审查基线（复审 P2-3
+// 返工：调用方的 state.ReviewedHeadCommit 已被本轮盖章覆盖，不可用）；空 =
+// 首轮审查，回落任务窗口。测试文件判定复用 taskpipeline 单一真相源（自造
+// 后缀表会漏 pytest 的 test_*.py 前缀形态——复制即漂移）。
+func reviewTestTouchedFiles(root string, state *taskpipeline.TaskState, priorBaseline string) []string {
+	var touched []string
+	for _, f := range reviewWindowFiles(root, state, priorBaseline) {
+		if taskpipeline.IsTestFilePath(f) {
+			touched = append(touched, f)
+		}
+	}
+	return touched
+}
+
+// reviewWindowFiles 审查真实范围的文件口径：priorBaseline 非空用基线以来的
+// 变更（含已提交 + 工作树 + untracked——审查的真实范围）；空（首轮审查）
+// 回落任务窗口。
+func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline string) []string {
+	if priorBaseline != "" {
+		if out, err := exec.Command("git", "-C", root, "diff", "--name-only", priorBaseline).Output(); err == nil {
+			seen := map[string]bool{}
+			var files []string
+			add := func(name string) {
+				name = filepath.ToSlash(strings.TrimSpace(name))
+				if name != "" && !seen[name] {
+					seen[name] = true
+					files = append(files, name)
+				}
+			}
+			for _, l := range strings.Split(string(out), "\n") {
+				add(l)
+			}
+			if un, uerr := exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard").Output(); uerr == nil {
+				for _, l := range strings.Split(string(un), "\n") {
+					add(l)
+				}
+			}
+			return files
+		}
+	}
+	return taskpipeline.TaskChangedFiles(root, state)
+}
 
 // forge review 让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。
 //
@@ -144,7 +195,13 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		selfRefresh := false
 		selfRefreshViaNote := false
 		baselineUnreachable := ""
+		priorBaseline := ""
 		markErr := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
+			// 审查窗口的基线必须在盖章【前】捕获（复审 P2-3 返工）：MarkReview-
+			// PassedWithNote 会把 ReviewedHeadCommit 覆盖成本轮 HEAD——之后才读
+			// 的话 git diff <当前HEAD> 只剩工作树+untracked，commit-then-review
+			// 主流程（提交弱化测试→树干净）整段漏报。
+			priorBaseline = s.ReviewedHeadCommit
 			if s.ReviewedHeadCommit != "" {
 				cur, _, err := taskpipeline.TaskFingerprint(root, s, s.ReviewedHeadCommit)
 				switch {
@@ -199,6 +256,24 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		}
 		if recErr := checklog.Record(root, entry); recErr != nil {
 			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（review-pass 未落盘）: %v\n", recErr)
+		}
+		// test-diff 隔离审查（oracle-pipeline 阶段三）：修复提交触碰测试文件 =
+		// 「为了让测试通过而改测试」的最大嫌疑人。披露级 WARN + checklog Meta
+		//（files 列表）——审查者须对测试变更单独说明：为什么改断言、是预期变了
+		// 还是实现变了、预期变的依据。advisory 不阻断（执法在 reviewer 的结论里）。
+		if testTouched := reviewTestTouchedFiles(root, state, priorBaseline); len(testTouched) > 0 {
+			fmt.Fprintf(os.Stderr, "⚠ [test-diff] 本次审查范围内含测试文件变更（%s）——「修测试使过」是修复回路最大嫌疑人：审查结论须单独说明测试变更的依据（预期变了？依据是什么？）；已落 test-diff 观察行\n", strings.Join(testTouched, ", "))
+			if recErr := checklog.Record(root, &checklog.Entry{
+				Check:   checkTestDiff,
+				Passed:  true,
+				Checked: true,
+				TaskRef: state.TaskRef,
+				Level:   checklog.LevelWarn,
+				Detail:  fmt.Sprintf("test files changed in review window: %s", strings.Join(testTouched, ",")),
+				Meta:    map[string]string{"files": strings.Join(testTouched, ",")},
+			}); recErr != nil {
+				fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（test-diff 未落盘）: %v\n", recErr)
+			}
 		}
 		fmt.Printf("✅ task %s: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=%s）\n", state.TaskRef, head)
 		// 回边（review→implement，artifact-chain-workflow.md「回边语义」节）：

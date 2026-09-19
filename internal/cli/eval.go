@@ -28,7 +28,9 @@ import (
 	"github.com/MjxUpUp/Forge/internal/evalkit"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/otelout"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -261,6 +263,26 @@ func runEvalGoldenPrivateInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Printf("私有 golden 目录已建（0700，永不进 VCS）：%s\n", dir)
+	return nil
+}
+
+// runEvalRedteam 跑 seeded-bug 红队演练（oracle-pipeline L6）：对验证链自身
+// 注入五类雷（零验收交付/内部零引用导出/吞错/类型抑制/heldout gap），逐颗
+// 用既有检查函数判定拦截——escaped 即链的洞，如实披露。exit 非 0 = 有雷逃逸或设施故障
+// （供 CI 门禁消费；报告照打）。
+func runEvalRedteam(cmd *cobra.Command, args []string) error {
+	root, err := projectroot.Find()
+	if err != nil {
+		return err
+	}
+	rep, err := taskpipeline.RunRedteamDrills(root)
+	if err != nil {
+		return fmt.Errorf("BLOCKED: 红队演练执行失败: %v", err)
+	}
+	fmt.Print(taskpipeline.FormatRedteamReport(rep))
+	if len(rep.Escaped) > 0 {
+		return fmt.Errorf("redteam：%d/%d 雷逃逸（链的洞，按种子名排查对应检查）", len(rep.Escaped), rep.Total)
+	}
 	return nil
 }
 
@@ -738,6 +760,13 @@ func init() {
 	trapsCmd := &cobra.Command{Use: "traps", Short: "对抗陷阱（C2）"}
 	trapsCmd.AddCommand(traps)
 	evalCmd.AddCommand(trapsCmd)
+
+	redteam := &cobra.Command{
+		Use:   "redteam",
+		Short: "seeded-bug 红队演练：对验证链自身注入五类雷（oracle-pipeline L6，escaped=链的洞）",
+		RunE:  runEvalRedteam,
+	}
+	evalCmd.AddCommand(redteam)
 
 	judge := &cobra.Command{
 		Use:   "judge-audit --scores <file>",
