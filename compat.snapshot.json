@@ -846,6 +846,9 @@
       ]
     },
     {
+      "path": "forge task edgecheck"
+    },
+    {
       "path": "forge task export",
       "flags": [
         "include-checklog",
@@ -880,6 +883,13 @@
       "flags": [
         "keep",
         "merge-to"
+      ]
+    },
+    {
+      "path": "forge task fuzz",
+      "flags": [
+        "max",
+        "sec"
       ]
     },
     {
@@ -944,6 +954,12 @@
       ]
     },
     {
+      "path": "forge task mutation",
+      "flags": [
+        "sample"
+      ]
+    },
+    {
       "path": "forge task next",
       "flags": [
         "ref"
@@ -973,6 +989,16 @@
       "flags": [
         "dry-run",
         "json"
+      ]
+    },
+    {
+      "path": "forge task regression",
+      "flags": [
+        "finding",
+        "none",
+        "note",
+        "ref",
+        "test"
       ]
     },
     {
@@ -1217,6 +1243,7 @@
     "FORGE_DOC_GATE",
     "FORGE_GATE_PUSH",
     "FORGE_HELDOUT",
+    "FORGE_MUTATION_TIMEOUT",
     "FORGE_REQ_HYGIENE",
     "FORGE_SELF_REPORT",
     "FORGE_SKILL_DECISIONS",

@@ -57,6 +57,18 @@ func TestFindingLoopEdgeLifecycle(t *testing.T) {
 		t.Fatalf("finding 未登记: %+v", state.Findings)
 	}
 
+	// oracle-pipeline L4：resolve 的回归绑定前置——回环 fixture 用 none 声明
+	//（本测试考回环语义，非回归登记本身；登记路径在 task_questioning_test 钉）。
+	if err := taskpipeline.MutateTaskState(dir, ref, func(s *taskpipeline.TaskState) error {
+		if s.RegressionTests == nil {
+			s.RegressionTests = map[string]string{}
+		}
+		s.RegressionTests[findingID] = "none:loop-fixture"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	// 2. resolve：指纹记入 ResolvedPrints。
 	runFinding(t, "--resolve", findingID)
 	state, err = taskpipeline.LoadTaskState(dir, ref)
