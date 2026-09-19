@@ -70,6 +70,10 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 	switch {
 	case !gates[GateImplement]:
 		return NextResult{Next: "forge task gate task-implement", Reason: "实现未确认（有提交即可过）", State: state}
+	case st != nil && !st.HasAcceptance() && !st.IsGeneric():
+		// 考卷缺位（oracle-pipeline L1）：complete 硬前置零验收登记——先补考卷再谈
+		// 实跑。verify-acceptance 在有 conventions 档案时会自动登记默认套件。
+		return NextResult{Next: nextCmdVerifyAcceptance, Reason: "未登记验收标准（complete 硬前置）——先跑 verify-acceptance（有 conventions 档案时自动登记默认套件）或 forge task accept \"run :: expected\" 补登", State: state}
 	case nextAcceptancePending(st):
 		return NextResult{Next: nextCmdVerifyAcceptance, Reason: "验收标准尚未实跑回扣——先实跑（AcceptedHeadCommit 为空的标准待跑）", State: state}
 	case !gates[GateVerify]:

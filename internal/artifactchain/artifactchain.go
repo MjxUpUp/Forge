@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/util"
 	"gopkg.in/yaml.v3"
 )
 
@@ -105,6 +106,30 @@ type Edge struct {
 // 同侧，随 harness repo 版本化；multi-task-concurrency §9 原案落位）。
 func SchemaPath(root string) string {
 	return filepath.Join(forgedata.DataDirFor(root), "schemas", "schema.yaml")
+}
+
+// WriteSchema persists the chain to the project schema location
+// (<DataDir>/schemas/schema.yaml), creating the directory. The CLI's
+// init-schema entry (oracle-pipeline L0) writes a DefaultChain-derived schema
+// with the spec stage promoted to human tier — one command instead of
+// hand-authoring YAML; Load reads back exactly what this writes.
+//
+// WriteSchema 把链持久化到项目 schema 位置（<DataDir>/schemas/schema.yaml），
+// 目录不存在则创建。CLI 的 init-schema 入口（oracle-pipeline L0）写入以
+// DefaultChain 为底、spec stage 升 human 档的 schema——一条命令替代手写 YAML；
+// Load 读回的就是本函数写的形状。
+func WriteSchema(root string, chain *Chain) error {
+	if err := os.MkdirAll(filepath.Dir(SchemaPath(root)), 0o755); err != nil {
+		return err
+	}
+	body, err := yaml.Marshal(chain)
+	if err != nil {
+		return err
+	}
+	// 原子写（审查 P2-2）：schema 是执法配置，撕裂写留半截 yaml 会让每次 Load
+	// fail-open 回落全 advisory 默认链——spec human 档执法静默消失。与
+	// SaveTaskState/SaveProfile 同一工具。
+	return util.AtomicWrite(SchemaPath(root), body, 0o644)
 }
 
 // reservedStageName 排除 specs/<ref>/ 目录里的非产物条目（attempts/ 是审查失败

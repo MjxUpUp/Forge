@@ -480,6 +480,15 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "implement feature")
 
+	// oracle-pipeline L1：complete 登记门硬前置至少一条验收——登记快验收并实跑
+	//（freshness 消费实跑快照）。
+	if stdout, _, code = runForge(t, tmpDir, "task", "accept", "go version :: go version"); code != 0 {
+		t.Fatalf("forge task accept failed: %s", stdout)
+	}
+	if stdout, _, code = runForge(t, tmpDir, "task", "verify-acceptance"); code != 0 {
+		t.Fatalf("forge task verify-acceptance failed: %s", stdout)
+	}
+
 	// Pass gates (task-implement now has real code changes; task-verify follows)
 	for _, g := range []string{"task-implement", "task-verify"} {
 		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)

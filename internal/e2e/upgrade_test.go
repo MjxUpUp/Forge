@@ -255,6 +255,10 @@ func TestMasterBranchReminder(t *testing.T) {
 	// Start task, pass all 3 gates, complete.
 	forge(t, dir, "task", "start", "--ref", "EXP-1", "--title", "test experience")
 	passAllGates(t, dir, "EXP-1")
+	// oracle-pipeline L1：complete 登记门硬前置——登记快验收并实跑（实跑须在
+	// passAllGates 的 scratch commit 之后，保持 freshness 快照新鲜）。
+	forge(t, dir, "task", "accept", "go version :: go version", "--ref", "EXP-1")
+	forge(t, dir, "task", "verify-acceptance", "--ref", "EXP-1")
 	forge(t, dir, "task", "complete", "--ref", "EXP-1")
 
 	// Switch back to master.

@@ -26,6 +26,47 @@ type TaskGate struct {
 // AcceptanceCriterion is an executable acceptance criterion (from the
 // dev-workflow Plan's Run: <cmd>, Expected: <output>).
 //
+// Acceptance source tiers — the oracle-tier ladder (oracle-pipeline L1). A
+// criterion's Source records WHERE its exam paper was authored, because the
+// oracle's independence from the implementer is the top determinant of what
+// a green run proves (an exam written by the examinee proves nothing, however
+// real the execution). Ladder, strongest first:
+//
+//   - spec-extract: compiled out of a registered spec artifact (reviewable,
+//     signable via the artifact chain's human tier) — the exam precedes the
+//     answer and can be business-signed.
+//   - start: registered at task start, before any code was written.
+//   - conventions: auto-registered fallback from the project's conventions
+//     profile (build/test/lint) when nothing else was registered — the
+//     project's default exam, not the implementer's pick.
+//   - manual: added after the task started (forge task accept) — post-hoc,
+//     weakest tier: the implementer authored the exam after seeing the code.
+//     Disclosed as-is on the delivery report; never silently relabeled.
+//
+// Empty Source = legacy state persisted before the tier existed; consumers
+// treat it as start-tier (the only registration channel that existed then).
+//
+// Acceptance 来源层级——考卷层级制（oracle-pipeline L1）。Source 记录考卷在哪
+// 写成：oracle 相对实现者的独立性决定「绿」证明了什么（考生自己出的卷子，
+// 执行再真实也证明不了什么）。由强到弱：
+//
+//   - spec-extract：从已登记 spec 产物编译而来（可评审、可经产物链 human 档签
+//     字）——考卷先于答案，且可被业务方签字。
+//   - start：task start 时登记——写代码之前。
+//   - conventions：无任何登记时从项目 conventions 档案自动登记的兜底套件
+//     （build/test/lint）——项目的默认考卷，非实现者自选。
+//   - manual：任务开工后补登（forge task accept）——事后补，最弱一层：实现者
+//     看过代码之后才出的题。交付验收单如实披露该层级，绝不静默改标。
+//
+// 空 Source = 层级机制之前的存量 state；消费方按 start 层对待（彼时唯一的
+// 登记通道就是 start）。
+const (
+	AcceptanceSourceSpecExtract = "spec-extract"
+	AcceptanceSourceStart       = "start"
+	AcceptanceSourceConventions = "conventions"
+	AcceptanceSourceManual      = "manual"
+)
+
 // AcceptanceCriterion 是一条可执行的验收标准（来自 dev-workflow Plan 的
 // "Run: <cmd>, Expected: <output>"）。持久化进 TaskState，使验收标准不随 plan 文本
 // 消失；verify-acceptance 实跑 Run、比对 Expected，记 deterministic 证据——把 spec
@@ -75,6 +116,15 @@ type AcceptanceCriterion struct {
 	// Expected 子串判定——存量 state 行为逐字节一致（compat：仅新增键，不删不改）。
 	// 判定分派在 taskpipeline；本批只落数据形状。
 	Assertions []Assertion `json:"assertions,omitempty"`
+	// Source is the oracle tier of this criterion — where the exam paper was
+	// authored (see the AcceptanceSource* ladder above). Stamped once at the
+	// registration point and never rewritten: relabeling a post-hoc exam as a
+	// pre-code one would launder the weakest tier into the strongest.
+	//
+	// Source 是本条验收标准的考卷层级——考卷在哪写成（见上方 AcceptanceSource*
+	// 层级梯）。登记点一次盖章、绝不改写：把事后补登的卷子改标成先于代码的
+	// 卷子，等于把最弱层洗成最强层。
+	Source string `json:"source,omitempty"`
 }
 
 // Assertion is one structured, mechanically checkable assertion within a v2
