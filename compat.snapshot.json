@@ -215,6 +215,9 @@
       ]
     },
     {
+      "path": "forge eval redteam"
+    },
+    {
       "path": "forge eval report",
       "flags": [
         "quarter"
@@ -903,6 +906,18 @@
       "path": "forge task health",
       "flags": [
         "json"
+      ]
+    },
+    {
+      "path": "forge task heldout-pool",
+      "flags": [
+        "add",
+        "apply",
+        "draw",
+        "list",
+        "name",
+        "ref",
+        "tag"
       ]
     },
     {
