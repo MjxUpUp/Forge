@@ -1,6 +1,9 @@
 package taskpipeline
 
-import "reflect"
+import (
+	"reflect"
+	"strings"
+)
 
 // trust.go — the single source of truth for stripping FOREIGN gate/trust signals off a TaskState that entered the local DataDir from an untrusted source.
 //
@@ -134,6 +137,20 @@ func StripForeignGateSignals(s *TaskState) {
 	// filterUnreported 丢弃集合中已存在的指纹）——外来预填集合会让本机的
 	// cheat-scan/unused-scan 报告静音。
 	s.ReportedFindings = nil
+	// L4 回归绑定的外来剥离（审查 P1-1）：none 声明是【本机显式可审计】的
+	// 逃生决策，不可继承——外来 bundle 携带的 none: 条目直接删（本机要逃就
+	// 重新 forge task regression --none 落本机审计行）；文件路径绑定保留
+	//（考卷侧声明），消费侧（RequireFindingRegression）照样复验本机窗口。
+	if len(s.RegressionTests) > 0 {
+		cleaned := make(map[string]string, len(s.RegressionTests))
+		for id, v := range s.RegressionTests {
+			if strings.HasPrefix(v, "none:") {
+				continue
+			}
+			cleaned[id] = v
+		}
+		s.RegressionTests = cleaned
+	}
 }
 
 // trustContinuityWhitelist 是不可信 import 允许携带的 TaskState 字段集——交接
@@ -153,6 +170,9 @@ var trustContinuityWhitelist = map[string]bool{
 	// spec（规格——声明而非结果）
 	"DependsOn": true, "Acceptance": true, "PlanScope": true,
 	"SpecArtifacts": true, "CrossRepoImpact": true,
+	// RegressionTests：finding→回归测试的绑定是「考卷侧」声明（哪个测试证明
+	// 哪个修复），非结果信号——外来携带可保留；resolve 的 L4 前置照样消费。
+	"RegressionTests": true,
 	// advisory-neutral inference cache（重算安全的推断缓存）
 	"DesignPhases": true,
 	// per-entry/custom-handled（条目级清洗的字段级壳）

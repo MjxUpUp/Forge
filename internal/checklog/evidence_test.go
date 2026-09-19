@@ -446,3 +446,17 @@ func TestBuildEvidenceChain_VerificationWhitelist(t *testing.T) {
 		t.Fatalf(`未知 Source 应计 agent-claim: det=%d claim=%d, want 0/1`, ec2.Deterministic, ec2.AgentClaim)
 	}
 }
+
+// TestVerificationChecksIncludeMachineQuestioning (oracle-pipeline L2)：mutation
+// 与 fuzz 的实跑行是 verificationChecks 白名单成员——机器出题的证据计入
+// deterministic 分桶（接线一断测试即红，白名单回归不自知）。
+func TestVerificationChecksIncludeMachineQuestioning(t *testing.T) {
+	ec := BuildEvidenceChain([]Entry{
+		{Check: CheckName("mutation-sampling"), Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckName("fuzz-run"), Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckName("edge-checklist"), Source: EvidenceDeterministic, TaskRef: "t"},
+	}, "t")
+	if ec.Deterministic != 2 {
+		t.Fatalf(`mutation+fuzz 应计 deterministic（edge-checklist 是观察类不白名单）: got %d, want 2`, ec.Deterministic)
+	}
+}
