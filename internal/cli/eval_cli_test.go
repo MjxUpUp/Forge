@@ -229,3 +229,33 @@ func TestGateHooksInstallE2E(t *testing.T) {
 		t.Fatalf("gate push --dry-run 输出/退出码异常（exit %d）：%s", code, cfg)
 	}
 }
+
+// TestEvalRedteamCmd（oracle-pipeline L6）：红队命令全链路——五类雷全拦
+// （escaped 会 exit 非 0，全拦 0）；报告含拦截率与逐雷判定。
+func TestEvalRedteamCmd(t *testing.T) {
+	if testing.Short() {
+		t.Skip("红队命令全链需要 git/go 工具链")
+	}
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(repoRoot); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	// TestMain 把 FORGE_DATA_HOME 隔离到 tmp（空注册表）——红队汇总行经
+	// dataHome 落盘需要项目登记，先 init（零仓库写入）。
+	if out, _, code := runForge(t, repoRoot, "init"); code != 0 {
+		t.Fatalf("forge init: %s", out)
+	}
+	out, _, code := runForge(t, repoRoot, "eval", "redteam")
+	if code != 0 {
+		t.Fatalf("redteam 应全拦（exit 0）: %s", out)
+	}
+	if !strings.Contains(out, "拦截率 5/5") {
+		t.Fatalf("报告应含拦截率 5/5: %s", out)
+	}
+	for _, seed := range []string{"zero-acceptance-delivery", "unused-internal-export", "swallowed-error", "type-suppression", "heldout-gap"} {
+		if !strings.Contains(out, seed) {
+			t.Errorf("报告应点名种子 %s: %s", seed, out)
+		}
+	}
+}
