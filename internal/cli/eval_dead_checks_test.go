@@ -77,3 +77,13 @@ func TestClassifyCheckKind(t *testing.T) {
 		}
 	}
 }
+
+// TestClassifyCheckKind_MachineQuestioning (oracle-pipeline L2)：三个新检查
+// 都是 advisory 类——零拦截不是死证据（独立命令按需执行）。
+func TestClassifyCheckKind_MachineQuestioning(t *testing.T) {
+	for _, name := range []string{"mutation-sampling", "fuzz-run", "edge-checklist"} {
+		if got := classifyCheckKind(name); got != "advisory" {
+			t.Errorf(`%s 应分类 advisory，got %q`, name, got)
+		}
+	}
+}

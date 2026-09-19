@@ -266,6 +266,26 @@ func TestStripForeignGateSignals_NormalizesAcceptanceTier(t *testing.T) {
 	}
 }
 
+// TestStripForeignGateSignals_StripsNoneRegression (review P1-1): foreign
+// none: regression bindings are stripped at import (a locally-audited escape
+// decision cannot be inherited by an untrusted bundle); file-path bindings
+// survive for consumption-side re-validation.
+//
+// TestStripForeignGateSignals_StripsNoneRegression（审查 P1-1）：外来 none:
+// 回归绑定在导入时剥离（本机显式可审计的逃生决策不可由不可信 bundle 继承）；
+// 文件路径绑定保留，交消费侧复验。
+func TestStripForeignGateSignals_StripsNoneRegression(t *testing.T) {
+	s := &TaskState{TaskRef: "imp-reg",
+		RegressionTests: map[string]string{"f-1": "none:carried-reason", "f-2": "pkg/solver_test.go"}}
+	StripForeignGateSignals(s)
+	if _, ok := s.RegressionTests["f-1"]; ok {
+		t.Error(`外来 none: 绑定必须剥离（本机逃生不可继承）`)
+	}
+	if s.RegressionTests["f-2"] != "pkg/solver_test.go" {
+		t.Error(`文件路径绑定应保留（消费侧复验本机窗口）`)
+	}
+}
+
 // TestRegisterAcceptance_RejectsCompleted (review P1-2): the exam is finalized
 // at delivery — the lock closure refuses late registration on completed tasks
 // (kills the TOCTOU window between an outside check and the merge).
