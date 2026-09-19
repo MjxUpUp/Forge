@@ -199,6 +199,10 @@ func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
 	// 门禁必须真过。仓 B 是多仓成员，其 verify 会带 cross-repo advisory——
 	// 仅 advisory，不阻断。
 	passAllGates(t, dirB, "feat/tb")
+	// oracle-pipeline L1：complete 登记门硬前置——登记快验收并实跑（scratch
+	// commit 之后，快照新鲜）。
+	forge(t, dirB, "task", "accept", "go version :: go version", "--ref", "feat/tb")
+	forge(t, dirB, "task", "verify-acceptance", "--ref", "feat/tb")
 	forge(t, dirB, "task", "complete", "--ref", "feat/tb")
 
 	// 重跑 verify：跨仓 pending 消失；只剩 task-implement 前置未过。

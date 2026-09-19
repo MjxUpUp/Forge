@@ -65,6 +65,12 @@ func StripForeignGateSignals(s *TaskState) {
 		s.Acceptance[i].AcceptedBaseCommit = ``
 		s.Acceptance[i].AcceptedChangeHash = ``
 		s.Acceptance[i].Output = ``
+		// 考卷层级归一（oracle-pipeline L1，审查 P1-1）：外来 tier 声明与结果同属
+		// 不可信——bundle 作者可自标 spec-extract/start 谎报考卷独立性，或略去
+		// manual 压制验收单的披露触发器。归一为 manual（最弱层：出处未证），
+		// 验收单按 manual 如实披露；更强层级只能由本机登记通道（start/extract/
+		// accept）重新挣得。
+		s.Acceptance[i].Source = AcceptanceSourceManual
 	}
 	// 控制流信号（2026-08-15 修复）。CompletedAt 是关掉所有 CompletedAt==nil 守卫硬检查的总开关
 	// ——而「CompletedAt 已设 ⟹ 门禁本机通过过」的本机不变量恰是被不可信源打破的东西。

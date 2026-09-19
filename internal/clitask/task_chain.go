@@ -32,7 +32,7 @@ func init() {
 	taskArtifactCmd.Flags().Bool("verify", false, "全 ref 重算哈希校验漂移（漂移落 artifact-drift 审计行）")
 	taskArtifactCmd.Flags().String("approve", "", "human 档人工审批：<stage>（签当前登记内容哈希，内容再改即作废）")
 	taskArtifactCmd.Flags().String("by", "", "审批人标识（缺省取当前 session id；审批必须可归因到人）")
-	taskArtifactCmd.Flags().Bool("extract", false, "从已登记产物提取验收标准合并进任务（accept:/Run:/```accept 三形态）")
+	taskArtifactCmd.Flags().Bool("extract", false, "从已登记产物提取验收标准合并进任务（accept:/Run:/```accept 三形态；考卷层级 spec-extract）")
 	taskStartCmd.Flags().StringArray("artifact", nil, `开工即登记产物（可重复 --artifact "<stage>=<path>"）：读文件内容落 specs 目录并折哈希引用进任务（spec-kit 式「先写 spec 再开工」路径）`)
 }
 
@@ -335,6 +335,11 @@ func runArtifactExtract() error {
 	if err != nil {
 		return err
 	}
+	// 考卷在交付前定稿（审查 P1-2）：已完成任务不得事后经 --extract 注入盖
+	// spec-extract 层的标准——那等于改写已交付验收单的考卷来源。
+	if st.CompletedAt != nil {
+		return fmt.Errorf("任务 %s 已完成——考卷在交付前定稿，extract 拒绝事后注入（发现问题的正确出口是开新修复任务）", st.TaskRef)
+	}
 	// 链序提取：上游产物先提（显式 --accept 仍优先，MergeAcceptance 按 Run 去重）。
 	var stages []string
 	for _, s := range chain.Stages {
@@ -354,6 +359,11 @@ func runArtifactExtract() error {
 	added := 0
 	var perStage []string
 	if err := taskpipeline.MutateTaskState(root, st.TaskRef, func(s *taskpipeline.TaskState) error {
+		// 锁内复查（复审残留①）：complete 与 extract 并发的毫秒级窗口内不得注入
+		// ——与 RegisterAcceptance 的锁内拒绝对齐。
+		if s.CompletedAt != nil {
+			return fmt.Errorf("任务已完成——考卷在交付前定稿，锁内拒绝 extract 注入")
+		}
 		for _, name := range stages {
 			ref := s.SpecArtifacts[name]
 			extracted, xerr := taskpipeline.ParseAcceptanceFromArtifactFile(taskpipeline.ArtifactAbsPath(root, ref))
@@ -364,6 +374,9 @@ func runArtifactExtract() error {
 			if len(extracted) == 0 {
 				continue
 			}
+			// 考卷层级（oracle-pipeline L1）：产物提取的标准盖 spec-extract 层——
+			// 考卷来自可评审/可签字的产物（human 档下 --approve 即业务签字）。
+			taskpipeline.StampAcceptanceSource(extracted, taskpipeline.AcceptanceSourceSpecExtract)
 			before := len(s.Acceptance)
 			s.Acceptance = taskpipeline.MergeAcceptance(s.Acceptance, extracted)
 			if n := len(s.Acceptance) - before; n > 0 {

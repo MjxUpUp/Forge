@@ -219,7 +219,7 @@ func TestTaskComplete_UnusedGateBlocksUnwiredInternalExport(t *testing.T) {
 // 指针。乙机实录：多会话任务（session_links≥2）漏清后，异会话/无 session 的 hook 行
 // 继续归到已封印任务名下两天。
 func TestTaskComplete_ClearsAllTaskAnchors(t *testing.T) {
-	dir := setupDeadlockTask(t, nil)
+	dir := setupDeadlockTask(t, []string{`go version :: go version`})
 	const taskRef = `feat/deadlock`
 	for _, sid := range []string{`other-session-a`, `other-session-b`, ``} {
 		if err := taskpipeline.SetActiveTaskRef(dir, sid, taskRef); err != nil {
@@ -234,6 +234,17 @@ func TestTaskComplete_ClearsAllTaskAnchors(t *testing.T) {
 	}
 
 	state, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// oracle-pipeline L1：登记门要求验收实跑快照（registration + freshness 两道
+	// pre-flight 都消费真实执行）——anchors 测试的 state 由此满足新契约。
+	var verErr error
+	_ = captureStdout(t, func() { verErr = runTaskVerifyAcceptanceAt(dir, "", false) })
+	if verErr != nil {
+		t.Fatalf(`verify-acceptance 应通过: %v`, verErr)
+	}
+	state, err = taskpipeline.LoadTaskState(dir, taskRef)
 	if err != nil {
 		t.Fatal(err)
 	}

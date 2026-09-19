@@ -45,3 +45,4 @@
 - 超预算须在本节追加裁决记录（援引边界与 §三存量处理裁决同格式），否则按违例评审。
 - 首发预算记账：leverage-p0 批次净增 +1（`forge eval wedge-drill`，L1 楔子演练）。
 - 1.56 批次记账：净增 +1（`forge eval harness-audit`，A–G 修复的可复算度量；设计 docs/design/harness-fixes-a-g-2026-09.md M，该设计声明本 minor 仅此一个新命令，预算用 1/2）。
+- oracle-pipeline 批次裁决（2026-09，超预算）：本批计划净增 +8（阶段一 `forge task accept`/`task report`/`task chain-init`，阶段二 `task mutation`/`task fuzz`/`task edgecheck`，阶段三 heldout 池命令入口/`forge eval redteam`），超"单 minor 净增 ≤2"。理由：① 全部为 added 非破坏（不触碰既有命令面——加 flag 判 changed/破坏性，故一律新命令）；② 八命令同属一个能力（正确性传递链，设计 docs/design/oracle-pipeline-2026-09.md），拆 minor 拆的是一个可评审整体；③ 用户对整批方案已拍板。**援引边界**：不可作为无关命令堆积的先例——与该设计无整体关系的命令新增仍按 ≤2/minor 预算。
