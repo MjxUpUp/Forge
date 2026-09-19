@@ -30,3 +30,14 @@ func TestUnusedScanEscapeEnvRegistered(t *testing.T) {
 		t.Fatal("EscapeEnvs 缺 FORGE_UNUSED_SCAN——compat.go 清单未同步")
 	}
 }
+
+// TestMutationTimeoutEscapeEnvRegistered (oracle-pipeline L2a)：FORGE_MUTATION_
+// TIMEOUT 在 EscapeEnvs roster——新增逃生舱必须同步（守卫的回归钉形态）。
+func TestMutationTimeoutEscapeEnvRegistered(t *testing.T) {
+	for _, env := range EscapeEnvs {
+		if env == "FORGE_MUTATION_TIMEOUT" {
+			return
+		}
+	}
+	t.Fatal(`FORGE_MUTATION_TIMEOUT 应在 EscapeEnvs roster（compat 快照 escapes 面）`)
+}

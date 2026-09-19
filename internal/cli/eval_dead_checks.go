@@ -196,6 +196,7 @@ var checkKinds = map[string]string{
 	"plan-first": "advisory", "next-hint": "advisory", "doc-lint": "advisory",
 	"branch-unmerged": "advisory", "conventions-inject": "advisory",
 	"test-capability-scan": "advisory",
+	"mutation-sampling": "advisory", "fuzz-run": "advisory", "edge-checklist": "advisory",
 	// gate：advisory-default 门（protocol 可升级）——拦截 0 = 通过率好
 	"task-verify": "gate", "task-complete": "gate", "docs-consistency-gate": "gate",
 	// pipeline：状态机事件留痕，非检查
