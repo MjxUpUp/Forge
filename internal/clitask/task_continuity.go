@@ -915,6 +915,12 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	if resolveID, _ := cmd.Flags().GetString("resolve"); resolveID != "" {
+		// oracle-pipeline L4（修复必须自证）：resolve 前须有回归绑定记录——修前红
+		// 由 finding 作证，修后绿由 forge task regression 登记的本任务测试文件作证
+		//（绑定记录缺失 = 拒绝并指路；无可测形态的 none 声明在 regression 侧落审计）。
+		if err := taskpipeline.RequireFindingRegression(root, state, resolveID); err != nil {
+			return err
+		}
 		var resolvedContent string
 		err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 			if !s.ResolveFinding(resolveID) {
