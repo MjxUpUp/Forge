@@ -38,6 +38,12 @@ func TestNextDecision(t *testing.T) {
 	withAcceptance := func(head string) []taskpipeline.AcceptanceCriterion {
 		return []taskpipeline.AcceptanceCriterion{{Run: "go test ./...", AcceptedHeadCommit: head}}
 	}
+	// accRun 给状态装上「已实跑」的验收（oracle-pipeline L1 起零验收任务的 next
+	// 被 verify-acceptance 先占——测下游阶段排序的行用本助手跳过考卷段）。
+	accRun := func(st *taskpipeline.TaskState) *taskpipeline.TaskState {
+		st.Acceptance = withAcceptance("abc123")
+		return st
+	}
 	cases := []struct {
 		name   string
 		branch string
@@ -49,22 +55,18 @@ func TestNextDecision(t *testing.T) {
 		{"no task + dirty tree", "main", true, nil, `forge task start --ref <ref> --branch --title <title>`, true},
 		{"no task + clean tree", "main", false, nil, "forge status", true},
 		{"task just started", "feat/x", false, withGates(), "forge task gate task-implement", true},
-		{"active task ignores dirty tree", "feat/x", true, withGates("task-implement"), "forge task gate task-verify", true},
+		{"active task ignores dirty tree", "feat/x", true, accRun(withGates("task-implement")), "forge task gate task-verify", true},
 		{"acceptance pending → run it first", "feat/x", false, func() *taskpipeline.TaskState {
 			st := withGates("task-implement")
 			st.Acceptance = withAcceptance("")
 			return st
 		}(), "forge task verify-acceptance", true},
-		{"acceptance run → gate verify", "feat/x", false, func() *taskpipeline.TaskState {
-			st := withGates("task-implement")
-			st.Acceptance = withAcceptance("abc123")
-			return st
-		}(), "forge task gate task-verify", true},
-		{"no acceptance criteria → straight to verify gate", "feat/x", false, withGates("task-implement"), "forge task gate task-verify", true},
-		{"verified not reviewed", "feat/x", false, withGates("task-implement", "task-verify"), "forge review pass", true},
-		{"reviewed but complete-gate missing → gate first", "feat/x", false, reviewed(withGates("task-implement", "task-verify")), "forge task gate task-complete", true},
-		{"three gates + review → complete", "feat/x", false, reviewed(withGates("task-implement", "task-verify", "task-complete")), "forge task complete", true},
-		{"out-of-order: complete-gate passed, review missing", "feat/x", false, withGates("task-implement", "task-verify", "task-complete"), "forge review pass", true},
+		{"acceptance run → gate verify", "feat/x", false, accRun(withGates("task-implement")), "forge task gate task-verify", true},
+		{"no acceptance criteria → verify-acceptance first (L1 registration gate)", "feat/x", false, withGates("task-implement"), "forge task verify-acceptance", true},
+		{"verified not reviewed", "feat/x", false, accRun(withGates("task-implement", "task-verify")), "forge review pass", true},
+		{"reviewed but complete-gate missing → gate first", "feat/x", false, reviewed(accRun(withGates("task-implement", "task-verify"))), "forge task gate task-complete", true},
+		{"three gates + review → complete", "feat/x", false, reviewed(accRun(withGates("task-implement", "task-verify", "task-complete"))), "forge task complete", true},
+		{"out-of-order: complete-gate passed, review missing", "feat/x", false, accRun(withGates("task-implement", "task-verify", "task-complete")), "forge review pass", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

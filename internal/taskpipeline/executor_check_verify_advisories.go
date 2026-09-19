@@ -166,29 +166,28 @@ func adviseAcceptance(state *TaskState) {
 }
 
 // acceptanceAdvisory builds the acceptance advisory text (pure, testable):
-// (a) gated (non-generic) task with ZERO acceptance criteria — completing without
-// any leaves the evidence chain claim-dominated: the only unforgeable whitelisted
-// evidence (acceptance/test-run) requires criteria registered at start (or later
-// via a spec artifact's accept fence), and CheckAcceptanceFresh passes silently
-// on empty, so the gap is invisible to the agent until the post-hoc nudge.
-// Real-world: 2026-09-07 project-policy-p234 completed at ratio 0.08 (4 det /
-// 47 agent-claim) purely because none was registered;
+// (a) gated (non-generic) task with ZERO acceptance criteria — complete is now
+// HARD-blocked by CheckAcceptanceRegistered (oracle-pipeline L1; the 2026-09-07
+// project-policy-p234 ratio-0.08 completion shipped through this exact gap), so
+// the advisory's job flipped from post-hoc nudge to early signpost: register
+// the exam NOW (spec extract > start > conventions fallback > manual) instead
+// of discovering the block at complete;
 // (b) registered but not all passed — existing spec-as-gate reminder.
 // Generic tasks are exempt (research/handoff legitimately carry no specs).
 //
 // acceptanceAdvisory 构造 acceptance advisory 文案（纯函数可测）：
-// （a）门禁任务（非 generic）零验收——零验收完成时证据链必然自述主导：白名单里
-// 不可伪造的 acceptance/test-run 证据前提是开工登记（或事后经 spec 产物的 accept
-// 围栏补登），而 CheckAcceptanceFresh 对空验收静默放行，缺口在事后 nudge 前对
-// agent 不可见。实证：2026-09-07 project-policy-p234 以 ratio 0.08（4 det /
-// 47 agent-claim）完成，根因就是零登记；
+// （a）门禁任务（非 generic）零验收——complete 已被 CheckAcceptanceRegistered
+// 硬拦（oracle-pipeline L1；2026-09-07 project-policy-p234 以 ratio 0.08 完成
+// 的事故正是从这个缺口过的），本提醒的职责从事后 nudge 翻转为提前路标：现在
+// 就登记考卷（spec 提取 ＞ start 登记 ＞ conventions 兜底 ＞ manual 补登），
+// 而不是到 complete 才发现被拦；
 // （b）登记了但未全通过——既有 spec-as-gate 提醒。generic 任务豁免。
 func acceptanceAdvisory(state *TaskState) string {
 	if state.IsGeneric() {
 		return ""
 	}
 	if !state.HasAcceptance() {
-		return "任务未登记任何验收标准——完成时证据链将自述主导（白名单不可伪造的 acceptance/test-run 证据为零，CheckAcceptanceFresh 对空验收静默放行）。补登三步：`forge task artifact --set spec --file <spec.md>`（含 ```accept 围栏）→ `forge task artifact --extract`（围栏编译进验收标准——--set 只折引用不落 state）→ `forge task verify-acceptance` 实跑；或确认本任务确无机器可验标准"
+		return "任务未登记任何验收标准——complete 将被登记门硬拦（考卷缺位）。登记出口按考卷层级由强到弱：`forge task artifact --set spec --file <spec.md>`（含 ```accept 围栏）→ `forge task artifact --extract`（spec-extract 层）→ `forge task verify-acceptance` 实跑；`forge task accept \"run :: expected\"`（manual 层补登，验收单如实披露）；有 conventions 档案时 verify-acceptance 会自动登记默认套件"
 	}
 	if !state.AllAcceptancePassed() {
 		return fmt.Sprintf("任务登记了 %d 条验收标准但未全部通过——先跑 'forge task verify-acceptance' 实跑回扣（spec-as-gate）", len(state.Acceptance))

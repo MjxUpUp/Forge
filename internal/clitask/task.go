@@ -539,6 +539,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			}
 			state.SpecArtifacts[stage] = aref
 			if extracted := taskpipeline.ParseAcceptanceFromArtifact(string(data)); len(extracted) > 0 {
+				// 考卷层级（oracle-pipeline L1）：从产物提取的标准盖 spec-extract 层
+				// ——考卷来自可评审/可签字的 spec 产物，强于裸 --accept。
+				taskpipeline.StampAcceptanceSource(extracted, taskpipeline.AcceptanceSourceSpecExtract)
 				baseBefore := len(state.Acceptance)
 				state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, extracted)
 				planAcceptanceAdded += len(state.Acceptance) - baseBefore
@@ -552,6 +555,10 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	if adjusted := taskpipeline.EnsureGoTestVerbose(state.Acceptance); len(adjusted) > 0 {
 		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ 验收命令自动补 -v（go test 无 -v 时输出无 PASS 行，Expected 子串永不匹配）：%s\n", strings.Join(adjusted, ", "))
 	}
+	// 考卷层级收口（oracle-pipeline L1）：start 时登记的全部标准（--accept/--invariant/
+	// --plan-file 提取）盖 start 层——先于代码写成；上方 --artifact 提取的已就地盖
+	// spec-extract（StampAcceptanceSource 只盖空值，不会覆盖）。
+	taskpipeline.StampAcceptanceSource(state.Acceptance, taskpipeline.AcceptanceSourceStart)
 	if parent, _ := cmd.Flags().GetString("parent"); parent != "" {
 		state.ParentTaskRef = parent
 	}

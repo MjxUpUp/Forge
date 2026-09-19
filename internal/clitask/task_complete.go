@@ -104,6 +104,16 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return fmt.Errorf(`task complete 拒绝：任务状态文件完整性校验失败（在 forge 之外被修改——手改的 review/doc 证据不被采信）。恢复路径：forge task abort 后重新走门禁`)
 	}
 
+	// acceptance registration pre-flight（oracle-pipeline L1，考卷层级制）：非 generic
+	// 交付任务必须至少登记一条验收标准——零标准时整个 deterministic 验收核心对空集
+	// 平凡通过（2026-09-07 实证 ratio 0.08 完成事故）。考卷梯子由强到弱：spec 产物
+	// 提取（可经 human 档业务签字）＞ start 登记 ＞ conventions 兜底 ＞ 事后补登
+	// （manual，验收单如实披露）。逃生与 freshness 检查共用 acceptance-gate 舱。
+	if ok, reasons := taskpipeline.CheckAcceptanceRegistered(root, state); !ok {
+		return fmt.Errorf(`acceptance registration 未通过（零验收标准——考卷缺位）: %s。登记出口：forge task accept "run :: expected"（本任务补登，层级 manual）；forge task artifact --extract（从 spec 产物提取）；或先 forge task verify-acceptance（有 conventions 档案时自动登记默认套件）。逃生（落 checklog 审计，降 evidence 强度）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable`,
+			strings.Join(reasons, `; `))
+	}
+
 	// acceptance pre-flight（proof-of-work consumer）：task 声明了验收标准时，complete 前
 	// deterministic 校验每条都 fresh（AcceptedHeadCommit==HEAD）且 Passed。给 AcceptedHeadCommit
 	// 补消费方——MCP 拆除后该字段只写不读成孤儿，本检查把它从声明层变 affordance gate。

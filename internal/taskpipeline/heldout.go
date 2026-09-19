@@ -48,6 +48,29 @@ const heldoutRotateThreshold = 5
 // held-out 命令，agent 无法伪造结果侧）。
 const CheckNameHeldoutGap checklog.CheckName = "acceptance-heldout-gap"
 
+// HeldoutRegistered reports whether the task has a held-out sidecar on disk
+// (forge task start --heldout). Read-only probe for disclosure surfaces (the
+// delivery report states whether the exam included an unseen held-out set).
+// A non-NotExist stat error returns (false, err) distinctly — callers must
+// not render a transient read failure as "not registered" (understatement
+// direction; review residual ③).
+//
+// HeldoutRegistered 报告任务在盘上是否有 held-out 侧车（forge task start
+// --heldout）。只读探针，供披露表面使用（交付验收单要声明考卷里有没有一套
+// 实现者不可见的保留题）——不加载、不执行。非 NotExist 的 stat 错误单独以
+// (false, err) 返回——调用方不得把瞬时读失败渲染成「未登记」（披露向
+// understatement 方向错；复审残留③）。
+func HeldoutRegistered(root, ref string) (bool, error) {
+	_, err := os.Stat(heldoutPath(root, ref))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 // HeldoutResult 是 VerifyHeldout 的结构化结果。
 type HeldoutResult struct {
 	// Checked=false：无 held-out 侧车（未登记）或读侧失败——门禁未运行。
