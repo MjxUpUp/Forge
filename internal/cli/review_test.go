@@ -465,3 +465,123 @@ func TestRunReviewPassAt_NonTaskRecordsChecklog(t *testing.T) {
 		t.Errorf("Detail 应含 --note 文本: %q", rec.Detail)
 	}
 }
+
+// TestReviewTestTouchedFilesAndStamp（oracle-pipeline 阶段三）：任务窗口内的
+// 测试文件变更被点名（跨语言形态），review pass 时落 test-diff 观察行——
+// 「修测试使过」的披露数据面。
+func TestReviewTestTouchedFilesAndStamp(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+	const ref = `feat/testdiff`
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{TaskRef: ref, Branch: ref}); err != nil {
+		t.Fatal(err)
+	}
+	// 任务窗口内（untracked）：一个 Go 测试文件 + 一个 TS 测试文件 + 一个生产文件。
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("solver_test.go", "package main\n\nimport \"testing\"\n\nfunc TestSolve(t *testing.T) {}\n")
+	write("widget.spec.ts", "it('works', () => {});\n")
+	write("impl.go", "package main\n\nfunc F() {}\n")
+	st, err := taskpipeline.LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	touched := reviewTestTouchedFiles(dir, st, "") // 首轮审查：无旧基线，回落任务窗口
+	if len(touched) != 2 {
+		t.Fatalf(`应点名 2 个测试文件（Go+TS），got %v`, touched)
+	}
+	// review pass → checklog 落 test-diff 观察行（Meta files）。
+	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		t.Fatalf(`review pass: %v`, err)
+	}
+	found := false
+	entries, _ := checklog.LoadForTask(dir, ref)
+	for _, e := range entries {
+		if e.Check == checkTestDiff {
+			found = true
+			if !strings.Contains(e.Meta["files"], "solver_test.go") || !strings.Contains(e.Meta["files"], "widget.spec.ts") {
+				t.Errorf(`Meta files 应含两个测试文件: %v`, e.Meta)
+			}
+		}
+	}
+	if !found {
+		t.Fatal(`review pass 后应落 test-diff 观察行`)
+	}
+}
+
+// TestReviewTestDiff_SilentWhenNoTestChanges（阶段三审查 P2-9）：无测试文件
+// 变更时不落 test-diff 行——观察行的静默半边也要钉，防误报漂移。
+func TestReviewTestDiff_SilentWhenNoTestChanges(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+	const ref = `feat/notestdiff`
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{TaskRef: ref, Branch: ref}); err != nil {
+		t.Fatal(err)
+	}
+	// 只有生产文件变更（untracked），无测试文件。
+	if err := os.WriteFile(filepath.Join(dir, `impl.go`), []byte("package main\n\nfunc G() {}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		t.Fatalf(`review pass: %v`, err)
+	}
+	entries, _ := checklog.LoadForTask(dir, ref)
+	for _, e := range entries {
+		if e.Check == checkTestDiff {
+			t.Fatalf(`无测试变更不应落 test-diff 行: %+v`, e)
+		}
+	}
+}
+
+// TestReviewTestDiff_CommittedFormCaught（阶段三复审 P2-3 返工钉）：commit-
+// then-review 主形态——测试文件【已提交】、工作树干净，二轮盖章（旧基线存在）
+// 时 test-diff 行仍必须落：盖章前捕获的旧基线让已提交变更可见。修复前该形态
+// 整段漏报（盖章后读基线=当前 HEAD，diff 只剩工作树）。
+func TestReviewTestDiff_CommittedFormCaught(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+	const ref = `feat/committed-diff`
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{TaskRef: ref, Branch: ref}); err != nil {
+		t.Fatal(err)
+	}
+	// 首轮盖章（建立基线；此时无测试变更）。
+	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		t.Fatalf(`首轮盖章: %v`, err)
+	}
+	// 「修测试使过」主形态：弱化测试【已提交】，工作树干净。
+	os.WriteFile(filepath.Join(dir, `main_test.go`), []byte("package main\n\nimport \"testing\"\n\nfunc TestW(t *testing.T) { _ = 1 }\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `weaken test`)
+	// 二轮盖章（有旧基线 → 须 --note 过自助刷新守卫）。
+	if err := runReviewPassAt(dir, ref, "复审：测试变更已单独核查", false); err != nil {
+		t.Fatalf(`二轮盖章: %v`, err)
+	}
+	found := false
+	entries, _ := checklog.LoadForTask(dir, ref)
+	for _, e := range entries {
+		if e.Check == checkTestDiff {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal(`已提交形态的测试变更在二轮盖章必须落 test-diff 行（P2-3 回归钉）`)
+	}
+}

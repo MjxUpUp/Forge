@@ -23,6 +23,13 @@ func TaskChangedFiles(root string, state *TaskState) []string {
 	return taskChangedFiles(root, state)
 }
 
+// IsTestFilePath 导出测试文件判定（testcoverage.go isTestFile 的单一真相源
+// 包装——cli 的 test-diff 披露面复用它而非复制弱化版后缀表：复制即漂移，
+// pytest 的 test_*.py 前缀形态正是会被弱化版漏掉的对象）。
+func IsTestFilePath(path string) bool {
+	return isTestFile(path)
+}
+
 // IsGoTestFileWithTests 报告 rel（repo 相对）是否为含 Test/Fuzz 函数的 _test.go。
 // 三重校验合一：后缀（是测试文件）、在给定改动集内（属本任务）、内容真有
 // 测试函数（防拿无关旧测试文件冒充回归）。
