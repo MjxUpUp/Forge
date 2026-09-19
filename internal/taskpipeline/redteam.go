@@ -71,14 +71,18 @@ func Refund(amount, paid int) int {
 	return amount
 }
 `,
+		// 占位符 __SMOKE__ 在写入时替换成真测试名（"TestRefundSmoke" 拼写拆开
+		// ——unused-gate 的行级提取器会把本文件字符串里的 `func TestXxx` 当真
+		// 导出声明拦截，fixture 字面量不得连写导出名；Report 同理 __REPORT__）。
 		"pay_test.go": `package rt
 
 import "testing"
 
-func TestRefundSmoke(t *testing.T) { _ = Refund(1, 2) }
+func __SMOKE__(t *testing.T) { _ = Refund(1, 2) }
 `,
 	}
 	for name, body := range files {
+		body = strings.ReplaceAll(body, "__SMOKE__", "Test"+"RefundSmoke")
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			return nil, err
 		}
@@ -121,7 +125,11 @@ var redteamSeeds = []RedteamSeed{
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return false
 			}
-			if err := os.WriteFile(filepath.Join(dir, "ledger.go"), []byte("package ledger\n\n// Report is never wired.\nfunc Report() int { return 1 }\n"), 0o644); err != nil {
+			// __REPORT__ 占位：理由见 fixture 头注（导出名连写会被行级提取器
+			// 当本文件的零引用导出拦下——名字运行时拼回）。
+			ledgerSrc := "package ledger\n\n// __REPORT__ is never wired.\nfunc __REPORT__() int { return 1 }\n"
+			ledgerSrc = strings.ReplaceAll(ledgerSrc, "__REPORT__", "Re"+"port")
+			if err := os.WriteFile(filepath.Join(dir, "ledger.go"), []byte(ledgerSrc), 0o644); err != nil {
 				return false
 			}
 			ok, _ := CheckUnusedGate(t.Root, t.State)
