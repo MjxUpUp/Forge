@@ -29,6 +29,41 @@ func TestDefaultChainShape(t *testing.T) {
 	}
 }
 
+// TestWriteSchemaRoundTrip: a chain written via WriteSchema loads back with
+// identical stages/modes (oracle-pipeline L0 — schema.yaml is the enforcement
+// config; a write-then-misread would silently drop human-tier enforcement).
+//
+// TestWriteSchemaRoundTrip：WriteSchema 写出的链经 Load 读回 stage/mode 逐项
+// 一致（oracle-pipeline L0——schema 是执法配置，写了却读歪等于静默丢掉 human
+// 档执法）。
+func TestWriteSchemaRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	chain := DefaultChain()
+	for i := range chain.Stages {
+		if chain.Stages[i].Name == "spec" {
+			chain.Stages[i].Mode = ModeHuman
+		}
+	}
+	if err := WriteSchema(dir, chain); err != nil {
+		t.Fatalf("WriteSchema: %v", err)
+	}
+	if _, err := os.Stat(SchemaPath(dir)); err != nil {
+		t.Fatalf("schema 应写至 SchemaPath: %v", err)
+	}
+	loaded, warns := Load(dir)
+	for _, w := range warns {
+		t.Errorf("Load 回读不应告警: %s", w)
+	}
+	if len(loaded.Stages) != len(chain.Stages) {
+		t.Fatalf("stage 数应一致：want %d got %d", len(chain.Stages), len(loaded.Stages))
+	}
+	for i := range chain.Stages {
+		if loaded.Stages[i].Name != chain.Stages[i].Name || loaded.Stages[i].Mode != chain.Stages[i].Mode {
+			t.Errorf("stage %d 往返漂移: wrote %+v got %+v", i, chain.Stages[i], loaded.Stages[i])
+		}
+	}
+}
+
 func TestParseTwoPhaseValidation(t *testing.T) {
 	t.Run("合法 schema 归一 mode 与默认 produces", func(t *testing.T) {
 		c, err := Parse([]byte(`
