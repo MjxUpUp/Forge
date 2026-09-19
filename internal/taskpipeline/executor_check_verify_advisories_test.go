@@ -27,7 +27,9 @@ func TestAdviseAcceptance(t *testing.T) {
 		if got == `` {
 			t.Fatal(`门禁任务零验收应有 advisory（缺口不可见是 2026-09-07 nudge 根因）`)
 		}
-		for _, want := range []string{`验收`, `spec`, `自述`} {
+		// oracle-pipeline L1 契约：complete 硬拦 + 考卷层级出口（spec-extract/
+		// manual/conventions）都要在路标里。
+		for _, want := range []string{`验收`, `考卷缺位`, `accept`} {
 			if !strings.Contains(got, want) {
 				t.Errorf(`advisory 缺关键词 %q：got %q`, want, got)
 			}
