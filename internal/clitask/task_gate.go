@@ -168,6 +168,37 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// registerConventionsDefaults 落盘 conventions 兜底考卷（oracle-pipeline L1）：
+// ConventionsDefaultAcceptance 算出候选，RegisterAcceptance 在 per-task 锁内合并
+// （tier=conventions；锁内拒绝已完成任务的补登）。成功登记后同步推进调用方的
+// 内存副本（state.Acceptance），使后续 VerifyAcceptance 实跑刚登记的套件；返回
+// 实际新增的条目与「零新增的原因」（调用方据此给出口文案，不臆测档案状态——
+// 复审残留②）。
+func registerConventionsDefaults(root string, state *taskpipeline.TaskState) ([]taskpipeline.AcceptanceCriterion, string) {
+	defaults, perr := taskpipeline.ConventionsDefaultAcceptance(root)
+	if perr != nil {
+		fmt.Fprintf(os.Stderr, "⚠ conventions 档案读取失败（不兜底，零验收状态保持）：%v——修复：forge conventions init 重建档案\n", perr)
+		return nil, "档案存在但读取失败（见上方 stderr——forge conventions init 重建）"
+	}
+	if len(defaults) == 0 {
+		return nil, "无 conventions 档案（forge conventions init 可建立默认套件）"
+	}
+	added, err := taskpipeline.RegisterAcceptance(root, state.TaskRef, defaults, taskpipeline.AcceptanceSourceConventions)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ conventions 兜底登记失败：%v（保持零验收状态）\n", err)
+		return nil, "登记失败（见上方 stderr）"
+	}
+	if len(added) == 0 {
+		return nil, "档案命令均已登记（按 Run 去重）"
+	}
+	state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, added)
+	fmt.Printf("未登记验收标准——已从 conventions 档案自动登记默认套件（考卷层级 conventions，项目默认考卷）：\n")
+	for i, c := range added {
+		fmt.Printf("  [%d] %s\n", i+1, c.Run)
+	}
+	return added, ""
+}
+
 // runTaskVerifyAcceptance 实跑任务登记的每条验收标准（task start --accept），按
 // 「退出码 0 + Expected 子串」判定，回填 Passed/Output 到 TaskState 并记一条
 // checklog:acceptance（deterministic——forge 自己跑命令看结果，不可伪造）。这是把
@@ -250,8 +281,15 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 		return fmt.Errorf("no active task. Run 'forge task start' first（或用 --ref 指定任务）")
 	}
 	if !state.HasAcceptance() {
-		fmt.Println("本任务未登记验收标准（forge task start --accept \"run :: expected\"）。")
-		return nil
+		// 考卷兜底（oracle-pipeline L1）：零登记时从 conventions 档案自动登记默认套件
+		// （build/test/lint，tier=conventions）——项目的默认考卷而非实现者自选；兜底
+		// 未成时按原因给出口（复审残留②：把「登记失败」说成「无档案可建」会引去重建
+		// 无辜档案）。
+		added, zeroReason := registerConventionsDefaults(root, state)
+		if len(added) == 0 {
+			fmt.Printf("本任务未登记验收标准（forge task start --accept \"run :: expected\"、forge task accept 补登，或 forge task artifact --extract 从 spec 提取）；conventions 兜底未成：%s。\n", zeroReason)
+			return nil
+		}
 	}
 
 	// 外来验收受信门：经 task import 或 .forge migrate 进入本 TaskState 的 Run 命令是攻击者可

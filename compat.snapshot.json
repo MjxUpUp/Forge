@@ -718,6 +718,12 @@
       ]
     },
     {
+      "path": "forge task accept",
+      "flags": [
+        "ref"
+      ]
+    },
+    {
       "path": "forge task answer",
       "flags": [
         "content",
@@ -769,6 +775,12 @@
       "flags": [
         "reason",
         "ref"
+      ]
+    },
+    {
+      "path": "forge task chain-init",
+      "flags": [
+        "force"
       ]
     },
     {
@@ -967,6 +979,13 @@
       "path": "forge task reopen",
       "flags": [
         "reason",
+        "ref"
+      ]
+    },
+    {
+      "path": "forge task report",
+      "flags": [
+        "json",
         "ref"
       ]
     },
