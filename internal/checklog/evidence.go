@@ -190,6 +190,8 @@ var verificationChecks = map[CheckName]bool{
 	CheckName("acceptance"):               true, // taskpipeline.CheckNameAcceptance：实跑验收标准（deterministic 不可伪造）
 	CheckName("test-run"):                 true, // taskpipeline.CheckNameTestRun：实跑测试套件（deterministic 不可伪造）
 	CheckName("skill-decisions-advisory"): true, // taskpipeline.CheckNameSkillDecisions：task-verify guardrail 判定
+	CheckName("mutation-sampling"):        true, // taskpipeline.CheckNameMutationSampling：变异体注入实跑（oracle-pipeline L2a——forge 亲自变异/跑测试/数杀灭）
+	CheckName("fuzz-run"):                 true, // taskpipeline.CheckNameFuzzRun：fuzz 引擎预算实跑（oracle-pipeline L2b）
 }
 
 // BuildEvidenceChain is a pure function: buckets entries already belonging to a task by source.

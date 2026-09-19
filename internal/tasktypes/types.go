@@ -501,19 +501,32 @@ type TaskState struct {
 	// 记录接续。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的信息结构，
 	// 但持久化进用户级 DataDir/tasks/<ref>.json 而非靠 agent 自觉读写 md。边界：用户级 state
 	// 不随仓库走——跨机器接续需要显式的 export/import 载体（尚未建）。
-	Kind          string        `json:"kind,omitempty"`            // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
-	OriginTool    string        `json:"origin_tool,omitempty"`     // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
-	Goal          string        `json:"goal,omitempty"`            // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）
-	Plan          string        `json:"plan,omitempty"`            // 计划正文（markdown；--plan file 读入或直接传文本）
-	SessionLinks  []SessionLink `json:"session_links,omitempty"`   // 参与本 task 的全部 session 锚定（含创建方），多向锚定——支持 pi 起、claude-code 接的跨工具/跨会话接续
-	Decisions     []Decision    `json:"decisions,omitempty"`       // 已确认决策（AI_CONTEXT.md 的 Decisions 节升格）
-	NextSteps     []string      `json:"next_steps,omitempty"`      // 下一步（HANDOFF 的"下一步"升格）
-	Blockers      []Blocker     `json:"blockers,omitempty"`        // 阻塞项（HANDOFF 的"已知问题/阻塞"升格）
-	Findings      []Finding     `json:"findings,omitempty"`        // 跨工具发现的问题（AI_CONTEXT.md 的 Findings 节升格，带来源工具）
-	Artifacts     []Artifact    `json:"artifacts,omitempty"`       // 相关产物（文件/命令输出/url，关联但不门禁）
-	ParentTaskRef string        `json:"parent_task_ref,omitempty"` // 子任务指向父 task ref（subtask 拆解）
-	DependsOn     []string      `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
-	Assignment    *Assignment   `json:"assignment,omitempty"`      // 任务分派（owner agent + 协作生命周期状态）；nil = 普通未分派任务，零行为变化
+	Kind         string        `json:"kind,omitempty"`          // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
+	OriginTool   string        `json:"origin_tool,omitempty"`   // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
+	Goal         string        `json:"goal,omitempty"`          // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）
+	Plan         string        `json:"plan,omitempty"`          // 计划正文（markdown；--plan file 读入或直接传文本）
+	SessionLinks []SessionLink `json:"session_links,omitempty"` // 参与本 task 的全部 session 锚定（含创建方），多向锚定——支持 pi 起、claude-code 接的跨工具/跨会话接续
+	Decisions    []Decision    `json:"decisions,omitempty"`     // 已确认决策（AI_CONTEXT.md 的 Decisions 节升格）
+	NextSteps    []string      `json:"next_steps,omitempty"`    // 下一步（HANDOFF 的"下一步"升格）
+	Blockers     []Blocker     `json:"blockers,omitempty"`      // 阻塞项（HANDOFF 的"已知问题/阻塞"升格）
+	Findings     []Finding     `json:"findings,omitempty"`      // 跨工具发现的问题（AI_CONTEXT.md 的 Findings 节升格，带来源工具）
+	// RegressionTests maps finding ID → the regression test that proves its fix
+	// (oracle-pipeline L4: the RED half is testified by the finding itself, the
+	// GREEN half by this in-task changed _test.go; "none:<reason>" is the
+	// audited no-testable-form escape recorded by forge task regression).
+	// Consumed by `forge task finding --resolve` as a hard pre-condition —
+	// a fixed-without-regression finding WILL come back wearing another hat.
+	//
+	// RegressionTests 映射 finding ID → 证明其修复的回归测试（oracle-pipeline
+	// L4：修前红由 finding 本身作证，修后绿由这条任务窗口内的 _test.go 作证；
+	// "none:<理由>" 是 forge task regression 登记的审计化无可测形态逃生）。
+	// `forge task finding --resolve` 的硬前置消费——没有回归的 fixed 必然换顶
+	// 帽子复发。
+	RegressionTests map[string]string `json:"regression_tests,omitempty"`
+	Artifacts       []Artifact        `json:"artifacts,omitempty"`       // 相关产物（文件/命令输出/url，关联但不门禁）
+	ParentTaskRef   string            `json:"parent_task_ref,omitempty"` // 子任务指向父 task ref（subtask 拆解）
+	DependsOn       []string          `json:"depends_on,omitempty"`      // 依赖的前序 task ref（任务间依赖）
+	Assignment      *Assignment       `json:"assignment,omitempty"`      // 任务分派（owner agent + 协作生命周期状态）；nil = 普通未分派任务，零行为变化
 	// DocReview is the L2 re-check evidence of the output→re-check loop
 	// (docgate.go). nil on pre-doc-gate tasks.
 	//
