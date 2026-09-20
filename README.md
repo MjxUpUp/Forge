@@ -292,6 +292,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task start --invariant "run :: expected"` | 析出不变量（instrument 段）：声明期校验必须是可执行命令（叙述性约束被拒并指引降级到 checklist/intent），映射进验收标准——机器对账/freshness/complete 前置全覆盖 |
 | `forge task start --accept "..." --assert "type:arg :: expected"` | v2 结构化断言（spec-as-gate）：五型机械可判 `exit`（期望退出码）\|`contains`\|`not-contains`（输出子串/反作弊）\|`file-changed`\|`file-untouched`（glob 对任务 diff——freeze 语义的任务级版，保护对象含 .md/.yml 等非源码）；`--assert` 附属于同命令中 preceding `--accept`，file-\* 型可独立出现（无 Run）；regex 刻意排除（ReDoS + 不可判——意见不走 hard）；声明期拒绝叙述性与越形断言 |
 | `forge task start --accept-file <yml>` | 批量考卷声明：顶层 `criteria:`，每条 `run/expected/assertions[type/arg/expected]`（键与任务状态 JSON 一致）；与 `--accept` 同层级、按 (Run, Expected, Assertions) 三元组去重合并 |
+| `forge eval golden harvest [--since <ref>]` | golden 候选收割（L3）：只读扫描本地已完结任务的验收考卷，机械投影成候选骨架落 `evals/forge/golden/candidates/`（gitignore，永不进 VCS）——候选经实跑探测→翻转 kind→人工策展转正 canonical；canonical 目录零写入（guard 钉死，golden 只进人工策展红线） |
+| `forge review llm [--scores <file>]` | LLM 判官臂（L3「可命题」类约束的执法通道）：无 flag 打印独立只读子代理评审派遣说明（design/mock-hallucination 两类 findings，0-100 判分）；`--scores` 校验 JudgeAuditEntry 判分文件落 judge-samples 留档并指向 `forge eval judge-audit` 算 κ（地板 0.6，不达标降级 ADVISORY——判官永不进 hard） |
 | `forge task wild "<说明>"` | 野外动作申报：任务管道外的显式留痕出口（比静默绕过诚实、比强制建任务轻）。记会话/分支/HEAD/是否已有任务到 `wild/declarations.jsonl`，累计计数供审计回溯（vNext INV-1 的合法出口之一） |
 | `forge task status` | 查看当前任务门禁状态（含已登记产物链产物与漂移/审批态） |
 | `forge task list --plan-conversion` | plan-first advisory 转化率报告（先测量再翻转）：已发/发后已补方案/发后仍无方案/未发自带方案四计数 + 转化率——叙事 stage 是否升档由数据决定而非直觉 |
