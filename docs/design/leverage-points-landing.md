@@ -121,4 +121,4 @@ P2：L4 导出设计稿 → L6 适配器
 
 已落地：**断言族 golden ×10**（evals/forge/golden/assert-*.yaml，五型 × 通过/失败 + 声明期拒绝 ×2——验证门禁族从 0 到 10；全量重放 captured 19/19、fpr 0/13——Windows 口径；Linux 全量为 20/20（1 例 defective 带 skip_platforms: windows）、一致率 1.00，MANIFEST 已轮换）；**`forge eval golden harvest --since <ref>`**（机械投影候选骨架到 gitignore 的 candidates/，canonical 零写入由 guard 钉死）；**`forge review llm`**（判官臂派遣说明 + JudgeAuditEntry 判分校验留档，κ 地板 0.6/降级 ADVISORY 沿用 judgeaudit 既有执法——判官永不进 hard）；**exit 断言接管退出码判定**（期望失败形态可整条通过，golden 钉死）。命令面净增 +2（预算记账 compat-commitments §五）。
 
-未竟事项（诚实披露）：**traps 3→20 未达**——本批语境预算耗尽于断言族 golden 与 harvest/review-llm 代码面；traps 扩容延后，触发条件：下一批触碰 cheat-scan/pushgate 时按模式族补齐（deferred 三要素：触发=cheat-scan 批次、阈值=≥10 新陷阱、复验=golden/traps 双报告）。
+未竟事项更新（feat/traps-expansion，2026-09-21）：**traps 已按模式族补齐 3→14**——cheat-scan 七模式族全覆盖（type-suppression×3/error-swallow×2/dead-branch×2/comment-only-fix/comment-as-debt/phantom-import/path-assumption，探测经 gate push --dry-run），`forge eval traps run` 实测 capture 14/14；TrapCase 类型枚举接受 CheatPattern 值（guard 测试钉住）。原设计目标 20 的差额（同族纵深变体）不再按数凑——按真实命中反混淆增量策展（golden/traps 双报告可复验）。

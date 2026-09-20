@@ -329,7 +329,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge eval harness-audit [--json]` | A–G harness 修复的事前/事后度量（docs/design/harness-fixes-a-g-2026-09.md M）：checklog × toollog（2s 双记去重）× 任务 × hazard 一次算出 skill-trigger 日均触发/按通道转化/inline 跟随/verification-driver 精度、next-hint 采纳、门禁命令形态 C1–C3、refs-critical 下钻（按 host）、封印后归因泄漏、hazard 双投递、coverage 拦后转 pass；`--json` 带口径字段，两机回测只比同口径基线（`evals/harness-audit-*-baseline-*.json`） |
 | `forge eval golden run [--dir <dir>] [--repeats N] [--rewrite-manifest] [--json]` | 门禁 golden 标注集重放：precision/fpr（Wilson 区间）+ 确定性重放一致率；用例集指纹钉在 `evals/forge/golden/MANIFEST.sha256`，不符拒绝运行（`--rewrite-manifest` 仅限显式轮换） |
 | `forge eval golden private-init` / `rotate [--max-cases N]` | 私有 golden 子集（0700，永不进 VCS）与季度轮换（oracle 复验 + 最老优先淘汰 + 审计行） |
-| `forge eval traps run [--dir <dir>]` | 对抗陷阱重放（测试削弱/伪造审计证据/虚假完成——ImpossibleBench 思想）；capture 率与行动清单 |
+| `forge eval traps run [--dir <dir>]` | 对抗陷阱重放（14 用例：测试削弱/伪造审计证据/虚假完成 + cheat-scan 七模式族 11 例——type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import/path-assumption，经 gate push --dry-run 推送边界探测；ImpossibleBench 思想）；capture 率与行动清单 |
 | `forge eval redteam` | seeded-bug 红队演练（oracle-pipeline L6）：对验证链自身注入五类雷（零验收交付/internal 零引用导出/吞错/类型抑制/heldout gap），逐颗用既有检查函数判定拦截——escaped 或设施故障即如实披露（exit 非 0 供 CI 门禁）；与 traps 互补：traps 回放过去，redteam 注入现在 |
 | `forge eval judge-audit --scores <file>` | 判分器受审：重放极差 + 与人工标注 Cohen's κ；κ<0.6 该判分器 BLOCKED 决策降级 ADVISORY |
 | `forge eval resume-drill [--dir <dir>]` | 接续演练（C3）：脚本化断点续做断言（仅回归对比，绝对值不外宣） |
