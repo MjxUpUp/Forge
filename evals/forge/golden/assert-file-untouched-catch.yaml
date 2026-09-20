@@ -1,0 +1,26 @@
+# 断言族 golden：file-untouched 保护被触碰（任务窗口内改了保护 glob 下的文件）→
+# 判负——freeze 语义的任务级版执法。
+id: assert-file-untouched-catch
+gate: verify-acceptance
+kind: defective
+expect: flagged
+description: "file-untouched:internal/freeze/** 被任务改动触碰 → BLOCKED 判负"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.assert.c5
+      go 1.25
+  - path: internal/freeze/keep.go
+    content: |
+      package freeze
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init
+    "{forge}" task start --ref assert/c5 --accept "go version ::" --assert "file-untouched:internal/freeze/**" >/dev/null 2>&1 || exit 1
+    printf 'package freeze\n\n// touched\n' > internal/freeze/keep.go
+    "{forge}" task verify-acceptance 2>&1
+detect_any:
+  - "exit_nonzero"

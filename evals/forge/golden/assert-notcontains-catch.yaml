@@ -1,0 +1,23 @@
+# 断言族 golden：not-contains 反作弊断言命中（输出含被禁子串）→ verify-acceptance
+# 判负 exit 非 0——v1 语义（exit 0）本会放行，断言是唯一拦截者。
+id: assert-notcontains-catch
+gate: verify-acceptance
+kind: defective
+expect: flagged
+description: "not-contains 断言命中被禁子串（go version 输出含 go version）→ BLOCKED 判负"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.assert.c2
+      go 1.25
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init
+    "{forge}" task start --ref assert/c2 --accept "go version ::" --assert "not-contains: :: go version" >/dev/null 2>&1 || exit 1
+    "{forge}" task verify-acceptance 2>&1
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:存在未通过项"
