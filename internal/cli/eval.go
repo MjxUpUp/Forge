@@ -748,7 +748,13 @@ func init() {
 		RunE:  runEvalGoldenRotate,
 	}
 	goldenRotate.Flags().Int("max-cases", 30, "轮换后保留上限")
-	golden.AddCommand(goldenRun, goldenPrivateInit, goldenRotate)
+	goldenHarvest := &cobra.Command{
+		Use:   "harvest [--since <git-ref>]",
+		Short: "从已完结任务考卷机械投影 golden 候选骨架（candidates/ 目录，canonical 只读）",
+		RunE:  runEvalGoldenHarvest,
+	}
+	goldenHarvest.Flags().String("since", "", "git ref（只收割该 ref 之后完结的任务；缺省=全部已完结）")
+	golden.AddCommand(goldenRun, goldenPrivateInit, goldenRotate, goldenHarvest)
 	evalCmd.AddCommand(golden)
 
 	traps := &cobra.Command{
@@ -857,4 +863,34 @@ func init() {
 	evalCmd.AddCommand(aat)
 
 	rootCmd.AddCommand(evalCmd)
+}
+
+// runEvalGoldenHarvest — L3 harvest（leverage-points-landing.md L3）：只读扫描
+// DataDir 已完结任务的验收考卷，机械投影候选骨架到 evals/forge/golden/candidates/
+// （gitignore）。golden 只进人工策展：候选实跑探测 → 翻转 kind → 移入 canonical
+// → 指纹轮换。canonical 目录零写入（guard 测试钉死）。
+func runEvalGoldenHarvest(cmd *cobra.Command, args []string) error {
+	root, err := projectroot.Find()
+	if err != nil {
+		return err
+	}
+	var since time.Time
+	if ref, _ := cmd.Flags().GetString("since"); ref != "" {
+		out, err := exec.Command("git", "-C", root, "show", "-s", "--format=%cI", ref).Output()
+		if err != nil {
+			return fmt.Errorf("--since %q 不是可达的 git ref: %w", ref, err)
+		}
+		since, err = time.Parse(time.RFC3339, strings.TrimSpace(string(out)))
+		if err != nil {
+			return fmt.Errorf("--since %q 的提交时间不可解析: %w", ref, err)
+		}
+	}
+	res, err := evalkit.HarvestCandidates(root, since)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("golden harvest：扫描已完结任务 %d（跳过 --since 前 %d）/ 考卷条目 %d / 新增候选 %d → %s\n",
+		res.Tasks, res.SkippedOld, res.Criteria, res.Written, res.CandDir)
+	fmt.Println("→ 策展：实跑 probe → 翻转 kind/expect → 移入 canonical → forge eval golden run + 指纹轮换（candidates 永不进 VCS）")
+	return nil
 }

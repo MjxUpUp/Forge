@@ -432,3 +432,27 @@ func TestParseAcceptanceYAML_UnknownKeyRejected(t *testing.T) {
 		t.Error(`拼错键 assertions→assertion 应被严格模式拒绝（否则断言集静默消失）`)
 	}
 }
+
+// TestRunAndJudgeCriterion_ExitTakeover 钉住 exit 断言接管（L3 精化）：期望失败
+// 形态（退出码 1 + exit: :: 1）整条通过——隐式 exit==0 被显式断言取代。
+func TestRunAndJudgeCriterion_ExitTakeover(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "fail.sh"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := AcceptanceCriterion{Run: `sh fail.sh`, Assertions: []Assertion{
+		{Type: tasktypes.AssertionTypeExit, Expected: "1"},
+	}}
+	runAndJudgeCriterion(dir, &c, nil)
+	if !c.Passed {
+		t.Errorf(`exit:1 接管后退出 1 应整条通过（期望失败形态），got %+v`, c)
+	}
+	// 期望 0 实际 1：仍判负（mismatch 方向 fail-closed）。
+	c2 := AcceptanceCriterion{Run: `sh fail.sh`, Assertions: []Assertion{
+		{Type: tasktypes.AssertionTypeExit, Expected: "0"},
+	}}
+	runAndJudgeCriterion(dir, &c2, nil)
+	if c2.Passed {
+		t.Errorf(`exit:0 遇退出 1 应判负，got %+v`, c2)
+	}
+}

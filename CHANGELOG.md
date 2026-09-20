@@ -4,6 +4,8 @@
 
 ### ⚠️ 行为变更（Behavior Change）
 
+* **exit 断言接管退出码判定**（L3 精化，spec-as-gate v2）：criterion 声明了 `exit` 型断言时，隐式 exit==0 检查被显式期望退出码取代——`sh fail.sh` + `exit: :: 1` 的「期望失败」形态（1.68.0 前无法整条通过）现在判过；期望不匹配方向仍 fail-closed。golden 断言族 10 例钉死（evals/forge/golden/assert-*.yaml，重放一致率 1.00）。同批新增命令（净增 +2/minor，记账 compat-commitments §五）：`forge eval golden harvest`（考卷收割→候选骨架，canonical 只读）、`forge review llm`（判官臂派遣说明 + 判分校验留档）。
+
 * **requirement-clarification 规格模板扩节**（理解侧闭环批次，ADR-0001）：验收条件后新增「样例对（Ground Truth）」节（≥2 正例 + ≥1 反例，可命令化样例落 `accept:` 行）；「约束」节升级为「三分类投递」（可执行→accept 行 / 可命题→短规则+正反例 / 不可命题→显式人工）。存量影响：按旧模板写的规格仍完整有效——新节是增量要求，下次澄清起生效；`accept:` 行在 spec 落盘并经验收产物提取后成为实跑考卷。
 * **prototype-confirmation 确认导出可编译**（同批）：模板 `accept` 字段（可选）+ 导出文本末尾 ```accept 围栏（仅✅认可项进围栏）；确认文本落盘为 spec 产物后经 `--extract` 编译为 spec-extract 层考卷。存量影响：无 `accept` 字段的旧原型导出行为不变（零围栏）。
 * **验收标准去重口径：Run → (Run, Expected, Assertions) 三元组**（spec-as-gate v2 L2 P1，docs/design/leverage-points-landing.md）：`MergeAcceptance`（`--plan-file`/`--extract` 提取与显式 `--accept` 的合并、`forge task accept` 补登）此前按 Run 单键去重——同 Run 不同 Expected/断言集的条目会被吞掉。现与 `MergeAcceptanceResults` 的结果匹配键同口径：同 Run 不同 Expected 是两个不同检查，两条都保留。存量影响：`--plan-file` 与显式 `--accept` 声明同一命令不同期望时，此前只留显式条目，现在两条都进考卷（命令各跑一次）；完全相同的重复条目仍去重，绝大多数任务无感。同批新增（纯增不删不改名，compat 裁决见 compat-commitments §三）：`task start --assert`（v2 结构化断言，五型 exit/contains/not-contains/file-changed/file-untouched，附属于 preceding --accept）、`task start --accept-file`（YAML 批量考卷）、`task accept --assert`（补登通道）。

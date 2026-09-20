@@ -65,3 +65,4 @@ vendor/
 .video_agent/
 .zcode/
 tmpwebapp-*.log
+evals/forge/golden/candidates/

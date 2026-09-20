@@ -167,6 +167,12 @@ func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string)
 		// 声明期校验保证走到这里的 Run-less 条目断言全为 file-*（无命令可跑）。
 		c.Output = ""
 	}
+	// exit 断言接管退出码判定（L3 批精化）：声明了 exit 型断言 = 显式声明期望退出码
+	// ——隐式 exit==0 检查被断言取代（否则 `sh fail.sh` + `exit: :: 1` 的「期望失败」
+	// 形态永远无法整条通过，exit 断言只能陪跑）。Expected 子串判定保留。
+	if hasExitAssertion(c.Assertions) {
+		exitOK = true
+	}
 	passed := judgeAcceptance(exitOK, output, c.Expected)
 	for _, a := range c.Assertions {
 		ok := judgeAssertion(a, ctx)
@@ -177,6 +183,20 @@ func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string)
 	}
 	c.Passed = passed
 	return verdicts
+}
+
+// hasExitAssertion reports whether the set declares an exit-code assertion —
+// an explicit expected exit code replaces the implicit exit==0 check.
+//
+// hasExitAssertion 报告断言集是否声明了退出码断言——显式期望退出码取代隐式
+// exit==0 检查。
+func hasExitAssertion(as []Assertion) bool {
+	for _, a := range as {
+		if a.Type == tasktypes.AssertionTypeExit {
+			return true
+		}
+	}
+	return false
 }
 
 // ParseAssertion parses one `type:arg :: expected` declaration string into an
