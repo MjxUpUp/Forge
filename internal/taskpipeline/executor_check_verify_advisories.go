@@ -37,6 +37,27 @@ func adviseTestCapability(root string, state *TaskState) {
 			fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), cap.Advisory())
 		}
 	}
+	// 硬-1b（fuzz 发现提醒）：改动目录里存在 Fuzz 目标而本任务零 fuzz-run 行
+	// → 一行提示（发现本身秒级；跑不跑仍由 agent/预算决定——中环工具 opt-in
+	// 的定位不变，这里只治"不知道有 Fuzz 目标存在"）。
+	if targets := DiscoverFuzzTargets(root, state); len(targets) > 0 && !fuzzRanForTask(root, state.TaskRef) {
+		fmt.Fprintf(os.Stderr, "%s改动目录含 %d 个 Fuzz 目标（如 %s.%s）未实跑——forge task fuzz 交给机器出题\n",
+			GateAdvisory("[task-verify] "), len(targets), targets[0].Pkg, targets[0].Func)
+	}
+}
+
+// fuzzRanForTask 报告任务是否已有 fuzz-run 证据行。
+func fuzzRanForTask(root, taskRef string) bool {
+	entries, err := checklog.LoadForTask(root, taskRef)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.Check == CheckNameFuzzRun {
+			return true
+		}
+	}
+	return false
 }
 
 // adviseSkillEval 是 skill-eval advisory：变更涉及 skills/<name>/ 且该 skill 有 eval case 集 →

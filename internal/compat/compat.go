@@ -104,6 +104,9 @@ var EscapeEnvs = []string{
 	"FORGE_TASK_DRIFT",
 	"FORGE_TASK_VERIFY_STOP",
 	"FORGE_MUTATION_TIMEOUT",
+	"FORGE_GATE_CMD_FORM",
+	"FORGE_HAZARD_PENDING",
+	"FORGE_MUTATION_GATE",
 }
 
 // AllCheckNames 返回 checklog 常量 roster 的排序列表。

@@ -8,6 +8,7 @@ package taskpipeline
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/conventions"
@@ -23,6 +24,60 @@ const (
 	AcceptanceSourceConventions = tasktypes.AcceptanceSourceConventions
 	AcceptanceSourceManual      = tasktypes.AcceptanceSourceManual
 )
+
+// CheckAcceptanceQuality is task-complete's exam-quality pre-flight
+// (delivery-hardening 墙-2a): the registration gate closes ZERO exams; this one
+// closes the CHEAPEST weak ones — an exam must contain at least one TEST-class
+// command (selfreport's testCmdPrefixes list), otherwise `go build` alone
+// constitutes a "passing" exam. Downgrades to a no-op when the repo has no test
+// capability at all (CheckTestCapability.HasTests==0 — toy/fixture repos
+// legitimately carry no tests; hard-blocking there would be a false wall).
+// Escape shares the acceptance-gate hatch.
+//
+// CheckAcceptanceQuality 是 task-complete 的考卷质量前置（delivery-hardening
+// 墙-2a）：登记门关"零考卷"，本检查关"最廉价的弱考卷"——考卷须含至少一条
+// 测试类命令（selfreport 的 testCmdPrefixes 清单），否则单条 go build 就构成
+// "通过的考卷"。仓库完全无测试能力时跳过（CheckTestCapability.HasTests==0
+// ——玩具/fixture 仓合法地没有测试，硬拦是假墙）。逃生共用 acceptance-gate 舱。
+func CheckAcceptanceQuality(root string, state *TaskState) (ok bool, reasons []string) {
+	if state == nil || state.IsGeneric() || len(state.Acceptance) == 0 {
+		return true, nil // 零考卷由登记门管；此处只管质量
+	}
+	if escapeDisabled(state, escapeAcceptanceGate, acceptanceGateDisableEnv) {
+		return true, nil // 逃生行已由登记门/freshness 门落过，不重复记
+	}
+	for _, c := range state.Acceptance {
+		if isTestClassCommand(c.Run) {
+			return true, nil
+		}
+	}
+	cap := CheckTestCapability(root)
+	if !cap.HasTests {
+		return true, nil // 无测试能力的仓库：质量要求无的放矢（test-capability advisory 层已提醒）
+	}
+	return false, []string{
+		fmt.Sprintf("考卷 %d 条标准中无任何测试类命令（go test/pytest/cargo test 等）——单条构建命令不构成合格考卷（考卷质量下限）。补登记：forge task accept \"go test ./... :: ok\"；确属纯构建/文档任务逃生（落审计）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable", len(state.Acceptance)),
+	}
+}
+
+// isTestClassCommand 报告命令是否测试类。清单单一真相源是 selfreport 的
+// testCmdPrefixes，但排除 `go vet`（审查 P2-3：vet 是静态分析零断言执行，
+// 与"单条 go build 不构成考卷"的立法动机同构）；匹配经 commandSegments
+// 归一（`cd pkg && go test` / `FOO=1 go test` 也命中——与 selfreport 同一
+// 分段器，防"声称口径共享、实际只共享清单"的漂移）。
+func isTestClassCommand(run string) bool {
+	for _, seg := range commandSegments(run) {
+		for _, p := range testCmdPrefixes {
+			if p == "go vet" {
+				continue
+			}
+			if strings.HasPrefix(seg, p) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // StampAcceptanceSource stamps empty-Source criteria with the given tier, in
 // place. Never overwrites an existing Source: relabeling a post-hoc exam

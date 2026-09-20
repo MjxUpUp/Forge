@@ -3,6 +3,7 @@ package clitask
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -413,6 +414,8 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 	// 锁内状态上写入：MutateTaskState 锁内重载最新盘上状态，曾加在锁外旧快照上
 	// 的 findings 会被静默丢弃（2026-09-15 测试实锤——--critical 此前从未真正
 	// 落档，critical 拦截形同虚设）。
+	selfReviewed := false // 锁内闭包写入、锁外消费（审查 P2-5：外层 state 是锁前
+	// 快照——曾在锁后读 state.DocReview 判自审，首轮永远 nil、后续迟到一轮）
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		for _, c := range criticals {
 			content, tag := tasktypes.SplitFindingTag(c)
@@ -453,6 +456,12 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 			HeadCommit:      taskpipeline.GetHeadCommit(root),
 			DocsFingerprint: taskpipeline.DocContentFingerprint(root, s),
 		}
+		// 价-1b（独立性归因）：记录会话 ∈ 生产者集 → 自审标记 + 披露行。
+		// doc gate 不消费自录分数（docgate.go 侧拦）。
+		if ok, known := taskpipeline.ReviewIndependence(root, s.TaskRef, taskpipeline.CurrentSessionID()); known && !ok {
+			docReview.SelfReview = true
+			selfReviewed = true
+		}
 		if coReviewer != "" {
 			docReview.SecondReviewer = coReviewer
 			docReview.SecondScore = coScore
@@ -461,6 +470,10 @@ func runTaskDocReview(cmd *cobra.Command, args []string) error {
 		return nil
 	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)
+	}
+	if selfReviewed {
+		taskpipeline.RecordSelfReviewRow(root, state.TaskRef, taskpipeline.CurrentSessionID(), "doc-review")
+		fmt.Fprintln(os.Stderr, "⚠ [self-review] 本会话既是文档产出者又录了回检分——已记 self-review 标记，doc gate 不消费自录分数（独立会话/子 agent 复审后重新记录）")
 	}
 
 	coNote := ""

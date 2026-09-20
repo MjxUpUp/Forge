@@ -161,14 +161,18 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 	if confirmChainSeparated(args) {
 		return fmt.Errorf("BLOCKED: hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这正是拦截要切断的自助闭环。请单独执行：forge hazard confirm --last")
 	}
-	// F.2b confirm 真人化（设计 F）：1.56 advisory——agent Bash 调用（stdin 非终端）里
-	// confirm 是自助确认，打预告行；1.58 起拒绝（BLOCKED）并要求用户终端执行，逃生舱
-	// per-task override（承诺表 §二.2 两 minor 预告）。stdinIsHumanTerminal 复用
-	// task_gate 的 char-device 判定。
-	// stdin 终端判定与 clitask.stdinIsHumanTerminal 同款（char device）；本地副本因
-	// clitask 的版本是可注入变量（测试态），hook 场景需要真判定。
-	if fi, err := os.Stdin.Stat(); err == nil && (fi.Mode()&os.ModeCharDevice) == 0 {
-		fmt.Fprintf(os.Stderr, "ADVISORY: hazard confirm 正在 agent Bash（非用户终端）中执行——自 1.58 起将要求在用户终端运行（forge hazard confirm --last）或经 per-task override 登记\n")
+	// F.2b confirm 真人化（设计 F + delivery-hardening 墙-1b 兑现）：1.58 的
+	// advisory 预告已过 ≥2 minor——现在拒绝（BLOCKED）并要求用户终端执行。
+	// stdinIsHumanTerminal 用 char-device 判别（clitask --trust-foreign 同款）
+	// + 审查 P1-1 加固：stat 失败按非终端处理（fail-closed——`halt release --yes <&-`
+	// 关闭 stdin 曾整门跳过）；排除 /dev/null 与 NUL（它们本身是 char device，
+	// `forge hazard confirm --last < /dev/null` 曾直接绕过）；mintty（Git Bash
+	// 默认终端）给原生进程的 stdin 是命名管道——真人会被拒，指引换 ConPTY 终端。
+	if !stdinIsHumanTerminalForHazard() {
+		if os.Getenv(`TERM_PROGRAM`) == `mintty` {
+			return fmt.Errorf("hazard confirm 须真人在终端运行：Git Bash/mintty 的 stdin 是命名管道（非 char device），无法与 agent 管道区分——请改用 Windows Terminal / PowerShell 等 ConPTY 终端执行本命令")
+		}
+		return fmt.Errorf("hazard confirm 是人工确认决策：须由真人在终端中运行（当前 stdin 非终端——agent/管道环境不得自我确认被拦的高危命令）")
 	}
 	// --last 免复制路径：直接从事件流确认最新被拦命令（指纹是 hook 拦截时写入的，
 	// 天然权威、零转写）。最先判定：--last 表达的意图就是"刚被拦的那条"，不需要
@@ -261,6 +265,15 @@ func runHazardLog(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	eventType := args[0]
+	// 事件类型白名单（delivery-hardening P0-1 修复）：confirm/halt-release 是
+	// 清账重置点——若可经本调试入口写入，agent 一条 `forge hazard log confirm x`
+	// 即零交互清空悬账，墙-1b 的「出口只有真人路径」承诺被证伪。只放 hook 实际
+	// 使用的三类事件；confirm/release 走各自带终端门的命令。
+	switch eventType {
+	case hazard.EventBlock, hazard.EventRelease, hazard.EventData:
+	default:
+		return fmt.Errorf("BLOCKED: hazard log 只接受 block/release/data 事件类型（got %q）——confirm/halt-release 是清账重置点，只能经 forge hazard confirm / forge hazard halt release（真人终端）写入", eventType)
+	}
 	command := strings.Join(args[1:], " ")
 	// SessionID 取 hook 派生环境的 FORGE_SESSION_ID（hookdispatch 注入给脚本）：双投递去重
 	// 键与 checklog 侧 blockRecordMarker 对齐到 (session, type, fingerprint)——两个并行
@@ -366,6 +379,15 @@ var hazardHaltReleaseCmd = &cobra.Command{
 		if !yes {
 			return fmt.Errorf("release 是人工审阅决策：核查最近拦截命令后加 --yes 执行（agent 不得自我解锁）")
 		}
+		// 真人终端判别（delivery-hardening 墙-1b）：清账门把 release 变成交付出口
+		// 后，agent 自跑 release --yes 即自我放行——--yes 是自供文本，char-device
+		// 判别才是"人工"的机械证据（confirm 同款，mintty 指引同款）。
+		if !stdinIsHumanTerminalForHazard() {
+			if os.Getenv(`TERM_PROGRAM`) == `mintty` {
+				return fmt.Errorf("halt release 须真人在终端运行：Git Bash/mintty 的 stdin 是命名管道（非 char device），无法与 agent 管道区分——请改用 Windows Terminal / PowerShell 等 ConPTY 终端执行本命令")
+			}
+			return fmt.Errorf("halt release 是人工解锁决策：须由真人在终端中运行（当前 stdin 非终端——agent/管道环境不得自我解锁 safe-halt）")
+		}
 		p, err := findProject()
 		if err != nil {
 			return err
@@ -387,4 +409,23 @@ func init() {
 	hazardHaltReleaseCmd.Flags().Bool("yes", false, "确认已人工核查最近拦截的命令")
 	hazardHaltCmd.AddCommand(hazardHaltStatusCmd, hazardHaltReleaseCmd)
 	hazardCmd.AddCommand(hazardHaltCmd)
+}
+
+// stdinIsHumanTerminalForHazard 报告 stdin 是否挂在真人终端上（char device 且
+// 非 /dev/null/NUL 哑设备；stat 失败按非终端处理——fail-closed，审查 P1-1 加固）。
+func stdinIsHumanTerminalForHazard() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false // fail-closed：`<&-` 关闭 stdin 曾让整个门被跳过
+	}
+	if fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	// /dev/null 与 Windows NUL 是 char device 但不是人——按设备名排除
+	//（git isatty 实现同款处理）。
+	name := strings.ToLower(os.Stdin.Name())
+	if strings.HasSuffix(name, "/dev/null") || name == "nul" || strings.HasSuffix(name, `\\.\`+"nul") {
+		return false
+	}
+	return true
 }

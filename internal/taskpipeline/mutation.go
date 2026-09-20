@@ -100,6 +100,17 @@ func changedGoSourceFiles(root string, state *TaskState) []string {
 	return files
 }
 
+// hasTestFileOnDisk 报告 src 的任一惯用配对测试路径在磁盘上存在（硬-1a 的
+// mutation 裁剪口径：committed 测试同样在被执行，值得考断言强度）。
+func hasTestFileOnDisk(root, src string) bool {
+	for _, cand := range testCandidates(src) {
+		if _, err := os.Stat(filepath.Join(filepath.FromSlash(root), filepath.FromSlash(cand))); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // ScanMutationSites 解析单个 Go 文件收集变异位点（纯函数可单测）。absPath 是
 // 文件绝对路径，relFile 是 repo 相对路径——PkgDir（go test 的包参数）必须从
 // relFile 推导：从绝对路径推会产出 "./C:/..." 形态的坏包路径。只收 BinaryExpr
@@ -242,13 +253,36 @@ func runPkgTests(ctx context.Context, root, pkgDir string, timeout time.Duration
 
 // RunMutationSampling 是引擎入口：扫描任务改动源文件的变异位点 → 确定性
 // 抽样 → 逐个原地变异、实跑所在包测试、立即还原 → 汇总杀灭率并落 checklog
-// 证据行。sample<=0 时取默认 6；无改动源文件/无位点时 Checked=false 返回。
+// 证据行。sample<=0 时取默认 3（硬-1a 提速：从 6 降——中环成本纪律）。
+// 无改动源文件/无位点时 Checked=false 返回。硬-1a（提速裁剪）：只变异
+// 【有配对测试】的改动文件——无配对文件的变异体必然全存活（没有测试去杀
+// 它），那是 test-coverage 门的地盘；本裁剪把预算集中在"测试存在、断言
+// 强度未知"的真实问题上。
 func RunMutationSampling(root string, state *TaskState, sample int) (MutationResult, bool, error) {
 	res := MutationResult{}
 	if sample <= 0 {
-		sample = 6
+		sample = 3
 	}
-	files := changedGoSourceFiles(root, state)
+	changed := changedGoSourceFiles(root, state)
+	if len(changed) == 0 {
+		return res, false, nil
+	}
+	// 硬-1a：按【磁盘上存在配对测试】过滤——test-coverage 门的 pairing 口径
+	// 是「测试也在任务窗口内改动」，mutation 的语义不同：只要盘上有测试文件
+	// 就值得考断言强度（committed 的测试同样在被执行）。无任何配对测试的
+	// 文件变异体必然全存活，是 test-coverage 门的地盘。
+	var files []string
+	skipped := 0
+	for _, f := range changed {
+		if hasTestFileOnDisk(root, f) {
+			files = append(files, f)
+		} else {
+			skipped++
+		}
+	}
+	if skipped > 0 {
+		fmt.Fprintf(os.Stderr, "ℹ mutation 跳过 %d 个无配对测试的改动文件（test-coverage 门的地盘）\n", skipped)
+	}
 	if len(files) == 0 {
 		return res, false, nil
 	}

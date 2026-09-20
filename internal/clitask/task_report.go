@@ -47,30 +47,39 @@ func init() {
 // taskReportJSON 是 --json 的结构化形态——人读渲染的单一数据源（renderTaskReport
 // 消费同一结构，两侧永不漂移）。
 type taskReportJSON struct {
-	TaskRef           string                             `json:"task_ref"`
-	Branch            string                             `json:"branch,omitempty"`
-	Kind              string                             `json:"kind,omitempty"`
-	Completed         bool                               `json:"completed"`
-	Acceptance        []taskpipeline.AcceptanceCriterion `json:"acceptance"`
-	TierCounts        map[string]int                     `json:"tier_counts"`
-	HasManualTier     bool                               `json:"has_manual_tier"`
-	Score             *scoringtypes.ScoreResult          `json:"score,omitempty"`
-	EvidenceStrength  string                             `json:"evidence_strength,omitempty"`
-	Deterministic     int                                `json:"deterministic"`
-	AgentClaim        int                                `json:"agent_claim"`
-	UntestedAreas     []string                           `json:"untested_areas,omitempty"`
-	RemainingRisks    []string                           `json:"remaining_risks,omitempty"`
-	Escapes           map[string]int                     `json:"escapes,omitempty"`
-	ReviewPassed      bool                               `json:"review_passed"`
-	ReviewRounds      int                                `json:"review_rounds"`
-	ChecklistDone     int                                `json:"checklist_done"`
-	ChecklistTotal    int                                `json:"checklist_total"`
-	HeldoutRegistered bool                               `json:"heldout_registered"`
-	HeldoutProbeErr   string                             `json:"heldout_probe_err,omitempty"`
-	HasSpecArtifact   bool                               `json:"has_spec_artifact"`
-	SpecApprovalBy    string                             `json:"spec_approval_by,omitempty"`
-	SpecApprovedAt    string                             `json:"spec_approved_at,omitempty"`
-	Repro             []string                           `json:"repro"`
+	TaskRef          string                             `json:"task_ref"`
+	Branch           string                             `json:"branch,omitempty"`
+	Kind             string                             `json:"kind,omitempty"`
+	Completed        bool                               `json:"completed"`
+	Acceptance       []taskpipeline.AcceptanceCriterion `json:"acceptance"`
+	TierCounts       map[string]int                     `json:"tier_counts"`
+	HasManualTier    bool                               `json:"has_manual_tier"`
+	Score            *scoringtypes.ScoreResult          `json:"score,omitempty"`
+	EvidenceStrength string                             `json:"evidence_strength,omitempty"`
+	Deterministic    int                                `json:"deterministic"`
+	AgentClaim       int                                `json:"agent_claim"`
+	UntestedAreas    []string                           `json:"untested_areas,omitempty"`
+	// EscapeDebt 是逃生换来的未验证面（价-1a）：每个验证类逃生 gate 一条人读
+	// 披露行——escape 免门禁不免诚实性，验收方在未验证面一屏可见。
+	EscapeDebt        []string       `json:"escape_debt,omitempty"`
+	RemainingRisks    []string       `json:"remaining_risks,omitempty"`
+	Escapes           map[string]int `json:"escapes,omitempty"`
+	ReviewPassed      bool           `json:"review_passed"`
+	ReviewRounds      int            `json:"review_rounds"`
+	ChecklistDone     int            `json:"checklist_done"`
+	ChecklistTotal    int            `json:"checklist_total"`
+	HeldoutRegistered bool           `json:"heldout_registered"`
+	HeldoutProbeErr   string         `json:"heldout_probe_err,omitempty"`
+	HasSpecArtifact   bool           `json:"has_spec_artifact"`
+	SpecApprovalBy    string         `json:"spec_approval_by,omitempty"`
+	// SelfSupplied counts forge-unverifiable self-supplied assertions
+	//（价-1c：review self-refresh / regression --none / reset-loop 注记）。
+	SelfSupplied int `json:"self_supplied,omitempty"`
+	// SelfReviewRound marks that a review stamp came from a producer session
+	//（价-1b：report 审查行的自审披露）。
+	SelfReviewRound bool     `json:"self_review_round,omitempty"`
+	SpecApprovedAt  string   `json:"spec_approved_at,omitempty"`
+	Repro           []string `json:"repro"`
 }
 
 // runTaskReport 加载任务状态与 checklog，组装 taskReportJSON 后按 --json 或人读
@@ -159,6 +168,15 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		}
 		if len(escapes) > 0 {
 			rep.Escapes = escapes
+			// 价-1a（逃生→未验证面）：每个验证类逃生都是一块被免掉的门禁——按
+			// 「override 免的是门禁，不免报告的诚实性」原则转化为显式未验证面
+			// 条目（验收方扫未验证面即可见，不必翻 checklog 逃生库存）。
+			for gate, n := range escapes {
+				if desc, known := escapeUnverifiedDesc(gate); known {
+					rep.EscapeDebt = append(rep.EscapeDebt, fmt.Sprintf("[%s×%d] %s", gate, n, desc))
+				}
+			}
+			sort.Strings(rep.EscapeDebt)
 		}
 	} else {
 		rep.EvidenceStrength = "unknown（checklog 不可读：" + err.Error() + "）"
@@ -190,6 +208,14 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 	} else {
 		rep.HeldoutRegistered = held
 	}
+	// 价-1c（self-supplied 申辩档）：forge 无法验证的自供文本统一计数——
+	// review self-refresh（--note/--acknowledge-changes 刷新基线）、
+	// finding-regression --none 申辩、reset-loop 人工裁决注记。披露不定价，
+	// 验收方据此决定抽查深度。
+	if ssEntries, serr := checklog.LoadForTask(root, state.TaskRef); serr == nil {
+		rep.SelfSupplied = countSelfSupplied(ssEntries)
+		rep.SelfReviewRound = taskpipeline.HasSelfReviewRow(root, state.TaskRef, "code-review")
+	}
 	if _, ok := state.SpecArtifacts["spec"]; ok {
 		rep.HasSpecArtifact = true
 		if apr, ok := state.ArtifactApprovals["spec"]; ok {
@@ -198,6 +224,22 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		}
 	}
 	return rep, nil
+}
+
+// countSelfSupplied 统计任务 checklog 里的自供申辩信号（价-1c）。
+func countSelfSupplied(entries []checklog.Entry) int {
+	n := 0
+	for _, e := range entries {
+		switch {
+		case e.Check == checklog.CheckReviewPass && strings.Contains(e.Detail, "self-refresh"):
+			n++
+		case e.Check == checklog.CheckEscapeHatch && checklog.EscapeGateOf(&e) == "finding-regression":
+			n++
+		case e.Check == checklog.CheckEscapeHatch && strings.Contains(e.Detail, "reset-loop"):
+			n++
+		}
+	}
+	return n
 }
 
 // formatFindingRisk 渲染单条 open finding 为「severity: content」残留风险行
@@ -262,18 +304,27 @@ func renderTaskReport(rep *taskReportJSON) string {
 	}
 	fmt.Fprintf(&b, "证据 %s（deterministic %d / agent-claim %d）\n", rep.EvidenceStrength, rep.Deterministic, rep.AgentClaim)
 
-	// 未验证面（高可信=证据+显式披露未验证面）。
+	// 未验证面（高可信=证据+显式披露未验证面）。逃生债（价-1a）并入本段——
+	// 被免掉的门禁就是没验证的面。
 	fmt.Fprintf(&b, "│ 未验证面：")
+	untested := len(rep.UntestedAreas)
 	switch {
-	case len(rep.UntestedAreas) > 0:
-		fmt.Fprintf(&b, "%d 个改动源文件无配对测试\n", len(rep.UntestedAreas))
+	case untested > 0:
+		fmt.Fprintf(&b, "%d 个改动源文件无配对测试\n", untested)
 		for _, f := range rep.UntestedAreas {
 			fmt.Fprintf(&b, "│   - %s\n", f)
 		}
-	case rep.Score == nil:
+	case rep.Score == nil && len(rep.EscapeDebt) == 0:
 		fmt.Fprintf(&b, "未知（任务未评分——complete 时计算）\n")
+	case rep.Score == nil:
+		// 未评分但有逃生债：债面照报（读不到不等于没有）。
 	default:
-		fmt.Fprintf(&b, "无（改动源码均有配对测试）\n")
+		if len(rep.EscapeDebt) == 0 {
+			fmt.Fprintf(&b, "无（改动源码均有配对测试）\n")
+		}
+	}
+	for _, d := range rep.EscapeDebt {
+		fmt.Fprintf(&b, "│   ⚠ 逃生债 %s\n", d)
 	}
 
 	// 残留风险。
@@ -308,6 +359,10 @@ func renderTaskReport(rep *taskReportJSON) string {
 		fmt.Fprintf(&b, " · 无 spec 产物\n")
 	}
 
+	if rep.SelfSupplied > 0 {
+		fmt.Fprintf(&b, "│ ⚠ 自供申辩：%d 条 forge 无法验证的自述（基线刷新 --note/--none 申辩/回环重置注记）——抽查建议\n", rep.SelfSupplied)
+	}
+
 	// 逃生舱库存。
 	fmt.Fprintf(&b, "│ 逃生舱：")
 	if len(rep.Escapes) == 0 {
@@ -327,6 +382,9 @@ func renderTaskReport(rep *taskReportJSON) string {
 	review := "未审"
 	if rep.ReviewPassed {
 		review = fmt.Sprintf("已过（%d 轮）", rep.ReviewRounds)
+	}
+	if rep.SelfReviewRound {
+		review += " · ⚠ 含自审轮（盖章会话=改动生产者）"
 	}
 	fmt.Fprintf(&b, "│ 审查：%s · 对账单：%d/%d 勾\n", review, rep.ChecklistDone, rep.ChecklistTotal)
 
@@ -354,4 +412,37 @@ func formatTierCounts(counts map[string]int) string {
 		parts = append(parts, fmt.Sprintf("%s×%d", k, counts[k]))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// escapeUnverifiedDesc maps an escaped verification gate to its unverified-face
+// description (价-1a). Gates not in the map (rhythm-class like work-activity)
+// produce no debt line — they don't stand in for a verification claim.
+//
+// escapeUnverifiedDesc 把被逃生的验证类门禁映射为未验证面描述（价-1a）。不在
+// 表内的门禁（work-activity 等节奏类）不产债行——它们不替代任何验证声明。
+func escapeUnverifiedDesc(gate string) (string, bool) {
+	switch gate {
+	case "unused-gate":
+		return "internal/ 零引用导出未核查——实现了但没接线的代码经逃生进了交付", true
+	case "test-coverage":
+		return "改动源码的测试配对未核查——假绿面经逃生未检验", true
+	case "acceptance-gate":
+		return "验收链（登记/新鲜度/质量）经逃生放行——考卷缺位或弱考卷未拦", true
+	case "self-report":
+		return "checklist 自报一致性未核对——虚报进度形态未经检验", true
+	case "heldout":
+		return "held-out 双套件 gap 检测经逃生跳过——测试泛化缺口未知", true
+	case "artifact-chain":
+		return "产物链漂移/审批执法经逃生跳过——考卷围栏与 spec 审批未核查", true
+	case "finding-regression":
+		return "finding 的修复无回归测试（--none 申辩）——修复未自证", true
+	case "doc-gate":
+		return "文档 L1/L2 回检经逃生跳过——文档质量未核查", true
+	case "hazard-pending":
+		return "高危拦截悬账经逃生交付——存在未经人工确认的危险操作", true
+	case "mutation-gate":
+		return "mutation 抽样经逃生跳过——断言强度未检验（假绿面未知）", true
+	default:
+		return "", false
+	}
 }

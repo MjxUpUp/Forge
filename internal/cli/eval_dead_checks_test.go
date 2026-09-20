@@ -87,3 +87,16 @@ func TestClassifyCheckKind_MachineQuestioning(t *testing.T) {
 		}
 	}
 }
+
+// TestClassifyCheckKind_DeliveryHardening（墙价硬批次）：三个新检查的分类
+// 钉——hazard-pending/mutation-gate 是 gate（advisory-default，拦截有意义），
+// self-review 是 advisory（披露事件）。
+func TestClassifyCheckKind_DeliveryHardening(t *testing.T) {
+	for name, want := range map[string]string{
+		"hazard-pending": "gate", "mutation-gate": "gate", "self-review": "advisory",
+	} {
+		if got := classifyCheckKind(name); got != want {
+			t.Errorf("%s 应分类 %s，got %q", name, want, got)
+		}
+	}
+}
