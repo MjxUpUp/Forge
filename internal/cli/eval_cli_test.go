@@ -4,6 +4,7 @@ package cli
 // 经预构建二进制跑真实命令表面。目标表面 = CLI 输出 + 退出码（非内部函数）。
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,8 +115,16 @@ func TestEvalTrapsE2E(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("traps run 应通过（exit %d）：%s", code, out)
 	}
-	if !strings.Contains(out, "capture 3/3") {
-		t.Fatalf("三陷阱应全部识破: %s", out)
+	// traps 扩容批（3→14）：断言用解析式形态——新增陷阱不破本测试，漏识破/计数
+	// 塌缩（任何例挂掉）仍会被 FINDING 断言与退出码拦住。
+	n, total := 0, 0
+	if i := strings.Index(out, "capture "); i >= 0 {
+		if _, err := fmt.Sscanf(out[i:], "capture %d/%d", &n, &total); err != nil {
+			n, total = 0, 0
+		}
+	}
+	if total < 14 || n != total {
+		t.Fatalf("陷阱应全部识破且总数≥14（got capture %d/%d）: %s", n, total, out)
 	}
 	if strings.Contains(out, "FINDING") {
 		t.Fatalf("闭环后不应有 FINDING: %s", out)

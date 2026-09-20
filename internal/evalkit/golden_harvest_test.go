@@ -65,3 +65,30 @@ func TestHarvestCandidates_CanonicalZeroWrite(t *testing.T) {
 		t.Errorf(`since 晚于完成时间应跳过，got %+v err=%v`, res3, err)
 	}
 }
+
+// TestTrapCase_CheatPatternTypes 钉住陷阱类型枚举扩容（traps 扩容批）：cheat-scan
+// 七模式族经目录加载合法、拼错类型加载拒绝——枚举是策展契约，静默放宽会稀释类型语义。
+func TestTrapCase_CheatPatternTypes(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, typ string) {
+		body := "id: " + name + "\ntype: " + typ + "\ndescription: d\nprobe_argv: [x]\ndetect_any: [exit_nonzero]\n"
+		if err := os.WriteFile(filepath.Join(dir, name+".yaml"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, v := range []string{"type-suppression", "error-swallow", "dead-branch",
+		"comment-only-fix", "comment-as-debt", "phantom-import", "path-assumption"} {
+		write("t-ok-"+v, v)
+	}
+	if _, err := LoadTrapDir(dir); err != nil {
+		t.Errorf(`cheat-scan 七模式类型均应合法: %v`, err)
+	}
+	dir2 := t.TempDir()
+	body := "id: t-bogus\ntype: bogus-pattern\ndescription: d\nprobe_argv: [x]\ndetect_any: [exit_nonzero]\n"
+	if err := os.WriteFile(filepath.Join(dir2, "t-bogus.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadTrapDir(dir2); err == nil {
+		t.Error(`未知陷阱类型应被加载器拒绝`)
+	}
+}
