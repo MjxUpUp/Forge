@@ -180,9 +180,21 @@ func checkSkillDecisions(root string, state *TaskState, gitChanged []string) err
 // （spec-as-gate）。纯 advisory 不阻塞、不 return error。绝不记
 // CheckNameAcceptance 条目——该条目专属于 verify-acceptance 的真实实跑
 // （deterministic 不可伪造），gate 里不跑命令就不能伪称跑过。
-func adviseAcceptance(state *TaskState) {
+// held-out 默认开（advisory，leverage-points-landing.md L2 P1）：考卷已全过而
+// 无保留集时提醒一次补 held-out（双套件 gap 才能量化 reward hacking）；
+// FORGE_HELDOUT=disable 静默（复用既有 env，不新增）；读侧车失败不提醒
+// （HeldoutRegistered 的非 NotExist 错误按 understatement 方向沉默）。
+func adviseAcceptance(root string, state *TaskState) {
 	if msg := acceptanceAdvisory(state); msg != "" {
 		fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-verify] "), msg)
+		return
+	}
+	// 上面非空文案已提示未全过/零登记；到达此处 = 考卷已登记且全过——补保留集提醒。
+	if state.IsGeneric() || os.Getenv(heldoutDisableEnv) == "disable" {
+		return
+	}
+	if reg, err := HeldoutRegistered(root, state.TaskRef); err == nil && !reg {
+		fmt.Fprintf(os.Stderr, "%s考卷已登记且全过，但无 held-out 保留集（forge task start --heldout <file>）——可见套件 agent 可见，双套件 gap 才能量化 reward hacking（SpecBench）；保留集须人工出题，forge 不自造。不登记可忽略（FORGE_HELDOUT=disable 静默）\n", GateAdvisory("[task-verify] "))
 	}
 }
 

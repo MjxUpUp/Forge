@@ -148,6 +148,44 @@ type Assertion struct {
 	Negate   bool   `json:"negate,omitempty"`   // 取反判定（预留；首发类型自带反义型时不用）
 }
 
+// First-wave assertion type constants (spec-as-gate v2, leverage-points-landing.md
+// L2). Bare string literals drift; these are the single spelling source for the
+// five stack-agnostic deterministic types. Regex stays deliberately excluded
+// (ReDoS + non-deterministic judging — opinion does not walk hard).
+//
+// 首发断言类型常量（spec-as-gate v2，leverage-points-landing.md L2）。裸字符串
+// 字面量会漂移；这里是五种栈无关确定性类型的唯一拼写源。regex 维持刻意排除
+// （ReDoS + 判定不可机械化——意见不走 hard）。
+const (
+	AssertionTypeExit          = "exit"
+	AssertionTypeContains      = "contains"
+	AssertionTypeNotContains   = "not-contains"
+	AssertionTypeFileChanged   = "file-changed"
+	AssertionTypeFileUntouched = "file-untouched"
+)
+
+// ValidAssertionType reports whether t is one of the first-wave assertion types.
+//
+// ValidAssertionType 报告 t 是否为首发断言类型之一。
+func ValidAssertionType(t string) bool {
+	switch t {
+	case AssertionTypeExit, AssertionTypeContains, AssertionTypeNotContains,
+		AssertionTypeFileChanged, AssertionTypeFileUntouched:
+		return true
+	}
+	return false
+}
+
+// AssertionTypeNeedsRun reports whether the assertion type consumes the command
+// execution (exit code / output). file-changed / file-untouched judge the task
+// diff instead and can live on a Run-less criterion.
+//
+// AssertionTypeNeedsRun 报告该断言类型是否消费命令执行（退出码/输出）。
+// file-changed / file-untouched 判定的是任务 diff，可挂在无 Run 的条目上。
+func AssertionTypeNeedsRun(t string) bool {
+	return t == AssertionTypeExit || t == AssertionTypeContains || t == AssertionTypeNotContains
+}
+
 // ExternalOrigin is the external work source of a task (an issue-tracker issue).
 // forge_task_start --from_issue parses the URL and fills it in, extending a
 // task's origin from the branch to an external issue.

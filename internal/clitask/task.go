@@ -15,6 +15,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/MjxUpUp/Forge/internal/worktree"
@@ -42,6 +43,11 @@ func init() {
 	// StringArray（非 StringSlice）：cobra/pflag 的 StringSlice 默认按逗号切分，会把
 	// 含逗号的命令拆坏；StringArray 每个 --accept 整条不切。验收标准是完整"run :: expected"串。
 	taskStartCmd.Flags().StringArray("accept", nil, `验收标准（可重复 --accept）：格式 "run :: expected"（expected=输出子串）或裸 "run"（只看退出码 0）。forge task verify-acceptance 实跑回扣。run 为 go test 且带 expected 而未加 -v 时自动补 -v（否则无 PASS 行永不匹配）`)
+	// v2 结构化断言（spec-as-gate L2 P1）：--assert 附属于同命令中 preceding --accept 的条目；
+	// file-changed/file-untouched 型可独立出现（无 Run，判定任务 diff）。声明期校验拒绝叙述性。
+	taskStartCmd.Flags().StringArray("assert", nil, `v2 结构化断言（可重复 --assert）：格式 "type:arg :: expected"，附属于同命令中 preceding --accept；file-changed/file-untouched 可独立出现（无 Run）。类型：exit（期望退出码）|contains|not-contains（输出子串）|file-changed|file-untouched（glob 对任务 diff）`)
+	// 批量考卷声明：YAML 一次声明全部条目（含断言），键与任务状态 JSON 一致。
+	taskStartCmd.Flags().String("accept-file", "", `验收标准 YAML 文件（批量声明）：顶层 criteria:，每条 run/expected/assertions[type/arg/expected]；与 --accept 同层级、按三元组去重合并`)
 	// held-out 套件（SpecBench 双套件思想）：保留集不进 TaskState（task status 不展示），
 	// 登记到 DataDir 侧车；可见验收全过而 held-out 挂 = test-generalization gap。
 	taskStartCmd.Flags().String("heldout", "", `held-out 保留验收集（文件路径，每行一条 "run :: expected"，# 注释）：登记进 DataDir 侧车不进任务状态；verify-acceptance 与 task-complete 实跑，可见全过而保留集挂即 BLOCKED（SpecBench gap 形态）`)
@@ -427,6 +433,53 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		state.Acceptance = taskpipeline.ParseAcceptance(acceptRaw)
 	}
 
+	// v2 结构化断言（spec-as-gate L2 P1）：--assert 挂到 preceding --accept 的条目
+	//（file-* 型可独立），--accept-file 以 YAML 批量声明。声明期校验（ValidateAssertions）
+	// 拒绝叙述性/越形断言——降级发生在声明时而非跑时失败后（与 --invariant 同门）。
+	if assertRaw, _ := cmd.Flags().GetStringArray("assert"); len(assertRaw) > 0 {
+		var asserts []taskpipeline.Assertion
+		for _, s := range assertRaw {
+			a, err := taskpipeline.ParseAssertion(s)
+			if err != nil {
+				return err
+			}
+			asserts = append(asserts, a)
+		}
+		attached, err := taskpipeline.AttachAssertions(state.Acceptance, asserts)
+		if err != nil {
+			return err
+		}
+		state.Acceptance = attached
+	}
+	if acceptFile, _ := cmd.Flags().GetString("accept-file"); acceptFile != "" {
+		raw, err := os.ReadFile(acceptFile)
+		if err != nil {
+			return fmt.Errorf("读取 --accept-file %q 失败: %w", acceptFile, err)
+		}
+		cs, err := taskpipeline.ParseAcceptanceYAML(raw)
+		if err != nil {
+			return err
+		}
+		if len(cs) == 0 {
+			return fmt.Errorf("--accept-file %q 无 criteria 条目", acceptFile)
+		}
+		state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, cs)
+	}
+	if err := taskpipeline.ValidateAssertions(state.Acceptance); err != nil {
+		return err
+	}
+	// 非 git 目录的诚实边界：file-* 断言判定任务 diff（git），无 git 时 file-changed 恒假、
+	// file-untouched 恒真——声明期警告而非跑时静默误判。
+	if !taskpipeline.IsGitRepo(root) {
+		for _, c := range state.Acceptance {
+			for _, a := range c.Assertions {
+				if a.Type == tasktypes.AssertionTypeFileChanged || a.Type == tasktypes.AssertionTypeFileUntouched {
+					fmt.Fprintf(cmd.ErrOrStderr(), "⚠️ 断言 %s:%s 依赖 git diff，而本目录不是 git 仓库——file-changed 将恒假、file-untouched 将恒真（forge 显式支持非 git 退化，但 file-* 断言在其中有界）\n", a.Type, a.Arg)
+				}
+			}
+		}
+	}
+
 	// 析出不变量（vNext P3 三段工件之 instrument 段）：声明期校验（必须可执行），
 	// 追加进 Acceptance——机器对账/freshness/complete pre-flight 全复用既有机制。
 	if invRaw, _ := cmd.Flags().GetStringArray("invariant"); len(invRaw) > 0 {
@@ -506,7 +559,8 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		}
 		// 从 Plan markdown 自动提取验收标准（Run:/Expected: 块），消除把 plan 的 Run/Expected
 		// 手抄到 --accept 的断口（dogfood：靠自觉手抄必漏；没抄时 acceptance advisory 零信号）。
-		// 显式 --accept 优先，plan 提取按 Run 去重补充（MergeAcceptance）。
+		// 显式 --accept 优先，plan 提取按 (Run, Expected, Assertions) 三元组去重补充
+		//（MergeAcceptance，L2 P1 起与结果匹配键同口径）。
 		if extracted := taskpipeline.ParseAcceptanceFromPlan(state.Plan); len(extracted) > 0 {
 			baseBefore := len(state.Acceptance)
 			state.Acceptance = taskpipeline.MergeAcceptance(state.Acceptance, extracted)

@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
@@ -48,9 +49,26 @@ func init() {
 }
 
 func RunTestCommand(root, cmdStr string) (passed bool, output string) {
+	code, output := RunTestCommandCode(root, cmdStr)
+	return code == 0, output
+}
+
+// RunTestCommandCode executes cmdStr under root and returns the ACTUAL exit
+// code with the combined output — the execution base for acceptance v2's
+// `exit` assertion (RunTestCommand collapses the code to a bool, which cannot
+// express "expect exit 1"). Spawn failure and timeout return -1: nobody
+// observed a real exit code there. RunTestCommand is now a thin `code == 0`
+// wrapper — single execution path, no second copy.
+//
+// RunTestCommandCode 在 root 下执行 cmdStr，返回实际退出码与合并输出——
+// acceptance v2 的 exit 断言的执行底座（RunTestCommand 把退出码折叠成 bool，
+// 表达不了「期望退出码 1」）。spawn 失败与超时返回 -1：那两种情形没有人
+// 观测到真实退出码。RunTestCommand 现在是 `code == 0` 的薄包装——执行路径
+// 唯一，无第二份拷贝。
+func RunTestCommandCode(root, cmdStr string) (code int, output string) {
 	parts := strings.Fields(cmdStr)
 	if len(parts) == 0 {
-		return false, "empty command"
+		return -1, "empty command"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), testRunTimeout)
 	defer cancel()
@@ -59,7 +77,14 @@ func RunTestCommand(root, cmdStr string) (passed bool, output string) {
 	c.Env = os.Environ()
 	out, err := c.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
-		return false, strings.TrimSpace(string(out)) + "\n[forge] TIMEOUT: 测试命令超过 " + testRunTimeout.String() + " 被终止（FORGE_TEST_TIMEOUT 可调）"
+		return -1, strings.TrimSpace(string(out)) + "\n[forge] TIMEOUT: 测试命令超过 " + testRunTimeout.String() + " 被终止（FORGE_TEST_TIMEOUT 可调）"
 	}
-	return err == nil, strings.TrimSpace(string(out))
+	if err == nil {
+		return 0, strings.TrimSpace(string(out))
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), strings.TrimSpace(string(out))
+	}
+	return -1, strings.TrimSpace(string(out))
 }

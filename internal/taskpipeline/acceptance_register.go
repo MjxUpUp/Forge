@@ -224,8 +224,8 @@ func HasManualTierAcceptance(cs []AcceptanceCriterion) bool {
 // 条目盖给定层级（StampAcceptanceSource 只盖空 Source——addition 自带非空
 // Source 的原样穿透；当前调用方都传空 Source 条目）。闭包在锁内复查
 // CompletedAt：考卷在交付时定稿，外部检查与合并之间的竞态窗口内的补登同样
-// 拒绝。返回新增子集（已盖 Source）供调用方精确打印进了什么题。按 Run 去重
-// ——重复登记已有命令是 no-op（其原层级保留）。
+// 拒绝。返回新增子集（已盖 Source）供调用方精确打印进了什么题。按
+// (Run, Expected, Assertions) 三元组去重——重复登记同一检查是 no-op（其原层级保留）。
 func RegisterAcceptance(root, taskRef string, addition []AcceptanceCriterion, source string) ([]AcceptanceCriterion, error) {
 	var added []AcceptanceCriterion
 	err := MutateTaskState(root, taskRef, func(s *TaskState) error {

@@ -340,8 +340,32 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 	// 尝试在无受信的情况下执行已去标记的外来命令；改为 fail-closed（崩溃后标记仍在，重跑
 	// 重新要求 --trust-foreign）。
 
-	taskpipeline.VerifyAcceptance(root, state)
+	verdicts := taskpipeline.VerifyAcceptanceWithVerdicts(root, state)
 	allPassed := state.AllAcceptancePassed()
+
+	// 逐断言证据行（spec-as-gate v2，leverage-points-landing.md L2 P1）：每条断言一行
+	// deterministic acceptance-assert，trace 不展开也能定位挂的是哪条断言；聚合行紧随
+	// 其后保留（兼容既有强度评级与 golden）。
+	for _, v := range verdicts {
+		word := `FAIL`
+		if v.Passed {
+			word = `PASS`
+		}
+		spec := v.Assertion.Type
+		if v.Assertion.Arg != "" {
+			spec += ":" + v.Assertion.Arg
+		}
+		detail := fmt.Sprintf("%s — 验收 #%d 断言 %s（expected=%q）", word, v.CriterionIdx+1, spec, v.Assertion.Expected)
+		if recErr := checklog.Record(root, &checklog.Entry{
+			Check:   taskpipeline.CheckNameAcceptanceAssert,
+			Passed:  v.Passed,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Detail:  detail,
+		}); recErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（断言证据未落盘）: %v\n", recErr)
+		}
+	}
 
 	if recErr := checklog.Record(root, &checklog.Entry{
 		Check:   taskpipeline.CheckNameAcceptance,
@@ -389,6 +413,20 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 			exp = "(退出码 0)"
 		}
 		fmt.Printf("  %s [%d] %s :: %s\n", mark, i+1, c.Run, exp)
+		for _, v := range verdicts {
+			if v.CriterionIdx != i {
+				continue
+			}
+			vMark := "✅"
+			if !v.Passed {
+				vMark = "❌"
+			}
+			spec := v.Assertion.Type
+			if v.Assertion.Arg != "" {
+				spec += ":" + v.Assertion.Arg
+			}
+			fmt.Printf("     %s assert %s :: %s\n", vMark, spec, v.Assertion.Expected)
+		}
 		if !c.Passed && c.Output != "" {
 			for _, line := range splitLines(c.Output) {
 				fmt.Printf("     %s\n", line)
