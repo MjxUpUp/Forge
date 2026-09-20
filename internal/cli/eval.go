@@ -759,7 +759,7 @@ func init() {
 
 	traps := &cobra.Command{
 		Use:   "run [--dir <dir>]",
-		Short: "对抗陷阱重放（测试削弱/伪造审计证据/虚假完成）",
+		Short: "对抗陷阱重放（14 例：测试削弱/伪造审计证据/虚假完成 + cheat-scan 七模式族）",
 		RunE:  runEvalTraps,
 	}
 	traps.Flags().String("dir", "", "陷阱用例目录（默认 evals/forge/traps）")

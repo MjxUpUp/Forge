@@ -76,9 +76,12 @@ func TestTrapCase_CheatPatternTypes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("t-ok", "path-assumption")
+	for _, v := range []string{"type-suppression", "error-swallow", "dead-branch",
+		"comment-only-fix", "comment-as-debt", "phantom-import", "path-assumption"} {
+		write("t-ok-"+v, v)
+	}
 	if _, err := LoadTrapDir(dir); err != nil {
-		t.Errorf(`cheat-scan 模式类型应合法: %v`, err)
+		t.Errorf(`cheat-scan 七模式类型均应合法: %v`, err)
 	}
 	dir2 := t.TempDir()
 	body := "id: t-bogus\ntype: bogus-pattern\ndescription: d\nprobe_argv: [x]\ndetect_any: [exit_nonzero]\n"
