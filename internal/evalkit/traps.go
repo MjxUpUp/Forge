@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"gopkg.in/yaml.v3"
 )
@@ -114,6 +115,13 @@ func LoadTrapDir(dir string) ([]TrapCase, error) {
 		}
 		switch t.Type {
 		case TrapPristineFalsePositive, TrapEvidenceForgery, TrapWeakenedTest:
+		// cheat-scan 模式族（traps 扩容批，leverage-points-landing.md L3「从
+		// cheat-scan 模式族人工策展」）：type 直接复用 CheatPattern 枚举——
+		// 陷阱建模的是同一组确定性检测器必须识破的攻击面。
+		case string(taskpipeline.CheatTypeSuppression), string(taskpipeline.CheatErrorSwallow),
+			string(taskpipeline.CheatDeadBranch), string(taskpipeline.CheatCommentOnly),
+			string(taskpipeline.CheatCommentDebt), string(taskpipeline.CheatPhantomImport),
+			string(taskpipeline.CheatPathAssumption):
 		default:
 			return nil, fmt.Errorf("evalkit: 陷阱用例 %s 的 type %q 非法", t.ID, t.Type)
 		}
