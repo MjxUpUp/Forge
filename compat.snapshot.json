@@ -178,6 +178,12 @@
       "path": "forge eval golden"
     },
     {
+      "path": "forge eval golden harvest",
+      "flags": [
+        "since"
+      ]
+    },
+    {
       "path": "forge eval golden private-init"
     },
     {
@@ -487,6 +493,12 @@
       "path": "forge review gate",
       "flags": [
         "ref"
+      ]
+    },
+    {
+      "path": "forge review llm",
+      "flags": [
+        "scores"
       ]
     },
     {
