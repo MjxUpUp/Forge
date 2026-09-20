@@ -196,6 +196,23 @@ func hasOutputAssertion(as []Assertion) bool {
 	return false
 }
 
+// hasFileAssertion reports whether any criterion carries a diff-judging
+// (file-changed / file-untouched) assertion — the gate for lazily computing the
+// task-changed file set (git cost only when actually consumed).
+//
+// hasFileAssertion 报告是否有条目挂着 diff 判定型（file-changed /
+// file-untouched）断言——惰性实算任务变更文件集的闸（只在真被消费时付 git 成本）。
+func hasFileAssertion(cs []AcceptanceCriterion) bool {
+	for _, c := range cs {
+		for _, a := range c.Assertions {
+			if a.Type == tasktypes.AssertionTypeFileChanged || a.Type == tasktypes.AssertionTypeFileUntouched {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ensureGoTestVerboseRun 是 EnsureGoTestVerbose 的单命令核心：run 是不带任何 -v 变体
 // 的 `go test ...` 时返回 ok=true 与改写后命令；否则原样返回 (run, false)。
 func ensureGoTestVerboseRun(run string) (string, bool) {
@@ -259,9 +276,13 @@ func VerifyAcceptance(root string, state *TaskState) {
 //
 // VerifyAcceptanceWithVerdicts 是 VerifyAcceptance 加逐断言判定结果——CLI 记
 // checklog:acceptance-assert 证据行的载荷。任务变更文件集每次调用只算一次
-// （git 成本由全部条目摊销）；无 Run 且断言全为 file-* 的条目完全跳过命令执行。
+// （git 成本由全部条目摊销，且惰性——仅存在 file-* 断言时实算，纯 v1 任务零
+// git 开销）；无 Run 且断言全为 file-* 的条目完全跳过命令执行。
 func VerifyAcceptanceWithVerdicts(root string, state *TaskState) []AssertionVerdict {
-	changed := taskChangedFiles(root, state)
+	var changed []string
+	if hasFileAssertion(state.Acceptance) {
+		changed = taskChangedFiles(root, state)
+	}
 	var verdicts []AssertionVerdict
 	for i := range state.Acceptance {
 		c := &state.Acceptance[i]

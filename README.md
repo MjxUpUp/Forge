@@ -157,7 +157,7 @@ Forge 退出码三态（`BLOCKED` 硬阻断 / `ADVISORY` 软信号 / 无前缀�
 每个开发任务自动走 3 道门禁：
 
 ```bash
-forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配；go test 带 Expected 忘加 -v 时 start 自动补——无 -v 无 PASS 行永不匹配）
+forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配；go test 带 Expected 或 contains/not-contains 断言忘加 -v 时 start 自动补——无 -v 无 PASS 行永不匹配）
 forge task start --ref feat/login --worktree [--base main] [--wt-dir <父目录>]   # 在 repo 树外为此任务创建独立 worktree+分支+绑定（多任务并发隔离形态，multi-task-concurrency L4；<repo 父目录>/<repo 名>-wt/<分支> 默认）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
 forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），声明上游依赖 feat/api（DAG 环检测；task-verify/task-complete 在 feat/api 交付前阻断）
