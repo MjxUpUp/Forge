@@ -340,7 +340,7 @@ func runArtifactExtract() error {
 	if st.CompletedAt != nil {
 		return fmt.Errorf("任务 %s 已完成——考卷在交付前定稿，extract 拒绝事后注入（发现问题的正确出口是开新修复任务）", st.TaskRef)
 	}
-	// 链序提取：上游产物先提（显式 --accept 仍优先，MergeAcceptance 按 Run 去重）。
+	// 链序提取：上游产物先提（显式 --accept 仍优先，MergeAcceptance 按 (Run, Expected, Assertions) 三元组去重）。
 	var stages []string
 	for _, s := range chain.Stages {
 		if _, has := st.SpecArtifacts[s.Name]; has {
