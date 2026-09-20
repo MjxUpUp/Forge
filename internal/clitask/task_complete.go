@@ -104,6 +104,14 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return fmt.Errorf(`task complete 拒绝：任务状态文件完整性校验失败（在 forge 之外被修改——手改的 review/doc 证据不被采信）。恢复路径：forge task abort 后重新走门禁`)
 	}
 
+	// hazard 清账 pre-flight（delivery-hardening 墙-1b）：等账未清不得交付——
+	// 存在未经人工确认的高危拦截时拒绝完成（会话取证 sess_cbe4047c 实证：7 拦
+	// 0 确认照样交）。出口是真人 confirm/release（已加终端判别），env 逃生落审计。
+	if ok, reasons := taskpipeline.CheckHazardPending(root, state); !ok {
+		return fmt.Errorf(`hazard 清账未通过：%s`,
+			strings.Join(reasons, `; `))
+	}
+
 	// acceptance registration pre-flight（oracle-pipeline L1，考卷层级制）：非 generic
 	// 交付任务必须至少登记一条验收标准——零标准时整个 deterministic 验收核心对空集
 	// 平凡通过（2026-09-07 实证 ratio 0.08 完成事故）。考卷梯子由强到弱：spec 产物
@@ -111,6 +119,13 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// （manual，验收单如实披露）。逃生与 freshness 检查共用 acceptance-gate 舱。
 	if ok, reasons := taskpipeline.CheckAcceptanceRegistered(root, state); !ok {
 		return fmt.Errorf(`acceptance registration 未通过（零验收标准——考卷缺位）: %s。登记出口：forge task accept "run :: expected"（本任务补登，层级 manual）；forge task artifact --extract（从 spec 产物提取）；或先 forge task verify-acceptance（有 conventions 档案时自动登记默认套件）。逃生（落 checklog 审计，降 evidence 强度）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable`,
+			strings.Join(reasons, `; `))
+	}
+
+	// 考卷质量前置（delivery-hardening 墙-2a）：登记门关"零考卷"，本门关"最廉价
+	// 的弱考卷"——须含至少一条测试类命令（仓库有测试能力时）。
+	if ok, reasons := taskpipeline.CheckAcceptanceQuality(root, state); !ok {
+		return fmt.Errorf(`acceptance quality 未通过（考卷无测试类命令）: %s`,
 			strings.Join(reasons, `; `))
 	}
 
@@ -174,6 +189,16 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	if sr := taskpipeline.CheckSelfReport(root, state); sr.Blocked {
 		return fmt.Errorf(`self-report consistency 未通过：checklist 声称的验证命令在任务全程 Bash 记录中零证据（%s）——虚报进度的形态。修复：真实跑通声称的命令后重新 complete，或修正 checklist 描述。逃生（落 checklog 审计）: FORGE_SELF_REPORT=disable`,
 			strings.Join(sr.UnmatchedTests, `; `))
+	}
+
+	// mutation 消费前置（delivery-hardening 硬-1b）：复发升硬——项目连续
+	// 多个 Go 改动任务零 mutation 证据时硬拦（跑 forge task mutation 或逃生）；
+	// 首发只 advisory（complete 输出明示）。
+	if ok, reasons, advisory := taskpipeline.CheckMutationRecurrence(root, state); !ok {
+		return fmt.Errorf(`mutation recurrence 未通过：%s`,
+			strings.Join(reasons, `; `))
+	} else if advisory != "" {
+		fmt.Fprintf(os.Stderr, "ADVISORY: [mutation-gate] %s\n", advisory)
 	}
 
 	// MarkComplete 恰在此处（pre-flight 之后）：完成标记属于 `forge task complete` 的整个

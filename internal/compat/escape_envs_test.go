@@ -41,3 +41,19 @@ func TestMutationTimeoutEscapeEnvRegistered(t *testing.T) {
 	}
 	t.Fatal(`FORGE_MUTATION_TIMEOUT 应在 EscapeEnvs roster（compat 快照 escapes 面）`)
 }
+
+// TestHardeningEscapeEnvsRegistered（墙价硬批次）：三个新逃生舱 env 在 roster
+// ——FORGE_GATE_CMD_FORM / FORGE_HAZARD_PENDING / FORGE_MUTATION_GATE。
+func TestHardeningEscapeEnvsRegistered(t *testing.T) {
+	for _, env := range []string{"FORGE_GATE_CMD_FORM", "FORGE_HAZARD_PENDING", "FORGE_MUTATION_GATE"} {
+		found := false
+		for _, e := range EscapeEnvs {
+			if e == env {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s 应在 EscapeEnvs roster", env)
+		}
+	}
+}

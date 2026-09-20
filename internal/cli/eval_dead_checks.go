@@ -199,6 +199,7 @@ var checkKinds = map[string]string{
 	"mutation-sampling":    "advisory", "fuzz-run": "advisory", "edge-checklist": "advisory",
 	"redteam-drill": "advisory", "test-diff": "advisory",
 	"heldout-pool-apply": "pipeline",
+	"hazard-pending":     "gate", "mutation-gate": "gate", "self-review": "advisory",
 	// gate：advisory-default 门（protocol 可升级）——拦截 0 = 通过率好
 	"task-verify": "gate", "task-complete": "gate", "docs-consistency-gate": "gate",
 	// pipeline：状态机事件留痕，非检查

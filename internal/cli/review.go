@@ -257,6 +257,14 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		if recErr := checklog.Record(root, entry); recErr != nil {
 			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（review-pass 未落盘）: %v\n", recErr)
 		}
+		// 价-1b（独立性归因）：盖章会话 ∈ 生产者集 → 自审披露行（WARN）。
+		// 不拒绝（同宿主子代理共用 session id 会误伤），但 report 审查行显示
+		// 「自审」、证据定价由验收方裁决——取证实证的「跨会话/自录 stamp」
+		// 从不可见变成可审计事件。
+		if ok, known := taskpipeline.ReviewIndependence(root, state.TaskRef, taskpipeline.CurrentSessionID()); known && !ok {
+			taskpipeline.RecordSelfReviewRow(root, state.TaskRef, taskpipeline.CurrentSessionID(), "code-review")
+			fmt.Fprintln(os.Stderr, "⚠ [self-review] 本会话既是改动生产者又盖了审查章——已记 self-review WARN 披露行（report 审查段可见）。协议要求独立只读子 agent/独立会话复审。")
+		}
 		// test-diff 隔离审查（oracle-pipeline 阶段三）：修复提交触碰测试文件 =
 		// 「为了让测试通过而改测试」的最大嫌疑人。披露级 WARN + checklog Meta
 		//（files 列表）——审查者须对测试变更单独说明：为什么改断言、是预期变了
