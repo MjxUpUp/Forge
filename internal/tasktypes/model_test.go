@@ -110,3 +110,25 @@ func TestDocReview_SecondScoreRoundTrip(t *testing.T) {
 		t.Fatalf("旧记录应零值: %+v", old)
 	}
 }
+
+// TestDocReviewSelfReviewRoundTrip（价-1b）：SelfReview 字段的序列化往返
+// ——true 落 JSON、false 被 omitempty 省略（旧记录行为不变）。
+func TestDocReviewSelfReviewRoundTrip(t *testing.T) {
+	on := DocReview{Passed: true, RubricScore: 90, SelfReview: true}
+	body, err := json.Marshal(on)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"self_review":true`) {
+		t.Fatalf("SelfReview=true 应落 JSON: %s", body)
+	}
+	var back DocReview
+	if err := json.Unmarshal(body, &back); err != nil || !back.SelfReview {
+		t.Fatalf("往返丢失 SelfReview: %+v err=%v", back, err)
+	}
+	off := DocReview{Passed: true, RubricScore: 90}
+	body2, _ := json.Marshal(off)
+	if strings.Contains(string(body2), "self_review") {
+		t.Fatalf("false 应被 omitempty 省略（旧记录字节不变）: %s", body2)
+	}
+}
