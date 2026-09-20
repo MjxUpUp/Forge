@@ -11,6 +11,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/evalkit"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -578,11 +579,15 @@ func runReviewLLM(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("entry[%d] 缺 doc_id/judge_scores/threshold（got %+v）", i, e)
 		}
 	}
-	outDir := filepath.Join("evals", "forge", "judge-samples")
+	root, err := projectroot.Find()
+	if err != nil {
+		return fmt.Errorf("判官臂留档需在 forge 项目内执行: %w", err)
+	}
+	outDir := filepath.Join(root, "evals", "forge", "judge-samples")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return err
 	}
-	dst := filepath.Join(outDir, fmt.Sprintf("llm-%d.json", time.Now().Unix()))
+	dst := filepath.Join(outDir, fmt.Sprintf("llm-%d.json", time.Now().UnixNano()))
 	if err := os.WriteFile(dst, body, 0o644); err != nil {
 		return err
 	}

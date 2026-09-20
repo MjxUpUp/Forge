@@ -36,6 +36,10 @@ func TestReviewLLM_Scaffold(t *testing.T) {
 // TestReviewLLM_ScoresLifecycle：坏形状拒绝 → <2 条拒绝 → 合法判分留档 judge-samples。
 func TestReviewLLM_ScoresLifecycle(t *testing.T) {
 	dir := t.TempDir()
+	runGit(t, dir, "init")
+	if out, _, code := runForgeStreams(t, dir, `init`, `--mode`, `medium`); code != 0 {
+		t.Fatalf(`forge init failed: %s`, out)
+	}
 	t.Chdir(dir)
 
 	if err := runReviewLLM(llmCmd(filepath.Join(dir, "nope.json")), nil); err == nil {
