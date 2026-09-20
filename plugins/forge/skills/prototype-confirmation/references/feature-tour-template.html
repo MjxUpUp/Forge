@@ -291,6 +291,11 @@ const DEMOS = {
   A1: {
     title: '示例功能点 1（状态变体并排）',
     what: '一句话说明这个功能点是什么，用 <code>code</code> 标注关键实现。替换为基于实际代码的描述——grep 出来源，不凭记忆。',
+    /* accept：本功能点的机械验收声明（可选，"命令 :: 期望输出子串"）。
+       仅当用户勾 ✅认可 时，导出的确认文本末尾会追加 ```accept 围栏收纳它——
+       确认过的样例即验收测试种子，落盘为 spec 产物后可被验收门禁提取为实跑考卷。
+       没有可机械判定的形态就不填（留空不会进围栏）。 */
+    accept: 'npm test -- src/ModuleA.test.tsx :: Tests:',
     body: `
       <div class="demo-label">状态变体并排（空 / 正常 / 告警 / 失败）——让用户看到边界情况</div>
       <div class="demo-row">
@@ -439,6 +444,7 @@ function updateProgress() {
 function exportConfirm() {
   const V = { accept: '✅认可', adjust: '✏调整', reject: '❌推翻' };
   const lines = [];
+  const acceptLines = [];
   for (const g of GROUPS) {
     const items = g.items.map(it => {
       const v = state[it.id] ? V[state[it.id]] : '未勾选';
@@ -446,11 +452,19 @@ function exportConfirm() {
       return `  - ${it.id} [${v}] ${DEMOS[it.id].title}${note}`;
     });
     lines.push(`### ${g.label}（${g.subtitle}）\n${items.join('\n')}`);
+    for (const it of g.items) {
+      // 可编译考卷段：仅✅认可且带机械验收声明的功能点进 accept 围栏（✏/❌/未勾
+      // 不进——被推翻的形态不该成为考卷）。围栏内每行 = "命令 :: 期望输出子串"。
+      if (state[it.id] === 'accept' && DEMOS[it.id].accept) acceptLines.push(DEMOS[it.id].accept);
+    }
   }
-  const out = `# 功能点确认结果\n\n${lines.join('\n\n')}`;
+  let out = `# 功能点确认结果\n\n${lines.join('\n\n')}`;
+  if (acceptLines.length) {
+    out += '\n\n## 认可功能点的机械验收声明\n\n```accept\n' + acceptLines.join('\n') + '\n```\n（accept 围栏可被验收门禁提取为实跑考卷——确认过的样例即验收测试种子）';
+  }
   const ok = (function () { try { navigator.clipboard.writeText(out); return true; } catch (e) { return false; } })();
   const done = Object.keys(state).length;
-  alert((ok ? '✅ 已复制到剪贴板' : '⚠ 剪贴板失败，见下方 console 输出') + `（${done}/${totalItems()} 项已勾）\n请粘贴给 agent。`);
+  alert((ok ? '✅ 已复制到剪贴板' : '⚠ 剪贴板失败，见下方 console 输出') + `（${done}/${totalItems()} 项已勾${acceptLines.length ? `，含 ${acceptLines.length} 条机械验收声明` : ''}）\n请粘贴给 agent。`);
   console.log('===== 确认结果开始 =====\n' + out + '\n===== 确认结果结束 =====');
 }
 document.getElementById('exportBtn').addEventListener('click', exportConfirm);
