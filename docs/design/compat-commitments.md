@@ -30,6 +30,7 @@
 
 ### 存量处理裁决记录
 
+- **2026-09-20 纯新增 flag 的 changed 判定（assertion-dispatch 批）**：`forge task start`/`task accept` 各新增 flag（`--assert`/`--accept-file`）——compat 引擎按 flags 签名整体比对,纯新增也判 changed/破坏性（签名 diff 粒度无法区分「加 flag」与「改名 flag」）。裁决为可接受：① 强承诺「只增不删不改名」未破坏——本变更是**纯新增**,无删除/改名/语义收紧；② 设计上断言必须与 `--accept` 就近绑定（preceding 绑定规则）,独立命令会撕裂考卷声明的时序语义——oracle-pipeline「一律新命令避 changed」先例不适用于附着型参数；③ CHANGELOG 行为变更节已预声明,快照重钉入库。**援引边界**：此裁决只覆盖「纯新增、不改既有 flag 语义」的变更——借机收紧/改名/删除既有 flag 仍须按 §二预告流程。
 - **2026-09-18 task-drift BLOCK ratchet（机械版本门先例）**：task-drift（escape-hatch-hardening P1）1.64 以 advisory 首发,预告文案载明「自 1.66 起 advisory 转 BLOCK」,**且 ratchet 以代码内版本门机械生效**（`util.CompareVersions(version, "1.66.0")`——非 gate-cmd-form 式「文案承诺、实现另行跟进」的软预告;后者 1.58 承诺至今未兑现,记为已知债）。逃生舱 `FORGE_TASK_DRIFT=0`（留 checklog escape-hatch 行,evidence 封顶 Weak）;另有**会话阻断上限 5 次**（超限自动降级 advisory——有界阻断,防 deny 死循环;CC Stop hook 8 次强制放行同哲学）。
 - **2026-09-06 死代码清扫批**：移除 4 个命令（clone check / suggest 族 / skills analyze、mine）未走 ≥2 minor 预告。可辩护依据：① 零使用证据（本机 checklog 全史无痕迹 + npm 从未发布含冻结标注的版本——冻结声明从未出海，无存量用户接触）；② 决策文档 feature-focus §2.3 冻结决议留痕在先；③ CHANGELOG 行为变更节 + 迁移指引齐备。**援引边界**：此裁决不可作为常规命令删除的先例——若无同等零使用证据，命令删除必须走预告流程。
 

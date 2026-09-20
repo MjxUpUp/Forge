@@ -1,6 +1,6 @@
 # 《六杠杆点落地》——外部回路、规格契约、系统 4 下料、数据飞轮、命令面冻结、编排组合（分期落地设计）
 
-状态：P0 已落地（feat/leverage-p0：L5 冻结仪表 / L1 wedge-drill / L2 数据形状；2026-09-07 独立评审 PASS 88/100）。P1-P2 未排期。
+状态：P0 已落地（feat/leverage-p0：L5 冻结仪表 / L1 wedge-drill / L2 数据形状；2026-09-07 独立评审 PASS 88/100）。**P1 L2 判定分派已落地**（feat/assertion-dispatch，2026-09-20，见文末「L2 P1 落地标记」）；L3 判官/golden 扩容排期中（同批方法论三批次之一）；L4 未排期。
 依据：六杠杆点战略诊断（2026-09-07 会话分析：DL 调研 / 《系统之美》/ 控制论 / 管理学 / 软件工程史 → 项目体检）；本文 file:line 均为现状代码实证。
 总原则：只投当前瓶颈（验证与规格），不在非瓶颈（生成 / 自举基建）加码；一切新机制守既有宪法——advisory fail-open、HARD 只守事实、逃生舱 env-disable-able 落 checklog 审计行、单一真相源 guard 钉住。
 
@@ -97,3 +97,17 @@ P2：L4 导出设计稿 → L6 适配器
 - golden 只进人工策展：L3 candidates 与 canonical 物理隔离。
 - advisory fail-open 不动摇：L4 / L5 全 advisory，零新阻断位点。
 - 单一真相源：断言判定分派唯一实现（heldout 共用）；check roster 与 deterministic map 由 guard test 钉同步。
+
+---
+
+## L2 P1 落地标记（feat/assertion-dispatch，2026-09-20）
+
+判定分派 + 证据行 + CLI + 校验 + 去重口径对齐，全部按上文 L2 设计落地；与设计稿的三处偏差记录如下：
+
+1. **`acceptance-assert` 未进 escape.go roster**——roster 只收 checklog/types.go 自有常量（compat 双向对齐 guard 禁止跨包常量入列），taskpipeline 系验证 check 名（acceptance / test-run / mutation-sampling / fuzz-run）的既有注册模式是「taskpipeline 侧定义常量 + evidence.go verificationChecks 字面量白名单」，本批照此（设计稿写「进 roster」是 2026-08-29 白名单重构前的旧口径）。同步要求的设计转译为新 guard：`internal/checklog/evidence_guard_test.go` 对照 taskpipeline 源声明钉白名单字面量零失配。
+2. **`EnsureGoTestVerbose` 收紧口径**：设计稿「仅 contains 型注入」实现为「contains/not-contains（输出消费型）均注入」——not-contains 同样读输出，无 -v 同样永不命中；exit/file-* 型不注入（不读输出）。
+3. **去重键扩至 MergeAcceptance/RegisterAcceptance**（设计稿只要求 MergeAcceptanceResults）：三处共用 `acceptanceIdentity` 三元组键——spec 身份单一键形，补登通道不再吞「同 Run 不同断言集」的条目。行为变更已在 CHANGELOG Unreleased 预声明；纯新增 flag 的 compat changed 判定裁决见 compat-commitments §三（2026-09-20）。
+
+### 方法论来源与映射（五步管道 × Forge 机制）
+
+本批与后续两批（理解侧闭环 / L3 校准判官）源自调研会话 sess_1ca53ff5 的五步管道（喂样例不喂形容词 / 约束三分类 / 理解对账物 / 机器跑不变量人审例外 / 全程记账）。映射与裁决的单一真相源：**ADR-0001**（docs/adr/0001-constraint-three-way-classification.md）。要点：第 ④⑤ 步已由既有宪法覆盖（deterministic/agent-claim 二分、held-out Goodhart 隔离、checklog/decisions.md 记账），本三批次补输入侧（①②③）；「可命题」中间类归 L3 κ 门控判官，永不进 hard。
