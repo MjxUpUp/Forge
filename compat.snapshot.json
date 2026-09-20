@@ -1378,12 +1378,12 @@
     {
       "tree": "canonical",
       "name": "prototype-confirmation",
-      "sha256": "1f3af3cf510e9da8ca167884aeb931b8e6d294bf6316cb4b4d1e275a9ddade49"
+      "sha256": "c2e31160b26df56862b2b39d2a07a0cb4b485687bf1159eee0135897477e65d5"
     },
     {
       "tree": "canonical",
       "name": "requirement-clarification",
-      "sha256": "dc385b4ccfee8ed798ff92770385ebde32fc4b8ea3644d9017b51166edafe9e2"
+      "sha256": "dea7bf5c8bcd973926cd2430e6f2a3c1d7d1358d7e68ab84473a841b1adfb4d1"
     },
     {
       "tree": "canonical",
