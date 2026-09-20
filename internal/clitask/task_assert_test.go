@@ -223,3 +223,56 @@ func TestTaskAccept_Assert(t *testing.T) {
 		t.Errorf(`输出应披露 manual 层，got: %s`, out)
 	}
 }
+
+// TestRunTaskVerifyAcceptanceAt_NotContainsBlocked 钉住失败路径（审查 P3-8）：
+// not-contains 命中（反作弊形态）→ verify-acceptance 返回错误（exit 非 0 契约）
+// 且聚合证据行 Passed=false——CLI 层闭环设计验收项「命中 → BLOCKED」。
+func TestRunTaskVerifyAcceptanceAt_NotContainsBlocked(t *testing.T) {
+	dir := t.TempDir()
+	const sid = `test-session-assert-block`
+	t.Setenv(`CLAUDE_CODE_SESSION_ID`, sid)
+	const taskRef = `feat/assert-block`
+	if err := taskpipeline.SetActiveTaskRef(dir, sid, taskRef); err != nil {
+		t.Fatal(err)
+	}
+	// go version 输出必然含 "go version"——not-contains 必命中（作弊形态）。
+	state := &taskpipeline.TaskState{
+		TaskRef:   taskRef,
+		SessionID: sid,
+		Branch:    `feat/assert-block`,
+		StartedAt: time.Now(),
+		Acceptance: []taskpipeline.AcceptanceCriterion{
+			{
+				Run: `go version`,
+				Assertions: []taskpipeline.Assertion{
+					{Type: `not-contains`, Expected: `go version`},
+				},
+			},
+		},
+	}
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := runTaskVerifyAcceptanceAt(dir, taskRef, false); err == nil {
+		t.Fatal(`not-contains 命中应使 verify-acceptance 返回错误（exit 非 0）`)
+	}
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var assertRow, aggRow *checklog.Entry
+	for i := range entries {
+		switch entries[i].Check {
+		case taskpipeline.CheckNameAcceptanceAssert:
+			assertRow = &entries[i]
+		case taskpipeline.CheckNameAcceptance:
+			aggRow = &entries[i]
+		}
+	}
+	if assertRow == nil || assertRow.Passed {
+		t.Errorf(`断言证据行应记 fail，got %+v`, assertRow)
+	}
+	if aggRow == nil || aggRow.Passed {
+		t.Errorf(`聚合行应记 fail（BLOCKED 形态），got %+v`, aggRow)
+	}
+}
