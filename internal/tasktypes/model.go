@@ -69,6 +69,18 @@ type DocReview struct {
 	// 留下 SecondReviewer 非空而分数消失的半份双评（恰是 CLI 成对校验要拦的形态）。
 	SecondReviewer string `json:"second_reviewer,omitempty"`
 	SecondScore    int    `json:"second_score"`
+	// SelfReview marks a doc-review recorded by a session that ALSO authored the
+	// task's changes (delivery-hardening 价-1b: producer sessions from toollog
+	// Write/Edit attribution). The doc gate refuses to consume self-recorded
+	// scores — the forensic case of "9 分被拦后自己录 92 分过关" closes here.
+	// False = independent or attribution unknown (no producer telemetry →
+	// fail-open).
+	//
+	// SelfReview 标记本条 doc-review 由同时是该任务改动生产者的会话记录
+	//（delivery-hardening 价-1b：生产者集来自 toollog 的 Write/Edit 归因）。
+	// doc gate 拒绝消费自录分数——「9 分被拦后自己录 92 分过关」的取证案例
+	// 在此关闭。False = 独立，或归因未知（无生产者遥测 → fail-open）。
+	SelfReview bool `json:"self_review,omitempty"`
 }
 
 // ArtifactRef is TaskState's verifiable pointer to a spec file (I5): Path is DataDir-relative (portable across machines), Hash is the content sha256 (first 16 hex).

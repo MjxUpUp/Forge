@@ -224,6 +224,11 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 		} else {
 			reasons = append(reasons, fmt.Sprintf(`L2 文档回检未通过（第 %d 轮，得分 %d）——修复 doc-review（rubric）的 Critical/Important 发现后重新评审`, state.DocReview.Round, state.DocReview.RubricScore))
 		}
+	case state.DocReview.SelfReview:
+		// 价-1b（独立性归因，delivery-hardening）：记录会话 = 改动生产者 →
+		// 自录分数不被消费。取证案例（sess_cbe4047c）：9 分被拦后自己录 92 分
+		// 过关——本 case 关闭该洞。独立会话/子 agent 复审后重新记录即过。
+		reasons = append(reasons, fmt.Sprintf(`L2 文档回检为同会话自审（记录者=改动生产者，得分 %d 不被消费）——由独立会话或只读子 agent 复审后重新 forge task doc-review`, state.DocReview.RubricScore))
 	case state.DocReview.RubricScore < DocRubricThreshold:
 		reasons = append(reasons, fmt.Sprintf(`L2 文档回检得分 %d 低于阈值 %d——按 doc-review skill 的四维判据改进后重新评审`, state.DocReview.RubricScore, DocRubricThreshold))
 	}

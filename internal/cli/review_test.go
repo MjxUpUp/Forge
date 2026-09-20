@@ -5,9 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/spf13/cobra"
 )
 
@@ -583,5 +585,43 @@ func TestReviewTestDiff_CommittedFormCaught(t *testing.T) {
 	}
 	if !found {
 		t.Fatal(`已提交形态的测试变更在二轮盖章必须落 test-diff 行（P2-3 回归钉）`)
+	}
+}
+
+// TestReviewPassSelfReviewDisclosure（价-1b）：盖章会话 ∈ 生产者集 →
+// self-review WARN 披露行落盘（review-pass 的独立性归因接线钉）。
+func TestReviewPassSelfReviewDisclosure(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+	const ref = `feat/selfrev`
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{TaskRef: ref, Branch: ref}); err != nil {
+		t.Fatal(err)
+	}
+	// 生产者遥测：当前会话有 Write 归属本任务 → 盖章即自审。
+	// t.Setenv 注入 FORGE_SESSION_ID——CurrentSessionID 读宿主 env，测试态
+	// 必须显式给（空会话在归因里是 fail-open unknown）。
+	t.Setenv("FORGE_SESSION_ID", "sess-selfrev-test")
+	if err := toolusage.Record(dir, &toolusage.ToolCall{
+		ToolName: "Write", TaskRef: ref, SessionID: taskpipeline.CurrentSessionID(), Timestamp: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		t.Fatalf(`review pass: %v`, err)
+	}
+	found := false
+	entries, _ := checklog.LoadForTask(dir, ref)
+	for _, e := range entries {
+		if e.Check == taskpipeline.CheckNameSelfReview && e.Meta["kind"] == "code-review" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("生产者会话盖章应落 self-review 披露行")
 	}
 }
