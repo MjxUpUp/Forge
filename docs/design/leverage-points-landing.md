@@ -114,3 +114,5 @@ P2：L4 导出设计稿 → L6 适配器
 ### 方法论来源与映射（五步管道 × Forge 机制）
 
 本批与后续两批（理解侧闭环 / L3 校准判官）源自调研会话 sess_1ca53ff5 的五步管道（喂样例不喂形容词 / 约束三分类 / 理解对账物 / 机器跑不变量人审例外 / 全程记账）。映射与裁决的单一真相源：**ADR-0001**（docs/adr/0001-constraint-three-way-classification.md）。要点：第 ④⑤ 步已由既有宪法覆盖（deterministic/agent-claim 二分、held-out Goodhart 隔离、checklog/decisions.md 记账），本三批次补输入侧（①②③）；「可命题」中间类归 L3 κ 门控判官，永不进 hard。
+
+批次 B（feat/understanding-loop，2026-09-20）：理解侧闭环已落地——requirement-clarification spec 模板加「样例对（Ground Truth）」节与「约束三分类投递」；prototype-confirmation 导出加 ```accept 围栏（仅✅认可项进围栏）。端到端演练（v1.68.0 实测）：确认导出文本 → task start --artifact spec → 围栏提取 2 条考卷、盖 spec-extract 层 → verify-acceptance 实跑全过——对账物→考卷的编译通道闭合。
