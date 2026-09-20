@@ -1,6 +1,7 @@
 # Oracle Pipeline：正确性的传递链（2026-09）
 
-> 状态：阶段一、二、三全部落地（2026-09-19）。
+> 状态：阶段一、二、三全部落地（2026-09-19）；delivery-hardening
+> 墙价硬批次落地（2026-09-20，基于 sess_cbe4047c 取证的复发面）。
 > 起点：用户工作模式转向「只接受和验收交付结果」——人在环路上只剩两站：
 > 入口（用业务判断定义"什么算对"）与出口（验收交付）。Forge 的职责从
 > "验证执行的引擎"升级为"正确性的保值管道"：业务判断从入口注入，到出口
@@ -62,6 +63,23 @@ flag 判 changed/破坏性，故一律新命令）；② 八个命令同属一�
 链），拆 minor 拆的是一个可评审整体；③ 用户已对整批方案拍板（本目标即其
 落地）。**援引边界**：本裁决不可作为无关命令堆积的先例——与 oracle pipeline
 无整体设计关系的命令新增，仍按 ≤2/minor 预算。
+
+## delivery-hardening（墙价硬，2026-09-20）
+
+取证驱动（sess_cbe4047c 会话取证的复发面）：
+
+- 墙-1a gate-cmd-form BLOCK ratchet（1.67 机械版本门，会话上限 5，FORGE_GATE_CMD_FORM=0 逃生落审计）——治管道滥用（取证 22 次）
+- 墙-1b hazard 清账：未确认拦截悬账 → complete 硬拦；confirm/release 加真人终端 char-device 判别（治 7 拦 0 确认照常交付；FORGE_HAZARD_PENDING=disable 留 CI 逃生）
+- 墙-1c --silent 修正：显式 --ref 解析失败必非零（治 --ref HEAD --silent 伪造推进信号）
+- 墙-2a 考卷质量下限：有测试能力仓库考卷须含 ≥1 条测试类命令（治单条 go build 弱考卷；无测试能力仓库跳过防假墙）
+- 墙-2b heldout 自动入卷：兜底路径自动 --draw 1 --apply（用户出题一次全程受益；池空提示沉淀）
+- 价-1a 逃生→未验证面：每个验证类逃生在 report 转为显式披露行（免验收方翻 checklog）
+- 价-1b 独立性归因：盖章会话 ∈ 生产者集（toollog Write/Edit 归因）→ self-review 标记：doc-gate 不消费自录分（治自录 92 分洞）；review-pass 落 WARN 披露行
+- 价-1c self-supplied 兜：report 统一计数 forge 无法验证的自供文本（self-refresh/--none 申辩/reset-loop）
+- 硬-1a mutation 提速：只变异磁盘上有配对测试的改动文件，默认样本 6→3
+- 硬-1b mutation 复发升硬（连续 3 任务零消费 → 硬拦，FORGE_MUTATION_GATE=disable 逃生）+ task-verify 的 fuzz 发现提醒
+
+已知边界：hazard 清账的出口依赖真人终端 char-device 判别（mintty 的命名管道会误拒真人，指引 ConPTY）；独立性归因依赖 toollog 遥测（无遥测 fail-open 披露为 unknown）；同宿主子代理共用 session id 的形态下 self-review 检出会把独立子代理误标为自审（披露定价而非拒绝，取舍如此）。
 
 ## 已知边界
 
