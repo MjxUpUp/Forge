@@ -723,6 +723,7 @@
     {
       "path": "forge task accept",
       "flags": [
+        "assert",
         "ref"
       ]
     },
@@ -1065,7 +1066,9 @@
       "path": "forge task start",
       "flags": [
         "accept",
+        "accept-file",
         "artifact",
+        "assert",
         "assignee",
         "base",
         "branch",

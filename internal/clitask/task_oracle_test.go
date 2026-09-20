@@ -137,11 +137,20 @@ func TestTaskComplete_BlockedWhenZeroAcceptance(t *testing.T) {
 }
 
 // resetTaskCmdFlags 重置单个子命令的 flag 残留（cobra 同进程多次 Execute）。
+// array 类 flag（StringArray/StringSlice）的空默认渲染为 "[]"，Set("[]") 会把
+// 字面 "[]" 当元素写入（首 Set 是替换、后续是追加，均非清空）——array flag 必须
+// 走 SliceValue.Replace(nil) 真清空（task accept --assert 首次暴露此坑）。
 func resetTaskCmdFlags(cmd interface {
 	Flags() *pflag.FlagSet
 }) {
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		f.Changed = false
+		if f.DefValue == "[]" {
+			if sv, ok := f.Value.(pflag.SliceValue); ok {
+				_ = sv.Replace(nil)
+				return
+			}
+		}
 		_ = f.Value.Set(f.DefValue)
 	})
 }

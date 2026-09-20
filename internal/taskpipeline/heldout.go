@@ -190,11 +190,16 @@ func VerifyHeldout(root string, state *TaskState) HeldoutResult {
 	res.Checked = true
 	res.VisiblePassed = state.AllAcceptancePassed()
 	res.HeldoutPassed = true
+	// 逐条判定与 VerifyAcceptance 走同一分派（runAndJudgeCriterion——含 v2 断言），
+	// 双套件共享唯一判定实现；held-out 的逐断言 verdict 不外显（保留集内容不泄露），
+	// 只用 criterion 级结果驱动 gap 判定。变更集同款惰性闸（仅 file-* 断言实算）。
+	var changed []string
+	if hasFileAssertion(sc.Criteria) {
+		changed = taskChangedFiles(root, state)
+	}
 	for i := range sc.Criteria {
 		c := &sc.Criteria[i]
-		passed, output := RunTestCommand(root, c.Run)
-		c.Passed = judgeAcceptance(passed, output, c.Expected)
-		c.Output = truncateAcceptanceOutput(output)
+		runAndJudgeCriterion(root, c, changed)
 		c.AcceptedHeadCommit = GetHeadCommit(root)
 		if !c.Passed {
 			res.HeldoutPassed = false

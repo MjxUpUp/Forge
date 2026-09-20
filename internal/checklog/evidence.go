@@ -188,6 +188,7 @@ var verificationChecks = map[CheckName]bool{
 	CheckBashGuard:                        true, // bash-guard：PreToolUse 拦截判定
 	CheckFileSentinel:                     true, // file-sentinel：哨兵文件判定
 	CheckName("acceptance"):               true, // taskpipeline.CheckNameAcceptance：实跑验收标准（deterministic 不可伪造）
+	CheckName("acceptance-assert"):        true, // taskpipeline.CheckNameAcceptanceAssert：验收 v2 逐断言判定行（deterministic；guard：evidence_guard_test.go 对照 taskpipeline 源声明）
 	CheckName("test-run"):                 true, // taskpipeline.CheckNameTestRun：实跑测试套件（deterministic 不可伪造）
 	CheckName("skill-decisions-advisory"): true, // taskpipeline.CheckNameSkillDecisions：task-verify guardrail 判定
 	CheckName("mutation-sampling"):        true, // taskpipeline.CheckNameMutationSampling：变异体注入实跑（oracle-pipeline L2a——forge 亲自变异/跑测试/数杀灭）

@@ -230,7 +230,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		if err := checkSkillDecisions(root, state, gitChanged); err != nil {
 			return nil, err
 		}
-		adviseAcceptance(state)
+		adviseAcceptance(root, state)
 	}
 
 	// 证据链 agent-claim（executor_check_common.go）：仅在 gate 实际通过且任务未完成时记录

@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // CheckNameAcceptance 是 verify-acceptance 实跑验收标准后记的 checklog 条目
@@ -118,26 +119,41 @@ func ParseAcceptanceFromPlan(plan string) []AcceptanceCriterion {
 	return out
 }
 
-// MergeAcceptance merges two sets of acceptance criteria: base takes priority (explicit --accept), addition deduplicates by Run to fill in.
+// MergeAcceptance merges two sets of acceptance criteria: base takes priority (explicit --accept), addition deduplicates by the (Run, Expected, Assertions) triple to fill in.
 //
-// MergeAcceptance 合并两组验收标准：base 优先（显式 --accept），addition 按 Run 去重补充。
-// 用于 --plan-file 提取与显式 --accept 共存：显式条目表达覆盖/微调某条标准应胜出，plan
-// 提取只补 base 未覆盖的 Run。
+// MergeAcceptance 合并两组验收标准：base 优先（显式 --accept），addition 按
+// (Run, Expected, Assertions) 三元组去重补充。
+// 用于 --plan-file 提取与显式 --accept 共存：三元组与 MergeAcceptanceResults 的
+// 结果匹配键同口径（spec 身份的单一键形）——同 Run 不同 Expected/断言集的两条是
+// 两个不同检查，单 Run 键会把它们吞成一条（v2 断言集不同的补登被静默丢弃）。
+// 完全相同的重复条目无论用哪个键结果都一样，三元组安全。
 // 约束：返回值可能复用 base 底层数组（addition 非空且 base 有空余容量时 append 原地写），
 // 调用后不应再使用 base slice（当前唯一调用方传入后即弃，安全）。
 func MergeAcceptance(base, addition []AcceptanceCriterion) []AcceptanceCriterion {
 	seen := make(map[string]struct{}, len(base))
 	for _, c := range base {
-		seen[c.Run] = struct{}{}
+		seen[acceptanceIdentity(c)] = struct{}{}
 	}
 	for _, c := range addition {
-		if _, ok := seen[c.Run]; ok {
+		key := acceptanceIdentity(c)
+		if _, ok := seen[key]; ok {
 			continue
 		}
 		base = append(base, c)
-		seen[c.Run] = struct{}{}
+		seen[key] = struct{}{}
 	}
 	return base
+}
+
+// acceptanceIdentity renders the spec-identity key (Run, Expected, Assertions)
+// shared by MergeAcceptance's dedup and MergeAcceptanceResults' result matching —
+// one key shape for one spec identity, no drift between the two consumers.
+//
+// acceptanceIdentity 渲染 spec 身份键 (Run, Expected, Assertions)——MergeAcceptance
+// 的去重与 MergeAcceptanceResults 的结果匹配共用：一个 spec 身份一种键形，
+// 两个消费方之间无漂移。
+func acceptanceIdentity(c AcceptanceCriterion) string {
+	return c.Run + "\x1f" + c.Expected + "\x1f" + assertionsKey(c.Assertions)
 }
 
 // EnsureGoTestVerbose inserts -v into bare `go test ...` acceptance criteria in place.
@@ -145,15 +161,17 @@ func MergeAcceptance(base, addition []AcceptanceCriterion) []AcceptanceCriterion
 // EnsureGoTestVerbose 原地改写 Run 为裸 `go test ...` 且缺 -v 的验收标准，在 test 后
 // 插入 -v——没有它 go test 不输出 PASS 行，非空 Expected 子串（唯一关心输出的情形）
 // 永不匹配（真实 usage 日志失败模式：agent 登记 `go test ./... :: PASS`，
-// verify-acceptance 判负，只能 abort 重开任务）。Expected 为空（只看退出码）与非
-// 字面 `go test` 的命令（gotestsum、shell 组合）不动。-v 输出保留 plain 输出的
-// ok/FAIL 行，故原本匹配的子串仍匹配。返回被改写的原始 Run 串供调用方明示——
-// 登记的命令绝不静默改写。
+// verify-acceptance 判负，只能 abort 重开任务）。v2 起输出消费型断言（contains /
+// not-contains）与 Expected 同等对待：读输出的判定都需要 verbose，否则同一坑再现。
+// Expected 空、断言集也无输出消费型（只看退出码 / 纯 file-*）与非字面 `go test`
+// 的命令（gotestsum、shell 组合）不动。-v 输出保留 plain 输出的 ok/FAIL 行，
+// 故原本匹配的子串仍匹配。返回被改写的原始 Run 串供调用方明示——登记的命令
+// 绝不静默改写。
 func EnsureGoTestVerbose(cs []AcceptanceCriterion) []string {
 	var adjusted []string
 	for i := range cs {
-		if cs[i].Expected == "" {
-			continue // 退出码判定不需要 verbose 输出
+		if cs[i].Expected == "" && !hasOutputAssertion(cs[i].Assertions) {
+			continue // 退出码/file-* 判定不需要 verbose 输出
 		}
 		if rewritten, ok := ensureGoTestVerboseRun(cs[i].Run); ok {
 			adjusted = append(adjusted, cs[i].Run)
@@ -161,6 +179,38 @@ func EnsureGoTestVerbose(cs []AcceptanceCriterion) []string {
 		}
 	}
 	return adjusted
+}
+
+// hasOutputAssertion reports whether the assertion set contains an output-consuming
+// type (contains / not-contains) — those need `go test -v` output exactly like a
+// non-empty Expected does.
+//
+// hasOutputAssertion 报告断言集是否含输出消费型（contains / not-contains）——
+// 它们与非空 Expected 一样需要 `go test -v` 的输出。
+func hasOutputAssertion(as []Assertion) bool {
+	for _, a := range as {
+		if a.Type == tasktypes.AssertionTypeContains || a.Type == tasktypes.AssertionTypeNotContains {
+			return true
+		}
+	}
+	return false
+}
+
+// hasFileAssertion reports whether any criterion carries a diff-judging
+// (file-changed / file-untouched) assertion — the gate for lazily computing the
+// task-changed file set (git cost only when actually consumed).
+//
+// hasFileAssertion 报告是否有条目挂着 diff 判定型（file-changed /
+// file-untouched）断言——惰性实算任务变更文件集的闸（只在真被消费时付 git 成本）。
+func hasFileAssertion(cs []AcceptanceCriterion) bool {
+	for _, c := range cs {
+		for _, a := range c.Assertions {
+			if a.Type == tasktypes.AssertionTypeFileChanged || a.Type == tasktypes.AssertionTypeFileUntouched {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ensureGoTestVerboseRun 是 EnsureGoTestVerbose 的单命令核心：run 是不带任何 -v 变体
@@ -181,8 +231,9 @@ func ensureGoTestVerboseRun(run string) (string, bool) {
 	return strings.Join(fields, " "), true
 }
 
-// judgeAcceptance 是 acceptance 三态判定的单一真相源：RunTestCommand 的 passed(exit 0)
-// 与 Expected 子串比对。唯一消费方是 VerifyAcceptance（verify-acceptance 实跑回填 state）。
+// judgeAcceptance 是 acceptance v1 三态判定的单一真相源：RunTestCommand 的 passed(exit 0)
+// 与 Expected 子串比对。唯一消费方是 runAndJudgeCriterion（VerifyAcceptance 与
+// VerifyHeldout 双套件经它共用）；v2 断言的判定在同文件的 assertion_judge.go 分派。
 //
 // 三态：passed=false → false；Expected 非空 → Contains(output, Expected)；否则 → true。
 func judgeAcceptance(passed bool, output, expected string) bool {
@@ -204,6 +255,9 @@ func judgeAcceptance(passed bool, output, expected string) bool {
 // Expected 非空→Passed = 输出含该子串；Expected 空→Passed = 退出码 0。
 // 不写 checklog——调用方（CLI）决定记录时机，本函数保持纯逻辑可单测。
 //
+// v2 断言经 runAndJudgeCriterion 逐条判定（与 VerifyHeldout 同一分派）；逐断言
+// 结果经 VerifyAcceptanceWithVerdicts 取回（本函数丢弃——保旧签名与调用方兼容）。
+//
 // freshness 快照：除 AcceptedHeadCommit（实跑时 HEAD，保留作溯源）外，每条还记内容快照
 // （AcceptedBaseCommit = 任务的 HeadCommit，AcceptedChangeHash =
 // review.SourceChangesSince(base)）。CheckAcceptanceFresh 比对重算的内容指纹，故
@@ -211,11 +265,31 @@ func judgeAcceptance(passed bool, output, expected string) bool {
 // ——只有验收后的真实源码改动才会。任务无可用 HeadCommit 时（老 state，或记录的 commit
 // 被改写掉）内容字段留空，消费方回落旧的 HEAD 相等检查。
 func VerifyAcceptance(root string, state *TaskState) {
+	VerifyAcceptanceWithVerdicts(root, state)
+}
+
+// VerifyAcceptanceWithVerdicts is VerifyAcceptance plus the per-assertion
+// verdicts — the evidence-row payload for CLI (checklog:acceptance-assert rows).
+// The task-changed file set is computed once per call (git cost amortized over
+// all criteria); Run-less criteria with only file-* assertions skip command
+// execution entirely.
+//
+// VerifyAcceptanceWithVerdicts 是 VerifyAcceptance 加逐断言判定结果——CLI 记
+// checklog:acceptance-assert 证据行的载荷。任务变更文件集每次调用只算一次
+// （git 成本由全部条目摊销，且惰性——仅存在 file-* 断言时实算，纯 v1 任务零
+// git 开销）；无 Run 且断言全为 file-* 的条目完全跳过命令执行。
+func VerifyAcceptanceWithVerdicts(root string, state *TaskState) []AssertionVerdict {
+	var changed []string
+	if hasFileAssertion(state.Acceptance) {
+		changed = taskChangedFiles(root, state)
+	}
+	var verdicts []AssertionVerdict
 	for i := range state.Acceptance {
 		c := &state.Acceptance[i]
-		passed, output := RunTestCommand(root, c.Run)
-		c.Passed = judgeAcceptance(passed, output, c.Expected)
-		c.Output = truncateAcceptanceOutput(output)
+		for _, v := range runAndJudgeCriterion(root, c, changed) {
+			v.CriterionIdx = i
+			verdicts = append(verdicts, v)
+		}
 		// 记实跑时的 HEAD 快照：forge_task_proof 据此判定 Passed 是否 fresh（== 当前 HEAD）。
 		// 老无快照（空）→ proof v1 重跑兜底；有快照但 != HEAD → acceptance 基于旧代码，须重跑。
 		c.AcceptedHeadCommit = GetHeadCommit(root)
@@ -230,6 +304,7 @@ func VerifyAcceptance(root string, state *TaskState) {
 			}
 		}
 	}
+	return verdicts
 }
 
 // MergeAcceptanceResults merges freshly-run acceptance results (the run-side copy carrying Passed/Output/AcceptedHeadCommit) into the AUTHORITATIVE on-disk state, matching by the (Run, Expected) pair.
