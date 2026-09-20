@@ -44,7 +44,7 @@ func SeedTaskStateForSchema() any {
 	s.ReportedFindings = []string{"fp"}
 	s.DocReview = &tasktypes.DocReview{
 		Passed: true, RubricScore: 88, Round: 1, Reviewer: "r", ReviewedAt: now,
-		HeadCommit: "abc", DocsFingerprint: "fp",
+		HeadCommit: "abc", DocsFingerprint: "fp", SelfReview: true, // 键集提取用（P2-7：新键须进 compat schema 面）
 	}
 	s.DocReviewHistory = []tasktypes.DocReview{*s.DocReview}
 	s.Integrity = &tasktypes.StateIntegrity{KeyID: "k", Alg: "a", Sig: "s"}

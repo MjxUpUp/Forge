@@ -404,3 +404,66 @@ func TestRenderTaskReport_EmptyBranches(t *testing.T) {
 		}
 	}
 }
+
+// TestReportEscapeDebt（价-1a）：验证类逃生在 report 未验证面渲染为显式
+// 披露行——验收方扫未验证面即可见，不必翻 checklog。
+func TestReportEscapeDebt(t *testing.T) {
+	dir, taskRef := setupChainTask(t, "")
+	esc := checklog.EscapeHatchEntry("unused-gate", checklog.EscapeReasonEnv, taskRef, "escape-hatch: test")
+	esc.TaskRef = taskRef
+	if err := checklog.Record(dir, esc); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := taskpipeline.LoadTaskState(dir, taskRef)
+	rep, err := buildTaskReport(dir, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.EscapeDebt) == 0 {
+		t.Fatal("unused-gate 逃生应产 EscapeDebt 行")
+	}
+	text := renderTaskReport(rep)
+	if !strings.Contains(text, "逃生债") || !strings.Contains(text, "internal/ 零引用导出未核查") {
+		t.Errorf("未验证面应含逃生债行:\n%s", text)
+	}
+}
+
+// TestReportSelfSupplied（价-1c）：self-refresh 行被计数并渲染提示。
+func TestReportSelfSupplied(t *testing.T) {
+	dir, taskRef := setupChainTask(t, "")
+	if err := checklog.Record(dir, &checklog.Entry{
+		Check: checklog.CheckReviewPass, Passed: true, Checked: true, TaskRef: taskRef,
+		Detail: "self-refresh: baseline re-stamped over changed source via --note; review round 1 passed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := taskpipeline.LoadTaskState(dir, taskRef)
+	rep, err := buildTaskReport(dir, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.SelfSupplied < 1 {
+		t.Fatalf("self-refresh 应计数, got %d", rep.SelfSupplied)
+	}
+	if text := renderTaskReport(rep); !strings.Contains(text, "自供申辩") {
+		t.Errorf("渲染应含自供申辩行:\n%s", text)
+	}
+}
+
+// TestGateSilentRefErrorMustFail（墙-1c）：--silent 只静默无任务路径——显式
+// --ref 解析失败必须非零（--ref HEAD 伪造推进信号的取证形态关闭）。
+func TestGateSilentRefErrorMustFail(t *testing.T) {
+	dir, _ := setupChainTask(t, "")
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	Root.SetArgs([]string{"gate", "task-implement", "--ref", "HEAD", "--silent"})
+	Root.SetOut(nil)
+	Root.SetErr(nil)
+	err := Root.Execute()
+	if err == nil {
+		t.Fatal(`--ref HEAD --silent 必须非零退出（无效引用不得静默成功）`)
+	}
+}

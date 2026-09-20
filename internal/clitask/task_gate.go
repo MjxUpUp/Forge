@@ -40,10 +40,10 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	if explicitRef != "" {
 		state, err = taskpipeline.LoadTaskState(root, explicitRef)
 		if err != nil {
-			if silent {
-				return nil
-			}
-			return err
+			// 墙-1c（sess_cbe4047c 取证形态）：--silent 只静默"无任务"路径——
+			// 显式 --ref 解析失败必须非零，否则 --ref HEAD 这类无效引用借
+			// --silent 静默成功，伪造门禁推进信号。
+			return fmt.Errorf("加载任务 %q 失败: %w", explicitRef, err)
 		}
 	} else {
 		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
@@ -195,6 +195,22 @@ func registerConventionsDefaults(root string, state *taskpipeline.TaskState) ([]
 	fmt.Printf("未登记验收标准——已从 conventions 档案自动登记默认套件（考卷层级 conventions，项目默认考卷）：\n")
 	for i, c := range added {
 		fmt.Printf("  [%d] %s\n", i+1, c.Run)
+	}
+	// 墙-2b（heldout 自动入卷）：池非空时兜底路径再抽 1 套业务坏天气集并入
+	// 保留集——用户出题一次、所有任务被动受益（正确性保值管道的原意）。池空时
+	// 提示沉淀（用户面的种子提醒，不打扰 agent 主流程）。
+	if sets := taskpipeline.ListHeldoutSets(root, ""); len(sets) > 0 {
+		if drawn, derr := taskpipeline.DrawHeldoutSets(root, "", 1); derr == nil && len(drawn) > 0 {
+			if state.CompletedAt == nil {
+				if total, aerr := taskpipeline.ApplyHeldoutToTask(root, state.TaskRef, drawn); aerr == nil {
+					fmt.Printf("held-out 池自动入卷：并入 %s（tag=%q，共 %d 条保留题）——verify-acceptance 将实跑双套件记 gap\n", drawn[0].Name, drawn[0].Tag, total)
+				} else {
+					fmt.Fprintf(os.Stderr, "⚠ held-out 池自动入卷失败：%v\n", aerr)
+				}
+			}
+		}
+	} else {
+		fmt.Println("ℹ held-out 池为空——业务坏天气集（金额边界/并发/退款链）可沉淀一次全程受益：forge task heldout-pool --add <file> --name <名>")
 	}
 	return added, ""
 }

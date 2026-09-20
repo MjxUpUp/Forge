@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -71,6 +73,38 @@ func TestHazardCmd_LongGuidanceCopy(t *testing.T) {
 	for _, gone := range []string{"FORGE_ALLOW_HAZARD", "AskUserQuestion"} {
 		if strings.Contains(hazardCmd.Long, gone) {
 			t.Errorf("hazard Long help must not contain %q anymore:\n%s", gone, hazardCmd.Long)
+		}
+	}
+}
+
+// TestHazardLogRejectsResetEvents（delivery-hardening P0-1 回归钉）：confirm /
+// halt-release 是清账重置点——经 hazard log 调试入口写入被拒（否则 agent 一条
+// `forge hazard log confirm x` 零交互清空悬账，墙-1b 被证伪）。
+func TestHazardLogRejectsResetEvents(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `t@t.com`)
+	runGit(t, dir, `config`, `user.name`, `T`)
+	// forge 项目锚（projectroot.Find 需要项目形态——.forge 目录同 setupChainTask）。
+	if err := os.MkdirAll(filepath.Join(dir, ".forge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	for _, bad := range []string{"confirm", "halt-release", "reset", "whatever"} {
+		if err := runHazardLog(nil, []string{bad, "some command"}); err == nil {
+			t.Errorf("事件类型 %q 应被白名单拒绝", bad)
+		} else if !strings.Contains(err.Error(), "真人终端") {
+			t.Errorf("拒绝文案应指向真人终端出口: %v", err)
+		}
+	}
+	// hook 实际使用的三类事件放行（写入临时项目的事件流）。
+	for _, okType := range []string{"block", "release", "data"} {
+		if err := runHazardLog(nil, []string{okType, "some command"}); err != nil {
+			t.Errorf("事件类型 %q 应放行: %v", okType, err)
 		}
 	}
 }
