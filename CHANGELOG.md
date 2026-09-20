@@ -4,6 +4,8 @@
 
 ### ⚠️ 行为变更（Behavior Change）
 
+* **traps 扩容 3→14（L3 补齐批）**：按 cheat-scan 七模式族人工策展 11 个新陷阱入 `evals/forge/traps/`（探测面为 `forge gate push --dry-run` 的 base...HEAD 复检，任务态无关）；TrapCase 类型枚举同步接受 CheatPattern 值。`forge eval traps run` 实测 capture 14/14。L3 设计项「traps 3→20」按模式族全覆盖口径达成七族 11 例（合计 14），未到 20 的差额（纵深变体）留待真实命中反混淆再策展——golden/traps 双报告可复验。
+
 * **exit 断言接管退出码判定**（L3 精化，spec-as-gate v2）：criterion 声明了 `exit` 型断言时，隐式 exit==0 检查被显式期望退出码取代——`sh fail.sh` + `exit: :: 1` 的「期望失败」形态（1.68.0 前无法整条通过）现在判过；期望不匹配方向仍 fail-closed。golden 断言族 10 例钉死（evals/forge/golden/assert-*.yaml，重放一致率 1.00）。同批新增命令（净增 +2/minor，记账 compat-commitments §五）：`forge eval golden harvest`（考卷收割→候选骨架，canonical 只读）、`forge review llm`（判官臂派遣说明 + 判分校验留档）。
 
 * **requirement-clarification 规格模板扩节**（理解侧闭环批次，ADR-0001）：验收条件后新增「样例对（Ground Truth）」节（≥2 正例 + ≥1 反例，可命令化样例落 `accept:` 行）；「约束」节升级为「三分类投递」（可执行→accept 行 / 可命题→短规则+正反例 / 不可命题→显式人工）。存量影响：按旧模板写的规格仍完整有效——新节是增量要求，下次澄清起生效；`accept:` 行在 spec 落盘并经验收产物提取后成为实跑考卷。
