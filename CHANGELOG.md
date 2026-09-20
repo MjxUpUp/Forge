@@ -10,6 +10,21 @@
 * **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
 * **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
 
+## [1.67.0](https://github.com/MjxUpUp/Forge/compare/v1.66.1...v1.67.0) (2026-09-20)
+
+
+### Features
+
+* **delivery-hardening:** 墙价硬批次——取证驱动的十项复发面关闭 ([485f713](https://github.com/MjxUpUp/Forge/commit/485f71374d9ed49d40ee617610b78c4580d817bb))
+* **oracle-pipeline:** 阶段一——考卷层级制 + complete 登记门 + conventions 兜底 + 交付验收单 + chain-init ([3024c8e](https://github.com/MjxUpUp/Forge/commit/3024c8e0f5cc742e250b425fe266cc6eea8555cf))
+* **oracle-pipeline:** 阶段三——heldout 池 + seeded-bug 红队演练 + test-diff 隔离审查 ([3818689](https://github.com/MjxUpUp/Forge/commit/381868980bf4d005aa03d35b5b4b9116f6434d2b))
+* **oracle-pipeline:** 阶段二——机器出题三件套 + 修复自证回归前置 ([85afc13](https://github.com/MjxUpUp/Forge/commit/85afc139a2c64db9f066f026abb679b3b654849a))
+
+
+### Bug Fixes
+
+* **redteam:** fixture 字面量的导出名占位符化——unused-gate 行级提取器把字符串里的 func TestXxx 当真声明（自举拦截，名字运行时拼回） ([6e63e91](https://github.com/MjxUpUp/Forge/commit/6e63e9157c6e6852b770ded9be05ec1ff1d89464))
+
 ## [1.66.1](https://github.com/MjxUpUp/Forge/compare/v1.66.0...v1.66.1) (2026-09-18)
 
 
