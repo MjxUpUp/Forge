@@ -207,6 +207,9 @@ func TestReadme_NewFlagsAreDocumented(t *testing.T) {
 var skillRefAllowlist = map[string]bool{
 	// checklog 观察条目名（forge selfcheck 落痕，非 skill）
 	`selfcheck-pairing`: true, `selfcheck-scope`: true,
+	// acceptance v2 断言类型名与逐断言证据行 check 名（spec-as-gate L2 P1，非 skill）
+	`exit`: true, `contains`: true, `not-contains`: true, `file-changed`: true,
+	`file-untouched`: true, `acceptance-assert`: true,
 	// review 模式名（cheat-scan deterministic 分类标签，非 skill）
 	`assertion-strip`: true, `comment-only-fix`: true, `complexity-report`: true,
 	`dead-branch`: true, `error-swallow`: true, `type-suppression`: true, `test-run`: true,

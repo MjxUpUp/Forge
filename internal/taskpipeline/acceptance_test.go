@@ -186,18 +186,22 @@ func TestParseAcceptanceFromPlan(t *testing.T) {
 	}
 }
 
-// TestMergeAcceptance 锁定显式 --accept 优先、plan 提取按 Run 去重补充。
-// 共存时显式条目表达覆盖/微调应胜出，plan 只补未冲突的 Run。
+// TestMergeAcceptance 锁定显式 --accept 优先、plan 提取按 (Run, Expected, Assertions)
+// 三元组去重补充（L2 P1 起，与 MergeAcceptanceResults 的结果匹配键同口径）：同 Run
+// 不同 Expected/断言集的两条是两个不同检查，单 Run 键会把后者吞掉（v2 断言集不同
+// 的补登被静默丢弃）；完全相同的重复条目仍去重（base 优先）。
 func TestMergeAcceptance(t *testing.T) {
 	base := []AcceptanceCriterion{{Run: `a`, Expected: `1`}, {Run: `b`, Expected: `2`}}
 	addition := []AcceptanceCriterion{
-		{Run: `b`, Expected: `override`}, // Run 冲突 → 丢弃（base 优先）
+		{Run: `b`, Expected: `override`}, // 同 Run 不同 Expected → 不同检查，补充（不再被 Run 键吞掉）
+		{Run: `b`, Expected: `2`},        // 与 base 完全同三元组 → 丢弃（base 优先）
 		{Run: `c`, Expected: `3`},        // 新 Run → 补充
 	}
 	got := MergeAcceptance(base, addition)
 	want := []AcceptanceCriterion{
 		{Run: `a`, Expected: `1`},
-		{Run: `b`, Expected: `2`}, // 保留 base，未被 override 覆盖
+		{Run: `b`, Expected: `2`},        // 保留 base
+		{Run: `b`, Expected: `override`}, // 同 Run 不同 Expected 的新检查
 		{Run: `c`, Expected: `3`},
 	}
 	if len(got) != len(want) {
