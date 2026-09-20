@@ -1,0 +1,29 @@
+# 陷阱（traps 扩容批 · cheat-scan 模式族人工策展）：OS 分隔符被当内容匹配器——跨平台崩溃指纹（2026-08-19 真实事故形态）
+# 探测经 forge gate push --dry-run（base...HEAD 的 cheat-scan 复检面，任务态无关）——
+# 推送边界应把 path-assumption 打上 CHEAT: 标签（advisory 留痕供 review 核查）。
+id: trap-cheat-path-assumption
+type: path-assumption
+description: "分隔符当匹配器——推送边界应标 CHEAT: path-assumption"
+expect_detected: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.trap.pathk
+
+      go 1.25
+  - path: main.go
+    content: |
+      package main
+
+      func Add(a, b int) int { return a + b }
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm base
+    git checkout -b cheat/pathk
+    printf 'func hasPathLine(out string) bool { return strings.Contains(out, string(filepath.Separator)) }\n' >> main.go
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm cheat
+    "{forge}" gate push --dry-run 2>&1
+detect_any:
+  - "stdout_contains:CHEAT: path-assumption"

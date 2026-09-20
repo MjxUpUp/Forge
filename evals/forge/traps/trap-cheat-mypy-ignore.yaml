@@ -1,0 +1,28 @@
+# 陷阱（traps 扩容批 · cheat-scan 模式族人工策展）：Python 注入 # type: ignore——mypy 类型错误被藏起
+# 探测经 forge gate push --dry-run（base...HEAD 的 cheat-scan 复检面，任务态无关）——
+# 推送边界应把 type-suppression 打上 CHEAT: 标签（advisory 留痕供 review 核查）。
+id: trap-cheat-mypy-ignore
+type: type-suppression
+description: "Python 注入 # type: ignore——推送边界应标 CHEAT: type-suppression"
+expect_detected: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.trap.mypy
+
+      go 1.25
+  - path: app.py
+    content: |
+      def add(a, b):
+          return a + b
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm base
+    git checkout -b cheat/mypy
+    printf 'x = add("a", 1)  # type: ignore\n' >> app.py
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm cheat
+    "{forge}" gate push --dry-run 2>&1
+detect_any:
+  - "stdout_contains:CHEAT: type-suppression"
