@@ -116,3 +116,9 @@ P2：L4 导出设计稿 → L6 适配器
 本批与后续两批（理解侧闭环 / L3 校准判官）源自调研会话 sess_1ca53ff5 的五步管道（喂样例不喂形容词 / 约束三分类 / 理解对账物 / 机器跑不变量人审例外 / 全程记账）。映射与裁决的单一真相源：**ADR-0001**（docs/adr/0001-constraint-three-way-classification.md）。要点：第 ④⑤ 步已由既有宪法覆盖（deterministic/agent-claim 二分、held-out Goodhart 隔离、checklog/decisions.md 记账），本三批次补输入侧（①②③）；「可命题」中间类归 L3 κ 门控判官，永不进 hard。
 
 批次 B（feat/understanding-loop，2026-09-20）：理解侧闭环已落地——requirement-clarification spec 模板加「样例对（Ground Truth）」节与「约束三分类投递」；prototype-confirmation 导出加 ```accept 围栏（仅✅认可项进围栏）。端到端演练（v1.68.0 实测）：确认导出文本 → task start --artifact "spec=<path>" → 围栏提取 2 条考卷、盖 spec-extract 层 → verify-acceptance 实跑全过——对账物→考卷的编译通道闭合。
+
+## L3 落地标记（feat/calibrated-judge，2026-09-20）
+
+已落地：**断言族 golden ×10**（evals/forge/golden/assert-*.yaml，五型 × 通过/失败 + 声明期拒绝 ×2——验证门禁族从 0 到 10；全量重放 captured 19/19、fpr 0/13、一致率 1.00，MANIFEST 已轮换）；**`forge eval golden harvest --since <ref>`**（机械投影候选骨架到 gitignore 的 candidates/，canonical 零写入由 guard 钉死）；**`forge review llm`**（判官臂派遣说明 + JudgeAuditEntry 判分校验留档，κ 地板 0.6/降级 ADVISORY 沿用 judgeaudit 既有执法——判官永不进 hard）；**exit 断言接管退出码判定**（期望失败形态可整条通过，golden 钉死）。命令面净增 +2（预算记账 compat-commitments §五）。
+
+未竟事项（诚实披露）：**traps 3→20 未达**——本批语境预算耗尽于断言族 golden 与 harvest/review-llm 代码面；traps 扩容延后，触发条件：下一批触碰 cheat-scan/pushgate 时按模式族补齐（deferred 三要素：触发=cheat-scan 批次、阈值=≥10 新陷阱、复验=golden/traps 双报告）。

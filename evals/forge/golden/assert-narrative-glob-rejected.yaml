@@ -1,0 +1,21 @@
+# 断言族 golden：声明期门禁——叙述性 glob（CJK 主导）在 task start 即拒，指引
+# checklist/intent 承载（与 --invariant 同规）。
+id: assert-narrative-glob-rejected
+gate: task-start-declaration
+kind: defective
+expect: flagged
+description: "叙述性 glob（CJK 主导的 file-changed 声明）→ task start 拒绝 exit 非 0"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.assert.c10
+      go 1.25
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init
+    "{forge}" task start --ref assert/c10 --accept "go version ::" --assert "file-changed:把所有文件都改一遍" 2>&1
+detect_any:
+  - "exit_nonzero"

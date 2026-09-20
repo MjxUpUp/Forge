@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/evalkit"
 	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -76,6 +79,8 @@ func init() {
 	reviewCmd.AddCommand(reviewPassCmd)
 	reviewCmd.AddCommand(reviewGateCmd)
 	reviewCmd.AddCommand(reviewStatusCmd)
+	reviewCmd.AddCommand(reviewLLMCmd)
+	reviewLLMCmd.Flags().String("scores", "", "判分文件（JudgeAuditEntry 数组，独立只读子代理产出）——校验后落 judge-samples 留档")
 	reviewPassCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测；ref 不存在直接报错，不回落分支 stamp）")
 	reviewPassCmd.Flags().String("note", "", "审查结论文本（记入 ReviewRound/stamp 与 checklog 审计留痕）")
 	reviewPassCmd.Flags().Bool("acknowledge-changes", false, "距上次审查基线有源码变更时显式确认重盖章（自我承担，checklog 记 self-refresh WARN 审计；正规路径是重派只读子 agent 复审后用 --note 记复审结论）")
@@ -528,3 +533,80 @@ func renderReviewStatus(root, explicitRef string) error {
 	fmt.Print(out)
 	return nil
 }
+
+// reviewLLMCmd — L3 判官臂（leverage-points-landing.md L3）：Go 侧零 LLM 调用——
+// 派遣说明由 agent 会话消费（独立只读子代理执行语义评审，对抗立场），forge 只做
+// 数学与证据校验（judgeaudit 哲学：分数采集是外部环节，forge 管裁决）。首发两类
+// semantic findings：design（设计与实现背离）/ mock-hallucination（mock 了不该
+// mock 的东西）。κ 地板 0.6、不达标降级 ADVISORY 的执法已在 judgeaudit.go——
+// 判官永不进 hard（红线）。
+var reviewLLMCmd = &cobra.Command{
+	Use:   "llm [--scores <file>]",
+	Short: "LLM 判官臂：输出独立只读子代理评审派遣说明；--scores 校验判分文件落 judge-samples 候选",
+	Long: `LLM 判官臂（L3 校准判官的喂料入口，spec 见 docs/design/leverage-points-landing.md L3）：
+
+  1. 无 flag：打印派遣说明——把当前任务 diff 交给【独立只读子代理】按 rubric 评审
+     （对抗立场、产出者不能自审），产出 schema 化 JudgeAuditEntry 判分文件。
+  2. --scores <file>：校验判分文件（JudgeAuditEntry 数组：doc_id/judge_scores/
+     human_score/threshold），落 evals/forge/judge-samples/llm-<ts>.json 留档，
+     并提示 forge eval judge-audit --scores <file> 算 κ（地板 0.6）。
+
+判官永不进 hard：κ<0.6 自动降级 ADVISORY（意见不走 hard 红线）——判分管
+「可命题」类约束的评审对照，BLOCKED 决策仍只属于机械事实门禁。`,
+	RunE: runReviewLLM,
+}
+
+func runReviewLLM(cmd *cobra.Command, args []string) error {
+	scoresPath, _ := cmd.Flags().GetString("scores")
+	if scoresPath == "" {
+		fmt.Print(llmDispatchScaffold)
+		return nil
+	}
+	body, err := os.ReadFile(scoresPath)
+	if err != nil {
+		return fmt.Errorf("读取 --scores %q 失败: %w", scoresPath, err)
+	}
+	var entries []evalkit.JudgeAuditEntry
+	if err := json.Unmarshal(body, &entries); err != nil {
+		return fmt.Errorf("判分文件不是 JudgeAuditEntry 数组（doc_id/judge_scores/human_score/threshold）: %w", err)
+	}
+	if len(entries) < 2 {
+		return fmt.Errorf("κ 需 ≥2 条判分样本，got %d", len(entries))
+	}
+	for i, e := range entries {
+		if e.DocID == "" || len(e.JudgeScores) == 0 || e.Threshold <= 0 {
+			return fmt.Errorf("entry[%d] 缺 doc_id/judge_scores/threshold（got %+v）", i, e)
+		}
+	}
+	outDir := filepath.Join("evals", "forge", "judge-samples")
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return err
+	}
+	dst := filepath.Join(outDir, fmt.Sprintf("llm-%d.json", time.Now().Unix()))
+	if err := os.WriteFile(dst, body, 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("✅ %d 条判分已留档 %s\n", len(entries), dst)
+	fmt.Printf("→ 算 κ（地板 0.6，不达标降级 ADVISORY）：forge eval judge-audit --scores %s\n", dst)
+	return nil
+}
+
+// llmDispatchScaffold 是判官臂的派遣说明——消费方是编排 agent（把说明连同任务
+// diff 一起交给独立只读子代理）。
+const llmDispatchScaffold = `===== LLM 判官派遣说明（复制给独立只读子代理）=====
+
+角色：独立语义评审官（对抗立场；你与代码产出者无关）。
+评审对象：指定任务的 diff（含测试变更）。
+首发两类 findings，各出一条判分（0-100）：
+  1. design——实现与设计/产物声明背离（漏做、偷换概念、半修）；
+  2. mock-hallucination——mock 了不该 mock 的依赖（测试表演：mock 挡住了本该真实验证的路径）。
+
+判分 rubric：100=无该类问题；70=轻微（不影响交付判定）；40=显著（需返工）；
+0=严重（伪装完成）。threshold=60（<60 判 fail）。
+
+输出 JSON（数组，每 finding 一条）：
+[{"doc_id":"<task-ref>#design","judge_scores":[<0-100>],"human_score":<同分自评，供 κ>,"threshold":60}]
+（human_score 由人工或第二评审官复核后回填；同源样本 κ 会虚高，README 已声明该局限。）
+
+//======================================================
+`
