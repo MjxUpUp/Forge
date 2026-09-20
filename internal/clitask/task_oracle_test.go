@@ -19,15 +19,6 @@ import (
 // （manual 层 + 去重 + 完成后拒绝）、conventions 兜底接线（登记+实跑全链）、
 // task report 组装与渲染、artifact --init-schema 一键接线。
 
-// resetArtifactFlags 经 cobra 全链路多次 Execute 时重置 flag 残留（与
-// TestArtifactCmdCobraSurface 同款——同进程多次 Execute 会泄上一次值）。
-func resetArtifactFlags() {
-	taskArtifactCmd.Flags().VisitAll(func(f *pflag.Flag) {
-		f.Changed = false
-		_ = f.Value.Set(f.DefValue)
-	})
-}
-
 // TestTaskAcceptCmd_RegistersManualTier: `forge task accept` registers criteria
 // stamped manual-tier; re-registering the same command dedups to zero with the
 // original tier preserved.
