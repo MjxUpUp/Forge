@@ -32,10 +32,11 @@ forge task artifact --extract（从 spec 产物提取）。`,
 func init() {
 	Root.AddCommand(taskAcceptCmd)
 	taskAcceptCmd.Flags().String("ref", "", "指定任务 ref（缺省取活跃任务）")
+	taskAcceptCmd.Flags().StringArray("assert", nil, `v2 结构化断言（可重复 --assert）："type:arg :: expected"，附属于本命令最后一条标准；file-changed/file-untouched 可独立出现（无 Run）。类型：exit|contains|not-contains|file-changed|file-untouched`)
 }
 
 // runTaskAccept 解析标准串、盖 manual 层、锁内合并进任务验收集，并打印实际新增
-// 条目（按 Run 去重——已存在的命令是 no-op，其原层级保留）。
+// 条目（按 (Run, Expected, Assertions) 三元组去重——已存在的同一检查是 no-op，其原层级保留）。
 func runTaskAccept(cmd *cobra.Command, args []string) error {
 	root, err := projectroot.Find()
 	if err != nil {
@@ -63,6 +64,27 @@ func runTaskAccept(cmd *cobra.Command, args []string) error {
 	}
 
 	criteria := taskpipeline.ParseAcceptance(args)
+	// v2 断言补登（spec-as-gate L2 P1）：--assert 挂到本命令最后一条标准（与 start 的
+	// preceding --accept 绑定规则同形）；声明期校验在 EnsureGoTestVerbose 之前——
+	// 越形断言先拒，再做 -v 人体工学改写。
+	if assertRaw, _ := cmd.Flags().GetStringArray("assert"); len(assertRaw) > 0 {
+		var asserts []taskpipeline.Assertion
+		for _, s := range assertRaw {
+			a, err := taskpipeline.ParseAssertion(s)
+			if err != nil {
+				return err
+			}
+			asserts = append(asserts, a)
+		}
+		attached, err := taskpipeline.AttachAssertions(criteria, asserts)
+		if err != nil {
+			return err
+		}
+		criteria = attached
+	}
+	if err := taskpipeline.ValidateAssertions(criteria); err != nil {
+		return err
+	}
 	if adjusted := taskpipeline.EnsureGoTestVerbose(criteria); len(adjusted) > 0 {
 		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ 验收命令自动补 -v（go test 无 -v 时输出无 PASS 行，Expected 子串永不匹配）：%s\n", strings.Join(adjusted, ", "))
 	}

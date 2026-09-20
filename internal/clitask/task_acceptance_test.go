@@ -475,8 +475,8 @@ func TestTaskAcceptance_E2E_FlagToStatusToVerify(t *testing.T) {
 //
 // TestTaskStart_PlanFileExtractsAcceptance 端到端钉住 --plan-file 自动提取：写含 Run:/Expected:
 // 块的 plan.md，task start --plan-file 后 state.Acceptance 应含提取条目（无需手抄 --accept）。
-// 同时验证显式 --accept 与 plan 共存时 --accept 优先、按 Run 去重。这是消除 acceptance 维度
-// 空转（手动复制断口）的闭环守卫——提取/merge/可见性任一断裂即被抓。
+// 同时验证显式 --accept 与 plan 共存时 --accept 优先、按 (Run, Expected, Assertions) 三元组去重。
+// 这是消除 acceptance 维度空转（手动复制断口）的闭环守卫——提取/merge/可见性任一断裂即被抓。
 func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 	t.Setenv(`CLAUDE_CODE_SESSION_ID`, `planfile-accept`)
 	dir := t.TempDir()
@@ -516,7 +516,9 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 		t.Errorf(`[1] = %+v, want {echo hi, hi}`, st.Acceptance[1])
 	}
 
-	// 2. --accept 与 --plan-file 共存：显式 --accept 优先，同 Run 去重
+	// 2. --accept 与 --plan-file 共存：显式 --accept 优先；去重按 (Run, Expected, Assertions)
+	// 三元组口径（L2 P1 起与结果匹配键同口径）——plan 的 go version 与显式条目 Expected
+	// 不同，是两个不同检查，不再被 Run 键吞掉。
 	startOut2, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/plan-and-accept`,
 		`--accept`, `go version :: OVERRIDE`,
 		`--plan-file`, planPath)
@@ -527,23 +529,31 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`LoadTaskState: %v`, err)
 	}
-	runs := map[string]string{}
-	for _, c := range st2.Acceptance {
-		runs[c.Run] = c.Expected
+	if len(st2.Acceptance) != 3 {
+		t.Fatalf(`共存路径应为 3 条（显式 go version::OVERRIDE + plan echo hi + plan go version::go version go），got %d (%v)`, len(st2.Acceptance), st2.Acceptance)
 	}
-	// 显式 --accept 的 go version 保留 OVERRIDE；plan 的 echo hi 补充；plan 的 go version 被去重
-	if runs[`go version`] != `OVERRIDE` {
-		t.Errorf(`显式 --accept 的 go version 应保留 OVERRIDE, got %q`, runs[`go version`])
+	if st2.Acceptance[0].Run != `go version` || st2.Acceptance[0].Expected != `OVERRIDE` {
+		t.Errorf(`显式 --accept 的 go version 应保留 OVERRIDE, got %+v`, st2.Acceptance[0])
 	}
-	if runs[`echo hi`] != `hi` {
-		t.Errorf(`plan 的 echo hi 应补充, got %q`, runs[`echo hi`])
+	seenPlanGoVersion, seenEchoHi := false, false
+	for _, c := range st2.Acceptance[1:] {
+		switch {
+		case c.Run == `go version` && c.Expected == `go version go`:
+			seenPlanGoVersion = true // 同 Run 不同 Expected = 不同检查，保留
+		case c.Run == `echo hi` && c.Expected == `hi`:
+			seenEchoHi = true
+		}
 	}
-	// Net-add count (Minor fix): --accept go version takes the slot, plan go version is deduped and dropped,
-	// only echo hi nets +1. The hint should say `其中 1 条` — if one misuses pre-extraction len(extracted)=2 it would show 2 (misleading).
-	//
-	// 净增计数（Minor 修复）：--accept 的 go version 占位，plan 的 go version 被去重丢弃，
-	// 只有 echo hi 净增 1 条。提示应是"其中 1 条"——若误用提取前 len(extracted)=2 会显示 2（误导）。
-	if !strings.Contains(startOut2, `其中 1 条从 --plan-file 自动提取`) {
-		t.Errorf(`共存路径净增应为 1 条（echo hi），提示"其中 1 条", got: %s`, startOut2)
+	if !seenPlanGoVersion {
+		t.Errorf(`plan 的 go version :: go version go（同 Run 不同 Expected）应作为独立检查保留, got %v`, st2.Acceptance)
+	}
+	if !seenEchoHi {
+		t.Errorf(`plan 的 echo hi 应补充, got %v`, st2.Acceptance)
+	}
+	// Net-add count（Minor 修复 + L2 P1 三元组口径）：显式 go version::OVERRIDE 与 plan 的
+	// go version::go version go 是不同检查，plan 两条均净增——提示应为「其中 2 条」。
+	// 若退回 Run 键去重会显示 1 条（吞掉一条检查）。
+	if !strings.Contains(startOut2, `其中 2 条从 --plan-file 自动提取`) {
+		t.Errorf(`共存路径净增应为 2 条（三元组口径），提示"其中 2 条", got: %s`, startOut2)
 	}
 }
