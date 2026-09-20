@@ -6,6 +6,7 @@ package evalkit
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,7 +51,7 @@ func TestHarvestCandidates_CanonicalZeroWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`候选未落盘: %v`, err)
 	}
-	if !contains(string(cand), "HARVEST CANDIDATE") || !contains(string(cand), "verify-acceptance") {
+	if !strings.Contains(string(cand), "HARVEST CANDIDATE") || !strings.Contains(string(cand), "verify-acceptance") {
 		t.Errorf(`候选骨架缺头部/门禁字段: %s`, cand[:120])
 	}
 	// append-only：重跑不覆盖（内容不变——计数 Written=0）。
@@ -63,15 +64,4 @@ func TestHarvestCandidates_CanonicalZeroWrite(t *testing.T) {
 	if err != nil || res3.SkippedOld != 1 {
 		t.Errorf(`since 晚于完成时间应跳过，got %+v err=%v`, res3, err)
 	}
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (func() bool {
-		for i := 0; i+len(sub) <= len(s); i++ {
-			if s[i:i+len(sub)] == sub {
-				return true
-			}
-		}
-		return false
-	})()
 }
