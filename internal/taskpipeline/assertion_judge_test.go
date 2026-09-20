@@ -360,3 +360,75 @@ func TestVerifyAcceptanceWithVerdicts_GitFileAssertions(t *testing.T) {
 		}
 	}
 }
+
+// TestJudgeAssertion_ExitNonZeroHit 钉住 exit 断言的正例（审查 P3-7）：非零退出码
+// 命中期望值判真——把比较回归成恒比 0 时本测试炸。
+func TestJudgeAssertion_ExitNonZeroHit(t *testing.T) {
+	ctx := judgeContext{ran: true, exitCode: 1, output: "boom"}
+	if !judgeAssertion(Assertion{Type: tasktypes.AssertionTypeExit, Expected: "1"}, ctx) {
+		t.Error(`exitCode=1 且期望 1 应判真`)
+	}
+	if judgeAssertion(Assertion{Type: tasktypes.AssertionTypeExit, Expected: "0"}, ctx) {
+		t.Error(`exitCode=1 且期望 0 应判假`)
+	}
+}
+
+// TestChangedMatches_Globstar 钉住尾缀 "/**" 的递归翻译（审查 P2-1）：path.Match
+// 无 globstar，未翻译时 internal/freeze/** 静默只护一层——嵌套子目录必须被覆盖。
+func TestChangedMatches_Globstar(t *testing.T) {
+	changed := []string{
+		"internal/freeze/freeze.go",          // 顶层
+		"internal/freeze/sub/deep/freeze.go", // 嵌套两层
+		"internal/other/x.go",
+	}
+	if !changedMatches(changed, "internal/freeze/**") {
+		t.Error(`尾缀 /** 应覆盖嵌套子目录（递归翻译），单层 path.Match 是静默弱保护`)
+	}
+	if changedMatches(changed, "internal/other/**") == false {
+		t.Error(`internal/other/** 应命中 internal/other/x.go`)
+	}
+	if changedMatches(changed, "internal/nothere/**") {
+		t.Error(`未触碰目录不应命中`)
+	}
+	// 输出消费型断言在未执行上下文 fail-closed（审查 P3-4）。
+	if judgeAssertion(Assertion{Type: tasktypes.AssertionTypeNotContains, Expected: "x"}, judgeContext{}) {
+		t.Error(`not-contains 在 ran=false 的上下文应 fail-closed 判负`)
+	}
+}
+
+// TestValidateAssertion_GlobstarAndExitRange 钉住声明期新门：路径中间 globstar
+// 拒绝（P2-1）、exit 期望超 0-255 拒绝、负值哨兵拒绝（P3-5）。
+func TestValidateAssertion_GlobstarAndExitRange(t *testing.T) {
+	if err := ValidateAssertion(Assertion{Type: tasktypes.AssertionTypeFileChanged, Arg: "internal/**/x.go"}); err == nil {
+		t.Error(`路径中间 globstar 应被声明期拒绝`)
+	}
+	if err := ValidateAssertion(Assertion{Type: tasktypes.AssertionTypeFileChanged, Arg: "internal/freeze/**"}); err != nil {
+		t.Errorf(`尾缀 /** 应合法: %v`, err)
+	}
+	if err := ValidateAssertion(Assertion{Type: tasktypes.AssertionTypeExit, Expected: "-1"}); err == nil {
+		t.Error(`exit 期望 -1（执行层失败哨兵）应被拒绝`)
+	}
+	if err := ValidateAssertion(Assertion{Type: tasktypes.AssertionTypeExit, Expected: "256"}); err == nil {
+		t.Error(`exit 期望 256 超退出码域应被拒绝`)
+	}
+}
+
+// TestRunAndJudgeCriterion_EmptyRunV1Edge 钉住空 Run 边角的 v1 逐字节保留
+// （审查 P2-2）：旧 RunTestCommand("") → (false,"empty command") 恒负，v2 跳过
+// 执行的路径不得把它翻成 vacuous pass。
+func TestRunAndJudgeCriterion_EmptyRunV1Edge(t *testing.T) {
+	c := AcceptanceCriterion{}
+	runAndJudgeCriterion(t.TempDir(), &c, nil)
+	if c.Passed || c.Output != "empty command" {
+		t.Errorf(`空 Run 无断言应保持 v1 语义（false/"empty command"），got (%v,%q)`, c.Passed, c.Output)
+	}
+}
+
+// TestParseAcceptanceYAML_UnknownKeyRejected 钉住 KnownFields 严格模式（审查
+// P3-6）：拼错的键在声明期报错，不得静默丢断言集。
+func TestParseAcceptanceYAML_UnknownKeyRejected(t *testing.T) {
+	bad := "criteria:\n  - run: go version\n    assertion: [{type: exit, expected: \"0\"}]\n"
+	if _, err := ParseAcceptanceYAML([]byte(bad)); err == nil {
+		t.Error(`拼错键 assertions→assertion 应被严格模式拒绝（否则断言集静默消失）`)
+	}
+}

@@ -17,6 +17,7 @@ package taskpipeline
 //     是会话级写时拦截，这里是任务 diff 的事后判定，保护对象含非源码文件如 .md/.yml）。
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -70,11 +71,14 @@ type AssertionVerdict struct {
 // judgeAssertion 是 v2 断言判定的单一真相源。对执行上下文的纯函数；未知类型
 // fail-closed 判负——声明通道负责校验，判定绝不负猜测。
 func judgeAssertion(a Assertion, ctx judgeContext) bool {
+	// 输出消费型统一 fail-closed：没人执行过命令就没有可判的输出——绕过声明门
+	// 进来的持久化形态（Run-less 挂输出型断言）不得经 Contains("","") 恒真/恒假
+	// 走 vacuous 判定（审查 P3-4：原先只有 exit 检查 ran）。
+	if tasktypes.AssertionTypeNeedsRun(a.Type) && !ctx.ran {
+		return false
+	}
 	switch a.Type {
 	case tasktypes.AssertionTypeExit:
-		if !ctx.ran {
-			return false
-		}
 		want := 0
 		if a.Expected != "" {
 			v, err := strconv.Atoi(strings.TrimSpace(a.Expected))
@@ -97,13 +101,31 @@ func judgeAssertion(a Assertion, ctx judgeContext) bool {
 	}
 }
 
-// changedMatches reports whether any changed file matches the glob (strict
-// scopeMatchOne — exact / dir-prefix / path.Match; no whitelist, no test-file
-// derivation: contract assertions must not false-positive).
+// changedMatches reports whether any changed file matches the glob. Strict
+// scopeMatchOne (exact / dir-prefix / path.Match; no whitelist, no test-file
+// derivation: contract assertions must not false-positive), PLUS a trailing
+// "/**" globstar translation: path.Match has no globstar, so "a/**" would
+// silently cover only one level — the declared protection and the actual
+// semantics would diverge (review P2-1: silent under-protection). Trailing
+// "/**" is translated to the dir-prefix recursion it obviously means; mid-path
+// globstar is rejected at declaration (ValidateAssertion) instead of silently
+// mis-judged here.
 //
-// changedMatches 报告变更集中是否有文件命中 glob（严格 scopeMatchOne——精确/目录
-// 前缀/path.Match；无白名单、无测试文件衍生：契约断言不容假阳性）。
+// changedMatches 报告变更集中是否有文件命中 glob。严格 scopeMatchOne（精确/目录
+// 前缀/path.Match；无白名单、无测试文件衍生：契约断言不容假阳性），另加尾缀
+// "/**" 的 globstar 翻译：path.Match 不支持 **，"a/**" 会静默只覆盖一层——声明
+// 的保护面与实际语义背离（审查 P2-1：静默弱保护）。尾缀 "/**" 翻译为它显然
+// 意指的目录前缀递归；路径中间的 globstar 在声明期拒绝（ValidateAssertion），
+// 不在这里静默误判。
 func changedMatches(changed []string, glob string) bool {
+	if prefix, ok := strings.CutSuffix(glob, "/**"); ok && prefix != "" {
+		for _, f := range changed {
+			if scopeMatchOne(prefix, f) {
+				return true
+			}
+		}
+		return false
+	}
 	for _, f := range changed {
 		if scopeMatchOne(glob, f) {
 			return true
@@ -134,6 +156,13 @@ func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string)
 		output = out
 		exitOK = code == 0
 		c.Output = truncateAcceptanceOutput(output)
+	} else if len(c.Assertions) == 0 {
+		// v1 边角逐字节保留（审查 P2-2）：空 Run 无断言的存量条目，旧行为是
+		// RunTestCommand("") → (false, "empty command") 恒判负——不得因 v2 的
+		// 「跳过执行」路径翻成 vacuous pass（fail-open 方向，违背 v1 一致承诺）。
+		c.Output = "empty command"
+		c.Passed = false
+		return nil
 	} else {
 		// 声明期校验保证走到这里的 Run-less 条目断言全为 file-*（无命令可跑）。
 		c.Output = ""
@@ -174,16 +203,17 @@ func ParseAssertion(s string) (Assertion, error) {
 // ValidateAssertion is the declaration-time gate for one assertion (same spirit
 // as clitask.ValidateInvariant: narrative shapes are rejected at declaration,
 // not discovered at run time). Rules: known type; Negate reserved-rejected;
-// contains/not-constants/exit need a Run and non-empty/numeric Expected; file-*
-// need a glob Arg; Expected of file-* must stay empty. The CJK narrative
-// heuristic applies to the type:arg segment — Expected is a free substring
-// match exactly like v1 Expected and may legitimately be Chinese.
+// contains/not-contains/exit need a Run and non-empty/numeric Expected; file-*
+// need a glob Arg (trailing "/**" only — mid-path globstar rejected); file-*
+// Expected must stay empty. The CJK narrative heuristic applies to the
+// type:arg segment — Expected is a free substring match exactly like v1
+// Expected and may legitimately be Chinese.
 //
 // ValidateAssertion 是单条断言的声明期门（与 clitask.ValidateInvariant 同精神：
 // 叙述性形态在声明时拒绝，不是跑时才发现）。规则：类型已知；Negate 预留即拒绝；
-// contains/not-contains/exit 需要 Run 与非空/数字 Expected；file-* 需要 glob Arg；
-// file-* 的 Expected 必须为空。CJK 叙述启发式作用于 type:arg 段——Expected 与
-// v1 Expected 同为自由子串匹配，中文合法。
+// contains/not-contains/exit 需要 Run 与非空/数字 Expected；file-* 需要 glob Arg
+// （仅尾缀 "/**"，路径中间 globstar 拒绝）；file-* 的 Expected 必须为空。CJK 叙述
+// 启发式作用于 type:arg 段——Expected 与 v1 Expected 同为自由子串匹配，中文合法。
 func ValidateAssertion(a Assertion) error {
 	if !tasktypes.ValidAssertionType(a.Type) {
 		return fmt.Errorf("未知断言类型 %q（首发五型：exit|contains|not-contains|file-changed|file-untouched；regex 刻意排除——ReDoS + 判定不可机械化）", a.Type)
@@ -199,8 +229,14 @@ func ValidateAssertion(a Assertion) error {
 		if a.Expected == "" {
 			return fmt.Errorf(`exit 断言需要期望退出码（如 "exit: :: 0"）`)
 		}
-		if _, err := strconv.Atoi(strings.TrimSpace(a.Expected)); err != nil {
+		// 范围门（审查 P3-5）：-1 是 spawn 失败/超时的执行层哨兵，声明 -1 会把
+		// 「命令没跑起来」判成 PASS；退出码域 0-255。
+		code, err := strconv.Atoi(strings.TrimSpace(a.Expected))
+		if err != nil {
 			return fmt.Errorf("exit 断言的期望 %q 不是整数退出码", a.Expected)
+		}
+		if code < 0 || code > 255 {
+			return fmt.Errorf("exit 断言的期望 %d 超出退出码域 0-255（负值是执行层失败哨兵，不可断言）", code)
 		}
 	case tasktypes.AssertionTypeContains, tasktypes.AssertionTypeNotContains:
 		if a.Arg != "" {
@@ -215,6 +251,12 @@ func ValidateAssertion(a Assertion) error {
 		}
 		if a.Expected != "" {
 			return fmt.Errorf("%s 断言不消费 expected（glob 写在 type: 右侧即可），got expected=%q", a.Type, a.Expected)
+		}
+		// globstar 边界（审查 P2-1）：只有尾缀 "/**" 有递归翻译；路径中间的
+		// "**"（如 internal/**/x.go）path.Match 不支持、也无翻译——声明期拒绝，
+		// 不静默降级成单层匹配造成假保护。
+		if strings.Contains(a.Arg, "**") && !strings.HasSuffix(a.Arg, "/**") {
+			return fmt.Errorf("%s 断言的 glob %q 含路径中间的 **——仅支持尾缀 \"/**\"（目录递归）；中间 globstar 请改用目录前缀", a.Type, a.Arg)
 		}
 		if narrativeArg(a.Arg) {
 			return fmt.Errorf("%s 断言的 glob %q 看起来是叙述性约束而非文件 glob——断言必须机械可判；叙述性约束请用 forge task checklist add 或 forge task intent 承载", a.Type, a.Arg)
@@ -309,8 +351,13 @@ func ParseAcceptanceYAML(data []byte) ([]AcceptanceCriterion, error) {
 	var doc struct {
 		Criteria []yamlCriterion `yaml:"criteria"`
 	}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("accept-file 解析失败（顶层键 criteria，条目字段 run/expected/assertions[type/arg/expected/negate]）: %w", err)
+	// KnownFields(true)（审查 P3-6）：yaml.Unmarshal 默认忽略未知键——拼错
+	// `assertions:` 会静默丢掉整个断言集，考卷静默变弱。严格模式让拼错键在
+	// 声明期报错，而不是跑时才发现断言没生效。
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&doc); err != nil {
+		return nil, fmt.Errorf("accept-file 解析失败（顶层键 criteria，条目字段 run/expected/assertions[type/arg/expected/negate]；未知键被拒——检查拼写）: %w", err)
 	}
 	out := make([]AcceptanceCriterion, 0, len(doc.Criteria))
 	for _, yc := range doc.Criteria {
