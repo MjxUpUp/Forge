@@ -104,8 +104,10 @@ func TestMasterReminderAcceptanceRegistrationPinned(t *testing.T) {
 		t.Fatalf("master-reminder 验收接线乱序：登记(accept@%d)与实跑(verify-acceptance@%d)必须在 complete(@%d) 之前", acceptIdx, verifyIdx, completeIdx)
 	}
 	// 排查盲钉住：complete 失败信息必须带命令输出——Nightly 红当晚 CI 日志只剩
-	// 「task complete failed: exit status 1」，真实报错被场景丢弃。
-	if !strings.Contains(src, `task complete failed: %v\n%s`) {
+	// 「task complete failed: exit status 1」，真实报错被场景丢弃。needle 用解释
+	// 字符串形态（\\n 产出源码里的两字符转义序列）——raw string 写字面 \n 会被
+	// srclint TestNoLiteralBackslashNInSingleLineRawStrings 钉住（分支 CI 红）。
+	if !strings.Contains(src, "task complete failed: %v\\n%s") {
 		t.Fatalf("task complete 失败信息应带命令输出（%%v\\n%%s）——丢输出令 CI 日志只剩 exit status 1")
 	}
 }
