@@ -7,6 +7,7 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,4 +80,32 @@ func quoteJSON(s string) string {
 		panic(err)
 	}
 	return string(b)
+}
+
+// TestMasterReminderAcceptanceRegistrationPinned 钉住 2026-09-21 Nightly 红的
+// 修复接线：master-reminder 场景在 task complete 前必须登记验收并实跑——
+// oracle-pipeline L1 给 complete 加了验收登记硬前置（零标准=考卷缺位直接拦），
+// 该门合入时场景未同步适配即红。顺序按源内字节序断言：accept 登记 →
+// verify-acceptance 实跑 → complete；任一步脱落或乱序（实跑在 complete 后、
+// 或登记缺失）都会让场景在 CI 上确定性红。
+func TestMasterReminderAcceptanceRegistrationPinned(t *testing.T) {
+	b, err := os.ReadFile("verify_scenarios.go")
+	if err != nil {
+		t.Fatalf("读 verify_scenarios.go: %v", err)
+	}
+	src := string(b)
+	acceptIdx := strings.Index(src, `"task", "accept", "go version :: go version"`)
+	verifyIdx := strings.Index(src, `"task", "verify-acceptance"`)
+	completeIdx := strings.Index(src, `"task", "complete", "--ref", "EXP-1"`)
+	if acceptIdx < 0 || verifyIdx < 0 || completeIdx < 0 {
+		t.Fatalf("master-reminder 验收接线脱落：accept=%d verify-acceptance=%d complete=%d——complete 前必须登记验收并实跑（L1 登记门）", acceptIdx, verifyIdx, completeIdx)
+	}
+	if !(acceptIdx < verifyIdx && verifyIdx < completeIdx) {
+		t.Fatalf("master-reminder 验收接线乱序：登记(accept@%d)与实跑(verify-acceptance@%d)必须在 complete(@%d) 之前", acceptIdx, verifyIdx, completeIdx)
+	}
+	// 排查盲钉住：complete 失败信息必须带命令输出——Nightly 红当晚 CI 日志只剩
+	// 「task complete failed: exit status 1」，真实报错被场景丢弃。
+	if !strings.Contains(src, `task complete failed: %v\n%s`) {
+		t.Fatalf("task complete 失败信息应带命令输出（%%v\\n%%s）——丢输出令 CI 日志只剩 exit status 1")
+	}
 }
