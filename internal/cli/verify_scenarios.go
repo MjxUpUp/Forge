@@ -238,14 +238,24 @@ func runScenarioMasterReminder(forgeBin string) ScenarioResult {
 	}
 
 	// 启动 task、过门禁、complete
-	if _, err := verifyRunForgeEnv(forgeBin, dir, senv.env, "task", "start", "--ref", "EXP-1", "--title", "test experience"); err != nil {
-		return failResult("master-reminder", fmt.Sprintf("task start failed: %v", err), start)
+	if out, err := verifyRunForgeEnv(forgeBin, dir, senv.env, "task", "start", "--ref", "EXP-1", "--title", "test experience"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("task start failed: %v\n%s", err, out), start)
 	}
 	if err := passAllVerifyGates(forgeBin, dir, senv.env, "EXP-1"); err != nil {
 		return failResult("master-reminder", fmt.Sprintf("pass gates failed: %v", err), start)
 	}
-	if _, err := verifyRunForgeEnv(forgeBin, dir, senv.env, "task", "complete", "--ref", "EXP-1"); err != nil {
-		return failResult("master-reminder", fmt.Sprintf("task complete failed: %v", err), start)
+	// oracle-pipeline L1：task complete 有验收登记硬前置（零验收标准=考卷缺位
+	// 直接拦）——补登一条快验收并实跑（最后 commit 之后，快照新鲜；fixture 仓
+	// 无 _test.go，考卷质量门按 CheckTestCapability 无测试能力放行），与 e2e
+	// workspace_test 的 passAllGates 后 accept→verify-acceptance 同模式。
+	if out, err := verifyRunForgeEnv(forgeBin, dir, senv.env, "task", "accept", "go version :: go version", "--ref", "EXP-1"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("task accept failed: %v\n%s", err, out), start)
+	}
+	if out, err := verifyRunForgeEnv(forgeBin, dir, senv.env, "task", "verify-acceptance", "--ref", "EXP-1"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("task verify-acceptance failed: %v\n%s", err, out), start)
+	}
+	if out, err := verifyRunForgeEnv(forgeBin, dir, senv.env, "task", "complete", "--ref", "EXP-1"); err != nil {
+		return failResult("master-reminder", fmt.Sprintf("task complete failed: %v\n%s", err, out), start)
 	}
 
 	// 切回默认分支
