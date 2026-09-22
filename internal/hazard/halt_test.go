@@ -4,6 +4,7 @@ package hazard
 // 阈值边界 / 空事件流。事件经 AppendEvent 真实落盘（不 mock 文件层）。
 
 import (
+	"os"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -80,4 +81,41 @@ func TestCheckHalt_EmptyEvents(t *testing.T) {
 	if st := CheckHalt(p); st.Halted || st.Blocks != 0 {
 		t.Fatalf("空事件流应未停机: %+v", st)
 	}
+}
+
+// TestEventsDestroyed pins the "events were destroyed" state detector shared by the
+// delivery gate and halt release (single source — two drifting stat checks were the
+// alternative): dir exists + events.jsonl missing → true (events were written then
+// removed); file present → false; nothing ever written → false.
+//
+// TestEventsDestroyed 钉"事件流被毁"判定——清账门与 halt release 单源共用（否则
+// 两处 stat 判定漂移）：目录在而 events.jsonl 缺失 → true（事件曾落盘后被清除）；
+// 文件在 → false；从未写过 → false。
+func TestEventsDestroyed(t *testing.T) {
+	t.Run("从未写事件", func(t *testing.T) {
+		if EventsDestroyed(newHaltProject(t)) {
+			t.Fatal("全新项目不应判被毁")
+		}
+	})
+	t.Run("事件在盘", func(t *testing.T) {
+		p := newHaltProject(t)
+		if err := AppendEvent(p, Event{Type: EventBlock, Command: "x"}); err != nil {
+			t.Fatal(err)
+		}
+		if EventsDestroyed(p) {
+			t.Fatal("事件流存在不应判被毁")
+		}
+	})
+	t.Run("目录在文件无", func(t *testing.T) {
+		p := newHaltProject(t)
+		if err := AppendEvent(p, Event{Type: EventBlock, Command: "x"}); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(p.HazardsEventsPath()); err != nil {
+			t.Fatal(err)
+		}
+		if !EventsDestroyed(p) {
+			t.Fatal("目录在而事件文件无应判被毁——清账证据被毁不是清白证明")
+		}
+	})
 }

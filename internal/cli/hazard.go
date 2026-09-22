@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hazard"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
@@ -392,17 +393,39 @@ var hazardHaltReleaseCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		st := hazard.CheckHalt(p)
-		if !st.Halted {
-			fmt.Printf("未处于 safe-halt（连续拦截 %d/%d），无需解锁。\n", st.Blocks, hazard.HaltThreshold)
-			return nil
-		}
-		if err := hazard.ReleaseHalt(p); err != nil {
-			return fmt.Errorf("记录解锁事件失败: %w", err)
-		}
-		fmt.Printf("✅ safe-halt 已解锁（halt-release 审计事件已记；计数归零）。解锁前提：最近拦截的命令已在 forge hazard status 核查过。\n")
-		return nil
+		return haltReleaseCore(p, hazard.CheckHalt(p))
 	},
+}
+
+// haltReleaseCore 执行 halt release 的清账/解锁决策。真人终端判别留在 RunE
+// （测试环境 stdin 非 char device，cmd 层无法覆盖）；核心行为纯函数化供测试。
+// 三种状态都写 release 事件（--yes + 终端判别是状态无关的人工证明）：
+//   - safe-halt 停机：解锁 + 清账（原行为）；
+//   - 未停机悬账（1-2 个未确认拦截）：清账——confirm 单条确认本就整账归零
+//     （halt.go 计数逻辑），release 核销不弱于它。2026-09-22 实录：清账门报错
+//     曾把用户指到本命令而未停机路径 no-op（"无需解锁"），出口不可达；
+//   - 事件流被毁：人工核销——该状态下 confirm --last 无事件可读、未停机路径
+//     no-op，不清账即死锁（清账门永拦）。
+//
+// 仅干净账（未停机、无悬账、事件流在）保持 no-op。
+func haltReleaseCore(p *forgedata.Project, st hazard.HaltState) error {
+	destroyed := hazard.EventsDestroyed(p)
+	if !st.Halted && st.Blocks <= 0 && !destroyed {
+		fmt.Printf("未处于 safe-halt（连续拦截 0/%d）且无未确认拦截悬账，无需解锁。\n", hazard.HaltThreshold)
+		return nil
+	}
+	if err := hazard.ReleaseHalt(p); err != nil {
+		return fmt.Errorf("记录解锁事件失败: %w", err)
+	}
+	switch {
+	case st.Halted:
+		fmt.Printf("✅ safe-halt 已解锁（halt-release 审计事件已记；计数归零）。解锁前提：最近拦截的命令已在 forge hazard status 核查过。\n")
+	case destroyed:
+		fmt.Printf("✅ 事件流被毁状态已人工核销（halt-release 审计事件已记）。核销前提：被清除前的拦截记录已人工核查过。\n")
+	default:
+		fmt.Printf("✅ 未停机悬账已核销（%d 个未确认拦截，halt-release 审计事件已记；计数归零）。核销前提：最近拦截的命令已在 forge hazard status 核查过。\n", st.Blocks)
+	}
+	return nil
 }
 
 func init() {
