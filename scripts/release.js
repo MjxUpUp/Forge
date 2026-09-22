@@ -2,9 +2,10 @@
 //
 // scripts/release.js — Forge 版本发布助手【已退役为应急逃生舱】
 //
-// 2026-08 起标准发版走 release-please：feat/fix 合入 main 自动开 Release PR，合并
-// Release PR 即自动 bump + 打 tag + 串 release.yml（见 RELEASE.md「标准发版」与
-// .github/workflows/release-please.yml）。本脚本仅当 release-please 层本身故障时应急；
+// 2026-08 起标准发版走 release-please：feat/fix 合入 main 自动开 Release PR，必需检查
+// 跑绿后 auto-merge 自动合并，即自动 bump + 打 tag + 串 release.yml（见 RELEASE.md
+// 「标准发版」与 .github/workflows/release-please.yml；npm 发布走 trusted publishing
+// 免 token）。本脚本仅当 release-please 层本身故障时应急；
 // 它会同步 bump .release-please-manifest.json（release-please 的版本账本）——不同步
 // 的话 release-please 从旧版本起算下一版会撞已存在 tag（internal/ci 守卫也会拦）。
 //

@@ -24,3 +24,6 @@
 - 每个 tar.gz 附 SPDX SBOM（`*.sbom.json`）
 - npm 包带 [provenance](https://docs.npmjs.com/generating-provenance-statements) 声明，
   可用 `npm audit signatures` 验证
+- npm 发布走 [Trusted Publishing](https://docs.npmjs.com/trusted-publishers)（GitHub OIDC
+  免 token）——发布链不再持有长期 npm token，无过期断链面（过渡期 NPM_TOKEN secret
+  保留未删、不再被引用，见 RELEASE.md）
