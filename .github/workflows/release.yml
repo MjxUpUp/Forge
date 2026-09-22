@@ -123,9 +123,10 @@ jobs:
     #      （默认仅 staged；本 workflow 用 npm publish 直发）。7 个包都要：主包 +
     #      5 平台子包 + forge-dsh。npm 不在保存时校验登记，配错到 publish 才炸。
     #   2. job permissions id-token: write（下方已有——同时供 provenance 用）。
-    # 回退路径：revert 本迁移 + 恢复 NODE_AUTH_TOKEN 步（NPM_TOKEN secret 过渡期保留
-    # 未删，见 RELEASE.md）。守卫：TestReleaseWorkflow_NpmTrustedPublishing 钉住无
-    # token + npm ≥11 + id-token: write 三件事。
+    # 回退路径：revert 本迁移 + 恢复 NODE_AUTH_TOKEN 步（NPM_TOKEN secret 已删——
+    # 回退须去 npmjs 新建 token 重配 secret，见 RELEASE.md）。守卫：
+    # TestReleaseWorkflow_NpmTrustedPublishing 钉住无 token + npm ≥11 +
+    # id-token: write 三件事。
     needs: goreleaser
     runs-on: ubuntu-latest
     timeout-minutes: 20
