@@ -96,10 +96,11 @@ npm → npm-verify** 五段强依赖链：
   登记 GitHub Actions：`MjxUpUp/Forge` + workflow `release.yml`，**Allowed actions
   须允许直接 publish**（默认仅 staged，本链用 `npm publish` 直发）；npm 不在保存时
   校验登记，配错到 publish 才炸。守卫 `TestReleaseWorkflow_NpmTrustedPublishing`
-  钉住无 token env + npm ≥11 + `id-token: write`。过渡期 `NPM_TOKEN` secret 保留
-  未删（不再被引用，纯回退保险）；**首次 tokenless 发版验证成功后**可删 secret，
-  并可选开启 npmjs 账号 Settings → Publishing access 的「require 2FA and disallow
-  tokens」——之后任何 token（含过期遗留）都无法发布，只认 trusted publisher
+  钉住无 token env + npm ≥11 + `id-token: write`。`NPM_TOKEN` secret 已于 v1.72.0
+  首次 tokenless 发版验证成功后删除（2026-09-22）——如需回退 token 方案，去 npmjs
+  新建 Automation/Granular token 重新配置 secret。可选加固（未开）：npmjs 账号
+  Settings → Publishing access 的「require 2FA and disallow tokens」——之后任何
+  token 都无法发布，只认 trusted publisher
 
 ## 宿主插件是第二分发通道（发版 ≠ 生效）
 

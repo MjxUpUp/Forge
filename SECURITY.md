@@ -25,5 +25,5 @@
 - npm 包带 [provenance](https://docs.npmjs.com/generating-provenance-statements) 声明，
   可用 `npm audit signatures` 验证
 - npm 发布走 [Trusted Publishing](https://docs.npmjs.com/trusted-publishers)（GitHub OIDC
-  免 token）——发布链不再持有长期 npm token，无过期断链面（过渡期 NPM_TOKEN secret
-  保留未删、不再被引用，见 RELEASE.md）
+  免 token）——发布链不持有任何 npm token（旧 NPM_TOKEN secret 已于 v1.72.0
+  tokenless 首发验证后删除），无过期断链面
