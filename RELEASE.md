@@ -89,7 +89,17 @@ npm → npm-verify** 五段强依赖链：
   曾致 v1.65.0 发布失败)。`make npm-align` 保留为自动化失效时的应急工具(用法
   不变:对齐到 npm/package.json 当前 version 后随 PR 提交)。
 - **npm** 先发 5 平台子包（主包 optionalDependencies 依赖它们）再发主包；
-  `NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
+  认证走 **npm Trusted Publishing**（OIDC 免 token，2026-09-22 起）：npm ≥11.5.1
+  在无 token 的 CI 环境自动用 GitHub OIDC 向 registry 换发布凭证，无过期问题
+  （旧 `NPM_TOKEN` 方案里 Granular token 最长 365 天，过期即断链）。前置：npmjs
+  侧 7 个包（主包 + 5 平台子包 + forge-dsh）各自 Settings → Trusted publishing
+  登记 GitHub Actions：`MjxUpUp/Forge` + workflow `release.yml`，**Allowed actions
+  须允许直接 publish**（默认仅 staged，本链用 `npm publish` 直发）；npm 不在保存时
+  校验登记，配错到 publish 才炸。守卫 `TestReleaseWorkflow_NpmTrustedPublishing`
+  钉住无 token env + npm ≥11 + `id-token: write`。过渡期 `NPM_TOKEN` secret 保留
+  未删（不再被引用，纯回退保险）；**首次 tokenless 发版验证成功后**可删 secret，
+  并可选开启 npmjs 账号 Settings → Publishing access 的「require 2FA and disallow
+  tokens」——之后任何 token（含过期遗留）都无法发布，只认 trusted publisher
 
 ## 宿主插件是第二分发通道（发版 ≠ 生效）
 
@@ -127,7 +137,9 @@ git push origin main && git push origin vX.Y.Z   # 手动 push 触发 release.ym
 守卫 dsh == manifest。只有绕过脚本手动打 tag 时才需要手动同步这些文件。
 
 CI 暂坏需绕过 workflow 手动 `gh release` + `npm publish` 时，绕过的是 **整个 needs 链**
-（沙盒验证无法覆盖手动行为）。此时：
+（沙盒验证无法覆盖手动行为）。手动 publish 走本地 `npm login`（交互式 2FA），与
+CI 的 trusted publishing 互不影响——但若已按上文开启「require 2FA and disallow
+tokens」，token 类登录被禁，需临时调回 publishing access 再操作。此时：
 
 1. **必须当场登记"CI 待修"待办**——v0.27.0 绕过 failure CI 当完成，是这次教训的根因
 2. 绕过后第一时间修 CI，并补跑（重打 patch tag 走完整 release.yml 验证链路）
