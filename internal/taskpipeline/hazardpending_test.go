@@ -69,6 +69,12 @@ func TestCheckHazardPending_BlocksDelivery(t *testing.T) {
 	if len(reasons) == 0 || !strings.Contains(reasons[0], "hazard confirm") {
 		t.Fatalf("拒绝文案须给真人出口: %v", reasons)
 	}
+	// 出口适用范围锚（2026-09-22 修复）：halt release 曾在未停机时 no-op 而文案
+	// 无差别推荐——现文案须如实说明整账核销停机/未停机均适用，且 halt release
+	// 行为已同步可清未停机悬账（见 internal/cli TestHaltReleaseCore）。
+	if !strings.Contains(reasons[0], "均适用") {
+		t.Fatalf("拒绝文案须注明 halt release 整账核销停机/未停机均适用: %v", reasons)
+	}
 	// env 逃生：放行 + 审计行。
 	t.Setenv("FORGE_HAZARD_PENDING", "disable")
 	if ok, reasons := CheckHazardPending(dir, state); !ok {
