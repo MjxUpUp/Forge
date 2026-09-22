@@ -10,8 +10,6 @@ package taskpipeline
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -51,25 +49,17 @@ func CheckHazardPending(root string, state *TaskState) (ok bool, reasons []strin
 		return true, nil // fail-open：项目/事件流解析失败不阻断交付
 	}
 	// 审查 P1-2 加固：「事件流存在过又消失」与「从未有事件」必须可区分——
-	// hazards 目录只由 AppendEvent 创建（目录在 = 事件曾落过盘），events.jsonl
-	// 却缺失 = 被清除。按悬账阻断（清账证据被毁不是清白证明）。
-	// 复审 P1-2 放宽：目录【存在】而 events.jsonl 缺失即阻断（不论空否——空
-	// 目录同样只由 AppendEvent 创建过；confirm 标记 5min TTL 过期被清是常态，
-	// events.jsonl 常是唯一残留文件，rm 它后目录为空曾被放过）。目录整删
-	// （os.Stat err）与"从未有事件"不可区分，v1 保留 fail-open——已记为已知
-	// 边界（目录级锚是后续项）。
-	eventsPath := filepath.Join(p.DataDir, "hazards", "events.jsonl")
-	if _, serr := os.Stat(eventsPath); os.IsNotExist(serr) {
-		if _, derr := os.Stat(filepath.Join(p.DataDir, "hazards")); derr == nil {
-			return false, []string{"hazard 事件流文件缺失而 hazards 目录仍在——事件曾落盘后被清除（清账证据被毁不是清白证明）。人工核查后在用户终端执行 forge hazard halt release --yes"}
-		}
-		return true, nil // 目录也不存在：从未有事件，干净
+	// 判定单源在 hazard.EventsDestroyed（cli halt release 共用）。按悬账阻断
+	// （清账证据被毁不是清白证明）；目录也缺 = 从未有事件，走 CheckHalt 自然放行
+	// （fail-open 边界不变，已知边界见 hazard.EventsDestroyed 注释）。
+	if hazard.EventsDestroyed(p) {
+		return false, []string{"hazard 事件流文件缺失而 hazards 目录仍在——事件曾落盘后被清除（清账证据被毁不是清白证明）。人工核查后在用户终端执行 forge hazard halt release --yes"}
 	}
 	st := hazard.CheckHalt(p)
 	if st.Blocks <= 0 {
 		return true, nil
 	}
 	return false, []string{fmt.Sprintf(
-		"本项目自最近确认/解锁以来有 %d 个未经人工确认的高危拦截（最近 %s）——等账未清不得交付。出口（须在用户终端执行，agent 管道无法自我放行）：人工核查被拦命令后 forge hazard confirm --last；或确认为误拦/已处置后 forge hazard halt release --yes。逃生（无人 CI，落审计）: FORGE_HAZARD_PENDING=disable",
+		"本项目自最近确认/解锁以来有 %d 个未经人工确认的高危拦截（最近 %s）——等账未清不得交付。出口（须在用户终端执行，agent 管道无法自我放行）：人工核查被拦命令后 forge hazard confirm --last（放行该命令）；或人工核查全部悬账后 forge hazard halt release --yes 整账核销（safe-halt 停机与未停机悬账均适用）。逃生（无人 CI，落审计）: FORGE_HAZARD_PENDING=disable",
 		st.Blocks, st.LastBlock.Format("2006-01-02 15:04"))}
 }
