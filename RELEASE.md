@@ -4,7 +4,7 @@
 v0.27.0 手动 `gh release` + `npm publish` 绕过了 failure 的 release.yml 当作完成，
 cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
 
-## 标准发版：合并 Release PR（唯一推荐路径）
+## 标准发版：feat/fix 合 main 后全自动（唯一推荐路径）
 
 版本号 bump / changelog / 打 tag 由 [release-please](https://github.com/googleapis/release-please)
 接管（`.github/workflows/release-please.yml` + `release-please-config.json` +
@@ -14,9 +14,19 @@ cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
    （`chore(main): release X.Y.Z`），内容是纯机械变更：`npm/package.json`、
    `.kimi-plugin/plugin.json`、`plugins/forge-dsh/package.json`、
    `.release-please-manifest.json` 的版本 bump + `CHANGELOG.md` 新章节
-2. 确认后**合并 Release PR** → release-please 自动打 `vX.Y.Z` tag、建带 changelog
-   正文的 GitHub Release
-3. 同一 workflow 用 `workflow_dispatch` 在新 tag 上调度 `release.yml`（构建层零改动）
+2. Release PR 的 6 个必需检查（ci.yml 三平台 build + skills-qa + scripts-test×2）
+   跑绿后 **auto-merge 自动 squash 合并**——无需人工确认（repo 设置 Allow
+   auto-merge 须开启；见下方 Token 双路径的 PAT 前置）
+3. 合并 push 触发 release-please 自动打 `vX.Y.Z` tag、建带 changelog 正文的
+   GitHub Release；tag push（PAT 路径）或 `workflow_dispatch`（GITHUB_TOKEN 路径）
+   调度 `release.yml`（构建层零改动）——test→drill→goreleaser→npm→npm-verify
+   全链自动，npm 包发布 + 装回验证无人值守
+
+```bash
+# 标准发版就是：在 GitHub 上合并 feat:/fix: PR（chore/docs/test/ci 不触发）
+# 之后零手动——Release PR 自动开、检查绿自动合并、tag、GitHub Release、
+# 二进制、npm 包全部自动就绪
+```
 
 版本规则（Conventional Commits）：
 
@@ -26,9 +36,13 @@ cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
 - 强制指定版本：给任意 commit 加 `Release-As: x.y.z` footer
 
 **Token 双路径**：默认 `GITHUB_TOKEN`（零配置即可用）——它产生的事件不触发新
-workflow run（GitHub 防递归），所以靠 workflow_dispatch 显式调度构建层。配置 secret
-`RELEASE_PLEASE_TOKEN`（PAT）后自动升级：Release PR 上能跑 CI 检查、tag push 直接
-触发 release.yml（dispatch 步自停，防双跑），无需改任何文件。
+workflow run（GitHub 防递归），所以靠 workflow_dispatch 显式调度构建层；此路径
+automerge 步自停（GITHUB_TOKEN 合并的 push 不触发建 tag run，注册 auto-merge 只会
+静默断链），Release PR 保持**人工合并**。配置 secret `RELEASE_PLEASE_TOKEN`（PAT）
+后自动升级：Release PR 上能跑 CI 检查、注册 auto-merge（6 个必需检查跑绿后自动
+squash 合并，repo 设置 Allow auto-merge 须开启——已开；关闭后 automerge 步红 run，
+是刻意的漂移信号）、tag push 直接触发 release.yml（dispatch 步自停，防双跑），
+无需改任何文件。
 
 发版形状由 `internal/ci/release_please_test.go` 守卫：tag 形状必须 `v<semver>`（构建层
 触发条件与 npm 资产 URL 都依赖）、extra-files 必须持续 bump 全部 11 个 json 条目
@@ -76,11 +90,6 @@ npm → npm-verify** 五段强依赖链：
   不变:对齐到 npm/package.json 当前 version 后随 PR 提交)。
 - **npm** 先发 5 平台子包（主包 optionalDependencies 依赖它们）再发主包；
   `NODE_AUTH_TOKEN` 走 `registry.npmjs.org`（华为云镜像缺新包会 404）
-
-```bash
-# 标准发版就是：在 GitHub 上合并 Release PR（chore(main): release X.Y.Z）
-# 之后无需任何手动步骤——tag、GitHub Release、二进制、npm 包全部自动就绪
-```
 
 ## 宿主插件是第二分发通道（发版 ≠ 生效）
 
