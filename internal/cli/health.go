@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/act"
@@ -94,9 +95,16 @@ func printHealth(s health.Summary) {
 	if len(s.LowDims) > 0 {
 		fmt.Println("\n复发低分维度（<70，跨任务频次）:")
 		for _, d := range s.LowDims {
-			fmt.Printf("  %-16s ×%d\n", d.Dimension, d.Count)
+			pattern := "集中低档＝纪律缺口：优先沉淀对应守卫/铁律"
+			if d.SpreadAcrossBuckets() {
+				// 时高时低 = 阈值/粒度信号：先核分档定义与任务拆分粒度，别急着定纪律
+				//（2026-09-22 实证：scope×57 里 46 个仍 A 级、31 任务 >500 行——
+				// 本仓任务粒度的常态，见 docs/plans/low-dim-recurrence-2026-09.md）。
+				pattern = "跨全档＝量纲/任务粒度信号：先核分档阈值与任务拆分粒度，别急着定纪律"
+			}
+			fmt.Printf("  %-16s ×%d%s——%s\n", d.Dimension, d.Count, scoreHisto(d.Scores), pattern)
 		}
-		fmt.Println("  → 反复低分的维度是 project 级系统性缺口，优先沉淀对应守卫/铁律。")
+		fmt.Println("  → 集中低档才是纪律缺口；跨全档先校准量纲（假规则比没规则贵）。")
 	}
 
 	if s.NudgeCount > 0 {
@@ -113,4 +121,22 @@ func distBar(dist map[string]int, order []string) string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// scoreHisto 把低分维度的分数直方图渲染成 "（40×31 60×26 …）"，按分数升序——
+// 低档在左一眼可见集中度。空直方图（存量结论无 DimScores）渲染空串，退回纯 ×N。
+func scoreHisto(scores map[int]int) string {
+	if len(scores) == 0 {
+		return ""
+	}
+	keys := make([]int, 0, len(scores))
+	for k := range scores {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%d×%d", k, scores[k]))
+	}
+	return "（" + strings.Join(parts, " ") + "）"
 }

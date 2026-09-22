@@ -46,6 +46,34 @@ const NudgeRecentWindow = 14 * 24 * time.Hour
 type DimFreq struct {
 	Dimension string `json:"dimension"`
 	Count     int    `json:"count"`
+	// Scores is the full-bucket histogram of this dimension's scores across all
+	// tasks (not just the low ones) — fed by c.DimScores. The ×N count alone reads
+	// like a discipline collapse; the spread tells metric-signal (buckets across
+	// the whole range incl. ≥80) from discipline gap (clustered at the bottom).
+	// 2026-09-22 analysis: scope×57 was a metric/granularity signal (46/57 still
+	// grade A, zero neutral-70) — see docs/plans/low-dim-recurrence-2026-09.md.
+	//
+	// Scores 是该维度分数的全档直方图（含非低分档，来自 c.DimScores）。只有 ×N
+	// 频次读起来像纪律崩坏；分布形态才能区分量纲信号（跨全档含 ≥80）与纪律缺口
+	// （集中低档）。2026-09-22 分析：scope×57 实为量纲/任务粒度信号（46/57 仍 A、
+	// 从未出现中性 70）——见 docs/plans/low-dim-recurrence-2026-09.md。
+	Scores map[int]int `json:"scores,omitempty"`
+}
+
+// SpreadAcrossBuckets reports whether this dimension's histogram reaches the high
+// buckets (any score ≥ 80): a dimension that sometimes scores high and sometimes
+// low is a threshold/granularity signal (calibrate buckets or task splitting),
+// not a discipline gap. Clustered-at-bottom dimensions are the real gaps.
+//
+// SpreadAcrossBuckets 报告直方图是否触及高档（任一分数 ≥80）：时高时低的维度
+// 是阈值/粒度信号（先核分档或任务拆分粒度），不是纪律缺口；集中低档才是真缺口。
+func (d DimFreq) SpreadAcrossBuckets() bool {
+	for s := range d.Scores {
+		if s >= 80 {
+			return true
+		}
+	}
+	return false
 }
 
 // Span is the conclusion time range (earliest ~ latest completion time).
@@ -172,6 +200,7 @@ func SummarizeAtAcked(cs []act.Conclusion, now time.Time, ack func(act.Conclusio
 	s.GradeDist = map[string]int{}
 	s.StrengthDist = map[string]int{}
 	lowCounts := map[string]int{}
+	dimHistos := map[string]map[int]int{}
 	sum := 0.0
 	// Phase 追踪：每个 (phase, grade) 计数，用于计算 phase_pass_rate
 	phaseGrades := map[string]map[string]int{}
@@ -232,12 +261,23 @@ func SummarizeAtAcked(cs []act.Conclusion, now time.Time, ack func(act.Conclusio
 		for _, d := range c.LowDimensions {
 			lowCounts[d]++
 		}
+		// 全档直方图（含非低分档）：仅 ×N 频次无法区分量纲信号与纪律缺口——
+		// 见 DimFreq.Scores 注释。键取 int(ds.Score)（各维度分档均为整数值，
+		// 截断无损）。存量结论 DimScores 为 nil 时直方图为空，SpreadAcrossBuckets
+		// 判 false（维持变更前的存量语义——无分布证据时不判量纲信号；注意混合
+		// 数据下 Count 数全部任务而直方图只数带 DimScores 的任务，口径为子集）。
+		for _, ds := range c.DimScores {
+			if dimHistos[ds.Dimension] == nil {
+				dimHistos[ds.Dimension] = map[int]int{}
+			}
+			dimHistos[ds.Dimension][int(ds.Score)]++
+		}
 	}
 	s.AvgScore = sum / float64(len(cs))
 	s.MedianScore = median(scoresOf(cs))
 	s.BlindSpotRate = float64(s.BlindSpotCount) / float64(len(cs))
 	for d, n := range lowCounts {
-		s.LowDims = append(s.LowDims, DimFreq{Dimension: d, Count: n})
+		s.LowDims = append(s.LowDims, DimFreq{Dimension: d, Count: n, Scores: dimHistos[d]})
 	}
 	// 频次降序；同频次按维度名稳定排序（可复现输出，便于断言）。
 	slices.SortFunc(s.LowDims, func(a, b DimFreq) int {
