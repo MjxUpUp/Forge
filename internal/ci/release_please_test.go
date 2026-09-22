@@ -15,7 +15,11 @@ package ci
 //   - manifest 版本必须等于 npm/package.json 版本：绕过 release-please 的手动发版会让
 //     它失同步而变红（刻意的设计——把人推回 release-please 路径；release-please 从旧
 //     版本起算下一版会撞已存在 tag）；
-//   - action 必须 SHA pin（与 release.yml 同一供应链姿势），dispatch 步必须指向 release.yml。
+//   - action 必须 SHA pin（与 release.yml 同一供应链姿势），dispatch 步必须指向 release.yml；
+//   - automerge 步必须存在且形状正确：Release PR 检查绿后自动 squash 合并（PAT 路径），
+//     --repo 显式给（无 checkout）、以 prs 输出为前提（普通无 PR run 不注册）、PAT
+//     检测留在 run 脚本——GITHUB_TOKEN 路径合并 push 不触发建 tag run，必须保持
+//     人工合并而非注册一个永远断链的 auto-merge。
 
 import (
 	"encoding/json"
@@ -229,6 +233,38 @@ func TestReleasePleaseWorkflow_PinnedAndDispatchesRelease(t *testing.T) {
 	}
 	if !strings.Contains(raw, "release_created") {
 		t.Fatal("dispatch 步必须以 release_created 输出为前提——否则每次普通 PR 刷新也调度构建层")
+	}
+}
+
+// TestReleasePleaseWorkflow_AutoMergeStep: the automerge step must keep its shape — gated on prs, --repo explicit, PAT path detection in the run script.
+//
+// TestReleasePleaseWorkflow_AutoMergeStep：automerge 步钉三件事：
+// (a) gh pr merge --auto 必须显式 --repo——本 workflow 不 checkout（无 .git），缺
+// --repo 时 gh 从 git 上下文推断直接 fatal（与 dispatch 步 v1.38.0 首发事故同坑，
+// 锚定行首防注释满足）；
+// (b) 以 steps.release.outputs.prs 为前提——无 Release PR 的 run（纯 push 无 feat/fix、
+// 或 release_created 轮）不注册 auto-merge；
+// (c) PAT 路径检测必须在 run 脚本（[ -z "$PAT" ]）而非 if:——GITHUB_TOKEN 注册的
+// auto-merge 合并 push 不触发建 tag run，发版会止步于 Release PR 合并，静默断链；
+// 检测下沉 run 脚本让 GITHUB_TOKEN 路径自动退回人工合并（与 dispatch 步双路径
+// 姿势对称：每条 token 路径恰好一种触发机制）。
+func TestReleasePleaseWorkflow_AutoMergeStep(t *testing.T) {
+	raw := string(readRepoFile(t, ".github", "workflows", "release-please.yml"))
+	if !regexp.MustCompile(`(?m)^\s*gh pr merge --auto[^\n]*--repo\b`).MatchString(raw) {
+		t.Fatal("automerge 命令必须 gh pr merge --auto ... --repo \"$GITHUB_REPOSITORY\"——" +
+			"本 workflow 不 checkout（无 .git），gh 缺 --repo 从 git 上下文推断直接 fatal" +
+			"（与 dispatch 步 v1.38.0 首发事故同坑）")
+	}
+	if !strings.Contains(raw, "steps.release.outputs.prs") {
+		t.Fatal("automerge 步必须以 steps.release.outputs.prs 为前提——" +
+			"无 Release PR 的 run 不注册 auto-merge（release_created 轮 prs 为空，" +
+			"不能只靠 PAT 检测放行）")
+	}
+	if !strings.Contains(raw, `[ -z "$PAT" ]`) {
+		t.Fatal("automerge 的 PAT 路径检测必须在 run 脚本读 env（[ -z \"$PAT\" ]）——" +
+			"GITHUB_TOKEN 注册的 auto-merge 合并 push 不触发建 tag run，发版止步于 Release PR；" +
+			"检测在 run 内让 GITHUB_TOKEN 路径退回人工合并。if: 引用 secrets 是被 GitHub" +
+			"静态拒绝的（见 TestReleasePleaseWorkflow_NoSecretsInIf）")
 	}
 }
 
