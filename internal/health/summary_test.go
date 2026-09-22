@@ -395,3 +395,71 @@ func TestSummarizeAtAcked(t *testing.T) {
 		t.Errorf(`nil matcher 应 ≡ SummarizeAt：got %+v want %+v`, got, want)
 	}
 }
+
+// TestSummarize_LowDimsScoreHistogram pins the full-bucket histogram on DimFreq:
+// fed from DimScores across ALL tasks (not just low-scoring ones), keyed by int score;
+// a low dim with zero DimScores data (legacy conclusions) renders an empty map.
+//
+// TestSummarize_LowDimsScoreHistogram 钉 DimFreq 的全档直方图：来自全部任务的
+// DimScores（不只低分任务），键为 int 分值；无 DimScores 的存量结论 → 空直方图。
+// 2026-09-22 专项分析：仅 ×N 频次曾把量纲信号（scope×57，46/57 仍 A）误读成纪律
+// 缺口——直方图是形态判读的数据面（见 docs/plans/low-dim-recurrence-2026-09.md）。
+func TestSummarize_LowDimsScoreHistogram(t *testing.T) {
+	cs := []act.Conclusion{
+		conc(`a`, `A`, `Strong`, 95, []string{`scope`}, at(1)),
+		conc(`b`, `A`, `Strong`, 95, []string{`scope`}, at(2)),
+		conc(`c`, `A`, `Strong`, 95, nil, at(3)),
+	}
+	cs[0].DimScores = []act.DimScore{
+		{Dimension: `scope`, Score: 40},
+		{Dimension: `process`, Score: 100},
+	}
+	cs[1].DimScores = []act.DimScore{
+		{Dimension: `scope`, Score: 100},
+		{Dimension: `process`, Score: 100},
+	}
+	s := Summarize(cs)
+	if len(s.LowDims) != 1 || s.LowDims[0].Dimension != `scope` {
+		t.Fatalf(`LowDims=%v want 仅 scope`, s.LowDims)
+	}
+	h := s.LowDims[0].Scores
+	if h[40] != 1 || h[100] != 1 {
+		t.Fatalf(`scope 直方图=%v want 40×1 100×1（含非低分档——形态判读的数据面）`, h)
+	}
+	if !s.LowDims[0].SpreadAcrossBuckets() {
+		t.Fatal(`有 100 分样本应判跨全档（量纲信号），got false`)
+	}
+	// 存量结论（无 DimScores）只报 low：直方图为空、按集中低档保守判读。
+	legacy := conc(`old`, `A`, `Strong`, 95, []string{`scope`}, at(4))
+	s2 := Summarize([]act.Conclusion{legacy})
+	if len(s2.LowDims) != 1 || len(s2.LowDims[0].Scores) != 0 {
+		t.Fatalf(`存量结论直方图应为空, got %+v`, s2.LowDims)
+	}
+	if s2.LowDims[0].SpreadAcrossBuckets() {
+		t.Fatal(`空直方图应保守判 false（集中低档路径）`)
+	}
+}
+
+// TestDimFreq_SpreadAcrossBuckets pins the pattern classifier boundary: ≥80 in the
+// histogram → true (metric signal); only low buckets or empty → false (discipline gap,
+// conservative for legacy data).
+//
+// TestDimFreq_SpreadAcrossBuckets 钉形态判读边界：直方图含 ≥80 → true（量纲信号）；
+// 仅低档或空 → false（纪律缺口；空数据保守归此类）。
+func TestDimFreq_SpreadAcrossBuckets(t *testing.T) {
+	cases := []struct {
+		name   string
+		scores map[int]int
+		want   bool
+	}{
+		{`含80`, map[int]int{40: 5, 80: 1}, true},
+		{`含100`, map[int]int{100: 3}, true},
+		{`仅低档`, map[int]int{0: 2, 40: 7, 60: 1}, false},
+		{`空直方图`, nil, false},
+	}
+	for _, c := range cases {
+		if got := (DimFreq{Dimension: "x", Scores: c.scores}).SpreadAcrossBuckets(); got != c.want {
+			t.Errorf(`%s: SpreadAcrossBuckets()=%v want %v`, c.name, got, c.want)
+		}
+	}
+}
