@@ -28,7 +28,10 @@ type releaseJob struct {
 	Needs yaml.Node `yaml:"needs"`
 	// TimeoutMinutes 供 npm-verify 退避算术守卫（结构性断言，见 TestReleaseWorkflow_NeedsChain）。
 	TimeoutMinutes int `yaml:"timeout-minutes"`
-	Steps          []struct {
+	// Permissions 供 trusted publishing 守卫断言 npm job 的 id-token: write（OIDC 前置）。
+	// 未声明 permissions 的 job（继承 workflow 顶层）为 nil map，读取安全。
+	Permissions map[string]string `yaml:"permissions"`
+	Steps       []struct {
 		Run  string `yaml:"run"`
 		Uses string `yaml:"uses"`
 	} `yaml:"steps"`
@@ -353,6 +356,43 @@ func TestGoreleaserReleaseMode_KeepsExisting(t *testing.T) {
 	if cfg.Release.Mode != "keep-existing" {
 		t.Fatalf("release.mode 必须为 keep-existing（保留 release-please 的 changelog 正文，只挂资产），got %q——"+
 			"replace 会把正文覆盖成裸 commit 列表", cfg.Release.Mode)
+	}
+}
+
+// TestReleaseWorkflow_NpmTrustedPublishing: npm 认证自 2026-09-22 起走 Trusted Publishing
+// (OIDC 免 token)，替代 NPM_TOKEN——token 会过期（Granular 最长 365 天），过期即发布链
+// 断在 npm job。钉住三件事：
+//   - 无 NODE_AUTH_TOKEN env（锚定行首防注释满足）——token 路径保持退役；回潮须连同
+//     npmjs 侧登记一起重新决策，不是顺手加回的事；
+//   - npm install -g npm@11+——Node 22 自带 npm 10.x，无 trusted publishing 能力
+//     （官方门槛 npm ≥11.5.1）；major 升级（如 12）会红——钉住的是「跨大版本须人工
+//     验证发布链」这个决策点；
+//   - npm job permissions id-token: write——OIDC 换凭证的前置（丢了则 publish 回落
+//     找 token，无 token 即 E401，且 provenance 同时失效）。
+//
+// npmjs 侧前置（每包 Settings → Trusted publishing 登记 MjxUpUp/Forge + release.yml，
+// 7 个包）无法沙盒验证，靠 RELEASE.md 的迁移记录约束。
+func TestReleaseWorkflow_NpmTrustedPublishing(t *testing.T) {
+	raw := string(readReleaseYAML(t))
+	if regexp.MustCompile(`(?m)^\s*NODE_AUTH_TOKEN:`).MatchString(raw) {
+		t.Fatal("release.yml 出现 NODE_AUTH_TOKEN env——npm 认证已迁移 trusted publishing（OIDC），" +
+			"token 路径保持退役；恢复须连同 npmjs 侧登记一起重新决策（见 npm job 头注释）")
+	}
+	wf := loadReleaseWorkflow(t)
+	npm, ok := wf.Jobs["npm"]
+	if !ok {
+		t.Fatal("release.yml 缺 npm job")
+	}
+	if npm.Permissions["id-token"] != "write" {
+		t.Fatalf("npm job 必须 permissions id-token: write（OIDC 免 token 认证 + provenance 的前置），got %v", npm.Permissions)
+	}
+	npmRuns := jobStepRuns(npm)
+	if !regexp.MustCompile(`npm install -g npm@1[1-9]\.`).MatchString(npmRuns) {
+		t.Fatal("npm job 必须先 npm install -g npm@11+（Node 22 自带 npm 10.x 无 trusted publishing 能力，" +
+			"官方门槛 ≥11.5.1）；major 变更是须人工验证发布链的决策点")
+	}
+	if !strings.Contains(npmRuns, "--provenance") {
+		t.Fatal("npm publish 必须带 --provenance（Sigstore 溯源——供应链加固不随认证迁移而丢）")
 	}
 }
 

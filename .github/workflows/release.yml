@@ -114,26 +114,43 @@ jobs:
     # 必须在 goreleaser 之后：从 v<ver> GitHub Release 下载各平台 tar.gz 组装子包 bin/。
     # 架构变化：与旧 install.js 方案不同，npm 包现在自带二进制（不可变），重建 GitHub
     # Release 二进制不再自动更新已发 npm 包——需 bump 版本重发（npm 不允许覆盖）。
+    #
+    # 认证 = npm Trusted Publishing（OIDC 免 token，2026-09-22 起，替代 NPM_TOKEN——
+    # token 会过期，Granular 最长 365 天，过期即发布链断）：npm ≥11.5.1 在无 token
+    # 环境自动用 GitHub OIDC 认证 publish。前置两件：
+    #   1. npmjs.com 每个包 Settings → Trusted publishing 登记 GitHub Actions：
+    #      MjxUpUp/Forge + workflow release.yml，Allowed actions 须允许**直接 publish**
+    #      （默认仅 staged；本 workflow 用 npm publish 直发）。7 个包都要：主包 +
+    #      5 平台子包 + forge-dsh。npm 不在保存时校验登记，配错到 publish 才炸。
+    #   2. job permissions id-token: write（下方已有——同时供 provenance 用）。
+    # 回退路径：revert 本迁移 + 恢复 NODE_AUTH_TOKEN 步（NPM_TOKEN secret 过渡期保留
+    # 未删，见 RELEASE.md）。守卫：TestReleaseWorkflow_NpmTrustedPublishing 钉住无
+    # token + npm ≥11 + id-token: write 三件事。
     needs: goreleaser
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read  # checkout + 下载 Release 资产
-      id-token: write  # npm publish --provenance 的 OIDC token
+      id-token: write  # trusted publishing 发布认证 + --provenance 溯源的 OIDC token
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
-          # setup-node 写 .npmrc 用 NODE_AUTH_TOKEN 认证该 registry——CI 标准模式，
-          # 避免项目级 .npmrc 冲突。
-          registry-url: "https://registry.npmjs.org"
+          # 不配 registry-url：trusted publishing 走 OIDC，无需 .npmrc 注 token
+          # （setup-node + NODE_AUTH_TOKEN 是 token 时代的 CI 标准模式，已退役）。
+      # npm 升级到 trusted publishing 门槛之上（官方要求 npm ≥11.5.1 + Node ≥22.14；
+      # Node 22 自带 npm 10.x 不够）。pin 精确版本——与 cosign/syft 同一供应链姿势，
+      # 升级须人工验证发布链（守卫 TestReleaseWorkflow_NpmTrustedPublishing 钉 major）。
+      - name: Install npm for trusted publishing (>=11.5.1)
+        run: npm install -g npm@11.19.1
       - name: Publish main + platform subpackages (idempotent)
         # 幂等：每个包 npm view 检测已发布则跳过（npm 不允许覆盖已发布版本）。
         # version 从主 package.json 读，用 jq 注入各子包 + 主包 optionalDependencies，
         # 消除多包版本同步风险。子包先发（主包依赖），主包后发。
+        # 认证：无 token，npm 自动用 job 的 OIDC（id-token: write）向 registry 换
+        # 发布凭证——npm view/dry-run 是公有包匿名读，不需要认证。
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
@@ -208,8 +225,7 @@ jobs:
       # commit、漏 bump 时本步静默 skip，插件游离于自动发版之外，2026-08 收回火车）。
       # 已发布版本幂等跳过，与主包同姿势。
       - name: Publish @agent_forge/forge-dsh (idempotent)
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # 认证同主包：无 token，npm 自动用 job 级 OIDC（trusted publishing）。
         run: |
           set -e
           VER=$(node -p "require('./plugins/forge-dsh/package.json').version")
