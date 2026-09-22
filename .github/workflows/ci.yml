@@ -21,7 +21,12 @@ concurrency:
 jobs:
   build:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # 25min：windows + -race 下 internal/cli 单包可 >10min、整 job 实测 11~15min+
+    # （2026-09-22 实录：#87 压线 14m57s 过、#88 两次撞顶——先撞 go test 包级默认
+    # 10min 超时、再撞本处 job 15min 超时）。15min 天花板对 windows 是随机红灯，
+    # 抬到 25min 留余量；ubuntu/macos 实际耗时 ~3-5min 不受影响（timeout 是上限
+    # 不是耗时）。包级 -timeout 同步抬到 20m（见下方 go test 行）。
+    timeout-minutes: 25
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -33,7 +38,9 @@ jobs:
           go-version-file: go.mod
       - run: go build ./...
       - run: go vet ./...
-      - run: go test ./... -count=1 -race
+      # -timeout 20m：包级默认 10min 被 windows + -race 的 internal/cli 撞穿过
+      # （2026-09-22 #88 实录 601s panic），抬到与 job 上限匹配的 20m。
+      - run: go test ./... -count=1 -race -timeout 20m
       # gofmt 门禁（仅 ubuntu 跑一份即可，格式化结果与 OS 无关）。
       # 覆盖根 module 全部 .go 目录（cmd/internal/skills，vendor/ 不参与）；
       # 与仓库 .gitattributes 的 eol=lf 配合只报真实格式问题。
