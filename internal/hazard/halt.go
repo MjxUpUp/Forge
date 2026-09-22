@@ -14,6 +14,7 @@ package hazard
 // SIGSTOP——宿主进程控制不在 forge 手里（红线：不替代 agent 循环）。
 
 import (
+	"os"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -63,4 +64,21 @@ func CheckHalt(p *forgedata.Project) HaltState {
 // 谁、何时解的锁可回溯）。
 func ReleaseHalt(p *forgedata.Project) error {
 	return AppendEvent(p, Event{Type: EventHaltRelease})
+}
+
+// EventsDestroyed 报告"事件流被毁"状态：hazards 目录存在而 events.jsonl 缺失。
+// 目录只由 AppendEvent 创建（目录在 = 事件曾落过盘），文件却没了 = 被清除——
+// 清账门据此按悬账阻断（清账证据被毁不是清白证明），halt release 据此允许人工
+// 核销（该状态下 confirm --last 无事件可读、未停机路径原本 no-op——不清账即
+// 死锁）。目录也缺 = 从未有事件（干净），返回 false。
+// 文件 stat 的任意错误（含权限等非 NotExist）按缺失计——保守方向：宁可误报
+// 被毁走人工核销，不放行无凭据的账（审查 2026-09-22 指出的偏移，刻意）。
+// 单源导出：taskpipeline 清账门与 cli halt release 共用，防两处 stat 判定漂移；
+// 路径规格走 p.HazardsEventsPath()/HazardsDir()，不在第三处复制字面量。
+func EventsDestroyed(p *forgedata.Project) bool {
+	if _, err := os.Stat(p.HazardsEventsPath()); err == nil {
+		return false
+	}
+	_, err := os.Stat(p.HazardsDir())
+	return err == nil
 }
