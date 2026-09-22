@@ -33,6 +33,7 @@ import (
 var intentionalRawNL = []string{
 	`printf '{"cancel":false,"contextModification":"%s"}\n' "$context"`, // shell fixture
 	`(?m)^\s*gh workflow run release\.yml\b[^\n]*--repo\b`,              // regex
+	`(?m)^\s*gh pr merge --auto[^\n]*--repo\b`,                          // regex（release automerge 守卫，release_please_test.go）
 	`Z:\no\such\dir\anywhere`,                                           // windows path
 	`{"hook_event_name":"PostToolUse"`,                                  // JSON fixture (escaped \n inside)
 	`(?s)^---\s*\n(.*?)\n---\s*\n?`,                                     // regex

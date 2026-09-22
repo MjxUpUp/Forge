@@ -4,6 +4,8 @@ name: Release Please
 # Release PR（版本 bump + changelog）、合并后自动打 v* tag 并建 GitHub Release；
 # 构建发布层 release.yml（test→goreleaser→npm）零改动，由下方 dispatch 步串联。
 # 两层分工与发版纪律见仓库根 RELEASE.md。
+# Release PR 经 automerge 步注册 auto-merge（PAT 路径），检查绿后自动合并——
+# feat/fix 合 main 起全链（tag→构建→npm→装回验证）无人值守。
 on:
   push:
     branches: [main]
@@ -38,6 +40,37 @@ jobs:
           # 事件直接触发 release.yml。GITHUB_TOKEN 产生的 tag push/PR 事件不会触发
           # 新 workflow run（GitHub 防递归的文档化行为），故默认路径须靠下方 dispatch。
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+      - name: Auto-merge Release PR
+        # 全自动发版最后一环：Release PR 开出/刷新后注册 auto-merge（幂等——已注册的
+        # PR 重复注册是 no-op）——6 个必需检查（ci.yml 的 build×3 + skills-qa +
+        # scripts-test×2）在 release-please 分支跑绿后，GitHub 自动 squash 合并；
+        # 随后 PAT 的 push.main 触发本 workflow 建 tag、PAT 的 tag push 直接触发
+        # release.yml——feat/fix 合 main 起零人工。
+        #
+        # 仅 PAT 路径启用：GITHUB_TOKEN 注册的 auto-merge，其合并 push 由 GITHUB_TOKEN
+        # 产生、按防递归规则不触发 push.main workflow——建 tag 的 release-please run
+        # 永远不来（要等下一次人工 push 才补），发版止步于 Release PR 合并。PAT 合并
+        # 则全链正常触发。repo 前置：Settings → General → Pull Requests → Allow
+        # auto-merge 须开启（已开；关掉则本步失败红 run——刻意的漂移信号，不静默吞）。
+        # PAT 检测在 run 脚本读 env：if: 引用 secrets 被 GitHub 静态拒绝（见
+        # TestReleasePleaseWorkflow_NoSecretsInIf 与 2026-08-19 首跑事故注释）。
+        if: ${{ steps.release.outputs.prs != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          PRS: ${{ steps.release.outputs.prs }}
+          PAT: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$PAT" ]; then
+            echo "RELEASE_PLEASE_TOKEN 未配置——GITHUB_TOKEN auto-merge 的合并 push 不触发建 tag run，保持人工合并路径"
+            exit 0
+          fi
+          # prs 输出是 PullRequest 对象 JSON 数组（release-please src/pull-request.ts，
+          # PR 号字段 number）；单包发版取首项。--repo 显式给：本 workflow 不 checkout
+          # （无 .git），gh 缺 --repo 会 fatal: not a git repository（与 dispatch 步
+          # v1.38.0 首发事故同坑）。
+          pr=$(echo "$PRS" | jq -r '.[0].number')
+          echo "enabling auto-merge on Release PR #$pr"
+          gh pr merge --auto --squash "$pr" --repo "$GITHUB_REPOSITORY"
       - name: Dispatch Release workflow on the new tag
         # GITHUB_TOKEN 路径的串联步骤：release-please 合并 Release PR 后自动打了 v* tag
         # 并建 GitHub Release，但该事件由 GITHUB_TOKEN 产生、不触发 release.yml——用
