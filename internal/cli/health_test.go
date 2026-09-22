@@ -79,3 +79,58 @@ func TestHealth_NonGitFriendlyMessage(t *testing.T) {
 		t.Errorf("不应裸报底层 error，got: %s", stderr)
 	}
 }
+
+// TestPrintHealth_LowDimsHistogram pins the 2026-09-22 low-dim rendering upgrade:
+// each recurrent low dim prints its full-bucket histogram and a pattern verdict —
+// spread (any ≥80 sample) reads as a metric/granularity signal, clustered-low as a
+// discipline gap. Bare ×N misled the retrospective into "deposit an iron rule" for
+// what was a threshold/granularity artifact (scope×57: 46/57 still grade A).
+//
+// TestPrintHealth_LowDimsHistogram 钉 2026-09-22 低分维度渲染升级：每个复发低分
+// 维度输出全档直方图 + 形态判读——跨全档（含 ≥80）读作量纲/粒度信号，集中低档
+// 读作纪律缺口。纯 ×N 曾把量纲伪象（scope×57：46/57 仍 A 级）误导成"该沉淀铁律"
+// （见 docs/plans/low-dim-recurrence-2026-09.md）。
+func TestPrintHealth_LowDimsHistogram(t *testing.T) {
+	s := health.Summary{
+		TotalTasks: 3,
+		AvgScore:   88,
+		LowDims: []health.DimFreq{
+			{Dimension: "scope", Count: 2, Scores: map[int]int{40: 1, 100: 1}},
+			{Dimension: "testing", Count: 1, Scores: map[int]int{0: 1}},
+		},
+	}
+	out := captureStdout(t, func() { printHealth(s) })
+	if !strings.Contains(out, `（40×1 100×1）`) {
+		t.Errorf("scope 行应带升序直方图, got: %s", out)
+	}
+	if !strings.Contains(out, `跨全档＝量纲/任务粒度信号`) {
+		t.Errorf("跨全档维度应判量纲/粒度信号, got: %s", out)
+	}
+	// 整行锚（防被恒打印的尾行"集中低档才是纪律缺口"掩蔽——分类器坏了此断言仍红）。
+	if !strings.Contains(out, `×1（0×1）——集中低档＝纪律缺口`) {
+		t.Errorf("testing 维度应整行判集中低档/纪律缺口, got: %s", out)
+	}
+}
+
+// TestScoreHisto pins the histogram formatter: ascending score order (low buckets
+// leftmost), "（40×31 60×26）" shape, empty map → empty string (legacy conclusions
+// without DimScores fall back to bare ×N).
+//
+// TestScoreHisto 钉直方图格式化：分数升序（低档在左）、"（40×31 60×26）" 形态、
+// 空直方图 → 空串（无 DimScores 的存量结论退回纯 ×N）。
+func TestScoreHisto(t *testing.T) {
+	cases := []struct {
+		name   string
+		scores map[int]int
+		want   string
+	}{
+		{"跨全档", map[int]int{100: 31, 60: 26, 80: 25, 40: 31}, `（40×31 60×26 80×25 100×31）`},
+		{"集中低档", map[int]int{40: 9}, `（40×9）`},
+		{"空直方图", nil, ``},
+	}
+	for _, c := range cases {
+		if got := scoreHisto(c.scores); got != c.want {
+			t.Errorf(`%s: scoreHisto()=%q want %q`, c.name, got, c.want)
+		}
+	}
+}
