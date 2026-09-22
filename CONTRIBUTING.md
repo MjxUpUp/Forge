@@ -33,6 +33,8 @@ Conventional Commits：`feat:` / `fix:` / `perf:` / `refactor:` / `docs:` / `cho
 
 ## 发版
 
-只有维护者执行。流程与纪律见 [RELEASE.md](RELEASE.md)；标准路径是合并 release-please 自动开出的
-Release PR（`chore(main): release X.Y.Z`）——tag、GitHub Release、跨平台二进制、npm 包全部自动就绪，
-无需本地手动步骤。`scripts/release.js` 已退役为 release-please 故障时的逃生舱（见 RELEASE.md「紧急手动路径」）。
+只有维护者执行。流程与纪律见 [RELEASE.md](RELEASE.md)；标准路径是把 `feat:`/`fix:` PR
+合入 main——release-please 自动开出的 Release PR（`chore(main): release X.Y.Z`）在必需
+检查跑绿后**自动合并**（auto-merge），tag、GitHub Release、跨平台二进制、npm 包（OIDC
+免 token 发布）全部自动就绪，全程零手动步骤。`scripts/release.js` 已退役为 release-please
+故障时的逃生舱（见 RELEASE.md「紧急手动路径」）。
