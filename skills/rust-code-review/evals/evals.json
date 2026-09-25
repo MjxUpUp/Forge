@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "review 一下这段 Rust 代码", "should_trigger": true},
+    {"query": "帮我看看这个 Rust PR 能不能合并", "should_trigger": true},
+    {"query": "这个 Rust 改动合并前检查下", "should_trigger": true},
+    {"query": "这段异步 Rust 代码有没有问题,特别是 unsafe 那块", "should_trigger": true},
+    {"query": "这个多 crate workspace 的 Rust 代码 review 下", "should_trigger": true},
+    {"query": "帮我审查下这个 React 组件", "should_trigger": false},
+    {"query": "提交前把这个 diff 通用审查一遍", "should_trigger": false},
+    {"query": "cargo 编译报错,帮我修下", "should_trigger": false},
+    {"query": "帮我跑下格式化,就 fmt 和 clippy 的事", "should_trigger": false}
+  ]
+}

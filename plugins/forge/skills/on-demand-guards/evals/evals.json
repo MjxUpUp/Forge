@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "我要动生产环境了,给我加个临时护栏小心点", "should_trigger": true},
+    {"query": "锁住这个目录,别让任何命令动它", "should_trigger": true},
+    {"query": "接下来只做这个目录的修改,别动其他地方", "should_trigger": true},
+    {"query": "我要执行 chmod -R 777 这种危险操作,给我看着点", "should_trigger": true},
+    {"query": "接下来都是高危操作,激活临时护栏", "should_trigger": true},
+    {"query": "我要 rm -rf 掉 build 目录", "should_trigger": false},
+    {"query": "帮我审查下这个脚本写得安不安全", "should_trigger": false},
+    {"query": "git 提交前帮我检查下代码", "should_trigger": false},
+    {"query": "日常开发就改两行代码,不用搞那么复杂", "should_trigger": false}
+  ]
+}

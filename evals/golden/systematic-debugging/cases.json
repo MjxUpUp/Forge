@@ -1,0 +1,56 @@
+{
+  "skill": "systematic-debugging",
+  "cases": [
+    {
+      "id": "g-systematic-debugging-t1",
+      "skill": "systematic-debugging",
+      "kind": "trigger",
+      "prompt": "这个测试本地能过 CI 上一直挂，搞不懂为什么",
+      "target": "systematic-debugging",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-systematic-debugging-t2",
+      "skill": "systematic-debugging",
+      "kind": "trigger",
+      "prompt": "改了三个地方了还是不行，卡住了",
+      "target": "systematic-debugging",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-systematic-debugging-t3",
+      "skill": "systematic-debugging",
+      "kind": "trigger",
+      "prompt": "接口响应突然变慢了一倍，帮忙查下性能回退",
+      "target": "systematic-debugging",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-systematic-debugging-n1",
+      "skill": "systematic-debugging",
+      "kind": "not-trigger",
+      "prompt": "rustc 报 error[E0308]: mismatched types，类型不匹配",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-systematic-debugging-n2",
+      "skill": "systematic-debugging",
+      "kind": "not-trigger",
+      "prompt": "给我写一个用户登录的接口设计",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-systematic-debugging-b1",
+      "skill": "systematic-debugging",
+      "kind": "not-trigger",
+      "prompt": "go vet 说这里 unreachable code，什么意思",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "我要写一份 PRD,按标准清单帮我搭骨架", "should_trigger": true},
+    {"query": "帮我设计 API 契约,对照质量标准自查一遍", "should_trigger": true},
+    {"query": "设计建表和 migration,该按什么标准写", "should_trigger": true},
+    {"query": "写页面和路由设计产物,帮我按清单搭结构", "should_trigger": true},
+    {"query": "我要写测试方案和用例设计,质量标准是什么", "should_trigger": true},
+    {"query": "需求还不清楚,先帮我澄清下到底要做什么", "should_trigger": false},
+    {"query": "按模板帮我直接生成一份 PRD 文档", "should_trigger": false},
+    {"query": "帮我审查下这段代码提交前有没有问题", "should_trigger": false},
+    {"query": "这个数据库表到底怎么实现,帮我写代码", "should_trigger": false}
+  ]
+}

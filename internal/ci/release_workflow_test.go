@@ -1,0 +1,443 @@
+package ci
+
+// 本包守护 forge 自身发布链路（.github/workflows/release.yml）的结构不变质。
+// 这是"CI 防绕过"的沙盒验证层：解析 release.yml 断言 needs 强依赖链和触发条件，
+// 不触发真实 release——未来有人误删 needs: test / 改触发条件，本测试立刻红。
+//
+// 历史教训（2026-06，v0.27.0/v0.27.1）：release.yml 的 needs 链本身是对的，
+// 但发版被手动 gh release + npm publish 整个绕过（没走 workflow）。本测试守护
+// needs 链不被破坏；手动绕过 workflow 本身靠 根目录 RELEASE.md 的发布纪律约束
+// （那层无法沙盒验证——手动行为不在 CI 内）。
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+// releaseJob 只取守护 needs 链所需字段。
+type releaseJob struct {
+	// needs can be a scalar (needs: test) or a sequence (needs: [a, b]); received as-is via yaml.Node, then normalized by needsList.
+	//
+	// needs 可能是标量（needs: test）或序列（needs: [a, b]），用 yaml.Node 原样接收，
+	// 再由 needsList 归一化。GitHub Actions 两种写法都合法。
+	Needs yaml.Node `yaml:"needs"`
+	// TimeoutMinutes 供 npm-verify 退避算术守卫（结构性断言，见 TestReleaseWorkflow_NeedsChain）。
+	TimeoutMinutes int `yaml:"timeout-minutes"`
+	// Permissions 供 trusted publishing 守卫断言 npm job 的 id-token: write（OIDC 前置）。
+	// 未声明 permissions 的 job（继承 workflow 顶层）为 nil map，读取安全。
+	Permissions map[string]string `yaml:"permissions"`
+	Steps       []struct {
+		Run  string `yaml:"run"`
+		Uses string `yaml:"uses"`
+	} `yaml:"steps"`
+}
+
+// releaseWorkflow 只解析 jobs——顶层 on: 字段在 yaml.v3（YAML 1.1 bool 语义）下
+// 会被 resolve 成 bool(true)，结构化解析 on 会失败。on key 被忽略不影响 jobs
+// 解析（jobs 是普通字符串 key）；触发条件断言改走原始文本（见 TestReleaseWorkflow_TagTriggered）。
+type releaseWorkflow struct {
+	Jobs map[string]releaseJob `yaml:"jobs"`
+}
+
+// needsList 把 needs yaml.Node 归一化为字符串列表。
+//   - ScalarNode（needs: test）→ ["test"]
+//   - SequenceNode（needs: [a, b]）→ ["a", "b"]
+//   - 无 needs（test job）→ nil
+func needsList(n yaml.Node) []string {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		return []string{n.Value}
+	case yaml.SequenceNode:
+		out := make([]string, 0, len(n.Content))
+		for _, c := range n.Content {
+			out = append(out, c.Value)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func readReleaseYAML(t *testing.T) []byte {
+	t.Helper()
+	// go test 运行时 cwd = internal/ci/，release.yml 在仓库根 .github/workflows/。
+	path := filepath.Join("..", "..", ".github", "workflows", "release.yml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读 release.yml 失败: %v（cwd 是否在 internal/ci/?）", err)
+	}
+	return data
+}
+
+func loadReleaseWorkflow(t *testing.T) *releaseWorkflow {
+	t.Helper()
+	var wf releaseWorkflow
+	if err := yaml.Unmarshal(readReleaseYAML(t), &wf); err != nil {
+		t.Fatalf("unmarshal release.yml jobs: %v", err)
+	}
+	return &wf
+}
+
+// TestReleaseWorkflow_TagTriggered: releases may only be triggered by pushing a tag.
+//
+// TestReleaseWorkflow_TagTriggered：发版只能由打 tag 触发。
+// 防止有人改成 push 分支触发，导致每次 main 推送都发版——那会绕过"显式打 tag 才发版"
+// 的纪律，且让 needs 链在每次推送时都跑一遍。
+// on 字段走原始文本断言（见 releaseWorkflow 注释，yaml.v3 on→bool 坑）。
+func TestReleaseWorkflow_TagTriggered(t *testing.T) {
+	raw := string(readReleaseYAML(t))
+	if !strings.Contains(raw, "tags:") {
+		t.Fatal("release.yml 必须由 tag push 触发（on.push.tags），现未发现 tags: 触发条件——" +
+			"改成分支触发会让每次 main 推送都发版，绕过显式发版纪律")
+	}
+	if !strings.Contains(raw, `"v*"`) {
+		t.Fatalf(`release.yml on.push.tags 必须匹配 "v*" 模式（当前打 v* tag 才发版）`)
+	}
+}
+
+// TestReleaseWorkflow_NeedsChain: guard the test→drill→goreleaser→npm→npm-verify hard-dependency chain.
+//
+// TestReleaseWorkflow_NeedsChain：守护 test→drill→goreleaser→npm→npm-verify 强依赖链。
+// 这是"CI 防绕过"机制核心——只要发版走 release.yml，test/drill 失败则 goreleaser/npm 都不跑，
+// 不会发出坏包。沙盒验证：本测试解析 yaml 断言 needs，无需触发真实 release。
+func TestReleaseWorkflow_NeedsChain(t *testing.T) {
+	wf := loadReleaseWorkflow(t)
+
+	// drill：行为级冒烟门禁（wedge-drill + artifact-drill）——发布物必须真实跑过，
+	// 不是"构建成功"就发（forge 理念：验收 = 实跑证据）。排在 goreleaser 之前，
+	// 演练红则 GitHub Release 与 npm 发布整体不放行。
+	drill, ok := wf.Jobs["drill"]
+	if !ok {
+		t.Fatal("release.yml 缺 drill job（发布前行为级冒烟——发布物必须真实跑过）")
+	}
+	drillRuns := jobStepRuns(drill)
+	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
+		if !strings.Contains(drillRuns, want) {
+			t.Fatalf("drill job 必须跑 %s（缺则发布链丢行为级冒烟）: %s", want, drillRuns)
+		}
+	}
+	// 演练报告留痕（审计漏点 #3 解法）：报告必须上传为 workflow artifacts——
+	// 发布过程在 forge 台账之外，报告是唯一可追溯载体。
+	drillUses := jobStepUses(drill)
+	if !strings.Contains(drillUses, "upload-artifact") {
+		t.Fatalf("drill job 必须以 upload-artifact 上传演练报告——发布审计载体缺失: %s", drillUses)
+	}
+
+	goreleaser, ok := wf.Jobs["goreleaser"]
+	if !ok {
+		t.Fatal("release.yml 缺 goreleaser job（发二进制）")
+	}
+	if got := needsList(goreleaser.Needs); len(got) != 2 || got[0] != "test" || got[1] != "drill" {
+		t.Fatalf("goreleaser 必须 needs: [test, drill]（test 或 drill 失败则不发二进制），got %v——"+
+			"删掉任一 needs 会让失败仍发版，破坏 CI 防绕过链", got)
+	}
+
+	npm, ok := wf.Jobs["npm"]
+	if !ok {
+		t.Fatal("release.yml 缺 npm job（发 @agent_forge/forge）")
+	}
+	if got := needsList(npm.Needs); len(got) != 1 || got[0] != "goreleaser" {
+		t.Fatalf("npm 必须 needs: [goreleaser]（npm 平台子包的二进制来自 goreleaser 构建并上传的 GitHub Release 产物），got %v", got)
+	}
+
+	// npm-verify：发布后从 npmjs 装回并断言 forge --version == tag——
+	// 「发布后装机无人验证」缺口的收口。必须在 npm 之后（装的是 npm 刚发的版本）。
+	// 且必须跑双 drill（装机行为级验收——版本对上 ≠ 行为对，v1.52.0 审计缺口）。
+	npmVerify, ok := wf.Jobs["npm-verify"]
+	if !ok {
+		t.Fatal("release.yml 缺 npm-verify job（发布后装机验证——npm 发出去不代表用户装得回、版本对得上）")
+	}
+	if got := needsList(npmVerify.Needs); len(got) != 1 || got[0] != "npm" {
+		t.Fatalf("npm-verify 必须 needs: [npm]（验证的是 npm 刚发布的版本），got %v", got)
+	}
+	hasInstallAssert := false
+	for _, s := range npmVerify.Steps {
+		if strings.Contains(s.Run, "npm i -g") && strings.Contains(s.Run, "--version") {
+			hasInstallAssert = true
+		}
+	}
+	if !hasInstallAssert {
+		t.Fatal("npm-verify 必须 npm i -g 装回并断言 forge --version（缺断言则装机验证名存实亡）")
+	}
+	// 无条件退避重试（v1.56.5/1.56.6/1.73.0 三轮实录收敛）：registry 读路径可滞后
+	// 写路径很远——v1.73.0 实录 packument visible 但 tarball CDN 404 长达 ~9-14min，
+	// 8×45s≈7min 窗口被击穿（重试用尽假红，发布实际成功）。装回失败必须无条件退避
+	// （15 次 × 60s 间隔，自发布累计 ≈18min）；API 查询仅信息性（URL 锚点钉官方源，
+	// 镜像滞后误判）；重试用尽才失败（终态诊断串锚住「防掩盖」——失败输出区分
+	// visible / not-visible 两个排查方向）。
+	// registry 显式钉主源（2026-09-25 裁决：verify 只认 registry.npmjs.org）——
+	// 不钉则吃 runner 默认 npm 配置，镜像渗入会静默验镜像；且诊断探针钉主源，
+	// 安装不钉则「API visible 但装不上」的归因被不同源噪音污染。
+	// 结构性断言钉住「无条件」属性本身：exit 1 恰好 2 处（i=15 终态 + 版本不符）——
+	// 中途加回任何提前退出（如 404 立即失败）会变 3 处而红；循环上界 15 显式锚定，
+	// 缩窗但保留终态文案的回归也会红。
+	installRun := ""
+	for _, s := range npmVerify.Steps {
+		if strings.Contains(s.Run, "npm i -g") {
+			installRun = s.Run
+		}
+	}
+	for _, anchor := range []string{
+		"registry.npmjs.org/@agent_forge/forge",        // 官方源诊断查询（非镜像）
+		`REG="https://registry.npmjs.org"`,             // 安装源显式钉主源（防镜像渗入 + 与诊断探针同源）
+		`--registry="$REG"`,                            // 装回命令必须消费该钉（只定义不消费的钉是装饰）
+		"sleep 60",                                     // 退避重试（14×60s≈14min 间隔）
+		"15 次装回均失败",                                    // 重试用尽的终态诊断（防掩盖：区分装回问题 vs 未发布）
+		"for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15", // 循环上界（缩窗但保留文案的回归）
+	} {
+		if !strings.Contains(installRun, anchor) {
+			t.Fatalf("npm-verify 装回步骤缺退避/registry 锚点 %q——v1.73.0 实录（tarball CDN 滞后 ~9-14min、verify 只认主源）的防回归件缺一", anchor)
+		}
+	}
+	if n := strings.Count(installRun, "exit 1"); n != 2 {
+		t.Fatalf("npm-verify 装回步骤 exit 1 必须恰好 2 处（i=15 终态 + 版本不符），got %d——中途提前退出（如 404 立即失败）破坏无条件退避（v1.56.6 实录误判形态）", n)
+	}
+	// 退避算术的预算面：timeout 必须 ≥25min——回退到 15 会让最坏退避路径
+	//（15 次尝试间 14×60s≈14min 间隔 + 尝试耗时 + 双 drill + cosign 验签）死于通用
+	// 超时消息，专门设计的 visible/not-visible 终态诊断被吞（防掩盖语义静默退化）。
+	if npmVerify.TimeoutMinutes < 25 {
+		t.Fatalf("npm-verify timeout-minutes 必须 ≥25（15×60s 退避最坏 ≈18min + 双 drill + cosign 验签余量），got %d", npmVerify.TimeoutMinutes)
+	}
+	verifyRuns := jobStepRuns(npmVerify)
+	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
+		if !strings.Contains(verifyRuns, want) {
+			t.Fatalf("npm-verify 必须在装机上跑 %s（装机行为级验收——只验版本号不够）: %s", want, verifyRuns)
+		}
+	}
+	// 签名验证闭环（审计漏点 #1 解法）：cosign 只签不验 = 供应链证据无消费方。
+	if !strings.Contains(verifyRuns, "cosign verify-blob") {
+		t.Fatal("npm-verify 必须 cosign verify-blob 验证 checksums 签名（只签不验 = 签名形同虚设）")
+	}
+	// 身份硬化（审计遗留 #2）：regexp 必须锚定 release workflow 精确路径（点号转义
+	// + refs/tags 锚定）——前缀形态会让同 owner 任意仓库的签名过验。
+	if !strings.Contains(verifyRuns, `github\.com/`) {
+		t.Fatal("cosign identity regexp 未硬化（须转义点号并锚定 release.yml@refs/tags/vX.Y.Z 精确路径）")
+	}
+}
+
+// jobStepRuns concatenates all run-script bodies of a job's steps (guard-side
+// helper: assert behavioral content, not step ordering).
+//
+// jobStepRuns 拼接 job 全部步骤的 run 脚本体（守卫侧助手：断言行为内容而非步骤顺序）。
+func jobStepRuns(job releaseJob) string {
+	var b strings.Builder
+	for _, s := range job.Steps {
+		b.WriteString(s.Run)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// jobStepUses concatenates all `uses:` actions of a job's steps.
+//
+// jobStepUses 拼接 job 全部步骤引用的 action（uses:）。
+func jobStepUses(job releaseJob) string {
+	var b strings.Builder
+	for _, s := range job.Steps {
+		b.WriteString(s.Uses)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// TestReleaseWorkflow_TestJobIsGateSource: the test job is the source of the needs chain — if it degrades (drops go test, drops -race), the whole anti-bypass chain becomes nominal (goreleaser needs an empty test).
+//
+// TestReleaseWorkflow_TestJobIsGateSource：test job 是 needs 链的源头——
+// 它若退化（去掉 go test、去掉 -race），整条防绕过链就名存实亡（goreleaser needs 一个空 test）。
+// 故 test job 必须跑 go test 且带 -race（与 ci.yml 一致）。
+func TestReleaseWorkflow_TestJobIsGateSource(t *testing.T) {
+	wf := loadReleaseWorkflow(t)
+	test, ok := wf.Jobs["test"]
+	if !ok {
+		t.Fatal("release.yml 缺 test job（needs 链源头）")
+	}
+	hasTest, hasRace := false, false
+	for _, s := range test.Steps {
+		if strings.Contains(s.Run, "go test") {
+			hasTest = true
+		}
+		if strings.Contains(s.Run, "-race") {
+			hasRace = true
+		}
+	}
+	if !hasTest {
+		t.Fatal("test job 必须跑 go test（needs 链源头）——现 steps 无 go test，" +
+			"goreleaser needs 的就是一个空 test，防绕过链失效")
+	}
+	if !hasRace {
+		t.Fatal("test job 必须带 -race（与 ci.yml 一致的竞态检测标准）——现未发现 -race")
+	}
+}
+
+// readGoreleaserYAML 从仓库根读 .goreleaser.yml（go test cwd = internal/ci/）。
+func readGoreleaserYAML(t *testing.T) []byte {
+	t.Helper()
+	path := filepath.Join("..", "..", ".goreleaser.yml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读 .goreleaser.yml 失败: %v（cwd 是否在 internal/ci/?）", err)
+	}
+	return data
+}
+
+// goreleaserSign 只取守护 signs: 块所需字段（cmd + args）；
+// yaml.v3 忽略 signs 的其它字段（signature/artifacts/output）。
+type goreleaserSign struct {
+	Cmd  string   `yaml:"cmd"`
+	Args []string `yaml:"args"`
+}
+
+// goreleaserSignsConfig 持有顶层 signs 列表。
+type goreleaserSignsConfig struct {
+	Signs []goreleaserSign `yaml:"signs"`
+}
+
+// TestGoreleaserSigns_CosignV3Bundle pins the cosign v3 --bundle signing flags in the goreleaser config.
+//
+// TestGoreleaserSigns_CosignV3Bundle：checksums 签名步必须用 cosign v3 的 --bundle
+// 格式（单个 .sigstore.json，证书+签名合一）。v2 旧 --output-signature/
+// --output-certificate 在 cosign v3 下解析成空路径
+// （"create bundle file: open : no such file or directory"），致 v1.28.3 发布失败。
+// 本守护防 silently 退化回废弃 flags。
+//
+// 只结构化解析 signs 的 args 列表（非原始文本）——注释里提到废弃 flags 不会误触发守护。
+func TestGoreleaserSigns_CosignV3Bundle(t *testing.T) {
+	var cfg goreleaserSignsConfig
+	if err := yaml.Unmarshal(readGoreleaserYAML(t), &cfg); err != nil {
+		t.Fatalf("unmarshal .goreleaser.yml signs: %v", err)
+	}
+	if len(cfg.Signs) == 0 {
+		t.Fatal(".goreleaser.yml 缺 signs: 块（checksums keyless 签名）——" +
+			"删签名会让 release 资产可被静默替换（Sigstore 透明日志可验证性丢失）")
+	}
+	for i, s := range cfg.Signs {
+		joined := strings.Join(s.Args, " ")
+		if !strings.Contains(joined, "--bundle") {
+			t.Fatalf("signs[%d] 必须用 cosign v3 的 --bundle（证书+签名合一），got args %v——"+
+				"v2 旧 --output-signature/--output-certificate 在 cosign v3 下产空路径致发布失败", i, s.Args)
+		}
+		if strings.Contains(joined, "--output-signature") || strings.Contains(joined, "--output-certificate") {
+			t.Fatalf("signs[%d] 含 cosign v2 废弃 flags（--output-signature/--output-certificate），got args %v——"+
+				"v3 下被忽略产空路径，须改 --bundle", i, s.Args)
+		}
+	}
+}
+
+// TestReleaseWorkflow_DispatchTrigger: release.yml must keep the workflow_dispatch trigger — it is the entry point of the release-please chain on the GITHUB_TOKEN path (tag pushes created by GITHUB_TOKEN do not trigger workflows; dispatch is the documented exception).
+//
+// TestReleaseWorkflow_DispatchTrigger：release.yml 必须保留 workflow_dispatch 触发器——
+// 它是 release-please 链在 GITHUB_TOKEN 路径上的入口（GITHUB_TOKEN 产生的 tag push 不
+// 触发 workflow，dispatch 是文档化例外）。删掉它，未配 PAT 期间所有经 Release PR 的
+// 发版都会静默止步。
+func TestReleaseWorkflow_DispatchTrigger(t *testing.T) {
+	raw := string(readReleaseYAML(t))
+	// 必须锚定触发器键本身（缩进 + workflow_dispatch: 至行尾），不能裸 Contains：
+	// release.yml 的注释里就写着 workflow_dispatch——删掉真触发器、只留注释时
+	// 裸 Contains 依然绿（审查发现的守卫注水）。
+	if !regexp.MustCompile(`(?m)^\s*workflow_dispatch:\s*$`).MatchString(raw) {
+		t.Fatal("release.yml 缺 workflow_dispatch 触发器（on: 下的键，非注释）——release-please.yml 的 GITHUB_TOKEN 路径" +
+			"靠 dispatch 在新 tag 上调度本 workflow，删掉则合并 Release PR 后不再发版")
+	}
+}
+
+// TestGoreleaserReleaseMode_KeepsExisting: goreleaser must not replace the release body — release-please pre-creates the GitHub Release with the curated changelog (grouped sections + PR links); mode: replace would clobber it with a bare commit list. keep-existing uploads artifacts onto the existing release and keeps the body.
+//
+// TestGoreleaserReleaseMode_KeepsExisting：goreleaser 不得 replace release 正文——
+// release-please 先建好带整理 changelog（分组 + PR 链接）的 GitHub Release；
+// mode: replace 会把它覆盖成裸 commit 列表。keep-existing 往现存 release 上挂资产、
+// 保留正文。手动打 tag 路径无预置 Release，goreleaser 照常自建（行为不变）。
+func TestGoreleaserReleaseMode_KeepsExisting(t *testing.T) {
+	var cfg struct {
+		Release struct {
+			Mode string `yaml:"mode"`
+		} `yaml:"release"`
+	}
+	if err := yaml.Unmarshal(readGoreleaserYAML(t), &cfg); err != nil {
+		t.Fatalf("unmarshal .goreleaser.yml release: %v", err)
+	}
+	if cfg.Release.Mode != "keep-existing" {
+		t.Fatalf("release.mode 必须为 keep-existing（保留 release-please 的 changelog 正文，只挂资产），got %q——"+
+			"replace 会把正文覆盖成裸 commit 列表", cfg.Release.Mode)
+	}
+}
+
+// TestReleaseWorkflow_NpmTrustedPublishing: npm 认证自 2026-09-22 起走 Trusted Publishing
+// (OIDC 免 token)，替代 NPM_TOKEN——token 会过期（Granular 最长 365 天），过期即发布链
+// 断在 npm job。钉住三件事：
+//   - 无 NODE_AUTH_TOKEN env（锚定行首防注释满足）——token 路径保持退役；回潮须连同
+//     npmjs 侧登记一起重新决策，不是顺手加回的事；
+//   - npm install -g npm@11+——Node 22 自带 npm 10.x，无 trusted publishing 能力
+//     （官方门槛 npm ≥11.5.1）；major 升级（如 12）会红——钉住的是「跨大版本须人工
+//     验证发布链」这个决策点；
+//   - npm job permissions id-token: write——OIDC 换凭证的前置（丢了则 publish 回落
+//     找 token，无 token 即 E401，且 provenance 同时失效）。
+//
+// npmjs 侧前置（每包 Settings → Trusted publishing 登记 MjxUpUp/Forge + release.yml，
+// 7 个包）无法沙盒验证，靠 RELEASE.md 的迁移记录约束。
+func TestReleaseWorkflow_NpmTrustedPublishing(t *testing.T) {
+	raw := string(readReleaseYAML(t))
+	if regexp.MustCompile(`(?m)^\s*NODE_AUTH_TOKEN:`).MatchString(raw) {
+		t.Fatal("release.yml 出现 NODE_AUTH_TOKEN env——npm 认证已迁移 trusted publishing（OIDC），" +
+			"token 路径保持退役；恢复须连同 npmjs 侧登记一起重新决策（见 npm job 头注释）")
+	}
+	wf := loadReleaseWorkflow(t)
+	npm, ok := wf.Jobs["npm"]
+	if !ok {
+		t.Fatal("release.yml 缺 npm job")
+	}
+	if npm.Permissions["id-token"] != "write" {
+		t.Fatalf("npm job 必须 permissions id-token: write（OIDC 免 token 认证 + provenance 的前置），got %v", npm.Permissions)
+	}
+	npmRuns := jobStepRuns(npm)
+	if !regexp.MustCompile(`npm install -g npm@1[1-9]\.`).MatchString(npmRuns) {
+		t.Fatal("npm job 必须先 npm install -g npm@11+（Node 22 自带 npm 10.x 无 trusted publishing 能力，" +
+			"官方门槛 ≥11.5.1）；major 变更是须人工验证发布链的决策点")
+	}
+	if !strings.Contains(npmRuns, "--provenance") {
+		t.Fatal("npm publish 必须带 --provenance（Sigstore 溯源——供应链加固不随认证迁移而丢）")
+	}
+}
+
+// TestReleaseWorkflow_NoStepLevelPermissions 钉住 permissions 键位合法性：
+// GitHub Actions 的 permissions 只支持 workflow/job 两级，step 级是非法键——
+// actionlint 报错且 Actions 解析期拒绝整个 workflow（每次发版即炸）。2026-09-15
+// 实录：pins 对齐步把 contents:write 写成 step 级，internal/ci 既有守卫对
+// permissions 零覆盖致其溜到远端 CI 才被人工复审抓住——本测试封该盲区。
+func TestReleaseWorkflow_NoStepLevelPermissions(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wf struct {
+		Jobs map[string]yaml.Node `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &wf); err != nil {
+		t.Fatalf("解析 release.yml: %v", err)
+	}
+	for jobName, jn := range wf.Jobs {
+		var job struct {
+			Permissions yaml.Node   `yaml:"permissions"`
+			Steps       []yaml.Node `yaml:"steps"`
+		}
+		if err := jn.Decode(&job); err != nil {
+			t.Fatalf("解析 job %s: %v", jobName, err)
+		}
+		if job.Permissions.Kind != 0 && job.Permissions.Kind != yaml.MappingNode {
+			t.Errorf("job %s 的 permissions 须为 mapping（job 级合法形态），got kind %v", jobName, job.Permissions.Kind)
+		}
+		for i, sn := range job.Steps {
+			var step map[string]yaml.Node
+			if err := sn.Decode(&step); err != nil {
+				continue
+			}
+			if _, ok := step["permissions"]; ok {
+				t.Errorf("job %s 第 %d 个 step 含 step 级 permissions——非法键，Actions 解析期拒绝整个 workflow（提为 job 级）", jobName, i+1)
+			}
+		}
+	}
+}

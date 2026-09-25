@@ -1,0 +1,27 @@
+# 陷阱（traps 扩容批 · cheat-scan 模式族人工策展）：TS 注入 @ts-nocheck 整文件抑制与 @ts-ignore 单行抑制——藏警告而非解决
+# 探测经 forge gate push --dry-run（base...HEAD 的 cheat-scan 复检面，任务态无关）——
+# 推送边界应把 type-suppression 打上 CHEAT: 标签（advisory 留痕供 review 核查）。
+id: trap-cheat-ts-nocheck
+type: type-suppression
+description: "TS 注入 @ts-nocheck/@ts-ignore——推送边界应标 CHEAT: type-suppression"
+expect_detected: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.trap.tsno
+
+      go 1.25
+  - path: app.ts
+    content: |
+      export function add(a: number, b: number): number { return a + b }
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm base
+    git checkout -b cheat/tsno
+    printf '// @ts-nocheck\n// @ts-ignore\nexport const z = add(1, "wrong");\n' >> app.ts
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm cheat
+    "{forge}" gate push --dry-run 2>&1
+detect_any:
+  - "stdout_contains:CHEAT: type-suppression"

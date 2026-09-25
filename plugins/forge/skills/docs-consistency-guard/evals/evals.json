@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "README 里的命令表老是落后于代码,帮我加个守卫测试", "should_trigger": true},
+    {"query": "文档说 8 个 hook 但代码只注册了 7 个,这种漂移怎么防", "should_trigger": true},
+    {"query": "发布前审计下文档和代码是不是一致", "should_trigger": true},
+    {"query": "给这段手维护的文档加个自动化防漂移", "should_trigger": true},
+    {"query": "文档里的配置项表会随代码变,怎么钉住它", "should_trigger": true},
+    {"query": "这个 API 的函数签名是什么,帮我查下", "should_trigger": false},
+    {"query": "帮我审查下这段代码能不能提交", "should_trigger": false},
+    {"query": "帮我按模板写一份周报", "should_trigger": false},
+    {"query": "能发布了吗,上线前 go/no-go 检查", "should_trigger": false}
+  ]
+}

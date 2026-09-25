@@ -1,0 +1,139 @@
+{
+  "generated_at": "2026-09-11T14:27:44.047874+08:00",
+  "forge_version": "1.56.4",
+  "caliber": {
+    "dedup_window": 2000000000,
+    "join_window": 600000000000,
+    "follow_window": 1800000000000,
+    "drill_window": 1200000000000,
+    "pair_window": 3000000000,
+    "hazard_dedup_window": 3000000000
+  },
+  "window": {
+    "from": "2026-08-17T11:10:05.572948+08:00",
+    "to": "2026-09-11T14:27:21.394846+08:00",
+    "days": 25.136988679374998
+  },
+  "a_skill_trigger": {
+    "total": 474,
+    "daily_triggers": 18.856673965442763,
+    "by_event": {
+      "PostToolUse": {
+        "hits": 99,
+        "loaded": 0,
+        "rate": 0
+      },
+      "PreToolUse": {
+        "hits": 144,
+        "loaded": 6,
+        "rate": 0.041666666666666664
+      },
+      "Stop": {
+        "hits": 36,
+        "loaded": 1,
+        "rate": 0.027777777777777776
+      },
+      "UserPromptSubmit": {
+        "hits": 195,
+        "loaded": 50,
+        "rate": 0.2564102564102564
+      }
+    },
+    "conversion": {
+      "num": 57,
+      "den": 474,
+      "rate": 0.12025316455696203
+    },
+    "verification_driver_testcmd_precision": {
+      "num": 19,
+      "den": 61,
+      "rate": 0.3114754098360656
+    }
+  },
+  "b_next_hint": {
+    "hints": 0,
+    "adoption": {
+      "num": 0,
+      "den": 0,
+      "rate": 0
+    }
+  },
+  "c_gate_cmd_form": {
+    "total": 278,
+    "standalone": 4,
+    "and_chain_only": 1,
+    "multi_gate": 120,
+    "semicolon": 54,
+    "pipe_truncated": 266,
+    "grep_masked": 40,
+    "c1_semicolon_or_grep": {
+      "num": 80,
+      "den": 278,
+      "rate": 0.28776978417266186
+    },
+    "c2_pipe_truncated": {
+      "num": 266,
+      "den": 278,
+      "rate": 0.9568345323741008
+    },
+    "c3_compliant": {
+      "num": 4,
+      "den": 278,
+      "rate": 0.014388489208633094
+    }
+  },
+  "d_refs_critical": {
+    "declared_skills": 2,
+    "overall": {
+      "num": 2,
+      "den": 10,
+      "rate": 0.2
+    },
+    "per_host": {
+      "kimi": {
+        "num": 0,
+        "den": 3,
+        "rate": 0
+      },
+      "unknown": {
+        "num": 2,
+        "den": 7,
+        "rate": 0.2857142857142857
+      }
+    }
+  },
+  "e_attribution": {
+    "post_seal_rows": 288,
+    "post_seal_no_session_rows": 234,
+    "post_seal_other_session_rows": 54,
+    "tasks_with_post_seal_rows": 33,
+    "post_seal_owner_rows": 23,
+    "probe_flagged_rows": 0,
+    "no_session_share": {
+      "num": 2663,
+      "den": 3697,
+      "rate": 0.7203137679199351
+    },
+    "resolve_path_counts": {}
+  },
+  "f_hazard": {
+    "blocks": 118,
+    "double_deliveries": 41,
+    "incidents": 77,
+    "released_incidents": {
+      "num": 37,
+      "den": 77,
+      "rate": 0.4805194805194805
+    }
+  },
+  "g_coverage": {
+    "coverage_fails": 77,
+    "coverage_fix_after_fail": {
+      "num": 47,
+      "den": 77,
+      "rate": 0.6103896103896104
+    },
+    "cheat_scan_fails": 43,
+    "unused_scan_fails": 31
+  }
+}

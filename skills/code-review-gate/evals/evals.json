@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "开发任务完成了,准备 git commit,帮我审查下代码", "should_trigger": true},
+    {"query": "帮我 code review 一下,看看能不能提交", "should_trigger": true},
+    {"query": "提 PR 前检查下代码质量怎么样", "should_trigger": true},
+    {"query": "帮我 review 下这段代码写得行不行", "should_trigger": true},
+    {"query": "想拦住 AI 生成的注水代码进主干,提交前过一道", "should_trigger": true},
+    {"query": "测试断言好像被弱化了,帮我看看", "should_trigger": false},
+    {"query": "编译报错了,帮我修一下", "should_trigger": false},
+    {"query": "这个 API 怎么调,签名是什么", "should_trigger": false},
+    {"query": "程序跑起来就崩溃,帮我排查下", "should_trigger": false}
+  ]
+}

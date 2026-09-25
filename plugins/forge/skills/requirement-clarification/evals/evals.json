@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "帮我做个库存管理系统——就这句话,帮我把需求理清楚", "should_trigger": true},
+    {"query": "这个需求有点模糊,帮我澄清成可验收的规格", "should_trigger": true},
+    {"query": "做完了的标准是什么还没定义,帮我把验收条件定出来", "should_trigger": true},
+    {"query": "需求评审前帮我把隐性假设都挖出来", "should_trigger": true},
+    {"query": "范围边界不清,帮我确认哪些算 Out of Scope", "should_trigger": true},
+    {"query": "需求都清楚了,帮我按模板写成一份 PRD 文档", "should_trigger": false},
+    {"query": "这个功能技术上可不可行,出个方案论证下", "should_trigger": false},
+    {"query": "需求明确了,直接开始写代码吧", "should_trigger": false},
+    {"query": "进 plan mode 帮我把整个开发规划出来", "should_trigger": false}
+  ]
+}

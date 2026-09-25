@@ -1,0 +1,27 @@
+# 陷阱（traps 扩容批 · cheat-scan 模式族人工策展）：TS 相对 import 指向不存在的模块——mock-of-hallucination 的机械子集
+# 探测经 forge gate push --dry-run（base...HEAD 的 cheat-scan 复检面，任务态无关）——
+# 推送边界应把 phantom-import 打上 CHEAT: 标签（advisory 留痕供 review 核查）。
+id: trap-cheat-phantom-import
+type: phantom-import
+description: "import 指向不存在文件——推送边界应标 CHEAT: phantom-import"
+expect_detected: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.trap.phantom
+
+      go 1.25
+  - path: app.ts
+    content: |
+      export function add(a: number, b: number): number { return a + b }
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm base
+    git checkout -b cheat/phantom
+    printf 'import { helper } from "./does-not-exist";\nexport const w = helper(add);\n' >> app.ts
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm cheat
+    "{forge}" gate push --dry-run 2>&1
+detect_any:
+  - "stdout_contains:CHEAT: phantom-import"

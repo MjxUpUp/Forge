@@ -1,0 +1,274 @@
+package agentbridge
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/hooks"
+)
+
+// kimi_plugin.go — kimi-code plugin manifest（.kimi-plugin/plugin.json）派生。
+//
+// kimi-code 的 plugin 系统（plugin 根的 kimi.plugin.json 或 .kimi-plugin/plugin.json）
+// 原生支持 `hooks` 数组，条目与 config.toml 的 [[hooks]] 规则字段一致
+// （event/matcher/command/timeout）。从 GitHub 安装
+// （`/plugins install https://github.com/MjxUpUp/Forge`）读仓库根的 manifest——故
+// manifest 必须提交进库，与 `forge plugin pack` 按需生成的 claude/cursor marketplace
+// pack 不同。已提交 manifest 与 ForgeHookSpec 的 drift 由
+// TestKimiPluginManifestMirrorsSpec 守卫。
+//
+// Plugin 与 config.toml 接线（KimiTranslator）：两者都在 user-level 全机器注册同一批
+// hooks——同时存在则每个 hook 双跑。故 plugin 已装时 Translate 会剥除 config.toml
+// 标记段（与 claude-code 的 plugin vs settings.local.json 同款 dedupe 哲学，见
+// internal/hooks/plugin_detect.go）。
+
+// KimiPluginHook is one entry of the plugin manifest's hooks array —
+// field-identical to a [[hooks]] rule in kimi's config.toml.
+//
+// KimiPluginHook 是 plugin manifest hooks 数组的一条——与 kimi config.toml 的
+// [[hooks]] 规则字段一致。
+type KimiPluginHook struct {
+	Event   string `json:"event"`
+	Matcher string `json:"matcher,omitempty"`
+	Command string `json:"command"`
+	Timeout int    `json:"timeout"`
+}
+
+// KimiPluginManifest is the .kimi-plugin/plugin.json schema subset forge ships.
+//
+// KimiPluginManifest 是 forge 发布的 .kimi-plugin/plugin.json schema 子集。只建模
+// forge 用到的字段；不需要的字段不建模也不输出。
+type KimiPluginManifest struct {
+	Name        string           `json:"name"`
+	Version     string           `json:"version"`
+	Description string           `json:"description"`
+	Hooks       []KimiPluginHook `json:"hooks"`
+}
+
+// kimiPluginName 是 plugin id。必须保持 "forge"：dedupe 检测以它为 key，它也是
+// 斜杠命令的命名空间。
+const kimiPluginName = "forge"
+
+// KimiPluginDescription 是已提交 manifest 的 description 字段。当 `forge plugin
+// kimi-manifest` 成为 CLI 出口时（2026-08-21）从测试文件升到生产：CLI 与守卫测试必须
+// 用同一 description 渲染 manifest，否则命令会改写测试钉住的内容。改这里即改已提交
+// 的 .kimi-plugin/plugin.json——同一变更里用 CLI（或测试的 -update-kimi-plugin flag）
+// 再生成。
+const KimiPluginDescription = "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents."
+
+// kimiSupportedEvents is the whitelist of hook events kimi's plugin schema is
+// KNOWN to accept. BuildKimiPluginHooks passes spec events through verbatim, so
+// any event added to ForgeHookSpec without kimi-side verification would flow into
+// the manifest; kimi validates the manifest against its own schema and an unknown
+// event can fail validation for the WHOLE plugin — silently killing every hook
+// (the dsh-win32 failure class: schema mismatch → all gates silently no-op).
+// Locking the roster here makes new spec events additive elsewhere and a no-op on
+// kimi until explicitly verified and added to this list.
+// kimiSupportedEvents 是已知 kimi plugin schema 接受的 hook 事件白名单。
+// BuildKimiPluginHooks 原样透传 spec 事件，故任何未经 kimi 侧验证就加进
+// ForgeHookSpec 的事件都会流进 manifest；kimi 按自身 schema 校验 manifest，
+// 未知事件可能让**整个插件**校验失败——静默杀掉全部 hook（dsh-win32 失败类：
+// schema 不匹配 → 全门禁静默失效）。在此锁死名册，让新 spec 事件在别处是
+// 增量、在 kimi 是 no-op，直到显式验证并加进本清单。
+//
+// Review 2026-08-22 (feat/hook-event-gap): the config.toml path
+// (BuildKimiHooksTOML) filters through this SAME list — previously it iterated
+// the spec verbatim, so the whitelist guarded the manifest but not the TOML,
+// and an unverified event could still reach config.toml-based kimi installs
+// (the whitelist's own threat model, on its other half).
+// 复审 2026-08-22（feat/hook-event-gap）：config.toml 路径
+// （BuildKimiHooksTOML）经同一清单过滤——此前它原样迭代 spec，白名单守住了
+// manifest 却漏了 TOML，未验证事件仍能到达 config.toml 形态的 kimi 安装
+// （白名单自己的威胁模型，漏守了另一半）。
+var kimiSupportedEvents = map[string]bool{
+	"PreToolUse":       true,
+	"PostToolUse":      true,
+	"Stop":             true,
+	"SessionStart":     true,
+	"PostCompact":      true,
+	"UserPromptSubmit": true,
+}
+
+// BuildKimiPluginHooks derives the manifest's hooks array from
+// hooks.ForgeHookSpec.
+//
+// BuildKimiPluginHooks 从 hooks.ForgeHookSpec 派生 manifest 的 hooks 数组——与
+// BuildKimiHooksTOML（config.toml 路径）共享同一单一真相源。条目按 event 排序保证
+// 输出确定；command 带 `--agent kimi`，理由与 config.toml 路径相同（stdin 方言 +
+// exit-2 输出协议）。事件过滤到 kimiSupportedEvents（见其文档：manifest 里的未知
+// 事件可能让 kimi schema 校验失败、静默杀掉全部 hook）。
+func BuildKimiPluginHooks() []KimiPluginHook {
+	spec := hooks.ForgeHookSpec()
+	events := make([]string, 0, len(spec))
+	for ev := range spec {
+		if !kimiSupportedEvents[ev] {
+			continue
+		}
+		events = append(events, ev)
+	}
+	sort.Strings(events)
+
+	var out []KimiPluginHook
+	for _, ev := range events {
+		for _, m := range spec[ev] {
+			for _, entry := range m.Hooks {
+				// skill-trigger 在每个事件上都接线，与 config.toml 路径（BuildKimiHooksTOML）
+				// 一致：kimi 0.35.0 仍然丢弃 UserPromptSubmit 以外事件的 allow 路径 stdout
+				// （wire.jsonl 实证），但自 2026-08 hostcap 修复起，引擎把这些命中以
+				// Delivered=false 记录（hostcap.ContextChannel），且只在 UserPromptSubmit
+				// 打印（runSkillTriggerHook）——看板事件流与 usage 漏斗看到完整触发图景
+				// （此前 kimi 任务只显示 5 条管道骨架事件），而漏斗只计 Delivered=true，
+				// 当年促成此处过滤的虚假繁荣顾虑不会复活。
+				out = append(out, KimiPluginHook{
+					Event:   ev,
+					Matcher: m.Matcher,
+					Command: kimiCommand(entry.Command),
+					Timeout: kimiTimeout(entry.Command),
+				})
+			}
+		}
+	}
+	return out
+}
+
+// BuildKimiPluginManifest renders the full manifest. version is the plugin's
+// display version, now tracked to the forge release (scripts/release.js syncs
+// it.
+//
+// BuildKimiPluginManifest 渲染完整 manifest。version 是 plugin 的展示版本，现跟随
+// forge release（scripts/release.js 同步；由 TestKimiPluginManifestVersionTracksRelease
+// 钉住）。由调用方传入——测试从单一真相源 npm/package.json 读。
+//
+// 维护路径（2026-08-16 审计注记，2026-08-21 已解）：本 Build 三件套现有 CLI 再生成
+// 出口——`forge plugin kimi-manifest --write`（internal/cli/plugin.go）从
+// npm/package.json 读版本、经 MarshalKimiPluginManifest 渲染、重写已提交的
+// .kimi-plugin/plugin.json。已提交文件仍是 kimi 安装的产物；
+// TestKimiPluginManifestMirrorsSpec 漂移仍变红，故 spec 变更不可能静默落地（CLI 是
+// 便利，测试是守卫）。
+func BuildKimiPluginManifest(version, description string) KimiPluginManifest {
+	return KimiPluginManifest{
+		Name:        kimiPluginName,
+		Version:     version,
+		Description: description,
+		Hooks:       BuildKimiPluginHooks(),
+	}
+}
+
+// MarshalKimiPluginManifest serializes the manifest in the committed file's
+// canonical form (2-space indent, trailing newline) so the guard test can
+// byte-compare.
+//
+// MarshalKimiPluginManifest 按提交文件的规范形式序列化 manifest（2 空格缩进 + 末尾
+// 换行），供守卫测试做字节级比对。
+func MarshalKimiPluginManifest(m KimiPluginManifest) ([]byte, error) {
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+// IsKimiPluginInstalled reports whether the forge plugin is installed and
+// enabled in kimi-code (record present in
+// $KIMI_CODE_HOME/plugins/installed.json). kimi's /plugins install/remove is
+// TUI-only, so the on-disk record is the only signal a CLI can read.
+//
+// IsKimiPluginInstalled 报告 forge plugin 是否已在 kimi-code 安装并启用
+// （$KIMI_CODE_HOME/plugins/installed.json 中有记录）。kimi 的
+// /plugins install/remove 只能在 TUI 里跑，磁盘记录是 CLI 唯一可读信号。解析刻意
+// 宽容：记录 schema 无文档（kimi-code 0.31.0），凡 id（或 name）为 "forge" 的条目
+// 即算数，启用状态默认 true 除非显式禁用。此设计接受的权衡：同名 "forge" 的无关
+// 第三方插件（id 碰撞，不校验 source——校验会误伤 fork 安装）会让 Translate 剥除
+// config.toml 标记段而该插件并不注册 forge hooks；概率足够低，故保持宽容读而非
+// 严格校验。
+//
+// plugins/managed/forge/ 的托管副本不是信号：/plugins remove 卸载后它仍留在磁盘上。
+func IsKimiPluginInstalled() bool {
+	home, err := KimiConfigHome()
+	if err != nil {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(home, "plugins", "installed.json"))
+	if err != nil {
+		return false
+	}
+	var reg struct {
+		Plugins []map[string]any `json:"plugins"`
+	}
+	if err := json.Unmarshal(data, &reg); err != nil {
+		return false
+	}
+	for _, p := range reg.Plugins {
+		id, _ := p["id"].(string)
+		name, _ := p["name"].(string)
+		if id != kimiPluginName && name != kimiPluginName {
+			continue
+		}
+		if enabled, ok := p["enabled"].(bool); ok && !enabled {
+			continue
+		}
+		if disabled, ok := p["disabled"].(bool); ok && disabled {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// KimiPluginStaleInfo reads the installed forge plugin's source ref tag and
+// returns the bare version (v prefix trimmed).
+//
+// KimiPluginStaleInfo 读取已装 forge plugin 的来源 ref tag，返回裸版本号（已 trim v 前缀）。
+// 它是 staleness 检测的可信"装了哪个版本"信号：manifest 的 version 字段是 committed 元数据
+// （现经 scripts/release.js 跟随 release，但只在重装时刷新），而 plugins/managed/forge/ 下的托管
+// 副本在卸载后仍留存（见 IsKimiPluginInstalled 注释）——只有 installed.json 的 github.ref
+// 记录了用户实际安装来源的 tag。
+//
+// 仅当存在 forge 条目、已启用、且带 github.ref.kind=="tag" 与非空 value 时 ok=true。
+// 非 tag ref（commit/branch）返回 ok=false——它们无法 semver 比对，标为过期只会是噪声。
+func KimiPluginStaleInfo() (installed string, ok bool) {
+	home, err := KimiConfigHome()
+	if err != nil {
+		return "", false
+	}
+	data, err := os.ReadFile(filepath.Join(home, "plugins", "installed.json"))
+	if err != nil {
+		return "", false
+	}
+	var reg struct {
+		Plugins []map[string]any `json:"plugins"`
+	}
+	if err := json.Unmarshal(data, &reg); err != nil {
+		return "", false
+	}
+	for _, p := range reg.Plugins {
+		id, _ := p["id"].(string)
+		name, _ := p["name"].(string)
+		if id != kimiPluginName && name != kimiPluginName {
+			continue
+		}
+		if enabled, ok := p["enabled"].(bool); ok && !enabled {
+			continue
+		}
+		if disabled, ok := p["disabled"].(bool); ok && disabled {
+			continue
+		}
+		github, _ := p["github"].(map[string]any)
+		ref, _ := github["ref"].(map[string]any)
+		kind, _ := ref["kind"].(string)
+		if kind != "tag" {
+			// continue 而非提前 return：若将来 installed.json schema 出现多条 forge 记录，
+			// 我们要第一个可比对的 tag ref，而非在非 tag 兄弟条目上死锁。单条目行为不变。
+			continue
+		}
+		value, _ := ref["value"].(string)
+		if value == "" {
+			continue
+		}
+		return strings.TrimPrefix(value, "v"), true
+	}
+	return "", false
+}

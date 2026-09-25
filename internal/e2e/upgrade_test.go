@@ -1,0 +1,575 @@
+// Package e2e contains multi-perspective end-to-end tests for Forge.
+// These tests verify different user scenarios: fresh install, version upgrades,
+// master branch warnings — all via subprocess invocations
+// of the compiled forge binary.
+package e2e
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+)
+
+var forgeBin string
+
+// forgeBuildDir 是 TestMain 持有的构建目录（defer os.RemoveAll）：
+// buildVersionedForge（kimi_stale_test.go）的按版本二进制必须放这里，不能放进任何
+// 测试自己的 t.TempDir()——缓存路径比创建它的测试活得久，后续缓存调用方会拿到悬空
+// 路径（2026-08-15 踩坑：第二个 kimi stale 测试 fork/exec 失败于第一个测试已删除的
+// temp 目录）。
+var forgeBuildDir string
+
+func TestMain(m *testing.M) {
+	// Build forge binary once for all tests.
+	tmpDir, err := os.MkdirTemp("", "forge-e2e-build")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "e2e: failed to create temp build dir: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tmpDir)
+	forgeBuildDir = tmpDir
+
+	binPath := filepath.Join(tmpDir, "forge")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+
+	cmd := exec.Command("go", "build", "-o", binPath, "./cmd/forge/")
+	cmd.Dir = repoRoot()
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "e2e: failed to build forge binary: %v\n%s\n", err, output)
+		os.Exit(1)
+	}
+
+	forgeBin = binPath
+
+	// 隔离 Claude plugin 检测：强制 IsClaudePluginInstalled()=false（空 CLAUDE_CONFIG_DIR 下
+	// 无 plugins/installed_plugins.json）。e2e 跑 forge binary 子进程（init/sync 含
+	// dedupeProjectLevelIfPlugin），不隔离会让本机装了 forge plugin 时 dedupe 改写/删
+	// project-level 文件（settings.local.json / .mcp.json）,干扰 e2e 子进程行为一致性。
+	// 当前断言只查 settings.local.json 存在（fileExists）,但保留隔离为未来加内容断言留
+	// 确定性,避免本地（装 plugin）与 CI（未装）飘忽。
+	os.Setenv("CLAUDE_CONFIG_DIR", tmpDir)
+
+	// 为子进程隔离用户 HOME：user-level-assets 之后 init/sync 会写用户级资产
+	// （~/.codex/AGENTS.md、~/.cursor/hooks.json、~/.codeium/...、
+	// ~/.config/opencode/...），DetectAgents 会扫用户级安装目录——不隔离 HOME，
+	// e2e 会写入并检测到开发者的真实 home。Windows 用 USERPROFILE，unix 用 HOME；
+	// CODEX_HOME 是 codex 自己的覆盖。
+	homeDir := filepath.Join(tmpDir, "home")
+	if err := os.MkdirAll(homeDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "e2e: failed to create isolated home: %v\n", err)
+		os.Exit(1)
+	}
+	os.Setenv("HOME", homeDir)
+	os.Setenv("USERPROFILE", homeDir)
+	os.Setenv("CODEX_HOME", filepath.Join(homeDir, ".codex"))
+
+	os.Exit(m.Run())
+}
+
+// repoRoot returns the forge repository root (the directory containing go.mod).
+func repoRoot() string {
+	// Walk up from current file to find go.mod.
+	dir := "."
+	for i := 0; i < 10; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			abs, _ := filepath.Abs(dir)
+			return abs
+		}
+		dir = filepath.Join(dir, "..")
+	}
+	panic("cannot find repo root (go.mod)")
+}
+
+// forge runs a forge command in the given working directory.
+func forge(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(forgeBin, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("forge %s failed: %v\noutput: %s", strings.Join(args, " "), err, out)
+	}
+	return string(out)
+}
+
+// forgeErr runs a forge command and returns (stdout+stderr, error).
+// It does NOT fatal on non-zero exit — the caller decides.
+func forgeErr(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command(forgeBin, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// git runs a git command in the given working directory.
+func git(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v\noutput: %s", strings.Join(args, " "), err, out)
+	}
+	return string(out)
+}
+
+// initGoProject creates a minimal Go project in dir.
+func initGoProject(t *testing.T, dir string) {
+	t.Helper()
+	goMod := `module example.com/test
+
+go 1.24
+`
+	writeFile(t, dir, "go.mod", goMod)
+	writeFile(t, dir, "main.go", "package main\n\nfunc main() {}\n")
+}
+
+// writeFile writes a file with content inside dir.
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fileExists checks if a file (or directory) exists.
+func fileExists(t *testing.T, dir, name string) bool {
+	t.Helper()
+	_, err := os.Stat(filepath.Join(dir, name))
+	return err == nil
+}
+
+// readFile reads a file inside dir.
+func readFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatalf("failed to read %s: %v", name, err)
+	}
+	return string(data)
+}
+
+// freshProject creates a temp dir with git init + go project + forge init.
+// Returns the project directory.
+func freshProject(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	// 把用户级 data home 重定向到 per-test temp dir：forge 子进程（init/hazard/hooks）
+	// 与本测试进程的 store 读取都按 FORGE_DATA_HOME 解析 DataDir，二者一致且不污染真实 ~/.forge。
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	// 钉死初始分支名：裸 `git init` 继承机器的 init.defaultBranch（macOS 系统
+	// gitconfig 在 /Library/Developer/CommandLineTools 里设了 main），而建在这套
+	// 夹具上的测试——TestMasterBranchReminder——之后要 `git checkout master`；在
+	// main 默认的机器上该 checkout 因环境原因必挂，非代码原因。-b 需
+	// git >= 2.28（2020 年）；所有 CI runner 与开发机都远高于此。
+	git(t, dir, "init", "-b", "master")
+	git(t, dir, "config", "user.email", "test@example.com")
+	git(t, dir, "config", "user.name", "Test")
+	initGoProject(t, dir)
+	forge(t, dir, "init")
+	return dir
+}
+
+// freshProjectOnBranch creates a fresh project on a feature branch.
+func freshProjectOnBranch(t *testing.T, branch string) string {
+	t.Helper()
+	dir := freshProject(t)
+	// Commit everything so we can branch
+	git(t, dir, "add", ".")
+	git(t, dir, "commit", "-m", "initial")
+	git(t, dir, "checkout", "-b", branch)
+	return dir
+}
+
+// ---------- Test Scenarios ----------
+
+// TestFreshInstall verifies a clean init from an empty directory.
+func TestFreshInstall(t *testing.T) {
+	dir := freshProject(t)
+
+	// user-level-assets 契约：init 不写项目目录（无 .forge/、无 .claude/）。
+	// hook 参考副本 + protocol.yml + sync 戳在用户级 DataDir（freshProject 已钉
+	// FORGE_DATA_HOME）；claude 集成在 CLAUDE_CONFIG_DIR 下（TestMain 已隔离）。
+	dataDir := forgedata.DataDirFor(dir)
+	for _, path := range []string{
+		".sync-version",
+		"protocol.yml",
+		"hooks/auto-compile.sh",
+		"hooks/assertion-check.sh",
+		"hooks/task-verify.sh",
+	} {
+		if !fileExists(t, dataDir, path) {
+			t.Errorf("expected DataDir/%s to exist after forge init", path)
+		}
+	}
+
+	// 零项目写入。
+	for _, path := range []string{".forge", ".claude"} {
+		if fileExists(t, dir, path) {
+			t.Errorf("forge init must not write %s into the project (zero-project-write)", path)
+		}
+	}
+
+	// 用户级 claude 集成：settings.json 接线 forge hook，质量 skill 已装，
+	// CLAUDE.md 带 forge 段。
+	claudeHome := os.Getenv("CLAUDE_CONFIG_DIR")
+	settings := readFile(t, claudeHome, "settings.json")
+	if !strings.Contains(settings, "forge hook") {
+		t.Error("user-level settings.json should wire forge hooks")
+	}
+	if !fileExists(t, claudeHome, "skills/forge-quality/SKILL.md") {
+		t.Error("user-level forge-quality SKILL.md should exist after forge init")
+	}
+	claudeMD := readFile(t, claudeHome, "CLAUDE.md")
+	if !strings.Contains(claudeMD, "FORGE:START") {
+		t.Error("user-level CLAUDE.md should carry the forge section")
+	}
+
+	// forge status should succeed.
+	out := forge(t, dir, "status")
+	if !strings.Contains(out, "Project:") {
+		t.Errorf("forge status output should contain 'Project:', got: %s", out)
+	}
+
+}
+
+// TestMasterBranchReminder verifies the task-verify hook warns about
+// code changes on master without an active task.
+func TestMasterBranchReminder(t *testing.T) {
+	dir := freshProjectOnBranch(t, "feature/EXP-1-test")
+
+	// Start task, pass all 3 gates, complete.
+	forge(t, dir, "task", "start", "--ref", "EXP-1", "--title", "test experience")
+	passAllGates(t, dir, "EXP-1")
+	// oracle-pipeline L1：complete 登记门硬前置——登记快验收并实跑（实跑须在
+	// passAllGates 的 scratch commit 之后，保持 freshness 快照新鲜）。
+	forge(t, dir, "task", "accept", "go version :: go version", "--ref", "EXP-1")
+	forge(t, dir, "task", "verify-acceptance", "--ref", "EXP-1")
+	forge(t, dir, "task", "complete", "--ref", "EXP-1")
+
+	// Switch back to master.
+	git(t, dir, "checkout", "master")
+
+	// Create a source code file, commit it, then modify it.
+	// This ensures git diff shows tracked-but-modified code changes.
+	writeFile(t, dir, "foo.go", "package main\n\nfunc Foo() int { return 42 }\n")
+	git(t, dir, "add", "foo.go")
+	git(t, dir, "commit", "-m", "add foo.go")
+	// Now modify it so it appears in git diff.
+	writeFile(t, dir, "foo.go", "package main\n\nfunc Foo() int { return 99 }\n")
+
+	// Run task-verify hook directly (reference copy in the user-level DataDir).
+	// The hook uses forge internally, so we need forge on PATH.
+	hookPath := filepath.Join(forgedata.DataDirFor(dir), "hooks", "task-verify.sh")
+	cmd := exec.Command("bash", hookPath)
+	cmd.Dir = dir
+	binDir := filepath.Dir(forgeBin)
+	cmd.Env = append(os.Environ(), "PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	output, _ := cmd.CombinedOutput()
+	outStr := string(output)
+
+	// On master with modified (uncommitted) code changes and no active task,
+	// the hook should warn about code changes without an active task.
+	if !strings.Contains(outStr, "without active task") {
+		t.Errorf("task-verify hook should warn 'without active task' on master with code changes, got: %q", outStr)
+	}
+}
+
+// setupLegacyForgeProject 建 git+go 项目并携带遗留（用户级资产化之前的）.forge/
+// 结构——两个 upgrade 测试的共用夹具（85% 同构 setup，2026-08-30 瘦身抽出）：
+// hooks/tasks/gates 目录、pipeline.yml、带指定 last_sync_version 的 state.json、
+// 用户自定义 protocol.yml，以及两个陈旧 hook 参考副本（echo 正文即升级断言对照
+// 的旧内容标记）。
+func setupLegacyForgeProject(t *testing.T, lastSyncVersion, pipelineYAML, protocolYAML, autoHookEcho, assertHookEcho string) string {
+	t.Helper()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	git(t, dir, "init")
+	git(t, dir, "config", "user.email", "test@example.com")
+	git(t, dir, "config", "user.name", "Test")
+	initGoProject(t, dir)
+
+	for _, d := range []string{".forge/hooks", ".forge/tasks", ".forge/gates"} {
+		if err := os.MkdirAll(filepath.Join(dir, d), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeFile(t, dir, ".forge/pipeline.yml", pipelineYAML)
+	writeFile(t, dir, ".forge/state.json", fmt.Sprintf(`{
+  "pipeline_version": "2.0",
+  "mode": "medium",
+  "current_gate": "",
+  "started_at": "2025-01-01T00:00:00Z",
+  "history": [],
+  "overrides": [],
+  "last_sync_version": %q
+}`, lastSyncVersion))
+	writeFile(t, dir, ".forge/protocol.yml", protocolYAML)
+
+	// 旧 hook——升级前的参考副本。
+	writeFile(t, dir, ".forge/hooks/auto-compile.sh", "#!/bin/bash\necho "+autoHookEcho+"\n")
+	writeFile(t, dir, ".forge/hooks/assertion-check.sh", "#!/bin/bash\necho "+assertHookEcho+"\n")
+	return dir
+}
+
+// TestUpgradeFromV040State verifies that upgrading from a v0.4.0-like state
+// triggers auto-sync: hook reference copies converge into the user-level DataDir,
+// legacy project-level forge writes are stripped, and user config is not broken.
+func TestUpgradeFromV040State(t *testing.T) {
+	dir := setupLegacyForgeProject(t, "v0.4.0", `version: "2.0"
+project: "old-project"
+mode: medium
+
+pipeline:
+  gates:
+    - id: gate-4-implement
+      name: "Code Implementation"
+      enabled: true
+      depends_on: []
+      hooks:
+        - auto-compile.sh
+        - assertion-check.sh
+`, `version: "1.0"
+standards:
+  - id: my-custom-standard
+    name: "My Custom Standard"
+    description: "A custom standard from v0.4.0"
+    severity: error
+    enabled: true
+session_rules:
+  - id: my-custom-rule
+    trigger: always
+    instruction: "Always follow my custom rule"
+    mandatory: true
+scoring:
+  weights:
+    process: 0.3
+    testing: 0.2
+    code-quality: 0.2
+    assertions: 0.1
+    scope: 0.1
+    efficiency: 0.1
+  thresholds:
+    A: 90
+    B: 80
+    C: 70
+    D: 60
+    F: 0
+`, "old-auto-compile", "old-assertion-check")
+
+	// Run forge status — this triggers auto-sync.
+	out := forge(t, dir, "status")
+	if !strings.Contains(out, "Project:") {
+		t.Fatalf("forge status output should contain 'Project:', got: %s", out)
+	}
+
+	// Verify：当前全量 hook 在用户级 DataDir 就位。
+	dataDir := forgedata.DataDirFor(dir)
+	for _, hook := range []string{
+		"hooks/auto-compile.sh",
+		"hooks/assertion-check.sh",
+		"hooks/task-verify.sh",
+	} {
+		if !fileExists(t, dataDir, hook) {
+			t.Errorf("expected DataDir/%s to exist after upgrade sync", hook)
+		}
+	}
+
+	// Verify hooks were actually updated (not the old content).
+	hookContent := readFile(t, dataDir, "hooks/auto-compile.sh")
+	if strings.Contains(hookContent, "old-auto-compile") {
+		t.Error("DataDir auto-compile.sh should have been overwritten, still has old content")
+	}
+
+	// Verify：遗留项目级 forge 写入被剥除（收敛零项目写入）——hooks 副本、
+	// 死管道文件、sync 戳。
+	for _, path := range []string{
+		".forge/hooks",
+		".forge/pipeline.yml",
+		".forge/state.json",
+		".forge/.sync-version",
+	} {
+		if fileExists(t, dir, path) {
+			t.Errorf("legacy project-level %s should be stripped after upgrade sync", path)
+		}
+	}
+
+	// Verify：质量 SKILL.md 在用户级重生成（CLAUDE_CONFIG_DIR 已被 TestMain 隔离）。
+	skillContent := readFile(t, os.Getenv("CLAUDE_CONFIG_DIR"), "skills/forge-quality/SKILL.md")
+	if skillContent == "" {
+		t.Error("expected user-level forge-quality SKILL.md to be regenerated")
+	}
+
+	// Verify：protocol.yml 未被覆盖——仍是用户自定义标准（改过 → 作为团队共享
+	// 覆盖层留在项目级）。
+	protoContent := readFile(t, dir, ".forge/protocol.yml")
+	if !strings.Contains(protoContent, "my-custom-standard") {
+		t.Error("protocol.yml should still contain user's custom standard after upgrade")
+	}
+	if !strings.Contains(protoContent, "my-custom-rule") {
+		t.Error("protocol.yml should still contain user's custom session rule after upgrade")
+	}
+
+	// Verify：.sync-version 戳写入当前 binary version（在 DataDir）。
+	stamp := readFile(t, dataDir, ".sync-version")
+	if strings.TrimSpace(stamp) == "" {
+		t.Fatal(".sync-version stamp should be written after upgrade sync")
+	}
+	if strings.TrimSpace(stamp) == "v0.4.0" {
+		t.Error(".sync-version stamp should reflect current binary version, not stale v0.4.0")
+	}
+}
+
+// TestUpgradePreservesUserProtocol verifies that auto-sync never overwrites
+// a user's customized protocol.yml, even from older versions.
+func TestUpgradePreservesUserProtocol(t *testing.T) {
+	dir := setupLegacyForgeProject(t, "v0.3.0", `version: "2.0"
+project: "old-project"
+mode: medium
+
+pipeline:
+  gates:
+    - id: gate-4-implement
+      name: "Code Implementation"
+      enabled: true
+      depends_on: []
+`, `version: "1.0"
+standards:
+  - id: no-console-log
+    name: "No console.log"
+    description: "Production code must not contain console.log statements"
+    severity: error
+    enabled: true
+  - id: require-error-handling
+    name: "Error handling required"
+    description: "All public functions must handle errors"
+    severity: warning
+    enabled: true
+session_rules:
+  - id: review-before-merge
+    trigger: always
+    instruction: "Always review code before merge"
+    mandatory: true
+scoring:
+  weights:
+    process: 0.25
+    testing: 0.25
+    code-quality: 0.20
+    assertions: 0.15
+    scope: 0.10
+    efficiency: 0.05
+  thresholds:
+    A: 90
+    B: 80
+    C: 70
+    D: 60
+    F: 0
+`, "old", "old")
+
+	// Run any forge command to trigger auto-sync.
+	forge(t, dir, "status")
+
+	// Verify: protocol.yml still has user's custom standards.
+	protoContent := readFile(t, dir, ".forge/protocol.yml")
+	if !strings.Contains(protoContent, "no-console-log") {
+		t.Error("protocol.yml should still contain 'no-console-log' standard")
+	}
+	if !strings.Contains(protoContent, "require-error-handling") {
+		t.Error("protocol.yml should still contain 'require-error-handling' standard")
+	}
+	if !strings.Contains(protoContent, "review-before-merge") {
+		t.Error("protocol.yml should still contain 'review-before-merge' session rule")
+	}
+
+	// Verify：hook 参考副本在用户级 DataDir 更新（非旧内容），遗留项目级副本被剥除。
+	dataDir := forgedata.DataDirFor(dir)
+	for _, hook := range []string{
+		"hooks/auto-compile.sh",
+		"hooks/task-verify.sh",
+	} {
+		if !fileExists(t, dataDir, hook) {
+			t.Errorf("expected DataDir/%s after auto-sync", hook)
+			continue
+		}
+		content := readFile(t, dataDir, hook)
+		if strings.Contains(content, "echo old\n") {
+			t.Errorf("DataDir/%s should have been updated", hook)
+		}
+	}
+	if fileExists(t, dir, ".forge/hooks") {
+		t.Error("legacy .forge/hooks should be stripped after auto-sync")
+	}
+
+	// Verify：用户级 claude settings.json 接线 forge hook（项目级
+	// settings.local.json 不再写入）。
+	settings := readFile(t, os.Getenv("CLAUDE_CONFIG_DIR"), "settings.json")
+	if !strings.Contains(settings, "forge hook") {
+		t.Error("user-level settings.json should wire forge hooks after auto-sync")
+	}
+
+	// Verify：质量 SKILL.md 在用户级更新（forge-pipeline skill 已随项目级管道删除）。
+	if !fileExists(t, os.Getenv("CLAUDE_CONFIG_DIR"), "skills/forge-quality/SKILL.md") {
+		t.Error("user-level forge-quality SKILL.md should exist after auto-sync")
+	}
+}
+
+// ---------- Helpers ----------
+
+// passAllGates passes all 3 task gates (v0.17: reduced from 5) for the given task ref.
+func passAllGates(t *testing.T, dir, ref string) {
+	t.Helper()
+
+	// Disable gate timing for E2E tests (gates pass in rapid sequence)
+	os.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
+	defer os.Unsetenv("FORGE_GATE_MIN_INTERVAL")
+	os.Setenv("FORGE_WORK_ACTIVITY", "disable")
+	defer os.Unsetenv("FORGE_WORK_ACTIVITY")
+
+	// 制造一次真实的文件变更并 commit——task-implement 的代码变更检查比对
+	// 内容（git diff HeadCommit..HEAD），空 commit 无法满足。
+	scratch := filepath.Join(dir, "e2e-scratch.txt")
+	f, err := os.OpenFile(scratch, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("create scratch file: %v", err)
+	}
+	if _, err := fmt.Fprintf(f, "change for %s\n", ref); err != nil {
+		f.Close()
+		t.Fatalf("write scratch file: %v", err)
+	}
+	f.Close()
+	git(t, dir, "add", "e2e-scratch.txt")
+	git(t, dir, "commit", "-m", "e2e: code change for task-implement")
+
+	// Pass gates in order: task-implement, task-verify, then task-complete.
+	// task-complete 有 ReviewPassed 硬前置——先 forge review pass 标记（task 模式
+	// 写 TaskState.ReviewPassed），否则 task-complete 被拦。
+	for _, g := range []string{"task-implement", "task-verify"} {
+		out, err := forgeErr(t, dir, "task", "gate", g, "--ref", ref)
+		if err != nil {
+			t.Fatalf("forge task gate %s failed: %v\noutput: %s", g, err, out)
+		}
+	}
+	if out, err := forgeErr(t, dir, "review", "pass"); err != nil {
+		t.Fatalf("forge review pass failed: %v\noutput: %s", err, out)
+	}
+	out, err := forgeErr(t, dir, "task", "gate", "task-complete", "--ref", ref)
+	if err != nil {
+		t.Fatalf("forge task gate task-complete failed: %v\noutput: %s", err, out)
+	}
+}

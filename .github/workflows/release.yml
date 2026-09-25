@@ -1,1 +1,378 @@
-@.github/workflows/release.yml
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  # release-please.yml 的 GITHUB_TOKEN 路径经 workflow_dispatch 调度本 workflow：
+  # GITHUB_TOKEN 产生的 tag push 事件不触发新 workflow run（GitHub 防递归），dispatch
+  # 是文档化例外。仍只在 tag ref 上被调度（--ref v*），无 tag 发不出版。
+  workflow_dispatch:
+
+# 顶层最小权限；各 job 按需提权（最小授权原则——id-token 只有签名/溯源两个 job 拿得到）。
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - run: node -p "require('./npm/package.json').version" # npm-align 前置：版本不对时此处一眼可见
+      - run: go test ./... -count=1 -race
+      - run: go vet ./...
+      # 版本对账门禁放在 needs 链源头：tag 必须等于 npm/package.json 的 version，
+      # 不一致 1 分钟内终止整条链（放在 npm job 则 goreleaser 白跑 30min 才拦）。
+      # release-please 的 Release PR 保证两者一致（npm/package.json 在 extra-files 里被
+      # 同步 bump），此门禁防 RELEASE.md 允许的手动打 tag 路径出错——
+      # 没有对账时打错 tag 会发出货不对板的包（二进制是 tag 的，包版本号是 package.json 的）。
+      # plugins/forge-dsh 同查：dsh 插件随主火车 lockstep 发版（extra-files 统一 bump），
+      # 手动打 tag 路径漏 bump 它会让 dsh 发布步发出与 tag 对不上的版本。
+      - name: Tag/version consistency gate
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          for pkgjson in npm/package.json plugins/forge-dsh/package.json; do
+            PKG_VER=$(jq -r .version "$pkgjson")
+            if [ "$TAG_VER" != "$PKG_VER" ]; then
+              echo "::error::tag v$TAG_VER != $pkgjson version $PKG_VER — 先对齐版本号再发版"
+              exit 1
+            fi
+          done
+
+  # 行为级冒烟门禁（发布物在 publish 前必须真实跑过——forge 理念：验收 = 实跑
+  # 证据，不是"构建成功"）：wedge-drill 验首证据链，artifact-drill 验产物链分档
+  # 执法。goreleaser（GitHub Release + 签名产物）与 npm（registry 发布）都在本
+  # job 之后——演练红则发布链整体不放行。
+  drill:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - run: go build -o /tmp/forge ./cmd/forge/
+      - run: /tmp/forge eval wedge-drill
+      - run: /tmp/forge eval artifact-drill
+      # 演练报告作为发布证据留痕（审计漏点 #3：发布过程在 forge 台账之外——
+      # 报告挂 workflow artifacts 补上可追溯载体；发布审计 = 报告 + 对账输出）。
+      - name: Upload drill reports (release evidence)
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: drill-reports
+          path: |
+            ~/.forge/evals/forge/wedge-drill-*.json
+            ~/.forge/evals/forge/artifact-drill-*.json
+          if-no-files-found: warn
+
+  goreleaser:
+    needs: [test, drill]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write  # 创建 GitHub Release + 上传资产
+      id-token: write  # cosign keyless 签名的 OIDC token（GitHub Actions 身份凭证，非 secret）
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      # cosign：goreleaser signs 块用 v3 的 --bundle（证书+签名合一的 .sigstore.json）。
+      # pin 产物版本 v3.1.3——cosign-installer 默认装 latest，曾因 v2→v3 升级把
+      # --output-signature 变空路径致 v1.28.3 发布失败；pin 住已知良好的 v3 bundle 行为，
+      # 与下方 syft v1.50.0 同一供应链姿势。升 v4 前须人工验证 flags 兼容。
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      # syft：goreleaser sboms 块的外部依赖（goreleaser-action 不自带）。
+      # install.sh 按 commit pin（与 actions 的 SHA pin 同一供应链姿势），产物版本 pin v1.50.0。
+      - name: Install syft (SBOM generator)
+        run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/16223e6dd7893fe578787658ceb876257483d404/install.sh | sh -s -- -b /usr/local/bin v1.50.0
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+
+  npm:
+    # Publish @agent_forge/forge + 5 平台子包到 npmjs.org。主包 optionalDependencies
+    # 声明平台子包，npm install 按 os/cpu 只装匹配当前平台的一个，二进制随子包发布到
+    # registry——不依赖 install script（npm 12 起 install scripts 默认禁用，平台分包是
+    # 官方推荐的二进制分发方式，esbuild/rollup/turbo 同模式）。
+    #
+    # 必须在 goreleaser 之后：从 v<ver> GitHub Release 下载各平台 tar.gz 组装子包 bin/。
+    # 架构变化：与旧 install.js 方案不同，npm 包现在自带二进制（不可变），重建 GitHub
+    # Release 二进制不再自动更新已发 npm 包——需 bump 版本重发（npm 不允许覆盖）。
+    #
+    # 认证 = npm Trusted Publishing（OIDC 免 token，2026-09-22 起，替代 NPM_TOKEN——
+    # token 会过期，Granular 最长 365 天，过期即发布链断）：npm ≥11.5.1 在无 token
+    # 环境自动用 GitHub OIDC 认证 publish。前置两件：
+    #   1. npmjs.com 每个包 Settings → Trusted publishing 登记 GitHub Actions：
+    #      MjxUpUp/Forge + workflow release.yml，Allowed actions 须允许**直接 publish**
+    #      （默认仅 staged；本 workflow 用 npm publish 直发）。7 个包都要：主包 +
+    #      5 平台子包 + forge-dsh。npm 不在保存时校验登记，配错到 publish 才炸。
+    #   2. job permissions id-token: write（下方已有——同时供 provenance 用）。
+    # 回退路径：revert 本迁移 + 恢复 NODE_AUTH_TOKEN 步（NPM_TOKEN secret 已删——
+    # 回退须去 npmjs 新建 token 重配 secret，见 RELEASE.md）。守卫：
+    # TestReleaseWorkflow_NpmTrustedPublishing 钉住无 token + npm ≥11 +
+    # id-token: write 三件事。
+    needs: goreleaser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read  # checkout + 下载 Release 资产
+      id-token: write  # trusted publishing 发布认证 + --provenance 溯源的 OIDC token
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          # 不配 registry-url：trusted publishing 走 OIDC，无需 .npmrc 注 token
+          # （setup-node + NODE_AUTH_TOKEN 是 token 时代的 CI 标准模式，已退役）。
+      # npm 升级到 trusted publishing 门槛之上（官方要求 npm ≥11.5.1 + Node ≥22.14；
+      # Node 22 自带 npm 10.x 不够）。pin 精确版本——与 cosign/syft 同一供应链姿势，
+      # 升级须人工验证发布链（守卫 TestReleaseWorkflow_NpmTrustedPublishing 钉 major）。
+      - name: Install npm for trusted publishing (>=11.5.1)
+        run: npm install -g npm@11.19.1
+      - name: Publish main + platform subpackages (idempotent)
+        # 幂等：每个包 npm view 检测已发布则跳过（npm 不允许覆盖已发布版本）。
+        # version 从主 package.json 读，用 jq 注入各子包 + 主包 optionalDependencies，
+        # 消除多包版本同步风险。子包先发（主包依赖），主包后发。
+        # 认证：无 token，npm 自动用 job 的 OIDC（id-token: write）向 registry 换
+        # 发布凭证——npm view/dry-run 是公有包匿名读，不需要认证。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          # tag↔package.json 版本对账已在 test job（needs 链源头）拦过，此处直接读版本。
+          VER=$(node -p "require('./package.json').version")
+          echo "Releasing @agent_forge/forge@$VER + 5 platform subpackages"
+          # goreleaser archive 命名 forge_<ver>_<os>_<x86_64|aarch64>.tar.gz；
+          # npm 子包按 Node process.platform-process.arch 命名（amd64→x64，windows→win32）。
+          declare -A ARCH_MAP=(
+            [darwin-arm64]=darwin_aarch64
+            [darwin-x64]=darwin_x86_64
+            [linux-arm64]=linux_aarch64
+            [linux-x64]=linux_x86_64
+            [win32-x64]=windows_x86_64
+          )
+          for pkg in "${!ARCH_MAP[@]}"; do
+            archive_arch="${ARCH_MAP[$pkg]}"
+            url="https://github.com/${{ github.repository }}/releases/download/v${VER}/forge_${VER}_${archive_arch}.tar.gz"
+            echo "Fetching $pkg <- $url"
+            mkdir -p "platforms/$pkg/bin"
+            curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" -o /tmp/forge.tar.gz "$url"
+            tar xzf /tmp/forge.tar.gz -C "platforms/$pkg/bin"
+            # 注入 release 版本（repo 占位被实际版本覆盖，消除同步风险）
+            tmp=$(mktemp)
+            jq --arg v "$VER" '.version = $v' "platforms/$pkg/package.json" > "$tmp" && mv "$tmp" "platforms/$pkg/package.json"
+          done
+          # dry-run 门禁：真实 publish 前对 6 包跑 npm publish --dry-run，走完整 npm-package-arg
+          # 解析 + pack，提前暴露"路径含/被当 github shorthand"类 bug（v1.15.0 npm job 因此 git ls-remote
+          # 失败）。dry-run 不上传。"已发布"版本（CI rerun 或部分包手动发布过，npm 查 registry 发现
+          # version 存在）不算失败——与下方 publish 块的幂等设计一致；只 npa/结构类错误才 exit 1。
+          # 防御性兼容：npm 官方文档称 dry-run 不查 registry，但实测 npm 11.18 + 华为云等镜像
+          # registry 的 dry-run 会查并报 cannot-publish-over，版本/registry 行为不一，故识别此错为
+          # 结构通过（非死代码——本地 npm 11.18 复现过主包 1.15.1 dry-run 报此错）。
+          # 本地预演见 scripts/release-rehearsal.sh。
+          for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+            out=$(cd "platforms/$pkg" && npm publish --dry-run --access public 2>&1) \
+              || echo "$out" | grep -q "cannot publish over the previously published" \
+              || { echo "$out"; exit 1; }
+          done
+          out=$(npm publish --dry-run --access public 2>&1) \
+            || echo "$out" | grep -q "cannot publish over the previously published" \
+            || { echo "$out"; exit 1; }
+          echo "dry-run gate passed for 6 packages"
+          # 先发 5 子包（主包 optionalDependencies 指向它们，必须先就位）。
+          # --provenance：用 GitHub Actions OIDC 给包附 Sigstore 溯源声明（npm 官方供应链
+          # 加固，公开仓库 + package.json repository 字段匹配即可，无需额外配置）。
+          # 只加在真实 publish 上：dry-run 在本地预演（无 OIDC 环境）也要能跑。
+          for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+            if npm view "@agent_forge/forge-$pkg@$VER" version >/dev/null 2>&1; then
+              echo "already published @agent_forge/forge-$pkg@$VER, skipping"
+            else
+              # cd 进子包目录再 publish：裸路径 "platforms/$pkg" 含 / 会被 npm-package-arg
+              # 解析成 GitHub shorthand（user/platforms repo/$pkg）→ git ls-remote 失败。
+              # cd 后无参数 publish cwd，npa 当 folder（esbuild/rollup 同模式）。
+              (cd "platforms/$pkg" && npm publish --access public --provenance)
+            fi
+          done
+          # 主包 version + optionalDependencies 各项 version 注入后 publish
+          tmp=$(mktemp)
+          jq --arg v "$VER" '.version = $v | .optionalDependencies |= with_entries(.value = $v)' package.json > "$tmp" && mv "$tmp" package.json
+          if npm view "@agent_forge/forge@$VER" version >/dev/null 2>&1; then
+            echo "already published @agent_forge/forge@$VER, skipping"
+          else
+            npm publish --access public --provenance
+          fi
+        working-directory: npm
+
+      # 发布 @agent_forge/forge-dsh（DSH 插件，plugins/forge-dsh）：随主版本发布火车
+      # 一并上架，免去独立手动发版（本地 npm login 不可脚本化）。版本号随主火车
+      # lockstep——plugins/forge-dsh/package.json 在 release-please extra-files 里，
+      # 每个 Release PR 与根版本统一 bump（曾刻意独立演进，结果 bump 全靠手动 chore
+      # commit、漏 bump 时本步静默 skip，插件游离于自动发版之外，2026-08 收回火车）。
+      # 已发布版本幂等跳过，与主包同姿势。
+      - name: Publish @agent_forge/forge-dsh (idempotent)
+        # 认证同主包：无 token，npm 自动用 job 级 OIDC（trusted publishing）。
+        run: |
+          set -e
+          VER=$(node -p "require('./plugins/forge-dsh/package.json').version")
+          if npm view "@agent_forge/forge-dsh@$VER" version >/dev/null 2>&1; then
+            echo "already published @agent_forge/forge-dsh@$VER, skipping"
+          else
+            echo "Publishing @agent_forge/forge-dsh@$VER"
+            # dry-run 门禁先行（与主包同姿势）：npa/结构类错误在真实 publish 前暴露。
+            out=$(cd plugins/forge-dsh && npm publish --dry-run --access public 2>&1) \
+              || echo "$out" | grep -q "cannot publish over the previously published" \
+              || { echo "$out"; exit 1; }
+            # cd 进包目录再 publish（裸路径会被 npa 当 GitHub shorthand，见上方主包注释）；
+            # --provenance 需要 package.json 的 repository.directory 字段指向本目录（已配）。
+            (cd plugins/forge-dsh && npm publish --access public --provenance)
+          fi
+
+  # 发布后装机验证：补「发布后装机无人验证」缺口——npm job 只保证包发出去，
+  # 不保证用户 npm i -g 装回来的二进制能跑、版本对得上 tag（货不对板要发版后
+  # 才发现就晚了）。needs 链尾端：test→goreleaser→npm→npm-verify。
+  npm-verify:
+    needs: npm
+    runs-on: ubuntu-latest
+    # 退避重试 15 次尝试 + 14×60s 间隔（自发布累计 ≈18min）+ 双 drill + 签名验证的余量。
+    # 窗口由两轮实录定标：v1.56.6 主包读路径滞后 ~5min（8×45s 窗口为它而设）；
+    # v1.73.0 packument 已 visible 但 tarball CDN 404 长达 ~9-14min——8×45s≈7min
+    # 被击穿，重试用尽假红（发布实际成功，重跑 14s 过）。
+    timeout-minutes: 25
+    # job 级 contents:write + pull-requests:write 供尾部 pins 对齐步开 PR——
+    # permissions 只支持 workflow/job 两级，写在 step 级是非法键（actionlint
+    # 实证，整个 workflow 解析期即失败）。
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - name: Install from npmjs and assert version == tag
+        run: |
+          WANT="${GITHUB_REF_NAME#v}"
+          PLATFORM="$(node -p "process.platform")-$(node -p "process.arch")"
+          # registry 显式钉主源（2026-09-25 裁决：verify 只认 registry.npmjs.org）。
+          # 不钉则吃 runner 默认 npm 配置——npmrc/环境里的镜像会静默换源，验的就
+          # 不是发布的源头；且下方诊断探针（curl）钉的是主源，安装不钉则两者不同
+          # 源，「API visible 但装不上」的归因被镜像噪音污染。
+          REG="https://registry.npmjs.org"
+          # v1.56.6 实录修正（v1.56.5 设计的两处误判）：registry 读路径可滞后写路径
+          # 约 5 分钟（平台包秒级可见、主包 packument ~5min），且 API 同样滞后——
+          # 「API 404 = 未发布，立即退出」把传播滞后误判成发布失败；5×30s 退避窗也不够。
+          # 改为无条件退避重试；API 查询降级为信息性日志（辅助诊断，不决定重试）；
+          # 重试用尽才失败，失败信息带 API 终态。「防掩盖真失败」由最终诊断承载
+          # （visible=装回问题；not-visible=疑 npm job 未发布或网络故障）。
+          # v1.61.1 实录修正（验收轮发现）：只装主包时，传播窗内平台子包 packument
+          # 尚未可见 → npm 对 optionalDependencies **静默跳过**（日志 "added 1
+          # package"），主包孤装无二进制 → forge --version 输出空 → 货不对板断言
+          # 必失败。改为主包+当前平台子包**显式同装**：显式依赖缺版本会 ETARGET
+          # 进重试循环，不再被 optional 语义吞掉。
+          # v1.73.0 实录修正（窗口击穿）：packument visible 但 tarball CDN 404 长达
+          # ~9-14min，8×45s≈7min 重试用尽假红（发布实际成功，人工重跑 14s 过）——
+          # 窗口加长到 15 次尝试 × 60s 间隔（sleep 仅发生在尝试之间，共 14 次），
+          # 自发布累计 ≈18min。
+          API_STATE="unknown"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            if npm i -g --registry="$REG" "@agent_forge/forge@$WANT" "@agent_forge/forge-$PLATFORM@$WANT"; then
+              echo "installed on attempt $i/15 (registry API: $API_STATE)"
+              break
+            fi
+            if curl -fsS --max-time 10 "https://registry.npmjs.org/@agent_forge/forge/$WANT" | grep "\"version\":\"$WANT\"" >/dev/null; then
+              API_STATE="visible"
+            else
+              API_STATE="not-visible(404-or-network)"
+            fi
+            if [ "$i" = 15 ]; then
+              echo "::error::15 次装回均失败（registry API 终态: $API_STATE）——visible 则排查 npm/网络；not-visible 则疑 npm job 未真正发布或网络故障，核查其日志"
+              exit 1
+            fi
+            echo "attempt $i/15 failed (registry API: $API_STATE) — backoff 60s"
+            sleep 60
+          done
+          GOT=$(forge --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          if [ "$GOT" != "$WANT" ]; then
+            echo "::error::npm 装回的 forge 版本 $GOT != tag $WANT——发布产物货不对板"
+            exit 1
+          fi
+          echo "npm-verify passed: forge $GOT == tag v$WANT"
+      # 发布后 pins 对齐（belt-and-suspenders 兜底）：v1.66.1 起 optionalDependencies
+      # 钉随 Release PR 由 extra-files 同批 bump（提交态守卫已收紧严格相等），本步
+      # 正常路径是 no-op 早退（npm/package.json 已对齐）。它防的是绕过 release-please
+      # 的手动发版路径（scripts/release.js 逃生舱已同步对齐钉,此处兜历史/未知旁路）。
+      # GITHUB_TOKEN push 不触发 CI（防递归）——纯版本 chore 可接受；失败不回滚发布
+      # （best-effort，下次发布窗口的对账 test 兜底）。
+      - name: Checkout main for pins alignment
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+      - name: Align npm pins in repo (post-release)
+        # 直推 main 被分支保护拒（必需检查 6/6，2026-09-16 实录）——改推
+        # chore/npm-align-<ver> 分支 + 开 PR，由人合并（对齐只动版本清单，
+        # CI 可判）。best-effort：失败 warn 不连坐 npm-verify（发布已完成，
+        # 下轮发布窗口的对账 test 兜底）。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          git config user.name "forge-release-bot"
+          git config user.email "bot@users.noreply.github.com"
+          make npm-align
+          if git diff --quiet; then
+            echo "pins already aligned — nothing to commit"
+            exit 0
+          fi
+          BRANCH="chore/npm-align-$VER"
+          git checkout -b "$BRANCH"
+          git commit -am "chore(release): npm-align pins 对齐 $VER"
+          if gh pr list --head "$BRANCH" --state open --json number -q 'length' | grep -qv 0; then
+            echo "align PR already open — skip"
+            exit 0
+          fi
+          git push -u origin "$BRANCH" && gh pr create --base main --head "$BRANCH" \
+            --title "chore(release): npm-align pins 对齐 $VER" \
+            --body "发布后自动对齐 npm pins（发布 workflow 收尾步；合并后下一轮发版从对齐态起步）"
+      # 装机行为级验收（版本对上 ≠ 行为对）：用户真实安装路径上跑双 drill——
+      # 首证据链 + 产物链分档执法。npm 包自带二进制，这里跑的就是用户会拿到的
+      # 那个二进制（v1.52.0 发版审计：装机验证曾只验版本号，行为级缺口）。
+      - name: Behavioral smoke on installed binary
+        run: |
+          forge eval wedge-drill
+          forge eval artifact-drill
+      # 签名验证闭环（审计漏点 #1：cosign 只签不验）——goreleaser keyless 签的
+      # checksums.txt 必须有人验过才算供应链证据。identity 匹配本仓 workflow 的
+      # OIDC 身份；Verify 失败 = 发布资产被篡改或签名链异常，发布判定失败。
+      - name: Verify checksums signature (cosign keyless)
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Verify checksums.txt signature
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          curl -fsSL -o checksums.txt "https://github.com/${REPO}/releases/download/v${VER}/checksums.txt"
+          curl -fsSL -o checksums.txt.sigstore.json "https://github.com/${REPO}/releases/download/v${VER}/checksums.txt.sigstore.json"
+          # 身份硬化（审计遗留 #2）：精确锚定本仓 release workflow + 语义化 tag ref，
+          # 点号转义——同 owner 下任何其他仓库/其他 workflow 的签名一律拒验。
+          cosign verify-blob --bundle checksums.txt.sigstore.json \
+            --certificate-identity-regexp "^https://github\.com/${REPO}/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            checksums.txt
+          echo "signature verified: v${VER} checksums.txt (keyless, release.yml workflow identity)"

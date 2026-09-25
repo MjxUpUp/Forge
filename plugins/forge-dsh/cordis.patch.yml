@@ -1,0 +1,3 @@
+- insert:
+    - id: forge-quality
+      name: "@agent_forge/forge-dsh"
