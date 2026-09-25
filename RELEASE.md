@@ -1,0 +1,167 @@
+# Forge 发布 Checklist
+
+发版纪律——防止"本地过≠CI 过"和手动绕过 CI 发坏包。源自 v0.27.0/v0.27.1 教训：
+v0.27.0 手动 `gh release` + `npm publish` 绕过了 failure 的 release.yml 当作完成，
+cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
+
+## 标准发版：feat/fix 合 main 后全自动（唯一推荐路径）
+
+版本号 bump / changelog / 打 tag 由 [release-please](https://github.com/googleapis/release-please)
+接管（`.github/workflows/release-please.yml` + `release-please-config.json` +
+`.release-please-manifest.json`）：
+
+1. `feat:`/`fix:` 合入 main → release-please 自动开（或更新）**Release PR**
+   （`chore(main): release X.Y.Z`），内容是纯机械变更：`npm/package.json`、
+   `.kimi-plugin/plugin.json`、`plugins/forge-dsh/package.json`、
+   `.release-please-manifest.json` 的版本 bump + `CHANGELOG.md` 新章节
+2. Release PR 的 6 个必需检查（ci.yml 三平台 build + skills-qa + scripts-test×2）
+   跑绿后 **auto-merge 自动 squash 合并**——无需人工确认（repo 设置 Allow
+   auto-merge 须开启；见下方 Token 双路径的 PAT 前置）
+3. 合并 push 触发 release-please 自动打 `vX.Y.Z` tag、建带 changelog 正文的
+   GitHub Release；tag push（PAT 路径）或 `workflow_dispatch`（GITHUB_TOKEN 路径）
+   调度 `release.yml`（构建层零改动）——test→drill→goreleaser→npm→npm-verify
+   全链自动，npm 包发布 + 装回验证无人值守
+
+```bash
+# 标准发版就是：在 GitHub 上合并 feat:/fix: PR（chore/docs/test/ci 不触发）
+# 之后零手动——Release PR 自动开、检查绿自动合并、tag、GitHub Release、
+# 二进制、npm 包全部自动就绪
+```
+
+版本规则（Conventional Commits）：
+
+- `feat:` → minor，`fix:` → patch，`!`/`BREAKING CHANGE:` → major
+- `chore:`/`docs:`/`test:`/`ci:` 不触发 Release PR（与旧 release.js 的差异：perf/refactor
+  也不再独立触发发版，攒到下次 feat/fix 一起发）
+- 强制指定版本：给任意 commit 加 `Release-As: x.y.z` footer
+
+**Token 双路径**：默认 `GITHUB_TOKEN`（零配置即可用）——它产生的事件不触发新
+workflow run（GitHub 防递归），所以靠 workflow_dispatch 显式调度构建层；此路径
+automerge 步自停（GITHUB_TOKEN 合并的 push 不触发建 tag run，注册 auto-merge 只会
+静默断链），Release PR 保持**人工合并**。配置 secret `RELEASE_PLEASE_TOKEN`（PAT）
+后自动升级：Release PR 上能跑 CI 检查、注册 auto-merge（6 个必需检查跑绿后自动
+squash 合并，repo 设置 Allow auto-merge 须开启——已开；关闭后 automerge 步红 run，
+是刻意的漂移信号）、tag push 直接触发 release.yml（dispatch 步自停，防双跑），
+无需改任何文件。
+
+发版形状由 `internal/ci/release_please_test.go` 守卫：tag 形状必须 `v<semver>`（构建层
+触发条件与 npm 资产 URL 都依赖）、extra-files 必须持续 bump 全部 11 个 json 条目
+（主包 `$.version` + 5 个 optionalDependencies 钉 + kimi/dsh 插件 + 5 平台子包）、
+`.release-please-manifest.json` 必须与 `npm/package.json` 同版本（手动发版不同步会被
+测试拦下）。
+
+`@agent_forge/forge-dsh`（DSH 插件）随主发布火车 lockstep 发版：版本号由 Release PR
+经 extra-files 与根版本统一 bump（不手改，`TestReleasePleaseManifest_DshPluginTracksTrain`
+守卫），release.yml 的 npm job 幂等发布到 npmjs.org。曾刻意独立演进，结果版本 bump
+全靠手动 chore commit、漏 bump 时发布步静默 skip——2026-08 收回火车。
+
+注：`plugins/forge-dsh/package-lock.json` 的根 version 字段**不做机制性同步**——
+`npm ci` 只校验依赖树不校验根 version，npm publish 也不把 lockfile 打进 tarball，
+该字段是纯本地开发元数据（下次 `npm install` 自然追上）。把它塞进 extra-files 需要
+未验证的 jsonpath 写法（`packages[""]` 空字符串 key），不值得为化妆性字段冒险。
+
+## 发版必须走 release.yml（不手动绕过）
+
+Release PR 合并 → dispatch → `.github/workflows/release.yml` 跑 **test → drill → goreleaser →
+npm → npm-verify** 五段强依赖链：
+
+| job | 作用 | needs |
+|-----|------|-------|
+| **test** | `go test ./... -race` + `go vet` + tag↔版本对账 | （源头） |
+| **drill** | `eval wedge-drill` + `eval artifact-drill`——行为级冒烟（发布物必须真实跑过） | `test` |
+| **goreleaser** | 跨平台二进制 + SBOM + cosign 签名 → GitHub Release 资产 | `test, drill` |
+| **npm** | 发 `@agent_forge/forge` + 5 平台子包 + `@agent_forge/forge-dsh` 到 npmjs.org（带 provenance） | `goreleaser` |
+| **npm-verify** | npm 装回并断言 `forge --version` == tag，**且在装机上跑双 drill**（行为级装机验收） | `npm` |
+
+- needs 链由 `internal/ci/release_workflow_test.go` 沙盒守护
+- goreleaser `release.mode: keep-existing`：保留 release-please 的 changelog 正文，
+  只往 Release 上挂二进制/SBOM/签名资产
+- **版本对账门禁**（test job）：tag 必须等于 `npm/package.json` 与
+  `plugins/forge-dsh/package.json` 的 version——Release PR 已保证一致，此门禁防手动
+  打 tag 路径"二进制是 tag 的、包版本号是 package.json 的"货不对板
+- **npm 平台子包版本与 optionalDependencies 钉**：平台子包 version 与主包
+  `optionalDependencies` 的 5 个平台钉均由 release-please extra-files 随 Release PR
+  **同 PR 自动 bump**（v1.66.1 起逐键 jsonpath `$.optionalDependencies['…']` 纳入——
+  此前「无法用 jsonpath 表达」的断言过时,方括号键是受支持模式,spicedb-embedded/
+  ifchange 同款;守卫 `TestReleasePleaseConfig_ExtraFilesBumpAllManifests` 钉住 5 条
+  jsonpath 不被删）。提交态守卫 `TestNpmPlatformVersionsAligned` 已收紧**严格相等**
+  ——「滞后一版合法」宽容随自动化退役(#72/#74/#77 三轮手工 npm-align 的债务根源,
+  曾致 v1.65.0 发布失败)。`make npm-align` 保留为自动化失效时的应急工具(用法
+  不变:对齐到 npm/package.json 当前 version 后随 PR 提交)。
+- **npm** 先发 5 平台子包（主包 optionalDependencies 依赖它们）再发主包；
+  认证走 **npm Trusted Publishing**（OIDC 免 token，2026-09-22 起）：npm ≥11.5.1
+  在无 token 的 CI 环境自动用 GitHub OIDC 向 registry 换发布凭证，无过期问题
+  （旧 `NPM_TOKEN` 方案里 Granular token 最长 365 天，过期即断链）。前置：npmjs
+  侧 7 个包（主包 + 5 平台子包 + forge-dsh）各自 Settings → Trusted publishing
+  登记 GitHub Actions：`MjxUpUp/Forge` + workflow `release.yml`，**Allowed actions
+  须允许直接 publish**（默认仅 staged，本链用 `npm publish` 直发）；npm 不在保存时
+  校验登记，配错到 publish 才炸。守卫 `TestReleaseWorkflow_NpmTrustedPublishing`
+  钉住无 token env + npm ≥11 + `id-token: write`。`NPM_TOKEN` secret 已于 v1.72.0
+  首次 tokenless 发版验证成功后删除（2026-09-22）——如需回退 token 方案，去 npmjs
+  新建 Automation/Granular token 重新配置 secret。可选加固（未开）：npmjs 账号
+  Settings → Publishing access 的「require 2FA and disallow tokens」——之后任何
+  token 都无法发布，只认 trusted publisher
+
+## 宿主插件是第二分发通道（发版 ≠ 生效）
+
+kimi 等宿主插件 manifest（`.kimi-plugin/plugin.json`）随 tag 进 GitHub，但**用户机器上
+的已装副本不自动更新**——含 hook 接线 / manifest 变更的发版，binary 升级 ≠ 行为生效，
+用户须在宿主里更新插件（kimi 侧有 staleness advisory 在下个 prompt 提醒）。此类发版
+在 commit body 写明"需更新宿主插件"，避免"发了版用户还报旧症状"（2026-08 kimi
+skill-trigger manifest 接线修复实例：引擎修复已发版，插件 manifest 未更新，症状照旧）。
+
+## 发布前自检（本地复现 CI 最小环境）
+
+CI 是干净 clone，**本地工作区有文件 ≠ 仓库有文件**（cmd/forge 漏提交就是这么漏的：
+.gitignore 裸名 `forge` 吞了 `cmd/forge/`，本地有文件所以本地过，CI 干净 clone 才暴露）。
+
+```bash
+# 干净 clone 验证（绝不依赖本地工作区已有文件）
+git clone <remote> /tmp/forge-verify && cd /tmp/forge-verify
+go build ./... && go test ./... -count=1 -race
+git ls-files | grep -E 'cmd/forge|main\.go'   # 确认入口目录进库
+```
+
+## 紧急手动路径（release.js，已退役为逃生舱）
+
+`scripts/release.js` 不再是标准路径，仅当 release-please 层本身故障时应急：
+
+```bash
+node scripts/release.js          # 照旧 bump + tag + commit
+git push origin main && git push origin vX.Y.Z   # 手动 push 触发 release.yml
+```
+
+脚本会同步 bump `.release-please-manifest.json`（release-please 的版本账本）与
+`plugins/forge-dsh/package.json`（随火车的 dsh 插件版本），保持逃生舱路径自洽——
+`internal/ci/release_please_test.go` 的 `TestReleasePleaseManifest_MatchesNpmVersion`
+守卫 `npm/package.json` == manifest、`TestReleasePleaseManifest_DshPluginTracksTrain`
+守卫 dsh == manifest。只有绕过脚本手动打 tag 时才需要手动同步这些文件。
+
+CI 暂坏需绕过 workflow 手动 `gh release` + `npm publish` 时，绕过的是 **整个 needs 链**
+（沙盒验证无法覆盖手动行为）。手动 publish 走本地 `npm login`（交互式 2FA），与
+CI 的 trusted publishing 互不影响——但若已按上文开启「require 2FA and disallow
+tokens」，token 类登录被禁，需临时调回 publishing access 再操作。此时：
+
+1. **必须当场登记"CI 待修"待办**——v0.27.0 绕过 failure CI 当完成，是这次教训的根因
+2. 绕过后第一时间修 CI，并补跑（重打 patch tag 走完整 release.yml 验证链路）
+3. **绕过 ≠ CI 健康**：npm 包发出去了不代表发布链路 OK；CI 红着就是债
+
+## 版本号规则
+
+- 正常发版：Release PR 按 Conventional Commits 推断 patch/minor/major
+- 发版后发现 bug：**升 patch 重发**，不 force-push 覆盖已发 tag
+  - hazard-guard 会拦 force-push；且覆盖已发布 npm 包不可逆（registry 会缓存）
+  - v0.27.1→v0.27.2 即此规则实例
+
+## 坏版本处置（npm deprecate RUNBOOK）
+
+发出去的版本不可变、不可覆盖——坏版本两步走：**标记降级 + 升 patch 重发**，不赌 unpublish：
+
+1. **deprecate 坏版本**（安装时给警告，用户可自行 `-g @agent_forge/forge@<坏版本>` 装回旧版）：
+   ```bash
+   npm deprecate @agent_forge/forge@<ver> "broken: <原因一句话>, use <新版本>"
+   # 5 个平台子包与 forge-dsh 同步 deprecate（版本由 release.yml 的 npm job 统一注入，同号同步）
+   npm deprecate @agent_forge/forge-darwin-arm64@<ver> "..."   # 其余子包同理
+   ```
+2. **升 patch 重发**：修 bug → `fix:` 前缀合 main → release-please 自动开下一个 Release PR
+3. **不要 unpublish**：发布 >72h 后 npm 禁止 unpublish；且 unpublish 后 24h 内同版本号不可复用（cache 层用户仍可能装到），deprecate 是唯一可靠降级通道

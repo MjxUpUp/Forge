@@ -1,0 +1,99 @@
+package taskpipeline
+
+// seed_schema.go — TaskState 的序列化 schema 种子（compat 面 5 消费，经 cli
+// 注入到 compat.SeedTaskStateForSchema 接缝）。全填充形态让 schemaKeys 能取到
+// 每个可选字段（omitempty 字段零值时不出现在序列化面——种子必须填满，对抗
+// 审查 should-fix：未填的键恰是承诺表"序列化键只增不删"的强承诺面，删改
+// 它们不会触发 golden 棘轮）。
+
+import (
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
+)
+
+// SeedTaskStateForSchema 返回全填充 TaskState（schema 键提取用，值无意义）。
+//
+// SeedTaskStateForSchema returns a fully-populated TaskState for schema key extraction.
+func SeedTaskStateForSchema() any {
+	now := time.Now()
+	s := &tasktypes.TaskState{
+		TaskRef: "seed/ref", Summary: "s", Branch: "b", HeadCommit: "abc",
+		StartedAt: now, OriginTool: "seed", Goal: "g", Plan: "p",
+		Checklist: []tasktypes.ChecklistItem{{ID: 1, Desc: "d", Done: true, DoneAt: &now}},
+		PlanScope: []string{"x.go"},
+		Acceptance: []tasktypes.AcceptanceCriterion{{
+			Run: "r", Expected: "e", Passed: true, Output: "o",
+			AcceptedHeadCommit: "abc", AcceptedBaseCommit: "abc", AcceptedChangeHash: "h",
+			// spec-as-gate v2（leverage-points-landing.md L2）：断言集的嵌套键必须
+			// 在种子中出现——漏填的键不在序列化承诺面，删改不会触发 golden 棘轮。
+			// Arg/Negate 填非零值：零值会被 omitempty 吞掉，键就退出承诺面（种子
+			// 纪律"值无意义、键必须满"）。
+			Assertions: []tasktypes.Assertion{{Type: "contains", Arg: "a", Expected: "e", Negate: true}},
+		}},
+	}
+	s.CompletedAt = &now
+	s.SessionID = "sess"
+	s.History = []tasktypes.TaskGateResult{{Gate: "g", Passed: true, HeadCommit: "abc"}}
+	s.ReviewPassed = true
+	s.ReviewRounds = []tasktypes.ReviewRound{{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now}}
+	s.DesignPhases = []tasktypes.DesignPhase{"frontend"}
+	s.IntentLog = []tasktypes.IntentEntry{{TS: now, Text: "t", Session: "sess"}}
+	s.Findings = []tasktypes.Finding{{ID: "f", Content: "c", Source: "s", Evidence: "e", Severity: "minor", Status: "open"}}
+	s.ReportedFindings = []string{"fp"}
+	s.DocReview = &tasktypes.DocReview{
+		Passed: true, RubricScore: 88, Round: 1, Reviewer: "r", ReviewedAt: now,
+		HeadCommit: "abc", DocsFingerprint: "fp", SelfReview: true, // 键集提取用（P2-7：新键须进 compat schema 面）
+	}
+	s.DocReviewHistory = []tasktypes.DocReview{*s.DocReview}
+	s.Integrity = &tasktypes.StateIntegrity{KeyID: "k", Alg: "a", Sig: "s"}
+	s.Overrides = tasktypes.TaskOverrides{
+		WorkActivity: "disable", TestCoverage: "disable", AcceptanceGate: "disable",
+		SkillDecisions: "disable", DocGate: "disable", ArtifactChain: "disable",
+	}
+	s.ExternalOrigin = tasktypes.ExternalOrigin{Tracker: "github", IssueID: "1", Identifier: "org/repo#1", URL: "u"}
+	s.Assignment = &tasktypes.Assignment{
+		Agent: "claude-code", Role: "r", Status: "offered",
+		OfferedBy: "x", OfferedAt: &now, ClaimedAt: &now, QuestionAt: &now,
+		DeliveredAt: &now, LastQuestion: "q", FailReason: "f", CancelReason: "c",
+		NotifiedAt: &now, AbandonedCount: 1, AbandonedAt: &now, AutoDelivered: true,
+	}
+	s.Lease = &tasktypes.Lease{HolderNode: "n", TsHLC: "t", TTLSec: 60, Fencing: 1, ClaimedAt: 1}
+	// 复审发现的 17 个顶层遗漏键逐一填满（score/cross_repo_impact/spec_artifacts/
+	// session_links/decisions/next_steps/blockers/artifacts/parent_task_ref/
+	// depends_on/kind/ttl/resume_stale/reviewed_head_commit/reviewed_change_hash/
+	// acceptance_foreign/plan_first_advisory_fired）+ 嵌套 note/round/change_hash。
+	s.Score = &scoringtypes.ScoreResult{
+		TaskRef: "seed/ref", Overall: 90, Grade: "A", ScoredAt: now,
+		Dimensions: []scoringtypes.DimensionScore{{Dimension: "verification", Score: 90, Detail: "d"}},
+	}
+	s.CrossRepoImpact = &tasktypes.CrossRepoImpact{Level: "multi", Repos: []string{"r"}, Note: "n", DeclaredAt: now}
+	s.SpecArtifacts = map[string]tasktypes.ArtifactRef{"intent": {Path: "p", Hash: "h", UpdatedAt: now}}
+	s.SessionLinks = []tasktypes.SessionLink{{SessionID: "sess", Tool: "seed", JoinedAt: now}}
+	s.Decisions = []tasktypes.Decision{{ID: "d1", Content: "c", DecidedAt: now, By: "seed", Affects: []string{"x"}, Rationale: "r"}}
+	s.NextSteps = []string{"n"}
+	s.Blockers = []tasktypes.Blocker{{ID: "b1", Content: "c", RaisedAt: now, Status: "open", Resolution: "r", By: "seed"}}
+	s.Artifacts = []tasktypes.Artifact{{Path: "p", Kind: "file", Note: "n"}}
+	s.ParentTaskRef = "seed/parent"
+	s.DependsOn = []string{"seed/dep"}
+	s.Kind = "code"
+	s.TTL = time.Minute
+	s.ResumeStale = true
+	s.ReviewedHeadCommit = "abc"
+	s.AcceptanceForeign = true
+	s.PlanFirstAdvisoryFired = true
+	// 产物链工作流（artifact-chain-workflow.md §7 seed 纪律）：artifact_advisory_fired /
+	// artifact_approvals（含嵌套 by/at/hash）/ overrides.artifact_chain 三键必须出现在
+	// 序列化承诺面——漏填 = 棘轮盲区（见文件头注释）。
+	s.ArtifactAdvisoryFired = true
+	s.ArtifactApprovals = map[string]tasktypes.ArtifactApproval{"spec": {By: "seed", At: now, Hash: "h"}}
+	// 回边语义（artifact-chain-workflow.md「回边语义」节 seed 纪律）：
+	// resolved_prints / loop_exhausted（含嵌套 reason/detail/at）键必须在承诺面。
+	s.ResolvedPrints = []string{"seedprint"}
+	s.LoopExhausted = &tasktypes.LoopExhaustion{Reason: tasktypes.LoopReasonRounds, Detail: "d", At: now}
+	// findings/review_rounds 的嵌套可选键（round/change_hash/note）。
+	s.Findings = append(s.Findings, tasktypes.Finding{ID: "f2", Content: "c", Source: "s", Status: "open", Round: 1, ChangeHash: "h"})
+	s.ReviewRounds = append(s.ReviewRounds, tasktypes.ReviewRound{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now, Note: "n"})
+	return s
+}

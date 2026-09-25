@@ -1,0 +1,26 @@
+# file-sentinel 主契约（真实 bash-guard→写入→file-sentinel 配对）：写命令产生
+# 新源码文件（未提交）→ 隔离 + FAIL。
+id: filesentinel-quarantines-source-write
+gate: file-sentinel
+kind: defective
+expect: flagged
+description: "Bash 写命令产生新源码文件 → file-sentinel 隔离并 FAIL"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.sentinel
+
+      go 1.25
+  - path: main.go
+    content: |
+      package main
+
+      func main() { println("ok") }
+probe_argv:
+  - "sh"
+  - -c
+  - 'pre=$(printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Bash\",\"session_id\":\"gs\",\"tool_input\":{\"command\":\"echo x > new.go\"}}" | "{forge}" hook bash-guard --agent claude); echo x > new.go; printf "%s" "{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Bash\",\"session_id\":\"gs\",\"tool_input\":{\"command\":\"echo x > new.go\"}}" | "{forge}" hook file-sentinel --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [file-sentinel]"

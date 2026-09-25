@@ -1,0 +1,22 @@
+# 断言族 golden（L3 · assertion-dispatch 收口）：verify-acceptance 对 v2 contains
+# 断言的执法——输出含期望子串时整条过（clean 基线，防误报）。
+id: assert-contains-pass
+gate: verify-acceptance
+kind: clean
+expect: clean
+description: "contains 断言命中（go version 输出含 go version）→ 整条通过，verify-acceptance exit 0"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.assert.c1
+      go 1.25
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init
+    "{forge}" task start --ref assert/c1 --accept "go version ::" --assert "contains: :: go version" >/dev/null 2>&1 || exit 1
+    "{forge}" task verify-acceptance 2>&1
+detect_any:
+  - "exit_nonzero"
