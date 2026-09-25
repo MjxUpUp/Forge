@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
@@ -562,6 +563,13 @@ func TestServe_PulseStats(t *testing.T) {
 			t.Errorf("空数据应输出 %s，body=%s", field, body)
 		}
 	}
+	// 反编造：无结论时分布形态字段整组缺席（nil 指针/nil map/零值 + omitempty），
+	// 不得出现编造的空分布。
+	for _, field := range []string{`"lowDims"`, `"conclusions"`, `"gradeDist"`, `"strengthDist"`, `"cappedWeak"`} {
+		if strings.Contains(string(body), field) {
+			t.Errorf("空数据 %s 应缺席，body=%s", field, body)
+		}
+	}
 
 	// 有数据：真实聚合。时间用 now 相对偏移：nudges 是 14 天窗口计数（2026-08 校准，
 	// 防"告警只增不减"），2023 固定戳会被窗口过滤——用近期时间让样本落进窗口。
@@ -600,16 +608,28 @@ func TestServe_PulseStats(t *testing.T) {
 		t.Fatalf("status = %d: %s", code, body)
 	}
 	var stats struct {
-		Projects          int      `json:"projects"`
-		ActiveTasks       int      `json:"activeTasks"`
-		Zombies           int      `json:"zombies"`
-		AvgScore          *float64 `json:"avgScore"`
-		MedianScore       *float64 `json:"medianScore"`
-		Trend             string   `json:"trend"`
-		Alerts            int      `json:"alerts"`
-		Nudges            int      `json:"nudges"`
-		NudgesActionable  int      `json:"nudgesActionable"`
-		EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
+		Projects          int            `json:"projects"`
+		ActiveTasks       int            `json:"activeTasks"`
+		Zombies           int            `json:"zombies"`
+		AvgScore          *float64       `json:"avgScore"`
+		MedianScore       *float64       `json:"medianScore"`
+		Trend             string         `json:"trend"`
+		Alerts            int            `json:"alerts"`
+		Nudges            int            `json:"nudges"`
+		NudgesActionable  int            `json:"nudgesActionable"`
+		EvidenceBlindRate *float64       `json:"evidenceBlindRate"`
+		Conclusions       int            `json:"conclusions"`
+		GradeDist         map[string]int `json:"gradeDist"`
+		StrengthDist      map[string]int `json:"strengthDist"`
+		CappedWeak        int            `json:"cappedWeak"`
+		LowDims           *struct {
+			Dims []struct {
+				Dimension string      `json:"dimension"`
+				Count     int         `json:"count"`
+				Scores    map[int]int `json:"scores"`
+				Spread    bool        `json:"spread"`
+			} `json:"dims"`
+		} `json:"lowDims"`
 	}
 	if err := json.Unmarshal(body, &stats); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
@@ -634,6 +654,118 @@ func TestServe_PulseStats(t *testing.T) {
 	}
 	if stats.EvidenceBlindRate == nil || *stats.EvidenceBlindRate < 0.49 || *stats.EvidenceBlindRate > 0.51 {
 		t.Errorf("evidenceBlindRate = %v, want ≈0.5（盲区 b+stale 2/4；capped 带 det 是封顶非盲区，stale 也计入全量盲区率）", stats.EvidenceBlindRate)
+	}
+	if stats.Conclusions != 4 {
+		t.Errorf("conclusions = %d, want 4", stats.Conclusions)
+	}
+	if stats.GradeDist["B"] != 2 || stats.GradeDist["D"] != 2 || len(stats.GradeDist) != 2 {
+		t.Errorf("gradeDist = %v, want B=2 D=2", stats.GradeDist)
+	}
+	if stats.StrengthDist["Strong"] != 1 || stats.StrengthDist["Weak"] != 3 || len(stats.StrengthDist) != 2 {
+		t.Errorf("strengthDist = %v, want Strong=1 Weak=3", stats.StrengthDist)
+	}
+	if stats.CappedWeak != 1 { // 仅 feat/capped（Weak 带 det 6）是封顶；b/stale 无 det 是盲区
+		t.Errorf("cappedWeak = %d, want 1", stats.CappedWeak)
+	}
+	// 有结论但夹具未设 LowDimensions → lowDims 出现且 dims 为空（「健康」空态，
+	// 区别于无结论时的字段缺席——前端分别渲染「无」与「—」）。
+	if stats.LowDims == nil || len(stats.LowDims.Dims) != 0 {
+		t.Errorf("lowDims = %+v, want 非nil 且 dims 空", stats.LowDims)
+	}
+}
+
+// TestServe_PulseStats_LowDims：复发低分维度投影——直方图来自全档 DimScores（含
+// 非低分档），spread 由服务端 SpreadAcrossBuckets 判定。跨全档＝量纲/粒度信号，
+// 集中低档＝纪律缺口（docs/plans/low-dim-recurrence-2026-09.md）。
+func TestServe_PulseStats_LowDims(t *testing.T) {
+	decode := func(t *testing.T, body []byte) struct {
+		Dimension string      `json:"dimension"`
+		Count     int         `json:"count"`
+		Scores    map[int]int `json:"scores"`
+		Spread    bool        `json:"spread"`
+	} {
+		t.Helper()
+		var stats struct {
+			LowDims *struct {
+				Dims []struct {
+					Dimension string      `json:"dimension"`
+					Count     int         `json:"count"`
+					Scores    map[int]int `json:"scores"`
+					Spread    bool        `json:"spread"`
+				} `json:"dims"`
+			} `json:"lowDims"`
+		}
+		if err := json.Unmarshal(body, &stats); err != nil {
+			t.Fatalf("decode: %v\n%s", err, body)
+		}
+		if stats.LowDims == nil || len(stats.LowDims.Dims) != 1 {
+			t.Fatalf("lowDims 应恰含 1 个维度，got %+v\n%s", stats.LowDims, body)
+		}
+		return stats.LowDims.Dims[0]
+	}
+
+	appendConc := func(t *testing.T, p *forgedata.Project, lowDim string, scores ...float64) {
+		t.Helper()
+		c := &act.Conclusion{TaskRef: "feat/x", Score: 60, Grade: "D", Strength: "Weak", CompletedAt: time.Now().Add(-time.Hour)}
+		for _, sc := range scores {
+			c.DimScores = append(c.DimScores, act.DimScore{Dimension: lowDim, Score: sc})
+			if sc < 70 {
+				c.LowDimensions = append(c.LowDimensions, lowDim)
+			}
+		}
+		if err := act.Append(p, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 跨全档：scope 低分 40×2，另有任务 scope=95——直方图触 ≥80 档 → spread=true。
+	rootSpread, pSpread := forgedatatest.RealProject(t)
+	appendConc(t, pSpread, "scope", 40)
+	appendConc(t, pSpread, "scope", 40)
+	appendConc(t, pSpread, "scope", 95) // 高分任务：不进 LowDimensions，但进直方图
+	srv := pulseServer(t, Options{Root: rootSpread})
+	_, body := pulseGet(t, srv.URL+"/api/pulse/stats.json")
+	dim := decode(t, body)
+	if dim.Dimension != "scope" || dim.Count != 2 {
+		t.Errorf("dimension/count = %s/%d, want scope/2（Count 数低分任务，直方图数全部）", dim.Dimension, dim.Count)
+	}
+	if dim.Scores[40] != 2 || dim.Scores[95] != 1 {
+		t.Errorf("scores = %v, want 40×2 95×1（全档直方图，含非低分档）", dim.Scores)
+	}
+	if !dim.Spread {
+		t.Errorf("spread = false, want true（直方图触 95 ≥80 档——量纲/粒度信号）")
+	}
+
+	// 集中低档：testing 只有 45/50 → spread=false。
+	rootLow, pLow := forgedatatest.RealProject(t)
+	appendConc(t, pLow, "testing", 45)
+	appendConc(t, pLow, "testing", 50)
+	srv2 := pulseServer(t, Options{Root: rootLow})
+	_, body2 := pulseGet(t, srv2.URL+"/api/pulse/stats.json")
+	dim2 := decode(t, body2)
+	if dim2.Dimension != "testing" || dim2.Count != 2 {
+		t.Errorf("dimension/count = %s/%d, want testing/2", dim2.Dimension, dim2.Count)
+	}
+	if dim2.Spread {
+		t.Errorf("spread = true, want false（无 ≥80 档——集中低档纪律缺口）")
+	}
+
+	// 存量结论（无 DimScores）：scores 缺席（退回纯 ×N），spread=false 维持存量语义。
+	rootLegacy, pLegacy := forgedatatest.RealProject(t)
+	if err := act.Append(pLegacy, &act.Conclusion{
+		TaskRef: "feat/legacy", Score: 60, Grade: "D", Strength: "Weak",
+		LowDimensions: []string{"scope"}, CompletedAt: time.Now().Add(-time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	srv3 := pulseServer(t, Options{Root: rootLegacy})
+	_, body3 := pulseGet(t, srv3.URL+"/api/pulse/stats.json")
+	if strings.Contains(string(body3), `"scores"`) {
+		t.Errorf("存量结论无 DimScores 时 scores 应缺席，body=%s", body3)
+	}
+	dim3 := decode(t, body3)
+	if dim3.Dimension != "scope" || dim3.Count != 1 || dim3.Spread {
+		t.Errorf("legacy dim = %+v, want scope/1/spread=false（无分布证据不判量纲信号）", dim3)
 	}
 }
 
@@ -814,7 +946,7 @@ func TestServe_PulsePage(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status = %d: %s", resp.StatusCode, body)
 	}
-	for _, marker := range []string{`Forge <span class="accent">Pulse</span>`, `/api/pulse/feed.json`, `data-theme`, `SKILL_FOLD_MIN`, `skill-fold`} {
+	for _, marker := range []string{`Forge <span class="accent">Pulse</span>`, `/api/pulse/feed.json`, `data-theme`, `SKILL_FOLD_MIN`, `skill-fold`, `复发维度`} {
 		if !strings.Contains(string(body), marker) {
 			t.Errorf("页面缺关键标记 %q", marker)
 		}
