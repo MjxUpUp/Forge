@@ -1,0 +1,24 @@
+# 断言族 golden：file-untouched 保护成立（保护面零触碰）→ 整条通过（防误报）。
+id: assert-file-untouched-pass
+gate: verify-acceptance
+kind: clean
+expect: clean
+description: "file-untouched:internal/freeze/** 未被触碰 → 通过"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.assert.c6
+      go 1.25
+  - path: internal/freeze/keep.go
+    content: |
+      package freeze
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init
+    "{forge}" task start --ref assert/c6 --accept "go version ::" --assert "file-untouched:internal/freeze/**" >/dev/null 2>&1 || exit 1
+    "{forge}" task verify-acceptance 2>&1
+detect_any:
+  - "exit_nonzero"

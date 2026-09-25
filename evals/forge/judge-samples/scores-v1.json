@@ -1,0 +1,50 @@
+[
+  {
+    "doc_id": "design-forge-evaluation-system",
+    "judge_scores": [88, 90, 87],
+    "human_score": 80,
+    "threshold": 75
+  },
+  {
+    "doc_id": "design-project-policy-layer",
+    "judge_scores": [85, 84, 86],
+    "human_score": 80,
+    "threshold": 75
+  },
+  {
+    "doc_id": "design-output-readability-gates",
+    "judge_scores": [82, 84, 80],
+    "human_score": 80,
+    "threshold": 75
+  },
+  {
+    "doc_id": "design-multi-task-concurrency",
+    "judge_scores": [84, 82, 85],
+    "human_score": 80,
+    "threshold": 75
+  },
+  {
+    "doc_id": "design-node-identity",
+    "judge_scores": [80, 82, 79],
+    "human_score": 80,
+    "threshold": 75
+  },
+  {
+    "doc_id": "golden-README",
+    "judge_scores": [78, 80, 77],
+    "human_score": 80,
+    "threshold": 75
+  },
+  {
+    "doc_id": "bad-no-evidence",
+    "judge_scores": [42, 45, 40],
+    "human_score": 50,
+    "threshold": 75
+  },
+  {
+    "doc_id": "bad-restate-diff",
+    "judge_scores": [48, 50, 46],
+    "human_score": 50,
+    "threshold": 75
+  }
+]

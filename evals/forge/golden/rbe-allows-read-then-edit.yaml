@@ -1,0 +1,26 @@
+# 历史反哺干净面：同一文件先经 tool-track 记录 Read，再 Edit → 放行
+# （disk reads-log 副信道跨 compaction 存活正是本 hook 的设计点）。
+id: rbe-allows-read-then-edit
+gate: read-before-edit
+kind: clean
+expect: clean
+description: "Read（tool-track 记录）后 Edit 同一文件 → 放行"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.rbe2
+
+      go 1.25
+  - path: old.go
+    content: |
+      package main
+
+      func F() int { return 1 }
+probe_argv:
+  - "sh"
+  - -c
+  - '"{forge}" task start --ref RB-2 --title rbe2 >/dev/null 2>&1; printf "%s" "{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Read\",\"session_id\":\"rbs2\",\"task_ref\":\"RB-2\",\"tool_input\":{\"file_path\":\"old.go\"}}" | "{forge}" hook tool-track --agent claude >/dev/null 2>&1; printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"session_id\":\"rbs2\",\"task_ref\":\"RB-2\",\"tool_input\":{\"file_path\":\"old.go\",\"old_string\":\"a\",\"new_string\":\"b\"}}" | "{forge}" hook read-before-edit --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [read-before-edit]"

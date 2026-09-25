@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "帮我验收下整个项目", "should_trigger": true},
+    {"query": "对比下设计方案和实施计划,看落地情况", "should_trigger": true},
+    {"query": "看下当前项目完整度怎么样", "should_trigger": true},
+    {"query": "审查下项目功能完成性,准备上线", "should_trigger": true},
+    {"query": "验收这个项目,出一份验收报告", "should_trigger": true},
+    {"query": "这个 PR 的 diff 能不能合并,review 下", "should_trigger": false},
+    {"query": "能上线了吗,发布前 go/no-go 检查一遍", "should_trigger": false},
+    {"query": "把整个项目拆成模块并行深度审查", "should_trigger": false},
+    {"query": "设计文档里的功能在代码里落地了几个,对比下", "should_trigger": false}
+  ]
+}

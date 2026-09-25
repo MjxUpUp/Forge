@@ -1,0 +1,126 @@
+package taskcontext
+
+import "testing"
+
+func TestParseBranchName(t *testing.T) {
+	tests := []struct {
+		branch      string
+		wantRef     string
+		wantSummary string
+	}{
+		{"feature/login-flow", "feature/login-flow", "login-flow"},
+		{"fix/PROJ-123-crash", "PROJ-123", "crash"},
+		{"bugfix/TASK-456", "TASK-456", ""},
+		{"hotfix/ABC-789-urgent-fix", "ABC-789", "urgent-fix"},
+		{"TASK-789", "TASK-789", ""},
+		{"PROJ-123-add-auth", "PROJ-123", "add-auth"},
+		{"XY-1-fix", "XY-1", "fix"},
+		{"my-feature", "my-feature", "my-feature"},
+		{"feature/simple", "feature/simple", "simple"},
+		{"fix/minor-typo", "fix/minor-typo", "minor-typo"},
+		// Uppercase-but-non-numeric second segment is NOT a ticket ref: the documented
+		// pattern is PROJ-123 (uppercase key + number). Previously these were misread as
+		// ticket refs and the summary was wiped.
+		//
+		// 大写但非数字的第二段不是 ticket ref：注释承诺的模式是 PROJ-123（大写 key +
+		// 数字）。此前这些被误判为 ticket ref 且 summary 被清空。
+		{"fix/API-crash", "fix/API-crash", "API-crash"},
+		{"hotfix/UI-freeze", "hotfix/UI-freeze", "UI-freeze"},
+		{"PROJ-abc-description", "PROJ-abc-description", "PROJ-abc-description"},
+		{"PROJ-", "PROJ-", "PROJ-"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.branch, func(t *testing.T) {
+			ref, summary := ParseBranchName(tt.branch)
+			if ref != tt.wantRef {
+				t.Errorf("ref = %q, want %q", ref, tt.wantRef)
+			}
+			if summary != tt.wantSummary {
+				t.Errorf("summary = %q, want %q", summary, tt.wantSummary)
+			}
+		})
+	}
+}
+
+func TestIsMainBranch(t *testing.T) {
+	tests := []struct {
+		branch string
+		want   bool
+	}{
+		{"main", true},
+		{"master", true},
+		{"develop", true},
+		{"Main", true},
+		{"MAIN", true},
+		{"trunk", true},
+		{"feature/login", false},
+		{"fix/bug", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.branch, func(t *testing.T) {
+			if got := isMainBranch(tt.branch); got != tt.want {
+				t.Errorf("isMainBranch(%q) = %v, want %v", tt.branch, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSanitizeRef(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"feature/login", "feature-login"},
+		{"PROJ-123", "PROJ-123"},
+		{"fix/ABC-456 crash", "fix-ABC-456-crash"},
+		{`my\branch`, "my-branch"},
+	}
+	for _, tt := range tests {
+		got := SanitizeRef(tt.input)
+		if got != tt.want {
+			t.Errorf("SanitizeRef(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestContextIsSet(t *testing.T) {
+	tests := []struct {
+		ctx  *Context
+		want bool
+	}{
+		{&Context{Source: "branch", TaskRef: "PROJ-123"}, true},
+		{&Context{Source: "explicit", TaskRef: "my-task"}, true},
+		{&Context{Source: "unknown", TaskRef: ""}, false},
+		{&Context{Source: "branch", TaskRef: ""}, false},
+		{&Context{Source: "unknown", TaskRef: "PROJ-123"}, false},
+	}
+	for _, tt := range tests {
+		if got := tt.ctx.IsSet(); got != tt.want {
+			t.Errorf("Context{Source:%q, TaskRef:%q}.IsSet() = %v, want %v",
+				tt.ctx.Source, tt.ctx.TaskRef, got, tt.want)
+		}
+	}
+}
+
+func TestIsProjectKey(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"PROJ", true},
+		{"AB", true},
+		{"ABCDEF", true},
+		{"A", false},
+		{"ABCDEFG", false},
+		{"abc", false},
+		{"AB1", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := isProjectKey(tt.input); got != tt.want {
+			t.Errorf("isProjectKey(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}

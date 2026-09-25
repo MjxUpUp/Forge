@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "帮我把这三个模块分派给子代理并行做", "should_trigger": true},
+    {"query": "我要用 subagent 干这个活,prompt 该怎么写", "should_trigger": true},
+    {"query": "派个子代理去改这块代码,怎么给它下指令", "should_trigger": true},
+    {"query": "子代理回来说做完了,我怎么验证它没糊弄我", "should_trigger": true},
+    {"query": "这几个独立任务想并行 dispatch 出去,流程怎么走", "should_trigger": true},
+    {"query": "这个 PR 的 diff 提交前帮我审查一下", "should_trigger": false},
+    {"query": "开始一个新功能,先帮我出个开发计划", "should_trigger": false},
+    {"query": "整个项目帮我分模块审查一遍", "should_trigger": false},
+    {"query": "就改两行代码的事,直接帮我改了", "should_trigger": false}
+  ]
+}

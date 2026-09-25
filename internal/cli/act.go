@@ -1,0 +1,266 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/skillmetrics"
+	"github.com/MjxUpUp/Forge/internal/toolusage"
+	"github.com/spf13/cobra"
+)
+
+func init() {
+	rootCmd.AddCommand(actCmd)
+	actCmd.AddCommand(actShowCmd)
+	actCmd.AddCommand(actListCmd)
+	actCmd.AddCommand(actNudgeCmd)
+	actCmd.AddCommand(actRetroDoneCmd)
+	actShowCmd.Flags().String("ref", "", "指定任务引用（默认最新结论）")
+	actListCmd.Flags().Bool("json", false, "JSON 格式输出")
+	actRetroDoneCmd.Flags().String("ref", "", "要 ack 的任务引用（必填）")
+	actRetroDoneCmd.Flags().String("carrier", "", "回顾载体（必填）："+strings.Join(act.Carriers, "/"))
+	actRetroDoneCmd.Flags().String("lesson", "", "一句话提炼的教训（可选）")
+}
+
+var actCmd = &cobra.Command{
+	Use:   "act",
+	Short: "Act 反馈臂——证据驱动的任务结论（喂给 session-retrospective）",
+	Long: `forge act 读取每个完成任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度），
+落盘在 ~/.forge/projects/<项目key>/act/conclusions.jsonl（用户级数据目录）。是 PDCA Act 反馈臂的产出：会话回顾不再靠 agent 临结束
+回忆，而是读结构化、deterministic 的结论。Weak/Unverified 证据（完成声明主要靠 agent 自述）
+或低分任务的结论会标 RetrospectiveNudge——session-retrospective 据此优先回顾，对冲"高分但
+没真验证"的 LLM-judge 盲区（分数看不出 agent 是否真跑过验证）。`,
+}
+
+var actShowCmd = &cobra.Command{
+	Use:   "show [--ref <ref>]",
+	Short: "查看最新（或指定）任务结论",
+	RunE:  runActShow,
+}
+
+var actListCmd = &cobra.Command{
+	Use:   "list [--json]",
+	Short: "列出所有任务结论",
+	RunE:  runActList,
+}
+
+var actNudgeCmd = &cobra.Command{
+	Use:   "nudge",
+	Short: "输出最新结论的回顾指令（有 nudge 才输出，否则静默）——供会话结束 hook 消费",
+	Long: `forge act nudge 供 task-verify（会话结束 hook）消费：读最新任务结论，若标
+RetrospectiveNudge（证据弱 Unverified/Weak 或低分 <70）则输出一行可执行回顾指令（Directive），
+否则完全静默。Strong 且>=70 的干净完成不发噪声——nudge 只在有盲区时出现。
+
+这是 Act 反馈臂的会话结束触发点：Directive 不只在 forge task complete 时打印一次（易被后续
+工作淹没），也在会话结束的质量信号面 surface，确保"高分但没真验证"的盲区到达回顾真正发生
+的检查点（task-verify 已收 task-gate/pending-review/main-branch 全部质量信号，唯独缺 Act 信号）。`,
+	RunE: runActNudge,
+}
+
+var actRetroDoneCmd = &cobra.Command{
+	Use:   "retro-done --ref <ref> --carrier <carrier> [--lesson <text>]",
+	Short: "记录回顾已发生（证据式 ack）——session-retrospective 收尾一步，被 ack 的 nudge 退出面板告警",
+	Long: `forge act retro-done 是「回顾是否真发生」的最小诚实信号：session-retrospective
+按载体决策树沉淀完经验后，按 --ref 定位最新结论，把 identity（ref+session+完成时刻）
+与载体/教训落一行 dispositions.jsonl（append-only）。dashboard 聚合时被 ack 的 nudge
+退出告警（Nudges/NudgesActionable），全量 NudgeCount 不动——ack 是「已处理」标记，
+不是历史篡改。
+
+忘记调用 ⇒ nudge 留在面板——「错过的回顾」第一次可见，这恰是特性而非缺陷。
+载体封闭词汇表：` + strings.Join(act.Carriers, " / ") + `。`,
+	RunE: runActRetroDone,
+}
+
+// runActRetroDone 落证据式 ack：按 ref 取最新结论（同 ref 多次完成 ack 最新——与
+// act show 同语义），identity 三元组从结论逐字复制（任务重做的旧 ack 不误伤新结论），
+// 载体白名单校验失败在写边界拒绝（不落盘）。
+func runActRetroDone(cmd *cobra.Command, args []string) error {
+	proj, err := findProject()
+	if err != nil {
+		return err
+	}
+	ref, _ := cmd.Flags().GetString("ref")
+	if ref == "" {
+		return fmt.Errorf("--ref 必填：要 ack 的任务引用（forge act list 查看）")
+	}
+	carrier, _ := cmd.Flags().GetString("carrier")
+	if !act.IsValidCarrier(carrier) {
+		return fmt.Errorf("invalid carrier %q：合法值 %s", carrier, strings.Join(act.Carriers, "/"))
+	}
+	lesson, _ := cmd.Flags().GetString("lesson")
+
+	cs, err := act.LoadAll(proj)
+	if err != nil {
+		return err
+	}
+	var found *act.Conclusion
+	for i := range cs {
+		if cs[i].TaskRef == ref {
+			found = &cs[i] // 多次完成取最新（最后一个匹配，与 act show 同语义）
+		}
+	}
+	if found == nil {
+		return fmt.Errorf("no act conclusion for task %q", ref)
+	}
+	d := act.Disposition{
+		TaskRef:     found.TaskRef,
+		SessionID:   found.SessionID,
+		CompletedAt: found.CompletedAt,
+		Carrier:     carrier,
+		Lesson:      lesson,
+	}
+	if err := act.AppendDisposition(proj, &d); err != nil {
+		return err
+	}
+	fmt.Printf("已记录回顾（ack）：%s @ %s → 载体 %s。该 nudge 已退出面板告警。\n",
+		found.TaskRef, found.CompletedAt.Format("2006-01-02 15:04"), carrier)
+	return nil
+}
+
+func runActShow(cmd *cobra.Command, args []string) error {
+	proj, err := findProject()
+	if err != nil {
+		return err
+	}
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	if explicitRef != "" {
+		cs, err := act.LoadAll(proj)
+		if err != nil {
+			return err
+		}
+		var found *act.Conclusion
+		for i := range cs {
+			if cs[i].TaskRef == explicitRef {
+				found = &cs[i] // 多次完成取最新（最后一个匹配）
+			}
+		}
+		if found == nil {
+			return fmt.Errorf("no act conclusion for task %q", explicitRef)
+		}
+		printConclusion(found)
+		printSkillReach(proj.GitRoot, explicitRef)
+		return nil
+	}
+	c, err := act.Latest(proj)
+	if err != nil {
+		return err
+	}
+	if c == nil {
+		fmt.Println("尚无任务结论（完成一个任务后 forge task complete 会产出）。")
+		return nil
+	}
+	printConclusion(c)
+	printSkillReach(proj.GitRoot, c.TaskRef)
+	return nil
+}
+
+func runActList(cmd *cobra.Command, args []string) error {
+	proj, err := findProject()
+	if err != nil {
+		return err
+	}
+	cs, err := act.LoadAll(proj)
+	if err != nil {
+		return err
+	}
+	if len(cs) == 0 {
+		fmt.Println("尚无任务结论。")
+		return nil
+	}
+	asJSON, _ := cmd.Flags().GetBool("json")
+	if asJSON {
+		out, _ := json.MarshalIndent(cs, "", "  ")
+		fmt.Println(string(out))
+		return nil
+	}
+	fmt.Println("任务结论（按时间序）：")
+	fmt.Println(strings.Repeat("─", 60))
+	for _, c := range cs {
+		nudge := ""
+		if c.RetrospectiveNudge {
+			nudge = " ⚠回顾"
+		}
+		fmt.Printf("  %-22s %3.0f %-8s evidence=%-10s ratio=%.2f%s\n",
+			c.TaskRef, c.Score, c.Grade, c.Strength, c.Ratio, nudge)
+	}
+	return nil
+}
+
+// runActNudge 读最新结论：有 RetrospectiveNudge 则输出 Directive（一行），否则静默。
+// 专为会话结束 hook（task-verify）设计——干净完成零输出，有盲区才发一行可执行指令。
+// 与 act show 区别：show 是人读全量（空时打印"尚无结论"），nudge 是机器消费（空时静默）。
+func runActNudge(cmd *cobra.Command, args []string) error {
+	proj, err := findProject()
+	if err != nil {
+		return err
+	}
+	c, err := act.Latest(proj)
+	if err != nil {
+		return err
+	}
+	if c == nil {
+		// No completed conclusion yet: silent (legitimate empty state, not an error).
+		//
+		return nil // 尚无完成结论：静默（合法空状态，非错误）
+	}
+	if d := c.Directive(); d != "" {
+		fmt.Println(d)
+	}
+	return nil
+}
+
+// printConclusion 渲染单条结论。Directive 非空时附行动指令——forge act show 是
+// session-retrospective 的入口，直接给可执行指令。
+func printConclusion(c *act.Conclusion) {
+	fmt.Printf("Task:        %s\n", c.TaskRef)
+	if c.SessionID != "" {
+		fmt.Printf("Session:     %s\n", c.SessionID)
+	}
+	fmt.Printf("Score:       %.0f (%s)\n", c.Score, c.Grade)
+	fmt.Printf("Evidence:    %s (ratio=%.2f, deterministic=%d agent-claim=%d)\n",
+		c.Strength, c.Ratio, c.Deterministic, c.AgentClaim)
+	if c.AcceptanceTotal > 0 {
+		fmt.Printf("Acceptance:  %d/%d 通过\n", c.AcceptancePass, c.AcceptanceTotal)
+	}
+	if len(c.LowDimensions) > 0 {
+		fmt.Printf("Low dims:    %s\n", strings.Join(c.LowDimensions, ", "))
+	}
+	fmt.Printf("Completed:   %s\n", c.CompletedAt.Format("2006-01-02 15:04"))
+	if d := c.Directive(); d != "" {
+		fmt.Println(d)
+	}
+}
+
+// printSkillReach 打印该 task 期间触发的 skill（来自 toollog 的 Skill 工具调用）。
+//
+// 步骤 3：把 skill 触达画像注入 forge act show——零新命令，用户看 act show 多一行 Skills。
+// agent-neutral：toollog 是跨 host 采集层（任何装了 forge hook 的 host 都记 Skill 调用），
+// 无 Skill 调用记录时静默（不打印空行），缺数据不打扰。
+//
+// 用 LoadForTaskAll（跨归档）而非 LoadForTask（仅 active）：forge task start 会归档上一任务
+// 的 toollog 到 toollog-<ts>.jsonl，查历史任务的 skill 触达必须跨归档读，否则完成任务后
+// 再 forge act show 永远看不到该 task 的 Skills（被归档走了）。
+func printSkillReach(root, taskRef string) {
+	calls, err := toolusage.LoadForTaskAll(root, taskRef)
+	if err != nil || len(calls) == 0 {
+		return
+	}
+	seen := map[string]bool{}
+	var skills []string
+	for _, c := range calls {
+		if c.ToolName != `Skill` {
+			continue
+		}
+		name := skillmetrics.ExtractSkillName(c.ToolInput)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		skills = append(skills, name)
+	}
+	if len(skills) > 0 {
+		fmt.Printf("Skills:      %s\n", strings.Join(skills, ", "))
+	}
+}

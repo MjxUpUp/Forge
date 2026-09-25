@@ -1,0 +1,184 @@
+# Forge 自评测指标字典（docs/design/forge-evaluation-system.md §三）
+# 单一真相源：每条指标七字段必填（id/claim/track/definition/source/misuse_note/
+# min_samples），缺一 fail-closed。C1-C7 claim roster 由 guard test 钉住。
+version: 1
+metrics:
+  # ── Track A · 端到端（profile×model×benchmark）────────────────────────
+  - id: e2e_pass1
+    claim: C1
+    track: track-a
+    definition: profile×model 在锚基准 frozen split 上的 pass@1（任务首过比例）
+    source: evalkit runner（forge eval run）
+    misuse_note: 与裸宿主差异小于运行噪声地板（2.2-6.0pp）时不可宣称贡献；必须与 profile_delta 联合读
+    min_samples: 20
+  - id: e2e_passk
+    claim: C1
+    track: track-a
+    definition: pass^k 曲线（同一任务 k 次全对的概率，k=1..repeats）
+    source: evalkit runner scorecard
+    misuse_note: pass@1 高而 pass^k 低 = 不稳定；部署视角看 pass^k，不看好播上限 pass@k
+    min_samples: 20
+  - id: e2e_cost
+    claim: C4
+    track: track-a
+    definition: 每任务 token 与美元成本、墙钟；截断率必披露
+    source: evalkit runner scorecard
+    misuse_note: 无预算上限的精度比较无效；精度第一名可能只是花了 10 倍钱
+    min_samples: 20
+  - id: e2e_wait
+    claim: C4
+    track: track-a
+    definition: 端到端 no-action turns / 确认等待轮次（Forge 门禁/接管的真实代价轴）
+    source: evalkit runner 轨迹
+    misuse_note: 是 Forge 的核心差异化轴，必须与 e2e_pass1 同图；单看 pass 率会漏掉全部等待成本
+    min_samples: 20
+  - id: profile_delta
+    claim: C1
+    track: track-a
+    definition: full − off 的配对差（协议层整体贡献）
+    source: evalkit decompose
+    misuse_note: CI 跨零时结论固定为"未检测到显著差异"，禁止挑选单侧表述
+    min_samples: 20
+  - id: hv_mv_ratio
+    claim: C1
+    track: track-a
+    definition: harness(profile) 方差 / model 方差 + 排名翻转数（两必报；η²_p 需格内重复数据，当前格均值 API 不可定义）
+    source: evalkit decompose
+    misuse_note: 非普适常数——随任务水平程与 profile 对比度变化，必附实验规格（任务集/格数/成本）
+    min_samples: 4
+  # ── Track B · 治理层组件 ────────────────────────────────────────────
+  - id: gate_recall
+    claim: C1
+    track: track-b
+    definition: golden 缺陷样本上对应门禁产生 BLOCKED/ADVISORY 的比例（分门禁计）
+    source: forge eval golden run
+    misuse_note: recall 高不等于有用——若误报同步上涨，用户会学会无视门禁；与 gate_fpr 联合读
+    min_samples: 10
+  - id: gate_fpr
+    claim: C1
+    track: track-b
+    definition: golden 干净样本库上门禁误触的比例（τ-bench do-nothing 38% 的教训：先测门禁对无意义输入的行为）
+    source: forge eval golden run
+    misuse_note: fpr>0 即门禁逻辑 bug 级 finding，不是"可以容忍的噪声"
+    min_samples: 10
+  - id: gate_determinism
+    claim: C2
+    track: track-b
+    definition: 同一 golden 用例 k 次重放的判定一致率；确定性门禁期望 1.0
+    source: forge eval golden run
+    misuse_note: 100% 只代表可复现，不代表正确；与 recall 联合读
+    min_samples: 3
+  - id: trap_capture_rate
+    claim: C2
+    track: track-b
+    definition: 对抗陷阱（测试削弱/伪造审计证据/虚假完成）被识破的比例
+    source: forge eval traps run
+    misuse_note: 高 capture 不是安全证明；低 capture 是行动信号——v1 伪造审计证据不可检是已知缺口
+    min_samples: 3
+  - id: judge_agreement
+    claim: C2
+    track: track-b
+    definition: docgate rubric 等判分器与人工标注的 Cohen's κ + 重放极差
+    source: forge eval judge-audit
+    misuse_note: κ<0.6 时 75 分阈值视为噪声，不得支撑任何 BLOCKED 决策
+    min_samples: 5
+  - id: resume_fidelity
+    claim: C3
+    track: track-b
+    definition: 脚本化接续演练的正确接续比例
+    source: forge eval resume-drill
+    misuse_note: 演练任务≠真实复杂度；数字只做回归对比，绝对值不外宣
+    min_samples: 3
+  - id: override_rate
+    claim: C4
+    track: track-b
+    definition: 门禁触发后被用户推进的比例
+    source: checklog（v1 未区分 override 信号，接入前 insufficient）
+    misuse_note: override 高≠门禁坏（可能过严），=0≠健康（可能用户已放弃阅读）；必须与 gate_fpr 联合读
+    min_samples: 30
+  - id: gate_escape_rate
+    claim: C4
+    track: track-b
+    definition: FORGE_* 逃生舱使用次数 / 会话数
+    source: checklog（escape-hatch 行）
+    misuse_note: 逃生舱是合法工具；率值上升先查门禁误报，再查用户纪律
+    min_samples: 5
+  - id: off_churn
+    claim: C4
+    track: track-b
+    definition: managed→off 状态迁移计数（用户关掉 Forge = 最强负反馈信号）
+    source: checklog（takeover-policy 行）
+    misuse_note: 计数小不等于问题小——每个 off 都值得一次人工回访
+    min_samples: 1
+  - id: wait_turns
+    claim: C4
+    track: track-b
+    definition: 确认等待轮次（agent 空转等审批的回合）
+    source: 未接入（toollog 无确认等待记录，v1 恒 insufficient）
+    misuse_note: 接入前任何"摩擦不大"的断言都无数据支撑
+    min_samples: 30
+  - id: gate_fire_rate
+    claim: C7
+    track: track-b
+    definition: blocked/advisory 门禁触发计数（周趋势）
+    source: checklog
+    misuse_note: 触发率是过程信号不是质量结论；上升可能是门禁变严、任务变难或用户变化
+    min_samples: 1
+  - id: self_gate_pass_rate
+    claim: C7
+    track: track-b
+    definition: forge 仓库自身 task-verify/complete 的通过比例（自举）
+    source: checklog（agent-claim 行）
+    misuse_note: 自举数据无对照组，只做趋势；通过率高也可能是门禁宽松
+    min_samples: 10
+  - id: skill_adopt_health
+    claim: C5
+    track: track-b
+    definition: skills 评测闭环健康度与触发命中（复用 skillseval 既有闭环，本体系不重建）
+    source: "forge skills eval-report / usage（internal/skillseval）"
+    misuse_note: 健康度是 skill 级信号，不外推为 harness 级结论；触发未达 ≠ skill 无用（可能路由缺失）
+    min_samples: 5
+  # ── 运行级全集指标（对抗审查 I3：聚合处曾内联 MinSamples:1 绕过字典——
+  #    运行输出的是全集非抽样，下限为 1；趋势充分性下限仍由上面的任务级条目管）──
+  - id: golden_run_recall
+    claim: C1
+    track: track-b
+    definition: 单次 golden run 的缺陷捕获比例（全集指标——该次运行的全部缺陷样本）
+    source: forge eval golden run
+    misuse_note: 全集非抽样：单次运行的 Wilson 区间反映该集内部确定性，不外推总体 recall
+    min_samples: 1
+  - id: golden_run_fpr
+    claim: C1
+    track: track-b
+    definition: 单次 golden run 的干净样本误触比例（全集）
+    source: forge eval golden run
+    misuse_note: 全集非抽样；跨版本比较需同一指纹的样本集
+    min_samples: 1
+  - id: trap_run_capture
+    claim: C2
+    track: track-b
+    definition: 单次陷阱重放的识破比例（全集）
+    source: forge eval traps run
+    misuse_note: 陷阱集覆盖有限，单次 capture 高不是安全证明
+    min_samples: 1
+  - id: resume_drill_fidelity
+    claim: C3
+    track: track-b
+    definition: 单批接续演练通过比例（全集）
+    source: forge eval resume-drill
+    misuse_note: 演练≠真实复杂度；仅回归对比
+    min_samples: 1
+  - id: e2e_run_pass1
+    claim: C1
+    track: track-a
+    definition: 单次基准运行的 pass@1（全集；趋势充分性看 e2e_pass1 的下限 20）
+    source: evalkit runner scorecard
+    misuse_note: 单次运行的区间不含跨运行方差；多运行趋势用 e2e_pass1
+    min_samples: 1
+  - id: injection_block_rate
+    claim: C6
+    track: track-b
+    definition: 注入探针（诱导触发 skill/hook 链、伪造审计行）被策略面阻止的比例
+    source: forge eval traps run（注入类陷阱）
+    misuse_note: 通过率是回归基线，不是安全证明；探针覆盖有限
+    min_samples: 3

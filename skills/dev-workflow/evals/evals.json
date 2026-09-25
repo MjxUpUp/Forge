@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "我要开始做一个新功能,先给我规划下怎么开发", "should_trigger": true},
+    {"query": "先出个计划再动手写代码", "should_trigger": true},
+    {"query": "这个项目下一步该干什么,帮我理一下", "should_trigger": true},
+    {"query": "新项目初始化,帮我检测下技术栈再规划开发", "should_trigger": true},
+    {"query": "进 plan mode 把这个需求规划成开发阶段", "should_trigger": true},
+    {"query": "帮我派 3 个子代理并行做这三个模块", "should_trigger": false},
+    {"query": "代码写完了要提 PR,帮我走一遍交付纪律", "should_trigger": false},
+    {"query": "这个技术方案可不可行,帮我论证下", "should_trigger": false},
+    {"query": "测试挂了,帮我查下为什么失败", "should_trigger": false}
+  ]
+}

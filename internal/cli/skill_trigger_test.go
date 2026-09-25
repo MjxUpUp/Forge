@@ -1,0 +1,241 @@
+package cli
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/skilltrigger"
+)
+
+// TestRecordSkillTriggerHits pins that each fired canonical skill is recorded to checklog with the right shape.
+//
+// TestRecordSkillTriggerHits 钉住：每个触发的 canonical skill 按正确形状落进 checklog——
+// CheckSkillTrigger / Passed / Checked / deterministic 来源 / session id 保留 / per-skill detail。这是
+// dogfood 0 触发盲区的修复——无此记录，`forge skills usage`/`effectiveness` 看不到哪些 canonical skill 真触发过
+// （skill-trigger 静默注入 AdditionalContext、零轨迹）。
+func TestRecordSkillTriggerHits(t *testing.T) {
+	dir := t.TempDir()
+	ctx := skilltrigger.Context{
+		Event:     "UserPromptSubmit",
+		ToolName:  "Write",
+		SessionID: "sess-abc",
+	}
+	hits := []skilltrigger.Hit{
+		{Skill: "implementation-discipline", Reason: "coding_intent"},
+		{Skill: "tdd-cycle", Reason: "test_keyword"},
+	}
+	recordSkillTriggerHits(dir, ctx, hits, t.TempDir(), "", "1.99.0-test")
+
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	if len(entries) != len(hits) {
+		t.Fatalf("recorded %d entries, want %d", len(entries), len(hits))
+	}
+	seen := map[string]bool{}
+	for i, e := range entries {
+		if e.Check != checklog.CheckSkillTrigger {
+			t.Fatalf("entry %d Check=%q, want %q", i, e.Check, checklog.CheckSkillTrigger)
+		}
+		if !e.Passed || !e.Checked {
+			t.Fatalf("entry %d Passed=%v Checked=%v, want both true", i, e.Passed, e.Checked)
+		}
+		if e.Source != checklog.EvidenceDeterministic {
+			t.Fatalf("entry %d Source=%q, want deterministic", i, e.Source)
+		}
+		if e.SessionID != "sess-abc" {
+			t.Fatalf("entry %d SessionID=%q, want sess-abc", i, e.SessionID)
+		}
+		// L1 送达章：agent="" → claude 默认行（UserPromptSubmit 上 additionalContext 可达），
+		// Delivered/Channel/ForgeVersion 必须逐条落盘——usage 漏斗的送达分母依赖这些字段。
+		if e.Delivered == nil || !*e.Delivered {
+			t.Fatalf("entry %d Delivered=%v, want pointer to true", i, e.Delivered)
+		}
+		if e.Channel != "claude/additionalContext" {
+			t.Fatalf("entry %d Channel=%q, want claude/additionalContext", i, e.Channel)
+		}
+		if e.ForgeVersion != "1.99.0-test" {
+			t.Fatalf("entry %d ForgeVersion=%q, want 1.99.0-test", i, e.ForgeVersion)
+		}
+		seen[e.Detail] = true
+	}
+	// 每个 hit 的 skill 名必须出现在某条 detail 里（被动触发可观测的核心）。
+	for _, h := range hits {
+		found := false
+		for d := range seen {
+			if strings.Contains(d, h.Skill) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("skill %q 未在任何 detail 中出现（被动触发应可观测）", h.Skill)
+		}
+	}
+}
+
+// TestRecordSkillTriggerHits_Meta pins the v2 structured evidence payload.
+//
+// TestRecordSkillTriggerHits_Meta 钉住 v2 结构化证据载荷：matched_keyword/match_source/
+// when/trigger_index/trigger_sig/prompt_hash/prompt_len 逐键落盘；cooldown 抑制计数在下次
+// 真实触发时回填 Meta 并清零；摘录默认关（FORGE_TRIGGER_EXCERPT 未设时不落 excerpt 键）。
+func TestRecordSkillTriggerHits_Meta(t *testing.T) {
+	dir := t.TempDir()
+	counterDir := t.TempDir()
+	ctx := skilltrigger.Context{
+		Event:       "UserPromptSubmit",
+		SessionID:   "sess-meta",
+		ProjectRoot: "/proj/a",
+		Prompt:      "编译报错了",
+	}
+	hits := []skilltrigger.Hit{{
+		Skill:          "compile-fix-loop",
+		Reason:         "r",
+		MatchedKeyword: "编译报错",
+		MatchSource:    skilltrigger.MatchSourcePrompt,
+		TriggerIndex:   1,
+		TriggerSig:     "ab12cd34",
+		PromptHash:     "hash0000aaaa",
+		PromptLen:      5,
+		Trigger:        skilltrigger.Trigger{Event: "UserPromptSubmit", When: "", Keywords: []string{"编译报错"}},
+	}}
+	// 预置 3 次 cooldown 抑制：下次触发应回填 suppressed_since_last=3 且计数清零。
+	counter := skilltrigger.NewFileSuppressedCounter(counterDir)
+	for i := 0; i < 3; i++ {
+		if err := counter.Incr("sess-meta", "compile-fix-loop"); err != nil {
+			t.Fatalf("Incr: %v", err)
+		}
+	}
+	recordSkillTriggerHits(dir, ctx, hits, counterDir, "", "1.99.0-test")
+
+	entries, err := checklog.LoadAll(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("LoadAll err=%v entries=%d", err, len(entries))
+	}
+	meta := entries[0].Meta
+	if meta == nil {
+		t.Fatal("Meta 不应为 nil（v2 结构化证据缺失）")
+	}
+	wantKeys := map[string]string{
+		checklog.MetaKeyMatchedKeyword:      "编译报错",
+		checklog.MetaKeyMatchSource:         skilltrigger.MatchSourcePrompt,
+		checklog.MetaKeyTriggerIndex:        "1",
+		checklog.MetaKeyTriggerSig:          "ab12cd34",
+		checklog.MetaKeyPromptHash:          "hash0000aaaa",
+		checklog.MetaKeyPromptLen:           "5",
+		checklog.MetaKeySuppressedSinceLast: "3",
+	}
+	for k, want := range wantKeys {
+		if meta[k] != want {
+			t.Errorf("Meta[%s]=%q, want %q", k, meta[k], want)
+		}
+	}
+	if _, ok := meta[checklog.MetaKeyExcerpt]; ok {
+		t.Error("摘录默认应关（无 FORGE_TRIGGER_EXCERPT 时不得落 excerpt 键）")
+	}
+	if _, ok := meta[checklog.MetaKeyWhen]; ok {
+		t.Error("keyword-only 触发（When 空）不应落 when 键——缺键=不适用语义")
+	}
+	// 回填后计数清零：再次触发（同 session）不得再带上旧计数。
+	recordSkillTriggerHits(dir, ctx, hits, counterDir, "", "1.99.0-test")
+	entries2, _ := checklog.LoadAll(dir)
+	last := entries2[len(entries2)-1]
+	if v, ok := last.Meta[checklog.MetaKeySuppressedSinceLast]; ok && v != "0" {
+		t.Fatalf("回填后计数应清零, got suppressed_since_last=%q", v)
+	}
+}
+
+// TestRecordSuppressed_StopCapWarn pins the stop-max-rounds warn advisory.
+//
+// TestRecordSuppressed_StopCapWarn 钉住 stop-max-rounds 抑制的 warn advisory：单条、
+// Level=warn、Detail 无 " hit (" 标记（SkillFromTriggerDetail 返回 "" → usage/funnel
+// 计数零污染）、Meta 带 cause/skills。
+func TestRecordSuppressed_StopCapWarn(t *testing.T) {
+	dir := t.TempDir()
+	ctx := skilltrigger.Context{Event: "Stop", SessionID: "sess-cap"}
+	suppressed := []skilltrigger.Suppressed{
+		{Skill: "a", Cause: skilltrigger.SuppressStopCap},
+		{Skill: "b", Cause: skilltrigger.SuppressStopCap},
+	}
+	recordSuppressed(dir, ctx, suppressed, t.TempDir(), "", "1.99.0-test")
+	entries, err := checklog.LoadAll(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("stop-cap 应记 1 条 advisory, err=%v entries=%d", err, len(entries))
+	}
+	e := entries[0]
+	if e.Level != checklog.LevelWarn {
+		t.Fatalf("Level=%q, want warn", e.Level)
+	}
+	if checklog.SkillFromTriggerDetail(e.Detail) != "" {
+		t.Fatalf("advisory Detail 不含 hit 标记（防计数污染）, got %q", e.Detail)
+	}
+	if e.Meta[checklog.MetaKeyCause] != skilltrigger.SuppressStopCap {
+		t.Fatalf("Meta cause=%q", e.Meta[checklog.MetaKeyCause])
+	}
+	if e.Meta[checklog.MetaKeySkills] != "a,b" {
+		t.Fatalf("Meta skills=%q, want a,b", e.Meta[checklog.MetaKeySkills])
+	}
+	// cooldown 抑制不落 log 条目（只进计数器）。
+	recordSuppressed(dir, ctx, []skilltrigger.Suppressed{{Skill: "c", Cause: skilltrigger.SuppressCooldown}}, t.TempDir(), "", "1.99.0-test")
+	entries2, _ := checklog.LoadAll(dir)
+	if len(entries2) != 1 {
+		t.Fatalf("cooldown 抑制不应另落条目（只计数回填）, got %d", len(entries2))
+	}
+}
+
+// TestRecordSuppressed_StopCapOncePerSession pins review M2: at most ONE stop-cap advisory per session.
+//
+// TestRecordSuppressed_StopCapOncePerSession 钉死 review M2：stop-cap advisory 每
+// session 至多一条——长 session 里 source_changed_uncommitted 类 condition 近恒真，
+// MaxStopRounds 触顶后每个 Stop 回合都调 recordSuppressed，无节流会逐条刷 warn。
+func TestRecordSuppressed_StopCapOncePerSession(t *testing.T) {
+	dir := t.TempDir()
+	counterDir := t.TempDir()
+	ctx := skilltrigger.Context{Event: "Stop", SessionID: "sess-throttle"}
+	sup := []skilltrigger.Suppressed{{Skill: "a", Cause: skilltrigger.SuppressStopCap}}
+	recordSuppressed(dir, ctx, sup, counterDir, "", "1.99.0-test")
+	recordSuppressed(dir, ctx, sup, counterDir, "", "1.99.0-test")
+	recordSuppressed(dir, ctx, sup, counterDir, "", "1.99.0-test")
+	entries, _ := checklog.LoadAll(dir)
+	if len(entries) != 1 {
+		t.Fatalf("stop-cap advisory 应每 session 至多一条（3 次触顶只记 1）, got %d", len(entries))
+	}
+	// 新 session（新 marker 目录）不受旧 marker 影响。
+	ctx2 := skilltrigger.Context{Event: "Stop", SessionID: "sess-other"}
+	recordSuppressed(dir, ctx2, sup, counterDir, "", "1.99.0-test")
+	entries2, _ := checklog.LoadAll(dir)
+	if len(entries2) != 2 {
+		t.Fatalf("新 session 应可再记一条, got %d", len(entries2))
+	}
+}
+
+// TestRecordSuppressed_SessionAndEventCapCounted pins the handling of the new suppression causes.
+//
+// TestRecordSuppressed_SessionAndEventCapCounted 钉住新抑制原因的处理：session-cap /
+// event-cap 与 cooldown 一样只进抑制计数器（不落 log 条目），供下次真实触发回填
+// Meta——不新增 warn advisory（那只有 stop-cap）。
+func TestRecordSuppressed_SessionAndEventCapCounted(t *testing.T) {
+	dir := t.TempDir()
+	counterDir := t.TempDir()
+	ctx := skilltrigger.Context{Event: "PreToolUse", SessionID: "sess-caps"}
+	recordSuppressed(dir, ctx, []skilltrigger.Suppressed{
+		{Skill: "a", Cause: skilltrigger.SuppressSessionCap},
+		{Skill: "b", Cause: skilltrigger.SuppressEventCap},
+	}, counterDir, "", "1.99.0-test")
+	entries, err := checklog.LoadAll(dir)
+	if err != nil {
+		t.Fatalf("LoadAll: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("session/event-cap 不应落 log 条目（只计数），got %d", len(entries))
+	}
+	counter := skilltrigger.NewFileSuppressedCounter(counterDir)
+	if got := counter.Take("sess-caps", "a"); got != 1 {
+		t.Fatalf("a 的抑制计数应为 1，got %d", got)
+	}
+	if got := counter.Take("sess-caps", "b"); got != 1 {
+		t.Fatalf("b 的抑制计数应为 1，got %d", got)
+	}
+}

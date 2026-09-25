@@ -1,0 +1,22 @@
+# 断言族 golden：file-changed 期待命中且确实改了（untracked 新文件入任务窗口）→ 通过。
+id: assert-file-changed-hit
+gate: verify-acceptance
+kind: clean
+expect: clean
+description: "file-changed:internal/** 且任务新建 internal/x.go → 通过"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.assert.c7
+      go 1.25
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init
+    "{forge}" task start --ref assert/c7 --accept "go version ::" --assert "file-changed:internal/**" >/dev/null 2>&1 || exit 1
+    mkdir -p internal && printf 'package internal\n' > internal/x.go
+    "{forge}" task verify-acceptance 2>&1
+detect_any:
+  - "exit_nonzero"

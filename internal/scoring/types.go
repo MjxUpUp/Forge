@@ -1,0 +1,117 @@
+package scoring
+
+import "time"
+
+// EvaluateInput holds all the data needed to score a completed task.
+//
+// EvaluateInput 持有给完成任务打分所需的全部数据。
+type EvaluateInput struct {
+	// GateHistory is the gate pass/fail history of the task.
+	//
+	// GateHistory 是任务的 gate 通过/失败历史。
+	GateHistory GateHistory
+
+	// Time range, used for efficiency scoring.
+	//
+	// 时间范围，用于 efficiency 打分。
+	StartedAt   time.Time
+	CompletedAt time.Time
+	// ActiveSpan is the tool-activity span inside the task window (first→last toollog call); when >0 it replaces the wall clock for efficiency, 0 = unknown (fall back to StartedAt→CompletedAt).
+	//
+	// ActiveSpan 是任务时间窗内的工具活跃跨度（toollog 首末调用距）；>0 时替代挂钟作
+	// efficiency 输入，0 = 未知（回落 StartedAt→CompletedAt）。挂钟会把 doc-gate 卡住
+	// 的空闲两天算成「拖沓」（docs/design/harness-fixes-a-g-2026-09.md E.4）。
+	ActiveSpan time.Duration
+
+	// Git diff data — empty string means `unavailable` (non-fatal).
+	//
+	// Git diff 数据——空字符串表示「不可用」（非致命）。
+	// GitDiffStat: git diff --numstat output (`added\tdeleted\tpath`).
+	GitDiffStat string // git diff --numstat 输出（「added\tdeleted\tpath」）
+
+	// Test-coverage gate verdict, from the test-coverage-gate entry in checklog.
+	//
+	// Test-coverage gate 裁决，来自 checklog 的 test-coverage-gate 条目（带实时
+	// CheckTestCoverage fallback 接到 cli.scoreTask）。替代旧的 GitDiffTest 行比例
+	// 启发式——后者在任务改动早于 `task start` 提交时返回常量 20（HeadCommit == HEAD
+	// → 空 diff → 「检测不到测试行」）。Checked=false（gate 未运行）打中性分；
+	// Checked=true 按裁决打分。
+	TestCoveragePassed  bool
+	TestCoverageChecked bool
+
+	// TestCoverageCovered/Total drives continuous scoring of the testing dimension (ratio=covered/total).
+	//
+	// TestCoverageCovered/Total 驱动 testing 维度的连续打分（ratio=covered/total）。
+	// 替代旧的二值全或 20 模型：5 个源码文件覆盖 4 个 → ~86 分而非塌缩到 20。
+	// 两者均来自实时 CheckTestCoverage（客观，与门禁同输入同逻辑）。
+	// TestCoverageCovered: number of source files with paired tests.
+	TestCoverageCovered int // 有配对测试的源码文件数
+	// TestCoverageTotal: number of source files that should have paired tests.
+	TestCoverageTotal int // 应配对测试的源码文件数
+	// CoverageMissing is the raw changed-source list lacking paired tests, from
+	// the same CheckTestCoverage pass (threaded through so the evidence bundle's
+	// disclosure can reuse it without a second git enumeration). Under the
+	// test-coverage escape it is nil-by-design (the gate path short-circuits);
+	// the disclosure must then recompute via the escape-ignoring pairing.
+	//
+	// CoverageMissing 是同一次 CheckTestCoverage 算出的「无配对测试的改动源文件」
+	// 原始清单（穿透传递给证据束披露复用，避免第二次 git 枚举）。test-coverage
+	// 逃生激活时按门禁路径语义为 nil——此时披露须用无视逃生的配对口径重算。
+	CoverageMissing []string
+
+	// Assertion-density signal, used for fake-test detection (industry STREW Assertion-McCabe ratio).
+	//
+	// 断言密度信号，用于假测试检测（业界 STREW Assertion-McCabe ratio）。
+	// 只有 setup/log 无断言的测试文件不是真覆盖——testing 维度对 covered>0
+	// 但 AssertionCount==0 的情况降分。
+	// TestAssertionCount: total assertion markers in changed test files.
+	TestAssertionCount int // changed 测试文件的断言标记总数
+	// TestFileCount: number of changed test files.
+	TestFileCount int // changed 测试文件数
+
+	// Hook results.
+	//
+	// Hook 结果。
+	// CompilePassed: auto-compile gate passed.
+	CompilePassed bool // auto-compile gate 通过
+	// AssertionPassed: assertion-check passed.
+	AssertionPassed bool // assertion-check 通过
+
+	// Flag indicating whether hook data is available (vs. not run).
+	//
+	// 标志位，指示 hook 数据是否可用（vs 未运行）。
+	CompileChecked   bool
+	AssertionChecked bool
+
+	// Evidence-chain source distribution (from checklog EvidenceChain).
+	//
+	// 证据链来源分布（来自 checklog EvidenceChain）：deterministic=hook/gate 实跑，
+	// agent-claim=agent 自述。可观测先行，不参与打分——Evaluate 据此构造
+	// ScoreResult.Evidence，供 review/评分消费者判断"完成声明可信度"。
+	EvidenceDeterministic int
+	EvidenceAgentClaim    int
+
+	// Expression (doc-artifact readability) dimension inputs — the measurement anchor of the output→re-check loop (docs/design/output-readability-gates.md).
+	//
+	// 表达（文档产物可读性）维度输入——输出→回检循环的度量锚点
+	// （docs/design/output-readability-gates.md）。全部确定性：L1 问题数来自
+	// 评分时的 doclint 实算，L2 来自已记录的 DocReview 证据。
+	// HasDocDeliverables=false（纯代码任务）该维度打中性 100。
+	HasDocDeliverables bool
+	// DocLintHardIssues: hard-rule hits across the task's changed .md deliverables.
+	DocLintHardIssues int // 变更 .md 产物的 L1 硬规则命中数
+	// DocRubricScore: recorded L2 rubric total (0-100); nil = no review recorded.
+	DocRubricScore *int // 已记录的 L2 rubric 总分；nil=未回检
+	// DocGateEscaped: the task bypassed the doc gate via escape hatch.
+	DocGateEscaped bool // 任务经逃生舱绕过了 doc gate
+}
+
+// GateHistory abstracts gate result data to avoid importing taskpipeline.
+//
+// GateHistory 抽象 gate 结果数据，避免 import taskpipeline。
+type GateHistory struct {
+	TotalGates int
+	Passed     int
+	// Retries: number of gates that previously failed and passed after retry.
+	Retries int // 先前失败、retry 后通过的 gate 数
+}
