@@ -507,6 +507,23 @@ func latestConclusion(cs []act.Conclusion) *act.Conclusion {
 	return &cs[len(cs)-1]
 }
 
+// pulseLowDim 是一个复发低分维度（<70）及其全档分数直方图与形态判定。
+// spread 在服务端经 health.DimFreq.SpreadAcrossBuckets 算好——前端只渲染措辞
+// （跨全档＝量纲/粒度信号；集中低档＝纪律缺口），不做判定逻辑。
+type pulseLowDim struct {
+	Dimension string      `json:"dimension"`
+	Count     int         `json:"count"`
+	Scores    map[int]int `json:"scores,omitempty"` // 全档直方图；存量结论无 DimScores 时缺席（退回纯 ×N）
+	Spread    bool        `json:"spread"`
+}
+
+// pulseLowDims 包装低维列表，守住「无数据绝不编造 0」：无结论时指针为 nil
+// （字段缺席，面板显示 —）；有结论但无低维时 Dims 为空切片（面板显示「无」）——
+// 区分「无数据」与「健康」两种空态。
+type pulseLowDims struct {
+	Dims []pulseLowDim `json:"dims"`
+}
+
 // pulseStats 是 /api/pulse/stats.json 载荷。数值聚合用指针，「无数据」是 null，
 // 绝不编造 0。
 type pulseStats struct {
@@ -520,6 +537,15 @@ type pulseStats struct {
 	Nudges            int      `json:"nudges"`           // 窗口内 nudge 总量·14天（透明拆解分量；全量见 health.nudge_count）
 	NudgesActionable  int      `json:"nudgesActionable"` // 告警分量：窗口内非降档 nudge（真弱/Unverified/低分；alerts = zombies + 此值）
 	EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
+
+	// —— 分布形态（2026-09 上板，承接 v1.72.0 health 直方图，见
+	// docs/plans/low-dim-recurrence-2026-09.md）。仅在存在结论时填充；
+	// omitempty 保持无数据时的线上结构不变。——
+	Conclusions  int            `json:"conclusions,omitempty"`  // 均分/分布的样本量
+	GradeDist    map[string]int `json:"gradeDist,omitempty"`    // A/B/C/D/F → 数
+	StrengthDist map[string]int `json:"strengthDist,omitempty"` // Strong/Weak/Unverified/NoData → 数
+	CappedWeak   int            `json:"cappedWeak,omitempty"`   // 逃生舱封顶 Weak（带 det 证据——是逃生代价，不是盲区）
+	LowDims      *pulseLowDims  `json:"lowDims,omitempty"`      // 复发低分维度 + 全档直方图 + 形态判定
 }
 
 // aggregatePulseStats 跨范围合并结论，复用 health.SummarizeAtAcked 算均分/中位/趋势/盲区率
@@ -574,6 +600,23 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 	stats.Nudges = summary.NudgeRecent
 	stats.NudgesActionable = summary.NudgeActionable
 	stats.Alerts += summary.NudgeActionable
+	// 分布形态投影（2026-09 上板，承接 v1.72.0 health 直方图）：summary 已算好，
+	// 纯投影零新增 IO。仅在存在结论时到达此处——无结论走上方提前 return，字段
+	// 缺席（lowDims 为 nil 指针、分布 map 为 nil），面板显示 — 而非编造的空。
+	stats.Conclusions = summary.TotalTasks
+	stats.GradeDist = summary.GradeDist
+	stats.StrengthDist = summary.StrengthDist
+	stats.CappedWeak = summary.CappedWeakCount
+	dims := make([]pulseLowDim, 0, len(summary.LowDims))
+	for _, d := range summary.LowDims {
+		dims = append(dims, pulseLowDim{
+			Dimension: d.Dimension,
+			Count:     d.Count,
+			Scores:    d.Scores,
+			Spread:    d.SpreadAcrossBuckets(),
+		})
+	}
+	stats.LowDims = &pulseLowDims{Dims: dims}
 	return stats
 }
 

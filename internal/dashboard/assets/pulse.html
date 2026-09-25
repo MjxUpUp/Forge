@@ -416,6 +416,13 @@ function updateThemeBtn() { $('#themeToggle').textContent = currentTheme() === '
 
 /* ---------- 状态条（A3）---------- */
 var TREND_TEXT = { improving: '↗ 上升', regressing: '↘ 下滑', stable: '→ 平稳', insufficient: '样本不足' };
+/* 分布形态（2026-09 上板，承接 v1.72.0 health 直方图）：均分卡带 grade 分布条，
+   复发维度卡带形态判读。判读在服务端算好（spread），前端只渲染措辞——与
+   forge health CLI / docs/plans/low-dim-recurrence-2026-09.md 一致：
+   跨全档＝量纲/任务粒度信号（中性色，绝不红色——告警疲劳教训）；
+   集中低档＝纪律缺口（warn）。 */
+var GRADE_ORDER = ['A', 'B', 'C', 'D', 'F'];
+var GRADE_VAR = { A: 'var(--grade-a)', B: 'var(--grade-b)', C: 'var(--grade-c)', D: 'var(--grade-d)', F: 'var(--grade-f)' };
 function renderStats() {
   var s = state.stats;
   if (!s) { $('#statStrip').innerHTML = ''; return; }
@@ -425,14 +432,66 @@ function renderStats() {
   $('#statStrip').innerHTML =
     stat('项目', fmtNum(s.projects), 'registry') +
     stat('进行中', fmtNum(s.activeTasks), (s.zombies ? s.zombies + ' 僵尸' : '无僵尸')) +
-    stat('全局均分', fmtNum(s.avgScore), '中位 ' + fmtNum(s.medianScore) + ' · <span style="color:' + trendColor + '">' + esc(trend) + '</span>', true) +
+    statAvg(s, trend, trendColor) +
     stat('告警', fmtNum(alerts), (s.zombies || 0) + ' 僵尸 + ' + (s.nudgesActionable || 0) + ' 需回顾（近14天）' + ((s.nudges || 0) > (s.nudgesActionable || 0) ? ' · 另 ' + ((s.nudges || 0) - (s.nudgesActionable || 0)) + ' 逃生降档不计' : ''), false, alerts !== null && alerts > 3) +
-    stat('证据盲区', s.evidenceBlindRate === null || s.evidenceBlindRate === undefined ? '—' : fmtPct(s.evidenceBlindRate), 'NoData 占比');
-  function stat(k, v, sub, html, alarm) {
-    return '<div class="stat"><div class="k">' + k + '</div>' +
+    stat('证据盲区', s.evidenceBlindRate === null || s.evidenceBlindRate === undefined ? '—' : fmtPct(s.evidenceBlindRate),
+      (s.cappedWeak ? '另 ' + s.cappedWeak + ' 逃生降档 · ' : '') + 'NoData 占比', false, false,
+      s.cappedWeak ? '另有 ' + s.cappedWeak + ' 个任务为逃生舱封顶 Weak——带 deterministic 证据但被 override 降级，是逃生代价，不是盲区' : '') +
+    statLowDims(s.lowDims);
+  function stat(k, v, sub, html, alarm, tip) {
+    return '<div class="stat"' + (tip ? ' title="' + esc(tip) + '"' : '') + '><div class="k">' + k + '</div>' +
       '<div class="v' + (alarm ? ' alarm' : '') + '">' + v + '</div>' +
       '<div class="s">' + (html ? sub : esc(sub)) + '</div></div>';
   }
+}
+/* 均分卡：sub 带样本量（conclusions 仅在有结论时由服务端填充），卡内 grade 分布
+   堆叠条（复用 .evi-track 结构 + 五档 grade 色；无分布数据时不渲染）。 */
+function statAvg(s, trend, trendColor) {
+  var sub = '中位 ' + fmtNum(s.medianScore) +
+    (s.conclusions ? ' · ' + s.conclusions + ' 结论' : '') +
+    ' · <span style="color:' + trendColor + '">' + esc(trend) + '</span>';
+  var bar = '';
+  if (s.gradeDist) {
+    var total = 0;
+    GRADE_ORDER.forEach(function (g) { total += s.gradeDist[g] || 0; });
+    if (total > 0) {
+      bar = '<div class="evi-track" style="margin-top:8px">' + GRADE_ORDER.filter(function (g) { return s.gradeDist[g] > 0; }).map(function (g) {
+        return '<div title="' + g + '=' + s.gradeDist[g] + '" style="width:' + (Math.round(s.gradeDist[g] * 1000 / total) / 10) + '%;background:' + GRADE_VAR[g] + '"></div>';
+      }).join('') + '</div>';
+    }
+  }
+  return '<div class="stat"><div class="k">全局均分</div>' +
+    '<div class="v">' + fmtNum(s.avgScore) + '</div>' +
+    '<div class="s">' + sub + '</div>' + bar + '</div>';
+}
+/* 复发维度卡：主值 = 最高频维度（服务端已按频次降序）；三种空态——无结论（—，
+   lowDims 缺席）、有结论无低维（无）、有低维（×N + 形态判读）。tooltip 列全部
+   维度的直方图与判读。 */
+function statLowDims(ld) {
+  if (!ld) return card('—', '无结论数据', '', '');
+  if (!ld.dims || !ld.dims.length) return card('无', '无 <70 低分维度', '', '');
+  var top = ld.dims[0];
+  var tip = ld.dims.map(function (d) {
+    return d.dimension + ' ×' + d.count + histoText(d.scores) + '——' + (d.spread ? '跨全档＝量纲/任务粒度信号：先核分档阈值与任务拆分粒度，别急着定纪律' : '集中低档＝纪律缺口：优先沉淀对应守卫/铁律');
+  }).join('\n');
+  var sub = top.spread
+    ? '<span style="color:var(--text-secondary)">跨全档 · 量纲/粒度信号</span>'
+    : '<span style="color:var(--warn)">集中低档 · 纪律缺口</span>';
+  if (ld.dims.length > 1) sub += '<span style="color:var(--text-tertiary)"> · 另 ' + (ld.dims.length - 1) + ' 维</span>';
+  return card(esc(top.dimension) + ' ×' + top.count, sub, tip, true);
+  function card(v, sub, tip, html) {
+    return '<div class="stat"' + (tip ? ' title="' + esc(tip) + '"' : '') + '><div class="k">复发维度</div>' +
+      '<div class="v">' + v + '</div>' +
+      '<div class="s">' + (html ? sub : esc(sub)) + '</div></div>';
+  }
+}
+/* histoText 与 forge health scoreHisto 同款：分数升序（低档在左一眼可见集中度）；
+   空直方图（存量结论无 DimScores）返回空串，退回纯 ×N。 */
+function histoText(scores) {
+  if (!scores) return '';
+  var keys = Object.keys(scores).map(Number).sort(function (a, b) { return a - b; });
+  if (!keys.length) return '';
+  return '（' + keys.map(function (k) { return k + '×' + scores[k]; }).join(' ') + '）';
 }
 
 /* ---------- 项目栏（A2）---------- */
