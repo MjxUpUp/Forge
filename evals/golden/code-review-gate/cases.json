@@ -1,0 +1,56 @@
+{
+  "skill": "code-review-gate",
+  "cases": [
+    {
+      "id": "g-code-review-gate-t1",
+      "skill": "code-review-gate",
+      "kind": "trigger",
+      "prompt": "这个功能写完了，我准备提交了，先把把关",
+      "target": "code-review-gate",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-code-review-gate-t2",
+      "skill": "code-review-gate",
+      "kind": "trigger",
+      "prompt": "这个 PR 明天要合主干，你过一遍有没有坑",
+      "target": "code-review-gate",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-code-review-gate-t3",
+      "skill": "code-review-gate",
+      "kind": "trigger",
+      "prompt": "刚让 AI 改了一大坨代码，怕它又写出屎山，帮我拦一下",
+      "target": "code-review-gate",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-code-review-gate-n1",
+      "skill": "code-review-gate",
+      "kind": "not-trigger",
+      "prompt": "线上接口偶发超时，排查一下什么原因",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-code-review-gate-n2",
+      "skill": "code-review-gate",
+      "kind": "not-trigger",
+      "prompt": "go build 报 undefined: foo，编译过不了",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-code-review-gate-b1",
+      "skill": "code-review-gate",
+      "kind": "not-trigger",
+      "prompt": "帮我看看这个 cobra 的 Flag 绑定写法对不对",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    }
+  ]
+}

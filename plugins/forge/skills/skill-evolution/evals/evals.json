@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    { "query": "这个 skill 老误触发帮我系统性改进下", "should_trigger": true },
+    { "query": "eval 报告发现回归了帮我查下", "should_trigger": true },
+    { "query": "给这个 skill 的改动做回归验证防退化", "should_trigger": true },
+    { "query": "复盘下上次 skill 优化为啥这么改", "should_trigger": true },
+    { "query": "诊断下这个 skill 为啥漏检", "should_trigger": true },
+    { "query": "帮我从零新建一个 skill", "should_trigger": false },
+    { "query": "这次会话的教训帮我记下来", "should_trigger": false },
+    { "query": "就帮我改个 typo", "should_trigger": false },
+    { "query": "优化下这段业务代码的性能", "should_trigger": false }
+  ]
+}

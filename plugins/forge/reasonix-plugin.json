@@ -1,0 +1,42 @@
+{
+  "apiVersion": "reasonix.io/plugin/v1",
+  "description": "Forge loop-engineering quality gates: task-tracked source changes, assertion guards, file-sentinel quarantine, and review-gated completion for AI coding agents.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook batch --event PostToolUse --matcher \"Write|Edit\" --agent reasonix"
+      },
+      {
+        "match": "bash",
+        "command": "forge hook batch --event PostToolUse --matcher \"Bash\" --agent reasonix"
+      },
+      {
+        "match": "read_file",
+        "command": "forge hook tool-track --agent reasonix"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "match": "write_file|edit_file|multi_edit|move_file",
+        "command": "forge hook batch --event PreToolUse --matcher \"Write|Edit\" --agent reasonix"
+      },
+      {
+        "match": "bash",
+        "command": "forge hook batch --event PreToolUse --matcher \"Bash\" --agent reasonix"
+      }
+    ],
+    "SessionStart": [
+      {
+        "command": "forge hook batch --event SessionStart --matcher \"\" --agent reasonix"
+      }
+    ],
+    "Stop": [
+      {
+        "command": "forge hook batch --event Stop --matcher \"\" --agent reasonix"
+      }
+    ]
+  },
+  "name": "forge",
+  "version": "1.0.0"
+}

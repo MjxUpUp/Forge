@@ -1,0 +1,14 @@
+{
+  "trigger_cases": [
+    { "query": "帮我写一个 React 登录组件", "should_trigger": true },
+    { "query": "用 Vue 实现一个商品列表页面", "should_trigger": true },
+    { "query": "给这个页面加个下拉筛选的交互", "should_trigger": true },
+    { "query": "用 Tailwind 写一个响应式导航栏", "should_trigger": true },
+    { "query": "帮我改造下这个设置页面的表单", "should_trigger": true },
+    { "query": "新前端项目该选 React 还是 Vue", "should_trigger": false },
+    { "query": "提交前帮我审查下这几个组件写得怎么样", "should_trigger": false },
+    { "query": "用 v0 帮我生成一个落地页", "should_trigger": false },
+    { "query": "把界面做成 Linear 那种暗色风格", "should_trigger": false },
+    { "query": "这个 API 怎么调", "should_trigger": false }
+  ]
+}

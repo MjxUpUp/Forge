@@ -1,0 +1,26 @@
+# 断言族 golden：exit 断言接管退出码判定（L3 精化）——期望失败形态
+# （sh fail.sh 退出 1 + exit: :: 1）整条通过。fixture 脚本经 files 落盘。
+id: assert-exit-takeover-pass
+gate: verify-acceptance
+kind: clean
+expect: clean
+description: "exit:1 断言接管隐式 exit==0——期望失败命令（退出 1）整条通过"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.assert.c3
+      go 1.25
+  - path: fail.sh
+    content: |
+      #!/bin/sh
+      exit 1
+probe_argv:
+  - "sh"
+  - -c
+  - |
+    git add -A && git -c user.name=g -c user.email=g@localhost -c commit.gpgsign=false commit -qm init
+    "{forge}" task start --ref assert/c3 --accept "sh fail.sh ::" --assert "exit: :: 1" >/dev/null 2>&1 || exit 1
+    "{forge}" task verify-acceptance 2>&1
+detect_any:
+  - "exit_nonzero"

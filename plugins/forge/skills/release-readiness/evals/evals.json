@@ -1,0 +1,13 @@
+{
+  "trigger_cases": [
+    {"query": "能上线了吗,发布前帮我检查一遍", "should_trigger": true},
+    {"query": "准备发版打 tag,走一遍 readiness 门禁", "should_trigger": true},
+    {"query": "版本号 bump 了,发布前 go/no-go 评审下", "should_trigger": true},
+    {"query": "要灰度发布了,上线前 check 一遍", "should_trigger": true},
+    {"query": "Release 截止前,帮我把发布清单过一遍", "should_trigger": true},
+    {"query": "项目功能做完了吗,帮我验收下完整度", "should_trigger": false},
+    {"query": "README 里的命令和代码还一致吗", "should_trigger": false},
+    {"query": "这个 diff 提交前帮我审查下", "should_trigger": false},
+    {"query": "线上服务报错了,帮我排查这个运行时 bug", "should_trigger": false}
+  ]
+}
