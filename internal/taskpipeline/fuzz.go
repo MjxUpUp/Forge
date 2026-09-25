@@ -40,7 +40,7 @@ type FuzzResult struct {
 	Run      int
 	Failed   []FuzzTarget
 	Skipped  []FuzzTarget
-	Findings []string // 失败目标语料路径提示
+	Findings []string // 失败目标语料路径提示 / 非 crasher 分型诊断 / 瞬断重试留痕
 }
 
 // DiscoverFuzzTargets 扫描任务改动文件所在目录的 _test.go（含改动测试文件
@@ -111,9 +111,12 @@ func scanFuzzFuncs(absPath string) []string {
 
 // RunFuzz 按预算逐目标实跑：`go test -run '^$' -fuzz '^FuzzX$' -fuzztime Ns pkg`
 // （-fuzz 每次恰一个目标；-run '^$' 排除其余普通测试）。超预算/无 Go 工具链
-// 的目标记 Skipped。落一条确定性 checklog 行。失败分型（审查 P2-3）：退出码
-// 1 = 真 crasher（go 把崩溃输入写进 testdata/，证据即语料）；其他非零 = 构建
-// 失败/预算中断（无语料，措辞不谎称）。
+// 的目标记 Skipped。落一条确定性 checklog 行。失败分型（审查 P2-3）：真 crasher
+// = go 把崩溃输入写进 testdata/（证据即语料，修完直接 go test 回归）；非零但无
+// 语料 = 构建失败/worker 瞬断/预算中断——macos-latest 2026-09-22 实录：不变式
+// 不可打破的夹具 6s 内退出码 1，同样被误报成 crasher（worker 随机死亡是 go
+// fuzz 的已知瞬断形态）。非 crasher 重试一次——瞬断重试通过照常计通过，但留
+// findings 提示；重试仍败按非 crasher 措辞报（不谎称语料），真 crasher 不重试。
 func RunFuzz(root string, state *TaskState, targets []FuzzTarget, perTarget time.Duration, maxTargets int) (FuzzResult, error) {
 	res := FuzzResult{Targets: len(targets)}
 	if maxTargets <= 0 {
@@ -127,11 +130,23 @@ func RunFuzz(root string, state *TaskState, targets []FuzzTarget, perTarget time
 			res.Skipped = append(res.Skipped, t)
 			continue
 		}
-		code, out := runOneFuzz(root, t, perTarget)
+		code, out := runOneFuzzFn(root, t, perTarget)
+		crasher := code != 0 && classifyFuzzCrasher(out)
+		if code != 0 && !crasher {
+			if retryCode, retryOut := runOneFuzzFn(root, t, perTarget); retryCode == 0 {
+				code, out = 0, retryOut
+				res.Findings = append(res.Findings, fmt.Sprintf(
+					"%s.%s 首次非零（无崩溃语料——构建失败或 worker 瞬断）重试通过：%s",
+					t.Pkg, t.Func, truncateFuzzOut(retryOut)))
+			} else {
+				code, out = retryCode, retryOut
+				crasher = classifyFuzzCrasher(out)
+			}
+		}
 		res.Run++
 		if code != 0 {
 			res.Failed = append(res.Failed, t)
-			if code == 1 {
+			if crasher {
 				res.Findings = append(res.Findings, fmt.Sprintf(
 					"%s.%s 发现 crasher（退出码 1）——崩溃输入已写入 %s 的 testdata/，修完以 go test %s 回归",
 					t.Pkg, t.Func, t.File, t.Pkg))
@@ -144,6 +159,20 @@ func RunFuzz(root string, state *TaskState, targets []FuzzTarget, perTarget time
 	}
 	recordFuzzRow(root, state.TaskRef, res)
 	return res, nil
+}
+
+// runOneFuzzFn 供测试注入替身（RunFuzz 的其余逻辑用真实子进程不可单测）。
+var runOneFuzzFn = runOneFuzz
+
+// classifyFuzzCrasher 判定一次非零退出是否真 crasher：唯一判据是 go fuzz 的
+// 输出标记 "Failing input written to"（发现失败输入并落最小化语料时必打）。
+// 构建失败/worker 瞬断同样退出码 1 但无此标记：不得借退出码谎称 crasher。
+// 刻意不做 testdata/fuzz 语料目录兜底——该目录同样存放 f.Add 种子语料与历史
+// 残留 crasher，目录非空推断「本次 crasher」会把构建失败误判成真 crasher
+// （审查 P2）；标记文案若未来漂移，非 crasher 措辞 + findings 里的输出尾部
+// 仍能让失败可见可诊，只是少了自动分型。
+func classifyFuzzCrasher(out string) bool {
+	return strings.Contains(out, "Failing input written to")
 }
 
 // truncateFuzzOut 取输出尾部 ~200 字节（失败诊断进 findings，全文在重跑里）。
