@@ -1,0 +1,8 @@
+# 默认全部文件由仓库所有者 review
+* @MjxUpUp
+
+# 发布链路变更必须所有者确认（涉及对外发包）
+/.github/workflows/ @MjxUpUp
+/.goreleaser.yml @MjxUpUp
+/scripts/release.js @MjxUpUp
+/npm/ @MjxUpUp

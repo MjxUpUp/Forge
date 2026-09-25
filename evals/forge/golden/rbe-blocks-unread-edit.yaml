@@ -1,0 +1,27 @@
+# 历史反哺用例（checklog 47 次真实拦截的高频模式，2026-09-04 摘录）：
+# 活跃任务中，agent 未 Read 过的源文件直接 Edit → read-before-edit 硬拦。
+# 真实历史形态：agent 凭记忆盲改、old_string 撞中即错改进库。
+id: rbe-blocks-unread-edit
+gate: read-before-edit
+kind: defective
+expect: flagged
+description: "活跃任务中 Edit 未 Read 过的源文件 → FAIL [read-before-edit]"
+deterministic: true
+files:
+  - path: go.mod
+    content: |
+      module evalkit.golden.rbe
+
+      go 1.25
+  - path: old.go
+    content: |
+      package main
+
+      func F() int { return 1 }
+probe_argv:
+  - "sh"
+  - -c
+  - '"{forge}" task start --ref RB-1 --title rbe >/dev/null 2>&1; printf "%s" "{\"hook_event_name\":\"PreToolUse\",\"tool_name\":\"Edit\",\"session_id\":\"rbs\",\"task_ref\":\"RB-1\",\"tool_input\":{\"file_path\":\"old.go\",\"old_string\":\"a\",\"new_string\":\"b\"}}" | "{forge}" hook read-before-edit --agent claude'
+detect_any:
+  - "exit_nonzero"
+  - "stdout_contains:FAIL [read-before-edit]"

@@ -1,0 +1,90 @@
+version: 2
+
+project_name: forge
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: forge
+    main: ./cmd/forge
+    binary: forge
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}aarch64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+# SBOM：每个 tar.gz 附一份 SPDX 清单（依赖组成可见，供应链审计/SCA 工具的输入）。
+# 依赖 CI 里预装的 syft（release.yml "Install syft" 步，goreleaser-action 不自带）。
+sboms:
+  - artifacts: archive
+
+# cosign keyless 签名 checksums.txt：用户可验证"这份 checksum 确实由本仓库的
+# GitHub Actions 签出"（Sigstore 透明日志可查），防 release 资产被替换后无法察觉。
+# keyless 用 CI 的 OIDC 身份，无需管理私钥；需要 workflow 的 id-token: write。
+# cosign v3（2025-11）用单个 --bundle（.sigstore.json，证书+签名合一）取代旧的
+# --output-certificate/--output-signature 双文件；旧标志在 v3 下为空路径→
+# "create bundle file: open : no such file or directory"（v1.28.3 发布失败根因）。
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  draft: false
+  prerelease: auto
+  # keep-existing：release-please 先建好带整理 changelog 正文（分组 + PR 链接）的
+  # GitHub Release，goreleaser 只往上面挂二进制/SBOM/签名资产，保留正文；replace
+  # 会把正文覆盖成裸 commit 列表。手动打 tag 路径无预置 Release，goreleaser 照常
+  # 自建（与旧行为一致）。
+  mode: keep-existing

@@ -1,0 +1,484 @@
+package hooks
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// initsuggest_test.go — InitSuggestHook 的真行为守卫（不止 containsString）。
+// 跑真实脚本过各分支，断言 emitted 输出 + side effect（标记文件 / AUTO_INIT 的
+// forge init 调用）。手法同 skillscan_test：bash function stub 覆盖 forge 命令，
+// HOME/FORGE_CWD/FORGE_CWD_TAG 由测试控制，隔离真实 cwd 与 ~/.forge 标记。
+//
+// 所有 string literal 用 raw string（反引号）规避 Windows 输入引号腐蚀。
+
+// runInitSuggestHook 跑真实 InitSuggestHook 脚本，返回 stdout+stderr。
+// forge() stub 覆盖 forge（AUTO_INIT 分支不真跑 forge init）：成功路径 touch flag
+// 文件供断言；FORGE_FORGE_FAIL=1 时 return 1 不 touch（模拟 init 失败回显）。
+// init-suggest 设计 exit 0，非零=脚本 bug。
+//
+// 已知盲区（R6）：stub 无法模拟真实 forge init 的 partial-state（失败前已建 .forge
+// 致下次会话 [ -d .forge ] 静默）——embed.go 注释承诺回显 stderr 即为该场景设计，
+// 但本测试只覆盖「失败回显」这一层，partial-state 静默逻辑未覆盖（需真跑 forge init）。
+func runInitSuggestHook(t *testing.T, cwd, tag, home, initFlag string, extraEnv ...string) string {
+	t.Helper()
+	stub := `#!/bin/bash
+forge() {
+  if [ "$1" = "plugin" ]; then return "${FORGE_PLUGIN_RC:-1}"; fi
+  # v1.22 零项目写入契约：成员资格走注册表（forge status exit 0 = 已登记）。
+  # stub 用 FORGE_STATUS_RC 模拟（默认 1 = 未登记），有 .forge/ 的项目由脚本内
+  # [ -d .forge ] 兜底分支覆盖，不走 status。
+  #
+  # v1.22 zero-project-write contract: membership comes from the registry
+  # (forge status exit 0 = registered). The stub simulates via FORGE_STATUS_RC
+  # (default 1 = unregistered); projects with .forge/ are covered by the script's
+  # own [ -d .forge ] fallback branch, bypassing status.
+  if [ "$1" = "status" ]; then return "${FORGE_STATUS_RC:-1}"; fi
+  # P2：policy state / config get 是接管决策的只读快查——stub 返回空输出
+  #（state 非 declined、takeover 回落 ask），不得落进下方的 init 兜底。
+  if [ "$1" = "policy" ] || [ "$1" = "config" ]; then return 0; fi
+  if [ -n "$FORGE_FORGE_FAIL" ]; then return 1; fi
+  touch "$FORGE_INIT_FLAG" 2>/dev/null
+  return 0
+}
+git() {
+  if [ "$1" = "init" ]; then
+    mkdir -p .git 2>/dev/null
+    return 0
+  fi
+  command git "$@"
+}
+`
+	script := stub + InitSuggestHook
+	tmp, err := os.CreateTemp("", "init-suggest-*.sh")
+	if err != nil {
+		t.Fatalf("createtemp: %v", err)
+	}
+	if _, err := tmp.WriteString(script); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+
+	env := []string{
+		`HOME=` + home,
+		`PATH=` + os.Getenv(`PATH`),
+		`FORGE_CWD=` + cwd,
+		`FORGE_CWD_TAG=` + tag,
+		`FORGE_INIT_FLAG=` + initFlag,
+	}
+	env = append(env, extraEnv...)
+	cmd := exec.Command("bash", tmp.Name())
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("InitSuggestHook exited non-zero (script bug): err=%v, out=%s", err, out)
+	}
+	return string(out)
+}
+
+// mkGitProj 构造临时 git 项目（有 .git）；withForge=true 额外建 .forge/。
+func mkGitProj(t *testing.T, withForge bool) string {
+	t.Helper()
+	d := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(d, `.git`), 0755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	if withForge {
+		if err := os.MkdirAll(filepath.Join(d, `.forge`), 0755); err != nil {
+			t.Fatalf("mkdir .forge: %v", err)
+		}
+	}
+	return d
+}
+
+// writeSuggestMarker 在 home 的标记目录写 tag 标记（模拟 hook 已提示/用户已拒绝）。
+func writeSuggestMarker(t *testing.T, home, tag, value string) {
+	t.Helper()
+	dir := filepath.Join(home, `.forge`, `.init-suggested`)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("mkdir marker dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, tag), []byte(value), 0644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+}
+
+// TestInitSuggestHook_Branches 跑真实脚本过 18 个分支，断言输出 + AUTO_INIT/plugin 接管
+// side effect。若未来编辑破坏 git-root 查找 / 标记静默 / AUTO_INIT 分支 / plugin 自动接管，
+// 这些 case 失败。
+func TestInitSuggestHook_Branches(t *testing.T) {
+	cases := []struct {
+		name        string
+		cwdFn       func(t *testing.T) string
+		marker      string // "", "suggested", "declined"
+		takeoverEnv string // FORGE_TAKEOVER 覆盖（P2 三档）
+		autoInit    bool   // FORGE_AUTO_INIT=1（legacy auto 等价）
+		failForge   bool   // stub forge 返回 1（模拟 init 失败，验 partial-state 回显）
+		statusRC0   bool   // stub forge status 返回 0（模拟已登记注册表，验零写入成员判定）
+		pluginRC0   bool   // stub forge plugin status 返回 0（plugin 已装——P2 后仅影响成员分支 dedupe）
+		wantSub     string // 期望输出子串；空=期望静默（无"未启用 forge"）
+		wantInit    bool   // 期望 forge init 被调（flag 文件存在）
+	}{
+		{
+			name:    `无 git 目录提示 git init`,
+			cwdFn:   func(t *testing.T) string { return t.TempDir() },
+			wantSub: `不是 Git 仓库`,
+		},
+		{
+			name:    `无 git 已 suggested 静默`,
+			cwdFn:   func(t *testing.T) string { return t.TempDir() },
+			marker:  `suggested`,
+			wantSub: ``,
+		},
+		{
+			name:    `无 git declined 永久静默`,
+			cwdFn:   func(t *testing.T) string { return t.TempDir() },
+			marker:  `declined`,
+			wantSub: ``,
+		},
+		{
+			name:     `无 git AUTO_INIT 调 git init + forge init`,
+			cwdFn:    func(t *testing.T) string { return t.TempDir() },
+			autoInit: true,
+			wantInit: true,
+		},
+		{
+			name:      `无 git AUTO_INIT 失败回显`,
+			cwdFn:     func(t *testing.T) string { return t.TempDir() },
+			autoInit:  true,
+			failForge: true,
+			wantSub:   `失败`,
+			wantInit:  false,
+		},
+		{
+			name:    `有 git 有 forge 静默`,
+			cwdFn:   func(t *testing.T) string { return mkGitProj(t, true) },
+			wantSub: ``,
+		},
+		{
+			// v1.22 零项目写入契约：无 .forge/ 但已登记注册表（forge status exit 0）
+			// → 已启用，静默。这是新成员判定路径（registry 而非 .forge/ 存在性）的
+			// 核心断言——没有它，零写入项目会被反复提示 init。
+			name:      `有 git 无 .forge 已登记静默`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			statusRC0: true,
+			wantSub:   ``,
+		},
+		{
+			name:    `有 git 无 forge 首次提示`,
+			cwdFn:   func(t *testing.T) string { return mkGitProj(t, false) },
+			wantSub: `未启用 forge`,
+		},
+		{
+			name:    `有 git 无 forge 已 suggested 静默`,
+			cwdFn:   func(t *testing.T) string { return mkGitProj(t, false) },
+			marker:  `suggested`,
+			wantSub: ``,
+		},
+		{
+			name:    `有 git 无 forge declined 永久静默`,
+			cwdFn:   func(t *testing.T) string { return mkGitProj(t, false) },
+			marker:  `declined`,
+			wantSub: ``,
+		},
+		{
+			name:     `AUTO_INIT 调 forge init`,
+			cwdFn:    func(t *testing.T) string { return mkGitProj(t, false) },
+			autoInit: true,
+			wantInit: true,
+		},
+		{
+			name:      `AUTO_INIT forge init 失败回显`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			autoInit:  true,
+			failForge: true,
+			wantSub:   `失败`,
+			wantInit:  false,
+		},
+		// ---- plugin auto-takeover：plugin 已 user-level 安装 = opt-in，git 项目静默自动 init ----
+		{
+			// P2 默认值翻转钉子：plugin 已装 + 出厂 ask → 询问一次而非静默接管。
+			name:      `有 git plugin 已装默认 ask 询问`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			wantSub:   `询问用户是否让 forge 接管`,
+			wantInit:  false,
+		},
+		{
+			// 显式 auto：静默接管（P1 及之前的行为，经偏好选择）。
+			name:        `有 git takeover=auto 静默接管`,
+			cwdFn:       func(t *testing.T) string { return mkGitProj(t, false) },
+			takeoverEnv: `auto`,
+			wantSub:     `takeover=auto: 已在`,
+			wantInit:    true,
+		},
+		{
+			// off：不接管不询问，完全静默。
+			name:        `有 git takeover=off 静默`,
+			cwdFn:       func(t *testing.T) string { return mkGitProj(t, false) },
+			takeoverEnv: `off`,
+			wantSub:     ``,
+			wantInit:    false,
+		},
+		{
+			// env 优先级钉子（审查 MAJOR）：FORGE_TAKEOVER=off 压过 FORGE_AUTO_INIT=1
+			//——bash 解析前置后与 Go 侧 userconfig.TakeoverMode 同链。
+			name:        `有 git takeover=off 压过 AUTO_INIT`,
+			cwdFn:       func(t *testing.T) string { return mkGitProj(t, false) },
+			takeoverEnv: `off`,
+			autoInit:    true,
+			wantSub:     ``,
+			wantInit:    false,
+		},
+		{
+			// 每项目退出权高于 plugin 级默认开启：declined 标记拦截自动接管，静默。
+			name:      `有 git plugin 已装 declined 退出`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			marker:    `declined`,
+			wantSub:   ``,
+			wantInit:  false,
+		},
+		{
+			// suggested 只静音询问、不拦自动接管（plugin 路径没有询问）。
+			// P2 语义翻转：ask 档下 suggested = 已问过 → 静默（旧"接管无询问故
+			// suggested 不拦"的语义随静默接管一起只活在 auto 档）。
+			name:      `有 git plugin 已装 suggested 问过静默`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			marker:    `suggested`,
+			wantSub:   ``,
+			wantInit:  false,
+		},
+		{
+			// init 失败回显 stderr 尾部（与 FORGE_AUTO_INIT 同款 partial-state 契约）。
+			// P2：静默接管路径改为经 takeover=auto 显式触发。
+			name:        `有 git takeover=auto init 失败回显`,
+			cwdFn:       func(t *testing.T) string { return mkGitProj(t, false) },
+			takeoverEnv: `auto`,
+			failForge:   true,
+			wantSub:     `失败`,
+			wantInit:    false,
+		},
+		{
+			// 非 git 目录不自动 git init（自动创建仓库过于激进）：仍走 advisory 提示。
+			name:      `无 git plugin 已装仍提示`,
+			cwdFn:     func(t *testing.T) string { return t.TempDir() },
+			pluginRC0: true,
+			wantSub:   `不是 Git 仓库`,
+			wantInit:  false,
+		},
+		{
+			// 成员项目（已登记）在 plugin 分支之前已放行，静默不重复 init。
+			name:      `有 git 已登记且 plugin 已装静默`,
+			cwdFn:     func(t *testing.T) string { return mkGitProj(t, false) },
+			pluginRC0: true,
+			statusRC0: true,
+			wantSub:   ``,
+			wantInit:  false,
+		},
+		{
+			// Project Policy Layer P1（G-1 修复）：declined 前置检查先于 AUTO_INIT
+			// 分支——退出不可被 env 穿透（原"AUTO_INIT 不拦 declined"语义已废除）。
+			// e2e 有真二进制对照钉子，此处为同包快速回归钉。
+			name:     `有 git declined 拦 FORGE_AUTO_INIT`,
+			cwdFn:    func(t *testing.T) string { return mkGitProj(t, false) },
+			marker:   `declined`,
+			autoInit: true,
+			wantSub:  ``,
+			wantInit: false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cwd := c.cwdFn(t)
+			tag := `tag_` + c.name
+			home := t.TempDir()
+			if c.marker != `` {
+				writeSuggestMarker(t, home, tag, c.marker)
+			}
+			initFlag := filepath.Join(home, `init-flag`)
+			var extra []string
+			if c.takeoverEnv != `` {
+				extra = append(extra, `FORGE_TAKEOVER=`+c.takeoverEnv)
+			}
+			if c.autoInit {
+				extra = append(extra, `FORGE_AUTO_INIT=1`)
+			}
+			if c.failForge {
+				extra = append(extra, `FORGE_FORGE_FAIL=1`)
+			}
+			if c.statusRC0 {
+				extra = append(extra, `FORGE_STATUS_RC=0`)
+			}
+			if c.pluginRC0 {
+				extra = append(extra, `FORGE_PLUGIN_RC=0`)
+			}
+			out := runInitSuggestHook(t, cwd, tag, home, initFlag, extra...)
+			if c.wantSub != `` && !strings.Contains(out, c.wantSub) {
+				t.Errorf(`期望输出含 %q，实得 %q`, c.wantSub, out)
+			}
+			if c.wantSub == `` && strings.Contains(out, `未启用 forge`) {
+				t.Errorf(`期望静默但输出了提示：%q`, out)
+			}
+			_, initCalled := os.Stat(initFlag)
+			if c.wantInit && initCalled != nil {
+				t.Errorf(`期望 forge init 被调（flag 文件应存在），实得输出 %q`, out)
+			}
+			if !c.wantInit && initCalled == nil {
+				t.Errorf(`此分支不应调 forge init，但 flag 文件被创建`)
+			}
+		})
+	}
+}
+
+// TestInitSuggestHook_WritesSuggestedMarker：首次提示分支必须写 suggested 标记，
+// 下次同项目不再提示（一次提示契约）。跑两次脚本共享 home，第二次应静默。
+func TestInitSuggestHook_WritesSuggestedMarker(t *testing.T) {
+	proj := mkGitProj(t, false)
+	tag := `tag_once`
+	home := t.TempDir()
+	initFlag := filepath.Join(home, `init-flag`)
+
+	out1 := runInitSuggestHook(t, proj, tag, home, initFlag)
+	if !strings.Contains(out1, `未启用 forge`) {
+		t.Fatalf(`首次应提示，实得 %q`, out1)
+	}
+	marker := filepath.Join(home, `.forge`, `.init-suggested`, tag)
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf(`首次应写 suggested 标记 %s: %v`, marker, err)
+	}
+
+	out2 := runInitSuggestHook(t, proj, tag, home, initFlag)
+	if strings.Contains(out2, `未启用 forge`) {
+		t.Errorf(`第二次应静默（标记已写），实得 %q`, out2)
+	}
+}
+
+// TestInitSuggestHook_ForgeDataHomeOverride 钉死 refactor-data-home commit E：hook
+// SUGGEST_DIR 走 ${FORGE_DATA_HOME:-$HOME/.forge}/.init-suggested——设 FORGE_DATA_HOME 时
+// marker 必须落覆盖根（<dd>/.init-suggested/<tag>），不落 HOME/.forge（防 hook 误改回
+// $HOME/.forge 硬编码或参数扩展顺序错，默认路径测试抓不到此类回归）。
+func TestInitSuggestHook_ForgeDataHomeOverride(t *testing.T) {
+	proj := mkGitProj(t, false)
+	tag := `tag_dd`
+	home := t.TempDir()
+	dd := t.TempDir() // FORGE_DATA_HOME 覆盖根
+	initFlag := filepath.Join(home, `init-flag`)
+
+	out := runInitSuggestHook(t, proj, tag, home, initFlag, `FORGE_DATA_HOME=`+dd)
+	if !strings.Contains(out, `未启用 forge`) {
+		t.Fatalf(`首次应提示，实得 %q`, out)
+	}
+	markerInDD := filepath.Join(dd, `.init-suggested`, tag)
+	if _, err := os.Stat(markerInDD); err != nil {
+		t.Errorf(`marker 应落 FORGE_DATA_HOME/.init-suggested/%s，实得 stat err=%v`, tag, err)
+	}
+	markerInHome := filepath.Join(home, `.forge`, `.init-suggested`, tag)
+	if _, err := os.Stat(markerInHome); err == nil {
+		t.Errorf(`marker 不应落 HOME/.forge/.init-suggested/%s（应走 FORGE_DATA_HOME），但文件存在`, tag)
+	}
+}
+
+// runInitSuggestHookStub 跑真实 InitSuggestHook 脚本，用传入的 forge() stub 覆盖 forge
+// 命令。dedupe 分支测试用——需要 stub 区分 forge plugin status / forge plugin dedupe
+// 子命令（runInitSuggestHook 的 stub 只模拟 forge init，无法覆盖 dedupe 路径）。
+func runInitSuggestHookStub(t *testing.T, forgeStub, cwd, tag, home string, extraEnv ...string) string {
+	t.Helper()
+	script := forgeStub + "\n" + InitSuggestHook
+	tmp, err := os.CreateTemp("", "init-suggest-*.sh")
+	if err != nil {
+		t.Fatalf("createtemp: %v", err)
+	}
+	if _, err := tmp.WriteString(script); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+	env := []string{
+		`HOME=` + home,
+		`PATH=` + os.Getenv(`PATH`),
+		`FORGE_CWD=` + cwd,
+		`FORGE_CWD_TAG=` + tag,
+	}
+	env = append(env, extraEnv...)
+	cmd := exec.Command("bash", tmp.Name())
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("InitSuggestHook exited non-zero (script bug): err=%v, out=%s", err, out)
+	}
+	return string(out)
+}
+
+// dedupeForgeStub 区分 forge 子命令的 stub：
+//   - forge plugin status：FORGE_PLUGIN_MISSING 非空时 return 1（模拟未装），否则 return 0
+//   - forge plugin dedupe <root>：FORGE_DEDUPE_OUT 非空时 echo 该串（模拟清理有输出）
+//   - 其他 forge 调用：回退 init 行为
+//
+// 纯 if（无 case-action），避 bash 3.2 case parser 坑（参 hazard-bash32-case-parser）。
+const dedupeForgeStub = `#!/bin/bash
+forge() {
+  if [ "$1" = "plugin" ] && [ "$2" = "status" ]; then
+    if [ -n "$FORGE_PLUGIN_MISSING" ]; then return 1; fi
+    return 0
+  fi
+  if [ "$1" = "plugin" ] && [ "$2" = "dedupe" ]; then
+    if [ -n "$FORGE_DEDUPE_OUT" ]; then echo "$FORGE_DEDUPE_OUT"; fi
+    return 0
+  fi
+  if [ -n "$FORGE_FORGE_FAIL" ]; then return 1; fi
+  if [ -n "$FORGE_INIT_FLAG" ]; then touch "$FORGE_INIT_FLAG" 2>/dev/null; fi
+  return 0
+}
+`
+
+// TestInitSuggestHook_DedupeBranch 守护 init-suggest.sh 的存量迁移分支（plugin install
+// 后，已 init 的项目残留 project-level hooks/MCP 重复，SessionStart 自动 dedupe）。
+// 三路径：plugin 已装+dedupe 有输出→提示；plugin 未装→不进分支静默；已装+无重复→静默。
+func TestInitSuggestHook_DedupeBranch(t *testing.T) {
+	proj := mkGitProj(t, true) // 有 .forge → 进 dedupe 分支
+	tag := `tag_dedupe`
+	home := t.TempDir()
+
+	t.Run(`plugin已装+dedupe有输出`, func(t *testing.T) {
+		out := runInitSuggestHookStub(t, dedupeForgeStub, proj, tag, home,
+			`FORGE_DEDUPE_OUT=移除项目级重复 hooks+MCP`)
+		if !strings.Contains(out, `PASS [init-suggest]`) {
+			t.Errorf(`应 echo PASS [init-suggest] 提示，实得 %q`, out)
+		}
+		if !strings.Contains(out, `移除项目级重复`) {
+			t.Errorf(`应含 dedupe 输出，实得 %q`, out)
+		}
+	})
+
+	t.Run(`plugin未装不进dedupe`, func(t *testing.T) {
+		out := runInitSuggestHookStub(t, dedupeForgeStub, proj, tag, home,
+			`FORGE_PLUGIN_MISSING=1`)
+		if strings.Contains(out, `PASS [init-suggest]`) {
+			t.Errorf(`plugin 未装不应进 dedupe 分支提示，实得 %q`, out)
+		}
+	})
+
+	t.Run(`plugin已装+dedupe无输出静默`, func(t *testing.T) {
+		out := runInitSuggestHookStub(t, dedupeForgeStub, proj, tag, home)
+		if strings.Contains(out, `PASS [init-suggest]`) {
+			t.Errorf(`dedupe 无输出应静默（无重复），实得 %q`, out)
+		}
+	})
+}
+
+// TestInitSuggestHook_DedupePassesKeepEmpty：钉死 init-suggest 脚本的 dedupe 调用传
+// --keep-empty——自动路径保留 settings.local.json 文件壳（用户痛点:不静默删个人配置文件）。
+// 防回归:有人误改回 `forge plugin dedupe "$ROOT"`（无 flag）会重新引入 SessionStart 删文件 bug。
+// TestInitSuggestHook_DedupeBranch 的 stub forge() 只匹配 $1/$2,不校验 --keep-empty 字符串,
+// 故需独立字符串守卫（脚本源是嵌入字符串,build 不校验 bash 内容）。
+func TestInitSuggestHook_DedupePassesKeepEmpty(t *testing.T) {
+	if !strings.Contains(InitSuggestHook, `forge plugin dedupe "$ROOT" --keep-empty`) {
+		t.Error(`init-suggest 脚本应为 dedupe 传 --keep-empty（保留 settings.local.json 文件壳）,防回归删文件 bug`)
+	}
+}

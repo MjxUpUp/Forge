@@ -1,0 +1,435 @@
+// feed.go —— pulse 面板的多源事件归并器：TaskState（task-start + gate）、checklog
+// （skill-trigger）、act 结论归并成一条时间降序事件流。只读：所有源都走现有 store 的
+// 读路径加载，不做任何写操作。
+package dashboard
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+)
+
+// Feed 事件 kind / severity——前端消费的线上契约。
+const (
+	FeedKindTaskStart    = "task-start"
+	FeedKindGate         = "gate"
+	FeedKindSkillTrigger = "skill-trigger"
+	FeedKindConclusion   = "conclusion"
+	FeedKindSigVerify    = "sig-verify" // bundle 验签判定（bundle-verify checklog 条目）
+	FeedKindSync         = "sync"       // git 通道同步操作结果（project-sync checklog 条目）
+	FeedKindEval         = "eval"       // 自评测观察行（forge eval 命令族的 eval-* checklog 条目）
+
+	FeedSeverityOK   = "ok"
+	FeedSeverityWarn = "warn"
+	FeedSeverityFail = "fail"
+	FeedSeverityInfo = "info"
+)
+
+// defaultFeedLimit 截断 feed 响应，轮询永不发出大包。
+const defaultFeedLimit = 200
+
+// FeedEvent is one merged stream event.
+//
+// FeedEvent 是归并流的一条事件。字段名即前端契约。刻意无 SessionID——纵深防御：
+// localhost + Host 校验，但绝不序列化 session 标识。
+type FeedEvent struct {
+	Time     time.Time `json:"time"`
+	Kind     string    `json:"kind"`    // "task-start" | "gate" | "skill-trigger" | "conclusion" | "sig-verify"
+	Project  string    `json:"project"` // 项目名（projectName 末两段）
+	TaskRef  string    `json:"taskRef"`
+	Severity string    `json:"severity"` // "ok" | "warn" | "fail" | "info"
+	Title    string    `json:"title"`
+	Detail   string    `json:"detail,omitempty"`
+	Gate     string    `json:"gate,omitempty"`   // gate 事件: implement/verify/complete
+	Passed   *bool     `json:"passed,omitempty"` // gate 事件
+	Commit   string    `json:"commit,omitempty"` // gate 事件 HeadCommit 短哈希
+	Grade    string    `json:"grade,omitempty"`  // conclusion 事件（分数内联在 Title）
+	// Node is the originating machine's node_id (multi-machine Phase 3).
+	//
+	// Node 是来源机器的 node_id（多机器 Phase 3）：conclusion 与 skill-trigger 事件
+	// 携带记录的 nodestamp；task-start 携带当前租约持有者（谁在干活）。存量无戳
+	// 记录为空——omitempty 保持多机器前的线上结构不变。
+	Node string `json:"node,omitempty"`
+	// Skill is the structured skill name on skill-trigger events.
+	//
+	// Skill 是 skill-trigger 事件上的结构化 skill 名。前端折叠卡聚合读此字段——
+	// 不得从展示文案 Title 正则反解（标题措辞可改，此字段才是契约）。checklog
+	// detail 无可解析名时为空。
+	Skill string `json:"skill,omitempty"`
+}
+
+// FeedQuery filters AggregateFeed.
+//
+// FeedQuery 是 AggregateFeed 的过滤条件。Since 为排他（Time > since）供轮询增量；
+// Project 同时匹配 forge key 与显示名；TaskRef 限定单任务；Limit 0 = 默认 200。
+type FeedQuery struct {
+	Since   time.Time
+	Project string
+	TaskRef string
+	Limit   int
+}
+
+// pulseRoot 是范围内的一个项目：root + 两重身份（forge key 供过滤，显示名供归属）。
+type pulseRoot struct {
+	root string
+	key  string // forge 项目 key（推导失败为 ""）
+	name string // projectName(root)
+}
+
+// resolvePulseRoots 把 Options 展开成项目范围：Roots 非空走全局，否则单 Root（测试/
+// 库调用兜底）。空 root 丢弃。registry→Roots 的解析与空 registry 退化在 cli 层
+// （cli/dashboard.go）——feed 只消费 Options。
+func resolvePulseRoots(opts Options) []pulseRoot {
+	roots := opts.Roots
+	if len(roots) == 0 && opts.Root != "" {
+		roots = []string{opts.Root}
+	}
+	out := make([]pulseRoot, 0, len(roots))
+	for _, r := range roots {
+		if r == "" {
+			continue
+		}
+		pr := pulseRoot{root: r, name: projectName(r)}
+		if proj, err := forgedata.ProjectFor(r); err == nil {
+			pr.key = proj.Key
+		}
+		out = append(out, pr)
+	}
+	return out
+}
+
+// matches 报告 query 的 project 过滤是否命中本 root（key 或名）。
+func (pr pulseRoot) matches(filter string) bool {
+	return filter == "" || filter == pr.key || filter == pr.name
+}
+
+// FeedResult is the outcome of AggregateFeed: the merged, filtered, capped events plus whether the cap cut anything off.
+//
+// FeedResult 是 AggregateFeed 的结果：归并、过滤、截断后的事件流 + 是否发生了截断。
+// Truncated 让客户端区分「没有更多事件」与「更早事件被丢弃」——增量（since）轮询
+// 若被截断意味着事件已永久丢失，客户端须全量重拉。
+type FeedResult struct {
+	Events    []FeedEvent
+	Truncated bool
+}
+
+// AggregateFeed merges all event sources across the projects in scope into one time-descending stream, then applies the query filters (project / taskRef / since / limit).
+//
+// AggregateFeed 把范围内各项目的全部事件源归并成一条时间降序流，再应用查询过滤
+// （project / taskRef / since / limit）。源数据来自 sharedPulseCache（指纹门控——
+// 文件未变不重解析）；投影仍每次现算，因僵尸/severity 是时间相关的。单源读失败
+// （checklog / act）跳过不致命——一个坏源不应让整面板空白；ListTaskStates 错误上抛
+// （→ HTTP 500）。空数据返回非 nil 空切片，JSON 序列化为 [] 而非 null。
+func AggregateFeed(opts Options, now time.Time, q FeedQuery) (FeedResult, error) {
+	events := []FeedEvent{}
+	for _, pr := range resolvePulseRoots(opts) {
+		if !pr.matches(q.Project) {
+			continue
+		}
+		d, err := sharedPulseCache.projectData(pr)
+		if err != nil {
+			return FeedResult{}, err
+		}
+		events = append(events, feedForProject(pr, d, now)...)
+	}
+	if q.TaskRef != "" {
+		events = slices.DeleteFunc(events, func(e FeedEvent) bool { return e.TaskRef != q.TaskRef })
+	}
+	if !q.Since.IsZero() {
+		events = slices.DeleteFunc(events, func(e FeedEvent) bool { return !e.Time.After(q.Since) })
+	}
+	// 最近在前；稳定排序使同刻事件保持来源序（task-start 先于其 gate 先于结论）。
+	slices.SortStableFunc(events, func(a, b FeedEvent) int {
+		return b.Time.Compare(a.Time)
+	})
+	limit := q.Limit
+	if limit <= 0 {
+		limit = defaultFeedLimit
+	}
+	truncated := len(events) > limit
+	if truncated {
+		events = events[:limit]
+	}
+	return FeedResult{Events: events, Truncated: truncated}, nil
+}
+
+// feedForProject 把单项目的缓存源投影成事件。
+func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
+	var events []FeedEvent
+
+	for _, s := range d.states {
+		events = append(events, taskStartEvent(pr, s, now))
+		events = append(events, gateEvents(pr, s)...)
+	}
+
+	for _, e := range d.checkEntries {
+		switch e.Check {
+		case checklog.CheckSkillTrigger:
+			name := checklog.SkillFromTriggerDetail(e.Detail)
+			title := "skill 触发"
+			if name != "" {
+				title = "skill 触发: " + name
+			}
+			events = append(events, FeedEvent{
+				Time: e.RecordedAt, Kind: FeedKindSkillTrigger, Project: pr.name,
+				TaskRef: e.TaskRef, Severity: FeedSeverityInfo,
+				Title: title, Detail: e.Detail,
+				Node:  e.NodeID, // 事件打戳（nodestamp）的机器归因
+				Skill: name,     // 结构化 skill 名：前端折叠卡聚合约契，反解 title 文案会随措辞静默失效
+			})
+		case checklog.CheckBundleVerify:
+			events = append(events, sigVerifyEvent(pr, e))
+		case checklog.CheckProjectSync:
+			events = append(events, syncOutcomeEvent(pr, e))
+		case checklog.CheckEvalGoldenRun, checklog.CheckEvalGoldenRotate,
+			checklog.CheckEvalTrapsRun, checklog.CheckEvalRun,
+			checklog.CheckEvalDecompose, checklog.CheckEvalJudgeWeak,
+			checklog.CheckEvalResumeDrill, checklog.CheckEvalMetricsIncomplete,
+			checklog.CheckEvalAuditForged:
+			events = append(events, evalEvent(pr, e))
+		}
+	}
+
+	for _, c := range d.conclusions {
+		events = append(events, conclusionEvent(pr, c))
+	}
+	return events
+}
+
+// sigVerifyEvent 把 bundle-verify checklog 条目（导入侧信任判定，node-identity §3）
+// 投影进流：severity 取自条目 EffectiveLevel（此处不二次裁断），标题由结构化
+// Meta 键（verdict + signer）构造——绝不从 Detail 散文正则反解（skill 折叠卡的
+// 教训：散文措辞可改，Meta 键才是契约）。
+func sigVerifyEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
+	verdict := e.Meta[checklog.MetaKeyVerdict]
+	short := strings.TrimPrefix(e.Meta[checklog.MetaKeySigner], `fnode_`)
+	if len(short) > 8 {
+		short = short[:8]
+	}
+	var title string
+	switch verdict {
+	case `verified`:
+		title = `验签通过 · 签名者 ` + short
+	case `missing`:
+		title = `bundle 无签名（个人档放行）`
+	case `unknown-signer`:
+		title = `签名者未登记 ` + short + `——按未签名处理`
+	case `invalid`:
+		title = `验签失败——已拒绝导入`
+	case `rejected`:
+		title = `团队档拒收（未签名/未登记）`
+	default:
+		title = `bundle 验签 · ` + verdict // 未知 verdict 原样透出，不编造措辞
+	}
+	return FeedEvent{
+		Time: e.RecordedAt, Kind: FeedKindSigVerify, Project: pr.name,
+		TaskRef: e.TaskRef, Severity: levelSeverity(e.EffectiveLevel()),
+		Title: title, Detail: e.Detail,
+		Node: e.NodeID, // 验签发生的机器（判定在导入侧做出）
+	}
+}
+
+// levelSeverity 把 checklog Level 映射成 feed severity（pass→ok、warn→warn、
+// fail/blocked→fail、advisory→info）；未知/空保持 info——默认绝不升级。
+func levelSeverity(l checklog.Level) string {
+	switch l {
+	case checklog.LevelPass:
+		return FeedSeverityOK
+	case checklog.LevelWarn:
+		return FeedSeverityWarn
+	case checklog.LevelFail, checklog.LevelBlocked:
+		return FeedSeverityFail
+	default:
+		return FeedSeverityInfo
+	}
+}
+
+// syncOutcomeEvent 把 project-sync checklog 条目（git 通道同步操作结果）投影进流：
+// 标题由结构化 Meta 操作名 + 成败构造，severity 取 EffectiveLevel——与
+// sigVerifyEvent 同款契约纪律（Meta 键是契约，Detail 散文仅供展示）。
+func syncOutcomeEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
+	op := e.Meta[checklog.MetaKeySyncOp]
+	if op == `` {
+		op = `?` // Meta 缺失（手写行）——原样透出未知，不编造操作名
+	}
+	outcome := `成功`
+	if !e.Passed {
+		outcome = `失败`
+	}
+	return FeedEvent{
+		Time: e.RecordedAt, Kind: FeedKindSync, Project: pr.name,
+		TaskRef: e.TaskRef, Severity: levelSeverity(e.EffectiveLevel()),
+		Title: `sync ` + op + ` ` + outcome, Detail: e.Detail,
+		Node: e.NodeID, // 操作发生的机器
+	}
+}
+
+// evalEvent 把 forge eval 命令族落下的观察行投影进流：标题按 Check 名的结构化
+// 映射构造（check 名是 roster 契约，不反解 Detail 散文——与 sigVerifyEvent 同款
+// 纪律），数值摘要取 Detail 首段供展开阅读；severity 走 EffectiveLevel
+// （eval-judge-weak 落 fail、eval-metrics-incomplete 落 fail、其余 pass→ok）。
+func evalEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
+	titles := map[checklog.CheckName]string{
+		checklog.CheckEvalGoldenRun:         `golden 基线运行`,
+		checklog.CheckEvalGoldenRotate:      `golden 季度轮换`,
+		checklog.CheckEvalTrapsRun:          `对抗陷阱重放`,
+		checklog.CheckEvalRun:               `基准运行（Track A）`,
+		checklog.CheckEvalDecompose:         `方差分解`,
+		checklog.CheckEvalJudgeWeak:         `判分器审计告警`,
+		checklog.CheckEvalResumeDrill:       `接续演练`,
+		checklog.CheckEvalMetricsIncomplete: `评测字典校验失败`,
+		checklog.CheckEvalAuditForged:       `审计行完整性告警（伪造/重放）`,
+	}
+	title, ok := titles[e.Check]
+	if !ok {
+		title = `自评测事件`
+	}
+	return FeedEvent{
+		Time: e.RecordedAt, Kind: FeedKindEval, Project: pr.name,
+		TaskRef: e.TaskRef, Severity: levelSeverity(e.EffectiveLevel()),
+		Title: title, Detail: e.Detail,
+		Node: e.NodeID, // 评测运行的机器
+	}
+}
+
+// taskStartEvent 把 TaskState.StartedAt 投影成 task-start 事件：进行中为 info（标题带
+// origin tool + gate 进度），僵尸升级为 warn 且标题标注停滞时长，已完成为 ok。
+func taskStartEvent(pr pulseRoot, s *taskpipeline.TaskState, now time.Time) FeedEvent {
+	ev := FeedEvent{
+		Time: s.StartedAt, Kind: FeedKindTaskStart, Project: pr.name, TaskRef: s.TaskRef,
+	}
+	if s.Lease.ActiveAt(now) {
+		ev.Node = s.Lease.HolderNode // 当前有效租约的持有者（谁在干活；过期即不显示，与 LeaseStatus 同一条「过期即自由」规则）
+	}
+	if s.IsComplete() {
+		ev.Severity = FeedSeverityOK
+		ev.Title = s.TaskRef + " 已完成"
+		return ev
+	}
+	ev.Severity = FeedSeverityInfo
+	var title strings.Builder
+	title.WriteString(s.TaskRef + " 进行中")
+	if !s.IsGeneric() {
+		fmt.Fprintf(&title, " · gate %d/%d", len(s.CompletedGates()), len(taskpipeline.DefaultGates()))
+	}
+	if s.OriginTool != "" {
+		title.WriteString(" · via " + s.OriginTool)
+	}
+	if zombie, _ := taskpipeline.IsZombie(pr.root, s, now); zombie {
+		ev.Severity = FeedSeverityWarn
+		fmt.Fprintf(&title, " · 僵尸 %s", formatStallAge(stallAge(pr.root, s, now)))
+	}
+	ev.Title = title.String()
+	return ev
+}
+
+// stallAge 返回各僵尸检查中量到的最长停滞时长（反复回收类信号无时间戳时为 0）。
+func stallAge(root string, s *taskpipeline.TaskState, now time.Time) time.Duration {
+	var age time.Duration
+	if ok, a := taskpipeline.IsOfferedZombie(s, now); ok && a > age {
+		age = a
+	}
+	if ok, a := taskpipeline.IsClaimedStale(root, s, now); ok && a > age {
+		age = a
+	}
+	if ok, a := taskpipeline.IsInputReqStale(root, s, now); ok && a > age {
+		age = a
+	}
+	if age == 0 {
+		age = now.Sub(s.StartedAt) // 无时间戳信号（abandoned_count≥2）退化用存活时长
+	}
+	return age
+}
+
+// formatStallAge 把停滞时长紧凑渲染（8d / 3h / 45m）。
+func formatStallAge(d time.Duration) string {
+	switch {
+	case d >= 24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d >= time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+}
+
+// gateEvents 把每条 History 投影成 gate 事件：过→ok / 败→fail，gate id 剥掉 task-
+// 前缀（implement/verify/complete），HeadCommit 截短，同 gate 有前次尝试时 Detail 带
+// retry 信息。
+func gateEvents(pr pulseRoot, s *taskpipeline.TaskState) []FeedEvent {
+	events := make([]FeedEvent, 0, len(s.History))
+	attempts := map[string]int{}
+	for _, h := range s.History {
+		attempts[h.Gate]++
+		passed := h.Passed
+		ev := FeedEvent{
+			Time: h.CompletedAt, Kind: FeedKindGate, Project: pr.name, TaskRef: s.TaskRef,
+			Gate:   strings.TrimPrefix(h.Gate, "task-"),
+			Passed: &passed,
+			Commit: shortCommit(h.HeadCommit),
+			Title:  fmt.Sprintf("%s · %s %s", s.TaskRef, strings.TrimPrefix(h.Gate, "task-"), gateVerdict(h.Passed)),
+		}
+		if h.Passed {
+			ev.Severity = FeedSeverityOK
+		} else {
+			ev.Severity = FeedSeverityFail
+		}
+		if n := attempts[h.Gate]; n > 1 {
+			ev.Detail = fmt.Sprintf("第 %d 次尝试（重试）", n)
+		}
+		events = append(events, ev)
+	}
+	return events
+}
+
+func gateVerdict(passed bool) string {
+	if passed {
+		return "通过"
+	}
+	return "失败"
+}
+
+// shortCommit 把完整哈希截成惯例的 7 位短形式。
+func shortCommit(h string) string {
+	if len(h) > 7 {
+		return h[:7]
+	}
+	return h
+}
+
+// conclusionEvent 投影 act 结论：severity 按 grade 映射（A/B→ok、C→info、D→warn、
+// F→fail），Detail 带证据强度 + det/claim 数 + 验收 x/y。
+func conclusionEvent(pr pulseRoot, c act.Conclusion) FeedEvent {
+	score := int(c.Score + 0.5) // 四舍五入到 int，内联进标题（前端不另读分数字段）
+	return FeedEvent{
+		Time: c.CompletedAt, Kind: FeedKindConclusion, Project: pr.name, TaskRef: c.TaskRef,
+		Severity: gradeSeverity(c.Grade),
+		Title:    fmt.Sprintf("%s 完成 · %s %d 分", c.TaskRef, c.Grade, score),
+		Detail: fmt.Sprintf("证据 %s · det=%d claim=%d · 验收 %d/%d",
+			c.Strength, c.Deterministic, c.AgentClaim, c.AcceptancePass, c.AcceptanceTotal),
+		Grade: c.Grade,
+		Node:  c.NodeID, // 结论落章机器
+	}
+}
+
+// gradeSeverity 把字母 grade 映射成 feed severity；未知/空 grade 保持 info。
+func gradeSeverity(grade string) string {
+	switch grade {
+	case "A", "B":
+		return FeedSeverityOK
+	case "C":
+		return FeedSeverityInfo
+	case "D":
+		return FeedSeverityWarn
+	case "F":
+		return FeedSeverityFail
+	default:
+		return FeedSeverityInfo
+	}
+}
