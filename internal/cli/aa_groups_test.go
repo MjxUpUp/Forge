@@ -1,0 +1,120 @@
+package cli
+
+import (
+	"github.com/MjxUpUp/Forge/internal/cliskills"
+	"github.com/MjxUpUp/Forge/internal/clitask"
+	"strings"
+	"testing"
+
+	"github.com/spf13/cobra"
+)
+
+// TestCommandGroups pins the gentle-grouping contract of aa_groups.go.
+//
+// TestCommandGroups 钉住 aa_groups.go 的温和分组契约：每个被 aa_groups 引用的命令变量
+// 必须是包级 var 字面量（非 init 内赋值），否则 aa_groups.init 因文件名 aa_ 最先执行时
+// 解引用 nil var 触发 panic，整个 forge 二进制 init 崩溃（连 forge --help 都跑不到）。
+//
+// 本测试二进制启动时 aa_groups.init 同样会跑：若有人把任一 xxxCmd 改回 init 内赋值，
+// 测试二进制 init 直接 panic 崩溃（比断言更强的保护）。下面的显式断言让契约可读：
+// 每个被 aa_groups 引用的命令变量必须非 nil、GroupID 已设、CommandPath 不变。
+func TestCommandGroups(t *testing.T) {
+	// 5 个职能组全部注册，标题正确。
+	wantGroups := []string{"项目生命周期", "项目管道", "任务质量", "经验与治理", "集成与安全"}
+	gotGroups := make([]string, 0, len(wantGroups))
+	for _, g := range rootCmd.Groups() {
+		gotGroups = append(gotGroups, g.Title)
+	}
+	for _, want := range wantGroups {
+		found := false
+		for _, got := range gotGroups {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("group %q 未注册，实际 groups: %v", want, gotGroups)
+		}
+	}
+
+	// 每组抽查一个命令：变量非 nil + GroupID 正确 + 命令路径不变（温和分组的承诺）。
+	cases := []struct {
+		name     string
+		cmd      *cobra.Command
+		group    string
+		wantPath string
+	}{
+		{"init", initCmd, "lifecycle", "forge init"},
+		{"status", statusCmd, "pipeline", "forge status"},
+		{"task", clitask.Root, "quality", "forge task"},
+		{"skills", cliskills.Root, "governance", "forge skills"},
+		{"hazard", hazardCmd, "integrate", "forge hazard"},
+	}
+	for _, c := range cases {
+		if c.cmd == nil {
+			t.Fatalf("%sCmd is nil — 包级 var 未初始化，aa_groups.init 会解引用 nil panic", c.name)
+		}
+		if c.cmd.GroupID != c.group {
+			t.Errorf("%sCmd.GroupID = %q, want %q", c.name, c.cmd.GroupID, c.group)
+		}
+		if got := c.cmd.CommandPath(); got != c.wantPath {
+			t.Errorf("%sCmd path = %q, want %q (温和分组不改路径)", c.name, got, c.wantPath)
+		}
+	}
+}
+
+// TestCommandGroups_AllTopLevelGrouped pins that every top-level command belongs to some function group.
+//
+// TestCommandGroups_AllTopLevelGrouped 除 cobra 自动生成的 completion/help 外，
+// 所有顶层命令都归入某个职能组——防止新增命令漏设 GroupID（会显示在 help 末尾游离）。
+func TestCommandGroups_AllTopLevelGrouped(t *testing.T) {
+	for _, c := range rootCmd.Commands() {
+		name := c.Name()
+		// completion/help 是 cobra 自动生成的辅助命令，刻意留默认不分组。
+		if name == "completion" || name == "help" {
+			if c.GroupID != "" {
+				t.Errorf("自动命令 %s 不应设 GroupID，got %q", name, c.GroupID)
+			}
+			continue
+		}
+		if c.GroupID == "" {
+			t.Errorf("顶层命令 %s 未归组（GroupID 空），会在 forge --help 游离显示", name)
+		}
+		// GroupID 必须是已注册的组。
+		valid := false
+		for _, g := range rootCmd.Groups() {
+			if g.ID == c.GroupID {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			t.Errorf("命令 %s 的 GroupID %q 未在 rootCmd.AddGroup 注册，AddCommand 会 panic", name, c.GroupID)
+		}
+	}
+}
+
+// TestCrossMachineHelpCrossRef pins the discoverability cross-references added after a real miss.
+//
+// TestCrossMachineHelpCrossRef 钉住可发现性交叉指引（源自一次真实误入）：找跨机器
+// 迁移的用户会在 forge --help 撞上 sync（资产版本同步）/ migrate（.forge/ → DataDir
+// 升级搬迁）而误判功能不存在。sync/migrate 必须指向 forge project export/import；
+// project 必须把命令族串起来（task export/import + registry rekey）。
+func TestCrossMachineHelpCrossRef(t *testing.T) {
+	cases := []struct {
+		name string
+		long string
+		want string
+	}{
+		{"sync", syncCmd.Long, "forge project export/import"},
+		{"migrate", migrateCmd.Long, "forge project export/import"},
+		{"project", projectCmd.Long, "forge task export/import"},
+		{"project", projectCmd.Long, "forge registry rekey"},
+	}
+	for _, c := range cases {
+		if !strings.Contains(c.long, c.want) {
+			t.Errorf("forge %s 的 Long 缺少交叉指引 %q——名字撞车命令必须指路跨机器迁移入口", c.name, c.want)
+		}
+	}
+}

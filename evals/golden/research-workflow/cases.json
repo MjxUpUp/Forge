@@ -1,0 +1,56 @@
+{
+  "skill": "research-workflow",
+  "cases": [
+    {
+      "id": "g-research-workflow-t1",
+      "skill": "research-workflow",
+      "kind": "trigger",
+      "prompt": "帮我对比一下向量数据库 Milvus 和 Qdrant 怎么选",
+      "target": "research-workflow",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-research-workflow-t2",
+      "skill": "research-workflow",
+      "kind": "trigger",
+      "prompt": "调研一下国内外 AI coding agent 的市场份额，出份报告发飞书",
+      "target": "research-workflow",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-research-workflow-t3",
+      "skill": "research-workflow",
+      "kind": "trigger",
+      "prompt": "OpenAI 最新一轮到底融了多少钱？多找几个来源核实下",
+      "target": "research-workflow",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-research-workflow-n1",
+      "skill": "research-workflow",
+      "kind": "not-trigger",
+      "prompt": "cobra 的 PersistentFlags 和 Flags 有什么区别",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-research-workflow-n2",
+      "skill": "research-workflow",
+      "kind": "not-trigger",
+      "prompt": "按模板帮我生成本周的周报",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    },
+    {
+      "id": "g-research-workflow-b1",
+      "skill": "research-workflow",
+      "kind": "not-trigger",
+      "prompt": "golang.org/x/sync 最新版本是多少，跟 go 1.21 兼容吗",
+      "origin": "curated",
+      "created_at": "2026-08-17T00:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  # 所有分支推送都跑三平台 CI——跨平台失败（路径分隔符等）必须在合并前暴露，
+  # 而不是合并推 main 后才报警。concurrency 组按 ref 去重，同一分支反复 push
+  # 自动取消旧 run，不会堆积。
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, master]
+
+# 最小权限：CI 只读代码，不写仓库。显式声明避免吃仓库默认值（默认可能是 write）。
+permissions:
+  contents: read
+
+# 同一 ref 反复 push 时取消在跑的旧 run，避免排队堆积。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    # 25min：windows + -race 下 internal/cli 单包可 >10min、整 job 实测 11~15min+
+    # （2026-09-22 实录：#87 压线 14m57s 过、#88 两次撞顶——先撞 go test 包级默认
+    # 10min 超时、再撞本处 job 15min 超时）。15min 天花板对 windows 是随机红灯，
+    # 抬到 25min 留余量；ubuntu/macos 实际耗时 ~3-5min 不受影响（timeout 是上限
+    # 不是耗时）。包级 -timeout 同步抬到 20m（见下方 go test 行）。
+    timeout-minutes: 25
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          # Go 版本唯一真相源是 go.mod，消除 ci.yml/release.yml 多处硬编码漂移。
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      # -timeout 20m：包级默认 10min 被 windows + -race 的 internal/cli 撞穿过
+      # （2026-09-22 #88 实录 601s panic），抬到与 job 上限匹配的 20m。
+      - run: go test ./... -count=1 -race -timeout 20m
+      # gofmt 门禁（仅 ubuntu 跑一份即可，格式化结果与 OS 无关）。
+      # 覆盖根 module 全部 .go 目录（cmd/internal/skills，vendor/ 不参与）；
+      # 与仓库 .gitattributes 的 eol=lf 配合只报真实格式问题。
+      # `! gofmt -l ... | grep .`：违规文件名直接进 CI 日志（test -z 会吞掉输出，失败只见 exit 1）。
+      - if: matrix.os == 'ubuntu-latest'
+        run: "! gofmt -l cmd internal skills | grep ."
+      # 死代码金丝雀（staticcheck + deadcode 双零）：防死代码存量在清扫后悄悄
+      # 回流——dead-code-sweep（5dd3ae8）的一次性人工双零固化为常驻门禁。
+      # 工具版本与口径的唯一真相源在 Makefile canary 目标（deadcode 必须带
+      # -test：测试可达算活代码）。结果与 OS 无关，ubuntu 跑一份即可（gofmt 同例）。
+      - if: matrix.os == 'ubuntu-latest'
+        run: make canary
+
+  # 发版脚本（scripts/release.js）的 node:test 测试。原来只存在于本地，CI 不跑 = 没测试。
+  # forge-dsh 套件必须加 windows：win32 走 cmd.exe spawn 路径（npm 只装 forge.cmd
+  # shim，裸 spawn 是 ENOENT → 全 fail-open），只跑 ubuntu = Windows 路径 CI 不跑
+  # = 没测试（2026-08-20 本机实测全静默失效而 CI 全绿）。
+  scripts-test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+      - run: node --test scripts/release.test.js
+      # plugins/forge-dsh 的 node:test 套件（真实 cordis 运行时接线测试）——同一标准：CI 不跑 = 没测试。
+      - run: npm ci --no-audit --no-fund
+        working-directory: plugins/forge-dsh
+      - run: node --test lib/*.test.js
+        working-directory: plugins/forge-dsh
+
+  # skills 质量门禁：canonical 库规范校验 + 安全审查 + plugin pack 生成物漂移 + eval 电池/互斥集。
+  # 单 job 串行跑（共享一次 build），任一失败即红。
+  skills-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+      - run: go build -o /tmp/forge ./cmd/forge/
+      # R1-R17 规范校验（exit 2 = 规范失败）。--canonical 指向仓库内 skills/，不走 embed。
+      - run: /tmp/forge skills validate --canonical ./skills
+      # 21 条安全规则审查；--gate：HIGH/CRITICAL 即 exit 4。
+      - run: /tmp/forge skills audit --canonical ./skills --gate
+      # 生成物漂移门禁：pack 默认写 cwd（重新生成 .claude-plugin/.cursor-plugin），
+      # 再 git diff 比对——有人改了生成物源头却没重跑 pack，这里立刻红。
+      # pathspec 必须覆盖 plugins/ 下两份载荷（plugin.json/reasonix-plugin.json）
+      # ——W0.2 审查实证：只盖根级 marketplace 时载荷 stale 而 CI 绿。
+      - run: /tmp/forge plugin pack && git diff --exit-code -- .claude-plugin .cursor-plugin plugins
+      # eval 回归电池 + 互斥集混淆矩阵。空电池/无 run 打 vacuous 提示不拦
+      # （「未检查」不是「已验证无回归」——范围诚实性，见 battery 语义）。
+      - run: /tmp/forge skills battery --dir evals --gate
+      - run: /tmp/forge skills mutex-report --dir evals --gate

@@ -1,0 +1,14 @@
+{
+  "trigger_cases": [
+    { "query": "怎么从零建一套 design token 体系", "should_trigger": true },
+    { "query": "Figma 变量怎么同步到 CSS", "should_trigger": true },
+    { "query": "想做 OKLCH 双主题切换", "should_trigger": true },
+    { "query": "shadcn registry 怎么集成", "should_trigger": true },
+    { "query": "token 怎么同时输出到 iOS 和 Android", "should_trigger": true },
+    { "query": "把旧设计系统迁移到新色板", "should_trigger": false },
+    { "query": "组件库选哪个好", "should_trigger": false },
+    { "query": "把页面做得好看一点", "should_trigger": false },
+    { "query": "帮我写个 React 卡片组件", "should_trigger": false },
+    { "query": "Tailwind 的 @theme 语法怎么写", "should_trigger": false }
+  ]
+}

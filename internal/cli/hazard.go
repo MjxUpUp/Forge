@@ -1,0 +1,454 @@
+package cli
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hazard"
+	"github.com/MjxUpUp/Forge/internal/util"
+	"github.com/spf13/cobra"
+)
+
+// forge hazard 让 on-demand-guards 的高危命令拦截成为自动挡，并落地 human-in-the-loop。
+//
+// 形态（Forge hook 模型只有 approve/block，调不起各 AI 工具私有的确认弹窗）：
+//   - PreToolUse Bash hook hazard-guard 检测高危命令 → block + additionalContext 指引：
+//     用户本回合已明确指令/确认过该操作时 agent 直接 confirm 登记，无需二次确认；
+//     否则先用所在工具的提问确认机制向用户说明风险获明确确认。
+//   - agent 获确认后 `forge hazard confirm "<命令>"` 登记限时（5min）标记 → 重试原命令 →
+//     hook 见标记放行。
+//
+// 本命令组是 HITL 闭环的"登记/查询"端；高危模式检测在 hooks/embed.go HazardGuardHook。
+
+func init() {
+	rootCmd.AddCommand(hazardCmd)
+	hazardCmd.AddCommand(hazardConfirmCmd)
+	hazardCmd.AddCommand(hazardFingerprintCmd)
+	hazardCmd.AddCommand(hazardConfirmedCmd)
+	hazardCmd.AddCommand(hazardStatusCmd)
+	hazardCmd.AddCommand(hazardLogCmd)
+
+	// --fingerprint：hook 已用 forge hazard fingerprint 算好指纹，agent 直接回传 hex
+	// 登记确认。指纹是 sha256 hex（仅 [0-9a-f]），复制无引号/转义失真风险——而回传
+	// 命令串会被 agent shell 重新解析吃掉引号（如 SQL mysql -e 'DROP TABLE t' 的单引号），
+	// 与 hook 原始命令指纹不一致、确认后仍被拦。见 hazard.ConfirmByFingerprint。
+	hazardConfirmCmd.Flags().StringVar(&hazardConfirmFingerprint, "fingerprint", "",
+		"直接按 hook 输出的 hex 指纹登记确认（避免命令串复制失真）")
+	// --last 免复制路径：直接从事件审计日志确认最新被拦命令。64 字符 hex 指纹或命令串
+	// 的转写都已被证实是失真源（手抄错字；裸命令 confirm 与 hook 全行指纹失配）。
+	// block 事件由 hook 自己写入——其指纹根本无需复制。见 hazard.ConfirmLastBlock。
+	hazardConfirmCmd.Flags().BoolVar(&hazardConfirmLast, "last", false,
+		"确认最近一条被拦命令（从事件日志取指纹，免复制转写）")
+}
+
+var hazardCmd = &cobra.Command{
+	Use:   "hazard",
+	Short: "高危命令 human-in-the-loop 确认管理",
+	Long: `forge hazard 管理 on-demand-guards 自动挡的"高危命令已确认"标记，支撑 human-in-the-loop。
+
+hazard-guard hook 拦截高危命令（rm -rf / git push --force / DROP TABLE / kubectl delete /
+DELETE 无 WHERE 等）后：若用户在本回合已明确指令/确认过该操作，可直接 confirm --last
+登记放行，无需二次确认；否则先用你所在工具的提问确认机制向用户说明风险、获明确确认，
+再 confirm 登记限时标记（5min 内同命令重试放行）。这是 Forge hook 模型下 HITL 的落地
+形态——Forge 不直接弹各工具的确认框，靠 block + 指引 + 限时标记闭环。
+
+子命令：
+  confirm <命令> [--fingerprint <hex>] [--last]
+                     登记一次确认（5min 内同命令重试放行）；--fingerprint 直接按
+                     hook 输出的 hex 指纹登记（避免命令串复制失真）；--last 确认最近
+                     一条被拦命令（从事件日志取指纹，免任何复制转写，推荐）。
+                     --last 与 --fingerprint 同给时 --last 优先（后者被忽略）
+  fingerprint <命令> 算命令指纹（hook 内部用）
+  confirmed <指纹>   查指纹是否已确认（hook 内部用，exit 0=是/1=否）
+  status             列出当前有效确认`,
+}
+
+var hazardConfirmCmd = &cobra.Command{
+	Use:   "confirm <命令>",
+	Short: "登记一次高危命令确认（5min 内同命令重试放行）",
+	Args: func(cmd *cobra.Command, args []string) error {
+		// --fingerprint 路径不需要命令参数（指纹已含信息）；--last 也不需要（最新
+		// block 事件已含全部信息）；否则需命令参数算指纹。
+		if cmd.Flags().Changed("fingerprint") || cmd.Flags().Changed("last") {
+			return nil
+		}
+		if len(args) < 1 {
+			return fmt.Errorf("需要命令参数，或用 --fingerprint 按指纹登记，或用 --last 确认最近被拦命令")
+		}
+		return nil
+	},
+	// F.2a confirm 链式分离（设计 F，首发即 blocked 指向承诺表 §二.1②）：
+	// --last / --fingerprint / 命令参数之后不得再接 ; / | / && 等连接符——confirm 与目标
+	// 危险命令同一 Bash 调用是「自助闭环」形态（甲机 53/53 实录）。命令参数本身可能含
+	// 连接符（确认的恰是那条复合命令），故只拦 confirm 自身被链式续行的形态：参数串中
+	// 出现「独立段以 confirm 开头且后面还有连接符续段」时拒绝。简化判定（覆盖实录形态）：
+	// 参数首段之前存在连接符（confirm 嵌在链条中段/尾段），或参数串以连接符结尾。
+	// PreToolUse 首行快速判定更可靠——这里在 CLI 层兜底（直接终端调用绕过 hook 的场景）。
+	RunE: runHazardConfirm,
+}
+
+// confirmChainSeparated reports whether the confirm invocation is chained with other commands
+// (F.2a): a leading connector before the confirm argument means confirm rides mid/late in a
+// compound line — the self-service loop the design severs.
+//
+// confirmChainSeparated 报告 confirm 调用是否被链式续行（F.2a）：confirm 参数前存在连接符
+// = confirm 嵌在复合命令的中/尾段——设计要切断的自助闭环形态。
+func confirmChainSeparated(rawArgs []string) bool {
+	if len(rawArgs) == 0 {
+		return false
+	}
+	joined := strings.Join(rawArgs, " ")
+	head := strings.TrimSpace(joined)
+	lower := strings.ToLower(head)
+	// confirm 自身在链条中段/尾段：前导 && / ; / | （cd X && forge hazard confirm … 形态
+	// 由 hook 层的 cd 前缀豁免覆盖；CLI 层只看参数本身的连接符）。
+	for _, prefix := range []string{"&& ", "; ", "| ", "|| "} {
+		if strings.HasPrefix(lower, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// hazardConfirmFingerprint 由 --fingerprint flag 注入。非空时走 ConfirmByFingerprint
+// 路径（hook 已算好指纹，绕过命令串复制失真）。
+var hazardConfirmFingerprint string
+
+// hazardConfirmLast 由 --last flag 注入：确认审计日志中最新一条 block 事件
+// （免复制 HITL 路径，见 hazard.ConfirmLastBlock）。
+var hazardConfirmLast bool
+
+var hazardFingerprintCmd = &cobra.Command{
+	Use:    "fingerprint <命令>",
+	Short:  "算命令指纹（hook 内部用）",
+	Args:   cobra.MinimumNArgs(1),
+	RunE:   runHazardFingerprint,
+	Hidden: true,
+}
+
+var hazardConfirmedCmd = &cobra.Command{
+	Use:    "confirmed <指纹>",
+	Short:  "查指纹是否已确认（hook 内部用）",
+	Args:   cobra.ExactArgs(1),
+	RunE:   runHazardConfirmed,
+	Hidden: true,
+}
+
+var hazardStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "列出当前有效确认",
+	RunE:  runHazardStatus,
+}
+
+// hazardLogCmd 由 hazard-guard hook 内部调用，追加事件到 events.jsonl 审计日志。
+// Hidden：非用户面向（hook 用），但保留可手动调用以便调试审计流。
+var hazardLogCmd = &cobra.Command{
+	Use:    "log <type> <命令>",
+	Short:  "追加一条 hazard 事件到审计日志（hook 内部用）",
+	Args:   cobra.MinimumNArgs(1),
+	Hidden: true,
+	RunE:   runHazardLog,
+}
+
+// runHazardConfirm 登记确认。MinimumNArgs(1) + Join：agent 可引号传整串，也可不引号
+// （多 arg 被空格 join 还原）——空白归一在 hazard.Fingerprint 内做，两种传法同指纹。
+func runHazardConfirm(cmd *cobra.Command, args []string) error {
+	// F.2a confirm 链式分离（设计 F，首发即 blocked——承诺表 §二.1②，形态门禁豁免见
+	// §二.3 裁决）：confirm 参数以连接符开头 = confirm 嵌在复合命令的中/尾段（甲机 53/53
+	// 自助闭环实录形态）。拒绝并指引单独执行——拒绝的是形态不是操作，单独跑 confirm 即放行。
+	if confirmChainSeparated(args) {
+		return fmt.Errorf("BLOCKED: hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这正是拦截要切断的自助闭环。请单独执行：forge hazard confirm --last")
+	}
+	// F.2b confirm 真人化（设计 F + delivery-hardening 墙-1b 兑现）：1.58 的
+	// advisory 预告已过 ≥2 minor——现在拒绝（BLOCKED）并要求用户终端执行。
+	// stdinIsHumanTerminal 用 char-device 判别（clitask --trust-foreign 同款）
+	// + 审查 P1-1 加固：stat 失败按非终端处理（fail-closed——`halt release --yes <&-`
+	// 关闭 stdin 曾整门跳过）；排除 /dev/null 与 NUL（它们本身是 char device，
+	// `forge hazard confirm --last < /dev/null` 曾直接绕过）；mintty（Git Bash
+	// 默认终端）给原生进程的 stdin 是命名管道——真人会被拒，指引换 ConPTY 终端。
+	if !stdinIsHumanTerminalForHazard() {
+		if os.Getenv(`TERM_PROGRAM`) == `mintty` {
+			return fmt.Errorf("hazard confirm 须真人在终端运行：Git Bash/mintty 的 stdin 是命名管道（非 char device），无法与 agent 管道区分——请改用 Windows Terminal / PowerShell 等 ConPTY 终端执行本命令")
+		}
+		return fmt.Errorf("hazard confirm 是人工确认决策：须由真人在终端中运行（当前 stdin 非终端——agent/管道环境不得自我确认被拦的高危命令）")
+	}
+	// --last 免复制路径：直接从事件流确认最新被拦命令（指纹是 hook 拦截时写入的，
+	// 天然权威、零转写）。最先判定：--last 表达的意图就是"刚被拦的那条"，不需要
+	// 其他输入。
+	if hazardConfirmLast {
+		p, err := findProject()
+		if err != nil {
+			return err
+		}
+		fp, command, err := hazard.ConfirmLastBlock(p)
+		if err != nil {
+			return fmt.Errorf("failed to confirm last block: %w", err)
+		}
+		ttlMin := int(hazard.ConfirmTTL / time.Minute)
+		fmt.Printf("✅ 已确认最近被拦命令（指纹 %s，%d 分钟内同命令重试放行）：\n  %s\n重试原命令即可。\n",
+			shortFingerprint(fp), ttlMin, command)
+		return nil
+	}
+	// --fingerprint 格式校验前置（在 findProjectRoot 前）：格式校验是纯输入校验，不需要
+	// 项目上下文。CI 等无 .forge/ 环境下避免 not-in-a-forge-project 掩盖指纹校验失败——
+	// agent 抄错指纹应被明确拒绝。与 ConfirmByFingerprint 同源校验。
+	if hazardConfirmFingerprint != "" {
+		if err := hazard.ValidateFingerprint(hazardConfirmFingerprint); err != nil {
+			return err
+		}
+	}
+	p, err := findProject()
+	if err != nil {
+		return err
+	}
+	ttlMin := int(hazard.ConfirmTTL / time.Minute)
+	// --fingerprint 路径：hook 已算好指纹，agent 回传 hex（复制无失真）。命令串仅审计用。
+	if hazardConfirmFingerprint != "" {
+		// May be empty (not enforced when --fingerprint is set)
+		command := strings.Join(args, " ") // 可空（--fingerprint 时不强制）
+		if err := hazard.ConfirmByFingerprint(p, hazardConfirmFingerprint, command); err != nil {
+			return fmt.Errorf("failed to confirm hazard: %w", err)
+		}
+		fmt.Printf("✅ 已确认高危命令（指纹 %s，%d 分钟内同命令重试放行）。重试原命令即可。\n",
+			hazardConfirmFingerprint[:12], ttlMin)
+		return nil
+	}
+	command := strings.Join(args, " ")
+	fp, err := hazard.Confirm(p, command)
+	if err != nil {
+		return fmt.Errorf("failed to confirm hazard: %w", err)
+	}
+	fmt.Printf("✅ 已确认高危命令（指纹 %s，%d 分钟内同命令重试放行）。重试原命令即可。\n",
+		fp[:12], ttlMin)
+	return nil
+}
+
+// runHazardFingerprint 只打印指纹（hook 脚本用 $(forge hazard fingerprint ...) 捕获，
+// 输出必须干净——无额外文字）。
+func runHazardFingerprint(cmd *cobra.Command, args []string) error {
+	command := strings.Join(args, " ")
+	fmt.Println(hazard.Fingerprint(command))
+	return nil
+}
+
+// runHazardConfirmed 用 exit code 传达结果（hook 脚本只读退出码）。os.Exit 绕过 cobra
+// 的 "Error:" stderr 噪声。
+func runHazardConfirmed(cmd *cobra.Command, args []string) error {
+	p, err := findProject()
+	if err != nil {
+		// No project root -> treat as unconfirmed (fail-safe: block and re-confirm)
+		os.Exit(1) // 无项目根 → 视为未确认（fail-safe：拦了重新确认）
+	}
+	ok, err := hazard.IsConfirmed(p, args[0])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[hazard] %v\n", err)
+		os.Exit(1)
+	}
+	if ok {
+		os.Exit(0)
+	}
+	os.Exit(1)
+	// unreachable — all paths have already called os.Exit
+	return nil // unreachable — 所有路径已 os.Exit
+}
+
+// runHazardLog 由 hazard-guard hook 调用，追加一条事件到 events.jsonl。hook 是 bash，
+// 直接写 jsonl 不安全（命令串引号/特殊字符破坏 JSON），故由 Go 端安全序列化。
+// args[0]=事件类型（block/release/data），args[1:]=命令串（join 还原，与 confirm 同款）。
+// 无项目根时静默跳过——审计不该污染非 forge 项目；失败由 hook 调用处 `|| true` 兜底，
+// 审计失败绝不影响 hook 主流程（block/放行决策）。
+func runHazardLog(cmd *cobra.Command, args []string) error {
+	p, err := findProject()
+	if err != nil {
+		return nil
+	}
+	eventType := args[0]
+	// 事件类型白名单（delivery-hardening P0-1 修复）：confirm/halt-release 是
+	// 清账重置点——若可经本调试入口写入，agent 一条 `forge hazard log confirm x`
+	// 即零交互清空悬账，墙-1b 的「出口只有真人路径」承诺被证伪。只放 hook 实际
+	// 使用的三类事件；confirm/release 走各自带终端门的命令。
+	switch eventType {
+	case hazard.EventBlock, hazard.EventRelease, hazard.EventData:
+	default:
+		return fmt.Errorf("BLOCKED: hazard log 只接受 block/release/data 事件类型（got %q）——confirm/halt-release 是清账重置点，只能经 forge hazard confirm / forge hazard halt release（真人终端）写入", eventType)
+	}
+	command := strings.Join(args[1:], " ")
+	// SessionID 取 hook 派生环境的 FORGE_SESSION_ID（hookdispatch 注入给脚本）：双投递去重
+	// 键与 checklog 侧 blockRecordMarker 对齐到 (session, type, fingerprint)——两个并行
+	// 会话 3s 内各拦一次同命令是两起事件，不是一次双投递。人类终端直跑无该 env，留空
+	// （SanitizeSessionID("") 会返回占位符 "session"，故只对非空值归一——空保持空是
+	// isDoubleDelivery「一侧为空则不比会话」退化规则的前提）。
+	var sid string
+	if raw := os.Getenv("FORGE_SESSION_ID"); raw != "" {
+		sid = util.SanitizeSessionID(raw)
+	}
+	return hazard.AppendEvent(p, hazard.Event{
+		Type:        eventType,
+		Fingerprint: hazard.Fingerprint(command),
+		Command:     command,
+		SessionID:   sid,
+	})
+}
+
+func runHazardStatus(cmd *cobra.Command, args []string) error {
+	p, err := findProject()
+	if err != nil {
+		return err
+	}
+	// 近 24h 事件统计（来自 events.jsonl 审计日志）：让用户看到 hazard-guard 的工作量
+	// 与潜在误伤规模，而非只有"当前有效确认"——补全 2026-06 误伤审计只能扒 checklog 的痛点。
+	since := time.Now().Add(-24 * time.Hour)
+	blocks, berr := hazard.CountSince(p, hazard.EventBlock, since)
+	releases, rerr := hazard.CountSince(p, hazard.EventRelease, since)
+	data, derr := hazard.CountSince(p, hazard.EventData, since)
+	if berr != nil || rerr != nil || derr != nil {
+		// 审计日志不可读绝不能渲染成"零活动"（H-1 死探针伪装健康模式）——
+		// 撤掉统计行而不是给出误导性数字。
+		fmt.Printf("⚠ 事件日志不可读（%v / %v / %v），24h 统计不可用\n", berr, rerr, derr)
+	} else {
+		fmt.Printf("近 24h 事件：拦截 %d、确认放行 %d、数据上下文放行 %d\n", blocks, releases, data)
+		fmt.Println(`  详见 hazards 事件日志：` + p.HazardsEventsPath())
+	}
+
+	active, err := hazard.ActiveConfirmations(p)
+	if err != nil {
+		return err
+	}
+	if len(active) == 0 {
+		fmt.Println("\n无有效确认。高危命令将被 hazard-guard 拦截，需确认后 forge hazard confirm 登记。")
+		return nil
+	}
+	fmt.Printf("\n当前有效确认（%d 条，按剩余时间升序）：\n", len(active))
+	now := time.Now()
+	for _, c := range active {
+		remaining := c.ExpiresAt.Sub(now).Round(time.Second)
+		cmd := c.Command
+		if cmd == "" {
+			cmd = "(未记录命令)"
+		}
+		fmt.Printf("  %s  剩余 %-5s  %s\n", shortFingerprint(c.Fingerprint), remaining, cmd)
+	}
+	return nil
+}
+
+// shortFingerprint 返回确认指纹的展示前缀。指纹从磁盘确认文件读回（不可信
+// 输入）：过短或空值不能在固定 [:12] 切片上 panic。
+func shortFingerprint(fp string) string {
+	const maxLen = 12
+	if len(fp) > maxLen {
+		return fp[:maxLen]
+	}
+	return fp
+}
+
+// hazardHaltCmd — safe-halt 状态与人工解锁（focus-batches §2b）：hazard-guard
+// 连续拦截 ≥3 次（自最近一次 confirm/release）→ 会话进入 safe-halt：停止自修复、
+// 人审解锁（forge hazard halt release）。ASE 2026（547 起真实安全事件）的护栏
+// 三要素之一：environmental constraints / failure transparency / safe-halt。
+var hazardHaltCmd = &cobra.Command{
+	Use:   "halt",
+	Short: "safe-halt 状态：连续高危拦截达阈值的会话须人审解锁后才能继续高危操作",
+}
+
+var hazardHaltStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "查看 safe-halt 状态（连续拦截计数 / 是否停机）",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := findProject()
+		if err != nil {
+			return err
+		}
+		st := hazard.CheckHalt(p)
+		if st.Halted {
+			fmt.Printf("🔴 SAFE-HALT：自最近重置以来连续高危拦截 %d 次（阈值 %d）——停止自修复尝试，人工核查最近拦截的命令（forge hazard status / events.jsonl）后解锁：forge hazard halt release --yes\n",
+				st.Blocks, hazard.HaltThreshold)
+			return nil
+		}
+		fmt.Printf("✅ 未停机（连续拦截 %d/%d；confirm 与 halt release 会重置计数）\n", st.Blocks, hazard.HaltThreshold)
+		return nil
+	},
+}
+
+var hazardHaltReleaseCmd = &cobra.Command{
+	Use:   "release --yes",
+	Short: "人工解锁 safe-halt（记 halt-release 审计事件）",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		yes, _ := cmd.Flags().GetBool("yes")
+		if !yes {
+			return fmt.Errorf("release 是人工审阅决策：核查最近拦截命令后加 --yes 执行（agent 不得自我解锁）")
+		}
+		// 真人终端判别（delivery-hardening 墙-1b）：清账门把 release 变成交付出口
+		// 后，agent 自跑 release --yes 即自我放行——--yes 是自供文本，char-device
+		// 判别才是"人工"的机械证据（confirm 同款，mintty 指引同款）。
+		if !stdinIsHumanTerminalForHazard() {
+			if os.Getenv(`TERM_PROGRAM`) == `mintty` {
+				return fmt.Errorf("halt release 须真人在终端运行：Git Bash/mintty 的 stdin 是命名管道（非 char device），无法与 agent 管道区分——请改用 Windows Terminal / PowerShell 等 ConPTY 终端执行本命令")
+			}
+			return fmt.Errorf("halt release 是人工解锁决策：须由真人在终端中运行（当前 stdin 非终端——agent/管道环境不得自我解锁 safe-halt）")
+		}
+		p, err := findProject()
+		if err != nil {
+			return err
+		}
+		return haltReleaseCore(p, hazard.CheckHalt(p))
+	},
+}
+
+// haltReleaseCore 执行 halt release 的清账/解锁决策。真人终端判别留在 RunE
+// （测试环境 stdin 非 char device，cmd 层无法覆盖）；核心行为纯函数化供测试。
+// 三种状态都写 release 事件（--yes + 终端判别是状态无关的人工证明）：
+//   - safe-halt 停机：解锁 + 清账（原行为）；
+//   - 未停机悬账（1-2 个未确认拦截）：清账——confirm 单条确认本就整账归零
+//     （halt.go 计数逻辑），release 核销不弱于它。2026-09-22 实录：清账门报错
+//     曾把用户指到本命令而未停机路径 no-op（"无需解锁"），出口不可达；
+//   - 事件流被毁：人工核销——该状态下 confirm --last 无事件可读、未停机路径
+//     no-op，不清账即死锁（清账门永拦）。
+//
+// 仅干净账（未停机、无悬账、事件流在）保持 no-op。
+func haltReleaseCore(p *forgedata.Project, st hazard.HaltState) error {
+	destroyed := hazard.EventsDestroyed(p)
+	if !st.Halted && st.Blocks <= 0 && !destroyed {
+		fmt.Printf("未处于 safe-halt（连续拦截 0/%d）且无未确认拦截悬账，无需解锁。\n", hazard.HaltThreshold)
+		return nil
+	}
+	if err := hazard.ReleaseHalt(p); err != nil {
+		return fmt.Errorf("记录解锁事件失败: %w", err)
+	}
+	switch {
+	case st.Halted:
+		fmt.Printf("✅ safe-halt 已解锁（halt-release 审计事件已记；计数归零）。解锁前提：最近拦截的命令已在 forge hazard status 核查过。\n")
+	case destroyed:
+		fmt.Printf("✅ 事件流被毁状态已人工核销（halt-release 审计事件已记）。核销前提：被清除前的拦截记录已人工核查过。\n")
+	default:
+		fmt.Printf("✅ 未停机悬账已核销（%d 个未确认拦截，halt-release 审计事件已记；计数归零）。核销前提：最近拦截的命令已在 forge hazard status 核查过。\n", st.Blocks)
+	}
+	return nil
+}
+
+func init() {
+	hazardHaltReleaseCmd.Flags().Bool("yes", false, "确认已人工核查最近拦截的命令")
+	hazardHaltCmd.AddCommand(hazardHaltStatusCmd, hazardHaltReleaseCmd)
+	hazardCmd.AddCommand(hazardHaltCmd)
+}
+
+// stdinIsHumanTerminalForHazard 报告 stdin 是否挂在真人终端上（char device 且
+// 非 /dev/null/NUL 哑设备；stat 失败按非终端处理——fail-closed，审查 P1-1 加固）。
+func stdinIsHumanTerminalForHazard() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false // fail-closed：`<&-` 关闭 stdin 曾让整个门被跳过
+	}
+	if fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	// /dev/null 与 Windows NUL 是 char device 但不是人——按设备名排除
+	//（git isatty 实现同款处理）。
+	name := strings.ToLower(os.Stdin.Name())
+	if strings.HasSuffix(name, "/dev/null") || name == "nul" || strings.HasSuffix(name, `\\.\`+"nul") {
+		return false
+	}
+	return true
+}

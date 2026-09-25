@@ -1,0 +1,526 @@
+package skillsqa
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/MjxUpUp/Forge/internal/skillsfm"
+)
+
+// Quality holds R4-R9 check results (aligned with registry.py quality dict).
+//
+// Quality 是 R4-R9 各项检查结果（对齐 registry.py quality dict）。
+type Quality struct {
+	DescLen       int  `json:"desc_len"`
+	HasUseWhen    bool `json:"has_use_when"`
+	HasSkip       bool `json:"has_skip"`
+	ValidPattern  bool `json:"valid_pattern"`
+	Over500Lines  bool `json:"over_500_lines"`
+	HasHighSignal bool `json:"has_high_signal"`
+}
+
+// SkillReport is the spec audit result for a single skill (aligned with the registry.py audit_skill return value; excludes dispatch target status — drift detection belongs to skillsdist).
+//
+// SkillReport 是单个 skill 的规范审查结果（对齐 registry.py audit_skill 返回值，
+// 不含分发目标状态——drift 检测属 skillsdist 职责）。
+type SkillReport struct {
+	Name        string   `json:"name"`
+	Pattern     string   `json:"pattern"`
+	Domain      string   `json:"domain"`
+	Lines       int      `json:"lines"`
+	Description string   `json:"description"`
+	Quality     Quality  `json:"quality"`
+	Issues      []string `json:"issues"`
+	Advisories  []string `json:"advisories,omitempty"`
+	Pass        bool     `json:"pass"`
+}
+
+// AuditSkill runs R1-R18 spec checks on a single skill directory; R1-R11 are 1:1 aligned with registry.py audit_skill, R12-R18 are forge-local extensions (rule text definitions: RuleDescriptions).
+//
+// AuditSkill 对单个 skill 目录跑 R1-R18 规范校验。R1-R11 逐条对齐
+// registry.py audit_skill，R12-R18 为 forge 本地扩展（规则文本定义见 RuleDescriptions）。
+func AuditSkill(skillDir string) (*SkillReport, error) {
+	skillPath := filepath.Join(skillDir, "SKILL.md")
+	data, err := os.ReadFile(skillPath)
+	if err != nil {
+		return nil, err
+	}
+	text := string(data)
+	fm := skillsfm.Parse(data)
+
+	dirName := filepath.Base(skillDir)
+	name := fm.Name
+	if name == "" {
+		name = dirName
+	}
+	desc := fm.Description
+	pattern := fm.Pattern()
+	domain := fm.Domain()
+	// 行数：与 Python registry.py 一致用 Count("\n")+1（假设文件以 \n 结尾；
+	// 无尾换行的文件会多算 1 行——这是与 Python 共享的特性，黄金对比保持故不改）。
+	lines := strings.Count(text, "\n") + 1
+	descLow := strings.ToLower(desc)
+	bodyLow := strings.ToLower(fm.Body)
+
+	var issues []string
+	var advisories []string
+
+	// R1 name 须 kebab-case
+	if !kebabRe.MatchString(name) {
+		issues = append(issues, "name 不符合 kebab-case")
+	}
+	// R2 name = 目录名
+	if name != dirName {
+		issues = append(issues, fmt.Sprintf("name(%s) 与目录名(%s)不一致", name, dirName))
+	}
+	// R3 frontmatter 字段白名单（防 typo）
+	var unexpected []string
+	for k := range fm.Raw {
+		if !AllowedFm[k] {
+			unexpected = append(unexpected, k)
+		}
+	}
+	slices.Sort(unexpected)
+	if len(unexpected) > 0 {
+		issues = append(issues, fmt.Sprintf("frontmatter 未知字段: %v（允许: %v）", unexpected, allowedFmSorted()))
+	}
+	// R4 description 长度（Python len() 是字符数 → Go 用 RuneCount 对齐，否则中文 3 字节/字符致 R4 失准）
+	descLen := utf8.RuneCountInString(desc)
+	if descLen < 80 {
+		issues = append(issues, fmt.Sprintf(`description 过短(%d字符 <80)`, descLen))
+	}
+	// R4 上限：Anthropic skill 规范 description ≤1024 字符（硬 issue）；>500 偏长（advisory）
+	if descLen > 1024 {
+		issues = append(issues, fmt.Sprintf(`description 过长(%d字符 >1024，超 Anthropic skill 规范上限)`, descLen))
+	} else if descLen > 500 {
+		advisories = append(advisories, fmt.Sprintf(`description 偏长(%d字符 >500，建议精简到 what+when，不总结工作流)`, descLen))
+	}
+	// R5 须含 Use when
+	hasUseWhen := strings.Contains(descLow, "use when")
+	if !hasUseWhen {
+		issues = append(issues, "description 缺 Use when")
+	}
+	// R6 须含 SKIP
+	hasSkip := strings.Contains(descLow, "skip")
+	if !hasSkip {
+		issues = append(issues, "description 缺 SKIP")
+	}
+	// R7 metadata.pattern（单值或 + 组合，每段须合法）
+	validPattern := false
+	if pattern == "" {
+		issues = append(issues, "缺 metadata.pattern")
+	} else if ValidPatterns[pattern] {
+		validPattern = true
+	} else {
+		parts := strings.Split(pattern, "+")
+		ok := true
+		for _, p := range parts {
+			if !ValidPatterns[strings.TrimSpace(p)] {
+				ok = false
+				break
+			}
+		}
+		validPattern = ok
+		if !ok {
+			issues = append(issues, fmt.Sprintf("pattern 非法: %s", pattern))
+		}
+	}
+	// R8 SKILL.md 行数
+	over := lines > 500
+	if over {
+		issues = append(issues, fmt.Sprintf("SKILL.md 过长(%d行 >500，拆 references)", lines))
+	}
+	// R9 高信号内容
+	hasSignal := false
+	for _, kw := range HighSignalKW {
+		if strings.Contains(bodyLow, kw) {
+			hasSignal = true
+			break
+		}
+	}
+	if !hasSignal {
+		issues = append(issues, `缺高信号内容(决策树/自查/Gotchas)`)
+	}
+	// R10 CSO：description 不应总结 body 工作流（advisory，防回归）
+	for _, marker := range CSOWorkflowMarkers {
+		if strings.Contains(desc, marker) {
+			advisories = append(advisories, fmt.Sprintf(`description 含工作流总结词(%s)；CSO 规则：description 只说 what+when，不总结工作流（否则模型照 description 跳过 body）`, marker))
+			break
+		}
+	}
+	// R11 references 结构：≤1 level（无子目录，硬）+ >100 行 ref 需 ToC（advisory）
+	checkReferences(skillDir, &issues, &advisories)
+	// R12 triggers 声明校验（advisory）——通用 skill-trigger 框架的实验字段，skill 不
+	// 写也合法；写了则校验 JSON 合法性 / event∈集 / keywords 或 when 至少一 / when∈词汇
+	// / match 仅对 tool 事件有效。内联 JSON 解析，避免 skillsqa→skilltrigger 循环依赖。
+	//
+	// R12 triggers 声明校验（advisory）——通用 skill-trigger 框架的实验字段，skill 不
+	// 写也合法；写了则校验 JSON 合法性 / event∈集 / keywords 或 when 至少一 / when∈词汇
+	// / match 仅对 tool 事件有效。内联 JSON 解析，避免 skillsqa→skilltrigger 循环依赖。
+	checkTriggers(fm.Metadata["triggers"], &advisories)
+	// R13 正文行数（硬，不含 frontmatter）——与 R8 的关系：R8 计全文行数（对齐
+	// Python），R13 只计正文。body >500 ⇒ 全文 >500，故 R13 触发时 R8 必然也触发；
+	// R13 的价值是把「正文」口径显式化（frontmatter 膨胀不会再吃掉正文预算的语义）。
+	checkBodyLines(fm.Body, &issues)
+	// R14 frontmatter 必填字段（硬）：name/description 缺一不可。description 的
+	// ≤1024 字符上限由 R4 覆盖，此处不重复报。注意 name 为空时上方已回退 dirName
+	// （R1/R2 不误报），R14 用 fm.Name/fm.Description 原始值判定缺失。
+	checkRequiredFrontmatter(fm, &issues)
+	// R15 ALL-CAPS 命令式词密度（advisory）：ALWAYS/NEVER/MUST 合计 >5 次提醒改
+	// 「指令+原因」写法——解释为什么比堆命令更有效（模型对裸命令式词会脱敏）。
+	checkImperativeDensity(fm.Body, &advisories)
+	// R16 references/ 下 >300 行文件需 ToC（advisory）。markdown 文件由 R11 以
+	// >100 行的更低门槛先行覆盖，R16 跳过 markdown 避免同一文件重复 advisory；
+	// R16 实际增量是覆盖非 markdown 参考文件（如大段 .txt 资料）。
+	checkOversizedRefs(skillDir, &advisories)
+	// R17 evals/evals.json schema（advisory）：文件存在才校验（skill 不建 evals
+	// 合法）；schema = 对象含 trigger_cases 数组，每项 {query: string,
+	// should_trigger: boolean}。
+	checkEvalsSchema(skillDir, &advisories)
+	// R18 forge 零反向依赖契约（硬，CONVENTIONS §13）：skill 目录内不得存在对 forge
+	// 的操作性引用——CLI 调用（forge <子命令>）、用户级路径（~/.forge/、$HOME/.forge/）、
+	// 环境变量（$FORGE_*）、集成文件指针（forge-integration.md）。扫描面 = SKILL.md
+	// 正文 + skill 目录全部内容文件（decisions.md 是 append-only 决策日志、evals/ 是
+	// 测试数据，均非操作指令，排除）。decisions.md 与「Forge 仓库」案例叙述不构成
+	// 运行时依赖，本规则不针对措辞、只针对操作性行为。存量豁免见 R18Grandfathered
+	// （冻结只减不增）；`metadata.requires_forge: "true"` 的 forge 原生 skill 整体跳过。
+	checkForgeRefs(skillDir, fm, &issues, &advisories)
+	checkRefsCritical(skillDir, fm, &advisories)
+
+	return &SkillReport{
+		Name:        name,
+		Pattern:     pattern,
+		Domain:      domain,
+		Lines:       lines,
+		Description: desc,
+		Quality: Quality{
+			DescLen:       descLen,
+			HasUseWhen:    hasUseWhen,
+			HasSkip:       hasSkip,
+			ValidPattern:  validPattern,
+			Over500Lines:  over,
+			HasHighSignal: hasSignal,
+		},
+		Issues:     issues,
+		Advisories: advisories,
+		Pass:       len(issues) == 0,
+	}, nil
+}
+
+// checkReferences 校验 references/ 目录结构（R11）：
+//   - ≤1 level：references/ 下直接放文件，不应有子目录（硬 issue）
+//   - >100 行的 markdown reference 需 ToC 助导航（advisory；认 ## 目录 / ## Contents / ## Table of Contents）
+//
+// 无 references 目录时跳过（合法）；目录存在但不可读（权限等）报 advisory。
+// TODO: 作用域仅 references/——templates/scripts/adapters 等同级子目录暂不覆盖
+// （Anthropic 规范文字只点名 references/，等规范明确后再扩）。
+func checkReferences(skillDir string, issues, advisories *[]string) {
+	refsDir := filepath.Join(skillDir, "references")
+	entries, err := os.ReadDir(refsDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			*advisories = append(*advisories, fmt.Sprintf(`references 目录不可读: %v`, err))
+		}
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			*issues = append(*issues, fmt.Sprintf(`references/%s/ 是子目录，规范要求平铺（references ≤1 level，文件直接放 references/ 下）`, e.Name()))
+			continue
+		}
+		if !markdownExt(filepath.Ext(e.Name())) {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(refsDir, e.Name()))
+		if rerr != nil {
+			continue
+		}
+		content := string(data)
+		lines := strings.Count(content, "\n") + 1
+		hasToC := strings.Contains(content, "## 目录") ||
+			strings.Contains(content, "## Contents") ||
+			strings.Contains(content, "## Table of Contents")
+		if lines > 100 && !hasToC {
+			*advisories = append(*advisories, fmt.Sprintf(`references/%s 过长(%d行 >100) 缺 ## 目录 ToC（>100 行 reference 建议 ToC 助导航）`, e.Name(), lines))
+		}
+	}
+}
+
+// checkTriggers 校验 metadata.triggers 声明（R12，advisory）：
+//   - 空：合法（skill 可不接入框架）
+//   - 非空：须合法 JSON
+//   - 每条：event∈ValidTriggerEvents、keywords 或 when 至少一、when∈ValidConditions、
+//     match 仅对 PreToolUse/PostToolUse 有意义
+//
+// 内联 JSON 解析（不走 skilltrigger）以保持 skillsqa 对引擎包零依赖（避免循环依赖）。
+func checkTriggers(raw string, advisories *[]string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return
+	}
+	var triggers []struct {
+		Event    string   `json:"event"`
+		Keywords []string `json:"keywords"`
+		When     string   `json:"when"`
+		Match    string   `json:"match"`
+		Inline   string   `json:"inline"`
+		Follow   string   `json:"follow"`
+	}
+	if err := json.Unmarshal([]byte(raw), &triggers); err != nil {
+		*advisories = append(*advisories, fmt.Sprintf(`metadata.triggers 非合法 JSON: %v`, err))
+		return
+	}
+	for i, t := range triggers {
+		idx := i + 1
+		isToolEvent := t.Event == "PreToolUse" || t.Event == "PostToolUse"
+		switch {
+		case t.Event == "":
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] 缺 event`, idx))
+		case !ValidTriggerEvents[t.Event]:
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] event 非法(%s)；合法: %v`, idx, t.Event, validTriggerEventsSorted()))
+		}
+		if len(t.Keywords) == 0 && t.When == "" {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] keywords 与 when 至少需一`, idx))
+		}
+		if t.When != "" && !ValidConditions[t.When] {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] when 非法(%s)；合法: %v`, idx, t.When, validConditionsSorted()))
+		}
+		if t.Match != "" && !isToolEvent {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] match 仅对 PreToolUse/PostToolUse 有效（event=%s）`, idx, t.Event))
+		}
+		if isToolEvent && t.Match == "" && len(t.Keywords) == 0 {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] PreToolUse/PostToolUse 建议带 match（限定 tool_name），否则对所有 tool 命中`, idx))
+		}
+		// 设计 A（docs/design/harness-fixes-a-g-2026-09.md）：动作点事件（PreToolUse/
+		// PostToolUse/Stop）未声明 inline 的 trigger 会被通道分流抑制——声明了才有效。
+		isActionPoint := isToolEvent || t.Event == "Stop"
+		if isActionPoint && t.Inline == "" {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] 动作点事件(%s)未声明 inline——将被通道分流抑制；要么补 inline（一行动作指令），要么把规则挪到 UserPromptSubmit`, idx, t.Event))
+		}
+		if t.Follow != "" {
+			if _, err := regexp.Compile(t.Follow); err != nil {
+				*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] follow 非合法正则: %v`, idx, err))
+			} else if highFrequencyFollowRe.MatchString(t.Follow) {
+				// A4 灌水向量（B2-1 评审）：follow 含高频例行命令（git log/status 等）会让
+				// 每次命中都被例行动作判为「已跟随」，A4 ≥50% 目标被常规行为灌水满足。
+				*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] follow 含高频例行命令（git log/git status/ls 等）——A4 跟随率会被例行动作灌水，锚定该 inline 指令特有的动作`, idx))
+			}
+		}
+		if t.Inline != "" && t.Follow == "" {
+			*advisories = append(*advisories, fmt.Sprintf(`triggers[%d] 声明了 inline 但缺 follow 匹配器——该命中不进 A4（inline 跟随率）分母`, idx))
+		}
+	}
+}
+
+// highFrequencyFollowRe 识别「高频例行命令」形态的 follow 声明（B2-1 评审的 A4 灌水向量）。
+var highFrequencyFollowRe = regexp.MustCompile(`\bgit\s+(?:log|status|diff)\b|\b(?:ls|cat|pwd|echo)\b`)
+
+// checkBodyLines 执行 R13：SKILL.md 正文（frontmatter 块之后的全部内容）
+// ≤500 行（硬 issue）。计行口径与 R8 一致（换行数 + 1）；空正文计 0 行。
+func checkBodyLines(body string, issues *[]string) {
+	bodyLines := 0
+	if body != "" {
+		bodyLines = strings.Count(body, "\n") + 1
+	}
+	if bodyLines > 500 {
+		*issues = append(*issues, fmt.Sprintf("SKILL.md 正文过长(%d行 >500，不含 frontmatter；拆 references)", bodyLines))
+	}
+}
+
+// checkRequiredFrontmatter 执行 R14：frontmatter 必填 name 与 description
+// （硬 issue）。description ≤1024 字符上限由 R4 负责，此处不重复报。
+func checkRequiredFrontmatter(fm *skillsfm.Frontmatter, issues *[]string) {
+	if fm.Name == "" {
+		*issues = append(*issues, "frontmatter 缺 name（必填字段）")
+	}
+	if fm.Description == "" {
+		*issues = append(*issues, "frontmatter 缺 description（必填字段）")
+	}
+}
+
+// checkImperativeDensity 执行 R15：正文整词 ALWAYS/NEVER/MUST 合计 >5 次走
+// advisory，建议改「指令+原因」写法而非堆叠裸命令式词。
+func checkImperativeDensity(body string, advisories *[]string) {
+	n := len(imperativeRe.FindAllStringIndex(body, -1))
+	if n > 5 {
+		*advisories = append(*advisories, fmt.Sprintf(`正文命令式全大写词密度过高(ALWAYS/NEVER/MUST 共 %d 次 >5；建议改「指令+原因」写法，解释为什么比堆命令更有效)`, n))
+	}
+}
+
+// checkOversizedRefs 执行 R16：references/ 下 >300 行的非 markdown 文件无 ToC
+// 走 advisory。markdown 文件跳过——R11 已以 >100 行更低门槛覆盖，重复报会同
+// 文件双 advisory。references 目录不存在/不可读时静默（归 R11 的 advisory）。
+func checkOversizedRefs(skillDir string, advisories *[]string) {
+	refsDir := filepath.Join(skillDir, "references")
+	entries, err := os.ReadDir(refsDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || markdownExt(filepath.Ext(e.Name())) {
+			continue
+		}
+		data, rerr := os.ReadFile(filepath.Join(refsDir, e.Name()))
+		if rerr != nil {
+			continue
+		}
+		content := string(data)
+		lines := strings.Count(content, "\n") + 1
+		hasToC := strings.Contains(content, "## 目录") ||
+			strings.Contains(content, "## Contents") ||
+			strings.Contains(content, "## Table of Contents")
+		if lines > 300 && !hasToC {
+			*advisories = append(*advisories, fmt.Sprintf(`references/%s 过长(%d行 >300) 缺 ToC（超长参考文件建议 ToC 助导航；markdown 文件由 R11 以 >100 行门槛覆盖）`, e.Name(), lines))
+		}
+	}
+}
+
+// checkEvalsSchema 执行 R17：evals/evals.json 存在时须符 schema——JSON 对象含
+// trigger_cases 数组，每项 {query: string, should_trigger: boolean}。全部违例
+// 走 advisory（evals 是可选回归资产，schema 漂移不应阻断 Pass）。
+func checkEvalsSchema(skillDir string, advisories *[]string) {
+	data, err := os.ReadFile(filepath.Join(skillDir, "evals", "evals.json"))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json 不可读: %v`, err))
+		}
+		return
+	}
+	var doc struct {
+		TriggerCases []struct {
+			Query         string `json:"query"`
+			ShouldTrigger *bool  `json:"should_trigger"`
+		} `json:"trigger_cases"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json 不符 schema（须为对象含 trigger_cases 数组，每项 {query: string, should_trigger: boolean}）: %v`, err))
+		return
+	}
+	if doc.TriggerCases == nil {
+		*advisories = append(*advisories, `evals/evals.json 缺 trigger_cases 数组`)
+		return
+	}
+	for i, c := range doc.TriggerCases {
+		if c.Query == "" {
+			*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json trigger_cases[%d] 缺 query（非空 string）`, i))
+		}
+		if c.ShouldTrigger == nil {
+			*advisories = append(*advisories, fmt.Sprintf(`evals/evals.json trigger_cases[%d] 缺 should_trigger（boolean）`, i))
+		}
+	}
+}
+
+// ForgeRefHit — a single reverse-dependency hit (ScanForgeRefs return unit).
+//
+// ForgeRefHit — 一处 forge 反向依赖命中（ScanForgeRefs 的返回单元）。
+type ForgeRefHit struct {
+	File string // 相对 skill 目录的路径（SKILL.md 或子文件） / path relative to the skill dir
+	Text string // 命中片段 / matched snippet
+}
+
+// ScanForgeRefs scans the skill dir for operational forge references (the R18 detection core, exported so the ratchet test reuses the exact production judgment): SKILL.md is scanned via the post-frontmatter Body (frontmatter metadata like requires_forge is not body prose and is not scanned); every other file is scanned raw. decisions.md (append-only decision log) and evals/ (test data) are excluded — neither is an operational instruction.
+//
+// ScanForgeRefs 扫描 skill 目录内的操作性 forge 引用（R18 检测核心，导出供
+// ratchet 测试复用同一套判定）：SKILL.md 用 frontmatter 解析后的 Body（frontmatter
+// 元数据如 requires_forge 不是正文，不扫），其余文件按原文扫。decisions.md
+// （append-only 决策日志）与 evals/（测试数据）排除——它们不是操作指令。
+func ScanForgeRefs(skillDir string, fm *skillsfm.Frontmatter) []ForgeRefHit {
+	var hits []ForgeRefHit
+	scan := func(file, content string) {
+		for _, re := range []*regexp.Regexp{forgeCmdRe, forgeHomePathRe, forgeEnvRe, forgeIntegrationFileRe} {
+			for _, m := range re.FindAllString(content, -1) {
+				hits = append(hits, ForgeRefHit{File: file, Text: strings.TrimSpace(m)})
+			}
+		}
+	}
+	scan("SKILL.md", fm.Body)
+	_ = filepath.WalkDir(skillDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // 单文件不可读不阻断整体扫描（其余文件的命中仍要报出）
+		}
+		if d.IsDir() {
+			if d.Name() == "evals" && path != skillDir {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() == "SKILL.md" || d.Name() == "decisions.md" {
+			return nil
+		}
+		data, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return nil
+		}
+		rel, _ := filepath.Rel(skillDir, path)
+		scan(filepath.ToSlash(rel), string(data))
+		return nil
+	})
+	return hits
+}
+
+// checkForgeRefs 执行 R18：ScanForgeRefs 命中且无豁免 = 硬 issue（Pass=false，
+// validate exit 2、install 质量门控阻断）。豁免两级：`metadata.requires_forge:
+// "true"`（forge 原生 skill，整体跳过）与 R18Grandfathered（存量冻结，只减不增，
+// TestR18_Grandfathered_Exact 守卫表与实际命中集合严格相等）。豁免 skill 命中时
+// 报 advisory（不阻断）——条数随清理递减，diff 里条数回涨即暴露新增耦合。
+func checkForgeRefs(skillDir string, fm *skillsfm.Frontmatter, issues, advisories *[]string) {
+	if v, ok := fm.Metadata["requires_forge"]; ok && strings.Trim(strings.TrimSpace(v), `"`) == "true" {
+		return
+	}
+	hits := ScanForgeRefs(skillDir, fm)
+	if len(hits) == 0 {
+		return
+	}
+	name := fm.Name
+	if name == "" {
+		name = filepath.Base(skillDir)
+	}
+	var rendered []string
+	for _, h := range hits {
+		rendered = append(rendered, fmt.Sprintf("%s: %s", h.File, h.Text))
+	}
+	if R18Grandfathered[name] {
+		*advisories = append(*advisories, fmt.Sprintf(`存量 forge 反向依赖豁免中（%d 处，清理迁出后从 R18Grandfathered 移除；条数只应递减）: %v`, len(hits), rendered))
+		return
+	}
+	*issues = append(*issues, fmt.Sprintf(`forge 反向依赖违例(%v)——skills 零反向依赖契约：不得含 forge CLI 调用/~/.forge 路径/$FORGE_* 变量/forge-integration.md 指针，集成知识放 forge 侧（CONVENTIONS §13，R18）`, rendered))
+}
+
+// checkRefsCritical (R19, advisory): a skill declaring metadata.refs_critical (JSON array of
+// reference paths that are prerequisites to executing the skill — design D) must carry a
+// 步骤 0 must-read block in its body naming every declared path; the block is capped at 5
+// lines to prevent the declaration becoming a content-bloat vector (the reference's body
+// stays in references/, the SKILL.md carries only the pointer).
+//
+// checkRefsCritical（R19，advisory）：声明 metadata.refs_critical（JSON 数组——执行该
+// skill 的前置 reference 路径，设计 D）的 skill，正文必须含「步骤 0」必读块逐路径点名；
+// 块上限 5 行——防声明变成正文膨胀向量（reference 正文留在 references/，SKILL.md 只带指针）。
+func checkRefsCritical(skillDir string, fm *skillsfm.Frontmatter, advisories *[]string) {
+	raw := fm.Metadata["refs_critical"]
+	if strings.TrimSpace(raw) == "" {
+		return
+	}
+	var paths []string
+	if err := json.Unmarshal([]byte(raw), &paths); err != nil || len(paths) == 0 {
+		*advisories = append(*advisories, "refs_critical 非合法 JSON 数组（如 [\"references/x.md\"]）")
+		return
+	}
+	// 只查正文（fm.Body 已剥 frontmatter）——声明在 frontmatter 里含路径，全文搜会自匹配。
+	body := strings.ToLower(fm.Body)
+	for _, p := range paths {
+		base := filepath.Base(strings.ToLower(p))
+		if !strings.Contains(body, base) {
+			*advisories = append(*advisories, fmt.Sprintf("refs_critical 声明 %s 但正文步骤 0 必读块未点名该文件——不读该 reference 无法执行核心流程（设计 D）", p))
+		}
+	}
+	if !strings.Contains(body, "步骤 0") && !strings.Contains(body, "step 0") {
+		*advisories = append(*advisories, "声明 refs_critical 的 skill 正文须有「步骤 0」必读块（≤5 行，逐路径点名）")
+	}
+}
