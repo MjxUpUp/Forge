@@ -539,8 +539,14 @@ func attributionCoverageLine(root string) string {
 	if v, err := strconv.ParseFloat(rate, 64); err == nil {
 		pct = fmt.Sprintf("%.0f%%", v*100)
 	}
-	return fmt.Sprintf("%s（attributed %s / orphan %s）",
+	line := fmt.Sprintf("%s（attributed %s / orphan %s）",
 		pct,
 		clitask.OrDash(latest.Meta[checklog.MetaKeyAttributionAttributed]),
 		clitask.OrDash(latest.Meta[checklog.MetaKeyAttributionOrphans]))
+	// 存在孤儿（未经任务解释的变更）时附修复指引——数字本身不可操作，指引把 L3 观测
+	// 接回收编纪律；对账干净（orphans=0）不带，advisory 行保持安静。
+	if n, err := strconv.Atoi(latest.Meta[checklog.MetaKeyAttributionOrphans]); err == nil && n > 0 {
+		line += "——孤儿为未经任务解释的变更：后续开工先 forge task start 收编（一次性小改 forge task wild 申报）"
+	}
+	return line
 }
