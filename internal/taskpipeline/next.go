@@ -3,6 +3,7 @@ package taskpipeline
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -32,7 +33,7 @@ const nextCmdVerifyAcceptance = "forge task verify-acceptance"
 
 // 门禁顺序与真实链严格一致：implement →（验收未实跑则 verify-acceptance）→ gate task-verify
 // → review pass → gate task-complete → task complete。每条 Next 恰一条命令（无 && 复合）。
-func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
+func NextDecision(branch string, dirty bool, behindRemote int, st *TaskState) NextResult {
 	gates := map[string]bool{}
 	for _, g := range nextGateHistory(st) {
 		gates[g] = true
@@ -40,6 +41,7 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 	state := map[string]any{
 		"branch":        branch,
 		"dirty":         dirty,
+		"behind_remote": behindRemote,
 		"active_task":   nextTaskRef(st),
 		"gates_passed":  nextGateHistory(st),
 		"review_passed": nextReviewPassed(st),
@@ -56,6 +58,15 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 			return NextResult{
 				Next:   `forge task start --ref <ref> --branch --title <title>`,
 				Reason: "工作区有未归属变更而无活跃任务——先建任务收编（刻意的一次性小改可改走 forge task wild \"<说明>\" 申报）",
+				State:  state,
+			}
+		}
+		// 干净树但分支落后 upstream：先同步再开工——在旧基线上叠改会放大合并冲突与
+		// 「本机过、远端挂」的漂移面（1.73.2 旧快照重建事故的同型风险）。
+		if behindRemote > 0 {
+			return NextResult{
+				Next:   "git pull --ff-only",
+				Reason: fmt.Sprintf("当前分支落后远端 %d 个提交——先同步再开工，避免在旧基线上叠改", behindRemote),
 				State:  state,
 			}
 		}
@@ -95,7 +106,7 @@ func NextDecision(branch string, dirty bool, st *TaskState) NextResult {
 // stderr 不影响调用方输出。
 func NextHint(root string, st *TaskState) NextResult {
 	branch, dirty := GitBranchDirty(root)
-	res := NextDecision(branch, dirty, st)
+	res := NextDecision(branch, dirty, GitBehindRemote(root), st)
 	// P2 时机训练：NextDecision 归一化后的**事实分支**是 verify-acceptance 待跑
 	// 且 task 尚未跑过 pairing 自检 → Reason 追加镜像自检建议（复审 P2-2：手工
 	// 重组条件三重偏差——implement 窗口的空跑会永久消费提示、completed 展示路径
@@ -133,6 +144,23 @@ func GitBranchDirty(root string) (string, bool) {
 		dirty = strings.TrimSpace(string(out)) != ""
 	}
 	return branch, dirty
+}
+
+// GitBehindRemote returns how many commits HEAD is behind its upstream (0 when there is no
+// upstream / no git — fail-open: no probe, no sync suggestion).
+//
+// GitBehindRemote 返回 HEAD 落后其 upstream 的提交数（无 upstream/无 git 时为 0——
+// fail-open：探测不到就不建议同步）。
+func GitBehindRemote(root string) int {
+	out, err := exec.Command("git", "-C", root, "rev-list", "--count", "HEAD..@{upstream}").Output()
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
 
 func nextGateHistory(st *TaskState) []string {

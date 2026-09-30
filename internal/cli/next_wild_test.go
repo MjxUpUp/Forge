@@ -70,7 +70,7 @@ func TestNextDecision(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := nextDecision(c.branch, c.dirty, c.st)
+			got := nextDecision(c.branch, c.dirty, 0, c.st)
 			if c.exact && got.Next != c.want || !c.exact && !strings.Contains(got.Next, c.want) {
 				t.Errorf("nextDecision(%q, dirty=%v) Next = %q, want %q (reason: %q)", c.branch, c.dirty, got.Next, c.want, got.Reason)
 			}
@@ -84,7 +84,7 @@ func TestNextDecision(t *testing.T) {
 		})
 	}
 	// 无任务 + 脏树：理由必须提到 wild 出口（INV-1 的合法出口要在引导里可见）。
-	got := nextDecision("main", true, nil)
+	got := nextDecision("main", true, 0, nil)
 	if !strings.Contains(got.Reason, "forge task wild") {
 		t.Errorf("dirty-no-task 引导应指向 wild 申报出口, reason = %q", got.Reason)
 	}

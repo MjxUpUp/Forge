@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
 // TestHarness_InitTrustBoundary 钉住 T6 契约（multi-task-concurrency §11.4）：init 建立
@@ -81,5 +83,49 @@ func TestHarness_CommitBestEffort(t *testing.T) {
 	out, err := harnessGit(home, "log", "--oneline", "-1")
 	if err != nil || !strings.Contains(out, "boundary probe") {
 		t.Fatalf("边界提交缺失: err=%v out=%s", err, out)
+	}
+}
+
+// TestAttributionCoverageLine_OrphanHint pins the status attribution line's remediation
+// hint (acceptance followup 2026-09-30): when the latest Stop-time reconciliation saw
+// orphans, the line must carry the collect-into-task guidance; a clean reconciliation
+// (orphans=0) must not.
+//
+// TestAttributionCoverageLine_OrphanHint 钉住 status 归属行的修复指引（验收跟进批）：
+// 最近一次 Stop 对账存在 orphan 时，行尾必须带收编指引；无孤儿（orphans=0）不带，
+// 且以最新一条对账为准（旧孤儿行被新干净行覆盖后提示消失）。
+func TestAttributionCoverageLine_OrphanHint(t *testing.T) {
+	dir := t.TempDir()
+	entry := checklog.Entry{
+		Check:   checklog.CheckAttribution,
+		Passed:  true,
+		Checked: true,
+		Level:   checklog.LevelAdvisory,
+		Detail:  "attribution: 覆盖率 0%（0/1）",
+		Meta: map[string]string{
+			checklog.MetaKeyAttributionRate:       "0",
+			checklog.MetaKeyAttributionAttributed: "0",
+			checklog.MetaKeyAttributionOrphans:    "1",
+		},
+	}
+	if err := checklog.AppendEntries(dir, []checklog.Entry{entry}); err != nil {
+		t.Fatal(err)
+	}
+	line := attributionCoverageLine(dir)
+	if !strings.Contains(line, "0%（attributed 0 / orphan 1）") {
+		t.Fatalf("coverage rendering drifted: %q", line)
+	}
+	if !strings.Contains(line, "forge task start") || !strings.Contains(line, "forge task wild") {
+		t.Errorf("orphan>0 line must carry remediation hint, got %q", line)
+	}
+
+	// 最新一条对账干净（orphans=0）→ 提示消失。
+	entry.Meta[checklog.MetaKeyAttributionRate] = "1"
+	entry.Meta[checklog.MetaKeyAttributionOrphans] = "0"
+	if err := checklog.AppendEntries(dir, []checklog.Entry{entry}); err != nil {
+		t.Fatal(err)
+	}
+	if line := attributionCoverageLine(dir); strings.Contains(line, "forge task start") {
+		t.Errorf("clean reconciliation must not carry hint, got %q", line)
 	}
 }
