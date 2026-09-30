@@ -42,7 +42,7 @@ func TestNextDecision_GateChain(t *testing.T) {
 		{"all gates + review", withGates(true, "abc123", GateImplement, GateVerify, GateComplete), "forge task complete"},
 	}
 	for _, c := range cases {
-		got := NextDecision("feat/x", false, c.st)
+		got := NextDecision("feat/x", false, 0, c.st)
 		if got.Next != c.want {
 			t.Errorf("%s: Next = %q, want %q", c.name, got.Next, c.want)
 		}
@@ -59,16 +59,54 @@ func TestNextDecision_GateChain(t *testing.T) {
 	done := withGates(true, "abc123", GateImplement, GateVerify, GateComplete)
 	now := time.Now()
 	done.CompletedAt = &now
-	if got := NextDecision("feat/x", false, done); got.Next == "forge task complete" {
+	if got := NextDecision("feat/x", false, 0, done); got.Next == "forge task complete" {
 		t.Fatal("completed task must not be told to run complete again")
 	}
 
 	// 无活跃任务：脏树 → 建任务收编；干净 → status。
-	if got := NextDecision("main", true, nil); !strings.Contains(got.Next, "forge task start") {
+	if got := NextDecision("main", true, 0, nil); !strings.Contains(got.Next, "forge task start") {
 		t.Errorf("dirty tree without task: Next = %q, want task start", got.Next)
 	}
-	if got := NextDecision("main", false, nil); got.Next != "forge status" {
+	if got := NextDecision("main", false, 0, nil); got.Next != "forge status" {
 		t.Errorf("clean tree without task: Next = %q, want forge status", got.Next)
+	}
+}
+
+// TestNextDecision_BehindRemote pins the behind-upstream branch (acceptance followup
+// 2026-09-30): a clean tree with no active task on a branch whose upstream is ahead must
+// suggest a sync before new work — starting from a stale base is exactly what the
+// 1.73.2 stale-snapshot rebuild made expensive. Dirty trees keep the attribution
+// discipline (collect changes into a task first); an active task's gate chain keeps
+// priority; behind=0 must not change the status fallback.
+//
+// TestNextDecision_BehindRemote 钉住落后远端分支（验收跟进批 2026-09-30）：干净树、无
+// 活跃任务且 upstream 领先时，先建议同步再开工——在旧基线上叠改正是 1.73.2 旧快照重建
+// 事故放大成本的形态。脏树维持归属纪律（先收编变更）；活跃任务门禁链保持优先；
+// behind=0 不得改变 status 回落。
+func TestNextDecision_BehindRemote(t *testing.T) {
+	got := NextDecision("main", false, 3, nil)
+	if got.Next != "git pull --ff-only" {
+		t.Fatalf("clean tree behind remote: Next = %q, want git pull --ff-only", got.Next)
+	}
+	if !strings.Contains(got.Reason, "3") {
+		t.Errorf("Reason must carry the behind count, got %q", got.Reason)
+	}
+	if got.State["behind_remote"] != 3 {
+		t.Errorf("State[behind_remote] = %v, want 3", got.State["behind_remote"])
+	}
+
+	// 脏树优先收编（归属纪律不因落后而跳过）。
+	if got := NextDecision("main", true, 3, nil); !strings.Contains(got.Next, "forge task start") {
+		t.Errorf("dirty tree behind remote: Next = %q, want task start first", got.Next)
+	}
+	// 活跃任务门禁链优先于同步建议。
+	st := &TaskState{TaskRef: "feat/x", History: []TaskGateResult{{Gate: GateImplement, Passed: true}}}
+	if got := NextDecision("feat/x", false, 2, st); got.Next != "forge task verify-acceptance" {
+		t.Errorf("active task behind remote: Next = %q, want gate chain", got.Next)
+	}
+	// 未落后维持原状。
+	if got := NextDecision("main", false, 0, nil); got.Next != "forge status" {
+		t.Errorf("not behind: Next = %q, want forge status", got.Next)
 	}
 }
 
@@ -114,5 +152,47 @@ func TestNextHint_RecordsChecklogRow(t *testing.T) {
 	}
 	if rows[0].Meta[checklog.MetaKeySuggested] != res.Next {
 		t.Fatalf("suggested = %q, want %q", rows[0].Meta[checklog.MetaKeySuggested], res.Next)
+	}
+}
+
+// TestGitBehindRemote probes the rev-list upstream wiring against a real git repo: no
+// upstream ref → 0 (fail-open), in-sync → 0, upstream ahead by 2 → 2 (commit-tree builds
+// upstream-only commits without moving HEAD).
+//
+// TestGitBehindRemote 对真实 git 仓库钉住 upstream 探测：无 upstream ref → 0
+// （fail-open）、同步 → 0、upstream 领先 2 → 2（commit-tree 构造仅存在于 upstream 的
+// 提交，不动 HEAD）。
+func TestGitBehindRemote(t *testing.T) {
+	dir := t.TempDir()
+	out := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, b)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	out("init")
+	out("config", "user.email", "t@example.com")
+	out("config", "user.name", "t")
+	out("commit", "--allow-empty", "-m", "base")
+	out("branch", "-M", "main") // git init 默认分支随版本漂移——显式钉到 main 再配 upstream。
+	out("config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*")
+	out("config", "branch.main.remote", "origin")
+	out("config", "branch.main.merge", "refs/heads/main")
+	if got := GitBehindRemote(dir); got != 0 {
+		t.Fatalf("no upstream ref: got %d, want 0 (fail-open)", got)
+	}
+	out("update-ref", "refs/remotes/origin/main", "HEAD")
+	if got := GitBehindRemote(dir); got != 0 {
+		t.Fatalf("in-sync upstream: got %d, want 0", got)
+	}
+	tree := out("rev-parse", "HEAD^{tree}")
+	head := out("rev-parse", "HEAD")
+	c1 := out("commit-tree", tree, "-m", "up1", "-p", head)
+	c2 := out("commit-tree", tree, "-p", c1)
+	out("update-ref", "refs/remotes/origin/main", c2)
+	if got := GitBehindRemote(dir); got != 2 {
+		t.Fatalf("upstream ahead by 2: got %d, want 2", got)
 	}
 }
