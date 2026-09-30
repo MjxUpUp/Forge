@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.74.0](https://github.com/MjxUpUp/Forge/compare/v1.73.2...v1.74.0) (2026-09-30)
+
+
+### Features
+
+* **cli:** 验收跟进批——status 孤儿指引 + next 落后远端提示 + CHANGELOG 陈旧段清理 + 发版事故恢复 RUNBOOK ([ca6a861](https://github.com/MjxUpUp/Forge/commit/ca6a86170aef7c56ad5ee286ec795f285cf0bb4c))
+
 ## [1.73.2](https://github.com/MjxUpUp/Forge/compare/v1.73.1...v1.73.2) (2026-09-25)
 
 
