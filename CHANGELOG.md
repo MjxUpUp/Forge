@@ -1,22 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### ⚠️ 行为变更（Behavior Change）
-
-* **traps 扩容 3→14（L3 补齐批）**：按 cheat-scan 七模式族人工策展 11 个新陷阱入 `evals/forge/traps/`（探测面为 `forge gate push --dry-run` 的 base...HEAD 复检，任务态无关）；TrapCase 类型枚举同步接受 CheatPattern 值。`forge eval traps run` 实测 capture 14/14。L3 设计项「traps 3→20」按模式族全覆盖口径达成七族 11 例（合计 14），未到 20 的差额（纵深变体）留待真实命中反混淆再策展——golden/traps 双报告可复验。
-
-* **exit 断言接管退出码判定**（L3 精化，spec-as-gate v2）：criterion 声明了 `exit` 型断言时，隐式 exit==0 检查被显式期望退出码取代——`sh fail.sh` + `exit: :: 1` 的「期望失败」形态（1.68.0 前无法整条通过）现在判过；期望不匹配方向仍 fail-closed。golden 断言族 10 例钉死（evals/forge/golden/assert-*.yaml，重放一致率 1.00）。同批新增命令（净增 +2/minor，记账 compat-commitments §五）：`forge eval golden harvest`（考卷收割→候选骨架，canonical 只读）、`forge review llm`（判官臂派遣说明 + 判分校验留档）。
-
-* **requirement-clarification 规格模板扩节**（理解侧闭环批次，ADR-0001）：验收条件后新增「样例对（Ground Truth）」节（≥2 正例 + ≥1 反例，可命令化样例落 `accept:` 行）；「约束」节升级为「三分类投递」（可执行→accept 行 / 可命题→短规则+正反例 / 不可命题→显式人工）。存量影响：按旧模板写的规格仍完整有效——新节是增量要求，下次澄清起生效；`accept:` 行在 spec 落盘并经验收产物提取后成为实跑考卷。
-* **prototype-confirmation 确认导出可编译**（同批）：模板 `accept` 字段（可选）+ 导出文本末尾 ```accept 围栏（仅✅认可项进围栏）；确认文本落盘为 spec 产物后经 `--extract` 编译为 spec-extract 层考卷。存量影响：无 `accept` 字段的旧原型导出行为不变（零围栏）。
-* **验收标准去重口径：Run → (Run, Expected, Assertions) 三元组**（spec-as-gate v2 L2 P1，docs/design/leverage-points-landing.md）：`MergeAcceptance`（`--plan-file`/`--extract` 提取与显式 `--accept` 的合并、`forge task accept` 补登）此前按 Run 单键去重——同 Run 不同 Expected/断言集的条目会被吞掉。现与 `MergeAcceptanceResults` 的结果匹配键同口径：同 Run 不同 Expected 是两个不同检查，两条都保留。存量影响：`--plan-file` 与显式 `--accept` 声明同一命令不同期望时，此前只留显式条目，现在两条都进考卷（命令各跑一次）；完全相同的重复条目仍去重，绝大多数任务无感。同批新增（纯增不删不改名，compat 裁决见 compat-commitments §三）：`task start --assert`（v2 结构化断言，五型 exit/contains/not-contains/file-changed/file-untouched，附属于 preceding --accept）、`task start --accept-file`（YAML 批量考卷）、`task accept --assert`（补登通道）。
-* **efficiency 维度评分口径：挂钟 → 工具活跃跨度**（docs/design/harness-fixes-a-g-2026-09.md E.4）：`efficiency` 的输入从 `started_at→completed_at` 挂钟改为任务时间窗内 toollog 首末调用距（`EvaluateInput.ActiveSpan`）；toollog 不足 2 条回落挂钟，负跨度按不可信数据给中性 70。动机：doc-gate 卡住两天的任务此前因空闲时间被判「拖沓」（乙机实录活跃 56 分钟、挂钟 46 小时、维度 35 分）。**历史分数不可与新分数直接比较**；旧 golden 夹具无该字段仍走挂钟路径，行为不变。
-* **完成声明证据以 task-complete 门禁通过时刻封印**（同设计 E）：Act 结论与评分的证据链读取（`checklog.ForTaskUntil` / `LatestByCheckForTaskWindow`）截断在 `TaskState.SealedAt`，封印后落到任务名下的行（异会话 hazard 拦截、重复 `task verify` 自述）保留供 `forge trace` 但不计入证据强度；空 session 的 checklog 行只在 TaskRef 归属被评任务时参与评分。hook 与执行器审计行新增 `Meta[resolve_path]`/`Meta[post_seal]` 归因探针并回填空 session。`forge task complete`/`abort` 清除**所有**指向该任务的会话指针、legacy 全局指针与 workspace 绑定（此前只清当前会话）。
-* **hazard 事件双投递去重**（同设计 F.3）：`forge hazard log` 对同会话、同类型、同指纹且间隔 <3s 的事件只记一条（宿主对同一 Bash 调用双发 PreToolUse 的形态），safe-halt 计数不再被双记翻倍；事件新增 `session_id` 字段（hook 环境 `FORGE_SESSION_ID`），旧行/终端直跑为空时退化为不比会话。
-* **移除 4 个零使用命令**（功能聚焦决策 docs/plans/feature-focus-2026-09.md §2.3 冻结项执行，死代码清扫 2026-09-06）：`forge clone check`（重复检测，职责由 cheat-scan/unused-scan 覆盖）、`forge suggest decline/status/reset`（与 `forge off`/`forge on` 完全重复的兼容别名；标记机制保留由 off/on 双写）、`forge skills analyze`、`forge skills mine`（弱点挖掘/挖矿，功能由 `forge skills usage/effectiveness` 覆盖）。受影响用户迁移：decline→`forge off`，reset→`forge on`，status→`forge policy state`（三态快查），clone/analyze/mine 无替代需求记录在案。
-* **移除生产退役 API**（无 CLI 消费方）：`checklog.Clear`（multi-task-concurrency §5 已退役的归档+删除，保留非破坏性 `Prune`；行为测试改经生产轮转路径 `FORGE_CHECKLOG_ROTATE_BYTES` 覆盖）、`review.MarkPassed`（薄包装，统一为 `MarkPassedWithNote(root, "")`）、`evalkit.LoadToolCalls/VCSAssetDir/taskpipeline.SelfReportEscapeDisabled`（零调用方）。
-
 ## [1.73.2](https://github.com/MjxUpUp/Forge/compare/v1.73.1...v1.73.2) (2026-09-25)
 
 
