@@ -35,6 +35,12 @@ cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
   也不再独立触发发版，攒到下次 feat/fix 一起发）
 - 强制指定版本：给任意 commit 加 `Release-As: x.y.z` footer
 
+**Unreleased 手写叙事块的收敛纪律**：行为变更的长叙事可先写在 `CHANGELOG.md` 顶部的
+`## Unreleased` 段草拟，但对应 feat/fix 随 Release PR 发版时必须把叙事并入该版本段
+（或删去——auto 生成的条目已覆盖的部分不留重复拷贝），**不让已发版内容滞留 Unreleased**。
+release-please 只机械追加版本段、永不清理 Unreleased——滞留的陈旧叙事会让读者误判
+功能未发版（十条叙事滞留多轮发版，最早的可上溯 v1.51.0，2026-09-30 清理）。
+
 **Token 双路径**：默认 `GITHUB_TOKEN`（零配置即可用）——它产生的事件不触发新
 workflow run（GitHub 防递归），所以靠 workflow_dispatch 显式调度构建层；此路径
 automerge 步自停（GITHUB_TOKEN 合并的 push 不触发建 tag run，注册 auto-merge 只会
@@ -165,3 +171,27 @@ tokens」，token 类登录被禁，需临时调回 publishing access 再操作�
    ```
 2. **升 patch 重发**：修 bug → `fix:` 前缀合 main → release-please 自动开下一个 Release PR
 3. **不要 unpublish**：发布 >72h 后 npm 禁止 unpublish；且 unpublish 后 24h 内同版本号不可复用（cache 层用户仍可能装到），deprecate 是唯一可靠降级通道
+
+## 仓库树事故恢复 RUNBOOK（API 建提交丢树）
+
+症状：某个 commit 之后 CI 在「不可能坏」的文件上报错（CHANGELOG/go.mod/源文件消失，
+或文件内容变成字面路径字符串）——该 commit 的 tree 残缺。2026-09-25（v1.73.2 前后）
+实录：终端 `gh api` blob 上传误用 `-f`（内容变字面路径）连坏三个 commit，恢复时又从
+陈旧本地快照重建全树，把已过期的 CHANGELOG Unreleased 叙事带回仓库。
+
+正确恢复顺序（每步可验证）：
+
+1. **定位残缺面**：`git log --stat -3` 看哪个 commit 只含「孤零零几个文件」；
+   `git show <bad>:CHANGELOG.md` 报 exists on disk, but not in '<ref>' 即树残缺实锤
+2. **从远端完好点重建，不从本地快照**：`git fetch origin` 后
+   `git checkout origin/main -- .`（或从最后一个完好 tag `git checkout <tag> -- .`）
+   ——本地工作区可能是事故同谋（陈旧快照/未拉取状态），拿它当恢复源会把旧状态回灌
+3. **完整性抽查**：关键文件逐个 `git show HEAD:<file> | head -3`（CHANGELOG.md、go.mod、
+   cmd/、internal/ 各抽一个）；`git diff origin/main --stat` 应为空
+4. **版本钉同步**：`.release-please-manifest.json` 与 `npm/package.json` 必须同版本
+   （`go test ./internal/ci/` 的 manifest 守卫测试会拦）
+5. **全量门禁**：`go build ./... && go vet ./... && go test ./...` 全绿才许 push——
+   恢复提交覆盖面是全仓库，「受影响包只测改动包」在这里不成立
+
+预防：绕过 git 的建提交操作（gh api / API 脚本）只允许 `-F <file>` 读文件内容
+（`-f` 是字面值）；建完先 `git show --stat HEAD` 核对文件数与内容形态再 push。
