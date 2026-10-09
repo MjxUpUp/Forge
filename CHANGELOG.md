@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.74.1](https://github.com/MjxUpUp/Forge/compare/v1.74.0...v1.74.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **forge-dsh:** 消息 source 改用生产者自有 kind，适配 DSH 会话格式 V4 ([84ffb16](https://github.com/MjxUpUp/Forge/commit/84ffb16d7eeb7d214bfbfec9c4ac85bdc2581a41))
+
 ## [1.74.0](https://github.com/MjxUpUp/Forge/compare/v1.73.2...v1.74.0) (2026-09-30)
 
 
