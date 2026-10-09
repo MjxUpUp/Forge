@@ -51,7 +51,7 @@ test("preExecuteDecision: block → deny; pass delegates and injects context", a
   assert.deepEqual(allow, { kind: "allow" });
   assert.equal(injected.length, 1);
   assert.equal(injected[0].content[0].text, "advice");
-  assert.equal(injected[0].source.plugin, "forge-quality");
+  assert.equal(injected[0].source.kind, "plugin:forge-quality");
 });
 
 test("postExecuteDecision: block → block+feedback only; pre-block contexts fall back to agent.inject", async () => {
