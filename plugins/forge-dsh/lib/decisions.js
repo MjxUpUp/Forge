@@ -170,7 +170,7 @@ export function sessionStartOutcome(outcome, agent) {
   injectContexts(agent, outcome.contexts);
 }
 
-/** Queue each context string as one plugin-sourced message. */
+/** Queue each context string as one producer-attributed user message. */
 function injectContexts(agent, contexts) {
   if (contexts.length === 0) return;
   const inject = agent?.inject;
