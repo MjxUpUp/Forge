@@ -167,14 +167,25 @@ export function promptText(messages) {
 let messageSeq = 0;
 
 /**
- * Build one plugin-sourced user message (the shape dsh-llm's
- * createUserMessage freezes: role 'user', text content, plugin source).
- * Constructed literally to keep this package dependency-free — importing
+ * Build one producer-attributed user text message: role 'user', one text block,
+ * and a source kind naming this plugin (V4 admits producer-owned kinds only).
+ * The literal is hand-built to keep this package dependency-free — importing
  * @deepseek-ai/dsh-llm would only resolve when the install layout happens to
- * nest it above us.
+ * nest it above us, and its createUserMessage takes `source` from the caller
+ * rather than validating any shape.
+ *
+ * The kind must be producer-owned, not the retired `{kind: 'plugin', …}`
+ * wrapper: session format V4 refuses that wrapper at admission, naming a
+ * third-party plugin `plugin:<name>` (session-format-v3-to-v4 README,
+ * "Message-source conversion"). The refusal does NOT surface at inject() time —
+ * DSH's in-memory append never inspects source kinds — so the wrapper's damage
+ * appears as a contained background write failure plus an unrestorable session
+ * log, both quoting "format v4 message requires a producer-owned source kind".
+ * Those runtime claims were checked against the @deepseek-ai/dsh 0.2.0-rc.2
+ * bundle, where session format version is 4.
  *
  * @param {string} text
- * @returns {{id: string, role: "user", content: Array<{type: "text", text: string}>, source: {kind: "plugin", plugin: string}}}
+ * @returns {{id: string, role: "user", content: Array<{type: "text", text: string}>, source: {kind: "plugin:forge-quality"}}}
  */
 export function pluginMessage(text) {
   messageSeq += 1;
@@ -182,6 +193,6 @@ export function pluginMessage(text) {
     id: `forge-dsh-${Date.now()}-${messageSeq}`,
     role: "user",
     content: [{ type: "text", text }],
-    source: { kind: "plugin", plugin: "forge-quality" },
+    source: { kind: "plugin:forge-quality" },
   };
 }
