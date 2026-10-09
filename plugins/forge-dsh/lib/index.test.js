@@ -70,7 +70,16 @@ test("pre-execute: clean bash delegates; skill-trigger advisory reaches agent.in
   assert.deepEqual(d, { kind: "allow" });
   assert.deepEqual(hookCalls().map((c) => c.hook), ["bash-guard", "hazard-guard", "gate-cmd-form", "skill-trigger", "task-drift"]);
   assert.equal(calls.injected.length, 1);
-  assert.equal(calls.injected[0].source.plugin, "forge-quality");
+  assert.equal(calls.injected[0].source.kind, "plugin:forge-quality");
+  // The kind must be producer-owned and must track the plugin's registered Cordis
+  // name, so renaming index.js `name` cannot leave the tools.js literal stale
+  // while the suite still passes. The hand-maintained copies of that identity
+  // (cordis.patch.yml, the README install snippet, package.json's files and
+  // dsh.bundle.patch linkage) are deliberately NOT asserted here: they are a text
+  // convention, and every text-level check tried for them stayed green for files
+  // YAML reads as inserting a different entry, or nothing at all. Tracked as a
+  // finding rather than half-enforced by a guard that cannot be honest about it.
+  assert.equal(calls.injected[0].source.kind, `plugin:${forgePlugin.name}`);
   assert.equal(calls.steered.length, 0);
 });
 
