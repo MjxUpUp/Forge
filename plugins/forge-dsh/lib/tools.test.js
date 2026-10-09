@@ -101,10 +101,10 @@ test("promptText concatenates text blocks across messages", () => {
   assert.equal(promptText(undefined), "");
 });
 
-test("pluginMessage is a plugin-sourced user text message", () => {
+test("pluginMessage carries the producer-owned V4 source kind", () => {
   const m = pluginMessage("ctx");
   assert.equal(m.role, "user");
-  assert.deepEqual(m.source, { kind: "plugin", plugin: "forge-quality" });
+  assert.deepEqual(m.source, { kind: "plugin:forge-quality" });
   assert.deepEqual(m.content, [{ type: "text", text: "ctx" }]);
   assert.notEqual(pluginMessage("a").id, pluginMessage("b").id);
 });
