@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.75.0](https://github.com/MjxUpUp/Forge/compare/v1.74.1...v1.75.0) (2026-10-10)
+
+
+### Features
+
+* **review:** 分档复审——低风险修复续用首轮 reviewer 增量复核，高风险/终审新派 ([c1788f8](https://github.com/MjxUpUp/Forge/commit/c1788f866a4b1a900d687091e1c950f570d47fbb))
+
+
+### Bug Fixes
+
+* **forge-dsh:** session-start 测试从 spec.json 推导期望名册并等整组落盘，消除 PostCompact 竞态 ([ed2443f](https://github.com/MjxUpUp/Forge/commit/ed2443f9c55117d3b63ad3fbb83a169e51e5edee))
+
 ## [1.74.1](https://github.com/MjxUpUp/Forge/compare/v1.74.0...v1.74.1) (2026-10-09)
 
 
