@@ -1295,7 +1295,7 @@
     {
       "tree": "canonical",
       "name": "agent-delegation",
-      "sha256": "3e6706f096cfe57e6e015a5924c3b5a935cbd5d16e4324a92ae73228d5dfc652"
+      "sha256": "6f8bd31b1167b08cd9f0279514419b3bf90512a216b5d2a7cf9a9f9d193abc41"
     },
     {
       "tree": "canonical",
@@ -1310,7 +1310,7 @@
     {
       "tree": "canonical",
       "name": "code-review-gate",
-      "sha256": "1ced052752ccaebe2cef63a9c49c374461e1565c6ded7710cdfab83287084c20"
+      "sha256": "3ed840ea032ab68277fbb436701359f5ee7c4a03165b1a37595fa0410c37f989"
     },
     {
       "tree": "canonical",

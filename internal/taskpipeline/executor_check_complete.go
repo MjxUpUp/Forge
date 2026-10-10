@@ -12,6 +12,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/scoring"
 )
 
@@ -53,7 +54,9 @@ func checkCompleteReviewPrereqs(root string, state *TaskState) error {
 				Detail:  fmt.Sprintf("fail-open: 审查基线 %s 不可达（%v）——amend/rebase 致历史改写，放行未重审", state.ReviewedHeadCommit, err),
 			})
 		} else if cur != state.ReviewedChangeHash {
-			return GateBlocked("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。HARD stop——请重新派只读子 agent 审查当前代码，再用 `forge review pass --note \"<复审结论>\"` 刷新审查基线（基线有源码变更时裸 `forge review pass` 会被拒：须 --note 记复审结论或 --acknowledge-changes 自我承担并留 self-refresh 审计）", state.ReviewedHeadCommit)
+			// 复审指引单一真相源在 review.ReReviewGuidance（分档复审：低风险修复续用首轮
+			// reviewer 增量复核，高风险/终审新派）——门禁文案不再默认「重新派」。
+			return GateBlocked("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。HARD stop——%s（基线有源码变更时裸 `forge review pass` 会被拒：须 --note 记复审结论或 --acknowledge-changes 自我承担并留 self-refresh 审计）", state.ReviewedHeadCommit, review.ReReviewGuidance)
 		}
 	}
 	return nil

@@ -1638,6 +1638,11 @@ func TestTaskComplete_ReviewSnapshotRejectsPostReviewChange(t *testing.T) {
 	if !strings.Contains(err.Error(), `审查通过后检测到源码变更`) {
 		t.Fatalf(`拒绝原因应含"审查通过后检测到源码变更"，got: %v`, err)
 	}
+	// 拒绝文案须携带分档复审指引（单一真相源 review.ReReviewGuidance）——
+	// 不再一律要求「重新派」fresh reviewer。
+	if !strings.Contains(err.Error(), review.ReReviewGuidance) {
+		t.Fatalf(`拒绝原因应含分档复审指引 review.ReReviewGuidance，got: %v`, err)
+	}
 }
 
 // TestTaskComplete_ReviewSnapshotPassWhenUnchanged: no code change after review → task-complete passes (snapshot matches).
