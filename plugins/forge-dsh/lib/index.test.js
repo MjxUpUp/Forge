@@ -12,8 +12,11 @@ import * as forgePlugin from "./index.js";
 
 import { fileURLToPath } from "node:url";
 import { FAKE_BIN as FAKE } from "../test/doubles/forge-bin.mjs";
+import { matchedCommands } from "./tools.js";
 
 const LOG = fileURLToPath(new URL("../test/doubles/.wiring-log", import.meta.url));
+// The roster single source of truth — tests derive expected hook order from it.
+const SPEC = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
 
 function makeAgent(cwd = process.cwd()) {
   const calls = { injected: [], steered: [] };
@@ -178,23 +181,32 @@ test("session-start: emit-mode context lands via inject; source compact also fir
   const ctx = await boot(t);
   const { agent, calls } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "compact" });
-  // emit listeners are detached — poll until the compact group has run too
-  // (SessionStart's inject lands BEFORE compact-resume fires, so injected
-  // length alone is not a sufficient settle signal).
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline && !hookCalls().some((c) => c.hook === "compact-resume")) {
+  // Expected roster is DERIVED from spec.json (SessionStart group, then the
+  // PostCompact group), never hand-copied: the PostCompact group is
+  // [compact-resume, conventions-context], and the old hand-written list
+  // stopped at compact-resume — the poll then settled on compact-resume alone
+  // and raced the trailing conventions-context run (CI flake on PR #100).
+  const expected = [
+    ...matchedCommands(SPEC.SessionStart, ""),
+    ...matchedCommands(SPEC.PostCompact, ""),
+  ].map((command) => command.replace(/^forge hook /, ""));
+  // emit listeners are detached — settle only once the WHOLE roster (both
+  // groups) has logged; any single hook name is an insufficient signal.
+  // Generous ceiling: 8 serial spawns go through cmd.exe + .cmd shim on
+  // Windows runners; the green path exits the poll early either way.
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && hookCalls().length < expected.length) {
     await new Promise((r) => setTimeout(r, 25));
   }
+  // Quiet window: the last line lands before its process exits, and the
+  // group's inject runs after that — wait it out, then require the log to
+  // stay put so a duplicated/extra hook run fails instead of slipping past.
+  const settled = hookCalls().length;
+  await new Promise((r) => setTimeout(r, 200));
+  assert.equal(hookCalls().length, settled, "no further hook runs after the roster settled");
   assert.equal(calls.injected.length, 1);
   const hooks = hookCalls();
-  assert.deepEqual(
-    hooks.map((c) => c.hook),
-    // conventions-context (2026-08-28 conventions-profile): session-digest injection,
-    // wired into the SessionStart roster right after skill-trigger — this list mirrors
-    // plugins/forge-dsh/lib/spec.json, keep them in sync (CI caught the miss when the
-    // spec gained the hook but this roster did not).
-    ["skill-scan", "mcp-scan", "init-suggest", "task-resume", "skill-trigger", "conventions-context", "compact-resume"],
-  );
+  assert.deepEqual(hooks.map((c) => c.hook), expected);
   assert.equal(hooks[0].payload.hook_event_name, "SessionStart");
   assert.equal(hooks[0].payload.source, "compact");
   assert.equal(hooks.at(-1).payload.hook_event_name, "PostCompact");
