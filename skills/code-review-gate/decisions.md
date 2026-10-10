@@ -326,3 +326,29 @@ docs/design/evolution-discipline-norms.md §二③/§四；仓内实践先例（
 ### Rationale
 
 先落清单级验证价值，升格走三要素判据（deferred 承诺合法形态的自身应用）——若 90 天窗命中即按 skill-authoring-standard 升格独立 skill
+
+## [d-18dd1b692133bbc0-cc890923] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-10-10T07:46:05Z
+- **By**: claude-code
+
+### Diagnosis
+
+复审义务被实现成「每轮修复后新派 fresh 只读子 agent 全量重审」并禁止同 agent 续看：冷启动固定开销 × 轮次使子 agent 缓存命中率极低、耗时耗钱；而该禁令（d-18ce6886）的证据针对的是「修复后不复审直接盖章」的自证，不是「续用 reviewer 比新派差」
+
+### Revision
+
+审查-修复-复审闭环节改为两档：增量复核（小 diff、非高风险面、确定性检查全绿 → 续用首轮 reviewer，只喂上轮 findings + 修复 diff + 测试结果；收敛靠范围约束——只审修复 diff 及其波及面与未解决原发现，不用严重性过滤，因本 skill 明令不分级；允许无新问题）；全量复审（高风险/大改/终审/第 3 轮起/连续欠采样 → 新派）。禁令由「同 agent 续看」改为「把作者推理/对话喂给 reviewer，含 fork 作者会话」；保留自证盖章与测试当复审两项禁止。门禁/review pass 拒绝/CLAUDE.md/review status 文案统一引用 review.ReReviewGuidance（首轮审查 I-1/I-2 修正：review pass 三处旧文案漏改、「只报 Important」与不分级契约冲突）
+
+### Prediction
+
+低风险修复任务的复审子 agent 冷启动次数下降，复审轮 cache_read 占比上升；复审轮新发现中①类（欠采样）比例不升高
+
+### Evidence
+
+arXiv 2603.16244：单轮 CCR F1 0.376 > 多轮 0.303 > 无上下文独立重审 0.263，多轮假阳性 +62%；arXiv 2603.12123：fresh 对同会话自审跨运行不显著，同会话二次自审最差；Claude Code Code Review 文档 REVIEW.md 复审收敛「首轮后只报 Important」；CodeRabbit 默认增量复审；调研报告 ~/.research-workflow/ai-review-cache-20261010/report.md；TestReReviewGuidanceContract / TestReReviewGuidanceConsumersReferenceConstant
+
+### Rationale
+
+独立性的有效成分是信息隔离（看不到作者推理）而非冷启动；保留升档路径兜住续用 reviewer 的锚定与假阳性压力风险

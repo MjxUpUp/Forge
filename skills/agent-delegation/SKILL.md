@@ -11,7 +11,7 @@ metadata:
 
 把任务委托给有隔离上下文的专门代理。精准构造它们的指令和上下文，确保它们专注且成功。**它们绝不继承你会话的历史——你精确构造它们需要的全部。** 这也为你自己的上下文省下用于协调工作。
 
-**核心原则：每任务一个全新子代理 + 两阶段审查（先 spec 合规，再代码质量）= 高质量、快迭代。**
+**核心原则：每任务一个全新 implementer 子代理 + 两阶段审查（先 spec 合规，再代码质量）+ 复审续用同一 reviewer = 高质量、快迭代、少冷启动。**
 
 ## 原则 1：委托前自己先理解
 
@@ -67,7 +67,7 @@ metadata:
 
 ## 原则 3：两阶段审查（顺序不可换）
 
-每个任务实现后，**强制两阶段审查**：
+每个任务实现后，**强制两阶段审查**。派 reviewer 之前先跑确定性检查（编译/lint/测试）：挂了直接回给 implementer，不值得为机器能判的问题冷启动一个 reviewer；审查 prompt 写明「不报 CI 已覆盖的问题」。
 
 ### 阶段 A：spec 合规审查（先做）
 
@@ -92,6 +92,15 @@ dispatch 一个 code quality reviewer 子代理，拿 git SHA 检查：
 reviewer 发现 Critical/Important → implementer 修 → re-review，直到 ✅。
 
 **为什么顺序不能换**：spec 不合规时审代码质量是浪费——可能整个方向就错了。先确认做对了，再确认做好了。
+
+### 复审与收敛（re-review 怎么派）
+
+审查成本的大头是「轮次 × 每个新派子代理的冷启动固定开销 + 重新探索代码库」，缓存命中率只改单价（多 agent 开发中审查阶段约占 59.4% token，arXiv 2601.14470）。所以复审不是每轮新派一个 fresh reviewer 全量重审：
+
+- **默认续用原 reviewer**：宿主支持续用时（Claude Code 用 `SendMessage` 发给原 reviewer），把修复交回**同一个** reviewer 复核，只喂「上轮问题编号 + 修复 diff + 测试结果」，不喂 implementer 的推理或对话。续用的 reviewer 读得到自己上轮的缓存，也不必重读规格和代码。
+- **何时升档新派**：分档判据以 code-review-gate「审查-修复-复审闭环」节为唯一真相源，此处不复制。
+- **阶段 B 可续用阶段 A 的 reviewer**：spec 合规 ✅ 后把代码质量审查交给同一个 reviewer 接着做，省一次冷启动；高风险任务仍新派独立的质量 reviewer。
+- **收敛规则**：首轮之后只有 Critical/Important 能阻断，复审不新增 Minor；已关闭的问题要给出失败用例才能重开；复审轮数阶段 A、B 分别计，上限默认 3 轮（与 forge 回环预算 max_rounds 缺省值一致），到上限仍有分歧 → 上报用户，不无限循环。
 
 ## 原则 4：返回后必须独立验证
 
@@ -170,6 +179,8 @@ implementer 子代理报告 4 种状态，分别处理：
 - 忽略子代理的提问（开工前回答清楚）
 - spec 合规上接受"差不多"（reviewer 发现问题 = 没完成）
 - 跳过 re-review（reviewer 发现问题 → implementer 修 → 再 review）
+- 低风险修复的每轮复审都新派 fresh reviewer 全量重审（冷启动成本按轮次翻倍，多轮全量重审只加噪声）
+- 把 implementer 的推理、自辩或对话历史喂给 reviewer（包括 fork implementer 会话来审——那是换了提示词的自审）
 - 让 implementer 自审取代正式审查（两者都要）
 - **spec 合规 ✅ 前开始代码质量审查**（顺序错）
 - 任一审查有未决问题就进下一任务
@@ -201,12 +212,14 @@ Implementer: [无问题，进行] → 报 DONE
 
 [dispatch spec reviewer]
 Spec reviewer: ❌ 问题：缺进度上报（规格要"每 100 项报告"）；多了 --json 标志（没要求）
-[implementer 修]
+[implementer 修；跑测试全绿]
+[SendMessage 续用同一 spec reviewer，只喂问题编号 + 修复 diff + 测试结果]
 Spec reviewer: ✅ 现在合规
 
-[dispatch code quality reviewer]
+[续用同一 reviewer 做代码质量审查，给 git SHA]
 Code reviewer: 问题(Important): 魔法数 100
 [implementer 提 PROGRESS_INTERVAL 常量]
+[SendMessage 续用 reviewer 复核修复 diff]
 Code reviewer: ✅ Approved
 [标记 Task 2 完成]
 ```

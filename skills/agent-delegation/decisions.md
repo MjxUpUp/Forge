@@ -74,3 +74,29 @@ forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dr
 ### Rationale
 
 扩展 trigger 覆盖是 2026-08 审计 P1 优化项；声明式触发是把 skill 从被动文档转主动注入的唯一可靠手段（见 dogfood 发现）
+
+## [d-18dd1b69272d4258-b8ba0823] accept
+
+- **Skill**: agent-delegation
+- **DecidedAt**: 2026-10-10T07:46:05Z
+- **By**: claude-code
+
+### Diagnosis
+
+两阶段审查 + 每轮 re-review 均新派 reviewer，一个任务冷启动 3-6+ 个子 agent；审查成本大头是轮次 × 冷启动固定开销 + 重新探索代码库，缓存只改单价
+
+### Revision
+
+核心原则加「复审续用同一 reviewer」；原则 3 加确定性检查先行、新增「复审与收敛」小节（默认 SendMessage 续用原 reviewer、阶段 B 可续用阶段 A reviewer、首轮后只阻断 Critical/Important、关闭问题需失败用例才能重开、轮数上限上报）；升档判据指向 code-review-gate 单一真相源；Red Flags 增两条；示例工作流与 review-templates re-review 模板改为续用 + 增量输入
+
+### Prediction
+
+每任务审查子 agent 冷启动数下降（目标从 3-6 降到 1-2），任务完成时延下降
+
+### Evidence
+
+Tokenomics arXiv 2601.14470：审查阶段占 59.4% token；Claude Code 文档：SendMessage 续用子 agent 首请求可读其已写缓存、fresh 子 agent 读不到父缓存；调研报告 ~/.research-workflow/ai-review-cache-20261010/report.md
+
+### Rationale
+
+与 code-review-gate 分档规则配套，委派侧减少冷启动；独立性靠不喂 implementer 推理保证
