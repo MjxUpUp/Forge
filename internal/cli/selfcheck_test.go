@@ -21,6 +21,9 @@ import (
 // Chdir 进去（findProjectRoot 按 cwd 解析）。
 func selfcheckGitProject(t *testing.T) string {
 	t.Helper()
+	// bindSelfcheckTask 以 FORGE_SESSION_ID 绑任务，而解析器优先读宿主 env——
+	// 先清空宿主身份，绑定才对得上（之后 bindSelfcheckTask 的 Setenv 覆盖本清空）。
+	isolateSessionIdentity(t)
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	dir := t.TempDir()
 	for _, a := range [][]string{
