@@ -35,17 +35,19 @@ func isolateSessionIdentity(t *testing.T) {
 // TestIsolateSessionIdentityClearsEveryHostEnv 以注册表钉住本 helper：预埋所有
 // 宿主身份 env 后，隔离必须让解析器拿不到任何会话身份。
 func TestIsolateSessionIdentityClearsEveryHostEnv(t *testing.T) {
-	planted := 0
+	planted := map[string]bool{}
 	for _, h := range hostcap.Hosts {
 		if h.ShellSessionEnv != "" {
 			t.Setenv(h.ShellSessionEnv, "leaked-"+h.Name)
-			planted++
+			planted[h.ShellSessionEnv] = true
 		}
 	}
-	t.Setenv("FORGE_SESSION_ID", "leaked-forge")
-	if planted == 0 {
-		t.Fatal("hostcap 注册表无任何 ShellSessionEnv——本守卫失去对象，检查注册表")
+	// 手写锚点：预埋与清空同源于注册表——若派生链被改空/改名，这里仍能红。
+	// 新增注册表外的身份来源时，须同步 isolateSessionIdentity 与 TestMain。
+	if !planted["CLAUDE_CODE_SESSION_ID"] {
+		t.Fatalf("注册表派生的身份 env 集合应含 CLAUDE_CODE_SESSION_ID，got %v", planted)
 	}
+	t.Setenv("FORGE_SESSION_ID", "leaked-forge")
 	if got := taskpipeline.CurrentSessionID(); got == "" {
 		t.Fatal("预埋身份 env 后解析器应读到会话 id，前置不成立")
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +33,16 @@ func TestMain(m *testing.M) {
 	}
 	// W0.3 密闭性：档位默认 standard，防 shell 导出的 FORGE_PROFILE 泄漏假红。
 	os.Setenv("FORGE_PROFILE", "standard")
+	// 会话身份密闭性：宿主 shell 注入的会话 env（如 Claude Code 的
+	// CLAUDE_CODE_SESSION_ID）与 FORGE_SESSION_ID 一律清空——本机复现 CI 的「无会话
+	// 身份」条件，runForge 拉起的子进程同样继承；需要会话的测试显式 t.Setenv。
+	// env 名从 hostcap 注册表派生（同 isolateSessionIdentity）。
+	for _, h := range hostcap.Hosts {
+		if h.ShellSessionEnv != "" {
+			os.Unsetenv(h.ShellSessionEnv)
+		}
+	}
+	os.Unsetenv("FORGE_SESSION_ID")
 	forgeExe = filepath.Join(tmpDir, exeName)
 
 	cmd := exec.Command("go", "build", "-o", forgeExe, "../../cmd/forge")
