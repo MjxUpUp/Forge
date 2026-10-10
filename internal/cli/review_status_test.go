@@ -1,11 +1,15 @@
 package cli
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
@@ -80,6 +84,66 @@ func TestRenderReviewStatus_NoDataSilent(t *testing.T) {
 	}
 	if strings.Contains(got, `核验`) {
 		t.Errorf(`NoData must not emit any directive; output:`+"\n"+`%s`, got)
+	}
+}
+
+// TestRenderReviewStatus_PostReviewChangeTieredGuidance pins the snapshot branch
+// of `forge review status`: after review pass, a source change must surface the
+// tiered re-review guidance (single source review.ReReviewGuidance); an
+// unchanged tree must report consistency and stay silent about re-review.
+//
+// TestRenderReviewStatus_PostReviewChangeTieredGuidance 钉住 `forge review status`
+// 的快照分支：review pass 后改了源码，必须输出分档复审指引（单一真相源
+// review.ReReviewGuidance）；未改动则报一致、不提复审。真实 git 仓库驱动——
+// 快照比对走 git diff，mock 验证不了。
+func TestRenderReviewStatus_PostReviewChangeTieredGuidance(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		changeAfter    bool
+		wantGuidance   bool
+		wantConsistent bool
+	}{
+		{"审查后改码 → 分档复审指引", true, true, false},
+		{"审查后未改码 → 一致且静默", false, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			runGit(t, dir, "init", "-q")
+			runGit(t, dir, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "c0")
+			out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+			if err != nil {
+				t.Fatalf("rev-parse: %v", err)
+			}
+			head := strings.TrimSpace(string(out))
+			src := filepath.Join(dir, "svc.go")
+			if err := os.WriteFile(src, []byte("package svc\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			hash, _, err := review.SourceChangesSince(dir, head)
+			if err != nil {
+				t.Fatalf("SourceChangesSince: %v", err)
+			}
+			const taskRef = `feat/rereview-status`
+			state := &taskpipeline.TaskState{TaskRef: taskRef, Branch: `feat/x`, StartedAt: time.Now()}
+			state.MarkReviewPassed(head, hash)
+			if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+				t.Fatal(err)
+			}
+			if tc.changeAfter {
+				if err := os.WriteFile(src, []byte("package svc\nfunc F() {}\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got := captureStdout(t, func() { _ = renderReviewStatus(dir, taskRef) })
+
+			if has := strings.Contains(got, review.ReReviewGuidance); has != tc.wantGuidance {
+				t.Errorf("含分档复审指引=%v，期望 %v；output:\n%s", has, tc.wantGuidance, got)
+			}
+			if has := strings.Contains(got, `✅ 一致`); has != tc.wantConsistent {
+				t.Errorf("含「✅ 一致」=%v，期望 %v；output:\n%s", has, tc.wantConsistent, got)
+			}
+		})
 	}
 }
 
