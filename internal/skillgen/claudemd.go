@@ -10,6 +10,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/userassets"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
@@ -198,7 +199,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	sb.WriteString("| FAIL [hazard-guard] 高危操作已拦截（需 human-in-the-loop 确认） | Bash 命令命中高危指纹（`rm -rf` 深目录/盘根/引号逃逸等） | 确需执行：用户本回合已明确指令/确认过该操作 → 直接 `forge hazard confirm --last` 放行一次，无需二次确认；否则先用所在工具的提问确认机制说明风险获确认；非误报勿绕过 |\n")
 	sb.WriteString("| ADVISORY: [gate-cmd-form] 门禁命令嵌在组合形态里 | 门禁命令后接了 `;`/截断管道/`||`/或多门禁连刷——退出码契约被削弱（1.56 advisory，1.58 起 BLOCKED） | 单独执行门禁命令，或仅接 `&&`（gate 之后无 `;`/`|`） |\n")
 	sb.WriteString("| FAIL [freeze-guard] ... 路径不在冻结允许清单 | `forge freeze` 激活期间写了清单外路径 | `forge freeze --status` 看允许范围；确实要写：与用户确认后 `forge freeze --off` 解除 |\n")
-	sb.WriteString("| BLOCKED: task-complete requires code-review-gate | complete 前置门禁：diff 未经真实代码审查 | 派只读子 agent 审查当前 diff → 修复发现 → **重新派只读子 agent 复审修复**（修复者不能自证）→ `forge review pass --note \"<复审结论>\"`（距上次基线有源码变更时裸 pass 被拒；确认无需复审用 `--acknowledge-changes` 自我承担，记 WARN self-refresh 审计）→ 再过 task-complete |\n")
+	sb.WriteString("| BLOCKED: task-complete requires code-review-gate | complete 前置门禁：diff 未经真实代码审查 | 派只读子 agent 审查当前 diff → 修复发现 → **复审修复**（修复者不能自证）→ `forge review pass --note` 刷新基线 → 再过 task-complete。" + review.ReReviewGuidance + "。距上次基线有源码变更时裸 pass 被拒；确认无需复审用 `--acknowledge-changes` 自我承担，记 WARN self-refresh 审计 |\n")
 	sb.WriteString("| insufficient work activity | 门禁间工具调用 <1 次 | 用 Read/Grep/Glob 探索代码 |\n")
 	sb.WriteString("| task-verify advisory: ... source files changed without a corresponding test | 改了源码没加对应测试文件（铁律4：测试伴随变更，advisory 仅提醒不阻塞） | 为变更的源码加 `_test.go`/`.test.ts`/`test_*.py` 等；入口(main.go/cmd)/生成物(.gen./_generated/.pb.)/纯类型文件(types/dto/models)白名单免测；不可测时用 `forge task override --test-coverage disable`（per-task，优先于 `FORGE_TEST_COVERAGE=disable` env，不污染他任务；验证类逃生降 evidence 强度到 Weak，重证据任务按证据缩放豁免） |\n")
 	sb.WriteString("| task-verify 拒绝（复发升 HARD stop）：项目 testing/scope 维度反复低分 | 项目已完成任务历史里该维度低分≥阈值次（advisory 靠自律已被证明失效），且本次严重（缺配对测试 / 超 scope 多文件 drift） | 补测试或 `forge task scope add <glob>` 收编后重跑；或 `FORGE_TEST_COVERAGE=disable`（降 Weak；重证据任务按证据缩放豁免）；或 `FORGE_RECURRENT_HARDEN=disable` 回退纯 advisory |\n")
