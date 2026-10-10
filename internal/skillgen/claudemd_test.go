@@ -8,6 +8,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
@@ -163,7 +164,12 @@ func TestClaudeMDSectionContract(t *testing.T) {
 		{"review-fix-recheck protocol (修复者不能自证)", []string{
 			"复审修复",
 			"修复者不能自证",
-		}, nil},
+			// 分档复审指引从单一真相源派生（低风险续用首轮 reviewer，高风险新派）。
+			review.ReReviewGuidance,
+		}, []string{
+			// 旧「一律重新派」文案不得回归。
+			"**重新派只读子 agent 复审修复**",
+		}},
 		{"common-errors: skill-decisions guardrail (B 组件)", []string{
 			"SKILL.md 未记决策",
 			"forge skills decide",

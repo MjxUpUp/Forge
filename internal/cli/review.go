@@ -84,7 +84,7 @@ func init() {
 	reviewLLMCmd.Flags().String("scores", "", "判分文件（JudgeAuditEntry 数组，独立只读子代理产出）——校验后落 judge-samples 留档")
 	reviewPassCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测；ref 不存在直接报错，不回落分支 stamp）")
 	reviewPassCmd.Flags().String("note", "", "审查结论文本（记入 ReviewRound/stamp 与 checklog 审计留痕）")
-	reviewPassCmd.Flags().Bool("acknowledge-changes", false, "距上次审查基线有源码变更时显式确认重盖章（自我承担，checklog 记 self-refresh WARN 审计；正规路径是重派只读子 agent 复审后用 --note 记复审结论）")
+	reviewPassCmd.Flags().Bool("acknowledge-changes", false, "距上次审查基线有源码变更时显式确认重盖章（自我承担，checklog 记 self-refresh WARN 审计；正规路径是按分档规则复审后用 --note 记复审结论，分档规则见 forge review status）")
 	reviewGateCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	reviewStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 }
@@ -215,7 +215,7 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 					baselineUnreachable = s.ReviewedHeadCommit
 				case cur != s.ReviewedChangeHash:
 					if !acknowledgeChanges && note == "" {
-						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——按协议先重派【只读】子 agent 复审当前代码，再 `forge review pass --note \"<复审结论>\"` 盖章；确认变更无需复审（自我承担，记 self-refresh WARN 审计）用 `forge review pass --acknowledge-changes`", s.ReviewedHeadCommit)
+						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——%s；确认变更无需复审（自我承担，记 self-refresh WARN 审计）用 `forge review pass --acknowledge-changes`", s.ReviewedHeadCommit, review.ReReviewGuidance)
 					}
 					// 对【已变更内容】的任何重盖章都是基线刷新、都必须可审计：
 					// --note 与 --acknowledge-changes 都是 forge 无法验证的自供文本，
@@ -301,7 +301,7 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 			if selfRefreshViaNote {
 				fmt.Println("⚠ 本次为带 --note 的基线刷新（内容已变更）：--note 是自供文本、forge 无法验证复审真发生过，已记 self-refresh WARN 审计区分于普通轮次。")
 			} else {
-				fmt.Println("⚠ 本次为自我承担的基线刷新（--acknowledge-changes）：已记 self-refresh WARN 审计。协议要求修复后重派只读子 agent 复审——下次用 --note 记录复审结论。")
+				fmt.Println("⚠ 本次为自我承担的基线刷新（--acknowledge-changes）：已记 self-refresh WARN 审计。协议要求修复后复审——" + review.ReReviewGuidance + "。")
 			}
 		}
 		if baselineUnreachable != "" {
@@ -502,7 +502,7 @@ func renderReviewStatus(root, explicitRef string) error {
 				case cur == state.ReviewedChangeHash:
 					fmt.Println("→ task-complete 门禁的 review 前置已满足，且审查后源码未变更（✅ 一致）")
 				default:
-					fmt.Println("→ ⚠ 审查通过后检测到源码变更：task-complete 会拒绝，请重新派只读子 agent 审查后用 `forge review pass --note \"<复审结论>\"` 刷新基线（裸 pass 会被拒；--acknowledge-changes 自我承担并留 self-refresh 审计）")
+					fmt.Println("→ ⚠ 审查通过后检测到源码变更：task-complete 会拒绝。" + review.ReReviewGuidance + "（裸 pass 会被拒；--acknowledge-changes 自我承担并留 self-refresh 审计）")
 				}
 			} else {
 				fmt.Println("→ task-complete 门禁的 review 前置已满足（无审查基线，commit-then-review 流或老 state）")
