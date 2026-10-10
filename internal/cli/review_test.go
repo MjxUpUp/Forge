@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/spf13/cobra"
@@ -122,6 +123,8 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Fatal("快照变更后的裸盖章必须被拒绝（self-refresh 漏洞）")
 	} else if !strings.Contains(err.Error(), "复审") || !strings.Contains(err.Error(), "acknowledge-changes") {
 		t.Errorf("拒绝文案须指明复审协议与确认途径，got: %v", err)
+	} else if !strings.Contains(err.Error(), review.ReReviewGuidance) {
+		t.Errorf("拒绝文案须携带分档复审指引（单一真相源 review.ReReviewGuidance），got: %v", err)
 	}
 	// 拒绝不得落章：仍恰为 2 轮。
 	if st, err := taskpipeline.LoadTaskState(dir, ref); err != nil || len(st.ReviewRounds) != 2 {
