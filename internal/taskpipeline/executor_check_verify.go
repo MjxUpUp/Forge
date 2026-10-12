@@ -194,6 +194,11 @@ func checkVerifyScopeDrift(root string, state *TaskState, gitChanged []string) e
 			TaskRef: state.TaskRef,
 			Detail:  scopeDriftDetail(drift),
 		}
+		// PlanScope 来自 design 产物触点（designcheck.go，提案 W5.2）：漂移即「方案外改动」。
+		if state.PlanScopeSource == PlanScopeSourceDesign {
+			entry.Detail = "方案外改动 " + entry.Detail
+			entry.Meta = map[string]string{"scope.source": PlanScopeSourceDesign}
+		}
 		if len(drift) > 0 {
 			// 纪律优先分类（P1-A）：今日无 scope 的第一防线信号，失败恒为
 			// discovery——如实记录缺口，让度量指出哪些门禁还缺上游覆盖（P3 依据）。
@@ -209,7 +214,11 @@ func checkVerifyScopeDrift(root string, state *TaskState, gitChanged []string) e
 					return GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 scope 维度已 %d 次低分（达到阈值 %d）——计划漂移已成系统性问题，本次 %d 个源文件超出 PlanScope 声明。出路：forge task scope add <glob> 收编实改；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, lowDimCounts(cs)[dimScope], recurrentThreshold(), len(drift))
 				}
 			}
-			fmt.Fprintf(os.Stderr, "%sscope-drift——%d 个源码文件超出 PlanScope 声明（advisory 不阻塞；收编: forge task scope add <glob>）\n", GateAdvisory("[task-verify] "), len(drift))
+			what := "超出 PlanScope 声明"
+			if state.PlanScopeSource == PlanScopeSourceDesign {
+				what = "不在 design 产物的触点清单里（方案外改动——补进方案触点或确认是必要改动）"
+			}
+			fmt.Fprintf(os.Stderr, "%sscope-drift——%d 个源码文件%s（advisory 不阻塞；收编: forge task scope add <glob>）\n", GateAdvisory("[task-verify] "), len(drift), what)
 			for _, f := range drift {
 				fmt.Fprintf(os.Stderr, "  ⚠ %s\n", f)
 			}
