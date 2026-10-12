@@ -57,9 +57,9 @@ forge 的验收链路已领先业界，方案本体却是短板：design 阶段�
 |---|---|---|---|
 | 1.1 | 重写技术方案模板并分三档：直接改（none）不写方案；小方案（mini）为单文件，骨架见附录 A；完整方案（full）拆为需求、设计、任务三个文件，并要求人工批准 | `template-tech-plan.md` | M |
 | 1.2 | 触发词补"技术方案 / 设计文档 / design doc / tech plan" | `skills/doc-generator/SKILL.md` | S |
-| 1.3 | `DefaultChain` design 阶段的指令改为指向模板章节（一行改动） | `artifactchain.go:151` | S |
+| 1.3 | `DefaultChain` design 阶段的指令改为指向模板章节（一行改动） | `internal/artifactchain/artifactchain.go:151` | S |
 | 1.4 | dev-workflow 2.1 的代码考古表落到方案"触点"一节；evidence-based-proposal 的核查结论写进"证据"列，不再只留在对话里 | dev-workflow、evidence-based-proposal | S |
-| 1.5 | rubric 新增 tech-plan 专属 Critical 行：缺 Non-goals；缺端到端验证；缺"什么都不做"备选；数据流的边未标注同步/异步与协议；NFR 未量化；断言无指针 | `rubric-docs.md:70` | S |
+| 1.5 | rubric 新增 tech-plan 专属 Critical 行：缺 Non-goals；缺端到端验证；缺"什么都不做"备选；数据流的边未标注同步/异步与协议；NFR 未量化；断言无指针 | `skills/doc-review/references/rubric-docs.md:70` | S |
 | 1.6 | 分档决策表写进 dev-workflow：5 个风险信号（可回退性、影响面、歧义、新颖度、安全/数据）；标准变更白名单；"拿不准就上调一档" | `skills/dev-workflow/SKILL.md` | S |
 
 ### W2 机械检查（Go，全部 advisory 起步）
@@ -68,14 +68,14 @@ forge 的验收链路已领先业界，方案本体却是短板：design 阶段�
 |---|---|---|---|
 | 2.1 | doclint 新增 `design` DocType：必需章节为 TL;DR、Non-goals、验证与回滚；复用 D8 做 TL;DR 位置检查；按 frontmatter `tier` 设篇幅上限（DocType 需扩展为按档位取 MaxBodyLines） | `internal/doclint/rules.go` | M |
 | 2.2 | reqclean 扫描范围扩到 design 产物：残留 `待定/TBD/[NEEDS CLARIFICATION]` 视为 Open Question 未关闭 | `internal/taskpipeline/reqclean.go` | S |
-| 2.3 | **grounding check**：新命令 `forge task design-check`，核实方案中的 `file:line`、repo 路径、Go 符号和模块依赖（`go list -m`）是否真实存在；标了 `new:` 的新文件豁免；结果落 checklog | 新文件 `internal/taskpipeline/designcheck.go`，`clitask` | M |
+| 2.3 | **grounding check**：`forge task artifact --check [--file]`（落地时改为既有命令的新动作，命令面净增 0），核实方案中的 `file:line`、repo 路径、Go 符号和 Go 模块（对照 go.mod）是否真实存在；`new:` / `new-dep:` 行豁免；结果落 checklog `design-check` | `internal/taskpipeline/designcheck.go`，`clitask/task_chain.go` | M |
 | 2.4 | 触点 → PlanScope：登记 design 产物且 PlanScope 为空时，从"触点"一节解析 glob 写入 PlanScope，直接复用 ScopeDrift 的事后比对 | `specs.go` / `task_chain.go`，`scope.go` | S |
 
 ### W3 ID 化追溯
 
 | # | 做什么 | 落点 | 规模 |
 |---|---|---|---|
-| 3.1 | `AcceptanceCriterion` 增加可选字段 `ID` 和 `Traces []string`；解析器同时支持前缀写法和行尾写法（语法见 D1），fence 内同样适用；旧格式行为不变 | `tasktypes/types.go`，`acceptance_artifact.go` | M |
+| 3.1 | `AcceptanceCriterion` 增加可选字段 `Traces []string`（落地时去掉单独的 `ID` 字段：条目身份仍是 Run/Expected/Assertions 三元组，追溯只需 Traces）；解析器同时支持前缀写法和行尾写法（语法见 D1），fence 内与 `--accept` 同样适用；同一道题多处追溯取并集；旧格式行为不变 | `internal/tasktypes/types.go`，`internal/taskpipeline/acceptance.go`，`internal/taskpipeline/acceptance_artifact.go`，`internal/taskpipeline/reqtrace.go` | M |
 | 3.2 | 需求覆盖表：用 spec/design 中声明的 `REQ-n` 对比 accept 的 Traces 和 Passed，输出"已验证 / 未验证 / 孤儿"三栏；`artifact --verify` 与 verify-acceptance 都输出 | `acceptance_register.go` | M |
 | 3.3 | 交付报告列出未验证的 REQ（与现有 manual 档披露并列）；在 complete 阶段先 advisory，chain 设为 rubric 及以上档位时才阻断 | `acceptance_register.go`，`docgate`/complete 段 | S |
 
@@ -83,8 +83,8 @@ forge 的验收链路已领先业界，方案本体却是短板：design 阶段�
 
 | # | 做什么 | 落点 | 规模 |
 |---|---|---|---|
-| 4.1 | 硬触发器表（确定性规则）：迁移、`*.sql`、schema、proto/openapi、公共 API 包、鉴权路径、`go.mod` 新增依赖。按 PlanScope 或触点在开工前算一次，按实际 diff 在事后再算一次；Go 内置默认表，项目可在 `.forge/protocol.yml` 追加或覆盖（见 D3） | 新增于 `scope.go` 旁；`internal/protocol/types.go` | M |
-| 4.2 | agent 声明档位：`task start --tier none\|mini\|full`，或用方案 frontmatter；最终档位 = max(硬触发器档位, 声明档位)；往下改需要写理由，落审计行 | `clitask/task.go`，executor | S |
+| 4.1 | 硬触发器表（确定性规则）：迁移、`*.sql`、schema、proto/openapi、公共 API 包、鉴权路径、`go.mod` 新增依赖。按 PlanScope 或触点在开工前算一次，按实际 diff 在事后再算一次；Go 内置默认表，项目可在 .forge/protocol.yml 的 design_tiers 追加或覆盖（见 D3） | 新增于 `scope.go` 旁；`internal/protocol/types.go` | M |
+| 4.2 | agent 声明档位：`task start --tier none\|mini\|full`，或用方案 frontmatter；最终档位 = max(硬触发器档位, 声明档位)；往下改需要写理由，落审计行 | `internal/clitask/task.go`，`internal/taskpipeline/designtier.go` | S |
 | 4.3 | 标准变更白名单（借鉴 ITIL）：依赖 patch 升级、纯文档/错别字、配置值变更，自动判为直接改（none） | 规则表同 4.1 | S |
 | 4.4 | 事后升档：task-complete 时实际 diff 命中高于声明档位的硬触发器、且没有登记 design 产物 → advisory（数据窗口后再评估是否阻断） | executor complete 段 | S |
 
@@ -92,7 +92,7 @@ forge 的验收链路已领先业界，方案本体却是短板：design 阶段�
 
 | # | 做什么 | 落点 | 规模 |
 |---|---|---|---|
-| 5.1 | 审批摘要：`artifact --approve` 时生成一屏以内的摘要（TL;DR、高危步骤、Open Questions、相对上次批准哈希的变化）；批准记录增加"审了什么"字段 | `clitask/task_chain.go`，TaskState | M |
+| 5.1 | 审批摘要：`artifact --approve` 时生成一屏以内的摘要（TL;DR、高危步骤、Open Questions、相对上次批准哈希的变化）；批准记录增加"审了什么"字段 | `internal/clitask/task_chain.go`，`internal/taskpipeline/approvaldigest.go` | M |
 | 5.2 | 方案与 diff 的一致性：ScopeDrift 报告里区分"方案外改动"；把 design-audit 的 LANDED/PARTIAL/MISSING 判定接入 project-acceptance 维度 2 | `scope.go`，project-acceptance | M |
 | 5.3 | ADR 约束力：ADR 模板 status 增加 `superseded-by`；design 阶段 skill 增加"与 accepted ADR 冲突即视为 Critical"的检查步骤 | ADR skill/模板，rubric | S |
 
@@ -187,13 +187,13 @@ accept: go test ./x -run TestA :: ok  #REQ-3 #REQ-4
 - 2026-09 拆包时按名字里的"设计族"整体移出（`feature-focus-2026-09.md` §2.1），拆包理由"Go 项目零触发"只对前端 skill 成立。
 - 落地：两者整体收回核心 `skills/`。phase-frontend 随 skill 一起收回、不拆出——审查期加载表按 `design-artifact-standards/references/phase-<环节>.md` 寻址（`internal/skillintegrate/notes/code-review-gate.md`），拆出会断掉 frontend 环节；references 按需读取，不产生常驻路由负担。核心 code-review-gate 在未装扩展包的宿主上引用清单断开的问题随之修复。
 
-**D3 规则表放置位置：`.forge/protocol.yml`（已定，2026-10-12）**
+**D3 规则表放置位置：项目质量协议 protocol.yml 的 design_tiers 段（已定，2026-10-12）**
 
 原先列的两个候选都不合适：
 - project policy 层（`~/.forge/projects.json`）只管"forge 是否接管该项目"（managed/declined），不承载规则。
 - conventions profile（`<DataDir>/conventions/profile.json`）是机器扫描出的"项目现状描述"，`forge conventions init` 会刷新覆盖。
 
-`.forge/protocol.yml` 已经承载同类的门禁调节项（如 `cross_repo_impact: advisory|required`），是"项目质量规则"的既有归宿。做法：Go 内置默认表 + protocol.yml 追加或覆盖。
+项目 protocol.yml（.forge/ 下的团队覆盖层或用户级 DataDir） 已经承载同类的门禁调节项（如 `cross_repo_impact: advisory|required`），是"项目质量规则"的既有归宿。做法：Go 内置默认表 + protocol.yml 追加或覆盖。
 
 **D4 档位命名：直接改 / 小方案 / 完整方案（已定，2026-10-12）**
 - 用户可见的档位按"要写多少"命名，与 Google 的 mini design doc 和 OpenSpec 的"直接改 / 写提案"一致：

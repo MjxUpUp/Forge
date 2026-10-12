@@ -302,7 +302,7 @@ func CheckRequirementCoverageAtComplete(root string, state *TaskState) error {
 		entry.Level = checklog.LevelBlocked
 		entry.Detail = "unverified requirements: " + strings.Join(unverified, ",")
 		recordAudit(root, entry)
-		return GateBlocked("task-complete 拒绝：%d 条声明需求未验证（%s）——给它们补带 accept[REQ-n] 的验收并实跑 verify-acceptance；产物链 spec/design 处于 rubric 及以上档位时本检查阻断（逃生：%s=disable）",
+		return GateBlocked("task-complete 拒绝：%d 条声明需求未验证（%s）——给它们补带 accept[REQ-n] 的验收并实跑 verify-acceptance；产物链 spec/design 处于 rubric 及以上档位时本检查阻断，默认链只 advisory（首发即 blocked 于显式升档的链，见 docs/design/compat-commitments.md §二；逃生：%s=disable）",
 			len(unverified), strings.Join(unverified, ", "), reqCoverageDisableEnv)
 	}
 	entry.Passed = true

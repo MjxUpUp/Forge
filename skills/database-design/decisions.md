@@ -143,3 +143,29 @@ L2 复审 PASS 96/100（C2 resolved）；双树 grep 零「forge 条件块」残
 ### Evidence
 
 docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
+
+## [d-18ddc214a9f7f2f8-ff759b29] accept
+
+- **Skill**: database-design
+- **DecidedAt**: 2026-10-12T10:40:20Z
+- **By**: claude-code
+
+### Diagnosis
+
+phase-database.md 清单指针标「属 forge-design pack，未安装则按本 skill 自查」，但 design-artifact-standards 已收回核心
+
+### Revision
+
+去掉两处 pack 指针（清单随核心分发恒可用）
+
+### Prediction
+
+无行为变化；指针不再误导
+
+### Evidence
+
+调研 2026-10-12（R2ABench 2026 / IFScale / ETH AGENTS.md ICLR26 / Spec Kit·Kiro·OpenSpec 模板 / CHI25 Plan-Then-Execute）+ 提案 docs/plans/design-stage-hardening-2026-10-proposal.md；forge skills validate 39/39
+
+### Rationale
+
+设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核
