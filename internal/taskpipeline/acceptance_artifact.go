@@ -78,7 +78,8 @@ func ParseAcceptanceFromArtifact(text string) []AcceptanceCriterion {
 			if line == "" || strings.HasPrefix(line, "Run:") || strings.HasPrefix(line, "Expected:") {
 				continue
 			}
-			out = append(out, parseOneAcceptance(line))
+			rest, prefixTraces := splitPrefixTraces(line)
+			out = append(out, withTraces(parseOneAcceptance(rest), prefixTraces))
 		case fenceGeneric:
 			// 普通代码围栏内的 Run:/Expected: 是示例，跳过。
 			continue
@@ -96,8 +97,8 @@ func ParseAcceptanceFromArtifact(text string) []AcceptanceCriterion {
 					pendingRun = ""
 				}
 			default:
-				if cmd, ok := acceptListCommand(line); ok {
-					out = append(out, parseOneAcceptance(cmd))
+				if cmd, prefixTraces, ok := acceptListCommandTraces(line); ok {
+					out = append(out, withTraces(parseOneAcceptance(cmd), prefixTraces))
 				}
 			}
 		}
@@ -118,14 +119,42 @@ func fenceLanguage(markerLine string) string {
 // acceptListCommand strips the optional "- "/"* " bullet and the accept/验收
 // prefix, returning the command part ("cmd :: expected" or bare "cmd").
 func acceptListCommand(line string) (string, bool) {
+	cmd, _, ok := acceptListCommandTraces(line)
+	return cmd, ok
+}
+
+// acceptListCommandTraces is acceptListCommand plus the prefix trace form
+// `accept[REQ-3]:` (reqtrace.go, proposal D1): the bracket sits between the
+// keyword and the colon.
+//
+// acceptListCommandTraces 在 acceptListCommand 基础上识别前缀追溯写法
+// `accept[REQ-3]:`（reqtrace.go，提案 D1）：方括号位于关键字与冒号之间。
+func acceptListCommandTraces(line string) (string, []string, bool) {
 	rest := line
 	if strings.HasPrefix(rest, "- ") || strings.HasPrefix(rest, "* ") {
 		rest = strings.TrimSpace(rest[2:])
 	}
 	for _, p := range []string{acceptLinePrefixEN, acceptLinePrefixZH} {
 		if strings.HasPrefix(rest, p) {
-			return strings.TrimSpace(rest[len(p):]), true
+			return strings.TrimSpace(rest[len(p):]), nil, true
+		}
+		kw := strings.TrimSuffix(p, ":")
+		if strings.HasPrefix(rest, kw+"[") {
+			after, traces := splitPrefixTraces(rest[len(kw):])
+			if traces != nil && strings.HasPrefix(after, ":") {
+				return strings.TrimSpace(after[1:]), traces, true
+			}
 		}
 	}
-	return "", false
+	return "", nil, false
+}
+
+// withTraces unions prefix traces into a parsed criterion's (trailing) traces.
+//
+// withTraces 把前缀追溯 ID 并入已解析条目（行尾）的追溯 ID。
+func withTraces(c AcceptanceCriterion, prefix []string) AcceptanceCriterion {
+	if len(prefix) > 0 {
+		c.Traces = mergeTraces(prefix, c.Traces)
+	}
+	return c
 }

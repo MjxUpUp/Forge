@@ -286,17 +286,65 @@ func isTemplateFile(filename string) bool {
 // （结论位置——D5/D6 判有无，D8 判靠前；earlyProse 是前 earlyProseWindow
 // 行非围栏散文）。
 func lintDocType(dt DocType, headings []string, text string, lineCount int, earlyProse string) []Issue {
+	issues := lintDocTypeRules(dt, headings, text, lineCount, earlyProse)
+	if dt.Advisory {
+		for i := range issues {
+			issues[i].Severity = Advisory
+		}
+	}
+	return issues
+}
+
+// headingIndex returns the index of the first heading containing any of the
+// "|"-separated alternatives in want (-1 = none).
+//
+// headingIndex 返回首个包含 want 中任一 "|" 分隔同义写法的标题下标（-1 = 无）。
+func headingIndex(headings []string, want string) int {
+	for idx, h := range headings {
+		for _, alt := range strings.Split(strings.ToLower(want), "|") {
+			if alt = strings.TrimSpace(alt); alt != "" && strings.Contains(h, alt) {
+				return idx
+			}
+		}
+	}
+	return -1
+}
+
+// frontmatterTierRe captures `tier:` inside a leading YAML frontmatter block.
+var frontmatterTierRe = regexp.MustCompile(`(?m)^tier:\s*([A-Za-z]+)\s*$`)
+
+// frontmatterTier returns the `tier:` value of the leading frontmatter ("" = none).
+//
+// frontmatterTier 返回开头 frontmatter 的 `tier:` 值（"" = 无）。
+func frontmatterTier(text string) string {
+	if !strings.HasPrefix(text, "---\n") {
+		return ""
+	}
+	end := strings.Index(text[4:], "\n---")
+	if end < 0 {
+		return ""
+	}
+	if m := frontmatterTierRe.FindStringSubmatch(text[4 : 4+end]); m != nil {
+		return strings.ToLower(m[1])
+	}
+	return ""
+}
+
+func lintDocTypeRules(dt DocType, headings []string, text string, lineCount int, earlyProse string) []Issue {
 	var issues []Issue
 	lowerText := strings.ToLower(text)
 
-	for _, want := range dt.RequiredHeadings {
-		foundAt := -1
-		for idx, h := range headings {
-			if strings.Contains(h, strings.ToLower(want)) {
-				foundAt = idx
-				break
-			}
+	for _, want := range dt.AnywhereHeadings {
+		if headingIndex(headings, want) < 0 {
+			issues = append(issues, Issue{
+				Line: 1, Rule: "D5", Severity: Hard,
+				Message: fmt.Sprintf("%s 缺必填章节「%s」", dt.ID, want),
+			})
 		}
+	}
+
+	for _, want := range dt.RequiredHeadings {
+		foundAt := headingIndex(headings, want)
 		if foundAt < 0 {
 			issues = append(issues, Issue{
 				Line: 1, Rule: "D5", Severity: Hard,
@@ -344,10 +392,18 @@ func lintDocType(dt DocType, headings []string, text string, lineCount int, earl
 		}
 	}
 
-	if dt.MaxBodyLines > 0 && lineCount > dt.MaxBodyLines {
+	maxLines := dt.MaxBodyLines
+	label := dt.ID
+	if tier := frontmatterTier(text); tier != "" {
+		if n, ok := dt.MaxBodyLinesByTier[tier]; ok {
+			maxLines = n
+			label = dt.ID + "(" + tier + ")"
+		}
+	}
+	if maxLines > 0 && lineCount > maxLines {
 		issues = append(issues, Issue{
 			Line: 1, Rule: "D7", Severity: Advisory,
-			Message: fmt.Sprintf("%s 共 %d 行超篇幅上限 %d 行——明细下沉附录或拆分", dt.ID, lineCount, dt.MaxBodyLines),
+			Message: fmt.Sprintf("%s 共 %d 行超篇幅上限 %d 行——明细下沉附录或拆分", label, lineCount, maxLines),
 		})
 	}
 	return issues

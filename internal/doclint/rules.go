@@ -92,9 +92,38 @@ var evidenceMarkerRes = []*regexp.Regexp{
 type DocType struct {
 	ID               string
 	FilenameContains []string // lowercase substring match against the base filename
-	RequiredHeadings []string // heading text fragment (contains-match, case-insensitive)
+	// FilenameExact matches the whole base filename (case-insensitive) — for
+	// names too generic for substring matching ("design.md" is a substring of
+	// "phase-test-design.md").
+	//
+	// FilenameExact 整体匹配 base 文件名（大小写不敏感）——用于不适合子串匹配的
+	// 通用名（"design.md" 是 "phase-test-design.md" 的子串）。
+	FilenameExact []string
+	// RequiredHeadings must exist AND sit within the first headings (D5 + D8
+	// position). A fragment may list alternatives separated by "|".
+	//
+	// RequiredHeadings 必须存在且位于前几个标题（D5 + D8 位置）。片段可用 "|"
+	// 分隔多个同义写法。
+	RequiredHeadings []string
+	// AnywhereHeadings must exist but carry no position rule (D5 only) — body
+	// sections such as Non-goals or verification are not conclusions.
+	//
+	// AnywhereHeadings 必须存在但不做位置检查（仅 D5）——Non-goals、验证这类
+	// 正文章节不是结论。
+	AnywhereHeadings []string
 	ConclusionEnum   []string // doc text must contain at least one
 	MaxBodyLines     int      // advisory cap; 0 = none
+	// MaxBodyLinesByTier overrides MaxBodyLines by the frontmatter `tier:` value.
+	//
+	// MaxBodyLinesByTier 按 frontmatter 的 `tier:` 值覆盖 MaxBodyLines。
+	MaxBodyLinesByTier map[string]int
+	// Advisory downgrades every type-scoped issue (D5-D8) to advisory: a new type
+	// starts in its observation window and is promoted only on data
+	// (design-stage-hardening proposal principle 2).
+	//
+	// Advisory 把该类型的全部类型规则（D5-D8）降为建议：新类型先进观察窗口，
+	// 凭数据再升档（design-stage-hardening 提案原则 2）。
+	Advisory bool
 }
 
 // DocTypes is the v1 type table.
@@ -119,6 +148,22 @@ var DocTypes = []DocType{
 		FilenameContains: []string{"release-checklist"},
 		ConclusionEnum:   []string{"GO", "NO-GO"},
 	},
+	{
+		// 技术方案（design-stage-hardening W2.1）：TL;DR 结论前置；Non-goals 与
+		// 验证必须有；篇幅按 frontmatter tier 分档；观察窗口内全部 advisory。
+		// design.md 是产物链 design 阶段的落盘名（artifactchain DefaultChain）。
+		ID:               "design",
+		FilenameContains: []string{"tech-plan", "技术方案", "design-doc"},
+		FilenameExact:    []string{"design.md"},
+		RequiredHeadings: []string{"tl;dr|tldr"},
+		AnywhereHeadings: []string{"non-goals|non goals|不做", "验证|verification"},
+		MaxBodyLines:     150,
+		MaxBodyLinesByTier: map[string]int{
+			"mini": 150,
+			"full": 400,
+		},
+		Advisory: true,
+	},
 }
 
 // matchDocType 返回首个文件名命中（仅 BASE 名）的 DocType，未命中返回 nil。
@@ -128,6 +173,11 @@ var DocTypes = []DocType{
 func matchDocType(filename string) *DocType {
 	lower := strings.ToLower(filepath.Base(filename))
 	for i := range DocTypes {
+		for _, exact := range DocTypes[i].FilenameExact {
+			if lower == strings.ToLower(exact) {
+				return &DocTypes[i]
+			}
+		}
 		for _, hint := range DocTypes[i].FilenameContains {
 			if strings.Contains(lower, strings.ToLower(hint)) {
 				return &DocTypes[i]

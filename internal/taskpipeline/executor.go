@@ -175,6 +175,12 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		if err != nil {
 			return nil, err
 		}
+		// 需求覆盖（reqtrace.go，提案 W3.3）：默认 advisory；产物链 spec/design ≥ rubric 档时阻断。
+		if err := CheckRequirementCoverageAtComplete(root, state); err != nil {
+			return nil, err
+		}
+		// 事后升档（designtier.go，提案 W4.4）：实际 diff 要求更高档位且无 design 产物 → advisory。
+		CheckDesignTierEscalation(root, state, changedFiles)
 		adviseCompleteDelivery(root, state, changedFiles)
 	}
 
@@ -478,6 +484,9 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 			fmt.Fprintf(os.Stderr, "%s\n", entry.Detail)
 		}
 		recordAudit(root, entry)
+		// 方案档位判定（designtier.go，提案 W4/W0.1）：搭每任务一次的同一段——首个
+		// implement 轮用 PlanScope + 已改文件跑硬触发器，落 design-tier 行。advisory。
+		RecordImplementDesignTier(root, state, taskChangedFiles(root, state))
 		// 先置标记再持久化（best-effort）：即便落盘失败，本进程内的重试也不会重发；
 		// 跨进程重试最坏重发一次，优于静默丢失「已记录」的语义。与 DesignPhases 持久化
 		// 同款模式（executor.go task-verify 段）。
@@ -486,8 +495,10 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		// better than silently losing the "already recorded" semantics. Same pattern as
 		// the DesignPhases persistence (executor.go task-verify section).
 		state.PlanFirstAdvisoryFired = true
+		decided := state.DesignTier
 		if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
 			s.PlanFirstAdvisoryFired = true
+			s.DesignTier = decided
 			return nil
 		}); err != nil {
 			fmt.Fprintln(os.Stderr, "[task-implement] plan-first marker persist failed:", err)

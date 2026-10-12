@@ -33,11 +33,13 @@ func init() {
 	taskArtifactCmd.Flags().String("approve", "", "human 档人工审批：<stage>（签当前登记内容哈希，内容再改即作废）")
 	taskArtifactCmd.Flags().String("by", "", "审批人标识（缺省取当前 session id；审批必须可归因到人）")
 	taskArtifactCmd.Flags().Bool("extract", false, "从已登记产物提取验收标准合并进任务（accept:/Run:/```accept 三形态；考卷层级 spec-extract）")
+	taskArtifactCmd.Flags().Bool("check", false, "方案事实核查：路径/file:line/Go 符号/Go 模块是否真实存在（默认核查已登记 design 产物，--file 指定任意文件；advisory）")
+	taskArtifactCmd.Flags().StringArray("checked", nil, "--approve 时声明审过的内容（可重复，如 --checked 高危步骤 --checked 接口契约）")
 	taskStartCmd.Flags().StringArray("artifact", nil, `开工即登记产物（可重复 --artifact "<stage>=<path>"）：读文件内容落 specs 目录并折哈希引用进任务（spec-kit 式「先写 spec 再开工」路径）`)
 }
 
 var taskArtifactCmd = &cobra.Command{
-	Use:   "artifact --set <stage> --file <path> | --list | --verify | --approve <stage> | --extract",
+	Use:   "artifact --set <stage> --file <path> | --list | --verify | --approve <stage> | --extract | --check [--file <path>]",
 	Short: "产物链操作（L6 契约层：登记/查看/漂移校验/人工审批/验收提取）",
 	RunE:  runTaskArtifact,
 }
@@ -48,14 +50,15 @@ func runTaskArtifact(cmd *cobra.Command, args []string) error {
 	verify, _ := cmd.Flags().GetBool("verify")
 	approveStage, _ := cmd.Flags().GetString("approve")
 	extract, _ := cmd.Flags().GetBool("extract")
+	check, _ := cmd.Flags().GetBool("check")
 	actions := 0
-	for _, on := range []bool{setStage != "", list, verify, approveStage != "", extract} {
+	for _, on := range []bool{setStage != "", list, verify, approveStage != "", extract, check} {
 		if on {
 			actions++
 		}
 	}
 	if actions != 1 {
-		return fmt.Errorf("恰好一个动作：--set <stage> --file <path> | --list | --verify | --approve <stage> | --extract")
+		return fmt.Errorf("恰好一个动作：--set <stage> --file <path> | --list | --verify | --approve <stage> | --extract | --check")
 	}
 	switch {
 	case setStage != "":
@@ -69,7 +72,11 @@ func runTaskArtifact(cmd *cobra.Command, args []string) error {
 		return runArtifactVerify()
 	case approveStage != "":
 		by, _ := cmd.Flags().GetString("by")
-		return runArtifactApprove(approveStage, by)
+		checked, _ := cmd.Flags().GetStringArray("checked")
+		return runArtifactApprove(approveStage, by, checked)
+	case check:
+		file, _ := cmd.Flags().GetString("file")
+		return runArtifactCheck(file)
 	default:
 		return runArtifactExtract()
 	}
@@ -139,6 +146,10 @@ func runArtifactSet(stage, file string, useStdin bool) error {
 			s.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
 		}
 		s.SpecArtifacts[stage] = aref
+		// design 产物的触点 → PlanScope（designcheck.go，提案 W2.4）：手工声明的 scope 优先。
+		if stage == "design" && taskpipeline.ApplyDesignTouchpoints(s, content) {
+			fmt.Fprintf(os.Stderr, "ℹ️ 已从方案触点设置 PlanScope（%d 项）——实改超出即报「方案外改动」\n", len(s.PlanScope))
+		}
 		// 重登记 = 内容更新 → 旧审批作废（若审批哈希与新内容不一致）。
 		if apr, has := s.ArtifactApprovals[stage]; has && apr.Hash != aref.Hash {
 			delete(s.ArtifactApprovals, stage)
@@ -255,6 +266,10 @@ func runArtifactVerify() error {
 		return err
 	}
 	drifted := taskpipeline.VerifyArtifactsReport(root, st)
+	// 需求覆盖表（reqtrace.go，提案 W3.2）：产物声明的 REQ 与验收追溯对账。
+	if cov := taskpipeline.TaskRequirementCoverage(root, st); cov.HasTraceData() {
+		fmt.Println(taskpipeline.FormatRequirementCoverage(cov))
+	}
 	if len(drifted) == 0 {
 		fmt.Printf("全部 %d 个产物引用校验通过（无漂移）\n", len(st.SpecArtifacts))
 		return nil
@@ -270,7 +285,7 @@ func runArtifactVerify() error {
 // runArtifactApprove records the human-tier approval: the approval signs the
 // CURRENT registered content hash (fact) — drifted or unregistered artifacts
 // refuse approval.
-func runArtifactApprove(stage, by string) error {
+func runArtifactApprove(stage, by string, checked []string) error {
 	root, err := projectroot.Find()
 	if err != nil {
 		return err
@@ -296,6 +311,14 @@ func runArtifactApprove(stage, by string) error {
 	if by == "" {
 		return fmt.Errorf("审批人缺失：--by <审批人标识>（审批必须可归因到人）")
 	}
+	// 审批摘要（提案 W5.1）：批之前先给一屏摘要——人审决策、高危步骤与未决问题，
+	// 而不是逐行审计划（CHI 2025：人对 AI 计划的信任校准度只有 0.50）。
+	if ref, has := st.SpecArtifacts[stage]; has {
+		if body, rerr := os.ReadFile(taskpipeline.ArtifactAbsPath(root, ref)); rerr == nil {
+			prev, _ := os.ReadFile(taskpipeline.ApprovedSnapshotPath(root, st.TaskRef, stage))
+			fmt.Print(taskpipeline.RenderApprovalDigest(stage, string(body), string(prev)))
+		}
+	}
 	var approved taskpipeline.ArtifactApproval
 	if err := taskpipeline.MutateTaskState(root, st.TaskRef, func(ts *taskpipeline.TaskState) error {
 		ref, has := ts.SpecArtifacts[stage]
@@ -306,7 +329,10 @@ func runArtifactApprove(stage, by string) error {
 		if cur == "" || cur != ref.Hash {
 			return fmt.Errorf("stage %q 引用已漂移（登记后文件被改）——先重登记再审批", stage)
 		}
-		approved = taskpipeline.ArtifactApproval{By: by, At: time.Now(), Hash: cur}
+		if serr := taskpipeline.SaveApprovedSnapshot(root, ts.TaskRef, stage, taskpipeline.ArtifactAbsPath(root, ref)); serr != nil {
+			fmt.Fprintf(os.Stderr, "⚠️ 审批快照未落盘（下次审批无法给出变化摘要）: %v\n", serr)
+		}
+		approved = taskpipeline.ArtifactApproval{By: by, At: time.Now(), Hash: cur, Checked: checked}
 		if ts.ArtifactApprovals == nil {
 			ts.ArtifactApprovals = map[string]taskpipeline.ArtifactApproval{}
 		}
@@ -316,6 +342,51 @@ func runArtifactApprove(stage, by string) error {
 		return err
 	}
 	fmt.Printf("已审批 %s（by %s，hash %s）——内容再改即作废\n", stage, approved.By, approved.Hash)
+	if len(approved.Checked) == 0 {
+		fmt.Println("ℹ️ 未声明审过的内容——建议 --checked <项> 记录本次审了什么（决策/高危步骤/接口契约）")
+	}
+	return nil
+}
+
+// runArtifactCheck runs the design grounding check (designcheck.go, proposal
+// W2.3) on --file or the registered design artifact; findings land in checklog
+// when a task is active. Advisory: exit 0 even with findings.
+//
+// runArtifactCheck 对 --file 或已登记 design 产物跑方案事实核查（designcheck.go，
+// 提案 W2.3）；有活跃任务时 findings 落 checklog。advisory：有发现也退出 0。
+func runArtifactCheck(file string) error {
+	root, err := projectroot.Find()
+	if err != nil {
+		return err
+	}
+	st, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
+	path := file
+	if path == "" {
+		if st == nil {
+			return fmt.Errorf("无活跃任务且未给 --file——指定要核查的方案文件")
+		}
+		ref, has := st.SpecArtifacts["design"]
+		if !has {
+			return fmt.Errorf("任务未登记 design 产物——先 forge task artifact --set design --file <path>，或用 --file 直接核查")
+		}
+		path = taskpipeline.ArtifactAbsPath(root, ref)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("读取 %q 失败: %w", path, err)
+	}
+	findings := taskpipeline.CheckDesignGrounding(root, string(body))
+	if st != nil {
+		taskpipeline.RecordDesignCheck(root, st.TaskRef, findings)
+	}
+	if len(findings) == 0 {
+		fmt.Println("方案事实核查通过：引用的路径/行号/符号/模块均可在仓库中找到")
+		return nil
+	}
+	fmt.Printf("方案事实核查：%d 处引用无法落地（advisory）\n", len(findings))
+	for _, f := range findings {
+		fmt.Printf("  - 行 %d [%s] %s —— %s\n", f.Line, f.Kind, f.Ref, f.Detail)
+	}
 	return nil
 }
 

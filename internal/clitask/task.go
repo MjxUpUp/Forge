@@ -59,6 +59,8 @@ func init() {
 	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的「start 持久化」模式。
 	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）")
 	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
+	taskStartCmd.Flags().String("tier", "", "方案档位：none（直接改）| mini（小方案）| full（完整方案）；与硬触发器推导档位取较高者（advisory）")
+	taskStartCmd.Flags().String("tier-reason", "", "声明档位低于硬触发器要求时的下调理由（落审计；无理由则取较高档）")
 	taskStartCmd.Flags().String("plan-file", "", "计划正文 markdown 文件路径（读取存入 task.Plan，供 resume 拉回）")
 	taskStartCmd.Flags().String("origin-tool", "", "发起工具（pi/claude-code/opencode/codex/cursor），默认从环境探测")
 	taskStartCmd.Flags().String(`parent`, ``, `父任务 ref（建立子任务→父任务关系，subtask 拆解）`)
@@ -601,6 +603,19 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				planAcceptanceAdded += len(state.Acceptance) - baseBefore
 			}
 		}
+	}
+	// 方案档位（designtier.go，提案 W4.2）：声明档位与 PlanScope/触点推导档位取较高者；
+	// 下调须带理由。开工即给提示，implement 首轮按实改文件复算并落 design-tier 行。
+	tier, _ := cmd.Flags().GetString("tier")
+	tierReason, _ := cmd.Flags().GetString("tier-reason")
+	if err := taskpipeline.ValidateDesignTier(tier); err != nil {
+		return err
+	}
+	if tier != "" || len(state.PlanScope) > 0 {
+		derived, triggers := taskpipeline.DeriveDesignTier(root, state.PlanScope)
+		d := taskpipeline.DecideDesignTier(tier, tierReason, derived, triggers)
+		state.DesignTier = &d
+		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ %s\n", taskpipeline.FormatDesignTierAdvice(d))
 	}
 	// go test 人体工学（usage 日志修复）：`go test` 不带 -v 时输出没有 PASS 行，Expected
 	// 写 "PASS" 永不匹配，agent 到 verify-acceptance 才发现——真实失败模式是 abort 重开

@@ -125,6 +125,15 @@ type AcceptanceCriterion struct {
 	// 层级梯）。登记点一次盖章、绝不改写：把事后补登的卷子改标成先于代码的
 	// 卷子，等于把最弱层洗成最强层。
 	Source string `json:"source,omitempty"`
+	// Traces lists the requirement IDs (REQ-n / NFR-n / INV-n) this criterion
+	// verifies — declared by the `accept[REQ-3]:` prefix or trailing `#REQ-3`
+	// tokens. Not part of the criterion's identity (MergeAcceptance's triple):
+	// the same command tracing more IDs is still the same exam question.
+	//
+	// Traces 是本条验收所验证的需求 ID（REQ-n / NFR-n / INV-n）——由
+	// `accept[REQ-3]:` 前缀或行尾 `#REQ-3` 标记声明。不进条目身份
+	// （MergeAcceptance 的三元组）：同一命令多追溯几个 ID 仍是同一道题。
+	Traces []string `json:"traces,omitempty"`
 }
 
 // Assertion is one structured, mechanically checkable assertion within a v2
@@ -505,6 +514,20 @@ type TaskState struct {
 	// 与之的差集记 scope-drift 供 review，不阻塞。变更影响分析召回率仅 ~44%，故 scope 当 prediction
 	// 而非 contract，drift 是常态信号。task start --scope 声明，task scope add 中途迭代追加（分层定位）。
 	PlanScope []string `json:"plan_scope,omitempty"`
+	// PlanScopeSource marks where PlanScope came from: "" = declared by hand
+	// (--scope / task scope add), "design" = parsed from the registered design
+	// artifact's touch-point section. scope-drift labels drift against a
+	// design-sourced scope as "方案外改动".
+	//
+	// PlanScopeSource 标记 PlanScope 的来源："" = 手工声明（--scope / task scope
+	// add），"design" = 从已登记 design 产物的触点一节解析。来源为 design 时
+	// scope-drift 把漂移标为「方案外改动」。
+	PlanScopeSource string `json:"plan_scope_source,omitempty"`
+	// DesignTier is the task's design-tier decision (none/mini/full); nil on
+	// tasks that never went through tier routing.
+	//
+	// DesignTier 是任务的方案档位判定（none/mini/full）；未经分档路由的任务为 nil。
+	DesignTier *DesignTierDecision `json:"design_tier,omitempty"`
 
 	// SpecArtifacts is the L6 artifact-contract layer's reference side: stage →
 	// verifiable pointer (DataDir-relative path + content hash) into specs/<ref>/.
