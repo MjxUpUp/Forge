@@ -187,6 +187,8 @@ func TestTaskWildRequiresNote(t *testing.T) {
 // （.forge/state.json——findProjectRoot 的项目判据，同 newTaskGuardProject）。
 func newWildGitRepo(t *testing.T) string {
 	t.Helper()
+	// wild 测试断言「空会话」文案与 anonymous owner——须隔离宿主注入的会话身份。
+	isolateSessionIdentity(t)
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, ".forge"), 0o755); err != nil {
