@@ -1335,7 +1335,7 @@
     {
       "tree": "canonical",
       "name": "design-artifact-standards",
-      "sha256": "41098458be6af21afab189336795bcd6ef131a3487a10af1b323c00cba39cd93"
+      "sha256": "9fb1105a052e2925981de7f3d8113de0d162987cada8c38d17e534373587f6ca"
     },
     {
       "tree": "canonical",
@@ -1350,7 +1350,7 @@
     {
       "tree": "canonical",
       "name": "dev-workflow",
-      "sha256": "53b06778ea827e5044ce4a9596837283d6d24717e5e117edee81519ca2b60f81"
+      "sha256": "0d826890022f6cd90798b4a1543ae47111bbf8d395f7323f1934e5dac8285716"
     },
     {
       "tree": "canonical",
@@ -1375,7 +1375,7 @@
     {
       "tree": "canonical",
       "name": "evidence-based-proposal",
-      "sha256": "5d0a124874798d8678a74c189f27c038768b5e43447f33ed83504f8e3313ae84"
+      "sha256": "5b35f070559b3c3a3d771d5a65682bd3d8defca314ae4744c648c6e95ec598fa"
     },
     {
       "tree": "canonical",

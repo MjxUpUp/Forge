@@ -93,7 +93,7 @@ func ParseAcceptanceFromArtifact(text string) []AcceptanceCriterion {
 			case strings.HasPrefix(line, `Expected:`):
 				if pendingRun != "" {
 					exp := strings.TrimSpace(strings.TrimPrefix(line, `Expected:`))
-					out = append(out, parseOneAcceptance(pendingRun+` :: `+exp))
+					out = append(out, parseOneAcceptance(joinRunExpected(pendingRun, exp)))
 					pendingRun = ""
 				}
 			default:

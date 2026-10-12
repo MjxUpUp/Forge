@@ -48,6 +48,9 @@ var reqHygieneAmbiguityMarkers = regexp.MustCompile(
 // openQuestionsHeadingRe matches an Open Questions section heading.
 var openQuestionsHeadingRe = regexp.MustCompile(`(?i)^#{2,6}\s*(open questions|待决问题|未决问题)`)
 
+// openQuestionNoneRe matches a placeholder item meaning "no open questions".
+var openQuestionNoneRe = regexp.MustCompile(`(?i)^[-*]\s*(无|暂无|没有|none|n/?a|-)\s*[。.]?$`)
+
 // openQuestionResolvedRe marks a list item as closed (checked box / 已决 / resolved / struck through).
 var openQuestionResolvedRe = regexp.MustCompile(`(?i)(^[-*]\s*\[x\]|已决|已定|resolved|^[-*]\s*~~)`)
 
@@ -124,7 +127,9 @@ func scanSpecText(text string) []reqHygieneFinding {
 func scanOpenQuestions(text string) []reqHygieneFinding {
 	var findings []reqHygieneFinding
 	inSection := false
-	for i, raw := range strings.Split(text, "\n") {
+	lines, numbers := proseLines(text) // 围栏内的 # 行不是标题，不得结束本节
+	for idx, raw := range lines {
+		i := numbers[idx] - 1
 		line := strings.TrimSpace(raw)
 		if strings.HasPrefix(line, "#") {
 			inSection = openQuestionsHeadingRe.MatchString(line)
@@ -133,7 +138,7 @@ func scanOpenQuestions(text string) []reqHygieneFinding {
 		if !inSection || !(strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ")) {
 			continue
 		}
-		if openQuestionResolvedRe.MatchString(line) {
+		if openQuestionResolvedRe.MatchString(line) || openQuestionNoneRe.MatchString(line) {
 			continue
 		}
 		findings = append(findings, reqHygieneFinding{

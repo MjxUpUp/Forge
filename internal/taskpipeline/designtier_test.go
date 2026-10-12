@@ -189,3 +189,24 @@ func TestPlanConversionByTier(t *testing.T) {
 		t.Fatalf("ByTier = %+v, want %+v", got, want)
 	}
 }
+
+// TestDesignTierReviewFixes 钉住审查轮修复：公共接口只认仓库顶层 api/pkg/sdk；docs
+// 目录下的源码不再被当作标准变更；伪版本升级不是 patch-only。
+func TestDesignTierReviewFixes(t *testing.T) {
+	builtin := tierConfig{rules: defaultTierRules, standard: defaultStandardChanges}
+	if tier, _ := deriveTier([]string{"internal/api/handler.go"}, builtin); tier != "none" {
+		t.Errorf("internal/api 不是公共接口, got %q", tier)
+	}
+	if tier, _ := deriveTier([]string{"api/v1/user.go"}, builtin); tier != "full" {
+		t.Errorf("顶层 api/ 应触发完整方案, got %q", tier)
+	}
+	if tier, _ := deriveTier([]string{"docs/tool/gen.go", "a/x.go", "b/y.go"}, builtin); tier != "mini" {
+		t.Errorf("docs 下的源码应计入跨模块, got %q", tier)
+	}
+	if goModVersionLineRe.MatchString("\tgithub.com/a/b v0.0.0-20240101000000-abcdef123456") {
+		t.Error("伪版本不应被当作可比较的 patch 版本")
+	}
+	if !goModVersionLineRe.MatchString("\tgithub.com/a/b v1.2.3 // indirect") {
+		t.Error("带 // indirect 的正式版本应可解析")
+	}
+}

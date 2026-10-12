@@ -538,6 +538,15 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// planAcceptanceAdded：--plan-file 提取后实际新增入库的条数（净增，扣除与显式 --accept
 	// 去重的部分），仅供下方成功输出标注来源。用 merge 后的 len 差值而非提取前的 len(extracted)——
 	// 后者在 --accept 共存时会数进去被去重丢弃的条目，误导用户以为它们进了 state。
+	// --tier 先校验再写任何产物文件（审查轮：非法档位不得留下半登记的 specs）。
+	tier, _ := cmd.Flags().GetString("tier")
+	tierReason, _ := cmd.Flags().GetString("tier-reason")
+	if err := taskpipeline.ValidateDesignTier(tier); err != nil {
+		return err
+	}
+	if tierReason != "" && tier == "" {
+		return fmt.Errorf("--tier-reason 只在声明 --tier 时有意义（下调理由须对应一个声明档位）")
+	}
 	planAcceptanceAdded := 0
 	hasPlanInput := false
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
@@ -594,6 +603,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
 			}
 			state.SpecArtifacts[stage] = aref
+			// design 产物触点 → PlanScope（提案 W2.4）：上方 --scope 手工声明优先；
+			// 须在下方档位推导之前——开工档位按触点算。
+			if stage == "design" {
+				taskpipeline.ApplyDesignTouchpoints(state, string(data))
+			}
 			if extracted := taskpipeline.ParseAcceptanceFromArtifact(string(data)); len(extracted) > 0 {
 				// 考卷层级（oracle-pipeline L1）：从产物提取的标准盖 spec-extract 层
 				// ——考卷来自可评审/可签字的 spec 产物，强于裸 --accept。
@@ -606,11 +620,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	}
 	// 方案档位（designtier.go，提案 W4.2）：声明档位与 PlanScope/触点推导档位取较高者；
 	// 下调须带理由。开工即给提示，implement 首轮按实改文件复算并落 design-tier 行。
-	tier, _ := cmd.Flags().GetString("tier")
-	tierReason, _ := cmd.Flags().GetString("tier-reason")
-	if err := taskpipeline.ValidateDesignTier(tier); err != nil {
-		return err
-	}
 	if tier != "" || len(state.PlanScope) > 0 {
 		derived, triggers := taskpipeline.DeriveDesignTier(root, state.PlanScope)
 		d := taskpipeline.DecideDesignTier(tier, tierReason, derived, triggers)

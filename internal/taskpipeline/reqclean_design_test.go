@@ -69,3 +69,15 @@ func TestReqHygieneDesignStage(t *testing.T) {
 		}
 	})
 }
+
+// TestOpenQuestionsPlaceholdersAndFences 钉住审查轮修复：「无/None」占位项不算未决
+// 问题；围栏内的 # 行不结束 Open Questions 一节。
+func TestOpenQuestionsPlaceholdersAndFences(t *testing.T) {
+	if got := scanOpenQuestions("## Open Questions\n- 无\n- None\n- N/A\n"); len(got) != 0 {
+		t.Errorf("占位项不应报: %v", got)
+	}
+	text := "## Open Questions\n```sh\n# 示例注释\n```\n- Q1 未决\n"
+	if got := scanOpenQuestions(text); len(got) != 1 {
+		t.Errorf("围栏内 # 不应结束本节，Q1 应被报出: %v", got)
+	}
+}

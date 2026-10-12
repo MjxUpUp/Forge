@@ -16,6 +16,7 @@ package taskpipeline
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -104,11 +105,63 @@ func looksLikeRepoPath(tok string) bool {
 	return strings.Contains(tok, "/") && (filepath.Ext(tok) != "" || strings.HasSuffix(tok, "/"))
 }
 
-// goDeclRe builds the declaration regex for a Go symbol (func, method, type,
-// var/const, or an entry inside a var/const/type block).
-func goDeclRe(sym string) *regexp.Regexp {
+// goDeclRe builds the declaration regex for a Go symbol: func, method (with
+// receiver type when given), type/var/const, a `Name = …` entry of a const/var
+// block, or a `Name Type` entry of a type/var block or struct. An indented call
+// `\tFoo(1)` is NOT a declaration (no whitespace between name and paren).
+//
+// goDeclRe 构造 Go 符号的声明正则：func、方法（给了接收者类型时一并匹配）、
+// type/var/const、const/var 块里的 `Name = …`、type/var 块或 struct 里的
+// `Name Type`。缩进的调用 `\tFoo(1)` 不算声明（名字与括号之间无空白）。
+func goDeclRe(recv, sym string) *regexp.Regexp {
 	q := regexp.QuoteMeta(sym)
-	return regexp.MustCompile(`(?m)^(?:func\s+(?:\([^)]*\)\s*)?` + q + `\b|(?:type|var|const)\s+` + q + `\b|\s+` + q + `\s*(?:=|[A-Za-z*\[(]))`)
+	method := `func\s+\([^)]*\)\s*` + q + `\b`
+	if recv != "" {
+		method = `func\s+\([^)]*\b\*?` + regexp.QuoteMeta(recv) + `(?:\[[^\]]*\])?\)\s*` + q + `\b`
+	}
+	return regexp.MustCompile(`(?m)^(?:func\s+` + q + `\b|` + method + `|(?:type|var|const)\s+` + q + `\b|\s+` + q + `\s*=|\s+` + q + `\s+[A-Za-z*\[(])`)
+}
+
+// maxDesignRefBytes caps how much of a referenced file the check reads.
+//
+// maxDesignRefBytes 是核查读取被引用文件的字节上限。
+const maxDesignRefBytes = 4 << 20
+
+// repoPath resolves a doc-supplied repo-relative path inside root. Absolute
+// paths and anything escaping root via ".." are refused (the design doc is
+// semi-trusted input — the check must never probe files outside the repo).
+//
+// repoPath 把方案给出的仓库相对路径解析到 root 内。绝对路径与经 ".." 越出 root
+// 的路径一律拒绝（方案文档是半可信输入——核查绝不能探测仓库外的文件）。
+func repoPath(root, rel string) (string, bool) {
+	if rel == "" || filepath.IsAbs(rel) || strings.HasPrefix(rel, "/") {
+		return "", false
+	}
+	abs := filepath.Join(root, filepath.FromSlash(rel))
+	r, err := filepath.Rel(root, abs)
+	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return abs, true
+}
+
+// readRepoFile reads a regular file (no symlinks, pipes or devices) up to the cap.
+//
+// readRepoFile 读取普通文件（不跟随符号链接、不读管道或设备），受字节上限约束。
+func readRepoFile(abs string) ([]byte, error) {
+	fi, err := os.Lstat(abs)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("not a regular file")
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, maxDesignRefBytes))
 }
 
 // readGoModRequires returns the module path and required modules of go.mod
@@ -193,7 +246,12 @@ func CheckDesignGrounding(root, text string) []DesignCheckFinding {
 				continue
 			}
 			if looksLikeRepoPath(tok) {
-				if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(tok))); err != nil {
+				abs, ok := repoPath(root, tok)
+				if !ok {
+					add(DesignCheckFinding{Kind: "path", Ref: tok, Line: lineNo, Detail: "引用越出仓库根目录，未核查"})
+					continue
+				}
+				if _, err := os.Lstat(abs); err != nil {
 					add(DesignCheckFinding{Kind: "path", Ref: tok, Line: lineNo,
 						Detail: "路径在仓库中不存在——计划新建的文件在该行标 new:"})
 				}
@@ -208,9 +266,14 @@ func CheckDesignGrounding(root, text string) []DesignCheckFinding {
 // (Go declaration present in the file).
 func checkFileRef(root, path, rest string, lineNo int, add func(DesignCheckFinding)) {
 	ref := path + ":" + rest
-	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+	abs, ok := repoPath(root, path)
+	if !ok {
+		add(DesignCheckFinding{Kind: "path", Ref: ref, Line: lineNo, Detail: "引用越出仓库根目录，未核查"})
+		return
+	}
+	body, err := readRepoFile(abs)
 	if err != nil {
-		add(DesignCheckFinding{Kind: "path", Ref: ref, Line: lineNo, Detail: "引用的文件在仓库中不存在"})
+		add(DesignCheckFinding{Kind: "path", Ref: ref, Line: lineNo, Detail: "引用的文件在仓库中不存在或不是普通文件"})
 		return
 	}
 	if n, convErr := strconv.Atoi(rest); convErr == nil {
@@ -223,11 +286,11 @@ func checkFileRef(root, path, rest string, lineNo int, add func(DesignCheckFindi
 	if filepath.Ext(path) != ".go" {
 		return // 非 Go 文件的符号引用不做声明核查
 	}
-	sym := rest
+	recv, sym := "", rest
 	if dot := strings.LastIndex(sym, "."); dot >= 0 {
-		sym = sym[dot+1:] // Type.Method → Method
+		recv, sym = sym[:dot], sym[dot+1:] // Type.Method → 接收者 Type 的方法 Method
 	}
-	if !goDeclRe(sym).Match(body) {
+	if !goDeclRe(recv, sym).Match(body) {
 		add(DesignCheckFinding{Kind: "symbol", Ref: ref, Line: lineNo, Detail: "文件中找不到该 Go 符号的声明"})
 	}
 }

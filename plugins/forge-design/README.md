@@ -19,5 +19,5 @@ plugin 布局（`.claude-plugin/plugin.json` + `skills/`），纳入本仓 marke
 ## 与核心 skills/ 的关系
 
 - skill 正文不依赖 forge 二进制（零反向依赖契约同核心库）。前端设计的编写期清单 `phase-frontend.md` 仍在核心 design-artifact-standards 的 `references/`（审查期按 `design-artifact-standards/references/phase-<环节>.md` 寻址，不拆开）。
-- 核心 skill 中出现的 `frontend-*` / `design-*` / `ai-*-ui-*` 名字均为指针引用（"属 forge-design pack，未安装则忽略"）。
+- 核心 skill 中出现的 `frontend-*` / `design-system-*` / `design-review-snapshot` / `ai-*-ui-*` 名字均为指针引用（"属 forge-design pack，未安装则忽略"）；`design-artifact-standards` 与 `design-audit` 已在核心，不是指针。
 - 迁移用 `git mv` 保留历史；本 pack 不进 forge 二进制 embed（`skills/embed.go` 只嵌核心 `skills/`）。

@@ -39,7 +39,8 @@ var defaultTierRules = []protocol.DesignTierRule{
 	{Name: "schema-migration", Tier: tasktypes.DesignTierFull, Paths: []string{"seg:migrations", "seg:migration", "*.sql", "schema.prisma"}},
 	{Name: "api-contract", Tier: tasktypes.DesignTierFull, Paths: []string{"*.proto", "openapi*.yaml", "openapi*.yml", "openapi*.json", "swagger*.json", "swagger*.yaml"}},
 	{Name: "auth", Tier: tasktypes.DesignTierFull, Paths: []string{"seg:auth", "seg:authn", "seg:authz", "seg:oauth", "seg:rbac", "seg:permissions"}},
-	{Name: "public-api", Tier: tasktypes.DesignTierFull, Paths: []string{"seg:api", "seg:pkg", "seg:sdk"}},
+	// 只认仓库顶层的 api/ pkg/ sdk/：internal/api、web/src/api 不是对外公共接口（审查轮）。
+	{Name: "public-api", Tier: tasktypes.DesignTierFull, Paths: []string{"api/", "pkg/", "sdk/"}},
 	{Name: "dependency", Tier: tasktypes.DesignTierMini, Paths: []string{"go.mod", "package.json", "Cargo.toml", "pyproject.toml", "requirements.txt"}},
 }
 
@@ -48,7 +49,7 @@ var defaultTierRules = []protocol.DesignTierRule{
 //
 // defaultStandardChanges 是事先认可的例行改动（ITIL「标准变更」）：命中的文件永不
 // 触发档位。
-var defaultStandardChanges = []string{"*.md", "seg:docs", "LICENSE*", "CHANGELOG*", ".gitignore", "go.sum", "package-lock.json", "*.lock"}
+var defaultStandardChanges = []string{"*.md", "*.txt", "*.rst", "LICENSE*", "CHANGELOG*", ".gitignore", "go.sum", "package-lock.json", "*.lock"}
 
 // crossModuleThreshold: a change spanning this many distinct directories is a
 // multi-module change (mini) even without any hard trigger.
@@ -266,7 +267,9 @@ func FormatDesignTierAdvice(d tasktypes.DesignTierDecision) string {
 }
 
 // goModVersionLineRe parses a require entry "module vX.Y.Z".
-var goModVersionLineRe = regexp.MustCompile(`^\s*(?:require\s+)?([\w.\-/]+)\s+v(\d+)\.(\d+)\.\d+`)
+// Pre-release and pseudo-versions (v0.0.0-2024…) are excluded by the anchored
+// tail: they point at arbitrary commits, not patch releases.
+var goModVersionLineRe = regexp.MustCompile(`^\s*(?:require\s+)?([\w.\-/]+)\s+v(\d+)\.(\d+)\.\d+(?:\+incompatible)?\s*(?://.*)?$`)
 
 // goModPatchOnly reports whether the go.mod diff since base only bumps patch
 // versions of already-required modules (a standard change, not a new dependency).
@@ -372,7 +375,11 @@ func RecordImplementDesignTier(root string, state *TaskState, changed []string) 
 	state.DesignTier = &d
 	RecordDesignTier(root, state.TaskRef, "implement", d, false)
 	_, hasDesign := state.SpecArtifacts["design"]
-	if d.Final != tasktypes.DesignTierNone && !hasDesign && state.Plan == "" {
+	switch {
+	case d.Final != tasktypes.DesignTierNone && !hasDesign && state.Plan == "":
 		fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-implement] %s——尚无方案产物（forge task artifact --set design --file <path>）", FormatDesignTierAdvice(d)))
+	case d.Final == tasktypes.DesignTierFull && hasDesign && state.ArtifactApprovals["design"].Hash == "":
+		// D4 目标映射 full → design 阶段 human；本批只给 advisory（提案原则 2）。
+		fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-implement] 完整方案档：design 产物尚未人工批准——批准走 forge task artifact --approve design --by <审批人>（需产物链 design 设为 human 档；本批不阻断）"))
 	}
 }
