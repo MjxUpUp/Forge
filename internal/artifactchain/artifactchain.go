@@ -148,7 +148,7 @@ func DefaultChain() *Chain {
 			{Name: "spec", Mode: ModeAdvisory, Produces: "spec.md",
 				Instruction: "规格：验收标准（accept: <cmd> :: <expected> 行可被 forge task artifact --extract 编译成验收门禁）"},
 			{Name: "design", Mode: ModeAdvisory, Produces: "design.md",
-				Instruction: "技术方案：结构/接口/数据流与既有代码的关系"},
+				Instruction: "技术方案（按档位 mini/full，模板 skills/doc-generator/references/template-tech-plan.md）：TL;DR、Non-goals、需求与验收（accept[REQ-n]）、触点（file:symbol，自动写入 PlanScope）、接口契约（代码块）、数据流、不变量、备选含「什么都不做」、高危步骤、Open Questions、验证与回滚；forge task artifact --check 核查引用是否存在"},
 			{Name: "plan", Mode: ModeAdvisory, Produces: "plan.md",
 				Instruction: "执行计划：任务拆解与 Run/Expected 验收命令"},
 		},
