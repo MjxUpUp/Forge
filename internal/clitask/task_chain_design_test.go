@@ -105,3 +105,58 @@ func TestApproveDigest(t *testing.T) {
 		t.Errorf("文件补上后应通过:\n%s", out)
 	}
 }
+
+// TestDesignStartFlowReviewFixes 钉住审查轮修复（真二进制端到端）：
+// task start --artifact design=… 也把触点写入 PlanScope；scope add 手工追加后接管
+// scope（方案重登记不再覆盖）；--tier-reason 无 --tier、--checked 无 --approve 拒绝。
+func TestDesignStartFlowReviewFixes(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "test@test.com")
+	runGit(t, dir, "config", "user.name", "Test")
+	if out, _, code := runForge(t, dir, "init", "--mode", "medium"); code != 0 {
+		t.Fatalf("forge init: %s", out)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "initial")
+	runGit(t, dir, "checkout", "-b", "feat/tp")
+
+	if out, _, code := runForge(t, dir, "task", "start", "--ref", "feat/tp", "--title", "T", "--tier-reason", "x"); code == 0 || !strings.Contains(out, "--tier") {
+		t.Fatalf("--tier-reason 无 --tier 应拒绝, code=%d out=%s", code, out)
+	}
+
+	design := "## TL;DR\nA\n## 设计\n### 触点\n- `internal/a/a.go:Foo`\n"
+	if err := os.WriteFile(filepath.Join(dir, "design.md"), []byte(design), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, _, code := runForge(t, dir, "task", "start", "--ref", "feat/tp", "--title", "T", "--artifact", "design=design.md"); code != 0 {
+		t.Fatalf("task start: %s", out)
+	}
+	st, err := taskpipeline.LoadTaskState(dir, "feat/tp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(st.PlanScope, []string{"internal/a/a.go"}) || st.PlanScopeSource != taskpipeline.PlanScopeSourceDesign {
+		t.Fatalf("start --artifact design 应写入触点: %v / %q", st.PlanScope, st.PlanScopeSource)
+	}
+
+	if out, _, code := runForge(t, dir, "task", "scope", "add", "internal/extra", "--ref", "feat/tp"); code != 0 {
+		t.Fatalf("scope add: %s", out)
+	}
+	if out, _, code := runForge(t, dir, "task", "artifact", "--set", "design", "--file", "design.md"); code != 0 {
+		t.Fatalf("artifact --set design: %s", out)
+	}
+	st, _ = taskpipeline.LoadTaskState(dir, "feat/tp")
+	if !reflect.DeepEqual(st.PlanScope, []string{"internal/a/a.go", "internal/extra"}) || st.PlanScopeSource != "" {
+		t.Fatalf("手工追加后方案重登记不得覆盖 scope: %v / %q", st.PlanScope, st.PlanScopeSource)
+	}
+
+	if out, _, code := runForge(t, dir, "task", "artifact", "--list", "--checked", "x"); code == 0 || !strings.Contains(out, "--approve") {
+		t.Fatalf("--checked 无 --approve 应拒绝, code=%d out=%s", code, out)
+	}
+}
