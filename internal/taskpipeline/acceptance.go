@@ -103,7 +103,7 @@ func ParseAcceptanceFromPlan(plan string) []AcceptanceCriterion {
 		case strings.HasPrefix(line, `Expected:`):
 			if pendingRun != "" {
 				exp := strings.TrimSpace(strings.TrimPrefix(line, `Expected:`))
-				out = append(out, parseOneAcceptance(pendingRun+` :: `+exp))
+				out = append(out, parseOneAcceptance(joinRunExpected(pendingRun, exp)))
 				pendingRun = ""
 			}
 			// Expected: 前无 Run: → 孤立，丢弃

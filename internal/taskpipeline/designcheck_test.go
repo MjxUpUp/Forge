@@ -152,3 +152,45 @@ func TestTouchpointsPlanScope(t *testing.T) {
 		}
 	})
 }
+
+// TestDesignCheckBoundaries 钉住审查轮修复：方案是半可信输入——越出仓库根的引用
+// 不读、不探测（不泄露外部文件的存在与行数）；缩进的调用不算声明；Type.Method 按
+// 接收者核对。
+func TestDesignCheckBoundaries(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "repo")
+	writeTree(t, parent, map[string]string{
+		"secret.txt":       "a\nb\nc\nd\n",
+		"repo/x/x.go":      "package x\n\ntype A struct{}\ntype B struct{}\n\nfunc (a *A) Run() {}\n\nfunc use() {\n\tHelper(1)\n}\n",
+		"repo/x/README.md": "readme\n",
+	})
+	got := CheckDesignGrounding(root, strings.Join([]string{
+		"- `../secret.txt:99`",
+		"- `../secret.txt`",
+		"- `x/x.go:Helper`",
+		"- `x/x.go:A.Run`",
+		"- `x/x.go:B.Run`",
+	}, "\n"))
+	byRef := map[string]DesignCheckFinding{}
+	for _, f := range got {
+		byRef[f.Ref] = f
+	}
+	for _, ref := range []string{"../secret.txt:99", "../secret.txt"} {
+		f, ok := byRef[ref]
+		if !ok || !strings.Contains(f.Detail, "越出仓库根目录") {
+			t.Errorf("%s 应报越界且不核查, got %+v", ref, f)
+		}
+		if strings.Contains(f.Detail, "文件共") {
+			t.Errorf("越界引用不得泄露外部文件行数: %q", f.Detail)
+		}
+	}
+	if _, ok := byRef["x/x.go:Helper"]; !ok {
+		t.Error("只被调用、未声明的符号应报 symbol")
+	}
+	if _, ok := byRef["x/x.go:A.Run"]; ok {
+		t.Error("A.Run 已声明，不应报")
+	}
+	if _, ok := byRef["x/x.go:B.Run"]; !ok {
+		t.Error("B 没有 Run 方法，应按接收者报 symbol")
+	}
+}

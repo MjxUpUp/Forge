@@ -35,7 +35,7 @@ Conventional Commits：`feat:` / `fix:` / `perf:` / `refactor:` / `docs:` / `cho
 
 新写的 `docs/design/` 与 `docs/plans/` 文档用 `skills/doc-generator/references/template-tech-plan.md`
 的骨架（先按档位表定 mini/full），图用 Mermaid 写在 ```` ```mermaid ```` 围栏里，不画 ASCII 框图；
-写完跑 `forge task artifact --check --file <文档>` 核查引用。存量文档不回填。
+写完跑 `forge task artifact --check --file <文档>` 核查引用。文件名含 `tech-plan` / `design-doc` 时 `forge docs lint` 还会按 design 类型检查章节与篇幅（`*-proposal.md` / `*-spec.md` 不在类型匹配内，按模板写、靠评审把关）。存量文档不回填。
 
 ## 发版
 

@@ -51,6 +51,9 @@ func runTaskArtifact(cmd *cobra.Command, args []string) error {
 	approveStage, _ := cmd.Flags().GetString("approve")
 	extract, _ := cmd.Flags().GetBool("extract")
 	check, _ := cmd.Flags().GetBool("check")
+	if cmd.Flags().Changed("checked") && approveStage == "" {
+		return fmt.Errorf("--checked 只能与 --approve 一起用（记录本次审批审了什么）")
+	}
 	actions := 0
 	for _, on := range []bool{setStage != "", list, verify, approveStage != "", extract, check} {
 		if on {
@@ -329,9 +332,6 @@ func runArtifactApprove(stage, by string, checked []string) error {
 		if cur == "" || cur != ref.Hash {
 			return fmt.Errorf("stage %q 引用已漂移（登记后文件被改）——先重登记再审批", stage)
 		}
-		if serr := taskpipeline.SaveApprovedSnapshot(root, ts.TaskRef, stage, taskpipeline.ArtifactAbsPath(root, ref)); serr != nil {
-			fmt.Fprintf(os.Stderr, "⚠️ 审批快照未落盘（下次审批无法给出变化摘要）: %v\n", serr)
-		}
 		approved = taskpipeline.ArtifactApproval{By: by, At: time.Now(), Hash: cur, Checked: checked}
 		if ts.ArtifactApprovals == nil {
 			ts.ArtifactApprovals = map[string]taskpipeline.ArtifactApproval{}
@@ -340,6 +340,12 @@ func runArtifactApprove(stage, by string, checked []string) error {
 		return nil
 	}); err != nil {
 		return err
+	}
+	// 审批已落盘后再存快照（审查轮：落盘失败时不得把未批准内容存成「上次批准」）。
+	if ref, has := st.SpecArtifacts[stage]; has {
+		if serr := taskpipeline.SaveApprovedSnapshot(root, st.TaskRef, stage, taskpipeline.ArtifactAbsPath(root, ref)); serr != nil {
+			fmt.Fprintf(os.Stderr, "⚠️ 审批快照未落盘（下次审批无法给出变化摘要）: %v\n", serr)
+		}
 	}
 	fmt.Printf("已审批 %s（by %s，hash %s）——内容再改即作废\n", stage, approved.By, approved.Hash)
 	if len(approved.Checked) == 0 {

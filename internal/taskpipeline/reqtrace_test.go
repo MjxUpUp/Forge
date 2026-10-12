@@ -144,8 +144,9 @@ func TestRequirementCoverage(t *testing.T) {
 		root := t.TempDir()
 		t.Setenv("FORGE_DATA_HOME", t.TempDir())
 		writeChainSchema(t, root, "version: 1\nstages:\n  - name: spec\n    mode: human\n")
-		state := &TaskState{TaskRef: "feat/y"}
-		ref, err := WriteArtifact(root, state.TaskRef, "spec", "- REQ-1 a\n")
+		// 任务采用了追溯写法（REQ-2 有带追溯的验收），REQ-1 未验证 → 升档链上阻断。
+		state := &TaskState{TaskRef: "feat/y", Acceptance: []AcceptanceCriterion{{Run: "true", Passed: true, Traces: []string{"REQ-2"}}}}
+		ref, err := WriteArtifact(root, state.TaskRef, "spec", "- REQ-1 a\n- REQ-2 b\n")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,4 +159,39 @@ func TestRequirementCoverage(t *testing.T) {
 			t.Fatalf("逃生后应放行: %v", err)
 		}
 	})
+}
+
+// TestRequirementTraceReviewFixes 钉住审查轮修复：Run: 行末的追溯标记不丢、不混进
+// 命令；Run:/Expected: 行不算需求声明；只在 spec 里提到 REQ 却从未写追溯的任务，
+// 升档链上也不阻断。
+func TestRequirementTraceReviewFixes(t *testing.T) {
+	text := "Run: go test ./x #REQ-1\nExpected: ok\nRun: go vet ./... #REQ-2\n"
+	for name, got := range map[string][]AcceptanceCriterion{
+		"artifact": ParseAcceptanceFromArtifact(text),
+		"plan":     ParseAcceptanceFromPlan(text),
+	} {
+		if len(got) != 2 || got[0].Run != "go test ./x" || got[0].Expected != "ok" || !reflect.DeepEqual(got[0].Traces, []string{"REQ-1"}) {
+			t.Errorf("%s: 第 1 条 = %+v", name, got)
+			continue
+		}
+		if got[1].Run != "go vet ./..." || !reflect.DeepEqual(got[1].Traces, []string{"REQ-2"}) {
+			t.Errorf("%s: 裸 Run 行 = %+v", name, got[1])
+		}
+	}
+	if ids := DeclaredRequirementIDs(text); len(ids) != 0 {
+		t.Errorf("Run:/Expected: 行不是需求声明: %v", ids)
+	}
+
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	root := t.TempDir()
+	writeChainSchema(t, root, "version: 1\nstages:\n  - name: spec\n    mode: human\n")
+	state := &TaskState{TaskRef: "feat/legacy-ids", Acceptance: []AcceptanceCriterion{{Run: "true", Passed: true}}}
+	ref, err := WriteArtifact(root, state.TaskRef, "spec", "- REQ-1 历史写法，从未写 accept[REQ-n]\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SpecArtifacts = map[string]ArtifactRef{"spec": ref}
+	if err := CheckRequirementCoverageAtComplete(root, state); err != nil {
+		t.Fatalf("未采用追溯写法的任务不应被阻断: %v", err)
+	}
 }

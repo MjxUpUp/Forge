@@ -65,6 +65,21 @@ func splitPrefixTraces(s string) (string, []string) {
 	return strings.TrimSpace(s[m[1]:]), reqIDRe.FindAllString(s[m[2]:m[3]], -1)
 }
 
+// joinRunExpected joins a `Run:` command and its `Expected:` text into the
+// "run :: expected" form, moving trailing `#REQ-n` tokens from the Run line to
+// the end so they stay trailing (otherwise the trace is lost and leaks into Run).
+//
+// joinRunExpected 把 `Run:` 命令与 `Expected:` 文本拼成 "run :: expected"，并把
+// Run 行末的 `#REQ-n` 标记挪到整串末尾——否则标记不再位于行尾，既丢追溯又混进命令。
+func joinRunExpected(run, expected string) string {
+	run, traces := splitTrailingTraces(run)
+	joined := run + ` :: ` + expected
+	for _, id := range traces {
+		joined += " #" + id
+	}
+	return joined
+}
+
 // mergeTraces unions trace ID lists, preserving first-seen order.
 //
 // mergeTraces 合并多组追溯 ID（并集去重，保留首次出现顺序）。
@@ -108,6 +123,10 @@ func DeclaredRequirementIDs(text string) []string {
 		if _, ok := acceptListCommand(line); ok {
 			continue
 		}
+		// Run:/Expected: 行是验收声明（行尾 #REQ-n 是追溯不是声明），不计入声明集。
+		if strings.HasPrefix(line, "Run:") || strings.HasPrefix(line, "Expected:") {
+			continue
+		}
 		for _, id := range reqIDRe.FindAllString(line, -1) {
 			seen[id] = true
 		}
@@ -140,6 +159,8 @@ func (c RequirementCoverage) HasTraceData() bool {
 }
 
 // UnverifiedIDs returns the unverified IDs in sorted order.
+//
+// UnverifiedIDs 按排序返回未验证的需求 ID。
 func (c RequirementCoverage) UnverifiedIDs() []string {
 	out := make([]string, 0, len(c.Unverified))
 	for id := range c.Unverified {
@@ -261,6 +282,18 @@ func reqCoverageBlocking(chain *artifactchain.Chain) bool {
 	return false
 }
 
+// anyCriterionTraced reports whether at least one criterion declares traces.
+//
+// anyCriterionTraced 报告是否至少有一条验收声明了追溯 ID。
+func anyCriterionTraced(cs []AcceptanceCriterion) bool {
+	for _, c := range cs {
+		if len(c.Traces) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // CheckRequirementCoverageAtComplete runs the complete-time coverage check:
 // advisory by default, blocking when reqCoverageBlocking holds. Tasks without
 // requirement IDs are silent (no entry).
@@ -298,7 +331,9 @@ func CheckRequirementCoverageAtComplete(root string, state *TaskState) error {
 		return nil
 	}
 	chain, _ := artifactchain.Load(root)
-	if reqCoverageBlocking(chain) {
+	// 只在任务确实采用了追溯写法（至少一条验收带 Traces）时阻断：只在 spec 正文里
+	// 提到 REQ-n 而从未写 accept[REQ-n] 的存量任务，升档后不被突然拦下（审查轮）。
+	if reqCoverageBlocking(chain) && anyCriterionTraced(state.Acceptance) {
 		entry.Level = checklog.LevelBlocked
 		entry.Detail = "unverified requirements: " + strings.Join(unverified, ",")
 		recordAudit(root, entry)
