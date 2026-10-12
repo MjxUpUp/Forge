@@ -104,3 +104,29 @@ project-acceptance/adversarial-verification/review-batch 三家触发面同含"�
 ### Evidence
 
 docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
+
+## [d-18ddc214a468cad8-b63ac72d] accept
+
+- **Skill**: project-acceptance
+- **DecidedAt**: 2026-10-12T10:40:20Z
+- **By**: claude-code
+
+### Diagnosis
+
+维度 1/2 全靠模型逐项判断，没有机器可答的覆盖表；design-audit 被标为可选 pack 未接入
+
+### Revision
+
+维度 1 先用宿主的需求覆盖表（已验证/未验证/孤儿），只对未验证与无 ID 的功能点人工检查；维度 2 按 design-audit 三态判决并用「方案外改动」清单；去掉 design-audit 的 pack 指针
+
+### Prediction
+
+验收报告维度 1/2 的结论带覆盖表或 file:line 证据的比例上升
+
+### Evidence
+
+调研 2026-10-12（R2ABench 2026 / IFScale / ETH AGENTS.md ICLR26 / Spec Kit·Kiro·OpenSpec 模板 / CHI25 Plan-Then-Execute）+ 提案 docs/plans/design-stage-hardening-2026-10-proposal.md；forge skills validate 39/39
+
+### Rationale
+
+设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核

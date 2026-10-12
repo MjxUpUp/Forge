@@ -31,6 +31,12 @@ Conventional Commits：`feat:` / `fix:` / `perf:` / `refactor:` / `docs:` / `cho
 - 模板与档位判据见 `skills/doc-generator/references/template-pr.md` 与
   `skills/doc-review/references/rubric-docs.md`（PR 描述与 commit 共用三段结构）
 
+## 设计文档
+
+新写的 `docs/design/` 与 `docs/plans/` 文档用 `skills/doc-generator/references/template-tech-plan.md`
+的骨架（先按档位表定 mini/full），图用 Mermaid 写在 ```` ```mermaid ```` 围栏里，不画 ASCII 框图；
+写完跑 `forge task artifact --check --file <文档>` 核查引用。存量文档不回填。
+
 ## 发版
 
 只有维护者执行。流程与纪律见 [RELEASE.md](RELEASE.md)；标准路径是把 `feat:`/`fix:` PR
