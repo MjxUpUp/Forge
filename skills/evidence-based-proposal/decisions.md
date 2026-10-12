@@ -91,3 +91,29 @@ docs/design/evolution-discipline-norms.md §二①；inventory --verify 通过�
 ### Rationale
 
 度量必答题是 evidence-based-proposal 的本位职责（方案依据的最后一环：改了凭什么说更好），与既有两问同构，非新职责
+
+## [d-18ddc214945490f0-b5585b42] accept
+
+- **Skill**: evidence-based-proposal
+- **DecidedAt**: 2026-10-12T10:40:20Z
+- **By**: claude-code
+
+### Diagnosis
+
+环境核查结论只留在对话里，方案登记后失去依据；方案中点名的路径/符号/依赖靠记忆，AI 方案约 1/3 断言无依据、包名幻觉率约 5%
+
+### Revision
+
+新增「证据落进方案」节：现状证据与触点写进方案、新依赖标 new-dep、度量写成 accept[REQ-n]、写完逐条核实引用存在性（宿主核查命令见 forge 集成注记）；标题「两个必答题」更正为三个
+
+### Prediction
+
+design-check 行在使用本 skill 的任务中出现且 findings 数随时间下降
+
+### Evidence
+
+调研 2026-10-12（R2ABench 2026 / IFScale / ETH AGENTS.md ICLR26 / Spec Kit·Kiro·OpenSpec 模板 / CHI25 Plan-Then-Execute）+ 提案 docs/plans/design-stage-hardening-2026-10-proposal.md；forge skills validate 39/39
+
+### Rationale
+
+设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核

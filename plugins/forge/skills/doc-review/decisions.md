@@ -126,3 +126,29 @@ forge skills validate 41/41；clitask 端到端测试（CoReviewPersisted/Pairin
 ### Rationale
 
 skill 文本与实现同步，消灭「规划中 flag」的悬空引用
+
+## [d-18ddc21499948f70-60bd2a4d] accept
+
+- **Skill**: doc-review
+- **DecidedAt**: 2026-10-12T10:40:20Z
+- **By**: claude-code
+
+### Diagnosis
+
+设计产物标准指向 forge-design pack 且标「未安装则忽略」，但 design-artifact-standards 已收回核心（提案 D2）；rubric 对技术方案只有通用四维兜底
+
+### Revision
+
+去掉 design-artifact-standards 的 pack 指针；rubric-docs.md 新增技术方案类型特化行（Critical：缺 Non-goals/缺端到端验证/无「什么都不做」备选/数据流边未标注/NFR 无数字/断言无指针/与 accepted ADR 冲突）
+
+### Prediction
+
+技术方案 L2 评审的 Critical 命中集中在新列判据上；评审轮次下降
+
+### Evidence
+
+调研 2026-10-12（R2ABench 2026 / IFScale / ETH AGENTS.md ICLR26 / Spec Kit·Kiro·OpenSpec 模板 / CHI25 Plan-Then-Execute）+ 提案 docs/plans/design-stage-hardening-2026-10-proposal.md；forge skills validate 39/39
+
+### Rationale
+
+设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核

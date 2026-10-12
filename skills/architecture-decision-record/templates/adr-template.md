@@ -1,6 +1,7 @@
 # ADR-NNNN: [标题]
 
 **状态**：Proposed | Accepted | Deprecated | Superseded by ADR-XXXX
+**取代**：ADR-XXXX（无则删本行；同时把被取代 ADR 的状态改为 Superseded by 本 ADR）
 **日期**：YYYY-MM-DD
 **决策参与者**：[参与人]
 

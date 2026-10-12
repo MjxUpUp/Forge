@@ -11,7 +11,7 @@
 forge task status --json 2>&1 | grep -i "design_phase\|DesignPhases"
 ```
 
-有 `DesignPhases` 时，加载对应环节 checklist 作为补充检查项（清单宿主在 design-artifact-standards skill 的 `references/`——2026-09 设计族拆包后该 skill 属 `plugins/forge-design` pack，本表链接在装了该 pack 的环境下指向 `<skills 根>/design-artifact-standards/references/`；未安装 forge-design pack 时跳过本补充项，回落通用清单）：
+有 `DesignPhases` 时，加载对应环节 checklist 作为补充检查项（清单宿主在核心 design-artifact-standards skill 的 `references/`，部署态指向 `<skills 根>/design-artifact-standards/references/`——2026-09 曾随设计族拆入 forge-design pack，2026-10 收回核心，见 docs/plans/design-stage-hardening-2026-10-proposal.md D2）：
 
 | DesignPhase | 加载 checklist | 说明 |
 |---|---|---|
