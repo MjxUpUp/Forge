@@ -252,8 +252,14 @@ func TestMutationBaselineRed(t *testing.T) {
 	if got := mutationVerdict(res); got != "baseline-red" {
 		t.Errorf(`verdict 应为 baseline-red，got %q`, got)
 	}
-	if strings.Contains(FormatMutationSummary(res), "杀灭率 100%") {
-		t.Errorf("基线红时摘要不得呈现 100%% 杀灭率:\n%s", FormatMutationSummary(res))
+	if res.BaselineSkipped != 3 {
+		t.Errorf(`根包 3 个抽样位点都应因基线红被剔除，BaselineSkipped=%d`, res.BaselineSkipped)
+	}
+	summary := FormatMutationSummary(res)
+	for _, want := range []string{"基线红：. 未变异时", "杀灭率（仅基线绿的包）n/a"} {
+		if !strings.Contains(summary, want) {
+			t.Errorf("摘要应含 %q:\n%s", want, summary)
+		}
 	}
 	after, _ := os.ReadFile(filepath.Join(dir, "calc.go"))
 	if string(before) != string(after) {
@@ -278,9 +284,44 @@ func TestMutationBaselineRed(t *testing.T) {
 		if e.Meta["baseline_red"] != "." {
 			t.Errorf(`行应披露基线红的包，got %q`, e.Meta["baseline_red"])
 		}
+		if e.Meta["baseline_skipped"] != "3" {
+			t.Errorf(`行应披露剔除位点数 3，got %q`, e.Meta["baseline_skipped"])
+		}
 	}
 	if !found {
 		t.Error(`基线红也应落 mutation-sampling 证据行`)
+	}
+}
+
+// TestSitesOutsidePackages: only sites in the dropped packages are removed, the
+// rest keep their order, and the input slice is left untouched — a mixed
+// red/green run must still mutate the green packages.
+//
+// TestSitesOutsidePackages：只剔除指定包的位点，其余保持原序，输入切片不被修改——
+// 红绿混合时绿包的变异体仍须执行。
+func TestSitesOutsidePackages(t *testing.T) {
+	in := []MutationSite{
+		{File: "a/x.go", PkgDir: "./a"}, {File: "b/y.go", PkgDir: "./b"},
+		{File: "a/z.go", PkgDir: "./a"}, {File: "c/w.go", PkgDir: "./c"},
+	}
+	snapshot := append([]MutationSite(nil), in...)
+	got := sitesOutsidePackages(in, []string{"./a"})
+	want := []string{"b/y.go", "c/w.go"}
+	if len(got) != len(want) {
+		t.Fatalf(`应保留 %d 个位点，got %d（%+v）`, len(want), len(got), got)
+	}
+	for i, w := range want {
+		if got[i].File != w {
+			t.Errorf(`第 %d 个保留位点应为 %s，got %s`, i, w, got[i].File)
+		}
+	}
+	for i := range in {
+		if in[i] != snapshot[i] {
+			t.Errorf(`输入切片第 %d 项被修改：%+v → %+v`, i, snapshot[i], in[i])
+		}
+	}
+	if all := sitesOutsidePackages(in, nil); len(all) != len(in) {
+		t.Errorf(`无剔除包时应全保留，got %d`, len(all))
 	}
 }
 
@@ -291,9 +332,12 @@ func TestMutationBaselineRed(t *testing.T) {
 // TestMutationBaselineRed_VerdictPrecedence：只要有包基线红，即使其余（绿）包
 // 全部杀灭，verdict 也必须是 baseline-red——部分实跑不得呈现为干净通过。
 func TestMutationBaselineRed_VerdictPrecedence(t *testing.T) {
-	res := MutationResult{Sampled: 2, Killed: 2, Score: 1, BaselineRed: []string{"./internal/x"}}
+	res := MutationResult{Sampled: 2, Killed: 2, Score: 1, BaselineRed: []string{"./internal/x"}, BaselineSkipped: 1}
 	if got := mutationVerdict(res); got != "baseline-red" {
 		t.Errorf(`有基线红包时 verdict 应为 baseline-red，got %q`, got)
+	}
+	if strings.Contains(FormatMutationSummary(res), "杀灭率 100%") {
+		t.Errorf("部分基线红时摘要不得呈现无限定的 100%% 杀灭率:\n%s", FormatMutationSummary(res))
 	}
 	dir := t.TempDir()
 	recordMutationRow(dir, "pr", res)
@@ -301,10 +345,21 @@ func TestMutationBaselineRed_VerdictPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	found := false
 	for _, e := range entries {
-		if e.Check == CheckNameMutationSampling && e.Passed {
+		if e.Check != CheckNameMutationSampling {
+			continue
+		}
+		found = true
+		if e.Passed {
 			t.Error(`部分基线红不得落 Passed=true`)
 		}
+		if e.Meta["verdict"] != "baseline-red" || e.Meta["baseline_red"] != "./internal/x" {
+			t.Errorf(`行 meta 应为 verdict=baseline-red / baseline_red=./internal/x，got %q / %q`, e.Meta["verdict"], e.Meta["baseline_red"])
+		}
+	}
+	if !found {
+		t.Error(`应落 mutation-sampling 证据行`)
 	}
 }
 
