@@ -148,6 +148,7 @@ func TestEvaluateRunWarrant_Strength(t *testing.T) {
 		{"零结果 run", "r-empty", warrantWeak, "没有重叠", setup{runs: baseRuns(res("r-empty", "m", nil)), baseline: "r-base"}},
 		{"缺 baseline 的 case", "r-part", warrantWeak, "覆盖不完整", setup{runs: baseRuns(res("r-part", "m", map[string]bool{"c1": true})), baseline: "r-base"}},
 		{"不可比（模型变了）", "r-other", warrantWeak, "不可比", setup{runs: baseRuns(res("r-other", "m2", both)), baseline: "r-base"}},
+		{"有回归且不可比", "r-bad-other", warrantRegression, "", setup{runs: baseRuns(res("r-bad-other", "m2", map[string]bool{"c1": false, "c2": true})), baseline: "r-base"}},
 	}
 	for _, c := range cases {
 		dir := t.TempDir()
@@ -176,6 +177,9 @@ func TestEvaluateRunWarrant_Strength(t *testing.T) {
 		}
 		if got.Verdict == warrantWeak && !strings.Contains(warrantMessage(got), "但") {
 			t.Errorf(`%s：弱提示应说明原因：%q`, c.name, warrantMessage(got))
+		}
+		if c.name == "有回归且不可比" && !strings.Contains(strings.Join(got.Problems, "；"), "不可比") {
+			t.Errorf(`%s：回归明细应附不可比注释，got %v`, c.name, got.Problems)
 		}
 	}
 }

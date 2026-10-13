@@ -207,7 +207,7 @@ func checkDocWarrant(repoRoot, rel string) string {
 	if strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, `\`) || filepath.IsAbs(clean) || filepath.VolumeName(clean) != "" {
 		return fmt.Sprintf("doc 锚点必须是仓库内相对路径，得到绝对路径 %q", rel)
 	}
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+	if slashed := filepath.ToSlash(clean); slashed == ".." || strings.HasPrefix(slashed, "../") { // 统一成 / 再比较，跨平台一致
 		return fmt.Sprintf("doc 锚点 %q 跳出了仓库根", rel)
 	}
 	rootReal, err := filepath.EvalSymlinks(repoRoot)
@@ -222,7 +222,9 @@ func checkDocWarrant(repoRoot, rel string) string {
 		}
 		return fmt.Sprintf("无法解析 doc %s：%v", rel, err)
 	}
-	if relToRoot, err := filepath.Rel(rootReal, targetReal); err != nil || relToRoot == ".." || strings.HasPrefix(relToRoot, ".."+string(filepath.Separator)) {
+	relToRoot, err := filepath.Rel(rootReal, targetReal)
+	relToRoot = filepath.ToSlash(relToRoot) // 统一成 / 再比较，跨平台一致
+	if err != nil || relToRoot == ".." || strings.HasPrefix(relToRoot, "../") {
 		return fmt.Sprintf("doc 锚点 %q 经符号链接跳出了仓库根", rel)
 	}
 	if info, err := os.Stat(targetReal); err != nil || !info.Mode().IsRegular() {
