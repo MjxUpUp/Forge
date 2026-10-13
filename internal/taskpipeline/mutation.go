@@ -13,6 +13,9 @@ package taskpipeline
 //     残留即拒绝执行（如实披露，不自动恢复——备份可能早于其后的合法编辑）
 //   - 证据：一次抽样落一条 checklog 行（deterministic 源，计入证据强度白名单）；
 //     零有效样本（killed+survived==0）= 无信号，判 no-signal 不产假 PASS
+//   - 阳性对照：变异前每个涉及的包先在未变异状态跑一次测试——基线不绿的包
+//     （测试已失败/构建已坏）其变异体必被既有失败"杀灭"，杀灭率是假绿；这些包
+//     不跑变异体、verdict 判 baseline-red、证据行 Passed=false
 //   - advisory：永不阻断（v1）——独立命令按需执行，不是每任务强制
 
 import (
@@ -73,6 +76,13 @@ type MutationResult struct {
 	// Score = killed / (killed + survived)；Invalid（编译不过的变异体）不计分
 	// ——编译器抓住的变异计入杀灭会虚高分数，而它考的是编译器不是测试。
 	Score float64
+	// BaselineRed lists package dirs whose unmutated tests were not green (test
+	// failure or build failure). Their mutants are not run: a pre-existing
+	// failure would "kill" every mutant and fake a 100% score.
+	//
+	// BaselineRed 列出未变异状态下测试不绿（测试失败或构建失败）的包目录。这些包的
+	// 变异体不执行——既有失败会"杀灭"每个变异体，伪造 100% 杀灭率。
+	BaselineRed []string
 }
 
 // mutationTimeoutPerMutant 限制单个变异体的测试时长（挂死循环的变异体由
@@ -305,6 +315,12 @@ func RunMutationSampling(root string, state *TaskState, sample int) (MutationRes
 	if leftovers := detectLeftoverBackups(root, files); len(leftovers) > 0 {
 		return res, true, fmt.Errorf("检测到变异备份残留（上次抽样被中断的铁证）：%s——先人工比对 .forge-mutbak 与当前文件后手动恢复/删除备份，再重跑（绝不自动覆盖：备份可能早于其后的合法编辑）", strings.Join(leftovers, ", "))
 	}
+	// 阳性对照：先确认各包在未变异状态下测试是绿的，基线红的包剔除其变异体。
+	if red := baselineRedPackages(root, picked); len(red) > 0 {
+		res.BaselineRed = red
+		fmt.Fprintf(os.Stderr, "  ⚠ 基线红：%s 未变异时测试就未通过——跳过其变异体（杀灭率会被既有失败伪造）\n", strings.Join(red, ", "))
+		picked = sitesOutsidePackages(picked, red)
+	}
 	for _, site := range picked {
 		abs := filepath.Join(filepath.FromSlash(root), filepath.FromSlash(site.File))
 		restore, err := applyMutation(abs, site.Offset, site.Op, site.Flip)
@@ -337,14 +353,54 @@ func RunMutationSampling(root string, state *TaskState, sample int) (MutationRes
 	return res, true, nil
 }
 
+// baselineRedPackages runs each distinct package's tests once in the unmutated
+// state and returns the package dirs that are not green, sorted.
+//
+// baselineRedPackages 对抽样涉及的每个不同包在未变异状态各跑一次测试，返回基线
+// 不绿（退出码非 0：测试失败或构建失败）的包目录，按字典序。每包只跑一次。
+func baselineRedPackages(root string, sites []MutationSite) []string {
+	seen := map[string]bool{}
+	var red []string
+	for _, s := range sites {
+		if seen[s.PkgDir] {
+			continue
+		}
+		seen[s.PkgDir] = true
+		if code, _ := runPkgTests(context.Background(), root, s.PkgDir, mutationTimeoutPerMutant); code != 0 {
+			red = append(red, s.PkgDir)
+		}
+	}
+	sort.Strings(red)
+	return red
+}
+
+// sitesOutsidePackages returns the sites whose PkgDir is not in pkgs (new slice;
+// the input is not modified).
+//
+// sitesOutsidePackages 返回 PkgDir 不在 pkgs 中的位点（新切片，不改输入）。
+func sitesOutsidePackages(sites []MutationSite, pkgs []string) []MutationSite {
+	drop := map[string]bool{}
+	for _, p := range pkgs {
+		drop[p] = true
+	}
+	out := make([]MutationSite, 0, len(sites))
+	for _, s := range sites {
+		if !drop[s.PkgDir] {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // recordMutationRow 落确定性证据行。零有效样本（killed+survived==0：工具链
 // 缺失或任务窗口构建已坏）= 无信号——Passed=false / verdict=no-signal，
-// 绝不产出"零验证却 deterministic PASS"的假绿行（审查 P1-3）；survived>0 时
-// Level=warn——advisory 披露，不阻断。
+// 绝不产出"零验证却 deterministic PASS"的假绿行（审查 P1-3）；有基线红的包
+// 同样 Passed=false / verdict=baseline-red（其余包的杀灭率只作披露）；
+// survived>0 时 Level=warn——advisory 披露，不阻断。
 func recordMutationRow(root, taskRef string, res MutationResult) {
 	e := &checklog.Entry{
 		Check:   CheckNameMutationSampling,
-		Passed:  res.Killed+res.Survived > 0 && res.Survived == 0,
+		Passed:  len(res.BaselineRed) == 0 && res.Killed+res.Survived > 0 && res.Survived == 0,
 		Checked: true,
 		TaskRef: taskRef,
 		Source:  checklog.EvidenceDeterministic,
@@ -357,7 +413,13 @@ func recordMutationRow(root, taskRef string, res MutationResult) {
 			"verdict":  mutationVerdict(res),
 		},
 	}
+	if len(res.BaselineRed) > 0 {
+		e.Meta["baseline_red"] = strings.Join(res.BaselineRed, ",")
+	}
 	switch {
+	case len(res.BaselineRed) > 0:
+		e.Level = checklog.LevelWarn
+		e.Detail = fmt.Sprintf("mutation 抽样：%d 个包未变异时测试就不是绿的（%s）——其变异体会被既有失败\"杀灭\"，已跳过；先修好这些包的测试再重跑（其余包 killed %d / survived %d / invalid %d）", len(res.BaselineRed), strings.Join(res.BaselineRed, ", "), res.Killed, res.Survived, res.Invalid)
 	case res.Killed+res.Survived == 0:
 		e.Level = checklog.LevelWarn
 		e.Detail = fmt.Sprintf("mutation 抽样：零有效样本（sampled %d 全为无效体）——无验证信号，检查 go 工具链与任务窗口构建后重跑", res.Sampled)
@@ -375,9 +437,12 @@ func recordMutationRow(root, taskRef string, res MutationResult) {
 	recordAudit(root, e)
 }
 
-// mutationVerdict 渲染一行人读结论（CLI 复用）。
+// mutationVerdict 渲染一行人读结论（CLI 复用）。基线红优先于其他结论：部分包
+// 未被度量时，其余包的 all-killed 不得呈现为干净通过。
 func mutationVerdict(res MutationResult) string {
 	switch {
+	case len(res.BaselineRed) > 0:
+		return "baseline-red"
 	case res.Sampled == 0:
 		return "no-sites"
 	case res.Killed+res.Survived == 0:
@@ -392,8 +457,15 @@ func mutationVerdict(res MutationResult) string {
 // FormatMutationSummary 供 CLI 输出复用的渲染（纯函数）。
 func FormatMutationSummary(res MutationResult) string {
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "mutation 抽样结果：样本 %d（killed %d / survived %d / invalid %d），杀灭率 %.0f%%\n",
-		res.Sampled, res.Killed, res.Survived, res.Invalid, res.Score*100)
+	if len(res.BaselineRed) > 0 {
+		fmt.Fprintf(&b, "⚠ 基线红：%s 未变异时测试就未通过——这些包的变异体未执行，下方杀灭率只覆盖基线绿的包\n",
+			strings.Join(res.BaselineRed, ", "))
+		fmt.Fprintf(&b, "mutation 抽样结果：样本 %d（killed %d / survived %d / invalid %d），杀灭率（仅基线绿的包）%.0f%%\n",
+			res.Sampled, res.Killed, res.Survived, res.Invalid, res.Score*100)
+	} else {
+		fmt.Fprintf(&b, "mutation 抽样结果：样本 %d（killed %d / survived %d / invalid %d），杀灭率 %.0f%%\n",
+			res.Sampled, res.Killed, res.Survived, res.Invalid, res.Score*100)
+	}
 	for _, s := range res.Survivors {
 		fmt.Fprintf(&b, "  ☠ 存活 %s:%d（%s→%s）\n", s.File, s.Line, s.Op, s.Flip)
 	}

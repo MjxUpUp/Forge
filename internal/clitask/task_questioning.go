@@ -85,6 +85,11 @@ func runTaskMutation(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	fmt.Print(taskpipeline.FormatMutationSummary(res))
+	if len(res.BaselineRed) > 0 {
+		// 基线红优先：部分包未被度量，不得落到"全部杀灭"的结论。
+		fmt.Println("→ 先修好基线红的包测试再重跑本命令；证据已落 checklog（advisory 不阻断 complete）")
+		return nil
+	}
 	if res.Survived > 0 {
 		fmt.Println("→ 按存活位点补断言后重跑本命令；证据已落 checklog（advisory 不阻断 complete）")
 		return nil
