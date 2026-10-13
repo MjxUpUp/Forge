@@ -31,6 +31,13 @@ type PluginShadow struct {
 	Skill  string `json:"skill"`
 	Plugin string `json:"plugin"` // installed_plugins.json 的键，如 forge-design@forge
 	Path   string `json:"path"`   // 该插件里这份 skill 的目录
+	// FromForgeMarketplace marks plugins of the forge marketplace (key "<name>@forge"):
+	// their copy is a stale version that an update removes; other plugins merely
+	// collide by name.
+	//
+	// FromForgeMarketplace 标记 forge marketplace 的插件（键为 "<名>@forge"）：其副本是
+	// 旧版本，升级即去重；其他插件只是同名冲突。
+	FromForgeMarketplace bool `json:"from_forge_marketplace"`
 }
 
 // installedPluginsFile is the schema-v2 shape of Claude Code's plugin registry.
@@ -81,10 +88,15 @@ func PluginShadows(claudeHome string, coreNames []string) ([]PluginShadow, error
 				continue // 插件不带 skills/ 或目录已被清理
 			}
 			for _, e := range entries {
-				if !e.IsDir() || !core[e.Name()] {
+				if !core[e.Name()] {
 					continue
 				}
 				dir := filepath.Join(inst.InstallPath, "skills", e.Name())
+				// os.Stat 跟随符号链接（e.IsDir() 对链接到目录的 skill 返回 false，
+				// 与 install.go ListSkills 同款陷阱）。
+				if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+					continue
+				}
 				if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
 					continue
 				}
@@ -93,7 +105,8 @@ func PluginShadows(claudeHome string, coreNames []string) ([]PluginShadow, error
 					continue // 同一插件 user/project 两种 scope 指向同一份
 				}
 				seen[id] = true
-				out = append(out, PluginShadow{Skill: e.Name(), Plugin: key, Path: dir})
+				_, market, _ := strings.Cut(key, "@")
+				out = append(out, PluginShadow{Skill: e.Name(), Plugin: key, Path: dir, FromForgeMarketplace: market == corePluginName})
 			}
 		}
 	}

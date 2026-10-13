@@ -458,11 +458,17 @@ func runArtifactExtract() error {
 				allReadable = false
 				continue
 			}
+			// 与 task start 同口径补 -v（审查轮：否则重新提取的 go test 行与开工时
+			// 登记的 -v 版本身份不同，追溯落到永远匹配不上 PASS 的副本上）。
+			taskpipeline.EnsureGoTestVerbose(extracted)
+			taskpipeline.MarkExtractedTraces(extracted)
 			perStageExtracted[name] = extracted
 			fresh = append(fresh, extracted...)
 		}
 		if allReadable {
-			s.Acceptance = taskpipeline.RefreshExtractedTraces(s.Acceptance, fresh)
+			if n := taskpipeline.RefreshExtractedTraces(s.Acceptance, fresh); n > 0 {
+				fmt.Fprintf(os.Stderr, "ℹ️ 按产物当前内容刷新了 %d 条验收的需求追溯（手工补登的追溯保留）\n", n)
+			}
 		}
 		for _, name := range stages {
 			extracted, ok := perStageExtracted[name]

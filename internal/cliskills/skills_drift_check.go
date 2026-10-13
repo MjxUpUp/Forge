@@ -73,7 +73,11 @@ func runSkillsDriftCheck(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  %s  %-28s [%s]  %s\n", stateMark(it.State), it.Name, it.Target, it.State)
 		}
 		for _, sh := range rep.PluginShadows {
-			fmt.Printf("  ⇄  %-28s [plugin %s]  plugin-shadow——同名 skill 也在该插件里（旧副本，宿主会同时加载两份）；升级该插件去重：/plugin update %s\n", sh.Skill, sh.Plugin, sh.Plugin)
+			if sh.FromForgeMarketplace {
+				fmt.Printf("  ⇄  %-28s [plugin %s]  plugin-shadow——该插件仍带着已收回核心的旧副本，宿主会同时加载两份；升级去重：/plugin update %s\n", sh.Skill, sh.Plugin, sh.Plugin)
+				continue
+			}
+			fmt.Printf("  ⇄  %-28s [plugin %s]  plugin-shadow——第三方插件与核心 skill 同名，宿主会同时加载两份；按需停用其中一份\n", sh.Skill, sh.Plugin)
 		}
 		for _, e := range rep.Errors {
 			fmt.Printf("  !  %s\n", e)

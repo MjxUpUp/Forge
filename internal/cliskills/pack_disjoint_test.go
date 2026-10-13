@@ -49,7 +49,8 @@ func skillNamesIn(t *testing.T, dir string) map[string]bool {
 	}
 	out := map[string]bool{}
 	for _, e := range entries {
-		if !e.IsDir() {
+		// os.Stat 跟随符号链接——链接到目录的 skill 也要计入（e.IsDir() 会漏掉）。
+		if info, err := os.Stat(filepath.Join(dir, e.Name())); err != nil || !info.IsDir() {
 			continue
 		}
 		if _, err := os.Stat(filepath.Join(dir, e.Name(), "SKILL.md")); err == nil {
