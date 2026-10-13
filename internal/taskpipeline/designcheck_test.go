@@ -233,4 +233,10 @@ func TestDesignCheckInterfaceEdgeCases(t *testing.T) {
 	if refs["g/g.go:Set.Add"] {
 		t.Error("泛型 interface 的方法应算声明")
 	}
+	writeTree(t, root, map[string]string{
+		"h/h.go": "package h\r\n\r\ntype Store interface {\r\n\tGet() int\r\n}\r\n\r\ntype S interface { // doc\n\tPut()\n}\n",
+	})
+	for _, f := range CheckDesignGrounding(root, "- `h/h.go:Store.Get`\n- `h/h.go:S.Put`\n") {
+		t.Errorf("CRLF 与大括号后注释的 interface 方法应算声明: %+v", f)
+	}
 }
