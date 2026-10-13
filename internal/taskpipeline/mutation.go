@@ -83,11 +83,16 @@ type MutationResult struct {
 	// BaselineRed 列出未变异状态下测试不绿（测试失败或构建失败）的包目录。这些包的
 	// 变异体不执行——既有失败会"杀灭"每个变异体，伪造 100% 杀灭率。
 	BaselineRed []string
+	// BaselineSkipped counts sampled sites dropped because their package was
+	// baseline-red (they are not refilled from green packages).
+	//
+	// BaselineSkipped 统计因所在包基线红而剔除的抽样位点数（不从绿包补抽）。
+	BaselineSkipped int
 }
 
-// mutationTimeoutPerMutant 限制单个变异体的测试时长（挂死循环的变异体由
-// go test 超时机制转成失败——被"杀灭"，不再吃后续预算）。FORGE_MUTATION_TIMEOUT
-// 可调（Go duration）。
+// mutationTimeoutPerMutant 限制单次包测试时长：每个变异体一次，阳性对照的每包
+// 基线也各用一次（挂死循环的变异体由 go test 超时机制转成失败——被"杀灭"，不再
+// 吃后续预算；基线超时按基线红处理）。FORGE_MUTATION_TIMEOUT 可调（Go duration）。
 var mutationTimeoutPerMutant = 3 * time.Minute
 
 func init() {
@@ -316,10 +321,17 @@ func RunMutationSampling(root string, state *TaskState, sample int) (MutationRes
 		return res, true, fmt.Errorf("检测到变异备份残留（上次抽样被中断的铁证）：%s——先人工比对 .forge-mutbak 与当前文件后手动恢复/删除备份，再重跑（绝不自动覆盖：备份可能早于其后的合法编辑）", strings.Join(leftovers, ", "))
 	}
 	// 阳性对照：先确认各包在未变异状态下测试是绿的，基线红的包剔除其变异体。
+	// go 不在 PATH 时每个包的基线都会"失败"——那是工具链问题不是测试红，先单独拦下，
+	// 免得把用户指向错误的修法。
+	if _, err := exec.LookPath("go"); err != nil {
+		return res, true, fmt.Errorf("go 工具链不可用（%v）——mutation 抽样需要 go test，安装或修好 PATH 后重跑", err)
+	}
 	if red := baselineRedPackages(root, picked); len(red) > 0 {
 		res.BaselineRed = red
 		fmt.Fprintf(os.Stderr, "  ⚠ 基线红：%s 未变异时测试就未通过——跳过其变异体（杀灭率会被既有失败伪造）\n", strings.Join(red, ", "))
-		picked = sitesOutsidePackages(picked, red)
+		kept := sitesOutsidePackages(picked, red)
+		res.BaselineSkipped = len(picked) - len(kept)
+		picked = kept
 	}
 	for _, site := range picked {
 		abs := filepath.Join(filepath.FromSlash(root), filepath.FromSlash(site.File))
@@ -415,11 +427,19 @@ func recordMutationRow(root, taskRef string, res MutationResult) {
 	}
 	if len(res.BaselineRed) > 0 {
 		e.Meta["baseline_red"] = strings.Join(res.BaselineRed, ",")
+		e.Meta["baseline_skipped"] = fmt.Sprintf("%d", res.BaselineSkipped)
 	}
 	switch {
 	case len(res.BaselineRed) > 0:
 		e.Level = checklog.LevelWarn
-		e.Detail = fmt.Sprintf("mutation 抽样：%d 个包未变异时测试就不是绿的（%s）——其变异体会被既有失败\"杀灭\"，已跳过；先修好这些包的测试再重跑（其余包 killed %d / survived %d / invalid %d）", len(res.BaselineRed), strings.Join(res.BaselineRed, ", "), res.Killed, res.Survived, res.Invalid)
+		e.Detail = fmt.Sprintf("mutation 抽样：%d 个包未变异时测试就不是绿的（%s）——其 %d 个变异体会被既有失败\"杀灭\"，已跳过；先修好这些包的测试再重跑（其余包 killed %d / survived %d / invalid %d）", len(res.BaselineRed), strings.Join(res.BaselineRed, ", "), res.BaselineSkipped, res.Killed, res.Survived, res.Invalid)
+		if len(res.Survivors) > 0 {
+			var parts []string
+			for _, s := range res.Survivors {
+				parts = append(parts, fmt.Sprintf("%s:%d(%s→%s)", s.File, s.Line, s.Op, s.Flip))
+			}
+			e.Detail += "——存活位点: " + strings.Join(parts, ", ")
+		}
 	case res.Killed+res.Survived == 0:
 		e.Level = checklog.LevelWarn
 		e.Detail = fmt.Sprintf("mutation 抽样：零有效样本（sampled %d 全为无效体）——无验证信号，检查 go 工具链与任务窗口构建后重跑", res.Sampled)
@@ -457,14 +477,19 @@ func mutationVerdict(res MutationResult) string {
 // FormatMutationSummary 供 CLI 输出复用的渲染（纯函数）。
 func FormatMutationSummary(res MutationResult) string {
 	var b bytes.Buffer
+	// 零有效样本时杀灭率无定义——渲染 n/a，不写读起来像"全部存活"的 0%。
+	rate := fmt.Sprintf("%.0f%%", res.Score*100)
+	if res.Killed+res.Survived == 0 {
+		rate = "n/a"
+	}
 	if len(res.BaselineRed) > 0 {
-		fmt.Fprintf(&b, "⚠ 基线红：%s 未变异时测试就未通过——这些包的变异体未执行，下方杀灭率只覆盖基线绿的包\n",
-			strings.Join(res.BaselineRed, ", "))
-		fmt.Fprintf(&b, "mutation 抽样结果：样本 %d（killed %d / survived %d / invalid %d），杀灭率（仅基线绿的包）%.0f%%\n",
-			res.Sampled, res.Killed, res.Survived, res.Invalid, res.Score*100)
+		fmt.Fprintf(&b, "⚠ 基线红：%s 未变异时测试就未通过——这些包的 %d 个变异体未执行，下方杀灭率只覆盖基线绿的包\n",
+			strings.Join(res.BaselineRed, ", "), res.BaselineSkipped)
+		fmt.Fprintf(&b, "mutation 抽样结果：样本 %d（killed %d / survived %d / invalid %d），杀灭率（仅基线绿的包）%s\n",
+			res.Sampled, res.Killed, res.Survived, res.Invalid, rate)
 	} else {
-		fmt.Fprintf(&b, "mutation 抽样结果：样本 %d（killed %d / survived %d / invalid %d），杀灭率 %.0f%%\n",
-			res.Sampled, res.Killed, res.Survived, res.Invalid, res.Score*100)
+		fmt.Fprintf(&b, "mutation 抽样结果：样本 %d（killed %d / survived %d / invalid %d），杀灭率 %s\n",
+			res.Sampled, res.Killed, res.Survived, res.Invalid, rate)
 	}
 	for _, s := range res.Survivors {
 		fmt.Fprintf(&b, "  ☠ 存活 %s:%d（%s→%s）\n", s.File, s.Line, s.Op, s.Flip)
