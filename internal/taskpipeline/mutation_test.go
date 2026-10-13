@@ -215,6 +215,99 @@ func TestRunMutationSampling_KillsAndSurvives(t *testing.T) {
 	}
 }
 
+// TestMutationBaselineRed: when the package's unmutated tests already fail,
+// every mutant would be "killed" by the pre-existing failure and score 100% —
+// a fake green. The positive control must catch this: no mutant runs, the
+// verdict is baseline-red, the evidence row is Passed=false, and the source is
+// left byte-identical with no backup residue.
+//
+// TestMutationBaselineRed：包在未变异状态下测试就已失败时，每个变异体都会被这条
+// 既有失败"杀灭"而得 100%——假绿。阳性对照必须拦住：不跑任何变异体，verdict 为
+// baseline-red，证据行 Passed=false，源文件字节级不变且无备份残留。
+func TestMutationBaselineRed(t *testing.T) {
+	if testing.Short() {
+		t.Skip(`端到端基线实跑需要 go 工具链`)
+	}
+	dir, state := questioningFixture(t, false)
+	// 把强测试改成恒失败——模拟"包测试本来就是红的"（或被改成恒失败）。
+	broken := "package q\n\nimport \"testing\"\n\nfunc TestMax(t *testing.T) { t.Fatal(\"pre-broken\") }\n"
+	if err := os.WriteFile(filepath.Join(dir, "calc_test.go"), []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(filepath.Join(dir, "calc.go"))
+
+	res, checked, err := RunMutationSampling(dir, state, 3)
+	if err != nil {
+		t.Fatalf(`RunMutationSampling: %v`, err)
+	}
+	if !checked {
+		t.Fatal(`基线红是一条真实信号，Checked 应为 true`)
+	}
+	if res.Killed != 0 || res.Survived != 0 || res.Sampled != 0 {
+		t.Errorf(`基线红的包不得跑任何变异体（sampled=%d killed=%d survived=%d）`, res.Sampled, res.Killed, res.Survived)
+	}
+	if len(res.BaselineRed) != 1 || res.BaselineRed[0] != "." {
+		t.Errorf(`BaselineRed 应恰为根包 "."，got %v`, res.BaselineRed)
+	}
+	if got := mutationVerdict(res); got != "baseline-red" {
+		t.Errorf(`verdict 应为 baseline-red，got %q`, got)
+	}
+	if strings.Contains(FormatMutationSummary(res), "杀灭率 100%") {
+		t.Errorf("基线红时摘要不得呈现 100%% 杀灭率:\n%s", FormatMutationSummary(res))
+	}
+	after, _ := os.ReadFile(filepath.Join(dir, "calc.go"))
+	if string(before) != string(after) {
+		t.Error(`基线红时源文件必须字节级不变`)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "calc.go"+mutationBakSuffix)); !os.IsNotExist(err) {
+		t.Error(`基线红时不得留下 .forge-mutbak 备份`)
+	}
+	entries, _ := checklog.LoadForTask(dir, state.TaskRef)
+	found := false
+	for _, e := range entries {
+		if e.Check != CheckNameMutationSampling {
+			continue
+		}
+		found = true
+		if e.Passed {
+			t.Error(`基线红不得落 Passed=true（假绿行）`)
+		}
+		if e.Meta["verdict"] != "baseline-red" {
+			t.Errorf(`行 verdict 应为 baseline-red，got %q`, e.Meta["verdict"])
+		}
+		if e.Meta["baseline_red"] != "." {
+			t.Errorf(`行应披露基线红的包，got %q`, e.Meta["baseline_red"])
+		}
+	}
+	if !found {
+		t.Error(`基线红也应落 mutation-sampling 证据行`)
+	}
+}
+
+// TestMutationBaselineRed_VerdictPrecedence: a red baseline overrides the
+// all-killed verdict even when other (green) packages were fully killed — a
+// partial run must not render as a clean pass.
+//
+// TestMutationBaselineRed_VerdictPrecedence：只要有包基线红，即使其余（绿）包
+// 全部杀灭，verdict 也必须是 baseline-red——部分实跑不得呈现为干净通过。
+func TestMutationBaselineRed_VerdictPrecedence(t *testing.T) {
+	res := MutationResult{Sampled: 2, Killed: 2, Score: 1, BaselineRed: []string{"./internal/x"}}
+	if got := mutationVerdict(res); got != "baseline-red" {
+		t.Errorf(`有基线红包时 verdict 应为 baseline-red，got %q`, got)
+	}
+	dir := t.TempDir()
+	recordMutationRow(dir, "pr", res)
+	entries, err := checklog.LoadForTask(dir, "pr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Check == CheckNameMutationSampling && e.Passed {
+			t.Error(`部分基线红不得落 Passed=true`)
+		}
+	}
+}
+
 // TestMutationZeroSignal_NoFakePass: all-invalid samples (toolchain missing /
 // broken window) must yield no-signal — never a deterministic PASS row with
 // zero actual verification (review P1-3).
