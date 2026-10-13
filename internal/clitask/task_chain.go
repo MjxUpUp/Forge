@@ -323,6 +323,7 @@ func runArtifactApprove(stage, by string, checked []string) error {
 		}
 	}
 	var approved taskpipeline.ArtifactApproval
+	var approvedRef taskpipeline.ArtifactRef
 	if err := taskpipeline.MutateTaskState(root, st.TaskRef, func(ts *taskpipeline.TaskState) error {
 		ref, has := ts.SpecArtifacts[stage]
 		if !has {
@@ -333,6 +334,7 @@ func runArtifactApprove(stage, by string, checked []string) error {
 			return fmt.Errorf("stage %q 引用已漂移（登记后文件被改）——先重登记再审批", stage)
 		}
 		approved = taskpipeline.ArtifactApproval{By: by, At: time.Now(), Hash: cur, Checked: checked}
+		approvedRef = ref
 		if ts.ArtifactApprovals == nil {
 			ts.ArtifactApprovals = map[string]taskpipeline.ArtifactApproval{}
 		}
@@ -342,8 +344,9 @@ func runArtifactApprove(stage, by string, checked []string) error {
 		return err
 	}
 	// 审批已落盘后再存快照（审查轮：落盘失败时不得把未批准内容存成「上次批准」）。
-	if ref, has := st.SpecArtifacts[stage]; has {
-		if serr := taskpipeline.SaveApprovedSnapshot(root, st.TaskRef, stage, taskpipeline.ArtifactAbsPath(root, ref)); serr != nil {
+	// 用锁内批准的那份引用（审查轮：锁外读的 st 可能早于并发重登记）。
+	if approvedRef.Path != "" {
+		if serr := taskpipeline.SaveApprovedSnapshot(root, st.TaskRef, stage, taskpipeline.ArtifactAbsPath(root, approvedRef)); serr != nil {
 			fmt.Fprintf(os.Stderr, "⚠️ 审批快照未落盘（下次审批无法给出变化摘要）: %v\n", serr)
 		}
 	}
