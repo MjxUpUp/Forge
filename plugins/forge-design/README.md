@@ -1,6 +1,6 @@
 # Forge design pack（forge-design）
 
-前端/设计专项 skill pack——把设计族 skill 从核心分发中拆出（决策记录：`docs/plans/feature-focus-2026-09.md` §2.1"拆包"）。2026-10 起 design-artifact-standards 与 design-audit 收回核心（二者是通用方案设计资产，与前端无关；见 `docs/plans/design-stage-hardening-2026-10-proposal.md` D2），本 pack 现含 10 个 skill。
+前端/设计专项 skill pack——把设计族 skill 从核心分发中拆出（决策记录：`docs/plans/feature-focus-2026-09.md` §2.1"拆包"）。2026-10 起 design-artifact-standards 与 design-audit 收回核心（二者是通用方案设计资产，与前端无关；见 `docs/plans/design-stage-hardening-2026-10-proposal.md` D2），本 pack 现含 10 个 skill。从旧版升级：`/plugin update forge-design@forge`——未升级时旧版包内仍带这两个 skill，宿主会与核心同时加载两份（`forge skills drift-check` 以 plugin-shadow 报出）。
 
 ## 定位
 

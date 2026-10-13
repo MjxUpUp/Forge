@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 	"github.com/spf13/cobra"
 )
@@ -18,7 +19,7 @@ var (
 var skillsDriftCheckCmd = &cobra.Command{
 	Use:   "drift-check",
 	Short: "检测分发分叉（dry-run，不写）",
-	Long:  `forge skills drift-check — 检测 canonical 与各目标的分发态（linked/copy-in-sync/drift/missing/target-only）。项目画像（.forge/skills-profile）生效时只遍历画像内 skill；被画像排除但残留在目标里的 skill 不在此视图（install 会以告警浮出）。`,
+	Long:  `forge skills drift-check — 检测 canonical 与各目标的分发态（linked/copy-in-sync/drift/missing/target-only），并检测其他已安装 Claude Code 插件里与核心同名的旧 skill（plugin-shadow）。项目画像（.forge/skills-profile）生效时只遍历画像内 skill；被画像排除但残留在目标里的 skill 不在此视图（install 会以告警浮出）。`,
 	RunE:  runSkillsDriftCheck,
 }
 
@@ -49,6 +50,14 @@ func runSkillsDriftCheck(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// 插件同名遮蔽（plugin_shadow.go）：已收回核心的 skill 在未升级的扩展插件里仍有旧副本。
+	if names, lerr := skillsdist.ListSkills(canonical); lerr == nil {
+		shadows, serr := skillsdist.PluginShadows(hostcap.InstallDir("claude-code"), names)
+		if serr != nil {
+			rep.Errors = append(rep.Errors, "plugin shadow check: "+serr.Error())
+		}
+		rep.PluginShadows = shadows
+	}
 
 	if skDriftJSON {
 		b, _ := json.MarshalIndent(rep, "", "  ")
@@ -62,6 +71,12 @@ func runSkillsDriftCheck(cmd *cobra.Command, args []string) error {
 				continue
 			}
 			fmt.Printf("  %s  %-28s [%s]  %s\n", stateMark(it.State), it.Name, it.Target, it.State)
+		}
+		for _, sh := range rep.PluginShadows {
+			fmt.Printf("  ⇄  %-28s [plugin %s]  plugin-shadow——同名 skill 也在该插件里（旧副本，宿主会同时加载两份）；升级该插件去重：/plugin update %s\n", sh.Skill, sh.Plugin, sh.Plugin)
+		}
+		for _, e := range rep.Errors {
+			fmt.Printf("  !  %s\n", e)
 		}
 	}
 	return nil

@@ -160,3 +160,33 @@ func TestDesignStartFlowReviewFixes(t *testing.T) {
 		t.Fatalf("--checked 无 --approve 应拒绝, code=%d out=%s", code, out)
 	}
 }
+
+// TestExtractRefreshesTraces 钉住 artifact --extract 的端到端行为：spec 改了追溯后
+// 重新登记并提取，条目追溯以新内容为准，旧追溯不残留。
+func TestExtractRefreshesTraces(t *testing.T) {
+	dir, taskRef := setupChainTask(t, "")
+	src := filepath.Join(dir, "spec-src.md")
+	write := func(body string) {
+		t.Helper()
+		if err := os.WriteFile(src, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		captureStdout(t, func() {
+			if err := runArtifactSet("spec", src, false); err != nil {
+				t.Fatalf("set: %v", err)
+			}
+			if err := runArtifactExtract(); err != nil {
+				t.Fatalf("extract: %v", err)
+			}
+		})
+	}
+	write("- REQ-1 a\n- REQ-2 b\naccept[REQ-1]: echo x :: x\n")
+	write("- REQ-1 a\n- REQ-2 b\naccept[REQ-2]: echo x :: x\n")
+	st, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Acceptance) != 1 || !reflect.DeepEqual(st.Acceptance[0].Traces, []string{"REQ-2"}) {
+		t.Fatalf("重新提取后追溯应为 [REQ-2]（REQ-1 不残留）: %+v", st.Acceptance)
+	}
+}

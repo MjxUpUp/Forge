@@ -444,11 +444,29 @@ func runArtifactExtract() error {
 		if s.CompletedAt != nil {
 			return fmt.Errorf("任务已完成——考卷在交付前定稿，锁内拒绝 extract 注入")
 		}
+		// 先读全部产物，按当前内容刷新已有 spec-extract 条目的追溯（RefreshExtractedTraces：
+		// 从 spec 删掉的追溯不得在重新提取后残留）；某个产物不可读时不刷新——缺一份
+		// 产物就清空它声明的追溯会误报「未验证」。
+		perStageExtracted := map[string][]taskpipeline.AcceptanceCriterion{}
+		var fresh []taskpipeline.AcceptanceCriterion
+		allReadable := true
 		for _, name := range stages {
 			ref := s.SpecArtifacts[name]
 			extracted, xerr := taskpipeline.ParseAcceptanceFromArtifactFile(taskpipeline.ArtifactAbsPath(root, ref))
 			if xerr != nil {
 				fmt.Fprintf(os.Stderr, "⚠️ %s 产物不可读（%v）——跳过\n", name, xerr)
+				allReadable = false
+				continue
+			}
+			perStageExtracted[name] = extracted
+			fresh = append(fresh, extracted...)
+		}
+		if allReadable {
+			s.Acceptance = taskpipeline.RefreshExtractedTraces(s.Acceptance, fresh)
+		}
+		for _, name := range stages {
+			extracted, ok := perStageExtracted[name]
+			if !ok {
 				continue
 			}
 			if len(extracted) == 0 {
