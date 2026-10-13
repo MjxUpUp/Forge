@@ -191,6 +191,19 @@ const (
 	// 2026-09-18 取证:agent 在任务分支之外 5 次 commit + 3 次建分支 + 2 次
 	// merge 全程无中介——管线唯一的 choke point 挂在 agent 不会用的动词上。
 	CheckTaskDrift CheckName = "task-drift"
+	// CheckDecisionWarrant records the warrant check of one `forge skills decide`
+	// (R2 Warrant-Aware Acceptance): whether an accept decision carries a
+	// checkable anchor (run:<id> strong; commit:<sha> / doc:<path> weak) and, for
+	// run anchors, whether the run regresses against the skill's baseline.
+	// Advisory: Passed=false for missing/invalid/regression, the decision is
+	// still written. An observation, not verification evidence.
+	//
+	// CheckDecisionWarrant 记录一次 `forge skills decide` 的理由核验（R2
+	// Warrant-Aware Acceptance）：accept 决策是否带可核验锚点（run:<id> 为强；
+	// commit:<sha> / doc:<路径> 为弱），run 锚点相对该 skill 的 baseline 是否回归。
+	// advisory：missing/invalid/regression 时 Passed=false，决策照常写入。属观测，
+	// 不是验证证据。
+	CheckDecisionWarrant CheckName = "decision-warrant"
 	// CheckConventionsInject records one conventions-layer injection fired by the conventions hooks (2026-08-28).
 	//
 	// CheckConventionsInject 记录 conventions 层的一次注入（2026-08-28，
