@@ -26,7 +26,7 @@
 - `risky_steps`：高危步骤（迁移/删除/鉴权/外部调用），集中列在一起
 - `open_questions`：未决问题；有阻断项时不进入实现
 
-## 骨架（mini 单文件；full 三文件：需求文件 = TL;DR + 问题与目标 + Non-goals + 需求与验收 + Open Questions；设计文件 = 设计 + 备选对比 + 风险；任务文件 = 任务列表（每项回链 REQ-n）+ 验证与回滚）
+## 骨架（mini 单文件；full 三文件：需求文件 = TL;DR + 问题与目标 + Non-goals + 需求与验收 + Open Questions；设计文件 = 设计 + 备选对比 + 风险；任务文件 = 任务列表（每项回链 REQ-n）+ 验证与回滚；frontmatter 放需求文件）
 
 ```
 ---

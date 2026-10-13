@@ -203,6 +203,9 @@ func TestDesignTierReviewFixes(t *testing.T) {
 	if tier, _ := deriveTier([]string{"docs/tool/gen.go", "a/x.go", "b/y.go"}, builtin); tier != "mini" {
 		t.Errorf("docs 下的源码应计入跨模块, got %q", tier)
 	}
+	if tier, trig := deriveTier([]string{"requirements.txt"}, builtin); tier != "mini" {
+		t.Errorf("requirements.txt 是依赖文件，应触发小方案, got %q %v", tier, trig)
+	}
 	if goModVersionLineRe.MatchString("\tgithub.com/a/b v0.0.0-20240101000000-abcdef123456") {
 		t.Error("伪版本不应被当作可比较的 patch 版本")
 	}
