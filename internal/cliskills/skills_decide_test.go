@@ -285,6 +285,38 @@ func TestRunSkillsDecide_AcceptsExternalCanonical(t *testing.T) {
 	}
 }
 
+// TestRunSkillsDecide_RequiresEachTupleField: leaving out any single one of
+// diagnosis/revision/evidence is rejected before anything is written — the
+// guard must not only fire when all three are empty.
+//
+// TestRunSkillsDecide_RequiresEachTupleField：diagnosis/revision/evidence 任缺一项
+// 都在写入前被拒——守卫不能只在三项全空时才生效。
+func TestRunSkillsDecide_RequiresEachTupleField(t *testing.T) {
+	canonical := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(canonical, "demo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FORGE_SKILLS_CANONICAL", canonical)
+	for _, missing := range []string{"diagnosis", "revision", "evidence"} {
+		setSkDecVars(t, "demo", "tuple-probe")
+		switch missing {
+		case "diagnosis":
+			skDecDiagnosis = ""
+		case "revision":
+			skDecRevision = ""
+		case "evidence":
+			skDecEvidence = ""
+		}
+		err := runSkillsDecide(nil, nil)
+		if err == nil || !strings.Contains(err.Error(), "均必填") {
+			t.Errorf(`缺 --%s 应报四元组必填错误，got %v`, missing, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(canonical, "demo", "decisions.md")); !os.IsNotExist(err) {
+		t.Error(`缺字段被拒时不得写出 decisions.md`)
+	}
+}
+
 // warrantFixture builds an isolated forge project (registered in a throwaway
 // registry, git repo with docs/evidence.md committed), an external canonical
 // tree with skill "demo", and an empty eval dir. It chdirs into the project and
