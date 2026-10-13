@@ -751,6 +751,8 @@
       "flags": [
         "approve",
         "by",
+        "check",
+        "checked",
         "extract",
         "file",
         "json",
@@ -1097,6 +1099,8 @@
         "ref",
         "role",
         "scope",
+        "tier",
+        "tier-reason",
         "title",
         "ttl",
         "worktree",
@@ -1277,6 +1281,7 @@
     "FORGE_HELDOUT",
     "FORGE_MUTATION_GATE",
     "FORGE_MUTATION_TIMEOUT",
+    "FORGE_REQ_COVERAGE",
     "FORGE_REQ_HYGIENE",
     "FORGE_SELF_REPORT",
     "FORGE_SKILL_DECISIONS",
@@ -1300,7 +1305,7 @@
     {
       "tree": "canonical",
       "name": "architecture-decision-record",
-      "sha256": "d22dddc26b0272c5d39767073fb3778aa9265218af6cb08582e9b4b10f49db72"
+      "sha256": "b909844af6af33736899ebdafbc29915b5c49b6c0d8f1f18ad2718aa47f5607e"
     },
     {
       "tree": "canonical",
@@ -1310,7 +1315,7 @@
     {
       "tree": "canonical",
       "name": "code-review-gate",
-      "sha256": "3ed840ea032ab68277fbb436701359f5ee7c4a03165b1a37595fa0410c37f989"
+      "sha256": "8c5535e965822c4ce8fc5af54c367c3a2d4bda08c46217538370ccc77b4c1a0e"
     },
     {
       "tree": "canonical",
@@ -1325,7 +1330,17 @@
     {
       "tree": "canonical",
       "name": "database-design",
-      "sha256": "0d373aea14e08fc53d608805b6b0eb7aac1f9292af89debec8f0ca3039ca99ee"
+      "sha256": "922172ba86e8c54ec8719581e2baf98b5c6540cf47141aa7ce18fab186dc7a06"
+    },
+    {
+      "tree": "canonical",
+      "name": "design-artifact-standards",
+      "sha256": "9fb1105a052e2925981de7f3d8113de0d162987cada8c38d17e534373587f6ca"
+    },
+    {
+      "tree": "canonical",
+      "name": "design-audit",
+      "sha256": "65491c69d6ad8a881f19b71ab14c5937166da37929e982d5e4350a96ba8b78fa"
     },
     {
       "tree": "canonical",
@@ -1335,17 +1350,17 @@
     {
       "tree": "canonical",
       "name": "dev-workflow",
-      "sha256": "ef657863bd9ff2f234b0fae2766f93a1d2ac53441682bc0e351b06b7656a70b8"
+      "sha256": "0d826890022f6cd90798b4a1543ae47111bbf8d395f7323f1934e5dac8285716"
     },
     {
       "tree": "canonical",
       "name": "doc-generator",
-      "sha256": "1ef314613c46f014e3a1acc372c4cd177a3c499d5486d84de90d72b88cbbc3c9"
+      "sha256": "2ffb21f7d9b7a1485097239ab5e51397a4549224fdc0345970a4d4e0499ee6e6"
     },
     {
       "tree": "canonical",
       "name": "doc-review",
-      "sha256": "7e160613de4e78d07b6466ab8f8435f37a522f1bb0f3afbd150bde0473624c62"
+      "sha256": "600092d7439985920ad457e1c432f7013306a15d181b03f8f66756f6043d1eae"
     },
     {
       "tree": "canonical",
@@ -1360,7 +1375,7 @@
     {
       "tree": "canonical",
       "name": "evidence-based-proposal",
-      "sha256": "2e2684ef896668937cbfd9818150d5dfda5d98278dc0fa40ffa922cb24266b32"
+      "sha256": "5b35f070559b3c3a3d771d5a65682bd3d8defca314ae4744c648c6e95ec598fa"
     },
     {
       "tree": "canonical",
@@ -1385,7 +1400,7 @@
     {
       "tree": "canonical",
       "name": "project-acceptance",
-      "sha256": "f1255ce7960d0b9d2aa5b054eee2b900150e13dbf30735c8cf38be4de069f8ea"
+      "sha256": "8c708907620b618150777356a02b96141afca73b9aab2ae01c5fdb9478d532e0"
     },
     {
       "tree": "canonical",
@@ -1793,6 +1808,10 @@
     {
       "file": "internal/taskpipeline/pushgate.go",
       "count": 1
+    },
+    {
+      "file": "internal/taskpipeline/reqtrace.go",
+      "count": 2
     }
   ],
   "bridges": [

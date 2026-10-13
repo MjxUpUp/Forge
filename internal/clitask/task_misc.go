@@ -229,6 +229,11 @@ func runTaskScopeAdd(cmd *cobra.Command, args []string) error {
 			s.PlanScope = append(s.PlanScope, a)
 			existing[a] = true
 		}
+		// 手工追加即接管 scope（designcheck.go ApplyDesignTouchpoints：手工声明优先）——
+		// 否则方案重登记会用触点整体覆盖掉这里追加的条目。
+		if len(args) > 0 {
+			s.PlanScopeSource = ""
+		}
 		return nil
 	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)

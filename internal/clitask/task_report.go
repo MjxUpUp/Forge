@@ -80,6 +80,11 @@ type taskReportJSON struct {
 	SelfReviewRound bool     `json:"self_review_round,omitempty"`
 	SpecApprovedAt  string   `json:"spec_approved_at,omitempty"`
 	Repro           []string `json:"repro"`
+	// ReqCoverage is the requirement-ID coverage (reqtrace.go); nil when the
+	// task never adopted requirement IDs.
+	//
+	// ReqCoverage 是需求 ID 覆盖（reqtrace.go）；任务未采用需求 ID 时为 nil。
+	ReqCoverage *taskpipeline.RequirementCoverage `json:"req_coverage,omitempty"`
 }
 
 // runTaskReport 加载任务状态与 checklog，组装 taskReportJSON 后按 --json 或人读
@@ -223,6 +228,9 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 			rep.SpecApprovedAt = apr.At.Format("2006-01-02 15:04")
 		}
 	}
+	if cov := taskpipeline.TaskRequirementCoverage(root, state); cov.HasTraceData() {
+		rep.ReqCoverage = &cov
+	}
 	return rep, nil
 }
 
@@ -325,6 +333,12 @@ func renderTaskReport(rep *taskReportJSON) string {
 	}
 	for _, d := range rep.EscapeDebt {
 		fmt.Fprintf(&b, "│   ⚠ 逃生债 %s\n", d)
+	}
+	// 需求覆盖（reqtrace.go）：未验证需求与 manual 层披露并列——都是「考卷没盖住的面」。
+	if rep.ReqCoverage != nil {
+		for _, line := range strings.Split(taskpipeline.FormatRequirementCoverage(*rep.ReqCoverage), "\n") {
+			fmt.Fprintf(&b, "│ %s\n", strings.TrimSpace(line))
+		}
 	}
 
 	// 残留风险。

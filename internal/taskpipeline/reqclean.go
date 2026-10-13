@@ -42,8 +42,17 @@ const reqHygieneDisableEnv = "FORGE_REQ_HYGIENE"
 // CJK 标记不用 \b——Go regexp 的 \b 仅识别 ASCII word boundary，对 CJK 字符无效；
 // ASCII 缩写类标记保留 \b 防词内误匹配。
 var reqHygieneAmbiguityMarkers = regexp.MustCompile(
-	`(?i)(\bTBD\b|\bTODO\b|待定|待补|待确认|待讨论|可能|大概|也许|或许|视情况|后续确定|需考虑|酌情)`,
+	`(?i)(\bTBD\b|\bTODO\b|NEEDS CLARIFICATION|待定|待补|待确认|待讨论|可能|大概|也许|或许|视情况|后续确定|需考虑|酌情)`,
 )
+
+// openQuestionsHeadingRe matches an Open Questions section heading.
+var openQuestionsHeadingRe = regexp.MustCompile(`(?i)^#{2,6}\s*(open questions|待决问题|未决问题)`)
+
+// openQuestionNoneRe matches a placeholder item meaning "no open questions".
+var openQuestionNoneRe = regexp.MustCompile(`(?i)^[-*]\s*(无|暂无|没有|none|n/?a|-)\s*[。.]?$`)
+
+// openQuestionResolvedRe marks a list item as closed (checked box / 已决 / resolved / struck through).
+var openQuestionResolvedRe = regexp.MustCompile(`(?i)(^[-*]\s*\[x\]|已决|已定|resolved|^[-*]\s*~~)`)
 
 // reqHygieneVagueQuantifier 匹配无数字锚定的模糊量词。
 var reqHygieneVagueQuantifier = regexp.MustCompile(`(?:一些|多个|若干|部分|某些|几个)`)
@@ -59,9 +68,11 @@ type reqHygieneFinding struct {
 func CheckRequirementsHygiene(root string, state *TaskState) []reqHygieneFinding {
 	var findings []reqHygieneFinding
 
-	// 扫描已登记的 spec 产物文件
-	for stage, ref := range state.SpecArtifacts {
-		if stage != "spec" {
+	// 扫描已登记的 spec 与 design 产物文件（design-stage-hardening W2.2：design 阶段
+	// 同样不得残留歧义标记；另查 Open Questions 未关闭项）。stage 排序保证输出确定。
+	for _, stage := range []string{"spec", "design"} {
+		ref, ok := state.SpecArtifacts[stage]
+		if !ok {
 			continue
 		}
 		abs := artifactAbsPath(root, ref)
@@ -69,7 +80,15 @@ func CheckRequirementsHygiene(root string, state *TaskState) []reqHygieneFinding
 		if err != nil {
 			continue
 		}
-		findings = append(findings, scanSpecText(string(body))...)
+		for _, f := range scanSpecText(string(body)) {
+			if stage != "spec" {
+				f.Detail = stage + ": " + f.Detail
+			}
+			findings = append(findings, f)
+		}
+		if stage == "design" {
+			findings = append(findings, scanOpenQuestions(string(body))...)
+		}
 	}
 
 	// 有 spec 产物但无验收标准
@@ -99,6 +118,33 @@ func scanSpecText(text string) []reqHygieneFinding {
 				Detail:   fmt.Sprintf("模糊量词（行 %d）", i+1),
 			})
 		}
+	}
+	return findings
+}
+
+// scanOpenQuestions 列出 Open Questions 一节中未关闭的列表项（勾选 / 已决 /
+// resolved / 删除线视为关闭）。有未关闭项的方案不应进入实现（提案附录 A）。
+func scanOpenQuestions(text string) []reqHygieneFinding {
+	var findings []reqHygieneFinding
+	inSection := false
+	lines, numbers := proseLines(text) // 围栏内的 # 行不是标题，不得结束本节
+	for idx, raw := range lines {
+		i := numbers[idx] - 1
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "#") {
+			inSection = openQuestionsHeadingRe.MatchString(line)
+			continue
+		}
+		if !inSection || !(strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* ")) {
+			continue
+		}
+		if openQuestionResolvedRe.MatchString(line) || openQuestionNoneRe.MatchString(line) {
+			continue
+		}
+		findings = append(findings, reqHygieneFinding{
+			Category: "open-question",
+			Detail:   fmt.Sprintf("design: Open Questions 未关闭项（行 %d）——有阻断项时不进入实现", i+1),
+		})
 	}
 	return findings
 }
@@ -136,7 +182,7 @@ func RunReqHygiene(root string, state *TaskState) {
 	}
 	if len(findings) > 0 {
 		e.Level = checklog.LevelAdvisory
-		e.Detail = fmt.Sprintf("ADVISORY: 需求卫生 %d 项发现（歧义标记/模糊量词/验收缺失）——advisory 不阻断，建议清理", len(findings))
+		e.Detail = fmt.Sprintf("ADVISORY: 需求卫生 %d 项发现（歧义标记/模糊量词/验收缺失/未关闭问题）——advisory 不阻断，建议清理", len(findings))
 		for i, f := range findings {
 			if i >= 5 {
 				e.Detail += fmt.Sprintf(" …（其余 %d 项略）", len(findings)-5)

@@ -182,7 +182,8 @@ func scanUnusedFindings(root string, state *TaskState, findingsDirty bool) {
 // （deadcode 实锤、CI ##[error] 标注仍 success）——"实现了但没接线"恰是该扫描器
 // 自己定义的 BUG-1 形态。
 func adviseReqHygiene(root string, state *TaskState) {
-	if !hasSpecArtifacts(state) {
+	// design 产物同样进扫描范围（design-stage-hardening W2.2）。
+	if _, hasDesign := state.SpecArtifacts["design"]; !hasSpecArtifacts(state) && !hasDesign {
 		return
 	}
 	RunReqHygiene(root, state)

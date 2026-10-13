@@ -57,3 +57,21 @@ func TestHardeningEscapeEnvsRegistered(t *testing.T) {
 		}
 	}
 }
+
+// TestReqCoverageEscapeEnvRegistered (design-stage-hardening W3.3)：需求覆盖检查的
+// 逃生舱 FORGE_REQ_COVERAGE 在 EscapeEnvs roster——该检查在显式升档的链上阻断
+// complete，漏登记 = 阻断位点有逃生却不进快照承诺面。
+func TestReqCoverageEscapeEnvRegistered(t *testing.T) {
+	seen := map[string]int{}
+	for _, env := range EscapeEnvs {
+		seen[env]++
+	}
+	if seen["FORGE_REQ_COVERAGE"] != 1 {
+		t.Fatalf("EscapeEnvs 应恰好登记一次 FORGE_REQ_COVERAGE, got %d", seen["FORGE_REQ_COVERAGE"])
+	}
+	for env, n := range seen {
+		if n > 1 {
+			t.Errorf("EscapeEnvs 重复登记 %s（%d 次）——roster 是单一真相源，重复即快照面虚增", env, n)
+		}
+	}
+}

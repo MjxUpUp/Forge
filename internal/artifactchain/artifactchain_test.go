@@ -223,3 +223,25 @@ func TestEdgeDeclarationAndValidation(t *testing.T) {
 		}
 	})
 }
+
+// TestDefaultChainDesignInstructionPointsAtTemplate 钉住默认链 design 指令
+// （design-stage-hardening W1.3）：指令点名的模板文件必须真实存在于核心 skill 库，
+// 且点名核查动作——指令是 agent 写方案的入口，指向不存在的模板 = 静默失效。
+func TestDefaultChainDesignInstructionPointsAtTemplate(t *testing.T) {
+	design, ok := DefaultChain().StageByName("design")
+	if !ok {
+		t.Fatal("默认链缺 design 节点")
+	}
+	const tmpl = "skills/doc-generator/references/template-tech-plan.md"
+	if !strings.Contains(design.Instruction, tmpl) {
+		t.Fatalf("design 指令应点名模板 %s: %q", tmpl, design.Instruction)
+	}
+	if _, err := os.Stat(filepath.Join("..", "..", filepath.FromSlash(tmpl))); err != nil {
+		t.Fatalf("指令点名的模板不存在: %v", err)
+	}
+	for _, frag := range []string{"Non-goals", "触点", "什么都不做", "artifact --check"} {
+		if !strings.Contains(design.Instruction, frag) {
+			t.Errorf("design 指令缺 %q", frag)
+		}
+	}
+}

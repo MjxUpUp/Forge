@@ -1,6 +1,6 @@
 ---
 name: project-acceptance
-description: "项目级 PRD/功能完整度验收审查。Use when: 对整个项目进行验收时、比对设计方案和实施计划时、看下当前项目完整度时、审查项目功能完成性时、准备上线前检查时、用户说\"验收\"\"审查项目\"\"看下项目完整度\"\"准备上线\"时。SKIP: 单文件代码审查（用 code-review-gate）、编译问题排查（用 compile-fix-loop）、运行时bug修复、单设计文档的功能 landing gap（design-audit 属 forge-design pack，未安装则忽略）、整项目批量审查/重构后全量深查（用 review-batch）、防假绿/红蓝对抗严格验证（用 adversarial-verification）、发布 go/no-go 门禁（用 release-readiness）。"
+description: "项目级 PRD/功能完整度验收审查。Use when: 对整个项目进行验收时、比对设计方案和实施计划时、看下当前项目完整度时、审查项目功能完成性时、准备上线前检查时、用户说\"验收\"\"审查项目\"\"看下项目完整度\"\"准备上线\"时。SKIP: 单文件代码审查（用 code-review-gate）、编译问题排查（用 compile-fix-loop）、运行时bug修复、单设计文档的功能 landing gap（用 design-audit）、整项目批量审查/重构后全量深查（用 review-batch）、防假绿/红蓝对抗严格验证（用 adversarial-verification）、发布 go/no-go 门禁（用 release-readiness）。"
 metadata:
   pattern: reviewer + gate
   domain: quality-assurance
@@ -14,6 +14,8 @@ metadata:
 ## 5 维度验收清单
 
 ### 维度 1: PRD / 需求覆盖度
+需求带 REQ-n 且验收带 `accept[REQ-n]` 时，宿主能出需求覆盖表就先拿「已验证 / 未验证 / 孤儿」三栏——机器可答的部分不再人工判断，只对未验证与无 ID 的功能点做下面的逐项检查。
+
 从 PRD/设计方案/README 中提取功能列表，逐项检查代码实现：
 - [ ] 每个 PRD 功能点是否有对应代码实现
 - [ ] 每个功能点是否有测试（单元/集成/E2E）
@@ -21,6 +23,7 @@ metadata:
 - [ ] 多余实现：有不属于 PRD 的代码，标注是否合理残留
 
 ### 维度 2: 设计方案 vs 实际实现一致性
+按 design-audit 的流程逐条给 LANDED / PARTIAL / MISSING 判决并附 file:line 证据（不凭印象打勾）；宿主把方案触点当计划改动范围时，它报出的「方案外改动」就是现成的偏差清单。
 - [ ] 架构分层是否与设计方案一致
 - [ ] 模块间接口是否与设计方案一致
 - [ ] 数据流是否与设计方案一致
