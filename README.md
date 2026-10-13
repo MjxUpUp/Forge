@@ -439,7 +439,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills mutex-gen` | 生成跨 skill 互斥 case 集（从 description SKIP 段的（用 X）让渡边派生：B 域 prompt 必须路由到 B、不得路由回声明让渡的 A；落盘 mutex/cases.json） |
 | `forge skills mutex-record --from <file/->` | 回填一次互斥集 run（actual==Positive 才 pass；`--agent-model`/`--forge-version` 盖章防跨模型/版本假回归） |
 | `forge skills mutex-report [--gate] [--json]` | 互斥集混淆矩阵（actual==Negative 为头号混淆行；`--gate` 任一混淆即 BLOCKED(stderr)+exit 4） |
-| `forge skills decide [<skill>] --diagnosis ... --prediction <p>` | 记录 skill 决策四元组（skill 名可用位置参数或 --skill；在带 skills/ 树的仓库内默认写仓库 canonical 而非 embed 缓存）；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣 |
+| `forge skills decide [<skill>] --diagnosis ... --prediction <p> --warrant <k:v>` | 记录 skill 决策四元组（skill 名可用位置参数或 --skill；在带 skills/ 树的仓库内默认写仓库 canonical 而非 embed 缓存）；`--prediction` 声明可检验预测（哪个可观测信号应改善），供验证闭环回扣；`--warrant` 给出可核验的理由锚点（`run:<eval-run-id>` 与 baseline 有效比对无回归为强，`commit:<sha>` / `doc:<仓库内路径>` 为弱）；accept 决策缺锚点、或任一决策的锚点核验失败 / run 回归时 advisory 告警，决策照常记录；每次核验在 forge 项目内落 checklog `decision-warrant` 行（强为 pass、其余 warn） |
 | `forge skills verify --skill X --decision <id> --result <r>` | 回填决策验证结果（预测→验证闭环第二步；`--at` 指定时间、`--history`/`--history-json` 查全量可证伪台账） |
 | `forge skills revert --skill X --decision <id> [--edit] [--dry-run]` | Scoped revert：按 decisions.md 的 CommitHash 撤销某条决策关联的 commit（决策闭环的撤销臂） |
 | `forge skills integration [<skill>]` | 查看 skill 的 forge 集成笔记（零反向依赖契约的 forge 侧承接：命令语法/门禁/逃生口；无参数列出有笔记的 skill） |
