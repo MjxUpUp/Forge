@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.77.0](https://github.com/MjxUpUp/Forge/compare/v1.76.0...v1.77.0) (2026-10-13)
+
+
+### Features
+
+* **skills:** skills decide 新增 --warrant——accept 决策缺可核验锚点或 run 锚点回归时 advisory 告警 ([ccda457](https://github.com/MjxUpUp/Forge/commit/ccda4572daa17601e80b899e3f54276f4976f537))
+
+
+### Bug Fixes
+
+* **skills:** 审查跟进——强锚点必须做过有效 baseline 比对，比对做不成降为弱并说明原因 ([c625281](https://github.com/MjxUpUp/Forge/commit/c6252810b6721c93b128129709faa09ed0ffb759))
+* **taskpipeline:** mutation 抽样加阳性对照——未变异包测试先绿，红则 baseline-red 不计分 ([ce8424b](https://github.com/MjxUpUp/Forge/commit/ce8424bc8193b671d016da320979c3595dd2f5cf))
+* **taskpipeline:** 阳性对照审查跟进——工具链缺失单独报错、披露剔除数、零样本杀灭率 n/a ([da4ca48](https://github.com/MjxUpUp/Forge/commit/da4ca484c927a7eb75293658a38d276dd2ede3f3))
+
 ## [1.76.0](https://github.com/MjxUpUp/Forge/compare/v1.75.0...v1.76.0) (2026-10-13)
 
 
