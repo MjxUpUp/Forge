@@ -444,11 +444,35 @@ func runArtifactExtract() error {
 		if s.CompletedAt != nil {
 			return fmt.Errorf("任务已完成——考卷在交付前定稿，锁内拒绝 extract 注入")
 		}
+		// 先读全部产物，按当前内容刷新已有 spec-extract 条目的追溯（RefreshExtractedTraces：
+		// 从 spec 删掉的追溯不得在重新提取后残留）；某个产物不可读时不刷新——缺一份
+		// 产物就清空它声明的追溯会误报「未验证」。
+		perStageExtracted := map[string][]taskpipeline.AcceptanceCriterion{}
+		var fresh []taskpipeline.AcceptanceCriterion
+		allReadable := true
 		for _, name := range stages {
 			ref := s.SpecArtifacts[name]
 			extracted, xerr := taskpipeline.ParseAcceptanceFromArtifactFile(taskpipeline.ArtifactAbsPath(root, ref))
 			if xerr != nil {
 				fmt.Fprintf(os.Stderr, "⚠️ %s 产物不可读（%v）——跳过\n", name, xerr)
+				allReadable = false
+				continue
+			}
+			// 与 task start 同口径补 -v（审查轮：否则重新提取的 go test 行与开工时
+			// 登记的 -v 版本身份不同，追溯落到永远匹配不上 PASS 的副本上）。
+			taskpipeline.EnsureGoTestVerbose(extracted)
+			taskpipeline.MarkExtractedTraces(extracted)
+			perStageExtracted[name] = extracted
+			fresh = append(fresh, extracted...)
+		}
+		if allReadable {
+			if n := taskpipeline.RefreshExtractedTraces(s.Acceptance, fresh); n > 0 {
+				fmt.Fprintf(os.Stderr, "ℹ️ 按产物当前内容刷新了 %d 条验收的需求追溯（手工补登的追溯保留）\n", n)
+			}
+		}
+		for _, name := range stages {
+			extracted, ok := perStageExtracted[name]
+			if !ok {
 				continue
 			}
 			if len(extracted) == 0 {

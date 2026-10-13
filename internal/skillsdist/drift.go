@@ -14,6 +14,12 @@ type DriftReport struct {
 	Items     []DriftItem `json:"items"`
 	Stats     DriftStats  `json:"stats"`
 	Errors    []string    `json:"errors,omitempty"` // target 目录读取失败（权限等，非"不存在"）
+	// PluginShadows lists core skills that other installed Claude Code plugins also
+	// ship (plugin_shadow.go); filled by the CLI, empty when none.
+	//
+	// PluginShadows 列出其他已安装 Claude Code 插件里也带着的核心 skill
+	// （plugin_shadow.go）；由 CLI 填充，无则为空。
+	PluginShadows []PluginShadow `json:"plugin_shadows,omitempty"`
 }
 
 // DriftItem is the distribution-state record of one skill in one target.

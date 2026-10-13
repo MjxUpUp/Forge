@@ -134,6 +134,21 @@ type AcceptanceCriterion struct {
 	// `accept[REQ-3]:` 前缀或行尾 `#REQ-3` 标记声明。不进条目身份
 	// （MergeAcceptance 的三元组）：同一命令多追溯几个 ID 仍是同一道题。
 	Traces []string `json:"traces,omitempty"`
+	// ExtractedTraces is the subset of Traces that registered artifacts declared at
+	// the last extraction. Re-extraction replaces exactly this subset, so traces
+	// added by hand (task accept / --accept) survive while traces deleted from the
+	// spec go away.
+	//
+	// ExtractedTraces 是 Traces 中由已登记产物在上次提取时声明的那部分。重新提取只
+	// 替换这一部分：手工补登（task accept / --accept）的追溯保留，从 spec 删掉的追溯消失。
+	//
+	// Known limit: provenance is per ID, not per source — an ID declared both by hand
+	// and in the spec is removed when the spec drops it (coverage then reports it as
+	// unverified, never falsely verified; re-run task accept to restore it).
+	//
+	// 已知局限：来源按 ID 记录、不按出处分开——同一 ID 既手工补登又由 spec 声明时，
+	// spec 删掉它会一并移除（覆盖表随之报「未验证」，绝不误报已验证；重跑 task accept 即恢复）。
+	ExtractedTraces []string `json:"extracted_traces,omitempty"`
 }
 
 // Assertion is one structured, mechanically checkable assertion within a v2
