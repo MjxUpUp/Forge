@@ -514,6 +514,35 @@ func TestSkillsDecideWarrant(t *testing.T) {
 		}
 	}
 
+	// 非 accept 但显式给了锚点：同样核验并落行（核验失败 → Passed=false）。
+	rowsBefore := len(warrantRows(t, proj))
+	if _, err := runDecideCaptured(t, "warrant-reject-with-anchor", "reject", "doc:docs/nope.md"); err != nil {
+		t.Fatalf("reject + --warrant 必须照常成功，got %v", err)
+	}
+	if rows := warrantRows(t, proj); len(rows) != rowsBefore+1 || rows[len(rows)-1].Passed || rows[len(rows)-1].Meta["outcome"] != "reject" {
+		t.Errorf("reject + 无效锚点应落 1 行 Passed=false outcome=reject，got %d 行", len(rows)-rowsBefore)
+	}
+
+	// 值的首尾空白被规整：写入 decisions.md 的值与 meta 一致。
+	if _, err := runDecideCaptured(t, "warrant-normalized", "accept", "doc:  docs/evidence.md "); err != nil {
+		t.Fatalf("带空白的锚点必须照常成功，got %v", err)
+	}
+	if data, _ := os.ReadFile(decisionsPath); !strings.Contains(string(data), "- **Warrant**: doc:docs/evidence.md\n") {
+		t.Error("锚点值应规整为 doc:docs/evidence.md 后写入")
+	}
+	if rows := warrantRows(t, proj); rows[len(rows)-1].Meta["warrant"] != "doc:docs/evidence.md" {
+		t.Errorf("meta.warrant 应与写入值一致，got %q", rows[len(rows)-1].Meta["warrant"])
+	}
+
+	// 超长锚点：输入校验错误，决策不得写入。
+	beforeLong, _ := os.ReadFile(decisionsPath)
+	if _, err := runDecideCaptured(t, "warrant-too-long", "accept", "doc:"+strings.Repeat("a", maxWarrantLen)); err == nil {
+		t.Fatal("超长 --warrant 必须报错")
+	}
+	if afterLong, _ := os.ReadFile(decisionsPath); !bytes.Equal(beforeLong, afterLong) {
+		t.Error("超长 --warrant 被拒时 decisions.md 必须不变")
+	}
+
 	// 多行锚点：输入校验错误，决策不得写入（伪造决策头的注入面）。
 	before, _ := os.ReadFile(decisionsPath)
 	if _, err := runDecideCaptured(t, "warrant-multiline", "accept", "doc:docs/evidence.md\n## [d-evil] accept"); err == nil {
@@ -556,7 +585,8 @@ func TestSkillsDecideWarrantRegression(t *testing.T) {
 	}{
 		{"run:r-bad", "regression", false},
 		{"run:r-good", "strong", true},
-		{"run:r-base", "strong", true},
+		// 锚点就是 baseline 本身：没有对照，只算弱（不能靠"和自己比没回归"拿强）。
+		{"run:r-base", "weak", true},
 	}
 	for i, c := range cases {
 		stderr, err := runDecideCaptured(t, "regression-case-"+string(rune('a'+i)), "accept", c.warrant)
