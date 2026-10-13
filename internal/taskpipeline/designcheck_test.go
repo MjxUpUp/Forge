@@ -214,3 +214,23 @@ func TestDesignCheckInterfaceMethods(t *testing.T) {
 		t.Errorf("错接口名与块外调用应报: %+v", got)
 	}
 }
+
+// TestDesignCheckInterfaceEdgeCases 钉住复审轮修复：一行空 interface 不吞后续函数体；
+// 泛型 interface 的方法可识别。
+func TestDesignCheckInterfaceEdgeCases(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"g/g.go": "package g\n\ntype Empty interface{}\n\nfunc f() {\n\tBar(1)\n}\n\ntype Set[T any] interface {\n\tAdd(v T)\n}\n",
+	})
+	got := CheckDesignGrounding(root, "- `g/g.go:Bar`\n- `g/g.go:Set.Add`\n")
+	refs := map[string]bool{}
+	for _, f := range got {
+		refs[f.Ref] = true
+	}
+	if !refs["g/g.go:Bar"] {
+		t.Error("空 interface 后函数体里的调用不应算声明")
+	}
+	if refs["g/g.go:Set.Add"] {
+		t.Error("泛型 interface 的方法应算声明")
+	}
+}

@@ -123,7 +123,10 @@ func goDeclRe(recv, sym string) *regexp.Regexp {
 }
 
 // interfaceBlockRe captures `type Name interface { … }` blocks (closing brace at line start).
-var interfaceBlockRe = regexp.MustCompile(`(?ms)^type\s+(\w+)\s+interface\s*\{(.*?)^\}`)
+// Type parameters are allowed (`type Set[T any] interface {`); the opening brace
+// must end its line, so one-line `interface{}` never opens a block that would
+// swallow the following function bodies.
+var interfaceBlockRe = regexp.MustCompile(`(?ms)^type\s+(\w+)(?:\[[^\]]*\])?\s+interface\s*\{[ \t]*\n(.*?)^\}`)
 
 // interfaceDeclares reports whether an interface block declares method sym
 // (restricted to interface recv when given). Interface methods have the call
