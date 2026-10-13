@@ -49,7 +49,7 @@ var defaultTierRules = []protocol.DesignTierRule{
 //
 // defaultStandardChanges 是事先认可的例行改动（ITIL「标准变更」）：命中的文件永不
 // 触发档位。
-var defaultStandardChanges = []string{"*.md", "*.txt", "*.rst", "LICENSE*", "CHANGELOG*", ".gitignore", "go.sum", "package-lock.json", "*.lock"}
+var defaultStandardChanges = []string{"*.md", "*.rst", "LICENSE*", "CHANGELOG*", ".gitignore", "go.sum", "package-lock.json", "*.lock"}
 
 // crossModuleThreshold: a change spanning this many distinct directories is a
 // multi-module change (mini) even without any hard trigger.

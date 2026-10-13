@@ -194,3 +194,23 @@ func TestDesignCheckBoundaries(t *testing.T) {
 		t.Error("B 没有 Run 方法，应按接收者报 symbol")
 	}
 }
+
+// TestDesignCheckInterfaceMethods 钉住复审轮修复：接口方法（形如调用）在 interface
+// 块内算声明，按接口名核对；块外的同形调用仍不算。
+func TestDesignCheckInterfaceMethods(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{
+		"s/s.go": "package s\n\ntype Store interface {\n\tGet(key string) (string, error)\n\tClose()\n}\n\nfunc use(st Store) {\n\tPut(1)\n}\n",
+	})
+	got := CheckDesignGrounding(root, "- `s/s.go:Store.Get`\n- `s/s.go:Close`\n- `s/s.go:Other.Get`\n- `s/s.go:Put`\n")
+	refs := map[string]bool{}
+	for _, f := range got {
+		refs[f.Ref] = true
+	}
+	if refs["s/s.go:Store.Get"] || refs["s/s.go:Close"] {
+		t.Errorf("接口方法应算声明: %+v", got)
+	}
+	if !refs["s/s.go:Other.Get"] || !refs["s/s.go:Put"] {
+		t.Errorf("错接口名与块外调用应报: %+v", got)
+	}
+}

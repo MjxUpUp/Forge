@@ -2,7 +2,7 @@
 status: approved
 owner: MjxUpUp
 ask: D1-D4 已拍板，本文是 feat/design-stage-hardening 的 proposal/spec 产物——知会，无需再批；文末总验收可被 artifact --extract 编译
-tier: full
+tier: full   # 提案为单文件：需求/设计/任务合写（本文定义了三档模板本身，早于模板定稿）
 ---
 
 # 设计阶段硬化：把已有门禁延伸到技术方案（2026-10 提案）
@@ -17,7 +17,7 @@ design 阶段是 forge 的短板：默认只给 advisory，模板只有 5 节，
 
 | 断点 | 证据 |
 |---|---|
-| design 阶段默认 advisory，指令只有一句话；`chain-init` 只把 spec 提升为人审 | `internal/artifactchain/artifactchain.go:150`@e896ebc |
+| design 阶段默认 advisory，指令只有一句话；`chain-init` 只把 spec 提升为人审 | `internal/artifactchain/artifactchain.go:150`@e896ebc，`internal/clitask/task_chaininit.go`@e896ebc |
 | 技术方案模板 5 节，缺 Non-goals、接口、触点、不变量、Open Questions、元数据头 | `skills/doc-generator/references/template-tech-plan.md`@e896ebc |
 | 验收条目无 ID、无回链，答不出"哪条需求没被验证" | `internal/tasktypes/types.go:74`@e896ebc |
 | doclint 只有 test-report、retrospective、checklist 三种类型 | `internal/doclint/rules.go:104`@e896ebc |
@@ -171,8 +171,8 @@ accept: go test ./x -run TestA :: ok  #REQ-3 #REQ-4
 | 档位 | 要写什么 | 目标门禁强度 | 本批行为 |
 |---|---|---|---|
 | 直接改 `none` | 不写方案，只需验收命令 | 仅现有验收门禁 | 同目标 |
-| 小方案 `mini` | 单文件方案（`skills/doc-generator/references/template-tech-plan.md`） | design 阶段 rubric：L1 lint + 事实核查 | 无 design 产物时 implement 给 advisory |
-| 完整方案 `full` | 需求、设计、任务三文件 + 备选与取舍 | design 阶段 human：人工批准绑定哈希 | 无 design 产物或未批准时 implement 给 advisory |
+| 小方案 `mini` | 单文件方案（`skills/doc-generator/references/template-tech-plan.md`） | design 阶段 rubric：L1 lint + 事实核查 | 无 design 产物且无 plan 时 implement 给 advisory |
+| 完整方案 `full` | 需求、设计、任务三文件 + 备选与取舍 | design 阶段 human：人工批准绑定哈希 | 无 design 产物且无 plan、或 design 未批准时 implement 给 advisory |
 
 ## 风险与高危步骤
 

@@ -122,6 +122,25 @@ func goDeclRe(recv, sym string) *regexp.Regexp {
 	return regexp.MustCompile(`(?m)^(?:func\s+` + q + `\b|` + method + `|(?:type|var|const)\s+` + q + `\b|\s+` + q + `\s*=|\s+` + q + `\s+[A-Za-z*\[(])`)
 }
 
+// interfaceBlockRe captures `type Name interface { … }` blocks (closing brace at line start).
+var interfaceBlockRe = regexp.MustCompile(`(?ms)^type\s+(\w+)\s+interface\s*\{(.*?)^\}`)
+
+// interfaceDeclares reports whether an interface block declares method sym
+// (restricted to interface recv when given). Interface methods have the call
+// shape `\tName(…)`, so they are matched only inside interface blocks.
+//
+// interfaceDeclares 报告是否有 interface 块声明了方法 sym（给了 recv 时只看该
+// interface）。接口方法形如调用 `\tName(…)`，故只在 interface 块内匹配。
+func interfaceDeclares(body []byte, recv, sym string) bool {
+	method := regexp.MustCompile(`(?m)^\s+` + regexp.QuoteMeta(sym) + `\(`)
+	for _, m := range interfaceBlockRe.FindAllSubmatch(body, -1) {
+		if (recv == "" || string(m[1]) == recv) && method.Match(m[2]) {
+			return true
+		}
+	}
+	return false
+}
+
 // maxDesignRefBytes caps how much of a referenced file the check reads.
 //
 // maxDesignRefBytes 是核查读取被引用文件的字节上限。
@@ -290,7 +309,7 @@ func checkFileRef(root, path, rest string, lineNo int, add func(DesignCheckFindi
 	if dot := strings.LastIndex(sym, "."); dot >= 0 {
 		recv, sym = sym[:dot], sym[dot+1:] // Type.Method → 接收者 Type 的方法 Method
 	}
-	if !goDeclRe(recv, sym).Match(body) {
+	if !goDeclRe(recv, sym).Match(body) && !interfaceDeclares(body, recv, sym) {
 		add(DesignCheckFinding{Kind: "symbol", Ref: ref, Line: lineNo, Detail: "文件中找不到该 Go 符号的声明"})
 	}
 }
