@@ -40,6 +40,7 @@ phase-*.md 是「好设计产物该有什么」的标准清单（IEEE 830 / Goog
 | 前端设计 / 页面 / 组件 / 路由 / 状态 | frontend | [phase-frontend.md](references/phase-frontend.md) |
 | 后端设计 / service / domain / 业务逻辑 | backend | [phase-backend.md](references/phase-backend.md) |
 | 测试方案 / 测试用例 / 测试计划 | test-design | [phase-test-design.md](references/phase-test-design.md) |
+| 技术方案 / 设计文档（跨环节） | 跨环节（不在 6 环节枚举内） | 骨架用 doc-generator 的 `template-tech-plan.md`（先定档位 none/mini/full），涉及哪些环节就叠加对应 phase-*.md（改表加 database、改接口加 api）；写完核查引用存在性、按 doc-review 技术方案行评审 |
 | PR 描述 / commit body / 测试报告 / 复盘报告 | 文档产物（不在 6 环节枚举内） | 按 **doc-review skill** 评审（四维评分 + 类型特化）——写前先拿 doc-generator 对应模板；落盘产物先过机器层 lint（宿主提供时），再按 rubric 评分 |
 
 > 6 个环节枚举与审查侧实现的环节集保持一致。编写期你按意图选环节；产物按约定路径落盘（如 PRD 放 `docs/prd/`、API 路径含 `openapi/api/proto`）时两期环节集合一致，路径不匹配时审查期回退通用清单（编写期自查的有效性不受影响）。

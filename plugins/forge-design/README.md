@@ -1,14 +1,14 @@
 # Forge design pack（forge-design）
 
-前端/设计专项 skill pack——把设计族 12 个 skill 从核心分发中拆出（决策记录：`docs/plans/feature-focus-2026-09.md` §2.1"拆包"）。
+前端/设计专项 skill pack——把设计族 skill 从核心分发中拆出（决策记录：`docs/plans/feature-focus-2026-09.md` §2.1"拆包"）。2026-10 起 design-artifact-standards 与 design-audit 收回核心（二者是通用方案设计资产，与前端无关；见 `docs/plans/design-stage-hardening-2026-10-proposal.md` D2），本 pack 现含 10 个 skill。
 
 ## 定位
 
-核心 `skills/` 库定位是**通用验证/流程/编排/检索**（跨宿主证据与签核层）；前端/设计族是领域专项知识，对非前端项目是常驻路由负担（dogfooding 零触发 + 族内重复审计实证）。本 pack 让设计族按 Agent Skills 开放规范独立流通，核心包不再为少数场景背负 12 个 skill 的路由成本。
+核心 `skills/` 库定位是**通用验证/流程/编排/检索**（跨宿主证据与签核层）；前端/设计族是领域专项知识，对非前端项目是常驻路由负担（dogfooding 零触发 + 族内重复审计实证）。本 pack 让设计族按 Agent Skills 开放规范独立流通，核心包不再为少数场景背负这些 skill 的路由成本。
 
-## 内容（12 skill）
+## 内容（10 skill）
 
-frontend-feature-development、frontend-stack-selection、frontend-aesthetics-execution、frontend-code-review、ai-generated-ui-review、ai-ui-generation-workflow、design-system-workflow、design-system-migration、design-review-snapshot、design-artifact-standards、design-audit、ui-iteration-feedback-loop
+frontend-feature-development、frontend-stack-selection、frontend-aesthetics-execution、frontend-code-review、ai-generated-ui-review、ai-ui-generation-workflow、design-system-workflow、design-system-migration、design-review-snapshot、ui-iteration-feedback-loop
 
 ## 安装
 
@@ -18,6 +18,6 @@ plugin 布局（`.claude-plugin/plugin.json` + `skills/`），纳入本仓 marke
 
 ## 与核心 skills/ 的关系
 
-- skill 正文不依赖 forge 二进制（零反向依赖契约同核心库）；`design-artifact-standards` 的 `requires: doc-review` 指向核心库 skill（doc-review 仍在核心 `skills/`，未随迁）。
-- 核心 skill 中出现的 `frontend-*` / `design-*` / `ai-*-ui-*` 名字均为指针引用（"属 forge-design pack，未安装则忽略"）。
+- skill 正文不依赖 forge 二进制（零反向依赖契约同核心库）。前端设计的编写期清单 `phase-frontend.md` 仍在核心 design-artifact-standards 的 `references/`（审查期按 `design-artifact-standards/references/phase-<环节>.md` 寻址，不拆开）。
+- 核心 skill 中出现的 `frontend-*` / `design-system-*` / `design-review-snapshot` / `ai-*-ui-*` 名字均为指针引用（"属 forge-design pack，未安装则忽略"）；`design-artifact-standards` 与 `design-audit` 已在核心，不是指针。
 - 迁移用 `git mv` 保留历史；本 pack 不进 forge 二进制 embed（`skills/embed.go` 只嵌核心 `skills/`）。

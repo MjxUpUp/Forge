@@ -59,6 +59,8 @@ func init() {
 	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的「start 持久化」模式。
 	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）")
 	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
+	taskStartCmd.Flags().String("tier", "", "方案档位：none（直接改）| mini（小方案）| full（完整方案）；与硬触发器推导档位取较高者（advisory）")
+	taskStartCmd.Flags().String("tier-reason", "", "声明档位低于硬触发器要求时的下调理由（落审计；无理由则取较高档）")
 	taskStartCmd.Flags().String("plan-file", "", "计划正文 markdown 文件路径（读取存入 task.Plan，供 resume 拉回）")
 	taskStartCmd.Flags().String("origin-tool", "", "发起工具（pi/claude-code/opencode/codex/cursor），默认从环境探测")
 	taskStartCmd.Flags().String(`parent`, ``, `父任务 ref（建立子任务→父任务关系，subtask 拆解）`)
@@ -536,6 +538,15 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// planAcceptanceAdded：--plan-file 提取后实际新增入库的条数（净增，扣除与显式 --accept
 	// 去重的部分），仅供下方成功输出标注来源。用 merge 后的 len 差值而非提取前的 len(extracted)——
 	// 后者在 --accept 共存时会数进去被去重丢弃的条目，误导用户以为它们进了 state。
+	// --tier 先校验再写任何产物文件（审查轮：非法档位不得留下半登记的 specs）。
+	tier, _ := cmd.Flags().GetString("tier")
+	tierReason, _ := cmd.Flags().GetString("tier-reason")
+	if err := taskpipeline.ValidateDesignTier(tier); err != nil {
+		return err
+	}
+	if tierReason != "" && tier == "" {
+		return fmt.Errorf("--tier-reason 只在声明 --tier 时有意义（下调理由须对应一个声明档位）")
+	}
 	planAcceptanceAdded := 0
 	hasPlanInput := false
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
@@ -592,6 +603,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
 			}
 			state.SpecArtifacts[stage] = aref
+			// design 产物触点 → PlanScope（提案 W2.4）：上方 --scope 手工声明优先；
+			// 须在下方档位推导之前——开工档位按触点算。
+			if stage == "design" {
+				taskpipeline.ApplyDesignTouchpoints(state, string(data))
+			}
 			if extracted := taskpipeline.ParseAcceptanceFromArtifact(string(data)); len(extracted) > 0 {
 				// 考卷层级（oracle-pipeline L1）：从产物提取的标准盖 spec-extract 层
 				// ——考卷来自可评审/可签字的 spec 产物，强于裸 --accept。
@@ -601,6 +617,14 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				planAcceptanceAdded += len(state.Acceptance) - baseBefore
 			}
 		}
+	}
+	// 方案档位（designtier.go，提案 W4.2）：声明档位与 PlanScope/触点推导档位取较高者；
+	// 下调须带理由。开工即给提示，implement 首轮按实改文件复算并落 design-tier 行。
+	if tier != "" || len(state.PlanScope) > 0 {
+		derived, triggers := taskpipeline.DeriveDesignTier(root, state.PlanScope)
+		d := taskpipeline.DecideDesignTier(tier, tierReason, derived, triggers)
+		state.DesignTier = &d
+		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ %s\n", taskpipeline.FormatDesignTierAdvice(d))
 	}
 	// go test 人体工学（usage 日志修复）：`go test` 不带 -v 时输出没有 PASS 行，Expected
 	// 写 "PASS" 永不匹配，agent 到 verify-acceptance 才发现——真实失败模式是 abort 重开

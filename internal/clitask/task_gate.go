@@ -434,6 +434,10 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 		}
 	}
 	fmt.Println(strings.Repeat("─", 40))
+	// 需求覆盖表（reqtrace.go，提案 W3.2）：只对采用了需求 ID 的任务输出。
+	if cov := taskpipeline.TaskRequirementCoverage(root, state); cov.HasTraceData() {
+		fmt.Println(taskpipeline.FormatRequirementCoverage(cov))
+	}
 	if allPassed {
 		fmt.Printf("✅ 全部通过 — 真实结果已记为 deterministic 证据（checklog: %s）\n", taskpipeline.CheckNameAcceptance)
 		return nil

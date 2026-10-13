@@ -69,6 +69,13 @@ ADR 创建：
 
 - **Proposed（提议中）** → **Accepted（已接受）** → **Deprecated（已弃用）** / **Superseded by ADR-NNNN（被取代）**
 
+## 约束力（agent 会把仓库里的 ADR 当权威执行）
+
+- **Accepted = 有约束力**：技术方案（design 阶段）与 accepted ADR 冲突即为 Critical（doc-review rubric 技术方案行）；要改原则，先写一份替代 ADR，不在方案里直接推翻
+- **Proposed = 无约束力**，**Superseded / Deprecated = 不再约束**
+- **取代关系双向写**：新 ADR 头部写 `取代：ADR-NNNN`，**同时**把旧 ADR 的状态改成 `Superseded by ADR-MMMM`——只写在新 ADR 里，读到旧 ADR 的 agent 仍会照旧执行
+- **已接受的 ADR 不改正文**：内容要变就写新 ADR 取代它
+
 ## 易错点
 
 - **不要补写所有历史决策**：只记录新决策。

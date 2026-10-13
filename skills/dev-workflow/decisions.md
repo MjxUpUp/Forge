@@ -140,3 +140,29 @@ forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfat
 ### Rationale
 
 依赖单向化：方法论完整留在中立库，forge 增强完整在 forge 侧；forge 用户体验经集成笔记+触发指针承接
+
+## [d-18ddc2148e930660-0a8cc5ba] accept
+
+- **Skill**: dev-workflow
+- **DecidedAt**: 2026-10-12T10:40:20Z
+- **By**: claude-code
+
+### Diagnosis
+
+计划阶段只有「出计划」没有「该写多重」：小改也走全套、高风险改动却只写一页；2.1 考古结论不落进方案，触点无法成为可度量的计划范围
+
+### Revision
+
+阶段 1 后新增方案档位表（按风险而非行数：none/mini/full 判据 + 拿不准上调一档）；2.2 接触面改为产出「触点」一节（path:Symbol / new:）；2.5 验收带 REQ-n 追溯写法
+
+### Prediction
+
+design-tier 行里否决率与事后升档率随时间下降；scope-drift 的「方案外改动」条目在带 design 产物的任务中可见
+
+### Evidence
+
+调研 2026-10-12（R2ABench 2026 / IFScale / ETH AGENTS.md ICLR26 / Spec Kit·Kiro·OpenSpec 模板 / CHI25 Plan-Then-Execute）+ 提案 docs/plans/design-stage-hardening-2026-10-proposal.md；forge skills validate 39/39
+
+### Rationale
+
+设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核

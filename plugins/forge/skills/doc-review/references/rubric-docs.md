@@ -67,7 +67,8 @@
 | commit body | 标题扫读无法定位变更；body 复述 diff 行 | 标题 ≤50 字符定位准确；body 只写 diff 外信息 |
 | 测试报告 | 结论非枚举值；用例结果无证据列 | 首行判定+通过率；用例全表格化带证据指针 |
 | 复盘报告 | 无根因（只有现象罗列）；行动项无负责人/截止 | 时间线带证据；根因到机制层；行动项表格化 |
-| 其余类型（tech-plan/release-notes 等） | v1 仅通用四维兜底，无类型特化行 | 同类打回 ≥3 次再扩特化行（见 session-retrospective 的进化判据） |
+| 技术方案（tech-plan / design.md） | 缺 Non-goals；缺端到端验证（无 accept 行/围栏）；备选里没有「什么都不做」；数据流的边未标注同步/异步与协议；NFR 只有形容词无数字；事实断言无指针（file:line/命令输出/链接）；与已 accepted 的 ADR 冲突却未写替代 ADR | 首屏 TL;DR 是决策 + 读者要做的事；需求带 REQ-n 且条条有 accept；触点精确到 path:Symbol；评审重点看组件连线与 NFR——AI 方案组件常对、连线常错（[R2ABench 2026](https://arxiv.org/abs/2604.06683)） |
+| 其余类型（release-notes 等） | v1 仅通用四维兜底，无类型特化行 | 同类打回 ≥3 次再扩特化行（见 session-retrospective 的进化判据） |
 
 ## 与 L1/L3 的边界
 

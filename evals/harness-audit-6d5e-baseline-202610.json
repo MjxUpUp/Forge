@@ -1,0 +1,142 @@
+{
+  "generated_at": "2026-10-12T18:41:45.894485+08:00",
+  "forge_version": "1.75.0",
+  "caliber": {
+    "dedup_window": 2000000000,
+    "join_window": 600000000000,
+    "follow_window": 1800000000000,
+    "drill_window": 1200000000000,
+    "pair_window": 3000000000,
+    "hazard_dedup_window": 3000000000
+  },
+  "window": {
+    "from": "2026-08-27T15:30:26.241484+08:00",
+    "to": "2026-10-12T18:41:40.878178+08:00",
+    "days": 46.132808295069445
+  },
+  "a_skill_trigger": {
+    "total": 254,
+    "daily_triggers": 5.505843008199153,
+    "by_event": {
+      "PostToolUse": {
+        "hits": 38,
+        "loaded": 0,
+        "rate": 0
+      },
+      "PreToolUse": {
+        "hits": 91,
+        "loaded": 2,
+        "rate": 0.02197802197802198
+      },
+      "Stop": {
+        "hits": 6,
+        "loaded": 0,
+        "rate": 0
+      },
+      "UserPromptSubmit": {
+        "hits": 119,
+        "loaded": 12,
+        "rate": 0.10084033613445378
+      }
+    },
+    "conversion": {
+      "num": 14,
+      "den": 254,
+      "rate": 0.05511811023622047
+    },
+    "verification_driver_testcmd_precision": {
+      "num": 16,
+      "den": 22,
+      "rate": 0.7272727272727273
+    },
+    "inline_follow": {
+      "num": 38,
+      "den": 65,
+      "rate": 0.5846153846153846
+    }
+  },
+  "b_next_hint": {
+    "hints": 226,
+    "adoption": {
+      "num": 113,
+      "den": 226,
+      "rate": 0.5
+    }
+  },
+  "c_gate_cmd_form": {
+    "total": 487,
+    "standalone": 100,
+    "and_chain_only": 5,
+    "multi_gate": 166,
+    "semicolon": 89,
+    "pipe_truncated": 365,
+    "grep_masked": 82,
+    "c1_semicolon_or_grep": {
+      "num": 138,
+      "den": 487,
+      "rate": 0.28336755646817247
+    },
+    "c2_pipe_truncated": {
+      "num": 365,
+      "den": 487,
+      "rate": 0.7494866529774127
+    },
+    "c3_compliant": {
+      "num": 105,
+      "den": 487,
+      "rate": 0.21560574948665298
+    }
+  },
+  "d_refs_critical": {
+    "declared_skills": 2,
+    "overall": {
+      "num": 0,
+      "den": 2,
+      "rate": 0
+    },
+    "per_host": {
+      "unknown": {
+        "num": 0,
+        "den": 2,
+        "rate": 0
+      }
+    }
+  },
+  "e_attribution": {
+    "post_seal_rows": 15,
+    "post_seal_no_session_rows": 11,
+    "post_seal_other_session_rows": 4,
+    "tasks_with_post_seal_rows": 9,
+    "post_seal_owner_rows": 210,
+    "probe_flagged_rows": 244,
+    "no_session_share": {
+      "num": 1226,
+      "den": 3713,
+      "rate": 0.33019122003770535
+    },
+    "resolve_path_counts": {
+      "active-file": 383,
+      "workspace": 38
+    }
+  },
+  "f_hazard": {
+    "blocks": 186,
+    "double_deliveries": 41,
+    "incidents": 145,
+    "released_incidents": {
+      "num": 69,
+      "den": 145,
+      "rate": 0.47586206896551725
+    }
+  },
+  "g_coverage": {
+    "coverage_fails": 62,
+    "coverage_fix_after_fail": {
+      "num": 43,
+      "den": 62,
+      "rate": 0.6935483870967742
+    },
+    "cheat_scan_fails": 15,
+    "unused_scan_fails": 11
+  }
+}

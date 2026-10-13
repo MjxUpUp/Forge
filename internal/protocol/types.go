@@ -19,6 +19,45 @@ type Protocol struct {
 	// 多仓 workspace 任务未声明影响时提醒；"required" 则硬阻断，直到
 	// `forge task impact` 记录声明。
 	CrossRepoImpact string `yaml:"cross_repo_impact,omitempty" json:"cross_repo_impact,omitempty"`
+	// DesignTiers tunes design-tier routing (docs/plans/design-stage-hardening-2026-10-proposal.md
+	// W4, D3): extra or overriding hard-trigger rules and standard-change patterns on top of
+	// the built-in table. nil = built-in table only.
+	//
+	// DesignTiers 调节方案分档路由（docs/plans/design-stage-hardening-2026-10-proposal.md
+	// W4、D3）：在内置规则表之上追加或覆盖硬触发器规则与标准变更模式。nil = 只用内置表。
+	DesignTiers *DesignTiersConfig `yaml:"design_tiers,omitempty" json:"design_tiers,omitempty"`
+}
+
+// DesignTiersConfig is the project-level override of the design-tier rule table.
+//
+// DesignTiersConfig 是方案分档规则表的项目级覆盖。
+type DesignTiersConfig struct {
+	// Rules are appended to the built-in rules; a rule whose Name equals a built-in
+	// rule replaces it.
+	//
+	// Rules 追加到内置规则之后；Name 与内置规则同名者替换该内置规则。
+	Rules []DesignTierRule `yaml:"rules,omitempty" json:"rules,omitempty"`
+	// StandardChanges are extra standard-change patterns (pre-approved routine
+	// changes that never trigger a tier).
+	//
+	// StandardChanges 是额外的标准变更模式（事先认可的例行改动，永不触发档位）。
+	StandardChanges []string `yaml:"standard_changes,omitempty" json:"standard_changes,omitempty"`
+	// ReplaceDefaults drops the built-in rules and standard changes entirely.
+	//
+	// ReplaceDefaults 完全弃用内置规则与标准变更。
+	ReplaceDefaults bool `yaml:"replace_defaults,omitempty" json:"replace_defaults,omitempty"`
+}
+
+// DesignTierRule maps file patterns to the minimum design tier they demand.
+// Pattern forms: "seg:<name>" = any path segment equals name; a pattern with "/"
+// = repo path glob or directory prefix; otherwise = base-name glob.
+//
+// DesignTierRule 把文件模式映射到它要求的最低方案档位。模式写法："seg:<名>" =
+// 任一路径段等于该名；含 "/" = 仓库路径 glob 或目录前缀；其余 = 文件名 glob。
+type DesignTierRule struct {
+	Name  string   `yaml:"name" json:"name"`
+	Tier  string   `yaml:"tier" json:"tier"` // mini | full
+	Paths []string `yaml:"paths" json:"paths"`
 }
 
 // Standard is a named quality standard with enforcement configuration.

@@ -81,7 +81,7 @@ func TestArtifactCmdSetApproveExtractList(t *testing.T) {
 
 	// 2. approve（human 档）：签当前内容哈希。
 	out = captureStdout(t, func() {
-		if err := runArtifactApprove("spec", "human-reviewer"); err != nil {
+		if err := runArtifactApprove("spec", "human-reviewer", nil); err != nil {
 			t.Fatalf("approve: %v", err)
 		}
 	})
@@ -150,7 +150,7 @@ func TestArtifactCmdSetApproveExtractList(t *testing.T) {
 func TestArtifactApproveRejectsWrongTier(t *testing.T) {
 	t.Run("advisory 档拒绝审批", func(t *testing.T) {
 		setupChainTask(t, "") // 默认链全 advisory
-		if err := runArtifactApprove("spec", "h"); err == nil || !strings.Contains(err.Error(), "human") {
+		if err := runArtifactApprove("spec", "h", nil); err == nil || !strings.Contains(err.Error(), "human") {
 			t.Fatalf("advisory 档审批应被拒: %v", err)
 		}
 	})
@@ -171,7 +171,7 @@ func TestArtifactApproveRejectsWrongTier(t *testing.T) {
 		if err := os.WriteFile(p, []byte("# v2 手改\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := runArtifactApprove("spec", "h"); err == nil || !strings.Contains(err.Error(), "漂移") {
+		if err := runArtifactApprove("spec", "h", nil); err == nil || !strings.Contains(err.Error(), "漂移") {
 			t.Fatalf("漂移产物审批应被拒: %v", err)
 		}
 	})

@@ -132,3 +132,47 @@ func TestDocReviewSelfReviewRoundTrip(t *testing.T) {
 		t.Fatalf("false 应被 omitempty 省略（旧记录字节不变）: %s", body2)
 	}
 }
+
+// TestDesignTierRankAndSerialization 钉住方案档位（design-stage-hardening D4）：
+// none < mini < full 的序关系是分档路由「取较高者」的唯一依据；未知值 -1；
+// design_tier / plan_scope_source / traces / checked 是只增的序列化承诺面。
+func TestDesignTierRankAndSerialization(t *testing.T) {
+	if !(DesignTierRank(DesignTierNone) < DesignTierRank(DesignTierMini) && DesignTierRank(DesignTierMini) < DesignTierRank(DesignTierFull)) {
+		t.Fatal("档位序必须 none < mini < full")
+	}
+	for _, bad := range []string{"", "huge", "MINI"} {
+		if DesignTierRank(bad) != -1 {
+			t.Errorf("未知档位 %q 应返回 -1", bad)
+		}
+	}
+	s := TaskState{
+		PlanScopeSource: "design",
+		DesignTier:      &DesignTierDecision{Declared: "none", Derived: "full", Final: "none", Reason: "夹具", Triggers: []string{"auth: a/auth/x.go"}},
+		Acceptance:      []AcceptanceCriterion{{Run: "true", Traces: []string{"REQ-1"}}},
+		ArtifactApprovals: map[string]ArtifactApproval{
+			"design": {By: "h", Hash: "x", Checked: []string{"高危步骤"}},
+		},
+	}
+	data, err := json.Marshal(&s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"plan_scope_source":"design"`, `"design_tier"`, `"final":"none"`, `"triggers"`, `"traces":["REQ-1"]`, `"checked":["高危步骤"]`} {
+		if !strings.Contains(string(data), key) {
+			t.Errorf("序列化缺 %s", key)
+		}
+	}
+	var back TaskState
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.DesignTier == nil || back.DesignTier.Reason != "夹具" || back.ArtifactApprovals["design"].Checked[0] != "高危步骤" {
+		t.Fatalf("回读不等价: %+v", back)
+	}
+	empty, _ := json.Marshal(&TaskState{})
+	for _, key := range []string{"design_tier", "plan_scope_source", "traces", "checked"} {
+		if strings.Contains(string(empty), key) {
+			t.Errorf("零值不应落 %s（omitempty，存量 state 逐字节兼容）", key)
+		}
+	}
+}

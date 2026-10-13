@@ -152,3 +152,29 @@ forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfat
 ### Evidence
 
 docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
+
+## [d-18ddc21488f762f0-44214d4a] accept
+
+- **Skill**: doc-generator
+- **DecidedAt**: 2026-10-12T10:40:20Z
+- **By**: claude-code
+
+### Diagnosis
+
+技术方案模板只有 5 节，缺 Non-goals/需求 ID/触点/Open Questions/元数据头；触发词缺「技术方案/设计文档」，写技术方案时模板常不被加载
+
+### Revision
+
+template-tech-plan.md 重写为三档（none/mini/full）+ mini 骨架（frontmatter status/owner/ask/tier、TL;DR、Non-goals、REQ-n+accept、触点、接口/数据流/不变量、含「什么都不做」的备选、高危步骤、Open Questions、验证与回滚）+ 写作约束；SKILL.md 触发词补 技术方案/设计文档/design doc/tech plan/实现方案，模板库条目同步
+
+### Prediction
+
+写技术方案的会话里 doc-generator 触发率上升；新方案 design doclint D5 缺章节命中率低于旧模板产出
+
+### Evidence
+
+调研 2026-10-12（R2ABench 2026 / IFScale / ETH AGENTS.md ICLR26 / Spec Kit·Kiro·OpenSpec 模板 / CHI25 Plan-Then-Execute）+ 提案 docs/plans/design-stage-hardening-2026-10-proposal.md；forge skills validate 39/39
+
+### Rationale
+
+设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核

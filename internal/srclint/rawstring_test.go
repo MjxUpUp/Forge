@@ -42,6 +42,7 @@ var intentionalRawNL = []string{
 	`C:\Users\u`,                  // windows path fixture (update_channel_test.go: \npm / \node_modules 序列是路径本身)
 	`C:\npm-global`,               // windows path fixture (update_channel_test.go 混合分隔符行)
 	`{"command":"*** Begin Patch`, // JSON fixture（attribution_test.go：patch 文本的 \n 是 JSON 转义，解码后成真换行）
+	`(?ms)^type\s+(\w+)(?:\[[^\]]*\])?\s+interface`, // regex（designcheck.go interfaceBlockRe：开括号须结束本行，\n 是正则换行符）
 }
 
 func whitelisted(lit string) bool {
