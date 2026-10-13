@@ -97,20 +97,30 @@ func mergeTraces(lists ...[]string) []string {
 	return out
 }
 
-// RefreshExtractedTraces resets the traces of spec-extract criteria to what the
-// freshly extracted artifacts declare now. MergeAcceptance only ever unions traces
-// (D1: two declaration forms of one line), so without this a trace removed from the
-// spec would survive re-extraction and keep a requirement looking verified.
-// Criteria from other sources (--accept, plan) keep their own traces; a spec-extract
-// criterion no longer present in any artifact loses its traces (the artifact no
-// longer claims it verifies anything). Returns the same slice, edited in place.
+// MarkExtractedTraces records, on freshly parsed artifact criteria, which traces
+// came from the artifact (ExtractedTraces = Traces). Call before merging them in.
 //
-// RefreshExtractedTraces 把 spec-extract 条目的追溯 ID 重置为当前产物声明的值。
-// MergeAcceptance 对追溯只做并集（D1：同一行两种写法），若无此步，从 spec 删掉的
-// 追溯在重新提取后仍会残留，让需求看起来仍被验证。其他来源（--accept、plan）的条目
-// 保留各自追溯；已不在任何产物里的 spec-extract 条目清空追溯（产物不再声称它验证
-// 任何需求）。原地修改并返回同一切片。
-func RefreshExtractedTraces(existing, fresh []AcceptanceCriterion) []AcceptanceCriterion {
+// MarkExtractedTraces 在刚从产物解析出的条目上记下哪些追溯来自产物
+// （ExtractedTraces = Traces）。合并进任务前调用。
+func MarkExtractedTraces(cs []AcceptanceCriterion) {
+	for i := range cs {
+		cs[i].ExtractedTraces = append([]string(nil), cs[i].Traces...)
+	}
+}
+
+// RefreshExtractedTraces replaces the artifact-declared part of every criterion's
+// traces with what the freshly extracted artifacts declare now:
+// Traces = (Traces − old ExtractedTraces) ∪ fresh. Traces added by hand are kept;
+// traces deleted from the spec disappear; a criterion no longer present in any
+// artifact loses only its artifact-declared traces. MergeAcceptance alone only
+// unions, so without this a deleted trace would keep a requirement looking
+// verified. Returns the number of criteria whose traces changed.
+//
+// RefreshExtractedTraces 用产物当前声明替换每条验收中「来自产物」的那部分追溯：
+// Traces = (Traces − 旧 ExtractedTraces) ∪ 新声明。手工补登的追溯保留；从 spec 删掉
+// 的追溯消失；已不在任何产物里的条目只失去来自产物的追溯。只靠 MergeAcceptance
+// 只并不减，删掉的追溯会让需求看起来仍被验证。返回追溯有变化的条目数。
+func RefreshExtractedTraces(existing, fresh []AcceptanceCriterion) int {
 	current := map[string][]string{}
 	present := map[string]bool{}
 	for _, c := range fresh {
@@ -118,18 +128,48 @@ func RefreshExtractedTraces(existing, fresh []AcceptanceCriterion) []AcceptanceC
 		present[key] = true
 		current[key] = mergeTraces(current[key], c.Traces)
 	}
+	changed := 0
 	for i := range existing {
-		if existing[i].Source != AcceptanceSourceSpecExtract {
-			continue
-		}
 		key := acceptanceIdentity(existing[i])
-		if !present[key] {
-			existing[i].Traces = nil
-			continue
+		if !present[key] && len(existing[i].ExtractedTraces) == 0 {
+			continue // 与产物无关的条目
 		}
-		existing[i].Traces = current[key]
+		old := map[string]bool{}
+		for _, id := range existing[i].ExtractedTraces {
+			old[id] = true
+		}
+		var manual []string
+		for _, id := range existing[i].Traces {
+			if !old[id] {
+				manual = append(manual, id)
+			}
+		}
+		newExtracted := current[key] // 不在产物里时为 nil
+		next := mergeTraces(manual, newExtracted)
+		if !sameIDs(next, existing[i].Traces) {
+			changed++
+		}
+		existing[i].Traces = next
+		existing[i].ExtractedTraces = append([]string(nil), newExtracted...)
 	}
-	return existing
+	return changed
+}
+
+// sameIDs reports whether two trace lists hold the same IDs (order-insensitive).
+func sameIDs(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := map[string]bool{}
+	for _, id := range a {
+		set[id] = true
+	}
+	for _, id := range b {
+		if !set[id] {
+			return false
+		}
+	}
+	return true
 }
 
 // DeclaredRequirementIDs returns the requirement IDs an artifact text declares:

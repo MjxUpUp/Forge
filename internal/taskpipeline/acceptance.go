@@ -147,6 +147,7 @@ func MergeAcceptance(base, addition []AcceptanceCriterion) []AcceptanceCriterion
 				for i := range base {
 					if acceptanceIdentity(base[i]) == key {
 						base[i].Traces = mergeTraces(base[i].Traces, c.Traces)
+						base[i].ExtractedTraces = mergeTraces(base[i].ExtractedTraces, c.ExtractedTraces)
 						break
 					}
 				}

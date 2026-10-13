@@ -196,32 +196,48 @@ func TestRequirementTraceReviewFixes(t *testing.T) {
 	}
 }
 
-// TestRefreshExtractedTraces 钉住重新提取的追溯刷新：spec-extract 条目以产物当前
-// 声明为准（删掉的追溯不残留、改动的追溯替换、跨产物同题取并集）；其他来源的条目
-// 不动；已不在产物里的 spec-extract 条目清空追溯。
+// TestRefreshExtractedTraces 钉住重新提取的追溯刷新：只替换「来自产物」的那部分
+// （ExtractedTraces）——删掉的追溯消失、改动的追溯替换、跨产物同题取并集；手工补登
+// 的追溯保留（审查轮 Important：task accept 补的追溯不得被下次提取删掉）；同命令的
+// --accept 条目上残留的产物追溯也会被清掉（审查轮 Minor 2）；与产物无关的条目不动。
 func TestRefreshExtractedTraces(t *testing.T) {
 	existing := []AcceptanceCriterion{
-		{Run: "go test ./a", Source: AcceptanceSourceSpecExtract, Traces: []string{"REQ-1"}},
-		{Run: "go test ./b", Source: AcceptanceSourceSpecExtract, Traces: []string{"REQ-2", "REQ-3"}},
-		{Run: "go test ./c", Source: AcceptanceSourceSpecExtract, Traces: []string{"REQ-4"}},
-		{Run: "go test ./d", Source: AcceptanceSourceStart, Traces: []string{"REQ-5"}},
+		{Run: "go test ./a", Traces: []string{"REQ-1"}, ExtractedTraces: []string{"REQ-1"}},
+		{Run: "go test ./b", Traces: []string{"REQ-2", "REQ-3", "REQ-5"}, ExtractedTraces: []string{"REQ-2", "REQ-3"}},
+		{Run: "go test ./c", Traces: []string{"REQ-4"}, ExtractedTraces: []string{"REQ-4"}},
+		{Run: "go test ./d", Source: AcceptanceSourceStart, Traces: []string{"REQ-6"}},
+		{Run: "go test ./e", Source: AcceptanceSourceStart, Traces: []string{"REQ-1"}, ExtractedTraces: []string{"REQ-1"}},
+		{Run: "go test ./f", Traces: []string{"REQ-8"}},
 	}
 	fresh := []AcceptanceCriterion{
 		{Run: "go test ./a", Traces: []string{"REQ-9"}},
 		{Run: "go test ./b", Traces: []string{"REQ-2"}},
 		{Run: "go test ./b", Traces: []string{"REQ-7"}},
 		{Run: "go test ./d"},
+		{Run: "go test ./e"},
 	}
-	got := RefreshExtractedTraces(existing, fresh)
-	want := map[string][]string{
-		"go test ./a": {"REQ-9"},
-		"go test ./b": {"REQ-2", "REQ-7"},
-		"go test ./c": nil,
-		"go test ./d": {"REQ-5"},
+	changed := RefreshExtractedTraces(existing, fresh)
+	want := map[string][2][]string{ // Run → {Traces, ExtractedTraces}
+		"go test ./a": {{"REQ-9"}, {"REQ-9"}},
+		"go test ./b": {{"REQ-5", "REQ-2", "REQ-7"}, {"REQ-2", "REQ-7"}},
+		"go test ./c": {nil, nil},
+		"go test ./d": {{"REQ-6"}, nil},
+		"go test ./e": {nil, nil},
+		"go test ./f": {{"REQ-8"}, nil},
 	}
-	for _, c := range got {
-		if !reflect.DeepEqual(c.Traces, want[c.Run]) {
-			t.Errorf("%s traces = %v, want %v", c.Run, c.Traces, want[c.Run])
+	for _, c := range existing {
+		w := want[c.Run]
+		if !sameIDs(c.Traces, w[0]) || !sameIDs(c.ExtractedTraces, w[1]) {
+			t.Errorf("%s traces=%v extracted=%v, want %v / %v", c.Run, c.Traces, c.ExtractedTraces, w[0], w[1])
 		}
+	}
+	if changed != 4 { // a、b、c、e 变了；d、f 不变
+		t.Errorf("changed = %d, want 4", changed)
+	}
+
+	cs := []AcceptanceCriterion{{Run: "x", Traces: []string{"REQ-1"}}}
+	MarkExtractedTraces(cs)
+	if !reflect.DeepEqual(cs[0].ExtractedTraces, []string{"REQ-1"}) {
+		t.Errorf("MarkExtractedTraces 应记下产物追溯: %v", cs[0].ExtractedTraces)
 	}
 }

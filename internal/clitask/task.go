@@ -609,6 +609,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				taskpipeline.ApplyDesignTouchpoints(state, string(data))
 			}
 			if extracted := taskpipeline.ParseAcceptanceFromArtifact(string(data)); len(extracted) > 0 {
+				taskpipeline.MarkExtractedTraces(extracted) // 记下哪些追溯来自产物，供重新提取时替换
 				// 考卷层级（oracle-pipeline L1）：从产物提取的标准盖 spec-extract 层
 				// ——考卷来自可评审/可签字的 spec 产物，强于裸 --accept。
 				taskpipeline.StampAcceptanceSource(extracted, taskpipeline.AcceptanceSourceSpecExtract)
