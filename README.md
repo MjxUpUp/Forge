@@ -160,7 +160,7 @@ Forge 退出码三态（`BLOCKED` 硬阻断 / `ADVISORY` 软信号 / 无前缀�
 forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配；go test 带 Expected 或 contains/not-contains 断言忘加 -v 时 start 自动补——无 -v 无 PASS 行永不匹配）
 forge task start --ref feat/login --worktree [--base main] [--wt-dir <父目录>]   # 在 repo 树外为此任务创建独立 worktree+分支+绑定（多任务并发隔离形态，multi-task-concurrency L4；<repo 父目录>/<repo 名>-wt/<分支> 默认）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
-forge task start --ref feat/add-login --tier mini                                 # 方案档位：none 直接改 / mini 小方案 / full 完整方案；与硬触发器（迁移/schema/接口契约/鉴权/依赖/跨模块）推导档位取较高者，下调须 --tier-reason 写明理由（advisory）
+forge task start --ref feat/add-login --tier mini                                 # 方案档位：none 直接改 / mini 小方案 / full 完整方案；与硬触发器（迁移/schema/接口契约/鉴权/依赖/跨模块）推导档位取较高者，下调须 --tier-reason 写明理由（advisory）；规则表可在 protocol.yml 的 design_tiers 段覆盖：rules（按 name 追加或替换内置规则，tier 取 mini/full，paths 支持 seg:<目录名> / 含 / 的路径前缀 / 文件名 glob）、standard_changes（追加不触发档位的例行改动）、replace_defaults（弃用内置表）
 forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），声明上游依赖 feat/api（DAG 环检测；task-verify/task-complete 在 feat/api 交付前阻断）
 forge task start --ref feat/hotfix --assignee kimi --ttl 24h   # per-task TTL 覆盖全局 7d 僵尸窗口：短时效分派 24h 无活动即标僵尸（offered/claimed/input-required 通用；0=用全局默认）
 # AI 自动完成工作...
@@ -421,7 +421,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge skills install` | 分发 skill 到全局/项目目标目录（link/copy） |
 | `forge skills list` | 列出 canonical skill 库中的 skill |
 | `forge skills audit` | 21 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量；任一 CRITICAL finding 即阻断 install/--gate） |
-| `forge skills drift-check` | 检测分发分叉（dry-run，不写） |
+| `forge skills drift-check` | 检测分发分叉（dry-run，不写）；另报其他已安装 Claude Code 插件里与核心同名的旧 skill（plugin-shadow，提示升级该插件去重） |
 | `forge skills validate` | R1-R18 规范校验 |
 | `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |

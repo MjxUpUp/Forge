@@ -195,3 +195,33 @@ func TestRequirementTraceReviewFixes(t *testing.T) {
 		t.Fatalf("未采用追溯写法的任务不应被阻断: %v", err)
 	}
 }
+
+// TestRefreshExtractedTraces 钉住重新提取的追溯刷新：spec-extract 条目以产物当前
+// 声明为准（删掉的追溯不残留、改动的追溯替换、跨产物同题取并集）；其他来源的条目
+// 不动；已不在产物里的 spec-extract 条目清空追溯。
+func TestRefreshExtractedTraces(t *testing.T) {
+	existing := []AcceptanceCriterion{
+		{Run: "go test ./a", Source: AcceptanceSourceSpecExtract, Traces: []string{"REQ-1"}},
+		{Run: "go test ./b", Source: AcceptanceSourceSpecExtract, Traces: []string{"REQ-2", "REQ-3"}},
+		{Run: "go test ./c", Source: AcceptanceSourceSpecExtract, Traces: []string{"REQ-4"}},
+		{Run: "go test ./d", Source: AcceptanceSourceStart, Traces: []string{"REQ-5"}},
+	}
+	fresh := []AcceptanceCriterion{
+		{Run: "go test ./a", Traces: []string{"REQ-9"}},
+		{Run: "go test ./b", Traces: []string{"REQ-2"}},
+		{Run: "go test ./b", Traces: []string{"REQ-7"}},
+		{Run: "go test ./d"},
+	}
+	got := RefreshExtractedTraces(existing, fresh)
+	want := map[string][]string{
+		"go test ./a": {"REQ-9"},
+		"go test ./b": {"REQ-2", "REQ-7"},
+		"go test ./c": nil,
+		"go test ./d": {"REQ-5"},
+	}
+	for _, c := range got {
+		if !reflect.DeepEqual(c.Traces, want[c.Run]) {
+			t.Errorf("%s traces = %v, want %v", c.Run, c.Traces, want[c.Run])
+		}
+	}
+}

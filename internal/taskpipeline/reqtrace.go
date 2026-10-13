@@ -97,6 +97,41 @@ func mergeTraces(lists ...[]string) []string {
 	return out
 }
 
+// RefreshExtractedTraces resets the traces of spec-extract criteria to what the
+// freshly extracted artifacts declare now. MergeAcceptance only ever unions traces
+// (D1: two declaration forms of one line), so without this a trace removed from the
+// spec would survive re-extraction and keep a requirement looking verified.
+// Criteria from other sources (--accept, plan) keep their own traces; a spec-extract
+// criterion no longer present in any artifact loses its traces (the artifact no
+// longer claims it verifies anything). Returns the same slice, edited in place.
+//
+// RefreshExtractedTraces 把 spec-extract 条目的追溯 ID 重置为当前产物声明的值。
+// MergeAcceptance 对追溯只做并集（D1：同一行两种写法），若无此步，从 spec 删掉的
+// 追溯在重新提取后仍会残留，让需求看起来仍被验证。其他来源（--accept、plan）的条目
+// 保留各自追溯；已不在任何产物里的 spec-extract 条目清空追溯（产物不再声称它验证
+// 任何需求）。原地修改并返回同一切片。
+func RefreshExtractedTraces(existing, fresh []AcceptanceCriterion) []AcceptanceCriterion {
+	current := map[string][]string{}
+	present := map[string]bool{}
+	for _, c := range fresh {
+		key := acceptanceIdentity(c)
+		present[key] = true
+		current[key] = mergeTraces(current[key], c.Traces)
+	}
+	for i := range existing {
+		if existing[i].Source != AcceptanceSourceSpecExtract {
+			continue
+		}
+		key := acceptanceIdentity(existing[i])
+		if !present[key] {
+			existing[i].Traces = nil
+			continue
+		}
+		existing[i].Traces = current[key]
+	}
+	return existing
+}
+
 // DeclaredRequirementIDs returns the requirement IDs an artifact text declares:
 // every ID mentioned in prose outside acceptance declarations and code fences
 // (accept lines/fences reference requirements; other fences are examples).
