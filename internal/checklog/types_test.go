@@ -6,6 +6,30 @@ import (
 	"testing"
 )
 
+// TestLevelIsFailure pins the read-side failure predicate: exactly fail and
+// blocked are failures; pass, warn, advisory and the empty legacy level are not.
+//
+// TestLevelIsFailure 钉住读侧失败谓词：恰好 fail 与 blocked 算失败；pass、warn、
+// advisory 与历史空级别都不算。
+func TestLevelIsFailure(t *testing.T) {
+	cases := []struct {
+		level Level
+		want  bool
+	}{
+		{LevelFail, true},
+		{LevelBlocked, true},
+		{LevelPass, false},
+		{LevelWarn, false},
+		{LevelAdvisory, false},
+		{Level(""), false},
+	}
+	for _, c := range cases {
+		if got := c.level.IsFailure(); got != c.want {
+			t.Errorf(`Level(%q).IsFailure() = %v, want %v`, c.level, got, c.want)
+		}
+	}
+}
+
 // TestEntryOutcomeRoundTrip pins the outcome field contract (discipline-first-gates
 // P1-A): a failed gate entry classified as discovery/confirmation serializes the
 // field, legacy/unclassified entries omit it entirely (omitempty), and the value
