@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.76.0](https://github.com/MjxUpUp/Forge/compare/v1.75.0...v1.76.0) (2026-10-13)
+
+
+### Features
+
+* **skills:** 技术方案三档模板，design-audit 与 design-artifact-standards 收回核心 ([7d42168](https://github.com/MjxUpUp/Forge/commit/7d42168884da93d2070fc3cde8665ea2d07d1959))
+* **taskpipeline:** 设计阶段硬化——方案 lint、事实核查、需求追溯、分档路由 ([864cc3c](https://github.com/MjxUpUp/Forge/commit/864cc3c2ff351bc4605d9342c9c83310e4d86aa3))
+
+
+### Bug Fixes
+
+* **skills:** 设计阶段硬化后续——重新提取刷新追溯、插件同名遮蔽检测、README design_tiers ([9eac9f7](https://github.com/MjxUpUp/Forge/commit/9eac9f714466f2bf1d5ffce49f58c9b6d37b1071))
+* **taskpipeline:** interface 块开括号后允许行尾注释与 CRLF ([8651077](https://github.com/MjxUpUp/Forge/commit/8651077fbb36dde091414a18bc5a39fe31a7e8cf))
+* **taskpipeline:** interface 块识别——一行空 interface 不吞后续函数体，支持泛型 interface ([a719e89](https://github.com/MjxUpUp/Forge/commit/a719e89dea3bb6d4d5e3c96b2dd64b4c1b550799))
+* **taskpipeline:** 复审轮 Minor——接口方法算声明、requirements.txt 触发依赖档、审批快照取锁内引用 ([50575e4](https://github.com/MjxUpUp/Forge/commit/50575e43e849c082ee84f6133eab6016572c4228))
+* **taskpipeline:** 审查轮修复——方案核查限定仓库内、Run 行追溯不丢、手工 scope 优先 ([5979346](https://github.com/MjxUpUp/Forge/commit/597934691fe2b1438ad2c0f6baa3f4938ef61dbc))
+* **taskpipeline:** 重新提取只替换来自产物的追溯——手工补登的追溯保留 ([36501d3](https://github.com/MjxUpUp/Forge/commit/36501d390b23757b399be36757ce3cfefcf82f6e))
+
 ## [1.75.0](https://github.com/MjxUpUp/Forge/compare/v1.74.1...v1.75.0) (2026-10-10)
 
 
