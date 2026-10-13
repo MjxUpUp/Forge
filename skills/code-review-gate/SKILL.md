@@ -84,7 +84,7 @@ git diff --cached                  # 看已暂存的变更
 2. **三种符号变动都要查**：改名（假重构高发：符号改了名但调用者没更新 → 运行时 ReferenceError 或死代码）、删符号、改签名（参数 / 返回值变化让旧调用方静默失效）。
 3. **完成判定**：grep 结果零残留旧符号引用才算同步完成；有残留即发现（必须解决，不是建议）。
 
-> 设计阶段产物审查（PRD/API 契约/建表/前端设计等，非纯代码实现）：加载 design-artifact-standards 的对应 phase-*.md 清单作为补充检查项（同一份标准，编写期当骨架、审查期当 checklist），不替换双轨。design-artifact-standards 属 forge-design pack——未安装该 pack 则跳过本补充项，按双轨执行。
+> 设计阶段产物审查（PRD/API 契约/建表/前端设计等，非纯代码实现）：加载 design-artifact-standards 的对应 phase-*.md 清单作为补充检查项（同一份标准，编写期当骨架、审查期当 checklist），不替换双轨。
 
 ### 步骤 2 前置：证据强度校准
 

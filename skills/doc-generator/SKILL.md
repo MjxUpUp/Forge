@@ -1,10 +1,10 @@
 ---
 name: doc-generator
-description: "按模板 + 变量填空生成结构化文档（PRD/周报/验收报告/会议纪要/技术方案等）。Use when: 用户要生成或起草 PRD、需求文档、周报、日报、验收报告、会议纪要、技术方案、发布说明等结构化文档时、说\"帮我写一份XXX\"\"生成XXX文档\"\"起草XXX\"时。SKIP: 调研报告（用 research-workflow，含多 agent 检索）、架构决策记录（用 architecture-decision-record）、技术方案论证（用 evidence-based-proposal，管可行性验证；本 skill 只管按模板生成文档）、代码生成（直接写代码）、设计产物该有什么的质量标准自查（design-artifact-standards 属 forge-design pack，未安装则忽略；装了则 producer-chain 先填骨架后查达标）。"
+description: "按模板 + 变量填空生成结构化文档（PRD/周报/验收报告/会议纪要/技术方案等）。Use when: 用户要生成或起草 PRD、需求文档、周报、日报、验收报告、会议纪要、技术方案、发布说明等结构化文档时、说\"帮我写一份XXX\"\"生成XXX文档\"\"起草XXX\"时。SKIP: 调研报告（用 research-workflow，含多 agent 检索）、架构决策记录（用 architecture-decision-record）、技术方案论证（用 evidence-based-proposal，管可行性验证；本 skill 只管按模板生成文档）、代码生成（直接写代码）、设计产物该有什么的质量标准自查（用 design-artifact-standards；producer-chain 先填骨架后查达标）。"
 metadata:
   pattern: generator + inversion
   domain: documentation
-  triggers: [{"event":"UserPromptSubmit","keywords":["写一份","生成文档","写个readme","起草","生成 prd","draft a","写个周报","会议纪要","发布说明","验收报告","需求文档"],"cooldown":300}]
+  triggers: [{"event":"UserPromptSubmit","keywords":["写一份","生成文档","写个readme","起草","生成 prd","draft a","写个周报","会议纪要","发布说明","验收报告","需求文档","技术方案","设计文档","design doc","tech plan","实现方案"],"cooldown":300}]
 ---
 
 # Doc Generator — 结构化文档生成器
@@ -25,7 +25,7 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 | 周报/日报/站报 | "周报""本周总结""standup""进度报告" |
 | 验收报告 | "验收报告""项目验收""交付检查" |
 | 会议纪要 | "会议纪要""会议记录""meeting notes" |
-| 技术方案 | "技术方案""设计文档""实现方案"（注意：架构决策用 ADR） |
+| 技术方案 | "技术方案""设计文档""实现方案""design doc"（先按模板顶部的档位表定 none/mini/full；架构决策用 ADR） |
 | 发布说明/CHANGELOG | "发布说明""changelog""release notes" |
 | 复盘报告 | "复盘""retrospective""postmortem" |
 | PR 描述 | "PR描述""pull request body""写个PR""commit+PR说明" |
@@ -107,7 +107,7 @@ Generator + Inversion 组合：**先采访缺失变量，再按模板填空**。
 - `references/template-pr.md` — PR 描述（动机/方案/验证三段）
 - `references/template-test-report.md` — 测试报告（结论先行 + 用例表格化）
 - `references/template-retrospective.md` — 复盘报告（blameless + 行动项表格）
-- `references/template-tech-plan.md` — 技术方案（推荐先行 + 备选对比表）
+- `references/template-tech-plan.md` — 技术方案（三档：直接改/小方案/完整方案；TL;DR + Non-goals + REQ-n 验收 + 触点 + 含「什么都不做」的备选表；写完核查引用是否真实存在）
 - `references/template-release-notes.md` — 发布说明（价值先行 ≤3 条）
 
 > 落盘产物写完后过一遍文档 lint（禁令短语/必填章节/结论枚举机器可查，宿主有 lint 工具时）；无 lint 时按模板必填结构人工自查。

@@ -69,3 +69,29 @@ metadata补triggers(keywords/cooldown;skill-authoring-standard用新condition sk
 ### Evidence
 
 skills-hitrate-review-2026-08-15:四源425会话挖掘语料+trigger覆盖10%缺口
+
+## [d-18ddc2149f0273f0-1f283922] accept
+
+- **Skill**: architecture-decision-record
+- **DecidedAt**: 2026-10-12T10:40:20Z
+- **By**: claude-code
+
+### Diagnosis
+
+ADR 只有状态枚举，没有约束力规则：agent 读到旧 ADR 会照旧执行，取代关系只写在新 ADR 里
+
+### Revision
+
+新增「约束力」节：accepted 有约束力（与之冲突的方案为 Critical）、proposed 无、superseded/deprecated 不再约束；取代关系双向写；已接受 ADR 不改正文。模板增「取代」字段
+
+### Prediction
+
+新 ADR 的取代关系在新旧两份文件中都可见
+
+### Evidence
+
+调研 2026-10-12（R2ABench 2026 / IFScale / ETH AGENTS.md ICLR26 / Spec Kit·Kiro·OpenSpec 模板 / CHI25 Plan-Then-Execute）+ 提案 docs/plans/design-stage-hardening-2026-10-proposal.md；forge skills validate 39/39
+
+### Rationale
+
+设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核

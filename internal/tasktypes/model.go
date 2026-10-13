@@ -107,6 +107,56 @@ type ArtifactApproval struct {
 	By   string    `json:"by"`
 	At   time.Time `json:"at"`
 	Hash string    `json:"hash"`
+	// Checked lists what the approver declared they reviewed (--checked, repeatable).
+	// Empty on legacy approvals — a bare hash signature says the content was
+	// signed, not what was looked at.
+	//
+	// Checked 记录审批人声明审过的内容（--checked，可重复）。存量审批为空——
+	// 裸哈希签名只说明内容被签过，不说明看了什么。
+	Checked []string `json:"checked,omitempty"`
+}
+
+// Design tiers (docs/plans/design-stage-hardening-2026-10-proposal.md D4):
+// how much design writing a change needs, named by the deliverable. Gate
+// strength (artifact-chain advisory/rubric/human/hard) is a separate axis
+// derived from the tier, never chosen by the user.
+//
+// 方案档位（docs/plans/design-stage-hardening-2026-10-proposal.md D4）：按"要写
+// 多少"命名。门禁强度（artifact-chain 的 advisory/rubric/human/hard）是另一个
+// 维度，由档位推导，不交给用户选。
+const (
+	DesignTierNone = "none" // 直接改：不写方案
+	DesignTierMini = "mini" // 小方案：单文件
+	DesignTierFull = "full" // 完整方案：需求/设计/任务三文件 + 人工批准
+)
+
+// DesignTierRank orders tiers (none < mini < full); unknown values rank -1.
+//
+// DesignTierRank 给档位排序（none < mini < full）；未知值返回 -1。
+func DesignTierRank(tier string) int {
+	switch tier {
+	case DesignTierNone:
+		return 0
+	case DesignTierMini:
+		return 1
+	case DesignTierFull:
+		return 2
+	}
+	return -1
+}
+
+// DesignTierDecision records how a task's design tier was decided: the tier the
+// agent declared, the tier the deterministic hard triggers derived, the final
+// tier (max of the two unless a reasoned downgrade), and the triggers that fired.
+//
+// DesignTierDecision 记录任务方案档位的判定过程：agent 声明档位、确定性硬触发器
+// 推导档位、最终档位（取两者较高者，除非带理由下调）及命中的触发器。
+type DesignTierDecision struct {
+	Declared string   `json:"declared,omitempty"`
+	Derived  string   `json:"derived,omitempty"`
+	Final    string   `json:"final"`
+	Reason   string   `json:"reason,omitempty"`   // 下调理由（Declared < Derived 时必填）
+	Triggers []string `json:"triggers,omitempty"` // 命中的硬触发器（"规则名: 文件"）
 }
 
 // LoopExhaustion marks that the review→implement repair loop spent its budget

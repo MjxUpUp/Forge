@@ -20,6 +20,9 @@ const CheckNameAcceptance checklog.CheckName = "acceptance"
 // ParseAcceptance 抽出，供 --accept 入口与 --plan-file 提取共用同一 :: 边界处理
 // （尾部裸 :: / 两侧 trim / 空期望）。纯函数。
 func parseOneAcceptance(s string) AcceptanceCriterion {
+	// 行尾 `#REQ-n` 追溯标记先剥离（reqtrace.go，提案 D1）：再拆 ` :: `，Expected
+	// 里不残留标记。
+	s, traces := splitTrailingTraces(s)
 	run, expected, found := strings.Cut(s, ` :: `)
 	if !found {
 		// 尾部裸 "::"/" ::"（无 expected）：剥掉，避免漏进 Run 命令误执行。
@@ -34,6 +37,7 @@ func parseOneAcceptance(s string) AcceptanceCriterion {
 	return AcceptanceCriterion{
 		Run:      strings.TrimSpace(run),
 		Expected: strings.TrimSpace(expected),
+		Traces:   traces,
 	}
 }
 
@@ -99,7 +103,7 @@ func ParseAcceptanceFromPlan(plan string) []AcceptanceCriterion {
 		case strings.HasPrefix(line, `Expected:`):
 			if pendingRun != "" {
 				exp := strings.TrimSpace(strings.TrimPrefix(line, `Expected:`))
-				out = append(out, parseOneAcceptance(pendingRun+` :: `+exp))
+				out = append(out, parseOneAcceptance(joinRunExpected(pendingRun, exp)))
 				pendingRun = ""
 			}
 			// Expected: 前无 Run: → 孤立，丢弃
@@ -137,6 +141,16 @@ func MergeAcceptance(base, addition []AcceptanceCriterion) []AcceptanceCriterion
 	for _, c := range addition {
 		key := acceptanceIdentity(c)
 		if _, ok := seen[key]; ok {
+			// 同一道题：追溯 ID 取并集（Traces 不进身份——两处声明同一命令追溯
+			// 不同需求时不丢任何一边，提案 D1）。
+			if len(c.Traces) > 0 {
+				for i := range base {
+					if acceptanceIdentity(base[i]) == key {
+						base[i].Traces = mergeTraces(base[i].Traces, c.Traces)
+						break
+					}
+				}
+			}
 			continue
 		}
 		base = append(base, c)

@@ -352,3 +352,29 @@ arXiv 2603.16244：单轮 CCR F1 0.376 > 多轮 0.303 > 无上下文独立重审
 ### Rationale
 
 独立性的有效成分是信息隔离（看不到作者推理）而非冷启动；保留升档路径兜住续用 reviewer 的锚定与假阳性压力风险
+
+## [d-18ddc214af2461a8-5b06baa3] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-10-12T10:40:20Z
+- **By**: claude-code
+
+### Diagnosis
+
+设计阶段审查的补充清单标「未安装 forge-design pack 则跳过」，导致无扩展包宿主上 phase 复核断开
+
+### Revision
+
+去掉 pack 前提：design-artifact-standards 收回核心后 phase-*.md 恒可加载
+
+### Prediction
+
+无扩展包环境下设计产物审查也会加载 phase 清单
+
+### Evidence
+
+调研 2026-10-12（R2ABench 2026 / IFScale / ETH AGENTS.md ICLR26 / Spec Kit·Kiro·OpenSpec 模板 / CHI25 Plan-Then-Execute）+ 提案 docs/plans/design-stage-hardening-2026-10-proposal.md；forge skills validate 39/39
+
+### Rationale
+
+设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核
