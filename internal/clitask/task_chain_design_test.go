@@ -189,4 +189,19 @@ func TestExtractRefreshesTraces(t *testing.T) {
 	if len(st.Acceptance) != 1 || !reflect.DeepEqual(st.Acceptance[0].Traces, []string{"REQ-2"}) {
 		t.Fatalf("重新提取后追溯应为 [REQ-2]（REQ-1 不残留）: %+v", st.Acceptance)
 	}
+
+	// 手工补登同一道题的追溯（task accept 路径），再次提取后必须保留（审查轮 Important）。
+	if _, err := taskpipeline.RegisterAcceptance(dir, taskRef, taskpipeline.ParseAcceptance([]string{"echo x :: x #REQ-5"}), taskpipeline.AcceptanceSourceManual); err != nil {
+		t.Fatal(err)
+	}
+	write("- REQ-1 a\n- REQ-2 b\naccept[REQ-2]: echo x :: x\n")
+	st, _ = taskpipeline.LoadTaskState(dir, taskRef)
+	if len(st.Acceptance) != 1 || len(st.Acceptance[0].Traces) != 2 {
+		t.Fatalf("手工补登的 REQ-5 应在重新提取后保留: %+v", st.Acceptance)
+	}
+	for _, id := range []string{"REQ-2", "REQ-5"} {
+		if !strings.Contains(strings.Join(st.Acceptance[0].Traces, ","), id) {
+			t.Errorf("缺 %s: %v", id, st.Acceptance[0].Traces)
+		}
+	}
 }

@@ -31,7 +31,18 @@ func TestPluginShadows(t *testing.T) {
 	mkSkill(design, "design-audit", true) // 旧扩展包：遮蔽
 	mkSkill(design, "design-artifact-standards", true)
 	mkSkill(design, "frontend-code-review", true) // 非核心名：不报
-	mkSkill(other, "doc-review", false)           // 无 SKILL.md：不报
+	mkSkill(other, "design-audit", false)         // 无 SKILL.md：不报
+	// 第三方插件里链接到目录的同名 skill：须跟随符号链接报出（审查轮 Minor 4）
+	linked := filepath.Join(home, "elsewhere", "doc-review")
+	if err := os.MkdirAll(linked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(linked, "SKILL.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linked, filepath.Join(other, "skills", "doc-review")); err != nil {
+		t.Fatal(err)
+	}
 
 	if got, err := PluginShadows(home, []string{"design-audit"}); err != nil || got != nil {
 		t.Fatalf("注册表缺失应返回空, got %v %v", got, err)
@@ -54,8 +65,9 @@ func TestPluginShadows(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []PluginShadow{
-		{Skill: "design-artifact-standards", Plugin: "forge-design@forge", Path: filepath.Join(design, "skills", "design-artifact-standards")},
-		{Skill: "design-audit", Plugin: "forge-design@forge", Path: filepath.Join(design, "skills", "design-audit")},
+		{Skill: "design-artifact-standards", Plugin: "forge-design@forge", Path: filepath.Join(design, "skills", "design-artifact-standards"), FromForgeMarketplace: true},
+		{Skill: "design-audit", Plugin: "forge-design@forge", Path: filepath.Join(design, "skills", "design-audit"), FromForgeMarketplace: true},
+		{Skill: "doc-review", Plugin: "other@x", Path: filepath.Join(other, "skills", "doc-review")},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("shadows = %+v\nwant %+v", got, want)
