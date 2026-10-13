@@ -162,7 +162,8 @@ func repoPath(root, rel string) (string, bool) {
 	}
 	abs := filepath.Join(root, filepath.FromSlash(rel))
 	r, err := filepath.Rel(root, abs)
-	if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+	r = filepath.ToSlash(r) // 统一成 / 再比较，跨平台一致
+	if err != nil || r == ".." || strings.HasPrefix(r, "../") {
 		return "", false
 	}
 	return abs, true
