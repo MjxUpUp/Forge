@@ -317,6 +317,38 @@ func TestRunSkillsDecide_RequiresEachTupleField(t *testing.T) {
 	}
 }
 
+// TestRunSkillsDecide_OrphanWarning: writing to a skill name without SKILL.md
+// warns about the orphan directory; a real skill does not get that warning.
+//
+// TestRunSkillsDecide_OrphanWarning：写入无 SKILL.md 的 skill 名时提示孤儿目录；
+// 真实 skill 不出现该提示。
+func TestRunSkillsDecide_OrphanWarning(t *testing.T) {
+	canonical := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(canonical, "real"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(canonical, "real", "SKILL.md"), []byte("---\nname: real\ndescription: d\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FORGE_SKILLS_CANONICAL", canonical)
+	for _, c := range []struct {
+		skill      string
+		wantOrphan bool
+	}{{"ghost", true}, {"real", false}} {
+		setSkDecVars(t, c.skill, "orphan-probe")
+		skDecOutcome = "reject" // 非 accept 且无 --warrant：不触发理由核验，stderr 只看孤儿提示
+		var stderr bytes.Buffer
+		cmd := &cobra.Command{}
+		cmd.SetErr(&stderr)
+		if err := runSkillsDecide(cmd, nil); err != nil {
+			t.Fatalf(`%s：decide 应成功，got %v`, c.skill, err)
+		}
+		if got := strings.Contains(stderr.String(), "孤儿目录"); got != c.wantOrphan {
+			t.Errorf(`%s：孤儿提示应为 %v，stderr=%q`, c.skill, c.wantOrphan, stderr.String())
+		}
+	}
+}
+
 // warrantFixture builds an isolated forge project (registered in a throwaway
 // registry, git repo with docs/evidence.md committed), an external canonical
 // tree with skill "demo", and an empty eval dir. It chdirs into the project and
