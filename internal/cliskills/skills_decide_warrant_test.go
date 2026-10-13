@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/skillseval"
 )
 
 // TestEvaluateWarrant_Parsing: empty is missing; malformed, unknown-kind and
@@ -85,6 +87,10 @@ func TestCheckDocWarrant_Containment(t *testing.T) {
 		{"不存在", "docs/nope.md", "不存在", false},
 		{"跳出仓库", "../x.md", "跳出了仓库根", false},
 		{"绝对路径", filepath.Join(outside, "secret.md"), "绝对路径", false},
+		{"斜杠开头的根路径（Windows 无盘符也须拦）", "/etc/hosts", "绝对路径", false},
+		{"反斜杠开头的根路径", `\etc\hosts`, "绝对路径", false},
+		{"目录不算文件", "docs", "普通文件", false},
+		{"仓库根本身", ".", "普通文件", false},
 		{"符号链接逃逸", "docs/escape.md", "经符号链接跳出", true},
 		{"仓库内符号链接", "docs/inner.md", "", true},
 	}
@@ -99,6 +105,77 @@ func TestCheckDocWarrant_Containment(t *testing.T) {
 			t.Errorf(`%s：应通过，got %q`, c.name, got)
 		case c.wantProblem != "" && !strings.Contains(got, c.wantProblem):
 			t.Errorf(`%s：应含 %q，got %q`, c.name, c.wantProblem, got)
+		}
+	}
+}
+
+// TestEvaluateRunWarrant_Strength: a run anchor is strong only after a
+// meaningful clean comparison with the skill's baseline; every way the
+// comparison can be skipped or be uninformative yields weak with a stated
+// reason, never strong.
+//
+// TestEvaluateRunWarrant_Strength：run 锚点只有与该 skill 的 baseline 做了有效且
+// 干净的比对才算强；比对被跳过或无信息的每种情形都判弱并说明原因，绝不判强。
+func TestEvaluateRunWarrant_Strength(t *testing.T) {
+	res := func(id string, model string, cases map[string]bool) *skillseval.EvalRun {
+		r := &skillseval.EvalRun{RunID: id, Skill: "demo", AgentModel: model}
+		for _, cid := range []string{"c1", "c2"} {
+			if pass, ok := cases[cid]; ok {
+				r.Results = append(r.Results, skillseval.CaseResult{CaseID: cid, Kind: skillseval.KindTrigger, Pass: pass})
+			}
+		}
+		return r
+	}
+	both := map[string]bool{"c1": true, "c2": true}
+	type setup struct {
+		runs     []*skillseval.EvalRun
+		baseline string // "" = 不设 baseline
+		corrupt  bool   // baselines.json 写坏
+	}
+	baseRuns := func(extra ...*skillseval.EvalRun) []*skillseval.EvalRun {
+		return append([]*skillseval.EvalRun{res("r-base", "m", both)}, extra...)
+	}
+	cases := []struct {
+		name, anchor, wantVerdict, wantNote string
+		s                                   setup
+	}{
+		{"干净比对", "r-good", warrantStrong, "", setup{runs: baseRuns(res("r-good", "m", both)), baseline: "r-base"}},
+		{"有回归", "r-bad", warrantRegression, "", setup{runs: baseRuns(res("r-bad", "m", map[string]bool{"c1": false, "c2": true})), baseline: "r-base"}},
+		{"未设 baseline", "r-good", warrantWeak, "未设 baseline", setup{runs: baseRuns(res("r-good", "m", both))}},
+		{"锚点就是 baseline", "r-base", warrantWeak, "baseline 本身", setup{runs: baseRuns(), baseline: "r-base"}},
+		{"baseline 指向不存在的 run", "r-good", warrantWeak, "无法加载", setup{runs: []*skillseval.EvalRun{res("r-good", "m", both)}, baseline: "r-ghost"}},
+		{"baselines.json 损坏", "r-good", warrantWeak, "无法读取", setup{runs: baseRuns(res("r-good", "m", both)), corrupt: true}},
+		{"零结果 run", "r-empty", warrantWeak, "没有重叠", setup{runs: baseRuns(res("r-empty", "m", nil)), baseline: "r-base"}},
+		{"缺 baseline 的 case", "r-part", warrantWeak, "覆盖不完整", setup{runs: baseRuns(res("r-part", "m", map[string]bool{"c1": true})), baseline: "r-base"}},
+		{"不可比（模型变了）", "r-other", warrantWeak, "不可比", setup{runs: baseRuns(res("r-other", "m2", both)), baseline: "r-base"}},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		for _, r := range c.s.runs {
+			if err := skillseval.AppendRun(dir, "demo", r); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if c.s.baseline != "" {
+			if err := skillseval.SetBaseline(dir, "demo", c.s.baseline, "test"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if c.s.corrupt {
+			if err := os.WriteFile(filepath.Join(dir, "baselines.json"), []byte("{not json"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got := evaluateRunWarrant("demo", c.anchor, dir)
+		if got.Verdict != c.wantVerdict {
+			t.Errorf(`%s：verdict 应为 %q，got %q（notes=%v problems=%v）`, c.name, c.wantVerdict, got.Verdict, got.Notes, got.Problems)
+			continue
+		}
+		if c.wantNote != "" && !strings.Contains(strings.Join(got.Notes, "；"), c.wantNote) {
+			t.Errorf(`%s：弱的原因应含 %q，got %v`, c.name, c.wantNote, got.Notes)
+		}
+		if got.Verdict == warrantWeak && !strings.Contains(warrantMessage(got), "但") {
+			t.Errorf(`%s：弱提示应说明原因：%q`, c.name, warrantMessage(got))
 		}
 	}
 }

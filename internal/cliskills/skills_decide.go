@@ -30,6 +30,11 @@ var (
 	skDecWarrant    string
 )
 
+// maxWarrantLen caps --warrant: an anchor is a kind plus an id, sha or path.
+//
+// maxWarrantLen 是 --warrant 的长度上限：锚点只是类型加 id / sha / 路径。
+const maxWarrantLen = 512
+
 var skillsDecideCmd = &cobra.Command{
 	Use:   "decide [<skill>]",
 	Short: "记录一条 skill 决策到 decisions.md（诊断/修订/证据/结果四元组；skill 名可用位置参数或 --skill）",
@@ -54,11 +59,12 @@ skill 名两种给法等价：forge skills decide my-skill ...（位置参数）
 
 理由锚点（Warrant-Aware Acceptance，accept 决策推荐必带）：
   --warrant    支撑这次 outcome 的可核验锚点，三类：
-                 run:<eval-run-id>     强——eval run 必须存在；相对 baseline 有回归则告警
+                 run:<eval-run-id>     强——eval run 必须存在；与 baseline 比对，有回归则告警
                  commit:<sha>          弱——commit 必须存在于本仓库
                  doc:<仓库内相对路径>   弱——文件必须存在且不跳出仓库根
-               accept 决策缺锚点或核验失败时输出 WARN 并落 checklog decision-warrant 行；
-               advisory，决策照常记录、退出码不变
+               run 只有与该 skill 的 baseline 做了有效比对且无回归才算强，否则按弱计并说明原因。
+               accept 决策缺锚点或核验失败时输出 WARN，并在 forge 项目内落 checklog
+               decision-warrant 行；advisory，决策照常记录、退出码不变
 
 预测闭环（AHE 决策可观测，推荐）：
   --prediction 修改时刻声明的可检验预测——修订若有效，哪个可观测信号应改善
@@ -147,6 +153,14 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 	warrant := strings.TrimSpace(skDecWarrant)
 	if strings.ContainsAny(warrant, "\r\n") {
 		return fmt.Errorf("--warrant 必须是单行（多行值会破坏 decisions.md 的字段结构）")
+	}
+	if len(warrant) > maxWarrantLen {
+		return fmt.Errorf("--warrant 过长（%d 字节，上限 %d）——锚点只需类型与 id/sha/路径", len(warrant), maxWarrantLen)
+	}
+	// 规整为 <类型>:<值>（值去首尾空白），让写入 decisions.md 的值与核验、checklog
+	// meta 记录的值一致。
+	if kind, value, ok := strings.Cut(warrant, ":"); ok {
+		warrant = kind + ":" + strings.TrimSpace(value)
 	}
 
 	d := skillsdecisions.SkillDecision{
