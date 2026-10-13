@@ -85,17 +85,25 @@ func runTaskMutation(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	fmt.Print(taskpipeline.FormatMutationSummary(res))
-	if len(res.BaselineRed) > 0 {
-		// 基线红优先：部分包未被度量，不得落到"全部杀灭"的结论。
-		fmt.Println("→ 先修好基线红的包测试再重跑本命令；证据已落 checklog（advisory 不阻断 complete）")
-		return nil
-	}
-	if res.Survived > 0 {
-		fmt.Println("→ 按存活位点补断言后重跑本命令；证据已落 checklog（advisory 不阻断 complete）")
-		return nil
-	}
-	fmt.Println("✅ 全部杀灭——考卷对注入 bad case 的防御有效")
+	fmt.Println(mutationNextStep(res))
 	return nil
+}
+
+// mutationNextStep returns the closing line for a checked mutation run. A red
+// baseline wins over every other outcome: when some packages were not measured,
+// the run must never conclude "all killed".
+//
+// mutationNextStep 返回已执行抽样的收尾指引行。基线红优先于其他结论：部分包未被
+// 度量时，绝不能落到"全部杀灭"。
+func mutationNextStep(res taskpipeline.MutationResult) string {
+	switch {
+	case len(res.BaselineRed) > 0:
+		return "→ 先修好基线红的包测试再重跑本命令；证据已落 checklog（advisory 不阻断 complete）"
+	case res.Survived > 0:
+		return "→ 按存活位点补断言后重跑本命令；证据已落 checklog（advisory 不阻断 complete）"
+	default:
+		return "✅ 全部杀灭——考卷对注入 bad case 的防御有效"
+	}
 }
 
 func runTaskFuzz(cmd *cobra.Command, args []string) error {
