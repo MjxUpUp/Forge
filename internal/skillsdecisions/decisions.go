@@ -83,6 +83,15 @@ type SkillDecision struct {
 	//
 	// VerifiedAt 是验证回填时刻。
 	VerifiedAt time.Time `json:"verified_at,omitempty"`
+	// Warrant is the typed, checkable anchor justifying the outcome:
+	// run:<eval-run-id> (strong), commit:<sha> or doc:<repo-relative path> (weak).
+	// It is a single line; decide checks it when recorded. Optional (decisions
+	// predating the field have none).
+	//
+	// Warrant 是支撑该 outcome 的带类型可核验锚点：run:<eval-run-id>（强）、
+	// commit:<sha> 或 doc:<仓库内相对路径>（弱）。单行；decide 记录时核验。可选
+	// （存量决策早于该字段）。
+	Warrant string `json:"warrant,omitempty"`
 }
 
 // NewDecisionID generates a d-<unixnano-hex>-<randhex> identifier.
@@ -185,6 +194,9 @@ func formatDecision(d SkillDecision) string {
 	}
 	if d.ProbeRunID != "" {
 		b.WriteString("- **ProbeRun**: " + d.ProbeRunID + "\n")
+	}
+	if d.Warrant != "" {
+		b.WriteString("- **Warrant**: " + d.Warrant + "\n")
 	}
 	if !d.VerifiedAt.IsZero() {
 		b.WriteString("- **VerifiedAt**: " + d.VerifiedAt.UTC().Format(time.RFC3339) + "\n")
@@ -377,6 +389,8 @@ func parseField(d *SkillDecision, line string) {
 		d.CommitHash = val
 	case "ProbeRun":
 		d.ProbeRunID = val
+	case "Warrant":
+		d.Warrant = val
 	case "VerifiedAt":
 		if t, err := time.Parse(time.RFC3339, val); err == nil {
 			d.VerifiedAt = t

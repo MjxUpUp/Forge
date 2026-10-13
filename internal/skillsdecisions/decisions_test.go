@@ -49,6 +49,7 @@ func TestAppendLoadDecision_RoundTrip(t *testing.T) {
 		ProbeRunID: "run-1234-abcd",
 		By:         "claude-code",
 		DecidedAt:  ts,
+		Warrant:    "run:run-1234-abcd",
 	}
 
 	if err := AppendDecision(canonical, "code-review-gate", in); err != nil {
@@ -74,8 +75,25 @@ func TestAppendLoadDecision_RoundTrip(t *testing.T) {
 	// 字段逐一比对（DecidedAt 用 Equal 已查；其余字符串相等）
 	if got.Skill != in.Skill || got.Diagnosis != in.Diagnosis || got.Revision != in.Revision ||
 		got.Evidence != in.Evidence || got.Outcome != in.Outcome || got.Rationale != in.Rationale ||
-		got.CommitHash != in.CommitHash || got.ProbeRunID != in.ProbeRunID || got.By != in.By {
+		got.CommitHash != in.CommitHash || got.ProbeRunID != in.ProbeRunID || got.By != in.By ||
+		got.Warrant != in.Warrant {
 		t.Errorf("round-trip mismatch:\n got  = %+v\n want = %+v", got, in)
+	}
+}
+
+// TestFormatDecision_NoWarrantLineWhenEmpty: a decision without a warrant renders
+// no Warrant line, so existing decisions.md files stay byte-compatible (NFR-2).
+//
+// TestFormatDecision_NoWarrantLineWhenEmpty：无 warrant 的决策不渲染 Warrant 行，
+// 存量 decisions.md 保持逐字节兼容（NFR-2）。
+func TestFormatDecision_NoWarrantLineWhenEmpty(t *testing.T) {
+	d := SkillDecision{ID: "d-1", Skill: "s", Diagnosis: "q", Revision: "r", Evidence: "e", Outcome: OutcomeAccept}
+	if got := formatDecision(d); strings.Contains(got, "**Warrant**") {
+		t.Errorf("empty warrant must not render a Warrant line:\n%s", got)
+	}
+	d.Warrant = "doc:docs/x.md"
+	if got := formatDecision(d); !strings.Contains(got, "- **Warrant**: doc:docs/x.md\n") {
+		t.Errorf("warrant must render as a field line:\n%s", got)
 	}
 }
 

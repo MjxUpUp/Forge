@@ -560,7 +560,8 @@
         "probe-run",
         "rationale",
         "revision",
-        "skill"
+        "skill",
+        "warrant"
       ]
     },
     {
@@ -1231,6 +1232,7 @@
     "conventions-inject",
     "conventions-lint",
     "cross-repo-impact",
+    "decision-warrant",
     "escape-hatch",
     "eval-artifact-drill",
     "eval-audit-forged",

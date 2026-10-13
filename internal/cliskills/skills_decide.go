@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
 	"github.com/spf13/cobra"
@@ -26,6 +27,7 @@ var (
 	skDecProbeRun   string
 	skDecBy         string
 	skDecPrediction string
+	skDecWarrant    string
 )
 
 var skillsDecideCmd = &cobra.Command{
@@ -49,6 +51,14 @@ skill 名两种给法等价：forge skills decide my-skill ...（位置参数）
   --probe-run  关联的 eval/probe run ID
   --rationale  为什么这个 outcome（结合背景）
   --by         来源（claude-code/codex/...）
+
+理由锚点（Warrant-Aware Acceptance，accept 决策推荐必带）：
+  --warrant    支撑这次 outcome 的可核验锚点，三类：
+                 run:<eval-run-id>     强——eval run 必须存在；相对 baseline 有回归则告警
+                 commit:<sha>          弱——commit 必须存在于本仓库
+                 doc:<仓库内相对路径>   弱——文件必须存在且不跳出仓库根
+               accept 决策缺锚点或核验失败时输出 WARN 并落 checklog decision-warrant 行；
+               advisory，决策照常记录、退出码不变
 
 预测闭环（AHE 决策可观测，推荐）：
   --prediction 修改时刻声明的可检验预测——修订若有效，哪个可观测信号应改善
@@ -132,6 +142,12 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 	if !skillsdecisions.ValidOutcome(skDecOutcome) {
 		return fmt.Errorf("--outcome 必须是 accept|reject|revise|defer，得到 %q", skDecOutcome)
 	}
+	// warrant 写成 decisions.md 的单行字段：多行值的后续行可伪造决策头（## [d-...）
+	// 破坏往返，属输入校验错误，直接拒绝；锚点质量问题才走 advisory。
+	warrant := strings.TrimSpace(skDecWarrant)
+	if strings.ContainsAny(warrant, "\r\n") {
+		return fmt.Errorf("--warrant 必须是单行（多行值会破坏 decisions.md 的字段结构）")
+	}
 
 	d := skillsdecisions.SkillDecision{
 		Skill:      skDecSkill,
@@ -144,6 +160,7 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 		ProbeRunID: skDecProbeRun,
 		By:         skDecBy,
 		Prediction: skDecPrediction,
+		Warrant:    warrant,
 	}
 	// 孤儿写入警告（review W3）：AppendDecision 不要求目标 skill 目录存在——名字不在
 	// 解析树里时会写入不可见的孤儿目录（plugin pack 的孤儿目录跳过意味着它永不
@@ -159,6 +176,10 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Printf("✅ 决策已记录到 %s\n", skillsdecisions.DecisionsFile(canonical, skDecSkill))
+	// 理由核验（advisory）：accept 决策必查；其他 outcome 只在显式给了 --warrant 时查。
+	if skDecOutcome == skillsdecisions.OutcomeAccept || warrant != "" {
+		reportWarrant(cmd, skDecSkill, skDecOutcome, warrant)
+	}
 	return nil
 }
 
@@ -173,5 +194,6 @@ func init() {
 	skillsDecideCmd.Flags().StringVar(&skDecProbeRun, "probe-run", "", "关联的 eval run ID")
 	skillsDecideCmd.Flags().StringVar(&skDecBy, "by", "", "来源（claude-code/codex/...）")
 	skillsDecideCmd.Flags().StringVar(&skDecPrediction, "prediction", "", "可检验预测（修改时刻声明：哪个可观测信号应改善；事后 forge skills verify 回填）")
+	skillsDecideCmd.Flags().StringVar(&skDecWarrant, "warrant", "", "可核验理由锚点：run:<eval-run-id>（强）| commit:<sha> | doc:<仓库内路径>（弱）；accept 缺锚点时 advisory 告警")
 	Root.AddCommand(skillsDecideCmd)
 }
