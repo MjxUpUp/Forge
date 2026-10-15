@@ -599,6 +599,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(cmd.ErrOrStderr(), "⚠️ --artifact %q 登记失败（%v）——之后可用 forge task artifact --set %s 重登记\n", spec, aerr, stage)
 				continue
 			}
+			aref.Source = taskpipeline.ArtifactSource(root, path)
 			if state.SpecArtifacts == nil {
 				state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
 			}

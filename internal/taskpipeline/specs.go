@@ -70,6 +70,47 @@ func ValidateStageName(stage string) error {
 // 同名常量的语义锚点；目录名由 round-%03d 模板拼接）。
 const reservedAttemptsDir = "attempts"
 
+// ArtifactSource normalizes an artifact's registration source for ArtifactRef.Source: repo-relative slash path when the file is inside root, otherwise the cleaned absolute path; "" stays "".
+//
+// ArtifactSource 规整产物登记来源：文件在仓库根内记斜杠相对路径，否则记清洗后的绝对路径；
+// 空串保持空串。
+func ArtifactSource(root, path string) string {
+	if path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	if root != "" {
+		if rootAbs, rerr := filepath.Abs(root); rerr == nil {
+			if rel, ok := relInside(rootAbs, abs); ok {
+				return rel
+			}
+			// macOS /var → /private/var 一类符号链接：两侧都解析后再比一次。
+			if r, e1 := filepath.EvalSymlinks(rootAbs); e1 == nil {
+				if a, e2 := filepath.EvalSymlinks(abs); e2 == nil {
+					if rel, ok := relInside(r, a); ok {
+						return rel
+					}
+				}
+			}
+		}
+	}
+	return filepath.ToSlash(abs)
+}
+
+// relInside returns target's slash path relative to base when target lies inside base.
+//
+// relInside 在 target 位于 base 之内时返回斜杠相对路径。
+func relInside(base, target string) (string, bool) {
+	rel, err := filepath.Rel(base, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return filepath.ToSlash(rel), true
+}
+
 // WriteArtifact writes a stage artifact for the task and returns its ArtifactRef. It does NOT mutate TaskState.
 //
 // WriteArtifact 写任务的阶段产物并返回其 ArtifactRef。它不改动 TaskState——调用方在
