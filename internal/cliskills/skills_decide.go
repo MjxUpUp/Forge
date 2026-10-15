@@ -67,9 +67,9 @@ skill 名两种给法等价：forge skills decide my-skill ...（位置参数）
                decision-warrant 行；advisory，决策照常记录、退出码不变
 
 证据来源核验（advisory）：
-  --evidence / --rationale 含外部数字（百分比、倍数、arXiv 编号）时，在 forge 项目内
-  落 checklog decision-evidence 行：有来源（URL，或内部指标引用的 eval run id、
-  --warrant run:）为 pass；缺来源为 warn 并输出 WARN。决策照常记录、退出码不变
+  --evidence / --rationale 含百分比、倍数或 arXiv 编号（不论内外）时，在 forge 项目内
+  落 checklog decision-evidence 行：有来源（URL、正文引用 run-<id>，或 --warrant run:）
+  为 pass；缺来源为 warn 并输出 WARN。决策照常记录、退出码不变
 
 预测闭环（AHE 决策可观测，推荐）：
   --prediction 修改时刻声明的可检验预测——修订若有效，哪个可观测信号应改善
