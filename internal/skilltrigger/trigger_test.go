@@ -303,3 +303,21 @@ func TestEval_EventCap(t *testing.T) {
 		t.Fatal("落选者 ShouldFire 应仍为 true（cooldown 未被消耗）")
 	}
 }
+
+// TestEval_DecisionPointKeepsFirstMatch pins that inline-payload promotion only happens on action-point events: at a decision point (UserPromptSubmit) the first matching rule stays the hit even when a later rule declares Inline.
+//
+// TestEval_DecisionPointKeepsFirstMatch 钉住 inline 载荷提升只发生在动作点事件：决策点
+// （UserPromptSubmit）上即便后一条命中规则声明了 Inline，命中仍是首条规则。
+func TestEval_DecisionPointKeepsFirstMatch(t *testing.T) {
+	all := []SkillTriggers{{Skill: "dp", Triggers: []Trigger{
+		{Event: "UserPromptSubmit", Keywords: []string{"调研"}},
+		{Event: "UserPromptSubmit", Keywords: []string{"调研"}, Inline: "先写 brief"},
+	}}}
+	hits, _ := Eval(Context{Event: "UserPromptSubmit", Prompt: "帮我调研一下"}, all, nil)
+	if len(hits) != 1 {
+		t.Fatalf("want 1 hit, got %+v", hits)
+	}
+	if hits[0].TriggerIndex != 0 {
+		t.Fatalf("decision point must keep the first matching rule, got TriggerIndex=%d", hits[0].TriggerIndex)
+	}
+}
