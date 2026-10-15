@@ -32,7 +32,7 @@ func TestSurveyDocType(t *testing.T) {
 				t.Errorf("%s should match survey, got %+v", name, dt)
 			}
 		}
-		for _, name := range []string{"docs/design/memory.md", "skills/research-workflow/SKILL.md", "docs/surveys/2026-10-research-workflow-retrospective.md"} {
+		for _, name := range []string{"docs/design/memory.md", "skills/research-workflow/SKILL.md", "docs/surveys/2026-10-research-workflow-retrospective.md", "mydocs/surveys/x.md"} {
 			if dt := matchDocTypePath(name); dt != nil && dt.ID == "survey" {
 				t.Errorf("%s should not match survey (retrospective wins by filename)", name)
 			}
@@ -56,7 +56,8 @@ func TestSurveyDocType(t *testing.T) {
 	})
 
 	t.Run("D9 数字段落与表格行无引用", func(t *testing.T) {
-		text := good + "\n采用率在半年内提升了 3 倍，并且有 42% 的团队已迁移。\n\n| 指标 | 数值 |\n|---|---|\n| 留存 | 71% |\n"
+		// 表格紧贴一段带引用、不含数字的说明——表格行若不单独判，会并进这段被它的引用掩盖。
+		text := good + "\n采用率在半年内提升了 3 倍，并且有 42％ 的团队已迁移。\n\n已核实的数据 [^1^]：\n| 指标 | 数值 |\n|---|---|\n| 留存 | 71% |\n"
 		got := rules(LintText("docs/surveys/x.md", text), "D9")
 		if len(got) != 2 {
 			t.Fatalf("want 2 D9 (paragraph + table row), got %d: %+v", len(got), got)
@@ -89,6 +90,15 @@ func TestSurveyDocType(t *testing.T) {
 		for _, is := range LintText("docs/surveys/x.md", text) {
 			if (is.Rule == "D9" || is.Rule == "D10" || is.Rule == "D11") && is.Hard() {
 				t.Errorf("survey issue must be advisory: %+v", is)
+			}
+		}
+	})
+
+	t.Run("具名脚注算引用、行内代码里的标签豁免、裸 ⚠ 算信度", func(t *testing.T) {
+		text := "# 调研\n\n采用率 59%[^survey-a] ⚠ 单源。讨论 `dive_06` 文件名。\n\n[^survey-a]: https://example.org — Example, 2026\n"
+		for _, is := range LintText("docs/surveys/x.md", text) {
+			if is.Rule == "D9" || is.Rule == "D10" || is.Rule == "D11" {
+				t.Errorf("unexpected %s: %s", is.Rule, is.Message)
 			}
 		}
 	})

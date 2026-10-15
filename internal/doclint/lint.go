@@ -78,11 +78,15 @@ func LintFile(path string) ([]Issue, error) {
 	return LintFileAs(path, path)
 }
 
-// LintFileAs lints the file at path but picks the DocType from typeName — for content stored under a generic name (task artifacts are all <stage>.md) whose real type is known from where it came from.
+// LintFileAs lints the file at path but picks the DocType from typeName — for content stored under a generic name (task artifacts are all <stage>.md) whose real type is known from where it came from. When typeName matches no type, path itself is used (a stored design.md keeps its own type).
 //
 // LintFileAs lint path 处的文件，但按 typeName 选 DocType——内容存在通用名下（任务产物
-// 一律 <stage>.md）、真实类型由来源文件名决定时用。豁免与 SkipMarker 仍按 path 判定。
+// 一律 <stage>.md）、真实类型由来源文件名决定时用。typeName 匹配不到任何类型时回落到
+// path（落盘的 design.md 仍按 design 类型）。豁免与 SkipMarker 仍按 path 判定。
 func LintFileAs(path, typeName string) ([]Issue, error) {
+	if matchDocTypePath(typeName) == nil {
+		typeName = path
+	}
 	if PathExempt(path) {
 		return nil, nil
 	}
