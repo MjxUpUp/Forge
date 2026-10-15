@@ -207,8 +207,8 @@ func TestReadme_NewFlagsAreDocumented(t *testing.T) {
 var skillRefAllowlist = map[string]bool{
 	// checklog 观察条目名（forge selfcheck 落痕，非 skill）
 	`selfcheck-pairing`: true, `selfcheck-scope`: true,
-	// checklog 观察条目名（skills decide --warrant 理由锚点核验行，非 skill）
-	`decision-warrant`: true,
+	// checklog 观察条目名（skills decide --warrant 理由锚点核验行、证据来源核验行，非 skill）
+	`decision-warrant`: true, `decision-evidence`: true,
 	// research-workflow status.json 的 mode 取值（调研路由模式名，非 skill）
 	`file-only`: true, `file-augmented`: true,
 	// acceptance v2 断言类型名与逐断言证据行 check 名（spec-as-gate L2 P1，非 skill）

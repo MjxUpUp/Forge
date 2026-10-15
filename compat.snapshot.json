@@ -1232,6 +1232,7 @@
     "conventions-inject",
     "conventions-lint",
     "cross-repo-impact",
+    "decision-evidence",
     "decision-warrant",
     "escape-hatch",
     "eval-artifact-drill",
