@@ -119,3 +119,35 @@ func TestEventsDestroyed(t *testing.T) {
 		}
 	})
 }
+
+// TestPendingBlocksFor pins the per-session split: unattributed rows count as own, a nil predicate counts everything as own, and a reset clears both sides.
+//
+// TestPendingBlocksFor 钉住按会话分账：无会话归属的行计入 Own；owns 为 nil 时全部计入 Own；
+// 重置点两侧同时清零。
+func TestPendingBlocksFor(t *testing.T) {
+	p := newHaltProject(t)
+	owns := func(id string) bool { return id == "sess-mine" }
+	for _, e := range []Event{
+		{Type: EventBlock, Command: "rm -rf a", Fingerprint: "f1", SessionID: "sess-other"},
+		{Type: EventConfirm, Fingerprint: "f1"},
+		{Type: EventBlock, Command: "rm -rf b", Fingerprint: "f2", SessionID: "sess-other"},
+		{Type: EventBlock, Command: "rm -rf c", Fingerprint: "f3", SessionID: "sess-mine"},
+		{Type: EventBlock, Command: "rm -rf d", Fingerprint: "f4"},
+	} {
+		if err := AppendEvent(p, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sp := PendingBlocksFor(p, owns); sp.Own != 2 || sp.Foreign != 1 || sp.LastOwn.IsZero() || sp.LastForeign.IsZero() {
+		t.Fatalf("split after reset = %+v, want Own=2 Foreign=1 with timestamps", sp)
+	}
+	if sp := PendingBlocksFor(p, nil); sp.Own != 3 || sp.Foreign != 0 {
+		t.Fatalf("nil owns = %+v, want Own=3 Foreign=0", sp)
+	}
+	if err := ReleaseHalt(p); err != nil {
+		t.Fatal(err)
+	}
+	if sp := PendingBlocksFor(p, owns); sp != (PendingSplit{}) {
+		t.Fatalf("halt-release must clear both sides, got %+v", sp)
+	}
+}
