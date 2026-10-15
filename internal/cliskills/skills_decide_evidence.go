@@ -26,10 +26,11 @@ import (
 // externalFigureRe 匹配通常来自外部来源的数字：百分比、倍数（N×/Nx/N 倍）、arXiv 编号。
 var externalFigureRe = regexp.MustCompile(`(?i)\d+(\.\d+)?\s?(%|％|×|倍)|\b\d+(\.\d+)?x\b|arxiv[:\s]*\d{4}\.\d{4,5}`)
 
-// evidenceRunRefRe matches a reference to a local eval run (run-<id> / run:<id>), which counts as a checkable source for internal metrics.
+// evidenceRunRefRe matches a reference to a local eval run id (run-20261015… / run:20261015…, ids start with a digit), which counts as a checkable source for internal metrics. Words like run-time or dry-run-mode do not match.
 //
-// evidenceRunRefRe 匹配本地 eval run 引用（run-<id> / run:<id>）——内部指标以 run 为来源，可核验。
-var evidenceRunRefRe = regexp.MustCompile(`\brun[-:][A-Za-z0-9]`)
+// evidenceRunRefRe 匹配本地 eval run id 引用（run-20261015… / run:20261015…，id 以数字开头）——
+// 内部指标以 run 为来源，可核验。run-time、dry-run-mode 这类普通词不算。
+var evidenceRunRefRe = regexp.MustCompile(`\brun[-:]\d`)
 
 // evidenceURLRe matches a source URL.
 //
