@@ -176,3 +176,24 @@ func TestDesignTierRankAndSerialization(t *testing.T) {
 		}
 	}
 }
+
+// TestArtifactRefSourceRoundTrip pins that Source is omitted when empty (old state files stay byte-compatible) and round-trips when set.
+//
+// TestArtifactRefSourceRoundTrip 钉住 Source 为空时不序列化（旧状态文件逐字节兼容），有值时往返不丢。
+func TestArtifactRefSourceRoundTrip(t *testing.T) {
+	old, err := json.Marshal(ArtifactRef{Path: "specs/x/spec.md", Hash: "abc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(old), "source") {
+		t.Fatalf("empty Source must be omitted, got %s", old)
+	}
+	data, err := json.Marshal(ArtifactRef{Path: "specs/x/spec.md", Hash: "abc", Source: "docs/surveys/x.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back ArtifactRef
+	if err := json.Unmarshal(data, &back); err != nil || back.Source != "docs/surveys/x.md" {
+		t.Fatalf("Source must round-trip, got %+v (%v)", back, err)
+	}
+}

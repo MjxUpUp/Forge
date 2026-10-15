@@ -106,7 +106,7 @@ func chainIssuesForStage(root string, chain *artifactchain.Chain, s artifactchai
 		// rubric 档只加机械 L1 lint（意见类判断不进 gate）：对当前文件内容跑
 		// doclint，Hard 级 issue 阻断。漂移不单独阻断（lint 的是当前内容——
 		// 机械检查随文件走），但 complete 漂移段会留痕。
-		hard, err := lintArtifactHardIssues(artifactAbsPath(root, ref))
+		hard, err := lintArtifactHardIssues(artifactAbsPath(root, ref), ref.Source)
 		if err != nil {
 			issues = append(issues, chainIssue{
 				Stage: s.Name, Mode: s.Mode,
@@ -128,9 +128,19 @@ func chainIssuesForStage(root string, chain *artifactchain.Chain, s artifactchai
 
 // lintArtifactHardIssues runs doclint L1 on the artifact file and returns the
 // Hard-level issue strings (mechanical only — the L2 rubric stays in the
-// doc-review human loop).
-func lintArtifactHardIssues(absPath string) ([]string, error) {
-	issues, err := doclint.LintFile(absPath)
+// doc-review human loop). The document type is chosen from source (the
+// registration path) when known, because every stored artifact is named
+// <stage>.md and would never match a typed doc such as survey.
+//
+// lintArtifactHardIssues 对产物文件跑 doclint L1，返回 Hard 级 issue。文档类型优先
+// 按登记来源 source 判定（落盘名统一是 <stage>.md，按它永远匹配不到 survey 等类型）；
+// source 为空或为 stdin 时按落盘路径，行为与旧版一致。
+func lintArtifactHardIssues(absPath, source string) ([]string, error) {
+	typeName := absPath
+	if source != "" && source != "stdin" {
+		typeName = source
+	}
+	issues, err := doclint.LintFileAs(absPath, typeName)
 	if err != nil {
 		return nil, err
 	}
