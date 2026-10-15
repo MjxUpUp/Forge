@@ -95,9 +95,9 @@ reviewer 发现 Critical/Important → implementer 修 → re-review，直到 �
 
 ### 复审与收敛（re-review 怎么派）
 
-审查成本的大头是「轮次 × 每个新派子代理的冷启动固定开销 + 重新探索代码库」，缓存命中率只改单价（多 agent 开发中审查阶段约占 59.4% token，arXiv 2601.14470）。所以复审不是每轮新派一个 fresh reviewer 全量重审：
+审查成本的大头是「轮次 × 每个新派子代理的冷启动固定开销 + 重新探索代码库」，缓存命中率只改单价（参考量级：ChatDev + GPT-5 跑 30 个任务时代码审查阶段平均占 59.4% token，arXiv 2601.14470；作者称初步结果，只测了这一个框架）。所以复审不是每轮新派一个 fresh reviewer 全量重审：
 
-- **默认续用原 reviewer**：宿主支持续用时（Claude Code 用 `SendMessage` 发给原 reviewer），把修复交回**同一个** reviewer 复核，只喂「上轮问题编号 + 修复 diff + 测试结果」，不喂 implementer 的推理或对话。续用的 reviewer 读得到自己上轮的缓存，也不必重读规格和代码。
+- **默认续用原 reviewer**：宿主支持续用时（Claude Code 用 `SendMessage` 发给原 reviewer），把修复交回**同一个** reviewer 复核，只喂「上轮问题编号 + 修复 diff + 测试结果」，不喂 implementer 的推理或对话。续用的 reviewer 不必重读规格和代码；缓存方面，首次 `SendMessage` 续用可能整段 miss（cache_read=0，anthropics/claude-code#44724，之后的续用才命中），省下的主要是重新探索的开销。
 - **何时升档新派**：分档判据以 code-review-gate「审查-修复-复审闭环」节为唯一真相源，此处不复制。
 - **阶段 B 可续用阶段 A 的 reviewer**：spec 合规 ✅ 后把代码质量审查交给同一个 reviewer 接着做，省一次冷启动；高风险任务仍新派独立的质量 reviewer。
 - **收敛规则**：首轮之后只有 Critical/Important 能阻断，复审不新增 Minor；已关闭的问题要给出失败用例才能重开；复审轮数阶段 A、B 分别计，上限默认 3 轮（与 forge 回环预算 max_rounds 缺省值一致），到上限仍有分歧 → 上报用户，不无限循环。
