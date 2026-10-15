@@ -26,9 +26,11 @@ metadata:
 
 ## 对外措辞
 
-工序号、模式名、契约名、文件路径、信度档、全局编号都是**内部标签**，不在用户可见处出现（chat 消息和最终交付物）。对外只汇报实质动作与产出，用自然白话——内部仍按 Phase 记录。`research-lint.sh` 的 E6 会扫报告里的泄漏。
+工序号、模式名、契约名、run_dir 里的中间文件名（dive_NN、scan_NN）、全局编号都是**内部标签**，不在用户可见处出现（chat 消息和最终交付物）。对外只汇报实质动作与产出，用自然白话——内部仍按 Phase 记录。`research-lint.sh` 的 E6 会扫报告里的泄漏。
 - 别说："这是典型的撒网模式，按工序来"
 - 改说："先把全景摸广，再分维度深挖"
+
+**信度结论本身要对用户可见**，只是用白话写：「多个独立来源一致」「仅一个官方来源」「单一二手来源，未交叉验证」「来源互相矛盾」，不写内部档名代号。交付消息里给一次报告文件的位置，正文不写本地路径。
 
 ## 开工纪律（贯穿全 Phase）
 
@@ -98,10 +100,10 @@ metadata:
 
 ```bash
 date '+%Y%m%d-%H%M'
-mkdir -p ~/.research-workflow/agent-memory-20261014-1535
+mkdir -p ~/.research-workflow/<topic>-<上一步输出的时间戳>
 ```
 
-`topic` 短、英文小写 + 连字符。这个完整路径记作 `{run_dir}`，后续 read/write / spawn prompt 都用字面绝对路径。
+例：`mkdir -p ~/.research-workflow/agent-memory-20261014-1535`。`topic` 短、英文小写 + 连字符。这个完整路径记作 `{run_dir}`，后续 read/write / spawn prompt 都用字面绝对路径。
 
 ### 研究契约（深度档必做）
 
@@ -121,7 +123,7 @@ mkdir -p ~/.research-workflow/agent-memory-20261014-1535
 2. **工序 1 起步勘察**：3-5 次搜索核准主体 + 关键事实 → `map.md`。撒网追加 ≥5 facet worker；**撒网 / 锁定 / 文件增强都派 1 个反框架 worker**（不给 map.md context）→ `scan_anti.md`
 3. **工序 2 课题切分**：按 brief 的子问题拆维度（数量按 credibility-protocol 第 8 节分档），每个维度挂回 ≥1 个子问题，维度间保留概念重叠制造交叉验证压力
 4. **工序 3 并行深挖**：每维一个 worker，同一波 spawn。prompt 契约 6 段（见 engine），**必须重注入原问题原文 + 本维度子问题编号**，Mission 含反证检索。worker 把检索追加进 `search_log.md`，产出写 `dive_NN.md`（Key Evidence 带「限定」列）
-5. **工序 4 互证分级**：按**独立来源族**分四档（单一来源族永远不是高；同 URL / 转载 / 共作者 / 同厂商 / 本机旧报告都算同族），全局重编号 → `verify.md`
+5. **工序 4 互证分级**：按**独立来源族**分四档——高信度必须 ≥2 个独立来源族一致且其中至少一个是一手源；单一来源族（哪怕是一手权威源）最高到中；同 URL / 转载 / 共作者 / 同厂商 / 本机旧报告都算同族。全局重编号 → `verify.md`
 6. **工序 5 定点消解**（有矛盾或 critical 低信度才跑）→ `resolve_NN.md`
 7. **工序 6 跨维洞察** → `insight.md`（主张 / 跨维度 / 证据 / 反例 / Confidence / Implications；反例为空时写「已检索未发现：<检索式>」）
 
@@ -138,19 +140,7 @@ mkdir -p ~/.research-workflow/agent-memory-20261014-1535
 
 ---
 
-## Phase 2 — 承重断言独立核验（必做）
-
-Phase 1 工序 4-5 是素材层的信度分级；本 Phase 是**写作前对承重断言的独立复核**，由新上下文的子代理执行，写的人不自评。完整步骤见 `references/credibility-protocol.md` 第 5、6 节：
-
-1. 先按 Phase 3 outline 写报告草稿，从草稿抽承重断言（进 TL;DR / 结论 / 建议的断言 + 所有数字、日期、引语）→ `claims.md`（ID / 断言 / 限定 / 引用 / 原文 quote / URL / 核验）
-2. spawn 新上下文核验子代理，只给 ID + 断言 + 限定 + URL，逐条回原文判 支持 / 部分支持 / 不支持 / 不可达
-3. 不支持 → 删或改写；部分支持 → 按原文收窄；不可达 → 降一档并标注
-4. 建议类结论过**本地适用性核验**：附本地证据，或标「外部推断，未经本地验证」
-5. 另做四问自查（结果直接改到断言里，不新增"质疑"章节）：数据出处与样本？相关还是因果？发布方利益？有没有更新的数据推翻？
-
----
-
-## Phase 3 — 结构规划（Gate）
+## Phase 2 — 结构规划（Gate）
 
 写正文前先输出 outline 并自查：
 
@@ -165,17 +155,30 @@ Phase 1 工序 4-5 是素材层的信度分级；本 Phase 是**写作前对承�
 
 ---
 
-## Phase 4 — 文档输出
+## Phase 3 — 草稿 + 承重断言独立核验（必做）
 
-写入 `{run_dir}/report.md`：
+Phase 1 工序 4-5 是素材层的信度分级；本 Phase 是**定稿前对承重断言的独立复核**，由新上下文的子代理执行，写的人不自评。完整步骤见 `references/credibility-protocol.md` 第 5、6 节：
 
-- 开头逐个子问题给结论，再展开；正文基于 `verify.md` 与 `insight.md`
-- **只引用 claims.md 已核验的承重断言**；写作时新增的数字、链接先补进 claims.md 核验
+1. 按 Phase 2 的 outline 写报告草稿 `{run_dir}/report.md`，正文基于 `verify.md` 与 `insight.md`
+2. 从草稿抽承重断言（进 TL;DR / 结论 / 建议的断言 + 所有数字、日期、引语）→ `claims.md`（ID / 断言 / 限定 / 引用 / 原文 quote / URL / 核验，7 列）
+3. spawn 新上下文核验子代理，只给 ID + 断言 + 限定 + URL，逐条回原文判 支持 / 部分支持 / 不支持 / 不可达，结果写进「核验」列
+4. 不支持 → 删或改写；部分支持 → 按原文收窄；不可达 → 降一档并在报告里用白话标注
+5. 建议类结论过**本地适用性核验**：附本地证据，或标「外部推断，未经本地验证」
+6. 另做四问自查（结果直接改到断言里，不新增"质疑"章节）：数据出处与样本？相关还是因果？发布方利益？有没有更新的数据推翻？
+
+---
+
+## Phase 4 — 定稿与交付
+
+把核验结论落回 `{run_dir}/report.md`：
+
+- 开头逐个子问题给结论，再展开
+- **只引用 claims.md 已核验的承重断言**；定稿时新增的数字、链接先补进 claims.md 核验
 - 限定条件随断言保留，摘要不得比正文更强
 - 追加「独立判断与建议」章节；建议类结论带本地证据或「外部推断」标注
 - 已有文档：先 fetch 查格式，用相同格式；overwrite 前必须 fetch 完整内容，不凭记忆拼凑
 
-**交付前跑 lint**：`bash <skill 目录>/scripts/research-lint.sh {run_dir}`。有 ERROR 先修再交付；WARN 和 status.json 里的 degradations 在交付消息里说明。把 status.json 的 `stage` 改为 `delivered`。
+**交付前跑 lint**：`bash <skill 目录>/scripts/research-lint.sh {run_dir}`（报告写出即可跑）。有 ERROR 先修再交付；WARN 和 status.json 里的 degradations 在交付消息里说明。lint 通过后把 status.json 的 `stage` 改为 `delivered`。
 
 **下游落库**：调研结论要写进仓库文档（设计 / ADR / 计划）时，把 report.md 复制进仓库的文档目录并提交，下游引用仓库内路径，保留信度标注——本机 run_dir 会被清理，引用 `~/` 路径的证据链迟早断。
 
@@ -222,7 +225,7 @@ Phase 1 工序 4-5 是素材层的信度分级；本 Phase 是**写作前对承�
 
 - [ ] brief.md 有原问题原文，深度档已获用户确认（或 implicit 有理由）
 - [ ] 报告逐个子问题给了结论（含「查不到」）
-- [ ] 每条高信度有 ≥2 个独立来源族或一手权威源 + 反证已查
+- [ ] 每条高信度有 ≥2 个独立来源族一致（其中至少一个是一手源），反证已查
 - [ ] claims.md 全部核验，不支持项已删改
 - [ ] 建议类结论有本地证据或「外部推断」标注
 - [ ] research-lint.sh 0 ERROR；degradations 已告知用户
