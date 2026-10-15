@@ -190,17 +190,19 @@ var codingIntentCN = []string{
 var codingIntentENRe = regexp.MustCompile(`(?i)\b(refactor|fix|add|implement|develop|build|integrate|tdd)\b`)
 
 // condCodingIntent：UserPromptSubmit 的 prompt 含编码意图关键词（中文子串 + 英文 word-boundary）。
+// 判定文本先经 SanitizePrompt 剥离宿主信封块——子代理完成通知里的「修复」「实现」不是用户的编码意图。
 func condCodingIntent(ctx Context) bool {
-	if ctx.Prompt == "" {
+	prompt := SanitizePrompt(ctx.Prompt)
+	if prompt == "" {
 		return false
 	}
-	lower := strings.ToLower(ctx.Prompt)
+	lower := strings.ToLower(prompt)
 	for _, kw := range codingIntentCN {
 		if strings.Contains(lower, strings.ToLower(kw)) {
 			return true
 		}
 	}
-	return codingIntentENRe.MatchString(ctx.Prompt)
+	return codingIntentENRe.MatchString(prompt)
 }
 
 // condTaskActiveNoReview：当前 session 有 active task 且 ReviewPassed=false（task 流程中未审）。

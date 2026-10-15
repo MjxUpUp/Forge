@@ -14,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hazard"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // CheckNameHazardPending 是清账 pre-flight 的判定行（taskpipeline 字面量——
@@ -55,11 +56,52 @@ func CheckHazardPending(root string, state *TaskState) (ok bool, reasons []strin
 	if hazard.EventsDestroyed(p) {
 		return false, []string{"hazard 事件流文件缺失而 hazards 目录仍在——事件曾落盘后被清除（清账证据被毁不是清白证明）。人工核查后在用户终端执行 forge hazard halt release --yes"}
 	}
-	st := hazard.CheckHalt(p)
-	if st.Blocks <= 0 {
+	// 作用域（2026-10-15）：只有本任务会话（及无会话归属）的拦截阻断交付；同项目其他
+	// 会话（如并行的调研会话）的悬账降为 advisory 审计行——项目级计数曾让一个无关
+	// 会话的一次拦截卡住所有任务的 complete。
+	sp := hazard.PendingBlocksFor(p, taskSessionOwner(state))
+	if sp.Own <= 0 {
+		if sp.Foreign > 0 {
+			recordAudit(root, &checklog.Entry{
+				Check:   CheckNameHazardPending,
+				Passed:  true,
+				Checked: true,
+				Level:   checklog.LevelWarn,
+				TaskRef: state.TaskRef,
+				Detail: fmt.Sprintf("hazard-pending: 本任务会话无悬账；同项目其他会话有 %d 个未确认拦截（最近 %s），不阻断本任务交付——须在用户终端 forge hazard confirm --last 或 halt release 核销",
+					sp.Foreign, sp.LastForeign.Format("2006-01-02 15:04")),
+				Meta: map[string]string{"pending.scope": "foreign", "pending.foreign": fmt.Sprint(sp.Foreign)},
+			})
+		}
 		return true, nil
 	}
 	return false, []string{fmt.Sprintf(
-		"本项目自最近确认/解锁以来有 %d 个未经人工确认的高危拦截（最近 %s）——等账未清不得交付。出口（须在用户终端执行，agent 管道无法自我放行）：人工核查被拦命令后 forge hazard confirm --last（放行该命令）；或人工核查全部悬账后 forge hazard halt release --yes 整账核销（safe-halt 停机与未停机悬账均适用）。逃生（无人 CI，落审计）: FORGE_HAZARD_PENDING=disable",
-		st.Blocks, st.LastBlock.Format("2006-01-02 15:04"))}
+		"本任务会话自最近确认/解锁以来有 %d 个未经人工确认的高危拦截（最近 %s）——等账未清不得交付。出口（须在用户终端执行，agent 管道无法自我放行）：人工核查被拦命令后 forge hazard confirm --last（放行该命令）；或人工核查全部悬账后 forge hazard halt release --yes 整账核销（safe-halt 停机与未停机悬账均适用）。逃生（无人 CI，落审计）: FORGE_HAZARD_PENDING=disable",
+		sp.Own, sp.LastOwn.Format("2006-01-02 15:04"))}
+}
+
+// taskSessionOwner returns the ownership predicate for a task's sessions: the creating session plus every non-imported SessionLink, compared both raw and sanitized. A task with no recorded session returns nil, which makes every block count as its own (legacy behaviour, conservative).
+//
+// taskSessionOwner 返回任务会话归属判定：创建会话 + 全部非导入 SessionLink，原样与
+// SanitizeSessionID 后两种形态都比对（hook 事件与任务状态的会话 id 来源不同）。任务未记录
+// 任何会话时返回 nil——全部拦截计入本任务（旧行为，保守方向）。
+func taskSessionOwner(state *TaskState) func(string) bool {
+	set := map[string]bool{}
+	add := func(id string) {
+		if id == "" {
+			return
+		}
+		set[id] = true
+		set[util.SanitizeSessionID(id)] = true
+	}
+	add(state.SessionID)
+	for _, l := range state.SessionLinks {
+		if !l.Imported {
+			add(l.SessionID)
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	return func(id string) bool { return set[id] || set[util.SanitizeSessionID(id)] }
 }

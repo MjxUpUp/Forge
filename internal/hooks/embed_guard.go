@@ -878,16 +878,14 @@ hazard_tokens() {
             if (substr(line, i, 4) == "$IFS") { flushword(); i += 4; continue }
             if (substr(line, i, 6) == "${IFS}") { flushword(); i += 6; continue }
             if (substr(line, i, 2) == "$(") {
-              # 赋值值里的替换（name=$(...)）不产生 marker——命令位仍是后续词
-              # （FOO=$(date) echo hi 的命令是 echo）。判定用 tolower 后的词
-              # （小写化发生在 flush 时，此刻词还是原文大小写）。
-              is_assign = 0
-              if (length(wbuf) > 0) {
-                lbuf = tolower(wbuf)
-                lastc = substr(lbuf, length(lbuf), 1)
-                if (lastc == "=" && lbuf ~ /^[a-z_]/ && lbuf !~ /[^a-z0-9_=]/) is_assign = 1
-              }
-              if (is_assign) { flushword() }
+              # 赋值值里的替换（name=$(...)、name=pre-$(...)）不产生 marker——命令位
+              # 仍是后续词（FOO=$(date) echo hi 的命令是 echo）。判据是整词以
+              # name= 开头，替换可在值的任意位置：RUN=~/x-$(date) 曾因只认 = 紧邻
+              # $( 被误判为命令位替换（2026-10-10/13 两次误拦）。赋值词不 flush、
+              # 补占位字符续词——替换后紧跟的字面量仍属同一赋值词（bash 语义），
+              # 不会被拆成新的命令位词。判定用 tolower 后的词（小写化发生在 flush
+              # 时，此刻词还是原文大小写）。
+              if (tolower(wbuf) ~ /^[a-z_][a-z0-9_]*=/) { wbuf = wbuf "_" }
               else { flushword(); print "M" }
               inner = extract_sub(line, i + 2, "paren")
               print "I" inner
@@ -896,13 +894,8 @@ hazard_tokens() {
             }
           }
           if (c == bt) {
-            is_assign = 0
-            if (length(wbuf) > 0) {
-              lbuf = tolower(wbuf)
-              lastc = substr(lbuf, length(lbuf), 1)
-              if (lastc == "=" && lbuf ~ /^[a-z_]/ && lbuf !~ /[^a-z0-9_=]/) is_assign = 1
-            }
-            if (is_assign) { flushword() }
+            # 与 $( 分支同判据：name= 开头的赋值词内的反引号替换不是命令位。
+            if (tolower(wbuf) ~ /^[a-z_][a-z0-9_]*=/) { wbuf = wbuf "_" }
             else { flushword(); print "M" }
             inner = extract_sub(line, i + 1, "bt")
             print "I" inner
