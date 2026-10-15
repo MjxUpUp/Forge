@@ -1,6 +1,6 @@
 # research-workflow 复盘（2026-10）
 
-日期：2026-10-15 ｜ 状态：复盘稿，skill 未改 ｜ 明细：[证据附录](2026-10-research-workflow-review-evidence.md)
+日期：2026-10-15 ｜ 状态：行动已落地（见「落地状态」） ｜ 明细：[证据附录](2026-10-research-workflow-review-evidence.md)
 范围：本机全部 23 个调研 run（`~/.forge/research/` 10 个、`~/.research-workflow/` 13 个）、`docs/surveys/` 落库调研、10 月 11 次调研会话转录；外部调研覆盖学界 64 条引用与业界产品 / 开源 / 社区 skill。方法：逐 run 6 项打分、31 条承重断言回原文核验、转录取证。
 
 ## 结论
@@ -67,10 +67,21 @@
 | 12 | SKILL.md 明示「先取日期值，再 `mkdir -p` 字面路径，不要存进变量」；forge 侧把 `VAR=$(date …)` 这类赋值视为误报（见 forge 落地清单） |
 | 13 | 飞书发布改成用户要时才发，同时改写 failure-cases 案例 6 |
 | 14 | 被设计文档引用的调研要复制进 `docs/surveys/` 并提交，引用处保留信度标注。迁移或标注仓库里 10 处 `~/.forge/research/…` 引用，以及 2 个已丢失的 run |
-| 15 | Phase L 一次都没用过：二选一，要么恢复成独立的轻量 skill，要么在 dev-lookup 的 SKIP 里显式转过去 |
+| 15 | Phase L 一次都没用过：拆成独立的 `references/phase-l.md`，SKILL.md 只留路由，读取可被遥测统计；dev-lookup 的 SKIP 已指向 Phase L |
 | 16 | 新增 5–8 条 golden 调研任务，预埋 hedge、共作者、同源转载、过期数字、需本地核验这几类陷阱；用承重断言支持率和 lint 通过率作指标 |
 | 17 | （Go 侧）forge skill-trigger 不应匹配子代理完成通知或系统消息。本次复盘会话里出现了 4 次误触发 |
 
 **成本**：第 3、4、7、9、10、12、13 条主要是改 SKILL.md 和契约，token 增量不到 20%。第 1、8 条约增加 30–60% 的抓取量。第 5、16 条是一次性工作。
 
 **建议排期**：一个 forge task 处理第 6 条（更正，独立、改动小）；另一个 task 处理第 1–5、7–12 条（改 skill 并加 lint 脚本，按 skill-evolution 跑回归）；第 17 条单独开 Go 侧 issue。
+
+## 落地状态
+
+负责人均为 MjxUpUp，2026-10-15 实现，截止时间即合入 main。
+
+| 行动 | 状态 | 载体 |
+|---|---|---|
+| 1–5、7–11、12（skill 侧）、13、15、16 | 已实现，待合入 | `feat/research-workflow-credibility`（skill 文本、`credibility-protocol.md`、`phase-l.md`、`research-lint.sh`、`output-cases.json`） |
+| 6 | 已合入（`bc933608`）；`acceptance-gate` 提案里的 Phantom Guardrails 段留给提案作者，提交前改 | 仓库文档与 `agent-delegation` 决策 |
+| 12（forge 侧）、17 | 已合入本地 main（`66cdffef`） | `fix/trigger-hazard-noise` |
+| 14 | 失效路径已标注（`bc933608`）；`~/` 路径失效告警、调研文档 lint 在 forge 侧另行实现 | forge doclint / docsconsistency |
