@@ -5,7 +5,7 @@
 
 ## 结论
 
-1. **没有编造来源，主要的失真方式是转述时把话说重了。** 31 条承重断言回原文核验：完全支持 21 条（68%），部分支持 7 条（23%），不支持 3 条（10%），死链和捏造都是 0。失真都出在 dive → report → 设计文档这条转述链上，有三种：
+1. **没有编造来源，主要的失真方式是转述时把话说重了。** 31 条承重断言（按决策影响挑选，非随机抽样）回原文核验：完全支持 21 条（68%），部分支持 7 条（23%），不支持 3 条（10%），死链和捏造都是 0。失真都出在 dive → report → 设计文档这条转述链上，有三种：
    - 删掉原文的 hedge："perhaps" 被写成"反升 43 倍"；
    - 丢掉场景限定："仅 ChatDev"没了；
    - 两篇论文拼成一个新结论。
@@ -82,6 +82,6 @@
 | 行动 | 状态 | 载体 |
 |---|---|---|
 | 1–5、7–11、12（skill 侧）、13、15、16 | 已实现，待合入 | `feat/research-workflow-credibility`（skill 文本、`credibility-protocol.md`、`phase-l.md`、`research-lint.sh`、`output-cases.json`） |
-| 6 | 已合入（`bc933608`）；`acceptance-gate` 提案里的 Phantom Guardrails 段留给提案作者，提交前改 | 仓库文档与 `agent-delegation` 决策 |
+| 6 | 已合入（`bc933608`）；`acceptance-gate` 提案里的 Phantom Guardrails 段由 MjxUpUp 在该提案提交前按原文重写 | 仓库文档与 `agent-delegation` 决策 |
 | 12（forge 侧）、17 | 已合入本地 main（`66cdffef`） | `fix/trigger-hazard-noise` |
 | 14 | 失效路径已标注（`bc933608`）；`~/` 路径失效告警、调研文档 lint 在 forge 侧另行实现 | forge doclint / docsconsistency |
