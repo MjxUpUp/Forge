@@ -233,6 +233,7 @@ func TestRunHookCaptured_LargePipes(t *testing.T) {
 // 无错误），不得挂死在管道写上。
 func TestRunHookBatch_LargeWriteEditPayloadNonForgeDir(t *testing.T) {
 	t.Setenv("FORGE_PROFILE", "standard")
+	t.Setenv("HOME", t.TempDir()) // 隔离开发者的用户级 forge 状态 / isolate user-level forge state
 	dir := t.TempDir()
 	origDir, _ := os.Getwd()
 	if err := os.Chdir(dir); err != nil {
