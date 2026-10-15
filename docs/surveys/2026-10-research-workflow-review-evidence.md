@@ -3,7 +3,7 @@
 日期：2026-10-15 ｜ 主文：[2026-10-research-workflow-retrospective.md](2026-10-research-workflow-retrospective.md)（结论与行动）｜ 本文是主文的明细：运行数据、问题证据、业界学界做法、差距矩阵、优化项展开、更正清单与引用
 范围：`skills/research-workflow`（与 `~/.claude/skills`、插件副本一致）；本机全部调研产物——`~/.forge/research/` 10 个 run（2026-08-18 ~ 09-29）、`~/.research-workflow/` 13 个 run（2026-10-08 ~ 10-14）、`docs/surveys/` 3 篇落库调研；10 月 11 次有转录的调研会话。
 方法：两路逐 run 审计（流程 / 引用 / 互证 / 来源 / 时效 / 成文 6 项打分）+ 31 条承重断言回原文核验 + 会话转录取证 + 两路外部调研（学界 64 条引用、业界含 5 个社区 skill 拆解）。外部数字凡本文引用的，已回 arXiv / GitHub API 原页复核。
-工作底稿（会话 scratchpad，会被清理）：audit_batchA / audit_batchB / forensics / survey_academia / survey_industry。
+31 条承重断言的逐条判定见文末「31 条承重断言核验明细」；逐 run 打分与转录取证的工作底稿没有入库（含会话原文摘录）。
 
 ---
 
@@ -111,7 +111,7 @@
 
 - **引用"存在"≠引用"支持"。** DeepResearch Bench 上引用准确率 Perplexity DR 90.2%、OpenAI DR 78.0%，Gemini DR 引用数最多（111 条有效）但准确率 81.4%（arXiv 2506.11763）；ReportBench 中 OpenAI DR 有引用陈述匹配率 78.9%，o3+search 仅 31.4%（arXiv 2508.15804）；生成式搜索只有 51.5% 的句子被引用完全支持（Liu et al. 2023, arXiv 2304.09848）；Tow Center 测 8 个 AI 搜索找新闻出处，错误率超 60%（CJR 2025-03）。
 - **URL 层面会捏造。** 10 个模型/agent、5.3 万条 URL：3–13% 从未存在过，deep research agent 引得更多也编得更多；给 agent 一个 URL 存活检查工具，非可达 URL 降到 1% 以下（arXiv 2604.03173）。
-- **错误主要出在编排/写作层。** 对三个开源 DR 系统逐 agent 定位：84.7% 的终稿错误来自 orchestrator，其中约 31% 是幻觉、其余是引用错误；只做单文档摘要的 agent 几乎不出错（arXiv 2608.24306）。我们的 31 条核验结论完全一致：检索层没出事，转述层出事。
+- **错误主要出在编排/写作层。** 对三个开源 DR 系统逐 agent 定位：84.7% 的终稿错误来自 orchestrator，其中约 31% 是幻觉、其余是引用错误；只做单文档摘要的 agent 几乎不出错（arXiv 2608.24306）。我们的 31 条核验方向一致（样本小、非随机）：检索层没出事，转述层出事。
 - **过度自信。** BrowseComp 上 Deep Research 准确率 51.5%，校准误差 91%（arXiv 2504.12516）。
 - **瓶颈不在"找不到"。** ResearchRubrics（arXiv 2511.07685）、DeepResearch Bench II 都指向漏掉隐含需求、证据整合与核验不足；Plus AI 实测最常见错误是忽略约束和信息过时——也就是偏题。
 - **偏题有机制性来源。** 长程 agent 普遍有目标漂移（Arike et al., arXiv 2505.02709）；多轮对话里过早假设、走错不回头，平均掉 39%（Laban et al., arXiv 2505.06120）；检索和推理两侧都有确认偏误（Xie et al., ICLR 2024, arXiv 2305.13300）。
@@ -250,6 +250,46 @@ anthropics/skills 官方仓没有调研类 skill。共性：**门控靠脚本、
 另外：`docs/design/compat-commitments.md:3`、`docs/design/mechanism-hardening.md:3` 等引用的 `forge-direction-20260905-0956`、`forge-mechanisms-20260905-1752` 两个 run 目录已不存在，需要标注失效或找回原报告。
 
 ---
+
+## 附：31 条承重断言核验明细
+
+核验方法：挑选 8 个对决策影响最大的 run，从报告中抽出承重断言，交给独立子代理打开所引原文逐条判定（2026-10-15）。只列判定与失真类型；原文要点见各 run 目录。
+
+| # | run | 断言（简） | 来源 | 判定 | 失真类型 |
+|---|---|---|---|---|---|
+| F1 | forge-trust | 约一半测试全绿的 SWE-bench Verified PR 不会被合并，合并率低约 24pp | metr.org/notes/2026-03-10-… | 支持 | — |
+| F2 | forge-trust | 官方水印「survives copy-paste but not … translation」 | anthropic.com/news/claude-text-watermark | 不支持 | 转述当原话，归属错，与原文相反 |
+| F3 | forge-trust | deep research 事实准确率 39–77% | arxiv 2605.06635 | 支持 | — |
+| H1 | harness-eval | HV/MV=7.80×、9 个中 6 个排名翻转 | arxiv 2605.23950 | 支持 | — |
+| H2 | harness-eval | OpenAI 2026-08 停用 SWE-bench Verified | openai.com（403）/ Decrypt | 部分支持 | 日期错约 6 个月 |
+| H3 | harness-eval | Anthropic 内部研究 28%→59%、PR/日 +67% | anthropic.com/research/… | 支持 | +67% 归属略宽 |
+| M1 | memory | W3C 记忆互操作 CG 无产出 | w3.org/community/… | 支持 | — |
+| M2 | memory | auto memory 前 200 行或 25KB | code.claude.com/docs/en/memory | 支持 | — |
+| M3 | memory | mem0 2026-07 停 OpenMemory | github mem0 #2735 | 部分支持 | 日期错、引文改写 |
+| A1 | agent-gate | 门禁逻辑可见时作弊率反升 43 倍 | metr.org/blog/2025-06-05-… | 不支持 | 删 hedge，相关写成因果 |
+| A2 | agent-gate | 「intended methods」提示 80%→95% | 同上 | 支持 | — |
+| A3 | agent-gate | ImpossibleBench GPT-5 76%/93%、Opus 46% | arxiv 2510.20270 | 部分支持 | 数字错，漏反证（92%→1%） |
+| J1 | jev-sdlc | AY Automate 路由显著落后 Terra | ayautomate.com/blog/… | 支持 | — |
+| J2 | jev-sdlc | Check Point 27 次攻破 25 次 | blog.checkpoint.com/… | 部分支持 | 取最坏值，丢限定 |
+| J3 | jev-sdlc | skill_suggestion 错误加载率 16.8%→7.3% | docs.typesafe.ai/… | 支持 | 丢「合成请求」限定 |
+| J4 | jev-sdlc | Clef 开放权重、协议兼容 | huggingface.co/Cloudflare/clef-flash | 支持 | 漏一手源 |
+| J5 | jev-sdlc | 28 篇综述：类型化读出无独立准确率优势 | arxiv 2609.32160 | 支持 | — |
+| J6 | jev-sdlc | HN 发布帖 1,989 分 | news.ycombinator.com | 支持 | — |
+| J7 | jev-sdlc | laya 建仓日期与星数 | github.com/NandhaKishorM/laya | 支持 | — |
+| R1 | rsi | Phantom Guardrails 15/60 vs 0/60、引证后 0.00 | arxiv 2607.13083 | 部分支持 | 两个实验设置混为一谈 |
+| R2 | rsi | 312 次运行 10 次违规 | arxiv 2609.33812 | 支持 | — |
+| R3 | rsi | paired SD 是重跑的 11–58 倍 | arxiv 2608.22331 | 支持 | — |
+| R4 | rsi | abort 通道 54%→9% | arxiv 2510.20270 | 部分支持 | 丢「对 Claude 效果弱」限定 |
+| C1 | ai-review-cache | 单轮 > 多轮 > 无上下文重审 | arxiv 2603.16244 | 支持 | — |
+| C2 | ai-review-cache | fresh 与同会话自审差异不显著 | arxiv 2603.12123 | 支持 | — |
+| C3 | ai-review-cache | 审查阶段占 59.4% token | arxiv 2601.14470 | 支持 | 下游丢「仅 ChatDev」 |
+| C4 | ai-review-cache | SendMessage 续用可读缓存 | code.claude.com/docs | 支持 | — |
+| T1 | ai-native-tech-design | R2ABench 约 33% 无依据 | arxiv 2604.06683 | 部分支持 | 取自未定义的列 |
+| T2 | ai-native-tech-design | Spec Kit 约 10 倍开销 | blog.scottlogic.com/… | 支持 | — |
+| T3 | ai-native-tech-design | 上下文文件越长遵循越差 | arxiv 2602.11988 | 不支持 | 两篇论文拼成新结论 |
+| T4 | ai-native-tech-design | IFScale：500 条指令时最好模型 68% | arxiv 2507.11538 | 支持 | — |
+
+合计：支持 21、部分支持 7、不支持 3、死链 0、捏造 0。样本是按决策影响挑的，不是随机抽样，比例不代表全部断言。
 
 ## 附：主要引用
 

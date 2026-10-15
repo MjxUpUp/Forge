@@ -73,7 +73,7 @@ func runResearchLint(t *testing.T, dir string) (string, int) {
 // TestResearchLintScript 钉住 research-lint 放行合规 run，并对每类陷阱报出对应规则编号。
 func TestResearchLintScript(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("research-lint 面向 macOS/Linux bash；Windows locale 下 awk 多字节行为不在本测试面")
+		t.Skip("research-lint 面向 macOS/Linux 的 bash 3.2+；Git Bash 的路径改写与 awk 多字节行为未在 Windows 上验证")
 	}
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -96,6 +96,17 @@ func TestResearchLintScript(t *testing.T) {
 			f["status.json"] = `{"topic":"gate","mode":"locked","degradations":[]}`
 		}, 1, "[E3]"},
 		{"delivered without claims", func(f map[string]string) { delete(f, "claims.md") }, 1, "[E4]"},
+		{"report written before delivery still checks files", func(f map[string]string) {
+			f["status.json"] = `{"topic":"gate","mode":"locked","stage":"report","degradations":[],"searches":2,"fetches":1}`
+			delete(f, "verify.md")
+		}, 1, "[E4]"},
+		{"no dive files", func(f map[string]string) { delete(f, "dive_01.md") }, 1, "[E4]"},
+		{"invalid mode", func(f map[string]string) {
+			f["status.json"] = `{"topic":"gate","mode":"bogus","stage":"delivered","degradations":[],"searches":2,"fetches":1}`
+		}, 1, "[E3]"},
+		{"file-only run needs file_analysis", func(f map[string]string) {
+			f["status.json"] = `{"topic":"gate","mode":"file-only","stage":"delivered","degradations":[],"searches":2,"fetches":1}`
+		}, 1, "[E4]"},
 		{"delivered without anti-frame scan", func(f map[string]string) { delete(f, "scan_anti.md") }, 1, "[E4]"},
 		{"citation without definition", func(f map[string]string) {
 			f["report.md"] = "# 结论\n\n见 [^2^]。\n"
@@ -112,9 +123,12 @@ func TestResearchLintScript(t *testing.T) {
 		{"claim without verdict", func(f map[string]string) {
 			f["claims.md"] = strings.Replace(f["claims.md"], "| 支持 |", "|  |", 1)
 		}, 1, "[E7]"},
+		{"claim verdict not in the allowed set", func(f map[string]string) {
+			f["claims.md"] = strings.Replace(f["claims.md"], "| 支持 |", "| 未支持 |", 1)
+		}, 1, "[E7]"},
 		{"claim number not in quote", func(f map[string]string) {
 			f["claims.md"] = strings.Replace(f["claims.md"], "作弊率从 92% 降到 1%", "作弊率反升 43%，从 92% 降到 1%", 1)
-		}, 1, "[E7]"},
+		}, 0, "[W4]"},
 		{"unsupported claim kept", func(f map[string]string) {
 			f["claims.md"] = strings.Replace(f["claims.md"], "| 支持 |", "| 不支持 |", 1)
 		}, 0, "[W2]"},
@@ -129,6 +143,41 @@ func TestResearchLintScript(t *testing.T) {
 		if code != tc.wantCode || !strings.Contains(out, tc.wantRule) {
 			t.Errorf("%s: want exit %d with %s, got exit %d:\n%s", tc.name, tc.wantCode, tc.wantRule, code, out)
 		}
+	}
+}
+
+// TestResearchLintNoFalsePositives pins inputs that must pass cleanly: a file-only run citing files without dates, an escaped pipe inside a claim quote, an ordinary English "workers", and years or two-digit numbers in a claim.
+//
+// TestResearchLintNoFalsePositives 钉住必须干净通过的输入：文件模式引用文件（无日期）、claims
+// quote 里的转义竖线、正文里正常的英文 workers、断言里的年份与两位数。另钉缺目录与未知 flag 的退出码。
+func TestResearchLintNoFalsePositives(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("research-lint 面向 macOS/Linux 的 bash 3.2+")
+	}
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	fileOnly := validRun()
+	fileOnly["status.json"] = `{"topic":"gate","mode":"file-only","stage":"delivered","degradations":[],"searches":2,"fetches":1}`
+	fileOnly["file_analysis.md"] = "# files\n"
+	delete(fileOnly, "map.md")
+	delete(fileOnly, "scan_anti.md")
+	fileOnly["report.md"] = "# 结论\n\nQ1：gig workers 的收入在 2025 年下降 12 个点。[^1^]\n\n[^1^]: [File: survey.pdf, Section: 3.2]\n"
+	fileOnly["claims.md"] = "| ID | 断言 | 限定 | 引用 | 原文 quote | URL | 核验 |\n|---|---|---|---|---|---|---|\n" +
+		"| C1 | 2025 年收入下降 12 个点，比例 3.5% | 仅美国样本 | [^1^] | \"income fell 3.5% \\| 12 points\" | File: survey.pdf | 支持 |\n"
+	if out, code := runResearchLint(t, writeRun(t, fileOnly)); code != 0 || !strings.Contains(out, "0 error(s), 0 warning(s)") {
+		t.Fatalf("clean file-only run must pass without findings, exit=%d:\n%s", code, out)
+	}
+
+	if out, code := runResearchLint(t, filepath.Join(t.TempDir(), "missing")); code != 1 || !strings.Contains(out, "[E1]") {
+		t.Fatalf("missing run_dir must exit 1 with E1, got %d:\n%s", code, out)
+	}
+	script, _ := filepath.Abs(filepath.Join(researchSkillDir, "scripts", "research-lint.sh"))
+	cmd := exec.Command("bash", script, "--bogus", t.TempDir())
+	if err := cmd.Run(); err == nil {
+		t.Fatal("unknown flag must be rejected")
+	} else if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 2 {
+		t.Fatalf("unknown flag must exit 2, got %v", err)
 	}
 }
 

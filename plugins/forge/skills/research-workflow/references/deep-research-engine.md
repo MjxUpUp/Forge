@@ -64,6 +64,7 @@ mkdir -p ~/.research-workflow/agent-memory-20261014-1535
 | `{run_dir}/file_analysis.md` | F | 文件 only / 文件增强 | 文件清单 + per-file 抽取 + 跨文件 mapping + gap 分析 + 主题清单 |
 | `{run_dir}/map.md` | 1 | 撒网 / 锁定 / 文件增强 | landscape 地图（关键玩家、来源、信号入口） |
 | `{run_dir}/scan_NN.md` | 1（撒网） | 撒网 | 每 facet worker 的撒网产出 |
+| `{run_dir}/scan_anti.md` | 1 | 撒网 / 锁定 / 文件增强 | 反框架 worker 的产出（不给 map.md context） |
 | `{run_dir}/dive_NN.md` | 3 | 全模式 | 每维度 worker 的深挖产出 |
 | `{run_dir}/verify.md` | 4 | 全模式 | 4 档信度分类 + 矛盾点 + 全局引用映射 |
 | `{run_dir}/resolve_NN.md` | 5 | 撒网 / 锁定 / 文件增强 | 每条矛盾的定点消解产出（文件 only 跳过） |
@@ -103,7 +104,7 @@ mkdir -p ~/.research-workflow/agent-memory-20261014-1535
 1. 拆 **≥5 个 facet**，facet 之间必须跨不同 dimension（不要都从同一角度切）
 2. 同一波 spawn 一 facet 一 worker。spawn prompt **必须 inline `{run_dir}/map.md` 关键摘要**作 context；按「撒网产出契约」写 `{run_dir}/scan_NN.md`
 3. **加 1 个反框架 worker**：同一波 spawn，**不给 map.md context**，任务是"挑战主流 framing，从不同视角找漏掉的 sibling / 信号 / 争议"。写 `{run_dir}/scan_anti.md`
-4. 每个 worker：10-20 次独立搜索（不同关键词、不同源，避开 landscape 已有词汇），检索追加进 `search_log.md`
+4. 每个 worker：10-20 次独立搜索（工具调用总数 ≤30，不同关键词、不同源，避开 landscape 已有词汇），检索追加进 `search_log.md`
 5. 主 agent 收齐"完成 + 路径"信号后，`read` 各 scan + scan_anti → **扩展** `{run_dir}/map.md`
 
 ### 锁定模式 · 起手勘察
@@ -156,7 +157,7 @@ mkdir -p ~/.research-workflow/agent-memory-20261014-1535
 spawn prompt 在 Context 段额外 inline **本维度相关的文件 excerpt**（从工序 F 抽取，不让 worker 自己读文件）。worker 把文件作为主源，外搜作补/验证，**产出里显式区分文件来源 vs 外搜来源**（Sources Cited 段分两栏：文件 / URL）。
 
 ### 文件 only 子分支
-worker prompt 同标准模式 5 段，但 Mission 改为"**不外搜**，只用 spawn prompt 里 inline 的文件 excerpt"。worker 任务：跨文件交叉引用、识别 pattern、评估证据强弱、标记 implicit assumptions / 文件作者偏见。Sources Cited 段格式：`[File: <name>, Section: <X>]`，无 URL。
+worker prompt 同标准模式 6 段，但 Mission 改为"**不外搜**，只用 spawn prompt 里 inline 的文件 excerpt"。worker 任务：跨文件交叉引用、识别 pattern、评估证据强弱、标记 implicit assumptions / 文件作者偏见。Sources Cited 段格式：`[File: <name>, Section: <X>]`，无 URL。
 
 ### 主 agent 行为
 - 全部 worker spawn 完，主 agent **结束本回合**——等 auto-announce 推回"完成 + 路径"信号
@@ -176,8 +177,8 @@ worker prompt 同标准模式 5 段，但 Mission 改为"**不外搜**，只用 
 
 | 档 | 标准 |
 |---|---|
-| **高信度** | ≥2 个独立来源族一致；或 1 个一手权威源（官方文档 / 论文原文 / 政府原文）且已检索反证未发现 |
-| **中信度** | 1 个一手权威源但反证未检索充分；或 ≥2 个独立二手族一致；厂商自报数据最高到这一档 |
+| **高信度** | ≥2 个独立来源族一致，其中至少一个是一手源（官方文档 / 论文原文 / 政府原文），且已检索反证未发现 |
+| **中信度** | 只有 1 个来源族但它是一手权威源；或 ≥2 个独立二手族一致但追不到一手源；厂商自报数据最高到这一档 |
 | **低信度** | 单一二手源、博客、搜索摘要（未打开原文） |
 | **矛盾点** | 独立来源族在同一指标 / 同一时间 / 同一定义上分歧；数字矛盾；解读冲突 |
 
