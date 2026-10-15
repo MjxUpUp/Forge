@@ -162,3 +162,23 @@ func TestHazardGuardScript_GuardFallGitOptions(t *testing.T) {
 		{cmd: `git branch -d fix/foo`, block: false},
 	})
 }
+
+// TestHazardGuardScript_AssignValueSubst pins assignment words whose value contains a command substitution anywhere (not only right after `=`): the substitution is a value, not the command word, while its inner text is still scanned and a later command-position substitution still blocks.
+//
+// TestHazardGuardScript_AssignValueSubst 钉住赋值值中任意位置的命令替换（不止紧跟 `=`）：
+// 替换属于值、不是命令位；内层文本仍递归扫描；赋值之后命令位上的替换照常拦截。
+// 前两条是 2026-10-10 / 10-13 被误拦的原命令形态（hazards/events.jsonl）。
+func TestHazardGuardScript_AssignValueSubst(t *testing.T) {
+	runGuardFallTable(t, []hazardGuardCase{
+		{cmd: `RUN=~/.research-workflow/ai-review-cache-$(date '+%Y%m%d-%H%M'); mkdir -p $RUN; echo $RUN`, block: false},
+		{cmd: `RD=~/.research-workflow/tacit-$(date '+%Y%m%d-%H%M'); mkdir -p "$RD"; echo "$RD"`, block: false},
+		{cmd: "STAMP=v1-`date +%s`-x; echo $STAMP", block: false},
+		{cmd: `OUT=build/$(git rev-parse --short HEAD).tar echo packed`, block: false},
+		// 内层仍递归扫描：值中间的替换藏 r"m" -rf 必须被语义层命中。
+		{cmd: `x=pre-$(r"m" -rf ./important-data)`, block: true, semanticReason: "命令替换内层"},
+		// 赋值前缀之后的命令位替换不受影响。
+		{cmd: `FOO=a-$(date) $(echo rm) -rf ./important-data`, block: true, semanticReason: "命令替换输出"},
+		// 大小写混合的合法变量名同样识别为赋值词。
+		{cmd: `Run_Dir=$HOME/x-$(date +%F); ls "$Run_Dir"`, block: false},
+	})
+}

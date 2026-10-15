@@ -453,7 +453,7 @@ func Eval(ctx Context, all []SkillTriggers, noise NoiseController) (hits []Hit, 
 			TriggerIndex:   matchedIdx,
 			TriggerSig:     sig,
 			PromptHash:     inputHash,
-			PromptLen:      utf8.RuneCountInString(ctx.Prompt),
+			PromptLen:      utf8.RuneCountInString(sourceText(ctx, MatchSourcePrompt)),
 			Reminder:       reminder,
 			Mode:           mode,
 			FollowPattern:  matched.Follow,
@@ -650,7 +650,7 @@ func sourceText(ctx Context, source string) string {
 	out := func(k string) string { s, _ := ctx.ToolOutput[k].(string); return s }
 	switch source {
 	case MatchSourcePrompt:
-		return ctx.Prompt
+		return SanitizePrompt(ctx.Prompt)
 	case MatchSourceCommand:
 		return sanitizeCommand(cmd)
 	case MatchSourceStdout:
@@ -674,7 +674,7 @@ func firingInputHash(ctx Context, source string) string {
 	if ctx.ProjectRoot == "" {
 		return ""
 	}
-	text := ctx.Prompt
+	text := sourceText(ctx, MatchSourcePrompt)
 	if strings.TrimSpace(text) == "" {
 		text = sourceText(ctx, source)
 	}
