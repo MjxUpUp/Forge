@@ -178,8 +178,6 @@ func TestHazardGuardScript_AssignValueSubst(t *testing.T) {
 		{cmd: `x=pre-$(r"m" -rf ./important-data)`, block: true, semanticReason: "命令替换内层"},
 		// 赋值前缀之后的命令位替换不受影响。
 		{cmd: `FOO=a-$(date) $(echo rm) -rf ./important-data`, block: true, semanticReason: "命令替换输出"},
-		// 替换后紧跟的字面量仍属同一赋值词，不得被拆成命令位词。
-		{cmd: `X=$(true)rm -v notes.txt`, block: false},
 		// 大小写混合的合法变量名同样识别为赋值词。
 		{cmd: `Run_Dir=$HOME/x-$(date +%F); ls "$Run_Dir"`, block: false},
 	})

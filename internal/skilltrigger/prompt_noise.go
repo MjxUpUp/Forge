@@ -28,25 +28,27 @@ var harnessEnvelopeTags = []string{
 // envelopeBlockRes holds one closed-block regexp and one unclosed-opener regexp per tag (RE2 has no backreferences, so each tag gets its own pair).
 //
 // envelopeBlockRes 每个标签一对正则：闭合块与未闭合开标签（RE2 无反向引用，逐标签各建一对）。
-// 未闭合开标签剥到文本末尾——被截断的通知仍是通知，宁可漏注入也不把信封尾巴当用户输入。
+// 未闭合开标签只在行首（可带缩进）时剥到文本末尾——宿主投递的信封总是独占行起头，被截断的
+// 通知仍是通知；用户正文里提到字面标签（「修 <system-reminder> 的解析」）不在行首，不会吞掉
+// 其后的正文。
 var envelopeBlockRes = func() []*regexp.Regexp {
 	res := make([]*regexp.Regexp, 0, 2*len(harnessEnvelopeTags))
 	for _, tag := range harnessEnvelopeTags {
 		q := regexp.QuoteMeta(tag)
 		res = append(res,
 			regexp.MustCompile(`(?is)<`+q+`(?:\s[^>]*)?>.*?</`+q+`\s*>`),
-			regexp.MustCompile(`(?is)<`+q+`(?:\s[^>]*)?>.*$`),
+			regexp.MustCompile(`(?ism)^[ \t]*<`+q+`(?:\s[^>]*)?>.*\z`),
 		)
 	}
 	return res
 }()
 
-// SanitizePrompt strips host envelope blocks from a UserPromptSubmit prompt before keyword and coding-intent matching; text outside the blocks is returned unchanged (trimmed). It is idempotent and cheap when the prompt contains no '<'.
+// SanitizePrompt strips host envelope blocks from a UserPromptSubmit prompt before keyword and coding-intent matching. When a block is removed the result is trimmed; a prompt without any envelope opener is returned byte-for-byte. It is idempotent.
 //
-// SanitizePrompt 在关键词与 coding_intent 匹配前剥离 prompt 中的宿主信封块；块外的用户原文
-// 原样保留（首尾去空白）。幂等；prompt 不含 '<' 时零成本直返。
+// SanitizePrompt 在关键词与 coding_intent 匹配前剥离 prompt 中的宿主信封块。剥离发生时
+// 结果首尾去空白；不含任何信封开标签的 prompt 原样逐字节返回（快速路径，零正则开销）。幂等。
 func SanitizePrompt(prompt string) string {
-	if !strings.Contains(prompt, "<") {
+	if !hasEnvelopeOpener(prompt) {
 		return prompt
 	}
 	out := prompt
@@ -54,4 +56,21 @@ func SanitizePrompt(prompt string) string {
 		out = re.ReplaceAllString(out, " ")
 	}
 	return strings.TrimSpace(out)
+}
+
+// hasEnvelopeOpener reports whether the prompt contains any envelope opening tag (case-insensitive) — the cheap pre-check that keeps the 18 regexps off ordinary prompts.
+//
+// hasEnvelopeOpener 判断 prompt 是否含任一信封开标签（大小写不敏感）——让普通 prompt 不跑
+// 18 条正则的廉价预检。
+func hasEnvelopeOpener(prompt string) bool {
+	if !strings.Contains(prompt, "<") {
+		return false
+	}
+	lower := strings.ToLower(prompt)
+	for _, tag := range harnessEnvelopeTags {
+		if strings.Contains(lower, "<"+tag) {
+			return true
+		}
+	}
+	return false
 }

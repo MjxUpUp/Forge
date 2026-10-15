@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // hazardpending_test.go — 墙-1b 清账门 + 墙-2a 考卷质量门 + 硬-1b mutation
@@ -50,7 +51,7 @@ func TestCheckHazardPending_BlocksDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 无事件：放行。
-	if ok, reasons := CheckHazardPending(dir, state); !ok {
+	if ok, reasons := CheckHazardPending(dir, state, ""); !ok {
 		t.Fatalf("无事件应放行, got %v", reasons)
 	}
 	// 落一个 Block 事件（绕过 hook 直接写事件流——hook 层行为属 hook 测试）。
@@ -62,7 +63,7 @@ func TestCheckHazardPending_BlocksDelivery(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(evDir, "events.jsonl"), []byte(blockRow+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	ok, reasons := CheckHazardPending(dir, state)
+	ok, reasons := CheckHazardPending(dir, state, "")
 	if ok {
 		t.Fatal("未确认拦截悬账应阻断完成")
 	}
@@ -77,7 +78,7 @@ func TestCheckHazardPending_BlocksDelivery(t *testing.T) {
 	}
 	// env 逃生：放行 + 审计行。
 	t.Setenv("FORGE_HAZARD_PENDING", "disable")
-	if ok, reasons := CheckHazardPending(dir, state); !ok {
+	if ok, reasons := CheckHazardPending(dir, state, ""); !ok {
 		t.Fatalf("env 逃生应放行, got %v", reasons)
 	}
 	entries, _ := checklog.LoadForTask(dir, state.TaskRef)
@@ -206,7 +207,7 @@ func TestHazardPending_MissingEventsDetected(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 目录空/不存在：干净放行。
-	if ok, _ := CheckHazardPending(dir, state); !ok {
+	if ok, _ := CheckHazardPending(dir, state, ""); !ok {
 		t.Fatal("无 hazards 目录应放行")
 	}
 	// 事件落过盘后 events.jsonl 被删（目录残留——含空目录形态：confirm 标记
@@ -215,7 +216,7 @@ func TestHazardPending_MissingEventsDetected(t *testing.T) {
 	if err := os.MkdirAll(evDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ok, reasons := CheckHazardPending(dir, state)
+	ok, reasons := CheckHazardPending(dir, state, "")
 	if ok {
 		t.Fatal("事件流被清除（目录在文件缺，含空目录）应阻断")
 	}
@@ -317,7 +318,7 @@ func TestCheckHazardPendingScopesToTaskSessions(t *testing.T) {
 
 	// 只有其他会话（含导入幽灵会话）的悬账：放行 + 审计行。
 	write(row("a1", "sess-research"), row("a2", "sess-ghost"))
-	if ok, reasons := CheckHazardPending(dir, state); !ok {
+	if ok, reasons := CheckHazardPending(dir, state, ""); !ok {
 		t.Fatalf("foreign-only pending must not block, got %v", reasons)
 	}
 	var audited bool
@@ -342,9 +343,45 @@ func TestCheckHazardPendingScopesToTaskSessions(t *testing.T) {
 		{"unattributed row", []string{row("d1", ""), row("d2", "sess-research")}, "有 1 个"},
 	} {
 		write(tc.rows...)
-		ok, reasons := CheckHazardPending(dir, state)
+		ok, reasons := CheckHazardPending(dir, state, "")
 		if ok || len(reasons) == 0 || !strings.Contains(reasons[0], tc.want) {
 			t.Fatalf("%s: must block with own count only, got ok=%v reasons=%v", tc.name, ok, reasons)
 		}
+	}
+}
+
+// TestCheckHazardPendingCallerAndSanitizedSessions pins the two ownership edges the scoping must not miss: a calling session that was never attached to the task still owns its blocks, and a task session recorded raw matches events carrying the sanitized id.
+//
+// TestCheckHazardPendingCallerAndSanitizedSessions 钉住作用域不得漏判的两条边：从未挂接到
+// 任务的调用会话，其拦截仍归本任务；任务状态里的原始会话 id 与事件里规范化后的 id 视为同一会话。
+func TestCheckHazardPendingCallerAndSanitizedSessions(t *testing.T) {
+	dir := hazardFixture(t)
+	state := &TaskState{TaskRef: "hz-edge", Branch: "feat/x", SessionID: "sess--raw.creator"}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	evPath := filepath.Join(dataHome(dir), "hazards", "events.jsonl")
+	if err := os.MkdirAll(filepath.Dir(evPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(sid string) {
+		t.Helper()
+		row := `{"type":"block","ts":"` + time.Now().Format(time.RFC3339) + `","command":"rm -rf /tmp/e","fingerprint":"e1","session_id":"` + sid + `"}` + "\n"
+		if err := os.WriteFile(evPath, []byte(row), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write("sess-unattached")
+	if ok, _ := CheckHazardPending(dir, state, ""); !ok {
+		t.Fatal("without caller session the unattached session's block is foreign and must not block")
+	}
+	if ok, reasons := CheckHazardPending(dir, state, "sess-unattached"); ok || len(reasons) == 0 {
+		t.Fatal("the calling session's own block must block complete even when it is not attached to the task")
+	}
+
+	write(util.SanitizeSessionID("sess--raw.creator"))
+	if ok, _ := CheckHazardPending(dir, state, ""); ok {
+		t.Fatal("an event carrying the sanitized creator id must count as the task's own block")
 	}
 }
