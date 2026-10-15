@@ -23,12 +23,14 @@ var (
 var docsLintCmd = &cobra.Command{
 	Use:   "lint [paths...] [--base <rev>]",
 	Short: "L1 文档 lint：禁令短语/必填章节/结论枚举/篇幅/结论位置（exit code: 0=通过 2=硬失败）",
-	Long: `forge docs lint 对 markdown 产物跑 L1 确定性检查（D1-D8）：
+	Long: `forge docs lint 对 markdown 产物跑 L1 确定性检查（D1-D11）：
   - D1/D2 禁令短语与无证据整体结论（hard）
   - D3 围栏外复述 diff（advisory）
   - D4 通过性断言无证据标记（advisory）
   - D5/D6 类型化规则：必填章节/结论枚举（hard，按文件名命中）
   - D7 类型化篇幅上限、D8 结论位置（advisory，typed docs）
+  - D9 来源可追溯、D10 信度标注、D11 内部标签泄漏（advisory，survey 类型：
+    文件名含 survey/调研 或位于 docs/surveys/）
 
 路径参数为文件或目录（目录递归收集 .md）；--base <rev> 改为 lint
 该基线以来变更的 .md（已提交 + 工作区 + 未跟踪，与 doc gate 同一集合——

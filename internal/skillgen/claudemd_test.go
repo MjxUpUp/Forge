@@ -27,8 +27,8 @@ func TestClaudeMDDocumentsDocLintHook(t *testing.T) {
 	if !strings.Contains(body, "**doc-lint**") {
 		t.Fatal("forge 段缺 **doc-lint** 文档行")
 	}
-	if !strings.Contains(body, "D1-D8") || !strings.Contains(body, "doc gate") {
-		t.Fatal("doc-lint 文档行缺 D1-D8 规则面或执法指向")
+	if !strings.Contains(body, "D1-D11") || !strings.Contains(body, "doc gate") {
+		t.Fatal("doc-lint 文档行缺 D1-D11 规则面或执法指向")
 	}
 }
 

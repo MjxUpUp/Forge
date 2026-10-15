@@ -21,9 +21,10 @@ type Issue struct {
 	Message  string   `json:"message"`
 }
 
-// Hard reports whether the issue blocks (D1/D2/D5/D6 hard; D3/D4/D7/D8 advisory).
+// Hard reports whether the issue blocks (D1/D2/D5/D6 hard; D3/D4/D7/D8 advisory; D9-D11 follow their type's Advisory flag).
 //
-// Hard 报告该条是否阻断（D1/D2/D5/D6 硬；D3/D4/D7/D8 建议）。
+// Hard 报告该条是否阻断（D1/D2/D5/D6 硬；D3/D4/D7/D8 建议；D9-D11 随所属类型的
+// Advisory 标记）。
 func (i Issue) Hard() bool { return i.Severity == Hard }
 
 // SkipMarker 让整个文件退出 doc lint（检查前 SkipScanLines 行）。
@@ -74,6 +75,14 @@ func PathExempt(path string) bool {
 // LintFile lint 单个 markdown 文件。豁免路径与 SkipMarker 文件返回空
 // （未扫，不等于通过）。读取错误向上返回。
 func LintFile(path string) ([]Issue, error) {
+	return LintFileAs(path, path)
+}
+
+// LintFileAs lints the file at path but picks the DocType from typeName — for content stored under a generic name (task artifacts are all <stage>.md) whose real type is known from where it came from.
+//
+// LintFileAs lint path 处的文件，但按 typeName 选 DocType——内容存在通用名下（任务产物
+// 一律 <stage>.md）、真实类型由来源文件名决定时用。豁免与 SkipMarker 仍按 path 判定。
+func LintFileAs(path, typeName string) ([]Issue, error) {
 	if PathExempt(path) {
 		return nil, nil
 	}
@@ -88,12 +97,12 @@ func LintFile(path string) ([]Issue, error) {
 			return nil, nil
 		}
 	}
-	return LintText(path, text), nil
+	return LintText(typeName, text), nil
 }
 
-// LintText runs D1-D8 over text. filename is used only for DocType matching.
+// LintText runs D1-D11 over text. filename (a path) is used only for DocType matching.
 //
-// LintText 对文本跑 D1-D8。filename 只用于 DocType 匹配。
+// LintText 对文本跑 D1-D11。filename（路径）只用于 DocType 匹配：先按 base 名，再按 PathContains 片段。
 func LintText(filename, text string) []Issue {
 	lines := strings.Split(text, "\n")
 	var issues []Issue
@@ -106,6 +115,8 @@ func LintText(filename, text string) []Issue {
 	// nonFenced 只收集散文行：D4 证据标记与 D7 篇幅上限不得被围栏代码满足/
 	// 撑大（围栏里的命令块是示例，不是「断言被实跑过」的证据）。
 	var nonFenced strings.Builder
+	// prose 是非围栏行及其原文件行号（D9-D11 逐段/逐行报告用）。
+	var prose []proseLine
 	// earlyProse 是前 earlyProseWindow 行非围栏散文（D8 结论位置窗口）。
 	var earlyProse strings.Builder
 	proseLines := 0
@@ -138,6 +149,7 @@ func LintText(filename, text string) []Issue {
 		}
 		nonFenced.WriteString(raw)
 		nonFenced.WriteByte('\n')
+		prose = append(prose, proseLine{no: lineNo, text: raw})
 		proseLines++
 		if proseLines <= earlyProseWindow {
 			earlyProse.WriteString(raw)
@@ -222,9 +234,9 @@ func LintText(filename, text string) []Issue {
 	// 实例规则跳过；通用 D1-D4 仍生效（模板不得裸用自己禁掉的短语）。
 	// D7 只数非围栏行：上限管的是散文膨胀，嵌长输出围栏的报告是结构选择
 	// 不是冗长。
-	if dt := matchDocType(filename); dt != nil && !isTemplateFile(filename) {
+	if dt := matchDocTypePath(filename); dt != nil && !isTemplateFile(filename) {
 		nonFencedLines := strings.Count(nonFenced.String(), "\n")
-		issues = append(issues, lintDocType(*dt, headings, text, nonFencedLines, earlyProse.String())...)
+		issues = append(issues, lintDocType(*dt, headings, text, nonFencedLines, earlyProse.String(), prose)...)
 	}
 
 	return issues
@@ -284,9 +296,12 @@ func isTemplateFile(filename string) bool {
 
 // lintDocType 应用 D5（必填章节）、D6（结论枚举）、D7（篇幅上限）与 D8
 // （结论位置——D5/D6 判有无，D8 判靠前；earlyProse 是前 earlyProseWindow
-// 行非围栏散文）。
-func lintDocType(dt DocType, headings []string, text string, lineCount int, earlyProse string) []Issue {
+// 行非围栏散文），SurveyRules 类型再加 D9-D11（prose 是非围栏行及其行号）。
+func lintDocType(dt DocType, headings []string, text string, lineCount int, earlyProse string, prose []proseLine) []Issue {
 	issues := lintDocTypeRules(dt, headings, text, lineCount, earlyProse)
+	if dt.SurveyRules {
+		issues = append(issues, lintSurveyRules(dt, prose)...)
+	}
 	if dt.Advisory {
 		for i := range issues {
 			issues[i].Severity = Advisory
@@ -431,4 +446,72 @@ func stripInlineCode(line string) string {
 		}
 	}
 	return sb.String()
+}
+
+// proseLine is one non-fenced line with its original file line number.
+//
+// proseLine 是一行非围栏文本及其原文件行号。
+type proseLine struct {
+	no   int
+	text string
+}
+
+// lintSurveyRules applies D9 (no URL in the whole document; a paragraph or table row with a percentage/multiplier but no citation marker), D10 (no confidence marker anywhere) and D11 (internal research-pipeline labels, reported per line). Severity is Hard here; lintDocType downgrades it when the type is Advisory.
+//
+// lintSurveyRules 应用 D9（全文无 URL；含百分比/倍数的段落或表格行无引用标记）、D10
+// （全文无信度标注）、D11（调研流水线内部标签，逐行报告）。此处给 Hard，类型为 Advisory
+// 时由 lintDocType 统一降级。段落按空行、标题与表格行切分；脚注定义行本身含 URL。
+func lintSurveyRules(dt DocType, prose []proseLine) []Issue {
+	var issues []Issue
+	var all strings.Builder
+	for _, l := range prose {
+		all.WriteString(l.text)
+		all.WriteByte('\n')
+	}
+	body := all.String()
+	if !surveyURLRe.MatchString(body) {
+		issues = append(issues, Issue{Line: 1, Rule: "D9", Severity: Hard,
+			Message: fmt.Sprintf("%s 全文无 URL 来源——调研结论须可追溯到原文（脚注定义行带 URL 与日期）", dt.ID)})
+	}
+
+	flush := func(start int, para string) {
+		if para != "" && surveyNumericRe.MatchString(para) && !surveyCitationRe.MatchString(para) {
+			issues = append(issues, Issue{Line: start, Rule: "D9", Severity: Hard,
+				Message: "含百分比/倍数的段落没有引用标记——数字须挂 [^N^] 或 URL"})
+		}
+	}
+	paraStart, para := 0, ""
+	for _, l := range prose {
+		trimmed := strings.TrimSpace(l.text)
+		switch {
+		case trimmed == "" || strings.HasPrefix(trimmed, "#"):
+			flush(paraStart, para)
+			paraStart, para = 0, ""
+		case strings.HasPrefix(trimmed, "|"):
+			flush(paraStart, para)
+			paraStart, para = 0, ""
+			if surveyNumericRe.MatchString(trimmed) && !surveyCitationRe.MatchString(trimmed) {
+				issues = append(issues, Issue{Line: l.no, Rule: "D9", Severity: Hard,
+					Message: "含百分比/倍数的表格行没有引用标记——数字须挂 [^N^] 或 URL"})
+			}
+		default:
+			if paraStart == 0 {
+				paraStart = l.no
+			}
+			para += trimmed + "\n"
+		}
+	}
+	flush(paraStart, para)
+
+	if !surveyConfidenceRe.MatchString(body) {
+		issues = append(issues, Issue{Line: 1, Rule: "D10", Severity: Hard,
+			Message: fmt.Sprintf("%s 全文无信度标注——结论须标可信度（如「多源一致」「单一来源，未交叉验证」或 ✅⚠️❌）", dt.ID)})
+	}
+	for _, l := range prose {
+		if m := surveyInternalLabelRe.FindString(stripInlineCode(l.text)); m != "" {
+			issues = append(issues, Issue{Line: l.no, Rule: "D11", Severity: Hard,
+				Message: fmt.Sprintf("调研流水线内部标签「%s」出现在交付物里——对外改用白话", m)})
+		}
+	}
+	return issues
 }

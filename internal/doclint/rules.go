@@ -121,10 +121,46 @@ type DocType struct {
 	// starts in its observation window and is promoted only on data
 	// (design-stage-hardening proposal principle 2).
 	//
-	// Advisory 把该类型的全部类型规则（D5-D8）降为建议：新类型先进观察窗口，
+	// Advisory 把该类型的全部类型规则（D5-D11）降为建议：新类型先进观察窗口，
 	// 凭数据再升档（design-stage-hardening 提案原则 2）。
 	Advisory bool
+	// PathContains matches slash-normalized path fragments, consulted only when no type matched by base filename (base-name types always win).
+	//
+	// PathContains 按斜杠规范化后的路径片段匹配，只在 base 文件名未命中任何类型时才查
+	// （base 名类型永远优先——docs/surveys/ 下的 *-retrospective.md 仍是复盘）。只给
+	// 目录即类型的场景用：按路径匹配会把 skills/session-retrospective/SKILL.md 这类
+	// 目录名误判成交付物类型。
+	PathContains []string
+	// SurveyRules enables D9 (sources), D10 (confidence markers) and D11 (internal research-pipeline labels).
+	//
+	// SurveyRules 打开 D9（来源可追溯）、D10（信度标注）、D11（调研流水线内部标签泄漏）。
+	SurveyRules bool
 }
+
+// surveyNumericRe matches numeric claims that owe a citation: percentages and multipliers.
+//
+// surveyNumericRe 匹配欠一条引用的数字断言：百分比与倍数。
+var surveyNumericRe = regexp.MustCompile(`\d+(\.\d+)?\s?(%|倍|×)`)
+
+// surveyCitationRe matches citation markers: footnotes ([^3^]/[^3]), numbered or evidence refs ([3]/[E3]) and URLs.
+//
+// surveyCitationRe 匹配引用标记：脚注（[^3^]/[^3]）、编号或证据引用（[3]/[E3]）、URL。
+var surveyCitationRe = regexp.MustCompile(`\[\^?[A-Za-z]?\d+\^?\]|https?://`)
+
+// surveyURLRe matches any URL.
+//
+// surveyURLRe 匹配任意 URL。
+var surveyURLRe = regexp.MustCompile(`https?://`)
+
+// surveyConfidenceRe matches confidence markers in plain words or symbols.
+//
+// surveyConfidenceRe 匹配信度标注（符号或白话）。
+var surveyConfidenceRe = regexp.MustCompile(`✅|⚠️|❌|信度|置信|(?i:confidence)|多源一致|单一来源|未交叉验证|来源互相矛盾`)
+
+// surveyInternalLabelRe matches internal research-pipeline labels that must not reach readers.
+//
+// surveyInternalLabelRe 匹配不得出现在交付物里的调研流水线内部标签（模式名、工序号、中间文件名）。
+var surveyInternalLabelRe = regexp.MustCompile(`撒网模式|锁定模式|文件 ?only ?模式|文件增强模式|工序 ?[0-9F]|dive_[0-9]|scan_[0-9]|scan_anti|run_dir`)
 
 // DocTypes is the v1 type table.
 //
@@ -164,6 +200,34 @@ var DocTypes = []DocType{
 		},
 		Advisory: true,
 	},
+	{
+		// 调研文档（2026-10 research-workflow 复盘）：落库调研丢信度标注、正文无 URL、
+		// 泄漏流水线内部标签。D9-D11 观察窗口内全部 advisory。docs/surveys/ 目录即类型。
+		ID:               "survey",
+		FilenameContains: []string{"survey", "调研"},
+		PathContains:     []string{"docs/surveys/"},
+		SurveyRules:      true,
+		Advisory:         true,
+	},
+}
+
+// matchDocTypePath returns the DocType for a path: base-filename match first, then PathContains fragments; nil when nothing matches.
+//
+// matchDocTypePath 返回路径对应的 DocType：先按 base 文件名，未命中再查 PathContains 片段；
+// 都不中返回 nil。
+func matchDocTypePath(path string) *DocType {
+	if dt := matchDocType(path); dt != nil {
+		return dt
+	}
+	norm := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	for i := range DocTypes {
+		for _, frag := range DocTypes[i].PathContains {
+			if strings.Contains(norm, strings.ToLower(frag)) {
+				return &DocTypes[i]
+			}
+		}
+	}
+	return nil
 }
 
 // matchDocType 返回首个文件名命中（仅 BASE 名）的 DocType，未命中返回 nil。

@@ -57,7 +57,7 @@ Forge 的扩展面是**执法协议**，不是功能市场。因此：
 
 | 分类 | 定义 | Forge 现状标注 |
 |---|---|---|
-| **core spine**（不可换） | 执法协议本体；变更走 advisory→BLOCKED 升档承诺（mechanism-hardening P1-3） | 3 道门禁、23 hook 名册、cheat-scan 7 模式、doclint D1-D8、21 条 skill 安全规则、CheckName/逃生舱 roster |
+| **core spine**（不可换） | 执法协议本体；变更走 advisory→BLOCKED 升档承诺（mechanism-hardening P1-3） | 3 道门禁、23 hook 名册、cheat-scan 7 模式、doclint D1-D11、21 条 skill 安全规则、CheckName/逃生舱 roster |
 | **swappable seam**（可换实现） | 接口稳定、实现可替换/可扩展 | hostcap 能力注册表（数据）、hookdispatch 的 stdinNormalizers / 输出 emitter（行为列）、agentbridge Translator（每宿主一个文件）、persistence（jsonl/sqlite 类） |
 | **composition point**（数据声明组合） | 用户/配置在运行时组合，无需改内核 | schema.yaml 产物链档位、skill frontmatter triggers（半开：命名 condition 词汇表在内核）、conventions profile、per-task override、profile 三档 |
 | **外部桥**（新增第四格，Forge 特有） | 内核外进程内接线层，双端契约 | plugins/forge-dsh（Cordis 包装层）、plugins/forge 宿主接线包 |
