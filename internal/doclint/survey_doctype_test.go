@@ -57,7 +57,7 @@ func TestSurveyDocType(t *testing.T) {
 
 	t.Run("D9 数字段落与表格行无引用", func(t *testing.T) {
 		// 表格紧贴一段带引用、不含数字的说明——表格行若不单独判，会并进这段被它的引用掩盖。
-		text := good + "\n采用率在半年内提升了 3 倍，并且有 42％ 的团队已迁移。\n\n已核实的数据 [^1^]：\n| 指标 | 数值 |\n|---|---|\n| 留存 | 71% |\n"
+		text := good + "\n有 42％ 的团队已迁移。\n\n已核实的数据 [^1^]：\n| 指标 | 数值 |\n|---|---|\n| 留存 | 71% |\n"
 		got := rules(LintText("docs/surveys/x.md", text), "D9")
 		if len(got) != 2 {
 			t.Fatalf("want 2 D9 (paragraph + table row), got %d: %+v", len(got), got)

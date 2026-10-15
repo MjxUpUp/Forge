@@ -8,6 +8,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/artifactchain"
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/doclint"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
@@ -313,8 +314,18 @@ func TestArtifactLintUsesSourceType(t *testing.T) {
 	if err := os.WriteFile(designAbs, []byte("# 方案\n\n正文\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if hard, err := lintArtifactHardIssues(designAbs, "notes/C1.md"); err != nil || len(hard) != 0 {
-		t.Fatalf("design type stays advisory after fallback, got %v %v", hard, err)
+	issues, err := doclint.LintFileAs(designAbs, "notes/C1.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var designD5 bool
+	for _, is := range issues {
+		if is.Rule == "D5" && strings.Contains(is.Message, "design") && !is.Hard() {
+			designD5 = true
+		}
+	}
+	if !designD5 {
+		t.Fatalf("an untyped source must fall back to the stored design.md type (advisory D5), got %+v", issues)
 	}
 	// survey 类型在观察窗口内全是 advisory：按 survey 定型也不产生 Hard。
 	if hard, err := lintArtifactHardIssues(abs, "docs/surveys/agent-memory.md"); err != nil || len(hard) != 0 {
