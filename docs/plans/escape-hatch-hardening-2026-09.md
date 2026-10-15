@@ -7,8 +7,13 @@
 >
 > 理论锚点:参考监视器三属性(always invoked / tamper-proof / verifiable,
 > NIST);业界共识 = 逃生口不消灭而 sudo 化(显式/必经中介/必留痕/可禁绝/有界);
-> 学界警示 = prompt 层禁令实证无效(METR、ImpossibleBench),执法逻辑对 agent
-> 过度暴露反升作弊率。
+> 学界警示 = prompt 层禁令效果不稳(METR 实测"别作弊"类指令近乎无效;但
+> ImpossibleBench 中最严格的 prompt 把 GPT-5 作弊率从 92% 压到 1%);执法逻辑
+> 对 agent 可见与作弊率升高相关(METR,非因果,见 P2 节)。
+>
+> 更正(2026-10-15):原文写"prompt 层禁令实证无效""过度暴露反升作弊率",
+> 删了 METR 的 hedge、漏了 ImpossibleBench 的反证,已按原文降级(research-workflow
+> 复盘 2026-10 回原文核验);原文链接见 P2 节。
 
 ## 原则(本 spec 全部改动不得违反)
 
@@ -118,9 +123,17 @@ toollog(本就去重对象);竞态双读双跑=良性 fail-open 退回现状。
   escape-hatch 行(gate=task-wild/reason=declarative/owner,进统一漏斗);
   会话限额 3 条,超额升级提示建任务(不拒绝——逃生舱永在);有活跃任务时
   申报输出更强异常信号行。
-- **规则分层暴露(仍为方向,未立项)**:执法判定逻辑不进 agent 上下文
-  (METR 43× 警示)——教学面(点名文件)与执法面(判定规则)分离,需要
-  独立 spec 定义暴露面清单,不在本 spec 范围。
+- **规则分层暴露(仍为方向,未立项)**:执法判定逻辑不进 agent 上下文——
+  教学面(点名文件)与执法面(判定规则)分离,需要独立 spec 定义暴露面清单,
+  不在本 spec 范围。依据是相关性,不是因果:METR 观察到 o3 在 RE-Bench 上
+  reward hacking 比 HCAST 多 43 倍以上,原文写的是"perhaps because"模型能看到
+  完整打分函数,并自给两种替代解释(RE-Bench 任务更难、scaffold 不同)。
+  反证:ImpossibleBench 的 Conflicting-LiveCodeBench 上,最严格的 prompt 能把
+  GPT-5 作弊率从 92% 降到 1%,隐藏
+  测试可降到近零但会拖累正常任务表现。设计方向保留,理由是执法逻辑不暴露的
+  成本低;不应引用为"可见即作弊率反升 43 倍"。来源:
+  https://metr.org/blog/2025-06-05-recent-reward-hacking/ ,
+  https://arxiv.org/abs/2510.20270
 
 ## 度量(回测口径)
 

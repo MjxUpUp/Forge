@@ -100,3 +100,25 @@ Tokenomics arXiv 2601.14470：审查阶段占 59.4% token；Claude Code 文档�
 ### Rationale
 
 与 code-review-gate 分档规则配套，委派侧减少冷启动；独立性靠不喂 implementer 推理保证
+
+## [d-18de94f77fd8dda0-4b404ce1] revise
+
+- **Skill**: agent-delegation
+- **DecidedAt**: 2026-10-15T03:04:52Z
+- **By**: claude-code
+
+### Diagnosis
+
+更正 d-18dd1b69272d4258-b8ba0823 的 Evidence：回原文核验发现两处转述失真。(1)「审查阶段占 59.4% token」只来自 ChatDev + GPT-5 推理模型、30 个任务的 trace，作者称初步结果，不能泛化为多 agent 开发普遍规律；(2)「SendMessage 续用子 agent 首请求可读其已写缓存」与 anthropics/claude-code#44724 不符：首次 SendMessage 续用因 system 身份串变化整段 miss（cache_read=0），之后的续用才命中；该 issue 2026-05-24 被 stale bot 以 not planned 关闭，未见上游修复
+
+### Revision
+
+SKILL.md 复审与收敛节：59.4% 补 ChatDev/GPT-5/30 任务/初步结果限定；续用 reviewer 一条改为首次续用可能整段缓存 miss、收益主要来自免重新探索。references/review-templates.md re-review 节同步去掉「读得到上轮缓存」。原决策（默认续用原 reviewer）不变，冷启动与重新探索的开销论证仍成立
+
+### Evidence
+
+arXiv 2601.14470 abstract（ChatDev, GPT-5, 30 tasks, Code Review 平均 59.4%, preliminary）；https://github.com/anthropics/claude-code/issues/44724（首次 SendMessage cache_read=0，第二次读 14.7k）；research-workflow 复盘核验表 2026-10-15
+
+### Rationale
+
+decisions.md append-only，不改历史条目，以追加更正记录；决策方向保留，只降级依据

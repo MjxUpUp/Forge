@@ -1,6 +1,6 @@
 # 功能聚焦三批落地设计（2026-09）
 
-依据：docs/plans/feature-focus-2026-09.md（决策）与发展方向调研（~/.forge/research/forge-direction-20260905-0956/report.md，P0/P1）。本文是三批的工程设计记录——每特性给目标/设计/落点/验收；实现按批次开任务走门禁。
+依据：docs/plans/feature-focus-2026-09.md（决策）与发展方向调研（~/.forge/research/forge-direction-20260905-0956/report.md（失效：该 run 目录 2026-10-15 已不存在，不可复核），P0/P1）。本文是三批的工程设计记录——每特性给目标/设计/落点/验收；实现按批次开任务走门禁。
 
 通用约束（适用全部特性）：
 
