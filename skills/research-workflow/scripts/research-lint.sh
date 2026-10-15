@@ -190,6 +190,7 @@ fi
 
 # ---- W3 URL liveness (opt-in) ----
 if [ "${check_urls}" = "1" ] && [ -f "${report}" ]; then
+  set -f  # URL 里的 ? 与 * 不做通配展开
   for url in $(grep -E '^\[\^[0-9]+\^?\]:' "${report}" | grep -oE 'https?://[^ )>]+' | sort -u); do
     code=$(curl -s -o /dev/null -L -m 10 -A 'Mozilla/5.0' -w '%{http_code}' "${url}" 2>/dev/null)
     case "${code}" in
@@ -197,6 +198,7 @@ if [ "${check_urls}" = "1" ] && [ -f "${report}" ]; then
       *) warn W3 "URL 不可达（HTTP ${code:-000}）：${url}" ;;
     esac
   done
+  set +f
 fi
 
 echo "research-lint: ${errors} error(s), ${warns} warning(s)"
