@@ -207,6 +207,13 @@ const (
 	// deterministic（forge 自己核验锚点），但不在 evidence 白名单（evidence.go
 	// verificationChecks），永不参与证据强度。
 	CheckDecisionWarrant CheckName = "decision-warrant"
+	// CheckDecisionEvidence records whether a `forge skills decide` cites external figures (percentages, multipliers, arXiv ids) in its evidence or rationale without any source URL. Advisory: Passed=false when figures lack a URL, the decision is still written; not in the evidence whitelist.
+	//
+	// CheckDecisionEvidence 记录一次 `forge skills decide` 的 Evidence / Rationale 是否引用了
+	// 外部数字（百分比、倍数、arXiv 编号）却没给来源 URL（2026-10 research-workflow 复盘：
+	// 59.4% 进决策记录时丢了来源与场景限定）。advisory：缺 URL 时 Passed=false，决策照常
+	// 写入；两段文本都不含外部数字时不落行。不在 evidence 白名单，永不参与证据强度。
+	CheckDecisionEvidence CheckName = "decision-evidence"
 	// CheckConventionsInject records one conventions-layer injection fired by the conventions hooks (2026-08-28).
 	//
 	// CheckConventionsInject 记录 conventions 层的一次注入（2026-08-28，

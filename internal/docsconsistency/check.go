@@ -256,3 +256,56 @@ func DanglingSkillRefs(text string, knownSkills, allowlist map[string]bool) []st
 	}
 	return out
 }
+
+// homePathRef matches a ~/ path written in a document: ASCII path characters only, so the match stops at whitespace, backticks, brackets, quotes and CJK punctuation.
+//
+// homePathRef 匹配文档里写的 ~/ 路径：只收 ASCII 路径字符，遇空白、反引号、括号、引号、
+// 中文标点即止。
+var homePathRef = regexp.MustCompile(`~/[A-Za-z0-9._/-]+`)
+
+// homePathPlaceholderNext lists characters that, right after a match, mark the path as a template (~/.x/{topic}-…, ~/.x/<run>, ~/.x/*.md, ~/.x/$RUN, ~/.x/…) rather than a concrete reference.
+//
+// homePathPlaceholderNext 是紧跟在匹配之后、表示路径是模板而非具体引用的字符
+// （~/.x/{topic}-…、~/.x/<run>、~/.x/*.md、~/.x/$RUN、~/.x/…）。
+const homePathPlaceholderNext = "{<*$…"
+
+// DanglingHomePaths returns the ~/ paths referenced in text that do not exist under home, de-duplicated in first-seen order. Template paths (followed by a placeholder character or containing "...") are skipped; trailing sentence punctuation is trimmed. An empty home returns nil.
+//
+// DanglingHomePaths 返回 text 中引用、在 home 下不存在的 ~/ 路径（去重、保持首次出现顺序）。
+// 模板路径（紧跟占位字符或含 "..."）跳过；句末标点裁掉。home 为空返回 nil。只在本机
+// task complete 时用——本机路径天然不可移植，不进 CI 与 forge docs lint。
+func DanglingHomePaths(text, home string) []string {
+	if home == "" || !strings.Contains(text, "~/") {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, loc := range homePathRef.FindAllStringIndex(text, -1) {
+		ref := text[loc[0]:loc[1]]
+		if rest := text[loc[1]:]; rest != "" && strings.ContainsAny(firstRune(rest), homePathPlaceholderNext) {
+			continue
+		}
+		if strings.Contains(ref, "...") {
+			continue
+		}
+		ref = strings.TrimRight(ref, ".,;:")
+		if ref == "~/" || seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		if _, err := os.Stat(filepath.Join(home, filepath.FromSlash(strings.TrimPrefix(ref, "~/")))); err != nil {
+			out = append(out, ref)
+		}
+	}
+	return out
+}
+
+// firstRune returns the first UTF-8 character of s ("" for an empty string).
+//
+// firstRune 返回 s 的首个 UTF-8 字符（空串返回 ""）。
+func firstRune(s string) string {
+	for _, r := range s {
+		return string(r)
+	}
+	return ""
+}

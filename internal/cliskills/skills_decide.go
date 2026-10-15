@@ -194,6 +194,8 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 	if skDecOutcome == skillsdecisions.OutcomeAccept || warrant != "" {
 		reportWarrant(cmd, skDecSkill, skDecOutcome, warrant)
 	}
+	// 证据来源核验（advisory）：Evidence / Rationale 引外部数字却无 URL 时提醒。
+	reportDecisionEvidence(cmd, skDecSkill, skDecOutcome, skDecEvidence, skDecRationale)
 	return nil
 }
 

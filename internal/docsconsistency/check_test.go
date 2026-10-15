@@ -1,6 +1,9 @@
 package docsconsistency
 
 import (
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -208,5 +211,35 @@ func TestStaleBinaryHint(t *testing.T) {
 	RegisterVersion(func() string { return "" })
 	if hint := StaleBinaryHint(); !strings.Contains(hint, "forge update") {
 		t.Errorf("空版本串时 hint 应降级为通用句, got %q", hint)
+	}
+}
+
+// TestDanglingHomePaths pins ~/ path detection: existing paths pass, missing ones are reported once in order, templates and sentence punctuation are handled, and an empty home disables the check.
+//
+// TestDanglingHomePaths 钉住 ~/ 路径检测：存在的放过；缺失的按首次出现顺序各报一次；模板路径
+// 与句末标点正确处理；home 为空时不检查。
+func TestDanglingHomePaths(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".research-workflow", "agent-memory-20261014-1535"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	text := "报告见 `~/.research-workflow/agent-memory-20261014-1535`。\n" +
+		"旧证据：~/.forge/research/forge-direction-20260905-0956/report.md（已失效）。\n" +
+		"再次引用 ~/.forge/research/forge-direction-20260905-0956/report.md，\n" +
+		"模板：~/.research-workflow/{topic}-<时间戳>、~/.x/*.md、~/.x/$RUN、~/.x/...\n" +
+		"另一个缺失：~/.forge/research/forge-mechanisms-20260905-1752."
+	got := DanglingHomePaths(text, home)
+	want := []string{
+		"~/.forge/research/forge-direction-20260905-0956/report.md",
+		"~/.forge/research/forge-mechanisms-20260905-1752",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("DanglingHomePaths = %q, want %q", got, want)
+	}
+	if got := DanglingHomePaths(text, ""); got != nil {
+		t.Fatalf("empty home must disable the check, got %q", got)
+	}
+	if got := DanglingHomePaths("no home paths here", home); got != nil {
+		t.Fatalf("text without ~/ must return nil, got %q", got)
 	}
 }
