@@ -647,6 +647,7 @@ func TestSkillsDecideEvidenceSource(t *testing.T) {
 		{"倍与 Nx 无来源", "成本涨了 3 倍，吞吐 2.5x", "", true, false, "没有来源", "3 倍、2.5x"},
 		{"全角百分号与大写 X", "覆盖率 85％，提速 4X", "", true, false, "没有来源", "85％、4X"},
 		{"内部指标引用 run", "trigger 通过率 100%（run-20261015-a1）", "", true, true, "", "100%"},
+		{"普通词 run-time 不算来源", "run-time 开销降了 30%", "", true, false, "没有来源", "30%"},
 		{"无外部数字", "改了 SKILL.md 的措辞", "复盘结论", false, false, "", ""},
 	}
 	for i, c := range cases {
