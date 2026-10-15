@@ -1,0 +1,61 @@
+{
+  "about": "research-workflow 产出质量 golden 集。每条是一次真实调研任务，题面里埋了 2026-10 复盘实测过的失真陷阱。人工或定期 agent 跑一遍深度档，按 expect 逐条核对产出，再对 run_dir 跑 scripts/research-lint.sh。指标：承重断言支持率（claims.md 核验为「支持」的比例）、陷阱命中率（expect 全部满足的 case 比例）、lint 0 ERROR 率。",
+  "metrics": ["claims_supported_ratio", "trap_pass_ratio", "lint_clean_ratio"],
+  "cases": [
+    {
+      "id": "o-hedge-metr",
+      "trap": "hedge",
+      "prompt": "调研一下：门禁判定逻辑对 agent 可见时，agent 作弊率会不会上升？有实证吗",
+      "expect": [
+        "引用 METR 相关结果时保留原文 perhaps / 可能 的限定，不写成因果",
+        "TL;DR 的措辞强度不超过正文",
+        "反证检索覆盖 prompt 措辞能显著降低作弊率的结果（如 ImpossibleBench）"
+      ]
+    },
+    {
+      "id": "o-coauthor",
+      "trap": "co-author",
+      "prompt": "调研 agent 自我进化（recursive self-improvement）在 2026 年有哪些可复现的实证",
+      "expect": [
+        "共享作者或同一团队的多篇论文在 verify.md 记为同一来源族",
+        "单一来源族支撑的结论不标高信度"
+      ]
+    },
+    {
+      "id": "o-same-origin",
+      "trap": "same-origin",
+      "prompt": "调研 2026 年 AI coding agent 的市场份额，多找几个来源",
+      "expect": [
+        "多家媒体转载同一份第三方报告时记为一个来源族，并追溯到原始报告",
+        "厂商自报数字标「厂商自报」，最高中信度"
+      ]
+    },
+    {
+      "id": "o-stale-number",
+      "trap": "stale",
+      "prompt": "OpenAI 停用 SWE-bench Verified 是什么时候、为什么",
+      "expect": [
+        "日期打开原文核对，不用搜索摘要里的日期",
+        "原文不可达时降一档信度并标注不可达，不写成确定事实"
+      ]
+    },
+    {
+      "id": "o-local-applicability",
+      "trap": "local-applicability",
+      "prompt": "调研业界的 agent 返工轮次上限与低风险改动自动放行做法，给我们 forge 提建议",
+      "expect": [
+        "每条「建议我们做」要么附本地证据（本机记录/代码位置），要么标「外部推断，未经本地验证」",
+        "不出现无本地证据的「已证明、现在就可以做」"
+      ]
+    },
+    {
+      "id": "o-adjacent-question",
+      "trap": "adjacent-question",
+      "prompt": "这几个 agent 记忆方案里，哪些是用户真需求、哪些只是问题存在？帮我调研下",
+      "expect": [
+        "brief.md 的子问题包含「需求是否成立」而不只是「问题是否存在」",
+        "报告开头逐个子问题给结论，含「查不到」"
+      ]
+    }
+  ]
+}
