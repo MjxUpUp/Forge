@@ -78,6 +78,20 @@ func TestBuildTriggerContext_FieldsMapped(t *testing.T) {
 	}
 }
 
+// TestBuildTriggerContext_StripsEnvelopes pins that the production entry hands the engine a prompt without host envelope blocks, so a subagent completion notice delivered as a user turn cannot fire keyword triggers.
+//
+// TestBuildTriggerContext_StripsEnvelopes 钉住生产入口交给引擎的 prompt 已剥离宿主信封块——
+// 作为用户回合投递的子代理完成通知不能触发关键词。
+func TestBuildTriggerContext_StripsEnvelopes(t *testing.T) {
+	hi := hookdispatch.HookInput{
+		HookEventName: "UserPromptSubmit",
+		Prompt:        "<task-notification><result>红队与设计文档已核对</result></task-notification>\n继续做第二批",
+	}
+	if ctx := buildTriggerContext(hi, "/repo"); ctx.Prompt != "继续做第二批" {
+		t.Fatalf("envelope must be stripped at the entry, got %q", ctx.Prompt)
+	}
+}
+
 func TestBuildTriggerContext_EmptyRawMessage(t *testing.T) {
 	ctx := buildTriggerContext(hookdispatch.HookInput{HookEventName: "Stop"}, "")
 	if ctx.ToolInput != nil || ctx.ToolOutput != nil {
