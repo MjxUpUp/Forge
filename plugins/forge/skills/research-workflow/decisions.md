@@ -168,3 +168,30 @@ grep 确认 forge Go 代码零处读写 ~/.forge/research 与 web-search-stats�
 ### Rationale
 
 照 doc-generator 双路径先例（~/.doc-generator/）；路径无 forge 消费方，改动零迁移成本
+
+## [d-18dea1c73935d830-b2f78292] accept
+
+- **Skill**: research-workflow
+- **DecidedAt**: 2026-10-15T06:59:38Z
+- **By**: claude-code
+- **Warrant**: doc:docs/surveys/2026-10-research-workflow-retrospective.md
+
+### Diagnosis
+
+2026-10 复盘：23 次深度调研、31 条承重断言回原文核验，3 条不支持、7 条部分支持；失真全在转述链（删 hedge、丢场景限定、两源拼结论）；高信度按 worker 数计导致循环互证；质量门全靠散文自查致静默降级（完整撒网 1/23、Phase L 0 次使用、自报搜索量虚高 23-60%）；答相邻问题、外部结论直接变本地建议
+
+### Revision
+
+新增 references/credibility-protocol.md（研究契约 brief、来源族信度、限定列、全模式反证、claims 隔离核验、本地适用性、status.json/search_log、停止规则）与 references/phase-l.md；新增 scripts/research-lint.sh 交付前确定性检查与 evals/output-cases.json 六类陷阱 golden 集；engine 改 6 段 worker 契约与来源族四档；去掉 ≥60/≥110 搜索下限；飞书发布改为用户要求时；建目录改两步字面路径；failure-cases 补案例 7-10
+
+### Prediction
+
+下一批深度调研 run 的承重断言回原文支持率从 68% 升到 ≥85%，lint 0 ERROR 交付率 100%，Phase L 读取次数 >0
+
+### Evidence
+
+internal/skillsqa/research_workflow_test.go：lint 对 13 类陷阱逐条检出、接线与 golden 集结构钉住；forge skills validate 43/43
+
+### Rationale
+
+复盘根因是关键门只有散文规则加同一 agent 自查；能脚本化的改 lint，不能脚本化的交给隔离上下文核验子代理
