@@ -37,33 +37,41 @@
 | 模式 | 工序 1 走法 | 后续差异 |
 |---|---|---|
 | **撒网模式** | 工序 1 撒网铺面（5 facet + 反框架 worker） | 标准链路 |
-| **锁定模式** | 工序 1 起手勘察（skip 撒网铺面） | 标准链路 |
-| **文件 only 模式** | 跳过工序 1，工序 F 主题清单直接进工序 2 | 工序 3 不外搜；工序 5 跳过 |
-| **文件增强模式** | 工序 F + 工序 1 targeted scan（只搜文件 gap） | 工序 3 文件 + 外搜结合 |
+| **锁定模式** | 工序 1 起手勘察 + 反框架 worker（skip facet 撒网） | 标准链路 |
+| **文件 only 模式** | 跳过工序 1，工序 F 主题清单直接进工序 2 | 工序 3 不外搜；工序 5 跳过；不派反框架 worker |
+| **文件增强模式** | 工序 F + 工序 1 targeted scan（只搜文件 gap）+ 反框架 worker | 工序 3 文件 + 外搜结合 |
 
 文件场景拿不准走哪种 → 默认**文件增强**。
 
 ## 文件命名与通信约定
 
-**每次 session 独立目录**——主 agent 选定 topic 后（工序 0 末），立即 bash 建本次 run 的隔离目录：
+**每次 session 独立目录**——主 agent 选定 topic 后（工序 0 末），分两步建本次 run 的隔离目录：先取时间戳，再用字面路径建目录（不要把命令替换存进变量再 mkdir，部分宿主的高危命令守卫会拦）：
 
 ```bash
-mkdir -p ~/.research-workflow/{topic}-$(date '+%Y%m%d-%H%M')
+date '+%Y%m%d-%H%M'
+mkdir -p ~/.research-workflow/agent-memory-20261014-1535
 ```
 
-完整路径记作 `{run_dir}`。`topic` 短、英文小写 + 连字符。`-p` 让 mkdir 幂等，同分钟重跑不挂。
+完整路径记作 `{run_dir}`。`topic` 短、英文小写 + 连字符。`-p` 让 mkdir 幂等，同分钟重跑不挂。建完目录立刻写 `brief.md` 与 `status.json`（`references/credibility-protocol.md` 第 1、7 节）。
 
 所有产出落在 `{run_dir}/` 下，文件名不再带 topic 前缀：
 
 | 文件 | 工序 | 模式 | 内容 |
 |---|---|---|---|
+| `{run_dir}/brief.md` | 0 | 全模式 | 研究契约：原问题原文 / 要服务的决策 / 子问题 / 范围 / 时间窗 / 出口条件 |
+| `{run_dir}/status.json` | 0-交付 | 全模式 | 模式、阶段、降级记录、实测检索次数、下游消费方 |
+| `{run_dir}/search_log.md` | 1-5 | 全模式 | 每次检索 / 抓取一行（worker、时间、工具、查询或 URL、纳入/排除、理由） |
 | `{run_dir}/file_analysis.md` | F | 文件 only / 文件增强 | 文件清单 + per-file 抽取 + 跨文件 mapping + gap 分析 + 主题清单 |
 | `{run_dir}/map.md` | 1 | 撒网 / 锁定 / 文件增强 | landscape 地图（关键玩家、来源、信号入口） |
 | `{run_dir}/scan_NN.md` | 1（撒网） | 撒网 | 每 facet worker 的撒网产出 |
+| `{run_dir}/scan_anti.md` | 1 | 撒网 / 锁定 / 文件增强 | 反框架 worker 的产出（不给 map.md context） |
 | `{run_dir}/dive_NN.md` | 3 | 全模式 | 每维度 worker 的深挖产出 |
 | `{run_dir}/verify.md` | 4 | 全模式 | 4 档信度分类 + 矛盾点 + 全局引用映射 |
 | `{run_dir}/resolve_NN.md` | 5 | 撒网 / 锁定 / 文件增强 | 每条矛盾的定点消解产出（文件 only 跳过） |
 | `{run_dir}/insight.md` | 6 | 全模式 | 跨维度综合洞察 |
+| `{run_dir}/claims.md` | 写作前 | 全模式 | 承重断言台账 + 独立核验结论 |
+| `{run_dir}/parking.md` | 任意 | 全模式 | 挂不回子问题的发现（不进报告正文） |
+| `{run_dir}/report.md` | 写作 | 全模式 | 交付报告 |
 
 **通信协议（主 agent 与 worker 共享 host 文件系统）**：
 - worker 用 write/bash 工具**直接写到上述路径**；路径在 spawn prompt 里给死，worker 不自取名
@@ -96,14 +104,14 @@ mkdir -p ~/.research-workflow/{topic}-$(date '+%Y%m%d-%H%M')
 1. 拆 **≥5 个 facet**，facet 之间必须跨不同 dimension（不要都从同一角度切）
 2. 同一波 spawn 一 facet 一 worker。spawn prompt **必须 inline `{run_dir}/map.md` 关键摘要**作 context；按「撒网产出契约」写 `{run_dir}/scan_NN.md`
 3. **加 1 个反框架 worker**：同一波 spawn，**不给 map.md context**，任务是"挑战主流 framing，从不同视角找漏掉的 sibling / 信号 / 争议"。写 `{run_dir}/scan_anti.md`
-4. 每个 worker：**≥10 次独立搜索**（不同关键词、不同源，避开 landscape 已有词汇）
+4. 每个 worker：10-20 次独立搜索（工具调用总数 ≤30，不同关键词、不同源，避开 landscape 已有词汇），检索追加进 `search_log.md`
 5. 主 agent 收齐"完成 + 路径"信号后，`read` 各 scan + scan_anti → **扩展** `{run_dir}/map.md`
 
 ### 锁定模式 · 起手勘察
-前置已完成，直接进工序 2。
+前置完成后派 1 个反框架 worker（同撒网第 3 条，不给 map.md context）写 `scan_anti.md`，读完再进工序 2。锁定模式最容易沿用户的 framing 一路确认下去，反框架是唯一的反方视角。
 
 ### 文件增强模式 · targeted scan
-工序 F 的 gap 清单驱动搜索 query —— 只搜文件没覆盖的面相，3-5 次。外搜 finding 追加进 `{run_dir}/map.md`，显式标"来源:外搜补 gap"。
+工序 F 的 gap 清单驱动搜索 query —— 只搜文件没覆盖的面相，3-5 次。外搜 finding 追加进 `{run_dir}/map.md`，显式标"来源:外搜补 gap"。同时派 1 个反框架 worker 写 `scan_anti.md`。
 
 ### 出口条件（两种走法共用）
 
@@ -113,7 +121,7 @@ mkdir -p ~/.research-workflow/{topic}-$(date '+%Y%m%d-%H%M')
 
 ## 工序 2 — 课题切分
 
-把 topic 拆成 **≥6 个编号维度**——这份清单 = 工序 3 的派单清单（每维默认一个 worker）。
+按 `brief.md` 的子问题拆**编号维度**，数量按 `references/credibility-protocol.md` 第 8 节的复杂度分档（轻 3-4 / 标准 5-7 / 深 7-9）——这份清单 = 工序 3 的派单清单（每维默认一个 worker）。**每个维度标注它服务的子问题编号**，服务不到任何子问题的维度不派。
 
 维度可从下列角度切（可组合）：
 - **时间**：历史起源 / 当前状态 / 1 年展望 / 5 年展望
@@ -130,30 +138,32 @@ mkdir -p ~/.research-workflow/{topic}-$(date '+%Y%m%d-%H%M')
 2. **Key evidence** —— 该角度的数据 / 来源 / 案例
 3. **Tensions** —— 此角度的反向观点 / 争议
 
-**出口条件**：编号维度清单（≥6），每项有 scope 三段描述。
+**出口条件**：编号维度清单（数量符合分档），每项有 scope 三段描述与所服务的子问题编号。
 
 ## 工序 3 — 并行深挖
 
 每维一个 worker，**同一波 spawn，并行，不串行**。
 
-### Worker prompt 契约（5 段必含，标准模式）
+### Worker prompt 契约（6 段必含，标准模式）
 
-1. **Mission**：维度名 + scope 三段 + "**≥10 次独立搜索**，不同关键词、不同源、覆盖一手来源（政府/学术/官方/主流媒体），避开内容农场/SEO 聚合/匿名博客"
-2. **Context**：主线已有事实（工序 1 关键发现，inline 摘要）
-3. **产出契约**：严格按「深挖产出契约」（见末尾）结构 + 内容要求；支撑断言的关键短 quote（数字、定义、争议措辞、政策原文）必须 verbatim 不可改述。不要整页 dump / 长篇 verbatim / 搜索过程日志 / 重复结果
-4. **输出路径（强制）**：用 write 工具写到 `{run_dir}/dive_NN.md`（NN = 该 worker 对应的维度编号，主 agent 在 spawn prompt 里把 `{run_dir}` 替换成绝对路径）
-5. **Push 行为**：任务完成后，push 通道只回"完成，文件:`{run_dir}/dive_NN.md`，一句话摘要 X"
+1. **原问题与子问题**：`brief.md` 里的原问题原文（逐字）+ 本维度服务的子问题编号——长程任务会漂移，每个 worker 都要重新看到原问题
+2. **Mission**：维度名 + scope 三段 + "10-20 次独立搜索，不同关键词、不同源、覆盖一手来源（政府/学术/官方/主流媒体），避开内容农场/SEO 聚合/匿名博客" + "**至少 2 次反证检索**（批评 / 失败 / 局限 / 反例 / does not / fails to），写进 Tensions 段并注明检索式" + "数字、日期、引语打开原文核对，不用搜索摘要"
+3. **Context**：主线已有事实（工序 1 关键发现，inline 摘要）；本机旧调研报告只能当线索，引用时回到它的一手源
+4. **产出契约**：严格按「深挖产出契约」（见末尾）结构 + 内容要求；支撑断言的关键短 quote（数字、定义、争议措辞、政策原文）必须 verbatim 不可改述，原文的限定（场景 / 样本 / 模型 / hedge 词）写进「限定」列。不要整页 dump / 长篇 verbatim / 重复结果
+5. **输出路径（强制）**：用 write 工具写到 `{run_dir}/dive_NN.md`，每次检索 / 抓取追加一行到 `{run_dir}/search_log.md`（主 agent 在 spawn prompt 里把 `{run_dir}` 替换成绝对路径）
+6. **Push 行为**：任务完成后，push 通道只回"完成，文件:`{run_dir}/dive_NN.md`，一句话摘要 X"
 
 ### 文件增强模式 · 额外要求
 spawn prompt 在 Context 段额外 inline **本维度相关的文件 excerpt**（从工序 F 抽取，不让 worker 自己读文件）。worker 把文件作为主源，外搜作补/验证，**产出里显式区分文件来源 vs 外搜来源**（Sources Cited 段分两栏：文件 / URL）。
 
 ### 文件 only 子分支
-worker prompt 同标准模式 5 段，但 Mission 改为"**不外搜**，只用 spawn prompt 里 inline 的文件 excerpt"。worker 任务：跨文件交叉引用、识别 pattern、评估证据强弱、标记 implicit assumptions / 文件作者偏见。Sources Cited 段格式：`[File: <name>, Section: <X>]`，无 URL。
+worker prompt 同标准模式 6 段，但 Mission 改为"**不外搜**，只用 spawn prompt 里 inline 的文件 excerpt"。worker 任务：跨文件交叉引用、识别 pattern、评估证据强弱、标记 implicit assumptions / 文件作者偏见。Sources Cited 段格式：`[File: <name>, Section: <X>]`，无 URL。
 
 ### 主 agent 行为
 - 全部 worker spawn 完，主 agent **结束本回合**——等 auto-announce 推回"完成 + 路径"信号
 - 收到完成信号后，**不需要解析 push 内容**——文件在指定路径活着，工序 4 再 read
-- 失败 worker 显式标记、工序 6 `insight.md` 里说明缺口
+- 失败 worker 显式标记、工序 6 `insight.md` 里说明缺口，并写进 `status.json` 的 `degradations`
+- worker 没写出文件就算失败——主 agent 不凭 push 消息内容代写 dive
 
 **出口条件**：每个 worker 都已写出 `{run_dir}/dive_NN.md`（或显式失败）；worker 未回齐不进工序 4。
 
@@ -163,12 +173,16 @@ worker prompt 同标准模式 5 段，但 Mission 改为"**不外搜**，只用 
 
 跨维度比对、分信度、列矛盾。按四档分类每条 finding：
 
+信度按**独立来源族**计，不按 worker 数计（定义见 `references/credibility-protocol.md` 第 2 节）：同一 URL、转载追到同一原始出处、共作者论文、同一厂商多渠道、本机旧报告与它引用的来源，都算同一个来源族。
+
 | 档 | 标准 |
 |---|---|
-| **高信度** | ≥2 worker 从独立源撞到、证据一致 |
-| **中信度** | 1 worker 但权威源（政府 / 学术 / 官方公告 / 主流媒体头条） |
-| **低信度** | 弱源（博客 / 二手汇编）或单一未核实断言 |
-| **矛盾点** | 不同 worker 在同一指标 / 同一时间 / 同一定义上分歧；数字矛盾；解读冲突 |
+| **高信度** | ≥2 个独立来源族一致，其中至少一个是一手源（官方文档 / 论文原文 / 政府原文），且已检索反证未发现 |
+| **中信度** | 只有 1 个来源族但它是一手权威源；或 ≥2 个独立二手族一致但追不到一手源；厂商自报数据最高到这一档 |
+| **低信度** | 单一二手源、博客、搜索摘要（未打开原文） |
+| **矛盾点** | 独立来源族在同一指标 / 同一时间 / 同一定义上分歧；数字矛盾；解读冲突 |
+
+**单一来源族永远不是高。** verify.md 每条高信度列出它的来源族（族名 + 代表 URL）。
 
 要求：
 - 矛盾点全部明示，**不允许压平**——温度高的发现最值钱
@@ -201,7 +215,7 @@ worker prompt 同标准模式 5 段，但 Mission 改为"**不外搜**，只用 
 - **主张**（一句话）
 - **跨维度**（列维度编号 — 文件模式还可列文件编号）
 - **支撑证据**（全局 `[^N^]`）
-- **反例 / 边界条件**
+- **反例 / 边界条件**（为空时写「已检索未发现：<检索式>」，不得留空）
 - **Confidence**：高 / 中 / 探索性 —— 给下游写作判断洞察可信度，confidence 越高越前
 - **Implications**：对下游决策 / 行动的意义（一句话）—— 给写作输出 "so-what"
 
@@ -223,10 +237,10 @@ worker prompt 同标准模式 5 段，但 Mission 改为"**不外搜**，只用 
 3. **矛盾即信号**：冲突高亮、分析、不要压平或取平均。温度高的发现最值钱
 4. **长内容走文件，push 只发信号**：worker 产出写到 `{run_dir}/*.md`，push 只回"完成 + 路径"。下游消费素材时必须 read 文件，不读 push
 5. **源质量分级**：优先一手来源（政府 / 学术 / 官方公告 / 主流媒体）；避开内容农场 / SEO 聚合 / 匿名博客 / AI 生成 listicle。**文件模式：用户提供文件视为一手权威源**
-6. **搜索预算**：撒网 ≥110 / 锁定 ≥60 / 文件 only 0 / 文件增强 ≥65（searches/run）
+6. **停止规则代替搜索预算**：出口看每个子问题是否有 ≥2 个独立来源族的结论（或明确「查不到」），不看搜了多少次；分档投入见 `references/credibility-protocol.md` 第 8 节。实际检索次数以 `search_log.md` 为准，不自报估算
 7. **文件 only 尊重用户意图**：用户明示"只看文件"，绝不偷偷外搜
 8. **文件增强平衡来源**：文件做主源，外搜只补 gap / 验证 / 加深。不让外搜淹没用户文件
-9. **单 worker 工具调用上限**：每个 scan / dive worker **工具调用总数 ≤ 30 次**（含 search + fetch + exec 等所有工具）。达到上限立刻停止追加新查询、基于已有素材写产出并 announce 收尾——**宁可少 1-2 条边角证据，不要拉满**。`≥10` 是防偷懒下限，`≤30` 是防贪心上限；命中区间 (~15-25) 即合格。
+9. **单 worker 工具调用上限**：每个 scan / dive worker **工具调用总数 ≤ 30 次**（含 search + fetch + exec 等所有工具）。达到上限立刻停止追加新查询、基于已有素材写产出并 announce 收尾——**宁可少 1-2 条边角证据，不要拉满**。查不到就写「查不到 + 已尝试检索式」，不为凑数降低来源标准。
 
 ---
 
@@ -263,13 +277,16 @@ worker prompt 同标准模式 5 段，但 Mission 改为"**不外搜**，只用 
 ### Current State
 - <事实> [^N^]
 
+服务子问题：Q<n>
+
 ### Key Evidence
-| 数据点 | 数值/描述 | 时间 | 来源 |
-|---|---|---|---|
-| ... | ... | ... | [^N^] |
+| 数据点 | 数值/描述 | 限定（场景/样本/模型/hedge 原词，无则写"无"） | 时间 | 来源 |
+|---|---|---|---|---|
+| ... | ... | ... | ... | [^N^] |
 
 ### Tensions & Counter-arguments
 - <反向观点>: <论据> [^N^]
+- 反证检索：<检索式>（结果 / 已检索未发现）
 
 ### Sources Cited
 [^1^]: <URL or 文献标题> — <作者/机构, 日期>
