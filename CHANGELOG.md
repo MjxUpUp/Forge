@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.78.0](https://github.com/MjxUpUp/Forge/compare/v1.77.1...v1.78.0) (2026-10-15)
+
+
+### Features
+
+* research-workflow 可信度升级 ([997aaaf](https://github.com/MjxUpUp/Forge/commit/997aaaf2aed4ff6aa395672ceb1fdca522a3cab5))
+* 证据链防断——~/ 路径失效与决策证据缺来源告警 ([5ce66c6](https://github.com/MjxUpUp/Forge/commit/5ce66c6477b39db953898771372b17446ee223f3))
+* 调研文档 L1 lint 与产物按来源定型 ([a2471dd](https://github.com/MjxUpUp/Forge/commit/a2471ddc4b15e1ef423b3424b49f6ca5df789bc3))
+
+
+### Bug Fixes
+
+* research-workflow 评审修订（lint 契约与文档一致性） ([b930cd2](https://github.com/MjxUpUp/Forge/commit/b930cd247bd0a387897cb01ed5dd99812479406a))
+* run 引用收窄为数字 id，文档写明落行语义 ([e2a4b43](https://github.com/MjxUpUp/Forge/commit/e2a4b430b4e7aee3821c65801c236182de589c4c))
+* survey lint 评审修订与变异体补断言 ([029a2e1](https://github.com/MjxUpUp/Forge/commit/029a2e10ed7223995499ff8c41115a07ba657d6c))
+* 增量调研补走独立核验，同步 Phase 编号 ([d59aafe](https://github.com/MjxUpUp/Forge/commit/d59aafef9dc3325d90c4f2e95d719a38f8c35b1d))
+* 清账计入调用会话、信封剥离只认行首 ([431e0f2](https://github.com/MjxUpUp/Forge/commit/431e0f29a6fe700bf95f4b01e14c785c172aa257))
+* 触发剥宿主信封、赋值误拦与清账作用域 ([ec2d335](https://github.com/MjxUpUp/Forge/commit/ec2d3354a6d8218801918ca4b957482cd8066b6f))
+* 证据链告警降噪（只查证据前缀、run 算来源） ([559b454](https://github.com/MjxUpUp/Forge/commit/559b45446c100ae05d6a8fe43daf54f0f704b1df))
+
 ## [1.77.1](https://github.com/MjxUpUp/Forge/compare/v1.77.0...v1.77.1) (2026-10-15)
 
 
