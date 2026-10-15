@@ -75,7 +75,7 @@
 
 ## re-review prompt（修复后再审查）
 
-当 implementer 修了问题、确定性检查（编译/测试）全绿后，**续用原 reviewer**：宿主支持续用时（Claude Code 用 `SendMessage` 发给原 reviewer），它保留上轮上下文且读得到上轮缓存，所以只需发增量。宿主不支持续用时新派只读 reviewer，并把上轮问题清单粘进 prompt。升档新派全量复审的判据见 code-review-gate「审查-修复-复审闭环」节。
+当 implementer 修了问题、确定性检查（编译/测试）全绿后，**续用原 reviewer**：宿主支持续用时（Claude Code 用 `SendMessage` 发给原 reviewer），它保留上轮上下文，所以只需发增量（首次续用可能整段缓存 miss，见 anthropics/claude-code#44724）。宿主不支持续用时新派只读 reviewer，并把上轮问题清单粘进 prompt。升档新派全量复审的判据见 code-review-gate「审查-修复-复审闭环」节。
 
 ```
 [续用原 reviewer 时] implementer 已修复你上轮报告的问题。
