@@ -31,7 +31,7 @@
 - 更新结论
 - 用 overwrite 重写全篇
 
-**对应流程**：research-workflow Phase 5（版本化补充融入）+ Phase 3 Gate（结构规划禁止结论后追加章节）。
+**对应流程**：research-workflow Phase 5（版本化补充融入）+ Phase 2 Gate（结构规划禁止结论后追加章节）。
 
 **系统性解法**：此案例与案例 3 连修 4 轮的根因是"靠模型自觉遵守拆散融入规则"不可靠。Phase 5 已升级为**版本化改写**（见 references/versioned-rewrite.md）：fetch 原文快照 → 补充内容映射表 → 基于原文改写 → 发布前自检 Gate → overwrite 发布 → 版本归档。流程本身不允许 append，每步有产物，出错可回滚到 pre-merge 快照。
 
@@ -51,7 +51,7 @@
 - 写入前先 `lark-cli docs +fetch --doc-format markdown` 查看现有格式
 - 用相同格式写入
 
-**对应流程**：research-workflow Phase 4（文档输出"先 fetch 查格式"）+ Phase 6 飞书发布。
+**对应流程**：research-workflow Phase 4（定稿与交付："先 fetch 查格式"）+ Phase 6 飞书发布。
 
 ---
 
@@ -67,7 +67,7 @@
 
 **根因**：每次修复只解决表面问题（格式），没理解用户反馈的真正含义（结构割裂）。
 
-**预防**：在 Phase 3（结构规划）阶段就明确"补充内容融入现有章节"，避免进入"格式修复循环"。更根本的预防是走 Phase 5 版本化改写流程（见 references/versioned-rewrite.md），发布前自检 Gate 会拦住"结论后追加新章"。
+**预防**：在 Phase 2（结构规划）阶段就明确"补充内容融入现有章节"，避免进入"格式修复循环"。更根本的预防是走 Phase 5 版本化改写流程（见 references/versioned-rewrite.md），发布前自检 Gate 会拦住"结论后追加新章"。
 
 **对应流程**：research-workflow 禁止反模式「连续修格式 ≠ 修结构」+ Phase 5 版本化改写自检 Gate。
 
@@ -102,7 +102,7 @@
 2. 在获取到的实际内容基础上做修改
 3. overwrite 回去
 
-**对应流程**：research-workflow Phase 4（overwrite 前必须先 fetch 完整内容）。
+**对应流程**：research-workflow Phase 4（定稿与交付：overwrite 前必须先 fetch 完整内容）。
 
 ---
 
