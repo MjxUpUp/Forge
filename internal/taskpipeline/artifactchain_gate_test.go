@@ -285,3 +285,49 @@ func TestCheckArtifactChainDrift(t *testing.T) {
 		}
 	})
 }
+
+// TestArtifactLintUsesSourceType pins that the rubric-tier L1 lint picks the document type from the registration source: a stored <stage>.md registered from a typed filename is linted under that type, while an empty or stdin source keeps the old untyped behaviour.
+//
+// TestArtifactLintUsesSourceType 钉住 rubric 档 L1 lint 按登记来源选文档类型：从带类型的文件名
+// 登记的 <stage>.md 按该类型检查；来源为空或 stdin 时保持旧的无类型行为。
+func TestArtifactLintUsesSourceType(t *testing.T) {
+	abs := filepath.Join(t.TempDir(), "proposal.md")
+	if err := os.WriteFile(abs, []byte("# 验收\n\n只有正文，没有结论章节。\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range []string{"", "stdin"} {
+		hard, err := lintArtifactHardIssues(abs, src)
+		if err != nil || len(hard) != 0 {
+			t.Fatalf("source %q must lint as untyped proposal.md, got %v %v", src, hard, err)
+		}
+	}
+	hard, err := lintArtifactHardIssues(abs, "docs/qa/login-test-report.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hard) == 0 || !strings.HasPrefix(hard[0], "D5:") {
+		t.Fatalf("a test-report source must apply its required-heading rule, got %v", hard)
+	}
+	// survey 类型在观察窗口内全是 advisory：按 survey 定型也不产生 Hard。
+	if hard, err := lintArtifactHardIssues(abs, "docs/surveys/agent-memory.md"); err != nil || len(hard) != 0 {
+		t.Fatalf("survey rules are advisory and must not block, got %v %v", hard, err)
+	}
+}
+
+// TestArtifactSource pins source normalization: repo-relative slash path inside root, absolute path outside, empty stays empty.
+//
+// TestArtifactSource 钉住来源规整：仓库内记斜杠相对路径，仓库外记绝对路径，空串保持空串。
+func TestArtifactSource(t *testing.T) {
+	root := t.TempDir()
+	inside := filepath.Join(root, "docs", "surveys", "x.md")
+	if got := ArtifactSource(root, inside); got != "docs/surveys/x.md" {
+		t.Fatalf("inside root = %q, want docs/surveys/x.md", got)
+	}
+	outside := filepath.Join(t.TempDir(), "spec.md")
+	if got := ArtifactSource(root, outside); !filepath.IsAbs(filepath.FromSlash(got)) || !strings.HasSuffix(got, "/spec.md") {
+		t.Fatalf("outside root = %q, want an absolute path", got)
+	}
+	if got := ArtifactSource(root, ""); got != "" {
+		t.Fatalf("empty source = %q", got)
+	}
+}

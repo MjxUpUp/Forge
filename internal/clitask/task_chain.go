@@ -144,6 +144,11 @@ func runArtifactSet(stage, file string, useStdin bool) error {
 		if aerr != nil {
 			return aerr
 		}
+		if useStdin {
+			aref.Source = "stdin"
+		} else {
+			aref.Source = taskpipeline.ArtifactSource(root, file)
+		}
 		ref = aref
 		if s.SpecArtifacts == nil {
 			s.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}

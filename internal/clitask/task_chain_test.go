@@ -243,3 +243,68 @@ func TestArtifactSetActionExclusivity(t *testing.T) {
 		t.Fatal("--file 与 --stdin 双给应拒绝")
 	}
 }
+
+// TestArtifactSetRecordsSource pins that `forge task artifact --set` records where the content came from: a repo-relative path for files inside the project, an absolute path for files outside it, and "stdin" for piped content.
+//
+// TestArtifactSetRecordsSource 钉住 `forge task artifact --set` 记录内容来源：项目内文件记
+// 仓库相对路径，项目外文件记绝对路径，管道输入记 "stdin"。
+func TestArtifactSetRecordsSource(t *testing.T) {
+	dir, taskRef := setupChainTask(t, "")
+	source := func(stage string) string {
+		t.Helper()
+		state, err := taskpipeline.LoadTaskState(dir, taskRef)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return state.SpecArtifacts[stage].Source
+	}
+
+	inside := filepath.Join(dir, "docs", "surveys", "memory.md")
+	if err := os.MkdirAll(filepath.Dir(inside), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inside, []byte("# 调研\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	captureStdout(t, func() {
+		if err := runArtifactSet("proposal", inside, false); err != nil {
+			t.Fatalf("set inside: %v", err)
+		}
+	})
+	if got := source("proposal"); got != "docs/surveys/memory.md" {
+		t.Fatalf("inside source = %q, want docs/surveys/memory.md", got)
+	}
+
+	outside := filepath.Join(t.TempDir(), "spec-src.md")
+	if err := os.WriteFile(outside, []byte("# 规格\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	captureStdout(t, func() {
+		if err := runArtifactSet("spec", outside, false); err != nil {
+			t.Fatalf("set outside: %v", err)
+		}
+	})
+	if got := source("spec"); !filepath.IsAbs(filepath.FromSlash(got)) || !strings.HasSuffix(got, "/spec-src.md") {
+		t.Fatalf("outside source = %q, want an absolute path", got)
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteString("# 设计\n"); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	orig := os.Stdin
+	os.Stdin = r
+	defer func() { os.Stdin = orig }()
+	captureStdout(t, func() {
+		if err := runArtifactSet("design", "", true); err != nil {
+			t.Fatalf("set stdin: %v", err)
+		}
+	})
+	if got := source("design"); got != "stdin" {
+		t.Fatalf("stdin source = %q, want stdin", got)
+	}
+}
