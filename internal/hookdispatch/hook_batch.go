@@ -102,33 +102,70 @@ func batchHookNames(event, matcher string) []string {
 	return names
 }
 
+// runHookFn 是 runHookCaptured 实跑单个 hook 的入口，默认即 RunHook；测试
+// 换桩以构造任意大小的 stdin 消费 / stdout 产出（真实 hook 输出经 9500 rune
+// 截断，无法稳定撑破管道缓冲）。
+//
+// runHookFn is the per-hook entry runHookCaptured calls (RunHook by default);
+// tests stub it to consume/emit arbitrarily large stdin/stdout, which real
+// hooks (output truncated at 9500 runes) cannot reliably do.
+var runHookFn = RunHook
+
 // runHookCaptured 以换载 stdin / 捕获 stdout 的方式递归实跑单个 hook。
 // RunHook 的全部既有语义（档位门、checklog、attribution、in-process 特例、
 // embed 脚本）原样生效——batch 只换壳不加行为。
+// 两端管道都与 RunHook 并发泵送：payload 由 goroutine 写入、stdout 由
+// goroutine 排水。OS 管道缓冲有界（macOS 64KB、Windows 约 4KB），同步「先写
+// 后跑」在大 payload（Write 大文件 / Edit 的 tool_response 携原文件）上会让
+// 写端永久阻塞，「先跑后读」在大输出上同理——v1.57.0–v1.77.0 的 batch 挂死
+// 即此。RunHook 返回后先关 inR：hook 未读完 stdin 时写 goroutine 得 EPIPE
+// 退出而非泄漏。
+//
+// runHookCaptured runs one hook in-process with stdin swapped to payload and
+// stdout captured. Both pipe ends are pumped concurrently with RunHook (a
+// goroutine writes the payload, another drains stdout): OS pipe buffers are
+// bounded (64KB on macOS, ~4KB on Windows), so a synchronous write-then-run
+// blocks forever on large payloads (big Write content, Edit tool_response
+// carrying the original file) and run-then-read does the same on large
+// output. inR is closed after RunHook so the writer exits with EPIPE instead
+// of leaking when a hook does not consume all of stdin.
 func runHookCaptured(cmd *cobra.Command, name string, payload []byte) (string, error) {
-	oldIn, oldOut := os.Stdin, os.Stdout
 	inR, inW, err := os.Pipe()
 	if err != nil {
 		return "", err
 	}
 	outR, outW, err := os.Pipe()
 	if err != nil {
+		inR.Close()
+		inW.Close()
 		return "", err
 	}
+
+	wrote := make(chan struct{})
+	go func() {
+		defer close(wrote)
+		_, _ = inW.Write(payload) // EPIPE = hook 未读完 stdin，属合法行为 / hook skipped stdin: legal
+		_ = inW.Close()
+	}()
+	drained := make(chan []byte, 1)
+	go func() {
+		b, _ := io.ReadAll(outR) // 读到 outW 关闭的 EOF / reads until outW is closed
+		drained <- b
+	}()
+
+	oldIn, oldOut := os.Stdin, os.Stdout
 	os.Stdin, os.Stdout = inR, outW
 	defer func() { os.Stdin, os.Stdout = oldIn, oldOut }()
+	runErr := runHookFn(cmd, []string{name})
 
-	if _, err := inW.Write(payload); err != nil {
-		return "", err
+	_ = inR.Close()
+	<-wrote
+	closeErr := outW.Close()
+	b := <-drained
+	_ = outR.Close()
+	if closeErr != nil && runErr == nil {
+		return "", closeErr
 	}
-	if err := inW.Close(); err != nil {
-		return "", err
-	}
-	runErr := RunHook(cmd, []string{name})
-	if err := outW.Close(); err != nil {
-		return "", err
-	}
-	b, _ := io.ReadAll(outR) // 写端已关，读到 EOF；hook 输出经 9500 rune 截断有界
 	return string(b), runErr
 }
 
