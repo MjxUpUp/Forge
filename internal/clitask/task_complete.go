@@ -107,7 +107,7 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// hazard 清账 pre-flight（delivery-hardening 墙-1b）：等账未清不得交付——
 	// 存在未经人工确认的高危拦截时拒绝完成（会话取证 sess_cbe4047c 实证：7 拦
 	// 0 确认照样交）。出口是真人 confirm/release（已加终端判别），env 逃生落审计。
-	if ok, reasons := taskpipeline.CheckHazardPending(root, state); !ok {
+	if ok, reasons := taskpipeline.CheckHazardPending(root, state, taskpipeline.CurrentSessionID()); !ok {
 		return fmt.Errorf(`hazard 清账未通过：%s`,
 			strings.Join(reasons, `; `))
 	}
