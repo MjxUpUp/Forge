@@ -32,6 +32,8 @@ func TestSanitizePromptEnvelopes(t *testing.T) {
 			"<side-sessions-event>设计文档已合并</side-sessions-event><ci-monitor-event>fix CI</ci-monitor-event>继续",
 			"继续"},
 		{"非信封标签原样", "看下 <div>红队</div> 这段", "看下 <div>红队</div> 这段"},
+		{"正文里的字面标签不吞后文", "修 <system-reminder> 的解析，然后实现 X", "修 <system-reminder> 的解析，然后实现 X"},
+		{"行首缩进的未闭合开标签仍剥离", "继续\n  <system-reminder>截断的提醒", "继续"},
 	}
 	for _, tc := range cases {
 		if got := SanitizePrompt(tc.in); got != tc.want {
