@@ -614,3 +614,86 @@ func TestSkillsDecideWarrantRegression(t *testing.T) {
 		}
 	}
 }
+
+// TestSkillsDecideEvidenceSource (REQ-2): a decision whose evidence or rationale cites external figures without any URL warns and records a Passed=false decision-evidence row; with a URL the row passes silently; without external figures no row is written. The decision is always written and decide returns nil.
+//
+// TestSkillsDecideEvidenceSource（REQ-2）：Evidence / Rationale 引外部数字却无 URL 时告警并
+// 落 Passed=false 的 decision-evidence 行；有 URL 时静默落 Passed=true 行；没有外部数字时
+// 不落行。决策总是照常写入、decide 返回 nil。
+func TestSkillsDecideEvidenceSource(t *testing.T) {
+	proj, _, _, _ := warrantFixture(t)
+	evidenceRows := func() []checklog.Entry {
+		t.Helper()
+		all, err := checklog.LoadAllAll(proj)
+		if err != nil {
+			t.Fatalf("LoadAllAll: %v", err)
+		}
+		var rows []checklog.Entry
+		for _, e := range all {
+			if e.Check == checklog.CheckDecisionEvidence {
+				rows = append(rows, e)
+			}
+		}
+		return rows
+	}
+	cases := []struct {
+		name, evidence, rationale string
+		wantRow, wantPassed       bool
+		wantStderr, wantFigures   string
+	}{
+		{"百分比无 URL", "审查阶段占 59.4% token（Tokenomics）", "", true, false, "没有来源", "59.4%"},
+		{"倍数与 arXiv 无 URL", "作弊率反升 43×", "见 arXiv:2510.20270", true, false, "没有来源", "43×、arXiv:2510.20270"},
+		{"有 URL", "审查阶段占 59.4% token", "https://arxiv.org/abs/2601.14470（仅 ChatDev）", true, true, "", "59.4%"},
+		{"倍与 Nx 无来源", "成本涨了 3 倍，吞吐 2.5x", "", true, false, "没有来源", "3 倍、2.5x"},
+		{"全角百分号与大写 X", "覆盖率 85％，提速 4X", "", true, false, "没有来源", "85％、4X"},
+		{"内部指标引用 run", "trigger 通过率 100%（run-20261015-a1）", "", true, true, "", "100%"},
+		{"普通词 run-time 不算来源", "run-time 开销降了 30%", "", true, false, "没有来源", "30%"},
+		{"无外部数字", "改了 SKILL.md 的措辞", "复盘结论", false, false, "", ""},
+	}
+	for i, c := range cases {
+		before := len(evidenceRows())
+		setSkDecVars(t, "demo", "evidence-case-"+string(rune('a'+i)))
+		skDecEvidence = c.evidence
+		skDecRationale = c.rationale
+		skDecWarrant = "doc:docs/evidence.md"
+		var stderr bytes.Buffer
+		cmd := &cobra.Command{}
+		cmd.SetErr(&stderr)
+		if err := runSkillsDecide(cmd, nil); err != nil {
+			t.Fatalf("%s: decide must succeed (advisory), got %v", c.name, err)
+		}
+		skDecRationale = ""
+		rows := evidenceRows()
+		if !c.wantRow {
+			if len(rows) != before || strings.Contains(stderr.String(), "decision-evidence") {
+				t.Errorf("%s: no figures must leave no row and no warning", c.name)
+			}
+			continue
+		}
+		if len(rows) != before+1 {
+			t.Fatalf("%s: want exactly one new decision-evidence row (%d → %d)", c.name, before, len(rows))
+		}
+		row := rows[len(rows)-1]
+		if row.Passed != c.wantPassed || row.Meta["figures"] != c.wantFigures || row.Meta["skill"] != "demo" {
+			t.Errorf("%s: row = passed %v figures %q skill %q", c.name, row.Passed, row.Meta["figures"], row.Meta["skill"])
+		}
+		if c.wantStderr != "" && !strings.Contains(stderr.String(), c.wantStderr) {
+			t.Errorf("%s: stderr must warn %q, got %q", c.name, c.wantStderr, stderr.String())
+		}
+		if c.wantStderr == "" && strings.Contains(stderr.String(), "decision-evidence") {
+			t.Errorf("%s: sourced figures must not warn, got %q", c.name, stderr.String())
+		}
+	}
+}
+
+// TestDecisionEvidenceRunWarrant pins that a run warrant counts as a checkable source for internal metrics.
+//
+// TestDecisionEvidenceRunWarrant 钉住 run 锚点算作内部指标的可核验来源。
+func TestDecisionEvidenceRunWarrant(t *testing.T) {
+	if c := checkDecisionEvidence("通过率 92%", "", "run:20261015-a1"); len(c.Figures) != 1 || !c.HasURL {
+		t.Fatalf("run warrant must count as a source, got %+v", c)
+	}
+	if c := checkDecisionEvidence("通过率 92%", "", "doc:docs/x.md"); c.HasURL {
+		t.Fatalf("a doc warrant is not a source for an external figure, got %+v", c)
+	}
+}

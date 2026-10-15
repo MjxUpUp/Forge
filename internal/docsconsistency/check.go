@@ -256,3 +256,96 @@ func DanglingSkillRefs(text string, knownSkills, allowlist map[string]bool) []st
 	}
 	return out
 }
+
+// homePathRef matches a ~/ path written in a document: ASCII path characters only, so the match stops at whitespace, backticks, brackets, quotes and CJK punctuation.
+//
+// homePathRef 匹配文档里写的 ~/ 路径：只收 ASCII 路径字符，遇空白、反引号、括号、引号、
+// 中文标点即止。
+var homePathRef = regexp.MustCompile(`~/[A-Za-z0-9._/-]+`)
+
+// homePathPlaceholderNext lists characters that, right after a match, mark the path as a template (~/.x/{topic}-…, ~/.x/<run>, ~/.x/*.md, ~/.x/$RUN, ~/.x/…) rather than a concrete reference.
+//
+// homePathPlaceholderNext 是紧跟在匹配之后、表示路径是模板而非具体引用的字符
+// （~/.x/{topic}-…、~/.x/<run>、~/.x/*.md、~/.x/$RUN、~/.x/…）。
+const homePathPlaceholderNext = "{<*$…"
+
+// EvidenceHomePrefixes are the ~/ prefixes of locally kept evidence (research run directories). Paths outside them — config files created on demand, other tools' settings, migration history — are not evidence and are not checked.
+//
+// EvidenceHomePrefixes 是本机留存证据的 ~/ 前缀（调研 run 目录）。前缀之外的路径——按需
+// 生成的配置文件、其他工具的设置、迁移史里的旧路径——不是证据，不检查（全量检查实测
+// 约九成是这类噪音）。
+var EvidenceHomePrefixes = []string{"~/.forge/research/", "~/.research-workflow/"}
+
+// danglingMarkedRe matches a line that already marks its path as gone, so the same dead reference is not reported on every edit.
+//
+// danglingMarkedRe 匹配已就地标注失效的行——同一条已知死引用不在每次改动时重复报告。
+var danglingMarkedRe = regexp.MustCompile(`失效|已不存在|已删除|(?i:no longer exists|removed)`)
+
+// DanglingHomePaths returns the ~/ paths referenced in text that start with one of prefixes (nil = any) and do not exist under home, de-duplicated in first-seen order. Template paths (followed by a placeholder character or containing "...") and paths on a line already marked as gone are skipped; trailing sentence punctuation is trimmed. An empty home returns nil.
+//
+// DanglingHomePaths 返回 text 中以 prefixes 之一开头（nil = 不限）、在 home 下不存在的 ~/
+// 路径（去重、保持首次出现顺序）。模板路径（紧跟占位字符或含 "..."）与所在行已标注失效
+// 的路径跳过；句末标点裁掉。home 为空返回 nil。只在本机 task complete 时用——本机路径
+// 天然不可移植，不进 CI 与 forge docs lint。
+func DanglingHomePaths(text, home string, prefixes []string) []string {
+	if home == "" || !strings.Contains(text, "~/") {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var out []string
+	for _, loc := range homePathRef.FindAllStringIndex(text, -1) {
+		ref := text[loc[0]:loc[1]]
+		if rest := text[loc[1]:]; rest != "" && strings.ContainsAny(firstRune(rest), homePathPlaceholderNext) {
+			continue
+		}
+		if strings.Contains(ref, "...") {
+			continue
+		}
+		ref = strings.TrimRight(ref, ".,;:")
+		if ref == "~/" || seen[ref] || !hasAnyPrefix(ref, prefixes) || danglingMarkedRe.MatchString(lineAround(text, loc[0])) {
+			continue
+		}
+		seen[ref] = true
+		if _, err := os.Stat(filepath.Join(home, filepath.FromSlash(strings.TrimPrefix(ref, "~/")))); err != nil {
+			out = append(out, ref)
+		}
+	}
+	return out
+}
+
+// hasAnyPrefix reports whether s starts with one of prefixes; nil prefixes match everything.
+//
+// hasAnyPrefix 判断 s 是否以 prefixes 之一开头；prefixes 为 nil 时全部匹配。
+func hasAnyPrefix(s string, prefixes []string) bool {
+	if prefixes == nil {
+		return true
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// lineAround returns the full line of text containing byte offset i.
+//
+// lineAround 返回 text 中包含字节偏移 i 的整行。
+func lineAround(text string, i int) string {
+	start := strings.LastIndexByte(text[:i], '\n') + 1
+	end := strings.IndexByte(text[i:], '\n')
+	if end < 0 {
+		return text[start:]
+	}
+	return text[start : i+end]
+}
+
+// firstRune returns the first UTF-8 character of s ("" for an empty string).
+//
+// firstRune 返回 s 的首个 UTF-8 字符（空串返回 ""）。
+func firstRune(s string) string {
+	for _, r := range s {
+		return string(r)
+	}
+	return ""
+}

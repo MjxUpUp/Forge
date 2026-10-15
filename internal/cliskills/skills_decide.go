@@ -66,6 +66,11 @@ skill 名两种给法等价：forge skills decide my-skill ...（位置参数）
                accept 决策缺锚点或核验失败时输出 WARN，并在 forge 项目内落 checklog
                decision-warrant 行；advisory，决策照常记录、退出码不变
 
+证据来源核验（advisory）：
+  --evidence / --rationale 含百分比、倍数或 arXiv 编号（不论内外）时，在 forge 项目内
+  落 checklog decision-evidence 行：有来源（URL、正文引用 run-<id>，或 --warrant run:）
+  为 pass；缺来源为 warn 并输出 WARN。决策照常记录、退出码不变
+
 预测闭环（AHE 决策可观测，推荐）：
   --prediction 修改时刻声明的可检验预测——修订若有效，哪个可观测信号应改善
                （如「skill X 触发率应从 15% 升到 30%」）。在结果已知前声明，
@@ -194,6 +199,8 @@ func runSkillsDecide(cmd *cobra.Command, args []string) error {
 	if skDecOutcome == skillsdecisions.OutcomeAccept || warrant != "" {
 		reportWarrant(cmd, skDecSkill, skDecOutcome, warrant)
 	}
+	// 证据来源核验（advisory）：Evidence / Rationale 引外部数字却无 URL 时提醒。
+	reportDecisionEvidence(cmd, skDecSkill, skDecOutcome, skDecEvidence, skDecRationale, warrant)
 	return nil
 }
 

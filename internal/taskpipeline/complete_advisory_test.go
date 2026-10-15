@@ -201,3 +201,57 @@ func TestPathSegmentKeywords(t *testing.T) {
 		}
 	}
 }
+
+// TestCompleteAdvisoryDanglingHomePaths pins the task-complete advisory for ~/ paths: a markdown file changed by the task that cites a missing ~/ path triggers a stderr advisory and a docs-consistency audit row naming file and path; existing paths stay silent and the gate still passes.
+//
+// TestCompleteAdvisoryDanglingHomePaths 钉住 ~/ 路径的 task-complete advisory：本任务改动的
+// markdown 引用了不存在的 ~/ 路径时，stderr 给出 advisory 并落一条点名文件与路径的
+// docs-consistency 审计行；存在的路径不报；门禁照常通过。
+func TestCompleteAdvisoryDanglingHomePaths(t *testing.T) {
+	dir, state := setupCompletableTask(t, "home-paths")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(filepath.Join(home, ".research-workflow", "kept-run"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".research-workflow", "kept-run", "report.md"), []byte("# r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "checkout", "-b", "feat/home")
+	state.Branch = "feat/home"
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	doc := "证据：~/.research-workflow/kept-run/report.md 与 ~/.research-workflow/kept-run（存在）；旧的 ~/.forge/research/gone-run/report.md 已清理。\n"
+	if err := os.WriteFile(filepath.Join(dir, "docs", "plan.md"), []byte(doc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "doc")
+
+	stderr := captureStderr(t, func() {
+		if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
+			t.Fatalf("advisory must not block task-complete: %v", err)
+		}
+	})
+	if !strings.Contains(stderr, "docs/plan.md: ~/.forge/research/gone-run/report.md") {
+		t.Fatalf("stderr must name the missing path with its file, got %q", stderr)
+	}
+	if strings.Contains(stderr, "~/.research-workflow/kept-run（") || strings.Contains(stderr, "docs/plan.md: ~/.research-workflow/kept-run\n") {
+		t.Fatalf("existing directory must not be reported, got %q", stderr)
+	}
+	entries, err := checklog.LoadForTask(dir, state.TaskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row *checklog.Entry
+	for i := range entries {
+		if entries[i].Check == CheckNameDocsConsistency && entries[i].Meta["docs.kind"] == "home-path" {
+			row = &entries[i]
+		}
+	}
+	if row == nil || !row.Passed || !strings.Contains(row.Detail, "gone-run") || strings.Contains(row.Detail, "kept-run") {
+		t.Fatalf("want one passing home-path audit row naming only the missing path, got %+v", row)
+	}
+}
