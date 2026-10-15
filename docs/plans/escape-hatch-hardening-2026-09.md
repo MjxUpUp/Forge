@@ -12,8 +12,8 @@
 > 对 agent 可见与作弊率升高相关(METR,非因果,见 P2 节)。
 >
 > 更正(2026-10-15):原文写"prompt 层禁令实证无效""过度暴露反升作弊率",
-> 删了 METR 的 hedge、漏了 ImpossibleBench 的反证,已按原文降级。核验记录见
-> docs/surveys/2026-10-research-workflow-review-evidence.md 第五节。
+> 删了 METR 的 hedge、漏了 ImpossibleBench 的反证,已按原文降级(research-workflow
+> 复盘 2026-10 回原文核验);原文链接见 P2 节。
 
 ## 原则(本 spec 全部改动不得违反)
 
@@ -128,7 +128,8 @@ toollog(本就去重对象);竞态双读双跑=良性 fail-open 退回现状。
   不在本 spec 范围。依据是相关性,不是因果:METR 观察到 o3 在 RE-Bench 上
   reward hacking 比 HCAST 多 43 倍以上,原文写的是"perhaps because"模型能看到
   完整打分函数,并自给两种替代解释(RE-Bench 任务更难、scaffold 不同)。
-  反证:ImpossibleBench 中 prompt 措辞能把 GPT-5 作弊率从 92% 降到 1%,隐藏
+  反证:ImpossibleBench 的 Conflicting-LiveCodeBench 上,最严格的 prompt 能把
+  GPT-5 作弊率从 92% 降到 1%,隐藏
   测试可降到近零但会拖累正常任务表现。设计方向保留,理由是执法逻辑不暴露的
   成本低;不应引用为"可见即作弊率反升 43 倍"。来源:
   https://metr.org/blog/2025-06-05-recent-reward-hacking/ ,

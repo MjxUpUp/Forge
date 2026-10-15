@@ -1,6 +1,6 @@
 # Open Core 商业化设计（批次三立项稿）
 
-状态：设计稿（focus-batches §3；决策依据 docs/plans/feature-focus-2026-09.md 方向 F 与调研 dive_05——市场结构/买单人/定价锚的全部证据链在 ~/.forge/research/forge-direction-20260905-0956/dive_05.md（失效：该 run 目录 2026-10-15 核查时已不存在，本机全盘与 Spotlight 均未找到，原报告不可复核））。本文只出设计不写代码；执行另开任务。
+状态：设计稿（focus-batches §3；决策依据 docs/plans/feature-focus-2026-09.md 方向 F 与调研 dive_05——市场结构/买单人/定价锚的全部证据链在 ~/.forge/research/forge-direction-20260905-0956/dive_05.md（失效：该 run 目录 2026-10-15 已不存在，不可复核））。本文只出设计不写代码；执行另开任务。
 
 ## 一、定位与前提
 

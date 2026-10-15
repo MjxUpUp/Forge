@@ -95,7 +95,7 @@ reviewer 发现 Critical/Important → implementer 修 → re-review，直到 �
 
 ### 复审与收敛（re-review 怎么派）
 
-审查成本的大头是「轮次 × 每个新派子代理的冷启动固定开销 + 重新探索代码库」，缓存命中率只改单价（参考量级：ChatDev + GPT-5 跑 30 个任务时代码审查阶段平均占 59.4% token，arXiv 2601.14470；作者称初步结果，未在其他框架复现）。所以复审不是每轮新派一个 fresh reviewer 全量重审：
+审查成本的大头是「轮次 × 每个新派子代理的冷启动固定开销 + 重新探索代码库」，缓存命中率只改单价（参考量级：ChatDev + GPT-5 跑 30 个任务时代码审查阶段平均占 59.4% token，arXiv 2601.14470；作者称初步结果，只测了这一个框架）。所以复审不是每轮新派一个 fresh reviewer 全量重审：
 
 - **默认续用原 reviewer**：宿主支持续用时（Claude Code 用 `SendMessage` 发给原 reviewer），把修复交回**同一个** reviewer 复核，只喂「上轮问题编号 + 修复 diff + 测试结果」，不喂 implementer 的推理或对话。续用的 reviewer 不必重读规格和代码；缓存方面，首次 `SendMessage` 续用可能整段 miss（cache_read=0，anthropics/claude-code#44724，之后的续用才命中），省下的主要是重新探索的开销。
 - **何时升档新派**：分档判据以 code-review-gate「审查-修复-复审闭环」节为唯一真相源，此处不复制。
