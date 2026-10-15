@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.77.1](https://github.com/MjxUpUp/Forge/compare/v1.77.0...v1.77.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **hookdispatch:** hook batch 管道并发泵送，修复 payload/输出超 64KB 挂死 ([168d5cf](https://github.com/MjxUpUp/Forge/commit/168d5cf24e0c69e9b18780157a1d71e978cb7743))
+
 ## [1.77.0](https://github.com/MjxUpUp/Forge/compare/v1.76.0...v1.77.0) (2026-10-13)
 
 
