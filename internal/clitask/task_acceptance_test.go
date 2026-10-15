@@ -509,6 +509,9 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 	if len(st.Acceptance) != 2 {
 		t.Fatalf(`纯 plan-file 应提取 2 条, got %d (%v)`, len(st.Acceptance), st.Acceptance)
 	}
+	if src := st.SpecArtifacts[`plan`].Source; src != `plan.md` {
+		t.Errorf(`plan 产物应记录仓库相对来源 plan.md, got %q`, src)
+	}
 	if st.Acceptance[0].Run != `go version` || st.Acceptance[0].Expected != `go version go` {
 		t.Errorf(`[0] = %+v, want {go version, go version go}`, st.Acceptance[0])
 	}
