@@ -92,6 +92,12 @@ type ArtifactRef struct {
 	Path      string    `json:"path"`
 	Hash      string    `json:"hash"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Source is where the content was registered from: a repo-relative path when the file sits inside the repo, an absolute path otherwise, or "stdin". It does not take part in the hash; L1 lint uses its base name to pick the document type.
+	//
+	// Source 是登记时的内容来源：仓库内文件记仓库相对路径，仓库外记绝对路径，stdin 记
+	// "stdin"。不参与哈希；L1 lint 用它选文档类型（落盘名统一是 <stage>.md，按落盘名永远
+	// 匹配不到 survey 等类型）。旧状态无此字段时为空，行为不变。
+	Source string `json:"source,omitempty"`
 }
 
 // ArtifactApproval is the human-approval record for a chain stage's artifact
