@@ -144,6 +144,9 @@ func TestDesignStartFlowReviewFixes(t *testing.T) {
 	if !reflect.DeepEqual(st.PlanScope, []string{"internal/a/a.go"}) || st.PlanScopeSource != taskpipeline.PlanScopeSourceDesign {
 		t.Fatalf("start --artifact design 应写入触点: %v / %q", st.PlanScope, st.PlanScopeSource)
 	}
+	if src := st.SpecArtifacts["design"].Source; src != "design.md" {
+		t.Fatalf("start --artifact 应记录仓库相对来源 design.md, got %q", src)
+	}
 
 	if out, _, code := runForge(t, dir, "task", "scope", "add", "internal/extra", "--ref", "feat/tp"); code != 0 {
 		t.Fatalf("scope add: %s", out)

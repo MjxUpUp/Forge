@@ -117,7 +117,7 @@ type DocType struct {
 	//
 	// MaxBodyLinesByTier 按 frontmatter 的 `tier:` 值覆盖 MaxBodyLines。
 	MaxBodyLinesByTier map[string]int
-	// Advisory downgrades every type-scoped issue (D5-D8) to advisory: a new type
+	// Advisory downgrades every type-scoped issue (D5-D11) to advisory: a new type
 	// starts in its observation window and is promoted only on data
 	// (design-stage-hardening proposal principle 2).
 	//
@@ -140,12 +140,12 @@ type DocType struct {
 // surveyNumericRe matches numeric claims that owe a citation: percentages and multipliers.
 //
 // surveyNumericRe 匹配欠一条引用的数字断言：百分比与倍数。
-var surveyNumericRe = regexp.MustCompile(`\d+(\.\d+)?\s?(%|倍|×)`)
+var surveyNumericRe = regexp.MustCompile(`\d+(\.\d+)?\s?(%|％|倍|×)`)
 
-// surveyCitationRe matches citation markers: footnotes ([^3^]/[^3]), numbered or evidence refs ([3]/[E3]) and URLs.
+// surveyCitationRe matches citation markers: footnotes ([^3^]/[^3]/[^name]), numbered or evidence refs ([3]/[E3]) and URLs.
 //
-// surveyCitationRe 匹配引用标记：脚注（[^3^]/[^3]）、编号或证据引用（[3]/[E3]）、URL。
-var surveyCitationRe = regexp.MustCompile(`\[\^?[A-Za-z]?\d+\^?\]|https?://`)
+// surveyCitationRe 匹配引用标记：脚注（[^3^]/[^3]/具名 [^name]）、编号或证据引用（[3]/[E3]）、URL。
+var surveyCitationRe = regexp.MustCompile(`\[\^?[A-Za-z]?\d+\^?\]|\[\^[^\]\s]+\]|https?://`)
 
 // surveyURLRe matches any URL.
 //
@@ -155,7 +155,7 @@ var surveyURLRe = regexp.MustCompile(`https?://`)
 // surveyConfidenceRe matches confidence markers in plain words or symbols.
 //
 // surveyConfidenceRe 匹配信度标注（符号或白话）。
-var surveyConfidenceRe = regexp.MustCompile(`✅|⚠️|❌|信度|置信|(?i:confidence)|多源一致|单一来源|未交叉验证|来源互相矛盾`)
+var surveyConfidenceRe = regexp.MustCompile(`✅|⚠|❌|信度|置信|(?i:confidence)|多源一致|单一来源|未交叉验证|来源互相矛盾`)
 
 // surveyInternalLabelRe matches internal research-pipeline labels that must not reach readers.
 //
@@ -219,10 +219,11 @@ func matchDocTypePath(path string) *DocType {
 	if dt := matchDocType(path); dt != nil {
 		return dt
 	}
-	norm := strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
+	// 片段锚定在路径段边界：前补 "/" 后比对 "/"+frag——mydocs/surveys/ 不算 docs/surveys/。
+	norm := "/" + strings.ToLower(strings.ReplaceAll(path, "\\", "/"))
 	for i := range DocTypes {
 		for _, frag := range DocTypes[i].PathContains {
-			if strings.Contains(norm, strings.ToLower(frag)) {
+			if strings.Contains(norm, "/"+strings.ToLower(frag)) {
 				return &DocTypes[i]
 			}
 		}
