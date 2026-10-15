@@ -277,3 +277,74 @@ func TestMutationRecurrence_TruncatedByHistory(t *testing.T) {
 		t.Fatalf("最近历史任务跑过 mutation 应截断 streak 放行；若排序/break 回归，三个 old 数满 streak=3 会硬拦——reasons=%v", reasons)
 	}
 }
+
+// TestCheckHazardPendingScopesToTaskSessions pins the delivery-gate scope: blocks from other sessions of the same project do not block this task (they leave a LevelWarn audit row), while blocks from this task's sessions or with no session attribution still do.
+//
+// TestCheckHazardPendingScopesToTaskSessions 钉住清账门作用域：同项目其他会话的拦截不阻断
+// 本任务（落 LevelWarn 审计行）；本任务会话（创建会话或非导入 SessionLink）与无会话归属的
+// 拦截仍阻断；导入的幽灵会话不算本任务会话。
+func TestCheckHazardPendingScopesToTaskSessions(t *testing.T) {
+	dir := hazardFixture(t)
+	state := &TaskState{
+		TaskRef:   "hz-scope",
+		Branch:    "feat/x",
+		SessionID: "sess-creator",
+		SessionLinks: []SessionLink{
+			{SessionID: "sess-joined", JoinedAt: time.Now()},
+			{SessionID: "sess-ghost", JoinedAt: time.Now(), Imported: true},
+		},
+	}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	evPath := filepath.Join(dataHome(dir), "hazards", "events.jsonl")
+	if err := os.MkdirAll(filepath.Dir(evPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	row := func(fp, sid string) string {
+		s := `{"type":"block","ts":"` + time.Now().Format(time.RFC3339) + `","command":"rm -rf /tmp/` + fp + `","fingerprint":"` + fp + `"`
+		if sid != "" {
+			s += `,"session_id":"` + sid + `"`
+		}
+		return s + "}\n"
+	}
+	write := func(rows ...string) {
+		t.Helper()
+		if err := os.WriteFile(evPath, []byte(strings.Join(rows, "")), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 只有其他会话（含导入幽灵会话）的悬账：放行 + 审计行。
+	write(row("a1", "sess-research"), row("a2", "sess-ghost"))
+	if ok, reasons := CheckHazardPending(dir, state); !ok {
+		t.Fatalf("foreign-only pending must not block, got %v", reasons)
+	}
+	var audited bool
+	entries, _ := checklog.LoadForTask(dir, state.TaskRef)
+	for _, e := range entries {
+		if e.Check == CheckNameHazardPending && e.Passed && e.Level == checklog.LevelWarn && e.Meta["pending.foreign"] == "2" {
+			audited = true
+		}
+	}
+	if !audited {
+		t.Fatalf("foreign-only pending must leave a LevelWarn hazard-pending audit row with pending.foreign=2, got %+v", entries)
+	}
+
+	// 本任务会话（创建会话 / 加入会话）与无归属行都阻断，计数只算本任务一侧。
+	for _, tc := range []struct {
+		name string
+		rows []string
+		want string
+	}{
+		{"creator session", []string{row("b1", "sess-research"), row("b2", "sess-creator")}, "有 1 个"},
+		{"joined session", []string{row("c1", "sess-joined")}, "有 1 个"},
+		{"unattributed row", []string{row("d1", ""), row("d2", "sess-research")}, "有 1 个"},
+	} {
+		write(tc.rows...)
+		ok, reasons := CheckHazardPending(dir, state)
+		if ok || len(reasons) == 0 || !strings.Contains(reasons[0], tc.want) {
+			t.Fatalf("%s: must block with own count only, got ok=%v reasons=%v", tc.name, ok, reasons)
+		}
+	}
+}

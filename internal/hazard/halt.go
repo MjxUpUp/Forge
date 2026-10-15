@@ -60,6 +60,46 @@ func CheckHalt(p *forgedata.Project) HaltState {
 	return st
 }
 
+// PendingSplit splits the unconfirmed blocks since the latest reset point by session ownership.
+//
+// PendingSplit 把自最近重置点以来的未确认拦截按会话归属分账：Own 为归属判定为真的会话
+// （以及无会话归属的行——人类终端直跑与本字段之前的旧行，保守计入 Own），Foreign 为其余会话。
+type PendingSplit struct {
+	Own         int       `json:"own"`
+	Foreign     int       `json:"foreign"`
+	LastOwn     time.Time `json:"last_own,omitempty"`
+	LastForeign time.Time `json:"last_foreign,omitempty"`
+}
+
+// PendingBlocksFor computes PendingSplit from the event stream; reset points (confirm / halt-release) clear both sides, matching CheckHalt. A nil owns treats every block as Own; a read error yields the zero split (fail-open, same as CheckHalt).
+//
+// PendingBlocksFor 从事件流计算 PendingSplit。重置点（confirm / halt-release）两侧同时清零，
+// 与 CheckHalt 同口径（confirm 是项目级真人核销，不区分会话）。owns 为 nil 时全部计入 Own；
+// 读失败返回零值（fail-open，与 CheckHalt 一致）。safe-halt 仍走 CheckHalt 的项目级计数，
+// 本函数只服务交付清账的作用域判定。
+func PendingBlocksFor(p *forgedata.Project, owns func(sessionID string) bool) PendingSplit {
+	var sp PendingSplit
+	events, err := LoadEvents(p)
+	if err != nil {
+		return sp
+	}
+	for _, e := range events {
+		switch e.Type {
+		case EventBlock:
+			if e.SessionID == "" || owns == nil || owns(e.SessionID) {
+				sp.Own++
+				sp.LastOwn = e.Ts
+			} else {
+				sp.Foreign++
+				sp.LastForeign = e.Ts
+			}
+		case EventConfirm, EventHaltRelease:
+			sp = PendingSplit{}
+		}
+	}
+	return sp
+}
+
 // ReleaseHalt 记录一次人工解锁（追加 EventHaltRelease——既是重置点也是审计行：
 // 谁、何时解的锁可回溯）。
 func ReleaseHalt(p *forgedata.Project) error {

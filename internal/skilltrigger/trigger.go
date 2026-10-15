@@ -650,7 +650,7 @@ func sourceText(ctx Context, source string) string {
 	out := func(k string) string { s, _ := ctx.ToolOutput[k].(string); return s }
 	switch source {
 	case MatchSourcePrompt:
-		return ctx.Prompt
+		return SanitizePrompt(ctx.Prompt)
 	case MatchSourceCommand:
 		return sanitizeCommand(cmd)
 	case MatchSourceStdout:
