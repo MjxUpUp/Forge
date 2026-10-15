@@ -292,10 +292,12 @@ func taskRefForSession(root, sessionID string) string {
 }
 
 // buildTriggerContext 把 hookdispatch.HookInput 转成引擎 Context（agent-neutral）。
+// Prompt 在入口处经 skilltrigger.SanitizePrompt 剥离宿主信封块（子代理完成通知等），
+// 下游关键词匹配、条件判定、prompt_hash 与摘录都只看用户原文。
 func buildTriggerContext(hookInput hookdispatch.HookInput, root string) skilltrigger.Context {
 	ctx := skilltrigger.Context{
 		Event:       hookInput.HookEventName,
-		Prompt:      hookInput.Prompt,
+		Prompt:      skilltrigger.SanitizePrompt(hookInput.Prompt),
 		ToolName:    hookInput.ToolName,
 		SessionID:   util.SanitizeSessionID(hookInput.SessionID),
 		ProjectRoot: root,
