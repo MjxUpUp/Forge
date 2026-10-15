@@ -228,7 +228,7 @@ func TestDanglingHomePaths(t *testing.T) {
 		"再次引用 ~/.forge/research/forge-direction-20260905-0956/report.md，\n" +
 		"模板：~/.research-workflow/{topic}-<时间戳>、~/.x/*.md、~/.x/$RUN、~/.x/...\n" +
 		"另一个缺失：~/.forge/research/forge-mechanisms-20260905-1752."
-	got := DanglingHomePaths(text, home)
+	got := DanglingHomePaths(text, home, nil)
 	want := []string{
 		"~/.forge/research/forge-direction-20260905-0956/report.md",
 		"~/.forge/research/forge-mechanisms-20260905-1752",
@@ -236,10 +236,17 @@ func TestDanglingHomePaths(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("DanglingHomePaths = %q, want %q", got, want)
 	}
-	if got := DanglingHomePaths(text, ""); got != nil {
+	if got := DanglingHomePaths(text, "", nil); got != nil {
 		t.Fatalf("empty home must disable the check, got %q", got)
 	}
-	if got := DanglingHomePaths("no home paths here", home); got != nil {
+	if got := DanglingHomePaths("no home paths here", home, nil); got != nil {
 		t.Fatalf("text without ~/ must return nil, got %q", got)
+	}
+
+	// 只查证据前缀：配置文件类路径不报；同一行已标注失效的不报。
+	mixed := "配置：~/.forge/config.json\n证据：~/.forge/research/gone-a/report.md\n旧证据：~/.forge/research/gone-b（失效：已清理）\n"
+	got = DanglingHomePaths(mixed, home, EvidenceHomePrefixes)
+	if !slices.Equal(got, []string{"~/.forge/research/gone-a/report.md"}) {
+		t.Fatalf("evidence-prefix scan = %q, want only gone-a", got)
 	}
 }
