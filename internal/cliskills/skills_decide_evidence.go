@@ -24,7 +24,12 @@ import (
 // externalFigureRe matches figures that usually come from an outside source: percentages, multipliers and arXiv ids.
 //
 // externalFigureRe 匹配通常来自外部来源的数字：百分比、倍数（N×/Nx/N 倍）、arXiv 编号。
-var externalFigureRe = regexp.MustCompile(`\d+(\.\d+)?\s?(%|×|倍)|\b\d+(\.\d+)?x\b|(?i)arxiv[:\s]*\d{4}\.\d{4,5}`)
+var externalFigureRe = regexp.MustCompile(`(?i)\d+(\.\d+)?\s?(%|％|×|倍)|\b\d+(\.\d+)?x\b|arxiv[:\s]*\d{4}\.\d{4,5}`)
+
+// evidenceRunRefRe matches a reference to a local eval run (run-<id> / run:<id>), which counts as a checkable source for internal metrics.
+//
+// evidenceRunRefRe 匹配本地 eval run 引用（run-<id> / run:<id>）——内部指标以 run 为来源，可核验。
+var evidenceRunRefRe = regexp.MustCompile(`\brun[-:][A-Za-z0-9]`)
 
 // evidenceURLRe matches a source URL.
 //
@@ -39,7 +44,8 @@ const maxEvidenceFigures = 5
 // evidenceCheck is the outcome of scanning a decision's evidence and rationale.
 //
 // evidenceCheck 是扫描一条决策 Evidence / Rationale 的结果。Figures 为空表示没有外部
-// 数字（不落行）；HasURL 表示两段文本里至少有一个来源 URL。
+// 数字（不落行）；HasURL 表示有可核验来源：两段文本里有 URL、引用了 run-<id>，或 warrant
+// 是 run 锚点（内部 eval 指标的来源是 run，不是网页）。
 type evidenceCheck struct {
 	Figures []string
 	HasURL  bool
@@ -49,7 +55,7 @@ type evidenceCheck struct {
 //
 // checkDecisionEvidence 扫描 evidence 与 rationale 中的外部数字与来源 URL（去重、保序、
 // 最多 maxEvidenceFigures 个片段）。
-func checkDecisionEvidence(evidence, rationale string) evidenceCheck {
+func checkDecisionEvidence(evidence, rationale, warrant string) evidenceCheck {
 	text := evidence + "\n" + rationale
 	var c evidenceCheck
 	seen := map[string]bool{}
@@ -63,7 +69,8 @@ func checkDecisionEvidence(evidence, rationale string) evidenceCheck {
 			c.Figures = append(c.Figures, m)
 		}
 	}
-	c.HasURL = evidenceURLRe.MatchString(text)
+	c.HasURL = evidenceURLRe.MatchString(text) || evidenceRunRefRe.MatchString(text) ||
+		strings.HasPrefix(strings.TrimSpace(warrant), "run:")
 	return c
 }
 
@@ -71,8 +78,8 @@ func checkDecisionEvidence(evidence, rationale string) evidenceCheck {
 //
 // reportDecisionEvidence 在刚记录的决策引用外部数字却无来源 URL 时打 WARN，并追加
 // decision-evidence 行。没有外部数字的决策静默且不落行；不在 forge 项目内时不落行。
-func reportDecisionEvidence(cmd *cobra.Command, skill, outcome, evidence, rationale string) {
-	c := checkDecisionEvidence(evidence, rationale)
+func reportDecisionEvidence(cmd *cobra.Command, skill, outcome, evidence, rationale, warrant string) {
+	c := checkDecisionEvidence(evidence, rationale, warrant)
 	if len(c.Figures) == 0 {
 		return
 	}
@@ -82,7 +89,7 @@ func reportDecisionEvidence(cmd *cobra.Command, skill, outcome, evidence, ration
 	}
 	figures := strings.Join(c.Figures, "、")
 	if !c.HasURL {
-		fmt.Fprintf(w, "⚠️ [decision-evidence] 证据引用了外部数字（%s）但没有来源 URL——补上原文链接与适用限定（场景/样本/模型），否则事后无从核对\n", figures)
+		fmt.Fprintf(w, "⚠️ [decision-evidence] 证据引用了外部数字（%s）但没有来源（URL、run-<id> 或 --warrant run:）——补上原文链接与适用限定（场景/样本/模型），否则事后无从核对\n", figures)
 	}
 	root, err := projectroot.Find()
 	if err != nil || root == "" {

@@ -641,9 +641,12 @@ func TestSkillsDecideEvidenceSource(t *testing.T) {
 		wantRow, wantPassed       bool
 		wantStderr, wantFigures   string
 	}{
-		{"百分比无 URL", "审查阶段占 59.4% token（Tokenomics）", "", true, false, "没有来源 URL", "59.4%"},
-		{"倍数与 arXiv 无 URL", "作弊率反升 43×", "见 arXiv:2510.20270", true, false, "没有来源 URL", "43×、arXiv:2510.20270"},
+		{"百分比无 URL", "审查阶段占 59.4% token（Tokenomics）", "", true, false, "没有来源", "59.4%"},
+		{"倍数与 arXiv 无 URL", "作弊率反升 43×", "见 arXiv:2510.20270", true, false, "没有来源", "43×、arXiv:2510.20270"},
 		{"有 URL", "审查阶段占 59.4% token", "https://arxiv.org/abs/2601.14470（仅 ChatDev）", true, true, "", "59.4%"},
+		{"倍与 Nx 无来源", "成本涨了 3 倍，吞吐 2.5x", "", true, false, "没有来源", "3 倍、2.5x"},
+		{"全角百分号与大写 X", "覆盖率 85％，提速 4X", "", true, false, "没有来源", "85％、4X"},
+		{"内部指标引用 run", "trigger 通过率 100%（run-20261015-a1）", "", true, true, "", "100%"},
 		{"无外部数字", "改了 SKILL.md 的措辞", "复盘结论", false, false, "", ""},
 	}
 	for i, c := range cases {
@@ -679,5 +682,17 @@ func TestSkillsDecideEvidenceSource(t *testing.T) {
 		if c.wantStderr == "" && strings.Contains(stderr.String(), "decision-evidence") {
 			t.Errorf("%s: sourced figures must not warn, got %q", c.name, stderr.String())
 		}
+	}
+}
+
+// TestDecisionEvidenceRunWarrant pins that a run warrant counts as a checkable source for internal metrics.
+//
+// TestDecisionEvidenceRunWarrant 钉住 run 锚点算作内部指标的可核验来源。
+func TestDecisionEvidenceRunWarrant(t *testing.T) {
+	if c := checkDecisionEvidence("通过率 92%", "", "run:20261015-a1"); len(c.Figures) != 1 || !c.HasURL {
+		t.Fatalf("run warrant must count as a source, got %+v", c)
+	}
+	if c := checkDecisionEvidence("通过率 92%", "", "doc:docs/x.md"); c.HasURL {
+		t.Fatalf("a doc warrant is not a source for an external figure, got %+v", c)
 	}
 }
