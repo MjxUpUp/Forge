@@ -222,7 +222,7 @@ func adviseDanglingHomePaths(root string, state *TaskState, changedFiles []strin
 		if rerr != nil {
 			continue
 		}
-		for _, ref := range docsconsistency.DanglingHomePaths(string(body), home) {
+		for _, ref := range docsconsistency.DanglingHomePaths(string(body), home, docsconsistency.EvidenceHomePrefixes) {
 			findings = append(findings, f+": "+ref)
 		}
 	}
@@ -237,5 +237,5 @@ func adviseDanglingHomePaths(root string, state *TaskState, changedFiles []strin
 		Detail:  "dangling home paths: " + strings.Join(findings, "; "),
 		Meta:    map[string]string{"docs.kind": "home-path"},
 	})
-	fmt.Fprintf(os.Stderr, "%s文档引用的本机路径已不存在——证据链会断：%s（把证据复制进仓库并改引仓库内路径，或就地标注失效）\n", GateAdvisory("[task-complete] "), strings.Join(findings, "; "))
+	fmt.Fprintf(os.Stderr, "%s文档引用的本机证据路径已不存在——证据链会断：%s（把证据复制进仓库并改引仓库内路径，或在同一行标注「失效」）\n", GateAdvisory("[task-complete] "), strings.Join(findings, "; "))
 }
