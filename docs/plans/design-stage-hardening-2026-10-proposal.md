@@ -29,7 +29,8 @@ design 阶段是 forge 的短板：默认只给 advisory，模板只有 5 节，
 外部证据（来源见文末「证据来源」）：
 - AI 生成的架构组件常对、连线常错：关系准确度 Edge F1 ≤ 0.18；约 33% 的内容在需求里找不到依据；架构关键需求覆盖率 49–58% [E1]。
 - 计划只有在正确或被验证时才提升代码质量 [E2][E3][E4]。
-- 指令越多遵循越差，上下文文件越长成本越高 [E5][E6]。
+- 同时下达的指令条数越多，遵循越差：500 条时最好的前沿模型准确率也只有 68% [E5]。
+- 给 agent 加上下文文件（AGENTS.md）总体不提升任务成功率，推理成本平均增加 20% 以上；该文附录 B 实测文件长度与成功率、成本都无明显相关 [E6]。（更正 2026-10-15：原文把两条拼成"上下文文件越长成本越高"，E6 不支持"越长越贵"，已拆开。）
 - 完整 SDD 流程在中等需求上约 10 倍开销，产出质量无提升（n=1 实测）[E7]。
 - 业界判断方案该多重，靠的是"规则清单 + agent 建议 + 人否决 + 事后用 diff 兜底"[E8][E9]。
 
@@ -216,7 +217,7 @@ go vet ./...
 - [E3] Jain et al., LLM-Assisted Code Cleaning, ICLR 2024 https://arxiv.org/abs/2311.14904
 - [E4] Cemri et al., Why Do Multi-Agent LLM Systems Fail? (MAST), arXiv 2503.13657 https://arxiv.org/abs/2503.13657
 - [E5] Jaroslawicz et al., IFScale: How Many Instructions Can LLMs Follow at Once?, arXiv 2507.11538 (NeurIPS 2025) https://arxiv.org/abs/2507.11538
-- [E6] Evaluating AGENTS.md, ETH Zurich, arXiv 2602.11988 (ICLR 2026) https://arxiv.org/abs/2602.11988
+- [E6] Evaluating AGENTS.md, ETH Zurich, arXiv 2602.11988 (ICLR 2026；按 v3 2026-09-29 核验) https://arxiv.org/abs/2602.11988
 - [E7] Eberhardt, Putting Spec Kit Through Its Paces, Scott Logic (2025-11-26) https://blog.scottlogic.com/2025/11/26/putting-spec-kit-through-its-paces-radical-idea-or-reinvented-waterfall.html
 - [E8] OpenSpec https://github.com/Fission-AI/OpenSpec ；Rust RFC Book https://rust-lang.github.io/rfcs/
 - [E9] Meta Engineering, Diff Risk Score (2025-08-06) https://engineering.fb.com/2025/08/06/developer-tools/diff-risk-score-drs-ai-risk-aware-software-development-meta/
