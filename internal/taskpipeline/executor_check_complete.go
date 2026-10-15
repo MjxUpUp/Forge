@@ -8,6 +8,7 @@ package taskpipeline
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -117,6 +118,11 @@ func adviseCompleteDelivery(root string, state *TaskState, changedFiles []string
 		fmt.Fprintf(os.Stderr, "%s文档一致性 drift——README 反引号引用了不存在的 forge 命令：%s（提交前修复，详见 skills/docs-consistency-guard%s）\n", GateAdvisory("[task-complete] "), strings.Join(drifted, ", "), docsconsistency.StaleBinaryHint())
 	}
 
+	// 本机路径失效 advisory（2026-10 research-workflow 复盘）：本任务改动的 markdown 引用了
+	// 已不存在的 ~/ 路径（被清理的调研 run 目录等）——证据链断在写入当下就照出来。只看本
+	// 任务 diff 内的 .md、只在本机跑（~/ 天然不可移植，不进 CI 与 docs lint）。
+	adviseDanglingHomePaths(root, state, changedFiles)
+
 	// 行为面 advisory：文档守卫只覆盖命令/flag【引用】，从不覆盖行为【描述】
 	// ——触及用户可见行为面（init/sync/uninstall、agent bridge、指令生成器、
 	// protocol/registry）的 diff 可以让 README/homepage 的过时描述不穿任何
@@ -196,4 +202,40 @@ func adviseCompleteDelivery(root string, state *TaskState, changedFiles []string
 			fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 任务目标（%s）与变更文件无明显关联——确认交付内容", state.Summary))
 		}
 	}
+}
+
+// adviseDanglingHomePaths reports ~/ paths referenced by the task's changed markdown files that no longer exist on this machine: stderr advisory plus one docs-consistency audit row. It never blocks; an unknown home directory skips the check.
+//
+// adviseDanglingHomePaths 报告本任务改动的 markdown 中引用、本机已不存在的 ~/ 路径：stderr
+// advisory + 一条 docs-consistency 审计行。永不阻断；取不到 home 目录时跳过。
+func adviseDanglingHomePaths(root string, state *TaskState, changedFiles []string) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+	var findings []string
+	for _, f := range changedFiles {
+		if !strings.EqualFold(filepath.Ext(f), ".md") {
+			continue
+		}
+		body, rerr := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+		if rerr != nil {
+			continue
+		}
+		for _, ref := range docsconsistency.DanglingHomePaths(string(body), home) {
+			findings = append(findings, f+": "+ref)
+		}
+	}
+	if len(findings) == 0 {
+		return
+	}
+	recordAudit(root, &checklog.Entry{
+		Check:   CheckNameDocsConsistency,
+		Passed:  true,
+		Checked: true,
+		TaskRef: state.TaskRef,
+		Detail:  "dangling home paths: " + strings.Join(findings, "; "),
+		Meta:    map[string]string{"docs.kind": "home-path"},
+	})
+	fmt.Fprintf(os.Stderr, "%s文档引用的本机路径已不存在——证据链会断：%s（把证据复制进仓库并改引仓库内路径，或就地标注失效）\n", GateAdvisory("[task-complete] "), strings.Join(findings, "; "))
 }
