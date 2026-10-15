@@ -563,6 +563,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		//（harness repo tracked），TaskState 持哈希引用（I5：文件拥有内容，状态只
 		// 指向）。best-effort——产物写失败不阻断任务创建。
 		if aref, aerr := taskpipeline.WriteArtifact(root, ctx.TaskRef, "plan", state.Plan); aerr == nil {
+			aref.Source = taskpipeline.ArtifactSource(root, planFile)
 			if state.SpecArtifacts == nil {
 				state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
 			}
@@ -599,6 +600,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				fmt.Fprintf(cmd.ErrOrStderr(), "⚠️ --artifact %q 登记失败（%v）——之后可用 forge task artifact --set %s 重登记\n", spec, aerr, stage)
 				continue
 			}
+			aref.Source = taskpipeline.ArtifactSource(root, path)
 			if state.SpecArtifacts == nil {
 				state.SpecArtifacts = map[string]taskpipeline.ArtifactRef{}
 			}
