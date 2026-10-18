@@ -28,6 +28,14 @@ cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
 # 二进制、npm 包全部自动就绪
 ```
 
+**PR 合并方式纪律：squash，不要 merge commit**。GitHub 的 "Create a merge commit"
+会让 PR 合并提交（`Merge pull request #NN` 带 PR 标题）与分支上的原始提交**同时**落在
+main 的 release 区间里，release-please 两条都按 Conventional Commits 解析，changelog 与
+GitHub Release 正文因此各出现一条同名条目（v1.79.0 实证：同一行 `feat(eval): 沙箱
+oracle v0` 带 `1e5e76e` 和 `a08a7cf` 两个 hash）。squash 只留一条；本地 `merge:` 前缀的
+合并提交不触发该问题（`merge:` 不是 Conventional 类型，release-please 不解析）。
+v1.79.0 的重复条目已由 `docs(changelog)` 提交人工收敛——Release 正文同步改。
+
 版本规则（Conventional Commits）：
 
 - `feat:` → minor，`fix:` → patch，`!`/`BREAKING CHANGE:` → major
