@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.79.0](https://github.com/MjxUpUp/Forge/compare/v1.78.0...v1.79.0) (2026-10-18)
+
+
+### Features
+
+* **eval:** 沙箱 oracle v0——变更级考卷（cheat 召回 6/7、held-out 逃逸 100%→0%） ([1e5e76e](https://github.com/MjxUpUp/Forge/commit/1e5e76efdafdf5c47986ae1f0de760413a63c0f5))
+* **eval:** 沙箱 oracle v0——变更级考卷（cheat 召回 6/7、held-out 逃逸 100%→0%） ([a08a7cf](https://github.com/MjxUpUp/Forge/commit/a08a7cfc405879fc569bb850b0be0d7fd11086d5))
+
 ## [1.78.0](https://github.com/MjxUpUp/Forge/compare/v1.77.1...v1.78.0) (2026-10-15)
 
 
