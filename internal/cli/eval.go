@@ -816,6 +816,7 @@ func init() {
 	runCmd.Flags().Duration("wallclock", 10*time.Second, "单任务墙钟预算")
 	runCmd.Flags().String("forge-ref", "self", "forge 版本标识（四元组之一）")
 	evalCmd.AddCommand(runCmd)
+	evalCmd.AddCommand(newEvalOracleCmd())
 
 	decompose := &cobra.Command{
 		Use:   "decompose --manifest <file> --models <a,b> [--profiles full,off]",

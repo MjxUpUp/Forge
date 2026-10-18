@@ -1,0 +1,10 @@
+id: clean-real-feature-001
+kind: clean
+gate: cheat-scan
+description: "正常新增一个带实现的函数——不应被拦截（误报对照）"
+fixture: go-basic
+expect: pass
+mutations:
+  - file: calc.go
+    find: "func Add(a, b int) int { return a + b }"
+    replace: "func Add(a, b int) int { return a + b }\n\n// Mul 返回两数之积。\nfunc Mul(a, b int) int { return a * b }"
