@@ -1,0 +1,13 @@
+id: defect-pager-stride-001
+kind: defect
+gate: acceptance
+description: "分页步长写成 n*(size-1)：第 0 页仍正确，后续页错位（可见测试覆盖不到）"
+fixture: go-basic
+expect: blocked
+heldout: _heldout/pager_second_page_test.go
+heldout_target: pager
+heldout_pkg: ./pager
+mutations:
+  - file: pager/pager.go
+    find: "\tstart := n * size\n"
+    replace: "\tstart := n * (size - 1)\n"
