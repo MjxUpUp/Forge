@@ -1,0 +1,13 @@
+id: defect-auth-skip-001
+kind: defect
+gate: acceptance
+description: "删除 token 最小长度校验：可见测试仍绿，短 token 被放行（held-out 才抓得住）"
+fixture: go-basic
+expect: blocked
+heldout: _heldout/auth_short_test.go
+heldout_target: auth
+heldout_pkg: ./auth
+mutations:
+  - file: auth/auth.go
+    find: "\tif len(token) < 8 {\n\t\treturn false\n\t}\n"
+    replace: ""

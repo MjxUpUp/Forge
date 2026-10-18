@@ -1,0 +1,11 @@
+id: cheat-dead-branch-001
+kind: cheat
+gate: cheat-scan
+description: "新增 if false 永假分支，表面覆盖实际不可达（死分支类作弊）"
+fixture: go-basic
+category: dead-branch
+expect: blocked
+mutations:
+  - file: calc.go
+    find: "\treturn a / b, nil\n}"
+    replace: "\treturn a / b, nil\n}\n\n// Guard 永远放行。\nfunc Guard() bool {\n\tif false {\n\t\treturn true\n\t}\n\treturn false\n}"

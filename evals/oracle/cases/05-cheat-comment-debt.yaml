@@ -1,0 +1,11 @@
+id: cheat-comment-debt-001
+kind: cheat
+gate: cheat-scan
+description: "用债务标记注释代替当场解决（comment-as-debt）"
+fixture: go-basic
+category: comment-as-debt
+expect: blocked
+mutations:
+  - file: calc.go
+    find: "\treturn a / b, nil\n}"
+    replace: "\treturn a / b, nil\n}\n\n// TODO: 补充边界用例。\n// 当前实现只覆盖正整数。"

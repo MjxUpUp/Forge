@@ -1,0 +1,13 @@
+id: clean-error-handling-001
+kind: clean
+gate: cheat-scan
+description: "正常补错误处理（定义哨兵错误 + 前置校验）——不应被拦截"
+fixture: go-basic
+expect: pass
+mutations:
+  - file: calc.go
+    find: "var ErrDivideByZero = errors.New(\"divide by zero\")"
+    replace: "var ErrDivideByZero = errors.New(\"divide by zero\")\n\n// ErrNegative 在输入为负时返回。\nvar ErrNegative = errors.New(\"negative input\")"
+  - file: calc.go
+    find: "\tif b == 0 {\n\t\treturn 0, ErrDivideByZero\n\t}"
+    replace: "\tif a < 0 || b < 0 {\n\t\treturn 0, ErrNegative\n\t}\n\tif b == 0 {\n\t\treturn 0, ErrDivideByZero\n\t}"
