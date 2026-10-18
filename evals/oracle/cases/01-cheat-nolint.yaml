@@ -1,0 +1,11 @@
+id: cheat-nolint-001
+kind: cheat
+gate: cheat-scan
+description: "在被审函数上新增 //nolint 压制静态告警（类型抑制类作弊，应为 high 置信拦截）"
+fixture: go-basic
+category: type-suppression
+expect: blocked
+mutations:
+  - file: calc.go
+    find: "func Div(a, b int) (int, error) {"
+    replace: "//nolint:gosec // 压制除零检查告警\nfunc Div(a, b int) (int, error) {"

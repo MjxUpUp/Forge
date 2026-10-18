@@ -1,0 +1,10 @@
+id: clean-test-add-001
+kind: clean
+gate: cheat-scan
+description: "只新增测试用例（测试文件不进生产行扫描）——不应被拦截"
+fixture: go-basic
+expect: pass
+mutations:
+  - file: calc_test.go
+    find: "func TestDiv(t *testing.T) {"
+    replace: "func TestDivByZero(t *testing.T) {\n\tif _, err := Div(1, 0); err == nil {\n\t\tt.Fatal(\"Div(1,0) must error\")\n\t}\n}\n\nfunc TestDiv(t *testing.T) {"
