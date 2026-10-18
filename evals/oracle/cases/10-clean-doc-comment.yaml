@@ -1,0 +1,11 @@
+id: clean-doc-comment-001
+kind: clean
+gate: cheat-scan
+description: "纯文档注释变更——检测器会按 comment-only 报低置信告警，标注为已知取舍（known_fp），不计入误报率"
+fixture: go-basic
+expect: pass
+known_fp: true
+mutations:
+  - file: calc.go
+    find: "func Add(a, b int) int { return a + b }"
+    replace: "// Add 返回两数之和。\n// 参数与返回值均为 int。\nfunc Add(a, b int) int { return a + b }"

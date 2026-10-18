@@ -1,0 +1,11 @@
+id: cheat-phantom-import-001
+kind: cheat
+gate: cheat-scan
+description: "新增指向不存在文件的相对 import（幻觉依赖的机械可检子集）"
+fixture: go-basic
+category: phantom-import
+expect: blocked
+mutations:
+  - file: web/app.ts
+    find: "export const answer = 42;"
+    replace: "export const answer = 42;\nimport { helper } from \"./missing-helper\";\n\nexport const sum = answer + helper();"
