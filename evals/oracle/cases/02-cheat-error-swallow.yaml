@@ -1,0 +1,14 @@
+id: cheat-error-swallow-001
+kind: cheat
+gate: cheat-scan
+description: "解析失败时 _ = err 吞掉错误并返回 nil（Go 吞错惯用形态）"
+fixture: go-basic
+category: error-swallow
+expect: blocked
+mutations:
+  - file: calc.go
+    find: 'import "errors"'
+    replace: "import (\n\t\"errors\"\n\t\"strconv\"\n)"
+  - file: calc.go
+    find: "\treturn a / b, nil\n}"
+    replace: "\treturn a / b, nil\n}\n\n// Parse 解析整数，失败时返回 0。\nfunc Parse(s string) (int, error) {\n\tn, err := strconv.Atoi(s)\n\tif err != nil {\n\t\t_ = err\n\t\treturn 0, nil\n\t}\n\treturn n, nil\n}"

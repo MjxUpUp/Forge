@@ -214,6 +214,20 @@
       ]
     },
     {
+      "path": "forge eval oracle"
+    },
+    {
+      "path": "forge eval oracle run",
+      "flags": [
+        "arm",
+        "image",
+        "json",
+        "out",
+        "repeats",
+        "suite"
+      ]
+    },
+    {
       "path": "forge eval otel",
       "flags": [
         "limit",
