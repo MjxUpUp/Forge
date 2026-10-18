@@ -28,8 +28,9 @@
  * @module @agent_forge/forge-dsh
  */
 import { readFileSync } from "node:fs";
+import { probeForge } from "./runner.js";
 import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, turnStoppingOutcome, sessionStartOutcome } from "./decisions.js";
-import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName } from "./tools.js";
+import { buildEventPayload, buildToolPayload, matchedCommands, pluginMessage, promptText, toCCToolName } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
 
@@ -64,6 +65,49 @@ function apply(ctx, config = {}) {
     if (debug && outcome.errors.length > 0) {
       console.error(`[forge-dsh] ${label} fail-open: ${outcome.errors.join("; ")}`);
     }
+  };
+
+  // A missing forge binary used to be completely silent: every hook failed
+  // open, so the plugin looked installed but gated nothing. Probe once per
+  // session start (retrying on later sessions, since installing forge needs no
+  // host restart) and surface the failure through agent.inject — the same
+  // channel forge's own advisories use. Once a probe succeeds the answer is
+  // cached for the process lifetime; forgeBin is static config per plugin
+  // instance, so it cannot go stale.
+  let forgeReady = false;
+  let lastProbe;
+  let probeInFlight;
+  const noticedAgents = new WeakSet();
+  const missingForgeNotice = (error) =>
+    `[forge-dsh] forge CLI not found (forgeBin: ${opts.forgeBin}). ` +
+    "Forge gates are OFF for this session — every action runs unguarded (fail-open). " +
+    "Install it with `npm install -g @agent_forge/forge`, then start a new session; " +
+    "if it lives elsewhere, set forgeBin in the profile patch." +
+    (error === undefined ? "" : `\nProbe error: ${error}`);
+  const ensureForge = async (agent) => {
+    if (forgeReady) return true;
+    if (probeInFlight === undefined) {
+      probeInFlight = probeForge({ forgeBin: opts.forgeBin, timeoutMs: Math.min(opts.timeoutMs, 5000) })
+        .finally(() => {
+          probeInFlight = undefined;
+        });
+    }
+    const probe = await probeInFlight;
+    lastProbe = probe;
+    if (probe.ok) {
+      forgeReady = true;
+      return true;
+    }
+    if (debug) console.error(`[forge-dsh] forge probe failed: ${probe.error}`);
+    if (agent != null && !noticedAgents.has(agent)) {
+      noticedAgents.add(agent);
+      try {
+        await agent.inject?.(pluginMessage(missingForgeNotice(probe.error)));
+      } catch {
+        // a throwing (or rejecting) inject must never interrupt session start
+      }
+    }
+    return false;
   };
 
   // PreToolUse — deny short-circuits the tool call.
@@ -102,6 +146,7 @@ function apply(ctx, config = {}) {
     const agent = payload?.agent;
     const source = payload?.source;
     (async () => {
+      await ensureForge(agent);
       const start = await runHookGroup(
         matchedCommands(spec.SessionStart, ""),
         buildEventPayload("SessionStart", agent, { source }),
@@ -170,9 +215,14 @@ function apply(ctx, config = {}) {
               if (r.errors.length > 0) parts.push(`FAIL-OPEN: ${r.errors.join("; ")}`);
               return parts.join("  ");
             }).join("\n");
+        const probeLine = lastProbe === undefined
+          ? "not run yet (no session start in this process)"
+          : lastProbe.ok
+            ? `ok${lastProbe.version === undefined ? "" : ` (${lastProbe.version.slice(0, 80)})`}`
+            : `FAILED — gates inactive (${lastProbe.error})`;
         return {
           kind: "success",
-          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin}  timeoutMs: ${opts.timeoutMs}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
+          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin}  timeoutMs: ${opts.timeoutMs}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
         };
       },
     }), "forge: status command");
