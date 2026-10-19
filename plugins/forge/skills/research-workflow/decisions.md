@@ -195,3 +195,25 @@ internal/skillsqa/research_workflow_test.go：lint 对 13 类陷阱逐条检出�
 ### Rationale
 
 复盘根因是关键门只有散文规则加同一 agent 自查；能脚本化的改 lint，不能脚本化的交给隔离上下文核验子代理
+
+## [d-18dfe1ab6b0fde30-38817d57] accept
+
+- **Skill**: research-workflow
+- **DecidedAt**: 2026-10-19T08:41:43Z
+- **By**: claude-code
+
+### Diagnosis
+
+调研产物散落三处：~/.forge/research 残留旧 run、~/.research-workflow 为当前 run_dir、Forge docs/surveys 收进与 Forge 无关的通用行业调研（2 份与 run_dir report.md 逐字节重复）。根因：SKILL.md 未声明成稿唯一归宿且称 run_dir 会被清理，下游落库条件只写要写进仓库文档时，agent 按 cwd 落库
+
+### Revision
+
+建 run_dir 节声明 ~/.research-workflow 为唯一归宿、长期保留、一个 run 一篇 report.md；Phase 4 下游落库改为仓库落库，两条可判定条件（仓库文件已 grep 到对该调研的引用 + brief 服务项目字段等于仓库名），文件头写 ~/ 形式源路径；brief.md 加服务项目字段；status.json 示例 downstream 改 []；failure-cases 案例 6 去掉本地清理前提
+
+### Evidence
+
+本机盘点：~/.forge/research 10 run（8/18-9/29），~/.research-workflow 16 run；Forge docs/surveys 未跟踪 3 份通用调研，其中 2026-10-ai-native-sdlc-weekly-1012-1019.md 与 2026-10-decision-models-ai-native-sdlc-survey.md 分别与 ai-native-sdlc-weekly-20261019-1508、jev-sdlc-20261012-1119 的 report.md 逐字节相同（cmp 确认）；用户 2026-10-19 选定 ~/.research-workflow 为统一位置并迁移历史产物
+
+### Rationale
+
+run_dir 已是 skill 自有命名空间且全量过程文件在此，以它为唯一归宿不需另起目录；仓库副本只为解决 ~/ 路径跨人跨机失效，因此只在仓库文档确有引用时复制，条件写成 grep 与字段比对，避免 agent 按 cwd 自行判断；姊妹篇方案因 research-lint 只扫 report.md 会漏检而放弃
