@@ -212,6 +212,53 @@ test("session-start: emit-mode context lands via inject; source compact also fir
   assert.equal(hooks.at(-1).payload.hook_event_name, "PostCompact");
 });
 
+test("session-start: a missing forge injects one visible notice per session and status reports it", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const BAD = fileURLToPath(new URL("../test/doubles/no-such-forge", import.meta.url));
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", {
+    register: (cmd) => {
+      registered.set(cmd.name, cmd);
+      return () => true;
+    },
+  });
+  await ctx.plugin(forgePlugin, { forgeBin: BAD, timeoutMs: 5000 });
+  const { agent, calls } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && calls.injected.length === 0) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(calls.injected.length, 1, "exactly one notice");
+  const notice = calls.injected[0].content[0].text;
+  assert.match(notice, /forge CLI not found/);
+  assert.ok(notice.includes(BAD), "notice names the configured forgeBin");
+  assert.match(notice, /npm install -g @agent_forge\/forge/);
+  // compact is the SAME session — the notice must not repeat on every boundary
+  ctx.emit("agent/session-start", { agent, source: "compact" });
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal(calls.injected.length, 1);
+
+  const status = registered.get("forge-status");
+  const reply = await status.handler();
+  assert.match(reply.text, /probe: FAILED/);
+  assert.match(reply.text, /gates inactive/);
+
+  // a NEW session gets its own notice: the WeakSet is per agent, not process-wide
+  const second = makeAgent();
+  ctx.emit("agent/session-start", { agent: second.agent, source: "startup" });
+  const deadline2 = Date.now() + 15000;
+  while (Date.now() < deadline2 && second.calls.injected.length === 0) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.equal(second.calls.injected.length, 1, "the new session is told too");
+  assert.equal(calls.injected.length, 1, "the first session still got exactly one");
+});
+
 test("disabled config wires no listeners", async (t) => {
   rmSync(LOG, { force: true });
   process.env.FAKE_FORGE_LOG = LOG;

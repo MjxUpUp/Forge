@@ -15,6 +15,14 @@
  */
 import { appendFileSync } from "node:fs";
 
+// `forge --version` is the liveness probe: exit before touching stdin (the
+// real binary does not read stdin for --version either), and do not log —
+// probe calls are not hook runs.
+if (process.argv.includes("--version")) {
+  process.stdout.write("forge version 1.79.0 (fake)\n");
+  process.exit(0);
+}
+
 // Simulates a forge that fails BEFORE reading stdin (unknown hook name after
 // a spec/binary version drift, an early panic): exits immediately, leaving
 // the parent's stdin write to hit EPIPE.
