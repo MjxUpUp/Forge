@@ -54,7 +54,7 @@ mkdir -p ~/.research-workflow/agent-memory-20261014-1535
 
 完整路径记作 `{run_dir}`。`topic` 短、英文小写 + 连字符。`-p` 让 mkdir 幂等，同分钟重跑不挂。建完目录立刻写 `brief.md` 与 `status.json`（`references/credibility-protocol.md` 第 1、7 节）。
 
-所有产出落在 `{run_dir}/` 下，文件名不再带 topic 前缀：
+所有产出落在 `{run_dir}/` 下（归宿与进仓库条件见 SKILL.md），文件名不再带 topic 前缀：
 
 | 文件 | 工序 | 模式 | 内容 |
 |---|---|---|---|

@@ -27,6 +27,7 @@
 # Brief
 - 原问题（用户原文，逐字）：
 - 要服务的决策（这份调研要帮谁决定什么）：
+- 服务项目（结论要落进哪个仓库的设计决策；填仓库名，通用调研填 none）：
 - 子问题（编号 Q1..Qn，每个可独立判定答完没答完）：
 - 范围内 / 范围外：
 - 时间窗（死线）：
@@ -143,7 +144,7 @@ dive 的 Key Evidence 表多一列「限定」：场景、样本、模型、时�
   "searches": 74,
   "fetches": 61,
   "claims_checked": 23,
-  "downstream": ["docs/surveys/2026-10-agent-memory.md"]
+  "downstream": []
 }
 ```
 
@@ -151,6 +152,7 @@ dive 的 Key Evidence 表多一列「限定」：场景、样本、模型、时�
 - **禁止静默降级**：跳过任何步骤（verify、反证、claims 核验、维度不足、worker 失败）都写进 `degradations`，并在交付消息里告诉用户。
 - `searches` / `fetches` 取自 `{run_dir}/search_log.md` 的实际行数，不用估算。每个 worker 把自己的检索追加进 search_log.md：`| worker | 时间 | 工具 | 查询或 URL | 纳入/排除 | 理由 |`。
 - 会话中途结束时，把 `stage` 停在实际到达的位置；下次接续先读 status.json。
+- `downstream` 只记按 SKILL.md「仓库落库」复制进仓库的路径，以及用户明确指定的写入位置；都没有就写 `[]`。
 
 **防的失败**：报告自报搜索量比实测虚高 23–60%；5/13 个 run 有缺口却没有任何文件说明停在哪、为什么。
 
