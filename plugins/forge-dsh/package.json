@@ -7,6 +7,7 @@
     "url": "https://github.com/MjxUpUp/Forge",
     "directory": "plugins/forge-dsh"
   },
+  "homepage": "https://github.com/MjxUpUp/Forge/tree/main/plugins/forge-dsh",
   "type": "module",
   "main": "lib/index.js",
   "files": [

@@ -1865,8 +1865,8 @@
       ],
       "failOpen": [
         "block is read ONLY from the stdout JSON decision field, never from exit codes",
-        "every infrastructure failure (forge missing, spawn error, unparseable output, timeout) fails open silently",
-        "the only visibility is /forge-status (50-entry ring buffer) and debug:true"
+        "every infrastructure failure (forge missing, spawn error, unparseable output, timeout) fails open",
+        "hook-failure visibility is /forge-status (50-entry ring buffer) and debug:true; a missing forge binary additionally injects one session-start notice per session"
       ]
     }
   ]
