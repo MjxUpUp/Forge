@@ -25,25 +25,30 @@ the forge binary — the plugin itself has **zero runtime dependencies**.
 | `agent/session-start` | `SessionStart`¹ | context via `agent.inject()` |
 | `agent/turn-stopping` | `Stop` | `agent.steer(reason)` → another step |
 
-¹ `source:'compact'` additionally fires forge's `PostCompact` group — DSH rc.7
-exposes no dedicated compaction point.
+¹ `source:'compact'` additionally fires forge's `PostCompact` group — the preview
+builds expose no dedicated compaction point.
 
 DSH tool names map onto the Claude Code names forge dispatches on
-(`write/edit/str_replace_editor→Write/Edit`, `bash/pwsh→Bash`, `read→Read`,
+(`write/edit/str_replace_editor→Write/Edit`, `bash/pwsh→Bash`, `read/read_image→Read`,
 `skill→Skill`); unmapped tools pass ungated. The wired hook roster mirrors
 forge's canonical spec (`lib/spec.json`, drift-guarded by a Go test in the Forge
 repo) — freeze-guard, task-guard, assertion-check, read-before-edit, bash-guard,
 hazard-guard, auto-compile, workflow-test-guard, file-sentinel, tool-track,
 test-nudge, failure-track (PostToolUseFailure), subagent-track (SubagentStop),
-task-verify, review-stop, skill-trigger, and the session-start group.
+task-verify, review-stop, skill-trigger, doc-lint, conventions-write, gate-cmd-form,
+task-drift, resume-reinject, compact-resume, conventions-context, and the
+session-start group.
 failure-track/subagent-track are mirrored in the spec but inert until DSH
-exposes the corresponding event points (rc.7 has neither).
+exposes the corresponding event points (the preview builds have neither).
 
 ## Requirements
 
 - The `forge` CLI on `PATH` (`npm install -g @agent_forge/forge`), with the project
   initialized (`forge init`) for task gates to have state to enforce.
-- DeepSeek Harness `0.1.0-rc.x` (verified against `0.1.0-rc.7`), Node.js ≥ 18.
+- DeepSeek Harness `0.1.0-rc.7` – `0.2.1-rc.2`, Node.js ≥ 18. The bridge contract is
+  pinned to `0.1.0-rc.7` ([`contract.json`](./contract.json)); `0.2.1-rc.2` is the
+  desktop build this plugin runs on (pre-tool interception verified live there; a
+  full five-event regression across the range is still pending).
 - Windows works out of the box: npm lays out `forge` as a `forge.cmd` shim, which
   the plugin spawns through `cmd.exe` (a bare spawn cannot execute it); timeout
   kills tear down the whole child tree via `taskkill /T`.
@@ -57,45 +62,67 @@ dsh plugin --profile web add @agent_forge/forge-dsh
 # or straight from the Forge repo (subdirectory install)
 dsh plugin --profile web add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"
 
-# local development
-dsh plugin --profile web add "link:$(pwd)"
+# local development (run from this directory; `link:.` works on Windows too)
+dsh plugin --profile web add "link:."
 ```
 
-Restart `dsh web` after install. Check status inside a session with `/forge-status`.
+The plugin hot-loads into a running dsh — adding or removing the bundle reloads the
+profile. If a given build does not pick it up, restart the host once. Start a new
+session to pick up the SessionStart context, and check the bridge's state with
+`/forge-status` (probe result, wired groups, recent verdicts). To uninstall:
+`dsh plugin --profile <name> remove @agent_forge/forge-dsh` (the desktop app's profile
+is `desktop`), or keep it installed but inert with `enabled:false`.
 
 ## Config
 
+Keys go on the bundle entry in the profile's `cordis.patch.yml` — the user-editable
+patch layer. Do not edit the generated `cordis.yml`: the loader rewrites that root on
+every boot, so anything written there is lost (the desktop app manages its own profile
+under `~/.dsh/profiles/<profile>/`):
 ```yaml
-# profile patch
-- insert:
-    - id: forge-quality
-      name: "@agent_forge/forge-dsh"
-      config:
-        forgeBin: forge      # binary name/path (env FORGE_BIN overrides the default)
-        timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
-        enabled: true        # false unwires every listener
-        debug: false         # log fail-open hook errors to console.error
+# ~/.dsh/profiles/<profile>/cordis.patch.yml
+- id: forge-quality
+  name: "@agent_forge/forge-dsh"
+  config:
+    forgeBin: forge      # binary name/path; FORGE_BIN only fills in when this key is absent
+    timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
+    enabled: true        # false unwires every listener
+    debug: false         # log fail-open hook errors to console.error
 ```
 
 ## Fail-open contract
 
-Blocks are read from forge's stdout JSON (`decision:"block"`), never from exit
-codes — a forge internal error (exit 1) is indistinguishable from a deny otherwise.
-Every infrastructure failure (forge missing, spawn error, unparseable output,
-timeout) **fails open**: a forge outage never locks the agent out of its own tools.
-Such failures are silent by design; surface them with `/forge-status` or `debug:true`.
+Blocks are read from forge's stdout JSON (`decision:"block"`), never inferred from
+exit codes: the verdict reason and its `additionalContext` exist only in that JSON,
+and forge reuses exit 2 for hard errors as well. Every infrastructure failure (forge
+missing, spawn error, unparseable output, timeout) **fails open**: a forge outage
+never locks the agent out of its own tools. Such hook-run failures are silent by
+design; surface them with `/forge-status` or `debug:true`.
 
-Two latency trade-offs to know: hooks run **serially** per event (up to five per
+A missing `forge` binary is the one exception to that silence: each session start
+probes `forge --version` once (until a probe succeeds — the answer is then cached
+for the process lifetime) and, when the probe fails, injects a visible notice
+naming the configured `forgeBin`. Without it an uninstalled CLI would look exactly
+like a healthy plugin gating nothing. The notice is informational, not a switch —
+while the binary is missing, every hook attempt fails open on its own, so gates are
+inactive whether or not the probe ran. Installing forge needs no host restart: the
+next session probes again and gating resumes.
+
+Two latency trade-offs to know: hooks run **serially** per event (up to six per
 group), so a slow hook chain delays the tool call — and a gate that legitimately
 exceeds `timeoutMs` (e.g. `auto-compile` cold-building a large project past 30s)
 silently loses that run's feedback to fail-open (visible in `/forge-status`).
 Raise `timeoutMs` on big projects.
 
+`/forge-status` reports the probe line after the header: `probe: ok (forge version …)`,
+`probe: FAILED — gates inactive (…)`, or `not run yet` before the process's first
+session start.
+
 ## Known watch items (dsh preview)
 
-- **No stop-hook loop guard** in rc.7 — a permanently-failing Stop gate steers at
-  every stop boundary. forge's Stop gates are self-limiting once their gate passes,
-  but a stuck gate loops the turn.
+- **No stop-hook loop guard** in the preview builds (`0.1.0-rc.7` – `0.2.1-rc.2`) —
+  a permanently-failing Stop gate steers at every stop boundary. forge's Stop gates
+  are self-limiting once their gate passes, but a stuck gate loops the turn.
 - **SessionStart context is best-effort** (emit mode, detached): it may miss the
   first request of a very short-lived session — same limitation the official
   bridges document (`TODO(session-start-gating)`).

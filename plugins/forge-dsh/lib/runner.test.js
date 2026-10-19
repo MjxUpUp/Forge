@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { planSpawn, runForgeHook } from "./runner.js";
+import { planSpawn, probeForge, runForgeHook } from "./runner.js";
 import { FAKE_BIN as FAKE } from "../test/doubles/forge-bin.mjs";
 
 test("planSpawn: win32 routes through the shell — npm's forge.cmd shim is not directly spawnable", () => {
@@ -79,6 +79,19 @@ test("a forge that exits without reading stdin does NOT crash the host (EPIPE re
   const big = { hook_event_name: "PreToolUse", tool_input: { content: "x".repeat(256 * 1024) } };
   const v = await runForgeHook("forge hook early-exit", big, { forgeBin: FAKE });
   assert.equal(v.block, false); // fail-open, not a crash
+});
+
+test("probeForge: a runnable binary reports ok plus its version line", async () => {
+  const probe = await probeForge({ forgeBin: FAKE });
+  assert.equal(probe.ok, true);
+  assert.match(probe.version ?? "", /forge version/);
+});
+
+test("probeForge: a missing binary fails soft with a diagnostic, never throws", async () => {
+  const probe = await probeForge({ forgeBin: "/nonexistent/forge-probe-bin", timeoutMs: 5000 });
+  assert.equal(probe.ok, false);
+  assert.equal(typeof probe.error, "string");
+  assert.notEqual(probe.error, "");
 });
 
 test("stdin payload arrives as one JSON document", async () => {

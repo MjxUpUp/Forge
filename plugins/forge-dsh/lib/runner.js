@@ -108,40 +108,7 @@ export function runForgeHook(command, payload, opts = {}) {
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
-      // On the win32 shell route the direct child is cmd.exe and the forge
-      // grandchild holds the task index lock AND the inherited stdio pipes:
-      // killing only the shell ORPHANS the grandchild (a dead parent's tree
-      // is unfindable for /T) — it survives with the pipes open, pinning this
-      // process's event loop forever. taskkill /T /F is therefore the primary
-      // kill: it tears down shell + descendants atomically. kill() (wrapper
-      // only) is the FALLBACK for when taskkill itself fails — spawn error
-      // (not on PATH) or nonzero exit (access denied); killing just the
-      // wrapper then still beats killing nothing. Non-shell routes kill the
-      // forge process directly.
-      if (plan.shell && child.pid) {
-        const fallback = () => {
-          try {
-            child.kill();
-          } catch {
-            // already exited — nothing to kill
-          }
-        };
-        try {
-          const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-          killer.on("error", fallback);
-          killer.on("close", (c) => {
-            if (c !== 0) fallback();
-          });
-        } catch {
-          fallback();
-        }
-      } else {
-        try {
-          child.kill();
-        } catch {
-          // already exited — nothing to kill
-        }
-      }
+      killTree(child, plan.shell);
       resolve({ block: false, error: `timeout after ${timeoutMs}ms` });
     }, timeoutMs);
     const settle = (verdict) => {
@@ -196,6 +163,114 @@ export function runForgeHook(command, payload, opts = {}) {
     // 流错误即可。
     child.stdin.on("error", () => {});
     child.stdin.end(JSON.stringify(payload) + "\n");
+  });
+}
+
+/**
+ * Kill a spawned forge and, on the win32 shell route, its whole process tree.
+ *
+ * On the win32 shell route the direct child is cmd.exe and the forge
+ * grandchild holds the task index lock AND the inherited stdio pipes: killing
+ * only the shell ORPHANS the grandchild (a dead parent's tree is unfindable
+ * for /T) — it survives with the pipes open, pinning this process's event
+ * loop forever. taskkill /T /F is therefore the primary kill: it tears down
+ * shell + descendants atomically. kill() (wrapper only) is the FALLBACK for
+ * when taskkill itself fails — spawn error (not on PATH) or nonzero exit
+ * (access denied); killing just the wrapper then still beats killing nothing.
+ * Non-shell routes kill the forge process directly.
+ *
+ * @param {import("node:child_process").ChildProcess} child
+ * @param {boolean} shell - planSpawn's shell flag for this child.
+ */
+function killTree(child, shell) {
+  if (shell && child.pid) {
+    const fallback = () => {
+      try {
+        child.kill();
+      } catch {
+        // already exited — nothing to kill
+      }
+    };
+    try {
+      const killer = spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      killer.on("error", fallback);
+      killer.on("close", (code) => {
+        if (code !== 0) fallback();
+      });
+    } catch {
+      fallback();
+    }
+  } else {
+    try {
+      child.kill();
+    } catch {
+      // already exited — nothing to kill
+    }
+  }
+}
+
+/**
+ * Probe whether the configured forge binary is runnable: one `forge --version`
+ * spawn, stdout captured, bounded by `timeoutMs` (default 5000 — a probe must
+ * never hold up session start for a hook-sized 30s). Fail-open like the hook
+ * path: resolves `{ok:false, error}` instead of throwing, so a missing or
+ * broken binary can be reported to the user rather than silently voiding every
+ * gate.
+ *
+ * The `--version` subcommand does not read stdin (verified against forge
+ * 1.79.0), so stdin is ignored; a hung probe is killed with the same
+ * tree-safe kill as a hook.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.forgeBin="forge"]
+ * @param {number} [opts.timeoutMs=5000]
+ * @returns {Promise<{ok: boolean, version?: string, error?: string}>}
+ */
+export function probeForge(opts = {}) {
+  const forgeBin = opts.forgeBin ?? "forge";
+  const timeoutMs = opts.timeoutMs ?? 5000;
+  const plan = planSpawn(forgeBin, ["--version"]);
+  return new Promise((resolve) => {
+    let child;
+    try {
+      const args = plan.shell ? [[plan.file, ...plan.args].join(" ")] : [plan.file, plan.args];
+      child = spawn(...args, {
+        stdio: ["ignore", "pipe", "pipe"],
+        ...(plan.shell ? { shell: true } : {}),
+      });
+    } catch (error) {
+      resolve({ ok: false, error: note(error) });
+      return;
+    }
+    let out = "";
+    let err = "";
+    let settled = false;
+    let timer;
+    const finish = (verdict) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(verdict);
+    };
+    timer = setTimeout(() => {
+      killTree(child, plan.shell);
+      finish({ ok: false, error: `timeout after ${timeoutMs}ms` });
+    }, timeoutMs);
+    child.stdout.on("data", (d) => (out += d.toString()));
+    child.stderr.on("data", (d) => (err += d.toString()));
+    child.on("error", (error) => finish({ ok: false, error: note(error) }));
+    child.on("close", (code) => {
+      if (code === 0) {
+        const version = out.trim();
+        finish(version === "" ? { ok: true } : { ok: true, version });
+        return;
+      }
+      // A missing binary on the win32 cmd.exe route exits nonzero with its
+      // message on stderr (cmd.exe itself spawned fine, so no 'error' event);
+      // keep that tail — it is the only diagnostic the user sees.
+      const tail = err.trim().slice(0, 200);
+      finish({ ok: false, error: `forge --version exited with code ${code}${tail === "" ? "" : `: ${tail}`}` });
+    });
   });
 }
 
