@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.79.1](https://github.com/MjxUpUp/Forge/compare/v1.79.0...v1.79.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **dsh:** surface a missing forge CLI and refresh market metadata ([#110](https://github.com/MjxUpUp/Forge/issues/110)) ([76786b2](https://github.com/MjxUpUp/Forge/commit/76786b206de8b866e8c2aa5e5a2693d8437b60d2))
+
 ## [1.79.0](https://github.com/MjxUpUp/Forge/compare/v1.78.0...v1.79.0) (2026-10-18)
 
 
