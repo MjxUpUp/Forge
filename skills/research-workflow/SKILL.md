@@ -105,9 +105,11 @@ mkdir -p ~/.research-workflow/<topic>-<上一步输出的时间戳>
 
 例：`mkdir -p ~/.research-workflow/agent-memory-20261014-1535`。`topic` 短、英文小写 + 连字符。这个完整路径记作 `{run_dir}`，后续 read/write / spawn prompt 都用字面绝对路径。
 
+**`~/.research-workflow/` 是调研产物的唯一归宿**：过程文件与成稿都留在 `{run_dir}`，长期保留不清理。一个 run 只出一篇成稿 `report.md`，另一个切面另开 run。其他任何位置（含当前仓库 `docs/`）都不另写调研产物，进仓库只走 Phase 4 末的「仓库落库」。用户在本次请求里明确指定了位置时照用户说的写，路径记进 status.json 的 `downstream`。
+
 ### 研究契约（深度档必做）
 
-建目录后立刻写 `{run_dir}/brief.md`（原问题原文 / 要服务的决策 / 子问题 Q1..Qn / 范围内外 / 时间窗 / 什么算答完），并初始化 `{run_dir}/status.json`。字段与规则见 `references/credibility-protocol.md` 第 1、7 节。
+建目录后立刻写 `{run_dir}/brief.md`（原问题原文 / 要服务的决策 / 服务项目 / 子问题 Q1..Qn / 范围内外 / 时间窗 / 什么算答完），并初始化 `{run_dir}/status.json`。字段与规则见 `references/credibility-protocol.md` 第 1、7 节。
 
 **开搜前把 brief 给用户确认**：一条消息列子问题、范围、时间窗，问"按这个查？"。用户请求里已写清全部字段时可跳过，status.json 记 `"brief_confirmed": "implicit"`。
 
@@ -180,7 +182,19 @@ Phase 1 工序 4-5 是素材层的信度分级；本 Phase 是**定稿前对承�
 
 **交付前跑 lint**：`bash <skill 目录>/scripts/research-lint.sh {run_dir}`（报告写出即可跑）。有 ERROR 先修再交付；WARN 和 status.json 里的 degradations 在交付消息里说明。lint 通过后把 status.json 的 `stage` 改为 `delivered`。
 
-**下游落库**：调研结论要写进仓库文档（设计 / ADR / 计划）时，把 report.md 复制进仓库的文档目录并提交，下游引用仓库内路径，保留信度标注——本机 run_dir 会被清理，引用 `~/` 路径的证据链迟早断。
+**仓库落库（唯一例外）**：下面两条都满足才把 `report.md` 复制进仓库，否则不落库：
+
+1. 该仓库已有、或本次同一提交新增的设计 / ADR / 计划文件里，已经写了指向这份调研的引用（`grep -r <run 目录名>` 或计划的副本文件名能命中）；
+2. brief.md 的「服务项目」字段等于 git 仓库根目录名（不区分大小写）；旧 brief 没有该字段时问用户确认。
+
+满足时（`~/` 路径跨机失效，所以要复制）：
+
+- 复制进该仓库已有的调研目录（如 `docs/surveys/`；没有就按该仓库文档约定新建，并在交付消息里说明）并提交
+- 文件头写一行 `源：~/.research-workflow/<目录名>/report.md`（用 `~/` 形式，不写绝对路径）
+- 路径记进 status.json 的 `downstream`
+- run 里的报告之后再修订时，同步覆盖仓库副本（保留头部源路径行）
+
+交付时不满足就不落库；之后的会话写设计文档要引用某份调研时，再按本条补复制。会话 cwd 恰好在某个仓库、调研是通用行业话题，都不构成落库理由。
 
 ---
 
