@@ -92,6 +92,9 @@ func SeedTaskStateForSchema() any {
 	// resolved_prints / loop_exhausted（含嵌套 reason/detail/at）键必须在承诺面。
 	s.ResolvedPrints = []string{"seedprint"}
 	s.LoopExhausted = &tasktypes.LoopExhaustion{Reason: tasktypes.LoopReasonRounds, Detail: "d", At: now}
+	// 人工重置后的新预算起算点（loop-contract B0）：loop_reset_round / loop_reset_at。
+	s.LoopResetRound = 2
+	s.LoopResetAt = &now
 	// findings/review_rounds 的嵌套可选键（round/change_hash/note）。
 	s.Findings = append(s.Findings, tasktypes.Finding{ID: "f2", Content: "c", Source: "s", Status: "open", Round: 1, ChangeHash: "h"})
 	s.ReviewRounds = append(s.ReviewRounds, tasktypes.ReviewRound{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now, Note: "n"})
