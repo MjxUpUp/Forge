@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -19,6 +20,13 @@ import (
 // 脚本文本时触发的告警一律带「line N:」前缀，脚本输出不可能命中。覆盖 MSYS /
 // Git for Windows 的「bash.exe: warning: could not find /tmp, please create!」
 // 与 glibc 的「bash: warning: setlocale: ...」。
+//
+// Scope: startup-time warnings only. The same /tmp warning raised mid-script
+// (here-doc, mktemp) carries "line N:" and is kept — PinTempDir is what keeps
+// scripts off /tmp in the first place.
+//
+// 范围：只剔启动期告警。脚本执行中（here-doc、mktemp）触发的同一 /tmp 告警带
+// 「line N:」会被保留——让脚本根本不走 /tmp 的是 PinTempDir。
 var runtimeWarningLine = regexp.MustCompile(`^(?:[A-Za-z]:)?(?:[^:]*[/\\])?(?:ba)?sh(?:\.exe)?: warning: `)
 
 // StripRuntimeNoise removes bash runtime-environment warning lines from a hook
@@ -67,7 +75,13 @@ func StripRuntimeNoise(out string) string {
 // 文件；Unix 上取值即 $TMPDIR 或 /tmp，行为不变。显式 TMPDIR 永不覆盖。
 func PinTempDir(env []string) []string {
 	for _, kv := range env {
-		if v, ok := strings.CutPrefix(kv, "TMPDIR="); ok && v != "" {
+		k, v, _ := strings.Cut(kv, "=")
+		// Windows env keys are case-insensitive (os/exec dedups them that way), so
+		// an inherited "TmpDir=X" is an explicit TMPDIR there.
+		//
+		// Windows 的 env 键不区分大小写（os/exec 也按此去重），继承来的「TmpDir=X」
+		// 在那里就是显式 TMPDIR。
+		if (k == "TMPDIR" || runtime.GOOS == "windows" && strings.EqualFold(k, "TMPDIR")) && v != "" {
 			return env
 		}
 	}

@@ -56,6 +56,11 @@ func installNoisyBashShim(t *testing.T) string {
 func TestHook_RuntimeNoiseDoesNotSplitBlockDedup(t *testing.T) {
 	root := newTaskGuardProject(t)
 	installNoisyBashShim(t)
+	// Wide window (clamped max) so a slow second delivery under load stays inside
+	// it — the window width is not under test, the fingerprint is.
+	//
+	// 宽窗（钳制上限）让负载下慢一拍的第二次投递仍在窗内——被测的是指纹，不是窗宽。
+	t.Setenv("FORGE_BLOCK_DEDUP_WINDOW_MS", "60000")
 	sess := fmt.Sprintf("noise-dedup-%d", time.Now().UnixNano())
 	payload := fmt.Sprintf(`{"hook_event_name":"PreToolUse","tool_name":"Bash","session_id":%q,"tool_input":{"command":"rm -rf ./important-data"}}`, sess)
 
@@ -120,5 +125,32 @@ func TestHook_ScriptTMPDIRPinned(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHook_NoiseOnlyFailKeepsReason pins the fallback: a script that fails with
+// interpreter noise as its ONLY output must still emit that text as the deny
+// reason, never an empty one (stripping must not blank the verdict).
+//
+// TestHook_NoiseOnlyFailKeepsReason 钉住回落：唯一输出是解释器噪声的失败脚本，
+// deny 理由仍须是该文本、绝不为空（剔噪不得把结论抹空）。
+func TestHook_NoiseOnlyFailKeepsReason(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shim is a POSIX sh script")
+	}
+	newTaskGuardProject(t)
+	dir := t.TempDir()
+	shim := "#!/bin/sh\necho 'bash.exe: warning: could not find /tmp, please create!' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "bash"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	payload := `{"hook_event_name":"PreToolUse","tool_name":"Bash","session_id":"noise-only","tool_input":{"command":"git push --force origin main"}}`
+	out, err := runHookCapture(t, "hazard-guard", payload)
+	if err == nil {
+		t.Fatalf("exit 1 from the script must block, got allow: %q", out)
+	}
+	if !strings.Contains(out+err.Error(), "could not find /tmp") {
+		t.Errorf("deny reason must fall back to the raw stderr, got stdout=%q err=%v", out, err)
 	}
 }

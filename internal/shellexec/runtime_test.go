@@ -10,6 +10,10 @@ import (
 // TestStripRuntimeNoise pins the interpreter-warning filter: the exact MSYS line
 // seen on Windows CI (run 39384523816, 39390818763) and glibc's setlocale warning
 // are dropped; script-raised warnings ("line N:") and every verdict line survive.
+//
+// TestStripRuntimeNoise 钉住解释器告警过滤：Windows CI 上实见的 MSYS 行（run
+// 39384523816、39390818763）与 glibc setlocale 告警被剔除；脚本自身告警（带
+// 「line N:」）与所有结论行保留。
 func TestStripRuntimeNoise(t *testing.T) {
 	const verdict = "FAIL [read-before-edit] target.go 未在本会话 Read 过"
 	for _, tc := range []struct {
@@ -37,6 +41,9 @@ func TestStripRuntimeNoise(t *testing.T) {
 // TestPinTempDir pins the TMPDIR contract: absent or empty → the Go-resolved temp
 // dir with forward slashes (appended last, so os/exec's last-wins dedup picks it
 // over an inherited empty value); a caller-set TMPDIR is never overridden.
+//
+// TestPinTempDir 钉住 TMPDIR 契约：缺失或为空 → 正斜杠的 Go 临时目录（追加在末尾，
+// os/exec 后者胜出的去重压过继承来的空值）；调用方显式设置的 TMPDIR 永不覆盖。
 func TestPinTempDir(t *testing.T) {
 	pinned := "TMPDIR=" + filepath.ToSlash(os.TempDir())
 	for _, tc := range []struct {

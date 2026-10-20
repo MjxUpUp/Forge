@@ -225,6 +225,10 @@ func TestDuplicateBlockRecord(t *testing.T) {
 // TestMarkerStampAge pins the shared dedupe-marker clock: millisecond round trip
 // (no floor to whole seconds), whitespace-tolerant parse, garbage → ok=false, and
 // a legacy seconds marker reads as ancient (outside every window: fail-open).
+//
+// TestMarkerStampAge 钉住共用的去重 marker 时钟：毫秒往返（不向下取整到整秒）、
+// 解析容忍首尾空白、垃圾值 → ok=false、旧秒级 marker 读作远古（落在任何窗口外：
+// fail-open）。
 func TestMarkerStampAge(t *testing.T) {
 	now := time.Now()
 	for _, tc := range []struct {

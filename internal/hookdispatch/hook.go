@@ -1055,10 +1055,11 @@ func RunHook(cmd *cobra.Command, args []string) error {
 			}
 		}
 	} else {
-		detail = stdout
-		if detail == "" {
-			detail = stderr
-		}
+		// Last resort rawStderr: a FAIL whose only output was interpreter noise
+		// must not emit a deny with an empty reason.
+		//
+		// 最后回落 rawStderr：唯一输出就是解释器噪声的 FAIL 不得发出无理由的 deny。
+		detail = cmp.Or(stdout, stderr, rawStderr)
 	}
 
 	// 5b. Host advisory promotion (hostcap PromoteAdvisory column; dsh & zcode (incident-proven) —
