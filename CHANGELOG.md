@@ -3,6 +3,13 @@
 ## [1.79.2](https://github.com/MjxUpUp/Forge/compare/v1.79.1...v1.79.2) (2026-10-20)
 
 
+### ⚠ 行为变更（非 BREAKING，需知悉）
+
+* 回环耗尽在**首次检出时就拦** `forge task complete`。此前检出的那一次会被放行（标记只写了盘，判定用的仍是旧的内存状态），要到下一次才拦。（#112）
+* `forge task finding --reset-loop --note` 现在会**重开回环预算**：open finding 从下一轮复核起重新计龄，得到一份完整的 `max_rounds` 预算（`max_rounds=1` 时重置后立即再次耗尽）。此前只清标记、不清轮龄，重置后下一次预检就会再次耗尽。TaskState 新增 `loop_reset_round` / `loop_reset_at` 两个键，只在本机有效。（#112）
+* `forge task report` 的"自供申辩"计数现在会计入 `--reset-loop` 人工裁决注记。此前从未计入，所以历史任务重新生成的 report 可能多出这一项。（#113）
+
+
 ### Bug Fixes
 
 * **loopedge:** 回环耗尽两处漏放——首次检出当场拦、--reset-loop 发放完整新预算（loop 契约 B0） ([#112](https://github.com/MjxUpUp/Forge/issues/112)) ([bc58648](https://github.com/MjxUpUp/Forge/commit/bc5864863f2e1eed64e27dafccdabc7427b3a10b))
