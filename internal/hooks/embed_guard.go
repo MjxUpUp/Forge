@@ -791,8 +791,17 @@ is_exec_wrapped() {
     *bash\ -c*|*sh\ -c*|*\ eval\ *|*"eval "*|*xargs\ sh*|*xargs\ bash*|*xargs\ -I*sh*|*xargs\ -I*bash*) return 0 ;;
     # SQL 执行型：-e/-c flag 把后续字符串当 SQL 执行
     *mysql\ *-e*|*mariadb\ *-e*|*psql\ *-c*|*psql\ *-e*) return 0 ;;
-    # 代码执行型：-c/-e/-r flag 把后续字符串当代码执行
-    *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) return 0 ;;
+    # 代码执行型：-c/-e/-r flag 把后续字符串当代码执行。flag 须是独立短选项——其后
+    # 不得紧跟 [A-Za-z0-9_=-]（或位于串尾）：旧的 *python*\ *-c* 是跨行子串匹配，
+    # python heredoc 之后同一条命令里的 go test -count=1 即命中，heredoc 数据放行与
+    # 引号数据放行双双被否决（2026-10-20 16:51 误拦实录）。node --eval 显式保留
+    # （旧子串匹配顺带覆盖它，收窄后不能丢）。
+    # Code-exec flags must be standalone short options (not followed by
+    # [A-Za-z0-9_=-]): the old substring glob matched "go test -count=1" later in the
+    # same command and vetoed both data-release paths. node --eval kept explicitly.
+    *python*\ *-c|*python*\ *-c[!A-Za-z0-9_=-]*|*node\ *-e|*node\ *-e[!A-Za-z0-9_=-]*|*node\ *--eval*) return 0 ;;
+    *ruby\ *-e|*ruby\ *-e[!A-Za-z0-9_=-]*|*perl\ *-[eE]|*perl\ *-[eE][!A-Za-z0-9_=-]*) return 0 ;;
+    *php\ *-r|*php\ *-r[!A-Za-z0-9_=-]*|*lua\ *-e|*lua\ *-e[!A-Za-z0-9_=-]*) return 0 ;;
     # sqlite3 后接引号包裹的 SQL（单/双引号）——直接执行 SQL 的常见形态
     *sqlite3\ *\'*|*sqlite3\ *\"*) return 0 ;;
     # pipe 到 shell 执行
@@ -1182,7 +1191,8 @@ fi
 # （任何 grep 失败 → 原样返回原串，剥离不发生）。
 # 原语清单（评审实证补全）：subprocess / os.system / os.popen / os.exec / popen2 /
 # getoutput / child_process / exec( / spawn( / system( / sh -c / bash -c / ruby 反引号
-# 与 %x[ / perl qx{ 与反引号——正文真会调 shell 的保持原判定。
+# 与 %x[ / perl qx{ 与反引号（反引号仅在命令含 ruby/perl 时计入）——正文真会调 shell
+# 的保持原判定。
 # HEREDOC_ORIG 保留原始命令：判定用剥离文本，指纹/事件/展示一律用原文（审计与 confirm
 # 不与 agent 所见文本漂移）。
 strip_interp_heredoc_bodies() {
@@ -1211,8 +1221,16 @@ strip_interp_heredoc_bodies() {
   printf '%s' "$body" | grep -qiF 'qx{' && { printf '%s' "$cmd"; return; }
   # ruby/perl 反引号：正文含反引号即视为会执行 shell。Go 原始字符串内不能写字面
   # 反引号——检测用 printf '\140'（八进制反引号，仓内既有惯例），对比变量展开。
+  # 只在命令里出现 ruby/perl 时生效：python 里反引号是惰性文本（往测试写 Go 原始
+  # 字符串，2026-10-20 误拦实录——正文因此不被剥离，引号失步后危险串裸露），node 里
+  # 是模板字符串，二者都不调 shell。判定看整条命令而非 << 前缀：多 heredoc 串联时
+  # 后一段 ruby 正文也会进 body，保守保留规则。
+  # Backtick primitive applies only when ruby/perl appears in the command: in python a
+  # backtick is inert text, in node a template literal — neither runs a shell.
   _BT=$(printf '\140')
-  case "$body" in *"$_BT"*) printf '%s' "$cmd"; return ;; esac
+  case "$cmd" in
+    *ruby*|*perl*) case "$body" in *"$_BT"*) printf '%s' "$cmd"; return ;; esac ;;
+  esac
   printf '%s' "$cmd" | awk -v t="$tag" 'BEGIN{inbody=0} inbody && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {inbody=0; print; next} inbody {next} {print} /<<-?/ {inbody=1}'
 }
 
