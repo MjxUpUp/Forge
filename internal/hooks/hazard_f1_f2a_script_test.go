@@ -193,6 +193,11 @@ func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 	}{
 		{"python-heredoc-then-go-test-count", "python3 - <<'EOF'" + nl + "s = \"" + danger + "\"" + nl + "open('x_test.go','w').write(s)" + nl + "EOF" + nl + "go test ./internal/hooks/ -count=1", false},
 		{"node-then-grep-e-other-segment", "node build.js; grep -e foo \"" + danger + "\" notes.txt", false},
+		// The literal 16:51 prefix: a hyphenated path segment (fix-windows-ci-flakes) is not a
+		// -c flag.
+		//
+		// 16:51 原样前缀：路径里的连字符段（fix-windows-ci-flakes）不是 -c flag。
+		{"hyphen-path-then-python-heredoc", "cd /w/fix-windows-ci-flakes && python3 - <<'EOF'" + nl + "s = \"" + danger + "\"" + nl + "EOF" + nl + "go test ./x -count=1", false},
 		{"python-c", "python3 -c \"import os; os.system('" + danger + "')\"", true},
 		{"python-c-attached-quote", "python -c'print(1)' && echo \"" + danger + "\"", true},
 		{"python-c-glued-code", "python3 -c__import__\"('os').system('" + danger + "')\"", true},
@@ -209,6 +214,15 @@ func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 		// 跨段间接调用（审查 R2）：出现 $ / 函数定义即回落整条命令匹配，保持原判定。
 		{"function-wrapped-interpreter", "p() { python3 \"$@\"; }; p -c \"x('" + danger + "')\"", true},
 		{"variable-held-flag", "p=python3; f=-c; $p $f \"x('" + danger + "')\"", true},
+		// No-$ indirection (review R3): only an allowlisted tool's flag segment can explain
+		// away the whole-command hit; git -c can run a shell alias, so git is not listed.
+		//
+		// 不带 $ 的间接调用（审查 R3）：只有白名单工具的 flag 段能解释掉整条命令命中；
+		// git -c 可执行 shell 别名，故 git 不在白名单。
+		{"xargs-placeholder-interpreter", "echo python3 | xargs -I{} {} -c \"x('" + danger + "')\"", true},
+		{"xargs-quoted-flag", "echo python3 | xargs -I{} {} \"-c\" \"x('" + danger + "')\"", true},
+		{"copied-interpreter-path", "cp /usr/bin/python3 ./py && ./py -c \"x('" + danger + "')\"", true},
+		{"git-config-alias-after-python", "python3 --version; git -c alias.x='!" + danger + "' x", true},
 		{"node-e", "node -e \"require('child_process').execSync('" + danger + "')\"", true},
 		{"node-eval-long", "node --eval \"x('" + danger + "')\"", true},
 		{"ruby-e", "ruby -e \"system('" + danger + "')\"", true},

@@ -797,30 +797,49 @@ is_exec_wrapped() {
     *"| bash"|*"| bash "*|*"| sh"|*"| sh "*) return 0 ;;
   esac
   # 代码执行型：-c/-e/-r flag 把后续字符串当代码执行（子串匹配：-c__import__ /
-  # -esystem 这类代码紧贴 flag 的写法须命中）。
-  # 默认对整条命令判（原行为）。只有命令**不含任何间接信号**时才收窄为同一命令段内
-  # 判——旧版跨行匹配让 python heredoc 之后另一段的 go test -count=1 命中，heredoc
-  # 数据放行与引号数据放行双双被否决（2026-10-20 16:51 误拦实录）。间接信号 = $（变量
-  # / 命令替换持有解释器或 flag：PY=python3; $PY -c、f=-c; $p $f）、函数定义
-  # （p() { python3 "$@"; }; p -c）、function、alias——出现即回落整条命令匹配，召回
-  # 不低于原版（对抗审查 N1/R2）。段 = 续行拼接后按换行 / ; / && / || / | 切分。
-  # Code-exec flags: whole-command substring match (original behavior) unless the
-  # command carries no indirection signal ($, a function definition, alias) — only
-  # then is the match narrowed to one command segment, which is what fixes the 16:51
-  # false block without losing indirect interpreter calls.
+  # -esystem 这类代码紧贴 flag 的写法须命中）。判定以原版整条命令匹配为准，命中后只有
+  # 一种情形可被「解释掉」：命令不含间接信号，没有任何段同时含解释器与其 flag，且每个
+  # 携带该 flag 的段，其命令词都在白名单里（这些工具的 -c/-e 是计数/模式，不执行代码）。
+  # 这修掉 2026-10-20 16:51 误拦：python heredoc 之后另一段 go test -count=1 的 -c 让
+  # 整条命令命中，heredoc 数据放行与引号数据放行双双被否决。
+  # 白名单之外（xargs {} -c、./py -c、反引号包着的 cat p 再 -c、git -c alias.x=!…）一律
+  # 维持原判；$ / 函数定义 / function / alias 出现即不解释（PY=python3; $PY -c、
+  # f=-c; $p $f）。flag 按解释器分开查，危险串自身的 -rf 不会误入（-r 只对 php 查）。
+  # 对抗审查四轮（N1/R2/R3）收敛到此形态：只开放可证明安全的窄口，召回不低于原版。
+  # Code-exec flags: the original whole-command match decides. A hit is explained
+  # away only when the command has no indirection signal, no segment pairs the
+  # interpreter with its flag, and every segment carrying that flag starts with an
+  # allowlisted tool (its -c/-e is a count or pattern, never code). That releases the
+  # 16:51 shape (go test -count=1 after a python heredoc) and nothing the original
+  # blocked otherwise.
+  local _flags=""
+  case "$1" in *python*\ *-c*) _flags="$_flags c" ;; esac
+  case "$1" in *node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*lua\ *-e*) _flags="$_flags e" ;; esac
+  case "$1" in *perl\ *-E*) _flags="$_flags E" ;; esac
+  case "$1" in *php\ *-r*) _flags="$_flags r" ;; esac
+  [ -z "$_flags" ] && return 1
   case "$1" in
-    *\$*|*"() {"*|*"(){"*|*function\ *|*alias\ *)
-      case "$1" in
-        *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) return 0 ;;
-      esac
-      return 1
-      ;;
+    *\$*|*"() {"*|*"(){"*|*function\ *|*alias\ *) return 0 ;;
   esac
-  local _seg
+  local _seg _w _f
   while IFS= read -r _seg; do
     case "$_seg" in
       *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) return 0 ;;
     esac
+    for _f in $_flags; do
+      case "$_seg" in
+        # flag 词首 = 空格或引号后的「-<flag>」：{} "-c" 这类加引号的 flag 不能漏；路径里
+        # 的连字符（fix-windows-ci-flakes 的 -ci）不算 flag。
+        *" -$_f"*|*"\"-$_f"*|*"'-$_f"*)
+          _w="${_seg#"${_seg%%[![:space:]]*}"}"
+          _w="${_w%%[[:space:]]*}"
+          case "$_w" in
+            go|gofmt|grep|egrep|fgrep|rg|ls|wc|head|tail|sort|uniq|diff|cut|tr) ;;
+            *) return 0 ;;
+          esac
+          ;;
+      esac
+    done
   done <<< "$(exec_segments "$1")"
   return 1
 }
