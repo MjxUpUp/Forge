@@ -209,6 +209,7 @@ func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 		{"background-amp-git-alias", "python3 x.py; go test ./x -count=1 & git -c alias.x='!" + danger + "' x", true},
 		{"osascript-e-after-python", "python3 - <<'EOF'" + nl + "print(1)" + nl + "EOF" + nl + "go test ./x -count=1; osascript -e \"do shell script \\\"" + danger + "\\\"\"", true},
 		{"go-test-exec-flag", "python3 - <<'EOF'" + nl + "print(1)" + nl + "EOF" + nl + "go test ./x -count=1 -exec \"sh -x " + danger + "\"", true},
+		{"go-vet-vettool-flag", "python3 - <<'EOF'" + nl + "print(1)" + nl + "EOF" + nl + "go vet -vettool=\"" + danger + "\" ./x; go test ./x -count=1", true},
 		// The literal 16:51 prefix: a hyphenated path segment (fix-windows-ci-flakes) is not a
 		// -c flag.
 		//

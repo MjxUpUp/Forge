@@ -804,7 +804,8 @@ is_exec_wrapped() {
   #   - 没有任何段同时含解释器与其 flag；
   #   - **每一段**的命令词都在严格白名单（只读/计数/格式化工具）；解释器名仅在该段是
   #     heredoc opener（含 <<）时算数；go 仅限 test/vet/build/list/fmt/mod/version/env/doc
-  #     且不带 -exec/-toolexec；首个 heredoc 的 delimiter 行算数。
+  #     且不带 -exec/-toolexec/-vettool（三者都会执行指定程序）；首个 heredoc 的 delimiter
+  #     行算数。
   # 白名单之外任何一段（git -c alias=!…、osascript -e、vim -c、xargs {} -c、./py -c、
   # python3 x.py、sort --compress-program、rg --pre）都维持原判——原版对「命令里出现
   # 解释器 + 别处有 -c」的连带拦截因此一点不丢（对抗审查 N1/R2/R3 与终审 R1/R2）。
@@ -839,7 +840,7 @@ is_exec_wrapped() {
       python|python2|python3|python3.[0-9]*|node|ruby|perl)
         case "$_w" in *"<<"*) ;; *) return 0 ;; esac ;;
       go)
-        case "$_w" in *-exec*|*-toolexec*) return 0 ;; esac
+        case "$_w" in *-exec*|*-toolexec*|*-vettool*) return 0 ;; esac
         _r="${_w#go}"
         _r="${_r#"${_r%%[![:space:]]*}"}"
         _sub="${_r%%[[:space:]]*}"
