@@ -237,10 +237,10 @@ type LoopReason struct {
 | `budget-tokens` | `LoopResetAt` 之后的 `SumEstTokens` ≥ 预算 | 需人工：同上 | 同上 |
 | `budget-changed-files` | 改动文件数 ≥ 预算（口径同 `TaskChangedFiles`） | 需人工：拆分任务，或调高预算 | 文件数回落，或预算调高 |
 | `no-progress` | 连续 K 次 verify-acceptance（K = `max_verifies_without_progress`）通过条数都没有增加 | 需人工：reset-loop | reset-loop 重开窗口 |
-| `gate-repeat-blocked` | 从 `LoopResetAt` 起，同一个门禁在 `History` 里连续两条 `Passed=false`（`forge task gate` 失败时由 `RecordGateResult` 写入；先例是 `ReworkRounds()`）。两类行不计：hook 路径（`--silent`，Stop hook 每轮都跑 task-verify，`TaskGateResult.Silent` 标记）与 `task-implement`（它的 BLOCKED 是"先提交"的正常节奏，本机 70 个任务里 6 个连续两次仍全部完成） | 需人工：reset-loop | 该门禁通过，或 reset-loop 重开窗口 |
+| `gate-repeat-blocked` | 从 `LoopResetAt` 起，同一个门禁在 `History` 里连续两条 `Passed=false`（`forge task gate` 失败时由 `RecordGateResult` 写入，`internal/clitask/task_gate.go`；先例是 `ReworkRounds()`，`internal/tasktypes/types.go`）。Silent 行与 `task-implement` 不计，见表下说明 | 需人工：reset-loop | 该门禁通过，或 reset-loop 重开窗口 |
 | `autonomy-denied` | B3 | 需人工：B3 的提档命令 | 提档，或放弃该动作 |
 
-`gate-repeat-blocked` 只统计 `forge task gate` 命令。`forge task complete` 的预检拒绝和 `forge review pass` 的拒绝不进 `History`，B1 不计入；如果要计入，需要先给这两处补 checklog 行，列为 Deferred。
+`gate-repeat-blocked` 只统计 `forge task gate` 命令，且两类行不计：hook 路径记录的结果（`forge task gate --silent`，Stop hook 每轮都跑 task-verify，`TaskGateResult.Silent` 标记）和 `task-implement` 的 BLOCKED（它是"先提交再过"的正常节奏：2026-10-20 代码评审扫本机 `~/.forge/projects/*/tasks/*.json` 的 `history[]`，70 个任务里 6 个 task-implement 连续两次 BLOCKED，全部正常完成）。`forge task complete` 的预检拒绝和 `forge review pass` 的拒绝不进 `History`，B1 不计入；如果要计入，需要先给这两处补 checklog 行，列为 Deferred。
 
 `no-progress` 用"有验证但没进展"衡量，**不用空闲时长**。定时循环每次唤醒之间本来就空闲，按空闲时长判断会误报。
 
