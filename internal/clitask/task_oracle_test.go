@@ -450,6 +450,41 @@ func TestReportSelfSupplied(t *testing.T) {
 	}
 }
 
+// TestReportCountsLoopReset（价-1c）：--reset-loop 人工裁决注记必须计入自供申辩。
+// 审计行由真实写入方 ResetLoopExhaustion 落地（不手写行形态——写入方与识别方
+// 共用单一真相源，任何一侧改形态都会在此暴露）；同 check 的耗尽拦截行（Passed=false）
+// 不是申辩，不计数。旧实现按 escape-hatch + "reset-loop" 匹配，从未命中。
+func TestReportCountsLoopReset(t *testing.T) {
+	dir, taskRef := setupChainTask(t, "")
+	st, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checklog.Record(dir, &checklog.Entry{
+		Check: checklog.CheckLoopExhausted, Passed: false, Checked: true, TaskRef: taskRef,
+		Detail: "loop exhausted (rounds-exhausted): x — escalation required, complete blocked",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := taskpipeline.ResetLoopExhaustion(dir, st, "人工裁决：换方向继续"); err != nil {
+		t.Fatal(err)
+	}
+	st, err = taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := buildTaskReport(dir, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.SelfSupplied != 1 {
+		t.Fatalf("reset-loop 注记应恰计 1 条（耗尽拦截行不计）, got %d", rep.SelfSupplied)
+	}
+	if text := renderTaskReport(rep); !strings.Contains(text, "自供申辩：1 条") {
+		t.Errorf("渲染应含自供申辩行:\n%s", text)
+	}
+}
+
 // TestGateSilentRefErrorMustFail（墙-1c）：--silent 只静默无任务路径——显式
 // --ref 解析失败必须非零（--ref HEAD 伪造推进信号的取证形态关闭）。
 func TestGateSilentRefErrorMustFail(t *testing.T) {
