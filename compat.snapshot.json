@@ -1683,6 +1683,8 @@
       "loop_exhausted.at",
       "loop_exhausted.detail",
       "loop_exhausted.reason",
+      "loop_reset_at",
+      "loop_reset_round",
       "next_steps",
       "origin_tool",
       "overrides",
