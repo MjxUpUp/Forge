@@ -275,7 +275,7 @@ func ResetLoopExhaustion(root string, state *TaskState, note string) error {
 		Checked: true,
 		Level:   checklog.LevelWarn,
 		TaskRef: state.TaskRef,
-		Detail:  "loop reset by human decision: " + note,
+		Detail:  LoopResetDetailPrefix + note,
 	})
 	return nil
 }
