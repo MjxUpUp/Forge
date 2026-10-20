@@ -106,7 +106,9 @@ hazard-guard 只拦破坏性动作（`internal/hooks/embed_guard.go:621-626`）�
 
 1. `CheckLoopExhausted` 重算命中后，**先**设置内存里的 `state.LoopExhausted = marker`，再写盘；本次直接返回阻断。写盘失败时同样阻断（按失败即拦处理），只是标记要等下一次重算才落盘。修掉 1.4 第 1 条。complete 把 `loadTaskOrActive` 读出的 state 原样传进来（`internal/clitask/task_complete.go:160`），所以在这个对象上置标记就能让本次 complete 报错退出。
 2. `TaskState` 新增 `LoopResetRound int`（json `loop_reset_round,omitempty`）。
-   - `ResetLoopExhaustion` 写入 `len(ReviewRounds) + 1`，同时写 `LoopResetAt time.Time`。
+   - `ResetLoopExhaustion` 写入 `len(ReviewRounds) + 1`，同时写 `LoopResetAt *time.Time`（json `loop_reset_at,omitempty`；用指针是为了让 omitempty 对零值生效）。
+   - 两个字段都只在本机有效：同步会合并 ReviewRounds，但不合并这两个字段（与 `LoopExhausted` 一样以本地为准）。并入他机轮次后预算可能提前耗尽，他机的重置也不会传过来，两种偏差都偏严，不会漏放。
+   - `CheckLoopExhausted` 落盘时对锁内重载的副本重新判定，避免用调用方的旧快照把一次并发的人工重置覆盖回耗尽。
    - `findingLoopAge` 的起算轮改为 `max(f.Round, LoopResetRound)`，等于人工裁决后发一份完整的新预算。
    - `LoopResetAt` 同时作为 B1 各计数器的窗口起点（见 B1-2 解除表）。
 3. `ResolvedPrints` 不动：已修问题复活，仍按复发处理。
@@ -402,7 +404,7 @@ REQ-7：
 | 批次 | 文件 |
 |---|---|
 | B0 | `internal/taskpipeline/loopedge.go`（CheckLoopExhausted 内存同步、ResetLoopExhaustion、findingLoopAge）、`internal/tasktypes/types.go`、`internal/clitask/task_continuity.go:914`、`seed_schema.go` |
-| B1 | `assertion_judge.go`（透传指纹和退出码）、`acceptance.go`（MergeAcceptanceResults）、新 `failnorm.go`、新 `loopverdict.go`、`internal/protocol/types.go`、`internal/toolusage/store.go`（breaker 加参数）、`internal/clitask/task_misc.go`（status 嵌入结构体）、`task_gate.go`、`task_continuity.go`（渲染、decide 幂等键、tl;dr）、`internal/tasktypes/types.go`（AcceptanceFailure、Decision.Kind、LoopResetAt）、`internal/checklog/types.go` + `escape.go`、`internal/skillgen/qualitygen.go`、`acceptance.go:435`（抽出纯函数 `acceptanceFreshCore`） |
+| B1 | `assertion_judge.go`（透传指纹和退出码）、`acceptance.go`（MergeAcceptanceResults）、新 `failnorm.go`、新 `loopverdict.go`、`internal/protocol/types.go`、`internal/toolusage/store.go`（breaker 加参数）、`internal/clitask/task_misc.go`（status 嵌入结构体）、`task_gate.go`、`task_continuity.go`（渲染、decide 幂等键、tl;dr）、`internal/tasktypes/types.go`（AcceptanceFailure、Decision.Kind；LoopResetAt 已在 B0 落地）、`internal/checklog/types.go` + `escape.go`、`internal/skillgen/qualitygen.go`、`acceptance.go:435`（抽出纯函数 `acceptanceFreshCore`） |
 | B2 | 新 `internal/cli/inbox.go`、`internal/hazard/halt.go`（PendingByFingerprint）、`stamp.go`、`event.go`（hold、hold-consumed）、`internal/cli/hazard.go`、PostToolUse 与 PostToolUseFailure 消费点（`internal/hooks/settings.go` 的 `ForgeHookSpec`）、`internal/dashboard/pulse.go`、`internal/evalkit/telemetry.go` |
 | B3 | 新 `internal/hookdispatch/hook_autonomy.go`（含 `classifyGitPush`、`classifyBashWrite`）、`hook.go:292`/`:640`、`internal/hooks/settings.go`、`profile.go`、`internal/clitask/task.go` 及新的 autonomy 子命令、`task_worktree.go:243`、`internal/compat/compat.go` |
 

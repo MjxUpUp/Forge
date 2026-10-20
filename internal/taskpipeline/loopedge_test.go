@@ -166,8 +166,8 @@ func TestCheckLoopExhaustedEscape(t *testing.T) {
 	}
 }
 
-// TestResetLoopExhaustion 钉住人工重置：exhausted 与轮次清零、审计行落地、
-// ResolvedPrints 保留（复活检测记忆不随重置丢失）。
+// TestResetLoopExhaustion 钉住人工重置：耗尽态清除、记下新预算起算轮、审计行
+// 落地、ResolvedPrints 保留（复活检测记忆不随重置丢失）。
 func TestResetLoopExhaustion(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	dir := t.TempDir()
@@ -184,8 +184,8 @@ func TestResetLoopExhaustion(t *testing.T) {
 	if err := ResetLoopExhaustion(dir, state, "人工裁决：降级为已知问题，继续"); err != nil {
 		t.Fatal(err)
 	}
-	// 断言以盘上真相为准（ResetLoopExhaustion 的 merge 在锁内副本上生效，
-	// 外层快照不代表盘上状态——与 complete pre-flight 的重载语义一致）。
+	// 断言以盘上真相为准（与 complete pre-flight 的重载语义一致）；调用方内存
+	// 同步另由 TestLoopExhaustionNoLeak 钉住。
 	reloaded, err := LoadTaskState(dir, "loop-reset")
 	if err != nil {
 		t.Fatal(err)

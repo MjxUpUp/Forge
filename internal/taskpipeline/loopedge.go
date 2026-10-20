@@ -215,10 +215,12 @@ func CheckLoopExhausted(root string, state *TaskState) []string {
 	// 重算命中先置内存标记再落盘（loop-contract B0）：MergeOrPersistTaskState 只改
 	// 锁内副本，不回写调用方 state——只落盘会让本次 pre-flight 拿旧内存判定、首次
 	// 检出放行一次。落盘失败同样当场拦（fail-closed），标记待下次重算再落盘。
+	// 落盘时对锁内重载的副本重新判定：调用方快照之后若恰有一次 --reset-loop
+	// 落盘，旧快照的判定不得把刚重置的盘上状态再标回耗尽（本次仍按快照拦）。
 	if marker := evaluateLoopExhaustion(root, state); marker != nil && state.LoopExhausted == nil {
 		state.LoopExhausted = marker
 		if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
-			if s.LoopExhausted == nil {
+			if s.LoopExhausted == nil && evaluateLoopExhaustion(root, s) != nil {
 				s.LoopExhausted = marker
 			}
 			return nil

@@ -177,7 +177,9 @@ func TestFindingLoopBudgetByReviewRounds(t *testing.T) {
 	if marker := taskpipeline.MarkLoopExhaustedIfDue(dir, state); marker == nil {
 		t.Fatal("轮龄达预算应耗尽")
 	}
-	// 轮龄未到（仅 1 轮）不耗尽。
+	// 轮龄未到（仅 1 轮）不耗尽。上一步已把耗尽标记同步进内存 state（B0），
+	// 必须先清掉——否则 MarkLoopExhaustedIfDue 见标记即返回 nil，本断言恒真。
+	state.LoopExhausted = nil
 	state.ReviewRounds = make([]taskpipeline.ReviewRound, 1)
 	if marker := taskpipeline.MarkLoopExhaustedIfDue(dir, state); marker != nil {
 		t.Fatalf("轮龄未到不应耗尽: %+v", marker)
