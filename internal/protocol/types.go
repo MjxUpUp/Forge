@@ -26,6 +26,50 @@ type Protocol struct {
 	// DesignTiers 调节方案分档路由（docs/plans/design-stage-hardening-2026-10-proposal.md
 	// W4、D3）：在内置规则表之上追加或覆盖硬触发器规则与标准变更模式。nil = 只用内置表。
 	DesignTiers *DesignTiersConfig `yaml:"design_tiers,omitempty" json:"design_tiers,omitempty"`
+	// Loop tunes the loop-contract budgets and stop conditions
+	// (docs/plans/loop-contract-2026-10-proposal.md B1-3). nil = built-in
+	// defaults; every budget only feeds the advisory loop verdict, none blocks
+	// a gate.
+	//
+	// Loop 调节 loop 契约的预算与停止条件（docs/plans/loop-contract-2026-10-proposal.md
+	// B1-3）。nil = 内置默认；所有预算只影响 advisory 的循环判词，不阻断任何门禁。
+	Loop *LoopConfig `yaml:"loop,omitempty" json:"loop,omitempty"`
+}
+
+// LoopConfig is the `loop:` section of protocol.yml. Zero values mean "use the
+// built-in default" for RecurrenceThreshold / TokenBudget and "unlimited" for
+// the other budgets (see taskpipeline.LoadLoopConfig).
+//
+// LoopConfig 是 protocol.yml 的 `loop:` 段。零值对 RecurrenceThreshold / TokenBudget
+// 表示"用内置默认"，对其他预算表示"不限"（见 taskpipeline.LoadLoopConfig）。
+type LoopConfig struct {
+	// RecurrenceThreshold: consecutive same-fingerprint failures (each after a
+	// code change) that count as a same-cause recurrence. 0 = default 2; <0 disables.
+	//
+	// RecurrenceThreshold：同指纹、每次之间都改过代码的连续失败次数，达到即判
+	// 同因复发。0 = 默认 2；<0 关闭。
+	RecurrenceThreshold int `yaml:"recurrence_threshold,omitempty" json:"recurrence_threshold,omitempty"`
+	// MaxFailedVerifies: failed verify-acceptance runs allowed since the last
+	// reset. 0 = unlimited.
+	//
+	// MaxFailedVerifies：自上次重置起允许的 verify-acceptance 失败次数。0 = 不限。
+	MaxFailedVerifies int `yaml:"max_failed_verifies,omitempty" json:"max_failed_verifies,omitempty"`
+	// MaxChangedFiles: files the task may change (TaskChangedFiles). 0 = unlimited.
+	//
+	// MaxChangedFiles：任务允许改动的文件数（口径同 TaskChangedFiles）。0 = 不限。
+	MaxChangedFiles int `yaml:"max_changed_files,omitempty" json:"max_changed_files,omitempty"`
+	// TokenBudget: estimated tokens since the last reset. 0 = the task token
+	// breaker default (toolusage.DefaultTaskTokenBudget).
+	//
+	// TokenBudget：自上次重置起的估算 token。0 = 沿用 token 熔断默认值
+	// （toolusage.DefaultTaskTokenBudget）。
+	TokenBudget int `yaml:"token_budget,omitempty" json:"token_budget,omitempty"`
+	// MaxVerifiesWithoutProgress: consecutive verify-acceptance runs whose
+	// passed-count did not grow before the loop is judged stuck. 0 = not judged.
+	//
+	// MaxVerifiesWithoutProgress：连续多少次 verify-acceptance 的通过条数都没增加
+	// 即判为原地打转。0 = 不判。
+	MaxVerifiesWithoutProgress int `yaml:"max_verifies_without_progress,omitempty" json:"max_verifies_without_progress,omitempty"`
 }
 
 // DesignTiersConfig is the project-level override of the design-tier rule table.

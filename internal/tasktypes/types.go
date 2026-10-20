@@ -149,6 +149,44 @@ type AcceptanceCriterion struct {
 	// 已知局限：来源按 ID 记录、不按出处分开——同一 ID 既手工补登又由 spec 声明时，
 	// spec 删掉它会一并移除（覆盖表随之报「未验证」，绝不误报已验证；重跑 task accept 即恢复）。
 	ExtractedTraces []string `json:"extracted_traces,omitempty"`
+	// FailHistory keeps the most recent failed runs of this criterion (newest
+	// last, at most MaxAcceptanceFailHistory). Cleared when the criterion passes
+	// and by a human `--reset-loop`. Feeds the same-cause recurrence verdict
+	// (loop-contract B1-1): two consecutive failures with the same normalized
+	// fingerprint but different ChangeHash mean code changed and the failure did
+	// not.
+	//
+	// FailHistory 保留本条验收最近几次失败的实跑（新的在后，最多
+	// MaxAcceptanceFailHistory 条）。验收通过即清空，人工 --reset-loop 也清空。
+	// 供同因复发判定消费（loop 契约 B1-1）：相邻两次失败指纹相同、ChangeHash
+	// 不同 = 改了代码、失败没变。
+	FailHistory []AcceptanceFailure `json:"fail_history,omitempty"`
+	// LastFailure is the transient failure record of the run that just happened
+	// (never persisted): VerifyAcceptance fills it, MergeAcceptanceResults
+	// appends it to the authoritative FailHistory. nil when the run passed.
+	//
+	// LastFailure 是刚发生这一次实跑的临时失败记录（不落盘）：VerifyAcceptance
+	// 填写，MergeAcceptanceResults 把它并进权威盘上状态的 FailHistory。通过时为 nil。
+	LastFailure *AcceptanceFailure `json:"-"`
+}
+
+// MaxAcceptanceFailHistory caps FailHistory per criterion.
+//
+// MaxAcceptanceFailHistory 是每条验收 FailHistory 的上限。
+const MaxAcceptanceFailHistory = 5
+
+// AcceptanceFailure is one failed run of an acceptance criterion.
+//
+// AcceptanceFailure 是验收标准的一次失败实跑。ChangeHash 在跑命令【之前】算
+// （TaskFingerprint），与 AcceptedChangeHash（跑后算、供新鲜度比对）是两个字段；
+// Changed 记当时任务改动文件的内容指纹（路径 → sha256 前 12 位，最多 50 条），
+// 让死路记录能说出"动了哪些文件仍然失败"。
+type AcceptanceFailure struct {
+	At          time.Time         `json:"at"`
+	ExitCode    int               `json:"exit_code"`
+	Fingerprint string            `json:"fingerprint"`
+	ChangeHash  string            `json:"change_hash,omitempty"`
+	Changed     map[string]string `json:"changed,omitempty"`
 }
 
 // Assertion is one structured, mechanically checkable assertion within a v2
@@ -238,7 +276,27 @@ type Decision struct {
 	By        string    `json:"by,omitempty"`        // 确认方（工具/人，如 [pi]/[claude-code]/人）
 	Affects   []string  `json:"affects,omitempty"`   // 影响的文件/模块
 	Rationale string    `json:"rationale,omitempty"` // 为什么这么决定（HANDOFF 纪律：写"为什么"不只写"是什么"）
+	// Kind classifies the decision: "" = an ordinary confirmed decision;
+	// DecisionKindDeadEnd = a rejected approach (Content = the approach,
+	// Rationale = the failure evidence) — the task's dead-end memory
+	// (loop-contract B1-4). Rendered in its own section and never listed as a
+	// confirmed decision.
+	//
+	// Kind 是决策类别：空 = 普通已确认决策；DecisionKindDeadEnd = 已证伪方案
+	// （Content 写方案，Rationale 写失败证据）——任务的死路记忆（loop 契约 B1-4）。
+	// 单独成节渲染，不列入已确认决策。
+	Kind string `json:"kind,omitempty"`
 }
+
+// DecisionKindDeadEnd marks a Decision as a rejected approach.
+//
+// DecisionKindDeadEnd 把一条 Decision 标为已证伪方案。
+const DecisionKindDeadEnd = "dead-end"
+
+// IsDeadEnd reports whether the decision records a rejected approach.
+//
+// IsDeadEnd 报告该决策是否记录的是已证伪方案。
+func (d Decision) IsDeadEnd() bool { return d.Kind == DecisionKindDeadEnd }
 
 // Blocker is an impediment (corresponding to the known-issues/blockers of
 // HANDOFF).

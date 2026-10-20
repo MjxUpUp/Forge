@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -148,6 +149,7 @@ func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string)
 	var output string
 	exitOK := true
 	ctx := judgeContext{changed: changed}
+	c.LastFailure = nil
 	if c.Run != "" {
 		code, out := RunTestCommandCode(root, c.Run)
 		ctx.ran = true
@@ -156,6 +158,9 @@ func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string)
 		output = out
 		exitOK = code == 0
 		c.Output = truncateAcceptanceOutput(output)
+		// 同因复发（loop 契约 B1-1）的指纹在【完整】输出上算——Output 已截断，
+		// 截断后再去噪算不稳（见 failnorm.go）。先按失败记下，通过时在下方清掉。
+		c.LastFailure = &tasktypes.AcceptanceFailure{At: time.Now(), ExitCode: code, Fingerprint: FailureFingerprint(out)}
 	} else if len(c.Assertions) == 0 {
 		// v1 边角逐字节保留（审查 P2-2）：空 Run 无断言的存量条目，旧行为是
 		// RunTestCommand("") → (false, "empty command") 恒判负——不得因 v2 的
@@ -182,6 +187,9 @@ func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string)
 		}
 	}
 	c.Passed = passed
+	if passed {
+		c.LastFailure = nil
+	}
 	return verdicts
 }
 

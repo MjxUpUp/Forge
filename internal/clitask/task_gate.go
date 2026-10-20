@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -373,6 +374,11 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 		Checked: true,
 		TaskRef: state.TaskRef,
 		Detail:  formatAcceptanceDetail(state.Acceptance),
+		// 通过条数/总条数进 Meta：循环判词的 no-progress 规则读结构化键，不解析 Detail 散文。
+		Meta: map[string]string{
+			taskpipeline.MetaKeyAcceptancePassed: strconv.Itoa(acceptancePassCount(state.Acceptance)),
+			taskpipeline.MetaKeyAcceptanceTotal:  strconv.Itoa(len(state.Acceptance)),
+		},
 	}); recErr != nil {
 		fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（验收证据未落盘）: %v\n", recErr)
 	}
@@ -392,14 +398,40 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 	// 快照会覆盖并发 resume/decide 的接续写入——丢的恰是 import 要保的数据。MutateTaskState
 	// 锁内重载；结果按 (Run, Expected) 二元组匹配到最新 acceptance spec 上，并发改过的 spec
 	// 不会被盖上另一条命令的结果；外来标记（受信分支）也在此翻——实跑之后、fail-closed（见上 NOTE）。
+	// 同因复发（loop 契约 B1-1）在合并后的权威状态上判定，并把自动死路记录写在同一
+	// 把锁内；复发本身只出 advisory 行，不改退出码契约。
+	var recurrences []taskpipeline.AcceptanceRecurrence
+	loopCfg := taskpipeline.LoadLoopConfig(root)
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		taskpipeline.MergeAcceptanceResults(s, state.Acceptance, trusted)
+		recurrences = taskpipeline.DetectAcceptanceRecurrences(loopCfg, s.Acceptance)
+		taskpipeline.RecordRecurrenceDeadEnds(s, recurrences)
 		return nil
 	}); err != nil {
 		return fmt.Errorf("failed to save acceptance results: %w", err)
 	}
 	if trusted {
 		fmt.Println("已受信外来验收命令（--trust-foreign）——验收实跑完成、外来标记已清除，后续重跑按本机证据处理。")
+	}
+	for _, r := range recurrences {
+		fmt.Printf("ADVISORY: 验收 #%d 改动后同因失败 ×%d（指纹 %s）——本轮应停止并升级人工（%s）；已自动记为已证伪方案\n",
+			r.CriterionIdx+1, r.Count, r.Fingerprint, loopResetHint)
+		if recErr := checklog.Record(root, &checklog.Entry{
+			Check:   checklog.CheckAcceptanceRecurrence,
+			Passed:  false,
+			Checked: true,
+			Level:   checklog.LevelAdvisory,
+			TaskRef: state.TaskRef,
+			Detail:  fmt.Sprintf("ADVISORY: 验收 #%d（%s）改动后同因失败 ×%d", r.CriterionIdx+1, r.Run, r.Count),
+			Meta: map[string]string{
+				"criterion":     strconv.Itoa(r.CriterionIdx + 1),
+				"fingerprint":   r.Fingerprint,
+				"change_hashes": strings.Join(r.ChangeHashes, ","),
+				"note":          r.Note,
+			},
+		}); recErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（复发行未落盘）: %v\n", recErr)
+		}
 	}
 
 	fmt.Println("验收标准实跑结果：")
@@ -440,10 +472,44 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 	}
 	if allPassed {
 		fmt.Printf("✅ 全部通过 — 真实结果已记为 deterministic 证据（checklog: %s）\n", taskpipeline.CheckNameAcceptance)
+		printLoopVerdictLine(root, state.TaskRef)
 		return nil
 	}
 	fmt.Printf("❌ 存在未通过项 — 失败结果已记入 checklog（%s）\n", taskpipeline.CheckNameAcceptance)
+	printLoopVerdictLine(root, state.TaskRef)
 	return fmt.Errorf("acceptance verification failed")
+}
+
+// loopResetHint is the human exit named by recurrence advisories.
+//
+// loopResetHint 是复发 advisory 里指明的人工出口。
+const loopResetHint = `forge task finding --reset-loop --note "<新方向>"`
+
+// printLoopVerdictLine prints the loop verdict as the last line of
+// verify-acceptance (loop-contract B1-2) from the freshly merged on-disk state,
+// so an outer loop reads it right after the verification it just ran.
+//
+// printLoopVerdictLine 在 verify-acceptance 末行打印循环判词（loop 契约 B1-2），
+// 按刚合并落盘的状态计算——外层循环验证完立刻能读到。
+func printLoopVerdictLine(root, ref string) {
+	merged, err := taskpipeline.LoadTaskState(root, ref)
+	if err != nil {
+		return
+	}
+	fmt.Println(taskpipeline.FormatLoopVerdictLine(taskpipeline.ComputeLoopVerdict(root, merged)))
+}
+
+// acceptancePassCount counts Passed criteria (the Meta value of the aggregate row).
+//
+// acceptancePassCount 数 Passed 的验收条数（聚合行 Meta 的值）。
+func acceptancePassCount(cs []taskpipeline.AcceptanceCriterion) int {
+	n := 0
+	for _, c := range cs {
+		if c.Passed {
+			n++
+		}
+	}
+	return n
 }
 
 // formatAcceptanceDetail 生成 checklog:acceptance 的 Detail 摘要——「PASS/FAIL — k/n 通过」，

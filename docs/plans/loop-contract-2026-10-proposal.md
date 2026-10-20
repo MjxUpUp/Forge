@@ -468,6 +468,12 @@ B1 的预算从 advisory 升为门禁，条件是精确度 ≥80% 且误报 ≤1
 - **Q3**：B2 的收件箱做成新命令（推荐），还是给 `task mine --all-projects` 加 flag？后者的语义是"按 agent 分派"，不是"待人处理"。
 - **Q4**：B3 的 `act` 档，是否允许用 B2-2 的留存确认做批量预授权，还是必须逐次确认？
 
+**单文件多批次提案的需求追溯约定（2026-10-20，B1 开工时定）**：需求覆盖表从任务登记的**全部**产物（proposal/spec/design/plan）里收集 REQ 声明（`TaskRequirementCoverage`）。把整份提案登记为任何一个 stage，都会让本批没做的 REQ 算进"未验证"，hard 档 spec 再配合带追溯的验收就会拦下 complete。所以按批次开工时：
+- 不把整份提案登记为任务产物，只在批次 spec 里用路径引用它；
+- 每批用 `forge task artifact --set spec --stdin` 登记一份**批次 spec**，正文只声明本批的 REQ（其他批的 REQ 只能出现在代码围栏内，围栏内的 ID 不计声明）；
+- 验收行用行尾 `#REQ-n` 追溯本批的 REQ，覆盖表的分母就只有本批。
+B0 当时没有这个约定，验收没有打标记，覆盖表显示 0/8，属于已知偏差。
+
 ## 九、验收
 
 期望值用 `--- PASS: <测试名>`，不用 `ok`：测试函数还不存在时，`go test -run` 也会输出 `ok ... [no tests to run]` 并以 0 退出，`ok` 会空跑通过（已实测）。`EnsureGoTestVerbose` 会自动补 `-v`。

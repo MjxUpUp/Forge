@@ -855,7 +855,8 @@
         "by",
         "content",
         "rationale",
-        "ref"
+        "ref",
+        "rejected"
       ]
     },
     {
@@ -1235,6 +1236,7 @@
     }
   ],
   "checks": [
+    "acceptance-recurrence",
     "artifact-chain",
     "artifact-drift",
     "assertion-check",
@@ -1558,6 +1560,13 @@
       "acceptance[].assertions[].negate",
       "acceptance[].assertions[].type",
       "acceptance[].expected",
+      "acceptance[].fail_history",
+      "acceptance[].fail_history[].at",
+      "acceptance[].fail_history[].change_hash",
+      "acceptance[].fail_history[].changed",
+      "acceptance[].fail_history[].changed.file",
+      "acceptance[].fail_history[].exit_code",
+      "acceptance[].fail_history[].fingerprint",
       "acceptance[].output",
       "acceptance[].passed",
       "acceptance[].run",
@@ -1614,6 +1623,7 @@
       "decisions[].content",
       "decisions[].decided_at",
       "decisions[].id",
+      "decisions[].kind",
       "decisions[].rationale",
       "depends_on",
       "design_phases",
