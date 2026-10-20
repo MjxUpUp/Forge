@@ -90,6 +90,11 @@ func TestHazardGuardScript_InterpHeredocBacktickScope(t *testing.T) {
 		//
 		// 收窄反引号不得放过其他原语（与 InterpHeredocExecPrimitiveBlocks 同款裸危险串形态）。
 		{"python-backtick-plus-subprocess", "python3 - <<'EOF'" + nl + "subprocess.run([" + danger + "])  # " + bt + "x" + bt + nl + "EOF", true},
+		// zx / Bun.$ tagged template runs a shell even without child_process.
+		//
+		// zx / Bun.$ 标签模板即便不含 child_process 也执行 shell。
+		{"node-zx-tagged-template", "node --input-type=module - <<'JS'" + nl + "import { $ } from 'zx'" + nl + "await $" + bt + danger + bt + nl + "JS", true},
+		{"node-execa-template", "node - <<'JS'" + nl + "const { execaCommand } = await import('execa')" + nl + "await execaCommand(" + danger + ")" + nl + "JS", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, err := runHazardScript(t, shimDir, tc.cmd)
@@ -108,16 +113,52 @@ func TestHazardGuardScript_InterpHeredocBacktickScope(t *testing.T) {
 	}
 }
 
-// TestHazardGuardScript_ExecWrappedFlagIsStandalone pins is_exec_wrapped's code-exec flags as
-// standalone short options. The old substring glob (*python*\ *-c*) matched `go test
-// -count=1` anywhere later in the same command and vetoed both data-release paths — the
-// 2026-10-20 16:51 false block of a python heredoc that only wrote a test file. Recall side:
-// every real -c/-e/-E/-r/--eval form with the danger string quoted must still block.
+// TestHazardGuardScript_InterpHeredocOnlyFirstBodyStripped pins F.1's strip boundary: only the
+// first heredoc's body is data. After its delimiter, a later "<<" or "<<<" must not re-enter
+// body mode — the old awk then waited for the first tag forever and swallowed every following
+// line, including commands that really execute.
 //
-// TestHazardGuardScript_ExecWrappedFlagIsStandalone 钉住 is_exec_wrapped 的代码执行 flag 必须是
-// 独立短选项。旧子串 glob（*python*\ *-c*）会命中同一条命令后面任意位置的 `go test
-// -count=1`，否决两条数据放行路径——2026-10-20 16:51 只写测试文件的 python heredoc 被误拦。
-// 召回侧：每种真实 -c/-e/-E/-r/--eval 形态（危险串在引号内）都必须仍拦。
+// TestHazardGuardScript_InterpHeredocOnlyFirstBodyStripped 钉住 F.1 的剥离边界：只有第一个
+// heredoc 的正文是数据。其 delimiter 之后再出现的「<<」或「<<<」不得重新进入正文态——旧 awk
+// 会苦等永不再现的首个 tag，把其后所有行（包括真执行的命令）整段吞掉。
+func TestHazardGuardScript_InterpHeredocOnlyFirstBodyStripped(t *testing.T) {
+	shimDir := writeForgeShim(t, "block")
+	nl := string(rune(10))
+	danger := "r" + "m -r" + "f ./important-data"
+	for _, tc := range []struct {
+		name      string
+		cmd       string
+		wantBlock bool
+	}{
+		{"then-bash-heredoc", "python3 - <<'PY'" + nl + "print(1)" + nl + "PY" + nl + "bash <<'SH'" + nl + danger + nl + "SH", true},
+		{"then-herestring-then-bare", "python3 - <<'PY'" + nl + "print(1)" + nl + "PY" + nl + "cat <<<x" + nl + danger, true},
+		{"single-heredoc-data-still-released", "python3 - <<'PY'" + nl + "print('docs mention " + danger + "')" + nl + "PY" + nl + "echo done", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runHazardScript(t, shimDir, tc.cmd)
+			if tc.wantBlock && err == nil {
+				t.Fatalf("command after the first heredoc must stay visible and BLOCK, got pass:\n%s", out)
+			}
+			if !tc.wantBlock && err != nil {
+				t.Fatalf("first heredoc body is data, must PASS, got block:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestHazardGuardScript_ExecWrappedFlagIsStandalone pins is_exec_wrapped's code-exec flags as
+// segment-local: the interpreter and its -c/-e/-E/-r flag must sit in the SAME command
+// segment (backslash continuations joined; split on newline ; && || |). The old whole-command
+// glob (*python*\ *-c*) matched "go test -count=1" in a later segment and vetoed both
+// data-release paths — the 2026-10-20 16:51 false block of a python heredoc that only wrote a
+// test file. Recall side: every real form with the danger string quoted still blocks,
+// including code glued to the flag (-c__import__ / -esystem) and a continuation line.
+//
+// TestHazardGuardScript_ExecWrappedFlagIsStandalone 钉住 is_exec_wrapped 的代码执行 flag 按
+// 命令段判定：解释器与其 -c/-e/-E/-r 须在**同一命令段**（续行先拼接；按换行 ; && || | 切分）。
+// 旧的整条命令 glob（*python*\ *-c*）会命中后一段的 go test -count=1，否决两条数据放行路径
+// ——2026-10-20 16:51 只写测试文件的 python heredoc 被误拦。召回侧：每种真实形态（危险串在
+// 引号内）都仍拦，含代码紧贴 flag（-c__import__ / -esystem）与续行。
 func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 	shimDir := writeForgeShim(t, "block")
 	nl := string(rune(10))
@@ -128,14 +169,17 @@ func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 		wantBlock bool
 	}{
 		{"python-heredoc-then-go-test-count", "python3 - <<'EOF'" + nl + "s = \"" + danger + "\"" + nl + "open('x_test.go','w').write(s)" + nl + "EOF" + nl + "go test ./internal/hooks/ -count=1", false},
-		{"node-script-env-flag", "node build.js --env=prod && echo \"" + danger + "\"", false},
+		{"node-then-grep-e-other-segment", "node build.js; grep -e foo \"" + danger + "\" notes.txt", false},
 		{"python-c", "python3 -c \"import os; os.system('" + danger + "')\"", true},
 		{"python-c-attached-quote", "python -c'print(1)' && echo \"" + danger + "\"", true},
+		{"python-c-glued-code", "python3 -c__import__\"('os').system('" + danger + "')\"", true},
+		{"python-c-continuation", "python3 \\" + nl + "  -c \"import os; os.system('" + danger + "')\"", true},
 		{"python-c-at-end", "echo \"" + danger + "\" | python3 -c", true},
 		{"node-e", "node -e \"require('child_process').execSync('" + danger + "')\"", true},
 		{"node-eval-long", "node --eval \"x('" + danger + "')\"", true},
 		{"ruby-e", "ruby -e \"system('" + danger + "')\"", true},
 		{"perl-E", "perl -E \"system('" + danger + "')\"", true},
+		{"perl-e-glued-code", "perl -esystem\"('" + danger + "')\"", true},
 		{"php-r", "php -r \"system('" + danger + "');\"", true},
 		{"lua-e", "lua -e \"os.execute('" + danger + "')\"", true},
 	} {
@@ -145,7 +189,7 @@ func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 				t.Fatalf("code-exec flag with quoted danger must BLOCK, got pass:\n%s", out)
 			}
 			if !tc.wantBlock && err != nil {
-				t.Fatalf("a non-exec flag (-count/--env) must not veto the data release, got block:\n%s", out)
+				t.Fatalf("a flag in another command segment must not veto the data release, got block:\n%s", out)
 			}
 		})
 	}
