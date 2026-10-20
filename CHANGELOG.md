@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.79.2](https://github.com/MjxUpUp/Forge/compare/v1.79.1...v1.79.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **loopedge:** 回环耗尽两处漏放——首次检出当场拦、--reset-loop 发放完整新预算（loop 契约 B0） ([#112](https://github.com/MjxUpUp/Forge/issues/112)) ([bc58648](https://github.com/MjxUpUp/Forge/commit/bc5864863f2e1eed64e27dafccdabc7427b3a10b))
+* **report:** task report 统计 --reset-loop 人工裁决注记 ([#113](https://github.com/MjxUpUp/Forge/issues/113)) ([d590c95](https://github.com/MjxUpUp/Forge/commit/d590c9571f561b0641966e7663176d7a268ad845))
+
 ## [1.79.1](https://github.com/MjxUpUp/Forge/compare/v1.79.0...v1.79.1) (2026-10-19)
 
 
