@@ -804,10 +804,16 @@ is_exec_wrapped() {
   # Code-exec flags keep substring matching (code glued to the flag must still hit)
   # but only within ONE command segment: across segments, "go test -count=1" after a
   # python heredoc counted as "python -c" and vetoed both data-release paths.
+  # 解释器名在变量里（PY=python3; $PY -c ... / for py in ...; do $py -c）时段内看不到
+  # 解释器名：段内出现 $ 开头的词且其后有 -c/-e/-E/-r，同样视为执行——与语义层「命令位
+  # 变量不可判定」同一保守方向（误拦面只在已含危险串的命令上）。
+  # A variable-held interpreter ($PY -c ...) hides the name within the segment: a
+  # $-word followed by -c/-e/-E/-r in the same segment counts as exec too.
   local _seg
   while IFS= read -r _seg; do
     case "$_seg" in
       *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) return 0 ;;
+      *\$*\ -[ceEr]*) return 0 ;;
     esac
   done <<< "$(exec_segments "$1")"
   return 1
@@ -1209,7 +1215,8 @@ fi
 # 原语清单（评审实证补全）：subprocess / os.system / os.popen / os.exec / popen2 /
 # getoutput / child_process / exec( / spawn( / system( / sh -c / bash -c / ruby 反引号
 # 与 %x[ / perl qx{ 与反引号（反引号仅在命令含 ruby/perl 时计入）/ $ 标签模板 / execa
-# ——正文真会调 shell 的保持原判定。只处理第一个 heredoc，其后内容原样保留。
+# ——正文真会调 shell 的保持原判定。第一个 << 须归属解释器命令；只剥离第一个
+# heredoc 的正文，其后内容原样保留，但原语扫描覆盖第一个 opener 之后的全部内容。
 # HEREDOC_ORIG 保留原始命令：判定用剥离文本，指纹/事件/展示一律用原文（审计与 confirm
 # 不与 agent 所见文本漂移）。
 strip_interp_heredoc_bodies() {
@@ -1220,8 +1227,22 @@ strip_interp_heredoc_bodies() {
   esac
   tag=$(printf '%s' "$cmd" | grep -oE "<<-?['\"]?[A-Za-z_][A-Za-z0-9_]*" | head -1 | grep -oE '[A-Za-z_][A-Za-z0-9_]*$')
   [ -n "$tag" ] || { printf '%s' "$cmd"; return; }
-  # 正文 = 第一个 heredoc 的 opener 与其 delimiter 之间（f=2 终态，与下方剥离同界）。
-  body=$(printf '%s' "$cmd" | awk -v t="$tag" 'f==1 && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {f=2} f==1 {print} f==0 && /<<-?/ {f=1}')
+  # 归属校验：第一个 << 必须属于解释器命令——取 opener 行 << 之前的文本，再取其最后
+  # 一个命令段（${head##*[;&|]}），段内须出现解释器名。旧版只看整条命令「某处提到
+  # 解释器」，ls node_modules && bash <<SH 的 bash 正文也会被当数据挖掉（审查 N3）。
+  # Ownership: the first << must belong to an interpreter command — the last segment
+  # before it on the opener line must name python/node/ruby/perl.
+  _opener=$(printf '%s\n' "$cmd" | awk '/<</ {print; exit}')
+  _head="${_opener%%<<*}"
+  case "${_head##*[;&|]}" in
+    *python*|*node*|*ruby*|*perl*) ;;
+    *) printf '%s' "$cmd"; return ;;
+  esac
+  # 原语扫描面 = 第一个 opener 之后的全部内容（不止首个正文）：只挖首个正文时，后面
+  # heredoc / 命令里的执行原语仍须能否决剥离（审查 N2：先写脚本、后用 subprocess 跑）。
+  # Primitive scan covers everything after the first opener, not just the first body,
+  # so a primitive in a later heredoc or command still vetoes the strip.
+  body=$(printf '%s' "$cmd" | awk 'f {print} !f && /<<-?/ {f=1}')
   # 执行原语：任一命中即原样返回。独立 grep -qi（BRE），&& 短路保证 fail-closed。
   printf '%s' "$body" | grep -qi 'subprocess' && { printf '%s' "$cmd"; return; }
   printf '%s' "$body" | grep -qi 'os\.system' && { printf '%s' "$cmd"; return; }

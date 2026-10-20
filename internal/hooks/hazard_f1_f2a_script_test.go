@@ -133,6 +133,15 @@ func TestHazardGuardScript_InterpHeredocOnlyFirstBodyStripped(t *testing.T) {
 		{"then-bash-heredoc", "python3 - <<'PY'" + nl + "print(1)" + nl + "PY" + nl + "bash <<'SH'" + nl + danger + nl + "SH", true},
 		{"then-herestring-then-bare", "python3 - <<'PY'" + nl + "print(1)" + nl + "PY" + nl + "cat <<<x" + nl + danger, true},
 		{"single-heredoc-data-still-released", "python3 - <<'PY'" + nl + "print('docs mention " + danger + "')" + nl + "PY" + nl + "echo done", false},
+		// A primitive in a LATER heredoc still vetoes stripping the first body (review N2).
+		//
+		// 后面 heredoc 的执行原语仍否决首段剥离（审查 N2）。
+		{"later-heredoc-primitive-vetoes", "python3 - <<'A'" + nl + danger + nl + "A" + nl + "python3 - <<'B'" + nl + "import subprocess" + nl + "subprocess.run(['bash','x.sh'])" + nl + "B", true},
+		// The first << must belong to the interpreter command (review N3): an interpreter
+		// name elsewhere in the command does not make a bash heredoc data.
+		//
+		// 第一个 << 须归属解释器命令（审查 N3）：命令别处提到解释器名不能让 bash heredoc 变数据。
+		{"bash-heredoc-after-node-path", "ls node_modules && bash <<'SH'" + nl + danger + nl + "SH", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, err := runHazardScript(t, shimDir, tc.cmd)
@@ -175,6 +184,11 @@ func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 		{"python-c-glued-code", "python3 -c__import__\"('os').system('" + danger + "')\"", true},
 		{"python-c-continuation", "python3 \\" + nl + "  -c \"import os; os.system('" + danger + "')\"", true},
 		{"python-c-at-end", "echo \"" + danger + "\" | python3 -c", true},
+		// Interpreter held in a variable (review N1): the name is not in the segment.
+		//
+		// 解释器名在变量里（审查 N1）：段内看不到解释器名。
+		{"variable-held-interpreter", "PY=python3; $PY -c \"import os; os.system('" + danger + "')\"", true},
+		{"loop-variable-interpreter", "for py in python3; do $py -c \"x('" + danger + "')\"; done", true},
 		{"node-e", "node -e \"require('child_process').execSync('" + danger + "')\"", true},
 		{"node-eval-long", "node --eval \"x('" + danger + "')\"", true},
 		{"ruby-e", "ruby -e \"system('" + danger + "')\"", true},
