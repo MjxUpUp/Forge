@@ -243,7 +243,9 @@ func countSelfSupplied(entries []checklog.Entry) int {
 			n++
 		case e.Check == checklog.CheckEscapeHatch && checklog.EscapeGateOf(&e) == "finding-regression":
 			n++
-		case e.Check == checklog.CheckEscapeHatch && strings.Contains(e.Detail, "reset-loop"):
+		case taskpipeline.IsLoopResetEntry(&e):
+			// reset-loop 人工裁决注记：识别口径与写入方 ResetLoopExhaustion 同源
+			//（旧实现按 escape-hatch + "reset-loop" 匹配，从未命中真实行）。
 			n++
 		}
 	}
