@@ -55,16 +55,17 @@ func TestHazardGuardScript_InterpHeredocExecPrimitiveBlocks(t *testing.T) {
 	}
 }
 
-// TestHazardGuardScript_InterpHeredocBacktickScope pins the backtick primitive's scope: a
-// backtick only executes a shell in ruby and perl. In python it is inert text (a Go raw
-// string being written to a test file — the 2026-10-20 false block), in node it is a
-// template literal. So a backtick keeps a ruby/perl heredoc blocked, but must not stop a
-// python/node heredoc body from being treated as data. Every other primitive is unchanged.
+// TestHazardGuardScript_InterpHeredocBacktickScope pins the backtick primitive's scope: only a
+// python-only command is exempt — a python backtick is inert text (a Go raw string being
+// written to a test file, the 2026-10-20 false block). Any ruby / perl / node in the command
+// keeps the veto: ruby/perl backticks run a shell, and node tagged templates (zx $, $.sync,
+// $({...}), aliases) do too in more shapes than can be enumerated. Every other primitive is
+// unchanged.
 //
-// TestHazardGuardScript_InterpHeredocBacktickScope 钉住反引号原语的作用域：反引号只在 ruby
-// 与 perl 里执行 shell。python 里是惰性文本（往测试文件写 Go 原始字符串——2026-10-20 的
-// 误拦实录），node 里是模板字符串。故反引号让 ruby/perl heredoc 维持拦截，但不得阻止
-// python/node heredoc 正文按数据放行。其余原语不变。
+// TestHazardGuardScript_InterpHeredocBacktickScope 钉住反引号原语的作用域：只豁免纯 python
+// 命令——python 里反引号是惰性文本（往测试文件写 Go 原始字符串，2026-10-20 误拦实录）。
+// 命令含 ruby / perl / node 任一即维持否决：ruby/perl 反引号执行 shell，node 的标签模板
+// （zx 的 $、$.sync、$({...})、别名）同样执行且形态无法穷举。其余原语不变。
 func TestHazardGuardScript_InterpHeredocBacktickScope(t *testing.T) {
 	shimDir := writeForgeShim(t, "block")
 	nl := string(rune(10))
@@ -82,7 +83,13 @@ func TestHazardGuardScript_InterpHeredocBacktickScope(t *testing.T) {
 		// 16:51 形态：python ''' 串里装 Go 源码；Go 文本中奇数个撇号让引号跟踪失步，只有
 		// F.1 整段剥离能把它判为数据。
 		{"python-go-raw-string", "python3 - <<'EOF'" + nl + "s = '''" + nl + "// it's a shim" + nl + "run(" + danger + ")" + nl + "payload := " + bt + "{}" + bt + nl + "'''" + nl + "open('x_test.go','w').write(s)" + nl + "EOF", false},
-		{"node-template-literal", "node - <<'JS'" + nl + "const msg = " + bt + "docs mention " + danger + bt + ";" + nl + "console.log(msg)" + nl + "JS", false},
+		// Node stays conservative: a plain template literal is indistinguishable from a
+		// zx-style tagged template at this layer (review R1).
+		//
+		// node 保持保守：本层分不清普通模板字符串与 zx 式标签模板（审查 R1）。
+		{"node-template-literal-conservative", "node - <<'JS'" + nl + "const msg = " + bt + "docs mention " + danger + bt + ";" + nl + "console.log(msg)" + nl + "JS", true},
+		{"node-zx-options-call", "node --input-type=module - <<'JS'" + nl + "import { $ } from 'zx'" + nl + "await $({nothrow:true})" + bt + danger + bt + nl + "JS", true},
+		{"node-zx-aliased", "node --input-type=module - <<'JS'" + nl + "import { $ as sh } from 'zx'" + nl + "await sh" + bt + danger + bt + nl + "JS", true},
 		{"ruby-backtick-executes", "ruby - <<'RB'" + nl + "puts " + bt + danger + bt + nl + "RB", true},
 		{"perl-backtick-executes", "perl - <<'PL'" + nl + "print " + bt + danger + bt + ";" + nl + "PL", true},
 		// Scoping the backtick must not let another primitive through (same bare-danger
@@ -142,6 +149,13 @@ func TestHazardGuardScript_InterpHeredocOnlyFirstBodyStripped(t *testing.T) {
 		//
 		// 第一个 << 须归属解释器命令（审查 N3）：命令别处提到解释器名不能让 bash heredoc 变数据。
 		{"bash-heredoc-after-node-path", "ls node_modules && bash <<'SH'" + nl + danger + nl + "SH", true},
+		// The opener is the first heredoc <<, never a <<< herestring; and a command
+		// substitution in the owner segment cannot lend it an interpreter name.
+		//
+		// opener 是第一个 heredoc 的 <<，绝不是 <<< herestring；归属段里的命令替换不能
+		// 借给它解释器名。
+		{"herestring-then-bash-heredoc", "python3 - <<< 'print(1)'" + nl + "bash <<'SH'" + nl + danger + nl + "SH", true},
+		{"cmdsubst-node-owner", "V=$(node -v) bash <<'SH'" + nl + danger + nl + "SH", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, err := runHazardScript(t, shimDir, tc.cmd)
@@ -189,6 +203,12 @@ func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 		// 解释器名在变量里（审查 N1）：段内看不到解释器名。
 		{"variable-held-interpreter", "PY=python3; $PY -c \"import os; os.system('" + danger + "')\"", true},
 		{"loop-variable-interpreter", "for py in python3; do $py -c \"x('" + danger + "')\"; done", true},
+		// Cross-segment indirection (review R2): any $ / function definition falls back to
+		// whole-command matching, so these keep the original verdict.
+		//
+		// 跨段间接调用（审查 R2）：出现 $ / 函数定义即回落整条命令匹配，保持原判定。
+		{"function-wrapped-interpreter", "p() { python3 \"$@\"; }; p -c \"x('" + danger + "')\"", true},
+		{"variable-held-flag", "p=python3; f=-c; $p $f \"x('" + danger + "')\"", true},
 		{"node-e", "node -e \"require('child_process').execSync('" + danger + "')\"", true},
 		{"node-eval-long", "node --eval \"x('" + danger + "')\"", true},
 		{"ruby-e", "ruby -e \"system('" + danger + "')\"", true},

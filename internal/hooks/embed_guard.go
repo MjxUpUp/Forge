@@ -796,24 +796,30 @@ is_exec_wrapped() {
     # pipe 到 shell 执行
     *"| bash"|*"| bash "*|*"| sh"|*"| sh "*) return 0 ;;
   esac
-  # 代码执行型：-c/-e/-r flag 把后续字符串当代码执行。子串匹配保留（-c__import__ /
-  # -esystem 这类代码紧贴 flag 的写法须命中），但只在**同一命令段**内判：旧版对整条
-  # 命令跨行匹配，python heredoc 之后另一段的 go test -count=1 即命中，heredoc 数据
-  # 放行与引号数据放行双双被否决（2026-10-20 16:51 误拦实录）。段 = 续行拼接后按
-  # 换行 / ; / && / || / | 切分（exec_segments）。
-  # Code-exec flags keep substring matching (code glued to the flag must still hit)
-  # but only within ONE command segment: across segments, "go test -count=1" after a
-  # python heredoc counted as "python -c" and vetoed both data-release paths.
-  # 解释器名在变量里（PY=python3; $PY -c ... / for py in ...; do $py -c）时段内看不到
-  # 解释器名：段内出现 $ 开头的词且其后有 -c/-e/-E/-r，同样视为执行——与语义层「命令位
-  # 变量不可判定」同一保守方向（误拦面只在已含危险串的命令上）。
-  # A variable-held interpreter ($PY -c ...) hides the name within the segment: a
-  # $-word followed by -c/-e/-E/-r in the same segment counts as exec too.
+  # 代码执行型：-c/-e/-r flag 把后续字符串当代码执行（子串匹配：-c__import__ /
+  # -esystem 这类代码紧贴 flag 的写法须命中）。
+  # 默认对整条命令判（原行为）。只有命令**不含任何间接信号**时才收窄为同一命令段内
+  # 判——旧版跨行匹配让 python heredoc 之后另一段的 go test -count=1 命中，heredoc
+  # 数据放行与引号数据放行双双被否决（2026-10-20 16:51 误拦实录）。间接信号 = $（变量
+  # / 命令替换持有解释器或 flag：PY=python3; $PY -c、f=-c; $p $f）、函数定义
+  # （p() { python3 "$@"; }; p -c）、function、alias——出现即回落整条命令匹配，召回
+  # 不低于原版（对抗审查 N1/R2）。段 = 续行拼接后按换行 / ; / && / || / | 切分。
+  # Code-exec flags: whole-command substring match (original behavior) unless the
+  # command carries no indirection signal ($, a function definition, alias) — only
+  # then is the match narrowed to one command segment, which is what fixes the 16:51
+  # false block without losing indirect interpreter calls.
+  case "$1" in
+    *\$*|*"() {"*|*"(){"*|*function\ *|*alias\ *)
+      case "$1" in
+        *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) return 0 ;;
+      esac
+      return 1
+      ;;
+  esac
   local _seg
   while IFS= read -r _seg; do
     case "$_seg" in
       *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) return 0 ;;
-      *\$*\ -[ceEr]*) return 0 ;;
     esac
   done <<< "$(exec_segments "$1")"
   return 1
@@ -1214,7 +1220,7 @@ fi
 # （任何 grep 失败 → 原样返回原串，剥离不发生）。
 # 原语清单（评审实证补全）：subprocess / os.system / os.popen / os.exec / popen2 /
 # getoutput / child_process / exec( / spawn( / system( / sh -c / bash -c / ruby 反引号
-# 与 %x[ / perl qx{ 与反引号（反引号仅在命令含 ruby/perl 时计入）/ $ 标签模板 / execa
+# 与 %x[ / perl qx{ 与反引号（纯 python 命令豁免反引号）/ execa
 # ——正文真会调 shell 的保持原判定。第一个 << 须归属解释器命令；只剥离第一个
 # heredoc 的正文，其后内容原样保留，但原语扫描覆盖第一个 opener 之后的全部内容。
 # HEREDOC_ORIG 保留原始命令：判定用剥离文本，指纹/事件/展示一律用原文（审计与 confirm
@@ -1225,16 +1231,23 @@ strip_interp_heredoc_bodies() {
     *python*"<<"*|*node*"<<"*|*ruby*"<<"*|*perl*"<<"*) ;;
     *) printf '%s' "$cmd"; return ;;
   esac
-  tag=$(printf '%s' "$cmd" | grep -oE "<<-?['\"]?[A-Za-z_][A-Za-z0-9_]*" | head -1 | grep -oE '[A-Za-z_][A-Za-z0-9_]*$')
+  # opener 只认 heredoc 的 <<（排除 <<< herestring——旧正则会在 <<<x 里匹出 <<x）。
+  # The opener is a heredoc << only (a <<< herestring is excluded).
+  tag=$(printf '%s' "$cmd" | grep -oE "(^|[^<])<<-?['\"]?[A-Za-z_][A-Za-z0-9_]*" | head -1 | grep -oE '[A-Za-z_][A-Za-z0-9_]*$')
   [ -n "$tag" ] || { printf '%s' "$cmd"; return; }
+  _BT=$(printf '\140')
   # 归属校验：第一个 << 必须属于解释器命令——取 opener 行 << 之前的文本，再取其最后
-  # 一个命令段（${head##*[;&|]}），段内须出现解释器名。旧版只看整条命令「某处提到
-  # 解释器」，ls node_modules && bash <<SH 的 bash 正文也会被当数据挖掉（审查 N3）。
+  # 一个命令段（${head##*[;&|]}），段内须出现解释器名，且不含命令替换（V=$(node -v)
+  # bash <<SH 不能借 node 字样过关）。旧版只看整条命令「某处提到解释器」，
+  # ls node_modules && bash <<SH 的 bash 正文也会被当数据挖掉（审查 N3）。
   # Ownership: the first << must belong to an interpreter command — the last segment
-  # before it on the opener line must name python/node/ruby/perl.
-  _opener=$(printf '%s\n' "$cmd" | awk '/<</ {print; exit}')
+  # before it on the opener line must name python/node/ruby/perl and hold no command
+  # substitution.
+  _opener=$(printf '%s\n' "$cmd" | awk '/(^|[^<])<<($|[^<])/ {print; exit}')
   _head="${_opener%%<<*}"
-  case "${_head##*[;&|]}" in
+  _hseg="${_head##*[;&|]}"
+  case "$_hseg" in
+    *'$('*|*"$_BT"*) printf '%s' "$cmd"; return ;;
     *python*|*node*|*ruby*|*perl*) ;;
     *) printf '%s' "$cmd"; return ;;
   esac
@@ -1242,7 +1255,7 @@ strip_interp_heredoc_bodies() {
   # heredoc / 命令里的执行原语仍须能否决剥离（审查 N2：先写脚本、后用 subprocess 跑）。
   # Primitive scan covers everything after the first opener, not just the first body,
   # so a primitive in a later heredoc or command still vetoes the strip.
-  body=$(printf '%s' "$cmd" | awk 'f {print} !f && /<<-?/ {f=1}')
+  body=$(printf '%s' "$cmd" | awk 'f {print} !f && /(^|[^<])<<($|[^<])/ {f=1}')
   # 执行原语：任一命中即原样返回。独立 grep -qi（BRE），&& 短路保证 fail-closed。
   printf '%s' "$body" | grep -qi 'subprocess' && { printf '%s' "$cmd"; return; }
   printf '%s' "$body" | grep -qi 'os\.system' && { printf '%s' "$cmd"; return; }
@@ -1260,18 +1273,16 @@ strip_interp_heredoc_bodies() {
   printf '%s' "$body" | grep -qiF 'qx{' && { printf '%s' "$cmd"; return; }
   # ruby/perl 反引号：正文含反引号即视为会执行 shell。Go 原始字符串内不能写字面
   # 反引号——检测用 printf '\140'（八进制反引号，仓内既有惯例），对比变量展开。
-  # 只在命令里出现 ruby/perl 时生效：python 里反引号是惰性文本（往测试写 Go 原始
-  # 字符串，2026-10-20 误拦实录），node 里普通模板字符串不调 shell。判定看整条命令
-  # 而非 << 前缀（保守）。例外是标签模板「$ 紧跟反引号」（zx / execa / Bun.$）——它在 node
-  # 里直接执行 shell，任何解释器下都计入；execa 同理按名计入。
-  # Backtick primitive applies only when ruby/perl appears in the command (python: inert
-  # text; node: plain template literal). The $-tagged template (zx / execa / Bun.$) does
-  # run a shell and counts under every interpreter, as does the execa name.
+  # 只豁免纯 python 命令：python 里反引号是惰性文本（往测试写 Go 原始字符串，
+  # 2026-10-20 误拦实录）。命令里出现 ruby / perl / node 任一即按原规则否决——node 的
+  # 标签模板（zx 的 $、$.sync、$({...})、别名 sh 等，加反引号）直接执行 shell，形态
+  # 太多不宜逐一枚举（对抗审查 R1）。execa 按名计入（不带反引号也调 shell）。
+  # Only python-only commands are exempt (a python backtick is inert text). Any
+  # ruby / perl / node in the command keeps the original veto: node tagged templates
+  # (zx and friends) run a shell in too many shapes to enumerate. execa counts by name.
   printf '%s' "$body" | grep -qi 'execa' && { printf '%s' "$cmd"; return; }
-  _BT=$(printf '\140')
-  case "$body" in *'$'"$_BT"*) printf '%s' "$cmd"; return ;; esac
   case "$cmd" in
-    *ruby*|*perl*) case "$body" in *"$_BT"*) printf '%s' "$cmd"; return ;; esac ;;
+    *ruby*|*perl*|*node*) case "$body" in *"$_BT"*) printf '%s' "$cmd"; return ;; esac ;;
   esac
   # 只挖第一个 heredoc 的正文：其 delimiter 行之后进入终态（inbody=2），后续行（含
   # 后面再出现的 << / <<<）原样保留给 is_hazardous 判——旧版遇到下一个 << 就重新进入
@@ -1279,7 +1290,7 @@ strip_interp_heredoc_bodies() {
   # Strip only the FIRST heredoc's body: after its delimiter the state is terminal,
   # so later lines (including another << / <<<) stay visible — the old awk re-entered
   # body mode on the next << and swallowed every following line.
-  printf '%s' "$cmd" | awk -v t="$tag" 'BEGIN{inbody=0} inbody==1 && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {inbody=2; print; next} inbody==1 {next} {print} inbody==0 && /<<-?/ {inbody=1}'
+  printf '%s' "$cmd" | awk -v t="$tag" 'BEGIN{inbody=0} inbody==1 && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {inbody=2; print; next} inbody==1 {next} {print} inbody==0 && /(^|[^<])<<($|[^<])/ {inbody=1}'
 }
 
 HEREDOC_ORIG="$COMMAND"
