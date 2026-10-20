@@ -180,7 +180,7 @@ type AcceptanceFailure struct {
 | 只改了非源码文件（yaml、json、Makefile 等） | `TaskFingerprint` 只统计源码扩展名 | 漏判，不落行（没有可记录的事件） |
 | 某一侧 `ChangeHash` 为空（非 git 仓库、无 HEAD、基线不可达） | 无法比较 | 不判、不落行；同为空的重跑按"同 ChangeHash"覆盖上一条，FailHistory 恒 1 条 |
 | 其他任务 complete 后排除集变化，导致 hash 变了 | 外部变化被当成本任务改动 | 可能多计一次尝试；B1 只出 advisory，这类误报由第五节的精确度度量兜底 |
-| 验收命令第一次运行时改了源码（`go generate` 输出 `.go` 且不命中 genMarks 排除，`jest -u`、golden `-update`） | 第二次跑前算出的 hash 已经变了，没改代码的第一次重跑也被算作一次尝试 | 命令输出稳定时**最多多计一次**；复发行 meta.note 记 `self-mutating=suspect`，条件是：相邻两次 ChangeHash 不同，但两次失败记录的 `Changed`（改动文件内容指纹）没有任何差异——改动落在 `TaskChangedFiles` 之外。同一文件被 agent 反复修改会体现为 `Changed` 指纹变化，不命中 |
+| 验收命令第一次运行时改了源码（`go generate` 输出 `.go` 且不命中 genMarks 排除，`jest -u`、golden `-update`） | 第二次跑前算出的 hash 已经变了，没改代码的第一次重跑也被算作一次尝试 | 命令输出稳定时**最多多计一次**；复发行 meta.note 记 `self-mutating=suspect`，条件是：相邻两次 ChangeHash 不同，但窗口首末两条失败记录的 `Changed`（改动文件内容指纹）没有任何差异——改动落在 `TaskChangedFiles` 之外。同一文件被 agent 反复修改会体现为 `Changed` 指纹变化，不命中 |
 
 **效果（advisory，退出码契约不变）**：
 - 打印 `ADVISORY: 验收 #N 改动后同因失败 ×N——本轮应停止并升级人工`。
@@ -433,6 +433,7 @@ B1 的预算从 advisory 升为门禁，条件是精确度 ≥80% 且误报 ≤1
 | 控制件效能账（每个 hook/门禁的命中、误报、拦住了什么） | 文章一的 harness 维护循环 | R2 的 decision-warrant 攒够 30 天数据 | 2026-12-15 |
 | answer、approve、reset-loop 补 TTY 判别 | 1.2 | B2 合入后，收件箱里出现被 agent 自己回答的项 | B2 +30 天 |
 | `gate-repeat-blocked` 计入 complete 预检拒绝和 review pass 拒绝（需先给这两处补 checklog 行） | B1-2 | B1 合入后，出现循环卡在这两处却没有 escalate 的实例 | B1 +30 天 |
+| `task status --json` / resume 的判词耗时实测（目标增量 < 300ms；超标则给判词加缓存或精简 git 调用） | B1-2 | B1 合入后在真实仓库上实测一次 | B1 +30 天 |
 | 项目知识层 | 文章二 | 不承诺 | — |
 
 ## 七、与当前周期的关系和备选对比
@@ -459,7 +460,7 @@ B1 的预算从 advisory 升为门禁，条件是精确度 ≥80% 且误报 ≤1
 ## 八、风险与待拍板
 
 - **风险：指纹规范化不足或过度。** 对策：`NormalizeFailureOutput` 用表驱动测试覆盖 Go、pytest、jest 三类输出，样本超过 500 字节且带耗时噪音；B1 只做 advisory，用精确度决定是否升格。
-- **风险：status 变慢。** 对策：REQ-2 写明耗时增量上限；判词计算不写盘。
+- **风险：status 变慢。** 对策：判词计算只读不写盘；耗时目标 < 300ms 见 B1-2 暴露面第 1 条，B1 未实测，列入第六节 Deferred。
 - **风险：B3 被绕过。** 威胁模型已写明这是护栏，不是沙箱；逃生必然进收件箱。
 **2026-10-20 拍板：Q1–Q3 按下文推荐执行。** B0+B1 插在 R2 之后、R3 之前；死路记忆用 `Decision.Kind`；收件箱做新命令 `forge inbox`。Q4 文中没有推荐项，留到 B3 开工前再定，不影响 B0–B2。
 
