@@ -316,3 +316,44 @@ func TestLoopExhaustionMaxRoundsOne(t *testing.T) {
 		t.Fatal("max_rounds=1：重置后轮龄仍为 1 ≥ 预算，应立即再耗尽")
 	}
 }
+
+// TestLoopExhaustionStaleSnapshotKeepsConcurrentReset 钉住锁内重判（B0 评审
+// Minor #5）：pre-flight 持有的快照读取之后恰有一次 --reset-loop 落盘——本次仍按
+// 快照拦（偏严），但旧快照的判定不得把刚重置的盘上状态再标回耗尽。
+func TestLoopExhaustionStaleSnapshotKeepsConcurrentReset(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeLoopSchema(t, dir, "version: 1\nstages:\n  - name: proposal\nedges:\n  - from: review\n    to: implement\n    max_rounds: 2\n")
+
+	const ref = "loop-stale"
+	state := &TaskState{TaskRef: ref, Branch: "feat/loop"}
+	state.ReviewRounds = []ReviewRound{{}, {}, {}}
+	state.Findings = []Finding{{ID: "f1", Content: "超龄问题", Status: "open", Round: 1}}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	stale, err := LoadTaskState(dir, ref) // pre-flight 的快照（重置前）
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := LoadTaskState(dir, ref) // 并发的人工重置
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ResetLoopExhaustion(dir, other, "人工裁决"); err != nil {
+		t.Fatal(err)
+	}
+
+	if reasons := CheckLoopExhausted(dir, stale); len(reasons) == 0 {
+		t.Fatal("旧快照超龄：本次 pre-flight 仍应按快照拦")
+	}
+	reloaded, err := LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.LoopExhausted != nil {
+		t.Fatalf("旧快照不得把并发重置后的盘上状态再标回耗尽: %+v", reloaded.LoopExhausted)
+	}
+}
