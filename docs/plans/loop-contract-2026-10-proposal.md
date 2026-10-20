@@ -12,8 +12,10 @@ baseline: 65a0e810
 
 **推荐本周期只做 B0 + B1，排在 R2 之后、R3 之前；B2、B3 排到 2026-12-15 复验之后。**
 B0 和 B1 都不新增命令和阻断位点，能与当前周期
-（[acceptance-gate-and-wedge](acceptance-gate-and-wedge-2026-10-proposal.md)）的 non-goals 共存。
+（acceptance-gate-and-wedge 提案，`docs/plans/acceptance-gate-and-wedge-2026-10-proposal.md`，截至本文尚未入库，相关 non-goals 已摘录在第七节）的 non-goals 共存。
 B2 和 B3 各自与该提案的一条 non-goal 冲突（见第七节），排期上要等它复验。
+
+术语（均出自该提案）：**R 线**是"改动接受门"代码线，其中 R2 = 决策必须带可核验锚点（decision-warrant），R3 = Track A 评测的有效性前置，R6 = "不可能"声明（本周期只出设计）；**W 线**是拿外部用户的楔子运营线，"防假绿"是它对外的叙事。
 
 Forge 自称"coding agent 循环的验证与状态层"，但这只在单个任务内部成立。放进 Claude Code `/loop`、定时任务或 Codex automation 这类**无人值守循环**后，有三处会失效：
 
@@ -30,9 +32,9 @@ Forge 自称"coding agent 循环的验证与状态层"，但这只在单个任�
 
 依据：
 - 外部文章两篇：
-  - 《Loop engineering：把 agent 放进工程循环》（大淘宝技术，2026-09-21）：一个能工作的循环需要六个动作，其中第 5 步"写入状态"、第 6 步"判断停止条件"，Forge 只覆盖了一半。
-  - 《AI 驱动研发体系的实践和思考》（大淘宝技术，2026-09-02）：分工是"人负责决策，Agent 负责执行"，高风险动作不因概括性同意而自动执行。
-- 内部证据：下文的代码考古（基线 `65a0e810`），以及三轮独立评审：首轮 68/100（三个 Critical）、第二轮 84/100（剩 8 项）、第三轮 88/100（B0+B1 无 Critical，剩 7 项）。本版已逐条修订。
+  - [《Loop engineering：把 agent 放进工程循环》](https://mp.weixin.qq.com/s/RxRzTsRvmZJMmtQjQM79_g)（大淘宝技术，2026-09-21）：一个能工作的循环需要六个动作，其中第 5 步"写入状态"、第 6 步"判断停止条件"，Forge 只覆盖了一半。
+  - [《AI 驱动研发体系的实践和思考》](https://mp.weixin.qq.com/s/OSYCiNajJw6c5-hGFSAfYw)（大淘宝技术，2026-09-02）：分工是"人负责决策，Agent 负责执行"，高风险动作不因概括性同意而自动执行。
+- 内部证据：下文的代码考古（基线 `65a0e810`），以及三轮独立技术评审（意见已逐条修订进本版）。1.4 节的两处漏放已由 `internal/taskpipeline/loopedge_test.go` 的 `TestLoopExhaustionNoLeak` 在旧实现上复现。
 
 ## 一、问题与现状证据
 
@@ -42,7 +44,7 @@ Forge 自称"coding agent 循环的验证与状态层"，但这只在单个任�
 |---|---|---|
 | review 回边轮次预算 + finding 指纹复发 | `internal/taskpipeline/loopedge.go:75`、`:147` | 只管 review finding |
 | token 熔断 | `internal/toolusage/store.go:366`，未导出常量 500000，`TaskTokenBreaker` 不收阈值参数 | 只打 stderr，不写 checklog，不改状态 |
-| 停滞检测 | `internal/clitask/task_watchdog.go:27`（`--stall` 45m） | 要人主动运行；会落 `task-stalled` 行，但不进任何判词 |
+| 停滞检测 | `internal/clitask/task_watchdog.go:28`（`--stall` 45m） | 要人主动运行；会落 `task-stalled` 行，但不进任何判词 |
 | safe-halt | `internal/hazard/halt.go:25`（连续 3 次拦截） | 只在 gate 时往 stderr 打印 |
 
 文章里最常用的停止条件是"**连续两次失败原因相同 → 停，交给人**"，Forge 对验收失败没有这条判定：
@@ -61,14 +63,14 @@ Forge 自称"coding agent 循环的验证与状态层"，但这只在单个任�
 | 回环耗尽 → `--reset-loop` | 不区分，只要求 `--note` | 一直挡住 complete，而且重置本身失效（见 1.4） |
 
 在无人值守循环里，这些出口要么卡死，要么逼 agent 自设 `FORGE_HAZARD_PENDING=disable` 这类逃生 env。
-另外，`internal/evalkit/telemetry.go:198` 的 `wait_turns` 明确标注"无确认等待数据源"：等人的成本目前不可观测。
+另外，`internal/evalkit/telemetry.go:199` 的 `wait_turns` 明确标注"无确认等待数据源"：等人的成本目前不可观测。
 
 ### 1.3 记不住死路
 
 交接字段（`internal/tasktypes/types.go:580-588`）有 Goal、Plan、Decisions、NextSteps、Blockers、Findings，没有"试过、失败了、附证据"。
 `ArchiveAttempt` / `PriorAttemptsSummary`（`internal/taskpipeline/specs.go:182`、`:217`）存的是 review 打回的 findings，不是方案。
 
-### 1.4 回环耗尽的两处放行漏洞（独立评审用探针测试实测）
+### 1.4 回环耗尽的两处放行漏洞（已由 `TestLoopExhaustionNoLeak` 在旧实现上复现）
 
 `CheckLoopExhausted`（`loopedge.go:185`）重算出耗尽后，只把标记写回盘：`MergeOrPersistTaskState` 不回写传入的内存对象。随后它用**旧的内存 state** 做判断，所以：
 
@@ -207,7 +209,7 @@ type LoopReason struct {
 }
 ```
 
-**判词定义**（解决评审 C1：`done` 原定义要求三道门禁全过，在循环里永远等不到）：
+**判词定义**（`done` 不能要求三道门禁全过，否则在循环里永远等不到）：
 
 | 判词 | 条件 |
 |---|---|
@@ -223,7 +225,7 @@ type LoopReason struct {
 - 非 git 目录下 `head == ""` 时，它直接返回 ok、不看 `Passed`。所以判词**单独逐条检查 `Passed`**，不依赖它兜底。
 - 不新鲜（验收通过后又改过源码）的验收不算通过，判词回到 `continue`。
 
-**原因、解除方式与清除条件**（解决评审 I7：没有解除方式，循环会空转）：
+**原因、解除方式与清除条件**（没有解除方式，循环会在 escalate 上空转）：
 
 | Code | 来源 | Resolve | 清除条件 |
 |---|---|---|---|
@@ -240,7 +242,7 @@ type LoopReason struct {
 
 `gate-repeat-blocked` 只统计 `forge task gate` 命令。`forge task complete` 的预检拒绝和 `forge review pass` 的拒绝不进 `History`，B1 不计入；如果要计入，需要先给这两处补 checklog 行，列为 Deferred。
 
-`no-progress` 用"有验证但没进展"衡量，**不用空闲时长**。定时循环每次唤醒之间本来就空闲，按空闲时长判断会误报（评审 I6）。
+`no-progress` 用"有验证但没进展"衡量，**不用空闲时长**。定时循环每次唤醒之间本来就空闲，按空闲时长判断会误报。
 
 人工裁决只有一个出口 `--reset-loop`，所有窗口计数器共用 `LoopResetAt`。
 
@@ -292,7 +294,7 @@ REQ-3：配置 `max_changed_files: 3`、改动 4 个文件时，判词为 `escal
 
 **写入**：
 - `forge task decide --rejected --content "<方案>" --rationale "<失败证据>"`。新 flag 属于纯新增，援引 compat-commitments 2026-09-20 裁决：CHANGELOG 预先声明，并重钉快照。
-- **`task decide` 的内容级幂等键加上 Kind**（`task_continuity.go:796`，现在是 Content+By）。否则先否决再采纳同一方案会被当作重复跳过，语义反转（评审 I2）。
+- **`task decide` 的内容级幂等键加上 Kind**（`task_continuity.go:796`，现在是 Content+By）。否则先否决再采纳同一方案会被当作重复跳过，语义反转。
 - B1-1 触发时自动写一条，`By=forge`。内容包含指纹、两次的 ChangeHash，以及两次失败记录之间**内容 hash 变化过的文件**（新增、删除，或同一路径 hash 不同），让下一轮看得出"动了哪些文件仍然失败"。按内容 hash 比较，agent 反复改同一个文件也能显示出来；只比路径列表的话，这种最常见的情况会显示成"没动任何文件"。不用 `git diff --stat`：两次失败时工作区多半未提交，ChangeHash 只是哈希，没有快照可以拿来 diff。
 
 **渲染**：
@@ -336,7 +338,7 @@ REQ-5：两个注册项目里分别有 hazard 待确认、input-required 任务�
 
 `forge hazard confirm --fingerprint <fp> --hold <dur>`，新 flag 属于纯新增，上限 72h。不带 `--hold` 时行为完全不变。
 
-针对评审 I4 的设计约束：
+设计约束（防伪造、消费时机、执行中时间窗）：
 
 1. **防伪造不弱化**。agent 对 DataDir 有写权限，现有 5 分钟上界是防止手写标记的唯一防线（`internal/hazard/stamp.go:185-217`）。留存标记写到独立文件 `<fp>.hold.json`，与普通确认标记分开、不互相覆盖。校验时必须在 `events.jsonl` 里找到匹配的 `EventConfirm`，且带 `hold` 字段、时间和指纹一致，才承认这个标记。只有标记文件、没有对应事件的，一律不认。
 2. **在命令真正执行之后才消费，查询时不消费**。PreToolUse 只读查询，不消费。命令执行后落一条 `hold-consumed` 事件，标记从此失效。这样即使放行之后被别的 hook 或权限弹窗拒掉，标记也不会被白白用掉；B3 的 autonomy-guard 查同一个指纹时，读写的是同一份标记；两者在 inflight 上如何互不阻挡，见下面"执行中时间窗"一条。
@@ -362,7 +364,7 @@ REQ-6：`--hold 24h` 确认后，同指纹命令执行一次后再次被拦，**
 **声明**：
 - `forge task start --autonomy observe|propose|act|autonomous`，写入 `TaskState.Autonomy`。
 - 空值等于 `autonomous`，也就是现有行为，零迁移。
-- **改档用新命令 `forge task autonomy --set <tier>`**（B3 计入下个 minor 的预算 1/2）。提档要求 TTY（复用 `stdinIsHumanTerminalForHazard`），降档任何人都可以。不借用 `task override`，因为那里全是逃生舱，且都没有 TTY 判别，混进来会让语义不清（评审 I8）。
+- **改档用新命令 `forge task autonomy --set <tier>`**（B3 计入下个 minor 的预算 1/2）。提档要求 TTY（复用 `stdinIsHumanTerminalForHazard`），降档任何人都可以。不借用 `task override`，因为那里全是逃生舱，且都没有 TTY 判别，混进来会让语义不清。
 
 **执行**：新增 Go 进程内 hook `autonomy-guard`，挂在 PreToolUse 的 Bash 和 Write|Edit 上，模板是 `internal/hookdispatch/hook_task_drift.go`。需要两个新的解析能力：
 
@@ -468,7 +470,7 @@ B1 的预算从 advisory 升为门禁，条件是精确度 ≥80% 且误报 ≤1
 
 ## 九、验收
 
-期望值用 `--- PASS: <测试名>`，不用 `ok`：测试函数还不存在时，`go test -run` 也会输出 `ok ... [no tests to run]` 并以 0 退出，`ok` 会空跑通过（评审实测）。`EnsureGoTestVerbose` 会自动补 `-v`。
+期望值用 `--- PASS: <测试名>`，不用 `ok`：测试函数还不存在时，`go test -run` 也会输出 `ok ... [no tests to run]` 并以 0 退出，`ok` 会空跑通过（已实测）。`EnsureGoTestVerbose` 会自动补 `-v`。
 
 - accept[REQ-0]: go test ./internal/taskpipeline/ -run TestLoopExhaustionNoLeak -count=1 :: --- PASS: TestLoopExhaustionNoLeak
 - accept[REQ-1]: go test ./internal/taskpipeline/ -run TestAcceptanceRecurrence -count=1 :: --- PASS: TestAcceptanceRecurrence

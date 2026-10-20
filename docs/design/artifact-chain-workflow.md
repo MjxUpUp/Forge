@@ -129,9 +129,9 @@ workflow artifacts 留痕、hookdispatch 包级测试隔离（用户级 store 11
 | 规格共演振荡 | 同上（复用同一预算语义） |
 | 验收稀释（挪门柱） | 反稀释护栏：记因 + 强度不降 + 非产出方单方（v2，schema `guard: anti-dilution` 位已预留） |
 
-**三条机械判定**（复用既有轮次结构 ReviewRounds / Finding.Round；唯一新增的是人工重置写下的 LoopResetRound）：
+**三条机械判定**（复用既有轮次结构 ReviewRounds / Finding.Round；另加人工重置写下的 LoopResetRound / LoopResetAt，2026-10-20 修订）：
 
-1. **轮龄**：open finding 存活轮龄 = len(ReviewRounds) - max(Finding.Round, LoopResetRound) + 1；轮龄 ≥ 回边 max_rounds → exhausted（rounds-exhausted）。人工重置把 LoopResetRound 记为 len(ReviewRounds)+1，等于发放一份完整新预算（loop-contract B0，`docs/plans/loop-contract-2026-10-proposal.md`）。
+1. **轮龄**：open finding 存活轮龄 = len(ReviewRounds) - max(Finding.Round, LoopResetRound) + 1；轮龄下限为 1；轮龄 ≥ 回边 max_rounds → exhausted（rounds-exhausted）。人工重置把 LoopResetRound 记为 len(ReviewRounds)+1，等于发放一份完整新预算（max_rounds=1 时例外：重置后轮龄仍为 1，立即再耗尽）（loop-contract B0，`docs/plans/loop-contract-2026-10-proposal.md`）。
 2. **复发**：finding 指纹 = 规范化内容 sha256[0:16]；标 fixed/wontfix 时指纹入 ResolvedPrints；同指纹再登记 = 复活 → 立即耗尽（finding-recurrence）且 ResolvedPrints 保留。
 3. **exhausted → complete BLOCKED（升级人工）**：耗尽后唯一出口是 `forge task finding --reset-loop --note "<人工裁决>"`（审计行）或 abort；agent 不得自宣收敛、不得重置预算（终止权外置）。
 
