@@ -450,10 +450,11 @@ func TestReportSelfSupplied(t *testing.T) {
 	}
 }
 
-// TestReportCountsLoopReset（价-1c）：--reset-loop 人工裁决注记必须计入自供申辩。
-// 审计行由真实写入方 ResetLoopExhaustion 落地（不手写行形态——写入方与识别方
-// 共用单一真相源，任何一侧改形态都会在此暴露）；同 check 的耗尽拦截行（Passed=false）
-// 不是申辩，不计数。旧实现按 escape-hatch + "reset-loop" 匹配，从未命中。
+// TestReportCountsLoopReset（价-1c）：--reset-loop 人工裁决注记必须计入自供申辩，
+// 重置 N 次计 N 条。重置行由真实写入方 ResetLoopExhaustion 落地（写入方与识别方
+// 共用单一真相源，任一侧改形态都会在此暴露）；耗尽拦截行按其现有形态手写
+// （Passed=false，不是申辩，不计数）。旧实现按 escape-hatch + "reset-loop" 匹配，
+// 从未命中。
 func TestReportCountsLoopReset(t *testing.T) {
 	dir, taskRef := setupChainTask(t, "")
 	st, err := taskpipeline.LoadTaskState(dir, taskRef)
@@ -466,8 +467,10 @@ func TestReportCountsLoopReset(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := taskpipeline.ResetLoopExhaustion(dir, st, "人工裁决：换方向继续"); err != nil {
-		t.Fatal(err)
+	for _, note := range []string{"人工裁决：换方向继续", "人工裁决：再给一轮"} {
+		if err := taskpipeline.ResetLoopExhaustion(dir, st, note); err != nil {
+			t.Fatal(err)
+		}
 	}
 	st, err = taskpipeline.LoadTaskState(dir, taskRef)
 	if err != nil {
@@ -477,10 +480,10 @@ func TestReportCountsLoopReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.SelfSupplied != 1 {
-		t.Fatalf("reset-loop 注记应恰计 1 条（耗尽拦截行不计）, got %d", rep.SelfSupplied)
+	if rep.SelfSupplied != 2 {
+		t.Fatalf("两次 reset-loop 注记应恰计 2 条（耗尽拦截行不计）, got %d", rep.SelfSupplied)
 	}
-	if text := renderTaskReport(rep); !strings.Contains(text, "自供申辩：1 条") {
+	if text := renderTaskReport(rep); !strings.Contains(text, "自供申辩：2 条") {
 		t.Errorf("渲染应含自供申辩行:\n%s", text)
 	}
 }
