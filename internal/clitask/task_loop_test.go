@@ -113,6 +113,51 @@ func TestFindingLoopEdgeLifecycle(t *testing.T) {
 	}
 }
 
+// TestFindingResetLoopGrantsFreshBudget 经 cobra 全链路钉住 --reset-loop 的人工
+// 裁决出口（loop-contract B0）：超龄 open finding 致耗尽 → 重置后盘上记下新预算
+// 起算轮、连续 pre-flight 都放行、输出如实说明预算从哪一轮重新起算（旧实现
+// 只清标记不清轮龄，重置后立刻再耗尽，且文案谎称"轮次清零"）。
+func TestFindingResetLoopGrantsFreshBudget(t *testing.T) {
+	dir, ref := setupLoopTask(t)
+	runFinding(t, "--content", "老问题")
+	// 3 轮复核后 finding（Round=1）轮龄 3 ≥ 预算 2。
+	if err := taskpipeline.MutateTaskState(dir, ref, func(s *taskpipeline.TaskState) error {
+		s.ReviewRounds = make([]taskpipeline.ReviewRound, 3)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := taskpipeline.LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reasons := taskpipeline.CheckLoopExhausted(dir, state); len(reasons) == 0 {
+		t.Fatal("前置：超龄 open finding 应拦 complete")
+	}
+
+	out := captureStdout(t, func() {
+		runFinding(t, "--reset-loop", "--note", "人工裁决：换方向继续")
+	})
+	if !strings.Contains(out, "回环预算从第 4 轮重新起算") {
+		t.Fatalf("重置输出应说明新预算起算轮: %q", out)
+	}
+	if strings.Contains(out, "轮次清零") {
+		t.Fatalf("重置不清零轮次，输出不得声称清零: %q", out)
+	}
+	for i := 1; i <= 2; i++ {
+		state, err = taskpipeline.LoadTaskState(dir, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.LoopResetRound != 4 {
+			t.Fatalf("盘上应记新预算起算轮 4: %d", state.LoopResetRound)
+		}
+		if reasons := taskpipeline.CheckLoopExhausted(dir, state); len(reasons) != 0 {
+			t.Fatalf("重置后第 %d 次 pre-flight 应放行: %v", i, reasons)
+		}
+	}
+}
+
 // TestFindingLoopBudgetByReviewRounds 钉住轮次预算语义：open finding 跨过
 // max_rounds 次复核 → MarkLoopExhaustedIfDue 耗尽（review pass 后调用）；
 // 轮龄未到不耗尽。
