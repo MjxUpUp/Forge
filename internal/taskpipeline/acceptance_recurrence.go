@@ -133,7 +133,8 @@ func digestDiff(a, b map[string]string) []string {
 // DeadEndContent 渲染复发对应的自动死路记录正文（Decision.Content；自动记录的
 // 幂等键）。
 func (r AcceptanceRecurrence) DeadEndContent() string {
-	return fmt.Sprintf("验收 #%d（%s）在 %d 次改动后仍以同一指纹 %s 失败", r.CriterionIdx+1, r.Run, r.Count, r.Fingerprint)
+	// 不含条目序号：task accept / 再提取会重排 Acceptance，序号变了同一复发不能再写一条。
+	return fmt.Sprintf("验收「%s」在 %d 次改动后仍以同一指纹 %s 失败", r.Run, r.Count, r.Fingerprint)
 }
 
 // DeadEndRationale renders the evidence line of the auto-recorded dead end.

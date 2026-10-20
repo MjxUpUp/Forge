@@ -65,10 +65,11 @@ type LoopConfig struct {
 	// （toolusage.DefaultTaskTokenBudget）。
 	TokenBudget int `yaml:"token_budget,omitempty" json:"token_budget,omitempty"`
 	// MaxVerifiesWithoutProgress: consecutive verify-acceptance runs whose
-	// passed-count did not grow before the loop is judged stuck. 0 = not judged.
+	// passed-count did not grow over the run before them — K such runs need
+	// K+1 samples since the last reset. 0 = not judged.
 	//
-	// MaxVerifiesWithoutProgress：连续多少次 verify-acceptance 的通过条数都没增加
-	// 即判为原地打转。0 = 不判。
+	// MaxVerifiesWithoutProgress：连续多少次 verify-acceptance 的通过条数都没有比
+	// 前一次增加——K 次"未增"需要自上次重置起 K+1 次样本。0 = 不判。
 	MaxVerifiesWithoutProgress int `yaml:"max_verifies_without_progress,omitempty" json:"max_verifies_without_progress,omitempty"`
 }
 

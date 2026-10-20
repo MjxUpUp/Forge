@@ -85,10 +85,14 @@ func TestResumeRendersDeadEnds(t *testing.T) {
 		t.Fatalf("tl;dr 应列已证伪方案:\n%s", out)
 	}
 
-	// redact 往返：Content/Rationale 被替换，Kind 保留。
+	// redact 往返：Content/Rationale 被替换，Kind 保留；FailHistory.Changed（仓库路径）清空，指纹保留。
 	red := *st
 	red.Decisions = append([]taskpipeline.Decision(nil), st.Decisions...)
+	red.Acceptance = []taskpipeline.AcceptanceCriterion{{Run: "go test ./internal/x/", FailHistory: []tasktypes.AcceptanceFailure{{Fingerprint: "fp", ChangeHash: "h", Changed: map[string]string{"internal/x/y.go": "abc"}}}}}
 	redactTask(&red)
+	if fh := red.Acceptance[0].FailHistory; len(fh) != 1 || fh[0].Changed != nil || fh[0].Fingerprint != "fp" {
+		t.Fatalf("redact 应清 FailHistory.Changed 路径、保留指纹: %+v", fh)
+	}
 	for _, d := range red.Decisions {
 		if d.Rationale != "" || d.Content == "用全局锁串行化写入" {
 			t.Fatalf("redact 应替换 Content/Rationale: %+v", d)

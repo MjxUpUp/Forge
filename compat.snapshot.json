@@ -1674,6 +1674,7 @@
       "history[].gate",
       "history[].head_commit",
       "history[].passed",
+      "history[].silent",
       "integrity",
       "integrity.alg",
       "integrity.key_id",

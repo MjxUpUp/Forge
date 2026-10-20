@@ -81,15 +81,15 @@ func TestAcceptanceRecurrence(t *testing.T) {
 	if recs := DetectAcceptanceRecurrences(cfg, on.Acceptance); len(recs) != 0 {
 		t.Fatalf("只有 1 次失败不应判复发: %+v", recs)
 	}
+	fp1 := on.Acceptance[0].FailHistory[0].Fingerprint
 
-	// 2. 没改代码直接重跑（不同耗时）：ChangeHash 相同 → 不计为复发。
+	// 2. 没改代码直接重跑（不同耗时）：ChangeHash 相同 → 覆盖上一条而不追加，不计为复发。
 	on = runVerifyAndMerge("sh fail.sh 7.5")
-	if n := len(on.Acceptance[0].FailHistory); n != 2 {
-		t.Fatalf("第二次失败应记 2 条, got %d", n)
+	if n := len(on.Acceptance[0].FailHistory); n != 1 {
+		t.Fatalf("同 ChangeHash 的重跑应覆盖上一条（仍 1 条）, got %d", n)
 	}
-	h := on.Acceptance[0].FailHistory
-	if h[0].Fingerprint != h[1].Fingerprint {
-		t.Fatalf("同一失败带不同耗时应同指纹: %s vs %s", h[0].Fingerprint, h[1].Fingerprint)
+	if got := on.Acceptance[0].FailHistory[0].Fingerprint; got != fp1 {
+		t.Fatalf("同一失败带不同耗时应同指纹: %s vs %s", fp1, got)
 	}
 	if recs := DetectAcceptanceRecurrences(cfg, on.Acceptance); len(recs) != 0 {
 		t.Fatalf("ChangeHash 相同的重跑不应判复发: %+v", recs)
@@ -163,11 +163,12 @@ func TestDetectAcceptanceRecurrenceRules(t *testing.T) {
 	}
 }
 
-// TestMergeAcceptanceResultsFailHistoryCap 钉住 FailHistory 上限与只在匹配条目上追加。
+// TestMergeAcceptanceResultsFailHistoryCap 钉住 FailHistory 上限与只在匹配条目上追加
+// （每次用不同 ChangeHash，否则按"重跑覆盖"规则只会保留 1 条）。
 func TestMergeAcceptanceResultsFailHistoryCap(t *testing.T) {
 	s := &TaskState{Acceptance: []AcceptanceCriterion{{Run: "a"}, {Run: "b"}}}
 	for i := 0; i < tasktypes.MaxAcceptanceFailHistory+3; i++ {
-		res := []AcceptanceCriterion{{Run: "a", LastFailure: &tasktypes.AcceptanceFailure{Fingerprint: "f", ChangeHash: "h"}}}
+		res := []AcceptanceCriterion{{Run: "a", LastFailure: &tasktypes.AcceptanceFailure{Fingerprint: "f", ChangeHash: "h" + strings.Repeat("x", i)}}}
 		MergeAcceptanceResults(s, res, false)
 	}
 	if n := len(s.Acceptance[0].FailHistory); n != tasktypes.MaxAcceptanceFailHistory {
@@ -175,6 +176,60 @@ func TestMergeAcceptanceResultsFailHistoryCap(t *testing.T) {
 	}
 	if len(s.Acceptance[1].FailHistory) != 0 {
 		t.Fatal("未匹配的条目不应被追加")
+	}
+}
+
+// TestRecurrenceStickyUntilReset 钉住复发的"粘性"与唯一出口（评审 I-1/I-2）：
+// 检出复发后，没改代码的空跑重跑只覆盖上一条、不把复发顶出窗口；只有
+// --reset-loop 清空 FailHistory，判词才回到 continue。
+func TestRecurrenceStickyUntilReset(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	cfg := LoopConfig{RecurrenceThreshold: 2}
+	st := &TaskState{TaskRef: "sticky", Branch: "feat/testcov"}
+	st.Acceptance = []AcceptanceCriterion{{Run: "sh fail.sh", FailHistory: []tasktypes.AcceptanceFailure{failAt("f", "h1", nil), failAt("f", "h2", nil)}}}
+	if err := SaveTaskState(dir, st); err != nil {
+		t.Fatal(err)
+	}
+	if len(DetectAcceptanceRecurrences(cfg, st.Acceptance)) != 1 {
+		t.Fatal("前置：应已复发")
+	}
+	// 空跑重跑三次（同 h2）：覆盖而非追加，仍复发。
+	for i := 0; i < 3; i++ {
+		MergeAcceptanceResults(st, []AcceptanceCriterion{{Run: "sh fail.sh", LastFailure: &tasktypes.AcceptanceFailure{Fingerprint: "f", ChangeHash: "h2", ExitCode: i + 10}}}, false)
+	}
+	h := st.Acceptance[0].FailHistory
+	if len(h) != 2 || h[1].ExitCode != 12 {
+		t.Fatalf("同 ChangeHash 重跑应覆盖上一条（长度 2、末条为最新）, got %+v", h)
+	}
+	if len(DetectAcceptanceRecurrences(cfg, st.Acceptance)) != 1 {
+		t.Fatal("空跑重跑不得清掉复发")
+	}
+	// 人工重置：FailHistory 清空（盘上与内存都清），不再复发。
+	if err := ResetLoopExhaustion(dir, st, "换方向"); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Acceptance[0].FailHistory) != 0 {
+		t.Fatal("reset 后内存 FailHistory 应清空")
+	}
+	on, err := LoadTaskState(dir, "sticky")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(on.Acceptance[0].FailHistory) != 0 || len(DetectAcceptanceRecurrences(cfg, on.Acceptance)) != 0 {
+		t.Fatalf("reset 后盘上 FailHistory 应清空且不再复发: %+v", on.Acceptance[0].FailHistory)
+	}
+}
+
+// TestStripTrustDropsFailHistory 钉住外来 state 的 FailHistory 被剥离（评审 I-3）：
+// 导入后本机第一次失败不能与他机记录凑成复发窗口。
+func TestStripTrustDropsFailHistory(t *testing.T) {
+	st := &TaskState{TaskRef: "foreign"}
+	st.Acceptance = []AcceptanceCriterion{{Run: "x", Passed: true, FailHistory: []tasktypes.AcceptanceFailure{failAt("f", "h1", nil)}}}
+	StripForeignGateSignals(st)
+	if len(st.Acceptance[0].FailHistory) != 0 || st.Acceptance[0].Passed {
+		t.Fatalf("StripForeignGateSignals 应清 FailHistory 与 Passed: %+v", st.Acceptance[0])
 	}
 }
 

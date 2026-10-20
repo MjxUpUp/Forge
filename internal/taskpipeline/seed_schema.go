@@ -38,7 +38,7 @@ func SeedTaskStateForSchema() any {
 	}
 	s.CompletedAt = &now
 	s.SessionID = "sess"
-	s.History = []tasktypes.TaskGateResult{{Gate: "g", Passed: true, HeadCommit: "abc"}}
+	s.History = []tasktypes.TaskGateResult{{Gate: "g", Passed: true, HeadCommit: "abc", Silent: true}}
 	s.ReviewPassed = true
 	s.ReviewRounds = []tasktypes.ReviewRound{{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now}}
 	s.DesignPhases = []tasktypes.DesignPhase{"frontend"}

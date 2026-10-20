@@ -146,7 +146,7 @@ type AcceptanceFailure struct {
     At          time.Time `json:"at"`
     ExitCode    int       `json:"exit_code"`
     Fingerprint string    `json:"fingerprint"`
-    ChangeHash  string    `json:"change_hash"` // 跑命令【之前】算的 TaskFingerprint
+    ChangeHash  string    `json:"change_hash,omitempty"` // 跑命令【之前】算的 TaskFingerprint；空 = 不可度量
     Changed     map[string]string `json:"changed,omitempty"` // 当时的 TaskChangedFiles：repo 相对路径 → 内容 sha256 前 12 位（最多 50 条）
 }
 ```
@@ -160,7 +160,7 @@ type AcceptanceFailure struct {
 
 **判定**：最近 N 条失败（N = `loop.recurrence_threshold`，默认 2）同时满足两个条件才算复发：
 - 指纹全部相同；
-- **相邻两条的 `ChangeHash` 都不同**，即每次之间都改过代码，而失败没变。
+- **相邻两条的 `ChangeHash` 都不同**，即每次之间都改过代码，而失败没变。没改代码的重跑（ChangeHash 与上一条相同）在写入时**覆盖上一条**而不是追加——既不计数，也不能把已检出的复发顶出窗口；复发的唯一出口是 `--reset-loop`（它清空 FailHistory）。
 
 **`ChangeHash` 的挂点**：在 `VerifyAcceptanceWithVerdicts` 的循环开始之前（与 `changed` 同一处）用 `TaskFingerprint` 算一次，整次验收共用，经不落盘的临时字段（`json:"-"`）透传给各条验收。不能挂在 `runAndJudgeCriterion` 里：它的签名是 `(root, c, changed)`，拿不到 state，而且和 heldout 共用。
 
@@ -199,7 +199,7 @@ REQ-1：同一验收在两个不同 `ChangeHash` 下、带不同耗时噪音、�
 ```go
 type LoopVerdict struct {
     Verdict string       `json:"verdict"` // escalate | done | continue（优先级从高到低）
-    Reasons []LoopReason `json:"reasons"`
+    Reasons []LoopReason `json:"reasons,omitempty"`
     Next    string       `json:"next"`    // NextDecision 给出的下一条确切命令
 }
 type LoopReason struct {
@@ -237,7 +237,7 @@ type LoopReason struct {
 | `budget-tokens` | `LoopResetAt` 之后的 `SumEstTokens` ≥ 预算 | 需人工：同上 | 同上 |
 | `budget-changed-files` | 改动文件数 ≥ 预算（口径同 `TaskChangedFiles`） | 需人工：拆分任务，或调高预算 | 文件数回落，或预算调高 |
 | `no-progress` | 连续 K 次 verify-acceptance（K = `max_verifies_without_progress`）通过条数都没有增加 | 需人工：reset-loop | reset-loop 重开窗口 |
-| `gate-repeat-blocked` | 从 `LoopResetAt` 起，同一个门禁在 `History` 里连续两条 `Passed=false`（`forge task gate` 失败时由 `RecordGateResult` 写入，见 `internal/clitask/task_gate.go:121`、`types.go:1028`；先例是 `ReworkRounds()`，`types.go:1015`） | 需人工：reset-loop | 该门禁通过，或 reset-loop 重开窗口 |
+| `gate-repeat-blocked` | 从 `LoopResetAt` 起，同一个门禁在 `History` 里连续两条 `Passed=false`（`forge task gate` 失败时由 `RecordGateResult` 写入；先例是 `ReworkRounds()`）。两类行不计：hook 路径（`--silent`，Stop hook 每轮都跑 task-verify，`TaskGateResult.Silent` 标记）与 `task-implement`（它的 BLOCKED 是"先提交"的正常节奏，本机 70 个任务里 6 个连续两次仍全部完成） | 需人工：reset-loop | 该门禁通过，或 reset-loop 重开窗口 |
 | `autonomy-denied` | B3 | 需人工：B3 的提档命令 | 提档，或放弃该动作 |
 
 `gate-repeat-blocked` 只统计 `forge task gate` 命令。`forge task complete` 的预检拒绝和 `forge review pass` 的拒绝不进 `History`，B1 不计入；如果要计入，需要先给这两处补 checklog 行，列为 Deferred。
@@ -248,12 +248,12 @@ type LoopReason struct {
 
 **暴露面（不新增命令）**：
 
-1. `forge task status --json`：改用嵌入结构体 `struct{ *TaskState; LoopVerdict *LoopVerdict \`json:"loop_verdict"\` }` 输出。原有键顺序不变，新键追加在末尾。
+1. `forge task status --json`：改用嵌入结构体 `struct{ *TaskState; LoopVerdict LoopVerdict \`json:"loop_verdict"\` }` 输出。原有键顺序不变，新键追加在末尾。
    - 现有消费方：eval 演练里的 `expect_contains`、`skillintegrate/notes/code-review-gate.md` 的 grep、两处报错文案。都不解析 JSON 结构。
    - 无活跃任务的分支 `{"task_ref": null, ...}` 保持不变，不输出判词。
    - 代价：status 每次要跑一次 git 并扫 checklog/toollog，会变慢。验收要求 status 耗时增量 < 300ms。
 2. `forge task verify-acceptance` 末行打印 `loop: <verdict>（<codes>）`。
-3. resume 的 tl;dr：`renderTldr`（`internal/clitask/task_continuity.go:1288`）改为接收预先算好的判词，加一行 `循环判词`。
+3. resume 头部：`renderResume` 的 extraHeader 多一行 `循环判词: <verdict>（<codes>）→ next: <cmd>`（`loopVerdictHeader`，`internal/clitask/task_continuity.go`），位置在 tl;dr 之前；tl;dr 本身保持纯渲染（只看 state，不碰 git），列已证伪方案前 3 条。
 
 REQ-2：表驱动测试覆盖：
 - 上表每个 Code 的判词、Resolve 和清除条件（含 `gate-repeat-blocked`），以及 escalate > done > continue 的优先级；

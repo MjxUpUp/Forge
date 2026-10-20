@@ -119,7 +119,9 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		// GetHeadCommit（短 hash）是记录 head 的单一真相源——归因与 doc-gate 对
 		// History head 做精确字符串比较。
-		s.RecordGateResult(gateID, result.Passed, taskpipeline.GetHeadCommit(root))
+		// silent（hook 路径）的结果带 Silent 标记：循环判词的 gate-repeat-blocked 只数
+		// agent 主动跑门禁的 BLOCKED（loop 契约 B1-2）。
+		s.RecordGateResultFrom(gateID, result.Passed, taskpipeline.GetHeadCommit(root), silent)
 		return nil
 	}); err != nil {
 		return fmt.Errorf("failed to save task state: %w", err)

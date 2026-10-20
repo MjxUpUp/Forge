@@ -832,6 +832,17 @@ type TaskGateResult struct {
 	Passed      bool      `json:"passed"`
 	CompletedAt time.Time `json:"completed_at"`
 	HeadCommit  string    `json:"head_commit,omitempty"` // gate 通过时的 git HEAD
+	// Silent marks a result recorded by the hook path (`forge task gate
+	// --silent`, the Stop hook's advisory task-verify) rather than by the
+	// agent running the gate. The loop verdict's gate-repeat-blocked rule skips
+	// these: the Stop hook fires every turn, so counting its BLOCKED rows would
+	// escalate a task the agent never tried to push (loop-contract B1-2).
+	//
+	// Silent 标记该结果来自 hook 路径（`forge task gate --silent`，Stop hook 的
+	// advisory task-verify）而不是 agent 主动跑门禁。循环判词的
+	// gate-repeat-blocked 规则跳过它们：Stop hook 每轮都跑，计入其 BLOCKED 行会
+	// 把 agent 从未推过的门判成升级（loop 契约 B1-2）。
+	Silent bool `json:"silent,omitempty"`
 }
 
 // ReviewRound records one `forge review pass` event (the reviewed snapshot +
@@ -1105,6 +1116,15 @@ func (s *TaskState) ReworkRounds() (reviewPasses, completeRejections int) {
 // 若该 gate 已通过则为 no-op（防止 stop hook 重复 verify 产生重复 history 条目）。
 // 先前失败的 gate 可重试，会新增一条 entry。
 func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit string) {
+	s.RecordGateResultFrom(gateID, passed, headCommit, false)
+}
+
+// RecordGateResultFrom is RecordGateResult with the Silent provenance flag
+// (true = recorded by the hook path, see TaskGateResult.Silent).
+//
+// RecordGateResultFrom 是带 Silent 来源标记的 RecordGateResult（true = hook 路径
+// 记录，见 TaskGateResult.Silent）。
+func (s *TaskState) RecordGateResultFrom(gateID string, passed bool, headCommit string, silent bool) {
 	// Skip if this gate already passed — prevents stop-hook from repeatedly verifying the same gate and producing 25x duplicate entries.
 	// 本 gate 已通过则跳过——防止 stop hook 反复 verify 同一 gate 产生 25 倍重复
 	// 条目。
@@ -1117,6 +1137,7 @@ func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit stri
 		Passed:      passed,
 		CompletedAt: time.Now(),
 		HeadCommit:  headCommit,
+		Silent:      silent,
 	})
 	if passed {
 		s.CurrentGate = s.NextGate()

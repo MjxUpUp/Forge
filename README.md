@@ -353,6 +353,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task resume [--ref <ref>]` | 拉回任务接续上下文（目标/计划/决策/阻塞/参与工具+门禁进度+git 已改），跨会话/跨工具秒级恢复 |
 | `forge task context [--ref <ref>]` | 只读查看接续上下文（resume 的不改 state 别名） |
 | `forge task decide --content` | 记录已确认决策（持久化进 task，跨会话/跨工具不再推翻） |
+| `forge task decide --rejected --content --rationale` | 记一条已证伪方案（死路记忆，loop 契约 B1-4）：`--content` 写方案、`--rationale` 写失败证据；resume 单独成节【已证伪方案】并进 tl;dr，不列入已确认决策。验收同因复发时 forge 会自动记一条 |
 | `forge task next <step>` | 追加下一步（可多条） |
 | `forge task block --content/--resolve <id>` | 登记阻塞或解决阻塞（open→resolved） |
 | `forge task finding --content/--resolve <id>` \| `--reset-loop --note` | 记录跨工具发现（带来源工具）、标 fixed（指纹入 ResolvedPrints 记忆）；**审查回环**（回边语义，docs/design/artifact-chain-workflow.md）：open finding 跨过 schema 回边 max_rounds 次复核、或已解决 finding 同指纹再登记（复活）→ 回环耗尽，complete 被拦升级人工；人工裁决 `--reset-loop --note` 重开（审计行落地）。耗尽后唯一出口是人——终止权外置 |

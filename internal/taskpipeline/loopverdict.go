@@ -224,9 +224,16 @@ func noProgressRuns(passCounts []int) int {
 }
 
 // repeatBlockedGate returns the gate with the longest trailing run of
-// Passed=false results since the last reset, and that run's length.
+// Passed=false results since the last reset, and that run's length. Two
+// kinds of rows are skipped: Silent ones (the Stop hook's advisory
+// task-verify fires every turn, the agent never pushed that gate) and
+// task-implement (its BLOCKED is the normal "commit first" rhythm — 6 of 70
+// local tasks hit it twice and all completed).
 //
 // repeatBlockedGate 返回自上次重置起尾部连续 Passed=false 最长的门禁及其长度。
+// 两类行跳过：Silent 行（Stop hook 的 advisory task-verify 每轮都跑，agent 并没有
+// 推过那道门）与 task-implement（它的 BLOCKED 是"先提交"的正常节奏——本机 70 个
+// 任务里 6 个连续两次仍全部完成）。
 func repeatBlockedGate(st *TaskState) (string, int) {
 	if st == nil {
 		return "", 0
@@ -234,6 +241,9 @@ func repeatBlockedGate(st *TaskState) (string, int) {
 	streak := map[string]int{}
 	for _, h := range st.History {
 		if st.LoopResetAt != nil && h.CompletedAt.Before(*st.LoopResetAt) {
+			continue
+		}
+		if h.Silent || h.Gate == GateImplement {
 			continue
 		}
 		if h.Passed {

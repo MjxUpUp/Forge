@@ -89,6 +89,18 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 			in.State = withReset(in.State, GateVerify, false, false)
 			return in
 		}, LoopVerdictEscalate, LoopCodeGateRepeatBlocked},
+		{"hook 路径（Silent）的 BLOCKED 不计", func() LoopInputs {
+			in := base()
+			for i := 0; i < 3; i++ {
+				in.State.History = append(in.State.History, tasktypes.TaskGateResult{Gate: GateVerify, Passed: false, CompletedAt: time.Now(), Silent: true})
+			}
+			return in
+		}, LoopVerdictDone, ""},
+		{"task-implement 连续 BLOCKED 是正常节奏，不计", func() LoopInputs {
+			in := base()
+			in.State = withReset(in.State, GateImplement, false, false, false)
+			return in
+		}, LoopVerdictDone, ""},
 		{"门禁 BLOCKED 后通过 → 清除", func() LoopInputs {
 			in := base()
 			in.State = withReset(in.State, GateVerify, false, false, true)

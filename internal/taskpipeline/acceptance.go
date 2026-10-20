@@ -382,16 +382,24 @@ func MergeAcceptanceResults(s *TaskState, results []AcceptanceCriterion, clearFo
 			s.Acceptance[i].AcceptedHeadCommit = results[j].AcceptedHeadCommit
 			s.Acceptance[i].AcceptedBaseCommit = results[j].AcceptedBaseCommit
 			s.Acceptance[i].AcceptedChangeHash = results[j].AcceptedChangeHash
-			// FailHistory（loop 契约 B1-1）在权威盘上状态上追加：通过即清空；失败追加
-			// 本次的跑前快照记录，只留最近 MaxAcceptanceFailHistory 条。
+			// FailHistory（loop 契约 B1-1）在权威盘上状态上维护：通过即清空；失败追加
+			// 本次的跑前快照记录，只留最近 MaxAcceptanceFailHistory 条。没改代码的重跑
+			//（ChangeHash 与上一条相同）不追加、只覆盖上一条——重跑不计数，也不能把
+			// 已检出的同因复发顶出窗口（否则 agent 空跑一次就能清掉 escalate）。
 			switch {
 			case results[j].Passed:
 				s.Acceptance[i].FailHistory = nil
 			case results[j].LastFailure != nil:
-				s.Acceptance[i].FailHistory = append(s.Acceptance[i].FailHistory, *results[j].LastFailure)
-				if n := len(s.Acceptance[i].FailHistory); n > tasktypes.MaxAcceptanceFailHistory {
-					s.Acceptance[i].FailHistory = s.Acceptance[i].FailHistory[n-tasktypes.MaxAcceptanceFailHistory:]
+				h := s.Acceptance[i].FailHistory
+				if n := len(h); n > 0 && h[n-1].ChangeHash == results[j].LastFailure.ChangeHash {
+					h[n-1] = *results[j].LastFailure
+				} else {
+					h = append(h, *results[j].LastFailure)
 				}
+				if n := len(h); n > tasktypes.MaxAcceptanceFailHistory {
+					h = h[n-tasktypes.MaxAcceptanceFailHistory:]
+				}
+				s.Acceptance[i].FailHistory = h
 			}
 			break
 		}
