@@ -110,7 +110,7 @@ func init() {
 	taskFindingCmd.Flags().String("resolve", "", "要标 fixed 的发现 ID（与 --content 互斥）")
 	taskFindingCmd.Flags().String("ref", "", "指定任务引用（--stats 时省略 = 跨全部任务聚合）")
 	taskFindingCmd.Flags().Bool("stats", false, "跨任务聚合统计：按 Tag×Round 计数（session-retrospective 升级判据「同类打回 ≥3 次」的机器来源）")
-	taskFindingCmd.Flags().Bool("reset-loop", false, "人工裁决：清除回环耗尽态并清零修复轮次（--note 必填；审计行落地，终止权外置的唯一出口）")
+	taskFindingCmd.Flags().Bool("reset-loop", false, "人工裁决：清除回环耗尽态并重开回环预算（open finding 从下一轮重新计龄；--note 必填；审计行落地，终止权外置的唯一出口）")
 	taskFindingCmd.Flags().String("note", "", "--reset-loop 的人工裁决说明（必填，可审计）")
 
 	taskAttachCmd.Flags().String("ref", "", "任务引用（必填：要锚定到哪个任务）")
@@ -911,7 +911,7 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 		if err := taskpipeline.ResetLoopExhaustion(root, state, note); err != nil {
 			return err
 		}
-		fmt.Println("✓ 回环已重置（轮次清零、耗尽态清除）——ResolvedPrints 保留，复活仍会被抓")
+		fmt.Printf("✓ 回环已重置（耗尽态清除；回环预算从第 %d 轮重新起算）——ResolvedPrints 保留，复活仍会被抓\n", state.LoopResetRound)
 		return nil
 	}
 	if resolveID, _ := cmd.Flags().GetString("resolve"); resolveID != "" {
