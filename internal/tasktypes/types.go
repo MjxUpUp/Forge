@@ -694,6 +694,20 @@ type TaskState struct {
 	// --reset-loop）或 abort 可清除。nil = 循环未耗尽。
 	LoopExhausted *LoopExhaustion `json:"loop_exhausted,omitempty"`
 
+	// LoopResetRound is the review cycle from which a human reset
+	// (`forge task finding --reset-loop`) restarts the loop budget: an open
+	// finding's loop age counts from max(Finding.Round, LoopResetRound), so a
+	// reset grants a full fresh budget instead of re-exhausting on the next
+	// pre-flight. 0 = never reset. LoopResetAt records when; later loop-contract
+	// counters (docs/plans/loop-contract-2026-10-proposal.md B1) window from it.
+	//
+	// LoopResetRound 是人工重置（forge task finding --reset-loop）后回环预算的起算
+	// 轮：open finding 的轮龄从 max(Finding.Round, LoopResetRound) 起算——重置
+	// 发放一份完整新预算，而不是下一次 pre-flight 立刻再耗尽。0 = 从未重置。
+	// LoopResetAt 记重置时刻；loop 契约后续的计数窗口（B1）以它为起点。
+	LoopResetRound int        `json:"loop_reset_round,omitempty"`
+	LoopResetAt    *time.Time `json:"loop_reset_at,omitempty"`
+
 	// ReportedFindings is the set of advisory finding fingerprints already shown to
 	// the agent by this task's verify scans (see advisory_dedup.go): cheat-scan
 	// fingerprints are two-part (ruleID|file:line); unused-scan fingerprints are

@@ -4,15 +4,17 @@ package taskpipeline
 // 轮次预算 + 复发检测 + exhausted 升级人工。无限循环在架构上不可表达：回环
 // 要么收敛（指纹不复现）、要么耗尽（轮龄到顶）、要么升级（到人）——终止权外置。
 //
-// 机械判定三事实（全部复用既有轮次结构——ReviewRounds 与 Finding.Round 已由
-// review pass / finding 登记维护，本文件零新计数器）：
-//  1. 轮龄：open finding 的存活轮龄 = len(ReviewRounds) - Finding.Round + 1；
+// 机械判定三事实（复用既有轮次结构——ReviewRounds 与 Finding.Round 已由
+// review pass / finding 登记维护；唯一新增的是人工重置写下的 LoopResetRound）：
+//  1. 轮龄：open finding 的存活轮龄 = len(ReviewRounds) - max(Finding.Round,
+//     LoopResetRound) + 1；
 //     轮龄 ≥ schema 回边 max_rounds 且仍 open → 耗尽（rounds-exhausted）。
 //  2. 复发：finding 指纹 = 规范化内容 sha256[0:16]；finding 标 fixed 时指纹进
 //     ResolvedPrints；此后同指纹新 finding 登记 = 复活 → 立即耗尽
 //     （finding-recurrence）。
 //  3. exhausted → complete BLOCKED（升级人工），仅人工 --reset-loop 或 abort
 //     可清除；逃生舱沿 artifact-chain 域（FORGE_ARTIFACT_CHAIN）落审计。
+//     --reset-loop 记 LoopResetRound，轮龄从该轮重新起算（发放完整新预算）。
 
 import (
 	"crypto/sha256"
@@ -52,9 +54,17 @@ func loopBudgetRounds(root string) int {
 }
 
 // findingLoopAge returns how many review cycles an open finding has survived
-// (≥1). Legacy findings without Round count from cycle 1.
+// (≥1) within the current loop budget. Legacy findings without Round count from
+// cycle 1; after a human reset the age counts from LoopResetRound (a fresh
+// budget — loop-contract B0).
+//
+// findingLoopAge 返回 open finding 在当前回环预算内存活的审查轮数（≥1）。无 Round
+// 的旧 finding 从第 1 轮起算；人工重置后从 LoopResetRound 起算（新预算，B0）。
 func findingLoopAge(state *TaskState, f tasktypes.Finding) int {
 	round := f.Round
+	if round < state.LoopResetRound {
+		round = state.LoopResetRound
+	}
 	if round < 1 {
 		round = 1
 	}
@@ -113,6 +123,7 @@ func MarkLoopExhaustedIfDue(root string, state *TaskState) *LoopExhaustion {
 		fmt.Fprintln(os.Stderr, "[loopedge] exhaustion persist failed:", err)
 		return nil
 	}
+	state.LoopExhausted = marker // 调用方内存与盘上一致（Merge 只改锁内副本）
 	fmt.Fprintf(os.Stderr, "[loopedge] ⚠️ 回环耗尽（%s: %s）——升级人工：forge task finding --reset-loop --note \"<裁决>\"\n",
 		marker.Reason, marker.Detail)
 	return marker
@@ -157,13 +168,15 @@ func CheckFindingRevival(root string, state *TaskState, content string) bool {
 		return false
 	}
 	if state.LoopExhausted == nil {
+		marker := &LoopExhaustion{
+			Reason: LoopReasonRecurrence,
+			Detail: fmt.Sprintf("fingerprint=%s 已解决 finding 复活", fp),
+			At:     time.Now(),
+		}
+		state.LoopExhausted = marker // 调用方内存与盘上一致（Merge 只改锁内副本）
 		if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
 			if s.LoopExhausted == nil {
-				s.LoopExhausted = &LoopExhaustion{
-					Reason: LoopReasonRecurrence,
-					Detail: fmt.Sprintf("fingerprint=%s 已解决 finding 复活", fp),
-					At:     time.Now(),
-				}
+				s.LoopExhausted = marker
 			}
 			return nil
 		}); err != nil {
@@ -199,13 +212,19 @@ func CheckLoopExhausted(root string, state *TaskState) []string {
 		return nil
 	}
 	// 双轨：重算（幂等，轮龄事实）优先；持久标记（复活的不可逆记录）兜底。
+	// 重算命中先置内存标记再落盘（loop-contract B0）：MergeOrPersistTaskState 只改
+	// 锁内副本，不回写调用方 state——只落盘会让本次 pre-flight 拿旧内存判定、首次
+	// 检出放行一次。落盘失败同样当场拦（fail-closed），标记待下次重算再落盘。
 	if marker := evaluateLoopExhaustion(root, state); marker != nil && state.LoopExhausted == nil {
-		_ = MergeOrPersistTaskState(root, state, func(s *TaskState) error {
+		state.LoopExhausted = marker
+		if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
 			if s.LoopExhausted == nil {
 				s.LoopExhausted = marker
 			}
 			return nil
-		})
+		}); err != nil {
+			fmt.Fprintln(os.Stderr, "[loopedge] exhaustion persist failed (blocking anyway):", err)
+		}
 	}
 	if state.LoopExhausted == nil {
 		return nil
@@ -223,18 +242,31 @@ func CheckLoopExhausted(root string, state *TaskState) []string {
 }
 
 // ResetLoopExhaustion clears the exhaustion state after a human decision
-// (`forge task finding --reset-loop --note`). Audit row lands. ResolvedPrints
-// are retained — a later revival still trips, unless the human also clears.
+// (`forge task finding --reset-loop --note`) and restarts the loop budget:
+// LoopResetRound = len(ReviewRounds)+1, so open findings age from the next
+// review cycle (a full fresh budget of max_rounds). Audit row lands; the
+// caller's state is updated in step with disk. ResolvedPrints are retained —
+// a later revival still trips, unless the human also clears.
 //
-// ResetLoopExhaustion 在人工裁决后清除耗尽态与轮龄（审计行落地）。
-// ResolvedPrints 保留——后续复活仍会被抓，除非人工同时清理。
+// ResetLoopExhaustion 在人工裁决后清除耗尽态并重开回环预算：LoopResetRound =
+// len(ReviewRounds)+1，open finding 从下一轮起重新计龄（一份完整的 max_rounds
+// 新预算）。审计行落地；调用方内存 state 与盘上同步。ResolvedPrints 保留——
+// 后续复活仍会被抓，除非人工同时清理。
 func ResetLoopExhaustion(root string, state *TaskState, note string) error {
+	now := time.Now()
+	var resetRound int
 	if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
 		s.LoopExhausted = nil
+		resetRound = len(s.ReviewRounds) + 1
+		s.LoopResetRound = resetRound
+		s.LoopResetAt = &now
 		return nil
 	}); err != nil {
 		return err
 	}
+	state.LoopExhausted = nil
+	state.LoopResetRound = resetRound
+	state.LoopResetAt = &now
 	recordAudit(root, &checklog.Entry{
 		Check:   checklog.CheckLoopExhausted,
 		Passed:  true,
