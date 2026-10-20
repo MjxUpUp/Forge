@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/shellexec"
 )
 
 // hookEnvPath converts a test-generated path into the form the embedded bash
@@ -93,7 +95,10 @@ func runSentinelScript(t *testing.T, script, repoDir string, env []string) (stri
 	cmd.Dir = repoDir
 	cmd.Env = env
 	out, runErr := cmd.CombinedOutput()
-	return string(out), runErr
+	// Same interpreter-noise strip as runHazardScript (Windows Git Bash /tmp warning).
+	//
+	// 与 runHazardScript 同款解释器噪声剔除（Windows Git Bash /tmp 告警）。
+	return shellexec.StripRuntimeNoise(string(out)), runErr
 }
 
 func sentinelRepo(t *testing.T) string {

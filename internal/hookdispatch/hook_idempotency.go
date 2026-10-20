@@ -104,14 +104,12 @@ func skipDuplicateHookRun(root, name string, in HookInput) bool {
 	sum := sha256.Sum256([]byte(name + "\x00" + in.HookEventName + "\x00" + in.ToolName + "\x00" + in.SessionID + "\x00" + string(in.ToolInput)))
 	path := filepath.Join(dir, hex.EncodeToString(sum[:16]))
 	if data, err := os.ReadFile(path); err == nil {
-		if ts, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil {
-			if since := time.Since(time.Unix(ts, 0)); since >= 0 && since < w {
-				return true
-			}
+		if since, ok := markerAge(string(data)); ok && since >= 0 && since < w {
+			return true
 		}
 	}
 	_ = os.MkdirAll(dir, 0o755)
-	_ = util.AtomicWrite(path, []byte(strconv.FormatInt(time.Now().Unix(), 10)), 0o644)
+	_ = util.AtomicWrite(path, []byte(markerStamp(time.Now())), 0o644)
 	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 64 {
 		cutoff := time.Now().Add(-time.Hour)
 		for _, e := range entries {
@@ -121,4 +119,35 @@ func skipDuplicateHookRun(root, name string, in HookInput) bool {
 		}
 	}
 	return false
+}
+
+// markerStamp renders the timestamp written into a dedupe marker (this guard's
+// hook-dedup markers and the block-record markers in hook.go — one format, one
+// writer). Millisecond precision: the former Unix() seconds were floored, so a
+// marker could read up to 1s older than it was and every window shrank by up to
+// 1s (a 2s window was effectively 1–2s) — under load the duplicate of a slow
+// first run then slipped through. A pre-change seconds marker parses as a 1970
+// millisecond value, i.e. outside any window: recorded once more, the fail-open
+// direction.
+//
+// markerStamp 渲染写入去重 marker 的时间戳（本守卫的 hook-dedup marker 与 hook.go
+// 的阻断记录 marker 共用——一种格式、一个写端）。毫秒精度：旧的 Unix() 秒数向下
+// 取整，marker 读出来最多比实际老 1s，所有窗口最多缩水 1s（2s 窗口实为 1~2s）——
+// 负载下首跑一慢，重复投递就漏过。升级前的秒级 marker 被解析成 1970 年的毫秒值，
+// 必在窗口外：多记一次，fail-open 方向。
+func markerStamp(t time.Time) string {
+	return strconv.FormatInt(t.UnixMilli(), 10)
+}
+
+// markerAge parses a markerStamp value and returns how long ago it was written;
+// ok=false for an unparsable stamp (callers then treat the marker as absent).
+//
+// markerAge 解析 markerStamp 写入的值并返回距今时长；无法解析时 ok=false（调用方
+// 视同无 marker）。
+func markerAge(raw string) (since time.Duration, ok bool) {
+	ms, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return time.Since(time.UnixMilli(ms)), true
 }

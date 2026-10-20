@@ -21,6 +21,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
+	"github.com/MjxUpUp/Forge/internal/shellexec"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -937,6 +938,18 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Pin TMPDIR to the Go-resolved temp dir when unset: the scripts' ${TMPDIR:-/tmp}
+	// fallback (bash-guard snapshot ↔ file-sentinel pairing, bash here-docs) otherwise
+	// rides the MSYS /tmp mount that Git Bash intermittently fails to resolve on
+	// Windows — the snapshot write is then swallowed and file-sentinel fails open.
+	// See shellexec.PinTempDir.
+	//
+	// TMPDIR 未设置时固定为 Go 侧解析的临时目录：否则脚本的 ${TMPDIR:-/tmp} 回落
+	// （bash-guard 快照 ↔ file-sentinel 配对、bash here-doc）走 MSYS 的 /tmp 挂载，
+	// Windows 上 Git Bash 间歇解析不到——快照写入被吞、file-sentinel fail-open 放行。
+	// 见 shellexec.PinTempDir。
+	shCmd.Env = shellexec.PinTempDir(shCmd.Env)
+
 	var stdoutBuf, stderrBuf bytes.Buffer
 	shCmd.Stdout = &stdoutBuf
 	shCmd.Stderr = &stderrBuf
@@ -944,7 +957,16 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	exitErr := shCmd.Run()
 
 	stdout := strings.TrimSpace(stdoutBuf.String())
-	stderr := strings.TrimSpace(stderrBuf.String())
+	// rawStderr keeps the interpreter's own warnings for the infra-failure message
+	// (they may be the only clue why bash could not run the script); every verdict
+	// path uses the stripped stderr, so host noise such as the MSYS "could not find
+	// /tmp" warning never becomes the checklog detail or its dedupe fingerprint.
+	//
+	// rawStderr 保留解释器自身告警供基础设施失败文案使用（那可能是 bash 跑不起
+	// 脚本的唯一线索）；所有结论路径用剔噪后的 stderr，MSYS「could not find /tmp」
+	// 等宿主噪声永不成为 checklog detail 及其去重指纹。
+	rawStderr := strings.TrimSpace(stderrBuf.String())
+	stderr := shellexec.StripRuntimeNoise(rawStderr)
 
 	// Infrastructure failure is not a gate verdict: bash itself could not run the
 	// script (spawn error, or exit 126/127 = script file unreadable/not found — e.g.
@@ -957,7 +979,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// 此时阻断会因环境问题硬停 kimi 的每一轮（exit 2）或 Claude 的每次编辑，而这
 	// 并非质量失败。改为 fail-open 放行并给出可见警告。
 	if isHookInfraFailure(exitErr) {
-		warning := fmt.Sprintf("[forge] hook %s 基础设施失败（%v: %s），fail-open 放行", name, exitErr, cmp.Or(stderr, "no output"))
+		warning := fmt.Sprintf("[forge] hook %s 基础设施失败（%v: %s），fail-open 放行", name, exitErr, cmp.Or(rawStderr, "no output"))
 		return emitInfraAllow(agent, hookInput.HookEventName, name, root, hookInput.SessionID, warning)
 	}
 
@@ -1457,10 +1479,8 @@ func duplicateBlockRecord(root, sessionID, checkName, detail string) bool {
 	if data, err := os.ReadFile(path); err == nil {
 		parts := strings.Fields(string(data))
 		if len(parts) == 2 && parts[1] == fp {
-			if ts, perr := strconv.ParseInt(parts[0], 10, 64); perr == nil {
-				if since := time.Since(time.Unix(ts, 0)); since >= 0 && since < blockDedupWindow() {
-					return true
-				}
+			if since, ok := markerAge(parts[0]); ok && since >= 0 && since < blockDedupWindow() {
+				return true
 			}
 		}
 	}
@@ -1483,5 +1503,5 @@ func stampBlockRecord(root, sessionID, checkName, detail string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return
 	}
-	_ = os.WriteFile(path, []byte(strconv.FormatInt(time.Now().Unix(), 10)+" "+fp+"\n"), 0644)
+	_ = os.WriteFile(path, []byte(markerStamp(time.Now())+" "+fp+"\n"), 0644)
 }

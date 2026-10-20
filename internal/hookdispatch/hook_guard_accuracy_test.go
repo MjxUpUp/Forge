@@ -203,11 +203,49 @@ func TestDuplicateBlockRecord(t *testing.T) {
 	_, _ = h.Write([]byte("FAIL detail-x"))
 	fp := strconv.FormatUint(h.Sum64(), 16)
 	marker := filepath.Join(forgedata.DataDirFor(root), "markers", "forge-block-dedup-"+readsFileKey("sess-1")+"-read-before-edit")
-	old := time.Now().Add(-10 * time.Second).Unix()
-	if err := os.WriteFile(marker, []byte(strconv.FormatInt(old, 10)+" "+fp+"\n"), 0644); err != nil {
-		t.Fatal(err)
+	writeMarker := func(at time.Time) {
+		t.Helper()
+		if err := os.WriteFile(marker, []byte(markerStamp(at)+" "+fp+"\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
+	writeMarker(time.Now().Add(-10 * time.Second))
 	if duplicateBlockRecord(root, "sess-1", "read-before-edit", "FAIL detail-x") {
 		t.Error("expired window must record again")
+	}
+	// Precision edge: a stamp 600ms inside the 3s default window must still
+	// suppress. The former seconds-floored stamp read up to 1s older, pushing this
+	// exact case outside the window (Windows CI double-fire flake).
+	writeMarker(time.Now().Add(-blockRecordDedupWindowBase + 600*time.Millisecond))
+	if !duplicateBlockRecord(root, "sess-1", "read-before-edit", "FAIL detail-x") {
+		t.Error("stamp inside the window by 600ms must suppress (sub-second marker precision)")
+	}
+}
+
+// TestMarkerStampAge pins the shared dedupe-marker clock: millisecond round trip
+// (no floor to whole seconds), whitespace-tolerant parse, garbage → ok=false, and
+// a legacy seconds marker reads as ancient (outside every window: fail-open).
+func TestMarkerStampAge(t *testing.T) {
+	now := time.Now()
+	for _, tc := range []struct {
+		name           string
+		raw            string
+		wantOK         bool
+		minAge, maxAge time.Duration
+	}{
+		{"fresh-ms-roundtrip", markerStamp(now.Add(-2500 * time.Millisecond)), true, 2500 * time.Millisecond, 3400 * time.Millisecond},
+		{"trailing-newline", markerStamp(now) + "\n", true, 0, 900 * time.Millisecond},
+		{"legacy-seconds-is-ancient", strconv.FormatInt(now.Unix(), 10), true, 24 * time.Hour, 1 << 62},
+		{"garbage", "not-a-stamp", false, 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			age, ok := markerAge(tc.raw)
+			if ok != tc.wantOK {
+				t.Fatalf("markerAge(%q) ok=%v, want %v", tc.raw, ok, tc.wantOK)
+			}
+			if ok && (age < tc.minAge || age > tc.maxAge) {
+				t.Errorf("markerAge(%q) = %v, want in [%v, %v]", tc.raw, age, tc.minAge, tc.maxAge)
+			}
+		})
 	}
 }
