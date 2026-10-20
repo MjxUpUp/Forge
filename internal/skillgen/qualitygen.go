@@ -193,7 +193,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("3. 只做一个最小改动。换方案之前，先 `forge task decide --rejected --content \"<放弃的方案>\" --rationale \"<失败证据>\"` 记下死路。\n")
 	sb.WriteString("4. `forge task verify-acceptance`，读末行 `loop:`。`continue` → 回到第 3 步；同一验收改动后仍以同一指纹失败会被判 `acceptance-recurrence`，那就是该停的信号。\n")
 	sb.WriteString("5. `done` → 进入收尾序列：每一步只执行判词 `next:` 给出的那条命令，执行后重新读。正常顺序是 `git commit` → `forge task gate task-implement` → `forge task gate task-verify` → `forge review pass` → `forge task gate task-complete` → `forge task complete`。\n")
-	sb.WriteString("6. 收尾中任何一条输出 `BLOCKED:`（非零退出）→ 按原因修复后回到第 4 步；同一门禁连续两次 BLOCKED 会被判 `gate-repeat-blocked`，按第 2 步处理。\n\n")
+	sb.WriteString("6. 收尾中任何一条输出 `BLOCKED:`（非零退出）→ 按原因修复后回到第 4 步；同一门禁连续两次 BLOCKED 会被判 `gate-repeat-blocked`（task-implement 除外，它的 BLOCKED 是「先提交」的正常节奏），按第 2 步处理。\n\n")
 	sb.WriteString("预算与阈值在 `protocol.yml` 的 `loop:` 段（`recurrence_threshold` / `max_failed_verifies` / `max_changed_files` / `token_budget` / `max_verifies_without_progress`），全部 advisory；`forge task status --json` 的 `loop_verdict` 给机器读。\n\n")
 	sb.WriteString("`/loop` prompt 模板（按 CI triage 改写，只处理可稳定复现的失败）：\n\n")
 	sb.WriteString("```\n")

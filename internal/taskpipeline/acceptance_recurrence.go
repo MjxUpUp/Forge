@@ -134,6 +134,8 @@ func digestDiff(a, b map[string]string) []string {
 // 幂等键）。
 func (r AcceptanceRecurrence) DeadEndContent() string {
 	// 不含条目序号：task accept / 再提取会重排 Acceptance，序号变了同一复发不能再写一条。
+	// 去重键因此是 Run+Count+Fingerprint——同一命令、不同 Expected 的两条验收若同时
+	// 以同一指纹复发，只写一条死路（文案本就相同）。
 	return fmt.Sprintf("验收「%s」在 %d 次改动后仍以同一指纹 %s 失败", r.Run, r.Count, r.Fingerprint)
 }
 

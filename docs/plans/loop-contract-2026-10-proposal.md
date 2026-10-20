@@ -177,10 +177,10 @@ type AcceptanceFailure struct {
 
 | 情况 | 原因 | 处理 |
 |---|---|---|
-| 只改了非源码文件（yaml、json、Makefile 等） | `TaskFingerprint` 只统计源码扩展名 | 漏判；记 meta `change-scope=src-only` |
-| 某一侧 `ChangeHash` 为空（非 git 仓库、无 HEAD、基线不可达） | 无法比较 | 不判；记 meta `recurrence=unmeasurable` |
+| 只改了非源码文件（yaml、json、Makefile 等） | `TaskFingerprint` 只统计源码扩展名 | 漏判，不落行（没有可记录的事件） |
+| 某一侧 `ChangeHash` 为空（非 git 仓库、无 HEAD、基线不可达） | 无法比较 | 不判、不落行；同为空的重跑按"同 ChangeHash"覆盖上一条，FailHistory 恒 1 条 |
 | 其他任务 complete 后排除集变化，导致 hash 变了 | 外部变化被当成本任务改动 | 可能多计一次尝试；B1 只出 advisory，这类误报由第五节的精确度度量兜底 |
-| 验收命令第一次运行时改了源码（`go generate` 输出 `.go` 且不命中 genMarks 排除，`jest -u`、golden `-update`） | 第二次跑前算出的 hash 已经变了，没改代码的第一次重跑也被算作一次尝试 | 命令输出稳定时**最多多计一次**；记 meta `self-mutating=suspect`，条件是：两次之间有内容 hash 变化的文件，**全部**出现在上一次验收命令执行后、下一次 agent 编辑前就已经变化的集合里。实现方式是在上一次验收命令执行后再快照一次 `Changed`，与执行前对比；同一文件被 agent 反复修改不会命中这个条件 |
+| 验收命令第一次运行时改了源码（`go generate` 输出 `.go` 且不命中 genMarks 排除，`jest -u`、golden `-update`） | 第二次跑前算出的 hash 已经变了，没改代码的第一次重跑也被算作一次尝试 | 命令输出稳定时**最多多计一次**；复发行 meta.note 记 `self-mutating=suspect`，条件是：相邻两次 ChangeHash 不同，但两次失败记录的 `Changed`（改动文件内容指纹）没有任何差异——改动落在 `TaskChangedFiles` 之外。同一文件被 agent 反复修改会体现为 `Changed` 指纹变化，不命中 |
 
 **效果（advisory，退出码契约不变）**：
 - 打印 `ADVISORY: 验收 #N 改动后同因失败 ×N——本轮应停止并升级人工`。
@@ -251,7 +251,7 @@ type LoopReason struct {
 1. `forge task status --json`：改用嵌入结构体 `struct{ *TaskState; LoopVerdict LoopVerdict \`json:"loop_verdict"\` }` 输出。原有键顺序不变，新键追加在末尾。
    - 现有消费方：eval 演练里的 `expect_contains`、`skillintegrate/notes/code-review-gate.md` 的 grep、两处报错文案。都不解析 JSON 结构。
    - 无活跃任务的分支 `{"task_ref": null, ...}` 保持不变，不输出判词。
-   - 代价：status 每次要跑一次 git 并扫 checklog/toollog，会变慢。验收要求 status 耗时增量 < 300ms。
+   - 代价：status 每次要跑一次 git 并扫 checklog/toollog，会变慢。目标值：status 耗时增量 < 300ms（B1 未实测，不作为验收项）。
 2. `forge task verify-acceptance` 末行打印 `loop: <verdict>（<codes>）`。
 3. resume 头部：`renderResume` 的 extraHeader 多一行 `循环判词: <verdict>（<codes>）→ next: <cmd>`（`loopVerdictHeader`，`internal/clitask/task_continuity.go`），位置在 tl;dr 之前；tl;dr 本身保持纯渲染（只看 state，不碰 git），列已证伪方案前 3 条。
 
