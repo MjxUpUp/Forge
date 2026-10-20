@@ -192,7 +192,23 @@ func TestHazardGuardScript_ExecWrappedFlagIsStandalone(t *testing.T) {
 		wantBlock bool
 	}{
 		{"python-heredoc-then-go-test-count", "python3 - <<'EOF'" + nl + "s = \"" + danger + "\"" + nl + "open('x_test.go','w').write(s)" + nl + "EOF" + nl + "go test ./internal/hooks/ -count=1", false},
-		{"node-then-grep-e-other-segment", "node build.js; grep -e foo \"" + danger + "\" notes.txt", false},
+		// Quote-aware split: the | inside the grep pattern and the & in 2>&1 do not cut segments.
+		//
+		// 引号感知切段：grep 模式里的 | 与 2>&1 里的 & 不切段。
+		{"python-heredoc-then-piped-go-test", "python3 - <<'EOF'" + nl + "s = \"" + danger + "\"" + nl + "EOF" + nl + "go test ./x -count=1 -v 2>&1 | grep -E \"^(--- |ok|FAIL)\" | head -5", false},
+		// A segment running a script (node build.js) can do anything: the original verdict
+		// stands even though the -e belongs to grep (review R2: only provably inert segments
+		// explain a hit away).
+		//
+		// 跑脚本的段（node build.js）可做任何事：即便 -e 属于 grep 也维持原判（审查 R2：只有
+		// 可证明不执行代码的段才能解释掉命中）。
+		{"node-script-then-grep-e-keeps-original", "node build.js; grep -e foo \"" + danger + "\" notes.txt", true},
+		// Lone & is a separator (final review R1); every segment must be allowlisted (R2).
+		//
+		// 单个 & 是分隔符（终审 R1）；每一段都须在白名单（R2）。
+		{"background-amp-git-alias", "python3 x.py; go test ./x -count=1 & git -c alias.x='!" + danger + "' x", true},
+		{"osascript-e-after-python", "python3 - <<'EOF'" + nl + "print(1)" + nl + "EOF" + nl + "go test ./x -count=1; osascript -e \"do shell script \\\"" + danger + "\\\"\"", true},
+		{"go-test-exec-flag", "python3 - <<'EOF'" + nl + "print(1)" + nl + "EOF" + nl + "go test ./x -count=1 -exec \"sh -x " + danger + "\"", true},
 		// The literal 16:51 prefix: a hyphenated path segment (fix-windows-ci-flakes) is not a
 		// -c flag.
 		//

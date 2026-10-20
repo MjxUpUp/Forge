@@ -797,65 +797,91 @@ is_exec_wrapped() {
     *"| bash"|*"| bash "*|*"| sh"|*"| sh "*) return 0 ;;
   esac
   # 代码执行型：-c/-e/-r flag 把后续字符串当代码执行（子串匹配：-c__import__ /
-  # -esystem 这类代码紧贴 flag 的写法须命中）。判定以原版整条命令匹配为准，命中后只有
-  # 一种情形可被「解释掉」：命令不含间接信号，没有任何段同时含解释器与其 flag，且每个
-  # 携带该 flag 的段，其命令词都在白名单里（这些工具的 -c/-e 是计数/模式，不执行代码）。
+  # -esystem 这类代码紧贴 flag 的写法须命中）。判定以原版整条命令匹配为准；命中后只有
+  # 一种情形可被「解释掉」——整条命令每一段都可证明不执行代码：
+  #   - 无间接信号：$、反引号、函数定义、function、alias（PY=python3; $PY -c、
+  #     f=-c; $p $f、cat p 包反引号再 -c）；
+  #   - 没有任何段同时含解释器与其 flag；
+  #   - **每一段**的命令词都在严格白名单（只读/计数/格式化工具）；解释器名仅在该段是
+  #     heredoc opener（含 <<）时算数；go 仅限 test/vet/build/list/fmt/mod/version/env/doc
+  #     且不带 -exec/-toolexec；首个 heredoc 的 delimiter 行算数。
+  # 白名单之外任何一段（git -c alias=!…、osascript -e、vim -c、xargs {} -c、./py -c、
+  # python3 x.py、sort --compress-program、rg --pre）都维持原判——原版对「命令里出现
+  # 解释器 + 别处有 -c」的连带拦截因此一点不丢（对抗审查 N1/R2/R3 与终审 R1/R2）。
   # 这修掉 2026-10-20 16:51 误拦：python heredoc 之后另一段 go test -count=1 的 -c 让
   # 整条命令命中，heredoc 数据放行与引号数据放行双双被否决。
-  # 白名单之外（xargs {} -c、./py -c、反引号包着的 cat p 再 -c、git -c alias.x=!…）一律
-  # 维持原判；$ / 函数定义 / function / alias 出现即不解释（PY=python3; $PY -c、
-  # f=-c; $p $f）。flag 按解释器分开查，危险串自身的 -rf 不会误入（-r 只对 php 查）。
-  # 对抗审查四轮（N1/R2/R3）收敛到此形态：只开放可证明安全的窄口，召回不低于原版。
-  # Code-exec flags: the original whole-command match decides. A hit is explained
-  # away only when the command has no indirection signal, no segment pairs the
-  # interpreter with its flag, and every segment carrying that flag starts with an
-  # allowlisted tool (its -c/-e is a count or pattern, never code). That releases the
-  # 16:51 shape (go test -count=1 after a python heredoc) and nothing the original
-  # blocked otherwise.
-  local _flags=""
-  case "$1" in *python*\ *-c*) _flags="$_flags c" ;; esac
-  case "$1" in *node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*lua\ *-e*) _flags="$_flags e" ;; esac
-  case "$1" in *perl\ *-E*) _flags="$_flags E" ;; esac
-  case "$1" in *php\ *-r*) _flags="$_flags r" ;; esac
-  [ -z "$_flags" ] && return 1
+  # Code-exec flags: the original whole-command match decides. A hit is explained away
+  # only when EVERY segment provably runs no code: no indirection signal ($, backtick,
+  # function definition, alias), no segment pairing an interpreter with its flag, and
+  # every segment's command word on a strict read-only allowlist (an interpreter only as
+  # a heredoc opener; go only for test/vet/build/... without -exec/-toolexec; the first
+  # heredoc's delimiter line). Any other segment keeps the original verdict.
   case "$1" in
-    *\$*|*"() {"*|*"(){"*|*function\ *|*alias\ *) return 0 ;;
+    *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) ;;
+    *) return 1 ;;
   esac
-  local _seg _w _f
+  local _bt _tag _seg _w _w1 _r _sub
+  _bt=$(printf '\140')
+  case "$1" in
+    *\$*|*"$_bt"*|*"() {"*|*"(){"*|*function\ *|*alias\ *) return 0 ;;
+  esac
+  _tag=$(printf '%s' "$1" | grep -oE "(^|[^<])<<-?['\"]?[A-Za-z_][A-Za-z0-9_]*" | head -1 | grep -oE '[A-Za-z_][A-Za-z0-9_]*$')
   while IFS= read -r _seg; do
     case "$_seg" in
       *python*\ *-c*|*node\ *-e*|*ruby\ *-e*|*perl\ *-e*|*perl\ *-E*|*php\ *-r*|*lua\ *-e*) return 0 ;;
     esac
-    for _f in $_flags; do
-      case "$_seg" in
-        # flag 词首 = 空格或引号后的「-<flag>」：{} "-c" 这类加引号的 flag 不能漏；路径里
-        # 的连字符（fix-windows-ci-flakes 的 -ci）不算 flag。
-        *" -$_f"*|*"\"-$_f"*|*"'-$_f"*)
-          _w="${_seg#"${_seg%%[![:space:]]*}"}"
-          _w="${_w%%[[:space:]]*}"
-          case "$_w" in
-            go|gofmt|grep|egrep|fgrep|rg|ls|wc|head|tail|sort|uniq|diff|cut|tr) ;;
-            *) return 0 ;;
-          esac
-          ;;
-      esac
-    done
+    _w="${_seg#"${_seg%%[![:space:]]*}"}"
+    _w="${_w%"${_w##*[![:space:]]}"}"
+    [ -z "$_w" ] && continue
+    _w1="${_w%%[[:space:]]*}"
+    case "$_w1" in
+      cd|echo|printf|true|:|cat|ls|wc|head|tail|cut|tr|uniq|diff|grep|egrep|fgrep|gofmt) ;;
+      python|python2|python3|python3.[0-9]*|node|ruby|perl)
+        case "$_w" in *"<<"*) ;; *) return 0 ;; esac ;;
+      go)
+        case "$_w" in *-exec*|*-toolexec*) return 0 ;; esac
+        _r="${_w#go}"
+        _r="${_r#"${_r%%[![:space:]]*}"}"
+        _sub="${_r%%[[:space:]]*}"
+        case "$_sub" in test|vet|build|list|fmt|mod|version|env|doc) ;; *) return 0 ;; esac ;;
+      *)
+        if [ -n "$_tag" ] && [ "$_w" = "$_tag" ]; then continue; fi
+        return 0 ;;
+    esac
   done <<< "$(exec_segments "$1")"
   return 1
 }
 
-# exec_segments 把命令切成命令段逐行输出：先拼接反斜杠续行（python3 \<换行> -c 仍是
-# 同一段），再按换行、;、&&、||、| 切分。awk ERE 交替（BSD awk 支持；文件头的 BSD
-# 家规针对 grep -E）。引号内的 ; 也会被切开——flag 恒在代码之前，切分只会让段更短，
-# 不会把解释器与其 flag 分到两段。
-# exec_segments splits a command into segments (backslash continuations joined first,
-# then split on newline, ;, &&, ||, |), one per line.
+# exec_segments 把命令切成命令段逐行输出。引号感知（单/双引号内的分隔符不切；引号内
+# 的换行并成空格，段不断开）；反斜杠续行拼接；在引号外的换行、;、|、& 处切分——
+# 重定向里的 &（2>&1、<&3、&>file）不算分隔符。
+# exec_segments splits a command into segments, one per line: quote-aware (separators
+# and newlines inside quotes do not split), backslash continuations joined, split on
+# unquoted newline ; | & (redirection & such as 2>&1 or &>file is not a separator).
 exec_segments() {
   printf '%s\n' "$1" | awk '
-    { line = pend $0; pend = "" }
-    /\\$/ { pend = substr(line, 1, length(line) - 1) " "; next }
-    { gsub(/&&|\|\||[;|]/, "\n", line); print line }
-    END { if (pend != "") print pend }'
+    BEGIN { sq = 0; dq = 0; esc = 0; seg = ""; cont = 0 }
+    {
+      line = $0; n = length(line); prev = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(line, i, 1)
+        if (esc) { esc = 0; seg = seg c; prev = c; continue }
+        if (c == "\\" && !sq) {
+          if (i == n && !dq) { seg = seg " "; cont = 1; break }
+          esc = 1; seg = seg c; prev = c; continue
+        }
+        if (c == "\x27" && !dq) { sq = !sq; seg = seg c; prev = c; continue }
+        if (c == "\"" && !sq) { dq = !dq; seg = seg c; prev = c; continue }
+        if (!sq && !dq && (c == ";" || c == "|" || c == "&")) {
+          if (c == "&" && (prev == ">" || prev == "<" || substr(line, i + 1, 1) == ">")) { seg = seg c; prev = c; continue }
+          print seg; seg = ""; prev = c; continue
+        }
+        seg = seg c; prev = c
+      }
+      if (cont) { cont = 0; next }
+      if (sq || dq) { seg = seg " " } else { print seg; seg = "" }
+    }
+    END { if (seg != "") print seg }'
 }
 
 # GuardFall 语义分词层（canonicalize-then-check，2026-09 W1）：
