@@ -36,6 +36,20 @@ test("agentsSkillsInstalled: any entry in ~/.agents/skills counts as installed (
   assert.equal(agentsSkillsInstalled(home), true);
 });
 
+test("agentsSkillsInstalled: dotfiles such as .DS_Store are not skills", (t) => {
+  const home = mkdtempSync(join(tmpdir(), "forge-dsh-skills-"));
+  const dir = join(home, ".agents", "skills");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, ".DS_Store"), "x");
+  t.after(() => {
+    unlinkSync(join(dir, ".DS_Store"));
+    rmdirSync(dir);
+    rmdirSync(join(home, ".agents"));
+    rmdirSync(home);
+  });
+  assert.equal(agentsSkillsInstalled(home), false);
+});
+
 test("agentsSkillsInstalled: an unreadable location degrades to 'installed' — never nag on a failure we cannot interpret", () => {
   assert.equal(agentsSkillsInstalled(join(tmpdir(), "definitely", "not", "a", "home", "\0bad")), true);
   assert.equal(agentsSkillsInstalled(undefined), true);

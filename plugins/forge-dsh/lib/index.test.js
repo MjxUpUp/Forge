@@ -104,7 +104,9 @@ test("batch dispatch: one forge process runs the whole matcher group; roster and
   rmSync(BATCH_LOG, { force: true });
   process.env.FAKE_FORGE_BATCH_LOG = BATCH_LOG;
   t.after(() => delete process.env.FAKE_FORGE_BATCH_LOG);
-  const ctx = await boot(t);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, batch: true });
   const { agent } = makeAgent();
   const clean = await ctx.waterfall(
     "tools/pre-execute",
@@ -137,14 +139,17 @@ test("batch dispatch: a forge that cannot answer batch degrades to per-hook runs
   const ctx = new Context();
   ctx.provide("tools", {});
   ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000 });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, batch: true });
   const exec = { name: "write", arguments: { file_path: "/p/x.go", content: "y" } };
   const d = await ctx.waterfall("tools/pre-execute", exec, async () => ({ kind: "allow" }));
   assert.deepEqual(d, { kind: "deny", reason: "BLOCKED: no active task (fake)" }, "never a silent allow");
   assert.deepEqual(hookCalls().map((c) => c.hook), ["freeze-guard", "task-guard"], "serial fallback ran the roster");
   const text = (await registered.get("forge-status").handler()).text;
-  assert.match(text, /dispatch: per-hook \(this forge cannot answer `forge hook batch`/);
-  assert.match(text, /batch unsupported by this forge/, "the downgrade shows up as a recent-run note");
+  assert.match(text, /\[batch→per-hook\]/, "the downgrade shows up as a recent-run note");
+  assert.match(text, /dispatch: batch \(one forge process per matcher group\)/, "one failure does not switch batch off");
+  // three failures in a row do
+  for (let i = 0; i < 2; i += 1) await ctx.waterfall("tools/pre-execute", exec, async () => ({ kind: "allow" }));
+  assert.match((await registered.get("forge-status").handler()).text, /dispatch: per-hook \(batch failed three times in a row/);
 });
 
 test("batch dispatch: batch:false keeps the per-hook path from the start", async (t) => {
@@ -164,6 +169,70 @@ test("batch dispatch: batch:false keeps the per-hook path from the start", async
   assert.deepEqual(batchCalls(), [], "no batch process was ever spawned");
   assert.deepEqual(hookCalls().map((c) => c.hook), ["freeze-guard", "task-guard"]);
   assert.match((await registered.get("forge-status").handler()).text, /dispatch: per-hook \(batch:false\)/);
+});
+
+test("batch dispatch (auto): on only after the probe shows a forge of the plugin's own version; a mismatched forge stays per-hook", async (t) => {
+  rmSync(BATCH_LOG, { force: true });
+  process.env.FAKE_FORGE_BATCH_LOG = BATCH_LOG;
+  t.after(() => {
+    delete process.env.FAKE_FORGE_BATCH_LOG;
+    delete process.env.FAKE_FORGE_VERSION;
+  });
+  const makeCtx = async () => {
+    const registered = new Map();
+    const ctx = new Context();
+    ctx.provide("tools", {});
+    ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+    await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+    return { ctx, status: async () => (await registered.get("forge-status").handler()).text };
+  };
+  const bash = (agent) => ({ name: "bash", arguments: { command: "ls" }, agent });
+  const allow = async () => ({ kind: "allow" });
+
+  // matching version: before any probe the plugin is per-hook, afterwards batch
+  const match = await makeCtx();
+  assert.match(await match.status(), /dispatch: per-hook \(waiting for the first session start/);
+  const a = makeAgent();
+  a.agent.session.id = "auto-match";
+  await match.ctx.waterfall("tools/pre-execute", bash(a.agent), allow);
+  assert.deepEqual(batchCalls(), [], "no batch before the version is known");
+  match.ctx.emit("agent/session-start", { agent: a.agent, source: "startup" });
+  await preStepTexts(match.ctx, a.agent); // waits for the detached start (and its probe)
+  rmSync(BATCH_LOG, { force: true });
+  await match.ctx.waterfall("tools/pre-execute", bash(a.agent), allow);
+  assert.equal(batchCalls().length, 1, "batch once the probe confirmed a matching forge");
+  assert.match(await match.status(), /dispatch: batch \(one forge process per matcher group\)/);
+
+  // mismatched version: stays per-hook, and says why
+  process.env.FAKE_FORGE_VERSION = "0.0.1";
+  rmSync(BATCH_LOG, { force: true });
+  const mismatch = await makeCtx();
+  const b = makeAgent();
+  b.agent.session.id = "auto-mismatch";
+  mismatch.ctx.emit("agent/session-start", { agent: b.agent, source: "startup" });
+  await preStepTexts(mismatch.ctx, b.agent);
+  rmSync(BATCH_LOG, { force: true });
+  await mismatch.ctx.waterfall("tools/pre-execute", bash(b.agent), allow);
+  assert.deepEqual(batchCalls(), [], "a mismatched forge never sees `forge hook batch`");
+  assert.match(await mismatch.status(), /dispatch: per-hook \(forge 0\.0\.1 != plugin \d+\.\d+\.\d+: batch needs a forge of the plugin's own version\)/);
+});
+
+test("batch dispatch: a group that timed out as a batch is re-run per hook and listed as slow in /forge-status", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+  // 1ms ceiling: the batch times out, and so does each per-hook retry (fail-open both ways)
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 1, batch: true });
+  const exec = { name: "bash", arguments: { command: "ls" } };
+  const d = await ctx.waterfall("tools/pre-execute", exec, async () => ({ kind: "allow" }));
+  assert.deepEqual(d, { kind: "allow" }, "still fail-open");
+  const text = (await registered.get("forge-status").handler()).text;
+  assert.match(text, /per-hook for slow group: batch PreToolUse\/Bash/);
+  assert.match(text, /\[batch→per-hook\] batch PreToolUse\/Bash: timeout after 1ms/);
 });
 
 test("pre-execute: ungated tool never touches forge", async (t) => {
@@ -653,7 +722,7 @@ test("welcome: one first-turn line with versions at startup, ahead of forge's ow
   assert.equal(first.texts[0], welcomes[0], "the welcome leads the queue");
   assert.ok(first.texts.some((x) => x.startsWith("[forge-session]")), "forge's own banner still follows");
   assert.ok(welcomes[0].includes(`插件 ${PKG.version}`), "plugin version from package.json");
-  assert.ok(welcomes[0].includes("forge 1.79.0"), "forge version from the probe (the double reports 1.79.0)");
+  assert.ok(welcomes[0].includes(`forge ${PKG.version}`), "forge version from the probe (the double reports the plugin's own version)");
   assert.match(welcomes[0], /第一次回复/);
   assert.match(welcomes[0], /\/forge-status/);
   assert.match(welcomes[0], /forge off/);
@@ -853,7 +922,7 @@ test("/forge-status command renders wired groups and recent runs", async (t) => 
       return () => true;
     },
   });
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000 });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, batch: true });
   const status = registered.get("forge-status");
   assert.ok(status, "forge-status command must be registered when the commands service exists");
 

@@ -101,7 +101,7 @@ under `~/.dsh/profiles/<profile>/`):
     startWaitMs: 1500    # first pre-step waits this long for session-start contexts
     welcome: true        # one first-turn line telling the user Forge is active (false = silent)
     locale: auto         # language of the plugin's own messages: en | zh | auto (env FORGE_DSH_LOCALE, then system)
-    batch: true          # one forge process per matcher group (false = one process per hook)
+    batch: auto          # one forge process per matcher group: auto (default, needs a forge of the plugin's own version) | true | false
     enabled: true        # false unwires every listener
     debug: false         # log fail-open hook errors to console.error
 ```
@@ -124,16 +124,21 @@ while the binary is missing, every hook attempt fails open on its own, so gates 
 inactive whether or not the probe ran. Installing forge needs no host restart: the
 next session probes again and gating resumes.
 
-Two latency points to know. Each matched group runs as **one** `forge hook batch`
-process (forge runs the group's hooks in order and stops at the first block), instead
-of one process per hook — roughly 2.4× faster on a measured PreToolUse/Bash group
-(716ms vs 1720ms on a loaded dev machine). A forge that cannot answer `batch` (older
-than the stdout fix) is detected on the first call; the plugin then runs the hooks
-one by one, still enforcing every gate, and `/forge-status` says so. `batch: false`
-forces the per-hook path. And a gate that legitimately exceeds `timeoutMs` (the
-limit now covers the whole group; e.g. `auto-compile` cold-building a large project
-past 30s) silently loses that run's feedback to fail-open (visible in
-`/forge-status`). Raise `timeoutMs` on big projects.
+Two latency points to know. A matched group can run as **one** `forge hook batch` process
+(forge runs the group's hooks in order and stops at the first block) instead of one process
+per hook — roughly 2.4× faster on a measured PreToolUse/Bash group (716ms vs 1720ms on a loaded
+dev machine). With the default `batch: auto` that happens only once the probe shows a forge of the
+plugin's own version: batch asks forge to pick the group by the plugin's matcher string, and a forge
+that disagrees would either print nothing on a block (older than the stdout fix) or silently run an
+empty group, so any other forge stays on the per-hook path, which depends on hook names only. `batch:
+true` forces batch, `false` forces per-hook. Whatever the mode, a batch that fails is never taken as an
+allow: that group is re-run per hook for the call (hooks the batch already ran may run again;
+observation-only ones are de-duplicated by forge). Three failures in a row switch batch off; a batch
+that **times out** keeps just that group per-hook from then on, because batch gives the whole group one
+`timeoutMs` and a single hung hook would otherwise starve the gates behind it. `/forge-status` shows
+all of this. And a gate that legitimately exceeds `timeoutMs` (e.g. `auto-compile` cold-building a large
+project past 30s) silently loses that run's feedback to fail-open (visible in `/forge-status`). Raise
+`timeoutMs` on big projects.
 
 A session whose gates keep failing open used to look healthy while checking nothing. After
 three fail-open runs in one session the plugin says so **once**, at the next Stop that is not
@@ -142,10 +147,11 @@ already steering for a real block: how many runs lost their feedback, where to l
 to per-hook downgrade is not counted: that run still executed its gates.
 
 The plugin delivers the bridge and (as a dependency) the forge CLI, **not the skill library**
-DSH reads from `~/.agents/skills`. When that directory is empty, the first-turn onboarding adds
+DSH reads from `~/.agents/skills`. When that directory holds no skill, the first-turn onboarding adds
 one line offering `forge skills install --global --target agents`; the model runs it only after
-the user agrees, since it writes the home directory. Resume, subagents and `welcome: false`
-sessions get no offer.
+the user agrees, since it writes the home directory. The offer is made once per host process, so
+a user who declines is not asked again at every new session. Resume, subagents and
+`welcome: false` sessions get no offer.
 
 Whether forge takes over a project is asked once per project — the same on every host. Forge
 does not infer consent from "the plugin is installed" (`init-suggest`'s `takeover` preference is

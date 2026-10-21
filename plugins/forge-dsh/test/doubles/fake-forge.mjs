@@ -29,7 +29,10 @@ import { fileURLToPath } from "node:url";
 // real binary does not read stdin for --version either), and do not log —
 // probe calls are not hook runs.
 if (process.argv.includes("--version")) {
-  process.stdout.write("forge version 1.79.0 (fake)\n");
+  // The plugin enables batch dispatch only for a forge of its own version, so the double reports
+  // the plugin's version by default; FAKE_FORGE_VERSION simulates a mismatched forge.
+  const own = JSON.parse(readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf8")).version;
+  process.stdout.write(`forge version ${process.env.FAKE_FORGE_VERSION ?? own} (fake)\n`);
   process.exit(0);
 }
 

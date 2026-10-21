@@ -2,14 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { messagesFor, resolveLocale } from "./messages.js";
 
-test("resolveLocale: config beats env beats the system locale; unknown values fall through to auto-detection", () => {
+test("resolveLocale: config beats env beats the system locale; a value naming no supported language is skipped", () => {
   const sys = (tag) => () => tag;
   assert.equal(resolveLocale("en", { FORGE_DSH_LOCALE: "zh" }, sys("zh-CN")), "en", "config wins");
   assert.equal(resolveLocale(undefined, { FORGE_DSH_LOCALE: "en" }, sys("zh-CN")), "en", "env wins over the system");
   assert.equal(resolveLocale(undefined, {}, sys("zh-CN")), "zh");
   assert.equal(resolveLocale(undefined, {}, sys("zh-Hans-CN")), "zh");
   assert.equal(resolveLocale("auto", {}, sys("en-US")), "en", "auto = detect");
-  assert.equal(resolveLocale("fr", {}, sys("de-DE")), "en", "unsupported locales degrade to English, never to a crash");
+  for (const spelling of ["zh-CN", "zh_CN", "ZH", " zh ", "zh-Hans"]) {
+    assert.equal(resolveLocale(spelling, {}, sys("en-US")), "zh", `"${spelling}" means zh`);
+  }
+  assert.equal(resolveLocale("EN-us", {}, sys("zh-CN")), "en");
+  // a bad config line must not mask the next source
+  assert.equal(resolveLocale("chinese", { FORGE_DSH_LOCALE: "zh" }, sys("en-US")), "zh", "typo in config → env decides");
+  assert.equal(resolveLocale("chinese", {}, sys("zh-CN")), "zh", "typo in config, no env → system decides");
+  assert.equal(resolveLocale("fr", {}, sys("de-DE")), "en", "nothing usable anywhere degrades to English, never to a crash");
   assert.equal(resolveLocale(undefined, {}, () => {
     throw new Error("Intl unavailable");
   }), "en", "a throwing detector degrades to English");

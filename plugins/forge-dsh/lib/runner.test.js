@@ -68,6 +68,7 @@ test("a hung forge is killed past timeoutMs and fails open", async () => {
   const started = Date.now();
   const v = await runForgeHook("forge hook hang", {}, { forgeBin: FAKE, timeoutMs: 300 });
   assert.equal(v.block, false);
+  assert.equal(v.timedOut, true, "a timeout is a typed flag, not a string callers must match");
   assert.match(v.error ?? "", /timeout/);
   assert.ok(Date.now() - started < 5000, "must not wait for the hung child");
 });

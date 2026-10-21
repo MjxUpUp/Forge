@@ -42,7 +42,7 @@ import { resolveBundledForge } from "./bundled.js";
 import { messagesFor, resolveLocale } from "./messages.js";
 import { agentsSkillsInstalled } from "./skills.js";
 import { probeForge } from "./runner.js";
-import { runMatchedGroups, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
+import { BATCH_DOWNGRADE_MARK, runMatchedGroups, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
 import { buildEventPayload, buildToolPayload, matchedGroups, pluginMessage, promptText, toCCToolName, isSubagent, MANAGED_BANNER } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
@@ -76,13 +76,19 @@ function apply(ctx, config = {}) {
     forgeBin: explicitBin ?? bundledBin ?? "forge",
     timeoutMs: config.timeoutMs ?? 30000,
     // One `forge hook batch` process per matcher group instead of one per hook (~half the
-    // per-tool-call latency). batch:false forces the legacy per-hook path; a forge that cannot
-    // answer batch flips batchState.broken and the plugin degrades to per-hook on its own.
-    batch: config.batch !== false,
+    // per-tool-call latency). Config `batch`: true forces it, false forces the per-hook path,
+    // unset = auto — on only once the probe shows a forge of the plugin's own version. Batch asks
+    // forge to select the group by the plugin's matcher string, and an older or newer forge may
+    // not agree (an unmatched matcher is a silent empty allow, and forges before the stdout fix
+    // print nothing on a block), so a mismatched forge stays on the per-hook path, which only
+    // depends on hook names. Runtime failures degrade per call (see runMatchedGroups).
+    batch: config.batch === true,
     batchState: { broken: false },
   };
+  const batchMode = config.batch === true ? "forced" : config.batch === false ? "off" : "auto";
   const debug = config.debug === true;
   const welcome = config.welcome !== false;
+  let skillsOffered = false;
   const msg = messagesFor(resolveLocale(config.locale));
   const startWaitMs = Number.isFinite(config.startWaitMs) && config.startWaitMs >= 0 ? config.startWaitMs : 1500;
   // Recent-run ring buffer for /forge-status — fail-open verdicts are silent
@@ -92,7 +98,9 @@ function apply(ctx, config = {}) {
     // Per-session count of runs that lost their feedback to fail-open — the signal behind the
     // one-time degraded advisory at Stop. The batch->per-hook downgrade note is not a lost run
     // (the serial retry ran the gate), so it does not count.
-    const lost = outcome.errors.some((e) => !e.includes("batch unsupported"));
+    // And nothing is counted while forge itself is missing: that is the missing-CLI notice's job,
+    // and "raise timeoutMs" would be the wrong advice.
+    const lost = lastProbe?.ok !== false && outcome.errors.some((e) => !e.startsWith(BATCH_DOWNGRADE_MARK));
     const state = lost ? startStateOf(agent) : undefined;
     if (state !== undefined) state.failOpen = (state.failOpen ?? 0) + 1;
     recentRuns.push({
@@ -182,6 +190,7 @@ function apply(ctx, config = {}) {
     lastProbe = probe;
     if (probe.ok) {
       forgeReady = true;
+      if (batchMode === "auto") opts.batch = (probe.version?.match(/\d+\.\d+\.\d+/) ?? [])[0] === pluginVersion;
       return true;
     }
     if (debug) console.error(`[forge-dsh] forge probe failed: ${probe.error}`);
@@ -282,7 +291,12 @@ function apply(ctx, config = {}) {
         state.pending.unshift(msg.welcome(pluginVersion, forgeVersion));
         // The plugin brings the bridge and the forge CLI, not the skill library DSH reads from
         // ~/.agents/skills; offer it (right behind the welcome) when that directory is empty.
-        if (!agentsSkillsInstalled(config.skillsHome)) state.pending.splice(1, 0, msg.skillsHint(opts.forgeBin));
+        // Once per plugin instance: there is no persisted "declined", so asking again at every
+        // new session would nag a user who already said no.
+        if (!skillsOffered && !agentsSkillsInstalled(config.skillsHome)) {
+          skillsOffered = true;
+          state.pending.splice(1, 0, msg.skillsHint(opts.forgeBin));
+        }
       }
       if (source === "compact") {
         const compact = await runMatchedGroups(
@@ -375,11 +389,17 @@ function apply(ctx, config = {}) {
         const timing = byLabel.size === 0
           ? "  (no hook runs yet)"
           : [...byLabel].map(([label, t]) => `  ${label}  runs=${t.runs}  avg=${Math.round(t.total / t.runs)}ms  max=${t.max}ms`).join("\n");
-        const dispatchLine = !opts.batch
-          ? "per-hook (batch:false)"
-          : opts.batchState.broken
-            ? "per-hook (this forge cannot answer `forge hook batch` — upgrade forge for one process per group)"
-            : "batch (one forge process per matcher group)";
+        const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
+        const slowGroups = opts.batchState.slow === undefined ? [] : [...opts.batchState.slow];
+        let dispatchLine;
+        if (batchMode === "off") dispatchLine = "per-hook (batch:false)";
+        else if (opts.batchState.broken) dispatchLine = "per-hook (batch failed three times in a row; restart the host to retry)";
+        else if (!opts.batch) {
+          dispatchLine = lastProbe === undefined
+            ? "per-hook (waiting for the first session start to check the forge version)"
+            : `per-hook (forge ${forgeVersion ?? "of unknown version"} != plugin ${pluginVersion}: batch needs a forge of the plugin's own version)`;
+        } else dispatchLine = "batch (one forge process per matcher group)";
+        if (slowGroups.length > 0) dispatchLine += `; per-hook for slow group${slowGroups.length > 1 ? "s" : ""}: ${slowGroups.join(", ")}`;
         const probeLine = lastProbe === undefined
           ? "not run yet (no session start in this process)"
           : lastProbe.ok

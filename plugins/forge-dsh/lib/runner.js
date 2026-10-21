@@ -27,6 +27,7 @@ import { spawn } from "node:child_process";
  * @property {string} [reason]  - block reason (shown to the model).
  * @property {string} [context] - allow-path additionalContext to inject.
  * @property {string} [error]   - infrastructure failure note (fail-open path).
+ * @property {boolean} [timedOut] - the failure was the ceiling kill (not a forge error).
  */
 
 /**
@@ -139,7 +140,7 @@ function runForge(argv, payload, opts) {
       if (settled) return;
       settled = true;
       killTree(child, plan.shell);
-      resolve({ block: false, error: `timeout after ${timeoutMs}ms` });
+      resolve({ block: false, error: `timeout after ${timeoutMs}ms`, timedOut: true });
     }, timeoutMs);
     const settle = (verdict) => {
       if (settled) return;

@@ -7,8 +7,8 @@
  * language only — a test pins that the two catalogues have the same keys.
  * forge's own hook texts are not translated here; they come from the forge binary.
  *
- * Language: config `locale` > env FORGE_DSH_LOCALE > the system locale. Anything
- * unsupported degrades to English.
+ * Language: config `locale` > env FORGE_DSH_LOCALE > the system locale. A value that
+ * names no supported language is skipped; with nothing usable the result is English.
  *
  * 插件自己写进对话的每一句话都集中在此，中英各一份：同一会话措辞统一（此前缺 CLI 提示
  * 是英文、欢迎语是中文），且新增消息不可能只有一种语言——测试钉住两份目录键集合相同。
@@ -34,10 +34,12 @@ export function resolveLocale(
   env = process.env,
   systemLocale = () => Intl.DateTimeFormat().resolvedOptions().locale,
 ) {
+  // Tags are normalized (zh-CN, zh_CN, ZH, zh-Hans all mean zh). A value that names no supported
+  // language — a typo, "auto", a language we have no catalogue for — does not decide anything and
+  // falls through to the next source, so a bad config line cannot mask FORGE_DSH_LOCALE or the system.
   for (const candidate of [configured, env.FORGE_DSH_LOCALE]) {
-    if (candidate !== undefined && candidate !== "" && candidate !== "auto") {
-      return LOCALES.has(candidate) ? candidate : "en";
-    }
+    const language = String(candidate ?? "").trim().toLowerCase().replace(/_/g, "-").split("-")[0];
+    if (LOCALES.has(language)) return language;
   }
   try {
     return systemLocale().toLowerCase().startsWith("zh") ? "zh" : "en";

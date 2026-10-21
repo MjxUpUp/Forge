@@ -7,6 +7,7 @@ import {
   runHookGroup,
   runMatchedGroups,
   dropQuietNotes,
+  BATCH_DOWNGRADE_MARK,
   prependStartContexts,
   turnStoppingOutcome,
 } from "./decisions.js";
@@ -227,10 +228,11 @@ test("runMatchedGroups: a batch that cannot answer (old forge: block with empty 
   );
   assert.equal(outcome.blocked.reason, "BLOCKED: no task", "the serial retry still enforces the gate");
   assert.deepEqual(serial, ["forge hook freeze-guard", "forge hook task-guard"]);
-  assert.equal(batchState.broken, true, "later groups skip batch entirely");
-  assert.ok(outcome.errors.some((e) => e.includes("batch unsupported")), "the downgrade is visible in the outcome");
+  assert.equal(batchState.failStreak, 1, "one failure so far — counted, not yet fatal");
+  assert.ok(outcome.errors.some((e) => e.startsWith(BATCH_DOWNGRADE_MARK)), "the downgrade is visible in the outcome");
 
-  // once broken, batch is not even attempted
+  // once batch is switched off, it is not even attempted
+  batchState.broken = true;
   const calls = [];
   await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a"] }], {}, {
     batchRunner: fakeBatch({}, calls),
@@ -240,20 +242,66 @@ test("runMatchedGroups: a batch that cannot answer (old forge: block with empty 
   assert.deepEqual(calls, []);
 });
 
-test("runMatchedGroups: a timeout is NOT a batch failure — no serial retry, fail open with the error noted", async () => {
+test("runMatchedGroups: a batch timeout re-runs THAT group per hook (a hung hook must not starve the gates behind it) and keeps the group per-hook", async () => {
   const batchState = { broken: false };
   const serial = [];
-  const outcome = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a"] }], {}, {
-    batchRunner: fakeBatch({ "PreToolUse|Bash": { block: false, error: "timeout after 30000ms" } }),
-    runner: async (command) => {
-      serial.push(command);
-      return { block: false };
-    },
+  const calls = [];
+  const run = () =>
+    runMatchedGroups("PreToolUse", [{ matcher: "Write|Edit", commands: ["forge hook freeze-guard", "forge hook task-guard"] }], {}, {
+      batchRunner: fakeBatch({ "PreToolUse|Write|Edit": { block: false, error: "timeout after 30000ms", timedOut: true } }, calls),
+      runner: async (command) => {
+        serial.push(command);
+        return command === "forge hook task-guard" ? { block: true, reason: "BLOCKED: no task" } : { block: false };
+      },
+      batchState,
+    });
+  const first = await run();
+  assert.equal(first.blocked.reason, "BLOCKED: no task", "the gate behind the slow one still ran and blocked");
+  assert.deepEqual(serial, ["forge hook freeze-guard", "forge hook task-guard"]);
+  assert.equal(batchState.broken, false, "a timeout is not evidence that batch is unsupported");
+  assert.ok(first.errors.some((e) => e.startsWith(BATCH_DOWNGRADE_MARK) && e.includes("timeout after 30000ms")), "the downgrade is visible and marked");
+
+  // the slow group stays per-hook; no second 30s batch stall
+  serial.length = 0;
+  await run();
+  assert.equal(calls.length, 1, "batch was attempted for that group exactly once");
+  assert.deepEqual(serial, ["forge hook freeze-guard", "forge hook task-guard"]);
+});
+
+test("runMatchedGroups: transient batch failures fall back per call; only three in a row turn batch off, and a success resets the streak", async () => {
+  const batchState = { broken: false };
+  const verdicts = [
+    { block: false, error: "forge exited with code 1 and no output" },
+    { block: false },
+    { block: false, error: "spawn EAGAIN" },
+    { block: false, error: "spawn EAGAIN" },
+    { block: false, error: "spawn EAGAIN" },
+  ];
+  let n = 0;
+  const serial = [];
+  const opts = {
+    batchRunner: async () => verdicts[n++],
+    runner: async (command) => (serial.push(command), { block: false }),
     batchState,
+  };
+  const group = [{ matcher: "Bash", commands: ["forge hook a"] }];
+  await runMatchedGroups("PreToolUse", group, {}, opts);
+  assert.equal(batchState.broken, false, "one failure is not a verdict on batch");
+  await runMatchedGroups("PreToolUse", group, {}, opts); // success resets
+  await runMatchedGroups("PreToolUse", group, {}, opts);
+  await runMatchedGroups("PreToolUse", group, {}, opts);
+  assert.equal(batchState.broken, false, "two failures after a success: the streak was reset");
+  await runMatchedGroups("PreToolUse", group, {}, opts);
+  assert.equal(batchState.broken, true, "three in a row: batch is off for good");
+  assert.equal(serial.length, 4, "every failed call was answered by the per-hook run");
+});
+
+test("runMatchedGroups: a silent allow from a batch that cannot have run is not special-cased here (the version gate in index.js keeps mismatched forges off batch)", async () => {
+  const outcome = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a"] }], {}, {
+    batchRunner: fakeBatch({ "PreToolUse|Bash": { block: false } }),
+    batchState: { broken: false },
   });
-  assert.deepEqual(serial, [], "re-running a group that just timed out would only double the stall");
-  assert.equal(batchState.broken, false);
-  assert.deepEqual(outcome.errors, ["batch PreToolUse/Bash: timeout after 30000ms"]);
+  assert.deepEqual(outcome.contexts, []);
   assert.equal(outcome.blocked, undefined);
 });
 
@@ -283,7 +331,7 @@ test("dropQuietNotes: status-only receipts are dropped, real advisories and unkn
     "[skill-scan] no ~/.claude/skills (advisory)",
     "[mcp-scan] no .mcp.json (advisory)",
     "[mcp-scan] no git project (no project-level .mcp.json to scan, advisory)",
-    "[workflow-test-guard] go not on PATH, skipping internal/ci guard tests",
+    "[workflow-test-guard] workflow 配置变更后 internal/ci 守护测试全绿",
   ]) {
     assert.equal(dropQuietNotes(quiet), "", `should drop: ${quiet}`);
   }
@@ -294,6 +342,9 @@ test("dropQuietNotes: status-only receipts are dropped, real advisories and unkn
     "[forge-session] 本项目由 forge 管理（managed）",
     "[init-suggest] Advisory: 检测到 git 项目 'x' 未启用 forge。请询问用户",
     "[bash-guard] WARN: Bash write without active task",
+    // the guard did NOT run — that is information, unlike the all-green receipt
+    "[workflow-test-guard] go not on PATH, skipping internal/ci guard tests",
+    "[workflow-test-guard] internal/ci package 不可解析（非测试失败），skip: x",
     "a note from a hook this list has never heard of",
   ]) {
     assert.equal(dropQuietNotes(loud), loud, `should keep: ${loud}`);

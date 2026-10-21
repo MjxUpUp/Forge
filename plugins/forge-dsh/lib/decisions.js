@@ -75,7 +75,7 @@ const QUIET_NOTES = [
   /^\[auto-compile\] (?:no source touched|research-mode session)/,
   /^\[skill-scan\] (?:all skills SAFE|no ~\/\.claude\/skills)/,
   /^\[mcp-scan\] (?:no |\.mcp\.json unreadable|项目级 \.mcp\.json 无 config 层风险信号)/,
-  /^\[workflow-test-guard\] /,
+  /^\[workflow-test-guard\] workflow 配置变更后 internal\/ci 守护测试全绿/,
 ];
 
 /**
@@ -94,20 +94,35 @@ export function dropQuietNotes(text) {
 }
 
 /**
+ * Marks an outcome error as "this group ran per hook instead of batched" — the
+ * run still executed its gates, so it is a performance note, not a lost run, and
+ * the fail-open counter must not count it (index.js reads this prefix).
+ */
+export const BATCH_DOWNGRADE_MARK = "[batch→per-hook]";
+
+/** Consecutive unexplained batch failures before batch is switched off for the process. */
+const BATCH_FAIL_LIMIT = 3;
+
+/**
  * Run the matched spec groups of one event — one `forge hook batch` process per
  * group instead of one process per hook (the spec's matcher only SELECTS the
- * group; forge owns the roster, so plugin/forge roster drift cannot desync).
+ * group; forge owns the roster).
  *
  * Fail-open stays the invariant, with one guard: a batch that cannot answer is
- * never taken as an allow. Forges older than the batch stdout fix print nothing
- * on a block (exit 2, reason on stderr only), which the runner reports as
- * "exited with code 2 and no output" — an error verdict that looks exactly like a
- * silent allow. So any non-timeout batch error re-runs THAT group serially (the
- * legacy per-hook path, whose contract every forge version honours) and flips
- * `opts.batchState.broken` so later groups skip batch. A timeout is the one
- * error that does not fall back: the serial re-run would only repeat the stall.
+ * never taken as an allow. An error verdict ("exited with code 2 and no output"
+ * is what an older forge prints on a block) re-runs THAT group per hook — the
+ * legacy path whose contract every forge version honours. Two kinds of failure:
+ *   - a timeout: batch gives the whole group ONE ceiling, so a single hung hook
+ *     would starve every gate behind it. The group is re-run per hook (each hook
+ *     gets its own ceiling again) and stays per-hook from then on, so a
+ *     persistently slow group costs one stall, not one per tool call;
+ *   - anything else: re-run per hook this once. Only BATCH_FAIL_LIMIT failures in
+ *     a row switch batch off for the process; one success resets the streak, so
+ *     a transient spawn error does not slow every later call.
+ * The re-run can execute hooks the batch already ran; observation-only hooks are
+ * de-duplicated by forge's idempotency window, blocking hooks simply run again.
  *
- * `opts.batch === false` forces serial from the start.
+ * `opts.batch === false` forces per-hook from the start.
  *
  * @param {string} event - forge event name.
  * @param {Array<{matcher: string, commands: string[]}>} groups - matched spec groups, spec order.
@@ -119,23 +134,28 @@ export async function runMatchedGroups(event, groups, payload, opts = {}) {
   const started = Date.now();
   const batchRun = opts.batchRunner ?? runForgeBatch; // DI seam for tests
   const state = opts.batchState ?? { broken: false };
+  state.slow ??= new Set();
+  state.failStreak ??= 0;
   const outcome = { blocked: undefined, contexts: [], errors: [], durationMs: 0 };
   for (const group of groups) {
     const label = `batch ${event}${group.matcher === "" ? "" : `/${group.matcher}`}`;
     let part;
-    if (opts.batch !== false && !state.broken) {
+    if (opts.batch !== false && !state.broken && !state.slow.has(label)) {
       const verdict = await batchRun(event, group.matcher, payload, opts);
       if (verdict.error === undefined) {
+        state.failStreak = 0;
         part = {
           blocked: verdict.block ? { reason: verdict.reason ?? "denied", command: label } : undefined,
           contexts: verdict.context === undefined ? [] : [verdict.context],
           errors: [],
         };
-      } else if (verdict.error.startsWith("timeout after")) {
-        part = { blocked: undefined, contexts: [], errors: [`${label}: ${verdict.error}`] };
+      } else if (verdict.timedOut === true) {
+        state.slow.add(label);
+        outcome.errors.push(`${BATCH_DOWNGRADE_MARK} ${label}: ${verdict.error} — running this group's hooks one by one so a hung hook cannot starve the gates behind it`);
       } else {
-        state.broken = true;
-        outcome.errors.push(`${label}: ${verdict.error} — batch unsupported by this forge, running hooks one by one`);
+        state.failStreak += 1;
+        if (state.failStreak >= BATCH_FAIL_LIMIT) state.broken = true;
+        outcome.errors.push(`${BATCH_DOWNGRADE_MARK} ${label}: ${verdict.error} — running this group's hooks one by one`);
       }
     }
     if (part === undefined) part = await runHookGroup(group.commands, payload, opts);

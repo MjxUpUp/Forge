@@ -29,7 +29,8 @@ import { join } from "node:path";
 export function agentsSkillsInstalled(home = homedir()) {
   if (typeof home !== "string" || home === "") return true;
   try {
-    return readdirSync(join(home, ".agents", "skills")).length > 0;
+    // dotfiles (.DS_Store …) are not skills
+    return readdirSync(join(home, ".agents", "skills")).some((name) => !name.startsWith("."));
   } catch (error) {
     return error?.code !== "ENOENT";
   }
