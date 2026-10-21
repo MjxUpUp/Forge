@@ -59,7 +59,29 @@ type GoldenCase struct {
 	// 实测 2/3 判定漂移). Skipped cases report outcome "skipped-platform" and
 	// stay out of recall/fpr denominators.
 	SkipPlatforms []string `yaml:"skip_platforms,omitempty" json:"skip_platforms,omitempty"`
+	// Layer is holdout (default, empty) or test (cycle plan R5): the test layer
+	// only runs on release (`golden run --release`), and every report that
+	// includes it bumps the query counter — a test set queried often stops
+	// being a test set.
+	//
+	// Layer 为 holdout（缺省，空串）或 test（周期总纲 R5）：test 层只在发版时运行
+	// （`golden run --release`），每份含 test 层的报告都给查询计数 +1——被频繁
+	// 查询的测试集就不再是测试集。
+	Layer string `yaml:"layer,omitempty" json:"layer,omitempty"`
 }
+
+// Golden layers.
+//
+// golden 分层。
+const (
+	GoldenLayerHoldout = "holdout"
+	GoldenLayerTest    = "test"
+)
+
+// IsTestLayer reports whether the case belongs to the release-only test layer.
+//
+// IsTestLayer 报告用例是否属于只在发版时运行的 test 层。
+func (c GoldenCase) IsTestLayer() bool { return c.Layer == GoldenLayerTest }
 
 // FileSpec is one fixture file laid into the case's temp repo.
 //
@@ -127,6 +149,9 @@ func validateGoldenCase(c *GoldenCase) error {
 	if len(c.DetectAny) == 0 {
 		return fmt.Errorf("缺 detect_any")
 	}
+	if c.Layer != "" && c.Layer != GoldenLayerHoldout && c.Layer != GoldenLayerTest {
+		return fmt.Errorf("layer %q 非法（holdout|test）", c.Layer)
+	}
 	return nil
 }
 
@@ -146,6 +171,11 @@ func GoldenFingerprint(cases []GoldenCase) string {
 			fmt.Fprintf(&b, "file:%s\n%s\n", f.Path, f.Content)
 		}
 		fmt.Fprintf(&b, "probe:%s\nstdin:%s\ndetect:%s\n", strings.Join(c.ProbeArgv, " "), c.ProbeStdin, strings.Join(c.DetectAny, "|"))
+		// 分层进指纹（换层也是改样本），但只在非空时追加——无 layer 的存量用例集
+		// 指纹逐字节不变，已钉的 MANIFEST.sha256 不失效。
+		if c.Layer != "" {
+			fmt.Fprintf(&b, "layer:%s\n", c.Layer)
+		}
 	}
 	sum := sha256.Sum256([]byte(b.String()))
 	return hex.EncodeToString(sum[:])
@@ -208,6 +238,17 @@ type GoldenReport struct {
 	FalsePositive RateValue          `json:"false_positive"` // 干净误触比例
 	Cases         []GoldenCaseResult `json:"cases"`
 	Findings      []string           `json:"findings,omitempty"`
+	// TestLayerCases is how many test-layer cases this report ran (>0 only with
+	// IncludeTestLayer); TestLayerExcluded how many it left out.
+	//
+	// TestLayerCases 是本报告跑了多少 test 层用例（仅 IncludeTestLayer 时 >0）；
+	// TestLayerExcluded 是跳过了多少。
+	TestLayerCases    int `json:"test_layer_cases,omitempty"`
+	TestLayerExcluded int `json:"test_layer_excluded,omitempty"`
+	// TestLayerQueryCount is the counter after this report was persisted.
+	//
+	// TestLayerQueryCount 是本报告落盘后的累计查询次数。
+	TestLayerQueryCount int `json:"test_layer_query_count,omitempty"`
 }
 
 // GoldenOptions configures a set replay.
@@ -217,6 +258,10 @@ type GoldenOptions struct {
 	ForgeBin    string // 真实 forge 二进制路径（先构建再重放）
 	Repetitions int    // 每用例重放次数（确定性判定），默认 3
 	Timeout     time.Duration
+	// IncludeTestLayer runs the release-only test layer too (`--release`).
+	//
+	// IncludeTestLayer 连同只在发版时运行的 test 层一起跑（`--release`）。
+	IncludeTestLayer bool
 }
 
 // probeResult is one probe execution's detection surface.
@@ -249,6 +294,13 @@ func RunGolden(goldenDir string, cases []GoldenCase, opts GoldenOptions) (*Golde
 	cleanClean, cleanFlagged := 0, 0
 
 	for _, c := range cases {
+		if c.IsTestLayer() {
+			if !opts.IncludeTestLayer {
+				rep.TestLayerExcluded++
+				continue
+			}
+			rep.TestLayerCases++
+		}
 		if skipsPlatform(c.SkipPlatforms) {
 			rep.Cases = append(rep.Cases, GoldenCaseResult{
 				ID: c.ID, Gate: c.Gate, Kind: c.Kind, Outcome: "skipped-platform",
@@ -514,6 +566,20 @@ func PersistGoldenReport(evalDir string, repoRoot string, rep *GoldenReport) (st
 	if err := util.AtomicWrite(path, data, 0o644); err != nil {
 		return "", err
 	}
+	if rep.TestLayerCases > 0 {
+		count, note := recordTestLayerQuery(evalDir, rep)
+		rep.TestLayerQueryCount = count
+		_ = checklog.Record(repoRoot, &checklog.Entry{
+			Check:   checklog.CheckEvalGoldenTestQuery,
+			Passed:  true,
+			Checked: true,
+			Detail:  fmt.Sprintf(`golden test 层查询: 第 %d 次 test_cases %d fingerprint %.12s…%s`, count, rep.TestLayerCases, rep.Fingerprint, note),
+		})
+		// 计数写回报告：报告文件里的计数与审计行一致。
+		if data, err := json.MarshalIndent(rep, "", "  "); err == nil {
+			_ = util.AtomicWrite(path, data, 0o644)
+		}
+	}
 	def := rep.Recall
 	_ = checklog.Record(repoRoot, &checklog.Entry{
 		Check:   checklog.CheckEvalGoldenRun,
@@ -544,4 +610,45 @@ func FrictionProbeArm(c GoldenCase, forgeBin string, extraEnv []string, timeout 
 		return false, wall, err
 	}
 	return pr.Flagged, wall, nil
+}
+
+// goldenTestQueryFile is the user-level query counter of the golden test layer.
+//
+// goldenTestQueryFile 是 golden test 层的用户级查询计数文件。
+const goldenTestQueryFile = "golden-test-queries.json"
+
+// goldenTestQueries is the counter file's shape.
+//
+// goldenTestQueries 是计数文件的形态。
+type goldenTestQueries struct {
+	Count           int       `json:"count"`
+	LastAt          time.Time `json:"last_at"`
+	LastFingerprint string    `json:"last_fingerprint"`
+}
+
+// recordTestLayerQuery bumps the counter under <evalDir>/forge/ and returns
+// the new count. An unreadable counter restarts at 0 and says so in the note
+// (never blocks the run).
+//
+// recordTestLayerQuery 给 <evalDir>/forge/ 下的计数 +1 并返回新值。计数文件不可读
+// 时从 0 重新起算并在 note 里说明（绝不阻断运行）。
+func recordTestLayerQuery(evalDir string, rep *GoldenReport) (int, string) {
+	path := filepath.Join(evalDir, "forge", goldenTestQueryFile)
+	var q goldenTestQueries
+	note := ""
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &q); err != nil {
+			q = goldenTestQueries{}
+			note = "（计数文件不可读，已重置）"
+		}
+	}
+	q.Count++
+	q.LastAt = rep.GeneratedAt
+	q.LastFingerprint = rep.Fingerprint
+	if data, err := json.MarshalIndent(q, "", "  "); err == nil {
+		if err := util.AtomicWrite(path, data, 0o644); err != nil {
+			note += "（计数写入失败: " + err.Error() + "）"
+		}
+	}
+	return q.Count, note
 }

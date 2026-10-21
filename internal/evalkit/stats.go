@@ -9,6 +9,7 @@ package evalkit
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"sort"
 )
 
@@ -253,4 +254,207 @@ func sign(x float64) float64 {
 	default:
 		return 0
 	}
+}
+
+// DeltaCI is a paired profile difference (arm a − arm b, mean pass rate over
+// common tasks) with its percentile bootstrap interval (cycle plan R4/R7).
+// SE is the bootstrap standard deviation; MDE = (z_{0.975}+z_{0.8})·SE, the
+// smallest effect this sample could have detected at α=0.05 two-sided, power 0.8.
+//
+// DeltaCI 是配对的 profile 差（a 臂 − b 臂，共同任务上的平均通过率）及其分位数
+// bootstrap 区间（周期总纲 R4/R7）。SE 是 bootstrap 标准差；MDE =
+// (z_{0.975}+z_{0.8})·SE，即该样本在 α=0.05 双侧、power 0.8 下能检出的最小效应。
+type DeltaCI struct {
+	Delta        float64 `json:"delta"`
+	Lo           float64 `json:"lo"`
+	Hi           float64 `json:"hi"`
+	SE           float64 `json:"se"`
+	MDE          float64 `json:"mde"`
+	NTasks       int     `json:"n_tasks"`
+	NRuns        int     `json:"n_runs"`       // 两臂 attempt 数的较小者
+	Perturbation string  `json:"perturbation"` // measured | unmeasured
+	CrossesZero  bool    `json:"crosses_zero"`
+}
+
+// mdeZ is z_{0.975} + z_{0.8} (α=0.05 two-sided, power 0.8).
+//
+// mdeZ 是 z_{0.975} + z_{0.8}（α=0.05 双侧、power 0.8）。
+const mdeZ = 1.96 + 0.8416
+
+// defaultBootstrapIters is the resample count when the caller passes ≤0.
+//
+// defaultBootstrapIters 是调用方传 ≤0 时的重采样次数。
+const defaultBootstrapIters = 2000
+
+// PairedDeltaCI bootstraps the a−b difference hierarchically: resample tasks
+// (task-sampling source), then within each task and arm resample variants
+// (perturbation source — only when both arms carry ≥MinPerturbationVariants
+// distinct variants), then repeats inside each drawn variant (run-to-run
+// source). Without enough variants the attempts of a task are resampled as one
+// pool and Perturbation is unmeasured. Deterministic for a given seed.
+//
+// PairedDeltaCI 分层 bootstrap a−b 差：先重采任务（任务抽样源），再在每个任务的
+// 每一臂内重采变体（扰动源——仅当两臂都带 ≥MinPerturbationVariants 个不同变体），
+// 再在抽中的变体内重采重复（运行间源）。变体不足时任务内 attempts 作为一个池
+// 重采，Perturbation 记 unmeasured。给定 seed 结果确定。
+func PairedDeltaCI(a, b []Attempt, iters int, seed int64) (*DeltaCI, error) {
+	ga, gb := groupAttempts(a), groupAttempts(b)
+	var tasks []string
+	for id := range ga {
+		if _, ok := gb[id]; ok {
+			tasks = append(tasks, id)
+		}
+	}
+	if len(tasks) == 0 {
+		return nil, fmt.Errorf("evalkit: 配对差无共同任务（a %d 条、b %d 条 attempt）", len(a), len(b))
+	}
+	sort.Strings(tasks)
+	measured := minVariants(ga) >= MinPerturbationVariants && minVariants(gb) >= MinPerturbationVariants
+	out := &DeltaCI{NTasks: len(tasks), NRuns: len(a), Perturbation: PerturbationUnmeasured}
+	if len(b) < out.NRuns {
+		out.NRuns = len(b)
+	}
+	if measured {
+		out.Perturbation = PerturbationMeasured
+	}
+	for _, id := range tasks {
+		out.Delta += poolMean(ga[id]) - poolMean(gb[id])
+	}
+	out.Delta /= float64(len(tasks))
+
+	if iters <= 0 {
+		iters = defaultBootstrapIters
+	}
+	rng := rand.New(rand.NewSource(seed))
+	draws := make([]float64, iters)
+	for i := range draws {
+		sum := 0.0
+		for range tasks {
+			id := tasks[rng.Intn(len(tasks))]
+			sum += resampleArm(rng, ga[id], measured) - resampleArm(rng, gb[id], measured)
+		}
+		draws[i] = sum / float64(len(tasks))
+	}
+	sort.Float64s(draws)
+	out.Lo = percentile(draws, 0.025)
+	out.Hi = percentile(draws, 0.975)
+	_, out.SE = MeanAndStd(draws)
+	out.MDE = mdeZ * out.SE
+	out.CrossesZero = out.Lo <= 0 && out.Hi >= 0
+	return out, nil
+}
+
+// NullResultStatement renders the fixed-form conclusion: a CI crossing zero
+// reads "在 n=X 次运行下未检测到显著差异；最小可检测效应 Y pp" (never a one-sided
+// claim); otherwise the difference and its interval, in percentage points.
+//
+// NullResultStatement 渲染固定格式结论：CI 跨零时为"在 n=X 次运行下未检测到显著
+// 差异；最小可检测效应 Y pp"（禁止单侧表述）；否则给出差值与区间（百分点）。
+func NullResultStatement(ci *DeltaCI) string {
+	if ci == nil {
+		return "区间不可得"
+	}
+	if ci.CrossesZero {
+		return fmt.Sprintf("在 n=%d 次运行下未检测到显著差异；最小可检测效应 %.1f pp", ci.NRuns, ci.MDE*100)
+	}
+	return fmt.Sprintf("差值 %+.1f pp，95%% CI [%+.1f, %+.1f] pp（n=%d 次运行）", ci.Delta*100, ci.Lo*100, ci.Hi*100, ci.NRuns)
+}
+
+// groupAttempts indexes pass outcomes as task → variant → outcomes (1/0).
+//
+// groupAttempts 把通过结果索引为 任务 → 变体 → 结果（1/0）。
+func groupAttempts(xs []Attempt) map[string]map[int][]float64 {
+	out := map[string]map[int][]float64{}
+	for _, x := range xs {
+		if out[x.TaskID] == nil {
+			out[x.TaskID] = map[int][]float64{}
+		}
+		v := 0.0
+		if x.Pass {
+			v = 1
+		}
+		out[x.TaskID][x.Variant] = append(out[x.TaskID][x.Variant], v)
+	}
+	return out
+}
+
+// minVariants returns the smallest distinct-variant count over tasks.
+//
+// minVariants 返回各任务不同变体数的最小值。
+func minVariants(g map[string]map[int][]float64) int {
+	m := -1
+	for _, vs := range g {
+		if m < 0 || len(vs) < m {
+			m = len(vs)
+		}
+	}
+	return m
+}
+
+// poolMean is the mean over every outcome of one task (all variants pooled).
+//
+// poolMean 是一个任务全部结果的均值（变体合并）。
+func poolMean(vs map[int][]float64) float64 {
+	sum, n := 0.0, 0
+	for _, xs := range vs {
+		for _, x := range xs {
+			sum += x
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / float64(n)
+}
+
+// resampleArm draws one bootstrap mean for a task arm: variants then repeats
+// when hierarchical, else one pooled draw of the same size.
+//
+// resampleArm 为一个任务臂抽一次 bootstrap 均值：分层时先变体后重复，否则按
+// 同样大小从合并池里抽。
+func resampleArm(rng *rand.Rand, vs map[int][]float64, hierarchical bool) float64 {
+	keys := make([]int, 0, len(vs))
+	for k := range vs {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	if hierarchical {
+		sum := 0.0
+		for range keys {
+			xs := vs[keys[rng.Intn(len(keys))]]
+			sub := 0.0
+			for range xs {
+				sub += xs[rng.Intn(len(xs))]
+			}
+			sum += sub / float64(len(xs))
+		}
+		return sum / float64(len(keys))
+	}
+	var pool []float64
+	for _, k := range keys {
+		pool = append(pool, vs[k]...)
+	}
+	sum := 0.0
+	for range pool {
+		sum += pool[rng.Intn(len(pool))]
+	}
+	return sum / float64(len(pool))
+}
+
+// percentile reads the q-quantile of an ascending slice (nearest-rank).
+//
+// percentile 读取升序切片的 q 分位数（最近秩）。
+func percentile(sorted []float64, q float64) float64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	i := int(math.Ceil(q*float64(len(sorted)))) - 1
+	if i < 0 {
+		i = 0
+	}
+	if i >= len(sorted) {
+		i = len(sorted) - 1
+	}
+	return sorted[i]
 }

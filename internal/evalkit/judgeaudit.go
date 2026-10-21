@@ -51,7 +51,37 @@ type JudgeAuditEntry struct {
 	RetestScores  []int `yaml:"retest_scores,omitempty"  json:"retest_scores,omitempty"`
 	SwappedScores []int `yaml:"swapped_scores,omitempty" json:"swapped_scores,omitempty"`
 	CueScores     []int `yaml:"cue_scores,omitempty"     json:"cue_scores,omitempty"`
+	// PairOriginal / PairSwapped are a pairwise position-swap audit (cycle plan
+	// R5): the judge picks between two candidates once in the original order
+	// and once with the order swapped; both record the winner by candidate
+	// identity (a | b | tie), so a disagreement is a position-driven flip. The
+	// two fields must appear together.
+	//
+	// PairOriginal / PairSwapped 是成对位置交换审计（周期总纲 R5）：judge 在原顺序
+	// 与交换顺序下各对两个候选判一次，两次都按候选身份记录胜者（a | b | tie），
+	// 不一致即一次由位置引起的翻转。两字段须同时出现。
+	PairOriginal string `yaml:"pair_original,omitempty" json:"pair_original,omitempty"`
+	PairSwapped  string `yaml:"pair_swapped,omitempty"  json:"pair_swapped,omitempty"`
 }
+
+// PositionSwapFlipCeiling is the flip-rate bar: above it the judge has a high
+// systematic position bias.
+//
+// PositionSwapFlipCeiling 是翻转率上限：超过即判 judge 存在高系统性位置偏差。
+const PositionSwapFlipCeiling = 0.10
+
+// Position-swap bias verdicts.
+//
+// 位置交换偏差判定。
+const (
+	PositionSwapBiasHigh = "high"
+	PositionSwapBiasOK   = "ok"
+)
+
+// validPairVerdict reports whether v is a pairwise winner label.
+//
+// validPairVerdict 报告 v 是否成对判定的合法胜者标签。
+func validPairVerdict(v string) bool { return v == "a" || v == "b" || v == "tie" }
 
 // JudgeAuditReport is the audit's honest output.
 //
@@ -63,10 +93,18 @@ type JudgeAuditReport struct {
 	KappaValid    bool             `json:"kappa_valid"`
 	JudgeReliable bool             `json:"judge_reliable"`
 	// MVVP 三项（可选轮次存在时才计算；-1 = 该协议未运行——区分"没测"与"完美"）。
-	RetestAgreement float64  `json:"retest_agreement"` // binarized 重放一致率
-	PositionBias    float64  `json:"position_bias"`    // 均值差（swap − original）
-	CueFlipRate     float64  `json:"cue_flip_rate"`    // binarized 翻转率
-	Findings        []string `json:"findings,omitempty"`
+	RetestAgreement float64 `json:"retest_agreement"` // binarized 重放一致率
+	PositionBias    float64 `json:"position_bias"`    // 均值差（swap − original）
+	CueFlipRate     float64 `json:"cue_flip_rate"`    // binarized 翻转率
+	// PositionSwapFlipRate is the pairwise flip rate (-1 = not run);
+	// PositionSwapBias is high | ok ("" when not run).
+	//
+	// PositionSwapFlipRate 是成对翻转率（-1 = 未运行）；PositionSwapBias 为
+	// high | ok（未运行时为空）。
+	PositionSwapFlipRate float64  `json:"position_swap_flip_rate"`
+	PositionSwapPairs    int      `json:"position_swap_pairs"`
+	PositionSwapBias     string   `json:"position_swap_bias,omitempty"`
+	Findings             []string `json:"findings,omitempty"`
 }
 
 // JudgeEntryStat is one document's replay variance summary.
@@ -97,6 +135,13 @@ func LoadJudgeScores(path string) ([]JudgeAuditEntry, error) {
 	for i := range entries {
 		if entries[i].DocID == "" || len(entries[i].JudgeScores) == 0 || entries[i].Threshold <= 0 {
 			return nil, fmt.Errorf("evalkit: judge 分数第 %d 条缺 doc_id/judge_scores/threshold", i+1)
+		}
+		o, w := entries[i].PairOriginal, entries[i].PairSwapped
+		if (o == "") != (w == "") {
+			return nil, fmt.Errorf("evalkit: judge 分数第 %d 条 pair_original/pair_swapped 须同时出现", i+1)
+		}
+		if o != "" && (!validPairVerdict(o) || !validPairVerdict(w)) {
+			return nil, fmt.Errorf("evalkit: judge 分数第 %d 条 pair 判定须为 a|b|tie（得到 %q / %q）", i+1, o, w)
 		}
 	}
 	return entries, nil
@@ -207,6 +252,26 @@ func RunJudgeAudit(entries []JudgeAuditEntry) (*JudgeAuditReport, error) {
 		rep.CueFlipRate = float64(cueFlips) / float64(cueTotal)
 		if rep.CueFlipRate > 0.10 {
 			rep.Findings = append(rep.Findings, fmt.Sprintf("MVVP cue 敏感度：扰动翻转率 %.2f（>0.10）——judge 判定可被提示词措辞改变，冻结该 judge prompt 版本并回归校准", rep.CueFlipRate))
+		}
+	}
+	// 成对位置交换（R5）：同一对候选交换顺序各判一次，按候选身份比较胜者。
+	rep.PositionSwapFlipRate = -1
+	flips := 0
+	for _, e := range entries {
+		if e.PairOriginal == "" {
+			continue
+		}
+		rep.PositionSwapPairs++
+		if e.PairOriginal != e.PairSwapped {
+			flips++
+		}
+	}
+	if rep.PositionSwapPairs > 0 {
+		rep.PositionSwapFlipRate = float64(flips) / float64(rep.PositionSwapPairs)
+		rep.PositionSwapBias = PositionSwapBiasOK
+		if rep.PositionSwapFlipRate > PositionSwapFlipCeiling {
+			rep.PositionSwapBias = PositionSwapBiasHigh
+			rep.Findings = append(rep.Findings, fmt.Sprintf("position-swap：交换候选顺序后判定翻转 %d/%d（%.2f > %.2f）——high systematic bias，该 judge 的成对比较结论不可依赖", flips, rep.PositionSwapPairs, rep.PositionSwapFlipRate, PositionSwapFlipCeiling))
 		}
 	}
 	// position bias：mean(swapped) − mean(original first scores)（呈现顺序的均值影响）。

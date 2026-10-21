@@ -66,6 +66,12 @@ type DecomposeReport struct {
 	DeltaFullOff   []ModelDelta `json:"delta_full_off"`
 	DeltaFullGates []ModelDelta `json:"delta_full_gates"`
 	DeltaGatesOff  []ModelDelta `json:"delta_gates_off"`
+	// Perturbation is measured | unmeasured (R4): unmeasured CIs omit the
+	// prompt-variant variance source and may be too narrow.
+	//
+	// Perturbation 是 measured | unmeasured（R4）：unmeasured 的 CI 缺 prompt 变体
+	// 方差源，可能偏窄。
+	Perturbation string `json:"perturbation"`
 }
 
 // ModelDelta is one model's paired difference between two profiles.
@@ -74,7 +80,18 @@ type DecomposeReport struct {
 type ModelDelta struct {
 	Model string  `json:"model"`
 	Delta float64 `json:"delta"` // a − b
+	// CI is the paired bootstrap interval (nil with CIError when not computable).
+	//
+	// CI 是配对 bootstrap 区间（不可算时为 nil，原因在 CIError）。
+	CI      *DeltaCI `json:"ci,omitempty"`
+	CIError string   `json:"ci_error,omitempty"`
 }
+
+// decomposeBootstrapSeed fixes the bootstrap stream so a report re-renders
+// identically from the same attempts.
+//
+// decomposeBootstrapSeed 固定 bootstrap 随机流——同一批 attempts 重算出同一份报告。
+const decomposeBootstrapSeed = 20261013
 
 // RunDecompose executes the grid and computes the decomposition. Cell means
 // come from the same runner abstraction as Track A runs (ScriptedRunner in
@@ -92,14 +109,16 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 		return nil, err
 	}
 	rep := &DecomposeReport{
-		GeneratedAt: time.Now().UTC(),
-		Grid:        grid,
-		Benchmark:   spec.Benchmark,
-		Split:       spec.Split,
-		Sandbox:     sandboxLabel(runner),
-		ManifestFP:  manifest.Fingerprint(),
-		CellMeans:   map[string]float64{},
+		GeneratedAt:  time.Now().UTC(),
+		Grid:         grid,
+		Benchmark:    spec.Benchmark,
+		Split:        spec.Split,
+		Sandbox:      sandboxLabel(runner),
+		ManifestFP:   manifest.Fingerprint(),
+		CellMeans:    map[string]float64{},
+		Perturbation: spec.PerturbationStatus(),
 	}
+	cellAttempts := map[string][]Attempt{}
 	profileKey := func(p Profile) string { return string(p) }
 	for _, p := range grid.Profiles {
 		for _, m := range grid.Models {
@@ -111,6 +130,7 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 				return nil, fmt.Errorf("evalkit: 网格格 %s×%s 失败: %w", p, m, err)
 			}
 			rep.CellMeans[profileKey(p)+"|"+m] = sc.Pass1.Value
+			cellAttempts[profileKey(p)+"|"+m] = sc.Attempts
 		}
 	}
 	// 组装方差分解网格。
@@ -130,7 +150,19 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 	delta := func(a, b Profile) []ModelDelta {
 		var out []ModelDelta
 		for _, m := range grid.Models {
-			out = append(out, ModelDelta{Model: m, Delta: rep.CellMeans[profileKey(a)+"|"+m] - rep.CellMeans[profileKey(b)+"|"+m]})
+			ka, kb := profileKey(a)+"|"+m, profileKey(b)+"|"+m
+			d := ModelDelta{Model: m, Delta: rep.CellMeans[ka] - rep.CellMeans[kb]}
+			_, okA := rep.CellMeans[ka]
+			_, okB := rep.CellMeans[kb]
+			if !okA || !okB {
+				// 网格未含其中一档 profile（如 --profiles off,full 时涉及 gates-only 的两档）。
+				d.CIError = fmt.Sprintf("网格未含 %s 或 %s", a, b)
+			} else if ci, err := PairedDeltaCI(cellAttempts[ka], cellAttempts[kb], 0, decomposeBootstrapSeed); err != nil {
+				d.CIError = err.Error()
+			} else {
+				d.CI = ci
+			}
+			out = append(out, d)
 		}
 		sort.Slice(out, func(i, j int) bool { return out[i].Model < out[j].Model })
 		return out
@@ -184,15 +216,18 @@ func (r *DecomposeReport) RenderDecomposeMarkdown() string {
 		s += fmt.Sprintf("- HV̄/MV̄ = %.2f（跨 %d 个 profile × %d 个模型）\n", r.Decomposition.HvOverMv, len(r.Grid.Profiles), len(r.Grid.Models))
 	}
 	s += fmt.Sprintf("- 排名翻转 %d / %d 个 model-pair×profile-pair 比较\n", r.Decomposition.Reversals, r.Decomposition.PairComparisons)
-	s += "- η²_p：单观测格（格均值输入）下数学不可定义（SS_error≡0）——未产出；接入格内重复数据后再补\n\n"
+	s += "- η²_p：单观测格（格均值输入）下数学不可定义（SS_error≡0）——未产出；接入格内重复数据后再补\n"
+	if r.Perturbation == PerturbationMeasured {
+		s += "- perturbation=measured：CI 含任务抽样、prompt 变体、运行间三个方差源\n\n"
+	} else {
+		s += fmt.Sprintf("- perturbation=unmeasured：未声明 ≥%d 个语义等价 prompt 变体，CI 只含任务抽样与运行间两源，可能偏窄\n\n", MinPerturbationVariants)
+	}
 	render := func(name string, deltas []ModelDelta) {
 		s += fmt.Sprintf("## %s\n\n", name)
 		for _, d := range deltas {
-			verdict := "差值为 0"
-			if d.Delta > 0 {
-				verdict = fmt.Sprintf("+%.3f（正差；是否显著以置信区间为准，跨零即表述为未检测到显著差异）", d.Delta)
-			} else if d.Delta < 0 {
-				verdict = fmt.Sprintf("%.3f（负差；是否显著以置信区间为准，跨零即表述为未检测到显著差异）", d.Delta)
+			verdict := NullResultStatement(d.CI)
+			if d.CI == nil && d.CIError != "" {
+				verdict = "区间不可得（" + d.CIError + "）——不出点差结论"
 			}
 			s += fmt.Sprintf("- %s: %s\n", d.Model, verdict)
 		}

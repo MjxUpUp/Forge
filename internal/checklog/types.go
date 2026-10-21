@@ -340,6 +340,24 @@ const (
 	//
 	// CheckEvalDecompose 记录一次方差分解战役（`forge eval decompose`）。观察类。
 	CheckEvalDecompose CheckName = "eval-decompose"
+	// CheckEvalPreflight records a Track-A preflight refusal (`forge eval run`):
+	// the oracle arm failed or was undeclared, or the do-nothing arm passed — the
+	// evaluation itself is invalid (cycle plan R3). Observation class; the
+	// refusal is the evaluation tool's own audit trail, never task verification.
+	//
+	// CheckEvalPreflight 记录一次 Track A preflight 拒绝启动（`forge eval run`）：
+	// oracle 臂未通过或未声明，或 do-nothing 臂通过——评测自身不合法（周期总纲
+	// R3）。观察类——是评测工具自身的审计轨迹，绝非任务验证。
+	CheckEvalPreflight CheckName = "eval-preflight"
+	// CheckEvalGoldenTestQuery records one query of the golden test layer
+	// (`forge eval golden run --release`) with the running query count — the
+	// test layer is only meaningful while its query count stays small (cycle
+	// plan R5). Observation class.
+	//
+	// CheckEvalGoldenTestQuery 记录一次 golden test 层查询（`forge eval golden run
+	// --release`）及累计查询次数——test 层只在查询次数少时有意义（周期总纲 R5）。
+	// 观察类。
+	CheckEvalGoldenTestQuery CheckName = "eval-golden-test-query"
 	// CheckEvalResumeDrill records one continuity-drill batch (`forge eval
 	// resume-drill`). Observation class.
 	//
