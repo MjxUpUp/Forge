@@ -230,24 +230,24 @@ function apply(ctx, config = {}) {
       if (state !== undefined) {
         // overlapping starts must not stack the same onboarding twice
         for (const text of outcome.contexts) if (!state.pending.includes(text)) state.pending.push(text);
-      }
-      else if (debug && outcome.contexts.length > 0) {
+      } else if (debug && outcome.contexts.length > 0) {
         console.error("[forge-dsh] session-start contexts dropped: no agent handle to queue them on");
       }
     };
     const run = (async () => {
       const forgeOk = await ensureForge(agent);
-      // The bundled binary is not on PATH while forge's gate messages say
-      // `forge task …`; tell the agent where it is, first in the queue, once.
-      // One human-facing line per session (startup only — resume/compact are not a
-      // first meeting), ahead of the path hint and forge's own contexts.
+      // Queue order: welcome, then the path hint, then forge's own contexts.
+      // Welcome: one human-facing line per session (startup only — resume and
+      // compact are not a first meeting), and only when the gates really are on.
       const isStartup = source === undefined || source === "startup";
       if (forgeOk && welcome && isStartup && state !== undefined && !state.welcomed) {
         state.welcomed = true;
         const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
         state.pending.push(welcomeText(pluginVersion, forgeVersion));
       }
-      // After a compaction the earlier hint is summarised away, so it is re-sent.
+      // The bundled binary is not on PATH while forge's gate messages say
+      // `forge task …`, so the agent is told where it is. After a compaction the
+      // earlier hint is summarised away, so it is re-sent.
       if (source === "compact" && state !== undefined) state.hinted = false;
       if (forgeOk && binSource === "bundled" && state !== undefined && !state.hinted) {
         state.hinted = true;
