@@ -68,6 +68,9 @@ func StripForeignGateSignals(s *TaskState) {
 		s.Acceptance[i].AcceptedBaseCommit = ``
 		s.Acceptance[i].AcceptedChangeHash = ``
 		s.Acceptance[i].Output = ``
+		// 外来失败历史同属结果（loop 契约 B1-1）：保留会让本机第一次失败与他机记录
+		// 凑成复发窗口、自动写 By=forge 的死路记录——证据不能来自未受信状态。
+		s.Acceptance[i].FailHistory = nil
 		// 考卷层级归一（oracle-pipeline L1，审查 P1-1）：外来 tier 声明与结果同属
 		// 不可信——bundle 作者可自标 spec-extract/start 谎报考卷独立性，或略去
 		// manual 压制验收单的披露触发器。归一为 manual（最弱层：出处未证），

@@ -106,14 +106,24 @@ func TestRecordAndLoad(t *testing.T) {
 // TestTokenBreakerWarning：纯判断函数——超阈值返回警示，未超返回空。
 // 不依赖文件，可直接覆盖阈值边界（避免造超 50 万 token 的测试数据）。
 func TestTokenBreakerWarning(t *testing.T) {
-	if w := tokenBreakerWarning(taskTokenWarnThreshold - 1); w != "" {
+	if w := tokenBreakerWarning(DefaultTaskTokenBudget-1, 0); w != "" {
 		t.Errorf("阈值-1 应无警示，got %q", w)
 	}
-	if w := tokenBreakerWarning(taskTokenWarnThreshold); w == "" {
+	if w := tokenBreakerWarning(DefaultTaskTokenBudget, 0); w == "" {
 		t.Error("阈值应触发警示，got 空")
 	}
-	if w := tokenBreakerWarning(taskTokenWarnThreshold + 1); w == "" {
+	if w := tokenBreakerWarning(DefaultTaskTokenBudget+1, 0); w == "" {
 		t.Error("阈值+1 应触发警示，got 空")
+	}
+	// 项目级预算（loop 契约 B1-3）：显式 budget 取代默认阈值；≤0 回落默认。
+	if w := tokenBreakerWarning(1000, 1000); w == "" {
+		t.Error("达到显式预算 1000 应触发警示，got 空")
+	}
+	if w := tokenBreakerWarning(999, 1000); w != "" {
+		t.Errorf("未达显式预算不应警示，got %q", w)
+	}
+	if w := tokenBreakerWarning(1000, -1); w != "" {
+		t.Errorf("budget<0 应回落默认阈值（1000 远未达），got %q", w)
 	}
 }
 
@@ -125,15 +135,19 @@ func TestTokenBreakerWarning(t *testing.T) {
 func TestTaskTokenBreaker(t *testing.T) {
 	dir := t.TempDir()
 	// 一条超大 EstTokens 的 call，累计超阈值。
-	if err := Record(dir, &ToolCall{ToolName: "Read", TaskRef: "feat/big", EstTokens: taskTokenWarnThreshold + 100}); err != nil {
+	if err := Record(dir, &ToolCall{ToolName: "Read", TaskRef: "feat/big", EstTokens: DefaultTaskTokenBudget + 100}); err != nil {
 		t.Fatal(err)
 	}
 	w, total := TaskTokenBreaker(dir, "feat/big")
 	if w == "" {
 		t.Fatal("超阈值应返回警示，got 空")
 	}
-	if total != taskTokenWarnThreshold+100 {
-		t.Errorf("total=%d want %d", total, taskTokenWarnThreshold+100)
+	if total != DefaultTaskTokenBudget+100 {
+		t.Errorf("total=%d want %d", total, DefaultTaskTokenBudget+100)
+	}
+	// 项目级预算接入（loop 契约 B1-3）：放宽预算后同一 task 不再警示。
+	if w, _ := TaskTokenBreakerWithBudget(dir, "feat/big", DefaultTaskTokenBudget*2); w != "" {
+		t.Errorf("预算放宽到 2 倍后不应警示，got %q", w)
 	}
 
 	// 未超阈值的 task → 无警示。

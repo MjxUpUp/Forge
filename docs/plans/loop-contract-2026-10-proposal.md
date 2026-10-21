@@ -146,7 +146,7 @@ type AcceptanceFailure struct {
     At          time.Time `json:"at"`
     ExitCode    int       `json:"exit_code"`
     Fingerprint string    `json:"fingerprint"`
-    ChangeHash  string    `json:"change_hash"` // 跑命令【之前】算的 TaskFingerprint
+    ChangeHash  string    `json:"change_hash,omitempty"` // 跑命令【之前】算的 TaskFingerprint；空 = 不可度量
     Changed     map[string]string `json:"changed,omitempty"` // 当时的 TaskChangedFiles：repo 相对路径 → 内容 sha256 前 12 位（最多 50 条）
 }
 ```
@@ -160,7 +160,7 @@ type AcceptanceFailure struct {
 
 **判定**：最近 N 条失败（N = `loop.recurrence_threshold`，默认 2）同时满足两个条件才算复发：
 - 指纹全部相同；
-- **相邻两条的 `ChangeHash` 都不同**，即每次之间都改过代码，而失败没变。
+- **相邻两条的 `ChangeHash` 都不同**，即每次之间都改过代码，而失败没变。没改代码的重跑（ChangeHash 与上一条相同）在写入时**覆盖上一条**而不是追加——既不计数，也不能把已检出的复发顶出窗口；复发的唯一出口是 `--reset-loop`（它清空 FailHistory）。
 
 **`ChangeHash` 的挂点**：在 `VerifyAcceptanceWithVerdicts` 的循环开始之前（与 `changed` 同一处）用 `TaskFingerprint` 算一次，整次验收共用，经不落盘的临时字段（`json:"-"`）透传给各条验收。不能挂在 `runAndJudgeCriterion` 里：它的签名是 `(root, c, changed)`，拿不到 state，而且和 heldout 共用。
 
@@ -177,10 +177,10 @@ type AcceptanceFailure struct {
 
 | 情况 | 原因 | 处理 |
 |---|---|---|
-| 只改了非源码文件（yaml、json、Makefile 等） | `TaskFingerprint` 只统计源码扩展名 | 漏判；记 meta `change-scope=src-only` |
-| 某一侧 `ChangeHash` 为空（非 git 仓库、无 HEAD、基线不可达） | 无法比较 | 不判；记 meta `recurrence=unmeasurable` |
+| 只改了非源码文件（yaml、json、Makefile 等） | `TaskFingerprint` 只统计源码扩展名 | 漏判，不落行（没有可记录的事件） |
+| 某一侧 `ChangeHash` 为空（非 git 仓库、无 HEAD、基线不可达） | 无法比较 | 不判、不落行；同为空的重跑按"同 ChangeHash"覆盖上一条，FailHistory 恒 1 条 |
 | 其他任务 complete 后排除集变化，导致 hash 变了 | 外部变化被当成本任务改动 | 可能多计一次尝试；B1 只出 advisory，这类误报由第五节的精确度度量兜底 |
-| 验收命令第一次运行时改了源码（`go generate` 输出 `.go` 且不命中 genMarks 排除，`jest -u`、golden `-update`） | 第二次跑前算出的 hash 已经变了，没改代码的第一次重跑也被算作一次尝试 | 命令输出稳定时**最多多计一次**；记 meta `self-mutating=suspect`，条件是：两次之间有内容 hash 变化的文件，**全部**出现在上一次验收命令执行后、下一次 agent 编辑前就已经变化的集合里。实现方式是在上一次验收命令执行后再快照一次 `Changed`，与执行前对比；同一文件被 agent 反复修改不会命中这个条件 |
+| 验收命令第一次运行时改了源码（`go generate` 输出 `.go` 且不命中 genMarks 排除，`jest -u`、golden `-update`） | 第二次跑前算出的 hash 已经变了，没改代码的第一次重跑也被算作一次尝试 | 命令输出稳定时**最多多计一次**；复发行 meta.note 记 `self-mutating=suspect`，条件是：相邻两次 ChangeHash 不同，但窗口首末两条失败记录的 `Changed`（改动文件内容指纹）没有任何差异——改动落在 `TaskChangedFiles` 之外。同一文件被 agent 反复修改会体现为 `Changed` 指纹变化，不命中 |
 
 **效果（advisory，退出码契约不变）**：
 - 打印 `ADVISORY: 验收 #N 改动后同因失败 ×N——本轮应停止并升级人工`。
@@ -199,7 +199,7 @@ REQ-1：同一验收在两个不同 `ChangeHash` 下、带不同耗时噪音、�
 ```go
 type LoopVerdict struct {
     Verdict string       `json:"verdict"` // escalate | done | continue（优先级从高到低）
-    Reasons []LoopReason `json:"reasons"`
+    Reasons []LoopReason `json:"reasons,omitempty"`
     Next    string       `json:"next"`    // NextDecision 给出的下一条确切命令
 }
 type LoopReason struct {
@@ -237,10 +237,10 @@ type LoopReason struct {
 | `budget-tokens` | `LoopResetAt` 之后的 `SumEstTokens` ≥ 预算 | 需人工：同上 | 同上 |
 | `budget-changed-files` | 改动文件数 ≥ 预算（口径同 `TaskChangedFiles`） | 需人工：拆分任务，或调高预算 | 文件数回落，或预算调高 |
 | `no-progress` | 连续 K 次 verify-acceptance（K = `max_verifies_without_progress`）通过条数都没有增加 | 需人工：reset-loop | reset-loop 重开窗口 |
-| `gate-repeat-blocked` | 从 `LoopResetAt` 起，同一个门禁在 `History` 里连续两条 `Passed=false`（`forge task gate` 失败时由 `RecordGateResult` 写入，见 `internal/clitask/task_gate.go:121`、`types.go:1028`；先例是 `ReworkRounds()`，`types.go:1015`） | 需人工：reset-loop | 该门禁通过，或 reset-loop 重开窗口 |
+| `gate-repeat-blocked` | 从 `LoopResetAt` 起，同一个门禁在 `History` 里连续两条 `Passed=false`（`forge task gate` 失败时由 `RecordGateResult` 写入，`internal/clitask/task_gate.go`；先例是 `ReworkRounds()`，`internal/tasktypes/types.go`）。Silent 行与 `task-implement` 不计，见表下说明 | 需人工：reset-loop | 该门禁通过，或 reset-loop 重开窗口 |
 | `autonomy-denied` | B3 | 需人工：B3 的提档命令 | 提档，或放弃该动作 |
 
-`gate-repeat-blocked` 只统计 `forge task gate` 命令。`forge task complete` 的预检拒绝和 `forge review pass` 的拒绝不进 `History`，B1 不计入；如果要计入，需要先给这两处补 checklog 行，列为 Deferred。
+`gate-repeat-blocked` 只统计 `forge task gate` 命令，且两类行不计：hook 路径记录的结果（`forge task gate --silent`，Stop hook 每轮都跑 task-verify，`TaskGateResult.Silent` 标记）和 `task-implement` 的 BLOCKED（它是"先提交再过"的正常节奏：2026-10-20 代码评审扫本机 `~/.forge/projects/*/tasks/*.json` 的 `history[]`，70 个任务里 6 个 task-implement 连续两次 BLOCKED，全部正常完成）。`forge task complete` 的预检拒绝和 `forge review pass` 的拒绝不进 `History`，B1 不计入；如果要计入，需要先给这两处补 checklog 行，列为 Deferred。
 
 `no-progress` 用"有验证但没进展"衡量，**不用空闲时长**。定时循环每次唤醒之间本来就空闲，按空闲时长判断会误报。
 
@@ -248,12 +248,12 @@ type LoopReason struct {
 
 **暴露面（不新增命令）**：
 
-1. `forge task status --json`：改用嵌入结构体 `struct{ *TaskState; LoopVerdict *LoopVerdict \`json:"loop_verdict"\` }` 输出。原有键顺序不变，新键追加在末尾。
+1. `forge task status --json`：改用嵌入结构体 `struct{ *TaskState; LoopVerdict LoopVerdict \`json:"loop_verdict"\` }` 输出。原有键顺序不变，新键追加在末尾。
    - 现有消费方：eval 演练里的 `expect_contains`、`skillintegrate/notes/code-review-gate.md` 的 grep、两处报错文案。都不解析 JSON 结构。
    - 无活跃任务的分支 `{"task_ref": null, ...}` 保持不变，不输出判词。
-   - 代价：status 每次要跑一次 git 并扫 checklog/toollog，会变慢。验收要求 status 耗时增量 < 300ms。
+   - 代价：status 每次要跑一次 git 并扫 checklog/toollog，会变慢。目标值：status 耗时增量 < 300ms（B1 未实测，不作为验收项）。
 2. `forge task verify-acceptance` 末行打印 `loop: <verdict>（<codes>）`。
-3. resume 的 tl;dr：`renderTldr`（`internal/clitask/task_continuity.go:1288`）改为接收预先算好的判词，加一行 `循环判词`。
+3. resume 头部：`renderResume` 的 extraHeader 多一行 `循环判词: <verdict>（<codes>）→ next: <cmd>`（`loopVerdictHeader`，`internal/clitask/task_continuity.go`），位置在 tl;dr 之前；tl;dr 本身保持纯渲染（只看 state，不碰 git），列已证伪方案前 3 条。
 
 REQ-2：表驱动测试覆盖：
 - 上表每个 Code 的判词、Resolve 和清除条件（含 `gate-repeat-blocked`），以及 escalate > done > continue 的优先级；
@@ -433,6 +433,7 @@ B1 的预算从 advisory 升为门禁，条件是精确度 ≥80% 且误报 ≤1
 | 控制件效能账（每个 hook/门禁的命中、误报、拦住了什么） | 文章一的 harness 维护循环 | R2 的 decision-warrant 攒够 30 天数据 | 2026-12-15 |
 | answer、approve、reset-loop 补 TTY 判别 | 1.2 | B2 合入后，收件箱里出现被 agent 自己回答的项 | B2 +30 天 |
 | `gate-repeat-blocked` 计入 complete 预检拒绝和 review pass 拒绝（需先给这两处补 checklog 行） | B1-2 | B1 合入后，出现循环卡在这两处却没有 escalate 的实例 | B1 +30 天 |
+| `task status --json` / resume 的判词耗时实测（目标增量 < 300ms；超标则给判词加缓存或精简 git 调用） | B1-2 | B1 合入后在真实仓库上实测一次 | B1 +30 天 |
 | 项目知识层 | 文章二 | 不承诺 | — |
 
 ## 七、与当前周期的关系和备选对比
@@ -459,7 +460,7 @@ B1 的预算从 advisory 升为门禁，条件是精确度 ≥80% 且误报 ≤1
 ## 八、风险与待拍板
 
 - **风险：指纹规范化不足或过度。** 对策：`NormalizeFailureOutput` 用表驱动测试覆盖 Go、pytest、jest 三类输出，样本超过 500 字节且带耗时噪音；B1 只做 advisory，用精确度决定是否升格。
-- **风险：status 变慢。** 对策：REQ-2 写明耗时增量上限；判词计算不写盘。
+- **风险：status 变慢。** 对策：判词计算只读不写盘；耗时目标 < 300ms 见 B1-2 暴露面第 1 条，B1 未实测，列入第六节 Deferred。
 - **风险：B3 被绕过。** 威胁模型已写明这是护栏，不是沙箱；逃生必然进收件箱。
 **2026-10-20 拍板：Q1–Q3 按下文推荐执行。** B0+B1 插在 R2 之后、R3 之前；死路记忆用 `Decision.Kind`；收件箱做新命令 `forge inbox`。Q4 文中没有推荐项，留到 B3 开工前再定，不影响 B0–B2。
 
@@ -467,6 +468,12 @@ B1 的预算从 advisory 升为门禁，条件是精确度 ≥80% 且误报 ≤1
 - **Q2**：死路记忆用 `Decision.Kind`（推荐）还是独立的 `DeadEnds` 字段？
 - **Q3**：B2 的收件箱做成新命令（推荐），还是给 `task mine --all-projects` 加 flag？后者的语义是"按 agent 分派"，不是"待人处理"。
 - **Q4**：B3 的 `act` 档，是否允许用 B2-2 的留存确认做批量预授权，还是必须逐次确认？
+
+**单文件多批次提案的需求追溯约定（2026-10-20，B1 开工时定）**：需求覆盖表从任务登记的**全部**产物（proposal/spec/design/plan）里收集 REQ 声明（`TaskRequirementCoverage`）。把整份提案登记为任何一个 stage，都会让本批没做的 REQ 算进"未验证"；spec 或 design 处在 rubric 及以上档（`reqCoverageBlocking`：Mode 不是 advisory 即阻断）再配合带追溯的验收，就会拦下 complete。所以按批次开工时：
+- 不把整份提案登记为任务产物，只在批次 spec 里用路径引用它；
+- 每批用 `forge task artifact --set spec --stdin` 登记一份**批次 spec**，正文只声明本批的 REQ（其他批的 REQ 只能出现在代码围栏内，围栏内的 ID 不计声明）；
+- 验收行用行尾 `#REQ-n`（或 `accept[REQ-n]:` 前缀）追溯本批的 REQ，覆盖表的分母就只有本批。
+B0 当时没有这个约定，验收没有打标记，覆盖表显示 0/8（checklog `req-coverage` 行，task `fix/loop-exhaustion-leak`，2026-10-20），属于已知偏差。
 
 ## 九、验收
 
