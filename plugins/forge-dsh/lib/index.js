@@ -27,6 +27,9 @@
  *   timeoutMs - per-hook ceiling, kill + fail open (default 30000)
  *   locale    - language of the plugin's own messages: "en" | "zh" | "auto"
  *               (default auto: env FORGE_DSH_LOCALE, then the system locale)
+ *   checkLatest - false stops /forge-status from asking the registry for the latest plugin
+ *               version (default true; one read-only GET, only when the command runs)
+ *   registry  - registry /forge-status asks (default https://registry.npmjs.org)
  *   skillsHome - home directory whose .agents/skills is checked for the skill library
  *               (default: the user's home; a seam for tests)
  *   welcome   - false drops the one-line first-turn onboarding (default true)
@@ -39,6 +42,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolveBundledForge } from "./bundled.js";
+import { compareVersions, fetchLatestVersion } from "./latest.js";
 import { messagesFor, resolveLocale } from "./messages.js";
 import { agentsSkillsInstalled } from "./skills.js";
 import { probeForge } from "./runner.js";
@@ -400,6 +404,16 @@ function apply(ctx, config = {}) {
             : `per-hook (forge ${forgeVersion ?? "of unknown version"} != plugin ${pluginVersion}: batch needs a forge of the plugin's own version)`;
         } else dispatchLine = "batch (one forge process per matcher group)";
         if (slowGroups.length > 0) dispatchLine += `; per-hook for slow group${slowGroups.length > 1 ? "s" : ""}: ${slowGroups.join(", ")}`;
+        let latestLine;
+        if (config.checkLatest === false) {
+          latestLine = "not checked (checkLatest:false)";
+        } else {
+          const latest = await (config.fetchLatest ?? (() => fetchLatestVersion({ registry: config.registry })))();
+          if (latest === undefined) latestLine = "unknown (offline, or the registry did not answer)";
+          else if (compareVersions(pluginVersion, latest) === -1) {
+            latestLine = `${latest} — a newer plugin is published; an old install keeps working but misses fixes, so update it`;
+          } else latestLine = `${latest} (up to date)`;
+        }
         const probeLine = lastProbe === undefined
           ? "not run yet (no session start in this process)"
           : lastProbe.ok
@@ -407,7 +421,7 @@ function apply(ctx, config = {}) {
             : `FAILED — gates inactive (${lastProbe.error})`;
         return {
           kind: "success",
-          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin} (${binSource})  timeoutMs: ${opts.timeoutMs}\ndispatch: ${dispatchLine}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Timing per interception point (last ${recentRuns.length} runs)\n${timing}\n\n## Recent runs (last 10)\n${runs}`,
+          text: `# Forge quality gates\n\nplugin: ${pluginVersion}  latest: ${latestLine}\nforgeBin: ${opts.forgeBin} (${binSource})  timeoutMs: ${opts.timeoutMs}\ndispatch: ${dispatchLine}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Timing per interception point (last ${recentRuns.length} runs)\n${timing}\n\n## Recent runs (last 10)\n${runs}`,
         };
       },
     }), "forge: status command");

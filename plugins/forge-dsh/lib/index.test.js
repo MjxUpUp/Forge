@@ -235,6 +235,35 @@ test("batch dispatch: a group that timed out as a batch is re-run per hook and l
   assert.match(text, /\[batch→per-hook\] batch PreToolUse\/Bash: timeout after 1ms/);
 });
 
+test("/forge-status: shows the plugin version against the registry's latest — newer, current, unknown, and opted out", async (t) => {
+  const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const bump = (v) => v.replace(/^(\d+)\.(\d+)\.(\d+).*$/, (_m, a, b, c) => `${a}.${Number(b) + 1}.${c}`);
+  const statusWith = async (config) => {
+    const registered = new Map();
+    const ctx = new Context();
+    ctx.provide("tools", {});
+    ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+    await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, ...config });
+    return (await registered.get("forge-status").handler()).text;
+  };
+  const newer = await statusWith({ fetchLatest: async () => bump(PKG.version) });
+  assert.match(newer, new RegExp(`plugin: ${PKG.version.replace(/\./g, "\\.")}  latest: ${bump(PKG.version).replace(/\./g, "\\.")} — a newer plugin is published`));
+  const current = await statusWith({ fetchLatest: async () => PKG.version });
+  assert.match(current, /latest: \S+ \(up to date\)/);
+  const unknown = await statusWith({ fetchLatest: async () => undefined });
+  assert.match(unknown, /latest: unknown \(offline, or the registry did not answer\)/);
+  let asked = false;
+  const optedOut = await statusWith({ checkLatest: false, fetchLatest: async () => ((asked = true), "9.9.9") });
+  assert.match(optedOut, /latest: not checked \(checkLatest:false\)/);
+  assert.equal(asked, false, "checkLatest:false never touches the network");
+  // the registry is consulted when the command runs, not when the plugin loads
+  asked = false;
+  const lazy = new Context();
+  lazy.provide("tools", {});
+  await lazy.plugin(forgePlugin, { forgeBin: FAKE, fetchLatest: async () => ((asked = true), "9.9.9") });
+  assert.equal(asked, false, "no registry call at plugin load or session start");
+});
+
 test("pre-execute: ungated tool never touches forge", async (t) => {
   const ctx = await boot(t);
   const d = await ctx.waterfall(

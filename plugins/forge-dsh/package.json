@@ -16,6 +16,7 @@
     "lib/bundled.js",
     "lib/messages.js",
     "lib/skills.js",
+    "lib/latest.js",
     "lib/decisions.js",
     "lib/tools.js",
     "lib/spec.json",
