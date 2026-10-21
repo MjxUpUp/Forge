@@ -59,6 +59,11 @@ func TestHookResumeBannerOnly(t *testing.T) {
 	if want != "PASS\n"+managedSessionBanner+"\n" {
 		t.Fatalf(`renderHookBanner 应为 PASS + 横幅一行，实得 %q`, want)
 	}
+	// INV-3：横幅是用户级指令段的激活判据，按字面钉死——改常量也会被这里拦下。
+	const bannerLiteral = "[forge-session] 本项目由 forge 管理（managed）——forge 质量协议生效（用户级指令段以本行为激活信号）；退出运行 forge off。"
+	if managedSessionBanner != bannerLiteral {
+		t.Fatalf("横幅文本变了（INV-3：用户级指令段按 [forge-session] 字面激活）\nwant %q\ngot  %q", bannerLiteral, managedSessionBanner)
+	}
 
 	before := snapshotTaskFiles(t, dir)
 	if len(before) != 2 {

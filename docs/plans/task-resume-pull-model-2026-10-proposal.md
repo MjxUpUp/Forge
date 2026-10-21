@@ -29,19 +29,19 @@ SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图
 
 ## 需求与验收
 - REQ-1 当 managed 项目触发 SessionStart 时，`forge task resume --hook` 只输出 `PASS` + 横幅一行，与有无未完成任务、是否有派给本 agent 的任务无关；不新增 SessionLink，不写 `NotifiedAt`。
-  accept[REQ-1]: go test ./internal/clitask/ -run ^TestHookResumeBannerOnly$ -count=1 :: --- PASS: TestHookResumeBannerOnly (
+  accept[REQ-1, INV-1, INV-3, NFR-1]: go test ./internal/clitask/ -run ^TestHookResumeBannerOnly$ -count=1 :: --- PASS: TestHookResumeBannerOnly (
 - REQ-2 当 host 丢弃 SessionStart 输出（kimi：hostcap `DroppedStdoutEvents` 含 SessionStart）且本 session 未压缩过时，`resume --reinject` 不再补发冷启动接续视图，输出为空。
   accept[REQ-2]: go test ./internal/clitask/ -run ^TestReinjectNoColdStartBackfill$ -count=1 :: --- PASS: TestReinjectNoColdStartBackfill (
 - REQ-3 当本 session 刚压缩过时，`resume --reinject` 照旧注入当前任务的完整接续视图（回归保护）。
   accept[REQ-3]: go test ./internal/clitask/ -run ^TestReinjectAfterCompact$ -count=1 :: --- PASS: TestReinjectAfterCompact (
 - REQ-4 当用户说「继续某某任务」、agent 执行 `forge task resume --match "<关键词>" [--workspace|--all-projects] --json` 时，系统在范围内的未完成任务里按「模糊匹配」一节的算法打分，返回得分最高的至多 10 个候选；该调用只读（等价 `--no-attach`），不挂接、不自动认领；零命中返回空数组、exit 0；与 `--ref` 同时给出时报错退出。
-  accept[REQ-4]: go test ./internal/clitask/ -run ^TestResumeMatch$ -count=1 :: --- PASS: TestResumeMatch (
+  accept[REQ-4, INV-2]: go test ./internal/clitask/ -run ^TestResumeMatch$ -count=1 :: --- PASS: TestResumeMatch (
 - REQ-5 当用户说「还有哪些任务没完成」、agent 执行 `forge task list --open [--workspace|--all-projects] [--json]` 时，系统列出范围内 `CompletedAt == nil` 的任务，每条带：项目、ref、Summary、分支、门禁进度、首条下一步、未解决阻塞数、派活状态（offered/claimed/空）、最后活动时间；默认范围是当前项目，`--workspace` 是当前项目所属 forge workspace 的全部成员，`--all-projects` 是 `registry.ListManaged()`；不加 `--open` 时 `task list` 输出不变。
   accept[REQ-5]: go test ./internal/clitask/ -run ^TestTaskListOpen$ -count=1 :: --- PASS: TestTaskListOpen (
 - REQ-6 当 agent 加载 forge-quality skill 时，skill 含「任务接续」一节：两个场景的触发说法、命令、确认步骤（用结构化提问工具，没有就文字提问）、多选时「当前会话接一个、其余建议另开会话」的约束。
   accept[REQ-6]: go test ./internal/skillgen/ -run ^TestQualitySkillResumeSection$ -count=1 :: --- PASS: TestQualitySkillResumeSection (
 - REQ-7 当某个 session 未跑 `resume --ref`、但 task-guard 首次放行它对活跃任务的源码写入时，系统静默把该 session 写进 `SessionLinks`（与 `attachCurrentSession` 同一实现），不输出任何提示、不改 `CurrentGate`、不检查产物链。
-  accept[REQ-7]: go test ./internal/hookdispatch/ -run ^TestLazyAttachOnFirstWrite$ -count=1 :: --- PASS: TestLazyAttachOnFirstWrite (
+  accept[REQ-7, INV-4]: go test ./internal/hookdispatch/ -run ^TestLazyAttachOnFirstWrite$ -count=1 :: --- PASS: TestLazyAttachOnFirstWrite (
 - REQ-8 模糊匹配覆盖：错拼（`reusme-pull` 命中 `resume-pull`）、乱序词（`pull resume`）、缩写子序列（`rsmpl`）、中文片段（「接续拉取」命中 Summary「任务接续改为按需拉取」）；单字符查询和无关查询不返回噪音候选。
   accept[REQ-8]: go test ./internal/clitask/ -run ^TestFuzzyMatch$ -count=1 :: --- PASS: TestFuzzyMatch (
 - NFR-1 SessionStart 下 `task-resume` 的注入不超过 1 行（不含 `PASS` 标记）。由 REQ-1 的测试断言行数。
@@ -108,9 +108,9 @@ type openTaskEntry struct {
 6. 不论得分多高，CLI 都只返回候选、不替用户决定；由 agent 让用户确认。
 
 ### 不变量
-- INV-1 SessionStart 路径不写任何任务状态：不加 SessionLink，不改 Assignment（由 REQ-1 测试读回 state 断言）。
+- INV-1 SessionStart 路径不写任何任务状态：不加 SessionLink，不改 Assignment（由 REQ-1 测试断言 hook 前后任务文件字节相同）。
 - INV-2 `resume --match` 不写任何任务状态（由 REQ-4 测试断言前后 state 字节相同）。
-- INV-3 横幅文本不变：它是用户级 CLAUDE.md 的激活判据（`task_continuity_banner_test.go` 已钉住）。
+- INV-3 横幅文本不变：它是用户级 CLAUDE.md 的激活判据（REQ-1 的测试按字面钉住）。
 - INV-4 挂接（`resume --ref` 或 REQ-7 懒挂接）只写 `SessionLinks` 和节点租约，不改 `CurrentGate`、不触发产物链检查、不向用户提问（由 REQ-7 测试断言 state 中除这两项外字节相同）。
 
 ## 备选对比
