@@ -50,7 +50,15 @@ test("agentsSkillsInstalled: dotfiles such as .DS_Store are not skills", (t) => 
   assert.equal(agentsSkillsInstalled(home), false);
 });
 
-test("agentsSkillsInstalled: an unreadable location degrades to 'installed' — never nag on a failure we cannot interpret", () => {
-  assert.equal(agentsSkillsInstalled(join(tmpdir(), "definitely", "not", "a", "home", "\0bad")), true);
-  assert.equal(agentsSkillsInstalled(undefined), true);
+test("agentsSkillsInstalled: a failure other than 'not there' degrades to 'installed' — never nag on something we cannot interpret", () => {
+  // injected reader: the error codes are fixed, so this means the same on every OS
+  const failing = (code) => () => {
+    throw Object.assign(new Error(code), { code });
+  };
+  assert.equal(agentsSkillsInstalled("/h", failing("ENOENT")), false, "missing directory = not installed");
+  for (const code of ["EACCES", "EPERM", "ENOTDIR", "EIO", undefined]) {
+    assert.equal(agentsSkillsInstalled("/h", failing(code)), true, `${code}: unreadable, so stay quiet`);
+  }
+  assert.equal(agentsSkillsInstalled(undefined), true, "no home to look in");
+  assert.equal(agentsSkillsInstalled(""), true);
 });

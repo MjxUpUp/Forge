@@ -24,13 +24,14 @@ import { join } from "node:path";
  * nagging on an error the plugin cannot interpret would be worse than staying quiet.
  *
  * @param {string} [home] - home directory (tests); defaults to the user's.
+ * @param {(dir: string) => string[]} [readdir] - directory reader (tests); defaults to fs.readdirSync.
  * @returns {boolean}
  */
-export function agentsSkillsInstalled(home = homedir()) {
+export function agentsSkillsInstalled(home = homedir(), readdir = readdirSync) {
   if (typeof home !== "string" || home === "") return true;
   try {
     // dotfiles (.DS_Store …) are not skills
-    return readdirSync(join(home, ".agents", "skills")).some((name) => !name.startsWith("."));
+    return readdir(join(home, ".agents", "skills")).some((name) => !name.startsWith("."));
   } catch (error) {
     return error?.code !== "ENOENT";
   }

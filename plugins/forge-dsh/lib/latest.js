@@ -71,8 +71,10 @@ export async function fetchLatestVersion(opts = {}) {
   const doFetch = opts.fetch ?? (opts.noGlobalFetch ? undefined : globalThis.fetch);
   if (typeof doFetch !== "function") return undefined;
   const controller = new AbortController();
+  // Not unref'd: the timer is what ends a hung request, and `finally` clears it, so it can keep
+  // the process alive for at most timeoutMs. An unref'd timer lets the loop exit mid-request when
+  // nothing else is pending.
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 3000);
-  timer.unref?.();
   try {
     // inside the try: a misconfigured registry value must not make /forge-status throw
     const registry = String(opts.registry ?? DEFAULT_REGISTRY).replace(/\/+$/, "");
