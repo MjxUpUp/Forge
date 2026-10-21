@@ -332,20 +332,8 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 		}
 		return false, nil
 	}
-	// 在 per-task 锁内重载再改：传入的 state 是取锁前加载的，可能已过期（其他
-	// worktree 的并发 attach/decide）。
-	attached := false
-	err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-		if s.HasSession(sid) {
-			return nil
-		}
-		s.AddSession(sid, tool)
-		// 新锚定 = 本机接手工作——认领节点租约，让 advisory 追踪真正在干活的机器
-		// 而非任务创建者（fail-open、仅 advisory；sync-convergence.md §4）。
-		taskpipeline.ClaimLeaseForCurrentNode(s)
-		attached = true
-		return nil
-	})
+	// 锁内重载、AddSession、认领租约都在 taskpipeline.AttachSession（与 task-guard 懒挂接共用）。
+	attached, err := taskpipeline.AttachSession(root, state.TaskRef, sid, tool)
 	if err != nil {
 		return false, fmt.Errorf("锚定 session 失败: %w", err)
 	}

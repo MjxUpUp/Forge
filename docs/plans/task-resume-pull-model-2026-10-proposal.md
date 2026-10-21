@@ -38,7 +38,7 @@ SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图
   accept[REQ-4]: go test ./internal/clitask/ -run ^TestResumeMatch$ -count=1 :: --- PASS: TestResumeMatch (
 - REQ-8 模糊匹配覆盖：错拼（`reusme-pull` 命中 `resume-pull`）、乱序词（`pull resume`）、缩写子序列（`rsmpl`）、中文片段（「接续拉取」命中 Summary「任务接续改为按需拉取」）；单字符查询和无关查询不返回噪音候选。
   accept[REQ-8]: go test ./internal/clitask/ -run ^TestFuzzyMatch$ -count=1 :: --- PASS: TestFuzzyMatch (
-- REQ-7 当某个 session 未跑 `resume --ref`、但对解析到的活跃任务首次成功写入源码文件时（PostToolUse 的 tool-track，lite 档也在），系统静默把该 session 写进 `SessionLinks`（与 `attachCurrentSession` 同一实现），不输出任何提示、不改 `CurrentGate`、不检查产物链。
+- REQ-7 当某个 session 未跑 `resume --ref`、但 task-guard 首次放行它对活跃任务的源码写入时（task-guard 在 lite 档也接线；PostToolUse Write|Edit 组的 hook 都不在 lite 档，tool-track 也不挂 Write|Edit），系统静默把该 session 写进 `SessionLinks`（与 `attachCurrentSession` 同一实现），不输出任何提示、不改 `CurrentGate`、不检查产物链。
   accept[REQ-7]: go test ./internal/hookdispatch/ -run ^TestLazyAttachOnFirstWrite$ -count=1 :: --- PASS: TestLazyAttachOnFirstWrite (
 - REQ-5 当用户说「还有哪些任务没完成」、agent 执行 `forge task list --open [--workspace|--all-projects] [--json]` 时，系统列出范围内 `CompletedAt == nil` 的任务，每条带：项目、ref、Summary、分支、门禁进度、首条下一步、未解决阻塞数、派活状态（offered/claimed/空）、最后活动时间；默认范围是当前项目，`--workspace` 是当前项目所属 forge workspace 的全部成员，`--all-projects` 是 `registry.ListManaged()`；不加 `--open` 时 `task list` 输出不变。
   accept[REQ-5]: go test ./internal/clitask/ -run ^TestTaskListOpen$ -count=1 :: --- PASS: TestTaskListOpen (
@@ -58,7 +58,7 @@ SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图
 - `internal/clitask/task.go` `taskListCmd` 加 `--open/--workspace/--all-projects`；`taskResumeCmd` 加 `--match/--workspace/--all-projects`
 - `internal/clitask/task_misc.go:runTaskList` 接 `--open`
 - new: `internal/clitask/task_scope.go` 范围解析（当前项目 / workspace 成员 / 全部 managed），跨项目遍历复用 `runTaskMineAllProjects` 的写法（单项目失败 stderr 警告并跳过）
-- new: `internal/hookdispatch/hook_lazy_attach.go`，由 `hook.go:runHook` 在 tool-track 处理 Write/Edit/patch 源码写入后调用：当前 session 不在活跃任务的 `SessionLinks` 里时静默挂接（REQ-7）；已挂接时只做一次内存判断，不取锁
+- new: `internal/hookdispatch/hook_lazy_attach.go`，由 `hook.go:runHook` 在 task-guard 脚本放行后调用：写入目标带源码后缀（new: `taskpipeline.IsSourceExt`，复用 test-coverage 的 `sourceExts`）且当前 session 不在活跃任务的 `SessionLinks` 里时静默挂接（REQ-7）；已挂接时只做一次内存判断，不取锁
 - new: `internal/taskpipeline` 的 `AttachSession(root, ref, sid, tool)`：锁内重载 + `AddSession` + `ClaimLeaseForCurrentNode`，`clitask.attachCurrentSession` 与懒挂接共用
 - `internal/tasktypes/types.go:Assignment.ShouldNotify` 删除；`NotifiedAt` 注释标为停写保留
 - `internal/skillgen/qualitygen.go:buildQualitySkillContent` 加「任务接续」节
@@ -124,7 +124,7 @@ type openTaskEntry struct {
 
 ## 风险与高危步骤
 - **SessionLink 变少**：不再自动挂接后，没跑 `resume --ref` 就在任务目录里改代码的 session 不会出现在 `SessionLinks`，`taskAnchoredByOtherActiveSession` 的分支误挂守卫看不到它，节点租约也不会转过来。由 REQ-7 懒挂接补上；只读代码、不写源码的研究型 session 不挂接，这是有意的。活跃任务解析本身不受影响。
-- **懒挂接进了写入热路径**：每次源码写入后多一次 `HasSession` 内存判断。只有首次写入取 per-task 锁写盘；挂在 PostToolUse 上，写入已完成，锁超时或写盘失败只记 stderr、不影响编辑。
+- **懒挂接进了写入热路径**：每次源码写入多一次 `HasSession` 内存判断。只有首次写入取 per-task 锁写盘；锁超时或写盘失败只记 stderr、照常放行。挂在 PreToolUse 上，写入随后可能失败（如 Edit 的 old_string 不匹配），此时也已挂接——「打算改这个任务的代码」足以说明 session 在做这个任务，接受。
 - **其他 host 的用户失去自动接续**：codex/cursor/windsurf 等原先靠 SessionStart 拿接续视图。缓解：forge-quality skill 在各 host 都分发；接续命令不依赖 host。
 - **skill 改动的发版步骤**：改 `qualitygen.go` 后要用仓库构建的二进制重新打 plugin 包、重固定 `compat.snapshot.json`，再跑全量 `go test`。
 
