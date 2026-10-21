@@ -6,7 +6,9 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { Context } from "@deepseek-ai/cordis";
 import * as forgePlugin from "./index.js";
 
@@ -415,10 +417,15 @@ test("bundled forge: used when no forgeBin is configured, and the agent is told 
   assert.ok(hints[0].includes(FAKE), "the hint carries the absolute path");
   assert.equal(first.texts[0], hints[0], "the hint leads the queue, ahead of forge's own contexts");
   assert.ok(hookCalls().length > 0, "hooks ran through the bundled binary");
-  // a compact boundary in the same session must not repeat it
+  // drained: an ordinary later step does not repeat it
+  const plain = await preStepTexts(ctx, agent, "plain");
+  assert.equal(plain.texts.filter((x) => x.includes("forge CLI bundled")).length, 0);
+  // a compaction summarises the earlier hint away, so the new session-start re-sends it — once
   ctx.emit("agent/session-start", { agent, source: "compact" });
   const later = await preStepTexts(ctx, agent, "next");
-  assert.equal(later.texts.filter((x) => x.includes("forge CLI bundled")).length, 0);
+  assert.equal(later.texts.filter((x) => x.includes("forge CLI bundled")).length, 1);
+  const again = await preStepTexts(ctx, agent, "and again");
+  assert.equal(again.texts.filter((x) => x.includes("forge CLI bundled")).length, 0);
   const reply = await registered.get("forge-status").handler();
   assert.ok(reply.text.includes(`forgeBin: ${FAKE} (bundled)`), reply.text);
 });
@@ -460,6 +467,66 @@ test("bundled forge: no bundle and no config falls back to PATH forge, reported 
   await ctx.plugin(forgePlugin, { resolveBundledForge: () => undefined });
   const reply = await registered.get("forge-status").handler();
   assert.match(reply.text, /forgeBin: forge \(PATH\)/);
+});
+
+test("bundled forge: FORGE_BIN beats the bundled binary; a throwing resolver degrades to PATH", async (t) => {
+  const savedBin = process.env.FORGE_BIN;
+  process.env.FORGE_BIN = FAKE;
+  t.after(() => {
+    if (savedBin === undefined) delete process.env.FORGE_BIN;
+    else process.env.FORGE_BIN = savedBin;
+  });
+  const status = async (config) => {
+    const registered = new Map();
+    const ctx = new Context();
+    ctx.provide("tools", {});
+    ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+    await ctx.plugin(forgePlugin, config);
+    return (await registered.get("forge-status").handler()).text;
+  };
+  assert.ok(
+    (await status({ resolveBundledForge: () => "/bundled/forge" })).includes(`forgeBin: ${FAKE} (configured)`),
+    "env FORGE_BIN wins over the bundle",
+  );
+  delete process.env.FORGE_BIN;
+  const text = await status({
+    resolveBundledForge: () => {
+      throw new Error("resolver exploded");
+    },
+  });
+  assert.match(text, /forgeBin: forge \(PATH\)/, "plugin load survives a throwing resolver");
+});
+
+test("bundled forge: a bundle that resolves but will not run falls back to a working PATH forge", { skip: process.platform === "win32" }, async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  const savedPath = process.env.PATH;
+  const savedBin = process.env.FORGE_BIN;
+  delete process.env.FORGE_BIN;
+  // a PATH holding a runnable `forge` (symlink to the double) — independent of the host's own install
+  const dir = mkdtempSync(join(tmpdir(), "forge-dsh-path-"));
+  symlinkSync(FAKE, join(dir, "forge"));
+  process.env.PATH = `${dir}${delimiter}${savedPath}`;
+  t.after(() => {
+    process.env.PATH = savedPath;
+    delete process.env.FAKE_FORGE_LOG;
+    if (savedBin !== undefined) process.env.FORGE_BIN = savedBin;
+    unlinkSync(join(dir, "forge"));
+    rmdirSync(dir);
+  });
+  const BAD = fileURLToPath(new URL("../test/doubles/no-such-forge", import.meta.url));
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+  await ctx.plugin(forgePlugin, { resolveBundledForge: () => BAD, timeoutMs: 5000, startWaitMs: 15000 });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const first = await preStepTexts(ctx, agent);
+  assert.equal(first.texts.filter((x) => x.includes("forge CLI not found")).length, 0, "PATH forge works → no missing notice");
+  assert.equal(first.texts.filter((x) => x.includes("bundled with this plugin")).length, 0, "no path hint for an unusable bundle");
+  assert.ok(hookCalls().length > 0, "hooks ran through the PATH forge");
+  assert.match((await registered.get("forge-status").handler()).text, /forgeBin: forge \(PATH\)/);
 });
 
 test("disabled config wires no listeners", async (t) => {

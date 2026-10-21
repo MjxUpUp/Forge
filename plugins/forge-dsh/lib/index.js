@@ -60,7 +60,7 @@ function apply(ctx, config = {}) {
       bundledBin = undefined; // an unresolvable bundle must never break plugin load
     }
   }
-  const binSource = explicitBin !== undefined ? "configured" : bundledBin !== undefined ? "bundled" : "PATH";
+  let binSource = explicitBin !== undefined ? "configured" : bundledBin !== undefined ? "bundled" : "PATH";
   const opts = {
     forgeBin: explicitBin ?? bundledBin ?? "forge",
     timeoutMs: config.timeoutMs ?? 30000,
@@ -137,7 +137,7 @@ function apply(ctx, config = {}) {
   const missingForgeNotice = (error) =>
     `[forge-dsh] forge CLI not found (forgeBin: ${opts.forgeBin}). ` +
     "Forge gates are OFF for this session — every action runs unguarded (fail-open). " +
-    "Install it with `npm install -g @agent_forge/forge`, then start a new session; " +
+    "Reinstall the plugin (it bundles forge) or run `npm install -g @agent_forge/forge`, then start a new session; " +
     "if it lives elsewhere, set forgeBin in the profile patch." +
     (error === undefined ? "" : `\nProbe error: ${error}`);
   const ensureForge = async (agent) => {
@@ -148,7 +148,18 @@ function apply(ctx, config = {}) {
           probeInFlight = undefined;
         });
     }
-    const probe = await probeInFlight;
+    let probe = await probeInFlight;
+    // A bundled binary that resolved but will not run (wrong arch, lost exec bit,
+    // truncated download) must not void the gates when a working forge is on PATH.
+    if (!probe.ok && binSource === "bundled") {
+      const onPath = await probeForge({ forgeBin: "forge", timeoutMs: Math.min(opts.timeoutMs, 5000) });
+      if (onPath.ok) {
+        if (debug) console.error(`[forge-dsh] bundled forge unusable (${probe.error}); using PATH forge`);
+        opts.forgeBin = "forge";
+        binSource = "PATH";
+        probe = onPath;
+      }
+    }
     lastProbe = probe;
     if (probe.ok) {
       forgeReady = true;
@@ -225,6 +236,8 @@ function apply(ctx, config = {}) {
       const forgeOk = await ensureForge(agent);
       // The bundled binary is not on PATH while forge's gate messages say
       // `forge task …`; tell the agent where it is, first in the queue, once.
+      // After a compaction the earlier hint is summarised away, so it is re-sent.
+      if (source === "compact" && state !== undefined) state.hinted = false;
       if (forgeOk && binSource === "bundled" && state !== undefined && !state.hinted) {
         state.hinted = true;
         state.pending.push(bundledForgeHint(opts.forgeBin));

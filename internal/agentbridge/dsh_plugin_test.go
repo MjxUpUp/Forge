@@ -62,6 +62,9 @@ func TestDshPluginPackageContract(t *testing.T) {
 		Name         string            `json:"name"`
 		Main         string            `json:"main"`
 		Dependencies map[string]string `json:"dependencies"`
+		Optional     map[string]string `json:"optionalDependencies"`
+		Peer         map[string]string `json:"peerDependencies"`
+		Bundled      []string          `json:"bundledDependencies"`
 		Dsh          struct {
 			Bundle struct {
 				Patch string `json:"patch"`
@@ -89,6 +92,9 @@ func TestDshPluginPackageContract(t *testing.T) {
 			t.Errorf("@agent_forge/forge pin %q must be an exact version (lockstep with the plugin), not a range", ver)
 		}
 	}
+	if len(pkg.Optional) > 0 || len(pkg.Peer) > 0 || len(pkg.Bundled) > 0 {
+		t.Errorf("optional/peer/bundled dependencies crept in (%v %v %v) — the bundled forge in dependencies is the only runtime package", pkg.Optional, pkg.Peer, pkg.Bundled)
+	}
 	if _, ok := pkg.Dependencies["@agent_forge/forge"]; !ok {
 		t.Error("@agent_forge/forge dependency missing — without it a plugin-only install gates nothing (every hook fails open)")
 	}
@@ -115,7 +121,10 @@ func TestDshPluginLibImportsStayDependencyFree(t *testing.T) {
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no lib/*.js found: %v", err)
 	}
-	importRe := regexp.MustCompile(`(?m)^\s*(?:import|export)\s[^;]*?from\s+"([^"]+)"|import\(\s*"([^"]+)"\s*\)`)
+	// 引号不限单双、import 可无 from（副作用导入）、可不在行首、from 前后空白可省。
+	staticRe := regexp.MustCompile(`\b(?:import|export)\s*(?:[^;'"]*?\bfrom\s*)?['"]([^'"]+)['"]`)
+	dynamicRe := regexp.MustCompile(`\bimport\s*\(\s*(['"]?)([^'")]*)`)
+	requireRe := regexp.MustCompile(`\brequire\s*\(`)
 	for _, f := range files {
 		if strings.HasSuffix(f, ".test.js") {
 			continue
@@ -124,11 +133,28 @@ func TestDshPluginLibImportsStayDependencyFree(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, m := range importRe.FindAllStringSubmatch(string(body), -1) {
-			spec := m[1] + m[2]
-			if !strings.HasPrefix(spec, "node:") && !strings.HasPrefix(spec, "./") {
-				t.Errorf("%s imports %q — shipped plugin code may import only node: builtins and ./ siblings", filepath.Base(f), spec)
+		src := string(body)
+		name := filepath.Base(f)
+		okSpec := func(spec string) bool {
+			return strings.HasPrefix(spec, "node:") || (strings.HasPrefix(spec, "./") && !strings.Contains(spec, ".."))
+		}
+		for _, m := range staticRe.FindAllStringSubmatch(src, -1) {
+			if !okSpec(m[1]) {
+				t.Errorf("%s imports %q — shipped plugin code may import only node: builtins and ./ siblings", name, m[1])
 			}
+		}
+		for _, m := range dynamicRe.FindAllStringSubmatch(src, -1) {
+			if m[1] == "" || !okSpec(m[2]) {
+				t.Errorf("%s has dynamic import(%s%s) — only literal node:/./ specifiers are allowed", name, m[1], m[2])
+			}
+		}
+		if requireRe.MatchString(src) {
+			t.Errorf("%s calls require(...) — shipped plugin code is ESM; use a ./ or node: import", name)
+		}
+		// createRequire is the escape hatch for resolving the bundled forge binary by path;
+		// it may live only in bundled.js, which never loads what it resolves.
+		if name != "bundled.js" && strings.Contains(src, "createRequire") {
+			t.Errorf("%s uses createRequire — only bundled.js may (it resolves the forge binary path, never imports it)", name)
 		}
 	}
 }

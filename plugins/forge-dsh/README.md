@@ -57,9 +57,9 @@ exposes the corresponding event points (the preview builds have neither).
   pinned to `0.1.0-rc.7` ([`contract.json`](./contract.json)); `0.2.1-rc.2` is the
   desktop build this plugin runs on (pre-tool interception verified live there; a
   full five-event regression across the range is still pending).
-- Windows works out of the box: npm lays out `forge` as a `forge.cmd` shim, which
-  the plugin spawns through `cmd.exe` (a bare spawn cannot execute it); timeout
-  kills tear down the whole child tree via `taskkill /T`.
+- Windows works out of the box: the bundled binary is `forge.exe`, and a `forge.cmd`
+  shim from a global npm install is spawned through `cmd.exe` (a bare spawn cannot
+  execute it); timeout kills tear down the whole child tree via `taskkill /T`.
 
 ## Install
 
@@ -140,7 +140,7 @@ session start.
 ## Development
 
 ```sh
-npm install   # dev-only: @deepseek-ai/cordis for the wiring tests
+npm install --no-package-lock   # @deepseek-ai/cordis for the wiring tests (+ the bundled forge, unused by them)
 npm test      # mapping, runner (incl. cross-OS planSpawn units), decision folding, real-cordis wiring
 ```
 
