@@ -73,7 +73,7 @@ var profileLiteHooks = map[string]bool{
 	"review-stop":    true, // 审查-返工循环（管线）
 	"failure-track":  true, // 失败观测（编译/测试启发式输入）
 	"subagent-track": true, // 子代理观测（管线归因）
-	"task-resume":    true, // 跨会话接续（状态层核心）
+	"task-resume":    true, // [forge-session] 横幅：用户级指令段的激活信号（缺了 forge 协议在会话里不生效）
 }
 
 // ParseProfile maps a user-supplied token to a Profile. Unknown/empty tokens

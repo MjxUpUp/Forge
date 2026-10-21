@@ -446,7 +446,7 @@ type Assignment struct {
 	LastQuestion   string     `json:"last_question,omitempty"`   // input-required 时的回抛内容
 	FailReason     string     `json:"fail_reason,omitempty"`     // failed 时的原因；Reopen() 也复用此字段记「交付后重开理由」——双用途但语义不冲突：Fail 是终态、禁止 Reopen，故同一字段在不同状态分支下不会被两种含义同时读到
 	CancelReason   string     `json:"cancel_reason,omitempty"`   // canceled 时的原因
-	NotifiedAt     *time.Time `json:"notified_at,omitempty"`     // 上次 hook 推送时间（去重防轰炸）
+	NotifiedAt     *time.Time `json:"notified_at,omitempty"`     // 已停写：SessionStart 待认领推送随按需拉取方案下线（2026-10）；字段保留使新旧二进制读写同一份 task json 互不破坏
 	AbandonedCount int        `json:"abandoned_count,omitempty"` // claimed 超 TTL 回收次数（僵尸信号）
 	AbandonedAt    *time.Time `json:"abandoned_at,omitempty"`    // 最近一次回收时间
 	// AutoDelivered marks that the delivered terminal was set by MarkComplete's
@@ -1413,38 +1413,6 @@ func (s *TaskState) HasAssignment() bool { return s.Assignment != nil }
 // 使存储层保持 agent-neutral。
 func (s *TaskState) IsOfferedTo(agent string) bool {
 	return s.Assignment != nil && s.Assignment.Status == AssignOffered && s.Assignment.Agent == agent
-}
-
-// ShouldNotify reports whether this offered task should be pushed at SessionStart at instant now
-// (design §8 ③ NotifiedAt 去重). Rule: the offer-baseline — max(OfferedAt, AbandonedAt), mirroring
-// IsOfferedZombie — must be newer than the last NotifiedAt (or NotifiedAt must be nil). After
-// Abandon re-offers a task, AbandonedAt advances past the prior NotifiedAt, so the next session
-// re-notifies; without a fresh abandon/re-offer, subsequent sessions stay silent (anti-轰炸). now
-// is injected (not time.Now) so tests are deterministic. nil-receiver safe.
-//
-// ShouldNotify 报告此 offered 任务在 now 时刻是否应在 SessionStart 推送（设计 §8 ③ NotifiedAt
-// 去重）。规则：派发基线——max(OfferedAt, AbandonedAt)，镜像 IsOfferedZombie——须晚于上次
-// NotifiedAt（或 NotifiedAt 为 nil）。Abandon 重新派发后 AbandonedAt 越过旧 NotifiedAt，故下次
-// 会话重新推送；无新的 abandon/重新派发则后续会话保持静默（防轰炸）。now 注入（非 time.Now）
-// 使测试确定。nil 接收者安全。
-func (a *Assignment) ShouldNotify(now time.Time) bool {
-	if a == nil || a.Status != AssignOffered {
-		return false
-	}
-	var baseline time.Time
-	if a.OfferedAt != nil {
-		baseline = *a.OfferedAt
-	}
-	if a.AbandonedAt != nil && a.AbandonedAt.After(baseline) {
-		baseline = *a.AbandonedAt
-	}
-	if a.NotifiedAt == nil {
-		return true // 首次推送（即便基线为零——legacy 状态也推一次）
-	}
-	if baseline.IsZero() {
-		return false // 无基线可越过 NotifiedAt——已推过一次
-	}
-	return baseline.After(*a.NotifiedAt)
 }
 
 // AssignTo creates an offered-status Assignment delegating the task to agent.

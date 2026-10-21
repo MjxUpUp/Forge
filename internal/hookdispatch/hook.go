@@ -742,7 +742,9 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// 经 attr.stamp 落 Meta / 回填空 session——与 hook_track/hook_conventions 的四处写点
 	// 同一份归因（taskAttributionForSession），探针覆盖面是全集。
 	var attr taskAttribution
+	var activeState *taskpipeline.TaskState // task-guard 放行后的懒挂接用（hook_lazy_attach.go）
 	if active, path, err := taskpipeline.ActiveTaskStateWithPath(root, util.SanitizeSessionID(hookInput.SessionID)); err == nil && active != nil {
+		activeState = active
 		activeTaskRef = active.TaskRef
 		activeTaskGate = active.CurrentGate
 		attr = taskAttribution{TaskRef: active.TaskRef, ResolvePath: path, TaskSession: active.SessionID, Sealed: active.EvidenceSealed()}
@@ -984,6 +986,9 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	}
 
 	passed := exitErr == nil
+	if name == "task-guard" && passed {
+		lazyAttachOnSourceWrite(root, hookInput.SessionID, agent, fields.FilePath, activeState)
+	}
 	// scriptPassed 钉住脚本自身结论（5b 的 promoteAdvisory 可能把 passed 翻转为
 	// false——那只改变 emitted 结论）。step 6 的 checklog 记录以脚本结论为准：
 	// advisory 被提升成阻断时不得记成 blocked/fail（见 step 6 注释）。

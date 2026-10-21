@@ -23,6 +23,15 @@ var sourceExts = map[string]bool{
 	".rb": true, ".zig": true, ".nim": true,
 }
 
+// IsSourceExt reports whether path has a source-code extension (test files included, vendor not excluded).
+//
+// IsSourceExt 报告 path 是否带源码后缀（sourceExts；测试文件也算、不排除 vendor）。供
+// task-guard 懒挂接判断「这次写入是不是在写代码」——与 isSourceFile 的「需配对测试的项目
+// 代码」是不同问题，故不复用它的 vendor 排除。
+func IsSourceExt(path string) bool {
+	return sourceExts[filepath.Ext(path)]
+}
+
 // testCoverageWhitelist 描述免测试要求的源码文件：
 //   - 入口：main.go、cmd/** main 入口二进制
 //   - 生成代码：*.gen.*、*_generated.*、*.pb.* protobuf 绑定

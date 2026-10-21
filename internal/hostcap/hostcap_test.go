@@ -124,9 +124,9 @@ func TestContextChannel_RowsMatchPreRegistrySwitch(t *testing.T) {
 // TestKimiDroppedStdoutEvents pins kimi's dropped-stdout event list.
 //
 // TestKimiDroppedStdoutEvents 钉住 kimi 的 stdout 丢弃事件清单——它驱动
-// SessionStart handoff 回填（cli sessionStartOutputDropped）、stale advisory
-// 改道（kimiStaleRidesHook）与 skill-trigger 打印门控，此处漂移会静默改道
-// （或搁浅）这些 advisory。
+// stale advisory 改道（kimiStaleRidesHook）与 skill-trigger 打印门控，此处漂移
+// 会静默改道（或搁浅）这些 advisory。（SessionStart handoff 回填曾是第三个消费方，
+// 已随 2026-10 按需拉取方案下线。）
 func TestKimiDroppedStdoutEvents(t *testing.T) {
 	h := Lookup("kimi")
 	if h == nil {
@@ -143,7 +143,7 @@ func TestKimiDroppedStdoutEvents(t *testing.T) {
 	// 目前没有其他宿主丢 stdout：cli 的派生判断必须保持仅 kimi 命中。
 	for _, name := range []string{"claude-code", "cursor", "copilot", "windsurf", "codex", "opencode", "cline", "codebuddy", "reasonix", "dsh", "zcode"} {
 		if h := Lookup(name); h != nil && h.DropsStdoutEvent("SessionStart") {
-			t.Errorf("%s DropsStdoutEvent(SessionStart) = true, want false (backfill would double-inject)", name)
+			t.Errorf("%s DropsStdoutEvent(SessionStart) = true, want false (its skill-trigger SessionStart output would be wrongly suppressed)", name)
 		}
 	}
 }

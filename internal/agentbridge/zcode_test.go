@@ -95,7 +95,9 @@ func TestZcodeWiringMirrorsClaudeSettings(t *testing.T) {
 // 永不触发（静默 no-op）。有 ZCode 对应物的六个 ForgeHookSpec event 必须全部
 // 在位；PostCompact/SubagentStop（无 ZCode 对应物）与 PermissionRequest
 // （ZCode 独有、无 spec 对应物）必须保持缺席。仿
-// TestCodexHooks_OnlyLegalCodexEvents。
+// TestCodexHooks_OnlyLegalCodexEvents。PostCompact 缺席的后果：zcode 压缩后不会
+// 自动重注入接续上下文——压缩触发的 SessionStart 只跑出 task-resume 横幅（2026-10
+// 按需拉取起 SessionStart 不再是接续兜底）。
 func TestZcodeHooks_OnlyLegalZcodeEvents(t *testing.T) {
 	generated := buildZcodeHooks()
 	legal := map[string]bool{

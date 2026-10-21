@@ -369,17 +369,17 @@ exit 0`
 
 const TaskResumeHook = `#!/bin/bash
 # task-resume.sh — SessionStart hook (advisory, non-blocking, project-scoped).
-# 会话启动自动注入活跃任务的接续上下文 + 把当前 session 锚定到任务。接手方冷启动即知有
-# 活跃任务、在哪一步、已确认哪些决策、有哪些阻塞，无需手动 forge task resume。
+# 只输出 [forge-session] 管理横幅一行（用户级指令段的激活信号）。接续按需拉取
+# （2026-10）：会话启动不注入接续视图、不锚定 session、不推送待认领——用户说「继续某某
+# 任务」时 agent 走 forge task resume --match，问「还有哪些任务没完成」时走 forge task list --open。
 #
-# Thin wrapper：实际逻辑在 forge task resume --hook（Go）。bash 仅 exec 转发——找任务
-# （3 级 fallback：active-task-ref、分支、单一未完成任务）、attach session、renderResume、
-# 无任务静默、PASS 前缀都在 Go 里，避开 bash 重写逻辑与 Windows 引号腐蚀（memory: quote）。
+# Thin wrapper：实际逻辑在 forge task resume --hook（Go）。bash 仅 exec 转发，避开 bash
+# 重写逻辑与 Windows 引号腐蚀（memory: quote）。
 #
 # 项目级 hook：runHook（cli/hook.go）已用 findProjectRoot 找到 root 并设为 cwd；非 forge
 # 项目 runHook 对非全局 hook 直接 outputAllow exit，根本不跑本脚本。故脚本内不再判 .forge。
 #
-# resume --hook 永远 exit 0（不阻塞 SessionStart）：无活跃任务静默，有则输出 PASS+接续视图。
+# resume --hook 永远 exit 0（不阻塞 SessionStart），输出恒为 PASS+横幅。
 # Protocol: stdout = PASS detail → runHook 包成 additionalContext 注入会话；exit 0 = 放行。
 exec forge task resume --hook
 `
@@ -406,9 +406,9 @@ const ResumeReinjectHook = `#!/bin/bash
 # 并清标记；否则静默。UserPromptSubmit 的 stdout 进 context（Claude Code 文档：在
 # additionalContext 注入点列表），runHook 包成 additionalContext 注入，协议同 SessionStart task-resume。
 #
-# 与 SessionStart task-resume 分工：task-resume 只在会话启动注入一次，会话中途压缩不补；
-# resume-reinject 补这个缺口——压缩后本 session 第一个 user prompt 自动恢复完整接续上下文，
-# 不靠 agent 主动 forge task resume。tl;dr tier 是跨 host 缓解层，本 hook 是压缩根治层。
+# 只管压缩：压缩丢的是本 session 正在做的任务的工作记忆，压缩后第一个 user prompt 自动
+# 恢复完整接续上下文，不靠 agent 主动 forge task resume；未压缩时静默（冷启动接续按需
+# 拉取，不在本 hook）。
 #
 # Thin wrapper：逻辑在 forge task resume --reinject（Go）。bash 仅 exec 转发。
 exec forge task resume --reinject
