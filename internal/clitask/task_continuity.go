@@ -82,7 +82,7 @@ func init() {
 	taskResumeCmd.Flags().Bool("no-attach", false, "仅查看，不把当前 session 锚定到 task")
 	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：只输出 PASS+[forge-session] 横幅一行，不注入接续视图、不锚定 session、不改任何任务状态（接续改由用户主动发起；供 forge hook task-resume 调用）")
 	taskResumeCmd.Flags().Bool("compact-flag", false, "PostCompact hook 模式：压缩完成时标记「刚压缩过」（有 session ID 写 per-session sentinel，无则置 ResumeStale；压缩根治层·设标志半边，gap#2；供 forge hook compact-resume 调用）")
-	taskResumeCmd.Flags().String("match", "", "按关键词模糊匹配未完成任务（ref/标题/分支/目标；容错拼、乱序、缩写、中文片段），只列候选、不锚定不认领——agent 让用户确认后再 resume --ref")
+	taskResumeCmd.Flags().String("match", "", "按关键词模糊匹配未完成任务（ref/标题/分支/目标；容忍错拼、乱序、缩写、中文片段），只列候选、不锚定不认领——agent 让用户确认后再 resume --ref")
 	addScopeFlags(taskResumeCmd)
 	taskResumeCmd.Flags().Bool("reinject", false, "UserPromptSubmit hook 模式：若本 session 刚压缩（per-session sentinel 或 legacy ResumeStale）则重注入完整 handoff 并清标记（压缩根治层·重注入半边，gap#2；供 forge hook resume-reinject 调用）")
 

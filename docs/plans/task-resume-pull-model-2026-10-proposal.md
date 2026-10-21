@@ -1,18 +1,18 @@
 ---
 status: review
 owner: MjxUpUp
-ask: Open Questions 已全部拍板（2026-10-21），请批准后进入实现
+ask: 实现已在本分支落地（Open Questions 2026-10-21 全部拍板），请审方向与验收
 tier: mini
 ---
 
 # 技术方案 | 任务接续改为按需拉取（2026-10）
 
 ## TL;DR
-SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图、不自动挂接 session、不推送待认领任务。接续改由用户主动发起：「继续某某任务」走 `forge task resume --match`（模糊匹配）列候选 → agent 让用户确认 → `resume --ref` 挂接；「还有哪些任务没完成」走 `forge task list --open`。没走接续就直接改代码的 session，在首次源码写入时静默挂接，只做记录、不要求补材料。压缩后的重注入保留。请批准方向。
+SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图、不自动挂接 session、不推送待认领任务。接续改由用户主动发起：「继续某某任务」走 `forge task resume --match`（模糊匹配）列候选 → agent 让用户确认 → `resume --ref` 挂接；「还有哪些任务没完成」走 `forge task list --open`。没走接续就直接改代码的 session，在首次源码写入时静默挂接，只做记录、不要求补材料。压缩后的重注入保留。
 
 ## 问题与目标
 - **噪音**：会话一启动，用户还没开口，SessionStart 就把接续上下文推给 agent——单一活跃任务时注入整份接续视图并挂接 session，多任务时注入候选清单（原 `renderHookResume`，基线 `dd27933f`，本方案已删除）。用户没想接续时，这是噪音，还会把 agent 往旧任务上带。
-- **待认领推送没人用**：本机 `~/.forge/projects` 507 个项目、71 份任务记录，带 `assignment` 字段的为 0，checklog 与 shell 历史里也没有 `assign/claim/deliver/mine` 调用（2026-10-21 实测）。推送对象是 host 工具名而非 session（`internal/clitask/task.go:ResolveOriginTool`），单 agent 时等于广播给自己；多 agent 场景实际靠协调者显式派活，推送用不上。另有已登记缺陷：丢弃 SessionStart 输出的 host 上，推送没送达也会记 `NotifiedAt`（`internal/clitask/task_continuity.go:renderHookReinject` 冷启动分支注释，基线 `dd27933f`）。
+- **待认领推送没人用**：本机 `~/.forge/projects` 507 个项目、71 份任务记录，带 `assignment` 字段的为 0，checklog 与 shell 历史里也没有 `assign/claim/deliver/mine` 调用（2026-10-21 实测：扫 `~/.forge/projects/*/tasks/*.json` 中含 `"assignment"` 的文件计 0，`grep -E "forge task (assign|claim|deliver|mine)" ~/.zsh_history` 计 0）。推送对象是 host 工具名而非 session（`internal/clitask/task.go:ResolveOriginTool`），单 agent 时等于广播给自己；多 agent 场景实际靠协调者显式派活，推送用不上。另有已登记缺陷：丢弃 SessionStart 输出的 host 上，推送没送达也会记 `NotifiedAt`（`internal/clitask/task_continuity.go:renderHookReinject` 冷启动分支注释，基线 `dd27933f`）。
 - **拉取入口不够用**：`resume --ref` 只认精确 ref；`task list` 只看当前项目，只显示 ref 和 active/completed（`internal/clitask/task_misc.go:runTaskList`）。
 - **目标**：SessionStart 注入量降到横幅 1 行；两个用户场景各一条命令就能拿到结构化数据，agent 据此提问、用户选择。
 
@@ -30,24 +30,24 @@ SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图
 ## 需求与验收
 - REQ-1 当 managed 项目触发 SessionStart 时，`forge task resume --hook` 只输出 `PASS` + 横幅一行，与有无未完成任务、是否有派给本 agent 的任务无关；不新增 SessionLink，不写 `NotifiedAt`。
   accept[REQ-1]: go test ./internal/clitask/ -run ^TestHookResumeBannerOnly$ -count=1 :: --- PASS: TestHookResumeBannerOnly (
-- REQ-2 当 host 丢弃 SessionStart 输出（`sessionStartOutputDropped`）且本 session 未压缩过时，`resume --reinject` 不再补发冷启动接续视图，输出为空。
+- REQ-2 当 host 丢弃 SessionStart 输出（kimi：hostcap `DroppedStdoutEvents` 含 SessionStart）且本 session 未压缩过时，`resume --reinject` 不再补发冷启动接续视图，输出为空。
   accept[REQ-2]: go test ./internal/clitask/ -run ^TestReinjectNoColdStartBackfill$ -count=1 :: --- PASS: TestReinjectNoColdStartBackfill (
 - REQ-3 当本 session 刚压缩过时，`resume --reinject` 照旧注入当前任务的完整接续视图（回归保护）。
   accept[REQ-3]: go test ./internal/clitask/ -run ^TestReinjectAfterCompact$ -count=1 :: --- PASS: TestReinjectAfterCompact (
 - REQ-4 当用户说「继续某某任务」、agent 执行 `forge task resume --match "<关键词>" [--workspace|--all-projects] --json` 时，系统在范围内的未完成任务里按「模糊匹配」一节的算法打分，返回得分最高的至多 10 个候选；该调用只读（等价 `--no-attach`），不挂接、不自动认领；零命中返回空数组、exit 0；与 `--ref` 同时给出时报错退出。
   accept[REQ-4]: go test ./internal/clitask/ -run ^TestResumeMatch$ -count=1 :: --- PASS: TestResumeMatch (
-- REQ-8 模糊匹配覆盖：错拼（`reusme-pull` 命中 `resume-pull`）、乱序词（`pull resume`）、缩写子序列（`rsmpl`）、中文片段（「接续拉取」命中 Summary「任务接续改为按需拉取」）；单字符查询和无关查询不返回噪音候选。
-  accept[REQ-8]: go test ./internal/clitask/ -run ^TestFuzzyMatch$ -count=1 :: --- PASS: TestFuzzyMatch (
-- REQ-7 当某个 session 未跑 `resume --ref`、但 task-guard 首次放行它对活跃任务的源码写入时（task-guard 在 lite 档也接线；PostToolUse Write|Edit 组的 hook 都不在 lite 档，tool-track 也不挂 Write|Edit），系统静默把该 session 写进 `SessionLinks`（与 `attachCurrentSession` 同一实现），不输出任何提示、不改 `CurrentGate`、不检查产物链。
-  accept[REQ-7]: go test ./internal/hookdispatch/ -run ^TestLazyAttachOnFirstWrite$ -count=1 :: --- PASS: TestLazyAttachOnFirstWrite (
 - REQ-5 当用户说「还有哪些任务没完成」、agent 执行 `forge task list --open [--workspace|--all-projects] [--json]` 时，系统列出范围内 `CompletedAt == nil` 的任务，每条带：项目、ref、Summary、分支、门禁进度、首条下一步、未解决阻塞数、派活状态（offered/claimed/空）、最后活动时间；默认范围是当前项目，`--workspace` 是当前项目所属 forge workspace 的全部成员，`--all-projects` 是 `registry.ListManaged()`；不加 `--open` 时 `task list` 输出不变。
   accept[REQ-5]: go test ./internal/clitask/ -run ^TestTaskListOpen$ -count=1 :: --- PASS: TestTaskListOpen (
 - REQ-6 当 agent 加载 forge-quality skill 时，skill 含「任务接续」一节：两个场景的触发说法、命令、确认步骤（用结构化提问工具，没有就文字提问）、多选时「当前会话接一个、其余建议另开会话」的约束。
   accept[REQ-6]: go test ./internal/skillgen/ -run ^TestQualitySkillResumeSection$ -count=1 :: --- PASS: TestQualitySkillResumeSection (
+- REQ-7 当某个 session 未跑 `resume --ref`、但 task-guard 首次放行它对活跃任务的源码写入时，系统静默把该 session 写进 `SessionLinks`（与 `attachCurrentSession` 同一实现），不输出任何提示、不改 `CurrentGate`、不检查产物链。
+  accept[REQ-7]: go test ./internal/hookdispatch/ -run ^TestLazyAttachOnFirstWrite$ -count=1 :: --- PASS: TestLazyAttachOnFirstWrite (
+- REQ-8 模糊匹配覆盖：错拼（`reusme-pull` 命中 `resume-pull`）、乱序词（`pull resume`）、缩写子序列（`rsmpl`）、中文片段（「接续拉取」命中 Summary「任务接续改为按需拉取」）；单字符查询和无关查询不返回噪音候选。
+  accept[REQ-8]: go test ./internal/clitask/ -run ^TestFuzzyMatch$ -count=1 :: --- PASS: TestFuzzyMatch (
 - NFR-1 SessionStart 下 `task-resume` 的注入不超过 1 行（不含 `PASS` 标记）。由 REQ-1 的测试断言行数。
 - NFR-2 本机 `forge task list --open --all-projects --json` 墙钟 ≤ 2s。
   accept[NFR-2]: go run ./cmd/forge task list --open --all-projects --json
-  （accept 行不经 shell 无法计时，只验退出码 0；墙钟由实现 PR 附 `time` 实测）
+  （accept 行不经 shell 无法计时，只验退出码 0。墙钟手测：2026-10-21 本机全部 managed 项目 0.41s）
 
 ## 设计
 ### 触点
@@ -55,10 +55,10 @@ SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图
 - `renderHookResume` / `appendOfferedBlock` / `renderOfferedBlock` / `offeredChainSiblings` / `otherIncompleteTasks` 删除，hook 分支改调新的 `internal/clitask/task_continuity.go:renderHookBanner`
 - `internal/clitask/task_continuity.go:renderHookReinject` 删除冷启动补发分支（及 `IsColdStartInjected` / `MarkColdStartInjected` 的调用）
 - `renderTaskInventory` 删除；`list --open` 与 `--match` 共用 `internal/clitask/task_scope.go:renderOpenEntryLine`
-- `internal/clitask/task.go` `taskListCmd` 加 `--open/--workspace/--all-projects`；`taskResumeCmd` 加 `--match/--workspace/--all-projects`
+- `internal/clitask/task.go` 的 `taskListCmd` 加 `--open/--workspace/--all-projects`；`internal/clitask/task_continuity.go` 的 `taskResumeCmd` 加 `--match/--workspace/--all-projects`
 - `internal/clitask/task_misc.go:runTaskList` 接 `--open`
 - new: `internal/clitask/task_scope.go` 范围解析（当前项目 / workspace 成员 / 全部 managed），跨项目遍历复用 `runTaskMineAllProjects` 的写法（单项目失败 stderr 警告并跳过）
-- new: `internal/hookdispatch/hook_lazy_attach.go`，由 `hook.go:runHook` 在 task-guard 脚本放行后调用：写入目标带源码后缀（new: `taskpipeline.IsSourceExt`，复用 test-coverage 的 `sourceExts`）且当前 session 不在活跃任务的 `SessionLinks` 里时静默挂接（REQ-7）；已挂接时只做一次内存判断，不取锁
+- new: `internal/hookdispatch/hook_lazy_attach.go`，由 `hook.go:runHook` 在 task-guard 脚本放行后调用（挂 task-guard 是因为它在 lite 档也接线，PostToolUse Write|Edit 组都不在 lite 档）：写入目标带源码后缀（new: `taskpipeline.IsSourceExt`，复用 test-coverage 的 `sourceExts`）且当前 session 不在活跃任务的 `SessionLinks` 里时静默挂接（REQ-7）；已挂接时只做一次内存判断，不取锁
 - new: `internal/taskpipeline` 的 `AttachSession(root, ref, sid, tool)`：锁内重载 + `AddSession` + `ClaimLeaseForCurrentNode`，`clitask.attachCurrentSession` 与懒挂接共用
 - `Assignment.ShouldNotify` 删除；`internal/tasktypes/types.go` 的 `NotifiedAt` 注释标为停写保留
 - `internal/skillgen/qualitygen.go:buildQualitySkillContent` 加「任务接续」节
@@ -97,8 +97,8 @@ type openTaskEntry struct {
 | 精确 | 查询等于 ref | 100 |
 | 前缀 | 字段以查询开头 | 90 |
 | 子串 | 字段包含查询 | 80 |
-| 全词 | 查询的每个词都出现在字段里，顺序不限 | 70 |
-| 错拼 | 每个查询词都能在字段里找到编辑距离 ≤ ⌊词长/4⌋ 且 ≥1 的词（只对 ≥4 字符的词放宽） | 60 |
+| 全词 | 查询 ≥2 个词，且每个词都出现在字段里，顺序不限 | 70 |
+| 错拼 | 每个查询词要么出现在字段里，要么（仅 ≥4 字符的词）能在字段里找到编辑距离 ≤ max(1, ⌊词长/4⌋) 的词；且至少一个词用到了这项放宽 | 60 |
 | 中文重合 | 查询的汉字二元组在字段里出现的比例（覆盖率）≥ 0.5 | 50 + 20×(覆盖率−0.5)/0.5 |
 | 子序列 | 查询字符按序出现在字段里，查询 ≥ 3 字符，且跨度 ≤ 查询长度 × 3 | 40 |
 
