@@ -191,7 +191,8 @@ func feedForProject(pr pulseRoot, d *projectData, now time.Time) []FeedEvent {
 			checklog.CheckEvalTrapsRun, checklog.CheckEvalRun,
 			checklog.CheckEvalDecompose, checklog.CheckEvalJudgeWeak,
 			checklog.CheckEvalResumeDrill, checklog.CheckEvalMetricsIncomplete,
-			checklog.CheckEvalAuditForged:
+			checklog.CheckEvalAuditForged, checklog.CheckEvalPreflight,
+			checklog.CheckEvalGoldenTestQuery:
 			events = append(events, evalEvent(pr, e))
 		}
 	}
@@ -285,6 +286,8 @@ func evalEvent(pr pulseRoot, e checklog.Entry) FeedEvent {
 		checklog.CheckEvalResumeDrill:       `接续演练`,
 		checklog.CheckEvalMetricsIncomplete: `评测字典校验失败`,
 		checklog.CheckEvalAuditForged:       `审计行完整性告警（伪造/重放）`,
+		checklog.CheckEvalPreflight:         `评测前置违例（拒绝启动）`,
+		checklog.CheckEvalGoldenTestQuery:   `golden test 层查询`,
 	}
 	title, ok := titles[e.Check]
 	if !ok {

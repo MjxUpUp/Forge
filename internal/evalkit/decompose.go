@@ -59,22 +59,71 @@ type DecomposeReport struct {
 	Split         string                 `json:"split"`
 	Sandbox       string                 `json:"sandbox"`
 	ManifestFP    string                 `json:"manifest_fingerprint"`
-	CellMeans     map[string]float64     `json:"cell_means"` // "profile|model" → mean pass
+	CellMeans     map[string]float64     `json:"cell_means"` // "profile|model" → 全部 attempt 的平均通过率（与三档差值同口径）
 	Decomposition *VarianceDecomposition `json:"decomposition"`
 	// DeltaFullOff / DeltaFullGates / DeltaGatesOff: per-model paired deltas with
 	// per-model values (interval statements — never single-side numbers).
 	DeltaFullOff   []ModelDelta `json:"delta_full_off"`
 	DeltaFullGates []ModelDelta `json:"delta_full_gates"`
 	DeltaGatesOff  []ModelDelta `json:"delta_gates_off"`
+	// Perturbation is measured | unmeasured (R4): unmeasured CIs omit the
+	// prompt-variant variance source and may be too narrow.
+	//
+	// Perturbation 是 measured | unmeasured（R4）：unmeasured 的 CI 缺 prompt 变体
+	// 方差源，可能偏窄。
+	Perturbation string `json:"perturbation"`
+	// Preflight is the grid-wide validity preflight (run once, shared by every
+	// cell — R3).
+	//
+	// Preflight 是整张网格共用的有效性 preflight（只跑一次，各格共享——R3）。
+	Preflight *PreflightReport `json:"preflight,omitempty"`
 }
 
 // ModelDelta is one model's paired difference between two profiles.
 //
 // ModelDelta 是一个模型在两个 profile 间的配对差。
 type ModelDelta struct {
-	Model string  `json:"model"`
-	Delta float64 `json:"delta"` // a − b
+	Model string `json:"model"`
+	// Delta is a − b. With a CI it is the CI's own point estimate (mean pass
+	// rate over all attempts of the common tasks) so the number and its
+	// interval never disagree; without one it falls back to the cell-mean
+	// difference (same all-attempt pass rate).
+	//
+	// Delta 是 a − b。有 CI 时取 CI 自己的点估计（共同任务上全部 attempt 的平均
+	// 通过率），数字与区间永不矛盾；无 CI 时退回格均值之差（同为全部 attempt
+	// 的通过率）。
+	Delta float64 `json:"delta"`
+	// CI is the paired bootstrap interval (nil with CIError when not computable).
+	//
+	// CI 是配对 bootstrap 区间（不可算时为 nil，原因在 CIError）。
+	CI      *DeltaCI `json:"ci,omitempty"`
+	CIError string   `json:"ci_error,omitempty"`
 }
+
+// attemptPassRate is the pass rate over every attempt of one cell — the
+// decomposition and the deltas share this estimator (pass@1 alone would let
+// the variance split and the deltas disagree on the same report).
+//
+// attemptPassRate 是一格全部 attempt 的通过率——方差分解与三档差值共用这一
+// 估计量（只用 pass@1 会让同一份报告里的分解与差值口径打架）。
+func attemptPassRate(as []Attempt) float64 {
+	if len(as) == 0 {
+		return 0
+	}
+	n := 0
+	for _, a := range as {
+		if a.Pass {
+			n++
+		}
+	}
+	return float64(n) / float64(len(as))
+}
+
+// decomposeBootstrapSeed fixes the bootstrap stream so a report re-renders
+// identically from the same attempts.
+//
+// decomposeBootstrapSeed 固定 bootstrap 随机流——同一批 attempts 重算出同一份报告。
+const decomposeBootstrapSeed = 20261013
 
 // RunDecompose executes the grid and computes the decomposition. Cell means
 // come from the same runner abstraction as Track A runs (ScriptedRunner in
@@ -92,25 +141,36 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 		return nil, err
 	}
 	rep := &DecomposeReport{
-		GeneratedAt: time.Now().UTC(),
-		Grid:        grid,
-		Benchmark:   spec.Benchmark,
-		Split:       spec.Split,
-		Sandbox:     sandboxLabel(runner),
-		ManifestFP:  manifest.Fingerprint(),
-		CellMeans:   map[string]float64{},
+		GeneratedAt:  time.Now().UTC(),
+		Grid:         grid,
+		Benchmark:    spec.Benchmark,
+		Split:        spec.Split,
+		Sandbox:      sandboxLabel(runner),
+		ManifestFP:   manifest.Fingerprint(),
+		CellMeans:    map[string]float64{},
+		Perturbation: spec.PerturbationStatus(),
 	}
+	// preflight 与 profile 无关：整张网格只跑一次（NFR-1 口径），各格复用。
+	report, leak, err := runPreflight(ctx, spec, manifest, runner)
+	if err != nil {
+		return nil, err
+	}
+	rep.Preflight = report
+	shared := &preflightResult{report: report, leak: leak}
+	cellAttempts := map[string][]Attempt{}
 	profileKey := func(p Profile) string { return string(p) }
 	for _, p := range grid.Profiles {
 		for _, m := range grid.Models {
 			cellSpec := spec
 			cellSpec.Profile = p
 			cellSpec.Model = m
+			cellSpec.preflight = shared
 			sc, err := RunBenchmark(ctx, cellSpec, manifest, runner)
 			if err != nil {
 				return nil, fmt.Errorf("evalkit: 网格格 %s×%s 失败: %w", p, m, err)
 			}
-			rep.CellMeans[profileKey(p)+"|"+m] = sc.Pass1.Value
+			rep.CellMeans[profileKey(p)+"|"+m] = attemptPassRate(sc.Attempts)
+			cellAttempts[profileKey(p)+"|"+m] = sc.Attempts
 		}
 	}
 	// 组装方差分解网格。
@@ -130,7 +190,20 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 	delta := func(a, b Profile) []ModelDelta {
 		var out []ModelDelta
 		for _, m := range grid.Models {
-			out = append(out, ModelDelta{Model: m, Delta: rep.CellMeans[profileKey(a)+"|"+m] - rep.CellMeans[profileKey(b)+"|"+m]})
+			ka, kb := profileKey(a)+"|"+m, profileKey(b)+"|"+m
+			d := ModelDelta{Model: m, Delta: rep.CellMeans[ka] - rep.CellMeans[kb]}
+			_, okA := rep.CellMeans[ka]
+			_, okB := rep.CellMeans[kb]
+			if !okA || !okB {
+				// 网格未含其中一档 profile（如 --profiles off,full 时涉及 gates-only 的两档）。
+				d.CIError = fmt.Sprintf("网格未含 %s 或 %s", a, b)
+			} else if ci, err := PairedDeltaCI(cellAttempts[ka], cellAttempts[kb], 0, decomposeBootstrapSeed); err != nil {
+				d.CIError = err.Error()
+			} else {
+				d.CI = ci
+				d.Delta = ci.Delta
+			}
+			out = append(out, d)
 		}
 		sort.Slice(out, func(i, j int) bool { return out[i].Model < out[j].Model })
 		return out
@@ -184,15 +257,21 @@ func (r *DecomposeReport) RenderDecomposeMarkdown() string {
 		s += fmt.Sprintf("- HV̄/MV̄ = %.2f（跨 %d 个 profile × %d 个模型）\n", r.Decomposition.HvOverMv, len(r.Grid.Profiles), len(r.Grid.Models))
 	}
 	s += fmt.Sprintf("- 排名翻转 %d / %d 个 model-pair×profile-pair 比较\n", r.Decomposition.Reversals, r.Decomposition.PairComparisons)
-	s += "- η²_p：单观测格（格均值输入）下数学不可定义（SS_error≡0）——未产出；接入格内重复数据后再补\n\n"
+	s += "- η²_p：单观测格（格均值输入）下数学不可定义（SS_error≡0）——未产出；接入格内重复数据后再补\n"
+	if r.Perturbation == PerturbationMeasured {
+		s += "- perturbation=measured：CI 含任务抽样、prompt 变体、运行间三个方差源\n\n"
+	} else {
+		s += fmt.Sprintf("- perturbation=unmeasured：未声明 ≥%d 个语义等价 prompt 变体，CI 只含任务抽样与运行间两源，可能偏窄\n\n", MinPerturbationVariants)
+	}
+	if r.Preflight != nil {
+		s += fmt.Sprintf("- preflight=%s（整张网格共用一次）\n\n", r.Preflight.Status)
+	}
 	render := func(name string, deltas []ModelDelta) {
 		s += fmt.Sprintf("## %s\n\n", name)
 		for _, d := range deltas {
-			verdict := "差值为 0"
-			if d.Delta > 0 {
-				verdict = fmt.Sprintf("+%.3f（正差；是否显著以置信区间为准，跨零即表述为未检测到显著差异）", d.Delta)
-			} else if d.Delta < 0 {
-				verdict = fmt.Sprintf("%.3f（负差；是否显著以置信区间为准，跨零即表述为未检测到显著差异）", d.Delta)
+			verdict := NullResultStatement(d.CI)
+			if d.CI == nil && d.CIError != "" {
+				verdict = "区间不可得（" + d.CIError + "）——不出点差结论"
 			}
 			s += fmt.Sprintf("- %s: %s\n", d.Model, verdict)
 		}
