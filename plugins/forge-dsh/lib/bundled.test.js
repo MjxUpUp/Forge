@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { platformPackage, resolveBundledForge, bundledForgeHint } from "./bundled.js";
+import { platformPackage, resolveBundledForge } from "./bundled.js";
 
 /** Lay out a throwaway node_modules tree; returns its root and a `from` URL inside it. */
 function fixture(t, layout) {
@@ -75,12 +75,4 @@ test("resolveBundledForge: missing forge, missing platform package, or unsupport
     "node_modules/@agent_forge/forge-darwin-arm64/bin/forge": "bin",
   });
   assert.equal(resolveBundledForge({ platform: "win32", arch: "arm64", from: full.from }), undefined);
-});
-
-test("bundledForgeHint names the absolute path and quotes one containing spaces", () => {
-  const plain = bundledForgeHint("/p/forge");
-  assert.match(plain, /\/p\/forge/);
-  assert.match(plain, /not be on PATH/);
-  assert.match(plain, /instead of `forge`/);
-  assert.match(bundledForgeHint("/Users/a b/forge"), /"\/Users\/a b\/forge"/);
 });

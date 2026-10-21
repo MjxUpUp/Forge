@@ -5,6 +5,9 @@ import {
   preExecuteDecision,
   preStepDecision,
   runHookGroup,
+  runMatchedGroups,
+  dropQuietNotes,
+  BATCH_DOWNGRADE_MARK,
   prependStartContexts,
   turnStoppingOutcome,
 } from "./decisions.js";
@@ -156,4 +159,278 @@ test("prependStartContexts: an enter without messages still delivers (no TypeErr
   const { decision, delivered } = prependStartContexts({ kind: "enter" }, ["a"]);
   assert.equal(delivered, true);
   assert.deepEqual(decision.messages.map((m) => m.content[0].text), ["a"]);
+});
+
+/** Scripted batch runner: records (event, matcher) and answers from a table keyed "event|matcher". */
+const fakeBatch = (table, calls = []) => async (event, matcher) => {
+  calls.push(`${event}|${matcher}`);
+  return table[`${event}|${matcher}`] ?? { block: false };
+};
+
+test("runMatchedGroups: one batch spawn per matched group, contexts and block come from its verdict", async () => {
+  const calls = [];
+  const outcome = await runMatchedGroups(
+    "PreToolUse",
+    [{ matcher: "Bash", commands: ["forge hook a", "forge hook b"] }],
+    {},
+    { batchRunner: fakeBatch({ "PreToolUse|Bash": { block: false, context: "merged" } }, calls), batchState: { broken: false } },
+  );
+  assert.deepEqual(calls, ["PreToolUse|Bash"]);
+  assert.deepEqual(outcome.contexts, ["merged"]);
+  assert.equal(outcome.blocked, undefined);
+  assert.equal(typeof outcome.durationMs, "number");
+
+  const blocked = await runMatchedGroups(
+    "PreToolUse",
+    [{ matcher: "Write|Edit", commands: ["forge hook a"] }],
+    {},
+    { batchRunner: fakeBatch({ "PreToolUse|Write|Edit": { block: true, reason: "no task" } }), batchState: { broken: false } },
+  );
+  assert.equal(blocked.blocked.reason, "no task");
+  assert.equal(blocked.blocked.command, "batch PreToolUse/Write|Edit", "block is attributed to the group, the only granularity batch exposes");
+});
+
+test("runMatchedGroups: several matched groups run in order and the first block short-circuits the rest", async () => {
+  const calls = [];
+  const outcome = await runMatchedGroups(
+    "PostToolUse",
+    [
+      { matcher: "g1", commands: [] },
+      { matcher: "g2", commands: [] },
+      { matcher: "g3", commands: [] },
+    ],
+    {},
+    {
+      batchRunner: fakeBatch({ "PostToolUse|g1": { block: false, context: "c1" }, "PostToolUse|g2": { block: true, reason: "stop" } }, calls),
+      batchState: { broken: false },
+    },
+  );
+  assert.deepEqual(calls, ["PostToolUse|g1", "PostToolUse|g2"]);
+  assert.deepEqual(outcome.contexts, ["c1"]);
+  assert.equal(outcome.blocked.reason, "stop");
+});
+
+test("runMatchedGroups: a batch that cannot answer (old forge: block with empty stdout) falls back to the serial roster — never a silent allow", async () => {
+  const batchState = { broken: false };
+  const serial = [];
+  const outcome = await runMatchedGroups(
+    "PreToolUse",
+    [{ matcher: "Write|Edit", commands: ["forge hook freeze-guard", "forge hook task-guard"] }],
+    {},
+    {
+      batchRunner: fakeBatch({ "PreToolUse|Write|Edit": { block: false, error: "forge exited with code 2 and no output" } }),
+      runner: async (command) => {
+        serial.push(command);
+        return command === "forge hook task-guard" ? { block: true, reason: "BLOCKED: no task" } : { block: false };
+      },
+      batchState,
+    },
+  );
+  assert.equal(outcome.blocked.reason, "BLOCKED: no task", "the serial retry still enforces the gate");
+  assert.deepEqual(serial, ["forge hook freeze-guard", "forge hook task-guard"]);
+  assert.equal(batchState.failStreaks.get("batch PreToolUse/Write|Edit"), 1, "one failure so far — counted for that group, not yet fatal");
+  assert.ok(outcome.errors.some((e) => e.startsWith(BATCH_DOWNGRADE_MARK)), "the downgrade is visible in the outcome");
+
+  // once batch is switched off, it is not even attempted
+  batchState.broken = true;
+  const calls = [];
+  await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a"] }], {}, {
+    batchRunner: fakeBatch({}, calls),
+    runner: async () => ({ block: false }),
+    batchState,
+  });
+  assert.deepEqual(calls, []);
+});
+
+test("runMatchedGroups: a batch timeout re-runs THAT group per hook (a hung hook must not starve the gates behind it) and keeps the group per-hook", async () => {
+  const batchState = { broken: false };
+  const serial = [];
+  const calls = [];
+  const run = () =>
+    runMatchedGroups("PreToolUse", [{ matcher: "Write|Edit", commands: ["forge hook freeze-guard", "forge hook task-guard"] }], {}, {
+      batchRunner: fakeBatch({ "PreToolUse|Write|Edit": { block: false, error: "timeout after 30000ms", timedOut: true } }, calls),
+      runner: async (command) => {
+        serial.push(command);
+        return command === "forge hook task-guard" ? { block: true, reason: "BLOCKED: no task" } : { block: false };
+      },
+      batchState,
+    });
+  const first = await run();
+  assert.equal(first.blocked.reason, "BLOCKED: no task", "the gate behind the slow one still ran and blocked");
+  assert.deepEqual(serial, ["forge hook freeze-guard", "forge hook task-guard"]);
+  assert.equal(batchState.broken, false, "a timeout is not evidence that batch is unsupported");
+  assert.ok(first.errors.some((e) => e.startsWith(BATCH_DOWNGRADE_MARK) && e.includes("timeout after 30000ms")), "the downgrade is visible and marked");
+
+  // the slow group stays per-hook; no second 30s batch stall
+  serial.length = 0;
+  await run();
+  assert.equal(calls.length, 1, "batch was attempted for that group exactly once");
+  assert.deepEqual(serial, ["forge hook freeze-guard", "forge hook task-guard"]);
+});
+
+test("runMatchedGroups: transient batch failures fall back per call; only three in a row turn batch off, and a success resets the streak", async () => {
+  const batchState = { broken: false };
+  const verdicts = [
+    { block: false, error: "forge exited with code 1 and no output" },
+    { block: false },
+    { block: false, error: "spawn EAGAIN" },
+    { block: false, error: "spawn EAGAIN" },
+    { block: false, error: "spawn EAGAIN" },
+  ];
+  let n = 0;
+  const serial = [];
+  const opts = {
+    batchRunner: async () => verdicts[n++],
+    runner: async (command) => (serial.push(command), { block: false }),
+    batchState,
+  };
+  const group = [{ matcher: "Bash", commands: ["forge hook a"] }];
+  await runMatchedGroups("PreToolUse", group, {}, opts);
+  assert.equal(batchState.broken, false, "one failure is not a verdict on batch");
+  await runMatchedGroups("PreToolUse", group, {}, opts); // success resets
+  await runMatchedGroups("PreToolUse", group, {}, opts);
+  await runMatchedGroups("PreToolUse", group, {}, opts);
+  assert.equal(batchState.broken, false, "two failures after a success: the streak was reset");
+  await runMatchedGroups("PreToolUse", group, {}, opts);
+  assert.equal(batchState.broken, true, "three in a row: batch is off for good");
+  assert.equal(serial.length, 4, "every failed call was answered by the per-hook run");
+});
+
+test("runMatchedGroups: the failure streak is per group — another group's successes do not reset it", async () => {
+  const batchState = { broken: false };
+  const serial = [];
+  const verdicts = { "PreToolUse|Bash": { block: false, error: "forge exited with code 1 and no output" }, "PreToolUse|Write|Edit": { block: false } };
+  const opts = {
+    batchRunner: async (event, matcher) => verdicts[`${event}|${matcher}`],
+    runner: async (command) => (serial.push(command), { block: false }),
+    batchState,
+  };
+  const bad = [{ matcher: "Bash", commands: ["forge hook a"] }];
+  const good = [{ matcher: "Write|Edit", commands: ["forge hook b"] }];
+  for (let i = 0; i < 3; i += 1) {
+    await runMatchedGroups("PreToolUse", bad, {}, opts);
+    await runMatchedGroups("PreToolUse", good, {}, opts); // a success in ANOTHER group
+  }
+  assert.equal(batchState.broken, true, "three failures of one group count even though a healthy group ran in between");
+});
+
+test("runMatchedGroups: a slow group is retried as a batch after the window, not penalised for the life of the process", async () => {
+  const realNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
+  try {
+    const calls = [];
+    let timedOut = true;
+    const opts = {
+      batchRunner: async (event, matcher) => (calls.push(`${event}|${matcher}`), timedOut ? { block: false, error: "timeout after 30000ms", timedOut: true } : { block: false }),
+      runner: async () => ({ block: false }),
+      batchState: { broken: false },
+    };
+    const group = [{ matcher: "Bash", commands: ["forge hook a"] }];
+    await runMatchedGroups("PreToolUse", group, {}, opts);
+    assert.equal(calls.length, 1);
+    now += 60_000; // inside the window: stays per-hook
+    await runMatchedGroups("PreToolUse", group, {}, opts);
+    assert.equal(calls.length, 1, "within the window the group stays per-hook");
+    timedOut = false;
+    now += 10 * 60_000; // past it: one more try as a batch, and it works
+    await runMatchedGroups("PreToolUse", group, {}, opts);
+    assert.equal(calls.length, 2, "after the window batch is tried again");
+    await runMatchedGroups("PreToolUse", group, {}, opts);
+    assert.equal(calls.length, 3, "and stays on batch once it succeeded");
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test("runMatchedGroups: a silent allow from a batch that cannot have run is not special-cased here (the version gate in index.js keeps mismatched forges off batch)", async () => {
+  const outcome = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a"] }], {}, {
+    batchRunner: fakeBatch({ "PreToolUse|Bash": { block: false } }),
+    batchState: { broken: false },
+  });
+  assert.deepEqual(outcome.contexts, []);
+  assert.equal(outcome.blocked, undefined);
+});
+
+test("runMatchedGroups: batch:false runs the roster serially from the start", async () => {
+  const serial = [];
+  const outcome = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a", "forge hook b"] }], {}, {
+    batch: false,
+    batchRunner: async () => {
+      throw new Error("batch must not run");
+    },
+    runner: async (command) => {
+      serial.push(command);
+      return command === "forge hook b" ? { block: false, context: "from b" } : { block: false };
+    },
+  });
+  assert.deepEqual(serial, ["forge hook a", "forge hook b"]);
+  assert.deepEqual(outcome.contexts, ["from b"]);
+});
+
+test("dropQuietNotes: status-only receipts are dropped, real advisories and unknown notes are kept", () => {
+  // the receipts forge prints when there is nothing to say (observed as synthetic user messages)
+  for (const quiet of [
+    "[assertion-check] no weakening detected (advisory)",
+    "[auto-compile] no source touched (compile self-check delegated to agent)",
+    "[auto-compile] research-mode session, advisory suppressed (set by Edit|Write of source)",
+    "[skill-scan] all skills SAFE (advisory, 21 rules)",
+    "[skill-scan] no ~/.claude/skills (advisory)",
+    "[mcp-scan] no .mcp.json (advisory)",
+    "[mcp-scan] no git project (no project-level .mcp.json to scan, advisory)",
+    "[workflow-test-guard] workflow 配置变更后 internal/ci 守护测试全绿",
+  ]) {
+    assert.equal(dropQuietNotes(quiet), "", `should drop: ${quiet}`);
+  }
+  // anything that tells the model or the user to DO something stays
+  for (const loud of [
+    "[auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过",
+    "[skill-scan] Advisory: 发现风险 skill——x请核查",
+    "[forge-session] 本项目由 forge 管理（managed）",
+    "[init-suggest] Advisory: 检测到 git 项目 'x' 未启用 forge。请询问用户",
+    "[bash-guard] WARN: Bash write without active task",
+    // the guard did NOT run — that is information, unlike the all-green receipt
+    "[workflow-test-guard] go not on PATH, skipping internal/ci guard tests",
+    "[workflow-test-guard] internal/ci package 不可解析（非测试失败），skip: x",
+    "a note from a hook this list has never heard of",
+  ]) {
+    assert.equal(dropQuietNotes(loud), loud, `should keep: ${loud}`);
+  }
+});
+
+test("dropQuietNotes: works per paragraph — a merged batch context keeps its real parts in order", () => {
+  const merged = [
+    "[skill-scan] all skills SAFE (advisory, 21 rules)",
+    "[forge-session] 本项目由 forge 管理（managed）",
+    "[mcp-scan] no .mcp.json (advisory)",
+    "[forge] conventions: stack go",
+  ].join("\n\n");
+  assert.equal(dropQuietNotes(merged), "[forge-session] 本项目由 forge 管理（managed）\n\n[forge] conventions: stack go");
+  // a multi-line paragraph is judged as a whole (its first line carries the tag)
+  assert.equal(dropQuietNotes("[forge] conventions: line one\n- line two\n- line three"), "[forge] conventions: line one\n- line two\n- line three");
+});
+
+test("runMatchedGroups: quiet receipts never reach the outcome's contexts, in batch or serial", async () => {
+  const batch = await runMatchedGroups("PreToolUse", [{ matcher: "Write|Edit", commands: [] }], {}, {
+    batchRunner: fakeBatch({
+      "PreToolUse|Write|Edit": { block: false, context: "[assertion-check] no weakening detected (advisory)\n\n[forge] conventions: x" },
+    }),
+    batchState: { broken: false },
+  });
+  assert.deepEqual(batch.contexts, ["[forge] conventions: x"]);
+
+  const onlyQuiet = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: [] }], {}, {
+    batchRunner: fakeBatch({ "PreToolUse|Bash": { block: false, context: "[mcp-scan] no .mcp.json (advisory)" } }),
+    batchState: { broken: false },
+  });
+  assert.deepEqual(onlyQuiet.contexts, [], "a context that is nothing but receipts disappears entirely");
+
+  const serial = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a", "forge hook b"] }], {}, {
+    batch: false,
+    runner: async (command) =>
+      command === "forge hook a"
+        ? { block: false, context: "[skill-scan] all skills SAFE (advisory, 21 rules)" }
+        : { block: false, context: "[bash-guard] WARN: x" },
+  });
+  assert.deepEqual(serial.contexts, ["[bash-guard] WARN: x"]);
 });

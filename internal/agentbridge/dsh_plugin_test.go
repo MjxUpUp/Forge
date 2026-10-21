@@ -159,6 +159,52 @@ func TestDshPluginLibImportsStayDependencyFree(t *testing.T) {
 	}
 }
 
+// TestDshPluginShipsEveryImportedFile: every `./x.js` a shipped lib file imports must be listed in package.json "files". A new module that is imported but not listed passes every in-repo test (the checkout has the file) and then breaks the published package at load time — the host fails to import the plugin and no gate runs.
+//
+// TestDshPluginShipsEveryImportedFile：发布的 lib 文件 import 的每个 `./x.js` 都必须在
+// package.json 的 "files" 里。新模块被 import 却没列入，仓库内测试全绿（checkout 里有该
+// 文件），发布后插件在加载期就 import 失败——宿主加载不起插件，所有门禁都不跑。
+func TestDshPluginShipsEveryImportedFile(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(dshPluginDir, "package.json"))
+	if err != nil {
+		t.Fatalf("read package.json: %v", err)
+	}
+	var pkg struct {
+		Files []string `json:"files"`
+	}
+	if err := json.Unmarshal(raw, &pkg); err != nil {
+		t.Fatalf("unmarshal package.json: %v", err)
+	}
+	shipped := map[string]bool{}
+	for _, f := range pkg.Files {
+		shipped[f] = true
+	}
+	files, err := filepath.Glob(filepath.Join(dshPluginDir, "lib", "*.js"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no lib/*.js found: %v", err)
+	}
+	importRe := regexp.MustCompile(`\b(?:import|export)\s*(?:[^;'"]*?\bfrom\s*)?['"](\./[^'"]+)['"]`)
+	for _, f := range files {
+		name := filepath.Base(f)
+		if strings.HasSuffix(name, ".test.js") {
+			continue
+		}
+		if !shipped["lib/"+name] {
+			t.Errorf("lib/%s is not in package.json files — it would be missing from the published package", name)
+		}
+		body, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range importRe.FindAllStringSubmatch(string(body), -1) {
+			rel := "lib/" + strings.TrimPrefix(m[1], "./")
+			if !shipped[rel] {
+				t.Errorf("%s imports %s, which package.json files does not ship — the published plugin fails to load", name, m[1])
+			}
+		}
+	}
+}
+
 // TestDshTranslator_Translate pins the deliberate no-op contract (the plugin is the only wiring path): Translate succeeds and writes NOTHING.
 //
 // TestDshTranslator_Translate 钉住刻意的 no-op 契约（plugin 是唯一接线路径）：

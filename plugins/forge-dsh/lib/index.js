@@ -25,6 +25,13 @@
  *               the forge bundled with this plugin (dependency, version-locked) >
  *               "forge" on PATH
  *   timeoutMs - per-hook ceiling, kill + fail open (default 30000)
+ *   locale    - language of the plugin's own messages: "en" | "zh" | "auto"
+ *               (default auto: env FORGE_DSH_LOCALE, then the system locale)
+ *   checkLatest - false stops /forge-status from asking the registry for the latest plugin
+ *               version (default true; one read-only GET, only when the command runs)
+ *   registry  - registry /forge-status asks (default https://registry.npmjs.org)
+ *   skillsHome - home directory whose .agents/skills is checked for the skill library
+ *               (default: the user's home; a seam for tests)
  *   welcome   - false drops the one-line first-turn onboarding (default true)
  *   startWaitMs - how long the first pre-step waits for the session-start
  *               contexts before moving on without them (default 1500)
@@ -34,13 +41,19 @@
  * @module @agent_forge/forge-dsh
  */
 import { readFileSync } from "node:fs";
-import { bundledForgeHint, resolveBundledForge } from "./bundled.js";
+import { resolveBundledForge } from "./bundled.js";
+import { compareVersions, fetchLatestVersion, isPlainVersion } from "./latest.js";
+import { messagesFor, resolveLocale } from "./messages.js";
+import { agentsSkillsInstalled } from "./skills.js";
 import { probeForge } from "./runner.js";
-import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
-import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName, welcomeText, isSubagent, MANAGED_BANNER } from "./tools.js";
+import { BATCH_DOWNGRADE_MARK, runMatchedGroups, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
+import { buildEventPayload, buildToolPayload, matchedGroups, pluginMessage, promptText, toCCToolName, isSubagent, MANAGED_BANNER } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
 const pluginVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+
+/** Fail-open runs in one session before the degraded advisory fires. */
+const DEGRADED_AFTER = 3;
 
 /** Stable Cordis plugin name. */
 const name = "forge-quality";
@@ -66,19 +79,40 @@ function apply(ctx, config = {}) {
   const opts = {
     forgeBin: explicitBin ?? bundledBin ?? "forge",
     timeoutMs: config.timeoutMs ?? 30000,
+    // One `forge hook batch` process per matcher group instead of one per hook (~half the
+    // per-tool-call latency). Config `batch`: true forces it, false forces the per-hook path,
+    // unset = auto — on only once the probe shows a forge of the plugin's own version. Batch asks
+    // forge to select the group by the plugin's matcher string, and an older or newer forge may
+    // not agree (an unmatched matcher is a silent empty allow, and forges before the stdout fix
+    // print nothing on a block), so a mismatched forge stays on the per-hook path, which only
+    // depends on hook names. Runtime failures degrade per call (see runMatchedGroups).
+    batch: config.batch === true,
+    batchState: { broken: false },
   };
+  const batchMode = config.batch === true ? "forced" : config.batch === false ? "off" : "auto";
   const debug = config.debug === true;
   const welcome = config.welcome !== false;
+  let skillsOffered = false;
+  const msg = messagesFor(resolveLocale(config.locale));
   const startWaitMs = Number.isFinite(config.startWaitMs) && config.startWaitMs >= 0 ? config.startWaitMs : 1500;
   // Recent-run ring buffer for /forge-status — fail-open verdicts are silent
   // by design, so this (plus debug logging) is the only way to see them.
   const recentRuns = [];
-  const noteErrors = (label, outcome) => {
+  const noteErrors = (label, outcome, agent) => {
+    // Per-session count of runs that lost their feedback to fail-open — the signal behind the
+    // one-time degraded advisory at Stop. The batch->per-hook downgrade note is not a lost run
+    // (the serial retry ran the gate), so it does not count.
+    // And nothing is counted while forge itself is missing: that is the missing-CLI notice's job,
+    // and "raise timeoutMs" would be the wrong advice.
+    const lost = lastProbe?.ok !== false && outcome.errors.some((e) => !e.startsWith(BATCH_DOWNGRADE_MARK));
+    const state = lost ? startStateOf(agent) : undefined;
+    if (state !== undefined) state.failOpen = (state.failOpen ?? 0) + 1;
     recentRuns.push({
       label,
       blocked: outcome.blocked?.command ?? null,
       contexts: outcome.contexts.length,
       errors: outcome.errors,
+      ms: outcome.durationMs ?? 0,
       at: Date.now(),
     });
     if (recentRuns.length > 50) recentRuns.shift();
@@ -137,12 +171,6 @@ function apply(ctx, config = {}) {
   let forgeReady = false;
   let lastProbe;
   let probeInFlight;
-  const missingForgeNotice = (error) =>
-    `[forge-dsh] forge CLI not found (forgeBin: ${opts.forgeBin}). ` +
-    "Forge gates are OFF for this session — every action runs unguarded (fail-open). " +
-    "Reinstall the plugin (it bundles forge) or run `npm install -g @agent_forge/forge`, then start a new session; " +
-    "if it lives elsewhere, set forgeBin in the profile patch." +
-    (error === undefined ? "" : `\nProbe error: ${error}`);
   const ensureForge = async (agent) => {
     if (forgeReady) return true;
     if (probeInFlight === undefined) {
@@ -166,32 +194,33 @@ function apply(ctx, config = {}) {
     lastProbe = probe;
     if (probe.ok) {
       forgeReady = true;
+      if (batchMode === "auto") opts.batch = (probe.version?.match(/\d+\.\d+\.\d+/) ?? [])[0] === pluginVersion;
       return true;
     }
     if (debug) console.error(`[forge-dsh] forge probe failed: ${probe.error}`);
     const state = startStateOf(agent);
     if (state !== undefined && !state.noticed) {
       state.noticed = true;
-      state.pending.push(missingForgeNotice(probe.error));
+      state.pending.push(msg.missingForge(opts.forgeBin, probe.error));
     }
     return false;
   };
 
   // PreToolUse — deny short-circuits the tool call.
   ctx.effect(() => ctx.on("tools/pre-execute", async (exec, next) => {
-    const commands = matchedCommands(spec.PreToolUse, toCCToolName(exec?.name ?? ""));
-    if (commands.length === 0) return next();
-    const outcome = await runHookGroup(commands, buildToolPayload(exec, "PreToolUse"), opts);
-    noteErrors("pre-execute", outcome);
+    const groups = matchedGroups(spec.PreToolUse, toCCToolName(exec?.name ?? ""));
+    if (groups.length === 0) return next();
+    const outcome = await runMatchedGroups("PreToolUse", groups, buildToolPayload(exec, "PreToolUse"), opts);
+    noteErrors("pre-execute", outcome, exec?.agent);
     return preExecuteDecision(outcome, exec?.agent, next);
   }), "forge: pre-execute");
 
   // PostToolUse — block turns the gate's reason into an error result.
   ctx.effect(() => ctx.on("tools/post-execute", async (exec, result, next) => {
-    const commands = matchedCommands(spec.PostToolUse, toCCToolName(exec?.name ?? ""));
-    if (commands.length === 0) return next();
-    const outcome = await runHookGroup(commands, buildToolPayload(exec, "PostToolUse"), opts);
-    noteErrors("post-execute", outcome);
+    const groups = matchedGroups(spec.PostToolUse, toCCToolName(exec?.name ?? ""));
+    if (groups.length === 0) return next();
+    const outcome = await runMatchedGroups("PostToolUse", groups, buildToolPayload(exec, "PostToolUse"), opts);
+    noteErrors("post-execute", outcome, exec?.agent);
     return postExecuteDecision(outcome, next, exec?.agent);
   }), "forge: post-execute");
 
@@ -199,16 +228,16 @@ function apply(ctx, config = {}) {
   ctx.effect(() => ctx.on("agent/pre-step", async (payload, next) => {
     const state = startStateOf(payload?.agent);
     const startWait = waitStart(state);
-    const commands = matchedCommands(spec.UserPromptSubmit, "");
+    const groups = matchedGroups(spec.UserPromptSubmit, "");
     let decision;
-    if (commands.length === 0) {
+    if (groups.length === 0) {
       decision = await next();
     } else {
       const eventPayload = buildEventPayload("UserPromptSubmit", payload?.agent, {
         prompt: promptText(payload?.messages),
       });
-      const outcome = await runHookGroup(commands, eventPayload, opts);
-      noteErrors("pre-step", outcome);
+      const outcome = await runMatchedGroups("UserPromptSubmit", groups, eventPayload, opts);
+      noteErrors("pre-step", outcome, payload?.agent);
       decision = await preStepDecision(outcome, next, payload?.agent);
     }
     await startWait;
@@ -242,14 +271,15 @@ function apply(ctx, config = {}) {
       if (source === "compact" && state !== undefined) state.hinted = false;
       if (forgeOk && binSource === "bundled" && state !== undefined && !state.hinted) {
         state.hinted = true;
-        state.pending.push(bundledForgeHint(opts.forgeBin));
+        state.pending.push(msg.bundledHint(opts.forgeBin));
       }
-      const start = await runHookGroup(
-        matchedCommands(spec.SessionStart, ""),
+      const start = await runMatchedGroups(
+        "SessionStart",
+        matchedGroups(spec.SessionStart, ""),
         buildEventPayload("SessionStart", agent, { source }),
         opts,
       );
-      noteErrors("session-start", start);
+      noteErrors("session-start", start, agent);
       queue(start);
       // Welcome — queue order: welcome, path hint, forge's own contexts. One
       // human-facing line per session: startup only (resume/compact are not a
@@ -262,15 +292,24 @@ function apply(ctx, config = {}) {
       if (forgeOk && welcome && isStartup && managed && !isSubagent(agent) && state !== undefined && !state.welcomed) {
         state.welcomed = true;
         const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
-        state.pending.unshift(welcomeText(pluginVersion, forgeVersion));
+        state.pending.unshift(msg.welcome(pluginVersion, forgeVersion));
+        // The plugin brings the bridge and the forge CLI, not the skill library DSH reads from
+        // ~/.agents/skills; offer it (right behind the welcome) when that directory is empty.
+        // Once per plugin instance: there is no persisted "declined", so asking again at every
+        // new session would nag a user who already said no.
+        if (!skillsOffered && !agentsSkillsInstalled(config.skillsHome)) {
+          skillsOffered = true;
+          state.pending.splice(1, 0, msg.skillsHint(opts.forgeBin));
+        }
       }
       if (source === "compact") {
-        const compact = await runHookGroup(
-          matchedCommands(spec.PostCompact, ""),
+        const compact = await runMatchedGroups(
+          "PostCompact",
+          matchedGroups(spec.PostCompact, ""),
           buildEventPayload("PostCompact", agent, {}),
           opts,
         );
-        noteErrors("post-compact", compact);
+        noteErrors("post-compact", compact, agent);
         queue(compact);
       }
     })().catch((error) => {
@@ -286,13 +325,23 @@ function apply(ctx, config = {}) {
   // Stop — a blocking gate steers the agent into another step.
   ctx.effect(() => ctx.on("agent/turn-stopping", async (payload) => {
     const agent = payload?.agent;
-    const outcome = await runHookGroup(
-      matchedCommands(spec.Stop, ""),
+    const outcome = await runMatchedGroups(
+      "Stop",
+      matchedGroups(spec.Stop, ""),
       buildEventPayload("Stop", agent, { stop_hook_active: false }),
       opts,
     );
-    noteErrors("turn-stopping", outcome);
-    return turnStoppingOutcome(outcome, agent);
+    noteErrors("turn-stopping", outcome, agent);
+    const steering = await turnStoppingOutcome(outcome, agent);
+    // Fail-open is silent by design, so a session where gates keep timing out looks healthy while
+    // checking nothing. Once per session, at the first Stop that is not already steering for a
+    // real block, say so (advisory — it blocks nothing). The count is per session, not global.
+    const state = startStateOf(agent);
+    if (outcome.blocked === undefined && state !== undefined && (state.failOpen ?? 0) >= DEGRADED_AFTER && !state.degradedNoted) {
+      state.degradedNoted = true;
+      agent?.steer?.(pluginMessage(msg.degraded(state.failOpen)));
+    }
+    return steering;
   }), "forge: turn-stopping");
 
   // /forge-status — wired groups + verdict summary + recent runs (the only
@@ -327,9 +376,45 @@ function apply(ctx, config = {}) {
               const parts = [`  ${new Date(r.at).toISOString()} ${r.label}`];
               if (r.blocked) parts.push(`blocked-by=${r.blocked}`);
               if (r.contexts > 0) parts.push(`contexts=${r.contexts}`);
+              parts.push(`${r.ms}ms`);
               if (r.errors.length > 0) parts.push(`FAIL-OPEN: ${r.errors.join("; ")}`);
               return parts.join("  ");
             }).join("\n");
+        // Per-interception-point wall time over the ring buffer: the number behind "why is every
+        // tool call slow" (one batch spawn per group should sit well under the per-hook sum).
+        const byLabel = new Map();
+        for (const r of recentRuns) {
+          const t = byLabel.get(r.label) ?? { runs: 0, total: 0, max: 0 };
+          t.runs += 1;
+          t.total += r.ms;
+          t.max = Math.max(t.max, r.ms);
+          byLabel.set(r.label, t);
+        }
+        const timing = byLabel.size === 0
+          ? "  (no hook runs yet)"
+          : [...byLabel].map(([label, t]) => `  ${label}  runs=${t.runs}  avg=${Math.round(t.total / t.runs)}ms  max=${t.max}ms`).join("\n");
+        const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
+        const slowGroups = opts.batchState.slow === undefined ? [] : [...opts.batchState.slow.keys()];
+        let dispatchLine;
+        if (batchMode === "off") dispatchLine = "per-hook (batch:false)";
+        else if (opts.batchState.broken) dispatchLine = "per-hook (batch failed three times in a row; restart the host to retry)";
+        else if (!opts.batch) {
+          dispatchLine = lastProbe === undefined
+            ? "per-hook (waiting for the first session start to check the forge version)"
+            : `per-hook (forge ${forgeVersion ?? "of unknown version"} != plugin ${pluginVersion}: batch needs a forge of the plugin's own version)`;
+        } else dispatchLine = "batch (one forge process per matcher group)";
+        if (slowGroups.length > 0) dispatchLine += `; per-hook for slow group${slowGroups.length > 1 ? "s" : ""}: ${slowGroups.join(", ")}`;
+        let latestLine;
+        if (config.checkLatest === false) {
+          latestLine = "not checked (checkLatest:false)";
+        } else {
+          const latest = await (config.fetchLatest ?? (() => fetchLatestVersion({ registry: config.registry })))();
+          // an injected or misbehaving source may hand back anything: only plain semver is shown
+          if (latest === undefined || !isPlainVersion(latest)) latestLine = "unknown (offline, or the registry did not answer)";
+          else if (compareVersions(pluginVersion, latest) === -1) {
+            latestLine = `${latest} — a newer plugin is published; an old install keeps working but misses fixes, so update it`;
+          } else latestLine = `${latest} (up to date)`;
+        }
         const probeLine = lastProbe === undefined
           ? "not run yet (no session start in this process)"
           : lastProbe.ok
@@ -337,7 +422,7 @@ function apply(ctx, config = {}) {
             : `FAILED — gates inactive (${lastProbe.error})`;
         return {
           kind: "success",
-          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin} (${binSource})  timeoutMs: ${opts.timeoutMs}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
+          text: `# Forge quality gates\n\nplugin: ${pluginVersion}  latest: ${latestLine}\nforgeBin: ${opts.forgeBin} (${binSource})  timeoutMs: ${opts.timeoutMs}\ndispatch: ${dispatchLine}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Timing per interception point (last ${recentRuns.length} runs)\n${timing}\n\n## Recent runs (last 10)\n${runs}`,
         };
       },
     }), "forge: status command");
