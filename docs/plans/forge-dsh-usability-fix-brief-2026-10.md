@@ -317,6 +317,6 @@ for label, fn in (("serial", serial), ("batch", batch)):
 | P2-5 init-suggest 不认 DSH 插件 | 无需改 | 前提已过期：`init-suggest` 现为「每项目问一次」，不从「装了插件」推断同意（`takeover` 偏好才是 opt-in），Claude 与 DSH 插件策略一致；`plugin_detect.go` 只服务 hooks 去重 |
 | §6 打包策略 | 走 B 并超出 | 插件依赖 `@agent_forge/forge`（精确版本、lockstep），装插件即装本体、卸载即移除；首轮告知绝对路径；缺技能库时首轮提议 `forge skills install --global --target agents`（征得同意后执行）；发布后验证脚本 |
 | §8 验收 6 `/forge-status` 耗时字段 | 已加 | `dispatch:` 行、按拦截点耗时、每次运行耗时 |
-| §8 验收 7 Windows 冒烟 | 未在本机验证 | 本机是 macOS，无法实跑。已做的：win32 参数引用逻辑有单测（含 batch matcher 的 `Write\|Edit`）；新增测试里依赖 POSIX 的用例（符号链接、shell 脚本替身）显式跳过 win32；其余走既有 `.cmd` shim 替身。真实结果取决于 CI `scripts-test` 的 windows-latest 矩阵，PR 的 CI 通过前不应视为已验证 |
+| §8 验收 7 Windows 冒烟 | 已验证（CI） | 本机是 macOS，无法实跑；依据是 PR 125 的 CI：`scripts-test (windows-latest)` 通过（run 39587876627 / 39587883430，提交 f4de00c8）——整套插件测试在 Windows 上跑过，覆盖 batch 参数引用（matcher 的 `Write\|Edit` 经 `cmd.exe`）与 `.cmd` shim 替身；依赖 POSIX 的用例（符号链接、shell 脚本替身）显式跳过 win32。Go 侧的 `build (windows-latest)` 以 PR 最终 CI 为准 |
 
 §10 决策（按用户「全部做完」取默认）：欢迎语语言随 locale（系统为中文则中文）；init-suggest 维持「问一次」；定位走 B 并内置本体依赖（接受每 profile +13MB）；不做自动安装（C）。
