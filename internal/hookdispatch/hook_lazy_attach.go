@@ -3,6 +3,7 @@ package hookdispatch
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -34,7 +35,8 @@ func lazyAttachOnSourceWrite(root, sessionID, agent, filePath string, active *ta
 	if active == nil || sessionID == "" || filePath == "" || !taskpipeline.IsSourceExt(filePath) {
 		return
 	}
-	if rel := toRelPath(root, filePath); rel == ".." || strings.HasPrefix(rel, "../") {
+	// 项目外：Rel 结果以 .. 开头；或 Rel 失败原样返回了绝对路径（Windows 跨盘符）。
+	if rel := toRelPath(root, filePath); rel == ".." || strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) {
 		return
 	}
 	sid := util.SanitizeSessionID(sessionID)

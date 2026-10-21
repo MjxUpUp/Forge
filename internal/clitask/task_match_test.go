@@ -46,6 +46,7 @@ func TestFuzzyMatch(t *testing.T) {
 		{name: "chinese fragment", query: "接续拉取", wantRef: "feat/resume-pull", wantField: "summary", wantScore: 51},
 		{name: "abbreviation subsequence", query: "rsmpl", wantRef: "feat/resume-pull", wantField: "ref", wantScore: 40},
 		{name: "single char is noise", query: "a"},
+		{name: "single char plus punctuation is noise", query: "a."},
 		// 「务」「拉」都在 feat/resume-pull 的标题里，但不相邻——汉字段整体成词，散落的字凑不齐全词档。
 		{name: "scattered han chars are noise", query: "务拉"},
 		{name: "unrelated query", query: "zzzz"},

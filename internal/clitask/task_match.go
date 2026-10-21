@@ -156,8 +156,9 @@ func fieldTier(query, text string, isRef bool) int {
 	}
 	qWords, tWords := matchWords(q), matchWords(t)
 	// 全词档：≥2 个词，或单个词但查询带了分隔符/标点（`resume.`、`-pull`）——剥掉标点后的词
-	// 整体出现在字段里，不该掉到子序列档。
-	if (len(qWords) >= 2 || (len(qWords) == 1 && qWords[0] != q)) && allContained(qWords, t) {
+	// 整体出现在字段里，不该掉到子序列档。单词分支要求剥标点后仍 ≥2 个字符：`a.` 只剩单字母，
+	// 与单字符查询同属噪音。
+	if (len(qWords) >= 2 || (len(qWords) == 1 && qWords[0] != q && utf8.RuneCountInString(qWords[0]) >= 2)) && allContained(qWords, t) {
 		return tierAllWords
 	}
 	if typoMatch(qWords, tWords, t) {
