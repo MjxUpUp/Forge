@@ -149,6 +149,44 @@ type AcceptanceCriterion struct {
 	// 已知局限：来源按 ID 记录、不按出处分开——同一 ID 既手工补登又由 spec 声明时，
 	// spec 删掉它会一并移除（覆盖表随之报「未验证」，绝不误报已验证；重跑 task accept 即恢复）。
 	ExtractedTraces []string `json:"extracted_traces,omitempty"`
+	// FailHistory keeps the most recent failed runs of this criterion (newest
+	// last, at most MaxAcceptanceFailHistory). Cleared when the criterion passes
+	// and by a human `--reset-loop`. Feeds the same-cause recurrence verdict
+	// (loop-contract B1-1): two consecutive failures with the same normalized
+	// fingerprint but different ChangeHash mean code changed and the failure did
+	// not.
+	//
+	// FailHistory 保留本条验收最近几次失败的实跑（新的在后，最多
+	// MaxAcceptanceFailHistory 条）。验收通过即清空，人工 --reset-loop 也清空。
+	// 供同因复发判定消费（loop 契约 B1-1）：相邻两次失败指纹相同、ChangeHash
+	// 不同 = 改了代码、失败没变。
+	FailHistory []AcceptanceFailure `json:"fail_history,omitempty"`
+	// LastFailure is the transient failure record of the run that just happened
+	// (never persisted): VerifyAcceptance fills it, MergeAcceptanceResults
+	// appends it to the authoritative FailHistory. nil when the run passed.
+	//
+	// LastFailure 是刚发生这一次实跑的临时失败记录（不落盘）：VerifyAcceptance
+	// 填写，MergeAcceptanceResults 把它并进权威盘上状态的 FailHistory。通过时为 nil。
+	LastFailure *AcceptanceFailure `json:"-"`
+}
+
+// MaxAcceptanceFailHistory caps FailHistory per criterion.
+//
+// MaxAcceptanceFailHistory 是每条验收 FailHistory 的上限。
+const MaxAcceptanceFailHistory = 5
+
+// AcceptanceFailure is one failed run of an acceptance criterion.
+//
+// AcceptanceFailure 是验收标准的一次失败实跑。ChangeHash 在跑命令【之前】算
+// （TaskFingerprint），与 AcceptedChangeHash（跑后算、供新鲜度比对）是两个字段；
+// Changed 记当时任务改动文件的内容指纹（路径 → sha256 前 12 位，最多 50 条），
+// 让死路记录能说出"动了哪些文件仍然失败"。
+type AcceptanceFailure struct {
+	At          time.Time         `json:"at"`
+	ExitCode    int               `json:"exit_code"`
+	Fingerprint string            `json:"fingerprint"`
+	ChangeHash  string            `json:"change_hash,omitempty"`
+	Changed     map[string]string `json:"changed,omitempty"`
 }
 
 // Assertion is one structured, mechanically checkable assertion within a v2
@@ -238,7 +276,27 @@ type Decision struct {
 	By        string    `json:"by,omitempty"`        // 确认方（工具/人，如 [pi]/[claude-code]/人）
 	Affects   []string  `json:"affects,omitempty"`   // 影响的文件/模块
 	Rationale string    `json:"rationale,omitempty"` // 为什么这么决定（HANDOFF 纪律：写"为什么"不只写"是什么"）
+	// Kind classifies the decision: "" = an ordinary confirmed decision;
+	// DecisionKindDeadEnd = a rejected approach (Content = the approach,
+	// Rationale = the failure evidence) — the task's dead-end memory
+	// (loop-contract B1-4). Rendered in its own section and never listed as a
+	// confirmed decision.
+	//
+	// Kind 是决策类别：空 = 普通已确认决策；DecisionKindDeadEnd = 已证伪方案
+	// （Content 写方案，Rationale 写失败证据）——任务的死路记忆（loop 契约 B1-4）。
+	// 单独成节渲染，不列入已确认决策。
+	Kind string `json:"kind,omitempty"`
 }
+
+// DecisionKindDeadEnd marks a Decision as a rejected approach.
+//
+// DecisionKindDeadEnd 把一条 Decision 标为已证伪方案。
+const DecisionKindDeadEnd = "dead-end"
+
+// IsDeadEnd reports whether the decision records a rejected approach.
+//
+// IsDeadEnd 报告该决策是否记录的是已证伪方案。
+func (d Decision) IsDeadEnd() bool { return d.Kind == DecisionKindDeadEnd }
 
 // Blocker is an impediment (corresponding to the known-issues/blockers of
 // HANDOFF).
@@ -694,6 +752,27 @@ type TaskState struct {
 	// --reset-loop）或 abort 可清除。nil = 循环未耗尽。
 	LoopExhausted *LoopExhaustion `json:"loop_exhausted,omitempty"`
 
+	// LoopResetRound is the review cycle from which a human reset
+	// (`forge task finding --reset-loop`) restarts the loop budget: an open
+	// finding's loop age counts from max(Finding.Round, LoopResetRound), so a
+	// reset grants a full fresh budget instead of re-exhausting on the next
+	// pre-flight. 0 = never reset. LoopResetAt records when; later loop-contract
+	// counters (docs/plans/loop-contract-2026-10-proposal.md B1) window from it.
+	// Machine-local: it is a position in ReviewRounds, and sync merges
+	// ReviewRounds but not these fields (local wins, like LoopExhausted) — after
+	// merging another machine's rounds the budget may re-exhaust early, and a
+	// remote reset does not propagate. Both err on the strict side, never a leak.
+	//
+	// LoopResetRound 是人工重置（forge task finding --reset-loop）后回环预算的起算
+	// 轮：open finding 的轮龄从 max(Finding.Round, LoopResetRound) 起算——重置
+	// 发放一份完整新预算，而不是下一次 pre-flight 立刻再耗尽。0 = 从未重置。
+	// LoopResetAt 记重置时刻；loop 契约后续的计数窗口（B1）以它为起点。
+	// 仅本机有效：它是 ReviewRounds 的位置，而同步会合并 ReviewRounds、不合并这
+	// 两个字段（与 LoopExhausted 同为本地为准）——并入他机轮次后预算可能提前耗尽，
+	// 他机的重置也不会传过来。两种偏差都偏严，不会漏放。
+	LoopResetRound int        `json:"loop_reset_round,omitempty"`
+	LoopResetAt    *time.Time `json:"loop_reset_at,omitempty"`
+
 	// ReportedFindings is the set of advisory finding fingerprints already shown to
 	// the agent by this task's verify scans (see advisory_dedup.go): cheat-scan
 	// fingerprints are two-part (ruleID|file:line); unused-scan fingerprints are
@@ -753,6 +832,17 @@ type TaskGateResult struct {
 	Passed      bool      `json:"passed"`
 	CompletedAt time.Time `json:"completed_at"`
 	HeadCommit  string    `json:"head_commit,omitempty"` // gate 通过时的 git HEAD
+	// Silent marks a result recorded by the hook path (`forge task gate
+	// --silent`, the Stop hook's advisory task-verify) rather than by the
+	// agent running the gate. The loop verdict's gate-repeat-blocked rule skips
+	// these: the Stop hook fires every turn, so counting its BLOCKED rows would
+	// escalate a task the agent never tried to push (loop-contract B1-2).
+	//
+	// Silent 标记该结果来自 hook 路径（`forge task gate --silent`，Stop hook 的
+	// advisory task-verify）而不是 agent 主动跑门禁。循环判词的
+	// gate-repeat-blocked 规则跳过它们：Stop hook 每轮都跑，计入其 BLOCKED 行会
+	// 把 agent 从未推过的门判成升级（loop 契约 B1-2）。
+	Silent bool `json:"silent,omitempty"`
 }
 
 // ReviewRound records one `forge review pass` event (the reviewed snapshot +
@@ -1026,6 +1116,15 @@ func (s *TaskState) ReworkRounds() (reviewPasses, completeRejections int) {
 // 若该 gate 已通过则为 no-op（防止 stop hook 重复 verify 产生重复 history 条目）。
 // 先前失败的 gate 可重试，会新增一条 entry。
 func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit string) {
+	s.RecordGateResultFrom(gateID, passed, headCommit, false)
+}
+
+// RecordGateResultFrom is RecordGateResult with the Silent provenance flag
+// (true = recorded by the hook path, see TaskGateResult.Silent).
+//
+// RecordGateResultFrom 是带 Silent 来源标记的 RecordGateResult（true = hook 路径
+// 记录，见 TaskGateResult.Silent）。
+func (s *TaskState) RecordGateResultFrom(gateID string, passed bool, headCommit string, silent bool) {
 	// Skip if this gate already passed — prevents stop-hook from repeatedly verifying the same gate and producing 25x duplicate entries.
 	// 本 gate 已通过则跳过——防止 stop hook 反复 verify 同一 gate 产生 25 倍重复
 	// 条目。
@@ -1038,6 +1137,7 @@ func (s *TaskState) RecordGateResult(gateID string, passed bool, headCommit stri
 		Passed:      passed,
 		CompletedAt: time.Now(),
 		HeadCommit:  headCommit,
+		Silent:      silent,
 	})
 	if passed {
 		s.CurrentGate = s.NextGate()

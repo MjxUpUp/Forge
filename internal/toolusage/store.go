@@ -360,30 +360,53 @@ func SumEstTokens(calls []ToolCall) int {
 	return total
 }
 
-// taskTokenWarnThreshold 是单个 task 累计估算 token 的 advisory 警示阈值（loop 成本上限）。
-// EstimateTokens 是 rune/3 粗估，阈值按量级定：50 万估算 token 是明显跑飞的量级
-// （正常 task 几万~十几万）。advisory 不硬阻断——只提示成本偏高，由人/agent 决定是否换策略。
-const taskTokenWarnThreshold = 500000
+// DefaultTaskTokenBudget is the advisory token-cost threshold of one task (the
+// loop cost ceiling). EstimateTokens is a rune/3 estimate, so the threshold is
+// an order of magnitude: 500k estimated tokens is clearly a runaway task
+// (normal tasks land in the tens to low hundreds of thousands). Advisory only.
+// protocol.yml `loop.token_budget` overrides it per project (loop-contract B1-3).
+//
+// DefaultTaskTokenBudget 是单个 task 累计估算 token 的 advisory 警示阈值（loop 成本
+// 上限）。EstimateTokens 是 rune/3 粗估，阈值按量级定：50 万估算 token 是明显跑飞的
+// 量级（正常 task 几万~十几万）。advisory 不硬阻断。protocol.yml 的
+// `loop.token_budget` 可按项目覆盖（loop 契约 B1-3）。
+const DefaultTaskTokenBudget = 500000
 
 // tokenBreakerWarning 是纯判断函数，可独立单测（不必造超 50 万 token 的文件数据）。
-func tokenBreakerWarning(total int) string {
-	if total >= taskTokenWarnThreshold {
-		return fmt.Sprintf("task 累计估算 token 已达 %d（≥%d）——loop 成本偏高，检查无效往返/反复读大文件。", total, taskTokenWarnThreshold)
+// budget ≤ 0 回落默认阈值。
+func tokenBreakerWarning(total, budget int) string {
+	if budget <= 0 {
+		budget = DefaultTaskTokenBudget
+	}
+	if total >= budget {
+		return fmt.Sprintf("task 累计估算 token 已达 %d（≥%d）——loop 成本偏高，检查无效往返/反复读大文件。", total, budget)
 	}
 	return ""
 }
 
-// TaskTokenBreaker is the task-level token cost circuit breaker (advisory).
+// TaskTokenBreaker is the task-level token cost circuit breaker (advisory) at
+// the default budget. See TaskTokenBreakerWithBudget.
 //
-// TaskTokenBreaker 是 task 级 token 成本熔断（advisory）。聚合 task 全部 tool 调用的
-// 估算 token，超阈值返回警示字符串（CLI 写 stderr / MCP 塞进 result），未超返回空。
-// 这是 EstimateTokens/SumEstTokens 真正参与 loop 成本控制的接入点——让 token 计量不止于
-// forge trace 可观测，而是 task gate 推进时的成本上限警示，对齐「loop 成本上限」卖点。
+// TaskTokenBreaker 是按默认预算的 task 级 token 成本熔断（advisory）。见
+// TaskTokenBreakerWithBudget。
 func TaskTokenBreaker(root, taskRef string) (warning string, total int) {
+	return TaskTokenBreakerWithBudget(root, taskRef, DefaultTaskTokenBudget)
+}
+
+// TaskTokenBreakerWithBudget aggregates the estimated tokens of every tool call
+// of the task and returns a warning string once they reach budget (≤0 = the
+// default). This is where EstimateTokens/SumEstTokens actually take part in
+// loop cost control: not just visible in forge trace, but a ceiling warning at
+// gate time (CLI → stderr, loop verdict → budget-tokens).
+//
+// TaskTokenBreakerWithBudget 聚合 task 全部 tool 调用的估算 token，达到 budget
+// （≤0 = 默认）即返回警示串（CLI 写 stderr，循环判词给 budget-tokens），未达返回空。
+// 这是 EstimateTokens/SumEstTokens 真正参与 loop 成本控制的接入点。
+func TaskTokenBreakerWithBudget(root, taskRef string, budget int) (warning string, total int) {
 	calls, err := LoadForTaskAll(root, taskRef)
 	if err != nil || len(calls) == 0 {
 		return "", 0
 	}
 	total = SumEstTokens(calls)
-	return tokenBreakerWarning(total), total
+	return tokenBreakerWarning(total, budget), total
 }

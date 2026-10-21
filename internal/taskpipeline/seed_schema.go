@@ -31,11 +31,14 @@ func SeedTaskStateForSchema() any {
 			// Arg/Negate 填非零值：零值会被 omitempty 吞掉，键就退出承诺面（种子
 			// 纪律"值无意义、键必须满"）。
 			Assertions: []tasktypes.Assertion{{Type: "contains", Arg: "a", Expected: "e", Negate: true}},
+			// loop 契约 B1-1：fail_history 及其嵌套键（at/exit_code/fingerprint/
+			// change_hash/changed）必须进承诺面。
+			FailHistory: []tasktypes.AcceptanceFailure{{At: now, ExitCode: 1, Fingerprint: "fp", ChangeHash: "h", Changed: map[string]string{"file": "h"}}},
 		}},
 	}
 	s.CompletedAt = &now
 	s.SessionID = "sess"
-	s.History = []tasktypes.TaskGateResult{{Gate: "g", Passed: true, HeadCommit: "abc"}}
+	s.History = []tasktypes.TaskGateResult{{Gate: "g", Passed: true, HeadCommit: "abc", Silent: true}}
 	s.ReviewPassed = true
 	s.ReviewRounds = []tasktypes.ReviewRound{{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now}}
 	s.DesignPhases = []tasktypes.DesignPhase{"frontend"}
@@ -71,7 +74,8 @@ func SeedTaskStateForSchema() any {
 	s.CrossRepoImpact = &tasktypes.CrossRepoImpact{Level: "multi", Repos: []string{"r"}, Note: "n", DeclaredAt: now}
 	s.SpecArtifacts = map[string]tasktypes.ArtifactRef{"intent": {Path: "p", Hash: "h", UpdatedAt: now}}
 	s.SessionLinks = []tasktypes.SessionLink{{SessionID: "sess", Tool: "seed", JoinedAt: now}}
-	s.Decisions = []tasktypes.Decision{{ID: "d1", Content: "c", DecidedAt: now, By: "seed", Affects: []string{"x"}, Rationale: "r"}}
+	// decisions.kind（loop 契约 B1-4 死路记忆）填非零值进承诺面。
+	s.Decisions = []tasktypes.Decision{{ID: "d1", Content: "c", DecidedAt: now, By: "seed", Affects: []string{"x"}, Rationale: "r", Kind: tasktypes.DecisionKindDeadEnd}}
 	s.NextSteps = []string{"n"}
 	s.Blockers = []tasktypes.Blocker{{ID: "b1", Content: "c", RaisedAt: now, Status: "open", Resolution: "r", By: "seed"}}
 	s.Artifacts = []tasktypes.Artifact{{Path: "p", Kind: "file", Note: "n"}}
@@ -92,6 +96,9 @@ func SeedTaskStateForSchema() any {
 	// resolved_prints / loop_exhausted（含嵌套 reason/detail/at）键必须在承诺面。
 	s.ResolvedPrints = []string{"seedprint"}
 	s.LoopExhausted = &tasktypes.LoopExhaustion{Reason: tasktypes.LoopReasonRounds, Detail: "d", At: now}
+	// 人工重置后的新预算起算点（loop-contract B0）：loop_reset_round / loop_reset_at。
+	s.LoopResetRound = 2
+	s.LoopResetAt = &now
 	// findings/review_rounds 的嵌套可选键（round/change_hash/note）。
 	s.Findings = append(s.Findings, tasktypes.Finding{ID: "f2", Content: "c", Source: "s", Status: "open", Round: 1, ChangeHash: "h"})
 	s.ReviewRounds = append(s.ReviewRounds, tasktypes.ReviewRound{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now, Note: "n"})

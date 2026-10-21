@@ -375,6 +375,11 @@ func redactTask(s *taskpipeline.TaskState) {
 		s.Acceptance[i].Output = ``
 		s.Acceptance[i].Run = redactedPlaceholder // 命令含包路径
 		s.Acceptance[i].Expected = redactedPlaceholder
+		// FailHistory.Changed 是「仓库路径 → 内容指纹」映射——与 Run/Affects 同类泄露
+		// 路径；指纹与 ChangeHash 是不透明哈希，保留形状。
+		for j := range s.Acceptance[i].FailHistory {
+			s.Acceptance[i].FailHistory[j].Changed = nil
+		}
 	}
 	// Assignment identity + free-text reasons.
 	if s.Assignment != nil {
