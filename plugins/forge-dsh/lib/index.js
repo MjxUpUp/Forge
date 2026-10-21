@@ -25,6 +25,8 @@
  *               the forge bundled with this plugin (dependency, version-locked) >
  *               "forge" on PATH
  *   timeoutMs - per-hook ceiling, kill + fail open (default 30000)
+ *   locale    - language of the plugin's own messages: "en" | "zh" | "auto"
+ *               (default auto: env FORGE_DSH_LOCALE, then the system locale)
  *   welcome   - false drops the one-line first-turn onboarding (default true)
  *   startWaitMs - how long the first pre-step waits for the session-start
  *               contexts before moving on without them (default 1500)
@@ -34,13 +36,17 @@
  * @module @agent_forge/forge-dsh
  */
 import { readFileSync } from "node:fs";
-import { bundledForgeHint, resolveBundledForge } from "./bundled.js";
+import { resolveBundledForge } from "./bundled.js";
+import { messagesFor, resolveLocale } from "./messages.js";
 import { probeForge } from "./runner.js";
 import { runMatchedGroups, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
-import { buildEventPayload, buildToolPayload, matchedGroups, promptText, toCCToolName, welcomeText, isSubagent, MANAGED_BANNER } from "./tools.js";
+import { buildEventPayload, buildToolPayload, matchedGroups, pluginMessage, promptText, toCCToolName, isSubagent, MANAGED_BANNER } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
 const pluginVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+
+/** Fail-open runs in one session before the degraded advisory fires. */
+const DEGRADED_AFTER = 3;
 
 /** Stable Cordis plugin name. */
 const name = "forge-quality";
@@ -74,11 +80,18 @@ function apply(ctx, config = {}) {
   };
   const debug = config.debug === true;
   const welcome = config.welcome !== false;
+  const msg = messagesFor(resolveLocale(config.locale));
   const startWaitMs = Number.isFinite(config.startWaitMs) && config.startWaitMs >= 0 ? config.startWaitMs : 1500;
   // Recent-run ring buffer for /forge-status — fail-open verdicts are silent
   // by design, so this (plus debug logging) is the only way to see them.
   const recentRuns = [];
-  const noteErrors = (label, outcome) => {
+  const noteErrors = (label, outcome, agent) => {
+    // Per-session count of runs that lost their feedback to fail-open — the signal behind the
+    // one-time degraded advisory at Stop. The batch->per-hook downgrade note is not a lost run
+    // (the serial retry ran the gate), so it does not count.
+    const lost = outcome.errors.some((e) => !e.includes("batch unsupported"));
+    const state = lost ? startStateOf(agent) : undefined;
+    if (state !== undefined) state.failOpen = (state.failOpen ?? 0) + 1;
     recentRuns.push({
       label,
       blocked: outcome.blocked?.command ?? null,
@@ -143,12 +156,6 @@ function apply(ctx, config = {}) {
   let forgeReady = false;
   let lastProbe;
   let probeInFlight;
-  const missingForgeNotice = (error) =>
-    `[forge-dsh] forge CLI not found (forgeBin: ${opts.forgeBin}). ` +
-    "Forge gates are OFF for this session — every action runs unguarded (fail-open). " +
-    "Reinstall the plugin (it bundles forge) or run `npm install -g @agent_forge/forge`, then start a new session; " +
-    "if it lives elsewhere, set forgeBin in the profile patch." +
-    (error === undefined ? "" : `\nProbe error: ${error}`);
   const ensureForge = async (agent) => {
     if (forgeReady) return true;
     if (probeInFlight === undefined) {
@@ -178,7 +185,7 @@ function apply(ctx, config = {}) {
     const state = startStateOf(agent);
     if (state !== undefined && !state.noticed) {
       state.noticed = true;
-      state.pending.push(missingForgeNotice(probe.error));
+      state.pending.push(msg.missingForge(opts.forgeBin, probe.error));
     }
     return false;
   };
@@ -188,7 +195,7 @@ function apply(ctx, config = {}) {
     const groups = matchedGroups(spec.PreToolUse, toCCToolName(exec?.name ?? ""));
     if (groups.length === 0) return next();
     const outcome = await runMatchedGroups("PreToolUse", groups, buildToolPayload(exec, "PreToolUse"), opts);
-    noteErrors("pre-execute", outcome);
+    noteErrors("pre-execute", outcome, exec?.agent);
     return preExecuteDecision(outcome, exec?.agent, next);
   }), "forge: pre-execute");
 
@@ -197,7 +204,7 @@ function apply(ctx, config = {}) {
     const groups = matchedGroups(spec.PostToolUse, toCCToolName(exec?.name ?? ""));
     if (groups.length === 0) return next();
     const outcome = await runMatchedGroups("PostToolUse", groups, buildToolPayload(exec, "PostToolUse"), opts);
-    noteErrors("post-execute", outcome);
+    noteErrors("post-execute", outcome, exec?.agent);
     return postExecuteDecision(outcome, next, exec?.agent);
   }), "forge: post-execute");
 
@@ -214,7 +221,7 @@ function apply(ctx, config = {}) {
         prompt: promptText(payload?.messages),
       });
       const outcome = await runMatchedGroups("UserPromptSubmit", groups, eventPayload, opts);
-      noteErrors("pre-step", outcome);
+      noteErrors("pre-step", outcome, payload?.agent);
       decision = await preStepDecision(outcome, next, payload?.agent);
     }
     await startWait;
@@ -248,7 +255,7 @@ function apply(ctx, config = {}) {
       if (source === "compact" && state !== undefined) state.hinted = false;
       if (forgeOk && binSource === "bundled" && state !== undefined && !state.hinted) {
         state.hinted = true;
-        state.pending.push(bundledForgeHint(opts.forgeBin));
+        state.pending.push(msg.bundledHint(opts.forgeBin));
       }
       const start = await runMatchedGroups(
         "SessionStart",
@@ -256,7 +263,7 @@ function apply(ctx, config = {}) {
         buildEventPayload("SessionStart", agent, { source }),
         opts,
       );
-      noteErrors("session-start", start);
+      noteErrors("session-start", start, agent);
       queue(start);
       // Welcome — queue order: welcome, path hint, forge's own contexts. One
       // human-facing line per session: startup only (resume/compact are not a
@@ -269,7 +276,7 @@ function apply(ctx, config = {}) {
       if (forgeOk && welcome && isStartup && managed && !isSubagent(agent) && state !== undefined && !state.welcomed) {
         state.welcomed = true;
         const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
-        state.pending.unshift(welcomeText(pluginVersion, forgeVersion));
+        state.pending.unshift(msg.welcome(pluginVersion, forgeVersion));
       }
       if (source === "compact") {
         const compact = await runMatchedGroups(
@@ -278,7 +285,7 @@ function apply(ctx, config = {}) {
           buildEventPayload("PostCompact", agent, {}),
           opts,
         );
-        noteErrors("post-compact", compact);
+        noteErrors("post-compact", compact, agent);
         queue(compact);
       }
     })().catch((error) => {
@@ -300,8 +307,17 @@ function apply(ctx, config = {}) {
       buildEventPayload("Stop", agent, { stop_hook_active: false }),
       opts,
     );
-    noteErrors("turn-stopping", outcome);
-    return turnStoppingOutcome(outcome, agent);
+    noteErrors("turn-stopping", outcome, agent);
+    const steering = await turnStoppingOutcome(outcome, agent);
+    // Fail-open is silent by design, so a session where gates keep timing out looks healthy while
+    // checking nothing. Once per session, at the first Stop that is not already steering for a
+    // real block, say so (advisory — it blocks nothing). The count is per session, not global.
+    const state = startStateOf(agent);
+    if (outcome.blocked === undefined && state !== undefined && (state.failOpen ?? 0) >= DEGRADED_AFTER && !state.degradedNoted) {
+      state.degradedNoted = true;
+      agent?.steer?.(pluginMessage(msg.degraded(state.failOpen)));
+    }
+    return steering;
   }), "forge: turn-stopping");
 
   // /forge-status — wired groups + verdict summary + recent runs (the only

@@ -1347,8 +1347,11 @@ COMMAND=$(strip_interp_heredoc_bodies "$COMMAND")
 # 该条件恒假——评审实证主路径失效）。SEM_REASON 非空（语义层命中）时不得放行：
 # 词法层认定命令位不可解析/替换成立时，heredoc 剥离不能洗白它。
 if [ "$COMMAND" != "$HEREDOC_ORIG" ] && [ -z "$SEM_REASON" ] && ! is_hazardous "$COMMAND" && ! is_exec_wrapped "$HEREDOC_ORIG"; then
+  # 静默放行：这是诊断信息不是给模型的指令——宿主会把 hook stdout 注入对话（曾因此逐字
+  # 回放整条命令成一条合成 user 消息）。审计痕迹只落 hazard 事件台账（EventData）。
+  # Silent allow: diagnostics, not instructions — the host injects hook stdout into the
+  # conversation; the audit trail lives in the hazard ledger (EventData) only.
   forge hazard log data "$HEREDOC_ORIG" >/dev/null 2>&1 || true
-  echo "PASS [hazard-guard] 解释器 heredoc 正文为数据上下文（无执行原语），放行"
   exit 0
 fi
 
@@ -1365,8 +1368,9 @@ fi
 # 剥走引号内内容后会伪装成数据上下文，语义层的词级判定才是权威。
 STRIPPED=$(strip_quotes "$COMMAND")
 if [ "$STRIPPED" != "$COMMAND" ] && [ -z "$SEM_REASON" ] && ! is_hazardous "$STRIPPED" nowl && ! is_exec_wrapped "$COMMAND"; then
+  # 静默放行，同上：数据上下文放行说明只落 hazard 事件台账，不进对话。
+  # Silent allow, as above: the data-context note goes to the ledger, not the conversation.
   forge hazard log data "$COMMAND" >/dev/null 2>&1 || true
-  echo "PASS [hazard-guard] 危险串仅在引号内或注释行（数据上下文），放行: $COMMAND"
   exit 0
 fi
 

@@ -100,6 +100,7 @@ under `~/.dsh/profiles/<profile>/`):
     timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
     startWaitMs: 1500    # first pre-step waits this long for session-start contexts
     welcome: true        # one first-turn line telling the user Forge is active (false = silent)
+    locale: auto         # language of the plugin's own messages: en | zh | auto (env FORGE_DSH_LOCALE, then system)
     batch: true          # one forge process per matcher group (false = one process per hook)
     enabled: true        # false unwires every listener
     debug: false         # log fail-open hook errors to console.error
@@ -133,6 +134,17 @@ forces the per-hook path. And a gate that legitimately exceeds `timeoutMs` (the
 limit now covers the whole group; e.g. `auto-compile` cold-building a large project
 past 30s) silently loses that run's feedback to fail-open (visible in
 `/forge-status`). Raise `timeoutMs` on big projects.
+
+A session whose gates keep failing open used to look healthy while checking nothing. After
+three fail-open runs in one session the plugin says so **once**, at the next Stop that is not
+already steering for a real block: how many runs lost their feedback, where to look
+(`/forge-status`) and what to raise (`timeoutMs`). It is advisory — nothing is blocked. The batch
+to per-hook downgrade is not counted: that run still executed its gates.
+
+Status-only receipts that forge prints when it has nothing to say (`no weakening detected`,
+`all skills SAFE`, `no .mcp.json` …) are dropped before injection — the host turns every allow
+context into a synthetic user message, and these carry no instruction. Anything else, including
+notes the plugin has never seen, passes through.
 
 `/forge-status` reports a `dispatch:` line (batch or per-hook) and the probe line after the
 header: `probe: ok (forge version …)`, `probe: FAILED — gates inactive (…)`, or `not run

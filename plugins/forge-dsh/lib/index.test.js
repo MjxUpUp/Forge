@@ -17,6 +17,9 @@ import { FAKE_BIN as FAKE } from "../test/doubles/forge-bin.mjs";
 import { matchedCommands } from "./tools.js";
 
 const LOG = fileURLToPath(new URL("../test/doubles/.wiring-log", import.meta.url));
+// The plugin's own messages are localized (system locale by default); pin English so the suite
+// is the same on every machine. Tests that exercise another language pass `locale` explicitly.
+process.env.FORGE_DSH_LOCALE = "en";
 // The roster single source of truth — tests derive expected hook order from it.
 const SPEC = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
 
@@ -615,7 +618,7 @@ async function welcomeCtx(t, config = {}, { managed = true } = {}) {
   });
   const ctx = new Context();
   ctx.provide("tools", {});
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, ...config });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, locale: "zh", ...config });
   return ctx;
 }
 const WELCOME = "质量门禁已接管本项目";
@@ -695,7 +698,78 @@ test("welcome: no claim when forge did not announce the project as managed, when
   missing.emit("agent/session-start", { agent: c.agent, source: "startup" });
   const noForge = await preStepTexts(missing, c.agent);
   assert.equal(welcomeCount(noForge.texts), 0, "gates are OFF — do not claim they are on");
-  assert.equal(noForge.texts.filter((x) => x.includes("forge CLI not found")).length, 1);
+  assert.equal(noForge.texts.filter((x) => x.includes("未找到 forge CLI")).length, 1, "the notice follows the configured language (zh here)");
+});
+
+test("welcome: the language follows config locale — English on request", async (t) => {
+  const ctx = await welcomeCtx(t, { locale: "en" });
+  const { agent } = makeAgent();
+  agent.session.id = "en-1";
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const texts = (await preStepTexts(ctx, agent)).texts;
+  assert.equal(welcomeCount(texts), 0, "no Chinese welcome");
+  assert.match(texts[0], /Forge quality gates now govern this project/);
+  assert.match(texts[0], /first reply/);
+});
+
+test("fail-open: a session whose gates keep failing open is told once at Stop, with nothing blocked", async (t) => {
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  // 1ms ceiling: every forge run times out, i.e. fails open and loses that run's feedback
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 1, batch: false });
+  const { agent, calls } = makeAgent();
+  const exec = () => ({ name: "bash", arguments: { command: "go build ./..." }, agent });
+  const allow = async () => ({ kind: "allow" });
+  assert.deepEqual(await ctx.waterfall("tools/pre-execute", exec(), allow), { kind: "allow" }, "fail-open: still allowed");
+  await ctx.serial("agent/turn-stopping", { agent, turn: 1 });
+  assert.equal(calls.steered.length, 0, "below the threshold nothing is said");
+  await ctx.waterfall("tools/pre-execute", exec(), allow);
+  await ctx.serial("agent/turn-stopping", { agent, turn: 2 });
+  assert.equal(calls.steered.length, 1, "past three fail-open runs the session is told");
+  const text = calls.steered[0].content[0].text;
+  assert.match(text, /failed open in this session/);
+  assert.match(text, /\/forge-status/);
+  assert.match(text, /nothing is blocked/);
+  // once per session, not at every Stop
+  await ctx.waterfall("tools/pre-execute", exec(), allow);
+  await ctx.serial("agent/turn-stopping", { agent, turn: 3 });
+  assert.equal(calls.steered.length, 1);
+  // another session has its own count
+  const other = makeAgent();
+  other.agent.session.id = "other-session";
+  await ctx.serial("agent/turn-stopping", { agent: other.agent, turn: 1 });
+  assert.equal(other.calls.steered.length, 0, "the count is per session");
+});
+
+test("fail-open: healthy runs and the batch downgrade note never trigger the advisory", async (t) => {
+  const ctx = await boot(t);
+  const { agent, calls } = makeAgent();
+  for (let i = 0; i < 5; i += 1) {
+    await ctx.waterfall("tools/pre-execute", { name: "bash", arguments: { command: "ls" }, agent }, async () => ({ kind: "allow" }));
+  }
+  await ctx.serial("agent/turn-stopping", { agent, turn: 1 });
+  assert.deepEqual(
+    calls.steered.map((m) => m.content[0].text),
+    ["BLOCKED: task gates not done (fake)"],
+    "only the real Stop block steers; no degraded advisory beside it",
+  );
+
+  process.env.FAKE_FORGE_BATCH_BROKEN = "1";
+  t.after(() => delete process.env.FAKE_FORGE_BATCH_BROKEN);
+  const broken = new Context();
+  broken.provide("tools", {});
+  await broken.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000 });
+  const b = makeAgent();
+  b.agent.session.id = "broken-batch";
+  for (let i = 0; i < 4; i += 1) {
+    await broken.waterfall("tools/pre-execute", { name: "bash", arguments: { command: "ls" }, agent: b.agent }, async () => ({ kind: "allow" }));
+  }
+  await broken.serial("agent/turn-stopping", { agent: b.agent, turn: 1 });
+  assert.equal(
+    b.calls.steered.filter((m) => m.content[0].text.includes("failed open")).length,
+    0,
+    "falling back to per-hook runs lost nothing, so it is not 'failing open'",
+  );
 });
 
 test("disabled config wires no listeners", async (t) => {

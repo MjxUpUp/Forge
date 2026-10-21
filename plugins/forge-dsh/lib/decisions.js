@@ -56,6 +56,44 @@ export async function runHookGroup(commands, payload, opts = {}) {
 }
 
 /**
+ * Status-only receipts forge prints when it has nothing to say ("no weakening
+ * detected", "all skills SAFE", "no .mcp.json" …). The host injects every
+ * allow-path context into the conversation as a synthetic user message, so each
+ * of these costs the model a turn-sized distraction for zero information. Only
+ * receipts confirmed to carry no instruction are listed; an allowlist of "what
+ * the model must see" would silently drop any new advisory, so unknown notes
+ * pass through. A note that tells anyone to DO something carries `Advisory:` or
+ * is a directive and never matches here.
+ *
+ * forge 在「无事可报」时输出的纯状态回执。宿主把 allow 路径的上下文注入成合成 user
+ * 消息，每条都白白占用模型一次注意力。只列已确认不含任何指令的回执；未知的一律放行
+ * （白名单会静默吞掉新增的 advisory）。要求任何人做事的提示带 `Advisory:` 或是指令，
+ * 不会命中这里。
+ */
+const QUIET_NOTES = [
+  /^\[assertion-check\] no weakening detected/,
+  /^\[auto-compile\] (?:no source touched|research-mode session)/,
+  /^\[skill-scan\] (?:all skills SAFE|no ~\/\.claude\/skills)/,
+  /^\[mcp-scan\] (?:no |\.mcp\.json unreadable|项目级 \.mcp\.json 无 config 层风险信号)/,
+  /^\[workflow-test-guard\] /,
+];
+
+/**
+ * Remove the quiet receipts from one context string. Judged per paragraph (a
+ * batch merges the group's contexts with a blank line between them); a paragraph
+ * is quiet when its first line matches. Returns "" when nothing is left.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function dropQuietNotes(text) {
+  return text
+    .split("\n\n")
+    .filter((paragraph) => !QUIET_NOTES.some((re) => re.test(paragraph)))
+    .join("\n\n");
+}
+
+/**
  * Run the matched spec groups of one event — one `forge hook batch` process per
  * group instead of one process per hook (the spec's matcher only SELECTS the
  * group; forge owns the roster, so plugin/forge roster drift cannot desync).
@@ -102,7 +140,7 @@ export async function runMatchedGroups(event, groups, payload, opts = {}) {
     }
     if (part === undefined) part = await runHookGroup(group.commands, payload, opts);
     outcome.errors.push(...part.errors);
-    outcome.contexts.push(...part.contexts);
+    outcome.contexts.push(...part.contexts.map(dropQuietNotes).filter((text) => text !== ""));
     if (part.blocked !== undefined) {
       outcome.blocked = part.blocked;
       break;

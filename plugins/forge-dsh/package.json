@@ -14,6 +14,7 @@
     "lib/index.js",
     "lib/runner.js",
     "lib/bundled.js",
+    "lib/messages.js",
     "lib/decisions.js",
     "lib/tools.js",
     "lib/spec.json",

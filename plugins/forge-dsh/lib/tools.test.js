@@ -10,7 +10,6 @@ import {
   promptText,
   sessionBits,
   toCCToolName,
-  welcomeText,
   isSubagent,
   MANAGED_BANNER,
 } from "./tools.js";
@@ -111,17 +110,6 @@ test("pluginMessage carries the producer-owned V4 source kind", () => {
   assert.deepEqual(m.source, { kind: "plugin:forge-quality" });
   assert.deepEqual(m.content, [{ type: "text", text: "ctx" }]);
   assert.notEqual(pluginMessage("a").id, pluginMessage("b").id);
-});
-
-test("welcomeText names both versions, asks for a one-sentence relay, and degrades without a forge version", () => {
-  const full = welcomeText("1.2.3", "1.2.4");
-  assert.ok(full.includes("插件 1.2.3，forge 1.2.4"));
-  assert.match(full, /第一次回复/);
-  assert.match(full, /\/forge-status/);
-  assert.match(full, /forge off/);
-  const noForge = welcomeText("1.2.3", undefined);
-  assert.ok(noForge.includes("插件 1.2.3）"), "no dangling forge clause when the probe gave no version");
-  assert.ok(!noForge.includes("forge undefined"));
 });
 
 test("isSubagent: origin 'subagent' or a parentSession marks a delegated child; top-level and missing handles are not", () => {

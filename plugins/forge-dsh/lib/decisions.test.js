@@ -6,6 +6,7 @@ import {
   preStepDecision,
   runHookGroup,
   runMatchedGroups,
+  dropQuietNotes,
   prependStartContexts,
   turnStoppingOutcome,
 } from "./decisions.js";
@@ -270,4 +271,68 @@ test("runMatchedGroups: batch:false runs the roster serially from the start", as
   });
   assert.deepEqual(serial, ["forge hook a", "forge hook b"]);
   assert.deepEqual(outcome.contexts, ["from b"]);
+});
+
+test("dropQuietNotes: status-only receipts are dropped, real advisories and unknown notes are kept", () => {
+  // the receipts forge prints when there is nothing to say (observed as synthetic user messages)
+  for (const quiet of [
+    "[assertion-check] no weakening detected (advisory)",
+    "[auto-compile] no source touched (compile self-check delegated to agent)",
+    "[auto-compile] research-mode session, advisory suppressed (set by Edit|Write of source)",
+    "[skill-scan] all skills SAFE (advisory, 21 rules)",
+    "[skill-scan] no ~/.claude/skills (advisory)",
+    "[mcp-scan] no .mcp.json (advisory)",
+    "[mcp-scan] no git project (no project-level .mcp.json to scan, advisory)",
+    "[workflow-test-guard] go not on PATH, skipping internal/ci guard tests",
+  ]) {
+    assert.equal(dropQuietNotes(quiet), "", `should drop: ${quiet}`);
+  }
+  // anything that tells the model or the user to DO something stays
+  for (const loud of [
+    "[auto-compile] Advisory: 已修改源码——请用你技术栈的编译命令确认编译通过",
+    "[skill-scan] Advisory: 发现风险 skill——x请核查",
+    "[forge-session] 本项目由 forge 管理（managed）",
+    "[init-suggest] Advisory: 检测到 git 项目 'x' 未启用 forge。请询问用户",
+    "[bash-guard] WARN: Bash write without active task",
+    "a note from a hook this list has never heard of",
+  ]) {
+    assert.equal(dropQuietNotes(loud), loud, `should keep: ${loud}`);
+  }
+});
+
+test("dropQuietNotes: works per paragraph — a merged batch context keeps its real parts in order", () => {
+  const merged = [
+    "[skill-scan] all skills SAFE (advisory, 21 rules)",
+    "[forge-session] 本项目由 forge 管理（managed）",
+    "[mcp-scan] no .mcp.json (advisory)",
+    "[forge] conventions: stack go",
+  ].join("\n\n");
+  assert.equal(dropQuietNotes(merged), "[forge-session] 本项目由 forge 管理（managed）\n\n[forge] conventions: stack go");
+  // a multi-line paragraph is judged as a whole (its first line carries the tag)
+  assert.equal(dropQuietNotes("[forge] conventions: line one\n- line two\n- line three"), "[forge] conventions: line one\n- line two\n- line three");
+});
+
+test("runMatchedGroups: quiet receipts never reach the outcome's contexts, in batch or serial", async () => {
+  const batch = await runMatchedGroups("PreToolUse", [{ matcher: "Write|Edit", commands: [] }], {}, {
+    batchRunner: fakeBatch({
+      "PreToolUse|Write|Edit": { block: false, context: "[assertion-check] no weakening detected (advisory)\n\n[forge] conventions: x" },
+    }),
+    batchState: { broken: false },
+  });
+  assert.deepEqual(batch.contexts, ["[forge] conventions: x"]);
+
+  const onlyQuiet = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: [] }], {}, {
+    batchRunner: fakeBatch({ "PreToolUse|Bash": { block: false, context: "[mcp-scan] no .mcp.json (advisory)" } }),
+    batchState: { broken: false },
+  });
+  assert.deepEqual(onlyQuiet.contexts, [], "a context that is nothing but receipts disappears entirely");
+
+  const serial = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a", "forge hook b"] }], {}, {
+    batch: false,
+    runner: async (command) =>
+      command === "forge hook a"
+        ? { block: false, context: "[skill-scan] all skills SAFE (advisory, 21 rules)" }
+        : { block: false, context: "[bash-guard] WARN: x" },
+  });
+  assert.deepEqual(serial.contexts, ["[bash-guard] WARN: x"]);
 });

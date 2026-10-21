@@ -68,20 +68,3 @@ export function resolveBundledForge(opts = {}) {
     return undefined;
   }
 }
-
-/**
- * One line telling the agent where forge lives. The bundled binary is not on
- * PATH, while forge's own gate messages say `forge task start …`; gates are
- * driven by the agent, so it needs the absolute path to run them.
- *
- * @param {string} binPath - absolute path from resolveBundledForge.
- * @returns {string}
- */
-export function bundledForgeHint(binPath) {
-  const shown = /\s/.test(binPath) ? `"${binPath}"` : binPath;
-  return (
-    `[forge-dsh] forge CLI bundled with this plugin: ${shown}. It may not be on PATH — ` +
-    "when a gate message or the protocol tells you to run a `forge …` command, " +
-    `run it with this path instead of \`forge\`.`
-  );
-}
