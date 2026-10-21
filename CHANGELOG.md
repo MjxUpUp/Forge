@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.80.1](https://github.com/MjxUpUp/Forge/compare/v1.80.0...v1.80.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **hazard-guard:** stop a later -count/-c from vetoing heredoc data release (16:51 false block) ([#116](https://github.com/MjxUpUp/Forge/issues/116)) ([5306f1b](https://github.com/MjxUpUp/Forge/commit/5306f1b86d8bbb788a32668d31c1ed0d9a1c29df))
+
 ## [1.80.0](https://github.com/MjxUpUp/Forge/compare/v1.79.2...v1.80.0) (2026-10-21)
 
 
