@@ -3,6 +3,16 @@
 ## [1.80.1](https://github.com/MjxUpUp/Forge/compare/v1.80.0...v1.80.1) (2026-10-21)
 
 
+### ⚠ 行为变更（非 BREAKING，需知悉）
+
+**hazard-guard heredoc 判定（#116）**
+
+* 解释器 heredoc（如 `python3 - <<'EOF'`）不再因为同一条命令后面 `go test -count=1` 这类参数被误判为 `python -c` 而遭拦截。
+* 同时收紧了两种此前会被放行的写法：只剥离第一个 heredoc 的正文（以前会把后面所有行一起吞掉）；第一个 `<<` 必须属于解释器那一段。这类命令现在会被拦截。
+
+（本节于发版后补写，原因同 1.80.0。）
+
+
 ### Bug Fixes
 
 * **hazard-guard:** stop a later -count/-c from vetoing heredoc data release (16:51 false block) ([#116](https://github.com/MjxUpUp/Forge/issues/116)) ([5306f1b](https://github.com/MjxUpUp/Forge/commit/5306f1b86d8bbb788a32668d31c1ed0d9a1c29df))
