@@ -82,6 +82,8 @@ func init() {
 	taskResumeCmd.Flags().Bool("no-attach", false, "仅查看，不把当前 session 锚定到 task")
 	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：只输出 PASS+[forge-session] 横幅一行，不注入接续视图、不锚定 session、不改任何任务状态（接续改由用户主动发起；供 forge hook task-resume 调用）")
 	taskResumeCmd.Flags().Bool("compact-flag", false, "PostCompact hook 模式：压缩完成时标记「刚压缩过」（有 session ID 写 per-session sentinel，无则置 ResumeStale；压缩根治层·设标志半边，gap#2；供 forge hook compact-resume 调用）")
+	taskResumeCmd.Flags().String("match", "", "按关键词模糊匹配未完成任务（ref/标题/分支/目标；容错拼、乱序、缩写、中文片段），只列候选、不锚定不认领——agent 让用户确认后再 resume --ref")
+	addScopeFlags(taskResumeCmd)
 	taskResumeCmd.Flags().Bool("reinject", false, "UserPromptSubmit hook 模式：若本 session 刚压缩（per-session sentinel 或 legacy ResumeStale）则重注入完整 handoff 并清标记（压缩根治层·重注入半边，gap#2；供 forge hook resume-reinject 调用）")
 
 	taskContextCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -194,6 +196,16 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	if cmd.Flags().Changed("match") {
+		return runTaskResumeMatch(cmd, asJSON)
+	}
+	if ws, _ := cmd.Flags().GetBool("workspace"); ws {
+		return fmt.Errorf("--workspace 只配合 --match 使用")
+	}
+	if all, _ := cmd.Flags().GetBool("all-projects"); all {
+		return fmt.Errorf("--all-projects 只配合 --match 使用")
+	}
+
 	state, root, err := loadTaskOrActive(cmd)
 	if err != nil {
 		return err
@@ -251,6 +263,50 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000)))
+	return nil
+}
+
+// runTaskResumeMatch handles `resume --match`: list candidates only, never attach or claim.
+//
+// runTaskResumeMatch 处理 `resume --match`：只列候选，绝不锚定、不认领、不写任何状态
+// （方案 REQ-4/INV-2）——用户确认之后 agent 再跑 resume --ref 才接手。零命中不是错误：
+// JSON 输出空数组、文本给一行提示，exit 0。
+func runTaskResumeMatch(cmd *cobra.Command, asJSON bool) error {
+	if ref, _ := cmd.Flags().GetString("ref"); ref != "" {
+		return fmt.Errorf("--match 与 --ref 二选一：--match 列候选，确认后用 --ref 接手")
+	}
+	raw, _ := cmd.Flags().GetString("match")
+	query, err := validateMatchQuery(raw)
+	if err != nil {
+		return err
+	}
+	scope, err := scopeFromFlags(cmd)
+	if err != nil {
+		return err
+	}
+	groups, err := collectScopedTasks(scope, stderrWriter)
+	if err != nil {
+		return err
+	}
+	hits := matchTasks(query, groups)
+	if asJSON {
+		if hits == nil {
+			hits = []openTaskEntry{}
+		}
+		out, _ := json.MarshalIndent(hits, "", "  ")
+		fmt.Println(string(out))
+		return nil
+	}
+	quoted := stripUnsafeControl(query)
+	if len(hits) == 0 {
+		fmt.Printf("没有匹配「%s」的未完成任务（forge task list --open 查看全部）\n", quoted)
+		return nil
+	}
+	fmt.Printf("匹配「%s」的未完成任务（%d 个候选）：\n", quoted, len(hits))
+	for i, e := range hits {
+		fmt.Printf("%s — 匹配 %s，得分 %d\n", renderOpenEntryLine(i+1, e, scope != scopeProject), e.MatchedOn, e.Score)
+	}
+	fmt.Println("→ 让用户确认是哪个任务后运行 forge task resume --ref <ref>（其他项目的候选需先进入该项目目录）")
 	return nil
 }
 
