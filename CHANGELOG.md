@@ -3,6 +3,26 @@
 ## [1.80.0](https://github.com/MjxUpUp/Forge/compare/v1.79.2...v1.80.0) (2026-10-21)
 
 
+### ⚠ 行为变更（非 BREAKING，需知悉）
+
+**loop 契约 B1（#117）**
+
+* `forge task verify-acceptance` 多两类输出：每检出一次验收同因复发（改了代码、失败指纹没变），打一行 `ADVISORY:`，同时落一条 `acceptance-recurrence` checklog 行，并自动记一条已证伪方案；末尾加一行 `loop: <判词>（<原因>）→ next: <命令>`。退出码不变。
+* `forge task status --json` 顶层新增 `loop_verdict`（verdict / reasons / next），原有键及其顺序不变。
+* `forge task resume` / `context` 以及会话启动、压缩后注入的接续文本多一行「循环判词」，新增【已证伪方案】节（在【已确认决策】之前），tl;dr 多一行「已证伪 N 条」。
+* `forge task finding --reset-loop` 现在会同时清空所有验收的失败历史，同因复发窗口从头起算。
+* 新增 `forge task decide --rejected`。`task decide` 的幂等判断加入了类别：先否决、再采纳同一方案，会记成两条记录。
+* `protocol.yml` 新增可选的 `loop:` 段（recurrence_threshold / max_failed_verifies / max_changed_files / token_budget / max_verifies_without_progress），只影响 advisory 判词，不阻断任何门禁。
+
+**Windows hook 稳定性（#114）**
+
+* hook 子进程的 `TMPDIR` 未设置时，forge 会把它固定为系统临时目录；显式设置的 `TMPDIR` 不受影响。此前在 Windows Git Bash 下，如果 `/tmp` 解析失败，file-sentinel 会静默放行 Bash 写源码的操作，现在能正常隔离。
+* hook 输出中的解释器启动告警（如 `bash.exe: warning: …`）不再计入判定结果、checklog 详情和去重指纹。
+* hook 去重标记改为毫秒精度。升级后第一次运行时，旧的秒级标记按过期处理，最多多出一条审计行。
+
+（本节于发版后补写：1.80.0 发版时 release PR 被 release-please 自动合并，未来得及附上。）
+
+
 ### Features
 
 * **loop:** loop 契约 B1——验收同因复发判定、循环判词、预算段、死路记忆、Loop 规程 ([#117](https://github.com/MjxUpUp/Forge/issues/117)) ([dc07157](https://github.com/MjxUpUp/Forge/commit/dc07157f9f042dfcf4fa376ed55d320f67bc3b3b))
