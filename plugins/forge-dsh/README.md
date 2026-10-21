@@ -22,11 +22,15 @@ the forge binary — the plugin itself has **zero runtime dependencies**.
 | `tools/pre-execute` | `PreToolUse` | `{kind:'deny', reason}` |
 | `tools/post-execute` | `PostToolUse` | `{kind:'block', feedback}` (error result) |
 | `agent/pre-step` | `UserPromptSubmit` | `{kind:'reject'}` |
-| `agent/session-start` | `SessionStart`¹ | context via `agent.inject()` |
+| `agent/session-start` | `SessionStart`¹ | context queued, delivered with the next `agent/pre-step`² |
 | `agent/turn-stopping` | `Stop` | `agent.steer(reason)` → another step |
 
 ¹ `source:'compact'` additionally fires forge's `PostCompact` group — the preview
 builds expose no dedicated compaction point.
+
+² `agent.inject()` at session start was observed to drop the contexts silently, so they ride the
+first pre-step instead; that pre-step waits up to `startWaitMs` (default 1500) for the detached
+session-start run, and a rejected step keeps the queue for the next one.
 
 DSH tool names map onto the Claude Code names forge dispatches on
 (`write/edit/str_replace_editor→Write/Edit`, `bash/pwsh→Bash`, `read/read_image→Read`,
@@ -101,8 +105,8 @@ design; surface them with `/forge-status` or `debug:true`.
 
 A missing `forge` binary is the one exception to that silence: each session start
 probes `forge --version` once (until a probe succeeds — the answer is then cached
-for the process lifetime) and, when the probe fails, injects a visible notice
-naming the configured `forgeBin`. Without it an uninstalled CLI would look exactly
+for the process lifetime) and, when the probe fails, queues a visible notice
+(delivered with the first pre-step) naming the configured `forgeBin`. Without it an uninstalled CLI would look exactly
 like a healthy plugin gating nothing. The notice is informational, not a switch —
 while the binary is missing, every hook attempt fails open on its own, so gates are
 inactive whether or not the probe ran. Installing forge needs no host restart: the

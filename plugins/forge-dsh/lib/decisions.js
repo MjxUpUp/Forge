@@ -158,16 +158,30 @@ export async function turnStoppingOutcome(outcome, agent) {
 }
 
 /**
- * agent/session-start (emit): every collected context is queued via inject.
- * Best-effort by design — emit listeners are detached, so context may miss
- * the first request of a short-lived session (the official bridges document
- * the same TODO(session-start-gating) limitation).
+ * agent/session-start (emit) contexts ride the NEXT pre-step instead of
+ * agent.inject. Emit listeners are detached and inject at session start was
+ * observed to drop the contexts silently (audit 2026-10-20: all four lost,
+ * not delayed, while pre-step messages in the same session were delivered), so
+ * the queued strings are prepended into the first `enter` decision. A reject
+ * (or any non-enter decision) leaves the queue to the caller — it must retain
+ * the strings for the next pre-step.
  *
- * @param {GroupOutcome} outcome
- * @param {object} agent
+ * 会话启动的上下文改走下一次 pre-step 的 enter 决策（而非 agent.inject）：
+ * 实测 inject 在会话启动时静默丢弃，pre-step 消息则稳定送达。
+ *
+ * @param {object} decision - PreStepDecision (after preStepDecision folding).
+ * @param {string[]} pending - queued session-start contexts, delivery order.
+ * @returns {{decision: object, delivered: boolean}} delivered=true means the
+ *   caller may clear the queue.
  */
-export function sessionStartOutcome(outcome, agent) {
-  injectContexts(agent, outcome.contexts);
+export function prependStartContexts(decision, pending) {
+  if (pending.length === 0 || decision?.kind !== "enter") {
+    return { decision, delivered: false };
+  }
+  return {
+    decision: { ...decision, messages: [...pending.map(pluginMessage), ...decision.messages] },
+    delivered: true,
+  };
 }
 
 /** Queue each context string as one producer-attributed user message. */

@@ -10,7 +10,8 @@
  *   agent/pre-step      → UserPromptSubmit (block → {kind:'reject'})
  *   agent/session-start → SessionStart (emit; source 'compact' also fires
  *                         the PostCompact group — DSH rc.7 exposes no
- *                         separate compaction point)
+ *                         separate compaction point). Its contexts are queued
+ *                         per agent and delivered with the next pre-step.
  *   agent/turn-stopping → Stop        (block → agent.steer(reason))
  *
  * Each hook runs as `forge hook <name>` with a Claude-Code-shape stdin
@@ -22,6 +23,8 @@
  * Config (profile patch):
  *   forgeBin  - forge binary name/path (default "forge", env FORGE_BIN wins over default)
  *   timeoutMs - per-hook ceiling, kill + fail open (default 30000)
+ *   startWaitMs - how long the first pre-step waits for the session-start
+ *               contexts before moving on without them (default 1500)
  *   enabled   - false disables every listener (default true)
  *   debug     - log hook failures to console.error (default false)
  *
@@ -29,8 +32,8 @@
  */
 import { readFileSync } from "node:fs";
 import { probeForge } from "./runner.js";
-import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, turnStoppingOutcome, sessionStartOutcome } from "./decisions.js";
-import { buildEventPayload, buildToolPayload, matchedCommands, pluginMessage, promptText, toCCToolName } from "./tools.js";
+import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
+import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
 
@@ -50,6 +53,7 @@ function apply(ctx, config = {}) {
     timeoutMs: config.timeoutMs ?? 30000,
   };
   const debug = config.debug === true;
+  const startWaitMs = config.startWaitMs ?? 1500;
   // Recent-run ring buffer for /forge-status — fail-open verdicts are silent
   // by design, so this (plus debug logging) is the only way to see them.
   const recentRuns = [];
@@ -67,13 +71,43 @@ function apply(ctx, config = {}) {
     }
   };
 
+  // Session-start contexts (forge's own onboarding + the missing-forge notice)
+  // are queued per agent and prepended into that agent's next pre-step.
+  // agent.inject at session start was observed to drop them silently, while
+  // pre-step messages in the same session were delivered. The session-start
+  // run is detached and takes a few hundred ms, so the first pre-step may
+  // arrive before it finishes: `ready` lets that pre-step wait a bounded time
+  // (startWaitMs) instead of pushing the onboarding to turn 2.
+  const startStates = new WeakMap();
+  const startStateOf = (agent) => {
+    if (agent === null || typeof agent !== "object") return undefined;
+    let state = startStates.get(agent);
+    if (state === undefined) {
+      state = { pending: [], ready: Promise.resolve() };
+      startStates.set(agent, state);
+    }
+    return state;
+  };
+  const waitStart = async (state) => {
+    if (state === undefined) return;
+    let timer;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(resolve, startWaitMs);
+      timer.unref?.();
+    });
+    try {
+      await Promise.race([state.ready, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   // A missing forge binary used to be completely silent: every hook failed
   // open, so the plugin looked installed but gated nothing. Probe once per
   // session start (retrying on later sessions, since installing forge needs no
-  // host restart) and surface the failure through agent.inject — the same
-  // channel forge's own advisories use. Once a probe succeeds the answer is
-  // cached for the process lifetime; forgeBin is static config per plugin
-  // instance, so it cannot go stale.
+  // host restart) and surface the failure through the same start queue. Once a
+  // probe succeeds the answer is cached for the process lifetime; forgeBin is
+  // static config per plugin instance, so it cannot go stale.
   let forgeReady = false;
   let lastProbe;
   let probeInFlight;
@@ -99,13 +133,10 @@ function apply(ctx, config = {}) {
       return true;
     }
     if (debug) console.error(`[forge-dsh] forge probe failed: ${probe.error}`);
-    if (agent != null && !noticedAgents.has(agent)) {
+    const state = startStateOf(agent);
+    if (state !== undefined && !noticedAgents.has(agent)) {
       noticedAgents.add(agent);
-      try {
-        await agent.inject?.(pluginMessage(missingForgeNotice(probe.error)));
-      } catch {
-        // a throwing (or rejecting) inject must never interrupt session start
-      }
+      state.pending.push(missingForgeNotice(probe.error));
     }
     return false;
   };
@@ -130,22 +161,42 @@ function apply(ctx, config = {}) {
 
   // UserPromptSubmit — the prompt rides the step's claimed messages.
   ctx.effect(() => ctx.on("agent/pre-step", async (payload, next) => {
+    const state = startStateOf(payload?.agent);
+    const startWait = waitStart(state);
     const commands = matchedCommands(spec.UserPromptSubmit, "");
-    if (commands.length === 0) return next();
-    const eventPayload = buildEventPayload("UserPromptSubmit", payload?.agent, {
-      prompt: promptText(payload?.messages),
-    });
-    const outcome = await runHookGroup(commands, eventPayload, opts);
-    noteErrors("pre-step", outcome);
-    return preStepDecision(outcome, next, payload?.agent);
+    let decision;
+    if (commands.length === 0) {
+      decision = await next();
+    } else {
+      const eventPayload = buildEventPayload("UserPromptSubmit", payload?.agent, {
+        prompt: promptText(payload?.messages),
+      });
+      const outcome = await runHookGroup(commands, eventPayload, opts);
+      noteErrors("pre-step", outcome);
+      decision = await preStepDecision(outcome, next, payload?.agent);
+    }
+    await startWait;
+    if (state === undefined) return decision;
+    // a reject keeps the queue for the next pre-step; only an enter clears it
+    const delivery = prependStartContexts(decision, state.pending);
+    if (delivery.delivered) state.pending.length = 0;
+    return delivery.decision;
   }), "forge: pre-step");
 
-  // SessionStart — emit mode: detached, contexts queued via agent.inject.
+  // SessionStart — emit mode: detached, contexts queued per agent and
+  // delivered by the next pre-step (see startStates above).
   // source 'compact' doubles as PostCompact (DSH exposes no dedicated point).
   ctx.effect(() => ctx.on("agent/session-start", (payload) => {
     const agent = payload?.agent;
     const source = payload?.source;
-    (async () => {
+    const state = startStateOf(agent);
+    const queue = (outcome) => {
+      if (state !== undefined) state.pending.push(...outcome.contexts);
+      else if (debug && outcome.contexts.length > 0) {
+        console.error("[forge-dsh] session-start contexts dropped: no agent handle to queue them on");
+      }
+    };
+    const run = (async () => {
       await ensureForge(agent);
       const start = await runHookGroup(
         matchedCommands(spec.SessionStart, ""),
@@ -153,7 +204,7 @@ function apply(ctx, config = {}) {
         opts,
       );
       noteErrors("session-start", start);
-      sessionStartOutcome(start, agent);
+      queue(start);
       if (source === "compact") {
         const compact = await runHookGroup(
           matchedCommands(spec.PostCompact, ""),
@@ -161,11 +212,13 @@ function apply(ctx, config = {}) {
           opts,
         );
         noteErrors("post-compact", compact);
-        sessionStartOutcome(compact, agent);
+        queue(compact);
       }
     })().catch((error) => {
       if (debug) console.error(`[forge-dsh] session-start failed open: ${error}`);
     });
+    // overlapping session-starts (startup then compact) both gate the pre-step
+    if (state !== undefined) state.ready = Promise.all([state.ready, run]);
   }), "forge: session-start");
 
   // Stop — a blocking gate steers the agent into another step.
