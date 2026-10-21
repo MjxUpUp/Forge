@@ -466,6 +466,17 @@ const (
 	// Passed=true + warn 为人工重置裁决（forge task finding --reset-loop --note）。
 	// deterministic——两类行都出自 forge 自身账本运算，非 agent 自述。
 	CheckLoopExhausted CheckName = "loop-exhausted"
+	// CheckAcceptanceRecurrence records a same-cause acceptance recurrence
+	// (loop-contract B1-1): the same criterion failed with the same normalized
+	// fingerprint across consecutive runs that each followed a code change.
+	// Advisory (Passed=false, Level=advisory); not in the evidence whitelist —
+	// it is a stop signal for the outer loop, never a verification claim.
+	//
+	// CheckAcceptanceRecurrence 记录一次验收同因复发（loop 契约 B1-1）：同一验收
+	// 在每次之间都改过代码的连续实跑里以同一规范化指纹失败。advisory
+	// （Passed=false、Level=advisory）；不进 evidence 白名单——它是给外层循环的
+	// 停止信号，不是验证声明。
+	CheckAcceptanceRecurrence CheckName = "acceptance-recurrence"
 	// CheckNextHint records one "→ next:" line appended to gate/status/complete output (design B); Meta["suggested"] carries the suggested command so harness-audit B1 can measure adoption (same command run within 10 minutes).
 	//
 	// CheckNextHint 记录一次挂在 gate/status/complete 输出末尾的「→ next:」行（设计 B）：

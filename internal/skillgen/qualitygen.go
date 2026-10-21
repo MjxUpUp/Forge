@@ -183,6 +183,27 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("forge task list           — 列出所有任务\n")
 	sb.WriteString("```\n\n")
 
+	// Loop 模式（loop 契约 B1-5，feedforward）：无人值守循环（Claude Code /loop、
+	// 定时任务、Codex automation）每轮的固定动作。判词、死路记忆、预算全部由 forge
+	// 机械给出（docs/plans/loop-contract-2026-10-proposal.md），这里只写 agent 的规程。
+	sb.WriteString("## Loop 模式（无人值守循环的每轮规程）\n\n")
+	sb.WriteString("把本项目放进 `/loop`、定时任务或 automation 时，每一轮按下面顺序做，不要自行发明停止条件：\n\n")
+	sb.WriteString("1. 先 `forge task resume`，读头部的 `循环判词`（escalate / done / continue）和【已证伪方案】——证伪过的方案不要再试。\n")
+	sb.WriteString("2. 判词 `escalate` → 用 `forge task block --content \"<卡在哪条 Code>\"` 写清原因，**结束本轮**。不设任何 `FORGE_*` 逃生 env，不自己执行标注为「需人工」的解除命令（`--reset-loop` / `hazard confirm` / `task answer` 都是人的）。\n")
+	sb.WriteString("3. 只做一个最小改动。换方案之前，先 `forge task decide --rejected --content \"<放弃的方案>\" --rationale \"<失败证据>\"` 记下死路。\n")
+	sb.WriteString("4. `forge task verify-acceptance`，读末行 `loop:`。`continue` → 回到第 3 步；同一验收改动后仍以同一指纹失败会被判 `acceptance-recurrence`，那就是该停的信号。\n")
+	sb.WriteString("5. `done` → 进入收尾序列：每一步只执行判词 `next:` 给出的那条命令，执行后重新读。正常顺序是 `git commit` → `forge task gate task-implement` → `forge task gate task-verify` → `forge review pass` → `forge task gate task-complete` → `forge task complete`。\n")
+	sb.WriteString("6. 收尾中任何一条输出 `BLOCKED:`（非零退出）→ 按原因修复后回到第 4 步；同一门禁连续两次 BLOCKED 会被判 `gate-repeat-blocked`（task-implement 除外，它的 BLOCKED 是「先提交」的正常节奏），按第 2 步处理。\n\n")
+	sb.WriteString("预算与阈值在 `protocol.yml` 的 `loop:` 段（`recurrence_threshold` / `max_failed_verifies` / `max_changed_files` / `token_budget` / `max_verifies_without_progress`），全部 advisory；`forge task status --json` 的 `loop_verdict` 给机器读。\n\n")
+	sb.WriteString("`/loop` prompt 模板（按 CI triage 改写，只处理可稳定复现的失败）：\n\n")
+	sb.WriteString("```\n")
+	sb.WriteString("每轮：forge task resume → 读循环判词；escalate 就 forge task block 后结束。\n")
+	sb.WriteString("只处理能稳定复现的验收失败；每轮最多改 3 个文件；不改测试断言。\n")
+	sb.WriteString("改之前把放弃的方案用 forge task decide --rejected 记下。\n")
+	sb.WriteString("改完跑 forge task verify-acceptance，读末行 loop:；同因失败两次就停。\n")
+	sb.WriteString("done 之后只执行 next: 给出的命令，直到 forge task complete。\n")
+	sb.WriteString("```\n\n")
+
 	// 评分章节
 	sb.WriteString("## 任务质量评分\n\n")
 	sb.WriteString("任务完成时自动评分（7 个维度，0-100 分，A-F 等级）：\n\n")
