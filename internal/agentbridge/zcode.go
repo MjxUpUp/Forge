@@ -36,8 +36,8 @@ import (
 // PermissionRequest / PostToolUse / PostToolUseFailure / Stop——PascalCase
 // 名与 Claude 逐字相同，故无需改名映射、只需白名单：
 //   - PostCompact 无 ZCode 事件；压缩以 source=compact 触发 SessionStart，
-//     match-all 的 SessionStart 组已覆盖（task-resume tl;dr 层——与 cursor
-//     同一回落）。
+//     match-all 的 SessionStart 组照常跑（task-resume 自 2026-10 按需拉取起只
+//     输出横幅，压缩后不自动重注入接续上下文——与 cursor 相同）。
 //   - SubagentStop 不在名册；subagent-track 丢弃。
 //   - PermissionRequest 为 ZCode 独有，无 ForgeHookSpec 对应物。
 //

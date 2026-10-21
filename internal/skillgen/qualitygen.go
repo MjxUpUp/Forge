@@ -161,6 +161,20 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString(doclint.RenderBannedPhrasesForSkill())
 	sb.WriteString("\n")
 
+	// 任务接续章节——按需拉取（docs/plans/task-resume-pull-model-2026-10-proposal.md REQ-6）：
+	// SessionStart 只输出横幅，接续由用户的话触发，本节是 agent 侧的唯一流程说明。
+	sb.WriteString("## 任务接续（按需拉取）\n\n")
+	sb.WriteString("会话启动不会注入未完成任务。用户没问起时，不要主动列任务或接续旧任务。\n\n")
+	sb.WriteString("**用户说「继续某某任务」「接着做 XX」时：**\n\n")
+	sb.WriteString("1. `forge task resume --match \"<用户给的关键词>\" --json` 列候选（模糊匹配，只读，不改任何状态）\n")
+	sb.WriteString("2. 用结构化提问工具（如 AskUserQuestion；宿主没有就直接文字提问）让用户确认是哪一个；零候选时如实告知，并提示可以看 `forge task list --open`\n")
+	sb.WriteString("3. 用户确认后 `forge task resume --ref <ref>` 接手（锚定当前会话、拉回完整接续视图）\n\n")
+	sb.WriteString("**用户问「还有哪些任务没完成」时：**\n\n")
+	sb.WriteString("1. `forge task list --open --json`；`--workspace` 看所属多仓 workspace，`--all-projects` 看本机全部项目\n")
+	sb.WriteString("2. 把清单展示给用户，由用户自己选（可以多选）\n")
+	sb.WriteString("3. 一个会话只接续一个任务：当前会话 `forge task resume --ref <ref>` 接其中一个，其余建议用户另开会话接续\n\n")
+	sb.WriteString("其他项目的任务要先进入那个项目目录再 resume。接续不要求补 spec 等上游材料，任务做到哪一步就从哪一步继续。\n\n")
+
 	// task pipeline 章节
 	sb.WriteString("## 任务级管道\n\n")
 	sb.WriteString("当检测到任务上下文（非 main 分支或显式任务）时，执行以下轻量门禁：\n\n")
@@ -181,6 +195,8 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("forge task abort [--ref]  — 中止并删除任务（清理 ghost/卡住任务，不评分）\n")
 	sb.WriteString("forge task score          — 查看任务质量评分\n")
 	sb.WriteString("forge task list           — 列出所有任务\n")
+	sb.WriteString("forge task list --open    — 列出未完成任务（供用户挑选接续）\n")
+	sb.WriteString("forge task resume --match — 模糊匹配要接续的任务（只列候选）\n")
 	sb.WriteString("```\n\n")
 
 	// 评分章节

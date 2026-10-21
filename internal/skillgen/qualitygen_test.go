@@ -153,6 +153,38 @@ func TestQualitySkillDocumentsAbort(t *testing.T) {
 	}
 }
 
+// TestQualitySkillResumeSection guards the pull-model resume flow (REQ-6): with SessionStart reduced to a banner, this section is the agent's only guide for "继续某某任务" / "还有哪些任务没完成".
+//
+// TestQualitySkillResumeSection 钉住按需拉取的接续流程（REQ-6）：SessionStart 只剩横幅后，
+// 本节是 agent 处理「继续某某任务」「还有哪些任务没完成」的唯一指引——两个场景的触发说法、
+// 命令、用户确认步骤与「一个会话只接续一个」约束缺一不可。
+func TestQualitySkillResumeSection(t *testing.T) {
+	proto := &protocol.Protocol{Version: "1"}
+	content := buildQualitySkillContent(t.TempDir(), proto)
+	start := strings.Index(content, "## 任务接续（按需拉取）")
+	if start < 0 {
+		t.Fatal("quality SKILL.md 缺「## 任务接续（按需拉取）」一节")
+	}
+	section := content[start:]
+	if end := strings.Index(section[len("## "):], "\n## "); end >= 0 {
+		section = section[:end+len("## ")]
+	}
+	for _, want := range []string{
+		"继续某某任务",
+		"还有哪些任务没完成",
+		"forge task resume --match",
+		"forge task list --open",
+		"forge task resume --ref <ref>",
+		"AskUserQuestion",
+		"一个会话只接续一个任务",
+		"不要主动列任务",
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("任务接续一节缺 %q", want)
+		}
+	}
+}
+
 // TestQualitySkillTaskVerifyIsAdvisory guards the advisory rewrite: task-verify
 // must NOT be documented as blocking session end (the old "连续 3 次失败放行"
 // semantics are gone — that counter was removed), and the mandatory-review
