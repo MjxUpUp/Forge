@@ -59,6 +59,7 @@ test("agentsSkillsInstalled: a failure other than 'not there' degrades to 'insta
   for (const code of ["EACCES", "EPERM", "ENOTDIR", "EIO", undefined]) {
     assert.equal(agentsSkillsInstalled("/h", failing(code)), true, `${code}: unreadable, so stay quiet`);
   }
-  assert.equal(agentsSkillsInstalled(undefined), true, "no home to look in");
+  // not `undefined`: that selects the default parameter, i.e. the REAL home of whoever runs the suite
+  assert.equal(agentsSkillsInstalled(null), true, "no home to look in");
   assert.equal(agentsSkillsInstalled(""), true);
 });
