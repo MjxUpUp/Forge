@@ -97,10 +97,11 @@ type JudgeAuditReport struct {
 	PositionBias    float64 `json:"position_bias"`    // 均值差（swap − original）
 	CueFlipRate     float64 `json:"cue_flip_rate"`    // binarized 翻转率
 	// PositionSwapFlipRate is the pairwise flip rate (-1 = not run);
+	// PositionSwapPairs is how many entries carried a pair (the denominator);
 	// PositionSwapBias is high | ok ("" when not run).
 	//
-	// PositionSwapFlipRate 是成对翻转率（-1 = 未运行）；PositionSwapBias 为
-	// high | ok（未运行时为空）。
+	// PositionSwapFlipRate 是成对翻转率（-1 = 未运行）；PositionSwapPairs 是带成对
+	// 判定的条目数（分母）；PositionSwapBias 为 high | ok（未运行时为空）。
 	PositionSwapFlipRate float64  `json:"position_swap_flip_rate"`
 	PositionSwapPairs    int      `json:"position_swap_pairs"`
 	PositionSwapBias     string   `json:"position_swap_bias,omitempty"`

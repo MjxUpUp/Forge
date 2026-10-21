@@ -294,12 +294,9 @@ func RunGolden(goldenDir string, cases []GoldenCase, opts GoldenOptions) (*Golde
 	cleanClean, cleanFlagged := 0, 0
 
 	for _, c := range cases {
-		if c.IsTestLayer() {
-			if !opts.IncludeTestLayer {
-				rep.TestLayerExcluded++
-				continue
-			}
-			rep.TestLayerCases++
+		if c.IsTestLayer() && !opts.IncludeTestLayer {
+			rep.TestLayerExcluded++
+			continue
 		}
 		if skipsPlatform(c.SkipPlatforms) {
 			rep.Cases = append(rep.Cases, GoldenCaseResult{
@@ -307,6 +304,9 @@ func RunGolden(goldenDir string, cases []GoldenCase, opts GoldenOptions) (*Golde
 				Agreement: 1, ReplayOutcomes: []string{"skipped-platform"},
 			})
 			continue
+		}
+		if c.IsTestLayer() {
+			rep.TestLayerCases++ // 只计实际重放的 test 层用例（平台跳过的不算被查询）
 		}
 		res := GoldenCaseResult{ID: c.ID, Gate: c.Gate, Kind: c.Kind}
 		for r := 0; r < opts.Repetitions; r++ {
@@ -641,6 +641,8 @@ func recordTestLayerQuery(evalDir string, rep *GoldenReport) (int, string) {
 			q = goldenTestQueries{}
 			note = "（计数文件不可读，已重置）"
 		}
+	} else if !os.IsNotExist(err) {
+		note = "（计数文件不可读，已重置: " + err.Error() + "）"
 	}
 	q.Count++
 	q.LastAt = rep.GeneratedAt

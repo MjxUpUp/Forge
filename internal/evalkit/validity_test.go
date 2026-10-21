@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +30,8 @@ type stubBaselineRunner struct {
 	oracle    map[string]bool
 	doNothing map[string]bool
 	leakage   map[string]bool
+	budgetCut map[BaselineArm]bool
+	armErr    error
 	mainCalls int
 	armCalls  map[BaselineArm]int
 	perTask   map[string]int
@@ -38,7 +41,7 @@ type stubBaselineRunner struct {
 func newStub() *stubBaselineRunner {
 	return &stubBaselineRunner{
 		main: map[string]bool{}, tokens: map[string]int{}, oracle: map[string]bool{},
-		doNothing: map[string]bool{}, leakage: map[string]bool{},
+		doNothing: map[string]bool{}, leakage: map[string]bool{}, budgetCut: map[BaselineArm]bool{},
 		armCalls: map[BaselineArm]int{}, perTask: map[string]int{},
 	}
 }
@@ -70,7 +73,10 @@ func (s *stubBaselineRunner) RunBaseline(_ context.Context, _ RunSpec, task Benc
 	}
 	s.armCalls[arm]++
 	s.perTask[task.ID]++
-	return TaskResult{TaskID: task.ID, Pass: pass}, true, nil
+	if s.armErr != nil {
+		return TaskResult{}, true, s.armErr
+	}
+	return TaskResult{TaskID: task.ID, Pass: pass && !s.budgetCut[arm], BudgetCut: s.budgetCut[arm]}, true, nil
 }
 
 func gradedTask(id string) BenchTask {
@@ -182,6 +188,11 @@ func TestRunBenchmarkPreflight(t *testing.T) {
 		if !strings.Contains(sc.Note, "Weak") {
 			t.Fatalf("Note 应写明证据封顶 Weak: %q", sc.Note)
 		}
+		// 不支持基线的后端没有可跳过的东西：仍是 n/a，不得记成 skipped。
+		sc2, err := RunBenchmark(context.Background(), validitySpec(1), smokeManifest(t), ScriptedRunner{})
+		if err != nil || sc2.Preflight.Status != PreflightNA {
+			t.Fatalf("逃生舱下 scripted 后端应仍为 n/a: %v %+v", err, sc2.Preflight)
+		}
 		root := t.TempDir()
 		RecordPreflightEscape(root)
 		rows, err := checklog.LoadAllAll(root)
@@ -201,6 +212,84 @@ func TestRunBenchmarkPreflight(t *testing.T) {
 		rows, _ := checklog.LoadAllAll(root)
 		if len(rows) != 1 || rows[0].Check != checklog.CheckEvalPreflight || rows[0].Passed || rows[0].Level != checklog.LevelBlocked {
 			t.Fatalf("应落一条 Passed=false 的 eval-preflight 行: %+v", rows)
+		}
+	})
+
+	// 超时与执行错误不是裁决：不得返回 PreflightError（否则 exit 2 误报"环境坏了"）。
+	for _, arm := range []BaselineArm{ArmOracle, ArmDoNothing} {
+		t.Run("基线超时不成裁决/"+string(arm), func(t *testing.T) {
+			stub := newStub()
+			stub.oracle["t1"] = true
+			stub.budgetCut[arm] = true
+			_, err := RunBenchmark(context.Background(), validitySpec(1), manifestOf(gradedTask("t1")), stub)
+			var pe *PreflightError
+			if err == nil || errors.As(err, &pe) || !strings.Contains(err.Error(), "--wallclock") {
+				t.Fatalf("超时应为执行错误（提示调大 --wallclock），不是违例: %v", err)
+			}
+		})
+	}
+	t.Run("基线执行错误原样上抛", func(t *testing.T) {
+		stub := newStub()
+		stub.armErr = errors.New("docker 起不来")
+		_, err := RunBenchmark(context.Background(), validitySpec(1), manifestOf(gradedTask("t1")), stub)
+		var pe *PreflightError
+		if err == nil || errors.As(err, &pe) || !strings.Contains(err.Error(), "docker 起不来") || stub.mainCalls != 0 {
+			t.Fatalf("执行错误应原样上抛且不跑主评测: %v", err)
+		}
+	})
+
+	// 生产 BaselineRunner（DockerRunner）的臂语义：纯函数 baselineCommand 表驱动。
+	t.Run("容器基线命令组装", func(t *testing.T) {
+		full := BenchTask{ID: "x", Image: "img", RunCmd: "solve", TestCmd: "grade", OracleCmd: "ref", LeakageCmd: "guess"}
+		noOracle := full
+		noOracle.OracleCmd, noOracle.LeakageCmd = "", ""
+		cmdOnly := BenchTask{ID: "c", Command: "true", TestCmd: "grade", OracleCmd: "ref"}
+		noGrader := full
+		noGrader.TestCmd = ""
+		cases := []struct {
+			task       BenchTask
+			arm        BaselineArm
+			want       string
+			applicable bool
+		}{
+			{full, ArmOracle, "ref && grade", true},
+			{full, ArmDoNothing, "grade", true},
+			{full, ArmLeakage, "guess && grade", true},
+			{noOracle, ArmOracle, "", false},
+			{noOracle, ArmLeakage, "", false},
+			{noOracle, ArmDoNothing, "grade", true},
+			{cmdOnly, ArmDoNothing, "", false},
+			{noGrader, ArmOracle, "", false},
+		}
+		for _, c := range cases {
+			got, ok, err := baselineCommand(c.task, c.arm)
+			if err != nil || got != c.want || ok != c.applicable {
+				t.Fatalf("%s/%s: 得到 (%q,%v,%v)，期望 (%q,%v)", c.task.ID, c.arm, got, ok, err, c.want, c.applicable)
+			}
+		}
+		if _, _, err := baselineCommand(full, "bogus"); err == nil {
+			t.Fatal("未知基线应报错")
+		}
+		// 不适用的分支不碰 docker：DockerRunner 直接返回 applicable=false。
+		if _, ok, err := (DockerRunner{}).RunBaseline(context.Background(), validitySpec(1), cmdOnly, ArmDoNothing); ok || err != nil {
+			t.Fatalf("无容器判分的任务应不适用: %v %v", ok, err)
+		}
+	})
+
+	// NFR-1 在 decompose 上的口径：整张网格只跑一次 preflight。
+	t.Run("decompose 只跑一次 preflight", func(t *testing.T) {
+		stub := newStub()
+		stub.oracle["t1"] = true
+		grid := DecomposeGrid{Profiles: Profiles, Models: []string{"m1", "m2"}}
+		rep, err := RunDecompose(context.Background(), grid, validitySpec(2), manifestOf(gradedTask("t1")), stub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stub.perTask["t1"] != 2 || rep.Preflight == nil || rep.Preflight.Status != PreflightPassed {
+			t.Fatalf("3×2 网格应只跑 2 次基线（oracle+do-nothing）: %d %+v", stub.perTask["t1"], rep.Preflight)
+		}
+		if !strings.Contains(rep.RenderDecomposeMarkdown(), "preflight=passed") {
+			t.Fatal("decompose 报告应渲染 preflight 状态")
 		}
 	})
 
@@ -328,6 +417,20 @@ func TestPerturbationVariance(t *testing.T) {
 	if again.Lo != three.Lo || again.Hi != three.Hi {
 		t.Fatal("同 seed 结果应确定")
 	}
+	// 变体层配对：两臂结果完全相同（变体效应共享）时差值恒为 0，区间不得被变体噪声撑宽。
+	same, err := PairedDeltaCI(a, a, 2000, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same.SE != 0 || same.Lo != 0 || same.Hi != 0 {
+		t.Fatalf("同结果两臂的配对 CI 应退化为 0: %+v", same)
+	}
+	// NRuns 只数共同任务上的 attempt。
+	extra := append(append([]Attempt(nil), a...), Attempt{TaskID: "only-in-a", Pass: true})
+	ci, err := PairedDeltaCI(extra, b, 200, 1)
+	if err != nil || ci.NRuns != len(b) || ci.NTasks != 10 {
+		t.Fatalf("NRuns 应只数共同任务: %+v %v", ci, err)
+	}
 
 	dict, err := LoadDictionary(filepath.Join("..", "..", "evals", "forge", "metrics.yaml"))
 	if err != nil {
@@ -343,16 +446,21 @@ func TestPerturbationVariance(t *testing.T) {
 // statement with the MDE in percentage points; a clear difference renders the
 // interval; decompose uses the statement for every delta.
 func TestNullResultMDE(t *testing.T) {
-	null := NullResultStatement(&DeltaCI{CrossesZero: true, NRuns: 40, MDE: 0.123})
+	null := NullResultStatement(&DeltaCI{CrossesZero: true, NRuns: 40, SE: 0.123 / mdeZ, MDE: 0.123})
 	if null != "在 n=40 次运行下未检测到显著差异；最小可检测效应 12.3 pp" {
 		t.Fatalf("null 结论文本不符: %q", null)
 	}
-	sig := NullResultStatement(&DeltaCI{Delta: 0.2, Lo: 0.1, Hi: 0.3, NRuns: 40})
+	sig := NullResultStatement(&DeltaCI{Delta: 0.2, Lo: 0.1, Hi: 0.3, SE: 0.05, NRuns: 40})
 	if !strings.HasPrefix(sig, "差值 +20.0 pp，95% CI [+10.0, +30.0] pp") {
 		t.Fatalf("显著结论文本不符: %q", sig)
 	}
 	if NullResultStatement(nil) != "区间不可得" {
 		t.Fatal("nil CI 应渲染区间不可得")
+	}
+	// 零方差：不得出"MDE 0.0 pp"式的误导结论（设计 §五：0 误差 = 计算异常告警）。
+	zero := NullResultStatement(&DeltaCI{CrossesZero: true, NRuns: 6})
+	if strings.Contains(zero, "最小可检测效应") || !strings.Contains(zero, "bootstrap 方差为 0") {
+		t.Fatalf("零方差应给专门文案: %q", zero)
 	}
 	// 两臂同分布（各任务 50% 通过）→ 跨零，MDE = (1.96+0.8416)·SE。
 	var a, b []Attempt
@@ -400,8 +508,14 @@ func TestNullResultMDE(t *testing.T) {
 	if !strings.Contains(md, "perturbation=unmeasured") || strings.Contains(md, "是否显著以置信区间为准") {
 		t.Fatalf("decompose 渲染应标 perturbation 且不再出无区间的点差: %s", md)
 	}
-	if !strings.Contains(md, "未检测到显著差异") && !strings.Contains(md, "95% CI") {
-		t.Fatalf("decompose 渲染应使用 NullResultStatement: %s", md)
+	for _, d := range rep.DeltaFullOff {
+		if line := "- " + d.Model + ": " + NullResultStatement(d.CI); !strings.Contains(md, line) {
+			t.Fatalf("decompose 渲染应逐模型使用 NullResultStatement（缺 %q）: %s", line, md)
+		}
+		// 点差与区间同一估计量：JSON 的 delta 就是 CI 的点估计。
+		if d.Delta != d.CI.Delta {
+			t.Fatalf("delta 应等于 CI 点估计: %v vs %v", d.Delta, d.CI.Delta)
+		}
 	}
 }
 
@@ -470,6 +584,18 @@ func TestGoldenTestLayerQueryCount(t *testing.T) {
 		t.Fatalf("应落 2 条 eval-golden-test-query 行，得到 %d", n)
 	}
 
+	// 平台跳过的 test 层用例没有被查询：不计数、不落行。
+	skipped := test
+	skipped.ID = "c-test-skip"
+	skipped.SkipPlatforms = []string{runtime.GOOS}
+	srep, err := RunGolden(dir, []GoldenCase{holdout, skipped}, GoldenOptions{ForgeBin: okBin, Repetitions: 1, IncludeTestLayer: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srep.TestLayerCases != 0 {
+		t.Fatalf("平台跳过的 test 层用例不应计为查询: %d", srep.TestLayerCases)
+	}
+
 	// INV-2：仓库内已钉的 golden 集（无 layer 字段）指纹不变；换层改变指纹；非法层拒载。
 	repoGolden := filepath.Join("..", "..", "evals", "forge", "golden")
 	loaded, err := LoadGoldenDir(repoGolden)
@@ -530,6 +656,14 @@ func TestJudgePositionSwap(t *testing.T) {
 	}
 	if none.PositionSwapFlipRate != -1 || none.PositionSwapBias != "" {
 		t.Fatalf("未提供成对判定应为 -1 未运行: %+v", none)
+	}
+	good := filepath.Join(t.TempDir(), "good.json")
+	if err := os.WriteFile(good, []byte(`[{"doc_id":"x","judge_scores":[80],"human_score":80,"threshold":75,"pair_original":"a","pair_swapped":"tie"}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadJudgeScores(good)
+	if err != nil || len(loaded) != 1 || loaded[0].PairOriginal != "a" || loaded[0].PairSwapped != "tie" {
+		t.Fatalf("合法成对判定应能加载: %v %+v", err, loaded)
 	}
 	for name, body := range map[string]string{
 		"缺一半": `[{"doc_id":"x","judge_scores":[80],"human_score":80,"threshold":75,"pair_original":"a"}]`,

@@ -287,16 +287,21 @@ const mdeZ = 1.96 + 0.8416
 const defaultBootstrapIters = 2000
 
 // PairedDeltaCI bootstraps the a−b difference hierarchically: resample tasks
-// (task-sampling source), then within each task and arm resample variants
-// (perturbation source — only when both arms carry ≥MinPerturbationVariants
-// distinct variants), then repeats inside each drawn variant (run-to-run
-// source). Without enough variants the attempts of a task are resampled as one
-// pool and Perturbation is unmeasured. Deterministic for a given seed.
+// (task-sampling source), then — only when both arms carry
+// ≥MinPerturbationVariants distinct variants — resample variants once per task
+// and apply the same draw to both arms (the arms share the prompt variants, so
+// the variant layer is paired), then resample repeats inside each drawn
+// variant per arm (run-to-run source). Without enough variants a task arm's
+// attempts are resampled as one pool and Perturbation is unmeasured. The point
+// estimate uses the same weighting as the bootstrap (variant-equal when
+// measured, attempt-pooled otherwise). Deterministic for a given seed.
 //
-// PairedDeltaCI 分层 bootstrap a−b 差：先重采任务（任务抽样源），再在每个任务的
-// 每一臂内重采变体（扰动源——仅当两臂都带 ≥MinPerturbationVariants 个不同变体），
-// 再在抽中的变体内重采重复（运行间源）。变体不足时任务内 attempts 作为一个池
-// 重采，Perturbation 记 unmeasured。给定 seed 结果确定。
+// PairedDeltaCI 分层 bootstrap a−b 差：先重采任务（任务抽样源）；仅当两臂都带
+// ≥MinPerturbationVariants 个不同变体时，再按任务重采一次变体并让两臂共用同一组
+// 抽样（两臂用的是同一组 prompt 变体，变体层是配对的）；再在抽中的变体内按臂
+// 重采重复（运行间源）。变体不足时任务臂内 attempts 作为一个池重采，Perturbation
+// 记 unmeasured。点估计与 bootstrap 同权（measured 时变体等权，否则按 attempt
+// 合并）。给定 seed 结果确定。
 func PairedDeltaCI(a, b []Attempt, iters int, seed int64) (*DeltaCI, error) {
 	ga, gb := groupAttempts(a), groupAttempts(b)
 	var tasks []string
@@ -310,17 +315,26 @@ func PairedDeltaCI(a, b []Attempt, iters int, seed int64) (*DeltaCI, error) {
 	}
 	sort.Strings(tasks)
 	measured := minVariants(ga) >= MinPerturbationVariants && minVariants(gb) >= MinPerturbationVariants
-	out := &DeltaCI{NTasks: len(tasks), NRuns: len(a), Perturbation: PerturbationUnmeasured}
-	if len(b) < out.NRuns {
-		out.NRuns = len(b)
-	}
+	out := &DeltaCI{NTasks: len(tasks), Perturbation: PerturbationUnmeasured}
 	if measured {
 		out.Perturbation = PerturbationMeasured
 	}
+	runsA, runsB := 0, 0
+	sharedKeys := map[string][]int{}
 	for _, id := range tasks {
-		out.Delta += poolMean(ga[id]) - poolMean(gb[id])
+		runsA += countOutcomes(ga[id])
+		runsB += countOutcomes(gb[id])
+		sharedKeys[id] = commonVariants(ga[id], gb[id])
+		if measured && len(sharedKeys[id]) == 0 {
+			return nil, fmt.Errorf("evalkit: 任务 %s 两臂无共同变体，变体层无法配对", id)
+		}
+		out.Delta += armPoint(ga[id], sharedKeys[id], measured) - armPoint(gb[id], sharedKeys[id], measured)
 	}
 	out.Delta /= float64(len(tasks))
+	out.NRuns = runsA
+	if runsB < out.NRuns {
+		out.NRuns = runsB
+	}
 
 	if iters <= 0 {
 		iters = defaultBootstrapIters
@@ -331,7 +345,16 @@ func PairedDeltaCI(a, b []Attempt, iters int, seed int64) (*DeltaCI, error) {
 		sum := 0.0
 		for range tasks {
 			id := tasks[rng.Intn(len(tasks))]
-			sum += resampleArm(rng, ga[id], measured) - resampleArm(rng, gb[id], measured)
+			if measured {
+				keys := sharedKeys[id]
+				drawn := make([]int, len(keys))
+				for k := range drawn {
+					drawn[k] = keys[rng.Intn(len(keys))]
+				}
+				sum += resampleVariants(rng, ga[id], drawn) - resampleVariants(rng, gb[id], drawn)
+			} else {
+				sum += resamplePool(rng, ga[id]) - resamplePool(rng, gb[id])
+			}
 		}
 		draws[i] = sum / float64(len(tasks))
 	}
@@ -346,13 +369,21 @@ func PairedDeltaCI(a, b []Attempt, iters int, seed int64) (*DeltaCI, error) {
 
 // NullResultStatement renders the fixed-form conclusion: a CI crossing zero
 // reads "在 n=X 次运行下未检测到显著差异；最小可检测效应 Y pp" (never a one-sided
-// claim); otherwise the difference and its interval, in percentage points.
+// claim); otherwise the difference and its interval, in percentage points. A
+// zero-variance bootstrap carries no interval information (design §五: zero
+// error under a deterministic setup is a calculation alarm) and says so
+// instead of printing "MDE 0.0 pp".
 //
 // NullResultStatement 渲染固定格式结论：CI 跨零时为"在 n=X 次运行下未检测到显著
 // 差异；最小可检测效应 Y pp"（禁止单侧表述）；否则给出差值与区间（百分点）。
+// bootstrap 方差为 0 时区间不含信息（设计 §五：确定性配置 0 误差 = 计算异常告警），
+// 如实说明而不是打印"MDE 0.0 pp"。
 func NullResultStatement(ci *DeltaCI) string {
 	if ci == nil {
 		return "区间不可得"
+	}
+	if ci.SE == 0 {
+		return fmt.Sprintf("差值 %+.1f pp，bootstrap 方差为 0（n=%d 次运行）——区间不含信息，按评测设计 §五作计算异常复核（确定性替身或样本无变化）", ci.Delta*100, ci.NRuns)
 	}
 	if ci.CrossesZero {
 		return fmt.Sprintf("在 n=%d 次运行下未检测到显著差异；最小可检测效应 %.1f pp", ci.NRuns, ci.MDE*100)
@@ -391,46 +422,80 @@ func minVariants(g map[string]map[int][]float64) int {
 	return m
 }
 
-// poolMean is the mean over every outcome of one task (all variants pooled).
+// commonVariants returns the sorted variant keys present in both arms.
 //
-// poolMean 是一个任务全部结果的均值（变体合并）。
-func poolMean(vs map[int][]float64) float64 {
-	sum, n := 0.0, 0
-	for _, xs := range vs {
-		for _, x := range xs {
-			sum += x
-			n++
+// commonVariants 返回两臂都有的变体键（升序）。
+func commonVariants(a, b map[int][]float64) []int {
+	var keys []int
+	for k := range a {
+		if _, ok := b[k]; ok {
+			keys = append(keys, k)
 		}
 	}
-	if n == 0 {
-		return 0
-	}
-	return sum / float64(n)
+	sort.Ints(keys)
+	return keys
 }
 
-// resampleArm draws one bootstrap mean for a task arm: variants then repeats
-// when hierarchical, else one pooled draw of the same size.
+// countOutcomes counts one task arm's attempts.
 //
-// resampleArm 为一个任务臂抽一次 bootstrap 均值：分层时先变体后重复，否则按
-// 同样大小从合并池里抽。
-func resampleArm(rng *rand.Rand, vs map[int][]float64, hierarchical bool) float64 {
+// countOutcomes 统计一个任务臂的 attempt 数。
+func countOutcomes(vs map[int][]float64) int {
+	n := 0
+	for _, xs := range vs {
+		n += len(xs)
+	}
+	return n
+}
+
+// armPoint is one task arm's point estimate: the mean of per-variant means over
+// the shared variants when measured, else the pooled mean of every attempt.
+//
+// armPoint 是一个任务臂的点估计：measured 时为共同变体上各变体均值的均值，否则
+// 为全部 attempt 的合并均值。
+func armPoint(vs map[int][]float64, keys []int, measured bool) float64 {
+	if measured {
+		sum := 0.0
+		for _, k := range keys {
+			sum += mean(vs[k])
+		}
+		return sum / float64(len(keys))
+	}
+	var pool []float64
+	for _, xs := range vs {
+		pool = append(pool, xs...)
+	}
+	return mean(pool)
+}
+
+// resampleVariants draws repeats with replacement inside each of the given
+// (already drawn, shared) variants and averages the variant means.
+//
+// resampleVariants 在给定的（已抽好、两臂共用的）各变体内有放回地重采重复，
+// 再对变体均值取平均。
+func resampleVariants(rng *rand.Rand, vs map[int][]float64, drawn []int) float64 {
+	sum := 0.0
+	for _, k := range drawn {
+		xs := vs[k]
+		sub := 0.0
+		for range xs {
+			sub += xs[rng.Intn(len(xs))]
+		}
+		sum += sub / float64(len(xs))
+	}
+	return sum / float64(len(drawn))
+}
+
+// resamplePool draws one same-size bootstrap mean from a task arm's pooled
+// attempts (variant keys visited in sorted order for determinism).
+//
+// resamplePool 从一个任务臂的合并 attempts 中抽一次同样大小的 bootstrap 均值
+// （按变体键升序遍历，保证确定性）。
+func resamplePool(rng *rand.Rand, vs map[int][]float64) float64 {
 	keys := make([]int, 0, len(vs))
 	for k := range vs {
 		keys = append(keys, k)
 	}
 	sort.Ints(keys)
-	if hierarchical {
-		sum := 0.0
-		for range keys {
-			xs := vs[keys[rng.Intn(len(keys))]]
-			sub := 0.0
-			for range xs {
-				sub += xs[rng.Intn(len(xs))]
-			}
-			sum += sub / float64(len(xs))
-		}
-		return sum / float64(len(keys))
-	}
 	var pool []float64
 	for _, k := range keys {
 		pool = append(pool, vs[k]...)
@@ -440,6 +505,20 @@ func resampleArm(rng *rand.Rand, vs map[int][]float64, hierarchical bool) float6
 		sum += pool[rng.Intn(len(pool))]
 	}
 	return sum / float64(len(pool))
+}
+
+// mean is the arithmetic mean (0 for an empty slice).
+//
+// mean 是算术均值（空切片为 0）。
+func mean(xs []float64) float64 {
+	if len(xs) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, x := range xs {
+		sum += x
+	}
+	return sum / float64(len(xs))
 }
 
 // percentile reads the q-quantile of an ascending slice (nearest-rank).

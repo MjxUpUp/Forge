@@ -508,11 +508,11 @@ func runEvalRun(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("sandbox=%s\n", sandbox)
 	}
-	notePreflightEscape()
 	sc, err := evalkit.RunBenchmark(cmd.Context(), spec, manifest, runner)
 	if err != nil {
 		return evalRunError(spec, err)
 	}
+	notePreflightEscape(sc.Preflight)
 	evalDir, err := skillseval.EvalDir()
 	if err != nil {
 		return err
@@ -536,13 +536,16 @@ func runEvalRun(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// notePreflightEscape lands the escape-hatch row and warns when
-// FORGE_EVAL_PREFLIGHT=skip is armed (shared by eval run / decompose).
+// notePreflightEscape lands the escape-hatch row and warns when the preflight
+// was actually skipped by FORGE_EVAL_PREFLIGHT=skip — a backend without
+// baselines (n/a) skips nothing, so it records nothing (shared by eval run /
+// decompose).
 //
-// notePreflightEscape 在 FORGE_EVAL_PREFLIGHT=skip 开启时落逃生舱行并告警
+// notePreflightEscape 仅在 preflight 确实因 FORGE_EVAL_PREFLIGHT=skip 被跳过时
+// 落逃生舱行并告警——不支持基线的后端（n/a）本来就没有可跳过的东西，不落行
 // （eval run / decompose 共用）。
-func notePreflightEscape() {
-	if evalkit.PreflightEscaped() {
+func notePreflightEscape(pf *evalkit.PreflightReport) {
+	if pf != nil && pf.Status == evalkit.PreflightSkipped {
 		evalkit.RecordPreflightEscape(evalRepoRoot())
 		fmt.Println("⚠ " + evalkit.PreflightDisableEnv + "=skip：preflight（oracle/do-nothing）未校验，本次分数证据封顶 Weak")
 	}
@@ -607,11 +610,13 @@ func runEvalDecompose(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("sandbox=%s\n", sandbox)
 	}
-	notePreflightEscape()
 	rep, err := evalkit.RunDecompose(cmd.Context(), grid, spec, manifest, runner)
 	if err != nil {
-		return evalRunError(spec, err)
+		blocked := spec
+		blocked.Profile = "grid" // 审计行里标明这是整张网格的 preflight，而非某一档 profile
+		return evalRunError(blocked, err)
 	}
+	notePreflightEscape(rep.Preflight)
 	evalDir, err := skillseval.EvalDir()
 	if err != nil {
 		return err

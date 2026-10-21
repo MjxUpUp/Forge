@@ -1,8 +1,8 @@
 ---
 status: review
 owner: MjxUpUp
-ask: R 线代码已全部落地、R6 设计稿与 W2 演示文档已出，请审；W3 的 infra 冻结规则与发版节奏仍需你本人拍板（未决 Q1）
-tier: mini   # 本文是周期总纲；R1–R5 每批开工时各自按 design_tiers 定档，R6 预计 full
+ask: R1–R2 已合入，R3–R5 本批待审，R6 设计稿与 W2 演示文档已出，请审；W3 的 infra 冻结规则与发版节奏仍需你本人拍板（未决 Q1）
+tier: mini   # 本文是周期总纲，不受方案篇幅档约束；R1–R5 每批开工时各自按 design_tiers 定档，R6 预计 full
 ---
 
 # 下一周期落地计划：改动接受门 + 外部楔子（2026-10-13 立项）
@@ -13,7 +13,7 @@ tier: mini   # 本文是周期总纲；R1–R5 每批开工时各自按 design_t
 |---|---|---|
 | R1 mutation 阳性对照 | 已合入 | `fix/mutation-baseline-control`（`4567a8a3`） |
 | R2 Warrant-Aware Acceptance | 已合入 | `feat/decision-warrant`（`2738ad63`）；未决 Q2 已按推荐定为新增 `--warrant` |
-| R3 / R4 / R5 | 本批实现 | 合为一批（均在 `internal/evalkit`），方案 `docs/plans/eval-validity-r3-r5-2026-10.md`；未决 Q3 在该方案拍板为脚本化 `leakage_cmd` |
+| R3 / R4 / R5 | 本批实现，待审 | 合为一批（均在 `internal/evalkit`），方案 `docs/plans/eval-validity-r3-r5-2026-10.md`；REQ 以该方案为准（与本文 §四两处措辞不同：REQ-5 复核清单按任务而非 attempt 排序，且 leakage 通过的任务一律入列；REQ-8 本批只提供 `golden run --release` 手动入口，接入发版流水线见该方案 Deferred）；未决 Q3 在该方案拍板为脚本化 `leakage_cmd` |
 | R6 「不可能」声明 | 设计稿已出 | `docs/design/impossible-task-flag-2026-10.md`（只出设计，实现见第六节 Deferred） |
 | W2 演示文档 | 已出 | `docs/wedge-demo-anti-false-green.md` |
 | W1 外部种子用户 / W3 infra 冻结 | 待你本人 | 运营动作；W3 规则见未决 Q1 |
@@ -46,7 +46,7 @@ tier: mini   # 本文是周期总纲；R1–R5 每批开工时各自按 design_t
    因此这是方向一致的外部佐证——只核"不掉分"的接受门挡不住空操作改动、要求可核验引证能挡住——
    不是对本仓 decisions.md 的直接测量。
 2. **mutation 缺阳性对照。** `internal/taskpipeline/mutation.go:RunMutationSampling` 把测试的任何非零
-   退出都计为 killed（:328-330），但从不先跑一次**未变异**的包测试。如果包测试本来就是红的（或被改成恒失败），
+   退出都计为 killed（R1 合入前 `ce8424bc^` 的 :328-330；R1 已在该处加阳性对照），但从不先跑一次**未变异**的包测试。如果包测试本来就是红的（或被改成恒失败），
    就会得到 Score=1.0，CLI 打印"✅ 全部杀灭"（`internal/clitask/task_questioning.go:runTaskMutation`）。
    这是一条真实存在的假绿路径。
 3. **Track A 的有效性前置只有设计，没有代码。** `docs/design/forge-evaluation-system.md` §六 P2

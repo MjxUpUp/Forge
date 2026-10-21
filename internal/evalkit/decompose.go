@@ -72,14 +72,26 @@ type DecomposeReport struct {
 	// Perturbation 是 measured | unmeasured（R4）：unmeasured 的 CI 缺 prompt 变体
 	// 方差源，可能偏窄。
 	Perturbation string `json:"perturbation"`
+	// Preflight is the grid-wide validity preflight (run once, shared by every
+	// cell — R3).
+	//
+	// Preflight 是整张网格共用的有效性 preflight（只跑一次，各格共享——R3）。
+	Preflight *PreflightReport `json:"preflight,omitempty"`
 }
 
 // ModelDelta is one model's paired difference between two profiles.
 //
 // ModelDelta 是一个模型在两个 profile 间的配对差。
 type ModelDelta struct {
-	Model string  `json:"model"`
-	Delta float64 `json:"delta"` // a − b
+	Model string `json:"model"`
+	// Delta is a − b. With a CI it is the CI's own point estimate (mean pass
+	// rate over all attempts of the common tasks) so the number and its
+	// interval never disagree; without one it falls back to the pass@1
+	// cell-mean difference.
+	//
+	// Delta 是 a − b。有 CI 时取 CI 自己的点估计（共同任务上全部 attempt 的平均
+	// 通过率），数字与区间永不矛盾；无 CI 时退回 pass@1 格均值之差。
+	Delta float64 `json:"delta"`
 	// CI is the paired bootstrap interval (nil with CIError when not computable).
 	//
 	// CI 是配对 bootstrap 区间（不可算时为 nil，原因在 CIError）。
@@ -118,6 +130,13 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 		CellMeans:    map[string]float64{},
 		Perturbation: spec.PerturbationStatus(),
 	}
+	// preflight 与 profile 无关：整张网格只跑一次（NFR-1 口径），各格复用。
+	report, leak, err := runPreflight(ctx, spec, manifest, runner)
+	if err != nil {
+		return nil, err
+	}
+	rep.Preflight = report
+	shared := &preflightResult{report: report, leak: leak}
 	cellAttempts := map[string][]Attempt{}
 	profileKey := func(p Profile) string { return string(p) }
 	for _, p := range grid.Profiles {
@@ -125,6 +144,7 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 			cellSpec := spec
 			cellSpec.Profile = p
 			cellSpec.Model = m
+			cellSpec.preflight = shared
 			sc, err := RunBenchmark(ctx, cellSpec, manifest, runner)
 			if err != nil {
 				return nil, fmt.Errorf("evalkit: 网格格 %s×%s 失败: %w", p, m, err)
@@ -161,6 +181,7 @@ func RunDecompose(ctx context.Context, grid DecomposeGrid, spec RunSpec, manifes
 				d.CIError = err.Error()
 			} else {
 				d.CI = ci
+				d.Delta = ci.Delta
 			}
 			out = append(out, d)
 		}
@@ -221,6 +242,9 @@ func (r *DecomposeReport) RenderDecomposeMarkdown() string {
 		s += "- perturbation=measured：CI 含任务抽样、prompt 变体、运行间三个方差源\n\n"
 	} else {
 		s += fmt.Sprintf("- perturbation=unmeasured：未声明 ≥%d 个语义等价 prompt 变体，CI 只含任务抽样与运行间两源，可能偏窄\n\n", MinPerturbationVariants)
+	}
+	if r.Preflight != nil {
+		s += fmt.Sprintf("- preflight=%s（整张网格共用一次）\n\n", r.Preflight.Status)
 	}
 	render := func(name string, deltas []ModelDelta) {
 		s += fmt.Sprintf("## %s\n\n", name)

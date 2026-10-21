@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/evalkit"
 )
 
@@ -19,6 +20,13 @@ func TestEvalRunErrorMapping(t *testing.T) {
 	pe := &evalkit.PreflightError{Report: &evalkit.PreflightReport{Checked: 1, DoNothingPassed: []string{"t1"}}}
 	if err := evalRunError(spec, fmt.Errorf("网格格 full×m 失败: %w", pe)); !errors.Is(err, errHardExit) {
 		t.Fatalf("包装过的 preflight 违例应映射为 errHardExit（exit 2），得到 %v", err)
+	}
+	rows, err := checklog.LoadAllAll(evalRepoRoot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Check != checklog.CheckEvalPreflight || rows[0].Passed {
+		t.Fatalf("违例应落一条 Passed=false 的 eval-preflight 行: %+v", rows)
 	}
 	other := evalRunError(spec, errors.New("boom"))
 	if errors.Is(other, errHardExit) || !strings.HasPrefix(other.Error(), "BLOCKED: ") {

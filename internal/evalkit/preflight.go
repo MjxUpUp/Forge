@@ -149,6 +149,16 @@ const (
 	ReviewTopScore    = "top-score"    // 高分 attempt——高分集中了违规（Identical Runs）
 )
 
+// preflightResult bundles one preflight outcome so a caller can run it once
+// and hand it to several RunBenchmark calls (RunDecompose).
+//
+// preflightResult 打包一次 preflight 结果，供调用方跑一次后交给多次
+// RunBenchmark 复用（RunDecompose）。
+type preflightResult struct {
+	report *PreflightReport
+	leak   *LeakageSummary
+}
+
 // PreflightEscaped reports whether the preflight escape hatch is armed.
 //
 // PreflightEscaped 报告 preflight 逃生舱是否开启。
@@ -163,17 +173,20 @@ func PreflightEscaped() bool {
 // 故障不是裁决）。
 func runPreflight(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest, runner TaskRunner) (*PreflightReport, *LeakageSummary, error) {
 	leak := &LeakageSummary{Status: LeakageUnmeasured}
-	if PreflightEscaped() {
-		return &PreflightReport{Status: PreflightSkipped, Note: PreflightDisableEnv + "=skip——基线未校验，证据封顶 Weak"}, leak, nil
-	}
 	br, ok := runner.(BaselineRunner)
 	if !ok {
 		return &PreflightReport{Status: PreflightNA, Note: "执行后端 " + sandboxLabel(runner) + " 不支持基线（无独立判分命令）"}, leak, nil
+	}
+	if PreflightEscaped() {
+		return &PreflightReport{Status: PreflightSkipped, Note: PreflightDisableEnv + "=skip——基线未校验，证据封顶 Weak"}, leak, nil
 	}
 	rep := &PreflightReport{}
 	leakPassed, leakTotal := 0, 0
 	for _, task := range manifest.Tasks {
 		dn, applicable, err := br.RunBaseline(ctx, spec, task, ArmDoNothing)
+		if err == nil {
+			err = inconclusive(task.ID, ArmDoNothing, dn)
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("evalkit: 任务 %s 的 do-nothing 基线执行失败: %w", task.ID, err)
 		}
@@ -188,6 +201,9 @@ func runPreflight(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 			rep.OracleMissing = append(rep.OracleMissing, task.ID)
 		} else {
 			or, _, err := br.RunBaseline(ctx, spec, task, ArmOracle)
+			if err == nil {
+				err = inconclusive(task.ID, ArmOracle, or)
+			}
 			if err != nil {
 				return nil, nil, fmt.Errorf("evalkit: 任务 %s 的 oracle 基线执行失败: %w", task.ID, err)
 			}
@@ -199,7 +215,7 @@ func runPreflight(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 		if err != nil {
 			return nil, nil, fmt.Errorf("evalkit: 任务 %s 的 leakage 基线执行失败: %w", task.ID, err)
 		}
-		if lkApplicable {
+		if lkApplicable && !lk.BudgetCut { // 超时的 leakage 臂无法判定，不进分母
 			leakTotal++
 			if lk.Pass {
 				leakPassed++
@@ -223,14 +239,31 @@ func runPreflight(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 	return rep, leak, nil
 }
 
+// inconclusive turns a budget-cut baseline into an execution error: a timed-out
+// oracle is not proof the environment is broken, and a timed-out do-nothing is
+// not proof the grader rejects — neither may become a verdict (exit 1 with a
+// hint, never exit 2).
+//
+// inconclusive 把预算截断的基线转成执行错误：oracle 超时不能证明环境坏了，
+// do-nothing 超时也不能证明判分会拒绝——两者都不得成为裁决（exit 1 并提示，
+// 绝不 exit 2）。
+func inconclusive(taskID string, arm BaselineArm, res TaskResult) error {
+	if !res.BudgetCut {
+		return nil
+	}
+	return fmt.Errorf("%s 臂超出单任务墙钟预算，无法判定（任务 %s；调大 --wallclock 后重跑）", arm, taskID)
+}
+
 // buildReviewQueue lists every leakage-pass task, then fills up to
 // reviewQueueSize with the highest pass-rate tasks (ties: fewer tokens first —
-// a suspiciously cheap success is the cheat signature — then task ID).
-// Tasks that never passed are not queued.
+// a suspiciously cheap success is the cheat signature — then task ID). The
+// top-score fill skips tasks that never passed the main run (leakage-pass
+// tasks are queued regardless).
 //
 // buildReviewQueue 先列出全部 leakage 通过的任务，再按通过率降序补足到
 // reviewQueueSize（同分时 token 少者优先——便宜得可疑的成功是作弊特征——再按
-// 任务 ID）。从未通过的任务不入列。
+// 任务 ID）。按高分补足时，主评测从未通过的任务不入列（leakage 通过的任务不受
+// 此限）。
 func buildReviewQueue(attempts []Attempt, leak *LeakageSummary) []ReviewItem {
 	type agg struct {
 		pass, n, tokens int

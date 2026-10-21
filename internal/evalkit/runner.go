@@ -84,13 +84,13 @@ type RunSpec struct {
 	Repeats   int     `yaml:"repeats"   json:"repeats"`
 	Budget    Budget  `yaml:"budget"    json:"budget"`
 	ForgeRef  string  `yaml:"forge_ref" json:"forge_ref"`
-	// Variants are semantically equivalent prompt variants (cycle plan R4). With
-	// ≥3 declared, RunBenchmark runs variant × repeat and the profile_delta CI
-	// counts the variant as a third variance source; fewer → perturbation
-	// unmeasured (the CI may be too narrow).
+	// Variants are semantically equivalent prompt variants (cycle plan R4).
+	// Any declared variants run as variant × repeat; only ≥3 make the
+	// profile_delta CI count the variant as a third variance source — fewer →
+	// perturbation unmeasured (the CI may be too narrow).
 	//
-	// Variants 是语义等价的 prompt 变体（周期总纲 R4）。声明 ≥3 个时 RunBenchmark
-	// 按变体 × 重复执行，profile_delta 的 CI 把变体计为第三个方差源；不足 3 个 →
+	// Variants 是语义等价的 prompt 变体（周期总纲 R4）。声明了变体就按变体 × 重复
+	// 执行；≥3 个时 profile_delta 的 CI 才把变体计为第三个方差源，不足 3 个 →
 	// perturbation=unmeasured（CI 可能偏窄）。
 	Variants []string `yaml:"variants,omitempty" json:"variants,omitempty"`
 	// Variant is the variant of the attempt being executed (set by RunBenchmark,
@@ -99,6 +99,12 @@ type RunSpec struct {
 	// Variant 是当前执行 attempt 的变体（由 RunBenchmark 设置，经 FORGE_EVAL_VARIANT
 	// 交给命令；不序列化）。
 	Variant string `yaml:"-" json:"-"`
+	// preflight carries a preflight already run by the caller (RunDecompose
+	// runs it once for the whole grid); nil → RunBenchmark runs its own.
+	//
+	// preflight 携带调用方已跑过的 preflight（RunDecompose 为整张网格只跑一次）；
+	// 为 nil 时 RunBenchmark 自己跑。
+	preflight *preflightResult
 }
 
 // MinPerturbationVariants is the minimum variant count for the perturbation
@@ -405,10 +411,15 @@ func RunBenchmark(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 	if len(manifest.Tasks) == 0 {
 		return nil, fmt.Errorf("evalkit: manifest 无任务（pass^k 分母为 0 会产出 NaN，拒绝空跑）")
 	}
-	preflight, leak, err := runPreflight(ctx, spec, manifest, runner)
-	if err != nil {
-		return nil, err
+	pf := spec.preflight
+	if pf == nil {
+		report, leak, err := runPreflight(ctx, spec, manifest, runner)
+		if err != nil {
+			return nil, err
+		}
+		pf = &preflightResult{report: report, leak: leak}
 	}
+	preflight, leak := pf.report, pf.leak
 	variants := spec.Variants
 	if len(variants) == 0 {
 		variants = []string{""}
@@ -444,6 +455,7 @@ func RunBenchmark(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 	sc.ReviewQueue = buildReviewQueue(attempts, leak)
 	sc.Perturbation = spec.PerturbationStatus()
 	sc.HarnessDisclosure = append(sc.HarnessDisclosure,
+		fmt.Sprintf("attempts-per-task: %d（变体 %d × 重复 %d）", len(variants)*spec.Repeats, len(variants), spec.Repeats),
 		"preflight: "+preflight.Status,
 		"leakage: "+leak.Status,
 		fmt.Sprintf("perturbation: %s（变体 %d 个，≥%d 才计入方差源）", sc.Perturbation, len(spec.Variants), MinPerturbationVariants))
@@ -670,28 +682,40 @@ func (d DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask)
 // test_cmd，do-nothing = 只跑 test_cmd，leakage = leakage_cmd && test_cmd（仅在
 // 声明时）。未声明 oracle_cmd 由 preflight 记为"有定义但缺失"，此处不执行。
 func (d DockerRunner) RunBaseline(ctx context.Context, spec RunSpec, task BenchTask, arm BaselineArm) (TaskResult, bool, error) {
-	if !task.HasDockerShape() || task.TestCmd == "" {
-		return TaskResult{TaskID: task.ID}, false, nil
-	}
-	var inner string
-	switch arm {
-	case ArmOracle:
-		if task.OracleCmd == "" {
-			return TaskResult{TaskID: task.ID}, false, nil
-		}
-		inner = joinCmds(task.OracleCmd, task.TestCmd)
-	case ArmDoNothing:
-		inner = task.TestCmd
-	case ArmLeakage:
-		if task.LeakageCmd == "" {
-			return TaskResult{TaskID: task.ID}, false, nil
-		}
-		inner = joinCmds(task.LeakageCmd, task.TestCmd)
-	default:
-		return TaskResult{}, false, fmt.Errorf("evalkit: 未知基线 %q", arm)
+	inner, applicable, err := baselineCommand(task, arm)
+	if err != nil || !applicable {
+		return TaskResult{TaskID: task.ID}, applicable, err
 	}
 	res, err := runInContainer(ctx, spec, task, inner)
 	return res, true, err
+}
+
+// baselineCommand composes the in-container command of one baseline arm (pure:
+// the whole arm semantics, testable without docker). applicable=false when the
+// task has no container grader or the arm's command is undeclared.
+//
+// baselineCommand 组装一条基线臂在容器内执行的命令（纯函数：臂语义全在这里，
+// 无需 docker 即可测试）。任务无容器判分命令或该臂命令未声明时 applicable=false。
+func baselineCommand(task BenchTask, arm BaselineArm) (inner string, applicable bool, err error) {
+	if !task.HasDockerShape() || task.TestCmd == "" {
+		return "", false, nil
+	}
+	switch arm {
+	case ArmOracle:
+		if task.OracleCmd == "" {
+			return "", false, nil
+		}
+		return joinCmds(task.OracleCmd, task.TestCmd), true, nil
+	case ArmDoNothing:
+		return task.TestCmd, true, nil
+	case ArmLeakage:
+		if task.LeakageCmd == "" {
+			return "", false, nil
+		}
+		return joinCmds(task.LeakageCmd, task.TestCmd), true, nil
+	default:
+		return "", false, fmt.Errorf("evalkit: 未知基线 %q", arm)
+	}
 }
 
 // joinCmds chains a solution step before the grader ("a && b"; empty a → b).
