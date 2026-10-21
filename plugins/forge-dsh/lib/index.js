@@ -37,7 +37,7 @@ import { readFileSync } from "node:fs";
 import { bundledForgeHint, resolveBundledForge } from "./bundled.js";
 import { probeForge } from "./runner.js";
 import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
-import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName, welcomeText } from "./tools.js";
+import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName, welcomeText, isSubagent, MANAGED_BANNER } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
 const pluginVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -236,15 +236,6 @@ function apply(ctx, config = {}) {
     };
     const run = (async () => {
       const forgeOk = await ensureForge(agent);
-      // Queue order: welcome, then the path hint, then forge's own contexts.
-      // Welcome: one human-facing line per session (startup only — resume and
-      // compact are not a first meeting), and only when the gates really are on.
-      const isStartup = source === undefined || source === "startup";
-      if (forgeOk && welcome && isStartup && state !== undefined && !state.welcomed) {
-        state.welcomed = true;
-        const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
-        state.pending.push(welcomeText(pluginVersion, forgeVersion));
-      }
       // The bundled binary is not on PATH while forge's gate messages say
       // `forge task …`, so the agent is told where it is. After a compaction the
       // earlier hint is summarised away, so it is re-sent.
@@ -260,6 +251,19 @@ function apply(ctx, config = {}) {
       );
       noteErrors("session-start", start);
       queue(start);
+      // Welcome — queue order: welcome, path hint, forge's own contexts. One
+      // human-facing line per session: startup only (resume/compact are not a
+      // first meeting), never for delegated children (they report to their
+      // parent), and only when forge itself announced the project as managed —
+      // a working binary alone does not mean the gates apply here (no `forge
+      // init`, or `forge off`).
+      const isStartup = source === undefined || source === "startup";
+      const managed = start.contexts.some((text) => text.includes(MANAGED_BANNER));
+      if (forgeOk && welcome && isStartup && managed && !isSubagent(agent) && state !== undefined && !state.welcomed) {
+        state.welcomed = true;
+        const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
+        state.pending.unshift(welcomeText(pluginVersion, forgeVersion));
+      }
       if (source === "compact") {
         const compact = await runHookGroup(
           matchedCommands(spec.PostCompact, ""),

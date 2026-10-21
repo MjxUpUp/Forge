@@ -529,20 +529,33 @@ test("bundled forge: a bundle that resolves but will not run falls back to a wor
   assert.match((await registered.get("forge-status").handler()).text, /forgeBin: forge \(PATH\)/);
 });
 
-test("welcome: one first-turn line with versions at startup, ahead of forge's own contexts; never repeated", async (t) => {
+/** A plugin instance for the welcome tests: the double announces "managed" unless told otherwise. */
+async function welcomeCtx(t, config = {}, { managed = true } = {}) {
   rmSync(LOG, { force: true });
   process.env.FAKE_FORGE_LOG = LOG;
-  t.after(() => delete process.env.FAKE_FORGE_LOG);
-  const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  if (managed) process.env.FAKE_FORGE_MANAGED = "1";
+  t.after(() => {
+    delete process.env.FAKE_FORGE_LOG;
+    delete process.env.FAKE_FORGE_MANAGED;
+  });
   const ctx = new Context();
   ctx.provide("tools", {});
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000 });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, ...config });
+  return ctx;
+}
+const WELCOME = "质量门禁已接管本项目";
+const welcomeCount = (texts) => texts.filter((x) => x.includes(WELCOME)).length;
+
+test("welcome: one first-turn line with versions at startup, ahead of forge's own contexts", async (t) => {
+  const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const ctx = await welcomeCtx(t);
   const { agent, calls } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
   const first = await preStepTexts(ctx, agent);
-  const welcomes = first.texts.filter((x) => x.includes("质量门禁已接管本项目"));
+  const welcomes = first.texts.filter((x) => x.includes(WELCOME));
   assert.equal(welcomes.length, 1, "exactly one welcome");
   assert.equal(first.texts[0], welcomes[0], "the welcome leads the queue");
+  assert.ok(first.texts.some((x) => x.startsWith("[forge-session]")), "forge's own banner still follows");
   assert.ok(welcomes[0].includes(`插件 ${PKG.version}`), "plugin version from package.json");
   assert.ok(welcomes[0].includes("forge 1.79.0"), "forge version from the probe (the double reports 1.79.0)");
   assert.match(welcomes[0], /第一次回复/);
@@ -550,34 +563,63 @@ test("welcome: one first-turn line with versions at startup, ahead of forge's ow
   assert.match(welcomes[0], /forge off/);
   assert.equal(first.texts.at(-1), "hello");
   assert.equal(calls.injected.length, 0);
-  // not a first meeting: a compaction or a resume says nothing new
-  for (const source of ["compact", "resume"]) {
-    ctx.emit("agent/session-start", { agent, source });
-    const later = await preStepTexts(ctx, agent, source);
-    assert.equal(later.texts.filter((x) => x.includes("质量门禁已接管本项目")).length, 0, `${source} stays quiet`);
+  // a second startup of the SAME session (overlapping starts) does not greet twice
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const again = await preStepTexts(ctx, agent, "again");
+  assert.equal(welcomeCount(again.texts), 0);
+});
+
+test("welcome: resume and compact never greet — each on a FRESH session, so the source filter is what holds", async (t) => {
+  const ctx = await welcomeCtx(t);
+  for (const [i, source] of ["resume", "compact"].entries()) {
+    const fresh = makeAgent();
+    fresh.agent.session.id = `fresh-${i}`;
+    ctx.emit("agent/session-start", { agent: fresh.agent, source });
+    const r = await preStepTexts(ctx, fresh.agent, source);
+    assert.equal(welcomeCount(r.texts), 0, `${source} stays quiet`);
   }
 });
 
-test("welcome: config welcome:false drops it, and a missing forge gets the notice instead", async (t) => {
-  rmSync(LOG, { force: true });
-  process.env.FAKE_FORGE_LOG = LOG;
-  t.after(() => delete process.env.FAKE_FORGE_LOG);
-  const off = new Context();
-  off.provide("tools", {});
-  await off.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+test("welcome: a delegated subagent is not told to greet anyone", async (t) => {
+  const ctx = await welcomeCtx(t);
+  const child = makeAgent();
+  child.agent.session.id = "child-1";
+  child.agent.session.header.origin = "subagent";
+  ctx.emit("agent/session-start", { agent: child.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(ctx, child.agent)).texts), 0, "origin: subagent");
+  const forked = makeAgent();
+  forked.agent.session.id = "child-2";
+  forked.agent.session.header.parentSession = "sess-1";
+  ctx.emit("agent/session-start", { agent: forked.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(ctx, forked.agent)).texts), 0, "parentSession set");
+  // the top-level agent beside them still gets its welcome
+  const top = makeAgent();
+  top.agent.session.id = "top-1";
+  ctx.emit("agent/session-start", { agent: top.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(ctx, top.agent)).texts), 1);
+});
+
+test("welcome: no claim when forge did not announce the project as managed, when welcome:false, or when forge is missing", async (t) => {
+  // forge runs fine but this project is not managed (no banner) — the gates do not apply here
+  const unmanaged = await welcomeCtx(t, {}, { managed: false });
   const a = makeAgent();
-  off.emit("agent/session-start", { agent: a.agent, source: "startup" });
-  const quiet = await preStepTexts(off, a.agent);
-  assert.equal(quiet.texts.filter((x) => x.includes("质量门禁已接管本项目")).length, 0);
+  a.agent.session.id = "unmanaged-1";
+  unmanaged.emit("agent/session-start", { agent: a.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(unmanaged, a.agent)).texts), 0, "unmanaged project");
+
+  const off = await welcomeCtx(t, { welcome: false });
+  const b = makeAgent();
+  b.agent.session.id = "off-1";
+  off.emit("agent/session-start", { agent: b.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(off, b.agent)).texts), 0, "welcome:false");
 
   const BAD = fileURLToPath(new URL("../test/doubles/no-such-forge", import.meta.url));
-  const missing = new Context();
-  missing.provide("tools", {});
-  await missing.plugin(forgePlugin, { forgeBin: BAD, timeoutMs: 5000, startWaitMs: 15000 });
-  const b = makeAgent();
-  missing.emit("agent/session-start", { agent: b.agent, source: "startup" });
-  const noForge = await preStepTexts(missing, b.agent);
-  assert.equal(noForge.texts.filter((x) => x.includes("质量门禁已接管本项目")).length, 0, "gates are OFF — do not claim they are on");
+  const missing = await welcomeCtx(t, { forgeBin: BAD });
+  const c = makeAgent();
+  c.agent.session.id = "missing-1";
+  missing.emit("agent/session-start", { agent: c.agent, source: "startup" });
+  const noForge = await preStepTexts(missing, c.agent);
+  assert.equal(welcomeCount(noForge.texts), 0, "gates are OFF — do not claim they are on");
   assert.equal(noForge.texts.filter((x) => x.includes("forge CLI not found")).length, 1);
 });
 

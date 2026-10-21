@@ -41,7 +41,7 @@ async function verifyInstalled(dir, want) {
   }
   let out;
   try {
-    out = execFileSync(bin, ['--version'], { encoding: 'utf8' });
+    out = execFileSync(bin, ['--version'], { encoding: 'utf8', timeout: 30000 });
   } catch (e) {
     return { ok: false, error: `内置二进制无法运行：${String(e.message).split('\n')[0]}` };
   }
@@ -75,6 +75,8 @@ async function main() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verify-dsh-'));
   try {
     fs.writeFileSync(path.join(dir, 'package.json'), '{"name":"verify-dsh-profile","private":true}\n');
+    // --ignore-scripts：forge 本体靠平台子包分发、无 install script，验证不需要生命周期，
+    // 也不让刚发布的包代码在 CI 里跑。
     // 传播窗内 registry 读路径可滞后写路径（npm-verify 主包验证已有多轮实录）：
     // 安装失败按固定间隔重试，重试用尽才失败。
     const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -82,9 +84,15 @@ async function main() {
     for (let i = 1; i <= args.attempts; i++) {
       const r = spawnSync(
         npm,
-        ['install', '--prefix', dir, '--no-audit', '--no-fund', `--registry=${args.registry}`, args.spec],
+        ['install', '--prefix', dir, '--ignore-scripts', '--no-audit', '--no-fund', `--registry=${args.registry}`, args.spec],
         { stdio: 'inherit', shell: process.platform === 'win32' },
       );
+      if (r.error) {
+        // npm 本身起不来（不在 PATH 等）：重试无意义，立即失败而不是空等 10×30s
+        console.error(`::error::无法执行 npm：${r.error.message}`);
+        process.exitCode = 1;
+        return;
+      }
       if (r.status === 0) {
         console.log(`installed ${args.spec} on attempt ${i}/${args.attempts}`);
         installed = true;

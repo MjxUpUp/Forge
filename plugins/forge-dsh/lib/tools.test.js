@@ -10,6 +10,8 @@ import {
   sessionBits,
   toCCToolName,
   welcomeText,
+  isSubagent,
+  MANAGED_BANNER,
 } from "./tools.js";
 
 test("toCCToolName maps the DSH built-ins and passes unknowns through", () => {
@@ -119,4 +121,16 @@ test("welcomeText names both versions, asks for a one-sentence relay, and degrad
   const noForge = welcomeText("1.2.3", undefined);
   assert.ok(noForge.includes("插件 1.2.3）"), "no dangling forge clause when the probe gave no version");
   assert.ok(!noForge.includes("forge undefined"));
+});
+
+test("isSubagent: origin 'subagent' or a parentSession marks a delegated child; top-level and missing handles are not", () => {
+  assert.equal(isSubagent({ session: { header: { origin: "subagent" } } }), true);
+  assert.equal(isSubagent({ session: { header: { parentSession: "sess-0" } } }), true);
+  assert.equal(isSubagent({ session: { header: { cwd: "/p" } } }), false);
+  assert.equal(isSubagent({ session: {} }), false);
+  assert.equal(isSubagent(undefined), false);
+});
+
+test("MANAGED_BANNER is the [forge-session] marker forge's task-resume hook prints", () => {
+  assert.equal(MANAGED_BANNER, "[forge-session]");
 });

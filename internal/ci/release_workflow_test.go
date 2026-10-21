@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -32,8 +33,9 @@ type releaseJob struct {
 	// 未声明 permissions 的 job（继承 workflow 顶层）为 nil map，读取安全。
 	Permissions map[string]string `yaml:"permissions"`
 	Steps       []struct {
-		Run  string `yaml:"run"`
-		Uses string `yaml:"uses"`
+		Run  string            `yaml:"run"`
+		Uses string            `yaml:"uses"`
+		With map[string]string `yaml:"with"`
 	} `yaml:"steps"`
 }
 
@@ -207,17 +209,31 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	// 插件自带解析逻辑必须能找到安装目录内、版本 == tag 的二进制。必须是独立步骤且在 checkout
 	// 之后（脚本在仓库里）；不得含 npm i -g，否则会顶替上面「装回步骤」的定位（取最后一个
 	// 含 npm i -g 的步骤）而让退避/exit 契约守卫校验错对象。
-	dshVerifyIdx, checkoutIdx := -1, -1
+	dshVerifyIdx, checkoutIdx, cosignIdx := -1, -1, -1
 	for i, s := range npmVerify.Steps {
 		if strings.Contains(s.Uses, "actions/checkout") && checkoutIdx < 0 {
 			checkoutIdx = i
+			// 本 job 持 contents/pull-requests write；首个 checkout 只为取 scripts/，其后要装
+			// 刚发布的包（npm 生命周期可读工作区凭据），不得把 token 持久化进 .git/config。
+			if s.With["persist-credentials"] != "false" {
+				t.Fatal("npm-verify 的首个 checkout 必须 persist-credentials: false（job 持写权限，其后会 npm install 刚发布的包）")
+			}
+		}
+		if strings.Contains(s.Run, "cosign verify-blob") {
+			cosignIdx = i
 		}
 		if strings.Contains(s.Run, "scripts/verify-dsh-install.js") {
 			dshVerifyIdx = i
-			for _, anchor := range []string{`@agent_forge/forge-dsh@$WANT`, "--want", "--registry https://registry.npmjs.org"} {
+			for _, anchor := range []string{`@agent_forge/forge-dsh@$WANT`, `--want "$WANT"`, "--registry https://registry.npmjs.org", `WANT="${GITHUB_REF_NAME#v}"`} {
 				if !strings.Contains(s.Run, anchor) {
 					t.Fatalf("forge-dsh 装回验证步骤缺 %q", anchor)
 				}
+			}
+			// 重试窗口不得缩水：--attempts 1 会把传播滞后窗口里的假红变成常态。
+			if m := regexp.MustCompile(`--attempts (\d+) --sleep-sec (\d+)`).FindStringSubmatch(s.Run); m == nil {
+				t.Fatal("forge-dsh 装回验证步骤缺 --attempts/--sleep-sec")
+			} else if a, _ := strconv.Atoi(m[1]); a < 10 {
+				t.Fatalf("forge-dsh 装回验证 --attempts=%d 过小（须 ≥10，覆盖 registry 传播滞后）", a)
 			}
 			if strings.Contains(s.Run, "npm i -g") {
 				t.Fatal("forge-dsh 装回验证步骤不得含 npm i -g（会被当成主包装回步骤，破坏退避/exit 契约守卫的定位）")
@@ -229,6 +245,11 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	}
 	if checkoutIdx < 0 || checkoutIdx > dshVerifyIdx {
 		t.Fatalf("npm-verify 的 checkout 必须在 forge-dsh 装回验证步骤之前（脚本在仓库内），checkout=%d verify=%d", checkoutIdx, dshVerifyIdx)
+	}
+	// 它最可能因 forge-dsh 自身 packument 的传播滞后而红；drill 与 cosign 验签是更重的证据，
+	// 不能被它的失败（默认 if: success()）跳过——所以必须排在验签之后。
+	if cosignIdx < 0 || dshVerifyIdx < cosignIdx {
+		t.Fatalf("forge-dsh 装回验证步骤必须排在 cosign 验签之后（否则它的传播滞后红灯会跳过 drill/验签），cosign=%d verify=%d", cosignIdx, dshVerifyIdx)
 	}
 	verifyRuns := jobStepRuns(npmVerify)
 	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {

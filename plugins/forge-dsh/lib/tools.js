@@ -198,6 +198,31 @@ export function pluginMessage(text) {
 }
 
 /**
+ * The marker forge's own SessionStart hook (task-resume) prints when the
+ * project is managed — the same mechanical signal the user-level instruction
+ * block keys on (internal/skillgen/claudemd.go). The welcome line is only
+ * truthful when it appeared, so the plugin waits for it instead of guessing from
+ * "forge --version runs".
+ *
+ * forge 自己的 SessionStart hook 在项目被接管时输出的横幅标记，与用户级指令段的
+ * 激活判据同源；欢迎语只在它出现时才属实。
+ */
+export const MANAGED_BANNER = "[forge-session]";
+
+/**
+ * Whether a DSH agent handle is a delegated child (its session header carries
+ * origin 'subagent' / a parentSession). Children report to their parent, not to
+ * the user, so they must not be told to greet anyone.
+ *
+ * @param {object|undefined} agent
+ * @returns {boolean}
+ */
+export function isSubagent(agent) {
+  const header = agent?.session?.header;
+  return header?.origin === "subagent" || header?.parentSession !== undefined;
+}
+
+/**
  * First-turn onboarding line (model-facing; the user only sees what the model
  * relays, so it asks for one sentence in the first reply). Carries the plugin
  * and forge versions so a stale install is visible at a glance.

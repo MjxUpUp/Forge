@@ -260,8 +260,9 @@ jobs:
     # 窗口由两轮实录定标：v1.56.6 主包读路径滞后 ~5min（8×45s 窗口为它而设）；
     # v1.73.0 packument 已 visible 但 tarball CDN 404 长达 ~9-14min——8×45s≈7min
     # 被击穿，重试用尽假红（发布实际成功，重跑 14s 过）。
-    # 35 = 主包装回最坏 ≈18min + forge-dsh 装回最坏 ≈5min（10×30s）+ drill/验签余量。
-    timeout-minutes: 35
+    # 45 = 主包装回最坏 ≈18min + forge-dsh 装回最坏 ≈15min（10 次尝试：9×30s 间隔 + npm 对
+    # 404/ETARGET 自带重试，单次失败可达 30–70s）+ drill/验签余量。
+    timeout-minutes: 45
     # job 级 contents:write + pull-requests:write 供尾部 pins 对齐步开 PR——
     # permissions 只支持 workflow/job 两级，写在 step 级是非法键（actionlint
     # 实证，整个 workflow 解析期即失败）。
@@ -269,7 +270,12 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      # persist-credentials: false——本 job 持 contents/pull-requests write，此 checkout 只为取
+      # scripts/；后面装 forge-dsh 会执行 npm 生命周期，不让 token 留在 .git/config。
+      # 下方「Checkout main for pins alignment」另有一次带凭据的 checkout 供开 PR 用。
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
@@ -321,18 +327,6 @@ jobs:
             exit 1
           fi
           echo "npm-verify passed: forge $GOT == tag v$WANT"
-      # 发布后验证「装插件即装本体」：forge-dsh 依赖 @agent_forge/forge（lockstep 精确钉），
-      # 上一步只验了主包 npm i -g 路径；用户另一条路径是经 DSH 装插件、由依赖解析带上本体。
-      # 在干净目录装刚发布的 forge-dsh，断言插件自带解析逻辑能找到安装目录内的二进制且
-      # --version == tag。独立成步、不含 npm i -g，避免动到上一步的退避/exit 契约守卫
-      # （TestReleaseWorkflow_NeedsChain）。重试窗口短于主包：此时主包已验证可见，只剩
-      # forge-dsh 自身 packument 的传播滞后。
-      - name: Install forge-dsh and assert the bundled forge == tag
-        run: |
-          WANT="${GITHUB_REF_NAME#v}"
-          node scripts/verify-dsh-install.js \
-            --spec "@agent_forge/forge-dsh@$WANT" --want "$WANT" \
-            --registry https://registry.npmjs.org --attempts 10 --sleep-sec 30
       # 发布后 pins 对齐（belt-and-suspenders 兜底）：v1.66.1 起 optionalDependencies
       # 钉随 Release PR 由 extra-files 同批 bump（提交态守卫已收紧严格相等），本步
       # 正常路径是 no-op 早退（npm/package.json 已对齐）。它防的是绕过 release-please
@@ -397,3 +391,16 @@ jobs:
             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
             checksums.txt
           echo "signature verified: v${VER} checksums.txt (keyless, release.yml workflow identity)"
+      # 发布后验证「装插件即装本体」：forge-dsh 依赖 @agent_forge/forge（lockstep 精确钉），
+      # 上一步只验了主包 npm i -g 路径；用户另一条路径是经 DSH 装插件、由依赖解析带上本体。
+      # 在干净目录装刚发布的 forge-dsh，断言插件自带解析逻辑能找到安装目录内的二进制且
+      # --version == tag。独立成步、不含 npm i -g，避免动到上一步的退避/exit 契约守卫
+      # （TestReleaseWorkflow_NeedsChain）。重试窗口短于主包：此时主包已验证可见，只剩
+      # forge-dsh 自身 packument 的传播滞后。放在 drill 与 cosign 验签之后：它最可能因
+      # 传播滞后而红，而 drill/验签是更重的证据，不能被它的失败跳过。
+      - name: Install forge-dsh and assert the bundled forge == tag
+        run: |
+          WANT="${GITHUB_REF_NAME#v}"
+          node scripts/verify-dsh-install.js \
+            --spec "@agent_forge/forge-dsh@$WANT" --want "$WANT" \
+            --registry https://registry.npmjs.org --attempts 10 --sleep-sec 30
