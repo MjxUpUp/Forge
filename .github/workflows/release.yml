@@ -42,6 +42,13 @@ jobs:
               exit 1
             fi
           done
+          # forge-dsh 依赖的 forge 本体版本必须等于 tag：插件内置依赖（lockstep 钉版本），
+          # 漏 bump 会让用户装到与插件 spec.json 不配套的 forge。
+          DEP_VER=$(jq -r '.dependencies["@agent_forge/forge"]' plugins/forge-dsh/package.json)
+          if [ "$TAG_VER" != "$DEP_VER" ]; then
+            echo "::error::tag v$TAG_VER != plugins/forge-dsh dependencies[@agent_forge/forge] $DEP_VER — 先对齐版本号再发版"
+            exit 1
+          fi
 
   # 行为级冒烟门禁（发布物在 publish 前必须真实跑过——forge 理念：验收 = 实跑
   # 证据，不是"构建成功"）：wedge-drill 验首证据链，artifact-drill 验产物链分档

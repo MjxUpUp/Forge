@@ -136,6 +136,9 @@ func TestReleasePleaseConfig_ExtraFilesBumpAllManifests(t *testing.T) {
 		"npm/package.json|$.version",
 		".kimi-plugin/plugin.json|$.version",
 		"plugins/forge-dsh/package.json|$.version",
+		// forge-dsh 内置 forge 本体依赖（lockstep 钉）：丢这条 = 发版后插件依赖滞后于
+		// 本体，用户装到与 spec.json 不配套的 forge。
+		"plugins/forge-dsh/package.json|$.dependencies['@agent_forge/forge']",
 		// optionalDependencies 平台包钉随火车自动 bump(2026-09-18 根治):
 		// release-please 不 bump map 值的缺口曾致 v1.65.0 发布失败与
 		// #72/#74/#77 三轮手工 npm-align 债务。方括号键 + 同文件多 jsonpath
@@ -193,7 +196,8 @@ func TestReleasePleaseManifest_DshPluginTracksTrain(t *testing.T) {
 		t.Fatalf("unmarshal .release-please-manifest.json: %v", err)
 	}
 	var pkg struct {
-		Version string `json:"version"`
+		Version      string            `json:"version"`
+		Dependencies map[string]string `json:"dependencies"`
 	}
 	if err := json.Unmarshal(readRepoFile(t, "plugins", "forge-dsh", "package.json"), &pkg); err != nil {
 		t.Fatalf("unmarshal plugins/forge-dsh/package.json: %v", err)
@@ -205,6 +209,11 @@ func TestReleasePleaseManifest_DshPluginTracksTrain(t *testing.T) {
 	if got != pkg.Version {
 		t.Fatalf("plugins/forge-dsh/package.json 版本 %q != manifest 版本 %q——dsh 插件随主火车 lockstep 发版，"+
 			"版本号由 Release PR 经 extra-files 统一 bump，不要手改；请把它同步回根版本", pkg.Version, got)
+	}
+	// 插件内置依赖 forge 本体：钉必须与根版本相等（精确版本，不是范围）。
+	if dep := pkg.Dependencies["@agent_forge/forge"]; dep != got {
+		t.Fatalf("plugins/forge-dsh/package.json dependencies[@agent_forge/forge]=%q != manifest 版本 %q——"+
+			"插件与 forge 本体 lockstep 发版，钉由 Release PR 经 extra-files 统一 bump，不要手改", dep, got)
 	}
 }
 

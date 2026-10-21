@@ -388,6 +388,80 @@ test("session-start: a missing forge queues one visible notice per session, deli
   assert.equal(noticesIn(secondFirst.texts).length, 1, "the new session is told too");
 });
 
+test("bundled forge: used when no forgeBin is configured, and the agent is told its absolute path once", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  const savedBin = process.env.FORGE_BIN;
+  delete process.env.FORGE_BIN;
+  t.after(() => {
+    delete process.env.FAKE_FORGE_LOG;
+    if (savedBin !== undefined) process.env.FORGE_BIN = savedBin;
+  });
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", {
+    register: (cmd) => {
+      registered.set(cmd.name, cmd);
+      return () => true;
+    },
+  });
+  await ctx.plugin(forgePlugin, { resolveBundledForge: () => FAKE, timeoutMs: 5000, startWaitMs: 15000 });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const first = await preStepTexts(ctx, agent);
+  const hints = first.texts.filter((x) => x.includes("forge CLI bundled with this plugin"));
+  assert.equal(hints.length, 1, "exactly one hint");
+  assert.ok(hints[0].includes(FAKE), "the hint carries the absolute path");
+  assert.equal(first.texts[0], hints[0], "the hint leads the queue, ahead of forge's own contexts");
+  assert.ok(hookCalls().length > 0, "hooks ran through the bundled binary");
+  // a compact boundary in the same session must not repeat it
+  ctx.emit("agent/session-start", { agent, source: "compact" });
+  const later = await preStepTexts(ctx, agent, "next");
+  assert.equal(later.texts.filter((x) => x.includes("forge CLI bundled")).length, 0);
+  const reply = await registered.get("forge-status").handler();
+  assert.ok(reply.text.includes(`forgeBin: ${FAKE} (bundled)`), reply.text);
+});
+
+test("bundled forge: an explicit forgeBin wins and no hint is given", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, {
+    forgeBin: FAKE,
+    resolveBundledForge: () => "/must/not/be/used/forge",
+    timeoutMs: 5000,
+    startWaitMs: 15000,
+  });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const first = await preStepTexts(ctx, agent);
+  assert.equal(first.texts.filter((x) => x.includes("bundled with this plugin")).length, 0);
+  assert.ok(hookCalls().length > 0, "hooks ran through the configured binary");
+});
+
+test("bundled forge: no bundle and no config falls back to PATH forge, reported as such", async (t) => {
+  const savedBin = process.env.FORGE_BIN;
+  delete process.env.FORGE_BIN;
+  t.after(() => {
+    if (savedBin !== undefined) process.env.FORGE_BIN = savedBin;
+  });
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", {
+    register: (cmd) => {
+      registered.set(cmd.name, cmd);
+      return () => true;
+    },
+  });
+  await ctx.plugin(forgePlugin, { resolveBundledForge: () => undefined });
+  const reply = await registered.get("forge-status").handler();
+  assert.match(reply.text, /forgeBin: forge \(PATH\)/);
+});
+
 test("disabled config wires no listeners", async (t) => {
   rmSync(LOG, { force: true });
   process.env.FAKE_FORGE_LOG = LOG;

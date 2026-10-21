@@ -47,8 +47,12 @@ exposes the corresponding event points (the preview builds have neither).
 
 ## Requirements
 
-- The `forge` CLI on `PATH` (`npm install -g @agent_forge/forge`), with the project
-  initialized (`forge init`) for task gates to have state to enforce.
+- The `forge` CLI. The plugin depends on `@agent_forge/forge` (pinned to the plugin's
+  own version), so installing it through DSH installs forge and uninstalling removes
+  it — nothing to put on `PATH`. The bundled binary is not on `PATH`, so at session
+  start the agent is told its absolute path to run `forge …` commands with. Override
+  with `forgeBin`, or `FORGE_BIN`, to use a different forge. The project still needs
+  `forge init` for task gates to have state to enforce.
 - DeepSeek Harness `0.1.0-rc.7` – `0.2.1-rc.2`, Node.js ≥ 18. The bridge contract is
   pinned to `0.1.0-rc.7` ([`contract.json`](./contract.json)); `0.2.1-rc.2` is the
   desktop build this plugin runs on (pre-tool interception verified live there; a
@@ -88,7 +92,7 @@ under `~/.dsh/profiles/<profile>/`):
 - id: forge-quality
   name: "@agent_forge/forge-dsh"
   config:
-    forgeBin: forge      # binary name/path; FORGE_BIN only fills in when this key is absent
+    forgeBin: forge      # binary name/path. Precedence: this key > FORGE_BIN > bundled forge > PATH `forge`
     timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
     startWaitMs: 1500    # first pre-step waits this long for session-start contexts
     enabled: true        # false unwires every listener

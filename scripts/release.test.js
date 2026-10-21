@@ -12,7 +12,7 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins } = require('./release.js');
+const { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins, replaceDshForgeDependency } = require('./release.js');
 
 const SCRIPT = path.join(__dirname, 'release.js');
 const PKG = path.join(__dirname, '..', 'npm', 'package.json');
@@ -266,4 +266,27 @@ test('replacePlatformPins 命中数 != 5 时拒绝(ok=false)', () => {
   const four = '"@agent_forge/forge-darwin-arm64": "1.0.0",\n"@agent_forge/forge-darwin-x64": "1.0.0"';
   assert.equal(replacePlatformPins(four, '2.0.0').ok, false, '4 钉必须拒绝(键集漂移的事故信号)');
   assert.equal(replacePlatformPins('{}', '2.0.0').ok, false, '0 钉必须拒绝');
+});
+
+// --- replaceDshForgeDependency:forge-dsh 内置本体依赖钉(随火车 lockstep) ---
+test('replaceDshForgeDependency 只替换本体钉,不误伤 forge-dsh / 平台包键', () => {
+  const src = JSON.stringify({
+    name: '@agent_forge/forge-dsh',
+    version: '1.81.0',
+    dependencies: { '@agent_forge/forge': '1.81.0' },
+    devDependencies: { '@agent_forge/forge-darwin-arm64': '9.9.9' },
+  }, null, 2);
+  const { content, ok } = replaceDshForgeDependency(src, '1.82.0');
+  assert.ok(ok, '恰好 1 处命中');
+  const parsed = JSON.parse(content);
+  assert.equal(parsed.dependencies['@agent_forge/forge'], '1.82.0');
+  assert.equal(parsed.devDependencies['@agent_forge/forge-darwin-arm64'], '9.9.9');
+  assert.equal(parsed.name, '@agent_forge/forge-dsh');
+  assert.equal(parsed.version, '1.81.0', 'version 字段由 replaceVersionField 负责,此处不动');
+});
+
+test('replaceDshForgeDependency 命中数 != 1 时拒绝(ok=false)', () => {
+  assert.equal(replaceDshForgeDependency('{}', '2.0.0').ok, false, '缺依赖钉必须拒绝');
+  const two = '"@agent_forge/forge": "1.0.0",\n"@agent_forge/forge": "1.0.0"';
+  assert.equal(replaceDshForgeDependency(two, '2.0.0').ok, false, '重复键必须拒绝');
 });

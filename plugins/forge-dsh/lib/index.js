@@ -21,7 +21,9 @@
  * @deepseek-ai/dsh 0.1.0-rc.7 type surface.
  *
  * Config (profile patch):
- *   forgeBin  - forge binary name/path (default "forge", env FORGE_BIN wins over default)
+ *   forgeBin  - forge binary name/path. Precedence: config > env FORGE_BIN >
+ *               the forge bundled with this plugin (dependency, version-locked) >
+ *               "forge" on PATH
  *   timeoutMs - per-hook ceiling, kill + fail open (default 30000)
  *   startWaitMs - how long the first pre-step waits for the session-start
  *               contexts before moving on without them (default 1500)
@@ -31,6 +33,7 @@
  * @module @agent_forge/forge-dsh
  */
 import { readFileSync } from "node:fs";
+import { bundledForgeHint, resolveBundledForge } from "./bundled.js";
 import { probeForge } from "./runner.js";
 import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
 import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName } from "./tools.js";
@@ -48,8 +51,18 @@ const inject = ["tools"];
  */
 function apply(ctx, config = {}) {
   if (config.enabled === false) return;
+  const explicitBin = config.forgeBin ?? process.env.FORGE_BIN;
+  let bundledBin;
+  if (explicitBin === undefined) {
+    try {
+      bundledBin = (config.resolveBundledForge ?? resolveBundledForge)(); // config seam: tests
+    } catch {
+      bundledBin = undefined; // an unresolvable bundle must never break plugin load
+    }
+  }
+  const binSource = explicitBin !== undefined ? "configured" : bundledBin !== undefined ? "bundled" : "PATH";
   const opts = {
-    forgeBin: config.forgeBin ?? process.env.FORGE_BIN ?? "forge",
+    forgeBin: explicitBin ?? bundledBin ?? "forge",
     timeoutMs: config.timeoutMs ?? 30000,
   };
   const debug = config.debug === true;
@@ -209,7 +222,13 @@ function apply(ctx, config = {}) {
       }
     };
     const run = (async () => {
-      await ensureForge(agent);
+      const forgeOk = await ensureForge(agent);
+      // The bundled binary is not on PATH while forge's gate messages say
+      // `forge task …`; tell the agent where it is, first in the queue, once.
+      if (forgeOk && binSource === "bundled" && state !== undefined && !state.hinted) {
+        state.hinted = true;
+        state.pending.push(bundledForgeHint(opts.forgeBin));
+      }
       const start = await runHookGroup(
         matchedCommands(spec.SessionStart, ""),
         buildEventPayload("SessionStart", agent, { source }),
@@ -290,7 +309,7 @@ function apply(ctx, config = {}) {
             : `FAILED — gates inactive (${lastProbe.error})`;
         return {
           kind: "success",
-          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin}  timeoutMs: ${opts.timeoutMs}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
+          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin} (${binSource})  timeoutMs: ${opts.timeoutMs}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
         };
       },
     }), "forge: status command");
