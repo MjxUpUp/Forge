@@ -11,8 +11,8 @@ tier: mini
 SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图、不自动挂接 session、不推送待认领任务。接续改由用户主动发起：「继续某某任务」走 `forge task resume --match`（模糊匹配）列候选 → agent 让用户确认 → `resume --ref` 挂接；「还有哪些任务没完成」走 `forge task list --open`。没走接续就直接改代码的 session，在首次源码写入时静默挂接，只做记录、不要求补材料。压缩后的重注入保留。请批准方向。
 
 ## 问题与目标
-- **噪音**：会话一启动，用户还没开口，SessionStart 就把接续上下文推给 agent——单一活跃任务时注入整份接续视图并挂接 session，多任务时注入候选清单（`internal/clitask/task_continuity.go:renderHookResume`）。用户没想接续时，这是噪音，还会把 agent 往旧任务上带。
-- **待认领推送没人用**：本机 `~/.forge/projects` 507 个项目、71 份任务记录，带 `assignment` 字段的为 0，checklog 与 shell 历史里也没有 `assign/claim/deliver/mine` 调用（2026-10-21 实测）。推送对象是 host 工具名而非 session（`internal/clitask/task.go:ResolveOriginTool`），单 agent 时等于广播给自己；多 agent 场景实际靠协调者显式派活，推送用不上。另有已登记缺陷：丢弃 SessionStart 输出的 host 上，推送没送达也会记 `NotifiedAt`（`task_continuity.go:renderHookReinject` 冷启动分支注释）。
+- **噪音**：会话一启动，用户还没开口，SessionStart 就把接续上下文推给 agent——单一活跃任务时注入整份接续视图并挂接 session，多任务时注入候选清单（原 `renderHookResume`，基线 `dd27933f`，本方案已删除）。用户没想接续时，这是噪音，还会把 agent 往旧任务上带。
+- **待认领推送没人用**：本机 `~/.forge/projects` 507 个项目、71 份任务记录，带 `assignment` 字段的为 0，checklog 与 shell 历史里也没有 `assign/claim/deliver/mine` 调用（2026-10-21 实测）。推送对象是 host 工具名而非 session（`internal/clitask/task.go:ResolveOriginTool`），单 agent 时等于广播给自己；多 agent 场景实际靠协调者显式派活，推送用不上。另有已登记缺陷：丢弃 SessionStart 输出的 host 上，推送没送达也会记 `NotifiedAt`（`internal/clitask/task_continuity.go:renderHookReinject` 冷启动分支注释，基线 `dd27933f`）。
 - **拉取入口不够用**：`resume --ref` 只认精确 ref；`task list` 只看当前项目，只显示 ref 和 active/completed（`internal/clitask/task_misc.go:runTaskList`）。
 - **目标**：SessionStart 注入量降到横幅 1 行；两个用户场景各一条命令就能拿到结构化数据，agent 据此提问、用户选择。
 
@@ -52,20 +52,20 @@ SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图
 ## 设计
 ### 触点
 - `internal/clitask/task_continuity.go:runTaskResume` hook 分支只打横幅；新增 `--match` 分支（强制只读）
-- `internal/clitask/task_continuity.go:renderHookResume` / `appendOfferedBlock` / `renderOfferedBlock` / `otherIncompleteTasks` 删除
+- `renderHookResume` / `appendOfferedBlock` / `renderOfferedBlock` / `offeredChainSiblings` / `otherIncompleteTasks` 删除，hook 分支改调新的 `internal/clitask/task_continuity.go:renderHookBanner`
 - `internal/clitask/task_continuity.go:renderHookReinject` 删除冷启动补发分支（及 `IsColdStartInjected` / `MarkColdStartInjected` 的调用）
-- `internal/clitask/task_continuity.go:renderTaskInventory` 改为 `list --open` 与 `--match` 共用的行渲染，去掉 `PASS` 前缀和 AskUserQuestion 提示行
+- `renderTaskInventory` 删除；`list --open` 与 `--match` 共用 `internal/clitask/task_scope.go:renderOpenEntryLine`
 - `internal/clitask/task.go` `taskListCmd` 加 `--open/--workspace/--all-projects`；`taskResumeCmd` 加 `--match/--workspace/--all-projects`
 - `internal/clitask/task_misc.go:runTaskList` 接 `--open`
 - new: `internal/clitask/task_scope.go` 范围解析（当前项目 / workspace 成员 / 全部 managed），跨项目遍历复用 `runTaskMineAllProjects` 的写法（单项目失败 stderr 警告并跳过）
 - new: `internal/hookdispatch/hook_lazy_attach.go`，由 `hook.go:runHook` 在 task-guard 脚本放行后调用：写入目标带源码后缀（new: `taskpipeline.IsSourceExt`，复用 test-coverage 的 `sourceExts`）且当前 session 不在活跃任务的 `SessionLinks` 里时静默挂接（REQ-7）；已挂接时只做一次内存判断，不取锁
 - new: `internal/taskpipeline` 的 `AttachSession(root, ref, sid, tool)`：锁内重载 + `AddSession` + `ClaimLeaseForCurrentNode`，`clitask.attachCurrentSession` 与懒挂接共用
-- `internal/tasktypes/types.go:Assignment.ShouldNotify` 删除；`NotifiedAt` 注释标为停写保留
+- `Assignment.ShouldNotify` 删除；`internal/tasktypes/types.go` 的 `NotifiedAt` 注释标为停写保留
 - `internal/skillgen/qualitygen.go:buildQualitySkillContent` 加「任务接续」节
 - `internal/skillgen/claudemd.go`（task-resume 描述行）、`README.md`（hook 表 task-resume 行）同步改描述
-- `internal/cli/docs_consistency_test.go` 命令名册加 `resume --match`、`list --open`
+- 新 flag 写进根 `README.md` 命令参考（`internal/cli/docs_consistency_test.go` 守卫要求用户可见 flag 进 README，不进豁免表）
 - 测试：`task_continuity_render_test.go`、`task_continuity_banner_test.go`、`task_assignment_lifecycle_test.go`、`internal/taskpipeline/assignment_test.go` 中钉住旧行为的用例改写或删除
-- hook 接线（`internal/hooks/settings.go`）不动：`task-resume` 保留名字和挂点，只是输出变少，避免重新生成 plugin.json
+- hook 接线（`internal/hooks/settings.go`）不动：`task-resume` 保留名字和挂点，只是输出变少，避免重新生成 plugin.json；仍称「SessionStart 是压缩兜底」的注释同步修正
 
 ### 接口/契约
 ```go
