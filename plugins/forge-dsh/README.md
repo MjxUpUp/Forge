@@ -100,6 +100,7 @@ under `~/.dsh/profiles/<profile>/`):
     timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
     startWaitMs: 1500    # first pre-step waits this long for session-start contexts
     welcome: true        # one first-turn line telling the user Forge is active (false = silent)
+    checkLatest: true    # /forge-status compares the plugin version with the registry's latest (false = never ask)
     locale: auto         # language of the plugin's own messages: en | zh | auto (env FORGE_DSH_LOCALE, then system)
     batch: auto          # one forge process per matcher group: auto (default, needs a forge of the plugin's own version) | true | false
     enabled: true        # false unwires every listener
@@ -163,7 +164,11 @@ Status-only receipts that forge prints when it has nothing to say (`no weakening
 context into a synthetic user message, and these carry no instruction. Anything else, including
 notes the plugin has never seen, passes through.
 
-`/forge-status` reports a `dispatch:` line (batch or per-hook) and the probe line after the
+`/forge-status` opens with `plugin: <installed>  latest: <registry>` — an old install keeps working but
+silently misses fixes, and this is the one place a user looks when something seems off. It is a single
+read-only request with a 3-second timeout, made only when the command runs (never at load or session
+start); offline, a private registry or an odd answer shows `unknown`, and `checkLatest: false` never asks.
+It also reports a `dispatch:` line (batch or per-hook) and the probe line after the
 header: `probe: ok (forge version …)`, `probe: FAILED — gates inactive (…)`, or `not run
 yet` before the process's first session start. It also lists wall time per interception
 point (runs, average, max) and each recent run's duration.

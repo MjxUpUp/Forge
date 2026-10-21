@@ -311,12 +311,12 @@ for label, fn in (("serial", serial), ("batch", batch)):
 | P1-2 合成消息噪音 | 已修 | 核心：hazard-guard 数据上下文放行静默（stdout 空，审计落 hazard 台账）；插件：丢弃已确认的纯状态回执，未知提示一律放行。**与任务书不同**：不用白名单（会吞掉新增 advisory），用静默回执名单 |
 | P1-3 fail-open 无降级信号 | 已修 | 同会话 3 次 fail-open 后，在下一个不为真实阻断 steer 的 Stop 上一次性提示，按会话计数，batch 降级不计入 |
 | P2-1 README `--profile web` | 已修 | README、中文 README、主页同步改为 `<profile>`，写明桌面 App 跑 `desktop` |
-| P2-2 版本漂移无提示 | 部分 | 欢迎语带插件与 forge 版本；`/forge-status` 的 latest 对比（任务书标可选）未做 |
+| P2-2 版本漂移无提示 | 已修 | 欢迎语带插件与 forge 版本；`/forge-status` 显示 `plugin: x  latest: y`（只在执行命令时发一次只读 GET、3s 超时，离线/私有 registry 降级为 unknown，`checkLatest:false` 可关）。对真实 registry 验证过返回结构 |
 | P2-3 文案语言混杂 | 已修（DSH 侧） | 插件自己的消息集中到 `lib/messages.js`，中英键集合测试钉死；`locale`：配置 > `FORGE_DSH_LOCALE` > 系统。核心 hook 文案未动（任务书「至少 DSH 侧」） |
 | P2-4 首轮引导是内部术语 | 已修 | 仅在 forge 自己的 `[forge-session]` 接管横幅出现时发人话欢迎语；子 agent、resume、compact 不发 |
 | P2-5 init-suggest 不认 DSH 插件 | 无需改 | 前提已过期：`init-suggest` 现为「每项目问一次」，不从「装了插件」推断同意（`takeover` 偏好才是 opt-in），Claude 与 DSH 插件策略一致；`plugin_detect.go` 只服务 hooks 去重 |
 | §6 打包策略 | 走 B 并超出 | 插件依赖 `@agent_forge/forge`（精确版本、lockstep），装插件即装本体、卸载即移除；首轮告知绝对路径；缺技能库时首轮提议 `forge skills install --global --target agents`（征得同意后执行）；发布后验证脚本 |
 | §8 验收 6 `/forge-status` 耗时字段 | 已加 | `dispatch:` 行、按拦截点耗时、每次运行耗时 |
-| §8 验收 7 Windows 冒烟 | 部分 | win32 引用逻辑有单测（含 batch matcher 的 `Write\|Edit`）；真实 Windows 机器未跑，依赖 CI 的 windows 矩阵 |
+| §8 验收 7 Windows 冒烟 | 未在本机验证 | 本机是 macOS，无法实跑。已做的：win32 参数引用逻辑有单测（含 batch matcher 的 `Write\|Edit`）；新增测试里依赖 POSIX 的用例（符号链接、shell 脚本替身）显式跳过 win32；其余走既有 `.cmd` shim 替身。真实结果取决于 CI `scripts-test` 的 windows-latest 矩阵，PR 的 CI 通过前不应视为已验证 |
 
 §10 决策（按用户「全部做完」取默认）：欢迎语语言随 locale（系统为中文则中文）；init-suggest 维持「问一次」；定位走 B 并内置本体依赖（接受每 profile +13MB）；不做自动安装（C）。
