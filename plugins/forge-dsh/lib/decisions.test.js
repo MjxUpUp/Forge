@@ -5,7 +5,7 @@ import {
   preExecuteDecision,
   preStepDecision,
   runHookGroup,
-  sessionStartOutcome,
+  prependStartContexts,
   turnStoppingOutcome,
 } from "./decisions.js";
 
@@ -134,16 +134,26 @@ test("turnStoppingOutcome: block steers, pass injects", async () => {
   assert.equal(injected.length, 1);
 });
 
-test("sessionStartOutcome queues every context; a throwing inject is swallowed", async () => {
-  const injected = [];
-  sessionStartOutcome({ blocked: undefined, contexts: ["a", "b"], errors: [] }, {
-    inject: (m) => injected.push(m),
-  });
-  assert.equal(injected.length, 2);
-  // never throws even when agent.inject does
-  sessionStartOutcome({ blocked: undefined, contexts: ["a"], errors: [] }, {
-    inject: () => {
-      throw new Error("boom");
-    },
-  });
+test("prependStartContexts: enter gets the queue prepended in order and reports delivered", () => {
+  const user = { role: "user", content: [{ type: "text", text: "hi" }] };
+  const { decision, delivered } = prependStartContexts({ kind: "enter", messages: [user] }, ["a", "b"]);
+  assert.equal(delivered, true);
+  assert.deepEqual(
+    decision.messages.map((m) => m.content[0].text),
+    ["a", "b", "hi"],
+  );
+  assert.equal(decision.messages[0].source.kind, "plugin:forge-quality");
+});
+
+test("prependStartContexts: reject and an empty queue deliver nothing (queue is kept)", () => {
+  const reject = { kind: "reject" };
+  assert.deepEqual(prependStartContexts(reject, ["a"]), { decision: reject, delivered: false });
+  const enter = { kind: "enter", messages: [] };
+  assert.deepEqual(prependStartContexts(enter, []), { decision: enter, delivered: false });
+});
+
+test("prependStartContexts: an enter without messages still delivers (no TypeError)", () => {
+  const { decision, delivered } = prependStartContexts({ kind: "enter" }, ["a"]);
+  assert.equal(delivered, true);
+  assert.deepEqual(decision.messages.map((m) => m.content[0].text), ["a"]);
 });

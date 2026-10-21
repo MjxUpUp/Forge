@@ -22,11 +22,15 @@ the forge binary — the plugin itself has **zero runtime dependencies**.
 | `tools/pre-execute` | `PreToolUse` | `{kind:'deny', reason}` |
 | `tools/post-execute` | `PostToolUse` | `{kind:'block', feedback}` (error result) |
 | `agent/pre-step` | `UserPromptSubmit` | `{kind:'reject'}` |
-| `agent/session-start` | `SessionStart`¹ | context via `agent.inject()` |
+| `agent/session-start` | `SessionStart`¹ | context queued, delivered with the next `agent/pre-step`² |
 | `agent/turn-stopping` | `Stop` | `agent.steer(reason)` → another step |
 
 ¹ `source:'compact'` additionally fires forge's `PostCompact` group — the preview
 builds expose no dedicated compaction point.
+
+² `agent.inject()` at session start was observed to drop the contexts silently, so they ride the
+first pre-step instead; that pre-step waits up to `startWaitMs` (default 1500) for the detached
+session-start run, and a rejected step keeps the queue for the next one.
 
 DSH tool names map onto the Claude Code names forge dispatches on
 (`write/edit/str_replace_editor→Write/Edit`, `bash/pwsh→Bash`, `read/read_image→Read`,
@@ -43,35 +47,43 @@ exposes the corresponding event points (the preview builds have neither).
 
 ## Requirements
 
-- The `forge` CLI on `PATH` (`npm install -g @agent_forge/forge`), with the project
-  initialized (`forge init`) for task gates to have state to enforce.
+- The `forge` CLI. The plugin depends on `@agent_forge/forge` (pinned to the plugin's
+  own version), so installing it through DSH installs forge and uninstalling removes
+  it — nothing to put on `PATH`. The bundled binary is not on `PATH`, so at session
+  start the agent is told its absolute path to run `forge …` commands with. Override
+  with `forgeBin`, or `FORGE_BIN`, to use a different forge. The project still needs
+  `forge init` for task gates to have state to enforce.
 - DeepSeek Harness `0.1.0-rc.7` – `0.2.1-rc.2`, Node.js ≥ 18. The bridge contract is
   pinned to `0.1.0-rc.7` ([`contract.json`](./contract.json)); `0.2.1-rc.2` is the
   desktop build this plugin runs on (pre-tool interception verified live there; a
   full five-event regression across the range is still pending).
-- Windows works out of the box: npm lays out `forge` as a `forge.cmd` shim, which
-  the plugin spawns through `cmd.exe` (a bare spawn cannot execute it); timeout
-  kills tear down the whole child tree via `taskkill /T`.
+- Windows works out of the box: the bundled binary is `forge.exe`, and a `forge.cmd`
+  shim from a global npm install is spawned through `cmd.exe` (a bare spawn cannot
+  execute it); timeout kills tear down the whole child tree via `taskkill /T`.
 
 ## Install
 
+`<profile>` is the dsh profile that is actually running. **The desktop app runs the
+`desktop` profile** — installing into any other profile (e.g. `web`) succeeds but the
+plugin never loads in the app. List your profiles under `~/.dsh/profiles/`.
+
 ```sh
 # from npm
-dsh plugin --profile web add @agent_forge/forge-dsh
+dsh plugin --profile <profile> add @agent_forge/forge-dsh
 
 # or straight from the Forge repo (subdirectory install)
-dsh plugin --profile web add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"
+dsh plugin --profile <profile> add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"
 
 # local development (run from this directory; `link:.` works on Windows too)
-dsh plugin --profile web add "link:."
+dsh plugin --profile <profile> add "link:."
 ```
 
 The plugin hot-loads into a running dsh — adding or removing the bundle reloads the
 profile. If a given build does not pick it up, restart the host once. Start a new
 session to pick up the SessionStart context, and check the bridge's state with
 `/forge-status` (probe result, wired groups, recent verdicts). To uninstall:
-`dsh plugin --profile <name> remove @agent_forge/forge-dsh` (the desktop app's profile
-is `desktop`), or keep it installed but inert with `enabled:false`.
+`dsh plugin --profile <profile> remove @agent_forge/forge-dsh` — the bundled forge goes
+with it — or keep it installed but inert with `enabled:false`.
 
 ## Config
 
@@ -84,8 +96,10 @@ under `~/.dsh/profiles/<profile>/`):
 - id: forge-quality
   name: "@agent_forge/forge-dsh"
   config:
-    forgeBin: forge      # binary name/path; FORGE_BIN only fills in when this key is absent
+    forgeBin: forge      # binary name/path. Precedence: this key > FORGE_BIN > bundled forge > PATH `forge`
     timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
+    startWaitMs: 1500    # first pre-step waits this long for session-start contexts
+    welcome: true        # one first-turn line telling the user Forge is active (false = silent)
     enabled: true        # false unwires every listener
     debug: false         # log fail-open hook errors to console.error
 ```
@@ -101,8 +115,8 @@ design; surface them with `/forge-status` or `debug:true`.
 
 A missing `forge` binary is the one exception to that silence: each session start
 probes `forge --version` once (until a probe succeeds — the answer is then cached
-for the process lifetime) and, when the probe fails, injects a visible notice
-naming the configured `forgeBin`. Without it an uninstalled CLI would look exactly
+for the process lifetime) and, when the probe fails, queues a visible notice
+(delivered with the first pre-step) naming the configured `forgeBin`. Without it an uninstalled CLI would look exactly
 like a healthy plugin gating nothing. The notice is informational, not a switch —
 while the binary is missing, every hook attempt fails open on its own, so gates are
 inactive whether or not the probe ran. Installing forge needs no host restart: the
@@ -131,7 +145,7 @@ session start.
 ## Development
 
 ```sh
-npm install   # dev-only: @deepseek-ai/cordis for the wiring tests
+npm install --no-package-lock   # @deepseek-ai/cordis for the wiring tests (+ the bundled forge, unused by them)
 npm test      # mapping, runner (incl. cross-OS planSpawn units), decision folding, real-cordis wiring
 ```
 
