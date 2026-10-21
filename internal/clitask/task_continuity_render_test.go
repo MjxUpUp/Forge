@@ -1,11 +1,10 @@
 package clitask
 
 // task_continuity_render_test.go —— 接续真相源的渲染族：纯 renderResume 输出
-// （分节/外部来源/空态/状态标记/ANSI 剥离/tl;dr）与 SessionStart hook 视图
-// renderHookResume（盘点歧义、截断、跳过已完成、自动锚定、多 host 锚定）。
-// 自 task_continuity_test.go 按域拆分；compact/reinject hook 在
-// task_continuity_hooks_test.go，offered/自动认领域在
-// task_assignment_lifecycle_test.go。
+// （分节/外部来源/空态/状态标记/ANSI 剥离/tl;dr）。SessionStart hook 自 2026-10
+// 按需拉取起只输出横幅（task_continuity_banner_test.go）；compact/reinject hook 在
+// task_continuity_hooks_test.go，自动认领域在 task_assignment_lifecycle_test.go，
+// list --open / resume --match 在 task_list_open_test.go / task_match_test.go。
 
 import (
 	"strings"

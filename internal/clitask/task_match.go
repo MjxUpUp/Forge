@@ -155,7 +155,9 @@ func fieldTier(query, text string, isRef bool) int {
 		return tierSubstr
 	}
 	qWords, tWords := matchWords(q), matchWords(t)
-	if len(qWords) >= 2 && allContained(qWords, t) {
+	// 全词档：≥2 个词，或单个词但查询带了分隔符/标点（`resume.`、`-pull`）——剥掉标点后的词
+	// 整体出现在字段里，不该掉到子序列档。
+	if (len(qWords) >= 2 || (len(qWords) == 1 && qWords[0] != q)) && allContained(qWords, t) {
 		return tierAllWords
 	}
 	if typoMatch(qWords, tWords, t) {
@@ -242,6 +244,10 @@ func typoMatch(qWords, tWords []string, text string) bool {
 		}
 		found := false
 		for _, tw := range tWords {
+			// 长度差本身就是编辑距离的下界：超过阈值的词直接跳过，长 Goal 不必逐词算满 DP 表。
+			if d := n - utf8.RuneCountInString(tw); d > limit || -d > limit {
+				continue
+			}
 			if editDistance(w, tw) <= limit {
 				found = true
 				break

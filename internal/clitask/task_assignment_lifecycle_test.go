@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -562,67 +561,6 @@ func TestTaskDependsOn_GateCompleteAlsoBlocks(t *testing.T) {
 	}
 	if !strings.Contains(stdout, `未交付`) {
 		t.Errorf(`task-complete BLOCKED 应含依赖未交付信息, got: %s`, stdout)
-	}
-}
-
-// ptrHoursAgo returns a pointer to a time n hours in the past — for explicit NotifiedAt/OfferedAt
-// in tests that must not depend on Windows' ~15ms clock resolution (near-simultaneous time.Now()
-// calls are flaky there).
-func ptrHoursAgo(n int) *time.Time {
-	t := time.Now().Add(-time.Duration(n) * time.Hour)
-	return &t
-}
-
-// offeredKimiTask builds an incomplete task offered to kimi (Status=offered, OfferedAt=now). parent
-// is the optional ParentTaskRef (empty = not in a chain). Stands up the offered-to-me population
-// that appendOfferedBlock filters + renders. Mirrors what TaskState.AssignTo would produce.
-func offeredKimiTask(ref, parent, summary string) *taskpipeline.TaskState {
-	now := time.Now()
-	return &taskpipeline.TaskState{
-		TaskRef:       ref,
-		Branch:        ref,
-		ParentTaskRef: parent,
-		Summary:       summary,
-		Assignment: &taskpipeline.Assignment{
-			Agent:     `kimi`,
-			Role:      `frontend`,
-			Status:    taskpipeline.AssignOffered,
-			OfferedBy: `claude-code`,
-			OfferedAt: &now,
-		},
-	}
-}
-
-func saveAll(t *testing.T, root string, states ...*taskpipeline.TaskState) {
-	t.Helper()
-	for _, s := range states {
-		if e := taskpipeline.SaveTaskState(root, s); e != nil {
-			t.Fatalf(`SaveTaskState %s: %v`, s.TaskRef, e)
-		}
-	}
-}
-
-// noOfferedEnv sets the env that makes ActiveTaskState fall to the inventory branch (no session
-// ref, branch won't match) while detectOriginTool resolves to kimi — the no-active offered-block
-// case. CLAUDE_CODE_SESSION_ID is cleared so FORGE_AGENT=kimi wins detection unambiguously.
-func noOfferedEnv(t *testing.T) {
-	t.Helper()
-	t.Setenv(`FORGE_AGENT`, `kimi`)
-	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
-	t.Setenv(`FORGE_SESSION_ID`, ``)
-}
-
-// kimiSessionEnv 设置 hook 派生 kimi session 的 env（FORGE_AGENT=kimi、sid 走
-// FORGE_SESSION_ID、清 claude 兜底）并锚定该 session 的 active-task-ref——
-// active-in-chain offered-block 测试共享的前置（env 顺序对 saveAll 无关，
-// 故可在种入之后执行）。
-func kimiSessionEnv(t *testing.T, root, sid, activeRef string) {
-	t.Helper()
-	t.Setenv(`FORGE_AGENT`, `kimi`)
-	t.Setenv(`CLAUDE_CODE_SESSION_ID`, ``)
-	t.Setenv(`FORGE_SESSION_ID`, sid)
-	if e := taskpipeline.SetActiveTaskRef(root, sid, activeRef); e != nil {
-		t.Fatalf(`SetActiveTaskRef: %v`, e)
 	}
 }
 

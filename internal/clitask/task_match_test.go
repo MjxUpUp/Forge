@@ -40,6 +40,8 @@ func TestFuzzyMatch(t *testing.T) {
 		{name: "exact ref", query: "fix/hazard-exit-ux", wantRef: "fix/hazard-exit-ux", wantField: "ref", wantScore: 100},
 		{name: "case-insensitive substring", query: "HAZARD-EXIT", wantRef: "fix/hazard-exit-ux", wantField: "ref", wantScore: 80},
 		{name: "words out of order", query: "pull resume", wantRef: "feat/resume-pull", wantField: "ref", wantScore: 70},
+		// 单词带标点：剥掉标点后整词在 ref 里，走全词档而不是掉到子序列档。
+		{name: "punctuated single word", query: "resume.", wantRef: "feat/resume-pull", wantField: "ref", wantScore: 70},
 		{name: "typo transposition", query: "reusme-pull", wantRef: "feat/resume-pull", wantField: "ref", wantScore: 60},
 		{name: "chinese fragment", query: "接续拉取", wantRef: "feat/resume-pull", wantField: "summary", wantScore: 51},
 		{name: "abbreviation subsequence", query: "rsmpl", wantRef: "feat/resume-pull", wantField: "ref", wantScore: 40},

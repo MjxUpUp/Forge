@@ -178,6 +178,7 @@ func TestQualitySkillResumeSection(t *testing.T) {
 		"AskUserQuestion",
 		"一个会话只接续一个任务",
 		"不要主动列任务",
+		"先切过去再改代码",
 	} {
 		if !strings.Contains(section, want) {
 			t.Errorf("任务接续一节缺 %q", want)

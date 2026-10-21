@@ -123,7 +123,9 @@ type openTaskEntry struct {
 | 什么都不做 | 维持自动注入 | 否：上文噪音问题持续，待认领推送 0 使用仍占代码和缺陷 |
 
 ## 风险与高危步骤
-- **SessionLink 变少**：不再自动挂接后，没跑 `resume --ref` 就在任务目录里改代码的 session 不会出现在 `SessionLinks`，`taskAnchoredByOtherActiveSession` 的分支误挂守卫看不到它，节点租约也不会转过来。由 REQ-7 懒挂接补上；只读代码、不写源码的研究型 session 不挂接，这是有意的。活跃任务解析本身不受影响。
+- **SessionLink 变少**：不再自动挂接后，没跑 `resume --ref` 就在任务目录里改代码的 session 不会出现在 `SessionLinks`，节点租约也不会转过来。REQ-7 懒挂接补回这两项记录；它不写 session 级 `active-task-ref`，所以分支误挂守卫 `internal/taskpipeline/state.go:taskAnchoredByOtherActiveSession`（只认带新鲜 `active-task-ref` 的链接）仍看不到这个 session——与改动前自动挂接的效果相同（自动挂接同样不写该文件）。只读代码、不写源码的研究型 session 不挂接，这是有意的。活跃任务解析本身不受影响。
+- **无 PostCompact 的宿主压缩后不再恢复接续上下文（已知缺口）**：zcode 压缩时以 `source=compact` 触发 SessionStart，cursor 没有 post-compaction 事件；改动前它们靠「每次 SessionStart 都注入接续视图」顺带恢复，现在 SessionStart 只出横幅。Claude Code 与 codex 走 PostCompact + resume-reinject，不受影响。补法需要 hook 输入新增 `source` 字段并按宿主区分（Claude Code 上 SessionStart(compact) 与 resume-reinject 会双注），留待单独决定；在此之前这些宿主压缩后需要 `forge task resume` 手动拉回。
+- **`resume --ref` 不切换活跃任务（既有行为）**：它只写 SessionLink，不写 session 级 `active-task-ref`。用户从 `list --open` 选中一个不在当前分支、也没有目录绑定的任务时，后续写入仍按解析顺序归到别的任务（或无任务）。forge-quality 的接续一节因此要求先切到任务所在分支/worktree 再改代码；让 `resume --ref` 直接切换活跃任务是独立的后续改动。
 - **懒挂接进了写入热路径**：每次源码写入多一次 `HasSession` 内存判断。只有首次写入取 per-task 锁写盘；锁超时或写盘失败只记 stderr、照常放行。挂在 PreToolUse 上，写入随后可能失败（如 Edit 的 old_string 不匹配），此时也已挂接——「打算改这个任务的代码」足以说明 session 在做这个任务，接受。
 - **其他 host 的用户失去自动接续**：codex/cursor/windsurf 等原先靠 SessionStart 拿接续视图。缓解：forge-quality skill 在各 host 都分发；接续命令不依赖 host。
 - **skill 改动的发版步骤**：改 `qualitygen.go` 后要用仓库构建的二进制重新打 plugin 包、重固定 `compat.snapshot.json`，再跑全量 `go test`。

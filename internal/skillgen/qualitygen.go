@@ -173,7 +173,7 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("1. `forge task list --open --json`；`--workspace` 看所属多仓 workspace，`--all-projects` 看本机全部项目\n")
 	sb.WriteString("2. 把清单展示给用户，由用户自己选（可以多选）\n")
 	sb.WriteString("3. 一个会话只接续一个任务：当前会话 `forge task resume --ref <ref>` 接其中一个，其余建议用户另开会话接续\n\n")
-	sb.WriteString("其他项目的任务要先进入那个项目目录再 resume。接续不要求补 spec 等上游材料，任务做到哪一步就从哪一步继续。\n\n")
+	sb.WriteString("其他项目的任务要先进入那个项目目录再 resume。resume 输出里任务所在的分支/worktree 若不是当前目录，先切过去再改代码——`resume --ref` 只锚定会话，不切换当前活跃任务，改代码时仍按当前目录的分支/绑定归属任务。接续不要求补 spec 等上游材料，任务做到哪一步就从哪一步继续。\n\n")
 
 	// task pipeline 章节
 	sb.WriteString("## 任务级管道\n\n")

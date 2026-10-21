@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -83,12 +84,18 @@ func TestLazyAttachOnFirstWrite(t *testing.T) {
 		return s
 	}
 
-	// 非源码写入：不锚定。
+	// 非源码写入、项目外写入、宿主没给 session id：都不锚定。
 	if err := runTaskGuardWrite(t, "doc-sid", "README.md"); err != nil {
 		t.Fatalf("task-guard on README.md: %v", err)
 	}
-	if load().HasSession("doc-sid") {
-		t.Fatal("非源码写入不应懒挂接")
+	if err := runTaskGuardWrite(t, "outside-sid", filepath.Join(t.TempDir(), "x.go")); err != nil {
+		t.Fatalf("task-guard on out-of-project file: %v", err)
+	}
+	if err := runTaskGuardWrite(t, "", "src/nosid.go"); err != nil {
+		t.Fatalf("task-guard with empty session id: %v", err)
+	}
+	if got := load(); len(got.SessionLinks) != 1 || !got.HasSession("creator-sid") {
+		t.Fatalf("非源码/项目外/无 session id 的写入都不应懒挂接（util.SanitizeSessionID 对空串返回占位 \"session\"），SessionLinks=%+v", got.SessionLinks)
 	}
 
 	// 首次源码写入：锚定。
