@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { planSpawn, probeForge, runForgeHook } from "./runner.js";
+import { planSpawn, probeForge, runForgeBatch, runForgeHook } from "./runner.js";
 import { FAKE_BIN as FAKE } from "../test/doubles/forge-bin.mjs";
 
 test("planSpawn: win32 routes through the shell — npm's forge.cmd shim is not directly spawnable", () => {
@@ -68,6 +68,7 @@ test("a hung forge is killed past timeoutMs and fails open", async () => {
   const started = Date.now();
   const v = await runForgeHook("forge hook hang", {}, { forgeBin: FAKE, timeoutMs: 300 });
   assert.equal(v.block, false);
+  assert.equal(v.timedOut, true, "a timeout is a typed flag, not a string callers must match");
   assert.match(v.error ?? "", /timeout/);
   assert.ok(Date.now() - started < 5000, "must not wait for the hung child");
 });
@@ -112,4 +113,49 @@ test("stdin payload arrives as one JSON document", async () => {
   assert.equal(lines.length, 1);
   assert.equal(lines[0].hook, "silent");
   assert.deepEqual(lines[0].payload, { hook_event_name: "PostToolUse", marker: 42 });
+});
+
+test("planSpawn: win32 quotes an argument carrying cmd metacharacters (a batch matcher like Write|Edit)", () => {
+  const argv = ["hook", "batch", "--event", "PreToolUse", "--matcher", "Write|Edit"];
+  const win = planSpawn("forge", argv, "win32");
+  assert.deepEqual(win.args, ["hook", "batch", "--event", "PreToolUse", "--matcher", '"Write|Edit"']);
+  // plain arguments stay untouched, and POSIX never rewrites arguments
+  assert.deepEqual(planSpawn("forge", ["hook", "task-guard"], "win32").args, ["hook", "task-guard"]);
+  assert.deepEqual(planSpawn("forge", argv, "linux").args, argv);
+});
+
+test("runForgeBatch: one process runs the group; a block comes back from the stdout decision JSON", async () => {
+  const v = await runForgeBatch(
+    "PreToolUse",
+    "Write|Edit",
+    { hook_event_name: "PreToolUse", tool_name: "Write", tool_input: { file_path: "/p/x.go" } },
+    { forgeBin: FAKE },
+  );
+  assert.equal(v.block, true);
+  assert.equal(v.reason, "BLOCKED: no active task (fake)");
+});
+
+test("runForgeBatch: allow-path contexts of the whole group arrive merged in one verdict", async () => {
+  const v = await runForgeBatch(
+    "PreToolUse",
+    "Bash",
+    { hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command: "go build ./..." } },
+    { forgeBin: FAKE },
+  );
+  assert.equal(v.block, false);
+  assert.equal(v.context, "consider the test-discipline skill");
+});
+
+test("runForgeBatch: an empty matcher omits --matcher (event-wide group)", async () => {
+  const v = await runForgeBatch("Stop", "", { hook_event_name: "Stop" }, { forgeBin: FAKE });
+  assert.equal(v.block, true, "Stop group's task-verify blocks");
+  assert.equal(v.reason, "BLOCKED: task gates not done (fake)");
+});
+
+test("runForgeBatch: a forge without batch (exit 1, non-JSON) fails OPEN with an error note, never a deny", async (t) => {
+  process.env.FAKE_FORGE_BATCH_BROKEN = "1";
+  t.after(() => delete process.env.FAKE_FORGE_BATCH_BROKEN);
+  const v = await runForgeBatch("PreToolUse", "Bash", { hook_event_name: "PreToolUse" }, { forgeBin: FAKE });
+  assert.equal(v.block, false);
+  assert.equal(v.error, "unparseable forge stdout");
 });

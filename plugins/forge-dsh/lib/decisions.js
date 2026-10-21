@@ -18,7 +18,7 @@
  * @module decisions
  */
 
-import { runForgeHook } from "./runner.js";
+import { runForgeBatch, runForgeHook } from "./runner.js";
 import { pluginMessage } from "./tools.js";
 
 /**
@@ -26,6 +26,7 @@ import { pluginMessage } from "./tools.js";
  * @property {{reason: string, command: string}|undefined} blocked
  * @property {string[]} contexts - allow-path additionalContext, in order.
  * @property {string[]} errors   - fail-open infrastructure notes.
+ * @property {number} [durationMs] - wall time of the group run (for /forge-status).
  */
 
 /**
@@ -39,7 +40,8 @@ import { pluginMessage } from "./tools.js";
  */
 export async function runHookGroup(commands, payload, opts = {}) {
   const run = opts.runner ?? runForgeHook; // DI seam for tests
-  const outcome = { blocked: undefined, contexts: [], errors: [] };
+  const started = Date.now();
+  const outcome = { blocked: undefined, contexts: [], errors: [], durationMs: 0 };
   for (const command of commands) {
     const verdict = await run(command, payload, opts);
     if (verdict.error !== undefined) outcome.errors.push(`${command}: ${verdict.error}`);
@@ -49,6 +51,131 @@ export async function runHookGroup(commands, payload, opts = {}) {
     }
     if (verdict.context !== undefined) outcome.contexts.push(verdict.context);
   }
+  outcome.durationMs = Date.now() - started;
+  return outcome;
+}
+
+/**
+ * Status-only receipts forge prints when it has nothing to say ("no weakening
+ * detected", "all skills SAFE", "no .mcp.json" …). The host injects every
+ * allow-path context into the conversation as a synthetic user message, so each
+ * of these costs the model a turn-sized distraction for zero information. Only
+ * receipts confirmed to carry no instruction are listed; an allowlist of "what
+ * the model must see" would silently drop any new advisory, so unknown notes
+ * pass through. A note that tells anyone to DO something carries `Advisory:` or
+ * is a directive and never matches here.
+ *
+ * forge 在「无事可报」时输出的纯状态回执。宿主把 allow 路径的上下文注入成合成 user
+ * 消息，每条都白白占用模型一次注意力。只列已确认不含任何指令的回执；未知的一律放行
+ * （白名单会静默吞掉新增的 advisory）。要求任何人做事的提示带 `Advisory:` 或是指令，
+ * 不会命中这里。
+ */
+const QUIET_NOTES = [
+  /^\[assertion-check\] no weakening detected/,
+  /^\[auto-compile\] (?:no source touched|research-mode session)/,
+  /^\[skill-scan\] (?:all skills SAFE|no ~\/\.claude\/skills)/,
+  /^\[mcp-scan\] (?:no |\.mcp\.json unreadable|项目级 \.mcp\.json 无 config 层风险信号)/,
+  /^\[workflow-test-guard\] workflow 配置变更后 internal\/ci 守护测试全绿/,
+];
+
+/**
+ * Remove the quiet receipts from one context string. Judged per paragraph (a
+ * batch merges the group's contexts with a blank line between them); a paragraph
+ * is quiet when its first line matches. Returns "" when nothing is left.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function dropQuietNotes(text) {
+  return text
+    .split("\n\n")
+    .filter((paragraph) => !QUIET_NOTES.some((re) => re.test(paragraph)))
+    .join("\n\n");
+}
+
+/**
+ * Marks an outcome error as "this group ran per hook instead of batched" — the
+ * run still executed its gates, so it is a performance note, not a lost run, and
+ * the fail-open counter must not count it (index.js reads this prefix).
+ */
+export const BATCH_DOWNGRADE_MARK = "[batch→per-hook]";
+
+/** Consecutive unexplained batch failures of one group before batch is switched off for the process. */
+const BATCH_FAIL_LIMIT = 3;
+
+/** How long a group that timed out as a batch stays per-hook before batch is tried on it again. */
+const SLOW_RETRY_MS = 10 * 60 * 1000;
+
+/**
+ * Run the matched spec groups of one event — one `forge hook batch` process per
+ * group instead of one process per hook (the spec's matcher only SELECTS the
+ * group; forge owns the roster).
+ *
+ * Fail-open stays the invariant, with one guard: a batch that cannot answer is
+ * never taken as an allow. An error verdict ("exited with code 2 and no output"
+ * is what an older forge prints on a block) re-runs THAT group per hook — the
+ * legacy path whose contract every forge version honours. Two kinds of failure:
+ *   - a timeout: batch gives the whole group ONE ceiling, so a single hung hook
+ *     would starve every gate behind it. The group is re-run per hook (each hook
+ *     gets its own ceiling again) and stays per-hook for SLOW_RETRY_MS, so a
+ *     persistently slow group costs one stall, not one per tool call, while a
+ *     one-off hiccup (cold start, a virus scan) is not held against it forever;
+ *   - anything else: re-run per hook this once. Only BATCH_FAIL_LIMIT failures of
+ *     the SAME group in a row switch batch off for the process (a healthy group
+ *     must not keep resetting another group's streak); one success of that group
+ *     resets it, so a transient spawn error does not slow every later call.
+ * The re-run can execute hooks the batch already ran; observation-only hooks are
+ * de-duplicated by forge's idempotency window, blocking hooks simply run again.
+ *
+ * `opts.batch === false` forces per-hook from the start.
+ *
+ * @param {string} event - forge event name.
+ * @param {Array<{matcher: string, commands: string[]}>} groups - matched spec groups, spec order.
+ * @param {object} payload - Claude-Code-shape stdin payload.
+ * @param {object} [opts] - forgeBin/timeoutMs plus test seams `batchRunner`, `runner`, `batchState`.
+ * @returns {Promise<GroupOutcome>}
+ */
+export async function runMatchedGroups(event, groups, payload, opts = {}) {
+  const started = Date.now();
+  const batchRun = opts.batchRunner ?? runForgeBatch; // DI seam for tests
+  const state = opts.batchState ?? { broken: false };
+  state.slow ??= new Map(); // label -> when it timed out
+  state.failStreaks ??= new Map(); // label -> consecutive failures
+  const outcome = { blocked: undefined, contexts: [], errors: [], durationMs: 0 };
+  for (const group of groups) {
+    const label = `batch ${event}${group.matcher === "" ? "" : `/${group.matcher}`}`;
+    let part;
+    const slowSince = state.slow.get(label);
+    const isSlow = slowSince !== undefined && Date.now() - slowSince < SLOW_RETRY_MS;
+    if (opts.batch !== false && !state.broken && !isSlow) {
+      const verdict = await batchRun(event, group.matcher, payload, opts);
+      if (verdict.error === undefined) {
+        state.failStreaks.delete(label);
+        state.slow.delete(label);
+        part = {
+          blocked: verdict.block ? { reason: verdict.reason ?? "denied", command: label } : undefined,
+          contexts: verdict.context === undefined ? [] : [verdict.context],
+          errors: [],
+        };
+      } else if (verdict.timedOut === true) {
+        state.slow.set(label, Date.now());
+        outcome.errors.push(`${BATCH_DOWNGRADE_MARK} ${label}: ${verdict.error} — running this group's hooks one by one so a hung hook cannot starve the gates behind it`);
+      } else {
+        const streak = (state.failStreaks.get(label) ?? 0) + 1;
+        state.failStreaks.set(label, streak);
+        if (streak >= BATCH_FAIL_LIMIT) state.broken = true;
+        outcome.errors.push(`${BATCH_DOWNGRADE_MARK} ${label}: ${verdict.error} — running this group's hooks one by one`);
+      }
+    }
+    if (part === undefined) part = await runHookGroup(group.commands, payload, opts);
+    outcome.errors.push(...part.errors);
+    outcome.contexts.push(...part.contexts.map(dropQuietNotes).filter((text) => text !== ""));
+    if (part.blocked !== undefined) {
+      outcome.blocked = part.blocked;
+      break;
+    }
+  }
+  outcome.durationMs = Date.now() - started;
   return outcome;
 }
 
