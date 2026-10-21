@@ -179,7 +179,7 @@ export function prependStartContexts(decision, pending) {
     return { decision, delivered: false };
   }
   return {
-    decision: { ...decision, messages: [...pending.map(pluginMessage), ...decision.messages] },
+    decision: { ...decision, messages: [...pending.map(pluginMessage), ...(decision.messages ?? [])] },
     delivered: true,
   };
 }

@@ -53,7 +53,7 @@ function apply(ctx, config = {}) {
     timeoutMs: config.timeoutMs ?? 30000,
   };
   const debug = config.debug === true;
-  const startWaitMs = config.startWaitMs ?? 1500;
+  const startWaitMs = Number.isFinite(config.startWaitMs) && config.startWaitMs >= 0 ? config.startWaitMs : 1500;
   // Recent-run ring buffer for /forge-status — fail-open verdicts are silent
   // by design, so this (plus debug logging) is the only way to see them.
   const recentRuns = [];
@@ -78,18 +78,28 @@ function apply(ctx, config = {}) {
   // run is detached and takes a few hundred ms, so the first pre-step may
   // arrive before it finishes: `ready` lets that pre-step wait a bounded time
   // (startWaitMs) instead of pushing the onboarding to turn 2.
+  // Keyed by session id when the handle has one (the host may hand each event a
+  // fresh wrapper object for the same session), by object identity otherwise.
   const startStates = new WeakMap();
+  const startStatesById = new Map();
   const startStateOf = (agent) => {
     if (agent === null || typeof agent !== "object") return undefined;
-    let state = startStates.get(agent);
+    const id = agent.session?.id;
+    const byId = typeof id === "string" && id !== "";
+    let state = byId ? startStatesById.get(id) : startStates.get(agent);
     if (state === undefined) {
-      state = { pending: [], ready: Promise.resolve() };
-      startStates.set(agent, state);
+      state = { pending: [], ready: Promise.resolve(), waited: true };
+      if (byId) startStatesById.set(id, state);
+      else startStates.set(agent, state);
     }
     return state;
   };
+  // Only the first pre-step after a session-start waits: a slow start run must
+  // not tax every later step by startWaitMs; its contexts simply land on the
+  // first enter after it finishes.
   const waitStart = async (state) => {
-    if (state === undefined) return;
+    if (state === undefined || state.waited) return;
+    state.waited = true;
     let timer;
     const timeout = new Promise((resolve) => {
       timer = setTimeout(resolve, startWaitMs);
@@ -111,7 +121,6 @@ function apply(ctx, config = {}) {
   let forgeReady = false;
   let lastProbe;
   let probeInFlight;
-  const noticedAgents = new WeakSet();
   const missingForgeNotice = (error) =>
     `[forge-dsh] forge CLI not found (forgeBin: ${opts.forgeBin}). ` +
     "Forge gates are OFF for this session — every action runs unguarded (fail-open). " +
@@ -134,8 +143,8 @@ function apply(ctx, config = {}) {
     }
     if (debug) console.error(`[forge-dsh] forge probe failed: ${probe.error}`);
     const state = startStateOf(agent);
-    if (state !== undefined && !noticedAgents.has(agent)) {
-      noticedAgents.add(agent);
+    if (state !== undefined && !state.noticed) {
+      state.noticed = true;
       state.pending.push(missingForgeNotice(probe.error));
     }
     return false;
@@ -191,7 +200,10 @@ function apply(ctx, config = {}) {
     const source = payload?.source;
     const state = startStateOf(agent);
     const queue = (outcome) => {
-      if (state !== undefined) state.pending.push(...outcome.contexts);
+      if (state !== undefined) {
+        // overlapping starts must not stack the same onboarding twice
+        for (const text of outcome.contexts) if (!state.pending.includes(text)) state.pending.push(text);
+      }
       else if (debug && outcome.contexts.length > 0) {
         console.error("[forge-dsh] session-start contexts dropped: no agent handle to queue them on");
       }
@@ -218,7 +230,10 @@ function apply(ctx, config = {}) {
       if (debug) console.error(`[forge-dsh] session-start failed open: ${error}`);
     });
     // overlapping session-starts (startup then compact) both gate the pre-step
-    if (state !== undefined) state.ready = Promise.all([state.ready, run]);
+    if (state !== undefined) {
+      state.waited = false;
+      state.ready = Promise.all([state.ready, run]);
+    }
   }), "forge: session-start");
 
   // Stop — a blocking gate steers the agent into another step.

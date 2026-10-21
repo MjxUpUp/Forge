@@ -204,18 +204,81 @@ test("session-start: contexts reach the FIRST pre-step even when it races the de
   // no polling: the pre-step arrives while the session-start group is mid-run
   const first = await preStepTexts(ctx, agent);
   assert.equal(first.texts.at(-1), "hello", "the user prompt stays last");
-  assert.ok(
-    first.texts.filter((x) => x === "consider the test-discipline skill").length >= 2,
-    "session-start's context AND the pre-step's own advisory are both prepended",
-  );
+  // [session-start context(s)..., pre-step's own advisory, user prompt]: the
+  // queue lands BEFORE the pre-step advisory and the prompt, never after
+  assert.equal(first.texts.length, 3, "one start context + own advisory + prompt");
+  assert.deepEqual(first.texts, [
+    "consider the test-discipline skill",
+    "consider the test-discipline skill",
+    "hello",
+  ]);
+  assert.equal(first.decision.messages[0].source.kind, "plugin:forge-quality");
   assert.equal(calls.injected.length, 0, "session-start no longer relies on agent.inject");
   // delivered exactly once: a later pre-step carries only its own advisory
   const second = await preStepTexts(ctx, agent, "again");
-  assert.equal(
-    second.texts.filter((x) => x === "consider the test-discipline skill").length,
-    1,
+  assert.deepEqual(
+    second.texts,
+    ["consider the test-discipline skill", "again"],
     "the start queue was drained by the first pre-step",
   );
+});
+
+test("session-start: a slow start does not tax later steps — only the first pre-step waits, contexts land once it finishes", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 1 });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  // 1ms wait: the pre-step gives up before the detached run finishes
+  const early = await preStepTexts(ctx, agent);
+  assert.deepEqual(early.texts, ["consider the test-discipline skill", "hello"], "no start context yet, own advisory only");
+  // once the start run settles, the next enter carries the context — exactly once
+  const expected = matchedCommands(SPEC.SessionStart, "").length;
+  const deadline = Date.now() + 15000;
+  const startRuns = () => hookCalls().filter((c) => c.payload.hook_event_name === "SessionStart").length;
+  while (Date.now() < deadline && startRuns() < expected) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await new Promise((r) => setTimeout(r, 300));
+  const late = await preStepTexts(ctx, agent, "later");
+  assert.deepEqual(late.texts, [
+    "consider the test-discipline skill",
+    "consider the test-discipline skill",
+    "later",
+  ]);
+  const after = await preStepTexts(ctx, agent, "after");
+  assert.deepEqual(after.texts, ["consider the test-discipline skill", "after"]);
+});
+
+test("session-start: overlapping starts do not stack the same onboarding; id-keyed state survives a fresh agent wrapper", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000 });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  // a different wrapper object for the SAME session id (host re-wrapping)
+  const wrapper = { ...agent };
+  const first = await preStepTexts(ctx, wrapper);
+  assert.deepEqual(first.texts, [
+    "consider the test-discipline skill",
+    "consider the test-discipline skill",
+    "hello",
+  ], "one deduped start context, not two");
+});
+
+test("pre-step: no agent handle and no session-start passes through untouched", async (t) => {
+  const ctx = await boot(t);
+  const payload = { messages: [{ role: "user", content: [{ type: "text", text: "x" }] }], turn: 1, step: 1 };
+  const d = await ctx.waterfall("agent/pre-step", payload, async () => ({ kind: "enter", messages: payload.messages }));
+  assert.equal(d.kind, "enter");
+  assert.deepEqual(d.messages.map((m) => m.content[0].text), ["consider the test-discipline skill", "x"]);
 });
 
 test("session-start: a rejected pre-step keeps the queue for the next one", async (t) => {
@@ -225,14 +288,20 @@ test("session-start: a rejected pre-step keeps the queue for the next one", asyn
   const ctx = new Context();
   ctx.provide("tools", {});
   await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000 });
-  const { agent } = makeAgent();
+  const { agent, calls } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
-  const rejected = await preStepTexts(ctx, agent, "please block-prompt now").catch((e) => e);
+  const rejected = await preStepTexts(ctx, agent, "please block-prompt now");
   assert.deepEqual(rejected.decision, { kind: "reject" });
+  assert.deepEqual(
+    calls.injected.map((m) => m.content[0].text),
+    ["prompt rejected by gate (fake)"],
+    "reject still surfaces the gate reason via inject and does not drain the start queue",
+  );
   const next = await preStepTexts(ctx, agent, "ok now");
-  assert.ok(
-    next.texts.filter((x) => x === "consider the test-discipline skill").length >= 2,
-    "the start contexts survived the reject and arrive with the next enter",
+  assert.deepEqual(
+    next.texts,
+    ["consider the test-discipline skill", "consider the test-discipline skill", "ok now"],
+    "the start context survived the reject and arrives with the next enter, once",
   );
 });
 
@@ -313,6 +382,7 @@ test("session-start: a missing forge queues one visible notice per session, deli
 
   // a NEW session gets its own notice: the WeakSet is per agent, not process-wide
   const second = makeAgent();
+  second.agent.session.id = "sess-2";
   ctx.emit("agent/session-start", { agent: second.agent, source: "startup" });
   const secondFirst = await preStepTexts(ctx, second.agent);
   assert.equal(noticesIn(secondFirst.texts).length, 1, "the new session is told too");

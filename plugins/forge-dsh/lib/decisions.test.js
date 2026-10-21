@@ -151,3 +151,9 @@ test("prependStartContexts: reject and an empty queue deliver nothing (queue is 
   const enter = { kind: "enter", messages: [] };
   assert.deepEqual(prependStartContexts(enter, []), { decision: enter, delivered: false });
 });
+
+test("prependStartContexts: an enter without messages still delivers (no TypeError)", () => {
+  const { decision, delivered } = prependStartContexts({ kind: "enter" }, ["a"]);
+  assert.equal(delivered, true);
+  assert.deepEqual(decision.messages.map((m) => m.content[0].text), ["a"]);
+});

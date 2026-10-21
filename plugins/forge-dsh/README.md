@@ -90,6 +90,7 @@ under `~/.dsh/profiles/<profile>/`):
   config:
     forgeBin: forge      # binary name/path; FORGE_BIN only fills in when this key is absent
     timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
+    startWaitMs: 1500    # first pre-step waits this long for session-start contexts
     enabled: true        # false unwires every listener
     debug: false         # log fail-open hook errors to console.error
 ```
