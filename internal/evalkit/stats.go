@@ -271,7 +271,7 @@ type DeltaCI struct {
 	SE           float64 `json:"se"`
 	MDE          float64 `json:"mde"`
 	NTasks       int     `json:"n_tasks"`
-	NRuns        int     `json:"n_runs"`       // 两臂 attempt 数的较小者
+	NRuns        int     `json:"n_runs"`       // 两臂在共同任务上 attempt 数的较小者
 	Perturbation string  `json:"perturbation"` // measured | unmeasured
 	CrossesZero  bool    `json:"crosses_zero"`
 }
@@ -287,8 +287,8 @@ const mdeZ = 1.96 + 0.8416
 const defaultBootstrapIters = 2000
 
 // PairedDeltaCI bootstraps the a−b difference hierarchically: resample tasks
-// (task-sampling source), then — only when both arms carry
-// ≥MinPerturbationVariants distinct variants — resample variants once per task
+// (task-sampling source), then — only when every common task has
+// ≥MinPerturbationVariants variants shared by both arms — resample variants once per task
 // and apply the same draw to both arms (the arms share the prompt variants, so
 // the variant layer is paired), then resample repeats inside each drawn
 // variant per arm (run-to-run source). Without enough variants a task arm's
@@ -296,8 +296,8 @@ const defaultBootstrapIters = 2000
 // estimate uses the same weighting as the bootstrap (variant-equal when
 // measured, attempt-pooled otherwise). Deterministic for a given seed.
 //
-// PairedDeltaCI 分层 bootstrap a−b 差：先重采任务（任务抽样源）；仅当两臂都带
-// ≥MinPerturbationVariants 个不同变体时，再按任务重采一次变体并让两臂共用同一组
+// PairedDeltaCI 分层 bootstrap a−b 差：先重采任务（任务抽样源）；仅当每个共同任务上
+// 两臂共有 ≥MinPerturbationVariants 个变体时，再按任务重采一次变体并让两臂共用同一组
 // 抽样（两臂用的是同一组 prompt 变体，变体层是配对的）；再在抽中的变体内按臂
 // 重采重复（运行间源）。变体不足时任务臂内 attempts 作为一个池重采，Perturbation
 // 记 unmeasured。点估计与 bootstrap 同权（measured 时变体等权，否则按 attempt
@@ -314,7 +314,15 @@ func PairedDeltaCI(a, b []Attempt, iters int, seed int64) (*DeltaCI, error) {
 		return nil, fmt.Errorf("evalkit: 配对差无共同任务（a %d 条、b %d 条 attempt）", len(a), len(b))
 	}
 	sort.Strings(tasks)
-	measured := minVariants(ga) >= MinPerturbationVariants && minVariants(gb) >= MinPerturbationVariants
+	// 变体层只在两臂共同的变体上配对：任一任务共同变体不足 MinPerturbationVariants
+	// 就退回两源（unmeasured），不静默丢变体又标 measured。
+	measured := true
+	for _, id := range tasks {
+		if len(commonVariants(ga[id], gb[id])) < MinPerturbationVariants {
+			measured = false
+			break
+		}
+	}
 	out := &DeltaCI{NTasks: len(tasks), Perturbation: PerturbationUnmeasured}
 	if measured {
 		out.Perturbation = PerturbationMeasured
@@ -325,9 +333,6 @@ func PairedDeltaCI(a, b []Attempt, iters int, seed int64) (*DeltaCI, error) {
 		runsA += countOutcomes(ga[id])
 		runsB += countOutcomes(gb[id])
 		sharedKeys[id] = commonVariants(ga[id], gb[id])
-		if measured && len(sharedKeys[id]) == 0 {
-			return nil, fmt.Errorf("evalkit: 任务 %s 两臂无共同变体，变体层无法配对", id)
-		}
 		out.Delta += armPoint(ga[id], sharedKeys[id], measured) - armPoint(gb[id], sharedKeys[id], measured)
 	}
 	out.Delta /= float64(len(tasks))
@@ -407,19 +412,6 @@ func groupAttempts(xs []Attempt) map[string]map[int][]float64 {
 		out[x.TaskID][x.Variant] = append(out[x.TaskID][x.Variant], v)
 	}
 	return out
-}
-
-// minVariants returns the smallest distinct-variant count over tasks.
-//
-// minVariants 返回各任务不同变体数的最小值。
-func minVariants(g map[string]map[int][]float64) int {
-	m := -1
-	for _, vs := range g {
-		if m < 0 || len(vs) < m {
-			m = len(vs)
-		}
-	}
-	return m
 }
 
 // commonVariants returns the sorted variant keys present in both arms.

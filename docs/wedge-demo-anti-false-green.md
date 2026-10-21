@@ -86,7 +86,7 @@ git checkout -- calc_test.go
 forge task mutation
 ```
 
-预期输出【已实跑】：`Clamp` 没有测试，它的两个变异体存活。
+预期输出【已实跑】（前两行 ☠ 走 stderr，其余走 stdout）：`Clamp` 没有测试，它的两个变异体存活。
 ```
   ☠ 存活 calc.go:11（<→>=）——测试没抓住这道 bad case
   ☠ 存活 calc.go:14（>→<=）——测试没抓住这道 bad case
@@ -106,7 +106,7 @@ Forge 有一个 cheat-scan 检查，扫描任务新增的代码行，按机械�
 forge eval redteam
 ```
 
-它在临时目录里埋五颗雷，再用 Forge 已有的检查逐颗判定能不能拦住。预期输出【已实跑】：
+它在临时目录里埋五颗雷，再用 Forge 已有的检查逐颗判定能不能拦住。与本节相关的是 swallowed-error 和 type-suppression 两行，其余三行是 Forge 的其他检查。预期输出【已实跑】：
 ```
 redteam 演练（seeded-bug 红队）：拦截率 5/5
   ✅ intercepted zero-acceptance-delivery     ← acceptance registration gate（考卷缺位硬拦）
@@ -117,7 +117,7 @@ redteam 演练（seeded-bug 红队）：拦截率 5/5
 ```
 有雷没拦住时会标 `❌ escaped`，命令以非零退出码结束。
 
-**2b. 在自己的任务里触发（未实跑）。** 接着演示一的任务，新建一个源文件，故意吞掉错误并写一个永假分支，然后依次推进两道门禁：
+**2b. 在自己的任务里触发（未实跑）。** 接着演示一的任务，新建一个源文件，故意吞掉错误并写一个永假分支，然后依次推进两道门禁（门禁是 Forge 任务的阶段检查点：实现、验证、完成）：
 
 ```bash
 printf 'package calc\n\nimport "strconv"\n\nfunc Parse(s string) int {\n\tn, err := strconv.Atoi(s)\n\t_ = err\n\tif false {\n\t\treturn -1\n\t}\n\treturn n\n}\n' > parse.go
@@ -140,7 +140,7 @@ ADVISORY: [task-verify] cheat-scan 命中 2 处疑似 AI 作弊模式（advisory
 parse.go 没有配对测试，所以同时还会出现一行测试配对的 advisory，可以忽略。如果 task-verify 被其他门禁拦下（例如工作活动检查），以 2a 的结果为准，并把完整输出贴到 [GitHub Issues](https://github.com/MjxUpUp/Forge/issues)。
 
 ## 演示三（可选，未实跑）：首证据路径
-先跑一次 60 秒自检。它在隔离的临时目录里走完 8 步：init → 带一条刻意先红的验收标准开任务 → 验收如实失败 → 修复 → 验收通过 → trace 看到证据。
+"首证据"指在你的仓库里第一次拿到一条由真实测试运行产生的验收记录。先跑一次 60 秒自检。它在隔离的临时目录里走完 8 步：init → 带一条刻意先红的验收标准开任务 → 验收如实失败 → 修复 → 验收通过 → trace 看到证据。
 
 ```bash
 forge eval wedge-drill

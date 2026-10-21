@@ -79,6 +79,19 @@ func (s *stubBaselineRunner) RunBaseline(_ context.Context, _ RunSpec, task Benc
 	return TaskResult{TaskID: task.ID, Pass: pass && !s.budgetCut[arm], BudgetCut: s.budgetCut[arm]}, true, nil
 }
 
+// firstFailRunner fails the first attempt of each (profile, model, task) cell
+// on the full profile and passes the rest; every other profile always fails.
+//
+// firstFailRunner 在 full 档每个（profile, model, task）格的首次 attempt 失败、
+// 之后通过；其余 profile 一律失败。
+type firstFailRunner struct{ seen map[string]int }
+
+func (r *firstFailRunner) RunTask(_ context.Context, spec RunSpec, task BenchTask) (TaskResult, error) {
+	key := string(spec.Profile) + "|" + spec.Model + "|" + task.ID
+	r.seen[key]++
+	return TaskResult{TaskID: task.ID, Pass: spec.Profile == ProfileFull && r.seen[key] > 1}, nil
+}
+
 func gradedTask(id string) BenchTask {
 	return BenchTask{ID: id, Command: "true", Image: "img", RunCmd: "solve", TestCmd: "grade", OracleCmd: "ref"}
 }
@@ -346,6 +359,20 @@ func TestScorecardLeakage(t *testing.T) {
 		}
 	}
 
+	// leakage 臂超时：不进分母，但计数披露（不能被读成"未声明"）。
+	stubT := newStub()
+	lt := gradedTask("t1")
+	lt.LeakageCmd = "guess"
+	stubT.oracle["t1"] = true
+	stubT.budgetCut[ArmLeakage] = true
+	scT, err := RunBenchmark(context.Background(), validitySpec(1), manifestOf(lt), stubT)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scT.Leakage.Status != LeakageUnmeasured || scT.Leakage.TimedOut != 1 {
+		t.Fatalf("超时的 leakage 臂应 unmeasured 且 TimedOut=1: %+v", scT.Leakage)
+	}
+
 	// 未声明 leakage_cmd → unmeasured，清单只按高分补足且不超过上限。
 	stub2 := newStub()
 	var tasks []BenchTask
@@ -425,6 +452,16 @@ func TestPerturbationVariance(t *testing.T) {
 	if same.SE != 0 || same.Lo != 0 || same.Hi != 0 {
 		t.Fatalf("同结果两臂的配对 CI 应退化为 0: %+v", same)
 	}
+	// 两臂各 3 个变体但只共享 2 个：变体层无法完整配对，退回 unmeasured。
+	var pa, pb []Attempt
+	for _, v := range []int{0, 1, 2} {
+		pa = append(pa, Attempt{TaskID: "t", Variant: v, Pass: true})
+		pb = append(pb, Attempt{TaskID: "t", Variant: v + 1})
+	}
+	part, err := PairedDeltaCI(pa, pb, 200, 1)
+	if err != nil || part.Perturbation != PerturbationUnmeasured {
+		t.Fatalf("共同变体不足 3 个应为 unmeasured: %+v %v", part, err)
+	}
 	// NRuns 只数共同任务上的 attempt。
 	extra := append(append([]Attempt(nil), a...), Attempt{TaskID: "only-in-a", Pass: true})
 	ci, err := PairedDeltaCI(extra, b, 200, 1)
@@ -498,6 +535,21 @@ func TestNullResultMDE(t *testing.T) {
 			t.Fatalf("decompose 差值应带 CI: %+v", d)
 		}
 	}
+	// 格均值与差值同一估计量（全部 attempt）：首次失败、之后通过的 full 档
+	// 格均值是 2/3 而不是 pass@1 的 0，分解与差值在同一份报告里不打架。
+	ff, err := RunDecompose(context.Background(), grid, validitySpec(3), manifestOf(BenchTask{ID: "x", Command: "true"}), &firstFailRunner{seen: map[string]int{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ff.CellMeans["full|m1"]; got < 0.666 || got > 0.667 {
+		t.Fatalf("full 格均值应为全部 attempt 通过率 2/3，得到 %v", got)
+	}
+	for _, d := range ff.DeltaFullOff {
+		if d.Delta != ff.CellMeans["full|"+d.Model]-ff.CellMeans["off|"+d.Model] {
+			t.Fatalf("差值应与格均值同口径: %+v vs %v", d, ff.CellMeans)
+		}
+	}
+
 	// 网格未含 gates-only：涉及它的两档差值不出区间、也不出点差结论，原因写明。
 	for _, d := range append(rep.DeltaFullGates, rep.DeltaGatesOff...) {
 		if d.CI != nil || !strings.Contains(d.CIError, "网格未含") {
@@ -594,6 +646,21 @@ func TestGoldenTestLayerQueryCount(t *testing.T) {
 	}
 	if srep.TestLayerCases != 0 {
 		t.Fatalf("平台跳过的 test 层用例不应计为查询: %d", srep.TestLayerCases)
+	}
+	if _, err := PersistGoldenReport(evalDir, root, srep); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(counter)
+	if json.Unmarshal(data, &q) != nil || q.Count != 2 {
+		t.Fatalf("平台跳过的运行不得给计数 +1: %s", data)
+	}
+	// 计数文件不可读（非 NotExist）：从 0 重新起算，并在 note 里写明。
+	badDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(badDir, "forge", goldenTestQueryFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if count, note := recordTestLayerQuery(badDir, &GoldenReport{}); count != 1 || !strings.Contains(note, "已重置") {
+		t.Fatalf("不可读计数应重置并说明: %d %q", count, note)
 	}
 
 	// INV-2：仓库内已钉的 golden 集（无 layer 字段）指纹不变；换层改变指纹；非法层拒载。

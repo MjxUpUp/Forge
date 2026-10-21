@@ -121,6 +121,12 @@ type LeakageSummary struct {
 	Status      string    `json:"status"` // measured | unmeasured
 	Rate        RateValue `json:"rate"`
 	PassedTasks []string  `json:"passed_tasks,omitempty"`
+	// TimedOut counts leakage arms cut by the wallclock budget (excluded from
+	// the denominator, disclosed so "unmeasured" is never misread as undeclared).
+	//
+	// TimedOut 统计被墙钟预算截断的 leakage 臂（不进分母，但披露——免得
+	// unmeasured 被误读成未声明）。
+	TimedOut int `json:"timed_out,omitempty"`
 }
 
 // Leakage statuses.
@@ -214,6 +220,9 @@ func runPreflight(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 		lk, lkApplicable, err := br.RunBaseline(ctx, spec, task, ArmLeakage)
 		if err != nil {
 			return nil, nil, fmt.Errorf("evalkit: 任务 %s 的 leakage 基线执行失败: %w", task.ID, err)
+		}
+		if lkApplicable && lk.BudgetCut {
+			leak.TimedOut++
 		}
 		if lkApplicable && !lk.BudgetCut { // 超时的 leakage 臂无法判定，不进分母
 			leakTotal++

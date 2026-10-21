@@ -50,7 +50,7 @@ golden 用例分 holdout / test 两层，test 层只在 `--release` 时跑并计
 - `internal/evalkit/runner.go`：`BenchTask` 加 `oracle_cmd` / `leakage_cmd`；`RunSpec` 加 `variants`（yaml/json）与当前变体 `Variant`（`json:"-"`）；`Attempt` 加 `variant`；`Scorecard` 加 `attempts`、`preflight`、`leakage`、`review_queue`、`perturbation`；`RunBenchmark` 在主循环前调 preflight、按变体 × 重复执行；`ExecRunner` / `DockerRunner` 把当前变体经 `FORGE_EVAL_VARIANT` 交给命令；`DockerRunner` 实现 `BaselineRunner`。
 - new: `internal/evalkit/preflight.go`：`BaselineArm`、`BaselineRunner`、`PreflightReport`、`PreflightError`、`runPreflight`、`buildReviewQueue`、`RecordPreflightBlock`、`PreflightDisableEnv = "FORGE_EVAL_PREFLIGHT"`。
 - `internal/evalkit/stats.go`：new `PairedDeltaCI`、`DeltaCI`、`NullResultStatement`（纯函数，固定种子）。
-- `internal/evalkit/decompose.go`：preflight 整张网格只跑一次并进报告；格结果保留 attempts，`ModelDelta` 加 `ci`，有 CI 时 `delta` 取 CI 的点估计（数字与区间同一估计量），渲染改用 `NullResultStatement`，报告标 perturbation。
+- `internal/evalkit/decompose.go`：preflight 整张网格只跑一次并进报告；格结果保留 attempts，`ModelDelta` 加 `ci`，格均值与 `delta` 统一用全部 attempt 的通过率（方差分解与差值同口径），有 CI 时 `delta` 取 CI 的点估计，渲染改用 `NullResultStatement`，报告标 perturbation。
 - `internal/evalkit/golden.go`：`GoldenCase.Layer`、校验、指纹（仅非空时追加 `layer:`）；`GoldenOptions.IncludeTestLayer`；`GoldenReport` 加 `test_layer_cases` / `test_layer_excluded`；`PersistGoldenReport` 在含 test 层时调 new `recordTestLayerQuery`。
 - `internal/evalkit/judgeaudit.go`：`JudgeAuditEntry` 加 `pair_original` / `pair_swapped`；`JudgeAuditReport` 加 `position_swap_flip_rate` / `position_swap_pairs` / `position_swap_bias`；`LoadJudgeScores` 校验取值与成对出现。
 - `internal/cli/eval.go`：`eval run` 与 `eval decompose` 加 `--variants`，两者都经 `evalRunError` 把 `*PreflightError` 映射为 exit 2（`hardExitError` 哨兵）、经 `notePreflightEscape` 处理逃生 env；`eval run` 渲染 leakage / 复核清单；`golden run` 加 `--release`；judge-audit 渲染翻转率。
@@ -94,7 +94,7 @@ func NullResultStatement(ci *DeltaCI) string
 
 ### 失败模式
 - 基线执行本身报错（docker 起不来）：按执行错误上抛（与主循环一致），不伪装成违例。
-- oracle 或 do-nothing 臂超出墙钟预算：无法判定，按执行错误上抛（exit 1，提示调大 `--wallclock`），不计为违例；leakage 臂超时不进分母。
+- oracle 或 do-nothing 臂超出墙钟预算：无法判定，按执行错误上抛（exit 1，提示调大 `--wallclock`），不计为违例；leakage 臂超时不进分母，计入 `leakage.timed_out` 并在输出里说明。
 - bootstrap 输入为空或两臂无共同任务：返回错误，decompose 渲染退回"区间不可得"并说明原因，不出点差结论。
 - 计数文件损坏：按 0 起算并在 checklog 行 Detail 注明"计数文件不可读，已重置"，不阻断 golden run。
 

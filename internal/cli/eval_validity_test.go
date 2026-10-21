@@ -43,4 +43,8 @@ func TestFormatLeakage(t *testing.T) {
 	if got := formatLeakage(l); !strings.Contains(got, "0.250（1/4") {
 		t.Fatalf("measured 应渲染比例与分子分母: %q", got)
 	}
+	timed := &evalkit.LeakageSummary{Status: evalkit.LeakageUnmeasured, TimedOut: 2}
+	if got := formatLeakage(timed); !strings.Contains(got, "2 个任务的 leakage 臂超时") || strings.Contains(got, "未声明") {
+		t.Fatalf("全部超时应说明超时而非未声明: %q", got)
+	}
 }

@@ -570,10 +570,17 @@ func evalRunError(spec evalkit.RunSpec, err error) error {
 //
 // formatLeakage 把 leakage 基线渲染在 pass@1 旁。
 func formatLeakage(l *evalkit.LeakageSummary) string {
+	timedOut := ""
+	if l != nil && l.TimedOut > 0 {
+		timedOut = fmt.Sprintf("；%d 个任务的 leakage 臂超时未计入（调大 --wallclock）", l.TimedOut)
+	}
 	if l == nil || l.Status != evalkit.LeakageMeasured {
+		if timedOut != "" {
+			return "leakage（只读题面基线）=unmeasured——已声明的 leakage 臂全部无法判定" + timedOut
+		}
 		return "leakage（只读题面基线）=unmeasured——无 leakage 臂（manifest 未声明 leakage_cmd，或执行后端不支持基线）"
 	}
-	return fmt.Sprintf("leakage（只读题面基线）%.3f（%d/%d，Wilson %.2f–%.2f）", l.Rate.Value, l.Rate.Numerator, l.Rate.Denominator, l.Rate.Lo, l.Rate.Hi)
+	return fmt.Sprintf("leakage（只读题面基线）%.3f（%d/%d，Wilson %.2f–%.2f）%s", l.Rate.Value, l.Rate.Numerator, l.Rate.Denominator, l.Rate.Lo, l.Rate.Hi, timedOut)
 }
 
 func formatPassK(curve []evalkit.PassKPoint) string {

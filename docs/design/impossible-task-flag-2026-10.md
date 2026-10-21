@@ -32,7 +32,7 @@ agent 在跑验收时如果认定某条验收标准和需求本身矛盾，可�
 | 载荷 | 自由文本 | 标准序号 + 矛盾证据（单行，≤512 字节） |
 | 前置 | 无 | 该条标准至少实跑过一次且当前未通过 |
 | 谁来裁决 | 任何调用方 | 只认真人终端 |
-| 对门禁和评分 | 无 | 确认：豁免该条；驳回：总分封顶 89 |
+| 对门禁和评分 | 无 | 确认：豁免该条；驳回或撤回：总分封顶 89 |
 
 结论：不可能声明是 question 的一种**结构化特例**，挂在同一条命令上。对分派任务，声明同时调用 `TaskState.Question`（LastQuestion 前缀为 `[impossible #N]`），这样 `mine`、健康扫描、僵尸 TTL 不用改就能看到它；对非分派任务，不动 Assignment，只写声明记录。pending 声明存在时，不带 `--impossible` 的普通 `forge task answer` 被拒绝并提示改用 `answer --impossible confirm|reject`，避免状态回到 claimed 而声明仍悬着；裁决写入的 Decision 的 `By` 取真人终端的 OS 用户名，不沿用 `OfferedBy`。
 
@@ -45,7 +45,7 @@ agent 在跑验收时如果认定某条验收标准和需求本身矛盾，可�
   accept[REQ-3]: go test ./internal/taskpipeline/ -run ^TestAcceptanceFreshSkipsConfirmedImpossible$ -count=1 :: --- PASS: TestAcceptanceFreshSkipsConfirmedImpossible (
 - REQ-4 `forge task report` 在"未验证面"段为每条 confirmed 声明输出一行披露，为 pending 声明输出"待裁决"行；被驳回的声明计入"自供申辩"，并单独输出一行 ⚠。`--json` 新增 `impossible_claims` 数组。
   accept[REQ-4]: go test ./internal/clitask/ -run ^TestTaskReportImpossibleClaims$ -count=1 :: --- PASS: TestTaskReportImpossibleClaims (
-- REQ-5 `ScoreTask` 在任务有 ≥1 条被驳回或撤回（REQ-9）的声明时，总分封顶 `escapeCapMaxScore`（89），`CappedReason` 写明"impossible-claim rejected"。只有 confirmed 声明时总分不封顶，`Evidence.WaivedCriteria` 记录条数，只用于披露。
+- REQ-5 `ScoreTask` 在任务有 ≥1 条被驳回或撤回（REQ-9）的声明时，总分封顶 `escapeCapMaxScore`（89），`CappedReason` 按状态写明"impossible-claim rejected"或"impossible-claim withdrawn"，复盘时可区分。只有 confirmed 声明时总分不封顶，`Evidence.WaivedCriteria` 记录条数，只用于披露。
   accept[REQ-5]: go test ./internal/taskpipeline/ -run ^TestScoreTaskImpossibleRejectedCap$ -count=1 :: --- PASS: TestScoreTaskImpossibleRejectedCap (
 - REQ-6 单任务最多 2 条声明（各状态合计，withdrawn 也算）；第 3 条拒绝，并提示"标准大面积有误时应 abort 后重建任务"。
   accept[REQ-6]: go test ./internal/clitask/ -run ^TestImpossibleClaimQuota$ -count=1 :: --- PASS: TestImpossibleClaimQuota (
@@ -112,6 +112,7 @@ report 披露行的格式（渲染层，不承诺）：`│   ⊘ 验收 #N 经�
 
 ## 风险与未决问题
 - **风险：对 Claude 几乎无效。** 论文已经说明效果弱。缓解：机制价值的①②不依赖行为改变；行为侧的收益靠 Deferred 第 2 项自测，测出来无效就不把 REQ-8 的 skill 文案写成强指引。
+- **取舍：诚实撤回与作弊撤回同价。** agent 发现自己误判、随后找到真修复，也会按 REQ-9 封顶 89。本稿接受这个代价（撤回本身说明声明草率），首月数据后随 Q2 一并复议。
 - **风险：给人增加裁决负担。** 配额加上"先跑后声明"把频次压低；dashboard 统计每周裁决量。
 - **Q1（需拍板）**：确认的豁免是否也该封顶（例如 95）？本稿主张不封顶，理由见防滥用第 3 条。
 - **Q2（需拍板）**：配额 2 是拍脑袋的数字，要不要等首月数据再定？
