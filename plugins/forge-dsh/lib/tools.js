@@ -196,3 +196,23 @@ export function pluginMessage(text) {
     source: { kind: "plugin:forge-quality" },
   };
 }
+
+/**
+ * First-turn onboarding line (model-facing; the user only sees what the model
+ * relays, so it asks for one sentence in the first reply). Carries the plugin
+ * and forge versions so a stale install is visible at a glance.
+ *
+ * 首轮引导：模型可见、用户只能通过模型复述看到，所以明确要求在第一次回复里
+ * 用一句话告知用户；带插件与 forge 版本，装旧版一眼可见。
+ *
+ * @param {string} pluginVersion
+ * @param {string|undefined} forgeVersion
+ * @returns {string}
+ */
+export function welcomeText(pluginVersion, forgeVersion) {
+  const versions = `插件 ${pluginVersion}${forgeVersion === undefined ? "" : `，forge ${forgeVersion}`}`;
+  return (
+    `[forge-dsh] Forge 质量门禁已接管本项目（${versions}）：修改源码前需先建 forge task，危险的 Bash 命令会被拦截。` +
+    "请在本会话第一次回复的末尾用一句话告知用户这一点，并提示：/forge-status 查看状态，forge off 关闭门禁。只提这一次。"
+  );
+}

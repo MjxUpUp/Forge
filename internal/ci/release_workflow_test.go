@@ -203,6 +203,33 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	if npmVerify.TimeoutMinutes < 25 {
 		t.Fatalf("npm-verify timeout-minutes 必须 ≥25（15×60s 退避最坏 ≈18min + 双 drill + cosign 验签余量），got %d", npmVerify.TimeoutMinutes)
 	}
+	// 「装插件即装本体」发布后验证：forge-dsh 依赖 forge 本体（lockstep 钉），装回插件后
+	// 插件自带解析逻辑必须能找到安装目录内、版本 == tag 的二进制。必须是独立步骤且在 checkout
+	// 之后（脚本在仓库里）；不得含 npm i -g，否则会顶替上面「装回步骤」的定位（取最后一个
+	// 含 npm i -g 的步骤）而让退避/exit 契约守卫校验错对象。
+	dshVerifyIdx, checkoutIdx := -1, -1
+	for i, s := range npmVerify.Steps {
+		if strings.Contains(s.Uses, "actions/checkout") && checkoutIdx < 0 {
+			checkoutIdx = i
+		}
+		if strings.Contains(s.Run, "scripts/verify-dsh-install.js") {
+			dshVerifyIdx = i
+			for _, anchor := range []string{`@agent_forge/forge-dsh@$WANT`, "--want", "--registry https://registry.npmjs.org"} {
+				if !strings.Contains(s.Run, anchor) {
+					t.Fatalf("forge-dsh 装回验证步骤缺 %q", anchor)
+				}
+			}
+			if strings.Contains(s.Run, "npm i -g") {
+				t.Fatal("forge-dsh 装回验证步骤不得含 npm i -g（会被当成主包装回步骤，破坏退避/exit 契约守卫的定位）")
+			}
+		}
+	}
+	if dshVerifyIdx < 0 {
+		t.Fatal("npm-verify 缺 forge-dsh 装回验证步骤（scripts/verify-dsh-install.js）——插件依赖钉漏 bump/子包被跳过将无人发现，用户装完 hook 全部静默 fail-open")
+	}
+	if checkoutIdx < 0 || checkoutIdx > dshVerifyIdx {
+		t.Fatalf("npm-verify 的 checkout 必须在 forge-dsh 装回验证步骤之前（脚本在仓库内），checkout=%d verify=%d", checkoutIdx, dshVerifyIdx)
+	}
 	verifyRuns := jobStepRuns(npmVerify)
 	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
 		if !strings.Contains(verifyRuns, want) {

@@ -200,7 +200,7 @@ test("session-start: contexts reach the FIRST pre-step even when it races the de
   t.after(() => delete process.env.FAKE_FORGE_LOG);
   const ctx = new Context();
   ctx.provide("tools", {});
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000 });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
   const { agent, calls } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
   // no polling: the pre-step arrives while the session-start group is mid-run
@@ -231,7 +231,7 @@ test("session-start: a slow start does not tax later steps — only the first pr
   t.after(() => delete process.env.FAKE_FORGE_LOG);
   const ctx = new Context();
   ctx.provide("tools", {});
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 1 });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 1, welcome: false });
   const { agent } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
   // 1ms wait: the pre-step gives up before the detached run finishes
@@ -261,7 +261,7 @@ test("session-start: overlapping starts do not stack the same onboarding; id-key
   t.after(() => delete process.env.FAKE_FORGE_LOG);
   const ctx = new Context();
   ctx.provide("tools", {});
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000 });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
   const { agent } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
   ctx.emit("agent/session-start", { agent, source: "startup" });
@@ -289,7 +289,7 @@ test("session-start: a rejected pre-step keeps the queue for the next one", asyn
   t.after(() => delete process.env.FAKE_FORGE_LOG);
   const ctx = new Context();
   ctx.provide("tools", {});
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000 });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
   const { agent, calls } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
   const rejected = await preStepTexts(ctx, agent, "please block-prompt now");
@@ -361,7 +361,7 @@ test("session-start: a missing forge queues one visible notice per session, deli
       return () => true;
     },
   });
-  await ctx.plugin(forgePlugin, { forgeBin: BAD, timeoutMs: 5000, startWaitMs: 15000 });
+  await ctx.plugin(forgePlugin, { forgeBin: BAD, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
   const noticesIn = (texts) => texts.filter((x) => x.includes("forge CLI not found"));
   const { agent, calls } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
@@ -408,7 +408,7 @@ test("bundled forge: used when no forgeBin is configured, and the agent is told 
       return () => true;
     },
   });
-  await ctx.plugin(forgePlugin, { resolveBundledForge: () => FAKE, timeoutMs: 5000, startWaitMs: 15000 });
+  await ctx.plugin(forgePlugin, { resolveBundledForge: () => FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
   const { agent } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
   const first = await preStepTexts(ctx, agent);
@@ -440,7 +440,7 @@ test("bundled forge: an explicit forgeBin wins and no hint is given", async (t) 
     forgeBin: FAKE,
     resolveBundledForge: () => "/must/not/be/used/forge",
     timeoutMs: 5000,
-    startWaitMs: 15000,
+    startWaitMs: 15000, welcome: false,
   });
   const { agent } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
@@ -519,7 +519,7 @@ test("bundled forge: a bundle that resolves but will not run falls back to a wor
   const ctx = new Context();
   ctx.provide("tools", {});
   ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
-  await ctx.plugin(forgePlugin, { resolveBundledForge: () => BAD, timeoutMs: 5000, startWaitMs: 15000 });
+  await ctx.plugin(forgePlugin, { resolveBundledForge: () => BAD, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
   const { agent } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
   const first = await preStepTexts(ctx, agent);
@@ -527,6 +527,58 @@ test("bundled forge: a bundle that resolves but will not run falls back to a wor
   assert.equal(first.texts.filter((x) => x.includes("bundled with this plugin")).length, 0, "no path hint for an unusable bundle");
   assert.ok(hookCalls().length > 0, "hooks ran through the PATH forge");
   assert.match((await registered.get("forge-status").handler()).text, /forgeBin: forge \(PATH\)/);
+});
+
+test("welcome: one first-turn line with versions at startup, ahead of forge's own contexts; never repeated", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000 });
+  const { agent, calls } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const first = await preStepTexts(ctx, agent);
+  const welcomes = first.texts.filter((x) => x.includes("质量门禁已接管本项目"));
+  assert.equal(welcomes.length, 1, "exactly one welcome");
+  assert.equal(first.texts[0], welcomes[0], "the welcome leads the queue");
+  assert.ok(welcomes[0].includes(`插件 ${PKG.version}`), "plugin version from package.json");
+  assert.ok(welcomes[0].includes("forge 1.79.0"), "forge version from the probe (the double reports 1.79.0)");
+  assert.match(welcomes[0], /第一次回复/);
+  assert.match(welcomes[0], /\/forge-status/);
+  assert.match(welcomes[0], /forge off/);
+  assert.equal(first.texts.at(-1), "hello");
+  assert.equal(calls.injected.length, 0);
+  // not a first meeting: a compaction or a resume says nothing new
+  for (const source of ["compact", "resume"]) {
+    ctx.emit("agent/session-start", { agent, source });
+    const later = await preStepTexts(ctx, agent, source);
+    assert.equal(later.texts.filter((x) => x.includes("质量门禁已接管本项目")).length, 0, `${source} stays quiet`);
+  }
+});
+
+test("welcome: config welcome:false drops it, and a missing forge gets the notice instead", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const off = new Context();
+  off.provide("tools", {});
+  await off.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+  const a = makeAgent();
+  off.emit("agent/session-start", { agent: a.agent, source: "startup" });
+  const quiet = await preStepTexts(off, a.agent);
+  assert.equal(quiet.texts.filter((x) => x.includes("质量门禁已接管本项目")).length, 0);
+
+  const BAD = fileURLToPath(new URL("../test/doubles/no-such-forge", import.meta.url));
+  const missing = new Context();
+  missing.provide("tools", {});
+  await missing.plugin(forgePlugin, { forgeBin: BAD, timeoutMs: 5000, startWaitMs: 15000 });
+  const b = makeAgent();
+  missing.emit("agent/session-start", { agent: b.agent, source: "startup" });
+  const noForge = await preStepTexts(missing, b.agent);
+  assert.equal(noForge.texts.filter((x) => x.includes("质量门禁已接管本项目")).length, 0, "gates are OFF — do not claim they are on");
+  assert.equal(noForge.texts.filter((x) => x.includes("forge CLI not found")).length, 1);
 });
 
 test("disabled config wires no listeners", async (t) => {

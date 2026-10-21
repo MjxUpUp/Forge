@@ -63,23 +63,27 @@ exposes the corresponding event points (the preview builds have neither).
 
 ## Install
 
+`<profile>` is the dsh profile that is actually running. **The desktop app runs the
+`desktop` profile** — installing into any other profile (e.g. `web`) succeeds but the
+plugin never loads in the app. List your profiles under `~/.dsh/profiles/`.
+
 ```sh
 # from npm
-dsh plugin --profile web add @agent_forge/forge-dsh
+dsh plugin --profile <profile> add @agent_forge/forge-dsh
 
 # or straight from the Forge repo (subdirectory install)
-dsh plugin --profile web add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"
+dsh plugin --profile <profile> add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"
 
 # local development (run from this directory; `link:.` works on Windows too)
-dsh plugin --profile web add "link:."
+dsh plugin --profile <profile> add "link:."
 ```
 
 The plugin hot-loads into a running dsh — adding or removing the bundle reloads the
 profile. If a given build does not pick it up, restart the host once. Start a new
 session to pick up the SessionStart context, and check the bridge's state with
 `/forge-status` (probe result, wired groups, recent verdicts). To uninstall:
-`dsh plugin --profile <name> remove @agent_forge/forge-dsh` (the desktop app's profile
-is `desktop`), or keep it installed but inert with `enabled:false`.
+`dsh plugin --profile <profile> remove @agent_forge/forge-dsh` — the bundled forge goes
+with it — or keep it installed but inert with `enabled:false`.
 
 ## Config
 
@@ -95,6 +99,7 @@ under `~/.dsh/profiles/<profile>/`):
     forgeBin: forge      # binary name/path. Precedence: this key > FORGE_BIN > bundled forge > PATH `forge`
     timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
     startWaitMs: 1500    # first pre-step waits this long for session-start contexts
+    welcome: true        # one first-turn line telling the user Forge is active (false = silent)
     enabled: true        # false unwires every listener
     debug: false         # log fail-open hook errors to console.error
 ```

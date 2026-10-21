@@ -25,6 +25,7 @@
  *               the forge bundled with this plugin (dependency, version-locked) >
  *               "forge" on PATH
  *   timeoutMs - per-hook ceiling, kill + fail open (default 30000)
+ *   welcome   - false drops the one-line first-turn onboarding (default true)
  *   startWaitMs - how long the first pre-step waits for the session-start
  *               contexts before moving on without them (default 1500)
  *   enabled   - false disables every listener (default true)
@@ -36,9 +37,10 @@ import { readFileSync } from "node:fs";
 import { bundledForgeHint, resolveBundledForge } from "./bundled.js";
 import { probeForge } from "./runner.js";
 import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
-import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName } from "./tools.js";
+import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName, welcomeText } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
+const pluginVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 /** Stable Cordis plugin name. */
 const name = "forge-quality";
@@ -66,6 +68,7 @@ function apply(ctx, config = {}) {
     timeoutMs: config.timeoutMs ?? 30000,
   };
   const debug = config.debug === true;
+  const welcome = config.welcome !== false;
   const startWaitMs = Number.isFinite(config.startWaitMs) && config.startWaitMs >= 0 ? config.startWaitMs : 1500;
   // Recent-run ring buffer for /forge-status — fail-open verdicts are silent
   // by design, so this (plus debug logging) is the only way to see them.
@@ -236,6 +239,14 @@ function apply(ctx, config = {}) {
       const forgeOk = await ensureForge(agent);
       // The bundled binary is not on PATH while forge's gate messages say
       // `forge task …`; tell the agent where it is, first in the queue, once.
+      // One human-facing line per session (startup only — resume/compact are not a
+      // first meeting), ahead of the path hint and forge's own contexts.
+      const isStartup = source === undefined || source === "startup";
+      if (forgeOk && welcome && isStartup && state !== undefined && !state.welcomed) {
+        state.welcomed = true;
+        const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
+        state.pending.push(welcomeText(pluginVersion, forgeVersion));
+      }
       // After a compaction the earlier hint is summarised away, so it is re-sent.
       if (source === "compact" && state !== undefined) state.hinted = false;
       if (forgeOk && binSource === "bundled" && state !== undefined && !state.hinted) {
