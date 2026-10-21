@@ -576,12 +576,19 @@ func runEmbeddedHook(root, name string) (passed bool, infra bool, output string)
 		}
 		env = append(env, kv)
 	}
-	cmd.Env = env
+	// Same script-env contract as the write-time path (hookdispatch.RunHook): pin
+	// TMPDIR off the MSYS /tmp mount, and keep interpreter runtime warnings out of
+	// the gate verdict text (the infra message keeps them as a diagnostic clue).
+	//
+	// 与 write-time 路径（hookdispatch.RunHook）同一脚本 env 契约：TMPDIR 固定、
+	// 不走 MSYS /tmp 挂载；解释器运行环境告警不进门禁结论文案（基础设施失败文案
+	// 保留它作诊断线索）。
+	cmd.Env = shellexec.PinTempDir(env)
 	out, err := cmd.CombinedOutput()
 	if shellexec.IsHookInfraFailure(err) {
 		return false, true, strings.TrimSpace(fmt.Sprintf("%v: %s", err, string(out)))
 	}
-	return err == nil, false, strings.TrimSpace(string(out))
+	return err == nil, false, shellexec.StripRuntimeNoise(strings.TrimSpace(string(out)))
 }
 
 // findBashForHook 解析 embedded gate hook 的 bash 解释器。以包级变量留缝，
