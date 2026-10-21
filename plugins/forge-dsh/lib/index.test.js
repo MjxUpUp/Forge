@@ -6,7 +6,7 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { Context } from "@deepseek-ai/cordis";
@@ -618,8 +618,26 @@ async function welcomeCtx(t, config = {}, { managed = true } = {}) {
   });
   const ctx = new Context();
   ctx.provide("tools", {});
-  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, locale: "zh", ...config });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, locale: "zh", skillsHome: skillsHomeWith(t, true), ...config });
   return ctx;
+}
+/** A throwaway home whose ~/.agents/skills has (or lacks) an installed skill — independent of the host's own. */
+function skillsHomeWith(t, installed) {
+  const home = mkdtempSync(join(tmpdir(), "forge-dsh-home-"));
+  const dir = join(home, ".agents", "skills");
+  mkdirSync(dir, { recursive: true });
+  if (installed) writeFileSync(join(dir, "a-skill"), "x");
+  t.after(() => {
+    for (const p of [join(dir, "a-skill"), dir, join(home, ".agents"), home]) {
+      try {
+        if (p.endsWith("a-skill")) unlinkSync(p);
+        else rmdirSync(p);
+      } catch {
+        // already gone
+      }
+    }
+  });
+  return home;
 }
 const WELCOME = "质量门禁已接管本项目";
 const welcomeCount = (texts) => texts.filter((x) => x.includes(WELCOME)).length;
@@ -699,6 +717,43 @@ test("welcome: no claim when forge did not announce the project as managed, when
   const noForge = await preStepTexts(missing, c.agent);
   assert.equal(welcomeCount(noForge.texts), 0, "gates are OFF — do not claim they are on");
   assert.equal(noForge.texts.filter((x) => x.includes("未找到 forge CLI")).length, 1, "the notice follows the configured language (zh here)");
+});
+
+test("skills: an empty ~/.agents/skills adds an install offer right behind the welcome; an installed library or welcome:false stays quiet", async (t) => {
+  const empty = await welcomeCtx(t, { skillsHome: skillsHomeWith(t, false), locale: "en" });
+  const a = makeAgent();
+  a.agent.session.id = "skills-empty";
+  empty.emit("agent/session-start", { agent: a.agent, source: "startup" });
+  const texts = (await preStepTexts(empty, a.agent)).texts;
+  assert.match(texts[0], /Forge quality gates now govern this project/, "welcome first");
+  assert.match(texts[1], /skill library is not installed for DSH/, "the offer sits right behind it");
+  assert.ok(texts[1].includes("skills install --global --target agents"));
+  assert.match(texts[1], /only after the user agrees/, "installing writes the home directory — ask first");
+
+  const installed = await welcomeCtx(t, { skillsHome: skillsHomeWith(t, true), locale: "en" });
+  const b = makeAgent();
+  b.agent.session.id = "skills-installed";
+  installed.emit("agent/session-start", { agent: b.agent, source: "startup" });
+  assert.equal((await preStepTexts(installed, b.agent)).texts.filter((x) => x.includes("skill library")).length, 0);
+
+  const quiet = await welcomeCtx(t, { skillsHome: skillsHomeWith(t, false), welcome: false, locale: "en" });
+  const c = makeAgent();
+  c.agent.session.id = "skills-quiet";
+  quiet.emit("agent/session-start", { agent: c.agent, source: "startup" });
+  assert.equal((await preStepTexts(quiet, c.agent)).texts.filter((x) => x.includes("skill library")).length, 0);
+});
+
+test("skills: resume and a subagent do not get the offer either", async (t) => {
+  const ctx = await welcomeCtx(t, { skillsHome: skillsHomeWith(t, false), locale: "en" });
+  const resumed = makeAgent();
+  resumed.agent.session.id = "skills-resume";
+  ctx.emit("agent/session-start", { agent: resumed.agent, source: "resume" });
+  assert.equal((await preStepTexts(ctx, resumed.agent)).texts.filter((x) => x.includes("skill library")).length, 0);
+  const child = makeAgent();
+  child.agent.session.id = "skills-child";
+  child.agent.session.header.origin = "subagent";
+  ctx.emit("agent/session-start", { agent: child.agent, source: "startup" });
+  assert.equal((await preStepTexts(ctx, child.agent)).texts.filter((x) => x.includes("skill library")).length, 0);
 });
 
 test("welcome: the language follows config locale — English on request", async (t) => {

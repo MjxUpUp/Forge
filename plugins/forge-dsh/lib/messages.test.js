@@ -71,3 +71,15 @@ test("degraded: says how many runs failed open, that nothing is blocked, and whe
   }
   assert.match(messagesFor("en").degraded(3), /nothing is blocked/);
 });
+
+test("skillsHint: offers the install command (asks first — it writes the user's home), quoting a path with spaces", () => {
+  for (const locale of ["en", "zh"]) {
+    const m = messagesFor(locale);
+    const text = m.skillsHint("forge");
+    assert.ok(text.includes("forge skills install --global --target agents"), `${locale}: the exact command`);
+    assert.ok(text.includes("~/.agents/skills"));
+    assert.ok(m.skillsHint("/Users/a b/forge").includes('"/Users/a b/forge" skills install'), `${locale}: spaces are quoted`);
+  }
+  assert.match(messagesFor("en").skillsHint("forge"), /only after the user agrees/);
+  assert.match(messagesFor("zh").skillsHint("forge"), /征得用户同意/);
+});

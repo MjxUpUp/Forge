@@ -27,6 +27,8 @@
  *   timeoutMs - per-hook ceiling, kill + fail open (default 30000)
  *   locale    - language of the plugin's own messages: "en" | "zh" | "auto"
  *               (default auto: env FORGE_DSH_LOCALE, then the system locale)
+ *   skillsHome - home directory whose .agents/skills is checked for the skill library
+ *               (default: the user's home; a seam for tests)
  *   welcome   - false drops the one-line first-turn onboarding (default true)
  *   startWaitMs - how long the first pre-step waits for the session-start
  *               contexts before moving on without them (default 1500)
@@ -38,6 +40,7 @@
 import { readFileSync } from "node:fs";
 import { resolveBundledForge } from "./bundled.js";
 import { messagesFor, resolveLocale } from "./messages.js";
+import { agentsSkillsInstalled } from "./skills.js";
 import { probeForge } from "./runner.js";
 import { runMatchedGroups, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
 import { buildEventPayload, buildToolPayload, matchedGroups, pluginMessage, promptText, toCCToolName, isSubagent, MANAGED_BANNER } from "./tools.js";
@@ -277,6 +280,9 @@ function apply(ctx, config = {}) {
         state.welcomed = true;
         const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
         state.pending.unshift(msg.welcome(pluginVersion, forgeVersion));
+        // The plugin brings the bridge and the forge CLI, not the skill library DSH reads from
+        // ~/.agents/skills; offer it (right behind the welcome) when that directory is empty.
+        if (!agentsSkillsInstalled(config.skillsHome)) state.pending.splice(1, 0, msg.skillsHint(opts.forgeBin));
       }
       if (source === "compact") {
         const compact = await runMatchedGroups(

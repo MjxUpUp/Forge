@@ -59,6 +59,10 @@ const en = {
     `[forge-dsh] forge CLI bundled with this plugin: ${quoted(binPath)}. It may not be on PATH — ` +
     "when a gate message or the protocol tells you to run a `forge …` command, " +
     "run it with this path instead of `forge`.",
+  /** Installing writes the user's home (~/.agents/skills), hence "after the user agrees". */
+  skillsHint: (forgeBin) =>
+    "[forge-dsh] Forge's skill library is not installed for DSH (~/.agents/skills is empty), so the skills forge hooks point to are unavailable. " +
+    "Offer to install it, and run `" + quoted(forgeBin) + " skills install --global --target agents` only after the user agrees.",
   missingForge: (forgeBin, error) =>
     `[forge-dsh] forge CLI not found (forgeBin: ${forgeBin}). ` +
     "Forge gates are OFF for this session — every action runs unguarded (fail-open). " +
@@ -77,6 +81,9 @@ const zh = {
   bundledHint: (binPath) =>
     `[forge-dsh] 本插件自带的 forge CLI：${quoted(binPath)}。它可能不在 PATH 上——` +
     "当门禁消息或协议要求你运行 `forge …` 命令时，请用这个路径代替 `forge`。",
+  skillsHint: (forgeBin) =>
+    "[forge-dsh] 尚未为 DSH 安装 Forge 技能库（~/.agents/skills 为空），forge hook 提示的 skill 因此不可用。" +
+    "请向用户提议安装，征得用户同意后再运行 `" + quoted(forgeBin) + " skills install --global --target agents`。",
   missingForge: (forgeBin, error) =>
     `[forge-dsh] 未找到 forge CLI（forgeBin：${forgeBin}）。` +
     "本会话 Forge 门禁处于关闭状态——所有操作都不受保护（fail-open）。" +

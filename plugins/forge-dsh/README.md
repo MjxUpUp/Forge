@@ -141,6 +141,17 @@ already steering for a real block: how many runs lost their feedback, where to l
 (`/forge-status`) and what to raise (`timeoutMs`). It is advisory — nothing is blocked. The batch
 to per-hook downgrade is not counted: that run still executed its gates.
 
+The plugin delivers the bridge and (as a dependency) the forge CLI, **not the skill library**
+DSH reads from `~/.agents/skills`. When that directory is empty, the first-turn onboarding adds
+one line offering `forge skills install --global --target agents`; the model runs it only after
+the user agrees, since it writes the home directory. Resume, subagents and `welcome: false`
+sessions get no offer.
+
+Whether forge takes over a project is asked once per project — the same on every host. Forge
+does not infer consent from "the plugin is installed" (`init-suggest`'s `takeover` preference is
+the opt-in), so a DSH install behaves like a Claude Code plugin install here; the model relays
+the question from forge's own `init-suggest` advisory, which the receipt filter below never drops.
+
 Status-only receipts that forge prints when it has nothing to say (`no weakening detected`,
 `all skills SAFE`, `no .mcp.json` …) are dropped before injection — the host turns every allow
 context into a synthetic user message, and these carry no instruction. Anything else, including
