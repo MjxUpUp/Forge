@@ -90,6 +90,21 @@ process.stdin.on("end", () => {
       );
       process.exit(0);
       break;
+    case "task-resume":
+      // forge's [forge-session] managed banner (the project-managed signal). Opt-in via env so
+      // the many exact-context assertions elsewhere are not perturbed by an extra start context.
+      if (process.env.FAKE_FORGE_MANAGED === "1") {
+        process.stdout.write(
+          JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: payload.hook_event_name ?? "",
+              additionalContext: "[forge-session] 本项目由 forge 管理（managed）(fake)",
+            },
+          }) + "\n",
+        );
+      }
+      process.exit(0);
+      break;
     case "pass-context":
       process.stdout.write(
         JSON.stringify({

@@ -196,3 +196,48 @@ export function pluginMessage(text) {
     source: { kind: "plugin:forge-quality" },
   };
 }
+
+/**
+ * The marker forge's own SessionStart hook (task-resume) prints when the
+ * project is managed — the same mechanical signal the user-level instruction
+ * block keys on (internal/skillgen/claudemd.go). The welcome line is only
+ * truthful when it appeared, so the plugin waits for it instead of guessing from
+ * "forge --version runs".
+ *
+ * forge 自己的 SessionStart hook 在项目被接管时输出的横幅标记，与用户级指令段的
+ * 激活判据同源；欢迎语只在它出现时才属实。
+ */
+export const MANAGED_BANNER = "[forge-session]";
+
+/**
+ * Whether a DSH agent handle is a delegated child (its session header carries
+ * origin 'subagent' / a parentSession). Children report to their parent, not to
+ * the user, so they must not be told to greet anyone.
+ *
+ * @param {object|undefined} agent
+ * @returns {boolean}
+ */
+export function isSubagent(agent) {
+  const header = agent?.session?.header;
+  return header?.origin === "subagent" || header?.parentSession !== undefined;
+}
+
+/**
+ * First-turn onboarding line (model-facing; the user only sees what the model
+ * relays, so it asks for one sentence in the first reply). Carries the plugin
+ * and forge versions so a stale install is visible at a glance.
+ *
+ * 首轮引导：模型可见、用户只能通过模型复述看到，所以明确要求在第一次回复里
+ * 用一句话告知用户；带插件与 forge 版本，装旧版一眼可见。
+ *
+ * @param {string} pluginVersion
+ * @param {string|undefined} forgeVersion
+ * @returns {string}
+ */
+export function welcomeText(pluginVersion, forgeVersion) {
+  const versions = `插件 ${pluginVersion}${forgeVersion === undefined ? "" : `，forge ${forgeVersion}`}`;
+  return (
+    `[forge-dsh] Forge 质量门禁已接管本项目（${versions}）：修改源码前需先建 forge task，危险的 Bash 命令会被拦截。` +
+    "请在本会话第一次回复的末尾用一句话告知用户这一点，并提示：/forge-status 查看状态，forge off 关闭门禁。只提这一次。"
+  );
+}

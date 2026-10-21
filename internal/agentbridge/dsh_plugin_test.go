@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -47,11 +48,11 @@ func TestDshPluginSpecMirrorsSpec(t *testing.T) {
 	}
 }
 
-// TestDshPluginPackageContract pins the distribution contract the dsh plugin loader relies on: the dsh.bundle.patch pointer, the entry file, and zero runtime dependencies (the wrapper must load anywhere dsh runs without pulling a module graph).
+// TestDshPluginPackageContract pins the distribution contract the dsh plugin loader relies on: the dsh.bundle.patch pointer, the entry file, and exactly one runtime dependency — the forge CLI itself, pinned to an exact version (a binary carrier: the plugin code never imports it, see TestDshPluginLibImportsStayDependencyFree).
 //
 // TestDshPluginPackageContract 钉住 dsh plugin loader 依赖的分发契约：
-// dsh.bundle.patch 指针、入口文件、零运行时依赖（包装层必须在 dsh 运行的任何
-// 布局下无需模块图即可加载）。
+// dsh.bundle.patch 指针、入口文件、且运行时依赖恰好一项——forge 本体（精确版本钉）。
+// 它只是二进制载体，插件代码不 import 它（见 TestDshPluginLibImportsStayDependencyFree）。
 func TestDshPluginPackageContract(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(dshPluginDir, "package.json"))
 	if err != nil {
@@ -61,6 +62,9 @@ func TestDshPluginPackageContract(t *testing.T) {
 		Name         string            `json:"name"`
 		Main         string            `json:"main"`
 		Dependencies map[string]string `json:"dependencies"`
+		Optional     map[string]string `json:"optionalDependencies"`
+		Peer         map[string]string `json:"peerDependencies"`
+		Bundled      []string          `json:"bundledDependencies"`
 		Dsh          struct {
 			Bundle struct {
 				Patch string `json:"patch"`
@@ -76,8 +80,23 @@ func TestDshPluginPackageContract(t *testing.T) {
 	if pkg.Main != "lib/index.js" {
 		t.Errorf("main = %q, want lib/index.js", pkg.Main)
 	}
-	if len(pkg.Dependencies) > 0 {
-		t.Errorf("runtime dependencies crept in (%v) — the wrapper must stay zero-dependency (devDependencies for tests are fine)", pkg.Dependencies)
+	// 内置 forge 本体：安装插件即装本体、卸载即移除（PATH 上没有 forge 时 hook 全部静默
+	// fail-open 的根治）。除它之外不得再有运行时依赖；钉必须是精确版本，不是范围——
+	// 与 release-please extra-files lockstep bump 配套（TestReleasePleaseManifest_DshPluginTracksTrain）。
+	for name, ver := range pkg.Dependencies {
+		if name != "@agent_forge/forge" {
+			t.Errorf("runtime dependency %q crept in — the only allowed one is the bundled @agent_forge/forge (devDependencies for tests are fine)", name)
+			continue
+		}
+		if !regexp.MustCompile(`^\d+\.\d+\.\d+$`).MatchString(ver) {
+			t.Errorf("@agent_forge/forge pin %q must be an exact version (lockstep with the plugin), not a range", ver)
+		}
+	}
+	if len(pkg.Optional) > 0 || len(pkg.Peer) > 0 || len(pkg.Bundled) > 0 {
+		t.Errorf("optional/peer/bundled dependencies crept in (%v %v %v) — the bundled forge in dependencies is the only runtime package", pkg.Optional, pkg.Peer, pkg.Bundled)
+	}
+	if _, ok := pkg.Dependencies["@agent_forge/forge"]; !ok {
+		t.Error("@agent_forge/forge dependency missing — without it a plugin-only install gates nothing (every hook fails open)")
 	}
 	patch, err := os.ReadFile(filepath.Join(dshPluginDir, "cordis.patch.yml"))
 	if err != nil {
@@ -89,6 +108,53 @@ func TestDshPluginPackageContract(t *testing.T) {
 	for _, entry := range []string{filepath.Join("lib", "index.js"), filepath.Join("lib", "spec.json"), "README.md"} {
 		if _, err := os.Stat(filepath.Join(dshPluginDir, entry)); err != nil {
 			t.Errorf("shipped file %s missing: %v", entry, err)
+		}
+	}
+}
+
+// TestDshPluginLibImportsStayDependencyFree: the bundled forge dependency is a binary carrier only. Plugin code must still load anywhere dsh runs without a module graph, so shipped lib files import only node: builtins and sibling files.
+//
+// TestDshPluginLibImportsStayDependencyFree：内置 forge 依赖只是二进制载体。插件代码仍须
+// 在 dsh 运行的任何布局下无需模块图即可加载——发布的 lib 文件只许 import node: 内建与同包相对路径。
+func TestDshPluginLibImportsStayDependencyFree(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(dshPluginDir, "lib", "*.js"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no lib/*.js found: %v", err)
+	}
+	// 引号不限单双、import 可无 from（副作用导入）、可不在行首、from 前后空白可省。
+	staticRe := regexp.MustCompile(`\b(?:import|export)\s*(?:[^;'"]*?\bfrom\s*)?['"]([^'"]+)['"]`)
+	dynamicRe := regexp.MustCompile(`\bimport\s*\(\s*(['"]?)([^'")]*)`)
+	requireRe := regexp.MustCompile(`\brequire\s*\(`)
+	for _, f := range files {
+		if strings.HasSuffix(f, ".test.js") {
+			continue
+		}
+		body, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(body)
+		name := filepath.Base(f)
+		okSpec := func(spec string) bool {
+			return strings.HasPrefix(spec, "node:") || (strings.HasPrefix(spec, "./") && !strings.Contains(spec, ".."))
+		}
+		for _, m := range staticRe.FindAllStringSubmatch(src, -1) {
+			if !okSpec(m[1]) {
+				t.Errorf("%s imports %q — shipped plugin code may import only node: builtins and ./ siblings", name, m[1])
+			}
+		}
+		for _, m := range dynamicRe.FindAllStringSubmatch(src, -1) {
+			if m[1] == "" || !okSpec(m[2]) {
+				t.Errorf("%s has dynamic import(%s%s) — only literal node:/./ specifiers are allowed", name, m[1], m[2])
+			}
+		}
+		if requireRe.MatchString(src) {
+			t.Errorf("%s calls require(...) — shipped plugin code is ESM; use a ./ or node: import", name)
+		}
+		// createRequire is the escape hatch for resolving the bundled forge binary by path;
+		// it may live only in bundled.js, which never loads what it resolves.
+		if name != "bundled.js" && strings.Contains(src, "createRequire") {
+			t.Errorf("%s uses createRequire — only bundled.js may (it resolves the forge binary path, never imports it)", name)
 		}
 	}
 }

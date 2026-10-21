@@ -6,7 +6,9 @@
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { Context } from "@deepseek-ai/cordis";
 import * as forgePlugin from "./index.js";
 
@@ -177,7 +179,135 @@ test("turn-stopping: a blocking gate steers another step (serial mode)", async (
   assert.equal(hookCalls()[0].payload.stop_hook_active, false);
 });
 
-test("session-start: emit-mode context lands via inject; source compact also fires PostCompact", async (t) => {
+/** One pre-step round trip; returns the enter decision's message texts. */
+async function preStepTexts(ctx, agent, prompt = "hello") {
+  const payload = {
+    agent,
+    messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+    turn: 1,
+    step: 1,
+  };
+  const d = await ctx.waterfall("agent/pre-step", payload, async () => ({
+    kind: "enter",
+    messages: payload.messages,
+  }));
+  return { decision: d, texts: (d.messages ?? []).map((m) => m.content[0].text) };
+}
+
+test("session-start: contexts reach the FIRST pre-step even when it races the detached run", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+  const { agent, calls } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  // no polling: the pre-step arrives while the session-start group is mid-run
+  const first = await preStepTexts(ctx, agent);
+  assert.equal(first.texts.at(-1), "hello", "the user prompt stays last");
+  // [session-start context(s)..., pre-step's own advisory, user prompt]: the
+  // queue lands BEFORE the pre-step advisory and the prompt, never after
+  assert.equal(first.texts.length, 3, "one start context + own advisory + prompt");
+  assert.deepEqual(first.texts, [
+    "consider the test-discipline skill",
+    "consider the test-discipline skill",
+    "hello",
+  ]);
+  assert.equal(first.decision.messages[0].source.kind, "plugin:forge-quality");
+  assert.equal(calls.injected.length, 0, "session-start no longer relies on agent.inject");
+  // delivered exactly once: a later pre-step carries only its own advisory
+  const second = await preStepTexts(ctx, agent, "again");
+  assert.deepEqual(
+    second.texts,
+    ["consider the test-discipline skill", "again"],
+    "the start queue was drained by the first pre-step",
+  );
+});
+
+test("session-start: a slow start does not tax later steps — only the first pre-step waits, contexts land once it finishes", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 1, welcome: false });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  // 1ms wait: the pre-step gives up before the detached run finishes
+  const early = await preStepTexts(ctx, agent);
+  assert.deepEqual(early.texts, ["consider the test-discipline skill", "hello"], "no start context yet, own advisory only");
+  // once the start run settles, the next enter carries the context — exactly once
+  const expected = matchedCommands(SPEC.SessionStart, "").length;
+  const deadline = Date.now() + 15000;
+  const startRuns = () => hookCalls().filter((c) => c.payload.hook_event_name === "SessionStart").length;
+  while (Date.now() < deadline && startRuns() < expected) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  await new Promise((r) => setTimeout(r, 300));
+  const late = await preStepTexts(ctx, agent, "later");
+  assert.deepEqual(late.texts, [
+    "consider the test-discipline skill",
+    "consider the test-discipline skill",
+    "later",
+  ]);
+  const after = await preStepTexts(ctx, agent, "after");
+  assert.deepEqual(after.texts, ["consider the test-discipline skill", "after"]);
+});
+
+test("session-start: overlapping starts do not stack the same onboarding; id-keyed state survives a fresh agent wrapper", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  // a different wrapper object for the SAME session id (host re-wrapping)
+  const wrapper = { ...agent };
+  const first = await preStepTexts(ctx, wrapper);
+  assert.deepEqual(first.texts, [
+    "consider the test-discipline skill",
+    "consider the test-discipline skill",
+    "hello",
+  ], "one deduped start context, not two");
+});
+
+test("pre-step: no agent handle and no session-start passes through untouched", async (t) => {
+  const ctx = await boot(t);
+  const payload = { messages: [{ role: "user", content: [{ type: "text", text: "x" }] }], turn: 1, step: 1 };
+  const d = await ctx.waterfall("agent/pre-step", payload, async () => ({ kind: "enter", messages: payload.messages }));
+  assert.equal(d.kind, "enter");
+  assert.deepEqual(d.messages.map((m) => m.content[0].text), ["consider the test-discipline skill", "x"]);
+});
+
+test("session-start: a rejected pre-step keeps the queue for the next one", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+  const { agent, calls } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const rejected = await preStepTexts(ctx, agent, "please block-prompt now");
+  assert.deepEqual(rejected.decision, { kind: "reject" });
+  assert.deepEqual(
+    calls.injected.map((m) => m.content[0].text),
+    ["prompt rejected by gate (fake)"],
+    "reject still surfaces the gate reason via inject and does not drain the start queue",
+  );
+  const next = await preStepTexts(ctx, agent, "ok now");
+  assert.deepEqual(
+    next.texts,
+    ["consider the test-discipline skill", "consider the test-discipline skill", "ok now"],
+    "the start context survived the reject and arrives with the next enter, once",
+  );
+});
+
+test("session-start: source compact also fires PostCompact; contexts ride the next pre-step", async (t) => {
   const ctx = await boot(t);
   const { agent, calls } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "compact" });
@@ -204,15 +334,20 @@ test("session-start: emit-mode context lands via inject; source compact also fir
   const settled = hookCalls().length;
   await new Promise((r) => setTimeout(r, 200));
   assert.equal(hookCalls().length, settled, "no further hook runs after the roster settled");
-  assert.equal(calls.injected.length, 1);
+  assert.equal(calls.injected.length, 0, "nothing goes through agent.inject");
   const hooks = hookCalls();
   assert.deepEqual(hooks.map((c) => c.hook), expected);
   assert.equal(hooks[0].payload.hook_event_name, "SessionStart");
   assert.equal(hooks[0].payload.source, "compact");
   assert.equal(hooks.at(-1).payload.hook_event_name, "PostCompact");
+  const { texts } = await preStepTexts(ctx, agent);
+  assert.ok(
+    texts.filter((x) => x === "consider the test-discipline skill").length >= 2,
+    "the queued session-start contexts ride the next pre-step",
+  );
 });
 
-test("session-start: a missing forge injects one visible notice per session and status reports it", async (t) => {
+test("session-start: a missing forge queues one visible notice per session, delivered with the first pre-step", async (t) => {
   rmSync(LOG, { force: true });
   process.env.FAKE_FORGE_LOG = LOG;
   t.after(() => delete process.env.FAKE_FORGE_LOG);
@@ -226,22 +361,21 @@ test("session-start: a missing forge injects one visible notice per session and 
       return () => true;
     },
   });
-  await ctx.plugin(forgePlugin, { forgeBin: BAD, timeoutMs: 5000 });
+  await ctx.plugin(forgePlugin, { forgeBin: BAD, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+  const noticesIn = (texts) => texts.filter((x) => x.includes("forge CLI not found"));
   const { agent, calls } = makeAgent();
   ctx.emit("agent/session-start", { agent, source: "startup" });
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline && calls.injected.length === 0) {
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  assert.equal(calls.injected.length, 1, "exactly one notice");
-  const notice = calls.injected[0].content[0].text;
-  assert.match(notice, /forge CLI not found/);
-  assert.ok(notice.includes(BAD), "notice names the configured forgeBin");
-  assert.match(notice, /npm install -g @agent_forge\/forge/);
+  const first = await preStepTexts(ctx, agent);
+  const notices = noticesIn(first.texts);
+  assert.equal(notices.length, 1, "exactly one notice");
+  assert.ok(notices[0].includes(BAD), "notice names the configured forgeBin");
+  assert.match(notices[0], /npm install -g @agent_forge\/forge/);
+  assert.equal(first.texts.at(-1), "hello", "the user prompt stays last");
+  assert.equal(calls.injected.length, 0);
   // compact is the SAME session — the notice must not repeat on every boundary
   ctx.emit("agent/session-start", { agent, source: "compact" });
-  await new Promise((r) => setTimeout(r, 1500));
-  assert.equal(calls.injected.length, 1);
+  const afterCompact = await preStepTexts(ctx, agent, "next");
+  assert.equal(noticesIn(afterCompact.texts).length, 0);
 
   const status = registered.get("forge-status");
   const reply = await status.handler();
@@ -250,13 +384,243 @@ test("session-start: a missing forge injects one visible notice per session and 
 
   // a NEW session gets its own notice: the WeakSet is per agent, not process-wide
   const second = makeAgent();
+  second.agent.session.id = "sess-2";
   ctx.emit("agent/session-start", { agent: second.agent, source: "startup" });
-  const deadline2 = Date.now() + 15000;
-  while (Date.now() < deadline2 && second.calls.injected.length === 0) {
-    await new Promise((r) => setTimeout(r, 25));
+  const secondFirst = await preStepTexts(ctx, second.agent);
+  assert.equal(noticesIn(secondFirst.texts).length, 1, "the new session is told too");
+});
+
+test("bundled forge: used when no forgeBin is configured, and the agent is told its absolute path once", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  const savedBin = process.env.FORGE_BIN;
+  delete process.env.FORGE_BIN;
+  t.after(() => {
+    delete process.env.FAKE_FORGE_LOG;
+    if (savedBin !== undefined) process.env.FORGE_BIN = savedBin;
+  });
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", {
+    register: (cmd) => {
+      registered.set(cmd.name, cmd);
+      return () => true;
+    },
+  });
+  await ctx.plugin(forgePlugin, { resolveBundledForge: () => FAKE, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const first = await preStepTexts(ctx, agent);
+  const hints = first.texts.filter((x) => x.includes("forge CLI bundled with this plugin"));
+  assert.equal(hints.length, 1, "exactly one hint");
+  assert.ok(hints[0].includes(FAKE), "the hint carries the absolute path");
+  assert.equal(first.texts[0], hints[0], "the hint leads the queue, ahead of forge's own contexts");
+  assert.ok(hookCalls().length > 0, "hooks ran through the bundled binary");
+  // drained: an ordinary later step does not repeat it
+  const plain = await preStepTexts(ctx, agent, "plain");
+  assert.equal(plain.texts.filter((x) => x.includes("forge CLI bundled")).length, 0);
+  // a compaction summarises the earlier hint away, so the new session-start re-sends it — once
+  ctx.emit("agent/session-start", { agent, source: "compact" });
+  const later = await preStepTexts(ctx, agent, "next");
+  assert.equal(later.texts.filter((x) => x.includes("forge CLI bundled")).length, 1);
+  const again = await preStepTexts(ctx, agent, "and again");
+  assert.equal(again.texts.filter((x) => x.includes("forge CLI bundled")).length, 0);
+  const reply = await registered.get("forge-status").handler();
+  assert.ok(reply.text.includes(`forgeBin: ${FAKE} (bundled)`), reply.text);
+});
+
+test("bundled forge: an explicit forgeBin wins and no hint is given", async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, {
+    forgeBin: FAKE,
+    resolveBundledForge: () => "/must/not/be/used/forge",
+    timeoutMs: 5000,
+    startWaitMs: 15000, welcome: false,
+  });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const first = await preStepTexts(ctx, agent);
+  assert.equal(first.texts.filter((x) => x.includes("bundled with this plugin")).length, 0);
+  assert.ok(hookCalls().length > 0, "hooks ran through the configured binary");
+});
+
+test("bundled forge: no bundle and no config falls back to PATH forge, reported as such", async (t) => {
+  const savedBin = process.env.FORGE_BIN;
+  delete process.env.FORGE_BIN;
+  t.after(() => {
+    if (savedBin !== undefined) process.env.FORGE_BIN = savedBin;
+  });
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", {
+    register: (cmd) => {
+      registered.set(cmd.name, cmd);
+      return () => true;
+    },
+  });
+  await ctx.plugin(forgePlugin, { resolveBundledForge: () => undefined });
+  const reply = await registered.get("forge-status").handler();
+  assert.match(reply.text, /forgeBin: forge \(PATH\)/);
+});
+
+test("bundled forge: FORGE_BIN beats the bundled binary; a throwing resolver degrades to PATH", async (t) => {
+  const savedBin = process.env.FORGE_BIN;
+  process.env.FORGE_BIN = FAKE;
+  t.after(() => {
+    if (savedBin === undefined) delete process.env.FORGE_BIN;
+    else process.env.FORGE_BIN = savedBin;
+  });
+  const status = async (config) => {
+    const registered = new Map();
+    const ctx = new Context();
+    ctx.provide("tools", {});
+    ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+    await ctx.plugin(forgePlugin, config);
+    return (await registered.get("forge-status").handler()).text;
+  };
+  assert.ok(
+    (await status({ resolveBundledForge: () => "/bundled/forge" })).includes(`forgeBin: ${FAKE} (configured)`),
+    "env FORGE_BIN wins over the bundle",
+  );
+  delete process.env.FORGE_BIN;
+  const text = await status({
+    resolveBundledForge: () => {
+      throw new Error("resolver exploded");
+    },
+  });
+  assert.match(text, /forgeBin: forge \(PATH\)/, "plugin load survives a throwing resolver");
+});
+
+test("bundled forge: a bundle that resolves but will not run falls back to a working PATH forge", { skip: process.platform === "win32" }, async (t) => {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  const savedPath = process.env.PATH;
+  const savedBin = process.env.FORGE_BIN;
+  delete process.env.FORGE_BIN;
+  // a PATH holding a runnable `forge` (symlink to the double) — independent of the host's own install
+  const dir = mkdtempSync(join(tmpdir(), "forge-dsh-path-"));
+  symlinkSync(FAKE, join(dir, "forge"));
+  process.env.PATH = `${dir}${delimiter}${savedPath}`;
+  t.after(() => {
+    process.env.PATH = savedPath;
+    delete process.env.FAKE_FORGE_LOG;
+    if (savedBin !== undefined) process.env.FORGE_BIN = savedBin;
+    unlinkSync(join(dir, "forge"));
+    rmdirSync(dir);
+  });
+  const BAD = fileURLToPath(new URL("../test/doubles/no-such-forge", import.meta.url));
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+  await ctx.plugin(forgePlugin, { resolveBundledForge: () => BAD, timeoutMs: 5000, startWaitMs: 15000, welcome: false });
+  const { agent } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const first = await preStepTexts(ctx, agent);
+  assert.equal(first.texts.filter((x) => x.includes("forge CLI not found")).length, 0, "PATH forge works → no missing notice");
+  assert.equal(first.texts.filter((x) => x.includes("bundled with this plugin")).length, 0, "no path hint for an unusable bundle");
+  assert.ok(hookCalls().length > 0, "hooks ran through the PATH forge");
+  assert.match((await registered.get("forge-status").handler()).text, /forgeBin: forge \(PATH\)/);
+});
+
+/** A plugin instance for the welcome tests: the double announces "managed" unless told otherwise. */
+async function welcomeCtx(t, config = {}, { managed = true } = {}) {
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  if (managed) process.env.FAKE_FORGE_MANAGED = "1";
+  t.after(() => {
+    delete process.env.FAKE_FORGE_LOG;
+    delete process.env.FAKE_FORGE_MANAGED;
+  });
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 15000, ...config });
+  return ctx;
+}
+const WELCOME = "质量门禁已接管本项目";
+const welcomeCount = (texts) => texts.filter((x) => x.includes(WELCOME)).length;
+
+test("welcome: one first-turn line with versions at startup, ahead of forge's own contexts", async (t) => {
+  const PKG = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const ctx = await welcomeCtx(t);
+  const { agent, calls } = makeAgent();
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const first = await preStepTexts(ctx, agent);
+  const welcomes = first.texts.filter((x) => x.includes(WELCOME));
+  assert.equal(welcomes.length, 1, "exactly one welcome");
+  assert.equal(first.texts[0], welcomes[0], "the welcome leads the queue");
+  assert.ok(first.texts.some((x) => x.startsWith("[forge-session]")), "forge's own banner still follows");
+  assert.ok(welcomes[0].includes(`插件 ${PKG.version}`), "plugin version from package.json");
+  assert.ok(welcomes[0].includes("forge 1.79.0"), "forge version from the probe (the double reports 1.79.0)");
+  assert.match(welcomes[0], /第一次回复/);
+  assert.match(welcomes[0], /\/forge-status/);
+  assert.match(welcomes[0], /forge off/);
+  assert.equal(first.texts.at(-1), "hello");
+  assert.equal(calls.injected.length, 0);
+  // a second startup of the SAME session (overlapping starts) does not greet twice
+  ctx.emit("agent/session-start", { agent, source: "startup" });
+  const again = await preStepTexts(ctx, agent, "again");
+  assert.equal(welcomeCount(again.texts), 0);
+});
+
+test("welcome: resume and compact never greet — each on a FRESH session, so the source filter is what holds", async (t) => {
+  const ctx = await welcomeCtx(t);
+  for (const [i, source] of ["resume", "compact"].entries()) {
+    const fresh = makeAgent();
+    fresh.agent.session.id = `fresh-${i}`;
+    ctx.emit("agent/session-start", { agent: fresh.agent, source });
+    const r = await preStepTexts(ctx, fresh.agent, source);
+    assert.equal(welcomeCount(r.texts), 0, `${source} stays quiet`);
   }
-  assert.equal(second.calls.injected.length, 1, "the new session is told too");
-  assert.equal(calls.injected.length, 1, "the first session still got exactly one");
+});
+
+test("welcome: a delegated subagent is not told to greet anyone", async (t) => {
+  const ctx = await welcomeCtx(t);
+  const child = makeAgent();
+  child.agent.session.id = "child-1";
+  child.agent.session.header.origin = "subagent";
+  ctx.emit("agent/session-start", { agent: child.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(ctx, child.agent)).texts), 0, "origin: subagent");
+  const forked = makeAgent();
+  forked.agent.session.id = "child-2";
+  forked.agent.session.header.parentSession = "sess-1";
+  ctx.emit("agent/session-start", { agent: forked.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(ctx, forked.agent)).texts), 0, "parentSession set");
+  // the top-level agent beside them still gets its welcome
+  const top = makeAgent();
+  top.agent.session.id = "top-1";
+  ctx.emit("agent/session-start", { agent: top.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(ctx, top.agent)).texts), 1);
+});
+
+test("welcome: no claim when forge did not announce the project as managed, when welcome:false, or when forge is missing", async (t) => {
+  // forge runs fine but this project is not managed (no banner) — the gates do not apply here
+  const unmanaged = await welcomeCtx(t, {}, { managed: false });
+  const a = makeAgent();
+  a.agent.session.id = "unmanaged-1";
+  unmanaged.emit("agent/session-start", { agent: a.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(unmanaged, a.agent)).texts), 0, "unmanaged project");
+
+  const off = await welcomeCtx(t, { welcome: false });
+  const b = makeAgent();
+  b.agent.session.id = "off-1";
+  off.emit("agent/session-start", { agent: b.agent, source: "startup" });
+  assert.equal(welcomeCount((await preStepTexts(off, b.agent)).texts), 0, "welcome:false");
+
+  const BAD = fileURLToPath(new URL("../test/doubles/no-such-forge", import.meta.url));
+  const missing = await welcomeCtx(t, { forgeBin: BAD });
+  const c = makeAgent();
+  c.agent.session.id = "missing-1";
+  missing.emit("agent/session-start", { agent: c.agent, source: "startup" });
+  const noForge = await preStepTexts(missing, c.agent);
+  assert.equal(welcomeCount(noForge.texts), 0, "gates are OFF — do not claim they are on");
+  assert.equal(noForge.texts.filter((x) => x.includes("forge CLI not found")).length, 1);
 });
 
 test("disabled config wires no listeners", async (t) => {

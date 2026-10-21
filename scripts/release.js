@@ -116,6 +116,20 @@ function replacePlatformPins(content, next) {
   return { content: out, ok: hits === 5 };
 }
 
+// replaceDshForgeDependency 把 forge-dsh package.json 里对 forge 本体的依赖钉
+// （dependencies["@agent_forge/forge"]）替换为 next。插件内置本体依赖、与主火车
+// lockstep——钉漏 bump 会让用户装到与插件 spec.json 不配套的 forge（release.yml 的
+// tag 对账门禁与 TestReleasePleaseManifest_DshPluginTracksTrain 也会拦）。键精确匹配
+// （不误伤 forge-dsh / forge-<plat>）；返回 {content, ok}：ok=false 表示命中数 != 1。
+function replaceDshForgeDependency(content, next) {
+  let hits = 0;
+  const out = content.replace(/("@agent_forge\/forge":\s*)"[^"]+"/g, (_, k) => {
+    hits++;
+    return `${k}"${next}"`;
+  });
+  return { content: out, ok: hits === 1 };
+}
+
 // readCommitMessages 取 range 内所有 commit 的完整 message。可选 cwdRoot 供测试
 // 注入临时仓库(默认用 release.js 所在的项目根),让 readCommitMessages 能端到端测。
 function readCommitMessages(range, cwdRoot = ROOT) {
@@ -224,6 +238,12 @@ function main() {
     process.exit(1);
   }
 
+  const dshDep = replaceDshForgeDependency(dshNext.content, next);
+  if (!dshDep.ok) {
+    console.error(`failed to replace dependencies["@agent_forge/forge"] in ${REL_DSH} (want exactly 1 hit)`);
+    process.exit(1);
+  }
+
   // --- sync .release-please-manifest.json (release-please 的版本账本) ---
   // release-please 按 manifest 的 "." 起算下一版本；逃生舱发版不同步它，下个 Release
   // PR 会从旧版本起算、撞已存在 tag（internal/ci 的
@@ -259,7 +279,7 @@ function main() {
   // --- all patterns matched: write them all ---
   fs.writeFileSync(PKG, pinsNext.content);
   fs.writeFileSync(KIMI_PLUGIN, kimiNext.content);
-  fs.writeFileSync(DSH_PKG, dshNext.content);
+  fs.writeFileSync(DSH_PKG, dshDep.content);
   fs.writeFileSync(MANIFEST, manifestNext.content);
   for (const p of PLATFORMS) {
     fs.writeFileSync(platNext[p].file, platNext[p].content);
@@ -304,7 +324,7 @@ function main() {
   console.log(`  git push origin v${next}`);
 }
 
-module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins };
+module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins, replaceDshForgeDependency };
 
 if (require.main === module) {
   main();

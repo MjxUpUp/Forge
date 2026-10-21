@@ -69,8 +69,14 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "22"
-      - run: node --test scripts/release.test.js
+      - run: node --test scripts/release.test.js scripts/verify-dsh-install.test.js
       # plugins/forge-dsh 的 node:test 套件（真实 cordis 运行时接线测试）——同一标准：CI 不跑 = 没测试。
+      # 只装 devDependencies：package-lock 不跟随 lockstep 的 @agent_forge/forge 钉（release-please
+      # 只 bump package.json），且 Release PR 把钉升到尚未发布的新版本——带着依赖 npm ci/install
+      # 会因 lock 不符或 registry 无该版本而红。测试用夹具与注入覆盖内置二进制解析，不需要真本体
+      # （真安装冒烟见 release.yml 的 npm-verify）。npm pkg delete 仅改 CI 工作区副本。
+      - run: npm pkg delete dependencies
+        working-directory: plugins/forge-dsh
       - run: npm ci --no-audit --no-fund
         working-directory: plugins/forge-dsh
       - run: node --test lib/*.test.js

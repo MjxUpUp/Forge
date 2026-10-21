@@ -10,7 +10,8 @@
  *   agent/pre-step      → UserPromptSubmit (block → {kind:'reject'})
  *   agent/session-start → SessionStart (emit; source 'compact' also fires
  *                         the PostCompact group — DSH rc.7 exposes no
- *                         separate compaction point)
+ *                         separate compaction point). Its contexts are queued
+ *                         per agent and delivered with the next pre-step.
  *   agent/turn-stopping → Stop        (block → agent.steer(reason))
  *
  * Each hook runs as `forge hook <name>` with a Claude-Code-shape stdin
@@ -20,19 +21,26 @@
  * @deepseek-ai/dsh 0.1.0-rc.7 type surface.
  *
  * Config (profile patch):
- *   forgeBin  - forge binary name/path (default "forge", env FORGE_BIN wins over default)
+ *   forgeBin  - forge binary name/path. Precedence: config > env FORGE_BIN >
+ *               the forge bundled with this plugin (dependency, version-locked) >
+ *               "forge" on PATH
  *   timeoutMs - per-hook ceiling, kill + fail open (default 30000)
+ *   welcome   - false drops the one-line first-turn onboarding (default true)
+ *   startWaitMs - how long the first pre-step waits for the session-start
+ *               contexts before moving on without them (default 1500)
  *   enabled   - false disables every listener (default true)
  *   debug     - log hook failures to console.error (default false)
  *
  * @module @agent_forge/forge-dsh
  */
 import { readFileSync } from "node:fs";
+import { bundledForgeHint, resolveBundledForge } from "./bundled.js";
 import { probeForge } from "./runner.js";
-import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, turnStoppingOutcome, sessionStartOutcome } from "./decisions.js";
-import { buildEventPayload, buildToolPayload, matchedCommands, pluginMessage, promptText, toCCToolName } from "./tools.js";
+import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
+import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName, welcomeText, isSubagent, MANAGED_BANNER } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
+const pluginVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 /** Stable Cordis plugin name. */
 const name = "forge-quality";
@@ -45,11 +53,23 @@ const inject = ["tools"];
  */
 function apply(ctx, config = {}) {
   if (config.enabled === false) return;
+  const explicitBin = config.forgeBin ?? process.env.FORGE_BIN;
+  let bundledBin;
+  if (explicitBin === undefined) {
+    try {
+      bundledBin = (config.resolveBundledForge ?? resolveBundledForge)(); // config seam: tests
+    } catch {
+      bundledBin = undefined; // an unresolvable bundle must never break plugin load
+    }
+  }
+  let binSource = explicitBin !== undefined ? "configured" : bundledBin !== undefined ? "bundled" : "PATH";
   const opts = {
-    forgeBin: config.forgeBin ?? process.env.FORGE_BIN ?? "forge",
+    forgeBin: explicitBin ?? bundledBin ?? "forge",
     timeoutMs: config.timeoutMs ?? 30000,
   };
   const debug = config.debug === true;
+  const welcome = config.welcome !== false;
+  const startWaitMs = Number.isFinite(config.startWaitMs) && config.startWaitMs >= 0 ? config.startWaitMs : 1500;
   // Recent-run ring buffer for /forge-status — fail-open verdicts are silent
   // by design, so this (plus debug logging) is the only way to see them.
   const recentRuns = [];
@@ -67,21 +87,60 @@ function apply(ctx, config = {}) {
     }
   };
 
+  // Session-start contexts (forge's own onboarding + the missing-forge notice)
+  // are queued per agent and prepended into that agent's next pre-step.
+  // agent.inject at session start was observed to drop them silently, while
+  // pre-step messages in the same session were delivered. The session-start
+  // run is detached and takes a few hundred ms, so the first pre-step may
+  // arrive before it finishes: `ready` lets that pre-step wait a bounded time
+  // (startWaitMs) instead of pushing the onboarding to turn 2.
+  // Keyed by session id when the handle has one (the host may hand each event a
+  // fresh wrapper object for the same session), by object identity otherwise.
+  const startStates = new WeakMap();
+  const startStatesById = new Map();
+  const startStateOf = (agent) => {
+    if (agent === null || typeof agent !== "object") return undefined;
+    const id = agent.session?.id;
+    const byId = typeof id === "string" && id !== "";
+    let state = byId ? startStatesById.get(id) : startStates.get(agent);
+    if (state === undefined) {
+      state = { pending: [], ready: Promise.resolve(), waited: true };
+      if (byId) startStatesById.set(id, state);
+      else startStates.set(agent, state);
+    }
+    return state;
+  };
+  // Only the first pre-step after a session-start waits: a slow start run must
+  // not tax every later step by startWaitMs; its contexts simply land on the
+  // first enter after it finishes.
+  const waitStart = async (state) => {
+    if (state === undefined || state.waited) return;
+    state.waited = true;
+    let timer;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(resolve, startWaitMs);
+      timer.unref?.();
+    });
+    try {
+      await Promise.race([state.ready, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   // A missing forge binary used to be completely silent: every hook failed
   // open, so the plugin looked installed but gated nothing. Probe once per
   // session start (retrying on later sessions, since installing forge needs no
-  // host restart) and surface the failure through agent.inject — the same
-  // channel forge's own advisories use. Once a probe succeeds the answer is
-  // cached for the process lifetime; forgeBin is static config per plugin
-  // instance, so it cannot go stale.
+  // host restart) and surface the failure through the same start queue. Once a
+  // probe succeeds the answer is cached for the process lifetime; forgeBin is
+  // static config per plugin instance, so it cannot go stale.
   let forgeReady = false;
   let lastProbe;
   let probeInFlight;
-  const noticedAgents = new WeakSet();
   const missingForgeNotice = (error) =>
     `[forge-dsh] forge CLI not found (forgeBin: ${opts.forgeBin}). ` +
     "Forge gates are OFF for this session — every action runs unguarded (fail-open). " +
-    "Install it with `npm install -g @agent_forge/forge`, then start a new session; " +
+    "Reinstall the plugin (it bundles forge) or run `npm install -g @agent_forge/forge`, then start a new session; " +
     "if it lives elsewhere, set forgeBin in the profile patch." +
     (error === undefined ? "" : `\nProbe error: ${error}`);
   const ensureForge = async (agent) => {
@@ -92,20 +151,28 @@ function apply(ctx, config = {}) {
           probeInFlight = undefined;
         });
     }
-    const probe = await probeInFlight;
+    let probe = await probeInFlight;
+    // A bundled binary that resolved but will not run (wrong arch, lost exec bit,
+    // truncated download) must not void the gates when a working forge is on PATH.
+    if (!probe.ok && binSource === "bundled") {
+      const onPath = await probeForge({ forgeBin: "forge", timeoutMs: Math.min(opts.timeoutMs, 5000) });
+      if (onPath.ok) {
+        if (debug) console.error(`[forge-dsh] bundled forge unusable (${probe.error}); using PATH forge`);
+        opts.forgeBin = "forge";
+        binSource = "PATH";
+        probe = onPath;
+      }
+    }
     lastProbe = probe;
     if (probe.ok) {
       forgeReady = true;
       return true;
     }
     if (debug) console.error(`[forge-dsh] forge probe failed: ${probe.error}`);
-    if (agent != null && !noticedAgents.has(agent)) {
-      noticedAgents.add(agent);
-      try {
-        await agent.inject?.(pluginMessage(missingForgeNotice(probe.error)));
-      } catch {
-        // a throwing (or rejecting) inject must never interrupt session start
-      }
+    const state = startStateOf(agent);
+    if (state !== undefined && !state.noticed) {
+      state.noticed = true;
+      state.pending.push(missingForgeNotice(probe.error));
     }
     return false;
   };
@@ -130,30 +197,73 @@ function apply(ctx, config = {}) {
 
   // UserPromptSubmit — the prompt rides the step's claimed messages.
   ctx.effect(() => ctx.on("agent/pre-step", async (payload, next) => {
+    const state = startStateOf(payload?.agent);
+    const startWait = waitStart(state);
     const commands = matchedCommands(spec.UserPromptSubmit, "");
-    if (commands.length === 0) return next();
-    const eventPayload = buildEventPayload("UserPromptSubmit", payload?.agent, {
-      prompt: promptText(payload?.messages),
-    });
-    const outcome = await runHookGroup(commands, eventPayload, opts);
-    noteErrors("pre-step", outcome);
-    return preStepDecision(outcome, next, payload?.agent);
+    let decision;
+    if (commands.length === 0) {
+      decision = await next();
+    } else {
+      const eventPayload = buildEventPayload("UserPromptSubmit", payload?.agent, {
+        prompt: promptText(payload?.messages),
+      });
+      const outcome = await runHookGroup(commands, eventPayload, opts);
+      noteErrors("pre-step", outcome);
+      decision = await preStepDecision(outcome, next, payload?.agent);
+    }
+    await startWait;
+    if (state === undefined) return decision;
+    // a reject keeps the queue for the next pre-step; only an enter clears it
+    const delivery = prependStartContexts(decision, state.pending);
+    if (delivery.delivered) state.pending.length = 0;
+    return delivery.decision;
   }), "forge: pre-step");
 
-  // SessionStart — emit mode: detached, contexts queued via agent.inject.
+  // SessionStart — emit mode: detached, contexts queued per agent and
+  // delivered by the next pre-step (see startStates above).
   // source 'compact' doubles as PostCompact (DSH exposes no dedicated point).
   ctx.effect(() => ctx.on("agent/session-start", (payload) => {
     const agent = payload?.agent;
     const source = payload?.source;
-    (async () => {
-      await ensureForge(agent);
+    const state = startStateOf(agent);
+    const queue = (outcome) => {
+      if (state !== undefined) {
+        // overlapping starts must not stack the same onboarding twice
+        for (const text of outcome.contexts) if (!state.pending.includes(text)) state.pending.push(text);
+      } else if (debug && outcome.contexts.length > 0) {
+        console.error("[forge-dsh] session-start contexts dropped: no agent handle to queue them on");
+      }
+    };
+    const run = (async () => {
+      const forgeOk = await ensureForge(agent);
+      // The bundled binary is not on PATH while forge's gate messages say
+      // `forge task …`, so the agent is told where it is. After a compaction the
+      // earlier hint is summarised away, so it is re-sent.
+      if (source === "compact" && state !== undefined) state.hinted = false;
+      if (forgeOk && binSource === "bundled" && state !== undefined && !state.hinted) {
+        state.hinted = true;
+        state.pending.push(bundledForgeHint(opts.forgeBin));
+      }
       const start = await runHookGroup(
         matchedCommands(spec.SessionStart, ""),
         buildEventPayload("SessionStart", agent, { source }),
         opts,
       );
       noteErrors("session-start", start);
-      sessionStartOutcome(start, agent);
+      queue(start);
+      // Welcome — queue order: welcome, path hint, forge's own contexts. One
+      // human-facing line per session: startup only (resume/compact are not a
+      // first meeting), never for delegated children (they report to their
+      // parent), and only when forge itself announced the project as managed —
+      // a working binary alone does not mean the gates apply here (no `forge
+      // init`, or `forge off`).
+      const isStartup = source === undefined || source === "startup";
+      const managed = start.contexts.some((text) => text.includes(MANAGED_BANNER));
+      if (forgeOk && welcome && isStartup && managed && !isSubagent(agent) && state !== undefined && !state.welcomed) {
+        state.welcomed = true;
+        const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
+        state.pending.unshift(welcomeText(pluginVersion, forgeVersion));
+      }
       if (source === "compact") {
         const compact = await runHookGroup(
           matchedCommands(spec.PostCompact, ""),
@@ -161,11 +271,16 @@ function apply(ctx, config = {}) {
           opts,
         );
         noteErrors("post-compact", compact);
-        sessionStartOutcome(compact, agent);
+        queue(compact);
       }
     })().catch((error) => {
       if (debug) console.error(`[forge-dsh] session-start failed open: ${error}`);
     });
+    // overlapping session-starts (startup then compact) both gate the pre-step
+    if (state !== undefined) {
+      state.waited = false;
+      state.ready = Promise.all([state.ready, run]);
+    }
   }), "forge: session-start");
 
   // Stop — a blocking gate steers the agent into another step.
@@ -222,7 +337,7 @@ function apply(ctx, config = {}) {
             : `FAILED — gates inactive (${lastProbe.error})`;
         return {
           kind: "success",
-          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin}  timeoutMs: ${opts.timeoutMs}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
+          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin} (${binSource})  timeoutMs: ${opts.timeoutMs}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
         };
       },
     }), "forge: status command");
