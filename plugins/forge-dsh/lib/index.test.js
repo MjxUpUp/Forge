@@ -407,7 +407,14 @@ test("session-start: contexts reach the FIRST pre-step even when it races the de
 test("session-start: a slow start does not tax later steps — only the first pre-step waits, contexts land once it finishes", async (t) => {
   rmSync(LOG, { force: true });
   process.env.FAKE_FORGE_LOG = LOG;
-  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  // The double holds every SessionStart run back by 400ms, so "the detached start has not finished
+  // when the 1ms-patient first pre-step goes" is a fact of the setup, not of the machine's speed
+  // (a fast CI box finished the whole start inside the pre-step's own forge spawn).
+  process.env.FAKE_FORGE_START_DELAY_MS = "400";
+  t.after(() => {
+    delete process.env.FAKE_FORGE_LOG;
+    delete process.env.FAKE_FORGE_START_DELAY_MS;
+  });
   const ctx = new Context();
   ctx.provide("tools", {});
   await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, startWaitMs: 1, welcome: false });

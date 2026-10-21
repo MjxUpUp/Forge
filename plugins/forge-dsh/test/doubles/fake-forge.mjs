@@ -11,7 +11,9 @@
  * contract internal/hookdispatch/hook_batch.go implements. Each inner hook is
  * logged exactly like a single run; FAKE_FORGE_BATCH_LOG additionally records one
  * line per batch invocation, and FAKE_FORGE_BATCH_BROKEN=1 makes batch fail like
- * a forge that predates it.
+ * a forge that predates it. FAKE_FORGE_START_DELAY_MS makes SessionStart runs slow (before any
+ * hook runs), so tests about "the detached session-start has not finished yet" do not depend on
+ * how fast the machine is.
  *
  * Behavior table:
  *   task-guard      → block "BLOCKED: no active task" (exit 2, decision JSON)
@@ -135,7 +137,11 @@ process.stdin.on("end", () => {
     // malformed stdin is logged as-is
   }
   const hook = process.argv[3] ?? "";
+  const delayMs = payload.hook_event_name === "SessionStart" ? Number(process.env.FAKE_FORGE_START_DELAY_MS ?? 0) : 0;
+  setTimeout(() => dispatch(hook, payload), delayMs);
+});
 
+function dispatch(hook, payload) {
   if (hook === "batch") {
     // FAKE_FORGE_BATCH_BROKEN simulates a forge that predates `batch` (or breaks on it): the
     // cobra-style unknown-command failure — exit 1, non-JSON stdout.
@@ -184,4 +190,4 @@ process.stdin.on("end", () => {
   process.stdout.write(r.out);
   process.stderr.write(r.err);
   process.exit(r.code);
-});
+}
