@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.82.0](https://github.com/MjxUpUp/Forge/compare/v1.81.0...v1.82.0) (2026-10-21)
+
+
+### Features
+
+* **forge-dsh:** 首装链路——SessionStart 必达、内置 forge 本体、首轮欢迎语与发布后验证 ([#123](https://github.com/MjxUpUp/Forge/issues/123)) ([bf0cf8f](https://github.com/MjxUpUp/Forge/commit/bf0cf8f3d95c6c93c9c573689fd5a8f4dc3876af))
+
 ## [1.81.0](https://github.com/MjxUpUp/Forge/compare/v1.80.1...v1.81.0) (2026-10-21)
 
 
