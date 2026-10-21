@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.83.0](https://github.com/MjxUpUp/Forge/compare/v1.82.0...v1.83.0) (2026-10-21)
+
+
+### Features
+
+* **forge-dsh:** batch 单进程分派、静默回执过滤、降级提示、locale、技能库提议与版本对比 ([#125](https://github.com/MjxUpUp/Forge/issues/125)) ([b2c3a98](https://github.com/MjxUpUp/Forge/commit/b2c3a983570166b09f98f3610c96c47679d2588a))
+
 ## [1.82.0](https://github.com/MjxUpUp/Forge/compare/v1.81.0...v1.82.0) (2026-10-21)
 
 
