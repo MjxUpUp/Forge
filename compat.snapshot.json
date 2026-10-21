@@ -973,9 +973,12 @@
     {
       "path": "forge task list",
       "flags": [
+        "all-projects",
         "json",
+        "open",
         "plan-conversion",
-        "timeline"
+        "timeline",
+        "workspace"
       ]
     },
     {
@@ -1063,12 +1066,15 @@
     {
       "path": "forge task resume",
       "flags": [
+        "all-projects",
         "compact-flag",
         "hook",
         "json",
+        "match",
         "no-attach",
         "ref",
-        "reinject"
+        "reinject",
+        "workspace"
       ]
     },
     {
