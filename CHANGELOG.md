@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.81.0](https://github.com/MjxUpUp/Forge/compare/v1.80.1...v1.81.0) (2026-10-21)
+
+
+### ⚠ 行为变更（非 BREAKING，需知悉）
+
+**任务接续改为按需拉取（#121）**
+
+* 会话启动（SessionStart）只输出 `[forge-session]` 横幅一行：不再注入活跃任务的接续视图或未完成任务清单，也不再自动把当前 session 锚定到任务。需要接续时由用户发起：说「继续某某任务」时 agent 走 `forge task resume --match`，说「还有哪些任务没完成」时走 `forge task list --open`。
+* 「待认领」推送下线：派给当前 agent 的任务不再在会话启动时推送。`forge task assign` / `claim` / `deliver` / `mine` 不变，`forge task resume` 接手派给自己的 offered 任务时仍会自动认领。任务状态里的 `notified_at` 字段停写，保留以兼容旧数据。
+* kimi 首个 prompt 的冷启动接续补发一并下线。
+* 新增 `forge task resume --match "<关键词>" [--workspace|--all-projects] [--json]`：只读模糊匹配未完成任务（容忍错拼、乱序词、缩写、中文片段），最多返回 10 个带得分的候选，不锚定、不认领。
+* 新增 `forge task list --open [--workspace|--all-projects] [--json]`：列出未完成任务的标题、门禁进度、下一步、阻塞数、派活状态、最后活动时间。不加 `--open` 时 `task list` 输出不变。
+* task-guard 放行某 session 的首次源码写入时，会静默把该 session 记入任务的参与记录并认领节点租约，不改门禁、不输出任何提示。
+* 压缩后的重注入（PostCompact + resume-reinject，claude-code / codex）不变；没有 PostCompact 事件的宿主（zcode、cursor、windsurf 等）压缩后不再自动恢复接续视图，需要时手动 `forge task resume`。
+* 1.80.0 所述「会话启动注入的接续文本多一行循环判词」自本版起不再适用（会话启动不再注入接续文本）；`resume` / `context` 与压缩后注入的接续文本仍有这一行。
+
+
+### Features
+
+* **resume:** 任务接续改为按需拉取——SessionStart 只留横幅，新增 resume --match / list --open ([#121](https://github.com/MjxUpUp/Forge/issues/121)) ([3e22f1b](https://github.com/MjxUpUp/Forge/commit/3e22f1b2239d627f6e900510e75ff836490b2faa))
+
 ## [1.80.1](https://github.com/MjxUpUp/Forge/compare/v1.80.0...v1.80.1) (2026-10-21)
 
 
