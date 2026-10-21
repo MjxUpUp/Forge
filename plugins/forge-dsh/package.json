@@ -13,6 +13,7 @@
   "files": [
     "lib/index.js",
     "lib/runner.js",
+    "lib/bundled.js",
     "lib/decisions.js",
     "lib/tools.js",
     "lib/spec.json",
@@ -35,6 +36,9 @@
     "ai-code-quality"
   ],
   "license": "Apache-2.0",
+  "dependencies": {
+    "@agent_forge/forge": "1.81.0"
+  },
   "engines": {
     "node": ">=18"
   },
