@@ -88,6 +88,81 @@ test("pre-execute: clean bash delegates; skill-trigger advisory reaches agent.in
   assert.equal(calls.steered.length, 0);
 });
 
+const BATCH_LOG = fileURLToPath(new URL("../test/doubles/.batch-log", import.meta.url));
+const batchCalls = () => {
+  try {
+    return readFileSync(BATCH_LOG, "utf8").trim().split("\n").map(JSON.parse);
+  } catch {
+    return [];
+  }
+};
+
+test("batch dispatch: one forge process runs the whole matcher group; roster and block come from forge", async (t) => {
+  rmSync(BATCH_LOG, { force: true });
+  process.env.FAKE_FORGE_BATCH_LOG = BATCH_LOG;
+  t.after(() => delete process.env.FAKE_FORGE_BATCH_LOG);
+  const ctx = await boot(t);
+  const { agent } = makeAgent();
+  const clean = await ctx.waterfall(
+    "tools/pre-execute",
+    { name: "bash", arguments: { command: "go build ./..." }, agent },
+    async () => ({ kind: "allow" }),
+  );
+  assert.deepEqual(clean, { kind: "allow" });
+  assert.deepEqual(batchCalls(), [
+    { event: "PreToolUse", matcher: "Bash", names: ["bash-guard", "hazard-guard", "gate-cmd-form", "skill-trigger", "task-drift"] },
+  ], "exactly one batch spawn for the five-hook Bash group");
+
+  rmSync(BATCH_LOG, { force: true });
+  const denied = await ctx.waterfall(
+    "tools/pre-execute",
+    { name: "write", arguments: { file_path: "/p/x.go", content: "y" }, agent },
+    async () => ({ kind: "allow" }),
+  );
+  assert.deepEqual(denied, { kind: "deny", reason: "BLOCKED: no active task (fake)" });
+  assert.equal(batchCalls().length, 1, "the blocked Write group is also a single spawn");
+  assert.equal(batchCalls()[0].matcher, "Write|Edit");
+});
+
+test("batch dispatch: a forge that cannot answer batch degrades to per-hook runs — the gate still blocks, and status says so", async (t) => {
+  process.env.FAKE_FORGE_BATCH_BROKEN = "1";
+  t.after(() => delete process.env.FAKE_FORGE_BATCH_BROKEN);
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000 });
+  const exec = { name: "write", arguments: { file_path: "/p/x.go", content: "y" } };
+  const d = await ctx.waterfall("tools/pre-execute", exec, async () => ({ kind: "allow" }));
+  assert.deepEqual(d, { kind: "deny", reason: "BLOCKED: no active task (fake)" }, "never a silent allow");
+  assert.deepEqual(hookCalls().map((c) => c.hook), ["freeze-guard", "task-guard"], "serial fallback ran the roster");
+  const text = (await registered.get("forge-status").handler()).text;
+  assert.match(text, /dispatch: per-hook \(this forge cannot answer `forge hook batch`/);
+  assert.match(text, /batch unsupported by this forge/, "the downgrade shows up as a recent-run note");
+});
+
+test("batch dispatch: batch:false keeps the per-hook path from the start", async (t) => {
+  rmSync(BATCH_LOG, { force: true });
+  process.env.FAKE_FORGE_BATCH_LOG = BATCH_LOG;
+  t.after(() => delete process.env.FAKE_FORGE_BATCH_LOG);
+  rmSync(LOG, { force: true });
+  process.env.FAKE_FORGE_LOG = LOG;
+  t.after(() => delete process.env.FAKE_FORGE_LOG);
+  const registered = new Map();
+  const ctx = new Context();
+  ctx.provide("tools", {});
+  ctx.provide("commands", { register: (cmd) => (registered.set(cmd.name, cmd), () => true) });
+  await ctx.plugin(forgePlugin, { forgeBin: FAKE, timeoutMs: 5000, batch: false });
+  const d = await ctx.waterfall("tools/pre-execute", { name: "write", arguments: { file_path: "/p/x.go", content: "y" } }, async () => ({ kind: "allow" }));
+  assert.equal(d.kind, "deny");
+  assert.deepEqual(batchCalls(), [], "no batch process was ever spawned");
+  assert.deepEqual(hookCalls().map((c) => c.hook), ["freeze-guard", "task-guard"]);
+  assert.match((await registered.get("forge-status").handler()).text, /dispatch: per-hook \(batch:false\)/);
+});
+
 test("pre-execute: ungated tool never touches forge", async (t) => {
   const ctx = await boot(t);
   const d = await ctx.waterfall(
@@ -662,7 +737,11 @@ test("/forge-status command renders wired groups and recent runs", async (t) => 
   assert.match(reply.text, /PreToolUse: freeze-guard, task-guard/);
   assert.match(reply.text, /forgeBin:/);
   assert.match(reply.text, /pre-execute/);
-  assert.match(reply.text, /blocked-by=forge hook task-guard/);
+  assert.match(reply.text, /blocked-by=batch PreToolUse\/Write\|Edit/, "batch attributes a block to its matcher group");
+  assert.match(reply.text, /dispatch: batch \(one forge process per matcher group\)/);
+  assert.match(reply.text, /## Timing per interception point \(last 2 runs\)/);
+  assert.match(reply.text, /pre-execute {2}runs=2 {2}avg=\d+ms {2}max=\d+ms/);
+  assert.match(reply.text, /pre-execute.*\d+ms/, "each recent run carries its wall time");
   // verdict summary (H1 契约加固): at-a-glance counts over the whole ring buffer
   assert.match(reply.text, /Verdict summary \(last 2 runs\)/);
   assert.match(reply.text, /runs=2  blocked=1  fail-open=0  contexts=/);

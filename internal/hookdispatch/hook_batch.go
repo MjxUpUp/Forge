@@ -68,8 +68,14 @@ func runHookBatch(cmd *cobra.Command, args []string) error {
 	for _, name := range names {
 		out, runErr := runHookCaptured(cmd, name, payload)
 		if runErr != nil {
-			// 首个 block/硬错误原样透传：外层 cobra 的错误处理（exit 2 + JSON）
-			// 与逐条拉起完全一致；后续 hook 不再执行——与宿主「阻断即停」语义相同。
+			// 首个 block/硬错误原样透传：外层 cobra 的错误处理（exit 2）与逐条拉起一致；
+			// 后续 hook 不再执行——与宿主「阻断即停」语义相同。
+			// 内层 hook 的 decision:block JSON 是写进捕获管道的（emitClaudeOutput），必须在
+			// 返回前原样打出：宿主只从 stdout 的 JSON decision 字段读阻断（exit code 不是
+			// 契约），丢掉它则 batch 的 stdout 为空、宿主读不到阻断原因。
+			// The inner hook's block JSON went into the capture pipe; print it before
+			// returning so batch's stdout equals the single-hook stdout.
+			fmt.Print(out)
 			return runErr
 		}
 		outs = append(outs, batchEmitted{name, out})

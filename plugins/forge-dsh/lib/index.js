@@ -36,8 +36,8 @@
 import { readFileSync } from "node:fs";
 import { bundledForgeHint, resolveBundledForge } from "./bundled.js";
 import { probeForge } from "./runner.js";
-import { runHookGroup, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
-import { buildEventPayload, buildToolPayload, matchedCommands, promptText, toCCToolName, welcomeText, isSubagent, MANAGED_BANNER } from "./tools.js";
+import { runMatchedGroups, preExecuteDecision, postExecuteDecision, preStepDecision, prependStartContexts, turnStoppingOutcome } from "./decisions.js";
+import { buildEventPayload, buildToolPayload, matchedGroups, promptText, toCCToolName, welcomeText, isSubagent, MANAGED_BANNER } from "./tools.js";
 
 const spec = JSON.parse(readFileSync(new URL("./spec.json", import.meta.url), "utf8"));
 const pluginVersion = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -66,6 +66,11 @@ function apply(ctx, config = {}) {
   const opts = {
     forgeBin: explicitBin ?? bundledBin ?? "forge",
     timeoutMs: config.timeoutMs ?? 30000,
+    // One `forge hook batch` process per matcher group instead of one per hook (~half the
+    // per-tool-call latency). batch:false forces the legacy per-hook path; a forge that cannot
+    // answer batch flips batchState.broken and the plugin degrades to per-hook on its own.
+    batch: config.batch !== false,
+    batchState: { broken: false },
   };
   const debug = config.debug === true;
   const welcome = config.welcome !== false;
@@ -79,6 +84,7 @@ function apply(ctx, config = {}) {
       blocked: outcome.blocked?.command ?? null,
       contexts: outcome.contexts.length,
       errors: outcome.errors,
+      ms: outcome.durationMs ?? 0,
       at: Date.now(),
     });
     if (recentRuns.length > 50) recentRuns.shift();
@@ -179,18 +185,18 @@ function apply(ctx, config = {}) {
 
   // PreToolUse — deny short-circuits the tool call.
   ctx.effect(() => ctx.on("tools/pre-execute", async (exec, next) => {
-    const commands = matchedCommands(spec.PreToolUse, toCCToolName(exec?.name ?? ""));
-    if (commands.length === 0) return next();
-    const outcome = await runHookGroup(commands, buildToolPayload(exec, "PreToolUse"), opts);
+    const groups = matchedGroups(spec.PreToolUse, toCCToolName(exec?.name ?? ""));
+    if (groups.length === 0) return next();
+    const outcome = await runMatchedGroups("PreToolUse", groups, buildToolPayload(exec, "PreToolUse"), opts);
     noteErrors("pre-execute", outcome);
     return preExecuteDecision(outcome, exec?.agent, next);
   }), "forge: pre-execute");
 
   // PostToolUse — block turns the gate's reason into an error result.
   ctx.effect(() => ctx.on("tools/post-execute", async (exec, result, next) => {
-    const commands = matchedCommands(spec.PostToolUse, toCCToolName(exec?.name ?? ""));
-    if (commands.length === 0) return next();
-    const outcome = await runHookGroup(commands, buildToolPayload(exec, "PostToolUse"), opts);
+    const groups = matchedGroups(spec.PostToolUse, toCCToolName(exec?.name ?? ""));
+    if (groups.length === 0) return next();
+    const outcome = await runMatchedGroups("PostToolUse", groups, buildToolPayload(exec, "PostToolUse"), opts);
     noteErrors("post-execute", outcome);
     return postExecuteDecision(outcome, next, exec?.agent);
   }), "forge: post-execute");
@@ -199,15 +205,15 @@ function apply(ctx, config = {}) {
   ctx.effect(() => ctx.on("agent/pre-step", async (payload, next) => {
     const state = startStateOf(payload?.agent);
     const startWait = waitStart(state);
-    const commands = matchedCommands(spec.UserPromptSubmit, "");
+    const groups = matchedGroups(spec.UserPromptSubmit, "");
     let decision;
-    if (commands.length === 0) {
+    if (groups.length === 0) {
       decision = await next();
     } else {
       const eventPayload = buildEventPayload("UserPromptSubmit", payload?.agent, {
         prompt: promptText(payload?.messages),
       });
-      const outcome = await runHookGroup(commands, eventPayload, opts);
+      const outcome = await runMatchedGroups("UserPromptSubmit", groups, eventPayload, opts);
       noteErrors("pre-step", outcome);
       decision = await preStepDecision(outcome, next, payload?.agent);
     }
@@ -244,8 +250,9 @@ function apply(ctx, config = {}) {
         state.hinted = true;
         state.pending.push(bundledForgeHint(opts.forgeBin));
       }
-      const start = await runHookGroup(
-        matchedCommands(spec.SessionStart, ""),
+      const start = await runMatchedGroups(
+        "SessionStart",
+        matchedGroups(spec.SessionStart, ""),
         buildEventPayload("SessionStart", agent, { source }),
         opts,
       );
@@ -265,8 +272,9 @@ function apply(ctx, config = {}) {
         state.pending.unshift(welcomeText(pluginVersion, forgeVersion));
       }
       if (source === "compact") {
-        const compact = await runHookGroup(
-          matchedCommands(spec.PostCompact, ""),
+        const compact = await runMatchedGroups(
+          "PostCompact",
+          matchedGroups(spec.PostCompact, ""),
           buildEventPayload("PostCompact", agent, {}),
           opts,
         );
@@ -286,8 +294,9 @@ function apply(ctx, config = {}) {
   // Stop — a blocking gate steers the agent into another step.
   ctx.effect(() => ctx.on("agent/turn-stopping", async (payload) => {
     const agent = payload?.agent;
-    const outcome = await runHookGroup(
-      matchedCommands(spec.Stop, ""),
+    const outcome = await runMatchedGroups(
+      "Stop",
+      matchedGroups(spec.Stop, ""),
       buildEventPayload("Stop", agent, { stop_hook_active: false }),
       opts,
     );
@@ -327,9 +336,28 @@ function apply(ctx, config = {}) {
               const parts = [`  ${new Date(r.at).toISOString()} ${r.label}`];
               if (r.blocked) parts.push(`blocked-by=${r.blocked}`);
               if (r.contexts > 0) parts.push(`contexts=${r.contexts}`);
+              parts.push(`${r.ms}ms`);
               if (r.errors.length > 0) parts.push(`FAIL-OPEN: ${r.errors.join("; ")}`);
               return parts.join("  ");
             }).join("\n");
+        // Per-interception-point wall time over the ring buffer: the number behind "why is every
+        // tool call slow" (one batch spawn per group should sit well under the per-hook sum).
+        const byLabel = new Map();
+        for (const r of recentRuns) {
+          const t = byLabel.get(r.label) ?? { runs: 0, total: 0, max: 0 };
+          t.runs += 1;
+          t.total += r.ms;
+          t.max = Math.max(t.max, r.ms);
+          byLabel.set(r.label, t);
+        }
+        const timing = byLabel.size === 0
+          ? "  (no hook runs yet)"
+          : [...byLabel].map(([label, t]) => `  ${label}  runs=${t.runs}  avg=${Math.round(t.total / t.runs)}ms  max=${t.max}ms`).join("\n");
+        const dispatchLine = !opts.batch
+          ? "per-hook (batch:false)"
+          : opts.batchState.broken
+            ? "per-hook (this forge cannot answer `forge hook batch` — upgrade forge for one process per group)"
+            : "batch (one forge process per matcher group)";
         const probeLine = lastProbe === undefined
           ? "not run yet (no session start in this process)"
           : lastProbe.ok
@@ -337,7 +365,7 @@ function apply(ctx, config = {}) {
             : `FAILED — gates inactive (${lastProbe.error})`;
         return {
           kind: "success",
-          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin} (${binSource})  timeoutMs: ${opts.timeoutMs}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Recent runs (last 10)\n${runs}`,
+          text: `# Forge quality gates\n\nforgeBin: ${opts.forgeBin} (${binSource})  timeoutMs: ${opts.timeoutMs}\ndispatch: ${dispatchLine}\nprobe: ${probeLine}\n\n## Wired groups\n${groups}\n\n## Verdict summary (last ${recentRuns.length} runs)\n  runs=${summary.runs}  blocked=${summary.blocked}  fail-open=${summary.failOpen}  contexts=${summary.contexts}\n\n## Timing per interception point (last ${recentRuns.length} runs)\n${timing}\n\n## Recent runs (last 10)\n${runs}`,
         };
       },
     }), "forge: status command");

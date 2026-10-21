@@ -100,6 +100,7 @@ under `~/.dsh/profiles/<profile>/`):
     timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
     startWaitMs: 1500    # first pre-step waits this long for session-start contexts
     welcome: true        # one first-turn line telling the user Forge is active (false = silent)
+    batch: true          # one forge process per matcher group (false = one process per hook)
     enabled: true        # false unwires every listener
     debug: false         # log fail-open hook errors to console.error
 ```
@@ -122,24 +123,30 @@ while the binary is missing, every hook attempt fails open on its own, so gates 
 inactive whether or not the probe ran. Installing forge needs no host restart: the
 next session probes again and gating resumes.
 
-Two latency trade-offs to know: hooks run **serially** per event (up to six per
-group), so a slow hook chain delays the tool call — and a gate that legitimately
-exceeds `timeoutMs` (e.g. `auto-compile` cold-building a large project past 30s)
-silently loses that run's feedback to fail-open (visible in `/forge-status`).
-Raise `timeoutMs` on big projects.
+Two latency points to know. Each matched group runs as **one** `forge hook batch`
+process (forge runs the group's hooks in order and stops at the first block), instead
+of one process per hook — roughly 2.4× faster on a measured PreToolUse/Bash group
+(716ms vs 1720ms on a loaded dev machine). A forge that cannot answer `batch` (older
+than the stdout fix) is detected on the first call; the plugin then runs the hooks
+one by one, still enforcing every gate, and `/forge-status` says so. `batch: false`
+forces the per-hook path. And a gate that legitimately exceeds `timeoutMs` (the
+limit now covers the whole group; e.g. `auto-compile` cold-building a large project
+past 30s) silently loses that run's feedback to fail-open (visible in
+`/forge-status`). Raise `timeoutMs` on big projects.
 
-`/forge-status` reports the probe line after the header: `probe: ok (forge version …)`,
-`probe: FAILED — gates inactive (…)`, or `not run yet` before the process's first
-session start.
+`/forge-status` reports a `dispatch:` line (batch or per-hook) and the probe line after the
+header: `probe: ok (forge version …)`, `probe: FAILED — gates inactive (…)`, or `not run
+yet` before the process's first session start. It also lists wall time per interception
+point (runs, average, max) and each recent run's duration.
 
 ## Known watch items (dsh preview)
 
 - **No stop-hook loop guard** in the preview builds (`0.1.0-rc.7` – `0.2.1-rc.2`) —
   a permanently-failing Stop gate steers at every stop boundary. forge's Stop gates
   are self-limiting once their gate passes, but a stuck gate loops the turn.
-- **SessionStart context is best-effort** (emit mode, detached): it may miss the
-  first request of a very short-lived session — same limitation the official
-  bridges document (`TODO(session-start-gating)`).
+- **SessionStart context rides the first pre-step**: the detached run is awaited for at
+  most `startWaitMs`; a session whose first step arrives sooner than the run finishes
+  gets the context with its next step instead of the first.
 - DSH is a developer preview; pin this plugin's version alongside your dsh version.
 
 ## Development

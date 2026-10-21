@@ -135,6 +135,78 @@ func TestRunHookBatch_ForwardsBlock(t *testing.T) {
 	}
 }
 
+// TestRunHookBatch_BlockStdoutMatchesSingleHook：阻断时 batch 的 stdout 必须与逐条拉起
+// 同一 hook 的 stdout 一致（decision:block JSON）。宿主（forge-dsh 插件等）只从 stdout 的
+// JSON decision 字段读阻断——exit code 不是契约（cobra 的内部错误也是非零）。batch 过去在
+// 阻断时直接 return runErr，丢掉了内层 hook 写进捕获管道的 JSON，stdout 为空，插件无法读到
+// 阻断原因，所以无法切到 batch。
+//
+// TestRunHookBatch_BlockStdoutMatchesSingleHook: on a block, batch's stdout must equal the
+// single-hook stdout for the same payload (decision:block JSON). Hosts read the block only
+// from the stdout JSON decision field, never the exit code; batch used to return runErr
+// before printing the captured JSON, leaving stdout empty.
+func TestRunHookBatch_BlockStdoutMatchesSingleHook(t *testing.T) {
+	t.Setenv("FORGE_PROFILE", "standard")
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".forge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	oldEvent, oldMatcher := batchEvent, batchMatcher
+	batchEvent, batchMatcher = "PreToolUse", "Bash"
+	defer func() { batchEvent, batchMatcher = oldEvent, oldMatcher }()
+
+	payload := `{"hook_event_name":"PreToolUse","tool_name":"Bash","session_id":"bt3","tool_input":{"command":"git push --force origin main"}}`
+
+	// 单 hook 基线：同一 payload 逐条拉起 hazard-guard 的 stdout。
+	single, singleErr := runHookCaptured(&cobra.Command{}, "hazard-guard", []byte(payload))
+	var blockErr *HookBlockError
+	if !errors.As(singleErr, &blockErr) {
+		t.Fatalf("基线前提：hazard-guard 应阻断该命令，got err=%v out=%q", singleErr, single)
+	}
+
+	// batch：捕获真实 stdout。
+	oldStdin, oldStdout := os.Stdin, os.Stdout
+	inR, inW, _ := os.Pipe()
+	if _, err := inW.WriteString(payload); err != nil {
+		t.Fatal(err)
+	}
+	inW.Close()
+	outR, outW, _ := os.Pipe()
+	os.Stdin, os.Stdout = inR, outW
+	batchErr := runHookBatch(&cobra.Command{}, nil)
+	os.Stdin, os.Stdout = oldStdin, oldStdout
+	outW.Close()
+	batchOut, _ := io.ReadAll(outR)
+
+	if !errors.As(batchErr, &blockErr) {
+		t.Fatalf("batch 应透传 *HookBlockError，got %T: %v", batchErr, batchErr)
+	}
+	if strings.TrimSpace(string(batchOut)) == "" {
+		t.Fatal("batch 阻断时 stdout 为空——宿主读不到 decision:block JSON（本回归的症状）")
+	}
+	if strings.TrimSpace(string(batchOut)) != strings.TrimSpace(single) {
+		t.Errorf("batch 阻断 stdout 应与单 hook 一致\nbatch:  %s\nsingle: %s", batchOut, single)
+	}
+	var doc struct {
+		Decision string `json:"decision"`
+		Reason   string `json:"reason"`
+	}
+	if err := json.Unmarshal(batchOut, &doc); err != nil {
+		t.Fatalf("阻断 stdout 应是单个合法 JSON 文档: %v\n%s", err, batchOut)
+	}
+	if doc.Decision != "block" || doc.Reason == "" {
+		t.Errorf("JSON 应含 decision:block 与非空 reason，got %+v", doc)
+	}
+}
+
 // largePipeSize 远超任一平台的 OS 管道缓冲（macOS 64KB、Linux 64KB、Windows
 // 约 4KB）——同步「先写后跑 / 先跑后读」必在此尺寸上永久阻塞。
 //

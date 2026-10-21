@@ -5,6 +5,7 @@ import {
   preExecuteDecision,
   preStepDecision,
   runHookGroup,
+  runMatchedGroups,
   prependStartContexts,
   turnStoppingOutcome,
 } from "./decisions.js";
@@ -156,4 +157,117 @@ test("prependStartContexts: an enter without messages still delivers (no TypeErr
   const { decision, delivered } = prependStartContexts({ kind: "enter" }, ["a"]);
   assert.equal(delivered, true);
   assert.deepEqual(decision.messages.map((m) => m.content[0].text), ["a"]);
+});
+
+/** Scripted batch runner: records (event, matcher) and answers from a table keyed "event|matcher". */
+const fakeBatch = (table, calls = []) => async (event, matcher) => {
+  calls.push(`${event}|${matcher}`);
+  return table[`${event}|${matcher}`] ?? { block: false };
+};
+
+test("runMatchedGroups: one batch spawn per matched group, contexts and block come from its verdict", async () => {
+  const calls = [];
+  const outcome = await runMatchedGroups(
+    "PreToolUse",
+    [{ matcher: "Bash", commands: ["forge hook a", "forge hook b"] }],
+    {},
+    { batchRunner: fakeBatch({ "PreToolUse|Bash": { block: false, context: "merged" } }, calls), batchState: { broken: false } },
+  );
+  assert.deepEqual(calls, ["PreToolUse|Bash"]);
+  assert.deepEqual(outcome.contexts, ["merged"]);
+  assert.equal(outcome.blocked, undefined);
+  assert.equal(typeof outcome.durationMs, "number");
+
+  const blocked = await runMatchedGroups(
+    "PreToolUse",
+    [{ matcher: "Write|Edit", commands: ["forge hook a"] }],
+    {},
+    { batchRunner: fakeBatch({ "PreToolUse|Write|Edit": { block: true, reason: "no task" } }), batchState: { broken: false } },
+  );
+  assert.equal(blocked.blocked.reason, "no task");
+  assert.equal(blocked.blocked.command, "batch PreToolUse/Write|Edit", "block is attributed to the group, the only granularity batch exposes");
+});
+
+test("runMatchedGroups: several matched groups run in order and the first block short-circuits the rest", async () => {
+  const calls = [];
+  const outcome = await runMatchedGroups(
+    "PostToolUse",
+    [
+      { matcher: "g1", commands: [] },
+      { matcher: "g2", commands: [] },
+      { matcher: "g3", commands: [] },
+    ],
+    {},
+    {
+      batchRunner: fakeBatch({ "PostToolUse|g1": { block: false, context: "c1" }, "PostToolUse|g2": { block: true, reason: "stop" } }, calls),
+      batchState: { broken: false },
+    },
+  );
+  assert.deepEqual(calls, ["PostToolUse|g1", "PostToolUse|g2"]);
+  assert.deepEqual(outcome.contexts, ["c1"]);
+  assert.equal(outcome.blocked.reason, "stop");
+});
+
+test("runMatchedGroups: a batch that cannot answer (old forge: block with empty stdout) falls back to the serial roster — never a silent allow", async () => {
+  const batchState = { broken: false };
+  const serial = [];
+  const outcome = await runMatchedGroups(
+    "PreToolUse",
+    [{ matcher: "Write|Edit", commands: ["forge hook freeze-guard", "forge hook task-guard"] }],
+    {},
+    {
+      batchRunner: fakeBatch({ "PreToolUse|Write|Edit": { block: false, error: "forge exited with code 2 and no output" } }),
+      runner: async (command) => {
+        serial.push(command);
+        return command === "forge hook task-guard" ? { block: true, reason: "BLOCKED: no task" } : { block: false };
+      },
+      batchState,
+    },
+  );
+  assert.equal(outcome.blocked.reason, "BLOCKED: no task", "the serial retry still enforces the gate");
+  assert.deepEqual(serial, ["forge hook freeze-guard", "forge hook task-guard"]);
+  assert.equal(batchState.broken, true, "later groups skip batch entirely");
+  assert.ok(outcome.errors.some((e) => e.includes("batch unsupported")), "the downgrade is visible in the outcome");
+
+  // once broken, batch is not even attempted
+  const calls = [];
+  await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a"] }], {}, {
+    batchRunner: fakeBatch({}, calls),
+    runner: async () => ({ block: false }),
+    batchState,
+  });
+  assert.deepEqual(calls, []);
+});
+
+test("runMatchedGroups: a timeout is NOT a batch failure — no serial retry, fail open with the error noted", async () => {
+  const batchState = { broken: false };
+  const serial = [];
+  const outcome = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a"] }], {}, {
+    batchRunner: fakeBatch({ "PreToolUse|Bash": { block: false, error: "timeout after 30000ms" } }),
+    runner: async (command) => {
+      serial.push(command);
+      return { block: false };
+    },
+    batchState,
+  });
+  assert.deepEqual(serial, [], "re-running a group that just timed out would only double the stall");
+  assert.equal(batchState.broken, false);
+  assert.deepEqual(outcome.errors, ["batch PreToolUse/Bash: timeout after 30000ms"]);
+  assert.equal(outcome.blocked, undefined);
+});
+
+test("runMatchedGroups: batch:false runs the roster serially from the start", async () => {
+  const serial = [];
+  const outcome = await runMatchedGroups("PreToolUse", [{ matcher: "Bash", commands: ["forge hook a", "forge hook b"] }], {}, {
+    batch: false,
+    batchRunner: async () => {
+      throw new Error("batch must not run");
+    },
+    runner: async (command) => {
+      serial.push(command);
+      return command === "forge hook b" ? { block: false, context: "from b" } : { block: false };
+    },
+  });
+  assert.deepEqual(serial, ["forge hook a", "forge hook b"]);
+  assert.deepEqual(outcome.contexts, ["from b"]);
 });

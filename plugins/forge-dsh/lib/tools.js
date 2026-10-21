@@ -90,6 +90,27 @@ export function matchedCommands(groups, ccName) {
 }
 
 /**
+ * The spec groups of one event whose matcher accepts ccName, as
+ * `{matcher, commands}` in spec order. The matcher is what `forge hook batch
+ * --matcher` selects on ("" = the event's matcher-less group); `commands` is the
+ * same group's roster, kept for the serial fallback. Matching semantics are
+ * identical to matchedCommands.
+ *
+ * @param {Array<{matcher?: string, hooks: Array<{command: string}>}>} groups
+ * @param {string} ccName
+ * @returns {Array<{matcher: string, commands: string[]}>}
+ */
+export function matchedGroups(groups, ccName) {
+  const out = [];
+  for (const group of groups ?? []) {
+    const matcher = group.matcher ?? "";
+    if (matcher !== "" && !new RegExp(`^(?:${matcher})$`).test(ccName)) continue;
+    out.push({ matcher, commands: (group.hooks ?? []).map((hook) => hook.command) });
+  }
+  return out;
+}
+
+/**
  * Extract the session identity forge expects from a DSH agent handle.
  * Falls back to process cwd and an empty session id (forge degrades to its
  * legacy global state file for an empty session id — same degradation the

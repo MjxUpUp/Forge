@@ -18,7 +18,7 @@
  * @module decisions
  */
 
-import { runForgeHook } from "./runner.js";
+import { runForgeBatch, runForgeHook } from "./runner.js";
 import { pluginMessage } from "./tools.js";
 
 /**
@@ -26,6 +26,7 @@ import { pluginMessage } from "./tools.js";
  * @property {{reason: string, command: string}|undefined} blocked
  * @property {string[]} contexts - allow-path additionalContext, in order.
  * @property {string[]} errors   - fail-open infrastructure notes.
+ * @property {number} [durationMs] - wall time of the group run (for /forge-status).
  */
 
 /**
@@ -39,7 +40,8 @@ import { pluginMessage } from "./tools.js";
  */
 export async function runHookGroup(commands, payload, opts = {}) {
   const run = opts.runner ?? runForgeHook; // DI seam for tests
-  const outcome = { blocked: undefined, contexts: [], errors: [] };
+  const started = Date.now();
+  const outcome = { blocked: undefined, contexts: [], errors: [], durationMs: 0 };
   for (const command of commands) {
     const verdict = await run(command, payload, opts);
     if (verdict.error !== undefined) outcome.errors.push(`${command}: ${verdict.error}`);
@@ -49,6 +51,64 @@ export async function runHookGroup(commands, payload, opts = {}) {
     }
     if (verdict.context !== undefined) outcome.contexts.push(verdict.context);
   }
+  outcome.durationMs = Date.now() - started;
+  return outcome;
+}
+
+/**
+ * Run the matched spec groups of one event — one `forge hook batch` process per
+ * group instead of one process per hook (the spec's matcher only SELECTS the
+ * group; forge owns the roster, so plugin/forge roster drift cannot desync).
+ *
+ * Fail-open stays the invariant, with one guard: a batch that cannot answer is
+ * never taken as an allow. Forges older than the batch stdout fix print nothing
+ * on a block (exit 2, reason on stderr only), which the runner reports as
+ * "exited with code 2 and no output" — an error verdict that looks exactly like a
+ * silent allow. So any non-timeout batch error re-runs THAT group serially (the
+ * legacy per-hook path, whose contract every forge version honours) and flips
+ * `opts.batchState.broken` so later groups skip batch. A timeout is the one
+ * error that does not fall back: the serial re-run would only repeat the stall.
+ *
+ * `opts.batch === false` forces serial from the start.
+ *
+ * @param {string} event - forge event name.
+ * @param {Array<{matcher: string, commands: string[]}>} groups - matched spec groups, spec order.
+ * @param {object} payload - Claude-Code-shape stdin payload.
+ * @param {object} [opts] - forgeBin/timeoutMs plus test seams `batchRunner`, `runner`, `batchState`.
+ * @returns {Promise<GroupOutcome>}
+ */
+export async function runMatchedGroups(event, groups, payload, opts = {}) {
+  const started = Date.now();
+  const batchRun = opts.batchRunner ?? runForgeBatch; // DI seam for tests
+  const state = opts.batchState ?? { broken: false };
+  const outcome = { blocked: undefined, contexts: [], errors: [], durationMs: 0 };
+  for (const group of groups) {
+    const label = `batch ${event}${group.matcher === "" ? "" : `/${group.matcher}`}`;
+    let part;
+    if (opts.batch !== false && !state.broken) {
+      const verdict = await batchRun(event, group.matcher, payload, opts);
+      if (verdict.error === undefined) {
+        part = {
+          blocked: verdict.block ? { reason: verdict.reason ?? "denied", command: label } : undefined,
+          contexts: verdict.context === undefined ? [] : [verdict.context],
+          errors: [],
+        };
+      } else if (verdict.error.startsWith("timeout after")) {
+        part = { blocked: undefined, contexts: [], errors: [`${label}: ${verdict.error}`] };
+      } else {
+        state.broken = true;
+        outcome.errors.push(`${label}: ${verdict.error} — batch unsupported by this forge, running hooks one by one`);
+      }
+    }
+    if (part === undefined) part = await runHookGroup(group.commands, payload, opts);
+    outcome.errors.push(...part.errors);
+    outcome.contexts.push(...part.contexts);
+    if (part.blocked !== undefined) {
+      outcome.blocked = part.blocked;
+      break;
+    }
+  }
+  outcome.durationMs = Date.now() - started;
   return outcome;
 }
 

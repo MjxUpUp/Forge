@@ -39,7 +39,8 @@ import { spawn } from "node:child_process";
  * and EVERY gate silently fails open. cmd.exe resolves forge.cmd via PATHEXT
  * (and a bare forge.exe directly), so win32 routes through it. argv holds
  * spec constants only (safe charset). The binary is operator config and is
- * quoted, never escaped — see the metacharacter note inside planSpawn.
+ * quoted, never escaped — see the metacharacter note inside planSpawn. Arguments
+ * with a cmd metacharacter (a batch matcher such as Write|Edit) are quoted too.
  *
  * @param {string} forgeBin - binary name/path from config.
  * @param {string[]} argv - hook arguments (spec constants).
@@ -56,9 +57,11 @@ export function planSpawn(forgeBin, argv, platform = process.platform) {
   // %VAR% expansion (cmd expands it even inside quotes) and ! with delayed
   // expansion (off by default). Both are accepted residual risk because
   // forgeBin is trusted operator config — the same trust level as PATH itself.
-  const needsQuotes = /[&|()<>^,;=\s]/.test(forgeBin);
-  const file = needsQuotes && !forgeBin.includes('"') ? `"${forgeBin}"` : forgeBin;
-  return { file, args: argv, shell: true };
+  const quote = (token) => (/[&|()<>^,;=\s]/.test(token) && !token.includes('"') ? `"${token}"` : token);
+  // Arguments get the same treatment: a batch matcher like "Write|Edit" would
+  // otherwise be parsed by cmd.exe as a pipe. Spec-constant arguments (hook
+  // names, flags) carry no metacharacter and pass through unchanged.
+  return { file: quote(forgeBin), args: argv.map(quote), shell: true };
 }
 
 /**
@@ -73,10 +76,37 @@ export function planSpawn(forgeBin, argv, platform = process.platform) {
  * @returns {Promise<HookVerdict>}
  */
 export function runForgeHook(command, payload, opts = {}) {
+  const parts = command.split(" "); // ["forge","hook","task-guard"]
+  return runForge(parts.slice(1), payload, opts);
+}
+
+/**
+ * Run one whole matcher group in a single forge process:
+ * `forge hook batch --event <E> [--matcher <M>]`. forge runs the group's roster
+ * in order, stops at the first block, and prints that hook's decision JSON to
+ * stdout (same contract as a single hook); allow-path contexts come back merged
+ * into one document. One spawn instead of N saves the per-process start-up cost on
+ * every tool call. Forges from before the stdout fix print nothing on a block —
+ * decisions.runMatchedGroups detects that and falls back to per-hook runs.
+ *
+ * @param {string} event - forge event name (PreToolUse, Stop, …).
+ * @param {string} matcher - the spec group's matcher; "" selects the event's
+ *   matcher-less group.
+ * @param {object} payload - Claude-Code-shape hook stdin payload.
+ * @param {object} [opts] - same as runForgeHook.
+ * @returns {Promise<HookVerdict>}
+ */
+export function runForgeBatch(event, matcher, payload, opts = {}) {
+  const argv = ["hook", "batch", "--event", event];
+  if (matcher !== "") argv.push("--matcher", matcher);
+  return runForge(argv, payload, opts);
+}
+
+/** Spawn forge with `argv`, feed the payload, and fold stdout into a verdict. */
+function runForge(argv, payload, opts) {
   const forgeBin = opts.forgeBin ?? "forge";
   const timeoutMs = opts.timeoutMs ?? 30000;
-  const parts = command.split(" "); // ["forge","hook","task-guard"]
-  const plan = planSpawn(forgeBin, parts.slice(1));
+  const plan = planSpawn(forgeBin, argv);
   return new Promise((resolve) => {
     let child;
     try {
