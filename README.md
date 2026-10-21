@@ -230,8 +230,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
 | **init-suggest** | 会话开始 | advisory，接管决策引擎（P2 起默认 **ask**）：declined（标记+注册表双检）→静默；已接管→顺带 dedupe；外来 harness 信号（P4）→让位并记 declined；takeover 偏好 auto（`FORGE_TAKEOVER`/`forge config`/legacy `FORGE_AUTO_INIT=1`）→静默 init；off→静默；ask→每项目首次询问一次（拒绝→`forge off`；全程询问 →`forge config set` takeover 为 auto）。v1.22 起 init 零项目写入 |
 | **task-resume** | 会话开始 | advisory：只输出 `[forge-session]` 管理横幅一行（用户级 CLAUDE.md 据此判断是否启用 forge 协议）。不注入接续视图、不锚定 session、不推送待认领任务——接续按需拉取：用户说「继续某某任务」走 `forge task resume --match`，说「还有哪些任务没完成」走 `forge task list --open`；项目级 hook |
-| **compact-resume** | 压缩后（claude-code only） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
-| **resume-reinject** | 用户提交时（claude-code only） | 检测 `ResumeStale=true`（刚压缩过）→ 输出当前任务的完整接续上下文并清标志；未压缩时静默。压缩只丢当前 session 的工作记忆，补回它不打扰用户，context-rot 抗机制根治层·重注入半边 |
+| **compact-resume** | 压缩后（claude-code / codex） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
+| **resume-reinject** | 用户提交时（claude-code / codex） | 检测 `ResumeStale=true`（刚压缩过）→ 输出当前任务的完整接续上下文并清标志；未压缩时静默。压缩只丢当前 session 的工作记忆，补回它不打扰用户，context-rot 抗机制根治层·重注入半边 |
 | **doc-lint** | PostToolUse（Write\|Edit） | advisory：被写的 .md 命中 D1-D11 L1 规则时注入命中清单（规则/行号/修复方向，按命中签名会话内去重），写时反馈提前于 complete 的 doc gate（output-readability-gates-v2.md P1-C），Go 原生实现 |
 | **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（failure-track/subagent-track/test-nudge 亦然，其余 18 个为内嵌 bash 脚本） |
 
