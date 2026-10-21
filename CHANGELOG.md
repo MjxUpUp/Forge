@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.81.0](https://github.com/MjxUpUp/Forge/compare/v1.80.1...v1.81.0) (2026-10-21)
+
+
+### Features
+
+* **resume:** 任务接续改为按需拉取——SessionStart 只留横幅，新增 resume --match / list --open ([#121](https://github.com/MjxUpUp/Forge/issues/121)) ([3e22f1b](https://github.com/MjxUpUp/Forge/commit/3e22f1b2239d627f6e900510e75ff836490b2faa))
+
 ## [1.80.1](https://github.com/MjxUpUp/Forge/compare/v1.80.0...v1.80.1) (2026-10-21)
 
 
