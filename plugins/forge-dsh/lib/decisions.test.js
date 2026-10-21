@@ -228,7 +228,7 @@ test("runMatchedGroups: a batch that cannot answer (old forge: block with empty 
   );
   assert.equal(outcome.blocked.reason, "BLOCKED: no task", "the serial retry still enforces the gate");
   assert.deepEqual(serial, ["forge hook freeze-guard", "forge hook task-guard"]);
-  assert.equal(batchState.failStreak, 1, "one failure so far — counted, not yet fatal");
+  assert.equal(batchState.failStreaks.get("batch PreToolUse/Write|Edit"), 1, "one failure so far — counted for that group, not yet fatal");
   assert.ok(outcome.errors.some((e) => e.startsWith(BATCH_DOWNGRADE_MARK)), "the downgrade is visible in the outcome");
 
   // once batch is switched off, it is not even attempted
@@ -294,6 +294,53 @@ test("runMatchedGroups: transient batch failures fall back per call; only three 
   await runMatchedGroups("PreToolUse", group, {}, opts);
   assert.equal(batchState.broken, true, "three in a row: batch is off for good");
   assert.equal(serial.length, 4, "every failed call was answered by the per-hook run");
+});
+
+test("runMatchedGroups: the failure streak is per group — another group's successes do not reset it", async () => {
+  const batchState = { broken: false };
+  const serial = [];
+  const verdicts = { "PreToolUse|Bash": { block: false, error: "forge exited with code 1 and no output" }, "PreToolUse|Write|Edit": { block: false } };
+  const opts = {
+    batchRunner: async (event, matcher) => verdicts[`${event}|${matcher}`],
+    runner: async (command) => (serial.push(command), { block: false }),
+    batchState,
+  };
+  const bad = [{ matcher: "Bash", commands: ["forge hook a"] }];
+  const good = [{ matcher: "Write|Edit", commands: ["forge hook b"] }];
+  for (let i = 0; i < 3; i += 1) {
+    await runMatchedGroups("PreToolUse", bad, {}, opts);
+    await runMatchedGroups("PreToolUse", good, {}, opts); // a success in ANOTHER group
+  }
+  assert.equal(batchState.broken, true, "three failures of one group count even though a healthy group ran in between");
+});
+
+test("runMatchedGroups: a slow group is retried as a batch after the window, not penalised for the life of the process", async () => {
+  const realNow = Date.now;
+  let now = 1_000_000;
+  Date.now = () => now;
+  try {
+    const calls = [];
+    let timedOut = true;
+    const opts = {
+      batchRunner: async (event, matcher) => (calls.push(`${event}|${matcher}`), timedOut ? { block: false, error: "timeout after 30000ms", timedOut: true } : { block: false }),
+      runner: async () => ({ block: false }),
+      batchState: { broken: false },
+    };
+    const group = [{ matcher: "Bash", commands: ["forge hook a"] }];
+    await runMatchedGroups("PreToolUse", group, {}, opts);
+    assert.equal(calls.length, 1);
+    now += 60_000; // inside the window: stays per-hook
+    await runMatchedGroups("PreToolUse", group, {}, opts);
+    assert.equal(calls.length, 1, "within the window the group stays per-hook");
+    timedOut = false;
+    now += 10 * 60_000; // past it: one more try as a batch, and it works
+    await runMatchedGroups("PreToolUse", group, {}, opts);
+    assert.equal(calls.length, 2, "after the window batch is tried again");
+    await runMatchedGroups("PreToolUse", group, {}, opts);
+    assert.equal(calls.length, 3, "and stays on batch once it succeeded");
+  } finally {
+    Date.now = realNow;
+  }
 });
 
 test("runMatchedGroups: a silent allow from a batch that cannot have run is not special-cased here (the version gate in index.js keeps mismatched forges off batch)", async () => {

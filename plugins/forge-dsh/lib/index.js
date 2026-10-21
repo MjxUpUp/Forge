@@ -42,7 +42,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolveBundledForge } from "./bundled.js";
-import { compareVersions, fetchLatestVersion } from "./latest.js";
+import { compareVersions, fetchLatestVersion, isPlainVersion } from "./latest.js";
 import { messagesFor, resolveLocale } from "./messages.js";
 import { agentsSkillsInstalled } from "./skills.js";
 import { probeForge } from "./runner.js";
@@ -394,7 +394,7 @@ function apply(ctx, config = {}) {
           ? "  (no hook runs yet)"
           : [...byLabel].map(([label, t]) => `  ${label}  runs=${t.runs}  avg=${Math.round(t.total / t.runs)}ms  max=${t.max}ms`).join("\n");
         const forgeVersion = (lastProbe?.version?.match(/\d+\.\d+\.\d+/) ?? [])[0];
-        const slowGroups = opts.batchState.slow === undefined ? [] : [...opts.batchState.slow];
+        const slowGroups = opts.batchState.slow === undefined ? [] : [...opts.batchState.slow.keys()];
         let dispatchLine;
         if (batchMode === "off") dispatchLine = "per-hook (batch:false)";
         else if (opts.batchState.broken) dispatchLine = "per-hook (batch failed three times in a row; restart the host to retry)";
@@ -409,7 +409,8 @@ function apply(ctx, config = {}) {
           latestLine = "not checked (checkLatest:false)";
         } else {
           const latest = await (config.fetchLatest ?? (() => fetchLatestVersion({ registry: config.registry })))();
-          if (latest === undefined) latestLine = "unknown (offline, or the registry did not answer)";
+          // an injected or misbehaving source may hand back anything: only plain semver is shown
+          if (latest === undefined || !isPlainVersion(latest)) latestLine = "unknown (offline, or the registry did not answer)";
           else if (compareVersions(pluginVersion, latest) === -1) {
             latestLine = `${latest} — a newer plugin is published; an old install keeps working but misses fixes, so update it`;
           } else latestLine = `${latest} (up to date)`;

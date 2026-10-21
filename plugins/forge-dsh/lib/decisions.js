@@ -100,8 +100,11 @@ export function dropQuietNotes(text) {
  */
 export const BATCH_DOWNGRADE_MARK = "[batch→per-hook]";
 
-/** Consecutive unexplained batch failures before batch is switched off for the process. */
+/** Consecutive unexplained batch failures of one group before batch is switched off for the process. */
 const BATCH_FAIL_LIMIT = 3;
+
+/** How long a group that timed out as a batch stays per-hook before batch is tried on it again. */
+const SLOW_RETRY_MS = 10 * 60 * 1000;
 
 /**
  * Run the matched spec groups of one event — one `forge hook batch` process per
@@ -114,11 +117,13 @@ const BATCH_FAIL_LIMIT = 3;
  * legacy path whose contract every forge version honours. Two kinds of failure:
  *   - a timeout: batch gives the whole group ONE ceiling, so a single hung hook
  *     would starve every gate behind it. The group is re-run per hook (each hook
- *     gets its own ceiling again) and stays per-hook from then on, so a
- *     persistently slow group costs one stall, not one per tool call;
- *   - anything else: re-run per hook this once. Only BATCH_FAIL_LIMIT failures in
- *     a row switch batch off for the process; one success resets the streak, so
- *     a transient spawn error does not slow every later call.
+ *     gets its own ceiling again) and stays per-hook for SLOW_RETRY_MS, so a
+ *     persistently slow group costs one stall, not one per tool call, while a
+ *     one-off hiccup (cold start, a virus scan) is not held against it forever;
+ *   - anything else: re-run per hook this once. Only BATCH_FAIL_LIMIT failures of
+ *     the SAME group in a row switch batch off for the process (a healthy group
+ *     must not keep resetting another group's streak); one success of that group
+ *     resets it, so a transient spawn error does not slow every later call.
  * The re-run can execute hooks the batch already ran; observation-only hooks are
  * de-duplicated by forge's idempotency window, blocking hooks simply run again.
  *
@@ -134,27 +139,31 @@ export async function runMatchedGroups(event, groups, payload, opts = {}) {
   const started = Date.now();
   const batchRun = opts.batchRunner ?? runForgeBatch; // DI seam for tests
   const state = opts.batchState ?? { broken: false };
-  state.slow ??= new Set();
-  state.failStreak ??= 0;
+  state.slow ??= new Map(); // label -> when it timed out
+  state.failStreaks ??= new Map(); // label -> consecutive failures
   const outcome = { blocked: undefined, contexts: [], errors: [], durationMs: 0 };
   for (const group of groups) {
     const label = `batch ${event}${group.matcher === "" ? "" : `/${group.matcher}`}`;
     let part;
-    if (opts.batch !== false && !state.broken && !state.slow.has(label)) {
+    const slowSince = state.slow.get(label);
+    const isSlow = slowSince !== undefined && Date.now() - slowSince < SLOW_RETRY_MS;
+    if (opts.batch !== false && !state.broken && !isSlow) {
       const verdict = await batchRun(event, group.matcher, payload, opts);
       if (verdict.error === undefined) {
-        state.failStreak = 0;
+        state.failStreaks.delete(label);
+        state.slow.delete(label);
         part = {
           blocked: verdict.block ? { reason: verdict.reason ?? "denied", command: label } : undefined,
           contexts: verdict.context === undefined ? [] : [verdict.context],
           errors: [],
         };
       } else if (verdict.timedOut === true) {
-        state.slow.add(label);
+        state.slow.set(label, Date.now());
         outcome.errors.push(`${BATCH_DOWNGRADE_MARK} ${label}: ${verdict.error} — running this group's hooks one by one so a hung hook cannot starve the gates behind it`);
       } else {
-        state.failStreak += 1;
-        if (state.failStreak >= BATCH_FAIL_LIMIT) state.broken = true;
+        const streak = (state.failStreaks.get(label) ?? 0) + 1;
+        state.failStreaks.set(label, streak);
+        if (streak >= BATCH_FAIL_LIMIT) state.broken = true;
         outcome.errors.push(`${BATCH_DOWNGRADE_MARK} ${label}: ${verdict.error} — running this group's hooks one by one`);
       }
     }

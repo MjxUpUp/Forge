@@ -132,11 +132,13 @@ dev machine). With the default `batch: auto` that happens only once the probe sh
 plugin's own version: batch asks forge to pick the group by the plugin's matcher string, and a forge
 that disagrees would either print nothing on a block (older than the stdout fix) or silently run an
 empty group, so any other forge stays on the per-hook path, which depends on hook names only. `batch:
-true` forces batch, `false` forces per-hook. Whatever the mode, a batch that fails is never taken as an
+true` forces batch **and gives that protection up** (with a mismatched forge a group can run empty without
+any error); use it only with a forge you know matches. `false` forces per-hook. Whatever the mode, a batch that fails is never taken as an
 allow: that group is re-run per hook for the call (hooks the batch already ran may run again;
 observation-only ones are de-duplicated by forge). Three failures in a row switch batch off; a batch
-that **times out** keeps just that group per-hook from then on, because batch gives the whole group one
-`timeoutMs` and a single hung hook would otherwise starve the gates behind it. `/forge-status` shows
+that **times out** keeps just that group per-hook for ten minutes, then tries it again, because batch gives
+the whole group one `timeoutMs` and a single hung hook would otherwise starve the gates behind it. The
+three-failures count is per group. `/forge-status` shows
 all of this. And a gate that legitimately exceeds `timeoutMs` (e.g. `auto-compile` cold-building a large
 project past 30s) silently loses that run's feedback to fail-open (visible in `/forge-status`). Raise
 `timeoutMs` on big projects.

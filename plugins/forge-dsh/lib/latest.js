@@ -20,6 +20,21 @@
 const DEFAULT_REGISTRY = "https://registry.npmjs.org";
 const PACKAGE_PATH = "@agent_forge%2Fforge-dsh";
 
+/** A published plugin version: plain semver, optionally with a pre-release/build tag, bounded length. */
+const PLAIN_VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]{1,40})?$/;
+
+/**
+ * Whether a string is safe to show as a version. The registry's answer ends up in
+ * /forge-status text, which the model can read, so anything that is not plain semver
+ * (newlines, escape sequences, prose) is refused rather than echoed.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isPlainVersion(value) {
+  return typeof value === "string" && value.length <= 64 && PLAIN_VERSION.test(value);
+}
+
 /**
  * Compare the numeric core (major.minor.patch) of two versions. A pre-release
  * suffix is ignored; an unparseable input has no order.
@@ -55,15 +70,16 @@ export function compareVersions(a, b) {
 export async function fetchLatestVersion(opts = {}) {
   const doFetch = opts.fetch ?? (opts.noGlobalFetch ? undefined : globalThis.fetch);
   if (typeof doFetch !== "function") return undefined;
-  const registry = (opts.registry ?? DEFAULT_REGISTRY).replace(/\/+$/, "");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 3000);
   timer.unref?.();
   try {
+    // inside the try: a misconfigured registry value must not make /forge-status throw
+    const registry = String(opts.registry ?? DEFAULT_REGISTRY).replace(/\/+$/, "");
     const res = await doFetch(`${registry}/${PACKAGE_PATH}/latest`, { signal: controller.signal });
     if (!res?.ok) return undefined;
     const body = await res.json();
-    return typeof body?.version === "string" ? body.version : undefined;
+    return isPlainVersion(body?.version) ? body.version : undefined;
   } catch {
     return undefined;
   } finally {
