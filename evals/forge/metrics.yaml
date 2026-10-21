@@ -35,9 +35,9 @@ metrics:
   - id: profile_delta
     claim: C1
     track: track-a
-    definition: full − off 的配对差（协议层整体贡献）
+    definition: full − off 的配对差（协议层整体贡献）+ 分层 bootstrap 95% CI（任务抽样、运行间；声明 ≥3 个语义等价 prompt 变体时加变体源）
     source: evalkit decompose
-    misuse_note: CI 跨零时结论固定为"未检测到显著差异"，禁止挑选单侧表述
+    misuse_note: CI 跨零时结论固定为"在 n=X 次运行下未检测到显著差异；最小可检测效应 Y pp"，禁止挑选单侧表述；未声明 ≥3 个 prompt 变体时 perturbation=unmeasured，CI 可能偏窄
     min_samples: 20
   - id: hv_mv_ratio
     claim: C1

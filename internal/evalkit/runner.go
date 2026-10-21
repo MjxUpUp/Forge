@@ -84,6 +84,51 @@ type RunSpec struct {
 	Repeats   int     `yaml:"repeats"   json:"repeats"`
 	Budget    Budget  `yaml:"budget"    json:"budget"`
 	ForgeRef  string  `yaml:"forge_ref" json:"forge_ref"`
+	// Variants are semantically equivalent prompt variants (cycle plan R4).
+	// Any declared variants run as variant × repeat; only ≥3 make the
+	// profile_delta CI count the variant as a third variance source — fewer →
+	// perturbation unmeasured (the CI may be too narrow).
+	//
+	// Variants 是语义等价的 prompt 变体（周期总纲 R4）。声明了变体就按变体 × 重复
+	// 执行；≥3 个时 profile_delta 的 CI 才把变体计为第三个方差源，不足 3 个 →
+	// perturbation=unmeasured（CI 可能偏窄）。
+	Variants []string `yaml:"variants,omitempty" json:"variants,omitempty"`
+	// Variant is the variant of the attempt being executed (set by RunBenchmark,
+	// exposed to commands as FORGE_EVAL_VARIANT; never serialized).
+	//
+	// Variant 是当前执行 attempt 的变体（由 RunBenchmark 设置，经 FORGE_EVAL_VARIANT
+	// 交给命令；不序列化）。
+	Variant string `yaml:"-" json:"-"`
+	// preflight carries a preflight already run by the caller (RunDecompose
+	// runs it once for the whole grid); nil → RunBenchmark runs its own.
+	//
+	// preflight 携带调用方已跑过的 preflight（RunDecompose 为整张网格只跑一次）；
+	// 为 nil 时 RunBenchmark 自己跑。
+	preflight *preflightResult
+}
+
+// MinPerturbationVariants is the minimum variant count for the perturbation
+// arm to count as measured.
+//
+// MinPerturbationVariants 是扰动臂计为"已度量"所需的最少变体数。
+const MinPerturbationVariants = 3
+
+// Perturbation statuses.
+//
+// 扰动臂状态。
+const (
+	PerturbationMeasured   = "measured"
+	PerturbationUnmeasured = "unmeasured"
+)
+
+// PerturbationStatus reports whether the spec declares enough variants.
+//
+// PerturbationStatus 报告 spec 是否声明了足够的变体。
+func (s *RunSpec) PerturbationStatus() string {
+	if len(s.Variants) >= MinPerturbationVariants {
+		return PerturbationMeasured
+	}
+	return PerturbationUnmeasured
 }
 
 // Validate enforces the spec invariants.
@@ -124,6 +169,15 @@ type BenchTask struct {
 	Image   string `yaml:"image,omitempty"   json:"image,omitempty"`
 	RunCmd  string `yaml:"run_cmd,omitempty"  json:"run_cmd,omitempty"`
 	TestCmd string `yaml:"test_cmd,omitempty" json:"test_cmd,omitempty"`
+	// OracleCmd is the reference solution (Harbor solution.sh) replacing RunCmd
+	// in the preflight oracle arm; LeakageCmd is the statement-only degenerate
+	// solution of the leakage arm. Both only matter for tasks with TestCmd.
+	//
+	// OracleCmd 是参考解（Harbor solution.sh），在 preflight 的 oracle 臂里替代
+	// RunCmd；LeakageCmd 是 leakage 臂的只读题面退化解。两者只对带 TestCmd 的任务
+	// 有意义。
+	OracleCmd  string `yaml:"oracle_cmd,omitempty"  json:"oracle_cmd,omitempty"`
+	LeakageCmd string `yaml:"leakage_cmd,omitempty" json:"leakage_cmd,omitempty"`
 	// DifficultyBand is the stratification label (kept from the sampling plan).
 	DifficultyBand string `yaml:"difficulty_band" json:"difficulty_band"`
 	// PollutionFlag marks contamination risk (empty = none).
@@ -281,6 +335,7 @@ func (ExecRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask) (Ta
 type Attempt struct {
 	TaskID    string  `json:"task_id"`
 	Repeat    int     `json:"repeat"`
+	Variant   int     `json:"variant,omitempty"` // Variants 下标（未声明变体时恒 0）
 	Pass      bool    `json:"pass"`
 	BudgetCut bool    `json:"budget_cut,omitempty"`
 	Tokens    int     `json:"tokens,omitempty"`
@@ -315,6 +370,22 @@ type Scorecard struct {
 	TotalCostUSD      float64      `json:"total_cost_usd"`
 	BudgetCuts        int          `json:"budget_cuts"`
 	Note              string       `json:"note,omitempty"`
+	// Preflight / Leakage / ReviewQueue are the R3 validity surface: what the
+	// baselines checked, the statement-only score shown next to pass@1, and the
+	// tasks queued for manual review.
+	//
+	// Preflight / Leakage / ReviewQueue 是 R3 有效性面：基线校验了什么、与 pass@1
+	// 并列的只读题面分数、排进人工复核的任务。
+	Preflight   *PreflightReport `json:"preflight,omitempty"`
+	Leakage     *LeakageSummary  `json:"leakage,omitempty"`
+	ReviewQueue []ReviewItem     `json:"review_queue,omitempty"`
+	// Perturbation is measured | unmeasured (R4); Attempts keeps the raw
+	// outcomes so paired CIs can be computed downstream.
+	//
+	// Perturbation 是 measured | unmeasured（R4）；Attempts 保留原始结果，供下游
+	// 计算配对 CI。
+	Perturbation string    `json:"perturbation,omitempty"`
+	Attempts     []Attempt `json:"attempts,omitempty"`
 }
 
 // PassKPoint is one point of the pass^k curve (k 次全对概率的估计).
@@ -326,9 +397,13 @@ type PassKPoint struct {
 }
 
 // RunBenchmark executes spec over the manifest with the runner and aggregates
-// the scorecard.
+// the scorecard. The validity preflight runs first (R3): a violation returns
+// *PreflightError and nothing else executes. Declared prompt variants run as
+// variant × repeat (R4).
 //
-// RunBenchmark 用 runner 按 spec 在 manifest 上执行并聚合 scorecard。
+// RunBenchmark 用 runner 按 spec 在 manifest 上执行并聚合 scorecard。先跑有效性
+// preflight（R3）：违例返回 *PreflightError，主评测不执行。声明了 prompt 变体时
+// 按变体 × 重复执行（R4）。
 func RunBenchmark(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest, runner TaskRunner) (*Scorecard, error) {
 	if err := spec.Validate(); err != nil {
 		return nil, err
@@ -336,27 +411,58 @@ func RunBenchmark(ctx context.Context, spec RunSpec, manifest *BenchmarkManifest
 	if len(manifest.Tasks) == 0 {
 		return nil, fmt.Errorf("evalkit: manifest 无任务（pass^k 分母为 0 会产出 NaN，拒绝空跑）")
 	}
+	pf := spec.preflight
+	if pf == nil {
+		report, leak, err := runPreflight(ctx, spec, manifest, runner)
+		if err != nil {
+			return nil, err
+		}
+		pf = &preflightResult{report: report, leak: leak}
+	}
+	preflight, leak := pf.report, pf.leak
+	variants := spec.Variants
+	if len(variants) == 0 {
+		variants = []string{""}
+	}
 	var attempts []Attempt
 	tokens, cost, cuts := 0, 0.0, 0
 	taskSandbox := map[string]string{} // taskID → 该任务实际执行的后端（首试口径）
 	for _, task := range manifest.Tasks {
-		for r := 1; r <= spec.Repeats; r++ {
-			res, err := runner.RunTask(ctx, spec, task)
-			if err != nil {
-				return nil, fmt.Errorf("evalkit: 任务 %s 执行失败: %w", task.ID, err)
-			}
-			if r == 1 && res.Sandbox != "" {
-				taskSandbox[task.ID] = res.Sandbox
-			}
-			attempts = append(attempts, Attempt{TaskID: task.ID, Repeat: r, Pass: res.Pass, BudgetCut: res.BudgetCut, Tokens: res.Tokens, CostUSD: res.CostUSD})
-			tokens += res.Tokens
-			cost += res.CostUSD
-			if res.BudgetCut {
-				cuts++
+		for vi, v := range variants {
+			cell := spec
+			cell.Variant = v
+			for r := 1; r <= spec.Repeats; r++ {
+				res, err := runner.RunTask(ctx, cell, task)
+				if err != nil {
+					return nil, fmt.Errorf("evalkit: 任务 %s 执行失败: %w", task.ID, err)
+				}
+				if vi == 0 && r == 1 && res.Sandbox != "" {
+					taskSandbox[task.ID] = res.Sandbox
+				}
+				attempts = append(attempts, Attempt{TaskID: task.ID, Repeat: r, Variant: vi, Pass: res.Pass, BudgetCut: res.BudgetCut, Tokens: res.Tokens, CostUSD: res.CostUSD})
+				tokens += res.Tokens
+				cost += res.CostUSD
+				if res.BudgetCut {
+					cuts++
+				}
 			}
 		}
 	}
-	return buildScorecard(spec, manifest, attempts, tokens, cost, cuts, sandboxLabel(runner), taskSandbox), nil
+	sc := buildScorecard(spec, manifest, attempts, tokens, cost, cuts, sandboxLabel(runner), taskSandbox)
+	sc.Attempts = attempts
+	sc.Preflight = preflight
+	sc.Leakage = leak
+	sc.ReviewQueue = buildReviewQueue(attempts, leak)
+	sc.Perturbation = spec.PerturbationStatus()
+	sc.HarnessDisclosure = append(sc.HarnessDisclosure,
+		fmt.Sprintf("attempts-per-task: %d（变体 %d × 重复 %d）", len(variants)*spec.Repeats, len(variants), spec.Repeats),
+		"preflight: "+preflight.Status,
+		"leakage: "+leak.Status,
+		fmt.Sprintf("perturbation: %s（变体 %d 个，≥%d 才计入方差源）", sc.Perturbation, len(spec.Variants), MinPerturbationVariants))
+	if preflight.Status == PreflightSkipped {
+		sc.Note = strings.TrimPrefix(sc.Note+"；"+preflight.Note, "；")
+	}
+	return sc, nil
 }
 
 // summarizeSandboxes aggregates per-task sandbox labels into a mix histogram
@@ -564,6 +670,70 @@ func (d DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask)
 	if !task.HasDockerShape() {
 		return ExecRunner{}.RunTask(ctx, spec, task)
 	}
+	return runInContainer(ctx, spec, task, joinCmds(task.RunCmd, task.TestCmd))
+}
+
+// RunBaseline implements BaselineRunner for container tasks with a grader:
+// oracle = oracle_cmd && test_cmd, do-nothing = test_cmd alone, leakage =
+// leakage_cmd && test_cmd (only when declared). An undeclared oracle_cmd is
+// reported as applicable-but-missing by the preflight, not executed here.
+//
+// RunBaseline 为带判分命令的容器任务实现 BaselineRunner：oracle = oracle_cmd &&
+// test_cmd，do-nothing = 只跑 test_cmd，leakage = leakage_cmd && test_cmd（仅在
+// 声明时）。未声明 oracle_cmd 由 preflight 记为"有定义但缺失"，此处不执行。
+func (d DockerRunner) RunBaseline(ctx context.Context, spec RunSpec, task BenchTask, arm BaselineArm) (TaskResult, bool, error) {
+	inner, applicable, err := baselineCommand(task, arm)
+	if err != nil || !applicable {
+		return TaskResult{TaskID: task.ID}, applicable, err
+	}
+	res, err := runInContainer(ctx, spec, task, inner)
+	return res, true, err
+}
+
+// baselineCommand composes the in-container command of one baseline arm (pure:
+// the whole arm semantics, testable without docker). applicable=false when the
+// task has no container grader or the arm's command is undeclared.
+//
+// baselineCommand 组装一条基线臂在容器内执行的命令（纯函数：臂语义全在这里，
+// 无需 docker 即可测试）。任务无容器判分命令或该臂命令未声明时 applicable=false。
+func baselineCommand(task BenchTask, arm BaselineArm) (inner string, applicable bool, err error) {
+	if !task.HasDockerShape() || task.TestCmd == "" {
+		return "", false, nil
+	}
+	switch arm {
+	case ArmOracle:
+		if task.OracleCmd == "" {
+			return "", false, nil
+		}
+		return joinCmds(task.OracleCmd, task.TestCmd), true, nil
+	case ArmDoNothing:
+		return task.TestCmd, true, nil
+	case ArmLeakage:
+		if task.LeakageCmd == "" {
+			return "", false, nil
+		}
+		return joinCmds(task.LeakageCmd, task.TestCmd), true, nil
+	default:
+		return "", false, fmt.Errorf("evalkit: 未知基线 %q", arm)
+	}
+}
+
+// joinCmds chains a solution step before the grader ("a && b"; empty a → b).
+//
+// joinCmds 把解题步骤串在判分之前（"a && b"；a 为空时只有 b）。
+func joinCmds(step, grader string) string {
+	if step == "" {
+		return grader
+	}
+	return step + " && " + grader
+}
+
+// runInContainer executes inner in the task image (no network, minimal env,
+// wallclock budget via ctx); pass = exit 0.
+//
+// runInContainer 在任务镜像里执行 inner（无网、最小 env、墙钟预算经 ctx）；
+// 退出 0 = 通过。
+func runInContainer(ctx context.Context, spec RunSpec, task BenchTask, inner string) (TaskResult, error) {
 	res := TaskResult{TaskID: task.ID, Sandbox: SandboxDocker}
 	if !DockerAvailable() {
 		return res, fmt.Errorf("evalkit: docker 不可用——容器任务 %s 无法执行", task.ID)
@@ -574,14 +744,10 @@ func (d DockerRunner) RunTask(ctx context.Context, spec RunSpec, task BenchTask)
 		defer cancel()
 	}
 	start := time.Now()
-	inner := task.RunCmd
-	if inner != "" {
-		inner += " && "
-	}
-	inner += task.TestCmd
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
 		"-e", "FORGE_EVAL_PROFILE="+string(spec.Profile),
 		"-e", "FORGE_EVAL_MODEL="+spec.Model,
+		"-e", "FORGE_EVAL_VARIANT="+spec.Variant,
 		"--network", "none", // 冻结任务自包含；评测容器默认无网（需要网的任务在 manifest 显式声明前不得静默放行）
 		task.Image, "sh", "-c", inner)
 	cmd.Env = minimalEvalEnv(spec)
@@ -612,6 +778,7 @@ func minimalEvalEnv(spec RunSpec) []string {
 		"TMPDIR=" + os.Getenv("TMPDIR"),
 		"FORGE_EVAL_PROFILE=" + string(spec.Profile),
 		"FORGE_EVAL_MODEL=" + spec.Model,
+		"FORGE_EVAL_VARIANT=" + spec.Variant,
 	}
 	// docker CLI 进程需要与 DockerAvailable() 探测一致的路由环境（远程
 	// DOCKER_HOST 部署下缺它会"探测通过、执行失败"——复审保留意见）。

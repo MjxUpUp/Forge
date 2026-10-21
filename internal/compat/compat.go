@@ -108,6 +108,7 @@ var EscapeEnvs = []string{
 	"FORGE_GATE_CMD_FORM",
 	"FORGE_HAZARD_PENDING",
 	"FORGE_MUTATION_GATE",
+	"FORGE_EVAL_PREFLIGHT",
 }
 
 // AllCheckNames 返回 checklog 常量 roster 的排序列表。
