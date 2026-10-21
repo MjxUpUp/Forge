@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/shellexec"
 )
 
 // Script-level tests for the embedded HazardGuardHook diagnostics path
@@ -74,8 +76,19 @@ func runHazardScript(t *testing.T, shimDir, command string, extraEnv ...string) 
 		"PATH="+shimDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 	)
 	cmd.Env = append(cmd.Env, extraEnv...)
+	// Mirror the dispatcher's script-env contract (hookdispatch.RunHook): TMPDIR
+	// pinned off the MSYS /tmp mount (heredoc temp files), and Git Bash's
+	// intermittent "could not find /tmp" warning stripped — CombinedOutput put it
+	// ahead of "PASS" and broke the early-PASS assertion on windows-latest (run
+	// 39390818763). Script output itself is untouched.
+	//
+	// 对齐 dispatcher 的脚本 env 契约（hookdispatch.RunHook）：TMPDIR 固定、不走
+	// MSYS /tmp 挂载（heredoc 临时文件）；剔除 Git Bash 间歇打印的「could not find
+	// /tmp」告警——CombinedOutput 把它排在「PASS」之前，windows-latest 上打挂
+	// early-PASS 断言（run 39390818763）。脚本自身输出不动。
+	cmd.Env = shellexec.PinTempDir(cmd.Env)
 	out, runErr := cmd.CombinedOutput()
-	return string(out), runErr
+	return shellexec.StripRuntimeNoise(string(out)), runErr
 }
 
 // TestHazardGuardScript_ConfirmedFailureDiagnostic：confirmed 调用本身故障

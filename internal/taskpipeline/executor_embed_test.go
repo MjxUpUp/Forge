@@ -262,3 +262,37 @@ func TestCheckImplement_InfraFailureDoesNotFailGate(t *testing.T) {
 		}
 	}
 }
+
+// TestRunEmbeddedHook_RuntimeNoiseAndTMPDIR pins the gate path's half of the
+// Windows-flake fix (shared contract with hookdispatch.RunHook): a fake bash that
+// prints the MSYS "could not find /tmp" warning and echoes the TMPDIR it saw must
+// leave the warning out of the verdict text, and an unset TMPDIR must reach the
+// script pinned to the Go temp dir. Unix-only for the same shebang reason as above.
+//
+// TestRunEmbeddedHook_RuntimeNoiseAndTMPDIR 钉住 gate 路径那一半修复（与
+// hookdispatch.RunHook 同一契约）：假 bash 打 MSYS「could not find /tmp」告警并回显
+// 所见 TMPDIR——告警不得进入结论文案；未设置的 TMPDIR 到达脚本时已固定为 Go 临时目录。
+func TestRunEmbeddedHook_RuntimeNoiseAndTMPDIR(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shebang fake-bash cannot be spawned by Go on Windows")
+	}
+	dir := t.TempDir()
+	fakeBash := filepath.Join(dir, "fakebash")
+	script := "#!/bin/sh\necho 'bash.exe: warning: could not find /tmp, please create!' >&2\necho \"PASS tmpdir=${TMPDIR-<unset>}\"\n"
+	if err := os.WriteFile(fakeBash, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	old := findBashForHook
+	t.Cleanup(func() { findBashForHook = old })
+	findBashForHook = func() (string, error) { return fakeBash, nil }
+	t.Setenv("TMPDIR", "")
+	_ = os.Unsetenv("TMPDIR")
+
+	passed, infra, output := runEmbeddedHook(t.TempDir(), "auto-compile")
+	if !passed || infra {
+		t.Fatalf("fake hook exits 0: want passed=true infra=false, got passed=%v infra=%v: %q", passed, infra, output)
+	}
+	if want := "PASS tmpdir=" + filepath.ToSlash(os.TempDir()); output != want {
+		t.Errorf("verdict text = %q, want %q (noise stripped, TMPDIR pinned)", output, want)
+	}
+}

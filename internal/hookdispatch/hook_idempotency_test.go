@@ -85,7 +85,10 @@ func TestSkipDuplicateHookRun_WindowSemantics(t *testing.T) {
 // checklog 行)——这是双通道(zcode 用户级+插件)重放被消除的实证形态。
 func TestRunHook_DuplicateInvocationSkippedSecond(t *testing.T) {
 	root := trackTestProject(t)
-	t.Setenv(forgeHookDedupEnv, "2")
+	// 窗口取上限 10s:窗口从首跑**执行前**打戳起算,首跑本身(拉起 bash 跑
+	// failure-track)在重负载下可超 2s,第二次随即落在窗外——断言的是「窗口内
+	// 重复必静默」,窗口宽度不是被测量,放宽不弱化断言。
+	t.Setenv(forgeHookDedupEnv, "10")
 	// RunHook 经 projectroot.Find() 解析项目根——walk-up 兜底认项目级 .forge/
 	// 目录标记(注册表成员资格之外的遗留路径),bare temp 目录会被判为非 forge
 	// 项目而静默放行。

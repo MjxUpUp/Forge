@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -314,33 +315,58 @@ func TestLoadNonexistent(t *testing.T) {
 // TestRecordAndPrune_ConcurrentNoDeadlock 守卫 C2 修复谱系：改动 toollog 的路径
 // 与 Record 持同一把 mutex（旧 Clear 及其 archiveLocked 拆分已于 2026-08-29 作
 // 死代码删除；幸存的持锁写方除 Record 外即 Prune）。并发 Record + Prune 既不能
-// 死锁、也不能把 active toollog 留成不可读。30s 上限：Windows FS + -race 下
-// IO 风暴合法地远超 5s（首个 Windows CI run 误报死锁）；真死锁永不完成，30s
-// 仍必然拦截。
+// 死锁、也不能把 active toollog 留成不可读。
+//
+// 判据是「无进展」而非「总耗时」：旧版 30s 总时长上限在 Windows FS + -race 与
+// 本地重负载（多包并行）下误报过死锁——250 次 Record 的 IO 风暴合法地慢，但每次
+// 完成都推进计数。死锁 = 计数在整整一个 stallWindow 内纹丝不动，必然被拦；
+// 慢而在走 = 计数持续增长，不再误报。
+//
+// The verdict is "no progress", not "total time": the former 30s overall cap
+// misfired as a deadlock under Windows FS + -race and under local heavy load —
+// the 250-Record IO storm is legitimately slow but every completion advances the
+// counter. A deadlock freezes the counter for a whole stallWindow and is still
+// caught; slow-but-moving no longer is.
 func TestRecordAndPrune_ConcurrentNoDeadlock(t *testing.T) {
+	const stallWindow = 30 * time.Second
 	dir := t.TempDir()
 	var wg sync.WaitGroup
+	var progress atomic.Int64
 	for range 50 {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
 			for range 5 {
 				_ = Record(dir, &ToolCall{ToolName: "Read", TaskRef: "t"})
+				progress.Add(1)
 			}
 		}()
 		go func() {
 			defer wg.Done()
 			Prune(dir)
+			progress.Add(1)
 		}()
 	}
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
-	select {
-	case <-done:
-	// 30s：Windows FS + race 下并发 Record/Prune 的 IO 风暴合法地远超 5s（首个
-	// Windows CI run 误报死锁）；真死锁永不完成，30s 仍必然拦截。
-	case <-time.After(30 * time.Second):
-		t.Fatal("Record/Prune deadlocked (mutex re-entry?)")
+	ticker := time.NewTicker(stallWindow)
+	defer ticker.Stop()
+	last := int64(-1)
+wait:
+	for {
+		select {
+		case <-done:
+			break wait
+		case <-ticker.C:
+			now := progress.Load()
+			if now == last {
+				t.Fatalf("Record/Prune deadlocked (mutex re-entry?): no operation completed in %v (%d/300 done)", stallWindow, now)
+			}
+			last = now
+		}
+	}
+	if got := progress.Load(); got != 300 {
+		t.Fatalf("all 250 Record + 50 Prune must complete, got %d", got)
 	}
 	if _, err := LoadAll(dir); err != nil {
 		t.Fatalf("LoadAll after concurrent Record/Prune: %v", err)
