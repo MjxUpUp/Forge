@@ -83,6 +83,7 @@ var rosterExtraSources = map[string]string{
 	"FORGE_TASK_DRIFT":       "../hookdispatch/hook_task_drift.go",    // hookdispatch 层:task-drift BLOCK ratchet 的逃生
 	"FORGE_TASK_VERIFY_STOP": "../hooks/embed_quality.go",             // bash embed 层:task-verify Stop 有界阻断的逃生
 	"FORGE_GATE_CMD_FORM":    "../hookdispatch/hook_gate_cmd_form.go", // hookdispatch 层:gate-cmd-form BLOCK ratchet 的逃生（墙-1a）
+	"FORGE_EVAL_PREFLIGHT":   "../evalkit/preflight.go",               // evalkit 层:Track A preflight（评测自身不合法）BLOCK 的逃生（R3）
 }
 
 // TestEscapeRosterComplete 守卫（对抗审查 should-fix：原注释宣称源对照而实际

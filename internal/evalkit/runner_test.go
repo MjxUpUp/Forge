@@ -64,6 +64,23 @@ func TestRunSpecValidation(t *testing.T) {
 	if err := noBudget.Validate(); err == nil {
 		t.Fatal("预算全空应报错")
 	}
+	// 四元组任缺一项即拒（逐项单缺，钉住"任一"而非"全部"——mutation 存活位点）。
+	for _, field := range []string{"model", "benchmark", "split", "forge_ref"} {
+		s := RunSpec{Profile: ProfileFull, Model: "m", Benchmark: "b", Split: "s", Repeats: 1, ForgeRef: "r", Budget: Budget{WallclockEach: time.Second}}
+		switch field {
+		case "model":
+			s.Model = ""
+		case "benchmark":
+			s.Benchmark = ""
+		case "split":
+			s.Split = ""
+		case "forge_ref":
+			s.ForgeRef = ""
+		}
+		if err := s.Validate(); err == nil {
+			t.Fatalf("缺 %s 应报错", field)
+		}
+	}
 }
 
 func TestRunBenchmarkBudgetCut(t *testing.T) {

@@ -92,6 +92,14 @@ func TestRunGoldenDetection(t *testing.T) {
 	if rep.Cases[0].Agreement != 1 {
 		t.Fatalf("确定性重放应一致: %+v", rep.Cases[0])
 	}
+	// 检测信号取首轮重放（单轮时也必须带上，钉住 r==0 的取值点——mutation 存活位点）。
+	single, err := RunGolden(dir, []GoldenCase{goldenDefectiveCase()}, GoldenOptions{ForgeBin: failBin, Repetitions: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(single.Cases[0].Signals, ",") != "exit_nonzero(2)" {
+		t.Fatalf("单轮重放应带首轮检测信号: %+v", single.Cases[0])
+	}
 	// 干净样本：假 forge 退出 0 无输出 → clean；误触脚本 → false positive。
 	okBin := writeFakeForgeNamed(t, dir, "fakeforge-ok", "exit 0")
 	rep2, err := RunGolden(dir, []GoldenCase{goldenCleanCase()}, GoldenOptions{ForgeBin: okBin, Repetitions: 1})

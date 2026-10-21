@@ -18,6 +18,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/aatout"
 
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -184,6 +185,7 @@ func runEvalGoldenRun(cmd *cobra.Command, args []string) error {
 	repeats, _ := cmd.Flags().GetInt("repeats")
 	rewrite, _ := cmd.Flags().GetBool("rewrite-manifest")
 	asJSON, _ := cmd.Flags().GetBool("json")
+	release, _ := cmd.Flags().GetBool("release")
 	if dir == "" {
 		dir = evalAssetPath("golden")
 	}
@@ -209,7 +211,7 @@ func runEvalGoldenRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	rep, err := evalkit.RunGolden(dir, cases, evalkit.GoldenOptions{ForgeBin: bin, Repetitions: repeats})
+	rep, err := evalkit.RunGolden(dir, cases, evalkit.GoldenOptions{ForgeBin: bin, Repetitions: repeats, IncludeTestLayer: release})
 	if err != nil {
 		return fmt.Errorf("BLOCKED: %v", err)
 	}
@@ -229,6 +231,11 @@ func runEvalGoldenRun(cmd *cobra.Command, args []string) error {
 	fmt.Printf("golden run：recall %d/%d（Wilson %.2f–%.2f） fpr %d/%d（%.2f–%.2f）\n",
 		rep.Recall.Numerator, rep.Recall.Denominator, rep.Recall.Lo, rep.Recall.Hi,
 		rep.FalsePositive.Numerator, rep.FalsePositive.Denominator, rep.FalsePositive.Lo, rep.FalsePositive.Hi)
+	if rep.TestLayerCases > 0 {
+		fmt.Printf("test 层：本次查询 %d 例，累计第 %d 次（查询越多越不像测试集）\n", rep.TestLayerCases, rep.TestLayerQueryCount)
+	} else if rep.TestLayerExcluded > 0 {
+		fmt.Printf("test 层：%d 例未运行（只在 --release 时运行）\n", rep.TestLayerExcluded)
+	}
 	for _, f := range rep.Findings {
 		fmt.Printf("  FINDING: %s\n", f)
 	}
@@ -351,6 +358,9 @@ func runEvalJudgeAudit(cmd *cobra.Command, args []string) error {
 		fmt.Printf("judge audit：κ=%.2f（阈值 %.2f）reliable=%v\n", rep.Kappa, evalkit.JudgeAuditKappaFloor, rep.JudgeReliable)
 	} else {
 		fmt.Println("judge audit：κ 无定义（样本不足或全同类别）")
+	}
+	if rep.PositionSwapPairs > 0 {
+		fmt.Printf("position-swap：翻转率 %.2f（%d 对，阈值 %.2f）bias=%s\n", rep.PositionSwapFlipRate, rep.PositionSwapPairs, evalkit.PositionSwapFlipCeiling, rep.PositionSwapBias)
 	}
 	for _, f := range rep.Findings {
 		fmt.Printf("  FINDING: %s\n", f)
@@ -479,13 +489,14 @@ func runEvalRun(cmd *cobra.Command, args []string) error {
 	wallclock, _ := cmd.Flags().GetDuration("wallclock")
 	forgeRef, _ := cmd.Flags().GetString("forge-ref")
 	manifestPath, _ := cmd.Flags().GetString("manifest")
+	variants, _ := cmd.Flags().GetString("variants")
 	manifest, err := evalkit.LoadManifest(manifestPath)
 	if err != nil {
 		return fmt.Errorf("BLOCKED: %v", err)
 	}
 	spec := evalkit.RunSpec{
 		Profile: evalkit.Profile(profile), Model: model, Benchmark: manifest.ID, Split: manifest.Split,
-		Repeats: repeats, ForgeRef: forgeRef,
+		Repeats: repeats, ForgeRef: forgeRef, Variants: splitCSV(variants),
 		Budget: evalkit.Budget{WallclockEach: wallclock},
 	}
 	if err := spec.Validate(); err != nil {
@@ -499,8 +510,9 @@ func runEvalRun(cmd *cobra.Command, args []string) error {
 	}
 	sc, err := evalkit.RunBenchmark(cmd.Context(), spec, manifest, runner)
 	if err != nil {
-		return fmt.Errorf("BLOCKED: %v", err)
+		return evalRunError(spec, err)
 	}
+	notePreflightEscape(sc.Preflight)
 	evalDir, err := skillseval.EvalDir()
 	if err != nil {
 		return err
@@ -511,12 +523,64 @@ func runEvalRun(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("SCORECARD | " + sc.Header)
 	fmt.Printf("pass@1 %.3f（n=%d）pass^k 曲线：%v\n", sc.Pass1.Value, sc.Pass1.Denominator, formatPassK(sc.PassKCurve))
+	fmt.Println(formatLeakage(sc.Leakage))
+	fmt.Printf("preflight=%s perturbation=%s\n", sc.Preflight.Status, sc.Perturbation)
+	for _, r := range sc.ReviewQueue {
+		fmt.Printf("  需复核：%-32s %-12s 通过率 %.2f tokens %d\n", r.TaskID, r.Reason, r.PassRate, r.Tokens)
+	}
 	fmt.Printf("tokens %d cost $%.4f budget_cuts %d\n", sc.TotalTokens, sc.TotalCostUSD, sc.BudgetCuts)
 	if sc.Note != "" {
 		fmt.Println("注：" + sc.Note)
 	}
 	fmt.Printf("scorecard：%s\n", path)
 	return nil
+}
+
+// notePreflightEscape lands the escape-hatch row and warns when the preflight
+// was actually skipped by FORGE_EVAL_PREFLIGHT=skip — a backend without
+// baselines (n/a) skips nothing, so it records nothing (shared by eval run /
+// decompose).
+//
+// notePreflightEscape 仅在 preflight 确实因 FORGE_EVAL_PREFLIGHT=skip 被跳过时
+// 落逃生舱行并告警——不支持基线的后端（n/a）本来就没有可跳过的东西，不落行
+// （eval run / decompose 共用）。
+func notePreflightEscape(pf *evalkit.PreflightReport) {
+	if pf != nil && pf.Status == evalkit.PreflightSkipped {
+		evalkit.RecordPreflightEscape(evalRepoRoot())
+		fmt.Println("⚠ " + evalkit.PreflightDisableEnv + "=skip：preflight（oracle/do-nothing）未校验，本次分数证据封顶 Weak")
+	}
+}
+
+// evalRunError maps a preflight violation to the BLOCKED contract (audit row
+// + exit 2); other errors keep the existing BLOCKED-prefixed text.
+//
+// evalRunError 把 preflight 违例映射为 BLOCKED 契约（审计行 + exit 2）；其他错误
+// 沿用既有的 BLOCKED 前缀文案。
+func evalRunError(spec evalkit.RunSpec, err error) error {
+	var pe *evalkit.PreflightError
+	if errors.As(err, &pe) {
+		evalkit.RecordPreflightBlock(evalRepoRoot(), spec, pe)
+		fmt.Fprintln(os.Stderr, "BLOCKED: "+pe.Error())
+		return errHardExit
+	}
+	return fmt.Errorf("BLOCKED: %v", err)
+}
+
+// formatLeakage renders the leakage baseline next to pass@1.
+//
+// formatLeakage 把 leakage 基线渲染在 pass@1 旁。
+func formatLeakage(l *evalkit.LeakageSummary) string {
+	timedOut := ""
+	if l != nil && l.TimedOut > 0 {
+		timedOut = fmt.Sprintf("；%d 个任务的 leakage 臂超时未计入（调大 --wallclock）", l.TimedOut)
+	}
+	if l == nil || l.Status != evalkit.LeakageMeasured {
+		if timedOut != "" {
+			return "leakage（只读题面基线）=unmeasured——已声明的 leakage 臂全部无法判定" + timedOut
+		}
+		return "leakage（只读题面基线）=unmeasured——无 leakage 臂（manifest 未声明 leakage_cmd，或执行后端不支持基线）"
+	}
+	return fmt.Sprintf("leakage（只读题面基线）%.3f（%d/%d，Wilson %.2f–%.2f）%s", l.Rate.Value, l.Rate.Numerator, l.Rate.Denominator, l.Rate.Lo, l.Rate.Hi, timedOut)
 }
 
 func formatPassK(curve []evalkit.PassKPoint) string {
@@ -533,6 +597,7 @@ func runEvalDecompose(cmd *cobra.Command, args []string) error {
 	profilesFlag, _ := cmd.Flags().GetString("profiles")
 	repeats, _ := cmd.Flags().GetInt("repeats")
 	wallclock, _ := cmd.Flags().GetDuration("wallclock")
+	variants, _ := cmd.Flags().GetString("variants")
 	manifest, err := evalkit.LoadManifest(manifestPath)
 	if err != nil {
 		return fmt.Errorf("BLOCKED: %v", err)
@@ -544,6 +609,7 @@ func runEvalDecompose(cmd *cobra.Command, args []string) error {
 	spec := evalkit.RunSpec{
 		Model: "grid", Benchmark: manifest.ID, Split: manifest.Split, Repeats: repeats,
 		ForgeRef: "decompose", Budget: evalkit.Budget{WallclockEach: wallclock},
+		Variants: splitCSV(variants),
 	}
 	runner, sandbox, degraded := evalkit.SelectRunner(manifest, os.Getenv(evalkit.SmokeManifestEnv) != "")
 	if degraded {
@@ -553,8 +619,11 @@ func runEvalDecompose(cmd *cobra.Command, args []string) error {
 	}
 	rep, err := evalkit.RunDecompose(cmd.Context(), grid, spec, manifest, runner)
 	if err != nil {
-		return fmt.Errorf("BLOCKED: %v", err)
+		blocked := spec
+		blocked.Profile = "grid" // 审计行里标明这是整张网格的 preflight，而非某一档 profile
+		return evalRunError(blocked, err)
 	}
+	notePreflightEscape(rep.Preflight)
 	evalDir, err := skillseval.EvalDir()
 	if err != nil {
 		return err
@@ -735,6 +804,7 @@ func init() {
 	goldenRun.Flags().Int("repeats", 3, "每用例重放次数（确定性判定）")
 	goldenRun.Flags().Bool("rewrite-manifest", false, "轮换后重钉指纹")
 	goldenRun.Flags().Bool("json", false, "输出 JSON")
+	goldenRun.Flags().Bool("release", false, "发版运行：连同 test 层用例一起跑（每次给 test 层查询计数 +1 并落审计行）")
 
 	golden := &cobra.Command{Use: "golden", Short: "golden 标注集（precision/recall 基线）"}
 	goldenPrivateInit := &cobra.Command{
@@ -815,6 +885,7 @@ func init() {
 	runCmd.Flags().Int("repeats", 2, "每任务重复次数")
 	runCmd.Flags().Duration("wallclock", 10*time.Second, "单任务墙钟预算")
 	runCmd.Flags().String("forge-ref", "self", "forge 版本标识（四元组之一）")
+	runCmd.Flags().String("variants", "", "逗号分隔的语义等价 prompt 变体（≥3 个才计入 CI 的扰动方差源；经 FORGE_EVAL_VARIANT 交给任务命令）")
 	evalCmd.AddCommand(runCmd)
 	evalCmd.AddCommand(newEvalOracleCmd())
 
@@ -828,6 +899,7 @@ func init() {
 	decompose.Flags().String("profiles", "off,gates-only,full", "逗号分隔 profile（≥2）")
 	decompose.Flags().Int("repeats", 2, "每格重复次数")
 	decompose.Flags().Duration("wallclock", 10*time.Second, "单任务墙钟预算")
+	decompose.Flags().String("variants", "", "逗号分隔的语义等价 prompt 变体（≥3 个才计入 CI 的扰动方差源）")
 	evalCmd.AddCommand(decompose)
 
 	auditVerify := &cobra.Command{

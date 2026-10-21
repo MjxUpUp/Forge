@@ -163,6 +163,7 @@
         "models",
         "profiles",
         "repeats",
+        "variants",
         "wallclock"
       ]
     },
@@ -197,6 +198,7 @@
       "flags": [
         "dir",
         "json",
+        "release",
         "repeats",
         "rewrite-manifest"
       ]
@@ -268,6 +270,7 @@
         "model",
         "profile",
         "repeats",
+        "variants",
         "wallclock"
       ]
     },
@@ -1262,8 +1265,10 @@
     "eval-decompose",
     "eval-golden-rotate",
     "eval-golden-run",
+    "eval-golden-test-query",
     "eval-judge-weak",
     "eval-metrics-incomplete",
+    "eval-preflight",
     "eval-resume-drill",
     "eval-run",
     "eval-traps-run",
@@ -1300,6 +1305,7 @@
     "FORGE_ACCEPTANCE_GATE",
     "FORGE_ARTIFACT_CHAIN",
     "FORGE_DOC_GATE",
+    "FORGE_EVAL_PREFLIGHT",
     "FORGE_GATE_CMD_FORM",
     "FORGE_GATE_PUSH",
     "FORGE_HAZARD_PENDING",
@@ -1799,6 +1805,10 @@
     },
     {
       "file": "internal/dashboard/feed.go",
+      "count": 1
+    },
+    {
+      "file": "internal/evalkit/preflight.go",
       "count": 1
     },
     {

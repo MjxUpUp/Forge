@@ -85,6 +85,7 @@ var allCheckNames = []CheckName{
 	CheckCrossRepoImpact, CheckProjectSync, CheckTaskStarted,
 	CheckEvalMetricsIncomplete, CheckEvalGoldenRun, CheckEvalGoldenRotate, CheckEvalJudgeWeak,
 	CheckEvalTrapsRun, CheckEvalRun, CheckEvalDecompose, CheckEvalResumeDrill, CheckEvalAuditForged,
+	CheckEvalPreflight, CheckEvalGoldenTestQuery,
 	CheckWedgeDrill,
 	CheckSelfReport, CheckGatePush, CheckTaskStalled, CheckSyncVersionSkew,
 	CheckLoopExhausted, CheckAcceptanceRecurrence,

@@ -96,6 +96,19 @@ func TestEvalRunScriptedE2E(t *testing.T) {
 	if !strings.Contains(out, "pass@1 0.667") {
 		t.Fatalf("scripted 冒烟 pass@1 应为 0.667：%s", out)
 	}
+	// R3/R4：scripted 后端不支持基线 → preflight=n/a 且 leakage 如实标 unmeasured；
+	// 未声明变体 → perturbation=unmeasured。
+	for _, want := range []string{"preflight=n/a perturbation=unmeasured", "leakage（只读题面基线）=unmeasured"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("输出缺 %q：%s", want, out)
+		}
+	}
+	out, _, code = runForge(t, repoRoot, "eval", "run",
+		"--manifest", manifest, "--profile", "full", "--model", "smoke-model",
+		"--repeats", "1", "--variants", "v1,v2,v3")
+	if code != 0 || !strings.Contains(out, "perturbation=measured") {
+		t.Fatalf("3 个变体应 perturbation=measured（exit %d）：%s", code, out)
+	}
 }
 
 func TestEvalReportE2E(t *testing.T) {

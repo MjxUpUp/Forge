@@ -8,14 +8,19 @@
 # 真实 TB 任务包的接入方式：把 Harbor task 目录的 instruction/environment/tests
 # 冻结成行（image 预拉取，test_cmd 为TB 测试入口），按 difficulty_band 分层抽样
 # 后追加任务行；frozen split 指纹由 LoadManifest 内容哈希承载。
+# 有效性前置（preflight，容器后端）：每个带 test_cmd 的任务必须声明 oracle_cmd
+# （参考解）——开跑前 oracle_cmd && test_cmd 必须通过、只跑 test_cmd 必须失败，
+# 否则拒绝启动（exit 2）。所以 test_cmd 要检查 run_cmd 的产物，不能检查镜像里
+# 本来就有的东西。可选 leakage_cmd：只读题面的退化解，得分与主分数并列披露。
 id: tb-frozen-example
 version: 1.0.0
 split: frozen
 tasks:
   - id: tb-hello-container
     image: "alpine:3.20"
-    run_cmd: "echo container-ok"
-    test_cmd: "test -f /etc/os-release"
+    run_cmd: "echo container-ok > /tmp/out"
+    test_cmd: "grep -q container-ok /tmp/out"
+    oracle_cmd: "echo container-ok > /tmp/out"
     command: "true"
     difficulty_band: easy
     pollution_flag: ""
