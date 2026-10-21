@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.80.0](https://github.com/MjxUpUp/Forge/compare/v1.79.2...v1.80.0) (2026-10-21)
+
+
+### Features
+
+* **loop:** loop 契约 B1——验收同因复发判定、循环判词、预算段、死路记忆、Loop 规程 ([#117](https://github.com/MjxUpUp/Forge/issues/117)) ([dc07157](https://github.com/MjxUpUp/Forge/commit/dc07157f9f042dfcf4fa376ed55d320f67bc3b3b))
+
+
+### Bug Fixes
+
+* **hooks:** root-cause windows-latest flakes — MSYS /tmp noise, dedup clock floor, deadlock watchdog ([#114](https://github.com/MjxUpUp/Forge/issues/114)) ([2c7778f](https://github.com/MjxUpUp/Forge/commit/2c7778f6a7ccd1cea2cafb209432398286e5485d))
+
 ## [1.79.2](https://github.com/MjxUpUp/Forge/compare/v1.79.1...v1.79.2) (2026-10-20)
 
 
