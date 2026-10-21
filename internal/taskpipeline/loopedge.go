@@ -243,8 +243,21 @@ func CheckLoopExhausted(root string, state *TaskState) []string {
 	return []string{fmt.Sprintf("回环耗尽（%s）: %s——升级人工裁决（forge task finding --reset-loop --note \"<裁决>\"）", ex.Reason, ex.Detail)}
 }
 
+// clearFailHistory drops every criterion's FailHistory — the human reset is the
+// only exit of an acceptance-recurrence verdict (loop-contract B1-1), so the
+// window must restart from the new direction.
+//
+// clearFailHistory 清空每条验收的 FailHistory——人工重置是 acceptance-recurrence
+// 判词的唯一出口（loop 契约 B1-1），窗口必须从新方向重新起算。
+func clearFailHistory(s *TaskState) {
+	for i := range s.Acceptance {
+		s.Acceptance[i].FailHistory = nil
+	}
+}
+
 // ResetLoopExhaustion clears the exhaustion state after a human decision
-// (`forge task finding --reset-loop --note`) and restarts the loop budget:
+// (`forge task finding --reset-loop --note`) and restarts the loop budget
+// (and clears every FailHistory, see clearFailHistory):
 // LoopResetRound = len(ReviewRounds)+1, so open findings age from the next
 // review cycle (a full fresh budget of max_rounds). Audit row lands; the
 // caller's state is updated in step with disk. ResolvedPrints are retained —
@@ -262,6 +275,7 @@ func ResetLoopExhaustion(root string, state *TaskState, note string) error {
 		resetRound = len(s.ReviewRounds) + 1
 		s.LoopResetRound = resetRound
 		s.LoopResetAt = &now
+		clearFailHistory(s)
 		return nil
 	}); err != nil {
 		return err
@@ -269,6 +283,7 @@ func ResetLoopExhaustion(root string, state *TaskState, note string) error {
 	state.LoopExhausted = nil
 	state.LoopResetRound = resetRound
 	state.LoopResetAt = &now
+	clearFailHistory(state)
 	recordAudit(root, &checklog.Entry{
 		Check:   checklog.CheckLoopExhausted,
 		Passed:  true,
