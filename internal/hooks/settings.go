@@ -228,14 +228,15 @@ func ForgeHookSpec() map[string][]HookMatcher {
 		// 按官方文档核实，见 buildCodexHooks/cursorEventName）：claude-code 与
 		// codex 两个 event 都接；cursor 接 UserPromptSubmit（映射
 		// beforeSubmitPrompt）但没有 post-compaction 事件（preCompact 仅观察型，
-		// 承载不了重注入契约）——cursor 在压缩场景靠 SessionStart 的 tl;dr tier 缓解。
+		// 承载不了重注入契约）——cursor 压缩后不自动重注入接续上下文（SessionStart
+		// 自 2026-10 按需拉取起只输出横幅，不再是接续兜底），需要时 forge task resume 手动拉回。
 		// windsurf 的 Cascade 名册同样没有 PostCompact，其 UserPromptSubmit 组
 		// （resume-reinject/skill-trigger）刻意未接：没有 PostCompact 则 compact-resume
 		// 永不置重注入标志，resume-reinject 挂上也恒静默——pre_user_prompt 通道改载
 		// SessionStart 组（由 TestWindsurfWiringMirrorsClaudeSettings 的负向断言钉住）。
 		// opencode 的 TS plugin 只接 tool-hook 入口、不读 ForgeHookSpec，故
 		// SessionStart/Stop/UserPromptSubmit/PostCompact 四组在其上永不触发（已知缺口，
-		// 登记于 opencode.go 头注释；压缩场景接续在可用处依赖 SessionStart tier）。
+		// 登记于 opencode.go 头注释）。
 		"PostCompact": []HookMatcher{
 			{
 				Hooks: []HookEntry{

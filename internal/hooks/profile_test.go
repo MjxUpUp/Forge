@@ -64,7 +64,9 @@ func TestForgeHookSpecForProfile_Tiers(t *testing.T) {
 		t.Errorf("lite 基线 6 事件/13 条目（改白名单须同步本断言与文档），got %d 事件/%d 条目", liteE, liteN)
 	}
 
-	// 核心集必须全在 lite：缺任一即破坏管线或丢拦截/HITL 决策点。
+	// 核心集必须全在 lite：缺任一即破坏管线或丢拦截/HITL 决策点。task-resume 自 2026-10
+	// 按需拉取起只输出 [forge-session] 横幅——它留在 lite 是因为横幅是用户级指令段的激活
+	// 信号（缺了 forge 协议整段不生效），不再是因为接续注入。
 	liteNames := specHookNames(lite)
 	for _, must := range []string{"task-guard", "bash-guard", "hazard-guard", "file-sentinel", "tool-track", "task-verify", "review-stop", "freeze-guard", "gate-cmd-form", "task-resume"} {
 		if !liteNames[must] {

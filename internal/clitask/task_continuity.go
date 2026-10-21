@@ -6,14 +6,11 @@ import (
 	"os"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/MjxUpUp/Forge/internal/attribution"
-	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
-	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -83,8 +80,10 @@ func init() {
 	taskResumeCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskResumeCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
 	taskResumeCmd.Flags().Bool("no-attach", false, "仅查看，不把当前 session 锚定到 task")
-	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：零未完成任务静默退出；有唯一活跃任务 attach 当前 session 并输出 PASS+接续视图；多任务歧义输出 PASS+候选清单（供 forge hook task-resume 调用）")
+	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：只输出 PASS+[forge-session] 横幅一行，不注入接续视图、不锚定 session、不改任何任务状态（接续改由用户主动发起；供 forge hook task-resume 调用）")
 	taskResumeCmd.Flags().Bool("compact-flag", false, "PostCompact hook 模式：压缩完成时标记「刚压缩过」（有 session ID 写 per-session sentinel，无则置 ResumeStale；压缩根治层·设标志半边，gap#2；供 forge hook compact-resume 调用）")
+	taskResumeCmd.Flags().String("match", "", "按关键词模糊匹配未完成任务（ref/标题/分支/目标；容忍错拼、乱序、缩写、中文片段），只列候选、不锚定不认领——agent 让用户确认后再 resume --ref")
+	addScopeFlags(taskResumeCmd)
 	taskResumeCmd.Flags().Bool("reinject", false, "UserPromptSubmit hook 模式：若本 session 刚压缩（per-session sentinel 或 legacy ResumeStale）则重注入完整 handoff 并清标记（压缩根治层·重注入半边，gap#2；供 forge hook resume-reinject 调用）")
 
 	taskContextCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -186,36 +185,26 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// hook 模式（SessionStart 自动注入；bash thin wrapper `exec forge task resume --hook`）：
-	// 无歧义活跃任务 → attach 当前 session + 输出 "PASS\n<handoff>"；多任务在进行且无
-	// 上下文匹配 → 输出 "PASS\n<盘点清单>"；零未完成任务 → 静默（不注入、不报错）。
-	// runHook 的 extractDetail 去掉 PASS 前缀取 detail，detail 经通用 truncate 兜底注入
-	// additionalContext。任何分支都 exit 0——SessionStart 绝不因 resume 阻塞。
+	// hook 模式（SessionStart；bash thin wrapper `exec forge task resume --hook`）：只输出
+	// managed 横幅一行。接续改为按需拉取（docs/plans/task-resume-pull-model-2026-10-proposal.md）：
+	// 会话启动不注入接续视图/候选清单/待认领推送，也不锚定 session——用户说「继续某某任务」
+	// 时 agent 走 resume --match，说「还有哪些任务没完成」时走 task list --open。
 	if hookMode {
-		root, err := projectroot.Find()
-		if err != nil {
+		if _, err := projectroot.Find(); err != nil {
 			return nil // 非 forge 项目（runHook 对非全局 hook 已 outputAllow exit，双保险）
 		}
-		out, err := renderHookResume(root)
-		if err != nil {
-			// advisory hook：任何失败都降级到 stderr 提示 + exit 0，绝不阻塞 SessionStart。
-			// err 来自 attachCurrentSession 的 SaveTaskState 失败（极端边界如磁盘故障）；若
-			// return err，cobra exit 1，bash wrapper 也 exit 1，runHook 走 Decision:block 分支，
-			// 违反上方承诺的任何分支都 exit 0。降级而非阻塞是 advisory hook 的正确语义。
-			fmt.Fprintf(os.Stderr, "[forge] task-resume advisory hook failed: %v\n", err)
-			return nil
-		}
-		// P3 managed 会话横幅：managed 项目 SessionStart 恒输出一行激活信号——
-		// 用户级指令段（~/.claude/CLAUDE.md 等）的激活判据锚定在这里（模型可见的
-		// 机械信号，取代"是否已 init"这种模型无法判定的条件）。无活跃任务时原
-		// 静默，现输出横幅（每会话一行，噪声预算内）。
-		banner := "[forge-session] 本项目由 forge 管理（managed）——forge 质量协议生效（用户级指令段以本行为激活信号）；退出运行 forge off。"
-		if out == "" {
-			fmt.Print("PASS\n" + banner + "\n")
-		} else {
-			fmt.Print("PASS\n" + banner + "\n" + strings.TrimPrefix(out, "PASS\n"))
-		}
+		fmt.Print(renderHookBanner())
 		return nil
+	}
+
+	if cmd.Flags().Changed("match") {
+		return runTaskResumeMatch(cmd, asJSON)
+	}
+	if ws, _ := cmd.Flags().GetBool("workspace"); ws {
+		return fmt.Errorf("--workspace 只配合 --match 使用")
+	}
+	if all, _ := cmd.Flags().GetBool("all-projects"); all {
+		return fmt.Errorf("--all-projects 只配合 --match 使用")
 	}
 
 	state, root, err := loadTaskOrActive(cmd)
@@ -278,6 +267,50 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// runTaskResumeMatch handles `resume --match`: list candidates only, never attach or claim.
+//
+// runTaskResumeMatch 处理 `resume --match`：只列候选，绝不锚定、不认领、不写任何状态
+// （方案 REQ-4/INV-2）——用户确认之后 agent 再跑 resume --ref 才接手。零命中不是错误：
+// JSON 输出空数组、文本给一行提示，exit 0。
+func runTaskResumeMatch(cmd *cobra.Command, asJSON bool) error {
+	if ref, _ := cmd.Flags().GetString("ref"); ref != "" {
+		return fmt.Errorf("--match 与 --ref 二选一：--match 列候选，确认后用 --ref 接手")
+	}
+	raw, _ := cmd.Flags().GetString("match")
+	query, err := validateMatchQuery(raw)
+	if err != nil {
+		return err
+	}
+	scope, err := scopeFromFlags(cmd)
+	if err != nil {
+		return err
+	}
+	groups, err := collectScopedTasks(scope, stderrWriter)
+	if err != nil {
+		return err
+	}
+	hits := matchTasks(query, groups)
+	if asJSON {
+		if hits == nil {
+			hits = []openTaskEntry{}
+		}
+		out, _ := json.MarshalIndent(hits, "", "  ")
+		fmt.Println(string(out))
+		return nil
+	}
+	quoted := stripUnsafeControl(query)
+	if len(hits) == 0 {
+		fmt.Printf("没有匹配「%s」的未完成任务（forge task list --open 查看全部）\n", quoted)
+		return nil
+	}
+	fmt.Printf("匹配「%s」的未完成任务（%d 个候选）：\n", quoted, len(hits))
+	for i, e := range hits {
+		fmt.Printf("%s — 匹配 %s，得分 %d\n", renderOpenEntryLine(i+1, e, scope != scopeProject), e.MatchedOn, e.Score)
+	}
+	fmt.Println("→ 让用户确认是哪个任务后运行 forge task resume --ref <ref>（其他项目的候选需先进入该项目目录）")
+	return nil
+}
+
 // attachCurrentSession 把当前 session 锚定到 task（多向锚定的接手方动作）。返回 (attached, error)：
 // attached=true 表示实际新增了 session 链接（首次锚定）；已锚定或探测失败返 false 不报错。
 // silent=true（hook 模式）不输出 stderr 提示——hook 的 stderr 用户不可见，attach 是静默副作用。
@@ -300,20 +333,8 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 		}
 		return false, nil
 	}
-	// 在 per-task 锁内重载再改：传入的 state 是取锁前加载的，可能已过期（其他
-	// worktree 的并发 attach/decide）。
-	attached := false
-	err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-		if s.HasSession(sid) {
-			return nil
-		}
-		s.AddSession(sid, tool)
-		// 新锚定 = 本机接手工作——认领节点租约，让 advisory 追踪真正在干活的机器
-		// 而非任务创建者（fail-open、仅 advisory；sync-convergence.md §4）。
-		taskpipeline.ClaimLeaseForCurrentNode(s)
-		attached = true
-		return nil
-	})
+	// 锁内重载、AddSession、认领租约都在 taskpipeline.AttachSession（与 task-guard 懒挂接共用）。
+	attached, err := taskpipeline.AttachSession(root, state.TaskRef, sid, tool)
 	if err != nil {
 		return false, fmt.Errorf("锚定 session 失败: %w", err)
 	}
@@ -323,44 +344,20 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 	return attached, nil
 }
 
-// renderHookResume 产出 SessionStart hook 模式输出。有无歧义的活跃任务时 attach 当前
-// session（silent）+ 返 "PASS\n<handoff>"（一行列出其余在进行任务）。无则兜底
-// renderTaskInventory：有任务在进行给紧凑候选清单，零任务才返 ""（静默）。把
-// findProjectRoot 之外的纯逻辑提出，供 runTaskResume 的 hook 分支与单元测试共用
-// （测试直接传 root，不依赖 cwd）。截断交给 runHook 通用路径
-// （cli hook 链的本地 truncate——定义在 cli/trace.go、调用在 hook_emitters.go：
-// detail, maxAdditionalContextLen）。
-func renderHookResume(root string) (string, error) {
-	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-	if state == nil {
-		// 无无歧义的活跃任务（≥2 个在进行，或分支不匹配）：兜底为全部未完成任务的
-		// 盘点。服务的交互流程：用户唤起 agent → agent 检查有无进行中的任务 → 接续
-		// 某个（用户选择）或开新任务。此前这条路径静默——多任务在进行时流程第 2 步
-		// 就断了：agent 根本不知道有任务存在。
-		return appendOfferedBlock(root, nil, renderTaskInventory(root)), nil
-	}
-	if _, err := attachCurrentSession(state, root, true); err != nil {
-		return "", err
-	}
-	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), loopVerdictHeader(root, state), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
-	// 当前任务自动接续，但接手方仍应知道完整的在进行集合——一行列出其余未完成任务。
-	// 列表带上限（僵尸任务堆积会产生巨长行，把收尾的纪律行顶过 runHook 的尾部截断），
-	// 且拼接后对整个 handoff 重新 strip：TaskRef 来自用户 --ref 输入，renderResume 的
-	// strip 在插入之前就跑了（code-review P1——与 renderTaskInventory 先构建后 strip
-	// 不对称的 ANSI 注入）。
-	if others := otherIncompleteTasks(root, state.TaskRef); len(others) > 0 {
-		shown := others
-		suffix := ""
-		if len(shown) > inventoryListCap {
-			shown = shown[:inventoryListCap]
-			suffix = fmt.Sprintf(" 等 %d 个", len(others))
-		}
-		handoff = stripUnsafeControl(strings.Replace(handoff,
-			"→ 接续纪律用 session-continuity skill",
-			fmt.Sprintf("另有 %d 个未完成任务: %s（forge task resume --ref <ref> 可切换）\n→ 接续纪律用 session-continuity skill",
-				len(others), strings.Join(shown, ", ")+suffix), 1))
-	}
-	return appendOfferedBlock(root, state, passPrefix+handoff), nil
+// managedSessionBanner is the one-line activation signal SessionStart emits for managed projects.
+//
+// managedSessionBanner 是 managed 项目 SessionStart 输出的唯一一行激活信号——用户级指令段
+// （~/.claude/CLAUDE.md 等）的激活判据锚定在这里（模型可见的机械信号，取代"是否已 init"这种
+// 模型无法判定的条件）。文本是契约：改动会让用户级指令段失效（task_continuity_banner_test 钉住）。
+const managedSessionBanner = "[forge-session] 本项目由 forge 管理（managed）——forge 质量协议生效（用户级指令段以本行为激活信号）；退出运行 forge off。"
+
+// renderHookBanner returns the SessionStart hook output: the PASS marker plus the managed banner, nothing else.
+//
+// renderHookBanner 返回 SessionStart hook 的完整输出：PASS 标记 + managed 横幅，别无其他。纯函数、
+// 不读不写任务状态——会话启动不注入接续视图、不锚定 session、不推送待认领（按需拉取方案 REQ-1/INV-1）。
+// runHook 的 extractDetail 去掉 PASS 前缀取 detail 注入 additionalContext。
+func renderHookBanner() string {
+	return passPrefix + managedSessionBanner + realNewlineString
 }
 
 // realNewlineString 是单个换行，不用 \n rune 字面也不用双引号源字面——Windows 引号腐蚀会把 Go
@@ -396,240 +393,9 @@ func tryAutoClaim(root, ref, agent string) (bool, error) {
 	return claimed, nil
 }
 
-// appendOfferedBlock appends the additive "待认领" notification (design §8 ②) to the existing
-// SessionStart output. Additive: it never alters the existing handoff/inventory, only appends —
-// overlap with the inventory is acceptable (the user explicitly chose this over precedence). No-op
-// (returns out unchanged) when: the agent is unknown (codex/cursor/opencode/codebuddy attribution
-// gap — agent-neutral); no offered-to-me tasks; offered-zombies (excluded — a >7d-stale offer is
-// exactly the noise this push avoids; zombies surface via task mine/dashboard); the active task
-// itself (in the handoff branch it can be an offered-to-me task resolved via branch/single-incomplete
-// — listing it as "待认领" while also handing it off would be contradictory); or nothing freshly
-// notifiable after NotifiedAt dedup. NotifiedAt is set to now via MutateTaskState ONLY on actual emit
-// (gated by a non-empty fresh set + non-empty block); the in-lock Status==AssignOffered guard
-// prevents clobbering a concurrent claim/abandon.
-//
-// appendOfferedBlock 把「待认领」通知（设计 §8 ②）附加到现有 SessionStart 输出之后。additive：
-// 绝不改动现有 handoff/盘点，只追加——与盘点的重叠可接受（用户显式选择此方案而非优先级）。下列情况
-// 返 out 不变（no-op）：agent 未知（codex/cursor/opencode/codebuddy 归因缺口——agent-neutral）；无
-// offered 给我的任务；offered 僵尸（排除——>7d 的陈旧 offer 正是本推送要避免的噪声，僵尸经 task
-// mine/看板上浮）；活跃任务自身（handoff 分支里它可能是个经 branch/单任务解析出的 offered 给我的
-// 任务——一边 handoff 一边又列「待认领」会自相矛盾）；或 NotifiedAt 去重后无可新鲜推送的。
-// NotifiedAt 仅在实际推送时（非空 fresh 集 + 非空 block）经 MutateTaskState 设为 now；锁内
-// Status==AssignOffered 守卫防覆盖并发的 claim/abandon。
-func appendOfferedBlock(root string, active *taskpipeline.TaskState, out string) string {
-	agent := ResolveOriginTool(root, ``)
-	if agent == `` {
-		return out
-	}
-	all, err := taskpipeline.ListTaskStates(root)
-	if err != nil {
-		return out
-	}
-	now := time.Now()
-	activeRef := ``
-	if active != nil {
-		activeRef = active.TaskRef
-	}
-	var fresh []*taskpipeline.TaskState
-	for _, s := range all {
-		if s == nil || !s.IsOfferedTo(agent) {
-			continue
-		}
-		if s.TaskRef == activeRef {
-			continue // 活跃任务已 handoff，不重复列待认领
-		}
-		if z, _ := taskpipeline.IsOfferedZombie(s, now); z {
-			continue // 僵尸 offered 任务不推送（避免轰炸，僵尸经 mine/看板上浮）
-		}
-		if s.Assignment.ShouldNotify(now) {
-			fresh = append(fresh, s)
-		}
-	}
-	if len(fresh) == 0 {
-		return out
-	}
-	block := renderOfferedBlock(active, fresh, root)
-	if block == `` {
-		return out
-	}
-	// 仅在实际推送时落 NotifiedAt（锁内重载 + Status 守卫防并发覆盖）。
-	for _, s := range fresh {
-		ref := s.TaskRef
-		_ = taskpipeline.MutateTaskState(root, ref, func(st *taskpipeline.TaskState) error {
-			if st.Assignment != nil && st.Assignment.Status == taskpipeline.AssignOffered {
-				t := now
-				st.Assignment.NotifiedAt = &t
-			}
-			return nil
-		})
-	}
-	trimmed := strings.TrimRight(out, realNewlineString)
-	if trimmed == `` {
-		return passPrefix + block
-	}
-	return trimmed + realNewlineString + block
-}
-
-// renderOfferedBlock renders the tiered "待认领" block (design §8 ②). When the active task is part of
-// an orchestration chain (has a ParentTaskRef), same-chain offered siblings are listed with a per-line
-// readiness marker (✅可开干 / ⏳阻塞中, ready-first then ref-ascending); any non-sibling offered
-// tasks collapse to a count. Otherwise (no active, or active not in a chain) the whole set collapses
-// to a one-line count. Readiness reuses PendingDependencies (the same primitive task mine --blocked
-// uses), so push and gate cannot disagree. Output is ANSI-stripped (refs/summaries are user-controlled).
-//
-// renderOfferedBlock 渲染分档「待认领」块（设计 §8 ②）。活跃任务属编排链（有 ParentTaskRef）时，
-// 同链 offered 兄弟逐行列出并带就绪标记（✅可开干 / ⏳阻塞中，就绪优先再按 ref 升序）；非同链的
-// offered 折叠成计数。否则（无活跃，或活跃不在链中）整集折叠成一行计数。就绪复用
-// PendingDependencies（task mine --blocked 同原语），使推送与门禁不会不一致。输出经 ANSI 剥离
-// （ref/标题为用户可控）。
-func renderOfferedBlock(active *taskpipeline.TaskState, offered []*taskpipeline.TaskState, root string) string {
-	siblings := offeredChainSiblings(active, offered)
-	var others []*taskpipeline.TaskState
-	if len(siblings) > 0 {
-		seen := make(map[string]bool, len(siblings))
-		for _, s := range siblings {
-			seen[s.TaskRef] = true
-		}
-		for _, s := range offered {
-			if !seen[s.TaskRef] {
-				others = append(others, s)
-			}
-		}
-	} else {
-		others = offered
-	}
-	// 预算就绪一次（PendingDependencies 每调一次都做磁盘 I/O），让排序比较器与逐行标记共用一次
-	// 查询，而非 O(n log n) 次冗余 load。
-	readyMap := make(map[string]bool, len(siblings))
-	for _, s := range siblings {
-		readyMap[s.TaskRef] = len(taskpipeline.PendingDependencies(root, s.DependsOn)) == 0
-	}
-	ready := func(s *taskpipeline.TaskState) bool { return readyMap[s.TaskRef] }
-	var b strings.Builder
-	w := func(s string) { b.WriteString(s); b.WriteString(realNewlineString) }
-	if len(siblings) > 0 {
-		sort.SliceStable(siblings, func(i, j int) bool {
-			ri, rj := ready(siblings[i]), ready(siblings[j])
-			if ri != rj {
-				return ri // 就绪优先
-			}
-			return siblings[i].TaskRef < siblings[j].TaskRef
-		})
-		w(`【同链待认领（按就绪序）】`)
-		for _, s := range siblings {
-			mark := `⏳阻塞中`
-			if ready(s) {
-				mark = `✅可开干`
-			}
-			line := `  ` + mark + `  ` + s.TaskRef
-			if s.Summary != `` {
-				line += ` — ` + util.TruncateRunes(s.Summary, inventoryFieldCap)
-			}
-			w(line)
-		}
-		if len(others) > 0 {
-			w(fmt.Sprintf(`另有 %d 个非同链待认领（forge task mine 查看）`, len(others)))
-		}
-		w(`→ forge task resume --ref <ref> 接手同链任务，或 forge task mine 查看全部`)
-	} else {
-		w(fmt.Sprintf(`本 project 有 %d 个待认领任务（forge task mine 查看，或 forge task resume --ref <ref> 接手）`, len(others)))
-	}
-	return strings.TrimRight(stripUnsafeControl(b.String()), realNewlineString)
-}
-
-// offeredChainSiblings 返回 `offered` 中 ParentTaskRef 等于 active.ParentTaskRef 的子集（v1 链定义：
-// 精确串匹配——一个编排器派 N 个子任务、各子共享父 ref 的典型 fan-out）。active 为 nil 或无父时
-// 返 nil（「active 即编排器」回落到一行式——编排器用 task mine/看板；SessionStart 推送面向 worker）。
-// 上溯到根编排器与兄弟间 DependsOn 拓扑推迟到 v2。
-func offeredChainSiblings(active *taskpipeline.TaskState, offered []*taskpipeline.TaskState) []*taskpipeline.TaskState {
-	if active == nil || active.ParentTaskRef == `` {
-		return nil
-	}
-	var out []*taskpipeline.TaskState
-	for _, o := range offered {
-		if o == nil {
-			continue
-		}
-		if o.ParentTaskRef == active.ParentTaskRef && o.TaskRef != active.TaskRef {
-			out = append(out, o)
-		}
-	}
-	return out
-}
-
-// inventoryListCap 限定 SessionStart 盘点列出的任务数——输出每次会话启动都进
-// 上下文，必须保持紧凑。
-const inventoryListCap = 8
-
-// inventoryFieldCap 限定盘点单行内字段（标题/下一步）的长度。runHook 从尾部截断
-// （9500 字符），字段不设界会把末尾的 AskUserQuestion 引导行——盘点的存在意义——
-// 先切掉。
+// inventoryFieldCap 限定任务清单单行内字段（标题/下一步）的长度——task list --open 与
+// resume --match 的文本行共用，保持一任务一行可扫读。
 const inventoryFieldCap = 60
-
-// rune 截断已收敛 util.TruncateRunes（2026-09 代码普查 P3：本地曾是与 util 逐字
-// 相同的拷贝）。
-
-// otherIncompleteTasks 返回 currentRef 之外其他未完成任务的 ref。
-func otherIncompleteTasks(root, currentRef string) []string {
-	all, err := taskpipeline.ListTaskStates(root)
-	if err != nil {
-		return nil
-	}
-	var refs []string
-	for _, s := range all {
-		if s.CompletedAt == nil && s.TaskRef != currentRef {
-			refs = append(refs, s.TaskRef)
-		}
-	}
-	return refs
-}
-
-// renderTaskInventory 为 SessionStart hook 的歧义场景渲染全部未完成任务的紧凑盘点：
-// 无无歧义的活跃任务但有工作在进行。仅当零任务在进行时返 ""（静默）——干净的
-// 新任务路径。末尾指示告诉 agent 用它自己的结构化提问工具（AskUserQuestion）让
-// 用户选择：hook 做不了交互式 HITL（已验证：kimi 无 ask 通道，SessionStart 在所有
-// host 上都是 observation-only），故 agent 是交互层。
-func renderTaskInventory(root string) string {
-	all, err := taskpipeline.ListTaskStates(root)
-	if err != nil {
-		return ""
-	}
-	var open []*taskpipeline.TaskState
-	for _, s := range all {
-		if s.CompletedAt == nil {
-			open = append(open, s)
-		}
-	}
-	if len(open) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	w := func(s string) { b.WriteString(s + "\n") }
-	w(fmt.Sprintf("检测到 %d 个未完成任务（无当前上下文匹配，需选择接续或开新任务）：", len(open)))
-	shown := open
-	if len(shown) > inventoryListCap {
-		shown = shown[:inventoryListCap]
-	}
-	for i, s := range shown {
-		line := fmt.Sprintf("  %d. %s", i+1, s.TaskRef)
-		if s.Branch != "" && s.Branch != s.TaskRef {
-			line += " [分支 " + s.Branch + "]"
-		}
-		if s.Summary != "" {
-			line += " — " + util.TruncateRunes(s.Summary, inventoryFieldCap)
-		}
-		line += " — 门禁 " + renderGateProgress(s)
-		if len(s.NextSteps) > 0 {
-			line += " — 下一步: " + util.TruncateRunes(s.NextSteps[0], inventoryFieldCap)
-		}
-		w(line)
-	}
-	if len(open) > inventoryListCap {
-		w(fmt.Sprintf("  …还有 %d 个（forge task list 查看全部）", len(open)-inventoryListCap))
-	}
-	w("→ 用结构化提问工具（AskUserQuestion）让用户选择：接续某个任务（forge task resume --ref <ref>），或开新任务（forge task start）。")
-	return "PASS\n" + stripUnsafeControl(strings.TrimRight(b.String(), "\n"))
-}
 
 // renderHookCompactFlag 产出 PostCompact hook 的副作用：为当前 session 标记「刚压缩过」。
 // 有 session ID（所有 hook 驱动的 host——runHook 注入 FORGE_SESSION_ID）时写
@@ -692,34 +458,8 @@ func renderHookReinject(root string) (string, error) {
 		stale = true
 	}
 	if !stale {
-		// 已知缺口（既有，非 P3 引入）：offered-tasks（"待认领"）块在此不恢复。
-		// appendOfferedBlock 在 SessionStart 期间无论 stdout 是否触达模型都推进 NotifiedAt，
-		// 故本回填跑时刚 offered 的任务读为已通知（ShouldNotify=false），块被省略。SessionStart
-		// 在 kimi 上本就丢了它；P3 恢复活跃任务 handoff（主价值）但保留 offered 块丢失现状。
-		// 彻底修复需在共享的 appendOfferedBlock（SessionStart 在所有 host 上用）内部把
-		// NotifiedAt 门控在实际送达上——是独立的更大改动。
-		//
-		// P3 冷启动回填：丢弃 SessionStart hook 输出的 host（kimi 0.35.0——SessionStart 在那里
-		// 是 observation-only，经 wire.jsonl 核实）永远收不到 SessionStart 的 renderHookResume
-		// 产出的冷启动 task handoff。UserPromptSubmit 是这些 host 唯一能触达的注入通道，故在此——
-		// 这类 session 的首个 prompt——回填同一份 handoff。门控为 sessionStartOutputDropped(agent)
-		// 且用 per-session sentinel 去重——一个 session 恰需一次冷启动 handoff。对 Claude Code/
-		// codex/... 静默（它们注入 SessionStart 输出，已拿到 handoff，回填会重复），对 kimi 首个
-		// prompt 之后也静默（sentinel 已设）。
-		agent := ResolveOriginTool(root, "")
-		if sid != "" && sessionStartOutputDropped(agent) && !taskpipeline.IsColdStartInjected(root, sid) {
-			// 先渲染，仅成功才设 sentinel：renderHookResume 唯一错误源是
-			// attachCurrentSession→MutateTaskState 在 per-task 锁超时/磁盘错误下。渲染失败时不设
-			// sentinel 使下个 prompt 重试回填；先标记会在渲染失败时持久化 sentinel 并永久抑制本
-			// session 的 handoff（code-review MEDIUM-1）。标记本身 best-effort（忽略错误）：失败只
-			// 冒下一次重复 handoff 的风险，绝不丢——镜像 compact-reinject 路径的「先发后尽力标记」。
-			out, err := renderHookResume(root)
-			if err != nil {
-				return "", err
-			}
-			_ = taskpipeline.MarkColdStartInjected(root, sid)
-			return out, nil
-		}
+		// 未压缩过：静默。丢弃 SessionStart 输出的 host（kimi）原有的冷启动 handoff 回填已随
+		// 按需拉取方案下线——冷启动不再推送接续视图，所有 host 一致（方案 REQ-2）。
 		return "", nil
 	}
 	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), loopVerdictHeader(root, state), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
@@ -738,25 +478,7 @@ func renderHookReinject(root string) (string, error) {
   forge task block --content "<卡住的事>"             # 若有阻塞
 `
 	}
-	// compact-reinject 刚交付了完整 handoff——这也满足冷启动。设 cold-start sentinel 使下个
-	// prompt（stale 已消费）不再经冷启动路径回填造成双注。best-effort：标记失败只冒一次重复
-	// handoff 的风险，无数据丢失。
-	_ = taskpipeline.MarkColdStartInjected(root, sid)
 	return "PASS\n" + handoff, nil
-}
-
-// sessionStartOutputDropped 报告给定 host agent 是否把 SessionStart hook stdout 丢弃出模型
-// 上下文——使 SessionStart task-resume 的 handoff 到不了模型。这类 host 需在 UserPromptSubmit
-// 通道（它们唯一能触达的注入通道）回填 handoff。已核实案例：kimi 0.35.0（SessionStart 为
-// observation-only，经 wire.jsonl 交叉验证：42 次编辑 + 39 次 Bash 仍 0 条 forge 文本触达模型；
-// 仅 UserPromptSubmit stdout 能触达，且滞后）。Claude Code/codex/cursor/windsurf/opencode/pi/
-// reasonix 注入 SessionStart 输出，不需回填，须保持排除——回填会与 SessionStart 已交付的 handoff
-// 重复。
-func sessionStartOutputDropped(agent string) bool {
-	// 由注册表派生（hostcap DroppedStdoutEvents）：任何丢弃 SessionStart
-	// stdout 的宿主都需要把 handoff 回填到 UserPromptSubmit。目前仅 kimi 符合。
-	h := hostcap.Lookup(agent)
-	return h != nil && h.DropsStdoutEvent("SessionStart")
 }
 
 func runTaskContext(cmd *cobra.Command, args []string) error {
