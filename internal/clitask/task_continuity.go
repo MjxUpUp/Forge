@@ -94,6 +94,7 @@ func init() {
 	taskDecideCmd.Flags().String("by", "", "确认方（工具/人，默认探测当前工具）")
 	taskDecideCmd.Flags().StringArray("affects", nil, "影响的文件/模块（可重复）")
 	taskDecideCmd.Flags().String("rationale", "", "为什么这么决定（HANDOFF 纪律：写为什么不只写是什么）")
+	taskDecideCmd.Flags().Bool("rejected", false, "记为已证伪方案（死路记忆，loop 契约 B1-4）：--content 写方案、--rationale 写失败证据；单独成节渲染，不列入已确认决策")
 	taskDecideCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 
 	taskNextCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -110,7 +111,7 @@ func init() {
 	taskFindingCmd.Flags().String("resolve", "", "要标 fixed 的发现 ID（与 --content 互斥）")
 	taskFindingCmd.Flags().String("ref", "", "指定任务引用（--stats 时省略 = 跨全部任务聚合）")
 	taskFindingCmd.Flags().Bool("stats", false, "跨任务聚合统计：按 Tag×Round 计数（session-retrospective 升级判据「同类打回 ≥3 次」的机器来源）")
-	taskFindingCmd.Flags().Bool("reset-loop", false, "人工裁决：清除回环耗尽态并清零修复轮次（--note 必填；审计行落地，终止权外置的唯一出口）")
+	taskFindingCmd.Flags().Bool("reset-loop", false, "人工裁决：清除回环耗尽态并重开回环预算（open finding 从下一轮重新计龄；--note 必填；审计行落地，终止权外置的唯一出口）")
 	taskFindingCmd.Flags().String("note", "", "--reset-loop 的人工裁决说明（必填，可审计）")
 
 	taskAttachCmd.Flags().String("ref", "", "任务引用（必填：要锚定到哪个任务）")
@@ -273,7 +274,7 @@ func runTaskResume(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000)))
+	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), loopVerdictHeader(root, state), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000)))
 	return nil
 }
 
@@ -341,7 +342,7 @@ func renderHookResume(root string) (string, error) {
 	if _, err := attachCurrentSession(state, root, true); err != nil {
 		return "", err
 	}
-	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
+	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), loopVerdictHeader(root, state), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
 	// 当前任务自动接续，但接手方仍应知道完整的在进行集合——一行列出其余未完成任务。
 	// 列表带上限（僵尸任务堆积会产生巨长行，把收尾的纪律行顶过 runHook 的尾部截断），
 	// 且拼接后对整个 handoff 重新 strip：TaskRef 来自用户 --ref 输入，renderResume 的
@@ -721,7 +722,7 @@ func renderHookReinject(root string) (string, error) {
 		}
 		return "", nil
 	}
-	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
+	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), loopVerdictHeader(root, state), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
 	// 方案4（中途 checkpoint 显式落盘·主动驱动）：压缩刚发生时，若任务未落盘任何「中途线程」
 	// （决策/下一步），handoff 只能复原 task start 时设的 goal/plan——而压缩丢的正是这期间的
 	// 工作记忆。此时追加强提示把 agent 推向 forge task decide/next 显式落盘，使下次压缩的
@@ -732,6 +733,7 @@ func renderHookReinject(root string) (string, error) {
 		handoff += `
 ⚠ 刚发生 context 压缩，但本任务尚未落盘任何中途决策/下一步——压缩丢的正是这段工作记忆，下次压缩仍会从零重建。现在立即显式落盘：
   forge task decide --content "<已确认的关键决策>"   # 不再推翻的决定
+  forge task decide --rejected --content "<试过且失败的方案>" --rationale "<失败证据>"   # 死路，不再重试
   forge task next "<当前在做>" "<接着做>"             # 下一步
   forge task block --content "<卡住的事>"             # 若有阻塞
 `
@@ -769,7 +771,7 @@ func runTaskContext(cmd *cobra.Command, args []string) error {
 		fmt.Println(string(out))
 		return nil
 	}
-	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000)))
+	fmt.Print(renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), loopVerdictHeader(root, state), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000)))
 	return nil
 }
 
@@ -788,13 +790,19 @@ func runTaskDecide(cmd *cobra.Command, args []string) error {
 	}
 	affects, _ := cmd.Flags().GetStringArray("affects")
 	rationale, _ := cmd.Flags().GetString("rationale")
+	rejected, _ := cmd.Flags().GetBool("rejected")
+	kind := ""
+	if rejected {
+		kind = tasktypes.DecisionKindDeadEnd
+	}
 	var d taskpipeline.Decision
 	dup := false
 	err = taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
 		// 内容级幂等：重试时 agent 会重跑同一 decide，相同内容此前每次都追加
-		// 重复条目（上下文回放把同一条决策显示成做了两次）。
+		// 重复条目（上下文回放把同一条决策显示成做了两次）。键含 Kind：先否决
+		// 再采纳同一方案是两条记录，不是重复（loop 契约 B1-4）。
 		for _, ex := range s.Decisions {
-			if ex.Content == content && ex.By == by {
+			if ex.Content == content && ex.By == by && ex.Kind == kind {
 				d = ex
 				dup = true
 				return nil
@@ -805,6 +813,7 @@ func runTaskDecide(cmd *cobra.Command, args []string) error {
 			By:        by,
 			Affects:   affects,
 			Rationale: rationale,
+			Kind:      kind,
 		})
 		d = s.Decisions[len(s.Decisions)-1]
 		return nil
@@ -812,11 +821,15 @@ func runTaskDecide(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("保存失败: %w", err)
 	}
+	label := "决策"
+	if rejected {
+		label = "已证伪方案"
+	}
 	if dup {
-		fmt.Printf("✓ 决策已存在（幂等跳过） [%s]: %s\n", d.ID, content)
+		fmt.Printf("✓ %s已存在（幂等跳过） [%s]: %s\n", label, d.ID, content)
 		return nil
 	}
-	fmt.Printf("✓ 决策已记 [%s]: %s\n", d.ID, content)
+	fmt.Printf("✓ %s已记 [%s]: %s\n", label, d.ID, content)
 	return nil
 }
 
@@ -911,7 +924,7 @@ func runTaskFinding(cmd *cobra.Command, args []string) error {
 		if err := taskpipeline.ResetLoopExhaustion(root, state, note); err != nil {
 			return err
 		}
-		fmt.Println("✓ 回环已重置（轮次清零、耗尽态清除）——ResolvedPrints 保留，复活仍会被抓")
+		fmt.Printf("✓ 回环已重置（耗尽态清除；回环预算从第 %d 轮重新起算）——ResolvedPrints 保留，复活仍会被抓\n", state.LoopResetRound)
 		return nil
 	}
 	if resolveID, _ := cmd.Flags().GetString("resolve"); resolveID != "" {
@@ -1201,9 +1214,28 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string, extraHeade
 		w("【计划】")
 		w(indentBlock(state.Plan))
 	}
-	if len(state.Decisions) > 0 {
+	// 死路记忆（loop 契约 B1-4）放在【已确认决策】之前：注入上限从尾部截断，越靠前
+	// 越不容易被截掉。最多 8 条、每条 200 rune。
+	if deadEnds := deadEndDecisions(state); len(deadEnds) > 0 {
+		w("【已证伪方案】（不要重试）")
+		for i, d := range deadEnds {
+			if i >= 8 {
+				w(fmt.Sprintf("  …另 %d 条，forge task context 查看全部", len(deadEnds)-8))
+				break
+			}
+			line := fmt.Sprintf("  ✗ [%s] %s", d.ID, truncateRunes(d.Content, 200))
+			if d.By != "" {
+				line += "  — by " + d.By
+			}
+			w(line)
+			if d.Rationale != "" {
+				w("        证据: " + truncateRunes(d.Rationale, 200))
+			}
+		}
+	}
+	if confirmed := confirmedDecisions(state); len(confirmed) > 0 {
 		w("【已确认决策】（不要推翻）")
-		for _, d := range state.Decisions {
+		for _, d := range confirmed {
 			line := fmt.Sprintf("  [%s] %s", d.ID, d.Content)
 			if d.By != "" {
 				line += "  — by " + d.By
@@ -1323,7 +1355,63 @@ func renderTldr(state *taskpipeline.TaskState) string {
 	w("  目标: " + goal)
 	w("  现在做: " + nowDoing)
 	w("  阻塞: " + blockerStr)
+	// 已证伪方案前 3 条进 tl;dr（loop 契约 B1-4）：tl;dr 封顶，正文各节不封顶，
+	// 全局注入上限截尾时这里仍能存活。
+	if deadEnds := deadEndDecisions(state); len(deadEnds) > 0 {
+		var top []string
+		for i := len(deadEnds) - 1; i >= 0 && len(top) < 3; i-- {
+			top = append(top, truncateRunes(deadEnds[i].Content, 60))
+		}
+		w(fmt.Sprintf("  已证伪 %d 条（不要重试）: %s", len(deadEnds), strings.Join(top, "; ")))
+	}
 	return strings.TrimRight(stripUnsafeControl(b.String()), "\n")
+}
+
+// deadEndDecisions / confirmedDecisions split Decisions by Kind (loop-contract
+// B1-4): dead ends render in their own section and never as confirmed decisions.
+//
+// deadEndDecisions / confirmedDecisions 按 Kind 拆分 Decisions（loop 契约 B1-4）：
+// 死路单独成节，绝不列入已确认决策。
+func deadEndDecisions(state *taskpipeline.TaskState) []taskpipeline.Decision {
+	var out []taskpipeline.Decision
+	for _, d := range state.Decisions {
+		if d.IsDeadEnd() {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+func confirmedDecisions(state *taskpipeline.TaskState) []taskpipeline.Decision {
+	var out []taskpipeline.Decision
+	for _, d := range state.Decisions {
+		if !d.IsDeadEnd() {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// truncateRunes caps s at n runes with an ellipsis.
+//
+// truncateRunes 把 s 截到 n 个 rune，超出加省略号。
+func truncateRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
+}
+
+// loopVerdictHeader renders the resume header line carrying the loop verdict
+// (loop-contract B1-2). Read-only; empty when the task is nil.
+//
+// loopVerdictHeader 渲染 resume 头部的循环判词行（loop 契约 B1-2）。只读；任务
+// 为 nil 时为空。
+func loopVerdictHeader(root string, state *taskpipeline.TaskState) string {
+	if state == nil {
+		return ""
+	}
+	return "循环判词: " + strings.TrimPrefix(taskpipeline.FormatLoopVerdictLine(taskpipeline.ComputeLoopVerdict(root, state)), "loop: ")
 }
 
 // renderGateProgress 渲染门禁进度（如 ✅实现 ✅验证 ⏳完成）。cli 包无法访问 taskpipeline

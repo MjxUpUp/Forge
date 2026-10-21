@@ -111,6 +111,34 @@ func TestFindingRevivalImmediateExhaustion(t *testing.T) {
 	}
 }
 
+// TestFindingRevivalSyncsCallerState 钉住盘上已有 state 时的内存同步（B0）：
+// MergeOrPersistTaskState 改的是锁内重载副本，调用方 state 也必须带上耗尽标记，
+// 且盘上同样持久化。
+func TestFindingRevivalSyncsCallerState(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+
+	state := &TaskState{TaskRef: "loop-revival-disk", Branch: "feat/loop"}
+	state.ResolvedPrints = []string{LoopFingerprint("数据库连接泄漏")}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	if !CheckFindingRevival(dir, state, "数据库连接泄漏") {
+		t.Fatal("指纹命中应检出复活")
+	}
+	if state.LoopExhausted == nil || state.LoopExhausted.Reason != LoopReasonRecurrence {
+		t.Fatalf("调用方内存 state 应同步耗尽标记: %+v", state.LoopExhausted)
+	}
+	reloaded, err := LoadTaskState(dir, "loop-revival-disk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.LoopExhausted == nil || reloaded.LoopExhausted.Reason != LoopReasonRecurrence {
+		t.Fatalf("耗尽标记应持久化: %+v", reloaded.LoopExhausted)
+	}
+}
+
 // TestCheckLoopExhaustedEscape 钉住逃生舱：FORGE_ARTIFACT_CHAIN=disable 下耗尽
 // 不拦且落 escape-hatch 审计行（逃生有痕）。
 func TestCheckLoopExhaustedEscape(t *testing.T) {
@@ -138,8 +166,8 @@ func TestCheckLoopExhaustedEscape(t *testing.T) {
 	}
 }
 
-// TestResetLoopExhaustion 钉住人工重置：exhausted 与轮次清零、审计行落地、
-// ResolvedPrints 保留（复活检测记忆不随重置丢失）。
+// TestResetLoopExhaustion 钉住人工重置：耗尽态清除、记下新预算起算轮、审计行
+// 落地、ResolvedPrints 保留（复活检测记忆不随重置丢失）。
 func TestResetLoopExhaustion(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	dir := t.TempDir()
@@ -156,8 +184,8 @@ func TestResetLoopExhaustion(t *testing.T) {
 	if err := ResetLoopExhaustion(dir, state, "人工裁决：降级为已知问题，继续"); err != nil {
 		t.Fatal(err)
 	}
-	// 断言以盘上真相为准（ResetLoopExhaustion 的 merge 在锁内副本上生效，
-	// 外层快照不代表盘上状态——与 complete pre-flight 的重载语义一致）。
+	// 断言以盘上真相为准（与 complete pre-flight 的重载语义一致）；调用方内存
+	// 同步另由 TestLoopExhaustionNoLeak 钉住。
 	reloaded, err := LoadTaskState(dir, "loop-reset")
 	if err != nil {
 		t.Fatal(err)
@@ -167,5 +195,165 @@ func TestResetLoopExhaustion(t *testing.T) {
 	}
 	if len(reloaded.ResolvedPrints) == 0 {
 		t.Fatal("ResolvedPrints 应保留（复活检测记忆不随重置丢失）")
+	}
+	if reloaded.LoopResetRound != 4 || reloaded.LoopResetAt == nil {
+		t.Fatalf("重置应记下新预算起算轮（len(ReviewRounds)+1=4）与时间: round=%d at=%v",
+			reloaded.LoopResetRound, reloaded.LoopResetAt)
+	}
+}
+
+// preflightAfterReload 模拟 complete 的 pre-flight：每次都从盘上重载 state 再检查
+// （与 loadTaskOrActive → CheckLoopExhausted 同序）。
+func preflightAfterReload(t *testing.T, dir, ref string) []string {
+	t.Helper()
+	s, err := LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return CheckLoopExhausted(dir, s)
+}
+
+// addReviewRound 追加一轮 review（只动轮次结构，模拟一次 review pass）。
+func addReviewRound(t *testing.T, dir, ref string) {
+	t.Helper()
+	s, err := LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ReviewRounds = append(s.ReviewRounds, ReviewRound{})
+	if err := SaveTaskState(dir, s); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLoopExhaustionNoLeak 钉住回环耗尽的两处漏放（loop-contract B0 / REQ-0）：
+//  1. 首次检出：重算命中的那一次 pre-flight 必须当场拦，而不是只写盘、下次才拦；
+//  2. 人工重置：--reset-loop 后发放一份完整新预算——连续 pre-flight 都放行，
+//     再经过 max_rounds 轮 review 才重新耗尽（旧实现只清标记、不清轮龄，重置后
+//     第一次放行、第二次立刻再拦）。
+func TestLoopExhaustionNoLeak(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeLoopSchema(t, dir, "version: 1\nstages:\n  - name: proposal\nedges:\n  - from: review\n    to: implement\n    max_rounds: 2\n")
+
+	const ref = "loop-noleak"
+	state := &TaskState{TaskRef: ref, Branch: "feat/loop"}
+	state.ReviewRounds = []ReviewRound{{}, {}, {}}                                    // 3 轮
+	state.Findings = []Finding{{ID: "f1", Content: "超龄问题", Status: "open", Round: 1}} // 轮龄 3 ≥ 2
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. 首次检出即拦，连续两次重载都拦；内存 state 同步带上标记。
+	for i := 1; i <= 2; i++ {
+		s, err := LoadTaskState(dir, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if reasons := CheckLoopExhausted(dir, s); len(reasons) == 0 {
+			t.Fatalf("第 %d 次 pre-flight：超龄 open finding 应拦（首次检出不得放行）", i)
+		}
+		if s.LoopExhausted == nil {
+			t.Fatalf("第 %d 次 pre-flight：内存 state 应同步耗尽标记", i)
+		}
+	}
+
+	// 2. 人工重置 → 连续两次重载都放行。
+	s, err := LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ResetLoopExhaustion(dir, s, "人工裁决：换方向继续"); err != nil {
+		t.Fatal(err)
+	}
+	if s.LoopExhausted != nil || s.LoopResetRound != 4 {
+		t.Fatalf("重置应同步调用方内存 state: exhausted=%v round=%d", s.LoopExhausted, s.LoopResetRound)
+	}
+	for i := 1; i <= 2; i++ {
+		if reasons := preflightAfterReload(t, dir, ref); len(reasons) != 0 {
+			t.Fatalf("重置后第 %d 次 pre-flight 应放行（新预算未用完）: %v", i, reasons)
+		}
+	}
+
+	// 3. 新预算按轮消耗：再 1 轮仍放行，满 max_rounds=2 轮重新耗尽。
+	addReviewRound(t, dir, ref)
+	if reasons := preflightAfterReload(t, dir, ref); len(reasons) != 0 {
+		t.Fatalf("重置后仅 1 轮（< 预算 2）应放行: %v", reasons)
+	}
+	addReviewRound(t, dir, ref)
+	if reasons := preflightAfterReload(t, dir, ref); len(reasons) == 0 {
+		t.Fatal("重置后满 max_rounds 轮仍 open → 应重新耗尽")
+	}
+}
+
+// TestLoopExhaustionMaxRoundsOne 钉住 max_rounds=1 的边界（合法配置）：新预算
+// 起算后轮龄最小为 1，已 ≥ 预算——重置后应立即再耗尽，这是设计行为而非漏放。
+func TestLoopExhaustionMaxRoundsOne(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeLoopSchema(t, dir, "version: 1\nstages:\n  - name: proposal\nedges:\n  - from: review\n    to: implement\n    max_rounds: 1\n")
+
+	const ref = "loop-max1"
+	state := &TaskState{TaskRef: ref, Branch: "feat/loop"}
+	state.ReviewRounds = []ReviewRound{{}}
+	state.Findings = []Finding{{ID: "f1", Content: "问题", Status: "open", Round: 1}}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+	if reasons := preflightAfterReload(t, dir, ref); len(reasons) == 0 {
+		t.Fatal("max_rounds=1、轮龄 1：首次 pre-flight 应拦")
+	}
+	s, err := LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ResetLoopExhaustion(dir, s, "人工裁决"); err != nil {
+		t.Fatal(err)
+	}
+	if reasons := preflightAfterReload(t, dir, ref); len(reasons) == 0 {
+		t.Fatal("max_rounds=1：重置后轮龄仍为 1 ≥ 预算，应立即再耗尽")
+	}
+}
+
+// TestLoopExhaustionStaleSnapshotKeepsConcurrentReset 钉住锁内重判（B0 评审
+// Minor #5）：pre-flight 持有的快照读取之后恰有一次 --reset-loop 落盘——本次仍按
+// 快照拦（偏严），但旧快照的判定不得把刚重置的盘上状态再标回耗尽。
+func TestLoopExhaustionStaleSnapshotKeepsConcurrentReset(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	dir := t.TempDir()
+	initRepoWithMaster(t, dir)
+	writeLoopSchema(t, dir, "version: 1\nstages:\n  - name: proposal\nedges:\n  - from: review\n    to: implement\n    max_rounds: 2\n")
+
+	const ref = "loop-stale"
+	state := &TaskState{TaskRef: ref, Branch: "feat/loop"}
+	state.ReviewRounds = []ReviewRound{{}, {}, {}}
+	state.Findings = []Finding{{ID: "f1", Content: "超龄问题", Status: "open", Round: 1}}
+	if err := SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
+
+	stale, err := LoadTaskState(dir, ref) // pre-flight 的快照（重置前）
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := LoadTaskState(dir, ref) // 并发的人工重置
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ResetLoopExhaustion(dir, other, "人工裁决"); err != nil {
+		t.Fatal(err)
+	}
+
+	if reasons := CheckLoopExhausted(dir, stale); len(reasons) == 0 {
+		t.Fatal("旧快照超龄：本次 pre-flight 仍应按快照拦")
+	}
+	reloaded, err := LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.LoopExhausted != nil {
+		t.Fatalf("旧快照不得把并发重置后的盘上状态再标回耗尽: %+v", reloaded.LoopExhausted)
 	}
 }
