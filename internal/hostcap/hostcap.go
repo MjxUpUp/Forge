@@ -173,9 +173,9 @@ type Host struct {
 	//
 	// DroppedStdoutEvents 列出 allow 路径 stdout 被宿主丢出模型上下文的 hook
 	// 事件（kimi 0.35.0：PostToolUse/SessionStart/PostCompact 为
-	// observation-only，wire.jsonl 实证）。驱动 SessionStart handoff 回填
-	// （cli sessionStartOutputDropped）、stale advisory 改搭 UserPromptSubmit
-	// 通道的 hook（kimiStaleRidesHook）、以及 skill-trigger 的 stdout 打印门控。
+	// observation-only，wire.jsonl 实证）。驱动 stale advisory 改搭
+	// UserPromptSubmit 通道的 hook（kimiStaleRidesHook）与 skill-trigger 的
+	// stdout 打印门控。
 	DroppedStdoutEvents []string
 
 	// PromoteAdvisory maps advisory hook name → rule for hosts where an advisory does not constrain behavior, so the REAL advisory (isolated from the hook's success/clean branch by the rule) is promoted to a block (passed true→false → exit 2, stderr shown to the model).

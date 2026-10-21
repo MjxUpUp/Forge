@@ -183,42 +183,6 @@ func TestResumeStale_PerSession(t *testing.T) {
 	}
 }
 
-// TestColdStartInjected_PerSessionNotConsumed：per-session cold-start sentinel 与 resume-stale
-// 唯一不同——读时不被消费（一个 session 恰需一次冷启动 handoff，故 sentinel 存活整个 session
-// 生命周期）。Mark 幂等（AtomicWrite 覆写）。跨 session 隔离镜像 resume-stale（用户级共享 DataDir）。
-// 空 sid 既不标记也不报已注入（回填上游已门控在非空 sid，此守卫防空 id sentinel 跨 session 碰撞）。
-func TestColdStartInjected_PerSessionNotConsumed(t *testing.T) {
-	dir := t.TempDir()
-	if err := MarkColdStartInjected(dir, "sid-a"); err != nil {
-		t.Fatal(err)
-	}
-	if !IsColdStartInjected(dir, "sid-a") {
-		t.Error("sid-a Mark 后应报已注入")
-	}
-	// 不被消费：IsColdStartInjected 只读，第二次读仍 true（与 ConsumeResumeStale 读即清的关键区别）
-	if !IsColdStartInjected(dir, "sid-a") {
-		t.Error("cold-start sentinel 不应被读消费，第二次应仍报已注入")
-	}
-	// 跨 session 隔离：sid-b 不受 sid-a 的 sentinel 影响
-	if IsColdStartInjected(dir, "sid-b") {
-		t.Error("sid-b 不应被 sid-a 的 sentinel 影响")
-	}
-	// 幂等：第二次 Mark 覆写同路径，sentinel 仍在
-	if err := MarkColdStartInjected(dir, "sid-a"); err != nil {
-		t.Fatal(err)
-	}
-	if !IsColdStartInjected(dir, "sid-a") {
-		t.Error("重复 Mark 后应仍报已注入")
-	}
-	// 空 sid 既不标记也不报已注入
-	if err := MarkColdStartInjected(dir, ""); err != nil {
-		t.Fatalf("空 sid Mark 应 no-op 不报错: %v", err)
-	}
-	if IsColdStartInjected(dir, "") {
-		t.Error("空 sid 不应报已注入")
-	}
-}
-
 // TestCurrentSessionID_FallbackChain：多 host session 探测——Claude env 优先；
 // FORGE_SESSION_ID（runHook 从任意 host stdin 的 session_id 注入）兜底；"default"
 // （脚本侧空占位符）与未设都返回 ""。

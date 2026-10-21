@@ -472,54 +472,6 @@ func ConsumeResumeStale(root, sessionID string) bool {
 	return os.Remove(resumeStalePath(root, sessionID)) == nil
 }
 
-// coldStartInjectedFile 是 per-session sentinel，标记本 session 已通过 UserPromptSubmit 回填
-// 拿到冷启动 task handoff。它只为一种 host 存在——kimi 0.35.0——该 host 把 SessionStart hook
-// 输出丢弃出模型上下文（SessionStart 在那里是 observation-only，经 wire.jsonl 交叉验证核实）。
-// SessionStart 的 task-resume hook 仍会跑（attach 副作用落地），但它渲染的 handoff 到不了模型。
-// UserPromptSubmit 的 resume-reinject hook 在这类 session 的首个 prompt 回填活跃任务 handoff
-// （offered-tasks 块是既有缺口，见 renderHookReinject）；本 sentinel 去重使后续 prompt 保持静默。
-//
-// Per-session，与 resumeStaleFile 同因：用户级 DataDir 跨 worktree/host 共享，task-scoped 标志
-// 会让一个 session 的回填抑制另一个。与 resume-stale 不同，它读时不被消费——一个 session 恰需
-// 一次冷启动 handoff，故 sentinel 存活整个 session 生命周期（compact-reinject 路径也设它，
-// 因为刚交付的完整 handoff 也满足冷启动——防下个 prompt 双注）。无 TTL 清理：与 resumeStale
-// 孤儿一样是 tiny per-session 文件、无既有定期清扫；接受为有界慢泄漏，不为此加清理基础设施。
-const coldStartInjectedFile = ".cold-start-injected"
-
-// coldStartInjectedPath 返回 DataDir 下 per-session 的 cold-start sentinel 路径，镜像
-// resumeStalePath。
-func coldStartInjectedPath(root, sessionID string) string {
-	return filepath.Join(dataHome(root), coldStartInjectedFile+"-"+util.SanitizeSessionID(sessionID))
-}
-
-// MarkColdStartInjected records that this session has received its cold-start handoff.
-//
-// MarkColdStartInjected 记录本 session 已拿到冷启动 handoff。幂等（AtomicWrite 覆写同路径）。
-// sessionID 为空时 no-op——回填上游已门控在非空 sid，但此守卫避免在空 id 下写 sentinel 文件
-// （那会跨 session 碰撞并误抑制）。
-func MarkColdStartInjected(root, sessionID string) error {
-	if sessionID == "" {
-		return nil
-	}
-	stamp := strconv.FormatInt(time.Now().Unix(), 10) + "\n"
-	return util.AtomicWrite(coldStartInjectedPath(root, sessionID), []byte(stamp), 0644)
-}
-
-// IsColdStartInjected reports whether this session has already received its cold-start handoff (the sentinel file exists).
-//
-// IsColdStartInjected 报告本 session 是否已拿到冷启动 handoff（sentinel 文件存在）。sessionID
-// 为空时返回 false。与 ConsumeResumeStale 不同，它不移除 sentinel——只读检查，sentinel 存活
-// 整个 session 生命周期。
-func IsColdStartInjected(root, sessionID string) bool {
-	if sessionID == "" {
-		return false
-	}
-	if _, err := os.Stat(coldStartInjectedPath(root, sessionID)); err != nil {
-		return false
-	}
-	return true
-}
-
 // ReadActiveTaskRef reads the active task ref from the (session-scoped) file.
 //
 // ReadActiveTaskRef 从（session-scoped）文件读 active task ref。

@@ -229,9 +229,9 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
 | **init-suggest** | 会话开始 | advisory，接管决策引擎（P2 起默认 **ask**）：declined（标记+注册表双检）→静默；已接管→顺带 dedupe；外来 harness 信号（P4）→让位并记 declined；takeover 偏好 auto（`FORGE_TAKEOVER`/`forge config`/legacy `FORGE_AUTO_INIT=1`）→静默 init；off→静默；ask→每项目首次询问一次（拒绝→`forge off`；全程询问 →`forge config set` takeover 为 auto）。v1.22 起 init 零项目写入 |
-| **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步，无需手动 forge task resume；无活跃任务静默；项目级 hook |
-| **compact-resume** | 压缩后（claude-code only） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
-| **resume-reinject** | 用户提交时（claude-code only） | 检测 `ResumeStale=true`（刚压缩过）→ 输出完整接续上下文并清标志。补 task-resume 缺口（SessionStart 只注入一次，会话中途压缩不补），context-rot 抗机制根治层·重注入半边 |
+| **task-resume** | 会话开始 | advisory：只输出 `[forge-session]` 管理横幅一行（用户级 CLAUDE.md 据此判断是否启用 forge 协议）。不注入接续视图、不锚定 session、不推送待认领任务——接续按需拉取：用户说「继续某某任务」走 `forge task resume --match`，说「还有哪些任务没完成」走 `forge task list --open`；项目级 hook |
+| **compact-resume** | 压缩后（claude-code / codex） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
+| **resume-reinject** | 用户提交时（claude-code / codex） | 检测 `ResumeStale=true`（刚压缩过）→ 输出当前任务的完整接续上下文并清标志；未压缩时静默。压缩只丢当前 session 的工作记忆，补回它不打扰用户，context-rot 抗机制根治层·重注入半边 |
 | **doc-lint** | PostToolUse（Write\|Edit） | advisory：被写的 .md 命中 D1-D11 L1 规则时注入命中清单（规则/行号/修复方向，按命中签名会话内去重），写时反馈提前于 complete 的 doc gate（output-readability-gates-v2.md P1-C），Go 原生实现 |
 | **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（failure-track/subagent-track/test-nudge 亦然，其余 18 个为内嵌 bash 脚本） |
 
@@ -298,6 +298,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge review llm [--scores <file>]` | LLM 判官臂（L3「可命题」类约束的执法通道）：无 flag 打印独立只读子代理评审派遣说明（design/mock-hallucination 两类 findings，0-100 判分）；`--scores` 校验 JudgeAuditEntry 判分文件落 judge-samples 留档并指向 `forge eval judge-audit` 算 κ（地板 0.6，不达标降级 ADVISORY——判官永不进 hard） |
 | `forge task wild "<说明>"` | 野外动作申报：任务管道外的显式留痕出口（比静默绕过诚实、比强制建任务轻）。记会话/分支/HEAD/是否已有任务到 `wild/declarations.jsonl`，累计计数供审计回溯（vNext INV-1 的合法出口之一） |
 | `forge task status` | 查看当前任务门禁状态（含已登记产物链产物与漂移/审批态） |
+| `forge task list --open [--workspace\|--all-projects] [--json]` | 列出未完成任务供用户挑选要接续哪个：每条带项目、标题、门禁进度、首条下一步、未解决阻塞数、派活状态、最后活动时间。默认当前项目；`--workspace` 扩到当前项目所属多仓 forge workspace 的全部成员（不属于任何 workspace 时回落当前项目）；`--all-projects` 扩到本机全部已接管项目。只读 |
 | `forge task list --plan-conversion` | plan-first advisory 转化率报告（先测量再翻转）：已发/发后已补方案/发后仍无方案/未发自带方案四计数 + 转化率——叙事 stage 是否升档由数据决定而非直觉 |
 | `forge task artifact --set <stage> --file <path> \| --stdin \| --list [--json] \| --verify \| --approve <stage> --by <人> [--checked <项>] \| --extract \| --check [--file <path>]` | 产物链操作（L6 契约层，docs/design/artifact-chain-workflow.md）：登记阶段产物（哈希引用，漂移探测；登记 design 产物时其「触点」一节自动写入 PlanScope（手工 `--scope` / `task scope add` 优先），实改超出即报「方案外改动」）/ 查看链态 / 漂移校验（采用需求 ID 的任务附需求覆盖表：已验证/未验证/孤儿）/ 人工审批（human 档经 --by 归因到人、签内容哈希，内容再改即作废；批前打印一屏审批摘要——TL;DR、高危步骤、Open Questions、自上次批准的变化；`--checked` 可重复，记录本次审了什么）/ 从产物提取验收标准（`accept: <cmd> :: <expected>` 行与 \`\`\`accept 围栏编译成验收门禁——产物成为硬门禁的源码；提取的标准盖考卷层级 spec-extract；`accept[REQ-3]:` 前缀或行尾 `#REQ-3` 声明该条验证的需求 ID，两种写法并存取并集）/ 方案事实核查 `--check`（方案中的路径、`file:line`、Go 符号、Go 模块是否真实存在；`new:` 行豁免；advisory）。链与档位（advisory\|rubric\|human\|hard，HARD 只守事实）由 `<DataDir>/schemas/schema.yaml` 声明（缺省默认链 proposal→spec→design→plan 全 advisory 零阻断）；`task start --artifact "<stage>=<path>"` 开工即登记并就地提取验收；complete 前漂移 pre-flight：hard/human 档漂移阻断、advisory/rubric 留痕、漂移一律作废审批；逃生（落审计）`FORGE_ARTIFACT_CHAIN=disable` 或 `forge task override --artifact-chain disable` |
 | `forge task chain-init [--force]` | 一键接线产物链执法（oracle-pipeline L0）：写默认链 schema 且 spec 档升 human——spec 里的考卷围栏（accept: 行/```accept 块）从此需 forge task artifact --approve spec --by <审批人> 签字才算定稿，内容再改即作废（业务正确性的签字入口）；已存在 schema 须 --force 显式覆盖；不依赖活跃任务 |
@@ -350,7 +351,8 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge task complete` | 标记任务完成（自动评分） |
 | `forge task abort [--ref <ref>] [--cascade\|--detach-deps]` | 中止并删除任务（清理 ghost/卡住任务，不评分；存在反向依赖时默认仅提示，`--cascade` 递归中止所有依赖它的任务，`--detach-deps` 从依赖它的任务移除该依赖边） |
 | `forge task score` | 查看任务质量评分 |
-| `forge task resume [--ref <ref>]` | 拉回任务接续上下文（目标/计划/决策/阻塞/参与工具+门禁进度+git 已改），跨会话/跨工具秒级恢复 |
+| `forge task resume [--ref <ref>]` | 拉回任务接续上下文（目标/计划/决策/阻塞/参与工具+门禁进度+git 已改），跨会话/跨工具秒级恢复；同时把当前 session 锚定到任务（未 resume 就直接改代码的 session 由 task-guard 在首次源码写入时静默补锚） |
+| `forge task resume --match "<关键词>" [--workspace\|--all-projects] [--json]` | 模糊匹配未完成任务（ref/标题/分支/目标；容忍错拼、乱序词、缩写、中文片段），返回至多 10 个带得分的候选。只读：不锚定、不认领——agent 让用户确认后再 `resume --ref` 接手 |
 | `forge task context [--ref <ref>]` | 只读查看接续上下文（resume 的不改 state 别名） |
 | `forge task decide --content` | 记录已确认决策（持久化进 task，跨会话/跨工具不再推翻） |
 | `forge task decide --rejected --content --rationale` | 记一条已证伪方案（死路记忆，docs/plans/loop-contract-2026-10-proposal.md）：`--content` 写方案、`--rationale` 写失败证据；resume 单独成节【已证伪方案】并进 tl;dr，不列入已确认决策。验收同因复发时 forge 会自动记一条 |
