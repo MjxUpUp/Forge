@@ -97,6 +97,8 @@ func init() {
 	taskScoreCmd.Flags().Bool("history", false, "显示所有已完成任务的评分历史")
 	taskListCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskListCmd.Flags().Bool("timeline", false, "按会话时间线显示所有任务")
+	taskListCmd.Flags().Bool("open", false, "只列未完成任务（带标题/门禁进度/下一步/阻塞/派活状态/最后活动），供用户挑选要接续哪个；可配 --workspace / --all-projects")
+	addScopeFlags(taskListCmd)
 	taskOverrideCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
 	taskOverrideCmd.Flags().String("work-activity", "", "设为 disable 跳过 read-before-edit/work-activity 门禁")
 	taskOverrideCmd.Flags().String("test-coverage", "", "设为 disable 跳过 test-coverage 门禁")
@@ -193,7 +195,7 @@ var taskScoreCmd = &cobra.Command{
 }
 
 var taskListCmd = &cobra.Command{
-	Use:   "list [--json]",
+	Use:   "list [--json] [--open [--workspace|--all-projects]]",
 	Short: "列出所有任务",
 	RunE:  runTaskList,
 }

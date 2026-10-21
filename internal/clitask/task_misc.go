@@ -633,6 +633,15 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 }
 
 func runTaskList(cmd *cobra.Command, args []string) error {
+	if open, _ := cmd.Flags().GetBool("open"); open {
+		return runTaskListOpen(cmd)
+	}
+	if ws, _ := cmd.Flags().GetBool("workspace"); ws {
+		return fmt.Errorf("--workspace 只配合 --open 使用")
+	}
+	if all, _ := cmd.Flags().GetBool("all-projects"); all {
+		return fmt.Errorf("--all-projects 只配合 --open 使用")
+	}
 	root, err := projectroot.Find()
 	if err != nil {
 		return err
@@ -681,6 +690,46 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("  %-25s %s%s\n", s.TaskRef, status, score)
 	}
+	return nil
+}
+
+// runTaskListOpen handles `task list --open`: every incomplete task in scope, for the user to pick which to resume.
+//
+// runTaskListOpen 处理 `task list --open`：列出范围内全部未完成任务，供用户挑选要接续哪个
+// （方案 REQ-5）。只读；零任务不是错误（JSON 空数组 / 文本一行，exit 0）。与 --timeline、
+// --plan-conversion 互斥。
+func runTaskListOpen(cmd *cobra.Command) error {
+	for _, f := range []string{"timeline", "plan-conversion"} {
+		if v, _ := cmd.Flags().GetBool(f); v {
+			return fmt.Errorf("--open 与 --%s 二选一", f)
+		}
+	}
+	scope, err := scopeFromFlags(cmd)
+	if err != nil {
+		return err
+	}
+	groups, err := collectScopedTasks(scope, stderrWriter)
+	if err != nil {
+		return err
+	}
+	entries := openEntries(groups)
+	if asJSON, _ := cmd.Flags().GetBool("json"); asJSON {
+		if entries == nil {
+			entries = []openTaskEntry{}
+		}
+		out, _ := json.MarshalIndent(entries, "", "  ")
+		fmt.Println(string(out))
+		return nil
+	}
+	if len(entries) == 0 {
+		fmt.Println("没有未完成任务")
+		return nil
+	}
+	fmt.Printf("未完成任务（%d 个）：\n", len(entries))
+	for i, e := range entries {
+		fmt.Println(renderOpenEntryLine(i+1, e, scope != scopeProject))
+	}
+	fmt.Println("→ 让用户选择要接续哪个，再运行 forge task resume --ref <ref>（其他项目的任务需先进入该项目目录；一个会话只接续一个，其余建议另开会话）")
 	return nil
 }
 
