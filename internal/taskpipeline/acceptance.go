@@ -2,7 +2,12 @@ package taskpipeline
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -15,6 +20,19 @@ import (
 // 把 dev-workflow Plan 的 Run+Expected 验收标准从"plan 文本里飘着"变成"实跑留痕的
 // deterministic 证据"——spec 即 gate，对冲 agent 自述"满足验收"的盲区。
 const CheckNameAcceptance checklog.CheckName = "acceptance"
+
+// MetaKeyAcceptancePassed / MetaKeyAcceptanceTotal are the Meta keys of the
+// aggregate acceptance row (passed count / total count as decimal strings).
+// The loop verdict's no-progress rule reads them instead of parsing Detail
+// prose (loop-contract B1-2); rows written before this key exist are skipped.
+//
+// MetaKeyAcceptancePassed / MetaKeyAcceptanceTotal 是 acceptance 聚合行的 Meta 键
+// （通过条数 / 总条数，十进制字符串）。循环判词的 no-progress 规则读它们而不是
+// 解析 Detail 散文（loop 契约 B1-2）；此前没有该键的旧行跳过。
+const (
+	MetaKeyAcceptancePassed = "passed"
+	MetaKeyAcceptanceTotal  = "total"
+)
 
 // parseOneAcceptance 解析单条 `run :: expected` 串为 AcceptanceCriterion。从
 // ParseAcceptance 抽出，供 --accept 入口与 --plan-file 提取共用同一 :: 边界处理
@@ -298,12 +316,27 @@ func VerifyAcceptanceWithVerdicts(root string, state *TaskState) []AssertionVerd
 	if hasFileAssertion(state.Acceptance) {
 		changed = taskChangedFiles(root, state)
 	}
+	// 同因复发（loop 契约 B1-1）的"跑前"快照：ChangeHash 与改动文件内容指纹在执行
+	// 任何验收命令【之前】算一次，整次验收共用。跑前算的意义：会改源码的验收命令
+	// （go generate / jest -u / golden -update）不把自己的改动算成 agent 的一次尝试。
+	// 与 AcceptedChangeHash（跑后算、供新鲜度比对）是两个字段，互不替代。
+	preHash := ""
+	if state.HeadCommit != "" {
+		if h, _, err := TaskFingerprint(root, state, state.HeadCommit); err == nil {
+			preHash = h
+		}
+	}
+	preChanged := changedFileDigests(root, TaskChangedFiles(root, state))
 	var verdicts []AssertionVerdict
 	for i := range state.Acceptance {
 		c := &state.Acceptance[i]
 		for _, v := range runAndJudgeCriterion(root, c, changed) {
 			v.CriterionIdx = i
 			verdicts = append(verdicts, v)
+		}
+		if c.LastFailure != nil {
+			c.LastFailure.ChangeHash = preHash
+			c.LastFailure.Changed = preChanged
 		}
 		// 记实跑时的 HEAD 快照：forge_task_proof 据此判定 Passed 是否 fresh（== 当前 HEAD）。
 		// 老无快照（空）→ proof v1 重跑兜底；有快照但 != HEAD → acceptance 基于旧代码，须重跑。
@@ -349,6 +382,25 @@ func MergeAcceptanceResults(s *TaskState, results []AcceptanceCriterion, clearFo
 			s.Acceptance[i].AcceptedHeadCommit = results[j].AcceptedHeadCommit
 			s.Acceptance[i].AcceptedBaseCommit = results[j].AcceptedBaseCommit
 			s.Acceptance[i].AcceptedChangeHash = results[j].AcceptedChangeHash
+			// FailHistory（loop 契约 B1-1）在权威盘上状态上维护：通过即清空；失败追加
+			// 本次的跑前快照记录，只留最近 MaxAcceptanceFailHistory 条。没改代码的重跑
+			//（ChangeHash 与上一条相同）不追加、只覆盖上一条——重跑不计数，也不能把
+			// 已检出的同因复发顶出窗口（否则 agent 空跑一次就能清掉 escalate）。
+			switch {
+			case results[j].Passed:
+				s.Acceptance[i].FailHistory = nil
+			case results[j].LastFailure != nil:
+				h := s.Acceptance[i].FailHistory
+				if n := len(h); n > 0 && h[n-1].ChangeHash == results[j].LastFailure.ChangeHash {
+					h[n-1] = *results[j].LastFailure
+				} else {
+					h = append(h, *results[j].LastFailure)
+				}
+				if n := len(h); n > tasktypes.MaxAcceptanceFailHistory {
+					h = h[n-tasktypes.MaxAcceptanceFailHistory:]
+				}
+				s.Acceptance[i].FailHistory = h
+			}
 			break
 		}
 	}
@@ -356,6 +408,42 @@ func MergeAcceptanceResults(s *TaskState, results []AcceptanceCriterion, clearFo
 		s.AcceptanceForeign = false
 	}
 }
+
+// changedFileDigests maps each changed repo-relative path to the first 12 hex
+// of its content sha256 ("" for a deleted/unreadable file), capped at
+// maxChangedDigests entries (sorted, so the cap is deterministic). Feeds
+// AcceptanceFailure.Changed so a dead-end record can name the files that were
+// touched between two failures.
+//
+// changedFileDigests 把每个改动的 repo 相对路径映射到内容 sha256 前 12 位（删除/
+// 不可读为 ""），最多 maxChangedDigests 条（先排序，上限才确定）。供
+// AcceptanceFailure.Changed 消费，让死路记录能点名两次失败之间动过的文件。
+func changedFileDigests(root string, paths []string) map[string]string {
+	if len(paths) == 0 {
+		return nil
+	}
+	sorted := append([]string(nil), paths...)
+	sort.Strings(sorted)
+	if len(sorted) > maxChangedDigests {
+		sorted = sorted[:maxChangedDigests]
+	}
+	out := make(map[string]string, len(sorted))
+	for _, p := range sorted {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(p)))
+		if err != nil {
+			out[p] = ""
+			continue
+		}
+		sum := sha256.Sum256(data)
+		out[p] = hex.EncodeToString(sum[:])[:12]
+	}
+	return out
+}
+
+// maxChangedDigests caps AcceptanceFailure.Changed.
+//
+// maxChangedDigests 是 AcceptanceFailure.Changed 的条数上限。
+const maxChangedDigests = 50
 
 // assertionsKey renders an assertion set as a canonical string key for result
 // matching in MergeAcceptanceResults. Order-sensitive: the persisted slice is
@@ -441,6 +529,21 @@ func CheckAcceptanceFresh(root string, state *TaskState) (ok bool, reasons []str
 			`escape-hatch: acceptance gate bypassed (per-task override or FORGE_ACCEPTANCE_GATE=disable)`)
 		row.TaskRef = state.TaskRef
 		recordAudit(root, row)
+		return true, nil
+	}
+	return acceptanceFreshCore(root, state)
+}
+
+// acceptanceFreshCore is the judging half of CheckAcceptanceFresh with no
+// escape handling and no audit row: reads git (HEAD, TaskFingerprint) but never
+// writes. Shared by the complete pre-flight and the loop verdict
+// (loop-contract B1-2), which must stay side-effect free.
+//
+// acceptanceFreshCore 是 CheckAcceptanceFresh 的判定半边——不处理逃生舱、不落
+// 审计行：会读 git（HEAD、TaskFingerprint），绝不写入。complete 预检与循环判词
+// （loop 契约 B1-2）共用；判词必须无副作用。
+func acceptanceFreshCore(root string, state *TaskState) (ok bool, reasons []string) {
+	if len(state.Acceptance) == 0 {
 		return true, nil
 	}
 	head := GetHeadCommit(root)

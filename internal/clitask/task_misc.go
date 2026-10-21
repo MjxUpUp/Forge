@@ -58,7 +58,14 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if asJSON {
-		output, _ := json.MarshalIndent(state, "", "  ")
+		// loop 契约 B1-2：在整个 TaskState 之外追加顶层 loop_verdict。嵌入结构体而不是
+		// 先编码成 map 再加键——map 会把原有键按字母重排，嵌入保持原顺序、新键在末尾。
+		// ComputeLoopVerdict 只读（不写盘、不落审计行）。
+		out := struct {
+			*taskpipeline.TaskState
+			LoopVerdict taskpipeline.LoopVerdict `json:"loop_verdict"`
+		}{state, taskpipeline.ComputeLoopVerdict(root, state)}
+		output, _ := json.MarshalIndent(out, "", "  ")
 		fmt.Println(string(output))
 		return nil
 	}
