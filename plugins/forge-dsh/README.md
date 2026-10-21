@@ -100,6 +100,9 @@ under `~/.dsh/profiles/<profile>/`):
     timeoutMs: 30000     # per-hook ceiling; timeout kills and FAILS OPEN
     startWaitMs: 1500    # first pre-step waits this long for session-start contexts
     welcome: true        # one first-turn line telling the user Forge is active (false = silent)
+    checkLatest: true    # /forge-status compares the plugin version with the registry's latest (false = never ask)
+    locale: auto         # language of the plugin's own messages: en | zh | auto (env FORGE_DSH_LOCALE, then system)
+    batch: auto          # one forge process per matcher group: auto (default, needs a forge of the plugin's own version) | true | false
     enabled: true        # false unwires every listener
     debug: false         # log fail-open hook errors to console.error
 ```
@@ -122,24 +125,64 @@ while the binary is missing, every hook attempt fails open on its own, so gates 
 inactive whether or not the probe ran. Installing forge needs no host restart: the
 next session probes again and gating resumes.
 
-Two latency trade-offs to know: hooks run **serially** per event (up to six per
-group), so a slow hook chain delays the tool call — and a gate that legitimately
-exceeds `timeoutMs` (e.g. `auto-compile` cold-building a large project past 30s)
-silently loses that run's feedback to fail-open (visible in `/forge-status`).
-Raise `timeoutMs` on big projects.
+Two latency points to know. A matched group can run as **one** `forge hook batch` process
+(forge runs the group's hooks in order and stops at the first block) instead of one process
+per hook — roughly 2.4× faster on a measured PreToolUse/Bash group (716ms vs 1720ms on a loaded
+dev machine). With the default `batch: auto` that happens only once the probe shows a forge of the
+plugin's own version: batch asks forge to pick the group by the plugin's matcher string, and a forge
+that disagrees would either print nothing on a block (older than the stdout fix) or silently run an
+empty group, so any other forge stays on the per-hook path, which depends on hook names only. `batch:
+true` forces batch **and gives that protection up** (with a mismatched forge a group can run empty without
+any error); use it only with a forge you know matches. `false` forces per-hook. Whatever the mode, a batch that fails is never taken as an
+allow: that group is re-run per hook for the call (hooks the batch already ran may run again;
+observation-only ones are de-duplicated by forge). Three failures in a row switch batch off; a batch
+that **times out** keeps just that group per-hook for ten minutes, then tries it again, because batch gives
+the whole group one `timeoutMs` and a single hung hook would otherwise starve the gates behind it. The
+three-failures count is per group. `/forge-status` shows
+all of this. And a gate that legitimately exceeds `timeoutMs` (e.g. `auto-compile` cold-building a large
+project past 30s) silently loses that run's feedback to fail-open (visible in `/forge-status`). Raise
+`timeoutMs` on big projects.
 
-`/forge-status` reports the probe line after the header: `probe: ok (forge version …)`,
-`probe: FAILED — gates inactive (…)`, or `not run yet` before the process's first
-session start.
+A session whose gates keep failing open used to look healthy while checking nothing. After
+three fail-open runs in one session the plugin says so **once**, at the next Stop that is not
+already steering for a real block: how many runs lost their feedback, where to look
+(`/forge-status`) and what to raise (`timeoutMs`). It is advisory — nothing is blocked. The batch
+to per-hook downgrade is not counted: that run still executed its gates.
+
+The plugin delivers the bridge and (as a dependency) the forge CLI, **not the skill library**
+DSH reads from `~/.agents/skills`. When that directory holds no skill, the first-turn onboarding adds
+one line offering `forge skills install --global --target agents`; the model runs it only after
+the user agrees, since it writes the home directory. The offer is made once per host process, so
+a user who declines is not asked again at every new session. Resume, subagents and
+`welcome: false` sessions get no offer.
+
+Whether forge takes over a project is asked once per project — the same on every host. Forge
+does not infer consent from "the plugin is installed" (`init-suggest`'s `takeover` preference is
+the opt-in), so a DSH install behaves like a Claude Code plugin install here; the model relays
+the question from forge's own `init-suggest` advisory, which the receipt filter below never drops.
+
+Status-only receipts that forge prints when it has nothing to say (`no weakening detected`,
+`all skills SAFE`, `no .mcp.json` …) are dropped before injection — the host turns every allow
+context into a synthetic user message, and these carry no instruction. Anything else, including
+notes the plugin has never seen, passes through.
+
+`/forge-status` opens with `plugin: <installed>  latest: <registry>` — an old install keeps working but
+silently misses fixes, and this is the one place a user looks when something seems off. It is a single
+read-only request with a 3-second timeout, made only when the command runs (never at load or session
+start); offline, a private registry or an odd answer shows `unknown`, and `checkLatest: false` never asks.
+It also reports a `dispatch:` line (batch or per-hook) and the probe line after the
+header: `probe: ok (forge version …)`, `probe: FAILED — gates inactive (…)`, or `not run
+yet` before the process's first session start. It also lists wall time per interception
+point (runs, average, max) and each recent run's duration.
 
 ## Known watch items (dsh preview)
 
 - **No stop-hook loop guard** in the preview builds (`0.1.0-rc.7` – `0.2.1-rc.2`) —
   a permanently-failing Stop gate steers at every stop boundary. forge's Stop gates
   are self-limiting once their gate passes, but a stuck gate loops the turn.
-- **SessionStart context is best-effort** (emit mode, detached): it may miss the
-  first request of a very short-lived session — same limitation the official
-  bridges document (`TODO(session-start-gating)`).
+- **SessionStart context rides the first pre-step**: the detached run is awaited for at
+  most `startWaitMs`; a session whose first step arrives sooner than the run finishes
+  gets the context with its next step instead of the first.
 - DSH is a developer preview; pin this plugin's version alongside your dsh version.
 
 ## Development

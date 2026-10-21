@@ -23,7 +23,9 @@ import (
 //   - hazard fingerprint → a fixed 64-hex fingerprint on stdout
 //   - hazard confirmed   → behavior controlled by confirmedMode:
 //     "release" = exit 0 (confirmed), anything else = stderr error + exit 1
-//   - hazard log         → exit 0 (audit sink)
+//   - hazard log         → exit 0 (audit sink); the event type ($3) is appended to
+//     hazard-log.txt in the shim dir, so tests can prove WHICH release path ran
+//     (see loggedHazardTypes) without depending on the script's stdout text
 func writeForgeShim(t *testing.T, confirmedMode string) string {
 	t.Helper()
 	if _, err := exec.LookPath("bash"); err != nil {
@@ -43,6 +45,7 @@ if [ "$1" = "hazard" ] && [ "$2" = "confirmed" ]; then
   exit 1
 fi
 if [ "$1" = "hazard" ] && [ "$2" = "log" ]; then
+  echo "$3" >> "$(dirname "$0")/hazard-log.txt"
   exit 0
 fi
 exit 1
@@ -52,6 +55,22 @@ exit 1
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// loggedHazardTypes returns, in order, the `forge hazard log <type>` event types the
+// script emitted against the shim in shimDir — the ledger side of a release decision.
+// A data-context allow is silent on stdout by design (stdout is injected into the
+// conversation by the host), so its audit event is the proof of the path taken.
+func loggedHazardTypes(t *testing.T, shimDir string) []string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(shimDir, "hazard-log.txt"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatal(err)
+	}
+	return strings.Fields(string(b))
 }
 
 // runHazardScript executes the embedded HazardGuardHook with FORGE_COMMAND and

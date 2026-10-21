@@ -380,6 +380,50 @@ func TestHook_HazardGuard_DataContextNotBlocked(t *testing.T) {
 	}
 }
 
+// TestHook_HazardGuard_DataContextAllowIsSilent: 数据上下文放行是诊断信息，不是给模型的
+// 指令——stdout 必须为空（宿主会把 hook stdout 注入对话：引号里含危险串的命令曾产生一条
+// 逐字回放整条命令的 917 字节合成 user 消息），审计痕迹只落 hazard 事件台账（EventData）。
+// 覆盖两条放行路径：引号/注释内（STRIPPED 路径）与解释器 heredoc 正文。
+func TestHook_HazardGuard_DataContextAllowIsSilent(t *testing.T) {
+	dir := freshProject(t)
+	cases := []struct {
+		name, cmd string
+	}{
+		{"quoted", `grep "rm -rf" file.go`},
+		{"commit-message", `git commit -m "fix: handle rm -rf path bug"`},
+		{"heredoc-body", "python3 - <<'EOF'\nprint('rm -rf is only text here')\nEOF"},
+	}
+	for _, tc := range cases {
+		in := hookStdin(t, "sess-hazard-silent", "PreToolUse", "Bash", map[string]any{"command": tc.cmd})
+		stdout, _, err := forgeHook(t, dir, "hazard-guard", in)
+		if err != nil {
+			t.Fatalf("%s: data-context command must pass, got block:\n%s", tc.name, stdout)
+		}
+		if strings.TrimSpace(stdout) != "" {
+			t.Errorf("%s: data-context allow must not emit stdout (it would become a synthetic user message), got:\n%s", tc.name, stdout)
+		}
+	}
+
+	p, err := forgedata.ProjectFor(dir)
+	if err != nil {
+		t.Fatalf("ProjectFor: %v", err)
+	}
+	events, err := hazard.LoadEvents(p)
+	if err != nil {
+		t.Fatalf("LoadEvents: %v", err)
+	}
+	data := 0
+	for _, e := range events {
+		if e.Type == hazard.EventData {
+			data++
+		}
+	}
+	if data != len(cases) {
+		t.Errorf("each data-context allow must still land one %q event in the hazard ledger (audit trail), got %d of %d: %+v",
+			hazard.EventData, data, len(cases), events)
+	}
+}
+
 // TestHook_HazardGuard_ExecWrappedStillBlocked: 引号内但被 bash -c / sh -c / eval 包裹的是
 // 真执行，context classification 不能放行——strip_quotes 会剥离引号内内容，若无此兜底会
 // 漏检真高危（bash -c"rm -rf"是 agent 真删数据）。

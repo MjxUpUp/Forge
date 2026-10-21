@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -23,8 +24,14 @@ func TestHazardGuardScript_InterpHeredocBareTagRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bare-tag interpreter heredoc without exec primitives must release, got block:\n%s", out)
 	}
-	if !strings.Contains(out, "数据上下文") && !strings.HasPrefix(strings.TrimSpace(out), "PASS") {
-		t.Fatalf("release must either name the data context or early-PASS on the stripped head, got:\n%s", out)
+	// The data-context release is silent on stdout (it is diagnostics, not an instruction to
+	// the model); its proof is the ledger event. The other legitimate release is the early
+	// PASS on the stripped head.
+	if !slices.Contains(loggedHazardTypes(t, shimDir), "data") && !strings.HasPrefix(strings.TrimSpace(out), "PASS") {
+		t.Fatalf("release must either log a data-context event or early-PASS on the stripped head, got stdout:\n%s", out)
+	}
+	if strings.Contains(out, "数据上下文") {
+		t.Fatalf("a data-context release must not narrate itself on stdout (the host injects stdout into the conversation), got:\n%s", out)
 	}
 }
 
@@ -112,8 +119,11 @@ func TestHazardGuardScript_InterpHeredocBacktickScope(t *testing.T) {
 				if err != nil {
 					t.Fatalf("heredoc body is data (backtick inert in this language), must PASS, got block:\n%s", out)
 				}
-				if !strings.Contains(out, "数据上下文") {
-					t.Fatalf("release must come from the interpreter-heredoc data path, got:\n%s", out)
+				if !slices.Contains(loggedHazardTypes(t, shimDir), "data") {
+					t.Fatalf("release must come from the interpreter-heredoc data path (a data event in the ledger), got stdout:\n%s", out)
+				}
+				if strings.TrimSpace(out) != "" {
+					t.Fatalf("the data-path release is silent on stdout, got:\n%s", out)
 				}
 			}
 		})

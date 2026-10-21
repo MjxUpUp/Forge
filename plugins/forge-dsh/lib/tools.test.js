@@ -4,12 +4,12 @@ import {
   buildEventPayload,
   buildToolPayload,
   matchedCommands,
+  matchedGroups,
   normalizeToolInput,
   pluginMessage,
   promptText,
   sessionBits,
   toCCToolName,
-  welcomeText,
   isSubagent,
   MANAGED_BANNER,
 } from "./tools.js";
@@ -112,17 +112,6 @@ test("pluginMessage carries the producer-owned V4 source kind", () => {
   assert.notEqual(pluginMessage("a").id, pluginMessage("b").id);
 });
 
-test("welcomeText names both versions, asks for a one-sentence relay, and degrades without a forge version", () => {
-  const full = welcomeText("1.2.3", "1.2.4");
-  assert.ok(full.includes("插件 1.2.3，forge 1.2.4"));
-  assert.match(full, /第一次回复/);
-  assert.match(full, /\/forge-status/);
-  assert.match(full, /forge off/);
-  const noForge = welcomeText("1.2.3", undefined);
-  assert.ok(noForge.includes("插件 1.2.3）"), "no dangling forge clause when the probe gave no version");
-  assert.ok(!noForge.includes("forge undefined"));
-});
-
 test("isSubagent: origin 'subagent' or a parentSession marks a delegated child; top-level and missing handles are not", () => {
   assert.equal(isSubagent({ session: { header: { origin: "subagent" } } }), true);
   assert.equal(isSubagent({ session: { header: { parentSession: "sess-0" } } }), true);
@@ -133,4 +122,26 @@ test("isSubagent: origin 'subagent' or a parentSession marks a delegated child; 
 
 test("MANAGED_BANNER is the [forge-session] marker forge's task-resume hook prints", () => {
   assert.equal(MANAGED_BANNER, "[forge-session]");
+});
+
+test("matchedGroups: returns each accepting spec group with its matcher and roster, in spec order", () => {
+  const groups = [
+    { matcher: "Write|Edit", hooks: [{ command: "forge hook a" }, { command: "forge hook b" }] },
+    { matcher: "Bash", hooks: [{ command: "forge hook c" }] },
+    { hooks: [{ command: "forge hook d" }] }, // matcher-less: always matches
+  ];
+  assert.deepEqual(matchedGroups(groups, "Edit"), [
+    { matcher: "Write|Edit", commands: ["forge hook a", "forge hook b"] },
+    { matcher: "", commands: ["forge hook d"] },
+  ]);
+  assert.deepEqual(matchedGroups(groups, "Bash"), [
+    { matcher: "Bash", commands: ["forge hook c"] },
+    { matcher: "", commands: ["forge hook d"] },
+  ]);
+  assert.deepEqual(matchedGroups(groups, "Read"), [{ matcher: "", commands: ["forge hook d"] }], "anchored: Edit does not match Write|Edit as a substring of Read");
+  assert.deepEqual(matchedGroups(undefined, "Edit"), []);
+  // flattening the groups reproduces matchedCommands exactly (one matching semantics)
+  for (const name of ["Edit", "Bash", "Read", "Write"]) {
+    assert.deepEqual(matchedGroups(groups, name).flatMap((g) => g.commands), matchedCommands(groups, name));
+  }
 });
