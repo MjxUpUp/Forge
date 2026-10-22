@@ -94,3 +94,71 @@ func TestReviewWindowFiles_NoMergeUnchanged(t *testing.T) {
 		t.Fatalf("no merge after baseline → window must be plain diff + untracked, got %v want %v", got, want)
 	}
 }
+
+// reviewMergedRepo builds a task branch whose baseline is followed by a task commit (from files) and a merge of main, where main committed baseFiles meanwhile. It returns the repo dir and the review baseline.
+//
+// reviewMergedRepo 构造任务分支：审查基线之后本任务提交 files，同期 main 提交
+// baseFiles，再把 main 合进任务分支。返回仓库目录与审查基线。
+func reviewMergedRepo(t *testing.T, seed, files, baseFiles map[string]string, rm ...string) (string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	reviewGit(t, dir, "init", "-q")
+	reviewGit(t, dir, "config", "user.email", "t@t.com")
+	reviewGit(t, dir, "config", "user.name", "T")
+	reviewCommit(t, dir, "init", seed)
+	reviewGit(t, dir, "checkout", "-q", "-b", "task")
+	reviewGit(t, dir, "branch", "-f", "main")
+	baseline := reviewGit(t, dir, "rev-parse", "HEAD")
+	for _, f := range rm {
+		reviewGit(t, dir, "rm", "-q", f)
+	}
+	reviewCommit(t, dir, "task work", files)
+	reviewGit(t, dir, "checkout", "-q", "main")
+	reviewCommit(t, dir, "base work", baseFiles)
+	reviewGit(t, dir, "checkout", "-q", "task")
+	reviewGit(t, dir, "merge", "-q", "--no-edit", "main")
+	return dir, baseline
+}
+
+// TestReviewWindowFiles_KeepsWorktreeEditedMergedFile: a file merged in from base and then edited again in the working tree is the task's work under review, so it stays in the window.
+//
+// TestReviewWindowFiles_KeepsWorktreeEditedMergedFile：从基线合并带入、之后又在工作树
+// 里改过的文件属于本任务待审的工作，留在审查窗口里。
+func TestReviewWindowFiles_KeepsWorktreeEditedMergedFile(t *testing.T) {
+	dir, baseline := reviewMergedRepo(t,
+		map[string]string{"main.go": "package main\n"},
+		map[string]string{"own_test.go": "package main\n\nfunc TestOwn() {}\n"},
+		map[string]string{"base_test.go": "package main\n\nfunc TestBase() {}\n"})
+	if err := os.WriteFile(filepath.Join(dir, "base_test.go"), []byte("package main\n\nfunc TestBase() { /* weakened */ }\n"), 0o644); err != nil {
+		t.Fatalf("edit merged file: %v", err)
+	}
+
+	got := reviewWindowFiles(dir, &taskpipeline.TaskState{TaskRef: "t"}, baseline)
+	for _, want := range []string{"own_test.go", "base_test.go"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("%s must be in the review window, got %v", want, got)
+		}
+	}
+}
+
+// TestReviewWindowFiles_KeepsDeletionPairedAsRename: the task deletes a test while base adds an identical copy; with a merge in the window the listing runs without rename detection, so the deleted path is shown and the base copy is not.
+//
+// TestReviewWindowFiles_KeepsDeletionPairedAsRename：本任务删掉测试，同期基线新增一份
+// 相同内容的拷贝；窗口内有合并时关闭重命名检测列文件，被删的路径出现在窗口里，基线
+// 的拷贝不出现。
+func TestReviewWindowFiles_KeepsDeletionPairedAsRename(t *testing.T) {
+	content := "package main\n\nfunc TestA() {\n\tif 1+1 != 2 {\n\t\tpanic(\"math\")\n\t}\n}\n"
+	dir, baseline := reviewMergedRepo(t,
+		map[string]string{"main.go": "package main\n", "x_test.go": content},
+		map[string]string{"own.go": "package main\n\nfunc own() {}\n"},
+		map[string]string{"copy_test.go": content},
+		"x_test.go")
+
+	got := reviewWindowFiles(dir, &taskpipeline.TaskState{TaskRef: "t"}, baseline)
+	if !slices.Contains(got, "x_test.go") {
+		t.Errorf("task's test deletion must be in the review window, got %v", got)
+	}
+	if slices.Contains(got, "copy_test.go") {
+		t.Errorf("base copy must not be in the review window, got %v", got)
+	}
+}
