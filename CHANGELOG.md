@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.84.0](https://github.com/MjxUpUp/Forge/compare/v1.83.0...v1.84.0) (2026-10-22)
+
+
+### Features
+
+* **eval:** 评测有效性前置——Track A preflight/leakage、扰动臂与 MDE、golden 分层与 position-swap ([#127](https://github.com/MjxUpUp/Forge/issues/127)) ([4373f27](https://github.com/MjxUpUp/Forge/commit/4373f278b35608fc8014f70154571fc0dd6b1b34))
+
+
+### Bug Fixes
+
+* **protocol:** 协议文本与代码对齐 + 阻断正当性单一真相表 ([#129](https://github.com/MjxUpUp/Forge/issues/129)) ([9c5cbfe](https://github.com/MjxUpUp/Forge/commit/9c5cbfe06b549aa8d0aaf954ffe7c5300501435d))
+
 ## [1.83.0](https://github.com/MjxUpUp/Forge/compare/v1.82.0...v1.83.0) (2026-10-21)
 
 
