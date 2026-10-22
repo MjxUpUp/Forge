@@ -62,12 +62,22 @@ func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline
 				add(l, false)
 			}
 			// 窗口的 diff 比到工作树：工作树里刚删掉的测试也可能被配成基线带入文件的
-			// 「重命名」，只剩新路径又被剔掉。按同一条 diff 的配对补回旧路径。
+			// 「重命名」，只剩新路径又被剔掉。按同一条 diff 的配对补回旧路径，但只补工作树
+			// 相对 HEAD 删掉的（已提交的删除由 restored 补回）——否则基线一侧自己的重命名
+			// 也会被补出旧路径。
 			if len(mergedIn) > 0 {
-				if ns, nerr := exec.Command("git", "-C", root, "diff", "--name-status", priorBaseline).Output(); nerr == nil {
+				ns, nerr := exec.Command("git", "-C", root, "diff", "--name-status", priorBaseline).Output()
+				del, derr := exec.Command("git", "-C", root, "diff", "--no-renames", "--diff-filter=D", "--name-only", "HEAD").Output()
+				if nerr == nil && derr == nil {
+					wtDel := map[string]bool{}
+					for _, l := range strings.Split(string(del), "\n") {
+						if l = strings.TrimSpace(l); l != "" {
+							wtDel[filepath.ToSlash(l)] = true
+						}
+					}
 					for _, l := range strings.Split(string(ns), "\n") {
 						oldPath, newPath, ok := taskpipeline.RenamePair(strings.TrimSpace(l))
-						if ok && mergedIn[filepath.ToSlash(newPath)] && !mergedIn[filepath.ToSlash(oldPath)] {
+						if ok && mergedIn[filepath.ToSlash(newPath)] && wtDel[filepath.ToSlash(oldPath)] {
 							add(oldPath, false)
 						}
 					}

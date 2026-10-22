@@ -187,3 +187,36 @@ func TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename(t *testing.T) {
 		t.Errorf("base copy must not be in the review window, got %v", got)
 	}
 }
+
+// TestReviewWindowFiles_BaseSideRenameNotRestored: base renames a test and the task merges it without touching either path; the old path is base's own change and must not be restored into the review window, under every diff.renames setting.
+//
+// TestReviewWindowFiles_BaseSideRenameNotRestored：基线把某个测试改名，本任务合并进来、
+// 两个路径都没动；旧路径是基线自己的改动，不能补回审查窗口，diff.renames 取哪种配置
+// 都一样。
+func TestReviewWindowFiles_BaseSideRenameNotRestored(t *testing.T) {
+	for _, renames := range []string{"true", "false", "copies"} {
+		t.Run("renames="+renames, func(t *testing.T) {
+			content := "package main\n\nfunc TestA() {\n\tif 1+1 != 2 {\n\t\tpanic(\"math\")\n\t}\n}\n"
+			dir := t.TempDir()
+			reviewGit(t, dir, "init", "-q")
+			reviewGit(t, dir, "config", "user.email", "t@t.com")
+			reviewGit(t, dir, "config", "user.name", "T")
+			reviewGit(t, dir, "config", "diff.renames", renames)
+			reviewCommit(t, dir, "init", map[string]string{"main.go": "package main\n", "a_test.go": content})
+			reviewGit(t, dir, "checkout", "-q", "-b", "task")
+			reviewGit(t, dir, "branch", "-f", "main")
+			baseline := reviewGit(t, dir, "rev-parse", "HEAD")
+			reviewCommit(t, dir, "task own", map[string]string{"own.go": "package main\n\nfunc own() {}\n"})
+			reviewGit(t, dir, "checkout", "-q", "main")
+			reviewGit(t, dir, "mv", "a_test.go", "b_test.go")
+			reviewGit(t, dir, "commit", "-q", "-m", "base renames test")
+			reviewGit(t, dir, "checkout", "-q", "task")
+			reviewGit(t, dir, "merge", "-q", "--no-edit", "main")
+
+			got := reviewWindowFiles(dir, &taskpipeline.TaskState{TaskRef: "t"}, baseline)
+			if want := []string{"own.go"}; !slices.Equal(got, want) {
+				t.Fatalf("base-side rename must not leak into the review window, got %v want %v", got, want)
+			}
+		})
+	}
+}

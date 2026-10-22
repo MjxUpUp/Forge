@@ -65,6 +65,8 @@ tier: mini
   accept[REQ-20]: go test ./internal/cli/ -run ^TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename$ -count=1 :: --- PASS: TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename (
 - REQ-21 `git diff --name-status` 的重命名与拷贝条目都解析出旧、新路径
   accept[REQ-21]: go test ./internal/taskpipeline/ -run ^TestRenamePair$ -count=1 :: --- PASS: TestRenamePair (
+- REQ-22 基线一侧对测试改名、本任务合并后两个路径都没动时，旧路径不进审查窗口（diff.renames 三种配置）
+  accept[REQ-22]: go test ./internal/cli/ -run ^TestReviewWindowFiles_BaseSideRenameNotRestored$ -count=1 :: --- PASS: TestReviewWindowFiles_BaseSideRenameNotRestored (
 
 ## 设计
 ### 触点
@@ -89,7 +91,7 @@ tier: mini
   - 返回 committed 中属于「本任务的文件」的项。调用方的净 diff 开着重命名检测，本任务删掉的测试可能被配成基线新增拷贝的「重命名」，只剩新路径；所以再取 `diff --name-status from..HEAD` 的重命名与拷贝对（沿用调用方同一份 diff.renames 配置，不写死 `-M`），新路径在 committed 里且被剔掉、旧路径属于本任务时把旧路径补回。新路径保留的重命名对不动，纯重命名的结果与无合并时一致；
   - 任何 git 调用失败时原样返回（保守：不能证明外来就继续算）；所有 git 调用带 `--no-replace-objects`，防 `git replace --graft` 把普通提交伪装成基线合并。这一项是纵深防御：按文件比对的规则下，伪装合并能剔掉的不超过一次真实合并，没有单独的用例。
 - `taskChangedFiles` 在已提交部分（`HeadCommit..HEAD`）先过 `ExcludeMergedInFiles`，再过既有的跨任务归属过滤；工作树与 untracked 来源不过滤。
-- `reviewWindowFiles` 有审查基线时，先数 `baseline..HEAD` 第一父链上的合并提交，为 0 直接按原逻辑返回；否则剔除已提交差异里被判为基线带入、且工作树没再改动的文件，并加入 `ExcludeMergedInFiles` 补回的旧路径；窗口的 diff 比到工作树，所以再按 `diff --name-status <基线>` 的配对，把新路径被剔掉、旧路径不是基线带入的旧路径补回（工作树里刚删、未提交的测试）。untracked 文件不经剔除。
+- `reviewWindowFiles` 有审查基线时，先数 `baseline..HEAD` 第一父链上的合并提交，为 0 直接按原逻辑返回；否则剔除已提交差异里被判为基线带入、且工作树没再改动的文件，并加入 `ExcludeMergedInFiles` 补回的旧路径；窗口的 diff 比到工作树，所以再按 `diff --name-status <基线>` 的配对，新路径被剔掉、且旧路径是工作树相对 HEAD 删掉的（`diff --no-renames --diff-filter=D HEAD`），补回旧路径；只认工作树删除，避免把基线一侧自己的改名补出旧路径。untracked 文件不经剔除。
 
 ### 关键取舍
 - 不做（继续靠 `scope add` 收编）：否决。收编会把不相干的文件写进 PlanScope，污染「方案外改动」的判定，test-coverage 与 cheat-scan 也会继续误报。
