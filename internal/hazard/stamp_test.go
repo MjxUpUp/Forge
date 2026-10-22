@@ -77,7 +77,8 @@ func TestConfirm_AndIsConfirmed(t *testing.T) {
 // command.
 //
 // TestConfirmByFingerprint 验证 --fingerprint 路径：按给定指纹直接登记，不依赖命令算指纹。
-// 这是 HITL 闭环推荐路径——hook 输出 hex 指纹，agent 回传，绕过命令串复制失真。
+// hook 输出 hex 指纹，用户在终端回传（F.2b 起只接受真人终端），绕过命令串复制失真；
+// 日常推荐 --last（零转写）。
 func TestConfirmByFingerprint(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
 	// 假指纹（非 Fingerprint(any cmd)），证明登记不经 Fingerprint(cmd)。

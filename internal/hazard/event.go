@@ -238,7 +238,7 @@ func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, e
 // 其 `--last` 调用之间，同项目另一会话/工具触发了 block B，`--last` 确认的是 B——为
 // 一条用户从未见过的命令登记了 5min 放行，而 A 仍被拦。失败模式自愈（A 重拦 → 重走
 // HITL；B 的确认大概率空过期），且任何确认的创建都以真实 block 事件为前提、审计链
-// 保持如实——这是零转写的代价。单会话流程（常态）无此窗口：hook 在打印 agent 所确认
+// 保持如实——这是零转写的代价。单会话流程（常态）无此窗口：hook 在打印用户所确认
 // 的拦截消息之前就落了 block 事件。
 func ConfirmLastBlock(p *forgedata.Project) (fp, cmd string, err error) {
 	events, err := LoadEvents(p)

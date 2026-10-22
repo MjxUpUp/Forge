@@ -152,7 +152,7 @@ var hazardLogCmd = &cobra.Command{
 	RunE:   runHazardLog,
 }
 
-// runHazardConfirm 登记确认。MinimumNArgs(1) + Join：agent 可引号传整串，也可不引号
+// runHazardConfirm 登记确认。MinimumNArgs(1) + Join：调用者可引号传整串，也可不引号
 // （多 arg 被空格 join 还原）——空白归一在 hazard.Fingerprint 内做，两种传法同指纹。
 func runHazardConfirm(cmd *cobra.Command, args []string) error {
 	// F.2a confirm 链式分离（设计 F，首发即 blocked——承诺表 §二.1②，形态门禁豁免见

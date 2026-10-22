@@ -17,7 +17,7 @@
 | B1 度量基建 | 1.56 | M | 新命令，钉死全部基线，两机同脚本可复算 |
 | B2 行为 advisory | 1.56 | A、B、C(adv)、F.1、F.2a、F.2b(adv)、G.1(adv)、G.2 | 触发/输出面变更，advisory 均带 1.58 预告文案；F.2a 例外——首发即 blocked（承诺表 §二.1②，新形态无存量暴露） |
 | B3 内容+校验 | 1.56 | D | skills 内容 + R19 校验规则 |
-| B4 ratchet | 1.58 | C(block)、G(阈值)、F.2b | 新 BLOCKED 位点，过 compat golden |
+| B4 ratchet | 1.58 | C(block)、G(阈值)、F.2b | 新 BLOCKED 位点，过 compat golden（2026-10-22 注：C 于 1.67 兑现，G 撤回，见 compat-commitments.md §三） |
 
 ## M｜度量基建：`forge eval harness-audit`
 

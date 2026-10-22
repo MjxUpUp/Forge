@@ -11,7 +11,7 @@ tier: mini
 生成的项目级协议、forge-quality skill、hazard-guard 提示与 README 有 5 处与代码矛盾，agent 照文档做会失败。本批只改文本、注释与测试，让它们陈述代码的现行行为；另在 compat-commitments 第二节加一张阻断正当性分类表作为单一真相源。零新增阻断位点、命令与逃生 env。
 
 ## 问题与目标
-来源：2026-10-22 全景盘点的内部冲突清单（高严重度 5 条）。
+来源：2026-10-22 全景盘点的内部冲突清单（高严重度 5 条；调研产物在本机 `~/.research-workflow/harness-landscape-20261022-0938/internal_conflicts.md`，未入库）。
 
 | 文本说 | 代码实际 |
 |---|---|
@@ -21,10 +21,10 @@ tier: mini
 | 让 agent 自行 `forge hazard confirm --last` | `internal/cli/hazard.go` 拒绝非真人终端 |
 | init-suggest「自动 forge init」 | `internal/userconfig/userconfig.go` 的 `TakeoverAsk` 是出厂默认 |
 
-另：compat-commitments、focus-batches、leverage-points-landing、forge-evaluation-system 四份设计文档对「何时可以 BLOCK」各有一套说法，新门禁提案无法判断自己能不能阻断。
+另：四份设计文档对「何时可以 BLOCK」各有一套说法——`docs/design/compat-commitments.md` 第二节第 3 条（每个 BLOCKED 必须有逃生舱）、`docs/design/focus-batches.md:8`（BLOCKED 仅用于证据造假）、`docs/design/leverage-points-landing.md:5`（HARD 只守事实）、`docs/design/forge-evaluation-system.md:211`（BLOCKED 只出现在评测自身不合法）——新门禁提案无法判断自己能不能阻断。
 
 ## Non-goals
-- 不改任何门禁行为：不兑现 test-coverage 3→2 收紧，不新增 override，不动 `hook_gate_cmd_form.go` 的版本门（并行的死代码清扫任务正在改这处，分支 `claude/upbeat-benz-c1bc72`）。
+- 不改任何门禁行为：不兑现 test-coverage 3→2 收紧，不新增 override，不动 `hook_gate_cmd_form.go` 的版本门（另一个会话的死代码清扫任务正在独立 worktree 里改这处）。
 - 不处理中、低严重度冲突（命令面记账、lite 档准入等）。
 - 阻断正当性表列出的「已知例外」（task-verify Stop 逃生无审计行、bundle 验签无逃生舱等）只登记，不在本批修：修它们是行为变更。
 - 不改历史依据行：`artifact-chain-workflow.md` 等文档引用旧总原则「HARD 只守事实」的依据行记录的是当时的口径，保持原样。
@@ -58,6 +58,14 @@ tier: mini
 
 ## 设计
 ### 触点
+（每行一个路径：PlanScope 按行取第一个路径解析。）
+- `internal/hazard/stamp.go`
+- `internal/hazard/stamp_test.go`
+- `internal/hazard/event.go`
+- `internal/cli/hazard_chain_test.go`
+- `internal/hooks/hazard_f1_f2a_script_test.go`
+- `internal/hooks/settings_test.go`
+- `internal/e2e/datadir_hook_test.go`
 - `internal/skillgen/claudemd.go`
 - `internal/skillgen/claudemd_test.go`
 - `internal/skillgen/qualitygen.go`
@@ -99,5 +107,5 @@ tier: mini
 
 ## 验证与回滚
 - `go vet ./...` 无输出。
-- `go test ./...`：internal/cli 以外的包全部 `ok`；internal/cli 用 `-timeout 30m` 单独跑为 `ok`（605.7s，默认 10 分钟上限下会超时，与本批改动无关）。
+- `go test ./... -count=1 -timeout 30m`：全部 `ok`。internal/cli 单包约 606 秒，超过 Go 默认的 10 分钟上限，本地全量须加 `-timeout`。
 - 回滚即 revert 本分支的提交，不涉及数据面。
