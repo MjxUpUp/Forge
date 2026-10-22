@@ -91,6 +91,11 @@ func TestSkillDecisionsRecorded(t *testing.T) {
 	if rec, fo := skillDecisionsRecorded(dir, base, skill); fo || !rec {
 		t.Errorf("新增第2条应 recorded=true failopen=false, got rec=%v fo=%v", rec, fo)
 	}
+	// case 2b: 只迁入降级的历史条目（退役 skill 并入）→ 未记。
+	sdecWrite(t, dir, "skills/"+skill+"/decisions.md", "## [d-base1] accept\n\n## 历史来源：old\n\n### [d-old1] accept\n")
+	if rec, fo := skillDecisionsRecorded(dir, base, skill); fo || rec {
+		t.Errorf("只迁入降级历史条目应 recorded=false, got rec=%v fo=%v", rec, fo)
+	}
 	// case 3: 另一 skill 首次创建 decisions.md（base 时无该文件）→ 记了。
 	skill2 := "newskill"
 	sdecWrite(t, dir, "skills/"+skill2+"/decisions.md", "## [d-first] accept\n首次决策\n")
@@ -104,6 +109,26 @@ func TestSkillDecisionsRecorded(t *testing.T) {
 	// case 5: base commit 不可达（amend/rebase 改写历史）→ fail-open。
 	if _, fo := skillDecisionsRecorded(dir, "deadbeefnotarealcommit123", skill); !fo {
 		t.Errorf("base 不可达应 fail-open")
+	}
+}
+
+// TestCountDecisionEntries 钉住只认行首 `## [d-`：退役 skill 并入时降级的 `### [d-`
+// 历史条目与行内出现的标记都不计，搬运旧条目不得被判为新记决策。
+func TestCountDecisionEntries(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    int
+	}{
+		{"空", "", 0},
+		{"两条决策", "# x\n\n## [d-a] accept\n正文\n## [d-b] reject\n", 2},
+		{"降级历史条目不计", "## [d-a] accept\n\n## 历史来源：old\n\n### [d-old1] accept\n#### Diagnosis\n", 1},
+		{"行内标记不计", "## [d-a] accept\n引用 `## [d-x]` 的正文\n", 1},
+	}
+	for _, c := range cases {
+		if got := countDecisionEntries(c.content); got != c.want {
+			t.Errorf("%s: countDecisionEntries=%d want %d", c.name, got, c.want)
+		}
 	}
 }
 

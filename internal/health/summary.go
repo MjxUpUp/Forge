@@ -108,7 +108,8 @@ type Summary struct {
 	// NudgeRecent 数 SummarizeAt 的 `now` 前 NudgeRecentWindow 窗口内完成且
 	// RetrospectiveNudge=true 的结论——喂给 dashboard 的面向告警计数，让陈旧 nudge
 	// 不再把面板红灯永远挂着（告警疲劳校准见 NudgeRecentWindow）。`forge health` /
-	// `forge status` 也传真实 now，与 pulse 面板同口径。
+	// `forge status` 也传真实 now，与 pulse 面板同一 14 天窗口（但不扣 ack：pulse 走
+	// SummarizeAtAcked，health/status 的 nudge_recent 可能大于面板值）。
 	NudgeRecent int `json:"nudge_recent"`
 	// NudgeActionable counts windowed nudges that are NOT escape-hatch-capped
 	// Weak — i.e. the human-facing ALERT share of NudgeRecent: true-weak claims

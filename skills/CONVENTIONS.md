@@ -29,7 +29,7 @@ skill-name/                # 目录名 = skill id = frontmatter.name
                           # 让下一轮 agent 理解 why，避免重复探索已失败方向。审计/可复现，非泛化学习。
 ```
 
-> **退役 skill 存档**：退役一个 skill 时，把它的 `decisions.md` 追加到承接 skill 的 `decisions.md` 末尾，单起一节「历史来源：<旧名>」，决策标题统一降一级（`## [d-` → `### [d-`、子节 `### ` → `#### `），正文逐字保留——降级后不会被解析成承接 skill 自己的决策（`internal/skillsdecisions` 只认行首 `## [d-`）；然后删除整个旧目录。`skills/` 下不留只有 `decisions.md` 的目录：`internal/skillsqa/r18_ratchet_test.go` 对无 `SKILL.md` 的目录报错。先例：`fact-research`、`web-search-bridge` 于 2026-10-22 并入 `research-workflow/decisions.md`。
+> **退役 skill 存档**：退役一个 skill 时，把它的 `decisions.md` 追加到承接 skill 的 `decisions.md` 末尾，单起一节「历史来源：<旧名>」，决策标题统一降一级（`## [d-` → `### [d-`、子节 `### ` → `#### `），正文逐字保留——降级后不会被当成承接 skill 自己的决策（`internal/skillsdecisions` 的解析与 `internal/taskpipeline` 的「改 SKILL.md 须记决策」计数都只认行首 `## [d-`）；然后删除整个旧目录。`skills/` 下不留只有 `decisions.md` 的目录：`internal/skillsqa/r18_ratchet_test.go` 对无 `SKILL.md` 的目录报错。先例：fact-research、web-search-bridge 两个退役 skill 于 2026-10-22 并入 `research-workflow/decisions.md`。
 
 > **设计族拆包（2026-09）**：前端/设计族 12 个 skill（frontend-* / ai-*-ui-* / design-* / ui-iteration-feedback-loop）整体迁至 `plugins/forge-design/skills/`——独立 skill pack，不进 `skills/embed.go` 二进制（决策记录 docs/plans/feature-focus-2026-09.md §2.1）。核心 `skills/` 只留通用验证/流程/编排/检索；核心 skill 引用这 12 个名字时一律是"属 forge-design pack，未安装则忽略"的指针语义。
 

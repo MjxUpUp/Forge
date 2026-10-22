@@ -1,11 +1,11 @@
 // Package skillmetrics provides skill usage observability: usage counts,
-// trigger funnel, keyword stats, effectiveness correlation, weakness clusters,
-// and trigger-declaration drift — all read-only analysis over checklog/toollog.
+// trigger funnel, keyword stats, effectiveness correlation, and
+// trigger-declaration drift — all read-only analysis over checklog/toollog.
 //
 // Package skillmetrics 提供 skill 使用度量：使用计数、触发漏斗、关键词统计、
-// 命中×成效关联、弱点聚簇与触发声明漂移——全部是对 checklog/toollog 的只读
+// 命中×成效关联与触发声明漂移——全部是对 checklog/toollog 的只读
 // 分析（2026-09 普查 A4：自 skillseval 拆出，与 eval 案例机器分家；
-// skillseval → skillmetrics 单向依赖，见 TestPackageLeaf 守卫）。
+// 只允许 skillseval → skillmetrics 方向，见 TestPackageLeaf 守卫）。
 //
 // 数据层 agent-neutral：tool-track hook 跨 host 接入，Skill 工具事件触发时记录
 // （当前仅 Claude Code 有 Skill 工具事件；cursor/codex 等 skill 经 mdc/AGENTS.md
@@ -104,7 +104,7 @@ type UsageReport struct {
 	// Funnel is the passive-trigger funnel (hit → delivered → engaged).
 	//
 	// Funnel 是被动触发漏斗（命中 → 送达 → 加载）。仅 AnalyzeUsageWithFunnel（CLI usage
-	// 视图）填充；AnalyzeUsage 留 nil——weakness 等消费方只要触达计数，join
+	// 视图）填充；AnalyzeUsage 留 nil——只要触达计数的消费方，join
 	// （checklog × toollog）在那里是白做的工作。
 	Funnel *FunnelReport `json:"funnel,omitempty"`
 	// Drift is the production-vs-repo trigger-set comparison.

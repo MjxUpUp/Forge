@@ -85,12 +85,12 @@ func TestHealth_NonGitFriendlyMessage(t *testing.T) {
 }
 
 // TestHealthJSON_NudgeWindowed pins that `forge health --json` windows the
-// alert-facing nudge counts at the real now (same basis as the pulse panel),
-// while nudge_count stays the all-history truth.
+// alert-facing nudge counts at the real now (the pulse panel's 14-day window,
+// without its ack filter), while nudge_count stays the all-history truth.
 //
 // TestHealthJSON_NudgeWindowed 钉住 `forge health --json` 以真实 now 开窗：
-// nudge_recent / nudge_actionable 只数 14 天窗口内的 nudge（与 pulse 面板同口径），
-// nudge_count 仍是全量。
+// nudge_recent / nudge_actionable 只数 14 天窗口内的 nudge（与 pulse 面板同一窗口，
+// 不扣 ack），nudge_count 仍是全量。
 func TestHealthJSON_NudgeWindowed(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
 	if out, _, code := runForge(t, tmpDir, `init`, `--mode`, `medium`); code != 0 {
@@ -111,7 +111,7 @@ func TestHealthJSON_NudgeWindowed(t *testing.T) {
 	}
 	var s health.Summary
 	if err := json.Unmarshal([]byte(out), &s); err != nil {
-		t.Fatalf(`health JSON 解析失败: %v\n%s`, err, out)
+		t.Fatalf("health JSON 解析失败: %v\n%s", err, out)
 	}
 	if s.NudgeCount != 2 || s.NudgeRecent != 1 || s.NudgeActionable != 1 {
 		t.Errorf(`nudge_count=%d want 2、nudge_recent=%d want 1、nudge_actionable=%d want 1（30 天前的 nudge 只计全量）`,

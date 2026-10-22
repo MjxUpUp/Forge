@@ -252,11 +252,11 @@ func completedAt(c act.Conclusion, t time.Time) act.Conclusion {
 
 // TestSummarizeAt_FullWindowRecentEqualsCount pins that when every nudged
 // conclusion falls inside the window, NudgeRecent equals the all-history
-// NudgeCount.
+// NudgeCount, and that `now` never changes the non-windowed aggregates.
 //
 // TestSummarizeAt_FullWindowRecentEqualsCount 钉住：全部 nudge 结论落进窗口时，
 // NudgeRecent 等于全量 NudgeCount；窗口在结论之后太远时 NudgeRecent 归零而
-// NudgeCount 不变。
+// NudgeCount 不变；now 不同不影响非窗口聚合（总数/盲区/均分/中位）。
 func TestSummarizeAt_FullWindowRecentEqualsCount(t *testing.T) {
 	cs := []act.Conclusion{
 		conc(`a`, `A`, `Strong`, 95, nil, at(1)),
@@ -271,6 +271,11 @@ func TestSummarizeAt_FullWindowRecentEqualsCount(t *testing.T) {
 	stale := SummarizeAt(cs, time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC))
 	if stale.NudgeRecent != 0 || stale.NudgeCount != 1 {
 		t.Errorf(`窗口外：NudgeRecent=%d want 0、NudgeCount=%d want 1`, stale.NudgeRecent, stale.NudgeCount)
+	}
+	// 窗口只影响 nudge 窗口计数，绝不静默改动非窗口聚合（now 不同，其余字段必须一致）。
+	if windowedAll.TotalTasks != stale.TotalTasks || windowedAll.BlindSpotCount != stale.BlindSpotCount ||
+		windowedAll.AvgScore != stale.AvgScore || windowedAll.MedianScore != stale.MedianScore {
+		t.Errorf(`非窗口字段随 now 变化: windowedAll=%+v stale=%+v`, windowedAll, stale)
 	}
 }
 

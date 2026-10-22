@@ -20,7 +20,7 @@ baseline: 4373f278
 ## 需求与验收
 - REQ-1 `internal/skillseval/mine.go`、`internal/skillmetrics/weakness.go` 及其测试删除，仓内无残留引用，相关包编译与 vet 通过。
   accept[REQ-1]: go vet ./internal/skillseval/ ./internal/skillmetrics/ ./internal/health/ ./internal/cli/
-- REQ-2 `health.Summarize` 删除；`forge health` 与 `forge status` 改调 `health.SummarizeAt(cs, time.Now())`。行为变化：两者 JSON 里的 `nudge_recent` / `nudge_actionable` 从全量计数改为 14 天窗口计数，与 pulse 面板口径一致；`nudge_count` 仍是全量；其余字段不变。
+- REQ-2 `health.Summarize` 删除；`forge health` 与 `forge status` 改调 `health.SummarizeAt(cs, time.Now())`。行为变化：两者 JSON 里的 `nudge_recent` / `nudge_actionable` 从全量计数改为 14 天窗口计数，与 pulse 面板同一窗口（pulse 另扣已 ack 的 nudge，health/status 不扣）；`nudge_count` 仍是全量；其余字段不变。
   accept[REQ-2]: go test ./internal/health/ -run ^TestSummarizeAt_NudgeRecentWindow$ -count=1 :: --- PASS: TestSummarizeAt_NudgeRecentWindow (
   accept[REQ-2]: go test ./internal/cli/ -run ^TestHealthJSON_NudgeWindowed$ -count=1 :: --- PASS: TestHealthJSON_NudgeWindowed (
 - REQ-3 以下生产不可达函数删除，测试改调本体或内联：`checklog.EscapeOwnerOf`、`evalkit.LoadCard`、`projectsync.sha256Hex`、`protocol.WordSeverityLabel` / `MustShouldLabel` / `AlwaysPreferLabel`、`skillsdist.hashTree`、`taskpipeline.VerifyAcceptance`、`taskpipeline.VerifyArtifact`。仓内 gates-card 资产校验、渲染格式钉子、产物漂移探测、验收实跑的测试覆盖保留。
@@ -37,6 +37,9 @@ baseline: 4373f278
   accept[REQ-4]: go test ./internal/hookdispatch/ -run ^TestGateCmdFormHook_AdvisoryAndSilence$ -count=1 :: --- PASS: TestGateCmdFormHook_AdvisoryAndSilence (
 - REQ-5 `skills/fact-research/decisions.md`、`skills/web-search-bridge/decisions.md` 追加到 `skills/research-workflow/decisions.md` 末尾的"历史来源"节，标题各降一级（`## [d-` → `### [d-`），正文逐字保留，避免被解析成 research-workflow 自己的决策；两个目录删除；`skills/CONVENTIONS.md` 的退役存档约定改为"并入承接 skill 后删目录"；r18 棘轮测试对无 SKILL.md 目录的跳过改为报错。
   accept[REQ-5]: go test ./internal/skillsqa/ -run ^TestR18_Grandfathered_Exact$ -count=1 :: --- PASS: TestR18_Grandfathered_Exact (
+- REQ-6 「改 SKILL.md 须记决策」门禁的条目计数（`internal/taskpipeline/executor_skill_decisions.go:countDecisionEntries`）改为只认行首 `## [d-`，与 `skillsdecisions.parseDecisions` 同口径；降级迁入的 `### [d-` 历史条目与行内标记不再被算作新记决策（独立审查发现：原子串计数会让 REQ-5 的迁入方式绕过门禁）。
+  accept[REQ-6]: go test ./internal/taskpipeline/ -run ^TestCountDecisionEntries$ -count=1 :: --- PASS: TestCountDecisionEntries (
+  accept[REQ-6]: go test ./internal/taskpipeline/ -run ^TestSkillDecisionsRecorded$ -count=1 :: --- PASS: TestSkillDecisionsRecorded (
 
 完成判据（人工核对，不进 accept）：`deadcode ./...` 只剩 2.3 C 档已注释保留的函数；`go vet ./...`、`go test ./...` 全过。
 
@@ -70,7 +73,7 @@ baseline: 4373f278
 - `internal/taskpipeline/specs_test.go` 改用 `ArtifactCurrentHash` 比对
 - `internal/tasktypes/types.go` 注释引用改为 `ArtifactCurrentHash`
 - `internal/checklog/types.go` 注释引用同上
-- `internal/hookdispatch/hook_task_drift.go` 删 `taskDriftBlockVersion`，新增共用判定 `ratchetBlockVersion`
+- `internal/hookdispatch/hook_task_drift.go` 删 `taskDriftBlockVersion`，新增共用判定 `ratchetBlocksVersion`
 - `internal/hookdispatch/hook_task_drift_test.go` 版本用例改为 dev / 非版本串 / 带构建后缀的发布串，新增 `TestRatchetBlocksVersion`
 - `internal/hookdispatch/hook_gate_cmd_form.go` 删 `gateCmdFormBlockVersion`，改调共用判定
 - `internal/hookdispatch/hook_gate_cmd_form_test.go` advisory 用例改用 dev 版本
@@ -79,6 +82,9 @@ baseline: 4373f278
 - `skills/CONVENTIONS.md` 退役存档约定
 - `internal/skillsqa/r18_ratchet_test.go` 去掉无 SKILL.md 目录的跳过
 - 删除 `skills/fact-research/`、`skills/web-search-bridge/`
+- `internal/taskpipeline/executor_skill_decisions.go` 计数改行首匹配（REQ-6）
+- `internal/taskpipeline/executor_skill_decisions_test.go` 新增 `TestCountDecisionEntries`，`TestSkillDecisionsRecorded` 加迁入用例
+- 审查发现的过期注释同步：`internal/tasktypes/types.go`、`internal/clitask/task_gate.go`、`internal/clitask/task_oracle_test.go`、`internal/clitask/task_acceptance_test.go`（`VerifyAcceptance` 改名）；`internal/skillmetrics/funnel.go`、`internal/skillmetrics/usage.go`、`internal/skillmetrics/direction_test.go`、`internal/util/redact.go`（mine.go / weakness 已删）；`internal/cliskills/skills_inventory.go`（退役存档目录已不存在）
 
 ### 风险
 - REQ-2 改变 `health --json` / `status --json` 两个计数的口径。键不增不删，`nudge_count` 保留全量真相；仓内没有读这两个键做判定的消费方（`grep nudge_recent` 只命中 health 包与 pulse），按"语义推导规则可随版本演进"处理，在 commit 信息与 PR 描述里写明。

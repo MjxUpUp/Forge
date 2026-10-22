@@ -76,11 +76,11 @@ type AcceptanceCriterion struct {
 	Expected string `json:"expected,omitempty"` // 期望输出的子串；空=只看退出码 0
 	Passed   bool   `json:"passed,omitempty"`   // 上次 verify-acceptance 的结果
 	Output   string `json:"output,omitempty"`   // 上次实跑的输出（截断），供排查
-	// AcceptedHeadCommit is the HEAD snapshot when VerifyAcceptance actually ran
+	// AcceptedHeadCommit is the HEAD snapshot when VerifyAcceptanceWithVerdicts actually ran
 	// this criterion (state.go GetHeadCommit). forge_task_proof compares it ==
 	// current HEAD to decide whether Passed is fresh.
 	//
-	// AcceptedHeadCommit 是 VerifyAcceptance 实跑该条时的 HEAD 快照（state.go GetHeadCommit）。
+	// AcceptedHeadCommit 是 VerifyAcceptanceWithVerdicts 实跑该条时的 HEAD 快照（state.go GetHeadCommit）。
 	// forge_task_proof 比对 == 当前 HEAD 判定 Passed 是否 fresh——避免 agent 读基于旧代码的过时
 	// Passed 声明 done。空 = 未跑过 verify（老 state 兼容），proof 走 v1 重跑兜底。
 	AcceptedHeadCommit string `json:"accepted_head_commit,omitempty"`
@@ -162,10 +162,10 @@ type AcceptanceCriterion struct {
 	// 不同 = 改了代码、失败没变。
 	FailHistory []AcceptanceFailure `json:"fail_history,omitempty"`
 	// LastFailure is the transient failure record of the run that just happened
-	// (never persisted): VerifyAcceptance fills it, MergeAcceptanceResults
+	// (never persisted): VerifyAcceptanceWithVerdicts fills it, MergeAcceptanceResults
 	// appends it to the authoritative FailHistory. nil when the run passed.
 	//
-	// LastFailure 是刚发生这一次实跑的临时失败记录（不落盘）：VerifyAcceptance
+	// LastFailure 是刚发生这一次实跑的临时失败记录（不落盘）：VerifyAcceptanceWithVerdicts
 	// 填写，MergeAcceptanceResults 把它并进权威盘上状态的 FailHistory。通过时为 nil。
 	LastFailure *AcceptanceFailure `json:"-"`
 }

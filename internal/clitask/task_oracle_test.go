@@ -202,7 +202,7 @@ func TestRegisterConventionsDefaults_Wiring(t *testing.T) {
 		t.Errorf(`应盖 conventions 层，got %q`, added[0].Source)
 	}
 	if len(st.Acceptance) != 1 {
-		t.Errorf(`内存副本应同步（后续 VerifyAcceptance 实跑它）: %d 条`, len(st.Acceptance))
+		t.Errorf(`内存副本应同步（后续 VerifyAcceptanceWithVerdicts 实跑它）: %d 条`, len(st.Acceptance))
 	}
 	disk, _ := taskpipeline.LoadTaskState(dir, taskRef)
 	if len(disk.Acceptance) != 1 || disk.Acceptance[0].Source != taskpipeline.AcceptanceSourceConventions {
