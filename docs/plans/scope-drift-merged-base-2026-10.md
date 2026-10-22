@@ -10,15 +10,15 @@ tier: mini
 ## TL;DR
 任务分支中途合并 main 之后，forge 以任务起点 `HeadCommit` 为基准计算改动集，把 main 带进来的文件也当成本任务的改动。本批在改动集的单一真相源 `taskChangedFiles` 与 review 的审查窗口里，剔除只经「基线合并」带入的文件；没有合并提交的任务结果逐字不变。
 
-判定口径：基线合并里的文件只有同时满足三条才剔除，其余一律算本任务改动——合并结果等于某个基线父的版本；基线一侧自分叉以来改过它；任务一侧没改过它。「基线分支」只认 `origin/main`、`origin/master`，没有远端时回落本地 `main`、`master`。
+判定口径：基线合并（其余各父都能从基线分支到达的合并，与合并时写的 ref 名无关）里的文件只有同时满足三条才剔除，其余一律算本任务改动——合并结果等于某个基线父的版本；基线一侧自分叉以来改过它；任务一侧没改过它。「基线分支」只认 `origin/main`、`origin/master`，没有远端时回落本地 `main`、`master`。
 
 需要接受的残余风险（详见「已知局限」）：
-- 本任务的子分支经 PR 进入 origin/main 后再合回，子分支上的改动按基线带入剔除；
+- 经 PR 进入基线的子分支：任务再合并 origin/main 时，子分支上的改动按基线带入剔除；
 - 用 `git merge <sha>` 合并基线上一个临时削弱过测试、后又恢复的中间提交，能绕过本地门禁；
 - 改写远端跟踪 ref（`update-ref`、`fetch . X:refs/remotes/origin/main`）能让任意提交被当作基线。
 
 影响面：`taskChangedFiles` / `TaskChangedFiles` 的全部调用方（`grep -rniE 'taskChangedFiles\(' internal`）都随之改变。
-- 预期内的修正：scope-drift（同一 drift 复发后升为硬门禁的项目里是 HARD 阻断）、test-coverage、cheat-scan 的文件集、mutation 抽样、fuzz、acceptance 的改动指纹、design tier、loop 判词的改动文件数。
+- 预期内的修正：scope-drift（项目 scope 维度多次低分、且本次 drift 达严重阈值时升为 HARD 阻断）、test-coverage、cheat-scan 的文件集、mutation 抽样、fuzz、acceptance 的改动指纹、design tier、loop 判词的改动文件数。
 - 需要留意的语义变化：
   - finding-regression 要求「回归测试在改动集里」（finding_regression.go:97/135），从基线合并带入的测试文件不再算本任务改了测试；
   - held-out 套件判定读改动集（heldout.go:198），同上；
@@ -31,7 +31,7 @@ tier: mini
 - 目标：已提交部分只保留本任务的文件（判定见「做法」），再与净差异取交集（重命名旧路径补回除外）。
 
 ## Non-goals
-- 不改 scoring 的 diff 基准（`internal/scoring/git.go:26` 的 resolveDiffBase）。它同时给变更范围维度提供行数（git.go:18 `CollectGitData`）、给断言保护维度提供断言密度（assertion.go:44 `CollectAssertionDensity`），合并后这两项仍会把基线改动算进去，另议。断言密度还喂给 task-complete 的「零断言」HARD 判定（executor_check_complete.go:93，assertN==0 才拦）：合并基线后，基线测试文件里的断言会让这道拦截偏向放行。
+- 不改 scoring 的 diff 基准（`internal/scoring/git.go:26` 的 resolveDiffBase）。它同时给变更范围维度提供行数（git.go:17 `CollectGitData`）、给断言保护维度提供断言密度（assertion.go:43 `CollectAssertionDensity`），合并后这两项仍会把基线改动算进去，另议。断言密度还喂给 task-complete 的「零断言」HARD 判定（executor_check_complete.go:93，assertN==0 才拦）：合并基线后，基线测试文件里的断言会让这道拦截偏向放行（改动前已存在，本批不加剧）。
 - 不处理快进合并：任务尚无提交时快进合并 main，没有合并提交可依据，无法区分；保持原行为并在注释里写明。
 - 不改 `forge task scope` 的命令面。
 
@@ -93,8 +93,9 @@ tier: mini
 
 ### 做法
 - 新增 `taskpipeline.ExcludeMergedInFiles(root, from string, committed []string) []string`，调用方只传已提交区间的文件：
-  - `from..HEAD` 第一父链上没有合并提交时原样返回，只多一次 `rev-list` 调用；
+  - `from`（任务起点 HeadCommit）`..HEAD` 第一父链上没有合并提交时原样返回；
   - 基线分支 ref：有 `origin/main`、`origin/master` 时只认它们；没有这类远端 ref 时回落本地 `main`、`master`；
+  - 找不到任何基线分支 ref 时原样返回；
   - 两道守卫，任一不满足就原样返回：
     - 链路守卫：沿 HEAD 的第一父链能走到 from，防「别的分支在 from 之前分叉、任务快进到它」；
     - 倒置守卫：链上每个合并提交本身都不能从基线分支到达，防「任务被合进 main 后快进回来」，包括快进后又继续提交；
@@ -126,12 +127,12 @@ tier: mini
 ### 已知局限
 - cheat-scan 只剔文件、不剔行：`cheatDiffBases`（cheatscan.go:710）仍用 `HeadCommit..HEAD` 取新增行，合并带入的行只要落在本任务也改过的文件里，仍会被扫描。完全属于基线的文件已经不在文件集里，不受影响。
 - 判定只看合并的其余各父能否从 origin/main、origin/master（无远端时本地 main、master）到达，与合并时写的 ref 名无关：裸 SHA、`FETCH_HEAD` 指向的提交只要已在这些 ref 上，同样按基线合并处理。基线分支叫 develop、upstream/main 的仓库，或 `git pull <url>` 带进来的提交不在这些 ref 上时，按非基线合并整段计入，退回原行为，不会误剔。squash 合并、cherry-pick 过来的基线提交同样保留原行为。
-- 本任务的子分支先经 PR 合进 origin/main、任务再合并 origin/main 时，子分支上的改动按基线带入剔除。这些改动已经过那次 PR 的审查，本批不另行追溯。
+- 经 PR 进入基线的子分支：本任务的子分支先经 PR 合进 origin/main、任务再合并 origin/main 时，子分支上的改动按基线带入剔除。这些改动已经过那次 PR 的审查，本批不另行追溯。
 - 任务先合过一次 origin/main，之后部分提交经「合并提交式」PR 进入 origin/main：那次合并本身已可从基线分支到达，触发倒置守卫，整段退回原行为（基线文件重新算进改动集，偏保守，不误剔）。squash 合并的 PR 不受影响。
 - 基线上任何一个分叉后临时削弱过某个测试、后来又恢复的提交（例如 origin/main 自己的中间提交），本任务用 `git merge <sha>` 合并它、且任务一侧没碰过该测试时，这次削弱会被当作基线带入。PR 合回 main 时 main 的版本胜出，绕过的只是本地门禁。
 - 「任务一侧改过」只看文件有没有变，不看那次改动是否已进基线：前序任务改过的文件经 squash PR 进了 main、main 又继续改它，当前任务合并 origin/main 后，这个文件仍算本任务改动。偏保守，不漏报，但会留下少量本批想消掉的 scope-drift 误报。
 - 基线分支的可信度以远端 ref 为界：agent 用 `git update-ref` 或 `git fetch . X:refs/remotes/origin/main` 改写远端跟踪 ref，仍能让任意提交被当作基线。拦截这类命令属于 hazard-guard 的范围，本批不做。
-- 两项防线没有单独钉住的用例：`--no-replace-objects` 是纵深防御（推断：graft 只能伪造父提交，剔除仍要过「结果等于基线父、只有基线一侧改过」的按文件比对，能剔掉的不超过以同一组父做一次真实合并；第三轮复审实测 graft 伪装时测试删除仍保留）；`merge-base --all` 在已有「任务一侧没改过」条件时只多覆盖一种窄拓扑（两个 merge-base 版本不同，基线回到其一、任务停在另一）。
+- 两项防线没有单独钉住的用例：`--no-replace-objects` 是纵深防御（推断：graft 只伪造父提交，剔除仍要过按文件比对）；`merge-base --all` 在已有「任务一侧没改过」条件时只多覆盖一种窄拓扑（两个 merge-base 版本不同，基线回到其一、任务停在另一）。
 - 性能：`ExcludeMergedInFiles` 有合并时多若干 git 子进程：固定约 10 个（rev-list 1、链路守卫 3、基线 ref 解析 ≤4、log 1、重命名配对 1），每个合并另加 4～10 个，criss-cross 时每多一个 merge-base 再加 2 个；没有合并时只多 1 次。review 窗口有合并时另多约 5 个（合并计数、两次 `diff HEAD`、`diff --name-status`、委托调用前的净 diff）。`taskChangedFiles` 在一次 task-verify 内有多处调用（见 TL;DR 的 grep），开销按调用次数累加。
 
 ## 验证与回滚
