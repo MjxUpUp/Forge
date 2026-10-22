@@ -22,7 +22,7 @@
 2. **时间承诺**：已发布的 advisory 门禁转 blocked，**预告期 ≥2 个 minor 版本**（PEP 387 口径；期间文案持续显示预告版本）。
 3. **逃生舱纪律**：第 5 条 ①② 类 BLOCKED 门禁必须有 `FORGE_*` env 或 per-task override 逃生舱（③–⑥ 类的出口约束见第 5 条表；形态门禁豁免见本条末），逃生留 checklog 痕 + evidence 封顶 Weak；豁免行携带 reason/owner 元数据（v1 简化：reason 为机制枚举值——`per-task override` / `env`——尚无自由文本 `--reason` flag，owner 在 env 逃生时记 "env" 而非委托任务；升级为设计文档 P1-2 的后续项）。**形态门禁豁免（2026-09-10 裁决）**：拒绝「命令组合形态」而非「操作本身」的门禁（合规形态即放行、拒绝文案指明放行形态）**不强制**配独立逃生舱——放行被禁形态本身的逃生舱等于取消门禁；是否配置按存量暴露风险自选（F.2a hazard confirm 链式分离：新形态无存量、不配；C gate-cmd-form：存量脚本可能嵌门禁连刷、保留 env 逃生 `FORGE_GATE_CMD_FORM=0` 作过渡，无 per-task override）。两例均见 docs/design/harness-fixes-a-g-2026-09.md。
 4. **机械执法**：`forge compat report` 的 blocking-sites 面使新增 BLOCKED 位点在 golden diff 里显式可见——新增须同时更新本文档或 CHANGELOG 行为变更节，否则 report 以 warn 提示。
-5. **阻断正当性分类（单一真相源，2026-10-22 起）**：一处阻断只有落进下表某一类才正当，并须满足该类的必备约束；落不进任何一类的只能 advisory。新增 BLOCKED 位点的提案须写明所属类别。第 1、2 条（拒绝文案与预告期）对全部类别生效，下表「必备约束」只列各类特有项。判别顺序：拦的是高危或越权操作 → ⑤；拦的是命令组合形态 → ③；拦的是交付声明（门禁、verify、complete 时点）缺可核验的事实或记录 → ①，证据或评测本身不成立 → ②；拦的是会话或流程动作（Stop、Edit、commit 时点，以及门禁未按序推进）→ ④；宿主上 advisory 不构成行为约束而升为阻断 → ⑥。其他文档里的「HARD 只守事实」「BLOCKED 仅用于证据造假 / 评测自身不合法」是对 ①② 类的局部口径，冲突时以本表为准。
+5. **阻断正当性分类（单一真相源，2026-10-22 起）**：一处阻断只有落进下表某一类才正当，并须满足该类的必备约束；落不进任何一类的只能 advisory。新增 BLOCKED 位点的提案须写明所属类别。第 1、2 条（拒绝文案与预告期）对任何类别中新增或由 advisory 转硬的位点都生效，下表「必备约束」只列各类特有项。判别顺序（自上而下，命中即停）：底层规则是 advisory、只因宿主上 advisory 不构成行为约束而升为阻断 → ⑥；拦的是命令组合形态（合规形态即放行）→ ③；拦的是高危或越权操作 → ⑤；证据或评测本身不成立（不论在哪个时点拦）→ ②；交付声明（门禁、verify、complete 时点）缺可核验的事实或记录 → ①；拦的是会话或流程动作（Stop、Edit、commit 时点，以及门禁未按序推进）→ ④。其他文档里的「HARD 只守事实」「BLOCKED 仅用于证据造假 / 评测自身不合法」是对 ①② 类的局部口径，冲突时以本表为准。
 
    | 类别 | 何时正当 | 必备约束 | 现行代表位点 |
    |---|---|---|---|
@@ -34,11 +34,12 @@
    | ⑥ 宿主提升 | 宿主上 advisory 不构成行为约束，把它提升为阻断：(a) advisory 通道物理失效，或 (b) 通道送达但 advisory 被实证无视（`internal/hostcap/hostcap.go` PromoteAdvisory 的两条准入路径） | 只作用于 hostcap 登记的宿主；文案须标明是宿主提升，底层规则仍按 advisory 计；逃生 `FORGE_ADVISORY_PROMOTION=soft` | task-guard 在 dsh/zcode 上（路径 b） |
 
    已知例外（与上表约束不符，待补或待裁决，修复前不得被新提案援引为先例）：
-   - task-verify Stop（④）：`FORGE_TASK_VERIFY_STOP=0` 逃生直接跳过，不写 checklog 审计行，不满足 ④「有逃生 env 的须留审计行」——待补审计行。
+   - task-verify Stop（④）：`FORGE_TASK_VERIFY_STOP=0` 逃生直接跳过，不写 checklog 审计行，不满足 ④「有逃生 env 的须留审计行」；且由 advisory 转为有界阻断时未按第 1、2 条预告，拒绝文案也没有「首发即 blocked」声明——待补审计行与文案。
    - task-complete 前置（①）：代码审查要求没有 env 或 per-task override 逃生（出口只有完成审查），checklist 与上游依赖的逃生面待盘点——待裁决是否补逃生或记无逃生裁决。
    - bundle 验签拒绝（`internal/cli/bundle_sig.go`，归 ②）：没有逃生舱——待裁决（签名不符时的逃生等于接受伪造，倾向维持无逃生并补裁决记录）。
    - freeze-guard 与项目级自保护（⑤）：`forge freeze --off` 等出口没有真人终端校验，只靠协议约束。
    - 复发升硬（①）：`internal/compat/compat_test.go` 把 `FORGE_RECURRENT_HARDEN` 白名单为「非 gate-bypass」、不进 `compat.EscapeEnvs` roster，但它实际解除了复发升硬的 BLOCKED——两者冲突，待裁决。
+   - 宿主提升（⑥）：逃生 `FORGE_ADVISORY_PROMOTION=soft` 不在 `compat.EscapeEnvs` roster（compat_test 的源扫描只覆盖 taskpipeline 目录）——同上，待裁决是否入册。
 
 ## 三、生效口径与存量处理
 
@@ -60,7 +61,7 @@
 
 - **事前审批门禁**：DORA 实证外部审批与交付绩效负相关——用事后审计+自动化复查承接。
 - **基线文件式棘轮**（冻结存量违规）：forge 规模走 Google"先清零"路线（新门禁默认只对新任务生效）。
-- **GODEBUG 式按版本给默认行为的完整机制**：等 BLOCKED 门禁数量增长后再评估（当前 8 个逃生舱、管理成本不成比例）。
+- **GODEBUG 式按版本给默认行为的完整机制**：等 BLOCKED 门禁数量增长后再评估（记录时 8 个逃生舱、管理成本不成比例；2026-10-22 roster 已 19 个，已越过「增长后」，待复验）。
 
 ## 五、命令面冻结（L5 杠杆，2026-09-07 起；依据 docs/design/leverage-points-landing.md）
 

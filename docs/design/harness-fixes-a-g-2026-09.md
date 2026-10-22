@@ -60,7 +60,7 @@
   3. **stderr 兜底**：`forge task gate` 检测 stdout 非 TTY 时（char-device 判定改造自 task_gate.go:166 `stdinIsHumanTerminal` 的 stdin 版——本项判 stdout，是适配不是直接复用），BLOCKED 摘要行同时写 stderr——管道截断不再能吞掉退出码契约的文本面。
 - **落点**：internal/taskpipeline/gatecmdform.go（新，分类器+hook）、internal/hooks/settings.go 注册、internal/clitask/task_gate.go stderr 兜底、overrides.go、compat snapshot（checks/escapes/blockings 三面 regen）。
 - **度量**：C1 37%/13% → ≤2%；C2 84%/27% → ≤15%；C3 7%/46% → ≥80%。防伪：拦截后重跑率不得劣化（甲基线 `100%`）；单任务 Bash 中位数上浮 ≤30%（乙机现值由 M 钉基线）。
-- **验收**：分类器五形态夹具单测；advisory→BLOCKED 文案含「自 1.58 起」字样（承诺表 §二.1 ①）；e2e 式：`forge task gate … | tail -1` 场景下 stderr 可见 BLOCKED。
+- **验收**：分类器五形态夹具单测；advisory→BLOCKED 文案含「自 1.58 起」字样（承诺表 §二.1 ①；本节 1.58 的预告、风险与绕过面描述均以设计时口径保留，实际 1.67 兑现见上方 2026-10-22 注）；e2e 式：`forge task gate … | tail -1` 场景下 stderr 可见 BLOCKED。
 - **风险**：存量脚本/CI 内嵌门禁连刷会被 1.58 拦——预告期 + 逃生舱 + M 周报监控 advisory 命中存量形态清单，必要时 1.58 只拦「分号+管道」不拦 `&&`（分级 ratchet）。
 - **绕过面（B1 评审发现，分类器已同步收窄）**：引号包装是天然逃逸形态——`bash -c "gate … | tail"` 包裹的是调用不是数据。gatecmdform 已把 `bash/sh -c` 包装体保留计入、heredoc 正文按数据剥离、`forge.exe`/反引号/绝对路径前缀补进拼写口径；1.58 BLOCKED 生效前该口径由 M 的 C 面周报监控（总量骤降 = 绕过模式）。
 

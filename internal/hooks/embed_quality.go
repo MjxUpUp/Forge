@@ -313,7 +313,9 @@ const TaskVerifyHook = `#!/bin/bash
 # those checks stay advisory. The one exception is the bounded block below:
 # active task + uncommitted code → exit 2, at most 3 times per session, then
 # back to advisory (escape FORGE_TASK_VERIFY_STOP=0).
-# Protocol: Stop hooks output PASS or FAIL on stdout; stdout always PASS.
+# Protocol: Stop hooks output PASS or FAIL on stdout. The advisory path prints
+# PASS (WARN on kimi's advisory queue); the bounded block prints its reason and
+# exits 2.
 set -eo pipefail
 
 ROOT="${1:-.}"

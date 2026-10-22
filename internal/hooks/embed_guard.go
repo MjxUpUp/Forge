@@ -403,7 +403,7 @@ const HazardGuardHook = `#!/bin/bash
 # 一次性临时区（/tmp、/var/folders、/private/tmp、$TMPDIR 子路径、本命令串可验证的
 # mktemp 变量）；危险串仅在引号/注释/多行字符串内（数据上下文，exec 包裹除外）。
 #
-# 为什么是 HITL 而非硬 block 或静默放行：硬 block 误伤合法高危操作（删 build 目录），
+# 为什么是 HITL（阻断，放行权在人）而非无条件硬 block 或静默放行：无条件硬 block 误伤合法高危操作（删 build 目录），
 # 静默放行失守；HITL 要求用户明确知情确认。Forge hook 模型只有 approve/block、调不起
 # 各工具私有的确认弹窗，所以靠 block + additionalContext 指引 + forge hazard confirm
 # 限时标记闭环（见 internal/hazard + internal/cli/hazard.go）。

@@ -224,8 +224,8 @@ func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, e
 // event log and returns its fingerprint and command.
 //
 // ConfirmLastBlock 为事件日志中最新一条 block 事件登记确认，返回其指纹与命令。
-// 这是免复制的 HITL 路径（`forge hazard confirm --last`）：agent 确认"刚被拦的那条
-// 命令"，无需转写 64 字符 hex 指纹、也无需重新引用命令串——两种转写形态都已被证实
+// 这是免复制的 HITL 路径（`forge hazard confirm --last`，由用户在真人终端执行）：确认
+// "刚被拦的那条命令"，无需转写 64 字符 hex 指纹、也无需重新引用命令串——两种转写形态都已被证实
 // 是失真源（2026-07 AgentWorld：三次手抄指纹两次损坏；2026-08-24 Forge 会话：裸命令
 // confirm 与 hook 对含管道后缀完整命令行的指纹失配）。事件日志由 hook 在拦截时自己
 // 写入，其指纹天然权威。

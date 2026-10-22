@@ -388,7 +388,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | `forge review status` | 显示当前审查状态 |
 | `forge enforcement [--sample N] [--json]` | 执法健康报告（只读聚合 checklog+会话 markers+野外申报）：task-guard advisory/blocked 计数、无视升档会话、缓冲窗口超时违规（升档后 3 次编辑窗口内未补救——建任务或 wild 申报——则落违规记录）、无任务测试编辑、wild 申报数；双环信号（升档超阈→审查规则本身而非加码执法）与降格信号（提升规则零阻断零升档→zombie rule 复审）。`--sample N` 随机抽已完成任务 join 其会话遥测——"无视升档仍完成且未被阻断"样本标强制复盘（无灾≠安全）；随机化使审计不可预演 |
 
-**高危命令 human-in-the-loop**：`forge hazard` 让高危命令拦截从 session 级 skill 变成 always-on 自动挡——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 向用户说明风险 → 用户在自己的终端运行 `forge hazard confirm --last` 登记 5min 限时标记（agent 自行运行会被拒）→ 重试放行。HITL 而非硬 block：合法高危操作（删 build 产物）确认后能继续；`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用），confirm 链是唯一放行路径。
+**高危命令 human-in-the-loop**：`forge hazard` 让高危命令拦截从 session 级 skill 变成 always-on 自动挡——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 向用户说明风险 → 用户在自己的终端运行 `forge hazard confirm --last` 登记 5min 限时标记（agent 自行运行会被拒）→ 重试放行。阻断但放行权在人，而非无条件硬 block：合法高危操作（删 build 产物）确认后能继续；`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用），confirm 链是唯一放行路径。
 
 | 命令 | 说明 |
 |------|------|

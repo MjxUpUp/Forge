@@ -30,7 +30,7 @@ func init() {
 	hazardCmd.AddCommand(hazardStatusCmd)
 	hazardCmd.AddCommand(hazardLogCmd)
 
-	// --fingerprint：hook 已用 forge hazard fingerprint 算好指纹，agent 直接回传 hex
+	// --fingerprint：hook 已用 forge hazard fingerprint 算好指纹，用户在终端直接回传 hex
 	// 登记确认。指纹是 sha256 hex（仅 [0-9a-f]），复制无引号/转义失真风险——而回传
 	// 命令串会被 agent shell 重新解析吃掉引号（如 SQL mysql -e 'DROP TABLE t' 的单引号），
 	// 与 hook 原始命令指纹不一致、确认后仍被拦。见 hazard.ConfirmByFingerprint。
@@ -204,7 +204,7 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	ttlMin := int(hazard.ConfirmTTL / time.Minute)
-	// --fingerprint 路径：hook 已算好指纹，agent 回传 hex（复制无失真）。命令串仅审计用。
+	// --fingerprint 路径：hook 已算好指纹，用户回传 hex（复制无失真）。命令串仅审计用。
 	if hazardConfirmFingerprint != "" {
 		// May be empty (not enforced when --fingerprint is set)
 		command := strings.Join(args, " ") // 可空（--fingerprint 时不强制）

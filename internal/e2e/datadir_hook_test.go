@@ -36,7 +36,8 @@ func TestHook_TaskVerify_ChecklogToDataDir(t *testing.T) {
 		"file_path": "main.go",
 	}))
 	_ = stdout
-	// TaskVerifyHook 永远 PASS（advisory，不拦）；非 nil err 才是 dispatch 失败。
+	// 本夹具无活跃任务，TaskVerifyHook 走 advisory 路径不拦（有界阻断只针对活跃任务 +
+	// 未提交代码）；非 nil err 才是 dispatch 失败。
 	if err != nil {
 		t.Fatalf("forge hook task-verify: %v\n%s", err, stderr)
 	}
