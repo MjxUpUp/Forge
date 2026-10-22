@@ -431,8 +431,13 @@ fi
 if [ -n "${FORGE_TASK_REF:-}" ]; then
   _UNCOMMITTED=$( { git diff --name-only 2>/dev/null; git diff --cached --name-only 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | while IFS= read -r _f; do is_code_file "$_f" && printf '%s\n' "$_f"; done | sort -u || true)
   if [ -n "$_UNCOMMITTED" ] && [ "${FORGE_TASK_VERIFY_STOP:-1}" = "0" ]; then
-    _ESC="$_DATA_DIR/markers/taskverify-stop-escape-${FORGE_SESSION_ID:-default}"
-    if [ ! -f "$_ESC" ]; then
+    # 只在「本来会阻断」时记:会话限额未用完(计数 <3)。marker 按会话+任务去重——
+    # 逃生按任务计价,同会话的第二个任务用逃生也要各留一行。
+    _NE=$(cat "$_DATA_DIR/markers/taskverify-stop-blocks-${FORGE_SESSION_ID:-default}" 2>/dev/null || echo 0)
+    case "$_NE" in ''|*[!0-9]*) _NE=0;; esac
+    _REF_KEY=$(printf '%s' "${FORGE_TASK_REF:-}" | tr -c 'A-Za-z0-9._-' '_')
+    _ESC="$_DATA_DIR/markers/taskverify-stop-escape-${FORGE_SESSION_ID:-default}-${_REF_KEY}"
+    if [ "$_NE" -lt 3 ] && [ ! -f "$_ESC" ]; then
       mkdir -p "$_DATA_DIR/markers" 2>/dev/null || true
       : > "$_ESC" 2>/dev/null || true
       _NOW3=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)

@@ -122,6 +122,70 @@ func TestRecurrent_TestCoverage_EscapeDisables(t *testing.T) {
 	}
 }
 
+// recurrentEscapeRows counts the recurrent-harden escape-hatch rows recorded for a task.
+//
+// recurrentEscapeRows 统计某任务的复发升硬 escape-hatch 审计行数。
+func recurrentEscapeRows(t *testing.T, dir, taskRef string) int {
+	t.Helper()
+	entries, err := checklog.LoadForTask(dir, taskRef)
+	if err != nil {
+		t.Fatalf("load checklog: %v", err)
+	}
+	n := 0
+	for _, e := range entries {
+		if e.Check == checklog.CheckEscapeHatch && e.Meta["escape.gate"] == "recurrent-harden" {
+			n++
+		}
+	}
+	return n
+}
+
+// TestRecurrent_EscapeWithoutRecurrenceLeavesNoRow: harden disabled on a project with no recurrence history → no escape row (nothing was bypassed, so nothing is priced).
+//
+// TestRecurrent_EscapeWithoutRecurrenceLeavesNoRow：无复发履历的项目关掉复发升硬 → 不留审计行
+// （没有本来会触发的阻断，就没有逃生可计价）。
+func TestRecurrent_EscapeWithoutRecurrenceLeavesNoRow(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	t.Setenv(recurrentHardenDisableEnv, "disable")
+	writeCommitSource(t, dir, map[string]string{
+		"foo.go": "package main\n\nfunc Foo() int { return 1 }\n",
+	}, "add foo no test")
+	state := newVerifyState(t, dir, "escape-no-history")
+	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+		t.Fatalf(`无复发履历 → 应 advisory PASS, got: %v`, err)
+	}
+	if n := recurrentEscapeRows(t, dir, state.TaskRef); n != 0 {
+		t.Fatalf("no recurrence history → no would-be block → want 0 recurrent-harden escape rows, got %d", n)
+	}
+}
+
+// TestRecurrent_ScopeDrift_EscapeRecorded: scope recurrence + severe drift + harden disabled → PASS and one escape row (the scope branch is priced the same as the testing branch).
+//
+// TestRecurrent_ScopeDrift_EscapeRecorded：scope 复发 + 严重 drift + 关掉复发升硬 → PASS，且留
+// 一行逃生审计（scope 分支与 testing 分支同价）。
+func TestRecurrent_ScopeDrift_EscapeRecorded(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	seedRecurrentHistory(t, dir, dimScope, 3)
+	t.Setenv(recurrentHardenDisableEnv, "disable")
+	writeCommitSource(t, dir, map[string]string{
+		"a.go": "package main\n",
+		"b.go": "package main\n",
+		"c.go": "package main\n",
+	}, "add 3 out-of-scope")
+	state := newVerifyState(t, dir, "escape-scope")
+	state.PlanScope = []string{"declared.go"}
+	var execErr error
+	captureStderr(t, func() {
+		_, execErr = ExecuteTaskGate(dir, "task-verify", state)
+	})
+	if execErr != nil && strings.HasPrefix(execErr.Error(), blockedPrefix) {
+		t.Fatalf(`FORGE_RECURRENT_HARDEN=disable → scope 分支不应升硬, got: %v`, execErr)
+	}
+	if n := recurrentEscapeRows(t, dir, state.TaskRef); n < 1 {
+		t.Fatalf("scope would-be block lifted by FORGE_RECURRENT_HARDEN=disable must leave an escape row, got %d", n)
+	}
+}
+
 // TestRecurrent_ScopeDrift_Hardens: project recurrent on scope AND this task drifts ≥3 source files beyond PlanScope → HARD block.
 //
 // TestRecurrent_ScopeDrift_Hardens：项目 scope 复发 且 本任务 ≥3 源文件超 PlanScope → HARD 阻断。
