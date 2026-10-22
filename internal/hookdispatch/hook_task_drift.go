@@ -10,7 +10,8 @@ package hookdispatch
 // 2 次 merge,三道门全程零中介。执法原本只挂在 `forge task gate` 这个 agent
 // 不会主动敲的动词上;本 hook 把中介挪到 agent 必经的 git 边界动词。
 //
-// P0 契约:advisory、永不阻断（BLOCK ratchet 属 P1,≥2 minor 预告）;任务分支
+// P0 契约（1.64）:advisory、永不阻断;1.66 起 P1 BLOCK ratchet 生效（见下方
+// 常量注释与 ratchetBlocksVersion）。任务分支
 // 上的 commit 是既定合法顺序（commit-before-complete）,零输出零行;无任务/
 // 非 git 边界动词/判定前提缺失（git 不可用）→ 静默放行;阶梯节流 1/2/10n——
 // 审计不静默但不刷屏。
@@ -126,15 +127,29 @@ func taskDriftAdvisory(verb, branch, taskBranch, gate string, n int) string {
 }
 
 // P1 BLOCK ratchet 常量(escape-hatch-hardening P1):1.64 以 advisory 首发,
-// ≥2 minor 预告后 1.66 机械转 BLOCK(版本门在代码里,不留 gate-cmd-form 式
-// 文字债)。逃生 FORGE_TASK_DRIFT=0 回 advisory(记 escape-hatch 行);会话阻断
+// ≥2 minor 预告后 1.66 机械转 BLOCK(版本门见 ratchetBlocksVersion)。逃生
+// FORGE_TASK_DRIFT=0 回 advisory(记 escape-hatch 行);会话阻断
 // 计数超 cap 后降级 advisory——有界阻断,防 deny 死循环(CC Stop hook 8 次强制
 // 放行同哲学,见 spec 原则「sudo 化五原则·有界」)。
 const (
-	taskDriftBlockVersion = "1.66.0"
-	taskDriftBlockCap     = 5
-	forgeTaskDriftEnv     = "FORGE_TASK_DRIFT"
+	taskDriftBlockCap = 5
+	forgeTaskDriftEnv = "FORGE_TASK_DRIFT"
 )
+
+// ratchetBlocksVersion 是 task-drift（1.66.0 起）与 gate-cmd-form（1.67.0 起）两个
+// BLOCK ratchet 共用的版本门:版本串剥离构建后缀后以 "1." 开头即进入 BLOCK 模式。
+// 携带本段代码的发布版都晚于两处原数字门(本函数随 1.84 起的二进制分发),数字比较
+// 恒为真,故只保留回落语义——"dev" 构建、
+// 非版本串(测试默认 "test")与将来的 2.x 回落 advisory:主版本升级须重估两个
+// ratchet 与 cap,刻意不静默沿用。发布构建的版本串形如
+// "1.83.0 (commit: …, built: …)",取首个空白分隔字段比较(gate-cmd-form 审查 P2-1)。
+func ratchetBlocksVersion(version string) bool {
+	core := version
+	if fields := strings.Fields(version); len(fields) > 0 {
+		core = fields[0]
+	}
+	return strings.HasPrefix(core, "1.")
+}
 
 // driftBlockCount 会话阻断计数(markers/forge-taskdrift-blocks-<session>);
 // bump 非 0 表示自增后序号,bump=false 只读(判上限用)。
@@ -173,7 +188,8 @@ func recordDriftEscapeHatch(root, sessionID, version string) {
 
 // runTaskDriftHook 是 task-drift 的进程内 PreToolUse Bash hook。判定链:边界
 // 动词 → 活跃任务 → 真实 git 分支 ≠ state.Branch → 阶梯 advisory + checklog
-// warn 行;任一环缺失静默放行。永不阻断（P0 契约）。
+// warn 行;任一环缺失静默放行。1.x 发布版进入 BLOCK 模式(P1 ratchet),逃生 env
+// 与会话上限回落 advisory。
 func runTaskDriftHook(hookInput HookInput, root, version, agent string) error {
 	if hookInput.ToolName != "Bash" || len(hookInput.ToolInput) == 0 {
 		return nil
@@ -209,10 +225,9 @@ func runTaskDriftHook(hookInput HookInput, root, version, agent string) error {
 
 	n := driftLadderCount(root, hookInput.SessionID)
 
-	// P1 BLOCK ratchet:版本门 + env 逃生 + 会话上限(有界)。
-	// HasPrefix "1." 限定:2.x 主版本到来时版本门失明(回落 advisory)——届时
-	// 主版本升级须重估本 ratchet 与 cap,刻意不静默猜新语义(只读审查 NIT 注记)。
-	blockMode := strings.HasPrefix(version, "1.") && util.CompareVersions(version, taskDriftBlockVersion) >= 0
+	// P1 BLOCK ratchet:版本门(dev/2.x 回落,见 ratchetBlocksVersion) + env 逃生 +
+	// 会话上限(有界)。
+	blockMode := ratchetBlocksVersion(version)
 	if blockMode && strings.TrimSpace(os.Getenv(forgeTaskDriftEnv)) == "0" {
 		// escape 行会话节流一次(只读审查 NIT):env 常开时每次漂移动词都落行
 		// 会刷 checklog——首行已定性地把「本会话经 env 降级」入审计,重复无增益。

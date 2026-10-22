@@ -449,13 +449,13 @@ const (
 	CheckArtifactChain CheckName = "artifact-chain"
 	// CheckArtifactDrift records artifact-reference drift found at complete
 	// pre-flight (artifact-chain-workflow.md §5): a SpecArtifacts ref whose file
-	// hash no longer matches (VerifyArtifact). Drift voids that stage's approval
+	// hash no longer matches (ArtifactCurrentHash). Drift voids that stage's approval
 	// unconditionally; for hard/human tiers it also blocks complete. warn-level
 	// for advisory/rubric tiers (auditable, non-blocking).
 	//
 	// CheckArtifactDrift 记录 complete pre-flight 发现的产物引用漂移
 	//（artifact-chain-workflow.md §5）：SpecArtifacts 引用的文件哈希失配
-	//（VerifyArtifact）。漂移一律作废该 stage 审批；hard/human 档同时阻断
+	//（ArtifactCurrentHash）。漂移一律作废该 stage 审批；hard/human 档同时阻断
 	// complete；advisory/rubric 档仅 warn（留痕不拦）。
 	CheckArtifactDrift CheckName = "artifact-drift"
 	// CheckArtifactDrill records one `forge eval artifact-drill` outcome

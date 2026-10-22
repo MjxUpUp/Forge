@@ -3,9 +3,12 @@ package evalkit
 // card_test.go — 披露卡校验与渲染（含仓内资产守卫）。
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func validTestCard() GatesCard {
@@ -66,9 +69,23 @@ func TestGatesCardFailClosed(t *testing.T) {
 	}
 }
 
-func TestLoadCardRepoAsset(t *testing.T) {
-	c, err := LoadCard(filepath.Join("..", "..", "evals", "forge", "gates-card.yaml"))
+// TestRepoGatesCardAsset guards the shipped evals/forge/gates-card.yaml: it must
+// parse, pass fail-closed validation, and render every required section. Reads
+// the file the same way `forge eval card` does (internal/cli/eval.go).
+//
+// TestRepoGatesCardAsset 守卫仓内 evals/forge/gates-card.yaml：须能解析、过
+// fail-closed 校验、渲染出全部必备节。读取方式与 `forge eval card`
+// （internal/cli/eval.go）一致。
+func TestRepoGatesCardAsset(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "evals", "forge", "gates-card.yaml"))
 	if err != nil {
+		t.Fatalf("读取仓内 gates-card.yaml 失败: %v", err)
+	}
+	var c GatesCard
+	if err := yaml.Unmarshal(data, &c); err != nil {
+		t.Fatalf("解析仓内 gates-card.yaml 失败: %v", err)
+	}
+	if err := c.Validate(); err != nil {
 		t.Fatalf("仓内 gates-card.yaml 校验失败: %v", err)
 	}
 	if len(c.LayerClaim) < 4 {

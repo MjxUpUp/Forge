@@ -36,7 +36,7 @@ func TestVerifyHeldout_GapStates(t *testing.T) {
 
 	t.Run("gap_可见过保留集挂", func(t *testing.T) {
 		s := &TaskState{TaskRef: "t/gap1", Acceptance: []AcceptanceCriterion{
-			{Run: "echo v", Expected: "v", Passed: true}, // 可见已过（模拟 VerifyAcceptance 结果）
+			{Run: "echo v", Expected: "v", Passed: true}, // 可见已过（模拟 VerifyAcceptanceWithVerdicts 结果）
 		}}
 		SaveHeldout(dir, s.TaskRef, ParseAcceptance([]string{"exit 1"}))
 		res := VerifyHeldout(dir, s)

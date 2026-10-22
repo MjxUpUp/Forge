@@ -273,9 +273,10 @@ func TestRunTaskDriftHook_QueryAndFlagForms(t *testing.T) {
 	}
 }
 
-// TestTaskDriftBlockRatchet 钉住 P1 机械版本门:<1.66 advisory(含垃圾版本防御
-// 回落);≥1.66 BLOCK(deny 发射 + Level=fail 行);FORGE_TASK_DRIFT=0 逃生降级
-// 且落 escape-hatch 行;会话第 6 次起超上限降回 advisory(有界)。
+// TestTaskDriftBlockRatchet 钉住 P1 版本门:dev 构建与垃圾版本防御回落
+// advisory;1.x 发布版(含带构建后缀的发布串)BLOCK(deny 发射 + Level=fail 行);
+// FORGE_TASK_DRIFT=0 逃生降级且落 escape-hatch 行;会话第 6 次起超上限降回
+// advisory(有界)。
 func TestTaskDriftBlockRatchet(t *testing.T) {
 	root := driftGitProject(t)
 	const sid = "sess-td-ratchet"
@@ -294,10 +295,10 @@ func TestTaskDriftBlockRatchet(t *testing.T) {
 		return out, errOut
 	}
 
-	// < 1.66:advisory(现有行为),无 error。
-	out, err := run("1.65.0")
+	// dev 构建:advisory,无 error。
+	out, err := run("dev")
 	if err != nil || !strings.Contains(out, "[task-drift]") {
-		t.Errorf("1.65 must stay advisory, err=%v out=%q", err, out)
+		t.Errorf("dev build must stay advisory, err=%v out=%q", err, out)
 	}
 	// 垃圾版本(测试默认 "test")防御性回落 advisory。
 	resetDriftMarker(t, root, sid)
@@ -305,11 +306,12 @@ func TestTaskDriftBlockRatchet(t *testing.T) {
 		t.Errorf("garbage version must fall back to advisory, err=%v out=%q", err, out)
 	}
 
-	// ≥ 1.66:BLOCK——deny 发射 + 非 nil error(HookBlockError 形态)。
+	// 1.x 发布版:BLOCK——deny 发射 + 非 nil error(HookBlockError 形态)。
+	// 用带构建后缀的真实发布串,钉住后缀剥离。
 	resetDriftMarker(t, root, sid)
-	out, err = run("1.66.0")
+	out, err = run("1.83.0 (commit: 8ba91073, built: 2026-10-21T07:01:58Z)")
 	if err == nil {
-		t.Error("1.66 must return a block error (exit-2 class)")
+		t.Error("1.x release must return a block error (exit-2 class)")
 	}
 	if !strings.Contains(out, "permissionDecision") || !strings.Contains(out, "deny") {
 		t.Errorf("block emission must carry deny JSON, got: %q", out)
@@ -354,4 +356,28 @@ func driftInput(t *testing.T, command string) HookInput {
 	t.Helper()
 	raw, _ := json.Marshal(map[string]string{"command": command})
 	return HookInput{HookEventName: "PreToolUse", SessionID: "sess-td-ratchet", ToolName: "Bash", ToolInput: raw}
+}
+
+// TestRatchetBlocksVersion 钉住 task-drift 与 gate-cmd-form 共用的版本门:1.x 发布版
+// (含预发布与构建后缀)阻断;dev、非版本串、空串与 2.x 回落 advisory。
+func TestRatchetBlocksVersion(t *testing.T) {
+	cases := []struct {
+		version string
+		want    bool
+	}{
+		{"1.66.0", true},
+		{"1.83.0", true},
+		{"1.83.0 (commit: 8ba91073, built: 2026-10-21T07:01:58Z)", true},
+		{"1.84.0-rc.1", true},
+		{"dev", false},
+		{"test", false},
+		{"", false},
+		{"2.0.0", false},
+		{"2.0.0 (commit: abc, built: 2027-01-01T00:00:00Z)", false},
+	}
+	for _, c := range cases {
+		if got := ratchetBlocksVersion(c.version); got != c.want {
+			t.Errorf("ratchetBlocksVersion(%q) = %v, want %v", c.version, got, c.want)
+		}
+	}
 }

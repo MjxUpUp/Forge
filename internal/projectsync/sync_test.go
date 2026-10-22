@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"os"
@@ -261,8 +263,8 @@ func manifestJSONFor(t *testing.T, formatVersion int, files map[string]string) s
 	t.Helper()
 	m := Manifest{FormatVersion: formatVersion, BundleID: `bid-test`}
 	for name, body := range files {
-		sum := sha256Hex([]byte(body))
-		m.Files = append(m.Files, FileEntry{Path: strings.TrimPrefix(name, `data/`), SHA256: sum, Size: int64(len(body))})
+		sum := sha256.Sum256([]byte(body))
+		m.Files = append(m.Files, FileEntry{Path: strings.TrimPrefix(name, `data/`), SHA256: hex.EncodeToString(sum[:]), Size: int64(len(body))})
 	}
 	data, err := json.Marshal(&m)
 	if err != nil {
