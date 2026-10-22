@@ -49,7 +49,10 @@ tier: mini
 - `internal/hooks/embed_quality_stopblock_test.go`
 - `internal/e2e/taskverify_stopblock_test.go`
 - `internal/taskpipeline/executor_check_verify.go`
+- `internal/taskpipeline/recurrent.go`
 - `internal/taskpipeline/executor_recurrent_test.go`
+- `internal/skillgen/claudemd.go`
+- `internal/skillgen/claudemd_test.go`
 - `internal/compat/compat.go`
 - `internal/compat/compat_test.go`
 - `internal/hooks/embed_task.go`
@@ -100,5 +103,6 @@ tier: mini
 - 审计行每会话只写一次（marker 去重），与 gate-cmd-form 逃生同款，避免逃生期间每次 Stop 都刷一行。
 
 ## 验证与回滚
-- `go vet ./...`；`go test ./... -count=1 -timeout 30m`。
+- `go vet ./...` 无输出；`go test ./... -count=1 -timeout 30m` 退出码 0（64 个包 ok，合并 #128 前跑）；合并 #128 后重跑了 skillsqa、agentbridge、docsconsistency 与 compat 快照守卫。
+- 复发升硬的逃生现在按逃生计价：本来会升硬时，关掉开关的任务分数封顶 89、证据 Weak。这是对原设计「不加 Strength 惩罚」的有意改变，协议文案已同步。
 - 回滚即 revert 本分支的提交。新增的审计行只追加 checklog，不改既有键；compat 快照逃生面只增两项。
