@@ -119,7 +119,7 @@ if [ -z "$TASK_REF" ]; then
   # were retired 2026-08-24 in favor of the advisory queue + UserPromptSubmit
   # drain). Under promotion this output is the block reason, emitted EVERY time.
   if [ -n "${FORGE_TASKGUARD_PROMOTED:-}" ]; then
-    echo "WARN [task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch --title <title> (creates branch + task on main/master), then retry the edit. Deliberate one-off fix instead: forge task wild \"<note>\", then retry."
+    echo "WARN [task-guard] No active task. Source edit DENIED until one exists — run: forge task start --ref <ref> --branch --title <title> (creates branch + task on main/master), then retry the edit. Deliberate one-off fix instead: forge task wild \"<note>\", then retry. (Host promotion: on this host the task-guard advisory is raised to a block; escape FORGE_ADVISORY_PROMOTION=soft.)"
     exit 0
   fi
   # 无视计数器（P0-3，取代一次性 NOWARN 去噪）：2026-08-30 事故里首条 advisory 被

@@ -444,10 +444,14 @@ func TestGenerateClaudeMDCarriesRecurrentHardening(t *testing.T) {
 		`FORGE_RECURRENT_HARDEN=disable`,
 		`FORGE_RECURRENT_THRESHOLD=N`,
 		`复发升 HARD stop`,
+		`留 escape-hatch 审计行`, // 2026-10-22 裁决：复发升硬的逃生按 ① 类逃生留审计
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf(`CLAUDE.md missing recurrence-hardening marker %q`, want)
 		}
+	}
+	if strings.Contains(s, `不加 Strength 惩罚`) {
+		t.Error(`CLAUDE.md must not claim the recurrent-harden escape is penalty-free (2026-10-22 ruling)`)
 	}
 }
 

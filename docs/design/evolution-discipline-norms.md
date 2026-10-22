@@ -1,5 +1,7 @@
 # 演化纪律规范：优化判定 / deferred 承诺 / 迁移编舞（2026-09）
 
+状态：已落地（skill 层修订，`461ef579`）。
+
 - 依据：2026-09-09 会话回顾——dashboard 告警实证（11 告警 = 0 僵尸 + 11 回顾提醒，其中 8 条逃生舱降档噪音 + 3 条同维度真弱模式）触发的方法论讨论；业界实践对照（SRE 告警分级、SonarQube finding 分诊、SPC 特殊原因判定、Deming tampering）。
 - 范围：把讨论中裁断出的**三个真缺口**落地为规范（2 个 skill 修订 + 1 个审查项），其余讨论观点按载体决策树裁断——已覆盖的不重复落地，防止规范注水。
 - 配套决策留痕：`forge skills decide` 四元组（implementation-discipline / evidence-based-proposal / code-review-gate）。

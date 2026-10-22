@@ -1,5 +1,7 @@
 # W0.2 Spec：batch 单入口分派本体
 
+状态：已落地（`internal/hookdispatch/hook_batch.go`）。
+
 ## 问题
 
 同 matcher 组内每个 hook 一条 `forge hook <name>` 接线，宿主逐条拉起进程——

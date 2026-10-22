@@ -1,5 +1,7 @@
 # compat 第七面：外部桥契约（2026-09）
 
+状态：已落地（`b5ee64c1`）。
+
 - 依据：`compat-commitments.md` 兼容承诺（现自称七面盘点）+ `plugins/forge-dsh/README.md` 的双端语义 + 插件哲学调研 insight I3（"vendor+台账 与 棘轮+快照 在哲学上撞车"）。
 - 范围：给 compat 快照加第七面 `bridges`——把 forge-dsh 桥的**行为契约**（事件映射、决策形状、fail-open 规则）从"散在三处的文档+行为"升为快照执法面；同时把 README 事件映射表标注为双端契约。
 - 定位：`plugin-philosophy.md` seam 表中"外部桥"格的执法落地。

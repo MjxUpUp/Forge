@@ -1,5 +1,7 @@
 # multi-repo workspace：多仓分组 + 跨仓影响声明 + 跨仓依赖设计
 
+状态：已落地（`25acdfab`）。
+
 > 本文记录多 repo workspace 特性的完整设计决策与依据，代码注释只保留局部 rationale，全局权衡在这里。机制参照生产级多仓协调 workspace 实践——借其「单一清单 / 强制 cross-repo-impact 声明 / 规则即代码门禁 / doctor drift 检出 / 三态」五件，不借其静态长文档层与外部仓库编排工具依赖。
 
 ## 1. 问题

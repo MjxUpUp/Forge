@@ -1,5 +1,7 @@
 # W1 Proposal：为什么是语义分词层而不是别的
 
+状态：已落地（配套 spec：guardfall-semantic-w1.md，`cfe78356`）。
+
 ## 提案
 
 hazard-guard 的 PreToolUse 检测从「原始串模式匹配」补强为「canonicalize-then-check」

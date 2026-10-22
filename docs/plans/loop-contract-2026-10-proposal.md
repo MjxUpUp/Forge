@@ -12,7 +12,7 @@ baseline: 65a0e810
 
 **推荐本周期只做 B0 + B1，排在 R2 之后、R3 之前；B2、B3 排到 2026-12-15 复验之后。**
 B0 和 B1 都不新增命令和阻断位点，能与当前周期
-（acceptance-gate-and-wedge 提案，`docs/plans/acceptance-gate-and-wedge-2026-10-proposal.md`，截至本文尚未入库，相关 non-goals 已摘录在第七节）的 non-goals 共存。
+（acceptance-gate-and-wedge 提案，`docs/plans/acceptance-gate-and-wedge-2026-10-proposal.md`，起草时尚未入库、现已入库，相关 non-goals 已摘录在第七节）的 non-goals 共存。
 B2 和 B3 各自与该提案的一条 non-goal 冲突（见第七节），排期上要等它复验。
 
 术语（均出自该提案）：**R 线**是"改动接受门"代码线，其中 R2 = 决策必须带可核验锚点（decision-warrant），R3 = Track A 评测的有效性前置，R6 = "不可能"声明（本周期只出设计）；**W 线**是拿外部用户的楔子运营线，"防假绿"是它对外的叙事。

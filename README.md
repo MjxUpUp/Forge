@@ -62,7 +62,7 @@ forge trace feat/demo           # 查看任务的完整证据链
 <table>
   <tr>
     <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
-    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>23 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
+    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>27 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
   </tr>
   <tr>
     <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。Agent 无法经 bash 绕道篡改。</td>
@@ -197,7 +197,7 @@ Layer 1: PreToolUse 快速拦截
   └─ bash-guard: Bash → 检测写文件模式
 
 Layer 2: PostToolUse 文件监控
-  └─ file-sentinel: Bash → 对比执行前后 git 状态，未授权变更自动 revert
+  └─ file-sentinel: Bash → 对比执行前后 git 状态，未授权变更隔离到 DataDir/quarantine/（可恢复）
 
 Layer 3: 会话结束验证
   └─ task-verify: 检查任务完成度 + 主分支保护 + 自身版本
@@ -206,7 +206,7 @@ Layer 3: 会话结束验证
 Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
 
 <details>
-<summary><b>📖 内置 Hook 完整清单（23 个）</b></summary>
+<summary><b>📖 内置 Hook 完整清单（27 个）</b></summary>
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
@@ -216,6 +216,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **assertion-check** | Write/Edit 前 | 检测断言弱化（t.Fatal → t.Log、assert! 被删除等），advisory 提醒不阻塞（agent 自检） |
 | **bash-guard** | Bash 前 | 检测命令中的写文件模式（writeFile、cat >、sed -i 等），无任务时 WARN（源码随后被 file-sentinel 隔离） |
 | **gate-cmd-form** | Bash 前 | 门禁命令嵌组合形态（分号续行/截断管道/grep 掩蔽/\|\| 链/多门禁连刷）时 **BLOCKED 拦截**——分号让前一门禁 BLOCKED 后链条照走、截断管道吞掉 BLOCKED 文本面，退出码契约被系统性削弱（设计 C；delivery-hardening 墙-1a：1.67 机械版本门 ratchet 生效，会话阻断上限 5 有界；逃生 FORGE_GATE_CMD_FORM=0 落 checklog 审计；重发为单条门禁命令或仅用 && 串联） |
+| **task-drift** | Bash 前（活跃任务内） | git 边界命令（commit/merge/建分支）发生在任务分支之外时拦截——自 1.66 起由 advisory 转 BLOCK（机械版本门），会话阻断上限 5 次后回落 advisory；逃生 `FORGE_TASK_DRIFT=0`（落 checklog 审计）；出口：回任务分支提交、推进门禁或 `forge task abort` |
 | **hazard-guard** | Bash 前 | 高危命令（`rm -rf`、`git push --force`、`DROP TABLE/SCHEMA`、`TRUNCATE`、`GRANT ALL`、`kubectl delete`、`docker system prune`、无 WHERE 的 `DELETE/UPDATE`、解释器内联删除如 `python -c "os.remove(...)"` 等）human-in-the-loop 拦截：block + 指引 agent 向用户说明风险 → 用户在自己的终端运行 `forge hazard confirm --last` 登记 5min 限时标记（confirm 只接受真人终端）→ 重试放行（confirm 链是唯一放行路径，`FORGE_ALLOW_HAZARD` 已移除） |
 | **auto-compile** | Write/Edit 后 | advisory 提醒用对应技术栈编译命令自检（go build / cargo check / mvn / tsc 等），不强制编译 |
 | **workflow-test-guard** | Write/Edit 后 | 改 `.github/workflows/*.yml` 后自动跑 `internal/ci` 守护测试，把"沙盒异常"即时反馈给 agent（不依赖 CI 兜底），是 release.yml test→goreleaser→npm needs 链的实时守护层 |
@@ -232,8 +233,10 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **task-resume** | 会话开始 | advisory：只输出 `[forge-session]` 管理横幅一行（用户级 CLAUDE.md 据此判断是否启用 forge 协议）。不注入接续视图、不锚定 session、不推送待认领任务——接续按需拉取：用户说「继续某某任务」走 `forge task resume --match`，说「还有哪些任务没完成」走 `forge task list --open`；项目级 hook |
 | **compact-resume** | 压缩后（claude-code / codex） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
 | **resume-reinject** | 用户提交时（claude-code / codex） | 检测 `ResumeStale=true`（刚压缩过）→ 输出当前任务的完整接续上下文并清标志；未压缩时静默。压缩只丢当前 session 的工作记忆，补回它不打扰用户，context-rot 抗机制根治层·重注入半边 |
+| **conventions-context** | 会话开始 + 压缩后 | advisory：`forge conventions init` 建档后每会话注入 ≤15 行规范摘要（stack/lint 命令、规范声明文件、惯例要点），压缩后重注入；无档案但仓库已有 AGENTS.md 等规范时每会话一次建档建议 |
+| **conventions-write** | Write/Edit 前 | advisory：写源码或测试文件时注入本仓库规范声明文件指针与同目录范例文件（每目录每会话一次）；无档案时静默 |
 | **doc-lint** | PostToolUse（Write\|Edit） | advisory：被写的 .md 命中 D1-D11 L1 规则时注入命中清单（规则/行号/修复方向，按命中签名会话内去重），写时反馈提前于 complete 的 doc gate（output-readability-gates-v2.md P1-C），Go 原生实现 |
-| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（failure-track/subagent-track/test-nudge 亦然，其余 18 个为内嵌 bash 脚本） |
+| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（Go 原生共 9 个：本 hook 与 failure-track、subagent-track、test-nudge、doc-lint、gate-cmd-form、task-drift、conventions-context、conventions-write；其余 18 个为内嵌 bash 脚本） |
 
 </details>
 

@@ -1,5 +1,7 @@
 # hostcap 行为注册表收尾：数据/行为分离的完成态（2026-09）
 
+状态：已落地（`b5ee64c1`）。
+
 - 依据：`internal/hostcap/hostcap.go` 包文档自述（行为函数因 import 环留在 hookdispatch 侧）；插件哲学调研（`plugin-philosophy.md` 第二节/第四节）；宿主接线考古（research run_dir dive_07.md）。
 - 范围：把"接一个新宿主要改 N 处、漏一处即归因断点"的温床清干净——数据（hostcap 注册表）与行为（hookdispatch 函数列）分离的**完整性执法**。不做 DI 容器（裁断见第四节）。
 - 定位：`plugin-philosophy.md` seam 三分法中 "swappable seam" 的收尾落地。
@@ -41,4 +43,4 @@
 - `internal/hostcap/hostcap.go:1-23`（包文档：设计缘由、import 环、两阶段收编自述）、`Hosts` 注册表（203-354）。
 - `internal/hookdispatch/hook_normalize.go:18-33`（stdinNormalizers 与"键须一致"注释）、`hook.go:365-383`（StdinDialect 分派）。
 - `internal/taskpipeline/session.go:308`（唯一存留 `agent ==` 判断，空串语义）。
-- 对照研究：`~/.forge/research/cordis-koishi-plugin-philosophy-20260916-1224/report.md` 第八节 8.1 条 4（hostcap 收尾）。
+- 对照研究：`~/.research-workflow/cordis-koishi-plugin-philosophy-20260916-1224/report.md` 第八节 8.1 条 4（hostcap 收尾）。

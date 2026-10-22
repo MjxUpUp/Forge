@@ -1,7 +1,7 @@
 ---
-status: review
+status: implemented
 owner: MjxUpUp
-ask: 实现已在本分支落地（Open Questions 2026-10-21 全部拍板），请审方向与验收
+ask: 已合入 3e22f1b2（#121）；Open Questions 2026-10-21 全部拍板
 tier: mini
 ---
 

@@ -36,7 +36,7 @@ skill-name/                # 目录名 = skill id = frontmatter.name
 > - 迁入条目的标题降到三级或更低（`## [d-` → `### [d-`，子节随之下沉）。`internal/skillsdecisions` 的解析与 `internal/taskpipeline` 的「改 SKILL.md 须记决策」计数都只认行首 `## [d-`，降级后不会被当成承接 skill 自己的决策，也不会让决策门禁误判为已记。
 > - 先例：fact-research、web-search-bridge 的常规决策已在 2026-08-15 合并时以 `## [d-` 并入 `research-workflow/decisions.md`（那次早于本约定）；2026-10-22 删目录前只补迁了两条合并墓碑（旧目录里记录「已并入 research-workflow」的那条决策）。
 
-> **设计族拆包（2026-09）**：前端/设计族 12 个 skill（frontend-* / ai-*-ui-* / design-* / ui-iteration-feedback-loop）整体迁至 `plugins/forge-design/skills/`——独立 skill pack，不进 `skills/embed.go` 二进制（决策记录 docs/plans/feature-focus-2026-09.md §2.1）。核心 `skills/` 只留通用验证/流程/编排/检索；核心 skill 引用这 12 个名字时一律是"属 forge-design pack，未安装则忽略"的指针语义。
+> **设计族拆包（2026-09）**：前端/设计族 12 个 skill（frontend-* / ai-*-ui-* / design-* / ui-iteration-feedback-loop）整体迁至 `plugins/forge-design/skills/`——独立 skill pack，不进 `skills/embed.go` 二进制（决策记录 docs/plans/feature-focus-2026-09.md §2.1）。核心 `skills/` 只留通用验证/流程/编排/检索；核心 skill 引用这些名字时一律是"属 forge-design pack，未安装则忽略"的指针语义。（2026-10 起 design-artifact-standards、design-audit 收回核心，forge-design 现含 10 个，见 plugins/forge-design/README.md。）
 
 ## 4. Frontmatter 规范（机器校验项）
 
@@ -126,7 +126,7 @@ metadata:
 
 ## 12. Skills Loop 闭环（实测机制，与 §11 目标态对照）
 
-37 个 canonical skill 分两棵源树（中立 `skills/` 通用集 + forge 原生 `skills-forge/`，设计族另在 `plugins/forge-design` pack）+ 6 个 Go 包族（`skillscanonical` / `skillgen` / `skillsdist` / `skillsqa` / `skillsfm`(frontmatter YAML 解析，**不是**用度聚合) / `skillseval`）构成 8 阶段 loop：[1] Authoring → [2] Canonical Resolve → [3] Project Generate → [4] Distribute → [5] Usage in Loop → [6] Audit + Track → [7] Eval → [8] Feedback → 回 [1]。Forge 自身定位（README:17-25）= 给 coding agent loop 补验证/状态两层，**不替代循环**。
+43 个 canonical skill（2026-10-22 计数：`skills/` 39 个 + `skills-forge/` 4 个）分两棵源树（中立 `skills/` 通用集 + forge 原生 `skills-forge/`，设计族另在 `plugins/forge-design` pack）+ 6 个 Go 包族（`skillscanonical` / `skillgen` / `skillsdist` / `skillsqa` / `skillsfm`(frontmatter YAML 解析，**不是**用度聚合) / `skillseval`）构成 8 阶段 loop：[1] Authoring → [2] Canonical Resolve → [3] Project Generate → [4] Distribute → [5] Usage in Loop → [6] Audit + Track → [7] Eval → [8] Feedback → 回 [1]。Forge 自身定位（README:17-25）= 给 coding agent loop 补验证/状态两层，**不替代循环**。
 
 ### 强制路由（skill-routing 实测强度）
 
