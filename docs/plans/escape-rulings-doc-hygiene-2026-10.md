@@ -105,7 +105,7 @@ tier: mini
 - 审计行每会话每任务只写一次（marker 按会话 + 任务去重），与 gate-cmd-form 逃生同款，避免逃生期间每次 Stop 都刷一行。
 
 ## 验证与回滚
-- `go vet ./...` 无输出；`go test ./... -count=1 -timeout 30m` 退出码 0（64 个包 ok，合并 #128 前跑）；合并 #128 后重跑了 skillsqa、agentbridge、docsconsistency 与 compat 快照守卫。
+- `go vet ./...` 无输出；在合并 #128 且处理完全部审查意见之后的提交 `c4ab2b3b` 上，`go test ./... -count=1 -timeout 30m` 退出码 0（64 个包 ok）。
 - 复发升硬的逃生现在按逃生计价：本来会升硬时，关掉开关的任务分数封顶 89、证据 Weak（重证据任务按证据缩放豁免）。这是对原设计「不加 Strength 惩罚」的有意改变，协议文案已同步。
 - task-verify Stop 的逃生按 ④ 类计价：分数封顶，证据强度不降（`internal/checklog/evidence.go` 把它和 work-activity 一样识别为节奏类逃生）。
 - 回滚即 revert 本分支的提交。新增的审计行只追加 checklog，不改既有键；compat 快照逃生面只增两项。
