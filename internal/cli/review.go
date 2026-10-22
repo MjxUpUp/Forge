@@ -39,17 +39,12 @@ func reviewTestTouchedFiles(root string, state *taskpipeline.TaskState, priorBas
 // reviewWindowFiles 审查真实范围的文件口径：priorBaseline 非空用基线以来的
 // 变更（含已提交 + 工作树 + untracked——审查的真实范围）；空（首轮审查）
 // 回落任务窗口。基线之后合并了别的分支时，只经合并另一侧带入、且工作树里
-// 没再改的文件不算审查范围（taskpipeline.ExcludeMergedInFiles），且 diff 关闭
-// 重命名检测（本任务删掉的测试可能被配成基线新增文件的「重命名」，只剩新路径
-// 又被剔掉）；没有合并提交时结果不变。
+// 没再改的文件不算审查范围（taskpipeline.ExcludeMergedInFiles）；本任务删掉的
+// 测试被配成基线新增文件的「重命名」时，补回它的旧路径。没有合并提交时结果不变。
 func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline string) []string {
 	if priorBaseline != "" {
-		mergedIn, hasMerge := reviewMergedInFiles(root, priorBaseline)
-		args := []string{"-C", root, "diff", "--name-only", priorBaseline}
-		if hasMerge {
-			args = []string{"-C", root, "diff", "--no-renames", "--name-only", priorBaseline}
-		}
-		if out, err := exec.Command("git", args...).Output(); err == nil {
+		if out, err := exec.Command("git", "-C", root, "diff", "--name-only", priorBaseline).Output(); err == nil {
+			mergedIn, restored := reviewMergedInFiles(root, priorBaseline)
 			seen := map[string]bool{}
 			var files []string
 			add := func(name string, skipMergedIn bool) {
@@ -61,6 +56,9 @@ func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline
 			}
 			for _, l := range strings.Split(string(out), "\n") {
 				add(l, true)
+			}
+			for _, l := range restored {
+				add(l, false)
 			}
 			// untracked 文件只能是本任务工作树里的新文件，不经合并剔除。
 			if un, uerr := exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard").Output(); uerr == nil {
@@ -74,19 +72,20 @@ func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline
 	return taskpipeline.TaskChangedFiles(root, state)
 }
 
-// reviewMergedInFiles returns the files that changed in baseline..HEAD only through the merged-in side of merge commits and are not modified again in the working tree, and whether baseline..HEAD has a first-parent merge at all (the caller then lists files without rename detection).
+// reviewMergedInFiles returns the files that changed in baseline..HEAD only through the merged-in side of merge commits and are not modified again in the working tree, plus the old paths ExcludeMergedInFiles restored (a task deletion paired as a "rename" of a base-added file).
 //
 // reviewMergedInFiles 返回在 baseline..HEAD 内只经合并另一侧带入、且工作树里没再
-// 改动的文件集合，以及区间第一父链上是否有合并提交（有则调用方关闭重命名检测列
-// 文件）。没有合并提交时返回空集；其后任何 git 调用失败都返回空集（保守：不剔除）。
-func reviewMergedInFiles(root, baseline string) (map[string]bool, bool) {
+// 改动的文件集合，以及 ExcludeMergedInFiles 补回的旧路径（本任务的删除被配成基线
+// 新增文件的「重命名」）。没有合并提交时返回空；任何 git 调用失败都返回空（保守：
+// 不剔除）。
+func reviewMergedInFiles(root, baseline string) (map[string]bool, []string) {
 	drop := map[string]bool{}
 	if n, err := exec.Command("git", "-C", root, "rev-list", "--first-parent", "--merges", "--count", baseline+"..HEAD").Output(); err != nil || strings.TrimSpace(string(n)) == "0" {
-		return drop, false
+		return drop, nil
 	}
-	out, err := exec.Command("git", "-C", root, "diff", "--no-renames", "--name-only", baseline+"..HEAD").Output()
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", baseline+"..HEAD").Output()
 	if err != nil {
-		return drop, true
+		return drop, nil
 	}
 	var committed []string
 	for _, l := range strings.Split(string(out), "\n") {
@@ -94,12 +93,20 @@ func reviewMergedInFiles(root, baseline string) (map[string]bool, bool) {
 			committed = append(committed, l)
 		}
 	}
+	inCommitted := map[string]bool{}
+	for _, f := range committed {
+		inCommitted[f] = true
+	}
 	kept := map[string]bool{}
+	var restored []string
 	for _, f := range taskpipeline.ExcludeMergedInFiles(root, baseline, committed) {
 		kept[f] = true
+		if !inCommitted[f] {
+			restored = append(restored, filepath.ToSlash(f))
+		}
 	}
 	worktree := map[string]bool{}
-	if wt, werr := exec.Command("git", "-C", root, "diff", "--no-renames", "--name-only", "HEAD").Output(); werr == nil {
+	if wt, werr := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD").Output(); werr == nil {
 		for _, l := range strings.Split(string(wt), "\n") {
 			if l = strings.TrimSpace(l); l != "" {
 				worktree[l] = true
@@ -111,7 +118,7 @@ func reviewMergedInFiles(root, baseline string) (map[string]bool, bool) {
 			drop[filepath.ToSlash(f)] = true
 		}
 	}
-	return drop, true
+	return drop, restored
 }
 
 // forge review 让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。

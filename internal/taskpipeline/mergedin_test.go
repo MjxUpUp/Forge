@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"fmt"
 	"os/exec"
 	"slices"
 	"strings"
@@ -416,5 +417,123 @@ func TestExcludeMergedInFiles_KeepsDeletionPairedAsRename(t *testing.T) {
 	}
 	if slices.Contains(got, "copy_test.go") {
 		t.Errorf("base copy must be dropped, got %v", got)
+	}
+}
+
+// TestExcludeMergedInFiles_KeepsTaskSideEditOverwrittenByBase: an earlier task on the same branch strengthened a test before from; the current task merges base, which changed the same test, and resolves the conflict by taking base's side. The result equals base's version, but the task side had changed the file, so dropping the strengthening is the task's change.
+//
+// TestExcludeMergedInFiles_KeepsTaskSideEditOverwrittenByBase：同分支上前序任务在 from
+// 之前加强了测试；本任务合并也改过该测试的基线，冲突时整体取基线一侧。合并结果等于
+// 基线版本，但任务一侧改过这个文件，丢掉那次加强算本任务的改动。
+func TestExcludeMergedInFiles_KeepsTaskSideEditOverwrittenByBase(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\nfunc TestX() { a(1) }\n"}, "seed test")
+	runGit(t, dir, "branch", "-f", "main")
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\nfunc TestX() { a(1); a(2); a(3) }\n"}, "earlier task strengthens test")
+	start := headCommit(t, dir)
+	writeCommitSource(t, dir, map[string]string{"own.go": "package main\n\nfunc own() {}\n"}, "task own work")
+	runGit(t, dir, "checkout", "main")
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\nfunc TestX() { b(1) }\n", "base_only.go": "package main\n\nfunc base() {}\n"}, "base edits test")
+	runGit(t, dir, "checkout", "feat/testcov")
+	if err := exec.Command("git", "-C", dir, "merge", "--no-edit", "main").Run(); err == nil {
+		t.Fatal("fixture: merging main must conflict on x_test.go")
+	}
+	runGit(t, dir, "checkout", "--theirs", "x_test.go")
+	runGit(t, dir, "add", "x_test.go")
+	runGit(t, dir, "commit", "--no-edit")
+
+	committed := committedSince(t, dir, start)
+	if !slices.Contains(committed, "x_test.go") {
+		t.Fatalf("fixture: net diff must include x_test.go, got %v", committed)
+	}
+	got := ExcludeMergedInFiles(dir, start, committed)
+	if !slices.Contains(got, "x_test.go") {
+		t.Errorf("overwriting a task-side test edit with base's version must stay the task's change, got %v", got)
+	}
+	if slices.Contains(got, "base_only.go") {
+		t.Errorf("file brought in only by merging main must be dropped, got %v", got)
+	}
+}
+
+// TestExcludeMergedInFiles_CrissCrossChecksEveryMergeBase: with two merge bases between the task side and base (an earlier merge plus a task commit that reached main through a merge PR), reverting a test to base's version inside the merge must stay the task's change no matter which merge base git would pick alone. Commit dates are pinned so the single merge base git picks is the one that would hide it.
+//
+// TestExcludeMergedInFiles_CrissCrossChecksEveryMergeBase：任务一侧与基线之间有两个
+// merge-base（一次早先的合并，加一个经合并式 PR 进了 main 的任务提交）时，在合并里把
+// 测试改回基线版本，无论 git 单独挑哪个 merge-base，都要算本任务的改动。固定提交
+// 时间，使 git 单独挑出的恰好是会把它藏起来的那个。
+func TestExcludeMergedInFiles_CrissCrossChecksEveryMergeBase(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	tick := 0
+	at := func() {
+		tick++
+		date := fmt.Sprintf("2026-01-01T00:00:%02d +0000", tick)
+		t.Setenv("GIT_AUTHOR_DATE", date)
+		t.Setenv("GIT_COMMITTER_DATE", date)
+	}
+	at()
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\n// v1\n"}, "seed test")
+	runGit(t, dir, "branch", "-f", "main")
+	runGit(t, dir, "checkout", "main")
+	at()
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\n// v2\n"}, "b1: base edits test")
+	runGit(t, dir, "checkout", "feat/testcov")
+	at()
+	writeCommitSource(t, dir, map[string]string{"own1.go": "package main\n\nfunc own1() {}\n"}, "t1")
+	t1 := headCommit(t, dir)
+	at()
+	runGit(t, dir, "merge", "--no-commit", "main")
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\n// v3 strongest\n"}, "M1: strengthen test while merging")
+	start := headCommit(t, dir)
+	runGit(t, dir, "checkout", "main")
+	at()
+	runGit(t, dir, "merge", "--no-ff", "--no-edit", t1)
+	at()
+	writeCommitSource(t, dir, map[string]string{"base2.go": "package main\n\nfunc base2() {}\n"}, "b2")
+	runGit(t, dir, "checkout", "feat/testcov")
+	at()
+	writeCommitSource(t, dir, map[string]string{"own2.go": "package main\n\nfunc own2() {}\n"}, "t2")
+	if bases := strings.Fields(mustGitOut(t, dir, "merge-base", "--all", "HEAD", "main")); len(bases) != 2 {
+		t.Fatalf("fixture: need two merge bases, got %v", bases)
+	}
+	if got := mustGitOut(t, dir, "merge-base", "HEAD", "main"); got != t1 {
+		t.Fatalf("fixture: git must pick t1 as the single merge base, got %s", got)
+	}
+	at()
+	runGit(t, dir, "merge", "--no-commit", "main")
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\n// v2\n"}, "M2: revert test to base version")
+
+	committed := committedSince(t, dir, start)
+	if !slices.Contains(committed, "x_test.go") {
+		t.Fatalf("fixture: net diff must include x_test.go, got %v", committed)
+	}
+	got := ExcludeMergedInFiles(dir, start, committed)
+	if !slices.Contains(got, "x_test.go") {
+		t.Errorf("reverting the task's test strengthening inside a criss-cross merge must stay, got %v", got)
+	}
+	if slices.Contains(got, "base2.go") {
+		t.Errorf("file brought in only by merging main must be dropped, got %v", got)
+	}
+}
+
+// TestExcludeMergedInFiles_PureRenameMatchesNoMerge: a plain rename by the task lists only the new path, with or without a later merge of base; restoring old paths applies only when the new path was dropped.
+//
+// TestExcludeMergedInFiles_PureRenameMatchesNoMerge：本任务的纯重命名只列新路径，之后
+// 合不合并基线都一样；补回旧路径只在新路径被剔掉时发生。
+func TestExcludeMergedInFiles_PureRenameMatchesNoMerge(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	writeCommitSource(t, dir, map[string]string{"old.go": "package main\n\nfunc a() {}\nfunc b() {}\nfunc c() {}\n"}, "seed")
+	runGit(t, dir, "branch", "-f", "main")
+	start := headCommit(t, dir)
+	runGit(t, dir, "mv", "old.go", "new.go")
+	runGit(t, dir, "commit", "-m", "task renames")
+	runGit(t, dir, "checkout", "main")
+	writeCommitSource(t, dir, map[string]string{"base_only.go": "package main\n\nfunc base() {}\n"}, "base work")
+	runGit(t, dir, "checkout", "feat/testcov")
+	runGit(t, dir, "merge", "--no-edit", "main")
+
+	committed := committedSince(t, dir, start)
+	got := ExcludeMergedInFiles(dir, start, committed)
+	if want := []string{"new.go"}; !slices.Equal(got, want) {
+		t.Fatalf("pure rename after a merge must list only the new path, got %v want %v (committed %v)", got, want, committed)
 	}
 }

@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"fmt"
 	"os/exec"
 	"strings"
 )
@@ -95,41 +96,67 @@ func reachableFromBase(root string, refs []string, rev string) bool {
 	return false
 }
 
-// baseMergeOwnFiles returns the files merge commit m changed relative to its first parent p1 that the task itself is responsible for, given that every other parent is a base commit. A file counts as brought in from base only when m's version equals some base parent pi's version and base actually changed that file since forking from p1 (it is in diff merge-base(p1,pi)..pi). Anything else — conflict resolutions, edits made while merging, and a file reverted to an old base version by picking a stale base parent — is the task's own.
+// baseMergeOwnFiles returns the files merge commit m changed relative to its first parent p1 that the task itself is responsible for, given that every other parent is a base commit. A file counts as brought in from base only when, for some base parent pi, m's version equals pi's and, against every merge base of p1 and pi, base changed the file while the task side did not. Anything else — conflict resolutions (including taking base's side over a task-side edit), edits made while merging, and a file reverted to an old base version by picking a stale base parent — is the task's own.
 //
 // baseMergeOwnFiles 返回基线合并 m 相对第一父 p1 改动的文件里，属于本任务的那些
-// （调用方已确认其余各父都是基线提交）。只有同时满足两条才算基线带入：m 里的版本
-// 等于某个基线父 pi 的版本；基线自与 p1 分叉以来确实改过该文件（出现在
-// merge-base(p1,pi)..pi 的 diff 里）。其余都算本任务的：冲突解决、合并时顺手改，
-// 以及选一个陈旧的基线父、把文件改回旧版本的做法。不用 --cc：它只列出与所有父都
-// 不同的文件，合并结果等于陈旧基线父时会漏掉。
+// （调用方已确认其余各父都是基线提交）。存在某个基线父 pi 同时满足下面三条，才算
+// 基线带入：m 里的版本等于 pi 的版本；对 p1 与 pi 的每个 merge-base（criss-cross 时
+// 不止一个，取 --all），基线一侧改过该文件；任务一侧（p1）没改过。其余都算本任务的：
+// 冲突解决（含用基线版本盖掉任务一侧的改动，这些改动可能来自 from 之前的前序任务）、
+// 合并时顺手改，以及选一个陈旧的基线父、把文件改回旧版本的做法。不用 --cc：它只
+// 列出与所有父都不同的文件，合并结果等于陈旧基线父时会漏掉。
 func baseMergeOwnFiles(root, m, p1 string, baseParents []string) ([]string, error) {
 	changed, err := gitLines(root, "diff", "--no-renames", "--name-only", p1, m)
 	if err != nil {
 		return nil, err
 	}
+	nameSet := func(a, b string) (map[string]bool, error) {
+		lines, err := gitLines(root, "diff", "--no-renames", "--name-only", a, b)
+		if err != nil {
+			return nil, err
+		}
+		set := make(map[string]bool, len(lines))
+		for _, l := range lines {
+			set[l] = true
+		}
+		return set, nil
+	}
 	fromBase := map[string]bool{}
 	for _, pi := range baseParents {
-		mb, err := gitLines(root, "merge-base", p1, pi)
-		if err != nil || len(mb) != 1 {
-			return nil, err
-		}
-		baseChanged, err := gitLines(root, "diff", "--no-renames", "--name-only", mb[0], pi)
+		mbs, err := gitLines(root, "merge-base", "--all", p1, pi)
 		if err != nil {
 			return nil, err
 		}
-		differs, err := gitLines(root, "diff", "--no-renames", "--name-only", pi, m)
+		if len(mbs) == 0 {
+			return nil, fmt.Errorf("no merge base between %s and %s", p1, pi)
+		}
+		differ, err := nameSet(pi, m)
 		if err != nil {
 			return nil, err
 		}
-		differ := map[string]bool{}
-		for _, f := range differs {
-			differ[f] = true
-		}
-		for _, f := range baseChanged {
+		cand := map[string]bool{}
+		for _, f := range changed {
 			if !differ[f] {
-				fromBase[f] = true
+				cand[f] = true
 			}
+		}
+		for _, mb := range mbs {
+			baseSide, err := nameSet(mb, pi)
+			if err != nil {
+				return nil, err
+			}
+			taskSide, err := nameSet(mb, p1)
+			if err != nil {
+				return nil, err
+			}
+			for f := range cand {
+				if !baseSide[f] || taskSide[f] {
+					delete(cand, f)
+				}
+			}
+		}
+		for f := range cand {
+			fromBase[f] = true
 		}
 	}
 	var own []string
@@ -141,16 +168,16 @@ func baseMergeOwnFiles(root, m, p1 string, baseParents []string) ([]string, erro
 	return own, nil
 }
 
-// ExcludeMergedInFiles drops from committed the files that changed in from..HEAD only through base-side merges: a first-parent merge whose other parents (2..N) are all reachable from a base ref contributes the files it changed relative to its first parent except those whose version equals a base parent's and that base changed since forking (see baseMergeOwnFiles); every other first-parent commit — including merges with any non-base parent, such as the task's own side branch — contributes all its files. Base refs are origin/main and origin/master when present, else local main and master. Callers pass only files of the committed range; when merges are filtered, paths that only a rename-free net diff shows (a deleted file paired as a "rename" of a base-added one) are appended if they are the task's. committed is returned unchanged when the range has no merge, when from is not on HEAD's first-parent chain, when a merge on that chain is itself reachable from base (the chain is base's history: the task was merged into base and fast-forwarded back), when no base ref exists, or on any git failure.
+// ExcludeMergedInFiles drops from committed the files that changed in from..HEAD only through base-side merges: a first-parent merge whose other parents (2..N) are all reachable from a base ref contributes the files it changed relative to its first parent except those whose version equals a base parent's and that only base changed since forking (see baseMergeOwnFiles); every other first-parent commit — including merges with any non-base parent, such as the task's own side branch — contributes all its files. Base refs are origin/main and origin/master when present, else local main and master. Callers pass only files of the committed range; when merges are filtered and a rename pair's new path is dropped (a deleted file paired as a "rename" of a base-added one), its old path is appended if it is the task's. committed is returned unchanged when the range has no merge, when from is not on HEAD's first-parent chain, when a merge on that chain is itself reachable from base (the chain is base's history: the task was merged into base and fast-forwarded back), when no base ref exists, or on any git failure.
 //
 // ExcludeMergedInFiles 从 committed 中剔除在 from..HEAD 内只经「基线一侧合并」带入
 // 的文件：第一父链上的合并提交若其余各父（第 2..N 个）全部可从基线 ref 到达，计入
-// 它相对第一父改动的文件，减去「版本等于某个基线父、且基线自分叉以来改过」的那些
+// 它相对第一父改动的文件，减去「版本等于某个基线父、且分叉后只有基线一侧改过」的那些
 // （见 baseMergeOwnFiles）；其余第一父链提交——包括任一父不来自基线的合并，如合并本任务侧
 // 分支——全部计入。基线 ref 有 origin/main、origin/master 时只认它们，否则回落本地
-// main、master。调用方只传已提交区间的文件；实际做了剔除时，还会补回只在关闭重命名
-// 检测的净 diff 里出现、且属于本任务的路径（本任务删掉的文件被配成基线新增文件的
-// 「重命名」时，调用方列表里只有新路径）。以下情况原样返回（保守：不能证明是外来
+// main、master。调用方只传已提交区间的文件；实际做了剔除时，若某个重命名对的新路径
+// 被剔掉而旧路径属于本任务（本任务删掉的文件被配成基线新增文件的「重命名」），把
+// 旧路径补回。以下情况原样返回（保守：不能证明是外来
 // 的，就继续计入）：区间内没有合并提交；from 不在 HEAD 的第一父链上；链上某个合并
 // 提交本身可从基线到达（链是基线的历史：任务被合进基线后又快进回来）；没有基线
 // ref；任何 git 调用失败。已知局限：任务尚无提交时快进合并基线，没有合并提交可依据，
@@ -213,9 +240,10 @@ func ExcludeMergedInFiles(root, from string, committed []string) []string {
 		addAll(files)
 	}
 	// 调用方的净 diff 开着重命名检测：本任务删掉的测试可能被配成基线新增文件的
-	// 「重命名」，只剩新路径（随后被当作基线剔掉）。用 --no-renames 重算净 diff，
-	// 把属于本任务、调用方列表里却没有的路径补回来。
-	net, err := gitLines(root, "diff", "--no-renames", "--name-only", from+"..HEAD")
+	// 「重命名」，只剩新路径（随后被当作基线剔掉）。对新路径被剔掉的重命名对，若旧
+	// 路径属于本任务，把旧路径补回；新路径保留的重命名对不动，纯重命名的结果与无合并
+	// 时一致。
+	pairs, err := gitLines(root, "diff", "-M", "--name-status", from+"..HEAD")
 	if err != nil {
 		return committed
 	}
@@ -227,10 +255,15 @@ func ExcludeMergedInFiles(root, from string, committed []string) []string {
 			kept = append(kept, f)
 		}
 	}
-	for _, f := range net {
-		if own[f] && !seen[f] {
-			seen[f] = true
-			kept = append(kept, f)
+	for _, l := range pairs {
+		fields := strings.Split(l, "\t")
+		if len(fields) != 3 || !strings.HasPrefix(fields[0], "R") {
+			continue
+		}
+		oldPath, newPath := fields[1], fields[2]
+		if !own[newPath] && own[oldPath] && !seen[oldPath] {
+			seen[oldPath] = true
+			kept = append(kept, oldPath)
 		}
 	}
 	return kept

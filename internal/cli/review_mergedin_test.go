@@ -141,11 +141,11 @@ func TestReviewWindowFiles_KeepsWorktreeEditedMergedFile(t *testing.T) {
 	}
 }
 
-// TestReviewWindowFiles_KeepsDeletionPairedAsRename: the task deletes a test while base adds an identical copy; with a merge in the window the listing runs without rename detection, so the deleted path is shown and the base copy is not.
+// TestReviewWindowFiles_KeepsDeletionPairedAsRename: the task deletes a test while base adds an identical copy, which the window's diff pairs as a rename; the deleted path is restored into the window and the base copy is not shown.
 //
 // TestReviewWindowFiles_KeepsDeletionPairedAsRename：本任务删掉测试，同期基线新增一份
-// 相同内容的拷贝；窗口内有合并时关闭重命名检测列文件，被删的路径出现在窗口里，基线
-// 的拷贝不出现。
+// 相同内容的拷贝，窗口的 diff 把两者配成重命名；被删的路径补回窗口，基线的拷贝不
+// 出现。
 func TestReviewWindowFiles_KeepsDeletionPairedAsRename(t *testing.T) {
 	content := "package main\n\nfunc TestA() {\n\tif 1+1 != 2 {\n\t\tpanic(\"math\")\n\t}\n}\n"
 	dir, baseline := reviewMergedRepo(t,
