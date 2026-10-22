@@ -38,31 +38,110 @@ func reviewTestTouchedFiles(root string, state *taskpipeline.TaskState, priorBas
 
 // reviewWindowFiles 审查真实范围的文件口径：priorBaseline 非空用基线以来的
 // 变更（含已提交 + 工作树 + untracked——审查的真实范围）；空（首轮审查）
-// 回落任务窗口。
+// 回落任务窗口。基线之后合并了别的分支时，只经合并另一侧带入、且工作树里
+// 没再改的文件不算审查范围（taskpipeline.ExcludeMergedInFiles）；本任务删掉的
+// 测试（已提交或只在工作树里）被配成基线新增文件的「重命名」时，补回它的旧路径。
+// 没有合并提交时结果不变。
 func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline string) []string {
 	if priorBaseline != "" {
 		if out, err := exec.Command("git", "-C", root, "diff", "--name-only", priorBaseline).Output(); err == nil {
+			mergedIn, restored := reviewMergedInFiles(root, priorBaseline)
 			seen := map[string]bool{}
 			var files []string
-			add := func(name string) {
+			add := func(name string, skipMergedIn bool) {
 				name = filepath.ToSlash(strings.TrimSpace(name))
-				if name != "" && !seen[name] {
+				if name != "" && !seen[name] && !(skipMergedIn && mergedIn[name]) {
 					seen[name] = true
 					files = append(files, name)
 				}
 			}
 			for _, l := range strings.Split(string(out), "\n") {
-				add(l)
+				add(l, true)
 			}
+			for _, l := range restored {
+				add(l, false)
+			}
+			// 窗口的 diff 比到工作树：工作树里刚删掉的测试也可能被配成基线带入文件的
+			// 「重命名」，只剩新路径又被剔掉。按同一条 diff 的配对补回旧路径，但只补工作树
+			// 相对 HEAD 删掉的（已提交的删除由 restored 补回）——否则基线一侧自己的重命名
+			// 也会被补出旧路径。
+			if len(mergedIn) > 0 {
+				ns, nerr := exec.Command("git", "-C", root, "diff", "--name-status", priorBaseline).Output()
+				del, derr := exec.Command("git", "-C", root, "diff", "--no-renames", "--diff-filter=D", "--name-only", "HEAD").Output()
+				if nerr == nil && derr == nil {
+					wtDel := map[string]bool{}
+					for _, l := range strings.Split(string(del), "\n") {
+						if l = strings.TrimSpace(l); l != "" {
+							wtDel[filepath.ToSlash(l)] = true
+						}
+					}
+					for _, l := range strings.Split(string(ns), "\n") {
+						oldPath, newPath, ok := taskpipeline.RenamePair(strings.TrimSpace(l))
+						if ok && mergedIn[filepath.ToSlash(newPath)] && wtDel[filepath.ToSlash(oldPath)] {
+							add(oldPath, false)
+						}
+					}
+				}
+			}
+			// untracked 文件只能是本任务工作树里的新文件，不经合并剔除。
 			if un, uerr := exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard").Output(); uerr == nil {
 				for _, l := range strings.Split(string(un), "\n") {
-					add(l)
+					add(l, false)
 				}
 			}
 			return files
 		}
 	}
 	return taskpipeline.TaskChangedFiles(root, state)
+}
+
+// reviewMergedInFiles returns the files that changed in baseline..HEAD only through the merged-in side of merge commits and are not modified again in the working tree, plus the old paths ExcludeMergedInFiles restored (a task deletion paired as a "rename" of a base-added file).
+//
+// reviewMergedInFiles 返回在 baseline..HEAD 内只经合并另一侧带入、且工作树里没再
+// 改动的文件集合，以及 ExcludeMergedInFiles 补回的旧路径（本任务的删除被配成基线
+// 新增文件的「重命名」）。没有合并提交时返回空；任何 git 调用失败都返回空（保守：
+// 不剔除）。
+func reviewMergedInFiles(root, baseline string) (map[string]bool, []string) {
+	drop := map[string]bool{}
+	if n, err := exec.Command("git", "-C", root, "rev-list", "--first-parent", "--merges", "--count", baseline+"..HEAD").Output(); err != nil || strings.TrimSpace(string(n)) == "0" {
+		return drop, nil
+	}
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", baseline+"..HEAD").Output()
+	if err != nil {
+		return drop, nil
+	}
+	var committed []string
+	for _, l := range strings.Split(string(out), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			committed = append(committed, l)
+		}
+	}
+	inCommitted := map[string]bool{}
+	for _, f := range committed {
+		inCommitted[f] = true
+	}
+	kept := map[string]bool{}
+	var restored []string
+	for _, f := range taskpipeline.ExcludeMergedInFiles(root, baseline, committed) {
+		kept[f] = true
+		if !inCommitted[f] {
+			restored = append(restored, filepath.ToSlash(f))
+		}
+	}
+	worktree := map[string]bool{}
+	if wt, werr := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD").Output(); werr == nil {
+		for _, l := range strings.Split(string(wt), "\n") {
+			if l = strings.TrimSpace(l); l != "" {
+				worktree[l] = true
+			}
+		}
+	}
+	for _, f := range committed {
+		if !kept[f] && !worktree[f] {
+			drop[filepath.ToSlash(f)] = true
+		}
+	}
+	return drop, restored
 }
 
 // forge review 让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。
