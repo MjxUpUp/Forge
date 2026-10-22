@@ -201,8 +201,8 @@ func TestClaudeMDSectionContract(t *testing.T) {
 		// gate-cmd-form ratchet 版本与逃生面须与 internal/hookdispatch/hook_gate_cmd_form.go
 		// 的 gateCmdFormBlockVersion（1.67.0）/ gateCmdFormEscapeEnv 一致；override 无此开关。
 		{"gate-cmd-form ratchet facts", []string{
-			"自 1.67 起 BLOCKED",
-			"1.67 起 BLOCKED",
+			"自 1.67 起 BLOCKED",             // 安全机制段
+			"1.56 advisory，1.67 起 BLOCKED", // 常见错误表行（独立锚点，删行即红）
 			"`FORGE_GATE_CMD_FORM=0`",
 		}, []string{
 			"1.58 起 BLOCKED",

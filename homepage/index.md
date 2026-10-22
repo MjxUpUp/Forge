@@ -43,7 +43,7 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 
 | Agent | 安装方式 | 接入 |
 |---|---|---|
-| **Claude Code** | `/plugin marketplace + install` | 全自动（用户级 hooks + auto-init） |
+| **Claude Code** | `/plugin marketplace + install` | 全自动（用户级 hooks；首会话按接管策略处理，默认询问一次） |
 | **Codex** | plugin marketplace 或 `forge init --agents codex` | 用户级 hooks（`~/.codex/hooks.json` + config.toml 特性开关；可能需在 codex `/hooks` 里 trust 一次）+ guidance |
 | **Cursor** | plugin marketplace + `forge init --agents cursor` | 用户级 hooks（`~/.cursor/hooks.json`） |
 | **Windsurf** | `forge init --agents windsurf` | 用户级 Cascade hooks（`~/.codeium/windsurf/hooks.json` + `memories/global_rules.md`） |

@@ -37,7 +37,7 @@ metadata:
 - SQL 破坏性 DDL / 权限：`DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `GRANT … TO PUBLIC` / 无 WHERE 的 `DELETE|UPDATE`
 - 基础设施破坏：`kubectl delete` / `docker system prune` / `docker volume rm` / `docker rm -f`
 
-**拦截后（HITL 闭环，不是硬 block）**：hook 给出指纹和指引 → agent 向用户说明风险，**请用户在自己的终端执行 hook 指引里给出的确认命令**（确认只接受真人终端，agent 的 Bash 不是终端，自行运行会被拒）→ 用户登记放行后逐字重试原命令自动通过。confirm 链是唯一放行路径，测试/CI 同样走确认登记。
+**拦截后（阻断，放行权在人）**：hook 给出指纹和指引 → agent 向用户说明风险，**请用户在自己的终端执行 hook 指引里给出的确认命令**（确认只接受真人终端，agent 的 Bash 不是终端，自行运行会被拒）→ 用户登记放行后逐字重试原命令自动通过。confirm 链是唯一放行路径；没有真人终端的环境（CI 等）无法放行，须在命令层避开高危形态。
 
 宿主未接线自动挡时，这些命令同样危险——按 /careful 的 STOP 确认纪律处理。
 

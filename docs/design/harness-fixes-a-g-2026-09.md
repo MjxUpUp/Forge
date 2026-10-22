@@ -56,6 +56,7 @@
 - **设计**（按 session-retrospective 载体决策树第 1 档——能程序化的不进 skill）：
   1. **形态分类器**（纯函数）：识别命令中的 forge 门禁子命令（`forge task gate|complete`、`forge task verify-acceptance`、`forge review pass`、`forge docs lint`、`forge task doc-review`，含 ./bin/forge-dev 前缀变体），分类 standalone / `cd && ` 前缀 / `&&` 尾段 / 分号续行 / 管道截断（`|` 接 tail/head/grep/cut/sed）/ 多门禁同刷。
   2. **in-process hook**（PreToolUse Bash，仿 test-nudge 的挂载 hook_track.go:207 + settings.go:93）：1.56 advisory——stderr 一行 `ADVISORY: gate-cmd-form …（自 1.58 起 BLOCKED）` + checklog `gate-cmd-form` warn；1.58 转 BLOCKED（规则：门禁命令之后不得接 `;`、`|`、`||`，不得多门禁同刷；`cd X && gate` 与 `gate && 后续` 保留放行——退出码契约仍成立）。逃生舱：`FORGE_GATE_CMD_FORM=0` env + per-task override `--gate-cmd-form disable`（进 overrides.go 枚举与 escapes 面）。
+     **（2026-10-22 注：1.58 未兑现，实际于 1.67.0 以机械版本门转 BLOCK，逃生只有 `FORGE_GATE_CMD_FORM=0`、无 per-task override；见 compat-commitments.md §三同日条。）**
   3. **stderr 兜底**：`forge task gate` 检测 stdout 非 TTY 时（char-device 判定改造自 task_gate.go:166 `stdinIsHumanTerminal` 的 stdin 版——本项判 stdout，是适配不是直接复用），BLOCKED 摘要行同时写 stderr——管道截断不再能吞掉退出码契约的文本面。
 - **落点**：internal/taskpipeline/gatecmdform.go（新，分类器+hook）、internal/hooks/settings.go 注册、internal/clitask/task_gate.go stderr 兜底、overrides.go、compat snapshot（checks/escapes/blockings 三面 regen）。
 - **度量**：C1 37%/13% → ≤2%；C2 84%/27% → ≤15%；C3 7%/46% → ≥80%。防伪：拦截后重跑率不得劣化（甲基线 `100%`）；单任务 Bash 中位数上浮 ≤30%（乙机现值由 M 钉基线）。

@@ -5,7 +5,7 @@
 通用约束（适用全部特性）：
 
 - **No Free Lunch 预算**：每道新门禁必须给出误报控制与逃生舱（沿既有 `FORGE_*` + checklog escape-hatch 留痕模式），无预算的门禁不合入（调研 dive_03 约束 1）。
-- **观察类优先**：新 CheckName 一律先 observation/advisory 落地，本批 BLOCKED 仅用于"证据明确造假"形态（与红线对照：本批 BLOCKED 只出现在评测/证据自身不合法，即 compat-commitments.md 第二节第 5 条阻断正当性分类的 ② 类；全局阻断边界以该表为准）。
+- **观察类优先**：新 CheckName 一律先 observation/advisory 落地，本批 BLOCKED 仅用于"证据明确造假"形态（compat-commitments.md 第二节第 5 条 ② 类；全局阻断边界以该表为准）。
 - **本地门禁 = 证据生产者**：一切新判定写 checklog，为 git/PR 收口与 OTel 导出供料（方向 A/D1）。
 - 监控分段约束（Classifier Context Rot，arXiv 2605.12366）：禁止把全量轨迹塞给任何 LLM 判定环节；Go 侧提供确定性分段工具，下游 judge 消费按窗口取输入。
 

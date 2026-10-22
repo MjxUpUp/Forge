@@ -205,7 +205,7 @@ func TestQualitySkillTaskVerifyIsAdvisory(t *testing.T) {
 	// Obsolete blocking / 3-fail phrasing must be gone.
 	for _, gone := range []string{"连续 3 次失败", "阻塞会话结束", "task-verify 阻塞", "不阻塞会话"} {
 		if strings.Contains(content, gone) {
-			t.Errorf("quality SKILL.md still uses obsolete blocking phrasing %q (task-verify is advisory)", gone)
+			t.Errorf("quality SKILL.md still uses obsolete Stop phrasing %q (gate checks are advisory; only the bounded Stop block exists)", gone)
 		}
 	}
 	// Advisory wording must be present.

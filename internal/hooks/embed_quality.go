@@ -305,14 +305,15 @@ fi
 `
 
 const TaskVerifyHook = `#!/bin/bash
-# task-verify.sh — Stop hook (advisory).
-# Surfaces quality issues to stderr + checklog (queryable via 'forge trace') but
-# NEVER blocks session end. Earlier this hook FAIL'd the Stop to force users to
-# address unpassed gates / pending reviews / master-without-task; the cost was
-# trapping sessions in stop-retry loops (only papered over by a 3-failure
-# force-pass counter). Blocking adds friction without reliably changing the
-# outcome — the advisory form keeps the signal, drops the trap.
-# Protocol: Stop hooks output PASS or FAIL on stdout; we always PASS.
+# task-verify.sh — Stop hook (advisory, with one bounded block).
+# Surfaces quality issues to stderr + checklog (queryable via 'forge trace').
+# Earlier this hook FAIL'd the Stop to force users to address unpassed gates /
+# pending reviews / master-without-task; the cost was trapping sessions in
+# stop-retry loops (only papered over by a 3-failure force-pass counter), so
+# those checks stay advisory. The one exception is the bounded block below:
+# active task + uncommitted code → exit 2, at most 3 times per session, then
+# back to advisory (escape FORGE_TASK_VERIFY_STOP=0).
+# Protocol: Stop hooks output PASS or FAIL on stdout; stdout always PASS.
 set -eo pipefail
 
 ROOT="${1:-.}"
@@ -406,7 +407,7 @@ if [ -n "$_SID_H" ] && [ -f "$_HAZEV" ]; then
   case "$_HB" in ''|*[!0-9]*) _HB=0;; esac
   case "$_HR" in ''|*[!0-9]*) _HR=0;; esac
   if [ "$_HB" -gt "$_HR" ]; then
-    MESSAGES="${MESSAGES}HITL 等人:本会话 $(( _HB - _HR )) 个高危拦截未经人工确认——forge hazard status 核查,forge hazard confirm --last 确认放行(或维持拦截)。"
+    MESSAGES="${MESSAGES}HITL 等人:本会话 $(( _HB - _HR )) 个高危拦截未经人工确认——forge hazard status 核查;放行须请用户在自己的终端运行 forge hazard confirm --last(agent 自行运行会被拒),或维持拦截。"
   fi
 fi
 
@@ -492,8 +493,8 @@ const ReviewStopHook = `#!/bin/bash
 #     强制（executor.go），此处不重复拦（否则 task 流程每次改代码都被拦，与门禁重复且扰人）。
 #   - 非 task 模式：gate 按 diff stamp 决策，未审则 block。
 #
-# 与 task-verify 的关键区别：task-verify 永远 PASS（advisory）——因 Stop block 曾致
-# retry-loop 死循环。本 hook 敢 block 是因为 review 包有 max-rounds 兜底（Evaluate 在
+# 与 task-verify 的关系：task-verify 的门禁类检查保持 advisory——因 Stop block 曾致
+# retry-loop 死循环；它只对「活跃任务 + 未提交代码」做每会话 ≤3 次的有界阻断。本 hook 敢 block 是因为 review 包有 max-rounds 兜底（Evaluate 在
 # MaxReviewRounds=3 后 advisory 放行），block 最多 3 次必然收敛，不会死循环。
 #
 # 误触发防护（2026-06-27）：gate 内部只统计源码变更（扩展名白名单 + 排除 .forge/文档/

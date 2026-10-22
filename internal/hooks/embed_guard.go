@@ -422,7 +422,7 @@ COMMAND="${FORGE_COMMAND:-}"
 # FORGE_ALLOW_HAZARD env 豁免已移除（周复盘 2026-08：agent 自我放行滥用——hook 只拦
 # 别人拦不了自己，且行内前缀形式 FORGE_ALLOW_HAZARD=1 cmd 由宿主进程持有、hook 进程
 # 拿不到 env，两种形式行为不一致）。confirm 链（events.jsonl 审计 + 5min TTL）是唯一
-# 放行路径，测试/CI 同样走 forge hazard confirm。
+# 放行路径；confirm 只接受真人终端（F.2b），无真人终端的环境（CI 等）须在命令层避开高危形态。
 
 # 豁免 forge hazard 命令本身：agent 运行 forge hazard confirm "rm -rf x" 登记确认时，
 # 这个 Bash 命令的 FORGE_COMMAND 含 "rm -rf" 会被自己拦——必须豁免 forge hazard 前缀。

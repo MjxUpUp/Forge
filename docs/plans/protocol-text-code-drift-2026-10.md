@@ -19,25 +19,32 @@ tier: mini
 | gate-cmd-form「自 1.58 起 BLOCKED + per-task override」 | `gateCmdFormBlockVersion = "1.67.0"`，只有 `FORGE_GATE_CMD_FORM=0` |
 | test-coverage「自 1.58 起阈值 3→2」 | `testCoverageHardGateThreshold = 3`，预告挂了 25 个 minor |
 | 让 agent 自行 `forge hazard confirm --last` | `internal/cli/hazard.go` 拒绝非真人终端 |
-| init-suggest「自动 forge init」 | 出厂默认 ask |
+| init-suggest「自动 forge init」 | `internal/userconfig/userconfig.go` 的 `TakeoverAsk` 是出厂默认 |
 
-另：四份设计文档对「何时可以 BLOCK」各有一套说法，新门禁提案无法判断自己能不能阻断。
+另：compat-commitments、focus-batches、leverage-points-landing、forge-evaluation-system 四份设计文档对「何时可以 BLOCK」各有一套说法，新门禁提案无法判断自己能不能阻断。
 
 ## Non-goals
-- 不改任何门禁行为：不兑现 test-coverage 3→2 收紧，不新增 override，不动 `hook_gate_cmd_form.go` 的版本门（另一会话的死代码清扫在处理）。
+- 不改任何门禁行为：不兑现 test-coverage 3→2 收紧，不新增 override，不动 `hook_gate_cmd_form.go` 的版本门（并行的死代码清扫任务正在改这处，分支 `claude/upbeat-benz-c1bc72`）。
 - 不处理中、低严重度冲突（命令面记账、lite 档准入等）。
+- 阻断正当性表列出的「已知例外」（task-verify Stop 逃生无审计行、bundle 验签无逃生舱等）只登记，不在本批修：修它们是行为变更。
+- 不改历史依据行：`artifact-chain-workflow.md` 等文档引用旧总原则「HARD 只守事实」的依据行记录的是当时的口径，保持原样。
 
 ## 需求与验收
 - REQ-1 生成的项目级协议陈述 task-verify Stop 有界阻断、gate-cmd-form 自 1.67 起 BLOCKED 且只有 env 逃生、init-suggest 默认 ask
   accept[REQ-1]: go test ./internal/skillgen/ -run ^TestClaudeMDSectionContract$ -count=1 :: --- PASS: TestClaudeMDSectionContract (
-- REQ-2 hazard-guard 拦截提示改为请用户在自己的终端运行 confirm，不再出现授权判定后 agent 自助 confirm 的路径
+- REQ-2 hazard-guard 拦截提示、Stop 时的 HITL 提示、`forge hazard --help` 与 README 改为请用户在自己的终端运行 confirm，不再出现授权判定后 agent 自助 confirm 的路径
   accept[REQ-2]: go test ./internal/hooks/ -run ^TestHazardGuardScript_BlockGuidanceCopy$ -count=1 :: --- PASS: TestHazardGuardScript_BlockGuidanceCopy (
-- REQ-3 forge-quality skill 的会话结束节陈述 Stop 有界阻断（上限与逃生 env）
+  accept[REQ-2]: go test ./internal/cli/ -run ^TestHazardCmd_LongGuidanceCopy$ -count=1 :: --- PASS: TestHazardCmd_LongGuidanceCopy (
+- REQ-3 forge-quality skill 的会话结束节与 README hook 表陈述 Stop 有界阻断（上限与逃生 env）。守卫测试名沿用历史的 `TestQualitySkillTaskVerifyIsAdvisory`，内容已改为钉住有界阻断
   accept[REQ-3]: go test ./internal/skillgen/ -run ^TestQualitySkillTaskVerifyIsAdvisory$ -count=1 :: --- PASS: TestQualitySkillTaskVerifyIsAdvisory (
+  accept[REQ-3]: grep -n FORGE_TASK_VERIFY_STOP=0 README.md :: FORGE_TASK_VERIFY_STOP=0
 - REQ-4 test-coverage advisory 文案只陈述现行规则，阈值取自 `testCoverageHardGateThreshold`
   accept[REQ-4]: go test ./internal/taskpipeline/ -run ^TestTestCoverageDetail_StatesCurrentBackstop$ -count=1 :: --- PASS: TestTestCoverageDetail_StatesCurrentBackstop (
-- REQ-5 compat-commitments 第二节第 5 条给出阻断正当性分类，§三记录三条裁决
+- REQ-5 compat-commitments 第二节第 5 条给出阻断正当性分类与判别顺序，§三记录三条裁决
   accept[REQ-5]: grep -n 阻断正当性分类（单一真相源 docs/design/compat-commitments.md :: 阻断正当性分类（单一真相源
+  accept[REQ-5]: grep -n 协议文本与代码对齐批 docs/design/compat-commitments.md :: 协议文本与代码对齐批
+- REQ-6 test-nudge tier3 提示的阈值取自导出常量 `taskpipeline.TestCoverageHardGateThreshold`，不再手抄数字
+  accept[REQ-6]: go test ./internal/hookdispatch/ -run ^TestRunTestNudgeHook_Tier3GateConsequence$ -count=1 :: --- PASS: TestRunTestNudgeHook_Tier3GateConsequence (
 - INV-1 skill 改动后 plugin 镜像与 compat 快照一致
   accept[INV-1]: go test ./internal/agentbridge/ -run ^TestPluginPack_CommittedSkillsMatchGenerator$ -count=1 :: --- PASS: TestPluginPack_CommittedSkillsMatchGenerator (
   accept[INV-1]: go test ./internal/cli/ -run ^TestCompatSnapshotMatchesGolden$ -count=1 :: --- PASS: TestCompatSnapshotMatchesGolden (
@@ -49,11 +56,19 @@ tier: mini
 - `internal/skillgen/qualitygen.go`
 - `internal/skillgen/qualitygen_test.go`
 - `internal/hooks/embed_guard.go`
+- `internal/hooks/embed_quality.go`
 - `internal/hooks/hazard_script_test.go`
+- `internal/cli/hazard.go`
+- `internal/cli/hazard_test.go`
+- `internal/agentbridge/assets/plugin_readme.md`
+- `plugins/forge/README.md`
+- `homepage/index.md`
+- `docs/plans/discipline-first-gates-2026-09.md`
 - `internal/taskpipeline/testcoverage.go`
 - `internal/taskpipeline/testcoverage_test.go`
 - `internal/hookdispatch/hook.go`
 - `internal/hookdispatch/hook_track.go`
+- `internal/hookdispatch/hook_track_test.go`
 - `internal/checklog/types.go`
 - `skills/on-demand-guards/SKILL.md`
 - `skills/on-demand-guards/decisions.md`
@@ -72,7 +87,9 @@ tier: mini
 
 ### 关键取舍
 - test-coverage 预告选择撤回而不是兑现：兑现是收紧门禁的行为变更，应按 compat 第二节重新走预告；本批只纠正文本。
-- 守卫测试用字面值钉 1.67，不引用 `hookdispatch` 的未导出常量：该常量所在文件正被另一会话改动，避免两边耦合。
+- 守卫测试用字面值钉 1.67，不引用 `hookdispatch` 的未导出常量：该常量所在文件正被并行的死代码清扫任务改动，避免两边耦合。
 
 ## 验证与回滚
-全量 `go vet ./...`、`go test ./...` 通过。回滚即 revert 本提交，不涉及数据面。
+- `go vet ./...` 无输出。
+- `go test ./...`：internal/cli 以外的包全部 `ok`；internal/cli 用 `-timeout 30m` 单独跑为 `ok`（605.7s，默认 10 分钟上限下会超时，与本批改动无关）。
+- 回滚即 revert 本分支的提交，不涉及数据面。

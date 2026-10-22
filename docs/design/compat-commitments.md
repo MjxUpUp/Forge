@@ -20,18 +20,24 @@
 
 1. **新增 BLOCKED 门禁的拒绝文案必须包含其一**：①预告版本（"自 vX.Y 起 advisory 转 blocked"——若该门禁曾以 advisory 形态发布过）；②"首发即 blocked"声明 + 指向本文档（若门禁与含它的版本同首发，无存量暴露则无预告义务）。
 2. **时间承诺**：已发布的 advisory 门禁转 blocked，**预告期 ≥2 个 minor 版本**（PEP 387 口径；期间文案持续显示预告版本）。
-3. **逃生舱纪律**：每个 BLOCKED 门禁必须有 `FORGE_*` env 或 per-task override 逃生舱（形态门禁豁免见本条末），逃生留 checklog 痕 + evidence 封顶 Weak；豁免行携带 reason/owner 元数据（v1 简化：reason 为机制枚举值——`per-task override` / `env`——尚无自由文本 `--reason` flag，owner 在 env 逃生时记 "env" 而非委托任务；升级为设计文档 P1-2 的后续项）。**形态门禁豁免（2026-09-10 裁决）**：拒绝「命令组合形态」而非「操作本身」的门禁（合规形态即放行、拒绝文案指明放行形态）**不强制**配独立逃生舱——放行被禁形态本身的逃生舱等于取消门禁；是否配置按存量暴露风险自选（F.2a hazard confirm 链式分离：新形态无存量、不配；C gate-cmd-form：存量脚本可能嵌门禁连刷、保留 env 逃生 `FORGE_GATE_CMD_FORM=0` 作过渡，无 per-task override）。两例均见 docs/design/harness-fixes-a-g-2026-09.md。
+3. **逃生舱纪律**：第 5 条 ①② 类 BLOCKED 门禁必须有 `FORGE_*` env 或 per-task override 逃生舱（③–⑥ 类的出口约束见第 5 条表；形态门禁豁免见本条末），逃生留 checklog 痕 + evidence 封顶 Weak；豁免行携带 reason/owner 元数据（v1 简化：reason 为机制枚举值——`per-task override` / `env`——尚无自由文本 `--reason` flag，owner 在 env 逃生时记 "env" 而非委托任务；升级为设计文档 P1-2 的后续项）。**形态门禁豁免（2026-09-10 裁决）**：拒绝「命令组合形态」而非「操作本身」的门禁（合规形态即放行、拒绝文案指明放行形态）**不强制**配独立逃生舱——放行被禁形态本身的逃生舱等于取消门禁；是否配置按存量暴露风险自选（F.2a hazard confirm 链式分离：新形态无存量、不配；C gate-cmd-form：存量脚本可能嵌门禁连刷、保留 env 逃生 `FORGE_GATE_CMD_FORM=0` 作过渡，无 per-task override）。两例均见 docs/design/harness-fixes-a-g-2026-09.md。
 4. **机械执法**：`forge compat report` 的 blocking-sites 面使新增 BLOCKED 位点在 golden diff 里显式可见——新增须同时更新本文档或 CHANGELOG 行为变更节，否则 report 以 warn 提示。
-5. **阻断正当性分类（单一真相源，2026-10-22 起）**：一处阻断只有落进下表某一类才正当，并须满足该类的必备约束；落不进任何一类的只能 advisory。新增 BLOCKED 位点的提案须写明所属类别。其他文档里的「HARD 只守事实」「BLOCKED 仅用于证据造假 / 评测自身不合法」是对第 1、2 类的局部口径，冲突时以本表为准。
+5. **阻断正当性分类（单一真相源，2026-10-22 起）**：一处阻断只有落进下表某一类才正当，并须满足该类的必备约束；落不进任何一类的只能 advisory。新增 BLOCKED 位点的提案须写明所属类别。第 1、2 条（拒绝文案与预告期）对全部类别生效，下表「必备约束」只列各类特有项。判别顺序：拦的是高危或越权操作 → ⑤；拦的是命令组合形态 → ③；拦的是交付声明（门禁、verify、complete 时点）缺事实 → ①，证据或评测本身不成立 → ②；拦的是会话或流程动作（Stop、Edit、commit 时点）→ ④；只因宿主送达能力把 advisory 升为阻断 → ⑥。其他文档里的「HARD 只守事实」「BLOCKED 仅用于证据造假 / 评测自身不合法」是对 ①② 类的局部口径，冲突时以本表为准。
 
    | 类别 | 何时正当 | 必备约束 | 现行代表位点 |
    |---|---|---|---|
-   | ① 事实缺失 | 交付声明缺可机器核验的事实：验收未实跑或快照过期、缺配对测试且零断言、改 SKILL.md 未记决策、需求未被验收覆盖、文档回检未记录 | 逃生舱（env 或 per-task override），逃生留 checklog 并封顶 evidence Weak；已发布的 advisory 转 BLOCKED 须按第 2 条预告 | acceptance-gate、test-coverage 兜底、skill-decisions、req-coverage、doc gate |
+   | ① 事实缺失 | 交付声明缺可机器核验的事实：验收未实跑或快照过期、缺配对测试且零断言、改 SKILL.md 未记决策、需求未被验收覆盖、文档回检未记录 | 逃生舱（env 或 per-task override），逃生留 checklog 并封顶 evidence Weak | acceptance-gate、test-coverage 兜底、skill-decisions、req-coverage、doc gate |
    | ② 证据不合法 | 证据或评测自身不成立：held-out 逃逸、自报验证命令与 toollog 不符、评测 preflight 不合法 | 同 ① | held-out cheat-suspect、self-report、eval preflight |
    | ③ 形态 | 拒绝命令组合形态而非操作本身，合规形态即放行 | 按第 3 条形态门禁豁免，可不配独立逃生舱；拒绝文案须写明放行形态 | gate-cmd-form（1.67 起，会话上限 5）、hazard confirm 链式分离 |
-   | ④ 流程节奏 | 防门禁空转或脱离任务流程：门禁间无工作、未读即改、任务分支外提交、Stop 时有未提交变更、非 task 模式未审查即停 | 须有会话阻断上限（超限回落 advisory）或明确出口命令；有逃生 env 的须留审计行 | work-activity、read-before-edit、task-drift（上限 5）、task-verify Stop（上限 3）、review-stop |
-   | ⑤ 安全 HITL | 高危或越权操作，放行权在人 | 出口是真人确认（hazard confirm 只接受真人终端）；env 逃生若有，只用于误报止血并留审计行 | hazard-guard、hazard-pending、freeze-guard、项目级 `.forge/*` 与 `.claude/settings*` 自保护 |
+   | ④ 流程节奏 | 防门禁空转或脱离任务流程：门禁间无工作、未读即改、任务分支外提交、Stop 时有未提交变更、非 task 模式未审查即停 | 须有会话阻断上限（超限回落 advisory）或明确出口命令；有逃生 env 的须留审计行 | work-activity、read-before-edit、task-drift（上限 5）、task-verify Stop（上限 3）、review-stop（审查轮次上限 3）、task-complete 前置（审查、checklist、上游依赖、门禁顺序） |
+   | ⑤ 安全 HITL | 高危或越权操作，放行权在人 | 出口须由用户发起（hazard confirm 机械校验真人终端）；env 逃生若有，只用于误报止血并留审计行 | hazard-guard、hazard-pending、freeze-guard、项目级 `.forge/*` 与 `.claude/settings*` 自保护 |
    | ⑥ 宿主提升 | 宿主没有可靠的 advisory 送达通道，把 advisory 提升为阻断以保证送达 | 只作用于 hostcap 登记的宿主；文案须标明是宿主提升，底层规则仍按 advisory 计 | task-guard 在 dsh/zcode 上 |
+
+   已知例外（与上表约束不符，待补或待裁决，修复前不得被新提案援引为先例）：
+   - task-verify Stop（④）：`FORGE_TASK_VERIFY_STOP=0` 逃生直接跳过，不写 checklog 审计行，不满足 ④ 与第 3 条——待补审计行。
+   - bundle 验签拒绝（`internal/cli/bundle_sig.go`，归 ②）：没有逃生舱——待裁决（签名不符时的逃生等于接受伪造，倾向维持无逃生并补裁决记录）。
+   - freeze-guard 与项目级自保护（⑤）：`forge freeze --off` 等出口没有真人终端校验，只靠协议约束。
+   - 复发升硬（①）：逃生 env `FORGE_RECURRENT_HARDEN` 未进 `compat.EscapeEnvs` roster。
 
 ## 三、生效口径与存量处理
 
