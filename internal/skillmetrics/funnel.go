@@ -270,7 +270,7 @@ func (ix *engagedIndex) engagedAfter(session, skill string, at time.Time) bool {
 // Read 的 tool_input 截断到 500 字符可能截坏 JSON——解析失败按无信号处理（诚实跳过），
 // 与 ExtractSkillName 的失败语义一致。
 //
-// 本函数是兼容入口：keyword.go / skillseval 的 mine.go 逐条调用它判定 engaged
+// 本函数是兼容入口：keyword.go 与 harnessaudit 逐条调用它判定 engaged
 // （单一判定真相源），
 // 每次只查一条命中，为其整建索引反而劣化——故保留逐条扫描实现；批量入口
 // （BuildTriggerFunnel）请用 buildEngagedIndex + 索引版 engagedAfter。
@@ -278,7 +278,7 @@ func (ix *engagedIndex) engagedAfter(session, skill string, at time.Time) bool {
 // window after the named skill's hit — the single source of the "engaged" verdict.
 //
 // EngagedAfter 报告命中 skill 之后窗口内 session 是否出现工具活动——engaged
-// 判定的单一真相源（2026-09 普查 A4 拆分后导出：skillseval/mine.go 跨包消费）。
+// 判定的单一真相源（2026-09 普查 A4 拆分后导出；跨包消费方：internal/harnessaudit）。
 func EngagedAfter(calls []toolusage.ToolCall, session, skill string, at time.Time) bool {
 	if session == "" {
 		return false

@@ -677,16 +677,10 @@ func treesInSync(src, dst string) bool {
 	return true
 }
 
-// hashTree 遍历 root 返回 相对路径 → md5 hex（常规文件；link——symlink 与
-// Windows junction——以其 target 串的 "link-" 前缀 hash 参与），遍历规则与
-// copyTree 一致。任何遍历/读取错误返回 nil（调用方按"无法证明一致"处理）。
-func hashTree(root string) map[string]string {
-	files, _ := hashTreeWithSkippedDirs(root)
-	return files
-}
-
-// hashTreeWithSkippedDirs 在 hashTree 之外额外返回遍历中遇到的被跳过目录的相对
-// 路径集合（treesInSync 的 skip 盲区输入，见其注释）。任何遍历/读取错误返
+// hashTreeWithSkippedDirs 遍历 root 返回 相对路径 → md5 hex（常规文件；link——
+// symlink 与 Windows junction——以其 target 串的 "link-" 前缀 hash 参与），遍历
+// 规则与 copyTree 一致；另返回遍历中遇到的被跳过目录的相对路径集合（treesInSync
+// 的 skip 盲区输入，见其注释）。任何遍历/读取错误返
 // (nil, nil)。
 func hashTreeWithSkippedDirs(root string) (map[string]string, map[string]bool) {
 	out := map[string]string{}
@@ -760,7 +754,7 @@ func copyTree(src, dst string) error {
 // ——backupTarget 用的完整拷贝）。原子写；link 不跟随、不展开。
 //
 // 非常规条目（junction/symlink/管道/…）用 !d.Type().IsRegular() 判定——与
-// hashTree 同一规则，而非仅看 ModeSymlink：WalkDir 把 Windows junction 报为
+// hashTreeWithSkippedDirs 同一规则，而非仅看 ModeSymlink：WalkDir 把 Windows junction 报为
 // ModeIrregular，旧的仅 ModeSymlink 判定会让 junction 落到 os.ReadFile，对目录
 // reparse point 读取必失败、整个 copyTree 在 Windows 上报错。收敛到 !IsRegular
 // 让 junction 条目与 symlink 一样被跳过而非报错。

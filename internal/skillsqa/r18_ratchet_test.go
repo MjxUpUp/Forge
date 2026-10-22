@@ -37,7 +37,10 @@ func TestR18_Grandfathered_Exact(t *testing.T) {
 		sd := filepath.Join(root, e.Name())
 		data, rerr := os.ReadFile(filepath.Join(sd, "SKILL.md"))
 		if rerr != nil {
-			continue // 无 SKILL.md 的目录（fact-research/web-search-bridge 遗骸）不可安装，不参与
+			// 退役 skill 的 decisions.md 须并入承接 skill 后删目录（skills/CONVENTIONS.md
+			// 「退役 skill 存档」）——无 SKILL.md 的目录不再豁免，否则棘轮会静默漏扫。
+			t.Errorf("skills/%s 无 SKILL.md（%v）——退役 skill 的决策存档须并入承接 skill 的 decisions.md 后删除目录", e.Name(), rerr)
+			continue
 		}
 		fm := skillsfm.Parse(data)
 		if v, ok := fm.Metadata["requires_forge"]; ok && strings.Trim(strings.TrimSpace(v), `"`) == "true" {

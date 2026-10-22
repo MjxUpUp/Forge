@@ -165,7 +165,7 @@ func LoadHeldout(root, ref string) ([]AcceptanceCriterion, error) {
 }
 
 // VerifyHeldout 实跑 held-out 套件、记录 gap 判定行、把结果（含截断输出）存回
-// 侧车。state 的可见套件结果不被修改——可见侧由 VerifyAcceptance/Merge 各自管。
+// 侧车。state 的可见套件结果不被修改——可见侧由 VerifyAcceptanceWithVerdicts/Merge 各自管。
 // W4：每次实跑递增使用计数；到达轮换阈值时 PASS 判定降级为 warn（保留集可能已
 // 被记忆——记忆化是 SpecBench 实证的真实攻击面），checklog Meta 带当前内容哈希
 // 与计数（前后对比暴露静默换锚）；新集必须人来出。
@@ -190,7 +190,7 @@ func VerifyHeldout(root string, state *TaskState) HeldoutResult {
 	res.Checked = true
 	res.VisiblePassed = state.AllAcceptancePassed()
 	res.HeldoutPassed = true
-	// 逐条判定与 VerifyAcceptance 走同一分派（runAndJudgeCriterion——含 v2 断言），
+	// 逐条判定与 VerifyAcceptanceWithVerdicts 走同一分派（runAndJudgeCriterion——含 v2 断言），
 	// 双套件共享唯一判定实现；held-out 的逐断言 verdict 不外显（保留集内容不泄露），
 	// 只用 criterion 级结果驱动 gap 判定。变更集同款惰性闸（仅 file-* 断言实算）。
 	var changed []string

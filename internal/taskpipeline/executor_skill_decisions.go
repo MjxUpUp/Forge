@@ -199,14 +199,19 @@ func decisionsCandidates(root, skill string) []string {
 	return out
 }
 
-// countDecisionEntries 数 content 里 `## [d-` 决策条目标记数（skillsdecisions.AppendDecision
-// 渲染 `## [d-<id>] <outcome>` section）。纯字符串计数，不依赖 LoadDecisions 的解析——
-// 判定只需「条目数是否增加」，不需要结构化字段。
+// countDecisionEntries 数 content 里以 `## [d-` 开头的行（skillsdecisions.AppendDecision
+// 渲染 `## [d-<id>] <outcome>` section）。与 skillsdecisions.parseDecisions 一样只认行首
+// `## [d-`：退役 skill 并入承接 skill 时降级成 `### [d-` 的历史条目（skills/CONVENTIONS.md
+// 「退役 skill 存档」）与带转义前缀的正文行都不计——否则搬运旧条目会被误判为新记决策。
+// 不依赖 LoadDecisions 的结构化解析，判定只需「条目数是否增加」。
 func countDecisionEntries(content string) int {
-	if content == "" {
-		return 0
+	n := 0
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(line, "## [d-") {
+			n++
+		}
 	}
-	return strings.Count(content, "## [d-")
+	return n
 }
 
 // gitShowPath 读 base 版本的 path 内容（git show <base>:<path>）。base 时 path 不存在

@@ -23,7 +23,7 @@ func conc(ref, grade, strength string, score float64, lowDims []string, t time.T
 }
 
 func TestSummarize_Empty(t *testing.T) {
-	s := Summarize(nil)
+	s := SummarizeAt(nil, time.Now())
 	if s.TotalTasks != 0 {
 		t.Errorf(`空切片 TotalTasks=%d want 0`, s.TotalTasks)
 	}
@@ -43,7 +43,7 @@ func TestSummarize_BlindSpotRateAndDists(t *testing.T) {
 		conc(`c`, `A`, `Strong`, 92, []string{`tests`, `scope`}, at(3)),
 		conc(`d`, `D`, `Weak`, 60, []string{`scope`, `docs`}, at(4)),
 	}
-	s := Summarize(cs)
+	s := SummarizeAt(cs, time.Now())
 	if s.TotalTasks != 4 {
 		t.Fatalf(`TotalTasks=%d want 4`, s.TotalTasks)
 	}
@@ -73,7 +73,7 @@ func TestSummarize_LowDimsRanked(t *testing.T) {
 		conc(`b`, `A`, `Strong`, 95, []string{`tests`, `scope`}, at(2)),
 		conc(`c`, `A`, `Strong`, 95, []string{`tests`, `scope`, `docs`}, at(3)),
 	}
-	s := Summarize(cs)
+	s := SummarizeAt(cs, time.Now())
 	if len(s.LowDims) != 3 {
 		t.Fatalf(`LowDims=%v want 3 项`, s.LowDims)
 	}
@@ -105,7 +105,7 @@ func TestTrend(t *testing.T) {
 			for i, sc := range tc.scores {
 				cs[i] = conc(`x`, `A`, `Strong`, float64(sc), nil, at(i+1))
 			}
-			s := Summarize(cs)
+			s := SummarizeAt(cs, time.Now())
 			if s.Trend != tc.want {
 				t.Errorf(`Trend=%q want %q（earlier=%.1f recent=%.1f）`, s.Trend, tc.want, s.EarlierAvg, s.RecentAvg)
 			}
@@ -119,7 +119,7 @@ func TestSummarize_NudgeCount(t *testing.T) {
 		{TaskRef: `b`, Grade: `A`, Strength: `Unverified`, Score: 95, RetrospectiveNudge: true, CompletedAt: at(2)},
 		{TaskRef: `c`, Grade: `D`, Strength: `Strong`, Score: 60, RetrospectiveNudge: true, CompletedAt: at(3)},
 	}
-	s := Summarize(cs)
+	s := SummarizeAt(cs, time.Now())
 	if s.NudgeCount != 2 {
 		t.Errorf(`NudgeCount=%d want 2（b/c 被 nudge）`, s.NudgeCount)
 	}
@@ -250,31 +250,32 @@ func completedAt(c act.Conclusion, t time.Time) act.Conclusion {
 	return c
 }
 
-// TestSummarizeAt_MatchesSummarizeOnNonWindowedFields pins the equivalence
-// contract: apart from NudgeRecent (window-scoped), SummarizeAt(cs, anyTime)
-// must produce the same aggregates as the legacy Summarize.
+// TestSummarizeAt_FullWindowRecentEqualsCount pins that when every nudged
+// conclusion falls inside the window, NudgeRecent equals the all-history
+// NudgeCount, and that `now` never changes the non-windowed aggregates.
 //
-// TestSummarizeAt_MatchesSummarizeOnNonWindowedFields 钉住等价契约：除 NudgeRecent
-// （窗口域）外，SummarizeAt 与旧 Summarize 的聚合值必须一致——窗口只增字段，绝不
-// 静默重定义既有字段（health CLI 继续消费同样的值）。
-func TestSummarizeAt_MatchesSummarizeOnNonWindowedFields(t *testing.T) {
+// TestSummarizeAt_FullWindowRecentEqualsCount 钉住：全部 nudge 结论落进窗口时，
+// NudgeRecent 等于全量 NudgeCount；窗口在结论之后太远时 NudgeRecent 归零而
+// NudgeCount 不变；now 不同不影响非窗口聚合（总数/盲区/均分/中位）。
+func TestSummarizeAt_FullWindowRecentEqualsCount(t *testing.T) {
 	cs := []act.Conclusion{
 		conc(`a`, `A`, `Strong`, 95, nil, at(1)),
 		{TaskRef: `b`, Grade: `A`, Strength: `Unverified`, Score: 95, RetrospectiveNudge: true, CompletedAt: at(2)},
 		conc(`c`, `D`, `Weak`, 60, []string{`scope`}, at(3)),
 	}
-	legacy := Summarize(cs)
-	windowed := SummarizeAt(cs, time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC))
-	if legacy.TotalTasks != windowed.TotalTasks || legacy.NudgeCount != windowed.NudgeCount ||
-		legacy.BlindSpotCount != windowed.BlindSpotCount || legacy.AvgScore != windowed.AvgScore ||
-		legacy.MedianScore != windowed.MedianScore {
-		t.Errorf(`SummarizeAt 与 Summarize 非窗口字段不一致: legacy=%+v windowed=%+v`, legacy, windowed)
-	}
 	// 窗口在结论之后 7 天（全部结论落进窗口）→ NudgeRecent == NudgeCount
-	future := at(1).Add(7 * 24 * time.Hour)
-	windowedAll := SummarizeAt(cs, future)
-	if windowedAll.NudgeRecent != windowedAll.NudgeCount {
-		t.Errorf(`全窗口时 NudgeRecent(%d) 应 == NudgeCount(%d)`, windowedAll.NudgeRecent, windowedAll.NudgeCount)
+	windowedAll := SummarizeAt(cs, at(1).Add(7*24*time.Hour))
+	if windowedAll.NudgeRecent != windowedAll.NudgeCount || windowedAll.NudgeCount != 1 {
+		t.Errorf(`全窗口时 NudgeRecent(%d) 应 == NudgeCount(%d) == 1`, windowedAll.NudgeRecent, windowedAll.NudgeCount)
+	}
+	stale := SummarizeAt(cs, time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC))
+	if stale.NudgeRecent != 0 || stale.NudgeCount != 1 {
+		t.Errorf(`窗口外：NudgeRecent=%d want 0、NudgeCount=%d want 1`, stale.NudgeRecent, stale.NudgeCount)
+	}
+	// 窗口只影响 nudge 窗口计数，绝不静默改动非窗口聚合（now 不同，其余字段必须一致）。
+	if windowedAll.TotalTasks != stale.TotalTasks || windowedAll.BlindSpotCount != stale.BlindSpotCount ||
+		windowedAll.AvgScore != stale.AvgScore || windowedAll.MedianScore != stale.MedianScore {
+		t.Errorf(`非窗口字段随 now 变化: windowedAll=%+v stale=%+v`, windowedAll, stale)
 	}
 }
 
@@ -284,7 +285,7 @@ func TestSummarize_SpanFromEarliestToLatest(t *testing.T) {
 		conc(`a`, `A`, `Strong`, 95, nil, at(1)),
 		conc(`b`, `A`, `Strong`, 95, nil, at(5)),
 	}
-	s := Summarize(cs)
+	s := SummarizeAt(cs, time.Now())
 	if !s.Span.Earliest.Equal(at(1)) || !s.Span.Latest.Equal(at(9)) {
 		t.Errorf(`Span=%s~%s want %s~%s（应按时间取范围，非传入顺序）`,
 			s.Span.Earliest, s.Span.Latest, at(1), at(9))
@@ -300,7 +301,7 @@ func TestSummarize_PhasePassRate(t *testing.T) {
 		{TaskRef: `t3`, Grade: `B`, Strength: `Strong`, Score: 85, DesignPhases: []string{`backend`}, CompletedAt: at(3)},
 		{TaskRef: `t4`, Grade: ``, Strength: `Strong`, Score: 0, DesignPhases: []string{`api`}, CompletedAt: at(4)},
 	}
-	s := Summarize(cs)
+	s := SummarizeAt(cs, time.Now())
 	if s.PhasePassRate == nil {
 		t.Fatal(`PhasePassRate=nil want 非空（有 phase+grade 数据）`)
 	}
@@ -316,13 +317,13 @@ func TestSummarize_PhasePassRate(t *testing.T) {
 
 func TestSummarize_PhasePassRate_EmptyIsNil(t *testing.T) {
 	// 空切片 → PhasePassRate nil（JSON omitempty 生效，不出空 map）。
-	if s := Summarize(nil); s.PhasePassRate != nil {
+	if s := SummarizeAt(nil, time.Now()); s.PhasePassRate != nil {
 		t.Errorf(`空切片 PhasePassRate=%v want nil`, s.PhasePassRate)
 	}
 	// 全无 grade → phaseGrades 永不填充 → PhasePassRate nil。
-	s2 := Summarize([]act.Conclusion{
+	s2 := SummarizeAt([]act.Conclusion{
 		{TaskRef: `x`, Grade: ``, Strength: `Strong`, Score: 0, DesignPhases: []string{`api`}, CompletedAt: at(1)},
-	})
+	}, time.Now())
 	if s2.PhasePassRate != nil {
 		t.Errorf(`全无 grade PhasePassRate=%v want nil（无 grade 守门）`, s2.PhasePassRate)
 	}
@@ -339,7 +340,7 @@ func TestSummarize_EmptyStrengthGuard(t *testing.T) {
 		conc(`a`, `A`, `Strong`, 95, nil, at(1)),
 		conc(`b`, `B`, ``, 90, nil, at(2)), // 空 Strength：不进桶、不计盲区
 	}
-	s := Summarize(cs)
+	s := SummarizeAt(cs, time.Now())
 	if _, ok := s.StrengthDist[``]; ok {
 		t.Errorf(`空 Strength 不得落入无名桶，StrengthDist=%v`, s.StrengthDist)
 	}
@@ -418,7 +419,7 @@ func TestSummarize_LowDimsScoreHistogram(t *testing.T) {
 		{Dimension: `scope`, Score: 100},
 		{Dimension: `process`, Score: 100},
 	}
-	s := Summarize(cs)
+	s := SummarizeAt(cs, time.Now())
 	if len(s.LowDims) != 1 || s.LowDims[0].Dimension != `scope` {
 		t.Fatalf(`LowDims=%v want 仅 scope`, s.LowDims)
 	}
@@ -431,7 +432,7 @@ func TestSummarize_LowDimsScoreHistogram(t *testing.T) {
 	}
 	// 存量结论（无 DimScores）只报 low：直方图为空、按集中低档保守判读。
 	legacy := conc(`old`, `A`, `Strong`, 95, []string{`scope`}, at(4))
-	s2 := Summarize([]act.Conclusion{legacy})
+	s2 := SummarizeAt([]act.Conclusion{legacy}, time.Now())
 	if len(s2.LowDims) != 1 || len(s2.LowDims[0].Scores) != 0 {
 		t.Fatalf(`存量结论直方图应为空, got %+v`, s2.LowDims)
 	}

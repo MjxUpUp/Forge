@@ -865,13 +865,13 @@ func TestInstall_TotalCountsEveryProcessedSkill(t *testing.T) {
 // TestTreesInSync_SymlinkDifference: a symlink is NOT content-free — its target string participates in the tree comparison.
 //
 // TestTreesInSync_SymlinkDifference：symlink 并非无内容——其 target 串参与整树
-// 对比。修复前 hashTree 完全跳过 symlink，"唯一差异是 symlink"（新增 link /
+// 对比。修复前 hashTreeWithSkippedDirs 完全跳过 symlink，"唯一差异是 symlink"（新增 link /
 // 指向不同 / 单侧存在）的两棵树会被误判 copy-in-sync——而 copy-in-sync → link
 // 会 os.RemoveAll 整树且无备份。
 func TestTreesInSync_SymlinkDifference(t *testing.T) {
 	// Junction (Windows, no admin needed) / dir symlink (unix) via makeDirLink —
 	// WalkDir reports Windows junctions as ModeIrregular (type "?"), not
-	// ModeSymlink; hashTree detects links via !IsRegular + os.Readlink. This
+	// ModeSymlink; hashTreeWithSkippedDirs detects links via !IsRegular + os.Readlink. This
 	// subtest runs even where file symlinks need privileges.
 	t.Run("Junction", func(t *testing.T) {
 		mkJuncTree := func(withLink bool, linkTarget string) string {
@@ -892,7 +892,9 @@ func TestTreesInSync_SymlinkDifference(t *testing.T) {
 		}
 		jcA, jcB := mkJuncTree(true, realA), mkJuncTree(true, realA)
 		if !treesInSync(jcA, jcB) {
-			t.Errorf("双侧 junction/link 完全一致应判 in-sync: hashA=%v hashB=%v", hashTree(jcA), hashTree(jcB))
+			hashA, _ := hashTreeWithSkippedDirs(jcA)
+			hashB, _ := hashTreeWithSkippedDirs(jcB)
+			t.Errorf("双侧 junction/link 完全一致应判 in-sync: hashA=%v hashB=%v", hashA, hashB)
 		}
 	})
 
@@ -953,10 +955,10 @@ func TestInstall_UnknownSkillFilterErrors(t *testing.T) {
 	}
 }
 
-// TestCopyTree_JunctionEntryNotError pins the copyTree junction fix (review finding): the link detection must use !d.Type().IsRegular() — the SAME rule as hashTree — not ModeSymlink alone.
+// TestCopyTree_JunctionEntryNotError pins the copyTree junction fix (review finding): the link detection must use !d.Type().IsRegular() — the SAME rule as hashTreeWithSkippedDirs — not ModeSymlink alone.
 //
 // TestCopyTree_JunctionEntryNotError 钉死 copyTree 的 junction 修复（审查发现）：
-// link 判定必须用 !d.Type().IsRegular()——与 hashTree 同一规则——而非仅
+// link 判定必须用 !d.Type().IsRegular()——与 hashTreeWithSkippedDirs 同一规则——而非仅
 // ModeSymlink。WalkDir 把 Windows junction 报为 ModeIrregular（非
 // ModeSymlink），旧判定会让 junction 条目落到 os.ReadFile，对目录 reparse
 // point 读取必失败、整个 copyTree 在 Windows 报错。junction 条目被跳过（与

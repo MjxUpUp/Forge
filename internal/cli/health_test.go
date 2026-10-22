@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/health"
 )
 
@@ -77,6 +81,41 @@ func TestHealth_NonGitFriendlyMessage(t *testing.T) {
 	// 不应裸露底层错误
 	if strings.Contains(stderr, "forgedata: cwd is not in a git repository") {
 		t.Errorf("不应裸报底层 error，got: %s", stderr)
+	}
+}
+
+// TestHealthJSON_NudgeWindowed pins that `forge health --json` windows the
+// alert-facing nudge counts at the real now (the pulse panel's 14-day window,
+// without its ack filter), while nudge_count stays the all-history truth.
+//
+// TestHealthJSON_NudgeWindowed 钉住 `forge health --json` 以真实 now 开窗：
+// nudge_recent / nudge_actionable 只数 14 天窗口内的 nudge（与 pulse 面板同一窗口，
+// 不扣 ack），nudge_count 仍是全量。
+func TestHealthJSON_NudgeWindowed(t *testing.T) {
+	tmpDir, p := forgedatatest.RealProject(t)
+	if out, _, code := runForge(t, tmpDir, `init`, `--mode`, `medium`); code != 0 {
+		t.Fatalf(`init: %s`, out)
+	}
+	now := time.Now()
+	for _, c := range []act.Conclusion{
+		{TaskRef: `feat/recent`, Grade: `A`, Strength: `Unverified`, Score: 95, RetrospectiveNudge: true, CompletedAt: now.Add(-3 * 24 * time.Hour)},
+		{TaskRef: `feat/stale`, Grade: `A`, Strength: `Unverified`, Score: 95, RetrospectiveNudge: true, CompletedAt: now.Add(-30 * 24 * time.Hour)},
+	} {
+		if err := act.Append(p, &c); err != nil {
+			t.Fatalf(`seed conclusion: %v`, err)
+		}
+	}
+	out, _, code := runForge(t, tmpDir, `health`, `--json`)
+	if code != 0 {
+		t.Fatalf(`forge health --json exit %d: %s`, code, out)
+	}
+	var s health.Summary
+	if err := json.Unmarshal([]byte(out), &s); err != nil {
+		t.Fatalf("health JSON 解析失败: %v\n%s", err, out)
+	}
+	if s.NudgeCount != 2 || s.NudgeRecent != 1 || s.NudgeActionable != 1 {
+		t.Errorf(`nudge_count=%d want 2、nudge_recent=%d want 1、nudge_actionable=%d want 1（30 天前的 nudge 只计全量）`,
+			s.NudgeCount, s.NudgeRecent, s.NudgeActionable)
 	}
 }
 
