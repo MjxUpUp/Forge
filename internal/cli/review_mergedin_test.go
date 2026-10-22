@@ -49,14 +49,14 @@ func TestReviewWindowFiles_ExcludesMergedBaseFiles(t *testing.T) {
 	reviewGit(t, dir, "config", "user.name", "T")
 	reviewCommit(t, dir, "init", map[string]string{"main.go": "package main\n"})
 	reviewGit(t, dir, "checkout", "-q", "-b", "task")
-	reviewGit(t, dir, "branch", "base")
+	reviewGit(t, dir, "branch", "-f", "main")
 	baseline := reviewGit(t, dir, "rev-parse", "HEAD")
 
 	reviewCommit(t, dir, "task own test", map[string]string{"own_test.go": "package main\n"})
-	reviewGit(t, dir, "checkout", "-q", "base")
+	reviewGit(t, dir, "checkout", "-q", "main")
 	reviewCommit(t, dir, "base test", map[string]string{"base_test.go": "package main\n"})
 	reviewGit(t, dir, "checkout", "-q", "task")
-	reviewGit(t, dir, "merge", "-q", "--no-edit", "base")
+	reviewGit(t, dir, "merge", "-q", "--no-edit", "main")
 
 	got := reviewTestTouchedFiles(dir, &taskpipeline.TaskState{TaskRef: "t"}, baseline)
 	if !slices.Contains(got, "own_test.go") {
@@ -64,5 +64,33 @@ func TestReviewWindowFiles_ExcludesMergedBaseFiles(t *testing.T) {
 	}
 	if slices.Contains(got, "base_test.go") {
 		t.Errorf("test file merged in from base must not be in the review window, got %v", got)
+	}
+}
+
+// TestReviewWindowFiles_NoMergeUnchanged: with a review baseline and no merge after it, the review window is exactly the plain diff plus untracked files, as before the merged-in filtering existed.
+//
+// TestReviewWindowFiles_NoMergeUnchanged：有审查基线、之后没有合并时，审查窗口与
+// 引入合并剔除前逐字相同：净 diff 加 untracked 文件。
+func TestReviewWindowFiles_NoMergeUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	reviewGit(t, dir, "init", "-q")
+	reviewGit(t, dir, "config", "user.email", "t@t.com")
+	reviewGit(t, dir, "config", "user.name", "T")
+	reviewCommit(t, dir, "init", map[string]string{"main.go": "package main\n", "old_test.go": "package main\n\nfunc TestOld() {}\n"})
+	reviewGit(t, dir, "checkout", "-q", "-b", "task")
+	reviewGit(t, dir, "branch", "-f", "main")
+	baseline := reviewGit(t, dir, "rev-parse", "HEAD")
+
+	reviewCommit(t, dir, "task own test", map[string]string{"own_test.go": "package main\n\nfunc TestOwn() {}\n"})
+	reviewGit(t, dir, "rm", "-q", "old_test.go")
+	reviewGit(t, dir, "commit", "-q", "-m", "drop old test")
+	if err := os.WriteFile(filepath.Join(dir, "new_test.go"), []byte("package main\n\nfunc TestNew() {}\n"), 0o644); err != nil {
+		t.Fatalf("write untracked: %v", err)
+	}
+
+	got := reviewWindowFiles(dir, &taskpipeline.TaskState{TaskRef: "t"}, baseline)
+	want := []string{"old_test.go", "own_test.go", "new_test.go"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("no merge after baseline → window must be plain diff + untracked, got %v want %v", got, want)
 	}
 }

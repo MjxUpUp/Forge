@@ -250,6 +250,10 @@ func testCoverageShouldBlock(missingN, assertN int) bool {
 // 触及 commit 都属于某个【已完成】兄弟任务跨度的文件被排除——它们在该任务
 // complete 时已记过账，此处再计会让 scope/test-coverage 双重收费，并逼 agent 把
 // 没碰过的文件 `scope add` 进声明（2026-08 usage 实证）。
+//
+// 跨任务归属之前，先剔除只经合并基线分支带入的文件（mergedin.go）：任务中途合并
+// main 后，HeadCommit..HEAD 的净 diff 会含 main 的改动，scope-drift / test-coverage /
+// cheat-scan / mutation 都会把它们当成本任务的工作。
 func taskChangedFiles(root string, state *TaskState) []string {
 	var files []string
 	seen := make(map[string]bool)

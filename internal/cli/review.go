@@ -47,19 +47,20 @@ func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline
 			mergedIn := reviewMergedInFiles(root, priorBaseline)
 			seen := map[string]bool{}
 			var files []string
-			add := func(name string) {
+			add := func(name string, skipMergedIn bool) {
 				name = filepath.ToSlash(strings.TrimSpace(name))
-				if name != "" && !seen[name] && !mergedIn[name] {
+				if name != "" && !seen[name] && !(skipMergedIn && mergedIn[name]) {
 					seen[name] = true
 					files = append(files, name)
 				}
 			}
 			for _, l := range strings.Split(string(out), "\n") {
-				add(l)
+				add(l, true)
 			}
+			// untracked 文件只能是本任务工作树里的新文件，不经合并剔除。
 			if un, uerr := exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard").Output(); uerr == nil {
 				for _, l := range strings.Split(string(un), "\n") {
-					add(l)
+					add(l, false)
 				}
 			}
 			return files
@@ -71,9 +72,13 @@ func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline
 // reviewMergedInFiles returns the files that changed in baseline..HEAD only through the merged-in side of merge commits and are not modified again in the working tree.
 //
 // reviewMergedInFiles 返回在 baseline..HEAD 内只经合并另一侧带入、且工作树里没再
-// 改动的文件集合。任何 git 调用失败都返回空集（保守：不剔除）。
+// 改动的文件集合。区间内没有合并提交时直接返回空集；任何 git 调用失败都返回空集
+// （保守：不剔除）。
 func reviewMergedInFiles(root, baseline string) map[string]bool {
 	drop := map[string]bool{}
+	if n, err := exec.Command("git", "-C", root, "rev-list", "--merges", "--count", baseline+"..HEAD").Output(); err != nil || strings.TrimSpace(string(n)) == "0" {
+		return drop
+	}
 	out, err := exec.Command("git", "-C", root, "diff", "--name-only", baseline+"..HEAD").Output()
 	if err != nil {
 		return drop
