@@ -395,9 +395,9 @@ const HazardGuardHook = `#!/bin/bash
 # human-in-the-loop 拦截。
 #
 # 检测高危命令（rm -rf / git push --force / DROP TABLE / TRUNCATE / kubectl delete /
-# DELETE 无 WHERE 等）→ block + 指引 agent 做授权判定（用户本回合已明确指令/确认过则
-# 直接 confirm，无需二次确认；否则用所在工具的提问确认机制获用户确认）→
-# forge hazard confirm 登记限时（5min）标记 → 重试原命令 → 本 hook 见标记放行。
+# DELETE 无 WHERE 等）→ block + 指引 agent 向用户说明风险、请用户在自己的终端运行
+# forge hazard confirm（F.2b：confirm 拒绝非真人终端，agent 不能自助确认）→
+# 登记限时（5min）标记 → 重试原命令 → 本 hook 见标记放行。
 #
 # 免 HITL 的自动豁免（2026-08 两周 usage 复盘，详注在各判定函数上）：rm 目标全在
 # 一次性临时区（/tmp、/var/folders、/private/tmp、$TMPDIR 子路径、本命令串可验证的
@@ -1402,10 +1402,9 @@ echo "命令: $HEREDOC_ORIG"
 echo "指纹: ${FP:-<unknown>}"
 echo ""
 echo "如确需执行："
-echo "  1. 授权判定：若用户在本回合已明确指令/确认过该操作（用户直接要求执行，或你"
-echo "     此前已通过提问获得确认），无需二次确认——直接跳到第 2 步；否则先用你所在"
-echo "     工具的提问确认机制向用户说明该操作的风险，获得用户的明确确认"
-echo "  2. 运行: forge hazard confirm --last"
+echo "  1. 向用户说明该操作的风险。hazard confirm 只接受真人终端——你的 Bash 不是"
+echo "     终端，自行运行会被拒（F.2b），不要尝试"
+echo "  2. 请用户在自己的终端运行: forge hazard confirm --last"
 echo "     （确认最近一条被拦命令——从事件日志取指纹，零复制转写，不会抄错；"
 echo "      也可用 forge hazard confirm --fingerprint \"$FP\" 回传上方 hex 指纹，"
 echo "      勿传命令串——shell 会吃掉其中的引号致指纹失真）"

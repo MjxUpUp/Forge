@@ -393,7 +393,7 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 		len(state.UnpairedFiles), filesList, more)
 	if tier >= 3 {
 		// tier3：陈述门禁后果事实。阈值与 BLOCK 点须与 taskpipeline 真实规则
-		// 同步：testCoverageHardGateThreshold（当前 3；1.58 计划降 2）且兜底
+		// 同步：testCoverageHardGateThreshold（当前 3；原 1.58 降 2 预告已撤回）且兜底
 		// 在 task-complete（executor_check_complete.go），非 task-verify 自身。
 		// 改那边不改这里是事实性通道违规（审查 P1-1）。
 		nudge += " At >=3 untested source files with zero assertions, the task-complete backstop BLOCKs the task."

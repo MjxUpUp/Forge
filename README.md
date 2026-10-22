@@ -224,7 +224,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **failure-track** | 命令失败后（PostToolUseFailure） | 记录 CheckToolFailure 观察；失败文本命中编译/测试类指纹（`undefined:`/`error TS`/`error[E`/`--- FAIL` 等）时注入 compile-fix-loop skill 事实性指针（advisory 不阻断——失败已发生） |
 | **subagent-track** | 子 agent 结束（SubagentStop） | 记录 agent_id/agent_type/交付长度+首行摘要到 checklog（归因数据——此前子 agent 活动 forge 侧零记录）；纯观察，无输出无阻断 |
 | **test-nudge** | Write/Edit 后（活跃任务内） | 事中测试提醒：连写 ≥3 个源码文件且无配对测试写入时注入一次 test-discipline skill 事实性提示（advisory，每连写只提示一次）；测试写入重置计数；无任务静默；执法仍在 task-verify 门禁 |
-| **task-verify** | 会话结束 | advisory：任务门禁/主分支保护到 stderr+checklog（不阻塞会话结束） |
+| **task-verify** | 会话结束 | 任务门禁/主分支保护到 stderr+checklog（advisory）；活跃任务 + 未提交代码变更时有界阻断 Stop（每会话最多 3 次，超限回落 advisory；逃生 `FORGE_TASK_VERIFY_STOP=0`） |
 | **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策；并发会话检测——其他 session 有活跃任务时放行（调研 session 不被拦） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |

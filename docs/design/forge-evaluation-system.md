@@ -208,7 +208,7 @@ evals/forge/                 # VCS 资产
 
 ## 十、红线对照
 
-- **advisory fail-open / HARD 在 executor**：两轨零新增任务门禁；BLOCKED 只出现在"评测自身不合法"（字典缺字段、golden 标注不全、指纹不符、oracle 不可解、do-nothing 击穿判分、权限错误）。
+- **advisory fail-open / HARD 在 executor**：两轨零新增任务门禁；评测子系统内 BLOCKED 只出现在"评测自身不合法"（即 compat-commitments.md 第二节第 5 条的 ② 类；字典缺字段、golden 标注不全、指纹不符、oracle 不可解、do-nothing 击穿判分、权限错误）。
 - **逃生舱必有痕**：全部 `FORGE_EVAL_*` 接 checklog escape-hatch 行 + 证据封顶 Weak。
 - **单一真相源**：双轨指标字典、gate roster（复用 taskpipeline 既有）、陷阱类型枚举、profile 阶梯定义、CheckName 各一处 + guard test；Scorecard 渲染单点。
 - **用户级状态 / AtomicWrite**：runs、snapshots、golden-private、decompose 全在 `~/.forge/evals/forge/`；VCS 资产沿 `evals/` 惯例；大工件按 run-id 存放 + 保留策略（默认最近 10 次 run + 全部 Scorecard）。

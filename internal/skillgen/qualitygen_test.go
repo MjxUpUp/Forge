@@ -187,10 +187,11 @@ func TestQualitySkillResumeSection(t *testing.T) {
 }
 
 // TestQualitySkillTaskVerifyIsAdvisory guards the advisory rewrite: task-verify
-// must NOT be documented as blocking session end (the old "连续 3 次失败放行"
-// semantics are gone — that counter was removed), and the mandatory-review
-// force must be attributed to `forge task complete`, not the Stop hook. This is
-// the doc-side guard for the enforcement transfer.
+// must NOT be documented with the old "连续 3 次失败放行" blocking semantics (that
+// counter was removed), and the mandatory-review force must be attributed to
+// `forge task complete`, not the Stop hook. It also pins the bounded Stop block
+// (embed_quality.go exit 2, ≤3 per session) so the skill no longer claims Stop
+// never blocks.
 func TestQualitySkillTaskVerifyIsAdvisory(t *testing.T) {
 	proto := &protocol.Protocol{
 		Version: "1",
@@ -202,7 +203,7 @@ func TestQualitySkillTaskVerifyIsAdvisory(t *testing.T) {
 	content := buildQualitySkillContent(t.TempDir(), proto)
 
 	// Obsolete blocking / 3-fail phrasing must be gone.
-	for _, gone := range []string{"连续 3 次失败", "阻塞会话结束", "task-verify 阻塞"} {
+	for _, gone := range []string{"连续 3 次失败", "阻塞会话结束", "task-verify 阻塞", "不阻塞会话"} {
 		if strings.Contains(content, gone) {
 			t.Errorf("quality SKILL.md still uses obsolete blocking phrasing %q (task-verify is advisory)", gone)
 		}
@@ -210,6 +211,12 @@ func TestQualitySkillTaskVerifyIsAdvisory(t *testing.T) {
 	// Advisory wording must be present.
 	if !strings.Contains(content, "advisory") {
 		t.Error("quality SKILL.md must document task-verify as advisory")
+	}
+	// Bounded Stop block must be documented with its cap and escape env.
+	for _, want := range []string{"有界拦截 Stop", "每会话最多 3 次", "FORGE_TASK_VERIFY_STOP=0"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("quality SKILL.md must document task-verify bounded Stop block, missing %q", want)
+		}
 	}
 }
 
