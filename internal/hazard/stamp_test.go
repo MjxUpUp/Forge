@@ -77,7 +77,8 @@ func TestConfirm_AndIsConfirmed(t *testing.T) {
 // command.
 //
 // TestConfirmByFingerprint 验证 --fingerprint 路径：按给定指纹直接登记，不依赖命令算指纹。
-// 这是 HITL 闭环推荐路径——hook 输出 hex 指纹，agent 回传，绕过命令串复制失真。
+// hook 输出 hex 指纹，用户在终端回传（F.2b 起只接受真人终端），绕过命令串复制失真；
+// 日常推荐 --last（零转写）。
 func TestConfirmByFingerprint(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
 	// 假指纹（非 Fingerprint(any cmd)），证明登记不经 Fingerprint(cmd)。
@@ -105,11 +106,12 @@ func TestConfirmByFingerprint(t *testing.T) {
 
 // TestConfirmByFingerprint_RejectsInvalidFormat verifies the format validation of the --fingerprint path:
 // truncated/over-long/non-hex fingerprints must error, not write to a wrong filename and report false success (2026-07 AgentWorld incident:
-// agent ran confirm three times with miscopied fingerprints, each printing 「✅ 已确认」, but the hook could not find them with the real fingerprint and kept blocking).
+// agent ran confirm three times with miscopied fingerprints, each printing 「✅ 已确认」, but the hook could not find them with the real fingerprint and kept blocking). The incident predates F.2b; today confirm only runs from a human terminal, but a person can miscopy too, so the guard stays.
 //
 // TestConfirmByFingerprint_RejectsInvalidFormat 验证 --fingerprint 路径的格式校验：
 // 残缺/超长/非 hex 的指纹必须报错，而非写入错文件名报虚假成功（2026-07 AgentWorld 事故：
-// agent 三次 confirm 抄错指纹都打印「✅ 已确认」，hook 用真指纹查不到继续拦）。
+// agent 三次 confirm 抄错指纹都打印「✅ 已确认」，hook 用真指纹查不到继续拦）。该事故早于
+// F.2b；现在 confirm 只能在真人终端执行，但人同样会抄错，守卫保留。
 func TestConfirmByFingerprint_RejectsInvalidFormat(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
 	cmd := "rm -rf x"

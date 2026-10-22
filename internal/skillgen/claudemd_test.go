@@ -187,13 +187,32 @@ func TestClaudeMDSectionContract(t *testing.T) {
 			"chore/*-commit",
 			"未提交变更", // CheckNameUncommittedAtComplete advisory 的含义
 		}, nil},
-		{"hazard-guard copy (2026-08 HITL protocol revision)", []string{
-			"无需二次确认",
-			"forge hazard confirm --last",
-			"所在工具的提问确认机制",
+		// F.2b（internal/cli/hazard.go stdinIsHumanTerminalForHazard）：confirm 拒绝
+		// 非真人终端——协议不得再教 agent 自行 confirm（那条路必然被拒）。
+		{"hazard-guard copy (confirm is human-terminal only, F.2b)", []string{
+			"请用户在自己的终端运行 `forge hazard confirm --last`",
+			"agent 自行运行会被拒",
 		}, []string{
 			"AskUserQuestion", // 逐工具枚举漏了 kimi/copilot/zcode
 			"FORGE_ALLOW_HAZARD",
+			"无需二次确认", // 旧授权判定协议：agent 自助 confirm
+			"直接 `forge hazard confirm --last` 放行",
+		}},
+		// gate-cmd-form ratchet 版本与逃生面须与 internal/hookdispatch/hook_gate_cmd_form.go
+		// 的 gateCmdFormBlockVersion（1.67.0）/ gateCmdFormEscapeEnv 一致；override 无此开关。
+		{"gate-cmd-form ratchet facts", []string{
+			"自 1.67 起 BLOCKED",             // 安全机制段
+			"1.56 advisory，1.67 起 BLOCKED", // 常见错误表行（独立锚点，删行即红）
+			"`FORGE_GATE_CMD_FORM=0`",
+		}, []string{
+			"1.58 起 BLOCKED",
+			"自 1.58 起",
+			"per-task override（1.58 起提供）",
+		}},
+		{"init-suggest default is ask (userconfig.TakeoverAsk)", []string{
+			"出厂默认 ask",
+		}, []string{
+			"检测为 forge 候选时自动 `forge init`",
 		}},
 		{"guard behavior truth (task/bash-guard only WARN)", nil, []string{
 			"非平凡变更（>10 行）", // 编造阈值——没有任何 guard 查行数
@@ -234,12 +253,15 @@ func TestClaudeMDSectionContract(t *testing.T) {
 			"**test-nudge**（PostToolUse Write|Edit",
 			"advisory 不阻断",
 		}, nil},
-		{"stop-chain facts (review-stop is the only hard Stop gate)", []string{
+		// task-verify Stop 有界阻断（internal/hooks/embed_quality.go exit 2，每会话 ≤3 次）：
+		// review-stop 段不得再称 task-verify「只 advisory 不阻塞」。
+		{"stop-chain facts (task-verify Stop is bounded-blocking)", []string{
 			"task 模式下直接放行",
 			"task-complete 门禁强制",
-			"只 advisory 不阻塞",
+			"task-verify 同为 Stop hook，活跃任务 + 未提交代码变更时有界阻断",
 		}, []string{
 			"与 task-verify 同为 Stop 链硬门禁",
+			"只 advisory 不阻塞",
 		}},
 		{"aux-checks must not sink read-before-edit", []string{
 			"聚焦变更/避免重复",

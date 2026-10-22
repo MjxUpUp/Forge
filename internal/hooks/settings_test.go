@@ -347,9 +347,11 @@ func TestBashGuardHookWritePatterns(t *testing.T) {
 	}
 }
 
-// TestTaskVerifyHookIsAdvisory guards the advisory rewrite: task-verify must
-// NEVER block (no exit 1, no failure counter), yet still persist detected
-// issues to checklog so they stay traceable via 'forge trace'. This carries
+// TestTaskVerifyHookIsAdvisory guards the advisory rewrite: task-verify's gate
+// checks must never block (no exit 1, no failure counter — the only block is the
+// separate bounded Stop exit 2 for an active task with uncommitted code, pinned in
+// embed_quality_stopblock_test.go), yet still persist detected issues to checklog
+// so they stay traceable via 'forge trace'. This carries
 // the E4 spirit — bypass/issues queryable — via the advisory checklog entry
 // instead of the removed force-pass-after-3-failures counter.
 func TestTaskVerifyHookIsAdvisory(t *testing.T) {
