@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: review
 owner: MjxUpUp
 ask: 审逃生舱审计补齐、无逃生裁决与文档卫生的口径
 tier: mini
@@ -8,14 +8,14 @@ tier: mini
 # 修复方案 | 逃生舱审计与裁决 + 文档卫生批（2026-10）
 
 ## TL;DR
-#129 在 `docs/design/compat-commitments.md` 第二节第 5 条登记了 7 条已知例外。本批处理其中 5 条：两处逃生补审计行、两个逃生 env 入册、宿主提升文案标明身份、四处无逃生位点记裁决。另外清理冲突清单里的纯文档问题：命令面记账、方案状态字段、23 份文档缺状态行、过期路径与取代标注、hook 计数、forge-dsh README 自相矛盾。不新增阻断位点，不改任何门禁的放行条件；新增的只有审计行和 roster 条目。
+#129 在 `docs/design/compat-commitments.md` 第二节第 5 条登记了 7 条已知例外。本批处理其中 6 条（scope 分支并入复发升硬的裁决）：两处逃生补审计行、两个逃生 env 入册、宿主提升文案标明身份、四处无逃生位点记裁决；同时新登记 1 条（checklist `drop` 与 `abort --detach-deps` 不写审计行）。另外清理冲突清单里的纯文档问题：命令面记账、方案状态字段、23 份文档缺状态行、过期路径与取代标注、hook 计数、forge-dsh README 自相矛盾。不新增阻断位点，不改任何门禁的放行条件；新增的只有审计行和 roster 条目。
 
 ## 问题与目标
 - task-verify Stop 有界阻断的逃生 `FORGE_TASK_VERIFY_STOP=0` 生效时整段跳过，不留 checklog（`internal/hooks/embed_quality.go`），拒绝文案也没有指向兼容契约。
 - 复发升硬的逃生 `FORGE_RECURRENT_HARDEN=disable` 实际解除 BLOCKED，但 `internal/compat/compat_test.go` 把它白名单为「非 gate-bypass」，生效时不留审计行；而 `internal/checklog/types.go` 的 `CheckEscapeHatch` 注释又把它列为逃生舱。
 - 宿主提升逃生 `FORGE_ADVISORY_PROMOTION=soft`（`internal/hookdispatch/hook_emitters.go`）不在 `compat.EscapeEnvs`；提升后的 task-guard 拒绝文案（`internal/hooks/embed_task.go`）没标明是宿主提升，也没给逃生。
 - 审查前置、checklist、上游依赖、bundle 验签四处没有逃生舱，也没有裁决记录。
-- 冲突清单（本机 `~/.research-workflow/harness-landscape-20261022-0938/internal_conflicts.md`）里的纯文档问题：B6 hook 计数、B7 命令面记账、B8 forge-dsh 零依赖、D1/D4 取代标注；废弃清单里的状态字段与过期路径。
+- 冲突清单（2026-10-22 全景盘点的产物，只在本机、未入库）里的纯文档问题：B6 hook 计数、B7 命令面记账、B8 forge-dsh 零依赖、D1/D4 取代标注；废弃清单里的状态字段与过期路径。
 
 ## Non-goals
 - 不处理 freeze-guard 与项目级自保护的真人终端校验（已知例外第 4 条），那需要改出口命令的行为。
@@ -101,7 +101,7 @@ tier: mini
 ### 关键取舍
 - 不做（只登记例外）：否决。例外清单写明「修复前不得被援引为先例」，长期挂着会让第 5 条的约束形同虚设。
 - 复发升硬按逃生舱处理（入 roster、留审计），而不是改写成「强度偏好」：它确实解除了 BLOCKED，按第 5 条判别顺序属于 ① 类的逃生。
-- 四处无逃生位点记裁决，而不是补 env：审查前置有 `review pass --acknowledge-changes`（留 self-refresh 审计），checklist 的 `drop` 和上游依赖的 `abort --detach-deps` 都是显式、留痕的出口；bundle 验签的逃生等于接受伪造。
+- 四处无逃生位点记裁决，而不是补 env：审查前置的出口是 `review pass`（留审查 stamp，基线后变更另记 self-refresh 审计）；checklist 的 `drop` 与上游依赖的 `abort --detach-deps` 是显式出口命令，但目前不写 checklog，登记为已知例外待补；bundle 验签的逃生等于接受伪造。
 - 审计行每会话只写一次（marker 去重），与 gate-cmd-form 逃生同款，避免逃生期间每次 Stop 都刷一行。
 
 ## 验证与回滚

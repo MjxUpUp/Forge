@@ -236,7 +236,7 @@ Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 
 | **conventions-context** | 会话开始 + 压缩后 | advisory：`forge conventions init` 建档后每会话注入 ≤15 行规范摘要（stack/lint 命令、规范声明文件、惯例要点），压缩后重注入；无档案但仓库已有 AGENTS.md 等规范时每会话一次建档建议 |
 | **conventions-write** | Write/Edit 前 | advisory：写源码或测试文件时注入本仓库规范声明文件指针与同目录范例文件（每目录每会话一次）；无档案时静默 |
 | **doc-lint** | PostToolUse（Write\|Edit） | advisory：被写的 .md 命中 D1-D11 L1 规则时注入命中清单（规则/行号/修复方向，按命中签名会话内去重），写时反馈提前于 complete 的 doc gate（output-readability-gates-v2.md P1-C），Go 原生实现 |
-| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（failure-track/subagent-track/test-nudge 亦然，其余 18 个为内嵌 bash 脚本） |
+| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（Go 原生共 9 个：本 hook 与 failure-track、subagent-track、test-nudge、doc-lint、gate-cmd-form、task-drift、conventions-context、conventions-write；其余 18 个为内嵌 bash 脚本） |
 
 </details>
 
