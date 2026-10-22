@@ -159,7 +159,7 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 	// §二.3 裁决）：confirm 参数以连接符开头 = confirm 嵌在复合命令的中/尾段（甲机 53/53
 	// 自助闭环实录形态）。拒绝并指引单独执行——拒绝的是形态不是操作，单独跑 confirm 即放行。
 	if confirmChainSeparated(args) {
-		return fmt.Errorf("BLOCKED: hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这正是拦截要切断的自助闭环。请单独执行：forge hazard confirm --last")
+		return fmt.Errorf("BLOCKED: hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这正是拦截要切断的自助闭环。请用户在自己的终端单独执行：forge hazard confirm --last")
 	}
 	// F.2b confirm 真人化（设计 F + delivery-hardening 墙-1b 兑现）：1.58 的
 	// advisory 预告已过 ≥2 minor——现在拒绝（BLOCKED）并要求用户终端执行。

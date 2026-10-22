@@ -16,8 +16,8 @@ tier: mini
 | 文本说 | 代码实际 |
 |---|---|
 | task-verify Stop「只 advisory 不阻塞」 | `internal/hooks/embed_quality.go` 活跃任务 + 未提交变更时 exit 2，每会话 ≤3 次 |
-| gate-cmd-form「自 1.58 起 BLOCKED + per-task override」 | `gateCmdFormBlockVersion = "1.67.0"`，只有 `FORGE_GATE_CMD_FORM=0` |
-| test-coverage「自 1.58 起阈值 3→2」 | `testCoverageHardGateThreshold = 3`，预告挂了 25 个 minor |
+| gate-cmd-form「自 1.58 起 BLOCKED + per-task override」 | `internal/hookdispatch/hook_gate_cmd_form.go` 的 `gateCmdFormBlockVersion = "1.67.0"`，只有 `FORGE_GATE_CMD_FORM=0` |
+| test-coverage「自 1.58 起阈值 3→2」 | `internal/taskpipeline/testcoverage.go` 的 `testCoverageHardGateThreshold = 3`，预告挂了 25 个 minor |
 | 让 agent 自行 `forge hazard confirm --last` | `internal/cli/hazard.go` 拒绝非真人终端 |
 | init-suggest「自动 forge init」 | `internal/userconfig/userconfig.go` 的 `TakeoverAsk` 是出厂默认 |
 
@@ -35,6 +35,9 @@ tier: mini
 - REQ-2 hazard-guard 拦截提示、Stop 时的 HITL 提示、`forge hazard --help` 与 README 改为请用户在自己的终端运行 confirm，不再出现授权判定后 agent 自助 confirm 的路径
   accept[REQ-2]: go test ./internal/hooks/ -run ^TestHazardGuardScript_BlockGuidanceCopy$ -count=1 :: --- PASS: TestHazardGuardScript_BlockGuidanceCopy (
   accept[REQ-2]: go test ./internal/cli/ -run ^TestHazardCmd_LongGuidanceCopy$ -count=1 :: --- PASS: TestHazardCmd_LongGuidanceCopy (
+  accept[REQ-2]: go test ./internal/cli/ -run ^TestHazardConfirm_ChainedRefused$ -count=1 :: --- PASS: TestHazardConfirm_ChainedRefused (
+  accept[REQ-2]: go test ./internal/hooks/ -run ^TestHazardGuardScript_ConfirmChainedBlocks$ -count=1 :: --- PASS: TestHazardGuardScript_ConfirmChainedBlocks (
+  accept[REQ-2]: grep -n 用户在自己的终端运行 README.md :: 用户在自己的终端运行
 - REQ-3 forge-quality skill 的会话结束节与 README hook 表陈述 Stop 有界阻断（上限与逃生 env）。守卫测试名沿用历史的 `TestQualitySkillTaskVerifyIsAdvisory`，内容已改为钉住有界阻断
   accept[REQ-3]: go test ./internal/skillgen/ -run ^TestQualitySkillTaskVerifyIsAdvisory$ -count=1 :: --- PASS: TestQualitySkillTaskVerifyIsAdvisory (
   accept[REQ-3]: grep -n FORGE_TASK_VERIFY_STOP=0 README.md :: FORGE_TASK_VERIFY_STOP=0
@@ -43,6 +46,10 @@ tier: mini
 - REQ-5 compat-commitments 第二节第 5 条给出阻断正当性分类与判别顺序，§三记录三条裁决
   accept[REQ-5]: grep -n 阻断正当性分类（单一真相源 docs/design/compat-commitments.md :: 阻断正当性分类（单一真相源
   accept[REQ-5]: grep -n 协议文本与代码对齐批 docs/design/compat-commitments.md :: 协议文本与代码对齐批
+  accept[REQ-5]: grep -n 判别顺序 docs/design/compat-commitments.md :: 判别顺序
+  accept[REQ-5]: grep -n 已知例外 docs/design/compat-commitments.md :: 已知例外
+  accept[REQ-5]: grep -n PromoteAdvisory docs/design/compat-commitments.md :: PromoteAdvisory
+  accept[REQ-5]: grep -n 真人化不设独立逃生舱 docs/design/compat-commitments.md :: 真人化不设独立逃生舱
 - REQ-6 test-nudge tier3 提示的阈值取自导出常量 `taskpipeline.TestCoverageHardGateThreshold`，不再手抄数字
   accept[REQ-6]: go test ./internal/hookdispatch/ -run ^TestRunTestNudgeHook_Tier3GateConsequence$ -count=1 :: --- PASS: TestRunTestNudgeHook_Tier3GateConsequence (
 - INV-1 skill 改动后 plugin 镜像与 compat 快照一致
@@ -86,6 +93,7 @@ tier: mini
 - `docs/plans/protocol-text-code-drift-2026-10.md`
 
 ### 关键取舍
+- 不做（维持现状）：否决。agent 按文本自行 hazard confirm 必然被拒，按 1.58 预告会误判测试阈值，按「不阻塞」会在 Stop 被拦时困惑。
 - test-coverage 预告选择撤回而不是兑现：兑现是收紧门禁的行为变更，应按 compat 第二节重新走预告；本批只纠正文本。
 - 守卫测试用字面值钉 1.67，不引用 `hookdispatch` 的未导出常量：该常量所在文件正被并行的死代码清扫任务改动，避免两边耦合。
 

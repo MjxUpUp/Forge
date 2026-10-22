@@ -424,7 +424,8 @@ COMMAND="${FORGE_COMMAND:-}"
 # 拿不到 env，两种形式行为不一致）。confirm 链（events.jsonl 审计 + 5min TTL）是唯一
 # 放行路径；confirm 只接受真人终端（F.2b），无真人终端的环境（CI 等）须在命令层避开高危形态。
 
-# 豁免 forge hazard 命令本身：agent 运行 forge hazard confirm "rm -rf x" 登记确认时，
+# 豁免 forge hazard 命令本身：运行 forge hazard confirm "rm -rf x" 登记确认时（F.2b 起 confirm
+# 只接受真人终端，但 agent 的误调用同样要先穿过本 hook，豁免语义不变），
 # 这个 Bash 命令的 FORGE_COMMAND 含 "rm -rf" 会被自己拦——必须豁免 forge hazard 前缀。
 # forge hazard 只登记/查询标记，不执行传入的命令串，豁免安全。
 case "$COMMAND" in
@@ -434,7 +435,7 @@ case "$COMMAND" in
     # confirm 子命令拒绝；log/status/confirmed 等 hook 内部写不带闭环语义，豁免不变。
     case "$COMMAND" in
       "forge hazard confirm"*"&&"*|*"forge hazard confirm"*";"*|*"forge hazard confirm"*"|"*)
-        echo "FAIL [hazard-guard] hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这是拦截要切断的自助闭环（首发即 blocked，docs/design/compat-commitments.md §二.1②/§二.3 形态门禁豁免）。请单独执行：forge hazard confirm --last"
+        echo "FAIL [hazard-guard] hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这是拦截要切断的自助闭环（首发即 blocked，docs/design/compat-commitments.md §二.1②/§二.3 形态门禁豁免）。请用户在自己的终端单独执行：forge hazard confirm --last"
         exit 1
         ;;
     esac
