@@ -148,3 +148,38 @@ forge skills validate 53/53 通过且 R18Grandfathered 清空；TestR18_Grandfat
 ### Evidence
 
 docs/plans/feature-focus-2026-09.md 决策表 + 审计逐项建议 + 96e0182/b967906 提交
+
+## [d-18e0b7f716d5f458-8b61bcf4] accept
+
+- **Skill**: on-demand-guards
+- **DecidedAt**: 2026-10-22T02:08:43Z
+
+### Diagnosis
+
+HITL 段教 agent 授权判定后自行 forge hazard confirm --last，但 F.2b 起 confirm 拒绝非真人终端，该路径必然失败
+
+### Revision
+
+改为 agent 说明风险、请用户在自己的终端运行 forge hazard confirm --last
+
+### Evidence
+
+internal/cli/hazard.go stdinIsHumanTerminalForHazard 非终端直接返回错误
+
+## [d-18e0ba88e16db780-e8ade2fa] accept
+
+- **Skill**: on-demand-guards
+- **DecidedAt**: 2026-10-22T02:55:48Z
+- **Warrant**: doc:docs/design/compat-commitments.md
+
+### Diagnosis
+
+HITL 段与 compat 阻断分类冲突：写着不是硬 block，且称测试/CI 走确认登记，但 CI 没有真人终端
+
+### Revision
+
+改为阻断、放行权在人；无真人终端环境须在命令层避开高危形态
+
+### Evidence
+
+独立文档评审 M3；internal/cli/hazard.go 非终端拒绝

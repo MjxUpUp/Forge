@@ -224,8 +224,8 @@ func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, e
 // event log and returns its fingerprint and command.
 //
 // ConfirmLastBlock 为事件日志中最新一条 block 事件登记确认，返回其指纹与命令。
-// 这是免复制的 HITL 路径（`forge hazard confirm --last`）：agent 确认"刚被拦的那条
-// 命令"，无需转写 64 字符 hex 指纹、也无需重新引用命令串——两种转写形态都已被证实
+// 这是免复制的 HITL 路径（`forge hazard confirm --last`，由用户在真人终端执行）：确认
+// "刚被拦的那条命令"，无需转写 64 字符 hex 指纹、也无需重新引用命令串——两种转写形态都已被证实
 // 是失真源（2026-07 AgentWorld：三次手抄指纹两次损坏；2026-08-24 Forge 会话：裸命令
 // confirm 与 hook 对含管道后缀完整命令行的指纹失配）。事件日志由 hook 在拦截时自己
 // 写入，其指纹天然权威。
@@ -238,7 +238,7 @@ func CountSince(p *forgedata.Project, eventType string, since time.Time) (int, e
 // 其 `--last` 调用之间，同项目另一会话/工具触发了 block B，`--last` 确认的是 B——为
 // 一条用户从未见过的命令登记了 5min 放行，而 A 仍被拦。失败模式自愈（A 重拦 → 重走
 // HITL；B 的确认大概率空过期），且任何确认的创建都以真实 block 事件为前提、审计链
-// 保持如实——这是零转写的代价。单会话流程（常态）无此窗口：hook 在打印 agent 所确认
+// 保持如实——这是零转写的代价。单会话流程（常态）无此窗口：hook 在打印用户所确认
 // 的拦截消息之前就落了 block 事件。
 func ConfirmLastBlock(p *forgedata.Project) (fp, cmd string, err error) {
 	events, err := LoadEvents(p)

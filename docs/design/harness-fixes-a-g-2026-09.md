@@ -17,7 +17,7 @@
 | B1 度量基建 | 1.56 | M | 新命令，钉死全部基线，两机同脚本可复算 |
 | B2 行为 advisory | 1.56 | A、B、C(adv)、F.1、F.2a、F.2b(adv)、G.1(adv)、G.2 | 触发/输出面变更，advisory 均带 1.58 预告文案；F.2a 例外——首发即 blocked（承诺表 §二.1②，新形态无存量暴露） |
 | B3 内容+校验 | 1.56 | D | skills 内容 + R19 校验规则 |
-| B4 ratchet | 1.58 | C(block)、G(阈值)、F.2b | 新 BLOCKED 位点，过 compat golden |
+| B4 ratchet | 1.58 | C(block)、G(阈值)、F.2b | 新 BLOCKED 位点，过 compat golden（2026-10-22 注：C 于 1.67 兑现，G 撤回，F.2b 已兑现且不设 agent override，见 compat-commitments.md §三） |
 
 ## M｜度量基建：`forge eval harness-audit`
 
@@ -56,10 +56,11 @@
 - **设计**（按 session-retrospective 载体决策树第 1 档——能程序化的不进 skill）：
   1. **形态分类器**（纯函数）：识别命令中的 forge 门禁子命令（`forge task gate|complete`、`forge task verify-acceptance`、`forge review pass`、`forge docs lint`、`forge task doc-review`，含 ./bin/forge-dev 前缀变体），分类 standalone / `cd && ` 前缀 / `&&` 尾段 / 分号续行 / 管道截断（`|` 接 tail/head/grep/cut/sed）/ 多门禁同刷。
   2. **in-process hook**（PreToolUse Bash，仿 test-nudge 的挂载 hook_track.go:207 + settings.go:93）：1.56 advisory——stderr 一行 `ADVISORY: gate-cmd-form …（自 1.58 起 BLOCKED）` + checklog `gate-cmd-form` warn；1.58 转 BLOCKED（规则：门禁命令之后不得接 `;`、`|`、`||`，不得多门禁同刷；`cd X && gate` 与 `gate && 后续` 保留放行——退出码契约仍成立）。逃生舱：`FORGE_GATE_CMD_FORM=0` env + per-task override `--gate-cmd-form disable`（进 overrides.go 枚举与 escapes 面）。
+     **（2026-10-22 注：1.58 未兑现，实际于 1.67.0 以机械版本门转 BLOCK，逃生只有 `FORGE_GATE_CMD_FORM=0`、无 per-task override；见 compat-commitments.md §三同日条。）**
   3. **stderr 兜底**：`forge task gate` 检测 stdout 非 TTY 时（char-device 判定改造自 task_gate.go:166 `stdinIsHumanTerminal` 的 stdin 版——本项判 stdout，是适配不是直接复用），BLOCKED 摘要行同时写 stderr——管道截断不再能吞掉退出码契约的文本面。
 - **落点**：internal/taskpipeline/gatecmdform.go（新，分类器+hook）、internal/hooks/settings.go 注册、internal/clitask/task_gate.go stderr 兜底、overrides.go、compat snapshot（checks/escapes/blockings 三面 regen）。
 - **度量**：C1 37%/13% → ≤2%；C2 84%/27% → ≤15%；C3 7%/46% → ≥80%。防伪：拦截后重跑率不得劣化（甲基线 `100%`）；单任务 Bash 中位数上浮 ≤30%（乙机现值由 M 钉基线）。
-- **验收**：分类器五形态夹具单测；advisory→BLOCKED 文案含「自 1.58 起」字样（承诺表 §二.1 ①）；e2e 式：`forge task gate … | tail -1` 场景下 stderr 可见 BLOCKED。
+- **验收**：分类器五形态夹具单测；advisory→BLOCKED 文案含「自 1.58 起」字样（承诺表 §二.1 ①；本节 1.58 的预告、风险与绕过面描述均以设计时口径保留，实际 1.67 兑现见上方 2026-10-22 注）；e2e 式：`forge task gate … | tail -1` 场景下 stderr 可见 BLOCKED。
 - **风险**：存量脚本/CI 内嵌门禁连刷会被 1.58 拦——预告期 + 逃生舱 + M 周报监控 advisory 命中存量形态清单，必要时 1.58 只拦「分号+管道」不拦 `&&`（分级 ratchet）。
 - **绕过面（B1 评审发现，分类器已同步收窄）**：引号包装是天然逃逸形态——`bash -c "gate … | tail"` 包裹的是调用不是数据。gatecmdform 已把 `bash/sh -c` 包装体保留计入、heredoc 正文按数据剥离、`forge.exe`/反引号/绝对路径前缀补进拼写口径；1.58 BLOCKED 生效前该口径由 M 的 C 面周报监控（总量骤降 = 绕过模式）。
 
@@ -90,7 +91,7 @@
 - **设计**（三件）：
   1. **F.1 解释器 heredoc 数据上下文**：heredoc 喂给非 shell 解释器（python/node/ruby/perl）且体不含执行原语（subprocess/os.system/os.popen/child_process/exec(/spawn(/system(/sh -c/bash -c）→ 走既有数据上下文放行 + `forge hazard log data`（embed_guard.go:807 路径）；含执行原语仍拦。strip_quotes 已是跨行引号状态机（:671），本项在其上补 heredoc 体白名单判定。
   2. **F.2a confirm 链式分离**（1.56 首发即 blocked，拒绝文案指向承诺表 §二.1②；存量口径：两机链式 confirm 命中全部是 dogfooding 会话内 agent 自助闭环（甲 53/53 全自助、其中链式多条未逐计；乙 1/13 链式），无用户脚本/CI 依赖面——故视为无存量暴露；无需逃生舱：单独执行 confirm 即放行，拒绝的是形态不是操作）：`forge hazard confirm` 与其他命令以 `&&`/`;`/`|` 同调用 → 拒绝并提示单独执行（甲机实证的「confirm && 危险命令」自助闭环被切断）；豁免前缀 `cd X &&`。
-  3. **F.2b confirm 真人化**（1.56 advisory → 1.58 blocked，满足 §二.2 两 minor 预告）：confirm 的 stdin 非人类终端（复用 task_gate.go:166 char-device 判定）时，1.56 打 `ADVISORY: 自 1.58 起 hazard confirm 需在用户终端执行` 仍放行；1.58 拒绝并输出「请在用户终端运行：forge hazard confirm --last」。逃生舱走 per-task override `forge task override --hazard-agent-confirm disable`（留痕 + 评分封顶，§二.3 形态）——不用 env 旁路：task_gate.go:158-165 已为同一 TTY 判定否决过 env/flag 旁路（被注入的 agent 同样设得了 env），本项沿用该裁决。
+  3. **F.2b confirm 真人化**（1.56 advisory → 1.58 blocked，满足 §二.2 两 minor 预告）：confirm 的 stdin 非人类终端（复用 task_gate.go:166 char-device 判定）时，1.56 打 `ADVISORY: 自 1.58 起 hazard confirm 需在用户终端执行` 仍放行；1.58 拒绝并输出「请在用户终端运行：forge hazard confirm --last」。逃生舱走 per-task override `forge task override --hazard-agent-confirm disable`（留痕 + 评分封顶，§二.3 形态）——不用 env 旁路：task_gate.go:158-165 已为同一 TTY 判定否决过 env/flag 旁路（被注入的 agent 同样设得了 env），本项沿用该裁决。**（2026-10-22 裁决：`--hazard-agent-confirm` override 不实现，真人终端 confirm 本身即出口，见 compat-commitments.md §三同日条。）**
   4. **F.3 事件去重**：`hazard.AppendEvent` 对宿主双投递只记一条，`CheckHalt` 按去重后事件计数。实现时细化：去重键为 (session, type, fingerprint)——事件新增 `session_id`（hook 环境 `FORGE_SESSION_ID`），与 hook.go duplicateBlockRecord 的键对齐；旧行/终端直跑无 session 时退化为只比 type+fingerprint；窗口 3s（`EventDedupWindow`，与 blockRecordDedupWindow 同量级）；只比对末行，隔时真实重试不被吞。
 - **落点**：internal/hooks/embed_guard.go（HazardGuardHook 串）、internal/hazard/{event.go,stamp.go,halt.go}、internal/cli/hazard.go（confirm 入口）、overrides.go（新 override 键）、compat snapshot（checks/escapes/blockings 面）。
 - **度量**：F1 数据上下文误拦——基线 乙：12/28 起事件为脚本文本误命中（审计兄弟页 2.2）→ 夹具口径 0、M 实测 ≤1 起/月；F2 双记 乙：24/52 条 → 0；F3 confirm 链式 乙：1/13 → 0；F4（1.58 后）非终端且无 override 的自助 confirm → 0。防伪：真高危拦截样本（push force/reset hard/递归删除）回归集全数仍拦——precision 修复不得降 recall。
@@ -101,7 +102,7 @@
 
 - **现状（证据，乙机）**：coverage 门禁 27 次 fail 仅 `18.5%` 后续转 pass，13 个被标任务 100% 照常完成；4 个 testing<70 任务（registry-gc 65 / focus-d2-standards 53 / dead-code-sweep 67 / ci-fix-release 30）各有 2-3 次 fail、0 次 pass，缺测文件被点名未补；甲机唯一 C 级 fix/ci-red-sweep（416 行零测试）同链。现阻断条件 `missingN>=3 && assertN==0`（testcoverage.go:193）过松——fudge 放走 1-2 文件缺测。cheat-scan 误报实证：comment-only-fix 对 `chore/comment-dedup`（任务本意即清注释）报 160 条；unused-scan 拦后 0% 转化（细节无证据不可行动）。
 - **设计**：
-  1. **G.1 阈值收紧**：1.56 起 verify/complete 的 advisory 文案带「自 1.58 起 missingN≥2 且零断言将 BLOCKED」；1.58 将 `testCoverageHardGateThreshold` 3→2（逃生舱既有：`FORGE_TEST_COVERAGE` + per-task override，承诺表 §二.3 已满足）。
+  1. **G.1 阈值收紧**：1.56 起 verify/complete 的 advisory 文案带「自 1.58 起 missingN≥2 且零断言将 BLOCKED」；1.58 将 `testCoverageHardGateThreshold` 3→2（逃生舱既有：`FORGE_TEST_COVERAGE` + per-task override，承诺表 §二.3 已满足）。**（2026-10-22 裁决：该预告挂到 1.83 未兑现，已撤回，阈值仍为 3；见 compat-commitments.md §三同日条。）**
   2. **G.2 cheat-scan 上下文抑制**：comment-only-fix 发现量与任务注释占比一致（改动行 ≥90% 为注释/空白——numstat 管线已有同源实现可复用（scoring scope 排除，evaluator.go:345）；注释/空白占比启发式**需新实现并配夹具**，仓内无现成组件）→ 抑制为 suppressed 记录（保留审计行带 suppressed 标记，不进 fail 计数）。
   3. **G.3 unused-scan 可行动化**：detail 附证据（符号名 + 仓内 grep 引用计数 0 的搜索串），维持 advisory——先提可行动性观察转化率，不动阻断。
 - **落点**：internal/taskpipeline/{testcoverage.go,cheatscan.go,unusedscan.go,executor_check_verify_scans.go,executor_check_complete.go}。

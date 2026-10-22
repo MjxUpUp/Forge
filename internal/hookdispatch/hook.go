@@ -629,8 +629,8 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		return runTestNudgeHook(hookInput, root, cmd.Root().Version, agent)
 	}
 	// gate-cmd-form（设计 C）：PreToolUse Bash 的进程内 hook——门禁命令嵌分号/截断管道/
-	// 多门禁连刷时 advisory 提示（1.56）+ checklog warn 行；1.58 ratchet BLOCKED。永不阻断
-	// 于本版本（承诺表 ≥2 minor 预告）。
+	// 多门禁连刷时 advisory 提示（1.56）+ checklog warn 行；自 1.67.0 起机械版本门 BLOCK
+	// （会话上限 5，逃生 FORGE_GATE_CMD_FORM=0，见 hook_gate_cmd_form.go）。
 	if name == "gate-cmd-form" {
 		return runGateCmdFormHook(hookInput, root, cmd.Root().Version, agent)
 	}
