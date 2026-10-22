@@ -6,9 +6,9 @@
 // on-demand-guards 自动挡（hazard-guard hook + forge hazard confirm）。
 //
 // 机制：PreToolUse Bash hook hazard-guard 检测到高危命令 → block（exit 1）+
-// additionalContext 指引 agent 用所在 AI 工具的提问确认工具获得用户明确确认后，
-// 运行 `forge hazard confirm 「<命令>」` 登记一个限时（5min）确认标记 → agent 重试
-// 原命令 → hook 见标记（同指纹 + 未过期）放行。这是 Forge hook 模型（只有 approve/block）
+// additionalContext 指引 agent 向用户说明风险 → 用户在自己的终端运行
+// `forge hazard confirm --last` 登记一个限时（5min）确认标记（F.2b 起 CLI 拒绝非真人
+// 终端，agent 不能自助登记）→ agent 重试原命令 → hook 见标记（同指纹 + 未过期）放行。这是 Forge hook 模型（只有 approve/block）
 // 下 human-in-the-loop 的唯一落地形态——Forge 调不起各工具私有的确认弹窗，靠 block +
 // 指引 + 限时标记闭环。
 //

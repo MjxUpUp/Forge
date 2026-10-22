@@ -316,22 +316,23 @@ func TestHazardGuardScript_GitBranchDScope(t *testing.T) {
 	}
 }
 
-// TestHazardGuardScript_BlockGuidanceCopy 钉死 2026-08 block 文案修复：授权
-// 路径（用户本回合已明确指令/确认过 → 直接 confirm --last，无需二次确认）、
-// 泛化的工具指代（不再逐一枚举而漏掉 kimi/copilot/zcode）、以及删除尾部
-// FORGE_ALLOW_HAZARD 迁移说明（changelog 不是行动指引）。
+// TestHazardGuardScript_BlockGuidanceCopy 钉死 block 文案：confirm 由用户在自己的
+// 终端执行（F.2b，internal/cli/hazard.go 拒绝非真人终端——旧的「授权判定后 agent
+// 直接 confirm --last」路径必然被拒，已删）、泛化的工具指代（不再逐一枚举而漏掉
+// kimi/copilot/zcode）、以及删除尾部 FORGE_ALLOW_HAZARD 迁移说明（changelog 不是
+// 行动指引）。
 func TestHazardGuardScript_BlockGuidanceCopy(t *testing.T) {
 	shimDir := writeForgeShim(t, "fail")
 	out, err := runHazardScript(t, shimDir, "rm -rf ./important-data")
 	if err == nil {
 		t.Fatalf("hazard-guard must block rm -rf ./important-data, got exit 0:\n%s", out)
 	}
-	for _, anchor := range []string{"授权判定", "无需二次确认", "你所在", "forge hazard confirm --last", "逐字"} {
+	for _, anchor := range []string{"请用户在自己的终端运行", "自行运行会被拒", "forge hazard confirm --last", "逐字"} {
 		if !strings.Contains(out, anchor) {
 			t.Errorf("block guidance missing %q, got:\n%s", anchor, out)
 		}
 	}
-	for _, gone := range []string{"FORGE_ALLOW_HAZARD", "AskUserQuestion"} {
+	for _, gone := range []string{"FORGE_ALLOW_HAZARD", "AskUserQuestion", "无需二次确认", "授权判定"} {
 		if strings.Contains(out, gone) {
 			t.Errorf("block guidance must not contain %q anymore, got:\n%s", gone, out)
 		}

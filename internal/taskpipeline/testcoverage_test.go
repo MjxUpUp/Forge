@@ -1,6 +1,7 @@
 package taskpipeline
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -820,17 +821,23 @@ func TestClassifyChangedPath(t *testing.T) {
 	}
 }
 
-// TestTestCoverageDetail_Carries1_58Notice pins G.1: the advisory detail carries the 1.58
-// ratchet notice per compat commitments §二.1① (advisory text continuously shows the version).
+// TestTestCoverageDetail_StatesCurrentBackstop pins the advisory detail to the live backstop
+// rule: the threshold comes from testCoverageHardGateThreshold, and the retracted G.1 "3→2
+// from 1.58" notice (compat commitments §三, 2026-10-22) must not reappear.
 //
-// TestTestCoverageDetail_Carries1_58Notice 钉住 G.1：advisory detail 携带 1.58 ratchet 预告
-// （承诺表 §二.1①——advisory 文案持续显示预告版本）。
-func TestTestCoverageDetail_Carries1_58Notice(t *testing.T) {
+// TestTestCoverageDetail_StatesCurrentBackstop 钉住 advisory detail 只陈述现行 backstop 规则：
+// 阈值取自 testCoverageHardGateThreshold；已撤回的 G.1「自 1.58 起 3→2」预告（承诺表 §三
+// 2026-10-22 裁决）不得复现。
+func TestTestCoverageDetail_StatesCurrentBackstop(t *testing.T) {
 	got := testCoverageDetail(false, []string{"internal/x/a.go", "internal/y/b.go"})
-	if !strings.Contains(got, "1.58") || !strings.Contains(got, "BLOCKED") {
-		t.Fatalf("coverage advisory must carry the 1.58 ratchet notice, got: %s", got)
+	want := fmt.Sprintf("缺测 >=%d 个源文件且零断言时 task-complete BLOCKED", testCoverageHardGateThreshold)
+	if !strings.Contains(got, want) {
+		t.Fatalf("coverage advisory must state the live backstop %q, got: %s", want, got)
 	}
-	if got := testCoverageDetail(true, nil); strings.Contains(got, "1.58") {
+	if strings.Contains(got, "1.58") || strings.Contains(got, "missingN>=2") {
+		t.Fatalf("coverage advisory must not carry the retracted 1.58 ratchet notice, got: %s", got)
+	}
+	if got := testCoverageDetail(true, nil); strings.Contains(got, "BLOCKED") {
 		t.Fatalf("passing detail must not carry the notice, got: %s", got)
 	}
 }

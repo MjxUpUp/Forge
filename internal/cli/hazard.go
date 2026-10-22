@@ -16,10 +16,9 @@ import (
 //
 // 形态（Forge hook 模型只有 approve/block，调不起各 AI 工具私有的确认弹窗）：
 //   - PreToolUse Bash hook hazard-guard 检测高危命令 → block + additionalContext 指引：
-//     用户本回合已明确指令/确认过该操作时 agent 直接 confirm 登记，无需二次确认；
-//     否则先用所在工具的提问确认机制向用户说明风险获明确确认。
-//   - agent 获确认后 `forge hazard confirm "<命令>"` 登记限时（5min）标记 → 重试原命令 →
-//     hook 见标记放行。
+//     agent 向用户说明风险，请用户在自己的终端确认。
+//   - 用户在终端运行 `forge hazard confirm --last` 登记限时（5min）标记（F.2b：confirm
+//     拒绝非真人终端，agent 不能自助登记）→ agent 逐字重试原命令 → hook 见标记放行。
 //
 // 本命令组是 HITL 闭环的"登记/查询"端；高危模式检测在 hooks/embed.go HazardGuardHook。
 
@@ -31,7 +30,7 @@ func init() {
 	hazardCmd.AddCommand(hazardStatusCmd)
 	hazardCmd.AddCommand(hazardLogCmd)
 
-	// --fingerprint：hook 已用 forge hazard fingerprint 算好指纹，agent 直接回传 hex
+	// --fingerprint：hook 已用 forge hazard fingerprint 算好指纹，用户在终端直接回传 hex
 	// 登记确认。指纹是 sha256 hex（仅 [0-9a-f]），复制无引号/转义失真风险——而回传
 	// 命令串会被 agent shell 重新解析吃掉引号（如 SQL mysql -e 'DROP TABLE t' 的单引号），
 	// 与 hook 原始命令指纹不一致、确认后仍被拦。见 hazard.ConfirmByFingerprint。
@@ -50,10 +49,10 @@ var hazardCmd = &cobra.Command{
 	Long: `forge hazard 管理 on-demand-guards 自动挡的"高危命令已确认"标记，支撑 human-in-the-loop。
 
 hazard-guard hook 拦截高危命令（rm -rf / git push --force / DROP TABLE / kubectl delete /
-DELETE 无 WHERE 等）后：若用户在本回合已明确指令/确认过该操作，可直接 confirm --last
-登记放行，无需二次确认；否则先用你所在工具的提问确认机制向用户说明风险、获明确确认，
-再 confirm 登记限时标记（5min 内同命令重试放行）。这是 Forge hook 模型下 HITL 的落地
-形态——Forge 不直接弹各工具的确认框，靠 block + 指引 + 限时标记闭环。
+DELETE 无 WHERE 等）后：agent 向用户说明风险，由用户在自己的终端运行 confirm --last
+登记限时标记（5min 内同命令重试放行）。confirm 只接受真人终端——agent 的 Bash 不是
+终端，自行运行会被拒。这是 Forge hook 模型下 HITL 的落地形态——Forge 不直接弹各工具
+的确认框，靠 block + 指引 + 限时标记闭环。
 
 子命令：
   confirm <命令> [--fingerprint <hex>] [--last]
@@ -153,14 +152,14 @@ var hazardLogCmd = &cobra.Command{
 	RunE:   runHazardLog,
 }
 
-// runHazardConfirm 登记确认。MinimumNArgs(1) + Join：agent 可引号传整串，也可不引号
+// runHazardConfirm 登记确认。MinimumNArgs(1) + Join：调用者可引号传整串，也可不引号
 // （多 arg 被空格 join 还原）——空白归一在 hazard.Fingerprint 内做，两种传法同指纹。
 func runHazardConfirm(cmd *cobra.Command, args []string) error {
 	// F.2a confirm 链式分离（设计 F，首发即 blocked——承诺表 §二.1②，形态门禁豁免见
 	// §二.3 裁决）：confirm 参数以连接符开头 = confirm 嵌在复合命令的中/尾段（甲机 53/53
 	// 自助闭环实录形态）。拒绝并指引单独执行——拒绝的是形态不是操作，单独跑 confirm 即放行。
 	if confirmChainSeparated(args) {
-		return fmt.Errorf("BLOCKED: hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这正是拦截要切断的自助闭环。请单独执行：forge hazard confirm --last")
+		return fmt.Errorf("BLOCKED: hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这正是拦截要切断的自助闭环。请用户在自己的终端单独执行：forge hazard confirm --last")
 	}
 	// F.2b confirm 真人化（设计 F + delivery-hardening 墙-1b 兑现）：1.58 的
 	// advisory 预告已过 ≥2 minor——现在拒绝（BLOCKED）并要求用户终端执行。
@@ -205,7 +204,7 @@ func runHazardConfirm(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	ttlMin := int(hazard.ConfirmTTL / time.Minute)
-	// --fingerprint 路径：hook 已算好指纹，agent 回传 hex（复制无失真）。命令串仅审计用。
+	// --fingerprint 路径：hook 已算好指纹，用户回传 hex（复制无失真）。命令串仅审计用。
 	if hazardConfirmFingerprint != "" {
 		// May be empty (not enforced when --fingerprint is set)
 		command := strings.Join(args, " ") // 可空（--fingerprint 时不强制）

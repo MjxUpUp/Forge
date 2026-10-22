@@ -41,14 +41,19 @@ func TestConfirmChainSeparated(t *testing.T) {
 }
 
 // TestHazardConfirm_ChainedRefused pins the CLI refusal: a chained confirm returns a BLOCKED
-// error naming the standalone form — the refusal targets the form, not the operation.
+// error naming the standalone form — the refusal targets the form, not the operation — and
+// routes it to the user's own terminal (F.2b: an agent-run standalone confirm is refused too).
 //
 // TestHazardConfirm_ChainedRefused 钉住 CLI 拒绝：链式 confirm 返回 BLOCKED 错误并给出
-// 单独执行形态——拒绝的是形态不是操作。
+// 单独执行形态——拒绝的是形态不是操作——且指给用户在自己的终端执行（F.2b：agent
+// 单独执行同样会被拒）。
 func TestHazardConfirm_ChainedRefused(t *testing.T) {
 	c := &cobra.Command{}
 	err := runHazardConfirm(c, []string{"&& git push origin --delete x"})
 	if err == nil || !strings.Contains(err.Error(), "BLOCKED") || !strings.Contains(err.Error(), "forge hazard confirm --last") {
 		t.Fatalf("chained confirm must be refused with BLOCKED + standalone guidance, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "请用户在自己的终端单独执行") {
+		t.Fatalf("chained-confirm guidance must route the standalone confirm to the user's terminal, got: %v", err)
 	}
 }
