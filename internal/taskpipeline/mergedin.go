@@ -13,15 +13,20 @@ import (
 // 的测试改动（2026-10-22 实证：合并 #128 的 52 个文件后报「43 个源文件超出
 // PlanScope」）。这里沿第一父链区分「本分支自己的提交」与「合并带入的基线一侧」。
 //
-// 只有另一侧来自基线分支的合并才剔除：另一侧是本任务自己的侧分支（--no-ff 合回、
-// 分叉后 git pull 产生的合并）时整段算本任务改动——否则删测试之类的改动能借一次
-// 合并躲过 cheat-scan / test-coverage。
+// 只有其余各父全部来自基线分支的合并才剔除：任一侧是本任务自己的侧分支（--no-ff
+// 合回、章鱼合并、分叉后 git pull 产生的合并）时整段算本任务改动——否则删测试之类
+// 的改动能借一次合并躲过 cheat-scan / test-coverage。有远端时基线只认 origin/main、
+// origin/master，本地 main/master 可被 agent 随手提交或 branch -f，不作为依据。
 
-// mergedInBaseRefs are the refs whose history counts as "base": a merge whose second parent is reachable from one of them brought base changes in. Same candidates as taskChangedFiles' legacy fallback.
+// mergedInRemoteBaseRefs are trusted as "base" whenever one of them exists; mergedInLocalBaseRefs are the fallback for repos without such a remote. Local branches are not trusted alongside a remote: an agent can commit to local main or move it with branch -f, and everything reachable from base gets dropped.
 //
-// mergedInBaseRefs 是视为「基线」的 ref：合并提交的第二父可从其中之一到达，即为
-// 合并带入了基线改动。与 taskChangedFiles 的 legacy 回落候选一致。
-var mergedInBaseRefs = []string{"main", "origin/main", "master", "origin/master"}
+// mergedInRemoteBaseRefs 只要存在其一就只认它们为「基线」；mergedInLocalBaseRefs
+// 仅在没有这类远端 ref 的仓库里回落使用。有远端时不信本地分支：agent 可以往本地
+// main 提交或 branch -f 挪动它，而从基线可达的一切都会被剔除。
+var (
+	mergedInRemoteBaseRefs = []string{"origin/main", "origin/master"}
+	mergedInLocalBaseRefs  = []string{"main", "master"}
+)
 
 // gitLines runs git in root and returns its non-empty trimmed output lines.
 //
@@ -58,16 +63,30 @@ func fromOnFirstParentChain(root, from string) bool {
 	return err == nil && len(parent) == 1 && parent[0] == fromSHA[0]
 }
 
-// reachableFromBase reports whether rev is reachable from a base ref. For a merge's second parent it means the merge brought base changes in; for HEAD it means the task branch is already contained in base (merged into it and fast-forwarded back), where the first-parent chain belongs to base and the split would be inverted.
+// existingBaseRefs returns the base refs present in root: the remote ones if any exist, otherwise the local fallback.
 //
-// reachableFromBase 报告 rev 能否从某个基线 ref 到达。对合并提交的第二父，表示这次
-// 合并带入的是基线改动；对 HEAD，表示任务分支已被基线包含（合进基线后又快进回来），
-// 此时第一父链属于基线，区分会整个反过来。
-func reachableFromBase(root, rev string) bool {
-	for _, ref := range mergedInBaseRefs {
-		if _, err := gitLines(root, "rev-parse", "--verify", "--quiet", ref+"^{commit}"); err != nil {
-			continue
+// existingBaseRefs 返回 root 里存在的基线 ref：有远端基线就只返回远端的，否则返回
+// 本地回落。
+func existingBaseRefs(root string) []string {
+	for _, cands := range [][]string{mergedInRemoteBaseRefs, mergedInLocalBaseRefs} {
+		var refs []string
+		for _, ref := range cands {
+			if _, err := gitLines(root, "rev-parse", "--verify", "--quiet", ref+"^{commit}"); err == nil {
+				refs = append(refs, ref)
+			}
 		}
+		if len(refs) > 0 {
+			return refs
+		}
+	}
+	return nil
+}
+
+// reachableFromBase reports whether rev is reachable from one of refs.
+//
+// reachableFromBase 报告 rev 能否从 refs 之一到达。
+func reachableFromBase(root string, refs []string, rev string) bool {
+	for _, ref := range refs {
 		if exec.Command("git", "-C", root, "merge-base", "--is-ancestor", rev, ref).Run() == nil {
 			return true
 		}
@@ -75,16 +94,17 @@ func reachableFromBase(root, rev string) bool {
 	return false
 }
 
-// ExcludeMergedInFiles drops from committed the files that changed in from..HEAD only through base-side merges: a first-parent merge whose second parent comes from a base ref (main, origin/main, master, origin/master) contributes only the files edited in the merge commit itself (conflict resolution or edits made while merging); every other first-parent commit — including merges of non-base branches, such as the task's own side branch — contributes all its files. Callers pass only files of the committed range. With no merge in the range, when from is not on HEAD's first-parent chain, when HEAD is already reachable from a base ref, or on any git failure, committed is returned unchanged.
+// ExcludeMergedInFiles drops from committed the files that changed in from..HEAD only through base-side merges: a first-parent merge whose other parents (2..N) are all reachable from a base ref contributes only the files edited in the merge commit itself (conflict resolution or edits made while merging); every other first-parent commit — including merges with any non-base parent, such as the task's own side branch — contributes all its files. Base refs are origin/main and origin/master when present, else local main and master. Callers pass only files of the committed range. committed is returned unchanged when the range has no merge, when from is not on HEAD's first-parent chain, when a merge on that chain is itself reachable from base (the chain is base's history: the task was merged into base and fast-forwarded back), when no base ref exists, or on any git failure.
 //
 // ExcludeMergedInFiles 从 committed 中剔除在 from..HEAD 内只经「基线一侧合并」带入
-// 的文件：第一父链上的合并提交若第二父来自基线 ref（main、origin/main、master、
-// origin/master），只计合并提交里本任务亲手改过的文件（冲突解决或合并时顺手改；
-// 整体采用对方版本的文件视为基线带入）；其余第一父链提交——包括合并本任务侧分支
-// 等非基线分支的合并——全部计入。调用方只传已提交区间的文件。区间内没有合并提交、
-// from 不在 HEAD 的第一父链上、HEAD 已能从基线
-// ref 到达、或任何 git 调用失败时原样返回（保守：不能证明是
-// 外来的，就继续计入）。已知局限：任务尚无提交时快进合并基线，没有合并提交可依据，
+// 的文件：第一父链上的合并提交若其余各父（第 2..N 个）全部可从基线 ref 到达，只计
+// 合并提交里本任务亲手改过的文件（冲突解决或合并时顺手改；整体采用对方版本的文件
+// 视为基线带入）；其余第一父链提交——包括任一父不来自基线的合并，如合并本任务侧
+// 分支——全部计入。基线 ref 有 origin/main、origin/master 时只认它们，否则回落本地
+// main、master。调用方只传已提交区间的文件。以下情况原样返回（保守：不能证明是外来
+// 的，就继续计入）：区间内没有合并提交；from 不在 HEAD 的第一父链上；链上某个合并
+// 提交本身可从基线到达（链是基线的历史：任务被合进基线后又快进回来）；没有基线
+// ref；任何 git 调用失败。已知局限：任务尚无提交时快进合并基线，没有合并提交可依据，
 // 保持原行为。
 func ExcludeMergedInFiles(root, from string, committed []string) []string {
 	if from == "" || len(committed) == 0 {
@@ -94,7 +114,11 @@ func ExcludeMergedInFiles(root, from string, committed []string) []string {
 	if err != nil || len(merges) == 0 {
 		return committed
 	}
-	if !fromOnFirstParentChain(root, from) || reachableFromBase(root, "HEAD") {
+	if !fromOnFirstParentChain(root, from) {
+		return committed
+	}
+	refs := existingBaseRefs(root)
+	if len(refs) == 0 {
 		return committed
 	}
 	own := map[string]bool{}
@@ -111,7 +135,25 @@ func ExcludeMergedInFiles(root, from string, committed []string) []string {
 	}
 	addAll(files)
 	for _, m := range merges {
-		if reachableFromBase(root, m+"^2") {
+		if reachableFromBase(root, refs, m) {
+			return committed
+		}
+		parents, err := gitLines(root, "rev-list", "--parents", "-n", "1", m)
+		if err != nil || len(parents) != 1 {
+			return committed
+		}
+		others := strings.Fields(parents[0])
+		if len(others) < 3 {
+			return committed
+		}
+		baseSide := true
+		for _, p := range others[2:] {
+			if !reachableFromBase(root, refs, p) {
+				baseSide = false
+				break
+			}
+		}
+		if baseSide {
 			files, err = gitLines(root, "log", "-1", "--cc", "--no-renames", "--name-only", "--format=", m)
 		} else {
 			files, err = gitLines(root, "diff", "--no-renames", "--name-only", m+"^1", m)

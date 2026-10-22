@@ -188,6 +188,15 @@ func TestExcludeMergedInFiles_InvertedFirstParentUnchanged(t *testing.T) {
 			runGit(t, dir, "checkout", "feat/testcov")
 			runGit(t, dir, "merge", "--ff-only", "main")
 		}},
+		{"merged into main, then continued", func(t *testing.T, dir, start string) {
+			// 快进回来后再提交一次：HEAD 已不在基线上，靠「链上合并提交本身在基线上」拦住。
+			runGit(t, dir, "checkout", "main")
+			writeCommitSource(t, dir, map[string]string{"xonly.go": "package main\n\nfunc x() {}\n"}, "base work")
+			runGit(t, dir, "merge", "--no-ff", "--no-edit", "feat/testcov")
+			runGit(t, dir, "checkout", "feat/testcov")
+			runGit(t, dir, "merge", "--ff-only", "main")
+			writeCommitSource(t, dir, map[string]string{"own2.go": "package main\n\nfunc own2() {}\n"}, "task continues")
+		}},
 		{"forked before from", func(t *testing.T, dir, start string) {
 			// main 先收下任务，再被一条在 start 之前分叉的分支合并；HEAD 不在基线上，
 			// 只有第一父链守卫能拦住（否则 own.go 被当作基线带入剔掉）。
@@ -229,8 +238,10 @@ func TestExcludeMergedInFiles_KeepsDeletedPathOfHeavyRename(t *testing.T) {
 	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\nfunc a() {}\nfunc b() {}\nfunc c() {}\n"}, "seed test")
 	runGit(t, dir, "branch", "-f", "main")
 	start := headCommit(t, dir)
+	// 先纯改名再重写，分两个提交：log 不加 --no-renames 时只列新路径，正是要防的形态。
 	runGit(t, dir, "mv", "x_test.go", "y_test.go")
-	writeCommitSource(t, dir, map[string]string{"y_test.go": "package main\n\n// fully rewritten\nfunc z() {}\n"}, "rename and rewrite test")
+	runGit(t, dir, "commit", "-m", "rename test")
+	writeCommitSource(t, dir, map[string]string{"y_test.go": "package main\n\n// fully rewritten\nfunc z() {}\n"}, "rewrite test")
 	runGit(t, dir, "checkout", "main")
 	writeCommitSource(t, dir, map[string]string{"base_only.go": "package main\n"}, "base work")
 	runGit(t, dir, "checkout", "feat/testcov")
@@ -259,5 +270,77 @@ func TestExcludeMergedInFiles_GitFailureUnchanged(t *testing.T) {
 	got := ExcludeMergedInFiles(dir, "0000000000000000000000000000000000000000", in)
 	if !slices.Equal(got, in) {
 		t.Fatalf("git failure → input must be returned unchanged, got %v want %v", got, in)
+	}
+}
+
+// TestExcludeMergedInFiles_KeepsOctopusSideBranch: an octopus merge of base and the task's own side branch is not a base-side merge; the side branch's test deletion stays, whatever the parent order.
+//
+// TestExcludeMergedInFiles_KeepsOctopusSideBranch：同时合并基线与本任务侧分支的章鱼
+// 合并不算基线合并；不论父提交顺序，侧分支上的测试删除都保留。
+func TestExcludeMergedInFiles_KeepsOctopusSideBranch(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\nfunc TestSeed() {}\n"}, "seed test")
+	runGit(t, dir, "branch", "-f", "main")
+	start := headCommit(t, dir)
+	runGit(t, dir, "checkout", "-b", "side")
+	runGit(t, dir, "rm", "-q", "x_test.go")
+	runGit(t, dir, "commit", "-m", "side deletes test")
+	runGit(t, dir, "checkout", "main")
+	writeCommitSource(t, dir, map[string]string{"base_only.go": "package main\n\nfunc base() {}\n"}, "base work")
+	runGit(t, dir, "checkout", "feat/testcov")
+	writeCommitSource(t, dir, map[string]string{"own.go": "package main\n\nfunc own() {}\n"}, "task own work")
+	runGit(t, dir, "merge", "--no-edit", "main", "side")
+	out, err := exec.Command("git", "-C", dir, "rev-list", "--parents", "-n", "1", "HEAD").Output()
+	if err != nil {
+		t.Fatalf("git rev-list --parents: %v", err)
+	}
+	if got := strings.Fields(string(out)); len(got) != 4 {
+		t.Fatalf("fixture: HEAD must be an octopus merge with 3 parents, got %v", got)
+	}
+
+	committed := committedSince(t, dir, start)
+	if !slices.Contains(committed, "x_test.go") {
+		t.Fatalf("fixture: net diff must show x_test.go deleted, got %v", committed)
+	}
+	got := ExcludeMergedInFiles(dir, start, committed)
+	if !slices.Contains(got, "x_test.go") {
+		t.Errorf("test deletion from the task's side branch must stay despite the octopus merge, got %v", got)
+	}
+}
+
+// TestExcludeMergedInFiles_LocalBaseUntrustedWithRemote: with an origin/main present, local main is not trusted as base — a test deletion committed on local main and merged in stays — while files merged from origin/main are still dropped.
+//
+// TestExcludeMergedInFiles_LocalBaseUntrustedWithRemote：有 origin/main 时不把本地
+// main 当基线——在本地 main 上提交的测试删除合并进来后仍保留；从 origin/main 合并
+// 带入的文件照常剔除。
+func TestExcludeMergedInFiles_LocalBaseUntrustedWithRemote(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	writeCommitSource(t, dir, map[string]string{"x_test.go": "package main\n\nfunc TestSeed() {}\n"}, "seed test")
+	runGit(t, dir, "branch", "-f", "main")
+	start := headCommit(t, dir)
+	writeCommitSource(t, dir, map[string]string{"own.go": "package main\n\nfunc own() {}\n"}, "task own work")
+	runGit(t, dir, "checkout", "-b", "upstream", start)
+	writeCommitSource(t, dir, map[string]string{"base_only.go": "package main\n\nfunc base() {}\n"}, "upstream work")
+	runGit(t, dir, "update-ref", "refs/remotes/origin/main", "upstream")
+	runGit(t, dir, "checkout", "main")
+	runGit(t, dir, "merge", "--ff-only", "upstream")
+	runGit(t, dir, "rm", "-q", "x_test.go")
+	runGit(t, dir, "commit", "-m", "local main deletes test")
+	runGit(t, dir, "checkout", "feat/testcov")
+	runGit(t, dir, "merge", "--no-edit", "origin/main")
+	runGit(t, dir, "merge", "--no-edit", "main")
+
+	committed := committedSince(t, dir, start)
+	for _, f := range []string{"x_test.go", "base_only.go"} {
+		if !slices.Contains(committed, f) {
+			t.Fatalf("fixture: net diff must include %s, got %v", f, committed)
+		}
+	}
+	got := ExcludeMergedInFiles(dir, start, committed)
+	if !slices.Contains(got, "x_test.go") {
+		t.Errorf("deletion merged from local main must stay when origin/main exists, got %v", got)
+	}
+	if slices.Contains(got, "base_only.go") {
+		t.Errorf("file merged in from origin/main must be dropped, got %v", got)
 	}
 }

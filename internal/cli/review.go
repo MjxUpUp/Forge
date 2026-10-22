@@ -76,7 +76,7 @@ func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline
 // （保守：不剔除）。
 func reviewMergedInFiles(root, baseline string) map[string]bool {
 	drop := map[string]bool{}
-	if n, err := exec.Command("git", "-C", root, "rev-list", "--merges", "--count", baseline+"..HEAD").Output(); err != nil || strings.TrimSpace(string(n)) == "0" {
+	if n, err := exec.Command("git", "-C", root, "rev-list", "--first-parent", "--merges", "--count", baseline+"..HEAD").Output(); err != nil || strings.TrimSpace(string(n)) == "0" {
 		return drop
 	}
 	out, err := exec.Command("git", "-C", root, "diff", "--name-only", baseline+"..HEAD").Output()
