@@ -8,7 +8,7 @@ tier: mini
 # 修复方案 | 逃生舱审计与裁决 + 文档卫生批（2026-10）
 
 ## TL;DR
-#129 在 `docs/design/compat-commitments.md` 第二节第 5 条登记了 7 条已知例外。本批处理其中 6 条（scope 分支并入复发升硬的裁决）：两处逃生补审计行、两个逃生 env 入册、宿主提升文案标明身份、三处显式出口与 bundle 验签无逃生记裁决；同时新登记 1 条（checklist `drop` 与 `abort --detach-deps` 不写审计行）。另外清理冲突清单里的纯文档问题：命令面记账、方案状态字段、23 份文档缺状态行、过期路径与取代标注、hook 计数、forge-dsh README 自相矛盾。不新增阻断位点，不改任何门禁的放行条件；新增的只有审计行和 roster 条目。
+#129 在 `docs/design/compat-commitments.md` 第二节第 5 条登记了 7 条已知例外。本批处理其中 6 条（scope 分支并入复发升硬的裁决）：两处逃生补审计行、两个逃生 env 入册、宿主提升文案标明身份、三处显式出口与 bundle 验签签名不符无逃生记裁决；同时新登记 2 条（checklist `drop` 与 `abort --detach-deps` 不写审计行；bundle require-signed 拒收的出口不写审计行）。另外清理冲突清单里的纯文档问题：命令面记账、方案状态字段、23 份文档缺状态行、过期路径与取代标注、hook 计数、forge-dsh README 自相矛盾。不新增阻断位点，不改任何门禁的放行条件；新增的只有审计行和 roster 条目。
 
 ## 问题与目标
 - task-verify Stop 有界阻断的逃生 `FORGE_TASK_VERIFY_STOP=0` 生效时整段跳过，不留 checklog（`internal/hooks/embed_quality.go`），拒绝文案也没有指向兼容契约。
@@ -101,7 +101,7 @@ tier: mini
 ### 关键取舍
 - 不做（只登记例外）：否决。例外清单写明「修复前不得被援引为先例」，长期挂着会让第 5 条的约束形同虚设。
 - 复发升硬按逃生舱处理（入 roster、留审计），而不是改写成「强度偏好」：它确实解除了 BLOCKED，按第 5 条判别顺序属于 ① 类的逃生。
-- 四处无逃生位点记裁决，而不是补 env：审查前置的出口是 `review pass`（留审查 stamp，基线后变更另记 self-refresh 审计）；checklist 的 `drop` 与上游依赖的 `abort --detach-deps` 是显式出口命令，但目前不写 checklog，登记为已知例外待补；bundle 验签的逃生等于接受伪造。
+- 四处位点记裁决，而不是补 env：审查前置的出口是 `review pass`（每次写审查记录，基线后变更另记 self-refresh 审计）；checklist 的 `drop` 与上游依赖的 `abort --detach-deps` 是显式出口命令，但目前不写 checklog，登记为已知例外待补；bundle 验签签名不符无逃生（逃生等于接受伪造），require-signed 拒收另有出口、同样缺审计行，已登记。
 - 审计行每会话每任务只写一次（marker 按会话 + 任务去重），与 gate-cmd-form 逃生同款，避免逃生期间每次 Stop 都刷一行。
 
 ## 验证与回滚

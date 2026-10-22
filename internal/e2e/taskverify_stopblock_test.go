@@ -151,6 +151,16 @@ func TestTaskVerifyStopHook_BoundedBlockOnUncommittedTaskWork(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load checklog for task: %v", err)
 	}
+	// 先确认真实审计行确实挂在本任务上，否则下面的判定会空洞通过。
+	stopEsc := 0
+	for _, e := range taskEntries {
+		if e.Check == checklog.CheckEscapeHatch && e.Meta["escape.gate"] == "task-verify-stop" {
+			stopEsc++
+		}
+	}
+	if stopEsc != 1 {
+		t.Fatalf("the hook's escape row must be attributed to task %q, got %d such rows", ref, stopEsc)
+	}
 	if checklog.BuildEvidenceChain(taskEntries, ref).UsedEscapeHatch {
 		t.Fatal("the task-verify Stop escape row written by the hook must be classified as a rhythm escape (no Strength cap)")
 	}
