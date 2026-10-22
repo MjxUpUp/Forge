@@ -97,12 +97,13 @@ func checkVerifyTestCoverage(root string, state *TaskState, gitChanged []string)
 		// 复发驱动升硬（recurrent.go）：advisory→hard 仅当两轴皆真才触发——项目 testing 维度历史
 		// 低分 ≥阈值次（advisory 自律在此已被证明失效）且本任务仍有未测源码。test-coverage 自身
 		// 逃生（FORGE_TEST_COVERAGE / per-task override）由 CheckTestCoverage 内部返回 ok=true 处理，
-		// 逃生任务永不进此分支；升硬后唯一出路是真补测试（预期）或下调复发门槛
-		// （FORGE_RECURRENT_HARDEN=disable，无 Strength 惩罚）。
-		if recurrentHardenEnabled() {
-			if cs := loadConclusions(root); dimRecurrent(cs, dimTesting, recurrentThreshold()) && len(missing) > 0 {
-				return GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 testing 维度已 %d 次低分（达到阈值 %d）——advisory 靠自律在此项目已被证明失效，本次 %d 个源文件仍无配对测试。%s出路：补测试后重跑；或 FORGE_TEST_COVERAGE=disable（降 evidence Weak；重证据任务按证据缩放豁免）；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, lowDimCounts(cs)[dimTesting], recurrentThreshold(), len(missing), formatMissing(missing))
+		// 逃生任务永不进此分支；升硬后唯一出路是真补测试（预期）或关闭复发升硬
+		// （FORGE_RECURRENT_HARDEN=disable——本来会升硬时落 escape-hatch 审计行，按逃生计价）。
+		if cs := loadConclusions(root); dimRecurrent(cs, dimTesting, recurrentThreshold()) && len(missing) > 0 {
+			if recurrentHardenEnabled() {
+				return GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 testing 维度已 %d 次低分（达到阈值 %d）——advisory 靠自律在此项目已被证明失效，本次 %d 个源文件仍无配对测试。%s出路：补测试后重跑；或 FORGE_TEST_COVERAGE=disable（降 evidence Weak；重证据任务按证据缩放豁免）；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory（留逃生审计）`, lowDimCounts(cs)[dimTesting], recurrentThreshold(), len(missing), formatMissing(missing))
 			}
+			recordRecurrentHardenEscape(root, state.TaskRef, dimTesting)
 		}
 		// P4 重复折叠：同 task 上轮 verify 的同 check 条目 Detail 与本轮完全相同 →
 		// stderr 只出 unchanged 一行（remin 实证：agent 原地 3 连跑，逐文件罗列重复
@@ -209,9 +210,12 @@ func checkVerifyScopeDrift(root string, state *TaskState, gitChanged []string) e
 			// 复发驱动升硬（recurrent.go）：scope-drift 设计上 advisory（影响预测召回率 ~44%，硬拦会
 			// 拒一半合法改动）。仅当项目 scope 复发 且 本次 drift 实质（≥严重阈值文件）两者皆真时升
 			// BLOCKED——单文件 drift 即便在复发项目也保持 advisory（正常预测失误）。
-			if recurrentHardenEnabled() && scopeDriftSevere(drift) {
+			if scopeDriftSevere(drift) {
 				if cs := loadConclusions(root); dimRecurrent(cs, dimScope, recurrentThreshold()) {
-					return GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 scope 维度已 %d 次低分（达到阈值 %d）——计划漂移已成系统性问题，本次 %d 个源文件超出 PlanScope 声明。出路：forge task scope add <glob> 收编实改；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory`, lowDimCounts(cs)[dimScope], recurrentThreshold(), len(drift))
+					if recurrentHardenEnabled() {
+						return GateBlocked(`task-verify 拒绝（复发升 HARD stop）：项目 scope 维度已 %d 次低分（达到阈值 %d）——计划漂移已成系统性问题，本次 %d 个源文件超出 PlanScope 声明。出路：forge task scope add <glob> 收编实改；或 FORGE_RECURRENT_HARDEN=disable 回退纯 advisory（留逃生审计）`, lowDimCounts(cs)[dimScope], recurrentThreshold(), len(drift))
+					}
+					recordRecurrentHardenEscape(root, state.TaskRef, dimScope)
 				}
 			}
 			what := "超出 PlanScope 声明"
@@ -225,4 +229,21 @@ func checkVerifyScopeDrift(root string, state *TaskState, gitChanged []string) e
 		}
 	}
 	return nil
+}
+
+// recordRecurrentHardenEscape records an escape-hatch row when FORGE_RECURRENT_HARDEN=disable lifts a recurrent HARD block that would otherwise have fired (compat-commitments §二 rule 5, class ①: an escape leaves an audit row and is priced like any other escape).
+//
+// recordRecurrentHardenEscape 在 FORGE_RECURRENT_HARDEN=disable 撤下本来会触发的复发
+// 升硬时落一行 escape-hatch 审计（compat-commitments 第二节第 5 条 ① 类：逃生留审计行，
+// 与其它逃生同价）。只在「本来会拦」时记录——未复发的项目关掉开关不产生任何行。
+func recordRecurrentHardenEscape(root, taskRef, dim string) {
+	recordAudit(root, &checklog.Entry{
+		Check:   checklog.CheckEscapeHatch,
+		Passed:  true,
+		Checked: true,
+		Level:   checklog.LevelWarn,
+		TaskRef: taskRef,
+		Detail:  "escape-hatch: recurrent " + dim + " HARD block bypassed (env FORGE_RECURRENT_HARDEN=disable)",
+		Meta:    map[string]string{"escape.gate": "recurrent-harden", "escape.reason": checklog.EscapeReasonEnv, "escape.owner": "env"},
+	})
 }

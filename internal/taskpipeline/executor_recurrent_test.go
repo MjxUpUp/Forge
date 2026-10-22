@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
@@ -92,7 +93,8 @@ func TestRecurrent_TestCoverage_NoHistoryStaysAdvisory(t *testing.T) {
 // TestRecurrent_TestCoverage_EscapeDisables: recurrence history present, but FORGE_RECURRENT_HARDEN=disable → reverts to pure advisory (PASS).
 //
 // TestRecurrent_TestCoverage_EscapeDisables：有复发历史，但 FORGE_RECURRENT_HARDEN=disable → 退回
-// 纯 advisory（PASS）。opt-out 逃生舱须生效且无 Strength 惩罚（表达项目偏好，非跳过验证）。
+// 纯 advisory（PASS），且本来会升硬的那一刻落一行 escape-hatch 审计（2026-10-22 裁决：按
+// compat 第二节第 5 条 ① 类逃生处理，与其它逃生同价）。
 func TestRecurrent_TestCoverage_EscapeDisables(t *testing.T) {
 	dir := setupRecurrentRepo(t)
 	seedRecurrentHistory(t, dir, dimTesting, 3)
@@ -104,6 +106,19 @@ func TestRecurrent_TestCoverage_EscapeDisables(t *testing.T) {
 	state := newVerifyState(t, dir, "escape")
 	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
 		t.Fatalf(`FORGE_RECURRENT_HARDEN=disable → 应回退 advisory PASS, got: %v`, err)
+	}
+	entries, err := checklog.LoadForTask(dir, state.TaskRef)
+	if err != nil {
+		t.Fatalf("load checklog: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Check == checklog.CheckEscapeHatch && e.Meta["escape.gate"] == "recurrent-harden" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("FORGE_RECURRENT_HARDEN=disable lifting a would-be block must leave an escape-hatch audit row for task %q", state.TaskRef)
 	}
 }
 

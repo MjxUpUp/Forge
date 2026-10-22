@@ -118,11 +118,22 @@ func TestTaskVerifyStopHook_BoundedBlockOnUncommittedTaskWork(t *testing.T) {
 		t.Fatalf("exhausted cap must fall back to advisory pass, err=%v\n%s", err, out)
 	}
 
-	// 4) 逃生:计数清零 + FORGE_TASK_VERIFY_STOP=0 → 不拦。
+	// 4) 逃生:计数清零 + FORGE_TASK_VERIFY_STOP=0 → 不拦,但留一行 escape-hatch
+	// 审计(每会话一次:再停不重复写)。
 	_ = os.WriteFile(stopBlockMarker(dir, sid), []byte("0"), 0o644)
 	out, err = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
 	if err != nil || strings.Contains(out, "有界阻断") {
 		t.Fatalf("env escape must disable the block, err=%v\n%s", err, out)
+	}
+	_, _ = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
+	escRows := 0
+	for _, e := range loadChecklogEntries(t, dir) {
+		if strings.Contains(e, `"check":"escape-hatch"`) && strings.Contains(e, `"escape.gate":"task-verify-stop"`) {
+			escRows++
+		}
+	}
+	if escRows != 1 {
+		t.Fatalf("env escape must leave exactly one escape-hatch audit row per session, got %d", escRows)
 	}
 
 	// 5) 窄条件:工作落盘(commit)后同样的任务态零阻断。

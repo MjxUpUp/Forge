@@ -38,4 +38,16 @@ func TestTaskVerifyHookCarriesBoundedBlockContract(t *testing.T) {
 			t.Errorf("TaskVerifyHook 缺审查修正段 %q", want)
 		}
 	}
+	// 逃生审计段（compat-commitments 第二节第 5 条 ④：有逃生 env 的须留审计行）：
+	// env 逃生在本来会阻断时每会话落一行 escape-hatch，拒绝文案指向兼容契约。
+	for _, want := range []string{
+		"taskverify-stop-escape-",                      // 逃生审计每会话一次的 marker
+		`"check":"escape-hatch"`,                       // 审计行的 check 名
+		`"escape.gate":"task-verify-stop"`,             // 审计行的门禁标识
+		"docs/design/compat-commitments.md 第二节第 5 条 ④", // 拒绝文案的规则指针
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("TaskVerifyHook 缺逃生审计段 %q", want)
+		}
+	}
 }
