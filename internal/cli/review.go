@@ -38,15 +38,18 @@ func reviewTestTouchedFiles(root string, state *taskpipeline.TaskState, priorBas
 
 // reviewWindowFiles 审查真实范围的文件口径：priorBaseline 非空用基线以来的
 // 变更（含已提交 + 工作树 + untracked——审查的真实范围）；空（首轮审查）
-// 回落任务窗口。
+// 回落任务窗口。基线之后合并了别的分支时，只经合并另一侧带入、且工作树里
+// 没再改的文件不算审查范围（taskpipeline.ExcludeMergedInFiles）；没有合并
+// 提交时结果不变。
 func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline string) []string {
 	if priorBaseline != "" {
 		if out, err := exec.Command("git", "-C", root, "diff", "--name-only", priorBaseline).Output(); err == nil {
+			mergedIn := reviewMergedInFiles(root, priorBaseline)
 			seen := map[string]bool{}
 			var files []string
 			add := func(name string) {
 				name = filepath.ToSlash(strings.TrimSpace(name))
-				if name != "" && !seen[name] {
+				if name != "" && !seen[name] && !mergedIn[name] {
 					seen[name] = true
 					files = append(files, name)
 				}
@@ -63,6 +66,42 @@ func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline
 		}
 	}
 	return taskpipeline.TaskChangedFiles(root, state)
+}
+
+// reviewMergedInFiles returns the files that changed in baseline..HEAD only through the merged-in side of merge commits and are not modified again in the working tree.
+//
+// reviewMergedInFiles 返回在 baseline..HEAD 内只经合并另一侧带入、且工作树里没再
+// 改动的文件集合。任何 git 调用失败都返回空集（保守：不剔除）。
+func reviewMergedInFiles(root, baseline string) map[string]bool {
+	drop := map[string]bool{}
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", baseline+"..HEAD").Output()
+	if err != nil {
+		return drop
+	}
+	var committed []string
+	for _, l := range strings.Split(string(out), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			committed = append(committed, l)
+		}
+	}
+	kept := map[string]bool{}
+	for _, f := range taskpipeline.ExcludeMergedInFiles(root, baseline, committed) {
+		kept[f] = true
+	}
+	worktree := map[string]bool{}
+	if wt, werr := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD").Output(); werr == nil {
+		for _, l := range strings.Split(string(wt), "\n") {
+			if l = strings.TrimSpace(l); l != "" {
+				worktree[l] = true
+			}
+		}
+	}
+	for _, f := range committed {
+		if !kept[f] && !worktree[f] {
+			drop[filepath.ToSlash(f)] = true
+		}
+	}
+	return drop
 }
 
 // forge review 让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。

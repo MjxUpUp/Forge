@@ -285,7 +285,9 @@ func taskChangedFiles(root string, state *TaskState) []string {
 						committed = append(committed, line)
 					}
 				}
-				for _, f := range excludeForeignCommitted(root, state, committed) {
+				// 合并带入（mergedin.go，2026-10-22）：任务分支中途合并基线后，
+				// 只经合并另一侧带进来的文件不是本任务的工作，先剔除再做跨任务归属。
+				for _, f := range excludeForeignCommitted(root, state, ExcludeMergedInFiles(root, state.HeadCommit, committed)) {
 					if !seen[f] {
 						seen[f] = true
 						files = append(files, f)
