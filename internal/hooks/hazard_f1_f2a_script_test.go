@@ -287,6 +287,10 @@ func TestHazardGuardScript_ConfirmChainedBlocks(t *testing.T) {
 	if !strings.Contains(out, "自助闭环") || !strings.Contains(out, "单独执行") {
 		t.Fatalf("block message must name the loop and the standalone form, got:\n%s", out)
 	}
+	// F.2b：单独执行的 confirm 也只接受真人终端——指引必须指向用户的终端。
+	if !strings.Contains(out, "请用户在自己的终端单独执行") {
+		t.Fatalf("block message must route the standalone confirm to the user's terminal, got:\n%s", out)
+	}
 	out2, err2 := runHazardScript(t, shimDir, "forge hazard log block something")
 	if err2 != nil {
 		t.Fatalf("non-chained forge hazard log must stay exempt, got block:\n%s", out2)

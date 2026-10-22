@@ -501,10 +501,10 @@ const (
 	// Meta["suggested"] 携带建议命令，harness-audit B1 据此测采纳率（10 分钟内执行同命令）。
 	// deterministic（forge 自身渲染）但属引导层 OBSERVATION——排除出证据强度分桶。
 	CheckNextHint CheckName = "next-hint"
-	// CheckGateCmdForm records the gate-cmd-form verdict for a Bash command that embeds a forge gate subcommand (design C): advisory in 1.56, BLOCKED from 1.58; Meta carries the classified form flags.
+	// CheckGateCmdForm records the gate-cmd-form verdict for a Bash command that embeds a forge gate subcommand (design C): advisory in 1.56, BLOCKED from 1.67; Meta carries the classified form flags.
 	//
 	// CheckGateCmdForm 记录嵌有 forge 门禁子命令的 Bash 命令的形态判定（设计 C）：1.56
-	// advisory、1.58 起 BLOCKED；Meta 携带形态标志（semicolon/pipe/multi_gate…）。
+	// advisory、1.67 起 BLOCKED；Meta 携带形态标志（semicolon/pipe/multi_gate…）。
 	// deterministic（gatecmdform 纯函数判定）；属过程形态 OBSERVATION——排除出证据强度分桶。
 	CheckGateCmdForm CheckName = "gate-cmd-form"
 )

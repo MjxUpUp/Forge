@@ -128,7 +128,8 @@ func buildQualitySkillContent(projectDir string, proto *protocol.Protocol) strin
 	sb.WriteString("| task not complete. Missing gates | 未通过所有门禁 | 先 `forge task gate task-complete --ref <ref>` |\n\n")
 
 	sb.WriteString("### 会话结束\n\n")
-	sb.WriteString("session 结束时 task-verify Stop hook 自动运行（advisory：仅记录问题到 checklog，不阻塞会话）。\n\n")
+	// 与 internal/hooks/embed_quality.go 的 Stop 有界阻断（exit 2，每会话 ≤3 次）同步。
+	sb.WriteString("session 结束时 task-verify Stop hook 自动运行：问题记 checklog（advisory）；活跃任务 + 未提交代码变更时有界拦截 Stop（每会话最多 3 次，超限回落 advisory；逃生 `FORGE_TASK_VERIFY_STOP=0`）——先过门禁 commit 落盘或 `forge task abort` 弃任务再停。\n\n")
 
 	sb.WriteString("`forge task complete` 成功后，通过 TaskUpdate 标记对应的 Claude Code task 为 completed。\n\n")
 

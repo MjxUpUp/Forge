@@ -395,15 +395,15 @@ const HazardGuardHook = `#!/bin/bash
 # human-in-the-loop 拦截。
 #
 # 检测高危命令（rm -rf / git push --force / DROP TABLE / TRUNCATE / kubectl delete /
-# DELETE 无 WHERE 等）→ block + 指引 agent 做授权判定（用户本回合已明确指令/确认过则
-# 直接 confirm，无需二次确认；否则用所在工具的提问确认机制获用户确认）→
-# forge hazard confirm 登记限时（5min）标记 → 重试原命令 → 本 hook 见标记放行。
+# DELETE 无 WHERE 等）→ block + 指引 agent 向用户说明风险、请用户在自己的终端运行
+# forge hazard confirm（F.2b：confirm 拒绝非真人终端，agent 不能自助确认）→
+# 登记限时（5min）标记 → 重试原命令 → 本 hook 见标记放行。
 #
 # 免 HITL 的自动豁免（2026-08 两周 usage 复盘，详注在各判定函数上）：rm 目标全在
 # 一次性临时区（/tmp、/var/folders、/private/tmp、$TMPDIR 子路径、本命令串可验证的
 # mktemp 变量）；危险串仅在引号/注释/多行字符串内（数据上下文，exec 包裹除外）。
 #
-# 为什么是 HITL 而非硬 block 或静默放行：硬 block 误伤合法高危操作（删 build 目录），
+# 为什么是 HITL（阻断，放行权在人）而非无条件硬 block 或静默放行：无条件硬 block 误伤合法高危操作（删 build 目录），
 # 静默放行失守；HITL 要求用户明确知情确认。Forge hook 模型只有 approve/block、调不起
 # 各工具私有的确认弹窗，所以靠 block + additionalContext 指引 + forge hazard confirm
 # 限时标记闭环（见 internal/hazard + internal/cli/hazard.go）。
@@ -422,9 +422,10 @@ COMMAND="${FORGE_COMMAND:-}"
 # FORGE_ALLOW_HAZARD env 豁免已移除（周复盘 2026-08：agent 自我放行滥用——hook 只拦
 # 别人拦不了自己，且行内前缀形式 FORGE_ALLOW_HAZARD=1 cmd 由宿主进程持有、hook 进程
 # 拿不到 env，两种形式行为不一致）。confirm 链（events.jsonl 审计 + 5min TTL）是唯一
-# 放行路径，测试/CI 同样走 forge hazard confirm。
+# 放行路径；confirm 只接受真人终端（F.2b），无真人终端的环境（CI 等）须在命令层避开高危形态。
 
-# 豁免 forge hazard 命令本身：agent 运行 forge hazard confirm "rm -rf x" 登记确认时，
+# 豁免 forge hazard 命令本身：运行 forge hazard confirm "rm -rf x" 登记确认时（F.2b 起 confirm
+# 只接受真人终端，但 agent 的误调用同样要先穿过本 hook，豁免语义不变），
 # 这个 Bash 命令的 FORGE_COMMAND 含 "rm -rf" 会被自己拦——必须豁免 forge hazard 前缀。
 # forge hazard 只登记/查询标记，不执行传入的命令串，豁免安全。
 case "$COMMAND" in
@@ -434,7 +435,7 @@ case "$COMMAND" in
     # confirm 子命令拒绝；log/status/confirmed 等 hook 内部写不带闭环语义，豁免不变。
     case "$COMMAND" in
       "forge hazard confirm"*"&&"*|*"forge hazard confirm"*";"*|*"forge hazard confirm"*"|"*)
-        echo "FAIL [hazard-guard] hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这是拦截要切断的自助闭环（首发即 blocked，docs/design/compat-commitments.md §二.1②/§二.3 形态门禁豁免）。请单独执行：forge hazard confirm --last"
+        echo "FAIL [hazard-guard] hazard confirm 不得与其他命令链在同一 Bash 调用（; / | / &&）——这是拦截要切断的自助闭环（首发即 blocked，docs/design/compat-commitments.md §二.1②/§二.3 形态门禁豁免）。请用户在自己的终端单独执行：forge hazard confirm --last"
         exit 1
         ;;
     esac
@@ -1402,10 +1403,9 @@ echo "命令: $HEREDOC_ORIG"
 echo "指纹: ${FP:-<unknown>}"
 echo ""
 echo "如确需执行："
-echo "  1. 授权判定：若用户在本回合已明确指令/确认过该操作（用户直接要求执行，或你"
-echo "     此前已通过提问获得确认），无需二次确认——直接跳到第 2 步；否则先用你所在"
-echo "     工具的提问确认机制向用户说明该操作的风险，获得用户的明确确认"
-echo "  2. 运行: forge hazard confirm --last"
+echo "  1. 向用户说明该操作的风险。hazard confirm 只接受真人终端——你的 Bash 不是"
+echo "     终端，自行运行会被拒（F.2b），不要尝试"
+echo "  2. 请用户在自己的终端运行: forge hazard confirm --last"
 echo "     （确认最近一条被拦命令——从事件日志取指纹，零复制转写，不会抄错；"
 echo "      也可用 forge hazard confirm --fingerprint \"$FP\" 回传上方 hex 指纹，"
 echo "      勿传命令串——shell 会吃掉其中的引号致指纹失真）"

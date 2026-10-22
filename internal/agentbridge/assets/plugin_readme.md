@@ -92,7 +92,7 @@ User-level hooks fire in every Claude Code project. Since P2 the takeover defaul
 
 | Host | Plugin install | Gate wiring | Notes |
 |------|----------------|-------------|-------|
-| **Claude Code** | `plugin.json` marketplace | automatic (user-level) | full hooks; auto-init via `init-suggest` SessionStart hook |
+| **Claude Code** | `plugin.json` marketplace | automatic (user-level) | full hooks; first-session takeover via `init-suggest` SessionStart hook (default: ask once) |
 | **Codex (CLI / App)** | marketplace (path not officially confirmed) | `forge init --agents codex` | if marketplace path fails, fall back to manual |
 | **Cursor** | marketplace | `forge init --agents cursor` | Cursor plugin model carries skills, not Claude-shape hooks; user-level `~/.cursor/hooks.json`, zero project writes |
 | **GitHub Copilot (CLI / VS Code)** | marketplace | automatic via plugin `hooks.json` (CLI); VS Code unverified | plugin-root hooks.json (Wave 2c); VS Code reads Claude-format hooks from `hooks/hooks.json` only (see caveat above); `forge init --agents copilot` remains a no-op |

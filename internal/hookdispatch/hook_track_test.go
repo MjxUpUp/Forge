@@ -365,8 +365,10 @@ func TestRunTestNudgeHook_Tier3GateConsequence(t *testing.T) {
 	if err := json.Unmarshal([]byte(out8), &payload); err != nil {
 		t.Fatalf("nudge output must be hook JSON, got %q: %v", out8, err)
 	}
-	if msg := payload.HookSpecificOutput.AdditionalContext; !strings.Contains(msg, "At >=3 untested source files with zero assertions, the task-complete backstop BLOCKs the task.") {
-		t.Errorf("tier-3 nudge must state the FULL gate-consequence fact (>=3, task-complete backstop), got: %q", msg)
+	// 阈值从 taskpipeline 导出常量取（与门禁同一真相源）；完整事实句仍逐字钉住。
+	want := fmt.Sprintf("At >=%d untested source files with zero assertions, the task-complete backstop BLOCKs the task.", taskpipeline.TestCoverageHardGateThreshold)
+	if msg := payload.HookSpecificOutput.AdditionalContext; !strings.Contains(msg, want) {
+		t.Errorf("tier-3 nudge must state the FULL gate-consequence fact %q, got: %q", want, msg)
 	}
 	entries := findTrackEntries(t, root, checklog.CheckTestNudge)
 	if len(entries) != 3 {

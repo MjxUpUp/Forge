@@ -2,7 +2,7 @@
 
 状态：P0 已落地（feat/leverage-p0：L5 冻结仪表 / L1 wedge-drill / L2 数据形状；2026-09-07 独立评审 PASS 88/100）。**P1 L2 判定分派已落地**（feat/assertion-dispatch，2026-09-20，见文末「L2 P1 落地标记」）；L3 判官/golden 扩容排期中（同批方法论三批次之一）；L4 未排期。
 依据：六杠杆点战略诊断（2026-09-07 会话分析：DL 调研 / 《系统之美》/ 控制论 / 管理学 / 软件工程史 → 项目体检）；本文 file:line 均为现状代码实证。
-总原则：只投当前瓶颈（验证与规格），不在非瓶颈（生成 / 自举基建）加码；一切新机制守既有宪法——advisory fail-open、HARD 只守事实、逃生舱 env-disable-able 落 checklog 审计行、单一真相源 guard 钉住。
+总原则：只投当前瓶颈（验证与规格），不在非瓶颈（生成 / 自举基建）加码；一切新机制守既有宪法——advisory fail-open、HARD 须落进阻断正当性分类（compat-commitments.md 第二节第 5 条，事实缺失是其中一类）、逃生舱 env-disable-able 落 checklog 审计行、单一真相源 guard 钉住。
 
 ---
 
