@@ -1,5 +1,7 @@
 # hostcap 行为注册表收尾：数据/行为分离的完成态（2026-09）
 
+状态：已落地。
+
 - 依据：`internal/hostcap/hostcap.go` 包文档自述（行为函数因 import 环留在 hookdispatch 侧）；插件哲学调研（`plugin-philosophy.md` 第二节/第四节）；宿主接线考古（research run_dir dive_07.md）。
 - 范围：把"接一个新宿主要改 N 处、漏一处即归因断点"的温床清干净——数据（hostcap 注册表）与行为（hookdispatch 函数列）分离的**完整性执法**。不做 DI 容器（裁断见第四节）。
 - 定位：`plugin-philosophy.md` seam 三分法中 "swappable seam" 的收尾落地。

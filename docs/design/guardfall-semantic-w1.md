@@ -1,5 +1,7 @@
 # W1 Spec：hazard-guard 语义分词层（GuardFall 五类绕过补漏）
 
+状态：已实施（`cfe78356`）。
+
 ## 问题（当前断点）
 
 Adversa AI GuardFall（2026-06-30）实测 11 个开源 agent 的命令 guard，10 个被五类

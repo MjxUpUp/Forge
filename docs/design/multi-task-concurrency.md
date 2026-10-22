@@ -1,5 +1,7 @@
 # multi-task-concurrency：同 repo 多任务并发与任务接续总体设计
 
+状态：已落地（T1–T10，`2e1b183e`）。文中的 `internal/cli/hook.go`、`internal/cli/task.go` 已在后续拆包中分别移到 `internal/hookdispatch/`、`internal/clitask/`，行号以拆包前为准。
+
 > 特性分支：`feat/multi-task-concurrency`（单一 goal；执行期拆多个任务，见 §12）。本文记录六层架构的完整设计决策与依据；代码注释只保留局部 rationale，全局权衡在这里。
 >
 > 调研基线（2026-08）：业界生产系统（Claude Code worktrees、Codex rollout、Cursor 云 VM、Amp thread）收敛出的模型 + STORM（arXiv 2605.20563）与 durable execution（Temporal 系）的理论对应物。出处见 §2.4。

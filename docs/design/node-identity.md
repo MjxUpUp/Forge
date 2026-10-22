@@ -1,5 +1,7 @@
 # node-identity：节点身份与信任模型设计
 
+状态：已落地（Phase 0）。
+
 > 特性分支：`feat/node-identity`。多机器方向的 Phase 0 地基之一（姊妹篇：`docs/design/sync-convergence.md`）。本文记录节点身份 + 信任 profile 的完整设计决策与依据，代码注释只保留局部 rationale，全局权衡在这里。
 
 ## 1. 问题

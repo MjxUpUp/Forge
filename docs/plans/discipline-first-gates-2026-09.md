@@ -1,5 +1,7 @@
 # 纪律第一防线：门禁时间再分布（2026-09-17 立项）
 
+状态：已实施（P1 `122fe1c9`，P2–P4 `81a8e107`）。
+
 > 背景（remin，`~/.forge/projects/9fe95966d4ec`，2026-09-17 单会话 7 个 task_ref，
 > checklog 300 行）：按本节口径，门禁类 check ∈ {test-coverage-gate, scope-drift,
 > cheat-scan, unused-scan, test-capability-scan, acceptance, artifact-chain,

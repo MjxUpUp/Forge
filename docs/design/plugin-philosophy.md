@@ -1,5 +1,7 @@
 # 插件哲学：扩展面的取舍（2026-09）
 
+状态：部分落地——立场已执行；采纳项中的 disposer 契约尚未编码。
+
 - 依据：Cordis/dsh 深度调研（`~/.forge/research/cordis-koishi-plugin-philosophy-20260916-1224/report.md`，2026-09-16；7 维度并行深挖，关键断言 ≥2 独立源或一手 registry/API 互证）+ Forge 本地架构考古（同目录 `dive_07.md`）。
 - 范围：把调研裁断出的三个判断固化为团队共识——**不学"一切皆插件"**（执法协议需静态可审计）；**采纳** Cordis 的 disposer 契约与 seam 三分法；为每个判断挂上重估判据（deferred 三要素，见 `evolution-discipline-norms.md` ②）。本文是共识与决策留痕，不携带实现；落地方案在关联文档。
 - 关联落地：`hostcap-behavior-registry.md`（行为注册表收尾）、`compat-bridge-face.md`（compat 第七面）、`forge-dsh-provider-roadmap.md`(forge-dsh 生态位)。
@@ -26,7 +28,7 @@ Forge 的扩展面是**执法协议**，不是功能市场。因此：
 
 | 子主张 | 裁决 | 理由 / Forge 对应物 |
 |---|---|---|
-| 一切领域能力做成可卸载组件 | **拒**（内核侧） | 3 道门禁 / 23 hook / 检查规则是执法协议本体，静态可枚举是 compat 棘轮的前提 |
+| 一切领域能力做成可卸载组件 | **拒**（内核侧） | 3 道门禁 / hook 名册（数量以 `internal/hooks/settings.go` 的 ForgeHookSpec 为准）/ 检查规则是执法协议本体，静态可枚举是 compat 棘轮的前提 |
 | 每个注册持有逆操作（revertible effects） | **采** | 见第三节 disposer 契约 |
 | 服务依赖声明、生命周期由依赖表达 | **部分采** | gate 前置链已是 HARD stop（executor_check_common.go:43-51）；不做运行时 truthy 等待 |
 | 显式标注不可换层（core spine） | **采** | 见第四节 seam 三分法 |
@@ -57,7 +59,7 @@ Forge 的扩展面是**执法协议**，不是功能市场。因此：
 
 | 分类 | 定义 | Forge 现状标注 |
 |---|---|---|
-| **core spine**（不可换） | 执法协议本体；变更走 advisory→BLOCKED 升档承诺（mechanism-hardening P1-3） | 3 道门禁、23 hook 名册、cheat-scan 7 模式、doclint D1-D11、21 条 skill 安全规则、CheckName/逃生舱 roster |
+| **core spine**（不可换） | 执法协议本体；变更走 advisory→BLOCKED 升档承诺（mechanism-hardening P1-3） | 3 道门禁、hook 名册（ForgeHookSpec，2026-10 为 27 个名字 / 35 个条目）、cheat-scan 7 模式、doclint D1-D11、21 条 skill 安全规则、CheckName/逃生舱 roster |
 | **swappable seam**（可换实现） | 接口稳定、实现可替换/可扩展 | hostcap 能力注册表（数据）、hookdispatch 的 stdinNormalizers / 输出 emitter（行为列）、agentbridge Translator（每宿主一个文件）、persistence（jsonl/sqlite 类） |
 | **composition point**（数据声明组合） | 用户/配置在运行时组合，无需改内核 | schema.yaml 产物链档位、skill frontmatter triggers（半开：命名 condition 词汇表在内核）、conventions profile、per-task override、profile 三档 |
 | **外部桥**（新增第四格，Forge 特有） | 内核外进程内接线层，双端契约 | plugins/forge-dsh（Cordis 包装层）、plugins/forge 宿主接线包 |
