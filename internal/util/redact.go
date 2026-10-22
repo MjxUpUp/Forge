@@ -4,12 +4,11 @@ import "regexp"
 
 // redact.go — 触发审计摘录的 secret 脱敏（skill-trigger v2）。
 //
-// 设计边界（对抗辩论 R4/R7 的落地）：摘录只服务误报 triage 与 golden case 挖矿，
+// 设计边界（对抗辩论 R4/R7 的落地）：摘录只服务误报 triage，
 // 默认不采集（FORGE_TRIGGER_EXCERPT=1 才开）；即便开启也要先过本脱敏——组织安全
 // 政策禁止凭证/PII 落日志。本函数是尽力而为的机械层：按已知 token 形态 + 赋值
-// 形式匹配，不承诺覆盖全部敏感形态——所以摘录还有长度上限、且挖矿产物在进
-// golden 前仍需人工改写（mine 的 --sanitize 只是把"约定"升为"机械步骤"，不是
-// 人工审核的替代）。
+// 形式匹配，不承诺覆盖全部敏感形态——所以摘录还有长度上限；摘录若要进 golden
+// 用例，仍需人工改写（原 `skills mine --sanitize` 草稿挖矿已随命令删除）。
 
 // redactPatterns 已知 secret 形态：OpenAI/Anthropic 风格 key、GitHub token、AWS AKIA、
 // JWT、Slack token、赋值形式（api_key=/token:/secret=/password= 后跟非空白串，允许可选
