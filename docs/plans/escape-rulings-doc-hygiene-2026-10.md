@@ -15,16 +15,16 @@ tier: mini
 - 复发升硬的逃生 `FORGE_RECURRENT_HARDEN=disable` 实际解除 BLOCKED，但 `internal/compat/compat_test.go` 把它白名单为「非 gate-bypass」，生效时不留审计行；而 `internal/checklog/types.go` 的 `CheckEscapeHatch` 注释又把它列为逃生舱。
 - 宿主提升逃生 `FORGE_ADVISORY_PROMOTION=soft`（`internal/hookdispatch/hook_emitters.go`）不在 `compat.EscapeEnvs`；提升后的 task-guard 拒绝文案（`internal/hooks/embed_task.go`）没标明是宿主提升，也没给逃生。
 - 审查前置、checklist、上游依赖、bundle 验签四处没有逃生舱，也没有裁决记录。
-- 冲突清单（2026-10-22 全景盘点的产物，只在本机、未入库）里的纯文档问题：B6 hook 计数、B7 命令面记账、B8 forge-dsh 零依赖、D1/D4 取代标注；废弃清单里的状态字段与过期路径。
+- 冲突清单（2026-10-22 全景盘点的产物，只在本机、未入库）里的纯文档问题：hook 计数、命令面记账、forge-dsh「零依赖」说法、取代标注；废弃清单里的状态字段与过期路径。
 
 ## Non-goals
 - 不处理 freeze-guard 与项目级自保护的真人终端校验（已知例外第 4 条），那需要改出口命令的行为。
 - 宿主提升是否适用预告期，本批记裁决而不改代码。
-- 不改 `skills/CONVENTIONS.md` 以外与 #128 重叠的文件；`skills/CONVENTIONS.md` 的计数在 #128 合并后再改。
+- 不改与 #128 重叠的文件；唯一重叠的 `skills/CONVENTIONS.md` 已在 #128 合并后（`1ebad14f`）改完。
 - 历史依据行（引用当时口径的段落）保持原样，只加批注。
 
 ## 需求与验收
-- REQ-1 task-verify Stop 的逃生生效且本来会阻断时，每会话写一行 escape-hatch 审计；拒绝文案指向兼容契约
+- REQ-1 task-verify Stop 的逃生生效且本来会阻断时，每会话每任务写一行 escape-hatch 审计；拒绝文案指向兼容契约
   accept[REQ-1]: go test ./internal/e2e/ -run ^TestTaskVerifyStopHook_BoundedBlockOnUncommittedTaskWork$ -count=1 :: --- PASS: TestTaskVerifyStopHook_BoundedBlockOnUncommittedTaskWork (
   accept[REQ-1]: go test ./internal/hooks/ -run ^TestTaskVerifyHookCarriesBoundedBlockContract$ -count=1 :: --- PASS: TestTaskVerifyHookCarriesBoundedBlockContract (
 - REQ-2 `FORGE_RECURRENT_HARDEN` 入 `compat.EscapeEnvs`；它生效且本来会升硬时写 escape-hatch 审计行
@@ -32,10 +32,10 @@ tier: mini
   accept[REQ-2]: go test ./internal/compat/ -run ^TestEscapeRosterComplete$ -count=1 :: --- PASS: TestEscapeRosterComplete (
 - REQ-3 `FORGE_ADVISORY_PROMOTION` 入 roster；宿主提升后的 task-guard 拒绝文案标明是宿主提升并给出逃生 env
   accept[REQ-3]: go test ./internal/hookdispatch/ -run ^TestHook_DshTaskGuardNoTaskBlocks$ -count=1 :: --- PASS: TestHook_DshTaskGuardNoTaskBlocks (
-- REQ-4 compat-commitments §三 记录审查前置、checklist、上游依赖、bundle 验签的无逃生裁决与宿主提升预告期裁决，已知例外清单同步收缩；compat 快照重钉
+- REQ-4 compat-commitments §三 记录审查前置、checklist、上游依赖、bundle 验签的无逃生裁决与宿主提升预告期裁决，已知例外清单同步收缩；compat 快照重钉（验收只证明条目存在与快照一致，裁决内容由独立文档评审核验）
   accept[REQ-4]: grep -n 逃生舱审计与裁决批 docs/design/compat-commitments.md :: 逃生舱审计与裁决批
   accept[REQ-4]: go test ./internal/cli/ -run ^TestCompatSnapshotMatchesGolden$ -count=1 :: --- PASS: TestCompatSnapshotMatchesGolden (
-- REQ-5 compat-commitments 第五节补记 v1.57、v1.63、v1.79 三次命令面超预算
+- REQ-5 compat-commitments 第五节补记 v1.57、v1.63、v1.79 三次未当期记账的命令面增量（验收只证明条目存在，内容由独立文档评审核验）
   accept[REQ-5]: grep -n eval-rule-ledger docs/design/compat-commitments.md :: eval-rule-ledger
 - REQ-6 文档卫生：23 份设计和方案文档补状态行；方案状态字段与取代标注更新；过期路径改正；hook 计数与 README 表对齐；forge-dsh README 依赖说法自洽
   accept[REQ-6]: go test ./internal/docsconsistency/ -count=1 :: ok
@@ -102,10 +102,10 @@ tier: mini
 - 不做（只登记例外）：否决。例外清单写明「修复前不得被援引为先例」，长期挂着会让第 5 条的约束形同虚设。
 - 复发升硬按逃生舱处理（入 roster、留审计），而不是改写成「强度偏好」：它确实解除了 BLOCKED，按第 5 条判别顺序属于 ① 类的逃生。
 - 四处无逃生位点记裁决，而不是补 env：审查前置的出口是 `review pass`（留审查 stamp，基线后变更另记 self-refresh 审计）；checklist 的 `drop` 与上游依赖的 `abort --detach-deps` 是显式出口命令，但目前不写 checklog，登记为已知例外待补；bundle 验签的逃生等于接受伪造。
-- 审计行每会话只写一次（marker 去重），与 gate-cmd-form 逃生同款，避免逃生期间每次 Stop 都刷一行。
+- 审计行每会话每任务只写一次（marker 按会话 + 任务去重），与 gate-cmd-form 逃生同款，避免逃生期间每次 Stop 都刷一行。
 
 ## 验证与回滚
 - `go vet ./...` 无输出；`go test ./... -count=1 -timeout 30m` 退出码 0（64 个包 ok，合并 #128 前跑）；合并 #128 后重跑了 skillsqa、agentbridge、docsconsistency 与 compat 快照守卫。
-- 复发升硬的逃生现在按逃生计价：本来会升硬时，关掉开关的任务分数封顶 89、证据 Weak。这是对原设计「不加 Strength 惩罚」的有意改变，协议文案已同步。
+- 复发升硬的逃生现在按逃生计价：本来会升硬时，关掉开关的任务分数封顶 89、证据 Weak（重证据任务按证据缩放豁免）。这是对原设计「不加 Strength 惩罚」的有意改变，协议文案已同步。
 - task-verify Stop 的逃生按 ④ 类计价：分数封顶，证据强度不降（`internal/checklog/evidence.go` 把它和 work-activity 一样识别为节奏类逃生）。
 - 回滚即 revert 本分支的提交。新增的审计行只追加 checklog，不改既有键；compat 快照逃生面只增两项。

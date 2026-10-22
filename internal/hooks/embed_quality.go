@@ -422,7 +422,7 @@ fi
 # 一次性说明——本段置于 advisory flush/kimi 早退**之前**,执法面宿主均匀;
 # ②block 时清除 60s 节流戳——连续阻断由限额封顶(至多 3 连),而非被节流
 # 削弱成每分钟一次的急停提示(语义诚实化,只读审查披露项);
-# ③逃生 FORGE_TASK_VERIFY_STOP=0——本来会阻断时每会话落一行 escape-hatch 审计
+# ③逃生 FORGE_TASK_VERIFY_STOP=0——本来会阻断时每会话每任务落一行 escape-hatch 审计
 # (compat-commitments 第二节第 5 条 ④「有逃生 env 的须留审计行」,与 gate-cmd-form
 # 逃生同款 marker 去重)。gate PASS 不豁免:advisory 门(test-coverage)
 # 通过 ≠ 工作已落盘。每次 block 落一行 checklog fail(与 task-drift block 行

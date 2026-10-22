@@ -119,21 +119,34 @@ func TestTaskVerifyStopHook_BoundedBlockOnUncommittedTaskWork(t *testing.T) {
 	}
 
 	// 4) 逃生:计数清零 + FORGE_TASK_VERIFY_STOP=0 → 不拦,但留一行 escape-hatch
-	// 审计(每会话一次:再停不重复写)。
+	// 审计(每会话每任务一次:再停不重复写;限额已用完时本来就不会拦,不写;同会话
+	// 换一个任务 ref 再逃生,另写一行)。
+	countEsc := func() int {
+		n := 0
+		for _, e := range loadChecklogEntries(t, dir) {
+			if strings.Contains(e, `"check":"escape-hatch"`) && strings.Contains(e, `"escape.gate":"task-verify-stop"`) {
+				n++
+			}
+		}
+		return n
+	}
+	_ = os.WriteFile(stopBlockMarker(dir, sid), []byte("3"), 0o644)
+	_, _ = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
+	if n := countEsc(); n != 0 {
+		t.Fatalf("exhausted cap means no would-be block, so the escape must leave no audit row, got %d", n)
+	}
 	_ = os.WriteFile(stopBlockMarker(dir, sid), []byte("0"), 0o644)
 	out, err = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
 	if err != nil || strings.Contains(out, "有界阻断") {
 		t.Fatalf("env escape must disable the block, err=%v\n%s", err, out)
 	}
 	_, _ = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
-	escRows := 0
-	for _, e := range loadChecklogEntries(t, dir) {
-		if strings.Contains(e, `"check":"escape-hatch"`) && strings.Contains(e, `"escape.gate":"task-verify-stop"`) {
-			escRows++
-		}
+	if n := countEsc(); n != 1 {
+		t.Fatalf("env escape must leave exactly one escape-hatch audit row per session and task, got %d", n)
 	}
-	if escRows != 1 {
-		t.Fatalf("env escape must leave exactly one escape-hatch audit row per session, got %d", escRows)
+	_, _ = runStopBlockHook(t, dir, sid, ref+"-2", "FORGE_TASK_VERIFY_STOP=0")
+	if n := countEsc(); n != 2 {
+		t.Fatalf("a second task in the same session must get its own escape-hatch audit row, got %d", n)
 	}
 
 	// 5) 窄条件:工作落盘(commit)后同样的任务态零阻断。

@@ -1,6 +1,6 @@
 # W0 Proposal：档位 + 预算门 + 数据面，而不是直接删 hook
 
-状态：已实施（配套 spec：slim-w0-spec.md，`fa330b69`）。
+状态：已落地（配套 spec：slim-w0-spec.md，`fa330b69`）。
 
 ## 提案
 

@@ -1,6 +1,6 @@
 # Proposal：纪律第一防线——门禁时间再分布（2026-09-17）
 
-状态：已实施（配套正式方案：discipline-first-gates-2026-09.md）。
+状态：已落地（配套正式方案：discipline-first-gates-2026-09.md）。
 
 ## 问题（证据）
 
