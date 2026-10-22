@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
@@ -143,6 +144,15 @@ func TestTaskVerifyStopHook_BoundedBlockOnUncommittedTaskWork(t *testing.T) {
 	_, _ = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
 	if n := countEsc(); n != 1 {
 		t.Fatalf("env escape must leave exactly one escape-hatch audit row per session and task, got %d", n)
+	}
+	// bash 写出的真实审计行与 Go 侧 checklog.isRhythmEscapeHatch 闭环：④ 节奏类逃生不得把
+	// 证据降为 Weak（两侧各钉字面量会让同步改动漏网，这里用真实行收口）。
+	taskEntries, err := checklog.LoadForTask(dir, ref)
+	if err != nil {
+		t.Fatalf("load checklog for task: %v", err)
+	}
+	if checklog.BuildEvidenceChain(taskEntries, ref).UsedEscapeHatch {
+		t.Fatal("the task-verify Stop escape row written by the hook must be classified as a rhythm escape (no Strength cap)")
 	}
 	_, _ = runStopBlockHook(t, dir, sid, ref+"-2", "FORGE_TASK_VERIFY_STOP=0")
 	if n := countEsc(); n != 2 {

@@ -8,13 +8,13 @@ tier: mini
 # 修复方案 | 逃生舱审计与裁决 + 文档卫生批（2026-10）
 
 ## TL;DR
-#129 在 `docs/design/compat-commitments.md` 第二节第 5 条登记了 7 条已知例外。本批处理其中 6 条（scope 分支并入复发升硬的裁决）：两处逃生补审计行、两个逃生 env 入册、宿主提升文案标明身份、四处无逃生位点记裁决；同时新登记 1 条（checklist `drop` 与 `abort --detach-deps` 不写审计行）。另外清理冲突清单里的纯文档问题：命令面记账、方案状态字段、23 份文档缺状态行、过期路径与取代标注、hook 计数、forge-dsh README 自相矛盾。不新增阻断位点，不改任何门禁的放行条件；新增的只有审计行和 roster 条目。
+#129 在 `docs/design/compat-commitments.md` 第二节第 5 条登记了 7 条已知例外。本批处理其中 6 条（scope 分支并入复发升硬的裁决）：两处逃生补审计行、两个逃生 env 入册、宿主提升文案标明身份、三处显式出口与 bundle 验签无逃生记裁决；同时新登记 1 条（checklist `drop` 与 `abort --detach-deps` 不写审计行）。另外清理冲突清单里的纯文档问题：命令面记账、方案状态字段、23 份文档缺状态行、过期路径与取代标注、hook 计数、forge-dsh README 自相矛盾。不新增阻断位点，不改任何门禁的放行条件；新增的只有审计行和 roster 条目。
 
 ## 问题与目标
 - task-verify Stop 有界阻断的逃生 `FORGE_TASK_VERIFY_STOP=0` 生效时整段跳过，不留 checklog（`internal/hooks/embed_quality.go`），拒绝文案也没有指向兼容契约。
 - 复发升硬的逃生 `FORGE_RECURRENT_HARDEN=disable` 实际解除 BLOCKED，但 `internal/compat/compat_test.go` 把它白名单为「非 gate-bypass」，生效时不留审计行；而 `internal/checklog/types.go` 的 `CheckEscapeHatch` 注释又把它列为逃生舱。
 - 宿主提升逃生 `FORGE_ADVISORY_PROMOTION=soft`（`internal/hookdispatch/hook_emitters.go`）不在 `compat.EscapeEnvs`；提升后的 task-guard 拒绝文案（`internal/hooks/embed_task.go`）没标明是宿主提升，也没给逃生。
-- 审查前置、checklist、上游依赖、bundle 验签四处没有逃生舱，也没有裁决记录。
+- 审查前置、checklist、上游依赖、bundle 验签四处没有逃生舱，也没有裁决记录（本批裁为三处显式出口与 bundle 验签签名不符无逃生）。
 - 冲突清单（2026-10-22 全景盘点的产物，只在本机、未入库）里的纯文档问题：hook 计数、命令面记账、forge-dsh「零依赖」说法、取代标注；废弃清单里的状态字段与过期路径。
 
 ## Non-goals
@@ -32,7 +32,7 @@ tier: mini
   accept[REQ-2]: go test ./internal/compat/ -run ^TestEscapeRosterComplete$ -count=1 :: --- PASS: TestEscapeRosterComplete (
 - REQ-3 `FORGE_ADVISORY_PROMOTION` 入 roster；宿主提升后的 task-guard 拒绝文案标明是宿主提升并给出逃生 env
   accept[REQ-3]: go test ./internal/hookdispatch/ -run ^TestHook_DshTaskGuardNoTaskBlocks$ -count=1 :: --- PASS: TestHook_DshTaskGuardNoTaskBlocks (
-- REQ-4 compat-commitments §三 记录审查前置、checklist、上游依赖、bundle 验签的无逃生裁决与宿主提升预告期裁决，已知例外清单同步收缩；compat 快照重钉（验收只证明条目存在与快照一致，裁决内容由独立文档评审核验）
+- REQ-4 compat-commitments §三 记录审查前置、checklist、上游依赖三处显式出口与 bundle 验签签名不符无逃生的裁决与宿主提升预告期裁决，已知例外清单同步收缩；compat 快照重钉（验收只证明条目存在与快照一致，裁决内容由独立文档评审核验）
   accept[REQ-4]: grep -n 逃生舱审计与裁决批 docs/design/compat-commitments.md :: 逃生舱审计与裁决批
   accept[REQ-4]: go test ./internal/cli/ -run ^TestCompatSnapshotMatchesGolden$ -count=1 :: --- PASS: TestCompatSnapshotMatchesGolden (
 - REQ-5 compat-commitments 第五节补记 v1.57、v1.63、v1.79 三次未当期记账的命令面增量（验收只证明条目存在，内容由独立文档评审核验）

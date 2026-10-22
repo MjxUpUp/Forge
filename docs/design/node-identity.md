@@ -1,6 +1,6 @@
 # node-identity：节点身份与信任模型设计
 
-状态：已落地——Phase 0 身份层；Phase 2 的 TOFU trust store 与 bundle 签名验签（`2ca0fedf`）；§4 事件签名仍是预留。
+状态：已落地——Phase 0 身份层；Phase 2 的 TOFU trust store 与 bundle 签名验签（`2ca0fedf`）；§4 事件签名仍是预留，enforced 租约命令面待团队档落地。
 
 > 特性分支：`feat/node-identity`。多机器方向的 Phase 0 地基之一（姊妹篇：`docs/design/sync-convergence.md`）。本文记录节点身份 + 信任 profile 的完整设计决策与依据，代码注释只保留局部 rationale，全局权衡在这里。
 
@@ -53,7 +53,7 @@
 
 ### 信任边界
 
-- 私钥不出本机；bundle 签名（v1 预留 `sig` 字段位，恒空）防的是**自动化传输落地后**的篡改——手动 export/import 时代 sha256 已够（防损坏），签名是给 Phase 1 自动同步的预埋。
+- 私钥不出本机；bundle 签名（v1 时预留 `sig` 字段位、恒空；已于 `2ca0fedf` 实现，事件级 `sig` 仍预留）防的是**自动化传输落地后**的篡改——手动 export/import 时代 sha256 已够（防损坏），签名是给 Phase 1 自动同步的预埋。
 - node.json / trust.json 都在用户级，不进项目树（延续「项目树零写入」原则），不进 bundle（allowlist 默认拒绝，新增机器本地文件按构造不外泄）。
 - **事件里的 node_id 是攻击者可控输入**（同 fpid 文件的信任模型）：个人档信任上限 = 本地数据混流；团队档由验签把关。任何依赖 node_id 的判定必须先过验签关再信其内容。
 
