@@ -217,3 +217,29 @@ internal/skillsqa/research_workflow_test.go：lint 对 13 类陷阱逐条检出�
 ### Rationale
 
 run_dir 已是 skill 自有命名空间且全量过程文件在此，以它为唯一归宿不需另起目录；仓库副本只为解决 ~/ 路径跨人跨机失效，因此只在仓库文档确有引用时复制，条件写成 grep 与字段比对，避免 agent 按 cwd 自行判断；姊妹篇方案因 research-lint 只扫 report.md 会漏检而放弃
+
+## 历史来源：fact-research / web-search-bridge 合并墓碑
+
+2026-10-22 两个退役目录删除前迁入。两者的其余决策已于 2026-08-15 并入本文件（见上方「以下为并入的历史决策归档」一节），此处只补原目录独有的合并墓碑条目，按 `skills/CONVENTIONS.md`「退役 skill 存档」把决策标题降到四级（放在「来自 <旧名>」小节下）——两条共用同一 ID，不作为本 skill 的决策解析；正文逐字保留。
+
+### 来自 fact-research
+
+#### [d-p2-merge-20260815] accept
+
+> ⚠️ 本 skill 已于 2026-08-15（任务 feat/skill-hitrate-optimization，P2 研究族合并）整体并入 **research-workflow**——本文件是合并墓碑，后续维护与决策记录在 `skills/research-workflow/decisions.md`。
+
+- 诊断: fact-research 与 research-workflow 职责重叠（轻量事实核查 vs 深度调研），三层调研量级路由表需要单一真相源，两 skill 并存导致 dev-lookup/证据链引用摇摆
+- 修订: 整体并入 research-workflow「量级判定与轻量档（Phase L）」节（三层量级表+4步协议）；SKILL.md 删除；本决策历史归档至 research-workflow/decisions.md
+- 证据: cross-skill 引用（evidence-based-proposal/design-artifact-standards/adversarial-verification/dev-lookup）已全部改指 research-workflow Phase L；引用完整性 grep 零残留
+- 结果: accept（合并落地）
+
+### 来自 web-search-bridge
+
+#### [d-p2-merge-20260815] accept
+
+> ⚠️ 本 skill 已于 2026-08-15（任务 feat/skill-hitrate-optimization，P2 研究族合并）整体并入 **research-workflow**——本文件是合并墓碑，后续维护与决策记录在 `skills/research-workflow/decisions.md`。
+
+- 诊断: web-search-bridge（通用搜索 API 桥接）只被调研族消费，独立成 skill 导致触发与引用碎片化，降级链末位指向两跳
+- 修订: 整体并入 research-workflow「通用搜索桥接」节（Tavily→Serper→Brave→Exa 路由+jq body 构造+配额预检脚本）；SKILL.md 删除；scripts/references 迁至 research-workflow/ 下
+- 证据: dev-lookup 降级链已改指 research-workflow「通用搜索桥接」；本决策历史归档至 research-workflow/decisions.md
+- 结果: accept（合并落地）

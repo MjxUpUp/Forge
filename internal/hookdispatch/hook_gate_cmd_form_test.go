@@ -8,8 +8,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
-// gate-cmd-form hook tests（delivery-hardening 墙-1）：1.67 版本门前的 advisory
-// 形态、版本门后的 BLOCK（deny + Level=fail + Meta blocked）、env 逃生（审计行
+// gate-cmd-form hook tests（delivery-hardening 墙-1）：dev 构建回落的 advisory
+// 形态、1.x 发布版的 BLOCK（deny + Level=fail + Meta blocked）、env 逃生（审计行
 // + 会话节流）、会话阻断上限（超限降级 advisory）、合规/非门禁命令静默。
 
 func mkGateCmdInput(cmd string) HookInput {
@@ -23,9 +23,9 @@ func TestGateCmdFormHook_AdvisoryAndSilence(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	mk := func(cmd string) HookInput { return mkGateCmdInput(cmd) }
 
-	// 版本门前（1.66）：warn 行 + 不阻断；文案带 1.67 ratchet 预告。
-	if err := runGateCmdFormHook(mk("cd E:/Forge && forge task gate task-verify --ref x 2>&1 | tail -3"), dir, "1.66.1", "zcode"); err != nil {
-		t.Fatalf("advisory form must never block pre-ratchet, got: %v", err)
+	// dev 构建（版本门回落）：warn 行 + 不阻断；文案带 1.67 ratchet 说明。
+	if err := runGateCmdFormHook(mk("cd E:/Forge && forge task gate task-verify --ref x 2>&1 | tail -3"), dir, "dev", "zcode"); err != nil {
+		t.Fatalf("advisory form must never block on a dev build, got: %v", err)
 	}
 	all, err := checklog.LoadAll(dir)
 	if err != nil {
@@ -67,7 +67,7 @@ func TestGateCmdFormHook_AdvisoryAndSilence(t *testing.T) {
 	}
 }
 
-// TestGateCmdFormHook_BlockRatchet：版本门后（≥1.67）非合规 → deny（返回
+// TestGateCmdFormHook_BlockRatchet：1.x 发布版非合规 → deny（返回
 // HookBlockError/非 nil）+ Level=fail + Meta blocked=true + 会话计数递增。
 func TestGateCmdFormHook_BlockRatchet(t *testing.T) {
 	dir := t.TempDir()
@@ -75,7 +75,7 @@ func TestGateCmdFormHook_BlockRatchet(t *testing.T) {
 
 	err := runGateCmdFormHook(mkGateCmdInput("forge task gate task-verify 2>&1 | tail -3"), dir, "1.67.0", "zcode")
 	if err == nil {
-		t.Fatal("block 模式（版本 ≥1.67、非合规形态）必须 deny")
+		t.Fatal("block 模式（1.x 发布版、非合规形态）必须 deny")
 	}
 	all, _ := checklog.LoadAll(dir)
 	var row *checklog.Entry

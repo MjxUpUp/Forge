@@ -18,15 +18,15 @@ import (
 // 退出码契约（乙机实证：管道截断 84%、分号 26%）。
 //
 // BLOCK ratchet（delivery-hardening 墙-1，2026-09-20）：1.56 的 advisory 文案已带
-// ≥2 minor 预告（「自 1.58 起 advisory 转 BLOCKED」）；机械版本门定 1.67.0 生效
-// （task-drift 先例——不再留文字债）。逃生 FORGE_GATE_CMD_FORM=0（审计行+会话
+// ≥2 minor 预告（「自 1.58 起 advisory 转 BLOCKED」）；机械版本门 1.67.0 生效
+// （task-drift 先例——不再留文字债），现与 task-drift 共用 ratchetBlocksVersion
+// （1.x 发布版即阻断，dev/2.x 回落 advisory）。逃生 FORGE_GATE_CMD_FORM=0（审计行+会话
 // 节流）；会话阻断上限 5（有界 deny，防死循环——CC Stop 8 次强制放行同哲学）。
 
-// gateCmdFormBlockVersion/Cap/EscapeEnv 是 ratchet 常量（delivery-hardening 墙-1）。
+// gateCmdFormBlockCap/EscapeEnv 是 ratchet 常量（delivery-hardening 墙-1）。
 const (
-	gateCmdFormBlockVersion = "1.67.0"
-	gateCmdFormBlockCap     = 5
-	gateCmdFormEscapeEnv    = "FORGE_GATE_CMD_FORM"
+	gateCmdFormBlockCap  = 5
+	gateCmdFormEscapeEnv = "FORGE_GATE_CMD_FORM"
 )
 
 // runGateCmdFormHook 判定链：门禁命令 × 非合规形态 → checklog 行；BLOCK 模式
@@ -62,18 +62,9 @@ func runGateCmdFormHook(hookInput HookInput, root, version, agent string) error 
 		Meta:      gateCmdFormMeta(form),
 	}
 
-	// BLOCK ratchet：版本门 + env 逃生（会话节流审计行）+ 会话上限（有界）。
-	// HasPrefix "1." 限定与 task-drift 同理：2.x 主版本到来时版本门失明回落
-	// advisory，主版本升级须重估本 ratchet。
-	// 版本串剥离构建后缀（审查 P2-1）：发布构建的 Version 是
-	// "1.67.0 (commit: …, built: …)"——后缀含 "-" 会被 CompareVersions 按
-	// 预发布规则判小于目标版本，ratchet 跳过自己的首发版。取首个空白分隔
-	// 字段做纯版本比较。
-	verCore := version
-	if fields := strings.Fields(version); len(fields) > 0 {
-		verCore = fields[0]
-	}
-	blockMode := strings.HasPrefix(verCore, "1.") && util.CompareVersions(verCore, gateCmdFormBlockVersion) >= 0
+	// BLOCK ratchet：版本门（与 task-drift 共用 ratchetBlocksVersion：剥离构建后缀、
+	// dev/2.x 回落 advisory）+ env 逃生（会话节流审计行）+ 会话上限（有界）。
+	blockMode := ratchetBlocksVersion(version)
 	if blockMode && strings.TrimSpace(os.Getenv(gateCmdFormEscapeEnv)) == "0" {
 		recordGateCmdFormEscape(root, hookInput.SessionID, version)
 		blockMode = false

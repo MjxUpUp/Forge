@@ -71,7 +71,7 @@ func setupForeignAcceptanceTask(t *testing.T) (string, string) {
 // TestRunTaskVerifyAcceptanceAt_RecordsDeterministic 是 #3 的核心守卫：绿验收标准实跑后，
 // checklog 必须记 CheckNameAcceptance 条目、Passed=true、Source=deterministic（forge 自己跑
 // 命令看结果，不可伪造），且 TaskState.Acceptance[].Passed 回填为 true。这是把 dev-workflow
-// Plan 的 "Run+Expected" 从 plan 文本变成不可伪造证据的接入点——VerifyAcceptance / 记录接线 /
+// Plan 的 "Run+Expected" 从 plan 文本变成不可伪造证据的接入点——VerifyAcceptanceWithVerdicts / 记录接线 /
 // Source 分桶任一断裂即被抓。
 func TestRunTaskVerifyAcceptanceAt_RecordsDeterministic(t *testing.T) {
 	dir, taskRef := setupAcceptanceTask(t, []string{`go version :: go version`})

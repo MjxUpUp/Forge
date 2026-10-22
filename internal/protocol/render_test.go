@@ -13,9 +13,10 @@ func renderTestStandards() []Standard {
 	}
 }
 
-// TestRenderStandardsPinsLines pins the exact rendered bytes for both label styles,
-// the hook-note formatting, and the disabled-standard skip — the five call sites
-// (quality skill + cursor/cline/windsurf/copilot) differ only in these parameters.
+// TestRenderStandardsPinsLines pins the exact rendered bytes for two label styles,
+// the hook-note formatting, and the disabled-standard skip — renderers differ only
+// in these parameters. The word style uses an inline label (production renders
+// emoji only) so the no-space hook-note format stays pinned.
 func TestRenderStandardsPinsLines(t *testing.T) {
 	var sb strings.Builder
 	RenderStandards(&sb, renderTestStandards(), StandardRenderStyle{
@@ -31,7 +32,7 @@ func TestRenderStandardsPinsLines(t *testing.T) {
 
 	sb.Reset()
 	RenderStandards(&sb, renderTestStandards(), StandardRenderStyle{
-		SeverityLabel:  WordSeverityLabel,
+		SeverityLabel:  strings.ToUpper,
 		HookInfoFormat: " (enforced: %s)",
 		LineFormat:     "- [%s] **%s**: %s%s\n",
 	})
@@ -65,8 +66,13 @@ func TestRenderSessionRulesPinsLines(t *testing.T) {
 
 	sb.Reset()
 	RenderSessionRules(&sb, rules, SessionRuleRenderStyle{
-		MandatoryLabel: MustShouldLabel,
-		LineFormat:     "- %[1]s %[2]s\n",
+		MandatoryLabel: func(m bool) string {
+			if m {
+				return "[MUST]"
+			}
+			return "[SHOULD]"
+		},
+		LineFormat: "- %[1]s %[2]s\n",
 	})
 	want = "- [MUST] 先说明意图\n" +
 		"- [SHOULD] 大改先出设计\n"
@@ -76,8 +82,13 @@ func TestRenderSessionRulesPinsLines(t *testing.T) {
 
 	sb.Reset()
 	RenderSessionRules(&sb, rules, SessionRuleRenderStyle{
-		MandatoryLabel: AlwaysPreferLabel,
-		LineFormat:     "- %[1]s: %[2]s\n",
+		MandatoryLabel: func(m bool) string {
+			if m {
+				return "ALWAYS"
+			}
+			return "PREFER"
+		},
+		LineFormat: "- %[1]s: %[2]s\n",
 	})
 	want = "- ALWAYS: 先说明意图\n" +
 		"- PREFER: 大改先出设计\n"

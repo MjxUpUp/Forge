@@ -67,7 +67,7 @@ func TestParseAcceptance(t *testing.T) {
 	}
 }
 
-// TestVerifyAcceptance_RunsAndClassifies 端到端实跑：VerifyAcceptance 用真实 go 子命令
+// TestVerifyAcceptance_RunsAndClassifies 端到端实跑：VerifyAcceptanceWithVerdicts 用真实 go 子命令
 // 跑每条标准并按「退出码 + Expected 子串」分类。钉住四类结果——pass(含子串)/pass(空期望
 // 退出码0)/fail(非0退出)/fail(子串缺失)——以及失败也回填 Output 供排查。
 func TestVerifyAcceptance_RunsAndClassifies(t *testing.T) {
@@ -78,7 +78,7 @@ func TestVerifyAcceptance_RunsAndClassifies(t *testing.T) {
 		`go forge-nope-nope ::`,     // fail: 非零退出
 		`go version :: NONEXISTENT`, // fail: 退出 0 但期望子串缺失
 	})}
-	VerifyAcceptance(dir, state)
+	VerifyAcceptanceWithVerdicts(dir, state)
 
 	if !state.Acceptance[0].Passed {
 		t.Error(`criterion 0 (go version :: go version) should pass`)
@@ -216,7 +216,7 @@ func TestMergeAcceptance(t *testing.T) {
 }
 
 // TestVerifyAcceptance_RecordsAcceptedHeadCommit 钉住 AcceptedHeadCommit 回填语义：proof v2
-// 快路径（AcceptedHeadCommit == 当前 HEAD 判 Passed fresh）依赖 VerifyAcceptance 实跑时记此
+// 快路径（AcceptedHeadCommit == 当前 HEAD 判 Passed fresh）依赖 VerifyAcceptanceWithVerdicts 实跑时记此
 // 快照。git 仓库下须 == git rev-parse --short HEAD。
 func TestVerifyAcceptance_RecordsAcceptedHeadCommit(t *testing.T) {
 	dir := t.TempDir()
@@ -232,7 +232,7 @@ func TestVerifyAcceptance_RecordsAcceptedHeadCommit(t *testing.T) {
 	wantShort := strings.TrimSpace(string(want))
 
 	state := &TaskState{Acceptance: ParseAcceptance([]string{`go version :: go version`})}
-	VerifyAcceptance(dir, state)
+	VerifyAcceptanceWithVerdicts(dir, state)
 
 	if got := state.Acceptance[0].AcceptedHeadCommit; got != wantShort {
 		t.Errorf("AcceptedHeadCommit = %q, want %q (HEAD short)", got, wantShort)
@@ -244,7 +244,7 @@ func TestVerifyAcceptance_RecordsAcceptedHeadCommit(t *testing.T) {
 func TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty(t *testing.T) {
 	dir := t.TempDir()
 	state := &TaskState{Acceptance: ParseAcceptance([]string{`go version :: go version`})}
-	VerifyAcceptance(dir, state)
+	VerifyAcceptanceWithVerdicts(dir, state)
 	if got := state.Acceptance[0].AcceptedHeadCommit; got != "" {
 		t.Errorf("非 git 目录 AcceptedHeadCommit 应为空（GetHeadCommit 失败返），got %q", got)
 	}
@@ -274,7 +274,7 @@ Expected: ok
 }
 
 // TestCheckAcceptanceFresh 锁定 task-complete acceptance pre-flight 的 deterministic 判定——
-// 给 AcceptedHeadCommit 补消费方（MCP 拆除后该字段在 VerifyAcceptance 写入但无生产消费方，
+// 给 AcceptedHeadCommit 补消费方（MCP 拆除后该字段在 VerifyAcceptanceWithVerdicts 写入但无生产消费方，
 // 成孤儿字段）。本测试钉住「声称验收过」必须有可验证 consumer：未实跑/快照过期/未通过 → BLOCKED。
 // 对应 Emergence World affordance gate + Proof of Work。
 func TestCheckAcceptanceFresh(t *testing.T) {

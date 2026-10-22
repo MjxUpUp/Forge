@@ -98,8 +98,8 @@ var validSeverities = map[string]bool{"info": true, "warning": true, "error": tr
 //
 //  1. severity：空白/大小写规范化进小写集合（"ERROR" → "error"，同时告警提醒
 //     改源头）；仍落在集合外的值保留原值并告警。未知 severity 之所以要管，是
-//     render.go 的 Emoji/WordSeverityLabel switch 会把它们映射到 default 分支
-//     （当前是最严重的 🔴/ERROR），而消费方又精确比较 == "error"——笔误会静默
+//     render.go 的 EmojiSeverityLabel switch 会把它们映射到 default 分支
+//     （当前是最严重的 🔴），而消费方又精确比较 == "error"——笔误会静默
 //     改变门禁行为。
 //
 //  2. enabled：YAML bool 在类型化结构里无法区分「键缺失」与「显式 false」，

@@ -155,7 +155,7 @@ func scanSkillTree(root, dir, label string) ([]inventoryItem, error) {
 		skillMD := filepath.Join(dir, e.Name(), "SKILL.md")
 		data, err := os.ReadFile(skillMD)
 		if err != nil {
-			continue // 退役存档目录（仅 decisions.md）不是在役 skill
+			continue // 无 SKILL.md 的目录不是在役 skill
 		}
 		rel, err := filepath.Rel(root, skillMD)
 		if err != nil {

@@ -174,7 +174,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 // registerConventionsDefaults 落盘 conventions 兜底考卷（oracle-pipeline L1）：
 // ConventionsDefaultAcceptance 算出候选，RegisterAcceptance 在 per-task 锁内合并
 // （tier=conventions；锁内拒绝已完成任务的补登）。成功登记后同步推进调用方的
-// 内存副本（state.Acceptance），使后续 VerifyAcceptance 实跑刚登记的套件；返回
+// 内存副本（state.Acceptance），使后续 VerifyAcceptanceWithVerdicts 实跑刚登记的套件；返回
 // 实际新增的条目与「零新增的原因」（调用方据此给出口文案，不臆测档案状态——
 // 复审残留②）。
 func registerConventionsDefaults(root string, state *taskpipeline.TaskState) ([]taskpipeline.AcceptanceCriterion, string) {

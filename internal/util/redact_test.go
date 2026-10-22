@@ -17,6 +17,10 @@ func TestRedactSecrets(t *testing.T) {
 		{"aws-akia", "AKIAIOSFODNN7EXAMPLE", "[REDACTED]", "AKIAIOSFODNN7EXAMPLE"},
 		{"jwt", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJVadQssw5c", "[REDACTED]", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"},
 		{"slack", "xoxb-123456789012-abcdef", "[REDACTED]", "xoxb-123456789012-abcdef"},
+		// 已声明但此前无用例的形态：pk- 前缀、GitHub server token（ghs_）、passwd 赋值。
+		{"pk-key", "use pk-test0000fake0000 here", "[REDACTED]", "pk-test0000fake0000"},
+		{"github-server-token", "ghs_fakefakefakefakefake1234", "[REDACTED]", "ghs_fakefakefakefakefake1234"},
+		{"passwd-assign", "passwd=notreal123", "[REDACTED]", "notreal123"},
 		{"assign", `export API_KEY="supersecret123"`, "[REDACTED]", "supersecret123"},
 		{"assign-colon", "token: ghp_shouldvanish1234567890abcde", "[REDACTED]", "ghp_shouldvanish1234567890abcde"},
 		{"plain-text-untouched", "帮我看看编译报错 go build 失败", "帮我看看编译报错 go build 失败", ""},

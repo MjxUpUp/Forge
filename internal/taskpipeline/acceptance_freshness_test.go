@@ -41,7 +41,7 @@ func TestCheckAcceptanceFresh_ContentSnapshot(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n\nfunc A() int { return 2 }\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	VerifyAcceptance(dir, state)
+	VerifyAcceptanceWithVerdicts(dir, state)
 	crit := state.Acceptance[0]
 	if !crit.Passed {
 		t.Fatalf("criterion should pass: %+v", crit)
@@ -88,10 +88,10 @@ func TestCheckAcceptanceFresh_ContentSnapshot(t *testing.T) {
 	}
 }
 
-// TestVerifyAcceptance_ContentSnapshotFallback pins the fail-safe direction: when the task has no usable HeadCommit (legacy state) or the recorded commit is unreachable (history rewritten), VerifyAcceptance leaves the content fields empty and CheckAcceptanceFresh falls back to the HEAD-equality check — never fabricating a fingerprint.
+// TestVerifyAcceptance_ContentSnapshotFallback pins the fail-safe direction: when the task has no usable HeadCommit (legacy state) or the recorded commit is unreachable (history rewritten), VerifyAcceptanceWithVerdicts leaves the content fields empty and CheckAcceptanceFresh falls back to the HEAD-equality check — never fabricating a fingerprint.
 //
 // TestVerifyAcceptance_ContentSnapshotFallback 钉住 fail-safe 方向：任务无可用
-// HeadCommit（老 state）或记录的 commit 不可达（历史改写）时，VerifyAcceptance
+// HeadCommit（老 state）或记录的 commit 不可达（历史改写）时，VerifyAcceptanceWithVerdicts
 // 让内容字段留空、CheckAcceptanceFresh 回落 HEAD 相等检查——绝不伪造指纹。
 func TestVerifyAcceptance_ContentSnapshotFallback(t *testing.T) {
 	dir := t.TempDir()
@@ -104,7 +104,7 @@ func TestVerifyAcceptance_ContentSnapshotFallback(t *testing.T) {
 	// 即 fresh，commit 后过期）。
 	state := &TaskState{TaskRef: `feat/legacy`,
 		Acceptance: ParseAcceptance([]string{`go version :: go version`})}
-	VerifyAcceptance(dir, state)
+	VerifyAcceptanceWithVerdicts(dir, state)
 	if c := state.Acceptance[0]; c.AcceptedBaseCommit != "" || c.AcceptedChangeHash != "" {
 		t.Errorf("legacy state must not record a content snapshot: %+v", c)
 	}
@@ -120,7 +120,7 @@ func TestVerifyAcceptance_ContentSnapshotFallback(t *testing.T) {
 	// 兜底），重跑即锚到新 HEAD，任务永不卡死。
 	state2 := &TaskState{TaskRef: `feat/dead`, HeadCommit: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef`,
 		Acceptance: ParseAcceptance([]string{`go version :: go version`})}
-	VerifyAcceptance(dir, state2)
+	VerifyAcceptanceWithVerdicts(dir, state2)
 	if c := state2.Acceptance[0]; c.AcceptedBaseCommit != "" {
 		t.Errorf("unreachable base must fall back to legacy snapshot: %+v", c)
 	}
