@@ -392,11 +392,11 @@ func runTestNudgeHook(hookInput HookInput, root, version, agent string) error {
 			"Load the test-discipline skill for test quality guards: unit vs e2e split, assertion preservation, fake-test detection.",
 		len(state.UnpairedFiles), filesList, more)
 	if tier >= 3 {
-		// tier3：陈述门禁后果事实。阈值与 BLOCK 点须与 taskpipeline 真实规则
-		// 同步：testCoverageHardGateThreshold（当前 3；原 1.58 降 2 预告已撤回）且兜底
-		// 在 task-complete（executor_check_complete.go），非 task-verify 自身。
-		// 改那边不改这里是事实性通道违规（审查 P1-1）。
-		nudge += " At >=3 untested source files with zero assertions, the task-complete backstop BLOCKs the task."
+		// tier3：陈述门禁后果事实。阈值取自 taskpipeline.TestCoverageHardGateThreshold
+		// 单一真相源（原 1.58 降 2 预告已撤回）；兜底在 task-complete
+		// （executor_check_complete.go），非 task-verify 自身。BLOCK 点若移动须同步本句
+		// （事实性通道，审查 P1-1）。
+		nudge += fmt.Sprintf(" At >=%d untested source files with zero assertions, the task-complete backstop BLOCKs the task.", taskpipeline.TestCoverageHardGateThreshold)
 	}
 	// 记录观察（Delivered 用与输出同一通道判定盖章——PostToolUse 上已接线的宿主
 	// 都把 allow-detail 送进上下文，但按宿主诚实判定而非假设；kimi 上本 nudge

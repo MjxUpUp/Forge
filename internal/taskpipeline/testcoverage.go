@@ -222,6 +222,12 @@ func CoveragePairingForDisclosure(root string, state *TaskState) []string {
 // fudge factor 豁免合理。
 const testCoverageHardGateThreshold = 3
 
+// TestCoverageHardGateThreshold exports the task-complete backstop threshold so user-facing copy outside this package (test-nudge tier 3) derives from the same constant instead of a hand-copied number.
+//
+// TestCoverageHardGateThreshold 导出 task-complete 兜底阈值，供包外面向用户的文案
+// （test-nudge tier3）从同一常量取值，不再手抄数字。
+const TestCoverageHardGateThreshold = testCoverageHardGateThreshold
+
 // testCoverageShouldBlock 决定 task-complete 兜底是否对缺测试硬阻断。missingN 是
 // 「无配对测试的改动源文件数」（非全部改动源文件数）——与上方阈值文档一致：缺测
 // 多（≥阈值）且零断言 → 阻断（corrupt success：改了源码既无配对测试也无任何断言）。
