@@ -22,12 +22,13 @@ tier: mini
 - 需要留意的语义变化：
   - finding-regression 要求「回归测试在改动集里」（finding_regression.go:97/135），从基线合并带入的测试文件不再算本任务改了测试；
   - held-out 套件判定读改动集（heldout.go:198），同上；
-  - review 的 test-diff 走 `reviewWindowFiles`，单独接线，规则见「做法」。
+  - `forge task scope show` 显示的改动文件（scope.go:165）同样剔除；
+  - review 的 test-diff 走 `reviewWindowFiles`，有审查基点时单独接线（规则见「做法」）；首轮无审查基点时回落 `TaskChangedFiles`（review.go:95），同样剔除。
 
 ## 问题与目标
 - 实证：2026-10-22 在任务 fix/escape-rulings-doc-hygiene 上合并 #128（52 个文件）后，task-verify 报「43 个源文件超出 PlanScope」并 HARD 阻断，只能 `forge task decide` 记录原因后 `scope add` 收编。证据：项目 checklog（`forge data-dir` 下 checklog.jsonl）2026-10-22T14:55:16+08:00 的 task-verify 拒绝行。
-- 根因：`internal/taskpipeline/testcoverage.go:257` 的 `taskChangedFiles`（:281 调用 git diff） 用 `git diff HeadCommit..HEAD`；`internal/cli/review.go:47` 的 `reviewWindowFiles` 有审查基点（上一次 review pass 记下的提交）时用 `git diff <审查基点>`。两者都把合并进来的基线分支改动算进去。
-- 目标：已提交部分只保留「本任务的文件」，即第一父链上非合并提交触及的文件、非基线合并（本任务侧分支、含本任务侧分支的章鱼合并）带入的文件，以及基线合并里按上述口径不算基线带入的文件；再与净差异取交集（重命名旧路径补回除外，见「做法」）。
+- 根因：`internal/taskpipeline/testcoverage.go:257` 的 `taskChangedFiles`（:280 调用 git diff） 用 `git diff HeadCommit..HEAD`；`internal/cli/review.go:47` 的 `reviewWindowFiles` 有审查基点（上一次 review pass 记下的提交）时用 `git diff <审查基点>`。两者都把合并进来的基线分支改动算进去。
+- 目标：已提交部分只保留本任务的文件（判定见「做法」），再与净差异取交集（重命名旧路径补回除外）。
 
 ## Non-goals
 - 不改 scoring 的 diff 基准（`internal/scoring/git.go:26` 的 resolveDiffBase）。它同时给变更范围维度提供行数（git.go:18 `CollectGitData`）、给断言保护维度提供断言密度（assertion.go:44 `CollectAssertionDensity`），合并后这两项仍会把基线改动算进去，另议。断言密度还喂给 task-complete 的「零断言」HARD 判定（executor_check_complete.go:93，assertN==0 才拦）：合并基线后，基线测试文件里的断言会让这道拦截偏向放行。
@@ -77,7 +78,7 @@ tier: mini
   accept[REQ-20]: go test ./internal/cli/ -run ^TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename$ -count=1 :: --- PASS: TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename (
 - REQ-21 `git diff --name-status` 的重命名与拷贝条目都解析出旧、新路径
   accept[REQ-21]: go test ./internal/taskpipeline/ -run ^TestRenamePair$ -count=1 :: --- PASS: TestRenamePair (
-- REQ-22 基线一侧对测试改名、本任务合并后两个路径都没动时，旧路径不进审查窗口（diff.renames 三种配置）
+- REQ-22 基线一侧对测试改名、本任务合并后两个路径都没动时，旧路径不进审查窗口（diff.renames 取 true、false、copies 三种配置）
   accept[REQ-22]: go test ./internal/cli/ -run ^TestReviewWindowFiles_BaseSideRenameNotRestored$ -count=1 :: --- PASS: TestReviewWindowFiles_BaseSideRenameNotRestored (
 
 ## 设计
@@ -102,7 +103,6 @@ tier: mini
       - 合并结果等于 pi 的版本：不在 `diff pi m` 里；
       - 基线一侧改过：对 `merge-base --all p1 pi` 的每个 mb，在 `diff mb pi` 里；
       - 任务一侧没改过：对每个 mb，不在 `diff mb p1` 里。
-    - 由此，冲突解决、合并时顺手改、选陈旧基线父改回旧版本，都算本任务改动；
     - 其他合并（本任务侧分支 --no-ff 合回、含侧分支的章鱼合并、分叉后 git pull 产生的合并）：`diff --no-renames --name-only m^1 m` 整段计入；
   - 返回 committed 中属于「本任务的文件」的项。调用方的净 diff 开着重命名检测，本任务删掉的测试可能被配成基线新增拷贝的「重命名」，只剩新路径；所以再取 `diff --name-status from..HEAD` 的重命名与拷贝对（沿用调用方同一份 diff.renames 配置，不写死 `-M`），新路径在 committed 里且被剔掉、旧路径属于本任务时把旧路径补回。新路径保留的重命名对不动，纯重命名的结果与无合并时一致；
   - 任何 git 调用失败时原样返回（保守：不能证明外来就继续算）；所有 git 调用带 `--no-replace-objects`，防 `git replace --graft` 把普通提交伪装成基线合并。
@@ -125,14 +125,14 @@ tier: mini
 
 ### 已知局限
 - cheat-scan 只剔文件、不剔行：`cheatDiffBases`（cheatscan.go:710）仍用 `HeadCommit..HEAD` 取新增行，合并带入的行只要落在本任务也改过的文件里，仍会被扫描。完全属于基线的文件已经不在文件集里，不受影响。
-- 基线分支不叫 main/master 的仓库（如 develop、upstream/main），以及用裸 SHA、`FETCH_HEAD`、`git pull <url> main` 合并时，合并会被当作非基线合并整段计入，退回原行为，不会误剔。squash 合并、cherry-pick 过来的基线提交同样保留原行为。
+- 判定只看合并的其余各父能否从 origin/main、origin/master（无远端时本地 main、master）到达，与合并时写的 ref 名无关：裸 SHA、`FETCH_HEAD` 指向的提交只要已在这些 ref 上，同样按基线合并处理。基线分支叫 develop、upstream/main 的仓库，或 `git pull <url>` 带进来的提交不在这些 ref 上时，按非基线合并整段计入，退回原行为，不会误剔。squash 合并、cherry-pick 过来的基线提交同样保留原行为。
 - 本任务的子分支先经 PR 合进 origin/main、任务再合并 origin/main 时，子分支上的改动按基线带入剔除。这些改动已经过那次 PR 的审查，本批不另行追溯。
 - 任务先合过一次 origin/main，之后部分提交经「合并提交式」PR 进入 origin/main：那次合并本身已可从基线分支到达，触发倒置守卫，整段退回原行为（基线文件重新算进改动集，偏保守，不误剔）。squash 合并的 PR 不受影响。
 - 基线上任何一个分叉后临时削弱过某个测试、后来又恢复的提交（例如 origin/main 自己的中间提交），本任务用 `git merge <sha>` 合并它、且任务一侧没碰过该测试时，这次削弱会被当作基线带入。PR 合回 main 时 main 的版本胜出，绕过的只是本地门禁。
 - 「任务一侧改过」只看文件有没有变，不看那次改动是否已进基线：前序任务改过的文件经 squash PR 进了 main、main 又继续改它，当前任务合并 origin/main 后，这个文件仍算本任务改动。偏保守，不漏报，但会留下少量本批想消掉的 scope-drift 误报。
 - 基线分支的可信度以远端 ref 为界：agent 用 `git update-ref` 或 `git fetch . X:refs/remotes/origin/main` 改写远端跟踪 ref，仍能让任意提交被当作基线。拦截这类命令属于 hazard-guard 的范围，本批不做。
-- 两项防线没有单独钉住的用例：`--no-replace-objects` 是纵深防御（按文件比对的规则下，伪装合并能剔掉的不超过一次真实合并）；`merge-base --all` 在已有「任务一侧没改过」条件时只多覆盖一种窄拓扑（两个 merge-base 版本不同，基线回到其一、任务停在另一）。
-- 性能：有合并时每次调用多若干 git 子进程（固定约 10 个，每个合并另加 4～10 个，criss-cross 时每多一个 merge-base 再加 2 个）；没有合并时只多 1 次。`taskChangedFiles` 在一次 task-verify 内有多处调用（见 TL;DR 的 grep），开销按调用次数累加。
+- 两项防线没有单独钉住的用例：`--no-replace-objects` 是纵深防御（推断：graft 只能伪造父提交，剔除仍要过「结果等于基线父、只有基线一侧改过」的按文件比对，能剔掉的不超过以同一组父做一次真实合并；第三轮复审实测 graft 伪装时测试删除仍保留）；`merge-base --all` 在已有「任务一侧没改过」条件时只多覆盖一种窄拓扑（两个 merge-base 版本不同，基线回到其一、任务停在另一）。
+- 性能：`ExcludeMergedInFiles` 有合并时多若干 git 子进程：固定约 10 个（rev-list 1、链路守卫 3、基线 ref 解析 ≤4、log 1、重命名配对 1），每个合并另加 4～10 个，criss-cross 时每多一个 merge-base 再加 2 个；没有合并时只多 1 次。review 窗口有合并时另多约 5 个（合并计数、两次 `diff HEAD`、`diff --name-status`、委托调用前的净 diff）。`taskChangedFiles` 在一次 task-verify 内有多处调用（见 TL;DR 的 grep），开销按调用次数累加。
 
 ## 验证与回滚
 - `go vet ./...`；`go test ./... -count=1 -timeout 30m`。
