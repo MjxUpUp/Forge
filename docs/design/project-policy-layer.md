@@ -1,7 +1,7 @@
 # Project Policy Layer —— 按项目接管策略（P1 落地设计）
 
 - 状态：P1 已交付（feat/project-policy-p1）；P2-P4 已落地（2026-09-02，feat/project-policy-p234）
-- 背景：全局 forge 安装（plugin/npm）后 init-suggest 对所有 git 项目自动接管，暴露三个弊端——项目自带 harness 冲突、项目试验新 harness、用户想按项目控制。完整调研（业界学界证据 + 代码考古 + 对抗复查）见 `~/.forge/research/global-forge-optout-20260902-0958/report.md`；本文只记录 P1 落地的设计决策。
+- 背景：全局 forge 安装（plugin/npm）后 init-suggest 对所有 git 项目自动接管，暴露三个弊端——项目自带 harness 冲突、项目试验新 harness、用户想按项目控制。完整调研（业界学界证据 + 代码考古 + 对抗复查）见 `~/.research-workflow/global-forge-optout-20260902-0958/report.md`；本文只记录 P1 落地的设计决策。
 - 总原则（调研结论）：**机制全局，行使本地**——装 plugin = 机制存在；接管某项目 = 策略授权；每次 hook 触发 = 仲裁检查。P1 是策略面的地基：状态模型 + 对称命令 + 旁路收编。
 
 ## P1 范围（in）

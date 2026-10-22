@@ -3,7 +3,7 @@
 状态：部分落地——P0（`db82842a`）、P1（`ae7f4767`）已落地；P2 中 wild 已落地，规则分层暴露未立项。
 
 > 背景:sess_7e05f7e1 取证(76 分钟全自主会话)+ 业界/学界调研(run_dir:
-> ~/.forge/research/agent-gate-enforcement-20260918-1508)。四层失守定性:
+> ~/.research-workflow/agent-gate-enforcement-20260918-1508)。四层失守定性:
 > L1 执法挂在 agent 不会用的动词上(gate CLI)、L2 advisory 天花板后审计静默、
 > L3 zcode 双挂载、L4 HITL 无等人态。本 spec 收敛 P0 落地项与其契约。
 >

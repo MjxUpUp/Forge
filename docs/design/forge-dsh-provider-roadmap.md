@@ -64,4 +64,4 @@ dsh 插件作者的发布前流水线：`forge verify` 验收实跑 → 证据�
 - #961《从零到发布：给 DeepSeek Harness 写你的第一个插件（实战踩坑全记录）》（github.com/deepseek-ai/deepseek-harness/discussions/961，2026-08-14）：pnpm 强依赖、核心仓库拒外部 PR、"会话→工作交付物零插件"。
 - #1884《AI 编写的 DSH 插件为什么容易出问题？——风险综述与防御实践》（同仓 discussions/1884，2026-08-15）：inject 误写/同名覆盖/schema 不全/缺降级四大模式及其防御实践（"不 import 任何 @deepseek-ai/，只留 node 内置模块，要什么都从 ctx 上拿"）。
 - SAFETY.md（未安全审计）、README（"THERE WILL BE COMPATIBILITY-BREAKING CHANGES"）、tool-cordis README（临时动态包三重限定）。
-- 调研主报告：`~/.forge/research/cordis-koishi-plugin-philosophy-20260916-1224/report.md` 第五、八章。
+- 调研主报告：`~/.research-workflow/cordis-koishi-plugin-philosophy-20260916-1224/report.md` 第五、八章。

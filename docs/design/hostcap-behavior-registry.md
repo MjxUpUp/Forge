@@ -43,4 +43,4 @@
 - `internal/hostcap/hostcap.go:1-23`（包文档：设计缘由、import 环、两阶段收编自述）、`Hosts` 注册表（203-354）。
 - `internal/hookdispatch/hook_normalize.go:18-33`（stdinNormalizers 与"键须一致"注释）、`hook.go:365-383`（StdinDialect 分派）。
 - `internal/taskpipeline/session.go:308`（唯一存留 `agent ==` 判断，空串语义）。
-- 对照研究：`~/.forge/research/cordis-koishi-plugin-philosophy-20260916-1224/report.md` 第八节 8.1 条 4（hostcap 收尾）。
+- 对照研究：`~/.research-workflow/cordis-koishi-plugin-philosophy-20260916-1224/report.md` 第八节 8.1 条 4（hostcap 收尾）。

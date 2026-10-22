@@ -2,7 +2,7 @@
 
 状态：部分落地——立场已执行；采纳项中的 disposer 契约尚未编码。
 
-- 依据：Cordis/dsh 深度调研（`~/.forge/research/cordis-koishi-plugin-philosophy-20260916-1224/report.md`，2026-09-16；7 维度并行深挖，关键断言 ≥2 独立源或一手 registry/API 互证）+ Forge 本地架构考古（同目录 `dive_07.md`）。
+- 依据：Cordis/dsh 深度调研（`~/.research-workflow/cordis-koishi-plugin-philosophy-20260916-1224/report.md`，2026-09-16；7 维度并行深挖，关键断言 ≥2 独立源或一手 registry/API 互证）+ Forge 本地架构考古（同目录 `dive_07.md`）。
 - 范围：把调研裁断出的三个判断固化为团队共识——**不学"一切皆插件"**（执法协议需静态可审计）；**采纳** Cordis 的 disposer 契约与 seam 三分法；为每个判断挂上重估判据（deferred 三要素，见 `evolution-discipline-norms.md` ②）。本文是共识与决策留痕，不携带实现；落地方案在关联文档。
 - 关联落地：`hostcap-behavior-registry.md`（行为注册表收尾）、`compat-bridge-face.md`（compat 第七面）、`forge-dsh-provider-roadmap.md`(forge-dsh 生态位)。
 
@@ -82,7 +82,7 @@ Forge 的扩展面是**执法协议**，不是功能市场。因此：
 
 ## 七、证据与出处
 
-- 调研主报告：`~/.forge/research/cordis-koishi-plugin-philosophy-20260916-1224/report.md`（含 72 条全局编号引用）；维度原始证据同目录 dive_01-07.md，信度分级 verify.md，跨维洞察 insight.md（I2/I4/I5 为本文直接来源）。
+- 调研主报告：`~/.research-workflow/cordis-koishi-plugin-philosophy-20260916-1224/report.md`（含 72 条全局编号引用）；维度原始证据同目录 dive_01-07.md，信度分级 verify.md，跨维洞察 insight.md（I2/I4/I5 为本文直接来源）。
 - dsh 一手：docs/architecture.md（"no privileged core to patch"、live reload 边界）、docs/capability-seams.md（spine/seam/composition 三分）、docs/cordis-primer（五概念、disposer 规则）、vendor/README.md（18 补丁台账）。
 - Cordis/koishi 一手：cordis.moe《服务与依赖》（truthy 等待/回滚语义）、koishi.chat《可逆的插件系统》（"Cordis 的名字来源于拉丁语的心"、可逆性承诺）、arXiv:2608.25512（temporal/spatial composability 形式化）。
 - 本地考古：dive_07.md（扩展点盘点表、硬编码清单、双轨制张力）。
