@@ -17,15 +17,20 @@ tier: mini
 - 用 `git merge <sha>` 合并基线上一个临时削弱过测试、后又恢复的中间提交，能绕过本地门禁；
 - 改写远端跟踪 ref（`update-ref`、`fetch . X:refs/remotes/origin/main`）能让任意提交被当作基线。
 
-影响面：`taskChangedFiles` 的全部调用方（`grep -rn 'taskChangedFiles(' internal/taskpipeline`）都随之改变。其中 scope-drift（同一 drift 复发后升为硬门禁的项目里是 HARD 阻断）、test-coverage、cheat-scan 的文件集、mutation 抽样、fuzz、acceptance 的改动指纹、design tier、loop 判词的改动文件数是预期内的修正。语义上需要留意两处：finding-regression 要求「回归测试在改动集里」（finding_regression.go:97/135），held-out 套件判定也读改动集（heldout.go:198）——从基线合并带入的测试文件不再算本任务改了测试。review 的 test-diff 走 `reviewWindowFiles`，单独接线。
+影响面：`taskChangedFiles` / `TaskChangedFiles` 的全部调用方（`grep -rniE 'taskChangedFiles\(' internal`）都随之改变。
+- 预期内的修正：scope-drift（同一 drift 复发后升为硬门禁的项目里是 HARD 阻断）、test-coverage、cheat-scan 的文件集、mutation 抽样、fuzz、acceptance 的改动指纹、design tier、loop 判词的改动文件数。
+- 需要留意的语义变化：
+  - finding-regression 要求「回归测试在改动集里」（finding_regression.go:97/135），从基线合并带入的测试文件不再算本任务改了测试；
+  - held-out 套件判定读改动集（heldout.go:198），同上；
+  - review 的 test-diff 走 `reviewWindowFiles`，单独接线，规则见「做法」。
 
 ## 问题与目标
-- 实证：2026-10-22 在任务 fix/escape-rulings-doc-hygiene 上合并 #128（52 个文件）后，task-verify 报「43 个源文件超出 PlanScope」并 HARD 阻断，只能 `forge task decide` 记录原因后 `scope add` 收编。证据在该任务的 decide 记录与项目 checklog 的 task-verify 拒绝行（`forge data-dir` 下 checklog.jsonl）。
-- 根因：`internal/taskpipeline/testcoverage.go:280` 的 `taskChangedFiles` 用 `git diff HeadCommit..HEAD`；`internal/cli/review.go:47` 的 `reviewWindowFiles` 有审查基点（上一次 review pass 记下的提交）时用 `git diff <审查基点>`。两者都把合并进来的基线分支改动算进去。
-- 目标：已提交部分只保留「本任务的文件」，即第一父链上非合并提交触及的文件、非基线合并（本任务侧分支、章鱼合并）带入的文件，以及基线合并里按上述口径不算基线带入的文件；再与净差异取交集（重命名旧路径补回除外，见「做法」）。
+- 实证：2026-10-22 在任务 fix/escape-rulings-doc-hygiene 上合并 #128（52 个文件）后，task-verify 报「43 个源文件超出 PlanScope」并 HARD 阻断，只能 `forge task decide` 记录原因后 `scope add` 收编。证据：项目 checklog（`forge data-dir` 下 checklog.jsonl）2026-10-22T14:55:16+08:00 的 task-verify 拒绝行。
+- 根因：`internal/taskpipeline/testcoverage.go:257` 的 `taskChangedFiles`（:281 调用 git diff） 用 `git diff HeadCommit..HEAD`；`internal/cli/review.go:47` 的 `reviewWindowFiles` 有审查基点（上一次 review pass 记下的提交）时用 `git diff <审查基点>`。两者都把合并进来的基线分支改动算进去。
+- 目标：已提交部分只保留「本任务的文件」，即第一父链上非合并提交触及的文件、非基线合并（本任务侧分支、含本任务侧分支的章鱼合并）带入的文件，以及基线合并里按上述口径不算基线带入的文件；再与净差异取交集（重命名旧路径补回除外，见「做法」）。
 
 ## Non-goals
-- 不改 scoring 的 diff 基准（`internal/scoring/git.go:26` 的 resolveDiffBase）。它同时给变更范围维度提供行数（git.go:18 `CollectGitData`）、给断言保护维度提供断言密度（assertion.go:44 `CollectAssertionDensity`），合并后这两项仍会把基线改动算进去，另议。
+- 不改 scoring 的 diff 基准（`internal/scoring/git.go:26` 的 resolveDiffBase）。它同时给变更范围维度提供行数（git.go:18 `CollectGitData`）、给断言保护维度提供断言密度（assertion.go:44 `CollectAssertionDensity`），合并后这两项仍会把基线改动算进去，另议。断言密度还喂给 task-complete 的「零断言」HARD 判定（executor_check_complete.go:93，assertN==0 才拦）：合并基线后，基线测试文件里的断言会让这道拦截偏向放行。
 - 不处理快进合并：任务尚无提交时快进合并 main，没有合并提交可依据，无法区分；保持原行为并在注释里写明。
 - 不改 `forge task scope` 的命令面。
 
@@ -97,7 +102,7 @@ tier: mini
       - 合并结果等于 pi 的版本：不在 `diff pi m` 里；
       - 基线一侧改过：对 `merge-base --all p1 pi` 的每个 mb，在 `diff mb pi` 里；
       - 任务一侧没改过：对每个 mb，不在 `diff mb p1` 里。
-    - 冲突解决（含整体取基线版本、盖掉任务一侧的改动）、合并时顺手改，以及选陈旧的基线父把文件改回旧版本，都因此算本任务改动；
+    - 由此，冲突解决、合并时顺手改、选陈旧基线父改回旧版本，都算本任务改动；
     - 其他合并（本任务侧分支 --no-ff 合回、含侧分支的章鱼合并、分叉后 git pull 产生的合并）：`diff --no-renames --name-only m^1 m` 整段计入；
   - 返回 committed 中属于「本任务的文件」的项。调用方的净 diff 开着重命名检测，本任务删掉的测试可能被配成基线新增拷贝的「重命名」，只剩新路径；所以再取 `diff --name-status from..HEAD` 的重命名与拷贝对（沿用调用方同一份 diff.renames 配置，不写死 `-M`），新路径在 committed 里且被剔掉、旧路径属于本任务时把旧路径补回。新路径保留的重命名对不动，纯重命名的结果与无合并时一致；
   - 任何 git 调用失败时原样返回（保守：不能证明外来就继续算）；所有 git 调用带 `--no-replace-objects`，防 `git replace --graft` 把普通提交伪装成基线合并。
@@ -119,7 +124,6 @@ tier: mini
 - 判定基线带入时要求「任务一侧没改过」，并检查全部 merge-base：只看基线一侧时，前序任务在 from 之前的加强被本任务取基线版本盖掉、或 criss-cross 下 git 恰好挑中某个 merge-base，削弱都会被剔除。
 
 ### 已知局限
-- 快进合并无法区分（见 Non-goals）。
 - cheat-scan 只剔文件、不剔行：`cheatDiffBases`（cheatscan.go:710）仍用 `HeadCommit..HEAD` 取新增行，合并带入的行只要落在本任务也改过的文件里，仍会被扫描。完全属于基线的文件已经不在文件集里，不受影响。
 - 基线分支不叫 main/master 的仓库（如 develop、upstream/main），以及用裸 SHA、`FETCH_HEAD`、`git pull <url> main` 合并时，合并会被当作非基线合并整段计入，退回原行为，不会误剔。squash 合并、cherry-pick 过来的基线提交同样保留原行为。
 - 本任务的子分支先经 PR 合进 origin/main、任务再合并 origin/main 时，子分支上的改动按基线带入剔除。这些改动已经过那次 PR 的审查，本批不另行追溯。
