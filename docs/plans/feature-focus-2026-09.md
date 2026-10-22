@@ -1,6 +1,8 @@
 # 功能聚焦决策：砍什么、聚焦什么（2026-09）
 
-- 依据：发展方向深度调研（2026-09-05，~/.forge/research/forge-direction-20260905-0956/report.md（失效：该 run 目录 2026-10-15 已不存在，不可复核），P0/P1 结论）、skills 价值审计（docs/skills-value-audit-2026-08-02.md）、代码普查（docs/surveys/2026-09-code-census.md，债务已清偿）、本机 dogfooding 使用数据（checklog 533 条 / 31 种 check / 53 skill 中 16 个有触发记录 / 26 个任务）。
+状态：部分落地——拆包（`96e01821`）与冻结（`b1e6cf4b`）已执行；F5、F7 已被 acceptance-gate-and-wedge-2026-10-proposal.md 第二节延后。
+
+- 依据：发展方向深度调研（2026-09-05，~/.forge/research/forge-direction-20260905-0956/report.md（失效：该 run 目录 2026-10-15 已不存在，不可复核），P0/P1 结论）、skills 价值审计（原文 docs/skills-value-audit-2026-08-02.md 已不在仓库，不可复核）、代码普查（docs/surveys/2026-09-code-census.md，债务已清偿）、本机 dogfooding 使用数据（checklog 533 条 / 31 种 check / 53 skill 中 16 个有触发记录 / 26 个任务）。
 - 决策口径：**聚焦 = 投入加大；拆包 = 移出核心分发但不删除；冻结 = 维护模式不新增能力；砍掉 = 移除代码与命令。**
 - 判据（按序）：① 是否落在"跨宿主证据与签核层"新定位上；② 是否属于调研确认的深水资产（6-12 个月无原生对标）；③ 使用实证（dogfooding 频次 / blocked 实际发生）；④ 维护成本与重复度（审计已知问题）。
 
@@ -23,7 +25,7 @@
 
 ### 2.1 拆包（移出核心分发 → 独立 skill pack，不删除）【已执行 2026-09-05：12 个 skill 已 `git mv` 至 `plugins/forge-design/skills/`（含 plugin 壳与 marketplace 条目），核心 `skills/` 缩至通用集】
 
-前端/设计族 **12 个 skill**：frontend-feature-development、frontend-stack-selection、frontend-aesthetics-execution、frontend-code-review、ai-generated-ui-review、ai-ui-generation-workflow、design-system-workflow、design-system-migration、design-review-snapshot、design-artifact-standards、design-audit、ui-iteration-feedback-loop。（均已迁移 ↑）
+前端/设计族 **12 个 skill**：frontend-feature-development、frontend-stack-selection、frontend-aesthetics-execution、frontend-code-review、ai-generated-ui-review、ai-ui-generation-workflow、design-system-workflow、design-system-migration、design-review-snapshot、design-artifact-standards、design-audit、ui-iteration-feedback-loop。（均已迁移 ↑；2026-10 起 design-artifact-standards 与 design-audit 收回核心，forge-design 现含 10 个，见 plugins/forge-design/README.md。）
 
 - 理由：① dogfooding **零触发**（Go CLI 项目天然不命中，但同理——核心包不应为少数场景常驻 12 个 skill 的路由负担）；② 价值审计证实族内重复严重（frontend-code-review ↔ ai-generated-ui-review 重复 3.5/6 维度、动效选型表两处、token 铁律 4 处）；③ 与"证据与签核层"定位无关；④ 调研 I10：Agent Skills 开放标准 + marketplace 是分发主通道——拆包恰好让设计族按官方规范流通（frontmatter 对齐 + forge.* metadata）。
 - 处置：`forge plugin pack` 机制已具备 → 建 `forge-design-pack`（或独立仓库）；core `skills/` 只留通用验证/流程/编排/检索；plugin 分发两棵树的机制不变。prototype-confirmation 视拆包后引用情况决定去留（其纪律部分通用）。

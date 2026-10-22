@@ -84,6 +84,8 @@ var rosterExtraSources = map[string]string{
 	"FORGE_TASK_VERIFY_STOP": "../hooks/embed_quality.go",             // bash embed 层:task-verify Stop 有界阻断的逃生
 	"FORGE_GATE_CMD_FORM":    "../hookdispatch/hook_gate_cmd_form.go", // hookdispatch 层:gate-cmd-form BLOCK ratchet 的逃生（墙-1a）
 	"FORGE_EVAL_PREFLIGHT":   "../evalkit/preflight.go",               // evalkit 层:Track A preflight（评测自身不合法）BLOCK 的逃生（R3）
+	// hookdispatch 层:宿主提升（dsh/zcode 把 task-guard advisory 升为阻断）的逃生（2026-10-22 入册）
+	"FORGE_ADVISORY_PROMOTION": "../hookdispatch/hook_emitters.go",
 }
 
 // TestEscapeRosterComplete 守卫（对抗审查 should-fix：原注释宣称源对照而实际
@@ -106,7 +108,6 @@ func TestEscapeRosterComplete(t *testing.T) {
 	nonEscape := map[string]bool{
 		// 非逃生舱类 env（白名单——命中源扫描但不属"gate-bypass 逃生舱"语义）：
 		"FORGE_RECURRENT_THRESHOLD": true, // 阈值调节（recurrent-harden 强度）
-		"FORGE_RECURRENT_HARDEN":    true, // 强度回退（advisory 化偏好，非 gate-bypass）
 		"FORGE_CONVENTIONS_LINT":    true, // 功能开关（conventions lint 启停）
 		"FORGE_TOOL_NAME":           true, // hook 协议字段（hook stdin 传值，非用户 env）
 		"FORGE_FILE_PATH":           true, // hook 协议字段（同上）

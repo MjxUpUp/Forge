@@ -422,13 +422,33 @@ fi
 # 一次性说明——本段置于 advisory flush/kimi 早退**之前**,执法面宿主均匀;
 # ②block 时清除 60s 节流戳——连续阻断由限额封顶(至多 3 连),而非被节流
 # 削弱成每分钟一次的急停提示(语义诚实化,只读审查披露项);
-# ③逃生 FORGE_TASK_VERIFY_STOP=0。gate PASS 不豁免:advisory 门(test-coverage)
+# ③逃生 FORGE_TASK_VERIFY_STOP=0——本来会阻断时每会话每任务落一行 escape-hatch 审计
+# (compat-commitments 第二节第 5 条 ④「有逃生 env 的须留审计行」,与 gate-cmd-form
+# 逃生同款 marker 去重)。gate PASS 不豁免:advisory 门(test-coverage)
 # 通过 ≠ 工作已落盘。每次 block 落一行 checklog fail(与 task-drift block 行
 # 对称——审计不可静默,spec 原则 1 的 block 面)。参照 CC Stop hook 8 次强制
 # 放行 / review-stop MaxReviewRounds=3——限额而非永不阻断。
-if [ "${FORGE_TASK_VERIFY_STOP:-1}" != "0" ] && [ -n "${FORGE_TASK_REF:-}" ]; then
+if [ -n "${FORGE_TASK_REF:-}" ]; then
   _UNCOMMITTED=$( { git diff --name-only 2>/dev/null; git diff --cached --name-only 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | while IFS= read -r _f; do is_code_file "$_f" && printf '%s\n' "$_f"; done | sort -u || true)
-  if [ -n "$_UNCOMMITTED" ]; then
+  if [ -n "$_UNCOMMITTED" ] && [ "${FORGE_TASK_VERIFY_STOP:-1}" = "0" ]; then
+    # 只在「本来会阻断」时记:会话限额未用完(计数 <3)。marker 按会话+任务去重——
+    # 逃生按任务计价,同会话的第二个任务用逃生也要各留一行。
+    _NE=$(cat "$_DATA_DIR/markers/taskverify-stop-blocks-${FORGE_SESSION_ID:-default}" 2>/dev/null || echo 0)
+    case "$_NE" in ''|*[!0-9]*) _NE=0;; esac
+    _REF_KEY=$(printf '%s' "${FORGE_TASK_REF:-}" | tr -c 'A-Za-z0-9._-' '_')
+    _ESC="$_DATA_DIR/markers/taskverify-stop-escape-${FORGE_SESSION_ID:-default}-${_REF_KEY}"
+    if [ "$_NE" -lt 3 ] && [ ! -f "$_ESC" ]; then
+      mkdir -p "$_DATA_DIR/markers" 2>/dev/null || true
+      : > "$_ESC" 2>/dev/null || true
+      _NOW3=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
+      if [ -n "$_NOW3" ]; then
+        _TASK_REF_J3=$(printf '%s' "${FORGE_TASK_REF:-}" | tr -d '"\\' | tr -d '[:cntrl:]')
+        _SESSION_ID_J3=$(printf '%s' "${FORGE_SESSION_ID:-}" | tr -d '"\\' | tr -d '[:cntrl:]')
+        printf '{"check":"escape-hatch","passed":true,"checked":true,"detail":"escape-hatch: task-verify Stop bounded block bypassed (env FORGE_TASK_VERIFY_STOP=0)","level":"warn","source":"deterministic","task_ref":"%s","session_id":"%s","recorded_at":"%s","meta":{"escape.gate":"task-verify-stop","escape.reason":"env","escape.owner":"env"}}\n' \
+          "$_TASK_REF_J3" "$_SESSION_ID_J3" "$_NOW3" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
+      fi
+    fi
+  elif [ -n "$_UNCOMMITTED" ]; then
     _BLOCKS="$_DATA_DIR/markers/taskverify-stop-blocks-${FORGE_SESSION_ID:-default}"
     mkdir -p "$_DATA_DIR/markers" 2>/dev/null || true
     _n=$(cat "$_BLOCKS" 2>/dev/null || echo 0)
@@ -443,7 +463,7 @@ if [ "${FORGE_TASK_VERIFY_STOP:-1}" != "0" ] && [ -n "${FORGE_TASK_REF:-}" ]; th
           "$(( _n + 1 ))" "$_TASK_REF_J2" "$_SESSION_ID_J2" "$_NOW2" >> "$_DATA_DIR/checklog.jsonl" 2>/dev/null || true
       fi
       rm -f "$_STAMP" 2>/dev/null || true
-      echo "[task-verify] 活跃任务 ${FORGE_TASK_REF} 有未提交代码变更——先落盘再停:过门禁(forge task gate task-verify --ref <ref>)后 git commit,或 forge task abort --ref <ref> 显式弃任务。本会话第 $(( _n + 1 ))/3 次有界阻断;逃生 FORGE_TASK_VERIFY_STOP=0。"
+      echo "[task-verify] 活跃任务 ${FORGE_TASK_REF} 有未提交代码变更——先落盘再停:过门禁(forge task gate task-verify --ref <ref>)后 git commit,或 forge task abort --ref <ref> 显式弃任务。本会话第 $(( _n + 1 ))/3 次有界阻断;逃生 FORGE_TASK_VERIFY_STOP=0(留审计行)。规则见 docs/design/compat-commitments.md 第二节第 5 条 ④。"
       exit 2
     elif [ "$_n" = "3" ]; then
       echo 4 > "$_BLOCKS" 2>/dev/null || true

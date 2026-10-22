@@ -4,7 +4,7 @@ package hooks
 //
 //	lite     拦截 + 管线 + 状态机最小集（13 条目/6 事件）——安全与任务循环完整，
 //	         摘掉全部 advisory 增强（质量提醒/触发通道/会话引导/集成扫描）。
-//	standard 完整现行名册（33 条目/8 事件）——与 ForgeHookSpec() 等价，默认档。
+//	standard 完整现行名册（35 条目/8 事件，基线由 profile_test.go 钉住）——与 ForgeHookSpec() 等价，默认档。
 //	full     与 standard 内容等价的预留位（未来增强层在此扩展，standard 保持
 //	         稳定语义）。
 //

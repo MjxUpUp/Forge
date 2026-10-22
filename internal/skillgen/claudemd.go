@@ -151,7 +151,7 @@ func buildForgeSectionWithLevel(forClaude bool, userLevel bool) string {
 	// advisory 的 test-coverage/scope-drift 直接 BLOCKED。无此说明 agent 会冷不丁撞上 BLOCKED。
 	sb.WriteString("### 复发驱动升硬（软↔硬平衡）\n\n")
 	sb.WriteString("task-verify 的 test-coverage 与 scope-drift 默认 advisory（仅提醒不阻塞）。但若本项目已完成任务历史里 testing 或 scope 维度反复低分（≥3 次）——证明 advisory 靠自律已失效——且本次严重（缺配对测试 / 超 scope 多文件 drift），则升为 HARD 阻断。双轴 AND：新项目无履历永不升硬（不误伤陌生项目），单文件 drift 即便在复发项目也保持 advisory（预测噪声不升硬）。\n\n")
-	sb.WriteString("逃生舱：`FORGE_RECURRENT_HARDEN=disable` 回退纯 advisory（不加 Strength 惩罚，表达项目偏好而非跳过验证）；`FORGE_RECURRENT_THRESHOLD=N` 调阈值。\n\n")
+	sb.WriteString("逃生舱：`FORGE_RECURRENT_HARDEN=disable` 回退纯 advisory（本来会升硬时留 escape-hatch 审计行，与其它逃生同价）；`FORGE_RECURRENT_THRESHOLD=N` 调阈值。\n\n")
 
 	sb.WriteString("### 中止任务（清理 ghost/卡住任务）\n\n")
 	sb.WriteString("任务无法推进（如在非 git 项目半启动、门禁死循环、或临时放弃）时，用 `forge task abort --ref <ref>` 删除任务状态文件并清空 active task ref，**不评分**。代码改动保留不动。task-verify 的 test-coverage/编译/断言为 advisory（仅记录不阻塞），但 skill-decisions guardrail（改 SKILL.md 未记决策）与 work-activity 仍 HARD stop；ghost 任务无论是否阻塞都污染 `task list`，需手动 abort 清理。\n\n")

@@ -7,7 +7,9 @@ the harness's typed interception points.
 [Forge](https://github.com/MjxUpUp/Forge) is an AI-code quality gate engine. This
 plugin is a thin Cordis wrapper: it forwards DSH tool/session events to the `forge`
 CLI and translates forge's verdicts back into DSH decisions. All gate logic lives in
-the forge binary — the plugin itself has **zero runtime dependencies**.
+the forge binary — the plugin itself has **no third-party runtime dependencies**
+(无第三方运行时依赖); its only dependency is the pinned `@agent_forge/forge` package
+that ships the binary (see Requirements below).
 
 ## How it works
 
