@@ -64,8 +64,8 @@ func TestSkillDecisionsAdvisoryAffected(t *testing.T) {
 }
 
 // TestSkillDecisionsRecorded 钉住「记决策」判定锚点：decisions.md 在 base..HEAD 间新增
-// `## [d-` 条目 = 记了。覆盖：未新增/新增/首次创建（base 无）/base 空 fail-open/base 不可达
-// fail-open。fail-open 对齐 review snapshot「可达则严、不可达则松」。
+// `## [d-` 条目 = 记了。覆盖：未新增/新增/只迁入降级历史条目（不算记）/首次创建（base 无）/
+// base 空 fail-open/base 不可达 fail-open。fail-open 对齐 review snapshot「可达则严、不可达则松」。
 func TestSkillDecisionsRecorded(t *testing.T) {
 	dir := t.TempDir()
 	sdecGit(t, dir, "init")
@@ -124,6 +124,8 @@ func TestCountDecisionEntries(t *testing.T) {
 		{"两条决策", "# x\n\n## [d-a] accept\n正文\n## [d-b] reject\n", 2},
 		{"降级历史条目不计", "## [d-a] accept\n\n## 历史来源：old\n\n### [d-old1] accept\n#### Diagnosis\n", 1},
 		{"行内标记不计", "## [d-a] accept\n引用 `## [d-x]` 的正文\n", 1},
+		{"转义前缀不计", "\u2060## [d-x] accept\n", 0},
+		{"CRLF 行尾", "## [d-a] accept\r\n## [d-b] reject\r\n", 2},
 	}
 	for _, c := range cases {
 		if got := countDecisionEntries(c.content); got != c.want {

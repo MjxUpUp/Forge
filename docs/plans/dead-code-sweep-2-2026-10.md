@@ -10,7 +10,7 @@ baseline: 4373f278
 ## TL;DR
 删死代码约 550 行、7 组不可达函数和两个退役 skill 目录，不动任何命令或 JSON 键。**要知会的行为变化一处**：`forge health/status --json` 的 `nudge_recent`、`nudge_actionable` 改为 14 天窗口计数。需要 compat 预告的项不在本批。
 
-依据：`~/.research-workflow/harness-landscape-20261022-0938/internal_deprecated.md` 第二节 2.3 A/B、第一节第 11、13 项、第五节首行（本机路径；本文的 REQ 已逐项复述清单内容，不依赖该文件也能读懂）。"2.3 C 档"指该清单里已注释为有意保留的不可达函数，即下文 Non-goals 第一条列出的那些。
+依据：本机调研 run `harness-landscape-20261022-0938/internal_deprecated.md`（不入库；下文 REQ 已逐项复述，不依赖该文件也能读懂）。文中"2.3 C 档"指该清单里已注释为有意保留的不可达函数，即 Non-goals 第一条列出的那些。
 
 ## Non-goals
 - 不动 2.3 C 档已注释为有意保留的不可达函数（hlc 三个、`LatestByCheckForSession*`、`docsconsistency.AllFlags/DanglingSkillRefs`、测试观测点与 `forgedatatest`）。
@@ -84,18 +84,18 @@ baseline: 4373f278
 - 删除 `skills/fact-research/`、`skills/web-search-bridge/`
 - `internal/taskpipeline/executor_skill_decisions.go` 计数改行首匹配（REQ-6）
 - `internal/taskpipeline/executor_skill_decisions_test.go` 新增 `TestCountDecisionEntries`，`TestSkillDecisionsRecorded` 加迁入用例
-- 审查发现的过期注释同步：`internal/clitask/task_gate.go`、`internal/clitask/task_oracle_test.go`、`internal/clitask/task_acceptance_test.go`（`VerifyAcceptance` 改名）；`internal/skillmetrics/funnel.go`、`internal/skillmetrics/usage.go`、`internal/skillmetrics/direction_test.go`、`internal/util/redact.go`（mine.go / weakness 已删）；`internal/cliskills/skills_inventory.go`（退役存档目录已不存在）
+- 审查发现的过期注释同步：`internal/clitask/task_gate.go`、`internal/clitask/task_oracle_test.go`、`internal/clitask/task_acceptance_test.go`（`VerifyAcceptance` 改名）；`internal/skillmetrics/funnel.go`、`internal/skillmetrics/usage.go`、`internal/skillmetrics/direction_test.go`、`internal/util/redact.go`（mine.go / weakness 已删）；`internal/util/redact_test.go` 补已声明未覆盖的脱敏形态（REQ-3 的测试配对）；`internal/cliskills/skills_inventory.go`（退役存档目录已不存在）
 
 ### 备选对比
 | 方案 | 做法 | 结论 |
 |---|---|---|
-| 什么都不做 | 保留 23 个不可达函数与两个空壳目录 | 否决：约 550 行库代码对应的命令已删，测试仍在维护它们；空壳目录让 r18 棘轮需要特判 |
+| 什么都不做 | 保留基线 `deadcode ./...` 报出的 23 个不可达函数（本批删其中 12 个）与两个空壳目录 | 否决：mine/weakness 连同测试约 550 行，对应命令已删，测试仍在维护它们；空壳目录让 r18 棘轮需要特判 |
 | REQ-2 保持全量口径 | 删 `Summarize`，在 `cli/health.go`、`cli/status.go` 内联"NudgeRecent = NudgeCount"的覆写 | 否决：字段名是 recent，全量值与 pulse 面板（14 天窗口）对不上；内联会把同一段口径逻辑复制成两份 |
 | REQ-4 保留数字门 | 只删注释，不动 `CompareVersions` 比较 | 否决：比较对任何能跑到这段代码的版本恒为真，是死分支；两处还各自维护一份剥后缀逻辑 |
 | REQ-5 全量迁入两份 decisions.md | 降级后整份追加 | 否决：其中 4 条已在 2026-08-15 并入，会重复 |
 
 ### 风险
-- REQ-2 改变 `health --json` / `status --json` 两个计数的口径。键不增不删，`nudge_count` 保留全量真相；仓内没有读这两个键做判定的消费方（`grep nudge_recent` 只命中 health 包与 pulse），按"语义推导规则可随版本演进"处理，在 commit 信息与 PR 描述里写明。
+- REQ-2 改变 `health --json` / `status --json` 两个计数的口径。键不增不删，`nudge_count` 保留全量真相；JSON 键 `nudge_recent` 仓内无消费方（pulse 面板走 Go 结构体 `dashboard/pulse.go:590`，不读 JSON），按"语义推导规则可随版本演进"处理，在 commit 信息与 PR 描述里写明。
 - REQ-4 里低于原门的 1.x 版本串（如 1.65.0）现在也判阻断。这些版本的二进制自带旧代码，不会跑到这段逻辑，只影响测试用例，测试同步改掉。
 
 ## 验证与回滚

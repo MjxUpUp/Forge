@@ -31,10 +31,10 @@ skill-name/                # 目录名 = skill id = frontmatter.name
 
 > **退役 skill 存档**：退役一个 skill 时，它的决策历史并入承接 skill，旧目录整个删除。`skills/` 下不留只有 `decisions.md` 的目录（`internal/skillsqa/r18_ratchet_test.go` 对无 `SKILL.md` 的目录报错）。
 >
-> - 位置：追加到承接 skill 的 `decisions.md` 末尾（append-only），用**二级标题** `## 历史来源：<旧名>` 起节——二级标题会结束上一条决策的解析，正文不会被吸进前一条决策。
-> - 只迁入承接 skill 还没有的条目，先 `grep` 决策 ID 去重；正文逐字保留。
+> - 位置：追加到承接 skill 的 `decisions.md` 末尾（append-only），用**二级标题** `## 历史来源：<旧名>` 起节——二级标题会结束上一条决策的解析，正文不会被吸进前一条决策。多个旧 skill 可共用一节，节内用 `### 来自 <旧名>` 分开。
+> - 只迁入承接 skill 还没有的条目：按「决策 ID + 来源 skill」去重（不同旧 skill 的同 ID 条目各自保留）；正文逐字保留。
 > - 迁入条目的标题降到三级或更低（`## [d-` → `### [d-`，子节随之下沉）。`internal/skillsdecisions` 的解析与 `internal/taskpipeline` 的「改 SKILL.md 须记决策」计数都只认行首 `## [d-`，降级后不会被当成承接 skill 自己的决策，也不会让决策门禁误判为已记。
-> - 先例：fact-research、web-search-bridge 的常规决策已在 2026-08-15 合并时以 `## [d-` 并入 `research-workflow/decisions.md`（那次早于本约定）；2026-10-22 删目录前只补迁了两条合并墓碑。
+> - 先例：fact-research、web-search-bridge 的常规决策已在 2026-08-15 合并时以 `## [d-` 并入 `research-workflow/decisions.md`（那次早于本约定）；2026-10-22 删目录前只补迁了两条合并墓碑（旧目录里记录「已并入 research-workflow」的那条决策）。
 
 > **设计族拆包（2026-09）**：前端/设计族 12 个 skill（frontend-* / ai-*-ui-* / design-* / ui-iteration-feedback-loop）整体迁至 `plugins/forge-design/skills/`——独立 skill pack，不进 `skills/embed.go` 二进制（决策记录 docs/plans/feature-focus-2026-09.md §2.1）。核心 `skills/` 只留通用验证/流程/编排/检索；核心 skill 引用这 12 个名字时一律是"属 forge-design pack，未安装则忽略"的指针语义。
 

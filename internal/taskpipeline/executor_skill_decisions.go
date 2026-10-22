@@ -200,8 +200,8 @@ func decisionsCandidates(root, skill string) []string {
 }
 
 // countDecisionEntries 数 content 里以 `## [d-` 开头的行（skillsdecisions.AppendDecision
-// 渲染 `## [d-<id>] <outcome>` section）。只认行首，与 skillsdecisions.parseDecisions
-// 同口径：退役 skill 并入承接 skill 时降级成 `### [d-` 的历史条目（skills/CONVENTIONS.md
+// 渲染 `## [d-<id>] <outcome>` section）。与 skillsdecisions.parseDecisions 一样只认行首
+// `## [d-`：退役 skill 并入承接 skill 时降级成 `### [d-` 的历史条目（skills/CONVENTIONS.md
 // 「退役 skill 存档」）与带转义前缀的正文行都不计——否则搬运旧条目会被误判为新记决策。
 // 不依赖 LoadDecisions 的结构化解析，判定只需「条目数是否增加」。
 func countDecisionEntries(content string) int {

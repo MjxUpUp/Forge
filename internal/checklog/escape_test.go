@@ -21,12 +21,12 @@ func TestEscapeHatchEntryRoundTrip(t *testing.T) {
 	}
 }
 
-// TestEscapeLegacyRowFallback 旧行（v1 无 Meta）的提取兜底：gate/owner 空、
+// TestEscapeLegacyRowFallback 旧行（v1 无 Meta）的提取兜底：gate 空、
 // reason=unspecified——聚合侧不误判、区分"没记"与"未声明"。
 func TestEscapeLegacyRowFallback(t *testing.T) {
 	legacy := &Entry{Check: CheckEscapeHatch, Passed: true, Detail: "escape-hatch: old form"}
-	if EscapeGateOf(legacy) != "" || legacy.Meta["escape.owner"] != "" {
-		t.Fatal("旧行 gate/owner 应空")
+	if EscapeGateOf(legacy) != "" {
+		t.Fatal("旧行 gate 应空")
 	}
 	if EscapeReasonOf(legacy) != EscapeReasonUnspecified {
 		t.Fatalf("旧行 reason 应 unspecified: %q", EscapeReasonOf(legacy))
