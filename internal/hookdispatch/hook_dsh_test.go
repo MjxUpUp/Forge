@@ -258,6 +258,10 @@ func TestHook_DshTaskGuardNoTaskBlocks(t *testing.T) {
 		if !strings.Contains(blockErr.Reason, "DENIED") || !strings.Contains(blockErr.Reason, "forge task start") {
 			t.Errorf("edit #%d block reason must be directive (DENIED + forge task start), got %q", i, blockErr.Reason)
 		}
+		// compat-commitments 第二节第 5 条 ⑥：提升后的文案须标明是宿主提升并给出逃生。
+		if !strings.Contains(blockErr.Reason, "Host promotion") || !strings.Contains(blockErr.Reason, "FORGE_ADVISORY_PROMOTION=soft") {
+			t.Errorf("edit #%d block reason must disclose host promotion and its escape, got %q", i, blockErr.Reason)
+		}
 		if !strings.Contains(stderr, "[task-guard]") {
 			t.Errorf("edit #%d stderr must carry the reason, got %q", i, stderr)
 		}
@@ -365,6 +369,10 @@ func TestHook_ZcodeTaskGuardNoTaskBlocks(t *testing.T) {
 		}
 		if !strings.Contains(blockErr.Reason, "DENIED") || !strings.Contains(blockErr.Reason, "forge task start") {
 			t.Errorf("edit #%d block reason must be directive (DENIED + forge task start), got %q", i, blockErr.Reason)
+		}
+		// compat-commitments 第二节第 5 条 ⑥：提升后的文案须标明是宿主提升并给出逃生。
+		if !strings.Contains(blockErr.Reason, "Host promotion") || !strings.Contains(blockErr.Reason, "FORGE_ADVISORY_PROMOTION=soft") {
+			t.Errorf("edit #%d block reason must disclose host promotion and its escape, got %q", i, blockErr.Reason)
 		}
 	}
 	// 同一提升宿主上测试文件编辑必须放行（TDD 豁免），且 FYI 在提升语义下整体

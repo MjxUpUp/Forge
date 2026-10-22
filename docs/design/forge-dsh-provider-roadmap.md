@@ -1,5 +1,7 @@
 # forge-dsh 生态位路线：从接线层到质检局（2026-09）
 
+状态：部分落地——H1、H2a 已落地；H2b 动态重放与 H3 质检局未实施，复验日期 2026-12-16。
+
 - 依据：插件哲学调研 insight I6（"AI 当插件作者，把质量门禁从外挂变成运行时必需品"）+ D5（dsh 生态成熟度与缺口实证）。
 - 范围：forge-dsh 的三阶段定位路线（H1 契约加固 → H2 验证器 → H3 质检局）、dsh 生态质量事故模式 → Forge 能力的需求映射、启动判据与风险边界。
 - 立场：**不与 dsh 插件生态竞争内容插件，做那个生态缺的验收与证据层。**
@@ -62,4 +64,4 @@ dsh 插件作者的发布前流水线：`forge verify` 验收实跑 → 证据�
 - #961《从零到发布：给 DeepSeek Harness 写你的第一个插件（实战踩坑全记录）》（github.com/deepseek-ai/deepseek-harness/discussions/961，2026-08-14）：pnpm 强依赖、核心仓库拒外部 PR、"会话→工作交付物零插件"。
 - #1884《AI 编写的 DSH 插件为什么容易出问题？——风险综述与防御实践》（同仓 discussions/1884，2026-08-15）：inject 误写/同名覆盖/schema 不全/缺降级四大模式及其防御实践（"不 import 任何 @deepseek-ai/，只留 node 内置模块，要什么都从 ctx 上拿"）。
 - SAFETY.md（未安全审计）、README（"THERE WILL BE COMPATIBILITY-BREAKING CHANGES"）、tool-cordis README（临时动态包三重限定）。
-- 调研主报告：`~/.forge/research/cordis-koishi-plugin-philosophy-20260916-1224/report.md` 第五、八章。
+- 调研主报告：`~/.research-workflow/cordis-koishi-plugin-philosophy-20260916-1224/report.md` 第五、八章。

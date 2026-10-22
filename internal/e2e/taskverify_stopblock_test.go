@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
@@ -118,11 +119,54 @@ func TestTaskVerifyStopHook_BoundedBlockOnUncommittedTaskWork(t *testing.T) {
 		t.Fatalf("exhausted cap must fall back to advisory pass, err=%v\n%s", err, out)
 	}
 
-	// 4) 逃生:计数清零 + FORGE_TASK_VERIFY_STOP=0 → 不拦。
+	// 4) 逃生:计数清零 + FORGE_TASK_VERIFY_STOP=0 → 不拦,但留一行 escape-hatch
+	// 审计(每会话每任务一次:再停不重复写;限额已用完时本来就不会拦,不写;同会话
+	// 换一个任务 ref 再逃生,另写一行)。
+	countEsc := func() int {
+		n := 0
+		for _, e := range loadChecklogEntries(t, dir) {
+			if strings.Contains(e, `"check":"escape-hatch"`) && strings.Contains(e, `"escape.gate":"task-verify-stop"`) {
+				n++
+			}
+		}
+		return n
+	}
+	_ = os.WriteFile(stopBlockMarker(dir, sid), []byte("3"), 0o644)
+	_, _ = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
+	if n := countEsc(); n != 0 {
+		t.Fatalf("exhausted cap means no would-be block, so the escape must leave no audit row, got %d", n)
+	}
 	_ = os.WriteFile(stopBlockMarker(dir, sid), []byte("0"), 0o644)
 	out, err = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
 	if err != nil || strings.Contains(out, "有界阻断") {
 		t.Fatalf("env escape must disable the block, err=%v\n%s", err, out)
+	}
+	_, _ = runStopBlockHook(t, dir, sid, ref, "FORGE_TASK_VERIFY_STOP=0")
+	if n := countEsc(); n != 1 {
+		t.Fatalf("env escape must leave exactly one escape-hatch audit row per session and task, got %d", n)
+	}
+	// bash 写出的真实审计行与 Go 侧 checklog.isRhythmEscapeHatch 闭环：④ 节奏类逃生不得把
+	// 证据降为 Weak（两侧各钉字面量会让同步改动漏网，这里用真实行收口）。
+	taskEntries, err := checklog.LoadForTask(dir, ref)
+	if err != nil {
+		t.Fatalf("load checklog for task: %v", err)
+	}
+	// 先确认真实审计行确实挂在本任务上，否则下面的判定会空洞通过。
+	stopEsc := 0
+	for _, e := range taskEntries {
+		if e.Check == checklog.CheckEscapeHatch && e.Meta["escape.gate"] == "task-verify-stop" {
+			stopEsc++
+		}
+	}
+	if stopEsc != 1 {
+		t.Fatalf("the hook's escape row must be attributed to task %q, got %d such rows", ref, stopEsc)
+	}
+	if checklog.BuildEvidenceChain(taskEntries, ref).UsedEscapeHatch {
+		t.Fatal("the task-verify Stop escape row written by the hook must be classified as a rhythm escape (no Strength cap)")
+	}
+	_, _ = runStopBlockHook(t, dir, sid, ref+"-2", "FORGE_TASK_VERIFY_STOP=0")
+	if n := countEsc(); n != 2 {
+		t.Fatalf("a second task in the same session must get its own escape-hatch audit row, got %d", n)
 	}
 
 	// 5) 窄条件:工作落盘(commit)后同样的任务态零阻断。

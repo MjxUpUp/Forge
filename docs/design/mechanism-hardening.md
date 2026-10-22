@@ -1,5 +1,7 @@
 # 机制加固 P0-P2 落地设计（2026-09）
 
+状态：已落地（P0–P2）。
+
 依据：机制史调研报告（~/.forge/research/forge-mechanisms-20260905-1752/report.md（失效：该 run 目录 2026-10-15 已不存在，不可复核） §八）七项建议。每项目标/设计/落点/验收如下。
 
 通用约束：全部走仓库既有纪律（测试配对、read-before-edit、门禁流程）；P0/P1/P2 七项各带测试；`forge compat` 系新命令进 docsconsistency 反查。

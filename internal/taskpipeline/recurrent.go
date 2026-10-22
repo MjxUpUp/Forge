@@ -46,9 +46,10 @@ const scopeDriftSevereThreshold = 3
 
 const (
 	// recurrentHardenDisableEnv 全局关闭复发升硬（FORGE_RECURRENT_HARDEN=disable），把 test-coverage
-	// 与 scope-drift 都退回纯 advisory。与 gate-bypass 逃生舱（FORGE_TEST_COVERAGE）不同，它不 cap
-	// Strength 到 Weak：它表达「本项目偏好 advisory」而非「本任务跳过验证」——项目本就在 advisory
-	// 模式，无可打折。
+	// 与 scope-drift 都退回纯 advisory。2026-10-22 裁决（compat-commitments §三）：它撤下的是
+	// 本来会触发的 HARD 阻断，按第二节第 5 条 ① 类逃生处理——入 compat.EscapeEnvs roster，本来会
+	// 升硬时落 escape-hatch 审计行，与其它逃生同价（分数封顶、证据 Weak）。未复发的项目关掉开关
+	// 不产生审计行，也没有代价。
 	recurrentHardenDisableEnv = "FORGE_RECURRENT_HARDEN"
 	// recurrentThresholdEnv 覆盖复发阈值（FORGE_RECURRENT_THRESHOLD=N，N>0）。
 	recurrentThresholdEnv = "FORGE_RECURRENT_THRESHOLD"
@@ -105,7 +106,7 @@ func recurrentThreshold() int {
 
 // recurrentHardenEnabled 报告复发升硬是否生效（FORGE_RECURRENT_HARDEN != "disable"）。默认开启——
 // 软→硬平衡是 opt-out 而非 opt-in：项目只有在已证明（≥阈值次复发）advisory 自律失效时才升硬。
-// 逃生舱退回纯 advisory 且不加 Strength 惩罚。
+// 逃生舱退回纯 advisory；本来会升硬时由 recordRecurrentHardenEscape 落审计行。
 func recurrentHardenEnabled() bool {
 	return os.Getenv(recurrentHardenDisableEnv) != "disable"
 }
