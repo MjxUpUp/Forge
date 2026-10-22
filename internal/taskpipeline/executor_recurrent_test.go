@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
@@ -92,7 +93,8 @@ func TestRecurrent_TestCoverage_NoHistoryStaysAdvisory(t *testing.T) {
 // TestRecurrent_TestCoverage_EscapeDisables: recurrence history present, but FORGE_RECURRENT_HARDEN=disable → reverts to pure advisory (PASS).
 //
 // TestRecurrent_TestCoverage_EscapeDisables：有复发历史，但 FORGE_RECURRENT_HARDEN=disable → 退回
-// 纯 advisory（PASS）。opt-out 逃生舱须生效且无 Strength 惩罚（表达项目偏好，非跳过验证）。
+// 纯 advisory（PASS），且本来会升硬的那一刻落一行 escape-hatch 审计（2026-10-22 裁决：按
+// compat 第二节第 5 条 ① 类逃生处理，与其它逃生同价）。
 func TestRecurrent_TestCoverage_EscapeDisables(t *testing.T) {
 	dir := setupRecurrentRepo(t)
 	seedRecurrentHistory(t, dir, dimTesting, 3)
@@ -104,6 +106,83 @@ func TestRecurrent_TestCoverage_EscapeDisables(t *testing.T) {
 	state := newVerifyState(t, dir, "escape")
 	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
 		t.Fatalf(`FORGE_RECURRENT_HARDEN=disable → 应回退 advisory PASS, got: %v`, err)
+	}
+	entries, err := checklog.LoadForTask(dir, state.TaskRef)
+	if err != nil {
+		t.Fatalf("load checklog: %v", err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.Check == checklog.CheckEscapeHatch && e.Meta["escape.gate"] == "recurrent-harden" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("FORGE_RECURRENT_HARDEN=disable lifting a would-be block must leave an escape-hatch audit row for task %q", state.TaskRef)
+	}
+}
+
+// recurrentEscapeRows counts the recurrent-harden escape-hatch rows recorded for a task.
+//
+// recurrentEscapeRows 统计某任务的复发升硬 escape-hatch 审计行数。
+func recurrentEscapeRows(t *testing.T, dir, taskRef string) int {
+	t.Helper()
+	entries, err := checklog.LoadForTask(dir, taskRef)
+	if err != nil {
+		t.Fatalf("load checklog: %v", err)
+	}
+	n := 0
+	for _, e := range entries {
+		if e.Check == checklog.CheckEscapeHatch && e.Meta["escape.gate"] == "recurrent-harden" {
+			n++
+		}
+	}
+	return n
+}
+
+// TestRecurrent_EscapeWithoutRecurrenceLeavesNoRow: harden disabled on a project with no recurrence history → no escape row (nothing was bypassed, so nothing is priced).
+//
+// TestRecurrent_EscapeWithoutRecurrenceLeavesNoRow：无复发履历的项目关掉复发升硬 → 不留审计行
+// （没有本来会触发的阻断，就没有逃生可计价）。
+func TestRecurrent_EscapeWithoutRecurrenceLeavesNoRow(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	t.Setenv(recurrentHardenDisableEnv, "disable")
+	writeCommitSource(t, dir, map[string]string{
+		"foo.go": "package main\n\nfunc Foo() int { return 1 }\n",
+	}, "add foo no test")
+	state := newVerifyState(t, dir, "escape-no-history")
+	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
+		t.Fatalf(`无复发履历 → 应 advisory PASS, got: %v`, err)
+	}
+	if n := recurrentEscapeRows(t, dir, state.TaskRef); n != 0 {
+		t.Fatalf("no recurrence history → no would-be block → want 0 recurrent-harden escape rows, got %d", n)
+	}
+}
+
+// TestRecurrent_ScopeDrift_EscapeRecorded: scope recurrence + severe drift + harden disabled → PASS and one escape row (the scope branch is priced the same as the testing branch).
+//
+// TestRecurrent_ScopeDrift_EscapeRecorded：scope 复发 + 严重 drift + 关掉复发升硬 → PASS，且留
+// 一行逃生审计（scope 分支与 testing 分支同价）。
+func TestRecurrent_ScopeDrift_EscapeRecorded(t *testing.T) {
+	dir := setupRecurrentRepo(t)
+	seedRecurrentHistory(t, dir, dimScope, 3)
+	t.Setenv(recurrentHardenDisableEnv, "disable")
+	writeCommitSource(t, dir, map[string]string{
+		"a.go": "package main\n",
+		"b.go": "package main\n",
+		"c.go": "package main\n",
+	}, "add 3 out-of-scope")
+	state := newVerifyState(t, dir, "escape-scope")
+	state.PlanScope = []string{"declared.go"}
+	var execErr error
+	captureStderr(t, func() {
+		_, execErr = ExecuteTaskGate(dir, "task-verify", state)
+	})
+	if execErr != nil && strings.HasPrefix(execErr.Error(), blockedPrefix) {
+		t.Fatalf(`FORGE_RECURRENT_HARDEN=disable → scope 分支不应升硬, got: %v`, execErr)
+	}
+	if n := recurrentEscapeRows(t, dir, state.TaskRef); n < 1 {
+		t.Fatalf("scope would-be block lifted by FORGE_RECURRENT_HARDEN=disable must leave an escape row, got %d", n)
 	}
 }
 

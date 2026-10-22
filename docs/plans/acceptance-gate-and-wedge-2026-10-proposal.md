@@ -1,7 +1,7 @@
 ---
-status: review
+status: in-progress
 owner: MjxUpUp
-ask: R1–R2 已合入，R3–R5 本批待审，R6 设计稿与 W2 演示文档已出，请审；W3 的 infra 冻结规则与发版节奏仍需你本人拍板（未决 Q1）
+ask: R1–R5 已合入，R6 设计稿与 W2 演示文档已出；W3 的 infra 冻结规则与发版节奏仍需你本人拍板（未决 Q1）
 tier: mini   # 本文是周期总纲，不受方案篇幅档约束；R1–R5 每批开工时各自按 design_tiers 定档，R6 预计 full
 ---
 
@@ -13,7 +13,7 @@ tier: mini   # 本文是周期总纲，不受方案篇幅档约束；R1–R5 每
 |---|---|---|
 | R1 mutation 阳性对照 | 已合入 | `fix/mutation-baseline-control`（`4567a8a3`） |
 | R2 Warrant-Aware Acceptance | 已合入 | `feat/decision-warrant`（`2738ad63`）；未决 Q2 已按推荐定为新增 `--warrant` |
-| R3 / R4 / R5 | 本批实现，待审 | 合为一批（均在 `internal/evalkit`），方案 `docs/plans/eval-validity-r3-r5-2026-10.md`；REQ 以该方案为准（与本文 §四两处措辞不同：REQ-5 复核清单按任务而非 attempt 排序，且 leakage 通过的任务一律入列；REQ-8 本批只提供 `golden run --release` 手动入口，接入发版流水线见该方案 Deferred）；未决 Q3 在该方案拍板为脚本化 `leakage_cmd` |
+| R3 / R4 / R5 | 已合入（`4373f278`，2026-10-22 更新） | 合为一批（均在 `internal/evalkit`），方案 `docs/plans/eval-validity-r3-r5-2026-10.md`；REQ 以该方案为准（与本文 §四两处措辞不同：REQ-5 复核清单按任务而非 attempt 排序，且 leakage 通过的任务一律入列；REQ-8 本批只提供 `golden run --release` 手动入口，接入发版流水线见该方案 Deferred）；未决 Q3 在该方案拍板为脚本化 `leakage_cmd` |
 | R6 「不可能」声明 | 设计稿已出 | `docs/design/impossible-task-flag-2026-10.md`（只出设计，实现见第六节 Deferred） |
 | W2 演示文档 | 已出 | `docs/wedge-demo-anti-false-green.md` |
 | W1 外部种子用户 / W3 infra 冻结 | 待你本人 | 运营动作；W3 规则见未决 Q1 |
@@ -67,7 +67,7 @@ tier: mini   # 本文是周期总纲，不受方案篇幅档约束；R1–R5 每
 - 不恢复 experience/knowledge 学习闭环（`8cedc80`）。重新评估的条件见第六节。
 - 不做 skill 自动生成。SWE-Skills-Bench 显示 39/49 零提升，而且我们没有足够的证据流去筛选。
 - 不扩宿主宽度（F7 国产宿主深度适配延后），不做分派前台（F5 的 issue-tracker 双向镜像、always-on 治理包延后）。
-- 不新增命令。R 线全部通过既有命令的新 flag 或新判定实现。
+- 不新增命令。R 线全部通过既有命令的新 flag 或新判定实现。（例外，2026-10-22 补登：sandbox oracle v0 在 1.79 新增了 `forge eval oracle` 与 `forge eval oracle run`，记账见 docs/design/compat-commitments.md 第五节。）
 - 不新增阻断位点，只有一个例外：R3 的"评测自身不合法"，符合 forge-evaluation-system §十。
 
 ## 三、W 线：外部楔子（以运营为主，owner 是你本人）

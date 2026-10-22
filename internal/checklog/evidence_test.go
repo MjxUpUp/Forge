@@ -385,6 +385,21 @@ func TestBuildEvidenceChain_WorkActivityEscapeDoesNotCap(t *testing.T) {
 		t.Fatalf(`work-activity escape + ratio 1.0: Strength=%s, want Strong（不被 cap）`, got)
 	}
 
+	// task-verify Stop 逃生：与 work-activity 同属流程节奏类（compat 第二节第 5 条 ④），
+	// detail 由 embed_quality.go 的 bash 段固定写出——同样不得 cap。
+	entriesStop := []Entry{
+		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckAssertion, Source: EvidenceDeterministic, TaskRef: "t"},
+		{Check: CheckEscapeHatch, Source: EvidenceDeterministic, TaskRef: "t",
+			Detail: `escape-hatch: task-verify Stop bounded block bypassed (env FORGE_TASK_VERIFY_STOP=0)`},
+	}
+	ecStop := BuildEvidenceChain(entriesStop, "t")
+	if ecStop.UsedEscapeHatch || ecStop.Strength() != Strong {
+		t.Fatalf(`task-verify Stop escape 是节奏类，不应 cap: UsedEscapeHatch=%v Strength=%s`, ecStop.UsedEscapeHatch, ecStop.Strength())
+	}
+
 	// 验证类逃生（test-coverage）：仍 cap。同样证据形状，escape detail 是 test-coverage。
 	entriesVerify := []Entry{
 		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},

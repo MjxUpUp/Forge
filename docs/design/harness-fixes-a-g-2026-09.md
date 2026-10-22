@@ -1,5 +1,7 @@
 # A–G 七项修复落地设计（2026-09，跨机器审计驱动）
 
+状态：已落地（A–G）；其中 G.1 阈值收紧已撤回，C 于 1.67 兑现，见 compat-commitments.md §三 2026-10-22 条。
+
 依据：两台机器的同口径审计——机器甲（项目 6d5e51a0f9d4，90 任务）：《Forge 本机表现审计与修复度量基线》飞书 wiki CPDbwKxvxi6uz0k2R86clgnjnlg；机器乙（项目 8db5a0d1b70f，33 任务）：其兄弟页 L1XRwn3UFihYsrkThnjckjGxnbf（复算与基线校准）。两审计一致判定的系统性缺陷为 A（skill-trigger 高噪低转化）、B（forge next 零采纳 + 范式漂移）、C（门禁命令嵌组合命令）、D（references 下钻不足，host 分层）；机器乙新增 E（完成后归因泄漏）、F（hazard 误报 + 确认非真人）、G（覆盖软门禁被忽略）。本文按 461ef57「事前成功度量门」要求：每项先钉 基线→目标→防伪护栏，M（度量基建）先行，实现合入前基线可复算。
 
 ## 通用约束
@@ -58,7 +60,7 @@
   2. **in-process hook**（PreToolUse Bash，仿 test-nudge 的挂载 hook_track.go:207 + settings.go:93）：1.56 advisory——stderr 一行 `ADVISORY: gate-cmd-form …（自 1.58 起 BLOCKED）` + checklog `gate-cmd-form` warn；1.58 转 BLOCKED（规则：门禁命令之后不得接 `;`、`|`、`||`，不得多门禁同刷；`cd X && gate` 与 `gate && 后续` 保留放行——退出码契约仍成立）。逃生舱：`FORGE_GATE_CMD_FORM=0` env + per-task override `--gate-cmd-form disable`（进 overrides.go 枚举与 escapes 面）。
      **（2026-10-22 注：1.58 未兑现，实际于 1.67.0 以机械版本门转 BLOCK，逃生只有 `FORGE_GATE_CMD_FORM=0`、无 per-task override；见 compat-commitments.md §三同日条。）**
   3. **stderr 兜底**：`forge task gate` 检测 stdout 非 TTY 时（char-device 判定改造自 task_gate.go:166 `stdinIsHumanTerminal` 的 stdin 版——本项判 stdout，是适配不是直接复用），BLOCKED 摘要行同时写 stderr——管道截断不再能吞掉退出码契约的文本面。
-- **落点**：internal/taskpipeline/gatecmdform.go（新，分类器+hook）、internal/hooks/settings.go 注册、internal/clitask/task_gate.go stderr 兜底、overrides.go、compat snapshot（checks/escapes/blockings 三面 regen）。
+- **落点**：internal/gatecmdform/classify.go（新，分类器；原计划放 internal/taskpipeline/gatecmdform.go，实施时独立成包）、internal/hooks/settings.go 注册、internal/clitask/task_gate.go stderr 兜底、overrides.go、compat snapshot（checks/escapes/blockings 三面 regen）。
 - **度量**：C1 37%/13% → ≤2%；C2 84%/27% → ≤15%；C3 7%/46% → ≥80%。防伪：拦截后重跑率不得劣化（甲基线 `100%`）；单任务 Bash 中位数上浮 ≤30%（乙机现值由 M 钉基线）。
 - **验收**：分类器五形态夹具单测；advisory→BLOCKED 文案含「自 1.58 起」字样（承诺表 §二.1 ①；本节 1.58 的预告、风险与绕过面描述均以设计时口径保留，实际 1.67 兑现见上方 2026-10-22 注）；e2e 式：`forge task gate … | tail -1` 场景下 stderr 可见 BLOCKED。
 - **风险**：存量脚本/CI 内嵌门禁连刷会被 1.58 拦——预告期 + 逃生舱 + M 周报监控 advisory 命中存量形态清单，必要时 1.58 只拦「分号+管道」不拦 `&&`（分级 ratchet）。

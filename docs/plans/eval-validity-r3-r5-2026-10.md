@@ -1,7 +1,7 @@
 ---
-status: review
+status: implemented
 owner: MjxUpUp
-ask: 审方向与验收；R3 新增一个 BLOCKED 位点（评测自身不合法），按 compat-commitments 第二节②首发即 blocked
+ask: 已合入 4373f278（#127）。原评审请求：审方向与验收；R3 新增一个 BLOCKED 位点（评测自身不合法），按 compat-commitments 第二节②首发即 blocked
 tier: mini
 ---
 
