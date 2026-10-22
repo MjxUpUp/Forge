@@ -137,12 +137,12 @@ func changedMatches(changed []string, glob string) bool {
 
 // runAndJudgeCriterion executes the criterion command (unless Run-less with
 // file-only assertions) and judges v1 semantics AND each v2 assertion, filling
-// Passed/Output and returning per-assertion verdicts. Shared by VerifyAcceptance
+// Passed/Output and returning per-assertion verdicts. Shared by VerifyAcceptanceWithVerdicts
 // (visible suite) and VerifyHeldout (held-out suite) — the red line is one
 // judging implementation, no second copy.
 //
 // runAndJudgeCriterion 执行 criterion 的命令（无 Run 且断言全为 file-* 时跳过执行），
-// 判定 v1 语义 AND 逐条 v2 断言，回填 Passed/Output 并返回逐断言判定。VerifyAcceptance
+// 判定 v1 语义 AND 逐条 v2 断言，回填 Passed/Output 并返回逐断言判定。VerifyAcceptanceWithVerdicts
 // （可见套件）与 VerifyHeldout（保留套件）共用——红线是判定实现唯一，不存在第二份拷贝。
 func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string) []AssertionVerdict {
 	var verdicts []AssertionVerdict

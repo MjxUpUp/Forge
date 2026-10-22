@@ -607,7 +607,7 @@ type TaskState struct {
 	//
 	// SpecArtifacts 是 L6 产物契约层的引用侧（multi-task-concurrency §9）：阶段 → 可
 	// 验证指针（DataDir 相对路径 + 内容哈希），指向 specs/<ref>/。内容归【文件】所有
-	//（不变式 I5：拥有介质唯一）；本 map 只负责指向与漂移检测（VerifyArtifact）。
+	//（不变式 I5：拥有介质唯一）；本 map 只负责指向与漂移检测（ArtifactCurrentHash）。
 	// AcceptanceCriterion 仍是门禁权威——产物是叙事上下文，绝不是完成信号。刻意不
 	// 叫 Artifacts：TaskState 已有 Artifacts []Artifact（关联产物的弱引用清单，语
 	// 义是"相关但不门禁"），两者是不同概念。

@@ -107,8 +107,8 @@ type Summary struct {
 	//
 	// NudgeRecent 数 SummarizeAt 的 `now` 前 NudgeRecentWindow 窗口内完成且
 	// RetrospectiveNudge=true 的结论——喂给 dashboard 的面向告警计数，让陈旧 nudge
-	// 不再把面板红灯永远挂着（告警疲劳校准见 NudgeRecentWindow）。旧 Summarize
-	//（无 `now`）填 NudgeRecent = NudgeCount，无窗口调用方字段语义仍完整。
+	// 不再把面板红灯永远挂着（告警疲劳校准见 NudgeRecentWindow）。`forge health` /
+	// `forge status` 也传真实 now，与 pulse 面板同口径。
 	NudgeRecent int `json:"nudge_recent"`
 	// NudgeActionable counts windowed nudges that are NOT escape-hatch-capped
 	// Weak — i.e. the human-facing ALERT share of NudgeRecent: true-weak claims
@@ -142,34 +142,16 @@ type Summary struct {
 	PhasePassRate map[string]float64 `json:"phase_pass_rate,omitempty"`
 }
 
-// Summarize is the legacy no-window entry: equivalent to SummarizeAt with
-// NudgeRecent filled as the all-history NudgeCount and NudgeActionable as the
-// all-history non-capped nudge count (no `now` to window against).
-//
-// Summarize 是旧的无窗口入口：等价于 SummarizeAt，只是 NudgeRecent 填全量 NudgeCount、
-// NudgeActionable 填全量非降档 nudge 数（没有 `now` 可开窗）。为既有调用方
-// （cli/health.go、pulse 项目卡）保留；面向告警的新消费方应优先 SummarizeAt。
-func Summarize(cs []act.Conclusion) Summary {
-	s := SummarizeAt(cs, time.Time{})
-	s.NudgeRecent = s.NudgeCount
-	for _, c := range cs {
-		if c.RetrospectiveNudge && !c.EscapeCapped() {
-			s.NudgeActionable++
-		}
-	}
-	return s
-}
-
-// SummarizeAt aggregates like Summarize plus the time-windowed NudgeRecent:
+// SummarizeAt aggregates the conclusions plus the time-windowed NudgeRecent:
 // nudged conclusions completed within the HALF-OPEN window
 // (now-NudgeRecentWindow, now] are counted. Equivalent to SummarizeAtAcked
 // with a nil ack predicate.
 //
-// SummarizeAt 在 Summarize 聚合之上增加时间窗口化的 NudgeRecent：只数完成于半开
+// SummarizeAt 聚合结论，并给出时间窗口化的 NudgeRecent：只数完成于半开
 // 窗口 (now-NudgeRecentWindow, now] 内的 nudge 结论——恰好落在 now-Window 的不计
 // （After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 钉住）。`now` 为零值时
-// NudgeRecent 保持 0——只有事后覆写 NudgeRecent=NudgeCount 的 Summarize 包装可以
-// 传零；直接调用方必须传真实 now。等价于 ack 谓词为 nil 的 SummarizeAtAcked。
+// NudgeRecent/NudgeActionable 保持 0，调用方必须传真实 now。等价于 ack 谓词为 nil
+// 的 SummarizeAtAcked。
 // 纯函数、不碰磁盘。
 func SummarizeAt(cs []act.Conclusion, now time.Time) Summary {
 	return SummarizeAtAcked(cs, now, nil)
@@ -246,7 +228,7 @@ func SummarizeAtAcked(cs []act.Conclusion, now time.Time, ack func(act.Conclusio
 			s.NudgeCount++
 			// 窗口计数：完成于半开区间 (now-Window, now] 内——恰好落在 now-Window 的不计
 			//（After 严格比较；由 TestSummarizeAt_NudgeRecentWindow 的窗口沿断言钉住）。
-			// now 非零才判定——旧 Summarize 包装传零值，事后会覆写 NudgeRecent。
+			// now 非零才判定——零值 now 不开窗，窗口计数保持 0。
 			// 证据式 ack（2026-09）：被 ack（已回顾）的 nudge 退出窗口计数——告警只留
 			// 未处理的；全量真相 NudgeCount 不动。
 			acked := ack != nil && ack(c)

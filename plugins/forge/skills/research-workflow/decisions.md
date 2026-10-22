@@ -217,3 +217,97 @@ internal/skillsqa/research_workflow_test.go：lint 对 13 类陷阱逐条检出�
 ### Rationale
 
 run_dir 已是 skill 自有命名空间且全量过程文件在此，以它为唯一归宿不需另起目录；仓库副本只为解决 ~/ 路径跨人跨机失效，因此只在仓库文档确有引用时复制，条件写成 grep 与字段比对，避免 agent 按 cwd 自行判断；姊妹篇方案因 research-lint 只扫 report.md 会漏检而放弃
+
+## 历史来源：fact-research（退役 skill 决策存档）
+
+2026-10-22 自 `skills/fact-research/decisions.md` 原样迁入（该 skill 已并入 research-workflow，目录随后删除）。标题统一降一级，避免被解析为 research-workflow 自己的决策；正文逐字保留，共 3 条。
+
+### [d-18c7e4296e9423b4-391dde48] accept
+
+- **Skill**: fact-research
+- **DecidedAt**: 2026-08-02T04:57:23Z
+
+#### Diagnosis
+
+审计发现：通道状态表（HN ✅/Wikipedia ❌/Jina ❌）是作者本机网络实测写成通用事实，且对多个源断言「别用」过于绝对
+
+#### Revision
+
+通道状态表移至 references/curl-sourcing.md（与 dev-lookup 共用），明确标注「特定网络环境实测，非通用结论」并补自检方法；「别用」软化为「该环境下不可用，自检后再定」；主文件改指针；三层调研量级权威表按裁决保留在本 skill「三层调研量级（路由依据）」节
+
+#### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+### [d-18c7e62b275fc9b8-1f958a3f] accept
+
+- **Skill**: fact-research
+- **DecidedAt**: 2026-08-02T05:34:10Z
+
+#### Diagnosis
+
+项10 description 审计+触发回归
+
+#### Revision
+
+description 审计合格未改动 + evals.json 建立
+
+#### Evidence
+
+docs/skills-value-audit-2026-08-02.md
+
+### [d-p2-merge-20260815] accept
+
+> ⚠️ 本 skill 已于 2026-08-15（任务 feat/skill-hitrate-optimization，P2 研究族合并）整体并入 **research-workflow**——本文件是合并墓碑，后续维护与决策记录在 `skills/research-workflow/decisions.md`。
+
+- 诊断: fact-research 与 research-workflow 职责重叠（轻量事实核查 vs 深度调研），三层调研量级路由表需要单一真相源，两 skill 并存导致 dev-lookup/证据链引用摇摆
+- 修订: 整体并入 research-workflow「量级判定与轻量档（Phase L）」节（三层量级表+4步协议）；SKILL.md 删除；本决策历史归档至 research-workflow/decisions.md
+- 证据: cross-skill 引用（evidence-based-proposal/design-artifact-standards/adversarial-verification/dev-lookup）已全部改指 research-workflow Phase L；引用完整性 grep 零残留
+- 结果: accept（合并落地）
+
+## 历史来源：web-search-bridge（退役 skill 决策存档）
+
+2026-10-22 自 `skills/web-search-bridge/decisions.md` 原样迁入（该 skill 已并入 research-workflow，目录随后删除）。标题统一降一级，避免被解析为 research-workflow 自己的决策；正文逐字保留，共 3 条。
+
+### [d-18c7e4845bbda9a8-755fd683] accept
+
+- **Skill**: web-search-bridge
+- **DecidedAt**: 2026-08-02T05:03:54Z
+
+#### Diagnosis
+
+审计发现：脚本与文档不一致（usage.json 只有 tavily/serper/exa 三个 key，Brave 无统计；额度预检表同漏 Brave）；233 行偏长；Tavily GET /usage 说法未能公开核实；三层量级分层图为 4 份复制之一
+
+#### Revision
+
+脚本补 Brave 统计 key + check_brave（无预检能力，同 Exa 被动应对）+ usage 文案；SKILL.md 预检表补 Brave 行；Tavily /usage 与中文查询坑标注为作者联调实测（2026-07 前、具体日期未留痕、以 check 实测为准）；provider curl 示例拆 references/provider-curl-examples.md；三层分层图与重复的配置检查节删除改指针（canonical：fact-research「三层调研量级（路由依据）」节）；主文件 233→158 行
+
+#### Evidence
+
+docs/skills-value-audit-2026-08-02.md 逐项审计
+
+### [d-18c7e62b30059cc8-406267e0] accept
+
+- **Skill**: web-search-bridge
+- **DecidedAt**: 2026-08-02T05:34:10Z
+
+#### Diagnosis
+
+项10 description 审计+触发回归
+
+#### Revision
+
+description 审计合格未改动 + evals.json 建立
+
+#### Evidence
+
+docs/skills-value-audit-2026-08-02.md
+
+### [d-p2-merge-20260815] accept
+
+> ⚠️ 本 skill 已于 2026-08-15（任务 feat/skill-hitrate-optimization，P2 研究族合并）整体并入 **research-workflow**——本文件是合并墓碑，后续维护与决策记录在 `skills/research-workflow/decisions.md`。
+
+- 诊断: web-search-bridge（通用搜索 API 桥接）只被调研族消费，独立成 skill 导致触发与引用碎片化，降级链末位指向两跳
+- 修订: 整体并入 research-workflow「通用搜索桥接」节（Tavily→Serper→Brave→Exa 路由+jq body 构造+配额预检脚本）；SKILL.md 删除；scripts/references 迁至 research-workflow/ 下
+- 证据: dev-lookup 降级链已改指 research-workflow「通用搜索桥接」；本决策历史归档至 research-workflow/decisions.md
+- 结果: accept（合并落地）

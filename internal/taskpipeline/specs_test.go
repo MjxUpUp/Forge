@@ -11,12 +11,12 @@ import (
 
 // TestWriteArtifact_ReferenceTriangle pins I5 (multi-task-concurrency §9): the
 // file owns the content (frontmatter carries task-ref/stage), the state side
-// holds a DataDir- relative path + content hash, and VerifyArtifact detects
-// hand-edits as drift.
+// holds a DataDir- relative path + content hash, and ArtifactCurrentHash
+// detects hand-edits as drift.
 //
 // TestWriteArtifact_ReferenceTriangle 钉住 I5（multi-task-concurrency §9）：文件拥有
 // 内容（frontmatter 带 task-ref/stage），状态侧持 DataDir 相对路径 + 内容哈希，
-// VerifyArtifact 把手改检测为漂移。
+// ArtifactCurrentHash 把手改检测为漂移。
 func TestWriteArtifact_ReferenceTriangle(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	root := t.TempDir()
@@ -31,8 +31,8 @@ func TestWriteArtifact_ReferenceTriangle(t *testing.T) {
 	if len(ref.Hash) != 16 {
 		t.Fatalf("哈希应为 16 hex, got %q", ref.Hash)
 	}
-	if !VerifyArtifact(root, ref) {
-		t.Fatal("刚写入的引用应验证通过")
+	if got := ArtifactCurrentHash(root, ref); got != ref.Hash {
+		t.Fatalf("刚写入的引用应验证通过: cur=%q ref=%q", got, ref.Hash)
 	}
 	// frontmatter 身份三角可从文件自证。
 	data, _ := os.ReadFile(filepath.Join(forgedata.DataDirFor(root), filepath.FromSlash(ref.Path)))
@@ -42,8 +42,13 @@ func TestWriteArtifact_ReferenceTriangle(t *testing.T) {
 	// 手改 → 漂移。
 	abs := filepath.Join(forgedata.DataDirFor(root), filepath.FromSlash(ref.Path))
 	os.WriteFile(abs, []byte("---\nforge-task-ref: feat/x\n---\n篡改"), 0o644)
-	if VerifyArtifact(root, ref) {
-		t.Fatal("手改后应报漂移（哈希失配）")
+	if got := ArtifactCurrentHash(root, ref); got == "" || got == ref.Hash {
+		t.Fatalf("手改后应报漂移（哈希失配）: cur=%q ref=%q", got, ref.Hash)
+	}
+	// 文件不可读 → 空串（漂移消费方按失配处理）。
+	os.Remove(abs)
+	if got := ArtifactCurrentHash(root, ref); got != "" {
+		t.Fatalf("文件缺失应返回空串, got %q", got)
 	}
 }
 

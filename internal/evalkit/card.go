@@ -11,10 +11,7 @@ package evalkit
 
 import (
 	"fmt"
-	"os"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 )
 
 // ETCSOVLayers lists the seven layers of the ETCSOVG taxonomy (arXiv
@@ -132,24 +129,6 @@ func (c *GatesCard) Validate() error {
 		}
 	}
 	return nil
-}
-
-// LoadCard reads and validates gates-card.yaml (fail-closed).
-//
-// LoadCard 读取并校验 gates-card.yaml（fail-closed）。
-func LoadCard(path string) (*GatesCard, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("evalkit: 读取披露卡失败: %w", err)
-	}
-	var c GatesCard
-	if err := yaml.Unmarshal(data, &c); err != nil {
-		return nil, fmt.Errorf("evalkit: 解析披露卡失败: %w", err)
-	}
-	if err := c.Validate(); err != nil {
-		return nil, err
-	}
-	return &c, nil
 }
 
 // RenderMarkdown renders the disclosure card as user-facing Markdown. It fails
