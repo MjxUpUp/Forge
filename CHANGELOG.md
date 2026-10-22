@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.84.1](https://github.com/MjxUpUp/Forge/compare/v1.84.0...v1.84.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **escape:** 逃生舱审计与裁决 + 文档卫生批 ([#131](https://github.com/MjxUpUp/Forge/issues/131)) ([eeba704](https://github.com/MjxUpUp/Forge/commit/eeba70468be88dee7ba32e12e50eef555db5b592))
+* **scope:** 合并基线分支后改动集剔除只经合并带入的文件 ([#132](https://github.com/MjxUpUp/Forge/issues/132)) ([3bae866](https://github.com/MjxUpUp/Forge/commit/3bae86610cd3d7bcf353d3aad0802ccfa7fc3f1c))
+
 ## [1.84.0](https://github.com/MjxUpUp/Forge/compare/v1.83.0...v1.84.0) (2026-10-22)
 
 
