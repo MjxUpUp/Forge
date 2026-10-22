@@ -162,3 +162,28 @@ func TestReviewWindowFiles_KeepsDeletionPairedAsRename(t *testing.T) {
 		t.Errorf("base copy must not be in the review window, got %v", got)
 	}
 }
+
+// TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename: after merging base that adds a copy of a test, the task deletes the original only in the working tree; the window's diff pairs the two as a rename, and the deleted path must still be shown while the base copy is not.
+//
+// TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename：合并了新增测试拷贝的基线
+// 之后，本任务只在工作树里删掉原测试（未提交）；窗口的 diff 把两者配成重命名，被删的
+// 路径仍要出现在窗口里，基线的拷贝不出现。
+func TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename(t *testing.T) {
+	content := "package main\n\nfunc TestA() {\n\tif 1+1 != 2 {\n\t\tpanic(\"math\")\n\t}\n}\n"
+	dir, baseline := reviewMergedRepo(t,
+		map[string]string{"main.go": "package main\n", "x_test.go": content},
+		map[string]string{"own.go": "package main\n\nfunc own() {}\n"},
+		map[string]string{"copy_test.go": content})
+	reviewGit(t, dir, "rm", "-q", "x_test.go")
+	if ns := reviewGit(t, dir, "diff", "--name-status", baseline); !strings.Contains(ns, "x_test.go\tcopy_test.go") {
+		t.Fatalf("fixture: window diff must pair the deletion with the base copy, got %q", ns)
+	}
+
+	got := reviewWindowFiles(dir, &taskpipeline.TaskState{TaskRef: "t"}, baseline)
+	if !slices.Contains(got, "x_test.go") {
+		t.Errorf("uncommitted test deletion must be in the review window, got %v", got)
+	}
+	if slices.Contains(got, "copy_test.go") {
+		t.Errorf("base copy must not be in the review window, got %v", got)
+	}
+}

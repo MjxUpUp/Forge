@@ -168,6 +168,18 @@ func baseMergeOwnFiles(root, m, p1 string, baseParents []string) ([]string, erro
 	return own, nil
 }
 
+// RenamePair parses one `git diff --name-status` line and returns the old and new path of a rename (R) or copy (C) entry; ok is false for any other entry.
+//
+// RenamePair 解析一行 `git diff --name-status` 输出，返回重命名（R）或拷贝（C）条目的
+// 旧路径与新路径；其他条目 ok 为 false。
+func RenamePair(line string) (oldPath, newPath string, ok bool) {
+	fields := strings.Split(line, "\t")
+	if len(fields) != 3 || (!strings.HasPrefix(fields[0], "R") && !strings.HasPrefix(fields[0], "C")) {
+		return "", "", false
+	}
+	return fields[1], fields[2], true
+}
+
 // ExcludeMergedInFiles drops from committed the files that changed in from..HEAD only through base-side merges: a first-parent merge whose other parents (2..N) are all reachable from a base ref contributes the files it changed relative to its first parent except those whose version equals a base parent's and that only base changed since forking (see baseMergeOwnFiles); every other first-parent commit — including merges with any non-base parent, such as the task's own side branch — contributes all its files. Base refs are origin/main and origin/master when present, else local main and master. Callers pass only files of the committed range; when merges are filtered and a rename pair's new path is dropped (a deleted file paired as a "rename" of a base-added one), its old path is appended if it is the task's. committed is returned unchanged when the range has no merge, when from is not on HEAD's first-parent chain, when a merge on that chain is itself reachable from base (the chain is base's history: the task was merged into base and fast-forwarded back), when no base ref exists, or on any git failure.
 //
 // ExcludeMergedInFiles 从 committed 中剔除在 from..HEAD 内只经「基线一侧合并」带入
@@ -242,26 +254,25 @@ func ExcludeMergedInFiles(root, from string, committed []string) []string {
 	// 调用方的净 diff 开着重命名检测：本任务删掉的测试可能被配成基线新增文件的
 	// 「重命名」，只剩新路径（随后被当作基线剔掉）。对新路径被剔掉的重命名对，若旧
 	// 路径属于本任务，把旧路径补回；新路径保留的重命名对不动，纯重命名的结果与无合并
-	// 时一致。
-	pairs, err := gitLines(root, "diff", "-M", "--name-status", from+"..HEAD")
+	// 时一致。不写死 -M：沿用调用方 diff 的同一份 diff.renames 配置（可能含拷贝检测），
+	// 配对才与 committed 一致。
+	pairs, err := gitLines(root, "diff", "--name-status", from+"..HEAD")
 	if err != nil {
 		return committed
 	}
 	kept := make([]string, 0, len(committed))
+	inCommitted := map[string]bool{}
 	seen := map[string]bool{}
 	for _, f := range committed {
+		inCommitted[f] = true
 		seen[f] = true
 		if own[f] {
 			kept = append(kept, f)
 		}
 	}
 	for _, l := range pairs {
-		fields := strings.Split(l, "\t")
-		if len(fields) != 3 || !strings.HasPrefix(fields[0], "R") {
-			continue
-		}
-		oldPath, newPath := fields[1], fields[2]
-		if !own[newPath] && own[oldPath] && !seen[oldPath] {
+		oldPath, newPath, ok := RenamePair(l)
+		if ok && inCommitted[newPath] && !own[newPath] && own[oldPath] && !seen[oldPath] {
 			seen[oldPath] = true
 			kept = append(kept, oldPath)
 		}

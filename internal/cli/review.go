@@ -40,7 +40,8 @@ func reviewTestTouchedFiles(root string, state *taskpipeline.TaskState, priorBas
 // 变更（含已提交 + 工作树 + untracked——审查的真实范围）；空（首轮审查）
 // 回落任务窗口。基线之后合并了别的分支时，只经合并另一侧带入、且工作树里
 // 没再改的文件不算审查范围（taskpipeline.ExcludeMergedInFiles）；本任务删掉的
-// 测试被配成基线新增文件的「重命名」时，补回它的旧路径。没有合并提交时结果不变。
+// 测试（已提交或只在工作树里）被配成基线新增文件的「重命名」时，补回它的旧路径。
+// 没有合并提交时结果不变。
 func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline string) []string {
 	if priorBaseline != "" {
 		if out, err := exec.Command("git", "-C", root, "diff", "--name-only", priorBaseline).Output(); err == nil {
@@ -59,6 +60,18 @@ func reviewWindowFiles(root string, state *taskpipeline.TaskState, priorBaseline
 			}
 			for _, l := range restored {
 				add(l, false)
+			}
+			// 窗口的 diff 比到工作树：工作树里刚删掉的测试也可能被配成基线带入文件的
+			// 「重命名」，只剩新路径又被剔掉。按同一条 diff 的配对补回旧路径。
+			if len(mergedIn) > 0 {
+				if ns, nerr := exec.Command("git", "-C", root, "diff", "--name-status", priorBaseline).Output(); nerr == nil {
+					for _, l := range strings.Split(string(ns), "\n") {
+						oldPath, newPath, ok := taskpipeline.RenamePair(strings.TrimSpace(l))
+						if ok && mergedIn[filepath.ToSlash(newPath)] && !mergedIn[filepath.ToSlash(oldPath)] {
+							add(oldPath, false)
+						}
+					}
+				}
 			}
 			// untracked 文件只能是本任务工作树里的新文件，不经合并剔除。
 			if un, uerr := exec.Command("git", "-C", root, "ls-files", "--others", "--exclude-standard").Output(); uerr == nil {

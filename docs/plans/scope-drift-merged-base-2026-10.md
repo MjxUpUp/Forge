@@ -61,6 +61,10 @@ tier: mini
   accept[REQ-18]: go test ./internal/taskpipeline/ -run ^TestExcludeMergedInFiles_CrissCrossChecksEveryMergeBase$ -count=1 :: --- PASS: TestExcludeMergedInFiles_CrissCrossChecksEveryMergeBase (
 - REQ-19 本任务的纯重命名在合并基线后仍只列新路径，与无合并时一致
   accept[REQ-19]: go test ./internal/taskpipeline/ -run ^TestExcludeMergedInFiles_PureRenameMatchesNoMerge$ -count=1 :: --- PASS: TestExcludeMergedInFiles_PureRenameMatchesNoMerge (
+- REQ-20 合并基线后只在工作树里删掉测试、被窗口的 diff 配成基线拷贝的重命名时，被删路径仍在审查窗口里
+  accept[REQ-20]: go test ./internal/cli/ -run ^TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename$ -count=1 :: --- PASS: TestReviewWindowFiles_KeepsWorktreeDeletionPairedAsRename (
+- REQ-21 `git diff --name-status` 的重命名与拷贝条目都解析出旧、新路径
+  accept[REQ-21]: go test ./internal/taskpipeline/ -run ^TestRenamePair$ -count=1 :: --- PASS: TestRenamePair (
 
 ## 设计
 ### 触点
@@ -82,10 +86,10 @@ tier: mini
   - 「本任务的文件」= 第一父链上非合并提交的文件（`log --first-parent --no-merges --no-renames --name-only`），加上每个合并提交的贡献：
     - 其余各父（第 2..N 个，`rev-list --parents -n 1`）全部可从基线到达，是基线合并。计入它相对第一父 p1 改动的文件，只减去存在某个基线父 pi 同时满足三条的：合并结果等于 pi 的版本（不在 `diff pi m` 里）；对 `merge-base --all p1 pi` 的每个 merge-base mb，基线一侧改过该文件（在 `diff mb pi` 里），任务一侧没改过（不在 `diff mb p1` 里）。冲突解决（含整体取基线版本、盖掉任务一侧的改动）、合并时顺手改，以及选陈旧的基线父把文件改回旧版本，都算本任务改动；
     - 其他合并（本任务侧分支 --no-ff 合回、含侧分支的章鱼合并、分叉后 git pull 产生的合并）：`diff --no-renames --name-only m^1 m` 整段计入；
-  - 返回 committed 中属于「本任务的文件」的项。调用方的净 diff 开着重命名检测，本任务删掉的测试可能被配成基线新增拷贝的「重命名」，只剩新路径；所以再取 `diff -M --name-status from..HEAD` 的重命名对，新路径被剔掉、旧路径属于本任务时把旧路径补回。新路径保留的重命名对不动，纯重命名的结果与无合并时一致；
+  - 返回 committed 中属于「本任务的文件」的项。调用方的净 diff 开着重命名检测，本任务删掉的测试可能被配成基线新增拷贝的「重命名」，只剩新路径；所以再取 `diff --name-status from..HEAD` 的重命名与拷贝对（沿用调用方同一份 diff.renames 配置，不写死 `-M`），新路径在 committed 里且被剔掉、旧路径属于本任务时把旧路径补回。新路径保留的重命名对不动，纯重命名的结果与无合并时一致；
   - 任何 git 调用失败时原样返回（保守：不能证明外来就继续算）；所有 git 调用带 `--no-replace-objects`，防 `git replace --graft` 把普通提交伪装成基线合并。这一项是纵深防御：按文件比对的规则下，伪装合并能剔掉的不超过一次真实合并，没有单独的用例。
 - `taskChangedFiles` 在已提交部分（`HeadCommit..HEAD`）先过 `ExcludeMergedInFiles`，再过既有的跨任务归属过滤；工作树与 untracked 来源不过滤。
-- `reviewWindowFiles` 有审查基线时，先数 `baseline..HEAD` 第一父链上的合并提交，为 0 直接按原逻辑返回；否则剔除已提交差异里被判为基线带入、且工作树没再改动的文件，并加入 `ExcludeMergedInFiles` 补回的旧路径。untracked 文件不经剔除。
+- `reviewWindowFiles` 有审查基线时，先数 `baseline..HEAD` 第一父链上的合并提交，为 0 直接按原逻辑返回；否则剔除已提交差异里被判为基线带入、且工作树没再改动的文件，并加入 `ExcludeMergedInFiles` 补回的旧路径；窗口的 diff 比到工作树，所以再按 `diff --name-status <基线>` 的配对，把新路径被剔掉、旧路径不是基线带入的旧路径补回（工作树里刚删、未提交的测试）。untracked 文件不经剔除。
 
 ### 关键取舍
 - 不做（继续靠 `scope add` 收编）：否决。收编会把不相干的文件写进 PlanScope，污染「方案外改动」的判定，test-coverage 与 cheat-scan 也会继续误报。
@@ -103,6 +107,7 @@ tier: mini
 - 本任务的子分支先经 PR 合进 origin/main、任务再合并 origin/main 时，子分支上的改动按基线带入剔除。这些改动已经过那次 PR 的审查，本批不另行追溯。
 - 任务先合过一次 origin/main，之后部分提交经「合并提交式」PR 进入 origin/main：那次合并本身已可从基线到达，触发倒置守卫，整段退回原行为（基线文件重新算进改动集，偏保守，不误剔）。squash 合并的 PR 不受影响。
 - 基线上任何一个分叉后临时削弱过某个测试、后来又恢复的提交（例如 origin/main 自己的中间提交），本任务用 `git merge <sha>` 合并它、且任务一侧没碰过该测试时，这次削弱会被当作基线带入。PR 合回 main 时 main 的版本胜出，绕过的只是本地门禁。
+- 「任务一侧改过」只看文件有没有变，不看那次改动是否已进基线：前序任务改过的文件经 squash PR 进了 main、main 又继续改它，当前任务合并 origin/main 后，这个文件仍算本任务改动。偏保守，不漏报，但会留下少量本批想消掉的 scope-drift 误报。
 - 邪恶合并里「保留我方」、把基线对某个测试的加强撤回：from..HEAD 的净 diff 里该测试没有变化，改动集本来就看不到。这是净 diff 口径的问题，早于本批，与合并剔除无关。
 - 基线可信度以远端 ref 为界：agent 用 `git update-ref` 或 `git fetch . X:refs/remotes/origin/main` 改写远端跟踪 ref，仍能让任意提交被当作基线。拦截这类命令属于 hazard-guard 的范围，本批不做。
 - 有合并时每次调用多若干 git 子进程（固定约 10 个，每个合并另加 4～10 个，criss-cross 时每多一个 merge-base 再加 2 个），`taskChangedFiles` 在一次 verify 内被调用十余次；没有合并时只多 1 次。

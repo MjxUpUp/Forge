@@ -537,3 +537,27 @@ func TestExcludeMergedInFiles_PureRenameMatchesNoMerge(t *testing.T) {
 		t.Fatalf("pure rename after a merge must list only the new path, got %v want %v (committed %v)", got, want, committed)
 	}
 }
+
+// TestRenamePair: rename and copy entries of `git diff --name-status` yield their old and new paths; other entries are rejected.
+//
+// TestRenamePair：`git diff --name-status` 的重命名与拷贝条目解析出旧、新路径，其他
+// 条目不认。
+func TestRenamePair(t *testing.T) {
+	for _, tc := range []struct {
+		line          string
+		oldPath, newP string
+		ok            bool
+	}{
+		{"R100\tx_test.go\tcopy_test.go", "x_test.go", "copy_test.go", true},
+		{"R066\ta/x.go\tb/y.go", "a/x.go", "b/y.go", true},
+		{"C075\tx.go\tz.go", "x.go", "z.go", true},
+		{"M\tx.go", "", "", false},
+		{"D\tx_test.go", "", "", false},
+		{"A\tnew.go", "", "", false},
+	} {
+		o, n, ok := RenamePair(tc.line)
+		if o != tc.oldPath || n != tc.newP || ok != tc.ok {
+			t.Errorf("RenamePair(%q) = (%q, %q, %v), want (%q, %q, %v)", tc.line, o, n, ok, tc.oldPath, tc.newP, tc.ok)
+		}
+	}
+}
