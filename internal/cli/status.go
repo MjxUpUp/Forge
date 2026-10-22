@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
@@ -103,7 +104,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	var hs *health.Summary
 	if proj, err := forgedata.ProjectFor(root); err == nil {
 		if cs, err := act.LoadAll(proj); err == nil && len(cs) > 0 {
-			s := health.Summarize(cs)
+			s := health.SummarizeAt(cs, time.Now())
 			hs = &s
 		}
 	}

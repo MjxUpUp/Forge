@@ -19,7 +19,6 @@ package projectsync
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -79,10 +78,4 @@ func NewBundleID() (string, error) {
 		return ``, fmt.Errorf(`生成 bundle id 失败: %w`, err)
 	}
 	return hex.EncodeToString(b[:]), nil
-}
-
-// sha256Hex 返回 b 的 sha256 hex。
-func sha256Hex(b []byte) string {
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
 }

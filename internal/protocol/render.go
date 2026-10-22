@@ -7,10 +7,10 @@ import (
 
 // StandardRenderStyle parameterizes how Standards render into markdown bullet lines.
 //
-// StandardRenderStyle 参数化 Standards 到 markdown 列表行的渲染。五个 host 渲染器
-// （skillgen 的 quality skill、cursor/cline/windsurf/copilot translator）共享同一个
-// 循环——跳过 disabled、severity 映射 label、可选格式化 enforce-hook 注记、输出一行——
-// 差异只在 label 与行格式。本结构恰好承载这些差异，让循环只存在一份。
+// StandardRenderStyle 参数化 Standards 到 markdown 列表行的渲染。循环只有一份——
+// 跳过 disabled、severity 映射 label、可选格式化 enforce-hook 注记、输出一行——
+// 渲染方之间的差异只在 label 与行格式，由本结构承载。当前唯一生产渲染方是
+// skillgen 的 quality skill（cursor/cline/windsurf/copilot 桥已不再调用本包渲染）。
 type StandardRenderStyle struct {
 	// SeverityLabel maps Standard.Severity (error/warning/info) to its display label.
 	//
@@ -42,10 +42,10 @@ func RenderStandards(sb *strings.Builder, standards []Standard, style StandardRe
 	}
 }
 
-// SessionRuleRenderStyle parameterizes how SessionRules render into markdown bullet lines — same five-way dedup as StandardRenderStyle.
+// SessionRuleRenderStyle parameterizes how SessionRules render into markdown bullet lines — same single-loop design as StandardRenderStyle.
 //
 // SessionRuleRenderStyle 参数化 SessionRules 到 markdown 列表行的渲染——与
-// StandardRenderStyle 同样的五方去重。
+// StandardRenderStyle 同样的单循环设计。
 type SessionRuleRenderStyle struct {
 	// MandatoryLabel maps SessionRule.Mandatory to its display label.
 	//
@@ -80,7 +80,7 @@ func RenderSessionRules(sb *strings.Builder, rules []SessionRule, style SessionR
 // EmojiSeverityLabel renders severity as an emoji (error 🔴 / warning 🟡 / info 🔵); unknown severities default to 🔴.
 //
 // EmojiSeverityLabel 把 severity 渲染为 emoji（error 🔴 / warning 🟡 / info 🔵）；
-// 未知 severity 默认 🔴。quality skill 与 cursor/cline guidance 文件使用。
+// 未知 severity 默认 🔴。quality skill 使用。
 func EmojiSeverityLabel(severity string) string {
 	switch severity {
 	case "warning":
@@ -89,21 +89,6 @@ func EmojiSeverityLabel(severity string) string {
 		return "🔵"
 	default:
 		return "🔴"
-	}
-}
-
-// WordSeverityLabel renders severity as an upper-case word (ERROR/WARNING/INFO); unknown severities default to ERROR.
-//
-// WordSeverityLabel 把 severity 渲染为大写单词（ERROR/WARNING/INFO）；未知 severity
-// 默认 ERROR。windsurf/copilot 文件使用。
-func WordSeverityLabel(severity string) string {
-	switch severity {
-	case "warning":
-		return "WARNING"
-	case "info":
-		return "INFO"
-	default:
-		return "ERROR"
 	}
 }
 
@@ -129,24 +114,4 @@ func CNTriggerSuffix(trigger string) string {
 		return "（提交代码时）"
 	}
 	return ""
-}
-
-// MustShouldLabel renders mandatory as [MUST]/[SHOULD] (cursor/cline session rules).
-//
-// MustShouldLabel 把 mandatory 渲染为 [MUST]/[SHOULD]（cursor/cline 会话规则）。
-func MustShouldLabel(mandatory bool) string {
-	if mandatory {
-		return "[MUST]"
-	}
-	return "[SHOULD]"
-}
-
-// AlwaysPreferLabel renders mandatory as ALWAYS/PREFER (windsurf/copilot session rules).
-//
-// AlwaysPreferLabel 把 mandatory 渲染为 ALWAYS/PREFER（windsurf/copilot 会话规则）。
-func AlwaysPreferLabel(mandatory bool) string {
-	if mandatory {
-		return "ALWAYS"
-	}
-	return "PREFER"
 }

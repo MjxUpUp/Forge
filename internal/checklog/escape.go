@@ -53,16 +53,6 @@ func EscapeGateOf(e *Entry) string {
 	return e.Meta["escape.gate"]
 }
 
-// EscapeOwnerOf 从行提取 owner（旧行返回 ""）。
-//
-// EscapeOwnerOf extracts the owner from row metadata.
-func EscapeOwnerOf(e *Entry) string {
-	if e == nil || e.Meta == nil {
-		return ""
-	}
-	return e.Meta["escape.owner"]
-}
-
 // EscapeReasonOf 从行提取 reason 枚举（旧行返回 EscapeReasonUnspecified 的
 // 缺省——聚合时区分"没记"与"未声明"，两者都归 unspecified 桶）。
 //

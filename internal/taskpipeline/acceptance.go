@@ -265,7 +265,7 @@ func ensureGoTestVerboseRun(run string) (string, bool) {
 }
 
 // judgeAcceptance 是 acceptance v1 三态判定的单一真相源：RunTestCommand 的 passed(exit 0)
-// 与 Expected 子串比对。唯一消费方是 runAndJudgeCriterion（VerifyAcceptance 与
+// 与 Expected 子串比对。唯一消费方是 runAndJudgeCriterion（VerifyAcceptanceWithVerdicts 与
 // VerifyHeldout 双套件经它共用）；v2 断言的判定在同文件的 assertion_judge.go 分派。
 //
 // 三态：passed=false → false；Expected 非空 → Contains(output, Expected)；否则 → true。
@@ -281,15 +281,22 @@ func judgeAcceptance(passed bool, output, expected string) bool {
 	}
 }
 
-// VerifyAcceptance actually runs each Run command of state's acceptance criteria, matches the Expected substring, fills back Passed/Output.
+// VerifyAcceptanceWithVerdicts actually runs each Run command of state's
+// acceptance criteria, matches the Expected substring, fills back
+// Passed/Output, and returns the per-assertion verdicts — the evidence-row
+// payload for CLI (checklog:acceptance-assert rows). The task-changed file set
+// is computed once per call (git cost amortized over all criteria); Run-less
+// criteria with only file-* assertions skip command execution entirely.
 //
-// VerifyAcceptance 实跑 state 里每条验收标准的 Run 命令，比对 Expected 子串，回填
-// Passed/Output。复用 RunTestCommand（与 forge verify --run-tests 同一执行路径）。
-// Expected 非空→Passed = 输出含该子串；Expected 空→Passed = 退出码 0。
-// 不写 checklog——调用方（CLI）决定记录时机，本函数保持纯逻辑可单测。
-//
-// v2 断言经 runAndJudgeCriterion 逐条判定（与 VerifyHeldout 同一分派）；逐断言
-// 结果经 VerifyAcceptanceWithVerdicts 取回（本函数丢弃——保旧签名与调用方兼容）。
+// VerifyAcceptanceWithVerdicts 实跑 state 里每条验收标准的 Run 命令，比对 Expected
+// 子串，回填 Passed/Output，并返回逐断言判定结果——CLI 记
+// checklog:acceptance-assert 证据行的载荷。复用 RunTestCommand（与 forge verify
+// --run-tests 同一执行路径）。Expected 非空→Passed = 输出含该子串；Expected 空→
+// Passed = 退出码 0。不写 checklog——调用方（CLI）决定记录时机，本函数保持纯逻辑
+// 可单测。v2 断言经 runAndJudgeCriterion 逐条判定（与 VerifyHeldout 同一分派）。
+// 任务变更文件集每次调用只算一次（git 成本由全部条目摊销，且惰性——仅存在 file-*
+// 断言时实算，纯 v1 任务零 git 开销）；无 Run 且断言全为 file-* 的条目完全跳过命令
+// 执行。
 //
 // freshness 快照：除 AcceptedHeadCommit（实跑时 HEAD，保留作溯源）外，每条还记内容快照
 // （AcceptedBaseCommit = 任务的 HeadCommit，AcceptedChangeHash =
@@ -297,20 +304,6 @@ func judgeAcceptance(passed bool, output, expected string) bool {
 // verify-acceptance 与 task-complete 之间的一次 commit（协议规定顺序）不再使快照过期
 // ——只有验收后的真实源码改动才会。任务无可用 HeadCommit 时（老 state，或记录的 commit
 // 被改写掉）内容字段留空，消费方回落旧的 HEAD 相等检查。
-func VerifyAcceptance(root string, state *TaskState) {
-	VerifyAcceptanceWithVerdicts(root, state)
-}
-
-// VerifyAcceptanceWithVerdicts is VerifyAcceptance plus the per-assertion
-// verdicts — the evidence-row payload for CLI (checklog:acceptance-assert rows).
-// The task-changed file set is computed once per call (git cost amortized over
-// all criteria); Run-less criteria with only file-* assertions skip command
-// execution entirely.
-//
-// VerifyAcceptanceWithVerdicts 是 VerifyAcceptance 加逐断言判定结果——CLI 记
-// checklog:acceptance-assert 证据行的载荷。任务变更文件集每次调用只算一次
-// （git 成本由全部条目摊销，且惰性——仅存在 file-* 断言时实算，纯 v1 任务零
-// git 开销）；无 Run 且断言全为 file-* 的条目完全跳过命令执行。
 func VerifyAcceptanceWithVerdicts(root string, state *TaskState) []AssertionVerdict {
 	var changed []string
 	if hasFileAssertion(state.Acceptance) {
@@ -501,13 +494,13 @@ func isFenceMarker(line string) bool {
 // CheckEscapeHatch → evidence Strength cap Weak（有代价）。
 const acceptanceGateDisableEnv = "FORGE_ACCEPTANCE_GATE"
 
-// CheckAcceptanceFresh is task-complete's acceptance pre-flight — gives AcceptedHeadCommit a deterministic consumer (after MCP teardown this field is written by VerifyAcceptance but has no consumer, orphaned).
+// CheckAcceptanceFresh is task-complete's acceptance pre-flight — gives AcceptedHeadCommit a deterministic consumer (after MCP teardown this field is written by VerifyAcceptanceWithVerdicts but has no consumer, orphaned).
 //
 // CheckAcceptanceFresh 是 task-complete 的 acceptance pre-flight——给 AcceptedHeadCommit 补
-// deterministic consumer（MCP 拆除后该字段在 VerifyAcceptance 写入但无消费方，成孤儿）。
+// deterministic consumer（MCP 拆除后该字段在 VerifyAcceptanceWithVerdicts 写入但无消费方，成孤儿）。
 // task 声明了 acceptance 时，每条必须同时满足：
 //   - AcceptedHeadCommit 非空（跑过 forge task verify-acceptance，有实跑快照）
-//   - 快照 FRESH：有内容快照（AcceptedBaseCommit 非空，2026-08-25 起由 VerifyAcceptance
+//   - 快照 FRESH：有内容快照（AcceptedBaseCommit 非空，2026-08-25 起由 VerifyAcceptanceWithVerdicts
 //     写入）时 freshness = 重算的源码内容指纹
 //     （review.SourceChangesSince(AcceptedBaseCommit)）等于 AcceptedChangeHash——verify 与
 //     complete 之间的 commit（协议规定顺序）不再使快照过期，只有验收后的真实源码改动
@@ -515,7 +508,7 @@ const acceptanceGateDisableEnv = "FORGE_ACCEPTANCE_GATE"
 //   - Passed == true（验收实跑通过）
 //
 // 任一不满足 → ok=false + reasons（给 BLOCKED 文案）。无 acceptance → 放行。非 git 目录：
-// GetHeadCommit 返 ""，fresh 检查短路放行（与 VerifyAcceptance 的 NonGit 退化一致）。
+// GetHeadCommit 返 ""，fresh 检查短路放行（与 VerifyAcceptanceWithVerdicts 的 NonGit 退化一致）。
 // escape（per-task override / FORGE_ACCEPTANCE_GATE=disable）落 checklog 审计后放行。
 //
 // 设计对应 Emergence World affordance gate + Proof of Work：声称「验收过」须有 deterministic
@@ -547,9 +540,9 @@ func acceptanceFreshCore(root string, state *TaskState) (ok bool, reasons []stri
 		return true, nil
 	}
 	head := GetHeadCommit(root)
-	// 非 git 目录短路放行：GetHeadCommit 返 "" 时 AcceptedHeadCommit 永远空（VerifyAcceptance
+	// 非 git 目录短路放行：GetHeadCommit 返 "" 时 AcceptedHeadCommit 永远空（VerifyAcceptanceWithVerdicts
 	// 非 git 退化也写空），下方 case 1「未实跑」会误命中致永远 BLOCKED。与文档契约（NonGit 短路）
-	// 和 VerifyAcceptance 退化一致。Forge 显式支持非 git（IsGitRepo "degrades gracefully without git"）。
+	// 和 VerifyAcceptanceWithVerdicts 退化一致。Forge 显式支持非 git（IsGitRepo "degrades gracefully without git"）。
 	if head == "" {
 		return true, nil
 	}

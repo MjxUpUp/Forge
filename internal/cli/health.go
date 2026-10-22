@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/health"
@@ -39,7 +40,7 @@ func runHealth(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	summary := health.Summarize(cs)
+	summary := health.SummarizeAt(cs, time.Now())
 	asJSON, _ := cmd.Flags().GetBool("json")
 	if asJSON {
 		out, _ := json.MarshalIndent(summary, "", "  ")
