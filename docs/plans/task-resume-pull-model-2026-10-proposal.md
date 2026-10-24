@@ -63,7 +63,7 @@ SessionStart 只输出 `[forge-session]` 横幅，不再自动注入接续视图
 - `Assignment.ShouldNotify` 删除；`internal/tasktypes/types.go` 的 `NotifiedAt` 注释标为停写保留
 - `internal/skillgen/qualitygen.go:buildQualitySkillContent` 加「任务接续」节
 - `internal/skillgen/claudemd.go`（task-resume 描述行）、`README.md`（hook 表 task-resume 行）同步改描述
-- 新 flag 写进根 `README.md` 命令参考（`internal/cli/docs_consistency_test.go` 守卫要求用户可见 flag 进 README，不进豁免表）
+- 新 flag 写进 `README.md` / `docs/reference/cli.md` 命令参考（守卫要求用户可见 flag 出现在 README 或命令参考，不进豁免表）
 - 测试：`task_continuity_render_test.go`、`task_continuity_banner_test.go`、`task_assignment_lifecycle_test.go`、`internal/taskpipeline/assignment_test.go` 中钉住旧行为的用例改写或删除
 - hook 接线（`internal/hooks/settings.go`）不动：`task-resume` 保留名字和挂点，只是输出变少，避免重新生成 plugin.json；仍称「SessionStart 是压缩兜底」的注释同步修正
 
