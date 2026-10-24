@@ -170,7 +170,9 @@ func loadLedger(root string) []Event {
 // cli/task_continuity；quotepath=off 让非 ASCII
 // 路径保持原生 UTF-8 而非 C 转义八进制串，永远匹配得上台账里的 Unicode 路径）。
 func PorcelainLines(root string) ([]string, error) {
-	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain").Output()
+	// -uall：未跟踪的**新目录**默认折叠成 "?? pkg/"（一个条目），而台账记的是
+	// "pkg/q.go"——不收开就永远对不上，新包里的每个文件都会变成无主（多审甚至误拦）。
+	out, err := exec.Command("git", "-c", "core.quotepath=off", "-C", root, "status", "--porcelain", "-uall").Output()
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +217,32 @@ type View struct {
 	Changed   []string
 	BySession map[string][]string // sid → attributed changed paths (last-writer-wins per path)
 	Orphans   []string            // changed paths the ledger cannot explain
+	// LastWriter maps each attributed changed path to the winning ledger event, so
+	// consumers needing *when* (not just *who*) can filter by liveness without a
+	// second ledger pass. Orphan paths are absent (no event ⇒ no known writer).
+	//
+	// LastWriter 把每个已归属的变更路径映射到胜出台账事件，供需要「何时」的消费方
+	// （如 review 门禁的活跃窗口判定）直接过滤，无需二次读台账。无主路径不在其中。
+	LastWriter map[string]Event
+	// Touched is the per-session ledger union over *all* paths ever written (not only
+	// the currently-changed ones). Consumers use it as the "did this session ever touch
+	// that file" guard — a path another session wrote last may still carry this
+	// session's earlier edit, so it must not be excluded from this session's scope.
+	//
+	// Touched 是每个会话「历史上碰过哪些路径」的台账并集（不限当前变更集）。消费方用它
+	// 做「这个文件本会话碰过没有」的守卫——最后写入者是别人，不代表文件里没有本会话更早的
+	// 改动，不能据此把路径从本会话的作用域里排除。
+	Touched map[string]map[string]bool
+	// LastSeen is each session's most recent ledger event of any kind. Liveness is a
+	// property of the *session*, not of one path: a session still working (even on
+	// other files) is alive, and its older writes must stay excluded, otherwise a
+	// long-running neighbour keeps tripping this session's gate exactly like the
+	// accident did.
+	//
+	// LastSeen 是每个会话最近一条台账事件（任意路径）。存活是**会话**的属性而不是
+	// 单个路径的：还在干活（哪怕改的是别的文件）的邻居就是活的，它更早写过的文件必须
+	// 继续排除——否则长期并行的邻居会像事故里那样反复触发本会话的门禁。
+	LastSeen map[string]time.Time
 }
 
 // AttributionRate is attributed / (attributed + orphans); 1 when nothing changed.
@@ -246,8 +274,21 @@ func Reconcile(root string) *View {
 	for _, p := range changed {
 		changedSet[filepath.ToSlash(filepath.Clean(p))] = true
 	}
-	last := map[string]Event{} // path → latest event（时间戳最后写入者胜）
+	last := map[string]Event{}              // path → latest event（时间戳最后写入者胜）
+	touched := map[string]map[string]bool{} // sid → 历史触碰过的路径（不限当前变更集）
+	seen := map[string]time.Time{}          // sid → 最近任一事件（会话存活）
 	for _, e := range loadLedger(root) {
+		if e.Sid != "" {
+			set := touched[e.Sid]
+			if set == nil {
+				set = map[string]bool{}
+				touched[e.Sid] = set
+			}
+			set[e.Path] = true
+			if e.Ts.After(seen[e.Sid]) {
+				seen[e.Sid] = e.Ts
+			}
+		}
 		if !changedSet[e.Path] {
 			continue // 台账里的历史路径不在当前变更集——对账只解释现在
 		}
@@ -268,7 +309,65 @@ func Reconcile(root string) *View {
 	for sid := range v.BySession {
 		sort.Strings(v.BySession[sid])
 	}
+	v.LastWriter = last
+	v.Touched = touched
+	v.LastSeen = seen
 	return v
+}
+
+// DefaultForeignWindow is how recent another session's write must be for its path
+// to count as that session's live work (multi-task-concurrency §6, review scope).
+//
+// DefaultForeignWindow 是「其他会话的写入仍算它的在飞工作」的时间窗。取短的理由：
+// 窗口偏长会把已死会话的路径长期当成外来（漏审）；偏短只会让更早的改动落回无主
+// （多审，安全方向）。
+const DefaultForeignWindow = 30 * time.Minute
+
+// Foreign returns the changed paths whose last writer is another session that is
+// still alive (any ledger event inside window) and that sid has never touched
+// itself. sid == "" returns nil (no subject ⇒ no exclusion; the caller keeps
+// whole-tree semantics). window <= 0 disables the liveness filter.
+//
+// Both extra conditions are load-bearing. "Never touched by sid": last-writer-wins
+// says who wrote last, not whose changes the file still holds — excluding a file
+// this session edited earlier would silently drop unreviewed work. "Session alive":
+// liveness belongs to the session, not to one path; a neighbour still working on
+// other files keeps its older paths excluded instead of re-tripping this gate.
+//
+// Foreign 返回「最后写入者是别的会话、该会话仍存活（window 内有任意事件）、且本会话
+// 从未碰过」的变更路径。sid 为空返回 nil（无主体⇒不排除，保持整树语义）；window ≤ 0
+// 关闭存活过滤。两个附加条件都是承重的：本会话碰过的文件不得因他人续写被排除；存活是
+// 会话属性，邻居在改别的文件时不算「走了」。
+func (v *View) Foreign(sid string, window time.Duration) []string {
+	if v == nil || sid == "" {
+		return nil
+	}
+	var cutoff time.Time
+	if window > 0 {
+		cutoff = time.Now().Add(-window)
+	}
+	own := v.Touched[sid]
+	alive := func(s string) bool {
+		if cutoff.IsZero() {
+			return true
+		}
+		return v.LastSeen[s].After(cutoff)
+	}
+	var out []string
+	for path, e := range v.LastWriter {
+		if e.Sid == "" || e.Sid == sid {
+			continue // 无主/自己：都不是「别人的在飞工作」
+		}
+		if own[path] {
+			continue // 本会话历史上碰过——文件里可能有它未审的改动，留在作用域里
+		}
+		if !alive(e.Sid) {
+			continue // 那个会话已经不在干活了：它的旧改动落回无主（多审，安全方向）
+		}
+		out = append(out, path)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // SessionTouched returns the set of repo-relative paths this session has ever touched (ledger union, no reconciliation against current status — the fast predicate for trigger conditions like source_changed_uncommitted).
