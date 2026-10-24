@@ -770,7 +770,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if deadAnchor != "" {
-		fmt.Fprintf(os.Stderr, "WARN [task-tree] 任务 %s 的绑定目录已不存在（锚：%s）——不阻断；清理：forge worktree janitor\n", activeTaskRef, deadAnchor)
+		fmt.Fprint(os.Stderr, deadAnchorWarning(activeTaskRef, deadAnchor))
 	}
 
 	// 3. Write the embedded script to a temp file.
@@ -857,14 +857,10 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		"FORGE_TOOL_NAME="+sanitizeForShell(hookInput.ToolName),
 		"FORGE_TASK_REF="+sanitizeForShell(activeTaskRef),
 		"FORGE_TASK_GATE="+sanitizeForShell(activeTaskGate),
-		// 错树守护的两个变量（docs/design/task-tree-guard.md §4）：guard 脚本据此在
+		// 错树守护的两个变量由 taskTreeEnv 追加（见下方 append）：guard 脚本据此在
 		// source 编辑上 fail-closed；为空表示「当前树就是任务的树」或「守护不适用」。
-		// 两个名字同值——FORGE_TASK_OFFTREE 是判定信号，FORGE_TASK_WORKTREE 是给人/脚本
-		// 读的提示（去哪棵树）。
 		//
-		// Task-tree guard signals: OFFTREE is the verdict, WORKTREE the destination hint.
-		"FORGE_TASK_OFFTREE="+sanitizeForShell(offTreeAnchor),
-		"FORGE_TASK_WORKTREE="+sanitizeForShell(offTreeAnchor),
+		// Task-tree guard signals are appended via taskTreeEnv below.
 		"FORGE_SESSION_ID="+sanitizeForShell(hookInput.SessionID),
 		// The resolved host agent (from --agent / FORGE_HOOK_AGENT; "" for claude-code-shape
 		// hosts). Thin wrappers (`exec forge task resume --hook`) inherit it so the spawned
@@ -914,6 +910,10 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		"FORGE_CWD="+cwd,
 		"FORGE_CWD_TAG="+SuggestTagFor(cwd),
 	)
+	// 错树守护信号（docs/design/task-tree-guard.md §4）：guard 脚本据此在 source 编辑上
+	// fail-closed。空 = 当前树就是任务的树 / 守护不适用（追加而非并入上面的字面量清单，
+	// 因为切片展开只能出现在 append 的最后）。
+	shCmd.Env = append(shCmd.Env, taskTreeEnv(offTreeAnchor)...)
 	// Scheme 5: expose the active task's per-task work-activity override as
 	// the FORGE_WORK_ACTIVITY env for the hook to check. Forced only when disable —
 	// when the override is empty, leave the existing os.Environ() value untouched to preserve a user's global FORGE_WORK_ACTIVITY,
@@ -1391,6 +1391,36 @@ func RunHook(cmd *cobra.Command, args []string) error {
 // 的最新条目（LatestByCheckForSession），所以每次调用都写 PASS 是冗余的。任何
 // FAIL 都返回 true（block/warn 信号追溯和诊断需要），PASS 仅在 scoring 依赖的
 // check 上返回 true。
+// taskTreeEnv 返回错树守护要注入的两个环境项（FORGE_TASK_OFFTREE 是判定信号，
+// FORGE_TASK_WORKTREE 是「去哪个目录」的提示，两者同值）；offTree 为空表示当前树
+// 就是任务的树或守护不适用——此时不注入，guard 脚本行为与引入守护前一致。
+//
+// taskTreeEnv returns the two env entries for the task-tree guard (OFFTREE is the
+// verdict, WORKTREE the destination hint; same value). Empty offTree injects nothing,
+// so the guard script behaves exactly as before the guard existed.
+func taskTreeEnv(offTree string) []string {
+	if offTree == "" {
+		return nil
+	}
+	v := sanitizeForShell(offTree)
+	return []string{
+		"FORGE_TASK_OFFTREE=" + v,
+		"FORGE_TASK_WORKTREE=" + v,
+	}
+}
+
+// deadAnchorWarning 是死锚的告警文案：任务绑定指向的目录已经不存在。纯提示——
+// 不阻断（一个被删掉的 worktree 不该把任务永久锁死），并给出清理出路。
+//
+// deadAnchorWarning is the dead-anchor notice: the task's bound directory is gone.
+// Advisory only — a deleted worktree must not lock the task forever — with the way out.
+func deadAnchorWarning(taskRef, anchor string) string {
+	if anchor == "" {
+		return ""
+	}
+	return fmt.Sprintf("WARN [task-tree] 任务 %s 的绑定目录已不存在（锚：%s）——不阻断；清理：forge worktree janitor\n", taskRef, anchor)
+}
+
 func shouldRecordCheck(name checklog.CheckName, passed bool) bool {
 	if !passed {
 		return true

@@ -115,7 +115,7 @@ go test ./internal/worktree ./internal/taskpipeline ./internal/clitask ./interna
 
 源码：`internal/worktree/binding.go`（`Anchors`）、`internal/taskpipeline/state.go`（`TreeStatus`/`TaskTreeStatus`/`TreeGuardDisabled`）、`internal/taskpipeline/artifactchain_gate.go`（`ChainDigestStale`）、`internal/clitask/task_gate.go`（错树 BLOCK + chain advisory）、`internal/clitask/task_worktree.go`（`worktree use`）、`internal/clitask/task_misc.go`（status 展示）、`internal/clitask/task_chain.go`（审批写 ChainDigest + verify 展示）、`internal/hookdispatch/hook.go`（`FORGE_TASK_OFFTREE`/`FORGE_TASK_WORKTREE` 注入 + 死锚告警）、`internal/hooks/embed_task.go`（guard 分支）、`internal/artifactchain/artifactchain.go`（`Digest`）、`internal/tasktypes/model.go`（`ChainDigest` 字段）。
 
-测试：`internal/worktree/binding_anchors_test.go`、`internal/taskpipeline/state_tree_test.go`、`internal/taskpipeline/chain_digest_test.go`、`internal/clitask/task_tree_guard_test.go`、`internal/hooks/taskguard_offtree_test.go`、`internal/artifactchain/digest_test.go`。
+测试：`internal/worktree/binding_anchors_test.go`、`internal/taskpipeline/state_tree_test.go`、`internal/taskpipeline/chain_digest_test.go`、`internal/clitask/task_tree_guard_test.go`、`internal/hooks/taskguard_offtree_test.go`、`internal/hookdispatch/hook_task_tree_env_test.go`、`internal/artifactchain/digest_test.go`、`internal/tasktypes/chain_digest_test.go`。
 
 文档：`docs/reference/cli.md`（`forge worktree use`）、本文件。`CHANGELOG` 由 release-please 代管（不手写）。
 
