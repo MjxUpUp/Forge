@@ -31,14 +31,21 @@ import (
 // 是包目录，故测试用相对路径读仓库根的手维护文档。
 const repoRoot = "../.."
 
-// guardedDocs 收集待守卫的手维护文档：根 README + npm 副本 + canonical skill 库全部 .md +
-// forge 原生 skills-forge/ 覆盖层（2026-08 零反向依赖迁移移出 skills/——不补进 walk 会让
-// 守卫面静默缩小）。不含 .claude/（gitignored 生成物，其一致性由 skillgen 生成器的
-// content 断言测试守护）。
+// guardedDocs 收集待守卫的手维护文档：根 README + 完整命令参考 + Hook 参考 + npm 副本 +
+// canonical skill 库全部 .md + forge 原生 skills-forge/ 覆盖层（2026-08 零反向依赖迁移
+// 移出 skills/——不补进 walk 会让守卫面静默缩小）。不含 .claude/（gitignored 生成物，
+// 其一致性由 skillgen 生成器的 content 断言测试守护）。
 func guardedDocs(t *testing.T) []string {
 	t.Helper()
 	var files []string
-	for _, p := range []string{"README.md", "npm/README.md"} {
+	for _, p := range []string{
+		"README.md",
+		"npm/README.md",
+		// 2026-10 命令表从根 README 拆出（README 只留速查）——完整表仍是手维护文档，
+		// 幽灵命令守卫不能因为搬家而静默失去覆盖面。
+		"docs/reference/cli.md",
+		"docs/reference/hooks.md",
+	} {
 		files = append(files, filepath.Join(repoRoot, p))
 	}
 	for _, root := range []string{filepath.Join(repoRoot, "skills"), filepath.Join(repoRoot, "skills-forge")} {
@@ -106,17 +113,32 @@ func TestDocs_NoGhostForgeCommands(t *testing.T) {
 	}
 }
 
-// TestReadme_CoversAllTopLevelCommands 守卫 B：rootCmd 的每个非隐藏顶层命令
-// 必须出现在根 README。防"新增命令组（如 mcp/skills）但 README 命令参考漏写"。
-// 只守卫根 README——npm/README 是 npm 包页面的精简版（故意只列核心命令组），
-// 由守卫 A（无幽灵命令）单独覆盖其正确性。Hidden 命令（如 forge hook，调用方是
-// 脚本不是用户）和 cobra 自动注入的 help/completion 不要求进 README。
-func TestReadme_CoversAllTopLevelCommands(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
-	if err != nil {
-		t.Fatalf("read README.md: %v", err)
+// readmeDocs 是「根 README + 拆出去的完整命令参考」这一组文档：守卫 B/D 检查的是
+// 用户可见文档面，而不是某一个文件。2026-10 命令表搬家到 docs/reference/cli.md 后，
+// 若守卫仍只读 README，完整性检查会静默失效（搬家 = 覆盖面归零）。
+func readmeDocs() []string {
+	return []string{
+		filepath.Join(repoRoot, "README.md"),
+		filepath.Join(repoRoot, "docs/reference/cli.md"),
 	}
-	s := string(body)
+}
+
+// TestReadme_CoversAllTopLevelCommands 守卫 B：rootCmd 的每个非隐藏顶层命令
+// 必须出现在根 README 或其完整命令参考中。防"新增命令组（如 mcp/skills）但文档漏写"。
+// npm/README 是 npm 包页面的精简版（故意只列核心命令组），由守卫 A（无幽灵命令）单独
+// 覆盖其正确性。Hidden 命令（如 forge hook，调用方是脚本不是用户）和 cobra 自动注入的
+// help/completion 不要求进文档。
+func TestReadme_CoversAllTopLevelCommands(t *testing.T) {
+	var sb strings.Builder
+	for _, p := range readmeDocs() {
+		body, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		sb.Write(body)
+		sb.WriteString("\n")
+	}
+	s := sb.String()
 	for _, c := range rootCmd.Commands() {
 		if c.Hidden {
 			continue
@@ -126,7 +148,7 @@ func TestReadme_CoversAllTopLevelCommands(t *testing.T) {
 			continue
 		}
 		if !strings.Contains(s, "forge "+name) {
-			t.Errorf("README.md 缺顶层命令 `forge %s`（rootCmd 注册了它；新增命令组须同步命令参考表）", name)
+			t.Errorf("README.md / docs/reference/cli.md 缺顶层命令 `forge %s`（rootCmd 注册了它；新增命令组须同步命令参考表）", name)
 		}
 	}
 }
@@ -183,18 +205,23 @@ var flagDocGrandfather = map[string]bool{
 // 引用不查 flag 层，drift 直接穿过。存量未文档 flag 已豁免进基线（README
 // 不是穷尽式 flag 手册）；守卫只强制新增 flag 做文档决策。
 func TestReadme_NewFlagsAreDocumented(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
-	if err != nil {
-		t.Fatalf("read README.md: %v", err)
+	var sb strings.Builder
+	for _, p := range readmeDocs() {
+		body, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		sb.Write(body)
+		sb.WriteString("\n")
 	}
-	s := string(body)
+	s := sb.String()
 	for _, id := range docsconsistency.AllFlags(rootCmd) {
 		if flagDocGrandfather[id] {
 			continue
 		}
 		name := id[strings.Index(id, " --")+3:]
 		if !strings.Contains(s, "--"+name) {
-			t.Errorf("README.md 缺 flag --%s（%s；新增用户可见 flag 须进 README，或注明理由加进 flagDocGrandfather）", name, id)
+			t.Errorf("README.md / docs/reference/cli.md 缺 flag --%s（%s；新增用户可见 flag 须进文档，或注明理由加进 flagDocGrandfather）", name, id)
 		}
 	}
 }
