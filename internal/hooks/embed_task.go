@@ -92,6 +92,20 @@ fi
 _TOUCHED_MARKER="${_MARKER_DIR}/forge-source-touched-${_SESSION_ID}"
 touch "$_TOUCHED_MARKER" 2>/dev/null || true
 
+# Task-tree guard（docs/design/task-tree-guard.md §4）：任务有活 binding 锚在另一棵树、
+# 而当前 cwd 不是那棵树时，源码写入 fail-closed——正是「--worktree 只是建议」的漏洞
+# （真机复现：主检出里编辑被放行、commit 落错分支、worktree 恒空）。判定由 Go 侧算好
+# 落进 FORGE_TASK_OFFTREE，这里零 spawn（每次 Write|Edit 多起一个 forge 进程不划算）。
+# 变量为空 = 当前树就是任务的树 / 守护不适用 / 测试文件（上面已 exit 0）。
+if [ -n "${FORGE_TASK_OFFTREE:-}" ]; then
+  echo "FAIL [task-guard] 任务 ${TASK_REF} 锚在另一棵树：${FORGE_TASK_OFFTREE}"
+  echo "  当前目录不是该任务的 worktree，在此处写源码会让 commit 落错分支、worktree 恒空。三条出路："
+  echo "  1) 到锚树里编辑：cd \"${FORGE_TASK_WORKTREE:-${FORGE_TASK_OFFTREE}}\""
+  echo "  2) 显式把任务迁到当前树：forge worktree use"
+  echo "  3) 关闭守护（记 checklog；任务评分 capped）：FORGE_TASK_TREE_GUARD=0"
+  exit 1
+fi
+
 # No active task — try auto-create on feature branch
 if [ -z "$TASK_REF" ]; then
   BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")

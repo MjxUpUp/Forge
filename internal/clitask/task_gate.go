@@ -68,9 +68,26 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unknown task gate: %s (valid: %s)", gateID, strings.Join(taskpipeline.GateIDs(), ", "))
 	}
 
+	// 错树守护（docs/design/task-tree-guard.md §4）：任务锚在另一棵树时，在这里过的
+	// 门禁只会记在一棵空树上——三个门禁一律 BLOCK，并指名锚树与迁移动词。放行面
+	// 与 guard 一致：死锚/多锚任一命中/守护关闭都不拦。
+	if !taskpipeline.TreeGuardDisabled() {
+		if ts := taskpipeline.TaskTreeStatus(root, state.TaskRef); ts.State == taskpipeline.TreeOffTree {
+			return fmt.Errorf("门禁 %s BLOCKED（错树）：任务 %s 锚在另一棵树 %s\n  当前目录不是该任务的 worktree——在此过门禁只会记在空树上。\n  到锚树里跑：cd %q；或把任务迁到当前树：forge worktree use\n  （关闭守护：FORGE_TASK_TREE_GUARD=0，记 checklog 且任务评分 capped）",
+				gateID, state.TaskRef, ts.AnchorPath, ts.AnchorPath)
+		}
+	}
+
 	result, err := taskpipeline.ExecuteTaskGate(root, gateID, state)
 	if err != nil {
 		return err
+	}
+
+	// 链定义指纹 advisory（docs/design/task-tree-guard.md §6）：审批时的 schema.yaml 与
+	// 现在不同——内容没变但「要跑的图」变了。只提示重批，绝不阻断（改链不该把在途任务
+	// 锁死，multi-task-concurrency §8 退化矩阵）。
+	for _, w := range taskpipeline.ChainDigestStale(root, state) {
+		fmt.Fprintf(os.Stderr, "⚠️ [chain] %s\n", w)
 	}
 
 	// Token 成本熔断（advisory）：task 累计估算 token 超阈值则警示。让 token 计量不止于

@@ -753,6 +753,26 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// 2c. 错树守护（docs/design/task-tree-guard.md §4）：判定「当前树是不是任务真正
+	// 所在」并落到环境变量。放在这里而不是 guard 脚本里，是为了让 bash 侧零 spawn——
+	// task-guard 每次 Write|Edit 都跑，多起一个 forge 进程就是每次编辑 +100ms。手工
+	// bash（没有这些变量）里 guard 行为与今天一致。
+	//
+	// Task-tree guard: resolve off-tree once here and pass it via env so the bash
+	// task-guard needs no extra forge spawn per Write|Edit.
+	var offTreeAnchor, deadAnchor string
+	if activeState != nil && root != "" && !taskpipeline.TreeGuardDisabled() {
+		switch ts := taskpipeline.TaskTreeStatus(root, activeState.TaskRef); ts.State {
+		case taskpipeline.TreeOffTree:
+			offTreeAnchor = ts.AnchorPath
+		case taskpipeline.TreeDeadAnchor:
+			deadAnchor = ts.AnchorPath
+		}
+	}
+	if deadAnchor != "" {
+		fmt.Fprintf(os.Stderr, "WARN [task-tree] 任务 %s 的绑定目录已不存在（锚：%s）——不阻断；清理：forge worktree janitor\n", activeTaskRef, deadAnchor)
+	}
+
 	// 3. Write the embedded script to a temp file.
 	//
 	// 3. 把 embedded script 写入临时文件。
@@ -837,6 +857,14 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		"FORGE_TOOL_NAME="+sanitizeForShell(hookInput.ToolName),
 		"FORGE_TASK_REF="+sanitizeForShell(activeTaskRef),
 		"FORGE_TASK_GATE="+sanitizeForShell(activeTaskGate),
+		// 错树守护的两个变量（docs/design/task-tree-guard.md §4）：guard 脚本据此在
+		// source 编辑上 fail-closed；为空表示「当前树就是任务的树」或「守护不适用」。
+		// 两个名字同值——FORGE_TASK_OFFTREE 是判定信号，FORGE_TASK_WORKTREE 是给人/脚本
+		// 读的提示（去哪棵树）。
+		//
+		// Task-tree guard signals: OFFTREE is the verdict, WORKTREE the destination hint.
+		"FORGE_TASK_OFFTREE="+sanitizeForShell(offTreeAnchor),
+		"FORGE_TASK_WORKTREE="+sanitizeForShell(offTreeAnchor),
 		"FORGE_SESSION_ID="+sanitizeForShell(hookInput.SessionID),
 		// The resolved host agent (from --agent / FORGE_HOOK_AGENT; "" for claude-code-shape
 		// hosts). Thin wrappers (`exec forge task resume --hook`) inherit it so the spawned
