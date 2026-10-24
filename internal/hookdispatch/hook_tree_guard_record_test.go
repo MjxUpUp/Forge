@@ -115,7 +115,12 @@ func TestTreeGuardApplies(t *testing.T) {
 		{"无活跃任务", nil, "/repo", "internal/a.go", "Write", false},
 		{"无仓库根", state, "", "internal/a.go", "Write", false},
 		{"Read/Bash 等无文件路径的调用", state, "/repo", "", "Read", false},
+		// Read 会带 file_path（tool-track 提取），但它不写文件、也不跑 task-guard：
+		// 在 Read 上判定会把 tree-guard 计数稀释、死锚告警重复，§7 判据 12 名不副实。
+		{"带文件路径的 Read 不判定", state, "/repo", "internal/a.go", "Read", false},
+		{"小写 read 同样不判定", state, "/repo", "internal/a.go", "read", false},
 		{"带文件路径的编辑调用", state, "/repo", "internal/a.go", "Write", true},
+		{"Edit 同样判定", state, "/repo", "internal/a.go", "Edit", true},
 		// patch 工具解析不出路径时仍要判定：guard 的错树分支不依赖文件路径，
 		// 不判定就等于在 codex apply_patch 上静默放行。
 		{"patch 工具但路径合成失败", state, "/repo", "", "apply_patch", true},

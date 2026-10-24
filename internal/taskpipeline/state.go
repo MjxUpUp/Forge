@@ -171,8 +171,10 @@ func TaskTreeStatus(root, taskRef string) TreeStatus {
 	}
 	anchors := worktree.Anchors(root, taskRef)
 	if len(anchors) == 0 {
-		// 无绑定：任务来自会话指针/分支映射/legacy 桥——位置未知，不适用本守护。
-		// 这是「历史任务」与「未用 --worktree 的任务」的正常形态。
+		// 无绑定：任务来自会话指针/分支映射/legacy 桥，或绑定在另一台机器上——位置未知，
+		// 不适用本守护（fail-open：宁可漏拦也不把任务锁死在无从判断的状态里）。
+		// 注意：新任务的 `task start` 会在当时那棵树**无条件**写绑定（含未用 --worktree
+		// 的形态），所以「无绑定」是历史任务/跨机任务/绑定被清掉后的形态，不是新任务的常态。
 		return TreeStatus{State: TreeOK, Wtid: self}
 	}
 	var firstLive, firstDead string

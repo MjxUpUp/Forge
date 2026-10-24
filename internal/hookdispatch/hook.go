@@ -1438,6 +1438,14 @@ func treeGuardApplies(activeState *taskpipeline.TaskState, root, filePath, toolN
 	if activeState == nil || root == "" {
 		return false
 	}
+	// 读类工具即便带 file_path 也不判定：hook 会把 Read 的 file_path 填进
+	// fields.FilePath（见本文件的 tool-track 提取），而错树 env 只被 task-guard 读、
+	// Read 不跑 task-guard。若在 Read 上也判定，纯读会话会稀释 tree-guard 计数、让死锚
+	// 告警重复出现，§7 判据 12「只在编辑类调用判定」也就名不副实——判定条件是
+	// 「可能写文件」，不是「解析到了路径」。
+	if strings.EqualFold(toolName, "Read") {
+		return false
+	}
 	return filePath != "" || hostcap.IsPatchTool(toolName)
 }
 
