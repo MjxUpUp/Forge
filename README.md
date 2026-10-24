@@ -17,8 +17,9 @@ Stop trusting AI-generated code. Start gating it.
 </div>
 
 <div align="center">
-  <a href="docs/assets/forge-demo.mp4"><img src="docs/assets/forge-demo-poster.png" alt="Forge 30 秒演示（点击播放）" width="860"/></a>
-  <p><sub>▶ <b>30 秒演示</b> —— 画面里的终端输出是真实 <code>forge docs lint</code> 跑出来的：两句没带证据的套话，被拦在提交之前（点击播放）</sub></p>
+  <img src="docs/assets/forge-demo.webp" alt="Forge 30 秒演示（自动播放，静音）" width="860"/>
+  <p><sub><b>30 秒演示</b>（自动播放，静音）—— 画面里的终端输出是真实 <code>forge docs lint</code> 跑出来的：两句没带证据的套话，被拦在提交之前。<br/>
+  带音轨的 1080p 版本在 <a href="https://mjxupup.github.io/Forge/">网页播放器</a>，或直接下 <a href="docs/assets/forge-demo.mp4">mp4</a>。</sub></p>
 </div>
 
 <div align="center">
