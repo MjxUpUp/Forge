@@ -12,7 +12,7 @@ tier: mini
 
 - 文档评审（doc-review）：SKILL 步骤 5 明文要求打回后「重新派独立子代理评审」（c7bad7f1 的 `skills/doc-review/SKILL.md` 第 69 行），文档门禁的打回文案也只说「重新评审」。新增 `review.DocReReviewGuidance` 作门禁文案的口径源，SKILL 步骤 5 同口径分增量复核、全量评审两档。
 - 非 task 模式 Stop hook（`gateGuidance`）：审过之后又改了码，仍输出与首次审查相同的「派只读子 agent」。分 (a) 首审或新会话接手、(b) 本会话内复审两种情形，(b) 内嵌 `ReReviewGuidance`。
-- code-review-gate 大变更档并行派两个 reviewer（`cheat-detector` + `eng-reviewer`），复审规则只说「续用首轮 reviewer」（单数）。补按轨道续用、不新派补位；修复含新增吞错、类型压制、永假分支或触及测试断言时 `cheat-detector` 也续用。
+- code-review-gate 大变更档并行派两个 reviewer（`cheat-detector` + `eng-reviewer`），复审规则只说「续用首轮 reviewer」（单数）。补按轨道续用、不新派补位；修复命中作弊模式速查表任一项或触及测试、断言、mock 时 `cheat-detector` 也续用，范围为修复 diff。
 - adversarial-verification：协议 A 复检轮续用原红队；协议 B 保持「修完必须整体重验」，补「重新实跑、不得引用前轮结果」与「复验续用原验收者」。
 
 收益没有基线数字（待量化）：仓库没有按任务统计子代理启动次数的遥测，动机来自用户反馈「每轮新开子代理、token 浪费明显」。文档侧收益可能很小：被评审的文档通常较短，重新探索的开销本就有限，首次 `SendMessage` 续用还可能整段缓存未命中（见「已知局限」）。可确定的上限：文档门禁最多 3 轮，第 3 轮按本方案仍新派全量评审，所以文档侧每个任务最多续用 1 次（第 2 轮）；评审与产出同家族且得分落在 70-79 时，还要再新派第二评委，会抵消一部分节省。因此本批的价值主要是口径统一与防止每轮冷启动成为默认，批准时按这个预期。
@@ -27,10 +27,10 @@ tier: mini
 - 不改 research-workflow 的核验子代理。
 - 不改文档门禁的判定，只改打回时给 agent 的指引文案。
 - 不改 `ReReviewGuidance` 既有的两档判据，只补多 reviewer 并行时的续用口径。
-- 不给协议 B 加增量重验档：评审指出该档在「修一轮就过」的常见路径上净增一次增量重验，且削弱「每个修复轮整体重验」的防假绿底线。
+- 不给协议 B 加增量重验档：该档在「修一轮就过」的常见路径上要先增量重验、PASS 前再整体重验，比原流程多一次，且削弱「每个修复轮整体重验」的防假绿底线。
 
 ## 备选
-- 什么都不做（保持每轮新派）：弃用。3 轮上限下，打回后的每一轮都是冷启动；代码侧已有同口径分档与测试，文档侧沿用同一原则。
+- 什么都不做（保持每轮新派）：弃用。3 轮上限下，打回后的每一轮都是冷启动；代码侧已有同口径分档与测试。把代码侧结论外推到文档，依据是同一个机制（独立性来自看不到作者推理，不来自冷启动），文档侧收益本身未验证，所以批准范围是口径统一，不是收益承诺。
 - 只改 SKILL，不改门禁文案：弃用。门禁文案是 agent 被打回时实际读到的位置，只改 SKILL 会被「重新评审」措辞盖过。
 - 文档评审一律续用、不设升档：弃用。重写结论、大改时需要新视角，续用同一评审者会被锚定。
 - 协议 B 增量重验加整体重验两档：弃用，理由见 Non-goals。
@@ -40,7 +40,7 @@ tier: mini
   accept[REQ-1]: go test ./internal/review/ -run ^TestSkillsCarryResumeTier$/^doc-review$ -count=1 :: --- PASS: TestSkillsCarryResumeTier/doc-review (
 - REQ-2 `DocReReviewGuidance` 承载两档语义、增量输入契约、对抗立场不变与记分口径，且不含会破坏 Sprintf 格式串与原因串拼接的 `%` 和 `; `
   accept[REQ-2]: go test ./internal/review/ -run ^TestDocReReviewGuidanceContract$ -count=1 :: --- PASS: TestDocReReviewGuidanceContract (
-- REQ-3 文档门禁在评审未过、评审过期（HEAD 与指纹两条）、得分低于阈值时引用 `DocReReviewGuidance`，升级人工与自审两条不引用；HEAD 过期原因写明内容没变则直接重新记录
+- REQ-3 文档门禁在评审未过、评审过期（HEAD 与指纹两条）、得分低于阈值时引用 `DocReReviewGuidance`，升级人工与自审两条不引用；HEAD 过期原因写明仍须评审后记录、不得凭自述重录旧分数
   accept[REQ-3]: go test ./internal/taskpipeline/ -run ^TestDocGate_RetryReasonsCarryReReviewGuidance$ -count=1 :: --- PASS: TestDocGate_RetryReasonsCarryReReviewGuidance (
 - REQ-4 非 task 模式 `gateGuidance` 分 (a)(b) 两种情形，(b) 内嵌 `ReReviewGuidance`，顺序为派发步、(a)、(b)、标记步
   accept[REQ-4]: go test ./internal/cli/ -run ^TestGateGuidanceCarriesReReviewTier$ -count=1 :: --- PASS: TestGateGuidanceCarriesReReviewTier (
@@ -75,10 +75,10 @@ REQ-1、REQ-5、REQ-6 的 accept 只钉关键短语存在与旧字面量消失�
 
 ### 做法
 - `rereview.go` 新增 `DocReReviewGuidance`：
-  - 增量档判据：修订 diff 小（单文档，新增与删除字符数之和不超过改后全文字符数的三成；文档常一段一行，按行数会低估大改）、未重写结论或判定段、L1 lint 全过。续用首轮评审者，句柄丢失按不支持续用处理；复审前留存被评审版本用于生成修订 diff（`DocReview` 只存 HEAD 与内容指纹，评审通过前文档往往未提交）；只喂上轮 findings 与修订 diff；对抗立场不变；四维分以上轮为底、逐维标注升降、未触及的维度不得升档；评审与产出同家族且落在 70-79 另派第二评委。
+  - 增量档判据：修订 diff 小（单文档，新增与删除字符数之和不超过改后全文字符数的三成；文档常一段一行，按行数会低估大改）、未重写结论或判定段、L1 lint 全过。续用首轮评审者，句柄丢失按不支持续用处理；送审时（作者修改前）把被评审版本留存在仓库外临时目录，复审用 `diff -u` 生成修订 diff（`DocReview` 只存 HEAD 与内容指纹，评审通过前文档往往未提交；快照若落成仓库内 `.md`，会被 doc gate 当文档）；只喂上轮 findings 与修订 diff；对抗立场不变；四维分以上轮为底、逐维标注升降、未触及的维度不得升档；评审与产出同家族（家族未知按同家族）且增量评分后总分落在 75-79 即将放行时，另派第二评委（新派、全量）；70-74 本就未过，不触发。
   - 升档触发：重写结论或判定段、修订 diff 大或多文档、即将进行第 3 轮评审；升档时新派并换视角。
   - `ReReviewGuidance` 增补一句多 reviewer 并行时按轨道续用。该常量同时出现在 task-complete 拒绝文案、`forge review pass` 拒绝报错、`forge review status` 与生成的 CLAUDE.md 常见错误表，变长后这些位置的文案随之变长；文中用 `cheat-detector` 这一轨的名字，单 reviewer 用户读到时可忽略该句。
-- `docgate.go` 在「文档回检基于旧代码、基于旧内容、未通过、得分低于阈值」四条原因后追加 `review.DocReReviewGuidance`；HEAD 过期原因另写明「文档内容没变则直接重新记录，不派评审」。轮次打满升级人工与同会话自审两条不加，这是有意的：前者是人工裁决，后者需要独立评审者而非续用。
+- `docgate.go` 在「文档回检基于旧代码、基于旧内容、未通过、得分低于阈值」四条原因后追加 `review.DocReReviewGuidance`；HEAD 过期原因另写明：仍须评审后记录，不得凭自述重录旧分数（`CheckDocGate` 的 switch 里 HEAD 过期排在指纹之前，「内容没变」没有机器核验，开免评审通道会绕过 L2）；内容没变时修订 diff 为空，续用首轮评审者确认即可，不必全量重评。轮次打满升级人工与同会话自审两条不加，这是有意的：前者是人工裁决；后者的补救是由独立会话重新记录（自审标记按盖章会话判，见已知局限），与续用与否无关。
 - `review.go` 的 `gateGuidance` 在第 2 步后分 (a) 首审、新会话接手或没有首轮 reviewer 句柄：按本步新派；(b) 本会话内已派过 reviewer 且句柄可续用：内嵌 `review.ReReviewGuidance`。不新增 stamp 状态：stamp 按内容寻址，没有可靠的「本分支此前已审」读法，由 agent 按情形判断。
 - 三份 SKILL 与 `qualitygen.go`、集成笔记按上述口径改文字；`TestSkillsCarryResumeTier` 钉关键短语并禁旧字面量回归。
 
@@ -92,9 +92,9 @@ REQ-1、REQ-5、REQ-6 的 accept 只钉关键短语存在与旧字面量消失�
 ### 已知局限
 - 续用依赖宿主（Claude Code 的 `SendMessage`）；宿主不支持续用时退回新派并粘贴上轮 findings 全文，节省有限。
 - 首次 `SendMessage` 续用可能整段缓存未命中（anthropics/claude-code#44724，之后的续用才命中；该 issue 2026-05-24 被 stale bot 以 not planned 关闭，未见上游修复，记载见 `skills/agent-delegation/decisions.md`），省的主要是重新探索的开销。
-- 文档侧每个任务最多续用 1 次（第 2 轮），第 3 轮按规则新派；同家族 borderline 还要再新派第二评委；HEAD 与指纹过期两条原因不带轮次，agent 需自行判断当前是第几轮。
+- HEAD 与指纹过期两条原因不带轮次，agent 需自行判断当前是第几轮；每次 `forge task doc-review` 记录都让 Round 加 1，仅因 HEAD 移动而重录也会消耗一轮，使下一次评审更早进入「即将进行第 3 轮」。
 - 独立性归因按盖章会话判（`internal/taskpipeline/independence.go` 头注释）：同宿主子代理共用会话 id 时可能被标自审，与续用无关，沿用既有处理。
-- 「三成」按字符计，仍是粗口径：一句话改写结论段也可能不足三成字符，靠「未重写结论或判定段」这一条判据兜底。
+- 「三成」按字符计，用 `diff -u` 或 `git diff --word-diff` 估算，三成附近按升档；仍是粗口径：一句话改写结论段也可能不足三成字符，靠「未重写结论或判定段」这一条判据兜底。
 
 ## 验证与回滚
 - `go vet ./...`；`go test ./... -count=1 -timeout 30m`。

@@ -262,9 +262,10 @@ func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
 		wantGuide bool
 		wantText  string // 非空：原因串还须含该短语
 	}{
-		// HEAD 移动而内容可能没变（提交/合并基线）：须指引「内容没变就直接重新记录」，
-		// 否则 agent 会为空 diff 派一次空复审。
-		{"HEAD 过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true, "文档内容没变则直接重新 forge task doc-review 记录"},
+		// HEAD 移动而内容可能没变（提交/合并基线）：指引「空 diff 续用评审者确认即可」
+		// 省全量重评，但不得开出「凭自述重录旧分数」的免评审通道——CheckDocGate 的 switch
+		// 里 HEAD 过期排在指纹之前，内容是否真没变没有机器核验。
+		{"HEAD 过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true, "不得凭自述重录旧分数"},
 		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true, ""},
 		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true, ""},
 		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, ""},

@@ -1348,7 +1348,7 @@
     {
       "tree": "canonical",
       "name": "code-review-gate",
-      "sha256": "61b13e8ef4893b4cea3044433412f0432f536ebdc0059a307f244131d2b3595a"
+      "sha256": "687379189cb3f4ba29802237511cd5c2f0e4130e64f2910a92516f3fdab0e06b"
     },
     {
       "tree": "canonical",
@@ -1393,7 +1393,7 @@
     {
       "tree": "canonical",
       "name": "doc-review",
-      "sha256": "26df8ed54e9d8562e5b2cd47dc61cffeab7f268576cec55dfe34121e9e86bfdb"
+      "sha256": "aa11fc4d6592e671a385dc45027fd6daa211cc938aebfb7054d875a6ce55662e"
     },
     {
       "tree": "canonical",

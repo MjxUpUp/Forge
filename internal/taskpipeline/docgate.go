@@ -216,7 +216,7 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():
 		reasons = append(reasons, `L2 文档回检未记录——先按 doc-review skill 评审（产出者不能自检），再 forge task doc-review --passed pass|fail --score <N>`)
 	case state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head:
-		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s）——HEAD 在回检后移动了（提交或合并基线）：文档内容没变则直接重新 forge task doc-review 记录，不派评审；改了产物则重新评审后再记录。`+review.DocReReviewGuidance, shortCommit(state.DocReview.HeadCommit), shortCommit(head)))
+		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s）——HEAD 在回检后移动了（提交或合并基线），仍须评审后再 forge task doc-review 记录（不得凭自述重录旧分数）；文档内容没变时修订 diff 为空，续用首轮评审者确认即可，不必全量重评。`+review.DocReReviewGuidance, shortCommit(state.DocReview.HeadCommit), shortCommit(head)))
 	case state.DocReview.DocsFingerprint != "" && state.DocReview.DocsFingerprint != DocContentFingerprint(root, state):
 		reasons = append(reasons, `L2 文档回检基于旧内容（文档指纹不匹配——评审后产物被改且未重新评审）——重新评审后 forge task doc-review。`+review.DocReReviewGuidance)
 	case !state.DocReview.Passed:

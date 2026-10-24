@@ -33,6 +33,8 @@ func TestReReviewGuidanceContract(t *testing.T) {
 		{"首轮并行多 reviewer：按轨道续用", "按轨道续用"},
 		{"首轮并行多 reviewer：不新派补位", "不新派补位"},
 		{"修复触及测试断言时 cheat-detector 那一轨也续用", "cheat-detector 那一轨也续用"},
+		{"cheat-detector 续用条件：命中作弊模式速查表任一项", "修复命中作弊模式速查表任一项"},
+		{"cheat-detector 续用范围：只审修复 diff", "只审修复 diff，不新派补位"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if !strings.Contains(ReReviewGuidance, tc.want) {
@@ -79,8 +81,9 @@ func TestDocReReviewGuidanceContract(t *testing.T) {
 		{"增量档对抗立场不变", "对抗立场不变"},
 		{"增量档记分：以上轮为底", "四维分以上轮为底"},
 		{"增量档记分：未触及的维度不得升档", "未触及的维度不得升档"},
-		{"增量档：留存被评审版本生成 diff", "留存被评审版本"},
-		{"borderline 同家族另派第二评委", "评审与产出同家族且落在 70-79 另派第二评委"},
+		{"增量档：送审时留存被评审版本生成 diff", "送审时留存被评审版本"},
+		{"增量档：被评审版本放仓库外", "放仓库外临时目录"},
+		{"borderline 同家族放行前另派第二评委（新派全量）", "评审与产出同家族（家族未知按同家族）且总分落在 75-79 即将放行时另派第二评委（新派、全量）"},
 		{"禁止 fork 作者会话", "不 fork 作者会话"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -113,7 +116,7 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 	}{
 		{
 			name:  "doc-review",
-			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委"},
+			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委", "家族未知按同家族处理", "送审时（作者修改前）就把被评审版本留存一份"},
 			stale: []string{"重新派独立子代理评审"},
 		},
 		{
@@ -122,7 +125,7 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 		},
 		{
 			name: "code-review-gate",
-			want: []string{"按轨道续用", "不新派补位", "`cheat-detector` 也续用"},
+			want: []string{"按轨道续用", "不新派补位", "`cheat-detector` 也续用", "命中下面作弊模式速查表任一项"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
