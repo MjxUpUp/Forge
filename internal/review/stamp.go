@@ -24,9 +24,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/attribution"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -76,18 +78,67 @@ type Stamp struct {
 // 对比 stamp → 决定放行/需审/兜底，并在需审时累加 block_count 持久化。
 // 返回 (决策, 人读原因)。
 func Evaluate(root string) (Decision, string, error) {
-	hash, hasChanges, err := computeDiffHash(root)
+	return EvaluateFor(root, "")
+}
+
+// EvaluateFor is the session-scoped Stop decision: the fingerprint only carries
+// the source changes this session can be attributed, so a Stop in a shared
+// checkout no longer blocks on (nor asks to review) another live session's work.
+//
+// The exclusion set is the attribution layer's provably-foreign paths: changed
+// paths whose last writer is another session inside the liveness window AND that
+// this session has never touched itself (View.Foreign). The second half matters —
+// last-writer-wins says who wrote last, not whose changes the file still holds.
+// Everything else stays in the fingerprint — including ORPHANS the ledger cannot
+// explain, because "I can't attribute it" must keep failing safe towards review
+// (multi-task-concurrency §8: expose, never silently drop).
+//
+// sid == "" keeps the historical whole-tree behaviour (no subject, no exclusion),
+// so every existing caller and test is unchanged; attributions disabled
+// (FORGE_ATTRIBUTION=0) or a broken ledger degrades the same way.
+//
+// EvaluateFor 是会话作用域的 Stop 判定：指纹只装「能归因到本会话」的源码变更——
+// 共享检出里的 Stop 不再因为别的活跃会话的改动而阻断，也不再要求本会话去审查它。
+// 排除集是归属层可证明的外来路径（last-writer 是他人 + 活跃窗口内）；其余一切留在
+// 指纹里，包括台账解释不了的无主路径（解释不了 ⇒ 继续按需审处理，fail-safe）。
+// sid 为空退回整树历史行为；归属层关闭/台账损坏同样退化为整树。
+func EvaluateFor(root, sid string) (Decision, string, error) {
+	// 归属参与判定的前提是「有主体 + 归属层开着」。台账读取要解析本机全部事件，
+	// 所以只在确实可能有外来路径时才读（clean 工作区由下面的空指纹早退兜住）。
+	var foreign []string
+	if sid != "" && attribution.Enabled() {
+		foreign = foreignForSession(root, sid)
+	}
+	exclude := make(map[string]bool, len(foreign))
+	for _, p := range foreign {
+		exclude[p] = true
+	}
+	scopeHash, wholeHash, included, err := scopeAndWholeFingerprint(root, "", exclude)
 	if err != nil {
 		return DecisionPass, "", err
 	}
-	if !hasChanges {
+	if scopeHash == "" && wholeHash == "" {
 		return DecisionPass, "无未提交变更，无需审查", nil
+	}
+	if len(included) == 0 {
+		return DecisionPassAdvisory, fmt.Sprintf("本会话无可归因的源码变更（另有 %d 个文件属于其他活跃会话，已按归属排除）——不阻断、不消耗审查次数", len(foreign)), nil
+	}
+	hash := scopeHash
+
+	// 已审判定接受「整树戳」或「作用域戳」：`forge review pass` 作为独立 CLI 进程可能拿不到
+	// 会话 id（dsh 只在 hook 子进程注入身份），于是盖的是整树戳；整树审查是作用域审查的超集，
+	// 两者都按内容寻址，命中任一都意味着「这些字节审过了」。
+	reviewed := func(s *Stamp) bool {
+		if !s.Reviewed {
+			return false
+		}
+		return s.DiffHash == hash || (wholeHash != "" && s.DiffHash == wholeHash)
 	}
 
 	stamp := loadStamp(root, hash)
 
 	// 同一 diff 已审过 → 放行
-	if stamp.DiffHash == hash && stamp.Reviewed {
+	if reviewed(stamp) {
 		return DecisionPass, "当前 diff 已通过 code-review-gate", nil
 	}
 
@@ -102,9 +153,19 @@ func Evaluate(root string) (Decision, string, error) {
 		}
 		return DecisionPass, fmt.Sprintf("当前 diff 已在分支 %s 通过 code-review-gate（内容一致，跨分支放行）", branch), nil
 	}
+	if wholeHash != "" && wholeHash != hash {
+		if other, ok := knownReviewed(root, wholeHash); ok {
+			branch := other.Branch
+			if branch == "" {
+				branch = "其他分支"
+			}
+			return DecisionPass, fmt.Sprintf("当前 diff 已在分支 %s 通过 code-review-gate（整树审查，内容一致）", branch), nil
+		}
+	}
 
-	// 撞 max rounds 兜底放行（防 Stop 死循环）
-	if stamp.DiffHash == hash && stamp.BlockCount >= MaxReviewRounds {
+	// 撞 max rounds 兜底放行（防 Stop 死循环）。整树戳与作用域戳都算同一轮次：
+	// 它们描述的是同一批未提交字节，只是范围不同。
+	if (stamp.DiffHash == hash || (wholeHash != "" && stamp.DiffHash == wholeHash)) && stamp.BlockCount >= MaxReviewRounds {
 		return DecisionPassAdvisory,
 			fmt.Sprintf("已达 max review rounds (%d)，advisory 放行——请人工确认未审变更", MaxReviewRounds), nil
 	}
@@ -119,8 +180,16 @@ func Evaluate(root string) (Decision, string, error) {
 	if err := saveStamp(root, &next); err != nil {
 		return DecisionPass, "", err
 	}
-	return DecisionNeedReview,
-		fmt.Sprintf("检测到未审查的代码变更（block %d/%d）", next.BlockCount, MaxReviewRounds), nil
+	reason := fmt.Sprintf("检测到未审查的代码变更（block %d/%d）", next.BlockCount, MaxReviewRounds)
+	if len(foreign) > 0 {
+		reason += fmt.Sprintf("；范围含本会话 %d 个文件，已排除其他活跃会话的 %d 个", len(included), len(foreign))
+	}
+	// 归属层被关掉时，判定退化成整树——把这件事说出来，否则用户以为门禁已经按会话
+	// 收窄过，实际上它又回到了「任何人的改动都算你的」。信号必须是看得见的。
+	if sid != "" && !attribution.Enabled() {
+		reason += "；归属层不可用（FORGE_ATTRIBUTION=0），本次按整树判定"
+	}
+	return DecisionNeedReview, reason, nil
 }
 
 // MarkPassedWithNote marks the current diff as having passed review (`forge
@@ -130,7 +199,24 @@ func Evaluate(root string) (Decision, string, error) {
 // MarkPassedWithNote 在 MarkPassed 之上把可选审查结论文本
 // （`forge review pass --note`）持久化进 stamp。
 func MarkPassedWithNote(root, note string) error {
-	hash, _, err := computeDiffHash(root)
+	return MarkPassedFor(root, "", note)
+}
+
+// MarkPassedFor marks the *same scope EvaluateFor will judge* as reviewed. It must
+// mirror EvaluateFor's fingerprint exactly: a session that reviewed its own change
+// and then stamps the whole tree would never satisfy the scoped gate (block →
+// pass → block again), so the two entry points share one scope computation.
+//
+// MarkPassedFor 盖章的范围必须与 EvaluateFor 判定的范围完全一致：若盖章用整树指纹
+// 而门禁用会话指纹，复审通过的会话下次 Stop 仍会被拦（盖章-放行死循环）。两者共用
+// 同一份作用域计算。
+func MarkPassedFor(root, sid, note string) error {
+	foreign := foreignForSession(root, sid)
+	exclude := make(map[string]bool, len(foreign))
+	for _, p := range foreign {
+		exclude[p] = true
+	}
+	hash, _, err := sourceChangesSinceExcluded(root, "", exclude)
 	if err != nil {
 		return err
 	}
@@ -338,8 +424,20 @@ func SourceChangesSince(root, baseCommit string) (hash string, hasChanges bool, 
 // 不是共享整树的噪音。按契约无主路径不可在此排除：解释不了的变更必须被审
 // （fail-safe）。nil map = 全树（L3 之前的行为；非 task 模式传 nil）。
 func SourceChangesSinceExcluded(root, baseCommit string, exclude map[string]bool) (hash string, hasChanges bool, err error) {
+	hash, files, err := sourceChangesSinceExcluded(root, baseCommit, exclude)
+	return hash, len(files) > 0, err
+}
+
+// sourceChangesSinceExcluded is the list-returning form of
+// SourceChangesSinceExcluded: the caller that has to name what it reviewed (and
+// what it excluded) gets the surviving paths, not just a hash.
+//
+// sourceChangesSinceExcluded 是 SourceChangesSinceExcluded 的列表版：需要点名「审了
+// 哪些、排除了哪些」的调用方拿到留在指纹里的路径，而不只是一个 hash。无变更时返回
+// 空 files（hash 为空）。
+func sourceChangesSinceExcluded(root, baseCommit string, exclude map[string]bool) (hash string, files []string, err error) {
 	if !isGitRepo(root) {
-		return "", false, nil
+		return "", nil, nil
 	}
 	base := baseCommit
 	if base == "" {
@@ -348,10 +446,10 @@ func SourceChangesSinceExcluded(root, baseCommit string, exclude map[string]bool
 	// 基线可达性：amend/rebase 后旧 commit 可能不可达，git diff/show 会 fatal。提前 verify 返回 err，
 	// 让调用方 fail-open（而非把 git stderr 当「无变更」误判放行）。
 	if out, e := gitOut(root, "rev-parse", "--verify", base+"^{commit}"); e != nil || strings.TrimSpace(out) == "" {
-		return "", false, fmt.Errorf("base commit %q not reachable: %w", base, e)
+		return "", nil, fmt.Errorf("base commit %q not reachable: %w", base, e)
 	}
 	tracked, untracked := changedSourceFilesSince(root, base)
-	files := append(tracked, untracked...)
+	files = append(tracked, untracked...)
 	if len(exclude) > 0 {
 		kept := files[:0]
 		for _, f := range files {
@@ -362,15 +460,111 @@ func SourceChangesSinceExcluded(root, baseCommit string, exclude map[string]bool
 		files = kept
 	}
 	if len(files) == 0 {
-		return "", false, nil
+		return "", nil, nil
 	}
+	slices.Sort(files)
+	return hashSourceFiles(root, base, files), files, nil
+}
+
+// hashSourceFiles is the content-addressed fingerprint of a file set: sorted
+// (path, current-content) pairs, sha256. Sorted so the order git reports changes
+// in never moves the hash.
+//
+// hashSourceFiles 是文件集的内容寻址指纹：按（路径 + 当前内容）排序后 sha256，
+// 与 git 报告顺序无关。
+func hashSourceFiles(root, base string, files []string) string {
 	slices.Sort(files)
 	var b strings.Builder
 	for _, f := range files {
 		fmt.Fprintf(&b, "%s\n%s\n", f, fileContentForHash(root, base, f))
 	}
 	sum := sha256.Sum256([]byte(b.String()))
-	return hex.EncodeToString(sum[:]), true, nil
+	return hex.EncodeToString(sum[:])
+}
+
+// scopeAndWholeFingerprint computes both fingerprints in one git pass: the
+// whole-tree hash (every changed source file) and the scoped hash (after removing
+// exclude). The caller needs the pair because `forge review pass` may legitimately
+// stamp either — it runs as a CLI process whose session id can be empty on hosts
+// that inject identity only into hook subprocesses (dsh). A whole-tree review is a
+// superset of a scoped review, and both are content-addressed, so accepting either
+// can never pass unreviewed code.
+//
+// scopeAndWholeFingerprint 一次 git 调用同时算出整树指纹与作用域指纹（去掉 exclude
+// 后）。调用方需要这一对，因为 `forge review pass` 作为 CLI 进程可能拿不到会话 id
+// （dsh 只在 hook 子进程注入身份），于是盖的是整树戳；整树审查是作用域审查的超集，
+// 且两者都按内容寻址，接受任一命中都不会放行未审代码。
+func scopeAndWholeFingerprint(root, baseCommit string, exclude map[string]bool) (scopeHash, wholeHash string, included []string, err error) {
+	if !isGitRepo(root) {
+		return "", "", nil, nil
+	}
+	base := baseCommit
+	if base == "" {
+		base = "HEAD"
+	}
+	if out, e := gitOut(root, "rev-parse", "--verify", base+"^{commit}"); e != nil || strings.TrimSpace(out) == "" {
+		return "", "", nil, fmt.Errorf("base commit %q not reachable: %w", base, e)
+	}
+	tracked, untracked := changedSourceFilesSince(root, base)
+	all := append(append([]string{}, tracked...), untracked...)
+	if len(all) == 0 {
+		return "", "", nil, nil
+	}
+	wholeHash = hashSourceFiles(root, base, all)
+	included = slices.Clone(all)
+	if len(exclude) > 0 {
+		kept := included[:0]
+		for _, f := range included {
+			if !exclude[f] {
+				kept = append(kept, f)
+			}
+		}
+		included = kept
+	}
+	if len(included) > 0 {
+		scopeHash = hashSourceFiles(root, base, included)
+	}
+	return scopeHash, wholeHash, included, nil
+}
+
+// foreignWindowEnv overrides the liveness window (minutes) in which another
+// session's write still counts as its live work.
+//
+// foreignWindowEnv 可覆盖「其他会话的写入仍算其在飞工作」的时间窗（分钟）。
+const foreignWindowEnv = "FORGE_REVIEW_FOREIGN_WINDOW_MIN"
+
+// foreignForSession returns the changed source paths provably owned by other live
+// sessions. Every degradation (no subject, attribution disabled, empty or broken
+// ledger, non-git) returns nil ⇒ whole-tree behaviour: when in doubt review more,
+// never less.
+//
+// foreignForSession 返回可证明属于其他活跃会话的变更路径。所有退化路径（无主体、
+// 归属层关闭、台账空/损坏、非 git）都返回 nil ⇒ 整树行为：存疑时宁可多审。
+func foreignForSession(root, sid string) []string {
+	if sid == "" || !attribution.Enabled() {
+		return nil
+	}
+	return attribution.Reconcile(root).Foreign(sid, foreignWindow())
+}
+
+// foreignWindow resolves the liveness window. Only a positive value is accepted:
+// 0 would mean "no time limit", i.e. a write from hours ago would still count as
+// another session's live work and get excluded — the one degradation direction
+// this gate must never take (under-review). Invalid, non-positive and unparsable
+// values all fall back to the default.
+//
+// foreignWindow 解析时效窗口。只接受正数：0 表示「不限时」，几小时前的写入仍会被当成
+// 他人的在飞工作而排除——正是本门禁绝不能走的漏审方向。非法/非正/无法解析一律回落默认。
+func foreignWindow() time.Duration {
+	raw := strings.TrimSpace(os.Getenv(foreignWindowEnv))
+	if raw == "" {
+		return attribution.DefaultForeignWindow
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return attribution.DefaultForeignWindow
+	}
+	return time.Duration(n) * time.Minute
 }
 
 // changedSourceFilesSince 返回自 baseCommit 起变更的【源码】文件，分 tracked（修改/删除，含
@@ -472,8 +666,20 @@ func CurrentBranch(root string) string {
 	return currentBranch(root)
 }
 
+// gitOut runs git in root with a fixed global config: core.quotepath=off. Without
+// it git C-quotes non-ASCII paths ("\344\270\255\346\226\207.go"), while the
+// attribution ledger stores raw UTF-8 — the two sets then never intersect (foreign
+// paths are never excluded) and `git show base:<quoted path>` fails, so content
+// edits to such files leave the fingerprint unchanged (fail-open). One flag keeps
+// every git-derived path in the same encoding as the ledger.
+//
+// gitOut 在 root 下执行 git，并固定 core.quotepath=off：否则 git 会把非 ASCII 路径
+// 转义成 "\344\270\255..."，而归属台账存的是原生 UTF-8——两侧永不相交（外来路径永不
+// 命中排除集），且 `git show <quoted>` 取不到内容，导致中文文件的**内容**改动不进指纹
+// （fail-open）。一个 flag 让所有 git 路径与台账同编码。
 func gitOut(root string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	base := []string{"-c", "core.quotepath=off", "-C", root}
+	cmd := exec.Command("git", append(base, args...)...)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
