@@ -32,7 +32,7 @@ func TestReReviewGuidanceContract(t *testing.T) {
 		{"刷新基线步骤", "forge review pass --note"},
 		{"首轮并行多 reviewer：按轨道续用", "按轨道续用"},
 		{"首轮并行多 reviewer：不新派补位", "不新派补位"},
-		{"修复触及测试或断言时作弊轨也续用", "修复触及测试或断言时作弊轨也续用"},
+		{"修复触及测试断言时 cheat-detector 那一轨也续用", "cheat-detector 那一轨也续用"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if !strings.Contains(ReReviewGuidance, tc.want) {
@@ -53,11 +53,14 @@ func TestReReviewGuidanceContract(t *testing.T) {
 }
 
 // TestDocReReviewGuidanceContract pins the tiered doc re-review semantics: both
-// tiers, the incremental-input contract, the no-fork rule; a pipe is banned
-// because the guidance is spliced into gate reasons that are joined by "; ".
+// tiers, the incremental-input contract, the no-fork rule. `%` and "; " are
+// banned (the text is spliced into fmt.Sprintf format strings and into gate
+// reasons joined by "; "); a pipe is not, because unlike ReReviewGuidance this
+// text never lands in a markdown table cell.
 //
 // TestDocReReviewGuidanceContract 钉住文档复审的分档语义：两档、增量输入契约、
-// 禁 fork 作者会话；禁竖线——它被拼进以「; 」连接的门禁原因串。
+// 禁 fork 作者会话。禁 `%` 与「; 」（文本被拼进 fmt.Sprintf 格式串与以「; 」连接
+// 的门禁原因串）；不禁竖线——与 ReReviewGuidance 不同，它不进 markdown 表格单元格。
 func TestDocReReviewGuidanceContract(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -72,10 +75,12 @@ func TestDocReReviewGuidanceContract(t *testing.T) {
 		{"升档：新派只读子代理全量评审", "新派只读子代理全量评审"},
 		{"升档触发：重写结论或判定段", "重写结论或判定段"},
 		{"升档触发：即将进行第 3 轮评审", "即将进行第 3 轮评审"},
-		{"升档触发：同类发现不收敛", "同类发现连续两轮不收敛"},
 		{"升档换视角", "全量评审并换视角"},
-		{"得分以上轮全文评审为基线", "得分以上轮全文评审为基线"},
-		{"borderline 另派第二评委", "另派第二评委"},
+		{"增量档对抗立场不变", "对抗立场不变"},
+		{"增量档记分：以上轮为底", "四维分以上轮为底"},
+		{"增量档记分：未触及的维度不得升档", "未触及的维度不得升档"},
+		{"增量档：留存被评审版本生成 diff", "留存被评审版本"},
+		{"borderline 同家族另派第二评委", "评审与产出同家族且落在 70-79 另派第二评委"},
 		{"禁止 fork 作者会话", "不 fork 作者会话"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -113,9 +118,7 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 		},
 		{
 			name: "adversarial-verification",
-			want: []string{"增量重验（修复轮默认）", "宣布 PASS 之前必须整体重验一遍", "复检轮续用原红队", "不得引用前轮结果"},
-			// 自检清单与 Gotchas 里的旧「每个修复轮都整体重验」表述也不得残留。
-			stale: []string{"**修完必须整体重验**", "修复后整体重验（非只验修复点）", "| 修完整体重验 |"},
+			want: []string{"复检轮续用原红队", "不得引用前轮结果", "复验续用原验收者", "修完必须整体重验"},
 		},
 		{
 			name: "code-review-gate",

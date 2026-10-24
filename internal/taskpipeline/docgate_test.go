@@ -260,13 +260,16 @@ func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
 		name      string
 		review    DocReview
 		wantGuide bool
+		wantText  string // 非空：原因串还须含该短语
 	}{
-		{"HEAD 过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true},
-		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true},
-		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true},
-		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true},
-		{"轮次打满升级人工", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head}, false},
-		{"同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, SelfReview: true}, false},
+		// HEAD 移动而内容可能没变（提交/合并基线）：须指引「内容没变就直接重新记录」，
+		// 否则 agent 会为空 diff 派一次空复审。
+		{"HEAD 过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true, "文档内容没变则直接重新 forge task doc-review 记录"},
+		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true, ""},
+		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true, ""},
+		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, ""},
+		{"轮次打满升级人工", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head}, false, ""},
+		{"同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, SelfReview: true}, false, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &TaskState{TaskRef: "feat/x", HeadCommit: base}
@@ -280,6 +283,9 @@ func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
 			got := strings.Contains(strings.Join(reasons, "; "), review.DocReReviewGuidance)
 			if got != tc.wantGuide {
 				t.Errorf("复审指引在场=%v，期望 %v, reasons=%v", got, tc.wantGuide, reasons)
+			}
+			if tc.wantText != "" && !strings.Contains(strings.Join(reasons, "; "), tc.wantText) {
+				t.Errorf("原因串缺少 %q, reasons=%v", tc.wantText, reasons)
 			}
 		})
 	}

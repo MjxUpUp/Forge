@@ -1328,7 +1328,7 @@
     {
       "tree": "canonical",
       "name": "adversarial-verification",
-      "sha256": "0134012366fd59eede89093a2a79825af226ea2f099d61b3a7ff37b2af48301a"
+      "sha256": "e166d8ebb2cae744e0bdda7d00ce85009b42bf89f2ae1d6433c7524c5e30590e"
     },
     {
       "tree": "canonical",
@@ -1348,7 +1348,7 @@
     {
       "tree": "canonical",
       "name": "code-review-gate",
-      "sha256": "dee5fafd933357fb4c8f87821d13b8d8d8eeb17027bc82756d3bec572d7b4df1"
+      "sha256": "61b13e8ef4893b4cea3044433412f0432f536ebdc0059a307f244131d2b3595a"
     },
     {
       "tree": "canonical",
@@ -1393,7 +1393,7 @@
     {
       "tree": "canonical",
       "name": "doc-review",
-      "sha256": "9bb9f0c726d89494ddb774c3f48e2afee6e45467551c1e8a415a57b14deab772"
+      "sha256": "26df8ed54e9d8562e5b2cd47dc61cffeab7f268576cec55dfe34121e9e86bfdb"
     },
     {
       "tree": "canonical",

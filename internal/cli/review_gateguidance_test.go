@@ -27,16 +27,15 @@ func TestGateGuidanceCarriesReReviewTier(t *testing.T) {
 	}
 	// 复审分档必须带条件前缀并落在「派 reviewer」与「标记」两步之间：删掉前缀会让
 	// 首审也被引导去续用不存在的首轮 reviewer；挪出两步之间会错读成独立步骤。
-	const condition = "仅当你在本会话内已对本分支派过 reviewer"
+	// 两种情形分行标 (a)/(b)，避免与 ReReviewGuidance 内部自带的「否则」同级混读。
+	const fresh = "(a) 首审、新会话接手、或手里没有首轮 reviewer 的句柄：按本步新派"
+	const resume = "(b) 本会话内已对本分支派过 reviewer"
 	dispatch := strings.Index(gateGuidance, "派【只读】子 agent 审查当前 diff")
-	cond := strings.Index(gateGuidance, condition)
+	a := strings.Index(gateGuidance, fresh)
+	b := strings.Index(gateGuidance, resume)
 	tier := strings.Index(gateGuidance, review.ReReviewGuidance)
 	mark := strings.Index(gateGuidance, "3. 审查通过后运行 `forge review pass`")
-	if cond < 0 || !(dispatch >= 0 && dispatch < cond && cond < tier && tier < mark) {
-		t.Errorf("复审分档须以条件前缀开头并位于派发步与标记步之间，index dispatch=%d cond=%d tier=%d mark=%d", dispatch, cond, tier, mark)
-	}
-	// 新会话接手、首审都按第 2 步新派：条件句必须写明否则分支。
-	if !strings.Contains(gateGuidance, "否则（首审、新会话接手）按本步新派") {
-		t.Errorf("gateGuidance 复审条件句缺「否则」分支，got:\n%s", gateGuidance)
+	if a < 0 || b < 0 || !(dispatch >= 0 && dispatch < a && a < b && b < tier && tier < mark) {
+		t.Errorf("须依次为：派发步 → (a) 首审/新会话新派 → (b) 复审条件前缀 → 分档指引 → 标记步，index dispatch=%d a=%d b=%d tier=%d mark=%d", dispatch, a, b, tier, mark)
 	}
 }
