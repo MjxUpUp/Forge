@@ -761,7 +761,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// Task-tree guard: resolve off-tree once here and pass it via env so the bash
 	// task-guard needs no extra forge spawn per Write|Edit.
 	var offTreeAnchor, deadAnchor string
-	if activeState != nil && root != "" {
+	if treeGuardApplies(activeState, root, fields.FilePath) {
 		ts := taskpipeline.TaskTreeStatus(root, activeState.TaskRef)
 		switch ts.State {
 		case taskpipeline.TreeOffTree:
@@ -1415,6 +1415,20 @@ func taskTreeEnv(offTree string) []string {
 		"FORGE_TASK_OFFTREE=" + v,
 		"FORGE_TASK_WORKTREE=" + v,
 	}
+}
+
+// treeGuardApplies 报告这次 hook 调用是否该做错树判定。只有「带文件路径的编辑类
+// 调用」需要它：
+//   - FORGE_TASK_OFFTREE 只喂 task-guard，而 task-guard 只在写文件时跑；
+//   - dead-anchor 的 stderr advisory 若在每个 hook 调用上都打（Read 的 tool-track、
+//     Bash 的 bash-guard/hazard-guard 都会走到同一解析点），一次编辑会被同一条警告
+//     刷好几遍——噪声会把真正该看的那条埋掉。
+//
+// treeGuardApplies reports whether this hook call needs the task-tree verdict: only
+// calls that carry a file path do (the off-tree env feeds the file-writing guard, and
+// the dead-anchor notice is only meaningful when an edit is being attempted).
+func treeGuardApplies(activeState *taskpipeline.TaskState, root, filePath string) bool {
+	return activeState != nil && root != "" && filePath != ""
 }
 
 // deadAnchorWarning 是死锚的告警文案：任务绑定指向的目录已经不存在。纯提示——

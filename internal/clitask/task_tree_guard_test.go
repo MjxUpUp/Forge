@@ -58,6 +58,10 @@ func TestTaskGate_OffTreeBlocks(t *testing.T) {
 			t.Fatalf("错树拒绝信息缺出路 %q，实际：\n%s", want, out)
 		}
 	}
+	// 出路必须可执行：`cd` 后面得是那棵锚树的路径（只写「cd」等于没给答案）。
+	if !strings.Contains(out, "feat-tg") {
+		t.Fatalf("错树拒绝信息必须给出锚树路径（worktree 名 feat-tg），实际：\n%s", out)
+	}
 
 	// 逃生舱：显式关闭后不再以「错树」为由阻断（可能因其他门禁原因失败，故只断言文案消失）。
 	cmd := exec.Command(forgeExe, "task", "gate", "task-implement")

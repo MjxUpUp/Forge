@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 )
 
 // hook_tree_guard_record_test.go —— §5 留痕契约：错树拦截与「关守护」都必须落 checklog
@@ -92,6 +93,30 @@ func TestRecordTreeGuardBlockThrottled(t *testing.T) {
 		}
 		if e.Meta["wtid"] == "" {
 			t.Fatalf("tree-guard 行必须带当前树 wtid（与锚路径一起才能定位错树）：%v", e.Meta)
+		}
+	}
+}
+
+// TestTreeGuardApplies pins the scope of the task-tree verdict: only calls that carry a
+// file path need it. Without this, every Read/Bash/PostToolUse hook call would re-print
+// the dead-anchor notice and re-touch the throttle markers for one edit.
+func TestTreeGuardApplies(t *testing.T) {
+	state := &taskpipeline.TaskState{TaskRef: "feat/x"}
+	cases := []struct {
+		name     string
+		state    *taskpipeline.TaskState
+		root     string
+		filePath string
+		want     bool
+	}{
+		{"无活跃任务", nil, "/repo", "internal/a.go", false},
+		{"无仓库根", state, "", "internal/a.go", false},
+		{"Read/Bash 等无文件路径的调用", state, "/repo", "", false},
+		{"带文件路径的编辑调用", state, "/repo", "internal/a.go", true},
+	}
+	for _, c := range cases {
+		if got := treeGuardApplies(c.state, c.root, c.filePath); got != c.want {
+			t.Errorf("%s: treeGuardApplies=%v want %v", c.name, got, c.want)
 		}
 	}
 }

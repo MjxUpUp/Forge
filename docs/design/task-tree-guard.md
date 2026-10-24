@@ -1,6 +1,6 @@
 # task-tree-guard：任务树的错树守护（P1）与 human 档链定义指纹（B）
 
-状态：已实施（代码在 `fix/task-tree-guard`，随 v1.84.3 发布；本文档描述的是该提交后的行为）。前置：`multi-task-concurrency.md` §4 的 L1 身份层与 L4 worktree 隔离；`review-gate-session-scope-2026-10.md` 的会话作用域门禁（v1.84.2）。
+状态：已实施（代码在 `fix/task-tree-guard` 分支，**尚未发布**——当前最新 tag 为 v1.84.2；本文档描述的是该分支合入后的行为）。前置：`multi-task-concurrency.md` §4 的 L1 身份层与 L4 worktree 隔离；`review-gate-session-scope-2026-10.md` 的会话作用域门禁（v1.84.2）。
 
 ## 0. 背景：`--worktree` 目前只是一条建议
 
@@ -27,8 +27,8 @@
 |---|---|
 | G1 错树写源码被拦 | 任务有活 binding 锚在另一棵树、当前 cwd 不是锚 → 源码写入被 task-guard 拒绝（exit 1，指名锚路径与三条正当出路） |
 | G2 三个门禁同判据 | task-implement / task-verify / task-complete 在错树状态下 BLOCK，`forge task status` 明确展示状态 |
-| G3 正当事先被提示 | 错树时 hookdispatch 注入 `FORGE_TASK_WORKTREE=<锚路径>`，拒绝文案据此给出三条出路；死锚每轮打一条 advisory（不改 cwd，不代跑） |
-| G4 放行面不扩散 | 死锚（目录已删）、多锚任一命中、测试文件、无任务、`binding` 未启用 → 一律不阻断；死锚打 stderr advisory，其余三种静默 |
+| G3 正当事先被提示 | 错树时 hookdispatch 注入 `FORGE_TASK_WORKTREE=<锚路径>`，拒绝文案据此给出三条出路；死锚在**尝试编辑时**打 advisory（带文件路径的 hook 调用才判定，Read/Bash 不重复；不改 cwd，不代跑） |
+| G4 放行面不扩散 | 死锚（目录已删）、多锚任一命中、测试文件、无任务、`binding` 未启用 → 一律不阻断；死锚打 stderr advisory，其余四种静默 |
 
 ### 1.2 非目标
 
@@ -65,7 +65,7 @@
 | 写入 | `internal/hooks/embed_task.go`（task-guard 脚本） | 读 hookdispatch 注入的 `FORGE_TASK_OFFTREE=<anchor>`：命中即 `FAIL [task-guard] …（exit 1）`；`.forge/**`、测试文件、无任务分支保持原逻辑。hookdispatch 同时落一条 `tree-guard` 行（按会话+任务节流） |
 | 门禁 | `internal/clitask/task_gate.go:runTaskGate` | `off-tree` → `ExecuteTaskGate` 前直接 BLOCK，reason 含锚路径与 `forge worktree use` 提示，并落一条 `tree-guard` 行（每次 BLOCK 一条） |
 | 展示 | `forge task status` | 状态表增一行 `Tree: off-tree（锚：<path>——…）`；`dead-anchor` 单独一行 |
-| 提示 | `internal/hookdispatch/hook.go`（tool hook 前） | 注入 `FORGE_TASK_OFFTREE` + `FORGE_TASK_WORKTREE=<anchor>`；死锚每轮一条 advisory |
+| 提示 | `internal/hookdispatch/hook.go`（tool hook 前） | 注入 `FORGE_TASK_OFFTREE` + `FORGE_TASK_WORKTREE=<anchor>`（仅带文件路径的编辑调用）；死锚同一时点一条 advisory |
 
 guard 脚本不自己 spawn `forge`（避免每次编辑多一次进程）；判定由 hookdispatch 在已有解析点算好落到环境变量。手工 `bash` 里没有该变量时脚本行为与今天一致。
 
@@ -75,24 +75,24 @@ guard 脚本不自己 spawn `forge`（避免每次编辑多一次进程）；判
 
 - **`tree-guard`**（`checklog.CheckTreeGuard`）：一次错树判定。`Passed=false`、`Level=warn`，`Meta` 带
   `tree_guard=off-tree`、`anchor`、`wtid`、`resolve_path=active-file-offtree`。写入层由 hookdispatch 在**每次
-  `Write|Edit` 的解析点**记一条 `layer=task-guard`（早于 guard 脚本的文件类型判定，所以改测试文件也会落一行——
+  带文件路径的编辑调用（`Write|Edit` 及任何带 `file_path` 的 tool 事件）的解析点**记一条 `layer=task-guard`（早于 guard 脚本的文件类型判定，所以改测试文件也会落一行——
   它记的是「这次会话此刻站在错树」，不是「这次编辑被拒」），按会话+任务节流——guard 每次编辑都跑，不节流就是日志洪水；
   门禁层由 `runTaskGate` 每次 BLOCK 记一条。
 - **`escape-hatch`**（`checklog.CheckEscapeHatch`）：`FORGE_TASK_TREE_GUARD=0` 时记一行，
   `escape.gate=task-tree-guard`、`escape.reason=env`、`escape.owner=env`，按会话+任务至多一条。
   评分侧按既有逃生舱规则把任务记 `capped`——判定在 `internal/taskpipeline/scoring.go:266-278`
-  （`usedAnyOverride` 或 `taskEscapeHatchRecorded` 为真且超出 `escapeCapMaxScore` 即封顶并写 `CappedReason`），
+  （`usedAnyOverride`/`taskEscapeHatchRecorded` 定义在 `internal/taskpipeline/overrides.go:49`/`:58`；两者任一为真且超出 `escapeCapMaxScore` 即封顶并写 `CappedReason`），
   `internal/clitask/task_complete.go` 的逃生舱库存打印只是把同一台账行展示出来；证据强度侧另有
   `internal/checklog/evidence.go` 的 `EscapeDowngradedStrength` 降档——
   所以「关门禁会被扣分」是真的，不是文案。两层都记：关闭后 guard 脚本整个跳过判定，只有 hookdispatch
   那条能让「只编辑、不推门禁」的会话留下痕迹。
-- 死锚 advisory **不写 checklog**（每轮注入，避免噪声）：只出现在 stderr 与 `forge task status` 展示里。
+- 死锚 advisory **不写 checklog**（每次编辑尝试注入，避免噪声）：只出现在 stderr 与 `forge task status` 展示里。
 
 ## 6. B：human 档审批绑定链定义
 
 现状：审批（`ArtifactApproval`）只钉产物文件内容 hash，**没钉链定义（`schema.yaml`）**——链定义一改，旧审批仍然成立（LoopSpec 在同样情形抛 `plan_changed`，`workflow_plans.py:312-322`）。
 
-实现（v1.84.3）：
+实现（尚未发布：`fix/task-tree-guard` 分支）：
 
 - `artifactchain.Digest(root)`：`sha256(schema.yaml 内容，CRLF→LF 规范化)`，读不到返回空串（不阻断）。
 - `ArtifactApproval` 增 `ChainDigest string`（`json:"chain_digest,omitempty"`，存量审批解出空串=不判定）。
@@ -126,19 +126,20 @@ go test ./internal/worktree ./internal/taskpipeline ./internal/clitask ./interna
 
 实测：`ok internal/worktree 1.7s`、`ok internal/taskpipeline 1.0s`、`ok internal/clitask 18.4s`；`internal/cli` 在该 `-run` 下无匹配用例（该包不承载本特性行为）。
 
-该正则**不覆盖**判据 8 的 `TestDigest_StableAndSensitive`、判据 9 的 `TestTreeGuardDisabled_Env`、判据 6 的 `TestTaskGuardHookOffTreeDenies`、判据 11 的三条——它们分别落在 `./internal/artifactchain`、`./internal/taskpipeline`、`./internal/hooks`、`./internal/hookdispatch ./internal/clitask`，合入前逐包实跑过；CI 跑的是全量 `go test ./...`，因此也在覆盖范围内。
+该正则**不覆盖**判据 8 的 `TestDigest_StableAndSensitive`、判据 9 的 `TestTreeGuardDisabled_Env`、判据 6 的 `TestTaskGuardHookOffTreeDenies`、判据 11 的 `TestRecordTreeGuard*` 两条（`TestTaskGate_OffTreeRecordsChecklog` 匹配 `TestTaskGate`，已被覆盖）——它们分别落在 `./internal/artifactchain`、`./internal/taskpipeline`、`./internal/hooks`、`./internal/hookdispatch`，合入前逐包实跑过；CI 跑的是全量 `go test ./...`，因此也在覆盖范围内。
 
 ## 8. 风险与回滚
 
 - **误判风险**：用户在锚树之外合法地读/跑测试 → 不拦（只拦源码写入与门禁）。若某类工作确需在主树写源码，出口是 `forge worktree use`（显式迁移）或 `FORGE_TASK_TREE_GUARD=0`（留审计、评分 capped）。
-- **性能**：`Anchors` 每个 `workspaces/*.json` 一次读，典型 <5 个文件；hookdispatch 每轮一次（`TaskTreeStatus` 只 stat 锚目录）。写入层不新增 `forge` 进程——判定在已有的 hook dispatch 里完成，guard 脚本只读环境变量。
-- **回滚**：功能与测试分成两个提交（`fix(task)` 与 `test(task)`），回滚需一并 revert（只回退前者会留下编译不过的测试；squash 合并后则是一次 revert）；关掉开关即回到 v1.84.2 行为（guard 无 env 变量时逻辑不变）。
+- **性能**：`Anchors` 每个 `workspaces/*.json` 一次读，典型 <5 个文件；hookdispatch 在带文件路径的编辑调用上各一次（`TaskTreeStatus` 只 stat 锚目录）。写入层不新增 `forge` 进程——判定在已有的 hook dispatch 里完成，guard 脚本只读环境变量。
+- **回滚**：本批在分支上是多个提交（`fix(task)` 功能、`test(task)` 补测、`fix(task)` 留痕与文案校准、`test(checklog,compat)` 配对测试），squash 合并后是一次 revert；若在分支上单独回退，须一并回退测试提交，否则留下编译不过的测试。
+- **关开关 ≠ 回到 v1.84.2**：`FORGE_TASK_TREE_GUARD=0` 只关「阻断」，不关观测——`forge task status` 仍会打 `Tree: off-tree` 行、hookdispatch 仍写一条 `escape-hatch` 行、评分仍按逃生舱 capped。真正回到旧行为要把代码回退，开关只买「这次不阻断、但要付审计与分数」。
 
 ## 9. 改动面
 
-源码：`internal/worktree/binding.go`（`Anchors`）、`internal/taskpipeline/state.go`（`TreeStatus`/`TaskTreeStatus`/`TreeGuardDisabled`）、`internal/taskpipeline/artifactchain_gate.go`（`ChainDigestStale`）、`internal/clitask/task_gate.go`（错树 BLOCK + 两条留痕 + chain advisory）、`internal/clitask/task_worktree.go`（`worktree use`）、`internal/clitask/task_misc.go`（status 展示）、`internal/clitask/task_chain.go`（审批写 ChainDigest + verify 展示）、`internal/hookdispatch/hook.go`（`FORGE_TASK_OFFTREE`/`FORGE_TASK_WORKTREE` 注入 + 死锚告警 + 两层留痕接线）、`internal/hookdispatch/hook_tree_guard_record.go`（`tree-guard`/`escape-hatch` 行构造与节流）、`internal/hooks/embed_task.go`（guard 分支）、`internal/checklog/types.go` + `internal/checklog/escape.go`（新增 `CheckTreeGuard` 并登记 roster）、`internal/artifactchain/artifactchain.go`（`Digest`）、`internal/tasktypes/model.go`（`ChainDigest` 字段）。
+源码：`internal/worktree/binding.go`（`Anchors`）、`internal/taskpipeline/state.go`（`TreeStatus`/`TaskTreeStatus`/`TreeGuardDisabled`）、`internal/taskpipeline/artifactchain_gate.go`（`ChainDigestStale`）、`internal/clitask/task_gate.go`（错树 BLOCK + 两条留痕 + chain advisory）、`internal/clitask/task_worktree.go`（`worktree use`）、`internal/clitask/task_misc.go`（status 展示）、`internal/clitask/task_chain.go`（审批写 ChainDigest + verify 展示）、`internal/hookdispatch/hook.go`（`FORGE_TASK_OFFTREE`/`FORGE_TASK_WORKTREE` 注入 + 死锚告警 + 两层留痕接线）、`internal/hookdispatch/hook_tree_guard_record.go`（`tree-guard`/`escape-hatch` 行构造与节流）、`internal/hooks/embed_task.go`（guard 分支）、`internal/checklog/types.go` + `internal/checklog/escape.go`（新增 `CheckTreeGuard` 并登记 roster）、`internal/compat/compat.go`（`FORGE_TASK_TREE_GUARD` 入 `EscapeEnvs`）、`internal/artifactchain/artifactchain.go`（`Digest`）、`internal/tasktypes/model.go`（`ChainDigest` 字段）。
 
-测试：`internal/worktree/binding_anchors_test.go`、`internal/taskpipeline/state_tree_test.go`、`internal/taskpipeline/chain_digest_test.go`、`internal/clitask/task_tree_guard_test.go`、`internal/hooks/taskguard_offtree_test.go`、`internal/hookdispatch/hook_task_tree_env_test.go`、`internal/hookdispatch/hook_tree_guard_record_test.go`、`internal/artifactchain/digest_test.go`、`internal/tasktypes/chain_digest_test.go`。
+测试：`internal/worktree/binding_anchors_test.go`、`internal/taskpipeline/state_tree_test.go`、`internal/taskpipeline/chain_digest_test.go`、`internal/clitask/task_tree_guard_test.go`、`internal/hooks/taskguard_offtree_test.go`、`internal/hookdispatch/hook_task_tree_env_test.go`、`internal/hookdispatch/hook_tree_guard_record_test.go`、`internal/artifactchain/digest_test.go`、`internal/tasktypes/chain_digest_test.go`、`internal/checklog/escape_roster_test.go`（`tree-guard` 进 roster 且只作观察证据）、`internal/compat/escape_envs_test.go`（逃生 env 入册）。
 
 其他：`.gitignore`（`.tmp/`、`.tmp_*`——两个只读子 agent 的临时脚本曾因未忽略而被 review gate 当 orphan 计入）。
 
