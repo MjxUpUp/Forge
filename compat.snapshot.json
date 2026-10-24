@@ -1242,6 +1242,12 @@
     },
     {
       "path": "forge worktree janitor"
+    },
+    {
+      "path": "forge worktree use",
+      "flags": [
+        "ref"
+      ]
     }
   ],
   "checks": [
@@ -1299,6 +1305,7 @@
     "test-nudge",
     "test-nudge-state",
     "tool-failure",
+    "tree-guard",
     "unused-scan"
   ],
   "escapes": [
@@ -1319,6 +1326,7 @@
     "FORGE_SELF_REPORT",
     "FORGE_SKILL_DECISIONS",
     "FORGE_TASK_DRIFT",
+    "FORGE_TASK_TREE_GUARD",
     "FORGE_TASK_VERIFY_STOP",
     "FORGE_TEST_COVERAGE",
     "FORGE_UNUSED_SCAN",

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
@@ -51,6 +52,12 @@ func TestTaskGate_OffTreeBlocks(t *testing.T) {
 	if !strings.Contains(out, "错树") || !strings.Contains(out, "forge worktree use") {
 		t.Fatalf("错树拒绝信息必须指出错树与出路（forge worktree use），实际：\n%s", out)
 	}
+	// 三条出路必须都在文案里：只给「forge worktree use」会把「回锚树」这条最便宜的路径藏起来。
+	for _, want := range []string{"cd ", "FORGE_TASK_TREE_GUARD=0"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("错树拒绝信息缺出路 %q，实际：\n%s", want, out)
+		}
+	}
 
 	// 逃生舱：显式关闭后不再以「错树」为由阻断（可能因其他门禁原因失败，故只断言文案消失）。
 	cmd := exec.Command(forgeExe, "task", "gate", "task-implement")
@@ -92,5 +99,59 @@ func TestWorktreeUse_Rebinds(t *testing.T) {
 	gateOut, _, _ := runForge(t, dir, "task", "gate", "task-implement")
 	if strings.Contains(gateOut, "错树") {
 		t.Fatalf("重锚后门禁不得再报错树：\n%s", gateOut)
+	}
+}
+
+// TestTaskGate_OffTreeRecordsChecklog 钉住设计 §5 的留痕承诺：错树 BLOCK 必须落一条
+// deterministic tree-guard 行（带锚与 resolve_path）；关守护时落一条 escape-hatch 行——
+// 没有这两条，「错树守护被拦了几次」「多少人靠关守护绕过去」都没法回答。
+func TestTaskGate_OffTreeRecordsChecklog(t *testing.T) {
+	dir := initTreeGuardRepo(t)
+	if _, _, code := runForge(t, dir, "task", "start", "--ref", "feat/tgr", "--title", "留痕夹具", "--accept", "true :: ok", "--worktree"); code != 0 {
+		t.Fatalf("task start --worktree 失败（code=%d）", code)
+	}
+	if _, _, code := runForge(t, dir, "task", "gate", "task-implement"); code == 0 {
+		t.Fatal("前提：主树对锚在别处的任务过门禁必须失败")
+	}
+
+	rowsFor := func(check checklog.CheckName) []checklog.Entry {
+		t.Helper()
+		all, err := checklog.LoadForTask(dir, "feat/tgr")
+		if err != nil {
+			t.Fatalf("读 checklog: %v", err)
+		}
+		var rows []checklog.Entry
+		for _, e := range all {
+			if e.Check == check {
+				rows = append(rows, e)
+			}
+		}
+		return rows
+	}
+
+	blocks := rowsFor(checklog.CheckTreeGuard)
+	if len(blocks) == 0 {
+		t.Fatal("错树 BLOCK 必须落 tree-guard 行，实际一条都没有")
+	}
+	for _, e := range blocks {
+		if e.Passed {
+			t.Fatalf("错树拦截行必须 Passed=false：%+v", e)
+		}
+		if e.Meta["tree_guard"] != "off-tree" || e.Meta["resolve_path"] != "active-file-offtree" || e.Meta["anchor"] == "" {
+			t.Fatalf("tree-guard 行缺树形载荷：%v", e.Meta)
+		}
+	}
+
+	cmd := exec.Command(forgeExe, "task", "gate", "task-implement")
+	cmd.Dir = dir
+	cmd.Env = append(cmd.Environ(), "FORGE_TASK_TREE_GUARD=0")
+	_, _ = cmd.CombinedOutput()
+
+	escapes := rowsFor(checklog.CheckEscapeHatch)
+	if len(escapes) == 0 {
+		t.Fatal("关守护必须落 escape-hatch 行（否则评分 capped 是假的）")
+	}
+	if escapes[0].Meta["escape.gate"] != "task-tree-guard" || escapes[0].Meta["escape.reason"] != checklog.EscapeReasonEnv {
+		t.Fatalf("escape-hatch 行必须点名 task-tree-guard：%v", escapes[0].Meta)
 	}
 }

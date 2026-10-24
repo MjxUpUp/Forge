@@ -507,6 +507,15 @@ const (
 	// advisory、1.67 起 BLOCKED；Meta 携带形态标志（semicolon/pipe/multi_gate…）。
 	// deterministic（gatecmdform 纯函数判定）；属过程形态 OBSERVATION——排除出证据强度分桶。
 	CheckGateCmdForm CheckName = "gate-cmd-form"
+	// CheckTreeGuard records one task-tree-guard decision (docs/design/task-tree-guard.md §5):
+	// the off-tree BLOCK (Passed=false, Meta carries anchor/wtid/resolve_path) or the
+	// escape-hatch path that let a blocked gate through under FORGE_TASK_TREE_GUARD=0.
+	//
+	// CheckTreeGuard 记录一次错树守护判定（docs/design/task-tree-guard.md §5）：off-tree
+	// BLOCK（Passed=false，Meta 带 anchor/wtid/resolve_path），或关闭守护时放行的逃生
+	// 路径。deterministic（gate/guard 自算，agent 无法伪造）；用来回答「有多少门禁在错树
+	// 上被拦下」「有多少人靠关守护绕过去」——没有这条记录，错树守护是静默的。
+	CheckTreeGuard CheckName = "tree-guard"
 )
 
 // MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go

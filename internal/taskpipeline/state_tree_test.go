@@ -85,8 +85,12 @@ func TestTaskTreeStatus_States(t *testing.T) {
 	if err := os.RemoveAll(wt1); err != nil {
 		t.Fatal(err)
 	}
+	absWt1, _ := filepath.Abs(wt1)
 	if got := TaskTreeStatus(main, "feat/dead"); got.State != TreeDeadAnchor {
 		t.Fatalf("锚目录已删必须 dead-anchor，got %+v", got)
+	} else if !samePath(got.AnchorPath, absWt1) {
+		// 死锚也必须指出坏掉的锚路径——只报状态名，用户不知道该清理哪棵树。
+		t.Fatalf("dead-anchor 必须指出失效锚路径 %s，got %s", absWt1, got.AnchorPath)
 	}
 }
 

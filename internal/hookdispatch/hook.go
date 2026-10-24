@@ -761,10 +761,18 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// Task-tree guard: resolve off-tree once here and pass it via env so the bash
 	// task-guard needs no extra forge spawn per Write|Edit.
 	var offTreeAnchor, deadAnchor string
-	if activeState != nil && root != "" && !taskpipeline.TreeGuardDisabled() {
-		switch ts := taskpipeline.TaskTreeStatus(root, activeState.TaskRef); ts.State {
+	if activeState != nil && root != "" {
+		ts := taskpipeline.TaskTreeStatus(root, activeState.TaskRef)
+		switch ts.State {
 		case taskpipeline.TreeOffTree:
-			offTreeAnchor = ts.AnchorPath
+			if taskpipeline.TreeGuardDisabled() {
+				// 逃生舱留痕（§5）：guard 脚本此时整个跳过判定，只有这里留下痕迹。
+				recordTreeGuardEscape(root, activeState.TaskRef, hookInput.SessionID)
+			} else {
+				offTreeAnchor = ts.AnchorPath
+				// 拦截留痕（§5）：guard 脚本马上会 exit 1，这里记一次（按会话+任务节流）。
+				recordTreeGuardBlock(root, activeState.TaskRef, hookInput.SessionID, offTreeAnchor)
+			}
 		case taskpipeline.TreeDeadAnchor:
 			deadAnchor = ts.AnchorPath
 		}

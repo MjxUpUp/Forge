@@ -3,6 +3,7 @@ package clitask
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
+	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -25,6 +27,61 @@ func completeGenericTask(root string, state *taskpipeline.TaskState) error {
 	}
 	CommitBestEffort("task completed: " + state.TaskRef)
 	return nil
+}
+
+// recordTreeGuardOffTree 写一条 deterministic tree-guard 记录（docs/design/task-tree-guard.md §5）：
+// 错树门禁被拦下，带锚路径与当前树 id——`forge trace` 才能回答「谁在错树上推门禁」。
+func recordTreeGuardOffTree(root, gateID string, state *taskpipeline.TaskState, ts taskpipeline.TreeStatus) {
+	if err := checklog.Record(root, &checklog.Entry{
+		Check:     checklog.CheckTreeGuard,
+		Passed:    false,
+		Checked:   true,
+		Level:     checklog.LevelWarn,
+		TaskRef:   state.TaskRef,
+		SessionID: taskpipeline.CurrentSessionID(),
+		Source:    checklog.EvidenceDeterministic,
+		Detail:    fmt.Sprintf("tree-guard: BLOCKED（错树）gate=%s 锚=%s", gateID, ts.AnchorPath),
+		Meta: map[string]string{
+			"tree_guard":   "off-tree",
+			"gate":         gateID,
+			"anchor":       ts.AnchorPath,
+			"wtid":         ts.Wtid,
+			"resolve_path": "active-file-offtree",
+		},
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（错树判定未落盘）: %v\n", err)
+	}
+}
+
+// recordTreeGuardEscape 把「关掉守护」记成 escape-hatch 行（§5）：逃生舱必须留痕，
+// 否则 task-tree-guard 是静默的。评分侧按既有 CheckEscapeHatch 规则 capped。
+// 每会话每任务至多一条（marker 节流，沿用 recordGateCmdFormEscape 的形态）。
+func recordTreeGuardEscape(root string, state *taskpipeline.TaskState) {
+	sid := taskpipeline.CurrentSessionID()
+	marker := filepath.Join(forgedata.DataDirFor(root), "markers",
+		"forge-treeguard-escape-"+util.SanitizeSessionID(sid)+"-"+util.SanitizeSessionID(state.TaskRef))
+	if _, err := os.Stat(marker); err == nil {
+		return
+	}
+	if err := checklog.Record(root, &checklog.Entry{
+		Check:     checklog.CheckEscapeHatch,
+		Passed:    true,
+		Checked:   true,
+		Level:     checklog.LevelWarn,
+		TaskRef:   state.TaskRef,
+		SessionID: sid,
+		Source:    checklog.EvidenceDeterministic,
+		Detail:    "escape-hatch: task-tree-guard disabled (env FORGE_TASK_TREE_GUARD=0) — 错树门禁放行",
+		Meta: map[string]string{
+			"escape.gate":   "task-tree-guard",
+			"escape.reason": checklog.EscapeReasonEnv,
+			"escape.owner":  "env",
+		},
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "⚠ checklog 记录失败（逃生舱未落盘）: %v\n", err)
+	}
+	_ = os.MkdirAll(filepath.Dir(marker), 0755)
+	_ = util.AtomicWrite(marker, []byte("1"), 0o644)
 }
 
 func runTaskGate(cmd *cobra.Command, args []string) error {
@@ -71,8 +128,13 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// 错树守护（docs/design/task-tree-guard.md §4）：任务锚在另一棵树时，在这里过的
 	// 门禁只会记在一棵空树上——三个门禁一律 BLOCK，并指名锚树与迁移动词。放行面
 	// 与 guard 一致：死锚/多锚任一命中/守护关闭都不拦。
-	if !taskpipeline.TreeGuardDisabled() {
-		if ts := taskpipeline.TaskTreeStatus(root, state.TaskRef); ts.State == taskpipeline.TreeOffTree {
+	if ts := taskpipeline.TaskTreeStatus(root, state.TaskRef); ts.State == taskpipeline.TreeOffTree {
+		if taskpipeline.TreeGuardDisabled() {
+			// 逃生舱留痕（§5）：关掉守护不是静默——checklog 落一条 escape-hatch，
+			// 评分随之 capped；否则「错树守护」在关闭时完全没有痕迹。
+			recordTreeGuardEscape(root, state)
+		} else {
+			recordTreeGuardOffTree(root, gateID, state, ts)
 			return fmt.Errorf("门禁 %s BLOCKED（错树）：任务 %s 锚在另一棵树 %s\n  当前目录不是该任务的 worktree——在此过门禁只会记在空树上。\n  到锚树里跑：cd %q；或把任务迁到当前树：forge worktree use\n  （关闭守护：FORGE_TASK_TREE_GUARD=0，记 checklog 且任务评分 capped）",
 				gateID, state.TaskRef, ts.AnchorPath, ts.AnchorPath)
 		}
