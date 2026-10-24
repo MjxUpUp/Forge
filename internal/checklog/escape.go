@@ -80,7 +80,7 @@ var allCheckNames = []CheckName{
 	CheckSelfReport, CheckGatePush, CheckTaskStalled, CheckSyncVersionSkew,
 	CheckLoopExhausted, CheckAcceptanceRecurrence,
 	CheckArtifactChain, CheckArtifactDrift, CheckArtifactDrill,
-	CheckNextHint, CheckGateCmdForm,
+	CheckNextHint, CheckGateCmdForm, CheckTreeGuard,
 	CheckSelfcheckPairing, CheckSelfcheckScope,
 	CheckTestNudgeState, CheckTaskDrift,
 	CheckDecisionWarrant, CheckDecisionEvidence,

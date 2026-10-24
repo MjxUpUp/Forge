@@ -75,3 +75,15 @@ func TestReqCoverageEscapeEnvRegistered(t *testing.T) {
 		}
 	}
 }
+
+// TestTaskTreeGuardEscapeEnvRegistered 钉住错树守护的逃生 env 进 EscapeEnvs
+// 清单：漏登记 = 关掉守护能生效但不进快照承诺面（用户无法从 compat 面
+// 发现「有种环境变量能关掉错树保护」）。
+func TestTaskTreeGuardEscapeEnvRegistered(t *testing.T) {
+	for _, e := range EscapeEnvs {
+		if e == "FORGE_TASK_TREE_GUARD" {
+			return
+		}
+	}
+	t.Fatal("EscapeEnvs 缺 FORGE_TASK_TREE_GUARD——compat.go 清单未同步")
+}

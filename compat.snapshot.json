@@ -1242,6 +1242,12 @@
     },
     {
       "path": "forge worktree janitor"
+    },
+    {
+      "path": "forge worktree use",
+      "flags": [
+        "ref"
+      ]
     }
   ],
   "checks": [
@@ -1299,6 +1305,7 @@
     "test-nudge",
     "test-nudge-state",
     "tool-failure",
+    "tree-guard",
     "unused-scan"
   ],
   "escapes": [
@@ -1319,6 +1326,7 @@
     "FORGE_SELF_REPORT",
     "FORGE_SKILL_DECISIONS",
     "FORGE_TASK_DRIFT",
+    "FORGE_TASK_TREE_GUARD",
     "FORGE_TASK_VERIFY_STOP",
     "FORGE_TEST_COVERAGE",
     "FORGE_UNUSED_SCAN",
@@ -1590,6 +1598,7 @@
       "artifact_approvals.spec",
       "artifact_approvals.spec.at",
       "artifact_approvals.spec.by",
+      "artifact_approvals.spec.chain_digest",
       "artifact_approvals.spec.hash",
       "artifacts",
       "artifacts[].kind",
@@ -1796,6 +1805,10 @@
     {
       "file": "internal/cliskills/skills_audit.go",
       "count": 2
+    },
+    {
+      "file": "internal/clitask/task_gate.go",
+      "count": 1
     },
     {
       "file": "internal/compat/compat.go",

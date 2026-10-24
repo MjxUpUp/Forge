@@ -88,10 +88,12 @@ func SeedTaskStateForSchema() any {
 	s.AcceptanceForeign = true
 	s.PlanFirstAdvisoryFired = true
 	// 产物链工作流（artifact-chain-workflow.md §7 seed 纪律）：artifact_advisory_fired /
-	// artifact_approvals（含嵌套 by/at/hash）/ overrides.artifact_chain 三键必须出现在
-	// 序列化承诺面——漏填 = 棘轮盲区（见文件头注释）。
+	// artifact_approvals（含嵌套 by/at/hash/chain_digest）/ overrides.artifact_chain 键必须
+	// 出现在序列化承诺面——漏填 = 棘轮盲区（见文件头注释）。chain_digest 于
+	// task-tree-guard 批（2026-10-24）加入，seed 必须填非空值，否则 compat 的 schemas 面
+	// 看不到这个只增键（冻结的种子 + 冻结的快照会一起漏）。
 	s.ArtifactAdvisoryFired = true
-	s.ArtifactApprovals = map[string]tasktypes.ArtifactApproval{"spec": {By: "seed", At: now, Hash: "h"}}
+	s.ArtifactApprovals = map[string]tasktypes.ArtifactApproval{"spec": {By: "seed", At: now, Hash: "h", ChainDigest: "cd"}}
 	// 回边语义（artifact-chain-workflow.md「回边语义」节 seed 纪律）：
 	// resolved_prints / loop_exhausted（含嵌套 reason/detail/at）键必须在承诺面。
 	s.ResolvedPrints = []string{"seedprint"}

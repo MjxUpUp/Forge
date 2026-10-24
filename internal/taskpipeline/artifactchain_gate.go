@@ -300,6 +300,48 @@ func VerifyArtifactsReport(root string, state *TaskState) []string {
 	return drifted
 }
 
+// ChainDigestStale lists human-tier stages whose approval was made under a different chain
+// definition than the one now on disk (docs/design/task-tree-guard.md §6). Advisory by
+// construction: editing schema.yaml must not deadlock in-flight tasks
+// (multi-task-concurrency §8 退化矩阵), so the gate prints these lines and `artifact
+// --verify` reports them — nothing blocks. Legacy approvals carry no digest and are never
+// stale (an empty pin predates the mechanism).
+//
+// ChainDigestStale 列出「审批时的链定义与当前磁盘上的不同」的 human 档 stage
+// （docs/design/task-tree-guard.md §6）。按构造只能是 advisory：改 schema.yaml 不能把
+// 在途任务锁死（multi-task-concurrency §8 退化矩阵），所以由门禁打印、`artifact --verify`
+// 报告——都不阻断。存量审批没有 digest，永远不算 stale（空 pin 早于本机制）。
+func ChainDigestStale(root string, state *TaskState) []string {
+	if state == nil || len(state.ArtifactApprovals) == 0 {
+		return nil
+	}
+	cur := artifactchain.Digest(root)
+	if cur == "" {
+		return nil // 无 schema = 默认链：没有可比对的链定义，不能报 stale
+	}
+	short := func(s string) string {
+		if len(s) > 8 {
+			return s[:8]
+		}
+		return s
+	}
+	stages := make([]string, 0, len(state.ArtifactApprovals))
+	for name := range state.ArtifactApprovals {
+		stages = append(stages, name)
+	}
+	sort.Strings(stages)
+	var out []string
+	for _, name := range stages {
+		apr := state.ArtifactApprovals[name]
+		if apr.ChainDigest == "" || apr.ChainDigest == cur {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s: 审批时链定义 %s ≠ 当前 %s（重批：forge task artifact --approve %s）",
+			name, short(apr.ChainDigest), short(cur), name))
+	}
+	return out
+}
+
 // CheckArtifactChainDrift is the task-complete pre-flight's drift segment
 // (artifact-chain-workflow.md §5). It verifies every SpecArtifacts ref:
 // drift voids the stage's approval unconditionally and blocks complete for

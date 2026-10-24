@@ -18,6 +18,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"crypto/sha256"
+	"encoding/hex"
+
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"gopkg.in/yaml.v3"
@@ -106,6 +109,26 @@ type Edge struct {
 // 同侧，随 harness repo 版本化；multi-task-concurrency §9 原案落位）。
 func SchemaPath(root string) string {
 	return filepath.Join(forgedata.DataDirFor(root), "schemas", "schema.yaml")
+}
+
+// Digest fingerprints the chain definition itself (schema.yaml bytes, CRLF folded).
+// human-tier approvals record it so a later chain edit is recognisable as "the graph that
+// was approved is no longer the graph that will run" — the invariant LoopSpec enforces by
+// recompiling at approve time and raising plan_changed (workflow_plans.py:312-322).
+// Empty when the schema is absent/unreadable: no schema = default chain, and a missing
+// digest must never read as drift (fail-open constitution).
+//
+// Digest 指纹化链定义本身（schema.yaml 字节，折叠 CRLF）。human 档审批记录它，使后续
+// 改链可被识别为「批准时的那张图已不是要跑的那张图」——与 LoopSpec 在 approve 时重编译、
+// 不一致即抛 plan_changed 是同一不变量（workflow_plans.py:312-322）。schema 缺失/不可读
+// 时返回空串：无 schema = 默认链，缺失的 digest 绝不能被读成漂移（fail-open 宪法）。
+func Digest(root string) string {
+	data, err := os.ReadFile(SchemaPath(root))
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(strings.ReplaceAll(string(data), "\r\n", "\n")))
+	return hex.EncodeToString(sum[:])
 }
 
 // WriteSchema persists the chain to the project schema location
