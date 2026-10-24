@@ -23,7 +23,7 @@ package review
 // 独立性来自「看不到作者推理」而非冷启动，反复全量重审只加噪声、并按轮次放大
 // 无缓存子 agent 成本（arXiv 2603.16244 / 2603.12123；Claude Code REVIEW.md 复审
 // 收敛规则；CodeRabbit 增量复审）。
-const ReReviewGuidance = "复审分两档：修复 diff 小、未触及高风险面（鉴权/数据迁移/并发/公共 API）且测试等确定性检查全绿 → 续用首轮 reviewer（宿主支持续用时，如 Claude Code SendMessage）做增量复核，只喂上轮 findings + 修复 diff + 测试结果、不给作者推理，只审修复 diff 及其波及面与未解决的原发现、不重审未改动代码（首轮并行派了多个 reviewer 时，只续用发现所在轨道的那个，不新派补位）；否则（高风险/大改/终审/第 3 轮起）新派只读子 agent 全量复审。复审结论记入 `forge review pass --note \"<复审结论>\"` 刷新审查基线"
+const ReReviewGuidance = "复审分两档：修复 diff 小、未触及高风险面（鉴权/数据迁移/并发/公共 API）且测试等确定性检查全绿 → 续用首轮 reviewer（宿主支持续用时，如 Claude Code SendMessage）做增量复核，只喂上轮 findings + 修复 diff + 测试结果、不给作者推理，只审修复 diff 及其波及面与未解决的原发现、不重审未改动代码（首轮并行派了多个 reviewer 时按轨道续用：发现落在哪一轨就续用哪一轨的那个，修复触及测试或断言时作弊轨也续用，不新派补位）；否则（高风险/大改/终审/第 3 轮起）新派只读子 agent 全量复审。复审结论记入 `forge review pass --note \"<复审结论>\"` 刷新审查基线"
 
 // DocReReviewGuidance is the single source of truth for "what to do after a
 // doc-review round failed or the document changed after review", shown by the
@@ -42,4 +42,4 @@ const ReReviewGuidance = "复审分两档：修复 diff 小、未触及高风险
 // `forge review pass`），套到文档上判据不成立。原则相同：独立性来自「看不到作者
 // 推理」而非冷启动，所以小修订由首轮评审者续用做增量复核（只喂上轮 findings +
 // 修订 diff）；重写结论/判定段、大改、第 3 轮起、同类发现不收敛才新派只读评审者。
-const DocReReviewGuidance = "文档复审分两档：修订 diff 小（单文档且改动不超过三成行）、未重写结论或判定段且 L1 lint 全过 → 续用首轮评审者（宿主支持续用时，如 Claude Code SendMessage）做增量复核，只喂上轮 findings（含编号）+ 修订 diff、不给作者推理，只核查未决项是否真正解决、修订段落及其波及面、不重读未改动段落，得分仍按全文四维给出；否则（重写结论或判定段/修订 diff 大或多文档/第 3 轮起/同类发现连续两轮不收敛）新派只读子代理全量评审，不 fork 作者会话"
+const DocReReviewGuidance = "文档复审分两档：修订 diff 小（单文档，新增与删除行之和不超过全文行数的三成）、未重写结论或判定段且 L1 lint 全过 → 续用首轮评审者（宿主支持续用时，如 Claude Code SendMessage）做增量复核，只喂上轮 findings（含编号）+ 修订 diff、不给作者推理，只核查未决项是否真正解决、修订段落及其波及面、不重读未改动段落，得分以上轮全文评审为基线、只对修订段落改分，落在 70-79 另派第二评委；否则（重写结论或判定段/修订 diff 大或多文档/即将进行第 3 轮评审/同类发现连续两轮不收敛）新派只读子代理全量评审并换视角，不 fork 作者会话"

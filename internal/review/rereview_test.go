@@ -30,7 +30,9 @@ func TestReReviewGuidanceContract(t *testing.T) {
 		{"高风险档：新派只读子 agent", "新派只读子 agent 全量复审"},
 		{"高风险档判据：终审/第 3 轮起", "终审/第 3 轮起"},
 		{"刷新基线步骤", "forge review pass --note"},
-		{"首轮并行多 reviewer：按轨道续用，不新派补位", "只续用发现所在轨道的那个，不新派补位"},
+		{"首轮并行多 reviewer：按轨道续用", "按轨道续用"},
+		{"首轮并行多 reviewer：不新派补位", "不新派补位"},
+		{"修复触及测试或断言时作弊轨也续用", "修复触及测试或断言时作弊轨也续用"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if !strings.Contains(ReReviewGuidance, tc.want) {
@@ -69,8 +71,11 @@ func TestDocReReviewGuidanceContract(t *testing.T) {
 		{"范围约束：不重读未改动段落", "不重读未改动段落"},
 		{"升档：新派只读子代理全量评审", "新派只读子代理全量评审"},
 		{"升档触发：重写结论或判定段", "重写结论或判定段"},
-		{"升档触发：第 3 轮起", "第 3 轮起"},
+		{"升档触发：即将进行第 3 轮评审", "即将进行第 3 轮评审"},
 		{"升档触发：同类发现不收敛", "同类发现连续两轮不收敛"},
+		{"升档换视角", "全量评审并换视角"},
+		{"得分以上轮全文评审为基线", "得分以上轮全文评审为基线"},
+		{"borderline 另派第二评委", "另派第二评委"},
 		{"禁止 fork 作者会话", "不 fork 作者会话"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,25 +84,13 @@ func TestDocReReviewGuidanceContract(t *testing.T) {
 			}
 		})
 	}
-	if strings.Contains(DocReReviewGuidance, "|") {
-		t.Errorf("DocReReviewGuidance 含 '|'，会撑破嵌入它的表格单元格: %s", DocReReviewGuidance)
-	}
-}
-
-// TestDocReReviewGuidanceConsumersReferenceConstant: the doc gate's retry
-// reasons (stale HEAD, stale fingerprint, failed round, low score) must splice
-// the constant instead of hand-copying a second wording.
-//
-// TestDocReReviewGuidanceConsumersReferenceConstant：文档门禁的四条重评原因
-// （HEAD 过期/指纹过期/未通过/低分）须拼接该常量，不得手抄第二份口径。
-func TestDocReReviewGuidanceConsumersReferenceConstant(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "taskpipeline", "docgate.go"))
-	if err != nil {
-		t.Fatalf("读取 docgate.go: %v", err)
-	}
-	refExpr := regexp.MustCompile(`\+\s*review\.DocReReviewGuidance`)
-	if n := len(refExpr.FindAllIndex(b, -1)); n < 4 {
-		t.Errorf("docgate.go 引用 review.DocReReviewGuidance 的重评原因应 ≥4 条，got %d", n)
+	// 它被拼进 docgate.go 的 fmt.Sprintf 格式串（% 会被当格式动词，如「30%」会输出
+	// %!…(MISSING) 乱码），并被以 "; " 连接成门禁原因串（ASCII 分号会让按分号拆分的
+	// 消费者误断）。
+	for _, banned := range []string{"%", "; "} {
+		if strings.Contains(DocReReviewGuidance, banned) {
+			t.Errorf("DocReReviewGuidance 含 %q，会破坏 Sprintf 格式串或原因串拼接: %s", banned, DocReReviewGuidance)
+		}
 	}
 }
 
@@ -115,17 +108,18 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 	}{
 		{
 			name:  "doc-review",
-			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话"},
+			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委"},
 			stale: []string{"重新派独立子代理评审"},
 		},
 		{
-			name:  "adversarial-verification",
-			want:  []string{"增量重验（修复轮默认）", "宣布 PASS 之前必须整体重验一遍", "复检轮续用原红队"},
-			stale: []string{"**修完必须整体重验**"},
+			name: "adversarial-verification",
+			want: []string{"增量重验（修复轮默认）", "宣布 PASS 之前必须整体重验一遍", "复检轮续用原红队", "不得引用前轮结果"},
+			// 自检清单与 Gotchas 里的旧「每个修复轮都整体重验」表述也不得残留。
+			stale: []string{"**修完必须整体重验**", "修复后整体重验（非只验修复点）", "| 修完整体重验 |"},
 		},
 		{
 			name: "code-review-gate",
-			want: []string{"按轨道续用", "不新派补位"},
+			want: []string{"按轨道续用", "不新派补位", "`cheat-detector` 也续用"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

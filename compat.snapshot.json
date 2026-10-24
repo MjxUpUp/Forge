@@ -1328,7 +1328,7 @@
     {
       "tree": "canonical",
       "name": "adversarial-verification",
-      "sha256": "d8e37a2328aca9088c0721c190a85c97dccfd88d63b010092ccbe60a91e76fcc"
+      "sha256": "0134012366fd59eede89093a2a79825af226ea2f099d61b3a7ff37b2af48301a"
     },
     {
       "tree": "canonical",
@@ -1348,7 +1348,7 @@
     {
       "tree": "canonical",
       "name": "code-review-gate",
-      "sha256": "963a2df628d54ba126da37727c7f89f9242f8ce3cc156b5b9bacffb563ff80af"
+      "sha256": "dee5fafd933357fb4c8f87821d13b8d8d8eeb17027bc82756d3bec572d7b4df1"
     },
     {
       "tree": "canonical",
@@ -1393,7 +1393,7 @@
     {
       "tree": "canonical",
       "name": "doc-review",
-      "sha256": "19a9b9af79b7e9b8d11113c49a9a3e91945e7c7cbd0ad6198e3346453a7ae801"
+      "sha256": "9bb9f0c726d89494ddb774c3f48e2afee6e45467551c1e8a415a57b14deab772"
     },
     {
       "tree": "canonical",
