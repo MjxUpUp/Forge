@@ -153,7 +153,7 @@ Layer 3: 会话结束验证
 
 活跃任务内，Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。**没有活跃任务时 task-guard 只给 WARN 提示，不是硬墙**；有任务才按门禁语义拦截。
 
-27 个内置 Hook 的完整清单（触发时机、职责与各自的逃生开关，均写在功能列里）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
+27 个内置 Hook 的完整清单（触发时机、职责；可关闭的门禁类都附了逃生开关）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
 
 ## 📦 安装
 

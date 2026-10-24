@@ -448,13 +448,15 @@ func TestHooksDoc_MatchesHookSpec(t *testing.T) {
 
 	// 计数声明同样钉住：数字漂移过三次，且分布在三份文档里，人眼扫不出来。
 	want := fmt.Sprintf("%d 个内置 Hook", len(truth))
-	for _, p := range []string{"README.md", "npm/README.md"} {
+	zhWant := fmt.Sprintf("%d 个 hook", len(truth))
+	// zh-CN README 用「N 个 hook」（小写、无「内置」），措辞不同要单列，否则数字漂了没人发现。
+	for p, claim := range map[string]string{"README.md": want, "npm/README.md": want, "READMEs/README.zh-CN.md": zhWant} {
 		b, err := os.ReadFile(filepath.Join(repoRoot, p))
 		if err != nil {
 			t.Fatalf("read %s: %v", p, err)
 		}
-		if !strings.Contains(string(b), want) {
-			t.Errorf("%s 缺计数声明 %q（真相源：ForgeHookSpec() 注册 %d 个 hook）", p, want, len(truth))
+		if !strings.Contains(string(b), claim) {
+			t.Errorf("%s 缺计数声明 %q（真相源：ForgeHookSpec() 注册 %d 个 hook）", p, claim, len(truth))
 		}
 	}
 	if !strings.Contains(string(body), want) {
