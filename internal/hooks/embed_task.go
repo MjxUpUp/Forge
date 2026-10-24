@@ -99,7 +99,7 @@ find "$_MARKER_DIR" -maxdepth 1 -type f -name 'forge-*' -mtime +7 -delete 2>/dev
 # 编辑计数（forge-test-edits-<session>，coverage 统计/审计数据源）。FYI 用独立
 # [task-anchor] 谓词（主屏障——不会被 task-guard 的提升规则命中）且提升宿主
 # 跳过输出（第二重保险——exit-2 语义下提示性文案不该出现），双保险防误阻断。
-if printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)'; then
+if printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|(^|/)(test|tests|__tests__)/)'; then
   if [ -z "$TASK_REF" ]; then
     _TEST_CNT="${_MARKER_DIR}/forge-test-edits-${_SESSION_ID}"
     _n=$(cat "$_TEST_CNT" 2>/dev/null || true)

@@ -138,7 +138,7 @@ go test ./internal/worktree ./internal/taskpipeline ./internal/clitask ./interna
 
 - **误判风险**：用户在锚树之外合法地读、跑测试、`git` 操作 → 不拦（只拦写类工具对已知非测试路径的写入与门禁；空 `FILE_PATH` 的 patch 也拦）。若某类工作确需在别的树写，出口是 `forge worktree use`（显式迁移）或 `FORGE_TASK_TREE_GUARD=0`（留审计、评分 capped）。
 - **性能**：`Anchors` 每个 `workspaces/*.json` 一次读，典型 <5 个文件；hookdispatch 在写类调用上各一次（`TaskTreeStatus` 只 stat 锚目录）。写入层不新增 `forge` 进程——判定在已有的 hook dispatch 里完成，guard 脚本只读环境变量。
-- **回滚**：本批在分支上是 8+1 个原子提交（`b90c8d0e` 功能、`b01defaa` 补测、`99f78efb` 留痕与文案校准、`e50701ec` checklog/compat 配对测试、`9eff25d7` 作用域收窄、`3e18234c` patch 工具覆盖、`57146058` 空路径阻断与死锚节流、`b9f2007a` 三处产物盲区修正，再加本节定稿的收尾提交 `ef2aa9d5`——它不纯是文档：同时载入 `internal/hookdispatch/hook.go` 的 Read 排除（判据 12 的行为改动）与 `internal/taskpipeline/state.go` 的锚来源注释，回滚"收尾提交"会连带回滚该行为），squash 合并后是一次 revert；若在分支上单独回退，须一并回退测试提交，否则留下编译不过的测试。
+- **回滚**：本批在分支上是 8+2 个原子提交（`b90c8d0e` 功能、`b01defaa` 补测、`99f78efb` 留痕与文案校准、`e50701ec` checklog/compat 配对测试、`9eff25d7` 作用域收窄、`3e18234c` patch 工具覆盖、`57146058` 空路径阻断与死锚节流、`b9f2007a` 三处产物盲区修正、`ef2aa9d5` 收尾——**它不纯是文档**：同时载入 `internal/hookdispatch/hook.go` 的 Read 排除（判据 12 的行为改动）与 `internal/taskpipeline/state.go` 的锚来源注释、`4b5c0c1a` 测试豁免谓词按路径段匹配——**同样不纯是文档**：改 `internal/hooks/embed_task.go` 的正则与 `taskguard_offtree_test.go` 的用例），squash 合并后是一次 revert；若在分支上单独回退，须一并回退测试提交，否则留下编译不过的测试。**回滚任何「收尾提交」前先看 `git show`：本批两个收尾提交都带行为改动。**
 - **关开关 ≠ 回到 v1.84.2**：`FORGE_TASK_TREE_GUARD=0` 只关「阻断」，不关观测——`forge task status` 仍会打 `Tree: off-tree` 行、hookdispatch 仍写一条 `escape-hatch` 行、评分仍按逃生舱 capped。真正回到旧行为要把代码回退，开关只买「这次不阻断、但要付审计与分数」。
 
 ## 9. 改动面
