@@ -208,9 +208,13 @@ var reviewStatusCmd = &cobra.Command{
 // 指引它加载 skill、派独立子 agent 审查、通过后标记。这是"自动挡"的核心闭环指令。
 // 用双引号拼接而非 raw string：内部的反引号（`forge review pass`）在 raw string 里
 // 会提前终止字符串（forge-security-hook-fail-open 记的坑），双引号串里则是普通字符。
+// 第 2 步后的复审分档行内嵌 review.ReReviewGuidance（单一真相源）：stamp 内容寻址、
+// 读不出「本分支此前已审」，所以不在代码里判首审/复审，条件句交给 agent——首审照派，
+// 修复后复审按分档续用首轮 reviewer，避免每轮 Stop 都引导新派冷启动子 agent。
 const gateGuidance = "检测到未审查的源码变更。请按序完成：\n" +
 	"1. 加载 code-review-gate skill（经宿主 skill 机制）\n" +
 	"2. 按其策略派【只读】子 agent 审查当前 diff——独立上下文是底线，不可自审绕过\n" +
+	"   若本会话已审过、这版是修复后的 diff（复审）：" + review.ReReviewGuidance + "\n" +
 	"3. 审查通过后运行 `forge review pass` 标记，再结束会话\n" +
 	"审查发现的问题按类型接 skill：运行时 bug/逻辑错误 → systematic-debugging；编译错误 → compile-fix-loop；断言弱化/假测试 → test-discipline。\n" +
 	"注：同一 diff 反复未审最多 block 3 次后 advisory 放行（防 Stop 死循环）。"

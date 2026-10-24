@@ -11,6 +11,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/doclint"
+	"github.com/MjxUpUp/Forge/internal/review"
 )
 
 // CheckNameDocGate / CheckNameDocLint 是输出→回检循环的 checklog 条目：
@@ -215,14 +216,14 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():
 		reasons = append(reasons, `L2 文档回检未记录——先按 doc-review skill 评审（产出者不能自检），再 forge task doc-review --passed pass|fail --score <N>`)
 	case state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head:
-		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s）——回检后改了产物，重新评审后 forge task doc-review`, shortCommit(state.DocReview.HeadCommit), shortCommit(head)))
+		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s）——回检后改了产物，重新评审后 forge task doc-review。`+review.DocReReviewGuidance, shortCommit(state.DocReview.HeadCommit), shortCommit(head)))
 	case state.DocReview.DocsFingerprint != "" && state.DocReview.DocsFingerprint != DocContentFingerprint(root, state):
-		reasons = append(reasons, `L2 文档回检基于旧内容（文档指纹不匹配——评审后产物被改且未重新评审）——重新评审后 forge task doc-review`)
+		reasons = append(reasons, `L2 文档回检基于旧内容（文档指纹不匹配——评审后产物被改且未重新评审）——重新评审后 forge task doc-review。`+review.DocReReviewGuidance)
 	case !state.DocReview.Passed:
 		if state.DocReview.Round >= DocReviewMaxRounds {
 			reasons = append(reasons, fmt.Sprintf(`L2 文档回检已 %d 轮未过（轮次上限 %d）——升级人工确认：请用户裁定放行（确认后 forge task override --doc-gate disable，落 checklog 审计）或指出下一轮修复方向`, state.DocReview.Round, DocReviewMaxRounds))
 		} else {
-			reasons = append(reasons, fmt.Sprintf(`L2 文档回检未通过（第 %d 轮，得分 %d）——修复 doc-review（rubric）的 Critical/Important 发现后重新评审`, state.DocReview.Round, state.DocReview.RubricScore))
+			reasons = append(reasons, fmt.Sprintf(`L2 文档回检未通过（第 %d 轮，得分 %d）——修复 doc-review（rubric）的 Critical/Important 发现后重新评审。`+review.DocReReviewGuidance, state.DocReview.Round, state.DocReview.RubricScore))
 		}
 	case state.DocReview.SelfReview:
 		// 价-1b（独立性归因，delivery-hardening）：记录会话 = 改动生产者 →
@@ -230,7 +231,7 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 		// 过关——本 case 关闭该洞。独立会话/子 agent 复审后重新记录即过。
 		reasons = append(reasons, fmt.Sprintf(`L2 文档回检为同会话自审（记录者=改动生产者，得分 %d 不被消费）——由独立会话或只读子 agent 复审后重新 forge task doc-review`, state.DocReview.RubricScore))
 	case state.DocReview.RubricScore < DocRubricThreshold:
-		reasons = append(reasons, fmt.Sprintf(`L2 文档回检得分 %d 低于阈值 %d——按 doc-review skill 的四维判据改进后重新评审`, state.DocReview.RubricScore, DocRubricThreshold))
+		reasons = append(reasons, fmt.Sprintf(`L2 文档回检得分 %d 低于阈值 %d——按 doc-review skill 的四维判据改进后重新评审。`+review.DocReReviewGuidance, state.DocReview.RubricScore, DocRubricThreshold))
 	}
 
 	// 文档回检提出的未决 Critical findings 阻断门禁。

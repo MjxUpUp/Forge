@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/review"
 )
 
 // docgate_test.go: covers the doc pre-flight (output→re-check loop,
@@ -237,6 +238,50 @@ func TestCheckDocGateFingerprintStaleness(t *testing.T) {
 	legacy.DocReview = &DocReview{Passed: true, RubricScore: 90, Round: 1, ReviewedAt: time.Now(), HeadCommit: GetHeadCommit(root)}
 	if ok, _ := CheckDocGate(root, legacy); !ok {
 		t.Fatal("空指纹的旧版评审不应触发指纹过期")
+	}
+}
+
+// TestDocGate_RetryReasonsCarryReReviewGuidance pins that every reason telling
+// the agent to re-run the L2 review (stale HEAD, stale fingerprint, failed
+// round, low score) carries the tiered re-review guidance — otherwise the agent
+// defaults to a fresh cold-start subagent each round. The human-escalation and
+// self-review reasons need an independent reviewer, so they must not carry it.
+//
+// TestDocGate_RetryReasonsCarryReReviewGuidance 钉住：凡指示重跑 L2 评审的原因
+// （HEAD 过期/指纹过期/未通过/低分）都带分档复审指引，否则 agent 默认每轮新派
+// 冷启动子代理；升级人工与自审两条需要独立评审者，不得带。
+func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
+	root, base := newDocGateRepo(t)
+	if err := os.WriteFile(root+"/notes.md", []byte("# 笔记\n干净内容。\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	head := GetHeadCommit(root)
+	for _, tc := range []struct {
+		name      string
+		review    DocReview
+		wantGuide bool
+	}{
+		{"HEAD 过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true},
+		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true},
+		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true},
+		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true},
+		{"轮次打满升级人工", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head}, false},
+		{"同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, SelfReview: true}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := &TaskState{TaskRef: "feat/x", HeadCommit: base}
+			dr := tc.review
+			dr.ReviewedAt = time.Now()
+			state.DocReview = &dr
+			ok, reasons := CheckDocGate(root, state)
+			if ok {
+				t.Fatalf("该状态应阻断, got reasons=%v", reasons)
+			}
+			got := strings.Contains(strings.Join(reasons, "; "), review.DocReReviewGuidance)
+			if got != tc.wantGuide {
+				t.Errorf("复审指引在场=%v，期望 %v, reasons=%v", got, tc.wantGuide, reasons)
+			}
+		})
 	}
 }
 
