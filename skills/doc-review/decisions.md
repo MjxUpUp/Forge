@@ -152,3 +152,26 @@ skill 文本与实现同步，消灭「规划中 flag」的悬空引用
 ### Rationale
 
 设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核
+
+## [d-18e18060413fa1a8-f30744eb] accept
+
+- **Skill**: doc-review
+- **DecidedAt**: 2026-10-24T15:21:17Z
+- **By**: claude-code
+- **Warrant**: doc:docs/plans/rereview-resume-docs-2026-10.md
+
+### Diagnosis
+
+打回后复审写死「重新派独立子代理评审」，每轮冷启动，3 轮上限下最多 3 个冷启动评审者
+
+### Revision
+
+步骤 2 补派审前留存被评审版本；步骤 5 分增量复核（续用首轮评审者，只喂上轮 findings + 修订 diff，对抗立场不变，四维分以上轮为底）与全量评审（重写结论、大改多文档、即将第 3 轮）两档，禁 fork 作者会话；同家族 75-79 放行前另派第二评委
+
+### Evidence
+
+独立性来自评审者看不到作者推理，不来自冷启动：https://arxiv.org/abs/2603.16244 与 https://arxiv.org/abs/2603.12123 是代码评审实验，外推到文档的依据是同一机制，文档侧收益未验证；本批三轮独立评审（67、73、74 分）中续用评审者做增量复核可行
+
+### Rationale
+
+与 code-review-gate 已有的复审分档同口径；文档侧每个任务最多续用 1 次，收益可能很小，批准范围是口径统一

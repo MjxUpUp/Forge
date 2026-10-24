@@ -256,21 +256,28 @@ func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := GetHeadCommit(root)
+	fp := DocContentFingerprint(root, &TaskState{TaskRef: "feat/x", HeadCommit: base})
+	if fp == "" {
+		t.Fatal("前置：文档指纹不应为空")
+	}
 	for _, tc := range []struct {
-		name      string
-		review    DocReview
-		wantGuide bool
-		wantText  string // 非空：原因串还须含该短语
+		name       string
+		review     DocReview
+		wantGuide  bool
+		wantText   string // 非空：原因串还须含该短语
+		wantAbsent string // 非空：原因串不得含该短语
 	}{
-		// HEAD 移动而内容可能没变（提交/合并基线）：指引「空 diff 续用评审者确认即可」
-		// 省全量重评，但不得开出「凭自述重录旧分数」的免评审通道——CheckDocGate 的 switch
-		// 里 HEAD 过期排在指纹之前，内容是否真没变没有机器核验。
-		{"HEAD 过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true, "不得凭自述重录旧分数"},
-		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true, ""},
-		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true, ""},
-		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, ""},
-		{"轮次打满升级人工", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head}, false, ""},
-		{"同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, SelfReview: true}, false, ""},
+		// HEAD 前移不等于文档变了（评审→提交→complete 是主流程）：只有指纹相同才由机器核验
+		// 出「内容一致」，此时指引续用评审者确认即可；指纹缺失或不同不得下该断言。任何口径都
+		// 不得开出「凭自述重录旧分数」的免评审通道。
+		{"HEAD 过期且无指纹", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true, "不得凭自述重录旧分数", "文档内容与评审时一致"},
+		{"HEAD 过期且指纹不同", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: "stale-fingerprint"}, true, "已评 1 轮", "文档内容与评审时一致"},
+		{"HEAD 过期但指纹相同", DocReview{Passed: true, RubricScore: 90, Round: 2, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "文档内容与评审时一致（指纹相同）", ""},
+		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true, "已评 1 轮", ""},
+		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true, "", ""},
+		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, "", ""},
+		{"轮次打满升级人工", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head}, false, "", ""},
+		{"同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, SelfReview: true}, false, "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &TaskState{TaskRef: "feat/x", HeadCommit: base}
@@ -287,6 +294,9 @@ func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
 			}
 			if tc.wantText != "" && !strings.Contains(strings.Join(reasons, "; "), tc.wantText) {
 				t.Errorf("原因串缺少 %q, reasons=%v", tc.wantText, reasons)
+			}
+			if tc.wantAbsent != "" && strings.Contains(strings.Join(reasons, "; "), tc.wantAbsent) {
+				t.Errorf("原因串不得含 %q（指纹未核验一致时不得断言内容没变）, reasons=%v", tc.wantAbsent, reasons)
 			}
 		})
 	}

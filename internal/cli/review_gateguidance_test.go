@@ -38,8 +38,9 @@ func TestGateGuidanceCarriesReReviewTier(t *testing.T) {
 	if a < 0 || b < 0 || !(dispatch >= 0 && dispatch < a && a < b && b < tier && tier < mark) {
 		t.Errorf("须依次为：派发步 → (a) 首审/新会话新派 → (b) 复审条件前缀 → 分档指引 → 标记步，index dispatch=%d a=%d b=%d tier=%d mark=%d", dispatch, a, b, tier, mark)
 	}
-	// 情形 (a) 里「修复后句柄丢失、新派复审」同样会被裸标记拒绝：--note 要求不限情形。
-	if !strings.Contains(gateGuidance, "任一情形都须带 `--note") {
-		t.Errorf("第 3 步须写明有源码变更时任一情形都带 --note，got:\n%s", gateGuidance)
+	// 不得写「裸标记会被拒」：gateGuidance 只在非 task 模式输出，该守卫只在 task 模式的
+	// runReviewPassAt 里（state != nil 分支），非 task 路径走 MarkPassedWithNote，没有拒绝逻辑。
+	if strings.Contains(gateGuidance, "裸标记会被拒") {
+		t.Errorf("gateGuidance 不得断言非 task 路径不存在的「裸标记会被拒」守卫，got:\n%s", gateGuidance)
 	}
 }

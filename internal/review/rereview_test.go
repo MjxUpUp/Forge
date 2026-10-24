@@ -33,8 +33,10 @@ func TestReReviewGuidanceContract(t *testing.T) {
 		{"首轮并行多 reviewer：按轨道续用", "按轨道续用"},
 		{"首轮并行多 reviewer：不新派补位", "不新派补位"},
 		{"修复触及测试断言时 cheat-detector 那一轨也续用", "cheat-detector 那一轨也续用"},
+		{"eng-reviewer 始终续用核回归与调用方", "eng-reviewer 始终续用以核回归与调用方"},
+		{"首轮零发现时两个都续用", "首轮零发现时两个都续用"},
 		{"cheat-detector 续用条件：命中作弊模式速查表任一项", "修复命中作弊模式速查表任一项"},
-		{"cheat-detector 续用范围：只审修复 diff", "只审修复 diff，不新派补位"},
+		{"cheat-detector 续用范围：只审修复 diff", "cheat-detector 那一轨也续用，只审修复 diff"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if !strings.Contains(ReReviewGuidance, tc.want) {
@@ -70,7 +72,8 @@ func TestDocReReviewGuidanceContract(t *testing.T) {
 	}{
 		{"增量档：续用首轮评审者", "续用首轮评审者"},
 		{"增量档判据：修订 diff 小", "修订 diff 小"},
-		{"增量档判据：L1 lint 全过", "L1 lint 全过"},
+		{"前置：L1 未全过先修 L1，不进评审", "L1 lint 未全过先修 L1，不进评审"},
+		{"不可续用时新派并粘贴上轮 findings", "新派只读子代理，并把上轮 findings 全文含编号粘进 prompt"},
 		{"增量输入契约：只喂上轮 findings + 修订 diff", "上轮 findings（含编号）+ 修订 diff"},
 		{"增量输入契约：不给作者推理", "不给作者推理"},
 		{"范围约束：不重读未改动段落", "不重读未改动段落"},
@@ -81,7 +84,7 @@ func TestDocReReviewGuidanceContract(t *testing.T) {
 		{"增量档对抗立场不变", "对抗立场不变"},
 		{"增量档记分：以上轮为底", "四维分以上轮为底"},
 		{"增量档记分：未触及的维度不得升档", "未触及的维度不得升档"},
-		{"增量档：送审时留存被评审版本生成 diff", "送审时留存被评审版本"},
+		{"增量档：派审前留存被评审版本生成 diff", "派审前留存被评审版本"},
 		{"增量档：被评审版本放仓库外", "放仓库外临时目录"},
 		{"borderline 同家族放行前另派第二评委（新派全量）", "评审与产出同家族（家族未知按同家族）且总分落在 75-79 即将放行时另派第二评委（新派、全量）"},
 		{"禁止 fork 作者会话", "不 fork 作者会话"},
@@ -116,16 +119,16 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 	}{
 		{
 			name:  "doc-review",
-			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委", "家族未知按同家族处理", "送审时（作者修改前）就把被评审版本留存一份"},
+			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委", "家族未知按同家族处理", "每次派审前把被评审版本复制一份到仓库外的临时目录", "--word-diff-regex=.", "只喂文档本身，不喂上轮 findings"},
 			stale: []string{"重新派独立子代理评审"},
 		},
 		{
 			name: "adversarial-verification",
-			want: []string{"复检轮续用原红队", "不得引用前轮结果", "复验续用原验收者", "修完必须整体重验"},
+			want: []string{"复检轮续用原红队", "不得引用前轮结果", "复验续用原验收者", "修完必须整体重验", "前轮输出不作证据", "喂验收点清单"},
 		},
 		{
 			name: "code-review-gate",
-			want: []string{"按轨道续用", "不新派补位", "`cheat-detector` 也续用", "命中下面作弊模式速查表任一项"},
+			want: []string{"按轨道续用", "不新派补位", "`cheat-detector` 也续用", "命中下面作弊模式速查表任一项", "`eng-reviewer` 始终续用", "首轮零发现"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

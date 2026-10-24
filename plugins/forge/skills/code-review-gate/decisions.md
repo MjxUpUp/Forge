@@ -378,3 +378,26 @@ arXiv 2603.16244：单轮 CCR F1 0.376 > 多轮 0.303 > 无上下文独立重审
 ### Rationale
 
 设计阶段硬化 W1/W5.3/D2 落地；advisory 起步，按数据窗口复核
+
+## [d-18e18061769d37b0-f089ac79] accept
+
+- **Skill**: code-review-gate
+- **DecidedAt**: 2026-10-24T15:21:22Z
+- **By**: claude-code
+- **Warrant**: doc:docs/plans/rereview-resume-docs-2026-10.md
+
+### Diagnosis
+
+大变更档并行派 cheat-detector 与 eng-reviewer，复审规则只说续用首轮 reviewer（单数），多 reviewer 时续用语义缺失，易每轮新派补位
+
+### Revision
+
+增量复核补多 reviewer 按轨道续用：eng-reviewer 始终续用核回归与调用方，修复命中作弊模式速查表或触及测试断言 mock 时 cheat-detector 也续用，首轮零发现时两个都续用，不新派补位
+
+### Evidence
+
+只看发现归属会让修复 eng-reviewer 发现时顺手加吞错或弱化测试而漏过作弊轨，也会漏回归与调用方核查；本批独立评审指出这两个缺口，已在常量与 SKILL 同词对齐，由 TestReReviewGuidanceContract 与 TestSkillsCarryResumeTier 钉住
+
+### Rationale
+
+续用依据同该 skill 既有的复审分档（独立性来自看不到作者推理，不来自冷启动）
