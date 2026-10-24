@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forge — 30 秒演示</title>
+<meta name="description" content="Forge：AI 开发质量门禁引擎。30 秒演示，画面里的终端输出是真实 forge docs lint 的运行结果。">
+<meta property="og:title" content="Forge — AI 开发质量门禁引擎">
+<meta property="og:description" content="Stop trusting AI-generated code. Start gating it.">
+<meta property="og:video" content="assets/forge-demo.mp4">
+<meta property="og:image" content="assets/forge-demo-poster.png">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; padding: 32px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(120% 80% at 50% 0%, #0d1a14 0%, #05070a 62%);
+    color: #e6edf3;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  h1 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: .02em; }
+  h1 b { color: #4ade80; font-weight: 600; }
+  video {
+    width: min(1120px, 100%);
+    border: 1px solid #1f2a24; border-radius: 14px; background: #000;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+  }
+  p { margin: 0; max-width: 1120px; color: #8b95a5; font-size: 14px; text-align: center; }
+  code { color: #c9d1d9; }
+  a { color: #4ade80; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <h1>Forge <b>—</b> AI 开发质量门禁引擎</h1>
+  <video src="assets/forge-demo.mp4" poster="assets/forge-demo-poster.png" controls autoplay muted playsinline preload="metadata"></video>
+  <p>
+    30 秒 · 1080p · 画面里的终端输出是真实 <code>forge docs lint</code> 的运行结果
+    · <a href="https://github.com/MjxUpUp/Forge">GitHub 仓库</a>
+  </p>
+</body>
+</html>
