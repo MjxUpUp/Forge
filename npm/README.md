@@ -56,7 +56,7 @@ forge task score                  # 查看质量评分
 
 ## Hook 系统
 
-Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook 如下，完整 22 个清单见 [GitHub README](https://github.com/MjxUpUp/Forge#-hook-系统)）：
+Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook 如下，完整 27 个清单见 [Hook 参考](https://github.com/MjxUpUp/Forge/blob/main/docs/reference/hooks.md)）：
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
@@ -68,7 +68,7 @@ Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook �
 | **tool-track** | Read/Skill/Agent/Grep/Glob/Bash 后 | 静默记录工具调用到 toollog（Read/Skill/Agent 记名称、Bash 记截断命令、Grep/Glob 记截断 input——探索调用也计入 work-activity），供 read-before-edit 门禁与 efficiency 维度评分判断（agent 是否先读代码再改、质量 skill 是否被驱动） |
 | **task-verify** | 会话结束 | 任务门禁/主分支保护到 stderr+checklog（advisory）；活跃任务 + 未提交代码变更时有界阻断 Stop（每会话最多 3 次，超限回落 advisory；逃生 `FORGE_TASK_VERIFY_STOP=0`） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
-| **task-resume** | 会话开始 | advisory：自动注入活跃任务的接续上下文（目标/计划/决策/阻塞/门禁进度/git 已改未提交）+ 锚定当前 session——接手方冷启动即知任务在哪一步；无活跃任务静默；项目级 hook |
+| **task-resume** | 会话开始 | advisory：只输出 `[forge-session]` 管理横幅一行（不注入接续视图、不锚定 session）。接续按需拉取：`forge task resume --match` / `forge task list --open`；无活跃任务静默；项目级 hook |
 
 ### 安全架构
 
@@ -80,13 +80,13 @@ Layer 1: PreToolUse 快速拦截
   └─ bash-guard: Bash → 检测写文件模式
 
 Layer 2: PostToolUse 文件监控
-  └─ file-sentinel: Bash → 对比执行前后 git 状态，未授权变更自动 revert
+  └─ file-sentinel: Bash → 对比执行前后 git 状态，未授权变更隔离到 quarantine（可恢复，不删除）
 
 Layer 3: 会话结束验证
   └─ task-verify: 检查任务完成度 + 主分支保护 + 自身版本
 ```
 
-Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
+活跃任务内，Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层；无活跃任务时 task-guard 只 WARN。
 
 ## 命令参考
 
