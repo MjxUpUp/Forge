@@ -17,6 +17,11 @@ Stop trusting AI-generated code. Start gating it.
 </div>
 
 <div align="center">
+  <a href="docs/assets/forge-demo.mp4"><img src="docs/assets/forge-demo-poster.png" alt="Forge 30 秒演示（点击播放）" width="860"/></a>
+  <p><sub>▶ <b>30 秒演示</b> —— 画面里的终端输出是真实 <code>forge docs lint</code> 跑出来的：两句没带证据的套话，被拦在提交之前（点击播放）</sub></p>
+</div>
+
+<div align="center">
   <img src="docs/assets/dashboard-pulse.png" alt="Forge Pulse 全局质量面板" width="860"/>
   <p><sub>Forge Pulse —— 全局任务质量面板（跨项目事件流 / 任务评分与证据链 / Skills 聚合）</sub></p>
 </div>
