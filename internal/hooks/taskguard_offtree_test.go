@@ -1,0 +1,134 @@
+package hooks
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// TestTaskGuardHookOffTreeDenies 钉住错树守护在 guard 脚本层的行为
+// （docs/design/task-tree-guard.md §4/§7）：FORGE_TASK_OFFTREE 非空时源码写入必须
+// fail-closed 并指出三条出路；测试文件豁免优先于该阻断（TDD 不受影响）。
+func TestTaskGuardHookOffTreeDenies(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "task-guard.sh")
+	if err := os.WriteFile(script, []byte(TaskGuardHook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	run := func(env map[string]string) (string, int) {
+		t.Helper()
+		cmd := exec.Command("bash", script)
+		cmd.Dir = dir
+		base := []string{
+			"FORGE_SESSION_ID=tree-test",
+			"FORGE_DATA_DIR=" + filepath.Join(dir, "data"),
+			"FORGE_TASK_REF=feat/tg",
+			"PATH=" + os.Getenv("PATH"),
+			"HOME=" + dir,
+		}
+		for k, v := range env {
+			base = append(base, k+"="+v)
+		}
+		cmd.Env = base
+		out, err := cmd.CombinedOutput()
+		code := 0
+		if err != nil {
+			exitErr, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatalf("运行 guard 脚本失败: %v\n%s", err, out)
+			}
+			code = exitErr.ExitCode()
+		}
+		return string(out), code
+	}
+
+	out, code := run(map[string]string{
+		"FORGE_FILE_PATH":     "internal/cli/review.go",
+		"FORGE_TASK_OFFTREE":  filepath.Join(dir, "elsewhere"),
+		"FORGE_TASK_WORKTREE": filepath.Join(dir, "elsewhere"),
+	})
+	if code != 1 {
+		t.Fatalf("错树源码写入必须 exit 1，got %d\n%s", code, out)
+	}
+	for _, want := range []string{"锚在另一棵树", "forge worktree use", "FORGE_TASK_TREE_GUARD=0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("拒绝信息缺少 %q：\n%s", want, out)
+		}
+	}
+
+	// 测试文件豁免先于错树判定：TDD 在错树上仍可写测试。
+	tout, tcode := run(map[string]string{
+		"FORGE_FILE_PATH":    "internal/cli/review_test.go",
+		"FORGE_TASK_OFFTREE": filepath.Join(dir, "elsewhere"),
+	})
+	if tcode != 0 {
+		t.Fatalf("测试文件必须豁免，got exit=%d\n%s", tcode, tout)
+	}
+
+	// 空 FILE_PATH（codex apply_patch 路径合成失败）也必须阻断：错树判定不依赖路径，
+	// 空路径早退若先于错树分支，就成了 patch 工具上的静默放行。
+	pout, pcode := run(map[string]string{
+		"FORGE_TASK_OFFTREE":  filepath.Join(dir, "elsewhere"),
+		"FORGE_TASK_WORKTREE": filepath.Join(dir, "elsewhere"),
+	})
+	if pcode != 1 {
+		t.Fatalf("空 FILE_PATH 的错树编辑必须 exit 1（否则 patch 工具静默放行），got exit=%d\n%s", pcode, pout)
+	}
+	if !strings.Contains(pout, "锚在另一棵树") {
+		t.Fatalf("空 FILE_PATH 的错树阻断必须指出错树：\n%s", pout)
+	}
+
+	// 测试豁免必须按**路径段**判，不能按子串：正则里裸 `test/` 会命中
+	// internal/contest/、pkg/latest/ —— 错树时真实源码写入被当成测试文件放行，
+	// fail-closed 就出现了一个只有改目录名才能触发的洞。
+	for _, path := range []string{"internal/contest/x.go", "pkg/latest/x.go", "internal/latest.go"} {
+		cov, ccode := run(map[string]string{
+			"FORGE_FILE_PATH":    path,
+			"FORGE_TASK_OFFTREE": filepath.Join(dir, "elsewhere"),
+		})
+		if ccode != 1 {
+			t.Errorf("错树里写 %s 必须 exit 1（路径里出现 test 字样不等于测试文件），got exit=%d\n%s", path, ccode, cov)
+		}
+	}
+	// 而真正的测试路径仍必须豁免，否则错树里连测试都写不了。
+	for _, path := range []string{"internal/cli/review_test.go", "test/e2e_x.go", "internal/x/tests/helper.go"} {
+		tov, tcode := run(map[string]string{
+			"FORGE_FILE_PATH":    path,
+			"FORGE_TASK_OFFTREE": filepath.Join(dir, "elsewhere"),
+		})
+		if tcode != 0 {
+			t.Errorf("已知测试路径 %s 必须豁免，got exit=%d\n%s", path, tcode, tov)
+		}
+	}
+
+	// 非源码的已知路径也在错树拦截面内（docs/design/task-tree-guard.md §4）：判定发生在
+	// .forge/ 保护与源码后缀过滤之前，所以在错误的树里改文档、改项目配置同样被拦——
+	// 否则「只拦源码」会给错树里的文档提交留一条绕行路。这条断言钉住的是**面**而不是
+	// 某个文件：换成自述文件或项目配置，行为必须一致。
+	for _, path := range []string{"README.md", "docs/design/task-tree-guard.md", ".forge/pipeline.yml"} {
+		cov, ccode := run(map[string]string{
+			"FORGE_FILE_PATH":    path,
+			"FORGE_TASK_OFFTREE": filepath.Join(dir, "elsewhere"),
+		})
+		if ccode != 1 {
+			t.Errorf("错树里写 %s 必须 exit 1（拦截面=任意非测试路径），got exit=%d\n%s", path, ccode, cov)
+		}
+	}
+	// 但空 FILE_PATH 且无错树仍必须放行（batch/非文件工具），不能因为抬高判定而阻断。
+	bout, bcode := run(map[string]string{})
+	if bcode != 0 || strings.Contains(bout, "锚在另一棵树") {
+		t.Fatalf("空 FILE_PATH 且非错树必须放行，got exit=%d\n%s", bcode, bout)
+	}
+
+	// 未注入 = 当前树就是任务的树（或无任务）：不得出现错树阻断文案。
+	nout, ncode := run(map[string]string{"FORGE_FILE_PATH": "internal/cli/review.go"})
+	if ncode != 0 {
+		t.Fatalf("非错树场景不得阻断，got exit=%d\n%s", ncode, nout)
+	}
+	if strings.Contains(nout, "锚在另一棵树") {
+		t.Fatalf("非错树场景不得出现错树文案：\n%s", nout)
+	}
+}
