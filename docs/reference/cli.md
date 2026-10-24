@@ -3,9 +3,10 @@
 > 这是从根 README 拆出来的**完整**命令表：每个命令、flag、逃生舱与门禁语义都在这里。
 > 根 README 只保留高频速查，避免新用户一上来就被成百行命令细节挡住。
 >
-> 完整性由 CI 守卫（`internal/cli/docs_consistency_test.go`）：每个顶层命令都必须在本文
-> 有一行（`TestCliReference_CoversAllTopLevelCommands`）；每个新增用户可见 flag 必须在本文
-> 或根 README 出现，否则 `go test ./internal/cli` 会挂。
+> 完整性由 CI 守卫（`internal/cli/docs_consistency_test.go`）：每个顶层命令的 `forge <name>`
+> 都必须在本文出现（`TestCliReference_CoversAllTopLevelCommands`；粒度是「本文提到该命令」，
+> 不追到它的每一条子命令行）；每个新增用户可见 flag 必须在本文或根 README 出现，否则
+> `go test ./internal/cli` 会挂。
 
 ---
 
@@ -43,7 +44,7 @@
 | `forge workspace list [--json]` | 列出全部 workspace 及成员（key + 缓存路径） |
 | `forge workspace status <name>` | 读侧聚合：按 key 扫描各成员仓活跃任务（ref/gate 进度/branch）；单个成员坏了告警跳过，绝不让整视图空白 |
 | `forge workspace doctor [--json]` | 检出清单 drift（全部 advisory 不阻断）：成员 key 未注册 / 缓存路径缺失或与 registry 现路径分叉 / 一 key 属多个 workspace / 空 workspace / 跨仓任务依赖环（dep-cycle，点名完整 key:ref 环序列供人工摘边） |
-| `forge worktree janitor` | worktree 生命周期清理（multi-task-concurrency L4）：只清理【任务已完成或超期 14d 且工作树干净】的 workspace（脏的只报告——免删除条款，绝不自动删有未提交工作的 worktree）；路径已消失的死锚绑定无条件清除。多任务并发的磁盘上界管理 |
+| `forge worktree janitor` | worktree 生命周期清理：只清理【任务已完成或超期 14d 且工作树干净】的 workspace（脏的只报告——免删除条款，绝不自动删有未提交工作的 worktree）；路径已消失的死锚绑定无条件清除。多任务并发的磁盘上界管理 |
 | `forge harness init [--from-existing] [--remote <url>] [--yes]` | 建立研发控制面仓库（multi-task-concurrency T6）：把用户级 `~/.forge` 变成私有 git 仓库——tasks/checklog/archive 入库获 git 史，stamps/hazards（信任锚）/workspaces/attribution（机器本地）/会话簿记 gitignore 永不外发。HITL：交互确认仅在终端（TTY）进行——agent 经 Bash 调用无 TTY 被拒（agent 不得代批）；`--yes` 仅脚本化 CI 逃生口；`--from-existing` 给存量 DataDir 做一次基线提交（不重写数据） |
 | `forge harness status` | harness repo 状态：未建立 / 本地 / 已连远端 + 近期提交 + 未提交计数 |
 | `forge harness push [--yes]` | 推送 harness repo 到私有远端（首推是独立外发 HITL——数据出境清单：tracked 类别 / 永不外发类别 / 远端必须私有；凭据走你自己的 git credential helper，forge 不持有凭据）；后续 push 常规。`--yes` 仅脚本化 CI |
@@ -70,20 +71,20 @@
 | `forge task status` | 查看当前任务门禁状态（含已登记产物链产物与漂移/审批态） |
 | `forge task list --open [--workspace\|--all-projects] [--json]` | 列出未完成任务供用户挑选要接续哪个：每条带项目、标题、门禁进度、首条下一步、未解决阻塞数、派活状态、最后活动时间。默认当前项目；`--workspace` 扩到当前项目所属多仓 forge workspace 的全部成员（不属于任何 workspace 时回落当前项目）；`--all-projects` 扩到本机全部已接管项目。只读 |
 | `forge task list --plan-conversion` | plan-first advisory 转化率报告（先测量再翻转）：已发/发后已补方案/发后仍无方案/未发自带方案四计数 + 转化率——叙事 stage 是否升档由数据决定而非直觉 |
-| `forge task artifact --set <stage> --file <path> \| --stdin \| --list [--json] \| --verify \| --approve <stage> --by <人> [--checked <项>] \| --extract \| --check [--file <path>]` | 产物链操作（L6 契约层，docs/design/artifact-chain-workflow.md）：登记阶段产物（哈希引用，漂移探测；登记 design 产物时其「触点」一节自动写入 PlanScope（手工 `--scope` / `task scope add` 优先），实改超出即报「方案外改动」）/ 查看链态 / 漂移校验（采用需求 ID 的任务附需求覆盖表：已验证/未验证/孤儿）/ 人工审批（human 档经 --by 归因到人、签内容哈希，内容再改即作废；批前打印一屏审批摘要——TL;DR、高危步骤、Open Questions、自上次批准的变化；`--checked` 可重复，记录本次审了什么）/ 从产物提取验收标准（`accept: <cmd> :: <expected>` 行与 \`\`\`accept 围栏编译成验收门禁——产物成为硬门禁的源码；提取的标准盖考卷层级 spec-extract；`accept[REQ-3]:` 前缀或行尾 `#REQ-3` 声明该条验证的需求 ID，两种写法并存取并集）/ 方案事实核查 `--check`（方案中的路径、`file:line`、Go 符号、Go 模块是否真实存在；`new:` 行豁免；advisory）。链与档位（advisory\|rubric\|human\|hard，HARD 只守事实）由 `<DataDir>/schemas/schema.yaml` 声明（缺省默认链 proposal→spec→design→plan 全 advisory 零阻断）；`task start --artifact "<stage>=<path>"` 开工即登记并就地提取验收；complete 前漂移 pre-flight：hard/human 档漂移阻断、advisory/rubric 留痕、漂移一律作废审批；逃生（落审计）`FORGE_ARTIFACT_CHAIN=disable` 或 `forge task override --artifact-chain disable` |
-| `forge task chain-init [--force]` | 一键接线产物链执法（oracle-pipeline L0）：写默认链 schema 且 spec 档升 human——spec 里的考卷围栏（accept: 行/```accept 块）从此需 forge task artifact --approve spec --by <审批人> 签字才算定稿，内容再改即作废（业务正确性的签字入口）；已存在 schema 须 --force 显式覆盖；不依赖活跃任务 |
+| `forge task artifact --set <stage> --file <path> \| --stdin \| --list [--json] \| --verify \| --approve <stage> --by <人> [--checked <项>] \| --extract \| --check [--file <path>]` | 产物链操作（见 docs/design/artifact-chain-workflow.md）：登记阶段产物（哈希引用，漂移探测；登记 design 产物时其「触点」一节自动写入 PlanScope（手工 `--scope` / `task scope add` 优先），实改超出即报「方案外改动」）/ 查看链态 / 漂移校验（采用需求 ID 的任务附需求覆盖表：已验证/未验证/孤儿）/ 人工审批（human 档经 --by 归因到人、签内容哈希，内容再改即作废；批前打印一屏审批摘要——TL;DR、高危步骤、Open Questions、自上次批准的变化；`--checked` 可重复，记录本次审了什么）/ 从产物提取验收标准（`accept: <cmd> :: <expected>` 行与 \`\`\`accept 围栏编译成验收门禁——产物成为硬门禁的源码；提取的标准盖考卷层级 spec-extract；`accept[REQ-3]:` 前缀或行尾 `#REQ-3` 声明该条验证的需求 ID，两种写法并存取并集）/ 方案事实核查 `--check`（方案中的路径、`file:line`、Go 符号、Go 模块是否真实存在；`new:` 行豁免；advisory）。链与档位（advisory\|rubric\|human\|hard，HARD 只守事实）由 `<DataDir>/schemas/schema.yaml` 声明（缺省默认链 proposal→spec→design→plan 全 advisory 零阻断）；`task start --artifact "<stage>=<path>"` 开工即登记并就地提取验收；complete 前漂移 pre-flight：hard/human 档漂移阻断、advisory/rubric 留痕、漂移一律作废审批；逃生（落审计）`FORGE_ARTIFACT_CHAIN=disable` 或 `forge task override --artifact-chain disable` |
+| `forge task chain-init [--force]` | 一键接线产物链执法：写默认链 schema 且 spec 档升 human——spec 里的考卷围栏（accept: 行/```accept 块）从此需 forge task artifact --approve spec --by <审批人> 签字才算定稿，内容再改即作废（业务正确性的签字入口）；已存在 schema 须 --force 显式覆盖；不依赖活跃任务 |
 | `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |
 | `forge task gate <gate-id>` | 验证单道任务门禁 |
 | `forge task impact --level none\|multi [--repo <key>]... [--note <说明>] [--ref <ref>]` | 声明当前任务的跨仓影响（多仓 workspace 成员的 verify 前置，单仓改动也须显式声明）：`--level none` 改动限定本仓；`--level multi --repo <key>` 波及指定成员 repo（`--repo` 可重复）。默认 advisory（未声明只提醒），protocol.yml 配 `cross_repo_impact: required` 升级为 HARD stop（四段式 WHAT/WHY/HOW/REF 报错），详见 docs/design/multi-repo-workspace.md |
-| `forge task verify-acceptance [--ref <ref>] [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；v2 断言逐条判定并记 `acceptance-assert` 证据行（聚合 `acceptance` 行保留）；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行）；登记了 held-out 保留集（`task start --heldout <file>`）时同时实跑双套件并记 gap——可见全过而保留集挂 = test-generalization gap（SpecBench 形态，`FORGE_HELDOUT=disable` 逃生留痕），task-complete 边界复跑；零登记时自动从 conventions 档案兜底登记默认套件（build/test/lint，考卷层级 conventions——项目默认考卷而非实现者自选），并从 held-out 池自动抽 1 套业务坏天气集入卷（池非空时，墙-2b） |
+| `forge task verify-acceptance [--ref <ref>] [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；v2 断言逐条判定并记 `acceptance-assert` 证据行（聚合 `acceptance` 行保留）；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行）；登记了 held-out 保留集（`task start --heldout <file>`）时同时实跑双套件并记 gap——可见全过而保留集挂 = test-generalization gap（SpecBench 形态，`FORGE_HELDOUT=disable` 逃生留痕），task-complete 边界复跑；零登记时自动从 conventions 档案兜底登记默认套件（build/test/lint，考卷层级 conventions——项目默认考卷而非实现者自选），并从 held-out 池自动抽 1 套业务坏天气集入卷（池非空时） |
 | `forge task accept <criteria...> [--ref <ref>] [--assert "type:arg :: expected"]` | 补登记验收标准（考卷层级 manual——实现者看过代码后出的题，梯子最弱一级）：格式同 --accept（"run :: expected"，可多条），`--assert` 挂本命令最后一条标准（file-\* 可独立）；锁内合并按 (Run, Expected, Assertions) 三元组去重（已存在的同一检查保留原层级）；已完成任务拒绝补登（考卷在交付前定稿）；交付验收单如实披露 manual 层存在 |
-| `forge task report [--ref <ref>] [--json]` | 交付验收单（验收方单页视图）：考卷逐条结果+层级与来源分布、评分与证据强度（deterministic vs agent-claim）、未验证面（UntestedAreas）、残留风险（完成时 open findings）、考卷披露（manual 层告警/held-out 保留集/spec 审批态）、逃生舱库存、审查轮次——附复现入口（verify-acceptance 重跑 / trace 证据链）；逃生债行（价-1a：每个验证类逃生转为未验证面披露）、自供申辩计数（价-1c）、自审标记（价-1b：盖章会话=改动生产者时 doc-gate 不消费自录分）；--json 结构化输出 |
-| `forge task mutation [--sample N]` | mutation 抽样（oracle-pipeline L2a，机器出题治假绿；作用于当前活跃任务，无 --ref）：对任务改动的 Go 源文件注入变异体（比较/逻辑翻转），逐个原地变异→实跑所在包 go test→立即还原——杀不死变异体的测试是装饰品（断言弱化/空断言无论覆盖率多高都查不出）。判定走 go 退出码契约（测试失败=杀灭/构建失败=无效体/通过=存活逐位点点名）；确定性均匀抽样（默认 3，硬-1a 提速：只变异磁盘上有配对测试的改动文件，FORGE_MUTATION_TIMEOUT 调单变异体超时）；证据落 mutation-sampling deterministic 行（计入证据强度）；advisory 不阻断 |
-| `forge task fuzz [--sec N] [--max N]` | fuzz 实跑（oracle-pipeline L2b；作用于当前活跃任务，无 --ref）：发现任务改动包的 Fuzz 目标并按预算执行 Go 原生引擎（默认 30s/目标、最多 3 个）——edge 清单再全也是人枚举的，fuzz 是无记忆的对抗者；失败目标分型：退出码 1=真 crasher（崩溃输入由 go 写进 testdata/，证据即语料，修完 go test 回归），构建失败/预算中断则无 crasher 语料；证据落 fuzz-run deterministic 行；advisory 不阻断 |
-| `forge task edgecheck` | edge case 清单（oracle-pipeline L2c；作用于当前活跃任务，无 --ref）：任务改动的每个导出函数 × 五维（基数/值域/时序/环境/故障）机械枚举成可勾选骨架，落 DataDir/edgecases/——机器出骨架、验收前逐项填断言；确定性生成（文件序×声明序） |
-| `forge task regression --finding <id> --test <file> \| --none --note <理由>` | 登记 finding 的回归测试绑定（oracle-pipeline L4 修复自证）：修前红由 finding 作证、修后绿由 --test 指向的本任务改动 _test.go 作证（三重校验：后缀/任务窗口/真含测试函数）；无可测形态走 --none --note 落审计行——`forge task finding --resolve` 的硬前置，没有回归的 fixed 会复发 |
-| `forge task heldout-pool --add <file> --name <名> [--tag <组>] \| --list [--tag <组>] \| --draw N [--tag <组>] [--apply] [--ref <任务>]` | held-out 池（oracle-pipeline L3 独立出题）：把出保留题变成项目资产——业务坏天气集（金额边界/并发/退款链）沉淀进 DataDir/heldout-pool/，任务侧 `--draw N --apply [--ref <任务>]` 名序确定性抽取并入指定/活跃任务保留集（按 Run 去重、保留集计数不清零、落 apply 审计行；verify-acceptance 实跑双套件记 gap）；同名拒绝静默换锚；--add/--list/--draw 是项目级动作不依赖活跃任务；「测试的测试」是人工边界——池里的题必须人出 |
-| task-complete 验收登记门禁（自动） | 非 generic 交付任务零验收标准 → 拒绝完成（考卷缺位）；考卷质量下限（墙-2a）：有测试能力仓库考卷须含 ≥1 条测试类命令——单条 go build 不构成合格考卷；hazard 清账（墙-1b）：未确认高危拦截悬账 → 拒绝完成（出口是真人 confirm/release，均需终端 char-device；FORGE_HAZARD_PENDING=disable 留 CI）；mutation 复发升硬（硬-1b）：Go 改动连续 3 任务零 mutation 证据 → 硬拦（FORGE_MUTATION_GATE=disable 逃生）。考卷层级梯子：spec 产物提取（human 档可签字）＞ start 登记 ＞ conventions 兜底 ＞ manual 补登（验收单披露）。逃生与 freshness 共用舱：`forge task override --acceptance-gate disable` / `FORGE_ACCEPTANCE_GATE=disable`（落审计、降 evidence） |
+| `forge task report [--ref <ref>] [--json]` | 交付验收单（验收方单页视图）：考卷逐条结果+层级与来源分布、评分与证据强度（deterministic vs agent-claim）、未验证面（UntestedAreas）、残留风险（完成时 open findings）、考卷披露（manual 层告警/held-out 保留集/spec 审批态）、逃生舱库存、审查轮次——附复现入口（verify-acceptance 重跑 / trace 证据链）；逃生债行（每个验证类逃生转为未验证面披露）、自供申辩计数、自审标记（盖章会话=改动生产者时 doc-gate 不消费自录分）；--json 结构化输出 |
+| `forge task mutation [--sample N]` | mutation 抽样（机器出题治假绿；作用于当前活跃任务，无 --ref）：对任务改动的 Go 源文件注入变异体（比较/逻辑翻转），逐个原地变异→实跑所在包 go test→立即还原——杀不死变异体的测试是装饰品（断言弱化/空断言无论覆盖率多高都查不出）。判定走 go 退出码契约（测试失败=杀灭/构建失败=无效体/通过=存活逐位点点名）；确定性均匀抽样（默认 3；只变异磁盘上有配对测试的改动文件，FORGE_MUTATION_TIMEOUT 调单变异体超时）；证据落 mutation-sampling deterministic 行（计入证据强度）；advisory 不阻断 |
+| `forge task fuzz [--sec N] [--max N]` | fuzz 实跑（作用于当前活跃任务，无 --ref）：发现任务改动包的 Fuzz 目标并按预算执行 Go 原生引擎（默认 30s/目标、最多 3 个）——edge 清单再全也是人枚举的，fuzz 是无记忆的对抗者；失败目标分型：退出码 1=真 crasher（崩溃输入由 go 写进 testdata/，证据即语料，修完 go test 回归），构建失败/预算中断则无 crasher 语料；证据落 fuzz-run deterministic 行；advisory 不阻断 |
+| `forge task edgecheck` | edge case 清单（作用于当前活跃任务，无 --ref）：任务改动的每个导出函数 × 五维（基数/值域/时序/环境/故障）机械枚举成可勾选骨架，落 DataDir/edgecases/——机器出骨架、验收前逐项填断言；确定性生成（文件序×声明序） |
+| `forge task regression --finding <id> --test <file> \| --none --note <理由>` | 登记 finding 的回归测试绑定（修复自证）：修前红由 finding 作证、修后绿由 --test 指向的本任务改动 _test.go 作证（三重校验：后缀/任务窗口/真含测试函数）；无可测形态走 --none --note 落审计行——`forge task finding --resolve` 的硬前置，没有回归的 fixed 会复发 |
+| `forge task heldout-pool --add <file> --name <名> [--tag <组>] \| --list [--tag <组>] \| --draw N [--tag <组>] [--apply] [--ref <任务>]` | held-out 池（独立出题）：把出保留题变成项目资产——业务坏天气集（金额边界/并发/退款链）沉淀进 DataDir/heldout-pool/，任务侧 `--draw N --apply [--ref <任务>]` 名序确定性抽取并入指定/活跃任务保留集（按 Run 去重、保留集计数不清零、落 apply 审计行；verify-acceptance 实跑双套件记 gap）；同名拒绝静默换锚；--add/--list/--draw 是项目级动作不依赖活跃任务；「测试的测试」是人工边界——池里的题必须人出 |
+| task-complete 验收登记门禁（自动） | 非 generic 交付任务零验收标准 → 拒绝完成（考卷缺位）；考卷质量下限：有测试能力仓库考卷须含 ≥1 条测试类命令——单条 go build 不构成合格考卷；hazard 清账：未确认高危拦截悬账 → 拒绝完成（出口是真人 confirm/release，均需终端 char-device；FORGE_HAZARD_PENDING=disable 留 CI）；mutation 复发升硬：Go 改动连续 3 任务零 mutation 证据 → 硬拦（FORGE_MUTATION_GATE=disable 逃生）。考卷层级梯子：spec 产物提取（human 档可签字）＞ start 登记 ＞ conventions 兜底 ＞ manual 补登（验收单披露）。逃生与 freshness 共用舱：`forge task override --acceptance-gate disable` / `FORGE_ACCEPTANCE_GATE=disable`（落审计、降 evidence） |
 | `forge hazard halt status` / `forge hazard halt release --yes` | safe-halt 语义：hazard-guard 连续拦截 ≥3 次（自最近 confirm/release）→ 会话停机（停止自修复盲试，task gate 推进时明示）；人工核查最近拦截命令后 `release --yes` 解锁（记 halt-release 审计事件，agent 不得自我解锁） |
 | `forge task mirror github [--repo owner/name] [--dry-run]` | 分派任务镜像到 GitHub Issues（Forge 台账为主真相、issue 为组织可见面；offered→建 issue 打 forge:状态 label，终态→关闭；映射存 DataDir/mirror-gh.json；经 gh CLI，无 gh 明确报错）——Symphony 验证的组织面入口需求 |
 | `forge compat snapshot [--out <file>]` / `forge compat report [--base <ref>] [--json]` | 可执行兼容工件（七面快照：命令树+flags / CheckName roster / 逃生舱 env / 内嵌载荷 sha256 / 序列化 schema 键 / 阻断位点计数 / 外部桥契约）——golden（compat.snapshot.json）入库、PR diff 呈现；report 对比基线：破坏性变更（removed/changed）exit 2、added 提示同步文档（cargo-semver-checks 契约本地化：0=过 / 2=违规 / 1=工具故障）；承诺表见 docs/design/compat-commitments.md |
@@ -94,7 +95,7 @@
 | task-complete 自报一致性门禁（自动） | checklist 已勾选项里声称执行过的验证类命令（go test/pytest/cargo test 等）与 toollog 实测 Bash 集比对：测试类声称任务全程零匹配 = 虚报进度形态（arXiv 2605.29442）→ 拒绝完成；非测试类差集只留 advisory 痕；toollog 缺失（宿主遥测未接）跳过——区分"无法验证"与"验证通过"；逃生（留痕）`FORGE_SELF_REPORT=disable` |
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D11：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅/结论位置/调研文档的来源、信度标注与内部标签——调研三条 D9-D11 在观察期内全是 advisory）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
 | `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、hook/门禁/逃生舱清单与已知盲区（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
-| `forge eval dead-checks [--window 90d] [--json]` | W0.1 死检查报告：聚合 checklog+hazard 台账，按检查分 live / dead-candidate / insufficient-data（hook 瘦身的数据面；嵌入式 hook 的 PASS 不逐次落账，触发率为下界——输出内明示） |
+| `forge eval dead-checks [--window 90d] [--json]` | 死检查报告：聚合 checklog+hazard 台账，按检查分 live / dead-candidate / insufficient-data（hook 瘦身的数据面；嵌入式 hook 的 PASS 不逐次落账，触发率为下界——输出内明示） |
 | `forge eval friction [--corpus <dir>] [--timeout 120s] [--json]` | 摩擦净值实验（脚本化双臂）：诱饵语料在「门禁开 / 既有逃生舱全开」两臂下实跑，量拦截率、残余与检查器开销（ON-OFF 墙钟）；端到端 agent 臂走 FORGE_EVAL_MODEL 通道 |
 | `forge eval rule-ledger --record --rule <id> --claim <预测> --probe <命令>` / `--verify --rule <id>` / `--list` | 门禁规则可证伪台账：规则变更带预测声明 + 可执行 probe，verify 实跑落账结论（`evals/rule-ledger.jsonl` 随库提交；损坏行 fail-closed） |
 | `forge init --profile <lite\|standard\|full>` | 接线档位：lite=拦截+管线+状态最小集（12 hook/6 事件），standard=完整现行（默认），full=预留位；持久化 `~/.forge/profile`，FORGE_PROFILE env 可覆盖，运行时门即时生效 |
@@ -103,7 +104,7 @@
 | `forge eval golden run [--dir <dir>] [--repeats N] [--rewrite-manifest] [--release] [--json]` | 门禁 golden 标注集重放：precision/fpr（Wilson 区间）+ 确定性重放一致率；用例集指纹钉在 `evals/forge/golden/MANIFEST.sha256`，不符拒绝运行（`--rewrite-manifest` 仅限显式轮换）。用例 `layer: test` 只在 `--release` 时运行，每次给 test 层查询计数 +1 并落 `eval-golden-test-query` 行 |
 | `forge eval golden private-init` / `rotate [--max-cases N]` | 私有 golden 子集（0700，永不进 VCS）与季度轮换（oracle 复验 + 最老优先淘汰 + 审计行） |
 | `forge eval traps run [--dir <dir>]` | 对抗陷阱重放（14 用例：测试削弱/伪造审计证据/虚假完成 + cheat-scan 七模式族 11 例——type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import/path-assumption，经 gate push --dry-run 推送边界探测；ImpossibleBench 思想）；capture 率与行动清单 |
-| `forge eval redteam` | seeded-bug 红队演练（oracle-pipeline L6）：对验证链自身注入五类雷（零验收交付/internal 零引用导出/吞错/类型抑制/heldout gap），逐颗用既有检查函数判定拦截——escaped 或设施故障即如实披露（exit 非 0 供 CI 门禁）；与 traps 互补：traps 回放过去，redteam 注入现在 |
+| `forge eval redteam` | seeded-bug 红队演练：对验证链自身注入五类雷（零验收交付/internal 零引用导出/吞错/类型抑制/heldout gap），逐颗用既有检查函数判定拦截——escaped 或设施故障即如实披露（exit 非 0 供 CI 门禁）；与 traps 互补：traps 回放过去，redteam 注入现在 |
 | `forge eval oracle run [--suite evals/oracle] [--arm both\|scanner\|acceptance] [--repeats N] [--image <img>] [--json] [--out <md>]` | 变更级沙箱考卷（v0，docs/design/sandbox-oracle.md）：每条用例在临时 git 仓库里回放一次变更——扫描臂调与被测门禁同一函数 `ScanCheatPatternsRange` 量 cheat 召回/类别准确率/误报（known_fp 不进分母），验收臂在 `docker run --network none` 里先跑可见测试（OFF）再挂 held-out（ON）量逃逸率；套件指纹（用例 sha256）写进报告可复算，`--repeats` 检出确定性漂移（flips）。实测 v0：召回 86%（6/7，唯一漏网是无机械签名的语义 stub——盲区被记录而非漏测）、误报 0/3、逃逸 100%→0% |
 | `forge eval judge-audit --scores <file>` | 判分器受审：重放极差 + 与人工标注 Cohen's κ；κ<0.6 该判分器 BLOCKED 决策降级 ADVISORY。分数可带 `pair_original`/`pair_swapped`（a\|b\|tie）做成对位置交换审计，翻转率 >10% 判 high systematic bias |
 | `forge eval resume-drill [--dir <dir>]` | 接续演练：脚本化断点续做断言（仅回归对比，绝对值不外宣） |
@@ -174,7 +175,7 @@
 | `forge freeze --off` | 解除 freeze（幂等） |
 | `forge freeze --status` | 查看当前 freeze 状态 |
 
-**Act 反馈臂（证据驱动结论）**：`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `~/.forge/projects/<项目key>/act/conclusions.jsonl`，供回顾流程消费（`forge act show` 可查）。证据弱（Unverified/Weak）或低分（<70）的结论标 RetrospectiveNudge——对冲"高分但没真验证"的 LLM-judge 盲区。
+**Act 反馈臂（证据驱动结论）**：`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `~/.forge/projects/<项目key>/act/conclusions.jsonl`，供回顾流程（`session-retrospective` skill）消费，`forge act show` 可查。证据弱（Unverified/Weak）或低分（<70）的结论标 RetrospectiveNudge——对冲"高分但没真验证"的 LLM-judge 盲区。
 
 | 命令 | 说明 |
 |------|------|
@@ -231,7 +232,7 @@
 | `forge dashboard [--port <n>] [--no-open]` | 本地全局质量看板（Pulse 面板）——在任意目录运行都聚合 `~/.forge/projects.json` 登记的全部项目（`forge init` 自登记），渲染事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合（localhost 只读，自动开浏览器，Ctrl+C 退出，面板内按项目过滤）；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |
 | `forge sync [--force]` | 同步 forge 资产到当前二进制版本（用户级 hooks/指令/skill 重生成 + 存量项目级残留收敛；注意：名字易误读——跨机器迁移项目数据用 `forge project export/import`，与本命令无关） |
 | `forge plugin pack [--out <dir>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest + reasonix native manifest + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
-| `forge bridge verify <dir> [--json]` | 对一个 dsh 插件包跑静态检查（#1884 四大事故模式：inject 一致性 / 同名注册 / @deepseek-ai vendored 耦合 / 未知事件），error → exit 2——dsh 插件作者发布前自检用（roadmap H2a，见 docs/design/forge-dsh-provider-roadmap.md） |
+| `forge bridge verify <dir> [--json]` | 对一个 dsh 插件包跑静态检查（#1884 四大事故模式：inject 一致性 / 同名注册 / @deepseek-ai vendored 耦合 / 未知事件），error → exit 2——dsh 插件作者发布前自检用（见 docs/design/forge-dsh-provider-roadmap.md） |
 | `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供 init-suggest hook / 脚本检测） |
 | `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + 旧项目 .mcp.json forge server 残留，并清理 user-level `settings.local.json` 的重复 forge hooks；幂等 no-op；init-suggest SessionStart 自动调用（传 `--keep-empty` 保留项目 `settings.local.json` 为 `{}`）；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件 |
 | `forge plugin kimi-manifest [--write]` | 渲染/再生成已提交的 kimi plugin manifest（`.kimi-plugin/plugin.json`）——version 读 `npm/package.json`（单一真相源）、hooks 从 ForgeHookSpec 派生、description 与守卫测试共享常量；默认打印 + 报漂移（退出码恒 0，执法归 `TestKimiPluginManifestMirrorsSpec`），`--write` 逐字节比对后重写（in sync 不改写）；forge 仓库维护命令（从 cwd 向上找 `npm/package.json`） |
@@ -246,7 +247,7 @@
 
 ```bash
 forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配；go test 带 Expected 或 contains/not-contains 断言忘加 -v 时 start 自动补——无 -v 无 PASS 行永不匹配）
-forge task start --ref feat/login --worktree [--base main] [--wt-dir <父目录>]   # 在 repo 树外为此任务创建独立 worktree+分支+绑定（多任务并发隔离形态，multi-task-concurrency L4；<repo 父目录>/<repo 名>-wt/<分支> 默认）
+forge task start --ref feat/login --worktree [--base main] [--wt-dir <父目录>]   # 在 repo 树外为此任务创建独立 worktree+分支+绑定（多任务并发隔离形态；<repo 父目录>/<repo 名>-wt/<分支> 默认）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
 forge task start --ref feat/add-login --tier mini                                 # 方案档位：none 直接改 / mini 小方案 / full 完整方案；与硬触发器（迁移/schema/接口契约/鉴权/依赖/跨模块）推导档位取较高者，下调须 --tier-reason 写明理由（advisory）
 #   规则表可在 protocol.yml 的 design_tiers 段覆盖：rules（按 name 追加或替换内置规则，tier 取 mini/full，paths 支持 seg:<目录名> / 含 / 的路径 glob 或目录前缀 / 文件名 glob）、standard_changes（追加不触发档位的例行改动）、replace_defaults（弃用内置规则与内置例行改动）

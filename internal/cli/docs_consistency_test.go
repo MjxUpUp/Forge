@@ -1,10 +1,11 @@
 package cli
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -229,8 +230,10 @@ var flagDocGrandfather = map[string]bool{
 // 2026-08 user-level-assets 缺口的根治：`init --project` 与 `uninstall --restore`
 // 零文档上线——守卫 A/B 只查命令引用不查 flag 层，drift 直接穿过。存量未文档 flag
 // 已豁免进基线（文档面不是穷尽式 flag 手册）；守卫只强制新增 flag 做文档决策。
-// 判定粒度是文档面级子串，不是「同一条命令行内」：AllFlags 只返回叶子命令名（不含
-// 命令路径），要按行/命令绑定需先扩 docsconsistency 共享包 API，属独立变更。
+// 判定粒度是文档面级子串，不是「同一条命令行内」：AllFlags 的 id 由 c.Name() 拼成
+// （internal/docsconsistency/check.go:197 `id := c.Name() + " --" + f.Name`），只带叶子
+// 命令名、不带父命令路径——`start --ref` 无法反推“这一行属于 `forge task start`”。
+// 按行绑定需要完整命令路径（或另建路径映射），属独立变更。
 func TestReadme_NewFlagsAreDocumented(t *testing.T) {
 	var sb strings.Builder
 	for _, p := range readmeDocs() {
@@ -446,20 +449,47 @@ func TestHooksDoc_MatchesHookSpec(t *testing.T) {
 		}
 	}
 
-	// 计数声明同样钉住：数字漂移过三次，且分布在三份文档里，人眼扫不出来。
-	want := fmt.Sprintf("%d 个内置 Hook", len(truth))
-	zhWant := fmt.Sprintf("%d 个 hook", len(truth))
-	// zh-CN README 用「N 个 hook」（小写、无「内置」），措辞不同要单列，否则数字漂了没人发现。
-	for p, claim := range map[string]string{"README.md": want, "npm/README.md": want, "READMEs/README.zh-CN.md": zhWant} {
-		b, err := os.ReadFile(filepath.Join(repoRoot, p))
-		if err != nil {
-			t.Fatalf("read %s: %v", p, err)
-		}
-		if !strings.Contains(string(b), claim) {
-			t.Errorf("%s 缺计数声明 %q（真相源：ForgeHookSpec() 注册 %d 个 hook）", p, claim, len(truth))
-		}
+	// 计数声明必须**每一处**都等于真相源。只断言「每份文档至少有一处正确声明」会放过同
+	// 一文件里的第二处声明——hooks.md:19 的「完整清单（27 个）」与 :49 的「Go 原生共 9 个 /
+	// 其余 18 个」漂了，同文件 :3 仍正确时守卫照样绿（首版守卫 E 就有这个洞，2026-10 二轮
+	// review 用局部变异抓出）。各文档措辞不同，故按 pattern 逐声明匹配；某个 pattern 一个
+	// 也匹配不到同样报错——否则改个措辞就静默解除覆盖。
+	bashHooks := len(hooks.HookNames())
+	claims := []struct {
+		file    string
+		pattern *regexp.Regexp
+		want    int
+		desc    string
+	}{
+		{"README.md", regexp.MustCompile(`(\d+) 个内置 [Hh]ook`), len(truth), "内置 Hook 总数"},
+		{"npm/README.md", regexp.MustCompile(`(\d+) 个内置 [Hh]ook`), len(truth), "内置 Hook 总数"},
+		{"npm/README.md", regexp.MustCompile(`完整 (\d+) 个清单`), len(truth), "完整清单计数"},
+		{"READMEs/README.zh-CN.md", regexp.MustCompile(`(\d+) 个 [Hh]ook`), len(truth), "hook 总数（zh 措辞）"},
+		{"docs/reference/hooks.md", regexp.MustCompile(`(\d+) 个内置 [Hh]ook`), len(truth), "内置 Hook 总数"},
+		{"docs/reference/hooks.md", regexp.MustCompile(`完整清单（(\d+) 个）`), len(truth), "完整清单计数"},
+		{"docs/reference/hooks.md", regexp.MustCompile(`Go 原生共 (\d+) 个`), len(truth) - bashHooks, "Go 原生 hook 数"},
+		{"docs/reference/hooks.md", regexp.MustCompile(`其余 (\d+) 个为内嵌`), bashHooks, "内嵌 bash hook 数"},
 	}
-	if !strings.Contains(string(body), want) {
-		t.Errorf("docs/reference/hooks.md 缺计数声明 %q（真相源：ForgeHookSpec() 注册 %d 个 hook）", want, len(truth))
+	for _, c := range claims {
+		b, err := os.ReadFile(filepath.Join(repoRoot, c.file))
+		if err != nil {
+			t.Fatalf("read %s: %v", c.file, err)
+		}
+		matches := c.pattern.FindAllStringSubmatch(string(b), -1)
+		if len(matches) == 0 {
+			t.Errorf("%s 里找不到 %q 形式的计数声明（%s）——措辞变了请同步本守卫，否则该计数无人钉",
+				c.file, c.pattern.String(), c.desc)
+			continue
+		}
+		for _, m := range matches {
+			n, convErr := strconv.Atoi(m[1])
+			if convErr != nil {
+				t.Errorf("%s 的计数 %q 解析失败: %v", c.file, m[0], convErr)
+				continue
+			}
+			if n != c.want {
+				t.Errorf("%s 的计数 %q = %d，真相源 %d（%s）", c.file, m[0], n, c.want, c.desc)
+			}
+		}
 	}
 }

@@ -59,7 +59,7 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
         ┌──────────────────────────────────────────────────┐
         │            Forge Hooks · 实时拦截                 │
         │   task-guard · read-before-edit · bash-guard      │
-        │   hazard-guard · file-sentinel · cheat-scan       │
+        │   hazard-guard · file-sentinel · doc-lint         │
         └────────────────────┬─────────────────────────────┘
                              │
                              ▼
@@ -190,8 +190,9 @@ npm install -g @agent_forge/forge
 1. **门禁先行** —— 任何源码变更走 `forge task` 三门禁（implement → verify → complete），不经任务的改动不被质量评分追踪。
 2. **注释双语** —— Go godoc 采用形式 A（英文段 → 空 `//` → 中文段），中文不删、不单语；行内注释与字符串字面量不动。
 3. **审查闭环** —— 提交前派独立只读子 agent 跑 code-review-gate 双轨（AI 作弊 + 工程规范），`forge review pass` 标记后才能过 task-complete 门禁。
-4. **提交纪律** —— 提交源码与手维护文档（`docs/reference/`、`docs/design/` 下的参考文档是
-   测试硬依赖，缺文件整包测试直接红，必须入库）；排除 `.claude/`、`.forge/` 等生成物与临时工作目录。
+4. **提交纪律** —— 提交源码与手维护文档（`docs/reference/` 下的参考文档是测试硬依赖，
+   缺文件整包测试直接红，必须入库；`docs/design/` 属设计文档，同样随代码提交）；排除
+   `.claude/`、`.forge/` 等生成物与临时工作目录。
 
 详见质量协议（由 `forge init` 生成到用户级 `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`；生成器源码在 `internal/skillgen/`）。
 

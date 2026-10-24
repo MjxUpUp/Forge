@@ -29,9 +29,9 @@ npm install -g @agent_forge/forge
 ```
 
 
-装完 plugin 后，init-suggest SessionStart hook 按 takeover 偏好接管（P2 起出厂默认 **ask**）：未接管项目首次会话**询问一次**——同意 → `forge init`；拒绝 → `forge off` 永久退出。要无询问静默接管所有 git 项目 → `forge config set` takeover 为 auto；declined、`.forge-decline` 团队声明（`forge off --commit` 写入）与外来 harness（spec-kit/项目级 .claude 接线等，`forge policy yield`）自动让位，`forge on` 显式恢复。
+装完 plugin 后，init-suggest SessionStart hook 按 takeover 偏好接管（出厂默认 **ask**）：未接管项目首次会话**询问一次**——同意 → `forge init`；拒绝 → `forge off` 永久退出。要无询问静默接管所有 git 项目 → `forge config set` takeover 为 auto；declined、`.forge-decline` 团队声明（`forge off --commit` 写入）与外来 harness（spec-kit/项目级 .claude 接线等，`forge policy yield`）自动让位，`forge on` 显式恢复。
 
-> v1.22 起 `forge init` **零项目写入**：不创建 `.forge/`、`CLAUDE.md` 等任何项目文件，只登记全局注册表并把 hooks/协议/skill 写到用户级（`~/.forge/projects/<key>/` 等）。要团队 git 共享协议用 `forge init --project`（团队模式）。
+>  `forge init` **零项目写入**：不创建 `.forge/`、`CLAUDE.md` 等任何项目文件，只登记全局注册表并把 hooks/协议/skill 写到用户级（`~/.forge/projects/<key>/` 等）。要团队 git 共享协议用 `forge init --project`（团队模式）。
 
 ## 想"处处无感"自动 init
 
@@ -39,7 +39,7 @@ npm install -g @agent_forge/forge
 export FORGE_AUTO_INIT=1   # 之后任意 git 项目直接 forge init
 ```
 
-v1.22 起 `forge init` 零项目写入（只对用户级配置生效，不碰项目目录），自动 init 已不再"污染" clone 来的临时仓库——默认询问模式更多是"要不要启用"的确认，而非文件副作用的顾虑。
+ `forge init` 零项目写入（只对用户级配置生效，不碰项目目录），自动 init 已不再"污染" clone 来的临时仓库——默认询问模式更多是"要不要启用"的确认，而非文件副作用的顾虑。
 
 ## 不装 plugin 的最低用法
 

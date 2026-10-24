@@ -1,6 +1,8 @@
 # 定位：coding agent 循环的验证与状态层
 
-> 从根 README 拆出的完整论述；根 README 只保留三句摘要。
+> 从根 README 拆出的完整论述；根 README 只保留摘要与指针。
+
+状态：已发布——2026-10 从根 README 拆出，内容为当前口径。
 
 **Forge is the verification and state layer for coding agent loops.** 用 harness engineering 的话说（Böckeler）：computational sensor suite + durable state——代码能验证的交给确定性传感器，Forge 补的是持久状态；用 loop engineering 的话说（Osmani）：loop 五构件里公开缺的正是 verification 与 memory 组件，Forge 就是这两块。
 
