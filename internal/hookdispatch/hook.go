@@ -778,7 +778,9 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if deadAnchor != "" {
-		fmt.Fprint(os.Stderr, deadAnchorWarning(activeTaskRef, deadAnchor))
+		// 一次编辑会走多个 hook（freeze-guard/task-guard/assertion-check/read-before-edit），
+		// 每个都到同一解析点——按会话+任务+锚路径节流，否则一条告警被同样打四遍。
+		announceDeadAnchor(root, activeTaskRef, hookInput.SessionID, deadAnchor)
 	}
 
 	// 3. Write the embedded script to a temp file.

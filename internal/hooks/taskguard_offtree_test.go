@@ -68,6 +68,24 @@ func TestTaskGuardHookOffTreeDenies(t *testing.T) {
 		t.Fatalf("测试文件必须豁免，got exit=%d\n%s", tcode, tout)
 	}
 
+	// 空 FILE_PATH（codex apply_patch 路径合成失败）也必须阻断：错树判定不依赖路径，
+	// 空路径早退若先于错树分支，就成了 patch 工具上的静默放行。
+	pout, pcode := run(map[string]string{
+		"FORGE_TASK_OFFTREE":  filepath.Join(dir, "elsewhere"),
+		"FORGE_TASK_WORKTREE": filepath.Join(dir, "elsewhere"),
+	})
+	if pcode != 1 {
+		t.Fatalf("空 FILE_PATH 的错树编辑必须 exit 1（否则 patch 工具静默放行），got exit=%d\n%s", pcode, pout)
+	}
+	if !strings.Contains(pout, "锚在另一棵树") {
+		t.Fatalf("空 FILE_PATH 的错树阻断必须指出错树：\n%s", pout)
+	}
+	// 但空 FILE_PATH 且无错树仍必须放行（batch/非文件工具），不能因为抬高判定而阻断。
+	bout, bcode := run(map[string]string{})
+	if bcode != 0 || strings.Contains(bout, "锚在另一棵树") {
+		t.Fatalf("空 FILE_PATH 且非错树必须放行，got exit=%d\n%s", bcode, bout)
+	}
+
 	// 未注入 = 当前树就是任务的树（或无任务）：不得出现错树阻断文案。
 	nout, ncode := run(map[string]string{"FORGE_FILE_PATH": "internal/cli/review.go"})
 	if ncode != 0 {

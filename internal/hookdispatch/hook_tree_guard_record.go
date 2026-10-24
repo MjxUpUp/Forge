@@ -1,6 +1,8 @@
 package hookdispatch
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -79,4 +81,37 @@ func recordTreeGuardBlock(root, taskRef, sessionID, anchor string) {
 	}
 	_ = os.MkdirAll(filepath.Dir(marker), 0o755)
 	_ = util.AtomicWrite(marker, []byte("1"), 0o644)
+}
+
+// announceDeadAnchor 打印一次死锚告警（按会话+任务+锚路径节流）。
+//
+// 为什么需要节流：一次 Write|Edit 会依次经过 freeze-guard、task-guard、
+// assertion-check、read-before-edit 四个 hook，它们都走到同一个错树解析点；不节流
+// 就是同一条 stderr 连打四遍，噪声会把真正要看的那条埋掉。锚路径进 marker 名，
+// 换了死锚（旧锚被清理、新锚又失效）时还能再提示一次。
+//
+// announceDeadAnchor prints the dead-anchor notice at most once per session+task+anchor:
+// one edit passes through four hooks that reach the same resolution point.
+func announceDeadAnchor(root, taskRef, sessionID, anchor string) {
+	if anchor == "" {
+		return
+	}
+	if root != "" {
+		marker := filepath.Join(forgedata.DataDirFor(root), "markers",
+			"forge-treeguard-deadanchor-"+util.SanitizeSessionID(sessionID)+"-"+
+				util.SanitizeSessionID(taskRef)+"-"+shortDigest(anchor))
+		if _, err := os.Stat(marker); err == nil {
+			return
+		}
+		_ = os.MkdirAll(filepath.Dir(marker), 0o755)
+		_ = util.AtomicWrite(marker, []byte("1"), 0o644)
+	}
+	fmt.Fprint(os.Stderr, deadAnchorWarning(taskRef, anchor))
+}
+
+// shortDigest 取 sha256 前 12 位十六进制。marker 名里不能直接放锚路径：路径共享前缀
+// 且 SanitizeSessionID 会截断/收敛字符，长路径会撞成同一个 marker（换死锚后不再提示）。
+func shortDigest(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:6])
 }

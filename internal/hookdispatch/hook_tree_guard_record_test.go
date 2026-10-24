@@ -1,6 +1,8 @@
 package hookdispatch
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -122,5 +124,47 @@ func TestTreeGuardApplies(t *testing.T) {
 		if got := treeGuardApplies(c.state, c.root, c.filePath, c.toolName); got != c.want {
 			t.Errorf("%s: treeGuardApplies=%v want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// TestAnnounceDeadAnchorThrottled 钉住死锚告警的节流：一次编辑会经过 freeze-guard、
+// task-guard、assertion-check、read-before-edit 四个 hook，同一个死锚不该连打四遍。
+func TestAnnounceDeadAnchorThrottled(t *testing.T) {
+	root := t.TempDir()
+	anchor := filepath.Join(t.TempDir(), "gone-wt")
+
+	stdout1, stderr1, err := captureOutput(t, func() error {
+		announceDeadAnchor(root, "feat/dead", "sess-d", anchor)
+		return nil
+	})
+	_ = stdout1
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr1, "绑定目录已不存在") {
+		t.Fatalf("首次死锚必须告警，got %q", stderr1)
+	}
+
+	_, stderr2, err := captureOutput(t, func() error {
+		announceDeadAnchor(root, "feat/dead", "sess-d", anchor)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stderr2, "绑定目录已不存在") {
+		t.Fatalf("同会话同任务的第二次必须被节流，got %q", stderr2)
+	}
+
+	// 换锚路径（旧锚清理后又坏了一个）必须能再提示一次。
+	_, stderr3, err := captureOutput(t, func() error {
+		announceDeadAnchor(root, "feat/dead", "sess-d", filepath.Join(t.TempDir(), "gone-wt2"))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr3, "绑定目录已不存在") {
+		t.Fatalf("换死锚必须重新告警，got %q", stderr3)
 	}
 }
