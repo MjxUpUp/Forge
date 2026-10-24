@@ -21,10 +21,11 @@ TASK_GATE="${FORGE_TASK_GATE:-}"
 # 的是「任意已知非测试路径」（含 README/docs/.forge），不只源码：在错误的树里改文档与
 # 配置同样会落错分支，而「只拦源码」会让错树里的文档提交绕开守护。代价是错树里连
 # .forge/pipeline.yml 也不可编辑（下面 39-42 的放行在错树时不生效），这是刻意的：先离开
-# 错误的树，再改它的配置。测试文件仍豁免（已知路径时）。
+# 错误的树，再改它的配置。测试文件仍豁免（已知路径时；test 目录必须由路径分隔符包住，
+# 否则 internal/contest/x.go、pkg/latest/x.go 会被当成测试而放行）。
 if [ -n "${FORGE_TASK_OFFTREE:-}" ]; then
   _OFFTEST=0
-  if [ -n "$FILE_PATH" ] && printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)'; then
+  if [ -n "$FILE_PATH" ] && printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|(^|/)(test|tests|__tests__)/)'; then
     _OFFTEST=1
   fi
   if [ "$_OFFTEST" -eq 0 ]; then

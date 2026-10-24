@@ -81,6 +81,29 @@ func TestTaskGuardHookOffTreeDenies(t *testing.T) {
 		t.Fatalf("空 FILE_PATH 的错树阻断必须指出错树：\n%s", pout)
 	}
 
+	// 测试豁免必须按**路径段**判，不能按子串：正则里裸 `test/` 会命中
+	// internal/contest/、pkg/latest/ —— 错树时真实源码写入被当成测试文件放行，
+	// fail-closed 就出现了一个只有改目录名才能触发的洞。
+	for _, path := range []string{"internal/contest/x.go", "pkg/latest/x.go", "internal/latest.go"} {
+		cov, ccode := run(map[string]string{
+			"FORGE_FILE_PATH":    path,
+			"FORGE_TASK_OFFTREE": filepath.Join(dir, "elsewhere"),
+		})
+		if ccode != 1 {
+			t.Errorf("错树里写 %s 必须 exit 1（路径里出现 test 字样不等于测试文件），got exit=%d\n%s", path, ccode, cov)
+		}
+	}
+	// 而真正的测试路径仍必须豁免，否则错树里连测试都写不了。
+	for _, path := range []string{"internal/cli/review_test.go", "test/e2e_x.go", "internal/x/tests/helper.go"} {
+		tov, tcode := run(map[string]string{
+			"FORGE_FILE_PATH":    path,
+			"FORGE_TASK_OFFTREE": filepath.Join(dir, "elsewhere"),
+		})
+		if tcode != 0 {
+			t.Errorf("已知测试路径 %s 必须豁免，got exit=%d\n%s", path, tcode, tov)
+		}
+	}
+
 	// 非源码的已知路径也在错树拦截面内（docs/design/task-tree-guard.md §4）：判定发生在
 	// .forge/ 保护与源码后缀过滤之前，所以在错误的树里改文档、改项目配置同样被拦——
 	// 否则「只拦源码」会给错树里的文档提交留一条绕行路。这条断言钉住的是**面**而不是
