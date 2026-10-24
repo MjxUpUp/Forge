@@ -41,10 +41,7 @@ forge trace feat/demo           # 查看任务的完整证据链
 
 ## 🎯 它补的是哪一层
 
-AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再写。这个循环由 coding agent（Claude Code、Codex、Cursor）驱动，**Forge 不替代循环本身**，只补上循环最容易缺的两层：
-
-- **验证层** —— 每一轮产出物经门禁检验：编译通过、断言没被弱化、改代码前确实读过代码、文件未被绕道篡改、高危操作经人确认。循环跑得越快，越需要自动化验证兜底。
-- **状态层** —— 跨循环的任务状态：3 道门禁（实现 → 验证 → 完成）、活跃任务追踪、门禁历史。「做到哪了 / 是否达标」有持久化、可审计的记录，而不是只活在 agent 的上下文里（上下文一压缩就丢）。
+AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再写。这个循环由 coding agent（Claude Code、Codex、Cursor）驱动，**Forge 不替代循环本身**，只补上循环最容易缺的两层：**验证层**（每一轮产出物经门禁检验）与**状态层**（跨循环的任务状态与门禁历史——上下文一压缩就丢的那种）。
 
 Forge 是 deterministic 的——范围是 "deterministic where code can verify"：行为与意图的正确性留给 review 和人。判据与证据链归产品而非模型厂商，所以这一层不随模型代际贬值；模型变强时该删的是脚手架，不是传感器。
 
@@ -75,8 +72,6 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
                 📊 质量评分 + deterministic 证据链
 ```
 
-每轮 AI 编码循环都被门禁兜底：编译是否通过、断言有没有被弱化、改代码前是否真读过、文件有没有被绕道篡改——循环跑得越快，越需要自动化验证，而不是靠人盯着。
-
 ## ✨ 核心能力
 
 <table>
@@ -85,26 +80,22 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
     <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>27 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
   </tr>
   <tr>
-    <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。Agent 无法经 bash 绕道篡改。</td>
+    <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。活跃任务内，Agent 无法经 bash 绕道篡改。</td>
     <td valign="top"><strong>📊 质量评分</strong><br/>每个任务完成后自动评分，量化 AI 编码质量；deterministic 证据链可审计。</td>
   </tr>
 </table>
 
 ## 🚀 快速开始
 
-需要 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) 已安装。
+先装二进制（唯一权威步骤见下方 [📦 安装](#-安装)），然后在项目目录：
 
 ```bash
-# 安装
-npm install -g @agent_forge/forge
-
-# 在项目目录初始化（默认零项目写入）
 cd your-project
-forge init
-
-# 在 Claude Code 中开始工作
-# AI 会自动读取 Forge 生成的 Skill 并驱动门禁流程
+forge init      # 默认零项目写入，全部资产落在用户级
+# 回到 Claude Code 继续工作：AI 会自动读取 Forge 生成的 Skill 并驱动门禁流程
 ```
+
+主路径是 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)——hooks 经它的 Hook 机制接线；Codex、Cursor、Windsurf、dsh 等 12 种宿主同样支持（接线差异见 [plugins/forge/README.md](plugins/forge/README.md) 与 [中文 README](READMEs/README.zh-CN.md)）。
 
 `forge init` **不在项目目录写任何文件**（不会被 git add 误提交），全部资产落在用户级：
 
@@ -142,7 +133,7 @@ forge init
 | `forge trace <ref>` / `forge health` / `forge dashboard` | 证据链时间线 / 质量趋势 / 全局看板（Pulse） |
 | `forge doctor` / `forge status` | 环境一致性审计 / 项目状态 |
 
-其余命令族（`skills`、`eval`、`act`、`workspace`、`project`、`registry`、`harness`、`compat`、`plugin`、`conventions`、`policy`、`enforcement`、`selfcheck`、`sync`、`migrate`、`uninstall`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`）见同一份[完整命令表](docs/reference/cli.md)。
+其余命令族（`skills`、`eval`、`act`、`workspace`、`project`、`registry`、`harness`、`compat`、`plugin`、`conventions`、`policy`、`enforcement`、`selfcheck`、`sync`、`migrate`、`uninstall`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`、`verify`、`trust`）见同一份[完整命令表](docs/reference/cli.md)。
 
 ## 🪝 Hook 系统
 
@@ -160,9 +151,9 @@ Layer 3: 会话结束验证
   └─ task-verify: 检查任务完成度 + 主分支保护 + 自身版本
 ```
 
-Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。
+活跃任务内，Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。**没有活跃任务时 task-guard 只给 WARN 提示，不是硬墙**；有任务才按门禁语义拦截。
 
-27 个内置 Hook 的完整清单（触发时机 + 职责 + 各自的逃生开关）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
+27 个内置 Hook 的完整清单（触发时机、职责与各自的逃生开关，均写在功能列里）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
 
 ## 📦 安装
 
@@ -206,7 +197,8 @@ npm install -g @agent_forge/forge
 1. **门禁先行** —— 任何源码变更走 `forge task` 三门禁（implement → verify → complete），不经任务的改动不被质量评分追踪。
 2. **注释双语** —— Go godoc 采用形式 A（英文段 → 空 `//` → 中文段），中文不删、不单语；行内注释与字符串字面量不动。
 3. **审查闭环** —— 提交前派独立只读子 agent 跑 code-review-gate 双轨（AI 作弊 + 工程规范），`forge review pass` 标记后才能过 task-complete 门禁。
-4. **提交纪律** —— 只提交源码变更；排除 `docs/`、设计文档、`.claude/`、`.forge/` 工作目录。
+4. **提交纪律** —— 提交源码与手维护文档（`docs/reference/`、`docs/design/` 下的参考文档是
+   测试硬依赖，缺文件整包测试直接红，必须入库）；排除 `.claude/`、`.forge/` 等生成物与临时工作目录。
 
 详见质量协议（由 `forge init` 生成到用户级 `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`；生成器源码在 `internal/skillgen/`）。
 

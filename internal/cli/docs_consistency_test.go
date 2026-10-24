@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
+	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 )
 
@@ -153,6 +155,29 @@ func TestReadme_CoversAllTopLevelCommands(t *testing.T) {
 	}
 }
 
+// TestCliReference_CoversAllTopLevelCommands 守卫 B'（拆家后的逐文件完备性）。
+// 守卫 B 判的是 README∪cli.md 并集，单看并集有个洞：把某个命令从 cli.md 删掉、只在根
+// README 速查里留一行，CI 不会响——本仓库实测 38 个非隐藏顶层命令里有 17 个可由 README
+// 单独满足。命令表搬到 docs/reference/cli.md 后，**这一份才是"完整"的那份**，它的完备性
+// 不能靠并集兜底，否则"完整命令参考"会慢慢退化成第二份速查表。
+func TestCliReference_CoversAllTopLevelCommands(t *testing.T) {
+	path := filepath.Join(repoRoot, "docs/reference/cli.md")
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	s := string(body)
+	for _, c := range rootCmd.Commands() {
+		name := c.Name()
+		if c.Hidden || name == "help" || name == "completion" {
+			continue
+		}
+		if !strings.Contains(s, "forge "+name) {
+			t.Errorf("docs/reference/cli.md 缺顶层命令 `forge %s`（本文是完整命令参考，新命令组须在此有行，不能只出现在根 README 速查）", name)
+		}
+	}
+}
+
 // flagDocGrandfather 钉住故意不进根 README 的 flag（棘轮基线，与
 // skillRefAllowlist 同哲学）。README 是命令参考而非穷尽式 flag 手册——这里
 // 大多是子命令细节 flag。不在此表的 flag 必须出现在根 README（守卫 D）——
@@ -200,10 +225,12 @@ var flagDocGrandfather = map[string]bool{
 }
 
 // TestReadme_NewFlagsAreDocumented 守卫 D（棘轮）：不在 flagDocGrandfather 里的
-// 非隐藏 flag 必须出现在根 README。2026-08 user-level-assets 缺口的根治：
-// `init --project` 与 `uninstall --restore` 零文档上线——守卫 A/B 只查命令
-// 引用不查 flag 层，drift 直接穿过。存量未文档 flag 已豁免进基线（README
-// 不是穷尽式 flag 手册）；守卫只强制新增 flag 做文档决策。
+// 非隐藏 flag 必须出现在「根 README ∪ docs/reference/cli.md」这一用户可见文档面。
+// 2026-08 user-level-assets 缺口的根治：`init --project` 与 `uninstall --restore`
+// 零文档上线——守卫 A/B 只查命令引用不查 flag 层，drift 直接穿过。存量未文档 flag
+// 已豁免进基线（文档面不是穷尽式 flag 手册）；守卫只强制新增 flag 做文档决策。
+// 判定粒度是文档面级子串，不是「同一条命令行内」：AllFlags 只返回叶子命令名（不含
+// 命令路径），要按行/命令绑定需先扩 docsconsistency 共享包 API，属独立变更。
 func TestReadme_NewFlagsAreDocumented(t *testing.T) {
 	var sb strings.Builder
 	for _, p := range readmeDocs() {
@@ -306,6 +333,24 @@ var skillRefAllowlist = map[string]bool{
 	`design-audit`: true, `ui-iteration-feedback-loop`: true,
 }
 
+// skillRefDocs 是守卫 C（skill 断链）的文档集：canonical skill 两棵树 + 两份用户入口
+// README。**不含 docs/reference/**——那两份是命令/flag 参考，通篇 kebab 术语
+// （heldout-pool、data-dir、checklog、各 hook 名），喂进"多段反引号 token 必须是真 skill"
+// 的判定后，后续任何 `foo-bar` 都会报"skill 断链"，而报文指向 skills/（与作者实际改的
+// 文档无关）。这两份文档由守卫 A/B/B'/D 负责，命令层的 drift 已被机械钉住。
+func skillRefDocs(t *testing.T, docs []string) []string {
+	t.Helper()
+	refPrefix := filepath.Join(repoRoot, "docs", "reference") + string(filepath.Separator)
+	out := make([]string, 0, len(docs))
+	for _, d := range docs {
+		if strings.HasPrefix(d, refPrefix) {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
 // TestSkills_NoDanglingSkillRefs 守卫 C：canonical skill 文档里每个反引号多段 kebab token
 // 必须是真 skill（在 canonical 集）或人工确认非 skill（在 skillRefAllowlist）。单段 token
 // （工具/关键字）豁免——见 DanglingSkillRefs 文档。这是 2026-07 frontend 断链回归的根治
@@ -326,7 +371,7 @@ func TestSkills_NoDanglingSkillRefs(t *testing.T) {
 		}
 	}
 	bt := string(rune(0x60)) // 反引号，绕过双引号腐蚀
-	for _, file := range guardedDocs(t) {
+	for _, file := range skillRefDocs(t, guardedDocs(t)) {
 		body, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatalf(`read %s: %v`, file, err)
@@ -351,5 +396,68 @@ func TestCanonicalSkillNamesAreMultiSegment(t *testing.T) {
 		if !strings.Contains(n, "-") {
 			t.Errorf(`canonical skill %q 是单段名——DanglingSkillRefs 单段豁免会漏抓其断链；调整守卫策略`, n)
 		}
+	}
+}
+
+// TestHooksDoc_MatchesHookSpec 守卫 E：Hook 清单与"N 个内置 Hook"计数必须与真相源
+// internal/hooks/settings.go 的 ForgeHookSpec() 对齐。Hook 表 2026-10 从根 README 搬到
+// docs/reference/hooks.md 后存在两处静默面：(1) internal/cli/cli_test.go 只断言 .sh 脚本
+// 数 == len(HookNames())，9 个 Go 原生 hook 与表行数之间没有任何守卫；(2) 计数在这三处
+// 各自漂移过（README 27 / npm 22 / zh 19）——新增或删除 hook 不会让 CI 响，只有人读文档
+// 时才会发现。表行首列形如 `| **task-guard** | Write/Edit 前 | …`。
+func TestHooksDoc_MatchesHookSpec(t *testing.T) {
+	truth := make(map[string]bool)
+	for _, matchers := range hooks.ForgeHookSpec() {
+		for _, m := range matchers {
+			for _, h := range m.Hooks {
+				if name, ok := strings.CutPrefix(h.Command, "forge hook "); ok {
+					truth[name] = true
+				}
+			}
+		}
+	}
+	if len(truth) == 0 {
+		t.Fatal("ForgeHookSpec() 里没有 `forge hook <name>` 条目——真相源结构变了，改写本守卫而不是放行")
+	}
+
+	docPath := filepath.Join(repoRoot, "docs/reference/hooks.md")
+	body, err := os.ReadFile(docPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", docPath, err)
+	}
+	inDoc := make(map[string]bool)
+	for _, line := range strings.Split(string(body), "\n") {
+		rest, ok := strings.CutPrefix(line, "| **")
+		if !ok {
+			continue
+		}
+		if i := strings.Index(rest, "**"); i > 0 {
+			inDoc[rest[:i]] = true
+		}
+	}
+	for name := range truth {
+		if !inDoc[name] {
+			t.Errorf("docs/reference/hooks.md 缺 Hook `%s`（ForgeHookSpec() 注册了它；新增 hook 须进完整清单）", name)
+		}
+	}
+	for name := range inDoc {
+		if !truth[name] {
+			t.Errorf("docs/reference/hooks.md 列了 Hook `%s`，但 ForgeHookSpec() 没注册（已删 hook 的陈旧行）", name)
+		}
+	}
+
+	// 计数声明同样钉住：数字漂移过三次，且分布在三份文档里，人眼扫不出来。
+	want := fmt.Sprintf("%d 个内置 Hook", len(truth))
+	for _, p := range []string{"README.md", "npm/README.md"} {
+		b, err := os.ReadFile(filepath.Join(repoRoot, p))
+		if err != nil {
+			t.Fatalf("read %s: %v", p, err)
+		}
+		if !strings.Contains(string(b), want) {
+			t.Errorf("%s 缺计数声明 %q（真相源：ForgeHookSpec() 注册 %d 个 hook）", p, want, len(truth))
+		}
+	}
+	if !strings.Contains(string(body), want) {
+		t.Errorf("docs/reference/hooks.md 缺计数声明 %q（真相源：ForgeHookSpec() 注册 %d 个 hook）", want, len(truth))
 	}
 }

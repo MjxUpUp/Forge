@@ -67,7 +67,7 @@ forge trace feat/demo           # 查看证据链
 
 ```bash
 forge task start --ref feat/xxx --branch --title "描述"   # 建任务 + 分支
-# AI 工作（19 个 hook 自动守：task-guard / read-before-edit / bash-guard / file-sentinel ...）
+# AI 工作（27 个 hook 自动守：task-guard / read-before-edit / bash-guard / file-sentinel ...）
 forge task gate task-implement    # 门禁1：实现（编译 / 断言 advisory 自检）
 forge task gate task-verify       # 门禁2：验证（测试伴随变更）
 forge task gate task-complete     # 门禁3：完成确认
@@ -76,7 +76,7 @@ forge task score                  # 质量评分
 ```
 
 
-`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge off [--all] | on` 按项目退出/恢复接管（declined 不被 FORGE_AUTO_INIT/plugin 自动接管穿透）；`forge config get/set takeover` 管接管偏好（ask/auto/off）；`forge policy state|yield` 快查状态/外来 harness 让位。详见根 README 命令参考表。
+`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge off [--all] | on` 按项目退出/恢复接管（declined 不被 FORGE_AUTO_INIT/plugin 自动接管穿透）；`forge config get/set takeover` 管接管偏好（ask/auto/off）；`forge policy state|yield` 快查状态/外来 harness 让位。详见[完整命令参考](../docs/reference/cli.md)。
 
 ## 卸载
 
@@ -98,4 +98,4 @@ Forge 为 12 个宿主落地接线：Claude Code / Codex / Cursor / Copilot / Ki
 
 ## 与英文版的差异
 
-英文根 README 涵盖：分层定位（Loop Engineering 验证 / 状态）、任务级门禁（实现 → 验证 → 完成）、`verify-acceptance` 验收标准、`--scope` 规划前置白名单、score 评分等。本中文精简版只覆盖国内用户最关心的安装 + 日常 + 多宿主，请参考英文原文获取完整功能索引。
+英文根 README 涵盖：分层定位（Loop Engineering 验证 / 状态）、任务级门禁（实现 → 验证 → 完成）、`verify-acceptance` 验收标准、score 评分等；`--scope` 规划前置白名单等逐条 flag 语义见[完整命令参考](../docs/reference/cli.md)。本中文精简版只覆盖国内用户最关心的安装 + 日常 + 多宿主，请参考英文原文获取完整功能索引。

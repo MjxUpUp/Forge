@@ -1,10 +1,11 @@
 # 命令参考（完整）
 
 > 这是从根 README 拆出来的**完整**命令表：每个命令、flag、逃生舱与门禁语义都在这里。
-> 根 README 只保留高频速查，避免新用户被 150 行内部语义挡住。
+> 根 README 只保留高频速查，避免新用户一上来就被成百行命令细节挡住。
 >
-> 完整性由 CI 守卫（`internal/cli/docs_consistency_test.go`）：每个顶层命令、每个新增
-> 用户可见 flag 都必须在本文出现，否则 `go test ./internal/cli` 会挂。
+> 完整性由 CI 守卫（`internal/cli/docs_consistency_test.go`）：每个顶层命令都必须在本文
+> 有一行（`TestCliReference_CoversAllTopLevelCommands`）；每个新增用户可见 flag 必须在本文
+> 或根 README 出现，否则 `go test ./internal/cli` 会挂。
 
 ---
 
@@ -16,7 +17,7 @@
 | `forge init` | 初始化项目（默认**零项目写入**：登记全局注册表 `~/.forge/projects.json`，hooks/指令/skill 全在用户级，protocol.yml + runtime state 在 `~/.forge/projects/<key>/`；`--project` 团队模式把指令资产写项目目录供 git 共享；旧的 `--mode` 标志已废弃为 no-op） |
 | `forge status [--json] [--system]` | 查看项目状态（任务管道 + 质量信号）；`--system` 跑系统级健康检查（~/.forge、PATH、孤儿 hook、skills manifest） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
-| `forge update [--apply] [--plugin]` | 检查并更新到最新版本（按安装通道分流：npm 安装自动检测包管理器 npm/pnpm/yarn，查 npm registry 并打印对应更新命令——npm 包不可变，原地替换会被下次 install 还原，故不代下载，可用 `FORGE_NPM_REGISTRY` 覆盖 registry；GitHub Release/手动安装从 GitHub 下载自替换）；npm 通道加 `--apply` 直接代跑包管理器安装命令并自验新版本（发布流程硬化 2026-09：打印的命令 ≠ 装上的版本——发布者本机曾停在旧版直到人工质疑；Windows 运行中二进制被锁，提示手动命令）；加 `--plugin` 在更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
+| `forge update [--apply] [--plugin]` | 检查并更新到最新版本（按安装通道分流：npm 安装自动检测包管理器 npm/pnpm/yarn，查 npm registry 并打印对应更新命令——npm 包不可变，原地替换会被下次 install 还原，故不代下载，可用 `FORGE_NPM_REGISTRY` 覆盖 registry；GitHub Release/手动安装从 GitHub 下载自替换）；npm 通道加 `--apply` 直接代跑包管理器安装命令并自验新版本（Windows 下二进制被占用时只打印命令）；加 `--plugin` 在更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
 | `forge off [--all] [--commit]` 或 `forge on` | 按项目退出/恢复接管（Project Policy Layer）：`off` 把当前项目（git 根）置为 declined——项目级 hook 全部静默、`forge init`/`FORGE_AUTO_INIT`/自动接管拒绝（退出不被任何默认路径重置）；`--all` 一键全退；`--commit` 额外在仓库根写 `.forge-decline` 团队声明（committed 后对所有协作者让位，deny-wins）；`on` 是 declined→managed 的唯一恢复通道（清标记与声明文件，从未 init 的项目提示先 `forge init`）。状态存注册表条目（含决策来源/时间审计），`forge status` 退出码即「是否 managed」 |
 | `forge config get/set takeover` | 用户级接管偏好（`~/.forge/config.json`）：**ask（出厂默认）**每项目首次接触询问一次；**auto** 静默接管全部 git 项目（P2 之前的行为；declined 与外来 harness 让位仍生效）；**off** 不接管不询问。env 覆盖：`FORGE_TAKEOVER=ask\|auto\|off`（legacy `FORGE_AUTO_INIT=1` ≡ auto）；`--raw` 只输出值供脚本消费 |
 | `forge policy state` / `forge policy yield` | 接管策略快查/外来 harness 让位：`state` 打印当前目录三态（managed\|declined\|unknown，退出码恒 0，init-suggest bash 以此分流）；`yield` 检测外来 harness 高置信信号（`.specify/`、`.claude/commands`、`.claude/settings.json` 含 hooks/permissions、`.cursor/rules`——单一真相源 internal/harnessdetect），命中即让位（declined, by=foreign-harness）并打印说明，`forge on` 显式覆盖 |
@@ -173,7 +174,7 @@
 | `forge freeze --off` | 解除 freeze（幂等） |
 | `forge freeze --status` | 查看当前 freeze 状态 |
 
-**Act 反馈臂（证据驱动结论）**：`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `~/.forge/projects/<项目key>/act/conclusions.jsonl`，喂给 `session-retrospective`。证据弱（Unverified/Weak）或低分（<70）的结论标 RetrospectiveNudge——对冲"高分但没真验证"的 LLM-judge 盲区。
+**Act 反馈臂（证据驱动结论）**：`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `~/.forge/projects/<项目key>/act/conclusions.jsonl`，供回顾流程消费（`forge act show` 可查）。证据弱（Unverified/Weak）或低分（<70）的结论标 RetrospectiveNudge——对冲"高分但没真验证"的 LLM-judge 盲区。
 
 | 命令 | 说明 |
 |------|------|

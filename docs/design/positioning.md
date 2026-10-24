@@ -16,7 +16,7 @@ AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再
 
 代码可执行（executable）是编码域相对研究/对话域的结构性优势——跑一遍 test / lint / compiler 拿到的退出码是**事实**，模型自评只是**概率判断**。Forge 的门禁尽量把判定交给确定性检查器，而非 LLM-as-judge：
 
-- **分层共识**（"If code can verify it, don't ask an LLM to judge it"）：LLM 审查作 advisory，deterministic build/test 作 hard gate。 Sonar 的 AC/DC（Agent Centric Development Cycle）是 Guide→Verify→Solve 三段闭环——同一确定性引擎前移进 agent 内环做 maker-checker 分离。
+- **分层共识**（"If code can verify it, don't ask an LLM to judge it"）：LLM 审查作 advisory，deterministic build/test 作 hard gate。 Sonar 的 AC/DC（Agent Centric Development Cycle）是 Guide→Verify→Solve 三段闭环；同一确定性引擎被前移到 agent 内环，做 maker-checker 分离。
 - **Code-as-Harness 宣言**（arXiv:2605.18747）：「termination should be governed by verification rather than by model confidence」——结束条件由验证决定，不由模型自信度决定。
 - **反直觉但关键**：模型越强、自主循环越长，越需要非模型的客观检查兜底——产出越快，无人复核的代码就越多；门禁是把吞吐量从 liability 变回 leverage 的那一个组件。
 
