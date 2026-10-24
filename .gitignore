@@ -66,3 +66,7 @@ vendor/
 .zcode/
 tmpwebapp-*.log
 evals/forge/golden/candidates/
+
+# 本地取证/探针脚本与临时笔记（不入库；勿被 review gate 算作未审变更）
+.tmp/
+.tmp_*
