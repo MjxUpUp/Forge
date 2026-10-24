@@ -25,10 +25,10 @@
 
 | 目标 | 验收条件 |
 |---|---|
-| G1 错树写源码被拦 | 任务有活 binding 锚在另一棵树、当前 cwd 不是锚 → 源码写入被 task-guard 拒绝（exit 1，指名锚路径与三条正当出路） |
-| G2 三个门禁同判据 | task-implement / task-verify / task-complete 在错树状态下 BLOCK，`forge task status` 明确展示状态 |
+| G1 错树写入被拦 | 任务有活 binding 锚在另一棵树、当前 cwd 不是锚 → **任意已知非测试路径**的写入被 task-guard 拒绝（exit 1，指名锚路径与三条正当出路）；空 `FILE_PATH`（patch 工具路径合成失败）同样拒绝 |
+| G2 三个门禁同判据 | task-implement / task-verify / task-complete 在错树状态下 BLOCK（走 `taskpipeline.GateBlocked` 契约，compat 的 blockings 面可见），`forge task status` 明确展示状态 |
 | G3 正当事先被提示 | 错树时 hookdispatch 注入 `FORGE_TASK_WORKTREE=<锚路径>`，拒绝文案据此给出三条出路；死锚在**编辑类调用时**打 advisory（带 `file_path` 的调用或 patch 类工具才判定，Read/Bash 不重复；同一会话+任务+锚只提示一次——一次编辑会经过 freeze-guard/task-guard/assertion-check/read-before-edit 四个 hook；不改 cwd，不代跑） |
-| G4 放行面不扩散 | 死锚（目录已删）、多锚任一命中、测试文件、无任务、`binding` 未启用 → 一律不阻断；死锚打 stderr advisory，其余四种静默 |
+| G4 放行面不扩散 | 死锚（目录已删）、多锚任一命中、**已知路径的**测试文件、无任务、`binding` 未启用 → 一律不阻断；死锚打 stderr advisory，其余四种静默。空 `FILE_PATH` 时无「是不是测试文件」可判，按 G1 阻断 |
 
 ### 1.2 非目标
 
@@ -62,8 +62,8 @@
 
 | 层 | 位置 | 行为 |
 |---|---|---|
-| 写入 | `internal/hooks/embed_task.go`（task-guard 脚本） | 读 hookdispatch 注入的 `FORGE_TASK_OFFTREE=<anchor>`：命中即 `FAIL [task-guard] …（exit 1）`；`.forge/**`、测试文件、无任务分支保持原逻辑。hookdispatch 同时落一条 `tree-guard` 行（按会话+任务节流） |
-| 门禁 | `internal/clitask/task_gate.go:runTaskGate` | `off-tree` → `ExecuteTaskGate` 前直接 BLOCK，reason 含锚路径与 `forge worktree use` 提示，并落一条 `tree-guard` 行（每次 BLOCK 一条） |
+| 写入 | `internal/hooks/embed_task.go`（task-guard 脚本） | 读 hookdispatch 注入的 `FORGE_TASK_OFFTREE=<anchor>`：命中即 `FAIL [task-guard] …`（exit 1）。该分支位于 `.forge/` 保护与源码后缀过滤**之前**，因此拦截面是**任意已知非测试路径**（`README.md`、`docs/**`、`.forge/pipeline.yml` 一并阻断），空 `FILE_PATH` 也阻断——在错误的树里改文档/配置同样会落错分支。测试文件（已知路径）与无任务分支保持原逻辑。hookdispatch 同时落一条 `tree-guard` 行（按会话+任务节流） |
+| 门禁 | `internal/clitask/task_gate.go:runTaskGate` | `off-tree` → `ExecuteTaskGate` 前直接 BLOCK（`taskpipeline.GateBlocked`），reason 含锚路径与 `forge worktree use` 提示，并落一条 `tree-guard` 行（每次 BLOCK 一条） |
 | 展示 | `forge task status` | 状态表增一行 `Tree: off-tree（锚：<path>——…）`；`dead-anchor` 单独一行 |
 | 提示 | `internal/hookdispatch/hook.go`（tool hook 前） | 注入 `FORGE_TASK_OFFTREE` + `FORGE_TASK_WORKTREE=<anchor>`（仅编辑类调用：带 `file_path`，或 patch 工具即使路径合成失败也判）；死锚按会话+任务+锚节流一次 |
 
@@ -83,8 +83,10 @@ guard 脚本不自己 spawn `forge`（避免每次编辑多一次进程）；判
   评分侧按既有逃生舱规则把任务记 `capped`——判定在 `internal/taskpipeline/scoring.go:266-278`
   （`usedAnyOverride`/`taskEscapeHatchRecorded` 定义在 `internal/taskpipeline/overrides.go:49`/`:58`；两者任一为真且超出 `escapeCapMaxScore` 即封顶并写 `CappedReason`），
   `internal/clitask/task_complete.go` 的逃生舱库存打印只是把同一台账行展示出来；证据强度侧另有
-  `internal/checklog/evidence.go` 的 `EscapeDowngradedStrength` 降档——
-  所以「关门禁会被扣分」是真的，不是文案。两层都记：关闭后 guard 脚本整个跳过判定，只有 hookdispatch
+  `internal/checklog/evidence.go` 的 `EscapeDowngradedStrength` 降档——但**不是无条件降档**：逃生比 ≥
+  `escapeCapRatioFloor` 且 deterministic 条数 ≥ `escapeCapEvidenceFloor` 时强度仍记 strong（重证据的边际逃生），
+  此时只有分数被封顶。所以准确说法是「关门禁必然封顶分数，强度是否降档取决于逃生占比」。
+  两层都记：关闭后 guard 脚本整个跳过判定，只有 hookdispatch
   那条能让「只编辑、不推门禁」的会话留下痕迹。
 - 死锚 advisory **不写 checklog**（按会话+任务+锚节流一次，避免四个 hook 各打一遍）：只出现在 stderr 与 `forge task status` 展示里。
 
@@ -110,7 +112,7 @@ guard 脚本不自己 spawn `forge`（避免每次编辑多一次进程）；判
 | 3 | 锚目录已删 → `dead-anchor` 且**不阻断**（断言状态与 AnchorPath，不只看状态名） | `TestTaskTreeStatus_States` |
 | 4 | 多锚任一命中即放行 | `TestTaskTreeStatus_States`（多锚段：两棵树都有活锚时任一命中放行） |
 | 5 | 错树时门禁 BLOCK，且拒绝文案给出 `cd <锚>`、`forge worktree use`、`FORGE_TASK_TREE_GUARD=0` 三条出路 | `TestTaskGate_OffTreeBlocks`（三条文案均断言） |
-| 6 | 错树时 guard 拒绝源码写入、放行测试文件 | `TestTaskGuardHookOffTreeDenies` |
+| 6 | 错树时 guard 拒绝写入（已知非测试路径含源码与 README/docs/.forge 配置，空路径也拒）、放行**已知路径的**测试文件 | `TestTaskGuardHookOffTreeDenies`（源码 + README/docs/pipeline.yml + 空路径 + `_test.go` 五段） |
 | 7 | `forge worktree use` 迁移锚后放行 | `TestWorktreeUse_Rebinds` |
 | 8 | 链定义变化使审批 stale；行尾差异不算变化 | `TestChainDigestStale`、`TestDigest_StableAndSensitive` |
 | 9 | 关闭开关是显式 env（`=0` 才关） | `TestTreeGuardDisabled_Env` |
@@ -132,9 +134,9 @@ go test ./internal/worktree ./internal/taskpipeline ./internal/clitask ./interna
 
 ## 8. 风险与回滚
 
-- **误判风险**：用户在锚树之外合法地读/跑测试 → 不拦（只拦源码写入与门禁）。若某类工作确需在主树写源码，出口是 `forge worktree use`（显式迁移）或 `FORGE_TASK_TREE_GUARD=0`（留审计、评分 capped）。
+- **误判风险**：用户在锚树之外合法地读、跑测试、`git` 操作 → 不拦（只拦写入工具对已知非测试路径的写入与门禁）。若某类工作确需在别的树写，出口是 `forge worktree use`（显式迁移）或 `FORGE_TASK_TREE_GUARD=0`（留审计、评分 capped）。
 - **性能**：`Anchors` 每个 `workspaces/*.json` 一次读，典型 <5 个文件；hookdispatch 在编辑类调用上各一次（`TaskTreeStatus` 只 stat 锚目录）。写入层不新增 `forge` 进程——判定在已有的 hook dispatch 里完成，guard 脚本只读环境变量。
-- **回滚**：本批在分支上是六个提交（`b90c8d0e` 功能、`b01defaa` 补测、`99f78efb` 留痕与文案校准、`e50701ec` checklog/compat 配对测试、`9eff25d7` 作用域收窄、`3e18234c` patch 工具覆盖），squash 合并后是一次 revert；若在分支上单独回退，须一并回退测试提交，否则留下编译不过的测试。
+- **回滚**：本批在分支上是七个提交（`b90c8d0e` 功能、`b01defaa` 补测、`99f78efb` 留痕与文案校准、`e50701ec` checklog/compat 配对测试、`9eff25d7` 作用域收窄、`3e18234c` patch 工具覆盖、`57146058` 空路径阻断与死锚节流），squash 合并后是一次 revert；若在分支上单独回退，须一并回退测试提交，否则留下编译不过的测试。
 - **关开关 ≠ 回到 v1.84.2**：`FORGE_TASK_TREE_GUARD=0` 只关「阻断」，不关观测——`forge task status` 仍会打 `Tree: off-tree` 行、hookdispatch 仍写一条 `escape-hatch` 行、评分仍按逃生舱 capped。真正回到旧行为要把代码回退，开关只买「这次不阻断、但要付审计与分数」。
 
 ## 9. 改动面

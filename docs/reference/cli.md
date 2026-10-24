@@ -45,7 +45,7 @@
 | `forge workspace status <name>` | 读侧聚合：按 key 扫描各成员仓活跃任务（ref/gate 进度/branch）；单个成员坏了告警跳过，绝不让整视图空白 |
 | `forge workspace doctor [--json]` | 检出清单 drift（全部 advisory 不阻断）：成员 key 未注册 / 缓存路径缺失或与 registry 现路径分叉 / 一 key 属多个 workspace / 空 workspace / 跨仓任务依赖环（dep-cycle，点名完整 key:ref 环序列供人工摘边） |
 | `forge worktree janitor` | worktree 生命周期清理：只清理【任务已完成或超期 14d 且工作树干净】的 workspace（脏的只报告——免删除条款，绝不自动删有未提交工作的 worktree）；路径已消失的死锚绑定无条件清除。多任务并发的磁盘上界管理 |
-| `forge worktree use [--ref <ref>]` | 把任务重新锚到当前树（错树守护的正当出口）：任务有活 worktree 锚在别的树时，guard 与源码级门禁都 fail-closed；`use` 在当前目录重建绑定并把 active 指针指过来（默认取当前会话解析出的活跃任务）。旧锚一并解绑 |
+| `forge worktree use [--ref <ref>]` | 把任务重新锚到当前树（错树守护的正当出口）：任务有活 worktree 锚在别的树时，guard（任意已知非测试路径的写入，含 README/docs/.forge 配置）与三个 task gate 都 fail-closed；`use` 在当前目录重建绑定并把 active 指针指过来（默认取当前会话解析出的活跃任务；`--ref` 显式指定，解析不到任务或任务已完成都直接报错而不是静默迁移）。旧锚一并解绑，输出实际迁走的锚数 |
 | `forge harness init [--from-existing] [--remote <url>] [--yes]` | 建立研发控制面仓库（multi-task-concurrency T6）：把用户级 `~/.forge` 变成私有 git 仓库——tasks/checklog/archive 入库获 git 史，stamps/hazards（信任锚）/workspaces/attribution（机器本地）/会话簿记 gitignore 永不外发。HITL：交互确认仅在终端（TTY）进行——agent 经 Bash 调用无 TTY 被拒（agent 不得代批）；`--yes` 仅脚本化 CI 逃生口；`--from-existing` 给存量 DataDir 做一次基线提交（不重写数据） |
 | `forge harness status` | harness repo 状态：未建立 / 本地 / 已连远端 + 近期提交 + 未提交计数 |
 | `forge harness push [--yes]` | 推送 harness repo 到私有远端（首推是独立外发 HITL——数据出境清单：tracked 类别 / 永不外发类别 / 远端必须私有；凭据走你自己的 git credential helper，forge 不持有凭据）；后续 push 常规。`--yes` 仅脚本化 CI |

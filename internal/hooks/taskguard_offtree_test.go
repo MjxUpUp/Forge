@@ -80,6 +80,20 @@ func TestTaskGuardHookOffTreeDenies(t *testing.T) {
 	if !strings.Contains(pout, "锚在另一棵树") {
 		t.Fatalf("空 FILE_PATH 的错树阻断必须指出错树：\n%s", pout)
 	}
+
+	// 非源码的已知路径也在错树拦截面内（docs/design/task-tree-guard.md §4）：判定发生在
+	// .forge/ 保护与源码后缀过滤之前，所以在错误的树里改文档、改项目配置同样被拦——
+	// 否则「只拦源码」会给错树里的文档提交留一条绕行路。这条断言钉住的是**面**而不是
+	// 某个文件：换成自述文件或项目配置，行为必须一致。
+	for _, path := range []string{"README.md", "docs/design/task-tree-guard.md", ".forge/pipeline.yml"} {
+		cov, ccode := run(map[string]string{
+			"FORGE_FILE_PATH":    path,
+			"FORGE_TASK_OFFTREE": filepath.Join(dir, "elsewhere"),
+		})
+		if ccode != 1 {
+			t.Errorf("错树里写 %s 必须 exit 1（拦截面=任意非测试路径），got exit=%d\n%s", path, ccode, cov)
+		}
+	}
 	// 但空 FILE_PATH 且无错树仍必须放行（batch/非文件工具），不能因为抬高判定而阻断。
 	bout, bcode := run(map[string]string{})
 	if bcode != 0 || strings.Contains(bout, "锚在另一棵树") {

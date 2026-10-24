@@ -135,7 +135,11 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 			recordTreeGuardEscape(root, state)
 		} else {
 			recordTreeGuardOffTree(root, gateID, state, ts)
-			return fmt.Errorf("门禁 %s BLOCKED（错树）：任务 %s 锚在另一棵树 %s\n  当前目录不是该任务的 worktree——在此过门禁只会记在空树上。\n  到锚树里跑：cd %q；或把任务迁到当前树：forge worktree use\n  （关闭守护：FORGE_TASK_TREE_GUARD=0，记 checklog 且任务评分 capped）",
+			// 用 GateBlocked 而非 fmt.Errorf：BLOCKED 契约（前缀 + 还债提示）是 agent
+			// 能无歧义识别的硬失败信号，也是 compat 的 blockings 扫描面
+			// （internal/compat/scan.go 认 GateBlocked 包装的位点）——否则本次新增的
+			// 阻断在 compat 工件里完全不可见。
+			return taskpipeline.GateBlocked("门禁 %s（错树）：任务 %s 锚在另一棵树 %s——当前目录不是该任务的 worktree，在这里过门禁只会记在一棵空树上。到锚树里跑：cd %q；或把任务迁到当前树：forge worktree use（关闭守护：FORGE_TASK_TREE_GUARD=0，记 checklog 且任务评分 capped）",
 				gateID, state.TaskRef, ts.AnchorPath, ts.AnchorPath)
 		}
 	}

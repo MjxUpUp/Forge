@@ -15,9 +15,13 @@ TASK_REF="${FORGE_TASK_REF:-}"
 TASK_GATE="${FORGE_TASK_GATE:-}"
 
 # Task-tree guard（docs/design/task-tree-guard.md §4）：任务有活 binding 锚在另一棵树、
-# 而当前目录不是那棵树时 fail-closed。**放在空 FILE_PATH 早退之前**：codex apply_patch
-# 的路径合成可能失败（多文件 patch / 非标准头），此时 FILE_PATH 为空而错树判定成立——
-# 早退就等于在 patch 工具上静默放行。测试文件仍豁免（已知路径时）。
+# 而当前目录不是那棵树时 fail-closed。**放在空 FILE_PATH 早退之前、也在 .forge/ 保护与
+# 源码后缀过滤之前**：codex apply_patch 的路径合成可能失败（多文件 patch / 非标准头），
+# 此时 FILE_PATH 为空而错树判定成立——早退就等于在 patch 工具上静默放行。因此错树时拦
+# 的是「任意已知非测试路径」（含 README/docs/.forge），不只源码：在错误的树里改文档与
+# 配置同样会落错分支，而「只拦源码」会让错树里的文档提交绕开守护。代价是错树里连
+# .forge/pipeline.yml 也不可编辑（下面 39-42 的放行在错树时不生效），这是刻意的：先离开
+# 错误的树，再改它的配置。测试文件仍豁免（已知路径时）。
 if [ -n "${FORGE_TASK_OFFTREE:-}" ]; then
   _OFFTEST=0
   if [ -n "$FILE_PATH" ] && printf '%s' "$FILE_PATH" | grep -qE '(_test\.|_spec\.|\.test\.|\.spec\.|test/|tests/|__tests__/)'; then
@@ -25,7 +29,7 @@ if [ -n "${FORGE_TASK_OFFTREE:-}" ]; then
   fi
   if [ "$_OFFTEST" -eq 0 ]; then
     echo "FAIL [task-guard] 任务 ${TASK_REF} 锚在另一棵树：${FORGE_TASK_OFFTREE}"
-    echo "  当前目录不是该任务的 worktree，在此处写源码会让 commit 落错分支、worktree 恒空。三条出路："
+    echo "  当前目录不是该任务的 worktree——在这里写的任何东西都会落错分支、worktree 恒空。三条出路："
     echo "  1) 到锚树里编辑：cd \"${FORGE_TASK_WORKTREE:-${FORGE_TASK_OFFTREE}}\""
     echo "  2) 显式把任务迁到当前树：forge worktree use"
     echo "  3) 关闭守护（记 checklog；任务评分 capped）：FORGE_TASK_TREE_GUARD=0"

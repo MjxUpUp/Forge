@@ -507,14 +507,19 @@ const (
 	// advisory、1.67 起 BLOCKED；Meta 携带形态标志（semicolon/pipe/multi_gate…）。
 	// deterministic（gatecmdform 纯函数判定）；属过程形态 OBSERVATION——排除出证据强度分桶。
 	CheckGateCmdForm CheckName = "gate-cmd-form"
-	// CheckTreeGuard records one task-tree-guard decision (docs/design/task-tree-guard.md §5):
-	// the off-tree BLOCK (Passed=false, Meta carries anchor/wtid/resolve_path) or the
-	// escape-hatch path that let a blocked gate through under FORGE_TASK_TREE_GUARD=0.
+	// CheckTreeGuard records one off-tree decision from the task-tree guard
+	// (docs/design/task-tree-guard.md §5): the BLOCK (Passed=false, Meta carries
+	// anchor/wtid/resolve_path) or the same-off-tree announce emitted by the hook
+	// layer before the guard script runs. The escape-hatch path under
+	// FORGE_TASK_TREE_GUARD=0 is NOT this check — it is recorded as CheckEscapeHatch
+	// with Meta escape.gate=task-tree-guard.
 	//
-	// CheckTreeGuard 记录一次错树守护判定（docs/design/task-tree-guard.md §5）：off-tree
-	// BLOCK（Passed=false，Meta 带 anchor/wtid/resolve_path），或关闭守护时放行的逃生
-	// 路径。deterministic（gate/guard 自算，agent 无法伪造）；用来回答「有多少门禁在错树
-	// 上被拦下」「有多少人靠关守护绕过去」——没有这条记录，错树守护是静默的。
+	// CheckTreeGuard 记录一次错树守护判定（docs/design/task-tree-guard.md §5）：门禁侧的
+	// BLOCK（Passed=false，Meta 带 anchor/wtid/resolve_path），或 hook 侧在 guard 脚本
+	// 之前的同一次错树留痕。**关闭守护的逃生不属于这条 check**——它记在
+	// CheckEscapeHatch（Meta escape.gate=task-tree-guard），否则 escape 会同时算进
+	// 「有多少门禁在错树上拦下」与「多少人绕过」，把两个方向相反的口径混成一个。
+	// deterministic（gate/guard 自算，agent 无法伪造）；没有这条记录，错树守护是静默的。
 	CheckTreeGuard CheckName = "tree-guard"
 )
 
