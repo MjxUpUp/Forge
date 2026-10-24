@@ -107,15 +107,19 @@ func TestTreeGuardApplies(t *testing.T) {
 		state    *taskpipeline.TaskState
 		root     string
 		filePath string
+		toolName string
 		want     bool
 	}{
-		{"无活跃任务", nil, "/repo", "internal/a.go", false},
-		{"无仓库根", state, "", "internal/a.go", false},
-		{"Read/Bash 等无文件路径的调用", state, "/repo", "", false},
-		{"带文件路径的编辑调用", state, "/repo", "internal/a.go", true},
+		{"无活跃任务", nil, "/repo", "internal/a.go", "Write", false},
+		{"无仓库根", state, "", "internal/a.go", "Write", false},
+		{"Read/Bash 等无文件路径的调用", state, "/repo", "", "Read", false},
+		{"带文件路径的编辑调用", state, "/repo", "internal/a.go", "Write", true},
+		// patch 工具解析不出路径时仍要判定：guard 的错树分支不依赖文件路径，
+		// 不判定就等于在 codex apply_patch 上静默放行。
+		{"patch 工具但路径合成失败", state, "/repo", "", "apply_patch", true},
 	}
 	for _, c := range cases {
-		if got := treeGuardApplies(c.state, c.root, c.filePath); got != c.want {
+		if got := treeGuardApplies(c.state, c.root, c.filePath, c.toolName); got != c.want {
 			t.Errorf("%s: treeGuardApplies=%v want %v", c.name, got, c.want)
 		}
 	}

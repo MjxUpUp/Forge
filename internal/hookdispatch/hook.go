@@ -761,7 +761,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// Task-tree guard: resolve off-tree once here and pass it via env so the bash
 	// task-guard needs no extra forge spawn per Write|Edit.
 	var offTreeAnchor, deadAnchor string
-	if treeGuardApplies(activeState, root, fields.FilePath) {
+	if treeGuardApplies(activeState, root, fields.FilePath, hookInput.ToolName) {
 		ts := taskpipeline.TaskTreeStatus(root, activeState.TaskRef)
 		switch ts.State {
 		case taskpipeline.TreeOffTree:
@@ -1417,18 +1417,26 @@ func taskTreeEnv(offTree string) []string {
 	}
 }
 
-// treeGuardApplies 报告这次 hook 调用是否该做错树判定。只有「带文件路径的编辑类
-// 调用」需要它：
-//   - FORGE_TASK_OFFTREE 只喂 task-guard，而 task-guard 只在写文件时跑；
-//   - dead-anchor 的 stderr advisory 若在每个 hook 调用上都打（Read 的 tool-track、
-//     Bash 的 bash-guard/hazard-guard 都会走到同一解析点），一次编辑会被同一条警告
-//     刷好几遍——噪声会把真正该看的那条埋掉。
+// treeGuardApplies 报告这次 hook 调用是否该做错树判定。判据是「可能写文件」，不是
+// 「解析出了文件路径」：
+//   - 带 file_path 的调用（Write/Edit/…）——正常通路；
+//   - patch 类工具即使 file_path 解析失败（多文件 patch、非标准头）也必须判定——
+//     codex 的 apply_patch 只带 patch 文本，2a 只取第一个头，解析不出来时 FilePath
+//     为空；而 guard 脚本的错树分支不依赖文件路径，此时判定=拿到错树 env=照样拦，
+//     不判定=静默放行。宁可多判一次，不可漏判。
+//   - 其余调用（Read 的 tool-track、Bash 的 bash-guard/hazard-guard）不判定：off-tree
+//     env 只有 task-guard 读，而 dead-anchor 的 stderr advisory 若在这些调用上也打，
+//     一次编辑会被同一条警告刷好几遍——噪声会把真正该看的那条埋掉。
 //
-// treeGuardApplies reports whether this hook call needs the task-tree verdict: only
-// calls that carry a file path do (the off-tree env feeds the file-writing guard, and
-// the dead-anchor notice is only meaningful when an edit is being attempted).
-func treeGuardApplies(activeState *taskpipeline.TaskState, root, filePath string) bool {
-	return activeState != nil && root != "" && filePath != ""
+// treeGuardApplies reports whether this hook call must run the task-tree verdict. The
+// criterion is "may write a file", not "a file path was parsed": patch tools must be
+// covered even when the path synthesis fails, because the guard script's off-tree branch
+// does not depend on the path — skipping the verdict there would silently allow the edit.
+func treeGuardApplies(activeState *taskpipeline.TaskState, root, filePath, toolName string) bool {
+	if activeState == nil || root == "" {
+		return false
+	}
+	return filePath != "" || hostcap.IsPatchTool(toolName)
 }
 
 // deadAnchorWarning 是死锚的告警文案：任务绑定指向的目录已经不存在。纯提示——
