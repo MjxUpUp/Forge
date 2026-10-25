@@ -1259,6 +1259,91 @@ if ! is_hazardous "$COMMAND" && ! is_interp_delete_bypass "$COMMAND"; then
 fi
 
 
+# commit_msg_heredoc_tag：识别 git commit -F - <<'TAG' 这一种 heredoc，命中时输出 tag。
+# 只认以下严格形态，任何不确定都返回 1（保持原判定）：
+#   - 整条命令不含函数定义 / function / alias（git(){ sh; } 会把正文喂给 shell 执行）；
+#   - 第一个 heredoc opener 所在行只有一个 <<，且 tag 带引号（<<'TAG' / <<"TAG"）——
+#     未引号 tag 的正文会被 shell 展开（$(...) 真执行）；
+#   - opener 之前、最后一个命令段的字符全在白名单内（无 $ 引号 反引号 括号 反斜杠），
+#     词序严格为 git [-C <path>] commit [-q|--quiet|-s|--signoff|-a|--all|-n|--no-verify|
+#     --allow-empty|--amend|-v|--verbose]* (-F - | --file=-)；带 -c、-m、环境前缀
+#     （PATH=x git ...）的形态一律不认；
+# 非 commit 的消费者（cat / tee 写脚本）不在此列：其正文可能是可执行脚本，静态不可判定。
+# Recognise exactly one heredoc shape, git commit -F - <<'TAG', and print its tag. Any
+# uncertainty returns 1 (the original verdict stays): no function/alias definitions in
+# the command; one << on the opener line with a QUOTED tag (an unquoted body is expanded
+# by the shell); the last command segment before the opener uses only allowlisted
+# characters and the exact word order above (no -c, -m or env prefix). cat/tee heredocs
+# are excluded — their body may be an executable script.
+commit_msg_heredoc_tag() {
+  local cmd="$1" opener rest head hseg tagpart tag="" i n f next have_file=0
+  local re_sq="^'([A-Za-z_][A-Za-z0-9_]*)'" re_dq='^"([A-Za-z_][A-Za-z0-9_]*)"'
+  local -a w
+  case "$cmd" in
+    *git*commit*"<<"*) ;;
+    *) return 1 ;;
+  esac
+  case "$cmd" in
+    *"() {"*|*"(){"*|*function\ *|*alias\ *) return 1 ;;
+  esac
+  opener=$(printf '%s\n' "$cmd" | awk '/(^|[^<])<<($|[^<])/ {print; exit}')
+  if [ -z "$opener" ]; then
+    return 1
+  fi
+  rest="${opener#*<<}"
+  if [[ $rest == *"<<"* ]]; then
+    return 1
+  fi
+  tagpart="${rest#-}"
+  if [[ $tagpart =~ $re_sq ]]; then
+    tag="${BASH_REMATCH[1]}"
+  elif [[ $tagpart =~ $re_dq ]]; then
+    tag="${BASH_REMATCH[1]}"
+  else
+    return 1
+  fi
+  head="${opener%%<<*}"
+  hseg="${head##*[;&|]}"
+  if printf '%s' "$hseg" | grep -q '[^A-Za-z0-9_./~@+: =-]'; then
+    return 1
+  fi
+  read -r -a w <<< "$hseg"
+  n=${#w[@]}
+  if [ "$n" -lt 4 ] || [ "${w[0]}" != "git" ]; then
+    return 1
+  fi
+  i=1
+  if [ "${w[$i]}" = "-C" ]; then
+    i=$((i + 2))
+  fi
+  if [ "$i" -ge "$n" ] || [ "${w[$i]}" != "commit" ]; then
+    return 1
+  fi
+  i=$((i + 1))
+  while [ "$i" -lt "$n" ]; do
+    f="${w[$i]}"
+    if [ "$f" = "-F" ]; then
+      next=$((i + 1))
+      if [ "$next" -ge "$n" ] || [ "${w[$next]}" != "-" ]; then
+        return 1
+      fi
+      have_file=1
+      i=$((i + 2))
+    elif [ "$f" = "--file=-" ]; then
+      have_file=1
+      i=$((i + 1))
+    elif [ "$f" = "-q" ] || [ "$f" = "--quiet" ] || [ "$f" = "-s" ] || [ "$f" = "--signoff" ] || [ "$f" = "-a" ] || [ "$f" = "--all" ] || [ "$f" = "-n" ] || [ "$f" = "--no-verify" ] || [ "$f" = "--allow-empty" ] || [ "$f" = "--amend" ] || [ "$f" = "-v" ] || [ "$f" = "--verbose" ]; then
+      i=$((i + 1))
+    else
+      return 1
+    fi
+  done
+  if [ "$have_file" -ne 1 ]; then
+    return 1
+  fi
+  printf '%s' "$tag"
+}
+
 # strip_interp_heredoc_bodies（F.1）：heredoc 喂给非 shell 解释器（python/node/ruby/perl）
 # 且正文不含执行原语时，正文是数据——预先挖掉正文（保留 <<TAG 行与其后连接符），让
 # is_hazardous/strip_quotes 只判真正会执行的头部。乙机实录：分析脚本的 heredoc 体提及
@@ -1273,7 +1358,18 @@ fi
 # HEREDOC_ORIG 保留原始命令：判定用剥离文本，指纹/事件/展示一律用原文（审计与 confirm
 # 不与 agent 所见文本漂移）。
 strip_interp_heredoc_bodies() {
-  local cmd="$1" tag body
+  local cmd="$1" tag body ctag
+  # commit 消息 heredoc（git commit -F - <<'TAG'）：正文只被 git 当消息文本，不被任何
+  # 程序执行，同样是数据——命中时只挖正文，header 与 delimiter 之后的内容仍原样交给
+  # is_hazardous。判据与白名单见 commit_msg_heredoc_tag。
+  # Commit-message heredoc: the body is only message text for git, never executed, so
+  # it is data too — strip the body only; the header and everything after the delimiter
+  # still reach is_hazardous. See commit_msg_heredoc_tag for the strict header grammar.
+  ctag=$(commit_msg_heredoc_tag "$cmd") || ctag=""
+  if [ -n "$ctag" ]; then
+    printf '%s' "$cmd" | awk -v t="$ctag" 'BEGIN{inbody=0} inbody==1 && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {inbody=2; print; next} inbody==1 {next} {print} inbody==0 && /(^|[^<])<<($|[^<])/ {inbody=1}'
+    return
+  fi
   case "$cmd" in
     *python*"<<"*|*node*"<<"*|*ruby*"<<"*|*perl*"<<"*) ;;
     *) printf '%s' "$cmd"; return ;;
