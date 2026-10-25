@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.84.3](https://github.com/MjxUpUp/Forge/compare/v1.84.2...v1.84.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* **task:** 错树守护 fail-closed —— 任务锚在另一棵树时禁止在主树写源码/过门禁 + human 档链定义指纹 ([#139](https://github.com/MjxUpUp/Forge/issues/139)) ([ded892c](https://github.com/MjxUpUp/Forge/commit/ded892c9c438278c113298afb54c22e15462fe0d))
+
+## [1.84.2](https://github.com/MjxUpUp/Forge/compare/v1.84.1...v1.84.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **review:** Stop 门禁按会话作用域判定，不再因他会话的未审改动阻断 ([#137](https://github.com/MjxUpUp/Forge/issues/137)) ([ac12459](https://github.com/MjxUpUp/Forge/commit/ac12459c80e92a9c9b86a4b3702a999ccf039c01))
+
 ## [1.84.1](https://github.com/MjxUpUp/Forge/compare/v1.84.0...v1.84.1) (2026-10-22)
 
 

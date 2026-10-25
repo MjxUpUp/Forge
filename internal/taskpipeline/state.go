@@ -126,6 +126,82 @@ func ActiveTaskState(root, sessionID string) (*TaskState, error) {
 	return st, err
 }
 
+// TreeState* is the outcome of TaskTreeStatus: whether the current checkout is where the
+// active task actually lives (docs/design/task-tree-guard.md §2).
+//
+// TreeState* 是 TaskTreeStatus 的判定结果：当前检出的树是不是活跃任务真正所在的树
+// （docs/design/task-tree-guard.md §2）。
+const (
+	TreeOK         = "ok"          // 无任务 / 无绑定：不适用
+	TreeOKAnchored = "ok-anchored" // 当前树命中绑定（含多锚之一）
+	TreeOffTree    = "off-tree"    // 任务锚在别处且那棵树活着 —— 阻断
+	TreeDeadAnchor = "dead-anchor" // 锚目录已消失 —— 放行 + advisory
+)
+
+// TreeStatus is the task-tree guard's verdict for one (tree, task) pair.
+//
+// TreeStatus 是错树守护对单个（树, 任务）对的判定。AnchorPath 在 off-tree 时是第一个
+// 活锚（提示用户去哪），在 dead-anchor 时是失效锚（提示 janitor）。
+type TreeStatus struct {
+	State      string
+	AnchorPath string
+	Wtid       string
+}
+
+// TreeGuardDisabled reports the documented escape hatch (FORGE_TASK_TREE_GUARD=0). The
+// caller records the escape in checklog and caps the task score; the status function keeps
+// telling the truth either way.
+//
+// TreeGuardDisabled 报告文档化的逃生舱（FORGE_TASK_TREE_GUARD=0）。调用方负责记
+// checklog 并给任务评分 capped；状态函数无论如何都照实回答。
+func TreeGuardDisabled() bool { return os.Getenv("FORGE_TASK_TREE_GUARD") == "0" }
+
+// TaskTreeStatus answers "is this checkout where taskRef actually lives?". Resolution is
+// by worktree path hash (bindings are keyed by wtid), never by branch name: branch names
+// are not comparable across rebases/renames, and the binding is the only durable record of
+// location.
+//
+// TaskTreeStatus 回答「当前检出是不是 taskRef 真正所在的树」。判定按 worktree 路径哈希
+// （绑定按 wtid 键控），绝不按分支名：分支名跨 rebase/重命名不可比，绑定是位置唯一的
+// 持久记录。
+func TaskTreeStatus(root, taskRef string) TreeStatus {
+	self := worktree.ID(root)
+	if taskRef == "" {
+		return TreeStatus{State: TreeOK, Wtid: self}
+	}
+	anchors := worktree.Anchors(root, taskRef)
+	if len(anchors) == 0 {
+		// 无绑定：任务来自会话指针/分支映射/legacy 桥，或绑定在另一台机器上——位置未知，
+		// 不适用本守护（fail-open：宁可漏拦也不把任务锁死在无从判断的状态里）。
+		// 注意：新任务的 `task start` 会在当时那棵树**无条件**写绑定（含未用 --worktree
+		// 的形态），所以「无绑定」是历史任务/跨机任务/绑定被清掉后的形态，不是新任务的常态。
+		return TreeStatus{State: TreeOK, Wtid: self}
+	}
+	var firstLive, firstDead string
+	live := 0
+	for _, a := range anchors {
+		if a.ID == self {
+			return TreeStatus{State: TreeOKAnchored, AnchorPath: a.Path, Wtid: self}
+		}
+		if _, err := os.Stat(a.Path); err != nil {
+			if firstDead == "" {
+				firstDead = a.Path
+			}
+			continue
+		}
+		live++
+		if firstLive == "" {
+			firstLive = a.Path
+		}
+	}
+	if live == 0 {
+		// 所有锚都死了（目录被删/机器清理）：fail-open。死锚不该把用户锁在门外，
+		// 但要让他知道可以去 janitor 清理（Hook 侧出 advisory）。
+		return TreeStatus{State: TreeDeadAnchor, AnchorPath: firstDead, Wtid: self}
+	}
+	return TreeStatus{State: TreeOffTree, AnchorPath: firstLive, Wtid: self}
+}
+
 // ResolvePath* label which detection path resolved the active task (attribution probe, checklog Meta[MetaKeyResolvePath]).
 //
 // ResolvePath* 标注 active task 是经哪条探测路径解析到的——归因探针

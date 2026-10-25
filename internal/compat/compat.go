@@ -112,6 +112,9 @@ var EscapeEnvs = []string{
 	// 2026-10-22 裁决（compat-commitments §三）：两者都撤下本来会触发的阻断，按逃生舱入册。
 	"FORGE_RECURRENT_HARDEN",
 	"FORGE_ADVISORY_PROMOTION",
+	// 2026-10-24 裁决（compat-commitments §三 task-tree-guard 条）：撤下错树守护的写入拒绝
+	// 与三个门禁 BLOCK，按逃生舱入册（常量在 taskpipeline，源扫描自动对照）。
+	"FORGE_TASK_TREE_GUARD",
 }
 
 // AllCheckNames 返回 checklog 常量 roster 的排序列表。

@@ -753,6 +753,36 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// 2c. 错树守护（docs/design/task-tree-guard.md §4）：判定「当前树是不是任务真正
+	// 所在」并落到环境变量。放在这里而不是 guard 脚本里，是为了让 bash 侧零 spawn——
+	// task-guard 每次 Write|Edit 都跑，多起一个 forge 进程就是每次编辑 +100ms。手工
+	// bash（没有这些变量）里 guard 行为与今天一致。
+	//
+	// Task-tree guard: resolve off-tree once here and pass it via env so the bash
+	// task-guard needs no extra forge spawn per Write|Edit.
+	var offTreeAnchor, deadAnchor string
+	if treeGuardApplies(activeState, root, fields.FilePath, hookInput.ToolName) {
+		ts := taskpipeline.TaskTreeStatus(root, activeState.TaskRef)
+		switch ts.State {
+		case taskpipeline.TreeOffTree:
+			if taskpipeline.TreeGuardDisabled() {
+				// 逃生舱留痕（§5）：guard 脚本此时整个跳过判定，只有这里留下痕迹。
+				recordTreeGuardEscape(root, activeState.TaskRef, hookInput.SessionID)
+			} else {
+				offTreeAnchor = ts.AnchorPath
+				// 拦截留痕（§5）：guard 脚本马上会 exit 1，这里记一次（按会话+任务节流）。
+				recordTreeGuardBlock(root, activeState.TaskRef, hookInput.SessionID, offTreeAnchor)
+			}
+		case taskpipeline.TreeDeadAnchor:
+			deadAnchor = ts.AnchorPath
+		}
+	}
+	if deadAnchor != "" {
+		// 一次编辑会走多个 hook（freeze-guard/task-guard/assertion-check/read-before-edit），
+		// 每个都到同一解析点——按会话+任务+锚路径节流，否则一条告警被同样打四遍。
+		announceDeadAnchor(root, activeTaskRef, hookInput.SessionID, deadAnchor)
+	}
+
 	// 3. Write the embedded script to a temp file.
 	//
 	// 3. 把 embedded script 写入临时文件。
@@ -837,6 +867,10 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		"FORGE_TOOL_NAME="+sanitizeForShell(hookInput.ToolName),
 		"FORGE_TASK_REF="+sanitizeForShell(activeTaskRef),
 		"FORGE_TASK_GATE="+sanitizeForShell(activeTaskGate),
+		// 错树守护的两个变量由 taskTreeEnv 追加（见下方 append）：guard 脚本据此在
+		// source 编辑上 fail-closed；为空表示「当前树就是任务的树」或「守护不适用」。
+		//
+		// Task-tree guard signals are appended via taskTreeEnv below.
 		"FORGE_SESSION_ID="+sanitizeForShell(hookInput.SessionID),
 		// The resolved host agent (from --agent / FORGE_HOOK_AGENT; "" for claude-code-shape
 		// hosts). Thin wrappers (`exec forge task resume --hook`) inherit it so the spawned
@@ -886,6 +920,10 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		"FORGE_CWD="+cwd,
 		"FORGE_CWD_TAG="+SuggestTagFor(cwd),
 	)
+	// 错树守护信号（docs/design/task-tree-guard.md §4）：guard 脚本据此在 source 编辑上
+	// fail-closed。空 = 当前树就是任务的树 / 守护不适用（追加而非并入上面的字面量清单，
+	// 因为切片展开只能出现在 append 的最后）。
+	shCmd.Env = append(shCmd.Env, taskTreeEnv(offTreeAnchor)...)
 	// Scheme 5: expose the active task's per-task work-activity override as
 	// the FORGE_WORK_ACTIVITY env for the hook to check. Forced only when disable —
 	// when the override is empty, leave the existing os.Environ() value untouched to preserve a user's global FORGE_WORK_ACTIVITY,
@@ -1363,6 +1401,66 @@ func RunHook(cmd *cobra.Command, args []string) error {
 // 的最新条目（LatestByCheckForSession），所以每次调用都写 PASS 是冗余的。任何
 // FAIL 都返回 true（block/warn 信号追溯和诊断需要），PASS 仅在 scoring 依赖的
 // check 上返回 true。
+// taskTreeEnv 返回错树守护要注入的两个环境项（FORGE_TASK_OFFTREE 是判定信号，
+// FORGE_TASK_WORKTREE 是「去哪个目录」的提示，两者同值）；offTree 为空表示当前树
+// 就是任务的树或守护不适用——此时不注入，guard 脚本行为与引入守护前一致。
+//
+// taskTreeEnv returns the two env entries for the task-tree guard (OFFTREE is the
+// verdict, WORKTREE the destination hint; same value). Empty offTree injects nothing,
+// so the guard script behaves exactly as before the guard existed.
+func taskTreeEnv(offTree string) []string {
+	if offTree == "" {
+		return nil
+	}
+	v := sanitizeForShell(offTree)
+	return []string{
+		"FORGE_TASK_OFFTREE=" + v,
+		"FORGE_TASK_WORKTREE=" + v,
+	}
+}
+
+// treeGuardApplies 报告这次 hook 调用是否该做错树判定。判据是「可能写文件」，不是
+// 「解析出了文件路径」：
+//   - 带 file_path 的调用（Write/Edit/…）——正常通路；
+//   - patch 类工具即使 file_path 解析失败（多文件 patch、非标准头）也必须判定——
+//     codex 的 apply_patch 只带 patch 文本，2a 只取第一个头，解析不出来时 FilePath
+//     为空；而 guard 脚本的错树分支不依赖文件路径，此时判定=拿到错树 env=照样拦，
+//     不判定=静默放行。宁可多判一次，不可漏判。
+//   - 其余调用（Read 的 tool-track、Bash 的 bash-guard/hazard-guard）不判定：off-tree
+//     env 只有 task-guard 读，而 dead-anchor 的 stderr advisory 若在这些调用上也打，
+//     一次编辑会被同一条警告刷好几遍——噪声会把真正该看的那条埋掉。
+//
+// treeGuardApplies reports whether this hook call must run the task-tree verdict. The
+// criterion is "may write a file", not "a file path was parsed": patch tools must be
+// covered even when the path synthesis fails, because the guard script's off-tree branch
+// does not depend on the path — skipping the verdict there would silently allow the edit.
+func treeGuardApplies(activeState *taskpipeline.TaskState, root, filePath, toolName string) bool {
+	if activeState == nil || root == "" {
+		return false
+	}
+	// 读类工具即便带 file_path 也不判定：hook 会把 Read 的 file_path 填进
+	// fields.FilePath（见本文件的 tool-track 提取），而错树 env 只被 task-guard 读、
+	// Read 不跑 task-guard。若在 Read 上也判定，纯读会话会稀释 tree-guard 计数、让死锚
+	// 告警重复出现，§7 判据 12「只在写类调用判定」也就名不副实——判定条件是
+	// 「可能写文件」，不是「解析到了路径」。
+	if strings.EqualFold(toolName, "Read") {
+		return false
+	}
+	return filePath != "" || hostcap.IsPatchTool(toolName)
+}
+
+// deadAnchorWarning 是死锚的告警文案：任务绑定指向的目录已经不存在。纯提示——
+// 不阻断（一个被删掉的 worktree 不该把任务永久锁死），并给出清理出路。
+//
+// deadAnchorWarning is the dead-anchor notice: the task's bound directory is gone.
+// Advisory only — a deleted worktree must not lock the task forever — with the way out.
+func deadAnchorWarning(taskRef, anchor string) string {
+	if anchor == "" {
+		return ""
+	}
+	return fmt.Sprintf("WARN [task-tree] 任务 %s 的绑定目录已不存在（锚：%s）——不阻断；清理：forge worktree janitor\n", taskRef, anchor)
+}
+
 func shouldRecordCheck(name checklog.CheckName, passed bool) bool {
 	if !passed {
 		return true

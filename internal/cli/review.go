@@ -218,6 +218,7 @@ const gateGuidance = "检测到未审查的源码变更。请按序完成：\n" 
 	"   (b) 本会话内已对本分支派过 reviewer、这版是修复后的 diff 且句柄可续用（复审）：" + review.ReReviewGuidance + "（非 task 模式没有审查基线刷新，`--note` 只作审计留痕）\n" +
 	"3. 审查通过后运行 `forge review pass` 标记，再结束会话\n" +
 	"审查发现的问题按类型接 skill：运行时 bug/逻辑错误 → systematic-debugging；编译错误 → compile-fix-loop；断言弱化/假测试 → test-discipline。\n" +
+	"范围说明：本次判定只覆盖能归因到当前会话的源码变更；已被证明属于其他活跃会话的变更已排除，不要求你审查。\n" +
 	"注：同一 diff 反复未审最多 block 3 次后 advisory 放行（防 Stop 死循环）。"
 
 func runReviewPass(cmd *cobra.Command, args []string) error {
@@ -411,8 +412,9 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 		return nil
 	}
 
-	// 非 task 模式：写分支 stamp
-	if err := review.MarkPassedWithNote(root, note); err != nil {
+	// 非 task 模式：写分支 stamp（作用域与 gate 的 EvaluateFor 完全一致——盖章用整树
+	// 而门禁用会话指纹会让复审通过的会话下次 Stop 再被拦）
+	if err := review.MarkPassedFor(root, taskpipeline.CurrentSessionID(), note); err != nil {
 		return fmt.Errorf("failed to mark review passed: %w", err)
 	}
 	// 记录非 task 模式的 review-pass 事件——stamp 文件每分支只存最新态（原子覆写），
@@ -514,8 +516,11 @@ func runReviewGate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// 非 task 模式：diff stamp 决策
-	dec, reason, err := review.Evaluate(root)
+	// 非 task 模式：按会话作用域做 diff stamp 决策。上面那条 task 兜底只覆盖「对方有
+	// 任务」；这里是更宽的一层——任何能在归属台账上证明属于其他活跃会话的变更都离开
+	// 指纹，于是调研会话不会因为旁边会话的在飞改动被拦，也不会被要求去审别人的代码。
+	sessionID := taskpipeline.CurrentSessionID()
+	dec, reason, err := review.EvaluateFor(root, sessionID)
 	if err != nil {
 		// fail-open：评估失败不阻塞会话（forge 安全 hook 原则）
 		fmt.Printf("PASS 评估失败放行：%v\n", err)
