@@ -60,6 +60,15 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	// 2. 用户级 claude settings.json——仅在 plugin 未 user-level 安装时
 	//    （plugin.json 已全机器注册 ForgeHookSpec）。
 	if !hooks.IsClaudePluginInstalled() {
+		// 版本错位自愈先行（命名被自愈的 hook 供用户知情）；随后的常规生成幂等。
+		//
+		// Version-skew self-heal first (names the healed hooks so the user knows);
+		// the regular generation that follows is idempotent.
+		if healed, err := hooks.HealUnknownUserHooks(); err != nil {
+			return fmt.Errorf("auto-sync: failed to heal unknown hooks in user-level settings: %w", err)
+		} else if len(healed) > 0 {
+			fmt.Fprintf(os.Stderr, "auto-sync: 已自愈用户级 settings 中本 forge 二进制不认识的 hook: %s\n", strings.Join(healed, ", "))
+		}
 		if err := hooks.GenerateUserSettings(); err != nil {
 			return fmt.Errorf("auto-sync: failed to update user-level settings: %w", err)
 		}
