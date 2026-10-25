@@ -79,3 +79,26 @@ SKILL.md：判据增至 4 条（新增二手转述标记+抽查，翻转裁决�
 ### Evidence
 
 triggers 保留"严格验收"限定词，裸"验收"归 project-acceptance；validate 52/52 通过
+
+## [d-18e18062f4ee2858-ca5e04b7] accept
+
+- **Skill**: adversarial-verification
+- **DecidedAt**: 2026-10-24T15:21:29Z
+- **By**: claude-code
+- **Warrant**: doc:docs/plans/rereview-resume-docs-2026-10.md
+
+### Diagnosis
+
+协议 A 复检轮与协议 B 复验没有说由谁复验，默认每轮新派冷启动红队与验收者；协议 B 的整体重验也可被续用者引用前轮输出
+
+### Revision
+
+协议 A 补第 7 条复检轮续用原红队（不可续用或换视角才新派）；协议 B 保持修完必须整体重验，补重新实跑不得引用前轮结果、复验续用原验收者并喂验收点清单加上轮 FAIL 清单加修复 diff；自检清单同步
+
+### Evidence
+
+曾设计的协议 B 增量重验档被本批评审指出在修一轮就过的常见路径上净增一次增量重验并削弱防假绿底线，已撤回，只保留续用与重新实跑；由 TestSkillsCarryResumeTier 钉关键短语
+
+### Rationale
+
+省的是重新探索而不是重跑，防假绿底线不变
