@@ -33,7 +33,8 @@ var updateCheckQueryDeadline = 2500 * time.Millisecond
 
 // checkForUpdate 检查是否有更新版本可用。
 // 用 24h 缓存避免每次命令都打版本源。
-// 结果作为通知打印到 stderr。
+// 结果作为通知打印到 stderr；同一版本 updateNoticeInterval 内最多提示一次
+// （见 maybePrintUpdateNotice）。
 // 错误静默忽略——这是 best-effort 检查。
 func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 	if shouldSkipUpdateCheck(fullVersion, cmd) {
@@ -52,7 +53,7 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 	// 检查缓存
 	cache, err := loadUpdateCache()
 	if err == nil && !cache.isExpired() && cache.matchesChannel(channel.kind) {
-		// 缓存命中——仅在存在更新版本时通知。负条目（LatestVersion 为空，
+		// 缓存命中——仅在存在更新版本时通知（同一版本受 24h 节流）。负条目（LatestVersion 为空，
 		// 网络失败后写入）也在此命中：updateCheckNegativeTTL 内视为「已检查
 		// 过」，不再发网络请求、不打印——与失败检查本就产生的静默一致。
 		if cache.LatestVersion != "" && compareVersions(cache.LatestVersion, current) > 0 {
@@ -198,11 +199,14 @@ func (c *updateCache) noticeThrottled(latest string, now time.Time) bool {
 
 // maybePrintUpdateNotice 打印升级提示，同一版本 updateNoticeInterval 内最多一次
 // （已通知的版本与时间记在 update 缓存里）。缓存读写失败 fail-open：照常提示，
-// 只是不节流——提示是 best-effort，不得因记账失败而吞掉。
+// 只是不节流——提示是 best-effort，不得因记账失败而吞掉。读改写无锁：并发的
+// 两个进程可能各打一次，节流是尽力而为。
 //
 // maybePrintUpdateNotice prints the update notice at most once per version per
 // updateNoticeInterval (notified version and time live in the update cache). Cache
-// I/O failure fails open: the notice still prints, just unthrottled.
+// I/O failure fails open: the notice still prints, just unthrottled. The
+// read-modify-write is unlocked: two concurrent processes may each print once, so
+// the throttle is best-effort.
 func maybePrintUpdateNotice(w io.Writer, latest, current string, channel installChannel, now time.Time) {
 	throttle := os.Getenv(updateNoticeThrottleEnv) != "0"
 	cache, err := loadUpdateCache()
@@ -280,10 +284,13 @@ func saveUpdateCache(version string, kind channelKind) error {
 		Channel:       string(kind),
 	}
 	// 沿用已通知的版本与时间：刷新缓存不得清空节流记录，否则同一版本每次重查后
-	// 又提示一遍。读失败（无缓存/损坏）即无记录可沿用。
+	// 又提示一遍。读失败（无缓存/损坏）即无记录可沿用；换了安装通道则不沿用——
+	// 另一通道的提示带的是另一条更新命令，不能让它静音本通道的首次提示。
 	// Carry over the notified version/time: a refresh must not wipe the throttle
-	// record. A read failure (no cache / corrupt) means nothing to carry.
-	if prev, err := loadUpdateCache(); err == nil {
+	// record. A read failure (no cache / corrupt) means nothing to carry; a changed
+	// install channel carries nothing either — the other channel's notice named a
+	// different update command and must not silence this channel's first notice.
+	if prev, err := loadUpdateCache(); err == nil && prev.matchesChannel(kind) {
 		cache.NotifiedVersion = prev.NotifiedVersion
 		cache.NotifiedAt = prev.NotifiedAt
 	}

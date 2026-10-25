@@ -262,6 +262,99 @@ func TestUpdateNoticeThrottle(t *testing.T) {
 	}
 }
 
+// TestUpdateNoticeThrottleEdges 钉节流的边界与降级：恰好 24h 重新提示（半开区间）、
+// 记录时间在未来（时钟回拨）或乱码时不节流、换安装通道不沿用另一通道的记录。
+//
+// TestUpdateNoticeThrottleEdges pins the throttle's boundaries and degradations:
+// exactly 24h notifies again (half-open window), a future or garbled record does not
+// throttle, and a channel switch does not inherit the other channel's record.
+func TestUpdateNoticeThrottleEdges(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	t.Setenv("FORGE_UPDATE_NOTICE_THROTTLE", "")
+	ch := installChannel{kind: channelGitHub}
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+
+	printed := func(at time.Time) bool {
+		var buf bytes.Buffer
+		maybePrintUpdateNotice(&buf, "1.2.0", "1.0.0", ch, at)
+		return buf.Len() > 0
+	}
+	seed := func(notifiedAt string) {
+		t.Helper()
+		if err := saveUpdateCache("1.2.0", channelGitHub); err != nil {
+			t.Fatal(err)
+		}
+		cache, err := loadUpdateCache()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cache.NotifiedVersion = "1.2.0"
+		cache.NotifiedAt = notifiedAt
+		if err := writeUpdateCache(cache); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stamp := func(at time.Time) string { return at.UTC().Format(time.RFC3339) }
+
+	seed(stamp(now))
+	if printed(now.Add(updateNoticeInterval - time.Second)) {
+		t.Error("just under 24h must stay silent")
+	}
+	seed(stamp(now))
+	if !printed(now.Add(updateNoticeInterval)) {
+		t.Error("exactly 24h must notify again")
+	}
+	seed(stamp(now.Add(time.Hour)))
+	if !printed(now) {
+		t.Error("a record in the future (clock moved back) must not throttle")
+	}
+	seed("not-a-timestamp")
+	if !printed(now) {
+		t.Error("an unparsable record must not throttle")
+	}
+
+	// 换通道：GitHub 通道已通知 1.2.0，npm 通道刷新缓存后同版本仍须首次提示。
+	// Channel switch: GitHub already notified 1.2.0; after an npm refresh the same
+	// version must still get its first notice.
+	seed(stamp(now))
+	if err := saveUpdateCache("1.2.0", channelNPM); err != nil {
+		t.Fatal(err)
+	}
+	if !printed(now.Add(time.Minute)) {
+		t.Error("a channel switch must not inherit the other channel's notice record")
+	}
+}
+
+// TestCheckForUpdateNoticeOncePerVersion 端到端钉接线：缓存命中且有新版本时，连续
+// 两次 checkForUpdate 只有第一次打印——把 checkForUpdate 的调用点改回直接
+// printUpdateNotice 会让第二次也打印。
+//
+// TestCheckForUpdateNoticeOncePerVersion pins the wiring end to end: on a cache hit
+// with a newer version only the first of two checkForUpdate calls prints — reverting
+// the call site to a bare printUpdateNotice would print twice.
+func TestCheckForUpdateNoticeOncePerVersion(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	t.Setenv("FORGE_UPDATE_NOTICE_THROTTLE", "")
+	t.Setenv("FORGE_SKIP_UPDATE_CHECK", "")
+	forceChannel(t, installChannel{kind: channelGitHub})
+	if err := saveUpdateCache("1.40.0", channelGitHub); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := &cobra.Command{Use: "status"}
+	run := func() string {
+		return captureStderr(t, func() {
+			checkForUpdate("1.39.1 (commit: abc, built: 2026-08-21)", cmd)
+		})
+	}
+	if out := run(); !strings.Contains(out, "Forge 1.40.0 可用") {
+		t.Fatalf("first check must notify, got %q", out)
+	}
+	if out := run(); out != "" {
+		t.Errorf("second check within 24h must be silent, got %q", out)
+	}
+}
+
 func TestFindPlatformAsset(t *testing.T) {
 	assets := []githubAsset{
 		{Name: "forge_0.11.1_linux_x86_64.tar.gz", BrowserDownloadURL: "http://example.com/1", Size: 1000},
