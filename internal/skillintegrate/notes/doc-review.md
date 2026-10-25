@@ -14,9 +14,9 @@
 ## 完整流程（L1 → L2 → 落档）
 
 1. **L1**：落盘 .md 跑 `forge docs lint <paths>`，硬失败先修（PR 描述/commit body 不落盘，按模板结构核对）。
-2. **L2**：按 skill 正文流程派独立子代理评分（产出者不能自检），产出四维得分 + 分级发现。
+2. **L2**：按 skill 正文流程派独立子代理评分（产出者不能自检），产出四维得分 + 分级发现。打回后的复审分档（小修订续用首轮评审者，重写结论、大改、即将进行第 3 轮评审时新派）见 doc-review SKILL.md 的「步骤 5：门控决策与收敛」，doc gate 的重评原因（打回、评审过期）给出同口径摘要。
 3. **落档**：`forge task doc-review --passed pass --score <N>`（`--passed failed --note "<原因>"` 记录未过），自动带轮次与证据关联。
-4. **双评**（同家族 borderline 70-79 必做）：`--co-reviewer <id> --co-score <N>` 落档两家记录——gate 不消费，只作分歧率观测（output-readability-gates-v2.md P1-A）。
+4. **双评**（同家族且总分落在 75-79 即将放行时必做；70-74 本就未过，不触发）：`--co-reviewer <id> --co-score <N>` 落档两家记录——gate 不消费，只作分歧率观测（output-readability-gates-v2.md P1-A）。
 5. **打标**：Critical 发现用 `tag:` 前缀携带类别（枚举 padding/conclusion/template/false-precision/disclaimer/evidence/style），如 `--critical "padding: 大段复述前文"`。
 
 ## 进化判据聚合（session-retrospective 步骤 6 的机器来源）
