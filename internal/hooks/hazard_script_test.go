@@ -435,7 +435,18 @@ func TestHazardGuardScript_CommitMsgHeredocStillBlocks(t *testing.T) {
 		"git ()   {\n sh; }\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",             // function git, extra spaces
 		"function\tgit { sh; }\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",          // function git, tab
 		"export PATH=/Users/x/bin:$PATH; git commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG", // PATH hijack before the header
-		"git add -A | cat\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",               // pipe in a prefix line
+		// Delimiter concatenation: bash reads <<'MSG'x as delimiter MSGx while the awk
+		// strip keeps looking for MSG and would swallow the real command after MSGx.
+		// delimiter 词拼接：bash 把 <<'MSG'x 的 delimiter 当作 MSGx，awk 仍找 MSG，会吞掉其后真命令。
+		"git commit -F - <<'MSG'x\nmsg\nMSGx\nrm -rf /Users/x/y",
+		"git commit -F - <<'MSG'MSG\nmsg\nMSGMSG\nrm -rf /Users/x/y",
+		"git commit -F - <<'MSG'/\nmsg\nMSG/\nrm -rf /Users/x/y",
+		"git commit -F - <<-'MSG'-\nmsg\nMSG-\nrm -rf /Users/x/y",
+		// Invalid UTF-8 byte before an unclosed quote: BSD grep must not let the byte
+		// turn the allowlist check into a silent allow (the checks run under LC_ALL=C).
+		// 无效 UTF-8 字节 + 未闭合引号：白名单检查按字节判（LC_ALL=C），不得因此静默放行。
+		"echo \xff'\ngit commit -F - <<'MSG'\n'; rm -rf /Users/x/y; echo '\nMSG\n'",
+		"git add -A | cat\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG", // pipe in a prefix line
 	}
 	for _, cmd := range block {
 		out, err := runHazardScript(t, shimDir, cmd)

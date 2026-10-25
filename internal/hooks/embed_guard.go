@@ -1286,7 +1286,7 @@ commit_prefix_seg_ok() {
 commit_prefix_line_ok() {
   local line="$1" norm i=0
   local -a ps
-  if printf '%s' "$line" | grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
+  if printf '%s' "$line" | LC_ALL=C grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
     return 1
   fi
   norm="${line//&&/;}"
@@ -1366,11 +1366,23 @@ commit_msg_heredoc_tag() {
   # The tail after the tag on the opener line is held to the same plain charset (a
   # trailing backslash shifts where the body really starts).
   ttail="${tagpart:$((${#tag} + 2))}"
-  if printf '%s' "$ttail" | grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
+  # 闭合引号之后必须是行尾或分隔符：bash 把 <<'MSG'x 的 delimiter 当作 MSGx（词拼接），
+  # 而 awk 仍找 MSG 行，找不到就一路剥到末尾，吞掉真实 delimiter 之后的命令。
+  # LC_ALL=C：BSD grep 遇到无效 UTF-8 字节会让取反字符类不匹配（静默放行），白名单检查
+  # 一律按字节判。
+  # Right after the closing quote there must be end-of-line or a separator: bash glues
+  # <<'MSG'x into the delimiter MSGx while awk keeps looking for MSG and strips to the
+  # end, swallowing the commands after the real delimiter. LC_ALL=C: BSD grep treats a
+  # line with invalid UTF-8 bytes as non-matching for a negated class (silent allow), so
+  # every allowlist check judges bytes.
+  if [ -n "$ttail" ] && [[ $ttail != " "* ]] && [[ $ttail != ";"* ]] && [[ $ttail != "&"* ]] && [[ $ttail != "|"* ]]; then
+    return 1
+  fi
+  if printf '%s' "$ttail" | LC_ALL=C grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
     return 1
   fi
   head="${opener%%<<*}"
-  if printf '%s' "$head" | grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
+  if printf '%s' "$head" | LC_ALL=C grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
     return 1
   fi
   # head 按 && ; 切段：最后一段必须是 git commit 文法，之前的段只许 cd <path> 或
