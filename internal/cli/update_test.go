@@ -160,6 +160,201 @@ func TestShouldSkipUpdateCheck(t *testing.T) {
 	}
 }
 
+// TestShouldSkipUpdateCheckHookSubtree 复现 hook 子树漏判：`forge hook batch` 的
+// cmd.Name() 是 batch，原先只判 Name()=="hook" 导致升级提示打到 hook 路径的 stderr。
+// 整个 hook 子树（任意深度）都必须跳过；同名叶子不在 hook 下则不受影响。
+//
+// TestShouldSkipUpdateCheckHookSubtree reproduces the hook-subtree miss: the Name()
+// of `forge hook batch` is "batch", so the old Name()=="hook" test let the update
+// notice reach hook-path stderr. Every depth under hook must skip; a same-named leaf
+// outside hook is unaffected.
+func TestShouldSkipUpdateCheckHookSubtree(t *testing.T) {
+	t.Setenv("FORGE_SKIP_UPDATE_CHECK", "")
+	const ver = "0.11.1 (commit: abc)"
+
+	root := &cobra.Command{Use: "forge"}
+	hook := &cobra.Command{Use: "hook"}
+	batch := &cobra.Command{Use: "batch"}
+	deep := &cobra.Command{Use: "deep"}
+	other := &cobra.Command{Use: "other"}
+	otherBatch := &cobra.Command{Use: "batch"}
+	root.AddCommand(hook, other)
+	hook.AddCommand(batch)
+	batch.AddCommand(deep)
+	other.AddCommand(otherBatch)
+
+	for name, tc := range map[string]struct {
+		cmd  *cobra.Command
+		skip bool
+	}{
+		"hook itself":          {hook, true},
+		"hook batch":           {batch, true},
+		"hook batch deep":      {deep, true},
+		"batch outside hook":   {otherBatch, false},
+		"non-hook parent only": {other, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := shouldSkipUpdateCheck(ver, tc.cmd); got != tc.skip {
+				t.Errorf("shouldSkipUpdateCheck(%s) = %v, want %v", tc.cmd.CommandPath(), got, tc.skip)
+			}
+			if got := isHookSubtree(tc.cmd); got != tc.skip {
+				t.Errorf("isHookSubtree(%s) = %v, want %v", tc.cmd.CommandPath(), got, tc.skip)
+			}
+		})
+	}
+
+	// 真实命令树：`forge hook batch` 必须在 hook 子树内（守卫：改名/搬家后测试随之失效而非静默通过）。
+	// Real tree: `forge hook batch` must sit inside the hook subtree (guard against a
+	// rename silently voiding this test).
+	real, _, err := rootCmd.Find([]string{"hook", "batch"})
+	if err != nil || real == nil || real.Name() != "batch" {
+		t.Fatalf("rootCmd has no `hook batch` command (got %v, err %v)", real, err)
+	}
+	if !shouldSkipUpdateCheck(ver, real) {
+		t.Error("real `forge hook batch` must skip the update check")
+	}
+}
+
+// TestUpdateNoticeThrottle：同一版本 24h 内最多提示一次；新版本、超 24h、逃生 env 均重新提示；
+// saveUpdateCache 重写缓存（版本刷新）不得清空节流记录。
+//
+// TestUpdateNoticeThrottle: one notice per version per 24h; a newer version, an
+// expired window or the escape env prompts again; saveUpdateCache rewriting the cache
+// (a refresh) must not wipe the throttle record.
+func TestUpdateNoticeThrottle(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	t.Setenv("FORGE_UPDATE_NOTICE_THROTTLE", "")
+	ch := installChannel{kind: channelGitHub}
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+
+	notice := func(latest string, at time.Time) string {
+		var buf bytes.Buffer
+		maybePrintUpdateNotice(&buf, latest, "1.0.0", ch, at)
+		return buf.String()
+	}
+	if err := saveUpdateCache("1.2.0", channelGitHub); err != nil {
+		t.Fatal(err)
+	}
+
+	if out := notice("1.2.0", now); !strings.Contains(out, "1.2.0") {
+		t.Fatalf("first notice must print, got %q", out)
+	}
+	if out := notice("1.2.0", now.Add(time.Hour)); out != "" {
+		t.Errorf("same version within 24h must be silent, got %q", out)
+	}
+	// 缓存刷新（同版本）保留节流记录。
+	// A same-version cache refresh keeps the throttle record.
+	if err := saveUpdateCache("1.2.0", channelGitHub); err != nil {
+		t.Fatal(err)
+	}
+	if out := notice("1.2.0", now.Add(2*time.Hour)); out != "" {
+		t.Errorf("cache refresh must not reset the throttle, got %q", out)
+	}
+	if out := notice("1.3.0", now.Add(3*time.Hour)); !strings.Contains(out, "1.3.0") {
+		t.Errorf("a newer version must notify immediately, got %q", out)
+	}
+	if out := notice("1.3.0", now.Add(3*time.Hour+25*time.Hour)); !strings.Contains(out, "1.3.0") {
+		t.Errorf("after 24h the same version must notify again, got %q", out)
+	}
+	t.Setenv("FORGE_UPDATE_NOTICE_THROTTLE", "0")
+	if out := notice("1.3.0", now.Add(3*time.Hour+26*time.Hour)); !strings.Contains(out, "1.3.0") {
+		t.Errorf("FORGE_UPDATE_NOTICE_THROTTLE=0 must notify every time, got %q", out)
+	}
+}
+
+// TestUpdateNoticeThrottleEdges 钉节流的边界与降级：恰好 24h 重新提示（半开区间）、
+// 记录时间在未来（时钟回拨）或乱码时不节流、换安装通道不沿用另一通道的记录。
+//
+// TestUpdateNoticeThrottleEdges pins the throttle's boundaries and degradations:
+// exactly 24h notifies again (half-open window), a future or garbled record does not
+// throttle, and a channel switch does not inherit the other channel's record.
+func TestUpdateNoticeThrottleEdges(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	t.Setenv("FORGE_UPDATE_NOTICE_THROTTLE", "")
+	ch := installChannel{kind: channelGitHub}
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+
+	printed := func(at time.Time) bool {
+		var buf bytes.Buffer
+		maybePrintUpdateNotice(&buf, "1.2.0", "1.0.0", ch, at)
+		return buf.Len() > 0
+	}
+	seed := func(notifiedAt string) {
+		t.Helper()
+		if err := saveUpdateCache("1.2.0", channelGitHub); err != nil {
+			t.Fatal(err)
+		}
+		cache, err := loadUpdateCache()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cache.NotifiedVersion = "1.2.0"
+		cache.NotifiedAt = notifiedAt
+		if err := writeUpdateCache(cache); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stamp := func(at time.Time) string { return at.UTC().Format(time.RFC3339) }
+
+	seed(stamp(now))
+	if printed(now.Add(updateNoticeInterval - time.Second)) {
+		t.Error("just under 24h must stay silent")
+	}
+	seed(stamp(now))
+	if !printed(now.Add(updateNoticeInterval)) {
+		t.Error("exactly 24h must notify again")
+	}
+	seed(stamp(now.Add(time.Hour)))
+	if !printed(now) {
+		t.Error("a record in the future (clock moved back) must not throttle")
+	}
+	seed("not-a-timestamp")
+	if !printed(now) {
+		t.Error("an unparsable record must not throttle")
+	}
+
+	// 换通道：GitHub 通道已通知 1.2.0，npm 通道刷新缓存后同版本仍须首次提示。
+	// Channel switch: GitHub already notified 1.2.0; after an npm refresh the same
+	// version must still get its first notice.
+	seed(stamp(now))
+	if err := saveUpdateCache("1.2.0", channelNPM); err != nil {
+		t.Fatal(err)
+	}
+	if !printed(now.Add(time.Minute)) {
+		t.Error("a channel switch must not inherit the other channel's notice record")
+	}
+}
+
+// TestCheckForUpdateNoticeOncePerVersion 端到端钉接线：缓存命中且有新版本时，连续
+// 两次 checkForUpdate 只有第一次打印——把 checkForUpdate 的调用点改回直接
+// printUpdateNotice 会让第二次也打印。
+//
+// TestCheckForUpdateNoticeOncePerVersion pins the wiring end to end: on a cache hit
+// with a newer version only the first of two checkForUpdate calls prints — reverting
+// the call site to a bare printUpdateNotice would print twice.
+func TestCheckForUpdateNoticeOncePerVersion(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	t.Setenv("FORGE_UPDATE_NOTICE_THROTTLE", "")
+	t.Setenv("FORGE_SKIP_UPDATE_CHECK", "")
+	forceChannel(t, installChannel{kind: channelGitHub})
+	if err := saveUpdateCache("1.40.0", channelGitHub); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := &cobra.Command{Use: "status"}
+	run := func() string {
+		return captureStderr(t, func() {
+			checkForUpdate("1.39.1 (commit: abc, built: 2026-08-21)", cmd)
+		})
+	}
+	if out := run(); !strings.Contains(out, "Forge 1.40.0 可用") {
+		t.Fatalf("first check must notify, got %q", out)
+	}
+	if out := run(); out != "" {
+		t.Errorf("second check within 24h must be silent, got %q", out)
+	}
+}
+
 func TestFindPlatformAsset(t *testing.T) {
 	assets := []githubAsset{
 		{Name: "forge_0.11.1_linux_x86_64.tar.gz", BrowserDownloadURL: "http://example.com/1", Size: 1000},

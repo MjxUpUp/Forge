@@ -123,6 +123,14 @@ type updateCache struct {
 	// 的旧条目）。两段式发版窗口内两通道可能不一致（GitHub tag 先于
 	// npm publish），另一通道的新鲜条目须重查而非信任。
 	Channel string `json:"channel,omitempty"`
+	// NotifiedVersion / NotifiedAt record the last version the update notice was
+	// printed for and when, so the same version is announced at most once per
+	// updateNoticeInterval. saveUpdateCache carries them over on refresh.
+	//
+	// NotifiedVersion / NotifiedAt 记录上次打印升级提示的版本与时间，使同一版本在
+	// updateNoticeInterval 内最多提示一次；saveUpdateCache 刷新缓存时沿用。
+	NotifiedVersion string `json:"notified_version,omitempty"`
+	NotifiedAt      string `json:"notified_at,omitempty"`
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {

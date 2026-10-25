@@ -23,14 +23,24 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	// 旧 .mcp.json forge server 残留在此清理；幂等，版本相等跳过路径也会触发。
 	defer dedupeProjectLevelIfPlugin(dir)
 
-	// .sync-version 戳（现在在 DataDir）判 no-op。三种情况版本相等也强制 sync：
-	// force flag / stamp 缺失或不匹配 / 遗留项目 settings.local.json 内 stale hook 绑定。
+	// .sync-version 戳（现在在 DataDir）判 no-op。四种情况版本相等也强制 sync：
+	// force flag / stamp 缺失或不匹配 / 遗留项目 settings.local.json 内 stale hook 绑定 /
+	// 用户级 settings 接了本二进制不认识的 forge hook（版本错位自愈：下面第 2 步的
+	// GenerateUserSettings 剥掉陈旧条目、按本二进制重接线，之后不再逐次报 unknown hook）。
+	//
+	// The .sync-version stamp (now in DataDir) decides no-op. Four cases force a
+	// sync even at equal versions: force flag / stamp missing or mismatched / stale
+	// hook bindings in a legacy project settings.local.json / user-level settings
+	// wiring forge hooks this binary does not know (version-skew self-heal: step 2
+	// below, GenerateUserSettings, strips the stale entries and rewires from this
+	// binary, so `unknown hook` stops firing per call).
 	dataDir := forgedata.DataDirFor(dir)
 	stampPath := filepath.Join(dataDir, ".sync-version")
 	if !force && binaryVersion != "dev" {
 		if stamp, err := os.ReadFile(stampPath); err == nil &&
 			strings.TrimSpace(string(stamp)) == binaryVersion &&
-			!settingsHasStaleBinding(dir) {
+			!settingsHasStaleBinding(dir) &&
+			(isHookInvocation() || !hooks.UserSettingsNeedHeal()) {
 			return nil
 		}
 	}
@@ -50,8 +60,35 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	// 2. 用户级 claude settings.json——仅在 plugin 未 user-level 安装时
 	//    （plugin.json 已全机器注册 ForgeHookSpec）。
 	if !hooks.IsClaudePluginInstalled() {
+		// 版本错位自愈先行（命名被自愈的 hook 供用户知情）；随后的常规生成幂等。
+		//
+		// Version-skew self-heal first (names the healed hooks so the user knows);
+		// the regular generation that follows is idempotent.
+		healFailed := false
+		if healed, err := hooks.HealUnknownUserHooks(); err != nil {
+			healFailed = true
+			// 自愈失败（settings 只读/符号链接……）只告警：绝不能让命令——尤其 hook 进程里的
+			// 门禁——因此整体起不来。
+			//
+			// A failed heal (read-only/symlinked settings, ...) only warns: it must never
+			// stop the command — least of all the gates inside a hook process — from running.
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to heal unknown hooks in user-level settings: %v\n", err)
+		} else if len(healed) > 0 {
+			fmt.Fprintf(os.Stderr, "auto-sync: 已自愈用户级 settings 中本 forge 二进制不认识的 hook: %s\n", strings.Join(healed, ", "))
+		}
 		if err := hooks.GenerateUserSettings(); err != nil {
-			return fmt.Errorf("auto-sync: failed to update user-level settings: %w", err)
+			if !healFailed {
+				return fmt.Errorf("auto-sync: failed to update user-level settings: %w", err)
+			}
+			// 自愈已因同一原因（settings 不可写）失败：常规生成必然同样失败，只告警——否则仅由
+			// 「未知 hook 自愈」触发的强制同步会让每个非 hook 命令（含 forge sync --force）在
+			// PreRunE 失败，用户无法用 forge 自救。
+			//
+			// The heal already failed for the same cause (unwritable settings), so the regular
+			// generation fails identically: warn only — otherwise a sync forced solely by the
+			// unknown-hook heal would fail every non-hook command (forge sync --force
+			// included) in PreRunE, leaving no way to recover with forge itself.
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level settings: %v\n", err)
 		}
 	}
 
@@ -105,6 +142,19 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	}
 
 	return nil
+}
+
+// isHookInvocation 报告本进程是否是 `forge hook ...` 调用。hook 进程不做「未知 hook
+// 自愈」强制同步：hook 要保持低开销、无副作用，并发 hook 进程同时改写同一份
+// settings.json 有竞态；自愈留给非 hook 命令（Execute 用同一判据分流）。
+//
+// isHookInvocation reports whether this process is a `forge hook ...` call. Hook
+// processes do not take the forced unknown-hook self-heal sync: hooks must stay cheap
+// and side-effect-light, and concurrent hook processes rewriting the same
+// settings.json would race; the heal is left to non-hook commands (Execute routes on
+// the same criterion).
+func isHookInvocation() bool {
+	return len(os.Args) > 1 && os.Args[1] == "hook"
 }
 
 // cleanupDeprecatedPipelineSkill 删除已废弃的 forge-pipeline skill 目录。项目级管道
