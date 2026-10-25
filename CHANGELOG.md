@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.84.5](https://github.com/MjxUpUp/Forge/compare/v1.84.4...v1.84.5) (2026-10-25)
+
+
+### Bug Fixes
+
+* **hooks:** 汇总四项 hook 摩擦修复（hazard 误拦、read-before-edit 误拦、升级提示泄漏、hook 静默失败） ([#143](https://github.com/MjxUpUp/Forge/issues/143)) ([7c4d8de](https://github.com/MjxUpUp/Forge/commit/7c4d8dee7ea5b4ca63226c1661220e89b6406ca3))
+
 ## [1.84.4](https://github.com/MjxUpUp/Forge/compare/v1.84.3...v1.84.4) (2026-10-25)
 
 
