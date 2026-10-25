@@ -1259,6 +1259,50 @@ if ! is_hazardous "$COMMAND" && ! is_interp_delete_bypass "$COMMAND"; then
 fi
 
 
+# commit_prefix_seg_ok：commit 消息 heredoc 之前允许出现的段——只有 cd <path> 与
+# git add ...（空段也行）。其余任何命令都不认，保持原判定。
+# Segments allowed before a commit-message heredoc: only cd <path> and git add ...
+# (an empty segment is fine); anything else keeps the original verdict.
+commit_prefix_seg_ok() {
+  local -a pw
+  read -r -a pw <<< "$1"
+  if [ "${#pw[@]}" -eq 0 ]; then
+    return 0
+  fi
+  if [ "${pw[0]}" = "cd" ] && [ "${#pw[@]}" -eq 2 ]; then
+    return 0
+  fi
+  if [ "${pw[0]}" = "git" ] && [ "${#pw[@]}" -ge 2 ] && [ "${pw[1]}" = "add" ]; then
+    return 0
+  fi
+  return 1
+}
+
+# commit_prefix_line_ok：opener 之前的整行——字符全在白名单内（无引号 # 反斜杠 $ 反引号
+# 括号 花括号），无管道与后台 &，按 && ; 切段后每段都过 commit_prefix_seg_ok。
+# A whole line before the opener: allowlisted characters only (no quotes, #, backslash,
+# $, backtick, parens, braces), no pipe or background &, and every && / ; segment passes
+# commit_prefix_seg_ok.
+commit_prefix_line_ok() {
+  local line="$1" norm i=0
+  local -a ps
+  if printf '%s' "$line" | grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
+    return 1
+  fi
+  norm="${line//&&/;}"
+  if [[ $norm == *"&"* ]] || [[ $norm == *"|"* ]]; then
+    return 1
+  fi
+  IFS=';' read -r -a ps <<< "$norm"
+  while [ "$i" -lt "${#ps[@]}" ]; do
+    if ! commit_prefix_seg_ok "${ps[$i]}"; then
+      return 1
+    fi
+    i=$((i + 1))
+  done
+  return 0
+}
+
 # commit_msg_heredoc_tag：识别 git commit -F - <<'TAG' 这一种 heredoc，命中时输出 tag。
 # 只认以下严格形态，任何不确定都返回 1（保持原判定）：
 #   - 整条命令不含函数定义 / function / alias（git(){ sh; } 会把正文喂给 shell 执行）；
@@ -1276,7 +1320,7 @@ fi
 # characters and the exact word order above (no -c, -m or env prefix). cat/tee heredocs
 # are excluded — their body may be an executable script.
 commit_msg_heredoc_tag() {
-  local cmd="$1" opener rest head hseg tagpart tag="" i n f next have_file=0
+  local cmd="$1" opener rest head hseg tagpart tag="" i n f next have_file=0 nr pre ttail
   local re_sq="^'([A-Za-z_][A-Za-z0-9_]*)'" re_dq='^"([A-Za-z_][A-Za-z0-9_]*)"'
   local -a w
   case "$cmd" in
@@ -1286,9 +1330,24 @@ commit_msg_heredoc_tag() {
   case "$cmd" in
     *"() {"*|*"(){"*|*function\ *|*alias\ *) return 1 ;;
   esac
-  opener=$(printf '%s\n' "$cmd" | awk '/(^|[^<])<<($|[^<])/ {print; exit}')
+  # opener 行号 + 行文本（第一个 <<）。先行（opener 之前的行）与 opener 行整行都必须
+  # 是无引号 / 无注释 / 无展开 / 无续行的简单行——否则 # 或未闭合引号可以把真执行的行
+  # 伪装成 heredoc 正文（评审实证：echo # ; git commit ... 、echo ' 换行 git commit ...）。
+  # The lines before the opener and the whole opener line must be plain: no quotes,
+  # comments, expansions or continuations, otherwise a # or an unclosed quote can make a
+  # line that really executes look like a heredoc body (review-proven shapes).
+  opener=$(printf '%s\n' "$cmd" | awk '/(^|[^<])<<($|[^<])/ {print NR ":" $0; exit}')
   if [ -z "$opener" ]; then
     return 1
+  fi
+  nr="${opener%%:*}"
+  opener="${opener#*:}"
+  if [ "$nr" -gt 1 ]; then
+    while IFS= read -r pre; do
+      if ! commit_prefix_line_ok "$pre"; then
+        return 1
+      fi
+    done <<< "$(printf '%s\n' "$cmd" | awk -v n="$nr" 'NR < n {print}')"
   fi
   rest="${opener#*<<}"
   if [[ $rest == *"<<"* ]]; then
@@ -1302,11 +1361,36 @@ commit_msg_heredoc_tag() {
   else
     return 1
   fi
-  head="${opener%%<<*}"
-  hseg="${head##*[;&|]}"
-  if printf '%s' "$hseg" | grep -q '[^A-Za-z0-9_./~@+: =-]'; then
+  # opener 行 tag 之后的尾部：同样只允许简单字符（行尾反斜杠续行会让 heredoc 正文起点
+  # 后移，物理行与逻辑行错位）。
+  # The tail after the tag on the opener line is held to the same plain charset (a
+  # trailing backslash shifts where the body really starts).
+  ttail="${tagpart:$((${#tag} + 2))}"
+  if printf '%s' "$ttail" | grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
     return 1
   fi
+  head="${opener%%<<*}"
+  if printf '%s' "$head" | grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
+    return 1
+  fi
+  # head 按 && ; 切段：最后一段必须是 git commit 文法，之前的段只许 cd <path> 或
+  # git add ...；管道 | 与后台 & 一律不认。
+  # Split the head on && and ;: the last segment must be the git commit grammar, earlier
+  # ones only cd <path> or git add ...; pipes and background & are rejected.
+  hseg="${head//&&/;}"
+  if [[ $hseg == *"&"* ]] || [[ $hseg == *"|"* ]]; then
+    return 1
+  fi
+  local -a segs
+  IFS=';' read -r -a segs <<< "$hseg"
+  hseg="${segs[$((${#segs[@]} - 1))]}"
+  i=0
+  while [ "$i" -lt $((${#segs[@]} - 1)) ]; do
+    if ! commit_prefix_seg_ok "${segs[$i]}"; then
+      return 1
+    fi
+    i=$((i + 1))
+  done
   read -r -a w <<< "$hseg"
   n=${#w[@]}
   if [ "$n" -lt 4 ] || [ "${w[0]}" != "git" ]; then

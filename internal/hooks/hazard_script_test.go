@@ -386,6 +386,8 @@ func TestHazardGuardScript_CommitMsgHeredocData(t *testing.T) {
 		"cd /repo\ngit commit -F - <<'MSG'\nmention rm -rf /Users/x/y in prose\nMSG",
 		"git -C /repo commit -q --file=- <<\"MSG\"\nrm -rf in the message text\nMSG",
 		"git commit -q -s -F - <<'MSG'\nrm -rf text\nMSG",
+		"cd /repo && git add -A && git commit -q -F - <<'MSG'\nrm -rf in prose\nMSG",
+		"git commit -q -F - <<'MSG'\nrm -rf in prose\nMSG\ngit log --oneline -1",
 	}
 	for _, cmd := range pass {
 		shimDir := writeForgeShim(t, "fail")
@@ -421,6 +423,19 @@ func TestHazardGuardScript_CommitMsgHeredocStillBlocks(t *testing.T) {
 		"cat >> notes.md <<'EOF'\nrm -rf /Users/x/y\nEOF",                                     // cat may write an executable script
 		"tee notes.md <<'EOF'\nrm -rf /Users/x/y\nEOF",                                        // tee likewise
 		"git commit -F - <<'MSG'\nmsg\nMSG\ngit commit -F - <<'M2'\nx\nM2\nrm -rf /Users/x/y", // second heredoc must not swallow the tail
+		// Review-proven laundering shapes (each makes a line that really executes
+		// look like a heredoc body to the awk strip; verified against real bash).
+		// 评审实证的洗白形态：每一种都让真执行的行在 awk 眼里变成 heredoc 正文。
+		"echo # ; git commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",                        // # swallows the opener
+		"echo '\ngit commit -F - <<'MSG'\n'; rm -rf /Users/x/y; echo '\nMSG\n'",           // unclosed quote before
+		"echo 'x ; git commit -F - <<'MSG'\n'; rm -rf /Users/x/y; echo '\nMSG\n'",         // unclosed quote on the line
+		"git commit -F - <<'MSG' \\\n; rm -rf /Users/x/y\nmsg\nMSG",                       // trailing backslash continuation
+		"git commit -F - <<'MSG' \\\n&& rm -rf /Users/x/y\nmsg\nMSG",                      // same with &&
+		"git ()\n{ sh; }\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",                // function git, newline brace
+		"git ()   {\n sh; }\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",             // function git, extra spaces
+		"function\tgit { sh; }\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",          // function git, tab
+		"export PATH=/Users/x/bin:$PATH; git commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG", // PATH hijack before the header
+		"git add -A | cat\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",               // pipe in a prefix line
 	}
 	for _, cmd := range block {
 		out, err := runHazardScript(t, shimDir, cmd)
