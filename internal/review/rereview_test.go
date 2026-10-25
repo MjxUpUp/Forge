@@ -32,11 +32,11 @@ func TestReReviewGuidanceContract(t *testing.T) {
 		{"刷新基线步骤", "forge review pass --note"},
 		{"首轮并行多 reviewer：按轨道续用", "按轨道续用"},
 		{"首轮并行多 reviewer：不新派补位", "不新派补位"},
-		{"修复触及测试断言时 cheat-detector 那一轨也续用", "cheat-detector 那一轨也续用"},
+		{"有发现的轨道必续用以核原发现", "有发现的那一轨必续用以核原发现是否真正解决"},
 		{"eng-reviewer 始终续用核回归与调用方", "eng-reviewer 始终续用以核回归与调用方"},
+		{"cheat-detector 无发现时按触发条件续用", "cheat-detector 无发现时在修复命中作弊模式速查表任一项"},
 		{"首轮零发现时两个都续用", "首轮零发现时两个都续用"},
-		{"cheat-detector 续用条件：命中作弊模式速查表任一项", "修复命中作弊模式速查表任一项"},
-		{"cheat-detector 续用范围：只审修复 diff", "cheat-detector 那一轨也续用，只审修复 diff"},
+		{"cheat-detector 续用范围：只审修复 diff", "那一轨也续用，只审修复 diff"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if !strings.Contains(ReReviewGuidance, tc.want) {
@@ -86,6 +86,8 @@ func TestDocReReviewGuidanceContract(t *testing.T) {
 		{"增量档记分：未触及的维度不得升档", "未触及的维度不得升档"},
 		{"增量档：派审前留存被评审版本生成 diff", "派审前留存被评审版本"},
 		{"增量档：被评审版本放仓库外", "放仓库外临时目录"},
+		{"增量档：先生成修订 diff 再覆盖快照", "先对照旧快照生成修订 diff，再用当前版本覆盖快照"},
+		{"升档：只喂文档本身不喂上轮 findings", "只喂文档本身，不喂上轮 findings"},
 		{"borderline 同家族放行前另派第二评委（新派全量）", "评审与产出同家族（家族未知按同家族）且总分落在 75-79 即将放行时另派第二评委（新派、全量）"},
 		{"禁止 fork 作者会话", "不 fork 作者会话"},
 	} {
@@ -119,7 +121,7 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 	}{
 		{
 			name:  "doc-review",
-			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委", "家族未知按同家族处理", "每次派审前把被评审版本复制一份到仓库外的临时目录", "--word-diff-regex=.", "只喂文档本身，不喂上轮 findings"},
+			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委", "家族未知按同家族处理", "每次派审前把被评审版本复制一份到仓库外的临时目录", "--word-diff-regex=.", "只喂文档本身，不喂上轮 findings", "再用当前文件覆盖快照，反过来 diff 恒为空", "滤掉 diff 头行"},
 			stale: []string{"重新派独立子代理评审"},
 		},
 		{
@@ -128,7 +130,7 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 		},
 		{
 			name: "code-review-gate",
-			want: []string{"按轨道续用", "不新派补位", "`cheat-detector` 也续用", "命中下面作弊模式速查表任一项", "`eng-reviewer` 始终续用", "首轮零发现"},
+			want: []string{"按轨道续用", "不新派补位", "`cheat-detector` 无发现时", "命中下面作弊模式速查表任一项", "`eng-reviewer` 始终续用", "首轮零发现", "有发现的轨道必续用"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

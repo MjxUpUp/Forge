@@ -216,14 +216,17 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():
 		reasons = append(reasons, `L2 文档回检未记录——先按 doc-review skill 评审（产出者不能自检），再 forge task doc-review --passed pass|fail --score <N>`)
 	case state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head:
-		// HEAD 前移不等于文档变了（评审→提交→complete 是主流程）：指纹相同才说「内容一致」，
-		// 指纹缺失或不同不下断言。两种口径都不开免评审通道：Passed/Score 由调用方自录，
-		// 「内容没变」只在指纹相同时由机器核验，且仍须评审者确认后再记录。
-		guide := `文档已变或评审时未记指纹：按下列分档复审，仍须评审后再 forge task doc-review 记录，不得凭自述重录旧分数`
-		if fp := state.DocReview.DocsFingerprint; fp != "" && fp == DocContentFingerprint(root, state) {
-			guide = `仅 HEAD 前移（提交或合并基线），文档内容与评审时一致（指纹相同）：续用首轮评审者确认即可，不必全量重评；仍须评审者确认后再记录，不得凭自述重录旧分数`
+		// HEAD 前移不等于文档变了（评审→提交→complete 是主流程）。只有「指纹非空且相同、且上轮
+		// 评审通过并达阈值」才由机器核验出「内容一致，仅需评审者确认」，此时不追加分档指引
+		// （其「第 3 轮升档」会与「确认即可」互相打架）；指纹缺失/不同、或上轮评审本身未通过，
+		// 都不下「内容一致」的断言，按分档复审。任何口径都不开免评审通道：Passed 与分数由调用
+		// 方自录，仍须评审者确认后再记录，不得凭自述重录旧分数。
+		prior := state.DocReview
+		if fp := prior.DocsFingerprint; fp != "" && fp == DocContentFingerprint(root, state) && prior.Passed && prior.RubricScore >= DocRubricThreshold {
+			reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s，已评 %d 轮）——仅 HEAD 前移（提交或合并基线），文档内容与评审时一致（指纹相同）：续用首轮评审者确认即可，不必全量重评，也不按「第 3 轮」升档；仍须评审者确认后再 forge task doc-review 记录，不得凭自述重录旧分数。`, shortCommit(prior.HeadCommit), shortCommit(head), prior.Round))
+		} else {
+			reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s，已评 %d 轮）——文档已变、评审时未记指纹或评审本身未通过：按下列分档复审，仍须评审后再 forge task doc-review 记录，不得凭自述重录旧分数。`+review.DocReReviewGuidance, shortCommit(prior.HeadCommit), shortCommit(head), prior.Round))
 		}
-		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s，已评 %d 轮）——%s。`+review.DocReReviewGuidance, shortCommit(state.DocReview.HeadCommit), shortCommit(head), state.DocReview.Round, guide))
 	case state.DocReview.DocsFingerprint != "" && state.DocReview.DocsFingerprint != DocContentFingerprint(root, state):
 		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧内容（文档指纹不匹配——评审后产物被改且未重新评审，已评 %d 轮）——重新评审后 forge task doc-review。`+review.DocReReviewGuidance, state.DocReview.Round))
 	case !state.DocReview.Passed:

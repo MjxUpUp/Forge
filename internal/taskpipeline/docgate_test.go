@@ -267,12 +267,15 @@ func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
 		wantText   string // 非空：原因串还须含该短语
 		wantAbsent string // 非空：原因串不得含该短语
 	}{
-		// HEAD 前移不等于文档变了（评审→提交→complete 是主流程）：只有指纹相同才由机器核验
-		// 出「内容一致」，此时指引续用评审者确认即可；指纹缺失或不同不得下该断言。任何口径都
-		// 不得开出「凭自述重录旧分数」的免评审通道。
+		// HEAD 前移不等于文档变了（评审→提交→complete 是主流程）：只有「指纹相同且上轮评审通过
+		// 并达阈值」才由机器核验出「内容一致」，此时只写「评审者确认即可」，不追加分档指引（其
+		// 「第 3 轮升档」会与「确认即可」互相打架，Round=2 即是该组合）；指纹缺失/不同、或上轮
+		// 评审本身未通过/低分，不得下该断言。任何口径都不得开出「凭自述重录旧分数」的免评审通道。
 		{"HEAD 过期且无指纹", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true, "不得凭自述重录旧分数", "文档内容与评审时一致"},
 		{"HEAD 过期且指纹不同", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: "stale-fingerprint"}, true, "已评 1 轮", "文档内容与评审时一致"},
-		{"HEAD 过期但指纹相同", DocReview{Passed: true, RubricScore: 90, Round: 2, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "文档内容与评审时一致（指纹相同）", ""},
+		{"HEAD 过期、指纹相同、上轮通过", DocReview{Passed: true, RubricScore: 90, Round: 2, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, false, "文档内容与评审时一致（指纹相同）", "按下列分档复审"},
+		{"HEAD 过期、指纹相同但上轮未通过", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "评审本身未通过", "文档内容与评审时一致"},
+		{"HEAD 过期、指纹相同但上轮低分", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "评审本身未通过", "文档内容与评审时一致"},
 		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true, "已评 1 轮", ""},
 		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true, "", ""},
 		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, "", ""},

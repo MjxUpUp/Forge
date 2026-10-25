@@ -392,11 +392,11 @@ arXiv 2603.16244：单轮 CCR F1 0.376 > 多轮 0.303 > 无上下文独立重审
 
 ### Revision
 
-增量复核补多 reviewer 按轨道续用：eng-reviewer 始终续用核回归与调用方，修复命中作弊模式速查表或触及测试断言 mock 时 cheat-detector 也续用，首轮零发现时两个都续用，不新派补位
+增量复核补多 reviewer 按轨道续用：有发现的轨道必续用核原发现是否真正解决，eng-reviewer 始终续用核回归与调用方，cheat-detector 无发现时在修复命中作弊模式速查表或触及测试断言 mock 时续用，首轮零发现时两个都续用，不新派补位
 
 ### Evidence
 
-只看发现归属会让修复 eng-reviewer 发现时顺手加吞错或弱化测试而漏过作弊轨，也会漏回归与调用方核查；本批独立评审指出这两个缺口，已在常量与 SKILL 同词对齐，由 TestReReviewGuidanceContract 与 TestSkillsCarryResumeTier 钉住
+只看发现归属会让修复 eng-reviewer 发现时顺手加吞错或弱化测试而漏过作弊轨，也会漏回归与调用方核查；只看作弊与回归条件又会让作弊轨自己的发现无人核验（修复为纯删除或错误传播时不命中速查表）。本批独立评审先后指出这两类缺口，所以三条并列，已在常量与 SKILL 同词对齐，由 TestReReviewGuidanceContract 与 TestSkillsCarryResumeTier 钉住
 
 ### Rationale
 
