@@ -2,7 +2,9 @@ package review
 
 // ReReviewGuidance is the single source of truth for the "what to do after the
 // code changed post-review" instruction shown by the task-complete snapshot
-// gate, `forge review status`, and the generated CLAUDE.md common-errors table.
+// gate, the `forge review pass` rejection and `--acknowledge-changes` hint,
+// `forge review status`, the non-task Stop-hook gateGuidance, and the generated
+// CLAUDE.md common-errors table.
 // Re-review is tiered instead of "always dispatch a fresh reviewer": a small,
 // low-risk fix with green deterministic checks is re-checked incrementally by
 // the first-round reviewer (resumed, fed only prior findings + fix diff + test
@@ -15,8 +17,9 @@ package review
 // Claude Code REVIEW.md re-review convergence; CodeRabbit incremental review).
 //
 // ReReviewGuidance 是「审查通过后又改了码，该怎么复审」指引的唯一真相源，由
-// task-complete 快照门禁、`forge review status`、生成的 CLAUDE.md 常见错误表三处
-// 引用。复审分两档而非「每轮新派 fresh reviewer」：小而低风险、确定性检查全绿的
+// task-complete 快照门禁、`forge review pass` 拒绝报错与 `--acknowledge-changes`
+// 提示、`forge review status`、非 task 模式 Stop hook 的 gateGuidance、生成的
+// CLAUDE.md 常见错误表等处引用。复审分两档而非「每轮新派 fresh reviewer」：小而低风险、确定性检查全绿的
 // 修复由首轮 reviewer 续用做增量复核（只喂上轮 findings + 修复 diff + 测试结果，
 // 只审修复 diff 及其波及面——收敛靠范围约束而非严重性过滤，code-review-gate 明令
 // 不分级）；高风险/大改/终审/第 3 轮起新派只读 reviewer 全量复审。依据：

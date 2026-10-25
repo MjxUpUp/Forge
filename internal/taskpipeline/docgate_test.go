@@ -274,11 +274,15 @@ func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
 		{"HEAD 过期且无指纹", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true, "不得凭自述重录旧分数", "文档内容与评审时一致"},
 		{"HEAD 过期且指纹不同", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: "stale-fingerprint"}, true, "已评 1 轮", "文档内容与评审时一致"},
 		{"HEAD 过期、指纹相同、上轮通过", DocReview{Passed: true, RubricScore: 90, Round: 2, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, false, "文档内容与评审时一致（指纹相同）", "按下列分档复审"},
-		{"HEAD 过期、指纹相同但上轮未通过", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "评审本身未通过", "文档内容与评审时一致"},
-		{"HEAD 过期、指纹相同但上轮低分", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "评审本身未通过", "文档内容与评审时一致"},
+		{"HEAD 过期、指纹相同但上轮未通过", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "评审未通过/低于阈值", "文档内容与评审时一致"},
+		{"HEAD 过期、指纹相同但上轮低分", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "评审未通过/低于阈值", "文档内容与评审时一致"},
+		// 终态原因优先于过期类原因：主流程里提交使 HEAD 前移，升级人工与自审文案不得被盖住。
+		{"HEAD 过期且轮次打满未过", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: "deadbeefdeadbeef"}, false, "升级人工确认", "按下列分档复审"},
+		{"HEAD 过期且同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp, SelfReview: true}, false, "同会话自审", "文档内容与评审时一致"},
+		{"指纹过期且轮次打满未过", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, false, "升级人工确认", "按下列分档复审"},
 		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true, "已评 1 轮", ""},
 		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true, "", ""},
-		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, "", ""},
+		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, "已评 1 轮", ""},
 		{"轮次打满升级人工", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head}, false, "", ""},
 		{"同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, SelfReview: true}, false, "", ""},
 	} {

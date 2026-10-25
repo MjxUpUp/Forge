@@ -121,7 +121,7 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 	}{
 		{
 			name:  "doc-review",
-			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委", "家族未知按同家族处理", "每次派审前把被评审版本复制一份到仓库外的临时目录", "--word-diff-regex=.", "只喂文档本身，不喂上轮 findings", "再用当前文件覆盖快照，反过来 diff 恒为空", "滤掉 diff 头行"},
+			want:  []string{"增量复核（默认档）", "续用首轮评审者", "全量评审（升档）", "fork 作者会话", "另派第二评委", "家族未知按同家族处理", "每次派审前把被评审版本复制一份到仓库外的临时目录", "--word-diff-regex=.", "只喂文档本身，不喂上轮 findings", "再用当前文件覆盖快照，反过来 diff 恒为空", "滤掉 diff 头行", "LC_ALL=en_US.UTF-8", "快照不存在（丢失或从没留过）按升档处理", "HEAD 前移但文档未变", "作者不得自行 resolve"},
 			stale: []string{"重新派独立子代理评审"},
 		},
 		{
