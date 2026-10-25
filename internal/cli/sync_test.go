@@ -244,7 +244,7 @@ func TestAutoSyncHookInvocationSkipsUnknownHookHeal(t *testing.T) {
 	}
 }
 
-// 自愈写盘失败（settings 所在目录只读）只告警、不让 autoSync 的这一步返回错误：
+// 自愈写盘失败（settings 所在目录只读）只告警、autoSync 不返回错误：
 // 非 hook 命令继续往下同步（hook 脚本副本照常写出）。
 func TestAutoSyncHealFailureDoesNotStopCommand(t *testing.T) {
 	if os.Geteuid() == 0 {
@@ -265,10 +265,10 @@ func TestAutoSyncHealFailureDoesNotStopCommand(t *testing.T) {
 	if !hookWritten(t, dir) {
 		t.Fatal("the forced sync must still have run its first steps")
 	}
-	// 常规生成（第 2 步）同样写不了——那是既有行为；本测试只钉住「自愈失败本身不构成
-	// 返回错误的来源」：错误（若有）必须来自常规生成而非自愈。
-	if err != nil && strings.Contains(err.Error(), "heal unknown hooks") {
-		t.Errorf("heal failure must only warn, got error: %v", err)
+	// 自愈与常规生成因同一原因（settings 不可写）失败：两者都只告警，autoSync 不返回错误，
+	// 命令（含 forge sync --force）才有机会继续。
+	if err != nil {
+		t.Errorf("unwritable settings after a failed heal must not make autoSync fail, got: %v", err)
 	}
 }
 

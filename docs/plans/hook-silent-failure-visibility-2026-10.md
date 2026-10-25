@@ -49,8 +49,8 @@ hook 因基础设施原因起不来或跑崩时，宿主把它当「非阻塞错
 ## 设计
 ### 触点
 （每行一个路径：PlanScope 按行取第一个路径解析。）
-- `internal/hooks/profile.go`
 - `npm/run.js`
+- `npm/run.test.js`
 - `internal/cli/doctor.go`
 - `internal/cli/doctor_cli_test.go`
 - `internal/hooks/infra.go`
@@ -65,6 +65,7 @@ hook 因基础设施原因起不来或跑崩时，宿主把它当「非阻塞错
 - `internal/doctor/doctor.go`
 - `internal/checklog/types.go`
 - `internal/checklog/escape.go`
+- `internal/checklog/escape_roster_test.go`
 - `compat.snapshot.json`
 - `internal/cli/root.go`
 - `internal/cli/sync.go`
@@ -95,17 +96,20 @@ doctor 的「最小 PATH」取桌面端 GUI 进程的典型值 `/usr/local/bin:/
 `FORGE_HOOK_INFRA_DEDUP=0` 关闭去重与静默，恢复逐次 exit 1 并打印原始错误。每次发生（无论 shown 或 suppressed）都落一行 checklog（check=`hook-infra`，Detail 带 cause、subject、shown/suppressed、是否关闭了去重），可审计；没有项目根时跳过 checklog（非 forge 项目里的 unknown hook）。
 
 ### 退出码
-`Execute` 对 hook 子命令：阻断错误 → 2（不变）；其余非阻断错误与 panic → 首次 1、同因再发 0。`unknown hook` 由 `UnknownHookError` 类型化后走同一路径。run.js：首次 1，同因再发沿用原来的 `{"decision":"approve"}` + 0。
+`Execute` 对 hook 子命令：阻断错误 → 2（不变）；其余非阻断错误与 panic → 首次 1、同因再发 0。`unknown hook` 由 `UnknownHookError` 类型化后走同一路径。run.js：stdout 恒打印原有的 `{"decision":"approve"}`；退出码首次 1、同因再发 0。
 
 ### 自愈（REQ-3）
 `hooks.UserSettingsUnknownHooks()` 解析用户级 `settings.json`，列出 `forge hook <name>` 条目里名册（`ForgeHookSpec` 全部名字加 `batch`）之外的名字。`hooks.HealUnknownUserHooks()` 在有未知名且没有安装 forge 插件时调 `GenerateUserSettings()`——它先剥掉全部 forge 来源条目、保留用户条目，再追加本二进制的接线，所以未知条目被收掉、重复执行幂等。`autoSync` 的版本戳 no-op 判定里把「存在未知 forge hook 且自愈可行」（`UserSettingsNeedHeal`）并入强制同步条件。已装 forge 插件时 autoSync 的 defer（`dedupeProjectLevelIfPlugin`）本来就整体剥除用户级 forge hook，未知条目随之消失，所以该条件把「可行」作为门，插件场景保持快速 no-op 路径。方向说明：只处理「settings 引用了本二进制不认识的 hook」；本二进制比 settings 新、settings 缺 hook 的方向由版本戳覆盖，不在此处理。
 
 ### 关键取舍
 - doctor 为主、进程内提示为辅：node/127/126 三类共占约 60%，进程内无从自报，只有 doctor 能在装机后主动发现。
-- 首次 exit 1 而不是 exit 0 + 注入上下文：exit 0 的 stderr 宿主不展示；exit 1 的 stderr 是宿主已有的、展示给用户的非阻塞错误通道，且各宿主都不把 1 当阻断。
+- 首次 exit 1 而不是 exit 0 + 注入上下文：exit 0 的 stderr 宿主不展示；exit 1 的 stderr 是宿主已有的、展示给用户的非阻塞错误通道，且各宿主都不把 1 当阻断（依据：本机转录里这类失败正是以非阻塞错误出现；`Execute` 既有注释「kimi 只有 exit 2 阻断、Claude 非 2 的错误不阻断」；其余宿主未逐一实测）。
 - 不在 hook 进程里自愈改 settings：hook 要保持低开销、无副作用，并发 hook 进程改写同一份 settings 有竞态。autoSync 在 `forge hook` 调用里不触发「未知 hook 自愈」强制同步（`isHookInvocation`），自愈留给非 hook 命令；自愈写盘失败只告警、不让命令起不来。
 
 ### 已知局限
+- 自愈只在非 hook 命令（含 `forge sync`）触发；只靠 hook 运行、从不跑 forge 命令的用户不会自愈，只收到一次性提示与 doctor 的列示。
+- Windows：`CheckHookRuntime` 不检查（返回 nil）；状态根名里的 uid 在 Windows 上是 -1（`os.Getuid`），目录仍可用，只是不区分用户。
+- 「会话桶」指 `<状态根>/<归一后的 session id 或 ppid-N>/` 目录，其下每个 marker 文件对应一个已提示过的原因；marker 超过 12 小时视为陈旧并重新认领。
 - 命令串不动，所以 node/127/126 在运行时仍是宿主逐次报的原始错误，forge 无法去重或加提示；只有跑过 `forge doctor` 才能看到修复办法。
 - doctor 的最小 PATH 是典型值而非实测值；不同桌面端的真实 PATH 不同，用 `FORGE_DOCTOR_HOOK_PATH` 校准。
 - run.js 的会话键是 ppid，在 `sh -c` 不 exec 的宿主上退化为逐次提示。

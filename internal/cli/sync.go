@@ -64,7 +64,9 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		//
 		// Version-skew self-heal first (names the healed hooks so the user knows);
 		// the regular generation that follows is idempotent.
+		healFailed := false
 		if healed, err := hooks.HealUnknownUserHooks(); err != nil {
+			healFailed = true
 			// 自愈失败（settings 只读/符号链接……）只告警：绝不能让命令——尤其 hook 进程里的
 			// 门禁——因此整体起不来。
 			//
@@ -75,7 +77,18 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 			fmt.Fprintf(os.Stderr, "auto-sync: 已自愈用户级 settings 中本 forge 二进制不认识的 hook: %s\n", strings.Join(healed, ", "))
 		}
 		if err := hooks.GenerateUserSettings(); err != nil {
-			return fmt.Errorf("auto-sync: failed to update user-level settings: %w", err)
+			if !healFailed {
+				return fmt.Errorf("auto-sync: failed to update user-level settings: %w", err)
+			}
+			// 自愈已因同一原因（settings 不可写）失败：常规生成必然同样失败，只告警——否则仅由
+			// 「未知 hook 自愈」触发的强制同步会让每个非 hook 命令（含 forge sync --force）在
+			// PreRunE 失败，用户无法用 forge 自救。
+			//
+			// The heal already failed for the same cause (unwritable settings), so the regular
+			// generation fails identically: warn only — otherwise a sync forced solely by the
+			// unknown-hook heal would fail every non-hook command (forge sync --force
+			// included) in PreRunE, leaving no way to recover with forge itself.
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level settings: %v\n", err)
 		}
 	}
 
