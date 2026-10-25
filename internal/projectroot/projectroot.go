@@ -60,6 +60,22 @@ func Find() (string, error) {
 // 致。在 git worktree 内，根是该 worktree 自己的工作树根——所以 worktree 里的文件即便
 // 进程 cwd 在主仓库，也解析到该 worktree。
 func FindFrom(cwd string) (string, error) {
+	return findFrom(cwd, true)
+}
+
+// FindFromReadOnly is FindFrom without the self-heal registration of a legacy
+// .forge/ hit. Hot paths that only classify a path (the hook reads log deciding which
+// project a file belongs to) must not write the global registry or enrol a project
+// the user never asked forge to manage.
+//
+// FindFromReadOnly 是不做遗留 .forge/ 自愈登记的 FindFrom。只对路径做归类的热路径
+// （hook 读记录判断文件属于哪个项目）不得写全局注册表，也不得把用户没打算让 forge 接管
+// 的项目登记进去。
+func FindFromReadOnly(cwd string) (string, error) {
+	return findFrom(cwd, false)
+}
+
+func findFrom(cwd string, heal bool) (string, error) {
 	// 1. 注册表成员资格（重构后的锚点）。
 	if root, ok := registry.IsMember(cwd); ok {
 		return root, nil
@@ -74,7 +90,9 @@ func FindFrom(cwd string) (string, error) {
 		if _, state := registry.State(root); state == registry.StatusDeclined {
 			return "", registry.ErrDeclinedProject
 		}
-		_ = registry.Add(root) // 自愈登记，失败不阻断
+		if heal {
+			_ = registry.Add(root) // 自愈登记，失败不阻断
+		}
 		return root, nil
 	}
 

@@ -16,6 +16,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
+	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
 	"github.com/spf13/cobra"
@@ -1014,6 +1015,19 @@ func TestBashReadCountsAsRead(t *testing.T) {
 		"sed -i s/a/b/ a.go",
 		"sed -n 1,40p",
 		"head -n 20",
+		// Review-found shapes where bash and the Go parser could name different files.
+		// 评审发现的、bash 与 Go 解析可能指向不同文件的形态。
+		"cat -- a.go",
+		"head -n 5 -- a.go",
+		"tail -f a.go",
+		"cat a.go # x",
+		"cat #a.go",
+		"cat [a].go",
+		"cat ~/a.go",
+		"cat sub/../a.go",
+		"cat a.go ",
+		"cat 'my file.go'",
+		"sed -n '1p;2p' a.go",
 	}
 	for i, cmd := range notCredited {
 		sid := fmt.Sprintf("sid-bash-no-%d", i)
@@ -1022,6 +1036,27 @@ func TestBashReadCountsAsRead(t *testing.T) {
 		if got := readsLogOf(t, hookRootNow(t), sid); len(got) != 0 {
 			t.Errorf("%q must not credit any read, reads log = %v", cmd, got)
 		}
+	}
+}
+
+// TestCrossRootCreditDoesNotEnrolProject pins that classifying a file during a Read
+// never writes the global registry: a legacy .forge/ marker in a directory the session
+// merely read from must not turn that directory into a managed project.
+//
+// 钉住：Read 时给文件归类不得写全局注册表——会话只是读了某目录里的文件，该目录的遗留
+// .forge/ 标记不能因此把它变成 managed 项目。
+func TestCrossRootCreditDoesNotEnrolProject(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	newHookProject(t)
+	rootB := makeReadsProject(t)
+	file := writeReadsSource(t, rootB, "internal/x.go")
+
+	if _, ok := registry.IsMember(rootB); ok {
+		t.Fatal("precondition: the other project must not be registered yet")
+	}
+	trackReadsTool(t, "sid-reads-4", "Read", fmt.Sprintf(`{"file_path":%q}`, file))
+	if _, ok := registry.IsMember(rootB); ok {
+		t.Fatal("a Read must not enrol the file's project in the global registry")
 	}
 }
 

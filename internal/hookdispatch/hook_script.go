@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -146,7 +147,11 @@ func fileProjectRoot(path string) string {
 	if !filepath.IsAbs(path) {
 		return ""
 	}
-	root, err := projectroot.FindFrom(filepath.Dir(path))
+	// Read-only resolution: classifying a file must not write the global registry or
+	// enrol a project the user never asked forge to manage (review F1).
+	// 只读解析：给文件归类不得写全局注册表，也不得登记用户没打算让 forge 接管的项目
+	// （评审 F1）。
+	root, err := projectroot.FindFromReadOnly(filepath.Dir(path))
 	if err != nil {
 		return ""
 	}
@@ -174,12 +179,31 @@ func sameProjectRoot(a, b string) bool {
 // （漏记只是 agent 补一次 Read 就能解决的误拦；误记会让没读过的文件放行）。grep 不计：
 // 匹配片段不等于读过。
 func bashReadPath(command string) string {
-	if strings.ContainsAny(command, "|;&<>$`(){}*?!\\\n\r") {
+	if strings.ContainsAny(command, "|;&<>$`(){}[]*?!\\\n\r") {
 		return ""
+	}
+	// ASCII only: strings.Fields splits on Unicode whitespace (a no-break space) where
+	// bash does not, so a non-ASCII command could be parsed into a different file than
+	// the one bash opens (review F3).
+	// 只认 ASCII：strings.Fields 按 Unicode 空白（如不换行空格）切词而 bash 不会，非 ASCII
+	// 命令可能被解析成与 bash 实际打开的不同的文件（评审 F3）。
+	for _, r := range command {
+		if r > unicode.MaxASCII {
+			return ""
+		}
 	}
 	words := strings.Fields(command)
 	if len(words) < 2 {
 		return ""
+	}
+	// A word starting with # is a comment in bash (the rest of the line is not an
+	// operand); a leading ~ is expanded to HOME by bash but would be taken literally.
+	// 词首 # 在 bash 里是注释（其后不是操作数）；词首 ~ 会被 bash 展开成 HOME，这里却会
+	// 当字面目录。
+	for _, w := range words {
+		if strings.HasPrefix(w, "#") || strings.HasPrefix(w, "~") {
+			return ""
+		}
 	}
 	var operands []string
 	switch words[0] {
@@ -208,6 +232,15 @@ func bashReadPath(command string) string {
 	p := trimQuotes(operands[0])
 	if p == "" || strings.HasPrefix(p, "-") || strings.ContainsAny(p, "'\"") {
 		return ""
+	}
+	// A ".." segment is resolved by bash through symlinks but by filepath.Clean
+	// lexically, so the two can name different files (review F2): refuse it.
+	// ".." 段在 bash 里经符号链接解析，而 filepath.Clean 是词法折叠，两者可能指向不同
+	// 文件（评审 F2）：直接拒绝。
+	for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
+		if seg == ".." {
+			return ""
+		}
 	}
 	if !filepath.IsAbs(p) {
 		wd, err := os.Getwd()

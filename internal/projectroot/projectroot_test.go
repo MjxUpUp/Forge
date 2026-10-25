@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/registry"
 )
 
 // chdirTo 还原原 cwd（t.Cleanup），让 Find 的 os.Getwd 测试不污染其他测试。
@@ -55,6 +57,37 @@ func TestFind_LocatesForgeRoot(t *testing.T) {
 	// 用 .forge 是否在 got 下做稳健断言（路径格式/符号链接差异不影响）。
 	if _, err := os.Stat(filepath.Join(got, ".forge")); err != nil {
 		t.Fatalf("Find 返回 %q，但其下无 .forge/: %v", got, err)
+	}
+}
+
+// TestFindFromReadOnly_DoesNotRegister：FindFromReadOnly 与 FindFrom 解析结果相同，但
+// 不做遗留 .forge/ 的自愈登记——给路径归类的热路径不得写全局注册表。
+func TestFindFromReadOnly_DoesNotRegister(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".forge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	deep := filepath.Join(root, "x")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := FindFromReadOnly(deep)
+	if err != nil {
+		t.Fatalf("FindFromReadOnly: %v", err)
+	}
+	if !samePath(got, root) {
+		t.Fatalf("FindFromReadOnly(%q) = %q，应是 %q", deep, got, root)
+	}
+	if _, ok := registry.IsMember(root); ok {
+		t.Fatal("FindFromReadOnly 不得自愈登记遗留项目")
+	}
+
+	if _, err := FindFrom(deep); err != nil {
+		t.Fatalf("FindFrom: %v", err)
+	}
+	if _, ok := registry.IsMember(root); !ok {
+		t.Fatal("对照：FindFrom 应自愈登记遗留项目")
 	}
 }
 
