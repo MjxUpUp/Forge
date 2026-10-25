@@ -370,3 +370,106 @@ func TestHazardGuardScript_InterpDeleteBypass(t *testing.T) {
 		}
 	}
 }
+
+// TestHazardGuardScript_CommitMsgHeredocData pins the commit-message heredoc data
+// allow: `git commit -F - <<'TAG'` feeds the body to git as message text, which no
+// program executes, so a body that merely mentions a dangerous command (the 2026-08
+// replay: a design-bundle commit whose message discussed DELETE routes) must pass.
+// The allow is audited as a "data" ledger event, not silent.
+//
+// 钉死 commit 消息 heredoc 数据放行：`git commit -F - <<'TAG'` 的正文只被 git 当
+// 消息文本，没有程序会执行它；正文提到危险命令字样（2026-08 回放：讨论 DELETE 路由
+// 的设计包提交）必须放行，并在 hazard 台账落 data 事件。
+func TestHazardGuardScript_CommitMsgHeredocData(t *testing.T) {
+	pass := []string{
+		"git commit -q -F - <<'MSG'\nfix: guard now blocks rm -rf and DELETE FROM users\n\nbody mentions git push --force and DROP TABLE.\nMSG",
+		"cd /repo\ngit commit -F - <<'MSG'\nmention rm -rf /Users/x/y in prose\nMSG",
+		"git -C /repo commit -q --file=- <<\"MSG\"\nrm -rf in the message text\nMSG",
+		"git commit -q -s -F - <<'MSG'\nrm -rf text\nMSG",
+		"cd /repo && git add -A && git commit -q -F - <<'MSG'\nrm -rf in prose\nMSG",
+		"git commit -q -F - <<'MSG'\nrm -rf in prose\nMSG\ngit log --oneline -1",
+	}
+	for _, cmd := range pass {
+		shimDir := writeForgeShim(t, "fail")
+		out, err := runHazardScript(t, shimDir, cmd)
+		if err != nil {
+			t.Errorf("hazard-guard must pass commit-message heredoc data %q, got block:\n%s", cmd, out)
+			continue
+		}
+		if got := loggedHazardTypes(t, shimDir); len(got) != 1 || got[0] != "data" {
+			t.Errorf("commit-message heredoc allow must leave exactly one data ledger event for %q, got %v", cmd, got)
+		}
+	}
+}
+
+// TestHazardGuardScript_CommitMsgHeredocStillBlocks is the adversarial battery for
+// the commit-message allow: it must never launder a real execution. The body of an
+// unquoted tag is expanded by the shell, anything after the delimiter or before the
+// header still runs, a git header carrying -c can run a program, and cat/tee
+// heredocs may write executable scripts (the long-standing conservative design).
+//
+// commit 消息放行的对抗组：不得洗白真执行。未引号 tag 的正文会被 shell 展开；delimiter
+// 之后、header 之前的命令照常执行；git 带 -c 可执行程序；cat/tee 的 heredoc 可能在写
+// 可执行脚本（既有的保守设计）。
+func TestHazardGuardScript_CommitMsgHeredocStillBlocks(t *testing.T) {
+	shimDir := writeForgeShim(t, "fail")
+	block := []string{
+		"git commit -F - <<MSG\n$(rm -rf /Users/x/y)\nMSG",                                    // unquoted tag: body is expanded
+		"git commit -F - <<MSG\nrm -rf /Users/x/y\nMSG",                                       // unquoted tag, bare dangerous line
+		"git commit -F - <<'MSG'\nmsg\nMSG\nrm -rf /Users/x/y",                                // dangerous command after the delimiter
+		"rm -rf /Users/x/y; git commit -F - <<'MSG'\nmsg\nMSG",                                // dangerous command before the header
+		"git -c core.editor=rm commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",                   // -c can run a program
+		"git commit -m $(rm -rf /Users/x/y) -F - <<'MSG'\nmsg\nMSG",                           // substitution in the header
+		"cat >> notes.md <<'EOF'\nrm -rf /Users/x/y\nEOF",                                     // cat may write an executable script
+		"tee notes.md <<'EOF'\nrm -rf /Users/x/y\nEOF",                                        // tee likewise
+		"git commit -F - <<'MSG'\nmsg\nMSG\ngit commit -F - <<'M2'\nx\nM2\nrm -rf /Users/x/y", // second heredoc must not swallow the tail
+		// Review-proven laundering shapes (each makes a line that really executes
+		// look like a heredoc body to the awk strip; verified against real bash).
+		// 评审实证的洗白形态：每一种都让真执行的行在 awk 眼里变成 heredoc 正文。
+		"echo # ; git commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",                        // # swallows the opener
+		"echo '\ngit commit -F - <<'MSG'\n'; rm -rf /Users/x/y; echo '\nMSG\n'",           // unclosed quote before
+		"echo 'x ; git commit -F - <<'MSG'\n'; rm -rf /Users/x/y; echo '\nMSG\n'",         // unclosed quote on the line
+		"git commit -F - <<'MSG' \\\n; rm -rf /Users/x/y\nmsg\nMSG",                       // trailing backslash continuation
+		"git commit -F - <<'MSG' \\\n&& rm -rf /Users/x/y\nmsg\nMSG",                      // same with &&
+		"git ()\n{ sh; }\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",                // function git, newline brace
+		"git ()   {\n sh; }\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",             // function git, extra spaces
+		"function\tgit { sh; }\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG",          // function git, tab
+		"export PATH=/Users/x/bin:$PATH; git commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG", // PATH hijack before the header
+		// Delimiter concatenation: bash reads <<'MSG'x as delimiter MSGx while the awk
+		// strip keeps looking for MSG and would swallow the real command after MSGx.
+		// delimiter 词拼接：bash 把 <<'MSG'x 的 delimiter 当作 MSGx，awk 仍找 MSG，会吞掉其后真命令。
+		"git commit -F - <<'MSG'x\nmsg\nMSGx\nrm -rf /Users/x/y",
+		"git commit -F - <<'MSG'MSG\nmsg\nMSGMSG\nrm -rf /Users/x/y",
+		"git commit -F - <<'MSG'/\nmsg\nMSG/\nrm -rf /Users/x/y",
+		"git commit -F - <<-'MSG'-\nmsg\nMSG-\nrm -rf /Users/x/y",
+		"git add -A | cat\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG", // pipe in a prefix line
+	}
+	for _, cmd := range block {
+		out, err := runHazardScript(t, shimDir, cmd)
+		if err == nil {
+			t.Errorf("hazard-guard must keep blocking %q, got exit 0:\n%s", cmd, out)
+		}
+	}
+}
+
+// TestHazardGuardScript_ConservativeBoundaryPinned documents the fail-closed
+// boundary the 2026-10 replay of 35 real blocks confirmed as intentional: a variable
+// in command position cannot be resolved lexically (even when the same line assigned
+// a literal). Loosening it is a separate design decision.
+//
+// 钉住 2026-10 回放 35 次真实拦截后确认属有意设计的 fail-closed 边界：命令位变量
+// 词法不可解析（即便同一行赋过字面量）。放宽它属另一个设计决策。
+func TestHazardGuardScript_ConservativeBoundaryPinned(t *testing.T) {
+	shimDir := writeForgeShim(t, "fail")
+	block := []string{
+		`B=/opt/tools/forge; "$B" --version`,
+		`SP=/opt/scratch && $SP/forge skills validate`,
+		`E=/opt/bin/tool; ELECTRON_RUN_AS_NODE=1 "$E" -e 1`,
+	}
+	for _, cmd := range block {
+		out, err := runHazardScript(t, shimDir, cmd)
+		if err == nil {
+			t.Errorf("hazard-guard must keep the conservative block for %q, got exit 0:\n%s", cmd, out)
+		}
+	}
+}

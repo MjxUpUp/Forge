@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,8 @@ var updateCheckQueryDeadline = 2500 * time.Millisecond
 
 // checkForUpdate 检查是否有更新版本可用。
 // 用 24h 缓存避免每次命令都打版本源。
-// 结果作为通知打印到 stderr。
+// 结果作为通知打印到 stderr；同一版本 updateNoticeInterval 内最多提示一次
+// （见 maybePrintUpdateNotice）。
 // 错误静默忽略——这是 best-effort 检查。
 func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 	if shouldSkipUpdateCheck(fullVersion, cmd) {
@@ -51,11 +53,11 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 	// 检查缓存
 	cache, err := loadUpdateCache()
 	if err == nil && !cache.isExpired() && cache.matchesChannel(channel.kind) {
-		// 缓存命中——仅在存在更新版本时通知。负条目（LatestVersion 为空，
+		// 缓存命中——仅在存在更新版本时通知（同一版本受 24h 节流）。负条目（LatestVersion 为空，
 		// 网络失败后写入）也在此命中：updateCheckNegativeTTL 内视为「已检查
 		// 过」，不再发网络请求、不打印——与失败检查本就产生的静默一致。
 		if cache.LatestVersion != "" && compareVersions(cache.LatestVersion, current) > 0 {
-			printUpdateNotice(os.Stderr, cache.LatestVersion, current, channel)
+			maybePrintUpdateNotice(os.Stderr, cache.LatestVersion, current, channel, time.Now())
 		}
 		return
 	}
@@ -78,7 +80,7 @@ func checkForUpdate(fullVersion string, cmd *cobra.Command) {
 
 	// 更新则通知
 	if compareVersions(latest, current) > 0 {
-		printUpdateNotice(os.Stderr, latest, current, channel)
+		maybePrintUpdateNotice(os.Stderr, latest, current, channel, time.Now())
 	}
 }
 
@@ -130,8 +132,8 @@ func shouldSkipUpdateCheck(fullVersion string, cmd *cobra.Command) bool {
 		return true
 	}
 
-	// hook 模式跳过（hook 每次文件编辑都跑，必须快）
-	if cmd.Name() == "hook" {
+	// hook 子树跳过（hook 每次文件编辑都跑，必须快；含 hook batch 等嵌套子命令）
+	if isHookSubtree(cmd) {
 		return true
 	}
 
@@ -148,6 +150,78 @@ func shouldSkipUpdateCheck(fullVersion string, cmd *cobra.Command) bool {
 	}
 
 	return false
+}
+
+// isHookSubtree 判断 cmd 是否位于 hook 子树（自身或任一祖先名为 hook，含
+// `forge hook batch` 等嵌套子命令）。升级检查与 npm 垫片自愈提示的「hook 静默」判断
+// 共用此函数——只判 cmd.Name() 会漏掉嵌套子命令（batch 的 Name() 是 batch），
+// 让提示的 stderr 混进 hook 输出、进入 agent 上下文。
+//
+// isHookSubtree reports whether cmd is in the hook subtree (itself or any ancestor is
+// named hook, covering nested subcommands such as `forge hook batch`). The update
+// check and the npm-shim-heal notice share this one predicate for "silent under
+// hook"; testing only cmd.Name() misses nested subcommands (batch's Name() is
+// "batch") and lets the notice's stderr leak into hook output and agent context.
+func isHookSubtree(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Name() == "hook" {
+			return true
+		}
+	}
+	return false
+}
+
+// updateNoticeThrottleEnv 设为 0 时关闭升级提示节流（每条命令都提示，回到旧行为）。
+// updateNoticeThrottleEnv set to 0 disables the notice throttle (notify on every
+// command, the old behavior).
+const updateNoticeThrottleEnv = "FORGE_UPDATE_NOTICE_THROTTLE"
+
+// updateNoticeInterval 同一版本两次提示的最短间隔。
+// updateNoticeInterval is the minimum gap between two notices for the same version.
+const updateNoticeInterval = 24 * time.Hour
+
+// noticeThrottled 判断 latest 是否已在 updateNoticeInterval 内通知过。
+// noticeThrottled reports whether latest was already notified within
+// updateNoticeInterval.
+func (c *updateCache) noticeThrottled(latest string, now time.Time) bool {
+	if c == nil || c.NotifiedVersion != latest || c.NotifiedAt == "" {
+		return false
+	}
+	at, err := time.Parse(time.RFC3339, c.NotifiedAt)
+	if err != nil {
+		return false
+	}
+	// 时钟回拨（at 在未来）时不节流，避免长期静音。
+	// A clock moved backwards (at in the future) must not throttle, or the notice
+	// would stay silent for a long time.
+	return !now.Before(at) && now.Sub(at) < updateNoticeInterval
+}
+
+// maybePrintUpdateNotice 打印升级提示，同一版本 updateNoticeInterval 内最多一次
+// （已通知的版本与时间记在 update 缓存里）。缓存读写失败 fail-open：照常提示，
+// 只是不节流——提示是 best-effort，不得因记账失败而吞掉。读改写无锁：并发的
+// 两个进程可能各打一次，节流是尽力而为。
+//
+// maybePrintUpdateNotice prints the update notice at most once per version per
+// updateNoticeInterval (notified version and time live in the update cache). Cache
+// I/O failure fails open: the notice still prints, just unthrottled. The
+// read-modify-write is unlocked: two concurrent processes may each print once, so
+// the throttle is best-effort.
+func maybePrintUpdateNotice(w io.Writer, latest, current string, channel installChannel, now time.Time) {
+	throttle := os.Getenv(updateNoticeThrottleEnv) != "0"
+	cache, err := loadUpdateCache()
+	if err != nil {
+		cache = nil
+	}
+	if throttle && cache.noticeThrottled(latest, now) {
+		return
+	}
+	printUpdateNotice(w, latest, current, channel)
+	if throttle && cache != nil {
+		cache.NotifiedVersion = latest
+		cache.NotifiedAt = now.UTC().Format(time.RFC3339)
+		_ = writeUpdateCache(cache)
+	}
 }
 
 // updateCachePath 返回 update 缓存文件路径——随 forgedata.GlobalHome 单一真相源
@@ -204,18 +278,34 @@ func (c *updateCache) matchesChannel(kind channelKind) bool {
 }
 
 func saveUpdateCache(version string, kind channelKind) error {
+	cache := updateCache{
+		LatestVersion: version,
+		CheckedAt:     time.Now().UTC().Format(time.RFC3339),
+		Channel:       string(kind),
+	}
+	// 沿用已通知的版本与时间：刷新缓存不得清空节流记录，否则同一版本每次重查后
+	// 又提示一遍。读失败（无缓存/损坏）即无记录可沿用；换了安装通道则不沿用——
+	// 另一通道的提示带的是另一条更新命令，不能让它静音本通道的首次提示。
+	// Carry over the notified version/time: a refresh must not wipe the throttle
+	// record. A read failure (no cache / corrupt) means nothing to carry; a changed
+	// install channel carries nothing either — the other channel's notice named a
+	// different update command and must not silence this channel's first notice.
+	if prev, err := loadUpdateCache(); err == nil && prev.matchesChannel(kind) {
+		cache.NotifiedVersion = prev.NotifiedVersion
+		cache.NotifiedAt = prev.NotifiedAt
+	}
+	return writeUpdateCache(&cache)
+}
+
+// writeUpdateCache 把 cache 原子写入缓存文件。
+// writeUpdateCache atomically writes cache to the cache file.
+func writeUpdateCache(cache *updateCache) error {
 	path, err := updateCachePath()
 	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
-	}
-
-	cache := updateCache{
-		LatestVersion: version,
-		CheckedAt:     time.Now().UTC().Format(time.RFC3339),
-		Channel:       string(kind),
 	}
 
 	data, err := json.MarshalIndent(cache, "", "  ")
