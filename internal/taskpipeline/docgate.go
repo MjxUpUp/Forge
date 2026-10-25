@@ -215,7 +215,9 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	// 终态原因（轮次打满仍未过需升级人工、同会话自审需独立评审者）优先于「过期」类原因：
 	// 评审→提交→complete 是主流程，HEAD 必然前移，若让 HEAD/指纹过期排在前面，这两条
 	// 文案在可达状态下永远显示不出来，会把第 4 轮、「确认即可」说给不该听的状态。
-	terminal := state.DocReview != nil && ((!state.DocReview.Passed && state.DocReview.Round >= DocReviewMaxRounds) || state.DocReview.SelfReview)
+	// 自审只在「已通过」时才是终态：未通过的自审记录落在下面的 !Passed 原因里，自审文案
+	// 对它不可达，把它算终态只会屏蔽 HEAD/指纹两条过期原因而没有对应的终态文案。
+	terminal := state.DocReview != nil && ((!state.DocReview.Passed && state.DocReview.Round >= DocReviewMaxRounds) || (state.DocReview.SelfReview && state.DocReview.Passed))
 	switch {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():
 		reasons = append(reasons, `L2 文档回检未记录——先按 doc-review skill 评审（产出者不能自检），再 forge task doc-review --passed pass|fail --score <N>`)
@@ -252,7 +254,7 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 	for i := range state.Findings {
 		f := &state.Findings[i]
 		if f.Source == DocReviewSource && f.Severity == FindingSeverityCritical && f.Status == "open" {
-			reasons = append(reasons, fmt.Sprintf("文档回检 Critical 未决（%s）：%s——修复后 forge task finding resolve %s", f.ID, f.Content, f.ID))
+			reasons = append(reasons, fmt.Sprintf("文档回检 Critical 未决（%s）：%s——修复后须经评审者判定已解决，才可 forge task finding --resolve %s（作者不得自行标记）", f.ID, f.Content, f.ID))
 		}
 	}
 

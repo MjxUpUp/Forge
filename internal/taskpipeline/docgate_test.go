@@ -152,6 +152,17 @@ func TestCheckDocGateCriticalFindings(t *testing.T) {
 	if len(reasons) == 0 {
 		t.Fatal("阻断时必须给出原因（doc gate 输出供人跟进）")
 	}
+	// 未决 Critical 的原因要与「评审者判定已解决后才可标记」一致，并给出真实存在的
+	// 命令形态（--resolve <id>，不是不存在的 `finding resolve`）。
+	joined := strings.Join(reasons, "; ")
+	for _, want := range []string{"经评审者判定已解决", "forge task finding --resolve", "作者不得自行标记"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("Critical 未决原因缺少 %q, got %s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "finding resolve") {
+		t.Errorf("Critical 未决原因不得出现不存在的命令 `finding resolve`, got %s", joined)
+	}
 	if len(state.Findings) == 0 || state.Findings[0].ID == "" {
 		t.Fatal("AddFinding 应生成 ID")
 	}
@@ -285,6 +296,8 @@ func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
 		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, "已评 1 轮", ""},
 		{"轮次打满升级人工", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head}, false, "", ""},
 		{"同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, SelfReview: true}, false, "", ""},
+		// 自审且未通过：自审文案不可达，落在 !Passed 原因里（带分档指引），不是终态。
+		{"同会话自审且未通过", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head, SelfReview: true}, true, "未通过（第 1 轮", "文档内容与评审时一致"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			state := &TaskState{TaskRef: "feat/x", HeadCommit: base}
