@@ -208,9 +208,14 @@ var reviewStatusCmd = &cobra.Command{
 // 指引它加载 skill、派独立子 agent 审查、通过后标记。这是"自动挡"的核心闭环指令。
 // 用双引号拼接而非 raw string：内部的反引号（`forge review pass`）在 raw string 里
 // 会提前终止字符串（forge-security-hook-fail-open 记的坑），双引号串里则是普通字符。
+// 第 2 步后的复审分档行内嵌 review.ReReviewGuidance（单一真相源）：stamp 内容寻址、
+// 读不出「本分支此前已审」，所以不在代码里判首审/复审，条件句交给 agent——首审照派，
+// 修复后复审按分档续用首轮 reviewer，避免每轮 Stop 都引导新派冷启动子 agent。
 const gateGuidance = "检测到未审查的源码变更。请按序完成：\n" +
 	"1. 加载 code-review-gate skill（经宿主 skill 机制）\n" +
 	"2. 按其策略派【只读】子 agent 审查当前 diff——独立上下文是底线，不可自审绕过\n" +
+	"   (a) 首审、新会话接手、没有首轮 reviewer 的句柄、或这版不是对已审代码的修复（如新增功能）：按本步新派\n" +
+	"   (b) 本会话内已对本分支派过 reviewer、这版是修复后的 diff 且句柄可续用（复审）：" + review.ReReviewGuidance + "（非 task 模式没有审查基线刷新，`--note` 只作审计留痕）\n" +
 	"3. 审查通过后运行 `forge review pass` 标记，再结束会话\n" +
 	"审查发现的问题按类型接 skill：运行时 bug/逻辑错误 → systematic-debugging；编译错误 → compile-fix-loop；断言弱化/假测试 → test-discipline。\n" +
 	"范围说明：本次判定只覆盖能归因到当前会话的源码变更；已被证明属于其他活跃会话的变更已排除，不要求你审查。\n" +
