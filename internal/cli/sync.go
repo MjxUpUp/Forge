@@ -23,14 +23,24 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	// 旧 .mcp.json forge server 残留在此清理；幂等，版本相等跳过路径也会触发。
 	defer dedupeProjectLevelIfPlugin(dir)
 
-	// .sync-version 戳（现在在 DataDir）判 no-op。三种情况版本相等也强制 sync：
-	// force flag / stamp 缺失或不匹配 / 遗留项目 settings.local.json 内 stale hook 绑定。
+	// .sync-version 戳（现在在 DataDir）判 no-op。四种情况版本相等也强制 sync：
+	// force flag / stamp 缺失或不匹配 / 遗留项目 settings.local.json 内 stale hook 绑定 /
+	// 用户级 settings 接了本二进制不认识的 forge hook（版本错位自愈：下面第 2 步的
+	// GenerateUserSettings 剥掉陈旧条目、按本二进制重接线，之后不再逐次报 unknown hook）。
+	//
+	// The .sync-version stamp (now in DataDir) decides no-op. Four cases force a
+	// sync even at equal versions: force flag / stamp missing or mismatched / stale
+	// hook bindings in a legacy project settings.local.json / user-level settings
+	// wiring forge hooks this binary does not know (version-skew self-heal: step 2
+	// below, GenerateUserSettings, strips the stale entries and rewires from this
+	// binary, so `unknown hook` stops firing per call).
 	dataDir := forgedata.DataDirFor(dir)
 	stampPath := filepath.Join(dataDir, ".sync-version")
 	if !force && binaryVersion != "dev" {
 		if stamp, err := os.ReadFile(stampPath); err == nil &&
 			strings.TrimSpace(string(stamp)) == binaryVersion &&
-			!settingsHasStaleBinding(dir) {
+			!settingsHasStaleBinding(dir) &&
+			!hooks.UserSettingsNeedHeal() {
 			return nil
 		}
 	}

@@ -155,6 +155,73 @@ func TestAutoSyncHealsStaleBindingEvenWhenVersionMatches(t *testing.T) {
 	}
 }
 
+// writeUserSettingsWithUnknownHook 在 CLAUDE_CONFIG_DIR 下写一份接了二进制不认识的
+// forge hook 的用户级 settings（版本错位的现场形态），并带一条用户自有 hook。
+func writeUserSettingsWithUnknownHook(t *testing.T, home string) string {
+	t.Helper()
+	path := filepath.Join(home, "settings.json")
+	body := `{"model":"claude-opus-4","hooks":{"PostToolUse":[{"matcher":"Write|Edit","hooks":[` +
+		`{"type":"command","command":"forge hook doc-lint-from-the-future"},` +
+		`{"type":"command","command":"my-own-script.sh"}]}]}}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// 用户级 settings 接了二进制不认识的 forge hook（hook 每次都报 unknown hook）：版本
+// 戳相等也必须强制同步，GenerateUserSettings 自愈——陈旧条目消失、用户条目保留。
+func TestAutoSyncHealsUnknownUserHookEvenWhenVersionMatches(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	settings := writeUserSettingsWithUnknownHook(t, home)
+	dir := t.TempDir()
+	writeSyncStamp(t, dir, "v0.17.0")
+
+	_ = autoSync(dir, "v0.17.0", false)
+
+	if !hookWritten(t, dir) {
+		t.Fatal("unknown user-level hook must force resync even when version matches, but hook was not written")
+	}
+	data, err := os.ReadFile(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	if strings.Contains(body, "doc-lint-from-the-future") {
+		t.Error("autoSync should have stripped the unknown forge hook entry")
+	}
+	if !strings.Contains(body, "my-own-script.sh") || !strings.Contains(body, `"model"`) {
+		t.Errorf("user-owned hook and top-level fields must survive the heal, got %s", body)
+	}
+}
+
+// 已装 forge 插件时，用户级 forge hook 由 autoSync 的 defer（dedupeProjectLevelIfPlugin）
+// 整体剥除——未知条目随之消失，无需强制同步；不得因此让每条命令都退出快速 no-op 路径、
+// 永远做全量同步。
+func TestAutoSyncUnknownUserHookWithPluginKeepsFastPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeForgePluginFixture(t, home)
+	settings := writeUserSettingsWithUnknownHook(t, home)
+	dir := t.TempDir()
+	writeSyncStamp(t, dir, "v0.17.0")
+
+	_ = autoSync(dir, "v0.17.0", false)
+
+	if hookWritten(t, dir) {
+		t.Error("plugin installed: heal is impossible, so the version-equal fast path must be kept")
+	}
+	// 未知条目由 dedupe 随用户级 forge hook 一并剥除；用户自有条目保留。
+	data, _ := os.ReadFile(settings)
+	if strings.Contains(string(data), "doc-lint-from-the-future") {
+		t.Error("plugin installed: dedupe should have stripped the user-level forge hook entries")
+	}
+	if !strings.Contains(string(data), "my-own-script.sh") {
+		t.Errorf("user-owned hook must survive dedupe, got %s", data)
+	}
+}
+
 // settingsHasStaleBinding must NOT flag a clean settings file (task-verify only
 // under Stop) — otherwise every command would pointlessly resync.
 func TestSettingsHasStaleBindingFalseForCleanSettings(t *testing.T) {

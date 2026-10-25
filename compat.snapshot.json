@@ -1282,6 +1282,7 @@
     "file-sentinel",
     "gate-cmd-form",
     "gate-push",
+    "hook-infra",
     "kimi-plugin-stale",
     "loop-exhausted",
     "next-hint",
