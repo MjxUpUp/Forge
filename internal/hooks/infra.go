@@ -72,6 +72,12 @@ const (
 	//
 	// infraStateMaxAge 限定会话目录被顺手清理前的寿命。
 	infraStateMaxAge = 7 * 24 * time.Hour
+	// infraMarkerTTL: a dedup marker older than this is stale (PID reuse across
+	// sessions, very long sessions) and is re-claimed so the notice shows again.
+	//
+	// infraMarkerTTL：早于此的去重标记视为陈旧（跨会话 PID 复用、超长会话），重新
+	// 认领使提示再次出现。
+	infraMarkerTTL = 12 * time.Hour
 	// infraSubjectMax truncates the subject (error first line) in dedup keys and notices.
 	//
 	// infraSubjectMax 截断去重键与提示里的 subject（报错首行）。
@@ -144,7 +150,13 @@ func FormatInfraNotice(f InfraFailure) string {
 // infraStateRoot 是去重状态根：会话级短期状态放 $TMPDIR（系统清理），绝不进
 // GlobalHome。
 func infraStateRoot() string {
-	return filepath.Join(os.TempDir(), InfraStateDirName)
+	// 带 uid：共享 /tmp（多用户 Linux，TMPDIR=/tmp）下不同用户各用各的根，避免他人
+	// 预建同名目录劫持/误导本用户的去重状态与清理。
+	//
+	// uid-qualified: on a shared /tmp (multi-user Linux, TMPDIR=/tmp) each user gets
+	// their own root, so another user's pre-created same-name dir cannot hijack or
+	// mislead this user's dedup state and pruning.
+	return filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d", InfraStateDirName, os.Getuid()))
 }
 
 // InfraSessionBucket maps a (sanitized) session id to its dedup bucket; an empty
@@ -171,20 +183,45 @@ func InfraSessionBucket(sessionID string) string {
 func ClaimInfraNotice(sessionID string, f InfraFailure) bool {
 	root := infraStateRoot()
 	dir := filepath.Join(root, InfraSessionBucket(sessionID))
+	// 根必须是本人创建的真实目录：符号链接（他人预置的劫持）按「状态不可用」处理——
+	// 宁可多提示，也不在别处读写/清理。
+	if info, err := os.Lstat(root); err == nil && !info.IsDir() {
+		return true
+	}
 	if _, err := os.Stat(dir); err != nil {
 		pruneInfraState(root)
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return true
 	}
-	sum := sha256.Sum256([]byte(f.Key()))
-	file, err := os.OpenFile(filepath.Join(dir, hex.EncodeToString(sum[:8])), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	marker := filepath.Join(dir, hex.EncodeToString(sumKey(f)))
+	file, err := os.OpenFile(marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
-		return !os.IsExist(err)
+		if !os.IsExist(err) {
+			return true
+		}
+		// PID 复用 / 久驻会话：超过 infraMarkerTTL 的旧标记视为陈旧，重新认领。
+		if info, serr := os.Stat(marker); serr == nil && time.Since(info.ModTime()) > infraMarkerTTL {
+			_ = os.Remove(marker)
+			if file, err = os.OpenFile(marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600); err == nil {
+				_, _ = file.WriteString(f.Key() + "\n")
+				_ = file.Close()
+				return true
+			}
+		}
+		return false
 	}
 	_, _ = file.WriteString(f.Key() + "\n")
 	_ = file.Close()
 	return true
+}
+
+// sumKey is the marker file name source: a short hash of the failure key.
+//
+// sumKey 是 marker 文件名的来源：失败键的短哈希。
+func sumKey(f InfraFailure) []byte {
+	sum := sha256.Sum256([]byte(f.Key()))
+	return sum[:8]
 }
 
 // pruneInfraState drops session dirs older than infraStateMaxAge (bounded scan —
@@ -203,11 +240,28 @@ func pruneInfraState(root string) {
 	cutoff := time.Now().Add(-infraStateMaxAge)
 	for _, e := range entries {
 		info, err := e.Info()
-		if err != nil || !info.IsDir() || info.ModTime().After(cutoff) {
+		if err != nil || !info.IsDir() || info.ModTime().After(cutoff) || !infraBucketName(e.Name()) {
 			continue
 		}
 		_ = os.RemoveAll(filepath.Join(root, e.Name()))
 	}
+}
+
+// infraBucketName reports whether a dir name looks like one of our buckets
+// (a sanitized session id or ppid-<n>) — pruning never touches anything else.
+//
+// infraBucketName 报告目录名是否像我们自己的桶（归一后的 session id 或 ppid-<n>）
+// ——清理绝不碰其他任何东西。
+func infraBucketName(name string) bool {
+	if name == "" || len(name) > 64 {
+		return false
+	}
+	for _, r := range name {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // knownHookNames is the hook-name roster this binary can run: every name in

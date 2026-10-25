@@ -84,10 +84,10 @@ hook 因基础设施原因起不来或跑崩时，宿主把它当「非阻塞错
 | unknown hook、panic、hook 非阻断错误 | forge 进程 | `hookdispatch.HandleHookFailure` |
 | settings 与二进制 hook 名册错位 | autoSync + doctor | `UserSettingsUnknownHooks` 触发强制重生成；doctor 列出 |
 
-doctor 的「最小 PATH」取桌面端 GUI 进程的典型值 `/usr/bin:/bin:/usr/sbin:/sbin`，可用环境变量 `FORGE_DOCTOR_HOOK_PATH` 换成用户自己量到的 hook PATH。doctor 只读，不改任何配置。
+doctor 的「最小 PATH」取桌面端 GUI 进程的典型值 `/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`（macOS `/etc/paths` 顺序），可用环境变量 `FORGE_DOCTOR_HOOK_PATH` 换成用户自己量到的 hook PATH。doctor 只读，不改任何配置。
 
 ### 去重状态
-- 落点：`$TMPDIR/forge-hook-infra/<会话>/<cause:subject 的哈希>`，用 `O_EXCL` 创建，首个创建者即「第一次」。会话级短期状态放 `os.TempDir()`，由系统清理；创建新会话目录时顺手清掉 7 天前的兄弟目录（有界扫描）。状态目录不可写时按「第一次」处理（宁可多提示，不吞）。
+- 落点：`$TMPDIR/forge-hook-infra-<uid>/<会话>/<cause:subject 的哈希>`（目录 0700；根是符号链接时按状态不可用处理；清理只删形如会话桶的目录），用 `O_EXCL` 创建，超过 12 小时的旧标记视为陈旧并重新认领（PID 复用），首个创建者即「第一次」。会话级短期状态放 `os.TempDir()`，由系统清理；创建新会话目录时顺手清掉 7 天前的兄弟目录（有界扫描）。状态目录不可写时按「第一次」处理（宁可多提示，不吞）。
 - 会话键：forge 进程用 stdin 里已归一的 session id；拿不到时回落 `ppid-<父进程号>`。run.js 不能消费 stdin（子进程要读），固定用 `ppid-<process.ppid>`。`sh -c` 不 exec 末条命令的宿主上 ppid 逐次变化，去重退化为逐次提示，不比现状差。
 - 原因键：`cause:subject`。cause 取 `unknown-hook` / `panic` / `hook-error`（forge 进程）与 `subpackage-missing` / `spawn-failed` / `signal-killed`（run.js）；subject 是 hook 名或截断后的报错首行。
 
@@ -103,7 +103,7 @@ doctor 的「最小 PATH」取桌面端 GUI 进程的典型值 `/usr/bin:/bin:/u
 ### 关键取舍
 - doctor 为主、进程内提示为辅：node/127/126 三类共占约 60%，进程内无从自报，只有 doctor 能在装机后主动发现。
 - 首次 exit 1 而不是 exit 0 + 注入上下文：exit 0 的 stderr 宿主不展示；exit 1 的 stderr 是宿主已有的、展示给用户的非阻塞错误通道，且各宿主都不把 1 当阻断。
-- 不在 hook 进程里自愈改 settings：hook 要保持低开销、无副作用，会话中途改写 settings 有竞态；自愈放在已有的 autoSync 里。
+- 不在 hook 进程里自愈改 settings：hook 要保持低开销、无副作用，并发 hook 进程改写同一份 settings 有竞态。autoSync 在 `forge hook` 调用里不触发「未知 hook 自愈」强制同步（`isHookInvocation`），自愈留给非 hook 命令；自愈写盘失败只告警、不让命令起不来。
 
 ### 已知局限
 - 命令串不动，所以 node/127/126 在运行时仍是宿主逐次报的原始错误，forge 无法去重或加提示；只有跑过 `forge doctor` 才能看到修复办法。

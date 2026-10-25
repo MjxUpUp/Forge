@@ -22,7 +22,7 @@ const platformPkg = `@agent_forge/forge-${process.platform}-${process.arch}`;
 //     `sh -c` 不 exec 末条命令的宿主上 ppid 逐次变化，去重退化为逐次提示，不比现状差。
 //   - 非 hook 调用（交互使用）：stderr 总是输出提示，退出码保持 0（既有契约）。
 //   - stdout 契约不变：仍打印 {"decision":"approve"}。
-// 去重状态与 Go 侧同目录（$TMPDIR/forge-hook-infra/ppid-<pid>/），键带 wrapper: 前缀
+// 去重状态与 Go 侧同目录（$TMPDIR/forge-hook-infra-<uid>/ppid-<pid>/），键带 wrapper: 前缀
 // 避免与 Go 侧撞车。FORGE_HOOK_INFRA_DEDUP=0 恢复逐次 exit 1（与 Go 侧同一逃生口）。
 // 包装器侧的逃生口无法落 checklog——这些失败发生时 forge 二进制本身缺席或没起来。
 //
@@ -32,11 +32,31 @@ const isHook = process.argv[2] === "hook";
 
 function claimNotice(cause) {
   try {
-    const dir = path.join(os.tmpdir(), "forge-hook-infra", `ppid-${process.ppid}`);
-    fs.mkdirSync(dir, { recursive: true });
+    // 与 Go 侧同根（带 uid、0700）；根是符号链接时按状态不可用处理（宁可多提示）。
+    const uid = typeof process.getuid === "function" ? process.getuid() : -1;
+    const root = path.join(os.tmpdir(), `forge-hook-infra-${uid}`);
+    try {
+      if (!fs.lstatSync(root).isDirectory()) return true;
+    } catch (_) {
+      // 根尚不存在：下面创建。
+    }
+    const dir = path.join(root, `ppid-${process.ppid}`);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const key = crypto.createHash("sha256").update(`wrapper:${cause}`).digest("hex").slice(0, 16);
-    fs.closeSync(fs.openSync(path.join(dir, key), "wx"));
-    return true;
+    const marker = path.join(dir, key);
+    try {
+      fs.closeSync(fs.openSync(marker, "wx", 0o600));
+      return true;
+    } catch (e) {
+      if (!(e && e.code === "EEXIST")) throw e;
+      // PID 复用 / 久驻会话：超过 12 小时的旧标记视为陈旧，重新认领。
+      if (Date.now() - fs.statSync(marker).mtimeMs > 12 * 3600 * 1000) {
+        fs.rmSync(marker, { force: true });
+        fs.closeSync(fs.openSync(marker, "wx", 0o600));
+        return true;
+      }
+      return false;
+    }
   } catch (e) {
     // 状态记不下来时宁可多提示，不吞（与 Go 侧 ClaimInfraNotice 同取向）。
     return !(e && e.code === "EEXIST");

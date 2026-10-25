@@ -131,7 +131,18 @@ func HandleHookPanic(r any) int {
 // on first occurrence, and returns the exit code.
 //
 // handleInfraFailure 施加去重、落 checklog 行、首次出现时打印提示，并返回退出码。
-func handleInfraFailure(f hooks.InfraFailure) int {
+func handleInfraFailure(f hooks.InfraFailure) (code int) {
+	// 收口自身出错（状态目录、checklog……）绝不能升级成 exit 2：未捕获的 panic 在 Go 里
+	// 退出码就是 2，等于硬拦。兜底返回 1（非阻断）。
+	//
+	// A failure inside the funnel itself (state dir, checklog, ...) must never
+	// escalate to exit 2: an uncaught panic exits 2 in Go, which would hard-block.
+	// Fall back to 1 (non-blocking).
+	defer func() {
+		if r := recover(); r != nil {
+			code = 1
+		}
+	}()
 	dedup := hooks.InfraDedupEnabled()
 	first := true
 	if dedup {

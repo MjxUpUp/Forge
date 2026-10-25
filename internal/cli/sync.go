@@ -40,7 +40,7 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		if stamp, err := os.ReadFile(stampPath); err == nil &&
 			strings.TrimSpace(string(stamp)) == binaryVersion &&
 			!settingsHasStaleBinding(dir) &&
-			!hooks.UserSettingsNeedHeal() {
+			(isHookInvocation() || !hooks.UserSettingsNeedHeal()) {
 			return nil
 		}
 	}
@@ -65,7 +65,12 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		// Version-skew self-heal first (names the healed hooks so the user knows);
 		// the regular generation that follows is idempotent.
 		if healed, err := hooks.HealUnknownUserHooks(); err != nil {
-			return fmt.Errorf("auto-sync: failed to heal unknown hooks in user-level settings: %w", err)
+			// 自愈失败（settings 只读/符号链接……）只告警：绝不能让命令——尤其 hook 进程里的
+			// 门禁——因此整体起不来。
+			//
+			// A failed heal (read-only/symlinked settings, ...) only warns: it must never
+			// stop the command — least of all the gates inside a hook process — from running.
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to heal unknown hooks in user-level settings: %v\n", err)
 		} else if len(healed) > 0 {
 			fmt.Fprintf(os.Stderr, "auto-sync: 已自愈用户级 settings 中本 forge 二进制不认识的 hook: %s\n", strings.Join(healed, ", "))
 		}
@@ -124,6 +129,19 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	}
 
 	return nil
+}
+
+// isHookInvocation 报告本进程是否是 `forge hook ...` 调用。hook 进程不做「未知 hook
+// 自愈」强制同步：hook 要保持低开销、无副作用，并发 hook 进程同时改写同一份
+// settings.json 有竞态；自愈留给非 hook 命令（Execute 用同一判据分流）。
+//
+// isHookInvocation reports whether this process is a `forge hook ...` call. Hook
+// processes do not take the forced unknown-hook self-heal sync: hooks must stay cheap
+// and side-effect-light, and concurrent hook processes rewriting the same
+// settings.json would race; the heal is left to non-hook commands (Execute routes on
+// the same criterion).
+func isHookInvocation() bool {
+	return len(os.Args) > 1 && os.Args[1] == "hook"
 }
 
 // cleanupDeprecatedPipelineSkill 删除已废弃的 forge-pipeline skill 目录。项目级管道

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // isolateInfraState 把 $TMPDIR 指向测试私有目录，让去重状态（os.TempDir 下）密闭。
@@ -223,5 +224,80 @@ func TestUnknownWiredHooks_Tolerant(t *testing.T) {
 	}
 	if got := UnknownWiredHooks(ok); got != nil {
 		t.Errorf("forge gate 与非 forge 命令不算未知 hook，got %v", got)
+	}
+}
+
+// TestInfraStateHardening 钉死评审加固：状态根带 uid 且目录 0700；根是符号链接时按状态
+// 不可用处理（每次都提示）；旧标记超过 TTL 视为陈旧并重新认领（PID 复用）；清理只删形如
+// 会话桶的陈旧目录，其他条目原样保留。
+func TestInfraStateHardening(t *testing.T) {
+	tmp := isolateInfraState(t)
+	f := InfraFailure{Cause: InfraHookError, Subject: "hardening"}
+
+	root := infraStateRoot()
+	if !strings.HasPrefix(filepath.Base(root), InfraStateDirName+"-") {
+		t.Errorf("状态根应带 uid 后缀，got %q", root)
+	}
+	if !ClaimInfraNotice("sess-h", f) {
+		t.Fatal("首次应认领成功")
+	}
+	if info, err := os.Stat(filepath.Join(root, "sess-h")); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("会话目录应为 0700，got %v %v", info, err)
+	}
+
+	// 陈旧标记：回拨 mtime 超过 TTL → 重新认领一次，之后又去重。
+	old := time.Now().Add(-2 * infraMarkerTTL)
+	entries, _ := os.ReadDir(filepath.Join(root, "sess-h"))
+	if len(entries) != 1 {
+		t.Fatalf("应恰有 1 个 marker，got %d", len(entries))
+	}
+	marker := filepath.Join(root, "sess-h", entries[0].Name())
+	if err := os.Chtimes(marker, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if !ClaimInfraNotice("sess-h", f) {
+		t.Error("陈旧标记应被重新认领")
+	}
+	if ClaimInfraNotice("sess-h", f) {
+		t.Error("重新认领后同会话应再次去重")
+	}
+
+	// 清理：只删陈旧的桶目录；不合桶名的条目与新鲜目录保留。
+	oldBucket := filepath.Join(root, "old-session")
+	foreign := filepath.Join(root, "not a bucket!")
+	for _, d := range []string{oldBucket, foreign} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(d, old.Add(-infraStateMaxAge), old.Add(-infraStateMaxAge)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ClaimInfraNotice("fresh-trigger", f) // 新会话目录不存在 → 触发 prune
+	if _, err := os.Stat(oldBucket); !os.IsNotExist(err) {
+		t.Error("陈旧的桶目录应被清理")
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Error("不合桶名的条目不得被清理")
+	}
+
+	// 根是符号链接（他人预置的劫持）：按状态不可用处理——每次都认领成功，且不碰链接目标。
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(tmp, "victim")
+	if err := os.MkdirAll(filepath.Join(target, "stale-session"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, root); err != nil {
+		t.Skipf("无法建符号链接: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if !ClaimInfraNotice("sess-link", f) {
+			t.Error("根是符号链接时应按不可用处理（返回 true）")
+		}
+	}
+	if _, err := os.Stat(filepath.Join(target, "stale-session")); err != nil {
+		t.Error("链接目标里的内容不得被读写或清理")
 	}
 }

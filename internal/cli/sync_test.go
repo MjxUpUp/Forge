@@ -222,6 +222,56 @@ func TestAutoSyncUnknownUserHookWithPluginKeepsFastPath(t *testing.T) {
 	}
 }
 
+// hook 进程（forge hook ...）不做未知 hook 自愈强制同步：版本戳相等时走快速 no-op 路径，
+// settings 原样不动——hook 要保持低开销，并发 hook 进程改写同一份 settings 有竞态。
+func TestAutoSyncHookInvocationSkipsUnknownHookHeal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	settings := writeUserSettingsWithUnknownHook(t, home)
+	dir := t.TempDir()
+	writeSyncStamp(t, dir, "v0.17.0")
+	oldArgs := os.Args
+	os.Args = []string{"forge", "hook", "batch"}
+	defer func() { os.Args = oldArgs }()
+
+	_ = autoSync(dir, "v0.17.0", false)
+
+	if hookWritten(t, dir) {
+		t.Error("hook invocation must keep the version-equal fast path")
+	}
+	if data, _ := os.ReadFile(settings); !strings.Contains(string(data), "doc-lint-from-the-future") {
+		t.Error("hook invocation must not rewrite user settings")
+	}
+}
+
+// 自愈写盘失败（settings 所在目录只读）只告警、不让 autoSync 的这一步返回错误：
+// 非 hook 命令继续往下同步（hook 脚本副本照常写出）。
+func TestAutoSyncHealFailureDoesNotStopCommand(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root 不受目录只读限制")
+	}
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	writeUserSettingsWithUnknownHook(t, home)
+	if err := os.Chmod(home, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(home, 0o755)
+	dir := t.TempDir()
+	writeSyncStamp(t, dir, "v0.17.0")
+
+	err := autoSync(dir, "v0.17.0", false)
+
+	if !hookWritten(t, dir) {
+		t.Fatal("the forced sync must still have run its first steps")
+	}
+	// 常规生成（第 2 步）同样写不了——那是既有行为；本测试只钉住「自愈失败本身不构成
+	// 返回错误的来源」：错误（若有）必须来自常规生成而非自愈。
+	if err != nil && strings.Contains(err.Error(), "heal unknown hooks") {
+		t.Errorf("heal failure must only warn, got error: %v", err)
+	}
+}
+
 // settingsHasStaleBinding must NOT flag a clean settings file (task-verify only
 // under Stop) — otherwise every command would pointlessly resync.
 func TestSettingsHasStaleBindingFalseForCleanSettings(t *testing.T) {
