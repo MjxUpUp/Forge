@@ -187,8 +187,11 @@ func bashReadPath(command string) string {
 	// the one bash opens (review F3).
 	// 只认 ASCII：strings.Fields 按 Unicode 空白（如不换行空格）切词而 bash 不会，非 ASCII
 	// 命令可能被解析成与 bash 实际打开的不同的文件（评审 F3）。
+	// Control bytes other than tab too: Fields also splits on form feed and vertical
+	// tab, which bash's IFS does not.
+	// 除 tab 外的控制字节同样拒绝：Fields 也按换页与垂直制表切词，而 bash 的 IFS 不会。
 	for _, r := range command {
-		if r > unicode.MaxASCII {
+		if r > unicode.MaxASCII || (r < 0x20 && r != '\t') || r == 0x7f {
 			return ""
 		}
 	}

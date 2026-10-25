@@ -1025,7 +1025,9 @@ func TestBashReadCountsAsRead(t *testing.T) {
 		"cat [a].go",
 		"cat ~/a.go",
 		"cat sub/../a.go",
-		"cat a.go ",
+		"cat a.go ", // no-break space: Fields splits on it, bash does not
+		"cat\fa.go", // form feed / vertical tab: same split mismatch
+		"cat a.go\v",
 		"cat 'my file.go'",
 		"sed -n '1p;2p' a.go",
 	}
