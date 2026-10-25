@@ -47,7 +47,19 @@ func Find() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return FindFrom(cwd)
+}
 
+// FindFrom resolves an arbitrary directory (not necessarily the cwd) to the forge
+// project root that contains it, with exactly the semantics of Find. Inside a git
+// worktree the root is that worktree's own working-tree root, so a file under a
+// worktree resolves to the worktree even when the process cwd sits in the main
+// checkout.
+//
+// FindFrom 把任意目录（不必是 cwd）解析到包含它的 forge 项目根，语义与 Find 完全一
+// 致。在 git worktree 内，根是该 worktree 自己的工作树根——所以 worktree 里的文件即便
+// 进程 cwd 在主仓库，也解析到该 worktree。
+func FindFrom(cwd string) (string, error) {
 	// 1. 注册表成员资格（重构后的锚点）。
 	if root, ok := registry.IsMember(cwd); ok {
 		return root, nil

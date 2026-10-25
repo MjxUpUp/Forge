@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/shellexec"
 	"github.com/MjxUpUp/Forge/internal/util"
 )
@@ -104,6 +105,156 @@ func appendSessionRead(path, relPath string) {
 	if _, err := f.WriteString(relPath + "\n"); err != nil {
 		fmt.Fprintf(os.Stderr, "[forge] warning: session reads-log append failed (%s): %v\n", relPath, err)
 	}
+}
+
+// recordSessionRead credits path as read in the reads log of the project the hook
+// runs in (cwd root) and, when the file lives under a different project root — a git
+// worktree, or another checkout the session visited — also in that root's own bucket
+// under that root's relative path. The reads log is bucketed by project root and holds
+// root-relative paths, so a Read made while the session cwd sat in the main checkout
+// was invisible to the Edit made later from inside the worktree (same session, same
+// absolute path, different bucket and different relative path): read-before-edit
+// blocked a file the agent had read.
+//
+// recordSessionRead 把 path 记为已读：记入 hook 所在项目（cwd 根）的读记录；当文件在
+// 另一个项目根之下（git worktree、或会话去过的另一个仓库）时，再按该根自己的相对路径
+// 记入该根的桶。读记录按项目根分桶、内容是根相对路径，所以会话 cwd 在主仓库时做的
+// Read，对之后在 worktree 里做的 Edit 不可见（同会话、同绝对路径，桶与相对路径都不同）
+// ——read-before-edit 因此拦下 agent 明明读过的文件。
+func recordSessionRead(root, sessionID, path string) {
+	if rel := toRelPath(root, path); rel != "" && rel != "." {
+		appendSessionRead(readsFilePath(root, sessionID), rel)
+	}
+	fileRoot := fileProjectRoot(path)
+	if fileRoot == "" || sameProjectRoot(fileRoot, root) {
+		return
+	}
+	// The relative path must stay inside the file's own root: a "../" result would
+	// mean the root resolution disagreed with the path and the credit would be bogus.
+	// 相对路径必须落在文件自己的根内：出现 "../" 说明根解析与路径不一致，记账会失真。
+	if rel := toRelPath(fileRoot, path); rel != "" && rel != "." && !strings.HasPrefix(rel, "../") {
+		appendSessionRead(readsFilePath(fileRoot, sessionID), rel)
+	}
+}
+
+// fileProjectRoot returns the forge project root that contains the absolute path, or
+// "" when the path is relative or not inside any forge project.
+//
+// fileProjectRoot 返回包含该绝对路径的 forge 项目根；路径非绝对或不在任何 forge 项目内
+// 时返回空串。
+func fileProjectRoot(path string) string {
+	if !filepath.IsAbs(path) {
+		return ""
+	}
+	root, err := projectroot.FindFrom(filepath.Dir(path))
+	if err != nil {
+		return ""
+	}
+	return root
+}
+
+// sameProjectRoot reports whether two project roots are the same directory once
+// symlinks are resolved.
+//
+// sameProjectRoot 报告两个项目根在解析 symlink 之后是否是同一目录。
+func sameProjectRoot(a, b string) bool {
+	return filepath.Clean(resolveSymlinks(a)) == filepath.Clean(resolveSymlinks(b))
+}
+
+// bashReadPath returns the absolute path of the one file a Bash command merely shows
+// the agent — cat <f>, head/tail [-n N | -N] <f>, sed -n <N[,M]p> <f> — or "" for
+// anything else. The shape is deliberately strict: any shell metacharacter, a second
+// operand, a flag outside those forms, a missing file or a non-regular file yields ""
+// (a missed credit is a false block the agent can resolve with a Read; a wrong credit
+// would let an unread file through). grep is excluded: a match snippet is not a read.
+//
+// bashReadPath 返回 Bash 命令"只是把内容给 agent 看"的那个文件的绝对路径——cat <f>、
+// head/tail [-n N | -N] <f>、sed -n <N[,M]p> <f>——其余一律返回空串。形态刻意从严：
+// 任何 shell 元字符、第二个操作数、这些形态之外的 flag、不存在或非常规文件都返回空
+// （漏记只是 agent 补一次 Read 就能解决的误拦；误记会让没读过的文件放行）。grep 不计：
+// 匹配片段不等于读过。
+func bashReadPath(command string) string {
+	if strings.ContainsAny(command, "|;&<>$`(){}*?!\\\n\r") {
+		return ""
+	}
+	words := strings.Fields(command)
+	if len(words) < 2 {
+		return ""
+	}
+	var operands []string
+	switch words[0] {
+	case "cat":
+		operands = words[1:]
+	case "head", "tail":
+		rest := words[1:]
+		switch {
+		case len(rest) >= 2 && rest[0] == "-n" && isAllDigits(rest[1]):
+			rest = rest[2:]
+		case len(rest) >= 1 && strings.HasPrefix(rest[0], "-") && isAllDigits(rest[0][1:]):
+			rest = rest[1:]
+		}
+		operands = rest
+	case "sed":
+		if len(words) != 4 || words[1] != "-n" || !isSedPrintRange(trimQuotes(words[2])) {
+			return ""
+		}
+		operands = words[3:]
+	default:
+		return ""
+	}
+	if len(operands) != 1 {
+		return ""
+	}
+	p := trimQuotes(operands[0])
+	if p == "" || strings.HasPrefix(p, "-") || strings.ContainsAny(p, "'\"") {
+		return ""
+	}
+	if !filepath.IsAbs(p) {
+		wd, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		p = filepath.Join(wd, p)
+	}
+	p = filepath.Clean(p)
+	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
+		return ""
+	}
+	return p
+}
+
+// isAllDigits reports whether s is a non-empty run of ASCII digits.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isSedPrintRange reports whether s is a sed print script of the form N,Mp or Np.
+func isSedPrintRange(s string) bool {
+	if !strings.HasSuffix(s, "p") {
+		return false
+	}
+	for _, part := range strings.Split(strings.TrimSuffix(s, "p"), ",") {
+		if !isAllDigits(part) {
+			return false
+		}
+	}
+	return len(strings.Split(strings.TrimSuffix(s, "p"), ",")) <= 2
+}
+
+// trimQuotes strips one pair of matching single or double quotes around s.
+func trimQuotes(s string) string {
+	if len(s) >= 2 && (s[0] == '\'' || s[0] == '"') && s[len(s)-1] == s[0] {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 
 // sanitizeForShell 把字符串净化为可安全用于 shell env var 的形式。防止

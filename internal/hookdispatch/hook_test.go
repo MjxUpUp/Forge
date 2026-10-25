@@ -2,7 +2,10 @@ package hookdispatch
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +14,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -807,5 +811,256 @@ func TestSkillTriggerHookFn_NilSilentSkip(t *testing.T) {
 	err := RunHook(&cobra.Command{}, []string{"skill-trigger"})
 	if err != nil {
 		t.Fatalf("nil 接缝应静默跳过, got err: %v", err)
+	}
+}
+
+// makeReadsProject creates a minimal forge project dir (marker only, no chdir) so a
+// test can hold two projects at once: the session cwd in one, the edited file in the
+// other — the shape of "Read from the main checkout, Edit inside a worktree".
+//
+// makeReadsProject 建一个最小 forge 项目目录（只有标记、不 chdir），让测试同时持有
+// 两个项目：会话 cwd 在一个、被改文件在另一个——"主仓库里 Read、worktree 里 Edit"。
+func makeReadsProject(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".forge", "hooks"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".forge", "state.json"), []byte(`{"pipeline_version":"2.0","mode":"small"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// writeReadsSource writes a Go source file under root and returns its absolute path.
+func writeReadsSource(t *testing.T, root, rel string) string {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("package x\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// trackReadsTool feeds a PostToolUse payload to the tool-track hook the way the host
+// does, with the process cwd wherever the test left it.
+func trackReadsTool(t *testing.T, sid, tool, toolInput string) {
+	t.Helper()
+	runHookCapture(t, "tool-track", fmt.Sprintf(
+		`{"hook_event_name":"PostToolUse","tool_name":%q,"session_id":%q,"tool_input":%s}`, tool, sid, toolInput))
+}
+
+// readsLogOf returns the lines of root's per-session reads log (empty if absent).
+func readsLogOf(t *testing.T, root, sid string) []string {
+	t.Helper()
+	b, err := os.ReadFile(readsFilePath(root, sid))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		t.Fatal(err)
+	}
+	return strings.Fields(string(b))
+}
+
+// hookRootNow returns the project root exactly as the hook resolves it from the
+// process cwd. On macOS a temp dir is reached through the /var → /private/var symlink,
+// and the reads-log bucket is keyed by the root string, so a test must not assume the
+// literal t.TempDir() form is the bucket the hook wrote to.
+//
+// hookRootNow 返回 hook 从进程 cwd 解析出的项目根原样。macOS 的临时目录经 /var →
+// /private/var 符号链接到达，读记录桶按根的字符串分桶，测试不能假设 t.TempDir() 的
+// 字面形态就是 hook 写入的那个桶。
+func hookRootNow(t *testing.T) string {
+	t.Helper()
+	root, err := projectroot.Find()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func containsLine(lines []string, want string) bool {
+	for _, l := range lines {
+		if l == want {
+			return true
+		}
+	}
+	return false
+}
+
+// runReadBeforeEditScript executes the embedded read-before-edit hook the way the
+// dispatcher does (cwd = project root, repo-relative FORGE_FILE_PATH, an active task)
+// and returns its exit code: 0 = allow, 1 = block.
+func runReadBeforeEditScript(t *testing.T, dir, rel, readsFile string) int {
+	t.Helper()
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not on PATH")
+	}
+	f, err := os.CreateTemp("", "forge-rbe-*.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.WriteString(hooks.ReadBeforeEditHook); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	cmd := exec.Command("bash", f.Name())
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"FORGE_FILE_PATH="+rel,
+		"FORGE_TASK_REF=fix/reads",
+		"FORGE_READS_FILE="+readsFile,
+		"FORGE_WORK_ACTIVITY=",
+	)
+	runErr := cmd.Run()
+	if runErr == nil {
+		return 0
+	}
+	var ee *exec.ExitError
+	if errors.As(runErr, &ee) {
+		return ee.ExitCode()
+	}
+	t.Fatal(runErr)
+	return -1
+}
+
+// TestReadCreditSurvivesWorktreePath reproduces the transcript miss: the session cwd
+// sat in one project when the file (which lives in another project root, e.g. a
+// worktree) was Read, so the credit landed in the cwd project's bucket under a
+// "../other/..." relative path and never matched the Edit made from inside the other
+// root. The Read must also be credited in the file's own project bucket.
+//
+// 复现转录里的漏记：Read 时会话 cwd 在 A 项目，被读文件在 B 项目根（如 worktree），
+// 旧逻辑把记录写进 A 的桶、路径是 "../B/..."，之后在 B 里 Edit 永远对不上。Read 必须
+// 同时记入文件所属项目根的桶。
+func TestReadCreditSurvivesWorktreePath(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	newHookProject(t) // session cwd = project A
+	rootB := makeReadsProject(t)
+	file := writeReadsSource(t, rootB, "internal/x.go")
+	sid := "sid-reads-1"
+
+	trackReadsTool(t, sid, "Read", fmt.Sprintf(`{"file_path":%q}`, file))
+
+	if got := readsLogOf(t, rootB, sid); !containsLine(got, "internal/x.go") {
+		t.Fatalf("Read of a file in another project root must be credited in that root's bucket as internal/x.go, got %v", got)
+	}
+}
+
+// TestEditAfterReadPasses is the end-to-end form: after the cross-root Read, the
+// embedded read-before-edit script run from inside the file's own root allows the Edit.
+//
+// 端到端形态：跨根 Read 之后，在文件所属根里跑 read-before-edit 脚本，Edit 放行。
+func TestEditAfterReadPasses(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	newHookProject(t)
+	rootB := makeReadsProject(t)
+	file := writeReadsSource(t, rootB, "internal/x.go")
+	sid := "sid-reads-2"
+
+	trackReadsTool(t, sid, "Read", fmt.Sprintf(`{"file_path":%q}`, file))
+
+	if code := runReadBeforeEditScript(t, rootB, "internal/x.go", readsFilePath(rootB, sid)); code != 0 {
+		t.Fatalf("Edit after a cross-root Read must be allowed, script exit = %d", code)
+	}
+}
+
+// TestBashReadCountsAsRead pins the Bash read credit: a single-file pure-read form
+// (cat / head / tail / sed -n) shows the agent the content, so it counts; anything
+// else (grep snippets, pipes, redirects, variables, globs, several files, a missing
+// file, cd chains, in-place edits) must not.
+//
+// 钉住 Bash 读取记账：单文件纯读形态（cat/head/tail/sed -n）等于看过内容，计入；其余
+// （grep 片段、管道、重定向、变量、通配符、多文件、不存在的文件、cd 链、原地修改）不计。
+func TestBashReadCountsAsRead(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	rootA := newHookProject(t)
+	a := writeReadsSource(t, rootA, "a.go")
+	writeReadsSource(t, rootA, "b.go")
+
+	credited := []string{
+		"cat a.go",
+		"cat ./a.go",
+		"cat " + a,
+		"head -n 20 a.go",
+		"head -20 a.go",
+		"tail -n 5 a.go",
+		"sed -n 1,40p a.go",
+		"sed -n '1,40p' a.go",
+	}
+	for i, cmd := range credited {
+		sid := fmt.Sprintf("sid-bash-yes-%d", i)
+		in, _ := json.Marshal(map[string]string{"command": cmd})
+		trackReadsTool(t, sid, "Bash", string(in))
+		if got := readsLogOf(t, hookRootNow(t), sid); !containsLine(got, "a.go") {
+			t.Errorf("%q must credit a.go as read, reads log = %v", cmd, got)
+		}
+	}
+
+	notCredited := []string{
+		"grep -n foo a.go",
+		"cat a.go | head",
+		"cat a.go > /dev/null",
+		"cat $F",
+		"cat a.go b.go",
+		"cat missing.go",
+		"cat *.go",
+		"cd sub && cat a.go",
+		"sed -i s/a/b/ a.go",
+		"sed -n 1,40p",
+		"head -n 20",
+	}
+	for i, cmd := range notCredited {
+		sid := fmt.Sprintf("sid-bash-no-%d", i)
+		in, _ := json.Marshal(map[string]string{"command": cmd})
+		trackReadsTool(t, sid, "Bash", string(in))
+		if got := readsLogOf(t, hookRootNow(t), sid); len(got) != 0 {
+			t.Errorf("%q must not credit any read, reads log = %v", cmd, got)
+		}
+	}
+}
+
+// TestUnreadEditStillBlocked pins recall: a file that was never read (or only seen
+// through grep, or whose sibling in another root was read) is still blocked.
+//
+// 钉住 recall：真没读（或只 grep 过、或只读了别的文件）仍被拦。
+func TestUnreadEditStillBlocked(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	rootA := newHookProject(t)
+	rootB := makeReadsProject(t)
+	writeReadsSource(t, rootA, "a.go")
+	read := writeReadsSource(t, rootB, "internal/x.go")
+	writeReadsSource(t, rootB, "internal/y.go")
+	sid := "sid-reads-3"
+
+	hookA := hookRootNow(t)
+	if code := runReadBeforeEditScript(t, rootA, "a.go", readsFilePath(hookA, sid)); code != 1 {
+		t.Errorf("never-read file must be blocked, script exit = %d", code)
+	}
+
+	in, _ := json.Marshal(map[string]string{"command": "grep -n package a.go"})
+	trackReadsTool(t, sid, "Bash", string(in))
+	if code := runReadBeforeEditScript(t, rootA, "a.go", readsFilePath(hookA, sid)); code != 1 {
+		t.Errorf("a grep must not count as a read, script exit = %d", code)
+	}
+
+	// Positive control: the same bucket and path do unlock a.go after a real read, so
+	// the two blocks above are about the missing credit and not a wrong bucket.
+	// 正向对照：同一个桶与路径在真正读过之后会放行 a.go，证明上面两次拦截是因为没记账，
+	// 而不是桶对错了。
+	in, _ = json.Marshal(map[string]string{"command": "cat a.go"})
+	trackReadsTool(t, sid, "Bash", string(in))
+	if code := runReadBeforeEditScript(t, rootA, "a.go", readsFilePath(hookA, sid)); code != 0 {
+		t.Errorf("a.go read via cat must be allowed (control), script exit = %d", code)
+	}
+
+	trackReadsTool(t, sid, "Read", fmt.Sprintf(`{"file_path":%q}`, read))
+	if code := runReadBeforeEditScript(t, rootB, "internal/y.go", readsFilePath(rootB, sid)); code != 1 {
+		t.Errorf("reading x.go must not unlock y.go, script exit = %d", code)
 	}
 }

@@ -58,6 +58,44 @@ func TestFind_LocatesForgeRoot(t *testing.T) {
 	}
 }
 
+// TestFindFrom_ResolvesTheGivenDirNotTheCwd：FindFrom 解析的是传入目录所属的项目，
+// 与进程 cwd 无关——read-before-edit 的读记录靠它把"别的根里的文件"记到文件自己的根。
+// FindFrom(cwd) 与 Find() 同值，保证抽取没有改变原语义。
+func TestFindFrom_ResolvesTheGivenDirNotTheCwd(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	for _, root := range []string{a, b} {
+		if err := os.MkdirAll(filepath.Join(root, ".forge"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deepB := filepath.Join(b, "internal", "pkg")
+	if err := os.MkdirAll(deepB, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	chdirTo(t, a)
+	gotB, err := FindFrom(deepB)
+	if err != nil {
+		t.Fatalf("FindFrom(%q): %v", deepB, err)
+	}
+	if _, err := os.Stat(filepath.Join(gotB, ".forge")); err != nil || !strings.HasPrefix(deepB, gotB) {
+		t.Fatalf("FindFrom(%q) = %q，应是 B 项目根", deepB, gotB)
+	}
+	if samePath(gotB, a) {
+		t.Fatalf("FindFrom(%q) 返回了 cwd 所在的 A 项目 %q", deepB, gotB)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	viaFind, err1 := Find()
+	viaFrom, err2 := FindFrom(wd)
+	if err1 != nil || err2 != nil || viaFind != viaFrom {
+		t.Fatalf("Find()=%q,%v 与 FindFrom(cwd)=%q,%v 应一致", viaFind, err1, viaFrom, err2)
+	}
+}
+
 // TestFind_AtProjectRoot：就在 .forge 同级也能找到（不越界）。
 func TestFind_AtProjectRoot(t *testing.T) {
 	root := t.TempDir()

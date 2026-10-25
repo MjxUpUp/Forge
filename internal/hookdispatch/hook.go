@@ -1335,9 +1335,19 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		// JSON。PostToolUse 在 Read 完成之后触发，所以本回合的 Read 会先于随后的 Edit
 		// 被记录——Edit 的 PreToolUse hook 就能看到该路径。
 		if name == "tool-track" && hookInput.ToolName == "Read" && fields.FilePath != "" {
-			rel := toRelPath(root, fields.FilePath)
-			if rel != "" && rel != "." {
-				appendSessionRead(readsFilePath(root, hookInput.SessionID), rel)
+			recordSessionRead(root, hookInput.SessionID, fields.FilePath)
+		}
+		// A Bash command that merely shows one file (cat / head / tail / sed -n) is a read
+		// too: the agent saw the content, and read-before-edit blocked edits of files
+		// read that way (26 of ~40 transcript blocks). grep and every compound form stay
+		// uncredited — see bashReadPath for the strict shape.
+		//
+		// 只是把单个文件内容显示出来的 Bash 命令（cat / head / tail / sed -n）同样算读：
+		// agent 看到了内容，而 read-before-edit 曾拦下这样读过的文件的编辑（转录里约 40
+		// 次拦截中的 26 次）。grep 与一切复合形态仍不计——严格形态见 bashReadPath。
+		if name == "tool-track" && hookInput.ToolName == "Bash" && fields.Command != "" {
+			if p := bashReadPath(fields.Command); p != "" {
+				recordSessionRead(root, hookInput.SessionID, p)
 			}
 		}
 		// reads-log 对称补全（2026-08-24）：Write 落盘后 agent 当然知道文件内容
@@ -1358,10 +1368,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		// Write|Edit; only Write is recorded here (an Edit reaching this point already
 		// passed the PreToolUse read gate, so recording it adds nothing).
 		if name == "auto-compile" && hookInput.ToolName == "Write" && fields.FilePath != "" {
-			rel := toRelPath(root, fields.FilePath)
-			if rel != "" && rel != "." {
-				appendSessionRead(readsFilePath(root, hookInput.SessionID), rel)
-			}
+			recordSessionRead(root, hookInput.SessionID, fields.FilePath)
 		}
 	}
 
