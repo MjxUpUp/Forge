@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -317,5 +318,183 @@ func TestPrintDoctorSkillsSection_SkippedStates(t *testing.T) {
 	}
 	if !strings.Contains(out, "⚠") || !strings.Contains(out, "cursor") {
 		t.Errorf("全损坏应渲染 ⚠ 损坏行（含目标名），实得 %q", out)
+	}
+}
+
+// mkExec 写一个带执行位（exec=true）或不带的文件，必要时建父目录。
+func mkExec(t *testing.T, path, content string, exec bool) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mode := os.FileMode(0o644)
+	if exec {
+		mode = 0o755
+	}
+	if err := os.WriteFile(path, []byte(content), mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// wireClaudeHook 让 claude-code host 接上一条 forge hook（doctor 只在有 host 接线时才
+// 做 hook 运行环境检查）。
+func wireClaudeHook(t *testing.T, root, cmd string) {
+	t.Helper()
+	body := fmt.Sprintf(`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":%q}]}]}}`, cmd)
+	mkExec(t, filepath.Join(root, ".claude", "settings.json"), body, false)
+}
+
+func hookProblemCodes(rt *doctor.HookRuntime) []string {
+	var codes []string
+	for _, p := range rt.Problems {
+		codes = append(codes, p.Code)
+	}
+	return codes
+}
+
+// TestDoctorHookRuntime 钉死 REQ-1：forge doctor 在假定的最小 hook PATH 下复现 sh 的
+// 解析，检出「hook 命令会跑不起来」——forge 不可解析（127）、forge 是 node 垫片而 node
+// 不可解析、forge 缺执行位（126）、forge 落在临时目录；健康态与未接线态不误报；
+// 文本与 --json 两种输出都带修复办法。
+func TestDoctorHookRuntime(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hook 运行环境检查复现的是 POSIX sh 的解析，Windows 不检查")
+	}
+	root := isolateDoctorEnv(t)
+	wireClaudeHook(t, root, `forge hook batch --event PreToolUse --matcher "Bash"`)
+	noTemp := []string{filepath.Join(root, "no-such-temp-root")}
+	run := func(opts doctor.Options) *doctor.HookRuntime {
+		t.Helper()
+		opts.TempDirs = noTemp
+		return doctor.Run("1.0.0", opts).HookRuntime
+	}
+
+	// A. node 垫片 + hook PATH 里没有 node → node-unresolved，且给出不依赖 node 的原生二进制修复。
+	npmRoot := filepath.Join(root, "npm-global")
+	runJS := filepath.Join(npmRoot, "lib", "node_modules", "@agent_forge", "forge", "run.js")
+	mkExec(t, runJS, "#!/usr/bin/env node\nconsole.log('shim')\n", true)
+	arch := runtime.GOARCH
+	if arch == "amd64" {
+		arch = "x64"
+	}
+	native := filepath.Join(npmRoot, "lib", "node_modules", "@agent_forge", "forge-"+runtime.GOOS+"-"+arch, "bin", "forge")
+	mkExec(t, native, "NATIVE", true)
+	binDir := filepath.Join(npmRoot, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(runJS, filepath.Join(binDir, "forge")); err != nil {
+		t.Fatal(err)
+	}
+	rt := run(doctor.Options{HookPath: binDir})
+	if rt == nil {
+		t.Fatal("有 host 接线时应产出 hook runtime 节")
+	}
+	if got := hookProblemCodes(rt); len(got) != 1 || got[0] != doctor.HookRuntimeNodeUnresolved {
+		t.Fatalf("node 垫片缺 node 应只报 node-unresolved，got %v", got)
+	}
+	if rt.Interpreter != "node" || rt.Node != "" {
+		t.Errorf("应识别解释器 node 且未解析到，got interp=%q node=%q", rt.Interpreter, rt.Node)
+	}
+	// 修复办法必须具体：指向同级平台包里的原生二进制（含符号链接解析后的真实路径）。
+	wantNative, _ := filepath.EvalSymlinks(native)
+	gotFix := rt.Problems[0].Fix
+	if !strings.Contains(gotFix, "ln -sf") || !(strings.Contains(gotFix, native) || strings.Contains(gotFix, wantNative)) {
+		t.Errorf("修复办法应给出原生二进制的链接命令，got %q", gotFix)
+	}
+
+	// B. 同一垫片 + hook PATH 里有 node → 健康。
+	nodeDir := filepath.Join(root, "nodebin")
+	mkExec(t, filepath.Join(nodeDir, "node"), "#!/bin/sh\n", true)
+	rt = run(doctor.Options{HookPath: binDir + string(os.PathListSeparator) + nodeDir})
+	if len(rt.Problems) != 0 || rt.Node == "" {
+		t.Errorf("hook PATH 含 node 应健康，got problems=%v node=%q", rt.Problems, rt.Node)
+	}
+
+	// C. 原生二进制（无 shebang）不需要 node。
+	nativeDir := filepath.Join(root, "nativebin")
+	mkExec(t, filepath.Join(nativeDir, "forge"), "\x7fELF-fake", true)
+	rt = run(doctor.Options{HookPath: nativeDir})
+	if len(rt.Problems) != 0 || rt.Interpreter != "" {
+		t.Errorf("原生二进制应健康且无解释器，got problems=%v interp=%q", rt.Problems, rt.Interpreter)
+	}
+
+	// D. forge 不在 hook PATH → forge-unresolved（127），修复办法含复核入口。
+	emptyDir := filepath.Join(root, "empty")
+	if err := os.MkdirAll(emptyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rt = run(doctor.Options{HookPath: emptyDir})
+	if got := hookProblemCodes(rt); len(got) != 1 || got[0] != doctor.HookRuntimeForgeUnresolved {
+		t.Fatalf("forge 不可解析应报 forge-unresolved，got %v", got)
+	}
+	if !strings.Contains(rt.Problems[0].Detail, "127") || !strings.Contains(rt.Problems[0].Fix, "FORGE_DOCTOR_HOOK_PATH") {
+		t.Errorf("提示应带退出码 127 与复核入口，got %+v", rt.Problems[0])
+	}
+
+	// E. forge 缺执行位 → forge-not-executable（126）。
+	noExecDir := filepath.Join(root, "noexec")
+	mkExec(t, filepath.Join(noExecDir, "forge"), "x", false)
+	rt = run(doctor.Options{HookPath: noExecDir})
+	if got := hookProblemCodes(rt); len(got) != 1 || got[0] != doctor.HookRuntimeNotExecutable {
+		t.Fatalf("缺执行位应报 forge-not-executable，got %v", got)
+	}
+
+	// F. forge 落在临时目录里 → forge-in-temp-dir。
+	rt = doctor.Run("1.0.0", doctor.Options{HookPath: nativeDir, TempDirs: []string{root}}).HookRuntime
+	if got := hookProblemCodes(rt); len(got) != 1 || got[0] != doctor.HookRuntimeInTempDir {
+		t.Fatalf("临时目录里的 forge 应报 forge-in-temp-dir，got %v", got)
+	}
+
+	// G. 用户级 settings 接了二进制不认识的 hook → unknown-hooks。
+	wireClaudeHook(t, root, "forge hook hook-from-the-future")
+	rt = run(doctor.Options{HookPath: nativeDir})
+	if got := hookProblemCodes(rt); len(got) != 1 || got[0] != doctor.HookRuntimeUnknownHooks {
+		t.Fatalf("未知 hook 应报 unknown-hooks，got %v", got)
+	}
+	if len(rt.UnknownHooks) != 1 || rt.UnknownHooks[0] != "hook-from-the-future" || !strings.Contains(rt.Problems[0].Fix, "forge sync --force") {
+		t.Errorf("应列出未知 hook 并给出 forge sync --force，got %+v", rt)
+	}
+	wireClaudeHook(t, root, `forge hook batch --event PreToolUse --matcher "Bash"`)
+
+	// H. CLI 文本输出与 --json 都携带问题码与修复办法（FORGE_DOCTOR_HOOK_PATH 接入）。
+	t.Setenv("FORGE_DOCTOR_HOOK_PATH", binDir)
+	var buf bytes.Buffer
+	doctorCmd.SetOut(&buf)
+	doctorCmd.SetArgs([]string{})
+	if err := doctorCmd.RunE(doctorCmd, nil); err != nil {
+		t.Fatalf("doctor RunE: %v", err)
+	}
+	for _, want := range []string{"hook runtime", binDir, "node-unresolved", "修复：", "env: node: No such file or directory"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("文本输出应含 %q，实得:\n%s", want, buf.String())
+		}
+	}
+	buf.Reset()
+	if err := doctorCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := doctorCmd.Flags().Set("json", "false"); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	if err := doctorCmd.RunE(doctorCmd, nil); err != nil {
+		t.Fatalf("doctor --json RunE: %v", err)
+	}
+	var rep doctor.Report
+	if err := json.Unmarshal(buf.Bytes(), &rep); err != nil {
+		t.Fatalf("--json 应为合法 Report: %v", err)
+	}
+	if rep.HookRuntime == nil || rep.HookRuntime.PathUsed != binDir || len(rep.HookRuntime.Problems) == 0 {
+		t.Errorf("--json 应携带 hook_runtime 与问题，got %+v", rep.HookRuntime)
+	}
+
+	// I. 没有任何 host 接线 → 不产出该节（forge 没装 ≠ hook 故障）。
+	if err := os.Remove(filepath.Join(root, ".claude", "settings.json")); err != nil {
+		t.Fatal(err)
+	}
+	if rt := run(doctor.Options{HookPath: emptyDir}); rt != nil {
+		t.Errorf("无 host 接线时不应产出 hook runtime 节，got %+v", rt)
 	}
 }
