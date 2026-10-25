@@ -115,6 +115,12 @@ type Report struct {
 	PathForge   []PathEntry         `json:"path_forge"`       // PATH 上全部 forge 可执行文件（按 PATH 顺序）
 	Hosts       []HostReport        `json:"hosts"`
 	Skills      *SkillsDriftSummary `json:"skills,omitempty"`
+	// HookRuntime is the hook-command runtime check (forge/node resolvable under the
+	// assumed hook PATH); nil when no host is wired or the platform is not checked.
+	//
+	// HookRuntime 是 hook 命令运行环境检查（forge/node 在假定 hook PATH 下可解析）；
+	// 没有任何 host 接线或平台不检查时为 nil。
+	HookRuntime *HookRuntime `json:"hook_runtime,omitempty"`
 }
 
 // Options carries injectable dependencies for hermetic tests.
@@ -138,6 +144,18 @@ type Options struct {
 	// 风格一致）。错误以摘要 Canonical 字段前缀上报，绝不中止整个审计——skills
 	// drift 不得拖垮 host 版本审计。
 	SkillsDriftProbe func() *SkillsDriftSummary
+	// HookPath is the assumed hook PATH for the hook-runtime check. Default:
+	// DefaultHookPath. The CLI wires FORGE_DOCTOR_HOOK_PATH into it.
+	//
+	// HookPath 是 hook 运行环境检查所假定的 hook PATH。默认 DefaultHookPath。CLI 把
+	// FORGE_DOCTOR_HOOK_PATH 接进来。
+	HookPath string
+	// TempDirs are the roots whose forge copies the hook-runtime check flags.
+	// Default: os.TempDir(), /tmp, /private/tmp.
+	//
+	// TempDirs 是 hook 运行环境检查会标出其中 forge 副本的根。默认 os.TempDir()、
+	// /tmp、/private/tmp。
+	TempDirs []string
 }
 
 // semver extracts a bare version token (1.30.0, 1.30.0-beta.1) from a version string.
@@ -164,6 +182,12 @@ func (o *Options) fill() {
 	}
 	if o.LookPath == nil {
 		o.LookPath = exec.LookPath
+	}
+	if o.HookPath == "" {
+		o.HookPath = DefaultHookPath
+	}
+	if o.TempDirs == nil {
+		o.TempDirs = []string{os.TempDir(), "/tmp", "/private/tmp"}
 	}
 	if o.ScanPATH == nil {
 		o.ScanPATH = func() []string {
@@ -381,6 +405,18 @@ func Run(selfVersion string, opts Options) Report {
 	rep.PathForge = scanPATH(opts)
 	for _, spec := range hostSpecs() {
 		rep.Hosts = append(rep.Hosts, auditHost(spec, self, opts))
+	}
+	// Hook runtime: only meaningful when some host actually wires forge hooks —
+	// otherwise "forge not resolvable" is just an uninstalled forge, not a hook
+	// failure. Read-only replay of sh's resolution under the assumed hook PATH.
+	//
+	// hook 运行环境：只有某个 host 真接了 forge hook 才有意义——否则「forge 不可解析」
+	// 只是没装 forge，不是 hook 故障。只读地在假定 hook PATH 下复现 sh 的解析。
+	for _, h := range rep.Hosts {
+		if h.ForgeCmds > 0 {
+			rep.HookRuntime = CheckHookRuntime(opts.HookPath, opts.TempDirs, opts.LookPath)
+			break
+		}
 	}
 	// Skills distribution is an optional section: probe injected by the CLI layer,
 	// absent under hermetic tests. A failing probe reports inside the summary —

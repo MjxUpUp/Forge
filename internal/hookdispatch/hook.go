@@ -307,7 +307,14 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// （Go 内判定，不经 bash embed），无 embed script——放行其 name，特例在
 	// hookInput 解析 + agent normalize 之后拦截 return（见 isInProcessHook）。
 	if !ok && !isInProcessHook(name) {
-		return fmt.Errorf("unknown hook: %s", name)
+		// 版本错位：settings 接了本二进制不认识的 hook。类型化错误交给 Execute 的基础
+		// 设施收口（同会话同因只提示一次 + 修复办法）；先尽力取 session id 供去重定键。
+		//
+		// Version skew: settings wires a hook this binary does not know. A typed
+		// error goes to Execute's infra funnel (once per session + fix advice);
+		// best-effort session id first so the dedup can be keyed.
+		peekInfraSession()
+		return &UnknownHookError{Name: name}
 	}
 
 	// Resolve the stdin dialect before parsing: a host whose StdinReplacesParse is
@@ -471,6 +478,11 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	if hookInput.SessionID != "" {
 		hookInput.SessionID = util.SanitizeSessionID(hookInput.SessionID)
 	}
+	// 基础设施收口（hook_infra.go）需要本进程的 session id 给同会话去重定键。
+	//
+	// The infra funnel (hook_infra.go) needs this process's session id to key the
+	// once-per-session dedup.
+	rememberInfraSession(hookInput.SessionID)
 
 	// Adopt the payload's cwd before resolving the project root. kimi plugin hooks are
 	// spawned with the process cwd set to the plugin root (~/.kimi-code/plugins/managed/<id>)
