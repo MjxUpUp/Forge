@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.84.4](https://github.com/MjxUpUp/Forge/compare/v1.84.3...v1.84.4) (2026-10-25)
+
+
+### Bug Fixes
+
+* **review:** 复审路径补「续用原评审者」分档（doc-review / Stop hook / 双 reviewer / 协议 A·B） ([#141](https://github.com/MjxUpUp/Forge/issues/141)) ([cca2a96](https://github.com/MjxUpUp/Forge/commit/cca2a96b409677cb7db0f52fb5072542842fbe66))
+
 ## [1.84.3](https://github.com/MjxUpUp/Forge/compare/v1.84.2...v1.84.3) (2026-10-24)
 
 
