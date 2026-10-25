@@ -507,6 +507,13 @@ const (
 	// advisory、1.67 起 BLOCKED；Meta 携带形态标志（semicolon/pipe/multi_gate…）。
 	// deterministic（gatecmdform 纯函数判定）；属过程形态 OBSERVATION——排除出证据强度分桶。
 	CheckGateCmdForm CheckName = "gate-cmd-form"
+	// CheckHookInfra records one hook infrastructure failure (unknown hook, panic, non-block hook error) with Meta cause/subject/shown/dedup; shown=false rows are the once-per-session suppressed repeats (docs/plans/hook-silent-failure-visibility-2026-10.md).
+	//
+	// CheckHookInfra 记录一次 hook 基础设施失败（unknown hook、panic、非阻断 hook 错误），
+	// Meta 带 cause/subject/shown/dedup；shown=false 行是同会话被去重静默的重复发生
+	// （docs/plans/hook-silent-failure-visibility-2026-10.md）。deterministic（forge 自身
+	// 捕获）；属基建可见性 OBSERVATION——排除出证据强度分桶。
+	CheckHookInfra CheckName = "hook-infra"
 	// CheckTreeGuard records one off-tree decision from the task-tree guard
 	// (docs/design/task-tree-guard.md §5): the BLOCK (Passed=false, Meta carries
 	// anchor/wtid/resolve_path) or the same-off-tree announce emitted by the hook

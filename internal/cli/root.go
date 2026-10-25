@@ -36,9 +36,9 @@ var rootCmd = &cobra.Command{
 		checkForUpdate(cmd.Root().Version, cmd)
 
 		// 自愈 npm 的脆弱 Windows sh 垫片（依赖 coreutils），让 POSIX-shell
-		// 宿主（kimi-code）能把 `forge` 解析到真实二进制。hook 子命令静默——
-		// 其 stderr 可能进入 agent 上下文。
-		healNpmShimIfNeeded(cmd.Name() == "hook")
+		// 宿主（kimi-code）能把 `forge` 解析到真实二进制。整个 hook 子树（含
+		// hook batch）静默——其 stderr 可能进入 agent 上下文。
+		healNpmShimIfNeeded(isHookSubtree(cmd))
 
 		// init 命令跳过 auto-sync（项目尚不存在）
 		if cmd.Name() == "init" {
@@ -97,15 +97,21 @@ func Execute() {
 	// 命令的 stdout JSON 兜底由 runHook 负责（hook.go 永远输出合法 JSON）。
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "forge: internal panic: %v\n", r)
 			// 退出码语义：2 是 hook 的阻断码（kimi：有意 deny；Claude：非 2 的错误
 			// 不阻断）。forge 内部崩溃必须读作基础设施故障而非门禁裁决——此处
 			// exit 2 会把每个内部 bug 变成对每次工具调用的硬拦，只能卸载 hooks
 			// 逃生。hook 子命令 exit 1（fail-open）；其余保持 2（普通 CLI 用法下
 			// 的任意非零码）。
 			if len(os.Args) > 1 && os.Args[1] == "hook" {
-				os.Exit(1)
+				// 基础设施失败收口：同会话同因首次 exit 1 + 带修复办法的提示，重复静默
+				// exit 0（hook 失败的退出码只会是 0 或 1，从不是 2）。
+				//
+				// Infra-failure funnel: first per (session, cause) exits 1 with a
+				// fix-bearing notice, repeats stay silent with 0 (a hook failure's
+				// exit code is only ever 0 or 1, never 2).
+				os.Exit(hookdispatch.HandleHookPanic(r))
 			}
+			fmt.Fprintf(os.Stderr, "forge: internal panic: %v\n", r)
 			os.Exit(2)
 		}
 	}()
@@ -127,6 +133,15 @@ func Execute() {
 		// 哨兵在 cliskills 导出，本处映射——依赖方向 cli→cliskills 合法。
 		if errors.Is(err, cliskills.ErrHardExit) {
 			os.Exit(2)
+		}
+		// hook 子命令的其余错误都是基础设施失败（裁决已在上面映射 exit 2）：
+		// 同会话同因只提示一次并带修复办法，仍然不阻断。
+		//
+		// Every other error from a hook invocation is an infra failure (verdicts
+		// were mapped to exit 2 above): one fix-bearing notice per (session, cause),
+		// still non-blocking.
+		if len(os.Args) > 1 && os.Args[1] == "hook" {
+			os.Exit(hookdispatch.HandleHookFailure(err))
 		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

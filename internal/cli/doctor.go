@@ -36,6 +36,13 @@ Also lists every forge executable on PATH in resolution order — multiple hits 
 the classic stray-exe-vs-shim setup. Finally audits skills distribution: canonical
 skills vs every global target directory (missing/drift surface with a fix command;
 skills added to canonical after the last install are the classic silent gap).
+When any host is wired it also replays how a desktop host's sh would resolve the
+hook command under a minimal PATH (override with FORGE_DOCTOR_HOOK_PATH): forge not
+resolvable (exit 127), forge being a node shim with node not resolvable
+("env: node: No such file or directory"), forge not executable or sitting in a temp
+dir (exit 126), and forge hooks wired in user settings that this binary does not
+know (version skew) — each with its repair advice. These fail before or outside the
+forge process, so doctor is the only place they can be seen proactively.
 
 Statuses per host:
   ok       wired, version matches the running forge
@@ -46,7 +53,16 @@ Statuses per host:
 Read-only: never modifies any host configuration. Use --json for machine output.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		asJSON, _ := cmd.Flags().GetBool("json")
-		rep := doctor.Run(getCurrentVersion(rootCmd.Version), doctor.Options{SkillsDriftProbe: skillsDriftProbe})
+		// FORGE_DOCTOR_HOOK_PATH：用从真实 hook 运行量到的 PATH 复核 hook 运行环境
+		// （空 = 假定的桌面端最小 PATH，见 doctor.DefaultHookPath）。
+		//
+		// FORGE_DOCTOR_HOOK_PATH: replay the hook-runtime check under a PATH measured
+		// from a real hook run (empty = the assumed desktop minimal PATH, see
+		// doctor.DefaultHookPath).
+		rep := doctor.Run(getCurrentVersion(rootCmd.Version), doctor.Options{
+			SkillsDriftProbe: skillsDriftProbe,
+			HookPath:         os.Getenv("FORGE_DOCTOR_HOOK_PATH"),
+		})
 		if asJSON {
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")
@@ -181,6 +197,20 @@ func printDoctor(cmd *cobra.Command, rep doctor.Report) {
 			line += fmt.Sprintf("  [%s]", h.Err)
 		}
 		fmt.Fprintln(w, line)
+	}
+	if rt := rep.HookRuntime; rt != nil {
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "hook runtime（假定 hook PATH: %s）:\n", rt.PathUsed)
+		if len(rt.Problems) == 0 {
+			via := rt.Forge
+			if rt.Interpreter != "" {
+				via += fmt.Sprintf(" → %s %s", rt.Interpreter, rt.Node)
+			}
+			fmt.Fprintf(w, "  ✓ hook 命令可解析  (%s)\n", via)
+		}
+		for _, p := range rt.Problems {
+			fmt.Fprintf(w, "  ✗ [%s] %s\n    修复：%s\n", p.Code, p.Detail, p.Fix)
+		}
 	}
 	if len(rep.PathForge) > 1 {
 		fmt.Fprintln(w)
