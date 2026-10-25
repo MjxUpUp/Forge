@@ -987,7 +987,11 @@ func TestBashReadCountsAsRead(t *testing.T) {
 	credited := []string{
 		"cat a.go",
 		"cat ./a.go",
-		"cat " + a,
+		// A backslash path is not a valid bash command (bash reads \ as an escape), so on
+		// Windows the absolute path is written the way Git Bash takes it: forward slashes.
+		// 反斜杠路径不是合法的 bash 命令（bash 把 \ 当转义），所以 Windows 上绝对路径按
+		// Git Bash 的写法用正斜杠。
+		"cat " + filepath.ToSlash(a),
 		"head -n 20 a.go",
 		"head -20 a.go",
 		"tail -n 5 a.go",

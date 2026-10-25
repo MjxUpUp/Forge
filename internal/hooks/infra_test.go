@@ -3,6 +3,7 @@ package hooks
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -241,8 +242,15 @@ func TestInfraStateHardening(t *testing.T) {
 	if !ClaimInfraNotice("sess-h", f) {
 		t.Fatal("首次应认领成功")
 	}
-	if info, err := os.Stat(filepath.Join(root, "sess-h")); err != nil || info.Mode().Perm() != 0o700 {
-		t.Errorf("会话目录应为 0700，got %v %v", info, err)
+	info, err := os.Stat(filepath.Join(root, "sess-h"))
+	if err != nil {
+		t.Fatalf("会话目录应存在: %v", err)
+	}
+	// Windows does not carry Unix permission bits (Perm() reports 0777), so the 0700
+	// check only applies elsewhere.
+	// Windows 不带 Unix 权限位（Perm() 恒报 0777），0700 断言只在其他平台生效。
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+		t.Errorf("会话目录应为 0700，got %v", info.Mode().Perm())
 	}
 
 	// 陈旧标记：回拨 mtime 超过 TTL → 重新认领一次，之后又去重。
