@@ -36,9 +36,9 @@ var rootCmd = &cobra.Command{
 		checkForUpdate(cmd.Root().Version, cmd)
 
 		// 自愈 npm 的脆弱 Windows sh 垫片（依赖 coreutils），让 POSIX-shell
-		// 宿主（kimi-code）能把 `forge` 解析到真实二进制。hook 子命令静默——
-		// 其 stderr 可能进入 agent 上下文。
-		healNpmShimIfNeeded(cmd.Name() == "hook")
+		// 宿主（kimi-code）能把 `forge` 解析到真实二进制。整个 hook 子树（含
+		// hook batch）静默——其 stderr 可能进入 agent 上下文。
+		healNpmShimIfNeeded(isHookSubtree(cmd))
 
 		// init 命令跳过 auto-sync（项目尚不存在）
 		if cmd.Name() == "init" {
