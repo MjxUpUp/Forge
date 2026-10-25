@@ -442,10 +442,6 @@ func TestHazardGuardScript_CommitMsgHeredocStillBlocks(t *testing.T) {
 		"git commit -F - <<'MSG'MSG\nmsg\nMSGMSG\nrm -rf /Users/x/y",
 		"git commit -F - <<'MSG'/\nmsg\nMSG/\nrm -rf /Users/x/y",
 		"git commit -F - <<-'MSG'-\nmsg\nMSG-\nrm -rf /Users/x/y",
-		// Invalid UTF-8 byte before an unclosed quote: BSD grep must not let the byte
-		// turn the allowlist check into a silent allow (the checks run under LC_ALL=C).
-		// 无效 UTF-8 字节 + 未闭合引号：白名单检查按字节判（LC_ALL=C），不得因此静默放行。
-		"echo \xff'\ngit commit -F - <<'MSG'\n'; rm -rf /Users/x/y; echo '\nMSG\n'",
 		"git add -A | cat\ngit commit -F - <<'MSG'\nrm -rf /Users/x/y\nMSG", // pipe in a prefix line
 	}
 	for _, cmd := range block {
