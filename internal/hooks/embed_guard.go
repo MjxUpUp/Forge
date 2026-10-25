@@ -1259,6 +1259,187 @@ if ! is_hazardous "$COMMAND" && ! is_interp_delete_bypass "$COMMAND"; then
 fi
 
 
+# commit_prefix_seg_ok：commit 消息 heredoc 之前允许出现的段——只有 cd <path> 与
+# git add ...（空段也行）。其余任何命令都不认，保持原判定。
+# Segments allowed before a commit-message heredoc: only cd <path> and git add ...
+# (an empty segment is fine); anything else keeps the original verdict.
+commit_prefix_seg_ok() {
+  local -a pw
+  read -r -a pw <<< "$1"
+  if [ "${#pw[@]}" -eq 0 ]; then
+    return 0
+  fi
+  if [ "${pw[0]}" = "cd" ] && [ "${#pw[@]}" -eq 2 ]; then
+    return 0
+  fi
+  if [ "${pw[0]}" = "git" ] && [ "${#pw[@]}" -ge 2 ] && [ "${pw[1]}" = "add" ]; then
+    return 0
+  fi
+  return 1
+}
+
+# commit_prefix_line_ok：opener 之前的整行——字符全在白名单内（无引号 # 反斜杠 $ 反引号
+# 括号 花括号），无管道与后台 &，按 && ; 切段后每段都过 commit_prefix_seg_ok。
+# A whole line before the opener: allowlisted characters only (no quotes, #, backslash,
+# $, backtick, parens, braces), no pipe or background &, and every && / ; segment passes
+# commit_prefix_seg_ok.
+commit_prefix_line_ok() {
+  local line="$1" norm i=0
+  local -a ps
+  if printf '%s' "$line" | LC_ALL=C grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
+    return 1
+  fi
+  norm="${line//&&/;}"
+  if [[ $norm == *"&"* ]] || [[ $norm == *"|"* ]]; then
+    return 1
+  fi
+  IFS=';' read -r -a ps <<< "$norm"
+  while [ "$i" -lt "${#ps[@]}" ]; do
+    if ! commit_prefix_seg_ok "${ps[$i]}"; then
+      return 1
+    fi
+    i=$((i + 1))
+  done
+  return 0
+}
+
+# commit_msg_heredoc_tag：识别 git commit -F - <<'TAG' 这一种 heredoc，命中时输出 tag。
+# 只认以下严格形态，任何不确定都返回 1（保持原判定）：
+#   - 整条命令不含函数定义 / function / alias（git(){ sh; } 会把正文喂给 shell 执行）；
+#   - 第一个 heredoc opener 所在行只有一个 <<，且 tag 带引号（<<'TAG' / <<"TAG"）——
+#     未引号 tag 的正文会被 shell 展开（$(...) 真执行）；
+#   - opener 之前、最后一个命令段的字符全在白名单内（无 $ 引号 反引号 括号 反斜杠），
+#     词序严格为 git [-C <path>] commit [-q|--quiet|-s|--signoff|-a|--all|-n|--no-verify|
+#     --allow-empty|--amend|-v|--verbose]* (-F - | --file=-)；带 -c、-m、环境前缀
+#     （PATH=x git ...）的形态一律不认；
+# 非 commit 的消费者（cat / tee 写脚本）不在此列：其正文可能是可执行脚本，静态不可判定。
+# Recognise exactly one heredoc shape, git commit -F - <<'TAG', and print its tag. Any
+# uncertainty returns 1 (the original verdict stays): no function/alias definitions in
+# the command; one << on the opener line with a QUOTED tag (an unquoted body is expanded
+# by the shell); the last command segment before the opener uses only allowlisted
+# characters and the exact word order above (no -c, -m or env prefix). cat/tee heredocs
+# are excluded — their body may be an executable script.
+commit_msg_heredoc_tag() {
+  local cmd="$1" opener rest head hseg tagpart tag="" i n f next have_file=0 nr pre ttail
+  local re_sq="^'([A-Za-z_][A-Za-z0-9_]*)'" re_dq='^"([A-Za-z_][A-Za-z0-9_]*)"'
+  local -a w
+  case "$cmd" in
+    *git*commit*"<<"*) ;;
+    *) return 1 ;;
+  esac
+  case "$cmd" in
+    *"() {"*|*"(){"*|*function\ *|*alias\ *) return 1 ;;
+  esac
+  # opener 行号 + 行文本（第一个 <<）。先行（opener 之前的行）与 opener 行整行都必须
+  # 是无引号 / 无注释 / 无展开 / 无续行的简单行——否则 # 或未闭合引号可以把真执行的行
+  # 伪装成 heredoc 正文（评审实证：echo # ; git commit ... 、echo ' 换行 git commit ...）。
+  # The lines before the opener and the whole opener line must be plain: no quotes,
+  # comments, expansions or continuations, otherwise a # or an unclosed quote can make a
+  # line that really executes look like a heredoc body (review-proven shapes).
+  opener=$(printf '%s\n' "$cmd" | awk '/(^|[^<])<<($|[^<])/ {print NR ":" $0; exit}')
+  if [ -z "$opener" ]; then
+    return 1
+  fi
+  nr="${opener%%:*}"
+  opener="${opener#*:}"
+  if [ "$nr" -gt 1 ]; then
+    while IFS= read -r pre; do
+      if ! commit_prefix_line_ok "$pre"; then
+        return 1
+      fi
+    done <<< "$(printf '%s\n' "$cmd" | awk -v n="$nr" 'NR < n {print}')"
+  fi
+  rest="${opener#*<<}"
+  if [[ $rest == *"<<"* ]]; then
+    return 1
+  fi
+  tagpart="${rest#-}"
+  if [[ $tagpart =~ $re_sq ]]; then
+    tag="${BASH_REMATCH[1]}"
+  elif [[ $tagpart =~ $re_dq ]]; then
+    tag="${BASH_REMATCH[1]}"
+  else
+    return 1
+  fi
+  # opener 行 tag 之后的尾部：同样只允许简单字符（行尾反斜杠续行会让 heredoc 正文起点
+  # 后移，物理行与逻辑行错位）。
+  # The tail after the tag on the opener line is held to the same plain charset (a
+  # trailing backslash shifts where the body really starts).
+  ttail="${tagpart:$((${#tag} + 2))}"
+  # 闭合引号之后必须是行尾或分隔符：bash 把 <<'MSG'x 的 delimiter 当作 MSGx（词拼接），
+  # 而 awk 仍找 MSG 行，找不到就一路剥到末尾，吞掉真实 delimiter 之后的命令。
+  # LC_ALL=C：BSD grep 遇到无效 UTF-8 字节会让取反字符类不匹配（静默放行），白名单检查
+  # 一律按字节判。
+  # Right after the closing quote there must be end-of-line or a separator: bash glues
+  # <<'MSG'x into the delimiter MSGx while awk keeps looking for MSG and strips to the
+  # end, swallowing the commands after the real delimiter. LC_ALL=C: BSD grep treats a
+  # line with invalid UTF-8 bytes as non-matching for a negated class (silent allow), so
+  # every allowlist check judges bytes.
+  if [ -n "$ttail" ] && [[ $ttail != " "* ]] && [[ $ttail != ";"* ]] && [[ $ttail != "&"* ]] && [[ $ttail != "|"* ]]; then
+    return 1
+  fi
+  if printf '%s' "$ttail" | LC_ALL=C grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
+    return 1
+  fi
+  head="${opener%%<<*}"
+  if printf '%s' "$head" | LC_ALL=C grep -q '[^A-Za-z0-9_./~@+: =&;|-]'; then
+    return 1
+  fi
+  # head 按 && ; 切段：最后一段必须是 git commit 文法，之前的段只许 cd <path> 或
+  # git add ...；管道 | 与后台 & 一律不认。
+  # Split the head on && and ;: the last segment must be the git commit grammar, earlier
+  # ones only cd <path> or git add ...; pipes and background & are rejected.
+  hseg="${head//&&/;}"
+  if [[ $hseg == *"&"* ]] || [[ $hseg == *"|"* ]]; then
+    return 1
+  fi
+  local -a segs
+  IFS=';' read -r -a segs <<< "$hseg"
+  hseg="${segs[$((${#segs[@]} - 1))]}"
+  i=0
+  while [ "$i" -lt $((${#segs[@]} - 1)) ]; do
+    if ! commit_prefix_seg_ok "${segs[$i]}"; then
+      return 1
+    fi
+    i=$((i + 1))
+  done
+  read -r -a w <<< "$hseg"
+  n=${#w[@]}
+  if [ "$n" -lt 4 ] || [ "${w[0]}" != "git" ]; then
+    return 1
+  fi
+  i=1
+  if [ "${w[$i]}" = "-C" ]; then
+    i=$((i + 2))
+  fi
+  if [ "$i" -ge "$n" ] || [ "${w[$i]}" != "commit" ]; then
+    return 1
+  fi
+  i=$((i + 1))
+  while [ "$i" -lt "$n" ]; do
+    f="${w[$i]}"
+    if [ "$f" = "-F" ]; then
+      next=$((i + 1))
+      if [ "$next" -ge "$n" ] || [ "${w[$next]}" != "-" ]; then
+        return 1
+      fi
+      have_file=1
+      i=$((i + 2))
+    elif [ "$f" = "--file=-" ]; then
+      have_file=1
+      i=$((i + 1))
+    elif [ "$f" = "-q" ] || [ "$f" = "--quiet" ] || [ "$f" = "-s" ] || [ "$f" = "--signoff" ] || [ "$f" = "-a" ] || [ "$f" = "--all" ] || [ "$f" = "-n" ] || [ "$f" = "--no-verify" ] || [ "$f" = "--allow-empty" ] || [ "$f" = "--amend" ] || [ "$f" = "-v" ] || [ "$f" = "--verbose" ]; then
+      i=$((i + 1))
+    else
+      return 1
+    fi
+  done
+  if [ "$have_file" -ne 1 ]; then
+    return 1
+  fi
+  printf '%s' "$tag"
+}
+
 # strip_interp_heredoc_bodies（F.1）：heredoc 喂给非 shell 解释器（python/node/ruby/perl）
 # 且正文不含执行原语时，正文是数据——预先挖掉正文（保留 <<TAG 行与其后连接符），让
 # is_hazardous/strip_quotes 只判真正会执行的头部。乙机实录：分析脚本的 heredoc 体提及
@@ -1273,7 +1454,18 @@ fi
 # HEREDOC_ORIG 保留原始命令：判定用剥离文本，指纹/事件/展示一律用原文（审计与 confirm
 # 不与 agent 所见文本漂移）。
 strip_interp_heredoc_bodies() {
-  local cmd="$1" tag body
+  local cmd="$1" tag body ctag
+  # commit 消息 heredoc（git commit -F - <<'TAG'）：正文只被 git 当消息文本，不被任何
+  # 程序执行，同样是数据——命中时只挖正文，header 与 delimiter 之后的内容仍原样交给
+  # is_hazardous。判据与白名单见 commit_msg_heredoc_tag。
+  # Commit-message heredoc: the body is only message text for git, never executed, so
+  # it is data too — strip the body only; the header and everything after the delimiter
+  # still reach is_hazardous. See commit_msg_heredoc_tag for the strict header grammar.
+  ctag=$(commit_msg_heredoc_tag "$cmd") || ctag=""
+  if [ -n "$ctag" ]; then
+    printf '%s' "$cmd" | awk -v t="$ctag" 'BEGIN{inbody=0} inbody==1 && $0 ~ "^[[:space:]]*" t "[[:space:]]*$" {inbody=2; print; next} inbody==1 {next} {print} inbody==0 && /(^|[^<])<<($|[^<])/ {inbody=1}'
+    return
+  fi
   case "$cmd" in
     *python*"<<"*|*node*"<<"*|*ruby*"<<"*|*perl*"<<"*) ;;
     *) printf '%s' "$cmd"; return ;;
