@@ -17,7 +17,7 @@ import (
 func TestQualityDocGateMentionsResume(t *testing.T) {
 	proto := &protocol.Protocol{Version: "1"}
 	content := buildQualitySkillContent(t.TempDir(), proto)
-	for _, want := range []string{"续用首轮评审者", "而非每轮新派", "doc-review skill"} {
+	for _, want := range []string{"续用首轮评审者", "其余情形新派", "L1 已过", "doc-review skill"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("forge-quality skill 文档回检段缺少 %q", want)
 		}

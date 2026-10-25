@@ -214,7 +214,7 @@ var reviewStatusCmd = &cobra.Command{
 const gateGuidance = "检测到未审查的源码变更。请按序完成：\n" +
 	"1. 加载 code-review-gate skill（经宿主 skill 机制）\n" +
 	"2. 按其策略派【只读】子 agent 审查当前 diff——独立上下文是底线，不可自审绕过\n" +
-	"   (a) 首审、新会话接手、或手里没有首轮 reviewer 的句柄：按本步新派\n" +
+	"   (a) 首审、新会话接手、没有首轮 reviewer 的句柄、或这版不是对已审代码的修复（如新增功能）：按本步新派\n" +
 	"   (b) 本会话内已对本分支派过 reviewer、这版是修复后的 diff 且句柄可续用（复审）：" + review.ReReviewGuidance + "（非 task 模式没有审查基线刷新，`--note` 只作审计留痕）\n" +
 	"3. 审查通过后运行 `forge review pass` 标记，再结束会话\n" +
 	"审查发现的问题按类型接 skill：运行时 bug/逻辑错误 → systematic-debugging；编译错误 → compile-fix-loop；断言弱化/假测试 → test-discipline。\n" +

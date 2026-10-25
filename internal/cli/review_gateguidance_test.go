@@ -29,7 +29,7 @@ func TestGateGuidanceCarriesReReviewTier(t *testing.T) {
 	// 复审分档必须带条件前缀并落在「派 reviewer」与「标记」两步之间：删掉前缀会让
 	// 首审也被引导去续用不存在的首轮 reviewer；挪出两步之间会错读成独立步骤。
 	// 两种情形分行标 (a)/(b)，避免与 ReReviewGuidance 内部自带的「否则」同级混读。
-	const fresh = "(a) 首审、新会话接手、或手里没有首轮 reviewer 的句柄：按本步新派"
+	const fresh = "(a) 首审、新会话接手、没有首轮 reviewer 的句柄、或这版不是对已审代码的修复（如新增功能）：按本步新派"
 	const resume = "(b) 本会话内已对本分支派过 reviewer"
 	dispatch := strings.Index(gateGuidance, "派【只读】子 agent 审查当前 diff")
 	a := strings.Index(gateGuidance, fresh)
