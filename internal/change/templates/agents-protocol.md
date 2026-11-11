@@ -21,12 +21,14 @@
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
 5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/YYYYMMDD-<id>`。
 6. 之后再改被验证的文件、或改 acceptance，证据自动失效（`forge change list` 显示「证据已失效」），必须重跑 verify。
-7. 工作区干净时 verify，证据绑的是那一个 commit（没有文件级指纹）：之后 HEAD 再动就判失效，重新 verify 即可。
+7. 证据会记下当时改动的每个文件的内容摘要，并在 list 里显示绑定的 commit。
+   之后又改了代码或文档，证据自动失效；只提交证据本身不算。
 
 ## 红线
 
 - 判据必须能被命令证明；写不出命令的验收项不算完成。
-- acceptance 里不要用 `|`、`||`、`set +e` 掩盖退出码——verify 用 `set -eo pipefail` 执行，但显式吞码仍能骗过任何壳。
+- acceptance 里不能用管道 `|`、`||`、后台 `&`、`set +e`、再套一层 `bash -c`——
+  verify 在解析期就直接拒绝（不是靠 pipefail 兜），因为这些写法都能把失败变成 0。
 - 「已验证」这个结论只能由 `forge change verify` 产出：手写 summary.json 没有实跑记录与工作区摘要，不算证据。
 - 没装 forge 也能写四份产物、照样可审计；差别是产不出封印。
 - 保留名：change id 不能用 `archive`、`evidence`。
