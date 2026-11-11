@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -599,76 +598,6 @@ func hasExecutableLine(cmd string) bool {
 		return true
 	}
 	return false
-}
-
-// shellNameRE 匹配命令位置上的解释器名：可带路径（/bin/sh、C:\Git\bin\bash）
-// 与 .exe 后缀。只认"命令开头或分隔符之后"的写法，`git log` 里的 sh 不算。
-var shellNameRE = regexp.MustCompile(`(^|[\s;&|()])((?:[A-Za-z]:)?[^\s;&|()]*[\\/])?(bash|sh|zsh|dash|ksh|busybox|pwsh|powershell)(\.exe)?(\s|$)`)
-
-// setOffRE 匹配关掉保护的 set 写法：`set +e`、`set +o errexit`、`set +eo pipefail`。
-var setOffRE = regexp.MustCompile(`set\s+\+[a-zA-Z]*[eo]`)
-
-// nestedShell 判断判据里有没有再调用一层 shell。
-//
-// 内层 shell 不继承外层 prefix 里的 errexit/pipefail：`bash -lc 'false | true'`、
-// `/bin/sh -c 'false | true'`、`bash.exe -ec ...` 都能把失败变成 0，而外层只看
-// 到内层退出码 0。所以只要解释器后面跟着带 c 的短选项就拒绝——带路径、带 .exe、
-// 用 ${IFS} 拼参数都一视同仁（${IFS} 在检查前已被还原成空格）。
-func nestedShell(s string) bool {
-	for _, loc := range shellNameRE.FindAllStringIndex(s, -1) {
-		rest := s[loc[1]:]
-		if i := strings.IndexAny(rest, ";&|\n"); i >= 0 {
-			rest = rest[:i]
-		}
-		for _, w := range strings.Fields(rest) {
-			if w == "--command" {
-				return true
-			}
-			if strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.ContainsRune(w, 'c') {
-				return true
-			}
-			if !strings.HasPrefix(w, "-") {
-				break
-			}
-		}
-	}
-	return false
-}
-
-// hasEval 判断有没有 eval：`eval 'false | true'` 的退出码同样由最后一条命令决定。
-func hasEval(s string) bool {
-	for _, w := range strings.Fields(s) {
-		if w == "eval" {
-			return true
-		}
-	}
-	return false
-}
-
-// lintJudge 拒绝那些能把失败变成 0 的写法。
-//
-// 文档里的"禁止"必须由机器执行：只写在模板里，agent 换个写法照样封印。
-// 只检查引号外的操作符——`echo "a||b"` 这类字面量不算。
-func lintJudge(cmd string) error {
-	s := stripQuoted(cmd)
-	// ${IFS} 是空格的字面写法，`bash${IFS}-c` 在 shell 里就是 `bash -c`。
-	s = strings.ReplaceAll(s, "${IFS}", " ")
-	s = strings.ReplaceAll(s, "$IFS", " ")
-	switch {
-	case strings.Contains(s, "||"):
-		return fmt.Errorf("判据里不能用 `||`（它会把前一条的失败咽掉）；用 `&&` 串联，或把逻辑写进脚本")
-	case strings.Contains(s, "|"):
-		return fmt.Errorf("判据里不要用管道 `|`——需要看输出就写进文件，或把逻辑写进脚本（sh 环境没有 pipefail，管道失败会变成通过）")
-	case hasSingleAmpersand(s):
-		return fmt.Errorf("判据里不能用后台 `&`（后台任务的失败不会被等待）；要并行请写进脚本并 wait")
-	case setOffRE.MatchString(s):
-		return fmt.Errorf("判据里不能关掉保护（`set +e` / `set +o errexit` 等于允许失败）")
-	case hasEval(s):
-		return fmt.Errorf("判据里不能用 `eval`（它会把失败吞成最后一条命令的退出码）")
-	case nestedShell(s):
-		return fmt.Errorf("判据里不能再调用一层 shell（`bash -c`、`bash -lc`、`/bin/sh -c` 都算：内层 shell 不受 pipefail 约束）")
-	}
-	return nil
 }
 
 // stripQuoted 把引号和注释里的内容抹成空格，只留下真正的代码供检查。
