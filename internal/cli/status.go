@@ -140,14 +140,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Project: %s\n", filepath.Base(root))
 	if memberSource == projectroot.SourceSpecContract {
 		fmt.Println("  spec: spec/forge.yaml (仓库声明式成员资格)")
-		// 契约写坏时 hookdispatch 会 fail-open 回落全局档位继续执法——这里必须
-		// 让人看见「你以为关了、其实写着错拼写」。不阻断 status。
-		if c, err := specroot.Load(root); err != nil {
-			fmt.Printf("  ⚠ 契约无法解析（hook 按全局档位继续执法）：%v\n", err)
-			fmt.Printf("  生效档位：全局 %s（FORGE_PROFILE / ~/.forge/profile，缺省 %s）\n",
-				hooks.ActiveProfile(), hooks.ProfileStandard)
-		} else {
-			fmt.Printf("  契约：profile=%s hooks=%s\n", c.Profile, c.Hooks)
+		for _, line := range contractStatusLines(root) {
+			fmt.Println(line)
 		}
 	}
 	if showTasks {
@@ -248,4 +242,19 @@ func evalHealthLine(root string) string {
 		line += " · ⚠ 判分器降级 ADVISORY（κ<0.6）"
 	}
 	return line
+}
+
+// contractStatusLines 渲染契约的生效情况。契约写坏时 hookdispatch 会 fail-open
+// 回落全局档位继续执法——这里必须让人看见「你以为关了、其实写着错拼写」。
+// 不阻断 status：仓库身份仍然成立，只是执法档位不是它写的那份。
+func contractStatusLines(root string) []string {
+	c, err := specroot.Load(root)
+	if err != nil {
+		return []string{
+			fmt.Sprintf("  ⚠ 契约无法解析（hook 按全局档位继续执法）：%v", err),
+			fmt.Sprintf("  生效档位：全局 %s（FORGE_PROFILE / ~/.forge/profile，缺省 %s）",
+				hooks.ActiveProfile(), hooks.ProfileStandard),
+		}
+	}
+	return []string{fmt.Sprintf("  契约：profile=%s hooks=%s", c.Profile, c.Hooks)}
 }
