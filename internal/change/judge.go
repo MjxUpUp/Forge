@@ -507,7 +507,9 @@ func startsWord(s string, i int) bool {
 		return true
 	}
 	switch s[i-1] {
-	case ' ', '\t', '\n', ';', '&', '|', '(', ')':
+	case ' ', '\t', '\n', ';', '&', '|', '(':
+		// `)` 不算词首：shell 里 `$((1+0))#` 的 `#` 是紧跟其后的字面量，
+		// 不是注释（`)` 后面本来也不可能是语句开头）。
 		return !escapedWhitespaceBefore(s, i)
 	}
 	return false
