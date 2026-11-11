@@ -12,7 +12,7 @@ change: `{{id}}`
   等于假绿。需要保留输出就写文件，不要管道给 `tail`。
 - 首个非零即停，后面的命令记为 skipped；全部为 0 才 sealing。
 - 命令在仓库根目录执行；单条超时 10 分钟；单条输出最多保留 2 MiB（超出写截断标记）。
-- 四份产物（proposal/design/tasks/acceptance）必须都在且都删掉 `forge:fill` 标记，否则 verify 直接拒绝——acceptance 是判据，另外三份是它的审计线索。
+- 四份产物（proposal/design/tasks/acceptance）必须在、都删掉 `forge:fill` 标记，且至少有一条真会执行的命令，否则 verify 直接拒绝——acceptance 是判据，另外三份是它的审计线索（内容是否充实靠 review 看，不靠机器猜）。
 - 下面的人工检查项只展示、不阻断、不进封印：`- [ ]` 列为待确认，`- [x]` 列为已勾选——勾选是给人的记录，机器不会因此放行。
 
 ```bash
