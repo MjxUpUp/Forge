@@ -117,9 +117,10 @@ profile: standard  # standard | mini | full（缺省 standard）
 hooks: on          # on | off（缺省 on）
 ```
 
-- `hooks: off`——这个仓库里的 hook 检查静默放行：**0 次检查、0 注入**。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。
-- **安全底线不受 `hooks`/`profile` 控制**：`hazard-guard`（破坏性命令）、`mcp-scan`（`.mcp.json` 供应链）、`skill-scan`（恶意 skill 指令）始终运行——契约随 git 走，不能让一个 PR 用一行 `hooks: off` 关掉防它的扫描器。噪音成本很低（只在真危险时出声）。
-- `profile`——`mini` 是最小执法名册（lite：task-guard / bash-guard / hazard-guard / file-sentinel 等拦截类，去掉 advisory 类）；`standard` 是缺省名册；`full` 目前与 `standard` 等同（预留超集位）。契约只做运行时收窄：settings 接线时被全局更窄档位滤掉的 hook，不会因为契约写 `full` 又接回来。
+- `hooks: off`——这个仓库里的 hook 检查静默放行：**除下面三条安全底线外，0 次检查、0 注入**。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。
+- **安全底线不受仓库契约里的 `hooks`/`profile` 控制**：`hazard-guard`（破坏性命令）、`mcp-scan`（`.mcp.json` 供应链）、`skill-scan`（恶意 skill 指令）照跑——契约随 git 走，不能让一个 PR 用一行 `hooks: off` 关掉防它的扫描器。噪音成本很低（只在真危险时出声）。
+  这条的边界是机器全局档位：名册在契约之前就先滤一遍，`FORGE_PROFILE=lite` 时 lite 名册里只有 `hazard-guard`，`mcp-scan`/`skill-scan` 本来就没接线、不在此列——「契约关不掉」不等于「一定跑」。
+- `profile`——`mini` 是最小执法名册（lite：task-guard / bash-guard / hazard-guard / file-sentinel 等拦截类为主，另含 tool-track / failure-track 等观测项；advisory 类不在内）；`standard` 是缺省名册；`full` 目前与 `standard` 等同（预留超集位）。契约只做运行时收窄：settings 接线时被全局更窄档位滤掉的 hook，不会因为契约写 `full` 又接回来。
 - 契约写坏时 hook 侧不拦也不报——`hooks: of`、拼错键名这类错误整份按解析失败处理，hook 执法回落全局档位。`forge status` 会打出「⚠ 契约无法解析」和实际生效的全局档位，不阻断任何命令。
 - `forge change init` 生成的是最小契约（`version: "1"`、`profile: mini`、`hooks: off`——只用产物、不开执法）。`--profile` 只改档位、不会打开门禁：要执法必须同时把 `hooks` 改成 `on`。
 

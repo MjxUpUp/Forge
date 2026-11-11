@@ -250,9 +250,9 @@
 |------|------|
 | `version` | 契约版本，按主版本兼容（`"1"`） |
 | `profile` | `mini`＝lite 最小执法名册（拦截类 hook，无 advisory）；`standard`＝缺省名册；`full`＝当前与 `standard` 等同（预留超集位）。缺省 `standard` |
-| `hooks` | `on`/`off`，缺省 `on`。`off` 时该仓库内 hook 静默放行（0 次检查、0 注入；进程仍会被宿主拉起一次再立刻 allow） |
+| `hooks` | `on`/`off`，缺省 `on`。`off` 时该仓库内 hook 静默放行（安全底线除外，0 次检查、0 注入；进程仍会被宿主拉起一次再立刻 allow） |
 
-**安全底线**（`hazard-guard`/`mcp-scan`/`skill-scan`）不受 `hooks: off` 与 profile 收窄影响：契约随 git 走，不能让仓库内容关掉防它的扫描器。
+**安全底线**（`hazard-guard`/`mcp-scan`/`skill-scan`）不受契约里的 `hooks: off` 与契约 profile 收窄影响：契约随 git 走，不能让仓库内容关掉防它的扫描器。边界在机器全局档位——名册先按 `FORGE_PROFILE` 滤一遍，`lite` 名册里没有 `mcp-scan`/`skill-scan`，它们轮不到安全底线。
 
 契约只做**运行时收窄**：settings 接线时被全局更窄档位滤掉的 hook，不会因契约写 `full` 而接回来。解析失败（拼写错误、未知键等）时 hook 执法按无契约处理、回落全局档位；`forge status` 打印「⚠ 契约无法解析」及生效档位。`forge change init` 生成的契约默认 `hooks: off`（只用产物、不开执法），`--profile` 只改档位、不打开门禁。init-suggest 的开关是 `FORGE_INIT_SUGGEST=1`（宿主进程环境），与本文件无关。
 
