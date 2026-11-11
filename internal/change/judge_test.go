@@ -285,3 +285,41 @@ func TestLintJudgeCommentAndContinuationInterplay(t *testing.T) {
 		t.Fatalf("process substitution executes a command, must be rejected")
 	}
 }
+
+func TestLintJudgeDollarRunsAndArithmeticLeak(t *testing.T) {
+	// `$$` 成对消耗：奇数个 $ 才开替换。
+	for _, cmd := range []string{
+		`echo "$$$(touch pwned)"`,
+		`echo "$$$$$(touch pwned)"`,
+		`echo $$$(touch pwned)`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: an odd $ run still starts a substitution", cmd)
+		}
+	}
+	for _, cmd := range []string{
+		`echo "$$(false)"`,
+		`echo "$$$$(false)"`,
+	} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q: $ pairs are a pid, parentheses are literal: %v", cmd, err)
+		}
+	}
+	// 双引号里的算术不该吃掉后面的操作符。
+	if err := lintJudge(`echo "$((1))"; false || touch pwned`); err == nil {
+		t.Fatalf("|| after arithmetic must still be rejected")
+	}
+	if err := lintJudge(`echo "$((1))"; false | cat`); err == nil {
+		t.Fatalf("pipe after arithmetic must still be rejected")
+	}
+	// >( ) 也是进程替换。
+	if err := lintJudge(`echo >(touch pwned)`); err == nil {
+		t.Fatalf(">( ) is process substitution too")
+	}
+	// 算术里的 < 不是进程替换：位移与比较照常。
+	for _, cmd := range []string{`echo $((1<<(2+1)))`, `echo $((1<(2)))`, `echo "$((1<<(2+1)))"`} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q: < inside arithmetic is a shift/compare: %v", cmd, err)
+		}
+	}
+}
