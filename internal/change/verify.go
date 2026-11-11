@@ -136,9 +136,15 @@ type VerifyOptions struct {
 //     change 不能凭"我是对的"通过；
 //   - 只要有命令失败，证据照样落盘（失败证据比没有证据更有用）。
 func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, error) {
-	c, err := Load(root, id)
+	c, fp, err := LoadWithFingerprint(root, id)
 	if err != nil {
 		return nil, err
+	}
+	// 模板骨架不是判据：init+new 之后四份文件还是模板，直接 verify 会把
+	// 通用示例命令当成这个 change 的验收标准（在 Go 仓库里甚至能封印）。
+	if unfilled := unfilledDocs(c.Dir); len(unfilled) > 0 {
+		return nil, fmt.Errorf("change: %s 仍是模板骨架（%s 里还有 %s 标记）——先把四份产物填成这个 change 自己的内容再 verify",
+			id, strings.Join(unfilled, "、"), scaffoldMarker)
 	}
 	if !c.HasAcceptance {
 		return nil, fmt.Errorf("change: %s 没有 %s（无法验证）", relTo(root, c.Dir), FileAcceptance)
@@ -177,11 +183,11 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 		StartedAt:        now.UTC().Format(time.RFC3339),
 		AcceptanceSHA256: hashBytes(raw),
 	}
-	fp := WorktreeFingerprint(root)
 	sum.DiffBound = fp.OK
 	if fp.OK {
 		sum.Head = fp.Head
 		sum.DiffSHA256 = fp.DiffSHA256
+		sum.Files = fp.Files
 	}
 
 	passed := true
@@ -242,7 +248,13 @@ func runCheck(ctx context.Context, root, shell, evDir string, check Check, timeo
 
 	// 以 set -e 包一层再执行：围栏里允许多行（`cd x` 换行 `make test`），
 	// 但中间一行失败不能因为最后一行成功而被吞掉——否则会静默假绿。
-	cmd := exec.CommandContext(cctx, shell, "-c", "set -e\n"+check.Command)
+	// bash 再加 pipefail：`go test ./... | tail` 这种写法在 set -e 下仍会
+	// 以 tail 的退出码为准，不设 pipefail 就等于允许 agent 把失败管道掉。
+	prefix := "set -e\n"
+	if base := strings.ToLower(filepath.Base(shell)); base == "bash" || base == "bash.exe" {
+		prefix = "set -eo pipefail\n"
+	}
+	cmd := exec.CommandContext(cctx, shell, "-c", prefix+check.Command)
 	cmd.Dir = root
 	var stdout, stderr cappedBuffer
 	cmd.Stdout = &stdout
@@ -355,7 +367,15 @@ func writeSummary(dir string, sum Summary) error {
 type Fingerprint struct {
 	Head       string
 	DiffSHA256 string
-	OK         bool
+	// Files 是每个改动文件的内容摘要，用于判断证据是否还代表当前代码。
+	Files []FileDigest
+	OK    bool
+}
+
+// FileDigest 是一个被改动文件（改动中或未跟踪）的路径与内容摘要。
+type FileDigest struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 // WorktreeFingerprint 计算仓库内容指纹；非 git 仓库或 git 不可用时 OK=false，
@@ -365,44 +385,117 @@ func WorktreeFingerprint(root string) Fingerprint {
 	if err != nil {
 		return Fingerprint{}
 	}
-	diff, err := gitOutput(root, "diff", "HEAD", "--binary")
-	if err != nil {
+	files, ok := changedFiles(root)
+	if !ok {
 		return Fingerprint{}
+	}
+	return Fingerprint{
+		Head:       strings.TrimSpace(head),
+		DiffSHA256: hashFiles(files),
+		Files:      files,
+		OK:         true,
+	}
+}
+
+// changedFiles 列出相对 HEAD 有改动（含未跟踪）的文件，并逐个算内容摘要。
+// 未跟踪文件也进列表：新写的文件同样是"被验证的代码"。
+func changedFiles(root string) ([]FileDigest, bool) {
+	diff, err := gitOutput(root, "diff", "HEAD", "--name-only", "-z")
+	if err != nil {
+		return nil, false
 	}
 	untracked, err := gitOutput(root, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
-		return Fingerprint{}
+		return nil, false
 	}
+	seen := make(map[string]bool)
+	var out []FileDigest
+	for _, p := range splitNul(diff + untracked) {
+		if p == "" || isEvidencePath(p) || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, FileDigest{Path: p, SHA256: fileSHA256(root, p)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out, true
+}
 
+func splitNul(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, "\x00") {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// fileSHA256 给单个文件算摘要；读不到时返回标记值而不是空串——
+// 空串会让"文件被删掉"与"没记录"混为一谈，漂移就查不出来。
+func fileSHA256(root, rel string) string {
+	f, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "<missing>"
+		}
+		return "<unreadable>"
+	}
+	defer f.Close()
 	h := sha256.New()
-	h.Write([]byte(diff))
-	h.Write([]byte{0})
-	paths := strings.Split(strings.TrimSuffix(untracked, "\x00"), "\x00")
-	sort.Strings(paths)
-	for _, p := range paths {
-		if p == "" || isEvidencePath(p) {
-			continue
-		}
-		h.Write([]byte(p))
+	if _, err := io.Copy(h, f); err != nil {
+		return "<read-error>"
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func hashFiles(files []FileDigest) string {
+	h := sha256.New()
+	for _, f := range files {
+		h.Write([]byte(f.Path))
 		h.Write([]byte{0})
-		full := filepath.Join(root, filepath.FromSlash(p))
-		if _, ierr := os.Stat(full); ierr != nil {
-			h.Write([]byte("<missing>"))
-			continue
-		}
-		f, oerr := os.Open(full)
-		if oerr != nil {
-			h.Write([]byte("<unreadable>"))
-			h.Write([]byte{0})
-			continue
-		}
-		if _, cerr := io.Copy(h, f); cerr != nil {
-			h.Write([]byte("<read-error>"))
-		}
-		f.Close()
+		h.Write([]byte(f.SHA256))
 		h.Write([]byte{0})
 	}
-	return Fingerprint{Head: strings.TrimSpace(head), DiffSHA256: hex.EncodeToString(h.Sum(nil)), OK: true}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// sameDigests 比较两组文件摘要是否完全一致（路径与内容都要对上）。
+func sameDigests(a, b []FileDigest) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Path != b[i].Path || a[i].SHA256 != b[i].SHA256 {
+			return false
+		}
+	}
+	return true
+}
+
+// filesDrifted 判断封印时记录的文件内容是否还与磁盘一致。
+func filesDrifted(root string, files []FileDigest) bool {
+	for _, f := range files {
+		if fileSHA256(root, f.Path) != f.SHA256 {
+			return true
+		}
+	}
+	return false
+}
+
+// scaffoldMarker 标记尚未填写的模板骨架。填完删掉标记，verify 才会执行。
+const scaffoldMarker = "forge:fill"
+
+// unfilledDocs 列出仍带骨架标记的产物文件。
+func unfilledDocs(dir string) []string {
+	var out []string
+	for _, name := range []string{FileProposal, FileDesign, FileTasks, FileAcceptance} {
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err == nil && strings.Contains(string(raw), scaffoldMarker) {
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // isEvidencePath 判断未跟踪文件是否落在 spec/changes/<id>/evidence/ 下。
