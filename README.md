@@ -97,7 +97,7 @@ forge init      # 默认零项目写入，全部资产落在用户级
 
 主路径是 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)——hooks 经它的 Hook 机制接线；Codex、Cursor、Windsurf、dsh 等 12 种宿主同样支持（接线差异见 [plugins/forge/README.md](plugins/forge/README.md) 与 [中文 README](READMEs/README.zh-CN.md)）。
 
-`forge init` **不在项目目录写任何文件**（不会被 git add 误提交），全部资产落在用户级：
+`forge init`（默认模式）**不在项目目录写任何文件**（不会被 git add 误提交），全部资产落在用户级：
 
 | 路径 | 说明 |
 |------|------|
@@ -120,7 +120,7 @@ forge init      # 默认零项目写入，全部资产落在用户级
 |------|------|
 | `forge init` | 初始化项目（默认零项目写入） |
 | `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步 |
-| `forge change init/new/list/verify` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物 + `acceptance.md` 可执行判据 + 证据绑 git diff 封印（不依赖 forge 接管，产物随仓库走） |
+| `forge change init/new/list/verify` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定工作区文件摘要与 commit；不依赖 forge 接管，产物随仓库走） |
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-verify → task-complete |
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |
