@@ -2,6 +2,7 @@ package change
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -411,6 +412,16 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 			if c == '`' {
 				cmdSub = true
 			}
+			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '\'' {
+				// 算术里 $'\x24(...)' 解码后就是 $( )，会真执行。
+				v, end := ansiC(cooked, i)
+				if strings.Contains(v, "$(") || strings.Contains(v, "`") {
+					cmdSub = true
+				}
+				b.WriteString(strings.Repeat(" ", end-i+1))
+				i = end
+				continue
+			}
 			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
 				if i+2 < len(cooked) && cooked[i+2] == '(' {
 					arith += 2
@@ -429,12 +440,12 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 			continue
 		}
 		if c == '$' && i+1 < len(cooked) && cooked[i+1] == '\'' {
-			// $'...' 里也会发生替换：内容里有 $( ) 或反引号就拒（字符串里真的会执行）。
-			if ansiQuoteHasSubst(cooked, i) {
-				cmdSub = true
-			}
-			b.WriteString("  ")
-			i++
+			// 外层 $'...' 是 ANSI-C 引号：转义解码后是字面量，不做替换——整段跳过，
+			// 但必须按 ANSI-C 规则走到收尾引号，否则收尾的 ' 会被当成开引号，把
+			// 后面的真 $( ) 一起抹掉。
+			_, end := ansiC(cooked, i)
+			b.WriteString(strings.Repeat(" ", end-i+1))
+			i = end
 			continue
 		}
 		if quote == '\'' {
@@ -523,25 +534,61 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 	return b.String(), cooked, cmdSub
 }
 
-// ansiQuoteHasSubst 判断 $'...' 的内容里有没有命令替换。bash 会先做 ANSI-C 转义，
-// 再照常展开——字符串里的 $( ) 与反引号都真的执行。
-func ansiQuoteHasSubst(s string, i int) bool {
-	// s[i] == '$', s[i+1] == '
+// ansiC 解 $'...' 并返回内容与收尾引号位置。只关心会影响替换识别的转义：
+// \xHH、\NNN、\uHHHH 解成对应字符，\' 与 \\ 按字面量处理，其余单字符转义原样保留。
+func ansiC(s string, i int) (string, int) {
+	var out []byte
 	for j := i + 2; j < len(s); j++ {
+		c := s[j]
+		if c == '\'' {
+			return string(out), j
+		}
+		if c != '\\' || j+1 >= len(s) {
+			out = append(out, c)
+			continue
+		}
+		j++
 		switch s[j] {
-		case '\\':
-			j++
-		case '\'':
-			return false
-		case '`':
-			return true
-		case '$':
-			if j+1 < len(s) && s[j+1] == '(' {
-				return true
+		case 'x', 'u', 'U':
+			width, base := 2, 16
+			if s[j] == 'u' {
+				width = 4
+			} else if s[j] == 'U' {
+				width = 8
 			}
+			var buf []byte
+			for k := 0; k < width && j+1 < len(s) && isBase(s[j+1], base); k++ {
+				j++
+				buf = append(buf, s[j])
+			}
+			if v, err := strconv.ParseUint(string(buf), 16, 32); err == nil && v > 0 && v < 0x110000 {
+				out = append(out, []byte(string(rune(v)))...)
+			}
+		case '0', '1', '2', '3', '4', '5', '6', '7':
+			var buf []byte
+			for k := 0; k < 3 && j < len(s) && s[j] >= '0' && s[j] <= '7'; k++ {
+				if k > 0 {
+					j++
+				}
+				if j < len(s) && s[j] >= '0' && s[j] <= '7' {
+					buf = append(buf, s[j])
+				}
+			}
+			if v, err := strconv.ParseUint(string(buf), 8, 32); err == nil {
+				out = append(out, byte(v))
+			}
+		default:
+			out = append(out, s[j])
 		}
 	}
-	return false
+	return string(out), len(s) - 1
+}
+
+func isBase(b byte, base int) bool {
+	if base == 16 {
+		return isHex(b)
+	}
+	return b >= '0' && b <= '9'
 }
 
 // cookJudge 去掉注释、删掉行尾续行（单引号里除外），返回 shell 真正看到的代码。
@@ -661,4 +708,8 @@ func lintJudge(cmd string) error {
 		return fmt.Errorf("判据里不能再调用一层 shell（`bash -c`、`bash -lc`、`/bin/sh -c` 都算：内层 shell 不受 pipefail 约束）")
 	}
 	return nil
+}
+
+func isHex(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 }
