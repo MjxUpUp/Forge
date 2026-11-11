@@ -125,7 +125,39 @@ func nestedShell(words []word) bool {
 	return false
 }
 
-// cmdIndexes 给出每条命令的命令词下标：跳过 `FOO=1 bash -c` 这种前置赋值。
+// wrapperNames 是"自己不做判据、只是把后面那条命令包一层"的命令。
+//
+// `env bash -c ...`、`timeout 5 bash -c ...`、`sudo bash -c ...` 里的 bash 在
+// 参数位置，但它执行的仍是内层 shell——按命令位置只认第一个词会漏掉它们。
+// 包装词之后的词（跳过赋值、选项、时长）同样算命令位置。
+var wrapperNames = map[string]bool{
+	"env": true, "time": true, "timeout": true, "sudo": true, "doas": true,
+	"nohup": true, "nice": true, "ionice": true, "stdbuf": true,
+	"xargs": true, "watch": true, "setsid": true, "chronic": true,
+}
+
+// isDuration 判断 timeout/nice 这类包装命令的数值参数（5、2.5、10s、1m）。
+func isDuration(w string) bool {
+	if w == "" {
+		return false
+	}
+	end := len(w)
+	if strings.ContainsRune("smhd", rune(w[end-1])) {
+		end--
+	}
+	if end == 0 {
+		return false
+	}
+	for i := 0; i < end; i++ {
+		if (w[i] < '0' || w[i] > '9') && w[i] != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// cmdIndexes 给出每条命令的命令词下标：跳过 `FOO=1 bash -c` 这种前置赋值，
+// 以及 `env`/`timeout`/`sudo` 这些包装命令自身的参数。
 func cmdIndexes(words []word) []int {
 	var out []int
 	for i := range words {
@@ -133,11 +165,23 @@ func cmdIndexes(words []word) []int {
 			continue
 		}
 		j := i
-		for j < len(words) && isAssignment(words[j].val) {
-			j++
-		}
-		if j < len(words) {
+		for j < len(words) {
+			for j < len(words) && isAssignment(words[j].val) {
+				j++
+			}
+			if j >= len(words) {
+				break
+			}
 			out = append(out, j)
+			if !wrapperNames[words[j].val] {
+				break
+			}
+			// 包装命令：跳过它自己的选项与数值参数，继续找真正被执行的那条。
+			j++
+			for j < len(words) && (strings.HasPrefix(words[j].val, "-") ||
+				isDuration(words[j].val) || isAssignment(words[j].val)) {
+				j++
+			}
 		}
 	}
 	return out
@@ -178,6 +222,23 @@ func disablesProtection(words []word) bool {
 				break
 			}
 		}
+	}
+	return false
+}
+
+// trivialJudge 识别"零工作量"判据：整条命令就是 true / : / exit 0。
+//
+// 机器判断不了判据有没有检验到真东西（那要靠 review），但至少能拒绝一行
+// 必然成功的占位——否则"全部通过"只是自欺。
+func trivialJudge(words []word) bool {
+	var vals []string
+	for _, w := range words {
+		vals = append(vals, w.val)
+	}
+	body := strings.Join(vals, " ")
+	switch body {
+	case "true", ":", "exit 0", "/bin/true", "true 0":
+		return true
 	}
 	return false
 }
@@ -229,6 +290,9 @@ func compound(code string, words []word) error {
 		if strings.HasSuffix(strings.TrimRight(line, " \t"), "\\") {
 			return fmt.Errorf("判据里不要用行尾反斜杠续行（续行拼接后的失败位置没人看得清）；一行写一条命令")
 		}
+	}
+	if trivialJudge(words) {
+		return fmt.Errorf("这条判据什么都没检验（`true`、`:`、`exit 0` 必然成功）——判据要能因为代码坏了而失败")
 	}
 	for _, i := range cmdIndexes(words) {
 		if why, ok := compoundKeywords[words[i].val]; ok {
