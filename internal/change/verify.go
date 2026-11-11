@@ -74,12 +74,14 @@ func ParseAcceptance(raw []byte) Acceptance {
 	inFence := false
 	inHTMLComment := false
 	lang := ""
+	indent := 0
 	var body []string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		// HTML 注释里的示例围栏不是判据，四空格缩进的代码块同理（CommonMark
-		// 的缩进代码块是示意，不是真围栏）——两种写法都很容易出现在文档里，
-		// 认错了就会去执行一段本来只是给人看的示例。
+		// HTML 注释里的示例围栏不是判据：那是文档里"举例说明围栏长什么样"的
+		// 唯一可靠写法。缩进围栏则相反——Markdown 列表项里的判据天生缩进四格，
+		// 早先按"缩进=示例"跳过，会让真判据被静默丢掉（review 实测只跑 1 条
+		// 却报全部通过），所以这里只去缩进、不再跳过。
 		if !inFence {
 			if inHTMLComment {
 				if strings.Contains(line, "-->") {
@@ -94,13 +96,11 @@ func ParseAcceptance(raw []byte) Acceptance {
 				}
 				continue
 			}
-			if len(line)-len(strings.TrimLeft(line, " ")) > 3 {
-				continue
-			}
 		}
 		if strings.HasPrefix(trimmed, "```") {
 			if !inFence {
 				inFence = true
+				indent = len(line) - len(strings.TrimLeft(line, " "))
 				lang = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(trimmed, "```")), " ")))
 				if i := strings.IndexAny(lang, " \t"); i >= 0 {
 					lang = lang[:i]
@@ -122,7 +122,7 @@ func ParseAcceptance(raw []byte) Acceptance {
 			continue
 		}
 		if inFence {
-			body = append(body, line)
+			body = append(body, unindent(line, indent))
 			continue
 		}
 		if item, done, ok := manualItem(trimmed); ok {
@@ -134,6 +134,16 @@ func ParseAcceptance(raw []byte) Acceptance {
 		}
 	}
 	return acc
+}
+
+// unindent 去掉围栏所在层级的缩进：列表项里的围栏整体缩进四格，正文跟着缩，
+// 不去掉就会把 "    go test ./..." 原样交给 shell（前导空格不影响执行，但证据里
+// 的命令长得不对、diff 也不干净）。
+func unindent(line string, n int) string {
+	for i := 0; i < n && strings.HasPrefix(line, " "); i++ {
+		line = line[1:]
+	}
+	return line
 }
 
 func isShellFence(lang string) bool {

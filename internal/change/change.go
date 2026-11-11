@@ -123,6 +123,9 @@ type Change struct {
 	// Sealed 表示最新证据通过且与当前判据一致；Stale 表示曾经通过但判据/改动变了。
 	Sealed bool `json:"sealed"`
 	Stale  bool `json:"stale"`
+	// Failed 表示最新一次 verify 没通过（有别于"从未验证"）：删掉失败的证据
+	// 会让列表回到上一次封印，所以失败记录别删，要留着看。
+	Failed bool `json:"failed,omitempty"`
 	// DiffBound 表示证据记录了工作区指纹（非 git 仓库里为 false，封印强度更弱）。
 	DiffBound bool `json:"diff_bound"`
 	// BoundHead 是封印时记录的 commit，供列表展示"证据绑在哪一版代码上"。
@@ -380,6 +383,19 @@ func load(root, id string, fp *Fingerprint) (*Change, error) {
 	return loadFrom(root, id, ChangeDir(root, id), fp)
 }
 
+// allChecksPassed 要求每条 check 都真的退出 0。
+//
+// 只看摘要里的 sealed 不够：手写一份 sealed:true、checks 里却写着 exit:1 的
+// summary.json 也能骗过它。失败记录不是装饰，必须逐条对上。
+func allChecksPassed(checks []Check) bool {
+	for _, c := range checks {
+		if c.Skipped || c.TimedOut || c.Exit != 0 || c.WriteError != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
@@ -411,7 +427,8 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 			if sum, serr := loadSummary(c.LatestDir); serr == nil && sum.Change == id {
 				// 封印必须自洽：一份声称通过、却没有任何实跑记录的摘要
 				// （手写或残缺）不能对外宣称已验证。
-				c.Sealed = sum.Sealed && len(sum.Checks) > 0 && sum.AcceptanceSHA256 != ""
+				c.Sealed = sum.Sealed && len(sum.Checks) > 0 && sum.AcceptanceSHA256 != "" && allChecksPassed(sum.Checks)
+				c.Failed = !c.Sealed
 				c.DiffBound = sum.DiffBound
 				stale := false
 				// 判据漂移：acceptance.md 改过或者被删掉，旧证据都不再代表当前验收标准。
