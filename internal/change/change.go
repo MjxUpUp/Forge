@@ -280,8 +280,36 @@ func listArchived(root string) ([]Change, error) {
 		}
 		c.Archive = true
 		c.Stage = StageArchived
+		// 归档记录的是"当时验过什么"，之后仓库怎么变都不改变这条历史；
+		// 把 archived 条目按当前工作区判 stale 会让归档列表越用越吓人。
+		c.Stale = false
 		out = append(out, *c)
 	}
+	return out, nil
+}
+
+// InvalidArchiveNames 返回 spec/changes/archive/ 下不符合 <YYYYMMDD>-<id>
+// 约定的目录名。List 会跳过这些目录；调用方应当把它说出来，而不是让人以为
+// 归档记录凭空消失了。
+func InvalidArchiveNames(root string) ([]string, error) {
+	base := filepath.Join(ChangesDir(root), ArchiveDirName)
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("change: 读取 %s: %w", relTo(root, base), err)
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if ValidID(archiveID(e.Name())) != nil {
+			out = append(out, e.Name())
+		}
+	}
+	sort.Strings(out)
 	return out, nil
 }
 
@@ -380,6 +408,12 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 					// 已经代表不了当前工作区。换过 HEAD 则只按内容比：
 					// 提交之后出现的新改动属于下一件事，不该把已落地的证据判死。
 					if sum.Head != "" && sum.Head == fp.Head && !sameDigests(sum.Files, fp.Files) {
+						stale = true
+					}
+					// 干净工作区 verify 没有文件级指纹，证据只代表 verify 时那个
+					// commit。HEAD 一动，被验证的代码就不是当初那份了——不能因为
+					// "没记录改动文件"就继续对外宣称已验证。
+					if len(sum.Files) == 0 && sum.Head != "" && sum.Head != fp.Head {
 						stale = true
 					}
 				}
