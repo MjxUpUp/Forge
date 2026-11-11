@@ -869,3 +869,30 @@ func TestList_StaleWhenNewFileAfterCleanVerifyCommit(t *testing.T) {
 		t.Errorf("干净验证后又出现新文件应判失效，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
 	}
 }
+
+// 引号可以跨行：第二行的收尾引号不能被当成新开引号，
+// 否则 `"line1` 换行 `x"; false || true` 里真正的 || 会被吞掉。
+func TestVerify_RejectsOperatorAfterMultilineQuote(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	cmd := "echo \"line1\nx\"; false || true\n"
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n"+cmd+"```\n")
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "||") {
+		t.Fatalf("多行引号后的 || 应被拒绝，got %v", err)
+	}
+}
+
+// 反过来：引号内的跨行内容里的 || 是字面量，不能误杀。
+func TestVerify_AllowsOperatorInsideMultilineQuote(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	cmd := "echo \"line1\n|| not a pipe\"\n"
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n"+cmd+"```\n")
+	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err != nil {
+		t.Fatalf("引号内跨行的 || 不该被拒绝：%v", err)
+	}
+	if !res.Summary.Sealed {
+		t.Error("这条判据应封印")
+	}
+}

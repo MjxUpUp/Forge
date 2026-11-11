@@ -608,10 +608,10 @@ func stripQuoted(s string) string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if c == '\n' {
-			// 注释和引号都不跨行：不重置会把注释之后的整段判据都抹掉，
-			// 判据检查就成了摆设。
+			// 注释只到行尾；引号可以跨行（`echo "a` 换行 `b"; false || true`
+			// 是合法 shell），所以这里只清注释。连引号一起清会把第二行开头
+			// 的收尾引号当成新开引号，把后面真正的 `||` 吞掉。
 			inComment = false
-			quote = 0
 			b.WriteByte(c)
 			continue
 		}
