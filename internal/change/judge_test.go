@@ -201,3 +201,25 @@ func TestLintJudgeCommentDoesNotShiftQuotes(t *testing.T) {
 		t.Fatalf("`#` mid-word is not a comment; substitution must be rejected")
 	}
 }
+
+func TestLintJudgeLineContinuationAndArithmetic(t *testing.T) {
+	// bash 在词法阶段删掉「反斜杠+换行」：这两行在 shell 里就是 `echo "$(false)"`。
+	joined := "echo \"$\\\n(false)\""
+	if err := lintJudge(joined); err == nil || !strings.Contains(err.Error(), "命令替换") {
+		t.Fatalf("backslash-newline continuation must be rejected, got %v", err)
+	}
+	// 单引号里的反斜杠+换行是字面量，不该误杀。
+	if err := lintJudge("echo 'a\\\nb'"); err != nil {
+		t.Fatalf("single-quoted continuation is literal: %v", err)
+	}
+	// 算术展开不是命令替换。
+	for _, cmd := range []string{`echo "$((1+0))"`, `test "$((1+1))" -eq 2`, `echo $((2*3))`} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q is arithmetic, not substitution: %v", cmd, err)
+		}
+	}
+	// 算术里套命令替换仍要拒。
+	if err := lintJudge(`echo "$(( $(false) ))"`); err == nil {
+		t.Fatalf("nested command substitution inside arithmetic must be rejected")
+	}
+}
