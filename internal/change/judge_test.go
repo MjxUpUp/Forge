@@ -358,24 +358,28 @@ func TestLintJudgeQuotesInsideArithmeticAndANSI(t *testing.T) {
 		`echo $(( '$(touch pwned-a; echo 0)' ))`,
 		"echo $(( '`touch pwned-b; echo 0`' ))",
 		`echo "$(( '$(touch pwned-c; echo 0)' ))"`,
+		`echo $(( $'\x24(touch pwned-d; echo 0)' ))`,
+		`echo $(( $'\044(touch pwned-e; echo 0)' ))`,
 	} {
 		if err := lintJudge(cmd); err == nil {
 			t.Fatalf("%q: substitution runs inside arithmetic, quotes do not shield it", cmd)
 		}
 	}
-	// $'...' 同样是会展开的内容，不是字面量。
+	// $'...' 在外层是字面量，不执行替换；但不能让它把收尾引号变成开引号，
+	// 否则后面真正的 $( ) 会被一起抹掉。
 	for _, cmd := range []string{
-		`echo $'$(touch pwned-e; echo 0)'`,
-		"echo $'`touch pwned-f; echo 0`'",
+		`printf '%s\n' $'a\tb'; echo "$(touch pwned-desync; echo 0)"`,
+		`echo $'x'; echo $(touch pwned-desync2)`,
 	} {
 		if err := lintJudge(cmd); err == nil {
-			t.Fatalf("%q: ANSI-C quoting still expands substitutions", cmd)
+			t.Fatalf("%q: substitution after the ANSI-C string must still be seen", cmd)
 		}
 	}
-	// 不含替换的算术与 $'...' 照常放行。
+	// 纯字面量的 $'...' 与算术放行。
 	for _, cmd := range []string{
-		`echo $(( (1+2)*3 ))`,
+		`echo $'$(touch pwned-f; echo 0)'`,
 		`printf '%s\n' $'a\tb'`,
+		`echo $(( (1+2)*3 ))`,
 		`echo $((1+0))`,
 	} {
 		if err := lintJudge(cmd); err != nil {
