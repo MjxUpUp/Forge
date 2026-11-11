@@ -518,6 +518,12 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
 	}
 
+	// init-suggest 默认关闭：它是全局 SessionStart，会往任意 git 仓库注入「建议
+	// forge init」——对不打算接管的项目是纯噪音。opt-in 才算（见 contract_gate.go）。
+	if name == "init-suggest" && !initSuggestEnabled() {
+		return EmitAgentOutput(agent, hookInput.HookEventName, name, true, "")
+	}
+
 	// P0-C 双通道幂等守卫(escape-hatch-hardening):zcode 等宿主上用户级接线与
 	// Claude 格式插件两条通道同时投递同一 (hook,event,tool,session,input)——
 	// 窗口内完全一致的重复调用静默跳过(2× 进程/双注入/toollog 双行的根因,见
@@ -588,6 +594,15 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		if hookInput.HookEventName == "Stop" {
 			attribution.RecordStopMetric(root, "")
 		}
+	}
+
+	// 仓库契约决定执法（spec-in-repo）：spec/forge.yaml 的 hooks: off 让该仓库的
+	// hook 静默放行，profile 决定名册档位（mini＝lite 最小执法名册）。放在 session
+	// 登记与归属记录之后：被静音的仓库仍要出现在审计里，否则「安静」就等于从
+	// fleet 台账消失（与上面 Register/Attribution 同一缺口）。安全底线
+	// （hazard-guard/mcp-scan/skill-scan）不受契约开关，见 contract_gate.go。
+	if root != "" && !contractAllowsHook(root, name) {
+		return EmitAgentOutput(agent, hookInput.HookEventName, name, true, "")
 	}
 
 	// skill-trigger 特例：Go 内直接判定 + 渲染（不经 bash embed）。
