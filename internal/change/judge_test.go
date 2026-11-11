@@ -351,3 +351,35 @@ func TestLintJudgeEscapedDollarAndBacktickInArithmetic(t *testing.T) {
 		}
 	}
 }
+
+func TestLintJudgeQuotesInsideArithmeticAndANSI(t *testing.T) {
+	// 算术展开按双引号规则处理，里面的单引号不起引号作用——替换照样执行。
+	for _, cmd := range []string{
+		`echo $(( '$(touch pwned-a; echo 0)' ))`,
+		"echo $(( '`touch pwned-b; echo 0`' ))",
+		`echo "$(( '$(touch pwned-c; echo 0)' ))"`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: substitution runs inside arithmetic, quotes do not shield it", cmd)
+		}
+	}
+	// $'...' 同样是会展开的内容，不是字面量。
+	for _, cmd := range []string{
+		`echo $'$(touch pwned-e; echo 0)'`,
+		"echo $'`touch pwned-f; echo 0`'",
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: ANSI-C quoting still expands substitutions", cmd)
+		}
+	}
+	// 不含替换的算术与 $'...' 照常放行。
+	for _, cmd := range []string{
+		`echo $(( (1+2)*3 ))`,
+		`printf '%s\n' $'a\tb'`,
+		`echo $((1+0))`,
+	} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q should be allowed: %v", cmd, err)
+		}
+	}
+}
