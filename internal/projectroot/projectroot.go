@@ -2,10 +2,11 @@
 //
 // Package projectroot 从当前工作目录解析 forge project root。
 //
-// user-level-assets 重构后，"这是不是 forge 项目"的锚点是全局注册表
-// （~/.forge/projects.json），而非项目级 .forge/ 标记：forge init 默认不向项目
-// 写任何东西。解析顺序：
+// 解析顺序（spec-in-repo 重构后，激活判据前移到仓库态）：
+//  0. 仓库声明式契约 spec/forge.yaml——存在即成员资格。clone 到新机器、换个
+//     agent、不跑 forge init 也能解析（身份由 forgedata.ProjectFor 纯推导）。
 //  1. registry.IsMember(cwd)——git key 匹配（跨 worktree）或非 git 路径前缀匹配
+//     （已安装/已登记项目的既有行为，留给没有契约标记的仓库）
 //  2. 遗留兜底：向上 walk 找项目级 .forge/（老版本 forge init 的项目）——
 //     命中后自愈登记
 //  3. 否则：ErrNoForgeConfig
@@ -20,13 +21,15 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/registry"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 )
 
 // FindProject resolves cwd → *forgedata.Project (Key / Root / GitRoot / DataDir / ConfigDir).
 //
 // FindProject 解析 cwd → *forgedata.Project（Key / Root / GitRoot / DataDir /
-// ConfigDir）。成员资格经全局注册表判定（遗留 .forge/ walk-up 兜底）；Project 本身
-// 由 forgedata.ProjectFor 推导（ConfigDir = <root>/.forge/ 存在时，否则 DataDir）。
+// ConfigDir）。成员资格按 Resolve 的顺序判定（仓库契约 → 注册表 → 遗留 .forge/）；
+// Project 本身由 forgedata.ProjectFor 推导（ConfigDir = <root>/.forge/ 存在时，
+// 否则 DataDir）。
 func FindProject() (*forgedata.Project, error) {
 	root, err := Find()
 	if err != nil {
@@ -43,14 +46,45 @@ func FindProject() (*forgedata.Project, error) {
 // 用户 home 下的 ~/.forge/ 是 GLOBAL state store，不是项目根——遗留 walk-up 排除
 // 它（真实项目的 .forge/ 总是比 home 离 cwd 更近，此排除不会遮蔽合法项目）。
 func Find() (string, error) {
+	root, _, err := Resolve()
+	return root, err
+}
+
+// Source 标明项目成员资格的来源（forge status 展示用）。
+type Source string
+
+const (
+	// SourceSpecContract：仓库自带 spec/forge.yaml（声明式，clone 即用）。
+	SourceSpecContract Source = "spec-contract"
+	// SourceRegistry：全局注册表 ~/.forge/projects.json 登记。
+	SourceRegistry Source = "registry"
+	// SourceLegacyConfig：项目级 .forge/（老版本 forge init）。
+	SourceLegacyConfig Source = "legacy"
+)
+
+// Resolve 解析当前工作目录 → (项目根, 成员来源)。
+func Resolve() (string, Source, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	return ResolveFrom(cwd)
+}
+
+// ResolveFrom 是 Resolve 的可测入口（显式传 cwd，不读进程工作目录）。
+func ResolveFrom(cwd string) (string, Source, error) {
+	// 0. 仓库声明式契约。declined 一票否决优先：人明确拒绝接管后，仓库里的
+	//    标记不再自动复活 forge——否则 clone 一份契约就绕过了退出决定。
+	if root, ok := specroot.Find(cwd); ok {
+		if _, state := registry.State(root); state == registry.StatusDeclined {
+			return "", "", registry.ErrDeclinedProject
+		}
+		return root, SourceSpecContract, nil
 	}
 
-	// 1. 注册表成员资格（重构后的锚点）。
+	// 1. 注册表成员资格。
 	if root, ok := registry.IsMember(cwd); ok {
-		return root, nil
+		return root, SourceRegistry, nil
 	}
 
 	// 2. 遗留兜底：向上 walk 找项目级 .forge/（user-level-assets 重构前 init 的
@@ -60,13 +94,13 @@ func Find() (string, error) {
 	//    CLI 侧该错误文案即面向用户的 declined 提示）。
 	if root, ok := legacyFind(cwd); ok {
 		if _, state := registry.State(root); state == registry.StatusDeclined {
-			return "", registry.ErrDeclinedProject
+			return "", "", registry.ErrDeclinedProject
 		}
 		_ = registry.Add(root) // 自愈登记，失败不阻断
-		return root, nil
+		return root, SourceLegacyConfig, nil
 	}
 
-	return "", forgedata.ErrNoForgeConfig
+	return "", "", forgedata.ErrNoForgeConfig
 }
 
 // legacyFind 从 dir 向上查找最近的、含项目 .forge/ 子目录的目录。两道边界防止把
