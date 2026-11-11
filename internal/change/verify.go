@@ -610,64 +610,6 @@ func hasExecutableLine(cmd string) bool {
 	return false
 }
 
-// stripQuoted 把引号和注释里的内容抹成空格，只留下真正的代码供检查。
-//
-// 三件事要分清：引号里的 `||` 是字面量；双引号里的 \" 是转义不是收尾；
-// `#` 之后的整行尾巴是注释（"不要用 set +e"这种说明不该被当成违规）。
-func stripQuoted(s string) string {
-	var b strings.Builder
-	var quote byte
-	inComment := false
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '\n' {
-			// 注释只到行尾；引号可以跨行（`echo "a` 换行 `b"; false || true`
-			// 是合法 shell），所以这里只清注释。连引号一起清会把第二行开头
-			// 的收尾引号当成新开引号，把后面真正的 `||` 吞掉。
-			inComment = false
-			b.WriteByte(c)
-			continue
-		}
-		if inComment {
-			b.WriteByte(' ')
-			continue
-		}
-		if quote != 0 {
-			// 双引号里反斜杠转义下一个字符；单引号里没有转义。
-			if c == '\\' && quote == '"' && i+1 < len(s) {
-				b.WriteString("  ")
-				i++
-				continue
-			}
-			if c == quote {
-				quote = 0
-			}
-			b.WriteByte(' ')
-			continue
-		}
-		if c == '\\' && i+1 < len(s) && s[i+1] != '\n' {
-			// 引号外的反斜杠同样是转义：`echo a\|b` 里的 `|` 是字面量，不是管道
-			// （按管道拒会误杀），而 `false \" || true` 里的 `\"` 不会开启引号
-			// （不处理就会把后面的 `||` 当成引号内容放过去）。
-			b.WriteString("  ")
-			i++
-			continue
-		}
-		if c == '\'' || c == '"' {
-			quote = c
-			b.WriteByte(' ')
-			continue
-		}
-		if c == '#' && (i == 0 || (strings.ContainsRune(" \t\n;&|(", rune(s[i-1])) && !escapedWhitespaceBefore(s, i))) {
-			inComment = true
-			b.WriteByte(' ')
-			continue
-		}
-		b.WriteByte(c)
-	}
-	return b.String()
-}
-
 // hasSingleAmpersand 判断有没有单个 `&`（放行 `&&`、`>&`、`&>`）。
 func hasSingleAmpersand(s string) bool {
 	for i := 0; i < len(s); i++ {
