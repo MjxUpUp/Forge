@@ -239,3 +239,14 @@ func TestLintJudgeEscapedSpaceBeforeHash(t *testing.T) {
 		t.Fatalf("plain comment must stay allowed: %v", err)
 	}
 }
+
+func TestLintJudgeHashAfterArithmeticIsLiteral(t *testing.T) {
+	// `$((1+0))#` 的 `#` 紧贴 `)`，是字面量不是注释，后面的替换真会执行。
+	if err := lintJudge(`echo $((1+0))#; echo "$(false)"`); err == nil {
+		t.Fatalf("hash right after arithmetic is literal, substitution must be rejected")
+	}
+	// 真正的行首/空白后注释仍放行。
+	if err := lintJudge(`echo $((1+0)) # $(false)`); err != nil {
+		t.Fatalf("comment after a space is still a comment: %v", err)
+	}
+}
