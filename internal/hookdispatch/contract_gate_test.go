@@ -78,3 +78,25 @@ func TestInitSuggestEnabled(t *testing.T) {
 		}
 	}
 }
+
+func TestContractCannotSilenceSafetyFloor(t *testing.T) {
+	off := t.TempDir()
+	writeContract(t, off, "version: \"1\"\nhooks: off\n")
+	for _, name := range []string{"hazard-guard", "mcp-scan", "skill-scan"} {
+		if !contractAllowsHook(off, name) {
+			t.Fatalf("安全底线 %s 不该被 hooks: off 关掉（契约随 git 走，不能自关防线）", name)
+		}
+	}
+
+	// 安全底线同样不吃 profile 收窄：mini 名册没有 mcp-scan，但契约不能借档位
+	// 把它关掉（否则 `profile: mini` 就是比 `hooks: off` 更隐蔽的关法）。
+	mini := t.TempDir()
+	writeContract(t, mini, "version: \"1\"\nprofile: mini\n")
+	if !contractAllowsHook(mini, "mcp-scan") {
+		t.Fatal("安全底线不该被 profile: mini 收窄掉")
+	}
+	// 普通 hook 仍按档位裁：mini 不含 auto-compile。
+	if contractAllowsHook(mini, "auto-compile") {
+		t.Fatal("mini 应当只保留 lite 名册")
+	}
+}
