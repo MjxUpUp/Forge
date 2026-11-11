@@ -387,110 +387,127 @@ func compound(code string, words []word) error {
 //
 // 先 cook 再 scan：cook 去掉注释与行尾续行（shell 在词法阶段就把「反斜杠+换行」
 // 删掉，`"$\<换行>(x)"` 实际就是 `"$(x)"`），scan 在剩下的代码上认引号、算术
-// 与命令替换。两件事分开做，就不会出现「续行把注释行拼进代码」这种错位——
-// 早期 joinLineContinuations 不分注释，把注释与下一行拼成一行，`# note \` 后面
-// 的 `echo "$(false)"` 因此被整行当注释放行，是 review 复现出来的假绿。
+// 与命令替换。两件事分开做，就不会出现「续行把注释行拼进代码」这种错位。
 //
-// 两份视图分工：
 //   - code：引号内内容与算术展开抹成空格，转义字符换成 \x01 占位。操作符检查
 //     （||、管道、后台 &）和 compound 看这份：`echo "a||b"`、`echo a\|b` 都是字面量。
-//   - words：引号与转义原样保留，交给 shellWords 拆词。关键词检查看这份——
-//     `bash "-c"` 的 -c 是一个词，抹掉引号就看不见了。
+//   - cooked：只去过注释与续行，引号与转义原样保留，交给 shellWords 拆词做关键词检查。
 //
-// cmdSub 报告"会执行命令且失败看不见"的构造：双引号/无引号里的 $( ) 和反引号、
-// 进程替换 <( )。算术展开 $(( )) 不算，但内部套的 $( ) 算；`$$(false)` 里的 $$
-// 是 PID，后面的括号是字面量，也不算。
-func lexJudge(s string) (code, words string, cmdSub bool) {
-	s = cookJudge(s)
-	var codeB, wordB strings.Builder
+// cmdSub 报告"会执行命令且失败看不见"的构造：`$( )`、反引号、进程替换 `<( )`/`>( )`。
+// 算术展开 `$(( ))` 不算，但内部套的 `$( )` 算。`$` 号按 bash 语义成对消耗：`$$`
+// 是 PID，后跟的括号是字面量；`$$$(` 里前两个是 PID、第三个开替换，所以按 i 处
+// 连续 `$` 的个数判奇偶——奇数才是命令替换。
+func lexJudge(s string) (code, cooked string, cmdSub bool) {
+	cooked = cookJudge(s)
+	var b strings.Builder
 	var quote byte
 	arith := 0
-	for i := 0; i < len(s); i++ {
-		c := s[i]
+	for i := 0; i < len(cooked); i++ {
+		c := cooked[i]
 		if quote == '\'' {
-			wordB.WriteByte(c)
+			b.WriteByte(' ')
 			if c == '\'' {
 				quote = 0
 			}
-			codeB.WriteByte(' ')
 			continue
 		}
 		if quote == '"' {
-			wordB.WriteByte(c)
-			if c == '\\' && i+1 < len(s) {
-				wordB.WriteByte(s[i+1])
+			if c == '\\' && i+1 < len(cooked) {
+				b.WriteString("  ")
 				i++
-				codeB.WriteString("  ")
 				continue
 			}
 			if c == '"' {
 				quote = 0
-				codeB.WriteByte(' ')
+				b.WriteByte(' ')
+				continue
+			}
+			if arith > 0 {
+				if c == '(' {
+					arith++
+				} else if c == ')' {
+					arith--
+				}
+				if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' && dollarRun(cooked, i)%2 == 1 {
+					cmdSub = true
+				}
+				b.WriteByte(' ')
 				continue
 			}
 			if c == '`' {
 				cmdSub = true
 			}
-			if c == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
-				arith += 2
-				wordB.WriteString("$((")
-				i += 2
-				codeB.WriteString("   ")
-				continue
+			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
+				if i+2 < len(cooked) && cooked[i+2] == '(' {
+					arith += 2
+					b.WriteString("   ")
+					i += 2
+					continue
+				}
+				if dollarRun(cooked, i)%2 == 1 {
+					cmdSub = true
+				}
 			}
-			if c == '$' && i+1 < len(s) && s[i+1] == '(' && !(i > 0 && s[i-1] == '$') {
-				cmdSub = true
-			}
-			codeB.WriteByte(' ')
+			b.WriteByte(' ')
+			continue
+		}
+		// 引号外
+		if c == '\\' && i+1 < len(cooked) {
+			// 转义的字符是字面量：`echo a\|b` 里的 | 不是管道。
+			b.WriteString("\x01 ")
+			i++
 			continue
 		}
 		if c == '\'' || c == '"' {
 			quote = c
-			wordB.WriteByte(c)
-			codeB.WriteByte(' ')
+			b.WriteByte(' ')
 			continue
-		}
-		if c == '\\' && i+1 < len(s) {
-			// 转义的字符是字面量：`echo a\|b` 里的 | 不是管道。
-			wordB.WriteString(s[i : i+2])
-			codeB.WriteString("\x01 ")
-			i++
-			continue
-		}
-		if c == '<' && i+1 < len(s) && s[i+1] == '(' {
-			cmdSub = true
-		}
-		if c == '`' {
-			cmdSub = true
-		}
-		if c == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
-			arith += 2
-			wordB.WriteString("$((")
-			i += 2
-			codeB.WriteString("   ")
-			continue
-		}
-		if c == '$' && i+1 < len(s) && s[i+1] == '(' && !(i > 0 && s[i-1] == '$') {
-			cmdSub = true
 		}
 		if arith > 0 {
-			wordB.WriteByte(c)
-			codeB.WriteByte(' ')
 			if c == '(' {
 				arith++
 			} else if c == ')' {
 				arith--
 			}
+			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' && dollarRun(cooked, i)%2 == 1 {
+				cmdSub = true
+			}
+			b.WriteByte(' ')
 			continue
 		}
-		wordB.WriteByte(c)
-		codeB.WriteByte(c)
+		if c == '`' {
+			cmdSub = true
+		}
+		if (c == '<' || c == '>') && i+1 < len(cooked) && cooked[i+1] == '(' {
+			cmdSub = true
+		}
+		if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
+			if i+2 < len(cooked) && cooked[i+2] == '(' {
+				arith += 2
+				b.WriteString("   ")
+				i += 2
+				continue
+			}
+			if dollarRun(cooked, i)%2 == 1 {
+				cmdSub = true
+			}
+		}
+		b.WriteByte(c)
 	}
-	return codeB.String(), wordB.String(), cmdSub
+	return b.String(), cooked, cmdSub
+}
+
+// dollarRun 数 s 在 i 处（含 i）连续有几个 `$`：bash 成对消耗，奇数才开替换。
+func dollarRun(s string, i int) int {
+	n := 0
+	for j := i; j >= 0 && s[j] == '$'; j-- {
+		n++
+	}
+	return n
 }
 
 // cookJudge 去掉注释、删掉行尾续行（单引号里除外），返回 shell 真正看到的代码。
-// 注释只在词首成立：`foo#bar` 里的 # 是普通字符。
+// 注释只在词首成立：`foo#bar` 里的 # 是普通字符；转义的空白/元字符之后的 # 也是字面量。
 func cookJudge(s string) string {
 	var b strings.Builder
 	var quote byte
@@ -533,11 +550,6 @@ func cookJudge(s string) string {
 			continue
 		}
 		if c == '\\' && i+1 < len(s) {
-			if s[i+1] == '\n' {
-				// 行尾续行：两个字符一起消失。注释里走不到这里（注释在换行处结束）。
-				i++
-				continue
-			}
 			b.WriteString(s[i : i+2])
 			i++
 			wordStart = false
@@ -584,13 +596,12 @@ func cookJudge(s string) string {
 }
 
 func lintJudge(cmd string) error {
-	code, wordSrc, cmdSub := lexJudge(cmd)
+	code, cooked, cmdSub := lexJudge(cmd)
 	if cmdSub {
-		return fmt.Errorf("判据里不要用 `$( )`/反引号命令替换——双引号里它照样执行，而替换失败不会让命令本身非零；只有单引号里才是字面量")
+		return fmt.Errorf("判据里不要用 `$( )`/反引号命令替换，也不要用进程替换 `<( )`/`>( )`——双引号里命令替换照样执行，而它们的失败都不会让命令本身非零；只有单引号里才是字面量")
 	}
 	// ${IFS} 是空格的字面写法，`bash${IFS}-c` 在 shell 里就是 `bash -c`。
-	wordSrc = strings.ReplaceAll(strings.ReplaceAll(wordSrc, "${IFS}", " "), "$IFS", " ")
-	words := shellWords(wordSrc)
+	words := shellWords(strings.ReplaceAll(strings.ReplaceAll(cooked, "${IFS}", " "), "$IFS", " "))
 	s := code
 	if err := compound(s, words); err != nil {
 		return err
