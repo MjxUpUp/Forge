@@ -48,6 +48,33 @@
       ]
     },
     {
+      "path": "forge change"
+    },
+    {
+      "path": "forge change init",
+      "flags": [
+        "profile"
+      ]
+    },
+    {
+      "path": "forge change list",
+      "flags": [
+        "json"
+      ]
+    },
+    {
+      "path": "forge change new",
+      "flags": [
+        "title"
+      ]
+    },
+    {
+      "path": "forge change verify",
+      "flags": [
+        "timeout"
+      ]
+    },
+    {
       "path": "forge compat"
     },
     {
