@@ -164,3 +164,35 @@ func TestLoad_Missing(t *testing.T) {
 		t.Fatalf("err=%v, want ErrNoContract", err)
 	}
 }
+
+func TestLoad_HooksDefaultOn(t *testing.T) {
+	root := t.TempDir()
+	writeContract(t, root, "version: \"1\"\nprofile: mini\n")
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Hooks != HooksOn {
+		t.Fatalf("缺省 hooks 应为 on，得到 %q", c.Hooks)
+	}
+}
+
+func TestLoad_HooksOff(t *testing.T) {
+	root := t.TempDir()
+	writeContract(t, root, "version: \"1\"\nhooks: OFF\n")
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Hooks != HooksOff {
+		t.Fatalf("hooks 应归一为 off，得到 %q", c.Hooks)
+	}
+}
+
+func TestLoad_RejectsUnknownHooks(t *testing.T) {
+	root := t.TempDir()
+	writeContract(t, root, "version: \"1\"\nhooks: sometimes\n")
+	if _, err := Load(root); err == nil {
+		t.Fatal("hooks 写错应当报错，而不是静默按默认值跑")
+	}
+}
