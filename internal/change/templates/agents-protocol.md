@@ -1,28 +1,31 @@
-# 本仓库的 change 协议
+# 本仓库的 change 流程（给 agent 的短协议）
 
-本仓库用 `spec/` 声明工作流，产物跟代码一起提交。装不装 forge 都能照这套目录干活——
-差别只在 `forge change verify` 会替你实跑判据并落证据，手做时要自己跑同样的命令并留下输出。
+这个仓库用 `spec/` 记录交付过程：每个需求一个 change 目录，产物随 git 走。
+换机器、换 agent、换 IDE 都照这套目录干活——不需要先装什么。
 
 ## 目录
 
-- `spec/forge.yaml` — 契约（版本与档位）。它的存在即声明本仓库受这套协议约束。
-- `spec/changes/<id>/` — 一个 change 的四份产物：`proposal.md`、`design.md`、`tasks.md`、`acceptance.md`。
-- `spec/changes/<id>/evidence/` — 证据，由 `forge change verify` 生成；不要手写、不要改。
-- `spec/changes/archive/<YYYYMMDD>-<id>/` — 已交付的 change，人工确认后挪进来。
+- `spec/forge.yaml` — 仓库声明「我接受这套流程」。它同时是激活判据：clone 下来就有。
+- `spec/changes/<id>/proposal.md` — 为什么做、怎样算解决。
+- `spec/changes/<id>/design.md` — 怎么改、为什么这么改。
+- `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号。
+- `spec/changes/<id>/acceptance.md` — 可执行判据（```bash 围栏）。
+- `spec/changes/<id>/evidence/<UTC 时间戳>/` — verify 产出的证据（stdout/stderr/exit + summary.json）。
+- `spec/changes/archive/<YYYYMMDD>-<id>/` — 归档。
 
-## 循环
+## 一个 change 的生命周期
 
-0. 新仓库先 `forge change init`（或手写一份 `spec/forge.yaml`）。
-1. `forge change new <id> --title "..."` 建骨架。
-2. 先写 proposal：为什么做、备选方案、取舍。人看过之后再写 design。
-3. design 定结构与风险，再拆 tasks；每条 task 都要带一条能跑出对错的验证命令。
-4. 把判据写进 `acceptance.md`：一个 ```bash 围栏一条命令（多步用 `&&`），写不成命令的验收不是判据。
-5. `forge change verify <id>` 实跑并落证据。失败就改，改完重跑。
-6. 人工检查项由人确认，归档由人决定——这两件事命令不代劳。
+1. 一次性初始化：`forge change init`（生成 `spec/forge.yaml` 与 `AGENTS.md`）。
+2. `forge change new <id> --title "..."` 生成四份产物。
+3. 依次填 proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
+4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
+5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/YYYYMMDD-<id>`。
+6. 之后再改被验证的文件、或改 acceptance，证据自动失效（`forge change list` 显示「证据已失效」），必须重跑 verify。
 
 ## 红线
 
-- 不要手写或修改 `evidence/`。forge 不做密码学防伪，做的是防遗忘、防漂移；伪造证据与改 `.git` 历史同性质。
-- 不要为了让验证变绿而放宽 `acceptance.md`。要改判据，先在 proposal 里说明理由。
-- 判据变了，或同一 commit 下工作区内容变了，旧证据自动失效（stale），必须重跑。
-  已提交后再改 HEAD 不再判 stale——那属于新 change，由人决定是继续还是归档。
+- 判据必须能被命令证明；写不出命令的验收项不算完成。
+- acceptance 里不要用 `|`、`||`、`set +e` 掩盖退出码——verify 用 `set -eo pipefail` 执行，但显式吞码仍能骗过任何壳。
+- 「已验证」这个结论只能由 `forge change verify` 产出：手写 summary.json 没有实跑记录与工作区摘要，不算证据。
+- 没装 forge 也能写四份产物、照样可审计；差别是产不出封印。
+- 保留名：change id 不能用 `archive`、`evidence`。

@@ -79,10 +79,6 @@ func runChangeInit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if len(created) == 0 {
-		fmt.Println("契约已存在，未做改动。")
-		return nil
-	}
 	fmt.Println("已声明仓库契约：")
 	for _, p := range created {
 		fmt.Printf("  + %s\n", p)
