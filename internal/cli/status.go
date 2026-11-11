@@ -2,6 +2,8 @@ package cli
 
 import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 
 	"encoding/json"
 	"fmt"
@@ -138,6 +140,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Project: %s\n", filepath.Base(root))
 	if memberSource == projectroot.SourceSpecContract {
 		fmt.Println("  spec: spec/forge.yaml (仓库声明式成员资格)")
+		for _, line := range contractStatusLines(root) {
+			fmt.Println(line)
+		}
 	}
 	if showTasks {
 		fmt.Println(strings.Repeat("─", 60))
@@ -237,4 +242,19 @@ func evalHealthLine(root string) string {
 		line += " · ⚠ 判分器降级 ADVISORY（κ<0.6）"
 	}
 	return line
+}
+
+// contractStatusLines 渲染契约的生效情况。契约写坏时 hookdispatch 会 fail-open
+// 回落全局档位继续执法——这里必须让人看见「你以为关了、其实写着错拼写」。
+// 不阻断 status：仓库身份仍然成立，只是执法档位不是它写的那份。
+func contractStatusLines(root string) []string {
+	c, err := specroot.Load(root)
+	if err != nil {
+		return []string{
+			fmt.Sprintf("  ⚠ 契约无法解析（hook 按全局档位继续执法）：%v", err),
+			fmt.Sprintf("  生效档位：全局 %s（FORGE_PROFILE / ~/.forge/profile，缺省 %s）",
+				hooks.ActiveProfile(), hooks.ProfileStandard),
+		}
+	}
+	return []string{fmt.Sprintf("  契约：profile=%s hooks=%s", c.Profile, c.Hooks)}
 }
