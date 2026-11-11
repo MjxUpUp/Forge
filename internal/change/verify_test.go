@@ -977,3 +977,38 @@ func TestParseAcceptance_IgnoresExampleFences(t *testing.T) {
 		t.Fatalf("只该认最后那条真围栏，got %+v", acc.Commands)
 	}
 }
+
+// 引号/转义包起来的选项照样是选项：`bash "-c"`、`bash \-c`、`"eval"`、`set "+o"`
+// 在 shell 里都是真调用，不能被引号骗过去。
+func TestVerify_RejectsQuotedShellEscapes(t *testing.T) {
+	for _, cmd := range []string{
+		`bash "-c" 'false || true'`,
+		"bash \\-c 'false'",
+		`"eval" 'false || true'`,
+		`set "+o" errexit`,
+		`$SHELL -c 'false || true'`,
+	} {
+		root, dir := repoWithChange(t, "demo")
+		writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n"+cmd+"\n```\n")
+		_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+		if err == nil || !strings.Contains(err.Error(), "判据里不能") {
+			t.Errorf("%q 应被判据检查拒绝，got %v", cmd, err)
+		}
+	}
+}
+
+// 反过来：普通参数里的 -c、引号里的整句、参数位置的 eval 都不该误杀。
+func TestVerify_AllowsInnocentLookalikes(t *testing.T) {
+	requireBash(t)
+	for _, cmd := range []string{
+		"go version",
+		`echo "bash -c"`,
+		`git log --grep eval -n 1`,
+	} {
+		root, dir := repoWithChange(t, "demo")
+		writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n"+cmd+"\n```\n")
+		if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+			t.Errorf("%q 不该被拒绝：%v", cmd, err)
+		}
+	}
+}
