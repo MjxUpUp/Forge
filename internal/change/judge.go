@@ -242,6 +242,23 @@ func hasEval(words []word) bool {
 
 // disablesProtection 判断有没有用它自己的写法关掉保护：`set +e`、`set +o errexit`、
 // `set "+o"` 都算（引号在拆词时已去掉）。
+// splittingEnv 判断有没有用 `env -S` 把一段字符串再拆成命令：那等于又开了一层，
+// 拆出来的 `bash -c '...'` 不在命令位置上，识别不到。
+func splittingEnv(words []word) bool {
+	for i, w := range words {
+		if w.val != "-S" && !strings.HasPrefix(w.val, "-S=") {
+			continue
+		}
+		if i == 0 {
+			return false
+		}
+		if strings.HasSuffix(shellBase(words[i-1].val), "env") {
+			return true
+		}
+	}
+	return false
+}
+
 func disablesProtection(words []word) bool {
 	for i, w := range words {
 		if w.val != "set" {
@@ -383,6 +400,8 @@ func lintJudge(cmd string) error {
 		return fmt.Errorf("判据里不要用管道 `|`——需要看输出就写进文件，或把逻辑写进脚本（sh 环境没有 pipefail，管道失败会变成通过）")
 	case hasSingleAmpersand(s):
 		return fmt.Errorf("判据里不能用后台 `&`（后台任务的失败不会被等待）；要并行请写进脚本并 wait")
+	case splittingEnv(words):
+		return fmt.Errorf("判据里不能用 env -S：它会把一个字符串再拆成命令，等于又开了一层 shell")
 	case disablesProtection(words):
 		return fmt.Errorf("判据里不能关掉保护（`set +e` / `set +o errexit` 等于允许失败）")
 	case hasEval(words):
