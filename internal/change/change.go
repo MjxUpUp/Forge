@@ -439,6 +439,15 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 					if sum.Head != "" && sum.Head == fp.Head && !sameDigests(sum.Files, fp.Files) {
 						stale = true
 					}
+					// 封印之后才出现的文件绕不过上面两条：内容比对只覆盖
+					// 记录过的路径，"verify 时有未提交改动 → 提交 → 再新建一个
+					// 文件"两边都查不到。这里按"绑定 commit 之后的改动集合"
+					// 补一刀：没被记录过、又不是证据的路径出现，就判失效。
+					if sum.Head != "" && fp.Head != "" && sum.Head != fp.Head && len(sum.Files) > 0 {
+						if unrecorded := unrecordedChangesSince(root, *sum, *fp); len(unrecorded) > 0 {
+							stale = true
+						}
+					}
 					// 干净工作区 verify 没有文件级指纹，证据只代表 verify 时那个
 					// commit。HEAD 一动，被验证的代码就不是当初那份了——不能因为
 					// "没记录改动文件"就继续对外宣称已验证。
@@ -493,6 +502,41 @@ type Summary struct {
 	// 证明不了它对应哪份代码（非 git 仓库）。
 	DiffBound bool    `json:"diff_bound,omitempty"`
 	Checks    []Check `json:"checks"`
+}
+
+// unrecordedChangesSince 返回"证据封印之后出现、但摘要里没记录过"的非证据路径。
+//
+// 记录过的文件交给 filesDrifted 按内容比对；这里补的是当时还不存在、事后才
+// 出现的文件——否则"verify → 提交 → 新建文件"就绕过了内容比对。
+func unrecordedChangesSince(root string, sum Summary, fp Fingerprint) []string {
+	recorded := make(map[string]bool, len(sum.Files))
+	for _, f := range sum.Files {
+		recorded[filepath.ToSlash(f.Path)] = true
+	}
+	seen := make(map[string]bool)
+	var out []string
+	add := func(paths []string) {
+		for _, p := range paths {
+			p = filepath.ToSlash(p)
+			if recorded[p] || seen[p] || isEvidencePath(p) {
+				continue
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	if sum.Head != "" && fp.Head != "" {
+		if paths, err := changedPathsBetween(root, sum.Head, fp.Head); err == nil {
+			add(paths)
+		}
+	}
+	dirty := make([]string, 0, len(fp.Files))
+	for _, f := range fp.Files {
+		dirty = append(dirty, f.Path)
+	}
+	add(dirty)
+	sort.Strings(out)
+	return out
 }
 
 // evidenceNameRE 匹配 verify 产出的证据目录名（UTC 时间戳，同秒重跑带 -N 后缀）。
