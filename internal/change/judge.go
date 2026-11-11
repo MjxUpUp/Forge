@@ -26,7 +26,9 @@ func shellWords(s string) []word {
 	var quote byte
 	atCmd := true
 	flush := func() {
-		if inWord || cur.Len() > 0 {
+		// 只写了 inWord：cur 只在置 inWord 时写入，两个条件是同一件事，
+		// 留着 || 会让变异测试拿这个恒等改写当"存活"。
+		if inWord {
 			out = append(out, word{val: cur.String(), cmd: atCmd})
 			atCmd = false
 		}

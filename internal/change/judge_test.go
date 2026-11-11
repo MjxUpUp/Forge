@@ -387,3 +387,16 @@ func TestLintJudgeQuotesInsideArithmeticAndANSI(t *testing.T) {
 		}
 	}
 }
+
+func TestIsHex(t *testing.T) {
+	for _, c := range []byte{'0', '9', 'a', 'f', 'A', 'F'} {
+		if !isHex(c) {
+			t.Fatalf("%q 是十六进制数字", c)
+		}
+	}
+	for _, c := range []byte{'g', 'G', 'z', '/', ':', ' ', 0} {
+		if isHex(c) {
+			t.Fatalf("%q 不是十六进制数字", c)
+		}
+	}
+}
