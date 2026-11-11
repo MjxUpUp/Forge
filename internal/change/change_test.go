@@ -38,7 +38,7 @@ func TestInit_CreatesContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读契约: %v", err)
 	}
-	for _, want := range []string{`version: "1"`, `profile: "mini"`} {
+	for _, want := range []string{`version: "1"`, `profile: "mini"`, `hooks: off`} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("契约缺 %q：\n%s", want, raw)
 		}
