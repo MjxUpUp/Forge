@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/specroot"
@@ -402,12 +403,12 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 				names = append(names, e.Name())
 			}
 		}
-		sort.Strings(names)
+		sort.Slice(names, func(i, j int) bool { return lessEvidenceName(names[i], names[j]) })
 		c.EvidenceCount = len(names)
 		if len(names) > 0 {
 			c.Latest = names[len(names)-1]
 			c.LatestDir = filepath.Join(evDir, c.Latest)
-			if sum, serr := loadSummary(c.LatestDir); serr == nil {
+			if sum, serr := loadSummary(c.LatestDir); serr == nil && sum.Change == id {
 				// 封印必须自洽：一份声称通过、却没有任何实跑记录的摘要
 				// （手写或残缺）不能对外宣称已验证。
 				c.Sealed = sum.Sealed && len(sum.Checks) > 0 && sum.AcceptanceSHA256 != ""
@@ -558,6 +559,29 @@ func unrecordedChangesSince(root string, sum Summary, fp Fingerprint) []string {
 
 // evidenceNameRE 匹配 verify 产出的证据目录名（UTC 时间戳，同秒重跑带 -N 后缀）。
 var evidenceNameRE = regexp.MustCompile(`^\d{8}T\d{6}Z(-\d+)?$`)
+
+// lessEvidenceName 按"时间戳 + 后缀序号"比较两次验证的先后。
+//
+// 不能直接比字符串：同一秒的第 10 次是 `...Z-10`，字典序排在 `...Z-2` 前面，
+// 最新证据会被指到第 9 次上去。
+func lessEvidenceName(a, b string) bool {
+	baseA, suffixA := a, 1
+	if i := strings.LastIndexByte(a, '-'); i >= 0 {
+		if n, err := strconv.Atoi(a[i+1:]); err == nil {
+			baseA, suffixA = a[:i], n
+		}
+	}
+	baseB, suffixB := b, 1
+	if i := strings.LastIndexByte(b, '-'); i >= 0 {
+		if n, err := strconv.Atoi(b[i+1:]); err == nil {
+			baseB, suffixB = b[:i], n
+		}
+	}
+	if baseA != baseB {
+		return baseA < baseB
+	}
+	return suffixA < suffixB
+}
 
 func loadSummary(dir string) (*Summary, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, SummaryFile))

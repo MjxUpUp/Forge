@@ -719,13 +719,18 @@ func TestVerify_AllowsQuotedOperatorLiteral(t *testing.T) {
 	}
 }
 
-// 注释以反斜杠结尾会吞掉下一行；看起来有语句，实际永远不会执行。
-func TestVerify_RejectsCommentContinuation(t *testing.T) {
+// 注释不会因为行尾反斜杠续到下一行：`# 说明 \\` 之后的命令照常执行，
+// 所以这样的围栏是有效判据，不能当成"只有注释"拒掉（早先按续行跳过，是错的）。
+func TestVerify_CommentBackslashDoesNotSwallowNextLine(t *testing.T) {
+	requireBash(t)
 	root, dir := repoWithChange(t, "demo")
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n# TODO \\\ntrue\n```\n")
-	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
-	if err == nil || !strings.Contains(err.Error(), "注释") {
-		t.Fatalf("反斜杠续行的注释不是判据，got %v", err)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n# 说明 \\\ntrue\n```\n")
+	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err != nil {
+		t.Fatalf("注释后的命令会被执行，不该拒绝：%v", err)
+	}
+	if !res.Summary.Sealed {
+		t.Error("这条判据应封印")
 	}
 }
 
@@ -894,5 +899,81 @@ func TestVerify_AllowsOperatorInsideMultilineQuote(t *testing.T) {
 	}
 	if !res.Summary.Sealed {
 		t.Error("这条判据应封印")
+	}
+}
+
+// 再套一层 shell 的写法都要拦住：内层不继承 pipefail/errexit，`false | true`
+// 在内层照样返回 0。带路径、带 .exe、用 lc/ec 组合、用 ${IFS} 拼参数都算。
+func TestVerify_RejectsNestedShellForms(t *testing.T) {
+	for _, cmd := range []string{
+		"bash -lc 'false | true'",
+		"/bin/sh -c 'false | true'",
+		"bash.exe -c 'true'",
+		"bash${IFS}-c 'false | true'",
+		"sh -ec 'false | true'",
+		"echo hi; bash --command 'true'",
+	} {
+		root, dir := repoWithChange(t, "demo")
+		writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n"+cmd+"\n```\n")
+		_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+		if err == nil || !strings.Contains(err.Error(), "shell") {
+			t.Errorf("%q 应被判据检查拒绝，got %v", cmd, err)
+		}
+	}
+}
+
+// eval 的退出码看最后一条命令，能把中间失败吞掉。
+func TestVerify_RejectsEval(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\neval 'false || true'\n```\n")
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "eval") {
+		t.Fatalf("eval 应被拒绝，got %v", err)
+	}
+}
+
+// `set +o errexit` 是 `set +e` 的另一种写法，同样等于允许失败。
+func TestVerify_RejectsSetPlusO(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\nset +o errexit\nfalse\ntrue\n```\n")
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "set +") {
+		t.Fatalf("set +o errexit 应被拒绝，got %v", err)
+	}
+}
+
+// 转义的管道是字面量（`echo a\|b` 打的是 a|b），按管道拒会误杀。
+func TestVerify_AllowsEscapedPipeLiteral(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho a\\|b\n```\n")
+	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err != nil {
+		t.Fatalf("转义管道不该被拒：%v", err)
+	}
+	if !res.Summary.Sealed {
+		t.Error("这条判据应封印")
+	}
+}
+
+// Verify 是公开 API：id 里带路径穿越必须当场拒绝，不能等目录不存在才碰巧失败。
+func TestVerify_RejectsTraversalIDBeforeTouch(t *testing.T) {
+	root, _ := repoWithChange(t, "demo")
+	sibling := filepath.Join(filepath.Dir(root), "sibling")
+	if err := os.MkdirAll(filepath.Join(sibling, "spec", "forge.yaml"), 0o755); err != nil {
+		// 造一个同名文件让 ../sibling 存在，确保拒绝不是"因为不存在"。
+		writeFile(t, filepath.Join(sibling, "spec", "forge.yaml"), "version: 1\n")
+	}
+	if _, err := Verify(context.Background(), root, "../sibling", VerifyOptions{}); err == nil {
+		t.Fatal("../sibling 应被拒绝")
+	}
+}
+
+// 文档里的示例围栏（HTML 注释里、四空格缩进的代码块）不是判据。
+func TestParseAcceptance_IgnoresExampleFences(t *testing.T) {
+	md := "# 判据\n\n<!--\n```bash\nfalse\n```\n-->\n\n     ```bash\n    false\n     ```\n\n```bash\ntrue\n```\n"
+	acc := ParseAcceptance([]byte(md))
+	if len(acc.Commands) != 1 || !strings.Contains(acc.Commands[0].Body, "true") {
+		t.Fatalf("只该认最后那条真围栏，got %+v", acc.Commands)
 	}
 }

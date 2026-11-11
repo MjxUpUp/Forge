@@ -287,3 +287,48 @@ func TestList_IgnoresIncompleteEvidence(t *testing.T) {
 		t.Error("残迹不能算封印")
 	}
 }
+
+// 同一秒的第 10 次验证不能被第 9 次顶掉：按"时间戳 + 后缀序号"比较，不是字典序。
+func TestLessEvidenceName_OrdersNumericSuffix(t *testing.T) {
+	if lessEvidenceName("20260101T000000Z-10", "20260101T000000Z-2") {
+		t.Error("-10 应该比 -2 新")
+	}
+	if !lessEvidenceName("20260101T000000Z", "20260101T000000Z-2") {
+		t.Error("同一秒里无后缀（第 1 次）比 -2 早")
+	}
+	if !lessEvidenceName("20260101T000000Z", "20260101T000001Z") {
+		t.Error("不同秒按时间戳比")
+	}
+}
+
+// 复制别的 change 的证据摘要不能冒充自己的封印。
+func TestLoad_IgnoresSummaryOfAnotherChange(t *testing.T) {
+	if !evidenceNameRE.MatchString("20260101T000000Z-3") {
+		t.Fatal("证据目录名格式应被认")
+	}
+	root := newGitRepo(t)
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillScaffold(t, dir)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	ev := filepath.Join(dir, EvidenceDirName, "20260101T000000Z")
+	if err := os.MkdirAll(ev, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(ev, SummaryFile), `{"change":"someone-else","sealed":true,"acceptance_sha256":"x","checks":[{"index":1,"exit":0}]}`)
+	list, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("期望 1 个 change，got %d", len(list))
+	}
+	if list[0].Sealed {
+		t.Error("别的 change 的摘要不能冒充封印")
+	}
+}
