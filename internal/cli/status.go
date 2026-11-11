@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 
 	"encoding/json"
 	"fmt"
@@ -138,6 +139,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Project: %s\n", filepath.Base(root))
 	if memberSource == projectroot.SourceSpecContract {
 		fmt.Println("  spec: spec/forge.yaml (仓库声明式成员资格)")
+		// 契约写坏时 hookdispatch 会 fail-open 回落全局档位继续执法——这里必须
+		// 让人看见「你以为关了、其实写着错拼写」。不阻断 status。
+		if c, err := specroot.Load(root); err != nil {
+			fmt.Printf("  ⚠ 契约无法解析（hook 按全局档位继续执法）：%v\n", err)
+		} else {
+			fmt.Printf("  契约：profile=%s hooks=%s\n", c.Profile, c.Hooks)
+		}
 	}
 	if showTasks {
 		fmt.Println(strings.Repeat("─", 60))

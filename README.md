@@ -108,16 +108,19 @@ forge init      # 默认零项目写入，全部资产落在用户级
 | `~/.claude/skills/forge-quality/` | 质量协议 Skill |
 | `~/.codex/hooks.json`、`~/.cursor/hooks.json` 等 | 其他 agent 的用户级 hook 接线（按检测到的工具） |
 
-> **仓库自己决定要不要接管？** 仓库根放一份 `spec/forge.yaml`，成员资格就从全局注册表前移到仓库本身——clone 到新机器、换个 agent、不跑 `forge init` 也能解析到项目身份：
+> **仓库自己决定要不要接管？** 仓库根放一份 `spec/forge.yaml`，成员资格就从全局注册表前移到仓库本身——clone 到新机器、换个 agent、不跑 `forge init` 也能解析到项目身份。注意 hook 接线仍由用户级 init / plugin 提供；契约只决定这些 hook 在这个仓库里跑不跑、按哪档跑。
 
 ```yaml
 # spec/forge.yaml
-version: "1"       # 契约版本（按主版本兼容）
-profile: standard  # standard | mini（mini＝只声明不执法，等于 lite 名册）| full
-hooks: on          # on | off；off 时该仓库内所有 hook 静默放行
+version: "1"       # 契约版本，按主版本兼容
+profile: standard  # standard | mini | full
+hooks: on          # on | off
 ```
 
-`hooks: off` 是「这个项目我还没打算用 forge」的正式表达：装了 forge 的机器、别的仓库在跑门禁，这个仓库依然安静（0 进程、0 注入）。跑 `forge change init` 会生成这份契约和 `spec/changes/`。init-suggest（非 forge 仓库首次会话建议接管的全局 hook）自 2026-11 起默认关闭，要恢复旧行为设 `FORGE_INIT_SUGGEST=1`。
+- `hooks: off`——这个仓库里的 hook 检查全部静默放行：**0 次检查、0 注入**。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。
+- `profile`——`mini` 是最小执法名册（lite：task-guard / bash-guard / hazard-guard / file-sentinel 等拦截类，去掉 advisory 类）；`standard` 默认 35 项；`full` 全开。契约只做运行时收窄：settings 接线时被全局更窄档位滤掉的 hook，不会因为契约写 `full` 又接回来。
+- 契约写坏不拦也不报——`hooks: of` 这类拼写错误整份按解析失败处理，回落全局档位继续执法；`forge status` 会打出「⚠ 契约无法解析」并显示实际生效的 `profile/hooks`，不阻断任何命令。
+- 不写 `hooks` 字段＝`on`；不写 `profile`＝`standard`。`forge change init` 生成的是最小契约（`version: "1"`、`profile: mini`、`hooks: off`——只用产物、不开执法），要门禁就把 `hooks` 改成 `on`，要别的档位用 `--profile` 或手改。
 
 > **团队要 git 共享同一份协议？** 用 `forge init --project`（团队模式）——`.forge/protocol.yml`、`CLAUDE.md`、`AGENTS.md` 等指令资产写入项目目录可提交共享；再跑一次普通 `forge init` 即转回零写入。
 
@@ -191,7 +194,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。项目登记按 takeover 偏好（出厂默认 **ask**，且 init-suggest 自 2026-11 起默认关闭，要让它主动询问需设 `FORGE_INIT_SUGGEST=1`）：开启后它在未接管项目首次会话**询问一次**（同意→`forge init`；拒绝→`forge off`）；要"装好即用"的无感体验→`forge config set` takeover 为 auto（静默接管所有 git 项目；declined、`.forge-decline` 团队声明与外来 harness 让位仍然生效）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。init-suggest（在未接管项目首次会话建议接管的全局 SessionStart hook）自 2026-11 起默认关闭：不设环境变量时**既不询问也不接管**；要在宿主进程环境里设 `FORGE_INIT_SUGGEST=1`（shell profile 或启动器 env，不是某条 forge 命令的前缀）之后，它才按 takeover 偏好工作——**ask** 询问一次（同意→`forge init`；拒绝→`forge off`），**auto** 静默接管所有 git 项目（declined、`.forge-decline` 团队声明与外来 harness 让位仍然生效）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 </details>
 
