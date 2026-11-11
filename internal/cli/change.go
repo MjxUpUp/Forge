@@ -200,11 +200,19 @@ func runChangeVerify(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if len(res.Manual) > 0 {
+	if len(res.Manual) > 0 || len(res.ManualDone) > 0 {
 		fmt.Println()
-		fmt.Println("人工检查项（不计入封印，由人确认）：")
-		for _, m := range res.Manual {
-			fmt.Printf("  - %s\n", m)
+		if len(res.Manual) > 0 {
+			fmt.Println("人工检查项（不计入封印，由人确认）：")
+			for _, m := range res.Manual {
+				fmt.Printf("  - %s\n", m)
+			}
+		}
+		if len(res.ManualDone) > 0 {
+			fmt.Println("已勾选的人工项（勾选不改判定，机器不会代你确认）：")
+			for _, m := range res.ManualDone {
+				fmt.Printf("  ✓ %s\n", m)
+			}
 		}
 	}
 
