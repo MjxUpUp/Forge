@@ -149,7 +149,9 @@ type VerifyOptions struct {
 //     change 不能凭"我是对的"通过；
 //   - 只要有命令失败，证据照样落盘（失败证据比没有证据更有用）。
 func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, error) {
-	c, fp, err := Load(root, id)
+	// 这里不取指纹：验收命令可能自己产生文件，指纹要等它们跑完再算，
+	// 否则 verify 刚打印"已封印"，list 立刻判它 stale（出场即失效）。
+	c, err := load(root, id, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -170,6 +172,11 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	acc := ParseAcceptance(raw)
 	if len(acc.Commands) == 0 {
 		return nil, fmt.Errorf("change: %s 里没有 ```bash 命令——人工清单不算可执行判据", relTo(root, accPath))
+	}
+	for _, cmd := range acc.Commands {
+		if !hasExecutableLine(cmd) {
+			return nil, fmt.Errorf("change: %s 里有一条围栏只有注释/空行——注释不是判据", relTo(root, accPath))
+		}
 	}
 
 	timeout := opts.Timeout
@@ -196,13 +203,6 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 		StartedAt:        now.UTC().Format(time.RFC3339),
 		AcceptanceSHA256: hashBytes(raw),
 	}
-	sum.DiffBound = fp.OK
-	if fp.OK {
-		sum.Head = fp.Head
-		sum.DiffSHA256 = fp.DiffSHA256
-		sum.Files = fp.Files
-	}
-
 	passed := true
 	for i, cmd := range acc.Commands {
 		check := Check{Index: i + 1, Command: cmd}
@@ -216,6 +216,16 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 			passed = false
 		}
 		sum.Checks = append(sum.Checks, check)
+	}
+
+	// 命令跑完再取指纹：证据描述的是"这些命令在这个工作区上通过了"，
+	// 命令自身的副作用（生成的临时文件）也属于这个工作区。
+	fp := WorktreeFingerprint(root)
+	sum.DiffBound = fp.OK
+	if fp.OK {
+		sum.Head = fp.Head
+		sum.DiffSHA256 = fp.DiffSHA256
+		sum.Files = fp.Files
 	}
 
 	sum.Passed = passed
@@ -517,14 +527,36 @@ func docProblems(dir string) []string {
 	return out
 }
 
+// hasExecutableLine 判断一段围栏里有没有真正会被执行的语句。
+// 只有注释和空行的围栏跑起来必然退出 0，不能算判据。
+func hasExecutableLine(cmd string) bool {
+	for _, line := range strings.Split(cmd, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
 // isEvidencePath 判断未跟踪文件是否落在 spec/changes/<id>/evidence/ 下。
 //
 // 证据是验证的产物，不是被验证的内容：它由 verify 自己在算完指纹之后写入，
 // 如果算进指纹，每跑一次 verify 都会把自己的上一次证据判成 stale。
 func isEvidencePath(p string) bool {
 	parts := strings.Split(filepath.ToSlash(p), "/")
-	return len(parts) >= 4 && parts[0] == specroot.DirName &&
-		parts[1] == DirName && parts[3] == EvidenceDirName
+	if len(parts) < 4 || parts[0] != specroot.DirName || parts[1] != DirName {
+		return false
+	}
+	// 归档后的路径是 spec/changes/archive/<YYYYMMDD>-<id>/evidence/...，
+	// 不只第 4 段叫 evidence——任何一段都认。
+	for _, part := range parts[3:] {
+		if part == EvidenceDirName {
+			return true
+		}
+	}
+	return false
 }
 
 func gitOutput(root string, args ...string) (string, error) {
