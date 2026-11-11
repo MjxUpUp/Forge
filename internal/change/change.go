@@ -124,6 +124,8 @@ type Change struct {
 	Stale  bool `json:"stale"`
 	// DiffBound 表示证据记录了工作区指纹（非 git 仓库里为 false，封印强度更弱）。
 	DiffBound bool `json:"diff_bound"`
+	// BoundHead 是封印时记录的 commit，供列表展示"证据绑在哪一版代码上"。
+	BoundHead string `json:"bound_head,omitempty"`
 
 	Stage Stage `json:"stage"`
 }
@@ -313,6 +315,28 @@ func InvalidArchiveNames(root string) ([]string, error) {
 	return out, nil
 }
 
+// changedPathsBetween 列出两个 commit 之间改动的路径。
+func changedPathsBetween(root, from, to string) ([]string, error) {
+	if from == "" || to == "" {
+		return nil, fmt.Errorf("change: 缺少 commit")
+	}
+	out, err := gitOutput(root, "diff", "--name-only", "-z", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	return splitNul(out), nil
+}
+
+// hasNonEvidence 判断改动集合里有没有"被验证内容"——全是证据就不算。
+func hasNonEvidence(paths []string) bool {
+	for _, p := range paths {
+		if !isEvidencePath(p) {
+			return true
+		}
+	}
+	return false
+}
+
 // archiveID 去掉归档目录名里的日期前缀（<YYYYMMDD>-<id> → <id>）。
 // 前缀必须真的是 8 位数字，否则 `demo-x` 这类目录会被当成 id `x`。
 func archiveID(name string) string {
@@ -383,7 +407,7 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 			if sum, serr := loadSummary(c.LatestDir); serr == nil {
 				// 封印必须自洽：一份声称通过、却没有任何实跑记录的摘要
 				// （手写或残缺）不能对外宣称已验证。
-				c.Sealed = sum.Sealed && len(sum.Checks) > 0
+				c.Sealed = sum.Sealed && len(sum.Checks) > 0 && sum.AcceptanceSHA256 != ""
 				c.DiffBound = sum.DiffBound
 				stale := false
 				// 判据漂移：acceptance.md 改过或者被删掉，旧证据都不再代表当前验收标准。
@@ -416,12 +440,19 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 					// commit。HEAD 一动，被验证的代码就不是当初那份了——不能因为
 					// "没记录改动文件"就继续对外宣称已验证。
 					if len(sum.Files) == 0 && sum.Head != "" && sum.Head != fp.Head {
-						stale = true
+						// 例外：verify 之后只把证据提交进来（协议第 5 步就是这么
+						// 做的）不该判失效——证据不是被验证内容。
+						if touched, terr := changedPathsBetween(root, sum.Head, fp.Head); terr != nil || hasNonEvidence(touched) {
+							stale = true
+						}
 					}
 				}
 				if stale {
 					c.Stale = c.Sealed
 					c.Sealed = false
+				}
+				if c.Sealed {
+					c.BoundHead = sum.Head
 				}
 			}
 		}
