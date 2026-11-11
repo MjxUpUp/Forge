@@ -5,7 +5,9 @@
 
 ## 目录
 
-- `spec/forge.yaml` — 仓库声明「我接受这套流程」。它同时是激活判据：clone 下来就有。
+- `spec/forge.yaml` — 仓库声明「我用这套产物」。它同时是激活判据：clone 下来就有。
+  `forge change init` 默认写 `hooks: off`：只用产物、不开 hook 执法；要门禁把它改成 `on`。
+  安全底线（hazard-guard / mcp-scan / skill-scan）不受这个开关影响。
 - `spec/changes/<id>/proposal.md` — 为什么做、怎样算解决。
 - `spec/changes/<id>/design.md` — 怎么改、为什么这么改。
 - `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号。
