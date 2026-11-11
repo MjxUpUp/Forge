@@ -155,3 +155,21 @@ func TestLintJudgeAllowsLookalikeArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestLintJudgeRejectsSubstitutionInDoubleQuotes(t *testing.T) {
+	// 双引号里的替换在 shell 里照样执行：抹掉引号内容再查会漏掉它。
+	for _, cmd := range []string{
+		`echo "$(false)"`,
+		`printf "%s" "$(false)"`,
+		"echo \"`false`\"",
+		`go test "$(echo ./internal/change/)"`,
+	} {
+		if err := lintJudge(cmd); err == nil || !strings.Contains(err.Error(), "命令替换") {
+			t.Fatalf("%q must be rejected for command substitution, got %v", cmd, err)
+		}
+	}
+	// 单引号里是字面量，不该误杀。
+	if err := lintJudge(`echo '$(false)'`); err != nil {
+		t.Fatalf("single-quoted text must stay allowed: %v", err)
+	}
+}

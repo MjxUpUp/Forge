@@ -383,7 +383,45 @@ func compound(code string, words []word) error {
 //
 // 这套检查拦的是常见写法，不是沙箱：判据里刻意做间接调用（脚本里再开 shell、
 // 变量拼命令）仍然可能骗过它。判据越直白，证据越可信。
+// executesInDoubleQuotes 找双引号里的命令替换：引号里的 `$(` 和反引号
+// 在 shell 里照样执行（只有单引号里的才是字面量）。抹掉引号内容再做检查会
+// 把它们一起抹掉，于是 `echo "$(false)"` 这种写法官查漏、封印成功——正是
+// review 抓到的那条假绿路径。
+func executesInDoubleQuotes(s string) bool {
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\\' && quote != '\'' && i+1 < len(s) {
+			i++
+			continue
+		}
+		if quote == 0 {
+			if c == '\'' || c == '"' {
+				quote = c
+			}
+			continue
+		}
+		if c == quote {
+			quote = 0
+			continue
+		}
+		if quote != '"' {
+			continue
+		}
+		if c == '`' {
+			return true
+		}
+		if c == '$' && i+1 < len(s) && s[i+1] == '(' {
+			return true
+		}
+	}
+	return false
+}
+
 func lintJudge(cmd string) error {
+	if executesInDoubleQuotes(cmd) {
+		return fmt.Errorf("判据里不要用 `$( )`/反引号命令替换——双引号里它照样执行，而替换失败不会让命令本身非零；只有单引号里才是字面量")
+	}
 	s := stripQuoted(cmd)
 	// ${IFS} 是空格的字面写法，`bash${IFS}-c` 在 shell 里就是 `bash -c`。
 	normalized := strings.ReplaceAll(strings.ReplaceAll(cmd, "${IFS}", " "), "$IFS", " ")
