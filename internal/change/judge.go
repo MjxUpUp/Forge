@@ -387,10 +387,27 @@ func compound(code string, words []word) error {
 // 在 shell 里照样执行（只有单引号里的才是字面量）。抹掉引号内容再做检查会
 // 把它们一起抹掉，于是 `echo "$(false)"` 这种写法官查漏、封印成功——正是
 // review 抓到的那条假绿路径。
+//
+// 注释按 shell 的规则处理：`#` 只在词首（行首、空白或操作符之后）且引号外
+// 才起注释，注释到行尾结束、不改变引号状态。早期版本不管注释，注释里落单的
+// `'` 会把引号状态带进下一行，让下一行的 `echo "$(false)"` 逃过检查。
 func executesInDoubleQuotes(s string) bool {
 	var quote byte
+	inComment := false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
+		if c == '\n' {
+			// 注释只到行尾；引号可以跨行。
+			inComment = false
+			continue
+		}
+		if inComment {
+			continue
+		}
+		if quote == 0 && c == '#' && startsWord(s, i) {
+			inComment = true
+			continue
+		}
 		if c == '\\' && quote != '\'' && i+1 < len(s) {
 			i++
 			continue
@@ -414,6 +431,19 @@ func executesInDoubleQuotes(s string) bool {
 		if c == '$' && i+1 < len(s) && s[i+1] == '(' {
 			return true
 		}
+	}
+	return false
+}
+
+// startsWord 判断 s[i] 是否处在一个词的开头：shell 只在词首把 `#` 当注释，
+// `foo#bar` 里的 `#` 是普通字符。
+func startsWord(s string, i int) bool {
+	if i == 0 {
+		return true
+	}
+	switch s[i-1] {
+	case ' ', '\t', '\n', ';', '&', '|', '(', ')':
+		return true
 	}
 	return false
 }

@@ -173,3 +173,31 @@ func TestLintJudgeRejectsSubstitutionInDoubleQuotes(t *testing.T) {
 		t.Fatalf("single-quoted text must stay allowed: %v", err)
 	}
 }
+
+func TestLintJudgeCommentDoesNotShiftQuotes(t *testing.T) {
+	// 注释里落单的引号不该把引号状态带进下一行——那是 review 找到的绕过：
+	// `# don't` 之后的 `echo "$(false)"` 曾经直接封印。
+	reject := []string{
+		"# don't\necho \"$(false)\"",
+		"echo ok # \"\necho \"$(false)\"",
+		"echo ok # it's fine\nprintf '%s' \"$(false)\"",
+	}
+	for _, cmd := range reject {
+		if err := lintJudge(cmd); err == nil || !strings.Contains(err.Error(), "命令替换") {
+			t.Fatalf("%q must be rejected despite comments, got %v", cmd, err)
+		}
+	}
+	// 注释里的替换是字面量，不该误杀。
+	for _, cmd := range []string{
+		"echo ok # \"$(false)\"",
+		"echo ok # don't run $(false)",
+	} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q is only a comment, got %v", cmd, err)
+		}
+	}
+	// `foo#bar` 里的 `#` 不是注释。
+	if err := lintJudge("echo foo#bar; echo \"$(false)\""); err == nil {
+		t.Fatalf("`#` mid-word is not a comment; substitution must be rejected")
+	}
+}
