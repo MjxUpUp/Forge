@@ -339,6 +339,21 @@ var compoundKeywords = map[string]string{
 	"}":        "`{ ... }` 分组把多条命令揉成一条，失败位置看不出来",
 }
 
+// codeWithoutArithmetic 去掉算术展开 $(( ... )) 之后，若还残留 "$(" 说明是命令替换。
+// 算术本身不执行命令，`echo $((1+0))` 不该按命令替换拒；但算术里套的 $( ) 要抓——
+// 去掉最外层的 $(( 之后，内层的仍留在串里。
+func codeWithoutArithmetic(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
+			i += 2
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
 // compound 拒绝"一条判据里塞程序"的写法：串联、条件、循环、取反、命令替换。
 //
 // 关键取舍：`&&` 也拒。`set -e` 不会因为 `a && b` 里 a 失败而退出（AND-list 是
@@ -351,7 +366,7 @@ func compound(code string, words []word) error {
 	if strings.ContainsRune(code, '`') {
 		return fmt.Errorf("判据里不要用反引号命令替换（替换失败不会让命令本身非零）")
 	}
-	if strings.Contains(code, "$(") {
+	if strings.Contains(codeWithoutArithmetic(code), "$(") {
 		return fmt.Errorf("判据里不要用 `$( )` 命令替换（替换失败不会让命令本身非零）；需要列表就逐个写出来")
 	}
 	for _, line := range strings.Split(code, "\n") {
@@ -392,6 +407,7 @@ func compound(code string, words []word) error {
 // 才起注释，注释到行尾结束、不改变引号状态。早期版本不管注释，注释里落单的
 // `'` 会把引号状态带进下一行，让下一行的 `echo "$(false)"` 逃过检查。
 func executesInDoubleQuotes(s string) bool {
+	s = joinLineContinuations(s)
 	var quote byte
 	inComment := false
 	for i := 0; i < len(s); i++ {
@@ -428,11 +444,42 @@ func executesInDoubleQuotes(s string) bool {
 		if c == '`' {
 			return true
 		}
+		if c == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
+			// 算术展开不是命令替换：放行，但内部还能套 $( )，继续扫。
+			continue
+		}
 		if c == '$' && i+1 < len(s) && s[i+1] == '(' {
 			return true
 		}
 	}
 	return false
+}
+
+// joinLineContinuations 去掉单引号外的 "反斜杠+换行"：bash 在词法阶段就把这两个
+// 字符删掉，`echo "$\<换行>(cmd)"` 实际就是 `echo "$(cmd)"`。不先归一化，扫描器会
+// 看到 `$` 后面跟反斜杠，从而漏掉命令替换。
+func joinLineContinuations(s string) string {
+	var b strings.Builder
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote == 0 && (c == '\'' || c == '"') {
+			quote = c
+			b.WriteByte(c)
+			continue
+		}
+		if quote != 0 && c == quote {
+			quote = 0
+			b.WriteByte(c)
+			continue
+		}
+		if c == '\\' && quote != '\'' && i+1 < len(s) && s[i+1] == '\n' {
+			i++
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 // startsWord 判断 s[i] 是否处在一个词的开头：shell 只在词首把 `#` 当注释，
