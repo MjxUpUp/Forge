@@ -138,7 +138,7 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 		note := ""
 		switch {
 		case c.Stale:
-			note = "证据已失效（判据或工作区变过），需重跑 verify"
+			note = "证据已失效（判据、被验证文件或 commit 变过），需重跑 verify"
 		case c.Sealed && !c.DiffBound:
 			note = "证据已封印，但未绑定 git 工作区（非 git 仓库，封印强度较弱）"
 		case c.Sealed:
@@ -147,6 +147,13 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 			note = "缺少 acceptance.md"
 		}
 		fmt.Printf("%-32s %-10s %-8s %s\n", c.ID, c.Stage, evidenceCell(c), note)
+	}
+	// 归档目录名不合 <YYYYMMDD>-<id> 约定时 List 会跳过它。跳过可以，
+	// 但要让人知道有东西被跳过了，否则等于悄悄丢记录。
+	if bad, berr := change.InvalidArchiveNames(root); berr == nil && len(bad) > 0 {
+		fmt.Println()
+		fmt.Printf("⚠ spec/changes/archive/ 下有 %d 个目录不符合 <YYYYMMDD>-<id> 约定，未计入列表：%s\n",
+			len(bad), strings.Join(bad, "、"))
 	}
 	return nil
 }

@@ -408,9 +408,87 @@ func TestWorktreeFingerprint_IgnoresEvidence(t *testing.T) {
 	}
 }
 
-// 换过 commit 说明改动已落地，不再按工作区内容比对——否则每次提交都会把
-// 刚验证过的证据判失效，人只能反复重跑。
+// 工作区有未提交改动时 verify，证据绑的是文件内容：提交把这些改动落进
+// commit 并不改变内容，证据继续有效；之后又改被验证的文件才失效。
 func TestList_NotStaleAfterCommit(t *testing.T) {
+	requireBash(t)
+	root := newGitRepo(t)
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillScaffold(t, dir)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(root, "code.go"), "package demo\n")
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "spec")
+
+	// verify 时工作区有未提交改动 → 证据绑文件内容。
+	writeFile(t, filepath.Join(root, "code.go"), "package demo // v2\n")
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "land")
+
+	list, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("期望 1 个 change，got %d", len(list))
+	}
+	if !list[0].Sealed || list[0].Stale {
+		t.Errorf("提交后改动已落地、内容未变，证据应仍有效，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
+	}
+}
+
+// 干净工作区 verify 没有文件级指纹，证据只代表那一个 commit；HEAD 一动就
+// 不能再宣称"当前代码已验过"——哪怕新提交只碰了无关文件，也让人重跑一次。
+func TestList_StaleWhenHeadMovesAfterCleanVerify(t *testing.T) {
+	requireBash(t)
+	root := newGitRepo(t)
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillScaffold(t, dir)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "spec")
+
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	list, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !list[0].Sealed || list[0].Stale {
+		t.Fatalf("干净工作区 verify 后应封印，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
+	}
+
+	writeFile(t, filepath.Join(root, "README.md"), "changed\n")
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "move head")
+
+	list, err = List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list[0].Sealed || !list[0].Stale {
+		t.Errorf("HEAD 移动后干净工作区的旧证据应失效，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
+	}
+}
+
+// 归档记录的是历史，仓库之后怎么变都不该让归档项显示成"待重跑"。
+func TestList_ArchivedUnaffectedByLaterCommits(t *testing.T) {
 	requireBash(t)
 	root := newGitRepo(t)
 	if _, err := Init(root, "mini"); err != nil {
@@ -427,19 +505,45 @@ func TestList_NotStaleAfterCommit(t *testing.T) {
 	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
 		t.Fatal(err)
 	}
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "seal")
+	archiveDir := filepath.Join(ChangesDir(root), ArchiveDirName, "20261111-demo")
+	if err := os.MkdirAll(filepath.Dir(archiveDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(dir, archiveDir); err != nil {
+		t.Fatal(err)
+	}
 	writeFile(t, filepath.Join(root, "README.md"), "changed\n")
 	run(t, root, "git", "add", "-A")
-	run(t, root, "git", "commit", "-q", "-m", "land")
+	run(t, root, "git", "commit", "-q", "-m", "move head")
 
 	list, err := List(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 1 {
-		t.Fatalf("期望 1 个 change，got %d", len(list))
+	if len(list) != 1 || !list[0].Archive {
+		t.Fatalf("期望 1 个归档项，got %+v", list)
 	}
-	if !list[0].Sealed || list[0].Stale {
-		t.Errorf("提交后改动已落地，证据应仍有效，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
+	if list[0].Stale || list[0].Stage != StageArchived {
+		t.Errorf("归档项不应因后续提交判失效，got stale=%v stage=%v", list[0].Stale, list[0].Stage)
+	}
+}
+
+// 四份产物缺一份就不算填完：verify 要拒绝，而不是拿三份+一个判据封印。
+func TestVerify_RefusesMissingDocs(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	if err := os.Remove(filepath.Join(dir, FileDesign)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil {
+		t.Fatal("缺少 design.md 时 verify 应拒绝")
+	}
+	if !strings.Contains(err.Error(), FileDesign) {
+		t.Errorf("错误应点名缺失的文件，got %v", err)
 	}
 }
 
