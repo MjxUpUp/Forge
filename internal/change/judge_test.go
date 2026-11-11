@@ -124,6 +124,11 @@ func TestLintJudgeRejectsCompoundPrograms(t *testing.T) {
 		"true",
 		":",
 		"exit 0",
+		"/usr/bin/true",
+		"true true",
+		"sudo -u root bash -c 'false || true'",
+		"find . -maxdepth 0 -exec bash -c 'false || true' {} \\;",
+		"{ eval 'false || true'; }",
 	}
 	for _, cmd := range bad {
 		if err := lintJudge(cmd); err == nil {
@@ -142,6 +147,7 @@ func TestLintJudgeAllowsLookalikeArguments(t *testing.T) {
 		"go test ./... -c",
 		"go build ./...",
 		"timeout 300 go test ./...",
+		"command -v go",
 	}
 	for _, cmd := range ok {
 		if err := lintJudge(cmd); err != nil {
