@@ -2,6 +2,7 @@ package change
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -25,7 +26,9 @@ func shellWords(s string) []word {
 	var quote byte
 	atCmd := true
 	flush := func() {
-		if inWord || cur.Len() > 0 {
+		// 只写了 inWord：cur 只在置 inWord 时写入，两个条件是同一件事，
+		// 留着 || 会让变异测试拿这个恒等改写当"存活"。
+		if inWord {
 			out = append(out, word{val: cur.String(), cmd: atCmd})
 			atCmd = false
 		}
@@ -383,13 +386,310 @@ func compound(code string, words []word) error {
 //
 // 这套检查拦的是常见写法，不是沙箱：判据里刻意做间接调用（脚本里再开 shell、
 // 变量拼命令）仍然可能骗过它。判据越直白，证据越可信。
+// lexJudge 按 shell 的词法规则把判据拆成两份视图，顺便报出有没有执行命令的构造。
+//
+// 先 cook 再 scan：cook 去掉注释与行尾续行（shell 在词法阶段就把「反斜杠+换行」
+// 删掉，`"$\<换行>(x)"` 实际就是 `"$(x)"`），scan 在剩下的代码上认引号、算术
+// 与命令替换。两件事分开做，就不会出现「续行把注释行拼进代码」这种错位。
+//
+//   - code：引号内内容与算术展开抹成空格，转义字符换成 \x01 占位。操作符检查
+//     （||、管道、后台 &）和 compound 看这份：`echo "a||b"`、`echo a\|b` 都是字面量。
+//   - cooked：只去过注释与续行，引号与转义原样保留，交给 shellWords 拆词做关键词检查。
+//
+// cmdSub 报告"会执行命令且失败看不见"的构造：`$( )`、反引号、进程替换 `<( )`/`>( )`。
+// 算术展开 `$(( ))` 不算，但内部套的 `$( )` 算。`$` 号按 bash 语义成对消耗：`$$`
+// 是 PID，后跟的括号是字面量；`$$$(` 里前两个是 PID、第三个开替换，所以按 i 处
+// 连续 `$` 的个数判奇偶——奇数才是命令替换。
+func lexJudge(s string) (code, cooked string, cmdSub bool) {
+	cooked = cookJudge(s)
+	var b strings.Builder
+	var quote byte
+	arith := 0
+	dollars := 0 // 连续未转义 $ 的个数：bash 成对消耗，奇数才开替换
+	for i := 0; i < len(cooked); i++ {
+		c := cooked[i]
+		if arith > 0 {
+			// 算术表达式按 bash 的规则像双引号一样处理：里面的 '、"都不起引号作用，
+			// 所以 `$(( '$(touch x)' ))` 里的替换照样执行——单引号不能当豁免。
+			if c == '`' {
+				cmdSub = true
+			}
+			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '\'' {
+				// 算术里 $'\x24(...)' 解码后就是 $( )，会真执行。
+				v, end := ansiC(cooked, i)
+				if strings.Contains(v, "$(") || strings.Contains(v, "`") {
+					cmdSub = true
+				}
+				b.WriteString(strings.Repeat(" ", end-i+1))
+				i = end
+				continue
+			}
+			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
+				if i+2 < len(cooked) && cooked[i+2] == '(' {
+					arith += 2
+					b.WriteString("   ")
+					i += 2
+					continue
+				}
+				cmdSub = true
+			}
+			if c == '(' {
+				arith++
+			} else if c == ')' {
+				arith--
+			}
+			b.WriteByte(' ')
+			continue
+		}
+		if c == '$' && i+1 < len(cooked) && cooked[i+1] == '\'' {
+			// 外层 $'...' 是 ANSI-C 引号：转义解码后是字面量，不做替换——整段跳过，
+			// 但必须按 ANSI-C 规则走到收尾引号，否则收尾的 ' 会被当成开引号，把
+			// 后面的真 $( ) 一起抹掉。
+			_, end := ansiC(cooked, i)
+			b.WriteString(strings.Repeat(" ", end-i+1))
+			i = end
+			continue
+		}
+		if quote == '\'' {
+			b.WriteByte(' ')
+			if c == '\'' {
+				quote = 0
+			}
+			dollars = 0
+			continue
+		}
+		if quote == '"' {
+			if c == '\\' && i+1 < len(cooked) {
+				// 转义的 $ 是字面量，不参与配对。
+				b.WriteString("  ")
+				i++
+				dollars = 0
+				continue
+			}
+			if c == '"' {
+				quote = 0
+				b.WriteByte(' ')
+				dollars = 0
+				continue
+			}
+			if c == '`' {
+				cmdSub = true
+			}
+			if c == '$' {
+				dollars++
+			} else {
+				dollars = 0
+			}
+			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
+				if i+2 < len(cooked) && cooked[i+2] == '(' {
+					arith += 2
+					b.WriteString("   ")
+					i += 2
+					dollars = 0
+					continue
+				}
+				if dollars%2 == 1 {
+					cmdSub = true
+				}
+			}
+			b.WriteByte(' ')
+			continue
+		}
+		// 引号外
+		if c == '\\' && i+1 < len(cooked) {
+			b.WriteString("\x01 ")
+			i++
+			dollars = 0
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			b.WriteByte(' ')
+			dollars = 0
+			continue
+		}
+		if c == '`' {
+			cmdSub = true
+		}
+		if c == '$' {
+			dollars++
+		} else {
+			dollars = 0
+		}
+		if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
+			if i+2 < len(cooked) && cooked[i+2] == '(' {
+				arith += 2
+				b.WriteString("   ")
+				i += 2
+				dollars = 0
+				continue
+			}
+			if dollars%2 == 1 {
+				cmdSub = true
+			}
+		}
+		if arith == 0 && (c == '<' || c == '>') && i+1 < len(cooked) && cooked[i+1] == '(' {
+			cmdSub = true
+		}
+		b.WriteByte(c)
+	}
+	return b.String(), cooked, cmdSub
+}
+
+// ansiC 解 $'...' 并返回内容与收尾引号位置。只关心会影响替换识别的转义：
+// \xHH、\NNN、\uHHHH 解成对应字符，\' 与 \\ 按字面量处理，其余单字符转义原样保留。
+func ansiC(s string, i int) (string, int) {
+	var out []byte
+	for j := i + 2; j < len(s); j++ {
+		c := s[j]
+		if c == '\'' {
+			return string(out), j
+		}
+		if c != '\\' || j+1 >= len(s) {
+			out = append(out, c)
+			continue
+		}
+		j++
+		switch s[j] {
+		case 'x', 'u', 'U':
+			width, base := 2, 16
+			if s[j] == 'u' {
+				width = 4
+			} else if s[j] == 'U' {
+				width = 8
+			}
+			var buf []byte
+			for k := 0; k < width && j+1 < len(s) && isBase(s[j+1], base); k++ {
+				j++
+				buf = append(buf, s[j])
+			}
+			if v, err := strconv.ParseUint(string(buf), 16, 32); err == nil && v > 0 && v < 0x110000 {
+				out = append(out, []byte(string(rune(v)))...)
+			}
+		case '0', '1', '2', '3', '4', '5', '6', '7':
+			var buf []byte
+			for k := 0; k < 3 && j < len(s) && s[j] >= '0' && s[j] <= '7'; k++ {
+				if k > 0 {
+					j++
+				}
+				if j < len(s) && s[j] >= '0' && s[j] <= '7' {
+					buf = append(buf, s[j])
+				}
+			}
+			if v, err := strconv.ParseUint(string(buf), 8, 32); err == nil {
+				out = append(out, byte(v))
+			}
+		default:
+			out = append(out, s[j])
+		}
+	}
+	return string(out), len(s) - 1
+}
+
+func isBase(b byte, base int) bool {
+	if base == 16 {
+		return isHex(b)
+	}
+	return b >= '0' && b <= '9'
+}
+
+// cookJudge 去掉注释、删掉行尾续行（单引号里除外），返回 shell 真正看到的代码。
+// 注释只在词首成立：`foo#bar` 里的 # 是普通字符；转义的空白/元字符之后的 # 也是字面量。
+func cookJudge(s string) string {
+	var b strings.Builder
+	var quote byte
+	inComment := false
+	wordStart := true
+	arith := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\n' {
+			inComment = false
+			wordStart = true
+			b.WriteByte(c)
+			continue
+		}
+		if inComment {
+			continue
+		}
+		if c == '\\' && quote != '\'' && i+1 < len(s) && s[i+1] == '\n' {
+			// 单引号外的「反斜杠+换行」在词法阶段就消失。
+			i++
+			continue
+		}
+		if quote == '\'' {
+			b.WriteByte(c)
+			if c == '\'' {
+				quote = 0
+			}
+			continue
+		}
+		if quote == '"' {
+			b.WriteByte(c)
+			if c == '\\' && i+1 < len(s) {
+				b.WriteByte(s[i+1])
+				i++
+				continue
+			}
+			if c == '"' {
+				quote = 0
+			}
+			continue
+		}
+		if c == '\\' && i+1 < len(s) {
+			b.WriteString(s[i : i+2])
+			i++
+			wordStart = false
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			b.WriteByte(c)
+			wordStart = false
+			continue
+		}
+		if c == '#' && wordStart {
+			inComment = true
+			continue
+		}
+		if c == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
+			// 算术展开：内部的 ) 属于同一个词，`$((1+0))#` 的 # 是字面量。
+			b.WriteString("$((")
+			i += 2
+			arith += 2
+			wordStart = false
+			continue
+		}
+		if arith > 0 {
+			b.WriteByte(c)
+			if c == '(' {
+				arith++
+			} else if c == ')' {
+				arith--
+			}
+			continue
+		}
+		b.WriteByte(c)
+		switch c {
+		case ' ', '\t', ';', '&', '|', '(':
+			wordStart = true
+		case ')':
+			wordStart = true
+		default:
+			wordStart = false
+		}
+	}
+	return b.String()
+}
+
 func lintJudge(cmd string) error {
-	s := stripQuoted(cmd)
+	code, cooked, cmdSub := lexJudge(cmd)
+	if cmdSub {
+		return fmt.Errorf("判据里不要用 `$( )`/反引号命令替换，也不要用进程替换 `<( )`/`>( )`——双引号里命令替换照样执行，而它们的失败都不会让命令本身非零；只有单引号里才是字面量（算术表达式例外：`$(( ... ))` 里按双引号规则处理，单引号不豁免）")
+	}
 	// ${IFS} 是空格的字面写法，`bash${IFS}-c` 在 shell 里就是 `bash -c`。
-	normalized := strings.ReplaceAll(strings.ReplaceAll(cmd, "${IFS}", " "), "$IFS", " ")
-	s = strings.ReplaceAll(s, "${IFS}", " ")
-	s = strings.ReplaceAll(s, "$IFS", " ")
-	words := shellWords(normalized)
+	words := shellWords(strings.ReplaceAll(strings.ReplaceAll(cooked, "${IFS}", " "), "$IFS", " "))
+	s := code
 	if err := compound(s, words); err != nil {
 		return err
 	}
@@ -410,4 +710,8 @@ func lintJudge(cmd string) error {
 		return fmt.Errorf("判据里不能再调用一层 shell（`bash -c`、`bash -lc`、`/bin/sh -c` 都算：内层 shell 不受 pipefail 约束）")
 	}
 	return nil
+}
+
+func isHex(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 }
