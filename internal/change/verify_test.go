@@ -2,6 +2,7 @@ package change
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -674,6 +675,36 @@ func TestLoad_RejectsSummaryWithoutChecks(t *testing.T) {
 	}
 }
 
+// summary 说 sealed，checks 里却写着 exit:1——封印必须逐条对上退出码。
+func TestLoad_RejectsSummaryWithFailingCheck(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	acc, err := os.ReadFile(filepath.Join(dir, FileAcceptance))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := filepath.Join(dir, EvidenceDirName, "20260101T000000Z")
+	if err := os.MkdirAll(ev, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sum := Summary{
+		Change: "demo", Passed: true, Sealed: true,
+		AcceptanceSHA256: hashBytes(acc),
+		Checks:           []Check{{Index: 1, Command: "go build ./...", Exit: 1}},
+	}
+	raw, _ := json.Marshal(sum)
+	writeFile(t, filepath.Join(ev, SummaryFile), string(raw))
+	c, _, err := Load(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Sealed {
+		t.Errorf("checks 有非零退出码的摘要不能封印，got %+v", c)
+	}
+	if !c.Failed {
+		t.Error("最新一次没通过应标记 Failed，才能和\"从未验证\"区分开")
+	}
+}
+
 // 归档目录里的证据同样是证据，不能算进被验证内容。
 func TestWorktreeFingerprint_IgnoresArchivedEvidence(t *testing.T) {
 	root := newGitRepo(t)
@@ -970,11 +1001,19 @@ func TestVerify_RejectsTraversalIDBeforeTouch(t *testing.T) {
 }
 
 // 文档里的示例围栏（HTML 注释里、四空格缩进的代码块）不是判据。
-func TestParseAcceptance_IgnoresExampleFences(t *testing.T) {
-	md := "# 判据\n\n<!--\n```bash\nfalse\n```\n-->\n\n     ```bash\n    false\n     ```\n\n```bash\ntrue\n```\n"
+func TestParseAcceptance_IndentedFenceIsReal(t *testing.T) {
+	// 列表项里的围栏天生缩进四格：它是真判据，不能像早先那样当示例静默丢掉
+	// （review 实测过"两条只跑一条却报全部通过"）。HTML 注释里的才是示例。
+	md := "# 判据\n\n<!--\n```bash\nfalse\n```\n-->\n\n- 步骤一：\n\n    ```bash\n    go build ./...\n    ```\n\n```bash\ntrue\n```\n"
 	acc := ParseAcceptance([]byte(md))
-	if len(acc.Commands) != 1 || !strings.Contains(acc.Commands[0].Body, "true") {
-		t.Fatalf("只该认最后那条真围栏，got %+v", acc.Commands)
+	if len(acc.Commands) != 2 {
+		t.Fatalf("缩进围栏也要算判据，got %+v", acc.Commands)
+	}
+	if acc.Commands[0].Body != "go build ./..." {
+		t.Errorf("缩进没去掉：%q", acc.Commands[0].Body)
+	}
+	if acc.Commands[1].Body != "true" {
+		t.Errorf("第二条错：%q", acc.Commands[1].Body)
 	}
 }
 

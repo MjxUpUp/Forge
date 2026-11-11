@@ -102,3 +102,42 @@ func TestLintJudgeAllowsQuotedOperators(t *testing.T) {
 		t.Error("引号外的 || 应被拒")
 	}
 }
+
+// 判据只该是"跑一条命令、看退出码"。条件、串联、替换都会让退出码不再代表
+// 判据本身——`test -f x && echo ok` 后面再跟一行，整段就是 0。
+func TestLintJudgeRejectsCompoundPrograms(t *testing.T) {
+	bad := []string{
+		"test -f x && echo ok",
+		"if ! test -f x; then echo missing; fi",
+		"for f in a b; do test -f $f; done",
+		"! grep -q foo bar.txt",
+		"command eval 'false || true'",
+		"FOO=1 eval 'false || true'",
+		"echo $(false)",
+		"echo `false`",
+		"bash >/dev/null -c 'false | true'",
+		"bash \\\n-c 'false | true'",
+	}
+	for _, cmd := range bad {
+		if err := lintJudge(cmd); err == nil {
+			t.Errorf("应被拒绝：%q", cmd)
+		}
+	}
+}
+
+// 反过来，参数里出现 bash/eval/sh -c 的字面量不是违规：判据是 grep，不是
+// 它搜索的文本。命令位置才是关键词。
+func TestLintJudgeAllowsLookalikeArguments(t *testing.T) {
+	ok := []string{
+		"grep -rn eval internal/",
+		"grep -n \"sh -c\" README.md",
+		"echo bash -c",
+		"go test ./... -c",
+		"go build ./...",
+	}
+	for _, cmd := range ok {
+		if err := lintJudge(cmd); err != nil {
+			t.Errorf("不该被拒：%q（%v）", cmd, err)
+		}
+	}
+}
