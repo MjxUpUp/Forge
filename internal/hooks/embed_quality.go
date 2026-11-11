@@ -174,19 +174,23 @@ if printf '%s' "$NEW_TEXT" | grep -qE 't\.Skip(f)?\(' 2>/dev/null; then
 fi
 
 # Rust: #[ignore] added
-printf '%s' "$NEW_TEXT" | grep -qE '#\[ignore\]' 2>/dev/null && \
+if printf '%s' "$NEW_TEXT" | grep -qE '#\[ignore\]' 2>/dev/null; then
   VIOLATIONS="${VIOLATIONS}[Rust] #[ignore] found. "
+fi
 
 # TypeScript/JavaScript: test.skip / it.skip / describe.skip
-printf '%s' "$NEW_TEXT" | grep -qE '(test|it|describe)\.skip\(' 2>/dev/null && \
+if printf '%s' "$NEW_TEXT" | grep -qE '(test|it|describe)\.skip\(' 2>/dev/null; then
   VIOLATIONS="${VIOLATIONS}[TS/JS] test/it/describe.skip found. "
+fi
 
-printf '%s' "$NEW_TEXT" | grep -qE '\bx(it|describe)\(' 2>/dev/null && \
+if printf '%s' "$NEW_TEXT" | grep -qE '\bx(it|describe)\(' 2>/dev/null; then
   VIOLATIONS="${VIOLATIONS}[TS/JS] xit/xdescribe found. "
+fi
 
 # Python: unittest.skip / pytest.mark.skip
-printf '%s' "$NEW_TEXT" | grep -qE '@(unittest\.skip|pytest\.mark\.skip)' 2>/dev/null && \
+if printf '%s' "$NEW_TEXT" | grep -qE '@(unittest\.skip|pytest\.mark\.skip)' 2>/dev/null; then
   VIOLATIONS="${VIOLATIONS}[Python] skip decorator found. "
+fi
 
 # 净删除检查（OLD_TEXT vs NEW_TEXT）：t.Fatal / assert! 只报**净减少**——
 # 改一行断言（如 expected 4 -> 5）删添等量，net zero 不是弱化（旧 false-positive
@@ -245,10 +249,12 @@ if [ -z "$FILE_PATH" ] && git rev-parse --git-dir >/dev/null 2>&1; then
     if [ "${skip_total:-0}" -gt "${skip_rationale:-0}" ]; then
       VIOLATIONS="${VIOLATIONS}[Go] t.Skip added without rationale in ${label}. "
     fi
-    printf '%s' "$diff" | grep -qE '^\+.*#\[ignore\]' 2>/dev/null && \
+    if printf '%s' "$diff" | grep -qE '^\+.*#\[ignore\]' 2>/dev/null; then
       VIOLATIONS="${VIOLATIONS}[Rust] #[ignore] added in ${label}. "
-    printf '%s' "$diff" | grep -qE '^\+.*\b(test|it|describe)\.skip\(' 2>/dev/null && \
+    fi
+    if printf '%s' "$diff" | grep -qE '^\+.*\b(test|it|describe)\.skip\(' 2>/dev/null; then
       VIOLATIONS="${VIOLATIONS}[TS/JS] .skip() added in ${label}. "
+    fi
     local tauto_add
     tauto_add=$(printf '%s' "$diff" | grep -cE "^\+.*${TAUTO_PAT}" 2>/dev/null || true)
     if [ "${tauto_add:-0}" -gt 0 ]; then
@@ -289,7 +295,7 @@ if [ -n "$VIOLATIONS" ]; then
     if [ -n "$_FP" ] && [ -f "$_SEEN" ] && grep -qxF "$_FP" "$_SEEN" 2>/dev/null; then
       _SUPPRESSED=1
     else
-      [ -n "$_FP" ] && printf '%s\n' "$_FP" >> "$_SEEN" 2>/dev/null
+      if [ -n "$_FP" ]; then printf '%s\n' "$_FP" >> "$_SEEN" 2>/dev/null; fi
     fi
   fi
   if [ "$_SUPPRESSED" = "1" ]; then
