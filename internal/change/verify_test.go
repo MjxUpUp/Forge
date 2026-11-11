@@ -566,21 +566,14 @@ func TestVerify_RefusesUnfilledScaffold(t *testing.T) {
 	}
 }
 
-// pipefail：`false | true` 在只有 set -e 时退出码是 0（tail 出口），
-// 这条测试钉住"管道里的失败不能被下游命令吃掉"。
-func TestVerify_PipelineFailureNotSealed(t *testing.T) {
-	requireBash(t)
+// 管道被解析期拒绝：sh 环境没有 pipefail，`false | true` 会直接重演成假绿，
+// 与其靠运行时兜，不如让这种写法根本进不了执行。
+func TestVerify_RejectsPipe(t *testing.T) {
 	root, dir := repoWithChange(t, "demo")
 	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\nfalse | true\n```\n")
-	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
-	if err != nil {
-		t.Fatalf("Verify: %v", err)
-	}
-	if res.Summary.Sealed {
-		t.Error("管道里的失败不应被封成通过")
-	}
-	if res.Summary.Checks[0].Exit == 0 {
-		t.Error("退出码应为非零")
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "管道") {
+		t.Fatalf("管道应被拒绝，got %v", err)
 	}
 }
 
@@ -690,5 +683,82 @@ func TestWorktreeFingerprint_IgnoresArchivedEvidence(t *testing.T) {
 		if strings.Contains(filepath.ToSlash(f.Path), "/evidence/") {
 			t.Errorf("归档证据不应计入指纹：%s", f.Path)
 		}
+	}
+}
+
+// 模板里写着"禁止用 || / set +e / 嵌套 shell"，verify 必须真的拒绝，
+// 否则这句禁令只是劝告。
+func TestVerify_RejectsForbiddenShellForms(t *testing.T) {
+	for _, cmd := range []string{
+		"false || true",
+		"false &",
+		"set +e; false; true",
+		"bash -c 'exit 0'",
+		"sh -c 'false | true'",
+	} {
+		root, dir := repoWithChange(t, "demo")
+		writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n"+cmd+"\n```\n")
+		_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+		if err == nil || !strings.Contains(err.Error(), "判据里不能") {
+			t.Errorf("%q 应被判据检查拒绝，got %v", cmd, err)
+		}
+	}
+}
+
+// 引号里的 || 是字面量，不是操作符，不能误杀。
+func TestVerify_AllowsQuotedOperatorLiteral(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho \"a||b\"\n```\n")
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatalf("引号内的 || 不该被拒绝：%v", err)
+	}
+}
+
+// 注释以反斜杠结尾会吞掉下一行；看起来有语句，实际永远不会执行。
+func TestVerify_RejectsCommentContinuation(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n# TODO \\\ntrue\n```\n")
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "注释") {
+		t.Fatalf("反斜杠续行的注释不是判据，got %v", err)
+	}
+}
+
+// 协议第 5 步是"提交"：干净工作区 verify 后提交的如果只有证据，
+// 不能把刚封印的证据判成失效，否则人永远收不了尾。
+func TestList_NotStaleAfterCommittingEvidence(t *testing.T) {
+	requireBash(t)
+	root := newGitRepo(t)
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillScaffold(t, dir)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "spec")
+
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "evidence")
+
+	list, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("期望 1 个 change，got %d", len(list))
+	}
+	if !list[0].Sealed || list[0].Stale {
+		t.Errorf("只提交证据不该判失效，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
+	}
+	if list[0].BoundHead == "" {
+		t.Error("封印应记录绑定的 commit")
 	}
 }
