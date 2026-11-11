@@ -27,7 +27,10 @@ const DefaultCheckTimeout = 10 * time.Minute
 
 // Check 是一条验收命令的实跑记录（证据目录里另存 stdout/stderr 原文）。
 type Check struct {
-	Index      int    `json:"index"`
+	Index int `json:"index"`
+	// Shell 记录这条判据实际用的壳（bash/sh）。证据要能回答"它到底在哪个
+	// 解释器里跑过"，否则 per-fence 选壳只是实现细节，审计时看不出来。
+	Shell      string `json:"shell,omitempty"`
 	Command    string `json:"command"`
 	Exit       int    `json:"exit"`
 	DurationMS int64  `json:"duration_ms"`
@@ -217,7 +220,7 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	}
 	passed := true
 	for i, cmd := range acc.Commands {
-		check := Check{Index: i + 1, Command: cmd.Body}
+		check := Check{Index: i + 1, Shell: cmd.Shell, Command: cmd.Body}
 		if !passed {
 			check.Skipped = true
 			sum.Checks = append(sum.Checks, check)
@@ -604,6 +607,14 @@ func stripQuoted(s string) string {
 	inComment := false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
+		if c == '\n' {
+			// 注释和引号都不跨行：不重置会把注释之后的整段判据都抹掉，
+			// 判据检查就成了摆设。
+			inComment = false
+			quote = 0
+			b.WriteByte(c)
+			continue
+		}
 		if inComment {
 			b.WriteByte(' ')
 			continue
