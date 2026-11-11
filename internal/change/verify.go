@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -176,6 +177,9 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	for _, cmd := range acc.Commands {
 		if !hasExecutableLine(cmd) {
 			return nil, fmt.Errorf("change: %s 里有一条围栏只有注释/空行——注释不是判据", relTo(root, accPath))
+		}
+		if err := lintJudge(cmd); err != nil {
+			return nil, fmt.Errorf("change: %s: %w", relTo(root, accPath), err)
 		}
 	}
 
@@ -529,10 +533,91 @@ func docProblems(dir string) []string {
 
 // hasExecutableLine 判断一段围栏里有没有真正会被执行的语句。
 // 只有注释和空行的围栏跑起来必然退出 0，不能算判据。
+//
+// 注释行以反斜杠结尾时 bash 会把下一行并入注释（`# TODO \` + `true` 永远
+// 不执行），所以续行也要跳过。
 func hasExecutableLine(cmd string) bool {
+	inComment := false
 	for _, line := range strings.Split(cmd, "\n") {
 		t := strings.TrimSpace(line)
-		if t == "" || strings.HasPrefix(t, "#") {
+		if inComment || strings.HasPrefix(t, "#") {
+			inComment = strings.HasSuffix(t, "\\")
+			continue
+		}
+		if t == "" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// nestedShellRE 匹配"再套一层 shell"的写法：内层 shell 不继承 pipefail，
+// 一道 `bash -c 'false | true'` 就能把失败变成 0。
+var nestedShellRE = regexp.MustCompile(`(^|[\s;&|(])(bash|sh|zsh|dash|pwsh|powershell)\s+-c(\s|$)`)
+
+// lintJudge 拒绝那些能把失败变成 0 的写法。
+//
+// 文档里的"禁止"必须由机器执行：只写在模板里，agent 换个写法照样封印。
+// 只检查引号外的操作符——`echo "a||b"` 这类字面量不算。
+func lintJudge(cmd string) error {
+	s := stripQuoted(cmd)
+	switch {
+	case strings.Contains(s, "||"):
+		return fmt.Errorf("判据里不能用 `||`（它会把前一条的失败咽掉）；用 `&&` 串联，或把逻辑写进脚本")
+	case strings.Contains(s, "|"):
+		return fmt.Errorf("判据里不要用管道 `|`——需要看输出就写进文件，或把逻辑写进脚本（sh 环境没有 pipefail，管道失败会变成通过）")
+	case hasSingleAmpersand(s):
+		return fmt.Errorf("判据里不能用后台 `&`（后台任务的失败不会被等待）；要并行请写进脚本并 wait")
+	case strings.Contains(s, "set +e"):
+		return fmt.Errorf("判据里不能用 `set +e`（等于允许失败）")
+	case nestedShellRE.MatchString(s):
+		return fmt.Errorf("判据里不能再套一层 `bash -c`/`sh -c`（内层 shell 不受 pipefail 约束）")
+	}
+	return nil
+}
+
+// stripQuoted 把引号内的内容抹成空格，只留下引号外的操作符供检查。
+func stripQuoted(s string) string {
+	var b strings.Builder
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			b.WriteByte(' ')
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			b.WriteByte(' ')
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// hasSingleAmpersand 判断有没有单个 `&`（放行 `&&`、`>&`、`&>`）。
+func hasSingleAmpersand(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] != '&' {
+			continue
+		}
+		var prev, next byte
+		if i > 0 {
+			prev = s[i-1]
+		}
+		if i+1 < len(s) {
+			next = s[i+1]
+		}
+		if next == '&' {
+			i++
+			continue
+		}
+		if prev == '>' || next == '>' {
 			continue
 		}
 		return true
