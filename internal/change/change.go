@@ -381,8 +381,10 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 			c.Latest = names[len(names)-1]
 			c.LatestDir = filepath.Join(evDir, c.Latest)
 			if sum, serr := loadSummary(c.LatestDir); serr == nil {
-				c.Sealed = sum.Sealed
-				c.DiffBound = sum.DiffSHA256 != ""
+				// 封印必须自洽：一份声称通过、却没有任何实跑记录的摘要
+				// （手写或残缺）不能对外宣称已验证。
+				c.Sealed = sum.Sealed && len(sum.Checks) > 0
+				c.DiffBound = sum.DiffBound
 				stale := false
 				// 判据漂移：acceptance.md 改过或者被删掉，旧证据都不再代表当前验收标准。
 				if !c.HasAcceptance {

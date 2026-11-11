@@ -621,3 +621,74 @@ func TestLoad_StaleAfterEditPostCommit(t *testing.T) {
 		t.Errorf("提交后又改了被验证文件，证据应失效，got %+v", items[0])
 	}
 }
+
+// 注释不是判据：一条围栏里只有注释/空行时执行必然退出 0，不能拿来封印。
+func TestVerify_RejectsCommentOnlyFence(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n# TODO 以后补\n\n```\n")
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "注释") {
+		t.Fatalf("只有注释的围栏应被拒绝，got %v", err)
+	}
+}
+
+// 证据是命令跑完后这个工作区的快照：验收命令自己生成的文件不该让证据
+// 刚封印就被 list 判成失效。
+func TestVerify_FingerprintTakenAfterCommands(t *testing.T) {
+	requireBash(t)
+	root := newGitRepo(t)
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillScaffold(t, dir)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\nprintf 'x\\n' > artifact.txt\n```\n")
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := Load(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.Sealed || c.Stale {
+		t.Errorf("命令产物应计入封印后的工作区，got sealed=%v stale=%v", c.Sealed, c.Stale)
+	}
+}
+
+// 一份声称通过、却没有实跑记录的 summary（手写或残缺）不能冒充封印。
+func TestLoad_RejectsSummaryWithoutChecks(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	ev := filepath.Join(dir, EvidenceDirName, "20260101T000000Z")
+	if err := os.MkdirAll(ev, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(ev, SummaryFile),
+		`{"change":"demo","sealed":true,"diff_sha256":"abc","acceptance_sha256":""}`)
+	c, _, err := Load(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Sealed {
+		t.Errorf("没有 checks 的摘要不应被当成封印，got %+v", c)
+	}
+}
+
+// 归档目录里的证据同样是证据，不能算进被验证内容。
+func TestWorktreeFingerprint_IgnoresArchivedEvidence(t *testing.T) {
+	root := newGitRepo(t)
+	archived := filepath.Join(ChangesDir(root), ArchiveDirName, "20260101-demo", EvidenceDirName, "20260101T000000Z")
+	writeFile(t, filepath.Join(archived, "01.stdout"), "ok\n")
+	fp := WorktreeFingerprint(root)
+	if !fp.OK {
+		t.Fatalf("git 仓库应能取指纹：%+v", fp)
+	}
+	for _, f := range fp.Files {
+		if strings.Contains(filepath.ToSlash(f.Path), "/evidence/") {
+			t.Errorf("归档证据不应计入指纹：%s", f.Path)
+		}
+	}
+}
