@@ -28,6 +28,10 @@ func TestParseAcceptance_CommandsAndManualItems(t *testing.T) {
 	if len(acc.Manual) != 2 || acc.Manual[0] != "人工 A" || acc.Manual[1] != "宽松 C" {
 		t.Errorf("人工项提取错误：%v", acc.Manual)
 	}
+	// 勾选过的人工项既不进判据，也不该从报告里消失。
+	if len(acc.ManualDone) != 1 || acc.ManualDone[0] != "已做 B" {
+		t.Errorf("已勾选人工项提取错误：%v", acc.ManualDone)
+	}
 }
 
 func TestParseAcceptance_MultilineCommand(t *testing.T) {
