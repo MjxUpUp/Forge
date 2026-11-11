@@ -155,3 +155,248 @@ func TestLintJudgeAllowsLookalikeArguments(t *testing.T) {
 		}
 	}
 }
+
+func TestLintJudgeRejectsSubstitutionInDoubleQuotes(t *testing.T) {
+	// 双引号里的替换在 shell 里照样执行：抹掉引号内容再查会漏掉它。
+	for _, cmd := range []string{
+		`echo "$(false)"`,
+		`printf "%s" "$(false)"`,
+		"echo \"`false`\"",
+		`go test "$(echo ./internal/change/)"`,
+	} {
+		if err := lintJudge(cmd); err == nil || !strings.Contains(err.Error(), "命令替换") {
+			t.Fatalf("%q must be rejected for command substitution, got %v", cmd, err)
+		}
+	}
+	// 单引号里是字面量，不该误杀。
+	if err := lintJudge(`echo '$(false)'`); err != nil {
+		t.Fatalf("single-quoted text must stay allowed: %v", err)
+	}
+}
+
+func TestLintJudgeCommentDoesNotShiftQuotes(t *testing.T) {
+	// 注释里落单的引号不该把引号状态带进下一行——那是 review 找到的绕过：
+	// `# don't` 之后的 `echo "$(false)"` 曾经直接封印。
+	reject := []string{
+		"# don't\necho \"$(false)\"",
+		"echo ok # \"\necho \"$(false)\"",
+		"echo ok # it's fine\nprintf '%s' \"$(false)\"",
+	}
+	for _, cmd := range reject {
+		if err := lintJudge(cmd); err == nil || !strings.Contains(err.Error(), "命令替换") {
+			t.Fatalf("%q must be rejected despite comments, got %v", cmd, err)
+		}
+	}
+	// 注释里的替换是字面量，不该误杀。
+	for _, cmd := range []string{
+		"echo ok # \"$(false)\"",
+		"echo ok # don't run $(false)",
+	} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q is only a comment, got %v", cmd, err)
+		}
+	}
+	// `foo#bar` 里的 `#` 不是注释。
+	if err := lintJudge("echo foo#bar; echo \"$(false)\""); err == nil {
+		t.Fatalf("`#` mid-word is not a comment; substitution must be rejected")
+	}
+}
+
+func TestLintJudgeLineContinuationAndArithmetic(t *testing.T) {
+	// bash 在词法阶段删掉「反斜杠+换行」：这两行在 shell 里就是 `echo "$(false)"`。
+	joined := "echo \"$\\\n(false)\""
+	if err := lintJudge(joined); err == nil || !strings.Contains(err.Error(), "命令替换") {
+		t.Fatalf("backslash-newline continuation must be rejected, got %v", err)
+	}
+	// 单引号里的反斜杠+换行是字面量，不该误杀。
+	if err := lintJudge("echo 'a\\\nb'"); err != nil {
+		t.Fatalf("single-quoted continuation is literal: %v", err)
+	}
+	// 算术展开不是命令替换。
+	for _, cmd := range []string{`echo "$((1+0))"`, `test "$((1+1))" -eq 2`, `echo $((2*3))`} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q is arithmetic, not substitution: %v", cmd, err)
+		}
+	}
+	// 算术里套命令替换仍要拒。
+	if err := lintJudge(`echo "$(( $(false) ))"`); err == nil {
+		t.Fatalf("nested command substitution inside arithmetic must be rejected")
+	}
+}
+
+func TestLintJudgeEscapedSpaceBeforeHash(t *testing.T) {
+	// shell 里 `foo\ #` 的空格是字面量，`#` 不是注释开头，后面的 $(false) 真会执行。
+	for _, cmd := range []string{
+		`echo foo\ #; echo $(false)`,
+		`echo foo\ #; echo "$(false)"`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: escaped space makes # literal, substitution must be rejected", cmd)
+		}
+	}
+	// 真注释里的替换不该误杀。
+	if err := lintJudge(`echo foo # $(false)`); err != nil {
+		t.Fatalf("plain comment must stay allowed: %v", err)
+	}
+}
+
+func TestLintJudgeHashAfterArithmeticIsLiteral(t *testing.T) {
+	// `$((1+0))#` 的 `#` 紧贴 `)`，是字面量不是注释，后面的替换真会执行。
+	if err := lintJudge(`echo $((1+0))#; echo "$(false)"`); err == nil {
+		t.Fatalf("hash right after arithmetic is literal, substitution must be rejected")
+	}
+	// 真正的行首/空白后注释仍放行。
+	if err := lintJudge(`echo $((1+0)) # $(false)`); err != nil {
+		t.Fatalf("comment after a space is still a comment: %v", err)
+	}
+}
+
+func TestLintJudgeCommentAndContinuationInterplay(t *testing.T) {
+	// 注释在换行处就结束，行尾反斜杠不会把注释续到下一行——下一行照跑。
+	for _, cmd := range []string{
+		"# note \\\necho \"$(touch pwned)\"",
+		"echo ok # note \\\necho \"$(touch pwned)\"",
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: comment ends at newline, substitution on next line must be rejected", cmd)
+		}
+	}
+	// 转义的分号/与号/管道/左括号都是字面量，紧跟的 # 不是注释。
+	for _, cmd := range []string{
+		`echo a\;#$(touch pwned)`,
+		`echo a\&#$(touch pwned)`,
+		`echo a\|#$(touch pwned)`,
+		`echo a\(#$(touch pwned)`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: escaped metachar makes # literal, substitution must be rejected", cmd)
+		}
+	}
+	// 子 shell 结束后的 # 是真注释。
+	if err := lintJudge(`(echo x)# $(touch pwned)`); err != nil {
+		t.Fatalf("comment after subshell must stay allowed: %v", err)
+	}
+	// $$ 是 PID，后面的括号是字面量。
+	if err := lintJudge(`echo "$$(false)"`); err != nil {
+		t.Fatalf("$$ is a pid, (false) is literal: %v", err)
+	}
+	// 进程替换会执行命令，失败看不见。
+	if err := lintJudge(`echo <(touch pwned)`); err == nil {
+		t.Fatalf("process substitution executes a command, must be rejected")
+	}
+}
+
+func TestLintJudgeDollarRunsAndArithmeticLeak(t *testing.T) {
+	// `$$` 成对消耗：奇数个 $ 才开替换。
+	for _, cmd := range []string{
+		`echo "$$$(touch pwned)"`,
+		`echo "$$$$$(touch pwned)"`,
+		`echo $$$(touch pwned)`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: an odd $ run still starts a substitution", cmd)
+		}
+	}
+	for _, cmd := range []string{
+		`echo "$$(false)"`,
+		`echo "$$$$(false)"`,
+	} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q: $ pairs are a pid, parentheses are literal: %v", cmd, err)
+		}
+	}
+	// 双引号里的算术不该吃掉后面的操作符。
+	if err := lintJudge(`echo "$((1))"; false || touch pwned`); err == nil {
+		t.Fatalf("|| after arithmetic must still be rejected")
+	}
+	if err := lintJudge(`echo "$((1))"; false | cat`); err == nil {
+		t.Fatalf("pipe after arithmetic must still be rejected")
+	}
+	// >( ) 也是进程替换。
+	if err := lintJudge(`echo >(touch pwned)`); err == nil {
+		t.Fatalf(">( ) is process substitution too")
+	}
+	// 算术里的 < 不是进程替换：位移与比较照常。
+	for _, cmd := range []string{`echo $((1<<(2+1)))`, `echo $((1<(2)))`, `echo "$((1<<(2+1)))"`} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q: < inside arithmetic is a shift/compare: %v", cmd, err)
+		}
+	}
+}
+
+func TestLintJudgeEscapedDollarAndBacktickInArithmetic(t *testing.T) {
+	// 转义的 $ 是字面量，不参与 $$ 配对；后面的 $() 照样执行。
+	for _, cmd := range []string{
+		`echo "\$$(touch pwned)"`,
+		`echo "\\\$$(touch pwned)"`,
+		`echo \$$(touch pwned)`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: escaped $ is literal, following substitution must be rejected", cmd)
+		}
+	}
+	// 算术里的反引号同样会执行。
+	for _, cmd := range []string{
+		"echo \"$(( `touch pwned` + 1 ))\"",
+		"echo $(( `touch pwned` + 1 ))",
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: backticks run inside arithmetic", cmd)
+		}
+	}
+	// 转义的 $ 加括号是字面量，不该误杀。
+	for _, cmd := range []string{`echo "\$(false)"`, `echo "$$(false)"`} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q is literal text: %v", cmd, err)
+		}
+	}
+}
+
+func TestLintJudgeQuotesInsideArithmeticAndANSI(t *testing.T) {
+	// 算术展开按双引号规则处理，里面的单引号不起引号作用——替换照样执行。
+	for _, cmd := range []string{
+		`echo $(( '$(touch pwned-a; echo 0)' ))`,
+		"echo $(( '`touch pwned-b; echo 0`' ))",
+		`echo "$(( '$(touch pwned-c; echo 0)' ))"`,
+		`echo $(( $'\x24(touch pwned-d; echo 0)' ))`,
+		`echo $(( $'\044(touch pwned-e; echo 0)' ))`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: substitution runs inside arithmetic, quotes do not shield it", cmd)
+		}
+	}
+	// $'...' 在外层是字面量，不执行替换；但不能让它把收尾引号变成开引号，
+	// 否则后面真正的 $( ) 会被一起抹掉。
+	for _, cmd := range []string{
+		`printf '%s\n' $'a\tb'; echo "$(touch pwned-desync; echo 0)"`,
+		`echo $'x'; echo $(touch pwned-desync2)`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: substitution after the ANSI-C string must still be seen", cmd)
+		}
+	}
+	// 纯字面量的 $'...' 与算术放行。
+	for _, cmd := range []string{
+		`echo $'$(touch pwned-f; echo 0)'`,
+		`printf '%s\n' $'a\tb'`,
+		`echo $(( (1+2)*3 ))`,
+		`echo $((1+0))`,
+	} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q should be allowed: %v", cmd, err)
+		}
+	}
+}
+
+func TestIsHex(t *testing.T) {
+	for _, c := range []byte{'0', '9', 'a', 'f', 'A', 'F'} {
+		if !isHex(c) {
+			t.Fatalf("%q 是十六进制数字", c)
+		}
+	}
+	for _, c := range []byte{'g', 'G', 'z', '/', ':', ' ', 0} {
+		if isHex(c) {
+			t.Fatalf("%q 不是十六进制数字", c)
+		}
+	}
+}
