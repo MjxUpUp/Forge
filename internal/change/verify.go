@@ -534,7 +534,7 @@ func docProblems(dir string) []string {
 // hasExecutableLine 判断一段围栏里有没有真正会被执行的语句。
 // 只有注释和空行的围栏跑起来必然退出 0，不能算判据。
 //
-// 注释行以反斜杠结尾时 bash 会把下一行并入注释（`# TODO \` + `true` 永远
+// 注释行以反斜杠结尾时 bash 会把下一行并入注释（`# 说明 \` 后接 `true` 永远
 // 不执行），所以续行也要跳过。
 func hasExecutableLine(cmd string) bool {
 	inComment := false

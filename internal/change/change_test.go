@@ -258,3 +258,32 @@ func writeSealedSummary(t *testing.T, changeDir string, acceptance []byte) {
 		t.Fatal(err)
 	}
 }
+
+// 中途被打断的 verify 会留下只有目录、没有 summary.json 的残迹。
+// 它不构成证据：既不能顶替真证据，也不该让人以为自己跑过。
+func TestList_IgnoresIncompleteEvidence(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, EvidenceDirName, "20260101T000000Z"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	list, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("期望 1 个 change，got %d", len(list))
+	}
+	if list[0].EvidenceCount != 0 {
+		t.Errorf("没有摘要的目录不算证据，got %d", list[0].EvidenceCount)
+	}
+	if list[0].Sealed {
+		t.Error("残迹不能算封印")
+	}
+}

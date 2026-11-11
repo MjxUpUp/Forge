@@ -395,7 +395,10 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 		var names []string
 		for _, e := range evEntries {
 			// 只认 verify 自己产出的时间戳目录；evidence/foo 之类的杂物不能顶替真证据。
-			if e.IsDir() && evidenceNameRE.MatchString(e.Name()) {
+			// 有目录没有摘要 = 那次 verify 中途被打断（Ctrl-C、管道被关、崩溃），
+			// 它不构成证据，也不该让人以为自己跑过三次。
+			if e.IsDir() && evidenceNameRE.MatchString(e.Name()) &&
+				exists(filepath.Join(evDir, e.Name(), SummaryFile)) {
 				names = append(names, e.Name())
 			}
 		}

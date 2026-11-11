@@ -141,8 +141,10 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 			note = "证据已失效（判据、被验证文件或 commit 变过），需重跑 verify"
 		case c.Sealed && !c.DiffBound:
 			note = "证据已封印，但未绑定 git 工作区（非 git 仓库，封印强度较弱）"
+		case c.Sealed && c.BoundHead != "":
+			note = fmt.Sprintf("证据已封印 @%s（其后提交不在证据范围）", shortHead(c.BoundHead))
 		case c.Sealed:
-			note = "证据已封印"
+			note = "证据已封印（未绑定 commit）"
 		case !c.HasAcceptance:
 			note = "缺少 acceptance.md"
 		}
@@ -156,6 +158,14 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 			len(bad), strings.Join(bad, "、"))
 	}
 	return nil
+}
+
+// shortHead 把 commit 缩成 7 位；空值原样返回。
+func shortHead(h string) string {
+	if len(h) > 7 {
+		return h[:7]
+	}
+	return h
 }
 
 func evidenceCell(c change.Change) string {
@@ -179,6 +189,22 @@ func runChangeVerify(cmd *cobra.Command, args []string) error {
 	root, err := changeRoot()
 	if err != nil {
 		return err
+	}
+
+	// 先读一次状态：告诉人这是首次验证还是重跑，旧证据绑在哪个 commit 上。
+	// verify 自己会再读一次并重算指纹——这里只用于展示，不参与判定。
+	if prev, _, err := change.Load(root, id); err == nil && prev.EvidenceCount > 0 {
+		switch {
+		case prev.Sealed && prev.BoundHead != "":
+			fmt.Printf("上次证据：%d 份（已封印 @%s）\n\n", prev.EvidenceCount, shortHead(prev.BoundHead))
+		case prev.Stale:
+			fmt.Printf("上次证据：%d 份（已失效，判据或工作区变过）\n\n", prev.EvidenceCount)
+		default:
+			fmt.Printf("上次证据：%d 份\n\n", prev.EvidenceCount)
+		}
+	} else {
+		fmt.Println("上次证据：无")
+		fmt.Println()
 	}
 
 	fmt.Printf("verify %s\n\n", id)
