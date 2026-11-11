@@ -51,7 +51,7 @@ func TestVerify_SealsAndPersistsEvidence(t *testing.T) {
 	requireBash(t)
 	root, dir := repoWithChange(t, "demo")
 	writeFile(t, filepath.Join(dir, FileAcceptance),
-		"# 验收\n\n```bash\necho hello\n```\n\n```bash\ntrue\n```\n\n- [ ] 人看一眼\n")
+		"# 验收\n\n```bash\necho hello\n```\n\n```bash\necho judged\n```\n\n- [ ] 人看一眼\n")
 
 	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
 	if err != nil {
@@ -214,7 +214,7 @@ func TestList_MarksStaleWhenWorktreeChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillScaffold(t, dir)
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
 
@@ -325,7 +325,7 @@ func TestVerify_RejectsTraversalID(t *testing.T) {
 func TestVerify_SameSecondWritesSeparateEvidence(t *testing.T) {
 	requireBash(t)
 	root, dir := repoWithChange(t, "demo")
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	now := time.Date(2026, 11, 11, 10, 42, 22, 0, time.UTC)
 
 	first, err := Verify(context.Background(), root, "demo", VerifyOptions{Now: now})
@@ -344,7 +344,7 @@ func TestVerify_SameSecondWritesSeparateEvidence(t *testing.T) {
 func TestLoad_StaleAfterAcceptanceDeleted(t *testing.T) {
 	requireBash(t)
 	root, dir := repoWithChange(t, "demo")
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestLoad_StaleWhenAcceptanceUnreadable(t *testing.T) {
 	requireBash(t)
 	root, dir := repoWithChange(t, "demo")
 	accPath := filepath.Join(dir, FileAcceptance)
-	writeFile(t, accPath, "```bash\ntrue\n```\n")
+	writeFile(t, accPath, "```bash\necho judged\n```\n")
 	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +426,7 @@ func TestList_NotStaleAfterCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillScaffold(t, dir)
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	writeFile(t, filepath.Join(root, "code.go"), "package demo\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
@@ -464,7 +464,7 @@ func TestList_StaleWhenHeadMovesAfterCleanVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillScaffold(t, dir)
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
 
@@ -504,7 +504,7 @@ func TestList_ArchivedUnaffectedByLaterCommits(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillScaffold(t, dir)
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
 	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
@@ -539,7 +539,7 @@ func TestList_ArchivedUnaffectedByLaterCommits(t *testing.T) {
 func TestVerify_RefusesMissingDocs(t *testing.T) {
 	requireBash(t)
 	root, dir := repoWithChange(t, "demo")
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	if err := os.Remove(filepath.Join(dir, FileDesign)); err != nil {
 		t.Fatal(err)
 	}
@@ -594,7 +594,7 @@ func TestLoad_StaleAfterEditPostCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillScaffold(t, dir)
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	writeFile(t, filepath.Join(root, "code.go"), "package x\n")
 	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
 		t.Fatalf("Verify: %v", err)
@@ -755,7 +755,7 @@ func TestVerify_AllowsQuotedOperatorLiteral(t *testing.T) {
 func TestVerify_CommentBackslashDoesNotSwallowNextLine(t *testing.T) {
 	requireBash(t)
 	root, dir := repoWithChange(t, "demo")
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n# 说明 \\\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n# 说明 \\\necho ran\n```\n")
 	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
 	if err != nil {
 		t.Fatalf("注释后的命令会被执行，不该拒绝：%v", err)
@@ -778,7 +778,7 @@ func TestList_NotStaleAfterCommittingEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillScaffold(t, dir)
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
 
@@ -816,7 +816,7 @@ func TestList_StaleWhenNewFileAppearsAfterCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillScaffold(t, dir)
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	writeFile(t, filepath.Join(root, "code.go"), "package code\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
@@ -882,7 +882,7 @@ func TestList_StaleWhenNewFileAfterCleanVerifyCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	fillScaffold(t, dir)
-	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
 
@@ -1004,7 +1004,7 @@ func TestVerify_RejectsTraversalIDBeforeTouch(t *testing.T) {
 func TestParseAcceptance_IndentedFenceIsReal(t *testing.T) {
 	// 列表项里的围栏天生缩进四格：它是真判据，不能像早先那样当示例静默丢掉
 	// （review 实测过"两条只跑一条却报全部通过"）。HTML 注释里的才是示例。
-	md := "# 判据\n\n<!--\n```bash\nfalse\n```\n-->\n\n- 步骤一：\n\n    ```bash\n    go build ./...\n    ```\n\n```bash\ntrue\n```\n"
+	md := "# 判据\n\n<!--\n```bash\nfalse\n```\n-->\n\n- 步骤一：\n\n    ```bash\n    go build ./...\n    ```\n\n```bash\necho judged\n```\n"
 	acc := ParseAcceptance([]byte(md))
 	if len(acc.Commands) != 2 {
 		t.Fatalf("缩进围栏也要算判据，got %+v", acc.Commands)
@@ -1012,7 +1012,7 @@ func TestParseAcceptance_IndentedFenceIsReal(t *testing.T) {
 	if acc.Commands[0].Body != "go build ./..." {
 		t.Errorf("缩进没去掉：%q", acc.Commands[0].Body)
 	}
-	if acc.Commands[1].Body != "true" {
+	if acc.Commands[1].Body != "echo judged" {
 		t.Errorf("第二条错：%q", acc.Commands[1].Body)
 	}
 }
