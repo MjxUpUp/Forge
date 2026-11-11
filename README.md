@@ -108,6 +108,17 @@ forge init      # 默认零项目写入，全部资产落在用户级
 | `~/.claude/skills/forge-quality/` | 质量协议 Skill |
 | `~/.codex/hooks.json`、`~/.cursor/hooks.json` 等 | 其他 agent 的用户级 hook 接线（按检测到的工具） |
 
+> **仓库自己决定要不要接管？** 仓库根放一份 `spec/forge.yaml`，成员资格就从全局注册表前移到仓库本身——clone 到新机器、换个 agent、不跑 `forge init` 也能解析到项目身份：
+
+```yaml
+# spec/forge.yaml
+version: "1"       # 契约版本（按主版本兼容）
+profile: standard  # standard | mini（mini＝只声明不执法，等于 lite 名册）| full
+hooks: on          # on | off；off 时该仓库内所有 hook 静默放行
+```
+
+`hooks: off` 是「这个项目我还没打算用 forge」的正式表达：装了 forge 的机器、别的仓库在跑门禁，这个仓库依然安静（0 进程、0 注入）。跑 `forge change init` 会生成这份契约和 `spec/changes/`。init-suggest（非 forge 仓库首次会话建议接管的全局 hook）自 2026-11 起默认关闭，要恢复旧行为设 `FORGE_INIT_SUGGEST=1`。
+
 > **团队要 git 共享同一份协议？** 用 `forge init --project`（团队模式）——`.forge/protocol.yml`、`CLAUDE.md`、`AGENTS.md` 等指令资产写入项目目录可提交共享；再跑一次普通 `forge init` 即转回零写入。
 
 > **主要用 Claude Code？** 走 [plugin marketplace](plugins/forge/README.md) 一次性接线用户级 hooks（机器上所有项目共享，连 `~/.claude/settings.json` 都不用动）。
@@ -180,7 +191,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。项目登记按 takeover 偏好（出厂默认 **ask**）：init-suggest SessionStart hook 在未接管项目首次会话**询问一次**（同意→`forge init`；拒绝→`forge off`）；要"装好即用"的无感体验→`forge config set` takeover 为 auto（静默接管所有 git 项目；declined、`.forge-decline` 团队声明与外来 harness 让位仍然生效）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。项目登记按 takeover 偏好（出厂默认 **ask**，且 init-suggest 自 2026-11 起默认关闭，要让它主动询问需设 `FORGE_INIT_SUGGEST=1`）：开启后它在未接管项目首次会话**询问一次**（同意→`forge init`；拒绝→`forge off`）；要"装好即用"的无感体验→`forge config set` takeover 为 auto（静默接管所有 git 项目；declined、`.forge-decline` 团队声明与外来 harness 让位仍然生效）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 </details>
 

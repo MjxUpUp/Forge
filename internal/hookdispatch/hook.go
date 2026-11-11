@@ -518,6 +518,18 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
 	}
 
+	// init-suggest 默认关闭：它是全局 SessionStart，会往任意 git 仓库注入「建议
+	// forge init」——对不打算接管的项目是纯噪音。opt-in 才算（见 contract_gate.go）。
+	if name == "init-suggest" && !initSuggestEnabled() {
+		return EmitAgentOutput(agent, hookInput.HookEventName, name, true, "")
+	}
+
+	// 仓库契约决定执法（spec-in-repo）：spec/forge.yaml 的 hooks: off 让该仓库
+	// 全部 hook 静默；profile 决定名册档位。无契约时保持既有行为。
+	if root != "" && !contractAllowsHook(root, name) {
+		return EmitAgentOutput(agent, hookInput.HookEventName, name, true, "")
+	}
+
 	// P0-C 双通道幂等守卫(escape-hatch-hardening):zcode 等宿主上用户级接线与
 	// Claude 格式插件两条通道同时投递同一 (hook,event,tool,session,input)——
 	// 窗口内完全一致的重复调用静默跳过(2× 进程/双注入/toollog 双行的根因,见

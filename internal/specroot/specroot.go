@@ -42,10 +42,20 @@ const (
 var ErrNoContract = errors.New("specroot: 未找到 spec/forge.yaml（仓库未声明 forge 契约）")
 
 // Contract 是 spec/forge.yaml 的最小解析结果。
+//
+// Hooks 是仓库级的执法开关：默认 on；off 时该仓库内的 hook 一律静默放行
+// （clone 下来先读契约、再决定要不要跑检查，不需要安装或注册）。
 type Contract struct {
 	Version string `yaml:"version"`
 	Profile string `yaml:"profile"`
+	Hooks   string `yaml:"hooks"`
 }
+
+// HooksOn / HooksOff 是 hooks 字段的合法取值。
+const (
+	HooksOn  = "on"
+	HooksOff = "off"
+)
 
 // MarkerPath 返回 root 下的契约文件路径。
 func MarkerPath(root string) string {
@@ -81,9 +91,8 @@ func Find(cwd string) (string, bool) {
 // 缺省值：version=1、profile=mini。未知 profile 或不受支持的主版本返回错误——
 // 契约是人写的文件，拼错档位时静默降级比报错更危险。
 //
-// 消费现状（2026-11-11，spec-in-repo 第一块）：成员资格只认「文件存在」，
-// profile 尚未接线 hook 执法（mini 档「只声明不执法」是下一块的实现目标）。
-// 在那之前 Load 是 status/诊断与后续门禁的读取入口，不是已生效的执法开关。
+// 消费现状（2026-11-11）：成员资格认「文件存在」；hooks 开关已接线——
+// hookdispatch 在解析出项目根后读契约，off 则静默放行、profile 决定名册档位。
 func Load(root string) (*Contract, error) {
 	path := MarkerPath(root)
 	raw, err := os.ReadFile(path)
@@ -102,6 +111,7 @@ func Load(root string) (*Contract, error) {
 	c := &Contract{
 		Version: strings.TrimSpace(parsed.Version),
 		Profile: strings.ToLower(strings.TrimSpace(parsed.Profile)),
+		Hooks:   strings.ToLower(strings.TrimSpace(parsed.Hooks)),
 	}
 	if c.Version == "" {
 		c.Version = CurrentVersion
@@ -117,6 +127,15 @@ func Load(root string) (*Contract, error) {
 	default:
 		return nil, fmt.Errorf("specroot: %s 的 profile=%q 无效（可选 %s/%s/%s）",
 			path, c.Profile, ProfileMini, ProfileStandard, ProfileFull)
+	}
+	if c.Hooks == "" {
+		c.Hooks = HooksOn
+	}
+	switch c.Hooks {
+	case HooksOn, HooksOff:
+	default:
+		return nil, fmt.Errorf("specroot: %s 的 hooks=%q 无效（可选 %s/%s）",
+			path, c.Hooks, HooksOn, HooksOff)
 	}
 	return c, nil
 }
