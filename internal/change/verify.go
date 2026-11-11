@@ -41,10 +41,19 @@ type Check struct {
 	WriteError string `json:"write_error,omitempty"`
 }
 
+// Command 是一条可执行判据：用哪种壳跑，以及围栏里的正文。
+//
+// 壳按围栏语言选（```bash → bash，```sh/```shell → sh）：文档里写着"按各自
+// 解释器执行"，实现就不能只挑一个壳来跑全部围栏。
+type Command struct {
+	Shell string
+	Body  string
+}
+
 // Acceptance 是 acceptance.md 解析出来的两类判据：
 // 可执行命令（```bash 围栏）与人工检查项（- [ ] 清单）。
 type Acceptance struct {
-	Commands []string
+	Commands []Command
 	Manual   []string
 	// ManualDone 是已勾选（- [x]）的人工项。勾选不代表机器验过，同样不进封印，
 	// 只是别让人以为自己写下的确认从报告里消失了。
@@ -78,7 +87,11 @@ func ParseAcceptance(raw []byte) Acceptance {
 			inFence = false
 			if isShellFence(lang) {
 				if cmd := strings.TrimSpace(strings.Join(body, "\n")); cmd != "" {
-					acc.Commands = append(acc.Commands, cmd)
+					shell := "sh"
+					if lang == "bash" {
+						shell = "bash"
+					}
+					acc.Commands = append(acc.Commands, Command{Shell: shell, Body: cmd})
 				}
 			}
 			body = nil
@@ -175,10 +188,10 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 		return nil, fmt.Errorf("change: %s 里没有 ```bash 命令——人工清单不算可执行判据", relTo(root, accPath))
 	}
 	for _, cmd := range acc.Commands {
-		if !hasExecutableLine(cmd) {
+		if !hasExecutableLine(cmd.Body) {
 			return nil, fmt.Errorf("change: %s 里有一条围栏只有注释/空行——注释不是判据", relTo(root, accPath))
 		}
-		if err := lintJudge(cmd); err != nil {
+		if err := lintJudge(cmd.Body); err != nil {
 			return nil, fmt.Errorf("change: %s: %w", relTo(root, accPath), err)
 		}
 	}
@@ -190,11 +203,6 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	now := opts.Now
 	if now.IsZero() {
 		now = time.Now()
-	}
-
-	shell, err := findShell()
-	if err != nil {
-		return nil, err
 	}
 
 	evDir, err := uniqueEvidenceDir(filepath.Join(c.Dir, EvidenceDirName), now.UTC().Format("20060102T150405Z"))
@@ -209,11 +217,15 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	}
 	passed := true
 	for i, cmd := range acc.Commands {
-		check := Check{Index: i + 1, Command: cmd}
+		check := Check{Index: i + 1, Command: cmd.Body}
 		if !passed {
 			check.Skipped = true
 			sum.Checks = append(sum.Checks, check)
 			continue
+		}
+		shell, serr := shellFor(cmd.Shell)
+		if serr != nil {
+			return nil, serr
 		}
 		check = runCheck(ctx, root, shell, evDir, check, timeout)
 		if check.Exit != 0 {
@@ -337,19 +349,24 @@ func exitCode(err error) int {
 	return -1
 }
 
-// findShell 找 acceptance 的执行壳：优先 bash（与 forge hook 的执行环境一致），
-// 再退 sh。Windows 上没有 bash 时给一条能照做的错误，而不是含糊的 exec 错误。
-func findShell() (string, error) {
+// shellFor 按围栏声明的壳返回可执行路径。
+//
+// 不把两种壳混着找：写了 ```sh 的判据就该在 sh 里跑，拿 bash 顶替会让
+// "在 sh 下会失败"的判据静默通过（Bash 语法、[[ ]]、pipefail 都不一样）。
+func shellFor(kind string) (string, error) {
 	// 走 shellexec 而不是裸 exec.LookPath：Windows 上 PATH 里的 bash 可能是
 	// WSL 启动器（C:\Windows\System32\bash.exe），判据会在 WSL 里跑——路径、工具链
 	// 全错，却可能"成功"。见 internal/shellexec/bash.go 的解析顺序。
-	if p, err := shellexec.FindBash(); err == nil {
-		return p, nil
+	if kind == "bash" {
+		if p, err := shellexec.FindBash(); err == nil {
+			return p, nil
+		}
+		return "", errors.New("change: acceptance 里有 ```bash 围栏，但本机没有可用的 bash（Windows 请安装 Git for Windows 并确保 bash 在 PATH）")
 	}
 	if p, err := exec.LookPath("sh"); err == nil {
 		return p, nil
 	}
-	return "", errors.New("change: 找不到 bash/sh，acceptance 命令无法执行（Windows 请安装 Git for Windows 并确保 bash 在 PATH）")
+	return "", errors.New("change: acceptance 里有 ```sh 围栏，但本机没有 sh；把判据改成 ```bash 围栏，或安装一个 sh")
 }
 
 // uniqueEvidenceDir 保证每次验证都有独立目录：同一秒内连跑两次是常态
@@ -577,13 +594,27 @@ func lintJudge(cmd string) error {
 	return nil
 }
 
-// stripQuoted 把引号内的内容抹成空格，只留下引号外的操作符供检查。
+// stripQuoted 把引号和注释里的内容抹成空格，只留下真正的代码供检查。
+//
+// 三件事要分清：引号里的 `||` 是字面量；双引号里的 \" 是转义不是收尾；
+// `#` 之后的整行尾巴是注释（"不要用 set +e"这种说明不该被当成违规）。
 func stripQuoted(s string) string {
 	var b strings.Builder
 	var quote byte
+	inComment := false
 	for i := 0; i < len(s); i++ {
 		c := s[i]
+		if inComment {
+			b.WriteByte(' ')
+			continue
+		}
 		if quote != 0 {
+			// 双引号里反斜杠转义下一个字符；单引号里没有转义。
+			if c == '\\' && quote == '"' && i+1 < len(s) {
+				b.WriteString("  ")
+				i++
+				continue
+			}
 			if c == quote {
 				quote = 0
 			}
@@ -592,6 +623,11 @@ func stripQuoted(s string) string {
 		}
 		if c == '\'' || c == '"' {
 			quote = c
+			b.WriteByte(' ')
+			continue
+		}
+		if c == '#' && (i == 0 || strings.ContainsRune(" \t\n;&|(", rune(s[i-1]))) {
+			inComment = true
 			b.WriteByte(' ')
 			continue
 		}

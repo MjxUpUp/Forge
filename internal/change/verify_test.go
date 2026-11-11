@@ -22,8 +22,12 @@ func TestParseAcceptance_CommandsAndManualItems(t *testing.T) {
 	if len(acc.Commands) != 2 {
 		t.Fatalf("期望 2 条命令，got %d: %v", len(acc.Commands), acc.Commands)
 	}
-	if acc.Commands[0] != "go build ./..." || acc.Commands[1] != "echo ok" {
+	if acc.Commands[0].Body != "go build ./..." || acc.Commands[1].Body != "echo ok" {
 		t.Errorf("命令提取错误：%v", acc.Commands)
+	}
+	// 壳按围栏语言给：bash 围栏就该在 bash 里跑，sh 围栏不该被 bash 顶替。
+	if acc.Commands[0].Shell != "bash" || acc.Commands[1].Shell != "sh" {
+		t.Errorf("围栏语言与壳不一致：%v", acc.Commands)
 	}
 	if len(acc.Manual) != 2 || acc.Manual[0] != "人工 A" || acc.Manual[1] != "宽松 C" {
 		t.Errorf("人工项提取错误：%v", acc.Manual)
@@ -37,7 +41,7 @@ func TestParseAcceptance_CommandsAndManualItems(t *testing.T) {
 func TestParseAcceptance_MultilineCommand(t *testing.T) {
 	doc := "```bash\ncd sub\nmake test\n```\n"
 	acc := ParseAcceptance([]byte(doc))
-	if len(acc.Commands) != 1 || acc.Commands[0] != "cd sub\nmake test" {
+	if len(acc.Commands) != 1 || acc.Commands[0].Body != "cd sub\nmake test" {
 		t.Fatalf("多行命令应整体保留，got %#v", acc.Commands)
 	}
 }
@@ -760,5 +764,61 @@ func TestList_NotStaleAfterCommittingEvidence(t *testing.T) {
 	}
 	if list[0].BoundHead == "" {
 		t.Error("封印应记录绑定的 commit")
+	}
+}
+
+// 封印之后新出现的文件同样要判失效：内容比对只认记录过的路径，
+// "verify 时带改动 → 提交 → 再新建文件"能同时绕过内容比对和 HEAD 比对。
+func TestList_StaleWhenNewFileAppearsAfterCommit(t *testing.T) {
+	requireBash(t)
+	root := newGitRepo(t)
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillScaffold(t, dir)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(root, "code.go"), "package code\n")
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "spec")
+
+	// 工作区带一个未提交改动时验证：摘要只记录 code.go。
+	writeFile(t, filepath.Join(root, "code.go"), "package code\n\nvar A = 1\n")
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "code")
+
+	// 提交后再新建一个当初不存在、也没被记录过的文件。
+	writeFile(t, filepath.Join(root, "new.go"), "package code\n\nvar B = 2\n")
+	list, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("期望 1 个 change，got %d", len(list))
+	}
+	if !list[0].Stale || list[0].Sealed {
+		t.Errorf("新出现的文件应让证据失效，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
+	}
+}
+
+// 注释和转义引号里的关键词不是代码：`#` 后写"不要用 set +e"不该被判违规，
+// 双引号里的 \" 也不该提前结束字面量。
+func TestVerify_IgnoresOperatorsInCommentsAndEscapes(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	body := "```bash\n# 不要用 set +e，也别用 ||\necho \"a\\\"||b\"\n```\n"
+	writeFile(t, filepath.Join(dir, FileAcceptance), body)
+	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err != nil {
+		t.Fatalf("注释/转义里的关键词不该被拒绝：%v", err)
+	}
+	if !res.Summary.Sealed {
+		t.Error("这条判据应封印")
 	}
 }
