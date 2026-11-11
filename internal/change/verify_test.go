@@ -822,3 +822,50 @@ func TestVerify_IgnoresOperatorsInCommentsAndEscapes(t *testing.T) {
 		t.Error("这条判据应封印")
 	}
 }
+
+// 注释只在本行有效：注释行之后写 `false || true` 仍然是违规写法，
+// 不能因为上一行是注释就被整段抹掉（否则判据检查形同虚设）。
+func TestVerify_RejectsOperatorsAfterCommentLine(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\n# 说明：下面这行是判据\nfalse || true\n```\n")
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil || !strings.Contains(err.Error(), "||") {
+		t.Fatalf("注释之后的 || 仍应被拒绝，got %v", err)
+	}
+}
+
+// 干净工作区 verify → 只提交证据 → 再新建文件：证据不能继续宣称已验证。
+func TestList_StaleWhenNewFileAfterCleanVerifyCommit(t *testing.T) {
+	requireBash(t)
+	root := newGitRepo(t)
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillScaffold(t, dir)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "spec")
+
+	// 干净树验证：摘要里没有文件级摘要，只能绑 HEAD。
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "evidence")
+
+	writeFile(t, filepath.Join(root, "later.go"), "package later\n")
+	list, err := List(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("期望 1 个 change，got %d", len(list))
+	}
+	if !list[0].Stale || list[0].Sealed {
+		t.Errorf("干净验证后又出现新文件应判失效，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
+	}
+}
