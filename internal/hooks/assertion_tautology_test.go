@@ -32,6 +32,15 @@ func TestAssertionCheckHook_GateModeExitsZero(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash 不可用（与 hook 运行时同前置）")
 	}
+	// 清掉宿主环境里的 FORGE_*：开发者若正跑在 hook 里，per-edit 分支会接管，
+	// 这条 gate 模式回归就静默改道（review 2026-11-11 minor (c)）。t.Setenv 同时
+	// 保证测试结束后复位。
+	for _, k := range []string{
+		"FORGE_FILE_PATH", "FORGE_CONTENT", "FORGE_TOOL_NAME",
+		"FORGE_NEW_STRING", "FORGE_OLD_STRING", "FORGE_SESSION_ID", "FORGE_DATA_DIR",
+	} {
+		t.Setenv(k, "")
+	}
 	dir := t.TempDir()
 	script := filepath.Join(t.TempDir(), "assertion-check.sh")
 	if err := os.WriteFile(script, []byte(AssertionCheckHook), 0o600); err != nil {
