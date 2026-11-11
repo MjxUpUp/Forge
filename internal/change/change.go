@@ -428,7 +428,9 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 				// 封印必须自洽：一份声称通过、却没有任何实跑记录的摘要
 				// （手写或残缺）不能对外宣称已验证。
 				c.Sealed = sum.Sealed && len(sum.Checks) > 0 && sum.AcceptanceSHA256 != "" && allChecksPassed(sum.Checks)
-				c.Failed = !c.Sealed
+				// 只有"真跑过且没全过"才算上次失败；没有 checks 的残缺/手写
+				// 摘要不是一次失败记录，别把它显示成"上次没通过"。
+				c.Failed = len(sum.Checks) > 0 && !c.Sealed
 				c.DiffBound = sum.DiffBound
 				stale := false
 				// 判据漂移：acceptance.md 改过或者被删掉，旧证据都不再代表当前验收标准。

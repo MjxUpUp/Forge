@@ -156,6 +156,20 @@ func isDuration(w string) bool {
 	return true
 }
 
+// wrapperOptArg 记录包装命令里"会吃掉下一个词"的选项：`sudo -u root bash -c`、
+// `env -u HOME bash -c`、`timeout -s KILL 5 bash -c` 里的 bash 都还在参数位，
+// 但它执行的仍是内层 shell，不跳过这些参数就会漏。
+var wrapperOptArg = map[string]map[string]bool{
+	"sudo":    {"-u": true, "-g": true, "-p": true, "-C": true, "-U": true, "-r": true, "-t": true, "-h": true},
+	"doas":    {"-u": true, "-C": true},
+	"env":     {"-u": true, "-C": true, "-S": true},
+	"nice":    {"-n": true},
+	"ionice":  {"-c": true, "-n": true, "-p": true},
+	"stdbuf":  {"-i": true, "-o": true, "-e": true},
+	"xargs":   {"-n": true, "-I": true, "-P": true, "-L": true, "-s": true, "-E": true, "-d": true},
+	"timeout": {"-s": true, "-k": true},
+}
+
 // cmdIndexes 给出每条命令的命令词下标：跳过 `FOO=1 bash -c` 这种前置赋值，
 // 以及 `env`/`timeout`/`sudo` 这些包装命令自身的参数。
 func cmdIndexes(words []word) []int {
@@ -176,12 +190,31 @@ func cmdIndexes(words []word) []int {
 			if !wrapperNames[words[j].val] {
 				break
 			}
-			// 包装命令：跳过它自己的选项与数值参数，继续找真正被执行的那条。
+			// 包装命令：跳过它自己的选项（含吃参数的选项）与数值参数，
+			// 继续找真正被执行的那条。
+			opts := wrapperOptArg[words[j].val]
 			j++
-			for j < len(words) && (strings.HasPrefix(words[j].val, "-") ||
-				isDuration(words[j].val) || isAssignment(words[j].val)) {
+			for j < len(words) {
+				v := words[j].val
+				if isAssignment(v) || isDuration(v) {
+					j++
+					continue
+				}
+				if !strings.HasPrefix(v, "-") {
+					break
+				}
 				j++
+				if opts[v] && j < len(words) {
+					j++
+				}
 			}
+		}
+	}
+	// find 的 -exec/-execdir 后面的词也是被执行命令：`find . -exec bash -c ...`
+	// 里的 bash 不在句首，但照样能开一层不受管的内层 shell。
+	for k := 0; k+1 < len(words); k++ {
+		if words[k].val == "-exec" || words[k].val == "-execdir" {
+			out = append(out, k+1)
 		}
 	}
 	return out
@@ -240,6 +273,22 @@ func trivialJudge(words []word) bool {
 	case "true", ":", "exit 0", "/bin/true", "true 0":
 		return true
 	}
+	if len(vals) == 0 {
+		return false
+	}
+	// 绝对路径与多余参数都是同一个必然成功的命令：/usr/bin/true、true true。
+	first := vals[0]
+	if i := strings.LastIndexAny(first, "/\\"); i >= 0 {
+		first = first[i+1:]
+	}
+	switch first {
+	case "true", ":":
+		return true
+	// `exit` 不带参数返回上一条命令的状态（这里是 0），`exit 0` 是同一回事；
+	// `exit 1` 不是零工作量——它会失败，不需要拦。
+	case "exit":
+		return len(vals) == 1 || vals[1] == "0"
+	}
 	return false
 }
 
@@ -269,6 +318,8 @@ var compoundKeywords = map[string]string{
 	".":        "`.` 引入的脚本吞掉失败，外层无从判断",
 	"trap":     "`trap` 会改掉退出码传递",
 	"function": "函数定义不是一条判据",
+	"{":        "`{ ... }` 分组把多条命令揉成一条，失败位置看不出来",
+	"}":        "`{ ... }` 分组把多条命令揉成一条，失败位置看不出来",
 }
 
 // compound 拒绝"一条判据里塞程序"的写法：串联、条件、循环、取反、命令替换。
@@ -295,6 +346,11 @@ func compound(code string, words []word) error {
 		return fmt.Errorf("这条判据什么都没检验（`true`、`:`、`exit 0` 必然成功）——判据要能因为代码坏了而失败")
 	}
 	for _, i := range cmdIndexes(words) {
+		// `command -v go` 是查工具在不在，不是把命令包一层——放行这两个查询选项。
+		if words[i].val == "command" && i+1 < len(words) &&
+			(words[i+1].val == "-v" || words[i+1].val == "-V") {
+			continue
+		}
 		if why, ok := compoundKeywords[words[i].val]; ok {
 			return fmt.Errorf("判据里不能用 %s（%s）；判据只写一条命令，条件逻辑放进被测程序自己的测试", words[i].val, why)
 		}
