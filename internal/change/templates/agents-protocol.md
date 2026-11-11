@@ -21,6 +21,7 @@
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
 5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/YYYYMMDD-<id>`。
 6. 之后再改被验证的文件、或改 acceptance，证据自动失效（`forge change list` 显示「证据已失效」），必须重跑 verify。
+7. 工作区干净时 verify，证据绑的是那一个 commit（没有文件级指纹）：之后 HEAD 再动就判失效，重新 verify 即可。
 
 ## 红线
 

@@ -155,9 +155,9 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	}
 	// 模板骨架不是判据：init+new 之后四份文件还是模板，直接 verify 会把
 	// 通用示例命令当成这个 change 的验收标准（在 Go 仓库里甚至能封印）。
-	if unfilled := unfilledDocs(c.Dir); len(unfilled) > 0 {
-		return nil, fmt.Errorf("change: %s 仍是模板骨架（%s 里还有 %s 标记）——先把四份产物填成这个 change 自己的内容再 verify",
-			id, strings.Join(unfilled, "、"), scaffoldMarker)
+	if problems := docProblems(c.Dir); len(problems) > 0 {
+		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——四份产物都填成这个 change 自己的内容、并删掉 %s 标记后再 verify",
+			id, strings.Join(problems, "、"), scaffoldMarker)
 	}
 	if !c.HasAcceptance {
 		return nil, fmt.Errorf("change: %s 没有 %s（无法验证）", relTo(root, c.Dir), FileAcceptance)
@@ -500,12 +500,18 @@ func filesDrifted(root string, files []FileDigest) bool {
 const scaffoldMarker = "forge:fill"
 
 // unfilledDocs 列出仍带骨架标记的产物文件。
-func unfilledDocs(dir string) []string {
+// docProblems 列出让这个 change 还不算填完的原因：缺文件，或者仍是模板骨架。
+// 缺一份也算没填完——四份产物是这套流程的契约，少一份就少了对应的审计线索。
+func docProblems(dir string) []string {
 	var out []string
 	for _, name := range []string{FileProposal, FileDesign, FileTasks, FileAcceptance} {
 		raw, err := os.ReadFile(filepath.Join(dir, name))
-		if err == nil && strings.Contains(string(raw), scaffoldMarker) {
-			out = append(out, name)
+		if err != nil {
+			out = append(out, name+"（缺失）")
+			continue
+		}
+		if strings.Contains(string(raw), scaffoldMarker) {
+			out = append(out, name+"（仍是模板骨架）")
 		}
 	}
 	return out
