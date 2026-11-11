@@ -145,6 +145,8 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 			note = fmt.Sprintf("证据已封印 @%s（其后提交不在证据范围）", shortHead(c.BoundHead))
 		case c.Sealed:
 			note = "证据已封印（未绑定 commit）"
+		case c.Failed:
+			note = "上次 verify 没通过，证据留在 evidence/ 里，别删——删掉就只剩更早那次封印了"
 		case !c.HasAcceptance:
 			note = "缺少 acceptance.md"
 		}
@@ -265,7 +267,10 @@ func runChangeVerify(cmd *cobra.Command, args []string) error {
 	if fc := firstFailure(res.Summary.Checks); fc != nil {
 		fmt.Printf("   先修这一条：[%d] %s\n", fc.Index, firstLine(fc.Command))
 	}
-	return fmt.Errorf("change %s: 验收未通过", id)
+	// 验收未通过是"门禁结论"，不是用法错误：走 errHardExit 哨兵 → exit 2。
+	// 普通 error 会变成 exit 1，调用方（hook、脚本）容易把它当成"命令跑挂了"
+	// 而 fail-open 放行——门禁必须用退出码把结论说清楚。
+	return errHardExit
 }
 
 func firstFailure(checks []change.Check) *change.Check {
