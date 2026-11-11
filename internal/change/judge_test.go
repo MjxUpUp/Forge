@@ -223,3 +223,19 @@ func TestLintJudgeLineContinuationAndArithmetic(t *testing.T) {
 		t.Fatalf("nested command substitution inside arithmetic must be rejected")
 	}
 }
+
+func TestLintJudgeEscapedSpaceBeforeHash(t *testing.T) {
+	// shell 里 `foo\ #` 的空格是字面量，`#` 不是注释开头，后面的 $(false) 真会执行。
+	for _, cmd := range []string{
+		`echo foo\ #; echo $(false)`,
+		`echo foo\ #; echo "$(false)"`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: escaped space makes # literal, substitution must be rejected", cmd)
+		}
+	}
+	// 真注释里的替换不该误杀。
+	if err := lintJudge(`echo foo # $(false)`); err != nil {
+		t.Fatalf("plain comment must stay allowed: %v", err)
+	}
+}
