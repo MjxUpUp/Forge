@@ -402,6 +402,7 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 	var b strings.Builder
 	var quote byte
 	arith := 0
+	dollars := 0 // 连续未转义 $ 的个数：bash 成对消耗，奇数才开替换
 	for i := 0; i < len(cooked); i++ {
 		c := cooked[i]
 		if quote == '\'' {
@@ -409,18 +410,42 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 			if c == '\'' {
 				quote = 0
 			}
+			dollars = 0
 			continue
 		}
 		if quote == '"' {
 			if c == '\\' && i+1 < len(cooked) {
+				// 转义的 $ 是字面量，不参与配对。
 				b.WriteString("  ")
 				i++
+				dollars = 0
 				continue
 			}
 			if c == '"' {
 				quote = 0
 				b.WriteByte(' ')
+				dollars = 0
 				continue
+			}
+			if c == '`' {
+				cmdSub = true
+			}
+			if c == '$' {
+				dollars++
+			} else {
+				dollars = 0
+			}
+			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
+				if i+2 < len(cooked) && cooked[i+2] == '(' {
+					arith += 2
+					b.WriteString("   ")
+					i += 2
+					dollars = 0
+					continue
+				}
+				if dollars%2 == 1 {
+					cmdSub = true
+				}
 			}
 			if arith > 0 {
 				if c == '(' {
@@ -428,40 +453,45 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 				} else if c == ')' {
 					arith--
 				}
-				if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' && dollarRun(cooked, i)%2 == 1 {
-					cmdSub = true
-				}
-				b.WriteByte(' ')
-				continue
-			}
-			if c == '`' {
-				cmdSub = true
-			}
-			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
-				if i+2 < len(cooked) && cooked[i+2] == '(' {
-					arith += 2
-					b.WriteString("   ")
-					i += 2
-					continue
-				}
-				if dollarRun(cooked, i)%2 == 1 {
-					cmdSub = true
-				}
 			}
 			b.WriteByte(' ')
 			continue
 		}
 		// 引号外
 		if c == '\\' && i+1 < len(cooked) {
-			// 转义的字符是字面量：`echo a\|b` 里的 | 不是管道。
 			b.WriteString("\x01 ")
 			i++
+			dollars = 0
 			continue
 		}
 		if c == '\'' || c == '"' {
 			quote = c
 			b.WriteByte(' ')
+			dollars = 0
 			continue
+		}
+		if c == '`' {
+			cmdSub = true
+		}
+		if c == '$' {
+			dollars++
+		} else {
+			dollars = 0
+		}
+		if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
+			if i+2 < len(cooked) && cooked[i+2] == '(' {
+				arith += 2
+				b.WriteString("   ")
+				i += 2
+				dollars = 0
+				continue
+			}
+			if dollars%2 == 1 {
+				cmdSub = true
+			}
+		}
+		if arith == 0 && (c == '<' || c == '>') && i+1 < len(cooked) && cooked[i+1] == '(' {
+			cmdSub = true
 		}
 		if arith > 0 {
 			if c == '(' {
@@ -469,41 +499,12 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 			} else if c == ')' {
 				arith--
 			}
-			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' && dollarRun(cooked, i)%2 == 1 {
-				cmdSub = true
-			}
 			b.WriteByte(' ')
 			continue
-		}
-		if c == '`' {
-			cmdSub = true
-		}
-		if (c == '<' || c == '>') && i+1 < len(cooked) && cooked[i+1] == '(' {
-			cmdSub = true
-		}
-		if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
-			if i+2 < len(cooked) && cooked[i+2] == '(' {
-				arith += 2
-				b.WriteString("   ")
-				i += 2
-				continue
-			}
-			if dollarRun(cooked, i)%2 == 1 {
-				cmdSub = true
-			}
 		}
 		b.WriteByte(c)
 	}
 	return b.String(), cooked, cmdSub
-}
-
-// dollarRun 数 s 在 i 处（含 i）连续有几个 `$`：bash 成对消耗，奇数才开替换。
-func dollarRun(s string, i int) int {
-	n := 0
-	for j := i; j >= 0 && s[j] == '$'; j-- {
-		n++
-	}
-	return n
 }
 
 // cookJudge 去掉注释、删掉行尾续行（单引号里除外），返回 shell 真正看到的代码。
