@@ -323,3 +323,31 @@ func TestLintJudgeDollarRunsAndArithmeticLeak(t *testing.T) {
 		}
 	}
 }
+
+func TestLintJudgeEscapedDollarAndBacktickInArithmetic(t *testing.T) {
+	// 转义的 $ 是字面量，不参与 $$ 配对；后面的 $() 照样执行。
+	for _, cmd := range []string{
+		`echo "\$$(touch pwned)"`,
+		`echo "\\\$$(touch pwned)"`,
+		`echo \$$(touch pwned)`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: escaped $ is literal, following substitution must be rejected", cmd)
+		}
+	}
+	// 算术里的反引号同样会执行。
+	for _, cmd := range []string{
+		"echo \"$(( `touch pwned` + 1 ))\"",
+		"echo $(( `touch pwned` + 1 ))",
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: backticks run inside arithmetic", cmd)
+		}
+	}
+	// 转义的 $ 加括号是字面量，不该误杀。
+	for _, cmd := range []string{`echo "\$(false)"`, `echo "$$(false)"`} {
+		if err := lintJudge(cmd); err != nil {
+			t.Fatalf("%q is literal text: %v", cmd, err)
+		}
+	}
+}
