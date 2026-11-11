@@ -74,7 +74,7 @@ func TestVerify_SealsAndPersistsEvidence(t *testing.T) {
 	}
 
 	// 状态从文件推导：刚落完证据的 change 就是 verified。
-	c, err := Load(root, "demo")
+	c, _, err := Load(root, "demo")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestLoad_StaleAfterAcceptanceDeleted(t *testing.T) {
 	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	c, err := Load(root, "demo")
+	c, _, err := Load(root, "demo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +349,7 @@ func TestLoad_StaleAfterAcceptanceDeleted(t *testing.T) {
 	if err := os.Remove(filepath.Join(dir, FileAcceptance)); err != nil {
 		t.Fatal(err)
 	}
-	c, err = Load(root, "demo")
+	c, _, err = Load(root, "demo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestLoad_StaleWhenAcceptanceUnreadable(t *testing.T) {
 	if err := os.Mkdir(accPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	c, err := Load(root, "demo")
+	c, _, err := Load(root, "demo")
 	if err != nil {
 		t.Fatal(err)
 	}
