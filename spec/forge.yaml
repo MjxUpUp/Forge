@@ -1,0 +1,4 @@
+# 仓库级契约：成员资格 + 执法档位（见 README「仓库自己决定要不要接管」）
+version: "1"
+profile: standard
+hooks: on
