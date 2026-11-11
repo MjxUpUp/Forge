@@ -457,6 +457,11 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 						if touched, terr := changedPathsBetween(root, sum.Head, fp.Head); terr != nil || hasNonEvidence(touched) {
 							stale = true
 						}
+						// 提交之后又在工作区里新写文件，同样不该继续宣称已验证：
+						// 那次提交本身是干净的，但工作区已经不是 verify 时那个了。
+						if !stale && hasNonEvidence(fingerprintPaths(fp)) {
+							stale = true
+						}
 					}
 				}
 				if stale {
@@ -502,6 +507,18 @@ type Summary struct {
 	// 证明不了它对应哪份代码（非 git 仓库）。
 	DiffBound bool    `json:"diff_bound,omitempty"`
 	Checks    []Check `json:"checks"`
+}
+
+// fingerprintPaths 取出指纹里的路径列表。
+func fingerprintPaths(fp *Fingerprint) []string {
+	if fp == nil {
+		return nil
+	}
+	out := make([]string, 0, len(fp.Files))
+	for _, f := range fp.Files {
+		out = append(out, f.Path)
+	}
+	return out
 }
 
 // unrecordedChangesSince 返回"证据封印之后出现、但摘要里没记录过"的非证据路径。
