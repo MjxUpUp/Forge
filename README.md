@@ -113,14 +113,15 @@ forge init      # 默认零项目写入，全部资产落在用户级
 ```yaml
 # spec/forge.yaml
 version: "1"       # 契约版本，按主版本兼容
-profile: standard  # standard | mini | full
-hooks: on          # on | off
+profile: standard  # standard | mini | full（缺省 standard）
+hooks: on          # on | off（缺省 on）
 ```
 
-- `hooks: off`——这个仓库里的 hook 检查全部静默放行：**0 次检查、0 注入**。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。
-- `profile`——`mini` 是最小执法名册（lite：task-guard / bash-guard / hazard-guard / file-sentinel 等拦截类，去掉 advisory 类）；`standard` 默认 35 项；`full` 全开。契约只做运行时收窄：settings 接线时被全局更窄档位滤掉的 hook，不会因为契约写 `full` 又接回来。
-- 契约写坏不拦也不报——`hooks: of` 这类拼写错误整份按解析失败处理，回落全局档位继续执法；`forge status` 会打出「⚠ 契约无法解析」并显示实际生效的 `profile/hooks`，不阻断任何命令。
-- 不写 `hooks` 字段＝`on`；不写 `profile`＝`standard`。`forge change init` 生成的是最小契约（`version: "1"`、`profile: mini`、`hooks: off`——只用产物、不开执法），要门禁就把 `hooks` 改成 `on`，要别的档位用 `--profile` 或手改。
+- `hooks: off`——这个仓库里的 hook 检查静默放行：**0 次检查、0 注入**。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。
+- **安全底线不受 `hooks`/`profile` 控制**：`hazard-guard`（破坏性命令）、`mcp-scan`（`.mcp.json` 供应链）、`skill-scan`（恶意 skill 指令）始终运行——契约随 git 走，不能让一个 PR 用一行 `hooks: off` 关掉防它的扫描器。噪音成本很低（只在真危险时出声）。
+- `profile`——`mini` 是最小执法名册（lite：task-guard / bash-guard / hazard-guard / file-sentinel 等拦截类，去掉 advisory 类）；`standard` 是缺省名册；`full` 目前与 `standard` 等同（预留超集位）。契约只做运行时收窄：settings 接线时被全局更窄档位滤掉的 hook，不会因为契约写 `full` 又接回来。
+- 契约写坏时 hook 侧不拦也不报——`hooks: of`、拼错键名这类错误整份按解析失败处理，hook 执法回落全局档位。`forge status` 会打出「⚠ 契约无法解析」和实际生效的全局档位，不阻断任何命令。
+- `forge change init` 生成的是最小契约（`version: "1"`、`profile: mini`、`hooks: off`——只用产物、不开执法）。`--profile` 只改档位、不会打开门禁：要执法必须同时把 `hooks` 改成 `on`。
 
 > **团队要 git 共享同一份协议？** 用 `forge init --project`（团队模式）——`.forge/protocol.yml`、`CLAUDE.md`、`AGENTS.md` 等指令资产写入项目目录可提交共享；再跑一次普通 `forge init` 即转回零写入。
 
@@ -194,7 +195,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。init-suggest（在未接管项目首次会话建议接管的全局 SessionStart hook）自 2026-11 起默认关闭：不设环境变量时**既不询问也不接管**；要在宿主进程环境里设 `FORGE_INIT_SUGGEST=1`（shell profile 或启动器 env，不是某条 forge 命令的前缀）之后，它才按 takeover 偏好工作——**ask** 询问一次（同意→`forge init`；拒绝→`forge off`），**auto** 静默接管所有 git 项目（declined、`.forge-decline` 团队声明与外来 harness 让位仍然生效）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。init-suggest（在未接管项目首次会话建议接管的全局 SessionStart hook）自 2026-11 起默认关闭：不设环境变量时**既不询问也不接管**；要在宿主进程环境里设 `FORGE_INIT_SUGGEST=1`（shell profile 或启动器 env，不是某条 forge 命令的前缀）之后，它才按 takeover 偏好工作——**ask**（出厂默认）询问一次（同意→`forge init`；拒绝→`forge off`），**auto** 静默接管所有 git 项目（declined、`.forge-decline` 团队声明与外来 harness 让位仍然生效）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 </details>
 

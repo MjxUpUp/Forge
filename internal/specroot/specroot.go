@@ -6,13 +6,15 @@
 // 都能解析到同一个项目身份（身份由 forgedata.ProjectFor 纯路径推导）。
 //
 // 这里只做两件事：找标记（Find）与读契约（Load）。契约内容的最小面是
-// version/profile；profile 决定 hook 是否执法（mini＝默认只声明不执法），
-// 具体门禁策略仍由上层解释。
+// version/profile/hooks；profile 决定 hook 名册档位（mini＝lite 最小执法名册，
+// 要只声明不执法用 hooks: off），具体门禁策略仍由上层解释。
 package specroot
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,9 +29,11 @@ const (
 	// MarkerName 是契约标记文件名（spec/forge.yaml）。
 	MarkerName = "forge.yaml"
 
-	// ProfileMini 是默认档：声明成员资格，但不启用 hook 执法（只读命令可用）。
+	// ProfileMini 是最小执法名册：lite 档（拦截类 hook，不含 advisory 类）。
+	// 要「只声明、不执法」用 hooks: off，不是 profile: mini。
 	ProfileMini = "mini"
-	// ProfileStandard 在 mini 之上启用标准 hook 名册。
+	// ProfileStandard 是标准名册，也是缺省：不写 profile 时按它跑（与
+	// hooks.ActiveProfile / ParseProfile 的缺省保持一致）。
 	ProfileStandard = "standard"
 	// ProfileFull 启用全部 hook 与门禁。
 	ProfileFull = "full"
@@ -88,7 +92,8 @@ func Find(cwd string) (string, bool) {
 
 // Load 读取并校验 root/spec/forge.yaml。
 //
-// 缺省值：version=1、profile=mini。未知 profile 或不受支持的主版本返回错误——
+// 缺省值：version=1、profile=standard、hooks=on。未知 profile、未知键或不受支持
+// 的主版本返回错误——
 // 契约是人写的文件，拼错档位时静默降级比报错更危险。
 //
 // 消费现状（2026-11-11）：成员资格认「文件存在」；hooks 开关已接线——
@@ -103,8 +108,12 @@ func Load(root string) (*Contract, error) {
 		return nil, fmt.Errorf("specroot: 读取 %s: %w", path, err)
 	}
 
+	// KnownFields(true)：拼错键名（hooks 写成 hook）必须报错而不是静默按缺省跑
+	// ——那个仓库以为关了执法，实际还在拦。空文件按全缺省处理。
 	var parsed Contract
-	if err := yaml.Unmarshal(raw, &parsed); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&parsed); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("specroot: 解析 %s: %w", path, err)
 	}
 
@@ -120,7 +129,7 @@ func Load(root string) (*Contract, error) {
 		return nil, fmt.Errorf("specroot: %s 的 version=%q 不受支持（当前支持 %s.x）", path, c.Version, majorOf(CurrentVersion))
 	}
 	if c.Profile == "" {
-		c.Profile = ProfileMini
+		c.Profile = ProfileStandard
 	}
 	switch c.Profile {
 	case ProfileMini, ProfileStandard, ProfileFull:

@@ -84,8 +84,8 @@ func TestLoad_Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if c.Profile != ProfileMini {
-		t.Errorf("Profile=%q, want %q", c.Profile, ProfileMini)
+	if c.Profile != ProfileStandard {
+		t.Errorf("Profile=%q, want %q（缺省与全局档位一致）", c.Profile, ProfileStandard)
 	}
 	if c.Version != CurrentVersion {
 		t.Errorf("Version=%q, want %q", c.Version, CurrentVersion)
@@ -194,5 +194,14 @@ func TestLoad_RejectsUnknownHooks(t *testing.T) {
 	writeContract(t, root, "version: \"1\"\nhooks: sometimes\n")
 	if _, err := Load(root); err == nil {
 		t.Fatal("hooks 写错应当报错，而不是静默按默认值跑")
+	}
+}
+
+func TestLoad_RejectsUnknownField(t *testing.T) {
+	root := t.TempDir()
+	// hooks 拼错成 hook：静默忽略会让人以为关掉了执法，实际还在拦。
+	writeContract(t, root, "version: \"1\"\nhook: off\n")
+	if _, err := Load(root); err == nil {
+		t.Fatal("未知键 hook 应当报错，而不是静默按缺省跑")
 	}
 }

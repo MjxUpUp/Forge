@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/specroot"
 
 	"encoding/json"
@@ -143,6 +144,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		// 让人看见「你以为关了、其实写着错拼写」。不阻断 status。
 		if c, err := specroot.Load(root); err != nil {
 			fmt.Printf("  ⚠ 契约无法解析（hook 按全局档位继续执法）：%v\n", err)
+			fmt.Printf("  生效档位：全局 %s（FORGE_PROFILE / ~/.forge/profile，缺省 %s）\n",
+				hooks.ActiveProfile(), hooks.ProfileStandard)
 		} else {
 			fmt.Printf("  契约：profile=%s hooks=%s\n", c.Profile, c.Hooks)
 		}
