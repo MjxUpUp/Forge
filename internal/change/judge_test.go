@@ -250,3 +250,38 @@ func TestLintJudgeHashAfterArithmeticIsLiteral(t *testing.T) {
 		t.Fatalf("comment after a space is still a comment: %v", err)
 	}
 }
+
+func TestLintJudgeCommentAndContinuationInterplay(t *testing.T) {
+	// 注释在换行处就结束，行尾反斜杠不会把注释续到下一行——下一行照跑。
+	for _, cmd := range []string{
+		"# note \\\necho \"$(touch pwned)\"",
+		"echo ok # note \\\necho \"$(touch pwned)\"",
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: comment ends at newline, substitution on next line must be rejected", cmd)
+		}
+	}
+	// 转义的分号/与号/管道/左括号都是字面量，紧跟的 # 不是注释。
+	for _, cmd := range []string{
+		`echo a\;#$(touch pwned)`,
+		`echo a\&#$(touch pwned)`,
+		`echo a\|#$(touch pwned)`,
+		`echo a\(#$(touch pwned)`,
+	} {
+		if err := lintJudge(cmd); err == nil {
+			t.Fatalf("%q: escaped metachar makes # literal, substitution must be rejected", cmd)
+		}
+	}
+	// 子 shell 结束后的 # 是真注释。
+	if err := lintJudge(`(echo x)# $(touch pwned)`); err != nil {
+		t.Fatalf("comment after subshell must stay allowed: %v", err)
+	}
+	// $$ 是 PID，后面的括号是字面量。
+	if err := lintJudge(`echo "$$(false)"`); err != nil {
+		t.Fatalf("$$ is a pid, (false) is literal: %v", err)
+	}
+	// 进程替换会执行命令，失败看不见。
+	if err := lintJudge(`echo <(touch pwned)`); err == nil {
+		t.Fatalf("process substitution executes a command, must be rejected")
+	}
+}

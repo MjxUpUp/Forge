@@ -339,21 +339,6 @@ var compoundKeywords = map[string]string{
 	"}":        "`{ ... }` 分组把多条命令揉成一条，失败位置看不出来",
 }
 
-// codeWithoutArithmetic 去掉算术展开 $(( ... )) 之后，若还残留 "$(" 说明是命令替换。
-// 算术本身不执行命令，`echo $((1+0))` 不该按命令替换拒；但算术里套的 $( ) 要抓——
-// 去掉最外层的 $(( 之后，内层的仍留在串里。
-func codeWithoutArithmetic(s string) string {
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
-			i += 2
-			continue
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
-}
-
 // compound 拒绝"一条判据里塞程序"的写法：串联、条件、循环、取反、命令替换。
 //
 // 关键取舍：`&&` 也拒。`set -e` 不会因为 `a && b` 里 a 失败而退出（AND-list 是
@@ -366,7 +351,7 @@ func compound(code string, words []word) error {
 	if strings.ContainsRune(code, '`') {
 		return fmt.Errorf("判据里不要用反引号命令替换（替换失败不会让命令本身非零）")
 	}
-	if strings.Contains(codeWithoutArithmetic(code), "$(") {
+	if strings.Contains(code, "$(") {
 		return fmt.Errorf("判据里不要用 `$( )` 命令替换（替换失败不会让命令本身非零）；需要列表就逐个写出来")
 	}
 	for _, line := range strings.Split(code, "\n") {
@@ -398,133 +383,215 @@ func compound(code string, words []word) error {
 //
 // 这套检查拦的是常见写法，不是沙箱：判据里刻意做间接调用（脚本里再开 shell、
 // 变量拼命令）仍然可能骗过它。判据越直白，证据越可信。
-// executesInDoubleQuotes 找双引号里的命令替换：引号里的 `$(` 和反引号
-// 在 shell 里照样执行（只有单引号里的才是字面量）。抹掉引号内容再做检查会
-// 把它们一起抹掉，于是 `echo "$(false)"` 这种写法官查漏、封印成功——正是
-// review 抓到的那条假绿路径。
+// lexJudge 按 shell 的词法规则把判据拆成两份视图，顺便报出有没有执行命令的构造。
 //
-// 注释按 shell 的规则处理：`#` 只在词首（行首、空白或操作符之后）且引号外
-// 才起注释，注释到行尾结束、不改变引号状态。早期版本不管注释，注释里落单的
-// `'` 会把引号状态带进下一行，让下一行的 `echo "$(false)"` 逃过检查。
-func executesInDoubleQuotes(s string) bool {
-	s = joinLineContinuations(s)
+// 先 cook 再 scan：cook 去掉注释与行尾续行（shell 在词法阶段就把「反斜杠+换行」
+// 删掉，`"$\<换行>(x)"` 实际就是 `"$(x)"`），scan 在剩下的代码上认引号、算术
+// 与命令替换。两件事分开做，就不会出现「续行把注释行拼进代码」这种错位——
+// 早期 joinLineContinuations 不分注释，把注释与下一行拼成一行，`# note \` 后面
+// 的 `echo "$(false)"` 因此被整行当注释放行，是 review 复现出来的假绿。
+//
+// 两份视图分工：
+//   - code：引号内内容与算术展开抹成空格，转义字符换成 \x01 占位。操作符检查
+//     （||、管道、后台 &）和 compound 看这份：`echo "a||b"`、`echo a\|b` 都是字面量。
+//   - words：引号与转义原样保留，交给 shellWords 拆词。关键词检查看这份——
+//     `bash "-c"` 的 -c 是一个词，抹掉引号就看不见了。
+//
+// cmdSub 报告"会执行命令且失败看不见"的构造：双引号/无引号里的 $( ) 和反引号、
+// 进程替换 <( )。算术展开 $(( )) 不算，但内部套的 $( ) 算；`$$(false)` 里的 $$
+// 是 PID，后面的括号是字面量，也不算。
+func lexJudge(s string) (code, words string, cmdSub bool) {
+	s = cookJudge(s)
+	var codeB, wordB strings.Builder
+	var quote byte
+	arith := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote == '\'' {
+			wordB.WriteByte(c)
+			if c == '\'' {
+				quote = 0
+			}
+			codeB.WriteByte(' ')
+			continue
+		}
+		if quote == '"' {
+			wordB.WriteByte(c)
+			if c == '\\' && i+1 < len(s) {
+				wordB.WriteByte(s[i+1])
+				i++
+				codeB.WriteString("  ")
+				continue
+			}
+			if c == '"' {
+				quote = 0
+				codeB.WriteByte(' ')
+				continue
+			}
+			if c == '`' {
+				cmdSub = true
+			}
+			if c == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
+				arith += 2
+				wordB.WriteString("$((")
+				i += 2
+				codeB.WriteString("   ")
+				continue
+			}
+			if c == '$' && i+1 < len(s) && s[i+1] == '(' && !(i > 0 && s[i-1] == '$') {
+				cmdSub = true
+			}
+			codeB.WriteByte(' ')
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			wordB.WriteByte(c)
+			codeB.WriteByte(' ')
+			continue
+		}
+		if c == '\\' && i+1 < len(s) {
+			// 转义的字符是字面量：`echo a\|b` 里的 | 不是管道。
+			wordB.WriteString(s[i : i+2])
+			codeB.WriteString("\x01 ")
+			i++
+			continue
+		}
+		if c == '<' && i+1 < len(s) && s[i+1] == '(' {
+			cmdSub = true
+		}
+		if c == '`' {
+			cmdSub = true
+		}
+		if c == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
+			arith += 2
+			wordB.WriteString("$((")
+			i += 2
+			codeB.WriteString("   ")
+			continue
+		}
+		if c == '$' && i+1 < len(s) && s[i+1] == '(' && !(i > 0 && s[i-1] == '$') {
+			cmdSub = true
+		}
+		if arith > 0 {
+			wordB.WriteByte(c)
+			codeB.WriteByte(' ')
+			if c == '(' {
+				arith++
+			} else if c == ')' {
+				arith--
+			}
+			continue
+		}
+		wordB.WriteByte(c)
+		codeB.WriteByte(c)
+	}
+	return codeB.String(), wordB.String(), cmdSub
+}
+
+// cookJudge 去掉注释、删掉行尾续行（单引号里除外），返回 shell 真正看到的代码。
+// 注释只在词首成立：`foo#bar` 里的 # 是普通字符。
+func cookJudge(s string) string {
+	var b strings.Builder
 	var quote byte
 	inComment := false
+	wordStart := true
+	arith := 0
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if c == '\n' {
-			// 注释只到行尾；引号可以跨行。
 			inComment = false
+			wordStart = true
+			b.WriteByte(c)
 			continue
 		}
 		if inComment {
 			continue
 		}
-		if quote == 0 && c == '#' && startsWord(s, i) && !escapedWhitespaceBefore(s, i) {
-			inComment = true
-			continue
-		}
-		if c == '\\' && quote != '\'' && i+1 < len(s) {
+		if c == '\\' && quote != '\'' && i+1 < len(s) && s[i+1] == '\n' {
+			// 单引号外的「反斜杠+换行」在词法阶段就消失。
 			i++
 			continue
 		}
-		if quote == 0 {
-			if c == '\'' || c == '"' {
-				quote = c
+		if quote == '\'' {
+			b.WriteByte(c)
+			if c == '\'' {
+				quote = 0
 			}
 			continue
 		}
-		if c == quote {
-			quote = 0
+		if quote == '"' {
+			b.WriteByte(c)
+			if c == '\\' && i+1 < len(s) {
+				b.WriteByte(s[i+1])
+				i++
+				continue
+			}
+			if c == '"' {
+				quote = 0
+			}
 			continue
 		}
-		if quote != '"' {
+		if c == '\\' && i+1 < len(s) {
+			if s[i+1] == '\n' {
+				// 行尾续行：两个字符一起消失。注释里走不到这里（注释在换行处结束）。
+				i++
+				continue
+			}
+			b.WriteString(s[i : i+2])
+			i++
+			wordStart = false
 			continue
 		}
-		if c == '`' {
-			return true
-		}
-		if c == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
-			// 算术展开不是命令替换：放行，但内部还能套 $( )，继续扫。
-			continue
-		}
-		if c == '$' && i+1 < len(s) && s[i+1] == '(' {
-			return true
-		}
-	}
-	return false
-}
-
-// joinLineContinuations 去掉单引号外的 "反斜杠+换行"：bash 在词法阶段就把这两个
-// 字符删掉，`echo "$\<换行>(cmd)"` 实际就是 `echo "$(cmd)"`。不先归一化，扫描器会
-// 看到 `$` 后面跟反斜杠，从而漏掉命令替换。
-func joinLineContinuations(s string) string {
-	var b strings.Builder
-	var quote byte
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if quote == 0 && (c == '\'' || c == '"') {
+		if c == '\'' || c == '"' {
 			quote = c
 			b.WriteByte(c)
+			wordStart = false
 			continue
 		}
-		if quote != 0 && c == quote {
-			quote = 0
+		if c == '#' && wordStart {
+			inComment = true
+			continue
+		}
+		if c == '$' && i+2 < len(s) && s[i+1] == '(' && s[i+2] == '(' {
+			// 算术展开：内部的 ) 属于同一个词，`$((1+0))#` 的 # 是字面量。
+			b.WriteString("$((")
+			i += 2
+			arith += 2
+			wordStart = false
+			continue
+		}
+		if arith > 0 {
 			b.WriteByte(c)
-			continue
-		}
-		if c == '\\' && quote != '\'' && i+1 < len(s) && s[i+1] == '\n' {
-			i++
+			if c == '(' {
+				arith++
+			} else if c == ')' {
+				arith--
+			}
 			continue
 		}
 		b.WriteByte(c)
+		switch c {
+		case ' ', '\t', ';', '&', '|', '(':
+			wordStart = true
+		case ')':
+			wordStart = true
+		default:
+			wordStart = false
+		}
 	}
 	return b.String()
 }
 
-// startsWord 判断 s[i] 是否处在一个词的开头：shell 只在词首把 `#` 当注释，
-// `foo#bar` 里的 `#` 是普通字符。
-// escapedWhitespaceBefore 判断 s[i] 前面那个空白是不是被反斜杠转义了：
-// `foo\ #` 里的空格是字面量，所以这个 `#` 属于词的一部分，不是注释开头。
-func escapedWhitespaceBefore(s string, i int) bool {
-	if i == 0 {
-		return false
-	}
-	switch s[i-1] {
-	case ' ', '\t':
-	default:
-		return false
-	}
-	n := 0
-	for j := i - 2; j >= 0 && s[j] == '\\'; j-- {
-		n++
-	}
-	return n%2 == 1
-}
-
-func startsWord(s string, i int) bool {
-	if i == 0 {
-		return true
-	}
-	switch s[i-1] {
-	case ' ', '\t', '\n', ';', '&', '|', '(':
-		// `)` 不算词首：shell 里 `$((1+0))#` 的 `#` 是紧跟其后的字面量，
-		// 不是注释（`)` 后面本来也不可能是语句开头）。
-		return !escapedWhitespaceBefore(s, i)
-	}
-	return false
-}
-
 func lintJudge(cmd string) error {
-	if executesInDoubleQuotes(cmd) {
+	code, wordSrc, cmdSub := lexJudge(cmd)
+	if cmdSub {
 		return fmt.Errorf("判据里不要用 `$( )`/反引号命令替换——双引号里它照样执行，而替换失败不会让命令本身非零；只有单引号里才是字面量")
 	}
-	s := stripQuoted(cmd)
 	// ${IFS} 是空格的字面写法，`bash${IFS}-c` 在 shell 里就是 `bash -c`。
-	normalized := strings.ReplaceAll(strings.ReplaceAll(cmd, "${IFS}", " "), "$IFS", " ")
-	s = strings.ReplaceAll(s, "${IFS}", " ")
-	s = strings.ReplaceAll(s, "$IFS", " ")
-	words := shellWords(normalized)
+	wordSrc = strings.ReplaceAll(strings.ReplaceAll(wordSrc, "${IFS}", " "), "$IFS", " ")
+	words := shellWords(wordSrc)
+	s := code
 	if err := compound(s, words); err != nil {
 		return err
 	}
