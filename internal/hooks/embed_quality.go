@@ -117,7 +117,7 @@ SESSION_ID="${FORGE_SESSION_ID:-default}"
 # 含 / 等文件系统特殊字符的 session id 裸拼会让 marker 写入失败）——与 Go 侧
 # readsFileKey 同规则：[A-Za-z0-9._-] 之外一律折叠为 _。
 _SID_SAFE=$(printf '%s' "$SESSION_ID" | tr -c 'A-Za-z0-9._-' '_' 2>/dev/null || true)
-[ -z "$_SID_SAFE" ] && _SID_SAFE="default"
+if [ -z "$_SID_SAFE" ]; then _SID_SAFE="default"; fi
 VIOLATIONS=""
 
 # t.Skip rationale 启发式（2026-08-24 放宽）：带理由的 skip 是合法跳过（fixture
