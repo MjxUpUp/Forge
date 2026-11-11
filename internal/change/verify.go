@@ -73,10 +73,32 @@ func ParseAcceptance(raw []byte) Acceptance {
 	lines := strings.Split(text, "\n")
 
 	inFence := false
+	inHTMLComment := false
 	lang := ""
 	var body []string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		// HTML 注释里的示例围栏不是判据，四空格缩进的代码块同理（CommonMark
+		// 的缩进代码块是示意，不是真围栏）——两种写法都很容易出现在文档里，
+		// 认错了就会去执行一段本来只是给人看的示例。
+		if !inFence {
+			if inHTMLComment {
+				if strings.Contains(line, "-->") {
+					inHTMLComment = false
+				}
+				continue
+			}
+			if i := strings.Index(line, "<!--"); i >= 0 {
+				if !strings.Contains(line[i:], "-->") {
+					inHTMLComment = true
+					continue
+				}
+				continue
+			}
+			if len(line)-len(strings.TrimLeft(line, " ")) > 3 {
+				continue
+			}
+		}
 		if strings.HasPrefix(trimmed, "```") {
 			if !inFence {
 				inFence = true
@@ -166,6 +188,11 @@ type VerifyOptions struct {
 //     change 不能凭"我是对的"通过；
 //   - 只要有命令失败，证据照样落盘（失败证据比没有证据更有用）。
 func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, error) {
+	// id 进路径之前必须校验：`../sibling` 之类会把证据写到别人的目录里。
+	// CLI 已经挡了一层，但 Verify 是公开 API，测试和后续调用方都会直接用它。
+	if err := ValidID(id); err != nil {
+		return nil, err
+	}
 	// 这里不取指纹：验收命令可能自己产生文件，指纹要等它们跑完再算，
 	// 否则 verify 刚打印"已封印"，list 立刻判它 stale（出场即失效）。
 	c, err := load(root, id, nil)
@@ -226,10 +253,11 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 			sum.Checks = append(sum.Checks, check)
 			continue
 		}
-		shell, serr := shellFor(cmd.Shell)
+		shell, shellName, serr := shellFor(cmd.Shell)
 		if serr != nil {
 			return nil, serr
 		}
+		check.Shell = shellName
 		check = runCheck(ctx, root, shell, evDir, check, timeout)
 		if check.Exit != 0 {
 			passed = false
@@ -356,20 +384,26 @@ func exitCode(err error) int {
 //
 // 不把两种壳混着找：写了 ```sh 的判据就该在 sh 里跑，拿 bash 顶替会让
 // "在 sh 下会失败"的判据静默通过（Bash 语法、[[ ]]、pipefail 都不一样）。
-func shellFor(kind string) (string, error) {
+func shellFor(kind string) (string, string, error) {
 	// 走 shellexec 而不是裸 exec.LookPath：Windows 上 PATH 里的 bash 可能是
 	// WSL 启动器（C:\Windows\System32\bash.exe），判据会在 WSL 里跑——路径、工具链
 	// 全错，却可能"成功"。见 internal/shellexec/bash.go 的解析顺序。
 	if kind == "bash" {
 		if p, err := shellexec.FindBash(); err == nil {
-			return p, nil
+			return p, "bash", nil
 		}
-		return "", errors.New("change: acceptance 里有 ```bash 围栏，但本机没有可用的 bash（Windows 请安装 Git for Windows 并确保 bash 在 PATH）")
+		return "", "", errors.New("change: acceptance 里有 ```bash 围栏，但本机没有可用的 bash（Windows 请安装 Git for Windows 并确保 bash 在 PATH）")
 	}
 	if p, err := exec.LookPath("sh"); err == nil {
-		return p, nil
+		return p, "sh", nil
 	}
-	return "", errors.New("change: acceptance 里有 ```sh 围栏，但本机没有 sh；把判据改成 ```bash 围栏，或安装一个 sh")
+	// Windows 的 Git 自带 bash 却通常不带 PATH 里的 sh。与其让 ```sh 围栏恒报
+	// "没有 sh"，不如回落 bash 并把实际用的壳记进证据——判据必须跑得起来，
+	// 而证据里写清楚"这条在 bash 下跑的"比假装它是 sh 诚实。
+	if p, err := shellexec.FindBash(); err == nil {
+		return p, "bash", nil
+	}
+	return "", "", errors.New("change: acceptance 里有 ```sh 围栏，但本机既没有 sh 也没有 bash；把判据改成 ```bash 围栏，或安装一个 sh")
 }
 
 // uniqueEvidenceDir 保证每次验证都有独立目录：同一秒内连跑两次是常态
@@ -554,17 +588,12 @@ func docProblems(dir string) []string {
 // hasExecutableLine 判断一段围栏里有没有真正会被执行的语句。
 // 只有注释和空行的围栏跑起来必然退出 0，不能算判据。
 //
-// 注释行以反斜杠结尾时 bash 会把下一行并入注释（`# 说明 \` 后接 `true` 永远
-// 不执行），所以续行也要跳过。
+// 注释不会因为行尾的反斜杠续到下一行（实测 `# 说明 \` 之后的 `false` 照跑），
+// 所以按行判断即可——早先按续行跳过会把真语句当成注释。
 func hasExecutableLine(cmd string) bool {
-	inComment := false
 	for _, line := range strings.Split(cmd, "\n") {
 		t := strings.TrimSpace(line)
-		if inComment || strings.HasPrefix(t, "#") {
-			inComment = strings.HasSuffix(t, "\\")
-			continue
-		}
-		if t == "" {
+		if t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
 		return true
@@ -572,9 +601,49 @@ func hasExecutableLine(cmd string) bool {
 	return false
 }
 
-// nestedShellRE 匹配"再套一层 shell"的写法：内层 shell 不继承 pipefail，
-// 一道 `bash -c 'false | true'` 就能把失败变成 0。
-var nestedShellRE = regexp.MustCompile(`(^|[\s;&|(])(bash|sh|zsh|dash|pwsh|powershell)\s+-c(\s|$)`)
+// shellNameRE 匹配命令位置上的解释器名：可带路径（/bin/sh、C:\Git\bin\bash）
+// 与 .exe 后缀。只认"命令开头或分隔符之后"的写法，`git log` 里的 sh 不算。
+var shellNameRE = regexp.MustCompile(`(^|[\s;&|()])((?:[A-Za-z]:)?[^\s;&|()]*[\\/])?(bash|sh|zsh|dash|ksh|busybox|pwsh|powershell)(\.exe)?(\s|$)`)
+
+// setOffRE 匹配关掉保护的 set 写法：`set +e`、`set +o errexit`、`set +eo pipefail`。
+var setOffRE = regexp.MustCompile(`set\s+\+[a-zA-Z]*[eo]`)
+
+// nestedShell 判断判据里有没有再调用一层 shell。
+//
+// 内层 shell 不继承外层 prefix 里的 errexit/pipefail：`bash -lc 'false | true'`、
+// `/bin/sh -c 'false | true'`、`bash.exe -ec ...` 都能把失败变成 0，而外层只看
+// 到内层退出码 0。所以只要解释器后面跟着带 c 的短选项就拒绝——带路径、带 .exe、
+// 用 ${IFS} 拼参数都一视同仁（${IFS} 在检查前已被还原成空格）。
+func nestedShell(s string) bool {
+	for _, loc := range shellNameRE.FindAllStringIndex(s, -1) {
+		rest := s[loc[1]:]
+		if i := strings.IndexAny(rest, ";&|\n"); i >= 0 {
+			rest = rest[:i]
+		}
+		for _, w := range strings.Fields(rest) {
+			if w == "--command" {
+				return true
+			}
+			if strings.HasPrefix(w, "-") && !strings.HasPrefix(w, "--") && strings.ContainsRune(w, 'c') {
+				return true
+			}
+			if !strings.HasPrefix(w, "-") {
+				break
+			}
+		}
+	}
+	return false
+}
+
+// hasEval 判断有没有 eval：`eval 'false | true'` 的退出码同样由最后一条命令决定。
+func hasEval(s string) bool {
+	for _, w := range strings.Fields(s) {
+		if w == "eval" {
+			return true
+		}
+	}
+	return false
+}
 
 // lintJudge 拒绝那些能把失败变成 0 的写法。
 //
@@ -582,6 +651,9 @@ var nestedShellRE = regexp.MustCompile(`(^|[\s;&|(])(bash|sh|zsh|dash|pwsh|power
 // 只检查引号外的操作符——`echo "a||b"` 这类字面量不算。
 func lintJudge(cmd string) error {
 	s := stripQuoted(cmd)
+	// ${IFS} 是空格的字面写法，`bash${IFS}-c` 在 shell 里就是 `bash -c`。
+	s = strings.ReplaceAll(s, "${IFS}", " ")
+	s = strings.ReplaceAll(s, "$IFS", " ")
 	switch {
 	case strings.Contains(s, "||"):
 		return fmt.Errorf("判据里不能用 `||`（它会把前一条的失败咽掉）；用 `&&` 串联，或把逻辑写进脚本")
@@ -589,10 +661,12 @@ func lintJudge(cmd string) error {
 		return fmt.Errorf("判据里不要用管道 `|`——需要看输出就写进文件，或把逻辑写进脚本（sh 环境没有 pipefail，管道失败会变成通过）")
 	case hasSingleAmpersand(s):
 		return fmt.Errorf("判据里不能用后台 `&`（后台任务的失败不会被等待）；要并行请写进脚本并 wait")
-	case strings.Contains(s, "set +e"):
-		return fmt.Errorf("判据里不能用 `set +e`（等于允许失败）")
-	case nestedShellRE.MatchString(s):
-		return fmt.Errorf("判据里不能再套一层 `bash -c`/`sh -c`（内层 shell 不受 pipefail 约束）")
+	case setOffRE.MatchString(s):
+		return fmt.Errorf("判据里不能关掉保护（`set +e` / `set +o errexit` 等于允许失败）")
+	case hasEval(s):
+		return fmt.Errorf("判据里不能用 `eval`（它会把失败吞成最后一条命令的退出码）")
+	case nestedShell(s):
+		return fmt.Errorf("判据里不能再调用一层 shell（`bash -c`、`bash -lc`、`/bin/sh -c` 都算：内层 shell 不受 pipefail 约束）")
 	}
 	return nil
 }
@@ -630,6 +704,14 @@ func stripQuoted(s string) string {
 				quote = 0
 			}
 			b.WriteByte(' ')
+			continue
+		}
+		if c == '\\' && i+1 < len(s) && s[i+1] != '\n' {
+			// 引号外的反斜杠同样是转义：`echo a\|b` 里的 `|` 是字面量，不是管道
+			// （按管道拒会误杀），而 `false \" || true` 里的 `\"` 不会开启引号
+			// （不处理就会把后面的 `||` 当成引号内容放过去）。
+			b.WriteString("  ")
+			i++
 			continue
 		}
 		if c == '\'' || c == '"' {

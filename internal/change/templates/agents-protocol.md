@@ -27,8 +27,10 @@
 ## 红线
 
 - 判据必须能被命令证明；写不出命令的验收项不算完成。
-- acceptance 里不能用管道 `|`、`||`、后台 `&`、`set +e`、再套一层 `bash -c`——
-  verify 在解析期就直接拒绝（不是靠 pipefail 兜），因为这些写法都能把失败变成 0。
+- acceptance 里不能用管道 `|`、`||`、后台 `&`、`set +e`/`set +o errexit`、`eval`，
+  也不能再调用一层 shell —— `bash -c`、`bash -lc`、`/bin/sh -c`、`bash.exe -c`、
+  用 `${IFS}` 拼参数都算：verify 在解析期就直接拒绝（不是靠 pipefail 兜），
+  因为这些写法都能把失败变成 0。多步逻辑写脚本，脚本自己 `set -e` 并以非零退出码传失败。
 - 「已验证」这个结论只能由 `forge change verify` 产出。手写的 summary.json 缺实跑输出文件，
   review 时应视为可疑——verify 只检查摘要是否自洽（有判据哈希、有实跑记录），
   它无法证明这份摘要真的来自一次执行。
