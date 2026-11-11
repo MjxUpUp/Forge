@@ -420,7 +420,7 @@ func executesInDoubleQuotes(s string) bool {
 		if inComment {
 			continue
 		}
-		if quote == 0 && c == '#' && startsWord(s, i) {
+		if quote == 0 && c == '#' && startsWord(s, i) && !escapedWhitespaceBefore(s, i) {
 			inComment = true
 			continue
 		}
@@ -484,13 +484,31 @@ func joinLineContinuations(s string) string {
 
 // startsWord 判断 s[i] 是否处在一个词的开头：shell 只在词首把 `#` 当注释，
 // `foo#bar` 里的 `#` 是普通字符。
+// escapedWhitespaceBefore 判断 s[i] 前面那个空白是不是被反斜杠转义了：
+// `foo\ #` 里的空格是字面量，所以这个 `#` 属于词的一部分，不是注释开头。
+func escapedWhitespaceBefore(s string, i int) bool {
+	if i == 0 {
+		return false
+	}
+	switch s[i-1] {
+	case ' ', '\t':
+	default:
+		return false
+	}
+	n := 0
+	for j := i - 2; j >= 0 && s[j] == '\\'; j-- {
+		n++
+	}
+	return n%2 == 1
+}
+
 func startsWord(s string, i int) bool {
 	if i == 0 {
 		return true
 	}
 	switch s[i-1] {
 	case ' ', '\t', '\n', ';', '&', '|', '(', ')':
-		return true
+		return !escapedWhitespaceBefore(s, i)
 	}
 	return false
 }

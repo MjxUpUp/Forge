@@ -658,7 +658,7 @@ func stripQuoted(s string) string {
 			b.WriteByte(' ')
 			continue
 		}
-		if c == '#' && (i == 0 || strings.ContainsRune(" \t\n;&|(", rune(s[i-1]))) {
+		if c == '#' && (i == 0 || (strings.ContainsRune(" \t\n;&|(", rune(s[i-1])) && !escapedWhitespaceBefore(s, i))) {
 			inComment = true
 			b.WriteByte(' ')
 			continue
