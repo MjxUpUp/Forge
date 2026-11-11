@@ -136,7 +136,7 @@ type VerifyOptions struct {
 //     change 不能凭"我是对的"通过；
 //   - 只要有命令失败，证据照样落盘（失败证据比没有证据更有用）。
 func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, error) {
-	c, fp, err := LoadWithFingerprint(root, id)
+	c, fp, err := Load(root, id)
 	if err != nil {
 		return nil, err
 	}

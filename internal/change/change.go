@@ -307,16 +307,11 @@ func allASCIIDigits(s string) bool {
 //
 // 与 List 用同一套判据：各自算一次工作区指纹，避免"list 说失效、verify 显示
 // 已封印"这种两套结论。
-func Load(root, id string) (*Change, error) {
-	c, _, err := LoadWithFingerprint(root, id)
-	return c, err
-}
-
-// LoadWithFingerprint 与 Load 相同，另外返回这次判定所用的工作区指纹。
+// Load 读取单个 change，并返回这次判定所用的工作区指纹。
 //
 // Verify 要同时知道"旧证据是否失效"和"当前工作区指纹"，分别算一遍会把每个
 // 改动文件读两次（未跟踪文件只能逐个读盘哈希，代价随改动量线性上升）。
-func LoadWithFingerprint(root, id string) (*Change, *Fingerprint, error) {
+func Load(root, id string) (*Change, *Fingerprint, error) {
 	if err := ValidID(id); err != nil {
 		return nil, nil, err
 	}

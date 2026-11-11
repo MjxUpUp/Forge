@@ -199,7 +199,7 @@ func TestLoad_StaleWhenAcceptanceEdited(t *testing.T) {
 	}
 	writeSealedSummary(t, dir, raw)
 
-	c, err := Load(root, "demo")
+	c, _, err := Load(root, "demo")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestLoad_StaleWhenAcceptanceEdited(t *testing.T) {
 	if err := os.WriteFile(accPath, []byte("```bash\ntrue && true\n```\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	c, err = Load(root, "demo")
+	c, _, err = Load(root, "demo")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestLoad_MissingChange(t *testing.T) {
 	if _, err := Init(root, "mini"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(root, "nope"); err == nil {
+	if _, _, err := Load(root, "nope"); err == nil {
 		t.Fatal("不存在的 change 应报错")
 	}
 }
