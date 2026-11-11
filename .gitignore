@@ -66,3 +66,6 @@ vendor/
 .zcode/
 tmpwebapp-*.log
 evals/forge/golden/candidates/
+
+# 仓库内临时调试目录（scratch：package 导出、安装包切片等，勿入库勿计入任务 diff）
+/.tmp/
