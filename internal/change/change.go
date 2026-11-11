@@ -85,6 +85,11 @@ func ValidID(id string) error {
 	if !idPattern.MatchString(id) {
 		return fmt.Errorf("change: id %q 不合法（小写字母/数字/连字符，首尾非连字符，≤64 字符）", id)
 	}
+	// 保留名：这两个会与 spec/changes/archive/、<change>/evidence/ 撞目录，
+	// 允许它们会让 change 建好即从 list 里消失。
+	if id == ArchiveDirName || id == EvidenceDirName {
+		return fmt.Errorf("change: id %q 是保留名（归档/证据目录占用）", id)
+	}
 	return nil
 }
 
@@ -221,16 +226,18 @@ func List(root string) ([]Change, error) {
 		if !e.IsDir() {
 			continue
 		}
-		if ValidID(e.Name()) != nil {
-			// 不是合法 id 的目录（编辑器临时物、.DS_Store 之外的杂项）不是 change。
-			continue
-		}
+		// 先认 archive 目录：它是保留名，ValidID 会拒掉它，
+		// 顺序反了会把整棵归档树当成"非法 id"静默跳过。
 		if e.Name() == ArchiveDirName {
 			archived, aerr := listArchived(root)
 			if aerr != nil {
 				return nil, aerr
 			}
 			out = append(out, archived...)
+			continue
+		}
+		if ValidID(e.Name()) != nil {
+			// 不是合法 id 的目录（编辑器临时物、.DS_Store 之外的杂项）不是 change。
 			continue
 		}
 		c, cerr := load(root, e.Name(), &fp)
@@ -301,11 +308,24 @@ func allASCIIDigits(s string) bool {
 // 与 List 用同一套判据：各自算一次工作区指纹，避免"list 说失效、verify 显示
 // 已封印"这种两套结论。
 func Load(root, id string) (*Change, error) {
+	c, _, err := LoadWithFingerprint(root, id)
+	return c, err
+}
+
+// LoadWithFingerprint 与 Load 相同，另外返回这次判定所用的工作区指纹。
+//
+// Verify 要同时知道"旧证据是否失效"和"当前工作区指纹"，分别算一遍会把每个
+// 改动文件读两次（未跟踪文件只能逐个读盘哈希，代价随改动量线性上升）。
+func LoadWithFingerprint(root, id string) (*Change, *Fingerprint, error) {
 	if err := ValidID(id); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	fp := WorktreeFingerprint(root)
-	return loadFrom(root, id, ChangeDir(root, id), &fp)
+	c, err := loadFrom(root, id, ChangeDir(root, id), &fp)
+	if err != nil {
+		return nil, nil, err
+	}
+	return c, &fp, nil
 }
 
 func load(root, id string, fp *Fingerprint) (*Change, error) {
@@ -345,15 +365,28 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 				if !c.HasAcceptance {
 					stale = c.Sealed
 				} else if sum.AcceptanceSHA256 != "" {
-					if raw, rerr := os.ReadFile(filepath.Join(dir, FileAcceptance)); rerr == nil {
-						stale = hashBytes(raw) != sum.AcceptanceSHA256
+					// 读不出来（权限、IO 错误）就无法证明判据没漂移。这种情况按
+					// 保守处理判失效：宁可让人重跑一次 verify，也不能让一份来路
+					// 不明的旧证据继续对外宣称"已封印"。
+					raw, rerr := os.ReadFile(filepath.Join(dir, FileAcceptance))
+					if rerr != nil || hashBytes(raw) != sum.AcceptanceSHA256 {
+						stale = true
 					}
 				}
-				// 工作区漂移：还在同一个 commit 上，但内容已经和封印时不同。
-				// 换过 commit 就不比较——改动已经落地，属于"证据仍有效"的情况。
-				if fp != nil && fp.OK && sum.Head != "" && sum.Head == fp.Head &&
-					sum.DiffSHA256 != "" && sum.DiffSHA256 != fp.DiffSHA256 {
-					stale = true
+				// 内容漂移：封印时记录的每个改动文件，现在内容必须还对得上。
+				// 只比内容、不比 HEAD——提交把改动落进 commit 并不改变文件内容，
+				// 不该因此判失效；但提交后又改了这些文件，内容变了就必须重跑。
+				if fp != nil && fp.OK && sum.DiffSHA256 != "" {
+					if filesDrifted(root, sum.Files) {
+						stale = true
+					}
+					// HEAD 没动时还要比"改动集合"：verify 之后新写一批文件
+					// 却不提交，等于在被验证的代码之外继续加料——这份证据
+					// 已经代表不了当前工作区。换过 HEAD 则只按内容比：
+					// 提交之后出现的新改动属于下一件事，不该把已落地的证据判死。
+					if sum.Head != "" && sum.Head == fp.Head && !sameDigests(sum.Files, fp.Files) {
+						stale = true
+					}
 				}
 				if stale {
 					c.Stale = c.Sealed
@@ -380,14 +413,17 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 
 // Summary 是一次验证的封印摘要（evidence/<ts>/summary.json）。
 type Summary struct {
-	Change           string `json:"change"`
-	StartedAt        string `json:"started_at"`
-	FinishedAt       string `json:"finished_at"`
-	Passed           bool   `json:"passed"`
-	Sealed           bool   `json:"sealed"`
-	Head             string `json:"head,omitempty"`
-	DiffSHA256       string `json:"diff_sha256,omitempty"`
-	AcceptanceSHA256 string `json:"acceptance_sha256"`
+	Change     string `json:"change"`
+	StartedAt  string `json:"started_at"`
+	FinishedAt string `json:"finished_at"`
+	Passed     bool   `json:"passed"`
+	Sealed     bool   `json:"sealed"`
+	Head       string `json:"head,omitempty"`
+	DiffSHA256 string `json:"diff_sha256,omitempty"`
+	// Files 是封印时每个改动文件的内容摘要。判失效按"文件内容是否还对得上"
+	// 而不是按 HEAD：先 verify 后 commit 与先 commit 后 verify 是同一份代码。
+	Files            []FileDigest `json:"files,omitempty"`
+	AcceptanceSHA256 string       `json:"acceptance_sha256"`
 	// DiffBound 表示证据绑定了 git 工作区指纹；false 时只能证明命令跑过，
 	// 证明不了它对应哪份代码（非 git 仓库）。
 	DiffBound bool    `json:"diff_bound,omitempty"`

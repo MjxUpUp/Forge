@@ -204,6 +204,7 @@ func TestList_MarksStaleWhenWorktreeChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fillScaffold(t, dir)
 	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
@@ -250,7 +251,25 @@ func repoWithChange(t *testing.T, id string) (root, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fillScaffold(t, dir)
 	return root, dir
+}
+
+// fillScaffold 模拟"人已经把模板填完"：删掉 forge:fill 标记。
+// 真实流程里人要填内容；测试只关心标记消失后 verify 是否放行。
+func fillScaffold(t *testing.T, dir string) {
+	t.Helper()
+	for _, name := range []string{FileProposal, FileDesign, FileTasks, FileAcceptance} {
+		path := filepath.Join(dir, name)
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cleaned := strings.ReplaceAll(string(raw), scaffoldMarker, "")
+		if err := os.WriteFile(path, []byte(cleaned), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func newGitRepo(t *testing.T) string {
@@ -339,6 +358,32 @@ func TestLoad_StaleAfterAcceptanceDeleted(t *testing.T) {
 	}
 }
 
+// 判据存在但读不出来（权限、IO 错误）时必须判失效，不能保留封印。
+// 读失败等于"无法证明判据没漂移"，fail-open 会让人拿一份旧证据继续自称已验证。
+func TestLoad_StaleWhenAcceptanceUnreadable(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	accPath := filepath.Join(dir, FileAcceptance)
+	writeFile(t, accPath, "```bash\ntrue\n```\n")
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(accPath); err != nil {
+		t.Fatal(err)
+	}
+	// 用同名目录制造"存在但 ReadFile 失败"（EISDIR）的情形。
+	if err := os.Mkdir(accPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Sealed || !c.Stale {
+		t.Errorf("判据读不出来时旧证据应失效，got sealed=%v stale=%v", c.Sealed, c.Stale)
+	}
+}
+
 // 证据是验证的产物，不是被验证的内容：写证据不能改变工作区指纹，
 // 否则每跑一次 verify，上一次的证据就把自己判成 stale。
 func TestWorktreeFingerprint_IgnoresEvidence(t *testing.T) {
@@ -371,6 +416,7 @@ func TestList_NotStaleAfterCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fillScaffold(t, dir)
 	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
 	run(t, root, "git", "add", "-A")
 	run(t, root, "git", "commit", "-q", "-m", "spec")
@@ -390,5 +436,80 @@ func TestList_NotStaleAfterCommit(t *testing.T) {
 	}
 	if !list[0].Sealed || list[0].Stale {
 		t.Errorf("提交后改动已落地，证据应仍有效，got sealed=%v stale=%v", list[0].Sealed, list[0].Stale)
+	}
+}
+
+// 模板骨架不是判据：init+new 之后直接 verify 必须被拒绝，
+// 而不是拿模板里的示例命令把 change 封印成 verified。
+func TestVerify_RefusesUnfilledScaffold(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(root, "demo", ""); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err == nil {
+		t.Fatal("未填写的模板不应通过 verify")
+	}
+	if !strings.Contains(err.Error(), scaffoldMarker) {
+		t.Fatalf("错误应指出骨架标记，got %v", err)
+	}
+}
+
+// pipefail：`false | true` 在只有 set -e 时退出码是 0（tail 出口），
+// 这条测试钉住"管道里的失败不能被下游命令吃掉"。
+func TestVerify_PipelineFailureNotSealed(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\nfalse | true\n```\n")
+	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if res.Summary.Sealed {
+		t.Error("管道里的失败不应被封成通过")
+	}
+	if res.Summary.Checks[0].Exit == 0 {
+		t.Error("退出码应为非零")
+	}
+}
+
+// 提交之后又改被验证的文件：内容变了，证据必须失效。
+func TestLoad_StaleAfterEditPostCommit(t *testing.T) {
+	requireBash(t)
+	root := newGitRepo(t)
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillScaffold(t, dir)
+	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\ntrue\n```\n")
+	writeFile(t, filepath.Join(root, "code.go"), "package x\n")
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	run(t, root, "git", "add", "-A")
+	run(t, root, "git", "commit", "-q", "-m", "land")
+
+	items, err := List(root)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(items) != 1 || !items[0].Sealed || items[0].Stale {
+		t.Fatalf("提交后内容未变，证据应仍有效，got %+v", items)
+	}
+
+	writeFile(t, filepath.Join(root, "code.go"), "package y\n")
+	items, err = List(root)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if items[0].Sealed || !items[0].Stale {
+		t.Errorf("提交后又改了被验证文件，证据应失效，got %+v", items[0])
 	}
 }
