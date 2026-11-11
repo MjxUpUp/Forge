@@ -45,6 +45,9 @@ type Check struct {
 type Acceptance struct {
 	Commands []string
 	Manual   []string
+	// ManualDone 是已勾选（- [x]）的人工项。勾选不代表机器验过，同样不进封印，
+	// 只是别让人以为自己写下的确认从报告里消失了。
+	ManualDone []string
 }
 
 // ParseAcceptance 把 acceptance.md 拆成命令与人工检查项。
@@ -84,8 +87,12 @@ func ParseAcceptance(raw []byte) Acceptance {
 			body = append(body, line)
 			continue
 		}
-		if item, ok := manualItem(trimmed); ok {
-			acc.Manual = append(acc.Manual, item)
+		if item, done, ok := manualItem(trimmed); ok {
+			if done {
+				acc.ManualDone = append(acc.ManualDone, item)
+			} else {
+				acc.Manual = append(acc.Manual, item)
+			}
 		}
 	}
 	return acc
@@ -99,16 +106,20 @@ func isShellFence(lang string) bool {
 	return false
 }
 
-func manualItem(trimmed string) (string, bool) {
-	// 支持 "- [ ] x" / "-   [ ]   x"，不认已勾选的 "- [x]"。
-	if !strings.HasPrefix(trimmed, "-") {
-		return "", false
+// manualItem 解析一行人工检查项，返回文本、是否已勾选、是否命中。
+// 支持 "- [ ] x" / "-   [x]   x"，也接受 "* [x] x"。
+func manualItem(trimmed string) (text string, done bool, ok bool) {
+	if !strings.HasPrefix(trimmed, "-") && !strings.HasPrefix(trimmed, "*") {
+		return "", false, false
 	}
-	rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "-"))
-	if !strings.HasPrefix(rest, "[ ]") {
-		return "", false
+	rest := strings.TrimSpace(trimmed[1:])
+	switch {
+	case strings.HasPrefix(rest, "[ ]"):
+		return strings.TrimSpace(strings.TrimPrefix(rest, "[ ]")), false, true
+	case strings.HasPrefix(strings.ToLower(rest), "[x]"):
+		return strings.TrimSpace(rest[3:]), true, true
 	}
-	return strings.TrimSpace(strings.TrimPrefix(rest, "[ ]")), true
+	return "", false, false
 }
 
 // Result 是一次 `forge change verify` 的完整结果（也是命令行输出与
@@ -118,6 +129,8 @@ type Result struct {
 	EvidenceDir string
 	// Manual 是 acceptance.md 里的人工检查项：只展示、不阻断，也不进封印。
 	Manual []string
+	// ManualDone 是已勾选的人工项，同样不进封印，只是别让它从报告里消失。
+	ManualDone []string
 }
 
 // VerifyOptions 控制一次验证。
@@ -214,7 +227,7 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	if err := writeSummary(evDir, sum); err != nil {
 		return nil, err
 	}
-	return &Result{Summary: sum, EvidenceDir: evDir, Manual: acc.Manual}, nil
+	return &Result{Summary: sum, EvidenceDir: evDir, Manual: acc.Manual, ManualDone: acc.ManualDone}, nil
 }
 
 // 单条命令的输出最多保留 2 MiB：噪声命令（构建日志、测试刷屏）不能把 verify
