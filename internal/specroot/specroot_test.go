@@ -126,6 +126,38 @@ func TestLoad_UnsupportedVersion(t *testing.T) {
 	}
 }
 
+// TestFind_StopsAtGitFile：worktree/submodule 的 .git 是「文件」而非目录，
+// 同样是仓库边界——实现用 exists 而非 IsDir，这条钉住那个区别。
+func TestFind_StopsAtGitFile(t *testing.T) {
+	outer := t.TempDir()
+	writeContract(t, outer, "version: \"1\"\n")
+	inner := filepath.Join(outer, "linked-worktree")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(inner, ".git"),
+		[]byte("gitdir: /elsewhere/.git/worktrees/x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := Find(inner); ok {
+		t.Fatalf("worktree 不应被外层契约激活，got %q", got)
+	}
+}
+
+// TestLoad_MinorVersionAccepted：version "1.1" 属主版本 1，按主版本兼容接受。
+func TestLoad_MinorVersionAccepted(t *testing.T) {
+	root := t.TempDir()
+	writeContract(t, root, "version: \"1.1\"\n")
+
+	c, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.Version != "1.1" {
+		t.Fatalf("Version=%q, want 1.1", c.Version)
+	}
+}
+
 // TestLoad_Missing：无文件返回 ErrNoContract。
 func TestLoad_Missing(t *testing.T) {
 	if _, err := Load(t.TempDir()); !errors.Is(err, ErrNoContract) {

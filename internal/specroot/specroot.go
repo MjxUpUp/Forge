@@ -78,8 +78,12 @@ func Find(cwd string) (string, bool) {
 
 // Load 读取并校验 root/spec/forge.yaml。
 //
-// 缺省值：version=1、profile=mini。未知 profile 或未知主版本返回错误——契约是
-// 人写的文件，拼错档位时静默降级比报错更危险。
+// 缺省值：version=1、profile=mini。未知 profile 或不受支持的主版本返回错误——
+// 契约是人写的文件，拼错档位时静默降级比报错更危险。
+//
+// 消费现状（2026-11-11，spec-in-repo 第一块）：成员资格只认「文件存在」，
+// profile 尚未接线 hook 执法（mini 档「只声明不执法」是下一块的实现目标）。
+// 在那之前 Load 是 status/诊断与后续门禁的读取入口，不是已生效的执法开关。
 func Load(root string) (*Contract, error) {
 	path := MarkerPath(root)
 	raw, err := os.ReadFile(path)
@@ -102,8 +106,8 @@ func Load(root string) (*Contract, error) {
 	if c.Version == "" {
 		c.Version = CurrentVersion
 	}
-	if c.Version != CurrentVersion {
-		return nil, fmt.Errorf("specroot: %s 的 version=%q 不受支持（当前只有 %q）", path, c.Version, CurrentVersion)
+	if majorOf(c.Version) != majorOf(CurrentVersion) {
+		return nil, fmt.Errorf("specroot: %s 的 version=%q 不受支持（当前支持 %s.x）", path, c.Version, majorOf(CurrentVersion))
 	}
 	if c.Profile == "" {
 		c.Profile = ProfileMini
@@ -115,6 +119,15 @@ func Load(root string) (*Contract, error) {
 			path, c.Profile, ProfileMini, ProfileStandard, ProfileFull)
 	}
 	return c, nil
+}
+
+// majorOf 取版本号的主版本段（"1" 与 "1.1" 同属主版本 1）。契约按主版本兼容：
+// 小版本号留给后续字段演进，不能让 version: "1.1" 被当成「不支持的版本」拒掉。
+func majorOf(v string) string {
+	if i := strings.IndexByte(v, '.'); i >= 0 {
+		return v[:i]
+	}
+	return v
 }
 
 // Declared 报告 root 是否带契约标记（不解析内容）。
