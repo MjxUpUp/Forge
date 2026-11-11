@@ -71,6 +71,9 @@ func init() {
 	// 项目管道：项目级状态（status 是主入口）
 	statusCmd.GroupID = "pipeline"
 	verifyCmd.GroupID = "pipeline"
+	// 仓库内 change 生命周期（spec/changes 四份产物 + 可执行判据）：与 status/verify
+	// 同属项目管道——它描述的是「这个仓库怎么交付」，不是任务级质量观测。
+	changeCmd.GroupID = "pipeline"
 
 	// 任务质量：任务管道 + 质量观测（trace/act/review/health 是看数据，看板会进一步聚合）
 	clitask.Root.GroupID = "quality"
