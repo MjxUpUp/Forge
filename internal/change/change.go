@@ -156,7 +156,10 @@ func Init(root, profile string) (created []string, err error) {
 	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 		return nil, fmt.Errorf("change: 创建 spec/: %w", err)
 	}
-	body := fmt.Sprintf("# forge 契约（由 forge change init 生成）\n# 成员资格锚点：仓库里有这个文件即被认定为 forge 项目，clone 即用。\nversion: %q\nprofile: %q\n",
+	// hooks: off 是默认值——change 生命周期的卖点是「产物随 git 走，换台机器、
+	// 换个 agent 都能执行」，不该顺手把这个仓库拖进 hook 执法。要门禁再把
+	// hooks 翻成 on（或删掉这行，缺省即 on）。
+	body := fmt.Sprintf("# forge 契约（由 forge change init 生成）\n# 成员资格锚点：仓库里有这个文件即被认定为 forge 项目，clone 即用。\n# hooks: off 表示只用产物、不开 hook 执法；要门禁就改成 on。\nversion: %q\nprofile: %q\nhooks: off\n",
 		specroot.CurrentVersion, profile)
 	if err := os.WriteFile(marker, []byte(body), 0o644); err != nil {
 		return nil, fmt.Errorf("change: 写 %s: %w", marker, err)
