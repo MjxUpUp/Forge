@@ -405,6 +405,38 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 	dollars := 0 // 连续未转义 $ 的个数：bash 成对消耗，奇数才开替换
 	for i := 0; i < len(cooked); i++ {
 		c := cooked[i]
+		if arith > 0 {
+			// 算术表达式按 bash 的规则像双引号一样处理：里面的 '、"都不起引号作用，
+			// 所以 `$(( '$(touch x)' ))` 里的替换照样执行——单引号不能当豁免。
+			if c == '`' {
+				cmdSub = true
+			}
+			if c == '$' && i+1 < len(cooked) && cooked[i+1] == '(' {
+				if i+2 < len(cooked) && cooked[i+2] == '(' {
+					arith += 2
+					b.WriteString("   ")
+					i += 2
+					continue
+				}
+				cmdSub = true
+			}
+			if c == '(' {
+				arith++
+			} else if c == ')' {
+				arith--
+			}
+			b.WriteByte(' ')
+			continue
+		}
+		if c == '$' && i+1 < len(cooked) && cooked[i+1] == '\'' {
+			// $'...' 里也会发生替换：内容里有 $( ) 或反引号就拒（字符串里真的会执行）。
+			if ansiQuoteHasSubst(cooked, i) {
+				cmdSub = true
+			}
+			b.WriteString("  ")
+			i++
+			continue
+		}
 		if quote == '\'' {
 			b.WriteByte(' ')
 			if c == '\'' {
@@ -447,13 +479,6 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 					cmdSub = true
 				}
 			}
-			if arith > 0 {
-				if c == '(' {
-					arith++
-				} else if c == ')' {
-					arith--
-				}
-			}
 			b.WriteByte(' ')
 			continue
 		}
@@ -493,18 +518,30 @@ func lexJudge(s string) (code, cooked string, cmdSub bool) {
 		if arith == 0 && (c == '<' || c == '>') && i+1 < len(cooked) && cooked[i+1] == '(' {
 			cmdSub = true
 		}
-		if arith > 0 {
-			if c == '(' {
-				arith++
-			} else if c == ')' {
-				arith--
-			}
-			b.WriteByte(' ')
-			continue
-		}
 		b.WriteByte(c)
 	}
 	return b.String(), cooked, cmdSub
+}
+
+// ansiQuoteHasSubst 判断 $'...' 的内容里有没有命令替换。bash 会先做 ANSI-C 转义，
+// 再照常展开——字符串里的 $( ) 与反引号都真的执行。
+func ansiQuoteHasSubst(s string, i int) bool {
+	// s[i] == '$', s[i+1] == '
+	for j := i + 2; j < len(s); j++ {
+		switch s[j] {
+		case '\\':
+			j++
+		case '\'':
+			return false
+		case '`':
+			return true
+		case '$':
+			if j+1 < len(s) && s[j+1] == '(' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // cookJudge 去掉注释、删掉行尾续行（单引号里除外），返回 shell 真正看到的代码。
@@ -599,7 +636,7 @@ func cookJudge(s string) string {
 func lintJudge(cmd string) error {
 	code, cooked, cmdSub := lexJudge(cmd)
 	if cmdSub {
-		return fmt.Errorf("判据里不要用 `$( )`/反引号命令替换，也不要用进程替换 `<( )`/`>( )`——双引号里命令替换照样执行，而它们的失败都不会让命令本身非零；只有单引号里才是字面量")
+		return fmt.Errorf("判据里不要用 `$( )`/反引号命令替换，也不要用进程替换 `<( )`/`>( )`——双引号里命令替换照样执行，而它们的失败都不会让命令本身非零；只有单引号里才是字面量（算术表达式例外：`$(( ... ))` 里按双引号规则处理，单引号不豁免）")
 	}
 	// ${IFS} 是空格的字面写法，`bash${IFS}-c` 在 shell 里就是 `bash -c`。
 	words := shellWords(strings.ReplaceAll(strings.ReplaceAll(cooked, "${IFS}", " "), "$IFS", " "))
