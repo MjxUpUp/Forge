@@ -14,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return runSystemStatus()
 	}
 
-	root, err := findProjectRoot()
+	root, memberSource, err := projectroot.Resolve()
 	if err != nil {
 		// declined 项目 Find 失败（IsMember 不认 declined）——把通用的"非 forge
 		// 项目"错误换成面向用户的 declined 提示（指向 forge on）。status 非热路径，
@@ -115,10 +116,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		//
 		// Tasks 不加 omitempty：空任务列表（「tasks»: []）也是有效状态，调用方（dashboard/
 		// 脚本/测试）依赖该字段存在做解构；omitempty 会在无任务时吞掉整个字段，破坏契约。
+		// Source 让 --json 消费者也看得到成员资格来源（spec-contract/registry/legacy）：
+		// 只在人读分支打印会让脚本看不见「这个项目是靠 spec/forge.yaml 激活的」，
+		// 恰是 clone 即用最需要被机器识别的那一步。
 		output, _ := json.MarshalIndent(struct {
 			Tasks  []*taskpipeline.TaskState `json:"tasks"`
 			Health *health.Summary           `json:"health,omitempty"`
-		}{taskStates, hs}, "", "  ")
+			Source string                    `json:"source"`
+		}{taskStates, hs, string(memberSource)}, "", "  ")
 		fmt.Println(string(output))
 		return nil
 	}
@@ -131,6 +136,9 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// 始终打印项目头：fresh 项目（无任务）跑 status 也不应输出空白——否则用户无法
 	// 判断 forge 是否已就位。空任务列表显式提示，引导下一步。--tasks=false 隐藏任务块。
 	fmt.Printf("Project: %s\n", filepath.Base(root))
+	if memberSource == projectroot.SourceSpecContract {
+		fmt.Println("  spec: spec/forge.yaml (仓库声明式成员资格)")
+	}
 	if showTasks {
 		fmt.Println(strings.Repeat("─", 60))
 		fmt.Println("Tasks:")
