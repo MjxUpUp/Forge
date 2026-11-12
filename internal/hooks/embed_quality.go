@@ -46,7 +46,14 @@ elif git rev-parse --git-dir >/dev/null 2>&1; then
   _diff=$(git diff --name-only HEAD 2>/dev/null || true)
   if [ -n "$_diff" ]; then
     while IFS= read -r _f; do
-      [ -n "$_f" ] && is_source "$_f" && { TOUCHED_SOURCE=1; break; }
+      # 不能用「[ -n ] && is_source && { ...; }」：非源码文件（README 等）让
+      # is_source 返回 1，整条 and-list 随之返回 1；在 set -e 下这是循环体的
+      # 失败状态，脚本会静默 exit 1——task-implement 的 auto-compile 检查于是
+      # 报「build failed: 」（空 detail），纯文档任务永远过不了实现门。
+      if [ -n "$_f" ] && is_source "$_f"; then
+        TOUCHED_SOURCE=1
+        break
+      fi
     done <<< "$_diff"
   fi
 fi
