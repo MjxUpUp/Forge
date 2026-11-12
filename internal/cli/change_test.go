@@ -213,6 +213,9 @@ func TestChangeList_MarksFastChanges(t *testing.T) {
 func TestChangeAgents_AppendsAndPreserves(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
+	if _, err := change.Init(root, "mini"); err != nil {
+		t.Fatalf("change.Init: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# 团队约定\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -235,5 +238,15 @@ func TestChangeAgents_AppendsAndPreserves(t *testing.T) {
 	again, _ := os.ReadFile(filepath.Join(root, "AGENTS.md"))
 	if string(again) != string(raw) {
 		t.Fatal("二次同步改动了文件")
+	}
+}
+
+func TestChangeAgents_RequiresContract(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := runChangeAgents(nil, nil); err == nil {
+		t.Fatal("没有 spec/forge.yaml 时应报错并指路 change init")
+	} else if !strings.Contains(err.Error(), "forge change init") {
+		t.Fatalf("报错应指路 change init，got %v", err)
 	}
 }
