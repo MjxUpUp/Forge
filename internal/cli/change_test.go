@@ -209,3 +209,31 @@ func TestChangeList_MarksFastChanges(t *testing.T) {
 		t.Errorf("列表要能看出 fast change：\n%s", stdout)
 	}
 }
+
+func TestChangeAgents_AppendsAndPreserves(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# 团队约定\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runChangeAgents(nil, nil); err != nil {
+		t.Fatalf("runChangeAgents: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(raw), "# 团队约定\n") || !strings.Contains(string(raw), "forge:begin") {
+		t.Fatalf("AGENTS.md 结果不对：%q", raw)
+	}
+
+	// 再跑一次不报错，也不改文件。
+	if err := runChangeAgents(nil, nil); err != nil {
+		t.Fatalf("二次 runChangeAgents: %v", err)
+	}
+	again, _ := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if string(again) != string(raw) {
+		t.Fatal("二次同步改动了文件")
+	}
+}

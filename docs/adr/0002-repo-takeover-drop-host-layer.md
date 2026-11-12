@@ -28,7 +28,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 ## 决策
 
-1. **接管点写在仓库里**：`spec/forge.yaml`（成员资格 + profile + hooks 开关）与 `AGENTS.md`（托管块 `<!-- forge:begin -->`…`<!-- forge:end -->`，`forge` 幂等生成，人工内容不覆盖）。clone 即生效，不要求装插件、不要求注册表。托管块生成器属阶段 A 余额，当前尚未提供，`change init` 只在 AGENTS.md 不存在时写一份起始协议。
+1. **接管点写在仓库里**：`spec/forge.yaml`（成员资格 + profile + hooks 开关）与 `AGENTS.md`（托管块 `<!-- forge:begin -->`…`<!-- forge:end -->`，`forge` 幂等生成，人工内容不覆盖）。clone 即生效，不要求装插件、不要求注册表。托管块生成器已提供：`forge change init` 与 `forge change agents` 都幂等同步该块——缺文件整份写、无块则追加、有块则替换，标记外一字不改；`change init` 不再跳过已存在的 AGENTS.md。
 2. **分两层：循环节拍放仓库（`forge change status` 驱动），强制点放 git/CI。**
    - 节拍层替代宿主 in-loop 拦截：agent 每次动手前后读 `forge change status`，按 `nextSteps` 执行；节点级 `gate` 立刻给 verdict，反馈延迟是一次 CLI 调用而不是一次提交。这是 LoopSpec 的做法（见下节「回环契约」）——它的 hook 只做一件事：拒绝手改已确认的 plan，门禁本体全在 CLI。
    - 边界层不可绕过：`forge change verify`（可执行判据 + 证据封印）计划接进 pre-commit 与 CI required check，分支保护把「证据齐了」变成合并前提。**这一接线属阶段 A 余额，当前尚未提供**；在此之前，强制力来自 review 与分支保护，而不是工具。
@@ -156,7 +156,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 | C 降级为可选 | `forge integrations enable <host>` 显式开启；移除 `forge init`/plugin 对宿主配置的写入，并移除 `forge init` 对 `~/.forge` 的全部写入（注册表 `projects.json`、`projects/<key>/protocol.yml`、hooks 资产、harness-state、迁移元数据等）——只留仓库内产物；`init-suggest` 删除 | 在临时 `HOME` 里跑一次 `forge init`：`find "$HOME" -type f -exec sha256sum {} +` 前后快照一致（覆盖未跟踪的新文件），且 `~/.claude`、`~/.codex`、`~/.forge` 均无新增 |
 | D 删除 | 删 `internal/hooks`、`internal/hookdispatch`（保留最小 batch 协议或整体移除）、`skillsdist` 的宿主 adapter、`skillgen` 的 CLAUDE.md 生成 | `go build` 与 CI 绿；与 Makefile 门禁同一条命令 `deadcode -test ./...` 的输出不超过阶段 D 之前记录的基线；文档无残留引用 |
 
-**阶段 A 的落地进度**（随 feat/loop-contract-status 一起）：已落地 ① 节拍层（`change status` 的 stage/verdict/next steps、`change gate --task N` 的节点判据与证据、同因失败 `blocked`；`blocked` 时 `next_steps` 不含可执行命令，恢复命令在 `handoff`）与 ④ fast 通道；未落地 ② 边界层接线（pre-commit / CI required check）、③ AGENTS.md 托管块生成器与单源多指针、① 里的 `priorAttempts` 列表（当前只给尝试次数与最近失败，未列历史命令）。
+**阶段 A 的落地进度**（随 feat/loop-contract-status 一起）：已落地 ① 节拍层（`change status` 的 stage/verdict/next steps、`change gate --task N` 的节点判据与证据、同因失败 `blocked`；`blocked` 时 `next_steps` 不含可执行命令，恢复命令在 `handoff`）、④ fast 通道与 ③ 的 AGENTS.md 托管块生成器（`forge change init` / `forge change agents`，标记外不覆盖）；未落地 ② 边界层接线（pre-commit / CI required check）、③ 的「单源多指针」（`CLAUDE.md` / `.cursor/rules` 等指向同一块）、① 里的 `priorAttempts` 列表（当前只给尝试次数与最近失败，未列历史命令）。
 
 ### 受影响模块
 

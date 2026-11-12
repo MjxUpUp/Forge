@@ -51,6 +51,9 @@
       "path": "forge change"
     },
     {
+      "path": "forge change agents"
+    },
+    {
       "path": "forge change gate",
       "flags": [
         "task",
