@@ -28,7 +28,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 ## 决策
 
-1. **接管点写在仓库里**：`spec/forge.yaml`（成员资格 + profile + hooks 开关）与 `AGENTS.md`（托管块 `<!-- forge:begin -->`…`<!-- forge:end -->`，`forge` 同步托管块，标记外内容不覆盖）。clone 即生效，不要求装插件、不要求注册表。托管块生成器已提供：`forge change agents` 负责同步（缺文件整份写、无块追加、有块就地替换，标记外不动，二次运行不改文件），`forge change init` 在首次声明契约时调用它；契约已存在时 init 拒绝重跑，用 `forge change agents` 重同步。另有一套更早的 `<!-- FORGE:START -->`…`<!-- FORGE:END -->` 段（`forge init --project` 写 CLAUDE.md/AGENTS.md 的指令资产），与本托管块互不覆盖。
+1. **接管点写在仓库里**：`spec/forge.yaml`（成员资格 + profile + hooks 开关）与 `AGENTS.md`（托管块 `<!-- forge:begin -->`…`<!-- forge:end -->`，`forge` 同步托管块，标记外内容不覆盖）。clone 即生效，不要求装插件、不要求注册表。托管块生成器已提供：`forge change agents` 负责同步（缺文件整份写、无块追加、有块就地替换，标记外不动，二次运行不改文件），`forge change init` 在首次声明契约时调用它；契约已存在时 init 拒绝重跑，用 `forge change agents` 重同步。另有一套更早的 `<!-- FORGE:START -->`…`<!-- FORGE:END -->` 段（`forge init --project` 写 CLAUDE.md/AGENTS.md 的指令资产），与本托管块互不覆盖。迁移注意：旧版 `change init` 写的整份协议没有标记，升级后首次同步会把托管块追加在它后面（两段协议并存）——手工删掉旧正文即可，同步不会动标记外内容。
 2. **分两层：循环节拍放仓库（`forge change status` 驱动），强制点放 git/CI。**
    - 节拍层替代宿主 in-loop 拦截：agent 每次动手前后读 `forge change status`，按 `nextSteps` 执行；节点级 `gate` 立刻给 verdict，反馈延迟是一次 CLI 调用而不是一次提交。这是 LoopSpec 的做法（见下节「回环契约」）——它的 hook 只做一件事：拒绝手改已确认的 plan，门禁本体全在 CLI。
    - 边界层不可绕过：`forge change verify`（可执行判据 + 证据封印）计划接进 pre-commit 与 CI required check，分支保护把「证据齐了」变成合并前提。**这一接线属阶段 A 余额，当前尚未提供**；在此之前，强制力来自 review 与分支保护，而不是工具。

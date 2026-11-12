@@ -155,7 +155,7 @@ func Init(root, profile string) (created []string, err error) {
 
 	marker := specroot.MarkerPath(root)
 	if _, statErr := os.Stat(marker); statErr == nil {
-		return nil, fmt.Errorf("change: %s 已存在（不覆盖；要改档位请直接编辑该文件）", marker)
+		return nil, fmt.Errorf("change: %s 已存在（不覆盖；改档位直接编辑该文件，AGENTS.md 用 `forge change agents` 重同步）", marker)
 	}
 	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 		return nil, fmt.Errorf("change: 创建 spec/: %w", err)

@@ -157,3 +157,106 @@ func TestEnsureAgentsBlock_AppendKeepsOriginalBytes(t *testing.T) {
 		t.Fatalf("追加后无托管块：%q", text)
 	}
 }
+
+func TestEnsureAgentsBlock_SeparatorIsOneBlankLine(t *testing.T) {
+	cases := []struct {
+		name  string
+		human string
+		want  string // 人工内容与块之间的分隔符
+	}{
+		{"no trailing newline", "x", "\n\n"},
+		{"one newline", "x\n", "\n"},
+		{"two newlines", "x\n\n", ""},
+		{"crlf", "x\r\n", "\r\n"},
+		{"crlf two", "x\r\n\r\n", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte(tc.human), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := EnsureAgentsBlock(root); err != nil {
+				t.Fatalf("EnsureAgentsBlock: %v", err)
+			}
+			text := readAgents(t, root)
+			want := tc.human + tc.want + agentsBegin
+			if !strings.HasPrefix(text, want) {
+				t.Fatalf("分隔符不对：got %q, want 前缀 %q", text, want)
+			}
+		})
+	}
+}
+
+func TestEnsureAgentsBlock_UpdateIsByteExact(t *testing.T) {
+	root := t.TempDir()
+	head := "# 头部\n\n人工前言\n\n"
+	tail := "\n\n## 尾部\n\n人工附录\n"
+	old := head + agentsBegin + "\n旧内容\n" + agentsEnd + tail
+	if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := EnsureAgentsBlock(root); err != nil {
+		t.Fatalf("EnsureAgentsBlock: %v", err)
+	}
+	got := readAgents(t, root)
+	if !strings.HasPrefix(got, head+agentsBegin) {
+		t.Fatalf("块前内容被改动：%q", got)
+	}
+	if !strings.HasSuffix(got, agentsEnd+tail) {
+		t.Fatalf("块后内容被改动：%q", got)
+	}
+	if strings.Contains(got, "旧内容") {
+		t.Fatalf("旧块内容未替换：%q", got)
+	}
+}
+
+func TestEnsureAgentsBlock_RejectsReversedMarkers(t *testing.T) {
+	root := t.TempDir()
+	reversed := agentsEnd + "\n中间\n" + agentsBegin + "\n"
+	if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte(reversed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentsBlock(root); err == nil {
+		t.Fatal("end 在 begin 之前应报错")
+	}
+	if got := readAgents(t, root); got != reversed {
+		t.Fatalf("报错时不应改动文件：%q", got)
+	}
+}
+
+func TestEnsureAgentsBlock_WhitespaceOnlyFileGetsTitle(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte("\n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentsBlock(root); err != nil {
+		t.Fatalf("EnsureAgentsBlock: %v", err)
+	}
+	if got := readAgents(t, root); !strings.HasPrefix(got, "# AGENTS.md\n\n"+agentsBegin) {
+		t.Fatalf("纯空白文件应整份重建带标题：%q", got)
+	}
+}
+
+func TestEnsureAgentsBlock_CRLFStaysIdempotent(t *testing.T) {
+	root := t.TempDir()
+	crlf := "# hi\r\n\r\n" + agentsBegin + "\r\n旧\r\n" + agentsEnd + "\r\n\r\ntail\r\n"
+	if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte(crlf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentsBlock(root); err != nil {
+		t.Fatalf("首次: %v", err)
+	}
+	first := readAgents(t, root)
+	action, err := EnsureAgentsBlock(root)
+	if err != nil {
+		t.Fatalf("二次: %v", err)
+	}
+	if action != AgentsUnchanged || readAgents(t, root) != first {
+		t.Fatalf("CRLF 文件第二次应 unchanged 且不改文件，action=%q", action)
+	}
+	if !strings.HasPrefix(first, "# hi\r\n\r\n"+agentsBegin) || !strings.HasSuffix(first, agentsEnd+"\r\n\r\ntail\r\n") {
+		t.Fatalf("CRLF 文件的标记外字节被改动：%q", first)
+	}
+}
