@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/userconfig"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -149,7 +152,14 @@ var policyStateCmd = &cobra.Command{
 	Use:   `state`,
 	Short: `打印当前目录接管状态（managed|declined|unknown；退出码恒 0）`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_, state := registry.State(policyRoot())
+		_, _, state, err := projectroot.State(policyRoot())
+		if err != nil {
+			if errors.Is(err, forgedata.ErrNoForgeConfig) {
+				fmt.Println(registry.StatusUnknown)
+				return nil
+			}
+			return err
+		}
 		if state == registry.StatusManaged {
 			// StatusManaged 是空串（零值兼容存量 JSON）——显示层映射为字面
 			// "managed"，与帮助文案一致；bash 消费方只判 "declined"，不受影响。
