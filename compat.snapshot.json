@@ -54,6 +54,13 @@
       "path": "forge change agents"
     },
     {
+      "path": "forge change check",
+      "flags": [
+        "json",
+        "staged"
+      ]
+    },
+    {
       "path": "forge change gate",
       "flags": [
         "task",

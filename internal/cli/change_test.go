@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -248,5 +250,195 @@ func TestChangeAgents_RequiresContract(t *testing.T) {
 		t.Fatal("没有 spec/forge.yaml 时应报错并指路 change init")
 	} else if !strings.Contains(err.Error(), "forge change init") {
 		t.Fatalf("报错应指路 change init，got %v", err)
+	}
+}
+
+func TestChangeCheck_NoChangesPasses(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf("没有 change 时不该失败：%v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "没有未归档的 change") {
+		t.Errorf("应说明没有可检查的 change：\n%s", stdout)
+	}
+}
+
+func TestChangeCheck_UnsealedFails(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("未封印的 change 应返回 errHardExit，got %v", err)
+	}
+	for _, want := range []string{"没有封印的证据", "forge change verify demo", "不是让你在循环里重试"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("输出缺少 %q：\n%s", want, stdout)
+		}
+	}
+}
+
+func TestChangeCheck_StagedCatchesCodeOnlyAndTouchedChange(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git 不可用")
+	}
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, root, "init", "-q")
+	gitRun(t, root, "config", "user.email", "t@t.t")
+	gitRun(t, root, "config", "user.name", "t")
+	t.Chdir(root)
+	if err := changeCheckCmd.Flags().Set("staged", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("staged", "false") }()
+
+	// 暂存区只碰了 change 目录之外的代码：封印证据可能早就不对应当前代码了，
+	// 只查"被碰到的 change"会放行一个注定在 CI 变红的提交——必须退化为全量。
+	if err := os.MkdirAll(filepath.Join(root, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "src", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, root, "add", "src/main.go")
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("只暂存代码时也必须检查全部 change（未封印的 demo 应拦下），got %v", err)
+	}
+	if !strings.Contains(stdout, "改为检查全部 change") {
+		t.Errorf("退化检查应说明原因：\n%s", stdout)
+	}
+
+	// 碰了 demo 自己的产物：只查它，未封印同样拦下。
+	gitRun(t, root, "add", "spec/changes/demo/proposal.md")
+	_, _, err = captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("--staged 碰到未封印 change 应拦下，got %v", err)
+	}
+}
+
+func TestChangeCheck_JSONSkipsWithValidJSON(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	if err := changeCheckCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("json", "false") }()
+
+	parse := func(t *testing.T, stdout string) (checked, problems []string, skipped string) {
+		t.Helper()
+		var payload struct {
+			Checked  []string `json:"checked"`
+			Problems []any    `json:"problems"`
+			Skipped  string   `json:"skipped"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &payload); err != nil {
+			t.Fatalf("输出不是合法 JSON：%v\n%s", err, stdout)
+		}
+		if payload.Checked == nil || payload.Problems == nil {
+			t.Fatalf("空列表要写 [] 而不是 null：%s", stdout)
+		}
+		p := make([]string, 0, len(payload.Problems))
+		return payload.Checked, p, payload.Skipped
+	}
+
+	// 有 spec/changes/ 但没有 change：合法 JSON，空数组。
+	stdout, _, err := captureOutput(t, func() error { return runChangeCheck(changeCheckCmd, nil) })
+	if err != nil {
+		t.Fatalf("没有 change 不是失败：%v\n%s", err, stdout)
+	}
+	if _, _, skipped := parse(t, stdout); skipped != "" {
+		t.Errorf("没有 change 时 skipped 该是空串：%s", stdout)
+	}
+	// 契约是「所有路径同一份形状」：skipped 即使为空也要出现。
+	if !strings.Contains(stdout, `"skipped"`) {
+		t.Errorf("正常路径也应有 skipped 键：%s", stdout)
+	}
+
+	// 连 spec/changes/ 都没有：跳过路径也必须是同一份 JSON，并写清原因。
+	if err := os.RemoveAll(filepath.Join(root, "spec", "changes")); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, err = captureOutput(t, func() error { return runChangeCheck(changeCheckCmd, nil) })
+	if err != nil {
+		t.Fatalf("跳过不是失败：%v\n%s", err, stdout)
+	}
+	if _, _, skipped := parse(t, stdout); skipped == "" {
+		t.Errorf("跳过时要写 skipped 原因：%s", stdout)
+	}
+}
+
+func TestChangeCheck_JSONAlsoExitsHard(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	if err := changeCheckCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("json", "false") }()
+
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("JSON 模式不合格时也应返回 errHardExit，got %v", err)
+	}
+	for _, want := range []string{`"checked"`, `"problems"`, `"demo"`} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("JSON 输出缺少 %q：\n%s", want, stdout)
+		}
+	}
+}
+
+func TestChangeCheck_StagedNonGitFallsBackWithNote(t *testing.T) {
+	root := contractRepo(t) // 不 git init
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	if err := changeCheckCmd.Flags().Set("staged", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("staged", "false") }()
+	if err := changeCheckCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("json", "false") }()
+
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("非 git 也要检查全部 change，未封印的 demo 应拦下，got %v", err)
+	}
+	// 退化是 note，不是 skipped：skipped 只表示"什么都没查"，两者不该同时有。
+	var payload struct {
+		Checked  []string `json:"checked"`
+		Problems []any    `json:"problems"`
+		Skipped  string   `json:"skipped"`
+		Note     string   `json:"note"`
+	}
+	if uerr := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &payload); uerr != nil {
+		t.Fatalf("输出不是合法 JSON：%v\n%s", uerr, stdout)
+	}
+	if payload.Skipped != "" || payload.Note == "" || len(payload.Checked) != 1 || len(payload.Problems) != 1 {
+		t.Fatalf("退化应有 note、无 skipped，且 checked/problems 非空：%s", stdout)
 	}
 }
