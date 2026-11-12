@@ -193,7 +193,8 @@ func Init(root, profile string) (created []string, err error) {
 
 	action, err := EnsureAgentsBlock(root)
 	if err != nil {
-		return nil, err
+		// 契约已经落盘；这里只补一句恢复路径，避免「报了错但看不出已经写了一半」。
+		return created, fmt.Errorf("%w（spec/ 已写入；修好 AGENTS.md 标记后跑 `forge change agents`）", err)
 	}
 	switch action {
 	case AgentsCreated:
