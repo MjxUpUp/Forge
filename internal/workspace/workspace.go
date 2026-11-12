@@ -17,7 +17,7 @@
 // 后端 + infra 仓）。成员引用项目 KEY 而非路径——路径会漂移（移动、
 // worktree、大小写变体），key 不会；存的 Path 仅是展示缓存，add 时刷新，
 // 与 registry 现路径分叉时由 Doctor 标出。本 store 位于 registry 之上的
-// 聚合层（绝不喂 projectroot.Find/IsMember 热路径）。一个 key 允许属于多个
+// 聚合层（绝不喂 projectroot.Resolve/State 热路径）。一个 key 允许属于多个
 // workspace——全局工具无法假设互斥；重叠由 Doctor 检出为 advisory，不做
 // 硬性拒绝。
 //

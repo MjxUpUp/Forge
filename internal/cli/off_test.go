@@ -32,6 +32,13 @@ func assertState(t *testing.T, root, want string) {
 	}
 }
 
+// managedMember 报告 cwd 是否解析为 managed 成员——IsMember 已随
+// projectroot.State 统一判据删除，测试里用 State 表达同一谓词。
+func managedMember(cwd string) bool {
+	_, state := registry.State(cwd)
+	return state == registry.StatusManaged
+}
+
 // TestOff_LifecycleManagedProject managed 项目 off→declined（注册表 + legacy 标记
 // 双写）、on→managed（清标记）。inited 项目（DataDir 已有 protocol.yml）的 on 不做
 // 重新 init。
@@ -55,9 +62,9 @@ func TestOff_LifecycleManagedProject(t *testing.T) {
 	if data, err := os.ReadFile(markerPathOf(proj)); err != nil || strings.TrimSpace(string(data)) != `declined` {
 		t.Errorf(`legacy marker = (%q, %v), want "declined"`, string(data), err)
 	}
-	// off 后 IsMember 必须为假——所有 project-scoped hook 的闸门。
-	if _, ok := registry.IsMember(proj); ok {
-		t.Error(`IsMember true after forge off`)
+	// off 后必须不再是 managed 成员——所有 project-scoped hook 的闸门。
+	if managedMember(proj) {
+		t.Error(`still a managed member after forge off`)
 	}
 
 	if err := runOn(onCmd, nil); err != nil {
@@ -67,8 +74,8 @@ func TestOff_LifecycleManagedProject(t *testing.T) {
 	if _, err := os.Stat(markerPathOf(proj)); !os.IsNotExist(err) {
 		t.Errorf(`marker not removed by forge on (err=%v)`, err)
 	}
-	if _, ok := registry.IsMember(proj); !ok {
-		t.Error(`IsMember false after forge on`)
+	if !managedMember(proj) {
+		t.Error(`not a managed member after forge on`)
 	}
 }
 
@@ -132,8 +139,8 @@ func TestOffAll_FlipsEveryAliveEntry(t *testing.T) {
 	}
 	for _, p := range []string{a, b} {
 		assertState(t, p, registry.StatusDeclined)
-		if _, ok := registry.IsMember(p); ok {
-			t.Errorf(`IsMember(%s) true after off --all`, p)
+		if managedMember(p) {
+			t.Errorf(`%s still managed after off --all`, p)
 		}
 		if data, rerr := os.ReadFile(markerPathOf(p)); rerr != nil || strings.TrimSpace(string(data)) != `declined` {
 			t.Errorf(`marker for %s = (%q, %v), want declined`, p, string(data), rerr)
@@ -247,15 +254,15 @@ func TestDeclineFile_DenyWinsOverManagedRegistry(t *testing.T) {
 	mkGitProjCLI(t, proj) // 声明文件按 git 根键控——deny-wins 只在 git 分支生效
 	t.Chdir(proj)
 
-	// 注册表 managed + 声明文件存在 → State=declined（deny-wins），IsMember false。
+	// 注册表 managed + 声明文件存在 → State=declined（deny-wins），成员资格为假。
 	if err := registry.SetStatus(proj, registry.StatusManaged, `forge on`); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(proj, registry.DeclineFileName), []byte(`x`), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := registry.IsMember(proj); ok {
-		t.Error(`声明文件存在时 IsMember 必须为假（deny-wins）`)
+	if managedMember(proj) {
+		t.Error(`声明文件存在时成员资格必须为假（deny-wins）`)
 	}
 	if _, state := registry.State(proj); state != registry.StatusDeclined {
 		t.Errorf(`State = %q, want declined（声明文件压制）`, state)
