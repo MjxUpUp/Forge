@@ -222,7 +222,7 @@ func TestChangeAgents_AppendsAndPreserves(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runChangeAgents(nil, nil); err != nil {
+	if err := runChangeAgents(changeAgentsCmd, nil); err != nil {
 		t.Fatalf("runChangeAgents: %v", err)
 	}
 	raw, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
@@ -234,7 +234,7 @@ func TestChangeAgents_AppendsAndPreserves(t *testing.T) {
 	}
 
 	// 再跑一次不报错，也不改文件。
-	if err := runChangeAgents(nil, nil); err != nil {
+	if err := runChangeAgents(changeAgentsCmd, nil); err != nil {
 		t.Fatalf("二次 runChangeAgents: %v", err)
 	}
 	again, _ := os.ReadFile(filepath.Join(root, "AGENTS.md"))
@@ -246,7 +246,7 @@ func TestChangeAgents_AppendsAndPreserves(t *testing.T) {
 func TestChangeAgents_RequiresContract(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	if err := runChangeAgents(nil, nil); err == nil {
+	if err := runChangeAgents(changeAgentsCmd, nil); err == nil {
 		t.Fatal("没有 spec/forge.yaml 时应报错并指路 change init")
 	} else if !strings.Contains(err.Error(), "forge change init") {
 		t.Fatalf("报错应指路 change init，got %v", err)
@@ -440,5 +440,252 @@ func TestChangeCheck_StagedNonGitFallsBackWithNote(t *testing.T) {
 	}
 	if payload.Skipped != "" || payload.Note == "" || len(payload.Checked) != 1 || len(payload.Problems) != 1 {
 		t.Fatalf("退化应有 note、无 skipped，且 checked/problems 非空：%s", stdout)
+	}
+}
+
+func TestChangeStatus_ShowsPriorAttempts(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	ev := filepath.Join(root, "spec", "changes", "demo", "evidence", "20260101T000000Z")
+	if err := os.MkdirAll(ev, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(change.Summary{
+		Change: "demo", Passed: false,
+		Checks: []change.Check{{Index: 1, Command: "go test ./x", Exit: 1, Shell: "bash", StderrFile: "stderr.txt"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ev, "summary.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeStatus(changeStatusCmd, []string{"demo"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"此前失败的尝试",
+		"20260101T000000Z",
+		"go test ./x（exit 1，bash）",
+		"evidence/20260101T000000Z/stderr.txt",
+		"别重试已证伪的路",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("状态输出缺 %q：\n%s", want, stdout)
+		}
+	}
+}
+
+func TestChangeAgents_PointersFlag(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+
+	reset := func() { _ = changeAgentsCmd.Flags().Set("pointers", "") }
+	reset()
+	defer reset()
+
+	// 默认：没有入口文件就不建，输出说明怎么启用。
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeAgents(changeAgentsCmd, nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "CLAUDE.md：不存在，未创建") || !strings.Contains(stdout, "--pointers claude") {
+		t.Errorf("默认应跳过并给启用提示：\n%s", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(root, change.ClaudeFile)); !os.IsNotExist(err) {
+		t.Fatal("默认不该创建 CLAUDE.md")
+	}
+
+	// 点名 all：两个都创建，再跑一次不变。
+	if err := changeAgentsCmd.Flags().Set("pointers", "all"); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, err = captureOutput(t, func() error {
+		return runChangeAgents(changeAgentsCmd, nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"CLAUDE.md：已新建指针", ".cursor/rules/forge.mdc：已新建指针"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("缺 %q：\n%s", want, stdout)
+		}
+	}
+	stdout, _, err = captureOutput(t, func() error {
+		return runChangeAgents(changeAgentsCmd, nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "CLAUDE.md：指针已是最新") {
+		t.Errorf("第二次应报告已是最新：\n%s", stdout)
+	}
+
+	// 未知取值要报错，而不是静默忽略。
+	if err := changeAgentsCmd.Flags().Set("pointers", "bogus"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := captureOutput(t, func() error {
+		return runChangeAgents(changeAgentsCmd, nil)
+	}); err == nil {
+		t.Fatal("未知 --pointers 取值应报错")
+	}
+}
+
+// init 时仓库若已经在用 Claude Code，顺手把 CLAUDE.md 指到 AGENTS.md。
+func TestChangeInit_PointsExistingClaudeFile(t *testing.T) {
+	root := t.TempDir()
+	skipIfAncestorHasContract(t, root)
+	human := "# 我的约定\n\n- 先跑 make check\n"
+	if err := os.WriteFile(filepath.Join(root, change.ClaudeFile), []byte(human), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeInit(changeInitCmd, nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "CLAUDE.md（指针 → AGENTS.md）") {
+		t.Errorf("init 应报告指针已就位：\n%s", stdout)
+	}
+	got, err := os.ReadFile(filepath.Join(root, change.ClaudeFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(got), human) || !strings.Contains(string(got), "@AGENTS.md") {
+		t.Fatalf("CLAUDE.md 应保留人工内容并追加导入：\n%s", got)
+	}
+}
+
+// skipIfAncestorHasContract 跳过受宿主环境影响的用例：changeRoot 的成员资格
+// 解析会沿目录向上找 spec/forge.yaml，temp 目录的祖先里恰好有契约时（开发机的
+// 沙盒残留、共享 /tmp），本用例会在那里 init，断言必然错位。
+func skipIfAncestorHasContract(t *testing.T, root string) {
+	t.Helper()
+	for dir := filepath.Dir(root); ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, "spec", "forge.yaml")); err == nil {
+			t.Skipf("祖先目录 %s 已有 spec/forge.yaml，跳过依赖根解析的用例", dir)
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			break
+		}
+	}
+}
+
+func TestParsePointerNames_TrimsNoneAndRejectsMixed(t *testing.T) {
+	for _, raw := range []string{"", "  ", "none", " none "} {
+		got, _, err := parsePointerNames(raw)
+		if err != nil || len(got) != 0 {
+			t.Fatalf("%q 应表示不动指针，got %v err %v", raw, got, err)
+		}
+	}
+	if _, _, err := parsePointerNames("all,bogus"); err == nil {
+		t.Fatal("all 后面的非法取值不能被静默吞掉")
+	}
+	if _, _, err := parsePointerNames("none,claude"); err == nil {
+		t.Fatal("none 不能和别的取值混写")
+	}
+	got, _, err := parsePointerNames(" cursor , claude ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "claude" || got[1] != "cursor" {
+		t.Fatalf("解析结果应固定顺序 claude,cursor，got %v", got)
+	}
+}
+
+func TestChangeAgents_NoneWithSpacesLeavesPointersAlone(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	human := "# 手写 CLAUDE.md\n"
+	if err := os.WriteFile(filepath.Join(root, change.ClaudeFile), []byte(human), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reset := func() { _ = changeAgentsCmd.Flags().Set("pointers", "") }
+	reset()
+	defer reset()
+	if err := changeAgentsCmd.Flags().Set("pointers", " none "); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := captureOutput(t, func() error {
+		return runChangeAgents(changeAgentsCmd, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(root, change.ClaudeFile)); string(got) != human {
+		t.Fatalf("--pointers \" none \" 不该碰指针文件，got %q", got)
+	}
+}
+
+func TestChangeStatus_StderrPathIsRepoRelativeOnce(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"proposal.md":   "# 提案\n\ndemo\n",
+		"design.md":     "# 设计\n\ndemo\n",
+		"tasks.md":      "# 任务\n\n- [ ] 1. 跑\n\n判据：acceptance #1\n",
+		"acceptance.md": "# 验收\n\n```bash\nls /definitely/not/here\n```\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(root, "spec", "changes", "demo", name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(root)
+	if _, _, err := captureOutput(t, func() error {
+		return runChangeVerify(changeVerifyCmd, []string{"demo"})
+	}); err == nil {
+		t.Fatal("判据失败应报错")
+	}
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeStatus(changeStatusCmd, []string{"demo"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "spec/changes/demo/evidence/") {
+		t.Fatalf("证据路径应按仓库根打印：\n%s", stdout)
+	}
+	if strings.Contains(stdout, ".stderr/") || strings.Contains(stdout, ".stdout/") {
+		t.Fatalf("文件名不该重复拼接：\n%s", stdout)
+	}
+}
+
+func TestChangeAgents_NoneWithTrailingCommaLeavesPointersAlone(t *testing.T) {
+	for _, raw := range []string{"none,", "none ,", " none,"} {
+		t.Run(raw, func(t *testing.T) {
+			root := contractRepo(t)
+			t.Chdir(root)
+			human := "# 手写 CLAUDE.md\n"
+			if err := os.WriteFile(filepath.Join(root, change.ClaudeFile), []byte(human), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			reset := func() { _ = changeAgentsCmd.Flags().Set("pointers", "") }
+			reset()
+			defer reset()
+			if err := changeAgentsCmd.Flags().Set("pointers", raw); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := captureOutput(t, func() error {
+				return runChangeAgents(changeAgentsCmd, nil)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := os.ReadFile(filepath.Join(root, change.ClaudeFile)); string(got) != human {
+				t.Fatalf("--pointers %q 不该碰指针文件，got %q", raw, got)
+			}
+		})
 	}
 }
