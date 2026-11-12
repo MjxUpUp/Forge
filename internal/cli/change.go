@@ -11,6 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/change"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/spf13/cobra"
 )
 
@@ -55,7 +56,7 @@ var changeCmd = &cobra.Command{
 
 var changeInitCmd = &cobra.Command{
 	Use:   "init [--profile <mini|standard|full>]",
-	Short: "在仓库里声明契约（spec/forge.yaml + spec/changes/ + 缺省 AGENTS.md）",
+	Short: "在仓库里声明契约（spec/forge.yaml + spec/changes/）+ 同步 AGENTS.md 托管块",
 	RunE:  runChangeInit,
 }
 
@@ -124,6 +125,9 @@ func runChangeAgents(_ *cobra.Command, _ []string) error {
 	root, err := changeRoot()
 	if err != nil {
 		return err
+	}
+	if !specroot.Declared(root) {
+		return fmt.Errorf("change: %s 还没有 spec/forge.yaml——先跑 `forge change init` 声明契约，再同步 AGENTS.md", root)
 	}
 	action, err := change.EnsureAgentsBlock(root)
 	if err != nil {

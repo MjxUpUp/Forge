@@ -37,7 +37,8 @@ func EnsureAgentsBlock(root string) (AgentsAction, error) {
 
 	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(path, []byte(block), 0o644); err != nil {
+		// 新建时标题放标记外：后续同步只碰块内，不会把标题改成 H2。
+		if err := os.WriteFile(path, []byte("# "+AgentsFile+"\n\n"+block), 0o644); err != nil {
 			return "", fmt.Errorf("change: 写 %s: %w", AgentsFile, err)
 		}
 		return AgentsCreated, nil
@@ -47,6 +48,9 @@ func EnsureAgentsBlock(root string) (AgentsAction, error) {
 	}
 
 	text := string(raw)
+	if strings.Count(text, agentsBegin) > 1 || strings.Count(text, agentsEnd) > 1 {
+		return "", fmt.Errorf("change: %s 里有多对 %s / %s——先删到只剩一对，再跑 `forge change agents` 重试", AgentsFile, agentsBegin, agentsEnd)
+	}
 	begin := strings.Index(text, agentsBegin)
 	end := strings.Index(text, agentsEnd)
 	switch {

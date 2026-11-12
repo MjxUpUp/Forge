@@ -37,6 +37,9 @@ func TestEnsureAgentsBlock_CreatesFile(t *testing.T) {
 	if !strings.Contains(text, "本段由 forge 维护") {
 		t.Fatalf("托管块未自证身份：%q", text)
 	}
+	if !strings.HasPrefix(text, "# AGENTS.md\n\n") {
+		t.Fatalf("新建文件应以标题开头（标记外），got %q", text)
+	}
 }
 
 func TestEnsureAgentsBlock_PreservesHumanContent(t *testing.T) {
@@ -108,12 +111,31 @@ func TestEnsureAgentsBlock_Idempotent(t *testing.T) {
 
 func TestEnsureAgentsBlock_RejectsUnpairedMarkers(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte(agentsBegin+"\n只有开头\n"), 0o644); err != nil {
+	broken := agentsBegin + "\n只有开头\n"
+	if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte(broken), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, err := EnsureAgentsBlock(root); err == nil {
 		t.Fatal("标记不成对应报错")
+	}
+	if got := readAgents(t, root); got != broken {
+		t.Fatalf("报错时不应改动文件：%q", got)
+	}
+}
+
+func TestEnsureAgentsBlock_RejectsMultipleBlocks(t *testing.T) {
+	root := t.TempDir()
+	two := agentsBegin + "\n甲\n" + agentsEnd + "\n\n" + agentsBegin + "\n乙\n" + agentsEnd + "\n"
+	if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte(two), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := EnsureAgentsBlock(root); err == nil {
+		t.Fatal("多对标记应报错，而不是只替换第一对")
+	}
+	if got := readAgents(t, root); got != two {
+		t.Fatalf("报错时不应改动文件：%q", got)
 	}
 }
 
