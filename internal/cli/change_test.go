@@ -312,11 +312,14 @@ func TestChangeCheck_StagedCatchesCodeOnlyAndTouchedChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitRun(t, root, "add", "src/main.go")
-	_, _, err := captureOutput(t, func() error {
+	stdout, _, err := captureOutput(t, func() error {
 		return runChangeCheck(changeCheckCmd, nil)
 	})
 	if !errors.Is(err, errHardExit) {
 		t.Fatalf("只暂存代码时也必须检查全部 change（未封印的 demo 应拦下），got %v", err)
+	}
+	if !strings.Contains(stdout, "改为检查全部 change") {
+		t.Errorf("退化检查应说明原因：\n%s", stdout)
 	}
 
 	// 碰了 demo 自己的产物：只查它，未封印同样拦下。
@@ -401,5 +404,41 @@ func TestChangeCheck_JSONAlsoExitsHard(t *testing.T) {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("JSON 输出缺少 %q：\n%s", want, stdout)
 		}
+	}
+}
+
+func TestChangeCheck_StagedNonGitFallsBackWithNote(t *testing.T) {
+	root := contractRepo(t) // 不 git init
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	if err := changeCheckCmd.Flags().Set("staged", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("staged", "false") }()
+	if err := changeCheckCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("json", "false") }()
+
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("非 git 也要检查全部 change，未封印的 demo 应拦下，got %v", err)
+	}
+	// 退化是 note，不是 skipped：skipped 只表示"什么都没查"，两者不该同时有。
+	var payload struct {
+		Checked  []string `json:"checked"`
+		Problems []any    `json:"problems"`
+		Skipped  string   `json:"skipped"`
+		Note     string   `json:"note"`
+	}
+	if uerr := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &payload); uerr != nil {
+		t.Fatalf("输出不是合法 JSON：%v\n%s", uerr, stdout)
+	}
+	if payload.Skipped != "" || payload.Note == "" || len(payload.Checked) != 1 || len(payload.Problems) != 1 {
+		t.Fatalf("退化应有 note、无 skipped，且 checked/problems 非空：%s", stdout)
 	}
 }

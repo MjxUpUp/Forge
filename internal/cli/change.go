@@ -513,13 +513,13 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	var only []string
-	skipped := ""
+	skipped, note := "", ""
 	if staged {
 		out, gerr := exec.Command("git", "-C", root, "diff", "--cached", "--name-only", "-z").Output()
 		switch {
 		case gerr != nil:
 			// 不是 git 仓库（或没有 git）：pre-commit 本来就装不上，退化成全量。
-			skipped = "拿不到暂存区清单（不是 git 仓库？）——改为检查全部 change"
+			note = "拿不到暂存区清单（不是 git 仓库？）——改为检查全部 change"
 		default:
 			paths := splitNUL(string(out))
 			repoRoot := root
@@ -538,15 +538,16 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 			if change.HasOutsideChanges(repoRoot, changesRoot, paths) {
 				// 代码改了就可能在封印之后变了，只查被碰到的 change 会放行
 				// 一个注定在 CI 变红的提交——退化为全量。
+				note = "暂存区有 spec/changes/ 之外的改动（代码变了证据可能失效）——改为检查全部 change"
 				only = nil
 				break
 			}
 			if len(only) == 0 {
-				skipped = "暂存区没有碰到 spec/changes/ 里的 change——跳过"
+				skipped = "暂存区没有碰到 spec/changes/ 里的 change"
 			}
 		}
 	}
-	if skipped != "" && len(only) == 0 && !strings.HasPrefix(skipped, "拿不到") {
+	if skipped != "" {
 		// 明确的"没东西可查"：pre-commit 不该按住提交，CI 也不该因此变红。
 		return printChangeCheckSkipped(asJSON, skipped)
 	}
@@ -564,7 +565,8 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 			Checked  []string              `json:"checked"`
 			Problems []change.CheckProblem `json:"problems"`
 			Skipped  string                `json:"skipped"`
-		}{Checked: emptyIfNil(checked), Problems: emptyIfNil(problems), Skipped: skipped}
+			Note     string                `json:"note,omitempty"`
+		}{Checked: emptyIfNil(checked), Problems: emptyIfNil(problems), Skipped: skipped, Note: note}
 		raw, merr := json.MarshalIndent(payload, "", "  ")
 		if merr != nil {
 			return merr
@@ -575,8 +577,8 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 		}
 		return nil
 	}
-	if skipped != "" {
-		fmt.Println(skipped + "。")
+	if note != "" {
+		fmt.Println(note + "。")
 	}
 	if len(checked) == 0 {
 		fmt.Println("没有未归档的 change——无需检查。")

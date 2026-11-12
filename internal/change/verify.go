@@ -563,8 +563,9 @@ func filesDrifted(root string, files []FileDigest) bool {
 
 // scaffoldMarker 标记尚未填写的模板骨架。填完删掉标记，verify 才会执行。
 //
-// 只认行首的注释标记：模板正文会写「删掉 `forge:fill` 标记」这类说明，
-// 按子串匹配会让照做的人（删了标记行、没删说明）永远过不了 verify。
+// 匹配的是带 <!-- 的注释标记，而不是裸的 forge:fill：模板正文会写「删掉
+// `forge:fill` 标记」这类说明，按裸子串匹配会让照做的人（删了标记行、没删
+// 说明）永远过不了 verify。
 const scaffoldMarker = "<!-- forge:fill"
 
 // scaffoldHint 是给人看的说法：标记本身是 HTML 注释，直接把它塞进
