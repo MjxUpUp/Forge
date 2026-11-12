@@ -534,7 +534,7 @@ const ReviewStopHook = `#!/bin/bash
 #   - 非 task 模式：gate 按 diff stamp 决策，未审则 block。
 #
 # 与 task-verify 的关系：task-verify 的门禁类检查保持 advisory——因 Stop block 曾致
-# retry-loop 死循环；它只对「活跃任务 + 未提交代码」做每会话 ≤3 次的有界阻断。本 hook 敢 block 是因为 review 包有 max-rounds 兜底（Evaluate 在
+# retry-loop 死循环；它只对「活跃任务 + 未提交代码」做每会话 ≤3 次的有界阻断。本 hook 敢 block 是因为 review 包有 max-rounds 兜底（EvaluateFor 在
 # MaxReviewRounds=3 后 advisory 放行），block 最多 3 次必然收敛，不会死循环。
 #
 # 误触发防护（2026-06-27）：gate 内部只统计源码变更（扩展名白名单 + 排除 .forge/文档/

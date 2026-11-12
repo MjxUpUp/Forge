@@ -1,7 +1,7 @@
 // policy.go — Project Policy Layer P1：per-project 接管状态（managed/declined）。
 //
 // 设计背景见 docs/design/project-policy-layer.md：装 plugin = 机制存在（全局），
-// 接管某项目 = 策略授权（本地），每次 hook 触发 = 仲裁检查（IsMember/State）。
+// 接管某项目 = 策略授权（本地），每次 hook 触发 = 仲裁检查（State）。
 // 本文件是状态模型的单一真相源：Entry.Status 字段、SetStatus 翻转、State 三态查询、
 // ListManaged 过滤视图、ErrDeclinedProject sentinel。
 package registry
@@ -42,12 +42,12 @@ const (
 	StatusUnknown = `unknown`
 )
 
-// ErrDeclinedProject is returned by projectroot.Find when the resolved project has
+// ErrDeclinedProject is returned by projectroot.ResolveFrom (Find is a thin wrapper)
 // declined forge takeover. Hook dispatch treats any Find failure as "not a forge
 // project" (silent pass), so this error needs no special handling there; CLI
 // surfaces it as the user-facing declined message pointing to `forge on`.
 //
-// ErrDeclinedProject 在项目已退出接管（declined）时由 projectroot.Find 返回。
+// ErrDeclinedProject 在项目已退出接管（declined）时由 projectroot.ResolveFrom 返回（Find 是薄包装）。
 // hook 分发对任何 Find 失败都按"非 forge 项目"静默放行，故无需特判；CLI 侧把它
 // 作为面向用户的 declined 提示展示（指向 forge on）。
 var ErrDeclinedProject = errors.New(`forge: 本项目已退出接管（declined）——不会静默重置；恢复请运行 'forge on'`)
@@ -105,11 +105,11 @@ func SetStatus(absPath, status, decidedBy string) error {
 }
 
 // State resolves the takeover state of cwd: StatusManaged / StatusDeclined (with
-// the project root) or StatusUnknown. It shares IsMember's matching core (lookup),
-// so membership and state can never drift apart.
+// the project root) or StatusUnknown. It shares the package lookup core with
+// projectroot's membership resolution, so membership and state never drift apart.
 //
 // State 解析 cwd 的接管三态：managed / declined（附带项目根）/ unknown。与
-// IsMember 共享同一匹配核心（lookup），成员资格与状态判定不会漂移。
+// projectroot 的成员资格解析共享同一 lookup 核心，成员资格与状态判定不会漂移。
 func State(cwd string) (root, status string) {
 	root, e, ok := lookup(cwd)
 	if !ok {
