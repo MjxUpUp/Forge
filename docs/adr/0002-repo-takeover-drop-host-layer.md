@@ -28,7 +28,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 ## 决策
 
-1. **接管点写在仓库里**：`spec/forge.yaml`（成员资格 + profile + hooks 开关）与 `AGENTS.md`（托管块 `<!-- forge:begin -->`…`<!-- forge:end -->`，`forge` 同步托管块，标记外内容不覆盖）。clone 即生效，不要求装插件、不要求注册表。托管块生成器已提供：`forge change agents` 负责同步（缺文件整份写、无块追加、有块就地替换，标记外不动，二次运行不改文件），`forge change init` 在首次声明契约时调用它；契约已存在时 init 拒绝重跑，用 `forge change agents` 重同步。另有一套更早的 `<!-- FORGE:START -->`…`<!-- FORGE:END -->` 段（`forge init --project` 写 CLAUDE.md/AGENTS.md 的指令资产），与本托管块互不覆盖。迁移注意：旧版 `change init` 写的整份协议没有标记，升级后首次同步会把托管块追加在它后面（两段协议并存）——手工删掉旧正文即可，同步不会动标记外内容。
+1. **接管点写在仓库里**：`spec/forge.yaml`（成员资格 + profile + hooks 开关）与 `AGENTS.md`（托管块 `<!-- forge:begin -->`…`<!-- forge:end -->`，`forge` 同步托管块，标记外内容不覆盖）。clone 即生效，不要求装插件、不要求注册表。托管块生成器已提供：`forge change agents` 负责同步（缺文件整份写、无块追加、有块就地替换，标记外不动，二次运行不改文件），`forge change init` 在首次声明契约时调用它；契约已存在时 init 拒绝重跑，用 `forge change agents` 重同步。单源多指针由同一命令维护：`CLAUDE.md` 里放 `@AGENTS.md` 导入，`.cursor/rules/forge.mdc` 放 `alwaysApply` 指针；默认只维护已存在的入口（`.cursor/rules/` 目录存在时补文件），`--pointers` 点名才凭空创建，`none` 完全不动。另有一套更早的 `<!-- FORGE:START -->`…`<!-- FORGE:END -->` 段（`forge init --project` 写 CLAUDE.md/AGENTS.md 的指令资产），与本托管块互不覆盖。迁移注意：旧版 `change init` 写的整份协议没有标记，升级后首次同步会把托管块追加在它后面（两段协议并存）——手工删掉旧正文即可，同步不会动标记外内容。
 2. **分两层：循环节拍放仓库（`forge change status` 驱动），强制点放 git/CI。**
    - 节拍层替代宿主 in-loop 拦截：agent 每次动手前后读 `forge change status`，按 `nextSteps` 执行；节点级 `gate` 立刻给 verdict，反馈延迟是一次 CLI 调用而不是一次提交。这是 LoopSpec 的做法（见下节「回环契约」）——它的 hook 只做一件事：拒绝手改已确认的 plan，门禁本体全在 CLI。
    - 边界层默认接线，绕过需要显式动作：`forge change verify`（可执行判据 + 证据封印）的结论由 `forge change check` 送进 pre-commit 与 CI：每个未归档 change 必须有一份与当前代码和判据一致的封印证据，否则退出 2。仓库下发两份示例（`.githooks/pre-commit`、`.github/workflows/change-verify.yml`）。能绕过的只有显式动作：`git commit --no-verify`、把未封印的 change 手工 `git mv` 进归档（等于宣布已交付）、或仓库设置里没勾 required status check；hook 在没装 forge 的机器上放行，CI 则是从源码构建 forge（不存在「缺 forge 放行」）。**要让它在托管平台上真正成为合并前提，还需在仓库设置里把该工作流设为 required status check**——这一勾不在代码里，fork 与私有仓的默认策略也不同。
@@ -63,7 +63,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 | 只有 CLI 能改工作流状态，agent 不许手改 `plan.yaml`/`.gates/`/`.attempts/` | 状态可信 | 已更强：状态由产物 + 证据 + 内容哈希推导，没有独立状态库；要补「agent 手写证据不算数」的显式判据（已有 `checks>0` + `acceptance_sha256` + diff 绑定） |
 | 循环执行 `change status`，按 `nextSteps` 动手；`active` 之外没有「继续」 | 停止条件集中在一处 | `forge next` 已有（任务级）；`forge change status` 已落地（change 级：stage + nextSteps + verdict，`blocked` 时不给命令） |
 | 节点 = instruction + template + PASS/FAIL 模板；产物写到 `resolvedOutputPath` | 每步有明确产物与判据 | 已有 tasks.md（每条带「判据：acceptance #N」）与 acceptance.md 围栏；节点级 `forge change gate --task N` 已落地（只跑该节点判据、落节点证据、不封印整条） |
-| 有效 FAIL 且有返工次数 → `plan rollback`，按失败 Gate 的 `on_fail` 重置目标 + 该 Gate + 全部下游，归档工作流文件，业务代码不动；重做前先读 `priorAttempts` | 返工有边界、能记住死路 | 下游失效已由内容哈希自动完成（改文件即 stale）；要补 `priorAttempts` 列表面与「返工只重置证据、不动代码」的指令 |
+| 有效 FAIL 且有返工次数 → `plan rollback`，按失败 Gate 的 `on_fail` 重置目标 + 该 Gate + 全部下游，归档工作流文件，业务代码不动；重做前先读 `priorAttempts` | 返工有边界、能记住死路 | 下游失效已由内容哈希自动完成（改文件即 stale）；`prior_attempts` 已落地（未封印时列最近 10 次失败）；「返工只重置证据、不动代码」的指令仍待写进 AGENTS.md 协议 |
 | `exhausted` 的 Gate（无 `on_fail` 或次数用完）→ **停下交给人**，不自动放行 | 循环知道何时停 | 这正是本仓库 `loop-contract` 提案 B0 的漏洞（`TestLoopExhaustionNoLeak` 复现的「首次检出放行一次」）；本 ADR 要求 `status` 直接返回 `blocked`，不回落到「继续」 |
 | 证据绑定 plan 摘要；修订后 code gate 必须重新审查 | 证据不可复用 | 已有 `acceptance_sha256` + `diff_sha256` + `BoundHead`；沿用 |
 | 中断不需要特殊处理：重跑 `status`，未完成的命令会再次出现 | 断点恢复 | 已有：状态从文件系统推导，Ctrl-C 不留半状态 |
@@ -135,7 +135,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 - in-loop 反馈从「宿主拦截」变成「协议驱动 + 节点 gate」：延迟是一次 CLI 调用，但 agent 可以无视协议（LoopSpec 同样如此），兜底只能是接进 CI 的 required check。
 - 危险命令防护降级为「宿主自带确认 + 评审 + 分支保护」。
-- 需要维护 CI 工作流与 pre-commit 示例；需要单源多指针（AGENTS.md ↔ CLAUDE.md ↔ .cursor/rules）。
+- 需要维护 CI 工作流与 pre-commit 示例；需要单源多指针（AGENTS.md → CLAUDE.md、.cursor/rules 的单向指针）。
 
 ### 风险
 
@@ -156,7 +156,9 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 | C 降级为可选 | `forge integrations enable <host>` 显式开启；移除 `forge init`/plugin 对宿主配置的写入，并移除 `forge init` 对 `~/.forge` 的全部写入（注册表 `projects.json`、`projects/<key>/protocol.yml`、hooks 资产、harness-state、迁移元数据等）——只留仓库内产物；`init-suggest` 删除 | 在临时 `HOME` 里跑一次 `forge init`：`find "$HOME" -type f -exec sha256sum {} +` 前后快照一致（覆盖未跟踪的新文件），且 `~/.claude`、`~/.codex`、`~/.forge` 均无新增 |
 | D 删除 | 删 `internal/hooks`、`internal/hookdispatch`（保留最小 batch 协议或整体移除）、`skillsdist` 的宿主 adapter、`skillgen` 的 CLAUDE.md 生成 | `go build` 与 CI 绿；与 Makefile 门禁同一条命令 `deadcode -test ./...` 的输出不超过阶段 D 之前记录的基线；文档无残留引用 |
 
-**阶段 A 的落地进度**（feat/loop-contract-status、feat/agents-managed-block、feat/change-check、feat/phase-a-rest 四条分支）：阶段 A 已全部落地——① 节拍层（`change status` 的 stage/verdict/next steps、`change gate --task N` 的节点判据与证据、同因失败 `blocked`；`blocked` 时 `next_steps` 不含可执行命令，恢复命令在 `handoff`；`prior_attempts` 列出最近 10 次失败的命令、退出码与证据文件，返工前先读）、② 边界层闸门本体（`forge change check` + 随仓库下发的 `.githooks/pre-commit` 与 `.github/workflows/change-verify.yml`；required status check 需在仓库设置里勾选，属运营动作）、③ 协议层（`AGENTS.md` 托管块生成器 + 单源多指针：`CLAUDE.md` 的 `@AGENTS.md` 导入与 `.cursor/rules/forge.mdc`；指针文件不存在时默认不创建，`--pointers` 点名才建）、④ fast 通道。
+**阶段 A 的落地进度**（feat/loop-contract-status、feat/agents-managed-block、feat/change-check、feat/phase-a-rest 四条分支）：阶段 A 的四项功能已落地——① 节拍层（`change status` 的 stage/verdict/next steps、`change gate --task N` 的节点判据与证据、同因失败 `blocked`；`blocked` 时 `next_steps` 不含可执行命令，恢复命令在 `handoff`；`prior_attempts` 列出最近 10 次失败的命令、退出码与证据文件，返工前先读）、② 边界层闸门本体（`forge change check` + 随仓库下发的 `.githooks/pre-commit` 与 `.github/workflows/change-verify.yml`；required status check 需在仓库设置里勾选，属运营动作）、③ 协议层（`AGENTS.md` 托管块生成器 + 单源多指针：`CLAUDE.md` 的 `@AGENTS.md` 导入与 `.cursor/rules/forge.mdc`；默认只维护已存在的入口文件，`.cursor/rules/` 目录存在时补 `forge.mdc`，`--pointers` 点名才凭空创建，`none` 完全不动）、④ fast 通道。
+
+ADR:154 的三条完成判据尚未全部留下记录：① 「节点失败 → 返工 → 耗尽 → blocked，最终不放行」在 2026-11-12 用本机构建的二进制实测（3 次同因失败后 verdict=blocked、`next_steps` 无可执行命令、恢复命令进 `handoff`、`prior_attempts` 列出三条失败证据）；② 「`forge change verify` 在干净 clone 上可跑」尚未在无 `spec/` 的干净树上演练通过（直接 clone 本仓会带上 dogfood 的 `spec/forge.yaml`，`change init` 按设计拒绝重跑）；③ 「全新 clone 靠 CI 判定 sealed」需要带 `spec/changes/` 的仓库上的一次真实 PR——本仓目前没有 `spec/changes/`，下发的工作流会按设计跳过。进阶段 B 前补 ②③ 的记录。
 
 ### 受影响模块
 
