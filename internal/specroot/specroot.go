@@ -112,19 +112,35 @@ func Find(cwd string) (string, bool) {
 	}
 }
 
-// canonicalDir 返回 dir 的真实路径（解析符号链接）；解析失败时退回 Abs。
+// canonicalDir 返回 dir 的真实路径（解析符号链接）。
+//
+// 路径尚不存在时（CLI 允许传新建目录，Find 也可能被喂进未创建的深层路径），
+// 先解析最深的已存在祖先、再把剩余段拼回去——否则从 symlink 进入一个尚未创建
+// 的子目录会得到「link/a」这种未归一形态，与真实路径不是同一个身份。
 func canonicalDir(dir string) (string, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return "", err
 	}
-	real, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		// 路径尚未存在（Find 的输入通常存在，但 CLI 允许传新建目录）：保留绝对
-		// 路径继续向上走，父目录仍可能带契约。
-		return abs, nil
+	if real, rerr := filepath.EvalSymlinks(abs); rerr == nil {
+		return real, nil
 	}
-	return real, nil
+
+	var tail []string
+	cur := abs
+	for {
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return abs, nil
+		}
+		tail = append([]string{filepath.Base(cur)}, tail...)
+		cur = parent
+		real, rerr := filepath.EvalSymlinks(cur)
+		if rerr != nil {
+			continue
+		}
+		return filepath.Join(append([]string{real}, tail...)...), nil
+	}
 }
 
 // homeDir 返回用户 home（解析失败返回空串，此时不设 home 边界）。
