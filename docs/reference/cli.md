@@ -17,7 +17,7 @@
 |------|------|
 | `forge init` | 初始化项目（**项目目录零写入**：登记全局注册表 `~/.forge/projects.json`，hooks/指令/skill 全在用户级，protocol.yml + runtime state 在 `~/.forge/projects/<key>/`；`--project` 团队模式把指令资产写项目目录供 git 共享；旧的 `--mode` 标志已废弃为 no-op） |
 | `forge status [--json] [--system]` | 查看项目状态（任务管道 + 质量信号）；`--system` 跑系统级健康检查（~/.forge、PATH、孤儿 hook、skills manifest） |
-| `forge change init [--profile mini\|standard\|full]` / `new <id> [--title <标题>] [--fast]` / `list [--json]` / `verify <id> [--timeout 10m]` / `status <id> [--json]` / `gate <id> --task <N> [--timeout 10m]` | 仓库内 change 生命周期（不要求 forge 接管）：init 写 `spec/forge.yaml`（默认 `hooks: off`）、`spec/changes/`（含 `archive/`）与 AGENTS.md 协议（AGENTS.md 不存在时才写）；new 生成模板（`--fast` 只生成 proposal + acceptance）；list 从文件系统推导阶段与证据状态；verify 实跑 acceptance 判据并封印证据；status 给下一步；gate 只跑某个节点的判据。详见文末「change 子命令补充」 |
+| `forge change init [--profile mini\|standard\|full]` / `new <id> [--title <标题>] [--fast]` / `list [--json]` / `verify <id> [--timeout 10m]` / `status <id> [--json]` / `gate <id> --task <N> [--timeout 10m]` / `agents` | 仓库内 change 生命周期（不要求 forge 接管）：init 写 `spec/forge.yaml`（默认 `hooks: off`）、`spec/changes/`（含 `archive/`）与 AGENTS.md 协议（AGENTS.md 不存在时才写）；new 生成模板（`--fast` 只生成 proposal + acceptance）；list 从文件系统推导阶段与证据状态；verify 实跑 acceptance 判据并封印证据；status 给下一步；gate 只跑某个节点的判据；agents 同步 AGENTS.md 的 `<!-- forge:begin -->`…`<!-- forge:end -->` 托管块（缺文件整份写、无块则追加、有块则替换，标记外一字不改，二次运行不改文件）。详见文末「change 子命令补充」 |
 | `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge update [--apply] [--plugin]` | 检查并更新到最新版本（按安装通道分流：npm 安装自动检测包管理器 npm/pnpm/yarn，查 npm registry 并打印对应更新命令——npm 包不可变，原地替换会被下次 install 还原，故不代下载，可用 `FORGE_NPM_REGISTRY` 覆盖 registry；GitHub Release/手动安装从 GitHub 下载自替换）；npm 通道加 `--apply` 直接代跑包管理器安装命令并自验新版本（Windows 下二进制被占用时只打印命令）；加 `--plugin` 在更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
 | `forge off [--all] [--commit]` 或 `forge on` | 按项目退出/恢复接管（Project Policy Layer）：`off` 把当前项目（git 根）置为 declined——项目级 hook 全部静默、`forge init`/`FORGE_AUTO_INIT`/自动接管拒绝（退出不被任何默认路径重置）；`--all` 一键全退；`--commit` 额外在仓库根写 `.forge-decline` 团队声明（committed 后对所有协作者让位，deny-wins）；`on` 是 declined→managed 的唯一恢复通道（清标记与声明文件，从未 init 的项目提示先 `forge init`）；仓库已有 `spec/forge.yaml` 且当前是 managed 时，`on` 直接提示「已由仓库契约声明接管」并返回（不写注册表）；若是 declined（`forge off`、`policy yield` 或 clone 到带 `.forge-decline` 的仓库），则照常恢复为 managed（契约仍在，不要求先 init；若随后提示补全接线，再跑一次 `forge init`）。状态存注册表条目（含决策来源/时间审计），`forge status` 退出码即「是否 managed」 |
@@ -297,6 +297,7 @@ forge task score                  # 查看质量评分
 
 - `change verify <id>`：在仓库根按顺序执行 acceptance.md 里的 ```bash/```sh 围栏（每条围栏一次 shell 调用），首个非零退出即停，其余记 skipped；全部通过才封印。判据写法受限（见 AGENTS.md 协议的红线段），被拒绝的写法会直接报错而不是静默跑。
 - `change status <id>`：给出 stage、验证结论、节点状态与下一步。`blocked` 时 `next_steps` 不含任何可执行命令，恢复命令在 `handoff`；`--json` 的字段是 snake_case（`next_steps`、`index`、`criteria`、`handoff`…）。
+- `change agents`：只同步 `AGENTS.md` 的托管块，不碰产物与证据；`change init` 也会调用它，因此已存在的 AGENTS.md 里人工内容保留、只更新块内协议。
 - `change gate <id> --task <N>`：前置条件是 tasks.md 里任务 N 存在、未勾选、写了判据编号（`#1`、`#1 和 #2`、`#1 或 #2` 均可）、四份产物已补齐并删掉 `forge:fill`、引用的围栏有可执行语句且写法通过判据检查；只跑这些围栏，证据记在 `evidence/<时间戳>/`，summary 里带 `task: N`，**不封印整条 change**。fast change 没有 tasks.md，用 verify。
 - 「同一个原因」= 每次 verify/gate 的第一条失败命令；换命令或中间通过一次就重新计数，连续 3 次同因失败即 `blocked`。
 - 退出码：用法错误、产物缺失、判据写法被拒 → 1；判据实跑未通过 → 2。
