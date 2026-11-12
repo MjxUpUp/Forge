@@ -2,6 +2,7 @@ package change
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -305,5 +306,107 @@ func TestParseTasks_StripsOwnNumbering(t *testing.T) {
 	}
 	if got := tasks[2].Text; got != "2.0 兼容的正文不该被剪" {
 		t.Fatalf("Task 3 text = %q, 序号不同不该剪", got)
+	}
+}
+
+// writeAttemptSummary 造一份指定结论的证据（不实跑命令）。
+func writeAttemptSummary(t *testing.T, changeDir, ts string, sum Summary) {
+	t.Helper()
+	ev := filepath.Join(changeDir, EvidenceDirName, ts)
+	if err := os.MkdirAll(ev, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(sum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ev, SummaryFile), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// PriorAttempts 是给返工的人看的死路记忆：失败的尝试按新→旧列出失败命令、
+// 退出码与输出文件名，已封印后不再出现。
+func TestStatus_PriorAttemptsListFailingHistory(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeAttemptSummary(t, dir, "20260101T000000Z", Summary{
+		Change: "demo", Passed: false,
+		Checks: []Check{{Index: 1, Command: "go test ./a", Exit: 1, Shell: "bash", StderrFile: "stderr.txt"}},
+	})
+	writeAttemptSummary(t, dir, "20260101T000100Z", Summary{
+		Change: "demo", Passed: false, Task: 2,
+		Checks: []Check{{Index: 1, Command: "go test ./b", Exit: 2, Shell: "sh", StdoutFile: "stdout.txt"}},
+	})
+
+	st, err := StatusOf(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.PriorAttempts) != 2 {
+		t.Fatalf("应列出 2 条失败尝试，got %+v", st.PriorAttempts)
+	}
+	newest := st.PriorAttempts[0]
+	if newest.Evidence != "20260101T000100Z" || newest.Command != "go test ./b" || newest.Exit != 2 || newest.Task != 2 {
+		t.Errorf("最新一条应排在最前且带命令/退出码/任务号，got %+v", newest)
+	}
+	if newest.StdoutFile != "stdout.txt" {
+		t.Errorf("应带输出文件名，got %+v", newest)
+	}
+	if st.PriorAttempts[1].Command != "go test ./a" {
+		t.Errorf("第二条应是更早的失败，got %+v", st.PriorAttempts[1])
+	}
+
+	// 封印后是终态：历史失败只作记录，不再作为"返工先读"的清单。
+	acceptance := []byte("# acceptance\n\n```bash\n判据：\ntest -d spec\n```\n")
+	for name, body := range map[string][]byte{
+		"acceptance.md": acceptance,
+		"proposal.md":   []byte("# 提案\n\n做点事。\n"),
+		"design.md":     []byte("# 设计\n\n就按提案做。\n"),
+		"tasks.md":      []byte("# 任务\n\n- [ ] 跑判据（判据：acceptance #1）\n"),
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeAttemptSummary(t, dir, "20260101T000200Z", Summary{
+		Change: "demo", Passed: true, Sealed: true,
+		AcceptanceSHA256: hashBytes(acceptance),
+		Checks:           []Check{{Index: 1, Command: "test -d spec", Exit: 0}},
+	})
+	st, err = StatusOf(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Verdict != "clean" || len(st.PriorAttempts) != 0 {
+		t.Fatalf("封印后应为 clean 且不列 prior attempts，got verdict=%s prior=%+v", st.Verdict, st.PriorAttempts)
+	}
+}
+
+// 没有失败命令可定位时（checks 为空），理由要说明是证据不完整，而不是编造
+// 一条不存在的命令。
+func TestStatus_PriorAttemptsExplainMissingCommand(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	dir, err := New(root, "demo", "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeAttemptSummary(t, dir, "20260101T000000Z", Summary{Change: "demo", Passed: false})
+
+	st, err := StatusOf(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.PriorAttempts) != 1 || st.PriorAttempts[0].Reason == "" {
+		t.Fatalf("缺命令时应写理由，got %+v", st.PriorAttempts)
 	}
 }
