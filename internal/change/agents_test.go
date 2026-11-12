@@ -260,3 +260,119 @@ func TestEnsureAgentsBlock_CRLFStaysIdempotent(t *testing.T) {
 		t.Fatalf("CRLF 文件的标记外字节被改动：%q", first)
 	}
 }
+
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读 %s: %v", path, err)
+	}
+	return string(raw)
+}
+
+// 默认只维护已存在的入口文件：不替不用 Claude Code / Cursor 的仓库建文件。
+func TestEnsureAgentPointers_SkipsMissingByDefault(t *testing.T) {
+	root := t.TempDir()
+	reports, err := EnsureAgentPointers(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reports) != 2 || !reports[0].Skipped || !reports[1].Skipped {
+		t.Fatalf("没有入口文件时应全部跳过，got %+v", reports)
+	}
+	for _, p := range []string{ClaudeFile, CursorRuleFile} {
+		if _, err := os.Stat(filepath.Join(root, p)); !os.IsNotExist(err) {
+			t.Errorf("%s 不该被创建", p)
+		}
+	}
+}
+
+// 点名创建：CLAUDE.md 里放 @AGENTS.md 导入，Cursor 规则文件带 alwaysApply
+// frontmatter；第二次运行不改文件。
+func TestEnsureAgentPointers_CreateWhenRequestedAndIdempotent(t *testing.T) {
+	root := t.TempDir()
+	reports, err := EnsureAgentPointers(root, []string{"claude", "cursor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range reports {
+		if r.Skipped || r.Action != AgentsCreated {
+			t.Fatalf("应新建两个指针文件，got %+v", reports)
+		}
+	}
+
+	claude := readFile(t, filepath.Join(root, ClaudeFile))
+	if !strings.Contains(claude, "@AGENTS.md") || !strings.Contains(claude, pointerBegin) {
+		t.Fatalf("CLAUDE.md 应含 @AGENTS.md 导入与托管标记：%q", claude)
+	}
+	cursor := readFile(t, filepath.Join(root, CursorRuleFile))
+	if !strings.HasPrefix(cursor, "---\n") || !strings.Contains(cursor, "alwaysApply: true") {
+		t.Fatalf("Cursor 规则缺 frontmatter：%q", cursor)
+	}
+	if !strings.Contains(cursor, "AGENTS.md") {
+		t.Fatalf("Cursor 规则应指向 AGENTS.md：%q", cursor)
+	}
+
+	// 幂等：第二次不改字节。
+	before := map[string]string{
+		ClaudeFile:     claude,
+		CursorRuleFile: cursor,
+	}
+	reports, err = EnsureAgentPointers(root, []string{"claude", "cursor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range reports {
+		if r.Action != AgentsUnchanged {
+			t.Fatalf("第二次应 unchanged，got %+v", reports)
+		}
+		if got := readFile(t, filepath.Join(root, r.File)); got != before[r.File] {
+			t.Errorf("%s 第二次运行时被改了", r.File)
+		}
+	}
+}
+
+// 已存在的入口文件保留人工内容：只追加/替换标记之间。
+func TestEnsureAgentPointers_PreservesHumanContent(t *testing.T) {
+	root := t.TempDir()
+	human := "# 我的 CLAUDE.md\n\n- 先跑 make check\n"
+	if err := os.WriteFile(filepath.Join(root, ClaudeFile), []byte(human), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentPointers(root, nil); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, filepath.Join(root, ClaudeFile))
+	if !strings.HasPrefix(got, human) {
+		t.Fatalf("人工内容必须原样保留，got %q", got)
+	}
+	if !strings.Contains(got, pointerBegin) || !strings.Contains(got, "@AGENTS.md") {
+		t.Fatalf("应追加指针块，got %q", got)
+	}
+
+	// Cursor 目录存在（仓库已用 Cursor）时补 forge.mdc，不必点名。
+	if err := os.MkdirAll(filepath.Join(root, ".cursor", "rules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentPointers(root, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, CursorRuleFile)); err != nil {
+		t.Fatalf("已有 .cursor/rules 时应补 pointer：%v", err)
+	}
+}
+
+// 不成对的标记拒绝动手，也不改文件。
+func TestEnsureAgentPointers_RejectsUnpairedMarkers(t *testing.T) {
+	root := t.TempDir()
+	body := "# CLAUDE.md\n\n" + pointerBegin + "\n缺收尾\n"
+	if err := os.WriteFile(filepath.Join(root, ClaudeFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentPointers(root, []string{"claude"}); err == nil {
+		t.Fatal("不成对标记应报错")
+	}
+	if got := readFile(t, filepath.Join(root, ClaudeFile)); got != body {
+		t.Fatal("报错时不该改文件")
+	}
+}

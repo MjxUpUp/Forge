@@ -38,6 +38,7 @@ func init() {
 	changeGateCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条判据的超时")
 	changeCheckCmd.Flags().Bool("staged", false, "只看暂存区（pre-commit 用；暂存区出现 spec/changes/ 之外的改动则退化为全量）")
 	changeCheckCmd.Flags().Bool("json", false, "JSON 格式输出")
+	changeAgentsCmd.Flags().String("pointers", "", "同时维护指向 AGENTS.md 的指针文件：claude / cursor / all（缺省只更新已存在的文件）")
 }
 
 var changeCmd = &cobra.Command{
@@ -94,9 +95,17 @@ var changeStatusCmd = &cobra.Command{
 
 var changeAgentsCmd = &cobra.Command{
 	Use:   "agents",
-	Short: "同步 AGENTS.md 的 forge 托管块（标记外不动）",
-	Args:  cobra.NoArgs,
-	RunE:  runChangeAgents,
+	Short: "同步 AGENTS.md 的 forge 托管块与 agent 入口指针（标记外不动）",
+	Long: `同步 AGENTS.md 的 forge 托管块，并维护指向它的 agent 入口指针：
+
+  CLAUDE.md                 Claude Code 读这个文件；块里是 @AGENTS.md 导入
+  .cursor/rules/forge.mdc   Cursor 规则；块里让 agent 先读 AGENTS.md
+
+指针文件不存在时默认不创建（替不用这个 agent 的仓库建文件是污染）；要创建
+就点名：--pointers claude、--pointers cursor、--pointers all。文件已存在时
+只改标记之间，标记外一字不动。`,
+	Args: cobra.NoArgs,
+	RunE: runChangeAgents,
 }
 
 var changeCheckCmd = &cobra.Command{
@@ -139,13 +148,18 @@ func runChangeInit(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func runChangeAgents(_ *cobra.Command, _ []string) error {
+func runChangeAgents(cmd *cobra.Command, _ []string) error {
 	root, err := changeRoot()
 	if err != nil {
 		return err
 	}
 	if !specroot.Declared(root) {
 		return fmt.Errorf("change: %s 还没有 spec/forge.yaml——先跑 `forge change init` 声明契约，再同步 AGENTS.md", root)
+	}
+	pointers, _ := cmd.Flags().GetString("pointers")
+	create, err := parsePointerNames(pointers)
+	if err != nil {
+		return err
 	}
 	action, err := change.EnsureAgentsBlock(root)
 	if err != nil {
@@ -161,7 +175,61 @@ func runChangeAgents(_ *cobra.Command, _ []string) error {
 	default:
 		fmt.Println("AGENTS.md 的 forge 托管块已是最新，无需改动")
 	}
+
+	if pointers == "none" {
+		return nil
+	}
+	reports, err := change.EnsureAgentPointers(root, create)
+	if err != nil {
+		return err
+	}
+	for _, r := range reports {
+		if r.Skipped {
+			fmt.Printf("  %s：不存在，未创建（要启用就加 --pointers %s）\n", r.File, pointerKind(r.File))
+			continue
+		}
+		switch r.Action {
+		case change.AgentsCreated:
+			fmt.Printf("  %s：已新建指针（指向 AGENTS.md）\n", r.File)
+		case change.AgentsAppended:
+			fmt.Printf("  %s：已追加指针（原有内容未动）\n", r.File)
+		case change.AgentsUpdated:
+			fmt.Printf("  %s：已更新指针（标记外未动）\n", r.File)
+		default:
+			fmt.Printf("  %s：指针已是最新\n", r.File)
+		}
+	}
 	return nil
+}
+
+// parsePointerNames 解析 --pointers：空表示"只维护已存在的文件"，all 表示两个
+// 都创建，none 表示全都不碰。
+func parsePointerNames(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "none" {
+		return nil, nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		switch name := strings.TrimSpace(part); name {
+		case "":
+		case "all":
+			return []string{"claude", "cursor"}, nil
+		case "claude", "cursor":
+			out = append(out, name)
+		default:
+			return nil, fmt.Errorf("change: 未知的指针 %q（可选 claude / cursor / all / none）", name)
+		}
+	}
+	return out, nil
+}
+
+// pointerKind 把文件名翻回 --pointers 的取值，提示里能直接抄。
+func pointerKind(file string) string {
+	if file == change.ClaudeFile {
+		return "claude"
+	}
+	return "cursor"
 }
 
 func runChangeNew(cmd *cobra.Command, args []string) error {
@@ -483,6 +551,35 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Println(line)
 		}
+	}
+	if len(st.PriorAttempts) > 0 {
+		// 死路记忆放在判定之前：人先看到"已经试过什么、怎么失败的"，再看
+		// 下一步该做什么，否则很容易照着同一句命令再跑一遍。
+		fmt.Println()
+		fmt.Println("此前失败的尝试（新→旧）：")
+		for _, a := range st.PriorAttempts {
+			line := "  - " + a.Evidence
+			if a.Task > 0 {
+				line += fmt.Sprintf("（任务 %d）", a.Task)
+			}
+			if a.Command != "" {
+				line += "：" + a.Command + fmt.Sprintf("（exit %d", a.Exit)
+				if a.Shell != "" {
+					line += "，" + a.Shell
+				}
+				line += "）"
+			} else {
+				line += "：" + a.Reason
+			}
+			fmt.Println(line)
+			if a.StderrFile != "" {
+				fmt.Printf("    stderr：evidence/%s/%s\n", a.Evidence, a.StderrFile)
+			}
+			if a.StdoutFile != "" {
+				fmt.Printf("    stdout：evidence/%s/%s\n", a.Evidence, a.StdoutFile)
+			}
+		}
+		fmt.Println("  返工前先读这些证据，别重试已证伪的路。")
 	}
 	fmt.Println()
 	if st.Verdict == "blocked" {
