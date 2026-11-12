@@ -158,7 +158,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 **阶段 A 的落地进度**（feat/loop-contract-status、feat/agents-managed-block、feat/change-check、feat/phase-a-rest 四条分支）：阶段 A 的四项功能已落地——① 节拍层（`change status` 的 stage/verdict/next steps、`change gate --task N` 的节点判据与证据、同因失败 `blocked`；`blocked` 时 `next_steps` 不含可执行命令，恢复命令在 `handoff`；`prior_attempts` 列出最近 10 次失败的命令、退出码与证据文件，返工前先读）、② 边界层闸门本体（`forge change check` + 随仓库下发的 `.githooks/pre-commit` 与 `.github/workflows/change-verify.yml`；required status check 需在仓库设置里勾选，属运营动作）、③ 协议层（`AGENTS.md` 托管块生成器 + 单源多指针：`CLAUDE.md` 的 `@AGENTS.md` 导入与 `.cursor/rules/forge.mdc`；默认只维护已存在的入口文件，`.cursor/rules/` 目录存在时补 `forge.mdc`，`--pointers` 点名才凭空创建，`none` 完全不动）、④ fast 通道。
 
-ADR:154 的三条完成判据尚未全部留下记录：① 「节点失败 → 返工 → 耗尽 → blocked，最终不放行」在 2026-11-12 用本机构建的二进制实测（3 次同因失败后 verdict=blocked、`next_steps` 无可执行命令、恢复命令进 `handoff`、`prior_attempts` 列出三条失败证据）；② 「`forge change verify` 在干净 clone 上可跑」尚未在无 `spec/` 的干净树上演练通过（直接 clone 本仓会带上 dogfood 的 `spec/forge.yaml`，`change init` 按设计拒绝重跑）；③ 「全新 clone 靠 CI 判定 sealed」需要带 `spec/changes/` 的仓库上的一次真实 PR——本仓目前没有 `spec/changes/`，下发的工作流会按设计跳过。进阶段 B 前补 ②③ 的记录。
+ADR:154 的三条完成判据尚未全部留下记录：① 「节点失败 → 返工 → 耗尽 → blocked，最终不放行」在 2026-11-12 用本机构建的二进制实测（3 次同因失败后 verdict=blocked、`next_steps` 无可执行命令、恢复命令进 `handoff`、`prior_attempts` 列出三条失败证据）；② 「`forge change verify` 在干净 clone 上可跑」已于 2026-11-12 实测：`git archive` 导出后删掉 dogfood 的 `spec/`，`change init` → `change new` → 填四份产物 → `verify` 封印 → `git init`/commit → `git clone`，新 clone 里 `change status` 仍为已封印、`verify` 重跑通过、`change check` 退出 0；③ 「全新 clone 靠 CI 判定 sealed」的作业步骤已在上述 clone 里本地复现（`go build ./cmd/forge` + `change check` 退出 0），剩 required status check 勾选属仓库运营动作（本仓无 `spec/changes/`，下发工作流在此仓库按设计跳过）。
 
 ### 受影响模块
 
