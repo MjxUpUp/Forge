@@ -180,6 +180,14 @@ func Init(root, profile string) (created []string, err error) {
 	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
 		return nil, fmt.Errorf("change: 创建 spec/changes/archive/: %w", err)
 	}
+	// git 不跟踪空目录：不放 .gitkeep 的话，克隆下来 archive/ 不存在，
+	// 第一次归档的 git mv 就会报 destination directory does not exist。
+	keep := filepath.Join(archiveDir, ".gitkeep")
+	if _, statErr := os.Stat(keep); errors.Is(statErr, os.ErrNotExist) {
+		if err := os.WriteFile(keep, nil, 0o644); err != nil {
+			return nil, fmt.Errorf("change: 写 spec/changes/archive/.gitkeep: %w", err)
+		}
+	}
 	created = append(created, relTo(root, archiveDir)+"/")
 
 	agents := filepath.Join(root, "AGENTS.md")
