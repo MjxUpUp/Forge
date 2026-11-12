@@ -10,6 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/harnessdetect"
 	"github.com/MjxUpUp/Forge/internal/hookdispatch"
+	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/spf13/cobra"
 )
@@ -138,6 +139,16 @@ func runOff(cmd *cobra.Command, args []string) error {
 
 func runOn(cmd *cobra.Command, args []string) error {
 	root := policyRoot()
+	// 仓库契约本身即「接管中」：declared-only 仓库没有注册表条目，旧逻辑会报
+	// 「未登记接管状态」。契约与注册表是成员资格的两个来源，on 只负责 declined
+	// → managed 的翻转，不该要求人再跑一次 init。
+	if memberRoot, source, state, err := projectroot.State(root); err == nil {
+		root = memberRoot
+		if source == projectroot.SourceSpecContract && state == registry.StatusManaged {
+			fmt.Println(`本项目已由仓库契约声明接管（spec/forge.yaml），无需动作。`)
+			return nil
+		}
+	}
 	_, state := registry.State(root)
 	switch state {
 	case registry.StatusManaged:
