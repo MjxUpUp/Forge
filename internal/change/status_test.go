@@ -528,3 +528,34 @@ func TestNodeStatuses_CountsOnlyOwnAttempts(t *testing.T) {
 		t.Fatalf("任务 2 应只算自己的 1 次并未通过，got attempts=%d state=%s", second.Attempts, second.State)
 	}
 }
+
+func TestNodeStatuses_LastEvidenceIsNewestAttempt(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	fillScaffold(t, dir)
+	writeAcceptance(t, dir, "exit 3")
+	writeTasks(t, dir, "- [ ] 一定失败（判据：acceptance #1）")
+	for i := 0; i < 2; i++ {
+		if _, err := GateTask(context.Background(), root, "demo", 1, GateOptions{Timeout: 30 * time.Second}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c, _, err := Load(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	atts := Attempts(c)
+	if len(atts) < 2 {
+		t.Fatalf("应有两份证据，got %d", len(atts))
+	}
+	st, err := StatusOf(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Nodes[0].LastEvidence != atts[0].Dir {
+		t.Fatalf("LastEvidence 应指向最新一次（%s），got %s", atts[0].Dir, st.Nodes[0].LastEvidence)
+	}
+	if st.Nodes[0].LastEvidence == atts[len(atts)-1].Dir {
+		t.Fatal("LastEvidence 不该指向最早一次")
+	}
+}
