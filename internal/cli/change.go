@@ -629,7 +629,7 @@ func printChangeCheckSkipped(asJSON bool, reason string) error {
 		fmt.Println(string(raw))
 		return nil
 	}
-	fmt.Println(reason + "——跳过。")
+	fmt.Println(reason + "。")
 	return nil
 }
 
