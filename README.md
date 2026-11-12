@@ -139,7 +139,7 @@ hooks: on          # on | off（缺省 on）
 |------|------|
 | `forge init` | 初始化项目（项目目录零写入，用户级仍登记注册表与资产） |
 | `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步 |
-| `forge change init/new/list/verify/status/gate/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人）；`gate --task N` 只跑某条任务的判据；`agents` 重同步 AGENTS.md 的 forge 托管块（标记外不改）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md（随 git 提交，与 `forge init` 的项目目录零写入是两回事）；`new --fast` 只要求 proposal + acceptance |
+| `forge change init/new/list/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块（标记外不改）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md（随 git 提交，与 `forge init` 的项目目录零写入是两回事）；`new --fast` 只要求 proposal + acceptance |
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-verify → task-complete |
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |
@@ -156,6 +156,13 @@ hooks: on          # on | off（缺省 on）
 其余命令族（`skills`、`eval`、`act`、`workspace`、`project`、`registry`、`harness`、`compat`、`plugin`、`conventions`、`policy`、`enforcement`、`selfcheck`、`sync`、`migrate`、`uninstall`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`、`verify`、`trust`）见同一份[完整命令表](docs/reference/cli.md)。
 
 **回环怎么跑**：agent 每个回合先 `forge change status <id>`，只执行它给出的下一步——补产物、跑 verify、读失败证据、重跑，acceptance 的判据全部通过才归档。判断标准来自仓库里的文件与证据，不来自对话记忆；in-loop 不需要宿主 hook（`forge change status/verify` 仍是 forge 二进制提供的命令，所以「零安装」指不用装 hook，不是不用装 forge）。逐节点推进用 `forge change gate <id> --task N`：只跑该任务引用的判据，节点证据不封印整条 change。
+
+**证据怎么变成合并前提**：`forge change check` 给 CI 与 pre-commit 同一套判据——每个未归档 change 都得有一份与当前代码和判据一致的封印证据。仓库里带两份接线示例：
+
+- `.githooks/pre-commit`：`git config core.hooksPath .githooks` 启用。它只查暂存区碰到的 change；一旦暂存区出现 `spec/changes/` 之外的改动（代码、文档），就退化为检查全部 change——封印的证据绑的是代码内容，只看被碰到的 change 会放行一个注定在 CI 变红的提交。hook 执行时看的是工作区：`git add` 后又改回文件、或漏 add 证据，本地可能放行而 CI 变红。机器上没有 `forge` 或版本太旧时它打印原因后放行，仓库还没有 `spec/changes/` 时静默放行（不打扰还没用 change 流程的仓库）；POSIX 上需要可执行位，clone 后若丢了用 `chmod +x .githooks/pre-commit`。
+- `.github/workflows/change-verify.yml`：只在 PR 上跑（main 上有新提交后再 merge，合并后的树与被封印的那版不同，证据按设计判失效——那是合并噪音，不是代码变了），`fetch-depth: 0` 且检 PR head sha；有 `spec/changes/` 才执行 `forge change check`，没有就整步跳过。它从源码构建 forge（这一行只在 forge 自己的仓库成立；别的仓库要换成安装固定版本的 forge），所以不存在「没装 forge 就放行」；要让它在 GitHub 上真拦住合并，还得在仓库设置里设为 required status check。
+
+`--json` 在所有路径上输出同一份 `{checked,problems,skipped}`（空列表是 `[]`，跳过时退出码 0）。信任边界：`change check` 只把未归档 change 当作待交付物，已归档的是历史；把未封印的 change 手工 `git mv` 进 `archive/` 等于人宣布它已交付——工具不再检查，这一步只能靠 review。
 
 「同一个原因」指每次 verify/gate 的**第一条失败命令**：换一条命令、或中间有一次通过，就重新计数。连续 3 次同因失败 → `blocked`，此时 `next_steps` 不再给任何可执行命令，恢复命令放在 `handoff` 字段里，由人执行。fast change（`new --fast`）的判据与证据规则和普通 change 完全一样，只是只要求 proposal + acceptance 两份产物。
 

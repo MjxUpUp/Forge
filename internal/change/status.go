@@ -434,7 +434,7 @@ func nextSteps(root string, c *Change, st *Status) []string {
 	if missing := DocProblems(c.Dir, c.Fast); len(missing) > 0 {
 		return []string{
 			"补齐产物：" + strings.Join(missing, "、"),
-			"填完后删掉文件里的 " + scaffoldMarker + " 标记。",
+			"填完后删掉" + scaffoldHint + "。",
 		}
 	}
 
