@@ -10,6 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/MjxUpUp/Forge/internal/registry"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 )
 
 // off_test.go — Project Policy Layer P1 的命令面契约：forge off/on 对称翻转、
@@ -297,5 +298,32 @@ func TestWarnForeignHarness(t *testing.T) {
 	})
 	if strings.TrimSpace(stderr2) != `` {
 		t.Errorf(`无信号应静默，实得 %q`, stderr2)
+	}
+}
+
+// TestOn_DeclaredContractNoop：仓库契约已声明接管时，forge on 什么都不做——
+// 旧逻辑查注册表报「未登记接管状态」，等于要求 clone 之后再 init 一次。
+func TestOn_DeclaredContractNoop(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	proj := t.TempDir()
+	t.Chdir(proj)
+	dir := filepath.Join(proj, specroot.DirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, specroot.MarkerName), []byte(`version: "1"`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := captureOutput(t, func() error { return runOn(onCmd, nil) })
+	if err != nil {
+		t.Fatalf(`runOn declared: %v`, err)
+	}
+	if !strings.Contains(stdout, `已由仓库契约声明接管`) {
+		t.Fatalf(`runOn declared stdout = %q, want 无需动作提示`, stdout)
+	}
+	// 不得悄悄往注册表写条目：on 在这里只是陈述状态。
+	if _, state := registry.State(proj); state != registry.StatusUnknown {
+		t.Fatalf(`registry state = %q, want unknown（on 不该登记）`, state)
 	}
 }

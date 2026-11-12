@@ -71,20 +71,49 @@ func Resolve() (string, Source, error) {
 	return ResolveFrom(cwd)
 }
 
+// State 解析 cwd 的成员资格与接管状态，把 declined 当作一种正常状态返回而不是
+// 错误——供「报告状态」的调用方（forge policy state、forge on、workspace add）
+// 使用。优先级与 ResolveFrom 同一份实现：仓库契约 → 注册表 → 遗留 .forge/；
+// 未命中任何来源时返回 forgedata.ErrNoForgeConfig。
+//
+// 为什么需要它：ResolveFrom 把 declined 折成 error 是给 hook/命令门禁用的（静默
+// 放行），但展示面需要区分「没接管」「拒绝了」「已接管」三态。两处若各自实现
+// 一遍优先级，就会出现「status 说 managed、policy state 说 unknown」的矛盾。
+func State(cwd string) (string, Source, string, error) {
+	return resolveFrom(cwd)
+}
+
 // ResolveFrom 是 Resolve 的可测入口（显式传 cwd，不读进程工作目录）。
 func ResolveFrom(cwd string) (string, Source, error) {
+	root, source, status, err := resolveFrom(cwd)
+	if err != nil {
+		return "", "", err
+	}
+	if status == registry.StatusDeclined {
+		return "", "", registry.ErrDeclinedProject
+	}
+	return root, source, nil
+}
+
+// resolveFrom 是成员资格解析的唯一实现：返回 (根, 来源, 接管状态)。
+func resolveFrom(cwd string) (string, Source, string, error) {
 	// 0. 仓库声明式契约。declined 一票否决优先：人明确拒绝接管后，仓库里的
 	//    标记不再自动复活 forge——否则 clone 一份契约就绕过了退出决定。
 	if root, ok := specroot.Find(cwd); ok {
 		if _, state := registry.State(root); state == registry.StatusDeclined {
-			return "", "", registry.ErrDeclinedProject
+			return root, SourceSpecContract, registry.StatusDeclined, nil
 		}
-		return root, SourceSpecContract, nil
+		return root, SourceSpecContract, registry.StatusManaged, nil
 	}
 
-	// 1. 注册表成员资格。
+	// 1. 注册表成员资格。IsMember 把 declined 当非成员，故这里先看状态：
+	//    报告面（State）需要区分「declined」与「从未登记」，否则 policy state
+	//    会把一个明确退出的仓库报成 unknown。
+	if root, state := registry.State(cwd); state == registry.StatusDeclined && root != "" {
+		return root, SourceRegistry, registry.StatusDeclined, nil
+	}
 	if root, ok := registry.IsMember(cwd); ok {
-		return root, SourceRegistry, nil
+		return root, SourceRegistry, registry.StatusManaged, nil
 	}
 
 	// 2. 遗留兜底：向上 walk 找项目级 .forge/（user-level-assets 重构前 init 的
@@ -94,13 +123,13 @@ func ResolveFrom(cwd string) (string, Source, error) {
 	//    CLI 侧该错误文案即面向用户的 declined 提示）。
 	if root, ok := legacyFind(cwd); ok {
 		if _, state := registry.State(root); state == registry.StatusDeclined {
-			return "", "", registry.ErrDeclinedProject
+			return root, SourceLegacyConfig, registry.StatusDeclined, nil
 		}
 		_ = registry.Add(root) // 自愈登记，失败不阻断
-		return root, SourceLegacyConfig, nil
+		return root, SourceLegacyConfig, registry.StatusManaged, nil
 	}
 
-	return "", "", forgedata.ErrNoForgeConfig
+	return "", "", "", forgedata.ErrNoForgeConfig
 }
 
 // legacyFind 从 dir 向上查找最近的、含项目 .forge/ 子目录的目录。两道边界防止把
