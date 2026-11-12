@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // MaxSameCauseAttempts 是"同一个原因连续失败几次就停下交给人"的阈值。
@@ -355,9 +356,6 @@ func nextSteps(c *Change, st *Status) []string {
 	}
 	switch {
 	case c.Sealed:
-		if c.Stale {
-			return []string{"判据或工作区变过，证据已失效：forge change verify " + c.ID}
-		}
 		steps := []string{"归档：git mv " + relTo(filepath.Dir(c.Dir), c.Dir) + " spec/changes/archive/" + archiveNameSuggestion(c.ID)}
 		for _, n := range st.Nodes {
 			if n.State != NodePassed {
@@ -396,8 +394,10 @@ func latestEvidenceDir(c *Change) string {
 	return atts[0].Dir
 }
 
+// archiveNameSuggestion 给出归档目录名。用今天的日期，命令可以直接复制执行；
+// 占位的 YYYYMMDD 看起来像提醒，实际会让人敲出一条必错的命令。
 func archiveNameSuggestion(id string) string {
-	return "YYYYMMDD-" + id
+	return time.Now().Format("20060102") + "-" + id
 }
 
 // WriteJSON 把状态写成 JSON（CLI --json 用）。
