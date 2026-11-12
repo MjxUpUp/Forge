@@ -497,3 +497,34 @@ func TestStatus_CapsPriorAttemptsAtTenThroughStatusOf(t *testing.T) {
 		t.Fatalf("应按新→旧：first=%s last=%s", st.PriorAttempts[0].Evidence, st.PriorAttempts[9].Evidence)
 	}
 }
+
+func TestNodeStatuses_CountsOnlyOwnAttempts(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	fillScaffold(t, dir)
+	writeAcceptance(t, dir, "echo ok", "exit 3")
+	writeTasks(t, dir,
+		"- [ ] 第一条（判据：acceptance #1）",
+		"- [ ] 第二条（判据：acceptance #2）",
+	)
+	if res, err := GateTask(context.Background(), root, "demo", 1, GateOptions{Timeout: 30 * time.Second}); err != nil || !res.Summary.Passed {
+		t.Fatalf("任务 1 应当通过：%v", err)
+	}
+	if res, err := GateTask(context.Background(), root, "demo", 2, GateOptions{Timeout: 30 * time.Second}); err != nil || res.Summary.Passed {
+		t.Fatalf("任务 2 应当失败：%v", err)
+	}
+	st, err := StatusOf(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Nodes) != 2 {
+		t.Fatalf("节点数 = %d", len(st.Nodes))
+	}
+	first, second := st.Nodes[0], st.Nodes[1]
+	if first.Attempts != 1 || first.State != NodePassed {
+		t.Fatalf("任务 1 应只算自己的 1 次并通过，got attempts=%d state=%s", first.Attempts, first.State)
+	}
+	if second.Attempts != 1 || second.State != NodeFailed {
+		t.Fatalf("任务 2 应只算自己的 1 次并未通过，got attempts=%d state=%s", second.Attempts, second.State)
+	}
+}
