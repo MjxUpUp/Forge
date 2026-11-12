@@ -48,8 +48,8 @@ func GateTask(ctx context.Context, root, id string, taskNo int, opts GateOptions
 	}
 
 	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
-		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——补齐、删掉 %s 标记后再 gate",
-			id, strings.Join(problems, "、"), scaffoldMarker)
+		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——补齐、删掉%s后再 gate",
+			id, strings.Join(problems, "、"), scaffoldHint)
 	}
 	accRaw, err := os.ReadFile(filepath.Join(c.Dir, FileAcceptance))
 	if err != nil {
