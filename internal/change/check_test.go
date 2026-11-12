@@ -143,6 +143,22 @@ func TestCheckProblems_ArchivedNeverBlocks(t *testing.T) {
 	}
 }
 
+func TestTouchedChanges_UsesChangesRootNotRepoRoot(t *testing.T) {
+	// 两个根分开传的意义：仓库根是 monorepo 顶层时，spec/changes 可能在一层
+	// 目录之下；用项目根推前缀会把所有路径都当成"外面"，静默跳过全部 change。
+	repo := t.TempDir()
+	changes := filepath.Join(repo, "proj", "spec", "changes")
+	got := TouchedChanges(repo, changes, []string{
+		"proj/spec/changes/demo/proposal.md",
+		"proj/spec/changes/demo/evidence/20260101T000000Z/summary.json",
+		"proj/spec/changes/../escape.md",
+		"demo/not-really-a-change.md",
+	})
+	if len(got) != 1 || got[0] != "demo" {
+		t.Fatalf("TouchedChanges = %v，想要 [demo]", got)
+	}
+}
+
 func TestHasOutsideChanges(t *testing.T) {
 	root, _ := repoWithChange(t, "demo")
 	changes := ChangesDir(root)
