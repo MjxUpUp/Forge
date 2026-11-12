@@ -41,12 +41,24 @@ _MARKER_DIR="${FORGE_DATA_DIR:-${TMPDIR:-/tmp}}/markers"
 # 看 git 工作区有无源码变更。两者都不依赖具体构建系统——技术栈无关。
 TOUCHED_SOURCE=0
 if [ -n "$FILE_PATH" ]; then
-  is_source "$FILE_PATH" && TOUCHED_SOURCE=1
+  # 同上：「is_source ... && ASSIGN」在非源码文件上返回 1，而这句是 then 块的
+  # 最后一条命令 → if 返回 1 → set -e 静默中止，hook 被宿主当成 block。写
+  # README/docs 时每次都要踩一遍，故与下面的循环同款改法。
+  if is_source "$FILE_PATH"; then
+    TOUCHED_SOURCE=1
+  fi
 elif git rev-parse --git-dir >/dev/null 2>&1; then
   _diff=$(git diff --name-only HEAD 2>/dev/null || true)
   if [ -n "$_diff" ]; then
     while IFS= read -r _f; do
-      [ -n "$_f" ] && is_source "$_f" && { TOUCHED_SOURCE=1; break; }
+      # 不能用「[ -n ] && is_source && { ...; }」：非源码文件（README 等）让
+      # is_source 返回 1，整条 and-list 随之返回 1；在 set -e 下这是循环体的
+      # 失败状态，脚本会静默 exit 1——task-implement 的 auto-compile 检查于是
+      # 报「build failed: 」（空 detail），纯文档任务永远过不了实现门。
+      if [ -n "$_f" ] && is_source "$_f"; then
+        TOUCHED_SOURCE=1
+        break
+      fi
     done <<< "$_diff"
   fi
 fi
