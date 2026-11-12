@@ -30,13 +30,14 @@ const (
 //
 // 规则：只动 <!-- forge:begin --> 与 <!-- forge:end --> 之间；标记外一字不改。
 // 只有一个标记时拒绝动手——猜一边等于静默改错位置，比报错更糟。
-// 标记不成对时报错并不动文件；修好后重跑 `forge change agents`。
+// 标记不成对、或出现多对标记时报错并不动文件（只替换第一对会让后面那块永久陈旧）；
+// 修好后重跑 `forge change agents`。
 func EnsureAgentsBlock(root string) (AgentsAction, error) {
 	path := filepath.Join(root, AgentsFile)
 	block := agentsBlock()
 
 	raw, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, os.ErrNotExist) || (err == nil && strings.TrimSpace(string(raw)) == "") {
 		// 新建时标题放标记外：后续同步只碰块内，不会把标题改成 H2。
 		if err := os.WriteFile(path, []byte("# "+AgentsFile+"\n\n"+block), 0o644); err != nil {
 			return "", fmt.Errorf("change: 写 %s: %w", AgentsFile, err)
@@ -56,11 +57,14 @@ func EnsureAgentsBlock(root string) (AgentsAction, error) {
 	switch {
 	case begin < 0 && end < 0:
 		// 追加路径只在末尾插入，原有字节（含尾部换行）一律保留。
+		// 块前统一隔一个空行；文件以 CRLF 结尾时补 CRLF，避免制造混合行尾。
 		next := text
 		switch {
 		case next == "":
+		case strings.HasSuffix(next, "\r\n\r\n"):
+		case strings.HasSuffix(next, "\r\n"):
+			next += "\r\n"
 		case strings.HasSuffix(next, "\n\n"):
-			next += "\n"
 		case strings.HasSuffix(next, "\n"):
 			next += "\n"
 		default:
