@@ -62,6 +62,10 @@ func ensureManagedBlock(path, header string, mb managedBlock) (AgentsAction, err
 	}
 
 	text := string(raw)
+	// 跟随文件已有的行尾：往 CRLF 文件里塞 LF 块会得到混合行尾，diff 里一片红。
+	if strings.Contains(text, "\r\n") {
+		block = strings.ReplaceAll(block, "\n", "\r\n")
+	}
 	if strings.Count(text, mb.begin) > 1 || strings.Count(text, mb.end) > 1 {
 		return "", fmt.Errorf("change: %s 里有多对 %s / %s——先删到只剩一对，再跑 `forge change agents` 重试", name, mb.begin, mb.end)
 	}
@@ -83,7 +87,11 @@ func ensureManagedBlock(path, header string, mb managedBlock) (AgentsAction, err
 		default:
 			next += "\n\n"
 		}
-		next += block + "\n"
+		nl := "\n"
+		if strings.Contains(text, "\r\n") {
+			nl = "\r\n"
+		}
+		next += block + nl
 		if err := os.WriteFile(path, []byte(next), 0o644); err != nil {
 			return "", fmt.Errorf("change: 写 %s: %w", name, err)
 		}
@@ -128,6 +136,31 @@ type PointerReport struct {
 	Skipped bool
 }
 
+// ensureCursorFrontmatter 保证 .cursor/rules/forge.mdc 以 frontmatter 开头。
+//
+// Cursor 只加载带 frontmatter 的规则文件；对已经存在、但没有 frontmatter 的
+// 同名文件（早期手写的），补在开头而不是新写一份——否则块写进去了，规则却
+// 永远不生效。文件已带 frontmatter 时不做任何事。
+func ensureCursorFrontmatter(path string) (bool, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false, fmt.Errorf("change: 读 %s: %w", filepath.ToSlash(CursorRuleFile), err)
+	}
+	text := string(raw)
+	trimmed := strings.TrimLeft(text, "\ufeff \t\r\n")
+	if strings.HasPrefix(trimmed, "---\n") || strings.HasPrefix(trimmed, "---\r\n") {
+		return false, nil
+	}
+	fm := cursorFrontmatter
+	if strings.Contains(text, "\r\n") {
+		fm = strings.ReplaceAll(fm, "\n", "\r\n")
+	}
+	if err := os.WriteFile(path, []byte(fm+text), 0o644); err != nil {
+		return false, fmt.Errorf("change: 写 %s: %w", filepath.ToSlash(CursorRuleFile), err)
+	}
+	return true, nil
+}
+
 // EnsureAgentPointers 维护"指向 AGENTS.md"的指针文件。
 //
 // create 里点名（"claude"/"cursor"）的文件即使不存在也会创建；没点名的只在
@@ -166,6 +199,13 @@ func EnsureAgentPointers(root string, create []string) ([]PointerReport, error) 
 		if err != nil {
 			return out, err
 		}
+		added, err := ensureCursorFrontmatter(cursorPath)
+		if err != nil {
+			return out, err
+		}
+		if added && action == AgentsUnchanged {
+			action = AgentsUpdated
+		}
 		out = append(out, PointerReport{File: filepath.ToSlash(CursorRuleFile), Action: action})
 	case exists(cursorDir):
 		// 目录在就说明仓库已经用 Cursor，补一个 forge 专用规则文件是低成本的。
@@ -173,6 +213,13 @@ func EnsureAgentPointers(root string, create []string) ([]PointerReport, error) 
 			managedBlock{begin: pointerBegin, end: pointerEnd, body: cursorBody})
 		if err != nil {
 			return out, err
+		}
+		added, err := ensureCursorFrontmatter(cursorPath)
+		if err != nil {
+			return out, err
+		}
+		if added && action == AgentsUnchanged {
+			action = AgentsUpdated
 		}
 		out = append(out, PointerReport{File: filepath.ToSlash(CursorRuleFile), Action: action})
 	default:

@@ -139,14 +139,16 @@ func runChangeInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	created, err := change.Init(root, profile)
+	if len(created) > 0 {
+		fmt.Println("本次改动（已就位）：")
+		for _, p := range created {
+			fmt.Printf("  + %s\n", p)
+		}
+		fmt.Println()
+	}
 	if err != nil {
 		return err
 	}
-	fmt.Println("本次改动（已就位）：")
-	for _, p := range created {
-		fmt.Printf("  + %s\n", p)
-	}
-	fmt.Println()
 	fmt.Println("下一步：")
 	fmt.Printf("  forge change new <id> --title \"...\"    # 新建一个 change\n")
 	return nil
@@ -180,7 +182,7 @@ func runChangeAgents(cmd *cobra.Command, _ []string) error {
 		fmt.Println("AGENTS.md 的 forge 托管块已是最新，无需改动")
 	}
 
-	if pointers == "none" {
+	if strings.TrimSpace(pointers) == "none" {
 		return nil
 	}
 	reports, err := change.EnsureAgentPointers(root, create)
@@ -209,23 +211,45 @@ func runChangeAgents(cmd *cobra.Command, _ []string) error {
 // parsePointerNames 解析 --pointers：空表示"只维护已存在的文件"，all 表示两个
 // 都创建，none 表示全都不碰。
 func parsePointerNames(raw string) ([]string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "none" {
-		return nil, nil
-	}
-	var out []string
-	for _, part := range strings.Split(raw, ",") {
+	parts := strings.Split(strings.TrimSpace(raw), ",")
+	var claude, cursor, none bool
+	for _, part := range parts {
 		switch name := strings.TrimSpace(part); name {
 		case "":
+		case "none":
+			none = true
 		case "all":
-			return []string{"claude", "cursor"}, nil
-		case "claude", "cursor":
-			out = append(out, name)
+			claude, cursor = true, true
+		case "claude":
+			claude = true
+		case "cursor":
+			cursor = true
 		default:
 			return nil, fmt.Errorf("change: 未知的指针 %q（可选 claude / cursor / all / none）", name)
 		}
 	}
+	if none && (claude || cursor) {
+		return nil, fmt.Errorf("change: --pointers 里 none 不能和别的取值同时写")
+	}
+	if none {
+		return nil, nil
+	}
+	var out []string
+	if claude {
+		out = append(out, "claude")
+	}
+	if cursor {
+		out = append(out, "cursor")
+	}
 	return out, nil
+}
+
+// rootRel 把路径转成相对仓库根的斜杠路径，供人类输出直接复制。
+func rootRel(root, path string) string {
+	if rel, err := filepath.Rel(root, path); err == nil {
+		return filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(path)
 }
 
 // displayCommand 把多行判据压成一行：状态列表是给人扫的，命令里的换行会把
@@ -245,10 +269,14 @@ func displayCommand(cmd string) string {
 
 // pointerKind 把文件名翻回 --pointers 的取值，提示里能直接抄。
 func pointerKind(file string) string {
-	if file == change.ClaudeFile {
+	switch file {
+	case change.ClaudeFile:
 		return "claude"
+	case change.CursorRuleFile:
+		return "cursor"
+	default:
+		return ""
 	}
-	return "cursor"
 }
 
 func runChangeNew(cmd *cobra.Command, args []string) error {
@@ -543,7 +571,7 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println("验证：还没有记录")
 	}
 	if st.Attempts > 0 {
-		fmt.Printf("整条验证记录：%d 次\n", st.Attempts)
+		fmt.Printf("整条验证记录（不含节点 gate）：%d 次\n", st.Attempts)
 	}
 	if len(st.Nodes) > 0 {
 		fmt.Println()
@@ -575,14 +603,22 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 		// 死路记忆放在判定之前：人先看到"已经试过什么、怎么失败的"，再看
 		// 下一步该做什么，否则很容易照着同一句命令再跑一遍。
 		fmt.Println()
-		fmt.Println("此前失败的尝试（新→旧）：")
+		fmt.Println("此前失败的尝试（含单节点 gate，新→旧）：")
 		for _, a := range st.PriorAttempts {
 			line := "  - " + a.Evidence
 			if a.Task > 0 {
 				line += fmt.Sprintf("（任务 %d）", a.Task)
 			}
 			if a.Command != "" {
-				line += "：" + displayCommand(a.Command) + fmt.Sprintf("（exit %d", a.Exit)
+				line += "：" + displayCommand(a.Command)
+				switch {
+				case a.TimedOut:
+					line += "（超时"
+				case a.Exit == -1:
+					line += "（没有拿到退出码"
+				default:
+					line += fmt.Sprintf("（exit %d", a.Exit)
+				}
 				if a.Shell != "" {
 					line += "，" + a.Shell
 				}
@@ -591,11 +627,14 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 				line += "：" + a.Reason
 			}
 			fmt.Println(line)
+			// 打印仓库根相对路径：从 status 输出的位置直接 cat 就行，不必先猜
+			// change 目录在哪。
+			base := filepath.ToSlash(filepath.Join(change.ChangesDir(root), id, change.EvidenceDirName, a.Evidence))
 			if a.StderrFile != "" {
-				fmt.Printf("    stderr：evidence/%s/%s\n", a.Evidence, a.StderrFile)
+				fmt.Printf("    stderr：%s/%s\n", rootRel(root, filepath.Join(base, a.StderrFile)), a.StderrFile)
 			}
 			if a.StdoutFile != "" {
-				fmt.Printf("    stdout：evidence/%s/%s\n", a.Evidence, a.StdoutFile)
+				fmt.Printf("    stdout：%s/%s\n", rootRel(root, filepath.Join(base, a.StdoutFile)), a.StdoutFile)
 			}
 		}
 		fmt.Println("  返工前先读这些证据，别重试已证伪的路。")
