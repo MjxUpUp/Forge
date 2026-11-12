@@ -103,3 +103,109 @@ func samePath(a, b string) bool {
 	rb, errb := filepath.EvalSymlinks(bb)
 	return erra == nil && errb == nil && strings.EqualFold(ra, rb)
 }
+
+// contractRepo 建一个已声明契约的临时仓库，返回根目录。
+func contractRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if _, err := change.Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func TestChangeStatus_PrintsNextSteps(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeStatus(changeStatusCmd, []string{"demo"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"下一步：", "forge:fill"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("状态输出缺少 %q：\n%s", want, stdout)
+		}
+	}
+}
+
+func TestChangeStatus_JSONHasNextSteps(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	if err := changeStatusCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeStatusCmd.Flags().Set("json", "false") }()
+
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeStatus(changeStatusCmd, []string{"demo"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, `"next_steps"`) || !strings.Contains(stdout, `"verdict"`) {
+		t.Errorf("JSON 输出缺字段：\n%s", stdout)
+	}
+}
+
+func TestChangeGate_RequiresTaskFlag(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	err := runChangeGate(changeGateCmd, []string{"demo"})
+	if err == nil || !strings.Contains(err.Error(), "--task") {
+		t.Fatalf("缺 --task 时应给出用法错误，got %v", err)
+	}
+}
+
+func TestChangeNewFast_WritesTwoTemplates(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	if err := changeNewCmd.Flags().Set("fast", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeNewCmd.Flags().Set("fast", "false") }()
+
+	_, _, err := captureOutput(t, func() error {
+		return runChangeNew(changeNewCmd, []string{"tiny"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "spec", "changes", "tiny")
+	for _, name := range []string{change.FileProposal, change.FileAcceptance, change.FastFile} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("fast change 缺 %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, change.FileDesign)); err == nil {
+		t.Error("fast change 不该写 design.md")
+	}
+}
+
+func TestChangeList_MarksFastChanges(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.NewFast(root, "tiny", "小改"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeList(changeListCmd, nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "fast") {
+		t.Errorf("列表要能看出 fast change：\n%s", stdout)
+	}
+}
