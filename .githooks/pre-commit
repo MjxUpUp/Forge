@@ -1,0 +1,15 @@
+#!/bin/sh
+# forge 的证据闸门：暂存区碰到的 change 必须已封印（forge change check --staged）。
+#
+# 没有 forge 的机器上直接放行——协议不依赖插件；装了 forge 但仓库还没用
+# spec/ 时同样放行（change check 自己会跳过）。
+#
+# 启用：git config core.hooksPath .githooks
+set -eu
+
+if ! command -v forge >/dev/null 2>&1; then
+	echo "pre-commit: 没装 forge，跳过证据检查（协议不依赖插件）" >&2
+	exit 0
+fi
+
+exec forge change check --staged

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -248,5 +249,80 @@ func TestChangeAgents_RequiresContract(t *testing.T) {
 		t.Fatal("没有 spec/forge.yaml 时应报错并指路 change init")
 	} else if !strings.Contains(err.Error(), "forge change init") {
 		t.Fatalf("报错应指路 change init，got %v", err)
+	}
+}
+
+func TestChangeCheck_NoChangesPasses(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf("没有 change 时不该失败：%v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "没有未归档的 change") {
+		t.Errorf("应说明没有可检查的 change：\n%s", stdout)
+	}
+}
+
+func TestChangeCheck_UnsealedFails(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("未封印的 change 应返回 errHardExit，got %v", err)
+	}
+	for _, want := range []string{"没有封印的证据", "forge change verify demo", "不是让你在循环里重试"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("输出缺少 %q：\n%s", want, stdout)
+		}
+	}
+}
+
+func TestChangeCheck_StagedSkipsUntouchedAndCatchesTouched(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git 不可用")
+	}
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, root, "init", "-q")
+	gitRun(t, root, "config", "user.email", "t@t.t")
+	gitRun(t, root, "config", "user.name", "t")
+	t.Chdir(root)
+	if err := changeCheckCmd.Flags().Set("staged", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("staged", "false") }()
+
+	// 暂存区只碰了 README：跳过，不该拿没碰过的 change 拦人。
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, root, "add", "README.md")
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf("--staged 未碰到 change 时不该失败：%v\n%s", err, stdout)
+	}
+	if !strings.Contains(stdout, "跳过") {
+		t.Errorf("应说明跳过：\n%s", stdout)
+	}
+
+	// 碰了 demo 的产物：必须检查，且未封印要拦下。
+	gitRun(t, root, "add", "spec/changes/demo/proposal.md")
+	_, _, err = captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("--staged 碰到未封印 change 应拦下，got %v", err)
 	}
 }

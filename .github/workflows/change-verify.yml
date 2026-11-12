@@ -1,0 +1,42 @@
+name: change-verify
+
+# 证据闸门的 CI 形态：未封印/失效/失败的 change 直接变红。
+# 要让它真的拦住合并，还需在仓库设置里把 change-check 设为 required status check
+# （fork 或私有仓无法用代码表达这一步）。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  change-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 这个仓库用不用 spec/changes
+        id: scope
+        run: |
+          if [ -d spec/changes ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "没有 spec/changes/——跳过（还没用 change 流程）"
+          fi
+
+      - uses: actions/setup-go@v5
+        if: steps.scope.outputs.run == 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 构建 forge
+        if: steps.scope.outputs.run == 'true'
+        run: go build -o "$RUNNER_TEMP/forge" ./cmd/forge
+
+      - name: 证据闸门
+        if: steps.scope.outputs.run == 'true'
+        run: "$RUNNER_TEMP/forge change check"

@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -24,6 +26,7 @@ func init() {
 	changeCmd.AddCommand(changeStatusCmd)
 	changeCmd.AddCommand(changeGateCmd)
 	changeCmd.AddCommand(changeAgentsCmd)
+	changeCmd.AddCommand(changeCheckCmd)
 
 	changeInitCmd.Flags().String("profile", "mini", "门禁档位：mini / standard / full")
 	changeNewCmd.Flags().String("title", "", "change 标题（缺省用 id）")
@@ -33,6 +36,8 @@ func init() {
 	changeStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	changeGateCmd.Flags().Int("task", 0, "tasks.md 里的任务序号（从 1 开始）")
 	changeGateCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条判据的超时")
+	changeCheckCmd.Flags().Bool("staged", false, "只检查暂存区碰到的 change（pre-commit 用）")
+	changeCheckCmd.Flags().Bool("json", false, "JSON 格式输出")
 }
 
 var changeCmd = &cobra.Command{
@@ -92,6 +97,18 @@ var changeAgentsCmd = &cobra.Command{
 	Short: "同步 AGENTS.md 的 forge 托管块（标记外不动）",
 	Args:  cobra.NoArgs,
 	RunE:  runChangeAgents,
+}
+
+var changeCheckCmd = &cobra.Command{
+	Use:   "check [--staged] [--json]",
+	Short: "检查每个未归档 change 的证据是否成立（CI 与 pre-commit 的判据）",
+	Long: `每个未归档 change 都必须有一份与当前代码和判据一致的封印证据，
+否则退出码 2。这不是"检查有没有写文档"，是"别把没验证过的改动合进去"：
+
+  forge change check            # 全部未归档 change（CI 用）
+  forge change check --staged   # 只看暂存区碰到的 change（pre-commit 用）`,
+	Args: cobra.NoArgs,
+	RunE: runChangeCheck,
 }
 
 var changeGateCmd = &cobra.Command{
@@ -485,6 +502,68 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println("人工处理：" + st.Handoff)
 	}
 	return nil
+}
+
+func runChangeCheck(cmd *cobra.Command, _ []string) error {
+	staged, _ := cmd.Flags().GetBool("staged")
+	asJSON, _ := cmd.Flags().GetBool("json")
+	root, err := changeRoot()
+	if err != nil {
+		return err
+	}
+	var only []string
+	if staged {
+		out, gerr := exec.Command("git", "-C", root, "diff", "--cached", "--name-only", "-z").Output()
+		if gerr != nil {
+			// 不是 git 仓库（或没有 git）：pre-commit 本来就装不上，退化成全量。
+			fmt.Println("提示：拿不到暂存区清单（不是 git 仓库？）——改为检查全部 change。")
+		} else {
+			only = change.TouchedChanges(root, strings.Split(string(out), "\x00"))
+			if len(only) == 0 {
+				fmt.Println("暂存区没有碰到 spec/changes/ 里的 change——跳过。")
+				return nil
+			}
+		}
+	}
+	problems, checked, err := change.CheckProblems(root, only)
+	if errors.Is(err, change.ErrNoSpec) {
+		// 契约在、但还没有 change：不是问题，CI 不该因此变红。
+		fmt.Println("spec/changes/ 还不存在——没有可检查的 change，跳过。")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		payload := struct {
+			Checked  []string              `json:"checked"`
+			Problems []change.CheckProblem `json:"problems"`
+		}{Checked: checked, Problems: problems}
+		raw, merr := json.MarshalIndent(payload, "", "  ")
+		if merr != nil {
+			return merr
+		}
+		fmt.Println(string(raw))
+		if len(problems) > 0 {
+			return errHardExit
+		}
+		return nil
+	}
+	if len(checked) == 0 {
+		fmt.Println("没有未归档的 change——无需检查。")
+		return nil
+	}
+	if len(problems) == 0 {
+		fmt.Printf("✅ %d 个 change 的证据都成立：%s\n", len(checked), strings.Join(checked, ", "))
+		return nil
+	}
+	fmt.Printf("❌ %d 个 change 的证据不成立（共检查 %d 个）：\n", len(problems), len(checked))
+	for _, p := range problems {
+		fmt.Printf("  - %s：%s\n", p.ID, p.Reason)
+	}
+	fmt.Println()
+	fmt.Println("这是合并前的人为闸门，不是让你在循环里重试：先读证据，再决定修什么。")
+	return errHardExit
 }
 
 func runChangeGate(cmd *cobra.Command, args []string) error {
