@@ -174,6 +174,14 @@ func Init(root, profile string) (created []string, err error) {
 	}
 	created = append(created, relTo(root, ChangesDir(root))+"/")
 
+	// 归档目录先建出来：status 给的 `git mv … archive/<日期>-<id>` 在
+	// 「仓库刚 init、还没人归档过」时目标不存在，git 会直接拒绝。
+	archiveDir := filepath.Join(ChangesDir(root), ArchiveDirName)
+	if err := os.MkdirAll(archiveDir, 0o755); err != nil {
+		return nil, fmt.Errorf("change: 创建 spec/changes/archive/: %w", err)
+	}
+	created = append(created, relTo(root, archiveDir)+"/")
+
 	agents := filepath.Join(root, "AGENTS.md")
 	if _, statErr := os.Stat(agents); errors.Is(statErr, os.ErrNotExist) {
 		if err := os.WriteFile(agents, []byte(renderTemplate(tmplAgents, "", "")), 0o644); err != nil {
