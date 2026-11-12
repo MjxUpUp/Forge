@@ -139,7 +139,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 ### 风险
 
-- **AGENTS.md 不被读**：agent 跳过协议直接改代码。缓解：`forge change check` 在 CI 里是兜底（随仓库下发工作流；设为 required status check 后才是硬前提）；本地 pre-commit 拦得更早，但 `git commit --no-verify` 能绕——所以要两条都留。
+- **AGENTS.md 不被读**：agent 跳过协议直接改代码。缓解：`forge change check` 在 CI 里是兜底（随仓库下发工作流；设为 required status check 后才是硬前提）；本地 pre-commit 在提交时就能给结论，但它看的是工作区（`git add` 后又改回文件属已知缺口），且 `git commit --no-verify` 能绕——所以要两条都留。
 - **CI 绕过**：管理员直推或跳过 required check。缓解：分支保护 + CODEOWNERS，属于仓库治理而非工具能解。
 - **迁移期双轨**：宿主 hook 与 CI 同时存在，出现两套结论冲突。缓解：阶段 B 起默认 `hooks: off`，宿主层只保留显式开启。
 - **删除过猛**：删掉 hostdispatch 时误伤 batch 协议（Codex 仍可能调用）。缓解：阶段 D 前先 grep 外部调用点与文档，保留一个版本周期的废弃告警。
