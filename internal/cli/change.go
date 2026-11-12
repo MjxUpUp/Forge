@@ -101,9 +101,13 @@ var changeAgentsCmd = &cobra.Command{
   CLAUDE.md                 Claude Code 读这个文件；块里是 @AGENTS.md 导入
   .cursor/rules/forge.mdc   Cursor 规则；块里让 agent 先读 AGENTS.md
 
-指针文件不存在时默认不创建（替不用这个 agent 的仓库建文件是污染）；要创建
-就点名：--pointers claude、--pointers cursor、--pointers all。文件已存在时
-只改标记之间，标记外一字不动。`,
+指针文件不存在时默认不创建（替不用这个 agent 的仓库建文件是污染）：CLAUDE.md
+不存在就不建；例外是 .cursor/rules/ 目录已存在时补 forge.mdc（说明仓库已在用
+Cursor）。要凭空创建就点名：--pointers claude、--pointers cursor、--pointers
+all；--pointers none 完全不动指针。
+
+合并已有文件时：有托管块只改块内；没有块就在末尾追加，原有字节与行尾不动；
+标记不成对或多对报错且不动文件。`,
 	Args: cobra.NoArgs,
 	RunE: runChangeAgents,
 }
@@ -222,6 +226,21 @@ func parsePointerNames(raw string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// displayCommand 把多行判据压成一行：状态列表是给人扫的，命令里的换行会把
+// 后面的条目挤到下一行，看起来像输出的一部分。
+func displayCommand(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	lines := strings.Split(cmd, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	out := strings.Join(lines, " ; ")
+	if runes := []rune(out); len(runes) > 160 {
+		out = string(runes[:160]) + "…"
+	}
+	return out
 }
 
 // pointerKind 把文件名翻回 --pointers 的取值，提示里能直接抄。
@@ -563,7 +582,7 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 				line += fmt.Sprintf("（任务 %d）", a.Task)
 			}
 			if a.Command != "" {
-				line += "：" + a.Command + fmt.Sprintf("（exit %d", a.Exit)
+				line += "：" + displayCommand(a.Command) + fmt.Sprintf("（exit %d", a.Exit)
 				if a.Shell != "" {
 					line += "，" + a.Shell
 				}
