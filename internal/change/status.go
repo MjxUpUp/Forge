@@ -32,9 +32,9 @@ type Task struct {
 
 var (
 	taskLineRE = regexp.MustCompile(`^\s*[-*]\s+\[([ xX])\]\s+(.*\S)\s*$`)
-	// 判据必须是 `判据：acceptance #N`（允许中文冒号、多个序号用顿号/逗号/斜杠分隔）。
+	// 判据必须是 `判据：acceptance #N`（允许中文冒号；多个序号用顿号/逗号/斜杠/「和」「与」「及」分隔）。
 	// 早先只要出现"判据"就把后面所有 #N 都算上，`修改判据 #3 的文档` 会被误读。
-	criterionRE = regexp.MustCompile(`判据\s*[:：]\s*acceptance\s+((?:#\d+[\s、,，/]*)+)`)
+	criterionRE = regexp.MustCompile(`判据\s*[:：]\s*acceptance\s+((?:#\d+[\s、,，/和与及]*)+)`)
 	numberRE    = regexp.MustCompile(`#(\d+)`)
 )
 
@@ -47,14 +47,25 @@ func ParseTasks(raw []byte) []Task {
 	var out []Task
 	// 代码围栏里的示例是给人看的，不能当成待办：否则 Index 整体错位，
 	// gate --task N 会打到别的任务上。
-	inFence := false
+	// 围栏宽度要记住：```` 里嵌 ``` 是合法的示例写法，按固定三个反引号
+	// 翻转会把内层当成收尾，后面整段示例又被当成待办。
+	fence := 0
 	for _, line := range strings.Split(string(raw), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") {
-			inFence = !inFence
+			width := 0
+			for width < len(trimmed) && trimmed[width] == '`' {
+				width++
+			}
+			switch {
+			case fence == 0:
+				fence = width
+			case width >= fence:
+				fence = 0
+			}
 			continue
 		}
-		if inFence {
+		if fence > 0 {
 			continue
 		}
 		m := taskLineRE.FindStringSubmatch(line)
@@ -85,7 +96,7 @@ func trimTaskNumber(text string, index int) string {
 	prefix := strconv.Itoa(index)
 	var rest string
 	switch {
-	case strings.HasPrefix(text, prefix+"."):
+	case strings.HasPrefix(text, prefix+".") && !startsWithDigit(text[len(prefix)+1:]):
 		rest = text[len(prefix)+1:]
 	case strings.HasPrefix(text, prefix+"、"):
 		rest = text[len(prefix)+len("、"):]
@@ -95,6 +106,10 @@ func trimTaskNumber(text string, index int) string {
 		return text
 	}
 	return strings.TrimSpace(rest)
+}
+
+func startsWithDigit(s string) bool {
+	return s != "" && s[0] >= '0' && s[0] <= '9'
 }
 
 func appendUniqueInt(s []int, v int) []int {
@@ -240,7 +255,17 @@ func StatusOf(root, id string) (*Status, error) {
 	}
 
 	// 已封印是终态：整条判据都过了，节点上的历史失败只作记录，不再拦人。
+	// 产物被删是例外——封印只保证判据跑过，不代表四份文件还在；缺文件时
+	// 归档会把残缺的目录搬走，所以这里改回 action 让人先补齐。
 	if c.Sealed {
+		if missing := DocProblems(c.Dir, c.Fast); len(missing) > 0 {
+			st.Verdict = "action"
+			st.NextSteps = []string{
+				"补齐被删掉的产物：" + strings.Join(missing, "、"),
+				"补齐后再归档；封印本身仍然有效。",
+			}
+			return st, nil
+		}
 		st.Verdict = "clean"
 		st.NextSteps = nextSteps(root, c, st)
 		return st, nil
@@ -259,7 +284,13 @@ func StatusOf(root, id string) (*Status, error) {
 			if n.State == NodeBlocked {
 				st.Verdict = "blocked"
 				st.Blocked = fmt.Sprintf("任务 %d 连续 %d 次卡在同一个判据上：%s", n.Task.Index, MaxSameCauseAttempts, n.LastError)
-				st.Handoff = fmt.Sprintf("确认要继续，就改这一条的判据或实现，再由人跑：forge change gate %s --task %d", id, n.Task.Index)
+				if n.Task.Done {
+					// 勾选过的任务 gate 会拒绝重跑（见 gate.go 的前置检查）：
+					// 让它去跑 gate 是死路。要么取消勾选，要么整条 verify。
+					st.Handoff = fmt.Sprintf("任务 %d 已在 tasks.md 里勾选，gate 会拒绝重跑；先取消勾选或新起一条任务，或者直接由人跑：forge change verify %s", n.Task.Index, id)
+				} else {
+					st.Handoff = fmt.Sprintf("确认要继续，就改这一条的判据或实现，再由人跑：forge change gate %s --task %d", id, n.Task.Index)
+				}
 				break
 			}
 		}
@@ -403,13 +434,6 @@ func nextSteps(root string, c *Change, st *Status) []string {
 		steps = append(steps, "想逐节点推进就按 tasks.md 的判据跑：forge change gate "+c.ID+" --task <N>")
 	}
 	return steps
-}
-
-func nodeStep(id string, n NodeStatus) string {
-	if n.Attempts == 0 {
-		return "节点 " + strconv.Itoa(n.Task.Index) + " 还没跑过：forge change gate " + id + " --task " + strconv.Itoa(n.Task.Index)
-	}
-	return "节点 " + strconv.Itoa(n.Task.Index) + " 上次没通过（" + n.LastError + "）：forge change gate " + id + " --task " + strconv.Itoa(n.Task.Index)
 }
 
 func latestEvidenceDir(c *Change) string {

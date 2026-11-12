@@ -178,3 +178,107 @@ func mustReadFile(t *testing.T, path string) []byte {
 	}
 	return raw
 }
+
+func TestParseTasks_CriteriaConjunctions(t *testing.T) {
+	tasks := ParseTasks([]byte(`# 任务：demo
+
+- [ ] 1. 两个判据（判据：acceptance #1 和 #2）
+- [ ] 2. 顿号写法（判据：acceptance #3、#4）
+`))
+	if len(tasks) != 2 {
+		t.Fatalf("want 2 tasks, got %d", len(tasks))
+	}
+	if got := tasks[0].Criteria; len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		// 「#1 和 #2」之前只解析出 #1，gate 会放行而第二条判据从没跑过。
+		t.Fatalf("task 1 criteria = %v, want [1 2]", got)
+	}
+	if got := tasks[1].Criteria; len(got) != 2 || got[0] != 3 || got[1] != 4 {
+		t.Fatalf("task 2 criteria = %v, want [3 4]", got)
+	}
+}
+
+func TestParseTasks_FenceWidth(t *testing.T) {
+	tasks := ParseTasks([]byte("# 任务：demo\n\n" + "````markdown\n" + "```bash\n" +
+		"- [ ] 示例任务，不该计入\n" + "```\n" + "````\n" +
+		"- [ ] 真正的第一条（判据：acceptance #1）\n"))
+	if len(tasks) != 1 {
+		// 固定三个反引号翻转时，```` 里的 ``` 提前收尾，示例行会被当成任务，
+		// 后续 Index 整体错位。
+		t.Fatalf("want exactly 1 task, got %d: %+v", len(tasks), tasks)
+	}
+	if tasks[0].Index != 1 || !strings.Contains(tasks[0].Text, "真正的第一条") {
+		t.Fatalf("task = %+v, want 第一条真任务", tasks[0])
+	}
+}
+
+func TestTrimTaskNumber_KeepsVersionLikeText(t *testing.T) {
+	// 任务 2 的正文以「2.5 兼容」开头：点号后是数字，不是自己的编号。
+	tasks := ParseTasks([]byte("# 任务\n\n- [ ] 2.5 兼容范围收窄（判据：acceptance #1）\n"))
+	if len(tasks) != 1 {
+		t.Fatalf("want 1 task, got %d", len(tasks))
+	}
+	if got := tasks[0].Text; got != "2.5 兼容范围收窄（判据：acceptance #1）" {
+		t.Fatalf("text = %q, want 保留 2.5", got)
+	}
+}
+
+func TestStatus_BlockedDoneTaskHandsOffToVerify(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	writeAcceptance(t, dir, "false")
+	writeTasks(t, dir, "- [ ] 1. 一条（判据：acceptance #1）\n")
+	for i := 0; i < MaxSameCauseAttempts; i++ {
+		if _, err := GateTask(context.Background(), root, "demo", 1, GateOptions{}); err != nil {
+			t.Fatalf("GateTask #%d: %v", i+1, err)
+		}
+	}
+	// 人放弃这条任务，勾上进度。
+	writeTasks(t, dir, "- [x] 1. 一条（判据：acceptance #1）\n")
+	st, err := StatusOf(root, "demo")
+	if err != nil {
+		t.Fatalf("StatusOf: %v", err)
+	}
+	if st.Verdict != "blocked" {
+		t.Fatalf("verdict = %q, want blocked（勾选不清锁定）", st.Verdict)
+	}
+	if strings.Contains(st.Handoff, "change gate") {
+		// gate 会拒绝勾选过的任务：给这条命令等于把人指进死路。
+		t.Fatalf("handoff = %q, 不该再让 runner 走 gate", st.Handoff)
+	}
+	if !strings.Contains(st.Handoff, "forge change verify demo") {
+		t.Fatalf("handoff = %q, 应指出整条 verify 或取消勾选", st.Handoff)
+	}
+}
+
+func TestStatus_SealedWithMissingDocNeedsRepair(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	writeAcceptance(t, dir, "echo ok")
+	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if err := os.Remove(filepath.Join(dir, FileDesign)); err != nil {
+		t.Fatalf("remove design: %v", err)
+	}
+	st, err := StatusOf(root, "demo")
+	if err != nil {
+		t.Fatalf("StatusOf: %v", err)
+	}
+	if st.Verdict != "action" {
+		t.Fatalf("verdict = %q, want action（产物被删不能直接归档）", st.Verdict)
+	}
+	if len(st.NextSteps) == 0 || !strings.Contains(st.NextSteps[0], FileDesign) {
+		t.Fatalf("next steps = %v, want 指向缺的 design.md", st.NextSteps)
+	}
+}
+
+func TestInit_CreatesArchiveDir(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, ""); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	archive := filepath.Join(ChangesDir(root), ArchiveDirName)
+	if fi, err := os.Stat(archive); err != nil || !fi.IsDir() {
+		// status 的归档建议是 `git mv … archive/<日期>-<id>`，目标目录不在时
+		// git 会直接拒绝，新仓库第一次归档就失败。
+		t.Fatalf("archive dir 未创建: %v", err)
+	}
+}
