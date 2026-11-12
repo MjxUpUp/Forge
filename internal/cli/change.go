@@ -435,6 +435,10 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	if st.Verdict == "blocked" {
 		fmt.Println("⛔ 已停下：")
+		if st.Blocked != "" {
+			// 只说"停下了"而不说停在哪，人还得翻 JSON 才知道卡什么。
+			fmt.Println("  " + st.Blocked)
+		}
 	} else {
 		fmt.Println("下一步：")
 	}
