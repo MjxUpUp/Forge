@@ -512,33 +512,58 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	var only []string
+	skipped := ""
 	if staged {
 		out, gerr := exec.Command("git", "-C", root, "diff", "--cached", "--name-only", "-z").Output()
-		if gerr != nil {
+		switch {
+		case gerr != nil:
 			// 不是 git 仓库（或没有 git）：pre-commit 本来就装不上，退化成全量。
-			fmt.Println("提示：拿不到暂存区清单（不是 git 仓库？）——改为检查全部 change。")
-		} else {
-			only = change.TouchedChanges(root, strings.Split(string(out), "\x00"))
+			skipped = "拿不到暂存区清单（不是 git 仓库？）——改为检查全部 change"
+		default:
+			paths := splitNUL(string(out))
+			repoRoot := root
+			if top, terr := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output(); terr == nil {
+				if t := strings.TrimSpace(string(top)); t != "" {
+					repoRoot = t
+				}
+			}
+			changesRoot := change.ChangesDir(root)
+			only = change.TouchedChanges(repoRoot, changesRoot, paths)
+			if len(paths) == 0 {
+				skipped = "暂存区是空的——没有要检查的东西"
+				only = nil
+				break
+			}
+			if change.HasOutsideChanges(repoRoot, changesRoot, paths) {
+				// 代码改了就可能在封印之后变了，只查被碰到的 change 会放行
+				// 一个注定在 CI 变红的提交——退化为全量。
+				only = nil
+				break
+			}
 			if len(only) == 0 {
-				fmt.Println("暂存区没有碰到 spec/changes/ 里的 change——跳过。")
-				return nil
+				skipped = "暂存区没有碰到 spec/changes/ 里的 change——跳过"
 			}
 		}
 	}
+	if skipped != "" && len(only) == 0 && !strings.HasPrefix(skipped, "拿不到") {
+		// 明确的"没东西可查"：pre-commit 不该按住提交，CI 也不该因此变红。
+		return printChangeCheckSkipped(asJSON, skipped)
+	}
 	problems, checked, err := change.CheckProblems(root, only)
 	if errors.Is(err, change.ErrNoSpec) {
-		// 契约在、但还没有 change：不是问题，CI 不该因此变红。
-		fmt.Println("spec/changes/ 还不存在——没有可检查的 change，跳过。")
-		return nil
+		return printChangeCheckSkipped(asJSON, "spec/changes/ 还不存在——没有可检查的 change")
 	}
 	if err != nil {
 		return err
 	}
 	if asJSON {
+		// JSON 在所有路径上都是合法 JSON：跳过也输出 {"checked":[],"problems":[],"skipped":…}，
+		// 消费者不该为了"没东西可查"再写一个分支。
 		payload := struct {
 			Checked  []string              `json:"checked"`
 			Problems []change.CheckProblem `json:"problems"`
-		}{Checked: checked, Problems: problems}
+			Skipped  string                `json:"skipped,omitempty"`
+		}{Checked: emptyIfNil(checked), Problems: emptyIfNil(problems), Skipped: skipped}
 		raw, merr := json.MarshalIndent(payload, "", "  ")
 		if merr != nil {
 			return merr
@@ -548,6 +573,9 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 			return errHardExit
 		}
 		return nil
+	}
+	if skipped != "" {
+		fmt.Println(skipped + "。")
 	}
 	if len(checked) == 0 {
 		fmt.Println("没有未归档的 change——无需检查。")
@@ -564,6 +592,44 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 	fmt.Println()
 	fmt.Println("这是合并前的人为闸门，不是让你在循环里重试：先读证据，再决定修什么。")
 	return errHardExit
+}
+
+// splitNUL 切分 git -z 输出；末尾的空段不算路径。
+func splitNUL(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, "\x00") {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// emptyIfNil 让 JSON 里出现 [] 而不是 null：消费者少写一个分支。
+func emptyIfNil[T any](in []T) []T {
+	if in == nil {
+		return []T{}
+	}
+	return in
+}
+
+// printChangeCheckSkipped：跳过不是失败（退出码 0），但 JSON 消费者也要能读。
+func printChangeCheckSkipped(asJSON bool, reason string) error {
+	if asJSON {
+		payload := struct {
+			Checked  []string              `json:"checked"`
+			Problems []change.CheckProblem `json:"problems"`
+			Skipped  string                `json:"skipped,omitempty"`
+		}{Checked: []string{}, Problems: []change.CheckProblem{}, Skipped: reason}
+		raw, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(raw))
+		return nil
+	}
+	fmt.Println(reason + "——跳过。")
+	return nil
 }
 
 func runChangeGate(cmd *cobra.Command, args []string) error {
