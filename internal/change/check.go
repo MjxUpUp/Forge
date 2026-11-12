@@ -58,18 +58,39 @@ func problemReason(root string, c Change) string {
 	case c.Stale:
 		return "证据已失效：判据或其依赖的代码在封印之后变过——重跑 " + verify
 	case !c.Sealed:
-		return "没有封印的证据：产物已落盘，但没有跑过通过的整条验证——跑 " + verify
+		return "没有封印的证据：还没跑过通过的整条验证（产物可能是刚生成的模板）——跑 " + verify
 	}
 	return ""
+}
+
+// HasOutsideChanges 报告暂存区里有没有 spec/changes 之外的路径。
+//
+// pre-commit 不能只看"碰到的 change"：封印的证据绑定的是代码内容，暂存区里
+// 只要出现 change 目录之外的改动，某个已封印 change 的证据就可能已经对不上
+// 代码了——只检查被碰到的 change 会放行一个注定在 CI 变红的提交。
+func HasOutsideChanges(repoRoot, changesRoot string, paths []string) bool {
+	prefix := filepath.ToSlash(relTo(repoRoot, changesRoot)) + "/"
+	for _, p := range paths {
+		p = filepath.ToSlash(strings.TrimSpace(p))
+		if p == "" {
+			continue
+		}
+		if !strings.HasPrefix(p, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // TouchedChanges 把仓库相对路径映射到 change id：只认 spec/changes/<id>/…
 // 与 spec/changes/archive/<…>（归档不该再被改动，跳过）。
 //
-// 输入是 git 给出的路径（正斜杠、相对仓库根）；重复与非法 id 直接跳过——
-// pre-commit 不该因为一个临时目录名就把提交按住。
-func TouchedChanges(root string, paths []string) []string {
-	prefix := filepath.ToSlash(relTo(root, ChangesDir(root))) + "/"
+// 两个根分开传：git 的路径永远相对仓库根，而 spec/changes 可能落在仓库的
+// 子目录里（forge 项目根 ≠ git 根）——用项目根推前缀会把所有路径判成不匹配，
+// --staged 于是静默跳过。输入是 git 给出的路径（正斜杠、相对仓库根）；
+// 重复与非法 id 直接跳过，pre-commit 不该因为一个临时目录名就把提交按住。
+func TouchedChanges(repoRoot, changesRoot string, paths []string) []string {
+	prefix := filepath.ToSlash(relTo(repoRoot, changesRoot)) + "/"
 	seen := map[string]bool{}
 	var out []string
 	for _, p := range paths {
