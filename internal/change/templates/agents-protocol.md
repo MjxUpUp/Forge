@@ -1,7 +1,8 @@
 # 本仓库的 change 流程（给 agent 的短协议）
 
 这个仓库用 `spec/` 记录交付过程：每个需求一个 change 目录，产物随 git 走。
-换机器、换 agent、换 IDE 都照这套目录干活——不需要先装什么。
+换机器、换 agent、换 IDE 都照这套目录干活。产物本身可以直接读；`verify` /
+`status` / `gate` 要跑 forge 二进制——没装就只能手工照模板写产物，跑不了这三条命令。
 
 ## 目录
 
@@ -11,22 +12,50 @@
   但仍受机器全局档位限制（`FORGE_PROFILE=lite` 时只接线 hazard-guard）。
 - `spec/changes/<id>/proposal.md` — 为什么做、怎样算解决。
 - `spec/changes/<id>/design.md` — 怎么改、为什么这么改。
-- `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号。
+- `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号（多个用「和/或/、」分隔）。
 - `spec/changes/<id>/acceptance.md` — 可执行判据（```bash 围栏）。
 - `spec/changes/<id>/evidence/<UTC 时间戳>/` — verify 产出的证据（stdout/stderr/exit + summary.json）。
 - `spec/changes/archive/<YYYYMMDD>-<id>/` — 归档。
 
 ## 一个 change 的生命周期
 
-1. 一次性初始化：`forge change init`（生成 `spec/forge.yaml` 与 `AGENTS.md`）。
+1. 一次性初始化：`forge change init`（生成 `spec/forge.yaml`；`AGENTS.md` 不存在时才写）。
 2. `forge change new <id> --title "..."` 生成四份产物。
 3. 依次填 proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
-5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/YYYYMMDD-<id>`。
+5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/$(date +%Y%m%d)-<id>`（八位日期 + 连字符 + change id；`archive/` 目录由 init 建好）。
 6. 之后再改被验证的文件、或改 acceptance，证据自动失效（`forge change list` 显示「证据已失效」），必须重跑 verify。
 7. 工作区有未提交改动时，证据会记下这些文件的 sha256；干净工作区 verify 则只绑 commit
    （summary 里没有 files 字段，靠 HEAD 移动即失效来兜）。list 会显示绑定的 commit。
    之后又改了代码或文档，证据自动失效；只提交证据本身不算。
+
+## 回环：下一步由 status 给，不由自己挑
+
+循环里跑 `forge change status <id>`，只执行它输出的 next steps：
+
+1. 产物没补齐 → 补哪些文件、删哪些标记，它都说清；
+2. 没验证过 → `forge change verify <id>`；
+3. 判据或工作区变过 → 证据失效，重跑 verify；
+4. 上次没通过 → 先读证据，再改实现或判据，再重跑；
+5. acceptance 的判据全通过（`forge change verify` 封印成功）→ 归档。
+
+逐节点推进用 `forge change gate <id> --task <N>`：只跑 tasks.md 里那条任务引用的
+判据（`（判据：acceptance #N）`），节点证据不封印整个 change。前置条件是那条任务
+存在、**没勾选**、且写了判据编号；勾了 `- [x]` 再跑 gate 会被拒绝（勾选是进度记录，
+不是判据）。fast change 没有 tasks.md，用整条 verify。
+
+status 若报 `blocked`，说明同一原因（每次 verify/gate 的第一条失败命令）连续失败
+3 次。此时 next steps 不再给任何可执行命令——那是给人的判断点；恢复命令在
+`handoff` 里，先读证据再改判据或改实现，不要在循环里换个说法继续重试。
+
+## 快速通道（fast）
+
+小的、明显不需要设计的改动可以用 `forge change new <id> --fast`：
+
+- 只要求 `proposal.md` 与 `acceptance.md`（省的是文档份数，不是判据与证据）；
+- 判据、证据、封印、失效规则完全一样，summary 里会标 `fast: true`；
+- 周界（比如 ≤3 个文件、≤50 行）是团队约定，写在这里而不是让机器猜——
+  阈值一判就假，比例可以统计，合适与否由 review 看。
 
 ## 红线
 
