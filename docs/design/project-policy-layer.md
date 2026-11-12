@@ -9,8 +9,8 @@
 1. **状态模型**：注册表条目 `Entry` 增加 `Status`（空 = managed，向后兼容存量 JSON；`declined` = 已退出）与决策审计字段（`DecisionBy`/`DecisionAt`）。单一真相源 = `~/.forge/projects.json`。
 2. **对称命令**：`forge off [--all]` / `forge on`——一条命令、立即生效（下一条 hook 触发即不跑）、升级不重置、幂等。
 3. **仲裁收编**（六处）：
-   - `IsMember` 只认 managed（refactor 出共享 `lookup`，`State()` 三态 managed/declined/unknown）；
-   - `projectroot.Find` 的 legacyFind 自愈分支先查 declined——declined 不自愈登记，返回 `registry.ErrDeclinedProject`（hook 侧沿用"Find 失败即静默放行"的既有分支，免改）；
+   - 成员资格解析（`projectroot.ResolveFrom`）只认 managed：唯一实现 `resolveFrom` 按 仓库契约（`specroot.Find`）→ 注册表（`registry.State`，经共享 `lookup` 给出 managed/declined/unknown 三态）→ 遗留 `.forge/` 的顺序解析；`ResolveFrom`（heal=true）会把遗留项目自愈登记，报告面纯读探针 `projectroot.State`（heal=false）不写，未命中返 `ErrNoForgeConfig` 而非第三个状态值；
+   - `projectroot.Find`（与 `ResolveFrom` 共用同一 `resolveFrom` 实现）的 legacyFind 自愈分支先查 declined——declined 不自愈登记，返回 `registry.ErrDeclinedProject`（hook 侧沿用"Find 失败即静默放行"的既有分支，免改）；
    - `registry.Add` upsert 保留既有 Status/决策字段（dashboard 自登记等调用方不得复活 declined）；
    - `registry.Rekey` 改 key 时整条目迁移（原实现重建 `Entry{Path,Key}` 丢 status——对抗复查 M7）；
    - init-suggest bash：declined 标记检查前置到成员检查与 FORGE_AUTO_INIT 之前（修复"git 分支 AUTO_INIT 旁路 declined"——G-1；非 git 分支本就先检标记，不动）；
@@ -37,7 +37,7 @@
 | `FORGE_TAKEOVER=auto` / 配置 auto / `FORGE_AUTO_INIT=1` | 静默 init（declined/yield 仍拦） |
 | 外来 harness 信号（非成员首会话） | 让位：declined(by=foreign-harness) + 一行说明；`forge on` 覆盖 |
 | 外来 harness 信号 + 手动 `forge init` | 警告但继续（warnForeignHarness，advisory） |
-| `.forge-decline` 存在（git 根） | State=declined、IsMember=false（deny-wins 压过 managed）；`forge on` 移除文件 |
+| `.forge-decline` 存在（git 根） | `registry.State`=declined；`projectroot.ResolveFrom` 返回 `registry.ErrDeclinedProject`（成员资格不成立 → hook 静默放行；deny-wins 压过 managed 与仓库契约）；`forge on` 移除文件 |
 | skill-trigger（非 managed / declined） | 静默（生产与调试入口同门） |
 | managed 项目 SessionStart | 恒输出 `[forge-session]` 横幅（有/无活跃任务都出，单 PASS 协议） |
 | 用户级 CLAUDE.md/AGENTS.md/global_rules.md | 指针段（横幅锚定 + 项目协议优先 + 自保护）；版本变更后 autoSync 重刷新 |
