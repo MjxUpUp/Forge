@@ -5,7 +5,7 @@
 // 解析顺序（spec-in-repo 重构后，激活判据前移到仓库态）：
 //  0. 仓库声明式契约 spec/forge.yaml——存在即成员资格。clone 到新机器、换个
 //     agent、不跑 forge init 也能解析（身份由 forgedata.ProjectFor 纯推导）。
-//  1. registry.IsMember(cwd)——git key 匹配（跨 worktree）或非 git 路径前缀匹配
+//  1. registry.State(cwd)——git key 匹配（跨 worktree）或非 git 路径前缀匹配
 //     （已安装/已登记项目的既有行为，留给没有契约标记的仓库）
 //  2. 遗留兜底：向上 walk 找项目级 .forge/（老版本 forge init 的项目）——
 //     命中后自愈登记
@@ -116,7 +116,9 @@ func resolveFrom(cwd string, heal bool) (string, Source, string, error) {
 	// 1. 注册表成员资格。一次 registry.State 同时给出「已登记」与「declined」
 	//    两种信息：IsMember 把 declined 当非成员，只看它会把明确退出的仓库报成
 	//    unknown，与 status 的 managed 冲突。
-	if root, state := registry.State(cwd); root != "" && state != registry.StatusUnknown {
+	// root != "" 就是「有条目」：未登记时 State 只返回 ("", unknown)，不会出现
+	// (root, unknown) 这个组合（脏条目的空 Path 除外，那也当作未登记）。
+	if root, state := registry.State(cwd); root != "" {
 		if state == registry.StatusDeclined {
 			return root, SourceRegistry, registry.StatusDeclined, nil
 		}

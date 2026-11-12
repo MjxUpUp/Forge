@@ -144,8 +144,15 @@ func runOn(cmd *cobra.Command, args []string) error {
 	// → managed 的翻转，不该要求人再跑一次 init。
 	if memberRoot, source, state, err := projectroot.State(root); err == nil {
 		root = memberRoot
-		if source == projectroot.SourceSpecContract && state == registry.StatusManaged {
-			fmt.Println(`本项目已由仓库契约声明接管（spec/forge.yaml），无需动作。`)
+		// managed 不分来源都早退：on 只负责 declined → managed。若落到下面的
+		// registry.State 分支，未登记的遗留 .forge/ 项目会被报成「未登记接管
+		// 状态」——它其实已经被接管了，只是从没进过注册表。
+		if state == registry.StatusManaged {
+			if source == projectroot.SourceSpecContract {
+				fmt.Println(`本项目已由仓库契约声明接管（spec/forge.yaml），无需动作。`)
+			} else {
+				fmt.Printf(`项目 '%s' 已由 forge 接管（managed），无需动作。`+"\n", baseName(root))
+			}
 			return nil
 		}
 	}
