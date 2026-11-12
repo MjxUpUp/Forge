@@ -210,7 +210,7 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	}
 	// 模板骨架不是判据：init+new 之后四份文件还是模板，直接 verify 会把
 	// 通用示例命令当成这个 change 的验收标准（在 Go 仓库里甚至能封印）。
-	if problems := docProblems(c.Dir); len(problems) > 0 {
+	if problems := docProblemsFor(c.Dir, c.Fast); len(problems) > 0 {
 		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——四份产物都填成这个 change 自己的内容、并删掉 %s 标记后再 verify",
 			id, strings.Join(problems, "、"), scaffoldMarker)
 	}
@@ -249,42 +249,26 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 		return nil, err
 	}
 
+	plan := make([]plannedCheck, 0, len(acc.Commands))
+	for i, cmd := range acc.Commands {
+		plan = append(plan, plannedCheck{Index: i + 1, Cmd: cmd})
+	}
+	checks, passed, err := runPlan(ctx, root, evDir, plan, timeout)
+	if err != nil {
+		return nil, err
+	}
 	sum := Summary{
 		Change:           id,
 		StartedAt:        now.UTC().Format(time.RFC3339),
 		AcceptanceSHA256: hashBytes(raw),
-	}
-	passed := true
-	for i, cmd := range acc.Commands {
-		check := Check{Index: i + 1, Shell: cmd.Shell, Command: cmd.Body}
-		if !passed {
-			check.Skipped = true
-			sum.Checks = append(sum.Checks, check)
-			continue
-		}
-		shell, shellName, serr := shellFor(cmd.Shell)
-		if serr != nil {
-			return nil, serr
-		}
-		check.Shell = shellName
-		check = runCheck(ctx, root, shell, evDir, check, timeout)
-		if check.Exit != 0 {
-			passed = false
-		}
-		sum.Checks = append(sum.Checks, check)
+		Checks:           checks,
+		Fast:             c.Fast,
 	}
 
 	// 命令跑完再取指纹：证据描述的是"这些命令在这个工作区上通过了"，
 	// 命令自身的副作用（生成的临时文件）也属于这个工作区。
-	fp := WorktreeFingerprint(root)
-	sum.DiffBound = fp.OK
-	if fp.OK {
-		sum.Head = fp.Head
-		sum.DiffSHA256 = fp.DiffSHA256
-		sum.Files = fp.Files
-	}
-
 	sum.Passed = passed
+	finishSummary(root, &sum)
 	// 只有"全部实跑命令通过"才封印。人工检查项留给 `change verify` 的输出
 	// 末尾列出，由人自己确认——它们不进入封印，也就不构成假绿。
 	sum.Sealed = passed
@@ -576,12 +560,16 @@ func filesDrifted(root string, files []FileDigest) bool {
 // scaffoldMarker 标记尚未填写的模板骨架。填完删掉标记，verify 才会执行。
 const scaffoldMarker = "forge:fill"
 
-// unfilledDocs 列出仍带骨架标记的产物文件。
-// docProblems 列出让这个 change 还不算填完的原因：缺文件，或者仍是模板骨架。
-// 缺一份也算没填完——四份产物是这套流程的契约，少一份就少了对应的审计线索。
-func docProblems(dir string) []string {
+// docProblemsFor 列出让这个 change 还不算填完的原因：缺文件，或者仍是模板骨架。
+// 普通 change 要四份产物，少一份就少了对应的审计线索；fast 通道只要求
+// "为什么做"和"怎么算完"——省的是文档，不是判据与证据。
+func docProblemsFor(dir string, fast bool) []string {
+	required := []string{FileProposal, FileDesign, FileTasks, FileAcceptance}
+	if fast {
+		required = []string{FileProposal, FileAcceptance}
+	}
 	var out []string
-	for _, name := range []string{FileProposal, FileDesign, FileTasks, FileAcceptance} {
+	for _, name := range required {
 		raw, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			out = append(out, name+"（缺失）")
@@ -662,4 +650,50 @@ func gitOutput(root string, args ...string) (string, error) {
 		return "", err
 	}
 	return out.String(), nil
+}
+
+// plannedCheck 是一条要执行的判据。Index 保留它在 acceptance.md 里的围栏
+// 序号：节点 gate 只跑子集，但输出里的 #N 必须还能对回文档。
+type plannedCheck struct {
+	Index int
+	Cmd   Command
+}
+
+// runPlan 按顺序执行一组判据，首个非零即停，其余标记 skipped。
+func runPlan(ctx context.Context, root, evDir string, plan []plannedCheck, timeout time.Duration) ([]Check, bool, error) {
+	checks := make([]Check, 0, len(plan))
+	passed := true
+	for _, p := range plan {
+		check := Check{Index: p.Index, Shell: p.Cmd.Shell, Command: p.Cmd.Body}
+		if !passed {
+			check.Skipped = true
+			checks = append(checks, check)
+			continue
+		}
+		shell, shellName, err := shellFor(p.Cmd.Shell)
+		if err != nil {
+			return nil, false, err
+		}
+		check.Shell = shellName
+		check = runCheck(ctx, root, shell, evDir, check, timeout)
+		if check.Exit != 0 {
+			passed = false
+		}
+		checks = append(checks, check)
+	}
+	return checks, passed, nil
+}
+
+// finishSummary 在命令跑完之后补齐指纹与结束时间。
+//
+// 必须放在命令之后：判据自己可能写文件，先取指纹会让证据一出场就失效。
+func finishSummary(root string, sum *Summary) {
+	fp := WorktreeFingerprint(root)
+	sum.DiffBound = fp.OK
+	if fp.OK {
+		sum.Head = fp.Head
+		sum.DiffSHA256 = fp.DiffSHA256
+		sum.Files = fp.Files
+	}
+	sum.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 }

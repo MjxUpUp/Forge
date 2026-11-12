@@ -130,6 +130,9 @@ type Change struct {
 	DiffBound bool `json:"diff_bound"`
 	// BoundHead 是封印时记录的 commit，供列表展示"证据绑在哪一版代码上"。
 	BoundHead string `json:"bound_head,omitempty"`
+	// Fast 表示这个 change 走的是快速通道：只要求 proposal 与 acceptance。
+	// 判据、证据、封印一样不少——省的只是文档份数。
+	Fast bool `json:"fast,omitempty"`
 
 	Stage Stage `json:"stage"`
 }
@@ -405,6 +408,7 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 		return nil, fmt.Errorf("change: 不存在 %s", relTo(root, dir))
 	}
 	c := &Change{ID: id, Dir: dir}
+	c.Fast = exists(filepath.Join(dir, FastFile))
 	c.HasProposal = exists(filepath.Join(dir, FileProposal))
 	c.HasDesign = exists(filepath.Join(dir, FileDesign))
 	c.HasTasks = exists(filepath.Join(dir, FileTasks))
@@ -427,7 +431,9 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 		if len(names) > 0 {
 			c.Latest = names[len(names)-1]
 			c.LatestDir = filepath.Join(evDir, c.Latest)
-			if sum, serr := loadSummary(c.LatestDir); serr == nil && sum.Change == id {
+			// 封印只看整条 change 的验证：单节点 gate 的证据（task>0）证明不了
+			// 整件事做完了，不能顶替上一次 verify 的结论。
+			if sum, ok := latestSealingSummary(id, evDir, names); ok {
 				// 封印必须自洽：一份声称通过、却没有任何实跑记录的摘要
 				// （手写或残缺）不能对外宣称已验证。
 				c.Sealed = sum.Sealed && len(sum.Checks) > 0 && sum.AcceptanceSHA256 != "" && allChecksPassed(sum.Checks)
@@ -528,8 +534,13 @@ type Summary struct {
 	AcceptanceSHA256 string       `json:"acceptance_sha256"`
 	// DiffBound 表示证据绑定了 git 工作区指纹；false 时只能证明命令跑过，
 	// 证明不了它对应哪份代码（非 git 仓库）。
-	DiffBound bool    `json:"diff_bound,omitempty"`
-	Checks    []Check `json:"checks"`
+	DiffBound bool `json:"diff_bound,omitempty"`
+	// Task 非零表示这是一次单节点 gate（只跑了该任务的判据）。
+	// 节点证据不封印整个 change，只在 change status 里回答"这条过了吗"。
+	Task int `json:"task,omitempty"`
+	// Fast 记录这次验证发生在快速通道上，便于统计 fast 的比例与返工率。
+	Fast   bool    `json:"fast,omitempty"`
+	Checks []Check `json:"checks"`
 }
 
 // fingerprintPaths 取出指纹里的路径列表。
@@ -639,4 +650,54 @@ func relTo(root, path string) string {
 func renderTemplate(tmpl, id, title string) string {
 	out := strings.ReplaceAll(tmpl, "{{id}}", id)
 	return strings.ReplaceAll(out, "{{title}}", title)
+}
+
+// FastFile 是快速通道标记：存在即表示这个 change 只走精简产物。
+const FastFile = "FAST"
+
+// NewFast 建一个快速通道的 change：只有 proposal 与 acceptance。
+//
+// 快速通道不是"跳过流程"，是"少写两份文档"：为什么做要写清，怎么算完要
+// 有能跑的判据，验证照样落证据。滥用与否由人看列表里的 fast 标注决定。
+func NewFast(root, id, title string) (string, error) {
+	if err := ValidID(id); err != nil {
+		return "", err
+	}
+	dir := ChangeDir(root, id)
+	if _, err := os.Stat(dir); err == nil {
+		return "", fmt.Errorf("change: %s 已存在", relTo(root, dir))
+	}
+	if _, err := os.Stat(specroot.MarkerPath(root)); err != nil {
+		return "", fmt.Errorf("%w（%s 不存在）", ErrNoSpec, relTo(root, specroot.MarkerPath(root)))
+	}
+	if title == "" {
+		title = id
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", fmt.Errorf("change: 创建 %s: %w", relTo(root, dir), err)
+	}
+	files := map[string]string{FileProposal: tmplProposal, FileAcceptance: tmplAcceptance}
+	for name, tmpl := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(renderTemplate(tmpl, id, title)), 0o644); err != nil {
+			return "", fmt.Errorf("change: 写 %s: %w", relTo(root, path), err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, FastFile), []byte("快速通道：只要求 proposal 与 acceptance。\n"), 0o644); err != nil {
+		return "", fmt.Errorf("change: 写 %s: %w", relTo(root, filepath.Join(dir, FastFile)), err)
+	}
+	return dir, nil
+}
+
+// latestSealingSummary 从新到旧找最近一次"整条 change"的验证摘要。
+// 单节点 gate 的摘要（Task>0）跳过：它们不参与封印与失效判定。
+func latestSealingSummary(id, evDir string, names []string) (*Summary, bool) {
+	for i := len(names) - 1; i >= 0; i-- {
+		sum, err := loadSummary(filepath.Join(evDir, names[i]))
+		if err != nil || sum.Change != id || sum.Task != 0 {
+			continue
+		}
+		return sum, true
+	}
+	return nil, false
 }

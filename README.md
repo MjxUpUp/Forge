@@ -139,7 +139,7 @@ hooks: on          # on | off（缺省 on）
 |------|------|
 | `forge init` | 初始化项目（默认零项目写入） |
 | `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步 |
-| `forge change init/new/list/verify` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走） |
+| `forge change init/new/list/verify/status/gate` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人）；`gate --task N` 只跑某条任务的判据；`new --fast` 只要求 proposal + acceptance |
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-verify → task-complete |
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |
@@ -154,6 +154,8 @@ hooks: on          # on | off（缺省 on）
 | `forge doctor` / `forge status` | 环境一致性审计 / 项目状态 |
 
 其余命令族（`skills`、`eval`、`act`、`workspace`、`project`、`registry`、`harness`、`compat`、`plugin`、`conventions`、`policy`、`enforcement`、`selfcheck`、`sync`、`migrate`、`uninstall`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`、`verify`、`trust`）见同一份[完整命令表](docs/reference/cli.md)。
+
+**回环怎么跑**：agent 每个回合先 `forge change status <id>`，只执行它给出的 next steps——补产物、跑 verify、读失败证据、重跑，全过了才归档。判断标准全部来自仓库里的文件与证据，不来自对话记忆，也不依赖宿主 hook：换机器、换 agent，只要仓库在，循环就还在。逐节点推进用 `forge change gate <id> --task N`（节点证据不封印整条 change）；同一个原因连续失败 3 次，status 直接给 `blocked` 并停止给下一步——继续与否由人决定。
 
 ## 🪝 Hook 系统
 

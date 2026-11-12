@@ -20,11 +20,17 @@ func init() {
 	changeCmd.AddCommand(changeNewCmd)
 	changeCmd.AddCommand(changeListCmd)
 	changeCmd.AddCommand(changeVerifyCmd)
+	changeCmd.AddCommand(changeStatusCmd)
+	changeCmd.AddCommand(changeGateCmd)
 
 	changeInitCmd.Flags().String("profile", "mini", "门禁档位：mini / standard / full")
 	changeNewCmd.Flags().String("title", "", "change 标题（缺省用 id）")
 	changeListCmd.Flags().Bool("json", false, "JSON 格式输出")
 	changeVerifyCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条验收命令的超时")
+	changeNewCmd.Flags().Bool("fast", false, "快速通道：只写 proposal 与 acceptance（判据与证据照旧）")
+	changeStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
+	changeGateCmd.Flags().Int("task", 0, "tasks.md 里的任务序号（从 1 开始）")
+	changeGateCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条判据的超时")
 }
 
 var changeCmd = &cobra.Command{
@@ -40,7 +46,10 @@ var changeCmd = &cobra.Command{
   spec/changes/<id>/evidence/<ts>/    实跑证据（stdout/stderr/exit + 绑定判据与 diff 的封印）
 
 状态不单独存进度库：删掉证据就回到未验证，改判据就让旧证据作废（stale）。
-没有安装 forge 的机器上，照着这个目录结构手工产出同样的文件，协议一样成立。`,
+没有安装 forge 的机器上，照着这个目录结构手工产出同样的文件，协议一样成立。
+
+循环里只认 forge change status <id> 给出的下一步：它从文件与证据推导，
+不依赖对话记忆。逐节点推进用 forge change gate <id> --task <N>。`,
 }
 
 var changeInitCmd = &cobra.Command{
@@ -50,8 +59,8 @@ var changeInitCmd = &cobra.Command{
 }
 
 var changeNewCmd = &cobra.Command{
-	Use:   "new <id> [--title <标题>]",
-	Short: "新建一个 change 骨架（proposal/design/tasks/acceptance 四份模板）",
+	Use:   "new <id> [--title <标题>] [--fast]",
+	Short: "新建一个 change 骨架（四份模板；--fast 只要 proposal 与 acceptance）",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runChangeNew,
 }
@@ -67,6 +76,20 @@ var changeVerifyCmd = &cobra.Command{
 	Short: "实跑 acceptance.md 里的命令并落证据（可执行判据 + 封印）",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runChangeVerify,
+}
+
+var changeStatusCmd = &cobra.Command{
+	Use:   "status <id> [--json]",
+	Short: "当前状态、判定与下一步（循环只执行这里给出的 next steps）",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runChangeStatus,
+}
+
+var changeGateCmd = &cobra.Command{
+	Use:   "gate <id> --task <N> [--timeout 10m]",
+	Short: "只跑某条任务声明的判据（节点证据不封印整个 change）",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runChangeGate,
 }
 
 func runChangeInit(cmd *cobra.Command, _ []string) error {
@@ -96,7 +119,13 @@ func runChangeNew(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	dir, err := change.New(root, id, title)
+	fast, _ := cmd.Flags().GetBool("fast")
+	var dir string
+	if fast {
+		dir, err = change.NewFast(root, id, title)
+	} else {
+		dir, err = change.New(root, id, title)
+	}
 	if err != nil {
 		return err
 	}
@@ -106,7 +135,11 @@ func runChangeNew(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("已创建 %s\n", rel)
 	fmt.Println()
-	fmt.Println("按顺序写：proposal（为什么做）→ design（怎么做）→ tasks（拆步骤）→ acceptance（可执行判据）")
+	if fast {
+		fmt.Println("快速通道：写 proposal（为什么做）与 acceptance（怎么算完），删掉两份文件里的 forge:fill 标记。")
+	} else {
+		fmt.Println("按顺序写：proposal（为什么做）→ design（怎么做）→ tasks（拆步骤）→ acceptance（可执行判据）")
+	}
 	fmt.Printf("写完后运行：forge change verify %s\n", id)
 	return nil
 }
@@ -149,6 +182,13 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 			note = "上次 verify 没通过，证据留在 evidence/ 里，别删——删掉就只剩更早那次封印了"
 		case !c.HasAcceptance:
 			note = "缺少 acceptance.md"
+		}
+		if c.Fast {
+			if note == "" {
+				note = "fast（快速通道：只要求 proposal + acceptance）"
+			} else {
+				note = "fast；" + note
+			}
 		}
 		fmt.Printf("%-32s %-10s %-8s %s\n", c.ID, c.Stage, evidenceCell(c), note)
 	}
@@ -332,4 +372,127 @@ func changeRoot() (string, error) {
 		return git, nil
 	}
 	return cwd, nil
+}
+
+func runChangeStatus(cmd *cobra.Command, args []string) error {
+	id := strings.TrimSpace(args[0])
+	asJSON, _ := cmd.Flags().GetBool("json")
+	root, err := changeRoot()
+	if err != nil {
+		return err
+	}
+	st, err := change.StatusOf(root, id)
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		return st.WriteJSON(os.Stdout)
+	}
+	fast := ""
+	if st.Fast {
+		fast = "  fast"
+	}
+	fmt.Printf("change: %s   stage: %s%s\n", st.ID, st.Stage, fast)
+	switch st.LastVerdict {
+	case "sealed":
+		fmt.Println("验证：已封印")
+	case "stale":
+		fmt.Println("验证：证据已失效（判据或工作区变过）")
+	case "failed":
+		fmt.Println("验证：上次没通过")
+	default:
+		fmt.Println("验证：还没有记录")
+	}
+	if st.Attempts > 0 {
+		fmt.Printf("整条验证记录：%d 次\n", st.Attempts)
+	}
+	if len(st.Nodes) > 0 {
+		fmt.Println()
+		fmt.Println("节点：")
+		for _, n := range st.Nodes {
+			// [x] 只表示人在 tasks.md 里勾了这条；gate 通过是 [✓]——
+			// 机器能确认判据过了，确认不了"这条任务真的做完了"。
+			mark := "[ ]"
+			switch {
+			case n.Task.Done:
+				mark = "[x]"
+			case n.State == change.NodePassed:
+				mark = "[✓]"
+			case n.State == change.NodeFailed:
+				mark = "[!]"
+			case n.State == change.NodeBlocked:
+				mark = "[✗]"
+			}
+			line := fmt.Sprintf("  %s %d. %s", mark, n.Task.Index, n.Task.Text)
+			if n.State == change.NodeFailed || n.State == change.NodeBlocked {
+				line += "（" + n.LastError + "）"
+			}
+			fmt.Println(line)
+		}
+	}
+	fmt.Println()
+	if st.Verdict == "blocked" {
+		fmt.Println("⛔ 已停下：")
+	} else {
+		fmt.Println("下一步：")
+	}
+	for _, step := range st.NextSteps {
+		fmt.Printf("  - %s\n", step)
+	}
+	return nil
+}
+
+func runChangeGate(cmd *cobra.Command, args []string) error {
+	id := strings.TrimSpace(args[0])
+	if err := change.ValidID(id); err != nil {
+		return err
+	}
+	taskNo, _ := cmd.Flags().GetInt("task")
+	if taskNo <= 0 {
+		return fmt.Errorf("change: 需要 --task <N>（tasks.md 里的任务序号，从 1 开始）")
+	}
+	timeout, _ := cmd.Flags().GetDuration("timeout")
+	root, err := changeRoot()
+	if err != nil {
+		return err
+	}
+	res, err := change.GateTask(context.Background(), root, id, taskNo, change.GateOptions{Timeout: timeout})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("gate %s --task %d\n\n", id, taskNo)
+	failed := 0
+	for _, c := range res.Summary.Checks {
+		switch {
+		case c.Skipped:
+			fmt.Printf("  ⏭  [%d] %s — 未执行（前一条失败）\n", c.Index, firstLine(c.Command))
+		case c.Exit == 0:
+			fmt.Printf("  ✅ [%d] %s — %s\n", c.Index, firstLine(c.Command), dur(c.DurationMS))
+		default:
+			failed++
+			tag := fmt.Sprintf("exit %d", c.Exit)
+			if c.TimedOut {
+				tag = "超时"
+			}
+			fmt.Printf("  ❌ [%d] %s — %s（%s）\n", c.Index, firstLine(c.Command), tag, dur(c.DurationMS))
+			if c.StderrFile != "" {
+				printTail(filepath.Join(res.EvidenceDir, c.StderrFile), 15)
+			}
+		}
+	}
+	relEv := res.EvidenceDir
+	if r, rerr := filepath.Rel(root, res.EvidenceDir); rerr == nil {
+		relEv = filepath.ToSlash(r)
+	}
+	fmt.Println()
+	if res.Summary.Passed {
+		fmt.Printf("✅ 节点通过，证据：%s\n", relEv)
+		fmt.Printf("   节点证据不封印整条 change——整件事做完还要 forge change verify %s\n", id)
+		return nil
+	}
+	fmt.Printf("❌ 节点未通过（%d 条判据失败），证据：%s\n", failed, relEv)
+	if fc := firstFailure(res.Summary.Checks); fc != nil {
+		fmt.Printf("   先修这一条：[%d] %s\n", fc.Index, firstLine(fc.Command))
+	}
+	return errHardExit
 }
