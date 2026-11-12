@@ -14,7 +14,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 2. **安装态判据制造噪音。** `init-suggest` 会在任意非 Forge 仓库的首次会话里注入「建议 forge init」，用户在 m00078 明确反馈「命令/hook/文件检查仍会无脑执行，噪音、污染、浪费 token」。Task 3 把「仓库契约决定 hook 是否运行」做出来之后，噪音问题在仓库侧解决，但接线仍然依赖安装态。
 3. **趋势不在插件侧。** 各家 agent 都在向项目级 `AGENTS.md`（Codex/Cursor 原生，Claude Code 走 `CLAUDE.md` 指针）收敛。把接管写进仓库文件，换机器、换 agent、换会话都能复现；写进宿主配置，clone 到另一台机器就丢。
 
-规模对比（`git ls-files` 统计，2026-11-12）：
+规模对比（`git ls-files` 统计，快照 `e8954c72`，2026-11-12）：
 
 | 层 | 目录 | 行数 |
 |---|---|---|
@@ -24,21 +24,21 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 | 宿主层 | `internal/skillgen`（6 文件，生成 CLAUDE.md） | 2,033 |
 | 仓库层 | `internal/specroot`（660） + `internal/change`（3,837） + `internal/projectroot`（761） | 5,258 |
 
-宿主层约为仓库层的 5 倍。ADR-0001 已把「deterministic where code can verify」定为宪法，而当前最大一块代码恰恰不可 deterministic——它依赖宿主是否照约定调用。
+宿主层约为仓库层的 4–5 倍（后续提交在仓库层新增约 900 行，比例降到约 4.2 倍）。ADR-0001 已把「deterministic where code can verify」定为宪法，而当前最大一块代码恰恰不可 deterministic——它依赖宿主是否照约定调用。
 
 ## 决策
 
-1. **接管点写在仓库里**：`spec/forge.yaml`（成员资格 + profile + hooks 开关）与 `AGENTS.md`（托管块 `<!-- forge:begin -->`…`<!-- forge:end -->`，`forge` 幂等生成，人工内容不覆盖）。clone 即生效，不要求装插件、不要求注册表。
+1. **接管点写在仓库里**：`spec/forge.yaml`（成员资格 + profile + hooks 开关）与 `AGENTS.md`（托管块 `<!-- forge:begin -->`…`<!-- forge:end -->`，`forge` 幂等生成，人工内容不覆盖）。clone 即生效，不要求装插件、不要求注册表。托管块生成器属阶段 A 余额，当前尚未提供，`change init` 只在 AGENTS.md 不存在时写一份起始协议。
 2. **分两层：循环节拍放仓库（`forge change status` 驱动），强制点放 git/CI。**
    - 节拍层替代宿主 in-loop 拦截：agent 每次动手前后读 `forge change status`，按 `nextSteps` 执行；节点级 `gate` 立刻给 verdict，反馈延迟是一次 CLI 调用而不是一次提交。这是 LoopSpec 的做法（见下节「回环契约」）——它的 hook 只做一件事：拒绝手改已确认的 plan，门禁本体全在 CLI。
    - 边界层不可绕过：`forge change verify`（可执行判据 + 证据封印）接进 pre-commit 与 CI required check，分支保护把「证据齐了」变成合并前提。
    - `AGENTS.md` 承载协议文字，但没有退出码，因此只作为节拍层的说明书，不作为强制机制宣传。
-3. **宿主 hook 降级为可选加速器**：默认不改写任何宿主配置；需要 in-loop 反馈的用户显式跑 `forge integrations enable <host>`。`forge hook batch` 保留为宿主主动调用的一层，不再是安装副作用。
+3. **宿主 hook 降级为可选加速器**：默认不改写任何宿主配置；需要 in-loop 反馈的用户显式跑 `forge integrations enable <host>`（阶段 C 提供，当前尚未提供）。`forge hook batch` 保留为宿主主动调用的一层，不再是安装副作用。
 4. **删除阻断式 hazard-guard，不保留等价物**：数据见下；由宿主自带的危险命令确认层承接（Claude Code / Codex / DSH 均有）。如需提醒，只允许写进 AGENTS.md 的文字约定，不得阻断、不得触发 safe-halt。
 5. **留一个显式的小改动口子（fast 通道），不做成「偷偷无视协议」**：`forge change new <id> --fast` 只要求 proposal + acceptance 两份产物，acceptance 至少一条可执行判据；`verify` 照常封印并在 `summary.json` 标 `fast: true`，`change list` 标注「fast（小改）」。判据由人 review，工具不猜「这次改动够不够小」——口子的价值是**可见**，不是**自动**。周界建议写在 AGENTS.md（例如 ≤3 个文件且 ≤50 行），但不做代码阈值，阈值一判就假。
 6. **分四阶段迁移，每阶段有可验证判据**（见「实施备注」），任一阶段未达判据即停，不进入下一阶段。
 
-### hazard-guard 的取证（本机 `~/.forge/projects/8db5a0d1b70f/hazards/events.jsonl`，153 条事件 / 20 个自然日）
+### hazard-guard 的取证（本机 `~/.forge/projects/8db5a0d1b70f/hazards/events.jsonl`，153 条事件，跨 23 个自然日）
 
 | 事件类型 | 次数 |
 |---|---|
@@ -46,10 +46,11 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 | confirm | 14 |
 | release | 11 |
 | halt-release（人工解停机） | 10 |
+| data（审计附属记录） | 9 |
 
-109 次 block 的命令分类：`git push --delete` / force 28 次、`rm -rf` 9 次、`git rm`/`rm` 技能文件 8 次、`git reset --hard` 4 次、`worktree remove --force` 2 次，其余是 heredoc 脚本误判。9 次 `rm -rf` 的目标全部是临时目录：`dbg`、`$SMOKE`、`internal/clone`、`demo`、`forge-npm-verify`——**没有一次是真实数据损失**。
+109 次 block 去重后是 66 条命令。按命令分类（按事件计）：`git push --delete` / force 28 次、含 `rm -rf` 的 9 次、`git rm` / `rm` 技能文件 8 次、`git reset --hard` 8 次（4 条唯一命令）、`worktree remove --force` 2 次，其余是 heredoc 脚本误判。9 次 `rm -rf` 中 7 条目标是 `/tmp` 下的临时目录（`dbg`、`$SMOKE`、`demo`、`forge-npm-verify`），另 2 条是 `git rm -r --cached internal/clone`（仓库内缓存清理）——**没有一次是真实数据损失**。
 
-代价是真实的：2026-10-25 连续 10 次 block 触发 safe-halt，此后全部门禁工作被冻结，直到 2026-11-11 由人在真终端执行 `forge hazard halt release --yes` 才解开——17 天，起因是一次脚本循环。
+代价是真实的：2026-10-25 连续 10 次 block 触发 safe-halt，此后全部门禁工作被冻结，直到 2026-11-12T10:18 由人在真终端执行 `forge hazard halt release --yes` 才解开——18 天，起因是一次脚本循环。
 
 同一类「用模式匹配判断 shell 字符串危不危险」的问题，我们在 `forge change` 的判据检查上已经打了 6 轮对抗评审（引号、注释、续行、`$'...'`、算术、进程替换……），结论是**只能做启发式，不能做到可靠**。hazard-guard 面临同一个对抗面，而它的失败模式（误判 → 冻结全部工作）比漏判更糟。
 
@@ -60,8 +61,8 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 | LoopSpec 的约定 | 作用 | Forge 的对应物（现状 → 要补） |
 |---|---|---|
 | 只有 CLI 能改工作流状态，agent 不许手改 `plan.yaml`/`.gates/`/`.attempts/` | 状态可信 | 已更强：状态由产物 + 证据 + 内容哈希推导，没有独立状态库；要补「agent 手写证据不算数」的显式判据（已有 `checks>0` + `acceptance_sha256` + diff 绑定） |
-| 循环执行 `change status`，按 `nextSteps` 动手；`active` 之外没有「继续」 | 停止条件集中在一处 | `forge next` 已有（任务级），要补 `forge change status`（change 级：stage + nextSteps + verdict） |
-| 节点 = instruction + template + PASS/FAIL 模板；产物写到 `resolvedOutputPath` | 每步有明确产物与判据 | 已有 tasks.md（每条带「判据：acceptance #N」）与 acceptance.md 围栏；要补节点级 `forge change gate --task N`，只跑该节点判据并落节点证据 |
+| 循环执行 `change status`，按 `nextSteps` 动手；`active` 之外没有「继续」 | 停止条件集中在一处 | `forge next` 已有（任务级）；`forge change status` 已落地（change 级：stage + nextSteps + verdict，`blocked` 时不给命令） |
+| 节点 = instruction + template + PASS/FAIL 模板；产物写到 `resolvedOutputPath` | 每步有明确产物与判据 | 已有 tasks.md（每条带「判据：acceptance #N」）与 acceptance.md 围栏；节点级 `forge change gate --task N` 已落地（只跑该节点判据、落节点证据、不封印整条） |
 | 有效 FAIL 且有返工次数 → `plan rollback`，按失败 Gate 的 `on_fail` 重置目标 + 该 Gate + 全部下游，归档工作流文件，业务代码不动；重做前先读 `priorAttempts` | 返工有边界、能记住死路 | 下游失效已由内容哈希自动完成（改文件即 stale）；要补 `priorAttempts` 列表面与「返工只重置证据、不动代码」的指令 |
 | `exhausted` 的 Gate（无 `on_fail` 或次数用完）→ **停下交给人**，不自动放行 | 循环知道何时停 | 这正是本仓库 `loop-contract` 提案 B0 的漏洞（`TestLoopExhaustionNoLeak` 复现的「首次检出放行一次」）；本 ADR 要求 `status` 直接返回 `blocked`，不回落到「继续」 |
 | 证据绑定 plan 摘要；修订后 code gate 必须重新审查 | 证据不可复用 | 已有 `acceptance_sha256` + `diff_sha256` + `BoundHead`；沿用 |
@@ -70,7 +71,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 三条设计推论：
 
 1. **in-loop 反馈不依赖宿主**。节点 gate 是普通 CLI 调用，任何能跑 bash 的 agent 都能用；宿主 hook 只在「想更早发现」时才有价值，而它的成本已经在数据里（见下节）。
-2. **「继续」必须由 verdict 授权**。`status` 返回的 `nextSteps` 是唯一合法的下一步；失败时返回返工指令，耗尽时返回 `blocked`。agent 想跳过就只能无视协议，而那会被边界层的 required check 抓住——这与 LoopSpec 的可信模型同构，不多也不少。
+2. **「继续」必须由 verdict 授权**。`status` 返回的 `nextSteps` 是唯一合法的下一步；失败时返回返工指令，耗尽时返回 `blocked`（`blocked` 时 `nextSteps` 里不含可执行命令，恢复命令放在 `handoff` 字段，由人执行）。agent 想跳过就只能无视协议，而那会被边界层的 required check 抓住——阶段 A 余额（pre-commit / CI）落地前，这一步只能靠 review 与分支保护兜底。
 3. **门禁本体留在 CLI，hook 只做窄护栏**。LoopSpec 的 pre-tool-use hook 只拒绝「手改已确认 plan」这一件事，36 个 hook 的复杂度它没有。这也从侧面支持决策 3：宿主层应当是可选适配器，而不是 35 个条目的名册。
 
 ## 考虑过的方案
@@ -152,10 +153,10 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 |---|---|---|
 | A 仓库层自足 | ①节拍层：`forge change status`（stage + nextSteps + verdict，耗尽返回 `blocked`）、`forge change gate --task N`（节点级判据 + 证据）、`priorAttempts` 列表；②边界层：`forge change verify` 接 pre-commit 与 CI；③协议层：`AGENTS.md` 托管块生成器 + 单源多指针（CLAUDE.md / .cursor/rules 指向同一段）；④fast 通道（`--fast` 只写 proposal+acceptance，summary 标 `fast: true`） | 一个全新 clone（无 forge 安装、无注册表）能靠 CI 判定 change 是否 sealed；`forge change verify` 在干净 clone 上可跑；一次「节点失败 → 返工 → 耗尽 → blocked」的完整演练，最终结果不是「放行」 |
 | B 量化 hook 价值 | 默认 `hooks: off`（安全底线也不跑）；宿主层仅 audit-only；记录「hook 拦下但 CI 本会拦下」的比例 | 两周数据：hook 独立捕获率 < 10% 且无真实损失，则进入 C；否则重新评估 |
-| C 降级为可选 | `forge integrations enable <host>` 显式开启；移除 `forge init`/plugin 对宿主配置的写入；`init-suggest` 删除 | 默认安装不再触碰任何宿主配置文件（`git diff` 用户 home 为空） |
-| D 删除 | 删 `internal/hooks`、`internal/hookdispatch`（保留最小 batch 协议或整体移除）、`skillsdist` 的宿主 adapter、`skillgen` 的 CLAUDE.md 生成 | `go build` 与 CI 绿；`deadcode ./...` 不增加；文档无残留引用 |
+| C 降级为可选 | `forge integrations enable <host>` 显式开启；移除 `forge init`/plugin 对宿主配置的写入；`init-suggest` 删除 | 在临时 `HOME` 里跑一次 `forge init`：`find "$HOME" -type f -exec sha256sum {} +` 前后快照一致（覆盖未跟踪的新文件） |
+| D 删除 | 删 `internal/hooks`、`internal/hookdispatch`（保留最小 batch 协议或整体移除）、`skillsdist` 的宿主 adapter、`skillgen` 的 CLAUDE.md 生成 | `go build` 与 CI 绿；与 Makefile 门禁同一条命令 `deadcode -test ./...` 的输出不超过阶段 D 之前记录的基线；文档无残留引用 |
 
-**阶段 A 的落地进度**（随 feat/loop-contract-status 一起）：已落地 ① 节拍层（`change status` 的 stage/verdict/next steps、`change gate --task N` 的节点判据与证据、同因失败 `blocked`）与 ④ fast 通道；未落地 ② 边界层接线（pre-commit / CI required check）、③ AGENTS.md 托管块生成器与单源多指针、① 里的 `priorAttempts` 列表（当前只给尝试次数与最近失败，未列历史命令）。
+**阶段 A 的落地进度**（随 feat/loop-contract-status 一起）：已落地 ① 节拍层（`change status` 的 stage/verdict/next steps、`change gate --task N` 的节点判据与证据、同因失败 `blocked`；`blocked` 时 `next_steps` 不含可执行命令，恢复命令在 `handoff`）与 ④ fast 通道；未落地 ② 边界层接线（pre-commit / CI required check）、③ AGENTS.md 托管块生成器与单源多指针、① 里的 `priorAttempts` 列表（当前只给尝试次数与最近失败，未列历史命令）。
 
 ### 受影响模块
 
@@ -170,7 +171,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 ## 参考资料
 
-- `docs/design/spec-in-repo-activation-2026-11-proposal.md`（仓库内 spec 层的原始提案）
+- `docs/design/spec-in-repo-activation-2026-11-proposal.md`（仓库内 spec 层的原始提案，已被本 ADR 取代；保留作为九份行业材料的摘录）
 - `docs/adr/0001-constraint-three-way-classification.md`（deterministic vs agent-claim 宪法）
 - `docs/design/positioning.md`（「coding agent 循环的验证与状态层」定位）
 - LoopSpec `docs/zh/agent-protocol.md` 与 `docs/zh/cli-reference.md`（本 ADR「回环契约」一节的模型来源：CLI 独占状态写入、status→nextSteps 驱动、节点 PASS/FAIL、on_fail/rollback、exhausted 停下）

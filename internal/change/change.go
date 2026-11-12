@@ -694,7 +694,12 @@ func NewFast(root, id, title string) (string, error) {
 func latestSealingSummary(id, evDir string, names []string) (*Summary, bool) {
 	for i := len(names) - 1; i >= 0; i-- {
 		sum, err := loadSummary(filepath.Join(evDir, names[i]))
-		if err != nil || sum.Change != id || sum.Task != 0 {
+		if err != nil {
+			// 最新一份整条验证损坏（写到一半、被截断）时停在这里：继续往回找会
+			// 把更早的封印翻出来，等于用旧证据冒充"现在已验证"。
+			return nil, false
+		}
+		if sum.Change != id || sum.Task != 0 {
 			continue
 		}
 		return sum, true
