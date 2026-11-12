@@ -102,7 +102,7 @@ func ResolveFrom(cwd string) (string, Source, error) {
 //
 // heal 控制遗留 .forge/ 分支是否自愈登记（ResolveFrom 传 true 保持老行为，State
 // 传 false 做成纯读探针）。热路径上注册表只需读一次：State 已经返回三态，未登记
-// 时再走 IsMember 是重复解析（readFile 无缓存）。
+// 时再走一次成员资格查询是重复解析（readFile 无缓存）。
 func resolveFrom(cwd string, heal bool) (string, Source, string, error) {
 	// 0. 仓库声明式契约。declined 一票否决优先：人明确拒绝接管后，仓库里的
 	//    标记不再自动复活 forge——否则 clone 一份契约就绕过了退出决定。
@@ -114,7 +114,7 @@ func resolveFrom(cwd string, heal bool) (string, Source, string, error) {
 	}
 
 	// 1. 注册表成员资格。一次 registry.State 同时给出「已登记」与「declined」
-	//    两种信息：IsMember 把 declined 当非成员，只看它会把明确退出的仓库报成
+	//    两种信息：旧的布尔成员资格判定把 declined 当非成员，只看它会把明确退出的仓库报成
 	//    unknown，与 status 的 managed 冲突。
 	// root != "" 就是「有条目」：未登记时 State 只返回 ("", unknown)，不会出现
 	// (root, unknown) 这个组合（脏条目的空 Path 除外，那也当作未登记）。
