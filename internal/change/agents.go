@@ -103,12 +103,6 @@ func ensureManagedBlock(path, header string, mb managedBlock) (AgentsAction, err
 	return AgentsUpdated, nil
 }
 
-// agentsBlock 返回带成对标记的托管块（以换行结尾）。
-func agentsBlock() string {
-	body := strings.TrimSpace(renderTemplate(tmplAgents, "", ""))
-	return agentsBegin + "\n" + body + "\n" + agentsEnd + "\n"
-}
-
 // 单源多指针：规范只有 AGENTS.md 里的一份，其它 agent 的入口文件只放一句
 // 指向它的话。文件不存在时默认不创建——替一个不用 Cursor 的仓库建
 // .cursor/rules/ 就是污染；要启用显式说 `--pointers`。
