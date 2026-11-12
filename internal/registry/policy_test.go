@@ -12,8 +12,15 @@ import (
 )
 
 // policy_test.go — Project Policy Layer P1 的状态模型契约测试：SetStatus/State/
-// IsMember 联动、Add 不复活 declined、Rekey 保留状态字段、ListManaged 过滤。
+// 成员资格判定联动、Add 不复活 declined、Rekey 保留状态字段、ListManaged 过滤。
 // 行为契约见 docs/design/project-policy-layer.md「行为契约」表。
+
+// managedIn 是成员资格谓词（State==managed）；IsMember 已随 projectroot.State
+// 统一判据删除，测试里用这一个谓词表达「算不算成员」。
+func managedIn(cwd string) bool {
+	_, state := State(cwd)
+	return state == StatusManaged
+}
 
 // entryOf 从注册表文件读回指定路径的条目（测试断言落盘状态用）。
 func entryOf(t *testing.T, path string) Entry {
@@ -31,7 +38,7 @@ func entryOf(t *testing.T, path string) Entry {
 	return Entry{}
 }
 
-// TestSetStatus_DeclineResume 钉住核心生命周期：Add→managed，decline→IsMember
+// TestSetStatus_DeclineResume 钉住核心生命周期：Add→managed，decline→成员资格
 // false + State declined + 落盘审计字段，resume→managed。declined→managed 的
 // 唯一合法路径是 SetStatus（forge on）；Add（dashboard 自登记等）不得复活。
 func TestSetStatus_DeclineResume(t *testing.T) {
@@ -41,15 +48,15 @@ func TestSetStatus_DeclineResume(t *testing.T) {
 	if err := Add(p); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := IsMember(p); !ok {
-		t.Fatal(`IsMember false right after Add`)
+	if !managedIn(p) {
+		t.Fatal(`managedIn false right after Add`)
 	}
 
 	if err := SetStatus(p, StatusDeclined, `forge off`); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := IsMember(p); ok {
-		t.Error(`IsMember true after decline`)
+	if managedIn(p) {
+		t.Error(`managedIn true after decline`)
 	}
 	root, state := State(p)
 	if state != StatusDeclined {
@@ -82,8 +89,8 @@ func TestSetStatus_DeclineResume(t *testing.T) {
 	if err := SetStatus(p, StatusManaged, `forge on`); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := IsMember(p); !ok {
-		t.Error(`IsMember false after resume`)
+	if !managedIn(p) {
+		t.Error(`managedIn false after resume`)
 	}
 }
 
@@ -96,8 +103,8 @@ func TestSetStatus_DeclineUnregistered(t *testing.T) {
 	if err := SetStatus(p, StatusDeclined, `forge off`); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := IsMember(p); ok {
-		t.Error(`IsMember true for declined-only entry`)
+	if managedIn(p) {
+		t.Error(`managedIn true for declined-only entry`)
 	}
 	if _, state := State(p); state != StatusDeclined {
 		t.Errorf(`State = %q, want declined`, state)
@@ -118,9 +125,9 @@ func TestState_Unknown(t *testing.T) {
 	}
 }
 
-// TestIsMember_DeclinedPrefix 非 git 前缀匹配路径上 declined 不赋予成员资格，
+// TestState_DeclinedPrefix 非 git 前缀匹配路径上 declined 不赋予成员资格，
 // 但 State 仍报 declined（status 显示与 Find 判定都依赖它）。
-func TestIsMember_DeclinedPrefix(t *testing.T) {
+func TestState_DeclinedPrefix(t *testing.T) {
 	useTempHome(t)
 	parent := mkForgeProject(t)
 	sub := filepath.Join(parent, `sub`)
@@ -135,8 +142,8 @@ func TestIsMember_DeclinedPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := IsMember(sub); ok {
-		t.Error(`IsMember(sub) true under declined parent`)
+	if managedIn(sub) {
+		t.Error(`managedIn(sub) true under declined parent`)
 	}
 	if _, state := State(sub); state != StatusDeclined {
 		t.Errorf(`State(sub) = %q, want declined`, state)
@@ -205,7 +212,7 @@ func TestLegacyJSON_NoStatusIsManaged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := IsMember(p); !ok {
+	if !managedIn(p) {
 		t.Error(`legacy entry without status must be managed member`)
 	}
 	if err := Add(p); err != nil {
@@ -218,7 +225,7 @@ func TestLegacyJSON_NoStatusIsManaged(t *testing.T) {
 	if bytes.Contains(data, []byte(`"status"`)) {
 		t.Errorf("Add injected status key into legacy entry:\n%s", data)
 	}
-	if _, ok := IsMember(p); !ok {
+	if !managedIn(p) {
 		t.Error(`membership lost after Add on legacy entry`)
 	}
 }

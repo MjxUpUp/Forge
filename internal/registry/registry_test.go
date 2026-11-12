@@ -529,9 +529,9 @@ func TestUnmarshal_SkipsEmptyPathEntries(t *testing.T) {
 	}
 }
 
-// TestIsMember_ExactMatchCaseInsensitive_Windows 钉死精确匹配分支的 pathKey 归一：
+// TestState_ExactMatchCaseInsensitive_Windows 钉死精确匹配分支的 pathKey 归一：
 // 登记 C:\Proj、查询 c:\proj——大小写不敏感文件系统下是同一项目。
-func TestIsMember_ExactMatchCaseInsensitive_Windows(t *testing.T) {
+func TestState_ExactMatchCaseInsensitive_Windows(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("路径大小写不敏感匹配仅适用于 Windows 文件系统")
 	}
@@ -551,19 +551,19 @@ func TestIsMember_ExactMatchCaseInsensitive_Windows(t *testing.T) {
 		t.Skip("无法构造大小写变体（盘符异常）")
 	}
 
-	root, ok := IsMember(variant)
-	if !ok {
-		t.Fatalf("大小写变体精确路径应命中成员: IsMember(%q) = (%q, false)", variant, root)
+	root, state := State(variant)
+	if state != StatusManaged {
+		t.Fatalf("大小写变体精确路径应解析为 managed: State(%q) = (%q, %q)", variant, root, state)
 	}
 	if filepath.Clean(root) != filepath.Clean(a) {
 		t.Errorf("root = %q, want %q", root, a)
 	}
 }
 
-// TestIsMember_SymlinkResolved：经 symlink 进入的 cwd 必须匹配已登记的物理路径
+// TestState_SymlinkResolved：经 symlink 进入的 cwd 必须匹配已登记的物理路径
 // （EvalSymlinks 归一，与 PathKey 同语义）。平台/用户无法创建 symlink 时跳过
 // （Windows 需要权限）。
-func TestIsMember_SymlinkResolved(t *testing.T) {
+func TestState_SymlinkResolved(t *testing.T) {
 	useTempHome(t)
 	real := mkForgeProject(t)
 	if err := Add(real); err != nil {
@@ -574,11 +574,11 @@ func TestIsMember_SymlinkResolved(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Skipf("无法创建 symlink（权限不足或平台限制）: %v", err)
 	}
-	root, ok := IsMember(link)
-	if !ok {
-		t.Fatalf("symlink 路径应命中成员: IsMember(%q) = (%q, false)", link, root)
+	root, state := State(link)
+	if state != StatusManaged {
+		t.Fatalf("symlink 路径应解析为 managed: State(%q) = (%q, %q)", link, root, state)
 	}
-	// 比较解析后的物理路径：IsMember 返回字面 git root（link 形态）是合法的，
+	// 比较解析后的物理路径：State 返回字面 git root（link 形态）是合法的，
 	// 且 macOS 上 t.TempDir() 本身就是 /var→/private/var 的 symlink 形态——
 	// 字面相等是错误的断言，物理同一路径才是契约。
 	resolvedRoot, err := filepath.EvalSymlinks(root)
@@ -606,25 +606,25 @@ func gitInit(t *testing.T, dir string) {
 	}
 }
 
-// TestIsMember_GitKeyDriftFromPathKey pins the path↔git key-drift fallback: a project
+// TestState_GitKeyDriftFromPathKey pins the path↔git key-drift fallback: a project
 // forge-init'd while NON-git (registry entry stores a PathKey) that later ran `git init`
 // must still resolve as a member. The git branch's key match misses the stale path-key
 // (keyOf trusts the stored non-empty key), so a path-based fallback against the git
 // working-tree root must catch it. This is the AgentOffice bug: forge init at 16:11
-// (non-git → path-key pc3f3d8507069) → git init at 16:35 → IsMember returned false →
+// (non-git → path-key pc3f3d8507069) → git init at 16:35 → the membership check returned false →
 // forge forgot the project → all enforcement hooks degraded to allow-and-exit →
-// reasonix "不走协议". Read-only (no self-heal write): IsMember is a hot path invoked
+// reasonix "不走协议". Read-only (no self-heal write): the lookup is a hot path invoked
 // from concurrent hook processes; the stale key is re-keyed by the next `forge init`
 // (Add upsert).
 //
-// TestIsMember_GitKeyDriftFromPathKey 钉死 path↔git key 漂移的路径回退：项目在非 git
+// TestState_GitKeyDriftFromPathKey 钉死 path↔git key 漂移的路径回退：项目在非 git
 // 状态下 forge init（注册表存 PathKey），后来跑了 `git init`，仍须解析为成员。git 分支
 // 的 key 匹配命中不了陈旧 path-key（keyOf 信任已存的非空 key），故按 git working-tree
 // 根做路径回退兜住。这正是 AgentOffice bug：16:11 非 git init（→ path-key
-// pc3f3d8507069）→ 16:35 git init → IsMember 返 false → forge 遗忘项目 → 所有强制
-// hook 降级放行 → reasonix「不走协议」。只读（不自愈写回）：IsMember 是被并发 hook
+// pc3f3d8507069）→ 16:35 git init → 成员资格判定返 false → forge 遗忘项目 → 所有强制
+// hook 降级放行 → reasonix「不走协议」。只读（不自愈写回）：lookup 是被并发 hook
 // 进程调用的热路径，陈旧 key 由下次 `forge init`（Add upsert）刷新。
-func TestIsMember_GitKeyDriftFromPathKey(t *testing.T) {
+func TestState_GitKeyDriftFromPathKey(t *testing.T) {
 	useTempHome(t)
 	d := t.TempDir()
 	gitInit(t, d) // make it a real git project (the post-git-init state)
@@ -647,9 +647,9 @@ func TestIsMember_GitKeyDriftFromPathKey(t *testing.T) {
 
 	// The project root itself must resolve.
 	// 项目根本身须解析。
-	root, ok := IsMember(d)
-	if !ok {
-		t.Fatalf("git-key 漂移场景应命中成员（路径回退）: IsMember(%q) = (%q, false)", d, root)
+	root, state := State(d)
+	if state != StatusManaged {
+		t.Fatalf("git-key 漂移场景应解析为 managed（路径回退）: State(%q) = (%q, %q)", d, root, state)
 	}
 	if filepath.Clean(root) != filepath.Clean(d) {
 		t.Errorf("root = %q, want %q", root, d)
@@ -663,9 +663,9 @@ func TestIsMember_GitKeyDriftFromPathKey(t *testing.T) {
 	if err := os.MkdirAll(sub, 0755); err != nil {
 		t.Fatal(err)
 	}
-	root2, ok2 := IsMember(sub)
-	if !ok2 {
-		t.Fatalf("漂移项目子目录应命中成员: IsMember(%q) = (%q, false)", sub, root2)
+	root2, state2 := State(sub)
+	if state2 != StatusManaged {
+		t.Fatalf("漂移项目子目录应解析为 managed: State(%q) = (%q, %q)", sub, root2, state2)
 	}
 	if filepath.Clean(root2) != filepath.Clean(d) {
 		t.Errorf("子目录 root = %q, want %q", root2, d)
@@ -673,7 +673,7 @@ func TestIsMember_GitKeyDriftFromPathKey(t *testing.T) {
 }
 
 // TestCaseVariantDedupe 钉死大小写不敏感文件系统（macOS 默认 APFS）上的注册表
-// 收敛：同一项目按两种拼写 Add 必须坍缩成一条，IsMember 用任一拼写都解析到同一
+// 收敛：同一项目按两种拼写 Add 必须坍缩成一条，State 用任一拼写都解析到同一
 // root。旧 pathKey 假设「Windows 之外大小写有区分」——对大小写不敏感 APFS 是
 // 事实性错误，放过了 Forge/forge 重复登记 bug（同一目录两条目、看板重复展示）。
 // 大小写敏感文件系统上探针短路并断言反面：不同拼写保持不同（不折叠）。
@@ -721,14 +721,14 @@ func TestCaseVariantDedupe(t *testing.T) {
 		t.Fatalf(`List 应去重为 1 条，实际 %d 条: %v`, len(got), got)
 	}
 
-	// IsMember 用任一拼写都解析到同一 root。
+	// State 用任一拼写都解析到同一 root（managed）。
 	if err := writeEntries([]Entry{{Path: canonical}}); err != nil {
 		t.Fatal(err)
 	}
-	rootC, okC := IsMember(canonical)
-	rootV, okV := IsMember(variant)
-	if !okC || !okV {
-		t.Fatalf(`两种拼写都应命中成员：canonical=(%q,%v) variant=(%q,%v)`, rootC, okC, rootV, okV)
+	rootC, stateC := State(canonical)
+	rootV, stateV := State(variant)
+	if stateC != StatusManaged || stateV != StatusManaged {
+		t.Fatalf(`两种拼写都应解析为 managed：canonical=(%q,%q) variant=(%q,%q)`, rootC, stateC, rootV, stateV)
 	}
 	if filepath.Clean(rootC) != filepath.Clean(rootV) {
 		t.Errorf(`变体拼写应命中同一 root：canonical=%q variant=%q`, rootC, rootV)
@@ -738,8 +738,8 @@ func TestCaseVariantDedupe(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(canonical, `sub`), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if root, ok := IsMember(sub); !ok || filepath.Clean(root) != filepath.Clean(rootC) {
-		t.Errorf(`变体子目录 IsMember=(%q,%v)，期望 root=%q`, root, ok, rootC)
+	if root, state := State(sub); state != StatusManaged || filepath.Clean(root) != filepath.Clean(rootC) {
+		t.Errorf(`变体子目录 State=(%q,%q)，期望 root=%q`, root, state, rootC)
 	}
 }
 

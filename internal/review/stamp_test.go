@@ -93,9 +93,9 @@ func TestEvaluate_NoSourceChanges_PureDocs(t *testing.T) {
 	write(t, dir, "README.md", "# 改了文档\n")
 	write(t, dir, "docs/notes.md", "笔记\n")
 
-	dec, reason, err := Evaluate(dir)
+	dec, reason, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionPass {
 		t.Fatalf("纯文档变更应 Pass（无需审），实际 %v（%s）——误触发", dec, reason)
@@ -110,9 +110,9 @@ func TestEvaluate_NoSourceChanges_Generated(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "api.pb.go", "// generated\n")
 	write(t, dir, "real.pb.go", "// x\n")
-	dec, _, err := Evaluate(dir)
+	dec, _, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionPass {
 		t.Fatalf("生成物(.pb.go)变更应 Pass，实际 %v", dec)
@@ -124,9 +124,9 @@ func TestEvaluate_SourceChangeTriggersReview(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "main.go", "package main\n")
 
-	dec, reason, err := Evaluate(dir)
+	dec, reason, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionNeedReview {
 		t.Fatalf("源码变更应 NeedReview，实际 %v（%s）", dec, reason)
@@ -150,9 +150,9 @@ func TestEvaluate_TrackedSourceChange(t *testing.T) {
 
 	// 修改它 → tracked diff
 	write(t, dir, "svc.go", "package svc\n\nfunc New() {}\n")
-	dec, _, err := Evaluate(dir)
+	dec, _, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionNeedReview {
 		t.Fatalf("tracked 源码修改应 NeedReview，实际 %v", dec)
@@ -164,25 +164,25 @@ func TestEvaluate_PassThenSameDiffPasses(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
 
-	if dec, _, _ := Evaluate(dir); dec != DecisionNeedReview {
+	if dec, _, _ := EvaluateFor(dir, ""); dec != DecisionNeedReview {
 		t.Fatalf("首次应 NeedReview，实际 %v", dec)
 	}
-	if err := MarkPassedWithNote(dir, ""); err != nil {
+	if err := MarkPassedFor(dir, "", ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
-	dec, reason, err := Evaluate(dir)
+	dec, reason, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionPass {
 		t.Fatalf("pass 后同 diff 应 Pass，实际 %v（%s）", dec, reason)
 	}
 }
 
-// TestMarkPassedWithNote 钉住 `forge review pass --note` 的非 task 模式半边：审查结论
+// TestMarkPassedForWithNote 钉住 `forge review pass --note` 的非 task 模式半边：审查结论
 // 持久化进分支 stamp（task 模式对应物是 ReviewRound.Note）；裸 MarkPassed 保持为空
 // （向后兼容）。
-func TestMarkPassedWithNote(t *testing.T) {
+func TestMarkPassedForWithNote(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
 
@@ -193,15 +193,15 @@ func TestMarkPassedWithNote(t *testing.T) {
 		}
 		return loadStamp(dir, hash)
 	}
-	if err := MarkPassedWithNote(dir, "审查结论：无发现"); err != nil {
-		t.Fatalf("MarkPassedWithNote: %v", err)
+	if err := MarkPassedFor(dir, "", "审查结论：无发现"); err != nil {
+		t.Fatalf("MarkPassedFor: %v", err)
 	}
 	if got := loadStamped().Note; got != "审查结论：无发现" {
 		t.Errorf("stamp.Note 未持久化, got %q", got)
 	}
 
 	// 裸 MarkPassed 保持 note 为空（旧形状）。
-	if err := MarkPassedWithNote(dir, ""); err != nil {
+	if err := MarkPassedFor(dir, "", ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 	if got := loadStamped().Note; got != "" {
@@ -213,15 +213,15 @@ func TestMarkPassedWithNote(t *testing.T) {
 func TestEvaluate_NewDiffReTriggers(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
-	if err := MarkPassedWithNote(dir, ""); err != nil {
+	if err := MarkPassedFor(dir, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	// 改出新内容 → 新 hash
 	write(t, dir, "a.go", "package a\n\nfunc F() {}\n")
 	write(t, dir, "b.go", "package a\n")
-	dec, _, err := Evaluate(dir)
+	dec, _, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionNeedReview {
 		t.Fatalf("新 diff 应重新 NeedReview，实际 %v", dec)
@@ -239,16 +239,16 @@ func TestEvaluate_CrossBranchSameHashPasses(t *testing.T) {
 
 	// 建特性分支（同一 HEAD，a.go 仍 untracked）并在其上标记审查通过。
 	gitCheckout(t, dir, "checkout", "-b", "feat/x")
-	if err := MarkPassedWithNote(dir, ""); err != nil {
+	if err := MarkPassedFor(dir, "", ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 
 	// 切回默认分支（同一 HEAD，a.go 仍 untracked → 同一 hash）。默认分支无戳，
 	// 放行必须来自 feat/x 的戳。
 	gitCheckout(t, dir, "checkout", defaultBranch)
-	dec, reason, err := Evaluate(dir)
+	dec, reason, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionPass {
 		t.Fatalf("跨分支同 hash 应 Pass（已在他分支审查），实际 %v（%s）——ff-merge 后误拦", dec, reason)
@@ -262,15 +262,15 @@ func TestEvaluate_CrossBranchDifferentHashStillNeedsReview(t *testing.T) {
 	defaultBranch := currentGitBranch(t, dir)
 	write(t, dir, "a.go", "package a\n")
 	gitCheckout(t, dir, "checkout", "-b", "feat/x")
-	if err := MarkPassedWithNote(dir, ""); err != nil {
+	if err := MarkPassedFor(dir, "", ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 	gitCheckout(t, dir, "checkout", defaultBranch)
 	// 默认分支上内容不同 → hash 不同，无已审戳命中 → NeedReview。
 	write(t, dir, "a.go", "package a\nfunc F() {}\n")
-	dec, _, err := Evaluate(dir)
+	dec, _, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionNeedReview {
 		t.Fatalf("跨分支不同 hash 应 NeedReview，实际 %v——跨分支放行掩盖了新内容", dec)
@@ -278,29 +278,29 @@ func TestEvaluate_CrossBranchDifferentHashStillNeedsReview(t *testing.T) {
 }
 
 // TestEvaluate_OwnBranchBlockingButCrossBranchReviewedRescues 钉住微妙的 rescue：own 分支有该 hash 的
-// 戳但 Reviewed=false（之前 Evaluate 种了 BlockCount=1），且兄弟分支审过同一内容。Evaluate 必须
+// 戳但 Reviewed=false（之前 EvaluateFor 种了 BlockCount=1），且兄弟分支审过同一内容。Evaluate 必须
 // 经跨分支扫描放行，而不是累加 own 分支 block 计数——内容已审，own 分支的待 block 无意义。
 func TestEvaluate_OwnBranchBlockingButCrossBranchReviewedRescues(t *testing.T) {
 	dir := initGitRepo(t)
 	defaultBranch := currentGitBranch(t, dir)
 	write(t, dir, "a.go", "package a\n")
 
-	// 在默认分支种一个未审戳（Evaluate block → 写 BlockCount=1）。
-	if dec, _, _ := Evaluate(dir); dec != DecisionNeedReview {
+	// 在默认分支种一个未审戳（EvaluateFor block → 写 BlockCount=1）。
+	if dec, _, _ := EvaluateFor(dir, ""); dec != DecisionNeedReview {
 		t.Fatalf("首次应 NeedReview，实际 %v", dec)
 	}
 
 	// 兄弟分支，同一内容 → 在其上标记已审。
 	gitCheckout(t, dir, "checkout", "-b", "feat/x")
-	if err := MarkPassedWithNote(dir, ""); err != nil {
+	if err := MarkPassedFor(dir, "", ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 
 	// 切回默认分支：own 分支戳对该 hash 是 Reviewed=false，但 feat/x 已审过。
 	gitCheckout(t, dir, "checkout", defaultBranch)
-	dec, reason, err := Evaluate(dir)
+	dec, reason, err := EvaluateFor(dir, "")
 	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
+		t.Fatalf("EvaluateFor: %v", err)
 	}
 	if dec != DecisionPass {
 		t.Fatalf("own 分支 Reviewed=false 但他分支已审同 hash 应 Pass（跨分支 rescue），实际 %v（%s）", dec, reason)
@@ -317,7 +317,7 @@ func TestEvaluate_MaxRoundsAdvisory(t *testing.T) {
 	var iters int
 	for i := 0; i < MaxReviewRounds+2; i++ {
 		iters++
-		last, _, _ = Evaluate(dir)
+		last, _, _ = EvaluateFor(dir, "")
 		if last != DecisionNeedReview {
 			break
 		}
@@ -332,19 +332,19 @@ func TestEvaluate_MaxRoundsAdvisory(t *testing.T) {
 
 // TestEvaluate_StampExcludesForge 写 stamp 不污染 diff hash——防死循环核心断言。
 // 如果 stamp 计入 diff，写 stamp 会改 hash → 永远 NeedReview。这里证明 pass 后
-// 立即再 Evaluate（此时 stamp 已写）仍 Pass，说明 .forge 排除生效。
+// 立即再 EvaluateFor（此时 stamp 已写）仍 Pass，说明 .forge 排除生效。
 func TestEvaluate_StampExcludesForge(t *testing.T) {
 	dir := initGitRepo(t)
 	write(t, dir, "a.go", "package a\n")
-	if err := MarkPassedWithNote(dir, ""); err != nil {
+	if err := MarkPassedFor(dir, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	// stamp 落盘在 DataDir/stamps/（refactor-data-home：git 项目用户级）
 	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(dir), "stamps")); err != nil {
 		t.Fatalf("stamp 目录未创建: %v", err)
 	}
-	// 再 Evaluate：若 stamp 计入 diff 则 hash 变 → NeedReview（错误）
-	dec, _, _ := Evaluate(dir)
+	// 再 EvaluateFor：若 stamp 计入 diff 则 hash 变 → NeedReview（错误）
+	dec, _, _ := EvaluateFor(dir, "")
 	if dec != DecisionPass {
 		t.Fatalf("写 stamp 后再 Evaluate 应仍 Pass（.forge 排除生效），实际 %v——stamp 污染了 diff", dec)
 	}
@@ -544,7 +544,7 @@ func TestLoadStamp(t *testing.T) {
 	t.Run("persisted stamp round-trips", func(t *testing.T) {
 		root := initGitRepo(t)
 		write(t, root, "a.go", "package main\n")
-		if err := MarkPassedWithNote(root, ""); err != nil {
+		if err := MarkPassedFor(root, "", ""); err != nil {
 			t.Fatalf("MarkPassed: %v", err)
 		}
 		hash, _, err := computeDiffHash(root)
@@ -589,7 +589,7 @@ func TestMarkPassed_ContentAddressed(t *testing.T) {
 	if err != nil || !hasChanges {
 		t.Fatalf("computeDiffHash: err=%v hasChanges=%v", err, hasChanges)
 	}
-	if err := MarkPassedWithNote(dir, ""); err != nil {
+	if err := MarkPassedFor(dir, "", ""); err != nil {
 		t.Fatalf("MarkPassed: %v", err)
 	}
 	if _, err := os.Stat(stampContentPath(dir, hash)); err != nil {
@@ -601,7 +601,7 @@ func TestMarkPassed_ContentAddressed(t *testing.T) {
 }
 
 // TestEvaluate_LegacyBranchStampCompat 钉住迁移前 stamp 的读兼容：旧 <branch>.stamp 带
-// 当前 diff hash + Reviewed 时，Evaluate 仍放行、不要求重审（无 dh-<hash>.stamp 时
+// 当前 diff hash + Reviewed 时，EvaluateFor 仍放行、不要求重审（无 dh-<hash>.stamp 时
 // loadStamp 回落到分支路径）。
 func TestEvaluate_LegacyBranchStampCompat(t *testing.T) {
 	dir := initGitRepo(t)
@@ -625,7 +625,7 @@ func TestEvaluate_LegacyBranchStampCompat(t *testing.T) {
 	if err := os.WriteFile(p, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	decision, _, err := Evaluate(dir)
+	decision, _, err := EvaluateFor(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -664,7 +664,7 @@ func TestSourceChangesSinceExcluded(t *testing.T) {
 // TestKnownReviewed_PrunesStaleStamps 钉住 retention 清扫：超过 FORGE_STAMP_RETENTION_DAYS
 // （默认 30）的 dh-*.stamp 在 knownReviewed 入口被删（龄取文件 mtime，由 AtomicWrite 写入
 // 时设定），窗口内的戳保留；retention 为 0 禁用清扫。每个新 diff 的 Stop-block 都留下一枚
-// dh-<hash>.stamp 且此前无路径删除——清扫让目录与每次 Evaluate 的扫描保持有界。
+// dh-<hash>.stamp 且此前无路径删除——清扫让目录与每次 EvaluateFor 的扫描保持有界。
 func TestKnownReviewed_PrunesStaleStamps(t *testing.T) {
 	t.Run("sweep removes stale keeps fresh", func(t *testing.T) {
 		t.Setenv("FORGE_STAMP_RETENTION_DAYS", "30")
@@ -730,7 +730,7 @@ func TestKnownReviewed_PrunesStaleStamps(t *testing.T) {
 
 // TestKnownReviewed_ContentAddressedFilenameMatch 钉住扫描策略：
 //   - 文件名命中的 dh-<hash>.stamp 且 Reviewed=true → 命中（并点名来源分支）；
-//   - 名字命中但 Reviewed=false（Evaluate 的 block 路径把计数戳写在同一内容寻址路径）
+//   - 名字命中但 Reviewed=false（EvaluateFor 的 block 路径把计数戳写在同一内容寻址路径）
 //     不得命中——只按文件名命中会让仅被 block 的 diff 假放行；
 //   - 名字不匹配的 dh- 文件即使【内容】带目标 hash 也不读不命中（saveStamp 用
 //     DiffHash 推导路径，名/内容错配非合法状态）——扫描由 O(N) 次读降到至多一次的

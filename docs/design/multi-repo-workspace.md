@@ -18,7 +18,7 @@
 
 - 用户级 `~/.forge/workspaces.json`（与 projects.json 平级，同随 `FORGE_DATA_HOME` 隔离）是**唯一真相源**；`internal/workspace` 包承载 store。刻意不做静态长文档层——source 仓的多处纠偏疤痕证明多真相源必然漂移，Forge 侧清单即全部。
 - **成员引用 key 不引 path**：`RepoRef{Key, Path}` 里 Path 仅是 add 时刻的展示缓存，一切解析（状态聚合、依赖寻址、环检测）走 `forgedata.RootDir(key)`。path 会漂移（移动、worktree、大小写变体），key 不会——registry 已经踩过 path 漂移的坑，不重复。
-- workspace 是 registry **之上的聚合层**：不喂 `projectroot.Find` / `IsMember` 等 hook 热路径，hook 热路径零成本。
+- workspace 是 registry **之上的聚合层**：不喂 `projectroot.Resolve` / `registry.State` 等 hook 热路径（`forge policy state` 经 `projectroot.State` 的只读探针是例外），hook 热路径零成本。
 - **同一 key 允许属于多个 workspace**：全局工具无法假设互斥（共享库仓服务两个产品是常态）；重叠由 doctor 检出为 advisory，绝不硬性拒绝。
 - 文件契约复刻 registry：写走 `util.AtomicWrite`（temp+fsync+rename）；损坏文件写路径（`LoadForWrite`）备份为 `.corrupt-<ts>` 后从空重建，读路径（`Load`）返回显式错误让只读调用方 fail-open。
 
@@ -69,7 +69,7 @@
 
 ## 6. follow-up（v1 范围外）
 
-- workspace 级 protocol 中间层（不动 `protocol/loader.go:pathFor` 的项目级契约）；
+- workspace 级 protocol 中间层（不动 `internal/protocol/loader.go:24` 的 `pathFor` 的项目级契约）；
 - 规则即代码的通用 grep 检查配置化（等真实多仓规则积累 3+ 条再抽象，不提前泛化）；
 - PR 链 / 跨仓 e2e 编排（强业务耦合，属用户侧 tooling）；
 - workspaces.json 跨机同步（待 project sync 有用户级通道再议）；

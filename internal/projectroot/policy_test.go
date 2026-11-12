@@ -67,7 +67,7 @@ func TestFind_LegacySelfHealStillWorks(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(got, `.forge`)); serr != nil {
 		t.Fatalf(`Find returned %q, no .forge/ under it: %v`, got, serr)
 	}
-	if _, ok := registry.IsMember(sub); !ok {
+	if _, state := registry.State(sub); state != registry.StatusManaged {
 		t.Error(`self-heal did not register member`)
 	}
 }

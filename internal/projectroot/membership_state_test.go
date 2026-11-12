@@ -74,7 +74,7 @@ func TestState_RegistryFallback(t *testing.T) {
 }
 
 // TestState_RegistryDeclinedWithoutContract：注册表里明确退出、仓库又没有契约时，
-// State 必须报 declined 而不是 unknown——IsMember 把 declined 当非成员，只看它
+// State 必须报 declined 而不是 unknown——旧的布尔成员资格判定把 declined 当非成员，只看它
 // 的旧实现会把「拒绝」读成「从未登记」。
 func TestState_RegistryDeclinedWithoutContract(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
@@ -111,7 +111,7 @@ func TestState_LegacyConfigManagedWithoutHealing(t *testing.T) {
 	if !sameProjectRoot(t, gotRoot, root) || source != SourceLegacyConfig || status != registry.StatusManaged {
 		t.Fatalf("State = (%q, %q, %q), want (%q, legacy, managed)", gotRoot, source, status, root)
 	}
-	if _, ok := registry.IsMember(root); ok {
+	if _, state := registry.State(root); state != registry.StatusUnknown {
 		t.Fatal("State 不该自愈登记——只读探针不能改全局注册表")
 	}
 
@@ -119,7 +119,7 @@ func TestState_LegacyConfigManagedWithoutHealing(t *testing.T) {
 	if _, _, err := ResolveFrom(root); err != nil {
 		t.Fatalf("ResolveFrom: %v", err)
 	}
-	if _, ok := registry.IsMember(root); !ok {
+	if _, state := registry.State(root); state != registry.StatusManaged {
 		t.Fatal("ResolveFrom 应自愈登记遗留项目")
 	}
 }
