@@ -18,7 +18,7 @@ import (
 // off.go — Project Policy Layer P1 的对称命令面：forge off / forge on。
 //
 // 设计背景见 docs/design/project-policy-layer.md。退出语义红线：一条命令、立即
-// 生效（下一条 hook 触发即不跑——IsMember/Find 已按 declined 收口）、升级不重置
+// 生效（下一条 hook 触发即不跑——成员资格解析已按 declined 收口）、升级不重置
 // （状态在用户级 store）、无残留（零项目写入）、幂等。declined→managed 的唯一
 // 通道是 forge on（SetStatus）；（历史注记：forge suggest decline/reset 曾是同一核心的兼容别名，命令族已于 2026-09 死代码清扫删除，marker 双写垫片保留。）
 //

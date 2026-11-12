@@ -53,7 +53,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	root, memberSource, err := projectroot.Resolve()
 	if err != nil {
-		// declined 项目 Find 失败（IsMember 不认 declined）——把通用的"非 forge
+		// declined 项目解析失败（成员资格判定不认 declined，返回 ErrDeclinedProject）——把通用的"非 forge
 		// 项目"错误换成面向用户的 declined 提示（指向 forge on）。status 非热路径，
 		// 一次额外 State 查询可接受。--json 消费者拿 JSON 错误包裹（stdout），
 		// cobra 的 Error: 行仍走 stderr 不污染机器可读输出。

@@ -4,7 +4,7 @@
 //
 // user-level-assets 重构后，本注册表是"这是不是 forge 项目"的锚点：forge init 默认
 // 不再写项目级 .forge/ 标记，成员资格（git key 或路径前缀匹配）取代旧的 .forge/
-// 存在性检查。projectroot.Find/FindProject 经 IsMember 解析项目根；遗留的 .forge/
+// 存在性检查。projectroot.Resolve/State 经共享 lookup 解析项目根；遗留的 .forge/
 // walk-up 仅作为老版本 init 项目的向后兼容兜底（命中后自愈登记）。
 //
 // forge dashboard 聚合全局 Pulse 面板即读 List()——同一 store。
@@ -45,7 +45,7 @@ func pathKey(cleanedAbs string) string {
 // 为 PathKey）；老版本 forge 写入的条目可能为空——匹配时惰性补算（不阻塞读）。
 // Status/DecisionBy/DecisionAt 是 Project Policy Layer 的接管状态与决策审计
 // （见 policy.go）：Status 空串（零值）= managed——存量 JSON 无此字段，升级不改变
-// 任何既有项目的成员资格；"declined" = 已退出接管（IsMember 不再命中）。
+// 任何既有项目的成员资格；"declined" = 已退出接管（成员资格解析不再命中）。
 type Entry struct {
 	Path string `json:"path"`
 	Key  string `json:"key,omitempty"`
@@ -384,29 +384,6 @@ func backupCorrupt(p string, uerr error) {
 	}
 }
 
-// IsMember reports whether cwd is inside a registered AND managed forge project,
-// returning the project root. Declined entries do not confer membership (Project
-// Policy Layer P1): every project-scoped hook gates through this call, so on this
-// surface a declined project is indistinguishable from an unregistered one.
-//
-// IsMember 报告 cwd 是否在某个已登记且 managed 的 forge 项目内，并返回项目根。
-// declined 条目不赋予成员资格（Project Policy Layer P1）：所有 project-scoped
-// hook 都经本调用闸门，declined 项目在此表面上与未登记项目不可区分。匹配规则与
-// State 共享同一 lookup 核心，成员资格与状态判定不会漂移：
-//   - git cwd：repo 的 forge key（git common-dir hash）等于某个已登记 key——
-//     跨 worktree 安全、无需 .forge/。返回的根是 git working tree 根。
-//   - 非 git cwd：等于 cwd 或为其祖先的最长已登记路径（边界感知前缀匹配）。
-//
-// 热路径只读（不写回）；无存储 key 的遗留条目每次调用在内存补算——代价是每个
-// 候选条目几次 stat。
-func IsMember(cwd string) (root string, ok bool) {
-	root, e, ok := lookup(cwd)
-	if !ok || e.IsDeclined() {
-		return ``, false
-	}
-	return root, true
-}
-
 // DeclineFileName is the committed team-declaration marker at the repo root:
 // its existence means the repo is managed by its own harness and forge must
 // yield (deny-wins over any managed state). Written by `forge off --commit`
@@ -419,13 +396,13 @@ func IsMember(cwd string) (root string, ok bool) {
 // 执行该判定。
 const DeclineFileName = `.forge-decline`
 
-// lookup is the shared matching core of IsMember/State/ListManaged: it resolves cwd
+// lookup is the shared matching core of State/ListManaged/projectroot: it resolves cwd
 // to the matched registry entry (managed or declined alike) or reports no match.
 // The returned root is the matched project's root; callers derive membership from
-// the entry's Status. Matching semantics live here exactly once (P1: IsMember 与
-// State 的判定单一真相源).
+// the entry's Status. Matching semantics live here exactly once (P1: 成员资格与
+// 状态判定的单一真相源).
 //
-// lookup 是 IsMember/State/ListManaged 共享的匹配核心：把 cwd 解析到命中的注册表
+// lookup 是 State/ListManaged/projectroot 共享的匹配核心：把 cwd 解析到命中的注册表
 // 条目（无论 managed/declined）或报告未命中。返回的 root 是命中项目的根；调用方
 // 自行从条目 Status 推导成员资格。匹配语义只在此处存在一份。
 func lookup(cwd string) (root string, entry Entry, ok bool) {
@@ -473,7 +450,7 @@ func lookup(cwd string) (root string, entry Entry, ok bool) {
 		// key 循环落空、项目被「遗忘」——forge 报「not a forge project」，所有 project-scoped
 		// 强制 hook 降级放行（AgentOffice bug）。改为按 git working-tree 根匹配条目路径：
 		// 登记路径等于 git 根的条目就是同一项目（在它变 git 之前登记的）。刻意只读——
-		// IsMember 是被并发 hook 进程触发的热路径，此处写回会竞态（writeEntries 非并发安全）；
+		// lookup 是被并发 hook 进程触发的热路径，此处写回会竞态（writeEntries 非并发安全）；
 		// 陈旧 key 由下次 `forge init`（Add upsert）刷新。
 		for _, e := range f.Projects {
 			for _, ep := range pathForms(e.Path) {
@@ -494,7 +471,7 @@ func lookup(cwd string) (root string, entry Entry, ok bool) {
 	var bestE Entry
 	for _, e := range f.Projects {
 		// 死条目不赋予成员资格（与 List 精简同一条存活规则）：已删除/移走的
-		// 项目目录不得命中——IsMember 只读不精简，少了这道检查，一个路径恰好
+		// 项目目录不得命中——lookup 只读不精简，少了这道检查，一个路径恰好
 		// 是 cwd 祖先的失效条目会把已消失的项目复活。
 		if _, err := os.Stat(e.Path); err != nil {
 			if os.IsNotExist(err) {
@@ -547,8 +524,8 @@ func lookup(cwd string) (root string, entry Entry, ok bool) {
 }
 
 // pathForms 返回路径的匹配候选形态：Clean 后的字面形态，以及 symlink 解析后的
-// 物理形态（不同时才含；macOS /var→/private/var、symlink 项目目录）。IsMember
-// 的两侧（cwd 与注册条目）都跨这些形态匹配。
+// 物理形态（不同时才含；macOS /var→/private/var、symlink 项目目录）。成员资格
+// 匹配的两侧（cwd 与注册条目）都跨这些形态匹配。
 func pathForms(p string) []string {
 	clean := filepath.Clean(p)
 	forms := []string{clean}
