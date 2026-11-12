@@ -155,7 +155,9 @@ hooks: on          # on | off（缺省 on）
 
 其余命令族（`skills`、`eval`、`act`、`workspace`、`project`、`registry`、`harness`、`compat`、`plugin`、`conventions`、`policy`、`enforcement`、`selfcheck`、`sync`、`migrate`、`uninstall`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`、`verify`、`trust`）见同一份[完整命令表](docs/reference/cli.md)。
 
-**回环怎么跑**：agent 每个回合先 `forge change status <id>`，只执行它给出的 next steps——补产物、跑 verify、读失败证据、重跑，全过了才归档。判断标准全部来自仓库里的文件与证据，不来自对话记忆，也不依赖宿主 hook：换机器、换 agent，只要仓库在，循环就还在。逐节点推进用 `forge change gate <id> --task N`（节点证据不封印整条 change）；同一个原因连续失败 3 次，status 直接给 `blocked` 并停止给下一步——继续与否由人决定。
+**回环怎么跑**：agent 每个回合先 `forge change status <id>`，只执行它给出的下一步——补产物、跑 verify、读失败证据、重跑，acceptance 的判据全部通过才归档。判断标准来自仓库里的文件与证据，不来自对话记忆；in-loop 不需要宿主 hook（`forge change status/verify` 仍是 forge 二进制提供的命令，所以「零安装」指不用装 hook，不是不用装 forge）。逐节点推进用 `forge change gate <id> --task N`：只跑该任务引用的判据，节点证据不封印整条 change。
+
+「同一个原因」指每次 verify/gate 的**第一条失败命令**：换一条命令、或中间有一次通过，就重新计数。连续 3 次同因失败 → `blocked`，此时 `next_steps` 不再给任何可执行命令，恢复命令放在 `handoff` 字段里，由人执行。fast change（`new --fast`）的判据与证据规则和普通 change 完全一样，只是只要求 proposal + acceptance 两份产物。
 
 ## 🪝 Hook 系统
 

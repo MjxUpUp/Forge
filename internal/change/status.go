@@ -21,17 +21,21 @@ const MaxSameCauseAttempts = 3
 
 // Task 是 tasks.md 里的一条待办。
 type Task struct {
-	Index int
-	Text  string
-	Done  bool
+	Index int    `json:"index"`
+	Text  string `json:"text"`
+	// Done 是人在 tasks.md 里勾的进度，不产生证据，也不改变节点状态。
+	Done bool `json:"done"`
 	// Criteria 是这条任务声明的判据序号（`判据：acceptance #2` 里的 2）。
 	// 空表示这条任务没写判据，无法单独 gate。
-	Criteria []int
+	Criteria []int `json:"criteria,omitempty"`
 }
 
 var (
-	taskLineRE  = regexp.MustCompile(`^\s*[-*]\s+\[([ xX])\]\s+(.*\S)\s*$`)
-	criterionRE = regexp.MustCompile(`#(\d+)`)
+	taskLineRE = regexp.MustCompile(`^\s*[-*]\s+\[([ xX])\]\s+(.*\S)\s*$`)
+	// 判据必须是 `判据：acceptance #N`（允许中文冒号、多个序号用顿号/逗号/斜杠分隔）。
+	// 早先只要出现"判据"就把后面所有 #N 都算上，`修改判据 #3 的文档` 会被误读。
+	criterionRE = regexp.MustCompile(`判据\s*[:：]\s*acceptance\s+((?:#\d+[\s、,，/]*)+)`)
+	numberRE    = regexp.MustCompile(`#(\d+)`)
 )
 
 // ParseTasks 解析 tasks.md 的勾选行。
@@ -41,7 +45,18 @@ var (
 // 标题里出现 #号 不会被误读。
 func ParseTasks(raw []byte) []Task {
 	var out []Task
+	// 代码围栏里的示例是给人看的，不能当成待办：否则 Index 整体错位，
+	// gate --task N 会打到别的任务上。
+	inFence := false
 	for _, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
 		m := taskLineRE.FindStringSubmatch(line)
 		if m == nil {
 			continue
@@ -51,8 +66,8 @@ func ParseTasks(raw []byte) []Task {
 			Done:  strings.EqualFold(m[1], "x"),
 			Text:  m[2],
 		}
-		if i := strings.LastIndex(t.Text, "判据"); i >= 0 {
-			for _, n := range criterionRE.FindAllStringSubmatch(t.Text[i:], -1) {
+		for _, c := range criterionRE.FindAllStringSubmatch(t.Text, -1) {
+			for _, n := range numberRE.FindAllStringSubmatch(c[1], -1) {
 				if v, err := strconv.Atoi(n[1]); err == nil {
 					t.Criteria = appendUniqueInt(t.Criteria, v)
 				}
@@ -75,12 +90,9 @@ func appendUniqueInt(s []int, v int) []int {
 // Attempt 是一次落盘的验证记录（evidence/<ts>）。
 type Attempt struct {
 	Dir          string
-	StartedAt    string
-	FinishedAt   string
 	Passed       bool
 	Sealed       bool
 	Task         int
-	Fast         bool
 	Checks       []Check
 	FirstFailure *Check
 }
@@ -120,14 +132,11 @@ func Attempts(c *Change) []Attempt {
 			continue
 		}
 		a := Attempt{
-			Dir:        dir,
-			StartedAt:  sum.StartedAt,
-			FinishedAt: sum.FinishedAt,
-			Passed:     sum.Passed,
-			Sealed:     sum.Sealed,
-			Task:       sum.Task,
-			Fast:       sum.Fast,
-			Checks:     sum.Checks,
+			Dir:    dir,
+			Passed: sum.Passed,
+			Sealed: sum.Sealed,
+			Task:   sum.Task,
+			Checks: sum.Checks,
 		}
 		for i := range sum.Checks {
 			if sum.Checks[i].Exit != 0 {
@@ -152,6 +161,9 @@ const (
 	NodePassed  NodeState = "passed"
 	NodeFailed  NodeState = "failed"
 	NodeBlocked NodeState = "blocked"
+	// NodeDone 表示人勾了 [x] 但没有 gate 证据。勾选是进度记录，不是判据，
+	// 所以它不能把任务变成 passed，也不能清掉 blocked。
+	NodeDone NodeState = "done"
 )
 
 // NodeStatus 是一条任务的当前状态与它的最近一次证据。
@@ -168,11 +180,14 @@ type NodeStatus struct {
 // agent 不该自己挑下一步：它只看这里给出的 next_steps，逐条执行。判断标准
 // 全部来自文件与证据，不来自对话记忆。
 type Status struct {
-	ID          string       `json:"id"`
-	Stage       string       `json:"stage"`
-	Fast        bool         `json:"fast"`
-	Verdict     string       `json:"verdict"` // clean / action / blocked
-	Blocked     string       `json:"blocked,omitempty"`
+	ID      string `json:"id"`
+	Stage   string `json:"stage"`
+	Fast    bool   `json:"fast"`
+	Verdict string `json:"verdict"` // clean / action / blocked
+	Blocked string `json:"blocked,omitempty"`
+	// Handoff 是给"决定继续的那个人"看的一句话。它不进 next_steps：循环只执行
+	// next_steps，可执行的恢复命令放进那里就会被 agent 照跑。
+	Handoff     string       `json:"handoff,omitempty"`
 	NextSteps   []string     `json:"next_steps"`
 	Nodes       []NodeStatus `json:"nodes,omitempty"`
 	Attempts    int          `json:"attempts"`
@@ -205,10 +220,18 @@ func StatusOf(root, id string) (*Status, error) {
 		st.LastVerdict = "none"
 	}
 
+	// 已封印是终态：整条判据都过了，节点上的历史失败只作记录，不再拦人。
+	if c.Sealed {
+		st.Verdict = "clean"
+		st.NextSteps = nextSteps(root, c, st)
+		return st, nil
+	}
+
 	// 整条 change 的停止条件：连续同因失败达到阈值。
 	if sig, n := repeatedFailure(fullAttempts(atts)); n >= MaxSameCauseAttempts {
 		st.Verdict = "blocked"
 		st.Blocked = fmt.Sprintf("最近 %d 次验证都卡在同一条命令上：%s", n, truncate(sig, 120))
+		st.Handoff = fmt.Sprintf("确认要继续，就先改判据或改实现，再由人跑：forge change verify %s", id)
 	}
 	// 节点耗尽同样要停：某条任务反复卡在同一个判据上，继续在整条 verify 里
 	// 重试只是换个地方重复烧钱。
@@ -217,12 +240,13 @@ func StatusOf(root, id string) (*Status, error) {
 			if n.State == NodeBlocked {
 				st.Verdict = "blocked"
 				st.Blocked = fmt.Sprintf("任务 %d 连续 %d 次卡在同一个判据上：%s", n.Task.Index, MaxSameCauseAttempts, n.LastError)
+				st.Handoff = fmt.Sprintf("确认要继续，就改这一条的判据或实现，再由人跑：forge change gate %s --task %d", id, n.Task.Index)
 				break
 			}
 		}
 	}
 
-	st.NextSteps = nextSteps(c, st)
+	st.NextSteps = nextSteps(root, c, st)
 	return st, nil
 }
 
@@ -267,7 +291,7 @@ func nodeStatuses(c *Change, atts []Attempt) []NodeStatus {
 	for _, t := range tasks {
 		ns := NodeStatus{Task: t, State: NodePending}
 		if t.Done {
-			ns.State = NodePassed
+			ns.State = NodeDone
 		}
 		var failed []Attempt
 		for _, a := range atts {
@@ -279,14 +303,12 @@ func nodeStatuses(c *Change, atts []Attempt) []NodeStatus {
 				ns.LastEvidence = a.Dir
 			}
 			if a.Passed {
-				if !t.Done {
-					ns.State = NodePassed
-				}
+				ns.State = NodePassed
 				break
 			}
 			failed = append(failed, a)
 		}
-		if len(failed) > 0 && !t.Done {
+		if len(failed) > 0 {
 			ns.State = NodeFailed
 			ns.LastError = failureBrief(failed[0])
 			if sig, n := repeatedFailure(failed); n >= MaxSameCauseAttempts {
@@ -308,10 +330,11 @@ func failureBrief(a Attempt) string {
 
 func truncate(s string, n int) string {
 	s = strings.TrimSpace(s)
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return string(r[:n]) + "…"
 }
 
 // nextSteps 给出"接下来该敲什么"。
@@ -320,31 +343,18 @@ func truncate(s string, n int) string {
 // 失败先看证据，全过了才谈归档。blocked 时不给出任何新命令——那是给人的。
 //
 // 参数 c 由调用方 Load 得到，避免重复读盘。
-func nextSteps(c *Change, st *Status) []string {
+func nextSteps(root string, c *Change, st *Status) []string {
 	if st.Verdict == "blocked" {
+		// 这里刻意不给命令：status 是循环唯一的下一步来源，写了什么 agent 就会
+		// 照跑。恢复要人决定，命令放在 Handoff 里（CLI 单独一段输出）。
 		return []string{
-			"停下：同一个原因已经失败 " + strconv.Itoa(MaxSameCauseAttempts) + " 次，继续重试只会重复烧钱。",
-			"看最近一次证据：" + relTo(c.Dir, latestEvidenceDir(c)),
-			"改判据或改实现后，由人重新跑步：「forge change verify " + c.ID + "」。",
+			"已停下：同一个原因连续失败 " + strconv.Itoa(MaxSameCauseAttempts) + " 次。",
+			"证据：" + relTo(c.Dir, latestEvidenceDir(c)),
+			"先读上面那条证据，再决定是改判据还是改实现；不要在循环里重试。",
 		}
 	}
 
-	required := []string{FileProposal, FileDesign, FileTasks, FileAcceptance}
-	if c.Fast {
-		required = []string{FileProposal, FileAcceptance}
-	}
-	var missing []string
-	for _, name := range required {
-		raw, err := os.ReadFile(filepath.Join(c.Dir, name))
-		if err != nil {
-			missing = append(missing, name)
-			continue
-		}
-		if strings.Contains(string(raw), scaffoldMarker) {
-			missing = append(missing, name+"（还带着模板标记）")
-		}
-	}
-	if len(missing) > 0 {
+	if missing := DocProblems(c.Dir, c.Fast); len(missing) > 0 {
 		return []string{
 			"补齐产物：" + strings.Join(missing, "、"),
 			"填完后删掉文件里的 " + scaffoldMarker + " 标记。",
@@ -356,13 +366,10 @@ func nextSteps(c *Change, st *Status) []string {
 	}
 	switch {
 	case c.Sealed:
-		steps := []string{"归档：git mv " + relTo(filepath.Dir(c.Dir), c.Dir) + " spec/changes/archive/" + archiveNameSuggestion(c.ID)}
-		for _, n := range st.Nodes {
-			if n.State != NodePassed {
-				steps = append(steps, "还有未过节点的记录："+nodeStep(c.ID, n))
-			}
-		}
-		return steps
+		// 基准是 spec/changes 的上一层（仓库根），否则命令里的路径在哪个 cwd
+		// 下都不对。归档只看整条 verify 的判据；未过节点只作记录，不拦归档。
+		src := relTo(root, c.Dir)
+		return []string{"归档：git mv " + src + " spec/changes/archive/" + archiveNameSuggestion(c.ID)}
 	case c.Stale:
 		return []string{"判据或工作区变过，证据已失效：forge change verify " + c.ID}
 	case c.Failed:
