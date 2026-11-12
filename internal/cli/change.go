@@ -88,7 +88,8 @@ var changeStatusCmd = &cobra.Command{
 
 var changeAgentsCmd = &cobra.Command{
 	Use:   "agents",
-	Short: "同步 AGENTS.md 的 forge 托管块（标记外一字不改）",
+	Short: "同步 AGENTS.md 的 forge 托管块（标记外不动）",
+	Args:  cobra.NoArgs,
 	RunE:  runChangeAgents,
 }
 

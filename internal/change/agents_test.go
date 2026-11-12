@@ -34,6 +34,9 @@ func TestEnsureAgentsBlock_CreatesFile(t *testing.T) {
 	if !strings.Contains(text, "forge change status") {
 		t.Fatalf("协议正文缺失：%q", text)
 	}
+	if !strings.Contains(text, "本段由 forge 维护") {
+		t.Fatalf("托管块未自证身份：%q", text)
+	}
 }
 
 func TestEnsureAgentsBlock_PreservesHumanContent(t *testing.T) {
@@ -111,5 +114,24 @@ func TestEnsureAgentsBlock_RejectsUnpairedMarkers(t *testing.T) {
 
 	if _, err := EnsureAgentsBlock(root); err == nil {
 		t.Fatal("标记不成对应报错")
+	}
+}
+
+func TestEnsureAgentsBlock_AppendKeepsOriginalBytes(t *testing.T) {
+	root := t.TempDir()
+	human := "# 约定\n\n- 行一\n\n\n"
+	if err := os.WriteFile(filepath.Join(root, AgentsFile), []byte(human), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := EnsureAgentsBlock(root); err != nil {
+		t.Fatalf("EnsureAgentsBlock: %v", err)
+	}
+	text := readAgents(t, root)
+	if !strings.HasPrefix(text, human) {
+		t.Fatalf("追加路径改动了原有字节：got %q, want 前缀 %q", text, human)
+	}
+	if !strings.Contains(text, agentsBegin) {
+		t.Fatalf("追加后无托管块：%q", text)
 	}
 }
