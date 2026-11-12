@@ -51,7 +51,10 @@
       "path": "forge change"
     },
     {
-      "path": "forge change agents"
+      "path": "forge change agents",
+      "flags": [
+        "pointers"
+      ]
     },
     {
       "path": "forge change check",
