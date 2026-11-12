@@ -204,6 +204,22 @@ func Init(root, profile string) (created []string, err error) {
 	case AgentsUpdated:
 		created = append(created, "AGENTS.md（更新 forge 托管块）")
 	}
+
+	// 单源多指针：仓库已经在用 Claude Code / Cursor 的，顺手把入口文件指到
+	// AGENTS.md；没用这些 agent 的不替它建文件（那是污染）。
+	reports, err := EnsureAgentPointers(root, nil)
+	if err != nil {
+		return created, fmt.Errorf("%w（AGENTS.md 已写入；修好后跑 `forge change agents`）", err)
+	}
+	for _, r := range reports {
+		if r.Skipped {
+			continue
+		}
+		switch r.Action {
+		case AgentsCreated, AgentsAppended, AgentsUpdated:
+			created = append(created, r.File+"（指针 → AGENTS.md）")
+		}
+	}
 	return created, nil
 }
 

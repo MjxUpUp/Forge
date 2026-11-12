@@ -214,6 +214,58 @@ func Attempts(c *Change) []Attempt {
 	return out
 }
 
+// PriorAttempt 是一次没通过的验证记录（新→旧）。
+//
+// 它是"死路记忆"的读侧：返工的人先读这些命令和退出码，避免重试已经证伪的
+// 路。只列失败的尝试——通过的记录不是死路，读它没有返工价值。
+type PriorAttempt struct {
+	// Evidence 是证据目录名（evidence/<ts>），失败命令的 stdout/stderr 就在其中。
+	Evidence string `json:"evidence"`
+	// Task 非零表示这是一次单节点 gate。
+	Task    int    `json:"task,omitempty"`
+	Command string `json:"failed_command,omitempty"`
+	Exit    int    `json:"exit,omitempty"`
+	Shell   string `json:"shell,omitempty"`
+	// TimedOut 为真时 Exit 没有意义：命令是被超时终止的，不是自己退出的。
+	TimedOut bool `json:"timed_out,omitempty"`
+	// StderrFile/StdoutFile 是证据目录里的文件名（空表示该管道没有输出）。
+	StderrFile string `json:"stderr_file,omitempty"`
+	StdoutFile string `json:"stdout_file,omitempty"`
+	// Reason 在没有可定位的失败命令时说明原因（证据残缺、或判据都过了却没封印）。
+	Reason string `json:"reason,omitempty"`
+}
+
+// priorAttempts 从失败记录里取最近的几条（新→旧），最多 limit 条。
+func priorAttempts(atts []Attempt, limit int) []PriorAttempt {
+	var out []PriorAttempt
+	for _, a := range atts {
+		if a.Passed {
+			continue
+		}
+		pa := PriorAttempt{
+			Evidence: filepath.Base(a.Dir),
+			Task:     a.Task,
+		}
+		if f := a.FirstFailure; f != nil {
+			pa.Command, pa.Shell = f.Command, f.Shell
+			if f.TimedOut {
+				// 超时的退出码是杀人灭口留下的，不该当成命令自己的结果。
+				pa.TimedOut = true
+			} else {
+				pa.Exit = f.Exit
+			}
+			pa.StdoutFile, pa.StderrFile = f.StdoutFile, f.StderrFile
+		} else {
+			pa.Reason = "没有可定位的失败命令（证据残缺，或判据都过了却没封印）"
+		}
+		out = append(out, pa)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out
+}
+
 // NodeState 是单条任务的状态。
 type NodeState string
 
@@ -253,6 +305,9 @@ type Status struct {
 	Nodes       []NodeStatus `json:"nodes,omitempty"`
 	Attempts    int          `json:"attempts"`
 	LastVerdict string       `json:"last_verdict,omitempty"` // sealed / failed / stale / none
+	// PriorAttempts 是最近失败验证的摘要（新→旧）。循环停下或返工时先读它：
+	// 同样的命令、同样的退出码，重跑一遍只是再烧一次 token。
+	PriorAttempts []PriorAttempt `json:"prior_attempts,omitempty"`
 }
 
 // StatusOf 推导一个 change 的当前状态、判定与下一步。
@@ -269,6 +324,10 @@ func StatusOf(root, id string) (*Status, error) {
 		Verdict:  "action",
 		Attempts: len(fullAttempts(atts)),
 		Nodes:    nodeStatuses(c, atts),
+	}
+	// 已封印的 change 不再需要死路记忆：封印是终态，历史失败只作记录。
+	if !c.Sealed {
+		st.PriorAttempts = priorAttempts(atts, 10)
 	}
 	switch {
 	case c.Sealed:
@@ -426,7 +485,7 @@ func nextSteps(root string, c *Change, st *Status) []string {
 		// 照跑。恢复要人决定，命令放在 Handoff 里（CLI 单独一段输出）。
 		return []string{
 			"已停下：同一个原因连续失败 " + strconv.Itoa(MaxSameCauseAttempts) + " 次。",
-			"证据：" + relTo(c.Dir, latestEvidenceDir(c)),
+			"证据：" + relTo(root, latestEvidenceDir(c)),
 			"先读上面那条证据，再决定是改判据还是改实现；不要在循环里重试。",
 		}
 	}
@@ -451,7 +510,7 @@ func nextSteps(root string, c *Change, st *Status) []string {
 		return []string{"判据或工作区变过，证据已失效：forge change verify " + c.ID}
 	case c.Failed:
 		return []string{
-			"最近一次验证没通过，先读证据：" + relTo(c.Dir, latestEvidenceDir(c)),
+			"最近一次验证没通过，先读证据：" + relTo(root, latestEvidenceDir(c)),
 			"修实现或修判据，然后重跑：forge change verify " + c.ID,
 		}
 	}

@@ -38,6 +38,7 @@ func init() {
 	changeGateCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条判据的超时")
 	changeCheckCmd.Flags().Bool("staged", false, "只看暂存区（pre-commit 用；暂存区出现 spec/changes/ 之外的改动则退化为全量）")
 	changeCheckCmd.Flags().Bool("json", false, "JSON 格式输出")
+	changeAgentsCmd.Flags().String("pointers", "", "同时维护指向 AGENTS.md 的指针文件：claude / cursor / all / none（缺省只维护已存在的 CLAUDE.md；.cursor/rules/ 目录存在时补 forge.mdc）")
 }
 
 var changeCmd = &cobra.Command{
@@ -61,7 +62,7 @@ var changeCmd = &cobra.Command{
 
 var changeInitCmd = &cobra.Command{
 	Use:   "init [--profile <mini|standard|full>]",
-	Short: "在仓库里声明契约（spec/forge.yaml + spec/changes/）+ 同步 AGENTS.md 托管块",
+	Short: "在仓库里声明契约（spec/forge.yaml + spec/changes/）+ 同步 AGENTS.md 托管块与已存在的入口指针",
 	RunE:  runChangeInit,
 }
 
@@ -94,9 +95,21 @@ var changeStatusCmd = &cobra.Command{
 
 var changeAgentsCmd = &cobra.Command{
 	Use:   "agents",
-	Short: "同步 AGENTS.md 的 forge 托管块（标记外不动）",
-	Args:  cobra.NoArgs,
-	RunE:  runChangeAgents,
+	Short: "同步 AGENTS.md 的 forge 托管块与 agent 入口指针（标记外不动）",
+	Long: `同步 AGENTS.md 的 forge 托管块，并维护指向它的 agent 入口指针：
+
+  CLAUDE.md                 Claude Code 读这个文件；块里是 @AGENTS.md 导入
+  .cursor/rules/forge.mdc   Cursor 规则；块里让 agent 先读 AGENTS.md
+
+指针文件不存在时默认不创建（替不用这个 agent 的仓库建文件是污染）：CLAUDE.md
+不存在就不建；例外是 .cursor/rules/ 目录已存在时补 forge.mdc（说明仓库已在用
+Cursor）。要凭空创建就点名：--pointers claude、--pointers cursor、--pointers
+all；--pointers none 完全不动指针。
+
+合并已有文件时：有托管块只改块内；没有块就在末尾追加，原有字节与行尾不动；
+标记不成对或多对报错且不动文件。`,
+	Args: cobra.NoArgs,
+	RunE: runChangeAgents,
 }
 
 var changeCheckCmd = &cobra.Command{
@@ -126,26 +139,33 @@ func runChangeInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	created, err := change.Init(root, profile)
+	if len(created) > 0 {
+		fmt.Println("本次改动（已就位）：")
+		for _, p := range created {
+			fmt.Printf("  + %s\n", p)
+		}
+		fmt.Println()
+	}
 	if err != nil {
 		return err
 	}
-	fmt.Println("本次改动（已就位）：")
-	for _, p := range created {
-		fmt.Printf("  + %s\n", p)
-	}
-	fmt.Println()
 	fmt.Println("下一步：")
 	fmt.Printf("  forge change new <id> --title \"...\"    # 新建一个 change\n")
 	return nil
 }
 
-func runChangeAgents(_ *cobra.Command, _ []string) error {
+func runChangeAgents(cmd *cobra.Command, _ []string) error {
 	root, err := changeRoot()
 	if err != nil {
 		return err
 	}
 	if !specroot.Declared(root) {
 		return fmt.Errorf("change: %s 还没有 spec/forge.yaml——先跑 `forge change init` 声明契约，再同步 AGENTS.md", root)
+	}
+	pointers, _ := cmd.Flags().GetString("pointers")
+	create, none, err := parsePointerNames(pointers)
+	if err != nil {
+		return err
 	}
 	action, err := change.EnsureAgentsBlock(root)
 	if err != nil {
@@ -161,7 +181,105 @@ func runChangeAgents(_ *cobra.Command, _ []string) error {
 	default:
 		fmt.Println("AGENTS.md 的 forge 托管块已是最新，无需改动")
 	}
+
+	if none {
+		return nil
+	}
+	reports, err := change.EnsureAgentPointers(root, create)
+	if err != nil {
+		return err
+	}
+	for _, r := range reports {
+		if r.Skipped {
+			fmt.Printf("  %s：不存在，未创建（要启用就加 --pointers %s）\n", r.File, pointerKind(r.File))
+			continue
+		}
+		switch r.Action {
+		case change.AgentsCreated:
+			fmt.Printf("  %s：已新建指针（指向 AGENTS.md）\n", r.File)
+		case change.AgentsAppended:
+			fmt.Printf("  %s：已追加指针（原有内容未动）\n", r.File)
+		case change.AgentsUpdated:
+			fmt.Printf("  %s：已更新指针（标记外未动）\n", r.File)
+		default:
+			fmt.Printf("  %s：指针已是最新\n", r.File)
+		}
+	}
 	return nil
+}
+
+// parsePointerNames 解析 --pointers：空表示"只维护已存在的文件"，all 表示两个
+// 都创建，none 表示全都不碰。
+// parsePointerNames 把 --pointers 的取值翻成要创建的入口名。none 单独用 bool
+// 返回：调用方据此区分「显式 none」（什么都不动）与「没写这个 flag」（只维护
+// 已存在的入口）——两者 create 都为空，但语义不同。
+func parsePointerNames(raw string) (names []string, none bool, err error) {
+	parts := strings.Split(strings.TrimSpace(raw), ",")
+	var claude, cursor, hasNone bool
+	for _, part := range parts {
+		switch name := strings.TrimSpace(part); name {
+		case "":
+		case "none":
+			hasNone = true
+		case "all":
+			claude, cursor = true, true
+		case "claude":
+			claude = true
+		case "cursor":
+			cursor = true
+		default:
+			return nil, false, fmt.Errorf("change: 未知的指针 %q（可选 claude / cursor / all / none）", name)
+		}
+	}
+	if hasNone && (claude || cursor) {
+		return nil, false, fmt.Errorf("change: --pointers 里 none 不能和别的取值同时写")
+	}
+	if hasNone {
+		return nil, true, nil
+	}
+	var out []string
+	if claude {
+		out = append(out, "claude")
+	}
+	if cursor {
+		out = append(out, "cursor")
+	}
+	return out, false, nil
+}
+
+// rootRel 把路径转成相对仓库根的斜杠路径，供人类输出直接复制。
+func rootRel(root, path string) string {
+	if rel, err := filepath.Rel(root, path); err == nil {
+		return filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(path)
+}
+
+// displayCommand 把多行判据压成一行：状态列表是给人扫的，命令里的换行会把
+// 后面的条目挤到下一行，看起来像输出的一部分。
+func displayCommand(cmd string) string {
+	cmd = strings.TrimSpace(cmd)
+	lines := strings.Split(cmd, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+	out := strings.Join(lines, " ; ")
+	if runes := []rune(out); len(runes) > 160 {
+		out = string(runes[:160]) + "…"
+	}
+	return out
+}
+
+// pointerKind 把文件名翻回 --pointers 的取值，提示里能直接抄。
+func pointerKind(file string) string {
+	switch file {
+	case change.ClaudeFile:
+		return "claude"
+	case change.CursorRuleFile:
+		return "cursor"
+	default:
+		return ""
+	}
 }
 
 func runChangeNew(cmd *cobra.Command, args []string) error {
@@ -456,7 +574,7 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println("验证：还没有记录")
 	}
 	if st.Attempts > 0 {
-		fmt.Printf("整条验证记录：%d 次\n", st.Attempts)
+		fmt.Printf("整条验证记录（不含节点 gate）：%d 次\n", st.Attempts)
 	}
 	if len(st.Nodes) > 0 {
 		fmt.Println()
@@ -483,6 +601,46 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Println(line)
 		}
+	}
+	if len(st.PriorAttempts) > 0 {
+		// 死路记忆放在判定之前：人先看到"已经试过什么、怎么失败的"，再看
+		// 下一步该做什么，否则很容易照着同一句命令再跑一遍。
+		fmt.Println()
+		fmt.Println("此前失败的尝试（含单节点 gate，新→旧）：")
+		for _, a := range st.PriorAttempts {
+			line := "  - " + a.Evidence
+			if a.Task > 0 {
+				line += fmt.Sprintf("（任务 %d）", a.Task)
+			}
+			if a.Command != "" {
+				line += "：" + displayCommand(a.Command)
+				switch {
+				case a.TimedOut:
+					line += "（超时"
+				case a.Exit == -1:
+					line += "（没有拿到退出码"
+				default:
+					line += fmt.Sprintf("（exit %d", a.Exit)
+				}
+				if a.Shell != "" {
+					line += "，" + a.Shell
+				}
+				line += "）"
+			} else {
+				line += "：" + a.Reason
+			}
+			fmt.Println(line)
+			// 打印仓库根相对路径：从 status 输出的位置直接 cat 就行，不必先猜
+			// change 目录在哪。
+			base := filepath.ToSlash(filepath.Join(change.ChangesDir(root), id, change.EvidenceDirName, a.Evidence))
+			if a.StderrFile != "" {
+				fmt.Printf("    stderr：%s\n", rootRel(root, filepath.Join(base, a.StderrFile)))
+			}
+			if a.StdoutFile != "" {
+				fmt.Printf("    stdout：%s\n", rootRel(root, filepath.Join(base, a.StdoutFile)))
+			}
+		}
+		fmt.Println("  返工前先读这些证据，别重试已证伪的路。")
 	}
 	fmt.Println()
 	if st.Verdict == "blocked" {
