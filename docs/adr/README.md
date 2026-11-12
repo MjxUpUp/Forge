@@ -5,3 +5,4 @@
 | ADR | 标题 | 状态 | 日期 |
 |---|---|---|---|
 | [ADR-0001](0001-constraint-three-way-classification.md) | 采纳「约束三分类」词汇表并映射到 Forge 三档执法通道 | Accepted | 2026-09-20 |
+| [ADR-0002](0002-repo-takeover-drop-host-layer.md) | 接管点从宿主安装态迁到仓库，宿主层降级为可选适配器 | Proposed | 2026-11-12 |
