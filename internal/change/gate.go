@@ -28,6 +28,9 @@ func GateTask(ctx context.Context, root, id string, taskNo int, opts GateOptions
 	if err != nil {
 		return nil, err
 	}
+	if c.Fast {
+		return nil, fmt.Errorf("change: %s 是 fast 通道（没有 tasks.md）——按节点 gate 需要 tasks.md 里的任务与判据，整条验证请用 forge change verify", relTo(root, c.Dir))
+	}
 	rawTasks, err := os.ReadFile(filepath.Join(c.Dir, FileTasks))
 	if err != nil {
 		return nil, fmt.Errorf("change: 读取 %s: %w", relTo(root, filepath.Join(c.Dir, FileTasks)), err)
@@ -44,7 +47,7 @@ func GateTask(ctx context.Context, root, id string, taskNo int, opts GateOptions
 		return nil, fmt.Errorf("change: 任务 %d 没写判据编号——在任务行末尾加「（判据：acceptance #N）」才能单独 gate", taskNo)
 	}
 
-	if problems := docProblemsFor(c.Dir, c.Fast); len(problems) > 0 {
+	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
 		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——补齐、删掉 %s 标记后再 gate",
 			id, strings.Join(problems, "、"), scaffoldMarker)
 	}

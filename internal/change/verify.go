@@ -210,9 +210,13 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	}
 	// 模板骨架不是判据：init+new 之后四份文件还是模板，直接 verify 会把
 	// 通用示例命令当成这个 change 的验收标准（在 Go 仓库里甚至能封印）。
-	if problems := docProblemsFor(c.Dir, c.Fast); len(problems) > 0 {
-		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——四份产物都填成这个 change 自己的内容、并删掉 %s 标记后再 verify",
-			id, strings.Join(problems, "、"), scaffoldMarker)
+	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
+		want := "四份产物"
+		if c.Fast {
+			want = "fast 通道要求的两份产物（proposal、acceptance）"
+		}
+		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——%s都填成这个 change 自己的内容、并删掉 %s 标记后再 verify",
+			id, strings.Join(problems, "、"), want, scaffoldMarker)
 	}
 	if !c.HasAcceptance {
 		return nil, fmt.Errorf("change: %s 没有 %s（无法验证）", relTo(root, c.Dir), FileAcceptance)
@@ -560,10 +564,13 @@ func filesDrifted(root string, files []FileDigest) bool {
 // scaffoldMarker 标记尚未填写的模板骨架。填完删掉标记，verify 才会执行。
 const scaffoldMarker = "forge:fill"
 
-// docProblemsFor 列出让这个 change 还不算填完的原因：缺文件，或者仍是模板骨架。
+// DocProblems 列出让这个 change 还不算填完的原因：缺文件，或者仍是模板骨架。
+//
+// status 与 verify 共用这一个判定：两处各写一份，改一处就会漂移成"status 说
+// 可以跑、verify 说产物不全"。
 // 普通 change 要四份产物，少一份就少了对应的审计线索；fast 通道只要求
 // "为什么做"和"怎么算完"——省的是文档，不是判据与证据。
-func docProblemsFor(dir string, fast bool) []string {
+func DocProblems(dir string, fast bool) []string {
 	required := []string{FileProposal, FileDesign, FileTasks, FileAcceptance}
 	if fast {
 		required = []string{FileProposal, FileAcceptance}

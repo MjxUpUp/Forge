@@ -412,16 +412,18 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 		for _, n := range st.Nodes {
 			// [x] 只表示人在 tasks.md 里勾了这条；gate 通过是 [✓]——
 			// 机器能确认判据过了，确认不了"这条任务真的做完了"。
+			// 证据优先于勾选：一条任务既勾了又跑过 gate，显示 [✓]——勾选只是
+			// 进度记录，机器能确认的只有判据过没过。
 			mark := "[ ]"
 			switch {
-			case n.Task.Done:
-				mark = "[x]"
 			case n.State == change.NodePassed:
 				mark = "[✓]"
-			case n.State == change.NodeFailed:
-				mark = "[!]"
 			case n.State == change.NodeBlocked:
 				mark = "[✗]"
+			case n.State == change.NodeFailed:
+				mark = "[!]"
+			case n.Task.Done:
+				mark = "[x]"
 			}
 			line := fmt.Sprintf("  %s %d. %s", mark, n.Task.Index, n.Task.Text)
 			if n.State == change.NodeFailed || n.State == change.NodeBlocked {
@@ -438,6 +440,11 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 	}
 	for _, step := range st.NextSteps {
 		fmt.Printf("  - %s\n", step)
+	}
+	if st.Verdict == "blocked" && st.Handoff != "" {
+		// 恢复命令单独放在这里：它不是下一步，agent 不该照跑。
+		fmt.Println()
+		fmt.Println("人工处理：" + st.Handoff)
 	}
 	return nil
 }

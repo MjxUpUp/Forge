@@ -22,7 +22,7 @@
 2. `forge change new <id> --title "..."` 生成四份产物。
 3. 依次填 proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
-5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/YYYYMMDD-<id>`。
+5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/<YYYYMMDD>-<id>`（日期写当天，八位数字 + 连字符 + change id）。
 6. 之后再改被验证的文件、或改 acceptance，证据自动失效（`forge change list` 显示「证据已失效」），必须重跑 verify。
 7. 工作区有未提交改动时，证据会记下这些文件的 sha256；干净工作区 verify 则只绑 commit
    （summary 里没有 files 字段，靠 HEAD 移动即失效来兜）。list 会显示绑定的 commit。
@@ -36,10 +36,15 @@
 2. 没验证过 → `forge change verify <id>`；
 3. 判据或工作区变过 → 证据失效，重跑 verify；
 4. 上次没通过 → 先读证据，再改实现或判据，再重跑；
-5. 全通过 → 归档。
+5. acceptance 的判据全通过（`forge change verify` 封印成功）→ 归档。
 
 逐节点推进用 `forge change gate <id> --task <N>`：只跑 tasks.md 里那条任务引用的
-判据（`（判据：acceptance #N）`），节点证据不封印整个 change。
+判据（`（判据：acceptance #N）`），节点证据不封印整个 change。前置条件是那条任务
+存在、**没勾选**、且写了判据编号；勾了 `- [x]` 再跑 gate 会被拒绝（勾选是进度记录，
+不是判据）。fast change 没有 tasks.md，用整条 verify。
+
+status 若报某条任务 `blocked`，说明同一原因连续失败 3 次——此时 next steps 不再给
+任何可执行命令，恢复命令在 `handoff` 里，交给执行人，不要在循环里换说法重试。
 
 同一条命令连续失败 3 次，status 会给出 `blocked` 并且不再给下一步——那是给人的
 判断点，不是让你换个说法继续重试。改判据或改实现之后，由人重新开始跑。
