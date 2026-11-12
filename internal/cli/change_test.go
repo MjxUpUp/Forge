@@ -209,3 +209,44 @@ func TestChangeList_MarksFastChanges(t *testing.T) {
 		t.Errorf("列表要能看出 fast change：\n%s", stdout)
 	}
 }
+
+func TestChangeAgents_AppendsAndPreserves(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	if _, err := change.Init(root, "mini"); err != nil {
+		t.Fatalf("change.Init: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("# 团队约定\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runChangeAgents(nil, nil); err != nil {
+		t.Fatalf("runChangeAgents: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(raw), "# 团队约定\n") || !strings.Contains(string(raw), "forge:begin") {
+		t.Fatalf("AGENTS.md 结果不对：%q", raw)
+	}
+
+	// 再跑一次不报错，也不改文件。
+	if err := runChangeAgents(nil, nil); err != nil {
+		t.Fatalf("二次 runChangeAgents: %v", err)
+	}
+	again, _ := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if string(again) != string(raw) {
+		t.Fatal("二次同步改动了文件")
+	}
+}
+
+func TestChangeAgents_RequiresContract(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := runChangeAgents(nil, nil); err == nil {
+		t.Fatal("没有 spec/forge.yaml 时应报错并指路 change init")
+	} else if !strings.Contains(err.Error(), "forge change init") {
+		t.Fatalf("报错应指路 change init，got %v", err)
+	}
+}

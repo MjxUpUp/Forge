@@ -138,9 +138,10 @@ type Change struct {
 }
 
 // Init 在 root 下声明契约：写 spec/forge.yaml（缺省 profile=mini）、
-// 建 spec/changes/，并在没有 AGENTS.md 时放一份 20 行协议。
+// 建 spec/changes/，并同步 AGENTS.md 的 forge 托管块（缺文件整份写、无块追加、
+// 有块就地替换，标记外内容保留）。
 //
-// 已存在的东西一律不覆盖——init 是幂等的引导，不是模板重刷。
+// 已存在的 forge.yaml 一律不覆盖（会报错，改档位请直接编辑该文件）。
 func Init(root, profile string) (created []string, err error) {
 	if profile == "" {
 		profile = specroot.ProfileMini
@@ -154,7 +155,7 @@ func Init(root, profile string) (created []string, err error) {
 
 	marker := specroot.MarkerPath(root)
 	if _, statErr := os.Stat(marker); statErr == nil {
-		return nil, fmt.Errorf("change: %s 已存在（不覆盖；要改档位请直接编辑该文件）", marker)
+		return nil, fmt.Errorf("change: %s 已存在（不覆盖；改档位直接编辑该文件，AGENTS.md 用 `forge change agents` 重同步）", marker)
 	}
 	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 		return nil, fmt.Errorf("change: 创建 spec/: %w", err)
@@ -190,12 +191,18 @@ func Init(root, profile string) (created []string, err error) {
 	}
 	created = append(created, relTo(root, archiveDir)+"/")
 
-	agents := filepath.Join(root, "AGENTS.md")
-	if _, statErr := os.Stat(agents); errors.Is(statErr, os.ErrNotExist) {
-		if err := os.WriteFile(agents, []byte(renderTemplate(tmplAgents, "", "")), 0o644); err != nil {
-			return nil, fmt.Errorf("change: 写 AGENTS.md: %w", err)
-		}
+	action, err := EnsureAgentsBlock(root)
+	if err != nil {
+		// 契约已经落盘；这里只补一句恢复路径，避免「报了错但看不出已经写了一半」。
+		return created, fmt.Errorf("%w（spec/ 已写入；修好 AGENTS.md 标记后跑 `forge change agents`）", err)
+	}
+	switch action {
+	case AgentsCreated:
 		created = append(created, "AGENTS.md")
+	case AgentsAppended:
+		created = append(created, "AGENTS.md（追加 forge 托管块）")
+	case AgentsUpdated:
+		created = append(created, "AGENTS.md（更新 forge 托管块）")
 	}
 	return created, nil
 }
