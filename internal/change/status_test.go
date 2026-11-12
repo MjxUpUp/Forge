@@ -289,3 +289,21 @@ func TestStatus_BlockedWhenNodeExhausted(t *testing.T) {
 		t.Fatalf("停下时要指明卡在哪条任务：%q", st.Blocked)
 	}
 }
+
+func TestParseTasks_StripsOwnNumbering(t *testing.T) {
+	tasks := ParseTasks([]byte(`# 任务：demo
+
+- [ ] 1. 第一条（判据：acceptance #1）
+- [ ] 2、第二条（判据：acceptance #2）
+- [ ] 2.0 兼容的正文不该被剪
+`))
+	if got := tasks[0].Text; got != "第一条（判据：acceptance #1）" {
+		t.Fatalf("Task 1 text = %q, want 去掉自己的编号", got)
+	}
+	if got := tasks[1].Text; got != "第二条（判据：acceptance #2）" {
+		t.Fatalf("Task 2 text = %q, want 去掉「2、」", got)
+	}
+	if got := tasks[2].Text; got != "2.0 兼容的正文不该被剪" {
+		t.Fatalf("Task 3 text = %q, 序号不同不该剪", got)
+	}
+}
