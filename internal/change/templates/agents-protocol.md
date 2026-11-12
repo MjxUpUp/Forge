@@ -1,4 +1,7 @@
-# 本仓库的 change 流程（给 agent 的短协议）
+> 本段由 forge 维护（`forge change agents` 同步）。块内手改会在下次同步被覆盖；
+> 团队自己的约定请写在标记外。
+
+## change 流程（给 agent 的短协议）
 
 这个仓库用 `spec/` 记录交付过程：每个需求一个 change 目录，产物随 git 走。
 换机器、换 agent、换 IDE 都照这套目录干活。产物本身可以直接读；`verify` /
@@ -19,7 +22,7 @@
 
 ## 一个 change 的生命周期
 
-1. 一次性初始化：`forge change init`（生成 `spec/forge.yaml`；`AGENTS.md` 不存在时才写）。
+1. 一次性初始化：`forge change init` 声明契约（生成 `spec/forge.yaml`）并同步本托管块；契约已存在时用 `forge change agents` 重新同步。
 2. `forge change new <id> --title "..."` 生成四份产物。
 3. 依次填 proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
