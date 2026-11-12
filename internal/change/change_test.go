@@ -69,8 +69,12 @@ func TestInit_KeepsExistingAgentsFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(raw) != "# 本仓库自己的规则\n" {
-		t.Errorf("不应覆盖已有 AGENTS.md，got %q", raw)
+	// Init 只往已有 AGENTS.md 里追加托管块，人工内容原样保留。
+	if !strings.HasPrefix(string(raw), "# 本仓库自己的规则\n") {
+		t.Errorf("人工内容被改动，got %q", raw)
+	}
+	if !strings.Contains(string(raw), agentsBegin) {
+		t.Errorf("已有 AGENTS.md 未追加托管块，got %q", raw)
 	}
 }
 
