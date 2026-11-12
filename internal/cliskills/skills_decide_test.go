@@ -50,6 +50,10 @@ func TestRunSkillsDecide_RejectsEmbedCache(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("FORGE_SKILLS_CANONICAL", "")
+	// 必须在仓库树之外跑：canonical 缺省时 decide 会向上找带 skills/CONVENTIONS.md
+	// 的项目根，在 Forge 本仓里跑这个用例会把哨兵写进真正的 skills/demo/（早先
+	// 全量 go test 就在仓里留下过 decisions.md）。
+	t.Chdir(t.TempDir())
 
 	// 唯一哨兵：守卫必须在任何追加之前触发，故该字符串不得出现在隔离 home 下的任何
 	// 文件里（embed 解压本身就带含通用头部的真实 decisions.md——哨兵避免与解压内容
