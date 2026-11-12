@@ -376,3 +376,69 @@ func TestEnsureAgentPointers_RejectsUnpairedMarkers(t *testing.T) {
 		t.Fatal("报错时不该改文件")
 	}
 }
+
+func TestEnsureAgentPointers_AddsCursorFrontmatterToExistingFile(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".cursor", "rules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plain := "## 手写规则\n\n- 先读 AGENTS.md\n"
+	path := filepath.Join(root, CursorRuleFile)
+	if err := os.WriteFile(path, []byte(plain), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentPointers(root, nil); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, path)
+	if !strings.HasPrefix(got, "---\n") || !strings.Contains(got, "alwaysApply: true") {
+		t.Fatalf("已有文件缺 frontmatter 时要补在开头：%q", got)
+	}
+	if !strings.Contains(got, plain) {
+		t.Fatalf("原有内容不能丢：%q", got)
+	}
+	again, err := EnsureAgentPointers(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2 := readFile(t, path); got2 != got {
+		t.Fatalf("二次运行应字节不变：\n旧 %q\n新 %q", got, got2)
+	}
+	if again[1].Action != AgentsUnchanged {
+		t.Fatalf("二次运行应 unchanged，got %s", again[1].Action)
+	}
+}
+
+func TestEnsureManagedBlock_PreservesCRLF(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ClaudeFile)
+	if err := os.WriteFile(path, []byte("line1\r\nline2\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentPointers(root, nil); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, path)
+	if strings.Contains(strings.ReplaceAll(got, "\r\n", ""), "\n") {
+		t.Fatalf("CRLF 文件里混进了 LF：%q", got)
+	}
+	if !strings.Contains(got, pointerBegin) {
+		t.Fatalf("应追加指针块：%q", got)
+	}
+}
+
+func TestInit_ReportsCreatedOnPointerFailure(t *testing.T) {
+	root := t.TempDir()
+	// .cursor/rules/ 存在会触发补 forge.mdc；把目标做成目录让写入失败。
+	if err := os.MkdirAll(filepath.Join(root, CursorRuleFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	created, err := Init(root, "mini")
+	if err == nil {
+		t.Fatal("写入失败应报错")
+	}
+	joined := strings.Join(created, "\n")
+	if !strings.Contains(joined, "spec/forge.yaml") {
+		t.Fatalf("失败前的落盘要能看见，got %v", created)
+	}
+}

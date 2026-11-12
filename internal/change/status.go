@@ -226,6 +226,8 @@ type PriorAttempt struct {
 	Command string `json:"failed_command,omitempty"`
 	Exit    int    `json:"exit,omitempty"`
 	Shell   string `json:"shell,omitempty"`
+	// TimedOut 为真时 Exit 没有意义：命令是被超时终止的，不是自己退出的。
+	TimedOut bool `json:"timed_out,omitempty"`
 	// StderrFile/StdoutFile 是证据目录里的文件名（空表示该管道没有输出）。
 	StderrFile string `json:"stderr_file,omitempty"`
 	StdoutFile string `json:"stdout_file,omitempty"`
@@ -245,7 +247,13 @@ func priorAttempts(atts []Attempt, limit int) []PriorAttempt {
 			Task:     a.Task,
 		}
 		if f := a.FirstFailure; f != nil {
-			pa.Command, pa.Exit, pa.Shell = f.Command, f.Exit, f.Shell
+			pa.Command, pa.Shell = f.Command, f.Shell
+			if f.TimedOut {
+				// 超时的退出码是杀人灭口留下的，不该当成命令自己的结果。
+				pa.TimedOut = true
+			} else {
+				pa.Exit = f.Exit
+			}
 			pa.StdoutFile, pa.StderrFile = f.StdoutFile, f.StderrFile
 		} else {
 			pa.Reason = "没有可定位的失败命令（证据残缺，或判据都过了却没封印）"
@@ -477,7 +485,7 @@ func nextSteps(root string, c *Change, st *Status) []string {
 		// 照跑。恢复要人决定，命令放在 Handoff 里（CLI 单独一段输出）。
 		return []string{
 			"已停下：同一个原因连续失败 " + strconv.Itoa(MaxSameCauseAttempts) + " 次。",
-			"证据：" + relTo(c.Dir, latestEvidenceDir(c)),
+			"证据：" + relTo(root, latestEvidenceDir(c)),
 			"先读上面那条证据，再决定是改判据还是改实现；不要在循环里重试。",
 		}
 	}
@@ -502,7 +510,7 @@ func nextSteps(root string, c *Change, st *Status) []string {
 		return []string{"判据或工作区变过，证据已失效：forge change verify " + c.ID}
 	case c.Failed:
 		return []string{
-			"最近一次验证没通过，先读证据：" + relTo(c.Dir, latestEvidenceDir(c)),
+			"最近一次验证没通过，先读证据：" + relTo(root, latestEvidenceDir(c)),
 			"修实现或修判据，然后重跑：forge change verify " + c.ID,
 		}
 	}
