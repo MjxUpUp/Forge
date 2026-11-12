@@ -326,3 +326,27 @@ func TestChangeCheck_StagedSkipsUntouchedAndCatchesTouched(t *testing.T) {
 		t.Fatalf("--staged 碰到未封印 change 应拦下，got %v", err)
 	}
 }
+
+func TestChangeCheck_JSONAlsoExitsHard(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	if err := changeCheckCmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeCheckCmd.Flags().Set("json", "false") }()
+
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeCheck(changeCheckCmd, nil)
+	})
+	if !errors.Is(err, errHardExit) {
+		t.Fatalf("JSON 模式不合格时也应返回 errHardExit，got %v", err)
+	}
+	for _, want := range []string{`"checked"`, `"problems"`, `"demo"`} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("JSON 输出缺少 %q：\n%s", want, stdout)
+		}
+	}
+}
