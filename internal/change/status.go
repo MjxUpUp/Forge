@@ -34,7 +34,10 @@ var (
 	taskLineRE = regexp.MustCompile(`^\s*[-*]\s+\[([ xX])\]\s+(.*\S)\s*$`)
 	// 判据必须是 `判据：acceptance #N`（允许中文冒号；多个序号用顿号/逗号/斜杠/「和」「与」「及」分隔）。
 	// 早先只要出现"判据"就把后面所有 #N 都算上，`修改判据 #3 的文档` 会被误读。
-	criterionRE = regexp.MustCompile(`判据\s*[:：]\s*acceptance\s+((?:#\d+[\s、,，/和与及]*)+)`)
+	// 取「acceptance」到句末（或分号）的整段再提号：只认固定分隔符的话，
+	// 「#1 或 #2」「#1 以及 #2」「（#2）」这类写法会静默丢号——gate 只跑
+	// #1 却算通过，比直接报错更糟。
+	criterionRE = regexp.MustCompile(`判据\s*[:：]\s*acceptance\s+([^；;\n]*)`)
 	numberRE    = regexp.MustCompile(`#(\d+)`)
 )
 
@@ -44,24 +47,32 @@ var (
 // 待办。判据序号只在"判据"标记之后提取（`判据：acceptance #1`），这样任务
 // 标题里出现 #号 不会被误读。
 func ParseTasks(raw []byte) []Task {
-	var out []Task
-	// 代码围栏里的示例是给人看的，不能当成待办：否则 Index 整体错位，
-	// gate --task N 会打到别的任务上。
-	// 围栏宽度要记住：```` 里嵌 ``` 是合法的示例写法，按固定三个反引号
-	// 翻转会把内层当成收尾，后面整段示例又被当成待办。
+	out, openAt := parseTaskLines(strings.Split(string(raw), "\n"))
+	if openAt >= 0 {
+		// 围栏没闭合：按原样会把后面所有任务当成示例吞掉，gate/status 会
+		// 认为"没有任务"。围栏是给人看的，宁可把那一行去掉重扫一遍。
+		lines := strings.Split(string(raw), "\n")
+		lines[openAt] = ""
+		out, _ = parseTaskLines(lines)
+	}
+	return out
+}
+
+// parseTaskLines 返回任务列表；若文件结束时仍停在围栏里，openAt 是那条
+// 未闭合围栏的行号（否则 -1）。
+func parseTaskLines(lines []string) (out []Task, openAt int) {
+	openAt = -1
+	var fenceChar byte
 	fence := 0
-	for _, line := range strings.Split(string(raw), "\n") {
+	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") {
-			width := 0
-			for width < len(trimmed) && trimmed[width] == '`' {
-				width++
-			}
+		if ch, width, bare := fenceRun(trimmed); width > 0 {
 			switch {
 			case fence == 0:
-				fence = width
-			case width >= fence:
-				fence = 0
+				// 收尾围栏后面不能再带语言名：```go 是示例内容，不是收尾。
+				fenceChar, fence, openAt = ch, width, i
+			case ch == fenceChar && bare && width >= fence:
+				fenceChar, fence, openAt = 0, 0, -1
 			}
 			continue
 		}
@@ -87,7 +98,23 @@ func ParseTasks(raw []byte) []Task {
 		}
 		out = append(out, t)
 	}
-	return out
+	return out, openAt
+}
+
+// fenceRun 判断一行是不是围栏标记：连续 3 个以上 ` 或 ~。
+// bare 表示标记之后没有别的字符——只有这种才是收尾围栏。
+func fenceRun(trimmed string) (ch byte, width int, bare bool) {
+	if trimmed == "" || (trimmed[0] != '`' && trimmed[0] != '~') {
+		return 0, 0, false
+	}
+	ch = trimmed[0]
+	for width < len(trimmed) && trimmed[width] == ch {
+		width++
+	}
+	if width < 3 {
+		return 0, 0, false
+	}
+	return ch, width, strings.TrimSpace(trimmed[width:]) == ""
 }
 
 // trimTaskNumber 去掉任务正文开头与本条序号相同的编号（「1. 」「1、」「1)」）。
@@ -287,7 +314,7 @@ func StatusOf(root, id string) (*Status, error) {
 				if n.Task.Done {
 					// 勾选过的任务 gate 会拒绝重跑（见 gate.go 的前置检查）：
 					// 让它去跑 gate 是死路。要么取消勾选，要么整条 verify。
-					st.Handoff = fmt.Sprintf("任务 %d 已在 tasks.md 里勾选，gate 会拒绝重跑；先取消勾选或新起一条任务，或者直接由人跑：forge change verify %s", n.Task.Index, id)
+					st.Handoff = fmt.Sprintf("任务 %d 已在 tasks.md 里勾选，gate 会拒绝重跑；先改判据或实现，再取消勾选或新起一条任务，或者直接由人跑：forge change verify %s", n.Task.Index, id)
 				} else {
 					st.Handoff = fmt.Sprintf("确认要继续，就改这一条的判据或实现，再由人跑：forge change gate %s --task %d", id, n.Task.Index)
 				}

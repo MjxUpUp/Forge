@@ -212,12 +212,13 @@ func TestParseTasks_FenceWidth(t *testing.T) {
 }
 
 func TestTrimTaskNumber_KeepsVersionLikeText(t *testing.T) {
-	// 任务 2 的正文以「2.5 兼容」开头：点号后是数字，不是自己的编号。
-	tasks := ParseTasks([]byte("# 任务\n\n- [ ] 2.5 兼容范围收窄（判据：acceptance #1）\n"))
-	if len(tasks) != 1 {
-		t.Fatalf("want 1 task, got %d", len(tasks))
+	// 第二条任务正文以「2.5 兼容」开头：点号后是数字，不是自己的编号。
+	// 必须真的走到 prefix "2." 的分支，否则删掉 startsWithDigit 守卫测试也绿。
+	tasks := ParseTasks([]byte("# 任务\n\n- [ ] 1. 第一条（判据：acceptance #1）\n- [ ] 2.5 兼容范围收窄（判据：acceptance #2）\n"))
+	if len(tasks) != 2 {
+		t.Fatalf("want 2 tasks, got %d", len(tasks))
 	}
-	if got := tasks[0].Text; got != "2.5 兼容范围收窄（判据：acceptance #1）" {
+	if got := tasks[1].Text; got != "2.5 兼容范围收窄（判据：acceptance #2）" {
 		t.Fatalf("text = %q, want 保留 2.5", got)
 	}
 }
@@ -280,5 +281,57 @@ func TestInit_CreatesArchiveDir(t *testing.T) {
 		// status 的归档建议是 `git mv … archive/<日期>-<id>`，目标目录不在时
 		// git 会直接拒绝，新仓库第一次归档就失败。
 		t.Fatalf("archive dir 未创建: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(archive, ".gitkeep")); err != nil {
+		// 空目录不会被 git 跟踪：没有 .gitkeep，克隆下来 archive/ 又会消失。
+		t.Fatalf(".gitkeep 未创建: %v", err)
+	}
+}
+
+func TestParseTasks_CriteriaLooseConnectives(t *testing.T) {
+	// 「或 / 以及 / 括号」之前会静默只取第一个号：gate 只跑 #1 就放行。
+	for _, line := range []string{
+		"- [ ] 1. 或（判据：acceptance #1 或 #2）",
+		"- [ ] 1. 以及（判据：acceptance #1 以及 #2）",
+		"- [ ] 1. 括号（判据：acceptance #1 和（#2））",
+		"- [ ] 1. 分号截断（判据：acceptance #1；另见 #9）",
+	} {
+		tasks := ParseTasks([]byte("# 任务\n\n" + line + "\n"))
+		if len(tasks) != 1 {
+			t.Fatalf("%q: want 1 task", line)
+		}
+		got := tasks[0].Criteria
+		want := []int{1, 2}
+		if line == "- [ ] 1. 分号截断（判据：acceptance #1；另见 #9）" {
+			want = []int{1}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%q: criteria = %v, want %v", line, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%q: criteria = %v, want %v", line, got, want)
+			}
+		}
+	}
+}
+
+func TestParseTasks_FenceVariants(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want int
+	}{
+		{"tilde", "~~~md\n- [ ] 示例\n~~~\n- [ ] 真任务（判据：acceptance #1）\n", 1},
+		{"closing with info", "```\n- [ ] 示例\n```go\n- [ ] 真任务（判据：acceptance #1）\n", 1},
+		{"unclosed", "```\n- [ ] 真任务（判据：acceptance #1）\n", 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tasks := ParseTasks([]byte("# 任务\n\n" + c.body))
+			if len(tasks) != c.want {
+				t.Fatalf("want %d tasks, got %d: %+v", c.want, len(tasks), tasks)
+			}
+		})
 	}
 }
