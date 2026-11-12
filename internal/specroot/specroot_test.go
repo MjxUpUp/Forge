@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -268,7 +269,7 @@ func TestFind_SymlinkedProject(t *testing.T) {
 		t.Skipf("symlink: %v", err)
 	}
 	deep := filepath.Join(link, "a")
-	if err := os.MkdirAll(real, 0o755); err != nil {
+	if err := os.MkdirAll(deep, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -276,7 +277,58 @@ func TestFind_SymlinkedProject(t *testing.T) {
 	if !ok {
 		t.Fatal("经符号链接进入仓库也应命中契约")
 	}
-	if realGot, err := filepath.EvalSymlinks(got); err != nil || realGot != got {
-		t.Fatalf("Find 应返回真实路径，got %q (eval %q, err %v)", got, realGot, err)
+	if !sameFile(t, got, real) {
+		t.Fatalf("Find 应返回真实路径，got %q want %q", got, real)
+	}
+	if strings.HasPrefix(got, link) {
+		t.Fatalf("Find 返回了链接路径而不是真实路径：%q", got)
+	}
+}
+
+// TestFind_SymlinkedMissingLeaf：经 symlink 进入一个尚未创建的子目录，也要归一
+// 到真实路径（canonicalDir 解析最深已存在祖先）。
+func TestFind_SymlinkedMissingLeaf(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 建符号链接需要管理员或开发者模式")
+	}
+	real := t.TempDir()
+	writeContract(t, real, "version: \"1\"\n")
+	link := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	missing := filepath.Join(link, "not", "created", "yet")
+
+	got, ok := Find(missing)
+	if !ok {
+		t.Fatal("经符号链接进入未创建子目录也应命中契约")
+	}
+	if strings.HasPrefix(got, link) {
+		t.Fatalf("Find 返回了链接路径而不是真实路径：%q", got)
+	}
+	if !sameFile(t, got, real) {
+		t.Fatalf("Find=%q, want %q", got, real)
+	}
+}
+
+// TestFind_GitRepoRootContractFromSubdir：契约在 git 根、cwd 在深层子目录——最
+// 常见的主路径，必须命中根而不是子目录。
+func TestFind_GitRepoRootContractFromSubdir(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeContract(t, repo, "version: \"1\"\n")
+	src := filepath.Join(repo, "internal", "pkg")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := Find(src)
+	if !ok {
+		t.Fatal("git 根有契约时应命中")
+	}
+	if !sameFile(t, got, repo) {
+		t.Fatalf("Find=%q, want 仓库根 %q", got, repo)
 	}
 }
