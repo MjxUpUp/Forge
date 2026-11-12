@@ -562,7 +562,10 @@ func filesDrifted(root string, files []FileDigest) bool {
 }
 
 // scaffoldMarker 标记尚未填写的模板骨架。填完删掉标记，verify 才会执行。
-const scaffoldMarker = "forge:fill"
+//
+// 只认行首的注释标记：模板正文会写「删掉 `forge:fill` 标记」这类说明，
+// 按子串匹配会让照做的人（删了标记行、没删说明）永远过不了 verify。
+const scaffoldMarker = "<!-- forge:fill"
 
 // DocProblems 列出让这个 change 还不算填完的原因：缺文件，或者仍是模板骨架。
 //

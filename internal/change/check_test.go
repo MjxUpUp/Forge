@@ -2,6 +2,7 @@ package change
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -89,7 +90,12 @@ func TestCheckProblems_FailedBeatsOtherReasons(t *testing.T) {
 
 func TestCheckProblems_OnlyTouchedSkipsOthers(t *testing.T) {
 	root, dirA := repoWithChange(t, "alpha")
-	_, dirB := repoWithChange(t, "beta")
+	// beta 必须建在同一个 root：另起一个 TempDir 的话 List 本来就只有 alpha，
+	// 删掉 onlyTouched 过滤测试依然全绿（等于没测）。
+	dirB, err := New(root, "beta", "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	writeAcceptance(t, dirA, "test -d spec")
 	writeAcceptance(t, dirB, "test -d spec")
 
@@ -115,7 +121,7 @@ func TestTouchedChanges_MapsRepoSelfPaths(t *testing.T) {
 		"spec/changes/../escape.md",
 		"spec/changes/demo/proposal.md", // 重复
 	}
-	got := TouchedChanges(root, paths)
+	got := TouchedChanges(root, ChangesDir(root), paths)
 	if len(got) != 1 || got[0] != "demo" {
 		t.Fatalf("TouchedChanges = %v，想要 [demo]", got)
 	}
@@ -134,5 +140,53 @@ func TestCheckProblems_ArchivedNeverBlocks(t *testing.T) {
 	}
 	if len(checked) != 1 || checked[0] != "demo" {
 		t.Fatalf("checked 只该含未归档项：%v", checked)
+	}
+}
+
+func TestHasOutsideChanges(t *testing.T) {
+	root, _ := repoWithChange(t, "demo")
+	changes := ChangesDir(root)
+	cases := []struct {
+		name  string
+		paths []string
+		want  bool
+	}{
+		{"只有 change 目录里的文件", []string{"spec/changes/demo/proposal.md"}, false},
+		{"证据目录也不算外面", []string{"spec/changes/demo/evidence/20260101T000000Z/summary.json"}, false},
+		{"代码改动", []string{"spec/changes/demo/proposal.md", "src/main.go"}, true},
+		{"根目录文档", []string{"README.md"}, true},
+		{"空路径不算", []string{""}, false},
+	}
+	for _, c := range cases {
+		if got := HasOutsideChanges(root, changes, c.paths); got != c.want {
+			t.Errorf("%s: HasOutsideChanges = %v，想要 %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestCheckProblems_PassedChecksMissingHashIsNotAFailure(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	writeAcceptance(t, dir, "test -d spec")
+	// checks 全过、但摘要缺判据哈希（手写/旧格式）：封印不成立，可这也不是
+	// "上次没通过"——把方向指错会让人去重跑一条本来就绿的命令。
+	ev := filepath.Join(dir, EvidenceDirName, "20260101T000000Z")
+	if err := os.MkdirAll(ev, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(ev, SummaryFile),
+		`{"change":"demo","sealed":true,"checks":[{"index":1,"command":"test -d spec","exit":0}]}`)
+
+	problems, _, err := CheckProblems(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(problems) != 1 {
+		t.Fatalf("摘要不自洽，应算不合格：%+v", problems)
+	}
+	if strings.Contains(problems[0].Reason, "没通过") {
+		t.Fatalf("checks 全过不该报「没通过」，实际 %q", problems[0].Reason)
+	}
+	if !strings.Contains(problems[0].Reason, "没有封印的证据") {
+		t.Fatalf("应报「没有封印的证据」，实际 %q", problems[0].Reason)
 	}
 }
