@@ -76,16 +76,19 @@ func Resolve() (string, Source, error) {
 // 使用。优先级与 ResolveFrom 同一份实现：仓库契约 → 注册表 → 遗留 .forge/；
 // 未命中任何来源时返回 forgedata.ErrNoForgeConfig。
 //
+// State 是只读探针：遗留 .forge/ 命中的项目不会被顺手登记进注册表（自愈只发生在
+// ResolveFrom —— 门禁/热路径；报告面读一次状态就改全局状态，副作用纪律不允许）。
+//
 // 为什么需要它：ResolveFrom 把 declined 折成 error 是给 hook/命令门禁用的（静默
 // 放行），但展示面需要区分「没接管」「拒绝了」「已接管」三态。两处若各自实现
 // 一遍优先级，就会出现「status 说 managed、policy state 说 unknown」的矛盾。
 func State(cwd string) (string, Source, string, error) {
-	return resolveFrom(cwd)
+	return resolveFrom(cwd, false)
 }
 
 // ResolveFrom 是 Resolve 的可测入口（显式传 cwd，不读进程工作目录）。
 func ResolveFrom(cwd string) (string, Source, error) {
-	root, source, status, err := resolveFrom(cwd)
+	root, source, status, err := resolveFrom(cwd, true)
 	if err != nil {
 		return "", "", err
 	}
@@ -96,7 +99,11 @@ func ResolveFrom(cwd string) (string, Source, error) {
 }
 
 // resolveFrom 是成员资格解析的唯一实现：返回 (根, 来源, 接管状态)。
-func resolveFrom(cwd string) (string, Source, string, error) {
+//
+// heal 控制遗留 .forge/ 分支是否自愈登记（ResolveFrom 传 true 保持老行为，State
+// 传 false 做成纯读探针）。热路径上注册表只需读一次：State 已经返回三态，未登记
+// 时再走 IsMember 是重复解析（readFile 无缓存）。
+func resolveFrom(cwd string, heal bool) (string, Source, string, error) {
 	// 0. 仓库声明式契约。declined 一票否决优先：人明确拒绝接管后，仓库里的
 	//    标记不再自动复活 forge——否则 clone 一份契约就绕过了退出决定。
 	if root, ok := specroot.Find(cwd); ok {
@@ -106,13 +113,13 @@ func resolveFrom(cwd string) (string, Source, string, error) {
 		return root, SourceSpecContract, registry.StatusManaged, nil
 	}
 
-	// 1. 注册表成员资格。IsMember 把 declined 当非成员，故这里先看状态：
-	//    报告面（State）需要区分「declined」与「从未登记」，否则 policy state
-	//    会把一个明确退出的仓库报成 unknown。
-	if root, state := registry.State(cwd); state == registry.StatusDeclined && root != "" {
-		return root, SourceRegistry, registry.StatusDeclined, nil
-	}
-	if root, ok := registry.IsMember(cwd); ok {
+	// 1. 注册表成员资格。一次 registry.State 同时给出「已登记」与「declined」
+	//    两种信息：IsMember 把 declined 当非成员，只看它会把明确退出的仓库报成
+	//    unknown，与 status 的 managed 冲突。
+	if root, state := registry.State(cwd); root != "" && state != registry.StatusUnknown {
+		if state == registry.StatusDeclined {
+			return root, SourceRegistry, registry.StatusDeclined, nil
+		}
 		return root, SourceRegistry, registry.StatusManaged, nil
 	}
 
@@ -125,7 +132,9 @@ func resolveFrom(cwd string) (string, Source, string, error) {
 		if _, state := registry.State(root); state == registry.StatusDeclined {
 			return root, SourceLegacyConfig, registry.StatusDeclined, nil
 		}
-		_ = registry.Add(root) // 自愈登记，失败不阻断
+		if heal {
+			_ = registry.Add(root) // 自愈登记，失败不阻断
+		}
 		return root, SourceLegacyConfig, registry.StatusManaged, nil
 	}
 

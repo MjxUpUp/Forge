@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -32,7 +33,7 @@ func TestFind_FromNestedDir(t *testing.T) {
 	if !ok {
 		t.Fatal("Find 未命中 spec/forge.yaml")
 	}
-	if filepath.Clean(got) != filepath.Clean(root) {
+	if !sameFile(t, got, root) {
 		t.Fatalf("Find=%q, want %q", got, root)
 	}
 }
@@ -203,5 +204,79 @@ func TestLoad_RejectsUnknownField(t *testing.T) {
 	writeContract(t, root, "version: \"1\"\nhook: off\n")
 	if _, err := Load(root); err == nil {
 		t.Fatal("未知键 hook 应当报错，而不是静默按缺省跑")
+	}
+}
+
+// sameFile 比较两个路径是否指向同一目录：Find 返回真实路径（Windows 上 8.3
+// 短名会被展开成长名），字符串比较会误报。
+func sameFile(t *testing.T, a, b string) bool {
+	t.Helper()
+	ia, err := os.Stat(a)
+	if err != nil {
+		t.Fatalf("stat %s: %v", a, err)
+	}
+	ib, err := os.Stat(b)
+	if err != nil {
+		t.Fatalf("stat %s: %v", b, err)
+	}
+	return os.SameFile(ia, ib)
+}
+
+// TestFind_IgnoresContractOutsideGitRoot：契约只在仓库根算数。仓库根没有、子目录
+// 有一份时不算——否则同一个仓库会因 cwd 深浅得到两个身份（status 说 sub 是项目，
+// policy state 从仓根看说未知）。
+func TestFind_IgnoresContractOutsideGitRoot(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(repo, "sub")
+	writeContract(t, sub, "version: \"1\"\n")
+
+	if got, ok := Find(sub); ok {
+		t.Fatalf("子目录契约不该激活整个仓库：Find=%q", got)
+	}
+}
+
+// TestFind_HomeIsNotProject：home 目录本身不算项目根——home 下的一份契约不该把
+// 整棵 home（含所有临时目录）认成一个项目。
+func TestFind_HomeIsNotProject(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // Windows 上 os.UserHomeDir 读 USERPROFILE
+	writeContract(t, home, "version: \"1\"\n")
+	proj := filepath.Join(home, "proj")
+	if err := os.MkdirAll(proj, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := Find(proj)
+	if ok {
+		t.Fatalf("home 下的契约不该激活子目录：Find=%q", got)
+	}
+}
+
+// TestFind_SymlinkedProject：从符号链接进入仓库与直接进入是同一个项目身份。
+func TestFind_SymlinkedProject(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 建符号链接需要管理员或开发者模式")
+	}
+	real := t.TempDir()
+	writeContract(t, real, "version: \"1\"\n")
+	link := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	deep := filepath.Join(link, "a")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, ok := Find(deep)
+	if !ok {
+		t.Fatal("经符号链接进入仓库也应命中契约")
+	}
+	if realGot, err := filepath.EvalSymlinks(got); err != nil || realGot != got {
+		t.Fatalf("Find 应返回真实路径，got %q (eval %q, err %v)", got, realGot, err)
 	}
 }

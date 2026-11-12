@@ -18,9 +18,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 const (
@@ -66,21 +69,40 @@ func MarkerPath(root string) string {
 	return filepath.Join(root, DirName, MarkerName)
 }
 
-// Find 从 cwd 向上查找最近的、含 spec/forge.yaml 的目录。
+// Find 从 cwd 向上查找仓库根的 spec/forge.yaml，返回项目根。
 //
-// 遇到仓库根（含 .git 文件或目录的目录）即停，不越界到父仓库——子模块/嵌套仓库
-// 不应被外层契约激活。返回的目录即项目根；未找到返回 ("", false)。
+// 契约位置只有仓库根：在 git 仓库里先归一到 git 根（.git 是目录或文件都算，
+// worktree 同样适用），只在那一层找标记——子目录里的 spec/forge.yaml 不算，
+// 否则同一个仓库会因 cwd 深浅得到不同身份，`forge status` 与 `forge policy
+// state` 也会互相矛盾。非 git 目录（还没 git init 的项目）向上查到用户 home
+// 或文件系统根为止，home 本身不算项目根：home 下一个契约不该把整棵 home 认成
+// 一个项目。
+//
+// 路径先取真实路径（符号链接归一）：从 symlink 进入仓库与直接进入必须是同一个
+// 项目身份。未找到返回 ("", false)。
 func Find(cwd string) (string, bool) {
-	dir, err := filepath.Abs(cwd)
+	dir, err := canonicalDir(cwd)
 	if err != nil {
 		return "", false
 	}
+
+	if gitRoot := forgedata.FindGitRoot(dir); gitRoot != `` {
+		if root, cerr := canonicalDir(gitRoot); cerr == nil {
+			gitRoot = root
+		}
+		if isFile(MarkerPath(gitRoot)) {
+			return gitRoot, true
+		}
+		return "", false
+	}
+
+	home := homeDir()
 	for {
+		if home != `` && sameDir(dir, home) {
+			return "", false
+		}
 		if isFile(MarkerPath(dir)) {
 			return dir, true
-		}
-		if exists(filepath.Join(dir, ".git")) {
-			return "", false
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -88,6 +110,48 @@ func Find(cwd string) (string, bool) {
 		}
 		dir = parent
 	}
+}
+
+// canonicalDir 返回 dir 的真实路径（解析符号链接）；解析失败时退回 Abs。
+func canonicalDir(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		// 路径尚未存在（Find 的输入通常存在，但 CLI 允许传新建目录）：保留绝对
+		// 路径继续向上走，父目录仍可能带契约。
+		return abs, nil
+	}
+	return real, nil
+}
+
+// homeDir 返回用户 home（解析失败返回空串，此时不设 home 边界）。
+func homeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == `` {
+		return ``
+	}
+	if real, cerr := canonicalDir(home); cerr == nil {
+		return real
+	}
+	return home
+}
+
+// sameDir 报告两个路径是否指向同一目录：优先文件身份（同一 inode/卷），退化为
+// 清理后的字符串比较；Windows 大小写不敏感，额外做 EqualFold（Linux 上大小写
+// 不同的目录确实是两个目录，不能折叠）。
+func sameDir(a, b string) bool {
+	ia, ea := os.Stat(a)
+	ib, eb := os.Stat(b)
+	if ea == nil && eb == nil {
+		return os.SameFile(ia, ib)
+	}
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	return runtime.GOOS == "windows" && strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }
 
 // Load 读取并校验 root/spec/forge.yaml。
