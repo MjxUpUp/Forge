@@ -297,7 +297,7 @@ forge task score                  # 查看质量评分
 
 - `change verify <id>`：在仓库根按顺序执行 acceptance.md 里的 ```bash/```sh 围栏（每条围栏一次 shell 调用），首个非零退出即停，其余记 skipped；全部通过才封印。判据写法受限（见 AGENTS.md 协议的红线段），被拒绝的写法会直接报错而不是静默跑。
 - `change status <id>`：给出 stage、验证结论、节点状态与下一步。`blocked` 时 `next_steps` 不含任何可执行命令，恢复命令在 `handoff`；`--json` 的字段是 snake_case（`next_steps`、`index`、`criteria`、`handoff`…）。
-- `change agents`：只同步 `AGENTS.md` 的托管块，不碰产物与证据。`change init` 在首次声明契约时也会调用它；`spec/forge.yaml` 已存在时 init 会拒绝重跑，此时用 `change agents` 重同步。标记不成对（只出现 begin 或 end）会报错且不动文件——修好标记后重跑同一条命令。
+- `change agents`：只同步 `AGENTS.md` 的托管块，不碰产物与证据。`change init` 在首次声明契约时也会调用它；`spec/forge.yaml` 已存在时 init 会拒绝重跑，此时用 `change agents` 重同步。标记不成对、或出现多对标记时会报错且不动文件（多对时只替换第一对会让第二块永久陈旧，所以拒绝猜）——修好标记后重跑同一条命令；没有 `spec/forge.yaml` 时也拒绝同步，先跑 `change init`。
 - `change gate <id> --task <N>`：前置条件是 tasks.md 里任务 N 存在、未勾选、写了判据编号（`#1`、`#1 和 #2`、`#1 或 #2` 均可）、四份产物已补齐并删掉 `forge:fill`、引用的围栏有可执行语句且写法通过判据检查；只跑这些围栏，证据记在 `evidence/<时间戳>/`，summary 里带 `task: N`，**不封印整条 change**。fast change 没有 tasks.md，用 verify。
 - 「同一个原因」= 每次 verify/gate 的第一条失败命令；换命令或中间通过一次就重新计数，连续 3 次同因失败即 `blocked`。
 - 退出码：用法错误、产物缺失、判据写法被拒 → 1；判据实跑未通过 → 2。
