@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/registry"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/MjxUpUp/Forge/internal/userconfig"
 )
 
@@ -72,5 +75,31 @@ func TestPolicyState_TriState(t *testing.T) {
 	// 显示层映射：StatusManaged 空串 → 字面 "managed"（与帮助文案一致）。
 	if got := run(); got != `managed` {
 		t.Fatalf(`managed state display = %q, want "managed"`, got)
+	}
+}
+
+// TestPolicyState_DeclaredContract：只有 spec/forge.yaml、没进注册表的仓库是
+// managed——policy state 以前直读注册表，对 declared 仓库报 unknown，与 status
+// 打印的「managed（spec-contract）」自相矛盾。
+func TestPolicyState_DeclaredContract(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	proj := t.TempDir()
+	t.Chdir(proj)
+	dir := filepath.Join(proj, specroot.DirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, specroot.MarkerName), []byte(`version: "1"`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, err := captureOutput(t, func() error {
+		return policyStateCmd.RunE(policyStateCmd, nil)
+	})
+	if err != nil {
+		t.Fatalf(`policy state: %v`, err)
+	}
+	if got := strings.TrimSpace(stdout); got != `managed` {
+		t.Fatalf(`declared-only state = %q, want managed`, got)
 	}
 }
