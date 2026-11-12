@@ -543,6 +543,7 @@ func TestChangeAgents_PointersFlag(t *testing.T) {
 // init 时仓库若已经在用 Claude Code，顺手把 CLAUDE.md 指到 AGENTS.md。
 func TestChangeInit_PointsExistingClaudeFile(t *testing.T) {
 	root := t.TempDir()
+	skipIfAncestorHasContract(t, root)
 	human := "# 我的约定\n\n- 先跑 make check\n"
 	if err := os.WriteFile(filepath.Join(root, change.ClaudeFile), []byte(human), 0o644); err != nil {
 		t.Fatal(err)
@@ -563,5 +564,65 @@ func TestChangeInit_PointsExistingClaudeFile(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(got), human) || !strings.Contains(string(got), "@AGENTS.md") {
 		t.Fatalf("CLAUDE.md 应保留人工内容并追加导入：\n%s", got)
+	}
+}
+
+// skipIfAncestorHasContract 跳过受宿主环境影响的用例：changeRoot 的成员资格
+// 解析会沿目录向上找 spec/forge.yaml，temp 目录的祖先里恰好有契约时（开发机的
+// 沙盒残留、共享 /tmp），本用例会在那里 init，断言必然错位。
+func skipIfAncestorHasContract(t *testing.T, root string) {
+	t.Helper()
+	for dir := filepath.Dir(root); ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, "spec", "forge.yaml")); err == nil {
+			t.Skipf("祖先目录 %s 已有 spec/forge.yaml，跳过依赖根解析的用例", dir)
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			break
+		}
+	}
+}
+
+func TestParsePointerNames_TrimsNoneAndRejectsMixed(t *testing.T) {
+	for _, raw := range []string{"", "  ", "none", " none "} {
+		got, err := parsePointerNames(raw)
+		if err != nil || len(got) != 0 {
+			t.Fatalf("%q 应表示不动指针，got %v err %v", raw, got, err)
+		}
+	}
+	if _, err := parsePointerNames("all,bogus"); err == nil {
+		t.Fatal("all 后面的非法取值不能被静默吞掉")
+	}
+	if _, err := parsePointerNames("none,claude"); err == nil {
+		t.Fatal("none 不能和别的取值混写")
+	}
+	got, err := parsePointerNames(" cursor , claude ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "claude" || got[1] != "cursor" {
+		t.Fatalf("解析结果应固定顺序 claude,cursor，got %v", got)
+	}
+}
+
+func TestChangeAgents_NoneWithSpacesLeavesPointersAlone(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	human := "# 手写 CLAUDE.md\n"
+	if err := os.WriteFile(filepath.Join(root, change.ClaudeFile), []byte(human), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reset := func() { _ = changeAgentsCmd.Flags().Set("pointers", "") }
+	reset()
+	defer reset()
+	if err := changeAgentsCmd.Flags().Set("pointers", " none "); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := captureOutput(t, func() error {
+		return runChangeAgents(changeAgentsCmd, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(root, change.ClaudeFile)); string(got) != human {
+		t.Fatalf("--pointers \" none \" 不该碰指针文件，got %q", got)
 	}
 }
