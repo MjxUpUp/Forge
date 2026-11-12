@@ -22,6 +22,7 @@ func init() {
 	changeCmd.AddCommand(changeVerifyCmd)
 	changeCmd.AddCommand(changeStatusCmd)
 	changeCmd.AddCommand(changeGateCmd)
+	changeCmd.AddCommand(changeAgentsCmd)
 
 	changeInitCmd.Flags().String("profile", "mini", "门禁档位：mini / standard / full")
 	changeNewCmd.Flags().String("title", "", "change 标题（缺省用 id）")
@@ -85,6 +86,12 @@ var changeStatusCmd = &cobra.Command{
 	RunE:  runChangeStatus,
 }
 
+var changeAgentsCmd = &cobra.Command{
+	Use:   "agents",
+	Short: "同步 AGENTS.md 的 forge 托管块（标记外一字不改）",
+	RunE:  runChangeAgents,
+}
+
 var changeGateCmd = &cobra.Command{
 	Use:   "gate <id> --task <N> [--timeout 10m]",
 	Short: "只跑某条任务声明的判据（节点证据不封印整个 change）",
@@ -109,6 +116,28 @@ func runChangeInit(cmd *cobra.Command, _ []string) error {
 	fmt.Println()
 	fmt.Println("下一步：")
 	fmt.Printf("  forge change new <id> --title \"...\"    # 新建一个 change\n")
+	return nil
+}
+
+func runChangeAgents(_ *cobra.Command, _ []string) error {
+	root, err := changeRoot()
+	if err != nil {
+		return err
+	}
+	action, err := change.EnsureAgentsBlock(root)
+	if err != nil {
+		return err
+	}
+	switch action {
+	case change.AgentsCreated:
+		fmt.Println("已写入 AGENTS.md（整份新建，含 forge 托管块）")
+	case change.AgentsAppended:
+		fmt.Println("已把 forge 托管块追加到 AGENTS.md 末尾（原有内容未动）")
+	case change.AgentsUpdated:
+		fmt.Println("已更新 AGENTS.md 里的 forge 托管块（标记外未动）")
+	default:
+		fmt.Println("AGENTS.md 的 forge 托管块已是最新，无需改动")
+	}
 	return nil
 }
 

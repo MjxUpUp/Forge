@@ -190,12 +190,17 @@ func Init(root, profile string) (created []string, err error) {
 	}
 	created = append(created, relTo(root, archiveDir)+"/")
 
-	agents := filepath.Join(root, "AGENTS.md")
-	if _, statErr := os.Stat(agents); errors.Is(statErr, os.ErrNotExist) {
-		if err := os.WriteFile(agents, []byte(renderTemplate(tmplAgents, "", "")), 0o644); err != nil {
-			return nil, fmt.Errorf("change: 写 AGENTS.md: %w", err)
-		}
+	action, err := EnsureAgentsBlock(root)
+	if err != nil {
+		return nil, err
+	}
+	switch action {
+	case AgentsCreated:
 		created = append(created, "AGENTS.md")
+	case AgentsAppended:
+		created = append(created, "AGENTS.md（追加 forge 托管块）")
+	case AgentsUpdated:
+		created = append(created, "AGENTS.md（更新 forge 托管块）")
 	}
 	return created, nil
 }
