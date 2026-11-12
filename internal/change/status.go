@@ -64,7 +64,8 @@ func ParseTasks(raw []byte) []Task {
 		t := Task{
 			Index: len(out) + 1,
 			Done:  strings.EqualFold(m[1], "x"),
-			Text:  m[2],
+			// 模板里任务本身带「1.」编号；保留原文会让界面打印成「1. 1. …」。
+			Text: trimTaskNumber(m[2], len(out)+1),
 		}
 		for _, c := range criterionRE.FindAllStringSubmatch(t.Text, -1) {
 			for _, n := range numberRE.FindAllStringSubmatch(c[1], -1) {
@@ -76,6 +77,24 @@ func ParseTasks(raw []byte) []Task {
 		out = append(out, t)
 	}
 	return out
+}
+
+// trimTaskNumber 去掉任务正文开头与本条序号相同的编号（「1. 」「1、」「1)」）。
+// 只认与 index 一致的数字，避免把「2.0 兼容」这类正文误伤。
+func trimTaskNumber(text string, index int) string {
+	prefix := strconv.Itoa(index)
+	var rest string
+	switch {
+	case strings.HasPrefix(text, prefix+"."):
+		rest = text[len(prefix)+1:]
+	case strings.HasPrefix(text, prefix+"、"):
+		rest = text[len(prefix)+len("、"):]
+	case strings.HasPrefix(text, prefix+")"):
+		rest = text[len(prefix)+1:]
+	default:
+		return text
+	}
+	return strings.TrimSpace(rest)
 }
 
 func appendUniqueInt(s []int, v int) []int {
