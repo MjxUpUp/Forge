@@ -11,6 +11,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/change"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +23,7 @@ func init() {
 	changeCmd.AddCommand(changeVerifyCmd)
 	changeCmd.AddCommand(changeStatusCmd)
 	changeCmd.AddCommand(changeGateCmd)
+	changeCmd.AddCommand(changeAgentsCmd)
 
 	changeInitCmd.Flags().String("profile", "mini", "门禁档位：mini / standard / full")
 	changeNewCmd.Flags().String("title", "", "change 标题（缺省用 id）")
@@ -54,7 +56,7 @@ var changeCmd = &cobra.Command{
 
 var changeInitCmd = &cobra.Command{
 	Use:   "init [--profile <mini|standard|full>]",
-	Short: "在仓库里声明契约（spec/forge.yaml + spec/changes/ + 缺省 AGENTS.md）",
+	Short: "在仓库里声明契约（spec/forge.yaml + spec/changes/）+ 同步 AGENTS.md 托管块",
 	RunE:  runChangeInit,
 }
 
@@ -85,6 +87,13 @@ var changeStatusCmd = &cobra.Command{
 	RunE:  runChangeStatus,
 }
 
+var changeAgentsCmd = &cobra.Command{
+	Use:   "agents",
+	Short: "同步 AGENTS.md 的 forge 托管块（标记外不动）",
+	Args:  cobra.NoArgs,
+	RunE:  runChangeAgents,
+}
+
 var changeGateCmd = &cobra.Command{
 	Use:   "gate <id> --task <N> [--timeout 10m]",
 	Short: "只跑某条任务声明的判据（节点证据不封印整个 change）",
@@ -102,13 +111,38 @@ func runChangeInit(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("已声明仓库契约：")
+	fmt.Println("本次改动（已就位）：")
 	for _, p := range created {
 		fmt.Printf("  + %s\n", p)
 	}
 	fmt.Println()
 	fmt.Println("下一步：")
 	fmt.Printf("  forge change new <id> --title \"...\"    # 新建一个 change\n")
+	return nil
+}
+
+func runChangeAgents(_ *cobra.Command, _ []string) error {
+	root, err := changeRoot()
+	if err != nil {
+		return err
+	}
+	if !specroot.Declared(root) {
+		return fmt.Errorf("change: %s 还没有 spec/forge.yaml——先跑 `forge change init` 声明契约，再同步 AGENTS.md", root)
+	}
+	action, err := change.EnsureAgentsBlock(root)
+	if err != nil {
+		return err
+	}
+	switch action {
+	case change.AgentsCreated:
+		fmt.Println("已写入 AGENTS.md（整份新建，含 forge 托管块）")
+	case change.AgentsAppended:
+		fmt.Println("已把 forge 托管块追加到 AGENTS.md 末尾（原有内容未动）")
+	case change.AgentsUpdated:
+		fmt.Println("已更新 AGENTS.md 里的 forge 托管块（标记外未动）")
+	default:
+		fmt.Println("AGENTS.md 的 forge 托管块已是最新，无需改动")
+	}
 	return nil
 }
 
