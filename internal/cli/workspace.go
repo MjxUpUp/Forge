@@ -166,7 +166,9 @@ func runWorkspaceAdd(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(cmd.OutOrStdout())
 	// 成员提示：未注册 repo 的任务/pulse 对全局 store 不可见；init 之前 doctor
 	// 会一直标该 key。仅 advisory——add 绝不能静默改注册表（副作用纪律）。
-	if _, _, err := projectroot.ResolveFrom(path); errors.Is(err, forgedata.ErrNoForgeConfig) {
+	// State 而不是 ResolveFrom：add 是只读提示，ResolveFrom 的遗留分支会自愈
+	// 登记（把项目顺带接管），与上面「add 绝不能静默改注册表」冲突。
+	if _, _, _, err := projectroot.State(path); errors.Is(err, forgedata.ErrNoForgeConfig) {
 		fmt.Fprintf(cmd.ErrOrStderr(), "提示：%s 既没有 spec/forge.yaml 也不在全局注册表（放一份仓库契约，或到该目录跑 forge init），workspace doctor 会持续标出\n", path)
 	}
 	return nil
