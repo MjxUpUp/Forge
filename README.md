@@ -139,7 +139,7 @@ hooks: on          # on | off（缺省 on）
 |------|------|
 | `forge init` | 初始化项目（项目目录零写入，用户级仍登记注册表与资产） |
 | `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步 |
-| `forge change init/new/list/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块（标记外不改）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md（随 git 提交，与 `forge init` 的项目目录零写入是两回事）；`new --fast` 只要求 proposal + acceptance |
+| `forge change init/new/list/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（标记外不改；指针文件缺省不创建，用 `--pointers` 点名）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md（随 git 提交，与 `forge init` 的项目目录零写入是两回事）；`new --fast` 只要求 proposal + acceptance |
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-verify → task-complete |
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |
