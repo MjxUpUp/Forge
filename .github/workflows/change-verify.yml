@@ -4,9 +4,9 @@ name: change-verify
 # 要让它真的拦住合并，还需在仓库设置里把 change-check 设为 required status check
 # （fork 或私有仓无法用代码表达这一步）。
 #
-# 只在 PR 上跑：封印绑定的是分支上那一版代码，合并到 main 的 merge commit 会
-# 改动工作树，证据因此判失效——那是合并动作的噪音，不是代码变了。要挡的是
-# 合并前的 PR head。
+# 只在 PR 上跑：封印绑定的是分支上那一版代码；main 上有新提交后再 merge，
+# 合并后的树与被封印的那版不同，证据按设计判失效——那是合并动作的噪音，
+# 不是代码变了。要挡的是合并前的 PR head。
 on:
   pull_request:
 
