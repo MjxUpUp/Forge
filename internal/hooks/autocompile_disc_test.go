@@ -74,3 +74,38 @@ func TestAutoCompileHook_DocsOnlyDiffExitsZero(t *testing.T) {
 		t.Fatalf("auto-compile 输出里没有 PASS:\n%s", out)
 	}
 }
+
+// TestAutoCompileHook_NonSourceFileEditExitsZero 覆盖 PostToolUse（per-edit）
+// 分支：宿主每次 Write/Edit 都会拉这个 hook，matcher 是 Write|Edit，不过滤扩展
+// 名。脚本里原来是 `is_source "$FILE_PATH" && TOUCHED_SOURCE=1`，写 README 时
+// is_source 返回 1、外层 if 返回 1，set -e 静默中止 → hook 退出非零 →
+// hook_emitters 填「forge hook blocked the action」把一次文档写入报成 block。
+func TestAutoCompileHook_NonSourceFileEditExitsZero(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash 不在 PATH")
+	}
+	dir := t.TempDir()
+	readme := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(readme, []byte("# doc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(t.TempDir(), "auto-compile.sh")
+	if err := os.WriteFile(script, []byte(AutoCompileHook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", script, dir)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "FORGE_FILE_PATH="+readme, "FORGE_DATA_DIR="+t.TempDir())
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			t.Fatalf("写 README 让 auto-compile 退出 %d（stderr: %s）——文档写入不该被报成 block",
+				exitErr.ExitCode(), strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		t.Fatalf("auto-compile: %v", err)
+	}
+	if !strings.Contains(string(out), "PASS") {
+		t.Fatalf("auto-compile 输出里没有 PASS:\n%s", out)
+	}
+}
