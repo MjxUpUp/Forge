@@ -30,6 +30,7 @@ const (
 //
 // 规则：只动 <!-- forge:begin --> 与 <!-- forge:end --> 之间；标记外一字不改。
 // 只有一个标记时拒绝动手——猜一边等于静默改错位置，比报错更糟。
+// 标记不成对时报错并不动文件；修好后重跑 `forge change agents`。
 func EnsureAgentsBlock(root string) (AgentsAction, error) {
 	path := filepath.Join(root, AgentsFile)
 	block := agentsBlock()
@@ -50,8 +51,15 @@ func EnsureAgentsBlock(root string) (AgentsAction, error) {
 	end := strings.Index(text, agentsEnd)
 	switch {
 	case begin < 0 && end < 0:
-		next := strings.TrimRight(text, "\n")
-		if next != "" {
+		// 追加路径只在末尾插入，原有字节（含尾部换行）一律保留。
+		next := text
+		switch {
+		case next == "":
+		case strings.HasSuffix(next, "\n\n"):
+			next += "\n"
+		case strings.HasSuffix(next, "\n"):
+			next += "\n"
+		default:
 			next += "\n\n"
 		}
 		next += block
@@ -60,7 +68,7 @@ func EnsureAgentsBlock(root string) (AgentsAction, error) {
 		}
 		return AgentsAppended, nil
 	case begin < 0 || end < 0 || end < begin:
-		return "", fmt.Errorf("change: %s 里的 %s / %s 不成对——先手工修好再同步", AgentsFile, agentsBegin, agentsEnd)
+		return "", fmt.Errorf("change: %s 里的 %s / %s 不成对——先手工修好标记，再跑 `forge change agents` 重试", AgentsFile, agentsBegin, agentsEnd)
 	}
 
 	old := text[begin : end+len(agentsEnd)]
