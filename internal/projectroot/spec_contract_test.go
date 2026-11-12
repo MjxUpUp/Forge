@@ -42,7 +42,7 @@ func TestResolveFrom_SpecContractDeclaresMembership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveFrom: %v", err)
 	}
-	if filepath.Clean(got) != filepath.Clean(root) {
+	if !sameProjectRoot(t, got, root) {
 		t.Fatalf("root=%q, want %q", got, root)
 	}
 	if src != SourceSpecContract {
@@ -69,7 +69,7 @@ func TestResolveFrom_SpecContractBeatsRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveFrom: %v", err)
 	}
-	if filepath.Clean(got) != filepath.Clean(root) || src != SourceSpecContract {
+	if !sameProjectRoot(t, got, root) || src != SourceSpecContract {
 		t.Fatalf("got (%q,%q), want (%q,%q)", got, src, root, SourceSpecContract)
 	}
 }
@@ -105,7 +105,7 @@ func TestResolveFrom_RegistryFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveFrom: %v", err)
 	}
-	if filepath.Clean(got) != filepath.Clean(root) {
+	if !sameProjectRoot(t, got, root) {
 		t.Fatalf("root=%q, want %q", got, root)
 	}
 	if src != SourceRegistry {
@@ -118,4 +118,19 @@ func TestResolveFrom_Neither(t *testing.T) {
 	if _, _, err := ResolveFrom(t.TempDir()); !errors.Is(err, forgedata.ErrNoForgeConfig) {
 		t.Fatalf("err=%v, want ErrNoForgeConfig", err)
 	}
+}
+
+// sameProjectRoot 比较解析结果与测试目录是否同一目录：Resolve 返回真实路径，
+// Windows 上 t.TempDir() 给的 8.3 短名会被展开，字符串比较会误报。
+func sameProjectRoot(t *testing.T, a, b string) bool {
+	t.Helper()
+	ia, err := os.Stat(a)
+	if err != nil {
+		t.Fatalf("stat %s: %v", a, err)
+	}
+	ib, err := os.Stat(b)
+	if err != nil {
+		t.Fatalf("stat %s: %v", b, err)
+	}
+	return os.SameFile(ia, ib)
 }

@@ -5,7 +5,7 @@
 // 解析顺序（spec-in-repo 重构后，激活判据前移到仓库态）：
 //  0. 仓库声明式契约 spec/forge.yaml——存在即成员资格。clone 到新机器、换个
 //     agent、不跑 forge init 也能解析（身份由 forgedata.ProjectFor 纯推导）。
-//  1. registry.IsMember(cwd)——git key 匹配（跨 worktree）或非 git 路径前缀匹配
+//  1. registry.State(cwd)——git key 匹配（跨 worktree）或非 git 路径前缀匹配
 //     （已安装/已登记项目的既有行为，留给没有契约标记的仓库）
 //  2. 遗留兜底：向上 walk 找项目级 .forge/（老版本 forge init 的项目）——
 //     命中后自愈登记
@@ -71,20 +71,58 @@ func Resolve() (string, Source, error) {
 	return ResolveFrom(cwd)
 }
 
+// State 解析 cwd 的成员资格与接管状态，把 declined 当作一种正常状态返回而不是
+// 错误——供「报告状态」的调用方（forge policy state、forge on、workspace add）
+// 使用。优先级与 ResolveFrom 同一份实现：仓库契约 → 注册表 → 遗留 .forge/；
+// 未命中任何来源时返回 forgedata.ErrNoForgeConfig。
+//
+// State 是只读探针：遗留 .forge/ 命中的项目不会被顺手登记进注册表（自愈只发生在
+// ResolveFrom —— 门禁/热路径；报告面读一次状态就改全局状态，副作用纪律不允许）。
+//
+// 为什么需要它：ResolveFrom 把 declined 折成 error 是给 hook/命令门禁用的（静默
+// 放行），但展示面需要区分「没接管」「拒绝了」「已接管」三态。两处若各自实现
+// 一遍优先级，就会出现「status 说 managed、policy state 说 unknown」的矛盾。
+func State(cwd string) (string, Source, string, error) {
+	return resolveFrom(cwd, false)
+}
+
 // ResolveFrom 是 Resolve 的可测入口（显式传 cwd，不读进程工作目录）。
 func ResolveFrom(cwd string) (string, Source, error) {
+	root, source, status, err := resolveFrom(cwd, true)
+	if err != nil {
+		return "", "", err
+	}
+	if status == registry.StatusDeclined {
+		return "", "", registry.ErrDeclinedProject
+	}
+	return root, source, nil
+}
+
+// resolveFrom 是成员资格解析的唯一实现：返回 (根, 来源, 接管状态)。
+//
+// heal 控制遗留 .forge/ 分支是否自愈登记（ResolveFrom 传 true 保持老行为，State
+// 传 false 做成纯读探针）。热路径上注册表只需读一次：State 已经返回三态，未登记
+// 时再走 IsMember 是重复解析（readFile 无缓存）。
+func resolveFrom(cwd string, heal bool) (string, Source, string, error) {
 	// 0. 仓库声明式契约。declined 一票否决优先：人明确拒绝接管后，仓库里的
 	//    标记不再自动复活 forge——否则 clone 一份契约就绕过了退出决定。
 	if root, ok := specroot.Find(cwd); ok {
 		if _, state := registry.State(root); state == registry.StatusDeclined {
-			return "", "", registry.ErrDeclinedProject
+			return root, SourceSpecContract, registry.StatusDeclined, nil
 		}
-		return root, SourceSpecContract, nil
+		return root, SourceSpecContract, registry.StatusManaged, nil
 	}
 
-	// 1. 注册表成员资格。
-	if root, ok := registry.IsMember(cwd); ok {
-		return root, SourceRegistry, nil
+	// 1. 注册表成员资格。一次 registry.State 同时给出「已登记」与「declined」
+	//    两种信息：IsMember 把 declined 当非成员，只看它会把明确退出的仓库报成
+	//    unknown，与 status 的 managed 冲突。
+	// root != "" 就是「有条目」：未登记时 State 只返回 ("", unknown)，不会出现
+	// (root, unknown) 这个组合（脏条目的空 Path 除外，那也当作未登记）。
+	if root, state := registry.State(cwd); root != "" {
+		if state == registry.StatusDeclined {
+			return root, SourceRegistry, registry.StatusDeclined, nil
+		}
+		return root, SourceRegistry, registry.StatusManaged, nil
 	}
 
 	// 2. 遗留兜底：向上 walk 找项目级 .forge/（user-level-assets 重构前 init 的
@@ -94,13 +132,15 @@ func ResolveFrom(cwd string) (string, Source, error) {
 	//    CLI 侧该错误文案即面向用户的 declined 提示）。
 	if root, ok := legacyFind(cwd); ok {
 		if _, state := registry.State(root); state == registry.StatusDeclined {
-			return "", "", registry.ErrDeclinedProject
+			return root, SourceLegacyConfig, registry.StatusDeclined, nil
 		}
-		_ = registry.Add(root) // 自愈登记，失败不阻断
-		return root, SourceLegacyConfig, nil
+		if heal {
+			_ = registry.Add(root) // 自愈登记，失败不阻断
+		}
+		return root, SourceLegacyConfig, registry.StatusManaged, nil
 	}
 
-	return "", "", forgedata.ErrNoForgeConfig
+	return "", "", "", forgedata.ErrNoForgeConfig
 }
 
 // legacyFind 从 dir 向上查找最近的、含项目 .forge/ 子目录的目录。两道边界防止把
