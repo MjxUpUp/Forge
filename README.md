@@ -91,7 +91,7 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
 
 ```bash
 cd your-project
-forge init      # 默认零项目写入，全部资产落在用户级
+forge init      # 项目目录零写入，全部资产落在用户级（注册表仍登记）
 # 回到 Claude Code 继续工作：AI 会自动读取 Forge 生成的 Skill 并驱动门禁流程
 ```
 
@@ -137,7 +137,7 @@ hooks: on          # on | off（缺省 on）
 
 | 命令 | 用途 |
 |------|------|
-| `forge init` | 初始化项目（默认零项目写入） |
+| `forge init` | 初始化项目（项目目录零写入，用户级仍登记注册表与资产） |
 | `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步 |
 | `forge change init/new/list/verify/status/gate` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人）；`gate --task N` 只跑某条任务的判据；`new --fast` 只要求 proposal + acceptance |
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |

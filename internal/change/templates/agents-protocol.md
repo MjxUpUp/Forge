@@ -12,7 +12,7 @@
   但仍受机器全局档位限制（`FORGE_PROFILE=lite` 时只接线 hazard-guard）。
 - `spec/changes/<id>/proposal.md` — 为什么做、怎样算解决。
 - `spec/changes/<id>/design.md` — 怎么改、为什么这么改。
-- `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号。
+- `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号（多个用「和/或/、」分隔）。
 - `spec/changes/<id>/acceptance.md` — 可执行判据（```bash 围栏）。
 - `spec/changes/<id>/evidence/<UTC 时间戳>/` — verify 产出的证据（stdout/stderr/exit + summary.json）。
 - `spec/changes/archive/<YYYYMMDD>-<id>/` — 归档。
