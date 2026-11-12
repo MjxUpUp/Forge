@@ -163,7 +163,7 @@ func runChangeAgents(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("change: %s 还没有 spec/forge.yaml——先跑 `forge change init` 声明契约，再同步 AGENTS.md", root)
 	}
 	pointers, _ := cmd.Flags().GetString("pointers")
-	create, err := parsePointerNames(pointers)
+	create, none, err := parsePointerNames(pointers)
 	if err != nil {
 		return err
 	}
@@ -182,7 +182,7 @@ func runChangeAgents(cmd *cobra.Command, _ []string) error {
 		fmt.Println("AGENTS.md 的 forge 托管块已是最新，无需改动")
 	}
 
-	if strings.TrimSpace(pointers) == "none" {
+	if none {
 		return nil
 	}
 	reports, err := change.EnsureAgentPointers(root, create)
@@ -210,14 +210,17 @@ func runChangeAgents(cmd *cobra.Command, _ []string) error {
 
 // parsePointerNames 解析 --pointers：空表示"只维护已存在的文件"，all 表示两个
 // 都创建，none 表示全都不碰。
-func parsePointerNames(raw string) ([]string, error) {
+// parsePointerNames 把 --pointers 的取值翻成要创建的入口名。none 单独用 bool
+// 返回：调用方据此区分「显式 none」（什么都不动）与「没写这个 flag」（只维护
+// 已存在的入口）——两者 create 都为空，但语义不同。
+func parsePointerNames(raw string) (names []string, none bool, err error) {
 	parts := strings.Split(strings.TrimSpace(raw), ",")
-	var claude, cursor, none bool
+	var claude, cursor, hasNone bool
 	for _, part := range parts {
 		switch name := strings.TrimSpace(part); name {
 		case "":
 		case "none":
-			none = true
+			hasNone = true
 		case "all":
 			claude, cursor = true, true
 		case "claude":
@@ -225,14 +228,14 @@ func parsePointerNames(raw string) ([]string, error) {
 		case "cursor":
 			cursor = true
 		default:
-			return nil, fmt.Errorf("change: 未知的指针 %q（可选 claude / cursor / all / none）", name)
+			return nil, false, fmt.Errorf("change: 未知的指针 %q（可选 claude / cursor / all / none）", name)
 		}
 	}
-	if none && (claude || cursor) {
-		return nil, fmt.Errorf("change: --pointers 里 none 不能和别的取值同时写")
+	if hasNone && (claude || cursor) {
+		return nil, false, fmt.Errorf("change: --pointers 里 none 不能和别的取值同时写")
 	}
-	if none {
-		return nil, nil
+	if hasNone {
+		return nil, true, nil
 	}
 	var out []string
 	if claude {
@@ -241,7 +244,7 @@ func parsePointerNames(raw string) ([]string, error) {
 	if cursor {
 		out = append(out, "cursor")
 	}
-	return out, nil
+	return out, false, nil
 }
 
 // rootRel 把路径转成相对仓库根的斜杠路径，供人类输出直接复制。
@@ -631,10 +634,10 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 			// change 目录在哪。
 			base := filepath.ToSlash(filepath.Join(change.ChangesDir(root), id, change.EvidenceDirName, a.Evidence))
 			if a.StderrFile != "" {
-				fmt.Printf("    stderr：%s/%s\n", rootRel(root, filepath.Join(base, a.StderrFile)), a.StderrFile)
+				fmt.Printf("    stderr：%s\n", rootRel(root, filepath.Join(base, a.StderrFile)))
 			}
 			if a.StdoutFile != "" {
-				fmt.Printf("    stdout：%s/%s\n", rootRel(root, filepath.Join(base, a.StdoutFile)), a.StdoutFile)
+				fmt.Printf("    stdout：%s\n", rootRel(root, filepath.Join(base, a.StdoutFile)))
 			}
 		}
 		fmt.Println("  返工前先读这些证据，别重试已证伪的路。")

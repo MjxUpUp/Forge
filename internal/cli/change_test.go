@@ -584,18 +584,18 @@ func skipIfAncestorHasContract(t *testing.T, root string) {
 
 func TestParsePointerNames_TrimsNoneAndRejectsMixed(t *testing.T) {
 	for _, raw := range []string{"", "  ", "none", " none "} {
-		got, err := parsePointerNames(raw)
+		got, _, err := parsePointerNames(raw)
 		if err != nil || len(got) != 0 {
 			t.Fatalf("%q 应表示不动指针，got %v err %v", raw, got, err)
 		}
 	}
-	if _, err := parsePointerNames("all,bogus"); err == nil {
+	if _, _, err := parsePointerNames("all,bogus"); err == nil {
 		t.Fatal("all 后面的非法取值不能被静默吞掉")
 	}
-	if _, err := parsePointerNames("none,claude"); err == nil {
+	if _, _, err := parsePointerNames("none,claude"); err == nil {
 		t.Fatal("none 不能和别的取值混写")
 	}
-	got, err := parsePointerNames(" cursor , claude ")
+	got, _, err := parsePointerNames(" cursor , claude ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -624,5 +624,68 @@ func TestChangeAgents_NoneWithSpacesLeavesPointersAlone(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(root, change.ClaudeFile)); string(got) != human {
 		t.Fatalf("--pointers \" none \" 不该碰指针文件，got %q", got)
+	}
+}
+
+func TestChangeStatus_StderrPathIsRepoRelativeOnce(t *testing.T) {
+	root := contractRepo(t)
+	if _, err := change.New(root, "demo", "示例"); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"proposal.md":   "# 提案\n\ndemo\n",
+		"design.md":     "# 设计\n\ndemo\n",
+		"tasks.md":      "# 任务\n\n- [ ] 1. 跑\n\n判据：acceptance #1\n",
+		"acceptance.md": "# 验收\n\n```bash\nls /definitely/not/here\n```\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(root, "spec", "changes", "demo", name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(root)
+	if _, _, err := captureOutput(t, func() error {
+		return runChangeVerify(changeVerifyCmd, []string{"demo"})
+	}); err == nil {
+		t.Fatal("判据失败应报错")
+	}
+	stdout, _, err := captureOutput(t, func() error {
+		return runChangeStatus(changeStatusCmd, []string{"demo"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stdout, "spec/changes/demo/evidence/") {
+		t.Fatalf("证据路径应按仓库根打印：\n%s", stdout)
+	}
+	if strings.Contains(stdout, ".stderr/") || strings.Contains(stdout, ".stdout/") {
+		t.Fatalf("文件名不该重复拼接：\n%s", stdout)
+	}
+}
+
+func TestChangeAgents_NoneWithTrailingCommaLeavesPointersAlone(t *testing.T) {
+	for _, raw := range []string{"none,", "none ,", " none,"} {
+		t.Run(raw, func(t *testing.T) {
+			root := contractRepo(t)
+			t.Chdir(root)
+			human := "# 手写 CLAUDE.md\n"
+			if err := os.WriteFile(filepath.Join(root, change.ClaudeFile), []byte(human), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			reset := func() { _ = changeAgentsCmd.Flags().Set("pointers", "") }
+			reset()
+			defer reset()
+			if err := changeAgentsCmd.Flags().Set("pointers", raw); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := captureOutput(t, func() error {
+				return runChangeAgents(changeAgentsCmd, nil)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := os.ReadFile(filepath.Join(root, change.ClaudeFile)); string(got) != human {
+				t.Fatalf("--pointers %q 不该碰指针文件，got %q", raw, got)
+			}
+		})
 	}
 }

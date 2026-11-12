@@ -442,3 +442,62 @@ func TestInit_ReportsCreatedOnPointerFailure(t *testing.T) {
 		t.Fatalf("失败前的落盘要能看见，got %v", created)
 	}
 }
+
+func TestEnsureCursorFrontmatter_KeepsKeysAndAddsAlwaysApply(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".cursor", "rules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, CursorRuleFile)
+	legacy := "---\ndescription: legacy rule\nglobs: **/*.go\n---\n\n# 旧规则\n"
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentPointers(root, nil); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, path)
+	for _, want := range []string{"description: legacy rule", "globs: **/*.go", "alwaysApply: true", pointerBegin} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("缺 %q：%q", want, got)
+		}
+	}
+	if strings.Count(got, "alwaysApply:") != 1 {
+		t.Fatalf("alwaysApply 只能有一行：%q", got)
+	}
+	again, err := EnsureAgentPointers(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again[1].Action != AgentsUnchanged {
+		t.Fatalf("二次运行应 unchanged，got %s", again[1].Action)
+	}
+	if readFile(t, path) != got {
+		t.Fatal("二次运行应字节不变")
+	}
+}
+
+func TestEnsureCursorFrontmatter_TurnsFalseIntoTrue(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".cursor", "rules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, CursorRuleFile)
+	body := "---\ndescription: 手写\nalwaysApply: false\n---\n\n# 旧规则\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureAgentPointers(root, nil); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, path)
+	if strings.Contains(got, "alwaysApply: false") {
+		t.Fatalf("false 应改真：%q", got)
+	}
+	if strings.Count(got, "alwaysApply:") != 1 || !strings.Contains(got, "alwaysApply: true") {
+		t.Fatalf("应只有一行 alwaysApply: true：%q", got)
+	}
+	if !strings.Contains(got, "description: 手写") {
+		t.Fatalf("其余键应保留：%q", got)
+	}
+}

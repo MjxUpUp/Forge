@@ -456,3 +456,44 @@ func TestPriorAttempts_MarkTimeoutInsteadOfExit(t *testing.T) {
 		t.Fatalf("exit 是 0 且超时，不该输出 exit：%s", b)
 	}
 }
+
+func TestStatus_CapsPriorAttemptsAtTenThroughStatusOf(t *testing.T) {
+	root := t.TempDir()
+	if _, err := Init(root, "mini"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(root, "demo", "demo"); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(ChangesDir(root), "demo")
+	for name, body := range map[string]string{
+		"proposal.md":   "# 提案\n\nx\n",
+		"design.md":     "# 设计\n\nx\n",
+		"tasks.md":      "# 任务\n\n- [ ] 1. 跑\n\n判据：acceptance #1\n",
+		"acceptance.md": "# 验收\n\n```bash\ntest -f missing.txt\n```\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 12; i++ {
+		// 判据失败时 Verify 的 err 是 nil，失败体现在 Summary.Passed。
+		res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Summary.Passed {
+			t.Fatalf("第 %d 次应当失败", i+1)
+		}
+	}
+	st, err := StatusOf(root, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.PriorAttempts) != 10 {
+		t.Fatalf("prior_attempts 应封顶 10 条，got %d", len(st.PriorAttempts))
+	}
+	if st.PriorAttempts[0].Evidence <= st.PriorAttempts[9].Evidence {
+		t.Fatalf("应按新→旧：first=%s last=%s", st.PriorAttempts[0].Evidence, st.PriorAttempts[9].Evidence)
+	}
+}

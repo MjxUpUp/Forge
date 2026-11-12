@@ -136,29 +136,82 @@ type PointerReport struct {
 	Skipped bool
 }
 
-// ensureCursorFrontmatter 保证 .cursor/rules/forge.mdc 以 frontmatter 开头。
+// ensureCursorFrontmatter 保证 .cursor/rules/forge.mdc 的 frontmatter 可用。
 //
-// Cursor 只加载带 frontmatter 的规则文件；对已经存在、但没有 frontmatter 的
-// 同名文件（早期手写的），补在开头而不是新写一份——否则块写进去了，规则却
-// 永远不生效。文件已带 frontmatter 时不做任何事。
+// Cursor 只加载带 frontmatter 的规则文件，且 alwaysApply 决定它是否自动生效。
+// 对已经存在的文件：没有 frontmatter 就补一份在开头；有 frontmatter 但缺
+// alwaysApply（早期手写，或别的工具生成）就补这一行，其余键原样保留。frontmatter
+// 的修复发生在托管块之外——这是 Cursor 规则文件能生效的必要条件。
 func ensureCursorFrontmatter(path string) (bool, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return false, fmt.Errorf("change: 读 %s: %w", filepath.ToSlash(CursorRuleFile), err)
 	}
 	text := string(raw)
-	trimmed := strings.TrimLeft(text, "\ufeff \t\r\n")
-	if strings.HasPrefix(trimmed, "---\n") || strings.HasPrefix(trimmed, "---\r\n") {
-		return false, nil
-	}
-	fm := cursorFrontmatter
+	nl := "\n"
 	if strings.Contains(text, "\r\n") {
+		nl = "\r\n"
+	}
+	write := func(body string) (bool, error) {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			return false, fmt.Errorf("change: 写 %s: %w", filepath.ToSlash(CursorRuleFile), err)
+		}
+		return true, nil
+	}
+	trimmed := strings.TrimLeft(text, "\ufeff \t\r\n")
+	if !strings.HasPrefix(trimmed, "---\n") && !strings.HasPrefix(trimmed, "---\r\n") {
+		fm := cursorFrontmatter
+		if nl == "\r\n" {
+			fm = strings.ReplaceAll(fm, "\n", "\r\n")
+		}
+		return write(fm + text)
+	}
+
+	// 已有 frontmatter：扫到收尾的 --- 行，找 alwaysApply 键。
+	// 值已经是 true 就不动；值是 false 或别的写法就整行改真（用户写了 false
+	// 说明他之前主动关过，但托管指针要生效必须是 true）；缺键就补在收尾行前。
+	offset := len(text) - len(trimmed)
+	pos := offset
+	first := true
+	keyStart, keyEnd, keyTrue := -1, -1, false
+	for pos < len(text) {
+		next := strings.IndexByte(text[pos:], '\n')
+		lineEnd := len(text)
+		if next >= 0 {
+			lineEnd = pos + next
+		}
+		line := strings.TrimRight(text[pos:lineEnd], "\r")
+		if first {
+			first = false
+		} else if strings.TrimSpace(line) == "---" {
+			switch {
+			case keyStart >= 0 && keyTrue:
+				return false, nil
+			case keyStart >= 0:
+				return write(text[:keyStart] + "alwaysApply: true" + nl + text[keyEnd:])
+			default:
+				return write(text[:pos] + "alwaysApply: true" + nl + text[pos:])
+			}
+		}
+		if strings.HasPrefix(strings.ToLower(line), "alwaysapply:") {
+			keyStart, keyEnd = pos, lineEnd
+			if next >= 0 {
+				keyEnd = lineEnd + 1
+			}
+			val := strings.TrimSpace(line[strings.IndexByte(line, ':')+1:])
+			keyTrue = strings.EqualFold(val, "true")
+		}
+		if next < 0 {
+			break
+		}
+		pos = lineEnd + 1
+	}
+	// frontmatter 没闭合：当没有 frontmatter 处理，补一份完整的。
+	fm := cursorFrontmatter
+	if nl == "\r\n" {
 		fm = strings.ReplaceAll(fm, "\n", "\r\n")
 	}
-	if err := os.WriteFile(path, []byte(fm+text), 0o644); err != nil {
-		return false, fmt.Errorf("change: 写 %s: %w", filepath.ToSlash(CursorRuleFile), err)
-	}
-	return true, nil
+	return write(fm + text)
 }
 
 // EnsureAgentPointers 维护"指向 AGENTS.md"的指针文件。
