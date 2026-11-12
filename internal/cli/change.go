@@ -38,7 +38,7 @@ func init() {
 	changeGateCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条判据的超时")
 	changeCheckCmd.Flags().Bool("staged", false, "只看暂存区（pre-commit 用；暂存区出现 spec/changes/ 之外的改动则退化为全量）")
 	changeCheckCmd.Flags().Bool("json", false, "JSON 格式输出")
-	changeAgentsCmd.Flags().String("pointers", "", "同时维护指向 AGENTS.md 的指针文件：claude / cursor / all（缺省只更新已存在的文件）")
+	changeAgentsCmd.Flags().String("pointers", "", "同时维护指向 AGENTS.md 的指针文件：claude / cursor / all / none（缺省只维护已存在的 CLAUDE.md；.cursor/rules/ 目录存在时补 forge.mdc）")
 }
 
 var changeCmd = &cobra.Command{
@@ -62,7 +62,7 @@ var changeCmd = &cobra.Command{
 
 var changeInitCmd = &cobra.Command{
 	Use:   "init [--profile <mini|standard|full>]",
-	Short: "在仓库里声明契约（spec/forge.yaml + spec/changes/）+ 同步 AGENTS.md 托管块",
+	Short: "在仓库里声明契约（spec/forge.yaml + spec/changes/）+ 同步 AGENTS.md 托管块与已存在的入口指针",
 	RunE:  runChangeInit,
 }
 
