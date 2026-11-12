@@ -109,6 +109,8 @@ forge init      # 默认零项目写入，全部资产落在用户级
 | `~/.codex/hooks.json`、`~/.cursor/hooks.json` 等 | 其他 agent 的用户级 hook 接线（按检测到的工具） |
 
 > **仓库自己决定要不要接管？** 仓库根放一份 `spec/forge.yaml`，成员资格就从全局注册表前移到仓库本身——clone 到新机器、换个 agent、不跑 `forge init` 也能解析到项目身份。注意 hook 接线仍由用户级 init / plugin 提供；契约只决定这些 hook 在这个仓库里跑不跑、按哪档跑。
+>
+> 查找位置：**只认 git 仓库根的 `spec/forge.yaml`**，向上找到 git 根就停；子目录里的同名文件不激活整仓（monorepo 里一个子包不该悄悄改变别人的行为，要激活就放到仓库根），非 git 目录向上查找，走到用户 home 就停（`~` 本身不算项目根）。放好之后 `forge status` 应显示 `spec: spec/forge.yaml (仓库声明式成员资格)`；`forge policy state` 应输出 managed（declined 的仓库例外——`forge off`、`policy yield` 或 clone 到带 `.forge-decline` 的仓库都会这样；成员资格退出优先于契约，`forge on` 可恢复）。
 
 ```yaml
 # spec/forge.yaml
@@ -117,6 +119,7 @@ profile: standard  # standard | mini | full（缺省 standard）
 hooks: on          # on | off（缺省 on）
 ```
 
+- 注意别和 `forge off`（成员资格退出）混：`hooks: off` 只静默 hook 检查，省掉噪音；`forge off` 是项目级退出接管，连成员资格一起让位。两者独立生效。
 - `hooks: off`——这个仓库里的 hook 检查静默放行：**除下面三条安全底线外，0 次检查、0 注入**。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。
 - **安全底线不受仓库契约里的 `hooks`/`profile` 控制**：`hazard-guard`（破坏性命令）、`mcp-scan`（`.mcp.json` 供应链）、`skill-scan`（恶意 skill 指令）照跑——契约随 git 走，不能让一个 PR 用一行 `hooks: off` 关掉防它的扫描器。噪音成本很低（只在真危险时出声）。
   这条的边界是机器全局档位：名册在契约之前就先滤一遍，`FORGE_PROFILE=lite` 时 lite 名册里只有 `hazard-guard`，`mcp-scan`/`skill-scan` 本来就没接线、不在此列——「契约关不掉」不等于「一定跑」。
