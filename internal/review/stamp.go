@@ -39,10 +39,10 @@ import (
 // Stop block 会触发 retry-loop，见 hooks/embed.go TaskVerifyHook 注释）。
 const MaxReviewRounds = 3
 
-// Decision is the review decision produced by Evaluate for the non-task current
+// Decision is the review decision produced by EvaluateFor for the current
 // diff.
 //
-// Decision 是 Evaluate 对非 task 模式当前 diff 的审查决策。
+// Decision 是 EvaluateFor 对当前 diff 的审查决策。
 type Decision int
 
 const (
@@ -67,18 +67,6 @@ type Stamp struct {
 	// Note 是 `forge review pass --note` 的可选审查结论文本（非 task 模式的审计留痕，
 	// 对应 task 模式的 ReviewRound.Note）。
 	Note string `json:"note,omitempty"`
-}
-
-// Evaluate is the atomic decision entry for the Stop hook (non-task mode):
-// compute the current diff hash, compare against the stamp, decide
-// pass/need-review/fallback, and on need-review increment block_count and
-// persist it.
-//
-// Evaluate 是 Stop hook（非 task 模式）的原子决策入口：算当前 diff hash →
-// 对比 stamp → 决定放行/需审/兜底，并在需审时累加 block_count 持久化。
-// 返回 (决策, 人读原因)。
-func Evaluate(root string) (Decision, string, error) {
-	return EvaluateFor(root, "")
 }
 
 // EvaluateFor is the session-scoped Stop decision: the fingerprint only carries
@@ -192,16 +180,6 @@ func EvaluateFor(root, sid string) (Decision, string, error) {
 	return DecisionNeedReview, reason, nil
 }
 
-// MarkPassedWithNote marks the current diff as having passed review (`forge
-// review pass [--note]`) — computes the diff hash, writes the reviewed stamp
-// with the optional reviewer conclusion text, and resets block_count.
-//
-// MarkPassedWithNote 在 MarkPassed 之上把可选审查结论文本
-// （`forge review pass --note`）持久化进 stamp。
-func MarkPassedWithNote(root, note string) error {
-	return MarkPassedFor(root, "", note)
-}
-
 // MarkPassedFor marks the *same scope EvaluateFor will judge* as reviewed. It must
 // mirror EvaluateFor's fingerprint exactly: a session that reviewed its own change
 // and then stamps the whole tree would never satisfy the scoped gate (block →
@@ -255,7 +233,7 @@ func loadStamp(root, hash string) *Stamp {
 }
 
 // knownReviewed 报告给定 diff hash 是否在【任意】分支 stamp 上被标过已审（不限当前分支）。
-// 这让审查通过跨「只改 scope」的迁移可移植（见 Evaluate）：别处审过的同一内容照样认。返回
+// 这让审查通过跨「只改 scope」的迁移可移植（见 EvaluateFor）：别处审过的同一内容照样认。返回
 // 命中 stamp 供调用方点名来源分支。失败（无 stamps 目录/不可读/损坏）降级为「未找到」——
 // 安全方向，重审。
 //
@@ -264,7 +242,7 @@ func loadStamp(root, hash string) *Stamp {
 // 改按【文件名】匹配——dh-<hash>.stamp 的名即 hash（saveStamp 用 s.DiffHash 推导路径），
 // 名字不匹配的 dh-*.stamp 直接跳过不读，扫描从 O(N) 次文件读降到至多一次。仅 legacy
 // <branch>.stamp（hash 在内容里）仍读内容。名字命中的那一枚 dh- 文件仍要读出来确认
-// Reviewed：Evaluate 的 block 路径把 Reviewed=false 的计数戳写在同一内容寻址路径上，
+// Reviewed：EvaluateFor 的 block 路径把 Reviewed=false 的计数戳写在同一内容寻址路径上，
 // 若只按文件名命中，一个仅被 block 过的 diff 会冒充已审——假放行。（名/内容错配不可能
 // 由 saveStamp 产生；只有手工篡改才会。）
 func knownReviewed(root, hash string) (*Stamp, bool) {
@@ -305,7 +283,7 @@ func knownReviewed(root, hash string) (*Stamp, bool) {
 // pruneStamps 尽力清扫超过 FORGE_STAMP_RETENTION_DAYS（默认 30；≤0 禁用）的陈旧内容
 // 寻址 stamp（dh-*.stamp）：每个新 diff 的 Stop-block 都持久化一枚 dh-<hash>.stamp，
 // diff 一直在换，却没有任何路径删它们——stamps 目录无界增长，knownReviewed 每次
-// Evaluate 白付一次全量扫。龄取文件 mtime：util.AtomicWrite（临时文件+rename）在写入
+// EvaluateFor 白付一次全量扫。龄取文件 mtime：util.AtomicWrite（临时文件+rename）在写入
 // 时刻设定它，且 retention 窗口未被动过的戳标记的是早已被取代的 diff——它的跨分支
 // 可移植保证随之过期（30 天前的工作区状态被要求重审是 retention 的本意取舍，不是
 // 回归）。legacy <branch>.stamp 不清扫：只做读兼容、每分支至多一枚——本就有界。
@@ -356,13 +334,13 @@ func CurrentState(root string) (string, error) {
 	}
 	fmt.Fprintf(&b, "Block count:   %d/%d\n", stamp.BlockCount, MaxReviewRounds)
 
-	// 跨分支可移植的展示：当前分支无匹配已审戳，但别处审过同一 hash 时点出来（与 Evaluate 放行一致）。
+	// 跨分支可移植的展示：当前分支无匹配已审戳，但别处审过同一 hash 时点出来（与 EvaluateFor 放行一致）。
 	crossBranch := ""
 	if hasChanges && !(stamp.DiffHash == hash && stamp.Reviewed) {
 		if other, ok := knownReviewed(root, hash); ok {
 			crossBranch = other.Branch
 			if crossBranch == "" {
-				crossBranch = "其他分支" // mirror Evaluate's fallback so display never drifts from the decision
+				crossBranch = "其他分支" // mirror EvaluateFor's fallback so display never drifts from the decision
 			}
 		}
 	}
