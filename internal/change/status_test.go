@@ -3,6 +3,7 @@ package change
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -408,5 +409,50 @@ func TestStatus_PriorAttemptsExplainMissingCommand(t *testing.T) {
 	}
 	if len(st.PriorAttempts) != 1 || st.PriorAttempts[0].Reason == "" {
 		t.Fatalf("缺命令时应写理由，got %+v", st.PriorAttempts)
+	}
+}
+
+func TestPriorAttempts_SkipsPassingAndCapsAtTen(t *testing.T) {
+	atts := []Attempt{{Dir: "evidence/20260101T000000Z", Passed: true}}
+	for i := 0; i < 12; i++ {
+		atts = append(atts, Attempt{
+			Dir:          fmt.Sprintf("evidence/20260101T%06dZ", i),
+			FirstFailure: &Check{Command: "go test ./...", Exit: 1},
+		})
+	}
+	got := priorAttempts(atts, 10)
+	if len(got) != 10 {
+		t.Fatalf("最多 10 条，got %d", len(got))
+	}
+	for _, pa := range got {
+		if pa.Command == "" {
+			t.Fatalf("通过的记录不该进死路记忆：%+v", pa)
+		}
+	}
+	if got[0].Evidence != "20260101T000000Z" || got[9].Evidence != "20260101T000009Z" {
+		t.Fatalf("输入是新→旧，输出应保持：首条 %q 末条 %q", got[0].Evidence, got[9].Evidence)
+	}
+}
+
+func TestPriorAttempts_MarkTimeoutInsteadOfExit(t *testing.T) {
+	atts := []Attempt{{
+		Dir:          "evidence/20260101T000000Z",
+		FirstFailure: &Check{Command: "sleep 30", Exit: 1, Shell: "bash", TimedOut: true},
+	}}
+	got := priorAttempts(atts, 10)
+	if len(got) != 1 || !got[0].TimedOut {
+		t.Fatalf("超时要标出来，got %+v", got)
+	}
+	b, err := json.Marshal(got[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{`"evidence"`, `"failed_command"`, `"timed_out":true`} {
+		if !strings.Contains(string(b), key) {
+			t.Fatalf("JSON 缺 %s：%s", key, b)
+		}
+	}
+	if strings.Contains(string(b), `"exit"`) {
+		t.Fatalf("exit 是 0 且超时，不该输出 exit：%s", b)
 	}
 }
