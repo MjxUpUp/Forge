@@ -215,8 +215,8 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 		if c.Fast {
 			want = "fast 通道要求的两份产物（proposal、acceptance）"
 		}
-		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——%s都填成这个 change 自己的内容、并删掉 %s 标记后再 verify",
-			id, strings.Join(problems, "、"), want, scaffoldMarker)
+		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——%s都填成这个 change 自己的内容、并删掉%s后再 verify",
+			id, strings.Join(problems, "、"), want, scaffoldHint)
 	}
 	if !c.HasAcceptance {
 		return nil, fmt.Errorf("change: %s 没有 %s（无法验证）", relTo(root, c.Dir), FileAcceptance)
@@ -566,6 +566,10 @@ func filesDrifted(root string, files []FileDigest) bool {
 // 只认行首的注释标记：模板正文会写「删掉 `forge:fill` 标记」这类说明，
 // 按子串匹配会让照做的人（删了标记行、没删说明）永远过不了 verify。
 const scaffoldMarker = "<!-- forge:fill"
+
+// scaffoldHint 是给人看的说法：标记本身是 HTML 注释，直接把它塞进
+// 「删掉 … 标记」会让句子读成「删掉 <!-- forge:fill 标记」。
+const scaffoldHint = "文件头那行 forge:fill 注释标记"
 
 // DocProblems 列出让这个 change 还不算填完的原因：缺文件，或者仍是模板骨架。
 //

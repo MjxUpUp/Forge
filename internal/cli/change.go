@@ -36,7 +36,7 @@ func init() {
 	changeStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	changeGateCmd.Flags().Int("task", 0, "tasks.md 里的任务序号（从 1 开始）")
 	changeGateCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条判据的超时")
-	changeCheckCmd.Flags().Bool("staged", false, "只检查暂存区碰到的 change（pre-commit 用）")
+	changeCheckCmd.Flags().Bool("staged", false, "只看暂存区（pre-commit 用；暂存区出现 spec/changes/ 之外的改动则退化为全量）")
 	changeCheckCmd.Flags().Bool("json", false, "JSON 格式输出")
 }
 
@@ -106,7 +106,8 @@ var changeCheckCmd = &cobra.Command{
 否则退出码 2。这不是"检查有没有写文档"，是"别把没验证过的改动合进去"：
 
   forge change check            # 全部未归档 change（CI 用）
-  forge change check --staged   # 只看暂存区碰到的 change（pre-commit 用）`,
+  forge change check --staged   # pre-commit 用：只看暂存区；出现代码等
+                                # 其他改动时退化为全量（代码变了证据可能失效）`,
 	Args: cobra.NoArgs,
 	RunE: runChangeCheck,
 }
@@ -530,7 +531,7 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 			changesRoot := change.ChangesDir(root)
 			only = change.TouchedChanges(repoRoot, changesRoot, paths)
 			if len(paths) == 0 {
-				skipped = "暂存区是空的——没有要检查的东西"
+				skipped = "暂存区是空的"
 				only = nil
 				break
 			}
@@ -562,7 +563,7 @@ func runChangeCheck(cmd *cobra.Command, _ []string) error {
 		payload := struct {
 			Checked  []string              `json:"checked"`
 			Problems []change.CheckProblem `json:"problems"`
-			Skipped  string                `json:"skipped,omitempty"`
+			Skipped  string                `json:"skipped"`
 		}{Checked: emptyIfNil(checked), Problems: emptyIfNil(problems), Skipped: skipped}
 		raw, merr := json.MarshalIndent(payload, "", "  ")
 		if merr != nil {
@@ -619,7 +620,7 @@ func printChangeCheckSkipped(asJSON bool, reason string) error {
 		payload := struct {
 			Checked  []string              `json:"checked"`
 			Problems []change.CheckProblem `json:"problems"`
-			Skipped  string                `json:"skipped,omitempty"`
+			Skipped  string                `json:"skipped"`
 		}{Checked: []string{}, Problems: []change.CheckProblem{}, Skipped: reason}
 		raw, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {

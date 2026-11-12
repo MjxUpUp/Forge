@@ -566,8 +566,8 @@ func TestVerify_RefusesUnfilledScaffold(t *testing.T) {
 	if err == nil {
 		t.Fatal("未填写的模板不应通过 verify")
 	}
-	if !strings.Contains(err.Error(), scaffoldMarker) {
-		t.Fatalf("错误应指出骨架标记，got %v", err)
+	if !strings.Contains(err.Error(), scaffoldHint) {
+		t.Fatalf("错误应指出骨架标记（给人看的说法），got %v", err)
 	}
 }
 

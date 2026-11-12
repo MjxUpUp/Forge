@@ -360,7 +360,11 @@ func TestChangeCheck_JSONSkipsWithValidJSON(t *testing.T) {
 		t.Fatalf("没有 change 不是失败：%v\n%s", err, stdout)
 	}
 	if _, _, skipped := parse(t, stdout); skipped != "" {
-		t.Errorf("没有 change 时不该写 skipped：%s", stdout)
+		t.Errorf("没有 change 时 skipped 该是空串：%s", stdout)
+	}
+	// 契约是「所有路径同一份形状」：skipped 即使为空也要出现。
+	if !strings.Contains(stdout, `"skipped"`) {
+		t.Errorf("正常路径也应有 skipped 键：%s", stdout)
 	}
 
 	// 连 spec/changes/ 都没有：跳过路径也必须是同一份 JSON，并写清原因。
