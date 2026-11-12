@@ -51,13 +51,19 @@ func TestWorkspaceAdd_DeclaredContractNoHint(t *testing.T) {
 	proj := t.TempDir()
 	writeWorkspaceContract(t, proj)
 
+	// 必须显式传 --path：不传会走进程 cwd（测试进程在 internal/cli），向上命中
+	// Forge 仓库自己的 spec/forge.yaml，这条测试就变成恒绿的空转。
 	_, stderr, err := captureOutput(t, func() error {
+		if err := workspaceAddCmd.Flags().Set(`path`, proj); err != nil {
+			return err
+		}
+		defer func() { _ = workspaceAddCmd.Flags().Set(`path`, ``) }()
 		return runWorkspaceAdd(workspaceAddCmd, []string{`declared`})
 	})
 	if err != nil {
 		t.Fatalf("workspace add: %v", err)
 	}
-	if strings.Contains(stderr, "既没有 spec/forge.yaml") {
+	if strings.TrimSpace(stderr) != `` {
 		t.Fatalf("declared 仓库不该收到未登记提示，stderr = %q", stderr)
 	}
 }
