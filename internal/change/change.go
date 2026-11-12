@@ -138,9 +138,10 @@ type Change struct {
 }
 
 // Init 在 root 下声明契约：写 spec/forge.yaml（缺省 profile=mini）、
-// 建 spec/changes/，并在没有 AGENTS.md 时放一份 20 行协议。
+// 建 spec/changes/，并同步 AGENTS.md 的 forge 托管块（缺文件整份写、无块追加、
+// 有块就地替换，标记外内容保留）。
 //
-// 已存在的东西一律不覆盖——init 是幂等的引导，不是模板重刷。
+// 已存在的 forge.yaml 一律不覆盖（会报错，改档位请直接编辑该文件）。
 func Init(root, profile string) (created []string, err error) {
 	if profile == "" {
 		profile = specroot.ProfileMini
