@@ -51,6 +51,19 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	legacy := legacyHostWiring(dir)
 	enabled := enabledHostSet()
 	pluginOn := hooks.IsClaudePluginInstalled()
+
+	// 仓内清理只碰仓库、不碰用户主目录。契约仓库的成员资格来自 spec/forge.yaml，
+	// 即便没有任何宿主接线也可以先清理——否则「init 只写仓库」的仓库里遗留的
+	// .forge/hooks、.forge/.sync-version 永远清不掉。遗留老仓库（成员资格就是
+	// .forge/ 目录本身）不能在这里跑：strip 会把空 .forge 删掉，随后再次解析就
+	// 「不是 forge 项目」——这类仓库放到闸门之后（它们本来就走迁移同步）。
+	declared := specroot.Declared(dir)
+	if declared {
+		cleanupDeprecatedPipelineSkill(dir)
+		cleanupLegacyDeadFiles(dir)
+		stripProjectLevelForgeAssets(dir)
+	}
+
 	if !syncGateAllows(dir, legacy, enabled, pluginOn) {
 		return nil
 	}
@@ -95,12 +108,17 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
-	// 5. 清理重构残留：废弃 skill + runtime state 迁 DataDir + 死文件 +
-	//    遗留项目级 forge 写入
-	cleanupDeprecatedPipelineSkill(dir)
+	// 5. 迁移运行时残留到 DataDir。这一步会写用户主目录（DataDir），所以放在
+	//    接线闸门之后：没有接线的仓库由上面的仓内清理收敛，不动 HOME。
 	migrateRuntimeResidue(dir)
-	cleanupLegacyDeadFiles(dir)
-	stripProjectLevelForgeAssets(dir)
+
+	// 遗留老仓库的仓内清理放到闸门之后（见上方 declared 注释）：它们走到这里
+	// 说明确实在迁移同步，此时才可以安全地剥掉项目级残留。
+	if !declared {
+		cleanupDeprecatedPipelineSkill(dir)
+		cleanupLegacyDeadFiles(dir)
+		stripProjectLevelForgeAssets(dir)
+	}
 
 	// 6. 更新用户级 CLAUDE.md（Claude）/ AGENTS.md（Codex）的 forge 段（备份+追加）
 	if claudeOn {
