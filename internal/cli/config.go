@@ -116,8 +116,8 @@ var policyCmd = &cobra.Command{
 	Long: `forge policy 管理/查询 per-project 接管策略。
 
 state 输出当前目录的接管三态：
-  managed   forge 接管中（项目级 hook 生效）
-  declined  已退出（hook 静默；init/自动接管拒绝；恢复用 forge on）
+  managed   已接管（仓库契约 spec/forge.yaml 或全局注册表命中；阶段 D 起不装 hook，无 hook 执行面）
+  declined  已退出（init/自动接管拒绝；恢复用 forge on）
   unknown   未登记
 
 退出码恒 0（状态本身不是错误）——脚本可按输出值分流。`,

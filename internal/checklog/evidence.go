@@ -180,8 +180,12 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 // init-suggest、mcp-scan、read-before-edit、freeze-guard、skill-scan、
 // task-resume、tool-track）——负向/advisory 信号不得读作正向验证证据。
 var verificationChecks = map[CheckName]bool{
-	CheckAutoCompile:                      true, // auto-compile：编译 hook 实跑
-	CheckAssertion:                        true, // assertion-check：断言 hook 实跑
+	// auto-compile / assertion-check：阶段 D 起没有内嵌编译/断言 hook 实跑，
+	// taskpipeline 的 implement 检查只留 advisory 记录（Checked=false，
+	// Source 显式写 agent-claim）。白名单保留是因为评分/证据测试仍按 check 名
+	// 读这两条记录；真正决定分桶的是 Entry.Source，不再默认 deterministic。
+	CheckAutoCompile:                      true, // auto-compile：advisory 记录（未实跑）
+	CheckAssertion:                        true, // assertion-check：advisory 记录（未实跑）
 	CheckTaskVerify:                       true, // task-verify：门禁推进（SourceForCheck 默认 agent-claim）
 	CheckTaskComplete:                     true, // task-complete：门禁推进（同上）
 	CheckTaskGuard:                        true, // task-guard：PreToolUse 拦截判定

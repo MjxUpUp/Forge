@@ -4,7 +4,7 @@
 
 ## 一分钟简介
 
-Forge 是 AI 编码工作流的"质量层"。在 Claude Code / Codex / Cursor / Copilot 写代码的过程中，它自动插入结构化门禁——从任务创建到代码提交，每一步产出物都经过编译验证、断言守卫、文件监控、review 快照多重检查。不是替代你写代码，是替你的代码把关。
+Forge 是 AI 编码工作流的"质量层"。在 Claude Code / Codex / Cursor / Copilot 写代码的过程中，它提供结构化门禁——从任务创建到代码提交，每一步产出物都经过编译验证与断言守卫等确定性检查。不是替代你写代码，是替你的代码把关。
 
 ## 三步上手
 
@@ -40,7 +40,7 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 
 ## 多 agent 支持
 
-阶段 D 起 Forge 不分发宿主插件、不写宿主配置：任何 agent/IDE 都在 shell 里调用同一组 `forge task` / `forge change` 命令，证据、评分与状态仍然落盘可审计。原先的 Claude/Codex/Cursor/Kimi/dsh 等 host 接线文档已随宿主层移除。
+Forge 不分发宿主插件、不写宿主配置：任何 agent/IDE 都在 shell 里调用同一组 `forge task` / `forge change` 命令，证据、评分与状态仍然落盘可审计。
 
 `forge init` 只写仓库内产物（`spec/forge.yaml`、`spec/changes/`、`AGENTS.md` 托管块与已存在指针），**不写** `~/.forge`、`~/.claude`、`~/.codex`。团队要 git 共享契约：提交 `spec/` 与 `AGENTS.md`。
 
@@ -55,7 +55,7 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 - 主文档：[README.md](../README.md)
 - 中文精简：[READMEs/README.zh-CN.md](../READMEs/README.zh-CN.md)
 - 协议：[internal/protocol](../internal/protocol)
-- 质量协议 Skill：由 `forge init` 生成到用户级（`~/.claude/skills/forge-quality/` 等；生成器源码在 [internal/skillgen](../internal/skillgen)）
+- 质量协议 Skill：由 `forge skills install` 分发到全局/项目目标目录，见[完整命令参考](../docs/reference/cli.md)
 
 ## 许可
 
