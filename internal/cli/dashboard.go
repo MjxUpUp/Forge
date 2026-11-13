@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -21,6 +22,11 @@ func init() {
 
 // forge dashboard —— 本地 Pulse 看板。起 HTTP 服务可视化「全部已登记项目」的
 // 质量数据（默认全局——无需切到各项目目录分别看）。
+// dashboardNoManagedProjects 是空注册表时的提示。登记入口只有
+// `forge integrations enable`（workspace add 只加 workspace 成员，不写全局
+// 注册表）——dashboard_test.go 钉住这句话不漂。
+const dashboardNoManagedProjects = `无已接管（managed）项目——在项目目录跑 forge integrations enable <host> 登记后再启动看板；forge off 退出的项目不聚合`
+
 var dashboardCmd = &cobra.Command{
 	Use:   "dashboard",
 	Short: "本地全局质量看板（Pulse）——聚合全部登记项目，起 HTTP 服务可视化",
@@ -58,7 +64,7 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 	// 上方自登记 Add 保留——upsert 不复活 declined 条目。
 	roots := registry.ListManaged()
 	if len(roots) == 0 {
-		return fmt.Errorf(`无已接管（managed）项目——在项目目录跑 forge integrations enable <host> 登记后再启动看板；forge off 退出的项目不聚合`)
+		return errors.New(dashboardNoManagedProjects)
 	}
 
 	opts := dashboard.Options{Port: port, OpenBrowser: !noOpen, Roots: roots}
