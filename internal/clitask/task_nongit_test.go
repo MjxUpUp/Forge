@@ -115,10 +115,10 @@ func TestTaskStart_GitRepoNoWarning(t *testing.T) {
 	if strings.Contains(stderr, "不是 git 仓库") {
 		t.Errorf("git project emitted non-git warning (false positive): %s", stderr)
 	}
-	// Sanity: the user-level DataDir exists with protocol.yml (forge init ran;
-	// zero-project-write — no project-level .forge).
-	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(tmpDir), "protocol.yml")); err != nil {
-		t.Fatalf("DataDir protocol.yml missing after init: %v", err)
+	// Sanity: Phase C 的 init 只写仓库产物，用户级 DataDir 不因 init 出现
+	// protocol.yml（检查动机：确认下面「无 warning」不是因为 init 完全没跑）。
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(tmpDir), "protocol.yml")); err == nil {
+		t.Fatalf("Phase C init must not write DataDir/protocol.yml")
 	}
 }
 

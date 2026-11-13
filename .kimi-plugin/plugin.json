@@ -145,11 +145,6 @@
     },
     {
       "event": "SessionStart",
-      "command": "forge hook init-suggest --agent kimi",
-      "timeout": 30
-    },
-    {
-      "event": "SessionStart",
       "command": "forge hook task-resume --agent kimi",
       "timeout": 30
     },

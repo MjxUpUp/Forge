@@ -158,10 +158,11 @@ the user agrees, since it writes the home directory. The offer is made once per 
 a user who declines is not asked again at every new session. Resume, subagents and
 `welcome: false` sessions get no offer.
 
-Whether forge takes over a project is asked once per project — the same on every host. Forge
-does not infer consent from "the plugin is installed" (`init-suggest`'s `takeover` preference is
-the opt-in), so a DSH install behaves like a Claude Code plugin install here; the model relays
-the question from forge's own `init-suggest` advisory, which the receipt filter below never drops.
+Whether forge takes over a project is decided by the repository contract, not by installation:
+run `forge init` in the repo to write `spec/forge.yaml` (plus `spec/changes/` and the AGENTS.md
+block); nothing under `~/.forge` is written. Forge never infers consent from "the plugin is
+installed", and the old `init-suggest` advisory was removed in Phase C — there is no background
+auto-takeover to relay or filter.
 
 Status-only receipts that forge prints when it has nothing to say (`no weakening detected`,
 `all skills SAFE`, `no .mcp.json` …) are dropped before injection — the host turns every allow

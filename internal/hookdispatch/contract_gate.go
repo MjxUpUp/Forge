@@ -98,16 +98,3 @@ func profileForContract(p string) hooks.Profile {
 		return hooks.ProfileStandard
 	}
 }
-
-// initSuggestEnabled 报告是否允许 init-suggest 在非 forge 仓库里主动建议接管。
-//
-// 默认关闭：这个 hook 是全局 SessionStart，会在任意 git 仓库往会话里注入
-// 「建议 forge init」——对不打算接管的项目就是纯噪音。要恢复旧行为设
-// FORGE_INIT_SUGGEST=1（1/on/true/yes）。
-func initSuggestEnabled() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("FORGE_INIT_SUGGEST"))) {
-	case "1", "on", "true", "yes":
-		return true
-	}
-	return false
-}

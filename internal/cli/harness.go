@@ -357,10 +357,10 @@ func readHarnessState(home string) string {
 }
 
 // MaybeOfferHarness is the advisory trigger point (multi-task-concurrency §13):
-// called from natural adoption moments (forge init / forge status).
+// called from natural adoption moments (forge integrations enable / forge status).
 //
 // MaybeOfferHarness 是 advisory 触发点（multi-task-concurrency §13）：挂在天然的引导
-// 时机（forge init / forge status）。绝不阻断、有 cooldown（同日第二次触点静默）、有
+// 时机（forge integrations enable / forge status）。绝不阻断、有 cooldown（同日第二次触点静默）、有
 // 提示次数上限。老版本升级用户与新用户都会到达这里；HITL 确认本体在 harness init
 // （T6 的 TTY 门）。
 func MaybeOfferHarness(trigger string) {
