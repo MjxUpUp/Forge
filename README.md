@@ -116,15 +116,15 @@ forge init      # 项目目录零写入，全部资产落在用户级（注册�
 # spec/forge.yaml
 version: "1"       # 契约版本，按主版本兼容
 profile: standard  # standard | mini | full（缺省 standard）
-hooks: on          # on | off（缺省 on）
+hooks: off         # on | off（缺省 off）；写 on 才执法
 ```
 
 - 注意别和 `forge off`（成员资格退出）混：`hooks: off` 只静默 hook 检查，省掉噪音；`forge off` 是项目级退出接管，连成员资格一起让位。两者独立生效。
-- `hooks: off`——这个仓库里的 hook 检查静默放行：**除下面三条安全底线外，0 次检查、0 注入**。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。
-- **安全底线不受仓库契约里的 `hooks`/`profile` 控制**：`hazard-guard`（破坏性命令）、`mcp-scan`（`.mcp.json` 供应链）、`skill-scan`（恶意 skill 指令）照跑——契约随 git 走，不能让一个 PR 用一行 `hooks: off` 关掉防它的扫描器。噪音成本很低（只在真危险时出声）。
-  这条的边界是机器全局档位：名册在契约之前就先滤一遍，`FORGE_PROFILE=lite` 时 lite 名册里只有 `hazard-guard`，`mcp-scan`/`skill-scan` 本来就没接线、不在此列——「契约关不掉」不等于「一定跑」。
+- `hooks: off`（**缺省**）——这个仓库里的 hook 检查静默放行：**0 次检查、0 注入，三条安全底线也不例外**（audit-only：事件仍进归属/审计，但不评估、不阻断、不注入）。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。要执法，显式写 `hooks: on`。
+- **安全底线随执法开关**（ADR-0002 阶段 B 语义变更）：`hazard-guard`（破坏性命令）、`mcp-scan`（`.mcp.json` 供应链）、`skill-scan`（恶意 skill 指令）默认 audit-only，只有显式 opt-in（契约 `hooks: on`，或无契约宿主层 `FORGE_HOOKS=on`）后才执法；执法时底线不受契约 `profile` 收窄。取舍：阻断式 hazard-guard 取证 109 次拦截零真实损失、18 天停机，默认安静优先，危险命令防护由宿主自带确认层承接。
+  执法时这条的边界仍是机器全局档位：名册在契约之前就先滤一遍，`FORGE_PROFILE=lite` 时 lite 名册里只有 `hazard-guard`，`mcp-scan`/`skill-scan` 本来就没接线、不在此列。
 - `profile`——`mini` 是最小执法名册（lite：task-guard / bash-guard / hazard-guard / file-sentinel 等拦截类为主，另含 tool-track / failure-track 等观测项；advisory 类不在内）；`standard` 是缺省名册；`full` 目前与 `standard` 等同（预留超集位）。契约只做运行时收窄：settings 接线时被全局更窄档位滤掉的 hook，不会因为契约写 `full` 又接回来。
-- 契约写坏时 hook 侧不拦也不报——`hooks: of`、拼错键名这类错误整份按解析失败处理，hook 执法回落全局档位。`forge status` 会打出「⚠ 契约无法解析」和实际生效的全局档位，不阻断任何命令。
+- 契约写坏时按审计模式静默放行——`hooks: of`、拼错键名这类错误整份按解析失败处理，opt-in posture 下坏契约不打开执法（也不回落全局档位）。`forge status` 会打出「⚠ 契约无法解析（审计模式，不执法）」并提示修好契约写 `hooks: on`，不阻断任何命令。
 - `forge change init` 生成的是最小契约（`version: "1"`、`profile: mini`、`hooks: off`——只用产物、不开执法）。`--profile` 只改档位、不会打开门禁：要执法必须同时把 `hooks` 改成 `on`。
 
 > **团队要 git 共享同一份协议？** 用 `forge init --project`（团队模式）——`.forge/protocol.yml`、`CLAUDE.md`、`AGENTS.md` 等指令资产写入项目目录可提交共享；再跑一次普通 `forge init` 即转回零写入。
