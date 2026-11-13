@@ -2,23 +2,26 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/spf13/cobra"
 )
 
-// forge registry 管理全局项目注册表 ~/.forge/projects.json——记录用户在哪些项目跑过 forge
-//（forge init 自登记），供 forge dashboard 聚合全局 Pulse 面板。
+// forge registry 管理全局项目注册表 ~/.forge/projects.json——记录被显式登记的项目，
+// 供 forge dashboard 聚合全局 Pulse 面板。契约随仓库走之后 forge init 不再登记；
+// 全局视图要靠 forge registry add 显式登记（存量用 registry audit/gc 修正）。
 //
 // 注册表会累积死路径：测试历史残留 + 项目移走/删除后未淡出的条目。registry.List() 读时
 // 惰性精简，但只在 forge dashboard 触发（该命令启 web server 阻塞，不适合纯清理）。
-// 本命令组给用户一个不启动 web 的主动清理入口（dogfood registry 历史残留清理的治本缺口）。
+// 本命令组给用户一个不启动 web 的维护入口。
 //
 // 字符串全用反引号 raw string：Windows 下 Edit/Write 写 Go 源码时 ASCII 双引号偶发被转成
 // 中文弯引号致编译错（见 memory windows-input-quote-corruption），raw string 规避。
 
 func init() {
 	rootCmd.AddCommand(registryCmd)
+	registryCmd.AddCommand(registryAddCmd)
 	registryCmd.AddCommand(registryPruneCmd)
 	registryCmd.AddCommand(registryRemoveCmd)
 }
@@ -28,10 +31,14 @@ var registryCmd = &cobra.Command{
 	Short: `管理全局项目注册表（~/.forge/projects.json）`,
 	Long: `forge registry 管理全局项目注册表 ~/.forge/projects.json。
 
-注册表记录用户在哪些项目跑过 forge（forge init 自登记），供 forge dashboard
-聚合全局 Pulse 面板。它会累积死路径（项目移走/删除/测试残留），子命令提供清理入口。
+注册表供 forge dashboard 聚合全局 Pulse 面板。契约随仓库走之后 forge init
+不再自登记；需要全局视图时用 add 显式登记。它会累积死路径（项目移走/删除/
+测试残留），子命令提供审计与清理入口。
 
 子命令：
+  add    登记一个项目（默认当前目录）——全局视图的显式入口
+  audit  审计注册表与数据目录一致性（key 漂移/孤儿目录/ID 冲突/非法 ID，--json 可机读）
+  gc     回收孤儿项目数据目录（默认演练，--prune 才动手）
   prune  精简注册表——移除项目路径已不存在的死路径与重复条目，原子写回
   remove 按路径移除单条条目——活路径也可删（prune 只能清死路径；误注册的
          保留根如用户 home 目录只能具名移除）
@@ -76,5 +83,31 @@ func runRegistryPrune(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), `✅ 已精简全局注册表：移除 %d 条死路径/重复，保留 %d 个活跃项目。
 `, pruned, remain)
+	return nil
+}
+
+var registryAddCmd = &cobra.Command{
+	Use:   `add [path]`,
+	Short: `登记一个项目（默认当前目录）到全局注册表`,
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  runRegistryAdd,
+}
+
+// runRegistryAdd 是阶段 D 后的显式登记入口：init 只写仓库产物，不再隐式登记；
+// 全局视图（dashboard / task --all-projects）依赖 projects.json 里的 managed 条目。
+func runRegistryAdd(cmd *cobra.Command, args []string) error {
+	root := `.`
+	if len(args) == 1 {
+		root = args[0]
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	if err := registry.Add(abs); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), `✅ 已登记项目：%s
+`, abs)
 	return nil
 }

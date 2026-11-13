@@ -102,16 +102,11 @@ var EscapeEnvs = []string{
 	"FORGE_REQ_HYGIENE",
 	"FORGE_REQ_COVERAGE",
 	"FORGE_UNUSED_SCAN",
-	"FORGE_TASK_DRIFT",
-	"FORGE_TASK_VERIFY_STOP",
 	"FORGE_MUTATION_TIMEOUT",
-	"FORGE_GATE_CMD_FORM",
-	"FORGE_HAZARD_PENDING",
 	"FORGE_MUTATION_GATE",
 	"FORGE_EVAL_PREFLIGHT",
 	// 2026-10-22 裁决（compat-commitments §三）：两者都撤下本来会触发的阻断，按逃生舱入册。
 	"FORGE_RECURRENT_HARDEN",
-	"FORGE_ADVISORY_PROMOTION",
 }
 
 // AllCheckNames 返回 checklog 常量 roster 的排序列表。

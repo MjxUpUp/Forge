@@ -162,12 +162,6 @@
       ]
     },
     {
-      "path": "forge doctor",
-      "flags": [
-        "json"
-      ]
-    },
-    {
       "path": "forge enforcement",
       "flags": [
         "json",
@@ -201,13 +195,6 @@
       "flags": [
         "dry-run",
         "json"
-      ]
-    },
-    {
-      "path": "forge eval dead-checks",
-      "flags": [
-        "json",
-        "window"
       ]
     },
     {
@@ -255,12 +242,6 @@
         "release",
         "repeats",
         "rewrite-manifest"
-      ]
-    },
-    {
-      "path": "forge eval harness-audit",
-      "flags": [
-        "json"
       ]
     },
     {
@@ -341,13 +322,6 @@
       "path": "forge eval wedge-drill"
     },
     {
-      "path": "forge freeze",
-      "flags": [
-        "off",
-        "status"
-      ]
-    },
-    {
       "path": "forge gate"
     },
     {
@@ -393,31 +367,6 @@
       "path": "forge harness status"
     },
     {
-      "path": "forge hazard"
-    },
-    {
-      "path": "forge hazard confirm",
-      "flags": [
-        "fingerprint",
-        "last"
-      ]
-    },
-    {
-      "path": "forge hazard halt"
-    },
-    {
-      "path": "forge hazard halt release",
-      "flags": [
-        "yes"
-      ]
-    },
-    {
-      "path": "forge hazard halt status"
-    },
-    {
-      "path": "forge hazard status"
-    },
-    {
       "path": "forge health",
       "flags": [
         "json"
@@ -432,21 +381,6 @@
         "profile",
         "project"
       ]
-    },
-    {
-      "path": "forge integrations"
-    },
-    {
-      "path": "forge integrations disable"
-    },
-    {
-      "path": "forge integrations enable",
-      "flags": [
-        "all"
-      ]
-    },
-    {
-      "path": "forge integrations list"
     },
     {
       "path": "forge migrate",
@@ -479,30 +413,6 @@
     },
     {
       "path": "forge on"
-    },
-    {
-      "path": "forge plugin"
-    },
-    {
-      "path": "forge plugin dedupe",
-      "flags": [
-        "keep-empty"
-      ]
-    },
-    {
-      "path": "forge plugin kimi-manifest",
-      "flags": [
-        "write"
-      ]
-    },
-    {
-      "path": "forge plugin pack",
-      "flags": [
-        "out"
-      ]
-    },
-    {
-      "path": "forge plugin status"
     },
     {
       "path": "forge policy"
@@ -545,6 +455,9 @@
     },
     {
       "path": "forge registry"
+    },
+    {
+      "path": "forge registry add"
     },
     {
       "path": "forge registry audit",
@@ -795,16 +708,8 @@
     {
       "path": "forge status",
       "flags": [
-        "agents",
         "json",
-        "system",
-        "tasks"
-      ]
-    },
-    {
-      "path": "forge sync",
-      "flags": [
-        "force"
+        "system"
       ]
     },
     {
@@ -1251,16 +1156,9 @@
       "path": "forge trust require-signed"
     },
     {
-      "path": "forge uninstall",
-      "flags": [
-        "restore"
-      ]
-    },
-    {
       "path": "forge update",
       "flags": [
-        "apply",
-        "plugin"
+        "apply"
       ]
     },
     {
@@ -1372,13 +1270,10 @@
   ],
   "escapes": [
     "FORGE_ACCEPTANCE_GATE",
-    "FORGE_ADVISORY_PROMOTION",
     "FORGE_ARTIFACT_CHAIN",
     "FORGE_DOC_GATE",
     "FORGE_EVAL_PREFLIGHT",
-    "FORGE_GATE_CMD_FORM",
     "FORGE_GATE_PUSH",
-    "FORGE_HAZARD_PENDING",
     "FORGE_HELDOUT",
     "FORGE_MUTATION_GATE",
     "FORGE_MUTATION_TIMEOUT",
@@ -1387,8 +1282,6 @@
     "FORGE_REQ_HYGIENE",
     "FORGE_SELF_REPORT",
     "FORGE_SKILL_DECISIONS",
-    "FORGE_TASK_DRIFT",
-    "FORGE_TASK_VERIFY_STOP",
     "FORGE_TEST_COVERAGE",
     "FORGE_UNUSED_SCAN",
     "FORGE_WORK_ACTIVITY"
@@ -1887,10 +1780,6 @@
       "count": 2
     },
     {
-      "file": "internal/hookdispatch/hook.go",
-      "count": 1
-    },
-    {
       "file": "internal/taskpipeline/crossrepo.go",
       "count": 2
     },
@@ -1931,43 +1820,5 @@
       "count": 2
     }
   ],
-  "bridges": [
-    {
-      "bridge": "forge-dsh",
-      "dshVerified": "0.1.0-rc.7",
-      "events": [
-        {
-          "dsh": "tools/pre-execute",
-          "forge": "PreToolUse",
-          "decision": "deny"
-        },
-        {
-          "dsh": "tools/post-execute",
-          "forge": "PostToolUse",
-          "decision": "block"
-        },
-        {
-          "dsh": "agent/pre-step",
-          "forge": "UserPromptSubmit",
-          "decision": "reject"
-        },
-        {
-          "dsh": "agent/session-start",
-          "forge": "SessionStart",
-          "decision": "inject",
-          "note": "source:'compact' additionally fires the PostCompact group — DSH rc.7 exposes no dedicated compaction point"
-        },
-        {
-          "dsh": "agent/turn-stopping",
-          "forge": "Stop",
-          "decision": "steer"
-        }
-      ],
-      "failOpen": [
-        "block is read ONLY from the stdout JSON decision field, never from exit codes",
-        "every infrastructure failure (forge missing, spawn error, unparseable output, timeout) fails open",
-        "hook-failure visibility is /forge-status (50-entry ring buffer) and debug:true; a missing forge binary additionally injects one session-start notice per session"
-      ]
-    }
-  ]
+  "bridges": null
 }

@@ -26,9 +26,8 @@
 //   node scripts/release.js major       # 强制 major
 //   node scripts/release.js --dry-run   # 只打印将要做什么,不改文件不建 tag
 //
-// 脚本只负责:读当前版本 → 算下一版本 → 同步 bump 四个版本文件(npm/package.json、
-// .kimi-plugin/plugin.json、plugins/forge-dsh/package.json、
-// .release-please-manifest.json) → commit → tag。
+// 脚本只负责:读当前版本 → 算下一版本 → 同步 bump 版本文件(npm/package.json、
+// 5 个平台子包、.release-please-manifest.json) → commit → tag。
 // 不 push。push 触发 .github/workflows/release.yml(goreleaser + npm),是对外
 // 发布,留给你确认后手动执行。
 
@@ -82,9 +81,8 @@ function bumpVersion(cur, bump) {
 
 // replaceVersionField 把 JSON 文本里第一个 "version": "..." 替换为 next。返回
 // {content, ok}：ok=false 表示模式未匹配（文件缺 version 字段，发版事故级）。抽成
-// 纯函数：npm/package.json、.kimi-plugin/plugin.json 与 plugins/forge-dsh/package.json
-// 的 version bump 共用同一段替换逻辑，且可被 release.test.js 单测（version 替换是
-// 发版高价值点）。
+// 纯函数：npm/package.json 与 5 个平台子包的 version bump 共用同一段替换逻辑，
+// 且可被 release.test.js 单测（version 替换是发版高价值点）。
 function replaceVersionField(content, next) {
   const re = /"version":\s*"[^"]+"/;
   if (!re.test(content)) return { content, ok: false };
@@ -114,20 +112,6 @@ function replacePlatformPins(content, next) {
     return `${k}"${next}"`;
   });
   return { content: out, ok: hits === 5 };
-}
-
-// replaceDshForgeDependency 把 forge-dsh package.json 里对 forge 本体的依赖钉
-// （dependencies["@agent_forge/forge"]）替换为 next。插件内置本体依赖、与主火车
-// lockstep——钉漏 bump 会让用户装到与插件 spec.json 不配套的 forge（release.yml 的
-// tag 对账门禁与 TestReleasePleaseManifest_DshPluginTracksTrain 也会拦）。键精确匹配
-// （不误伤 forge-dsh / forge-<plat>）；返回 {content, ok}：ok=false 表示命中数 != 1。
-function replaceDshForgeDependency(content, next) {
-  let hits = 0;
-  const out = content.replace(/("@agent_forge\/forge":\s*)"[^"]+"/g, (_, k) => {
-    hits++;
-    return `${k}"${next}"`;
-  });
-  return { content: out, ok: hits === 1 };
 }
 
 // readCommitMessages 取 range 内所有 commit 的完整 message。可选 cwdRoot 供测试
@@ -199,48 +183,16 @@ function main() {
   }
 
   if (dryRun) {
-    console.log('(dry-run, no changes — would bump npm/package.json(含 optionalDependencies 钉) + 5 平台子包 + .kimi-plugin/plugin.json + plugins/forge-dsh/package.json + .release-please-manifest.json)');
+    console.log('(dry-run, no changes — would bump npm/package.json(含 optionalDependencies 钉) + 5 平台子包 + .release-please-manifest.json)');
     return;
   }
 
-  // --- compute all four bumps first; write only after every pattern matched ---
+  // --- compute all bumps first; write only after every pattern matched ---
   // 先算后写：任一文件模式不匹配时直接退出，不留「改了一半」的工作区（逃生舱场景
   // 高压，半 bump 工作区容易被手滑 commit，制造 npm↔manifest 失同步）。
   const pkgNext = replaceVersionField(content, next);
   if (!pkgNext.ok) {
     console.error(`failed to replace version field in ${REL_PKG} (pattern not matched)`);
-    process.exit(1);
-  }
-
-  // --- sync .kimi-plugin/plugin.json version to release ---
-  // kimi 的 committed manifest version 字段跟 forge release 走（非刻意独立）：每次
-  // 发版把 plugin.json 的 version 同步到 next，Go 守卫测试
-  // TestKimiPluginManifestVersionTracksRelease 钉住 plugin.json==package.json。kimi
-  // 的 staleness 检测仍读 installed.json 的 github.ref tag（不受影响），此处仅让
-  // committed 展示元数据不再滞后撒谎。
-  const KIMI_PLUGIN = path.join(ROOT, '.kimi-plugin', 'plugin.json');
-  const REL_KIMI = path.relative(ROOT, KIMI_PLUGIN);
-  const kimiNext = replaceVersionField(fs.readFileSync(KIMI_PLUGIN, 'utf8'), next);
-  if (!kimiNext.ok) {
-    console.error(`failed to replace version field in ${REL_KIMI} (pattern not matched)`);
-    process.exit(1);
-  }
-
-  // --- sync plugins/forge-dsh/package.json version to release ---
-  // dsh 插件随主发布火车 lockstep 发版（release-please extra-files 统一 bump，
-  // TestReleasePleaseManifest_DshPluginTracksTrain 钉住 dsh==manifest）。逃生舱
-  // 发版必须同样 bump 它，否则该守卫变红、release.yml 的 tag 对账门禁也会拦。
-  const DSH_PKG = path.join(ROOT, 'plugins', 'forge-dsh', 'package.json');
-  const REL_DSH = path.relative(ROOT, DSH_PKG);
-  const dshNext = replaceVersionField(fs.readFileSync(DSH_PKG, 'utf8'), next);
-  if (!dshNext.ok) {
-    console.error(`failed to replace version field in ${REL_DSH} (pattern not matched)`);
-    process.exit(1);
-  }
-
-  const dshDep = replaceDshForgeDependency(dshNext.content, next);
-  if (!dshDep.ok) {
-    console.error(`failed to replace dependencies["@agent_forge/forge"] in ${REL_DSH} (want exactly 1 hit)`);
     process.exit(1);
   }
 
@@ -278,8 +230,6 @@ function main() {
 
   // --- all patterns matched: write them all ---
   fs.writeFileSync(PKG, pinsNext.content);
-  fs.writeFileSync(KIMI_PLUGIN, kimiNext.content);
-  fs.writeFileSync(DSH_PKG, dshDep.content);
   fs.writeFileSync(MANIFEST, manifestNext.content);
   for (const p of PLATFORMS) {
     fs.writeFileSync(platNext[p].file, platNext[p].content);
@@ -300,7 +250,7 @@ function main() {
       process.exit(1);
     }
   }
-  for (const [file, rel] of [[PKG, REL_PKG], [KIMI_PLUGIN, REL_KIMI], [DSH_PKG, REL_DSH]]) {
+  for (const [file, rel] of [[PKG, REL_PKG]]) {
     const actual = (fs.readFileSync(file, 'utf8').match(/"version":\s*"([^"]+)"/) || [])[1];
     if (actual !== next) {
       console.error(`version mismatch in ${rel}: expected ${next}, got ${actual}`);
@@ -314,7 +264,7 @@ function main() {
   }
 
   // --- commit + tag ---
-  git(['add', REL_PKG, REL_KIMI, REL_DSH, REL_MANIFEST]);
+  git(['add', REL_PKG, REL_MANIFEST]);
   git(['commit', '-m', `chore(release): bump npm version to ${next}`, '-m', 'Co-Authored-By: Claude <noreply@anthropic.com>']);
   git(['tag', `v${next}`]);
 
@@ -324,7 +274,7 @@ function main() {
   console.log(`  git push origin v${next}`);
 }
 
-module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins, replaceDshForgeDependency };
+module.exports = { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins };
 
 if (require.main === module) {
   main();

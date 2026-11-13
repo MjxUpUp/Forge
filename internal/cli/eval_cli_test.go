@@ -4,7 +4,6 @@ package cli
 // 经预构建二进制跑真实命令表面。目标表面 = CLI 输出 + 退出码（非内部函数）。
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,33 +44,6 @@ func TestEvalDashboardDryRunE2E(t *testing.T) {
 	}
 	if !strings.Contains(out, "C1-C7 roster 完整") {
 		t.Fatalf("输出缺 roster 断言: %s", out)
-	}
-}
-
-func TestEvalGoldenRunE2E(t *testing.T) {
-	// 真实二进制重放 golden 种子集：fixture 里跑真实 go build（需要工具链，
-	// CI/开发环境均具备）。报告落隔离 HOME 的 evals（TestMain 隔离）。
-	out, _, code := runForge(t, repoRoot, "eval", "golden", "run")
-	if code != 0 {
-		t.Fatalf("golden run 应通过（exit %d）：%s", code, out)
-	}
-	// 16 用例集（auto-compile 2 + task-guard 5 + file-sentinel 5 + read-before-edit 2
-	// + hazard-guard 2 历史反哺；Windows 跳过 config-drift 1 例）。断言锚行为
-	// 语义而非平台相关计数（recall/fpr 全捕获、零误报、零确定性 finding）——
-	// 第二轮 replace 曾静默未生效（锚文本不匹配），CI 抓回（Windows 6/6 红）。
-	if strings.Contains(out, "→ missed") || strings.Contains(out, "→ false_positive") {
-		t.Fatalf("存在漏拦/误报: %s", out)
-	}
-	if strings.Contains(out, "确定性门禁") && strings.Contains(out, "记 bug") {
-		t.Fatalf("存在确定性 finding: %s", out)
-	}
-	if !strings.Contains(out, "fpr 0/") || !strings.Contains(out, "rbe-blocks-unread-edit") {
-		t.Fatalf("输出缺 fpr 基线/用例行: %s", out)
-	}
-	// 指纹一致性：二次运行不得因 manifest 拒绝。
-	_, _, code = runForge(t, repoRoot, "eval", "golden", "run")
-	if code != 0 {
-		t.Fatalf("二次 golden run 应通过（指纹一致）: %d", code)
 	}
 }
 
@@ -123,26 +95,6 @@ func TestEvalReportE2E(t *testing.T) {
 
 // TestEvalTrapsE2E 钉住三陷阱的 capture 现状（两洞闭环后 3/3；任何一门检测被
 // 删除，本测试或 trap FINDING 立刻转红——对抗审查 I1：此前只有手工首跑无回归钉）。
-func TestEvalTrapsE2E(t *testing.T) {
-	out, _, code := runForge(t, repoRoot, "eval", "traps", "run")
-	if code != 0 {
-		t.Fatalf("traps run 应通过（exit %d）：%s", code, out)
-	}
-	// traps 扩容批（3→14）：断言用解析式形态——新增陷阱不破本测试，漏识破/计数
-	// 塌缩（任何例挂掉）仍会被 FINDING 断言与退出码拦住。
-	n, total := 0, 0
-	if i := strings.Index(out, "capture "); i >= 0 {
-		if _, err := fmt.Sscanf(out[i:], "capture %d/%d", &n, &total); err != nil {
-			n, total = 0, 0
-		}
-	}
-	if total < 14 || n != total {
-		t.Fatalf("陷阱应全部识破且总数≥14（got capture %d/%d）: %s", n, total, out)
-	}
-	if strings.Contains(out, "FINDING") {
-		t.Fatalf("闭环后不应有 FINDING: %s", out)
-	}
-}
 
 // TestEvalAuditVerifyE2E 钉住验签读侧：真实仓库历史行为 legacy/valid、零伪造、
 // 零重放（重放检测的回归钉——见 countReplayedStamps）。
