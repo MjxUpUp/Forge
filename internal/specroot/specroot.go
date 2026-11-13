@@ -50,8 +50,9 @@ var ErrNoContract = errors.New("specroot: 未找到 spec/forge.yaml（仓库未�
 
 // Contract 是 spec/forge.yaml 的最小解析结果。
 //
-// Hooks 是仓库级的执法开关：默认 on；off 时该仓库内的 hook 一律静默放行
-// （clone 下来先读契约、再决定要不要跑检查，不需要安装或注册）。
+// Hooks 是仓库级的执法开关：默认 off（ADR-0002 阶段 B：执法 opt-in，默认安静）。
+// off 时该仓库内的 hook 一律静默放行（clone 下来先读契约、再决定要不要跑检查，
+// 不需要安装或注册）；要执法须显式写 hooks: on。
 type Contract struct {
 	Version string `yaml:"version"`
 	Profile string `yaml:"profile"`
@@ -218,7 +219,9 @@ func Load(root string) (*Contract, error) {
 			path, c.Profile, ProfileMini, ProfileStandard, ProfileFull)
 	}
 	if c.Hooks == "" {
-		c.Hooks = HooksOn
+		// ADR-0002 阶段 B：执法 opt-in。缺省 off（默认安静/audit-only），
+		// 要执法须显式 hooks: on。翻转前缺省是 on。
+		c.Hooks = HooksOff
 	}
 	switch c.Hooks {
 	case HooksOn, HooksOff:
