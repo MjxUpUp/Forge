@@ -4,7 +4,7 @@
 
 ## 一分钟简介
 
-Forge 是 AI 编码工作流的"质量层"。在 Claude Code / Codex / Cursor / Copilot 写代码的过程中，它提供结构化门禁——从任务创建到代码提交，每一步产出物都经过编译验证与断言守卫等确定性检查。不是替代你写代码，是替你的代码把关。
+Forge 是 AI 编码工作流的"质量层"。在 Claude Code / Codex / Cursor / Copilot 写代码的过程中，它提供结构化门禁——从任务创建到代码提交，task 流程内由门禁做编译自检与断言扫描；非 task 流程没有门禁。不是替代你写代码，是替你的代码把关。
 
 ## 三步上手
 
@@ -46,7 +46,7 @@ Forge 不分发宿主插件、不写宿主配置：任何 agent/IDE 都在 shell
 
 ## 真实证据
 
-- 自举（dogfood）：Forge 用 Forge 自身管住质量，每 PR 过三门禁评分（近期平均 76-100）
+- 自举（dogfood）：Forge 用 Forge 自身管住质量，每 PR 过三门禁评分
 - 真实评分 fixture：`scoring/testdata/golden_real/` 固化评分形状防算法隐性漂移
 - code-review 确定性：`forge review pass` 绑定代码快照，拒绝改码后空过
 

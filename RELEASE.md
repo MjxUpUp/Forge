@@ -134,21 +134,11 @@ git ls-files | grep -E 'cmd/forge|main\.go'   # 确认入口目录进库
 派发独立评审子代理（doc-review / code-review / 对抗验证）前，**先把工作树落盘**：
 `git add -A && git commit`（WIP 提交即可，PR 合并时 squash 掉）。
 
-原因：`task-verify` 的 Stop 钩子以「有活跃任务 + 工作树有未提交代码文件」为拦截条件
-（`internal/hooks/embed_quality.go:426`）。DSH 子代理会话与父会话共享同一工作树，
-工作区绑定（`internal/taskpipeline/state.go:161`）会让只读评审会话也解析到活跃任务，
-于是父会话未提交的改动会把每个评审子代理各拦 3 次（"有未提交代码变更——先落盘再停"）。
-
-评审前落盘后，子代理停在一个干净的树上，钩子直接放行（干净树退出码 0）。实操：
+原因很朴素：评审会话与父会话共享同一工作树，读到半成品会让评审与修复相互打架。
+阶段 D 起 forge 没有宿主层，也不再有 Stop 钩子——**不会拦截未落盘**，这条纪律靠自觉：
 
 1. 改完一轮 → `git commit`（WIP）→ 派 reviewer；
-2. reviewer 提意见 → 改完 → 再 `git commit` → 再派下一轮；
-3. 不要用 `FORGE_TASK_VERIFY_STOP=0` 按轮绕过——它是进程级环境变量，桌面端要重启宿主
-   才生效，且一并关掉主会话的提示。
-
-该行为已用 12 个场景做过变异验证：干净树放行；若把条件改成「仅有本会话写标记才阻断」，
-脏树+无标记会放行——但 shell 重定向写入和纯测试文件编辑不置写标记，会变成漏报，且他人
-遗留的脏文件仍会误报。所以「先落盘」是当前零代码改动、零误伤的规避方式。
+2. reviewer 提意见 → 改完 → 再 `git commit` → 再派下一轮。
 
 ## 紧急手动路径（release.js，已退役为逃生舱）
 
@@ -177,7 +167,7 @@ tokens」，token 类登录被禁，需临时调回 publishing access 再操作�
 
 - 正常发版：Release PR 按 Conventional Commits 推断 patch/minor/major
 - 发版后发现 bug：**升 patch 重发**，不 force-push 覆盖已发 tag
-  - hazard-guard 会拦 force-push；且覆盖已发布 npm 包不可逆（registry 会缓存）
+  - 已发 tag 不可变，靠远端分支保护；且覆盖已发布 npm 包不可逆（registry 会缓存）
   - v0.27.1→v0.27.2 即此规则实例
 
 ## 坏版本处置（npm deprecate RUNBOOK）

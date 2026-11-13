@@ -64,7 +64,7 @@ forge task score                  # 质量评分
 ## 卸载
 
 ```bash
-npm uninstall -g @agent_forge/forge   # 删二进制；forge 不写宿主文件，无需回滚
+npm uninstall -g @agent_forge/forge   # 删二进制；除显式 `forge skills install` 外 forge 不写宿主文件，已装 skill 自行删目录
 ```
 
 ## 多宿主支持
