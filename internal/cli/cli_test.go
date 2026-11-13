@@ -33,6 +33,11 @@ func TestMain(m *testing.M) {
 	}
 	// W0.3 密闭性：档位默认 standard，防 shell 导出的 FORGE_PROFILE 泄漏假红。
 	os.Setenv("FORGE_PROFILE", "standard")
+	// ADR-0002 阶段 B：hook 执法默认 audit-only。本包 freeze-guard/task-guard 行为
+	// 测试断言「执法时」的 block/allow，需执法前提——与 hookdispatch TestMain 同款
+	// 置 FORGE_HOOKS=on（宿主层 opt-in）。默认安静策略由 hookdispatch contract_gate
+	// 专测以 t.Setenv("FORGE_HOOKS","") 隔离钉住，不在此覆盖。
+	os.Setenv("FORGE_HOOKS", "on")
 	// 会话身份密闭性：宿主 shell 注入的会话 env（如 Claude Code 的
 	// CLAUDE_CODE_SESSION_ID）与 FORGE_SESSION_ID 一律清空——本机复现 CI 的「无会话
 	// 身份」条件，runForge 拉起的子进程同样继承；需要会话的测试显式 t.Setenv。
