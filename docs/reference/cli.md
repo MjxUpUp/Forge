@@ -172,16 +172,13 @@
 <details>
 <summary><b>🧠 Skill 治理</b></summary>
 
-分发内置 canonical skill 库到各 coding agent，并守护 skill 质量（规范 + 安全）。
+管理内置 canonical skill 库（阶段 D 起不再向宿主目录分发：没有 install/adapters/drift-check）。
 
 | 命令 | 说明 |
 |------|------|
-| `forge skills install` | 分发 skill 到全局/项目目标目录（link/copy） |
 | `forge skills list` | 列出 canonical skill 库中的 skill |
-| `forge skills audit` | 21 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量；任一 CRITICAL finding 即阻断 install/--gate） |
-| `forge skills drift-check` | 检测分发分叉（dry-run，不写，只读报告 canonical 与各目标的分发态） |
+| `forge skills audit` | 21 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量；任一 CRITICAL finding 即阻断） |
 | `forge skills validate` | R1-R18 规范校验 |
-| `forge skills adapters` | 部署 skill-routing adapter（pi/claude/cursor/routes.json） |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |
 | `forge skills usage --by-keyword` | per-keyword 触发分析：命中/加载/抑制切片（v2 Meta 的 matched_keyword）+ 死关键词检测（声明未命中；窗口无 v2 证据条目时自动停用并说明）。加载列带宿主偏差标注（注入型宿主无工具事件信号） |
 | `forge skills effectiveness` | 技能命中×任务成效关联（命中数/task数/avg分/弱占比，agent-neutral） |
