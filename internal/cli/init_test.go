@@ -309,3 +309,27 @@ func TestIntegrations_DisableLeavesTombstoneThatStopsLegacySync(t *testing.T) {
 		t.Fatalf("explicit disable must stop legacy auto-sync from rewriting settings.json (err=%v)", err)
 	}
 }
+
+// TestIntegrations_DisableOnlyRemovesMarker：disable 是「不再同步」而不是「卸载」
+// ——它只摘标记，不删宿主配置（避免误删用户自己的 settings），也不再写回。
+func TestIntegrations_DisableOnlyRemovesMarker(t *testing.T) {
+	home, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	if out, _, code := runForge(t, dir, "integrations", "enable", "claude-code"); code != 0 {
+		t.Fatalf("enable: %s", out)
+	}
+	settings := filepath.Join(home, ".claude", "settings.json")
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("enable 应写 settings.json: %v", err)
+	}
+	if out, _, code := runForge(t, dir, "integrations", "disable", "claude-code"); code != 0 {
+		t.Fatalf("disable: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(data, "integrations", "claude-code")); !os.IsNotExist(err) {
+		t.Fatalf("disable 应摘掉 marker（err=%v）", err)
+	}
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("disable 不得删除已有宿主配置: %v", err)
+	}
+}
