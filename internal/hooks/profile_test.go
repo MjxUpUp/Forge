@@ -40,8 +40,9 @@ func TestForgeHookSpecForProfile_Tiers(t *testing.T) {
 	// 理由见彼处注释）。
 	// 34→35：task-drift choke point（2026-09-18，escape-hatch-hardening P0-B，
 	// 同源 bump，理由见彼处注释）。
-	if fullEvents != 8 || fullMatchers != 11 || fullEntries != 35 {
-		t.Fatalf("完整名册基线漂移（棘轮与档位测试同源钉 8/11/35），got %d/%d/%d", fullEvents, fullMatchers, fullEntries)
+	// 35→34：Phase C 删除 init-suggest（2026-11-13，同源 bump，理由见彼处注释）。
+	if fullEvents != 8 || fullMatchers != 11 || fullEntries != 34 {
+		t.Fatalf("完整名册基线漂移（棘轮与档位测试同源钉 8/11/34），got %d/%d/%d", fullEvents, fullMatchers, fullEntries)
 	}
 
 	std := ForgeHookSpecForProfile(ProfileStandard)

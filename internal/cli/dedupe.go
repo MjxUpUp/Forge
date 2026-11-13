@@ -61,13 +61,12 @@ import (
 // User-level is handled by StripForgeHooksUserLevel: plugin.json already registers all ForgeHookSpec at user-level,
 // so user-level settings.local.json forge hooks are always duplicates (legacy global forge init writing home /
 // old global install residue). keepEmpty=true is fixed internally — never delete user global config, only clear forge
-// hooks and keep the {} shell (unlike project-level which can be deleted). Covers the init/sync auto path; the other
-// auto path (init-suggest SessionStart -> forge plugin dedupe) does the same cleanup inside runPluginDedupe.
+// hooks and keep the {} shell (unlike project-level which can be deleted). Covers the init/sync auto path; autoSync's deferred path calls runPluginDedupe for the same cleanup.
 // user-level 由 StripForgeHooksUserLevel 处理:plugin.json 已在 user-level 注册全部
 // ForgeHookSpec,user-level settings.local.json 的 forge hook 必重复（历史 global forge
 // init 写 home / 旧全局安装残留）。内部固定 keepEmpty=true——用户全局配置绝不删,只清 forge
-// hooks 保留 {} 壳（与 project-level 可删不同）。覆盖 init/sync 这条 auto 路径;另一条 auto
-// 路径（init-suggest SessionStart → forge plugin dedupe）在 runPluginDedupe 内同样清理。
+// hooks 保留 {} 壳（与 project-level 可删不同）。覆盖 init/sync 这条 auto 路径;autoSync 的
+// defer 路径调 runPluginDedupe 做同样清理。
 func dedupeProjectLevelIfPlugin(dir string) {
 	if !hooks.IsClaudePluginInstalled() {
 		return

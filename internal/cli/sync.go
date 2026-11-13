@@ -40,7 +40,11 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	// 显式 opt-in 的宿主——否则 init 之后任意一条命令都会把 HOME 资产补回来，
 	// 「init 只写仓库内产物」只是假象。仓内清理（dedupe/strip 项目级残留）不碰
 	// 用户主目录，仍然照常跑。
-	if !integrationsAnyEnabled() && !hooks.IsClaudePluginInstalled() {
+	//
+	// 老项目（Phase C 之前接过线：有 .forge/hooks、项目级 .forge/protocol.yml 或
+	// DataDir 里已有 protocol/hooks）继续由 autoSync 维护——升级迁移不能因为新
+	// 仓库默认不接线就停摆；它们本来就在写用户主目录。
+	if !integrationsAnyEnabled() && !hooks.IsClaudePluginInstalled() && !legacyHostWiring(dir) {
 		return nil
 	}
 
@@ -276,4 +280,23 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintln(os.Stderr, "forge assets synced.")
 	return nil
+}
+
+// legacyHostWiring 判断仓库是否在 Phase C 之前接过宿主线：项目级 .forge/hooks、
+// 项目级 .forge/protocol.yml，或 DataDir 里已有 protocol.yml/hooks。这类老项目
+// 的 autoSync 继续维护（升级迁移）；新仓库不写用户主目录，接线走
+// `forge integrations enable <host>`。
+func legacyHostWiring(dir string) bool {
+	dataDir := forgedata.DataDirFor(dir)
+	for _, p := range []string{
+		filepath.Join(dir, ".forge", "hooks"),
+		filepath.Join(dir, ".forge", "protocol.yml"),
+		filepath.Join(dataDir, "protocol.yml"),
+		filepath.Join(dataDir, "hooks"),
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
 }

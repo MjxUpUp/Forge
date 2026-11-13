@@ -59,7 +59,6 @@ var observationOnlyHooks = map[string]bool{
 	"doc-lint":            true,
 	"workflow-test-guard": true, // PostToolUse:exit 1 是写后反馈通道,不可回溯 deny——skip 最坏=丢一次注入
 	"resume-reinject":     true, // SessionStart/压缩注入
-	"init-suggest":        true, // SessionStart 注入
 	"skill-scan":          true, // SessionStart 注入(双份实证痛点)
 	"mcp-scan":            true, // SessionStart 注入(双份实证痛点)
 	"task-resume":         true, // SessionStart 注入

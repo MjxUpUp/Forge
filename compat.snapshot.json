@@ -434,6 +434,21 @@
       ]
     },
     {
+      "path": "forge integrations"
+    },
+    {
+      "path": "forge integrations disable"
+    },
+    {
+      "path": "forge integrations enable",
+      "flags": [
+        "all"
+      ]
+    },
+    {
+      "path": "forge integrations list"
+    },
+    {
       "path": "forge migrate",
       "flags": [
         "dry-run",

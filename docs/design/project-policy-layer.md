@@ -1,6 +1,7 @@
 # Project Policy Layer —— 按项目接管策略（P1 落地设计）
 
 - 状态：P1 已交付（feat/project-policy-p1）；P2-P4 已落地（2026-09-02，feat/project-policy-p234）
+- **2026-11-13 阶段 C 更新**：本文描述的 `init-suggest` 自动接管与 `takeover` 三档偏好已随 ADR-0002 阶段 C 整体移除——是否接管某仓库改由仓库契约（`forge init` 写 `spec/forge.yaml`）决定，宿主接线改为显式 `forge integrations enable <host>`。下文保留为历史设计记录；其中「init-suggest bash」「marker 双写」「takeover 偏好」等描述不再对应当前代码。
 - 背景：全局 forge 安装（plugin/npm）后 init-suggest 对所有 git 项目自动接管，暴露三个弊端——项目自带 harness 冲突、项目试验新 harness、用户想按项目控制。完整调研（业界学界证据 + 代码考古 + 对抗复查）见 `~/.research-workflow/global-forge-optout-20260902-0958/report.md`；本文只记录 P1 落地的设计决策。
 - 总原则（调研结论）：**机制全局，行使本地**——装 plugin = 机制存在；接管某项目 = 策略授权；每次 hook 触发 = 仲裁检查。P1 是策略面的地基：状态模型 + 对称命令 + 旁路收编。
 
