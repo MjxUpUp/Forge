@@ -124,20 +124,26 @@ func TestInit_LiteMapsToMini(t *testing.T) {
 	}
 }
 
-// TestInit_HostWiringFlagsAreGone：--agents 随宿主层删除，传了必须明确报错而不是静默忽略。
+// TestInit_HostWiringFlagsAreGone：--agents 是阶段 D 删除宿主层后保留的 hidden
+// no-op——旧脚本传了不能失败，只能收到废弃警告，且绝不写 HOME/项目宿主产物。
 func TestInit_HostWiringFlagsAreGone(t *testing.T) {
 	home, _ := isolatedHomeEnv(t)
 	dir := t.TempDir()
 
 	out, _, code := runForge(t, dir, "init", "--agents", "cursor")
-	if code == 0 {
-		t.Fatalf("--agents 应已被移除而报错，实际通过：%s", out)
+	if code != 0 {
+		t.Fatalf("--agents 是 hidden no-op，退出码应为 0：%s", out)
 	}
-	if !strings.Contains(out, "unknown flag: --agents") {
-		t.Errorf("错误信息应点名 --agents：%s", out)
+	if !strings.Contains(out, "--agents 已废弃（阶段 D 起没有宿主接线），本次忽略") {
+		t.Errorf("应打印废弃警告：%s", out)
+	}
+	for _, name := range []string{".cursor", ".github", ".claude"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("init --agents 不应写项目宿主产物 %s", name)
+		}
 	}
 	if got := snapshotTree(t, home); len(got) != 0 {
-		t.Errorf("失败的 init 不应写 HOME：%v", got)
+		t.Errorf("init --agents 不应写 HOME：%v", got)
 	}
 }
 

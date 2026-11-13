@@ -375,6 +375,7 @@
     {
       "path": "forge init",
       "flags": [
+        "agents",
         "fresh",
         "mode",
         "profile",
@@ -1157,8 +1158,7 @@
     {
       "path": "forge update",
       "flags": [
-        "apply",
-        "plugin"
+        "apply"
       ]
     },
     {

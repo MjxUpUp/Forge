@@ -478,7 +478,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	}
 }
 
-// --------------- Test: --agents 已废弃（宿主接线移到 integrations） ---------------
+// --------------- Test: --agents 保留为 hidden no-op（宿主接线已在阶段 D 删除） ---------------
 
 // runGit is a test helper to run git commands.
 func runGit(t *testing.T, dir string, args ...string) {
@@ -490,17 +490,22 @@ func runGit(t *testing.T, dir string, args ...string) {
 	}
 }
 func TestInitWithAgentsIsNoOp(t *testing.T) {
+	home, _ := isolatedHomeEnv(t)
 	tmpDir := t.TempDir()
 	out, _, code := runForge(t, tmpDir, "init", "--agents", "cursor,copilot")
-	if code == 0 {
-		t.Fatalf("--agents 随宿主层删除，应报 unknown flag：%s", out)
+	if code != 0 {
+		t.Fatalf("--agents 是 hidden no-op，旧脚本不应因此失败：%s", out)
 	}
-	if !strings.Contains(out, "unknown flag: --agents") {
-		t.Errorf("错误信息应点名 --agents：%s", out)
+	if !strings.Contains(out, "--agents 已废弃（阶段 D 起没有宿主接线），本次忽略") {
+		t.Errorf("应打印废弃警告并点名 --agents：%s", out)
 	}
-	for _, name := range []string{".cursor", ".github"} {
+	// no-op 的边界：不写任何宿主产物（项目侧与 HOME 侧都不能有）。
+	for _, name := range []string{".cursor", ".github", ".claude"} {
 		if _, err := os.Stat(filepath.Join(tmpDir, name)); !os.IsNotExist(err) {
 			t.Errorf("init --agents must not write %s into the project dir", name)
 		}
+	}
+	if got := snapshotTree(t, home); len(got) != 0 {
+		t.Errorf("init --agents 不应写 HOME：%v", got)
 	}
 }

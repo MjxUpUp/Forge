@@ -19,8 +19,13 @@ func init() {
 	// 维持向后兼容：旧脚本的 `forge init --mode medium` 不报错，只是无效。
 	initCmd.Flags().String("mode", "", "(deprecated, no-op) 旧版项目规模标志，项目级管道删除后无意义")
 	initCmd.Flags().Bool("fresh", false, "(deprecated, no-op) 旧版强制重新生成标志")
+	// --agents 是阶段 D 删除宿主层后遗留的最后一个宿主接线 flag。保留为隐藏
+	// no-op：旧脚本 `forge init --agents cursor` 不能因为「unknown flag」直接失败
+	// （那会让升级后的首次 init 断在半路），但也不再有任何宿主产物可写。
+	initCmd.Flags().String("agents", "", "(deprecated, no-op) 阶段 D 起没有宿主接线，传入即忽略")
 	_ = initCmd.Flags().MarkHidden("mode")
 	_ = initCmd.Flags().MarkHidden("fresh")
+	_ = initCmd.Flags().MarkHidden("agents")
 }
 
 var initCmd = &cobra.Command{
@@ -55,8 +60,8 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// 让位是知情选择）。注意 .forge-decline 声明项目在上方门禁已被拒。
 	warnForeignHarness(policyRoot())
 
-	if agents, _ := cmd.Flags().GetString("agents"); strings.TrimSpace(agents) != "" && strings.TrimSpace(agents) != "auto" {
-		fmt.Fprintln(os.Stderr, "Warning: --agents 已废弃——宿主接线改用 forge integrations enable <host>（本次忽略）")
+	if agents, _ := cmd.Flags().GetString("agents"); strings.TrimSpace(agents) != "" {
+		fmt.Fprintln(os.Stderr, "Warning: --agents 已废弃（阶段 D 起没有宿主接线），本次忽略")
 	}
 	if team, _ := cmd.Flags().GetBool("project"); team {
 		fmt.Fprintln(os.Stderr, "Warning: --project 已废弃——契约随仓库走（spec/forge.yaml），不再写项目级 .forge/ 资产（本次忽略）")

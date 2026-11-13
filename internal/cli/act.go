@@ -48,12 +48,12 @@ var actListCmd = &cobra.Command{
 
 var actNudgeCmd = &cobra.Command{
 	Use:   "nudge",
-	Short: "输出最新结论的回顾指令（有 nudge 才输出，否则静默）——供会话结束 hook 消费",
-	Long: `forge act nudge 供 task-verify（会话结束 hook）消费：读最新任务结论，若标
+	Short: "输出最新结论的回顾指令（有 nudge 才输出，否则静默）——供 agent/脚本收尾时显式调用",
+	Long: `forge act nudge 供任务收尾时显式调用（agent 或脚本，不再有会话结束 hook）：读最新任务结论，若标
 RetrospectiveNudge（证据弱 Unverified/Weak 或低分 <70）则输出一行可执行回顾指令（Directive），
 否则完全静默。Strong 且>=70 的干净完成不发噪声——nudge 只在有盲区时出现。
 
-这是 Act 反馈臂的会话结束触发点：Directive 不只在 forge task complete 时打印一次（易被后续
+这是 Act 反馈臂的会话结束触发点（阶段 D 起无 hook，需显式调用）：Directive 不只在 forge task complete 时打印一次（易被后续
 工作淹没），也在会话结束的质量信号面 surface，确保"高分但没真验证"的盲区到达回顾真正发生
 的检查点（task-verify 已收 task-gate/pending-review/main-branch 全部质量信号，唯独缺 Act 信号）。`,
 	RunE: runActNudge,
@@ -189,7 +189,7 @@ func runActList(cmd *cobra.Command, args []string) error {
 }
 
 // runActNudge 读最新结论：有 RetrospectiveNudge 则输出 Directive（一行），否则静默。
-// 专为会话结束 hook（task-verify）设计——干净完成零输出，有盲区才发一行可执行指令。
+// 专为任务收尾设计（阶段 D 起由 agent/脚本显式调用，不再有会话结束 hook）——干净完成零输出，有盲区才发一行可执行指令。
 // 与 act show 区别：show 是人读全量（空时打印"尚无结论"），nudge 是机器消费（空时静默）。
 func runActNudge(cmd *cobra.Command, args []string) error {
 	proj, err := findProject()
@@ -236,7 +236,7 @@ func printConclusion(c *act.Conclusion) {
 // printSkillReach 打印该 task 期间触发的 skill（来自 toollog 的 Skill 工具调用）。
 //
 // 步骤 3：把 skill 触达画像注入 forge act show——零新命令，用户看 act show 多一行 Skills。
-// agent-neutral：toollog 是跨 host 采集层（任何装了 forge hook 的 host 都记 Skill 调用），
+// agent-neutral：toollog 是跨 host 采集层（agent 显式调用工具的记录都经 toollog 落盘），
 // 无 Skill 调用记录时静默（不打印空行），缺数据不打扰。
 //
 // 用 LoadForTaskAll（跨归档）而非 LoadForTask（仅 active）：forge task start 会归档上一任务

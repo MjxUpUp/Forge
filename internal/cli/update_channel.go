@@ -187,7 +187,7 @@ func getLatestVersionFromNPM() (string, error) {
 
 // printNpmUpdateGuidance 告诉 npm 通道用户如何更新，命令随其包管理器
 // 匹配。forge 不代跑安装：全局安装可能要提权，用户可能锁定 registry 或
-// 版本——与 --plugin flag 同哲学（交互步骤只打印不脚本化）。
+// 版本——交互步骤只打印不脚本化。
 func printNpmUpdateGuidance(w io.Writer, latest string, pm string) {
 	fmt.Fprintln(w, ``)
 	fmt.Fprintln(w, `检测到 npm 通道安装（二进制位于 node_modules/@agent_forge 下）。`)

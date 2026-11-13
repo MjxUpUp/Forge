@@ -26,7 +26,7 @@ Stop trusting AI-generated code. Start gating it.
 
 > **AI 写的代码，你放心直接提交吗？**
 
-Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到代码提交，每一步产出物都要留下 deterministic 证据，门禁由 CLI 确定性把关。配合宿主 Hook 系统还能在写代码时实时拦截（需显式开启，缺省 audit-only 静默审计，见下）。
+Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到代码提交，每一步产出物都要留下 deterministic 证据，门禁由 CLI 确定性把关。质量检查只在 `forge task gate` / `forge change verify` 的进程内执行，没有实时拦截层，写操作不经过 forge。
 
 **⚡ 60 秒拿到第一个证据**：
 
@@ -54,35 +54,29 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
         │                coding agent                       │
         │        (Claude Code / Codex / Cursor ...)         │
         └────────────────────┬─────────────────────────────┘
-                             │ 每次 Write / Edit / Bash
+                             │ 显式调用 forge 命令
                              ▼
         ┌──────────────────────────────────────────────────┐
-        │            Forge Hooks · 实时拦截                 │
-        │   task-guard · read-before-edit · bash-guard      │
-        │   task 门禁 · change 验证 · 证据封印            │
-        └────────────────────┬─────────────────────────────┘
-                             │
-                             ▼
-        ┌──────────────────────────────────────────────────┐
-        │           任务门禁 · 持久化状态                    │
+        │            任务门禁 · change 验证                  │
         │    task-implement → task-verify → task-complete   │
+        │    可执行判据 · 证据封印 · 持久化状态               │
         └────────────────────┬─────────────────────────────┘
                              │
                              ▼
                 📊 质量评分 + deterministic 证据链
 ```
 
-<sub>注：阶段 D 起 forge 不再提供宿主 hook；图中的实时拦截由 agent 显式跑 `forge task` / `forge change` 命令驱动，证据与评分由 CLI 确定性执行。</sub>
+<sub>注：forge 没有宿主层；图中的门禁由 agent 显式跑 `forge task` / `forge change` 命令驱动，证据与评分由 CLI 确定性执行。</sub>
 
 ## ✨ 核心能力
 
 <table>
   <tr>
     <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
-    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>26 个内置 Hook，显式开启后在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）；缺省 audit-only 静默审计。</td>
+    <td width="50%" valign="top"><strong>🔧 显式命令驱动</strong><br/>forge 没有实时拦截层：门禁由 agent 显式跑 forge task / forge change 命令触发，状态与证据落盘可审计。</td>
   </tr>
   <tr>
-    <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。开启执法后，活跃任务内 Agent 无法经 bash 绕道篡改（缺省 audit-only）。</td>
+    <td valign="top"><strong>🧭 质量只由 gate/verify 与 CI 把关</strong><br/>没有拦截层：写操作不经过 forge；质量检查发生在 forge task gate / forge change verify 进程内，合并前由 CI 的 forge change check 兜底。</td>
     <td valign="top"><strong>📊 质量评分</strong><br/>每个任务完成后自动评分，量化 AI 编码质量；deterministic 证据链可审计。</td>
   </tr>
 </table>
@@ -105,9 +99,9 @@ forge init    # 在仓库里声明契约：只写仓库内产物
 | `AGENTS.md` | forge 托管块（可提交共享给协作者与 agent） |
 | `CLAUDE.md`、`.cursor/rules/forge.mdc` | 只在文件/目录已存在时追加/补齐指针 |
 
-它**不写** `~/.forge`、`~/.claude`、`~/.codex`，也不登记全局注册表；重复运行只同步仓库内托管块。`--project`、`--agents` 已废弃为 no-op，`--profile mini|standard|full` 写入契约。
+它**不写** `~/.forge`、`~/.claude`、`~/.codex`，也不登记全局注册表；重复运行只同步仓库内托管块。`--project` 已废弃为 no-op，`--profile mini|standard|full` 写入契约。
 
-阶段 D 起 forge **没有宿主层**：不再安装 hook、不写宿主 settings，也不提供 `integrations`/`plugin`/`uninstall`/`freeze`/`hazard`/`doctor` 等命令。门禁改由 agent 显式跑 `forge task`/`forge change` 命令驱动；证据、状态与判据仍然落盘、可审计。需要全局看板或 `task --all-projects` 时，用 `forge registry add` 显式登记项目（`forge dashboard` 只读聚合登记过的项目）。
+forge **没有宿主层**：不分发宿主插件、不写宿主配置。门禁由 agent 显式跑 `forge task`/`forge change` 命令驱动；证据、状态与判据仍然落盘、可审计。需要全局看板或 `forge task list --open --all-projects` 时，用 `forge registry add` 显式登记项目（`forge dashboard` 只读聚合登记过的项目）。
 
 > **仓库自己决定要不要接管。** `forge init` 写的 `spec/forge.yaml` 把成员资格放在仓库本身——clone 到新机器、换个 agent 也能解析到项目身份。
 >
@@ -117,7 +111,7 @@ forge init    # 在仓库里声明契约：只写仓库内产物
 # spec/forge.yaml
 version: "1"       # 契约版本，按主版本兼容
 profile: standard  # standard | mini | full（省略该字段按 standard 解析；forge init 写入的是 mini）
-hooks: off         # 兼容字段：阶段 D 后不再有 hook 执法，保留只为老契约可解析
+hooks: off         # 兼容字段：保留只为老契约可解析，不启用任何执法
 ```
 
 - `profile` 决定任务门禁的严格档位（`mini` 最小集、`standard` 缺省、`full` 预留超集位）。
@@ -132,7 +126,7 @@ hooks: off         # 兼容字段：阶段 D 后不再有 hook 执法，保留�
 
 | 命令 | 用途 |
 |------|------|
-| `forge init` | 在仓库里声明 forge 契约：写 `spec/forge.yaml`、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的入口指针；不写 `~/.forge`（`--profile mini\|standard\|full`，`--project`/`--agents` 已废弃为 no-op） |
+| `forge init` | 在仓库里声明 forge 契约：写 `spec/forge.yaml`、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的入口指针；不写 `~/.forge`（`--profile mini\|standard\|full`，`--project` 已废弃为 no-op） |
 | `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步 |
 | `forge change init/new/list/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（有块只改块内、无块末尾追加；`CLAUDE.md` 不存在默认不建，`.cursor/rules/` 目录已存在时补 forge.mdc，要凭空创建用 `--pointers`，`none` 完全不碰）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`；随 git 提交；与 `forge init` 同源，都是仓库内产物）；`new --fast` 只要求 proposal + acceptance |
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
@@ -146,9 +140,9 @@ hooks: off         # 兼容字段：阶段 D 后不再有 hook 执法，保留�
 | `forge trace <ref>` / `forge health` / `forge dashboard` | 证据链时间线 / 质量趋势 / 全局看板（Pulse） |
 | `forge status` | 项目状态 |
 
-其余命令族（`skills`、`eval`、`act`、`workspace`、`project`、`registry`（含 `registry add` 显式登记）、`harness`、`compat`、`conventions`、`policy`、`selfcheck`、`migrate`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`、`verify`、`trust`）见同一份[完整命令表](docs/reference/cli.md)。
+其余命令族（`skills`、`enforcement`、`eval`、`act`、`workspace`、`project`、`registry`（含 `registry add` 显式登记）、`harness`、`compat`、`conventions`、`policy`、`selfcheck`、`migrate`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`、`verify`、`trust`）见同一份[完整命令表](docs/reference/cli.md)。
 
-**回环怎么跑**：agent 每个回合先 `forge change status <id>`，只执行它给出的下一步——补产物、跑 verify、读失败证据、重跑，acceptance 的判据全部通过才归档。判断标准来自仓库里的文件与证据，不来自对话记忆；in-loop 不需要宿主 hook（`forge change status/verify` 仍是 forge 二进制提供的命令，所以「零安装」指不用装 hook，不是不用装 forge）。逐节点推进用 `forge change gate <id> --task N`：只跑该任务引用的判据，节点证据不封印整条 change。
+**回环怎么跑**：agent 每个回合先 `forge change status <id>`，只执行它给出的下一步——补产物、跑 verify、读失败证据、重跑，acceptance 的判据全部通过才归档。判断标准来自仓库里的文件与证据，不来自对话记忆；in-loop 不需要宿主插件（`forge change status/verify` 仍是 forge 二进制提供的命令，所以「零安装」指不用装宿主插件，不是不用装 forge）。逐节点推进用 `forge change gate <id> --task N`：只跑该任务引用的判据，节点证据不封印整条 change。
 
 **证据怎么变成合并前提**：`forge change check` 给 CI 与 pre-commit 同一套判据——每个未归档 change 都得有一份与当前代码和判据一致的封印证据。仓库里带两份接线示例：
 

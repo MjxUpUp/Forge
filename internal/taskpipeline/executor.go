@@ -370,26 +370,36 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		taskRef = state.TaskRef
 	}
 
-	// 1. 编译与断言检查（阶段 D：内嵌 hook 已删除）。历史语义就是 advisory——
-	// 脚本发现问题也只提示、不阻断，最终由 agent 自检。这里保留 checklog 条目
-	// 形状，让 trace/scoring 仍能看到「本轮可编译性/断言强度未被工具验证」。
+	// 1. 编译与断言检查（阶段 D：内嵌 hook 已删除）。原先是 hard fail（脚本失败
+	// 即阻断 task-implement）；阶段 D 删除内嵌 hook 后没有任何工具真的跑过编译/断言，
+	// 只能由 agent 自检、由 acceptance 判据兜底。因此条目保留 advisory 形状与文案
+	// （trace/scoring 仍能看到「本轮可编译性/断言强度未被工具验证」），但 Checked
+	// 必须为 false：Passed:true 表示「检查跑过且通过」，Checked:false 才是「没跑」。
+	// 这不是失败，也不是证据——Checked:true 会让它与真跑过的 deterministic 证据
+	// 混为一谈（证据虚高，code-review 2026-11）。
+	//
+	// Source 显式标成 agent-claim：SourceForCheck 默认把这两个 check 归
+	// deterministic（历史上它们确实是 hook 实跑），阶段 D 之后这个默认值失真；
+	// 显式来源优先于默认值，evidence 分桶不会再把它算成 deterministic 证据。
 	compileEntry := &checklog.Entry{
 		Check:   checklog.CheckAutoCompile,
 		Passed:  true,
-		Checked: true,
+		Checked: false,
 		TaskRef: taskRef,
 		Level:   checklog.LevelWarn,
-		Detail:  "advisory: 未执行内嵌编译检查（阶段 D 移除；由 agent 自检）",
+		Source:  checklog.EvidenceAgentClaim,
+		Detail:  "advisory: 未执行内嵌编译检查（原先 hard fail；阶段 D 移除内嵌 hook 后由 agent 自检/acceptance 兜底）",
 	}
 	recordAudit(root, compileEntry)
 
 	assertEntry := &checklog.Entry{
 		Check:   checklog.CheckAssertion,
 		Passed:  true,
-		Checked: true,
+		Checked: false,
 		TaskRef: taskRef,
 		Level:   checklog.LevelWarn,
-		Detail:  "advisory: 未执行内嵌断言检查（阶段 D 移除；由 agent 自检）",
+		Source:  checklog.EvidenceAgentClaim,
+		Detail:  "advisory: 未执行内嵌断言检查（原先 hard fail；阶段 D 移除内嵌 hook 后由 agent 自检/acceptance 兜底）",
 	}
 	recordAudit(root, assertEntry)
 

@@ -3,7 +3,8 @@
 // Package cli conventions.go — `forge conventions` 命令组：conventions-profile
 // 层 1（发现并建档）的用户入口。init 机械扫描目标仓库已声明的规范
 // （AGENTS.md 一族 / lint 配置 / 工具链命令）写入 per-project 档案；show 查看
-// 档案与过期状态。注入（层 2）由 hook 侧 hook_conventions.go 承担，不经此命令。
+// 档案与过期状态。阶段 D 起没有会话开始 hook：摘要只由本命令写入、由
+// `forge conventions show` 或 agent 按需显式读取，不经此命令注入。
 package cli
 
 import (
@@ -21,11 +22,12 @@ var conventionsInitForce bool
 // `forge conventions` 收录锚点）。
 var conventionsCmd = &cobra.Command{
 	Use:   "conventions",
-	Short: "项目规范档案：扫描目标仓库既有规范建档（AGENTS.md/lint 配置/工具链），会话注入摘要",
+	Short: "项目规范档案：扫描目标仓库既有规范建档（AGENTS.md/lint 配置/工具链），摘要供显式读取",
 	Long: "项目规范档案（conventions-profile 层 1）：机械扫描目标仓库已声明的编码规范——\n" +
 		"AGENTS.md/CLAUDE.md/CONVENTIONS.md 等规范文件、lint/format 配置、stack 工具链命令——\n" +
 		"写入 per-project 档案（~/.forge/projects/<key>/conventions/）。\n" +
-		"每次会话开始 hook 注入摘要（≤15 行），写源码文件时注入规范文件指针与同目录范例。\n" +
+		"摘要保持 ≤15 行，供 `forge conventions show` 或 agent 按需显式读取；阶段 D 起没有\n" +
+		"会话开始/写文件时的自动注入（hook 已删除），摘要与规范指针都不会自己进上下文。\n" +
 		"源文件变更后指纹翻转，提示重扫。摘要的「提取要点」节由 agent 代码考古后增补。",
 }
 
@@ -37,7 +39,7 @@ var conventionsInitCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		root, err := findProjectRoot()
 		if err != nil {
-			return fmt.Errorf("not a forge project — run `forge init` first (hooks only fire in forge projects; a profile elsewhere would be write-only)")
+			return fmt.Errorf("not a forge project — run `forge init` first (档案挂在仓库契约 spec/forge.yaml 上；没有契约的目录无处落档)")
 		}
 		p, err := conventions.Scan(root)
 		if err != nil {
@@ -144,10 +146,10 @@ var conventionsLearnCmd = &cobra.Command{
 		case !res.Changed:
 			fmt.Println("该规则已在摘要中（未改动）:", conventions.SummaryPath(dataDir))
 		case res.OverBudget:
-			fmt.Printf("已写回: %s\n⚠ 摘要非空行数已超 %d 行预算——会话注入将截断至 %d 行（最旧条目不再进入注入），请修剪旧条目（手工编辑或 forge conventions init --force 重建后重新 learn；全文仍在 summary.md / forge conventions show）\n",
+			fmt.Printf("已写回: %s\n⚠ 摘要非空行数已超 %d 行预算——读取时将截断至 %d 行（最旧条目不再展示），请修剪旧条目（手工编辑或 forge conventions init --force 重建后重新 learn；全文仍在 summary.md / forge conventions show）\n",
 				conventions.SummaryPath(dataDir), conventions.SummaryLineBudget, conventions.SummaryLineBudget)
 		default:
-			fmt.Printf("已写回: %s（下个会话注入即含此规则）\n", conventions.SummaryPath(dataDir))
+			fmt.Printf("已写回: %s（下个会话显式读取即含此规则）\n", conventions.SummaryPath(dataDir))
 		}
 		return nil
 	},
@@ -190,8 +192,8 @@ func printConventionsInitReport(root, dataDir string, p *conventions.Profile, su
 	}
 	fmt.Println()
 	fmt.Println("下一步（agent）：对仓库做代码考古，把命名/错误处理/目录结构/import 与注释风格等")
-	fmt.Println("惯例逐条写进 summary.md 的「提取要点」节（整份保持 ≤15 行）——每次会话开始 forge")
-	fmt.Println("会注入这份摘要；规范源文件变化后指纹翻转，forge conventions show 会提示重扫。")
+	fmt.Println("惯例逐条写进 summary.md 的「提取要点」节（整份保持 ≤15 行）——用 `forge conventions")
+	fmt.Println("show` 或按需读 summary.md 查看；阶段 D 起没有会话开始 hook 自动注入摘要。")
 	fmt.Println("后续纠正：用户/审查指出规范违规时，当场 `forge conventions learn '<规则>'` 写回摘要——")
 	fmt.Println("纠正离开会话进档案，同一违规不再换会话重犯。")
 }
