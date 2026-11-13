@@ -29,7 +29,7 @@ func wsFreshProject(t *testing.T) string {
 	forge(t, dir, "init")
 	// 门禁类 e2e 需要宿主接线后的 DataDir（protocol.yml/hooks）：Phase C 起
 	// init 只写仓库物，接线是 integrations enable 的显式 opt-in。
-	forge(t, dir, "integrations", "enable", "claude-code")
+	forge(t, dir, "registry", "add", ".")
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "initial")
 	return dir
@@ -146,8 +146,12 @@ func TestWorkspaceImpactGate(t *testing.T) {
 	// 经 DataDir 的 protocol.yml 升级为 required（零项目写入时代：项目树没有
 	// .forge/protocol.yml）。
 	protoPath := filepath.Join(forgedata.DataDirFor(dirA), "protocol.yml")
-	proto := readFile(t, ``, protoPath)
-	writeFile(t, ``, protoPath, proto+"\ncross_repo_impact: required\n")
+	// 阶段 D 删掉 autoSync 后，DataDir 的 protocol.yml 不再自动生成：
+	// 这里直接写一份最小协议（Load 会补默认值）。
+	if err := os.MkdirAll(filepath.Dir(protoPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, ``, protoPath, "version: \"1\"\ncross_repo_impact: required\n")
 
 	out, err = forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/xr")
 	if err == nil {

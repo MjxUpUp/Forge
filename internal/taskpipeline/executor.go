@@ -6,13 +6,10 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/shellexec"
 )
 
 // CheckNameDocsConsistency 是 task-complete 的 docs-consistency advisory 的 checklog 名，
@@ -373,72 +370,28 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		taskRef = state.TaskRef
 	}
 
-	// 1. 编译检查——经 EMBEDDED auto-compile 脚本，与 write-time PostToolUse hook
-	//（cli.runHook）使用同一份源。改读磁盘上的 .forge/hooks/auto-compile.sh 会让
-	// gate 检查可篡改副本、而 write-time hook 检查受信 embed，两者会漂移（被篡改
-	// 的磁盘脚本可能让 gate 通过一个 write-time hook 仍会标记为坏的构建）。
-	compilePassed, compileInfra, compileOutput := runEmbeddedHook(root, "auto-compile")
-
-	compileDetail := fmt.Sprintf("auto-compile.sh: %s", compileOutput)
-	if compileInfra {
-		// 基建故障（bash spawn error / exit 126/127——WSL bash 看不到 Windows 临时
-		// 路径的特征）：Detail 加 INFRA: 前缀（Passed=false 保留，便于统计基建故障率），
-		// 但不判 gate fail——fail-open 对齐 hook 路径 isHookInfraFailure 哲学（环境
-		// 问题不是质量失败）。真实编译错误（脚本正常执行、编译器报错）语义不变。
-		compileDetail = "INFRA: " + compileDetail
-	}
+	// 1. 编译与断言检查（阶段 D：内嵌 hook 已删除）。历史语义就是 advisory——
+	// 脚本发现问题也只提示、不阻断，最终由 agent 自检。这里保留 checklog 条目
+	// 形状，让 trace/scoring 仍能看到「本轮可编译性/断言强度未被工具验证」。
 	compileEntry := &checklog.Entry{
 		Check:   checklog.CheckAutoCompile,
-		Passed:  compilePassed,
+		Passed:  true,
 		Checked: true,
 		TaskRef: taskRef,
-		Detail:  compileDetail,
-	}
-	if compileInfra {
-		// 基建故障 fail-open 不是质量失败——Level warn（trace 渲染 ⚠ 而非 ✗）；
-		// scoring 侧按 INFRA: 前缀跳过（scoring.go），Passed=false 仅用于故障率统计。
-		compileEntry.Level = checklog.LevelWarn
+		Level:   checklog.LevelWarn,
+		Detail:  "advisory: 未执行内嵌编译检查（阶段 D 移除；由 agent 自检）",
 	}
 	recordAudit(root, compileEntry)
 
-	if !compilePassed && !compileInfra {
-		return &ExecuteResult{
-			GateID:  GateImplement,
-			Passed:  false,
-			Message: fmt.Sprintf("build failed: %s", compileOutput),
-		}, nil
-	}
-
-	// 2. 断言弱化检查——与 write-time PreToolUse hook 同源 embed。无磁盘回退：
-	// embed 即 canonical，故被篡改的 .forge/hooks/assertion-check.sh 无法削弱
-	// gate 强制的内容。
-	assertPassed, assertInfra, assertOutput := runEmbeddedHook(root, "assertion-check")
-
-	assertDetail := fmt.Sprintf("assertion-check.sh: %s", assertOutput)
-	if assertInfra {
-		// 基建故障分级同 auto-compile（见上）：INFRA: 前缀记录，不判 gate fail。
-		assertDetail = "INFRA: " + assertDetail
-	}
 	assertEntry := &checklog.Entry{
 		Check:   checklog.CheckAssertion,
-		Passed:  assertPassed,
+		Passed:  true,
 		Checked: true,
 		TaskRef: taskRef,
-		Detail:  assertDetail,
-	}
-	if assertInfra {
-		// 同 auto-compile：基建故障 Level warn，非质量失败。
-		assertEntry.Level = checklog.LevelWarn
+		Level:   checklog.LevelWarn,
+		Detail:  "advisory: 未执行内嵌断言检查（阶段 D 移除；由 agent 自检）",
 	}
 	recordAudit(root, assertEntry)
-
-	if !assertPassed && !assertInfra {
-		return &ExecuteResult{
-			GateID:  GateImplement,
-			Passed:  false,
-			Message: fmt.Sprintf("assertion check failed: %s", assertOutput),
-		}, nil
-	}
 
 	// 3. 校验确有代码改动（不仅是预编译的 base）。
 	if !hasCodeChanges(root, state) {
@@ -511,91 +464,6 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		Message: "code changes present (compile/assertion advisory via hooks)",
 	}, nil
 }
-
-// runEmbeddedHook 执行 embed 的 hook 脚本（hooks.EmbeddedContent）：写临时文件后
-// 用 bash 跑——镜像 write-time 路径（cli.runHook）跑 hook 的方式。gate 层使用与
-// write-time 检查同源的 embed 源；改读磁盘 .forge/hooks/*.sh 会让 gate 检查可
-// 篡改副本、可能与受信 embed 漂移。root 作为 $1 与工作目录传入，对齐此前磁盘
-// hook 调用方式，让脚本经 $1 或 $PWD 解析项目时表现一致。
-//
-// infra 返回值标记基础设施故障（bash spawn 错误 / exit 126/127——WSL bash 特征，
-// 脚本文件不可见）：不是门禁结论。checkImplement 用 INFRA: Detail 前缀记录它们
-// （Passed=false 保留，基建故障率可统计）但不判 gate fail——与 write-time hook
-// 路径（cli.isHookInfraFailure）的 fail-open 哲学对齐。真实编译失败（脚本正常
-// 执行、编译器报错）保持 passed=false, infra=false，gate 照旧 fail。
-//
-// bash 解析走 shellexec.FindBash——与 write-time 路径同源的 WSL 规避逻辑。
-// shellexec 之前的裸 exec.Command("bash", ...) 在原生父进程下解析到 WSL bash，
-// 45/53 次 gate auto-compile FAIL 都是 'forge-gate-*.sh: No such file or directory'。
-func runEmbeddedHook(root, name string) (passed bool, infra bool, output string) {
-	content, ok := hooks.EmbeddedContent(name)
-	if !ok {
-		// 未知 hook 名是编程错误而非基建故障——fail closed。
-		return false, false, fmt.Sprintf("embedded hook %q not found", name)
-	}
-	tmp, err := os.CreateTemp("", "forge-gate-*.sh")
-	if err != nil {
-		return false, true, fmt.Sprintf("create temp hook file: %v", err)
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-	if _, err := tmp.WriteString(content); err != nil {
-		tmp.Close()
-		return false, true, fmt.Sprintf("write temp hook file: %v", err)
-	}
-	tmp.Close()
-	// bash 把文件作为参数读；无需 chmod（不直接 exec）。
-
-	bashPath, err := findBashForHook()
-	if err != nil {
-		return false, true, fmt.Sprintf("resolve bash: %v", err)
-	}
-
-	// Windows: os.CreateTemp 返回反斜杠路径（C:\Users\...\forge-gate-*.sh），bash 把反斜杠当
-	// 转义吃掉 → "No such file or directory"，task-implement 的 build 检查因此误判失败。
-	// filepath.ToSlash 转正斜杠（Git Bash 可解析）。cmd.Dir 仍用原生 root——Go exec 在
-	// Windows 启动 bash 子进程要原生路径做 cwd，bash 自身能处理 Windows cwd。
-	cmd := exec.Command(bashPath, filepath.ToSlash(tmpPath), filepath.ToSlash(root))
-	cmd.Dir = root
-	// 剔除继承自父进程的 tool-input env（2026-08-25 review minor）：cmd.Env 未设时
-	// 子进程继承 os.Environ()——父 shell 恰好 export 了 FORGE_FILE_PATH 会把
-	// assertion-check 从 batch（门禁全量扫描，以 FILE_PATH 为空判别）静默降级成
-	// per-edit 分析，门禁职责落空。正常注入路径（cli.runHook）是显式设置这些 env
-	// 的，不经本函数，不受影响。FORGE_CONTENT/FORGE_COMMAND 同样会被继承但无消费
-	// 者：前者只在 FILE_PATH 非空时读取，后者只被不经本路径的 bash-guard/
-	// hazard-guard 读取。
-	env := make([]string, 0, len(os.Environ()))
-	for _, kv := range os.Environ() {
-		k := kv
-		if i := strings.IndexByte(kv, '='); i >= 0 {
-			k = kv[:i]
-		}
-		switch k {
-		case "FORGE_FILE_PATH", "FORGE_TOOL_NAME", "FORGE_OLD_STRING", "FORGE_NEW_STRING":
-			continue
-		}
-		env = append(env, kv)
-	}
-	// Same script-env contract as the write-time path (hookdispatch.RunHook): pin
-	// TMPDIR off the MSYS /tmp mount, and keep interpreter runtime warnings out of
-	// the gate verdict text (the infra message keeps them as a diagnostic clue).
-	//
-	// 与 write-time 路径（hookdispatch.RunHook）同一脚本 env 契约：TMPDIR 固定、
-	// 不走 MSYS /tmp 挂载；解释器运行环境告警不进门禁结论文案（基础设施失败文案
-	// 保留它作诊断线索）。
-	cmd.Env = shellexec.PinTempDir(env)
-	out, err := cmd.CombinedOutput()
-	if shellexec.IsHookInfraFailure(err) {
-		return false, true, strings.TrimSpace(fmt.Sprintf("%v: %s", err, string(out)))
-	}
-	return err == nil, false, shellexec.StripRuntimeNoise(strings.TrimSpace(string(out)))
-}
-
-// findBashForHook 解析 embedded gate hook 的 bash 解释器。以包级变量留缝，
-// 供测试模拟基建故障（spawn 错误 / exit 127）。生产值为 shellexec.FindBash——
-// 与 write-time hook 路径（cli.runHook）同源的 WSL 规避解析；单一真相源，
-// 一个修复落点。
-var findBashForHook = shellexec.FindBash
 
 // getDisableWorkActivity 返回本 task 是否禁用 work-activity / read-before-edit 检查。方案5: per-task Overrides (forge task override) take
 // 优先于进程级 FORGE_WORK_ACTIVITY env——某 task 逃生不会泄漏到同 shell 的其他

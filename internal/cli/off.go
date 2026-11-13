@@ -66,6 +66,9 @@ func declineProject(root, by string) error {
 
 // resumeProject 是 on 的核心：注册表置 managed。
 func resumeProject(root, by string) error {
+	if err := registry.Add(root); err != nil {
+		return err
+	}
 	return registry.SetStatus(root, registry.StatusManaged, by)
 }
 

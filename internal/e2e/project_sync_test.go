@@ -47,22 +47,10 @@ func copyTree(t *testing.T, src, dst string) {
 	}
 }
 
-// dataDirKey 从 `forge data-dir` 输出提取 key（basename）。
+// dataDirKey 返回项目 DataDir 的 basename（forge data-dir 已在阶段 D 移除）。
 func dataDirKey(t *testing.T, dir string) string {
 	t.Helper()
-	out := forge(t, dir, `data-dir`)
-	out = strings.TrimSpace(out)
-	// 输出可能多行（打印路径 + 提示），取第一行非空路径。绝对路径判定用
-	// filepath.IsAbs 而非前缀分隔符——Windows 路径以盘符（C:\）开头，
-	// 不以 filepath.Separator 开头。
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if filepath.IsAbs(line) || strings.HasSuffix(line, "projects") {
-			return filepath.Base(strings.TrimRight(line, string(filepath.Separator)))
-		}
-	}
-	t.Fatalf(`无法从 data-dir 输出解析 key: %q`, out)
-	return ``
+	return filepath.Base(forgedata.DataDirFor(dir))
 }
 
 // TestProjectSyncDualMachineRoundTrip：标准双机流程。
