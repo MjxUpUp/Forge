@@ -25,7 +25,7 @@ import (
 
 // healNpmShimIfNeeded 对当前可执行文件执行自愈。由 PersistentPreRunE 调用，使每次
 // forge 调用（包括 hook spawn，只要能进来一次）都为下一次修好垫片。quiet 抑制一次
-// 性 stderr 提示（hook 子命令用：其 stderr 可能作为阻断原因进入 agent 上下文，
+// 性 stderr 提示（hook 子树用：其 stderr 可能作为阻断原因进入 agent 上下文，
 // 提示绝不能被误读为阻断）。
 func healNpmShimIfNeeded(quiet bool) {
 	if runtime.GOOS != "windows" {

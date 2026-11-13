@@ -11,6 +11,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/doclint"
+	"github.com/MjxUpUp/Forge/internal/review"
 )
 
 // CheckNameDocGate / CheckNameDocLint 是输出→回检循环的 checklog 条目：
@@ -211,18 +212,34 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 		reasons = append(reasons, `L2 文档回检不可信——任务状态文件签名校验失败（在 forge 之外被修改），重走门禁重新积累证据`)
 	}
 	head := GetHeadCommit(root)
+	// 终态原因（轮次打满仍未过需升级人工、同会话自审需独立评审者）优先于「过期」类原因：
+	// 评审→提交→complete 是主流程，HEAD 必然前移，若让 HEAD/指纹过期排在前面，这两条
+	// 文案在可达状态下永远显示不出来，会把第 4 轮、「确认即可」说给不该听的状态。
+	// 自审只在「已通过」时才是终态：未通过的自审记录落在下面的 !Passed 原因里，自审文案
+	// 对它不可达，把它算终态只会屏蔽 HEAD/指纹两条过期原因而没有对应的终态文案。
+	terminal := state.DocReview != nil && ((!state.DocReview.Passed && state.DocReview.Round >= DocReviewMaxRounds) || (state.DocReview.SelfReview && state.DocReview.Passed))
 	switch {
 	case state.DocReview == nil || state.DocReview.ReviewedAt.IsZero():
 		reasons = append(reasons, `L2 文档回检未记录——先按 doc-review skill 评审（产出者不能自检），再 forge task doc-review --passed pass|fail --score <N>`)
-	case state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head:
-		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s）——回检后改了产物，重新评审后 forge task doc-review`, shortCommit(state.DocReview.HeadCommit), shortCommit(head)))
-	case state.DocReview.DocsFingerprint != "" && state.DocReview.DocsFingerprint != DocContentFingerprint(root, state):
-		reasons = append(reasons, `L2 文档回检基于旧内容（文档指纹不匹配——评审后产物被改且未重新评审）——重新评审后 forge task doc-review`)
+	case !terminal && state.DocReview.HeadCommit != "" && head != "" && state.DocReview.HeadCommit != head:
+		// HEAD 前移不等于文档变了（评审→提交→complete 是主流程）。只有「指纹非空且相同、且上轮
+		// 评审通过并达阈值」才由机器核验出「内容一致，仅需评审者确认」，此时不追加分档指引
+		// （其「第 3 轮升档」会与「确认即可」互相打架）；指纹缺失/不同、或上轮评审本身未通过，
+		// 都不下「内容一致」的断言，按分档复审。任何口径都不开免评审通道：Passed 与分数由调用
+		// 方自录，仍须评审者确认后再记录，不得凭自述重录旧分数。
+		prior := state.DocReview
+		if fp := prior.DocsFingerprint; fp != "" && fp == DocContentFingerprint(root, state) && prior.Passed && prior.RubricScore >= DocRubricThreshold {
+			reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s，已评 %d 轮）——HEAD 在回检后前移，文档内容与评审时一致（指纹相同）：上一轮评审者确认即可（核对文档里的 file:line 与命令是否仍指向当前 HEAD），不必全量重评，也不按「第 3 轮」升档；仍须评审者确认后再 forge task doc-review 记录，不得凭自述重录旧分数。`, shortCommit(prior.HeadCommit), shortCommit(head), prior.Round))
+		} else {
+			reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧代码（快照 %s ≠ HEAD %s，已评 %d 轮）——文档已变、评审时未记指纹，或评审未通过/低于阈值：按下列分档复审，仍须评审后再 forge task doc-review 记录，不得凭自述重录旧分数。`+review.DocReReviewGuidance, shortCommit(prior.HeadCommit), shortCommit(head), prior.Round))
+		}
+	case !terminal && state.DocReview.DocsFingerprint != "" && state.DocReview.DocsFingerprint != DocContentFingerprint(root, state):
+		reasons = append(reasons, fmt.Sprintf(`L2 文档回检基于旧内容（文档指纹不匹配——评审后产物被改且未重新评审，已评 %d 轮）——重新评审后 forge task doc-review。`+review.DocReReviewGuidance, state.DocReview.Round))
 	case !state.DocReview.Passed:
 		if state.DocReview.Round >= DocReviewMaxRounds {
 			reasons = append(reasons, fmt.Sprintf(`L2 文档回检已 %d 轮未过（轮次上限 %d）——升级人工确认：请用户裁定放行（确认后 forge task override --doc-gate disable，落 checklog 审计）或指出下一轮修复方向`, state.DocReview.Round, DocReviewMaxRounds))
 		} else {
-			reasons = append(reasons, fmt.Sprintf(`L2 文档回检未通过（第 %d 轮，得分 %d）——修复 doc-review（rubric）的 Critical/Important 发现后重新评审`, state.DocReview.Round, state.DocReview.RubricScore))
+			reasons = append(reasons, fmt.Sprintf(`L2 文档回检未通过（第 %d 轮，得分 %d）——修复 doc-review（rubric）的 Critical/Important 发现后重新评审。`+review.DocReReviewGuidance, state.DocReview.Round, state.DocReview.RubricScore))
 		}
 	case state.DocReview.SelfReview:
 		// 价-1b（独立性归因，delivery-hardening）：记录会话 = 改动生产者 →
@@ -230,14 +247,14 @@ func CheckDocGate(root string, state *TaskState) (ok bool, reasons []string) {
 		// 过关——本 case 关闭该洞。独立会话/子 agent 复审后重新记录即过。
 		reasons = append(reasons, fmt.Sprintf(`L2 文档回检为同会话自审（记录者=改动生产者，得分 %d 不被消费）——由独立会话或只读子 agent 复审后重新 forge task doc-review`, state.DocReview.RubricScore))
 	case state.DocReview.RubricScore < DocRubricThreshold:
-		reasons = append(reasons, fmt.Sprintf(`L2 文档回检得分 %d 低于阈值 %d——按 doc-review skill 的四维判据改进后重新评审`, state.DocReview.RubricScore, DocRubricThreshold))
+		reasons = append(reasons, fmt.Sprintf(`L2 文档回检得分 %d 低于阈值 %d（已评 %d 轮）——按 doc-review skill 的四维判据改进后重新评审。`+review.DocReReviewGuidance, state.DocReview.RubricScore, DocRubricThreshold, state.DocReview.Round))
 	}
 
 	// 文档回检提出的未决 Critical findings 阻断门禁。
 	for i := range state.Findings {
 		f := &state.Findings[i]
 		if f.Source == DocReviewSource && f.Severity == FindingSeverityCritical && f.Status == "open" {
-			reasons = append(reasons, fmt.Sprintf("文档回检 Critical 未决（%s）：%s——修复后 forge task finding resolve %s", f.ID, f.Content, f.ID))
+			reasons = append(reasons, fmt.Sprintf("文档回检 Critical 未决（%s）：%s——修复后须经评审者判定已解决，才可 forge task finding --resolve %s（作者不得自行标记）", f.ID, f.Content, f.ID))
 		}
 	}
 

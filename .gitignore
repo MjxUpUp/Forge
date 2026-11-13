@@ -72,3 +72,6 @@ evals/forge/golden/candidates/
 
 # npm 依赖目录（plugins/forge-dsh 删了之后仍要挡未来误提交；node_modules 从不出入库）
 node_modules/
+
+# 本地探针/临时笔记（不入库）
+.tmp_*

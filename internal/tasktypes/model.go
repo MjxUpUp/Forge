@@ -120,6 +120,15 @@ type ArtifactApproval struct {
 	// Checked 记录审批人声明审过的内容（--checked，可重复）。存量审批为空——
 	// 裸哈希签名只说明内容被签过，不说明看了什么。
 	Checked []string `json:"checked,omitempty"`
+	// ChainDigest pins the chain definition (schema.yaml) the approval was made under.
+	// A later schema edit makes the approval stale — the approved graph is not the graph
+	// that will run (docs/design/task-tree-guard.md §6). Empty on legacy approvals: they
+	// predate the pin, and an empty digest must never read as drift.
+	//
+	// ChainDigest 钉住审批发生时的链定义（schema.yaml）。此后改 schema 即令审批 stale
+	// ——批准的那张图已不是要跑的那张图（docs/design/task-tree-guard.md §6）。存量审批
+	// 为空：它们早于该 pin，空 digest 绝不能被读成漂移。
+	ChainDigest string `json:"chain_digest,omitempty"`
 }
 
 // Design tiers (docs/plans/design-stage-hardening-2026-10-proposal.md D4):

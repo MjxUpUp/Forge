@@ -274,6 +274,11 @@ func runArtifactVerify() error {
 		return err
 	}
 	drifted := taskpipeline.VerifyArtifactsReport(root, st)
+	// 链定义指纹（docs/design/task-tree-guard.md §6）：审批时签的 schema.yaml 与现在不同
+	// ——内容没漂移、但「要跑的图」变了。advisory：不阻断，只提示重批。
+	for _, c := range taskpipeline.ChainDigestStale(root, st) {
+		fmt.Printf("  ⚠️ [chain] %s\n", c)
+	}
 	// 需求覆盖表（reqtrace.go，提案 W3.2）：产物声明的 REQ 与验收追溯对账。
 	if cov := taskpipeline.TaskRequirementCoverage(root, st); cov.HasTraceData() {
 		fmt.Println(taskpipeline.FormatRequirementCoverage(cov))
@@ -338,7 +343,9 @@ func runArtifactApprove(stage, by string, checked []string) error {
 		if cur == "" || cur != ref.Hash {
 			return fmt.Errorf("stage %q 引用已漂移（登记后文件被改）——先重登记再审批", stage)
 		}
-		approved = taskpipeline.ArtifactApproval{By: by, At: time.Now(), Hash: cur, Checked: checked}
+		// ChainDigest 钉住审批时刻的链定义（docs/design/task-tree-guard.md §6）：此后
+		// 改 schema.yaml 即令本审批 stale——批准的那张图不是要跑的图了。
+		approved = taskpipeline.ArtifactApproval{By: by, At: time.Now(), Hash: cur, Checked: checked, ChainDigest: artifactchain.Digest(root)}
 		approvedRef = ref
 		if ts.ArtifactApprovals == nil {
 			ts.ArtifactApprovals = map[string]taskpipeline.ArtifactApproval{}

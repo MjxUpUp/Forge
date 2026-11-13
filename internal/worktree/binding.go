@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -165,6 +166,43 @@ func ClearAllForTask(root, taskRef string) error {
 		}
 	}
 	return nil
+}
+
+// Anchors returns every binding whose TaskRef matches, sorted by CreatedAt. The task-tree
+// guard (docs/design/task-tree-guard.md) uses it as the single source of "which trees does
+// this task live in" — bindings are keyed by path (wtid), so location is the one durable
+// fact they carry, unlike the session pointer which any tree can read.
+//
+// Anchors 返回所有 TaskRef 命中的绑定（按 CreatedAt 排序）。错树守护
+// （docs/design/task-tree-guard.md）用它作为「这个任务住在哪些树里」的唯一事实源——
+// 绑定按路径（wtid）键控，位置是它唯一承载的持久事实；会话指针则任意树都可读
+// （正是漏洞所在）。读取失败/损坏的文件跳过：坏 JSON 不该让门禁崩。
+func Anchors(root, taskRef string) []Binding {
+	if taskRef == "" {
+		return nil
+	}
+	dir := bindingDir(root)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []Binding
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var b Binding
+		if json.Unmarshal(data, &b) != nil || b.TaskRef != taskRef || b.Path == "" {
+			continue
+		}
+		out = append(out, b)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out
 }
 
 // Touch refreshes the heartbeat (display-only; resolution never gates on it).
