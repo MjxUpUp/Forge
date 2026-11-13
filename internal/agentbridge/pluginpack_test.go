@@ -301,31 +301,29 @@ func TestPluginPack_Readme(t *testing.T) {
 		"@agent_forge/forge", // npm 包名（与 npm/package.json 一致）
 		"once per machine",   // step 1：二进制是机器级硬前置
 		"once per agent",     // step 2：plugin 是 agent 级
-		// step 3（Phase 3 新契约）：plugin 用户登记自动化 + 手动 init 的三个残留场景 + 退出/清理指引
-		"automatic for plugin users", // init-suggest 自动接管（装即 opt-in）
-		"forge registry prune",       // 项目目录移动后的死路径清理指引
-		"forge off --commit",         // 每项目退出指引（退出权高于默认开启；suggest 族已删）
-		"forge init --project",       // 团队模式仍走手动 init
+		// step 3（Phase C 契约）：每个仓库显式 forge init 声明契约，没有自动接管
+		"Declare the repository: `forge init`",
+		"forge registry prune", // 项目目录移动后的死路径清理指引
+		"forge off --commit",   // 每项目退出指引（退出权高于默认开启）
 		// skills 段（P3-1）：宣传数量运行时从 embed 现数（%[2]d 插值），渲染结果必须
 		// 携带真实数量且无 fmt 动词误用残渣（"%!d"）——钉住插值接线，防数量硬编码回潮。
 		fmt.Sprintf("%d skills", embeddedSkillCount()),
 		"/plugin install forge@forge",
 		"MjxUpUp/Forge",
-		"forge init --agents codex",
-		"forge init --agents cursor",
-		"forge init --agents copilot",
+		"forge integrations enable codex",
+		"forge integrations enable cursor",
+		"forge integrations enable copilot",
 		"Kimi Code",
 		"/plugins install https://github.com/", // kimi plugin install（repo-root .kimi-plugin/plugin.json）
-		"forge init --agents kimi",             // kimi 的 config.toml 回退路径
+		"forge integrations enable kimi",       // kimi 的 config.toml 回退路径
 		"Claude Code",
 		"Reasonix",
-		"reasonix plugin install",      // reasonix native plugin（plugins/forge/reasonix-plugin.json）
-		"forge init --agents reasonix", // reasonix 的 settings.json flat hooks 回退路径
-		"forge init --agents cline",    // cline wrapper 脚本路径（Wave 3b：~/Documents/Cline/Rules/Hooks/）
-		"not officially confirmed",     // D3: Codex 路径诚实表述（OpenAI 未明确）
-		// v1.22 用户级契约（守卫 plugin_readme.go 能力边界注释契约）：v1.22 起零项目
-		// 写入 + uninstall --restore 回滚路径。
-		"Since v1.22 `forge init` writes nothing into the project",
+		"reasonix plugin install",            // reasonix native plugin（plugins/forge/reasonix-plugin.json）
+		"forge integrations enable reasonix", // reasonix 的 settings.json flat hooks 回退路径
+		"forge integrations enable cline",    // cline wrapper 脚本路径（Wave 3b：~/Documents/Cline/Rules/Hooks/）
+		"not officially confirmed",           // D3: Codex 路径诚实表述（OpenAI 未明确）
+		// Phase C 契约：init 只写仓库产物 + uninstall --restore 回滚路径。
+		"writes **nothing** under `~/.forge`",
 		"--restore",
 		"zero project writes",
 		// Wave 2c 代码审查发现（已对照 code.visualstudio.com 核实）：VS Code 按 manifest

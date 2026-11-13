@@ -33,27 +33,27 @@ func init() {
 	initCmd.GroupID = "lifecycle"
 	syncCmd.GroupID = "lifecycle"
 	updateCmd.GroupID = "lifecycle"
-	// init-suggest hook prompt-state management (semantic extension of init).
-	//
-	// Project Policy Layer P1: symmetric per-project takeover on/off (semantic
-	// sibling of init/suggest — per-project 接入管理的开关对).
+	// Project Policy Layer P1: symmetric per-project takeover on/off (per-project
+	// 接入管理的开关对).
 	//
 	offCmd.GroupID = "lifecycle"    // 按项目退出接管（对称命令面，见 docs/design/project-policy-layer.md）
 	onCmd.GroupID = "lifecycle"     // 恢复接管（declined → managed 唯一通道）
-	configCmd.GroupID = "lifecycle" // 用户级偏好（takeover 三档——P2 默认值翻转的开关面）
+	configCmd.GroupID = "lifecycle" // 用户级偏好（当前仅 compat 基线声明）
 	policyCmd.GroupID = "lifecycle" // 接管策略快查/外来 harness 让位（P4）
 	// 项目规范档案（conventions-profile 层 1 建档入口：init 扫描/show 查看；
-	// 与 init/suggest 同族的项目级接入管理——先 init 进 forge，再 conventions 建档）。
+	// 与 init 同族的项目级接入管理——先 init 进 forge，再 conventions 建档）。
 	conventionsCmd.GroupID = "lifecycle"
-	// One-click uninstall (npm binary + init-suggest markers).
+	// One-click uninstall (npm binary + user-level assets).
 	//
-	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + init-suggest markers）
+	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + 用户级资产）
 	// Legacy .forge runtime state → DataDir migration (upgrade path).
 	//
 	migrateCmd.GroupID = "lifecycle" // 旧 .forge runtime state → DataDir 迁移（升级路径）
-	// Global project registry cleanup (cleanup counterpart to init's self-registration; backticks guard against Windows quote corruption).
+	// Global project registry cleanup (counterpart to the explicit registration
+	// done by `forge integrations enable` / `forge workspace add`; backticks guard
+	// against Windows quote corruption).
 	//
-	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（init 自登记的对应清理入口；反引号防 Windows 引号腐蚀）
+	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（integrations enable / workspace add 显式登记 的对应清理入口；反引号防 Windows 引号腐蚀）
 	// 项目数据跨机器导出/导入/身份对齐（project-sync：与 init/migrate/registry 同族的项目级数据管理）。
 	projectCmd.GroupID = `lifecycle`
 	// 机器节点身份（node_id = 公钥指纹；node-identity：机器级，与 project 跨机族同族）。
@@ -103,6 +103,8 @@ func init() {
 	enforcementCmd.GroupID = "governance"
 
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
+	// 宿主接线（显式 opt-in：写用户级 settings/CLAUDE.md/skill 的唯一入口）。
+	integrationsCmd.GroupID = "integrate"
 	hazardCmd.GroupID = "integrate"
 	freezeCmd.GroupID = "integrate"
 	hookdispatch.HookCmd.GroupID = "integrate"

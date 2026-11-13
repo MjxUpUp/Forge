@@ -18,6 +18,12 @@ import (
 // which lives in the user-level DataDir after the user-level-assets refactor.
 func writeSyncStamp(t *testing.T, dir, version string) {
 	t.Helper()
+	// Phase C：autoSync 只在宿主已接线时才写用户级资产。这些用例验的是
+	// sync 内容本身，故用「legacy 接线」信号（.forge/hooks）显式 opt-in；
+	// stamp 相等时的 early-return 在该闸门之前，不影响 skip 用例。
+	if err := os.MkdirAll(filepath.Join(dir, ".forge", "hooks"), 0755); err != nil {
+		t.Fatalf("seed legacy wiring: %v", err)
+	}
 	dataDir := forgedata.DataDirFor(dir)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		t.Fatalf("mkdir DataDir: %v", err)
@@ -219,9 +225,11 @@ func TestAutoSyncSkipsSettingsWriteWhenPluginInstalled(t *testing.T) {
 func TestAutoSyncHealsArtifactsWhenStampMissing(t *testing.T) {
 	dir := t.TempDir()
 	forgeDir := filepath.Join(dir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		t.Fatalf("mkdir .forge: %v", err)
+	if err := os.MkdirAll(filepath.Join(forgeDir, "hooks"), 0755); err != nil {
+		t.Fatalf("mkdir .forge/hooks: %v", err)
 	}
+	// .forge/hooks 同时是 Phase C 的「legacy 接线」信号：裸 temp 项目没有宿主
+	// 接线时 autoSync 会跳过用户级资产写入。
 	// Intentionally NO .sync-version — simulates a half-initialized or corrupted project.
 
 	_ = autoSync(dir, "v0.17.0", false)

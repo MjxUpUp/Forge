@@ -29,28 +29,28 @@ npm install -g @agent_forge/forge
 ```
 
 
-装完 plugin 后，init-suggest SessionStart hook 按 takeover 偏好接管（出厂默认 **ask**）：未接管项目首次会话**询问一次**——同意 → `forge init`；拒绝 → `forge off` 永久退出。要无询问静默接管所有 git 项目 → `forge config set` takeover 为 auto；declined、`.forge-decline` 团队声明（`forge off --commit` 写入）与外来 harness（spec-kit/项目级 .claude 接线等，`forge policy yield`）自动让位，`forge on` 显式恢复。
+装完 plugin 后，Claude Code 的 hooks 由 plugin 全机器接管；其他宿主用 `forge integrations enable <host>` 显式接线。**接不接管某个仓库仍由人决定**：在仓库里跑 `forge init` 声明契约，没有 init 的仓库不会被后台自动接管（原 init-suggest 自动探测/接管已移除）。`forge off` 仍是每项目退出，`forge on` 恢复。
 
->  `forge init` **零项目写入**：不创建 `.forge/`、`CLAUDE.md` 等任何项目文件，只登记全局注册表并把 hooks/协议/skill 写到用户级（`~/.forge/projects/<key>/` 等）。要团队 git 共享协议用 `forge init --project`（团队模式）。
+>  `forge init` **只写仓库内产物**：`spec/forge.yaml`（`hooks: off` 缺省）、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针。它**不写** `~/.forge`、`~/.claude`、`~/.codex`。用户级接线走 `forge integrations enable <host>`；团队要 git 共享同一份协议，提交 `spec/` 与 `AGENTS.md` 即可。
 
-## 想"处处无感"自动 init
+## 宿主接线（显式 opt-in）
 
 ```bash
-export FORGE_AUTO_INIT=1   # 之后任意 git 项目直接 forge init
+forge integrations enable claude-code        # 或 codex / cursor / copilot / kimi / windsurf / cline / opencode / reasonix / codebuddy / dsh / zcode
+forge integrations enable --all              # 一次接全部宿主
+forge integrations list                      # 看哪些已接线
+forge integrations disable <host>            # 摘标记（不删宿主配置）
 ```
 
- `forge init` 零项目写入（只对用户级配置生效，不碰项目目录），自动 init 已不再"污染" clone 来的临时仓库——默认询问模式更多是"要不要启用"的确认，而非文件副作用的顾虑。
+`enable` 才写用户级 hooks/指令/skill、登记注册表并打 `~/.forge/integrations/<host>` 标记；没有任何标记且未装 Claude plugin 时，forge 不会在后台写用户级资产。
 
 ## 不装 plugin 的最低用法
 
-也可以不装 plugin，纯手 init：
-
 ```bash
 cd your-project
-forge init
+forge init                                    # 声明仓库契约（只写仓库内文件）
+forge integrations enable claude-code         # 需要 hook 实时拦截时接线
 ```
-
-但这样每次进新 git 项目都要手动 init，丢了 init-suggest 的自动提示。
 
 ## 60 秒拿到第一个证据
 
@@ -67,7 +67,7 @@ forge trace feat/demo           # 查看证据链
 
 ```bash
 forge task start --ref feat/xxx --branch --title "描述"   # 建任务 + 分支
-# AI 工作（27 个 hook 自动守：task-guard / read-before-edit / bash-guard / file-sentinel ...）
+# AI 工作（26 个 hook 自动守：task-guard / read-before-edit / bash-guard / file-sentinel ...）
 forge task gate task-implement    # 门禁1：实现（编译 / 断言 advisory 自检）
 forge task gate task-verify       # 门禁2：验证（测试伴随变更）
 forge task gate task-complete     # 门禁3：完成确认
@@ -76,12 +76,12 @@ forge task score                  # 质量评分
 ```
 
 
-`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge off [--all] | on` 按项目退出/恢复接管（declined 不被 FORGE_AUTO_INIT/plugin 自动接管穿透）；`forge config get/set takeover` 管接管偏好（ask/auto/off）；`forge policy state|yield` 快查状态/外来 harness 让位。详见[完整命令参考](../docs/reference/cli.md)。
+`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge off [--all] | on` 按项目退出/恢复接管；`forge config get/set compat` 管兼容基线；`forge policy state|yield` 快查状态/外来 harness 让位；`forge integrations list/enable/disable` 显式接线宿主。详见[完整命令参考](../docs/reference/cli.md)。
 
 ## 卸载
 
 ```bash
-forge uninstall            # 剥除全部用户级 hooks/指令段/forge-quality skill + 清 npm global binary + 删 init-suggest 标记
+forge uninstall            # 剥除全部用户级 hooks/指令段/forge-quality skill + 清 npm global binary
 forge uninstall --restore  # 加 --restore 把用户级文件回滚到 forge 修改前的原始内容（备份在 ~/.forge/backups/）
 # 在 Claude Code 里 /plugin uninstall forge@forge   # 卸 plugin（须在 agent CLI 内交互运行）
 ```
@@ -92,7 +92,7 @@ Forge 为 12 个宿主落地接线：Claude Code / Codex / Cursor / Copilot / Ki
 
 ## 常见问题
 
-- **装完 plugin 后项目一直在 task-guard WARN 报"allowed but not tracked"** → 项目未启用 forge（未登记注册表）。跑 `forge init`（零项目写入）或 `forge off` 退出该项目。
+- **装完 plugin 后项目一直在 task-guard WARN 报"allowed but not tracked"** → 项目未启用 forge（未登记注册表）。跑 `forge init` 声明契约，或 `forge off` 退出该项目。
 - **`forge` 命令 not found** → npm 全局安装目录不在 PATH。`npm bin -g` 看路径，加入 shell rc。
 - **二审 reviewer 反复冒新问题** → `forge task gate task-verify` 含 cheat-scan deterministic 扫描（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption），机械模式一次判准，LLM-reviewer 退到只做语义判断。
 

@@ -160,10 +160,6 @@
         },
         {
           "type": "command",
-          "command": "forge hook init-suggest"
-        },
-        {
-          "type": "command",
           "command": "forge hook task-resume"
         },
         {

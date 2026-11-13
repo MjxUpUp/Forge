@@ -234,6 +234,10 @@ func runTrapProbe(t TrapCase, opts GoldenOptions) (*probeResult, error) {
 	if out, errOut, code := run([]string{opts.ForgeBin, "init"}, ""); code != 0 {
 		return nil, fmt.Errorf("forge init 失败: %s %s", out, errOut)
 	}
+	// 阶段 C：init 只写仓库契约（hooks: off 默认），执法路径的探测需要显式 opt-in。
+	if err := enableHooksInContract(fixture); err != nil {
+		return nil, err
+	}
 	if out, _, code := run([]string{opts.ForgeBin, "data-dir"}, ""); code == 0 {
 		dataDir = strings.TrimSpace(out)
 	}

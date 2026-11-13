@@ -160,6 +160,10 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 ADR:154 的三条完成判据逐条状态：① 「节点失败 → 返工 → 耗尽 → blocked，最终不放行」已实测（2026-11-12，3 次同因失败后 verdict=blocked、`next_steps` 无可执行命令、恢复命令进 `handoff`、`prior_attempts` 列出三条失败证据）；② 「`forge change verify` 在干净 clone 上可跑」已实测（`git archive` 导出后删掉 dogfood 的 `spec/`，`change init` → `change new` → 填四份产物 → `verify` 封印 → `git init`/commit → `git clone`；新 clone 里 `change status` 仍为已封印、`verify` 重跑通过、`change check` 退出 0）；③ 「全新 clone 靠 CI 判定 sealed」的作业步骤已在上述 clone 里本地等价复现（`go build ./cmd/forge` + `change check` 退出 0），真实 PR/CI 与 required status check 勾选属运营动作，待首次真实 PR 记录（本仓无 `spec/changes/`，下发工作流在此仓库按设计跳过）。
 
+**阶段 B 的落地进度**（feat/phase-b-audit-only）：默认 audit-only 已生效——`specroot` 契约 `hooks` 缺省值翻成 `off`；`FORGE_HOOKS=on` 是宿主层唯一的执法逃生舱；三条安全底线随执法开关，不再恒执法；README / cli.md / agents-protocol 的承诺已同步（用户 m07455 同意）。
+
+**阶段 C 的落地进度**（refactor/phase-c-optional-host）：`forge init` 改为只写仓库内产物（`spec/forge.yaml`、`spec/changes/`、AGENTS.md 托管块与已存在指针），不写 `~/.forge`、`~/.claude`、`~/.codex`，也不再登记注册表；用户级接线迁到新命令 `forge integrations list/enable/disable <host>`（12 宿主，enable 才写 hooks/指令/skill/注册表并打 `~/.forge/integrations/<host>` 标记）；autoSync 在无接线标记且未装 Claude plugin 时跳过用户级同步；更新检查跳过 `init`；`projectroot` 遗留自愈的 `registry.Add` 移除（纯读解析）。`init-suggest` 全链删除（hook 脚本、SessionStart 接线、`FORGE_INIT_SUGGEST` 读侧、`.init-suggested` 标记、`takeover` 三档偏好、`forge config set takeover`、`forge plugin status` 的提示用途与文档叙述）。判据：临时 `HOME` 下 `forge init` 前后 `find "$HOME" -type f` 快照一致，且 `~/.forge`、`~/.claude`、`~/.codex` 无新增（由 `TestInit_WritesOnlyRepoProducts` 与 `TestIntegrations_EnableAndDisable` 覆盖）。
+
 ### 受影响模块
 
 - 删除候选：`internal/hooks`（8,813 行）、`internal/hookdispatch`（12,041 行）、`internal/skillsdist`（3,179 行）、`internal/skillgen`（2,033 行，CLAUDE.md 生成部分）。

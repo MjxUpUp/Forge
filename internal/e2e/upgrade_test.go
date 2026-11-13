@@ -188,7 +188,46 @@ func freshProject(t *testing.T) string {
 	git(t, dir, "config", "user.name", "Test")
 	initGoProject(t, dir)
 	forge(t, dir, "init")
+	enableHooksForFixture(t, dir)
+	// Phase C：init 只写仓库产物，宿主接线（DataDir 的 protocol/hook 副本、用户级
+	// settings/CLAUDE.md/skill）改由 integrations enable 显式完成。夹具跑的是执法
+	// 路径，需要这些资产在位，故在 init 之后接线 claude-code（TestMain 已隔离
+	// CLAUDE_CONFIG_DIR / HOME / FORGE_DATA_HOME）。
+	forge(t, dir, "integrations", "enable", "claude-code")
 	return dir
+}
+
+// enableHooksForFixture 把夹具契约调成执法档。Phase C 起 `forge init` 只写仓库内
+// 产物且契约缺省 `profile: mini`、`hooks: off`（audit-only）；e2e 夹具验证的是
+// standard 执法路径，必须显式 opt-in，否则 hook 全部静默/被按档滤掉、断言全落空。
+func enableHooksForFixture(t *testing.T, dir string) {
+	t.Helper()
+	path := filepath.Join(dir, "spec", "forge.yaml")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture contract: %v", err)
+	}
+	// 按行改写（不能用子串替换）：模板注释行里也有「hooks: off 表示……」的字样，
+	// 子串替换会先命中注释、把真取值留在 off 上，契约门于是静默放行；profile 的
+	// 取值还带引号，裸子串同样匹配不上。
+	lines := strings.Split(string(b), "\n")
+	flippedHooks, flippedProfile := false, false
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "hooks:"):
+			lines[i] = "hooks: on"
+			flippedHooks = true
+		case strings.HasPrefix(line, "profile:"):
+			lines[i] = `profile: "standard"`
+			flippedProfile = true
+		}
+	}
+	if !flippedHooks || !flippedProfile {
+		t.Fatalf("fixture contract missing hooks/profile values:\n%s", b)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		t.Fatalf("write fixture contract: %v", err)
+	}
 }
 
 // freshProjectOnBranch creates a fresh project on a feature branch.
@@ -204,46 +243,56 @@ func freshProjectOnBranch(t *testing.T, branch string) string {
 
 // ---------- Test Scenarios ----------
 
-// TestFreshInstall verifies a clean init from an empty directory.
+// TestFreshInstall verifies the Phase C init contract: `forge init` writes ONLY
+// repository products (no DataDir protocol/hooks, no user-level agent config).
+// Host wiring is opt-in via `forge integrations enable` (covered by
+// TestIntegrations_EnableAndDisable in internal/cli).
 func TestFreshInstall(t *testing.T) {
-	dir := freshProject(t)
+	dir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	// 用户级断言要求本用例独占宿主目录：TestMain 的 CLAUDE_CONFIG_DIR 是
+	// 全包共享的，别的用例 integrations enable 会先写进 settings.json。
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	git(t, dir, "init", "-b", "master")
+	git(t, dir, "config", "user.email", "test@example.com")
+	git(t, dir, "config", "user.name", "Test")
+	initGoProject(t, dir)
+	forge(t, dir, "init")
 
-	// user-level-assets 契约：init 不写项目目录（无 .forge/、无 .claude/）。
-	// hook 参考副本 + protocol.yml + sync 戳在用户级 DataDir（freshProject 已钉
-	// FORGE_DATA_HOME）；claude 集成在 CLAUDE_CONFIG_DIR 下（TestMain 已隔离）。
-	dataDir := forgedata.DataDirFor(dir)
-	for _, path := range []string{
-		".sync-version",
-		"protocol.yml",
-		"hooks/auto-compile.sh",
-		"hooks/assertion-check.sh",
-		"hooks/task-verify.sh",
-	} {
-		if !fileExists(t, dataDir, path) {
-			t.Errorf("expected DataDir/%s to exist after forge init", path)
+	// 仓库内产物必须在位，且缺省是 audit-only（hooks: off / mini）。
+	contract := readFile(t, dir, filepath.Join("spec", "forge.yaml"))
+	for _, want := range []string{"hooks: off", `profile: "mini"`} {
+		if !strings.Contains(contract, want) {
+			t.Errorf("spec/forge.yaml missing %q:\n%s", want, contract)
 		}
 	}
+	if !fileExists(t, dir, filepath.Join("spec", "changes", "archive", ".gitkeep")) {
+		t.Error("spec/changes/archive/.gitkeep missing after forge init")
+	}
+	if !fileExists(t, dir, "AGENTS.md") {
+		t.Error("AGENTS.md missing after forge init")
+	}
 
-	// 零项目写入。
-	for _, path := range []string{".forge", ".claude"} {
+	// init 不得写项目内的宿主资产。
+	for _, path := range []string{".forge", ".claude", ".cursor"} {
 		if fileExists(t, dir, path) {
-			t.Errorf("forge init must not write %s into the project (zero-project-write)", path)
+			t.Errorf("forge init must not write %s into the project", path)
 		}
 	}
 
-	// 用户级 claude 集成：settings.json 接线 forge hook，质量 skill 已装，
-	// CLAUDE.md 带 forge 段。
+	// init 不得写用户级/DataDir 资产（阶段 C 判据）。
+	dataDir := forgedata.DataDirFor(dir)
+	for _, path := range []string{"protocol.yml", "hooks", ".sync-version"} {
+		if fileExists(t, dataDir, path) {
+			t.Errorf("forge init must not write DataDir/%s (host wiring is integrations enable)", path)
+		}
+	}
 	claudeHome := os.Getenv("CLAUDE_CONFIG_DIR")
-	settings := readFile(t, claudeHome, "settings.json")
-	if !strings.Contains(settings, "forge hook") {
-		t.Error("user-level settings.json should wire forge hooks")
+	if fileExists(t, claudeHome, "settings.json") {
+		t.Error("forge init must not write user-level settings.json (integrations enable does that)")
 	}
-	if !fileExists(t, claudeHome, "skills/forge-quality/SKILL.md") {
-		t.Error("user-level forge-quality SKILL.md should exist after forge init")
-	}
-	claudeMD := readFile(t, claudeHome, "CLAUDE.md")
-	if !strings.Contains(claudeMD, "FORGE:START") {
-		t.Error("user-level CLAUDE.md should carry the forge section")
+	if fileExists(t, claudeHome, "CLAUDE.md") {
+		t.Error("forge init must not write user-level CLAUDE.md (integrations enable does that)")
 	}
 
 	// forge status should succeed.

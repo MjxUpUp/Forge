@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// userconfig_test.go — Project Policy Layer P2 的用户级偏好存储契约：
-// takeover 三档（ask 出厂默认 / auto / off）、env 覆盖优先级、落盘原子写。
+// userconfig_test.go — 用户级偏好存储契约（Phase C 之后只剩 compat）：默认空、
+// 落盘后读回、空串清除、损坏文件 fail-open。
 
 func useTempHome(t *testing.T) string {
 	t.Helper()
@@ -16,68 +16,44 @@ func useTempHome(t *testing.T) string {
 	return home
 }
 
-// TestTakeoverMode_DefaultAsk 无配置无 env → 出厂默认 ask（P2 默认值翻转的钉子）。
-func TestTakeoverMode_DefaultAsk(t *testing.T) {
+// TestCompat_DefaultEmpty 无配置 → 空声明（跟最新，不钉版本）。
+func TestCompat_DefaultEmpty(t *testing.T) {
 	useTempHome(t)
-	if got := TakeoverMode(); got != TakeoverAsk {
-		t.Fatalf(`TakeoverMode = %q, want ask（出厂默认）`, got)
+	if got := CompatPref(); got != `` {
+		t.Fatalf(`CompatPref = %q, want empty（默认跟最新）`, got)
 	}
 }
 
-// TestTakeoverMode_SetGet 配置落盘后读取生效；非法值被 Set 拒绝。
-func TestTakeoverMode_SetGet(t *testing.T) {
-	useTempHome(t)
-	if err := SetTakeover(TakeoverAuto); err != nil {
+// TestCompat_SetGetClear 落盘后读回；空串清除。
+func TestCompat_SetGetClear(t *testing.T) {
+	home := useTempHome(t)
+	if err := SetCompat(`1.80`); err != nil {
 		t.Fatal(err)
 	}
-	if got := TakeoverMode(); got != TakeoverAuto {
-		t.Fatalf(`TakeoverMode = %q, want auto`, got)
+	if got := CompatPref(); got != `1.80` {
+		t.Fatalf(`CompatPref = %q, want 1.80`, got)
 	}
-	// 落盘位置：GlobalHome/config.json（用户级 store，升级链路不触碰项目）。
-	home, _ := os.UserHomeDir()
-	if _, err := os.Stat(filepath.Join(home, `.forge`, `config.json`)); err != nil && os.Getenv(`FORGE_DATA_HOME`) != `` {
-		// FORGE_DATA_HOME 重定向时不要求默认路径存在——只验 store 内文件。
-		t.Log(`FORGE_DATA_HOME redirected; default path check skipped`)
+	if _, err := os.Stat(filepath.Join(home, `config.json`)); err != nil {
+		t.Fatalf(`config.json not written under store root: %v`, err)
 	}
-	if err := SetTakeover(`bogus`); err == nil {
-		t.Fatal(`SetTakeover accepted invalid value`)
-	}
-}
-
-// TestTakeoverMode_EnvPrecedence FORGE_TAKEOVER > FORGE_AUTO_INIT（legacy 映射 auto）
-// > 配置文件 > 默认 ask。
-func TestTakeoverMode_EnvPrecedence(t *testing.T) {
-	useTempHome(t)
-	if err := SetTakeover(TakeoverOff); err != nil {
+	if err := SetCompat(``); err != nil {
 		t.Fatal(err)
 	}
-
-	t.Setenv(`FORGE_AUTO_INIT`, `1`)
-	if got := TakeoverMode(); got != TakeoverAuto {
-		t.Fatalf(`FORGE_AUTO_INIT=1 → %q, want auto`, got)
-	}
-
-	t.Setenv(`FORGE_TAKEOVER`, `off`)
-	if got := TakeoverMode(); got != TakeoverOff {
-		t.Fatalf(`FORGE_TAKEOVER=off → %q, want off（压过 AUTO_INIT）`, got)
-	}
-
-	t.Setenv(`FORGE_AUTO_INIT`, ``)
-	if got := TakeoverMode(); got != TakeoverOff {
-		t.Fatalf(`FORGE_TAKEOVER=off（无 AUTO_INIT）→ %q, want off`, got)
-	}
-
-	os.Unsetenv(`FORGE_TAKEOVER`)
-	if got := TakeoverMode(); got != TakeoverOff {
-		t.Fatalf(`仅配置文件 → %q, want off`, got)
+	if got := CompatPref(); got != `` {
+		t.Fatalf(`CompatPref after clear = %q, want empty`, got)
 	}
 }
 
-// TestTakeoverMode_InvalidEnv 非法 env 值回退配置/默认（fail-safe：宽容读侧）。
-func TestTakeoverMode_InvalidEnv(t *testing.T) {
-	useTempHome(t)
-	t.Setenv(`FORGE_TAKEOVER`, `nonsense`)
-	if got := TakeoverMode(); got != TakeoverAsk {
-		t.Fatalf(`invalid env → %q, want ask（回退默认）`, got)
+// TestCompat_CorruptFileFailsOpen 损坏文件按零值读（回落跟最新，不阻断）。
+func TestCompat_CorruptFileFailsOpen(t *testing.T) {
+	home := useTempHome(t)
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, `config.json`), []byte(`{not json`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := CompatPref(); got != `` {
+		t.Fatalf(`CompatPref on corrupt file = %q, want empty`, got)
 	}
 }

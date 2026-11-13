@@ -16,7 +16,11 @@ npm install -g @agent_forge/forge
 /plugin marketplace add MjxUpUp/Forge
 /plugin install forge@forge
 
-# 3. 开任意 git 项目 —— init-suggest hook 首次提示，自动跑 forge init
+# 3. 在仓库里声明契约 —— 只写仓库内产物，不碰 ~/.forge
+cd your-project && forge init
+
+# 4. 可选：显式接线宿主（或装 Claude plugin）
+forge integrations enable claude-code
 ```
 
 ## 核心能力
