@@ -2,6 +2,7 @@ package projectroot
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -271,5 +272,23 @@ func TestIsGlobalForgeStore(t *testing.T) {
 	}
 	if isGlobalForgeStore(forge) {
 		t.Error("项目 .forge/ 不应判为全局 store")
+	}
+}
+
+func TestLegacyHomeDirs_IncludesAccountHome(t *testing.T) {
+	realHome, err := user.Current()
+	if err != nil || realHome.HomeDir == "" {
+		t.Skip("无账户 home")
+	}
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	found := false
+	for _, d := range legacyHomeDirs() {
+		if samePath(d, realHome.HomeDir) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("边界必须包含账户 home %s：%v", realHome.HomeDir, legacyHomeDirs())
 	}
 }
