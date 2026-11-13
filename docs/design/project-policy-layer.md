@@ -16,13 +16,13 @@
    - `registry.Rekey` 改 key 时整条目迁移（原实现重建 `Entry{Path,Key}` 丢 status——对抗复查 M7）；
    - init-suggest bash：declined 标记检查前置到成员检查与 FORGE_AUTO_INIT 之前（修复"git 分支 AUTO_INIT 旁路 declined"——G-1；非 git 分支本就先检标记，不动）；
    - `forge init` Go 侧硬门禁：State=declined 时拒绝执行，提示 `forge on`（declined→managed 的唯一路径是显式 `forge on`）。
-4. **命令面**：`forge off` 同时写 legacy `.init-suggested/<tag>` declined 标记（init-suggest bash 仍读标记——原计划 P2 改为 registry 驱动后移除；P2 落地时决定保留写侧双写，作为 bash 免子进程的廉价第一道判定，registry 是权威读侧，见下文 key 读侧统一条）；`forge on` 清标记 + 若从未 init（DataDir 无 protocol.yml）则提示运行 `forge init` 补全（不自动跑）；（历史注记：`forge suggest decline/reset` 曾委托同一核心——命令族已于 2026-09 死代码清扫删除。）
+4. **命令面**（历史记录；阶段 C 已删：`init-suggest` 通道与 `.init-suggested/<tag>` marker 双写）：`forge off` 同时写 legacy `.init-suggested/<tag>` declined 标记（init-suggest bash 仍读标记——原计划 P2 改为 registry 驱动后移除；P2 落地时决定保留写侧双写，作为 bash 免子进程的廉价第一道判定，registry 是权威读侧，见下文 key 读侧统一条）；`forge on` 清标记 + 若从未 init（DataDir 无 protocol.yml）则提示运行 `forge init` 补全（不自动跑）；（历史注记：`forge suggest decline/reset` 曾委托同一核心——命令族已于 2026-09 死代码清扫删除。）
 5. **可见性**：`forge status` 头部增加接管状态行；declined 项目 `forge status` 以 `ErrDeclinedProject` 的可读文案退出非零（退出码 = "是否 managed 成员"的既有契约保持不变，init-suggest 脚本依赖它）。
 6. **审计**：on/off 落 checklog 行（`takeover-policy`）+ Entry 决策字段（by/at）。
 
 ## P2-P4 落地状态（原"P1 明确不做"清单——已全部完成，feat/project-policy-p234）
 
-- **P2 默认值翻转 + takeover 三档偏好** ✅：`internal/userconfig`（`~/.forge/config.json`）+ `forge config get/set takeover`；env 链 `FORGE_TAKEOVER > FORGE_AUTO_INIT=1(≡auto) > 配置 > ask`。init-suggest 按三档分流（off 静默 / auto 静默 init / ask 询问一次——含接管内容摘要与 forge config 指引）。
+- **P2 默认值翻转 + takeover 三档偏好** ✅（阶段 C 已删：`userconfig` 的 takeover 三档与 `FORGE_TAKEOVER` / `FORGE_AUTO_INIT` 分流随 init-suggest 一并移除，仅 `compat` 保留）：`internal/userconfig`（`~/.forge/config.json`）+ `forge config get/set takeover`；env 链 `FORGE_TAKEOVER > FORGE_AUTO_INIT=1(≡auto) > 配置 > ask`。init-suggest 按三档分流（off 静默 / auto 静默 init / ask 询问一次——含接管内容摘要与 forge config 指引）。
 - **key 读侧统一** ✅：init-suggest declined 门补 `forge policy state` 注册表权威读侧（common-dir 键），闭合 linked-worktree 下 marker（工作树根键）漏判；写侧双写垫片保留。
 - **P3 全局通道感知** ✅：skill-trigger 在生产/调试入口按 root 判 managed（runSkillTriggerHook/runSkillTriggerCmd）；task-resume hook 恒输出 `[forge-session]` managed 会话横幅（用户级指令段与 forge-quality skill 的激活判据锚定于此，取代不可判定的"已 init"条件）；用户级指令段全类指针化（skillgen CLAUDE.md/AGENTS.md + windsurf global_rules.md；spec-kit"一行指针"共识）；**update 后重刷新由既有 autoSync 版本戳机制保证**（版本变更后下一条命令自动重写用户级段，无需新代码）。
 - **P4 外来 harness 检测让位** ✅：`internal/harnessdetect` 信号表（`.specify/`、`.claude/commands` 非空、`.claude/settings.json` 含 hooks/permissions、`.cursor/rules` 非空——宁可漏判不误判）；`forge policy yield` 命中即让位（declined, by=foreign-harness）+ bash 分支（压过 auto/AUTO_INIT）；手动 init 打警告继续（显式覆盖是知情选择）；`forge off --commit` 写 `.forge-decline` 团队声明（committed，deny-wins 压过注册表 managed），`forge on` 移除。

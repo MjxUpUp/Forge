@@ -26,7 +26,7 @@ forge integrations enable claude-code
 ## 核心能力
 
 - **任务级门禁** — 每个开发任务走 3 道门禁（实现 → 验证 → 完成），防跳过
-- **19 个实时 Hook** — Write/Edit/Bash/SessionStart/Stop 等事件上拦截代码质量、命令安全性、文件未授权变更
+- **26 个实时 Hook** — Write/Edit/Bash/SessionStart/Stop 等事件上拦截代码质量、命令安全性、文件未授权变更
 - **cheat-scan 机械检测** — AI 作弊模式（断言弱化、吞错、死分支）一次判准
 - **质量评分** — 每个任务完成自动量化 score，沉淀项目级质量基线
 
@@ -47,19 +47,19 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 
 | Agent | 安装方式 | 接入 |
 |---|---|---|
-| **Claude Code** | `/plugin marketplace + install` | 用户级 hooks 自动接线；首会话默认询问一次是否接管（可设 auto） |
-| **Codex** | plugin marketplace 或 `forge init --agents codex` | 用户级 hooks（`~/.codex/hooks.json` + config.toml 特性开关；可能需在 codex `/hooks` 里 trust 一次）+ guidance |
-| **Cursor** | plugin marketplace + `forge init --agents cursor` | 用户级 hooks（`~/.cursor/hooks.json`） |
-| **Windsurf** | `forge init --agents windsurf` | 用户级 Cascade hooks（`~/.codeium/windsurf/hooks.json` + `memories/global_rules.md`） |
-| **GitHub Copilot (CLI)** | plugin marketplace | plugin 自带 copilot 格式 `hooks.json`，marketplace 装完即接线（PreToolUse/PostToolUse/Stop/SessionStart/UserPromptSubmit）；VS Code 侧未验证；`forge init --agents copilot` 仍是 no-op |
-| **Kimi Code** | 仓库根 `.kimi-plugin/plugin.json`（`/plugins install https://github.com/MjxUpUp/Forge`） | 全事件集（含 PostCompact/UserPromptSubmit），exit-2 block 协议；fallback `forge init --agents kimi` |
-| **Reasonix** | `plugins/forge/reasonix-plugin.json`（`reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge`） | native manifest 接线（PreToolUse/PostToolUse/Stop/SessionStart）；fallback `forge init --agents reasonix` |
+| **Claude Code** | `/plugin marketplace + install` | 用户级 hooks 由 plugin 或 `forge integrations enable claude-code` 接线（仓库是否接管由人在仓库里 `forge init` 决定） |
+| **Codex** | plugin marketplace 或 `forge integrations enable codex` | 用户级 hooks（`~/.codex/hooks.json` + config.toml 特性开关；可能需在 codex `/hooks` 里 trust 一次）+ guidance |
+| **Cursor** | plugin marketplace + `forge integrations enable cursor` | 用户级 hooks（`~/.cursor/hooks.json`） |
+| **Windsurf** | `forge integrations enable windsurf` | 用户级 Cascade hooks（`~/.codeium/windsurf/hooks.json` + `memories/global_rules.md`） |
+| **GitHub Copilot (CLI)** | plugin marketplace | plugin 自带 copilot 格式 `hooks.json`，marketplace 装完即接线（PreToolUse/PostToolUse/Stop/SessionStart/UserPromptSubmit）；VS Code 侧未验证；非 plugin 渠道用 `forge integrations enable copilot` |
+| **Kimi Code** | 仓库根 `.kimi-plugin/plugin.json`（`/plugins install https://github.com/MjxUpUp/Forge`） | 全事件集（含 PostCompact/UserPromptSubmit），exit-2 block 协议；fallback `forge integrations enable kimi` |
+| **Reasonix** | `plugins/forge/reasonix-plugin.json`（`reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge`） | native manifest 接线（PreToolUse/PostToolUse/Stop/SessionStart）；fallback `forge integrations enable reasonix` |
 | **DeepSeek Harness (dsh)** | `dsh plugin --profile <profile> add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"`（npm 通道 `@agent_forge/forge-dsh`；桌面 App 用 `desktop` profile；插件自带 forge 本体，无需另装 CLI） | 类型化拦截点接线（tools/pre-execute、tools/post-execute、agent/pre-step、agent/session-start、agent/turn-stopping），名册镜像 ForgeHookSpec（spec 守卫测试钉死）；会话内 `/forge-status` 查状态 |
-| **ZCode (Z.ai)** | `forge init --agents zcode`（plugin 渠道回落读 `.claude-plugin/plugin.json`，未端到端验证） | 用户级 hooks（`~/.zcode/cli/config.json` 合并写入，`hooks.enabled` 强制 true）；协议层刻意 Claude 兼容（蛇形 stdin 别名 + `hookSpecificOutput.additionalContext` + exit-2 阻断）；无 PostCompact/SubagentStop 事件（压缩走 SessionStart `source=compact`）；Stop 连续阻断 3 轮后强制结束；项目级 hooks 不执行（团队共享走 plugin）；协议为文档结论，wire 验证待补 |
+| **ZCode (Z.ai)** | `forge integrations enable zcode`（plugin 渠道回落读 `.claude-plugin/plugin.json`，未端到端验证） | 用户级 hooks（`~/.zcode/cli/config.json` 合并写入，`hooks.enabled` 强制 true）；协议层刻意 Claude 兼容（蛇形 stdin 别名 + `hookSpecificOutput.additionalContext` + exit-2 阻断）；无 PostCompact/SubagentStop 事件（压缩走 SessionStart `source=compact`）；Stop 连续阻断 3 轮后强制结束；项目级 hooks 不执行（团队共享走 plugin）；协议为文档结论，wire 验证待补 |
 
-v1.22 起 `forge init` 默认**零项目写入**：hooks/协议/skill 全部落在上述用户级位置，项目目录不产生任何文件；团队要 git 共享协议用 `forge init --project`。
+`forge init` 只写仓库内产物（`spec/forge.yaml`、`spec/changes/`、`AGENTS.md` 托管块与已存在指针），**不写** `~/.forge`、`~/.claude`、`~/.codex`；宿主接线是显式 opt-in——`forge integrations enable <host>`，`disable` 只摘标记。团队要 git 共享契约：提交 `spec/` 与 `AGENTS.md`。
 
-其他已接线宿主（OpenCode / Cline / CodeBuddy）走 `forge init --agents <host>` 用户级接线；`plugins/forge/install.sh` / `install.ps1` 只是 forge 二进制的备用安装器（npm 包装），不做 agent 接线。
+其他宿主（OpenCode / Cline / CodeBuddy）同样走 `forge integrations enable <host>`；`plugins/forge/install.sh` / `install.ps1` 只是 forge 二进制的备用安装器（npm 包装），不做 agent 接线。
 
 ## 真实证据
 
