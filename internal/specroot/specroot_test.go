@@ -167,15 +167,30 @@ func TestLoad_Missing(t *testing.T) {
 	}
 }
 
-func TestLoad_HooksDefaultOn(t *testing.T) {
+// TestLoad_HooksDefaultOff 钉住 ADR-0002 阶段 B 的缺省翻转：契约不写 hooks 时
+// 缺省 off（执法 opt-in，默认安静）。翻转前缺省是 on——本断言随规格更新，强度不变。
+func TestLoad_HooksDefaultOff(t *testing.T) {
 	root := t.TempDir()
 	writeContract(t, root, "version: \"1\"\nprofile: mini\n")
 	c, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if c.Hooks != HooksOff {
+		t.Fatalf("缺省 hooks 应为 off（阶段 B 执法 opt-in），得到 %q", c.Hooks)
+	}
+}
+
+// TestLoad_HooksOn 钉住显式 opt-in 仍解析为 on（默认翻转不能把显式执法也关掉）。
+func TestLoad_HooksOn(t *testing.T) {
+	root := t.TempDir()
+	writeContract(t, root, "version: \"1\"\nhooks: ON\n")
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if c.Hooks != HooksOn {
-		t.Fatalf("缺省 hooks 应为 on，得到 %q", c.Hooks)
+		t.Fatalf("显式 hooks: ON 应归一为 on，得到 %q", c.Hooks)
 	}
 }
 
