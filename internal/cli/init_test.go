@@ -228,6 +228,71 @@ func TestIntegrations_EnableAll(t *testing.T) {
 			t.Errorf("--all 漏了宿主 %s：%v", host, err)
 		}
 	}
+	// --all 与显式宿主互斥：语义含糊的组合必须报错，而不是悄悄按其中一个执行。
+	out, _, code := runForge(t, dir, "integrations", "enable", "--all", "codex")
+	if code == 0 {
+		t.Fatalf("--all 与显式宿主同时给应失败，实际退出 0：%s", out)
+	}
+	if !strings.Contains(out, "--all") {
+		t.Errorf("互斥错误应提到 --all：%s", out)
+	}
+}
+
+// TestAutoSync_CleansRepoResidueWithoutWiring：没有宿主接线的仓库不写 HOME，
+// 但仓内清理（strip 遗留项目级 forge 写入、删死文件）仍要跑——否则「init 只写
+// 仓库」的仓库里，老版本留下的 .forge 垃圾永远清不掉。
+func TestAutoSync_CleansRepoResidueWithoutWiring(t *testing.T) {
+	home, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	forgeDir := filepath.Join(dir, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stamp := filepath.Join(forgeDir, ".sync-version")
+	pipeline := filepath.Join(forgeDir, "pipeline.yml")
+	if err := os.WriteFile(stamp, []byte("0.0.0-old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pipeline, []byte("legacy\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	before := len(snapshotTree(t, home)) + len(snapshotTree(t, data))
+	if err := autoSync(dir, "9.9.9-test", false); err != nil {
+		t.Fatalf("autoSync: %v", err)
+	}
+	after := len(snapshotTree(t, home)) + len(snapshotTree(t, data))
+	if after != before {
+		t.Errorf("没有接线时 autoSync 不得写用户主目录：before=%d after=%d", before, after)
+	}
+	if _, err := os.Stat(stamp); !os.IsNotExist(err) {
+		t.Errorf("仓内清理应删掉遗留 .forge/.sync-version（err=%v）", err)
+	}
+	if _, err := os.Stat(pipeline); !os.IsNotExist(err) {
+		t.Errorf("仓内清理应删掉死文件 .forge/pipeline.yml（err=%v）", err)
+	}
+}
+
+// TestIntegrations_ListAfterDisableAllShowsNoWiring：.disabled 墓碑不是接线，
+// list 不能在「全部 disable」之后还显示得像有宿主接上（P3-2 回归）。
+func TestIntegrations_ListAfterDisableAllShowsNoWiring(t *testing.T) {
+	_, _ = isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
+		t.Fatalf("enable: %s", out)
+	}
+	if out, _, code := runForge(t, dir, "integrations", "disable", "cursor"); code != 0 {
+		t.Fatalf("disable: %s", out)
+	}
+	out, _, code := runForge(t, dir, "integrations", "list")
+	if code != 0 {
+		t.Fatalf("list: %s", out)
+	}
+	if !strings.Contains(out, "当前没有宿主接线") {
+		t.Errorf("全部 disable 后 list 应提示没有接线，实际：%s", out)
+	}
 }
 
 // TestIntegrations_RejectsUnknownHost：拼错的宿主名必须报错并列出可选值。
