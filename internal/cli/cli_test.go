@@ -480,28 +480,6 @@ func TestTaskScoreWorkflow(t *testing.T) {
 
 // --------------- Test: --agents 已废弃（宿主接线移到 integrations） ---------------
 
-func TestInitWithAgentsIsNoOp(t *testing.T) {
-	tmpDir := t.TempDir()
-	out, _, code := runForge(t, tmpDir, "init", "--agents", "cursor,copilot")
-	if code != 0 {
-		t.Fatalf("forge init --agents 退出 %d：%s", code, out)
-	}
-	if !strings.Contains(out, "--agents 已废弃") {
-		t.Errorf("应提示 --agents 已废弃：%s", out)
-	}
-
-	// --agents 不再触发任何宿主接线：HOME（TestMain 隔离）里没有 cursor hooks。
-	home := os.Getenv("HOME")
-	if _, err := os.Stat(filepath.Join(home, ".cursor", "hooks.json")); !os.IsNotExist(err) {
-		t.Error("--agents 不应再写 ~/.cursor/hooks.json")
-	}
-	for _, name := range []string{".cursor", ".github"} {
-		if _, err := os.Stat(filepath.Join(tmpDir, name)); !os.IsNotExist(err) {
-			t.Errorf("init --agents must not write %s into the project dir", name)
-		}
-	}
-}
-
 // runGit is a test helper to run git commands.
 func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
@@ -509,5 +487,20 @@ func runGit(t *testing.T, dir string, args ...string) {
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %s: %v", args, string(out), err)
+	}
+}
+func TestInitWithAgentsIsNoOp(t *testing.T) {
+	tmpDir := t.TempDir()
+	out, _, code := runForge(t, tmpDir, "init", "--agents", "cursor,copilot")
+	if code == 0 {
+		t.Fatalf("--agents 随宿主层删除，应报 unknown flag：%s", out)
+	}
+	if !strings.Contains(out, "unknown flag: --agents") {
+		t.Errorf("错误信息应点名 --agents：%s", out)
+	}
+	for _, name := range []string{".cursor", ".github"} {
+		if _, err := os.Stat(filepath.Join(tmpDir, name)); !os.IsNotExist(err) {
+			t.Errorf("init --agents must not write %s into the project dir", name)
+		}
 	}
 }

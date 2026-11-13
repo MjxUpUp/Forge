@@ -124,26 +124,20 @@ func TestInit_LiteMapsToMini(t *testing.T) {
 	}
 }
 
-// TestInit_DeprecatedFlagsAreNoOps：--project/--agents/--mode 仍被接受（旧脚本不炸），
-// 但不再产生任何项目级 .forge/ 资产，并给出废弃警告。
-func TestInit_DeprecatedFlagsAreNoOps(t *testing.T) {
+// TestInit_HostWiringFlagsAreGone：--agents 随宿主层删除，传了必须明确报错而不是静默忽略。
+func TestInit_HostWiringFlagsAreGone(t *testing.T) {
 	home, _ := isolatedHomeEnv(t)
 	dir := t.TempDir()
 
-	out, _, code := runForge(t, dir, "init", "--project", "--agents", "cursor,copilot", "--mode", "medium")
-	if code != 0 {
-		t.Fatalf("forge init 退出 %d：%s", code, out)
+	out, _, code := runForge(t, dir, "init", "--agents", "cursor")
+	if code == 0 {
+		t.Fatalf("--agents 应已被移除而报错，实际通过：%s", out)
 	}
-	for _, want := range []string{"--project 已废弃", "--agents 已废弃"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("输出缺废弃警告 %q：%s", want, out)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(dir, ".forge")); !os.IsNotExist(err) {
-		t.Error("--project 不应再写项目级 .forge/")
+	if !strings.Contains(out, "unknown flag: --agents") {
+		t.Errorf("错误信息应点名 --agents：%s", out)
 	}
 	if got := snapshotTree(t, home); len(got) != 0 {
-		t.Errorf("废弃 flag 不应把 init 变回写 HOME：%v", got)
+		t.Errorf("失败的 init 不应写 HOME：%v", got)
 	}
 }
 
