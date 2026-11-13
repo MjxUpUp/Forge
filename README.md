@@ -151,7 +151,7 @@ hooks: off         # on | off（缺省 off）；写 on 才执法
 | `forge review pass` / `forge review status` | 代码审查标记与状态 |
 | `forge gate push` | git 推送边界门禁（cheat-scan 复检 + 未消解 BLOCKED 任务） |
 | `forge hazard confirm --last` | 确认最近一条被拦高危命令（须真人终端） |
-| `forge freeze <路径>...` | 冻结写入范围，冻结路径之外的写全部硬阻断 |
+| `forge freeze <路径>...` | 冻结写入范围；开启 hook 执法后冻结路径之外的写硬阻断（缺省 audit-only 不阻断） |
 | `forge trace <ref>` / `forge health` / `forge dashboard` | 证据链时间线 / 质量趋势 / 全局看板（Pulse） |
 | `forge doctor` / `forge status` | 环境一致性审计 / 项目状态 |
 
