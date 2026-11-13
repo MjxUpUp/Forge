@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -493,8 +494,22 @@ func TestStatus_CapsPriorAttemptsAtTenThroughStatusOf(t *testing.T) {
 	if len(st.PriorAttempts) != 10 {
 		t.Fatalf("prior_attempts 应封顶 10 条，got %d", len(st.PriorAttempts))
 	}
-	if st.PriorAttempts[0].Evidence <= st.PriorAttempts[9].Evidence {
-		t.Fatalf("应按新→旧：first=%s last=%s", st.PriorAttempts[0].Evidence, st.PriorAttempts[9].Evidence)
+	// 同一秒内会有 -1..-12 的序号，字符串比较 "-12" < "-3" 会误判；按（时间戳, 序号）比较。
+	parse := func(s string) (string, int) {
+		i := strings.LastIndexByte(s, '-')
+		if i < 0 {
+			return s, 0
+		}
+		n, err := strconv.Atoi(s[i+1:])
+		if err != nil {
+			return s, 0
+		}
+		return s[:i], n
+	}
+	baseFirst, seqFirst := parse(st.PriorAttempts[0].Evidence)
+	baseLast, seqLast := parse(st.PriorAttempts[9].Evidence)
+	if baseFirst < baseLast || (baseFirst == baseLast && seqFirst <= seqLast) {
+		t.Fatalf("应按新→旧（时间戳, 序号）：first=%s last=%s", st.PriorAttempts[0].Evidence, st.PriorAttempts[9].Evidence)
 	}
 }
 
