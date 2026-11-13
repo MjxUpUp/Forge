@@ -39,7 +39,7 @@ const (
 	forgeSectionEndMarker   = util.ForgeSectionEnd
 )
 
-// teamModeMarker 是 `forge init --project` 写入的标记文件：团队模式项目刻意
+// teamModeMarker 是阶段 C 之前 `forge init --project` 写入的标记文件：团队模式项目刻意
 // 保留项目级资产，清理器跳过它们。
 const teamModeMarker = "team-mode"
 
