@@ -14,7 +14,6 @@ import (
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().String("profile", "", "仓库契约档位: mini（默认）/ standard / full（旧接线档 lite 按 mini 处理）")
-	initCmd.Flags().String("agents", "", "(deprecated, no-op) 宿主接线改用 forge integrations enable <host>")
 	initCmd.Flags().Bool("project", false, "(deprecated, no-op) 团队模式已并入仓库契约 spec/forge.yaml")
 	// Deprecated no-op flags. 项目级管道删除后 mode/fresh 已无意义，保留为隐藏 no-op
 	// 维持向后兼容：旧脚本的 `forge init --mode medium` 不报错，只是无效。
@@ -33,8 +32,8 @@ var initCmd = &cobra.Command{
   AGENTS.md         — forge 托管块（缺文件整份写、无块追加、有块就地替换）
   已存在的入口指针  — CLAUDE.md / .cursor/rules/forge.mdc 指到 AGENTS.md
 
-它不写用户主目录。宿主接线（~/.claude/settings.json、~/.codex/hooks.json 等）
-是显式 opt-in，用 'forge integrations enable <host>' 开启；退出用 'forge off'。
+它不写用户主目录。阶段 D 起没有宿主管道（hook/插件/用户级设置都已移除）；
+质量检查由 task gate 与 change verify 在进程内执行。
 
 --project 曾是团队模式（项目级 .forge/ 资产）；契约随仓库走后该 flag 是 no-op。`,
 	RunE: runInit,
@@ -113,7 +112,7 @@ func initRepoContract(dir, profile string) error {
 	fmt.Println("forge 仓库契约已就位（只写仓库内产物，不写用户主目录）")
 	fmt.Println()
 	fmt.Println("下一步：")
-	fmt.Println("  forge integrations enable <host>     # 可选：把 hooks/指令接到宿主用户级配置（显式 opt-in）")
+	fmt.Println("  forge registry add                  # 把本项目登记进全局视图（dashboard/task --all-projects）；本地任务不需要")
 	fmt.Println("  forge change new <id> --title \"...\"  # 建一个 change")
 	fmt.Println("  forge status                         # 看当前状态")
 	return nil
