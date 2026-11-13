@@ -119,7 +119,7 @@ func resolveFrom(cwd string) (string, Source, string, error) {
 	//    unknown，与 status 的 managed 冲突。
 	// root != "" 就是「有条目」：未登记时 State 只返回 ("", unknown)，不会出现
 	// (root, unknown) 这个组合（脏条目的空 Path 除外，那也当作未登记）。
-	if root, state := registry.State(cwd); root != "" {
+	if root, state := registry.State(cwd); root != "" && !isHomeDir(root) {
 		if state == registry.StatusDeclined {
 			return root, SourceRegistry, registry.StatusDeclined, nil
 		}
@@ -185,6 +185,17 @@ func legacyFind(dir string) (string, bool) {
 // （device+inode），可跨大小写不敏感、symlink、分隔符/风格差异（Git Bash
 // 形如 /c/Users 对 Windows 形如 C:\Users）保持稳健。
 // 任一路径无法 stat 时回退到 cleaned lexical compare。
+// isHomeDir 判断 p 是否就是有效用户 home。注册表条目理论上不该指向 home，
+// 但测试或历史遗留可能写进去；home 下的 ~/.forge 是全局 store，home 本身
+// 绝不能当项目根——否则 home 下所有目录都会被解析成 home。
+func isHomeDir(p string) bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil || homeDir == "" {
+		return false
+	}
+	return samePath(p, homeDir)
+}
+
 func samePath(a, b string) bool {
 	ia, ea := os.Stat(a)
 	ib, eb := os.Stat(b)
