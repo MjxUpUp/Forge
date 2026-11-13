@@ -10,7 +10,7 @@ package cliskills
 //     exit 2（ErrHardExit 哨兵 → cli.Execute 映射）——CI 消费形态
 //
 // 边界：hash 只覆盖 SKILL.md（行为契约本体）；references/scripts 漂移由 skills
-// drift-check 既有机制管。pack 树纳入清单（2026-09 拆包后设计族在
+// 清单只列 canonical 树（阶段 D 删除 drift-check 后不再检测分发态）。pack 树纳入清单（2026-09 拆包后设计族在
 // plugins/forge-design）——AST10 关心的是"装了什么"，与树的位置无关。
 
 import (

@@ -32,8 +32,8 @@ func version() string {
 // cli 注册器注入，见 internal/cli/skills_register.go）。
 var Root = &cobra.Command{
 	Use:   "skills",
-	Short: "Skill 库管理与分发",
-	Long: `forge skills — 管理 canonical skill 库并分发到各 AI 工具。
+	Short: "Skill 库管理（只读；不再向宿主目录分发）",
+	Long: `forge skills — 管理 canonical skill 库（阶段 D 起只读：安装/分发命令已删除）。
 
 子命令清单见下方 "Available Commands"（cobra 自动派生，与注册保持一致）。
 

@@ -4,10 +4,11 @@
 **日期**：2026-11-12
 **决策参与者**：用户（MjxUpUp）、DSH agent（数据取证与草案）
 
-> **落地状态（2026-11-13，阶段 D 已合入 `5cfef45b`）**：宿主层已整体删除——`internal/hooks`、
+> **落地状态（2026-11-13，阶段 D 已合入 `5cfef45b`；skillsdist 收尾见 `a24b4809` 之后）**：宿主层已整体删除——`internal/hooks`、
 > `internal/hookdispatch`、`internal/agentbridge`、`internal/hazard`、`internal/harnessaudit`、
-> `internal/skillgen`、`internal/freeze` 不存在；CLI 的 `hook`/`integrations`/`plugin`/`uninstall`/
-> `freeze`/`doctor`/`data-dir` 全部移除；`forge init --agents` 保留为隐藏 no-op（传入打印废弃警告并忽略）。正文保留决策当时（阶段 A–C）
+> `internal/skillgen`、`internal/freeze` 不存在；`internal/skillsdist` 只剩只读的 `ListSkills`
+> （`install`/`adapters`/`drift-check` 与宿主安装目标全部删除）；CLI 的 `hook`/`integrations`/`plugin`/`uninstall`/
+> `freeze`/`doctor`/`data-dir` 全部移除，`skills install`/`adapters`/`drift-check` 一并移除；`forge init --agents` 保留为隐藏 no-op（传入打印废弃警告并忽略）。正文保留决策当时（阶段 A–C）
 > 的推理与判据原文，凡写「可选适配器」「`forge integrations enable`」「`FORGE_HOOKS=on`」
 > 「`forge hook batch`」处均属历史；阶段 D 的落地与验收见文末「阶段 D 的落地进度」。
 

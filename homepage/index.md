@@ -55,7 +55,7 @@ Forge 不分发宿主插件、不写宿主配置：任何 agent/IDE 都在 shell
 - 主文档：[README.md](../README.md)
 - 中文精简：[READMEs/README.zh-CN.md](../READMEs/README.zh-CN.md)
 - 协议：[internal/protocol](../internal/protocol)
-- 质量协议 Skill：由 `forge skills install` 分发到全局/项目目标目录，见[完整命令参考](../docs/reference/cli.md)
+- 质量协议 Skill：`forge skills list` 查看内置库（阶段 D 起 forge 不再向宿主目录分发 skill）
 
 ## 许可
 

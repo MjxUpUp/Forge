@@ -527,12 +527,6 @@
       "path": "forge skills"
     },
     {
-      "path": "forge skills adapters",
-      "flags": [
-        "apply"
-      ]
-    },
-    {
       "path": "forge skills audit",
       "flags": [
         "gate",
@@ -561,15 +555,6 @@
         "revision",
         "skill",
         "warrant"
-      ]
-    },
-    {
-      "path": "forge skills drift-check",
-      "flags": [
-        "global",
-        "json",
-        "project",
-        "target"
       ]
     },
     {
@@ -617,21 +602,6 @@
         "json",
         "skill",
         "verbose"
-      ]
-    },
-    {
-      "path": "forge skills install",
-      "flags": [
-        "drift-policy",
-        "global",
-        "json",
-        "mode",
-        "project",
-        "skill",
-        "skip-quality",
-        "skip-require-check",
-        "target",
-        "with-adapters"
       ]
     },
     {
@@ -1509,7 +1479,7 @@
     {
       "tree": "forge",
       "name": "skill-routing",
-      "sha256": "735bcddc31df099b2f6f0882f525d116953e20effa0918080ac768b746895aa7"
+      "sha256": "b7f53483b31f8e59e35016d102ee7f77f8b6695dabeca099fb53fbca243abd43"
     }
   ],
   "schemas": {
