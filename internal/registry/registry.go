@@ -470,6 +470,13 @@ func lookup(cwd string) (root string, entry Entry, ok bool) {
 	best := ``
 	var bestE Entry
 	for _, e := range f.Projects {
+		// 死条目不赋予成员资格（与 List 精简同一条存活规则）
+		// 保留根（home、系统临时根）永不构成项目：lookup 的祖先前缀匹配会把
+		// 它们之下的一切目录判成"在项目内"。Add 已拒绝写入，但旧版本/其他
+		// 写入方可能留下脏条目——读取侧同样跳过，机器级别的毒化才无法复现。
+		if isReservedRoot(e.Path) {
+			continue
+		}
 		// 死条目不赋予成员资格（与 List 精简同一条存活规则）：已删除/移走的
 		// 项目目录不得命中——lookup 只读不精简，少了这道检查，一个路径恰好
 		// 是 cwd 祖先的失效条目会把已消失的项目复活。

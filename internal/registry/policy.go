@@ -68,6 +68,11 @@ func (e Entry) IsDeclined() bool { return e.Status == StatusDeclined }
 //
 // 注册表损坏时与 Add 同款处置：备份损坏文件后从空表重建（见 loadForWrite）。
 func SetStatus(absPath, status, decidedBy string) error {
+	// 保留根永不构成项目：decline 一条 home/temp 条目会让祖先前缀匹配把其下
+	// 所有目录判成该项目（机器级毒化）。与 Add 同一条守卫。
+	if isReservedRoot(absPath) {
+		return ErrReservedPath
+	}
 	if status != StatusManaged && status != StatusDeclined {
 		return fmt.Errorf(`registry: invalid status %q (want %q or %q)`, status, StatusManaged, StatusDeclined)
 	}
