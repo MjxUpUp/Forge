@@ -825,3 +825,20 @@ func TestRemove(t *testing.T) {
 		}
 	}
 }
+
+// home / 系统临时根这类保留根永不构成项目。Add 与 SetStatus 都在写入侧拒绝，
+// 但旧版本或其他写入方可能留下脏条目；lookup 读取侧也必须跳过——否则祖先
+// 前缀匹配会把 home 下一切目录判成"在项目内"（CI 上 temp 目录解析成 home 的根因）。
+func TestLookup_SkipsReservedRootEntries(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("无有效 home")
+	}
+	if err := writeEntries([]Entry{{Path: home, Status: StatusManaged}}); err != nil {
+		t.Fatalf("writeEntries: %v", err)
+	}
+	child := filepath.Join(home, "work", "proj")
+	if root, _, ok := lookup(child); ok {
+		t.Fatalf("home 条目必须被跳过，实际命中 %s", root)
+	}
+}
