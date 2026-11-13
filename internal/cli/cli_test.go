@@ -14,7 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
-	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/hostcap"
 	"github.com/spf13/cobra"
 )
@@ -119,45 +118,24 @@ func initProject(t *testing.T, dir string, flags ...string) {
 	}
 }
 
-// --------------- Test 1: TestInitCreatesFiles ---------------
+// --------------- Test 1: TestInitCreatesRepoProducts ---------------
 
-func TestInitCreatesFiles(t *testing.T) {
+// TestInitCreatesRepoProducts：init 后仓库里有契约产物，用户级 hook 模板不再由
+// init 落盘（Phase C：宿主接线是 forge integrations enable 的职责，见 init_test.go）。
+func TestInitCreatesRepoProducts(t *testing.T) {
 	tmpDir := t.TempDir()
-	initProject(t, tmpDir, "--mode", "medium")
+	initProject(t, tmpDir)
 
-	// DataDir/hooks/ 下的 .sh 数必须等于 hooks.HookNames()（单一真相源）。加/删 hook 只改
-	// settings.go 的 HookNames()，本测试自动跟随——避免"加 hook 后忘改硬编码期望数"的同步漏
-	// （曾因此把 10 手改成 11）。历史：session-health/test-coverage-check 已移除（噪声），
-	// tool-track 曾在 644b142 删除后恢复（task-verify gate 依赖其 Read 记录）。
-	// user-level-assets：hook 参考副本在用户级 DataDir（FORGE_DATA_HOME 已被 TestMain
-	// 隔离；非 git 目录 → PathKey）。
-	dataDir := forgedata.DataDirFor(tmpDir)
-	hooksDir := filepath.Join(dataDir, "hooks")
-	entries, err := os.ReadDir(hooksDir)
-	if err != nil {
-		t.Fatalf("failed to read hooks dir: %v", err)
-	}
-	shCount := 0
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".sh") {
-			shCount++
+	for _, p := range []string{"spec/forge.yaml", "spec/changes/archive/.gitkeep", "AGENTS.md"} {
+		if _, err := os.Stat(filepath.Join(tmpDir, filepath.FromSlash(p))); err != nil {
+			t.Fatalf("%s not created: %v", p, err)
 		}
 	}
-	if want := len(hooks.HookNames()); shCount != want {
-		t.Fatalf("expected %d .sh files in hooks/ (== len(hooks.HookNames())), got %d", want, shCount)
-	}
 
-	// protocol.yml 在用户级 DataDir（零项目写入默认）。
-	protoFile := filepath.Join(dataDir, "protocol.yml")
-	if _, err := os.Stat(protoFile); err != nil {
-		t.Fatalf("DataDir/protocol.yml not found: %v", err)
-	}
-
-	// 零项目写入：init 不得动项目目录——无 .forge/、无 .claude/、无 AGENTS.md
-	// （user-level-assets 契约）。
-	for _, name := range []string{".forge", ".claude", "AGENTS.md", ".cursor", ".codex"} {
+	// 项目级 .forge/ 与宿主目录一律不写（零项目写入 + Phase C）。
+	for _, name := range []string{".forge", ".claude", ".cursor", ".codex"} {
 		if _, err := os.Stat(filepath.Join(tmpDir, name)); !os.IsNotExist(err) {
-			t.Errorf("init must not write %s into the project dir (zero-project-write)", name)
+			t.Errorf("init must not write project-level %s", name)
 		}
 	}
 }
@@ -176,11 +154,11 @@ func TestPostInitSmokeCommands(t *testing.T) {
 		wantIn        string   // required substring in output ("" = none)
 		wantJSONField string   // required top-level JSON key ("" = none)
 	}{
-		{name: "status", initFlags: []string{"--mode", "medium"}, args: []string{"status"}},
-		{name: "status json", initFlags: []string{"--mode", "medium"}, args: []string{"status", "--json"}, wantJSONField: "tasks"},
-		{name: "status agents", initFlags: []string{"--mode", "medium"}, args: []string{"status", "--agents"}, wantIn: "claude-code"},
+		{name: "status", initFlags: nil, args: []string{"status"}},
+		{name: "status json", initFlags: nil, args: []string{"status", "--json"}, wantJSONField: "tasks"},
+		{name: "status agents", initFlags: nil, args: []string{"status", "--agents"}, wantIn: "claude-code"},
 		// 二次 init 必须都成功（幂等）。
-		{name: "init idempotent", initFlags: []string{"--mode", "small"}, args: []string{"init", "--mode", "small"}},
+		{name: "init idempotent", initFlags: nil, args: []string{"init"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -433,22 +411,16 @@ func TestFirstRunExperience(t *testing.T) {
 	}
 }
 
-// --------------- Test: Init creates scoring config in protocol.yml ---------------
+// --------------- Test: init no longer writes a user-level protocol.yml ---------------
 
-func TestInitProtocolScoringConfig(t *testing.T) {
+// TestInitDoesNotWriteProtocolYML：Phase C 后协议默认值来自 spec 契约，init 不再落
+// 用户级 protocol.yml（那是宿主接线的产物）。
+func TestInitDoesNotWriteProtocolYML(t *testing.T) {
 	tmpDir := t.TempDir()
-	initProject(t, tmpDir, "--mode", "medium")
+	initProject(t, tmpDir)
 
-	protoData, err := os.ReadFile(filepath.Join(forgedata.DataDirFor(tmpDir), "protocol.yml"))
-	if err != nil {
-		t.Fatalf("protocol.yml not found in DataDir: %v", err)
-	}
-	protoStr := string(protoData)
-	if !strings.Contains(protoStr, "scoring:") {
-		t.Fatal("protocol.yml missing scoring config section")
-	}
-	if !strings.Contains(protoStr, "weights:") {
-		t.Fatal("protocol.yml missing weights in scoring config")
+	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(tmpDir), "protocol.yml")); !os.IsNotExist(err) {
+		t.Fatal("init 不应再写 DataDir/protocol.yml（宿主接线才写）")
 	}
 }
 
@@ -561,29 +533,26 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	}
 }
 
-// --------------- Test: Init with --agents flag ---------------
+// --------------- Test: --agents 已废弃（宿主接线移到 integrations） ---------------
 
-func TestInitWithAgents(t *testing.T) {
+func TestInitWithAgentsIsNoOp(t *testing.T) {
 	tmpDir := t.TempDir()
-	initProject(t, tmpDir, "--mode", "medium", "--agents", "cursor,copilot")
+	out, _, code := runForge(t, tmpDir, "init", "--agents", "cursor,copilot")
+	if code != 0 {
+		t.Fatalf("forge init --agents 退出 %d：%s", code, out)
+	}
+	if !strings.Contains(out, "--agents 已废弃") {
+		t.Errorf("应提示 --agents 已废弃：%s", out)
+	}
 
-	// Cursor 在用户级注册（~/.cursor/hooks.json）——项目级
-	// .cursor/rules/forge-quality.mdc 已不存在（零项目写入）。HOME 已被 TestMain 隔离。
+	// --agents 不再触发任何宿主接线：HOME（TestMain 隔离）里没有 cursor hooks。
 	home := os.Getenv("HOME")
-	cursorHooks := filepath.Join(home, ".cursor", "hooks.json")
-	data, err := os.ReadFile(cursorHooks)
-	if err != nil {
-		t.Fatalf("cursor user-level hooks.json not created: %v", err)
+	if _, err := os.Stat(filepath.Join(home, ".cursor", "hooks.json")); !os.IsNotExist(err) {
+		t.Error("--agents 不应再写 ~/.cursor/hooks.json")
 	}
-	if !strings.Contains(string(data), "forge hook batch --event PreToolUse") {
-		t.Error("cursor user-level hooks.json missing forge hook wiring")
-	}
-
-	// 两个 agent 都零项目写入：无 .cursor/（cursor guidance 移到 skillgen/用户级），
-	// 无 .github/（copilot translator 是 no-op）。
 	for _, name := range []string{".cursor", ".github"} {
 		if _, err := os.Stat(filepath.Join(tmpDir, name)); !os.IsNotExist(err) {
-			t.Errorf("init --agents must not write %s into the project dir (zero-project-write)", name)
+			t.Errorf("init --agents must not write %s into the project dir", name)
 		}
 	}
 }

@@ -44,9 +44,10 @@ func TestFind_DeclinedLegacyForgeDirNotSelfHealed(t *testing.T) {
 	}
 }
 
-// TestFind_LegacySelfHealStillWorks 无 declined 状态的 legacy .forge/ 项目自愈
-// 行为保持：Find 返回根并登记（钉住"收编不误伤"）。
-func TestFind_LegacySelfHealStillWorks(t *testing.T) {
+// TestFind_LegacyRootWithoutRegistration 无 declined 状态的 legacy .forge/ 项目
+// 仍能被 Find 定位（收编不误伤），但不再顺手写 registry——注册只发生在
+// forge init / forge integrations enable 这类显式命令里。
+func TestFind_LegacyRootWithoutRegistration(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, `.forge`), 0755); err != nil {
@@ -67,7 +68,7 @@ func TestFind_LegacySelfHealStillWorks(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(got, `.forge`)); serr != nil {
 		t.Fatalf(`Find returned %q, no .forge/ under it: %v`, got, serr)
 	}
-	if _, state := registry.State(sub); state != registry.StatusManaged {
-		t.Error(`self-heal did not register member`)
+	if _, state := registry.State(sub); state != registry.StatusUnknown {
+		t.Errorf(`Find 不该顺手登记 legacy 根，state = %v`, state)
 	}
 }

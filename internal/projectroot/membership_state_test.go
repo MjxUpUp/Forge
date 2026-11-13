@@ -95,8 +95,9 @@ func TestState_RegistryDeclinedWithoutContract(t *testing.T) {
 	}
 }
 
-// TestState_LegacyConfigManagedWithoutHealing：遗留 .forge/ 项目在 State 下报
-// managed 但不写入注册表——State 是只读探针，自愈只属于 ResolveFrom。
+// TestState_LegacyConfigManagedWithoutHealing：遗留 .forge/ 项目在 State 与
+// ResolveFrom 下都报 managed 但都不写注册表——Phase C 后解析路径是纯读探针，
+// 登记只发生在显式命令（integrations enable / workspace add）。
 func TestState_LegacyConfigManagedWithoutHealing(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	root := t.TempDir()
@@ -115,11 +116,12 @@ func TestState_LegacyConfigManagedWithoutHealing(t *testing.T) {
 		t.Fatal("State 不该自愈登记——只读探针不能改全局注册表")
 	}
 
-	// ResolveFrom 仍保留自愈：门禁/热路径第一次解析就把项目登记下来。
+	// ResolveFrom 同样是只读：命中遗留项目但不登记（否则任意一次 status 都会写
+	// 用户主目录，推翻 init 的零 HOME 写入承诺）。
 	if _, _, err := ResolveFrom(root); err != nil {
 		t.Fatalf("ResolveFrom: %v", err)
 	}
-	if _, state := registry.State(root); state != registry.StatusManaged {
-		t.Fatal("ResolveFrom 应自愈登记遗留项目")
+	if _, state := registry.State(root); state != registry.StatusUnknown {
+		t.Fatal("ResolveFrom 不该再自愈登记遗留项目")
 	}
 }

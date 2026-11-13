@@ -35,6 +35,15 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
+	// Phase C：没有宿主接线时不写用户主目录。autoSync 的用户级资产（hook 模板、
+	// settings.json、skills、CLAUDE.md/AGENTS.md、各宿主 translator）只服务于已
+	// 显式 opt-in 的宿主——否则 init 之后任意一条命令都会把 HOME 资产补回来，
+	// 「init 只写仓库内产物」只是假象。仓内清理（dedupe/strip 项目级残留）不碰
+	// 用户主目录，仍然照常跑。
+	if !integrationsAnyEnabled() && !hooks.IsClaudePluginInstalled() {
+		return nil
+	}
+
 	// 1. sync hook 脚本参考副本（运行时执行嵌入内容，副本仅供查看）。deploy stamp
 	//    必须先落盘：file-sentinel 的 CONFIG 分支只在它的 grace 窗口内豁免
 	//    .forge/hooks/ drift——没有它，被监控 Bash 命令 hook 链上的 forge 子进程
