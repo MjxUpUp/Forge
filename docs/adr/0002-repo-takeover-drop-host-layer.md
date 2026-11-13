@@ -33,8 +33,8 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
    - 节拍层替代宿主 in-loop 拦截：agent 每次动手前后读 `forge change status`，按 `nextSteps` 执行；节点级 `gate` 立刻给 verdict，反馈延迟是一次 CLI 调用而不是一次提交。这是 LoopSpec 的做法（见下节「回环契约」）——它的 hook 只做一件事：拒绝手改已确认的 plan，门禁本体全在 CLI。
    - 边界层默认接线，绕过需要显式动作：`forge change verify`（可执行判据 + 证据封印）的结论由 `forge change check` 送进 pre-commit 与 CI：每个未归档 change 必须有一份与当前代码和判据一致的封印证据，否则退出 2。仓库下发两份示例（`.githooks/pre-commit`、`.github/workflows/change-verify.yml`）。能绕过的只有显式动作：`git commit --no-verify`、把未封印的 change 手工 `git mv` 进归档（等于宣布已交付）、或仓库设置里没勾 required status check；hook 在没装 forge 的机器上放行，CI 则是从源码构建 forge（不存在「缺 forge 放行」）。**要让它在托管平台上真正成为合并前提，还需在仓库设置里把该工作流设为 required status check**——这一勾不在代码里，fork 与私有仓的默认策略也不同。
    - `AGENTS.md` 承载协议文字，但没有退出码，因此只作为节拍层的说明书，不作为强制机制宣传。
-3. **宿主 hook 降级为可选加速器**：默认不改写任何宿主配置；需要 in-loop 反馈的用户显式跑 `forge integrations enable <host>`（阶段 C 提供，当前尚未提供）。`forge hook batch` 保留为宿主主动调用的一层，不再是安装副作用。
-4. **删除阻断式 hazard-guard，不保留等价物**：数据见下；由宿主自带的危险命令确认层承接（Claude Code / Codex / DSH 均有）。如需提醒，只允许写进 AGENTS.md 的文字约定，不得阻断、不得触发 safe-halt。
+3. **宿主 hook 降级为可选加速器**：默认不改写任何宿主配置；需要 in-loop 反馈的用户显式跑 `forge integrations enable <host>`（阶段 C 提供，当前尚未提供；阶段 B 先提供临时逃生舱 `FORGE_HOOKS=on`，只开启无契约的宿主层执法，不覆盖仓库契约的 `hooks: off`）。`forge hook batch` 保留为宿主主动调用的一层，不再是安装副作用。
+4. **删除阻断式 hazard-guard，不保留等价物**（阶段 D 执行；阶段 B/C 仍保留 opt-in 阻断，见阶段表）：数据见下；由宿主自带的危险命令确认层承接（Claude Code / Codex / DSH 均有）。如需提醒，只允许写进 AGENTS.md 的文字约定，不得阻断、不得触发 safe-halt。
 5. **留一个显式的小改动口子（fast 通道），不做成「偷偷无视协议」**：`forge change new <id> --fast` 只要求 proposal + acceptance 两份产物，acceptance 至少一条可执行判据；`verify` 照常封印并在 `summary.json` 标 `fast: true`，`change list` 标注「fast（快速通道：只要求 proposal + acceptance）」（该 change 有证据状态备注时——已封印/已失效/失败/缺 acceptance——输出「fast；…」）。判据由人 review，工具不猜「这次改动够不够小」——口子的价值是**可见**，不是**自动**。周界建议写在 AGENTS.md（例如 ≤3 个文件且 ≤50 行），但不做代码阈值，阈值一判就假。
 6. **分四阶段迁移，每阶段有可验证判据**（见「实施备注」），任一阶段未达判据即停，不进入下一阶段。
 
@@ -72,7 +72,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 1. **in-loop 反馈不依赖宿主**。节点 gate 是普通 CLI 调用，任何能跑 bash 的 agent 都能用；宿主 hook 只在「想更早发现」时才有价值，而它的成本已经在数据里（见下节）。
 2. **「继续」必须由 verdict 授权**。`status` 返回的 `nextSteps` 是唯一合法的下一步；失败时返回返工指令，耗尽时返回 `blocked`（`blocked` 时 `nextSteps` 里不含可执行命令，恢复命令放在 `handoff` 字段，由人执行）。agent 想跳过就只能无视协议，而那会被边界层的闸门抓住：`forge change check` 在本地 pre-commit 与 CI 里跑同一套判据（未封印/失效/失败的 change 直接失败）。托管平台上的 required status check 仍需人工勾选，未勾选时强制力来自 review 与分支保护。
-3. **门禁本体留在 CLI，hook 只做窄护栏**。LoopSpec 的 pre-tool-use hook 只拒绝「手改已确认 plan」这一件事，36 个 hook 的复杂度它没有。这也从侧面支持决策 3：宿主层应当是可选适配器，而不是 35 个条目的名册。
+3. **门禁本体留在 CLI，hook 只做窄护栏**。LoopSpec 的 pre-tool-use hook 只拒绝「手改已确认 plan」这一件事，35 个条目的复杂度它没有。这也从侧面支持决策 3：宿主层应当是可选适配器，而不是 35 个条目的名册。
 
 ## 考虑过的方案
 
@@ -152,7 +152,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 | 阶段 | 动作 | 完成判据 |
 |---|---|---|
 | A 仓库层自足 | ①节拍层：`forge change status`（stage + nextSteps + verdict，耗尽返回 `blocked`）、`forge change gate --task N`（节点级判据 + 证据）、`priorAttempts` 列表；②边界层：`forge change check` 接 pre-commit 与 CI（verify 的封印是它的判据）；③协议层：`AGENTS.md` 托管块生成器 + 单源多指针（CLAUDE.md / .cursor/rules 指向同一段）；④fast 通道（`--fast` 只写 proposal+acceptance，summary 标 `fast: true`） | 一个全新 clone（无 forge 安装、无注册表）能靠 CI 判定 change 是否 sealed；`forge change verify` 在干净 clone 上可跑；一次「节点失败 → 返工 → 耗尽 → blocked」的完整演练，最终结果不是「放行」 |
-| B 量化 hook 价值 | 默认 `hooks: off`；宿主层仅 audit-only；记录「hook 拦下但 CI 本会拦下」的比例。**注意**：这么写会连契约关不掉的安全底线一起关，与当前 README / agents-protocol 的承诺冲突——进入 B 前必须先改那两处并取得明确同意，否则 B 期间保持安全底线运行 | 两周数据：hook 独立捕获率 < 10% 且无真实损失，则进入 C；否则重新评估 |
+| B 默认安静（audit-only） | 执法改为 opt-in，默认 audit-only（静默放行 + attribution 审计；不评估、不阻断、不注入）：`specroot` 契约 `hooks` 缺省值翻成 `off`；有契约的仓库按契约执法（`hooks: on` 才执法，仓库自治，`off` 优先于一切 env）；无契约的宿主层由临时逃生舱 `FORGE_HOOKS=on` 显式开启（阶段 C 由 `forge integrations enable` 取代）。**安全底线语义变更**：hazard-guard/mcp-scan/skill-scan 三条底线不再「不受契约 hooks/profile 控制恒执法」，改为随执法开关默认 audit-only——README / cli.md / agents-protocol 的承诺已同步改写，用户 m07455（2026-11-13）明确同意。**观察窗跳过**：用户自用/dogfood，不需要「hook 独立捕获率」数据，B 完成直接进 C（见后续待定 #2） | build/deadcode 绿、测试不新增失败（基线既有 hookdispatch 假红除外，见 commit body）；无契约仓库 hook 默认静默（root 可解析的已接管仓库仍记 attribution，完全未接管目录无审计记录）；显式 `hooks: on` 的仓库（含 Forge 自身）执法行为不变；承诺文档与代码行为一致 |
 | C 降级为可选 | `forge integrations enable <host>` 显式开启；移除 `forge init`/plugin 对宿主配置的写入，并移除 `forge init` 对 `~/.forge` 的全部写入（注册表 `projects.json`、`projects/<key>/protocol.yml`、hooks 资产、harness-state、迁移元数据等）——只留仓库内产物；`init-suggest` 删除 | 在临时 `HOME` 里跑一次 `forge init`：`find "$HOME" -type f -exec sha256sum {} +` 前后快照一致（覆盖未跟踪的新文件），且 `~/.claude`、`~/.codex`、`~/.forge` 均无新增 |
 | D 删除 | 删 `internal/hooks`、`internal/hookdispatch`（保留最小 batch 协议或整体移除）、`skillsdist` 的宿主 adapter、`skillgen` 的 CLAUDE.md 生成 | `go build` 与 CI 绿；与 Makefile 门禁同一条命令 `deadcode -test ./...` 的输出不超过阶段 D 之前记录的基线；文档无残留引用 |
 
@@ -169,7 +169,7 @@ ADR:154 的三条完成判据逐条状态：① 「节点失败 → 返工 → �
 ### 后续待定（不阻塞阶段 A）
 
 1. hazard-guard 在阶段 D 是**彻底删除**（本 ADR 推荐）还是保留一个只提示、不阻断的版本。
-2. 阶段 B 的观察窗是两周还是直接合并进一次发布（影响迁移速度）。
+2. ~~阶段 B 的观察窗是两周还是直接合并进一次发布~~ **已决**（2026-11-13，用户 m07455「继续做阶段B 做完B就做C，不考虑观察 我们是自己在用」）：跳过观察窗，B 完成直接进 C。自用/dogfood 场景独立捕获率数据无决策价值；阶段 D 将删除 hook 代码，测量投入会被浪费。原「hook 拦下但 CI 本会拦下」比例记录随之取消。
 
 ## 参考资料
 

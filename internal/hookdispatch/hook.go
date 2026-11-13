@@ -596,12 +596,13 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 仓库契约决定执法（spec-in-repo）：spec/forge.yaml 的 hooks: off 让该仓库的
-	// hook 静默放行，profile 决定名册档位（mini＝lite 最小执法名册）。放在 session
-	// 登记与归属记录之后：被静音的仓库仍要出现在审计里，否则「安静」就等于从
-	// fleet 台账消失（与上面 Register/Attribution 同一缺口）。安全底线
-	// （hazard-guard/mcp-scan/skill-scan）不受契约开关，见 contract_gate.go。
-	if root != "" && !contractAllowsHook(root, name) {
+	// 执法 opt-in（ADR-0002 阶段 B）：默认 audit-only——contractAllowsHook 返回
+	// false 时静默放行。无契约的宿主层（root==""）也走这道门，不再因 root 为空
+	// 而绕过。有契约按契约（hooks: on 才执法），无契约由 FORGE_HOOKS=on 显式开启。
+	// 放在 session 登记与归属记录之后：被静音的仓库仍要出现在审计里，否则「安静」
+	// 就等于从 fleet 台账消失（与上面 Register/Attribution 同一缺口）。安全底线
+	// （hazard-guard/mcp-scan/skill-scan）随执法开关，见 contract_gate.go。
+	if !contractAllowsHook(root, name) {
 		return EmitAgentOutput(agent, hookInput.HookEventName, name, true, "")
 	}
 

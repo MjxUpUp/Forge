@@ -50,6 +50,13 @@ func TestMain(m *testing.M) {
 
 	forgeBin = binPath
 
+	// W0.3 密闭性 + ADR-0002 阶段 B：档位默认 standard、hook 执法 opt-in。e2e 的
+	// hook 拦截测试经子进程 `forge hook` 走真实执法路径，断言「执法时」的 block/allow，
+	// 需执法前提——置 FORGE_HOOKS=on（宿主层 opt-in，子进程经 os.Environ() 继承）。
+	// 默认安静策略由 hookdispatch contract_gate 专测隔离钉住。
+	os.Setenv("FORGE_PROFILE", "standard")
+	os.Setenv("FORGE_HOOKS", "on")
+
 	// 隔离 Claude plugin 检测：强制 IsClaudePluginInstalled()=false（空 CLAUDE_CONFIG_DIR 下
 	// 无 plugins/installed_plugins.json）。e2e 跑 forge binary 子进程（init/sync 含
 	// dedupeProjectLevelIfPlugin），不隔离会让本机装了 forge plugin 时 dedupe 改写/删

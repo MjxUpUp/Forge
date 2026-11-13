@@ -50,8 +50,9 @@ var ErrNoContract = errors.New("specroot: 未找到 spec/forge.yaml（仓库未�
 
 // Contract 是 spec/forge.yaml 的最小解析结果。
 //
-// Hooks 是仓库级的执法开关：默认 on；off 时该仓库内的 hook 一律静默放行
-// （clone 下来先读契约、再决定要不要跑检查，不需要安装或注册）。
+// Hooks 是仓库级的执法开关：默认 off（ADR-0002 阶段 B：执法 opt-in，默认安静）。
+// off 时该仓库内的 hook 一律静默放行（clone 下来先读契约、再决定要不要跑检查，
+// 不需要安装或注册）；要执法须显式写 hooks: on。
 type Contract struct {
 	Version string `yaml:"version"`
 	Profile string `yaml:"profile"`
@@ -172,12 +173,14 @@ func sameDir(a, b string) bool {
 
 // Load 读取并校验 root/spec/forge.yaml。
 //
-// 缺省值：version=1、profile=standard、hooks=on。未知 profile、未知键或不受支持
+// 缺省值：version=1、profile=standard、hooks=off（ADR-0002 阶段 B：执法 opt-in，
+// 默认 audit-only）。未知 profile、未知键或不受支持
 // 的主版本返回错误——
 // 契约是人写的文件，拼错档位时静默降级比报错更危险。
 //
-// 消费现状（2026-11-11）：成员资格认「文件存在」；hooks 开关已接线——
-// hookdispatch 在解析出项目根后读契约，off 则静默放行、profile 决定名册档位。
+// 消费现状（2026-11-13）：成员资格认「文件存在」；hooks 开关已接线——
+// hookdispatch 解析出项目根后读契约，off（含缺省）静默放行（audit-only）、on 才执法、
+// profile 决定名册档位；无契约的宿主层由 FORGE_HOOKS=on 显式开启（ADR-0002 阶段 B）。
 func Load(root string) (*Contract, error) {
 	path := MarkerPath(root)
 	raw, err := os.ReadFile(path)
@@ -218,7 +221,9 @@ func Load(root string) (*Contract, error) {
 			path, c.Profile, ProfileMini, ProfileStandard, ProfileFull)
 	}
 	if c.Hooks == "" {
-		c.Hooks = HooksOn
+		// ADR-0002 阶段 B：执法 opt-in。缺省 off（默认安静/audit-only），
+		// 要执法须显式 hooks: on。翻转前缺省是 on。
+		c.Hooks = HooksOff
 	}
 	switch c.Hooks {
 	case HooksOn, HooksOff:

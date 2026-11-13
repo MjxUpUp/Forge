@@ -268,7 +268,7 @@ var skillRefAllowlist = map[string]bool{
 	`decision-warrant`: true, `decision-evidence`: true,
 	// checklog 观察条目名（golden test 层查询计数行，eval golden run --release 落痕，非 skill）
 	`eval-golden-test-query`: true,
-	// hook 名（spec/forge.yaml 里 hooks: off 关不掉的安全底线，非 skill）
+	// hook 名（安全底线 hook，非 skill；ADR-0002 阶段 B 起随执法开关，hooks: off 亦可静音）
 	`mcp-scan`: true, `skill-scan`: true,
 	// research-workflow status.json 的 mode 取值（调研路由模式名，非 skill）
 	`file-only`: true, `file-augmented`: true,

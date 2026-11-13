@@ -11,8 +11,8 @@
 
 - `spec/forge.yaml` — 仓库声明「我用这套产物」。它同时是激活判据：clone 下来就有。
   `forge change init` 默认写 `hooks: off`：只用产物、不开 hook 执法；要门禁把它改成 `on`。
-  安全底线（hazard-guard / mcp-scan / skill-scan）不受这个开关和契约 profile 影响，
-  但仍受机器全局档位限制（`FORGE_PROFILE=lite` 时只接线 hazard-guard）。
+  安全底线（hazard-guard / mcp-scan / skill-scan）随这个开关：默认 audit-only，写 `on`
+  才执法（执法时不受契约 profile 收窄），但仍受机器全局档位限制（`FORGE_PROFILE=lite` 时只接线 hazard-guard）。
 - `spec/changes/<id>/proposal.md` — 为什么做、怎样算解决。
 - `spec/changes/<id>/design.md` — 怎么改、为什么这么改。
 - `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号（多个用「和/或/、」分隔）。

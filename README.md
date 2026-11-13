@@ -26,7 +26,7 @@ Stop trusting AI-generated code. Start gating it.
 
 > **AI 写的代码，你放心直接提交吗？**
 
-Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到代码提交，每一步产出物都要留下 deterministic 证据。配合 Claude Code 的 Hook 系统实时拦截，不需要你手动检查。
+Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到代码提交，每一步产出物都要留下 deterministic 证据，门禁由 CLI 确定性把关。配合宿主 Hook 系统还能在写代码时实时拦截（需显式开启，缺省 audit-only 静默审计，见下）。
 
 **⚡ 60 秒拿到第一个证据**：
 
@@ -72,15 +72,17 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
                 📊 质量评分 + deterministic 证据链
 ```
 
+<sub>注：图中「Forge Hooks · 实时拦截」为 opt-in 加速器——契约 `hooks: on` 或无契约宿主 `FORGE_HOOKS=on` 才执法，缺省 audit-only 静默审计；任务门禁与证据链由 CLI 确定性执行，始终生效。</sub>
+
 ## ✨ 核心能力
 
 <table>
   <tr>
     <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
-    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>27 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
+    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>27 个内置 Hook，显式开启后在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）；缺省 audit-only 静默审计。</td>
   </tr>
   <tr>
-    <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。活跃任务内，Agent 无法经 bash 绕道篡改。</td>
+    <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。开启执法后，活跃任务内 Agent 无法经 bash 绕道篡改（缺省 audit-only）。</td>
     <td valign="top"><strong>📊 质量评分</strong><br/>每个任务完成后自动评分，量化 AI 编码质量；deterministic 证据链可审计。</td>
   </tr>
 </table>
@@ -116,15 +118,15 @@ forge init      # 项目目录零写入，全部资产落在用户级（注册�
 # spec/forge.yaml
 version: "1"       # 契约版本，按主版本兼容
 profile: standard  # standard | mini | full（缺省 standard）
-hooks: on          # on | off（缺省 on）
+hooks: off         # on | off（缺省 off）；写 on 才执法
 ```
 
 - 注意别和 `forge off`（成员资格退出）混：`hooks: off` 只静默 hook 检查，省掉噪音；`forge off` 是项目级退出接管，连成员资格一起让位。两者独立生效。
-- `hooks: off`——这个仓库里的 hook 检查静默放行：**除下面三条安全底线外，0 次检查、0 注入**。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。
-- **安全底线不受仓库契约里的 `hooks`/`profile` 控制**：`hazard-guard`（破坏性命令）、`mcp-scan`（`.mcp.json` 供应链）、`skill-scan`（恶意 skill 指令）照跑——契约随 git 走，不能让一个 PR 用一行 `hooks: off` 关掉防它的扫描器。噪音成本很低（只在真危险时出声）。
-  这条的边界是机器全局档位：名册在契约之前就先滤一遍，`FORGE_PROFILE=lite` 时 lite 名册里只有 `hazard-guard`，`mcp-scan`/`skill-scan` 本来就没接线、不在此列——「契约关不掉」不等于「一定跑」。
+- `hooks: off`（**缺省**）——这个仓库里的 hook 检查静默放行：**0 次检查、0 注入，三条安全底线也不例外**（audit-only：事件仍进归属/审计，但不评估、不阻断、不注入）。hook 是宿主 spawn 的，进程本身挡不掉：每次事件仍会拉起一次毫秒级 `forge` 然后立刻 allow（batch 接线才合并成一次/工具调用）。只静默 hook；你显式跑的 `forge task` / `forge change` 门禁照旧执行。要执法，显式写 `hooks: on`。
+- **安全底线随执法开关**（ADR-0002 阶段 B 语义变更）：`hazard-guard`（破坏性命令）、`mcp-scan`（`.mcp.json` 供应链）、`skill-scan`（恶意 skill 指令）默认 audit-only，只有显式 opt-in（契约 `hooks: on`，或无契约宿主层 `FORGE_HOOKS=on`）后才执法；执法时底线不受契约 `profile` 收窄。取舍：阻断式 hazard-guard 取证 109 次拦截零真实损失、18 天停机，默认安静优先，危险命令防护由宿主自带确认层承接。
+  执法时这条的边界仍是机器全局档位：名册在契约之前就先滤一遍，`FORGE_PROFILE=lite` 时 lite 名册里只有 `hazard-guard`，`mcp-scan`/`skill-scan` 本来就没接线、不在此列。
 - `profile`——`mini` 是最小执法名册（lite：task-guard / bash-guard / hazard-guard / file-sentinel 等拦截类为主，另含 tool-track / failure-track 等观测项；advisory 类不在内）；`standard` 是缺省名册；`full` 目前与 `standard` 等同（预留超集位）。契约只做运行时收窄：settings 接线时被全局更窄档位滤掉的 hook，不会因为契约写 `full` 又接回来。
-- 契约写坏时 hook 侧不拦也不报——`hooks: of`、拼错键名这类错误整份按解析失败处理，hook 执法回落全局档位。`forge status` 会打出「⚠ 契约无法解析」和实际生效的全局档位，不阻断任何命令。
+- 契约写坏时按审计模式静默放行——`hooks: of`、拼错键名这类错误整份按解析失败处理，opt-in posture 下坏契约不打开执法（也不回落全局档位）。`forge status` 会打出「⚠ 契约无法解析（审计模式，不执法）」并提示修好契约写 `hooks: on`，不阻断任何命令。
 - `forge change init` 生成的是最小契约（`version: "1"`、`profile: mini`、`hooks: off`——只用产物、不开执法）。`--profile` 只改档位、不会打开门禁：要执法必须同时把 `hooks` 改成 `on`。
 
 > **团队要 git 共享同一份协议？** 用 `forge init --project`（团队模式）——`.forge/protocol.yml`、`CLAUDE.md`、`AGENTS.md` 等指令资产写入项目目录可提交共享；再跑一次普通 `forge init` 即转回零写入。
@@ -149,7 +151,7 @@ hooks: on          # on | off（缺省 on）
 | `forge review pass` / `forge review status` | 代码审查标记与状态 |
 | `forge gate push` | git 推送边界门禁（cheat-scan 复检 + 未消解 BLOCKED 任务） |
 | `forge hazard confirm --last` | 确认最近一条被拦高危命令（须真人终端） |
-| `forge freeze <路径>...` | 冻结写入范围，冻结路径之外的写全部硬阻断 |
+| `forge freeze <路径>...` | 冻结写入范围；开启 hook 执法后冻结路径之外的写硬阻断（缺省 audit-only 不阻断） |
 | `forge trace <ref>` / `forge health` / `forge dashboard` | 证据链时间线 / 质量趋势 / 全局看板（Pulse） |
 | `forge doctor` / `forge status` | 环境一致性审计 / 项目状态 |
 
@@ -182,9 +184,9 @@ Layer 3: 会话结束验证
   └─ task-verify: 检查任务完成度 + 主分支保护 + 自身版本
 ```
 
-活跃任务内，Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。**没有活跃任务时 task-guard 只给 WARN 提示，不是硬墙**；有任务才按门禁语义拦截。
+开启 hook 执法后（契约 `hooks: on` 或宿主 `FORGE_HOOKS=on`；缺省 audit-only 不拦截），活跃任务内，Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。**没有活跃任务时 task-guard 只给 WARN 提示，不是硬墙**；有任务才按门禁语义拦截。
 
-27 个内置 Hook 的完整清单（触发时机、职责；可关闭的门禁类都附了逃生开关）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
+27 个内置 Hook 的完整清单（触发时机、职责；opt-in 执法，执法时的门禁类另附逃生开关）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
 
 ## 📦 安装
 
