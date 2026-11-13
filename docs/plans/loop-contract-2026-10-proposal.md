@@ -386,7 +386,7 @@ REQ-6：`--hold 24h` 确认后，同指纹命令执行一次后再次被拦，**
 | write | Write/Edit 工具调用拦截；bash 写入（`classifyBashWrite`）首发只出 advisory | 拒 | 放 | 放 | 放 |
 | push-feature | push 到非默认分支；`gh pr create` | 拒 | 放 | 放 | 放 |
 | push-base | push 到默认分支；无法判定的 push | 拒 | 拒 | 需确认 | 放 |
-| merge-base | `git merge` 进默认分支；`gh pr merge`；`forge task worktree finish --merge-to`（Go 侧在 `task_worktree.go:243` 直接检查） | 拒 | 拒 | 需确认 | 放 |
+| merge-base | `git merge` 进默认分支；`gh pr merge`；`forge task finish --merge-to`（Go 侧在 `task_worktree.go:239-241` 直接检查） | 拒 | 拒 | 需确认 | 放 |
 | publish | npm/cargo publish、goreleaser、docker push、gh release create、推送 tag | 拒 | 拒 | 需确认 | 放 |
 
 - **与 hazard 的关系**：autonomy 的拒绝**不写** hazard block 事件，不计入 safe-halt，也不计入 hazard-pending。它落自己的 checklog 行 `autonomy-guard`，在判词里体现为 `autonomy-denied`。

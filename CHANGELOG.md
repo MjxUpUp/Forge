@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.84.5](https://github.com/MjxUpUp/Forge/compare/v1.84.4...v1.84.5) (2026-10-25)
+
+
+### Bug Fixes
+
+* **hooks:** 汇总四项 hook 摩擦修复（hazard 误拦、read-before-edit 误拦、升级提示泄漏、hook 静默失败） ([#143](https://github.com/MjxUpUp/Forge/issues/143)) ([7c4d8de](https://github.com/MjxUpUp/Forge/commit/7c4d8dee7ea5b4ca63226c1661220e89b6406ca3))
+
+## [1.84.4](https://github.com/MjxUpUp/Forge/compare/v1.84.3...v1.84.4) (2026-10-25)
+
+
+### Bug Fixes
+
+* **review:** 复审路径补「续用原评审者」分档（doc-review / Stop hook / 双 reviewer / 协议 A·B） ([#141](https://github.com/MjxUpUp/Forge/issues/141)) ([cca2a96](https://github.com/MjxUpUp/Forge/commit/cca2a96b409677cb7db0f52fb5072542842fbe66))
+
+## [1.84.3](https://github.com/MjxUpUp/Forge/compare/v1.84.2...v1.84.3) (2026-10-24)
+
+
+### Bug Fixes
+
+* **task:** 错树守护 fail-closed —— 任务锚在另一棵树时禁止在主树写源码/过门禁 + human 档链定义指纹 ([#139](https://github.com/MjxUpUp/Forge/issues/139)) ([ded892c](https://github.com/MjxUpUp/Forge/commit/ded892c9c438278c113298afb54c22e15462fe0d))
+
 ## [1.84.2](https://github.com/MjxUpUp/Forge/compare/v1.84.1...v1.84.2) (2026-10-24)
 
 

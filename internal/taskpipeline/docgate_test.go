@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/review"
 )
 
 // docgate_test.go: covers the doc pre-flight (output→re-check loop,
@@ -151,6 +152,17 @@ func TestCheckDocGateCriticalFindings(t *testing.T) {
 	if len(reasons) == 0 {
 		t.Fatal("阻断时必须给出原因（doc gate 输出供人跟进）")
 	}
+	// 未决 Critical 的原因要与「评审者判定已解决后才可标记」一致，并给出真实存在的
+	// 命令形态（--resolve <id>，不是不存在的 `finding resolve`）。
+	joined := strings.Join(reasons, "; ")
+	for _, want := range []string{"经评审者判定已解决", "forge task finding --resolve", "作者不得自行标记"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("Critical 未决原因缺少 %q, got %s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "finding resolve") {
+		t.Errorf("Critical 未决原因不得出现不存在的命令 `finding resolve`, got %s", joined)
+	}
 	if len(state.Findings) == 0 || state.Findings[0].ID == "" {
 		t.Fatal("AddFinding 应生成 ID")
 	}
@@ -237,6 +249,76 @@ func TestCheckDocGateFingerprintStaleness(t *testing.T) {
 	legacy.DocReview = &DocReview{Passed: true, RubricScore: 90, Round: 1, ReviewedAt: time.Now(), HeadCommit: GetHeadCommit(root)}
 	if ok, _ := CheckDocGate(root, legacy); !ok {
 		t.Fatal("空指纹的旧版评审不应触发指纹过期")
+	}
+}
+
+// TestDocGate_RetryReasonsCarryReReviewGuidance pins that every reason telling
+// the agent to re-run the L2 review (stale HEAD, stale fingerprint, failed
+// round, low score) carries the tiered re-review guidance — otherwise the agent
+// defaults to a fresh cold-start subagent each round. The human-escalation and
+// self-review reasons need an independent reviewer, so they must not carry it.
+//
+// TestDocGate_RetryReasonsCarryReReviewGuidance 钉住：凡指示重跑 L2 评审的原因
+// （HEAD 过期/指纹过期/未通过/低分）都带分档复审指引，否则 agent 默认每轮新派
+// 冷启动子代理；升级人工与自审两条需要独立评审者，不得带。
+func TestDocGate_RetryReasonsCarryReReviewGuidance(t *testing.T) {
+	root, base := newDocGateRepo(t)
+	if err := os.WriteFile(root+"/notes.md", []byte("# 笔记\n干净内容。\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	head := GetHeadCommit(root)
+	fp := DocContentFingerprint(root, &TaskState{TaskRef: "feat/x", HeadCommit: base})
+	if fp == "" {
+		t.Fatal("前置：文档指纹不应为空")
+	}
+	for _, tc := range []struct {
+		name       string
+		review     DocReview
+		wantGuide  bool
+		wantText   string // 非空：原因串还须含该短语
+		wantAbsent string // 非空：原因串不得含该短语
+	}{
+		// HEAD 前移不等于文档变了（评审→提交→complete 是主流程）：只有「指纹相同且上轮评审通过
+		// 并达阈值」才由机器核验出「内容一致」，此时只写「评审者确认即可」，不追加分档指引（其
+		// 「第 3 轮升档」会与「确认即可」互相打架，Round=2 即是该组合）；指纹缺失/不同、或上轮
+		// 评审本身未通过/低分，不得下该断言。任何口径都不得开出「凭自述重录旧分数」的免评审通道。
+		{"HEAD 过期且无指纹", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef"}, true, "不得凭自述重录旧分数", "文档内容与评审时一致"},
+		{"HEAD 过期且指纹不同", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: "stale-fingerprint"}, true, "已评 1 轮", "文档内容与评审时一致"},
+		{"HEAD 过期、指纹相同、上轮通过", DocReview{Passed: true, RubricScore: 90, Round: 2, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, false, "文档内容与评审时一致（指纹相同）", "按下列分档复审"},
+		{"HEAD 过期、指纹相同但上轮未通过", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "评审未通过/低于阈值", "文档内容与评审时一致"},
+		{"HEAD 过期、指纹相同但上轮低分", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp}, true, "评审未通过/低于阈值", "文档内容与评审时一致"},
+		// 终态原因优先于过期类原因：主流程里提交使 HEAD 前移，升级人工与自审文案不得被盖住。
+		{"HEAD 过期且轮次打满未过", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: "deadbeefdeadbeef"}, false, "升级人工确认", "按下列分档复审"},
+		{"HEAD 过期且同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: "deadbeefdeadbeef", DocsFingerprint: fp, SelfReview: true}, false, "同会话自审", "文档内容与评审时一致"},
+		{"指纹过期且轮次打满未过", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, false, "升级人工确认", "按下列分档复审"},
+		{"指纹过期", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, DocsFingerprint: "stale-fingerprint"}, true, "已评 1 轮", ""},
+		{"评审未通过（未到上限）", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head}, true, "", ""},
+		{"得分低于阈值", DocReview{Passed: true, RubricScore: DocRubricThreshold - 1, Round: 1, HeadCommit: head}, true, "已评 1 轮", ""},
+		{"轮次打满升级人工", DocReview{Passed: false, RubricScore: 60, Round: DocReviewMaxRounds, HeadCommit: head}, false, "", ""},
+		{"同会话自审", DocReview{Passed: true, RubricScore: 90, Round: 1, HeadCommit: head, SelfReview: true}, false, "", ""},
+		// 自审且未通过：自审文案不可达，落在 !Passed 原因里（带分档指引），不是终态。
+		{"同会话自审且未通过", DocReview{Passed: false, RubricScore: 60, Round: 1, HeadCommit: head, SelfReview: true}, true, "未通过（第 1 轮", "文档内容与评审时一致"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := &TaskState{TaskRef: "feat/x", HeadCommit: base}
+			dr := tc.review
+			dr.ReviewedAt = time.Now()
+			state.DocReview = &dr
+			ok, reasons := CheckDocGate(root, state)
+			if ok {
+				t.Fatalf("该状态应阻断, got reasons=%v", reasons)
+			}
+			got := strings.Contains(strings.Join(reasons, "; "), review.DocReReviewGuidance)
+			if got != tc.wantGuide {
+				t.Errorf("复审指引在场=%v，期望 %v, reasons=%v", got, tc.wantGuide, reasons)
+			}
+			if tc.wantText != "" && !strings.Contains(strings.Join(reasons, "; "), tc.wantText) {
+				t.Errorf("原因串缺少 %q, reasons=%v", tc.wantText, reasons)
+			}
+			if tc.wantAbsent != "" && strings.Contains(strings.Join(reasons, "; "), tc.wantAbsent) {
+				t.Errorf("原因串不得含 %q（指纹未核验一致时不得断言内容没变）, reasons=%v", tc.wantAbsent, reasons)
+			}
+		})
 	}
 }
 
