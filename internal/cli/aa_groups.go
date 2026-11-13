@@ -50,10 +50,10 @@ func init() {
 	//
 	migrateCmd.GroupID = "lifecycle" // 旧 .forge runtime state → DataDir 迁移（升级路径）
 	// Global project registry cleanup (counterpart to the explicit registration
-	// done by `forge integrations enable`; backticks guard
+	// done by `forge integrations enable` / `forge workspace add`; backticks guard
 	// against Windows quote corruption).
 	//
-	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（integrations enable 显式登记的对应清理入口；反引号防 Windows 引号腐蚀）
+	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（integrations enable / workspace add 显式登记 的对应清理入口；反引号防 Windows 引号腐蚀）
 	// 项目数据跨机器导出/导入/身份对齐（project-sync：与 init/migrate/registry 同族的项目级数据管理）。
 	projectCmd.GroupID = `lifecycle`
 	// 机器节点身份（node_id = 公钥指纹；node-identity：机器级，与 project 跨机族同族）。
