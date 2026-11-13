@@ -52,7 +52,7 @@
 | `forge off`（managed 项目） | Entry→declined；`forge status` 退出非零（ErrDeclinedProject 文案）；所有 project-scoped hook 静默放行（Find 失败分支）；legacy 标记写入；checklog 记录 |
 | `forge off`（从未 init 的项目） | 登记 declined 条目 + 写标记（首次接触前退出，P1 语义下 plugin-takeover 不再吃它） |
 | `forge off --all` | 全部存活条目→declined（含逐条写标记） |
-| `forge on`（declined 且已 init） | Entry→managed；清标记；hook 恢复 |
+| `forge on`（declined 且已 init） | Entry→managed；清标记（历史：marker 双写已删；现在只清 `.forge-decline`）；hook 恢复 |
 | `forge on`（declined 且从未 init） | 只翻状态 + 提示运行 `forge init` 补全（**不自动跑 init**——init 会写用户级 agent 配置，是应显式发生的动作；此时 init 不再被门禁拒绝） |
 | `forge on`（unknown，从未登记） | 拒绝并指向 `forge init`（on 只负责 declined→managed，不是第二个 init） |
 | declined 项目 `forge init` / FORGE_AUTO_INIT / plugin auto-takeover | init 拒绝（错误文案指向 forge on）；bash 前置标记检查先行静默退出 |

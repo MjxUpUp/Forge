@@ -44,8 +44,8 @@ const (
 const teamModeMarker = "team-mode"
 
 // stripProjectLevelForgeAssets 剥除 dir 里遗留的项目级 forge 写入。幂等；
-// 收敛后每步都是廉价 stat/no-op。由 autoSync 触发时（版本变化/force/脏绑定）
-// 与 forge init 调用。
+// 收敛后每步都是廉价 stat/no-op。只由 autoSync 的仓内清理阶段调用（阶段 C 起
+// init 不再调用它——init 只写仓库契约，不剥已有托管块）。
 func stripProjectLevelForgeAssets(dir string) {
 	// 团队模式豁免。
 	if _, err := os.Stat(filepath.Join(dir, ".forge", teamModeMarker)); err == nil {

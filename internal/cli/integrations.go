@@ -39,7 +39,7 @@ var integrationsCmd = &cobra.Command{
   forge integrations enable --all
 
 关闭某个宿主：forge integrations disable <host>（只摘标记，不改已写的宿主配置）。
-完全退出：forge off。`,
+项目级让位（不清宿主标记）：forge off；要停掉用户级资产，请先 disable 全部宿主。`,
 }
 
 var integrationsListCmd = &cobra.Command{
@@ -156,17 +156,9 @@ func integrationEnabled(host string) bool {
 }
 
 // integrationsAnyEnabled 判断是否有任何宿主接线（autoSync 的 HOME 写入闸门）。
+// 只认宿主 marker：`.disabled` 墓碑等点文件不是接线。
 func integrationsAnyEnabled() bool {
-	entries, err := os.ReadDir(integrationsDir())
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			return true
-		}
-	}
-	return false
+	return len(enabledHostSet()) > 0
 }
 
 func markIntegration(host string) error {
@@ -355,7 +347,12 @@ func runIntegrationsDisable(_ *cobra.Command, args []string) error {
 		if err := markIntegrationsDisabled(); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to record disabled state: %v\n", err)
 		}
-		fmt.Println("已无任何宿主接线：autoSync 不再写用户级资产（这个选择已记下，重启后仍生效）。")
+		if hooks.IsClaudePluginInstalled() {
+			fmt.Println("已无接线标记。Claude plugin 仍在接管 hooks：autoSync 继续维护用户级指令/技能（仅跳过 settings.json）；" +
+				"墓碑已记下，卸载 plugin 后同步即停。")
+		} else {
+			fmt.Println("已无任何宿主接线：autoSync 不再写用户级资产（这个选择已记下，重启后仍生效）。")
+		}
 	}
 	if dir, err := findProjectRoot(); err == nil && !specroot.Declared(dir) {
 		fmt.Println("注意：这个仓库还没有 spec 契约（阶段 C 之前的老项目）。接线标记已摘，" +
