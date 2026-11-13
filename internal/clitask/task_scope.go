@@ -76,7 +76,7 @@ func collectScopedTasks(scope taskScope, warn io.Writer) ([]projectTasks, error)
 	if scope == scopeAllProjects {
 		roots := registry.ListManaged()
 		if len(roots) == 0 {
-			return nil, fmt.Errorf(`全局视图无已接管（managed）项目——在项目目录跑 forge integrations enable <host>（或 forge workspace add）登记后重试；forge off 退出的项目不参与`)
+			return nil, fmt.Errorf(`全局视图无已接管（managed）项目——在项目目录跑 forge registry add 登记后重试；forge off 退出的项目不参与`)
 		}
 		return collectRoots(roots, warn), nil
 	}

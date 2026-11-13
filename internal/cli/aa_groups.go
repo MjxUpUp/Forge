@@ -47,7 +47,7 @@ func init() {
 	//
 	migrateCmd.GroupID = "lifecycle" // 旧 .forge runtime state → DataDir 迁移（升级路径）
 	// Global project registry cleanup (counterpart to the explicit registration
-	// done by `forge integrations enable` / `forge workspace add`; backticks guard
+	// done by `forge registry add` / `forge workspace add`; backticks guard
 	// against Windows quote corruption).
 	//
 	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（integrations enable / workspace add 显式登记 的对应清理入口；反引号防 Windows 引号腐蚀）
