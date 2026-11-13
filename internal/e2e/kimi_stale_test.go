@@ -94,11 +94,9 @@ func writeKimiInstalledJSON(t *testing.T, kimiHome, tag string) {
 //
 // TestHook_KimiStaleAdvisory_RidesUserPromptSubmit 端到端钉死 2026-08-15 的 staleness
 // 通道修复：kimi plugin 过期 advisory 必须搭载 resume-reinject（UserPromptSubmit——
-// kimi 0.35.0 唯一把 stdout 送达模型的通道），而非 init-suggest（SessionStart——stdout
-// 被 kimi 丢弃；旧通道三重不可见：plugin 漂移期间模型/用户/日志全静默）。两次调用的
-// 顺序承重：init-suggest 先跑，必须既不打印 advisory 也不消耗按日 marker——否则不可见
-// 的 SessionStart 通道会在可见通道触发前吃掉节流额度（正是「两处都保留」的重新接线会
-// 复活的 bug 模式）。同时钉死第三层可见性：advisory 触发时记一条 kimi-plugin-stale
+// kimi 0.35.0 唯一把 stdout 送达模型的通道）。阶段 C 删除了 init-suggest
+// （SessionStart）通道，历史「两处都保留会先吃掉按日 marker」的回归面随之消失；
+// 本测试现在只钉可见通道与第三层可见性：advisory 触发时记一条 kimi-plugin-stale
 // warn checklog 条目。
 func TestHook_KimiStaleAdvisory_RidesUserPromptSubmit(t *testing.T) {
 	dir := freshProject(t)
@@ -108,20 +106,8 @@ func TestHook_KimiStaleAdvisory_RidesUserPromptSubmit(t *testing.T) {
 	writeKimiInstalledJSON(t, kimiHome, "v1.30.0") // plugin lags binary 9.9.9 → stale
 
 	upsStdin := `{"session_id":"sess-kimi-stale-1","hook_event_name":"UserPromptSubmit","cwd":` + jsonStr(dir) + `,"prompt":[{"type":"text","text":"继续"}]}`
-	ssStdin := `{"session_id":"sess-kimi-stale-1","hook_event_name":"SessionStart","cwd":` + jsonStr(dir) + `}`
 
-	// 1. init-suggest（SessionStart）先跑：advisory 的旧通道。它不得打印 stale
-	// advisory——SessionStart stdout 被 kimi 丢弃，且此处追加还会在可见通道触发前
-	// 消耗掉按日 marker。
-	ssOut, _, err := kimiHook(t, bin, dir, kimiHome, "init-suggest", ssStdin)
-	if err != nil {
-		t.Fatalf("forge hook init-suggest --agent kimi: %v\n%s", err, ssOut)
-	}
-	if strings.Contains(ssOut, "/plugins install") {
-		t.Errorf("init-suggest (SessionStart) must NOT carry the stale advisory anymore (channel moved to resume-reinject/UserPromptSubmit):\n%s", ssOut)
-	}
-
-	// 2. resume-reinject（UserPromptSubmit）：advisory 必须出现在 stdout——纯文本、
+	// resume-reinject（UserPromptSubmit）：advisory 必须出现在 stdout——纯文本、
 	// exit 0，即 kimi 下一 prompt 送达模型的通道。
 	upsOut, upsErr, err := kimiHook(t, bin, dir, kimiHome, "resume-reinject", upsStdin)
 	if err != nil {

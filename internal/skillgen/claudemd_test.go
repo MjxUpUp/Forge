@@ -209,11 +209,6 @@ func TestClaudeMDSectionContract(t *testing.T) {
 			"自 1.58 起",
 			"per-task override（1.58 起提供）",
 		}},
-		{"init-suggest default is ask (userconfig.TakeoverAsk)", []string{
-			"出厂默认 ask",
-		}, []string{
-			"检测为 forge 候选时自动 `forge init`",
-		}},
 		{"guard behavior truth (task/bash-guard only WARN)", nil, []string{
 			"非平凡变更（>10 行）", // 编造阈值——没有任何 guard 查行数
 			"denied by task-guard",

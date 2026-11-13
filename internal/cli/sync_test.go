@@ -18,6 +18,12 @@ import (
 // which lives in the user-level DataDir after the user-level-assets refactor.
 func writeSyncStamp(t *testing.T, dir, version string) {
 	t.Helper()
+	// Phase C：autoSync 只在宿主已接线时才写用户级资产。这些用例验的是
+	// sync 内容本身，故用「legacy 接线」信号（.forge/hooks）显式 opt-in；
+	// stamp 相等时的 early-return 在该闸门之前，不影响 skip 用例。
+	if err := os.MkdirAll(filepath.Join(dir, ".forge", "hooks"), 0755); err != nil {
+		t.Fatalf("seed legacy wiring: %v", err)
+	}
 	dataDir := forgedata.DataDirFor(dir)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		t.Fatalf("mkdir DataDir: %v", err)
@@ -219,9 +225,11 @@ func TestAutoSyncSkipsSettingsWriteWhenPluginInstalled(t *testing.T) {
 func TestAutoSyncHealsArtifactsWhenStampMissing(t *testing.T) {
 	dir := t.TempDir()
 	forgeDir := filepath.Join(dir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		t.Fatalf("mkdir .forge: %v", err)
+	if err := os.MkdirAll(filepath.Join(forgeDir, "hooks"), 0755); err != nil {
+		t.Fatalf("mkdir .forge/hooks: %v", err)
 	}
+	// .forge/hooks 同时是 Phase C 的「legacy 接线」信号：裸 temp 项目没有宿主
+	// 接线时 autoSync 会跳过用户级资产写入。
 	// Intentionally NO .sync-version — simulates a half-initialized or corrupted project.
 
 	_ = autoSync(dir, "v0.17.0", false)
@@ -387,6 +395,32 @@ func TestAutoSyncMigrateIdempotent(t *testing.T) {
 
 // ---- helpers ----
 
+// TestLegacyHostWiring_ContractRepoIgnoresDataDirWiring：契约仓库的宿主接线只认
+// integrations marker / Claude plugin。DataDir 里的 protocol.yml + hooks 可能只是
+// enable 过一次又 disable 留下的残骸；若拿它当 legacy 证据，disable 之后 autoSync
+// 会继续改写用户级 settings/CLAUDE.md，「已停用」就是假话（2026-11-13 实测）。
+// 无契约的老项目仍走迁移路径，不能被这个改动误伤。
+func TestLegacyHostWiring_ContractRepoIgnoresDataDirWiring(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+
+	dataDir := forgedata.DataDirFor(dir)
+	syncWrite(t, filepath.Join(dataDir, "protocol.yml"), "version: \"1\"\n")
+	syncMkdir(t, filepath.Join(dataDir, "hooks"))
+
+	syncWrite(t, filepath.Join(dir, "spec", "forge.yaml"), "version: \"1\"\n")
+	if legacyHostWiring(dir) {
+		t.Fatal("contract repo with DataDir wiring must not count as legacy host wiring")
+	}
+
+	if err := os.Remove(filepath.Join(dir, "spec", "forge.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if !legacyHostWiring(dir) {
+		t.Fatal("legacy repo without contract should keep syncing")
+	}
+}
+
 func syncMkdir(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0755); err != nil {
@@ -401,5 +435,35 @@ func syncWrite(t *testing.T, path, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatalf(`write %s: %v`, path, err)
+	}
+}
+
+// TestSyncGateAllows_Matrix 钉住 autoSync 的用户级写入闸门：只有装了 plugin、
+// 有接线 marker、或老项目遗留接线（且人没显式全关）才写 HOME。
+func TestSyncGateAllows_Matrix(t *testing.T) {
+	_, _ = isolatedHomeEnv(t)
+	dir := t.TempDir()
+
+	if syncGateAllows(dir, false, map[string]bool{}, false) {
+		t.Fatal("无 marker、无 legacy、无 plugin 时不得写用户级资产")
+	}
+	if !syncGateAllows(dir, false, map[string]bool{"cursor": true}, false) {
+		t.Fatal("有接线 marker 时应允许同步")
+	}
+	if !syncGateAllows(dir, true, map[string]bool{}, false) {
+		t.Fatal("legacy 老项目应继续迁移同步")
+	}
+	if !syncGateAllows(dir, false, map[string]bool{}, true) {
+		t.Fatal("装了 Claude plugin 时应允许同步")
+	}
+
+	if err := markIntegrationsDisabled(); err != nil {
+		t.Fatalf("mark disabled: %v", err)
+	}
+	if syncGateAllows(dir, true, map[string]bool{}, false) {
+		t.Fatal("显式 disable 墓碑存在时，legacy 项目也不得再写用户级资产")
+	}
+	if !syncGateAllows(dir, true, map[string]bool{}, true) {
+		t.Fatal("plugin 是独立 opt-in，不应被 tombstone 吞掉")
 	}
 }

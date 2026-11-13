@@ -27,6 +27,9 @@ func wsFreshProject(t *testing.T) string {
 	git(t, dir, "config", "user.name", "Test")
 	initGoProject(t, dir)
 	forge(t, dir, "init")
+	// 门禁类 e2e 需要宿主接线后的 DataDir（protocol.yml/hooks）：Phase C 起
+	// init 只写仓库物，接线是 integrations enable 的显式 opt-in。
+	forge(t, dir, "integrations", "enable", "claude-code")
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "initial")
 	return dir

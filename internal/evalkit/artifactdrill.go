@@ -49,7 +49,7 @@ func artifactScript(forgeBin, tmp string) []wedgeStep {
 		{name: "git init", argv: []string{"git", "init", "-q"}},
 		{name: "forge init", argv: []string{forgeBin, "init"}},
 		{name: "fixture", env: []string{"SRC=" + src}, argv: []string{"sh", "-c",
-			"printf '#!/bin/sh\\necho NOT-READY\\nexit 1\\n' > main_check.sh && printf 'v1\\n' > code.txt && mkdir -p \"$SRC\" && printf '# spec\\n\\n- accept: sh main_check.sh :: ALL-GOOD\\n' > \"$SRC/spec.txt\" && printf '# design\\n\\nfmt output.\\n' > \"$SRC/design.txt\" && printf '# proposal\\n\\nwhy + what.\\n' > \"$SRC/proposal.txt\" && git add main_check.sh code.txt && git -c user.name=drill -c user.email=drill@localhost -c commit.gpgsign=false commit -qm init"}},
+			"printf '#!/bin/sh\\necho NOT-READY\\nexit 1\\n' > main_check.sh && printf 'v1\\n' > code.txt && mkdir -p \"$SRC\" && printf '# spec\\n\\n- accept: sh main_check.sh :: ALL-GOOD\\n' > \"$SRC/spec.txt\" && printf '# design\\n\\nfmt output.\\n' > \"$SRC/design.txt\" && printf '# proposal\\n\\nwhy + what.\\n' > \"$SRC/proposal.txt\" && git add -A && git -c user.name=drill -c user.email=drill@localhost -c commit.gpgsign=false commit -qm init"}},
 		{name: "start --artifact(登记+提取)", argv: []string{forgeBin, "task", "start", "--ref", "test/artifact-drill", "--branch",
 			"--artifact", "spec=" + src + "/spec.txt"}, expectContains: []string{"main_check.sh :: ALL-GOOD"}},
 		{name: "schema(注入 hard/human 档)", argv: []string{"sh", "-c",
