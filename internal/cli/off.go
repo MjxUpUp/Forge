@@ -9,7 +9,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/harnessdetect"
-	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/spf13/cobra"
@@ -20,11 +19,7 @@ import (
 // 设计背景见 docs/design/project-policy-layer.md。退出语义红线：一条命令、立即
 // 生效（下一条 hook 触发即不跑——成员资格解析已按 declined 收口）、升级不重置
 // （状态在用户级 store）、无残留（零项目写入）、幂等。declined→managed 的唯一
-// 通道是 forge on（SetStatus）；（历史注记：forge suggest decline/reset 曾是同一核心的兼容别名，命令族已于 2026-09 死代码清扫删除，marker 双写垫片保留。）
-//
-// 双写垫片：off 同时写 legacy `.init-suggested/<tag>` declined 标记——init-suggest
-// bash 的标记检查是廉价第一道（免子进程），注册表（forge policy state）是权威读侧；
-// 两写侧并存一致（P2 设计决策，见 docs/design/project-policy-layer.md）。
+// 通道是 forge on（SetStatus）。（历史注记：forge suggest decline/reset 曾是同一核心的兼容别名，命令族已于 2026-09 死代码清扫删除；init-suggest marker 双写垫片在阶段 C 随 hook 一并移除。）
 
 func init() {
 	rootCmd.AddCommand(offCmd)
@@ -54,7 +49,7 @@ var onCmd = &cobra.Command{
 	RunE: runOn,
 }
 
-// policyRoot 解析策略操作的目标根：git 根（与 init-suggest 的 ROOT 同语义），
+// policyRoot 解析策略操作的目标根：git 根（与 forge init 的仓库根同语义），
 // 非 git 目录回退 cwd——forge off 在首次接管前就要可用（首次接触前退出）。
 func policyRoot() string {
 	cwd, _ := os.Getwd()
@@ -64,21 +59,14 @@ func policyRoot() string {
 	return cwd
 }
 
-// declineProject 是 off/suggest-decline 共享核心：注册表置 declined + legacy 标记
-// 双写（垫片，见文件头注）。
+// declineProject 是 off 的核心：注册表置 declined。
 func declineProject(root, by string) error {
-	if err := registry.SetStatus(root, registry.StatusDeclined, by); err != nil {
-		return err
-	}
-	return writeSuggestMarker(hookdispatch.SuggestTagFor(root), `declined`)
+	return registry.SetStatus(root, registry.StatusDeclined, by)
 }
 
-// resumeProject 是 on/suggest-reset 共享核心：注册表置 managed + 清 legacy 标记。
+// resumeProject 是 on 的核心：注册表置 managed。
 func resumeProject(root, by string) error {
-	if err := registry.SetStatus(root, registry.StatusManaged, by); err != nil {
-		return err
-	}
-	return removeSuggestMarker(hookdispatch.SuggestTagFor(root))
+	return registry.SetStatus(root, registry.StatusManaged, by)
 }
 
 // recordTakeoverAudit 把状态翻转落 checklog 审计行（观察类）。从未 init 的项目无
@@ -132,7 +120,7 @@ func runOff(cmd *cobra.Command, args []string) error {
 		fmt.Printf(`已写入 %s（团队声明，建议 git commit 使其对所有协作者生效）。`+"\n", registry.DeclineFileName)
 	}
 	recordTakeoverAudit(root, `off`)
-	fmt.Printf(`项目 '%s' 已退出 forge 接管（declined）：项目级 hook 全部静默，init/自动接管不再生效。`+"\n", baseName(root))
+	fmt.Printf(`项目 '%s' 已退出 forge 接管（declined）：项目级 hook 全部静默，init/自动接管不再生效。`+"\n", filepath.Base(root))
 	fmt.Println(`恢复：在项目内运行 'forge on'。`)
 	return nil
 }
@@ -151,7 +139,7 @@ func runOn(cmd *cobra.Command, args []string) error {
 			if source == projectroot.SourceSpecContract {
 				fmt.Println(`本项目已由仓库契约声明接管（spec/forge.yaml），无需动作。`)
 			} else {
-				fmt.Printf(`项目 '%s' 已由 forge 接管（managed），无需动作。`+"\n", baseName(root))
+				fmt.Printf(`项目 '%s' 已由 forge 接管（managed），无需动作。`+"\n", filepath.Base(root))
 			}
 			return nil
 		}
@@ -177,7 +165,7 @@ func runOn(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf(`forge on: %w`, err)
 	}
 	recordTakeoverAudit(root, `on`)
-	fmt.Printf(`项目 '%s' 已恢复 forge 接管（managed）。`+"\n", baseName(root))
+	fmt.Printf(`项目 '%s' 已恢复 forge 接管（managed）。`+"\n", filepath.Base(root))
 	// 从未 init 的 declined 条目（off 先于 init 发生）：只翻状态，不擅自跑完整
 	// init（它会写用户级 agent 配置——显式动作留给用户）。
 	if _, err := os.Stat(filepath.Join(forgedata.DataDirFor(root), `protocol.yml`)); os.IsNotExist(err) {
@@ -203,9 +191,9 @@ func ensureNotDeclined(dir string) error {
 }
 
 // policyYieldCmd — `forge policy yield`：外来 harness 让位检测（P4）。命中高置信
-// 信号（internal/harnessdetect 单一真相源）→ 记 declined(by=foreign-harness) +
-// legacy 标记（双写垫片）并打印让位说明（非空输出）；无信号静默（空输出）。
-// init-suggest bash 以输出非空判定让位；显式 forge on 可覆盖（检测是默认让位，
+// 信号（internal/harnessdetect 单一真相源）→ 记 declined(by=foreign-harness)
+// 并打印让位说明（非空输出）；无信号静默（空输出）。
+// 调用方以输出非空判定让位；显式 forge on 可覆盖（检测是默认让位，
 // 不是禁止——探索共存是合法诉求）。
 var policyYieldCmd = &cobra.Command{
 	Use:   `yield`,

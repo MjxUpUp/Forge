@@ -766,7 +766,7 @@ func printDelegations(entries []delegatedEntry, agent, role string, asJSON bool)
 func runTaskMineAllProjects(agent, role string, blocked bool, now time.Time, asJSON bool) error {
 	roots := registry.ListManaged() // Project Policy Layer P1：declined 项目不参与全局任务视图
 	if len(roots) == 0 {
-		return fmt.Errorf(`全局视图无已接管（managed）项目——在项目目录跑 forge init 登记后重试；forge off 退出的项目不参与`)
+		return fmt.Errorf(`全局视图无已接管（managed）项目——在项目目录跑 forge integrations enable <host>（或 forge workspace add）登记后重试；forge off 退出的项目不参与`)
 	}
 	type projectGroup struct {
 		Project string           `json:"project"`

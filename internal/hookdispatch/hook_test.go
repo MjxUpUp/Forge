@@ -408,9 +408,9 @@ func TestSanitizeForShell(t *testing.T) {
 }
 
 // TestIsGlobalHook is the truth table for the global-hook gate in runHook.
-// skill-scan (scans $HOME/.claude/skills) and init-suggest (detects forge-candidate
-// projects from cwd) are global — both relevant in any project, so they run even when
-// findProjectRoot fails (non-forge project); every project-scoped hook returns false
+// skill-scan (scans $HOME/.claude/skills), mcp-scan and skill-trigger are global —
+// all relevant in any project, so they run even when findProjectRoot fails
+// (non-forge project); every project-scoped hook returns false
 // and keeps the allow-and-exit behavior.
 func TestIsGlobalHook(t *testing.T) {
 	cases := []struct {
@@ -418,7 +418,6 @@ func TestIsGlobalHook(t *testing.T) {
 		want bool
 	}{
 		{"skill-scan", true},
-		{"init-suggest", true},
 		{"mcp-scan", true},
 		{"auto-compile", false},
 		{"task-guard", false},

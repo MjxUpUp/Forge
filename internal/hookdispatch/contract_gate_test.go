@@ -136,18 +136,3 @@ func TestProfileForContract(t *testing.T) {
 		}
 	}
 }
-
-func TestInitSuggestEnabled(t *testing.T) {
-	for _, v := range []string{"1", "on", "true", "yes", "ON", " true "} {
-		t.Setenv("FORGE_INIT_SUGGEST", v)
-		if !initSuggestEnabled() {
-			t.Fatalf("FORGE_INIT_SUGGEST=%q 应开启", v)
-		}
-	}
-	for _, v := range []string{"", "0", "off", "no", "随便"} {
-		t.Setenv("FORGE_INIT_SUGGEST", v)
-		if initSuggestEnabled() {
-			t.Fatalf("FORGE_INIT_SUGGEST=%q 不该开启（默认关闭）", v)
-		}
-	}
-}

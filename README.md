@@ -79,7 +79,7 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
 <table>
   <tr>
     <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
-    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>27 个内置 Hook，显式开启后在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）；缺省 audit-only 静默审计。</td>
+    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>26 个内置 Hook，显式开启后在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）；缺省 audit-only 静默审计。</td>
   </tr>
   <tr>
     <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。开启执法后，活跃任务内 Agent 无法经 bash 绕道篡改（缺省 audit-only）。</td>
@@ -93,31 +93,43 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
 
 ```bash
 cd your-project
-forge init      # 项目目录零写入，全部资产落在用户级（注册表仍登记）
-# 回到 Claude Code 继续工作：AI 会自动读取 Forge 生成的 Skill 并驱动门禁流程
+forge init                              # 在仓库里声明契约：只写仓库内产物
+forge integrations enable claude-code   # 可选：显式接线宿主（或直接装 Claude plugin）
 ```
 
 主路径是 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)——hooks 经它的 Hook 机制接线；Codex、Cursor、Windsurf、dsh 等 12 种宿主同样支持（接线差异见 [plugins/forge/README.md](plugins/forge/README.md) 与 [中文 README](READMEs/README.zh-CN.md)）。
 
-`forge init`（默认模式）**不在项目目录写任何文件**（不会被 git add 误提交），全部资产落在用户级：
+`forge init` **只在仓库里写文件**（随 git 提交，不会被误当成用户级状态）：
 
 | 路径 | 说明 |
 |------|------|
-| `~/.forge/projects.json` | 全局项目注册表（forge 项目锚点） |
+| `spec/forge.yaml` | 仓库契约（`version: "1"`、`profile`、`hooks: off` 缺省） |
+| `spec/changes/` | change 产物目录（含 `archive/`） |
+| `AGENTS.md` | forge 托管块（可提交共享给协作者与 agent） |
+| `CLAUDE.md`、`.cursor/rules/forge.mdc` | 只在文件/目录已存在时追加/补齐指针 |
+
+它**不写** `~/.forge`、`~/.claude`、`~/.codex`，也不登记全局注册表；重复运行只同步仓库内托管块。`--project`、`--agents` 已废弃为 no-op，`--profile mini|standard|full` 写入契约。
+
+宿主接线是显式 opt-in：`forge integrations enable <host>`（claude-code / codex / cursor / copilot / windsurf / kimi / cline / opencode / reasonix / codebuddy / dsh / zcode），或 Claude Code 装 plugin。用户级资产只在 enable（或已装 plugin / Phase C 前接过线的老仓库）时写；plugin 已装时跳过 `settings.json`，但 DataDir 的 protocol/hook 模板仍会生成：
+
+| 路径 | 说明 |
+|------|------|
+| `~/.forge/integrations/<host>` | 已接线标记（`forge integrations disable <host>` 摘掉） |
+| `~/.forge/projects.json` | 全局项目注册表（enable 时登记；`forge workspace add` 也可显式登记） |
 | `~/.forge/projects/<key>/` | protocol.yml + runtime state（任务状态/hook 参考副本，key=git hash 或路径 hash） |
 | `~/.claude/settings.json` | Claude Code hooks（plugin 已装则由 plugin 接管，跳过此文件） |
-| `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`、windsurf `global_rules.md` | 指针段（备份+幂等替换；激活判据锚定 `[forge-session]` managed 会话横幅，协议细节在 forge-quality skill 与 hook 即时提示，`forge uninstall --restore` 可回滚；版本变更后 autoSync 自动重刷新） |
+| `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`、windsurf `global_rules.md` | 指针段（备份+幂等替换；`forge uninstall --restore` 可回滚） |
 | `~/.claude/skills/forge-quality/` | 质量协议 Skill |
-| `~/.codex/hooks.json`、`~/.cursor/hooks.json` 等 | 其他 agent 的用户级 hook 接线（按检测到的工具） |
+| `~/.codex/hooks.json`、`~/.cursor/hooks.json` 等 | 其他 agent 的用户级 hook 接线 |
 
-> **仓库自己决定要不要接管？** 仓库根放一份 `spec/forge.yaml`，成员资格就从全局注册表前移到仓库本身——clone 到新机器、换个 agent、不跑 `forge init` 也能解析到项目身份。注意 hook 接线仍由用户级 init / plugin 提供；契约只决定这些 hook 在这个仓库里跑不跑、按哪档跑。
+> **仓库自己决定要不要接管。** `forge init` 写的 `spec/forge.yaml` 把成员资格放在仓库本身——clone 到新机器、换个 agent 也能解析到项目身份。注意 hook 接线仍由 `forge integrations enable`（或 plugin）提供；契约只决定这些 hook 在这个仓库里跑不跑、按哪档跑。
 >
 > 查找位置：**只认 git 仓库根的 `spec/forge.yaml`**，向上找到 git 根就停；子目录里的同名文件不激活整仓（monorepo 里一个子包不该悄悄改变别人的行为，要激活就放到仓库根），非 git 目录向上查找，走到用户 home 就停（`~` 本身不算项目根）。放好之后 `forge status` 应显示 `spec: spec/forge.yaml (仓库声明式成员资格)`；`forge policy state` 应输出 managed（declined 的仓库例外——`forge off`、`policy yield` 或 clone 到带 `.forge-decline` 的仓库都会这样；成员资格退出优先于契约，`forge on` 可恢复）。
 
 ```yaml
 # spec/forge.yaml
 version: "1"       # 契约版本，按主版本兼容
-profile: standard  # standard | mini | full（缺省 standard）
+profile: standard  # standard | mini | full（省略该字段按 standard 解析；forge init 写入的是 mini）
 hooks: off         # on | off（缺省 off）；写 on 才执法
 ```
 
@@ -129,7 +141,7 @@ hooks: off         # on | off（缺省 off）；写 on 才执法
 - 契约写坏时按审计模式静默放行——`hooks: of`、拼错键名这类错误整份按解析失败处理，opt-in posture 下坏契约不打开执法（也不回落全局档位）。`forge status` 会打出「⚠ 契约无法解析（审计模式，不执法）」并提示修好契约写 `hooks: on`，不阻断任何命令。
 - `forge change init` 生成的是最小契约（`version: "1"`、`profile: mini`、`hooks: off`——只用产物、不开执法）。`--profile` 只改档位、不会打开门禁：要执法必须同时把 `hooks` 改成 `on`。
 
-> **团队要 git 共享同一份协议？** 用 `forge init --project`（团队模式）——`.forge/protocol.yml`、`CLAUDE.md`、`AGENTS.md` 等指令资产写入项目目录可提交共享；再跑一次普通 `forge init` 即转回零写入。
+> **团队要 git 共享同一份协议？** 提交 `spec/` 与 `AGENTS.md` 即可：契约、change 产物与托管块都随仓库走，协作者 clone 后 `forge status` 就按仓库契约解析（宿主 hook 仍需各自 `forge integrations enable`，或装 plugin）。
 
 > **主要用 Claude Code？** 走 [plugin marketplace](plugins/forge/README.md) 一次性接线用户级 hooks（机器上所有项目共享，连 `~/.claude/settings.json` 都不用动）。
 
@@ -139,9 +151,10 @@ hooks: off         # on | off（缺省 off）；写 on 才执法
 
 | 命令 | 用途 |
 |------|------|
-| `forge init` | 初始化项目（项目目录零写入，用户级仍登记注册表与资产） |
+| `forge init` | 在仓库里声明 forge 契约：写 `spec/forge.yaml`、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的入口指针；不写 `~/.forge`（`--profile mini\|standard\|full`，`--project`/`--agents` 已废弃为 no-op） |
+| `forge integrations list/enable/disable <host>` | 显式把 forge 接线到宿主（12 种）：enable 才写用户级 hooks/指令/skill、登记注册表并打 `~/.forge/integrations/<host>` 标记；disable 只摘标记，宿主配置不删 |
 | `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步 |
-| `forge change init/new/list/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（有块只改块内、无块末尾追加；`CLAUDE.md` 不存在默认不建，`.cursor/rules/` 目录已存在时补 forge.mdc，要凭空创建用 `--pointers`，`none` 完全不碰）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`；随 git 提交，与 `forge init` 的项目目录零写入是两回事）；`new --fast` 只要求 proposal + acceptance |
+| `forge change init/new/list/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 四份产物（proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（有块只改块内、无块末尾追加；`CLAUDE.md` 不存在默认不建，`.cursor/rules/` 目录已存在时补 forge.mdc，要凭空创建用 `--pointers`，`none` 完全不碰）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`；随 git 提交；与 `forge init` 同源，都是仓库内产物）；`new --fast` 只要求 proposal + acceptance |
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-verify → task-complete |
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |
@@ -186,7 +199,7 @@ Layer 3: 会话结束验证
 
 开启 hook 执法后（契约 `hooks: on` 或宿主 `FORGE_HOOKS=on`；缺省 audit-only 不拦截），活跃任务内，Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。**没有活跃任务时 task-guard 只给 WARN 提示，不是硬墙**；有任务才按门禁语义拦截。
 
-27 个内置 Hook 的完整清单（触发时机、职责；opt-in 执法，执法时的门禁类另附逃生开关）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
+26 个内置 Hook 的完整清单（触发时机、职责；opt-in 执法，执法时的门禁类另附逃生开关）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
 
 ## 📦 安装
 
@@ -212,7 +225,7 @@ npm install -g @agent_forge/forge
 /plugin install forge@forge
 ```
 
-仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。init-suggest（在未接管项目首次会话建议接管的全局 SessionStart hook）自 2026-11 起默认关闭：不设环境变量时**既不询问也不接管**；要在宿主进程环境里设 `FORGE_INIT_SUGGEST=1`（shell profile 或启动器 env，不是某条 forge 命令的前缀）之后，它才按 takeover 偏好工作——**ask**（出厂默认）询问一次（同意→`forge init`；拒绝→`forge off`），**auto** 静默接管所有 git 项目（declined、`.forge-decline` 团队声明与外来 harness 让位仍然生效）。hooks 由 plugin.json 全机器接管，`forge init` 跳过自己的 settings.json 注册。完整三步与各 host 差异见 `plugins/forge/README.md`。
+仍需 `npm install -g @agent_forge/forge` 装二进制（hooks 都 spawn forge）。plugin 已装时 Claude 的 hooks 由 plugin.json 全机器接管；其他宿主跑 `forge integrations enable <host>` 显式接线。原先的 init-suggest（自动探测未接管项目并建议/执行 `forge init` 的 SessionStart hook）已在阶段 C 移除——是否把仓库交给 forge 由人显式 `forge init` 决定，不再有后台接管。完整三步与各 host 差异见 `plugins/forge/README.md`。
 
 </details>
 
@@ -227,14 +240,14 @@ npm install -g @agent_forge/forge
    缺文件整包测试直接红，必须入库；`docs/design/` 属设计文档，同样随代码提交）；排除
    `.claude/`、`.forge/` 等生成物与临时工作目录。
 
-详见质量协议（由 `forge init` 生成到用户级 `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`；生成器源码在 `internal/skillgen/`）。
+详见质量协议（由 `forge integrations enable <host>` 生成到用户级 `~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`；仓库内的 AGENTS.md 托管块由 `forge init` 写入；生成器源码在 `internal/skillgen/`）。
 
 ## 📚 更多文档
 
 | 文档 | 说明 |
 |------|------|
 | [完整命令参考](docs/reference/cli.md) | 每个命令、flag、逃生舱与门禁语义 |
-| [Hook 完整清单](docs/reference/hooks.md) | 27 个内置 Hook 的触发时机与职责 |
+| [Hook 完整清单](docs/reference/hooks.md) | 26 个内置 Hook 的触发时机与职责 |
 | [定位与设计依据](docs/design/positioning.md) | 为什么是确定性门禁而不是模型自检 |
 | [中文使用指南](READMEs/README.zh-CN.md) | 面向国内用户的安装 / 日常 / 多宿主精简指南 |
 | [Plugin 安装详解](plugins/forge/README.md) | 多 host plugin marketplace 三步接线与各 host 差异 |

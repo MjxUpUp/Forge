@@ -18,7 +18,7 @@ func init() {
 	pluginCmd.AddCommand(pluginStatusCmd)
 	pluginCmd.AddCommand(pluginDedupeCmd)
 	pluginCmd.AddCommand(pluginKimiManifestCmd)
-	pluginDedupeCmd.Flags().Bool("keep-empty", false, "保留 settings.local.json 文件壳（清 forge hooks 后写 {} 而非删）——自动调用（init-suggest SessionStart）传 true,手动 dedupe 不传,删空文件")
+	pluginDedupeCmd.Flags().Bool("keep-empty", false, "保留 settings.local.json 文件壳（清 forge hooks 后写 {} 而非删）——自动调用方传 true（历史 SessionStart hook，已随阶段 C 移除）,手动 dedupe 不传,删空文件")
 	pluginPackCmd.Flags().String("out", "", "输出目录（默认当前目录，即仓库根）")
 	pluginKimiManifestCmd.Flags().Bool("write", false, "重写已提交的 .kimi-plugin/plugin.json（默认只打印+报告漂移）")
 }
@@ -68,8 +68,7 @@ func runPluginPack(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// pluginStatusCmd 报告 forge plugin 是否在 user-level 已装。供脚本/hook（init-suggest
-// 的 dedupe 分支）检测：exit 0 = 已装（plugin 已 user-level 接管 hooks+MCP），非零 = 未装。
+// pluginStatusCmd 报告 forge plugin 是否在 user-level 已装。供脚本检测：exit 0 = 已装（plugin 已 user-level 接管 hooks+MCP），非零 = 未装。
 var pluginStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装）",
@@ -80,7 +79,7 @@ var pluginStatusCmd = &cobra.Command{
 供脚本/hook 检测：exit 0 = 已装（plugin 已接管 hooks+MCP，project-level 重复可清理），
 非零退出 = 未装。SilenceErrors+SilenceUsage 压住 cobra 自身的 Error:/Usage 块（未装时
 RunE 仍 return error，cli.Execute root.go:66 会向 stderr 再打一行——裸跑仍 stdout+stderr
-两行；init-suggest.sh 用 >/dev/null 2>&1 只看 exit code 不受影响）。`,
+两行；脚本用 >/dev/null 2>&1 只看 exit code 不受影响）。`,
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -95,8 +94,7 @@ RunE 仍 return error，cli.Execute root.go:66 会向 stderr 再打一行——�
 }
 
 // pluginDedupeCmd 在 plugin 已装时一次性清理 project-level 重复的 hooks（settings.local.json）
-// 与 forge MCP server（.mcp.json）。init-suggest SessionStart hook 自动调用（传 --keep-empty,
-// 存量迁移且保留文件壳）,也可手动跑（默认删空文件）。幂等：无重复时 no-op（无输出，hook 据此不产生提示噪音）。
+// 与 forge MCP server（.mcp.json）。历史上由 SessionStart hook 自动调用（传 --keep-empty,存量迁移且保留文件壳）；阶段 C 后无自动调用，仍可手动或脚本触发（默认删空文件）。幂等：无重复时 no-op（无输出）。
 var pluginDedupeCmd = &cobra.Command{
 	Use:   "dedupe [dir]",
 	Short: "plugin 已装时清理项目级 + user 级重复 hooks + MCP",
@@ -140,7 +138,7 @@ func runPluginDedupe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("resolve dir: %w", err)
 	}
-	// --keep-empty: 自动调用（init-suggest SessionStart）传 true——保留 settings.local.json
+	// --keep-empty: 自动调用方传 true（历史 SessionStart hook，已移除）——保留 settings.local.json
 	// 文件壳（用户常主动放置/编辑,绝不静默删）;手动 dedupe 默认 false,删空文件（显式清理语义）。
 	keepEmpty, _ := cmd.Flags().GetBool("keep-empty")
 	hooksChanged, err := hooks.StripForgeHooks(abs, keepEmpty)
@@ -163,7 +161,7 @@ func runPluginDedupe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("strip user-level hooks: %w", err)
 	}
 	if !hooksChanged && !mcpChanged && !userChanged {
-		// 无重复 → no-op，不输出（init-suggest hook 据空输出不产生提示噪音）。
+		// 无重复 → no-op，不输出。
 		return nil
 	}
 	if hooksChanged || mcpChanged {

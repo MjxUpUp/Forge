@@ -1,6 +1,6 @@
 # Hook 参考（完整）
 
-> 从根 README 拆出的 Hook 全表：27 个内置 Hook 的触发时机与职责。
+> 从根 README 拆出的 Hook 全表：26 个内置 Hook 的触发时机与职责。
 > 根 README 保留三层防御模型，具体名单在这里。
 
 ```
@@ -16,7 +16,7 @@ Layer 3: 会话结束验证
 ```
 
 <details>
-<summary><b>📖 内置 Hook 完整清单（27 个）</b></summary>
+<summary><b>📖 内置 Hook 完整清单（26 个）</b></summary>
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|
@@ -39,13 +39,12 @@ Layer 3: 会话结束验证
 | **review-stop** | 会话结束 | code-review-gate 自动挡：未审源码变更 block 会话结束。task 模式不重复拦（task-complete 门禁 ReviewPassed 硬前置已强制），非 task 模式按 diff stamp 决策；并发会话检测——其他 session 有活跃任务时放行（调研 session 不被拦） |
 | **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
 | **mcp-scan** | 会话开始 | advisory：扫描项目级 `.mcp.json` 的 server 配置（管道执行/任意包执行 npx·uvx·dlx·bunx/内联代码/非 https URL/env 明文凭证），补 skill-scan 盲区（攻击者可经 PR 植入恶意 server，clone 即自动连接）；只审 config 层，runtime tool description 注入（Tool Poisoning）不在能力内，全局 hook |
-| **init-suggest** | 会话开始 | advisory，接管决策引擎（默认 **ask**）：declined（标记+注册表双检）→静默；已接管→顺带 dedupe；外来 harness 信号→让位并记 declined；takeover 偏好 auto（`FORGE_TAKEOVER`/`forge config`/legacy `FORGE_AUTO_INIT=1`）→静默 init；off→静默；ask→每项目首次询问一次（拒绝→`forge off`；全程询问 →`forge config set` takeover 为 auto）；init 零项目写入 |
 | **task-resume** | 会话开始 | advisory：只输出 `[forge-session]` 管理横幅一行（用户级 CLAUDE.md 据此判断是否启用 forge 协议）。不注入接续视图、不锚定 session、不推送待认领任务——接续按需拉取：用户说「继续某某任务」走 `forge task resume --match`，说「还有哪些任务没完成」走 `forge task list --open`；项目级 hook |
 | **compact-resume** | 压缩后（claude-code / codex） | PostCompact 时设 `ResumeStale=true` 标志（PostCompact 不在 additionalContext 注入点，只设标志等下个 prompt 重注入），context-rot 抗机制根治层·设标志半边 |
 | **resume-reinject** | 用户提交时（claude-code / codex） | 检测 `ResumeStale=true`（刚压缩过）→ 输出当前任务的完整接续上下文并清标志；未压缩时静默。压缩只丢当前 session 的工作记忆，补回它不打扰用户，context-rot 抗机制根治层·重注入半边 |
 | **conventions-context** | 会话开始 + 压缩后 | advisory：`forge conventions init` 建档后每会话注入 ≤15 行规范摘要（stack/lint 命令、规范声明文件、惯例要点），压缩后重注入；无档案但仓库已有 AGENTS.md 等规范时每会话一次建档建议 |
 | **conventions-write** | Write/Edit 前 | advisory：写源码或测试文件时注入本仓库规范声明文件指针与同目录范例文件（每目录每会话一次）；无档案时静默 |
 | **doc-lint** | PostToolUse（Write\|Edit） | advisory：被写的 .md 命中 D1-D11 L1 规则时注入命中清单（规则/行号/修复方向，按命中签名会话内去重），写时反馈提前于 complete 的 doc gate（output-readability-gates-v2.md P1-C），Go 原生实现 |
-| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（Go 原生共 9 个：本 hook 与 failure-track、subagent-track、test-nudge、doc-lint、gate-cmd-form、task-drift、conventions-context、conventions-write；其余 18 个为内嵌 bash 脚本） |
+| **skill-trigger** | 多事件（Pre/PostToolUse、SessionStart、Stop、UserPromptSubmit，按宿主能力接线） | 通用声明式 skill 触发判定：按各 skill `metadata.triggers` 的 event/when 条件（coding_intent / source_changed_uncommitted / test_command_failed / task_active_no_review / skill_file_touched）匹配上下文，advisory 注入 skill 加载指引；Go 原生实现（Go 原生共 9 个：本 hook 与 failure-track、subagent-track、test-nudge、doc-lint、gate-cmd-form、task-drift、conventions-context、conventions-write；其余 17 个为内嵌 bash 脚本） |
 
 </details>

@@ -9,20 +9,17 @@ import (
 	"runtime"
 
 	"github.com/MjxUpUp/Forge/internal/agentbridge"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
 	"github.com/MjxUpUp/Forge/internal/userassets"
 	"github.com/spf13/cobra"
 )
 
-// uninstall.go — `forge uninstall` 一键反装：按安装通道分流的二进制移除 + init-suggest
-// markers。
+// uninstall.go — `forge uninstall` 一键反装：按安装通道分流的二进制移除。
 //
 // 设计：二进制移除随安装通道走（update_channel.go 的 detectInstallChannel）：npm 安装跑
 // `npm uninstall -g @agent_forge/forge`；GitHub Release / 手动安装打印解析后的二进制
-// 路径 + 手动删除指引（npm uninstall 在那条通道上注定失败）。同时清
-// `~/.forge/.init-suggested/`（per-project init 提示标记）。Plugin 卸载必须在 agent CLI
+// 路径 + 手动删除指引（npm uninstall 在那条通道上注定失败）。Plugin 卸载必须在 agent CLI
 // 内交互跑（`/plugin uninstall forge@forge` 等不可脚本化）——打印指引。项目级 `.forge/`
 // 不动（用户决定是否留；若要清手动 rm -rf .forge/）。
 //
@@ -76,23 +73,6 @@ func runUserLevelStrips(roster map[string]func() (bool, error)) {
 	}
 }
 
-// uninstallClearMarkers 删 init-suggest marker 目录（<GlobalHome>/.init-suggested/）。
-// 走 forgedata.GlobalHome()（FORGE_DATA_HOME 优先，否则 ~/.forge）——refactor-data-home
-// commit E 统一真相源，与 suggest 命令 + init-suggest hook 读写同一 marker store（uninstall
-// 是该 store 的清理路径，必须同根，否则 FORGE_DATA_HOME 用户清错地方留残留 marker）。
-// exported for testability — RunE 调用此。返 (dir, removed bool)；GlobalHome 失败返 ("", false)。
-func uninstallClearMarkers() (string, bool) {
-	home, err := forgedata.GlobalHome()
-	if err != nil {
-		return ``, false
-	}
-	dir := filepath.Join(home, `.init-suggested`)
-	if err := os.RemoveAll(dir); err != nil {
-		return dir, false
-	}
-	return dir, true
-}
-
 // uninstallBinaryStep 执行卸载第 1 步：二进制移除，按安装通道分流（复用
 // update_channel.go 的 detectInstallChannelFn——自更新信赖的同一检测，不复制实现）。
 // 旧代码无条件跑 `npm uninstall -g`，对 GitHub Release/手动放置的二进制是注定失败
@@ -143,7 +123,7 @@ func uninstallBinaryStep(stdout, stderr io.Writer) {
 
 var uninstallCmd = &cobra.Command{
 	Use:   `uninstall`,
-	Short: `卸载 forge 二进制 + init-suggest 标记（plugin 卸载需在 agent CLI 内进行）`,
+	Short: `卸载 forge 二进制（plugin 卸载需在 agent CLI 内进行）`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		restore, _ := cmd.Flags().GetBool("restore")
 
@@ -151,15 +131,7 @@ var uninstallCmd = &cobra.Command{
 		//    见 uninstallBinaryStep。
 		uninstallBinaryStep(os.Stdout, os.Stderr)
 
-		// 2. 删除 init-suggest markers
-		dir, ok := uninstallClearMarkers()
-		if !ok {
-			fmt.Fprintf(os.Stderr, `警告：删除 %s 失败`+"\n", dir)
-		} else {
-			fmt.Printf(`已清除 init-suggest 标记：%s`+"\n", dir)
-		}
-
-		// 2b. 从 kimi-code 的 user-level config.toml 剥除 forge hooks（否则它们会调用
+		// 2. 从 kimi-code 的 user-level config.toml 剥除 forge hooks（否则它们会调用
 		// 一个已不存在的二进制；kimi 对 hook 错误 fail-open，但每次工具调用的报错
 		// 噪声不算干净卸载）
 		if stripped, err := agentbridge.StripKimiHooks(); err != nil {

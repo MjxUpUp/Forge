@@ -268,16 +268,15 @@ func resolveHookAgent(flagVal, envVal string) string {
 }
 
 // isGlobalHook 判断某 hook 是否独立于 forge project 运行。Global hook 扫描
-// $HOME 级别状态（skill-scan → ~/.claude/skills）或 cwd 级别状态
-// （init-suggest → 检测 cwd 是否为 forge candidate；mcp-scan → 扫描项目级
-// .mcp.json），这些在任何 project 都相关——所以 findProjectRoot 失败时
-// （非 forge project）runHook 不可静默跳过它们。init-suggest 与 mcp-scan
-// 必须在非 forge project 中运行：init-suggest 正是在那里发现 forge-candidate
-// 项目，mcp-scan 则捕获用户 clone 的项目（可能永远不跑 forge init）里的
-// 恶意 .mcp.json。Project-scoped hook（task-guard、file-sentinel 等）保持原有
-// allow-and-exit 行为。
+// $HOME 级别状态（skill-scan → ~/.claude/skills）或 cwd/项目级状态
+// （mcp-scan → 扫描项目级 .mcp.json；skill-trigger → 按声明的 triggers 匹配
+// 当前上下文），这些在任何 project 都相关——所以 findProjectRoot 失败时
+// （非 forge project）runHook 不可静默跳过它们。mcp-scan 尤其要在非 forge
+// project 中运行：用户 clone 的项目可能永远不跑 forge init，里面的恶意
+// .mcp.json 正是它要抓的。Project-scoped hook（task-guard、file-sentinel 等）
+// 保持原有 allow-and-exit 行为。
 func isGlobalHook(name string) bool {
-	return name == "skill-scan" || name == "init-suggest" || name == "mcp-scan" || name == "skill-trigger"
+	return name == "skill-scan" || name == "mcp-scan" || name == "skill-trigger"
 }
 
 // isInProcessHook 列出完全在 runHook 内用 Go 处理的 hook（无 bash embed 脚本）：
@@ -516,12 +515,6 @@ func RunHook(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		root = "" // global hook：无需 project root；shCmd.Dir="" 回退到 cwd
-	}
-
-	// init-suggest 默认关闭：它是全局 SessionStart，会往任意 git 仓库注入「建议
-	// forge init」——对不打算接管的项目是纯噪音。opt-in 才算（见 contract_gate.go）。
-	if name == "init-suggest" && !initSuggestEnabled() {
-		return EmitAgentOutput(agent, hookInput.HookEventName, name, true, "")
 	}
 
 	// P0-C 双通道幂等守卫(escape-hatch-hardening):zcode 等宿主上用户级接线与
@@ -825,7 +818,7 @@ func RunHook(cmd *cobra.Command, args []string) error {
 	// 反斜杠转义重解析。
 	shCmd := exec.Command(bash, filepath.ToSlash(tmpPath))
 	shCmd.Dir = root
-	cwd, _ := os.Getwd() // 真实 cwd，给 init-suggest global hook 用（FORGE_CWD / FORGE_CWD_TAG）
+	cwd, _ := os.Getwd() // 真实 cwd，给 global hook（skill-scan 等）用（FORGE_CWD）
 	// file-sentinel 自伤豁免用：项目 DataDir 的绝对路径，由 Go 侧解析后传入——
 	// bash 侧自行拼接必分叉（bash 的 ${TMPDIR} 是 MSYS 路径、Go 的 os.TempDir()
 	// 是 Windows 路径），与 FORGE_READS_FILE 同模式。global hook（root==""）时为
@@ -878,29 +871,18 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		"FORGE_READS_FILE="+readsFilePath(root, hookInput.SessionID),
 		// Stable project tag (fnv hash of the canonical project root) so the hook can
 		// bucket per-project state by it, not relying on $PWD/cksum — the latter is unstable across path case, drive letters,
-		// and BSD/GNU cksum formats. For global hooks (init-suggest/skill-scan) root is empty, so this hashes the real cwd —
-		// init-suggest must never depend on it (non-forge projects have no forge root); use FORGE_CWD_TAG below instead.
+		// and BSD/GNU cksum formats. For global hooks (skill-scan) root is empty, so this hashes the real cwd.
 		//
 		// 稳定的 project tag（canonical project root 的 fnv 哈希），让 hook
 		// 据此为 per-project 状态分桶，不依赖 $PWD/cksum——后者在路径大小写、盘符、
-		// BSD/GNU cksum 格式之间都不稳定。对 global hook（init-suggest/
-		// skill-scan）来说 root="" ，于是这里哈希的是真实 cwd——init-suggest
-		// 绝不能依赖它（非 forge project 没有 forge root）；改用下面的 FORGE_CWD_TAG。
+		// BSD/GNU cksum 格式之间都不稳定。对 global hook（skill-scan）来说 root=""，于是这里哈希的是真实 cwd。
 		"FORGE_PROJECT_TAG="+ProjectTagFor(root),
 		"FORGE_DATA_DIR="+sanitizeForShell(dataDirEnv),
-		// The cwd and its git-root-keyed tag, for init-suggest (a global hook) to use:
-		// the hook finds the git root from FORGE_CWD, then writes a per-project marker keyed by FORGE_CWD_TAG.
-		// Keyed by git root (via SuggestTagFor), not cwd, so no matter which subdir runs
-		// `forge off`, the tag written matches what the hook reads at the project root —
-		// guarding the decline contract.
+		// The cwd, for global hooks (skill-scan 等) that must find the git root
+		// from FORGE_CWD rather than the process cwd.
 		//
-		// cwd 及其按 git root 作 key 的 tag，给 init-suggest（global hook）用：
-		// hook 从 FORGE_CWD 找 git root，再按 FORGE_CWD_TAG 写 per-project marker。
-		// 以 git root 作 key（经 SuggestTagFor），不是 cwd，所以从任何 subdir
-		// 跑 `forge off` 写出的 tag 与 hook 在 project root 读到的
-		// 一致——守护 decline 契约。
+		// cwd 供 global hook（skill-scan 等）从 FORGE_CWD 向上找 git root。
 		"FORGE_CWD="+cwd,
-		"FORGE_CWD_TAG="+SuggestTagFor(cwd),
 	)
 	// Scheme 5: expose the active task's per-task work-activity override as
 	// the FORGE_WORK_ACTIVITY env for the hook to check. Forced only when disable —
@@ -1027,31 +1009,25 @@ func RunHook(cmd *cobra.Command, args []string) error {
 		// behind the forge binary over time. Detect the drift here and prepend a remediation
 		// advisory to resume-reinject's stdout — UserPromptSubmit, the ONE stdout channel
 		// kimi 0.35.0 delivers to the model (delivered on the next prompt; see
-		// internal/agentbridge/kimi-hook-routing.md). This is a MOVE off init-suggest
-		// (SessionStart), whose ride was triple-invisible in production (2026-08-15 audit,
-		// E:\AgentOffice): kimi drops SessionStart stdout, the checklog noise gate drops
-		// init-suggest PASS, and nothing reached model/user/logs. It must stay a MOVE, not
-		// a duplicate: SessionStart precedes the first UserPromptSubmit in every session,
-		// so an inert init-suggest append would consume prependKimiStaleAdvisory's
-		// once-daily marker before the visible channel ever fires. PREPEND, not append
-		// (code-review F2): emitAgentOutput truncates detail's TAIL at 9500 runes — a
-		// tail-appended advisory would be cut off after the marker was consumed and the
-		// checklog entry recorded. When the advisory does fire, also record a
-		// kimi-plugin-stale warn entry in the checklog — the third invisibility layer (log
-		// visibility) closed; the noise gate would otherwise drop this hook's PASS and
-		// logDetail is computed from the script's raw stdout, which never carries the
-		// prepended advisory.
+		// internal/agentbridge/kimi-hook-routing.md). This rides UserPromptSubmit,
+		// SessionStart's stdout having been triple-invisible in production (2026-08-15
+		// audit, E:\AgentOffice): kimi drops SessionStart stdout, the checklog noise gate
+		// drops PASS entries, and nothing reached model/user/logs. Keep it on exactly one
+		// channel: PREPEND, not append (code-review F2) — emitAgentOutput truncates
+		// detail's TAIL at 9500 runes, so a tail-appended advisory would be cut off after
+		// the marker was consumed and the checklog entry recorded. When the advisory does
+		// fire, also record a kimi-plugin-stale warn entry in the checklog — the third
+		// invisibility layer (log visibility) closed; the noise gate would otherwise drop
+		// this hook's PASS and logDetail is computed from the script's raw stdout, which
+		// never carries the prepended advisory.
 		//
 		// kimi-code 装插件靠锁仓库 tag，且无 plugin 自动更新（CLI 无任何 plugin 管理
 		// 子命令），故 kimi 安装会随时间落后于 forge 二进制。在此检测漂移，把修复
 		// advisory 前置到 resume-reinject 的 stdout——UserPromptSubmit，kimi 0.35.0 唯一
 		// 把 stdout 送达模型的通道（下一 prompt 送达；见 internal/agentbridge/
-		// kimi-hook-routing.md）。这是从 init-suggest（SessionStart）**迁移**而非复制：
-		// 后者在生产三重不可见（2026-08-15 E:\AgentOffice 审计实测）——kimi 丢
-		// SessionStart stdout、checklog noise gate 丢 init-suggest PASS、模型/用户/日志
-		// 三层全无信号。且必须只保留 UserPromptSubmit 一处：每个 session 里
-		// SessionStart 先于首个 UserPromptSubmit，若 init-suggest 处仍追加，那个不可见
-		// 的追加会先消耗掉 prependKimiStaleAdvisory 的按日 marker，可见通道反而永不触发。
+		// kimi-hook-routing.md）。走 UserPromptSubmit 一条通道——SessionStart 的 stdout
+		// 在生产三重不可见（2026-08-15 E:\AgentOffice 审计实测）：kimi 丢
+		// SessionStart stdout、checklog noise gate 丢 PASS、模型/用户/日志三层全无信号。
 		// 前置而非追加（code-review F2）：emitAgentOutput 在 9500 rune 处截 detail 尾部
 		// ——尾接的 advisory 会在 marker 已消耗、checklog 条目已记录之后被截掉。
 		// advisory 真触发时，同时往 checklog 记一条 kimi-plugin-stale warn——补上第三层

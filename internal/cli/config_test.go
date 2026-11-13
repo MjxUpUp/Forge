@@ -11,36 +11,35 @@ import (
 	"github.com/MjxUpUp/Forge/internal/userconfig"
 )
 
-// config_test.go — forge config / forge policy 命令面契约（P2）。
+// config_test.go — forge config 命令面契约（Phase C 之后只剩 compat 键）。
 // stdout 捕获复用 hook_helpers_test.go 的 captureOutput。
 
-func TestConfigGetSet_Roundtrip(t *testing.T) {
+func TestConfigGetSet_CompatRoundtrip(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
-	t.Setenv(`FORGE_TAKEOVER`, ``)
-	t.Setenv(`FORGE_AUTO_INIT`, ``)
 
-	// 未设置 → 生效 ask（出厂默认）
+	// 未设置 → 空（跟最新）
 	stdout, _, err := captureOutput(t, func() error {
-		return configGetCmd.RunE(configGetCmd, []string{`takeover`})
+		return configGetCmd.RunE(configGetCmd, []string{`compat`})
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout, `ask`) {
-		t.Fatalf(`get takeover (unset) = %q, want ask`, stdout)
+	if !strings.Contains(stdout, `未钉`) {
+		t.Fatalf(`get compat (unset) = %q, want 未钉`, stdout)
 	}
 
 	if _, _, err := captureOutput(t, func() error {
-		return configSetCmd.RunE(configSetCmd, []string{`takeover`, `auto`})
+		return configSetCmd.RunE(configSetCmd, []string{`compat`, `1.80`})
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := userconfig.TakeoverMode(); got != userconfig.TakeoverAuto {
-		t.Fatalf(`after set, TakeoverMode = %q, want auto`, got)
+	if got := userconfig.CompatPref(); got != `1.80` {
+		t.Fatalf(`after set, CompatPref = %q, want 1.80`, got)
 	}
-	// 非法值拒绝
-	if err := configSetCmd.RunE(configSetCmd, []string{`takeover`, `bogus`}); err == nil {
-		t.Fatal(`set bogus accepted`)
+
+	// 未知键拒绝
+	if err := configSetCmd.RunE(configSetCmd, []string{`takeover`, `auto`}); err == nil {
+		t.Fatal(`set unknown key accepted`)
 	}
 }
 

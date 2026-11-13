@@ -36,9 +36,12 @@ func TestHookWiring_FreezeRatchet(t *testing.T) {
 	// + 任务态 + 真实 git 分支）——与 gate-cmd-form 同款形态先例。会话增重
 	// 评估：非 git 边界动词零开销直回;漂移时 1/2/10n 阶梯,静默段 marker 计数
 	// 零输出;git 分支查询仅边界动词时发生（每 commit/merge/建分支一次）。
+	// 2026-11-13 bump 35→34：Phase C 删除 init-suggest（SessionStart 全局接管
+	// 建议 hook）——仓库契约改为显式 forge init，不再由 hook 探测/接管；条目数
+	// 随之降一，棘轮同步下调。
 	const wantEvents = 8
 	const wantMatchers = 11
-	const wantEntries = 35
+	const wantEntries = 34
 
 	spec := ForgeHookSpec()
 	events, matchers, entries := 0, 0, 0

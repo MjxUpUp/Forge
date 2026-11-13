@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // project_sync_test.go —— 双机往返 e2e（project-sync）：同一仓库的两个 clone 在
@@ -83,9 +85,16 @@ func TestProjectSyncDualMachineRoundTrip(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, homeA)
 	forge(t, repoA, `init`)
 	forge(t, repoA, `task`, `start`, `--ref`, `feat/e2e-sync`, `--title`, `e2e 双机同步`)
-	// 门禁跑一次即留 checklog 证据（BLOCKED/FAIL 也记 checklog —— trace 的原料）
-	if _, err := forgeErr(t, repoA, `task`, `gate`, `task-implement`, `--ref`, `feat/e2e-sync`); err == nil {
-		t.Fatal(`未实现任何代码的 task-implement 门禁不应通过（e2e 前置假设失效）`)
+	// 门禁跑一次即留 checklog 证据（PASS/BLOCKED/FAIL 都记 checklog —— trace 的原料）。
+	// Phase C 起仓库内契约（spec/forge.yaml）在，task-implement 的产物链缺失只是
+	// advisory，门禁本身会通过——这里不要求它失败，只要 checklog 有本任务记录即可。
+	if _, err := forgeErr(t, repoA, `task`, `gate`, `task-implement`, `--ref`, `feat/e2e-sync`); err != nil {
+		t.Fatalf(`task-implement 门禁应通过（产物链缺失只是 advisory）：%v`, err)
+	}
+	// 正向钉住：门禁跑过必须留下本任务的 checklog 证据（adopt/export 的搬运对象）。
+	checklog := filepath.Join(forgedata.DataDirFor(repoA), "checklog.jsonl")
+	if data, err := os.ReadFile(checklog); err != nil || !strings.Contains(string(data), `feat/e2e-sync`) {
+		t.Fatalf(`task-implement 门禁应留下 feat/e2e-sync 的 checklog 证据: %v`, err)
 	}
 	forge(t, repoA, `project`, `adopt`)
 

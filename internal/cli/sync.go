@@ -13,6 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +36,41 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		}
 	}
 
+	// Phase C：没有宿主接线时不写用户主目录。autoSync 的用户级资产（hook 模板、
+	// settings.json、skills、CLAUDE.md/AGENTS.md、各宿主 translator）只服务于已
+	// 显式 opt-in 的宿主——否则 init 之后任意一条命令都会把 HOME 资产补回来，
+	// 「init 只写仓库内产物」只是假象。仓内清理（dedupe/strip 项目级残留）不碰
+	// 用户主目录，仍然照常跑。
+	//
+	// 老项目（Phase C 之前接过线：有 .forge/hooks、项目级 .forge/protocol.yml 或
+	// DataDir 里已有 protocol/hooks）继续由 autoSync 维护——升级迁移不能因为新
+	// 仓库默认不接线就停摆；它们本来就在写用户主目录。
+	//
+	// 人被 integrations disable 摘光 marker 后写了墓碑：即便老项目仍满足 legacy
+	// 判据，也不再把用户级资产写回来——否则 disable 的输出是假话。
+	legacy := legacyHostWiring(dir)
+	enabled := enabledHostSet()
+	pluginOn := hooks.IsClaudePluginInstalled()
+
+	// 仓内清理只碰仓库、不碰用户主目录。契约仓库的成员资格来自 spec/forge.yaml，
+	// 即便没有任何宿主接线也可以先清理——否则「init 只写仓库」的仓库里遗留的
+	// .forge/hooks、.forge/.sync-version 永远清不掉。遗留老仓库（成员资格就是
+	// .forge/ 目录本身）不能在这里跑：strip 会把空 .forge 删掉，随后再次解析就
+	// 「不是 forge 项目」——这类仓库放到闸门之后（它们本来就走迁移同步）。
+	declared := specroot.Declared(dir)
+	if declared {
+		cleanupDeprecatedPipelineSkill(dir)
+		cleanupLegacyDeadFiles(dir)
+		stripProjectLevelForgeAssets(dir)
+	}
+
+	if !syncGateAllows(dir, legacy, enabled, pluginOn) {
+		return nil
+	}
+	// 按宿主分流：enable cursor 不该顺手把 Claude 的 settings.json 接上。
+	claudeOn := enabled["claude-code"] || legacy || pluginOn
+	codexOn := enabled["codex"] || legacy
+
 	// 1. sync hook 脚本参考副本（运行时执行嵌入内容，副本仅供查看）。deploy stamp
 	//    必须先落盘：file-sentinel 的 CONFIG 分支只在它的 grace 窗口内豁免
 	//    .forge/hooks/ drift——没有它，被监控 Bash 命令 hook 链上的 forge 子进程
@@ -47,9 +83,9 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		return fmt.Errorf("auto-sync: failed to update hooks: %w", err)
 	}
 
-	// 2. 用户级 claude settings.json——仅在 plugin 未 user-level 安装时
-	//    （plugin.json 已全机器注册 ForgeHookSpec）。
-	if !hooks.IsClaudePluginInstalled() {
+	// 2. 用户级 claude settings.json——仅在 claude 已接线（marker / legacy / plugin）
+	//    且 plugin 未 user-level 安装时（plugin.json 已全机器注册 ForgeHookSpec）。
+	if claudeOn && !pluginOn {
 		if err := hooks.GenerateUserSettings(); err != nil {
 			return fmt.Errorf("auto-sync: failed to update user-level settings: %w", err)
 		}
@@ -65,28 +101,47 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		proto = protocol.DefaultProtocol()
 	}
 
-	// 4. 同步用户级 quality SKILL.md
-	if err := skillgen.GenerateUserQualitySkill(proto); err != nil {
-		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
+	// 4. 同步用户级 quality SKILL.md（Claude Code 专用）
+	if claudeOn {
+		if err := skillgen.GenerateUserQualitySkill(proto); err != nil {
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
+		}
 	}
 
-	// 5. 清理重构残留：废弃 skill + runtime state 迁 DataDir + 死文件 +
-	//    遗留项目级 forge 写入
-	cleanupDeprecatedPipelineSkill(dir)
+	// 5. 迁移运行时残留到 DataDir。这一步会写用户主目录（DataDir），所以放在
+	//    接线闸门之后：没有接线的仓库由上面的仓内清理收敛，不动 HOME。
 	migrateRuntimeResidue(dir)
-	cleanupLegacyDeadFiles(dir)
-	stripProjectLevelForgeAssets(dir)
 
-	// 6. 更新用户级 CLAUDE.md / AGENTS.md 的 forge 段（备份+追加）
-	if err := skillgen.GenerateUserClaudeMD(); err != nil {
-		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level CLAUDE.md: %v\n", err)
-	}
-	if err := skillgen.GenerateUserAgentsMD(); err != nil {
-		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level AGENTS.md: %v\n", err)
+	// 遗留老仓库的仓内清理放到闸门之后（见上方 declared 注释）：它们走到这里
+	// 说明确实在迁移同步，此时才可以安全地剥掉项目级残留。
+	if !declared {
+		cleanupDeprecatedPipelineSkill(dir)
+		cleanupLegacyDeadFiles(dir)
+		stripProjectLevelForgeAssets(dir)
 	}
 
-	// 7. sync agent bridge（用户级，为所有检测到的 agent）
-	agents := agentbridge.DetectAgents(dir)
+	// 6. 更新用户级 CLAUDE.md（Claude）/ AGENTS.md（Codex）的 forge 段（备份+追加）
+	if claudeOn {
+		if err := skillgen.GenerateUserClaudeMD(); err != nil {
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level CLAUDE.md: %v\n", err)
+		}
+	}
+	if codexOn {
+		if err := skillgen.GenerateUserAgentsMD(); err != nil {
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level AGENTS.md: %v\n", err)
+		}
+	}
+
+	// 7. sync agent bridge（用户级）：只维护已显式接线的宿主；legacy 老项目
+	//    没有 marker，沿用 DetectAgents 的全量探测保持升级迁移。
+	var agents []agentbridge.AgentType
+	if legacy && len(enabled) == 0 {
+		agents = agentbridge.DetectAgents(dir)
+	} else {
+		for _, name := range sortedHosts(enabled) {
+			agents = append(agents, agentbridge.AgentType(name))
+		}
+	}
 	if len(agents) > 0 {
 		bridgeInput := &agentbridge.TranslationInput{
 			Protocol:  proto,
@@ -265,6 +320,49 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if err := autoSync(dir, rootCmd.Version, force); err != nil {
 		return err
 	}
+	if !syncGateAllows(dir, legacyHostWiring(dir), enabledHostSet(), hooks.IsClaudePluginInstalled()) {
+		fmt.Fprintln(os.Stderr, "没有接线的宿主：跳过用户级同步（接线：forge integrations enable <host>）。")
+		return nil
+	}
 	fmt.Fprintln(os.Stderr, "forge assets synced.")
 	return nil
+}
+
+// syncGateAllows 决定 autoSync 是否写用户级资产：装了 plugin、有接线 marker、
+// 或老项目遗留接线（且人没显式全关）时才写。
+func syncGateAllows(dir string, legacy bool, enabled map[string]bool, pluginOn bool) bool {
+	if pluginOn {
+		return true
+	}
+	if integrationsExplicitlyDisabled() {
+		return false
+	}
+	return len(enabled) > 0 || legacy
+}
+
+// legacyHostWiring 判断仓库是否在 Phase C 之前接过宿主线：项目级 .forge/hooks、
+// 项目级 .forge/protocol.yml，或 DataDir 里已有 protocol.yml/hooks。这类老项目
+// 的 autoSync 继续维护（升级迁移）；新仓库不写用户主目录，接线走
+// `forge integrations enable <host>`。
+//
+// 有 spec 契约的仓库不进入这条迁移路径：它可能只是跑过 integrations enable 后
+// 又 disable 了，DataDir 里的 protocol/hooks 仍在——若把 DataDir 当证据，disable
+// 之后 autoSync 会照旧改写用户级 settings/CLAUDE.md，「已停用」就成了假话。
+// 契约仓库的宿主接线只认 marker 与 Claude plugin 两个显式信号。
+func legacyHostWiring(dir string) bool {
+	if specroot.Declared(dir) {
+		return false
+	}
+	dataDir := forgedata.DataDirFor(dir)
+	for _, p := range []string{
+		filepath.Join(dir, ".forge", "hooks"),
+		filepath.Join(dir, ".forge", "protocol.yml"),
+		filepath.Join(dataDir, "protocol.yml"),
+		filepath.Join(dataDir, "hooks"),
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
 }

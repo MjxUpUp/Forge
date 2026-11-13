@@ -6,176 +6,395 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MjxUpUp/Forge/internal/agentbridge"
-	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
-	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hooks"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 )
 
-// init_test.go —— 团队模式 hooks 双注册修复与团队模式→默认模式收敛路径的守卫。
+// init_test.go —— Phase C 契约： forge init 只写仓库内产物，宿主接线是显式 opt-in。
 
-// setupInitEnv 构造真实（git）项目并隔离用户级 home，runInitTeamMode /
-// runInitUserLevel 绝不碰真实 home。
-func setupInitEnv(t *testing.T) (root, claudeHome string) {
+// isolatedHomeEnv 把用户主目录、全局状态根与各宿主配置目录全指进临时目录，
+// 让 init/integrations 的任何 HOME 写入都能被前后快照抓到。
+func isolatedHomeEnv(t *testing.T) (home, data string) {
 	t.Helper()
-	root, _ = forgedatatest.RealProject(t)
-	claudeHome = t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", claudeHome)
-	t.Setenv("CODEX_HOME", t.TempDir())
-	return root, claudeHome
+	home = t.TempDir()
+	data = t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("FORGE_DATA_HOME", data)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	return home, data
 }
 
-// TestRunInitTeamMode_NoProjectLevelSettingsLocal pins the double-registration
-// fix: team mode must NOT write a project-level .claude/settings.local.json.
-//
-// TestRunInitTeamMode_NoProjectLevelSettingsLocal 钉死双注册修复：团队模式不得
-// 写项目级 .claude/settings.local.json——hooks 注册在用户级（hook 命令调用
-// forge 二进制，队友反正要装 forge；项目级副本会与 autoSync 的用户级注册双跑
-// 每条 hook）。
-func TestRunInitTeamMode_NoProjectLevelSettingsLocal(t *testing.T) {
-	root, claudeHome := setupInitEnv(t)
-
-	if err := runInitTeamMode(root, nil, protocol.DefaultProtocol()); err != nil {
-		t.Fatalf("runInitTeamMode: %v", err)
+// snapshotTree 返回 root 下全部文件（相对路径，含未跟踪新文件）；root 不存在时返回 nil。
+func snapshotTree(t *testing.T, root string) []string {
+	t.Helper()
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return nil
 	}
-
-	// Team-mode marker written (exempts the stripper).
-	if _, err := os.Stat(filepath.Join(root, ".forge", teamModeMarker)); err != nil {
-		t.Errorf("team-mode marker not written: %v", err)
-	}
-	// No project-level settings.local.json.
-	if _, err := os.Stat(filepath.Join(root, ".claude", "settings.local.json")); !os.IsNotExist(err) {
-		t.Error("team mode must not write project-level .claude/settings.local.json (double-run)")
-	}
-	// Hooks registered at USER level instead.
-	data, err := os.ReadFile(filepath.Join(claudeHome, "settings.json"))
+	var files []string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			rel, rerr := filepath.Rel(root, path)
+			if rerr != nil {
+				return rerr
+			}
+			files = append(files, rel)
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("user-level settings.json not written: %v", err)
+		t.Fatalf("walk %s: %v", root, err)
 	}
-	if !strings.Contains(string(data), "forge hook batch --event PreToolUse") {
-		t.Error("user-level settings.json missing forge hooks")
-	}
-	// The git-shared instruction layer is still written to the project.
-	if _, err := os.Stat(filepath.Join(root, ".claude", "CLAUDE.md")); err != nil {
-		t.Error("team mode must still write project-level .claude/CLAUDE.md (git-shared)")
-	}
-	if _, err := os.Stat(filepath.Join(root, "AGENTS.md")); err != nil {
-		t.Error("team mode must still write project-level AGENTS.md (git-shared)")
-	}
+	return files
 }
 
-// TestRunInitUserLevel_ConvergesTeamModeProject pins the convergence fix: a
-// plain `forge init` on a team-mode project is an explicit switch back to the
-// default (zero-project-write) mode.
-//
-// TestRunInitUserLevel_ConvergesTeamModeProject 钉死收敛修复：在团队模式项目上
-// 跑普通 `forge init` = 明确切回默认（零项目写入）模式——team-mode 标记被
-// 删除，stripper 才能收敛项目级残留。不删标记则项目被永久豁免。
-func TestRunInitUserLevel_ConvergesTeamModeProject(t *testing.T) {
-	root, claudeHome := setupInitEnv(t)
+// TestInit_WritesOnlyRepoProducts 是 Phase C 的核心判据：临时 HOME 跑 forge init，
+// 主目录与全局状态根前后都必须是空的（含未跟踪新文件），仓库里只有契约产物。
+func TestInit_WritesOnlyRepoProducts(t *testing.T) {
+	home, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
 
-	// Seed team-mode state: marker + project-level forge residue.
-	forgeDir := filepath.Join(root, ".forge")
-	if err := os.MkdirAll(forgeDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	marker := filepath.Join(forgeDir, teamModeMarker)
-	if err := os.WriteFile(marker, []byte("v0.0.0\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	settingsLocal := `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"forge hook bash-guard"}]}]}}`
-	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".claude", "settings.local.json"), []byte(settingsLocal), 0644); err != nil {
-		t.Fatal(err)
-	}
+	initProject(t, dir)
 
-	if err := runInitUserLevel(root, nil, protocol.DefaultProtocol()); err != nil {
-		t.Fatalf("runInitUserLevel: %v", err)
-	}
-
-	// Marker removed — the project opted back into default mode.
-	if _, err := os.Stat(marker); !os.IsNotExist(err) {
-		t.Error("team-mode marker must be removed by plain forge init")
-	}
-	// Project-level forge hooks converged (settings.local.json stripped to the
-	// {} shell by the keepEmpty stripper).
-	data, err := os.ReadFile(filepath.Join(root, ".claude", "settings.local.json"))
-	if err != nil {
-		t.Fatalf("settings.local.json shell should be kept: %v", err)
-	}
-	if strings.Contains(string(data), "forge hook") {
-		t.Errorf("project-level forge hooks not converged, got: %s", data)
-	}
-	// User-level hooks registered.
-	userData, err := os.ReadFile(filepath.Join(claudeHome, "settings.json"))
-	if err != nil {
-		t.Fatalf("user-level settings.json not written: %v", err)
-	}
-	if !strings.Contains(string(userData), "forge hook batch --event PreToolUse") {
-		t.Error("user-level settings.json missing forge hooks")
-	}
-}
-
-// TestInitCmd_HelpDemotesManualInit pins the Phase-3 help demotion: `forge
-// init`'s Long help must tell plugin users they normally do NOT need to run it
-// manually (init-suggest auto-takeover covers git projects), and position manual
-// init as repair / non-plugin / team-mode.
-//
-// TestInitCmd_HelpDemotesManualInit 钉死 Phase 3 的 help 降级：`forge init` 的
-// Long 帮助须告知 plugin 用户通常无需手动跑（init-suggest 自动接管覆盖 git
-// 项目），并把手动 init 定位为修复/非 plugin/团队模式。守护 help 与行为不
-// 漂移：hook 已加自动接管分支（feat/auto-takeover-init），过时帮助仍把 init
-// 描述成每项目必做步骤，会让 plugin 用户走多余的重复仪式。
-func TestInitCmd_HelpDemotesManualInit(t *testing.T) {
-	for _, sub := range []string{
-		`无需手动跑本命令`,
-		`init-suggest`,
-		`plugin`,
-		`forge off`, // P1：按项目退出的主命令（旧钉 forge suggest decline，现钉其上游语义）
-		`修复`,
-		`团队模式`,
-	} {
-		if !strings.Contains(initCmd.Long, sub) {
-			t.Errorf("initCmd.Long 应含 %q（plugin 用户免手动 init 的降级文案），实得:\n%s", sub, initCmd.Long)
+	for _, p := range []string{"spec/forge.yaml", "spec/changes/archive/.gitkeep", "AGENTS.md"} {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(p))); err != nil {
+			t.Fatalf("%s 未创建：%v", p, err)
 		}
 	}
+	c, err := specroot.Load(dir)
+	if err != nil {
+		t.Fatalf("specroot.Load: %v", err)
+	}
+	if c.Profile != specroot.ProfileMini {
+		t.Errorf("默认档位 = %q, want %q", c.Profile, specroot.ProfileMini)
+	}
+
+	// 不再写项目级 .forge/ 与宿主目录。
+	for _, name := range []string{".forge", ".claude", ".codex", ".cursor"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("init 不应写项目级 %s", name)
+		}
+	}
+	if got := snapshotTree(t, home); len(got) != 0 {
+		t.Errorf("init 写了用户主目录（Phase C 禁止）：%v", got)
+	}
+	if got := snapshotTree(t, data); len(got) != 0 {
+		t.Errorf("init 写了全局状态根（Phase C 禁止）：%v", got)
+	}
 }
 
-// TestAgentSummaryLine pins the init summary's per-agent wiring lines.
-//
-// TestAgentSummaryLine 钉住 init 摘要的 per-agent 接线行。防的回归：switch
-// 掉一个 case 是**静默**丢失安装指引（没有任何东西报错——用户只是再看不到
-// 该 agent 的接线方式）。dsh 尤其只有这一行（其 translator 是刻意的 no-op）。
-func TestAgentSummaryLine(t *testing.T) {
-	wired := []agentbridge.AgentType{
-		agentbridge.AgentCodex,
-		agentbridge.AgentCursor,
-		agentbridge.AgentOpencode,
-		agentbridge.AgentKimi,
-		agentbridge.AgentDsh,
-		agentbridge.AgentZcode,
+// TestInit_IdempotentAndProfile：已声明仓库再跑 init 只同步指令层，不覆盖 spec。
+func TestInit_IdempotentAndProfile(t *testing.T) {
+	dir := t.TempDir()
+	if err := initRepoContract(dir, specroot.ProfileStandard); err != nil {
+		t.Fatalf("first init: %v", err)
 	}
-	for _, a := range wired {
-		line, ok := agentSummaryLine(a)
-		if !ok || line == "" {
-			t.Errorf("agentSummaryLine(%s) = (%q, %v) — wiring guidance silently missing", a, line, ok)
+	specPath := filepath.Join(dir, "spec", "forge.yaml")
+	before, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := initRepoContract(dir, specroot.ProfileMini); err != nil {
+		t.Fatalf("second init: %v", err)
+	}
+	after, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("已声明仓库的 spec/forge.yaml 被覆盖：\nbefore:\n%s\nafter:\n%s", before, after)
+	}
+}
+
+// TestInit_LiteMapsToMini：旧的接线档 lite 落到契约最小档 mini，并说明改动。
+func TestInit_LiteMapsToMini(t *testing.T) {
+	dir := t.TempDir()
+	if err := initRepoContract(dir, "lite"); err != nil {
+		t.Fatalf("init lite: %v", err)
+	}
+	c, err := specroot.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Profile != specroot.ProfileMini {
+		t.Errorf("lite 应映射为 mini，实得 %q", c.Profile)
+	}
+}
+
+// TestInit_DeprecatedFlagsAreNoOps：--project/--agents/--mode 仍被接受（旧脚本不炸），
+// 但不再产生任何项目级 .forge/ 资产，并给出废弃警告。
+func TestInit_DeprecatedFlagsAreNoOps(t *testing.T) {
+	home, _ := isolatedHomeEnv(t)
+	dir := t.TempDir()
+
+	out, _, code := runForge(t, dir, "init", "--project", "--agents", "cursor,copilot", "--mode", "medium")
+	if code != 0 {
+		t.Fatalf("forge init 退出 %d：%s", code, out)
+	}
+	for _, want := range []string{"--project 已废弃", "--agents 已废弃"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("输出缺废弃警告 %q：%s", want, out)
 		}
 	}
-
-	// dsh 行是 plugin 的唯一安装通道（no-op translator）——必须携带真实安装命令。
-	line, ok := agentSummaryLine(agentbridge.AgentDsh)
-	if !ok {
-		t.Fatal("dsh summary line missing")
+	if _, err := os.Stat(filepath.Join(dir, ".forge")); !os.IsNotExist(err) {
+		t.Error("--project 不应再写项目级 .forge/")
 	}
-	if !strings.Contains(line, "dsh plugin --profile web add") {
-		t.Errorf("dsh summary line lacks the install command: %q", line)
+	if got := snapshotTree(t, home); len(got) != 0 {
+		t.Errorf("废弃 flag 不应把 init 变回写 HOME：%v", got)
+	}
+}
+
+// TestIntegrations_EnableAndDisable：显式 enable 才写宿主配置与标记；disable 摘标记。
+func TestIntegrations_EnableAndDisable(t *testing.T) {
+	home, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+
+	// init 之后、enable 之前：status 不该把用户主目录写回来（autoSync 闸门）。
+	if out, _, code := runForge(t, dir, "status"); code != 0 {
+		t.Fatalf("status 退出 %d：%s", code, out)
+	}
+	if got := snapshotTree(t, home); len(got) != 0 {
+		t.Fatalf("无宿主接线时 status 写了用户主目录：%v", got)
 	}
 
-	// 自有摘要通道（或在上面无条件接线）的 agent 必须保持在本循环之外。
-	for _, a := range []agentbridge.AgentType{agentbridge.AgentClaudeCode, agentbridge.AgentCopilot, agentbridge.AgentWindsurf, agentbridge.AgentCline, agentbridge.AgentCodeBuddy, agentbridge.AgentReasonix} {
-		if line, ok := agentSummaryLine(a); ok {
-			t.Errorf("agentSummaryLine(%s) = (%q, true) — unexpected line; keep the summary switch minimal", a, line)
+	stdout, _, code := runForge(t, dir, "integrations", "enable", "claude-code")
+	if code != 0 {
+		t.Fatalf("integrations enable 退出 %d：%s", code, stdout)
+	}
+	if !strings.Contains(stdout, "已接线") {
+		t.Errorf("enable 输出缺接线确认：%s", stdout)
+	}
+	settings := filepath.Join(home, ".claude", "settings.json")
+	raw, err := os.ReadFile(settings)
+	if err != nil {
+		t.Fatalf("~/.claude/settings.json 未写：%v", err)
+	}
+	if !strings.Contains(string(raw), "forge hook batch --event PreToolUse") {
+		t.Error("用户级 settings.json 缺 forge hook 接线")
+	}
+	if _, err := os.Stat(filepath.Join(data, "integrations", "claude-code")); err != nil {
+		t.Errorf("接线标记未写：%v", err)
+	}
+
+	// 单一真相源守卫（阶段 C 从 init 移到 enable）：hooks 目录里的 .sh 数必须
+	// 等于 hooks.HookNames()，加/删 hook 忘改文档或漏生成会在这里响。
+	entries, err := os.ReadDir(filepath.Join(forgedata.DataDirFor(dir), "hooks"))
+	if err != nil {
+		t.Fatalf("读 hooks 目录：%v", err)
+	}
+	shCount := 0
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sh") {
+			shCount++
 		}
+	}
+	if want := len(hooks.HookNames()); shCount != want {
+		t.Fatalf("hooks 目录 .sh 数 = %d, want %d（== len(hooks.HookNames())）", shCount, want)
+	}
+
+	stdout, _, code = runForge(t, dir, "integrations", "list")
+	if code != 0 || !strings.Contains(stdout, "claude-code") || !strings.Contains(stdout, "已接线") {
+		t.Errorf("integrations list 未显示已接线：%s", stdout)
+	}
+
+	stdout, _, code = runForge(t, dir, "integrations", "disable", "claude-code")
+	if code != 0 || !strings.Contains(stdout, "已停用") {
+		t.Errorf("integrations disable 失败：%s", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(data, "integrations", "claude-code")); !os.IsNotExist(err) {
+		t.Error("disable 应摘掉接线标记")
+	}
+}
+
+// TestIntegrations_EnableAll：`enable --all` 不接收位置参数也必须能跑（帮助与
+// README 都这么写；此前 cobra.MinimumNArgs(1) 会在 RunE 之前直接拒绝）。
+func TestIntegrations_EnableAll(t *testing.T) {
+	_, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+
+	stdout, _, code := runForge(t, dir, "integrations", "enable", "--all")
+	if code != 0 {
+		t.Fatalf("integrations enable --all 退出 %d：%s", code, stdout)
+	}
+	for _, host := range integrationHostNames() {
+		if _, err := os.Stat(filepath.Join(data, "integrations", host)); err != nil {
+			t.Errorf("--all 漏了宿主 %s：%v", host, err)
+		}
+	}
+	// --all 与显式宿主互斥：语义含糊的组合必须报错，而不是悄悄按其中一个执行。
+	out, _, code := runForge(t, dir, "integrations", "enable", "--all", "codex")
+	if code == 0 {
+		t.Fatalf("--all 与显式宿主同时给应失败，实际退出 0：%s", out)
+	}
+	if !strings.Contains(out, "--all") {
+		t.Errorf("互斥错误应提到 --all：%s", out)
+	}
+}
+
+// TestAutoSync_CleansRepoResidueWithoutWiring：没有宿主接线的仓库不写 HOME，
+// 但仓内清理（strip 遗留项目级 forge 写入、删死文件）仍要跑——否则「init 只写
+// 仓库」的仓库里，老版本留下的 .forge 垃圾永远清不掉。
+func TestAutoSync_CleansRepoResidueWithoutWiring(t *testing.T) {
+	home, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	forgeDir := filepath.Join(dir, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stamp := filepath.Join(forgeDir, ".sync-version")
+	pipeline := filepath.Join(forgeDir, "pipeline.yml")
+	if err := os.WriteFile(stamp, []byte("0.0.0-old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pipeline, []byte("legacy\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	before := len(snapshotTree(t, home)) + len(snapshotTree(t, data))
+	if err := autoSync(dir, "9.9.9-test", false); err != nil {
+		t.Fatalf("autoSync: %v", err)
+	}
+	after := len(snapshotTree(t, home)) + len(snapshotTree(t, data))
+	if after != before {
+		t.Errorf("没有接线时 autoSync 不得写用户主目录：before=%d after=%d", before, after)
+	}
+	if _, err := os.Stat(stamp); !os.IsNotExist(err) {
+		t.Errorf("仓内清理应删掉遗留 .forge/.sync-version（err=%v）", err)
+	}
+	if _, err := os.Stat(pipeline); !os.IsNotExist(err) {
+		t.Errorf("仓内清理应删掉死文件 .forge/pipeline.yml（err=%v）", err)
+	}
+}
+
+// TestIntegrations_ListAfterDisableAllShowsNoWiring：.disabled 墓碑不是接线，
+// list 不能在「全部 disable」之后还显示得像有宿主接上（P3-2 回归）。
+func TestIntegrations_ListAfterDisableAllShowsNoWiring(t *testing.T) {
+	_, _ = isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
+		t.Fatalf("enable: %s", out)
+	}
+	if out, _, code := runForge(t, dir, "integrations", "disable", "cursor"); code != 0 {
+		t.Fatalf("disable: %s", out)
+	}
+	out, _, code := runForge(t, dir, "integrations", "list")
+	if code != 0 {
+		t.Fatalf("list: %s", out)
+	}
+	if !strings.Contains(out, "当前没有宿主接线") {
+		t.Errorf("全部 disable 后 list 应提示没有接线，实际：%s", out)
+	}
+}
+
+// TestIntegrations_RejectsUnknownHost：拼错的宿主名必须报错并列出可选值。
+func TestIntegrations_RejectsUnknownHost(t *testing.T) {
+	_, _ = isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+
+	out, _, code := runForge(t, dir, "integrations", "enable", "claud")
+	if code == 0 {
+		t.Fatalf("未知宿主应失败，实际退出 0：%s", out)
+	}
+	if !strings.Contains(out, "未知宿主") || !strings.Contains(out, "claude-code") {
+		t.Errorf("错误信息应含未知宿主与可选清单：%s", out)
+	}
+}
+
+// TestIntegrations_RequiresRepoContract：没有 spec/forge.yaml 时 enable 拒绝并指路 init。
+func TestIntegrations_RequiresRepoContract(t *testing.T) {
+	_, _ = isolatedHomeEnv(t)
+	dir := t.TempDir()
+
+	out, _, code := runForge(t, dir, "integrations", "enable", "claude-code")
+	if code == 0 {
+		t.Fatalf("仓库外 enable 应失败：%s", out)
+	}
+	if !strings.Contains(out, "forge init") {
+		t.Errorf("错误信息应指路 forge init：%s", out)
+	}
+}
+
+// TestIntegrations_EnableCursorDoesNotWireClaude：enable 只写被点名宿主的用户级
+// 配置。enable cursor 不该顺手把 ~/.claude/settings.json 的 hook 接上——那等于
+// 悄悄替用户对 Claude Code 开了全机器执法。
+func TestIntegrations_EnableCursorDoesNotWireClaude(t *testing.T) {
+	home, _ := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
+		t.Fatalf("integrations enable cursor failed: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatalf("enable cursor must not write ~/.claude/settings.json (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Fatalf("enable cursor must not write ~/.claude/CLAUDE.md (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".cursor")); err != nil {
+		t.Fatalf("enable cursor should wire cursor home: %v", err)
+	}
+}
+
+// TestIntegrations_DisableLeavesTombstoneThatStopsLegacySync：仓库接过线后再退回
+// 无契约状态（删掉 spec/）时，摘光 marker 后必须记下「人已全关」，否则
+// legacyHostWiring 恒真，autoSync 会把 ~/.claude/settings.json 写回来。
+func TestIntegrations_DisableLeavesTombstoneThatStopsLegacySync(t *testing.T) {
+	home, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
+		t.Fatalf("enable: %s", out)
+	}
+	// 退回老仓库形态：没有 spec 契约，但 DataDir 里还有 enable 留下的 protocol/hooks。
+	if err := os.RemoveAll(filepath.Join(dir, "spec")); err != nil {
+		t.Fatal(err)
+	}
+	if out, _, code := runForge(t, dir, "integrations", "disable", "cursor"); code != 0 {
+		t.Fatalf("disable: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(data, "integrations", ".disabled")); err != nil {
+		t.Fatalf("disable should leave a tombstone: %v", err)
+	}
+	settings := filepath.Join(home, ".claude", "settings.json")
+	_ = os.Remove(settings)
+	if err := autoSync(dir, "9.9.9-test", false); err != nil {
+		t.Fatalf("autoSync: %v", err)
+	}
+	if _, err := os.Stat(settings); !os.IsNotExist(err) {
+		t.Fatalf("explicit disable must stop legacy auto-sync from rewriting settings.json (err=%v)", err)
+	}
+}
+
+// TestIntegrations_DisableOnlyRemovesMarker：disable 是「不再同步」而不是「卸载」
+// ——它只摘标记，不删宿主配置（避免误删用户自己的 settings），也不再写回。
+func TestIntegrations_DisableOnlyRemovesMarker(t *testing.T) {
+	home, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	if out, _, code := runForge(t, dir, "integrations", "enable", "claude-code"); code != 0 {
+		t.Fatalf("enable: %s", out)
+	}
+	settings := filepath.Join(home, ".claude", "settings.json")
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("enable 应写 settings.json: %v", err)
+	}
+	if out, _, code := runForge(t, dir, "integrations", "disable", "claude-code"); code != 0 {
+		t.Fatalf("disable: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(data, "integrations", "claude-code")); !os.IsNotExist(err) {
+		t.Fatalf("disable 应摘掉 marker（err=%v）", err)
+	}
+	if _, err := os.Stat(settings); err != nil {
+		t.Fatalf("disable 不得删除已有宿主配置: %v", err)
 	}
 }

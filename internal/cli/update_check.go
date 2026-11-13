@@ -130,6 +130,12 @@ func shouldSkipUpdateCheck(fullVersion string, cmd *cobra.Command) bool {
 		return true
 	}
 
+	// init 只写仓库内产物（Phase C）：更新检查会写 ~/.forge/update-cache.json，
+	// 必须排除，否则 init 的零 HOME 写入承诺不成立。
+	if cmd.Name() == "init" {
+		return true
+	}
+
 	// hook 模式跳过（hook 每次文件编辑都跑，必须快）
 	if cmd.Name() == "hook" {
 		return true

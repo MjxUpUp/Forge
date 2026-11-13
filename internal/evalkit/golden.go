@@ -465,6 +465,11 @@ func runGoldenProbe(c GoldenCase, opts GoldenOptions, extraEnv []string) (*probe
 	if out, errOut, _, err := run([]string{opts.ForgeBin, "init"}, ""); err != nil {
 		return nil, fmt.Errorf("forge init: %v %s %s", err, out, errOut)
 	}
+	// 阶段 C：init 只写仓库契约（hooks: off 默认），golden 用例探的是执法/拦截
+	// 路径，夹具必须显式 opt-in，否则探测被契约门静默放行成假阴性。
+	if err := enableHooksInContract(fixture); err != nil {
+		return nil, err
+	}
 	argv := make([]string, len(c.ProbeArgv))
 	for i, a := range c.ProbeArgv {
 		argv[i] = strings.ReplaceAll(a, "{forge}", opts.ForgeBin)
