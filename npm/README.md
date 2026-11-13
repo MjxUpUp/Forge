@@ -68,7 +68,7 @@ forge task score                  # 查看质量评分
 |------|------|
 | `forge init [--profile mini\|standard\|full]` | 在仓库声明契约：只写 `spec/forge.yaml`、`spec/changes/`、`AGENTS.md` 托管块与已存在指针，不写用户主目录；`--project` 已废弃为 no-op（保留旧脚本兼容） |
 | `forge status [--json]` | 查看项目状态（任务管道 + 质量信号） |
-| `forge verify` | 项目完整性检查 + 回归测试 |
+| `forge verify` | 校验仓库契约 `spec/forge.yaml` |
 | `forge update` | 检查并更新到最新版本（按安装通道分流：npm 安装查 npm registry 并打印对应包管理器的更新命令——npm 包不可变，不做原地替换；GitHub Release 安装则从 GitHub 下载自替换） |
 
 ### 任务管理
