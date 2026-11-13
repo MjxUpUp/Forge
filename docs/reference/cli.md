@@ -252,11 +252,11 @@
 |------|------|
 | `version` | 契约版本，按主版本兼容（`"1"`） |
 | `profile` | `mini`＝lite 最小执法名册（拦截类为主，另含 tool-track / failure-track 等观测项，无 advisory）；`standard`＝缺省名册；`full`＝当前与 `standard` 等同（预留超集位）。缺省 `standard` |
-| `hooks` | `on`/`off`，缺省 `on`。`off` 时该仓库内 hook 静默放行（安全底线除外，0 次检查、0 注入；进程仍会被宿主拉起一次再立刻 allow） |
+| `hooks` | `on`/`off`，缺省 `off`。`off`（含缺省）时该仓库内 hook 静默放行（**安全底线也不例外**，0 次检查、0 注入，audit-only 仍记归属/审计；进程仍会被宿主拉起一次再立刻 allow）。写 `on` 才执法 |
 
-**安全底线**（`hazard-guard`/`mcp-scan`/`skill-scan`）不受契约里的 `hooks: off` 与契约 profile 收窄影响：契约随 git 走，不能让仓库内容关掉防它的扫描器。边界在机器全局档位——名册先按 `FORGE_PROFILE` 滤一遍，`lite` 名册里没有 `mcp-scan`/`skill-scan`，它们轮不到安全底线。
+**安全底线**（`hazard-guard`/`mcp-scan`/`skill-scan`）随执法开关（ADR-0002 阶段 B 语义变更）：默认 audit-only，显式 opt-in（契约 `hooks: on`，或无契约宿主层 `FORGE_HOOKS=on`）后才执法；执法时不受契约 profile 收窄。边界仍在机器全局档位——名册先按 `FORGE_PROFILE` 滤一遍，`lite` 名册里没有 `mcp-scan`/`skill-scan`，它们轮不到安全底线。无契约的宿主层默认 audit-only，`FORGE_HOOKS=on` 是阶段 B 临时逃生舱（阶段 C 由显式宿主集成开关取代，见 ADR-0002 决策 #3），不覆盖仓库契约的 `hooks: off`（仓库自治）。
 
-契约只做**运行时收窄**：settings 接线时被全局更窄档位滤掉的 hook，不会因契约写 `full` 而接回来。解析失败（拼写错误、未知键等）时 hook 执法按无契约处理、回落全局档位；`forge status` 打印「⚠ 契约无法解析」及生效档位。`forge change init` 生成的契约默认 `hooks: off`（只用产物、不开执法），`--profile` 只改档位、不打开门禁。init-suggest 的开关是 `FORGE_INIT_SUGGEST=1`（宿主进程环境），与本文件无关。
+契约只做**运行时收窄**：settings 接线时被全局更窄档位滤掉的 hook，不会因契约写 `full` 而接回来。解析失败（拼写错误、未知键等）时按审计模式静默放行——opt-in posture 下坏契约不打开执法、也不回落全局档位；`forge status` 打印「⚠ 契约无法解析（审计模式，不执法）」并提示修好契约写 `hooks: on`。`forge change init` 生成的契约默认 `hooks: off`（只用产物、不开执法），`--profile` 只改档位、不打开门禁。init-suggest 的开关是 `FORGE_INIT_SUGGEST=1`（宿主进程环境），与本文件无关。
 
 ## 🚦 工作流程与进阶形态
 
