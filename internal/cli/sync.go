@@ -13,6 +13,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/spf13/cobra"
 )
 
@@ -286,7 +287,15 @@ func runSync(cmd *cobra.Command, args []string) error {
 // 项目级 .forge/protocol.yml，或 DataDir 里已有 protocol.yml/hooks。这类老项目
 // 的 autoSync 继续维护（升级迁移）；新仓库不写用户主目录，接线走
 // `forge integrations enable <host>`。
+//
+// 有 spec 契约的仓库不进入这条迁移路径：它可能只是跑过 integrations enable 后
+// 又 disable 了，DataDir 里的 protocol/hooks 仍在——若把 DataDir 当证据，disable
+// 之后 autoSync 会照旧改写用户级 settings/CLAUDE.md，「已停用」就成了假话。
+// 契约仓库的宿主接线只认 marker 与 Claude plugin 两个显式信号。
 func legacyHostWiring(dir string) bool {
+	if specroot.Declared(dir) {
+		return false
+	}
 	dataDir := forgedata.DataDirFor(dir)
 	for _, p := range []string{
 		filepath.Join(dir, ".forge", "hooks"),
