@@ -17,7 +17,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"github.com/MjxUpUp/Forge/internal/clitask"
-	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 )
 
 func init() {
@@ -31,7 +30,6 @@ func init() {
 
 	// 项目生命周期：项目级低频管理
 	initCmd.GroupID = "lifecycle"
-	syncCmd.GroupID = "lifecycle"
 	updateCmd.GroupID = "lifecycle"
 	// Project Policy Layer P1: symmetric per-project takeover on/off (per-project
 	// 接入管理的开关对).
@@ -45,7 +43,6 @@ func init() {
 	conventionsCmd.GroupID = "lifecycle"
 	// One-click uninstall (npm binary + user-level assets).
 	//
-	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + 用户级资产）
 	// Legacy .forge runtime state → DataDir migration (upgrade path).
 	//
 	migrateCmd.GroupID = "lifecycle" // 旧 .forge runtime state → DataDir 迁移（升级路径）
@@ -104,15 +101,8 @@ func init() {
 
 	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
 	// 宿主接线（显式 opt-in：写用户级 settings/CLAUDE.md/skill 的唯一入口）。
-	integrationsCmd.GroupID = "integrate"
-	hazardCmd.GroupID = "integrate"
-	freezeCmd.GroupID = "integrate"
-	hookdispatch.HookCmd.GroupID = "integrate"
-	pluginCmd.GroupID = "integrate"
 	// 跨 agent 环境一致性审计（只读；多 host 接线 + 版本漂移）
-	doctorCmd.GroupID = "integrate"
 	// 节点信任 store（TOFU + 团队档验签强制；node-identity §3）。
 	trustCmd.GroupID = "integrate"
 	// hook bash 算 DataDir 用（Hidden，不进 help 列表）
-	dataDirCmd.GroupID = "integrate"
 }

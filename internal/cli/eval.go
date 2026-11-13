@@ -754,15 +754,6 @@ func init() {
 	cardCmd.Flags().Bool("render", false, "渲染 Markdown 全文")
 	evalCmd.AddCommand(cardCmd)
 
-	deadChecks := &cobra.Command{
-		Use:   "dead-checks [--window 90d] [--json]",
-		Short: "W0.1 死检查报告：按台账分 live / dead-candidate / insufficient-data（hook 瘦身的数据面）",
-		RunE:  runEvalDeadChecks,
-	}
-	deadChecks.Flags().String("window", "90d", "观察窗（90d / 2160h）")
-	deadChecks.Flags().Bool("json", false, "JSON 输出")
-	evalCmd.AddCommand(deadChecks)
-
 	friction := &cobra.Command{
 		Use:   "friction [--corpus <dir>] [--timeout 120s] [--json]",
 		Short: "W2 摩擦净值实验（脚本化双臂）：诱饵语料 ON/OFF 逃生舱对照 + 检查器开销",

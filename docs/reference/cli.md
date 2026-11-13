@@ -15,11 +15,9 @@
 
 | 命令 | 说明 |
 |------|------|
-| `forge init [--profile mini\|standard\|full]` | 在仓库里声明 forge 契约：**只写仓库内产物**——`spec/forge.yaml`（`version: "1"`、profile 缺省 mini、`hooks: off`）、`spec/changes/`（含 `archive/`）、AGENTS.md 的 forge 托管块，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`）；**不写** `~/.forge`（不登记注册表、不建 protocol.yml/runtime state、不写 hooks 资产），也不写 `~/.claude`/`~/.codex`。仓库已有 `spec/forge.yaml` 时只重同步托管块与指针，不覆盖契约。宿主接线改用 `forge integrations enable <host>`。`--agents`、`--project` 已废弃为 no-op（显式传入时打印警告）；`--mode`/`--fresh` 为隐藏 no-op，旧脚本仍可跑 |
-| `forge integrations list` / `enable <host…> [--all]` / `disable <host…>` | 显式把 forge 接线到宿主（12 种：claude-code / codex / cursor / copilot / windsurf / kimi / cline / opencode / reasonix / codebuddy / dsh / zcode；别名 claude→claude-code、codex-cli→codex、copilot-cli→copilot）。`enable` 才写用户级资产：宿主 hooks/指令/skill（Claude plugin 已装则跳过 settings.json）、`~/.forge/projects/<key>/` 的 protocol.yml 与 hook 模板/部署戳、登记 `~/.forge/projects.json`、`.sync-version`，并为每个宿主打标记 `~/.forge/integrations/<host>`；只写被点名宿主的资产（enable cursor 不碰 `~/.claude`）；要求当前目录能解析到仓库（先跑 `forge init`）。`--all` 接全部宿主（此时不接受位置参数）。`disable` 只摘标记，不删宿主配置；摘光后写 `~/.forge/integrations/.disabled` 墓碑（再次 enable 清掉）。autoSync 的用户级同步按优先级判定：Claude plugin 已装 > 墓碑 > 接线标记 > legacy 遗留接线；装了 Claude plugin 时墓碑不生效：plugin 视为显式 opt-in，autoSync 继续维护用户级指令/技能与 DataDir 资产，仅跳过 settings.json（hooks 由 plugin manifest 接管）。无标记、未装 plugin、且无 legacy 遗留接线时跳过用户级同步（仓库内去重/清理仍执行）；Phase C 之前已接过线的老仓库（无 spec 契约，留 `.forge/hooks`、`.forge/protocol.yml` 或 DataDir protocol.yml/hooks 任一项）仍走迁移同步。`enable copilot`（Copilot 只能走 plugin manifest）与 `enable dsh`（translator 无用户级文件）不写宿主资产 |
+| `forge init [--profile mini\|standard\|full]` | 在仓库里声明 forge 契约：**只写仓库内产物**——`spec/forge.yaml`（`version: "1"`、profile 缺省 mini、`hooks: off`）、`spec/changes/`（含 `archive/`）、AGENTS.md 的 forge 托管块，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`）；**不写** `~/.forge`（不登记注册表、不建 protocol.yml/runtime state、不写 hooks 资产），也不写 `~/.claude`/`~/.codex`；阶段 D 起宿主层（hook 接线、plugin、uninstall）整体移除。仓库已有 `spec/forge.yaml` 时只重同步托管块与指针，不覆盖契约。`--agents`、`--project` 已废弃为 no-op（显式传入时打印警告）；`--mode`/`--fresh` 为隐藏 no-op，旧脚本仍可跑 |
 | `forge status [--json] [--system]` | 查看项目状态（任务管道 + 质量信号）；`--system` 跑系统级健康检查（~/.forge、PATH、孤儿 hook、skills manifest） |
 | `forge change init [--profile mini\|standard\|full]` / `new <id> [--title <标题>] [--fast]` / `list [--json]` / `verify <id> [--timeout 10m]` / `status <id> [--json]` / `gate <id> --task <N> [--timeout 10m]` / `check [--staged] [--json]` / `agents [--pointers claude|cursor|all|none]` | 仓库内 change 生命周期（不要求 forge 接管）：init 写 `spec/forge.yaml`（默认 `hooks: off`）、`spec/changes/`（含 `archive/`），同步 AGENTS.md 的 forge 托管块（缺文件整份写、无块追加、有块就地替换，标记外不动），并维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`）；new 生成模板（`--fast` 只生成 proposal + acceptance）；list 从文件系统推导阶段与证据状态；verify 实跑 acceptance 判据并封印证据；status 给下一步；gate 只跑某个节点的判据；check 检查每个未归档 change 的证据是否成立（CI 与 pre-commit 共用的闸门，不合格退出码 2）；agents 单独重同步 AGENTS.md 的托管块（`<!-- forge:begin -->`…`<!-- forge:end -->`），并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（`--pointers` 点名；缺省只维护已存在的 `CLAUDE.md`，`.cursor/rules/` 目录存在时补 `forge.mdc`；详见文末补充）。详见文末「change 子命令补充」 |
-| `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge update [--apply] [--plugin]` | 检查并更新到最新版本（按安装通道分流：npm 安装自动检测包管理器 npm/pnpm/yarn，查 npm registry 并打印对应更新命令——npm 包不可变，原地替换会被下次 install 还原，故不代下载，可用 `FORGE_NPM_REGISTRY` 覆盖 registry；GitHub Release/手动安装从 GitHub 下载自替换）；npm 通道加 `--apply` 直接代跑包管理器安装命令并自验新版本（Windows 下二进制被占用时只打印命令）；加 `--plugin` 在更新后打印 plugin marketplace 重装指引（marketplace 镜像同步 hook 时建议重装） |
 | `forge off [--all] [--commit]` 或 `forge on` | 按项目退出/恢复接管（Project Policy Layer）：`off` 把当前项目（git 根）置为 declined——项目级 hook 全部静默、`forge init` 拒绝（退出不被任何默认路径重置）；`--all` 一键全退；`--commit` 额外在仓库根写 `.forge-decline` 团队声明（committed 后对所有协作者让位，deny-wins）；`on` 是 declined→managed 的唯一恢复通道（清 `.forge-decline` 声明文件；从未 init 的项目提示先 `forge init`）；仓库已有 `spec/forge.yaml` 且当前是 managed 时，`on` 直接提示「已由仓库契约声明接管」并返回（不写注册表）；若是 declined（`forge off`、`policy yield` 或 clone 到带 `.forge-decline` 的仓库），则照常恢复为 managed（契约仍在，不要求先 init；若随后提示补全接线，再跑一次 `forge init`）。状态存注册表条目（含决策来源/时间审计），`forge status` 退出码即「是否 managed」 |
 | `forge config get/set compat <版本>` | 兼容基线声明（指纹分流 v1，GODEBUG go 行声明的轻量版）：声明"行为按哪个版本的默认走"（v1 为声明性锚点 + 落后提醒，暂不分派行为——完整分流机制见承诺表"刻意不做"）；`forge status` 显示兼容基线行与落后 minor 数；遥测回读（逃生舱使用聚合）见 `forge eval dashboard`；`--raw` 只输出值供脚本消费。原 `takeover` 三档偏好随 init-suggest 一并移除 |
@@ -27,7 +25,6 @@
 | `forge conventions init [--force]` | 项目规范档案（conventions-profile）：机械扫描本仓库**已声明**的规范——AGENTS.md/CLAUDE.md/.github/copilot-instructions.md 等规范文件、lint/format 配置、stack 工具链命令——写入用户级档案 `~/.forge/projects/<key>/conventions/`；此后 hook 按宿主能力注入：会话开始注入 ≤15 行摘要（支持 PostCompact 的宿主压缩后重注入），写源码文件时注入规范文件指针+同目录范例（advisory 不阻断；同一份档案跨宿主共享）；摘要的「提取要点」节由 agent 代码考古增补，重跑 init 保留提炼内容（`--force` 才重建骨架）；规范源文件变化后指纹翻转，注入与 show 均提示重扫；task-verify 会提醒「档案声明的 lint 命令本任务未跑」（advisory，提醒与 checklog 审计行经 `FORGE_CONVENTIONS_LINT=disable` 一并静默） |
 | `forge conventions show` | 查看规范档案：stack/lint/test/build 命令、规范声明文件与 lint 配置清单、fingerprint 与过期状态（STALE=源已漂移，重跑 `forge conventions init` 刷新）、摘要全文 |
 | `forge conventions learn <rule>` | 纠正增量写回（conventions-profile）：用户/审查指出规范违规时当场把该规则写进摘要提取要点节（一字不差去重、替换待提取占位、超 15 行预算警告——注入截断至 15 行，全文仍在 summary.md）——纠正离开会话上下文进持久档案，下个会话注入即生效 |
-| `forge uninstall [--restore]` | 一键反装：剥除全部用户级 hooks（claude/codex/cursor/windsurf/opencode/kimi/reasonix/cline/codebuddy/zcode；dsh 无用户级 hook 文件可剥——其 translator 是刻意 no-op，卸载即移除 plugin）+ 用户级指令段（CLAUDE.md/AGENTS.md/global_rules.md）+ forge-quality skill + 清 npm global `@agent_forge/forge`；`--restore` 把用户级文件回滚到 forge 修改前字节（备份在 `~/.forge/backups/`）；plugin 卸载须在 agent CLI 内交互运行（不可脚本化） |
 | `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；未改过的 `.forge/protocol.yml` 由 autoSync 自动迁 DataDir，用户改过的保留为团队共享覆盖层；迁移的 task 文件落地即剥离外来门禁信号（review/验收/评分/完成/逃生舱/generic 须本机重挣，验收命令带外来标记）；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
 | `forge registry prune` | 精简全局注册表 `~/.forge/projects.json`——移除项目目录已不存在的死路径与重复条目（项目移走/删除/测试残留），原子写回。registry.List 读时惰性精简但只在 `forge dashboard` 启动时触发（启 web 阻塞），本命令给不启 web 的主动清理入口 |
 | `forge registry remove <path>` | 按路径移除单条注册表条目（精确匹配、不做前缀；路径形态与大小写归一容忍——8.3 短名/符号链接解析形态/大小写变体命中同一条）。与 prune 分工：prune 只能清**死**路径，活着的伪根（如误注册的用户 home/临时根——此类条目 registry.Add 已有保留根守卫拒绝再入册）只能具名移除 |
@@ -87,7 +84,6 @@
 | `forge task regression --finding <id> --test <file> \| --none --note <理由>` | 登记 finding 的回归测试绑定（修复自证）：修前红由 finding 作证、修后绿由 --test 指向的本任务改动 _test.go 作证（三重校验：后缀/任务窗口/真含测试函数）；无可测形态走 --none --note 落审计行——`forge task finding --resolve` 的硬前置，没有回归的 fixed 会复发 |
 | `forge task heldout-pool --add <file> --name <名> [--tag <组>] \| --list [--tag <组>] \| --draw N [--tag <组>] [--apply] [--ref <任务>]` | held-out 池（独立出题）：把出保留题变成项目资产——业务坏天气集（金额边界/并发/退款链）沉淀进 DataDir/heldout-pool/，任务侧 `--draw N --apply [--ref <任务>]` 名序确定性抽取并入指定/活跃任务保留集（按 Run 去重、保留集计数不清零、落 apply 审计行；verify-acceptance 实跑双套件记 gap）；同名拒绝静默换锚；--add/--list/--draw 是项目级动作不依赖活跃任务；「测试的测试」是人工边界——池里的题必须人出 |
 | task-complete 验收登记门禁（自动） | 非 generic 交付任务零验收标准 → 拒绝完成（考卷缺位）；考卷质量下限：有测试能力仓库考卷须含 ≥1 条测试类命令——单条 go build 不构成合格考卷；hazard 清账：未确认高危拦截悬账 → 拒绝完成（出口是真人 confirm/release，均需终端 char-device；FORGE_HAZARD_PENDING=disable 留 CI）；mutation 复发升硬：Go 改动连续 3 任务零 mutation 证据 → 硬拦（FORGE_MUTATION_GATE=disable 逃生）。考卷层级梯子：spec 产物提取（human 档可签字）＞ start 登记 ＞ conventions 兜底 ＞ manual 补登（验收单披露）。逃生与 freshness 共用舱：`forge task override --acceptance-gate disable` / `FORGE_ACCEPTANCE_GATE=disable`（落审计、降 evidence） |
-| `forge hazard halt status` / `forge hazard halt release --yes` | safe-halt 语义：hazard-guard 连续拦截 ≥3 次（自最近 confirm/release）→ 会话停机（停止自修复盲试，task gate 推进时明示）；人工核查最近拦截命令后 `release --yes` 解锁（记 halt-release 审计事件，agent 不得自我解锁） |
 | `forge task mirror github [--repo owner/name] [--dry-run]` | 分派任务镜像到 GitHub Issues（Forge 台账为主真相、issue 为组织可见面；offered→建 issue 打 forge:状态 label，终态→关闭；映射存 DataDir/mirror-gh.json；经 gh CLI，无 gh 明确报错）——Symphony 验证的组织面入口需求 |
 | `forge compat snapshot [--out <file>]` / `forge compat report [--base <ref>] [--json]` | 可执行兼容工件（七面快照：命令树+flags / CheckName roster / 逃生舱 env / 内嵌载荷 sha256 / 序列化 schema 键 / 阻断位点计数 / 外部桥契约）——golden（compat.snapshot.json）入库、PR diff 呈现；report 对比基线：破坏性变更（removed/changed）exit 2、added 提示同步文档（cargo-semver-checks 契约本地化：0=过 / 2=违规 / 1=工具故障）；承诺表见 docs/design/compat-commitments.md |
 | `forge config get/set compat <版本>` | 兼容基线声明（指纹分流 v1，GODEBUG go 行声明的轻量版）：声明"行为按哪个版本的默认走"（v1 为声明性锚点 + 落后提醒，暂不分派行为——完整分流机制见承诺表"刻意不做"）；`forge status` 显示兼容基线行与落后 minor 数；遥测回读（逃生舱使用聚合）见 `forge eval dashboard` |
@@ -97,12 +93,10 @@
 | task-complete 自报一致性门禁（自动） | checklist 已勾选项里声称执行过的验证类命令（go test/pytest/cargo test 等）与 toollog 实测 Bash 集比对：测试类声称任务全程零匹配 = 虚报进度形态（arXiv 2605.29442）→ 拒绝完成；非测试类差集只留 advisory 痕；toollog 缺失（宿主遥测未接）跳过——区分"无法验证"与"验证通过"；逃生（留痕）`FORGE_SELF_REPORT=disable` |
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D11：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅/结论位置/调研文档的来源、信度标注与内部标签——调研三条 D9-D11 在观察期内全是 advisory）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
 | `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、hook/门禁/逃生舱清单与已知盲区（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
-| `forge eval dead-checks [--window 90d] [--json]` | 死检查报告：聚合 checklog+hazard 台账，按检查分 live / dead-candidate / insufficient-data（hook 瘦身的数据面；嵌入式 hook 的 PASS 不逐次落账，触发率为下界——输出内明示） |
 | `forge eval friction [--corpus <dir>] [--timeout 120s] [--json]` | 摩擦净值实验（脚本化双臂）：诱饵语料在「门禁开 / 既有逃生舱全开」两臂下实跑，量拦截率、残余与检查器开销（ON-OFF 墙钟）；端到端 agent 臂走 FORGE_EVAL_MODEL 通道 |
 | `forge eval rule-ledger --record --rule <id> --claim <预测> --probe <命令>` / `--verify --rule <id>` / `--list` | 门禁规则可证伪台账：规则变更带预测声明 + 可执行 probe，verify 实跑落账结论（`evals/rule-ledger.jsonl` 随库提交；损坏行 fail-closed） |
 | `forge init --profile <mini\|standard\|full>` | 写进仓库契约的档位（`spec/forge.yaml` 的 `profile`）：mini=拦截+管线+状态最小集，standard=完整现行，full=预留位；`lite` 为 mini 的旧名（打印提示后按 mini 写）。它只决定这个仓库运行时的收窄档位，不打开执法（`hooks: off` 仍是缺省），也不写 `~/.forge/profile` |
 | `forge eval dashboard [--dry-run] [--json]` | 遥测：escape 率/off_churn/自举通过率（Wilson 95% CI + 误用注记；样本低于字典下限只出 INSUFFICIENT）。快照落 `~/.forge/evals/forge/snapshots/` |
-| `forge eval harness-audit [--json]` | harness 修复的事前/事后度量（详见 docs/design/harness-fixes-a-g-2026-09.md）：checklog × toollog（2s 双记去重）× 任务 × hazard 一次算出 skill-trigger 日均触发/按通道转化/inline 跟随/verification-driver 精度、next-hint 采纳、门禁命令形态、refs-critical 下钻（按 host）、封印后归因泄漏、hazard 双投递、coverage 拦后转 pass；`--json` 带口径字段，两机回测只比同口径基线（`evals/harness-audit-*-baseline-*.json`） |
 | `forge eval golden run [--dir <dir>] [--repeats N] [--rewrite-manifest] [--release] [--json]` | 门禁 golden 标注集重放：precision/fpr（Wilson 区间）+ 确定性重放一致率；用例集指纹钉在 `evals/forge/golden/MANIFEST.sha256`，不符拒绝运行（`--rewrite-manifest` 仅限显式轮换）。用例 `layer: test` 只在 `--release` 时运行，每次给 test 层查询计数 +1 并落 `eval-golden-test-query` 行 |
 | `forge eval golden private-init` / `rotate [--max-cases N]` | 私有 golden 子集（0700，永不进 VCS）与季度轮换（oracle 复验 + 最老优先淘汰 + 审计行） |
 | `forge eval traps run [--dir <dir>]` | 对抗陷阱重放（14 用例：测试削弱/伪造审计证据/虚假完成 + cheat-scan 七模式族 11 例——type-suppression/error-swallow/dead-branch/comment-only-fix/comment-as-debt/phantom-import/path-assumption，经 gate push --dry-run 推送边界探测；ImpossibleBench 思想）；capture 率与行动清单 |
@@ -159,23 +153,7 @@
 | `forge review pass [--ref <ref>] [--note <文本>] [--acknowledge-changes]` | 标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）；--note 审查结论文本记入 ReviewRound/stamp 与 checklog 审计留痕；距上次基线有源码变更时裸 pass 会被拒——须 --note 记复审结论，或 --acknowledge-changes 显式自我承担（记 WARN 级 self-refresh 审计） |
 | `forge review gate` | 判定当前是否需要审查（Stop hook 调用；exit 0=放行，1=需审 block） |
 | `forge review status` | 显示当前审查状态 |
-| `forge enforcement [--sample N] [--json]` | 执法健康报告（只读聚合 checklog+会话 markers+野外申报）：task-guard advisory/blocked 计数、无视升档会话、缓冲窗口超时违规（升档后 3 次编辑窗口内未补救——建任务或 wild 申报——则落违规记录）、无任务测试编辑、wild 申报数；双环信号（升档超阈→审查规则本身而非加码执法）与降格信号（提升规则零阻断零升档→zombie rule 复审）。`--sample N` 随机抽已完成任务 join 其会话遥测——"无视升档仍完成且未被阻断"样本标强制复盘（无灾≠安全）；随机化使审计不可预演 |
 
-**高危命令 human-in-the-loop**：`forge hazard` 让高危命令拦截从 session 级 skill 变成 opt-in 自动挡（契约 `hooks: on` 或无契约宿主 `FORGE_HOOKS=on` 才执法；缺省 audit-only 静默放行）——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 向用户说明风险 → 用户在自己的终端运行 `forge hazard confirm --last` 登记 5min 限时标记（agent 自行运行会被拒）→ 重试放行。阻断但放行权在人，而非无条件硬 block：合法高危操作（删 build 产物）确认后能继续；`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用），confirm 链是唯一放行路径。
-
-| 命令 | 说明 |
-|------|------|
-| `forge hazard confirm --last` | 确认最近一条被拦命令（从事件日志取指纹，零复制转写，推荐；须真人终端） |
-| `forge hazard confirm <命令> [--fingerprint <hex>]` | 登记一次高危命令确认（5min 内同命令重试放行；`--fingerprint` 回传 hook 输出的 hex 指纹；须真人终端） |
-| `forge hazard status` | 列出当前有效确认及剩余时间 |
-
-**写入范围冻结**：`forge freeze` 把 on-demand-guards 的 /freeze 目录锁定从「agent 每回合自检」的 prompt 型护栏落地为真 hook——激活后 freeze-guard hook（PreToolUse Write|Edit，排在 task-guard 之前优先判定）硬阻断所有冻结路径之外的写入（需 hook 执法开启；缺省 audit-only 不阻断），长会话/压缩后不漂移。支持多路径、相对路径（相对当前目录归一化）、Windows 大小写不敏感比较。
-
-| 命令 | 说明 |
-|------|------|
-| `forge freeze <路径>...` | 激活 freeze（可多路径；再次激活即替换范围） |
-| `forge freeze --off` | 解除 freeze（幂等） |
-| `forge freeze --status` | 查看当前 freeze 状态 |
 
 **Act 反馈臂（证据驱动结论）**：`forge task complete` 时把本任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度）落盘到 `~/.forge/projects/<项目key>/act/conclusions.jsonl`，供回顾流程（`session-retrospective` skill）消费，`forge act show` 可查。证据弱（Unverified/Weak）或低分（<70）的结论标 RetrospectiveNudge——对冲"高分但没真验证"的 LLM-judge 盲区。
 
@@ -229,15 +207,9 @@
 | 命令 | 说明 |
 |------|------|
 | `forge health [--json]` | 项目级质量趋势——聚合所有任务结论（分数走势/证据盲区率/复发低分维度，task→project 粒度联动） |
-| `forge doctor [--json]` | 跨 agent 环境一致性审计（只读）——扫 9 个 agent host 的 forge hook 接线、解析各 host hook 实际调用的 forge 二进制并对照版本（ok/drift/nover/missing 四态），并列出 PATH 上全部 forge 可执行文件（多个并存 = 游离 exe/shim 抢路，PATHEXT 事故形状）；并审计 skills 分发态（canonical vs 全局各目标，missing/drift 附修复命令——canonical 新增 skill 后未重装的目标缺失即在此暴露）；copilot 无稳定配置路径约定，刻意不在列 |
 | `forge trace <task-ref> [--window <chars>]` | 查看任务的完整质量事件时间线（checklog + toollog + token）；`--window` 输出分段监控窗口（每窗 ≤ 预算字符、头部周期性守卫重注入——下游 LLM judge/取证按窗取输入，禁止全量轨迹塞上下文，Classifier Context Rot 缓解） |
-| `forge dashboard [--port <n>] [--no-open]` | 本地全局质量看板（Pulse 面板）——在任意目录运行都聚合 `~/.forge/projects.json` 登记的全部项目（`forge integrations enable` 显式登记），渲染事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合（localhost 只读，自动开浏览器，Ctrl+C 退出，面板内按项目过滤）；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |
-| `forge sync [--force]` | 同步 forge 资产到当前二进制版本（用户级 hooks/指令/skill 重生成 + 存量项目级残留收敛）。用户级重生成受 Phase C 接线闸门约束：无 integrations 标记、未装 Claude plugin 且不是 Phase C 前老仓库时，即使 `--force` 也只做仓库内收敛；注意：名字易误读——跨机器迁移项目数据用 `forge project export/import`，与本命令无关 |
-| `forge plugin pack [--out <dir>]` | 生成多 host plugin pack（.claude-plugin/.cursor-plugin marketplace + plugins/\<name\>/ 树：claude manifest + reasonix native manifest + 每 host 安装 README），让各 agent 一键 `plugin install forge` 跨工具接线（薄 manifest + 共享内容，单仓即 marketplace） |
+| `forge dashboard [--port <n>] [--no-open]` | 本地全局质量看板（Pulse 面板）——在任意目录运行都聚合 `~/.forge/projects.json` 登记的全部项目（`forge registry add` 显式登记），渲染事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合（localhost 只读，自动开浏览器，Ctrl+C 退出，面板内按项目过滤）；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |
 | `forge bridge verify <dir> [--json]` | 对一个 dsh 插件包跑静态检查（#1884 四大事故模式：inject 一致性 / 同名注册 / @deepseek-ai vendored 耦合 / 未知事件），error → exit 2——dsh 插件作者发布前自检用（见 docs/design/forge-dsh-provider-roadmap.md） |
-| `forge plugin status` | 报告 forge plugin 是否在 user-level 已装（exit 0=已装，非零=未装；供脚本检测） |
-| `forge plugin dedupe [dir] [--keep-empty]` | plugin 已装时清理 project-level 重复 hooks + 旧项目 .mcp.json forge server 残留，并清理 user-level `settings.local.json` 的重复 forge hooks；幂等 no-op；user-level 始终保留文件壳（绝不删用户全局配置）；手动不传则项目级清完删空文件 |
-| `forge plugin kimi-manifest [--write]` | 渲染/再生成已提交的 kimi plugin manifest（`.kimi-plugin/plugin.json`）——version 读 `npm/package.json`（单一真相源）、hooks 从 ForgeHookSpec 派生、description 与守卫测试共享常量；默认打印 + 报漂移（退出码恒 0，执法归 `TestKimiPluginManifestMirrorsSpec`），`--write` 逐字节比对后重写（in sync 不改写）；forge 仓库维护命令（从 cwd 向上找 `npm/package.json`） |
 
 </details>
 
@@ -245,7 +217,7 @@
 
 ## ⚙️ 配置文件：`spec/forge.yaml`
 
-仓库内的成员资格与执法契约（带契约的仓库不需要 `forge init`、不写全局注册表；hook 接线仍来自用户级 init / plugin）：
+仓库内的成员资格声明：带契约的仓库不需要隐式登记，全局视图需要显式 `forge registry add`。
 
 查找位置：只认 **git 仓库根**的 `spec/forge.yaml`。放好之后跑一次 `forge status`，应看到 `spec: spec/forge.yaml (仓库声明式成员资格)`；`forge policy state` 应输出 managed（declined 的仓库例外：`forge off`、`policy yield`、或 clone 到带 `.forge-decline` 的仓库都会让这里报 declined）。子目录里的同名文件不会激活整仓；非 git 目录向上查找，走到用户 home 就停（home 本身不算项目根）。符号链接路径按真实路径判定。
 
@@ -253,11 +225,7 @@
 |------|------|
 | `version` | 契约版本，按主版本兼容（`"1"`） |
 | `profile` | `mini`＝lite 最小执法名册（拦截类为主，另含 tool-track / failure-track 等观测项，无 advisory）；`standard`＝缺省名册；`full`＝当前与 `standard` 等同（预留超集位）。缺省 `standard` |
-| `hooks` | `on`/`off`，缺省 `off`。`off`（含缺省）时该仓库内 hook 静默放行（**安全底线也不例外**，0 次检查、0 注入，audit-only 仍记归属/审计；进程仍会被宿主拉起一次再立刻 allow）。写 `on` 才执法 |
 
-**安全底线**（`hazard-guard`/`mcp-scan`/`skill-scan`）随执法开关（ADR-0002 阶段 B 语义变更）：默认 audit-only，显式 opt-in（契约 `hooks: on`，或无契约宿主层 `FORGE_HOOKS=on`）后才执法；执法时不受契约 profile 收窄。边界仍在机器全局档位——名册先按 `FORGE_PROFILE` 滤一遍，`lite` 名册里没有 `mcp-scan`/`skill-scan`，它们轮不到安全底线。无契约的宿主层默认 audit-only，`FORGE_HOOKS=on` 是阶段 B 临时逃生舱（阶段 C 由显式宿主集成开关取代，见 ADR-0002 决策 #3），不覆盖仓库契约的 `hooks: off`（仓库自治）。
-
-契约只做**运行时收窄**：settings 接线时被全局更窄档位滤掉的 hook，不会因契约写 `full` 而接回来。解析失败（拼写错误、未知键等）时按审计模式静默放行——opt-in posture 下坏契约不打开执法、也不回落全局档位；`forge status` 打印「⚠ 契约无法解析（审计模式，不执法）」并提示修好契约写 `hooks: on`。`forge change init` 生成的契约默认 `hooks: off`（只用产物、不开执法），`--profile` 只改档位、不打开门禁
 
 ## 🚦 工作流程与进阶形态
 
