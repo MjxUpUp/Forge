@@ -36,7 +36,8 @@ func TestCoreAndPackSkillNamesDisjoint(t *testing.T) {
 		}
 	}
 	if checked == 0 {
-		t.Fatal("未找到任何扩展包——守卫空转")
+		// 阶段 D 删除了全部宿主扩展包：没有扩展包时同名冲突不存在，守卫空转。
+		t.Skip("未找到任何扩展包（阶段 D 起仓库不再分发宿主插件）")
 	}
 }
 
