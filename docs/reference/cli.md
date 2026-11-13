@@ -151,7 +151,7 @@
 <details>
 <summary><b>🔍 代码审查 / 高危命令 / Act 反馈（自动挡）</b></summary>
 
-**代码审查门禁**：`forge review` 让 code-review-gate 从"靠手动唤起"变成自动挡——task 流程下 task-complete 门禁强制 ReviewPassed 前置（提交前必审）；非 task 流程下 Stop hook 自动拦截未审的源码变更。误触发已防护：纯文档/配置/生成物变更、无变更、commit 后干净工作区不触发；同一 diff 反复未审最多 block 3 次后 advisory 放行（防 Stop 死循环）。审查由独立只读子 agent 执行（防自审盲区），见 `code-review-gate` skill。
+**代码审查门禁**：`forge review` 让 code-review-gate 从"靠手动唤起"变成自动挡——task 流程下 task-complete 门禁强制 ReviewPassed 前置（提交前必审）；非 task 流程下 Stop hook 自动拦截未审的源码变更（需 hook 执法开启；缺省 audit-only）。误触发已防护：纯文档/配置/生成物变更、无变更、commit 后干净工作区不触发；同一 diff 反复未审最多 block 3 次后 advisory 放行（防 Stop 死循环）。审查由独立只读子 agent 执行（防自审盲区），见 `code-review-gate` skill。
 
 | 命令 | 说明 |
 |------|------|
@@ -160,7 +160,7 @@
 | `forge review status` | 显示当前审查状态 |
 | `forge enforcement [--sample N] [--json]` | 执法健康报告（只读聚合 checklog+会话 markers+野外申报）：task-guard advisory/blocked 计数、无视升档会话、缓冲窗口超时违规（升档后 3 次编辑窗口内未补救——建任务或 wild 申报——则落违规记录）、无任务测试编辑、wild 申报数；双环信号（升档超阈→审查规则本身而非加码执法）与降格信号（提升规则零阻断零升档→zombie rule 复审）。`--sample N` 随机抽已完成任务 join 其会话遥测——"无视升档仍完成且未被阻断"样本标强制复盘（无灾≠安全）；随机化使审计不可预演 |
 
-**高危命令 human-in-the-loop**：`forge hazard` 让高危命令拦截从 session 级 skill 变成 always-on 自动挡——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 向用户说明风险 → 用户在自己的终端运行 `forge hazard confirm --last` 登记 5min 限时标记（agent 自行运行会被拒）→ 重试放行。阻断但放行权在人，而非无条件硬 block：合法高危操作（删 build 产物）确认后能继续；`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用），confirm 链是唯一放行路径。
+**高危命令 human-in-the-loop**：`forge hazard` 让高危命令拦截从 session 级 skill 变成 opt-in 自动挡（契约 `hooks: on` 或无契约宿主 `FORGE_HOOKS=on` 才执法；缺省 audit-only 静默放行）——hazard-guard hook（PreToolUse Bash）检测 `rm -rf` / `git push --force` / `git reset --hard` / `DROP DATABASE|TABLE|SCHEMA` / `TRUNCATE` / `GRANT ALL` / `kubectl delete` / `docker system prune` / `shred` / 无 WHERE 的 `DELETE|UPDATE` 等 → block 并指引 agent 向用户说明风险 → 用户在自己的终端运行 `forge hazard confirm --last` 登记 5min 限时标记（agent 自行运行会被拒）→ 重试放行。阻断但放行权在人，而非无条件硬 block：合法高危操作（删 build 产物）确认后能继续；`FORGE_ALLOW_HAZARD` env 豁免已移除（可被 agent 自我放行滥用），confirm 链是唯一放行路径。
 
 | 命令 | 说明 |
 |------|------|
@@ -168,7 +168,7 @@
 | `forge hazard confirm <命令> [--fingerprint <hex>]` | 登记一次高危命令确认（5min 内同命令重试放行；`--fingerprint` 回传 hook 输出的 hex 指纹；须真人终端） |
 | `forge hazard status` | 列出当前有效确认及剩余时间 |
 
-**写入范围冻结**：`forge freeze` 把 on-demand-guards 的 /freeze 目录锁定从「agent 每回合自检」的 prompt 型护栏落地为真 hook——激活后 freeze-guard hook（PreToolUse Write|Edit，排在 task-guard 之前优先判定）硬阻断所有冻结路径之外的写入，长会话/压缩后不漂移。支持多路径、相对路径（相对当前目录归一化）、Windows 大小写不敏感比较。
+**写入范围冻结**：`forge freeze` 把 on-demand-guards 的 /freeze 目录锁定从「agent 每回合自检」的 prompt 型护栏落地为真 hook——激活后 freeze-guard hook（PreToolUse Write|Edit，排在 task-guard 之前优先判定）硬阻断所有冻结路径之外的写入（需 hook 执法开启；缺省 audit-only 不阻断），长会话/压缩后不漂移。支持多路径、相对路径（相对当前目录归一化）、Windows 大小写不敏感比较。
 
 | 命令 | 说明 |
 |------|------|
