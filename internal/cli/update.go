@@ -24,24 +24,7 @@ import (
 
 func init() {
 	updateCmd.Flags().BoolVar(&updateApplyFlag, "apply", false, "npm 通道代跑包管理器安装命令并自验版本（GitHub 通道默认即执行）")
-	updateCmd.Flags().BoolVar(&updatePluginFlag, "plugin", false, "更新 binary 后打印 plugin marketplace 重装指引（不脚本化，agent CLI 内交互运行）")
 	rootCmd.AddCommand(updateCmd)
-}
-
-// updatePluginFlag --plugin flag：因 plugin marketplace 重装需在 agent CLI 内交互
-// 跑（不可脚本化），更新 binary 后打印一键卸载/重装命令。
-var updatePluginFlag bool
-
-// printPluginReinstallGuidance 输出 plugin marketplace 重装指引到 w。
-// 在 agent CLI 内手工跑（Claude Code/Codex/Cursor/Copilot CLI 各有不同命令，
-// 故不在 update 自动执行）。三步式（卸载→重装）指引，不脚本化生成器（marketplace
-// 重装须在 agent CLI 内交互跑）。
-func printPluginReinstallGuidance(w io.Writer) {
-	fmt.Fprintln(w, ``)
-	fmt.Fprintln(w, `提示：plugin marketplace 中 plugin.json 镜像 Forge Go 变更，建议重新安装以同步：`)
-	fmt.Fprintln(w, `  Claude Code / Cursor:  /plugin uninstall forge@forge && /plugin install forge@forge`)
-	fmt.Fprintln(w, `  Codex:                 codex plugin uninstall forge@forge && codex plugin install forge@forge`)
-	fmt.Fprintln(w, `  GitHub Copilot CLI:    copilot plugin uninstall forge@forge && copilot plugin install forge@forge`)
 }
 
 var updateCmd = &cobra.Command{
@@ -58,10 +41,7 @@ var updateCmd = &cobra.Command{
 - 其他（GitHub Release / 手动放置）：从 GitHub Releases 下载并原地替换，
   支持 SHA-256 校验和验证（本通道默认即执行安装，--apply 无附加作用）。
   Windows 上更新前先把旧二进制重命名为 .old、成功后删除；若替换与回滚都
-  失败，需按错误提示手动 move .old 还原（forge 不会在下次启动时自动恢复）。
-
-可加 --plugin 触发后打印 plugin marketplace 重装指引（marketplace 含的 plugin.json
-镜像 Go 变更时建议重装以同步）。`,
+  失败，需按错误提示手动 move .old 还原（forge 不会在下次启动时自动恢复）。`,
 	RunE: runUpdate,
 }
 
@@ -171,9 +151,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			if runtime.GOOS == "windows" {
 				// 运行中的二进制被 Windows 文件锁挡住——npm 无法替换，代跑必败。
 				fmt.Fprintf(os.Stderr, "Windows 上运行中的 forge 二进制会被文件锁挡住 npm 替换——请退出本次会话后手动执行：\n  %s\n", npmUpdateCommand(channel.pm, latest))
-				if updatePluginFlag { // 复审 P3-4：与 unix apply 路径同 flag 契约。
-					printPluginReinstallGuidance(os.Stderr)
-				}
 				_ = saveUpdateCache(latest, channel.kind)
 				return nil
 			}
@@ -200,18 +177,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 					fmt.Fprintf(os.Stderr, "⚠ 安装命令成功但版本自验未确认 %s——若 `forge --version` 仍报旧版，检查 PATH 上是否有游离的旧二进制（PATHEXT/手动 exe）\n", latest)
 				}
 			}
-			if updatePluginFlag {
-				printPluginReinstallGuidance(os.Stderr)
-			}
 			_ = saveUpdateCache(latest, channel.kind)
 			return nil
 		}
 		printNpmUpdateGuidance(os.Stderr, latest, channel.pm)
-		// 与 GitHub 路径同 --plugin 契约：无论哪条路更新后 marketplace
-		// 镜像都可能需要重装。
-		if updatePluginFlag {
-			printPluginReinstallGuidance(os.Stderr)
-		}
 		_ = saveUpdateCache(latest, channel.kind)
 		return nil
 	}
@@ -277,11 +246,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// 更新缓存
 	_ = saveUpdateCache(latest, channel.kind)
-
-	// --plugin flag: 提示 plugin 重新安装（marketplace 镜像）
-	if updatePluginFlag {
-		printPluginReinstallGuidance(os.Stderr)
-	}
 
 	return nil
 }

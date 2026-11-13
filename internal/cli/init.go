@@ -14,14 +14,18 @@ import (
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().String("profile", "", "仓库契约档位: mini（默认）/ standard / full（旧接线档 lite 按 mini 处理）")
-	initCmd.Flags().String("agents", "", "(deprecated, no-op) 宿主接线改用 forge integrations enable <host>")
 	initCmd.Flags().Bool("project", false, "(deprecated, no-op) 团队模式已并入仓库契约 spec/forge.yaml")
 	// Deprecated no-op flags. 项目级管道删除后 mode/fresh 已无意义，保留为隐藏 no-op
 	// 维持向后兼容：旧脚本的 `forge init --mode medium` 不报错，只是无效。
 	initCmd.Flags().String("mode", "", "(deprecated, no-op) 旧版项目规模标志，项目级管道删除后无意义")
 	initCmd.Flags().Bool("fresh", false, "(deprecated, no-op) 旧版强制重新生成标志")
+	// --agents 是阶段 D 删除宿主层后遗留的最后一个宿主接线 flag。保留为隐藏
+	// no-op：旧脚本 `forge init --agents cursor` 不能因为「unknown flag」直接失败
+	// （那会让升级后的首次 init 断在半路），但也不再有任何宿主产物可写。
+	initCmd.Flags().String("agents", "", "(deprecated, no-op) 阶段 D 起没有宿主接线，传入即忽略")
 	_ = initCmd.Flags().MarkHidden("mode")
 	_ = initCmd.Flags().MarkHidden("fresh")
+	_ = initCmd.Flags().MarkHidden("agents")
 }
 
 var initCmd = &cobra.Command{
@@ -33,8 +37,8 @@ var initCmd = &cobra.Command{
   AGENTS.md         — forge 托管块（缺文件整份写、无块追加、有块就地替换）
   已存在的入口指针  — CLAUDE.md / .cursor/rules/forge.mdc 指到 AGENTS.md
 
-它不写用户主目录。宿主接线（~/.claude/settings.json、~/.codex/hooks.json 等）
-是显式 opt-in，用 'forge integrations enable <host>' 开启；退出用 'forge off'。
+它不写用户主目录。阶段 D 起没有宿主管道（hook/插件/用户级设置都已移除）；
+质量检查由 task gate 与 change verify 在进程内执行。
 
 --project 曾是团队模式（项目级 .forge/ 资产）；契约随仓库走后该 flag 是 no-op。`,
 	RunE: runInit,
@@ -56,8 +60,8 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// 让位是知情选择）。注意 .forge-decline 声明项目在上方门禁已被拒。
 	warnForeignHarness(policyRoot())
 
-	if agents, _ := cmd.Flags().GetString("agents"); strings.TrimSpace(agents) != "" && strings.TrimSpace(agents) != "auto" {
-		fmt.Fprintln(os.Stderr, "Warning: --agents 已废弃——宿主接线改用 forge integrations enable <host>（本次忽略）")
+	if agents, _ := cmd.Flags().GetString("agents"); strings.TrimSpace(agents) != "" {
+		fmt.Fprintln(os.Stderr, "Warning: --agents 已废弃（阶段 D 起没有宿主接线），本次忽略")
 	}
 	if team, _ := cmd.Flags().GetBool("project"); team {
 		fmt.Fprintln(os.Stderr, "Warning: --project 已废弃——契约随仓库走（spec/forge.yaml），不再写项目级 .forge/ 资产（本次忽略）")
@@ -113,7 +117,7 @@ func initRepoContract(dir, profile string) error {
 	fmt.Println("forge 仓库契约已就位（只写仓库内产物，不写用户主目录）")
 	fmt.Println()
 	fmt.Println("下一步：")
-	fmt.Println("  forge integrations enable <host>     # 可选：把 hooks/指令接到宿主用户级配置（显式 opt-in）")
+	fmt.Println("  forge registry add                  # 把本项目登记进全局视图（dashboard/task --all-projects）；本地任务不需要")
 	fmt.Println("  forge change new <id> --title \"...\"  # 建一个 change")
 	fmt.Println("  forge status                         # 看当前状态")
 	return nil

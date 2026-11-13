@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/specroot"
 )
 
@@ -126,275 +124,27 @@ func TestInit_LiteMapsToMini(t *testing.T) {
 	}
 }
 
-// TestInit_DeprecatedFlagsAreNoOps：--project/--agents/--mode 仍被接受（旧脚本不炸），
-// 但不再产生任何项目级 .forge/ 资产，并给出废弃警告。
-func TestInit_DeprecatedFlagsAreNoOps(t *testing.T) {
+// TestInit_HostWiringFlagsAreGone：--agents 是阶段 D 删除宿主层后保留的 hidden
+// no-op——旧脚本传了不能失败，只能收到废弃警告，且绝不写 HOME/项目宿主产物。
+func TestInit_HostWiringFlagsAreGone(t *testing.T) {
 	home, _ := isolatedHomeEnv(t)
 	dir := t.TempDir()
 
-	out, _, code := runForge(t, dir, "init", "--project", "--agents", "cursor,copilot", "--mode", "medium")
+	out, _, code := runForge(t, dir, "init", "--agents", "cursor")
 	if code != 0 {
-		t.Fatalf("forge init 退出 %d：%s", code, out)
+		t.Fatalf("--agents 是 hidden no-op，退出码应为 0：%s", out)
 	}
-	for _, want := range []string{"--project 已废弃", "--agents 已废弃"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("输出缺废弃警告 %q：%s", want, out)
+	if !strings.Contains(out, "--agents 已废弃（阶段 D 起没有宿主接线），本次忽略") {
+		t.Errorf("应打印废弃警告：%s", out)
+	}
+	for _, name := range []string{".cursor", ".github", ".claude"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("init --agents 不应写项目宿主产物 %s", name)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".forge")); !os.IsNotExist(err) {
-		t.Error("--project 不应再写项目级 .forge/")
-	}
 	if got := snapshotTree(t, home); len(got) != 0 {
-		t.Errorf("废弃 flag 不应把 init 变回写 HOME：%v", got)
+		t.Errorf("init --agents 不应写 HOME：%v", got)
 	}
 }
 
 // TestIntegrations_EnableAndDisable：显式 enable 才写宿主配置与标记；disable 摘标记。
-func TestIntegrations_EnableAndDisable(t *testing.T) {
-	home, data := isolatedHomeEnv(t)
-	dir := t.TempDir()
-	initProject(t, dir)
-
-	// init 之后、enable 之前：status 不该把用户主目录写回来（autoSync 闸门）。
-	if out, _, code := runForge(t, dir, "status"); code != 0 {
-		t.Fatalf("status 退出 %d：%s", code, out)
-	}
-	if got := snapshotTree(t, home); len(got) != 0 {
-		t.Fatalf("无宿主接线时 status 写了用户主目录：%v", got)
-	}
-
-	stdout, _, code := runForge(t, dir, "integrations", "enable", "claude-code")
-	if code != 0 {
-		t.Fatalf("integrations enable 退出 %d：%s", code, stdout)
-	}
-	if !strings.Contains(stdout, "已接线") {
-		t.Errorf("enable 输出缺接线确认：%s", stdout)
-	}
-	settings := filepath.Join(home, ".claude", "settings.json")
-	raw, err := os.ReadFile(settings)
-	if err != nil {
-		t.Fatalf("~/.claude/settings.json 未写：%v", err)
-	}
-	if !strings.Contains(string(raw), "forge hook batch --event PreToolUse") {
-		t.Error("用户级 settings.json 缺 forge hook 接线")
-	}
-	if _, err := os.Stat(filepath.Join(data, "integrations", "claude-code")); err != nil {
-		t.Errorf("接线标记未写：%v", err)
-	}
-
-	// 单一真相源守卫（阶段 C 从 init 移到 enable）：hooks 目录里的 .sh 数必须
-	// 等于 hooks.HookNames()，加/删 hook 忘改文档或漏生成会在这里响。
-	entries, err := os.ReadDir(filepath.Join(forgedata.DataDirFor(dir), "hooks"))
-	if err != nil {
-		t.Fatalf("读 hooks 目录：%v", err)
-	}
-	shCount := 0
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".sh") {
-			shCount++
-		}
-	}
-	if want := len(hooks.HookNames()); shCount != want {
-		t.Fatalf("hooks 目录 .sh 数 = %d, want %d（== len(hooks.HookNames())）", shCount, want)
-	}
-
-	stdout, _, code = runForge(t, dir, "integrations", "list")
-	if code != 0 || !strings.Contains(stdout, "claude-code") || !strings.Contains(stdout, "已接线") {
-		t.Errorf("integrations list 未显示已接线：%s", stdout)
-	}
-
-	stdout, _, code = runForge(t, dir, "integrations", "disable", "claude-code")
-	if code != 0 || !strings.Contains(stdout, "已停用") {
-		t.Errorf("integrations disable 失败：%s", stdout)
-	}
-	if _, err := os.Stat(filepath.Join(data, "integrations", "claude-code")); !os.IsNotExist(err) {
-		t.Error("disable 应摘掉接线标记")
-	}
-}
-
-// TestIntegrations_EnableAll：`enable --all` 不接收位置参数也必须能跑（帮助与
-// README 都这么写；此前 cobra.MinimumNArgs(1) 会在 RunE 之前直接拒绝）。
-func TestIntegrations_EnableAll(t *testing.T) {
-	_, data := isolatedHomeEnv(t)
-	dir := t.TempDir()
-	initProject(t, dir)
-
-	stdout, _, code := runForge(t, dir, "integrations", "enable", "--all")
-	if code != 0 {
-		t.Fatalf("integrations enable --all 退出 %d：%s", code, stdout)
-	}
-	for _, host := range integrationHostNames() {
-		if _, err := os.Stat(filepath.Join(data, "integrations", host)); err != nil {
-			t.Errorf("--all 漏了宿主 %s：%v", host, err)
-		}
-	}
-	// --all 与显式宿主互斥：语义含糊的组合必须报错，而不是悄悄按其中一个执行。
-	out, _, code := runForge(t, dir, "integrations", "enable", "--all", "codex")
-	if code == 0 {
-		t.Fatalf("--all 与显式宿主同时给应失败，实际退出 0：%s", out)
-	}
-	if !strings.Contains(out, "--all") {
-		t.Errorf("互斥错误应提到 --all：%s", out)
-	}
-}
-
-// TestAutoSync_CleansRepoResidueWithoutWiring：没有宿主接线的仓库不写 HOME，
-// 但仓内清理（strip 遗留项目级 forge 写入、删死文件）仍要跑——否则「init 只写
-// 仓库」的仓库里，老版本留下的 .forge 垃圾永远清不掉。
-func TestAutoSync_CleansRepoResidueWithoutWiring(t *testing.T) {
-	home, data := isolatedHomeEnv(t)
-	dir := t.TempDir()
-	initProject(t, dir)
-	forgeDir := filepath.Join(dir, ".forge")
-	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	stamp := filepath.Join(forgeDir, ".sync-version")
-	pipeline := filepath.Join(forgeDir, "pipeline.yml")
-	if err := os.WriteFile(stamp, []byte("0.0.0-old\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(pipeline, []byte("legacy\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	before := len(snapshotTree(t, home)) + len(snapshotTree(t, data))
-	if err := autoSync(dir, "9.9.9-test", false); err != nil {
-		t.Fatalf("autoSync: %v", err)
-	}
-	after := len(snapshotTree(t, home)) + len(snapshotTree(t, data))
-	if after != before {
-		t.Errorf("没有接线时 autoSync 不得写用户主目录：before=%d after=%d", before, after)
-	}
-	if _, err := os.Stat(stamp); !os.IsNotExist(err) {
-		t.Errorf("仓内清理应删掉遗留 .forge/.sync-version（err=%v）", err)
-	}
-	if _, err := os.Stat(pipeline); !os.IsNotExist(err) {
-		t.Errorf("仓内清理应删掉死文件 .forge/pipeline.yml（err=%v）", err)
-	}
-}
-
-// TestIntegrations_ListAfterDisableAllShowsNoWiring：.disabled 墓碑不是接线，
-// list 不能在「全部 disable」之后还显示得像有宿主接上（P3-2 回归）。
-func TestIntegrations_ListAfterDisableAllShowsNoWiring(t *testing.T) {
-	_, _ = isolatedHomeEnv(t)
-	dir := t.TempDir()
-	initProject(t, dir)
-	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
-		t.Fatalf("enable: %s", out)
-	}
-	if out, _, code := runForge(t, dir, "integrations", "disable", "cursor"); code != 0 {
-		t.Fatalf("disable: %s", out)
-	}
-	out, _, code := runForge(t, dir, "integrations", "list")
-	if code != 0 {
-		t.Fatalf("list: %s", out)
-	}
-	if !strings.Contains(out, "当前没有宿主接线") {
-		t.Errorf("全部 disable 后 list 应提示没有接线，实际：%s", out)
-	}
-}
-
-// TestIntegrations_RejectsUnknownHost：拼错的宿主名必须报错并列出可选值。
-func TestIntegrations_RejectsUnknownHost(t *testing.T) {
-	_, _ = isolatedHomeEnv(t)
-	dir := t.TempDir()
-	initProject(t, dir)
-
-	out, _, code := runForge(t, dir, "integrations", "enable", "claud")
-	if code == 0 {
-		t.Fatalf("未知宿主应失败，实际退出 0：%s", out)
-	}
-	if !strings.Contains(out, "未知宿主") || !strings.Contains(out, "claude-code") {
-		t.Errorf("错误信息应含未知宿主与可选清单：%s", out)
-	}
-}
-
-// TestIntegrations_RequiresRepoContract：没有 spec/forge.yaml 时 enable 拒绝并指路 init。
-func TestIntegrations_RequiresRepoContract(t *testing.T) {
-	_, _ = isolatedHomeEnv(t)
-	dir := t.TempDir()
-
-	out, _, code := runForge(t, dir, "integrations", "enable", "claude-code")
-	if code == 0 {
-		t.Fatalf("仓库外 enable 应失败：%s", out)
-	}
-	if !strings.Contains(out, "forge init") {
-		t.Errorf("错误信息应指路 forge init：%s", out)
-	}
-}
-
-// TestIntegrations_EnableCursorDoesNotWireClaude：enable 只写被点名宿主的用户级
-// 配置。enable cursor 不该顺手把 ~/.claude/settings.json 的 hook 接上——那等于
-// 悄悄替用户对 Claude Code 开了全机器执法。
-func TestIntegrations_EnableCursorDoesNotWireClaude(t *testing.T) {
-	home, _ := isolatedHomeEnv(t)
-	dir := t.TempDir()
-	initProject(t, dir)
-	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
-		t.Fatalf("integrations enable cursor failed: %s", out)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
-		t.Fatalf("enable cursor must not write ~/.claude/settings.json (err=%v)", err)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".claude", "CLAUDE.md")); !os.IsNotExist(err) {
-		t.Fatalf("enable cursor must not write ~/.claude/CLAUDE.md (err=%v)", err)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".cursor")); err != nil {
-		t.Fatalf("enable cursor should wire cursor home: %v", err)
-	}
-}
-
-// TestIntegrations_DisableLeavesTombstoneThatStopsLegacySync：仓库接过线后再退回
-// 无契约状态（删掉 spec/）时，摘光 marker 后必须记下「人已全关」，否则
-// legacyHostWiring 恒真，autoSync 会把 ~/.claude/settings.json 写回来。
-func TestIntegrations_DisableLeavesTombstoneThatStopsLegacySync(t *testing.T) {
-	home, data := isolatedHomeEnv(t)
-	dir := t.TempDir()
-	initProject(t, dir)
-	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
-		t.Fatalf("enable: %s", out)
-	}
-	// 退回老仓库形态：没有 spec 契约，但 DataDir 里还有 enable 留下的 protocol/hooks。
-	if err := os.RemoveAll(filepath.Join(dir, "spec")); err != nil {
-		t.Fatal(err)
-	}
-	if out, _, code := runForge(t, dir, "integrations", "disable", "cursor"); code != 0 {
-		t.Fatalf("disable: %s", out)
-	}
-	if _, err := os.Stat(filepath.Join(data, "integrations", ".disabled")); err != nil {
-		t.Fatalf("disable should leave a tombstone: %v", err)
-	}
-	settings := filepath.Join(home, ".claude", "settings.json")
-	_ = os.Remove(settings)
-	if err := autoSync(dir, "9.9.9-test", false); err != nil {
-		t.Fatalf("autoSync: %v", err)
-	}
-	if _, err := os.Stat(settings); !os.IsNotExist(err) {
-		t.Fatalf("explicit disable must stop legacy auto-sync from rewriting settings.json (err=%v)", err)
-	}
-}
-
-// TestIntegrations_DisableOnlyRemovesMarker：disable 是「不再同步」而不是「卸载」
-// ——它只摘标记，不删宿主配置（避免误删用户自己的 settings），也不再写回。
-func TestIntegrations_DisableOnlyRemovesMarker(t *testing.T) {
-	home, data := isolatedHomeEnv(t)
-	dir := t.TempDir()
-	initProject(t, dir)
-	if out, _, code := runForge(t, dir, "integrations", "enable", "claude-code"); code != 0 {
-		t.Fatalf("enable: %s", out)
-	}
-	settings := filepath.Join(home, ".claude", "settings.json")
-	if _, err := os.Stat(settings); err != nil {
-		t.Fatalf("enable 应写 settings.json: %v", err)
-	}
-	if out, _, code := runForge(t, dir, "integrations", "disable", "claude-code"); code != 0 {
-		t.Fatalf("disable: %s", out)
-	}
-	if _, err := os.Stat(filepath.Join(data, "integrations", "claude-code")); !os.IsNotExist(err) {
-		t.Fatalf("disable 应摘掉 marker（err=%v）", err)
-	}
-	if _, err := os.Stat(settings); err != nil {
-		t.Fatalf("disable 不得删除已有宿主配置: %v", err)
-	}
-}

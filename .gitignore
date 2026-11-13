@@ -69,3 +69,6 @@ evals/forge/golden/candidates/
 
 # 仓库内临时调试目录（scratch：package 导出、安装包切片等，勿入库勿计入任务 diff）
 /.tmp/
+
+# npm 依赖目录（plugins/forge-dsh 删了之后仍要挡未来误提交；node_modules 从不出入库）
+node_modules/

@@ -51,7 +51,7 @@ func TestTaskListOpen(t *testing.T) {
 	initGitProject(t, projB)
 	// Phase C：init 只写仓库产物、不再登记 registry；跨项目视图需要显式接线登记。
 	for _, d := range []string{projA, projB} {
-		if out, _, code := runForge(t, d, `integrations`, `enable`, `claude-code`); code != 0 {
+		if out, _, code := runForge(t, d, `registry`, `add`, `.`); code != 0 {
 			t.Fatalf(`integrations enable claude-code: %s`, out)
 		}
 	}

@@ -49,7 +49,6 @@ func TestCommandGroups(t *testing.T) {
 		{"status", statusCmd, "pipeline", "forge status"},
 		{"task", clitask.Root, "quality", "forge task"},
 		{"skills", cliskills.Root, "governance", "forge skills"},
-		{"hazard", hazardCmd, "integrate", "forge hazard"},
 	}
 	for _, c := range cases {
 		if c.cmd == nil {
@@ -107,7 +106,6 @@ func TestCrossMachineHelpCrossRef(t *testing.T) {
 		long string
 		want string
 	}{
-		{"sync", syncCmd.Long, "forge project export/import"},
 		{"migrate", migrateCmd.Long, "forge project export/import"},
 		{"project", projectCmd.Long, "forge task export/import"},
 		{"project", projectCmd.Long, "forge registry rekey"},

@@ -12,9 +12,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/clitask"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/hooks"
-	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -33,10 +31,10 @@ var verifyCmd = &cobra.Command{
 	Use:   "verify [--regression] [--scenario <name>]",
 	Short: "验证项目完整性和运行回归测试",
 	Long: `forge verify 检查当前项目的 Forge 配置完整性：
-  - hook 脚本存在性
-  - protocol.yml 可解析且含评分配置
-  - Claude Code skills 存在
-  - settings.local.json 存在
+  - 仓库契约 spec/forge.yaml 存在且可解析（version/profile/hooks 合法）
+
+阶段 D 起 forge 不再安装 hook、也不再读写 protocol.yml / Claude Code skills /
+settings.local.json，因此这些项不再参与检查。
 
 使用 --regression 运行所有 E2E 回归场景，
 使用 --scenario <name> 运行指定场景。`,
@@ -80,10 +78,7 @@ func runDefaultChecks() error {
 		name string
 		fn   func(string) checkResult
 	}{
-		{"Hook 脚本", checkHooks},
-		{"Protocol 配置", checkProtocol},
-		{"Quality Skill", checkQualitySkill},
-		{"Settings 配置", checkSettings},
+		{"仓库契约", checkContract},
 	}
 
 	results := make([]checkResult, 0, len(checks))
@@ -197,83 +192,24 @@ func boundOutput(s string) string {
 	return fmt.Sprintf("...(省略前 %d 行)...\n%s", len(lines)-capLines, trimmed)
 }
 
-func checkHooks(root string) checkResult {
-	// user-level-assets 之后 hook 副本的正主在 DataDir/hooks/（嵌入脚本的参考
-	// 副本；运行时从不从项目读）。团队模式兼容：项目级 .forge/hooks/ 副本也认——
-	// 那些项目刻意保留项目级资产。
-	userHooksDir := filepath.Join(forgedata.DataDirFor(root), "hooks")
-	projectHooksDir := filepath.Join(root, ".forge", "hooks")
-	missing := []string{}
-	for _, name := range hooks.HookNames() {
-		if _, err := os.Stat(filepath.Join(userHooksDir, name)); err == nil {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(projectHooksDir, name)); err == nil {
-			continue // 团队模式项目级副本
-		}
-		missing = append(missing, name)
+// checkContract 校验仓库契约 spec/forge.yaml。
+//
+// 阶段 D 删除了宿主层（含 protocol.yml 的 EnsureDefault/Save），`forge verify`
+// 原先依赖的 protocol.yml 已无人写入——继续校验它会让 verify 在任何仓库恒失败，
+// 且报错还让人去跑 init（init 亦不写 protocol.yml），构成死循环。契约改由
+// specroot 解析：仓库是否声明、version/profile/hooks 是否合法，才是当前
+// `forge verify` 能真正验证的「项目配置完整性」。
+func checkContract(root string) checkResult {
+	const name = "仓库契约"
+	path := specroot.MarkerPath(root)
+	if !specroot.Declared(root) {
+		return checkResult{name: name, ok: false, msg: fmt.Sprintf("未找到 %s（跑 forge init 声明仓库契约）", path)}
 	}
-	if len(missing) == 0 {
-		return checkResult{name: "Hook 脚本", ok: true, msg: fmt.Sprintf("全部 %d 个 hook 存在", len(hooks.HookNames()))}
-	}
-	return checkResult{name: "Hook 脚本", ok: false, msg: fmt.Sprintf("缺少: %v", missing)}
-}
-
-func checkProtocol(root string) checkResult {
-	proto, err := protocol.Load(root)
+	contract, err := specroot.Load(root)
 	if err != nil {
-		return checkResult{name: "Protocol 配置", ok: false, msg: err.Error()}
+		return checkResult{name: name, ok: false, msg: fmt.Sprintf("%v（修正 %s 后重跑 forge verify）", err, path)}
 	}
-	if proto.Scoring == nil {
-		return checkResult{name: "Protocol 配置", ok: false, msg: "缺少 scoring 配置"}
-	}
-	return checkResult{name: "Protocol 配置", ok: true, msg: fmt.Sprintf("%d standards, %d session_rules", len(proto.Standards), len(proto.SessionRules))}
-}
-
-func checkQualitySkill(root string) checkResult {
-	// user-level-assets 之后质量 skill 在用户级：<ClaudeHome>/skills/forge-quality/
-	// SKILL.md（ClaudeHome 尊重 CLAUDE_CONFIG_DIR）。团队模式兼容：项目级
-	// .claude/skills/forge-quality/SKILL.md 也认。
-	if home := hooks.ClaudeHome(); home != `` {
-		if _, err := os.Stat(filepath.Join(home, "skills", "forge-quality", "SKILL.md")); err == nil {
-			return checkResult{name: "Quality Skill", ok: true}
-		}
-	}
-	p := filepath.Join(root, ".claude", "skills", "forge-quality", "SKILL.md")
-	if _, err := os.Stat(p); err == nil {
-		return checkResult{name: "Quality Skill", ok: true, msg: "项目级副本（团队模式）"}
-	}
-	return checkResult{name: "Quality Skill", ok: false, msg: "用户级 skills/forge-quality/SKILL.md 不存在"}
-}
-
-func checkSettings(root string) checkResult {
-	// user-level-assets 之后 forge hook 注册在用户级 Claude settings.json
-	// （GenerateUserSettings）——或由已 user-level 安装的 Claude plugin 接管
-	// （plugin.json 全机器注册 ForgeHookSpec，无需 settings 文件）。团队模式
-	// 兼容：项目级 .claude/settings.local.json 也认。
-	if hooks.IsClaudePluginInstalled() {
-		return checkResult{name: "Settings 配置", ok: true, msg: "forge plugin 已 user-level 接管 hooks"}
-	}
-	if home := hooks.ClaudeHome(); home != `` {
-		for _, name := range []string{"settings.json", "settings.local.json"} {
-			p := filepath.Join(home, name)
-			if data, err := os.ReadFile(p); err == nil && containsForgeHook(data) {
-				return checkResult{name: "Settings 配置", ok: true, msg: "用户级 " + name + " 含 forge hook"}
-			}
-		}
-	}
-	p := filepath.Join(root, ".claude", "settings.local.json")
-	if _, err := os.Stat(p); err == nil {
-		return checkResult{name: "Settings 配置", ok: true, msg: "项目级 settings.local.json（团队模式）"}
-	}
-	return checkResult{name: "Settings 配置", ok: false, msg: "用户级 claude settings.json 不存在或不含 forge hook"}
-}
-
-// containsForgeHook 报告 settings JSON 是否注册了 forge hook（ForgeHookSpec
-// 写入的命令都以 "forge hook"/"forge gate" 开头）。
-func containsForgeHook(data []byte) bool {
-	s := string(data)
-	return strings.Contains(s, "forge hook ") || strings.Contains(s, "forge gate ")
+	return checkResult{name: name, ok: true, msg: fmt.Sprintf("%s: version %s, profile %s, hooks %s", path, contract.Version, contract.Profile, contract.Hooks)}
 }
 
 // ---------- Regression 模式 ----------

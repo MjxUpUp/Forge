@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/hazard"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
@@ -77,16 +75,6 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// forge trace 可观测，而是 task gate 推进时的成本上限信号（loop engineering 成本治理）。
 	if w, _ := toolusage.TaskTokenBreaker(root, state.TaskRef); w != "" {
 		fmt.Fprintf(os.Stderr, "⚠️ [breaker] %s\n", w)
-	}
-
-	// safe-halt advisory（focus-batches §2b）：hazard-guard 连续拦截达阈值的会话，
-	// 门禁推进时明示"停止自修复、人审解锁"——failure transparency（ASE 2026 护栏
-	// 三要素）。不阻断门禁本身（拦截已由 hazard-guard 完成，此处是状态可见性）。
-	if p, err := forgedata.ProjectFor(root); err == nil {
-		if st := hazard.CheckHalt(p); st.Halted {
-			fmt.Fprintf(os.Stderr, "🔴 [safe-halt] 连续高危拦截 %d 次（阈值 %d）——停止自修复尝试；人工核查后解锁：forge hazard halt release --yes\n",
-				st.Blocks, hazard.HaltThreshold)
-		}
 	}
 
 	// Assignment advisory (P2 of the 2026-08-18 脱节修复): gating a task that is offered to

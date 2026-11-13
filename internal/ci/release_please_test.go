@@ -9,8 +9,7 @@ package ci
 //   - tag 形状必须保持 v<semver>：release.yml 由 on.push.tags "v*" 触发，npm job 硬编码
 //     资产 URL releases/download/v<ver>/...；
 //   - extra-files 必须持续 bump 全部 json 条目:主包 $.version + 5 个
-//     optionalDependencies 平台钉 + kimi/dsh 插件 + 5 平台子包——正是 tag 对账
-//     门禁、TestKimiPluginManifestVersionTracksRelease、dsh 发布步与严格相等
+//     optionalDependencies 平台钉 + 5 平台子包——正是 tag 对账门禁与严格相等
 //     提交态守卫(TestNpmPlatformVersionsAligned)共同读的面；
 //   - manifest 版本必须等于 npm/package.json 版本：绕过 release-please 的手动发版会让
 //     它失同步而变红（刻意的设计——把人推回 release-please 路径；release-please 从旧
@@ -114,10 +113,9 @@ func TestReleasePleaseConfig_StrategyAndBootstrap(t *testing.T) {
 // TestReleasePleaseConfig_ExtraFilesBumpAllManifests: the Release PR must bump the same files the downstream gates read.
 //
 // TestReleasePleaseConfig_ExtraFilesBumpAllManifests：Release PR 必须 bump 下游门禁读的
-// 同一批文件。丢 npm/package.json 会破 release.yml 的 tag 对账门禁；丢
-// .kimi-plugin/plugin.json 会破 TestKimiPluginManifestVersionTracksRelease；丢
-// plugins/forge-dsh/package.json 则 dsh 发布步永远看不到新版本（静默 skip——插件重新
-// 游离出发版火车）。在此同时守卫，让失败在配置层就点名根因，而不是下游报噪声。
+// 同一批文件。丢 npm/package.json 会破 release.yml 的 tag 对账门禁与提交态版本对齐守卫。
+// 阶段 D 删除了插件生成物（.kimi-plugin/、plugins/forge-dsh/），对应 extra-files 条目
+// 一并移除——release-please 对缺失文件会失败，留着就是一条确定性的红。
 func TestReleasePleaseConfig_ExtraFilesBumpAllManifests(t *testing.T) {
 	cfg := loadReleasePleaseConfig(t)
 	pkg, ok := cfg.Packages["."]
@@ -134,11 +132,6 @@ func TestReleasePleaseConfig_ExtraFilesBumpAllManifests(t *testing.T) {
 	}
 	for _, want := range []string{
 		"npm/package.json|$.version",
-		".kimi-plugin/plugin.json|$.version",
-		"plugins/forge-dsh/package.json|$.version",
-		// forge-dsh 内置 forge 本体依赖（lockstep 钉）：丢这条 = 发版后插件依赖滞后于
-		// 本体，用户装到与 spec.json 不配套的 forge。
-		"plugins/forge-dsh/package.json|$.dependencies['@agent_forge/forge']",
 		// optionalDependencies 平台包钉随火车自动 bump(2026-09-18 根治):
 		// release-please 不 bump map 值的缺口曾致 v1.65.0 发布失败与
 		// #72/#74/#77 三轮手工 npm-align 债务。方括号键 + 同文件多 jsonpath
@@ -181,39 +174,6 @@ func TestReleasePleaseManifest_MatchesNpmVersion(t *testing.T) {
 	if got != pkg.Version {
 		t.Fatalf("manifest 版本 %q != npm/package.json 版本 %q——绕过 release-please 的手动发版/手改文件造成失同步；"+
 			"release-please 会从旧版本起算下一版并撞已存在 tag。请把 manifest 同步到实际发布版本", got, pkg.Version)
-	}
-}
-
-// TestReleasePleaseManifest_DshPluginTracksTrain: @agent_forge/forge-dsh rides the main release train — its package.json is in extra-files, so every Release PR bumps it in lockstep with the root version.
-//
-// TestReleasePleaseManifest_DshPluginTracksTrain：@agent_forge/forge-dsh 随主发布火车——
-// 它的 package.json 在 extra-files 里，每个 Release PR 都会把它与根版本 lockstep bump。
-// 此处失同步只可能来自手改插件版本号（插件游离于自动发版之外的旧手动 bump 路径）或
-// extra-files 条目被丢；release.yml 的 dsh 发布步随后会发出与 tag 对不上的版本。
-func TestReleasePleaseManifest_DshPluginTracksTrain(t *testing.T) {
-	var manifest map[string]string
-	if err := json.Unmarshal(readRepoFile(t, ".release-please-manifest.json"), &manifest); err != nil {
-		t.Fatalf("unmarshal .release-please-manifest.json: %v", err)
-	}
-	var pkg struct {
-		Version      string            `json:"version"`
-		Dependencies map[string]string `json:"dependencies"`
-	}
-	if err := json.Unmarshal(readRepoFile(t, "plugins", "forge-dsh", "package.json"), &pkg); err != nil {
-		t.Fatalf("unmarshal plugins/forge-dsh/package.json: %v", err)
-	}
-	got, ok := manifest["."]
-	if !ok {
-		t.Fatal(`.release-please-manifest.json 缺根包 "." 条目——release-please 拿不到「上次发布版本」，无法起算下一版本`)
-	}
-	if got != pkg.Version {
-		t.Fatalf("plugins/forge-dsh/package.json 版本 %q != manifest 版本 %q——dsh 插件随主火车 lockstep 发版，"+
-			"版本号由 Release PR 经 extra-files 统一 bump，不要手改；请把它同步回根版本", pkg.Version, got)
-	}
-	// 插件内置依赖 forge 本体：钉必须与根版本相等（精确版本，不是范围）。
-	if dep := pkg.Dependencies["@agent_forge/forge"]; dep != got {
-		t.Fatalf("plugins/forge-dsh/package.json dependencies[@agent_forge/forge]=%q != manifest 版本 %q——"+
-			"插件与 forge 本体 lockstep 发版，钉由 Release PR 经 extra-files 统一 bump，不要手改", dep, got)
 	}
 }
 

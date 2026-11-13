@@ -12,12 +12,10 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins, replaceDshForgeDependency } = require('./release.js');
+const { inferBump, bumpVersion, readCommitMessages, replaceVersionField, replaceManifestVersion, replacePlatformPins } = require('./release.js');
 
 const SCRIPT = path.join(__dirname, 'release.js');
 const PKG = path.join(__dirname, '..', 'npm', 'package.json');
-const KIMI_PLUGIN = path.join(__dirname, '..', '.kimi-plugin', 'plugin.json');
-const DSH_PKG = path.join(__dirname, '..', 'plugins', 'forge-dsh', 'package.json');
 const MANIFEST = path.join(__dirname, '..', '.release-please-manifest.json');
 
 // --- bumpVersion:纯函数,版本号计算正确性(发版事故高价值点) ---
@@ -136,8 +134,7 @@ test('readCommitMessages 端到端：trim 前导换行 + feat 推断为 minor', 
 });
 
 // --- replaceVersionField:纯函数,version 字段替换正确性(发版高价值点) ---
-// npm/package.json、.kimi-plugin/plugin.json 与 plugins/forge-dsh/package.json
-// 的 version bump 共用此函数。
+// npm/package.json 与 5 个平台子包的 version bump 共用此函数。
 
 test('replaceVersionField 替换 version 字段', () => {
   const src = '{\n  "name": "forge",\n  "version": "1.2.3"\n}';
@@ -200,15 +197,11 @@ test('replaceManifestVersion 缺 "." 键返回 ok=false', () => {
 
 // --- 端到端:dry-run 不改 package.json ---
 
-test('dry-run auto 打印版本信息且不修改 package.json / plugin.json / dsh / manifest', () => {
+test('dry-run auto 打印版本信息且不修改 package.json / manifest', () => {
   const before = fs.readFileSync(PKG, 'utf8');
-  const beforeKimi = fs.readFileSync(KIMI_PLUGIN, 'utf8');
-  const beforeDsh = fs.readFileSync(DSH_PKG, 'utf8');
   const beforeManifest = fs.readFileSync(MANIFEST, 'utf8');
   const out = execSync(`node ${SCRIPT} --dry-run`, { encoding: 'utf8' });
   const after = fs.readFileSync(PKG, 'utf8');
-  const afterKimi = fs.readFileSync(KIMI_PLUGIN, 'utf8');
-  const afterDsh = fs.readFileSync(DSH_PKG, 'utf8');
   const afterManifest = fs.readFileSync(MANIFEST, 'utf8');
 
   assert.match(out, /current:/);
@@ -217,8 +210,6 @@ test('dry-run auto 打印版本信息且不修改 package.json / plugin.json / d
   assert.match(out, /tag:\s+v\d+\.\d+\.\d+/);
   assert.match(out, /dry-run, no changes/);
   assert.strictEqual(before, after, 'dry-run must not modify npm/package.json');
-  assert.strictEqual(beforeKimi, afterKimi, 'dry-run must not modify .kimi-plugin/plugin.json');
-  assert.strictEqual(beforeDsh, afterDsh, 'dry-run must not modify plugins/forge-dsh/package.json');
   assert.strictEqual(beforeManifest, afterManifest, 'dry-run must not modify .release-please-manifest.json');
 });
 
@@ -266,27 +257,4 @@ test('replacePlatformPins 命中数 != 5 时拒绝(ok=false)', () => {
   const four = '"@agent_forge/forge-darwin-arm64": "1.0.0",\n"@agent_forge/forge-darwin-x64": "1.0.0"';
   assert.equal(replacePlatformPins(four, '2.0.0').ok, false, '4 钉必须拒绝(键集漂移的事故信号)');
   assert.equal(replacePlatformPins('{}', '2.0.0').ok, false, '0 钉必须拒绝');
-});
-
-// --- replaceDshForgeDependency:forge-dsh 内置本体依赖钉(随火车 lockstep) ---
-test('replaceDshForgeDependency 只替换本体钉,不误伤 forge-dsh / 平台包键', () => {
-  const src = JSON.stringify({
-    name: '@agent_forge/forge-dsh',
-    version: '1.81.0',
-    dependencies: { '@agent_forge/forge': '1.81.0' },
-    devDependencies: { '@agent_forge/forge-darwin-arm64': '9.9.9' },
-  }, null, 2);
-  const { content, ok } = replaceDshForgeDependency(src, '1.82.0');
-  assert.ok(ok, '恰好 1 处命中');
-  const parsed = JSON.parse(content);
-  assert.equal(parsed.dependencies['@agent_forge/forge'], '1.82.0');
-  assert.equal(parsed.devDependencies['@agent_forge/forge-darwin-arm64'], '9.9.9');
-  assert.equal(parsed.name, '@agent_forge/forge-dsh');
-  assert.equal(parsed.version, '1.81.0', 'version 字段由 replaceVersionField 负责,此处不动');
-});
-
-test('replaceDshForgeDependency 命中数 != 1 时拒绝(ok=false)', () => {
-  assert.equal(replaceDshForgeDependency('{}', '2.0.0').ok, false, '缺依赖钉必须拒绝');
-  const two = '"@agent_forge/forge": "1.0.0",\n"@agent_forge/forge": "1.0.0"';
-  assert.equal(replaceDshForgeDependency(two, '2.0.0').ok, false, '重复键必须拒绝');
 });

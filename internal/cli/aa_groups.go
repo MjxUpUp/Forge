@@ -17,7 +17,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"github.com/MjxUpUp/Forge/internal/clitask"
-	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 )
 
 func init() {
@@ -31,7 +30,6 @@ func init() {
 
 	// 项目生命周期：项目级低频管理
 	initCmd.GroupID = "lifecycle"
-	syncCmd.GroupID = "lifecycle"
 	updateCmd.GroupID = "lifecycle"
 	// Project Policy Layer P1: symmetric per-project takeover on/off (per-project
 	// 接入管理的开关对).
@@ -43,17 +41,14 @@ func init() {
 	// 项目规范档案（conventions-profile 层 1 建档入口：init 扫描/show 查看；
 	// 与 init 同族的项目级接入管理——先 init 进 forge，再 conventions 建档）。
 	conventionsCmd.GroupID = "lifecycle"
-	// One-click uninstall (npm binary + user-level assets).
-	//
-	uninstallCmd.GroupID = "lifecycle" // 一键反装（npm binary + 用户级资产）
 	// Legacy .forge runtime state → DataDir migration (upgrade path).
 	//
 	migrateCmd.GroupID = "lifecycle" // 旧 .forge runtime state → DataDir 迁移（升级路径）
 	// Global project registry cleanup (counterpart to the explicit registration
-	// done by `forge integrations enable` / `forge workspace add`; backticks guard
+	// done by `forge registry add` / `forge workspace add`; backticks guard
 	// against Windows quote corruption).
 	//
-	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（integrations enable / workspace add 显式登记 的对应清理入口；反引号防 Windows 引号腐蚀）
+	registryCmd.GroupID = `lifecycle` // 全局项目注册表清理（`forge registry add` / `forge workspace add` 显式登记的对应清理入口；反引号防 Windows 引号腐蚀）
 	// 项目数据跨机器导出/导入/身份对齐（project-sync：与 init/migrate/registry 同族的项目级数据管理）。
 	projectCmd.GroupID = `lifecycle`
 	// 机器节点身份（node_id = 公钥指纹；node-identity：机器级，与 project 跨机族同族）。
@@ -94,7 +89,8 @@ func init() {
 	// 可执行兼容工件（mechanism-hardening P1-1：七面快照与跨版本 diff）。
 	compatCmd.GroupID = "quality"
 
-	// dsh 插件生态工具（bridge verify 静态检查器，roadmap H2a）
+	// dsh 插件静态检查器（bridge verify，roadmap H2a）：检查对象是任意第三方插件包，
+	// forge 自己的 plugins/forge-dsh 已随阶段 D 删除。
 	bridgeCmd.GroupID = "integrate"
 
 	// skill 治理（experience/knowledge 经验闭环已移除）
@@ -102,17 +98,6 @@ func init() {
 	// 执法健康报告与随机审计（vNext P2 审计层——S3* 独立通道，只读聚合）
 	enforcementCmd.GroupID = "governance"
 
-	// 集成与安全：agent 接口 + 拦截 + 内部 hook 分发 + 多 host plugin marketplace
-	// 宿主接线（显式 opt-in：写用户级 settings/CLAUDE.md/skill 的唯一入口）。
-	integrationsCmd.GroupID = "integrate"
-	hazardCmd.GroupID = "integrate"
-	freezeCmd.GroupID = "integrate"
-	hookdispatch.HookCmd.GroupID = "integrate"
-	pluginCmd.GroupID = "integrate"
-	// 跨 agent 环境一致性审计（只读；多 host 接线 + 版本漂移）
-	doctorCmd.GroupID = "integrate"
 	// 节点信任 store（TOFU + 团队档验签强制；node-identity §3）。
 	trustCmd.GroupID = "integrate"
-	// hook bash 算 DataDir 用（Hidden，不进 help 列表）
-	dataDirCmd.GroupID = "integrate"
 }
