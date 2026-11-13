@@ -23,25 +23,20 @@ npm install -g @agent_forge/forge
 cd your-project
 forge init
 
-# 可选：把 hooks/指令接到宿主（显式 opt-in，才写用户级配置）
-forge integrations enable claude-code
+# 可选：登记进全局看板
+forge registry add .
 ```
 
 `forge init` 只写仓库内产物，**不写** `~/.forge`、`~/.claude`、`~/.codex`：
-- `spec/forge.yaml` — 契约（profile 缺省 mini、`hooks: off` 只审计不执法）
+- `spec/forge.yaml` — 契约（profile 缺省 mini、`hooks: off` 兼容字段）
 - `spec/changes/`（含 `archive/`） — change 生命周期产物
 - `AGENTS.md` — forge 托管块；已存在的 `CLAUDE.md` / `.cursor/rules/` 按默认规则补指针
 
-宿主接线由 `forge integrations enable <host>` 显式开启，它才写用户级资产（按点名宿主分别写：`enable cursor` 只碰 `~/.cursor`，不写 `~/.claude`；`enable codex` 才写 `~/.codex`）：
-- `~/.forge/integrations/<host>` — 接线标记（`disable` 只摘它）
-- `~/.forge/projects/<key>/` — protocol.yml + runtime state（任务状态/hook 参考副本）
-- `~/.forge/projects.json` — 全局项目注册表（dashboard/`task list --open --all-projects` 等全局视图依赖它）
-- `~/.claude/settings.json` — Claude Code hooks（plugin 已装则由 plugin 接管）
-- `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` — 质量协议（备份+追加，`forge uninstall --restore` 可回滚）
-- `~/.claude/skills/forge-quality/` — 质量协议 Skill
+阶段 D 起 forge **没有宿主层**：不装 hook、不写宿主配置。任务与 change 门禁由 agent 在 shell 里显式跑 `forge task` / `forge change` 命令；需要全局视图（`dashboard`、`task list --all-projects`）时用 `forge registry add` 显式登记。
 
-团队要 git 共享契约：提交 `spec/` 与 `AGENTS.md`；每个开发者各自跑一次 `forge integrations enable <host>` 接自己的宿主。
+团队要 git 共享契约：提交 `spec/` 与 `AGENTS.md`。
 
+## 工作流程
 ## 工作流程
 
 ### 任务级门禁
@@ -60,23 +55,11 @@ forge task score                  # 查看质量评分
 
 门禁之间有时间和活动检查，防止 AI 跳过阶段直接提交。`task-implement` 的编译/断言检查为 advisory 提醒（agent 自检，不阻塞）——forge 技术栈无关，适配 loop engineering。
 
-## Hook 系统
+## 质量检查
 
-Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook 如下，完整 26 个清单见 [Hook 参考](https://github.com/MjxUpUp/Forge/blob/main/docs/reference/hooks.md)）：
+阶段 D 删除了宿主 hook；检查由 `forge task gate` / `forge change verify` 在进程内确定性执行（编译自检、断言弱化扫描、测试伴随变更、证据封印）。原 26 个 hook 清单已随宿主层移除。
 
-| Hook | 触发时机 | 功能 |
-|------|----------|------|
-| **task-guard** | Write/Edit 前 | 无活跃任务时 WARN（仅 `.forge/*`/`.claude/settings*` 自保护 FAIL——此类项目级文件只在团队模式/老项目存在），保护 Forge 配置不被篡改 |
-| **assertion-check** | Write/Edit 前 | 检测断言弱化（t.Fatal → t.Log、assert! 被删除等），advisory 提醒不阻塞（agent 自检） |
-| **bash-guard** | Bash 前 | 检测命令中的写文件模式（writeFile、cat >、sed -i 等），无任务时 WARN（源码随后被 file-sentinel 隔离） |
-| **auto-compile** | Write/Edit 后 | advisory 提醒用对应技术栈编译命令自检（go build / cargo check / mvn / tsc 等），不强制编译 |
-| **file-sentinel** | Bash 后 | 监控文件变更，未授权修改隔离到 DataDir/quarantine/（`forge data-dir` 查看路径，可恢复，不删除） |
-| **tool-track** | Read/Skill/Agent/Grep/Glob/Bash 后 | 静默记录工具调用到 toollog（Read/Skill/Agent 记名称、Bash 记截断命令、Grep/Glob 记截断 input——探索调用也计入 work-activity），供 read-before-edit 门禁与 efficiency 维度评分判断（agent 是否先读代码再改、质量 skill 是否被驱动） |
-| **task-verify** | 会话结束 | 任务门禁/主分支保护到 stderr+checklog（advisory）；活跃任务 + 未提交代码变更时有界阻断 Stop（每会话最多 3 次，超限回落 advisory；逃生 `FORGE_TASK_VERIFY_STOP=0`） |
-| **skill-scan** | 会话开始 | advisory：扫描 ~/.claude/skills 安全性（`forge skills audit`，21 条安全规则），补 install 门控缺口（手动 clone/junction/git pull 进入的 skill），全局 hook 不依赖 forge project |
-| **task-resume** | 会话开始 | advisory：只输出 `[forge-session]` 管理横幅一行（不注入接续视图、不锚定 session）。接续按需拉取：`forge task resume --match` / `forge task list --open`；无活跃任务静默；项目级 hook |
-
-### 安全架构
+## 安全架构
 
 三层纵深防御，监控的是文件而非工具：
 
@@ -101,7 +84,6 @@ Layer 3: 会话结束验证
 | 命令 | 说明 |
 |------|------|
 | `forge init [--profile mini\|standard\|full]` | 在仓库声明契约：只写 `spec/forge.yaml`、`spec/changes/`、`AGENTS.md` 托管块与已存在指针，不写用户主目录；`--agents`/`--project` 已废弃为 no-op（保留旧脚本兼容） |
-| `forge integrations list / enable <host…> [--all] / disable <host…>` | 显式接线宿主：`enable` 才写用户级 hooks/指令/skill 并打标记，`disable` 只摘标记不删宿主配置 |
 | `forge status [--json]` | 查看项目状态（任务管道 + 质量信号） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge update` | 检查并更新到最新版本（按安装通道分流：npm 安装查 npm registry 并打印对应包管理器的更新命令——npm 包不可变，不做原地替换；GitHub Release 安装则从 GitHub 下载自替换） |

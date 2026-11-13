@@ -68,7 +68,6 @@ func TestReReviewGuidanceConsumersReferenceConstant(t *testing.T) {
 	for _, rel := range []string{
 		filepath.Join("..", "taskpipeline", "executor_check_complete.go"),
 		filepath.Join("..", "cli", "review.go"),
-		filepath.Join("..", "skillgen", "claudemd.go"),
 	} {
 		t.Run(rel, func(t *testing.T) {
 			b, err := os.ReadFile(rel)

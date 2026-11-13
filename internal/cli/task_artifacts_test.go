@@ -1,15 +1,12 @@
 package cli
 
 import (
-	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/clitask"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -156,44 +153,5 @@ func TestChecklistHardGate(t *testing.T) {
 	_, gerr2 := taskpipeline.ExecuteTaskGate(root, "task-complete", st)
 	if gerr2 != nil && strings.Contains(gerr2.Error(), "checklist") {
 		t.Errorf("全勾后 checklist 门禁应放行, got %q", gerr2.Error())
-	}
-}
-
-// TestTaskGuardGraceWindowExpired 缓冲窗口 E2E：第 2 次编辑开窗，窗口内第 3 次编辑
-// （总第 5 次）未补救 → 落 violation 标记 + 一次性超时文案；此前各次保持原谱系。
-func TestTaskGuardGraceWindowExpired(t *testing.T) {
-	root := newTaskGuardProject(t)
-	sess := fmt.Sprintf("claude-window-%d", time.Now().UnixNano())
-
-	var last string
-	for i := 1; i <= 5; i++ {
-		stdout, _, err := runTaskGuardHookOnce(t, ``, sess)
-		if err != nil {
-			t.Fatalf("edit #%d must stay allowed (window records, never blocks on non-promoted hosts), got %v", i, err)
-		}
-		last = stdout
-	}
-	if !strings.Contains(last, "Grace window expired") || !strings.Contains(last, "违规已记录") {
-		t.Errorf("第 5 次编辑应发窗口超时文案, got %q", last)
-	}
-	markers := filepath.Join(forgedata.DataDirFor(root), "markers")
-	found := false
-	entries, _ := os.ReadDir(markers)
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "forge-taskguard-violation-") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("violation 标记必须落盘（forge enforcement 消费）, markers=%s", markers)
-	}
-
-	// 超时文案一次性：第 6 次编辑静默（违规已记录，不再重复）。
-	stdout, _, err := runTaskGuardHookOnce(t, ``, sess)
-	if err != nil {
-		t.Fatalf("edit #6 must stay allowed, got %v", err)
-	}
-	if stdout != "" {
-		t.Errorf("违规记录后应回到静默计数, got %q", stdout)
 	}
 }

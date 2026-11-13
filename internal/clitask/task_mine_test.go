@@ -108,7 +108,7 @@ func TestTaskMine_AllProjects(t *testing.T) {
 	makeProject := func(ref string) string {
 		d := t.TempDir()
 		initGitProject(t, d)
-		if out, _, code := runForge(t, d, `integrations`, `enable`, `claude-code`); code != 0 {
+		if out, _, code := runForge(t, d, `registry`, `add`, `.`); code != 0 {
 			t.Fatalf(`integrations enable claude-code: %s`, out)
 		}
 		runForge(t, d, "task", "start", "--ref", ref, "--assignee", "kimi", "--title", ref)
@@ -138,7 +138,7 @@ func TestTaskMine_AllProjects_ExcludesDeclined(t *testing.T) {
 	makeProject := func(ref string) string {
 		d := t.TempDir()
 		initGitProject(t, d)
-		if out, _, code := runForge(t, d, `integrations`, `enable`, `claude-code`); code != 0 {
+		if out, _, code := runForge(t, d, `registry`, `add`, `.`); code != 0 {
 			t.Fatalf(`integrations enable claude-code: %s`, out)
 		}
 		runForge(t, d, "task", "start", "--ref", ref, "--assignee", "kimi", "--title", ref)

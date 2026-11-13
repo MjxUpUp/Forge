@@ -20,36 +20,19 @@ AI 编码的"质量门禁引擎"。在 Claude Code / Codex / Cursor / Copilot �
 ## 安装（推荐路径）
 
 ```bash
-# 1) 装 binary（机器级，一次性，提供 forge CLI，hooks 都要调它）
+# 1) 装 binary（机器级，一次性，提供 forge CLI）
 npm install -g @agent_forge/forge
-
-# 2) 装 plugin（agent 级，一次性）——在 Claude Code 里跑，接用户级 hooks 到所有项目
-/plugin marketplace add MjxUpUp/Forge
-/plugin install forge@forge
 ```
 
+阶段 D 起 forge **没有宿主层**：不装 hook、不写宿主 settings，也没有 plugin/integrations 命令。接不接管某个仓库由人决定：在仓库里跑 `forge init` 声明契约；门禁由 agent 显式跑 `forge task` / `forge change` 命令驱动。需要全局看板或跨项目视图时用 `forge registry add` 显式登记项目。`forge off` 仍是每项目退出，`forge on` 恢复。
 
-装完 plugin 后，Claude Code 的 hooks 由 plugin 全机器接管；其他宿主用 `forge integrations enable <host>` 显式接线。**接不接管某个仓库仍由人决定**：在仓库里跑 `forge init` 声明契约，没有 init 的仓库不会被后台自动接管（原 init-suggest 自动探测/接管已移除）。`forge off` 仍是每项目退出，`forge on` 恢复。
+>  `forge init` **只写仓库内产物**：`spec/forge.yaml`（`hooks: off` 兼容字段）、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针。它**不写** `~/.forge`、`~/.claude`、`~/.codex`。团队要 git 共享同一份协议，提交 `spec/` 与 `AGENTS.md` 即可。
 
->  `forge init` **只写仓库内产物**：`spec/forge.yaml`（`hooks: off` 缺省）、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针。它**不写** `~/.forge`、`~/.claude`、`~/.codex`。用户级接线走 `forge integrations enable <host>`；团队要 git 共享同一份协议，提交 `spec/` 与 `AGENTS.md` 即可。
-
-## 宿主接线（显式 opt-in）
-
-```bash
-forge integrations enable claude-code        # 或 codex / cursor / kimi / windsurf / cline / opencode / reasonix / codebuddy / zcode（copilot、dsh 无可写资产，只走 plugin manifest）
-forge integrations enable --all              # 一次接全部宿主
-forge integrations list                      # 看哪些已接线
-forge integrations disable <host>            # 摘标记（不删宿主配置）
-```
-
-`enable` 才写用户级 hooks/指令/skill、登记注册表并打 `~/.forge/integrations/<host>` 标记；没有任何标记且未装 Claude plugin 时，forge 不会在后台写用户级资产（Phase C 之前已接过线的老项目除外：它们继续由 autoSync 迁移维护）。
-
-## 不装 plugin 的最低用法
+## 显式登记（全局视图需要）
 
 ```bash
-cd your-project
-forge init                                    # 声明仓库契约（只写仓库内文件）
-forge integrations enable claude-code         # 需要 hook 实时拦截时接线
+forge registry add .            # 把当前仓库登记进 ~/.forge/projects.json
+forge dashboard                 # 只读聚合登记过的项目
 ```
 
 ## 60 秒拿到第一个证据
@@ -67,7 +50,7 @@ forge trace feat/demo           # 查看证据链
 
 ```bash
 forge task start --ref feat/xxx --branch --title "描述"   # 建任务 + 分支
-# AI 工作（26 个 hook 自动守：task-guard / read-before-edit / bash-guard / file-sentinel ...）
+# AI 工作（阶段 D 起无宿主 hook，门禁由下面的命令显式驱动）
 forge task gate task-implement    # 门禁1：实现（编译 / 断言 advisory 自检）
 forge task gate task-verify       # 门禁2：验证（测试伴随变更）
 forge task gate task-complete     # 门禁3：完成确认
@@ -76,23 +59,20 @@ forge task score                  # 质量评分
 ```
 
 
-`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge off [--all] | on` 按项目退出/恢复接管；`forge config get/set compat` 管兼容基线；`forge policy state|yield` 快查状态/外来 harness 让位；`forge integrations list/enable/disable` 显式接线宿主。详见[完整命令参考](../docs/reference/cli.md)。
+`forge update` 检查并更新（npm 安装打印对应包管理器的更新命令而非代下载；GitHub 安装下载自替换）。`forge off [--all] | on` 按项目退出/恢复接管；`forge config get/set compat` 管兼容基线；`forge policy state|yield` 快查状态/外来 harness 让位。详见[完整命令参考](../docs/reference/cli.md)。
 
 ## 卸载
 
 ```bash
-forge uninstall            # 剥除全部用户级 hooks/指令段/forge-quality skill + 清 npm global binary
-forge uninstall --restore  # 加 --restore 把用户级文件回滚到 forge 修改前的原始内容（备份在 ~/.forge/backups/）
-# 在 Claude Code 里 /plugin uninstall forge@forge   # 卸 plugin（须在 agent CLI 内交互运行）
+npm uninstall -g @agent_forge/forge   # 删二进制；forge 不写宿主文件，无需回滚
 ```
 
 ## 多宿主支持
 
-Forge 为 12 个宿主落地接线：Claude Code / Codex / Cursor / Copilot / Kimi Code / Reasonix 走 plugin manifest 分发（`.claude-plugin/`、`.cursor-plugin/`、`.kimi-plugin/`、`plugins/forge/reasonix-plugin.json`）；Windsurf / OpenCode / Cline / CodeBuddy / ZCode 走 `forge integrations enable <host>` 用户级接线（CodeBuddy 由 `forge integrations enable codebuddy` 生成 Claude 兼容的 plugin pack——其 settings.json 无 hooks 字段；ZCode 写入 `~/.zcode/cli/config.json`，协议层与 Claude Code 兼容，其 plugin 渠道也可回落读 `.claude-plugin/plugin.json`）；DeepSeek Harness (dsh) 走 `dsh plugin --profile <profile> add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"`（npm registry 通道为 `@agent_forge/forge-dsh`；桌面 App 跑的是 `desktop` profile，装到别的 profile 不会生效；插件自带 forge 本体，装完无需另装 CLI，需要时重启对应宿主）。`plugins/forge/install.sh`（Windows 为 install.ps1）只是 forge 二进制的备用安装器（npm 的 curl-pipe 包装），不做 agent 接线。各宿主差异详见 [plugins/forge/README.md](../plugins/forge/README.md)。
-
+阶段 D 起 Forge 不再分发宿主插件或写宿主配置：`forge` 是一个仓库内的验证与状态 CLI，任何 agent/IDE 都通过 shell 调用同一组命令（`forge task`/*`forge change`*）。
 ## 常见问题
 
-- **装完 plugin 后项目一直在 task-guard WARN 报"allowed but not tracked"** → 项目未启用 forge（未登记注册表）。跑 `forge init` 声明契约，或 `forge off` 退出该项目。
+- **项目未被识别** → 跑 `forge init` 声明契约；全局看板看不到它时再 `forge registry add .`。
 - **`forge` 命令 not found** → npm 全局安装目录不在 PATH。`npm bin -g` 看路径，加入 shell rc。
 - **二审 reviewer 反复冒新问题** → `forge task gate task-verify` 含 cheat-scan deterministic 扫描（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption），机械模式一次判准，LLM-reviewer 退到只做语义判断。
 

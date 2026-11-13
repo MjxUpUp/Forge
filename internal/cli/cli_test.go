@@ -15,7 +15,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/hostcap"
-	"github.com/spf13/cobra"
 )
 
 var forgeExe string
@@ -156,7 +155,6 @@ func TestPostInitSmokeCommands(t *testing.T) {
 	}{
 		{name: "status", initFlags: nil, args: []string{"status"}},
 		{name: "status json", initFlags: nil, args: []string{"status", "--json"}, wantJSONField: "tasks"},
-		{name: "status agents", initFlags: nil, args: []string{"status", "--agents"}, wantIn: "claude-code"},
 		// 二次 init 必须都成功（幂等）。
 		{name: "init idempotent", initFlags: nil, args: []string{"init"}},
 	}
@@ -329,59 +327,6 @@ func TestStatusWithoutInit(t *testing.T) {
 }
 
 // --------------- Test: Init idempotent (run twice) ---------------
-
-// TestInitSkipsProjectSettingsWriteWhenPluginInstalled: when forge plugin is
-// installed at user level, forge init must NOT write ForgeHookSpec hooks to
-// project-level settings.local.json — user-level plugin.json already registers
-// them machine-wide. It must still create the file with user content intact
-// (or not create it if none existed).
-func TestInitSkipsProjectSettingsWriteWhenPluginInstalled(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", home)
-	writeForgePluginFixture(t, home)
-
-	dir := t.TempDir()
-	// Pre-populate settings.local.json with user fields only.
-	claudeDir := filepath.Join(dir, ".claude")
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
-		t.Fatalf("mkdir .claude: %v", err)
-	}
-	userSettings := `{"env":{"KEY":"val"},"model":"gpt-4"}`
-	settingsPath := filepath.Join(claudeDir, "settings.local.json")
-	if err := os.WriteFile(settingsPath, []byte(userSettings), 0644); err != nil {
-		t.Fatalf("write settings: %v", err)
-	}
-
-	// runInit uses os.Getwd() for the project dir — chdir and restore.
-	orig, _ := os.Getwd()
-	defer os.Chdir(orig)
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-
-	cmd := &cobra.Command{}
-	cmd.Flags().String("mode", "", "")
-	cmd.Flags().Bool("fresh", false, "")
-	cmd.Flags().String("agents", "auto", "")
-	initCmd.RunE(cmd, nil) //nolint: errcheck — runInit prints warnings for missing assets
-
-	// Verify: settings.local.json must NOT contain hooks.
-	data, err := os.ReadFile(settingsPath)
-	if err != nil {
-		t.Fatalf("read settings after init: %v", err)
-	}
-	var parsed map[string]json.RawMessage
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("parse settings: %v", err)
-	}
-	if _, hasHooks := parsed["hooks"]; hasHooks {
-		t.Error("plugin installed: forge init must not write hooks to settings.local.json")
-	}
-	// User fields must be preserved (or merged if the settings write was skipped).
-	if v, ok := parsed["model"]; ok && string(v) != `"gpt-4"` {
-		t.Errorf("user model field modified: got %s", string(v))
-	}
-}
 
 // --------------- Test: First-run experience ---------------
 // A user who has never seen forge should understand what it does

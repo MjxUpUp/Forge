@@ -8,7 +8,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/spf13/cobra"
 )
@@ -41,23 +40,11 @@ var rootCmd = &cobra.Command{
 		healNpmShimIfNeeded(cmd.Name() == "hook")
 
 		// init 命令跳过 auto-sync（项目尚不存在）
-		if cmd.Name() == "init" {
-			return nil
-		}
-
-		// 非 forge 项目跳过（如 forge --version 在项目外执行）
-		dir, err := findProjectRoot()
-		if err != nil {
-			return nil
-		}
-
-		// 把 .forge/ 文件 auto-sync 到当前 binary version
-		return autoSync(dir, cmd.Root().Version, false)
+		return nil
 	},
 }
 
 func init() {
-	// 把 rootCmd 命令树注入 docsconsistency，让 task-complete advisory（taskpipeline 包）
 	// 能反查 cobra 树检测文档里的 forge 命令 drift。回调打破 cli ↔ taskpipeline 循环：
 	// docsconsistency 不 import cli，taskpipeline import docsconsistency 调 DriftedInProject。
 	docsconsistency.RegisterCommandTree(func() *cobra.Command { return rootCmd })
@@ -110,21 +97,12 @@ func Execute() {
 		}
 	}()
 	if err := rootCmd.Execute(); err != nil {
-		// kimi hook 协议：有意阻断必须 exit 2——其他非零退出码会 fail-open（放行）。
-		// 原因已写在 stderr。
-		var blockErr *hookdispatch.HookBlockError
-		if errors.As(err, &blockErr) {
-			os.Exit(2)
-		}
-		// 以退出码传达结论的命令（docs lint 硬失败）：与 hook 阻断同映射、不同语义
-		// ——结论已由命令自身打印，此处不再回显。读退出码的消费方（docs lint：
-		// 2=硬失败）相对旧的 RunE 内 os.Exit(2) 零变化。
+		// 以退出码传达结论的命令（docs lint 硬失败）：结论已由命令自身打印，此处不再回显。
+		// 读退出码的消费方（docs lint：2=硬失败）相对旧的 RunE 内 os.Exit(2) 零变化。
 		var hex *hardExitError
 		if errors.As(err, &hex) {
 			os.Exit(2)
 		}
-		// cliskills 下游命令的同款契约（skills inventory --verify 的漂移阻断）：
-		// 哨兵在 cliskills 导出，本处映射——依赖方向 cli→cliskills 合法。
 		if errors.Is(err, cliskills.ErrHardExit) {
 			os.Exit(2)
 		}

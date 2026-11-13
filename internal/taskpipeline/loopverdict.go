@@ -22,8 +22,6 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/hazard"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
@@ -43,7 +41,6 @@ const (
 const (
 	LoopCodeAcceptanceRecurrence = "acceptance-recurrence"
 	LoopCodeLoopExhausted        = "loop-exhausted"
-	LoopCodeHazardPending        = "hazard-pending"
 	LoopCodeInputRequired        = "input-required"
 	LoopCodeBudgetFailedVerifies = "budget-failed-verifies"
 	LoopCodeBudgetTokens         = "budget-tokens"
@@ -69,7 +66,6 @@ const loopResetCmd = `forge task finding --reset-loop --note "<新方向>"`
 var loopResolve = map[string]string{
 	LoopCodeAcceptanceRecurrence: "需人工：" + loopResetCmd,
 	LoopCodeLoopExhausted:        "需人工：" + loopResetCmd,
-	LoopCodeHazardPending:        "需人工：forge hazard confirm --last",
 	LoopCodeInputRequired:        "需人工：forge task answer --ref <ref> --content <答复>",
 	LoopCodeBudgetFailedVerifies: "需人工：" + loopResetCmd + "，或调高 protocol.yml loop.max_failed_verifies",
 	LoopCodeBudgetTokens:         "需人工：" + loopResetCmd + "，或调高 protocol.yml loop.token_budget",
@@ -112,8 +108,6 @@ type LoopInputs struct {
 	Recurrences []AcceptanceRecurrence
 	// LoopExhausted: persisted marker or recomputed exhaustion.
 	LoopExhausted bool
-	// HazardPendingOwn: unconfirmed hazard intercepts owned by this task's session.
-	HazardPendingOwn int
 	// FailedVerifies: failed verify-acceptance runs since the last reset.
 	FailedVerifies int
 	// PassCounts: per verify-acceptance run since the last reset, the passed
@@ -152,9 +146,6 @@ func EvaluateLoopVerdict(in LoopInputs) LoopVerdict {
 			detail += "（" + in.State.LoopExhausted.Reason + "）"
 		}
 		add(LoopCodeLoopExhausted, detail)
-	}
-	if in.HazardPendingOwn > 0 {
-		add(LoopCodeHazardPending, fmt.Sprintf("%d 个高危拦截待人工确认", in.HazardPendingOwn))
 	}
 	if in.State != nil && in.State.Assignment != nil && in.State.Assignment.Status == tasktypes.AssignInputRequired {
 		q := strings.TrimSpace(in.State.Assignment.LastQuestion)
@@ -281,9 +272,6 @@ func ComputeLoopVerdict(root string, state *TaskState) LoopVerdict {
 		Recurrences:   DetectAcceptanceRecurrences(cfg, state.Acceptance),
 		LoopExhausted: state.LoopExhausted != nil || evaluateLoopExhaustion(root, state) != nil,
 		ChangedFiles:  len(TaskChangedFiles(root, state)),
-	}
-	if p, err := forgedata.ProjectFor(root); err == nil {
-		in.HazardPendingOwn = hazard.PendingBlocksFor(p, taskSessionOwner(state, CurrentSessionID())).Own
 	}
 	var since time.Time
 	if state.LoopResetAt != nil {

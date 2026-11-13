@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/spf13/cobra"
@@ -19,6 +20,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(registryCmd)
+	registryCmd.AddCommand(registryAddCmd)
 	registryCmd.AddCommand(registryPruneCmd)
 	registryCmd.AddCommand(registryRemoveCmd)
 }
@@ -76,5 +78,31 @@ func runRegistryPrune(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), `✅ 已精简全局注册表：移除 %d 条死路径/重复，保留 %d 个活跃项目。
 `, pruned, remain)
+	return nil
+}
+
+var registryAddCmd = &cobra.Command{
+	Use:   `add [path]`,
+	Short: `登记一个项目（默认当前目录）到全局注册表`,
+	Args:  cobra.MaximumNArgs(1),
+	RunE:  runRegistryAdd,
+}
+
+// runRegistryAdd 是阶段 D 后的显式登记入口：init 只写仓库产物，不再隐式登记；
+// 全局视图（dashboard / task --all-projects）依赖 projects.json 里的 managed 条目。
+func runRegistryAdd(cmd *cobra.Command, args []string) error {
+	root := `.`
+	if len(args) == 1 {
+		root = args[0]
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	if err := registry.Add(abs); err != nil {
+		return err
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), `✅ 已登记项目：%s
+`, abs)
 	return nil
 }
