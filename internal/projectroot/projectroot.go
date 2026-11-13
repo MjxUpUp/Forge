@@ -76,19 +76,20 @@ func Resolve() (string, Source, error) {
 // 使用。优先级与 ResolveFrom 同一份实现：仓库契约 → 注册表 → 遗留 .forge/；
 // 未命中任何来源时返回 forgedata.ErrNoForgeConfig。
 //
-// State 是只读探针：遗留 .forge/ 命中的项目不会被顺手登记进注册表（自愈只发生在
-// ResolveFrom —— 门禁/热路径；报告面读一次状态就改全局状态，副作用纪律不允许）。
+// State / ResolveFrom 都是只读探针：遗留 .forge/ 命中的项目不会被登记进注册表。
+// 注册只发生在显式命令（forge integrations enable / forge workspace add）——Phase C
+// 后解析路径不再写用户主目录，否则「init 只写仓库内产物」会被任意一次 status 推翻。
 //
 // 为什么需要它：ResolveFrom 把 declined 折成 error 是给 hook/命令门禁用的（静默
 // 放行），但展示面需要区分「没接管」「拒绝了」「已接管」三态。两处若各自实现
 // 一遍优先级，就会出现「status 说 managed、policy state 说 unknown」的矛盾。
 func State(cwd string) (string, Source, string, error) {
-	return resolveFrom(cwd, false)
+	return resolveFrom(cwd)
 }
 
 // ResolveFrom 是 Resolve 的可测入口（显式传 cwd，不读进程工作目录）。
 func ResolveFrom(cwd string) (string, Source, error) {
-	root, source, status, err := resolveFrom(cwd, true)
+	root, source, status, err := resolveFrom(cwd)
 	if err != nil {
 		return "", "", err
 	}
@@ -100,10 +101,10 @@ func ResolveFrom(cwd string) (string, Source, error) {
 
 // resolveFrom 是成员资格解析的唯一实现：返回 (根, 来源, 接管状态)。
 //
-// heal 控制遗留 .forge/ 分支是否自愈登记（ResolveFrom 传 true 保持老行为，State
-// 传 false 做成纯读探针）。热路径上注册表只需读一次：State 已经返回三态，未登记
-// 时再走一次成员资格查询是重复解析（readFile 无缓存）。
-func resolveFrom(cwd string, heal bool) (string, Source, string, error) {
+// 纯读实现：遗留 .forge/ 命中只返回来源，不登记（Phase C 移除自愈写 HOME）。
+// 热路径上注册表只需读一次：State 已经返回三态，未登记时再走一次成员资格查询
+// 是重复解析（readFile 无缓存）。
+func resolveFrom(cwd string) (string, Source, string, error) {
 	// 0. 仓库声明式契约。declined 一票否决优先：人明确拒绝接管后，仓库里的
 	//    标记不再自动复活 forge——否则 clone 一份契约就绕过了退出决定。
 	if root, ok := specroot.Find(cwd); ok {
@@ -126,16 +127,13 @@ func resolveFrom(cwd string, heal bool) (string, Source, string, error) {
 	}
 
 	// 2. 遗留兜底：向上 walk 找项目级 .forge/（user-level-assets 重构前 init 的
-	//    项目）。自愈：登记该项目，后续解析走快路径（条目同时获得 key）。
+	//    项目）。只读：不登记——全局视图需要显式 add 才收录。
 	//    Project Policy Layer P1：declined 的遗留项目不自愈——退出一票否决，返回
 	//    registry.ErrDeclinedProject（hook 分发对任何 Find 失败都静默放行，无需特判；
 	//    CLI 侧该错误文案即面向用户的 declined 提示）。
 	if root, ok := legacyFind(cwd); ok {
 		if _, state := registry.State(root); state == registry.StatusDeclined {
 			return root, SourceLegacyConfig, registry.StatusDeclined, nil
-		}
-		if heal {
-			_ = registry.Add(root) // 自愈登记，失败不阻断
 		}
 		return root, SourceLegacyConfig, registry.StatusManaged, nil
 	}
