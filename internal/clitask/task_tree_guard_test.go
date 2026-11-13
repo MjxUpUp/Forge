@@ -96,8 +96,18 @@ func TestWorktreeUse_Rebinds(t *testing.T) {
 	if len(anchors) != 1 {
 		t.Fatalf("重锚后应只剩 1 个锚，实际 %d：%+v", len(anchors), anchors)
 	}
-	if anchors[0].Path != absDir {
-		t.Fatalf("锚必须指向当前树 %s，实际 %s", absDir, anchors[0].Path)
+	// macOS 的 t.TempDir() 返回 /var/...，而 git 解析出的树根是 /private/var/...
+	// （/var 是指向 /private/var 的符号链接）。两侧都取真实路径再比。
+	realDir, err := filepath.EvalSymlinks(absDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	realAnchor, err := filepath.EvalSymlinks(anchors[0].Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if realAnchor != realDir {
+		t.Fatalf("锚必须指向当前树 %s，实际 %s", realDir, realAnchor)
 	}
 
 	gateOut, _, _ := runForge(t, dir, "task", "gate", "task-implement")
