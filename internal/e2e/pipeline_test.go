@@ -9,49 +9,49 @@ import (
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
-// TestE2E_InitGeneratesStructure verifies forge init scaffolds the expected
-// layout (user-level-assets era: zero project writes; assets live in the
-// user-level DataDir + agent config homes) and that status operates on it.
-// This is the init entry point (0→1) — regression protection for the core
-// init contract documented in README.
+// TestE2E_InitGeneratesStructure verifies the Phase C init contract: repo-only
+// products (spec/forge.yaml with hooks off, spec/changes/, AGENTS.md) and no
+// user-level/DataDir writes; status operates on the result.
 func TestE2E_InitGeneratesStructure(t *testing.T) {
-	dir := freshProject(t) // git init + go project + forge init
+	dir := t.TempDir()
+	// 用户级反向断言要求本用例独占宿主目录（TestMain 的 CLAUDE_CONFIG_DIR
+	// 全包共享，别的用例 integrations enable 会先写入）。
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	git(t, dir, "init", "-b", "master")
+	git(t, dir, "config", "user.email", "test@example.com")
+	git(t, dir, "config", "user.name", "Test")
+	initGoProject(t, dir)
+	forge(t, dir, "init")
 
-	// New contract: hook reference copies + protocol.yml + sync stamp live in the
-	// user-level DataDir (freshProject pins FORGE_DATA_HOME); claude integration
-	// (settings.json hooks, CLAUDE.md forge section, quality skill) lives under
-	// CLAUDE_CONFIG_DIR (TestMain-isolated).
-	//
-	// 新契约：hook 参考副本 + protocol.yml + sync 戳在用户级 DataDir（freshProject
-	// 已钉 FORGE_DATA_HOME）；claude 集成（settings.json hooks、CLAUDE.md forge 段、
-	// 质量 skill）在 CLAUDE_CONFIG_DIR 下（TestMain 已隔离）。
+	if !fileExists(t, dir, filepath.Join("spec", "forge.yaml")) {
+		t.Fatal("forge init did not generate spec/forge.yaml")
+	}
+	if !fileExists(t, dir, filepath.Join("spec", "changes", "archive", ".gitkeep")) {
+		t.Error("forge init did not generate spec/changes/archive/.gitkeep")
+	}
+	if !fileExists(t, dir, "AGENTS.md") {
+		t.Error("forge init did not generate AGENTS.md")
+	}
+
+	// 反向断言：init 不再写 DataDir / 用户级宿主资产——宿主接线是
+	// `forge integrations enable` 的显式 opt-in（阶段 C 判据）。
 	dataDir := forgedata.DataDirFor(dir)
-	for _, p := range []string{
-		"hooks",
-		".sync-version",
-		"protocol.yml",
-	} {
-		if !fileExists(t, dataDir, p) {
-			t.Errorf("forge init did not generate DataDir/%s", p)
+	for _, p := range []string{"hooks", ".sync-version", "protocol.yml"} {
+		if fileExists(t, dataDir, p) {
+			t.Errorf("forge init must not generate DataDir/%s (host wiring is opt-in)", p)
 		}
 	}
 	claudeHome := os.Getenv("CLAUDE_CONFIG_DIR")
-	if settings := readFile(t, claudeHome, "settings.json"); !strings.Contains(settings, "forge hook") {
-		t.Error("user-level settings.json should wire forge hooks")
+	if fileExists(t, claudeHome, "settings.json") {
+		t.Error("forge init must not wire user-level settings.json")
 	}
-	if claudeMD := readFile(t, claudeHome, "CLAUDE.md"); !strings.Contains(claudeMD, "FORGE:START") {
-		t.Error("user-level CLAUDE.md should carry the forge section")
-	}
-	if !fileExists(t, claudeHome, "skills/forge-quality/SKILL.md") {
-		t.Error("user-level forge-quality SKILL.md missing")
+	if fileExists(t, claudeHome, "CLAUDE.md") {
+		t.Error("forge init must not write user-level CLAUDE.md")
 	}
 
-	// Zero project writes + reverse assertion: removed artifacts no longer
-	// generated (regression guard — previously pipeline.yml/state.json/
-	// forge-pipeline existed).
-	//
 	// 零项目写入 + 反向断言：废弃产物不再生成（防回归——曾有
-	// pipeline.yml/state.json/forge-pipeline）。
+	// pipeline.yml/state.json/forge-pipeline 与 .forge/.claude 项目资产）。
 	for _, p := range []string{
 		".forge",
 		".claude",
@@ -115,13 +115,15 @@ func TestE2E_InitMultiAgent(t *testing.T) {
 	git(t, dir, "config", "user.name", "Test")
 	initGoProject(t, dir)
 
-	// One init naming two backends explicitly (not auto-detect).
-	forge(t, dir, "init", "--agents", "claude-code,cursor")
+	// Phase C：init 只声明仓库契约，宿主接线是显式 opt-in（integrations enable）。
+	// 两个后端一次接线，等价于旧的 init --agents claude-code,cursor。
+	forge(t, dir, "init")
+	forge(t, dir, "integrations", "enable", "claude-code", "cursor")
 
 	// claude-code baseline: user-level settings.json wires the forge hooks
 	// (CLAUDE_CONFIG_DIR is TestMain-isolated). cursor: user-level
 	// ~/.cursor/hooks.json (HOME is TestMain-isolated) — the proof the explicit
-	// cursor agent ran through ParseAgentFlag → TranslateForAgents →
+	// cursor host ran through integrations enable → TranslateForAgents →
 	// CursorTranslator.
 	claudeHome := os.Getenv("CLAUDE_CONFIG_DIR")
 	if settings := readFile(t, claudeHome, "settings.json"); !strings.Contains(settings, "forge hook") {
@@ -138,7 +140,7 @@ func TestE2E_InitMultiAgent(t *testing.T) {
 	// 两个后端都零项目写入。
 	for _, p := range []string{".claude", ".cursor"} {
 		if fileExists(t, dir, p) {
-			t.Errorf("init --agents must not write %s into the project (zero-project-write)", p)
+			t.Errorf("integrations enable must not write %s into the project (zero-project-write)", p)
 		}
 	}
 }
@@ -157,11 +159,13 @@ func TestE2E_InitCodex(t *testing.T) {
 	git(t, dir, "config", "user.name", "Test")
 	initGoProject(t, dir)
 
-	forge(t, dir, "init", "--agents", "codex")
+	// Phase C：init 声明仓库契约 + integrations enable 显式接线 codex。
+	forge(t, dir, "init")
+	forge(t, dir, "integrations", "enable", "codex")
 
 	data, err := os.ReadFile(filepath.Join(os.Getenv("CODEX_HOME"), "hooks.json"))
 	if err != nil {
-		t.Fatalf("init --agents codex did not generate user-level $CODEX_HOME/hooks.json: %v", err)
+		t.Fatalf("integrations enable codex did not generate user-level $CODEX_HOME/hooks.json: %v", err)
 	}
 	content := string(data)
 	for _, want := range []string{`"PreToolUse"`, `"PostToolUse"`, `"Stop"`, "forge hook batch --event PreToolUse", "forge hook batch --event Stop"} {

@@ -8,19 +8,20 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/hookdispatch"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/specroot"
 )
 
 // off_test.go — Project Policy Layer P1 的命令面契约：forge off/on 对称翻转、
-// init 对 declined 的硬门禁、suggest decline 委托同一核心。
+// init 对 declined 的硬门禁。
 // 行为契约见 docs/design/project-policy-layer.md「行为契约」表。
 
-// markerPathOf 返回指定项目根的 legacy 提示标记路径（与 suggest.go/hook 同源）。
-func markerPathOf(root string) string {
-	return filepath.Join(suggestStateDir(), hookdispatch.SuggestTagFor(root))
+// mkGitProjCLI 把一个临时目录变成 git 仓库（团队声明 .forge-decline 按 git 根
+// 键控，非 git 目录会被拒绝）。
+func mkGitProjCLI(t *testing.T, dir string) {
+	t.Helper()
+	runGit(t, dir, `init`, `-q`)
 }
 
 // assertState 断言注册表状态并在失败时给出可读信息。
@@ -59,9 +60,6 @@ func TestOff_LifecycleManagedProject(t *testing.T) {
 		t.Fatalf(`runOff: %v`, err)
 	}
 	assertState(t, proj, registry.StatusDeclined)
-	if data, err := os.ReadFile(markerPathOf(proj)); err != nil || strings.TrimSpace(string(data)) != `declined` {
-		t.Errorf(`legacy marker = (%q, %v), want "declined"`, string(data), err)
-	}
 	// off 后必须不再是 managed 成员——所有 project-scoped hook 的闸门。
 	if managedMember(proj) {
 		t.Error(`still a managed member after forge off`)
@@ -71,9 +69,6 @@ func TestOff_LifecycleManagedProject(t *testing.T) {
 		t.Fatalf(`runOn: %v`, err)
 	}
 	assertState(t, proj, registry.StatusManaged)
-	if _, err := os.Stat(markerPathOf(proj)); !os.IsNotExist(err) {
-		t.Errorf(`marker not removed by forge on (err=%v)`, err)
-	}
 	if !managedMember(proj) {
 		t.Error(`not a managed member after forge on`)
 	}
@@ -142,9 +137,6 @@ func TestOffAll_FlipsEveryAliveEntry(t *testing.T) {
 		if managedMember(p) {
 			t.Errorf(`%s still managed after off --all`, p)
 		}
-		if data, rerr := os.ReadFile(markerPathOf(p)); rerr != nil || strings.TrimSpace(string(data)) != `declined` {
-			t.Errorf(`marker for %s = (%q, %v), want declined`, p, string(data), rerr)
-		}
 	}
 }
 
@@ -165,7 +157,7 @@ func TestOn_UnknownRejects(t *testing.T) {
 }
 
 // TestStatus_DeclinedFriendlyError off 后 forge status 以 ErrDeclinedProject 文案
-// 非零退出（成员探测契约：init-suggest 依赖该退出码）。
+// 非零退出（成员探测契约：hook 侧按该退出码判断项目是否退出接管）。
 func TestStatus_DeclinedFriendlyError(t *testing.T) {
 	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
 	proj := t.TempDir()
@@ -181,7 +173,7 @@ func TestStatus_DeclinedFriendlyError(t *testing.T) {
 }
 
 // writeTestProtocol 在用户级 DataDir 放一个 protocol.yml 占位（模拟已 init 项目），
-// 避免单测触达真实用户级 agent 配置（runInitUserLevel 会写 ~/.claude 等）。
+// 避免单测触达真实用户级 agent 配置（宿主接线只在显式 integrations enable 时写）。
 // DataDir 用 forgedata.DataDirFor（与 init 的 protocol.EnsureDefault 同一键）。
 func writeTestProtocol(proj string) error {
 	dir := forgedata.DataDirFor(proj)
