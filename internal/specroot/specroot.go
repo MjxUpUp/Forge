@@ -173,12 +173,14 @@ func sameDir(a, b string) bool {
 
 // Load 读取并校验 root/spec/forge.yaml。
 //
-// 缺省值：version=1、profile=standard、hooks=on。未知 profile、未知键或不受支持
+// 缺省值：version=1、profile=standard、hooks=off（ADR-0002 阶段 B：执法 opt-in，
+// 默认 audit-only）。未知 profile、未知键或不受支持
 // 的主版本返回错误——
 // 契约是人写的文件，拼错档位时静默降级比报错更危险。
 //
-// 消费现状（2026-11-11）：成员资格认「文件存在」；hooks 开关已接线——
-// hookdispatch 在解析出项目根后读契约，off 则静默放行、profile 决定名册档位。
+// 消费现状（2026-11-13）：成员资格认「文件存在」；hooks 开关已接线——
+// hookdispatch 解析出项目根后读契约，off（含缺省）静默放行（audit-only）、on 才执法、
+// profile 决定名册档位；无契约的宿主层由 FORGE_HOOKS=on 显式开启（ADR-0002 阶段 B）。
 func Load(root string) (*Contract, error) {
 	path := MarkerPath(root)
 	raw, err := os.ReadFile(path)

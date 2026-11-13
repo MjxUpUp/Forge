@@ -26,7 +26,7 @@ Stop trusting AI-generated code. Start gating it.
 
 > **AI 写的代码，你放心直接提交吗？**
 
-Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到代码提交，每一步产出物都要留下 deterministic 证据。配合 Claude Code 的 Hook 系统实时拦截，不需要你手动检查。
+Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到代码提交，每一步产出物都要留下 deterministic 证据，门禁由 CLI 确定性把关。配合宿主 Hook 系统还能在写代码时实时拦截（需显式开启，缺省 audit-only 静默审计，见下）。
 
 **⚡ 60 秒拿到第一个证据**：
 
@@ -72,15 +72,17 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
                 📊 质量评分 + deterministic 证据链
 ```
 
+<sub>注：图中「Forge Hooks · 实时拦截」为 opt-in 加速器——契约 `hooks: on` 或无契约宿主 `FORGE_HOOKS=on` 才执法，缺省 audit-only 静默审计；任务门禁与证据链由 CLI 确定性执行，始终生效。</sub>
+
 ## ✨ 核心能力
 
 <table>
   <tr>
     <td width="50%" valign="top"><strong>🚦 任务级门禁</strong><br/>每个开发任务走 3 道门禁：实现 → 验证 → 完成，门禁之间有活动检查防止跳阶段。</td>
-    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>27 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）。</td>
+    <td width="50%" valign="top"><strong>🪝 实时 Hook 拦截</strong><br/>27 个内置 Hook，显式开启后在 AI 写代码的同时自动检查质量、防止绕过（读改前置 / 文件监控 / 高危拦截）；缺省 audit-only 静默审计。</td>
   </tr>
   <tr>
-    <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。活跃任务内，Agent 无法经 bash 绕道篡改。</td>
+    <td valign="top"><strong>🛡️ 安全纵深防御</strong><br/>三层防御架构：工具拦截 → 文件监控 → 自身保护。开启执法后，活跃任务内 Agent 无法经 bash 绕道篡改（缺省 audit-only）。</td>
     <td valign="top"><strong>📊 质量评分</strong><br/>每个任务完成后自动评分，量化 AI 编码质量；deterministic 证据链可审计。</td>
   </tr>
 </table>
@@ -182,9 +184,9 @@ Layer 3: 会话结束验证
   └─ task-verify: 检查任务完成度 + 主分支保护 + 自身版本
 ```
 
-活跃任务内，Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。**没有活跃任务时 task-guard 只给 WARN 提示，不是硬墙**；有任务才按门禁语义拦截。
+开启 hook 执法后（契约 `hooks: on` 或宿主 `FORGE_HOOKS=on`；缺省 audit-only 不拦截），活跃任务内，Agent 无法通过 `node -e "fs.writeFileSync()"`、`cat > file`、直接编辑 task JSON 等方式绕过——bash-guard 拦截工具层，file-sentinel 监控文件层，task-guard 保护配置层。**没有活跃任务时 task-guard 只给 WARN 提示，不是硬墙**；有任务才按门禁语义拦截。
 
-27 个内置 Hook 的完整清单（触发时机、职责；可关闭的门禁类都附了逃生开关）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
+27 个内置 Hook 的完整清单（触发时机、职责；opt-in 执法，执法时的门禁类另附逃生开关）见 [docs/reference/hooks.md](docs/reference/hooks.md)。
 
 ## 📦 安装
 
