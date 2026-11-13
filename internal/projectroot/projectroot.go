@@ -77,7 +77,7 @@ func Resolve() (string, Source, error) {
 // 未命中任何来源时返回 forgedata.ErrNoForgeConfig。
 //
 // State / ResolveFrom 都是只读探针：遗留 .forge/ 命中的项目不会被登记进注册表。
-// 注册只发生在显式命令（forge integrations enable / forge workspace add）——Phase C
+// 注册只发生在显式命令（forge registry add / forge workspace add）——Phase D
 // 后解析路径不再写用户主目录，否则「init 只写仓库内产物」会被任意一次 status 推翻。
 //
 // 为什么需要它：ResolveFrom 把 declined 折成 error 是给 hook/命令门禁用的（静默
