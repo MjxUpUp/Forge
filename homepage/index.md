@@ -51,7 +51,7 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 | **Codex** | plugin marketplace 或 `forge integrations enable codex` | 用户级 hooks（`~/.codex/hooks.json` + config.toml 特性开关；可能需在 codex `/hooks` 里 trust 一次）+ guidance |
 | **Cursor** | plugin marketplace + `forge integrations enable cursor` | 用户级 hooks（`~/.cursor/hooks.json`） |
 | **Windsurf** | `forge integrations enable windsurf` | 用户级 Cascade hooks（`~/.codeium/windsurf/hooks.json` + `memories/global_rules.md`） |
-| **GitHub Copilot (CLI)** | plugin marketplace | plugin 自带 copilot 格式 `hooks.json`，marketplace 装完即接线（PreToolUse/PostToolUse/Stop/SessionStart/UserPromptSubmit）；VS Code 侧未验证；非 plugin 渠道用 `forge integrations enable copilot` |
+| **GitHub Copilot (CLI)** | plugin marketplace | plugin 自带 copilot 格式 `hooks.json`，marketplace 装完即接线（PreToolUse/PostToolUse/Stop/SessionStart/UserPromptSubmit）；VS Code 侧未验证；非 plugin 渠道没有用户级文件可写（`enable copilot` 是 no-op），只能走 plugin manifest |
 | **Kimi Code** | 仓库根 `.kimi-plugin/plugin.json`（`/plugins install https://github.com/MjxUpUp/Forge`） | 全事件集（含 PostCompact/UserPromptSubmit），exit-2 block 协议；fallback `forge integrations enable kimi` |
 | **Reasonix** | `plugins/forge/reasonix-plugin.json`（`reasonix plugin install https://github.com/MjxUpUp/Forge/tree/main/plugins/forge`） | native manifest 接线（PreToolUse/PostToolUse/Stop/SessionStart）；fallback `forge integrations enable reasonix` |
 | **DeepSeek Harness (dsh)** | `dsh plugin --profile <profile> add "github:MjxUpUp/Forge#main&path:/plugins/forge-dsh"`（npm 通道 `@agent_forge/forge-dsh`；桌面 App 用 `desktop` profile；插件自带 forge 本体，无需另装 CLI） | 类型化拦截点接线（tools/pre-execute、tools/post-execute、agent/pre-step、agent/session-start、agent/turn-stopping），名册镜像 ForgeHookSpec（spec 守卫测试钉死）；会话内 `/forge-status` 查状态 |
