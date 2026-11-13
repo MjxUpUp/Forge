@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -31,7 +30,6 @@ func runSystemStatus() error {
 	checkGlobalForge(forgeRoot, &errors, &warnings)
 	checkForgeInPath(&warnings)
 	checkOrphanHooks(home, &warnings)
-	checkSkillsManifest(forgeRoot, &errors, &warnings)
 
 	fmt.Println()
 	fmt.Printf("Results: %d error(s), %d warning(s)\n", errors, warnings)
@@ -53,7 +51,8 @@ func checkGlobalForge(forgeRoot string, errors, warnings *int) {
 	fmt.Printf("  %s exists\n", forgeRoot)
 
 	// refactor-data-home 后的真实布局：runtime state 在 <root>/projects/<key>/
-	// （per-project DataDir）；embedded skill 解包到 <root>/skills-cache/。
+	// （per-project DataDir）。阶段 D 删掉 skills 分发后 skills-cache 不再由任何命令创建，
+	// 不再检查（否则是一条永远修不好的 warning）。
 	// 之前检查的目录（pipeline-templates/hooks/bin）无任何代码创建——每次运行
 	// 都报 3 条永远修不好的 warning。
 	for _, sub := range []struct {
@@ -61,7 +60,6 @@ func checkGlobalForge(forgeRoot string, errors, warnings *int) {
 		hint string
 	}{
 		{"projects", "run 'forge task start' in a project to create its runtime-state dir"},
-		{"skills-cache", "run 'forge skills install' to unpack the embedded skill library"},
 	} {
 		path := filepath.Join(forgeRoot, sub.name)
 		if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -125,31 +123,4 @@ func checkOrphanHooks(home string, warnings *int) {
 	if orphans > 0 {
 		*warnings++
 	}
-}
-
-// checkSkillsManifest 检查全局数据根下的 skills-manifest.json（上次 forge skills
-// install 的快照；路径随 forgedata.GlobalHome，受 FORGE_DATA_HOME 覆盖）。
-func checkSkillsManifest(forgeRoot string, errors, warnings *int) {
-	mfPath := filepath.Join(forgeRoot, "skills-manifest.json")
-	data, err := os.ReadFile(mfPath)
-	if err != nil {
-		fmt.Printf("  %s not found — run 'forge skills install' to distribute skill library\n", mfPath)
-		*warnings++
-		return
-	}
-	var m struct {
-		GeneratedAt   string `json:"generated_at"`
-		CanonicalRoot string `json:"canonical_root"`
-		Stats         struct {
-			Total int `json:"total"`
-			Pass  int `json:"pass"`
-		} `json:"stats"`
-	}
-	if err := json.Unmarshal(data, &m); err != nil {
-		fmt.Printf("  %s corrupt: %v\n", mfPath, err)
-		*errors++
-		return
-	}
-	fmt.Printf("  Skills manifest: %d skill (%d pass), canonical=%s, generated %s\n",
-		m.Stats.Total, m.Stats.Pass, m.CanonicalRoot, m.GeneratedAt)
 }
