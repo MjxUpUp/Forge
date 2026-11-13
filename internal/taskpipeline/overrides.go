@@ -86,10 +86,6 @@ const (
 	// escapeSelfReport：自报一致性门禁的 which 键。v1 仅 env 逃生（上方 switch 无
 	// case——per-task override flag 留给需要时再扩 TaskOverrides 面）。
 	escapeSelfReport = "self-report"
-	// escapeHazardPending：hazard 清账 pre-flight 的 which 键（delivery-hardening
-	// 墙-1b）。v1 仅 env 逃生（switch 无 case，self-report 同款）——清账的正规出口
-	// 是真人 confirm/release，env 留给无人 CI。
-	escapeHazardPending = "hazard-pending"
 	// escapeMutationGate：mutation 复发升硬门的 which 键（delivery-hardening
 	// 硬-1b）。v1 仅 env 逃生（switch 无 case，self-report 同款）。
 	escapeMutationGate = "mutation-gate"
