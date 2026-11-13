@@ -17,6 +17,7 @@ package projectroot
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -154,9 +155,9 @@ func legacyFind(dir string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	homeDir, _ := os.UserHomeDir() // 有效 home 边界；解析失败则不设（退化原行为）
+	homeDirs := legacyHomeDirs()
 	for {
-		if homeDir != "" && samePath(d, homeDir) {
+		if isHomeBoundary(d, homeDirs) {
 			return "", false // 到 home 边界停止
 		}
 		candidate := filepath.Join(d, ".forge")
@@ -242,4 +243,34 @@ func FindFrom(cwd string) (string, error) {
 // FindFromReadOnly 与 FindFrom 相同：本实现从不自愈登记，热路径只读。
 func FindFromReadOnly(cwd string) (string, error) {
 	return FindFrom(cwd)
+}
+
+// legacyHomeDirs 返回 walk-up 必须停下的 home 边界。
+//
+// 只用 os.UserHomeDir 不够：它读 USERPROFILE/HOME，测试会把这两个 env 重定向到
+// 临时目录（内部 cli 包的 TestMain 就是这么做的）。此时 walk-up 会越过假 home
+// 继续走到**真实**账户 home，若真实 home 下有 .forge/（全局 store 之外的残留，
+// 或只有 projects/ 等没被嗅探命中的状态），整个 home 下的临时目录都会被解析成
+// home——CI（windows-latest）上就是这么红的。
+//
+// 因此边界取两份：env 派生的 home + 账户数据库里的真实 home（os/user 不读
+// HOME/USERPROFILE，测试改不动它）。真实账户 home 永远不是项目根。
+func legacyHomeDirs() []string {
+	var out []string
+	if h, err := os.UserHomeDir(); err == nil && h != `` {
+		out = append(out, h)
+	}
+	if u, err := user.Current(); err == nil && u.HomeDir != `` {
+		out = append(out, u.HomeDir)
+	}
+	return out
+}
+
+func isHomeBoundary(d string, homes []string) bool {
+	for _, h := range homes {
+		if samePath(d, h) {
+			return true
+		}
+	}
+	return false
 }
