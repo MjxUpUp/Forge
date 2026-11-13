@@ -32,11 +32,11 @@ import (
 var FS embed.FS
 
 // ExtractTo extracts the built-in skill library to dir (a real filesystem directory), returning the first error encountered.
-// install/drift-check/adapters etc. need real paths — the embed FS is virtual and cannot be pointed at by a link,
+// skill 读取等需要真实路径 — the embed FS is virtual and cannot be pointed at by a link,
 // so on fallback it is first extracted to a persistent cache dir, which then serves as the canonical source.
 //
 // ExtractTo 把内置 skill 库解压到 dir（真实文件系统目录），返回首个遇到的错误。
-// install/drift-check/adapters 等需真实路径——embed FS 是虚拟的，无法被 link 指向，
+// skill 读取等需要真实路径——embed FS 是虚拟的，无法被 link 指向，
 // 故 fallback 时先解压到持久缓存目录，再以该目录作为 canonical 源。
 func ExtractTo(dir string) error {
 	return fs.WalkDir(FS, ".", func(path string, d fs.DirEntry, err error) error {

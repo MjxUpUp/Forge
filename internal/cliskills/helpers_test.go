@@ -47,34 +47,6 @@ func captureStdout(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-// captureStderr 临时重定向 os.Stderr 捕获 Warnings 等告警输出（告警走 stderr，与正常输出分离）。
-// defer 在赋值后立即注册：fn panic 时也保证 Stderr 恢复 + pipe 关闭（防污染后续测试 + pipe 半挂）。
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-	defer func() {
-		os.Stderr = old
-		w.Close()
-		r.Close()
-	}()
-	var buf bytes.Buffer
-	done := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(&buf, r)
-		close(done)
-	}()
-	fn()
-	w.Close() // 触发 goroutine EOF
-	<-done    // 等待读取完成
-	return buf.String()
-}
-
-// TestPrintInstallReport_DriftSkipDetail: drift+skip must list details + give a sync reminder.
-//
-// TestPrintInstallReport_DriftSkipDetail：drift+skip 必须列明细 + 给出同步提醒。
-
 // TestVersionFn_LazyAndFallback 钉死版本 seam 契约（2026-09 普查 A2-1 审查发现
 // F1 的回归守卫）：惰性闭包取值（SetVersion 在 main() 才写 rootCmd.Version，
 // init 期拷贝恒空串）+ 未注册时兜底 "dev"（空串会污染 embed 缓存版本标记，

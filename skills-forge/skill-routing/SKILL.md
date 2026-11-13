@@ -16,7 +16,7 @@ metadata:
 ## 架构：单一真相 + 多 agent 适配
 
 ```
-<skills-root>/skill-routing/       ← CANONICAL（forge skills adapters 分发的真相源）
+<skills-root>/skill-routing/       ← CANONICAL（canonical 真相源；阶段 D 起不再自动分发）
 ├── routes.json                           # 共享路由表（关键词→skill 映射，只收录已分发 skill）
 ├── scripts/route-match.sh                # 共享匹配引擎（bash，所有适配层调用）
 ├── scripts/check-routes.sh               # 发布守卫（校验 routes.json 引用的 skill 都存在于 skills/）
@@ -57,7 +57,7 @@ metadata:
 
 **发布守卫**：改 routes.json 后跑 `bash scripts/check-routes.sh`——校验每个被引用 skill 的 `skills/<name>/SKILL.md` 存在，有死路由即 exit 1 拦下发布。
 
-**改路由就改这一个文件**，然后 `forge skills adapters --apply` 分发（claude/cursor 重启会话生效）。
+**改路由就改这一个文件**，然后手动把 routes.json 与生成产物同步到 claude/cursor 规则目录（阶段 D 起不再自动分发；重启会话生效）。
 
 ## 匹配引擎（scripts/route-match.sh）
 
@@ -91,10 +91,10 @@ Codex 不消费 SKILL.md、无 hook，唯一入口是 AGENTS.md。只能把路�
 ## 易错点（Gotchas）
 
 - **Claude 不能改写输入**：UserPromptSubmit 只支持 `additionalContext`（注入）和 `decision:block`（阻断），没有 `updatedInput`。当前无支持 agent 能硬 transform 输入。
-- **Codex 完全不读 SKILL.md**：`forge skills adapters` 的部署目标不含 codex，Codex 路由只能进 AGENTS.md 文字。
+- **Codex 完全不读 SKILL.md**：历史 adapters 的部署目标不含 codex（阶段 D 起不再自动分发），Codex 路由只能进 AGENTS.md 文字。
 - **jq @tsv 在 git-bash 带 CR**：route-match.sh 必须剥离 `\r`，否则中文关键词匹配全失败（已处理）。
 - **`_comment` 字段别和 match 混在一个对象**：routes.json 的注释要独立成对象，否则污染 match 数组。
-- **Cursor mdc 路由表是生成的**：手动改 mdc 会被重新部署覆盖，改 routes.json 再 `forge skills adapters --apply`。
+- **Cursor mdc 路由表是生成的**：手动改 mdc 会被重新部署覆盖，改 routes.json 再手动同步。
 - **AGENTS.md 是跨 agent 通用指令源**：给 Codex 注入路由表写入项目根 AGENTS.md，所有读 AGENTS.md 的 agent（codex/cursor/copilot/windsurf/cline）都获得。
 - **路由命中优先级 = routes.json 顺序**：靠前的先匹配，调整顺序即调优先级。
 - **canonical 不得引用未分发 skill**：routes.json 里指向 `skills/` 不存在 skill 的条目对外部用户是死路由——个人路由放覆盖层 `~/.forge/skill-routes.json`，发布前跑 scripts/check-routes.sh。
@@ -117,7 +117,7 @@ vim "$FORGE_SKILLS_CANONICAL/skill-routing/routes.json"
 bash "$FORGE_SKILLS_CANONICAL/skill-routing/scripts/check-routes.sh"
 
 # forge 分发适配层资产（claude/cursor adapter + routes.json 一次部署）
-forge skills adapters --apply
+（阶段 D 起不再自动分发，改为手动同步 routes.json 与生成产物）
 
 # Claude/Cursor 重启会话生效
 ```
