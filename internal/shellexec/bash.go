@@ -9,7 +9,6 @@
 package shellexec
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -99,24 +98,4 @@ func isWSLBash(path string) bool {
 	return strings.Contains(p, "/windows/system32/") ||
 		strings.Contains(p, "/windows/syswow64/") ||
 		strings.Contains(p, "/microsoft/windowsapps/")
-}
-
-// IsHookInfraFailure distinguishes "bash could not run the script" from "the script ran and reported FAIL".
-//
-// IsHookInfraFailure 区分"bash 没能跑起脚本"与"脚本跑了并报告 FAIL"。spawn 错误
-// （bash 消失、权限问题）与 bash exit 126/127（脚本文件不可读/不存在——WSL
-// bash on Windows 的特征）属基础设施；其他退出码来自脚本本身，保留门禁结论语义。
-// 已接受的权衡：脚本内部的 126/127（脚本依赖的外部命令缺失，如没有 grep）同样
-// fail-open——对 hazard-guard 这是有意的安全降级，但替代方案（旧 WSL 行为：每轮
-// 硬阻断）严格更糟，且警告始终可见。
-func IsHookInfraFailure(err error) bool {
-	if err == nil {
-		return false
-	}
-	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
-		return true
-	}
-	code := exitErr.ExitCode()
-	return code == 126 || code == 127
 }

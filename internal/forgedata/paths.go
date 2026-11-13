@@ -136,11 +136,6 @@ func (p *Project) ensureMeta() error {
 // MetaPath 返回 DataDir/.migration-meta.json
 func (p *Project) MetaPath() string { return filepath.Join(p.DataDir, ".migration-meta.json") }
 
-// HazardsDir returns DataDir/hazards.
-//
-// HazardsDir 返回 DataDir/hazards
-func (p *Project) HazardsDir() string { return filepath.Join(p.DataDir, "hazards") }
-
 // HazardsEventsPath returns DataDir/hazards/events.jsonl.
 //
 // HazardsEventsPath 返回 DataDir/hazards/events.jsonl

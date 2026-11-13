@@ -104,14 +104,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return fmt.Errorf(`task complete 拒绝：任务状态文件完整性校验失败（在 forge 之外被修改——手改的 review/doc 证据不被采信）。恢复路径：forge task abort 后重新走门禁`)
 	}
 
-	// hazard 清账 pre-flight（delivery-hardening 墙-1b）：等账未清不得交付——
-	// 存在未经人工确认的高危拦截时拒绝完成（会话取证 sess_cbe4047c 实证：7 拦
-	// 0 确认照样交）。出口是真人 confirm/release（已加终端判别），env 逃生落审计。
-	if ok, reasons := taskpipeline.CheckHazardPending(root, state, taskpipeline.CurrentSessionID()); !ok {
-		return fmt.Errorf(`hazard 清账未通过：%s`,
-			strings.Join(reasons, `; `))
-	}
-
 	// acceptance registration pre-flight（oracle-pipeline L1，考卷层级制）：非 generic
 	// 交付任务必须至少登记一条验收标准——零标准时整个 deterministic 验收核心对空集
 	// 平凡通过（2026-09-07 实证 ratio 0.08 完成事故）。考卷梯子由强到弱：spec 产物

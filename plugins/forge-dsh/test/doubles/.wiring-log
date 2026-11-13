@@ -1,0 +1,7 @@
+{"hook":"freeze-guard","payload":{"session_id":"","transcript_path":"","cwd":"E:\\Forge\\plugins\\forge-dsh","hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{},"forge_agent":"dsh"}}
+{"hook":"task-guard","payload":{"session_id":"","transcript_path":"","cwd":"E:\\Forge\\plugins\\forge-dsh","hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{},"forge_agent":"dsh"}}
+{"hook":"bash-guard","payload":{"session_id":"sess-1","transcript_path":"","cwd":"E:\\Forge\\plugins\\forge-dsh","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"forge_agent":"dsh"}}
+{"hook":"hazard-guard","payload":{"session_id":"sess-1","transcript_path":"","cwd":"E:\\Forge\\plugins\\forge-dsh","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"forge_agent":"dsh"}}
+{"hook":"gate-cmd-form","payload":{"session_id":"sess-1","transcript_path":"","cwd":"E:\\Forge\\plugins\\forge-dsh","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"forge_agent":"dsh"}}
+{"hook":"skill-trigger","payload":{"session_id":"sess-1","transcript_path":"","cwd":"E:\\Forge\\plugins\\forge-dsh","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"forge_agent":"dsh"}}
+{"hook":"task-drift","payload":{"session_id":"sess-1","transcript_path":"","cwd":"E:\\Forge\\plugins\\forge-dsh","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"},"forge_agent":"dsh"}}

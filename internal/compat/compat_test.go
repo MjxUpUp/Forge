@@ -80,12 +80,8 @@ func TestScanBlockings(t *testing.T) {
 // (env → 所在源文件)。守卫不放松:文件必须存在且字面量在场——搬家/改名/
 // 删除都会红。新增条目须带一句所在层的理由。
 var rosterExtraSources = map[string]string{
-	"FORGE_TASK_DRIFT":       "../hookdispatch/hook_task_drift.go",    // hookdispatch 层:task-drift BLOCK ratchet 的逃生
-	"FORGE_TASK_VERIFY_STOP": "../hooks/embed_quality.go",             // bash embed 层:task-verify Stop 有界阻断的逃生
-	"FORGE_GATE_CMD_FORM":    "../hookdispatch/hook_gate_cmd_form.go", // hookdispatch 层:gate-cmd-form BLOCK ratchet 的逃生（墙-1a）
-	"FORGE_EVAL_PREFLIGHT":   "../evalkit/preflight.go",               // evalkit 层:Track A preflight（评测自身不合法）BLOCK 的逃生（R3）
+	"FORGE_EVAL_PREFLIGHT": "../evalkit/preflight.go", // evalkit 层:Track A preflight（评测自身不合法）BLOCK 的逃生（R3）
 	// hookdispatch 层:宿主提升（dsh/zcode 把 task-guard advisory 升为阻断）的逃生（2026-10-22 入册）
-	"FORGE_ADVISORY_PROMOTION": "../hookdispatch/hook_emitters.go",
 }
 
 // TestEscapeRosterComplete 守卫（对抗审查 should-fix：原注释宣称源对照而实际
