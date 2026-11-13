@@ -211,7 +211,7 @@
 | `forge enforcement [--json] [--sample N]` | 执法健康报告（只读）：聚合 task-guard 的 advisory/blocked 计数、无视升档会话、测试编辑计数与野外申报，给出双环（升档会话超阈）与降格（zombie rule 复审）两个治理信号；`--sample N` 抽 N 个已完成任务 join 其 session 的 ignores/wild 遥测 |
 | `forge trace <task-ref> [--window <chars>]` | 查看任务的完整质量事件时间线（checklog + toollog + token）；`--window` 输出分段监控窗口（每窗 ≤ 预算字符、头部周期性守卫重注入——下游 LLM judge/取证按窗取输入，禁止全量轨迹塞上下文，Classifier Context Rot 缓解） |
 | `forge dashboard [--port <n>] [--no-open]` | 本地全局质量看板（Pulse 面板）——在任意目录运行都聚合 `~/.forge/projects.json` 登记的全部项目（`forge registry add` 显式登记），渲染事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合（localhost 只读，自动开浏览器，Ctrl+C 退出，面板内按项目过滤）；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |
-| `forge bridge verify <dir> [--json]` | 对一个 dsh 插件包跑静态检查（#1884 四大事故模式：inject 一致性 / 同名注册 / @deepseek-ai vendored 耦合 / 未知事件），error → exit 2——dsh 插件作者发布前自检用（该设计文档为阶段 D 前的历史记录） |
+| `forge bridge verify <dir> [--json]` | 对一个 dsh 插件包跑静态检查（#1884 四大事故模式：inject 一致性 / 同名注册 / @deepseek-ai vendored 耦合 / 未知事件），error → exit 2——dsh 插件作者发布前自检用（`docs/design/forge-dsh-provider-roadmap.md` 为阶段 D 前的历史记录） |
 
 </details>
 

@@ -167,7 +167,7 @@ tokens」，token 类登录被禁，需临时调回 publishing access 再操作�
 
 - 正常发版：Release PR 按 Conventional Commits 推断 patch/minor/major
 - 发版后发现 bug：**升 patch 重发**，不 force-push 覆盖已发 tag
-  - 已发 tag 不可变，靠远端分支保护；且覆盖已发布 npm 包不可逆（registry 会缓存）
+  - 不应覆盖已发 tag，远端需开 tag protection；且覆盖已发布 npm 包不可逆（registry 会缓存）
   - v0.27.1→v0.27.2 即此规则实例
 
 ## 坏版本处置（npm deprecate RUNBOOK）
