@@ -124,3 +124,40 @@ func TestMigrateProjectProtocol_UnverifiableCopyKeepsProjectFile(t *testing.T) {
 		t.Errorf("DataDir 副本未验证时项目文件必须保留: %v", err)
 	}
 }
+
+// TestStripProjectLevelForgeAssets_TeamModeExempt：团队模式（.forge/team-mode）
+// 刻意保留项目级资产，清理器必须跳过；没有标记时照常剥掉 .forge/hooks。
+func TestStripProjectLevelForgeAssets_TeamModeExempt(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+
+	t.Run("team-mode keeps project assets", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, ".forge", "hooks"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, ".forge", teamModeMarker), []byte("1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, ".forge", "hooks", "keep.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		stripProjectLevelForgeAssets(dir)
+		if _, err := os.Stat(filepath.Join(dir, ".forge", "hooks", "keep.sh")); err != nil {
+			t.Fatalf("team-mode 项目不得被剥掉项目级 hooks: %v", err)
+		}
+	})
+
+	t.Run("no marker strips project hooks", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, ".forge", "hooks"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, ".forge", "hooks", "old.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		stripProjectLevelForgeAssets(dir)
+		if _, err := os.Stat(filepath.Join(dir, ".forge", "hooks")); !os.IsNotExist(err) {
+			t.Fatalf("无 team-mode 标记时应剥掉 .forge/hooks（err=%v）", err)
+		}
+	})
+}

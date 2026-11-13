@@ -1,6 +1,7 @@
 # Project Policy Layer —— 按项目接管策略（P1 落地设计）
 
 - 状态：P1 已交付（feat/project-policy-p1）；P2-P4 已落地（2026-09-02，feat/project-policy-p234）
+- **2026-11-13 阶段 C 更新**：本文描述的 `init-suggest` 自动接管与 `takeover` 三档偏好已随 ADR-0002 阶段 C 整体移除——是否接管某仓库改由仓库契约（`forge init` 写 `spec/forge.yaml`）决定，宿主接线改为显式 `forge integrations enable <host>`。下文保留为历史设计记录；其中「init-suggest bash」「marker 双写」「takeover 偏好」等描述不再对应当前代码。
 - 背景：全局 forge 安装（plugin/npm）后 init-suggest 对所有 git 项目自动接管，暴露三个弊端——项目自带 harness 冲突、项目试验新 harness、用户想按项目控制。完整调研（业界学界证据 + 代码考古 + 对抗复查）见 `~/.research-workflow/global-forge-optout-20260902-0958/report.md`；本文只记录 P1 落地的设计决策。
 - 总原则（调研结论）：**机制全局，行使本地**——装 plugin = 机制存在；接管某项目 = 策略授权；每次 hook 触发 = 仲裁检查。P1 是策略面的地基：状态模型 + 对称命令 + 旁路收编。
 
@@ -15,13 +16,13 @@
    - `registry.Rekey` 改 key 时整条目迁移（原实现重建 `Entry{Path,Key}` 丢 status——对抗复查 M7）；
    - init-suggest bash：declined 标记检查前置到成员检查与 FORGE_AUTO_INIT 之前（修复"git 分支 AUTO_INIT 旁路 declined"——G-1；非 git 分支本就先检标记，不动）；
    - `forge init` Go 侧硬门禁：State=declined 时拒绝执行，提示 `forge on`（declined→managed 的唯一路径是显式 `forge on`）。
-4. **命令面**：`forge off` 同时写 legacy `.init-suggested/<tag>` declined 标记（init-suggest bash 仍读标记——原计划 P2 改为 registry 驱动后移除；P2 落地时决定保留写侧双写，作为 bash 免子进程的廉价第一道判定，registry 是权威读侧，见下文 key 读侧统一条）；`forge on` 清标记 + 若从未 init（DataDir 无 protocol.yml）则提示运行 `forge init` 补全（不自动跑）；（历史注记：`forge suggest decline/reset` 曾委托同一核心——命令族已于 2026-09 死代码清扫删除。）
+4. **命令面**（历史记录；阶段 C 已删：`init-suggest` 通道与 `.init-suggested/<tag>` marker 双写）：`forge off` 同时写 legacy `.init-suggested/<tag>` declined 标记（init-suggest bash 仍读标记——原计划 P2 改为 registry 驱动后移除；P2 落地时决定保留写侧双写，作为 bash 免子进程的廉价第一道判定，registry 是权威读侧，见下文 key 读侧统一条）；`forge on` 清标记 + 若从未 init（DataDir 无 protocol.yml）则提示运行 `forge init` 补全（不自动跑）；（历史注记：`forge suggest decline/reset` 曾委托同一核心——命令族已于 2026-09 死代码清扫删除。）
 5. **可见性**：`forge status` 头部增加接管状态行；declined 项目 `forge status` 以 `ErrDeclinedProject` 的可读文案退出非零（退出码 = "是否 managed 成员"的既有契约保持不变，init-suggest 脚本依赖它）。
 6. **审计**：on/off 落 checklog 行（`takeover-policy`）+ Entry 决策字段（by/at）。
 
 ## P2-P4 落地状态（原"P1 明确不做"清单——已全部完成，feat/project-policy-p234）
 
-- **P2 默认值翻转 + takeover 三档偏好** ✅：`internal/userconfig`（`~/.forge/config.json`）+ `forge config get/set takeover`；env 链 `FORGE_TAKEOVER > FORGE_AUTO_INIT=1(≡auto) > 配置 > ask`。init-suggest 按三档分流（off 静默 / auto 静默 init / ask 询问一次——含接管内容摘要与 forge config 指引）。
+- **P2 默认值翻转 + takeover 三档偏好** ✅（阶段 C 已删：`userconfig` 的 takeover 三档与 `FORGE_TAKEOVER` / `FORGE_AUTO_INIT` 分流随 init-suggest 一并移除，仅 `compat` 保留）：`internal/userconfig`（`~/.forge/config.json`）+ `forge config get/set takeover`；env 链 `FORGE_TAKEOVER > FORGE_AUTO_INIT=1(≡auto) > 配置 > ask`。init-suggest 按三档分流（off 静默 / auto 静默 init / ask 询问一次——含接管内容摘要与 forge config 指引）。
 - **key 读侧统一** ✅：init-suggest declined 门补 `forge policy state` 注册表权威读侧（common-dir 键），闭合 linked-worktree 下 marker（工作树根键）漏判；写侧双写垫片保留。
 - **P3 全局通道感知** ✅：skill-trigger 在生产/调试入口按 root 判 managed（runSkillTriggerHook/runSkillTriggerCmd）；task-resume hook 恒输出 `[forge-session]` managed 会话横幅（用户级指令段与 forge-quality skill 的激活判据锚定于此，取代不可判定的"已 init"条件）；用户级指令段全类指针化（skillgen CLAUDE.md/AGENTS.md + windsurf global_rules.md；spec-kit"一行指针"共识）；**update 后重刷新由既有 autoSync 版本戳机制保证**（版本变更后下一条命令自动重写用户级段，无需新代码）。
 - **P4 外来 harness 检测让位** ✅：`internal/harnessdetect` 信号表（`.specify/`、`.claude/commands` 非空、`.claude/settings.json` 含 hooks/permissions、`.cursor/rules` 非空——宁可漏判不误判）；`forge policy yield` 命中即让位（declined, by=foreign-harness）+ bash 分支（压过 auto/AUTO_INIT）；手动 init 打警告继续（显式覆盖是知情选择）；`forge off --commit` 写 `.forge-decline` 团队声明（committed，deny-wins 压过注册表 managed），`forge on` 移除。
@@ -51,7 +52,7 @@
 | `forge off`（managed 项目） | Entry→declined；`forge status` 退出非零（ErrDeclinedProject 文案）；所有 project-scoped hook 静默放行（Find 失败分支）；legacy 标记写入；checklog 记录 |
 | `forge off`（从未 init 的项目） | 登记 declined 条目 + 写标记（首次接触前退出，P1 语义下 plugin-takeover 不再吃它） |
 | `forge off --all` | 全部存活条目→declined（含逐条写标记） |
-| `forge on`（declined 且已 init） | Entry→managed；清标记；hook 恢复 |
+| `forge on`（declined 且已 init） | Entry→managed；清标记（历史：marker 双写已删；现在只清 `.forge-decline`）；hook 恢复 |
 | `forge on`（declined 且从未 init） | 只翻状态 + 提示运行 `forge init` 补全（**不自动跑 init**——init 会写用户级 agent 配置，是应显式发生的动作；此时 init 不再被门禁拒绝） |
 | `forge on`（unknown，从未登记） | 拒绝并指向 `forge init`（on 只负责 declined→managed，不是第二个 init） |
 | declined 项目 `forge init` / FORGE_AUTO_INIT / plugin auto-takeover | init 拒绝（错误文案指向 forge on）；bash 前置标记检查先行静默退出 |

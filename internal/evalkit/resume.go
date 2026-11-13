@@ -146,6 +146,12 @@ func RunResumeDrills(drills []ResumeDrill, forgeBin string) ([]DrillResult, erro
 				res.Error = "forge init: " + out
 				return
 			}
+			// 阶段 C：init 只写仓库契约（hooks: off 默认）；resume 演练回放的步骤
+			// 多为 hook/门禁路径，显式 opt-in 让执法真实发生。
+			if err := enableHooksInContract(fixture); err != nil {
+				res.Error = err.Error()
+				return
+			}
 			for i, step := range d.Steps {
 				argv := make([]string, len(step.Argv))
 				for j, a := range step.Argv {
