@@ -32,7 +32,7 @@ forge integrations enable claude-code
 - `spec/changes/`（含 `archive/`） — change 生命周期产物
 - `AGENTS.md` — forge 托管块；已存在的 `CLAUDE.md` / `.cursor/rules/` 按默认规则补指针
 
-宿主接线由 `forge integrations enable <host>` 显式开启，它才写用户级资产：
+宿主接线由 `forge integrations enable <host>` 显式开启，它才写用户级资产（按点名宿主分别写：`enable cursor` 只碰 `~/.cursor`，不写 `~/.claude`；`enable codex` 才写 `~/.codex`）：
 - `~/.forge/integrations/<host>` — 接线标记（`disable` 只摘它）
 - `~/.forge/projects/<key>/` — protocol.yml + runtime state（任务状态/hook 参考副本）
 - `~/.forge/projects.json` — 全局项目注册表（dashboard/`task list --open --all-projects` 等全局视图依赖它）

@@ -36,7 +36,7 @@ npm install -g @agent_forge/forge
 ## 宿主接线（显式 opt-in）
 
 ```bash
-forge integrations enable claude-code        # 或 codex / cursor / copilot / kimi / windsurf / cline / opencode / reasonix / codebuddy / dsh / zcode
+forge integrations enable claude-code        # 或 codex / cursor / kimi / windsurf / cline / opencode / reasonix / codebuddy / zcode（copilot、dsh 无可写资产，只走 plugin manifest）
 forge integrations enable --all              # 一次接全部宿主
 forge integrations list                      # 看哪些已接线
 forge integrations disable <host>            # 摘标记（不删宿主配置）
