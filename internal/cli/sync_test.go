@@ -395,6 +395,32 @@ func TestAutoSyncMigrateIdempotent(t *testing.T) {
 
 // ---- helpers ----
 
+// TestLegacyHostWiring_ContractRepoIgnoresDataDirWiring：契约仓库的宿主接线只认
+// integrations marker / Claude plugin。DataDir 里的 protocol.yml + hooks 可能只是
+// enable 过一次又 disable 留下的残骸；若拿它当 legacy 证据，disable 之后 autoSync
+// 会继续改写用户级 settings/CLAUDE.md，「已停用」就是假话（2026-11-13 实测）。
+// 无契约的老项目仍走迁移路径，不能被这个改动误伤。
+func TestLegacyHostWiring_ContractRepoIgnoresDataDirWiring(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+
+	dataDir := forgedata.DataDirFor(dir)
+	syncWrite(t, filepath.Join(dataDir, "protocol.yml"), "version: \"1\"\n")
+	syncMkdir(t, filepath.Join(dataDir, "hooks"))
+
+	syncWrite(t, filepath.Join(dir, "spec", "forge.yaml"), "version: \"1\"\n")
+	if legacyHostWiring(dir) {
+		t.Fatal("contract repo with DataDir wiring must not count as legacy host wiring")
+	}
+
+	if err := os.Remove(filepath.Join(dir, "spec", "forge.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	if !legacyHostWiring(dir) {
+		t.Fatal("legacy repo without contract should keep syncing")
+	}
+}
+
 func syncMkdir(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(path, 0755); err != nil {
