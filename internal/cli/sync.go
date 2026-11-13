@@ -45,9 +45,18 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	// 老项目（Phase C 之前接过线：有 .forge/hooks、项目级 .forge/protocol.yml 或
 	// DataDir 里已有 protocol/hooks）继续由 autoSync 维护——升级迁移不能因为新
 	// 仓库默认不接线就停摆；它们本来就在写用户主目录。
-	if !integrationsAnyEnabled() && !hooks.IsClaudePluginInstalled() && !legacyHostWiring(dir) {
+	//
+	// 人被 integrations disable 摘光 marker 后写了墓碑：即便老项目仍满足 legacy
+	// 判据，也不再把用户级资产写回来——否则 disable 的输出是假话。
+	legacy := legacyHostWiring(dir)
+	enabled := enabledHostSet()
+	pluginOn := hooks.IsClaudePluginInstalled()
+	if !syncGateAllows(dir, legacy, enabled, pluginOn) {
 		return nil
 	}
+	// 按宿主分流：enable cursor 不该顺手把 Claude 的 settings.json 接上。
+	claudeOn := enabled["claude-code"] || legacy || pluginOn
+	codexOn := enabled["codex"] || legacy
 
 	// 1. sync hook 脚本参考副本（运行时执行嵌入内容，副本仅供查看）。deploy stamp
 	//    必须先落盘：file-sentinel 的 CONFIG 分支只在它的 grace 窗口内豁免
@@ -61,9 +70,9 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		return fmt.Errorf("auto-sync: failed to update hooks: %w", err)
 	}
 
-	// 2. 用户级 claude settings.json——仅在 plugin 未 user-level 安装时
-	//    （plugin.json 已全机器注册 ForgeHookSpec）。
-	if !hooks.IsClaudePluginInstalled() {
+	// 2. 用户级 claude settings.json——仅在 claude 已接线（marker / legacy / plugin）
+	//    且 plugin 未 user-level 安装时（plugin.json 已全机器注册 ForgeHookSpec）。
+	if claudeOn && !pluginOn {
 		if err := hooks.GenerateUserSettings(); err != nil {
 			return fmt.Errorf("auto-sync: failed to update user-level settings: %w", err)
 		}
@@ -79,9 +88,11 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 		proto = protocol.DefaultProtocol()
 	}
 
-	// 4. 同步用户级 quality SKILL.md
-	if err := skillgen.GenerateUserQualitySkill(proto); err != nil {
-		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
+	// 4. 同步用户级 quality SKILL.md（Claude Code 专用）
+	if claudeOn {
+		if err := skillgen.GenerateUserQualitySkill(proto); err != nil {
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to regenerate quality skill: %v\n", err)
+		}
 	}
 
 	// 5. 清理重构残留：废弃 skill + runtime state 迁 DataDir + 死文件 +
@@ -91,16 +102,28 @@ func autoSync(dir string, binaryVersion string, force bool) error {
 	cleanupLegacyDeadFiles(dir)
 	stripProjectLevelForgeAssets(dir)
 
-	// 6. 更新用户级 CLAUDE.md / AGENTS.md 的 forge 段（备份+追加）
-	if err := skillgen.GenerateUserClaudeMD(); err != nil {
-		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level CLAUDE.md: %v\n", err)
+	// 6. 更新用户级 CLAUDE.md（Claude）/ AGENTS.md（Codex）的 forge 段（备份+追加）
+	if claudeOn {
+		if err := skillgen.GenerateUserClaudeMD(); err != nil {
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level CLAUDE.md: %v\n", err)
+		}
 	}
-	if err := skillgen.GenerateUserAgentsMD(); err != nil {
-		fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level AGENTS.md: %v\n", err)
+	if codexOn {
+		if err := skillgen.GenerateUserAgentsMD(); err != nil {
+			fmt.Fprintf(os.Stderr, "auto-sync warning: failed to update user-level AGENTS.md: %v\n", err)
+		}
 	}
 
-	// 7. sync agent bridge（用户级，为所有检测到的 agent）
-	agents := agentbridge.DetectAgents(dir)
+	// 7. sync agent bridge（用户级）：只维护已显式接线的宿主；legacy 老项目
+	//    没有 marker，沿用 DetectAgents 的全量探测保持升级迁移。
+	var agents []agentbridge.AgentType
+	if legacy && len(enabled) == 0 {
+		agents = agentbridge.DetectAgents(dir)
+	} else {
+		for _, name := range sortedHosts(enabled) {
+			agents = append(agents, agentbridge.AgentType(name))
+		}
+	}
 	if len(agents) > 0 {
 		bridgeInput := &agentbridge.TranslationInput{
 			Protocol:  proto,
@@ -279,8 +302,24 @@ func runSync(cmd *cobra.Command, args []string) error {
 	if err := autoSync(dir, rootCmd.Version, force); err != nil {
 		return err
 	}
+	if !syncGateAllows(dir, legacyHostWiring(dir), enabledHostSet(), hooks.IsClaudePluginInstalled()) {
+		fmt.Fprintln(os.Stderr, "没有接线的宿主：跳过用户级同步（接线：forge integrations enable <host>）。")
+		return nil
+	}
 	fmt.Fprintln(os.Stderr, "forge assets synced.")
 	return nil
+}
+
+// syncGateAllows 决定 autoSync 是否写用户级资产：装了 plugin、有接线 marker、
+// 或老项目遗留接线（且人没显式全关）时才写。
+func syncGateAllows(dir string, legacy bool, enabled map[string]bool, pluginOn bool) bool {
+	if pluginOn {
+		return true
+	}
+	if integrationsExplicitlyDisabled() {
+		return false
+	}
+	return len(enabled) > 0 || legacy
 }
 
 // legacyHostWiring 判断仓库是否在 Phase C 之前接过宿主线：项目级 .forge/hooks、

@@ -110,7 +110,7 @@ forge integrations enable claude-code   # 可选：显式接线宿主（或直�
 
 它**不写** `~/.forge`、`~/.claude`、`~/.codex`，也不登记全局注册表；重复运行只同步仓库内托管块。`--project`、`--agents` 已废弃为 no-op，`--profile mini|standard|full` 写入契约。
 
-宿主接线是显式 opt-in：`forge integrations enable <host>`（claude-code / codex / cursor / copilot / windsurf / kimi / cline / opencode / reasonix / codebuddy / dsh / zcode），或 Claude Code 装 plugin。只有 enable 时才写用户级资产：
+宿主接线是显式 opt-in：`forge integrations enable <host>`（claude-code / codex / cursor / copilot / windsurf / kimi / cline / opencode / reasonix / codebuddy / dsh / zcode），或 Claude Code 装 plugin。用户级资产只在 enable（或已装 plugin / Phase C 前接过线的老仓库）时写；plugin 已装时跳过 `settings.json`，但 DataDir 的 protocol/hook 模板仍会生成：
 
 | 路径 | 说明 |
 |------|------|

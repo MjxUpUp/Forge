@@ -5,7 +5,7 @@
 // user-level-assets 重构后，本注册表是"这是不是 forge 项目"的锚点：forge init 默认
 // 不再写项目级 .forge/ 标记，成员资格（git key 或路径前缀匹配）取代旧的 .forge/
 // 存在性检查。projectroot.Resolve/State 经共享 lookup 解析项目根；遗留的 .forge/
-// walk-up 仅作为老版本 init 项目的向后兼容兜底（命中后自愈登记）。
+// walk-up 仅作为老版本 init 项目的向后兼容兜底（纯解析，阶段 C 起不再登记）。
 //
 // forge dashboard 聚合全局 Pulse 面板即读 List()——同一 store。
 package registry

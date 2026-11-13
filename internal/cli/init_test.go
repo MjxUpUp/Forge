@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/hooks"
 	"github.com/MjxUpUp/Forge/internal/specroot"
 )
 
@@ -180,6 +182,22 @@ func TestIntegrations_EnableAndDisable(t *testing.T) {
 		t.Errorf("接线标记未写：%v", err)
 	}
 
+	// 单一真相源守卫（阶段 C 从 init 移到 enable）：hooks 目录里的 .sh 数必须
+	// 等于 hooks.HookNames()，加/删 hook 忘改文档或漏生成会在这里响。
+	entries, err := os.ReadDir(filepath.Join(forgedata.DataDirFor(dir), "hooks"))
+	if err != nil {
+		t.Fatalf("读 hooks 目录：%v", err)
+	}
+	shCount := 0
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sh") {
+			shCount++
+		}
+	}
+	if want := len(hooks.HookNames()); shCount != want {
+		t.Fatalf("hooks 目录 .sh 数 = %d, want %d（== len(hooks.HookNames())）", shCount, want)
+	}
+
 	stdout, _, code = runForge(t, dir, "integrations", "list")
 	if code != 0 || !strings.Contains(stdout, "claude-code") || !strings.Contains(stdout, "已接线") {
 		t.Errorf("integrations list 未显示已接线：%s", stdout)
@@ -191,6 +209,24 @@ func TestIntegrations_EnableAndDisable(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(data, "integrations", "claude-code")); !os.IsNotExist(err) {
 		t.Error("disable 应摘掉接线标记")
+	}
+}
+
+// TestIntegrations_EnableAll：`enable --all` 不接收位置参数也必须能跑（帮助与
+// README 都这么写；此前 cobra.MinimumNArgs(1) 会在 RunE 之前直接拒绝）。
+func TestIntegrations_EnableAll(t *testing.T) {
+	_, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+
+	stdout, _, code := runForge(t, dir, "integrations", "enable", "--all")
+	if code != 0 {
+		t.Fatalf("integrations enable --all 退出 %d：%s", code, stdout)
+	}
+	for _, host := range integrationHostNames() {
+		if _, err := os.Stat(filepath.Join(data, "integrations", host)); err != nil {
+			t.Errorf("--all 漏了宿主 %s：%v", host, err)
+		}
 	}
 }
 
@@ -220,5 +256,56 @@ func TestIntegrations_RequiresRepoContract(t *testing.T) {
 	}
 	if !strings.Contains(out, "forge init") {
 		t.Errorf("错误信息应指路 forge init：%s", out)
+	}
+}
+
+// TestIntegrations_EnableCursorDoesNotWireClaude：enable 只写被点名宿主的用户级
+// 配置。enable cursor 不该顺手把 ~/.claude/settings.json 的 hook 接上——那等于
+// 悄悄替用户对 Claude Code 开了全机器执法。
+func TestIntegrations_EnableCursorDoesNotWireClaude(t *testing.T) {
+	home, _ := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
+		t.Fatalf("integrations enable cursor failed: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "settings.json")); !os.IsNotExist(err) {
+		t.Fatalf("enable cursor must not write ~/.claude/settings.json (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Fatalf("enable cursor must not write ~/.claude/CLAUDE.md (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".cursor")); err != nil {
+		t.Fatalf("enable cursor should wire cursor home: %v", err)
+	}
+}
+
+// TestIntegrations_DisableLeavesTombstoneThatStopsLegacySync：仓库接过线后再退回
+// 无契约状态（删掉 spec/）时，摘光 marker 后必须记下「人已全关」，否则
+// legacyHostWiring 恒真，autoSync 会把 ~/.claude/settings.json 写回来。
+func TestIntegrations_DisableLeavesTombstoneThatStopsLegacySync(t *testing.T) {
+	home, data := isolatedHomeEnv(t)
+	dir := t.TempDir()
+	initProject(t, dir)
+	if out, _, code := runForge(t, dir, "integrations", "enable", "cursor"); code != 0 {
+		t.Fatalf("enable: %s", out)
+	}
+	// 退回老仓库形态：没有 spec 契约，但 DataDir 里还有 enable 留下的 protocol/hooks。
+	if err := os.RemoveAll(filepath.Join(dir, "spec")); err != nil {
+		t.Fatal(err)
+	}
+	if out, _, code := runForge(t, dir, "integrations", "disable", "cursor"); code != 0 {
+		t.Fatalf("disable: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(data, "integrations", ".disabled")); err != nil {
+		t.Fatalf("disable should leave a tombstone: %v", err)
+	}
+	settings := filepath.Join(home, ".claude", "settings.json")
+	_ = os.Remove(settings)
+	if err := autoSync(dir, "9.9.9-test", false); err != nil {
+		t.Fatalf("autoSync: %v", err)
+	}
+	if _, err := os.Stat(settings); !os.IsNotExist(err) {
+		t.Fatalf("explicit disable must stop legacy auto-sync from rewriting settings.json (err=%v)", err)
 	}
 }

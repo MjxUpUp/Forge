@@ -88,7 +88,9 @@ func TestProjectSyncDualMachineRoundTrip(t *testing.T) {
 	// 门禁跑一次即留 checklog 证据（PASS/BLOCKED/FAIL 都记 checklog —— trace 的原料）。
 	// Phase C 起仓库内契约（spec/forge.yaml）在，task-implement 的产物链缺失只是
 	// advisory，门禁本身会通过——这里不要求它失败，只要 checklog 有本任务记录即可。
-	_, _ = forgeErr(t, repoA, `task`, `gate`, `task-implement`, `--ref`, `feat/e2e-sync`)
+	if _, err := forgeErr(t, repoA, `task`, `gate`, `task-implement`, `--ref`, `feat/e2e-sync`); err != nil {
+		t.Fatalf(`task-implement 门禁应通过（产物链缺失只是 advisory）：%v`, err)
+	}
 	// 正向钉住：门禁跑过必须留下本任务的 checklog 证据（adopt/export 的搬运对象）。
 	checklog := filepath.Join(forgedata.DataDirFor(repoA), "checklog.jsonl")
 	if data, err := os.ReadFile(checklog); err != nil || !strings.Contains(string(data), `feat/e2e-sync`) {

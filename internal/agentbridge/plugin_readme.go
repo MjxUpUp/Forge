@@ -17,9 +17,9 @@ import (
 // review P3-1）。
 //
 // 从 builder 版本继承的契约（由 TestPluginPack_Readme / TestPluginPack_NoCurlyQuotes 守卫）：
-//   - 诚实能力边界：plugin 接用户级 hooks；项目登记由 init-suggest 自动接管覆盖
-//     plugin 用户（step 3 + caveat 段明示，不宣传超出 hook 实际行为的
-//     "一次安装处处完美"）。
+//   - 诚实能力边界：plugin 只接 Claude 用户级 hooks；项目登记由 `forge init`
+//     显式声明、其他宿主由 `forge integrations enable <host>` 显式接线，
+//     不宣传超出 hook 实际行为的"一次安装处处完美"（step 3 + caveat 段明示）。
 //   - 代码块用 4-space 缩进；行内命令用反引号；内容无弯引号、无裸双引号
 //     （Windows 输入引号腐蚀守卫）。
 //   - npm 包名是 @agent_forge/forge（与 npm/package.json 一致），不是 GitHub owner

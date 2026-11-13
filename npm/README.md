@@ -19,22 +19,28 @@ Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创�
 # 安装
 npm install -g @agent_forge/forge
 
-# 在项目目录初始化（默认零项目写入）
+# 在仓库里声明 forge 契约（只写仓库内产物）
 cd your-project
 forge init
 
-# 在 Claude Code 中开始工作
-# AI 会自动读取 Forge 生成的 Skill 并驱动门禁流程
+# 可选：把 hooks/指令接到宿主（显式 opt-in，才写用户级配置）
+forge integrations enable claude-code
 ```
 
-`forge init` 不在项目目录写任何文件，全部资产落在用户级：
-- `~/.forge/projects.json` — 全局项目注册表
+`forge init` 只写仓库内产物，**不写** `~/.forge`、`~/.claude`、`~/.codex`：
+- `spec/forge.yaml` — 契约（profile 缺省 mini、`hooks: off` 只审计不执法）
+- `spec/changes/`（含 `archive/`） — change 生命周期产物
+- `AGENTS.md` — forge 托管块；已存在的 `CLAUDE.md` / `.cursor/rules/` 按默认规则补指针
+
+宿主接线由 `forge integrations enable <host>` 显式开启，它才写用户级资产：
+- `~/.forge/integrations/<host>` — 接线标记（`disable` 只摘它）
 - `~/.forge/projects/<key>/` — protocol.yml + runtime state（任务状态/hook 参考副本）
+- `~/.forge/projects.json` — 全局项目注册表（dashboard/`task --all` 等全局视图依赖它）
 - `~/.claude/settings.json` — Claude Code hooks（plugin 已装则由 plugin 接管）
 - `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` — 质量协议（备份+追加，`forge uninstall --restore` 可回滚）
 - `~/.claude/skills/forge-quality/` — 质量协议 Skill
 
-团队要 git 共享协议用 `forge init --project`（团队模式，指令资产写项目目录）。
+团队要 git 共享契约：提交 `spec/` 与 `AGENTS.md`；每个开发者各自跑一次 `forge integrations enable <host>` 接自己的宿主。
 
 ## 工作流程
 
@@ -94,7 +100,8 @@ Layer 3: 会话结束验证
 
 | 命令 | 说明 |
 |------|------|
-| `forge init` | 初始化项目（默认零项目写入：登记全局注册表，hooks/指令/skill 全在用户级；`--project` 团队模式把指令资产写项目目录供 git 共享；旧的 `--mode` 标志已废弃为 no-op） |
+| `forge init [--profile mini\|standard\|full]` | 在仓库声明契约：只写 `spec/forge.yaml`、`spec/changes/`、`AGENTS.md` 托管块与已存在指针，不写用户主目录；`--agents`/`--project` 已废弃为 no-op（保留旧脚本兼容） |
+| `forge integrations list / enable <host…> [--all] / disable <host…>` | 显式接线宿主：`enable` 才写用户级 hooks/指令/skill 并打标记，`disable` 只摘标记不删宿主配置 |
 | `forge status [--json]` | 查看项目状态（任务管道 + 质量信号） |
 | `forge verify` | 项目完整性检查 + 回归测试 |
 | `forge update` | 检查并更新到最新版本（按安装通道分流：npm 安装查 npm registry 并打印对应包管理器的更新命令——npm 包不可变，不做原地替换；GitHub Release 安装则从 GitHub 下载自替换） |

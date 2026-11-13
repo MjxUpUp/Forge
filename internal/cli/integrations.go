@@ -14,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/registry"
 	"github.com/MjxUpUp/Forge/internal/skillgen"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/spf13/cobra"
 )
 
@@ -64,10 +65,17 @@ var integrationsListCmd = &cobra.Command{
 }
 
 var integrationsEnableCmd = &cobra.Command{
-	Use:   "enable <host>[,<host>...]",
+	Use:   "enable <host>[,<host>...] [--all]",
 	Short: "把 forge 接到指定宿主（显式写用户级配置）",
-	Args:  cobra.MinimumNArgs(1),
-	RunE:  runIntegrationsEnable,
+	Args: func(cmd *cobra.Command, args []string) error {
+		// --all 时不收位置参数；否则至少点名一个宿主。flag 解析先于 Args
+		// 校验，所以这里能把「enable --all」与「enable（空）」分开。
+		if all, _ := cmd.Flags().GetBool("all"); all {
+			return nil
+		}
+		return cobra.MinimumNArgs(1)(cmd, args)
+	},
+	RunE: runIntegrationsEnable,
 }
 
 var integrationsDisableCmd = &cobra.Command{
@@ -168,6 +176,55 @@ func markIntegration(host string) error {
 	return os.WriteFile(integrationMarker(host), []byte(rootCmd.Version+"\n"), 0o644)
 }
 
+// enabledHostSet 读 markers，返回当前显式接线的宿主集合。
+func enabledHostSet() map[string]bool {
+	entries, err := os.ReadDir(integrationsDir())
+	if err != nil {
+		return map[string]bool{}
+	}
+	out := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		out[e.Name()] = true
+	}
+	return out
+}
+
+// sortedHosts 给 set 一个稳定顺序（translator 逐个写，顺序影响输出可读性）。
+func sortedHosts(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for h := range set {
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// disabledMarkerPath 是「人显式全关」的墓碑：disable 摘完 marker 后写它，
+// enable 时清掉。没有它，无 spec 契约的老仓库（legacyHostWiring 恒真）在
+// disable 之后仍会被 autoSync 继续写用户级资产——disable 的输出就成了假话。
+func disabledMarkerPath() string {
+	return filepath.Join(integrationsDir(), ".disabled")
+}
+
+func integrationsExplicitlyDisabled() bool {
+	_, err := os.Stat(disabledMarkerPath())
+	return err == nil
+}
+
+func markIntegrationsDisabled() error {
+	if err := os.MkdirAll(integrationsDir(), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(disabledMarkerPath(), []byte(rootCmd.Version+"\n"), 0o644)
+}
+
+func clearIntegrationsDisabled() {
+	_ = os.Remove(disabledMarkerPath())
+}
+
 func runIntegrationsEnable(cmd *cobra.Command, args []string) error {
 	dir, err := findProjectRoot()
 	if err != nil {
@@ -175,12 +232,19 @@ func runIntegrationsEnable(cmd *cobra.Command, args []string) error {
 	}
 
 	hosts, err := parseIntegrationHosts(args)
+	if all, _ := cmd.Flags().GetBool("all"); all {
+		// --all 不收位置参数（Args 已放行零参数）；这里先判 all 再解析，
+		// 否则空 args 会被 parseIntegrationHosts 当成「没有指定宿主」。
+		if len(args) > 0 {
+			return fmt.Errorf("--all 与显式宿主不能同时给")
+		}
+		hosts, err = integrationHostNames(), nil
+	}
 	if err != nil {
 		return err
 	}
-	if all, _ := cmd.Flags().GetBool("all"); all {
-		hosts = integrationHostNames()
-	}
+	// 显式接线即撤销「人已全关」墓碑，否则 autoSync 会一直跳过。
+	clearIntegrationsDisabled()
 
 	// 以下写入全在用户主目录——这是显式 opt-in 的边界：init 不写、enable 才写。
 	proj, err := forgedata.ProjectFor(dir)
@@ -203,19 +267,35 @@ func runIntegrationsEnable(cmd *cobra.Command, args []string) error {
 	if err := hooks.WriteHookTemplates(forgedata.DataDirFor(dir)); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to copy hook templates: %v\n", err)
 	}
-	if hooks.IsClaudePluginInstalled() {
-		fmt.Fprintln(os.Stderr, "forge plugin 已接管 claude hooks，跳过 ~/.claude/settings.json 生成")
-	} else if err := hooks.GenerateUserSettings(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to generate ~/.claude/settings.json: %v\n", err)
+	// 只有显式点名 claude-code 才写 Claude 的用户级资产；enable cursor 不该顺手
+	// 把 ~/.claude/settings.json 的 hook 接上（Claude Code 会全机器执行它）。
+	claudeHost := false
+	codexHost := false
+	for _, h := range hosts {
+		switch h {
+		case "claude-code":
+			claudeHost = true
+		case "codex":
+			codexHost = true
+		}
 	}
-	if err := skillgen.GenerateUserClaudeMD(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update ~/.claude/CLAUDE.md: %v\n", err)
+	if claudeHost {
+		if hooks.IsClaudePluginInstalled() {
+			fmt.Fprintln(os.Stderr, "forge plugin 已接管 claude hooks，跳过 ~/.claude/settings.json 生成")
+		} else if err := hooks.GenerateUserSettings(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to generate ~/.claude/settings.json: %v\n", err)
+		}
+		if err := skillgen.GenerateUserClaudeMD(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to update ~/.claude/CLAUDE.md: %v\n", err)
+		}
+		if err := skillgen.GenerateUserQualitySkill(proto); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to write quality skill: %v\n", err)
+		}
 	}
-	if err := skillgen.GenerateUserAgentsMD(); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to update ~/.codex/AGENTS.md: %v\n", err)
-	}
-	if err := skillgen.GenerateUserQualitySkill(proto); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to write quality skill: %v\n", err)
+	if codexHost {
+		if err := skillgen.GenerateUserAgentsMD(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to update ~/.codex/AGENTS.md: %v\n", err)
+		}
 	}
 
 	agents := make([]agentbridge.AgentType, 0, len(hosts))
@@ -272,7 +352,14 @@ func runIntegrationsDisable(_ *cobra.Command, args []string) error {
 	}
 	fmt.Println("宿主配置未被删除（避免误删你自己的设置）；要彻底移除请跑 forge off 或手动清理。")
 	if !integrationsAnyEnabled() {
-		fmt.Println("已无任何宿主接线：后续 autoSync 不再写用户级资产。")
+		if err := markIntegrationsDisabled(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to record disabled state: %v\n", err)
+		}
+		fmt.Println("已无任何宿主接线：autoSync 不再写用户级资产（这个选择已记下，重启后仍生效）。")
+	}
+	if dir, err := findProjectRoot(); err == nil && !specroot.Declared(dir) {
+		fmt.Println("注意：这个仓库还没有 spec 契约（阶段 C 之前的老项目）。接线标记已摘，" +
+			"但用户级配置里已有的 hook 不会被撤回；后续不再自动同步。要重新接线：forge integrations enable <host>。")
 	}
 	return nil
 }
