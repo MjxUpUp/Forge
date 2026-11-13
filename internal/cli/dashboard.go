@@ -58,7 +58,7 @@ func runDashboard(cmd *cobra.Command, args []string) error {
 	// 上方自登记 Add 保留——upsert 不复活 declined 条目。
 	roots := registry.ListManaged()
 	if len(roots) == 0 {
-		return fmt.Errorf(`无已接管（managed）项目——在项目目录跑 forge integrations enable <host>（或 forge workspace add）登记后再启动看板；forge off 退出的项目不聚合`)
+		return fmt.Errorf(`无已接管（managed）项目——在项目目录跑 forge integrations enable <host> 登记后再启动看板；forge off 退出的项目不聚合`)
 	}
 
 	opts := dashboard.Options{Port: port, OpenBrowser: !noOpen, Roots: roots}
