@@ -53,7 +53,6 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 			return in
 		}, LoopVerdictEscalate, LoopCodeAcceptanceRecurrence},
 		{"回环耗尽", func() LoopInputs { in := base(); in.LoopExhausted = true; return in }, LoopVerdictEscalate, LoopCodeLoopExhausted},
-		{"hazard 待确认", func() LoopInputs { in := base(); in.HazardPendingOwn = 1; return in }, LoopVerdictEscalate, LoopCodeHazardPending},
 		{"input-required", func() LoopInputs {
 			in := base()
 			in.State.Assignment = &tasktypes.Assignment{Status: tasktypes.AssignInputRequired, LastQuestion: "用哪个库？"}
@@ -120,7 +119,6 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 			return in
 		}, LoopVerdictContinue, ""},
 		{"通过后又改了源码（不新鲜）→ continue", func() LoopInputs { in := base(); in.AcceptanceFresh = false; return in }, LoopVerdictContinue, ""},
-		{"escalate 优先于 done", func() LoopInputs { in := base(); in.HazardPendingOwn = 2; return in }, LoopVerdictEscalate, LoopCodeHazardPending},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -151,7 +149,7 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 		t.Fatalf("Next=%q want %q", v.Next, want)
 	}
 	// 每个 Code 都有解除方式（封闭枚举守卫）。
-	for _, code := range []string{LoopCodeAcceptanceRecurrence, LoopCodeLoopExhausted, LoopCodeHazardPending, LoopCodeInputRequired,
+	for _, code := range []string{LoopCodeAcceptanceRecurrence, LoopCodeLoopExhausted, LoopCodeInputRequired,
 		LoopCodeBudgetFailedVerifies, LoopCodeBudgetTokens, LoopCodeBudgetChangedFiles, LoopCodeNoProgress, LoopCodeGateRepeatBlocked} {
 		if loopResolve[code] == "" {
 			t.Fatalf("Code %s 缺 Resolve", code)

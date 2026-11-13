@@ -11,8 +11,8 @@ cmd/forge 漏提交的雷拖到 v0.27.1 才爆。
 `.release-please-manifest.json`）：
 
 1. `feat:`/`fix:` 合入 main → release-please 自动开（或更新）**Release PR**
-   （`chore(main): release X.Y.Z`），内容是纯机械变更：`npm/package.json`、
-   `.kimi-plugin/plugin.json`、`plugins/forge-dsh/package.json`、
+   （`chore(main): release X.Y.Z`），内容是纯机械变更：`npm/package.json`（含 5 个
+   optionalDependencies 平台钉）、5 个 `npm/platforms/*/package.json`、
    `.release-please-manifest.json` 的版本 bump + `CHANGELOG.md` 新章节
 2. Release PR 的 6 个必需检查（ci.yml 三平台 build + skills-qa + scripts-test×2）
    跑绿后 **auto-merge 自动 squash 合并**——无需人工确认（repo 设置 Allow
@@ -60,19 +60,13 @@ squash 合并，repo 设置 Allow auto-merge 须开启——已开；关闭后 a
 
 发版形状由 `internal/ci/release_please_test.go` 守卫：tag 形状必须 `v<semver>`（构建层
 触发条件与 npm 资产 URL 都依赖）、extra-files 必须持续 bump 全部 11 个 json 条目
-（主包 `$.version` + 5 个 optionalDependencies 钉 + kimi/dsh 插件 + 5 平台子包）、
+（主包 `$.version` + 5 个 optionalDependencies 钉 + 5 平台子包）、
 `.release-please-manifest.json` 必须与 `npm/package.json` 同版本（手动发版不同步会被
 测试拦下）。
 
-`@agent_forge/forge-dsh`（DSH 插件）随主发布火车 lockstep 发版：版本号由 Release PR
-经 extra-files 与根版本统一 bump（不手改，`TestReleasePleaseManifest_DshPluginTracksTrain`
-守卫），release.yml 的 npm job 幂等发布到 npmjs.org。曾刻意独立演进，结果版本 bump
-全靠手动 chore commit、漏 bump 时发布步静默 skip——2026-08 收回火车。
-
-注：`plugins/forge-dsh/package-lock.json` 的根 version 字段**不做机制性同步**——
-`npm ci` 只校验依赖树不校验根 version，npm publish 也不把 lockfile 打进 tarball，
-该字段是纯本地开发元数据（下次 `npm install` 自然追上）。把它塞进 extra-files 需要
-未验证的 jsonpath 写法（`packages[""]` 空字符串 key），不值得为化妆性字段冒险。
+阶段 D 后不再随主仓发布任何宿主插件（宿主插件目录与独立插件包都已从仓库删除），
+发布火车只覆盖主包 + 5 个平台子包：extra-files 里不再有插件条目，npm job 也只发
+`@agent_forge/forge` 与 5 个子包。
 
 ## 发版必须走 release.yml（不手动绕过）
 
@@ -84,15 +78,15 @@ npm → npm-verify** 五段强依赖链：
 | **test** | `go test ./... -race` + `go vet` + tag↔版本对账 | （源头） |
 | **drill** | `eval wedge-drill` + `eval artifact-drill`——行为级冒烟（发布物必须真实跑过） | `test` |
 | **goreleaser** | 跨平台二进制 + SBOM + cosign 签名 → GitHub Release 资产 | `test, drill` |
-| **npm** | 发 `@agent_forge/forge` + 5 平台子包 + `@agent_forge/forge-dsh` 到 npmjs.org（带 provenance） | `goreleaser` |
+| **npm** | 发 `@agent_forge/forge` + 5 平台子包到 npmjs.org（带 provenance） | `goreleaser` |
 | **npm-verify** | npm 装回并断言 `forge --version` == tag，**且在装机上跑双 drill**（行为级装机验收） | `npm` |
 
 - needs 链由 `internal/ci/release_workflow_test.go` 沙盒守护
 - goreleaser `release.mode: keep-existing`：保留 release-please 的 changelog 正文，
   只往 Release 上挂二进制/SBOM/签名资产
-- **版本对账门禁**（test job）：tag 必须等于 `npm/package.json` 与
-  `plugins/forge-dsh/package.json` 的 version——Release PR 已保证一致，此门禁防手动
-  打 tag 路径"二进制是 tag 的、包版本号是 package.json 的"货不对板
+- **版本对账门禁**（test job）：tag 必须等于 `npm/package.json` 的 version——Release PR
+  已保证一致，此门禁防手动打 tag 路径"二进制是 tag 的、包版本号是 package.json 的"
+  货不对板
 - **npm 平台子包版本与 optionalDependencies 钉**：平台子包 version 与主包
   `optionalDependencies` 的 5 个平台钉均由 release-please extra-files 随 Release PR
   **同 PR 自动 bump**（v1.66.1 起逐键 jsonpath `$.optionalDependencies['…']` 纳入——
@@ -106,7 +100,7 @@ npm → npm-verify** 五段强依赖链：
   认证走 **npm Trusted Publishing**（OIDC 免 token，2026-09-22 起）：npm ≥11.5.1
   在无 token 的 CI 环境自动用 GitHub OIDC 向 registry 换发布凭证，无过期问题
   （旧 `NPM_TOKEN` 方案里 Granular token 最长 365 天，过期即断链）。前置：npmjs
-  侧 7 个包（主包 + 5 平台子包 + forge-dsh）各自 Settings → Trusted publishing
+  侧 6 个包（主包 + 5 平台子包）各自 Settings → Trusted publishing
   登记 GitHub Actions：`MjxUpUp/Forge` + workflow `release.yml`，**Allowed actions
   须允许直接 publish**（默认仅 staged，本链用 `npm publish` 直发）；npm 不在保存时
   校验登记，配错到 publish 才炸。守卫 `TestReleaseWorkflow_NpmTrustedPublishing`
@@ -116,13 +110,12 @@ npm → npm-verify** 五段强依赖链：
   Settings → Publishing access 的「require 2FA and disallow tokens」——之后任何
   token 都无法发布，只认 trusted publisher
 
-## 宿主插件是第二分发通道（发版 ≠ 生效）
+## 宿主插件分发（阶段 D 后已随主仓删除）
 
-kimi 等宿主插件 manifest（`.kimi-plugin/plugin.json`）随 tag 进 GitHub，但**用户机器上
-的已装副本不自动更新**——含 hook 接线 / manifest 变更的发版，binary 升级 ≠ 行为生效，
-用户须在宿主里更新插件（kimi 侧有 staleness advisory 在下个 prompt 提醒）。此类发版
-在 commit body 写明"需更新宿主插件"，避免"发了版用户还报旧症状"（2026-08 kimi
-skill-trigger manifest 接线修复实例：引擎修复已发版，插件 manifest 未更新，症状照旧）。
+阶段 D 后本仓不再随主仓发布任何宿主插件：宿主插件目录与独立插件包都已删除，
+`release.yml` / `release-please-config.json` / 守卫测试里也没有对应条目。发版只覆盖
+`@agent_forge/forge` + 5 个平台子包与 GitHub Release 资产；原先"宿主插件是第二分发
+通道、binary 升级 ≠ 插件名单生效"的注意事项随之退役。
 
 ## 发布前自检（本地复现 CI 最小环境）
 
@@ -141,21 +134,11 @@ git ls-files | grep -E 'cmd/forge|main\.go'   # 确认入口目录进库
 派发独立评审子代理（doc-review / code-review / 对抗验证）前，**先把工作树落盘**：
 `git add -A && git commit`（WIP 提交即可，PR 合并时 squash 掉）。
 
-原因：`task-verify` 的 Stop 钩子以「有活跃任务 + 工作树有未提交代码文件」为拦截条件
-（`internal/hooks/embed_quality.go:426`）。DSH 子代理会话与父会话共享同一工作树，
-工作区绑定（`internal/taskpipeline/state.go:161`）会让只读评审会话也解析到活跃任务，
-于是父会话未提交的改动会把每个评审子代理各拦 3 次（"有未提交代码变更——先落盘再停"）。
-
-评审前落盘后，子代理停在一个干净的树上，钩子直接放行（干净树退出码 0）。实操：
+原因很朴素：评审会话与父会话共享同一工作树，读到半成品会让评审与修复相互打架。
+阶段 D 起 forge 没有宿主层，也不再有 Stop 钩子——**不会拦截未落盘**，这条纪律靠自觉：
 
 1. 改完一轮 → `git commit`（WIP）→ 派 reviewer；
-2. reviewer 提意见 → 改完 → 再 `git commit` → 再派下一轮；
-3. 不要用 `FORGE_TASK_VERIFY_STOP=0` 按轮绕过——它是进程级环境变量，桌面端要重启宿主
-   才生效，且一并关掉主会话的提示。
-
-该行为已用 12 个场景做过变异验证：干净树放行；若把条件改成「仅有本会话写标记才阻断」，
-脏树+无标记会放行——但 shell 重定向写入和纯测试文件编辑不置写标记，会变成漏报，且他人
-遗留的脏文件仍会误报。所以「先落盘」是当前零代码改动、零误伤的规避方式。
+2. reviewer 提意见 → 改完 → 再 `git commit` → 再派下一轮。
 
 ## 紧急手动路径（release.js，已退役为逃生舱）
 
@@ -166,11 +149,10 @@ node scripts/release.js          # 照旧 bump + tag + commit
 git push origin main && git push origin vX.Y.Z   # 手动 push 触发 release.yml
 ```
 
-脚本会同步 bump `.release-please-manifest.json`（release-please 的版本账本）与
-`plugins/forge-dsh/package.json`（随火车的 dsh 插件版本），保持逃生舱路径自洽——
-`internal/ci/release_please_test.go` 的 `TestReleasePleaseManifest_MatchesNpmVersion`
-守卫 `npm/package.json` == manifest、`TestReleasePleaseManifest_DshPluginTracksTrain`
-守卫 dsh == manifest。只有绕过脚本手动打 tag 时才需要手动同步这些文件。
+脚本会同步 bump `.release-please-manifest.json`（release-please 的版本账本），保持
+逃生舱路径自洽——`internal/ci/release_please_test.go` 的
+`TestReleasePleaseManifest_MatchesNpmVersion` 守卫 `npm/package.json` == manifest。
+只有绕过脚本手动打 tag 时才需要手动同步这两个文件。
 
 CI 暂坏需绕过 workflow 手动 `gh release` + `npm publish` 时，绕过的是 **整个 needs 链**
 （沙盒验证无法覆盖手动行为）。手动 publish 走本地 `npm login`（交互式 2FA），与
@@ -185,7 +167,7 @@ tokens」，token 类登录被禁，需临时调回 publishing access 再操作�
 
 - 正常发版：Release PR 按 Conventional Commits 推断 patch/minor/major
 - 发版后发现 bug：**升 patch 重发**，不 force-push 覆盖已发 tag
-  - hazard-guard 会拦 force-push；且覆盖已发布 npm 包不可逆（registry 会缓存）
+  - 不应覆盖已发 tag，远端需开 tag protection；且覆盖已发布 npm 包不可逆（registry 会缓存）
   - v0.27.1→v0.27.2 即此规则实例
 
 ## 坏版本处置（npm deprecate RUNBOOK）
@@ -195,7 +177,7 @@ tokens」，token 类登录被禁，需临时调回 publishing access 再操作�
 1. **deprecate 坏版本**（安装时给警告，用户可自行 `-g @agent_forge/forge@<坏版本>` 装回旧版）：
    ```bash
    npm deprecate @agent_forge/forge@<ver> "broken: <原因一句话>, use <新版本>"
-   # 5 个平台子包与 forge-dsh 同步 deprecate（版本由 release.yml 的 npm job 统一注入，同号同步）
+   # 5 个平台子包同步 deprecate（版本由 release.yml 的 npm job 统一注入，同号同步）
    npm deprecate @agent_forge/forge-darwin-arm64@<ver> "..."   # 其余子包同理
    ```
 2. **升 patch 重发**：修 bug → `fix:` 前缀合 main → release-please 自动开下一个 Release PR

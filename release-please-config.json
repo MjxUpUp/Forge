@@ -39,21 +39,6 @@
         },
         {
           "type": "json",
-          "path": ".kimi-plugin/plugin.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "plugins/forge-dsh/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "plugins/forge-dsh/package.json",
-          "jsonpath": "$.dependencies['@agent_forge/forge']"
-        },
-        {
-          "type": "json",
           "path": "npm/platforms/darwin-arm64/package.json",
           "jsonpath": "$.version"
         },

@@ -326,34 +326,6 @@ func TestRunUpdateNpmRedirect(t *testing.T) {
 	}
 }
 
-// TestRunUpdateNpmPluginFlag pins the --plugin contract on the npm channel: the marketplace-reinstall guidance must print there too, not only on the GitHub download path.
-//
-// TestRunUpdateNpmPluginFlag 钉住 npm 通道上的 --plugin 契约：marketplace
-// 重装指引在这里也必须打印，不能只在 GitHub 下载路径有。
-func TestRunUpdateNpmPluginFlag(t *testing.T) {
-	npmRegistryServing(t, "1.40.0")
-
-	setTestHome(t, t.TempDir())
-	forceChannel(t, installChannel{kind: channelNPM, pm: "npm"})
-	updatePluginFlag = true
-	t.Cleanup(func() { updatePluginFlag = false })
-
-	var runErr error
-	out := captureStderr(t, func() {
-		runErr = runUpdate(updateCmd, nil)
-	})
-
-	if runErr != nil {
-		t.Fatalf("runUpdate (npm channel, --plugin) failed: %v", runErr)
-	}
-	if !strings.Contains(out, "npm install -g @agent_forge/forge@1.40.0") {
-		t.Errorf("应打印 npm 指引：\n%s", out)
-	}
-	if !strings.Contains(out, "plugin marketplace") {
-		t.Errorf("--plugin 在 npm 通道也应输出重装指引：\n%s", out)
-	}
-}
-
 // TestUpdateCacheChannelMismatch pins the L-2 guard: a fresh cache entry written by the other channel is not trusted (two-stage releases publish the GitHub tag before npm), while legacy channel-less entries stay usable.
 //
 // TestUpdateCacheChannelMismatch 钉住跨通道守卫：另一通道写的新鲜缓存条目
