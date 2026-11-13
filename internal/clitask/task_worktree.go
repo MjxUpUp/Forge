@@ -406,5 +406,77 @@ func init() {
 	taskFinishCmd.Flags().Bool("keep", false, "合并后保留 worktree（默认清理）")
 
 	WorktreeCmd.AddCommand(worktreeJanitorCmd)
+	WorktreeCmd.AddCommand(worktreeUseCmd)
+	worktreeUseCmd.Flags().String("ref", "", "任务引用（默认当前解析出的活跃任务）")
 
+}
+
+// worktreeUseCmd is the legitimate exit from the off-tree guard: re-anchor the task to the
+// tree the user is actually working in (docs/design/task-tree-guard.md §4).
+//
+// worktreeUseCmd 是错树守护的正当出口：把任务重新锚定到用户真正在干活的那棵树上
+// （docs/design/task-tree-guard.md §4）。它只改绑定（位置事实），不动分支、不搬文件。
+var worktreeUseCmd = &cobra.Command{
+	Use:   "use [--ref <ref>]",
+	Short: "把任务重新锚到当前树（错树守护的正当出口）",
+	RunE:  runWorktreeUse,
+}
+
+func runWorktreeUse(cmd *cobra.Command, args []string) error {
+	explicitRef, _ := cmd.Flags().GetString("ref")
+	root, err := projectroot.Find()
+	if err != nil {
+		return err
+	}
+	state, err := resolveTaskState(root, explicitRef)
+	if err != nil {
+		return err
+	}
+	if state == nil {
+		return fmt.Errorf("no active task. Run 'forge task start' first（或 --ref 显式指定）")
+	}
+	if state.CompletedAt != nil {
+		return fmt.Errorf("任务 %s 已完成——不能锚定（重新开工请 forge task start）", state.TaskRef)
+	}
+
+	self := worktree.ID(root)
+	moved := 0
+	for _, a := range worktree.Anchors(root, state.TaskRef) {
+		if a.ID == self {
+			continue
+		}
+		if err := worktree.ClearByID(root, a.ID, state.TaskRef); err != nil {
+			return fmt.Errorf("清理旧锚 %s 失败: %w", a.Path, err)
+		}
+		moved++
+	}
+	branch := currentBranchName(root)
+	if err := worktree.BindTask(root, state.TaskRef, branch, taskpipeline.CurrentSessionID()); err != nil {
+		return fmt.Errorf("写绑定失败: %w", err)
+	}
+	// 会话指针同理指向当前树：ref 落在共享 DataDir，可被任意树读到——不刷新它，
+	// 别的窗口仍会把任务解析到自己那里。
+	if sid := taskpipeline.CurrentSessionID(); sid != "" {
+		_ = taskpipeline.SetActiveTaskRef(root, sid, state.TaskRef)
+	}
+	abs, _ := filepath.Abs(root)
+	fmt.Printf("✅ 任务 %s 已锚定到当前树：%s（分支 %s；迁移旧锚 %d 个）\n", state.TaskRef, abs, branch, moved)
+	return nil
+}
+
+// currentBranchName is the current checkout's branch ("" when detached/unavailable) — used
+// only as the binding's display field; resolution never compares branch names.
+//
+// currentBranchName 是当前检出的分支（detached/取不到时为空）——只用于绑定的展示字段；
+// 解析从不比对分支名。
+func currentBranchName(root string) string {
+	out, err := exec.Command("git", "-C", root, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	b := strings.TrimSpace(string(out))
+	if b == "HEAD" {
+		return ""
+	}
+	return b
 }
