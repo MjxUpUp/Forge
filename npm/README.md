@@ -7,7 +7,7 @@ Forge 在 AI 编码过程中自动插入结构化质量门禁——从任务创�
 ## 核心功能
 
 - **任务级门禁** — 每个开发任务走 3 道门禁：实现 → 验证 → 完成
-- **实时 Hook 拦截** — 27 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过
+- **实时 Hook 拦截** — 26 个内置 Hook，在 AI 写代码的同时自动检查质量、防止绕过
 - **安全纵深防御** — 三层防御架构：工具拦截 → 文件监控 → 自身保护
 - **质量评分** — 每个任务完成后自动评分，量化 AI 编码质量
 
@@ -56,7 +56,7 @@ forge task score                  # 查看质量评分
 
 ## Hook 系统
 
-Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook 如下，完整 27 个清单见 [Hook 参考](https://github.com/MjxUpUp/Forge/blob/main/docs/reference/hooks.md)）：
+Forge 通过 Claude Code 的 Hook 机制实现实时质量检查（主要 Hook 如下，完整 26 个清单见 [Hook 参考](https://github.com/MjxUpUp/Forge/blob/main/docs/reference/hooks.md)）：
 
 | Hook | 触发时机 | 功能 |
 |------|----------|------|

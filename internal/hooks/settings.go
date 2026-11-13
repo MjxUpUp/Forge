@@ -31,7 +31,6 @@ var embeddedHooks = map[string]string{
 	"tool-track":          ToolTrackHook,
 	"skill-scan":          SkillScanHook,
 	"mcp-scan":            McpScanHook,
-	"init-suggest":        InitSuggestHook,
 	"task-resume":         TaskResumeHook,
 	"compact-resume":      CompactResumeHook,
 	"resume-reinject":     ResumeReinjectHook,
@@ -213,12 +212,11 @@ func ForgeHookSpec() map[string][]HookMatcher {
 				Hooks: []HookEntry{
 					{Type: "command", Command: "forge hook skill-scan"},
 					{Type: "command", Command: "forge hook mcp-scan"},
-					{Type: "command", Command: "forge hook init-suggest"},
 					{Type: "command", Command: "forge hook task-resume"},
 					{Type: "command", Command: "forge hook skill-trigger"},
 					// conventions-profile 层 2 会话摘要（2026-08-28）：有档案注入 ≤15 行
 					// 摘要（always-on 层保持极小），无档案且仓库已声明规范时每会话一次
-					// 建档建议。与 init-suggest 同挂点（都是 SessionStart 检测+引导类）。
+					// 建档建议。与 skill-scan / task-resume 同挂点（都是 SessionStart 检测类）。
 					{Type: "command", Command: "forge hook conventions-context"},
 				},
 			},
@@ -427,7 +425,7 @@ func StripForgeHooks(projectDir string, keepEmpty bool) (changed bool, err error
 //
 // 仅删 forge 来源的 hook 条目，保留用户自定义 hooks（command 不以 forge hook/forge gate
 // 开头）。移除所有 forge hooks 后（hooks 字段空且无其他顶层字段，即整文件只剩 forge 来源）：
-//   - keepEmpty=true（自动路径：init-suggest SessionStart / autoSync / init·sync / user-level
+//   - keepEmpty=true（自动路径：autoSync / init·sync / user-level
 //     全部场景）→ 写空对象 {} 保留文件壳,绝不删——settings.local.json 是 gitignored 个人配置,
 //     用户常主动放置/正在编辑,forge 在自动 dedupe 时静默删整个文件是用户痛点。空 {} 对
 //     Claude Code 无害。user-level 始终走此分支(StripForgeHooksUserLevel 固定 keepEmpty=true,
@@ -478,7 +476,7 @@ func StripForgeHooksAt(path string, keepEmpty bool) (changed bool, err error) {
 		delete(settings, "hooks")
 	}
 	if len(settings) == 0 {
-		// keepEmpty=true: 自动路径（init-suggest / autoSync / init·sync）——保留文件壳,写 {}。
+		// keepEmpty=true: 自动路径（autoSync / init·sync）——保留文件壳,写 {}。
 		// keepEmpty=false: 手动 forge plugin dedupe（显式清理）——删空文件。
 		if keepEmpty {
 			return true, util.AtomicWrite(path, []byte("{}\n"), 0644)
