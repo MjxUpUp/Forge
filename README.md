@@ -129,7 +129,7 @@ forge integrations enable claude-code   # 可选：显式接线宿主（或直�
 ```yaml
 # spec/forge.yaml
 version: "1"       # 契约版本，按主版本兼容
-profile: standard  # standard | mini | full（缺省 standard）
+profile: standard  # standard | mini | full（省略该字段按 standard 解析；forge init 写入的是 mini）
 hooks: off         # on | off（缺省 off）；写 on 才执法
 ```
 

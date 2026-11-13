@@ -35,7 +35,7 @@ forge integrations enable claude-code
 宿主接线由 `forge integrations enable <host>` 显式开启，它才写用户级资产：
 - `~/.forge/integrations/<host>` — 接线标记（`disable` 只摘它）
 - `~/.forge/projects/<key>/` — protocol.yml + runtime state（任务状态/hook 参考副本）
-- `~/.forge/projects.json` — 全局项目注册表（dashboard/`task --all` 等全局视图依赖它）
+- `~/.forge/projects.json` — 全局项目注册表（dashboard/`task list --open --all-projects` 等全局视图依赖它）
 - `~/.claude/settings.json` — Claude Code hooks（plugin 已装则由 plugin 接管）
 - `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` — 质量协议（备份+追加，`forge uninstall --restore` 可回滚）
 - `~/.claude/skills/forge-quality/` — 质量协议 Skill
