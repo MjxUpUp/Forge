@@ -12,7 +12,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/clitask"
-	"github.com/MjxUpUp/Forge/internal/protocol"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -31,10 +31,10 @@ var verifyCmd = &cobra.Command{
 	Use:   "verify [--regression] [--scenario <name>]",
 	Short: "验证项目完整性和运行回归测试",
 	Long: `forge verify 检查当前项目的 Forge 配置完整性：
-  - hook 脚本存在性
-  - protocol.yml 可解析且含评分配置
-  - Claude Code skills 存在
-  - settings.local.json 存在
+  - 仓库契约 spec/forge.yaml 存在且可解析（version/profile/hooks 合法）
+
+阶段 D 起 forge 不再安装 hook、也不再读写 protocol.yml / Claude Code skills /
+settings.local.json，因此这些项不再参与检查。
 
 使用 --regression 运行所有 E2E 回归场景，
 使用 --scenario <name> 运行指定场景。`,
@@ -78,7 +78,7 @@ func runDefaultChecks() error {
 		name string
 		fn   func(string) checkResult
 	}{
-		{"Protocol 配置", checkProtocol},
+		{"仓库契约", checkContract},
 	}
 
 	results := make([]checkResult, 0, len(checks))
@@ -192,15 +192,24 @@ func boundOutput(s string) string {
 	return fmt.Sprintf("...(省略前 %d 行)...\n%s", len(lines)-capLines, trimmed)
 }
 
-func checkProtocol(root string) checkResult {
-	proto, err := protocol.Load(root)
+// checkContract 校验仓库契约 spec/forge.yaml。
+//
+// 阶段 D 删除了宿主层（含 protocol.yml 的 EnsureDefault/Save），`forge verify`
+// 原先依赖的 protocol.yml 已无人写入——继续校验它会让 verify 在任何仓库恒失败，
+// 且报错还让人去跑 init（init 亦不写 protocol.yml），构成死循环。契约改由
+// specroot 解析：仓库是否声明、version/profile/hooks 是否合法，才是当前
+// `forge verify` 能真正验证的「项目配置完整性」。
+func checkContract(root string) checkResult {
+	const name = "仓库契约"
+	path := specroot.MarkerPath(root)
+	if !specroot.Declared(root) {
+		return checkResult{name: name, ok: false, msg: fmt.Sprintf("未找到 %s（跑 forge init 声明仓库契约）", path)}
+	}
+	contract, err := specroot.Load(root)
 	if err != nil {
-		return checkResult{name: "Protocol 配置", ok: false, msg: err.Error()}
+		return checkResult{name: name, ok: false, msg: fmt.Sprintf("%v（修正 %s 后重跑 forge verify）", err, path)}
 	}
-	if proto.Scoring == nil {
-		return checkResult{name: "Protocol 配置", ok: false, msg: "缺少 scoring 配置"}
-	}
-	return checkResult{name: "Protocol 配置", ok: true, msg: fmt.Sprintf("%d standards, %d session_rules", len(proto.Standards), len(proto.SessionRules))}
+	return checkResult{name: name, ok: true, msg: fmt.Sprintf("%s: version %s, profile %s, hooks %s", path, contract.Version, contract.Profile, contract.Hooks)}
 }
 
 // ---------- Regression 模式 ----------

@@ -748,7 +748,7 @@ func runEvalReport(cmd *cobra.Command, args []string) error {
 func init() {
 	cardCmd := &cobra.Command{
 		Use:   "card [--render]",
-		Short: "治理披露卡：Forge 占层/hook/门禁/逃生舱/已知盲区（缺节 BLOCKED）",
+		Short: "治理披露卡：Forge 占层/门禁/逃生舱/已知盲区（缺节 BLOCKED）",
 		RunE:  runEvalCard,
 	}
 	cardCmd.Flags().Bool("render", false, "渲染 Markdown 全文")
