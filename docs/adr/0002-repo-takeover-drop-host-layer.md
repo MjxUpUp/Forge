@@ -72,7 +72,7 @@ Forge 目前把「是否接管一个项目」的判据放在安装态：`forge i
 
 1. **in-loop 反馈不依赖宿主**。节点 gate 是普通 CLI 调用，任何能跑 bash 的 agent 都能用；宿主 hook 只在「想更早发现」时才有价值，而它的成本已经在数据里（见下节）。
 2. **「继续」必须由 verdict 授权**。`status` 返回的 `nextSteps` 是唯一合法的下一步；失败时返回返工指令，耗尽时返回 `blocked`（`blocked` 时 `nextSteps` 里不含可执行命令，恢复命令放在 `handoff` 字段，由人执行）。agent 想跳过就只能无视协议，而那会被边界层的闸门抓住：`forge change check` 在本地 pre-commit 与 CI 里跑同一套判据（未封印/失效/失败的 change 直接失败）。托管平台上的 required status check 仍需人工勾选，未勾选时强制力来自 review 与分支保护。
-3. **门禁本体留在 CLI，hook 只做窄护栏**。LoopSpec 的 pre-tool-use hook 只拒绝「手改已确认 plan」这一件事，36 个 hook 的复杂度它没有。这也从侧面支持决策 3：宿主层应当是可选适配器，而不是 35 个条目的名册。
+3. **门禁本体留在 CLI，hook 只做窄护栏**。LoopSpec 的 pre-tool-use hook 只拒绝「手改已确认 plan」这一件事，35 个条目的复杂度它没有。这也从侧面支持决策 3：宿主层应当是可选适配器，而不是 35 个条目的名册。
 
 ## 考虑过的方案
 
