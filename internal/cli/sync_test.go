@@ -437,3 +437,33 @@ func syncWrite(t *testing.T, path, content string) {
 		t.Fatalf(`write %s: %v`, path, err)
 	}
 }
+
+// TestSyncGateAllows_Matrix 钉住 autoSync 的用户级写入闸门：只有装了 plugin、
+// 有接线 marker、或老项目遗留接线（且人没显式全关）才写 HOME。
+func TestSyncGateAllows_Matrix(t *testing.T) {
+	_, _ = isolatedHomeEnv(t)
+	dir := t.TempDir()
+
+	if syncGateAllows(dir, false, map[string]bool{}, false) {
+		t.Fatal("无 marker、无 legacy、无 plugin 时不得写用户级资产")
+	}
+	if !syncGateAllows(dir, false, map[string]bool{"cursor": true}, false) {
+		t.Fatal("有接线 marker 时应允许同步")
+	}
+	if !syncGateAllows(dir, true, map[string]bool{}, false) {
+		t.Fatal("legacy 老项目应继续迁移同步")
+	}
+	if !syncGateAllows(dir, false, map[string]bool{}, true) {
+		t.Fatal("装了 Claude plugin 时应允许同步")
+	}
+
+	if err := markIntegrationsDisabled(); err != nil {
+		t.Fatalf("mark disabled: %v", err)
+	}
+	if syncGateAllows(dir, true, map[string]bool{}, false) {
+		t.Fatal("显式 disable 墓碑存在时，legacy 项目也不得再写用户级资产")
+	}
+	if !syncGateAllows(dir, true, map[string]bool{}, true) {
+		t.Fatal("plugin 是独立 opt-in，不应被 tombstone 吞掉")
+	}
+}
