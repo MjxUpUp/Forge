@@ -748,20 +748,11 @@ func runEvalReport(cmd *cobra.Command, args []string) error {
 func init() {
 	cardCmd := &cobra.Command{
 		Use:   "card [--render]",
-		Short: "治理披露卡：Forge 占层/hook/门禁/逃生舱/已知盲区（缺节 BLOCKED）",
+		Short: "治理披露卡：Forge 占层/门禁/逃生舱/已知盲区（缺节 BLOCKED）",
 		RunE:  runEvalCard,
 	}
 	cardCmd.Flags().Bool("render", false, "渲染 Markdown 全文")
 	evalCmd.AddCommand(cardCmd)
-
-	deadChecks := &cobra.Command{
-		Use:   "dead-checks [--window 90d] [--json]",
-		Short: "W0.1 死检查报告：按台账分 live / dead-candidate / insufficient-data（hook 瘦身的数据面）",
-		RunE:  runEvalDeadChecks,
-	}
-	deadChecks.Flags().String("window", "90d", "观察窗（90d / 2160h）")
-	deadChecks.Flags().Bool("json", false, "JSON 输出")
-	evalCmd.AddCommand(deadChecks)
 
 	friction := &cobra.Command{
 		Use:   "friction [--corpus <dir>] [--timeout 120s] [--json]",
