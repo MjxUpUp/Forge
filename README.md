@@ -177,7 +177,7 @@ npm install -g @agent_forge/forge
 | --- | --- | --- | --- |
 | Claude Code | `~/.claude/CLAUDE.md`（`FORGE:START/END` 段） | `~/.claude/settings.json` 的 hooks 段 | `~/.claude/plugins/{marketplaces,cache}/forge`、`~/.claude/skills/*` 里的链接 |
 | Codex | `~/.codex/AGENTS.md`（`FORGE:START/END` 段） | `~/.codex/hooks.json`，以及 `~/.codex/config.toml` 的 `[features] hooks` | `~/.codex/skills/*` 里的链接 |
-| Windsurf | `~/.codeium/windsurf/memories/global_rules.md`（`FORGE:START/END` 段） | — | 本版代码未见 skills 落点，如用过请检查 `~/.codeium/windsurf` |
+| Windsurf | `~/.codeium/windsurf/memories/global_rules.md`（`FORGE:START/END` 段） | `~/.codeium/windsurf/hooks.json` 的 forge 条目 | 本版代码未见 skills 落点，如用过请检查 `~/.codeium/windsurf` |
 | Cursor | — | `~/.cursor/hooks.json` | `~/.cursor/skills/*` 里的链接 |
 | Kimi | `~/.kimi-code/config.toml`（`# FORGE:START` 注释段） | — | `~/.kimi-code/plugins/installed.json` 的 forge 条目 |
 
@@ -195,9 +195,14 @@ for f in ~/.claude/CLAUDE.md ~/.claude/settings.json ~/.claude/plugins/installed
          ~/.codeium/windsurf/memories/global_rules.md ~/.kimi-code/config.toml; do
   if [ -f "$f" ]; then cp "$f" ~/forge-backup/upgrade-1.84/; fi
 done
-# 链接清单无法用 cp 备份，先落盘一份再动：
-find ~/.claude/skills ~/.cursor/skills ~/.codex/skills ~/.copilot/skills ~/.agents/skills \
-  -maxdepth 1 -type l 2>/dev/null > ~/forge-backup/upgrade-1.84/skills-links.txt || true
+# 链接清单无法用 cp 备份，先落盘一份再动（`find -maxdepth` 在 macOS 上不存在，
+# 所以用 shell glob；`readlink` 把目标也记下来，恢复时有据可查）：
+for d in ~/.claude/skills ~/.cursor/skills ~/.codex/skills ~/.copilot/skills ~/.agents/skills; do
+  [ -d "$d" ] || continue
+  for l in "$d"/*; do
+    if [ -L "$l" ]; then echo "$l -> $(readlink "$l")"; fi
+  done
+done > ~/forge-backup/upgrade-1.84/skills-links.txt
 
 # 1) 定位 FORGE:START
 grep -l 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md \
@@ -208,8 +213,12 @@ grep -l 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md \
 # 2) Codex hook 配置：只删 forge 条目，别删整个文件
 #    编辑 ~/.codex/hooks.json，删掉 command 里带 "forge hook" 的条目；
 #    再把 ~/.codex/config.toml 里 [features] hooks = true 改回 false（或删掉该行）。
+#    如果 config.toml 里有 # FORGE:START … # FORGE:END 整块（旧版没有 [features] 表时
+#    自动追加的），整块删掉，否则会留下孤立标记。
 
-# 3) Claude settings：同样只删 hooks 段里带 "forge hook" 的条目。
+# 3) Claude settings / Windsurf hooks：同样只删带 "forge hook" 的条目
+#    编辑 ~/.claude/settings.json 的 hooks 段；
+#    编辑 ~/.codeium/windsurf/hooks.json，删 forge 条目。
 
 # 4) 旧插件与插件登记
 rm -rf ~/.claude/plugins/marketplaces/forge ~/.claude/plugins/cache/forge
@@ -219,19 +228,26 @@ rm -rf ~/.claude/plugins/marketplaces/forge ~/.claude/plugins/cache/forge
 # 5) skills 分发：只删指向 skills-cache 的链接，再删缓存，否则会留下悬空链接
 #    先预览（应全是 .../skills-cache/embedded/...）：
 for d in ~/.claude/skills ~/.cursor/skills ~/.codex/skills ~/.copilot/skills ~/.agents/skills; do
-  [ -d "$d" ] && find "$d" -maxdepth 1 -type l -lname '*skills-cache*' -print
+  [ -d "$d" ] || continue
+  for l in "$d"/*; do
+    if [ -L "$l" ]; then case "$(readlink "$l")" in *skills-cache*) echo "$l";; esac; fi
+  done
 done
-#    确认无误后把上面的 -print 换成 -delete 再跑一遍（用户自己 ln -s 的链接不受影响）。
+#    确认无误后把上面的 echo 换成 rm -f 再跑一遍（用户自己 ln -s 的链接不受影响）。
 rm -rf ~/.forge/skills-cache
 rm -f ~/.forge/skills-manifest.json
 
 # 6) 自检：下面都应为空
 grep -l 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md \
   ~/.codeium/windsurf/memories/global_rules.md ~/.kimi-code/config.toml 2>/dev/null
-grep -rl 'forge hook' ~/.claude/settings.json ~/.codex/hooks.json 2>/dev/null
+grep -rl 'forge hook' ~/.claude/settings.json ~/.codex/hooks.json \
+  ~/.codeium/windsurf/hooks.json 2>/dev/null
 ls ~/.forge/skills-cache 2>/dev/null
 for d in ~/.claude/skills ~/.cursor/skills ~/.codex/skills ~/.copilot/skills ~/.agents/skills; do
-  [ -d "$d" ] && find "$d" -maxdepth 1 -type l -lname '*skills-cache*' -print
+  [ -d "$d" ] || continue
+  for l in "$d"/*; do
+    if [ -L "$l" ]; then case "$(readlink "$l")" in *skills-cache*) echo "$l";; esac; fi
+  done
 done
 
 # 7) 确认上面都干净后，最后再删这些历史目录（它们是最后的回滚点）

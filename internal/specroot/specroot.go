@@ -37,7 +37,7 @@ const (
 	// ProfileStandard 是标准名册，也是缺省：不写 profile 时按它跑（与
 	// hooks.ActiveProfile / ParseProfile 的缺省保持一致）。
 	ProfileStandard = "standard"
-	// ProfileFull 启用全部 hook 与门禁。
+	// ProfileFull 是最大门禁档位。
 	ProfileFull = "full"
 
 	// CurrentVersion 是当前支持的契约版本。
@@ -172,14 +172,13 @@ func sameDir(a, b string) bool {
 
 // Load 读取并校验 root/spec/forge.yaml。
 //
-// 缺省值：version=1、profile=standard、hooks=off（ADR-0002 阶段 B：执法 opt-in，
-// 默认 audit-only）。未知 profile、未知键或不受支持
+// 缺省值：version=1、profile=standard、hooks=off（hooks 是兼容字段，
+// 1.85 起没有 hook 执法层）。未知 profile、未知键或不受支持
 // 的主版本返回错误——
 // 契约是人写的文件，拼错档位时静默降级比报错更危险。
 //
-// 消费现状（2026-11-13）：成员资格认「文件存在」；hooks 开关已接线——
-// hookdispatch 解析出项目根后读契约，off（含缺省）静默放行（audit-only）、on 才执法、
-// profile 决定名册档位；无契约的宿主层由 FORGE_HOOKS=on 显式开启（ADR-0002 阶段 B）。
+// 消费现状（1.85 阶段 D 后）：成员资格只认「文件存在」；hooks 字段保留用于
+// 兼容旧文件，不再驱动任何拦截；profile 仍决定 Task/change 门禁的档位。
 func Load(root string) (*Contract, error) {
 	path := MarkerPath(root)
 	raw, err := os.ReadFile(path)
@@ -190,8 +189,8 @@ func Load(root string) (*Contract, error) {
 		return nil, fmt.Errorf("specroot: 读取 %s: %w", path, err)
 	}
 
-	// KnownFields(true)：拼错键名（hooks 写成 hook）必须报错而不是静默按缺省跑
-	// ——那个仓库以为关了执法，实际还在拦。空文件按全缺省处理。
+	// KnownFields(true)：拼错键名（profile 写成 porfile）必须报错而不是静默按缺省跑
+	// ——拼错的档位会让门禁悄悄降级。空文件按全缺省处理。
 	var parsed Contract
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
