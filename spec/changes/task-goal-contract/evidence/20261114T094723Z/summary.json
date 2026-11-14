@@ -1,0 +1,161 @@
+{
+  "change": "task-goal-contract",
+  "started_at": "2026-11-14T09:47:23Z",
+  "finished_at": "2026-11-14T09:47:32Z",
+  "passed": false,
+  "sealed": false,
+  "head": "2c20cea6eb67cc9cdb90cfe84ed29361c86380f7",
+  "diff_sha256": "5214c7fea88bfd56d10c94909f03fb3c852f7f85144060f0a0c222e720dc0dc3",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "b676e4a5c0f0a1b38d06142f6860670451b9038b98971445976ef98c29f1e7f8"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "94ff76fe7b971637bfa54815c2335637cd75d935dfeae4f72d78fd3646a4a36a"
+    },
+    {
+      "path": "internal/change/change.go",
+      "sha256": "49e8acee87566f09e6d84cf2298063309a87464e0ba1103466ca5883f6be6c1b"
+    },
+    {
+      "path": "internal/change/goal.go",
+      "sha256": "5ac00911b8ed9fde04d9202c35ee6e4952dc509f23a98843ce28af3764208c62"
+    },
+    {
+      "path": "internal/change/goal_test.go",
+      "sha256": "7ec462e5f1130b014b72a0953de77761cba836c3eaa8f73d633787a07f5e4c1c"
+    },
+    {
+      "path": "internal/change/status.go",
+      "sha256": "fb9a6166e614dc1472e47372a5e274fca78b07253fb05e3b4e857e0ddedecc21"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "d6092b38d76ab5ed421801b048cd588cb58fcb7a61f7f78b3af81e10069a7862"
+    },
+    {
+      "path": "internal/change/templates/goal.md",
+      "sha256": "72585369d581afd2e8394872b3c22f9580061057e27b6f35c040dbb8040a4e07"
+    },
+    {
+      "path": "internal/change/templates/tasks.md",
+      "sha256": "6d9f75c160ab9ea0f44255dc9d237a7f9639ac62399f7c6987cb4a9c0609d260"
+    },
+    {
+      "path": "internal/change/verify.go",
+      "sha256": "2747efa1e513938802abffd6abcc40b005c108b286b5d50cd78164d3d341e68b"
+    },
+    {
+      "path": "internal/cli/change.go",
+      "sha256": "d1f822891b0195919a5f25581792adb4d654ae7a6f3ef759f27093b449ca94ee"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "fa58b844c8944f590576dd389e5d2b9fd8101052c0b7f433dc3bff1b67d71a87"
+    },
+    {
+      "path": "internal/clitask/task_goal.go",
+      "sha256": "5d721812a1d8e19d3f88e51f77703cee103d4f9dbb40052921c7192b366af5c4"
+    },
+    {
+      "path": "internal/clitask/task_goal_test.go",
+      "sha256": "5b5b1ae20233afa31061020d008e3b7a1bd70bfc4535c8160ce8820a6d4c9908"
+    },
+    {
+      "path": "internal/taskpipeline/executor.go",
+      "sha256": "fe586a44d8ad4ae9ce9c921b8d2735397e47b90f621da4d1a94e9eb60f3200ca"
+    },
+    {
+      "path": "internal/taskpipeline/goal_contract_gate_test.go",
+      "sha256": "bb1d3022537eb14bc77e382c5727c91317569deabe68df0981d0103b92ffb0e6"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/acceptance.md",
+      "sha256": "6cf04dea5e675e6c7ba566599820ae8b7c67d3ed24c58ed199104cdd876f8d9a"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/design.md",
+      "sha256": "9ff053aed830687d4af6399c566f4233ef4e6005c0d3e47730c5b6edda058c04"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/goal.md",
+      "sha256": "a05698bd1f8e689b2ec1b2a1d497fd47ec0c1b691d82c83a7e5db65062b1c7ef"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/proposal.md",
+      "sha256": "4eeac5e655207bc119b0faf7fa1397d560bb4d3aaa06d0e2dd9eb34e01f04db2"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/tasks.md",
+      "sha256": "03bce77c054cf49112ee5fefb96686a8eacd520295dc01ca2edf8b0d1d2bff46"
+    }
+  ],
+  "acceptance_sha256": "6cf04dea5e675e6c7ba566599820ae8b7c67d3ed24c58ed199104cdd876f8d9a",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 1799
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestParseGoal|TestLoadGoal|TestGoalHash|TestDocProblems' -count=1",
+      "exit": 0,
+      "duration_ms": 1343,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run TestCheckGoalContract -count=1",
+      "exit": 0,
+      "duration_ms": 1080,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChangeNew_WritesGoalContract|TestChangeNewFast' -count=1",
+      "exit": 0,
+      "duration_ms": 2464,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestResolveGoalContract|TestTaskStart_RegistersGoalContractFlags' -count=1",
+      "exit": 0,
+      "duration_ms": 2194,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "grep -q \"五份产物\" docs/reference/cli.md",
+      "exit": 1,
+      "duration_ms": 39
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "grep -q \"goal.md\" README.md",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    }
+  ]
+}

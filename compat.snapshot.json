@@ -85,6 +85,7 @@
     {
       "path": "forge change new",
       "flags": [
+        "by-human",
         "fast",
         "title"
       ]
@@ -1055,9 +1056,11 @@
         "assignee",
         "base",
         "branch",
+        "change",
         "depends-on",
         "from-issue",
         "goal",
+        "goal-file",
         "heldout",
         "invariant",
         "json",
@@ -1219,6 +1222,7 @@
     "file-sentinel",
     "gate-cmd-form",
     "gate-push",
+    "goal-contract",
     "hook-infra",
     "kimi-plugin-stale",
     "loop-exhausted",

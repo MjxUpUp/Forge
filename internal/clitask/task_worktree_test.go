@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/change"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
@@ -283,5 +285,93 @@ func TestCopyWorktreeIncludesWarnsOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(warn, "1 个") {
 		t.Errorf("warning should report the failure count, got: %q", warn)
+	}
+}
+
+// TestTaskStart_WorktreeChangePinsWorktreeGoal 钉住 P2-A：--worktree --change
+// 必须钉 worktree 里的 goal.md 内容（门禁也在那里读），而不是主检出里未提交的
+// 版本——否则用户什么都没改也会被误报「goal 契约在任务启动后被修改」。
+func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
+	tmpDir := wtSetupProject(t)
+
+	if out, errOut, code := runForge(t, tmpDir, "change", "new", "flow", "--title", "flow probe"); code != 0 {
+		t.Fatalf("change new failed: %s %s", out, errOut)
+	}
+	goalPath := filepath.Join(tmpDir, "spec", "changes", "flow", "goal.md")
+	if err := os.WriteFile(goalPath, []byte(completeGoalForTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, tmpDir, "add", ".")
+	runGit(t, tmpDir, "commit", "-m", "goal")
+
+	committed, err := os.ReadFile(goalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSHA := change.GoalHash(committed)
+
+	// 主检出里改一行但不提交：worktree 从基底检出，看不到这行。
+	if err := os.WriteFile(goalPath, append(committed, []byte("\n主检出未提交的一行\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-wt", "--change", "flow", "--title", "flow wt")
+	if code != 0 {
+		t.Fatalf("task start --worktree --change failed: %s %s", stdout, stderr)
+	}
+	state, err := taskpipeline.LoadTaskState(tmpDir, "feat/flow-wt")
+	if err != nil {
+		t.Fatalf("LoadTaskState: %v", err)
+	}
+	if state.GoalContract == nil {
+		t.Fatal("goal 契约未记录")
+	}
+	if state.GoalContract.SHA256 != wantSHA {
+		t.Fatalf("契约应钉 worktree（已提交）内容 %s，实际 %s", wantSHA, state.GoalContract.SHA256)
+	}
+
+	// 在 worktree 里制造代码改动后跑 implement gate：不得误报漂移。
+	wtPath := filepath.Join(filepath.Dir(tmpDir), filepath.Base(tmpDir)+"-wt", "feat-flow-wt")
+	if err := os.WriteFile(filepath.Join(wtPath, "probe.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, wtPath, "add", "probe.go")
+	out, errOut, code := runForge(t, wtPath, "task", "gate", "task-implement")
+	if code != 0 {
+		t.Fatalf("implement gate 不应因 goal 误报漂移（code=%d）: %s %s", code, out, errOut)
+	}
+	if strings.Contains(out+errOut, "goal 契约在任务启动后被修改") {
+		t.Fatalf("误报 goal 漂移: %s %s", out, errOut)
+	}
+}
+
+// TestTaskStart_WorktreeChangeRequiresCommittedGoal 钉住 --worktree + --change
+// 的另一半语义：worktree 从 base 检出，主检出里未提交的 goal.md 读不到时必须
+// 报错并回滚 worktree 与派生分支，不能留下半副作用。
+func TestTaskStart_WorktreeChangeRequiresCommittedGoal(t *testing.T) {
+	tmpDir := wtSetupProject(t)
+
+	if out, errOut, code := runForge(t, tmpDir, "change", "new", "flow2", "--title", "flow2 probe"); code != 0 {
+		t.Fatalf("change new failed: %s %s", out, errOut)
+	}
+	goalPath := filepath.Join(tmpDir, "spec", "changes", "flow2", "goal.md")
+	if err := os.WriteFile(goalPath, []byte(completeGoalForTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 故意不提交 goal.md。
+
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-uncommitted", "--change", "flow2", "--title", "flow2 wt")
+	if code == 0 {
+		t.Fatalf("未提交 goal.md 时 --worktree --change 应失败: %s", stdout)
+	}
+	if got := stdout + stderr; !strings.Contains(got, "goal 契约在 worktree 里读不到") || !strings.Contains(got, "基于 main") {
+		t.Fatalf("报错应说明 worktree 基线且 goal 未提交，got: %s", got)
+	}
+	wtPath := filepath.Join(filepath.Dir(tmpDir), filepath.Base(tmpDir)+"-wt", "feat-flow-uncommitted")
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Fatalf("失败后 worktree 应被回滚，仍存在于 %s", wtPath)
+	}
+	if refs := wtGitOut(t, tmpDir, "branch", "--list", "feat/flow-uncommitted"); strings.TrimSpace(refs) != "" {
+		t.Fatalf("失败后派生分支应被删除，仍存在: %s", refs)
 	}
 }
