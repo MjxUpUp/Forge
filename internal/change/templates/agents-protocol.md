@@ -4,9 +4,12 @@
 ## 开始之前（硬规则）
 
 - **任何代码改动之前，先跑 `forge next`**，只执行它给出的下一步；不要自己挑流程。
+  `next` 只覆盖 Task 回环：本仓库有对应 change 时，`task start` 记得补 `--change <id>`。
 - 一次任务只做一件事：`forge task start --ref <ref> --change <id>`（把 goal 钉成哈希），
-  做完跑 `forge task gate task-implement` 与 `forge task gate task-verify`，最后 `forge task complete`。
-- **门禁是命令，不是 hook**：这里没有后台拦截，上面每一条都要你自己跑；不跑就等于没有门禁。
+  做完依次跑 `forge task gate task-implement`、`forge task verify-acceptance`（实跑验收）、
+  `forge task gate task-verify`、`forge task gate task-complete`，最后 `forge task complete`。
+- **门禁是命令，不是 hook**：Task 门禁默认没有后台拦截（可选的 git pre-commit 除外），
+  上面每一条都要你自己跑；不跑就等于没有门禁。
 - 刻意的一次性小改：先 `forge task wild "<说明>"` 申报，再改；不要用「顺手」绕过门禁。
 - 「这次不用走 forge」也是合法选择，但要由人明确说出来；agent 不得自行决定跳过。
 
@@ -53,13 +56,16 @@
 1. `forge task start --ref <分支名> --change <id> --title "..."` 起任务（`--change` 要求
    goal.md 五段已填，并把内容哈希钉进 state；没有 change 时用 `--goal-file` 或 `--goal`）。
 2. 干活。真要做的是「改代码」而不是「写文档」时，implement 门禁会核对确有改动。
-3. `forge task gate task-implement` → `forge task gate task-verify`：后者跑验收、配对测试、
-   cheat-scan 等检查；BLOCKED 先读它给的证据，不要换个说法重试。
-4. 需要独立审查时 `forge review pass --note "..."` 记录结论；文档改动用
-   `forge task doc-review --passed pass --score <N>` 记录（≥75 才过）。
+3. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
+   → `forge task gate task-verify`（配对测试、cheat-scan 等；多数是 advisory，复发才升硬）。
+   BLOCKED 先读它给的证据，不要换个说法重试。complete 会硬查验收已实跑且未过期。
+4. 派只读子 agent 审查当前 diff，然后 `forge review pass --note "..."` 记录结论
+   ——这是 task-complete 的硬前置，不是可选项；审查后改源码会因快照不一致被拒。
+   纯文档改动另用 `forge task doc-review --passed pass --score <N>` 记录（≥75 才过）。
 5. `forge task gate task-complete` → `forge task complete`。只提交不算完成。
 6. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
-   只用于确实不适用的门禁（验证类逃生舱会降证据强度并留审计，节奏类只审计），别当常规手段。
+   只用于确实不适用的门禁：验证类（`--test-coverage`/`--acceptance-gate`/`--skill-decisions`/
+   `--doc-gate`）会降证据强度并留审计，节奏类（`--work-activity`）只审计，别当常规手段。
 
 ## 回环：下一步由 status 给，不由自己挑
 
@@ -89,8 +95,13 @@ status 若报 `blocked`，说明同一原因（每次 verify/gate 的第一条�
 - 判据、证据、封印、失效规则完全一样，summary 里会标 `fast: true`；
 - 周界（比如 ≤3 个文件、≤50 行）是团队约定，写在这里而不是让机器猜——
   阈值一判就假，比例可以统计，合适与否由 review 看。
-- 完全不想走 forge（连 goal 和判据都不留）：由人明确说「这次不用走 forge」，
-  那就只做 git 提交；不要建了 change 又空着，也不要事后补记成 fast。
+
+## 三个出口的边界
+
+- **正常 change**（默认）：五份产物 + 全套门禁。
+- **fast**：goal + proposal + acceptance，必须人批（`--by-human`）。
+- **不走 forge**：由人明确说「这次不用走 forge」，那就只做 git 提交；不要建了 change
+  又空着，也不要事后补记成 fast。agent 不得自行选择这个出口。
 
 ## 红线
 

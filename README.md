@@ -167,36 +167,71 @@ npm install -g @agent_forge/forge
 
 ## ⬆️ 从 1.84 及更早版本升级
 
-1.85 删除了宿主层：hook 执法、用户级 `CLAUDE.md` / `AGENTS.md` 注入、插件、skills 分发都不再存在。
-旧版本留在用户目录里的东西不会自动消失，`forge uninstall` 也随宿主层一起删了，所以按下面手工清理
-（删除前先备份）。
+1.85 删除了宿主层：hook 执法、用户级 `CLAUDE.md` / `AGENTS.md` 注入、插件、skills 分发都不再存在，
+`forge uninstall` 也随宿主层一起删了。旧版本留在用户目录里的东西不会自动消失，需要手工清理
+（删除前先备份）。下面命令按 bash 写，Windows 请用 Git Bash / MSYS 执行。
+
+旧版会写的位置（按你用过的宿主看）：
+
+| 宿主 | 全局注入 | hook 配置 | 插件 / skills |
+| --- | --- | --- | --- |
+| Claude Code | `~/.claude/CLAUDE.md`（`FORGE:START/END` 段） | `~/.claude/settings.json` 的 hooks 段 | `~/.claude/plugins/{marketplaces,cache}/forge`、`~/.claude/skills/*` 里的链接 |
+| Codex | `~/.codex/AGENTS.md`（`FORGE:START/END` 段） | `~/.codex/hooks.json`，以及 `~/.codex/config.toml` 的 `[features] hooks` | `~/.codex/skills/*` 里的链接 |
+| Windsurf | `~/.codeium/windsurf/memories/global_rules.md`（`FORGE:START/END` 段） | — | `~/.codeium/windsurf/skills`（如用过） |
+| Kimi | `~/.kimi-code/config.toml`（`# FORGE:START` 注释段） | — | `~/.kimi-code/plugins/installed.json` 的 forge 条目 |
+
+这些段里最要命的一句是「只有看到 `[forge-session]` 横幅或 forge hook 输出才按 forge 行事，
+否则忽略并不要运行 forge 命令」——1.85 没有横幅也没有 hook，这个条件恒假，Claude 会主动无视 forge。
 
 ```bash
-# 0) 备份可能被改动的文件
+# 0) 备份（逐个判断存在，不静默吞错）
 mkdir -p ~/forge-backup/upgrade-1.84
-cp ~/.claude/CLAUDE.md ~/.claude/settings.json ~/.codex/AGENTS.md ~/.codex/hooks.json \
-   ~/forge-backup/upgrade-1.84/ 2>/dev/null
+for f in ~/.claude/CLAUDE.md ~/.claude/settings.json ~/.claude/plugins/installed_plugins.json \
+         ~/.codex/AGENTS.md ~/.codex/hooks.json ~/.codex/config.toml \
+         ~/.codeium/windsurf/memories/global_rules.md ~/.kimi-code/config.toml; do
+  [ -f "$f" ] && cp "$f" ~/forge-backup/upgrade-1.84/
+done
 
-# 1) 定位旧版写的全局注入（内容是 FORGE:START .. FORGE:END 整段）
-grep -rln 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md 2>/dev/null
-#    有就删掉整段；如果文件只剩这一段，直接删文件
+# 1) 定位 FORGE:START
+grep -l 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md \
+  ~/.codeium/windsurf/memories/global_rules.md ~/.kimi-code/config.toml 2>/dev/null
+#    有就删掉整段（含标记行）；如果文件只剩这一段，直接删文件。
+#    同一文件里 forge 段之外的内容（团队规范、你自己的偏好）保留不动。
 
-# 2) 旧 hook 配置
-rm -f ~/.codex/hooks.json
-#    ~/.claude/settings.json 的 hooks 段里若引用 forge hook，删掉对应条目
+# 2) Codex hook 配置：只删 forge 条目，别删整个文件
+#    编辑 ~/.codex/hooks.json，删掉 command 里带 "forge hook" 的条目；
+#    再把 ~/.codex/config.toml 里 [features] hooks = true 改回 false（或删掉该行）。
 
-# 3) 旧插件与 skills 分发
+# 3) Claude settings：同样只删 hooks 段里带 "forge hook" 的条目。
+
+# 4) 旧插件与插件登记
 rm -rf ~/.claude/plugins/marketplaces/forge ~/.claude/plugins/cache/forge
-rm -rf ~/.forge/skills-cache ~/.forge/skills-manifest.json
+#    再编辑 ~/.claude/plugins/installed_plugins.json，删掉 forge@… 条目
+#    （或直接跑 claude plugin uninstall forge，如果这个版本的 CLI 还认识它）
 
-# 4) 自检：以下命令都应无输出
-grep -rln 'FORGE:START' ~/.claude ~/.codex 2>/dev/null
+# 5) skills 分发：先删指向缓存目录的符号链接，再删缓存，否则会留下悬空链接
+for d in ~/.claude/skills ~/.cursor/skills ~/.codex/skills ~/.copilot/skills ~/.agents/skills; do
+  [ -d "$d" ] && find "$d" -maxdepth 1 -type l -delete
+done
+rm -rf ~/.forge/skills-cache ~/.forge/skills-backup ~/.forge/.init-suggested
+rm -f ~/.forge/skills-manifest.json
+
+# 6) 自检：下面都应为空
+grep -l 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md \
+  ~/.codeium/windsurf/memories/global_rules.md ~/.kimi-code/config.toml 2>/dev/null
+grep -rl 'forge hook' ~/.claude/settings.json ~/.codex/hooks.json 2>/dev/null
 ls ~/.forge/skills-cache 2>/dev/null
+find ~/.claude/skills ~/.agents/skills ~/.cursor/skills ~/.codex/skills -maxdepth 1 -type l 2>/dev/null
 ```
 
-清理后在仓库里跑 `forge status`，应看到 `spec/forge.yaml` 契约。Claude Code 2.1.277+ 在没有
-`CLAUDE.md` 时会直接读 `AGENTS.md`；更老的版本、或想显式钉住入口文件时，跑
-`forge change agents --pointers claude` 生成 `CLAUDE.md` 指针。
+> 说明：`~/.claude/skills` 里可能有你自己的 skill，上面的 `find -type l -delete` 只删符号链接，
+> 不动实体目录；如果链接不是 forge 装的，从备份里恢复即可。旧版还可能留下
+> `~/.forge/skills-backup/`、`~/.forge/.init-suggested/` 等历史目录，确认不再需要后可整删。
+
+清理后在仓库里跑 `forge status`，应看到 `spec/forge.yaml` 契约。Claude Code 2.1.277 起在没有
+`CLAUDE.md` 时会直接读 `AGENTS.md`（2.1.277–2.1.280 有个别会话不加载的 bug，2.1.281 修复；
+旧版本请升级）；更老的版本、或想显式钉住入口文件时，跑 `forge change agents --pointers claude`
+生成 `CLAUDE.md` 指针。
 
 ## 🤝 贡献
 

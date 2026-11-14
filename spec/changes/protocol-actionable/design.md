@@ -4,12 +4,15 @@
 
 | 文件 | 改动 |
 | --- | --- |
-| `internal/change/templates/agents-protocol.md` | 顶部新增「开始之前（硬规则）」；`spec/forge.yaml` 条目删掉 hooks 执法叙述；新增「Task 流程（门禁在命令里）」；「快速通道」补一句 C 模式（不走 forge）的边界 |
+| `internal/change/templates/agents-protocol.md` | 顶部新增「开始之前（硬规则）」；`spec/forge.yaml` 条目改成「hooks 仅兼容保留、1.85 起没有 hook 执法层」；新增「Task 流程（门禁在命令里）」；「快速通道」后的「不建 change」提成独立小节；逃生舱区分验证类与节奏类并点名 flag |
 | `internal/change/agents_protocol_test.go`（新） | 钉模板的可执行性与无残留：含「先跑 `forge next`」、含「## Task 流程」、不含 `hazard-guard`/`hooks: on` |
 | `scripts/checks/protocol-actionable.sh`（新） | 同上，从「产物文件」视角再钉一遍，防止只在测试里生效 |
 | `scripts/checks/migration-doc.sh`（新） | README 必须含「从 1.84 及更早版本升级」节与 `FORGE:START` 清理命令 |
-| `README.md` | 新增「从 1.84 及更早版本升级」节：旧注入、旧 hook 配置、旧 plugin/skills 的备份与清理、自检 |
-| `AGENTS.md`（仓库自身） | 由 `forge change agents` 用新模板重新同步托管块 |
+| `README.md` | 新增「从 1.84 及更早版本升级」节：旧版写入落点表（claude/codex/windsurf/kimi）、逐个判断的备份、按文件编辑而非整删的 hook 清理、插件登记、悬空符号链接、自检命令 |
+| `internal/change/change.go`、`internal/specroot/specroot.go` | 两处 `hooks` 字段注释与模板对齐：兼容保留、不再驱动任何执法 |
+| `spec/changes/cmd-surface-convergence/`（删） | 与 `archive/20261114-cmd-surface-convergence/` 重复（归档后 amend 又落回），导致 `change check` 假红 |
+| `spec/changes/protocol-actionable/**`、evidence | 本次 change 自己的五份产物、`.goal-required` 与 verify 证据 |
+| `AGENTS.md`（仓库自身） | 由 `forge change agents` 用新模板重新同步托管块；该文件在 `.gitignore` 里，不入库，因此不会出现在 diff 中 |
 
 ## 协议文本要点（为什么这么写）
 
@@ -24,11 +27,19 @@
 
 ## 迁移说明要点
 
-- 先备份（`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`、`settings.json`、`installed_plugins.json`）。
-- 用 `grep -rl "FORGE:START"` 定位旧注入；整段删除或整文件删除。
-- 清 `~/.codex/hooks.json` 的 forge 条目、`~/.claude/settings.json` 里 forge hook 条目、
-  旧 plugin 目录、`~/.forge/skills-cache` 与指向它的符号链接。
-- 自检：仓库内 `forge status` 正常；用户目录 `grep -rl "forge hook"` 为空。
+- 先备份，且**逐个判断文件是否存在**（不再用 `cp … 2>/dev/null` 静默吞错）；清单含
+  `installed_plugins.json` 与 codex 的 `config.toml`。
+- 旧注入落在四个宿主：`~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md`、
+  `~/.codeium/windsurf/memories/global_rules.md`、`~/.kimi-code/config.toml`；
+  `grep -l "FORGE:START"` 只查这四个入口文件，不递归扫 `~/.claude`（会把历史会话
+  jsonl 里的字样误报出来）。
+- hook 配置**只删条目、不删文件**：codex 的 `hooks.json` 里用户自己的 hook 要保留，
+  `config.toml` 的 `[features] hooks` 要回滚；claude `settings.json` 同理。
+- skills 分发：先 `find … -maxdepth 1 -type l -delete` 删指向缓存目录的链接，再删
+  `~/.forge/skills-cache`；否则 Windows 上会留下悬空 junction。插件还要清
+  `installed_plugins.json` 的 forge 条目。
+- 自检四条：四个入口无 `FORGE:START`、两个 hook 配置无 `forge hook`、缓存目录不存在、
+  skills 目录无悬空链接；再在仓库里跑 `forge status` 看契约。
 
 ## 附带的清理
 
