@@ -59,7 +59,7 @@
    `forge task doc-review --passed pass --score <N>` 记录（≥75 才过）。
 5. `forge task gate task-complete` → `forge task complete`。只提交不算完成。
 6. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
-   会降证据强度并留下审计记录，别当常规手段。
+   只用于确实不适用的门禁（验证类逃生舱会降证据强度并留审计，节奏类只审计），别当常规手段。
 
 ## 回环：下一步由 status 给，不由自己挑
 
