@@ -17,6 +17,11 @@ var tmplTasks string
 //go:embed templates/acceptance.md
 var tmplAcceptance string
 
+// goal.md 是第五份产物（task-goal-contract）：五段式目标契约，进 git 可评审。
+//
+//go:embed templates/goal.md
+var tmplGoal string
+
 // 名字刻意不叫 agents.md：Windows 文件系统大小写不敏感，落地后就是 AGENTS.md，
 // 会让这个模板在被 agents 读到之前先当成仓库内指令生效。
 //
