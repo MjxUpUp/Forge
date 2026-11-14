@@ -13,7 +13,7 @@ go test ./internal/change/ -run 'TestParseGoal|TestLoadGoal|TestGoalHash|TestDoc
 ```
 
 ```bash
-go test ./internal/taskpipeline/ -run TestCheckGoalContract -count=1
+go test ./internal/taskpipeline/ -run 'TestCheckGoalContract|TestExecuteTaskGate_GoalContractWiring' -count=1
 ```
 
 ```bash
@@ -25,11 +25,11 @@ go test ./internal/clitask/ -run 'TestResolveGoalContract|TestTaskStart_Register
 ```
 
 ```bash
-grep -q "五份模板" docs/reference/cli.md
+sh scripts/checks/docs-artifact-counts.sh
 ```
 
 ```bash
-grep -q "goal.md" README.md
+go test ./internal/change/ -run TestGoalTemplateMatchesParser -count=1
 ```
 
 ```bash
