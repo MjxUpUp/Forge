@@ -3,7 +3,8 @@
 change: `{{id}}`
 
 > 这份契约是任务的验收前提：五段都要填，删掉每段里的 `forge:fill` 注释标记才算写完。
-> 启动任务后改它 = 改判据：证据失效，需要重开任务或在 decisions 里记录改因。
+> 启动任务后改它 = 改判据：`task gate task-implement` 会 BLOCKED；还原 goal.md，
+> 或 `forge task abort` 后重新 `task start --change` 钉新哈希。
 
 ## Objective
 

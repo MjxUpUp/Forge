@@ -25,6 +25,7 @@
 
 1. 一次性初始化：`forge change init` 声明契约（生成 `spec/forge.yaml`）并同步本托管块；契约已存在时用 `forge change agents` 重新同步。
 2. `forge change new <id> --title "..."` 生成五份产物（含 `goal.md`）。
+   新 change 会留一个 `.goal-required` 标记：它让 goal.md 成为必填——删掉 goal.md 不再算「老 change」，verify 会直接拒绝。
 3. 依次填 goal → proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
    启动任务时用 `forge task start --change <id>` 把 goal 钉成内容哈希；启动后改 goal.md 会让 `task-implement` BLOCKED（改目标等于改判据，重开任务）。
    goal 没填完时 `task start --change` 会报错（读不出五段）；漂移后的恢复：还原 goal.md，或 `forge task abort` 后重新 `task start --change` 钉新哈希。

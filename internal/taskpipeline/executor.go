@@ -584,8 +584,8 @@ func checkGoalContract(root string, state *TaskState) *ExecuteResult {
 }
 
 // blockGoalContract 落一条失败检查再返回 BLOCKED：与其它 check 一致，
-	// 失败也要进 checklog，否则证据里只看到「门禁没过」却看不到是哪条、
-	// 当时的契约哈希是什么——复盘只能猜。
+// 失败也要进 checklog，否则证据里只看到「门禁没过」却看不到是哪条、
+// 当时的契约哈希是什么——复盘只能猜。
 func blockGoalContract(root string, state *TaskState, msg string) *ExecuteResult {
 	recordAudit(root, &checklog.Entry{
 		Check:   checklog.CheckGoalContract,

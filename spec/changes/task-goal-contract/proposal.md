@@ -20,7 +20,7 @@ change: `task-goal-contract`
 ## 怎样算解决
 
 - 结论（一句话，可观察）：`forge change new` 必产 `goal.md`；`task start --change` 在 goal 未填完时拒绝启动；启动后改 `goal.md` 会让 `task gate task-implement` BLOCKED；`--fast` 缺 `--by-human` 被拒。
-- 这条结论由 `acceptance.md` 的哪几条围栏证明（写围栏序号）：#1、#2、#3、#4、#5、#6、#7
+- 这条结论由 `acceptance.md` 的哪几条围栏证明（写围栏序号）：#1–#8
 
 ## 影响面
 

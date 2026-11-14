@@ -12,7 +12,7 @@ change: `task-goal-contract`
 
 ## Constraints
 
-- 兼容没有 `goal.md` 的老 change 与老任务：缺失只 advisory/提示，不阻断。
+- 兼容没有 `goal.md` 的老 change 与老任务：缺失只 advisory/提示，不阻断（`change new` 创建的 change 例外：带 `.goal-required` 标记，删掉 goal.md 直接拒绝）。
 - 不复制正文进 TaskState，只存 `Path + SHA256`，避免双写漂移。
 - 不新增普通 change/task 的必填 flag：`--goal` 自由文本继续可用（无契约，走 advisory）；fast 的 `--by-human` 是唯一例外。
 - Windows/macOS/Linux 路径处理一致（仓库相对路径、正斜杠）。
