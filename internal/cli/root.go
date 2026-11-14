@@ -67,7 +67,7 @@ func SetVersion(v, c, d string) {
 // 硬失败 ⇒ exit 2）。从 RunE 返回它（而非在 RunE 里 os.Exit）让 cobra 的 defer
 // 清理与 Execute 的 panic 恢复盘保持生效——os.Exit 跳过所有 defer，旧的 RunE 内
 // 退出等于裸奔。Execute 把它映射为 os.Exit(2) 且不额外打印：命令已输出自己的
-// 结论，与下方 hookdispatch.HookBlockError 分支同形。
+// 结论，（历史分支 HookBlockError 已随阶段 D 删除）。
 type hardExitError struct{}
 
 func (e *hardExitError) Error() string { return "hard failure (exit 2)" }
@@ -80,19 +80,13 @@ func Execute() {
 	// graceful degradation (resilience §2.6 模式7 fail-open)：panic 时输出诊断到 stderr +
 	// exit 2，保证 forge CLI 永不裸奔。dogfood 1.1：forge CLI panic 后偶发空 stdout 致
 	// 解析端 EOF（DevWorkbench 159 次）。panic recovery 是 forge 侧收口——agent 看到
-	// exit 2 + stderr 诊断而非静默崩溃。stdout 不输出（避免污染各命令输出语义）；hook
-	// 命令的 stdout JSON 兜底由 runHook 负责（hook.go 永远输出合法 JSON）。
+	// exit 2 + stderr 诊断而非静默崩溃。stdout 不输出（避免污染各命令输出语义）。
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "forge: internal panic: %v\n", r)
-			// 退出码语义：2 是 hook 的阻断码（kimi：有意 deny；Claude：非 2 的错误
-			// 不阻断）。forge 内部崩溃必须读作基础设施故障而非门禁裁决——此处
-			// exit 2 会把每个内部 bug 变成对每次工具调用的硬拦，只能卸载 hooks
-			// 逃生。hook 子命令 exit 1（fail-open）；其余保持 2（普通 CLI 用法下
-			// 的任意非零码）。
-			if len(os.Args) > 1 && os.Args[1] == "hook" {
-				os.Exit(1)
-			}
+			// 退出码语义：2 表示内部故障（普通 CLI 用法下的任意非零码）。
+			// 阶段 D 起没有 hook 子命令，因此不再有 hook 专用的 fail-open 分支：
+			// 崩溃必须读作基础设施故障，而不是门禁裁决。
 			os.Exit(2)
 		}
 	}()

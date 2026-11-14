@@ -259,7 +259,7 @@ func runTaskResumeMatch(cmd *cobra.Command, asJSON bool) error {
 
 // attachCurrentSession 把当前 session 锚定到 task（多向锚定的接手方动作）。返回 (attached, error)：
 // attached=true 表示实际新增了 session 链接（首次锚定）；已锚定或探测失败返 false 不报错。
-// silent=true（hook 模式）不输出 stderr 提示——hook 的 stderr 用户不可见，attach 是静默副作用。
+// silent=true（静默模式）不输出 stderr 提示，attach 是静默副作用。
 // 探测失败（无 session ID / 无 agent env）静默跳过：attach 是附加动作，不能破坏 resume。
 func attachCurrentSession(state *taskpipeline.TaskState, root string, silent bool) (bool, error) {
 	sid := taskpipeline.CurrentSessionID()
@@ -878,7 +878,7 @@ func renderResume(state *taskpipeline.TaskState, gitChanged []string, extraHeade
 // 靠前位置。设计目的：Claude Code/各 host 自动压缩（summarize）倾向保留开头 + 结构化短文本，
 // 完整 HANDOFF 视图易被压掉，tl;dr 紧凑靠前 → 更可能在压缩后的 summary 中存活，缓解长任务
 // context rot 致接续漂移。这是 gap#2 的跨 host 缓解层（SessionStart 注入，全 host 等价物支持）；
-// Claude Code 特有的 PostCompact 重注入链是另一层（见 compact-resume hook）。
+// 压缩后的重注入由各宿主自行处理，forge 不再提供 hook 通道。
 func renderTldr(state *taskpipeline.TaskState) string {
 	goal := strings.Split(state.Goal, "\n")[0]
 	if r := []rune(goal); len(r) > 100 {
