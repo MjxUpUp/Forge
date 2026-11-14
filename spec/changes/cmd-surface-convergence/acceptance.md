@@ -13,15 +13,15 @@ go test ./internal/clitask/ ./internal/taskpipeline/ -count=1
 ```
 
 ```bash
-sh scripts/checks/no-stale-hook-help.sh
+bash scripts/checks/no-stale-hook-help.sh
 ```
 
 ```bash
-sh scripts/checks/resume-hook-flags-gone.sh
+bash scripts/checks/resume-hook-flags-gone.sh
 ```
 
 ```bash
-go test ./internal/cli/ -run 'TestHelpSurface_|TestCompatSnapshotMatchesGolden' -count=1
+go test ./internal/cli/ -count=1
 ```
 
 ```bash
