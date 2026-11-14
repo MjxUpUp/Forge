@@ -1,0 +1,85 @@
+{
+  "change": "protocol-actionable",
+  "started_at": "2026-11-14T19:36:09Z",
+  "finished_at": "2026-11-14T19:36:22Z",
+  "passed": true,
+  "sealed": true,
+  "head": "b878cc8bf4d5530dfe80cb46301cf7c13888bf18",
+  "diff_sha256": "5caf39f4fc3099c55f3b1defcd8e6983d194b65def5d6480ff0a69625e0a3180",
+  "files": [
+    {
+      "path": "spec/changes/cmd-surface-convergence/acceptance.md",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/design.md",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/goal.md",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/proposal.md",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/tasks.md",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/design.md",
+      "sha256": "25e3cd3fde631f1602feb69d6bbfabb3d8d841b891f29f8cc2f5c5f4a7baf8cd"
+    }
+  ],
+  "acceptance_sha256": "31401a02608fe483fac47d743a4cd02171e50a510399d1344f03115c4163c2af",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3673
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestAgentsProtocol' -count=1",
+      "exit": 0,
+      "duration_ms": 972,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "sh scripts/checks/protocol-actionable.sh",
+      "exit": 0,
+      "duration_ms": 191,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/migration-doc.sh",
+      "exit": 0,
+      "duration_ms": 162,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChangeAgents|TestChangeInit' -count=1",
+      "exit": 0,
+      "duration_ms": 3692,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4368
+    }
+  ]
+}
