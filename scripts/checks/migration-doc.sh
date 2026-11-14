@@ -26,8 +26,8 @@ grep -q '有就删掉整段' "$f" \
   || { echo "README 缺 FORGE:START 定位后的删除说明"; exit 1; }
 grep -q 'FORGE:END 整块' "$f" \
   || { echo "README 缺 codex config.toml 的 FORGE 标记块清理"; exit 1; }
-grep -q 'skills/forge-quality' "$f" \
-  || { echo "README 缺 forge-quality 真实目录清理"; exit 1; }
+grep -qE '^rm -rf .*claude/skills/forge-quality .*agents/skills/forge-quality' "$f" \
+  || { echo "README 缺 forge-quality 真实目录清理（claude + .agents）"; exit 1; }
 
 # 顺序断言：先处理链接、再删缓存；删缓存之后不能再有「先删链接」的提示。
 ln=$(grep -n '\*skills-cache\*' "$f" | head -1 | cut -d: -f1)
