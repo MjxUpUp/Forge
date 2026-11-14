@@ -6,3 +6,4 @@
 - [x] 4. README 增加「从 1.84 及更早版本升级」迁移节（判据：acceptance #4）
 - [x] 5. 用 `forge change agents` 同步仓库 AGENTS.md 托管块，跑 build/文档守卫/deadcode（判据：acceptance #1、#5、#6）
 - [x] 6. 按双评审修迁移覆盖（四宿主/Cursor/插件登记/悬空链接）、门禁顺序与守卫假绿（判据：acceptance #3、#4）
+- [x] 7. 按终审补迁移细节：备份按宿主分目录、Cursor/Kimi 清理、forge-quality 真实目录、守卫钉动作行与 `--artifact-chain`（判据：acceptance #3、#4、#2）

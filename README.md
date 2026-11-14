@@ -182,7 +182,9 @@ npm install -g @agent_forge/forge
 | Kimi | `~/.kimi-code/config.toml`（`# FORGE:START` 注释段） | — | `~/.kimi-code/plugins/installed.json` 的 forge 条目 |
 
 > 1.84 的用户级接线名册还有 cline / codebuddy / zcode / opencode 等宿主；它们在各自
-> hooks 目录写文件，本表不逐一列出。不确定时先 `grep -rl 'forge hook'` 你的用户目录，再删。
+> hooks 目录写文件，本表不逐一列出。不确定时先 `grep -rl "forge hook"
+> ~/.claude/settings.json ~/.codex/hooks.json ~/.codeium/windsurf/hooks.json ~/.cursor/hooks.json`
+> 以及这些宿主的 hooks 目录，再删。
 
 这些段里最要命的一句是「只有看到 `[forge-session]` 横幅或 forge hook 输出才按 forge 行事，
 否则忽略并不要运行 forge 命令」——1.85 没有横幅也没有 hook，这个条件恒假，Claude 会主动无视 forge。
@@ -232,7 +234,7 @@ grep -l 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md \
 rm -rf ~/.claude/plugins/marketplaces/forge ~/.claude/plugins/cache/forge
 #    再编辑 ~/.claude/plugins/installed_plugins.json，删掉 forge@… 条目
 #    （或直接跑 claude plugin uninstall forge，如果这个版本的 CLI 还认识它）
-#    Kimi：编辑 ~/.kimi-code/plugins/installed.json 删 forge 条目，并删 managed/forge。
+#    Kimi：编辑 ~/.kimi-code/plugins/installed.json 删 forge 条目，并删 ~/.kimi-code/plugins/managed/forge。
 
 # 5) skills 分发：只删指向 skills-cache 的链接，再删缓存，否则会留下悬空链接
 #    先预览（应全是 .../skills-cache/embedded/...）：
