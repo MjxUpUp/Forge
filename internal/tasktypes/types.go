@@ -527,7 +527,7 @@ type TaskState struct {
 	// 时标记——永不落盘，满足门禁类的消费方拒采信 broken 状态上的字段。
 	Integrity       *StateIntegrity `json:"integrity,omitempty"`
 	integrityBroken bool            `json:"-"`
-	ResumeStale     bool            `json:"resume_stale,omitempty"` // legacy 的 task-scoped「刚压缩过」标志：仅无 session ID 的回落路径与旧版 binary 写入；有 session ID 的 host 一律用 per-session sentinel（.resume-stale-<sid>，见 state.go），reinject 读到本字段会兑现一次并清零。task-scoped 的固有边界：两 session 共享同一 task 时，B 的 prompt 可能在 A 压缩后先消费并清掉标志（最坏漏注一次，handoff 内容相同故无数据损坏）——per-session sentinel 已对新路径消除该边界。
+	ResumeStale     bool            `json:"resume_stale,omitempty"` // 历史字段：旧版 binary 与 seed 写入的 task-scoped「刚压缩过」标志；仍参与 state 合并/种子兼容，但 resume 流程不再读写。
 	// ReviewedHeadCommit/ReviewedChangeHash bind the code snapshot at review-pass
 	// time — the key to the review-fix-recheck loop.
 	//

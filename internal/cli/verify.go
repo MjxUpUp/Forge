@@ -29,7 +29,7 @@ func init() {
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify [--regression] [--scenario <name>]",
-	Short: "验证项目完整性和运行回归测试",
+	Short: "检查仓库契约（spec/forge.yaml）并按需跑回归",
 	Long: `forge verify 检查当前项目的 Forge 配置完整性：
   - 仓库契约 spec/forge.yaml 存在且可解析（version/profile/hooks 合法）
 
