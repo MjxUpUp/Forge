@@ -174,7 +174,7 @@ ADR:154 的三条完成判据逐条状态：① 「节点失败 → 返工 → �
 
 ### 阶段 D 的落地进度（已合入 `5cfef45b`，修残留 `069dd392`）
 
-- **删除的包**：`internal/hooks`、`internal/hookdispatch`、`internal/agentbridge`、`internal/hazard`、`internal/harnessaudit`、`internal/skillgen`、`internal/freeze`。`internal/skillsdist` 保留核心分发（`ListSkills`/`TargetDirs`/`Install`/`DriftCheck`/`manifest`/`profile`），只删宿主 adapter 与 plugin shadow（`plugin_shadow.go` 及其测试、`DriftReport.PluginShadows` 字段、`forge skills drift-check` 的 plugin-shadow 视图）。
+- **删除的包**：`internal/hooks`、`internal/hookdispatch`、`internal/agentbridge`、`internal/hazard`、`internal/harnessaudit`、`internal/skillgen`、`internal/freeze`。`internal/skillsdist` 只保留只读的 `ListSkills`；`Install`/`TargetDirs`/`DriftCheck`/`manifest`/`profile` 与宿主安装目标随后一批删除（`e58c1bc6`，2,971 行 → 82 行），`forge skills install`/`adapters`/`drift-check` 三个子命令一并移除，`compat` 钉到 192 条。
 - **删除的命令**：`hook`（含 `hook batch`）、`integrations`、`plugin`、`uninstall`、`freeze`、`doctor`、`data-dir`；`forge init --agents` 保留为隐藏 no-op（传入打印废弃警告并忽略）；`forge update --plugin` 移除（flags 只剩 `--apply`）。
 - **验收**：提交 body 记录 acceptance 5/5、`task-verify passed`、`go vet` 绿、deadcode 零、`go build` 绿；新增坑位守卫 `scripts/checks/no-hook-refs.sh` 与 `scripts/checks/deadcode-zero.sh`，`make deadcode` 走 `deadcode -test ./...` 口径。
 - **兼容面**：`forge compat snapshot` 重钉后 194 条（193 子命令 + 根），`internal/cli/compat_golden_test.go` 要求与 `compat.snapshot.json` 逐字节一致——`forge update` 条目的 flags 只剩 `apply`，这一改动随阶段 D 一起入库。
@@ -183,7 +183,7 @@ ADR:154 的三条完成判据逐条状态：① 「节点失败 → 返工 → �
 
 ### 受影响模块
 
-- 删除清单（阶段 D 已执行；行数为删除前快照 `b161f397` 的统计）：`internal/hooks`（8,813 行）、`internal/hookdispatch`（12,041 行）、`internal/skillgen`（2,033 行，CLAUDE.md 生成部分）、`internal/skillsdist`（3,179 行中的宿主 adapter 与 plugin shadow——包本身保留）。
+- 删除清单（阶段 D 已执行；行数为删除前快照 `b161f397` 的统计）：`internal/hooks`（8,813 行）、`internal/hookdispatch`（12,041 行）、`internal/skillgen`（2,033 行，CLAUDE.md 生成部分）、`internal/skillsdist`（3,179 行 → 82 行只读 `ListSkills`，install/adapters/drift-check 与宿主安装目标已删）。
 - 保留并加强：`internal/specroot`、`internal/change`、`internal/projectroot`、`internal/cli`（`change`/`status`/`policy`）。
 - 新增：CI 工作流与 pre-commit 钩子示例已随仓库下发（`.github/workflows/change-verify.yml`、`.githooks/pre-commit`）；`AGENTS.md` 托管块渲染已落地。
 
