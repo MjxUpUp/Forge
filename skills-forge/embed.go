@@ -47,7 +47,7 @@ var FS embed.FS
 // ExtractTo 把 forge 原生覆盖层解压到 dir，不清空目录（缓存生命周期归中性
 // skills.FS 的解压管理；本覆盖层增量写入并自带版本标记）。先删除**本版本覆盖层
 // 持有的**顶层目录使编辑收敛；从覆盖层**移除**的 skill 由中立层的整目录重建清理
-//（两个标记共用同一 version 字符串，版本切换必整清缓存）。返回首个遇到的错误。
+// （两个标记共用同一 version 字符串，版本切换必整清缓存）。返回首个遇到的错误。
 func ExtractTo(dir string) error {
 	// Converge first: remove top-level dirs (skills) that this overlay owns, so a
 	// renamed/removed forge-native skill does not linger from an older overlay.
