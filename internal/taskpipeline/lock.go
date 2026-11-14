@@ -45,9 +45,8 @@ func taskLockPath(root, ref string) string {
 // 新建的锁。超过 taskLockStaleAfter 的锁视为被遗弃（崩溃 orphan）并打破。最多等待
 // taskLockWait，超时报错。
 //
-// 延迟预算说明：等待者可能在 SessionStart / UserPromptSubmit hook 内最多阻塞
-// taskLockWait（resume 自动锚定、reinject legacy 清零）。合法持锁是亚秒级，只有
-// 崩溃窗口内才会等满；hook 仍降级 exit 0——「不阻塞」契约管退出码，不管延迟。
+// 延迟预算说明：等待者最坏阻塞 taskLockWait（崩溃窗口内才会等满）。合法持锁是
+// 亚秒级；不阻塞契约管的是退出码，不是延迟。
 func LockTask(root, ref string) (unlock func(), err error) {
 	path := taskLockPath(root, ref)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

@@ -144,15 +144,15 @@ func reviewMergedInFiles(root, baseline string) (map[string]bool, []string) {
 	return drop, restored
 }
 
-// forge review 让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。
+// forge review 让 code-review-gate 从"靠人手动喊"变成"可判定的门禁状态"。
 //
-// 双路径触发（用户 2026-06-27 point 4 设计）：
+// 双路径（用户 2026-06-27 point 4 设计）：
 //   - task 流程：`forge review pass` 写 TaskState.ReviewPassed，由 task-complete
-//     门禁强制（见 executor.go 硬前置）。Stop hook 在 task 模式不拦（避免每次改代码都拦）。
-//   - 非 task 流程：Stop hook 调 `forge review gate` 判定，未审源码变更则 block。
+//     门禁强制（见 executor.go 硬前置）。
+//   - 非 task 流程：由 CI 或 agent 显式运行 `forge review gate` 判定，调用方按 exit code
+//     决定是否阻断；阶段 D 起没有 hook 自动拦截。
 //
-// gate 是判定引擎（纯逻辑 + exit code）；review-stop hook 脚本只做 Claude Code
-// Stop 协议适配（见 hooks/embed.go ReviewStopHook）。
+// gate 是判定引擎（纯逻辑 + exit code），不绑定任何宿主协议。
 
 func init() {
 	rootCmd.AddCommand(reviewCmd)
@@ -175,11 +175,11 @@ var reviewCmd = &cobra.Command{
 
 两条路径：
   - task 流程：审查通过标记写入任务状态，task-complete 门禁强制（提交前必审）。
-  - 非 task 流程：Stop hook 自动拦截未审的源码变更。
+  - 非 task 流程：由 CI 或 agent 显式运行 gate 判定；未审的源码变更由调用方决定是否阻断。
 
 子命令：
   pass    标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）
-  gate    判定当前是否需要审查（Stop hook 调用；exit 0=放行，1=需审 block）
+  gate    判定当前是否需要审查（显式调用；exit 0=放行，1=需审）
   status  显示当前审查状态`,
 }
 
@@ -191,7 +191,7 @@ var reviewPassCmd = &cobra.Command{
 
 var reviewGateCmd = &cobra.Command{
 	Use:   "gate",
-	Short: "判定当前是否需要审查（Stop hook 调用）",
+	Short: "判定当前是否需要审查（CI 或 agent 显式调用）",
 	Long: `判定引擎：task 模式放行（审查由 task-complete 门禁管）；非 task 模式按 diff
 stamp 决策。输出 PASS/ADVISORY/FAIL 到 stdout，exit 0=放行、1=需审 block。
 评估失败 fail-open 放行（forge 安全原则）。`,
@@ -204,22 +204,22 @@ var reviewStatusCmd = &cobra.Command{
 	RunE:  runReviewStatus,
 }
 
-// gateGuidance 是 gate 判定 NEEDS_REVIEW 时输出给 agent 的 Stop additionalContext——
-// 指引它加载 skill、派独立子 agent 审查、通过后标记。这是"自动挡"的核心闭环指令。
+// gateGuidance 是 gate 判定 NEEDS_REVIEW 时输出给调用方（CI / agent）的指引——
+// 派独立子 agent 审查、通过后标记。阶段 D 后没有宿主拦截层，gate 只能被显式调用。
 // 用双引号拼接而非 raw string：内部的反引号（`forge review pass`）在 raw string 里
 // 会提前终止字符串（forge-security-hook-fail-open 记的坑），双引号串里则是普通字符。
 // 第 2 步后的复审分档行内嵌 review.ReReviewGuidance（单一真相源）：stamp 内容寻址、
 // 读不出「本分支此前已审」，所以不在代码里判首审/复审，条件句交给 agent——首审照派，
 // 修复后复审按分档续用首轮 reviewer，避免每轮 Stop 都引导新派冷启动子 agent。
 const gateGuidance = "检测到未审查的源码变更。请按序完成：\n" +
-	"1. 加载 code-review-gate skill（经宿主 skill 机制）\n" +
+	"1. 按 code-review-gate 策略执行（仓库/技能文档）\n" +
 	"2. 按其策略派【只读】子 agent 审查当前 diff——独立上下文是底线，不可自审绕过\n" +
 	"   (a) 首审、新会话接手、没有首轮 reviewer 的句柄、或这版不是对已审代码的修复（如新增功能）：按本步新派\n" +
 	"   (b) 本会话内已对本分支派过 reviewer、这版是修复后的 diff 且句柄可续用（复审）：" + review.ReReviewGuidance + "（非 task 模式没有审查基线刷新，`--note` 只作审计留痕）\n" +
-	"3. 审查通过后运行 `forge review pass` 标记，再结束会话\n" +
+	"3. 审查通过后运行 `forge review pass` 标记\n" +
 	"审查发现的问题按类型接 skill：运行时 bug/逻辑错误 → systematic-debugging；编译错误 → compile-fix-loop；断言弱化/假测试 → test-discipline。\n" +
 	"范围说明：本次判定只覆盖能归因到当前会话的源码变更；已被证明属于其他活跃会话的变更已排除，不要求你审查。\n" +
-	"注：同一 diff 反复未审最多 block 3 次后 advisory 放行（防 Stop 死循环）。"
+	"注：同一 diff 反复未审最多判定 3 次后 advisory 放行（防无限重试）。"
 
 func runReviewPass(cmd *cobra.Command, args []string) error {
 	root, err := findProjectRoot()
@@ -537,8 +537,7 @@ func runReviewGate(cmd *cobra.Command, args []string) error {
 		fmt.Printf("FAIL %s\n", reason)
 		fmt.Println()
 		fmt.Println(gateGuidance)
-		// exit 1 = block（Stop hook 据此 decision:block）；用 os.Exit 绕过 cobra 的
-		// "Error:" stderr 噪声，保证 stdout 干净供 hook 当 additionalContext。
+		// "Error:" stderr 噪声，保证 stdout 干净供调用方消费。
 		os.Exit(1)
 	}
 	return nil

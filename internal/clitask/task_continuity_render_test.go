@@ -1,9 +1,7 @@
 package clitask
 
 // task_continuity_render_test.go —— 接续真相源的渲染族：纯 renderResume 输出
-// （分节/外部来源/空态/状态标记/ANSI 剥离/tl;dr）。SessionStart hook 自 2026-10
-// 按需拉取起只输出横幅（task_continuity_banner_test.go）；compact/reinject hook 在
-// task_continuity_hooks_test.go，自动认领域在 task_assignment_lifecycle_test.go，
+// （分节/外部来源/空态/状态标记）。自动认领域在 task_assignment_lifecycle_test.go，
 // list --open / resume --match 在 task_list_open_test.go / task_match_test.go。
 
 import (
@@ -11,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
-	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
 // TestRenderResumeSections verifies that the resume view renders all continuity
@@ -190,37 +187,4 @@ func TestRenderResumeTldr_NoContinuity(t *testing.T) {
 	if strings.Contains(out, "tl;dr") {
 		t.Errorf("无接续字段不应渲染 tl;dr，输出:\n%s", out)
 	}
-}
-
-// bindBranchIfSet anchors the fixture task's cwd binding when it declares a Branch
-// (post-T4: the resolution chain no longer guesses a single incomplete task — the
-// fixture must make the branch/cwd anchor real, same as `task start` does in
-// production). No-op for branchless states (those intentionally exercise the
-// no-anchor paths).
-//
-// bindBranchIfSet 为声明了 Branch 的 fixture 任务建 cwd 绑定（T4 之后：解析链不再
-// 猜测「唯一未完成任务」——fixture 必须把分支/cwd 锚点造真，与生产里 task start
-// 做的事一致）。无 Branch 的状态不动（那些是有意测无锚路径的）。
-func bindBranchIfSet(t *testing.T, root string, st *taskpipeline.TaskState) {
-	t.Helper()
-	if st == nil || st.Branch == "" {
-		return
-	}
-	if err := worktree.BindTask(root, st.TaskRef, st.Branch, ""); err != nil {
-		t.Fatalf("bindBranchIfSet: %v", err)
-	}
-}
-
-// seedContinuityTask saves a continuity fixture task under root and binds its
-// branch anchor (SaveTaskState + bindBranchIfSet) — the shared seeding step of
-// the continuity render/hook tests.
-//
-// seedContinuityTask 在 root 下保存接续 fixture 任务并绑分支锚点
-// （SaveTaskState + bindBranchIfSet）——接续渲染/hook 测试共享的种入步骤。
-func seedContinuityTask(t *testing.T, root string, st *taskpipeline.TaskState) {
-	t.Helper()
-	if err := taskpipeline.SaveTaskState(root, st); err != nil {
-		t.Fatalf("SaveTaskState %s: %v", st.TaskRef, err)
-	}
-	bindBranchIfSet(t, root, st)
 }
