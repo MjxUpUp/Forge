@@ -245,9 +245,10 @@ for d in ~/.claude/skills ~/.cursor/skills ~/.codex/skills ~/.copilot/skills ~/.
   done
 done
 #    确认无误后把上面的 echo 换成 rm -f 再跑一遍（用户自己 ln -s 的链接不受影响）。
-#    旧版还会写一个真实目录 ~/.claude/skills/forge-quality（里面那句「只在横幅出现时才生效」
-#    正是要清掉的文案），它不在链接清单里，需要单独删：
-#    rm -rf ~/.claude/skills/forge-quality
+#    旧版还会写真实目录 forge-quality（里面那句「只在横幅出现时才生效」正是要清掉的
+#    文案）；它不在链接清单里，需要单独删。1.84 同时写 claude 与 ~/.agents 两处：
+rm -rf ~/.claude/skills/forge-quality ~/.agents/skills/forge-quality
+#    Reasonix 用户再加 ~/.reasonix/skills/forge-quality。
 rm -rf ~/.forge/skills-cache
 rm -f ~/.forge/skills-manifest.json
 
@@ -258,7 +259,7 @@ grep -rl 'forge hook' ~/.claude/settings.json ~/.codex/hooks.json \
   ~/.codeium/windsurf/hooks.json ~/.cursor/hooks.json 2>/dev/null
 grep -l 'forge' ~/.claude/plugins/installed_plugins.json ~/.kimi-code/plugins/installed.json 2>/dev/null
 ls ~/.forge/skills-cache 2>/dev/null
-ls -d ~/.claude/skills/forge-quality 2>/dev/null
+ls -d ~/.claude/skills/forge-quality ~/.agents/skills/forge-quality 2>/dev/null
 for d in ~/.claude/skills ~/.cursor/skills ~/.codex/skills ~/.copilot/skills ~/.agents/skills; do
   [ -d "$d" ] || continue
   for l in "$d"/*; do
