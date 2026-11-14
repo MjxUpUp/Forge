@@ -42,8 +42,8 @@ hooks 执法叙述；README 增加从 1.84 及更早版本升级时清理旧用�
 
 ## Check
 
-- `go build ./...` 通过。
+- `go build ./...` 通过（acceptance #1）。
 - 模板回归测试覆盖：包含「先跑 `forge next`」与「## Task 流程」，不含 `hazard-guard` 与
   `hooks: on` 执法叙述（`acceptance` #2、#3）。
 - README 的升级节能让人照着清理旧 `FORGE:START` 注入与旧 hook 配置（`acceptance` #4）。
-- 文档守卫与 deadcode 守卫不回归（`acceptance` #5、#6）。
+- CLI 托管块同步与 deadcode 守卫不回归（acceptance #5、#6）。

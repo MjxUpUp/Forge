@@ -6,8 +6,8 @@
 // 都能解析到同一个项目身份（身份由 forgedata.ProjectFor 纯路径推导）。
 //
 // 这里只做两件事：找标记（Find）与读契约（Load）。契约内容的最小面是
-// version/profile/hooks；profile 决定 hook 名册档位（mini＝lite 最小执法名册，
-// 要只声明不执法用 hooks: off），具体门禁策略仍由上层解释。
+// version/profile/hooks；profile 决定任务档位建议，hooks 字段仅为兼容旧文件保留
+// （1.85 起没有 hook 执法层，改它不会带来拦截），具体门禁策略仍由上层解释。
 package specroot
 
 import (
@@ -32,8 +32,7 @@ const (
 	// MarkerName 是契约标记文件名（spec/forge.yaml）。
 	MarkerName = "forge.yaml"
 
-	// ProfileMini 是最小执法名册：lite 档（拦截类 hook，不含 advisory 类）。
-	// 要「只声明、不执法」用 hooks: off，不是 profile: mini。
+	// ProfileMini 是最小档位：小改动、单文件；与 hook 执法无关（1.85 起没有执法层）。
 	ProfileMini = "mini"
 	// ProfileStandard 是标准名册，也是缺省：不写 profile 时按它跑（与
 	// hooks.ActiveProfile / ParseProfile 的缺省保持一致）。

@@ -1,0 +1,97 @@
+{
+  "change": "protocol-actionable",
+  "started_at": "2026-11-14T19:47:29Z",
+  "finished_at": "2026-11-14T19:47:43Z",
+  "passed": true,
+  "sealed": true,
+  "head": "04969cf776bf6d6c834eaea307bd6ce921d5de14",
+  "diff_sha256": "5d2507272c1c53f4d0089e69de34a9e1aa428f69aec3fee4d97d3eab8e937428",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "53d86817d51f982a77812d41472d6d17f7afa1cf6623bfb76769d4a8e1078fbe"
+    },
+    {
+      "path": "internal/change/agents_protocol_test.go",
+      "sha256": "25c62b9bfccf67d5f7b6b63af4014799fac06601af083c829ae64d987b715f62"
+    },
+    {
+      "path": "internal/change/change.go",
+      "sha256": "cb1bbdaff64673ae8de10f8c45a0b3d4b747e85c1e46b709765f42e7502c4bef"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "8946c1b9c2ba1e034564e78a51c1845dc687853dec71ccccb0dab7d5b5bccaa9"
+    },
+    {
+      "path": "internal/specroot/specroot.go",
+      "sha256": "705672daa1bdf96bdd474727859417e27cb29e7b19e56c251a1d0c04397e7c0e"
+    },
+    {
+      "path": "scripts/checks/migration-doc.sh",
+      "sha256": "ef9b55456ca4fdd49bf824b1b1df95e84250e1b5d2419683fe933d276fef3cf5"
+    },
+    {
+      "path": "scripts/checks/protocol-actionable.sh",
+      "sha256": "c0c3b2c03b8ac463e54d5530c9c2d5b1d34299b7f19c214f54fb75f906b5892d"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/design.md",
+      "sha256": "d093e8a6677f30c4e7ea1ecedb95adeef3213942067d9cd11d8767fb4b9aa218"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/goal.md",
+      "sha256": "14709fe47abffb38a03be401c46d2f572ac46c9aad5f53fe536515483eb30e73"
+    }
+  ],
+  "acceptance_sha256": "31401a02608fe483fac47d743a4cd02171e50a510399d1344f03115c4163c2af",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2823
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestAgentsProtocol' -count=1",
+      "exit": 0,
+      "duration_ms": 1138,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "sh scripts/checks/protocol-actionable.sh",
+      "exit": 0,
+      "duration_ms": 409,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/migration-doc.sh",
+      "exit": 0,
+      "duration_ms": 316,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChangeAgents|TestChangeInit' -count=1",
+      "exit": 0,
+      "duration_ms": 4733,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5023
+    }
+  ]
+}
