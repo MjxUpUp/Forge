@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.86.0](https://github.com/MjxUpUp/Forge/compare/v1.85.2...v1.86.0) (2026-11-14)
+
+
+### Features
+
+* **change:** goal.md 作为第五份产物，task start 钉哈希；fast 需人批 ([23e6e9f](https://github.com/MjxUpUp/Forge/commit/23e6e9fdf8194677304f1628e8256f69c02b20a2))
+* **change:** 协议可执行化——先跑 forge next、Task 门禁段、1.84 迁移说明 ([b878cc8](https://github.com/MjxUpUp/Forge/commit/b878cc8bf4d5530dfe80cb46301cf7c13888bf18))
+
+
+### Bug Fixes
+
+* **change:** 按双评审修迁移覆盖、门禁顺序与守卫假绿，托管块同步 ([7a7687c](https://github.com/MjxUpUp/Forge/commit/7a7687c5b98915fe25f97738a6488be8e8af0ba7))
+* **change:** 按文档复评修迁移破坏面、Cursor/其余宿主与 hooks 字段注释口径 ([eaf8113](https://github.com/MjxUpUp/Forge/commit/eaf81133d3b8872e8621f7209692c5ffed986e1e))
+* **change:** 收 review 回件——change id 边界、新 change 必留 goal.md、门禁接线测试 ([e7e85ef](https://github.com/MjxUpUp/Forge/commit/e7e85ef33d8756a1f2359ea806ec39006b9f8995))
+* **change:** 收文档 L2 回件——模板去掉不存在的 decisions 出口、判据换成防回归脚本 ([83167c0](https://github.com/MjxUpUp/Forge/commit/83167c0bf298b51d6f4b96a9481e69a2045c2a51))
+* **ci:** no-hook-refs 排除 1.84 迁移节（该节本来要引用旧命令做清理） ([64d5324](https://github.com/MjxUpUp/Forge/commit/64d532465f5eb692b88ec86bcc3707f2a7ea34e0))
+* **clitask:** --worktree 启动在 worktree 内重解析 goal 契约（P2-A） ([25f8a4f](https://github.com/MjxUpUp/Forge/commit/25f8a4f5d5b0a54b198c759fffdd41444fd03fe7))
+* **docs:** forge-quality 同时清 ~/.agents 副本并把删除命令移出注释 ([77b4a56](https://github.com/MjxUpUp/Forge/commit/77b4a56af830bc6b80cc4150781683e374a4608f))
+* **docs:** 迁移备份按宿主分目录、补 cursor/kimi 清理与 forge-quality，守卫钉动作行 ([3e7d7cc](https://github.com/MjxUpUp/Forge/commit/3e7d7cca71e27198672aff830b758c6dc71fd677))
+* **docs:** 迁移节改 POSIX glob、补 windsurf/codex 标记块与守卫动作锚点 ([5fee11a](https://github.com/MjxUpUp/Forge/commit/5fee11aab9caea5fc03897cf112d8e5dfd60c268))
+* **test:** worktree goal 期望值改从检出字节计算，兼容 core.autocrlf ([208c12b](https://github.com/MjxUpUp/Forge/commit/208c12b32f597ce85c05cd786efe2c841b5485de))
+
 ## [1.85.2](https://github.com/MjxUpUp/Forge/compare/v1.85.1...v1.85.2) (2026-11-14)
 
 
