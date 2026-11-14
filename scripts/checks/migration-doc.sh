@@ -15,12 +15,19 @@ grep -qE '编辑 .*hooks\.json.*forge hook' "$f" \
   || { echo "README 缺「编辑 codex hooks.json 只删 forge 条目」动作"; exit 1; }
 grep -qE '编辑 .*windsurf/hooks\.json' "$f" \
   || { echo "README 缺「编辑 windsurf hooks.json」动作"; exit 1; }
+grep -qE '编辑 .*cursor/hooks\.json' "$f" \
+  || { echo "README 缺「编辑 cursor hooks.json」动作"; exit 1; }
 grep -qE '编辑 .*installed_plugins\.json' "$f" \
   || { echo "README 缺「编辑 installed_plugins.json 删 forge 条目」动作"; exit 1; }
-grep -q "grep -l 'FORGE:START'" "$f" \
-  || { echo "README 缺 FORGE:START 定位命令"; exit 1; }
+grep -qE '编辑 .*kimi-code/plugins/installed\.json' "$f" \
+  || { echo "README 缺「编辑 kimi installed.json 删 forge 条目」动作"; exit 1; }
+# 定位步骤与自检里都有 grep -l 'FORGE:START'：锚定定位步骤独有的说明文字。
+grep -q '有就删掉整段' "$f" \
+  || { echo "README 缺 FORGE:START 定位后的删除说明"; exit 1; }
 grep -q 'FORGE:END 整块' "$f" \
   || { echo "README 缺 codex config.toml 的 FORGE 标记块清理"; exit 1; }
+grep -q 'skills/forge-quality' "$f" \
+  || { echo "README 缺 forge-quality 真实目录清理"; exit 1; }
 
 # 顺序断言：先处理链接、再删缓存；删缓存之后不能再有「先删链接」的提示。
 ln=$(grep -n '\*skills-cache\*' "$f" | head -1 | cut -d: -f1)

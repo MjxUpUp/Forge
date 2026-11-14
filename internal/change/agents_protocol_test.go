@@ -14,6 +14,7 @@ func TestAgentsProtocol_IsActionable(t *testing.T) {
 		"## Task 流程（门禁在命令里）",
 		"门禁是命令，不是 hook",
 		"forge task start --ref <ref> --change <id>",
+		"--artifact-chain",
 	}
 	for _, want := range required {
 		if !strings.Contains(tmplAgents, want) {
