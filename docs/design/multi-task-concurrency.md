@@ -344,7 +344,7 @@ TaskState 字段级的跨机冲突：沿用 lease fencing + datamerge（现状�
 ├── workspaces.json          [本机] 多仓分组清单（multi-repo-workspace.md §5 既定）
 ├── node.json / node-seq     [本机] 机器身份（node-identity.md）
 ├── harness-state            [本机] onboarding 状态机（§13）
-├── skills-cache/            [本机] 嵌入 skills 安装缓存（随 forge 版本走）
+├── skills-cache/            [已废弃] 阶段 D 后改到系统临时目录，不再写 home
 │
 └── projects/<key>/          # 每 repo 一份（key = common-dir hash / .forge-project-id IDKey）
     │

@@ -87,7 +87,7 @@ func runSkillsRevert(cmd *cobra.Command, args []string) error {
 
 	// git-dir 推导（dry-run 前置，dry-run 也显 repo）。
 	// external 源（--canonical / FORGE_SKILLS_CANONICAL）：canonical 在 git repo，toplevel 即 repo 根。
-	// embed 缓存（~/.forge/skills-cache/embedded）：用户级只读快照，不在 git repo——scoped revert
+	// embed 源（系统临时目录下的只读快照），不在 git repo——scoped revert
 	// 对缓存无意义（revert 改不动编译进二进制的源）。embedded skill 的优化/revert 须在 forge 源码
 	// repo（skills/ 源目录）操作，用 --canonical 指向源 repo。给可行动错误而非通用 not-a-git-repository。
 	var gitDir string

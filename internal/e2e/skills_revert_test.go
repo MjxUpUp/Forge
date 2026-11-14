@@ -1,10 +1,12 @@
 package e2e
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/MjxUpUp/Forge/internal/skillscanonical"
 	"github.com/MjxUpUp/Forge/internal/skillsdecisions"
 )
 
@@ -65,28 +67,33 @@ func TestSkillsRevert_AutoAppendsRejectDecision(t *testing.T) {
 	}
 }
 
-// TestSkillsRevert_EmbedCache_ActionableError: embed cache (isExternal=false, ~/.forge/skills-cache/ embedded) is a read-only snapshot, not in a git repo — scoped revert must give an actionable error (containing --canonical guiding to the forge source repo), rather than a generic not-a-git-repository. embedded skill reverts should operate in the source repo.
+// TestSkillsRevert_EmbedCache_ActionableError: embed source (isExternal=false, extracted to the OS temp dir) is a read-only snapshot, not in a git repo — scoped revert must give an actionable error (containing --canonical guiding to the forge source repo), rather than a generic not-a-git-repository. embedded skill reverts should operate in the source repo.
 //
-// TestSkillsRevert_EmbedCache_ActionableError：embed 缓存（isExternal=false，~/.forge/skills-cache/
-// embedded）是只读快照、不在 git repo——scoped revert 须给可行动错误（含 --canonical 引导到 forge
+// TestSkillsRevert_EmbedCache_ActionableError：embed 源（isExternal=false，解压到系统临时目录）
+// 是只读快照、不在 git repo——scoped revert 须给可行动错误（含 --canonical 引导到 forge
 // 源码 repo），而非通用 not-a-git-repository。embedded skill 的 revert 应在源码 repo 操作。
 func TestSkillsRevert_EmbedCache_ActionableError(t *testing.T) {
-	// home 隔离（C1）：resolveCanonical 走 os.UserHomeDir()（不走 freshProject 设的 FORGE_DATA_HOME）。
-	// forge init 的 EnsureEmbeddedCache 解压 embed 缓存到 ~/.forge/skills-cache/embedded（版本不匹配
-	// 时 RemoveAll+重建），下方 fixture 把 decisions.md 播种进该缓存——必须重定向 USERPROFILE
-	// （Windows）/HOME（Unix）到 temp，否则污染真实 ~/.forge。temp home 整个由 t.TempDir 自动清理，无需手动 cleanup。
+	// home 隔离：eval/决策等用户级数据仍可能落到 home，重定向避免污染真实环境。
 	home := t.TempDir()
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("HOME", home)
 
-	dir := freshProject(t) // forge init，不传 --canonical → embed 缓存（隔离到 temp home）
-	embedCache := filepath.Join(home, ".forge", "skills-cache", "embedded")
+	dir := freshProject(t) // forge init，不传 --canonical → 内置 embed 源
+	// 阶段 D 收尾后 embed 源解压到系统临时目录（不再写 ~/.forge）：路径取
+	// skillscanonical.EmbeddedCacheDir，与 CLI 侧同一真相源。
+	embedCache, err := skillscanonical.EmbeddedCacheDir()
+	if err != nil {
+		t.Fatalf("EmbeddedCacheDir: %v", err)
+	}
 	const skill = "test-revert-embed-probe"
+	// 临时缓存跨测试进程共享（系统临时目录），用例结束清掉播种的探针目录，
+	// 避免污染后续 validate/audit 对 canonical 的枚举。
+	t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(embedCache, skill)) })
 
-	// 先物化 embed 缓存：解压是惰性的——`forge init` 不解压，首个 skills 命令才解压
-	// （Resolve → EnsureEmbeddedCache）。物化前播种会被 revert 子进程的首次解压抹掉。
-	// `skills list` 是最便宜的缓存物化读。
-	forge(t, dir, "skills", "list")
+	// 先物化 embed 缓存：解压是惰性的——`forge init` 与 `skills list` 都不落盘，
+	// 首个需要真实路径的 skills 命令才解压（Resolve → EnsureEmbeddedCache）。
+	// `skills validate` 的退出码可能是 2（规范失败），但不影响物化；只看副作用。
+	_, _ = forgeErr(t, dir, "skills", "validate")
 
 	// 直接写 decisions.md 播种 fixture（skillsdecisions.AppendDecision），不走 `skills decide`
 	// CLI：decide 现在拒绝 embed 缓存 canonical（快照会被版本重建抹掉——写进去的决策报过 ✅

@@ -6,9 +6,13 @@
 package skillsdist
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+
+	"github.com/MjxUpUp/Forge/skills"
+	skillsforge "github.com/MjxUpUp/Forge/skills-forge"
 )
 
 // ListSkills returns the names of all direct subdirectories under canonical that contain a SKILL.md (excludes skill-routing/, CONVENTIONS.md, etc.).
@@ -32,6 +36,37 @@ func ListSkills(canonical string) ([]string, error) {
 		if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err == nil {
 			names = append(names, name)
 		}
+	}
+	slices.Sort(names)
+	return names, nil
+}
+
+// ListEmbeddedSkills returns the built-in canonical skill names straight from
+// the compile-time embedded FS, without extracting anything to disk.
+//
+// ListEmbeddedSkills 直接从编译期嵌入的 FS 列出内置 canonical skill 名，
+// 不解压、不写盘。forge 二进制同时嵌入中立 skills/ 与原生 skills-forge/ 两棵树，
+// 这里按名合并去重（两棵树互不重叠，但保守去重）。
+func ListEmbeddedSkills() ([]string, error) {
+	seen := map[string]bool{}
+	for _, root := range []fs.FS{skills.FS, skillsforge.FS} {
+		entries, err := fs.ReadDir(root, ".")
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if !e.IsDir() || seen[e.Name()] {
+				continue
+			}
+			if _, err := fs.Stat(root, e.Name()+"/SKILL.md"); err != nil {
+				continue
+			}
+			seen[e.Name()] = true
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for n := range seen {
+		names = append(names, n)
 	}
 	slices.Sort(names)
 	return names, nil

@@ -27,7 +27,7 @@ metadata:
     └── codex/README.md                   # → AGENTS.md 注入片段（Codex 无 hook）
 ```
 
-> `<skills-root>` = `$FORGE_SKILLS_CANONICAL`（开发者显式覆盖）或 `~/.forge/skills-cache/embedded`（forge 二进制自带快照，跨机器通用）。同 codex/cursor adapter 定义。
+> `<skills-root>` = `$FORGE_SKILLS_CANONICAL`（开发者显式覆盖）或 `forge-skills-cache/embedded`（系统临时目录；forge 二进制自带快照，跨机器通用）。同 codex/cursor adapter 定义。
 
 ## 各 agent 机制差异（决定提示强度，必须先理解）
 
@@ -102,7 +102,7 @@ Codex 不消费 SKILL.md、无 hook，唯一入口是 AGENTS.md。只能把路�
 ## 路由表源解析（各 adapter 候选链，前者不存在则降级）
 
 1. `$FORGE_SKILLS_CANONICAL/skill-routing/routes.json` — 开发者显式覆盖（本机调试时 export 指自己 fork 的 skill 库根：`export FORGE_SKILLS_CANONICAL=<你的 skills 根目录>`）
-2. `~/.forge/skills-cache/embedded/skill-routing/routes.json` — forge 二进制自带快照（跨机器通用，随 release 更新，可能滞后于源）
+2. `<系统临时目录>/forge-skills-cache/embedded/skill-routing/routes.json` — forge 二进制自带快照（跨机器通用，随 release 更新，可能滞后于源）
 3. `~/.forge/skill-routes.json` — 用户级自定义路由（手动覆盖）
 
 不把本机源路径硬编码进候选链——普通用户机器没有开发者的本地路径；开发者本机想拿最新路由，显式设 `$FORGE_SKILLS_CANONICAL`。

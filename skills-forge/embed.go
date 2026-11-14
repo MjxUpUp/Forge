@@ -4,7 +4,7 @@
 // Separate from the neutral skills/ tree per the zero-reverse-dependency contract
 // (skills/CONVENTIONS.md §13): skills-only consumers copy skills/ and never see
 // these; the forge binary embeds BOTH trees and merges them into the same cache
-// dir (~/.forge/skills-cache/embedded), so single-root consumers (ListSkills,
+// dir (OS temp: os.TempDir()/forge-skills-cache/embedded), so single-root consumers (ListSkills,
 // skilltrigger.LoadAll, install, adapters) keep seeing the full set unchanged.
 // The forge plugin (plugins/forge/skills) also ships both trees.
 //
@@ -12,7 +12,7 @@
 // 自身机制的 skill（skill-evolution / skill-routing / skill-authoring-standard，
 // 均带 `metadata.requires_forge: "true"`）。按零反向依赖契约（skills/CONVENTIONS.md
 // §13）与中立的 skills/ 树分离：skills-only 消费方拷 skills/ 永远看不到这些；forge
-// 二进制同时嵌入两棵树并合并解压到同一缓存目录（~/.forge/skills-cache/embedded），
+// 二进制同时嵌入两棵树并合并解压到同一缓存目录（系统临时目录，不再写用户 home），
 // 单根消费者（ListSkills、skilltrigger.LoadAll、install、adapters）无需改动即可
 // 继续看到全量集。forge 插件（plugins/forge/skills）也同时分发两棵树。
 package skillsforge

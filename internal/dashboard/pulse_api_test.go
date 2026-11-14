@@ -985,6 +985,12 @@ func TestServe_PulsePage(t *testing.T) {
 // 缓存目录；缺失 → ""（静默降级，不报错）。
 func TestPulseCanonicalDir_EmbedFallback(t *testing.T) {
 	t.Setenv(skillscanonical.EnvName, "")
+	// 阶段 D 收尾后 embed 缓存改到系统临时目录：把它也隔离到 t.TempDir，
+	// 否则机器上已有的临时缓存会让「缺失」场景失真（os.TempDir 依次看 TMPDIR/TEMP/TMP）。
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	t.Setenv("TEMP", tmp)
+	t.Setenv("TMP", tmp)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

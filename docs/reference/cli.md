@@ -174,9 +174,11 @@
 
 管理内置 canonical skill 库（阶段 D 起不再向宿主目录分发：没有 install/adapters/drift-check）。
 
+`forge skills list` 与 `--help` 直接读编译期嵌入的库，**不落盘**；只有需要真实路径的子命令（audit/validate/eval/decide…）才把内置库解压到系统临时目录（`<tmp>/forge-skills-cache/embedded`），不再写 `~/.forge`。有真实源码树时用 `--canonical` 或 `$FORGE_SKILLS_CANONICAL` 指过去。
+
 | 命令 | 说明 |
 |------|------|
-| `forge skills list` | 列出 canonical skill 库中的 skill |
+| `forge skills list` | 列出 canonical skill 库中的 skill（无显式源时直读内置 embed，不落盘）|
 | `forge skills audit` | 21 条安全规则审查（prompt 注入/数据外发/危险代码/供应链执行向量；任一 CRITICAL finding 即阻断） |
 | `forge skills validate` | R1-R18 规范校验 |
 | `forge skills usage` | 使用度量分析（热门 skill + undertrigger 候选） |

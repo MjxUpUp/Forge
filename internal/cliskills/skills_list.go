@@ -3,7 +3,9 @@ package cliskills
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 
+	"github.com/MjxUpUp/Forge/internal/skillscanonical"
 	"github.com/MjxUpUp/Forge/internal/skillsdist"
 	"github.com/spf13/cobra"
 )
@@ -14,11 +16,22 @@ var skillsListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "列出 canonical skill 库中的 skill",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		canonical, _, err := ResolveCanonical()
-		if err != nil {
-			return err
+		// 没有显式 canonical 源时直接从内置 embed 库读，不解压、不落盘
+		// （阶段 D 收尾：唯一会往磁盘写的只剩需要真实路径的子命令，
+		// 且它们解压到系统临时目录，不再碰用户 home）。
+		explicit := skillsCanonicalFlag != "" || os.Getenv(skillscanonical.EnvName) != ""
+		canonical := "(内置 embed 库，未落盘)"
+		var names []string
+		var err error
+		if explicit {
+			canonical, _, err = ResolveCanonical()
+			if err != nil {
+				return err
+			}
+			names, err = skillsdist.ListSkills(canonical)
+		} else {
+			names, err = skillsdist.ListEmbeddedSkills()
 		}
-		names, err := skillsdist.ListSkills(canonical)
 		if err != nil {
 			return err
 		}
