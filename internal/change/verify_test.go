@@ -268,7 +268,7 @@ func repoWithChange(t *testing.T, id string) (root, dir string) {
 // 真实流程里人要填内容；测试只关心标记消失后 verify 是否放行。
 func fillScaffold(t *testing.T, dir string) {
 	t.Helper()
-	for _, name := range []string{FileProposal, FileDesign, FileTasks, FileAcceptance} {
+	for _, name := range []string{FileGoal, FileProposal, FileDesign, FileTasks, FileAcceptance} {
 		path := filepath.Join(dir, name)
 		raw, err := os.ReadFile(path)
 		if err != nil {
