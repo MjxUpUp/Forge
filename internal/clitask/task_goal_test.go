@@ -48,8 +48,14 @@ func TestResolveGoalContract_RejectsFreeTextWithContract(t *testing.T) {
 }
 
 func TestResolveGoalContract_RejectsPathOutsideRepo(t *testing.T) {
+	root := t.TempDir()
+	// 让仓外文件真实存在：否则测试只能证明「读不到」，不能证明边界检查生效。
+	outside := filepath.Join(filepath.Dir(root), "outside.md")
+	if err := os.WriteFile(outside, []byte(completeGoalForTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	setGoalFlags(t, "", "../outside.md", "")
-	if _, _, err := resolveGoalContract(taskStartCmd, t.TempDir()); err == nil || !strings.Contains(err.Error(), "必须位于仓库内") {
+	if _, _, err := resolveGoalContract(taskStartCmd, root); err == nil || !strings.Contains(err.Error(), "必须位于仓库内") {
 		t.Fatalf("仓外 goal 文件应被拒绝，got %v", err)
 	}
 }
@@ -107,10 +113,43 @@ const completeGoalForTest = `# 目标契约
 // change id 会直接拼进 spec/changes/<id>/goal.md，`..`/绝对路径能让契约钉到
 // 仓库外（Code Review P1-1）。校验必须在拼路径之前。
 func TestResolveGoalContract_RejectsTraversalChangeID(t *testing.T) {
+	root := t.TempDir()
+	// 让「没有 ValidID 守卫时能成功」：每个越界 id 在 Join 之后的位置都放一份
+	// 合法五段 goal。否则所有分支都只是「文件读不到」，测试对守卫是空转的
+	// （Code Review P3-1）。
+	for _, rel := range []string{
+		"spec/changes/demo/goal.md", // demo/../demo
+		"spec/goal.md",              // ..
+		"abs/path/goal.md",          // /abs/path（Join 后成为仓库内相对路径）
+	} {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(completeGoalForTest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// ../../../outside 的落点是 root 的父目录；单独建一份，证明在没有守卫时
+	// 它会读到仓外内容。
+	outside := filepath.Join(filepath.Dir(root), "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "goal.md"), []byte(completeGoalForTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, id := range []string{"../../../outside", "demo/../demo", "/abs/path", ".."} {
 		setGoalFlags(t, id, "", "")
-		if _, _, err := resolveGoalContract(taskStartCmd, t.TempDir()); err == nil {
+		_, _, err := resolveGoalContract(taskStartCmd, root)
+		if err == nil {
 			t.Errorf("--change %q 不应被接受", id)
+			continue
+		}
+		// 断言拒绝理由来自 id 校验，而不是碰巧读不到文件。
+		if !strings.Contains(err.Error(), "不合法") {
+			t.Errorf("--change %q 应以「change id 不合法」拒绝，got %v", id, err)
 		}
 	}
 }

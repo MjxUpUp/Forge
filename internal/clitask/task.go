@@ -374,6 +374,18 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		if werr != nil {
 			return werr
 		}
+		// P2-A：契约必须与门禁读的是同一份内容。worktree 从 base 检出，主检出里
+		// 未提交的 goal.md 不在其中——提前钉主检出内容会让 task-implement 在用户
+		// 什么都没改时误报「启动后被修改」。这里以 wtRoot 重新解析；读不到就回滚
+		// 刚建的 worktree/分支再报错，不留半副作用。
+		if goalContract != nil {
+			gc, sum, rerr := resolveGoalContract(cmd, wtRoot)
+			if rerr != nil {
+				discardTaskWorktree(root, explicitRef, wtDir, wtRoot)
+				return fmt.Errorf("goal 契约在 worktree 里读不到（--worktree 基于 %s，主检出里未提交的 goal.md 不在其中）：%w；先把 goal.md 提交，或不用 --worktree", base, rerr)
+			}
+			goalContract, goalSummary = gc, sum
+		}
 		root = wtRoot
 		// stdout belongs to the --json contract (machine-parseable only); human hints go to stderr.
 		fmt.Fprintf(cmd.ErrOrStderr(), "worktree 已创建: %s（如本次启动失败可 git worktree remove 清理）\n", wtRoot)
