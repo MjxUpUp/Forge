@@ -13,7 +13,7 @@ import (
 // npm 在 Windows 上为每个 bin 生成三个垫片：forge（POSIX shell 脚本）、forge.cmd、
 // forge.ps1。无扩展名的那个由 npm 固定的 cmd-shim 模板生成，依赖 PATH 上有
 // coreutils（sed/dirname/uname）。凡是通过 POSIX shell + 原生 Windows PATH 执行
-// hook 命令的 agent（Windows 上的 kimi-code），`forge` 都会解析到该脚本并在 forge
+// 命令的 agent（历史上是 Windows 上的 kimi-code hook），`forge` 都会解析到该脚本并在 forge
 // 启动前崩溃——而脚本失败的退出码又变成 hook 阻断，每轮都停。用户侧解法是把 Git
 // usr\bin 加进 PATH；本文件让这一步不再必要：每当 forge 从 npm 布局运行（可执行
 // 文件位于 node_modules 下），就把 npm 前缀旁的无扩展名垫片替换为真实二进制的
@@ -79,7 +79,7 @@ func healNpmShim(exePath string) (bool, error) {
 	}
 
 	// 原子替换（临时文件 + 同目录 rename；Windows 上 Go 的 os.Rename 使用
-	// MOVEFILE_REPLACE_EXISTING），并发 hook spawn 不会读到写了一半的垫片。下面
+	// MOVEFILE_REPLACE_EXISTING），并发调用不会读到写了一半的垫片。下面
 	// 的删除重试仅在垫片被运行中进程锁定时触发——此时自愈 fail-open，下次 forge
 	// 运行再试。
 	data, err := os.ReadFile(exePath)

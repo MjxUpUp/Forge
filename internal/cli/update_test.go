@@ -115,12 +115,6 @@ func TestShouldSkipUpdateCheck(t *testing.T) {
 			skip:    true,
 		},
 		{
-			name:    "hook command",
-			version: "0.11.1 (commit: abc)",
-			cmdUse:  "hook",
-			skip:    true,
-		},
-		{
 			name:    "update command",
 			version: "0.11.1 (commit: abc)",
 			cmdUse:  "update",
@@ -159,15 +153,6 @@ func TestShouldSkipUpdateCheck(t *testing.T) {
 		})
 	}
 }
-
-// TestShouldSkipUpdateCheckHookSubtree 复现 hook 子树漏判：`forge hook batch` 的
-// cmd.Name() 是 batch，原先只判 Name()=="hook" 导致升级提示打到 hook 路径的 stderr。
-// 整个 hook 子树（任意深度）都必须跳过；同名叶子不在 hook 下则不受影响。
-//
-// TestShouldSkipUpdateCheckHookSubtree reproduces the hook-subtree miss: the Name()
-// of `forge hook batch` is "batch", so the old Name()=="hook" test let the update
-// notice reach hook-path stderr. Every depth under hook must skip; a same-named leaf
-// outside hook is unaffected.
 
 // TestUpdateNoticeThrottle：同一版本 24h 内最多提示一次；新版本、超 24h、逃生 env 均重新提示；
 // saveUpdateCache 重写缓存（版本刷新）不得清空节流记录。
