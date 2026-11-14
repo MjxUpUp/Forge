@@ -53,5 +53,6 @@
 - **措辞过强**：可能让 agent 对一行文案也跑全套门禁 → 用「代码改动」限定，并保留
   `wild` 与「不走 forge」两个显式出口；周界由团队约定，不写成机器阈值。
 - **迁移命令是破坏性的**：只写在 README，不内置成命令；强调先备份、逐条执行。
-- **模板与仓库 AGENTS.md 可能漂移**：本次提交后用 `forge change agents` 同步，
-  现有文档守卫测试会检查托管块与模板一致。
+- **模板与仓库 AGENTS.md 可能漂移**：`AGENTS.md` 在 `.gitignore` 里、不入库，没有 CI
+  守卫；同步后人工核对：`diff <(sed -n '/forge:begin/,/forge:end/p' AGENTS.md) internal/change/templates/agents-protocol.md`
+  （只允许尾部换行差）。
