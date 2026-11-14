@@ -6,8 +6,8 @@
 // 都能解析到同一个项目身份（身份由 forgedata.ProjectFor 纯路径推导）。
 //
 // 这里只做两件事：找标记（Find）与读契约（Load）。契约内容的最小面是
-// version/profile/hooks；profile 决定 hook 名册档位（mini＝lite 最小执法名册，
-// 要只声明不执法用 hooks: off），具体门禁策略仍由上层解释。
+// version/profile/hooks；profile 决定任务档位建议，hooks 字段仅为兼容旧文件保留
+// （1.85 起没有 hook 执法层，改它不会带来拦截），具体门禁策略仍由上层解释。
 package specroot
 
 import (
@@ -32,13 +32,12 @@ const (
 	// MarkerName 是契约标记文件名（spec/forge.yaml）。
 	MarkerName = "forge.yaml"
 
-	// ProfileMini 是最小执法名册：lite 档（拦截类 hook，不含 advisory 类）。
-	// 要「只声明、不执法」用 hooks: off，不是 profile: mini。
+	// ProfileMini 是最小档位：小改动、单文件；与 hook 执法无关（1.85 起没有执法层）。
 	ProfileMini = "mini"
 	// ProfileStandard 是标准名册，也是缺省：不写 profile 时按它跑（与
 	// hooks.ActiveProfile / ParseProfile 的缺省保持一致）。
 	ProfileStandard = "standard"
-	// ProfileFull 启用全部 hook 与门禁。
+	// ProfileFull 是最大门禁档位。
 	ProfileFull = "full"
 
 	// CurrentVersion 是当前支持的契约版本。
@@ -50,9 +49,9 @@ var ErrNoContract = errors.New("specroot: 未找到 spec/forge.yaml（仓库未�
 
 // Contract 是 spec/forge.yaml 的最小解析结果。
 //
-// Hooks 是仓库级的执法开关：默认 off（ADR-0002 阶段 B：执法 opt-in，默认安静）。
-// off 时该仓库内的 hook 一律静默放行（clone 下来先读契约、再决定要不要跑检查，
-// 不需要安装或注册）；要执法须显式写 hooks: on。
+// Hooks 是历史字段，仅为兼容旧文件保留：1.85 起没有 hook 执法层，
+// 取值 on/off 都不再驱动任何拦截或检查；门禁由 agent 显式跑
+// forge task / forge change 推进。
 type Contract struct {
 	Version string `yaml:"version"`
 	Profile string `yaml:"profile"`
@@ -173,14 +172,13 @@ func sameDir(a, b string) bool {
 
 // Load 读取并校验 root/spec/forge.yaml。
 //
-// 缺省值：version=1、profile=standard、hooks=off（ADR-0002 阶段 B：执法 opt-in，
-// 默认 audit-only）。未知 profile、未知键或不受支持
+// 缺省值：version=1、profile=standard、hooks=off（hooks 是兼容字段，
+// 1.85 起没有 hook 执法层）。未知 profile、未知键或不受支持
 // 的主版本返回错误——
 // 契约是人写的文件，拼错档位时静默降级比报错更危险。
 //
-// 消费现状（2026-11-13）：成员资格认「文件存在」；hooks 开关已接线——
-// hookdispatch 解析出项目根后读契约，off（含缺省）静默放行（audit-only）、on 才执法、
-// profile 决定名册档位；无契约的宿主层由 FORGE_HOOKS=on 显式开启（ADR-0002 阶段 B）。
+// 消费现状（1.85 阶段 D 后）：成员资格只认「文件存在」；hooks 字段保留用于
+// 兼容旧文件，不再驱动任何拦截；profile 仍决定 Task/change 门禁的档位。
 func Load(root string) (*Contract, error) {
 	path := MarkerPath(root)
 	raw, err := os.ReadFile(path)
@@ -191,8 +189,8 @@ func Load(root string) (*Contract, error) {
 		return nil, fmt.Errorf("specroot: 读取 %s: %w", path, err)
 	}
 
-	// KnownFields(true)：拼错键名（hooks 写成 hook）必须报错而不是静默按缺省跑
-	// ——那个仓库以为关了执法，实际还在拦。空文件按全缺省处理。
+	// KnownFields(true)：拼错键名（profile 写成 porfile）必须报错而不是静默按缺省跑
+	// ——拼错的档位会让门禁悄悄降级。空文件按全缺省处理。
 	var parsed Contract
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
@@ -221,8 +219,7 @@ func Load(root string) (*Contract, error) {
 			path, c.Profile, ProfileMini, ProfileStandard, ProfileFull)
 	}
 	if c.Hooks == "" {
-		// ADR-0002 阶段 B：执法 opt-in。缺省 off（默认安静/audit-only），
-		// 要执法须显式 hooks: on。翻转前缺省是 on。
+		// 兼容旧文件：缺省写 off；这个字段已不驱动任何执法（1.85 起无 hook 层）。
 		c.Hooks = HooksOff
 	}
 	switch c.Hooks {
