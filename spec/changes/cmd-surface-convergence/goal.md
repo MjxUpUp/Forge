@@ -13,7 +13,7 @@
 - 不改 `task resume` 的接续语义、输出格式与其余 flag 的行为（只删三个 hook 模式）；
 - 不改 init/verify/config 的实际行为，只改帮助文本；
 - 不新增 flag、不动命令分组；
-- `TaskState.ResumeStale` 字段保留（JSON 兼容），只停写；
+- `TaskState.ResumeStale` 字段保留（JSON 兼容）：resume 流程停止读写，但 seed 仍写入、merge 仍按结构合并透传；
 - deadcode 必须保持零。
 
 ## Out of Scope

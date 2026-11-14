@@ -431,7 +431,7 @@ func newSessionID() string {
 // normalize 后以 FORGE_SESSION_ID 注入脚本 env（thin wrapper 继承它）。阶段 D 已删除
 // 宿主层，现在只剩「宿主环境变量优先、FORGE_SESSION_ID 兜底」这一条读路径。故在
 // Claude 专属 env 之后回落 FORGE_SESSION_ID，让 kimi/windsurf/codex session 也获得
-// session-scoped 状态（active-task-ref-<sid>、resume-stale sentinel），而非全挤到
+// session-scoped 状态（active-task-ref-<sid>、ResumeStale 标记），而非全挤到
 // legacy 全局文件。"default" 是脚本侧的空占位符——按空处理。
 func CurrentSessionID() string {
 	// 宿主注入的 shell env（目前仅 claude-code 的 CLAUDE_CODE_SESSION_ID；注册表

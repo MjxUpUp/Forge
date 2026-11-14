@@ -1,0 +1,57 @@
+{
+  "change": "cmd-surface-convergence",
+  "started_at": "2026-11-14T12:18:29Z",
+  "finished_at": "2026-11-14T12:23:03Z",
+  "passed": true,
+  "sealed": true,
+  "head": "c2b362b780c649a8413682367bd15649d633b1a9",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "3712662d949404abfc44ee596db923090868de5d0ae0cc3f96af30deccca3a0e",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 4053
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ ./internal/taskpipeline/ -count=1",
+      "exit": 0,
+      "duration_ms": 256389,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-stale-hook-help.sh",
+      "exit": 0,
+      "duration_ms": 99
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/resume-hook-flags-gone.sh",
+      "exit": 0,
+      "duration_ms": 437
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestHelpSurface_|TestCompatSnapshotMatchesGolden' -count=1",
+      "exit": 0,
+      "duration_ms": 5267,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 7654
+    }
+  ]
+}

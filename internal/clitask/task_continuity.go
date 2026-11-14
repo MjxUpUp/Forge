@@ -259,7 +259,7 @@ func runTaskResumeMatch(cmd *cobra.Command, asJSON bool) error {
 
 // attachCurrentSession 把当前 session 锚定到 task（多向锚定的接手方动作）。返回 (attached, error)：
 // attached=true 表示实际新增了 session 链接（首次锚定）；已锚定或探测失败返 false 不报错。
-// silent=true（hook 模式）不输出 stderr 提示——hook 的 stderr 用户不可见，attach 是静默副作用。
+// silent=true（静默模式）不输出 stderr 提示，attach 是静默副作用。
 // 探测失败（无 session ID / 无 agent env）静默跳过：attach 是附加动作，不能破坏 resume。
 func attachCurrentSession(state *taskpipeline.TaskState, root string, silent bool) (bool, error) {
 	sid := taskpipeline.CurrentSessionID()
