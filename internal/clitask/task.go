@@ -59,6 +59,8 @@ func init() {
 	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的「start 持久化」模式。
 	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）")
 	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
+	taskStartCmd.Flags().String("change", "", "关联 change id：读 spec/changes/<id>/goal.md 作为 goal 契约（五段式，钉内容哈希，implement 门禁校验）")
+	taskStartCmd.Flags().String("goal-file", "", "goal 契约文件（仓库内路径，五段式：Objective/Why/Constraints/Out of Scope/Check；与 --change 互斥）")
 	taskStartCmd.Flags().String("tier", "", "方案档位：none（直接改）| mini（小方案）| full（完整方案）；与硬触发器推导档位取较高者（advisory）")
 	taskStartCmd.Flags().String("tier-reason", "", "声明档位低于硬触发器要求时的下调理由（落审计；无理由则取较高档）")
 	taskStartCmd.Flags().String("plan-file", "", "计划正文 markdown 文件路径（读取存入 task.Plan，供 resume 拉回）")
@@ -341,6 +343,14 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	createBranch, _ := cmd.Flags().GetBool("branch")
 	useWorktree, _ := cmd.Flags().GetBool("worktree")
 
+	// goal 契约（task-goal-contract）：在任何磁盘副作用（worktree/分支）之前解析并校验，
+	// 避免"worktree 建好了、分支切过去了才发现 goal.md 没填完"的半副作用。
+	// 路径按仓库根解析；worktree 与主检出同仓，goal.md 的相对路径两边一致。
+	goalContract, goalSummary, gerr := resolveGoalContract(cmd, root)
+	if gerr != nil {
+		return gerr
+	}
+
 	// --worktree (multi-task-concurrency §7, L4): create the isolated workspace FIRST,
 	// then run the whole start flow rooted there — task state lands in the shared DataDir
 	// (worktrees share the project key by design), the binding anchors the NEW path, and
@@ -363,6 +373,24 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		wtRoot, werr := createTaskWorktree(root, explicitRef, base, wtDir)
 		if werr != nil {
 			return werr
+		}
+		// P2-A：契约必须与门禁读的是同一份内容。worktree 从 base 检出，主检出里
+		// 未提交的 goal.md 不在其中——提前钉主检出内容会让 task-implement 在用户
+		// 什么都没改时误报「启动后被修改」。这里以 wtRoot 重新解析；读不到就回滚
+		// 刚建的 worktree/分支再报错，不留半副作用。
+		if goalContract != nil {
+			gc, sum, rerr := resolveGoalContract(cmd, wtRoot)
+			if rerr != nil {
+				discardTaskWorktree(root, explicitRef, wtDir, wtRoot)
+				// base 缺省时由 worktreeBase 解析出真正基线；报错里必须给出
+				// 具体分支名，否则「基于 ，」是用户唯一看到的指引里的硬伤。
+				baseName := base
+				if baseName == "" {
+					baseName, _ = worktreeBase(root, base)
+				}
+				return fmt.Errorf("goal 契约在 worktree 里读不到（--worktree 基于 %s，主检出里未提交的 goal.md 不在其中）：%w；先把 goal.md 提交，或不用 --worktree", baseName, rerr)
+			}
+			goalContract, goalSummary = gc, sum
 		}
 		root = wtRoot
 		// stdout belongs to the --json contract (machine-parseable only); human hints go to stderr.
@@ -532,6 +560,14 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
 		state.Goal = goal
 	}
+	// 契约钉哈希；state.Goal 没被 --goal 填过时用 Objective 段做概览，
+	// 让 task status/resume 一句话就能看到"为什么做"。
+	if goalContract != nil {
+		state.GoalContract = goalContract
+		if state.Goal == "" {
+			state.Goal = goalSummary
+		}
+	}
 	// Per-task TTL 覆盖（设计 §3/§9 --ttl）：持久化进 state.TTL，使 health.effectiveTTL 按本任务自己
 	// 的时钟标失联，独立于全局 7d 常量。零（无 --ttl）留 state.TTL 于零值回落——legacy 任务无行为变化。
 	if ttl, _ := cmd.Flags().GetDuration("ttl"); ttl > 0 {
@@ -552,6 +588,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	planAcceptanceAdded := 0
 	hasPlanInput := false
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
+		hasPlanInput = true
+	}
+	if goalContract != nil {
 		hasPlanInput = true
 	}
 	if planFile, _ := cmd.Flags().GetString("plan-file"); planFile != "" {
