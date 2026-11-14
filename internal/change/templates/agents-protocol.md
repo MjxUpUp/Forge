@@ -27,8 +27,10 @@
 2. `forge change new <id> --title "..."` 生成五份产物（含 `goal.md`）。
 3. 依次填 goal → proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
    启动任务时用 `forge task start --change <id>` 把 goal 钉成内容哈希；启动后改 goal.md 会让 `task-implement` BLOCKED（改目标等于改判据，重开任务）。
+   goal 没填完时 `task start --change` 会报错（读不出五段）；漂移后的恢复：还原 goal.md，或 `forge task abort` 后重新 `task start --change` 钉新哈希。
+   老 change 没有 goal.md 时 `--change` 会报错：先补 goal.md，或改用 `forge task start --ref <ref>`（不钉契约；implement 只记 advisory）。
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
-5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/$(date +%Y%m%d)-<id>`（八位日期 + 连字符 + change id；`archive/` 目录由 init 建好）。
+5. 先勾 tasks.md 的进度、再跑 verify、然后提交（证据指纹含 tasks.md，勾选或提交后再改文件都会让证据失效）。归档用 `git mv spec/changes/<id> spec/changes/archive/$(date +%Y%m%d)-<id>`（八位日期 + 连字符 + change id；`archive/` 目录由 init 建好）。
 6. 之后再改被验证的文件、或改 acceptance，证据自动失效（`forge change list` 显示「证据已失效」），必须重跑 verify。
 7. 工作区有未提交改动时，证据会记下这些文件的 sha256；干净工作区 verify 则只绑 commit
    （summary 里没有 files 字段，靠 HEAD 移动即失效来兜）。list 会显示绑定的 commit。

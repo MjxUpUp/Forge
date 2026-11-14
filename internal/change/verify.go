@@ -208,7 +208,7 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	if err != nil {
 		return nil, err
 	}
-	// 模板骨架不是判据：init+new 之后四份文件还是模板，直接 verify 会把
+	// 模板骨架不是判据：init+new 之后产物文件还都是模板，直接 verify 会把
 	// 通用示例命令当成这个 change 的验收标准（在 Go 仓库里甚至能封印）。
 	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
 		want := "五份产物（含 goal.md）"
@@ -595,11 +595,17 @@ func DocProblems(dir string, fast bool) []string {
 		}
 	}
 	// goal.md 是第五份产物：存在就必须五段写完；不存在按老 change 兼容放行
-	//（`change new` 自本版起总会生成它，新 change 无法绕过）。
-	if raw, err := os.ReadFile(filepath.Join(dir, FileGoal)); err == nil {
+	//（`change new` 自本版起总会生成它，并留下 .goal-required 标记——新 change
+	// 删掉 goal.md 不再能冒充老 change 绕过 verify）。
+	goalPath := filepath.Join(dir, FileGoal)
+	raw, gerr := os.ReadFile(goalPath)
+	switch {
+	case gerr == nil:
 		if _, perr := ParseGoal(string(raw)); perr != nil {
 			out = append(out, FileGoal+"（"+perr.Error()+"）")
 		}
+	case exists(filepath.Join(dir, GoalRequiredFile)):
+		out = append(out, FileGoal+"（缺失：本 change 由 forge change new 创建，goal.md 是必填产物）")
 	}
 	return out
 }

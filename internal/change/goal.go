@@ -43,13 +43,6 @@ func GoalSectionKeys() []string {
 	return out
 }
 
-// renderGoalTemplate 生成带 forge:fill 标记的 goal.md 骨架。
-func renderGoalTemplate(id, title string) string {
-	out := strings.ReplaceAll(tmplGoal, "{{title}}", title)
-	out = strings.ReplaceAll(out, "{{id}}", id)
-	return out
-}
-
 // ParseGoal 解析 goal.md：按二级标题取五段，标题大小写与空格不敏感
 // （"Out of Scope"/"OutOfScope" 等价）。缺段/空段/残留 forge:fill 标记都算未完成。
 func ParseGoal(content string) (*Goal, error) {
@@ -115,6 +108,11 @@ func GoalPath(root, id string) string { return filepath.Join(ChangeDir(root, id)
 
 // LoadGoal 读取并解析 change 的 goal.md，返回契约、原始字节的 sha256 与仓库相对路径。
 func LoadGoal(root, id string) (*Goal, string, string, error) {
+	// 第二道边界：GoalPath 直接 Join id，LoadGoal 的调用方未必都像
+	// task start 那样先校验；这里再守一次，任何 id 都不会读写仓外路径。
+	if err := ValidID(id); err != nil {
+		return nil, "", "", err
+	}
 	path := GoalPath(root, id)
 	raw, err := os.ReadFile(path)
 	if err != nil {
