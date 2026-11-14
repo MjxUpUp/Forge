@@ -299,7 +299,7 @@ func runChangeNew(cmd *cobra.Command, args []string) error {
 	}
 	if byHuman && !fast {
 		// --by-human 只对 fast 有意义；静默接受会让「我批过了」变成一个无法审计的空动作。
-		fmt.Fprintln(os.Stderr, "提示：--by-human 只用于 --fast（快速通道需要人批准）；普通 change 不需要它，本次已忽略")
+		fmt.Fprintln(cmd.ErrOrStderr(), "提示：--by-human 只用于 --fast（快速通道需要人批准）；普通 change 不需要它，本次已忽略")
 	}
 	var dir string
 	if fast {

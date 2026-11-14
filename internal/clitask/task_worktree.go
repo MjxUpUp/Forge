@@ -480,3 +480,19 @@ func currentBranchName(root string) string {
 	}
 	return b
 }
+
+// discardTaskWorktree 回滚 createTaskWorktree 的副作用（P2-A：goal 契约在
+// worktree 里读不到时必须不留半副作用）。尽力而为：先删 worktree，再删派生
+// 分支——两条命令任一失败都不掩盖原始错误，只作为 stderr 提示。
+func discardTaskWorktree(root, ref, wtDirParent, wtRoot string) {
+	_ = wtDirParent // 路径由调用方传入，保留参数位以对齐 createTaskWorktree
+	if wtRoot != "" {
+		_ = exec.Command("git", "-C", root, "worktree", "remove", "--force", wtRoot).Run()
+	}
+	if ref == "" {
+		return
+	}
+	if branch, err := deriveBranchName(ref); err == nil {
+		_ = exec.Command("git", "-C", root, "branch", "-D", branch).Run()
+	}
+}
