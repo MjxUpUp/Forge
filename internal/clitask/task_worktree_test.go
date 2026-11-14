@@ -308,16 +308,27 @@ func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantSHA := change.GoalHash(committed)
+	dirty := append(append([]byte{}, committed...), []byte("\n主检出未提交的一行\n")...)
 
 	// 主检出里改一行但不提交：worktree 从基底检出，看不到这行。
-	if err := os.WriteFile(goalPath, append(committed, []byte("\n主检出未提交的一行\n")...), 0o644); err != nil {
+	if err := os.WriteFile(goalPath, dirty, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-wt", "--change", "flow", "--title", "flow wt")
 	if code != 0 {
 		t.Fatalf("task start --worktree --change failed: %s %s", stdout, stderr)
+	}
+	wtPath := filepath.Join(filepath.Dir(tmpDir), filepath.Base(tmpDir)+"-wt", "feat-flow-wt")
+	// 期望值从 worktree 里实际检出的字节算：Windows 上 core.autocrlf=true 会把
+	// LF 换成 CRLF，拿提交前的内存字节当期望会跨平台假红（CI 就是这么暴露的）。
+	wtGoal, err := os.ReadFile(filepath.Join(wtPath, "spec", "changes", "flow", "goal.md"))
+	if err != nil {
+		t.Fatalf("读 worktree 里的 goal.md: %v", err)
+	}
+	wantSHA := change.GoalHash(wtGoal)
+	if wantSHA == change.GoalHash(dirty) {
+		t.Fatal("前置条件失效：worktree 检出了未提交内容")
 	}
 	state, err := taskpipeline.LoadTaskState(tmpDir, "feat/flow-wt")
 	if err != nil {
@@ -331,7 +342,6 @@ func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
 	}
 
 	// 在 worktree 里制造代码改动后跑 implement gate：不得误报漂移。
-	wtPath := filepath.Join(filepath.Dir(tmpDir), filepath.Base(tmpDir)+"-wt", "feat-flow-wt")
 	if err := os.WriteFile(filepath.Join(wtPath, "probe.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
