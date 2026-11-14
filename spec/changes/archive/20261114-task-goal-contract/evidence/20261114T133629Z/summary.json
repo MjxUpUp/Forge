@@ -1,0 +1,74 @@
+{
+  "change": "task-goal-contract",
+  "started_at": "2026-11-14T13:36:29Z",
+  "finished_at": "2026-11-14T13:36:51Z",
+  "passed": true,
+  "sealed": true,
+  "head": "c91a85c446c57bb8eb3f18ce854b4f8c0ef1f953",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "0ec467815b6306e27c5f06e0d83a6839b6141ef876dbc316c5af7678425c9d36",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2483
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestParseGoal|TestLoadGoal|TestGoalHash|TestDocProblems' -count=1",
+      "exit": 0,
+      "duration_ms": 1556,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run 'TestCheckGoalContract|TestExecuteTaskGate_GoalContractWiring' -count=1",
+      "exit": 0,
+      "duration_ms": 1979,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChangeNew_WritesGoalContract|TestChangeNewFast' -count=1",
+      "exit": 0,
+      "duration_ms": 3706,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestResolveGoalContract|TestTaskStart_RegistersGoalContractFlags|TestTaskStart_WorktreeChangePinsWorktreeGoal|TestTaskStart_WorktreeChangeRequiresCommittedGoal' -count=1",
+      "exit": 0,
+      "duration_ms": 5146,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/docs-artifact-counts.sh",
+      "exit": 0,
+      "duration_ms": 291
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run TestGoalTemplateMatchesParser -count=1",
+      "exit": 0,
+      "duration_ms": 813,
+      "stdout_file": "07.stdout"
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5516
+    }
+  ]
+}
