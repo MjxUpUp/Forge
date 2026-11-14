@@ -527,7 +527,7 @@ type TaskState struct {
 	// 时标记——永不落盘，满足门禁类的消费方拒采信 broken 状态上的字段。
 	Integrity       *StateIntegrity `json:"integrity,omitempty"`
 	integrityBroken bool            `json:"-"`
-	ResumeStale     bool            `json:"resume_stale,omitempty"` // 历史字段：旧版 binary 写入的 task-scoped「刚压缩过」标志，阶段 E 起无写入、无读取，仅为 state 结构兼容保留。
+	ResumeStale     bool            `json:"resume_stale,omitempty"` // 历史字段：旧版 binary 与 seed 写入的 task-scoped「刚压缩过」标志；仍参与 state 合并/种子兼容，但 resume 流程不再读写。
 	// ReviewedHeadCommit/ReviewedChangeHash bind the code snapshot at review-pass
 	// time — the key to the review-fix-recheck loop.
 	//
