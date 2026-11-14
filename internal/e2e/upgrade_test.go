@@ -207,9 +207,9 @@ func enableHooksForFixture(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatalf("read fixture contract: %v", err)
 	}
-	// 按行改写（不能用子串替换）：模板注释行里也有「hooks: off 表示……」的字样，
-	// 子串替换会先命中注释、把真取值留在 off 上，契约门于是静默放行；profile 的
-	// 取值还带引号，裸子串同样匹配不上。
+	// 按行改写（不能用子串替换）：模板里也有带 `hooks:` 的说明文字，
+	// 子串替换会先命中注释、把真取值留在 off；profile 的取值还带引号，
+	// 裸子串同样匹配不上。
 	lines := strings.Split(string(b), "\n")
 	flippedHooks, flippedProfile := false, false
 	for i, line := range lines {

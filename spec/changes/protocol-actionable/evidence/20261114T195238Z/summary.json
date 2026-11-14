@@ -1,0 +1,89 @@
+{
+  "change": "protocol-actionable",
+  "started_at": "2026-11-14T19:52:38Z",
+  "finished_at": "2026-11-14T19:52:54Z",
+  "passed": true,
+  "sealed": true,
+  "head": "7a7687c5b98915fe25f97738a6488be8e8af0ba7",
+  "diff_sha256": "3f555ab414301ada42c4b887a93c69ec332ba19f3d1f66d97f55af5a5c943a92",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "d3b1f3c15fba9c252e9e2129cbae06e18acc267e3a249f9aad5e564ed7f35ddb"
+    },
+    {
+      "path": "internal/change/change.go",
+      "sha256": "707ddcb8b0058dc68731c3e683d41993988be65cd6907af8622b8c21f2646572"
+    },
+    {
+      "path": "internal/specroot/specroot.go",
+      "sha256": "d788088028a5390b4e1537b25b769f9204957006f603b702e6298db1a94c13c5"
+    },
+    {
+      "path": "scripts/checks/migration-doc.sh",
+      "sha256": "fab70f9402d7fad6bfad225862f3c8ed4c6e12ec981fbf4f9657e6d5514d9e37"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/acceptance.md",
+      "sha256": "d29e307fc3d97e23a746703d76f4c4cca4a18909d562a8c5c919cde8c13fe97e"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/design.md",
+      "sha256": "4efa5e4e6ffddc10c1116750c66b793e9b41b75064abed81380fae8e468e22f4"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/tasks.md",
+      "sha256": "d6ccf7739df3be2d37070d92d28c42ff1c9ff981d8f244c9a74cdb0a7992600d"
+    }
+  ],
+  "acceptance_sha256": "d29e307fc3d97e23a746703d76f4c4cca4a18909d562a8c5c919cde8c13fe97e",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3123
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestAgentsProtocol' -count=1",
+      "exit": 0,
+      "duration_ms": 1022,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "sh scripts/checks/protocol-actionable.sh",
+      "exit": 0,
+      "duration_ms": 425,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/migration-doc.sh",
+      "exit": 0,
+      "duration_ms": 715,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChangeAgents|TestChangeInit' -count=1",
+      "exit": 0,
+      "duration_ms": 5171,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5335
+    }
+  ]
+}
