@@ -80,11 +80,8 @@ func init() {
 	taskResumeCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskResumeCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
 	taskResumeCmd.Flags().Bool("no-attach", false, "仅查看，不把当前 session 锚定到 task")
-	taskResumeCmd.Flags().Bool("hook", false, "SessionStart hook 模式：只输出 PASS+[forge-session] 横幅一行，不注入接续视图、不锚定 session、不改任何任务状态（接续改由用户主动发起；供 forge hook task-resume 调用）")
-	taskResumeCmd.Flags().Bool("compact-flag", false, "PostCompact hook 模式：压缩完成时标记「刚压缩过」（有 session ID 写 per-session sentinel，无则置 ResumeStale；压缩根治层·设标志半边，gap#2；供 forge hook compact-resume 调用）")
 	taskResumeCmd.Flags().String("match", "", "按关键词模糊匹配未完成任务（ref/标题/分支/目标；容忍错拼、乱序、缩写、中文片段），只列候选、不锚定不认领——agent 让用户确认后再 resume --ref")
 	addScopeFlags(taskResumeCmd)
-	taskResumeCmd.Flags().Bool("reinject", false, "UserPromptSubmit hook 模式：若本 session 刚压缩（per-session sentinel 或 legacy ResumeStale）则重注入完整 handoff 并清标记（压缩根治层·重注入半边，gap#2；供 forge hook resume-reinject 调用）")
 
 	taskContextCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskContextCmd.Flags().Bool("json", false, "JSON 格式输出完整 task state")
@@ -146,57 +143,6 @@ func loadTaskOrActive(cmd *cobra.Command) (*taskpipeline.TaskState, string, erro
 func runTaskResume(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 	noAttach, _ := cmd.Flags().GetBool("no-attach")
-	hookMode, _ := cmd.Flags().GetBool("hook")
-	compactFlag, _ := cmd.Flags().GetBool("compact-flag")
-	reinject, _ := cmd.Flags().GetBool("reinject")
-
-	if compactFlag {
-		// PostCompact hook（压缩根治层·设标志半边，gap#2）：压缩完成 → 为本 session
-		// 标记「刚压缩过」（per-session sentinel；无 session ID 则置 legacy ResumeStale），
-		// 本 session 下个 UserPromptSubmit 的 --reinject 检测到即重注入完整 handoff。
-		// 静默 exit 0（无 stdout）：PostCompact 不能注入 additionalContext（Claude Code 文档
-		// 明确不在注入点列表，只能 block 或 follow-up），故此 hook 只做 follow-up 设标记。
-		// 无活跃任务 → 幂等不操作。任何失败降级 stderr + exit 0（advisory 不阻塞）。
-		root, err := projectroot.Find()
-		if err != nil {
-			return nil
-		}
-		if err := renderHookCompactFlag(root); err != nil {
-			fmt.Fprintf(os.Stderr, "[forge] compact-resume advisory hook failed: %v\n", err)
-		}
-		return nil
-	}
-
-	if reinject {
-		// UserPromptSubmit hook（压缩根治层·重注入半边，gap#2）：若本 session 刚压缩过
-		// → 重注入完整 handoff + 清标记；否则静默。UserPromptSubmit 的 stdout
-		// 进 context（Claude Code 文档：UserPromptSubmit 在 additionalContext 注入点列表），
-		// runHook 包成 additionalContext 注入，故 PASS+handoff 协议同 SessionStart task-resume。
-		root, err := projectroot.Find()
-		if err != nil {
-			return nil
-		}
-		out, err := renderHookReinject(root)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[forge] resume-reinject advisory hook failed: %v\n", err)
-			return nil
-		}
-		fmt.Print(out) // 无活跃/未压缩 out="" 静默；有则 "PASS\n<handoff>"
-		return nil
-	}
-
-	// hook 模式（SessionStart；bash thin wrapper `exec forge task resume --hook`）：只输出
-	// managed 横幅一行。接续改为按需拉取（docs/plans/task-resume-pull-model-2026-10-proposal.md）：
-	// 会话启动不注入接续视图/候选清单/待认领推送，也不锚定 session——用户说「继续某某任务」
-	// 时 agent 走 resume --match，说「还有哪些任务没完成」时走 task list --open。
-	if hookMode {
-		if _, err := projectroot.Find(); err != nil {
-			return nil // 非 forge 项目（runHook 对非全局 hook 已 outputAllow exit，双保险）
-		}
-		fmt.Print(renderHookBanner())
-		return nil
-	}
-
 	if cmd.Flags().Changed("match") {
 		return runTaskResumeMatch(cmd, asJSON)
 	}
@@ -344,30 +290,8 @@ func attachCurrentSession(state *taskpipeline.TaskState, root string, silent boo
 	return attached, nil
 }
 
-// managedSessionBanner is the one-line activation signal SessionStart emits for managed projects.
-//
-// managedSessionBanner 是 managed 项目 SessionStart 输出的唯一一行激活信号——用户级指令段
-// （~/.claude/CLAUDE.md 等）的激活判据锚定在这里（模型可见的机械信号，取代"是否已 init"这种
-// 模型无法判定的条件）。文本是契约：改动会让用户级指令段失效（task_continuity_banner_test 钉住）。
-const managedSessionBanner = "[forge-session] 本项目由 forge 管理（managed）——forge 质量协议生效（用户级指令段以本行为激活信号）；退出运行 forge off。"
-
-// renderHookBanner returns the SessionStart hook output: the PASS marker plus the managed banner, nothing else.
-//
-// renderHookBanner 返回 SessionStart hook 的完整输出：PASS 标记 + managed 横幅，别无其他。纯函数、
-// 不读不写任务状态——会话启动不注入接续视图、不锚定 session、不推送待认领（按需拉取方案 REQ-1/INV-1）。
-// runHook 的 extractDetail 去掉 PASS 前缀取 detail 注入 additionalContext。
-func renderHookBanner() string {
-	return passPrefix + managedSessionBanner + realNewlineString
-}
-
-// realNewlineString 是单个换行，不用 \n rune 字面也不用双引号源字面——Windows 引号腐蚀会把 Go
-// 源里的 ASCII " 转成 CJK 弯引号，且项目规则禁止反引号 raw string 内的 \n（那里是字面 backslash-n）。
-// 用数值字节 10 构造，源码保持 ASCII 干净。
+// realNewlineString 是单个换行，用数值字节构造，避免源码里出现转义字面。
 var realNewlineString = string([]byte{10})
-
-// passPrefix 是 SessionStart 注入标记（runHook.extractDetail 据此剥离取 detail 载荷）。用
-// realNewlineString 构造，同属 ASCII 干净（无 "PASS\n" 字面）。
-var passPrefix = `PASS` + realNewlineString
 
 // tryAutoClaim 在 per-task 锁下尝试 offered→claimed，再把当前 session 锚到 task（与 runTaskClaim
 // 同序，只是无其 CLI 表面）。返回 (claimed, err)：claimed=true 仅当 mutation 确实把 Status 翻成
@@ -396,90 +320,6 @@ func tryAutoClaim(root, ref, agent string) (bool, error) {
 // inventoryFieldCap 限定任务清单单行内字段（标题/下一步）的长度——task list --open 与
 // resume --match 的文本行共用，保持一任务一行可扫读。
 const inventoryFieldCap = 60
-
-// renderHookCompactFlag 产出 PostCompact hook 的副作用：为当前 session 标记「刚压缩过」。
-// 有 session ID（所有 hook 驱动的 host——runHook 注入 FORGE_SESSION_ID）时写
-// per-session sentinel 文件（taskpipeline.MarkResumeStale），不动共享的 task json；
-// 无 session ID（legacy/手动）时回落到置 task-scoped 的 ResumeStale bool。无活跃任务
-// → 幂等不操作不报错。这是压缩根治层（gap#2）的「设标志」半边——PostCompact 不能注入
-// context，只标记「刚压缩过」，等下个 UserPromptSubmit 的 renderHookReinject 重注入。
-// 把 findProjectRoot 之外的纯逻辑提出，供单测直接传 root。
-func renderHookCompactFlag(root string) error {
-	state, _ := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-	if state == nil {
-		return nil
-	}
-	if sid := taskpipeline.CurrentSessionID(); sid != "" {
-		// 幂等：sentinel 已存在时 AtomicWrite 覆写同一路径，无副作用
-		return taskpipeline.MarkResumeStale(root, sid)
-	}
-	// Legacy 回落（无 session ID）：task-scoped bool，两 session 共享 task 时可能互相
-	// 消费（见 types.go ResumeStale 注释），仅 hook 外手动场景才走到。
-	if state.ResumeStale {
-		return nil
-	}
-	return taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-		s.ResumeStale = true
-		return nil
-	})
-}
-
-// renderHookReinject 产出 UserPromptSubmit hook 模式输出：若当前 session 刚压缩过
-// → 返 "PASS\n<handoff>" 并清标记；否则返 ""（静默，不注入）。「刚压缩过」按
-// session 判定：per-session sentinel（taskpipeline.ConsumeResumeStale 读即清），或
-// legacy 的 task-scoped ResumeStale bool（此处清零并持久化）——后者服务无 session ID
-// 的 session 和被旧版 binary 标记过的 task。这是压缩根治层（gap#2）的「重注入」
-// 半边——压缩后第一个 user prompt 自动恢复完整接续上下文，不靠 agent 主动
-// forge task resume。消费标记保证只重注入一次（下个 prompt 静默），per-session
-// sentinel 保证一个 session 的 prompt 不会消费掉别的 session 的标记。
-func renderHookReinject(root string) (string, error) {
-	sid := taskpipeline.CurrentSessionID()
-	state, _ := taskpipeline.ActiveTaskState(root, sid)
-	if state == nil {
-		// 无活跃任务：仍消费本 session 可能残留的标记，避免日后在别的 task 下误触发。
-		taskpipeline.ConsumeResumeStale(root, sid)
-		return "", nil
-	}
-	stale := false
-	if state.ResumeStale {
-		// Legacy 的 task-scoped 标记（无 session 回落或旧版 binary 所留）：兑现一次并清零。
-		// 先清零、后消费 sentinel：清零失败（锁超时/磁盘错误）时 sentinel 原样保留返回，
-		// 下个 prompt 重试重注入——错误路径宁可多注一次，绝不丢掉唯一的一次恢复
-		// （code-review P1）。
-		if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-			s.ResumeStale = false
-			return nil
-		}); err != nil {
-			return "", err
-		}
-		stale = true
-	}
-	if taskpipeline.ConsumeResumeStale(root, sid) {
-		stale = true
-	}
-	if !stale {
-		// 未压缩过：静默。丢弃 SessionStart 输出的 host（kimi）原有的冷启动 handoff 回填已随
-		// 按需拉取方案下线——冷启动不再推送接续视图，所有 host 一致（方案 REQ-2）。
-		return "", nil
-	}
-	handoff := renderResume(state, attributedPorcelain(root, state), workspaceContextLine(root, state.CrossRepoImpact), loopVerdictHeader(root, state), taskpipeline.PriorAttemptsSummary(root, state.TaskRef, 3, 2000))
-	// 方案4（中途 checkpoint 显式落盘·主动驱动）：压缩刚发生时，若任务未落盘任何「中途线程」
-	// （决策/下一步），handoff 只能复原 task start 时设的 goal/plan——而压缩丢的正是这期间的
-	// 工作记忆。此时追加强提示把 agent 推向 forge task decide/next 显式落盘，使下次压缩的
-	// handoff 不再从零重建。这是 checkpoint 驱动唯一的高信号时机：普通 turn resume-reinject
-	// 静默（ResumeStale=false），零噪声；只在压缩发生的那一个 prompt 触发。Goal/Plan 不计入
-	// （task start 已落盘，非压缩丢失项），只看 Decisions/NextSteps 这两个中途线程字段。
-	if len(state.Decisions) == 0 && len(state.NextSteps) == 0 {
-		handoff += `
-⚠ 刚发生 context 压缩，但本任务尚未落盘任何中途决策/下一步——压缩丢的正是这段工作记忆，下次压缩仍会从零重建。现在立即显式落盘：
-  forge task decide --content "<已确认的关键决策>"   # 不再推翻的决定
-  forge task decide --rejected --content "<试过且失败的方案>" --rationale "<失败证据>"   # 死路，不再重试
-  forge task next "<当前在做>" "<接着做>"             # 下一步
-  forge task block --content "<卡住的事>"             # 若有阻塞
-`
-	}
-	return "PASS\n" + handoff, nil
-}
 
 func runTaskContext(cmd *cobra.Command, args []string) error {
 	// context = resume 的只读别名：拉回视图但不锚定 session、不改 state。
