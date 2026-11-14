@@ -216,7 +216,8 @@ func TestLoad_RejectsUnknownHooks(t *testing.T) {
 
 func TestLoad_RejectsUnknownField(t *testing.T) {
 	root := t.TempDir()
-	// hooks 拼错成 hook：静默忽略会让人以为关掉了执法，实际还在拦。
+	// hooks 拼错成 hook：静默忽略会让契约文件看起来写了某项约定，
+	// 实际没生效——拼错就必须报错。
 	writeContract(t, root, "version: \"1\"\nhook: off\n")
 	if _, err := Load(root); err == nil {
 		t.Fatal("未知键 hook 应当报错，而不是静默按缺省跑")
