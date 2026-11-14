@@ -8,7 +8,7 @@
 | `internal/change/agents_protocol_test.go`（新） | 钉模板的可执行性与无残留：含「先跑 `forge next`」、含「## Task 流程」、不含 `hazard-guard`/`hooks: on` |
 | `scripts/checks/protocol-actionable.sh`（新） | 同上，从「产物文件」视角再钉一遍，防止只在测试里生效 |
 | `scripts/checks/migration-doc.sh`（新） | README 必须含「从 1.84 及更早版本升级」节与 `FORGE:START` 清理命令 |
-| `README.md` | 新增「从 1.84 及更早版本升级」节：旧版写入落点表（claude/codex/windsurf/kimi）、逐个判断的备份、按文件编辑而非整删的 hook 清理、插件登记、悬空符号链接、自检命令 |
+| `README.md` | 新增「从 1.84 及更早版本升级」节：旧版写入落点表（四个注入入口 claude/codex/windsurf/kimi，外加 Cursor 的 hook 配置）、逐个判断的备份、按文件编辑而非整删的 hook 清理、插件登记、悬空符号链接、自检命令 |
 | `internal/change/change.go`、`internal/specroot/specroot.go` | 两处 `hooks` 字段注释与模板对齐：兼容保留、不再驱动任何执法 |
 | `spec/changes/cmd-surface-convergence/`（删） | 与 `archive/20261114-cmd-surface-convergence/` 重复（归档后 amend 又落回），导致 `change check` 假红 |
 | `spec/changes/protocol-actionable/**`、evidence | 本次 change 自己的五份产物、`.goal-required` 与 verify 证据 |
