@@ -29,6 +29,20 @@ func TestArtifactChainChecksInRoster(t *testing.T) {
 	}
 }
 
+// TestGoalContractCheckInRoster 钉住 goal-contract 进 roster（task-goal-contract
+// Change A）：漏登记 = implement 门禁的契约观测在 compat 面/看板不可见。
+func TestGoalContractCheckInRoster(t *testing.T) {
+	if string(CheckGoalContract) != "goal-contract" {
+		t.Fatalf("常量值漂移: %q != goal-contract", CheckGoalContract)
+	}
+	for _, lit := range AllCheckNames() {
+		if lit == "goal-contract" {
+			return
+		}
+	}
+	t.Fatal("AllCheckNames 缺 goal-contract——escape.go allCheckNames 未同步")
+}
+
 // TestSelfcheckChecksInRoster 钉住 selfcheck 两 CheckName 进 roster（discipline-first
 // P2）：漏登记 = selfcheck 条目落盘但 compat 面/看板看不到——镜像自检的落痕对分析
 // 面不可见。
