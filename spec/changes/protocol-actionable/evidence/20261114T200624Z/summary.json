@@ -1,0 +1,73 @@
+{
+  "change": "protocol-actionable",
+  "started_at": "2026-11-14T20:06:24Z",
+  "finished_at": "2026-11-14T20:06:39Z",
+  "passed": true,
+  "sealed": true,
+  "head": "3e7d7cca71e27198672aff830b758c6dc71fd677",
+  "diff_sha256": "4c267a19952451f05d184a478db0483deb3f3a6e537cad54ee00fb38e170d81a",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "18f1ef7eb4b64c533408bfd7d102f7496a6d41da80dc22e71185a720b7e06fa0"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/design.md",
+      "sha256": "e87b31525434eb593aa788beb32ab77499a764a7bb8ead4214fd3dbdfa7c16bc"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/tasks.md",
+      "sha256": "2b7ac1f8ed8329e6adb238f81e47e96c16709a171b94eff684c30fd4b97ef906"
+    }
+  ],
+  "acceptance_sha256": "8fd76aa16287e01a2dcbadcbfaf5c48ff50c6e7a9f9c84d2ca7973580d041f8d",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3750
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestAgentsProtocol' -count=1",
+      "exit": 0,
+      "duration_ms": 996,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "sh scripts/checks/protocol-actionable.sh",
+      "exit": 0,
+      "duration_ms": 468,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/migration-doc.sh",
+      "exit": 0,
+      "duration_ms": 951,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChangeAgents|TestChangeInit' -count=1",
+      "exit": 0,
+      "duration_ms": 3532,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5051
+    }
+  ]
+}
