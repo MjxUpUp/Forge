@@ -34,9 +34,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// MaxReviewRounds 是 Stop hook 反复 block 同一 diff 的兜底上限。超过后 advisory
-// 放行——防 agent 不调 forge review pass 导致的 Stop 死循环（task-verify 历史教训：
-// Stop block 会触发 retry-loop，见 hooks/embed.go TaskVerifyHook 注释）。
+// MaxReviewRounds 是同一 diff 反复未审的兜底上限。超过后 advisory 放行——防 agent
+// 不调 forge review pass 时无限重试（历史教训：Stop block 曾触发 retry-loop）。
 const MaxReviewRounds = 3
 
 // Decision is the review decision produced by EvaluateFor for the current
@@ -47,7 +46,7 @@ type Decision int
 
 const (
 	DecisionPass         Decision = iota // 无需审：已审过这版 diff，或无变更/非 git
-	DecisionNeedReview                   // 需审：有未审变更，Stop hook 应 block
+	DecisionNeedReview                   // 需审：有未审变更（gate 负责判定）
 	DecisionPassAdvisory                 // 兜底放行：撞 MaxReviewRounds，advisory 提醒
 )
 
@@ -58,7 +57,7 @@ const (
 type Stamp struct {
 	DiffHash   string    `json:"diff_hash"`             // 审查范围（git diff）的 sha256；空=无变更
 	Reviewed   bool      `json:"reviewed"`              // 该 diff_hash 是否已通过 code-review-gate
-	BlockCount int       `json:"block_count"`           // 该 diff_hash 被 Stop hook block 的次数
+	BlockCount int       `json:"block_count"`           // 该 diff_hash 被判定需审的次数
 	ReviewedAt time.Time `json:"reviewed_at,omitempty"` // 最近一次 forge review pass 时间
 	Branch     string    `json:"branch,omitempty"`
 	// Note is the optional reviewer conclusion from `forge review pass --note`

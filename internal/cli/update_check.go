@@ -138,11 +138,6 @@ func shouldSkipUpdateCheck(fullVersion string, cmd *cobra.Command) bool {
 		return true
 	}
 
-	// hook 子树跳过（hook 每次文件编辑都跑，必须快；含 hook batch 等嵌套子命令）
-	if isHookSubtree(cmd) {
-		return true
-	}
-
 	// silent 模式下的 gate 跳过
 	if cmd.Name() == "gate" {
 		if flag, err := cmd.Flags().GetBool("silent"); err == nil && flag {
@@ -155,25 +150,6 @@ func shouldSkipUpdateCheck(fullVersion string, cmd *cobra.Command) bool {
 		return true
 	}
 
-	return false
-}
-
-// isHookSubtree 判断 cmd 是否位于 hook 子树（自身或任一祖先名为 hook，含
-// `forge hook batch` 等嵌套子命令）。升级检查与 npm 垫片自愈提示的「hook 静默」判断
-// 共用此函数——只判 cmd.Name() 会漏掉嵌套子命令（batch 的 Name() 是 batch），
-// 让提示的 stderr 混进 hook 输出、进入 agent 上下文。
-//
-// isHookSubtree reports whether cmd is in the hook subtree (itself or any ancestor is
-// named hook, covering nested subcommands such as `forge hook batch`). The update
-// check and the npm-shim-heal notice share this one predicate for "silent under
-// hook"; testing only cmd.Name() misses nested subcommands (batch's Name() is
-// "batch") and lets the notice's stderr leak into hook output and agent context.
-func isHookSubtree(cmd *cobra.Command) bool {
-	for c := cmd; c != nil; c = c.Parent() {
-		if c.Name() == "hook" {
-			return true
-		}
-	}
 	return false
 }
 
