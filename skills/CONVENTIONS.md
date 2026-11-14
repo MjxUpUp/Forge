@@ -179,7 +179,7 @@ Skill 是独立可用的方法论资产，forge 是可选增强层。引用方�
 
 **存量与豁免（都只减不增）**：
 
-- `metadata.requires_forge: "true"` + skills-forge/ 源树：skill 本身描述 forge 机制的（现 3 个：skill-evolution / skill-routing / skill-authoring-standard）2026-08 已整体迁出到 `skills-forge/`（forge 专属源树：独立 embed 进 forge 二进制、增量解压进同一缓存 `~/.forge/skills-cache/embedded`、随 forge 插件分发）——中立库 skills/ 不含它们，skills-only 消费方零接触。新 skill 一律不得使用该标记进中立库；确属 forge 机制的进 skills-forge/（守卫：TestSkillsForge_AllMarked）。（不用顶层 `requires`——其值按 canonical 成员校验，写 `forge` 会持续误报；metadata 嵌套键是自由扩展区 §4，解析后落在 `fm.Metadata`。）
+- `metadata.requires_forge: "true"` + skills-forge/ 源树：skill 本身描述 forge 机制的（现 3 个：skill-evolution / skill-routing / skill-authoring-standard）2026-08 已整体迁出到 `skills-forge/`（forge 专属源树：独立 embed 进 forge 二进制、增量解压进同一缓存（系统临时目录 `forge-skills-cache/embedded`）、随 forge 插件分发）——中立库 skills/ 不含它们，skills-only 消费方零接触。新 skill 一律不得使用该标记进中立库；确属 forge 机制的进 skills-forge/（守卫：TestSkillsForge_AllMarked）。（不用顶层 `requires`——其值按 canonical 成员校验，写 `forge` 会持续误报；metadata 嵌套键是自由扩展区 §4，解析后落在 `fm.Metadata`。）
 - `internal/skillsqa.R18Grandfathered`：**已清空**（2026-08 迁移完成）。机制保留——若未来再次出现需要过渡的存量，走此通道并遵守只减不增纪律；`TestR18_Grandfathered_Exact` 双向卡死表与实际命中集合。
 
 **新增/沉淀 skill 的检查即门禁**：任何 skill 内容改动过三道闸口——`forge skills validate`（R18 硬 issue，exit 2）、registry+audit 人工双门控（阶段 D 起没有 install 前置）、CI 测试（含棘轮守卫）。新增 forge 引用在未改豁免表时立刻红；改豁免表必然过 code review。

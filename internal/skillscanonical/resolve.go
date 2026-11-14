@@ -25,17 +25,16 @@ const ForgeVersionFile = ".embedded-forge-version"
 // Resolve 比较它：标记缺失或不等于当前版本（forge 升级）→ re-extract。
 const VersionFile = ".embedded-version"
 
-// EmbeddedCacheDir returns the embed extraction cache dir under the user home (path computation only, no disk touch).
+// EmbeddedCacheDir returns the embed extraction cache dir under the OS temp
+// directory (path computation only, no disk touch).
 //
-// EmbeddedCacheDir 返回用户 home 下的 embed 解压缓存目录（只算路径，不碰盘）。
+// EmbeddedCacheDir 返回系统临时目录下的 embed 解压缓存目录（只算路径，不碰盘）。
+// 阶段 D 之后不再往用户 home 写任何东西：内置库是只读的，解压产物属于可再生成的
+// 一次性缓存，放在 os.TempDir() 下由操作系统回收，而不是 ~/.forge。
 // 导出供只读消费方（如 dashboard）与 Resolve 解析同一位置，避免复制路径逻辑——
 // 缓存路径的单一真相源。
 func EmbeddedCacheDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".forge", "skills-cache", "embedded"), nil
+	return filepath.Join(os.TempDir(), "forge-skills-cache", "embedded"), nil
 }
 
 // Resolve resolves the canonical directory and whether it is an external real source.
