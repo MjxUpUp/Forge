@@ -9,7 +9,8 @@ grep -q '## Task 流程' "$f" || { echo "模板缺少 Task 流程段"; exit 1; }
 grep -q '门禁是命令，不是 hook' "$f" || { echo "模板缺少「门禁是命令」说明"; exit 1; }
 grep -q 'verify-acceptance' "$f" || { echo "模板的 Task 流程缺实跑验收（verify-acceptance）"; exit 1; }
 grep -q 'gate task-complete' "$f" || { echo "模板的 Task 流程缺 task-complete 门禁"; exit 1; }
-grep -q 'review pass' "$f" || { echo "模板缺 review pass（task-complete 硬前置）"; exit 1; }
+grep -q "review pass" "$f" || { echo "模板缺 review pass（task-complete 硬前置）"; exit 1; }
+grep -q -- "--artifact-chain" "$f" || { echo "模板逃生舱清单缺 --artifact-chain"; exit 1; }
 if grep -qE 'hazard-guard|hooks: on' "$f"; then
   echo "模板仍宣称已删除的 hook 执法能力"
   exit 1
