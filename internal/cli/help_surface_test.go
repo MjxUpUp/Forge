@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -35,4 +37,20 @@ func containsAny(s string, subs ...string) bool {
 		}
 	}
 	return false
+}
+
+// TestHelpSurface_CliReferenceContractWording 钉住 docs/reference/cli.md 的接线措辞：
+// 阶段 D 后"hook 是否生效"已不成立，reference 必须说"本地接线"。放在 TestHelpSurface_
+// 前缀下，让 change 的 #5 判据同时覆盖帮助面与 reference（见 acceptance.md）。
+func TestHelpSurface_CliReferenceContractWording(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(repoRoot, "docs", "reference", "cli.md"))
+	if err != nil {
+		t.Fatalf("read cli.md: %v", err)
+	}
+	if !strings.Contains(string(body), "不依赖本地接线是否生效") {
+		t.Fatalf("docs/reference/cli.md 应写「不依赖本地接线是否生效」")
+	}
+	if strings.Contains(string(body), "不依赖本地 hook 是否生效") {
+		t.Fatalf("docs/reference/cli.md 仍有 hook 时代措辞")
+	}
 }

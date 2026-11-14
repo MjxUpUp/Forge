@@ -23,14 +23,14 @@ change: `cmd-surface-convergence`
   - `internal/cli/verify.go`、`internal/cli/config.go`：Short 改为契约检查 / compat 声明。
   - `scripts/checks/no-stale-hook-help.sh`、`scripts/checks/resume-hook-flags-gone.sh`：两条静态守卫。
   - `compat.snapshot.json`：resume 少三个 flag，快照随 `forge compat snapshot` 重钉。
-  - 新增测试：`internal/cli/help_surface_test.go`（钉帮助措辞与 Short）、`internal/clitask/task_resume_flags_test.go`（钉三个 flag 不存在）。
+  - 新增测试：`internal/cli/help_surface_test.go`（钉帮助措辞、Short 与 `docs/reference/cli.md` 的接线措辞）、`internal/clitask/task_resume_flags_test.go`（钉三个 flag 不存在）、`internal/clitask/task_files_test.go`（承接从被删 banner 测试里抽出的 `snapshotTaskFiles` 助手）。
 - 关键类型与函数签名：`healNpmShimIfNeeded()`（无参数）。
 - 数据/接口变化：CLI 表面少三个 flag；`TaskState` 结构不变。
 
 ## 验证思路
 
-- 为什么下面的命令足以证明「怎样算解决」：build 保证删干净；clitask/taskpipeline 测试覆盖 resume 的剩余行为与 state 序列化；两条守卫把「帮助里再出现 hook 措辞」「hook flag 复活」钉成回归；docs/cli 测试保证 reference 没被带歪；deadcode 保证没有留下无人调用的实现。
-- 反例（什么情况下这些判据会假绿，怎么防）：守卫是静态 grep，同义词或另一种死分支写法会漏——所以守卫列的是「本仓库真实出现过的残留形态」（`forge hook` / `Stop hook` / `compact-resume` / `resume-reinject` / `os.Args[1] == "hook"`），并配合 `help_surface_test` 钉具体 Short；新出现的措辞变体仍需 review 兜底。
+- 为什么下面的命令足以证明「怎样算解决」：build 保证删干净；clitask/taskpipeline 测试覆盖 resume 的剩余行为与 state 序列化；两条守卫把「帮助里再出现 hook 措辞」「hook flag 复活」钉成回归；help_surface 测试钉住 `docs/reference/cli.md` 的接线措辞（其余 hook 语境由 review 判断）；deadcode 保证没有留下无人调用的实现。
+- 反例（什么情况下这些判据会假绿，怎么防）：守卫是静态 grep，同义词或另一种死分支写法会漏——所以守卫列的是「本仓库真实出现过的残留形态」（`forge hook` / `Stop hook` / `compact-resume` / `resume-reinject` / `os.Args[1] == "hook"` / `hook 命令` / `hook spawn` / `hook 模式`），并配合 `help_surface_test` 钉具体 Short 与 reference 措辞；新出现的措辞变体仍需 review 兜底。
 
 ## 风险
 
