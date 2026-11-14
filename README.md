@@ -165,6 +165,39 @@ npm install -g @agent_forge/forge
 # 支持平台：macOS (x86_64/ARM64)、Linux (x86_64/ARM64)、Windows (x86_64)
 ```
 
+## ⬆️ 从 1.84 及更早版本升级
+
+1.85 删除了宿主层：hook 执法、用户级 `CLAUDE.md` / `AGENTS.md` 注入、插件、skills 分发都不再存在。
+旧版本留在用户目录里的东西不会自动消失，`forge uninstall` 也随宿主层一起删了，所以按下面手工清理
+（删除前先备份）。
+
+```bash
+# 0) 备份可能被改动的文件
+mkdir -p ~/forge-backup/upgrade-1.84
+cp ~/.claude/CLAUDE.md ~/.claude/settings.json ~/.codex/AGENTS.md ~/.codex/hooks.json \
+   ~/forge-backup/upgrade-1.84/ 2>/dev/null
+
+# 1) 定位旧版写的全局注入（内容是 FORGE:START .. FORGE:END 整段）
+grep -rln 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md 2>/dev/null
+#    有就删掉整段；如果文件只剩这一段，直接删文件
+
+# 2) 旧 hook 配置
+rm -f ~/.codex/hooks.json
+#    ~/.claude/settings.json 的 hooks 段里若引用 forge hook，删掉对应条目
+
+# 3) 旧插件与 skills 分发
+rm -rf ~/.claude/plugins/marketplaces/forge ~/.claude/plugins/cache/forge
+rm -rf ~/.forge/skills-cache ~/.forge/skills-manifest.json
+
+# 4) 自检：以下命令都应无输出
+grep -rln 'FORGE:START' ~/.claude ~/.codex 2>/dev/null
+ls ~/.forge/skills-cache 2>/dev/null
+```
+
+清理后在仓库里跑 `forge status`，应看到 `spec/forge.yaml` 契约。Claude Code 2.1.277+ 在没有
+`CLAUDE.md` 时会直接读 `AGENTS.md`；更老的版本、或想显式钉住入口文件时，跑
+`forge change agents --pointers claude` 生成 `CLAUDE.md` 指针。
+
 ## 🤝 贡献
 
 欢迎提 Issue 和 PR。开发时注意：

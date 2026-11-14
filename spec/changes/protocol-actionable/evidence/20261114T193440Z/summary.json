@@ -1,0 +1,105 @@
+{
+  "change": "protocol-actionable",
+  "started_at": "2026-11-14T19:34:40Z",
+  "finished_at": "2026-11-14T19:34:52Z",
+  "passed": true,
+  "sealed": true,
+  "head": "1f4508bf444dad2c8265c6adc562e923778058a0",
+  "diff_sha256": "ce0cff78fc824e533cc1e366a3381c080d679c913095e491f1ce426c360b380f",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "cec1eb213d151c52a110d70c270bfa6fda2f24c9f5f1fc9af30c6734717b8b4d"
+    },
+    {
+      "path": "internal/change/agents_protocol_test.go",
+      "sha256": "c068688399662a969e19d40f6c8e069e20bbb9cea52bf2f3dda819e68974e345"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "bf33ec993dc6ffe74f30690503418f90275b63184f6ea8b3e42acc93470ee270"
+    },
+    {
+      "path": "scripts/checks/migration-doc.sh",
+      "sha256": "358cf1db52ef970a777e9c6858d9675636dfb48d9a4affecc2470c4f5aa3dce8"
+    },
+    {
+      "path": "scripts/checks/protocol-actionable.sh",
+      "sha256": "6ca8ea2f1ac3a92ef5631ea7bc11cdb7feee47e004cd5f7eca7e352f4fa97201"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/acceptance.md",
+      "sha256": "31401a02608fe483fac47d743a4cd02171e50a510399d1344f03115c4163c2af"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/design.md",
+      "sha256": "e7d1090bd0f7fb49b343aa0d11a7831cd769ed534e801a55c04d2ce84681dfe8"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/goal.md",
+      "sha256": "88784033bd87afa9a861d2e0da89c60913e04f5aaf6f20c9324f33bed01e16c4"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/proposal.md",
+      "sha256": "dadedd95d886f0bb554c52bb1f948846a8320f1a900219312bd07d29ee330b59"
+    },
+    {
+      "path": "spec/changes/protocol-actionable/tasks.md",
+      "sha256": "115534c4bba5d8892718e0e63ca75802bf3a6fa483641b710a509e4e9548c48b"
+    }
+  ],
+  "acceptance_sha256": "31401a02608fe483fac47d743a4cd02171e50a510399d1344f03115c4163c2af",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3232
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestAgentsProtocol' -count=1",
+      "exit": 0,
+      "duration_ms": 1055,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "sh scripts/checks/protocol-actionable.sh",
+      "exit": 0,
+      "duration_ms": 365,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/migration-doc.sh",
+      "exit": 0,
+      "duration_ms": 275,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChangeAgents|TestChangeInit' -count=1",
+      "exit": 0,
+      "duration_ms": 3305,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4321
+    }
+  ]
+}
