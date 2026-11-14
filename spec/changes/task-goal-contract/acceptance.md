@@ -21,7 +21,7 @@ go test ./internal/cli/ -run 'TestChangeNew_WritesGoalContract|TestChangeNewFast
 ```
 
 ```bash
-go test ./internal/clitask/ -run 'TestResolveGoalContract|TestTaskStart_RegistersGoalContractFlags' -count=1
+go test ./internal/clitask/ -run 'TestResolveGoalContract|TestTaskStart_RegistersGoalContractFlags|TestTaskStart_WorktreeChangePinsWorktreeGoal|TestTaskStart_WorktreeChangeRequiresCommittedGoal' -count=1
 ```
 
 ```bash
