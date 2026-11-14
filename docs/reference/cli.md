@@ -237,7 +237,7 @@
 
 ```bash
 forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配；go test 带 Expected 或 contains/not-contains 断言忘加 -v 时 start 自动补——无 -v 无 PASS 行永不匹配）
-forge task start --ref feat/login --worktree [--base main] [--wt-dir <父目录>]   # 在 repo 树外为此任务创建独立 worktree+分支+绑定（多任务并发隔离形态；<repo 父目录>/<repo 名>-wt/<分支> 默认）
+forge task start --ref feat/login --worktree [--base main] [--wt-dir <父目录>]   # 在 repo 树外为此任务创建独立 worktree+分支+绑定（多任务并发隔离形态；<repo 父目录>/<repo 名>-wt/<分支> 默认）；worktree 形态要求 goal.md 已提交（从 base 检出）
 forge task start --ref feat/add-login --scope "internal/auth/*.go"                # 声明计划改动白名单（规划前置→可度量契约，advisory 检测 scope-drift）
 forge task start --ref feat/goal --branch --change task-goal-contract          # 把 change 的 goal.md 钉成目标契约（Path+SHA256）；启动后改 goal.md，task-implement 即 BLOCKED
 forge task start --ref feat/hotfix --goal-file docs/goal.md                   # 非 change 流程也可用仓库内五段式 goal 文件；与 --change 二选一，且与 --goal 互斥
@@ -280,3 +280,4 @@ forge task score                  # 查看质量评分
 
 - `change new <id> [--fast --by-human]`：生成 `goal.md`（Objective / Why / Constraints / Out of Scope / Check 五段，填完删掉每段的 `forge:fill` 标记）+ 其余产物。`verify`/`gate` 会把「goal.md 存在但未填完」直接拒绝；`status` 报为待补、只给补齐步骤；没有 goal.md 的老 change 兼容放行。（本版 `change new` 会在 change 目录留 `.goal-required` 标记：带标记却删掉 goal.md 不再算老 change，verify 直接拒绝。）`--fast` 省 design/tasks，不省 goal 与 acceptance；缺 `--by-human` 直接报错（先把「这次走快速通道吗」问人，agent 不得自批）。 `--by-human` 不带 `--fast` 时忽略并在 stderr 提示（它只对快速通道有意义）。
 - `task start --change <id>` / `--goal-file <path>`：把 goal.md 读作任务的目标契约，启动时钉 `Path + SHA256`；`--goal-file` 要求仓库内路径，二者与 `--goal` 自由文本互斥。`task gate task-implement` 重算哈希——启动后改 goal.md 即 BLOCKED（改 goal 等于改判据，还原文件或 `task abort` 重开）；未钉契约的老任务只记 `goal-contract` advisory。 老 change 没有 goal.md 时 `--change` 会报错：先补 goal.md，或改用 `--ref` 起任务（不钉契约）。
+  `--worktree` 时契约在新建的 worktree 里重新解析，读的是 `--base` 那份检出、不是主检出的工作区：goal.md 必须已提交，主检出里只有未提交的 goal.md 会在启动时报「goal 契约在 worktree 里读不到」并回滚刚建的 worktree/分支；已提交后又改了工作区版本，钉的仍是提交内容。要么先提交 goal.md，要么不用 `--worktree`。

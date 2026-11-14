@@ -17,7 +17,7 @@ for f in $files; do
 done
 
 # 正向：README 与 cli.md 是入口文档，必须明确写「五份」。
-for f in README.md docs/reference/cli.md; do
+for f in README.md docs/reference/cli.md internal/change/templates/agents-protocol.md; do
   if ! grep -q '五份' "$f"; then
     printf 'docs-artifact-counts: %s 未提到「五份」产物\n' "$f"
     exit 1
