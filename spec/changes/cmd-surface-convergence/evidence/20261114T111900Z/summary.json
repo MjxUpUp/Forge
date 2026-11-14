@@ -1,0 +1,143 @@
+{
+  "change": "cmd-surface-convergence",
+  "started_at": "2026-11-14T11:19:00Z",
+  "finished_at": "2026-11-14T11:23:39Z",
+  "passed": true,
+  "sealed": true,
+  "head": "323cf4dceb5f1beaba597c2e19db6ef248eff8b3",
+  "diff_sha256": "ff3e273b4c0f3741f9a25b86fd7be5b3e090c4d8e909bafbacf8615d1ff55713",
+  "files": [
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "aafdc1af21a71ce526d59a2434e8ced84d0a1df0f7bc05e171d71056387d8106"
+    },
+    {
+      "path": "internal/cli/config.go",
+      "sha256": "ddcc70d2dbf3a7d018d589e237d17b8e6a5fab9a67174adcbfc1257c7882bdc6"
+    },
+    {
+      "path": "internal/cli/review.go",
+      "sha256": "3ee6b921ab495f607adfd6a477244e56c9f36fdf27efcf346a2f4c12d56e0470"
+    },
+    {
+      "path": "internal/cli/root.go",
+      "sha256": "f0ccf223007e34c231179f33363e00fe9d23064117f32e85f9a797db0d548188"
+    },
+    {
+      "path": "internal/cli/shim_heal.go",
+      "sha256": "b937ce09a2108ea6e47af80e7a38756e539c26dffb0e4f5843989e3b8f81f878"
+    },
+    {
+      "path": "internal/cli/verify.go",
+      "sha256": "88596457cc7de0b6a464c31e306c6cd500da1031a5ed3edb53eeace1c456bc5b"
+    },
+    {
+      "path": "internal/clitask/task_continuity.go",
+      "sha256": "70aca0fa4871f1dd63384ef915662c0448707402f47f73fd0620c42f53c8a662"
+    },
+    {
+      "path": "internal/clitask/task_continuity_banner_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/clitask/task_continuity_hooks_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/clitask/task_continuity_render_test.go",
+      "sha256": "adb786ee15c5aca279271b68a016854497a9fb9e07421ed5684991b70c2d036c"
+    },
+    {
+      "path": "internal/clitask/task_files_test.go",
+      "sha256": "e27b4a9cd64da71d0db7e8e8b423474662075c2e14fcd7f01dc8c3b068e27737"
+    },
+    {
+      "path": "internal/taskpipeline/lock_test.go",
+      "sha256": "6c53402878d9e0ee222c2673dcd177730eb870f4647745d7291e1b15d47c9814"
+    },
+    {
+      "path": "internal/taskpipeline/state.go",
+      "sha256": "80ce2643a747ebc9a552bbcc614bb39f4c7e2fc3d16ff9ae1f717df2a321726d"
+    },
+    {
+      "path": "internal/tasktypes/types.go",
+      "sha256": "9bc25146230fd631c2803ba12cb924b7febdb2a630241a292cd1e1f9477caa8c"
+    },
+    {
+      "path": "scripts/checks/no-stale-hook-help.sh",
+      "sha256": "b401786ebe285f52cdc436d3eee07719b5e74e213cba3128edd67ac19fa5695e"
+    },
+    {
+      "path": "scripts/checks/resume-hook-flags-gone.sh",
+      "sha256": "819742f5e58acaefa1b0163e709eb95f22d75c98e09dd3570e34eaf2da141681"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/acceptance.md",
+      "sha256": "e70151b06b641fdc6ce832b32c205b5a5d2dfa12d326ca2aadab0b1f2bd54ac4"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/design.md",
+      "sha256": "93a2a52cb13776e5e359a193701a6df7b14eba2b3070b285f69af931274f4ed1"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/goal.md",
+      "sha256": "2c66a1b1924309ede75c0a07e011762b059ef6f1836ff062c1d7c757d6dc044d"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/proposal.md",
+      "sha256": "298c8f0b76a051c6bfad4f27ad0e0c5d20420849b31d263ed20b22c32dbb06a0"
+    },
+    {
+      "path": "spec/changes/cmd-surface-convergence/tasks.md",
+      "sha256": "a9fc0c95836f818c8dd05d5ea0f629a8456120a1662269568067b7502eb0738f"
+    }
+  ],
+  "acceptance_sha256": "e70151b06b641fdc6ce832b32c205b5a5d2dfa12d326ca2aadab0b1f2bd54ac4",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2783
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ ./internal/taskpipeline/ -count=1",
+      "exit": 0,
+      "duration_ms": 266409,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-stale-hook-help.sh",
+      "exit": 0,
+      "duration_ms": 82
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/resume-hook-flags-gone.sh",
+      "exit": 0,
+      "duration_ms": 270
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestDocs|TestCliReference|TestReadme|TestCompatSnapshotMatchesGolden' -count=1",
+      "exit": 0,
+      "duration_ms": 3044,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 6714
+    }
+  ]
+}

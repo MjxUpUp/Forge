@@ -17,12 +17,13 @@ var rootCmd = &cobra.Command{
 	Short: "AI 开发质量门禁管道",
 	Long: `Forge — AI 开发质量门禁引擎
 
-在 AI 生成的代码进入仓库前，通过结构化门禁管道进行质量锻造。
-配合 Claude Code，从需求到发布全流程质量保障。
+Forge 是 coding agent 循环的验证与状态层：门禁由显式命令推进，不依赖 hook。
+在 AI 生成的代码进入仓库前，用可执行判据与证据链确认「做对了」。
 
 快速开始:
-  forge init              在当前项目初始化管道
-  forge status            查看管道执行状态
+  forge init              在当前仓库声明契约（只写仓库内产物）
+  forge next              给出当前唯一该做的下一步
+  forge status            查看任务与门禁状态
 
 文档: https://github.com/MjxUpUp/Forge`,
 	// 静默 cobra 自己的错误/usage 打印：Execute 已自行向 stderr 打一行错误，
@@ -35,9 +36,8 @@ var rootCmd = &cobra.Command{
 		checkForUpdate(cmd.Root().Version, cmd)
 
 		// 自愈 npm 的脆弱 Windows sh 垫片（依赖 coreutils），让 POSIX-shell
-		// 宿主（kimi-code）能把 `forge` 解析到真实二进制。hook 子命令静默——
-		// 其 stderr 可能进入 agent 上下文。
-		healNpmShimIfNeeded(cmd.Name() == "hook")
+		// 宿主能把 `forge` 解析到真实二进制。
+		healNpmShimIfNeeded()
 
 		// init 命令跳过 auto-sync（项目尚不存在）
 		return nil

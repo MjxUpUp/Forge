@@ -144,15 +144,15 @@ func reviewMergedInFiles(root, baseline string) (map[string]bool, []string) {
 	return drop, restored
 }
 
-// forge review 让 code-review-gate 从"靠人手动喊"变成"门禁/hook 自动挡"。
+// forge review 让 code-review-gate 从"靠人手动喊"变成"可判定的门禁状态"。
 //
-// 双路径触发（用户 2026-06-27 point 4 设计）：
+// 双路径（用户 2026-06-27 point 4 设计）：
 //   - task 流程：`forge review pass` 写 TaskState.ReviewPassed，由 task-complete
-//     门禁强制（见 executor.go 硬前置）。Stop hook 在 task 模式不拦（避免每次改代码都拦）。
-//   - 非 task 流程：Stop hook 调 `forge review gate` 判定，未审源码变更则 block。
+//     门禁强制（见 executor.go 硬前置）。
+//   - 非 task 流程：由 CI 或 agent 显式运行 `forge review gate` 判定，调用方按 exit code
+//     决定是否阻断；阶段 D 起没有 hook 自动拦截。
 //
-// gate 是判定引擎（纯逻辑 + exit code）；review-stop hook 脚本只做 Claude Code
-// Stop 协议适配（见 hooks/embed.go ReviewStopHook）。
+// gate 是判定引擎（纯逻辑 + exit code），不绑定任何宿主协议。
 
 func init() {
 	rootCmd.AddCommand(reviewCmd)
@@ -175,11 +175,11 @@ var reviewCmd = &cobra.Command{
 
 两条路径：
   - task 流程：审查通过标记写入任务状态，task-complete 门禁强制（提交前必审）。
-  - 非 task 流程：Stop hook 自动拦截未审的源码变更。
+  - 非 task 流程：由 CI 或 agent 显式运行 gate 判定；未审的源码变更由调用方决定是否阻断。
 
 子命令：
   pass    标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）
-  gate    判定当前是否需要审查（Stop hook 调用；exit 0=放行，1=需审 block）
+  gate    判定当前是否需要审查（显式调用；exit 0=放行，1=需审）
   status  显示当前审查状态`,
 }
 
@@ -191,7 +191,7 @@ var reviewPassCmd = &cobra.Command{
 
 var reviewGateCmd = &cobra.Command{
 	Use:   "gate",
-	Short: "判定当前是否需要审查（Stop hook 调用）",
+	Short: "判定当前是否需要审查（CI 或 agent 显式调用）",
 	Long: `判定引擎：task 模式放行（审查由 task-complete 门禁管）；非 task 模式按 diff
 stamp 决策。输出 PASS/ADVISORY/FAIL 到 stdout，exit 0=放行、1=需审 block。
 评估失败 fail-open 放行（forge 安全原则）。`,
@@ -537,7 +537,7 @@ func runReviewGate(cmd *cobra.Command, args []string) error {
 		fmt.Printf("FAIL %s\n", reason)
 		fmt.Println()
 		fmt.Println(gateGuidance)
-		// exit 1 = block（Stop hook 据此 decision:block）；用 os.Exit 绕过 cobra 的
+		// exit 1 = 需审（调用方据此决定是否阻断）；用 os.Exit 绕过 cobra 的
 		// "Error:" stderr 噪声，保证 stdout 干净供 hook 当 additionalContext。
 		os.Exit(1)
 	}
