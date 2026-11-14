@@ -1,0 +1,180 @@
+{
+  "change": "task-goal-contract",
+  "started_at": "2026-11-14T09:08:26Z",
+  "finished_at": "2026-11-14T09:08:42Z",
+  "passed": true,
+  "sealed": true,
+  "head": "b56b7292934f21946f4fd18681e3e9ecf3706fc7",
+  "diff_sha256": "cc9854e713c70273f71dda7bc0286590e5951216f3e8d14a84de5f8e32d843e4",
+  "files": [
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "692219368818c1d57e88f5656e14f1530ab8cb4d4a2a2599136e6a9d0c03802c"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "02ac1f4d170dbd95dd4af9db55e5082daae22ebf09ad9c7bba7b3af732d67815"
+    },
+    {
+      "path": "internal/change/change.go",
+      "sha256": "c653f3e101ddc765cdb5012d3df27b6903204964796c571336428428fdfb68e9"
+    },
+    {
+      "path": "internal/change/goal.go",
+      "sha256": "cf336f0ce653cea0e9ac060dd28e285f4d1223041db4b5a305febed5a0049135"
+    },
+    {
+      "path": "internal/change/goal_test.go",
+      "sha256": "153d59318feed0344eadc097bf421f6d96eadd71c2efb7242f38c6046d0957e6"
+    },
+    {
+      "path": "internal/change/status.go",
+      "sha256": "4dac5438315406a01643cc2bad3657fb622eafce123a8bb2dbfa7896173f495e"
+    },
+    {
+      "path": "internal/change/status_test.go",
+      "sha256": "552ba9d3dad5284bee0aa0d54daf4c727d44c890c7e7efa5c05f0216f22d52a6"
+    },
+    {
+      "path": "internal/change/templates.go",
+      "sha256": "24d1ee0e24e3e6c0bf62419c6d5e42dcd912f3328e403587d1cf0ff10e323c40"
+    },
+    {
+      "path": "internal/change/templates/acceptance.md",
+      "sha256": "c94d135cfcd1c0151c286d5a0a70b8dc75c7082af2be22c318229463a5ffe03c"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "89b6f9d069dc8bd9cc8e3ca323da1ff0799ddb933051651143f066a8473607c5"
+    },
+    {
+      "path": "internal/change/templates/design.md",
+      "sha256": "851e612925b676ae7c56a212603f0e28acc85fa3177087a77ed15a70528fdbc2"
+    },
+    {
+      "path": "internal/change/templates/goal.md",
+      "sha256": "dcfa92a56ca84ed54fae20b82df7fadd9451e3b05a369e969b3e3df8fc3ff60b"
+    },
+    {
+      "path": "internal/change/templates/proposal.md",
+      "sha256": "de16419528eb173f53caed491bcbb4fb09d0b1f0c5f665bd5ab054c9497c0b23"
+    },
+    {
+      "path": "internal/change/verify.go",
+      "sha256": "f2c020b45ebf39e920e5103ec399265c7e4c5c9c73cb644dba95f01fd121f686"
+    },
+    {
+      "path": "internal/change/verify_test.go",
+      "sha256": "a3695270c6f3e469873340bb0c562a2ba623d10c8f86267ba0fbe00609e25305"
+    },
+    {
+      "path": "internal/checklog/escape.go",
+      "sha256": "2b3bbd09e812d22ffc7d1b5434ac473ba5e07d77abfd1c6728fe6073aefb7ac1"
+    },
+    {
+      "path": "internal/checklog/types.go",
+      "sha256": "983f43951338615108da5181a9fa9a7069f503645eaf903249ad0c33c2dc798e"
+    },
+    {
+      "path": "internal/cli/aa_groups.go",
+      "sha256": "0e4b83750af17cd37893d1cd09b93500493e0388b18a4ff17230c17d1a2bf465"
+    },
+    {
+      "path": "internal/cli/change.go",
+      "sha256": "095efe56c502acc3fc6e07d2839d8047383317393b8308221f551c86fcb65d53"
+    },
+    {
+      "path": "internal/cli/change_test.go",
+      "sha256": "be7412dd2f2bc352022ba61b4cf8742930233497c791921827c98832661f9e85"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "ae70dc7d1ffb9fc7430cb39824324248d85e31add8cd769cb1b5996828f4e2d9"
+    },
+    {
+      "path": "internal/clitask/task_goal.go",
+      "sha256": "1bf3aef38b019c2f7890580420a2943f28f085b851cae9374723e85e153ffa7d"
+    },
+    {
+      "path": "internal/taskpipeline/executor.go",
+      "sha256": "6f67390cf620065f89c652f642471c914cfa9dd79aaf90b2c299ac2210e5aba0"
+    },
+    {
+      "path": "internal/taskpipeline/goal_contract_test.go",
+      "sha256": "d4982050fa447954a25b2793295b870cbf0eb7de34a6aacc3d9f6fe9259c09a2"
+    },
+    {
+      "path": "internal/tasktypes/types.go",
+      "sha256": "7debe86dd9c6b51f22b6dd091627c4b34f81c9ebd0759ea516dc184da035eb95"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/acceptance.md",
+      "sha256": "6981c5347e573034c814dfd375d708b17c9dfe592ac536f9a546f5fd68e24f6e"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/design.md",
+      "sha256": "cb3e8440d48b463cecdd464c4e35d3666683c658e03413d14087999334f95bbc"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/goal.md",
+      "sha256": "29f5abd7e7217ec890478e45e033d01a4f7f2d876e811a74350e3c7772911c77"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/proposal.md",
+      "sha256": "b35c498dc726512eebb66ad333610ce98d7cea333538c5f3286cf04f9faa2432"
+    },
+    {
+      "path": "spec/changes/task-goal-contract/tasks.md",
+      "sha256": "0ba1c730471b850c31ffefabf71d58a6176e84a42f1eebb2bf18c0a7dc2779c7"
+    }
+  ],
+  "acceptance_sha256": "6981c5347e573034c814dfd375d708b17c9dfe592ac536f9a546f5fd68e24f6e",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2451
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestParseGoal|TestLoadGoal|TestGoalHash' -count=1",
+      "exit": 0,
+      "duration_ms": 1226,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run TestCheckGoalContract -count=1",
+      "exit": 0,
+      "duration_ms": 2438,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChangeNew_WritesGoalContract|TestChangeNewFast' -count=1",
+      "exit": 0,
+      "duration_ms": 3908,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "grep -q \"goal.md\" docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 43
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5514
+    }
+  ]
+}

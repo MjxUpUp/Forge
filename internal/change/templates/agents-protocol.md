@@ -13,6 +13,7 @@
   `forge change init` 默认写 `hooks: off`：只用产物、不开 hook 执法；要门禁把它改成 `on`。
   安全底线（hazard-guard / mcp-scan / skill-scan）随这个开关：默认 audit-only，写 `on`
   才执法（执法时不受契约 profile 收窄），但仍受机器全局档位限制（`FORGE_PROFILE=lite` 时只接线 hazard-guard）。
+- `spec/changes/<id>/goal.md` — 目标契约五段：Objective / Why / Constraints / Out of Scope / Check；填完删掉每段的 `forge:fill` 标记。
 - `spec/changes/<id>/proposal.md` — 为什么做、怎样算解决。
 - `spec/changes/<id>/design.md` — 怎么改、为什么这么改。
 - `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号（多个用「和/或/、」分隔）。
@@ -23,10 +24,14 @@
 ## 一个 change 的生命周期
 
 1. 一次性初始化：`forge change init` 声明契约（生成 `spec/forge.yaml`）并同步本托管块；契约已存在时用 `forge change agents` 重新同步。
-2. `forge change new <id> --title "..."` 生成四份产物。
-3. 依次填 proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
+2. `forge change new <id> --title "..."` 生成五份产物（含 `goal.md`）。
+   新 change 会留一个 `.goal-required` 标记：它让 goal.md 成为必填——删掉 goal.md 不再算「老 change」，verify 会直接拒绝。
+3. 依次填 goal → proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
+   启动任务时用 `forge task start --change <id>` 把 goal 钉成内容哈希；启动后改 goal.md 会让 `task-implement` BLOCKED（改目标等于改判据，重开任务）。
+   goal 没填完时 `task start --change` 会报错（读不出五段）；漂移后的恢复：还原 goal.md，或 `forge task abort` 后重新 `task start --change` 钉新哈希。
+   老 change 没有 goal.md 时 `--change` 会报错：先补 goal.md，或改用 `forge task start --ref <ref>`（不钉契约；implement 只记 advisory）。
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
-5. 提交。归档用 `git mv spec/changes/<id> spec/changes/archive/$(date +%Y%m%d)-<id>`（八位日期 + 连字符 + change id；`archive/` 目录由 init 建好）。
+5. 先勾 tasks.md 的进度、再跑 verify、然后提交（证据指纹含 tasks.md，勾选或提交后再改文件都会让证据失效）。归档用 `git mv spec/changes/<id> spec/changes/archive/$(date +%Y%m%d)-<id>`（八位日期 + 连字符 + change id；`archive/` 目录由 init 建好）。
 6. 之后再改被验证的文件、或改 acceptance，证据自动失效（`forge change list` 显示「证据已失效」），必须重跑 verify。
 7. 工作区有未提交改动时，证据会记下这些文件的 sha256；干净工作区 verify 则只绑 commit
    （summary 里没有 files 字段，靠 HEAD 移动即失效来兜）。list 会显示绑定的 commit。
@@ -55,7 +60,8 @@ status 若报 `blocked`，说明同一原因（每次 verify/gate 的第一条�
 
 小的、明显不需要设计的改动可以用 `forge change new <id> --fast`：
 
-- 只要求 `proposal.md` 与 `acceptance.md`（省的是文档份数，不是判据与证据）；
+- 只要求 `goal.md`、`proposal.md` 与 `acceptance.md`（省的是 design/tasks，不是目标与判据）；
+- 必须带 `--by-human`：先问「这次走快速通道吗」，人明确同意才能建；agent 不得自批；
 - 判据、证据、封印、失效规则完全一样，summary 里会标 `fast: true`；
 - 周界（比如 ≤3 个文件、≤50 行）是团队约定，写在这里而不是让机器猜——
   阈值一判就假，比例可以统计，合适与否由 review 看。
@@ -71,7 +77,7 @@ status 若报 `blocked`，说明同一原因（每次 verify/gate 的第一条�
 - 「已验证」这个结论只能由 `forge change verify` 产出。手写的 summary.json 缺实跑输出文件，
   review 时应视为可疑——verify 只检查摘要是否自洽（有判据哈希、有实跑记录），
   它无法证明这份摘要真的来自一次执行。
-- 没装 forge 也能写四份产物、照样可审计；差别是产不出封印。
+- 没装 forge 也能写这些产物、照样可审计；差别是产不出封印。
 - 保留名：change id 不能用 `archive`、`evidence`。
 - 失败的证据别删：删掉最新那份，列表会回到上一次封印，看起来像一直是通过的。
 - 机器只能检查摘要自洽（checks 全 0、有 acceptance 哈希）；摘要是不是 verify 产出的、判据有没有真在检验，看 review 与证据目录里的文件。

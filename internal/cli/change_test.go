@@ -176,7 +176,13 @@ func TestChangeNewFast_WritesTwoTemplates(t *testing.T) {
 	if err := changeNewCmd.Flags().Set("fast", "true"); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = changeNewCmd.Flags().Set("fast", "false") }()
+	if err := changeNewCmd.Flags().Set("by-human", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = changeNewCmd.Flags().Set("fast", "false")
+		_ = changeNewCmd.Flags().Set("by-human", "false")
+	}()
 
 	_, _, err := captureOutput(t, func() error {
 		return runChangeNew(changeNewCmd, []string{"tiny"})
@@ -185,7 +191,7 @@ func TestChangeNewFast_WritesTwoTemplates(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(root, "spec", "changes", "tiny")
-	for _, name := range []string{change.FileProposal, change.FileAcceptance, change.FastFile} {
+	for _, name := range []string{change.FileGoal, change.FileProposal, change.FileAcceptance, change.FastFile} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("fast change 缺 %s: %v", name, err)
 		}
@@ -633,6 +639,7 @@ func TestChangeStatus_StderrPathIsRepoRelativeOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
+		"goal.md":       "# 示例：目标契约\n\n## Objective\n\n跑一次失败判据。\n\n## Why\n\n验证证据路径。\n\n## Constraints\n\n不改实现。\n\n## Out of Scope\n\n不做修复。\n\n## Check\n\nacceptance #1。\n",
 		"proposal.md":   "# 提案\n\ndemo\n",
 		"design.md":     "# 设计\n\ndemo\n",
 		"tasks.md":      "# 任务\n\n- [ ] 1. 跑\n\n判据：acceptance #1\n",
@@ -687,5 +694,69 @@ func TestChangeAgents_NoneWithTrailingCommaLeavesPointersAlone(t *testing.T) {
 				t.Fatalf("--pointers %q 不该碰指针文件，got %q", raw, got)
 			}
 		})
+	}
+}
+
+func TestChangeNew_WritesGoalContract(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	if _, _, err := captureOutput(t, func() error {
+		return runChangeNew(changeNewCmd, []string{"with-goal"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "spec", "changes", "with-goal", change.FileGoal)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("change new 应生成 goal.md: %v", err)
+	}
+	if _, perr := change.ParseGoal(string(raw)); perr == nil {
+		t.Fatal("新生成的 goal.md 是骨架，ParseGoal 必须报未完成")
+	}
+}
+
+func TestChangeNewFast_RequiresHumanApproval(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	if err := changeNewCmd.Flags().Set("fast", "true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = changeNewCmd.Flags().Set("fast", "false") }()
+
+	_, _, err := captureOutput(t, func() error {
+		return runChangeNew(changeNewCmd, []string{"sneaky"})
+	})
+	if err == nil || !strings.Contains(err.Error(), "--by-human") {
+		t.Fatalf("缺 --by-human 应拒绝 fast，got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "spec", "changes", "sneaky")); statErr == nil {
+		t.Fatal("被拒绝的 fast 不应留下目录")
+	}
+}
+
+func TestChangeNewFast_WithHumanApproval(t *testing.T) {
+	root := contractRepo(t)
+	t.Chdir(root)
+	for flag, val := range map[string]string{"fast": "true", "by-human": "true"} {
+		if err := changeNewCmd.Flags().Set(flag, val); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() {
+		_ = changeNewCmd.Flags().Set("fast", "false")
+		_ = changeNewCmd.Flags().Set("by-human", "false")
+	}()
+
+	_, _, err := captureOutput(t, func() error {
+		return runChangeNew(changeNewCmd, []string{"approved"})
+	})
+	if err != nil {
+		t.Fatalf("带 --by-human 应通过: %v", err)
+	}
+	dir := filepath.Join(root, "spec", "changes", "approved")
+	for _, name := range []string{change.FileGoal, change.FileProposal, change.FileAcceptance} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("approved fast change 缺 %s: %v", name, err)
+		}
 	}
 }

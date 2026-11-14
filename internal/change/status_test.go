@@ -216,7 +216,7 @@ func TestFastChange_OnlyNeedsProposalAndAcceptance(t *testing.T) {
 		t.Fatal("fast change 只写 proposal 与 acceptance 两份模板")
 	}
 	// 只补齐两份就够了。
-	for _, name := range []string{FileProposal, FileAcceptance} {
+	for _, name := range []string{FileGoal, FileProposal, FileAcceptance} {
 		path := filepath.Join(dir, name)
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -367,7 +367,9 @@ func TestStatus_PriorAttemptsListFailingHistory(t *testing.T) {
 
 	// 封印后是终态：历史失败只作记录，不再作为"返工先读"的清单。
 	acceptance := []byte("# acceptance\n\n```bash\n判据：\ntest -d spec\n```\n")
+	goalBody := "# 目标契约\n\n## Objective\n\n做点事。\n\n## Why\n\n因为要做。\n\n## Constraints\n\n- 无。\n\n## Out of Scope\n\n- 无。\n\n## Check\n\n- acceptance #1 通过。\n"
 	for name, body := range map[string][]byte{
+		"goal.md":       []byte(goalBody),
 		"acceptance.md": acceptance,
 		"proposal.md":   []byte("# 提案\n\n做点事。\n"),
 		"design.md":     []byte("# 设计\n\n就按提案做。\n"),
@@ -468,6 +470,7 @@ func TestStatus_CapsPriorAttemptsAtTenThroughStatusOf(t *testing.T) {
 	}
 	dir := filepath.Join(ChangesDir(root), "demo")
 	for name, body := range map[string]string{
+		"goal.md":       "# 目标契约\n\n## Objective\n\n做点事。\n\n## Why\n\n因为要做。\n\n## Constraints\n\n- 无。\n\n## Out of Scope\n\n- 无。\n\n## Check\n\n- acceptance #1 通过。\n",
 		"proposal.md":   "# 提案\n\nx\n",
 		"design.md":     "# 设计\n\nx\n",
 		"tasks.md":      "# 任务\n\n- [ ] 1. 跑\n\n判据：acceptance #1\n",

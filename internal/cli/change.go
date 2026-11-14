@@ -32,7 +32,8 @@ func init() {
 	changeNewCmd.Flags().String("title", "", "change 标题（缺省用 id）")
 	changeListCmd.Flags().Bool("json", false, "JSON 格式输出")
 	changeVerifyCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条验收命令的超时")
-	changeNewCmd.Flags().Bool("fast", false, "快速通道：只写 proposal 与 acceptance（判据与证据照旧）")
+	changeNewCmd.Flags().Bool("fast", false, "快速通道：只写 goal、proposal 与 acceptance（判据与证据照旧；必须带 --by-human）")
+	changeNewCmd.Flags().Bool("by-human", false, "确认「人已同意走 fast」：--fast 必须带它（agent 不得自批）")
 	changeStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	changeGateCmd.Flags().Int("task", 0, "tasks.md 里的任务序号（从 1 开始）")
 	changeGateCmd.Flags().Duration("timeout", change.DefaultCheckTimeout, "单条判据的超时")
@@ -47,6 +48,7 @@ var changeCmd = &cobra.Command{
 	Long: `forge change 把交付过程做成仓库里的文件，而不是装在机器上的插件：
 
   spec/forge.yaml                     契约（有它就算 forge 项目，clone 即用）
+  spec/changes/<id>/goal.md            目标契约（Objective/Why/Constraints/Out of Scope/Check 五段）
   spec/changes/<id>/proposal.md       为什么做
   spec/changes/<id>/design.md         怎么做
   spec/changes/<id>/tasks.md          拆成哪些步骤
@@ -68,7 +70,7 @@ var changeInitCmd = &cobra.Command{
 
 var changeNewCmd = &cobra.Command{
 	Use:   "new <id> [--title <标题>] [--fast]",
-	Short: "新建一个 change 骨架（四份模板；--fast 只要 proposal 与 acceptance）",
+	Short: "新建一个 change 骨架（含 goal.md 五段契约；--fast 只要 goal 与 proposal/acceptance，且须 --by-human）",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runChangeNew,
 }
@@ -290,6 +292,15 @@ func runChangeNew(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fast, _ := cmd.Flags().GetBool("fast")
+	byHuman, _ := cmd.Flags().GetBool("by-human")
+	if fast && !byHuman {
+		return fmt.Errorf("--fast 需要人批准：先问用户「这次走快速通道吗」，得到明确同意后加 --by-human 重跑。" +
+			"快速通道省的是 design/tasks，不省 goal 与 acceptance；agent 不得自己批准自己")
+	}
+	if byHuman && !fast {
+		// --by-human 只对 fast 有意义；静默接受会让「我批过了」变成一个无法审计的空动作。
+		fmt.Fprintln(cmd.ErrOrStderr(), "提示：--by-human 只用于 --fast（快速通道需要人批准）；普通 change 不需要它，本次已忽略")
+	}
 	var dir string
 	if fast {
 		dir, err = change.NewFast(root, id, title)
@@ -306,9 +317,9 @@ func runChangeNew(cmd *cobra.Command, args []string) error {
 	fmt.Printf("已创建 %s\n", rel)
 	fmt.Println()
 	if fast {
-		fmt.Println("快速通道：写 proposal（为什么做）与 acceptance（怎么算完），删掉两份文件里的 forge:fill 标记。")
+		fmt.Println("快速通道：写 goal（目标五段）、proposal（为什么做）与 acceptance（怎么算完），删掉三份文件里的 forge:fill 标记。")
 	} else {
-		fmt.Println("按顺序写：proposal（为什么做）→ design（怎么做）→ tasks（拆步骤）→ acceptance（可执行判据）")
+		fmt.Println("按顺序写：goal（目标五段）→ proposal（为什么做）→ design（怎么做）→ tasks（拆步骤）→ acceptance（可执行判据）")
 	}
 	fmt.Printf("写完后运行：forge change verify %s\n", id)
 	return nil
@@ -355,7 +366,7 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 		}
 		if c.Fast {
 			if note == "" {
-				note = "fast（快速通道：只要求 proposal + acceptance）"
+				note = "fast（快速通道：只要求 goal + proposal + acceptance）"
 			} else {
 				note = "fast；" + note
 			}
@@ -575,6 +586,16 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 	}
 	if st.Attempts > 0 {
 		fmt.Printf("整条验证记录（不含节点 gate）：%d 次\n", st.Attempts)
+	}
+	switch st.Goal {
+	case "complete":
+		fmt.Println("目标契约：goal.md 五段已填")
+	case "incomplete":
+		fmt.Println("目标契约：goal.md 还没填完（verify 会拒绝）")
+	case "required-missing":
+		fmt.Println("目标契约：缺失（本 change 由 forge change new 创建，goal.md 是必填产物；verify 会拒绝）")
+	default:
+		fmt.Println("目标契约：缺失（老 change 可忽略；新 change 由 forge change new 生成）")
 	}
 	if len(st.Nodes) > 0 {
 		fmt.Println()
