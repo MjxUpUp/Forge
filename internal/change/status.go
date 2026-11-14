@@ -308,6 +308,8 @@ type Status struct {
 	// Goal 是 goal 契约（task-goal-contract）的状态：complete / incomplete / missing。
 	// missing 只对老 change 出现——`change new` 自本版起必写 goal.md。
 	Goal string `json:"goal,omitempty"`
+	// GoalRequired 表示本 change 必须保留 goal.md（删了就是改判据，不是老 change）。
+	GoalRequired bool `json:"goal_required,omitempty"`
 	// PriorAttempts 是最近失败验证的摘要（新→旧）。循环停下或返工时先读它：
 	// 同样的命令、同样的退出码，重跑一遍只是再烧一次 token。
 	PriorAttempts []PriorAttempt `json:"prior_attempts,omitempty"`
@@ -328,11 +330,14 @@ func StatusOf(root, id string) (*Status, error) {
 		Attempts: len(fullAttempts(atts)),
 		Nodes:    nodeStatuses(c, atts),
 	}
+	st.GoalRequired = c.GoalRequired
 	switch {
 	case c.HasGoal && c.GoalComplete:
 		st.Goal = "complete"
 	case c.HasGoal:
 		st.Goal = "incomplete"
+	case c.GoalRequired:
+		st.Goal = "required-missing"
 	default:
 		st.Goal = "missing"
 	}

@@ -32,7 +32,7 @@ type GoalContract struct {
 
 - 只认 `## ` 二级标题；键做小写+去空格归一，支持中文别名（目标/原因/约束/范围外/检查）。
 - 每段 trim 后非空，且不含 forge:fill 注释标记；缺段/空段/残留标记都返回带段落名的错误。
-- 哈希对文件原始字节计算（不做换行归一）——跨平台一致性由 git 的 eol 归一负责，明确比"聪明"更可预测。
+- 哈希对文件原始字节计算（不做换行归一）——跨平台一致性依赖仓库把行尾钉成 LF（本仓 `.gitattributes` 的 `* text=auto eol=lf`）；用 forge 的他仓若开 `autocrlf=true` 且无 attributes，未改动的 goal.md 也可能哈希不符而误 BLOCKED（恢复=重开任务重新钉哈希）。
 
 ## 门禁位置
 
@@ -46,6 +46,7 @@ type GoalContract struct {
 
 ## 测试策略
 
-- `internal/change`：五段解析、缺段、残留标记、中文别名、缺文件、哈希稳定性。
+- `internal/change`：五段解析、缺段、残留标记、中文别名、缺文件、哈希稳定性；`DocProblems` 对「无 goal.md 的老 change 放行」「有但未填完拒绝」两向。
 - `internal/taskpipeline`：无契约 advisory、未变通过、漂移 BLOCKED、文件被删 BLOCKED。
 - `internal/cli`：`change new` 生成 goal.md、`--fast` 缺 `--by-human` 被拒且不留目录、带 `--by-human` 成功。
+- `internal/clitask`：`--change` 与 `--goal-file` 互斥、仓外路径与符号链接逃逸被拒、缺 change 时读 goal 报错、两个 flag 确实注册。

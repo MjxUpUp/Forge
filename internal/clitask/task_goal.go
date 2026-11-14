@@ -37,6 +37,12 @@ func resolveGoalContract(cmd *cobra.Command, root string) (*tasktypes.GoalContra
 	}
 
 	if changeID != "" {
+		// change id 是路径分量：校验必须在拼路径之前，否则 --change ../x 会把
+		// 契约钉到仓库外（ChangeDir 直接 Join）。LoadGoal 里再守一次，防未来
+		// 别的调用方绕过这里。
+		if err := change.ValidID(changeID); err != nil {
+			return nil, "", err
+		}
 		g, sum, rel, err := change.LoadGoal(root, changeID)
 		if err != nil {
 			return nil, "", err
@@ -55,6 +61,14 @@ func resolveGoalContract(cmd *cobra.Command, root string) (*tasktypes.GoalContra
 	raw, err := os.ReadFile(abs)
 	if err != nil {
 		return nil, "", fmt.Errorf("读取 --goal-file %q 失败: %w", goalFile, err)
+	}
+	// 符号链接不能成为逃逸口：路径在仓库内、但链接指向仓外时，git 里只有链接
+	// 本身，评审/追溯看不到真实内容。按解析后的真实路径再判一次边界。
+	if resolved, rerr := filepath.EvalSymlinks(abs); rerr == nil {
+		rootResolved, _ := filepath.EvalSymlinks(root)
+		if realRel, rerr := filepath.Rel(rootResolved, resolved); rerr != nil || realRel == ".." || strings.HasPrefix(realRel, ".."+string(filepath.Separator)) {
+			return nil, "", fmt.Errorf("--goal-file 解析符号链接后落在仓库外（%q → %q）：契约内容必须随 git 走，链接指向仓外文件无法被评审/追溯", goalFile, resolved)
+		}
 	}
 	g, err := change.ParseGoal(string(raw))
 	if err != nil {
