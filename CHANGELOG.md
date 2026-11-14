@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.85.2](https://github.com/MjxUpUp/Forge/compare/v1.85.1...v1.85.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **skills:** 内置库列举不落盘，真实路径需求改解压到系统临时目录 ([78ad00f](https://github.com/MjxUpUp/Forge/commit/78ad00fa320f25bf9f234b1402b97816df81fd1a))
+
 ## [1.85.1](https://github.com/MjxUpUp/Forge/compare/v1.85.0...v1.85.1) (2026-11-14)
 
 
