@@ -1,6 +1,15 @@
 > 本段由 forge 维护（`forge change agents` 同步）。块内手改会在下次同步被覆盖；
 > 团队自己的约定请写在标记外。
 
+## 开始之前（硬规则）
+
+- **任何代码改动之前，先跑 `forge next`**，只执行它给出的下一步；不要自己挑流程。
+- 一次任务只做一件事：`forge task start --ref <ref> --change <id>`（把 goal 钉成哈希），
+  做完跑 `forge task gate task-implement` 与 `forge task gate task-verify`，最后 `forge task complete`。
+- **门禁是命令，不是 hook**：这里没有后台拦截，上面每一条都要你自己跑；不跑就等于没有门禁。
+- 刻意的一次性小改：先 `forge task wild "<说明>"` 申报，再改；不要用「顺手」绕过门禁。
+- 「这次不用走 forge」也是合法选择，但要由人明确说出来；agent 不得自行决定跳过。
+
 ## change 流程（给 agent 的短协议）
 
 这个仓库用 `spec/` 记录交付过程：每个需求一个 change 目录，产物随 git 走。
@@ -10,9 +19,9 @@
 ## 目录
 
 - `spec/forge.yaml` — 仓库声明「我用这套产物」。它同时是激活判据：clone 下来就有。
-  `forge change init` 默认写 `hooks: off`：只用产物、不开 hook 执法；要门禁把它改成 `on`。
-  安全底线（hazard-guard / mcp-scan / skill-scan）随这个开关：默认 audit-only，写 `on`
-  才执法（执法时不受契约 profile 收窄），但仍受机器全局档位限制（`FORGE_PROFILE=lite` 时只接线 hazard-guard）。
+  `forge change init` 默认写 `hooks: off`；这个字段现在只是为了兼容旧文件而保留，
+  forge 从 1.85 起没有 hook 执法层，改它不会换来拦截。门禁靠 agent 显式跑
+  `forge task …` / `forge change …` 执行。
 - `spec/changes/<id>/goal.md` — 目标契约五段：Objective / Why / Constraints / Out of Scope / Check；填完删掉每段的 `forge:fill` 标记。
 - `spec/changes/<id>/proposal.md` — 为什么做、怎样算解决。
 - `spec/changes/<id>/design.md` — 怎么改、为什么这么改。
@@ -36,6 +45,21 @@
 7. 工作区有未提交改动时，证据会记下这些文件的 sha256；干净工作区 verify 则只绑 commit
    （summary 里没有 files 字段，靠 HEAD 移动即失效来兜）。list 会显示绑定的 commit。
    之后又改了代码或文档，证据自动失效；只提交证据本身不算。
+
+## Task 流程（门禁在命令里）
+
+任务是把「一次改动」变成可审证据的容器；change 可有可无，Task 门禁是强制的：
+
+1. `forge task start --ref <分支名> --change <id> --title "..."` 起任务（`--change` 要求
+   goal.md 五段已填，并把内容哈希钉进 state；没有 change 时用 `--goal-file` 或 `--goal`）。
+2. 干活。真要做的是「改代码」而不是「写文档」时，implement 门禁会核对确有改动。
+3. `forge task gate task-implement` → `forge task gate task-verify`：后者跑验收、配对测试、
+   cheat-scan 等检查；BLOCKED 先读它给的证据，不要换个说法重试。
+4. 需要独立审查时 `forge review pass --note "..."` 记录结论；文档改动用
+   `forge task doc-review --passed pass --score <N>` 记录（≥75 才过）。
+5. `forge task gate task-complete` → `forge task complete`。只提交不算完成。
+6. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
+   会降证据强度并留下审计记录，别当常规手段。
 
 ## 回环：下一步由 status 给，不由自己挑
 
@@ -65,6 +89,8 @@ status 若报 `blocked`，说明同一原因（每次 verify/gate 的第一条�
 - 判据、证据、封印、失效规则完全一样，summary 里会标 `fast: true`；
 - 周界（比如 ≤3 个文件、≤50 行）是团队约定，写在这里而不是让机器猜——
   阈值一判就假，比例可以统计，合适与否由 review 看。
+- 完全不想走 forge（连 goal 和判据都不留）：由人明确说「这次不用走 forge」，
+  那就只做 git 提交；不要建了 change 又空着，也不要事后补记成 fast。
 
 ## 红线
 
