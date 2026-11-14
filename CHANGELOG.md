@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.85.1](https://github.com/MjxUpUp/Forge/compare/v1.85.0...v1.85.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **docs:** 修正阶段 D 后 skillsdist 的现状描述 ([05e3c38](https://github.com/MjxUpUp/Forge/commit/05e3c382abdb9f69ead1bd7b39932bcbd8bc6ed0))
+
 ## [1.85.0](https://github.com/MjxUpUp/Forge/compare/v1.84.5...v1.85.0) (2026-11-13)
 
 
