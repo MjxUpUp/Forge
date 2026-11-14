@@ -635,9 +635,16 @@ type TaskState struct {
 	// 记录接续。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的信息结构，
 	// 但持久化进用户级 DataDir/tasks/<ref>.json 而非靠 agent 自觉读写 md。边界：用户级 state
 	// 不随仓库走——跨机器接续需要显式的 export/import 载体（尚未建）。
-	Kind         string        `json:"kind,omitempty"`          // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
-	OriginTool   string        `json:"origin_tool,omitempty"`   // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
-	Goal         string        `json:"goal,omitempty"`          // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）
+	Kind       string `json:"kind,omitempty"`        // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
+	OriginTool string `json:"origin_tool,omitempty"` // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
+	Goal       string `json:"goal,omitempty"`        // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）
+	// GoalContract pins the goal.md this task was started against (task-goal-contract).
+	//
+	// GoalContract 钉住任务启动时所依据的 goal.md（task-goal-contract）：Path 是
+	// 仓库相对路径，SHA256 是启动时的内容哈希。implement 门禁重算哈希——启动后
+	// 改 goal 等于改判据，必须重开任务（或还原文件），不能悄悄扩大/缩小范围。
+	// nil = 老任务或 --goal 自由文本启动（无契约，门禁只记 advisory）。
+	GoalContract *GoalContract `json:"goal_contract,omitempty"`
 	Plan         string        `json:"plan,omitempty"`          // 计划正文（markdown；--plan file 读入或直接传文本）
 	SessionLinks []SessionLink `json:"session_links,omitempty"` // 参与本 task 的全部 session 锚定（含创建方），多向锚定——支持 pi 起、claude-code 接的跨工具/跨会话接续
 	Decisions    []Decision    `json:"decisions,omitempty"`     // 已确认决策（AI_CONTEXT.md 的 Decisions 节升格）
@@ -1669,4 +1676,15 @@ func (s *TaskState) UntickedChecklist() []ChecklistItem {
 		}
 	}
 	return out
+}
+
+// GoalContract 是任务启动时钉住的 goal 契约引用（task-goal-contract）。
+//
+// Path 为仓库相对路径（正斜杠），SHA256 是文件原始字节的哈希；Change 是来源
+// change id（用 --goal-file 启动时为空）。门禁只认哈希：内容一致性由
+// 重算哈希判定，State 里不重复存五段正文（避免双写漂移）。
+type GoalContract struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+	Change string `json:"change,omitempty"`
 }

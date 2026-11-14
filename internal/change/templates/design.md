@@ -2,7 +2,7 @@
 
 change: `{{id}}`
 
-<!-- forge:fill — 填完这份文件后删掉这一行；四份产物都填完之前 verify 会拒绝执行。 -->
+<!-- forge:fill — 填完这份文件后删掉这一行；产物都填完之前 verify 会拒绝执行。 -->
 
 ## TL;DR
 

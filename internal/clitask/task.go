@@ -59,6 +59,8 @@ func init() {
 	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的「start 持久化」模式。
 	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）")
 	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
+	taskStartCmd.Flags().String("change", "", "关联 change id：读 spec/changes/<id>/goal.md 作为 goal 契约（五段式，钉内容哈希，implement 门禁校验）")
+	taskStartCmd.Flags().String("goal-file", "", "goal 契约文件（仓库内路径，五段式：Objective/Why/Constraints/Out of Scope/Check；与 --change 互斥）")
 	taskStartCmd.Flags().String("tier", "", "方案档位：none（直接改）| mini（小方案）| full（完整方案）；与硬触发器推导档位取较高者（advisory）")
 	taskStartCmd.Flags().String("tier-reason", "", "声明档位低于硬触发器要求时的下调理由（落审计；无理由则取较高档）")
 	taskStartCmd.Flags().String("plan-file", "", "计划正文 markdown 文件路径（读取存入 task.Plan，供 resume 拉回）")
@@ -370,6 +372,13 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "下一步：cd %s 并重开窗口，或直接 forge task resume 接续\n", wtRoot)
 	}
 
+	// goal 契约（task-goal-contract）：在读任何状态/切分支之前解析并校验，
+	// 避免"分支建好了才发现 goal.md 没填完"的半副作用。
+	goalContract, goalSummary, gerr := resolveGoalContract(cmd, root)
+	if gerr != nil {
+		return gerr
+	}
+
 	// --branch：从 main/master 创建新分支并切过去。
 	if createBranch {
 		if explicitRef == "" {
@@ -532,6 +541,14 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
 		state.Goal = goal
 	}
+	// 契约钉哈希；state.Goal 没被 --goal 填过时用 Objective 段做概览，
+	// 让 task status/resume 一句话就能看到"为什么做"。
+	if goalContract != nil {
+		state.GoalContract = goalContract
+		if state.Goal == "" {
+			state.Goal = goalSummary
+		}
+	}
 	// Per-task TTL 覆盖（设计 §3/§9 --ttl）：持久化进 state.TTL，使 health.effectiveTTL 按本任务自己
 	// 的时钟标失联，独立于全局 7d 常量。零（无 --ttl）留 state.TTL 于零值回落——legacy 任务无行为变化。
 	if ttl, _ := cmd.Flags().GetDuration("ttl"); ttl > 0 {
@@ -552,6 +569,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	planAcceptanceAdded := 0
 	hasPlanInput := false
 	if goal, _ := cmd.Flags().GetString("goal"); goal != "" {
+		hasPlanInput = true
+	}
+	if goalContract != nil {
 		hasPlanInput = true
 	}
 	if planFile, _ := cmd.Flags().GetString("plan-file"); planFile != "" {
