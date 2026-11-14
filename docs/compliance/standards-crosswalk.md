@@ -17,7 +17,7 @@ OWASP 对 skill 供应链的缓解措施钦定了 ed25519 签名、skill invento
 | AST07 Update Drift | "immutable pinning, hash verification" | `forge skills inventory --lock/--verify`（SKILL.md sha256 钉基线，漂移 exit 2） | **机制落地** |
 | AST08 Poor Scanning | 发布/安装期扫描 | `forge skills audit`（21 条安全规则）+ skillsqa | 机制落地 |
 | AST09 No Governance | "skill inventories, audit logging" | `forge skills inventory` + checklog 审计链 + decisions.md 决策留痕 | **机制落地** |
-| AST10 Cross-Platform Reuse | 跨平台一致性 | 双树分发 + drift-check（canonical 单源多目标） | 部分 |
+| AST10 Cross-Platform Reuse | 跨平台一致性 | 单源只读 canonical（阶段 D 起不再分发，无 drift-check） | 部分 |
 
 ## 二、OWASP Agent Control Standard（ACS v0.1）
 

@@ -43,7 +43,7 @@
 ### 1d. 设计族拆包
 
 - 12 个 skill（frontend-feature-development/frontend-stack-selection/frontend-aesthetics-execution/frontend-code-review/ai-generated-ui-review/ai-ui-generation-workflow/design-system-workflow/design-system-migration/design-review-snapshot/design-artifact-standards/design-audit/ui-iteration-feedback-loop）从 `skills/` 迁至 `plugins/forge-design/skills/`，附 plugin 壳（README + marketplace manifest），核心 skills/ 缩至通用集。（2026-10 起其中 design-artifact-standards、design-audit 收回核心，forge-design 现含 10 个。）
-- 同步：skills/CONVENTIONS §3 存废记录、embed 不变（skills.FS 只嵌 skills/，设计包不进二进制——按需 `forge skills install <path>` 或 marketplace）、守卫测试（计数类断言更新）、README skill 清单描述。
+- 同步：skills/CONVENTIONS §3 存废记录、embed 不变（skills.FS 只嵌 skills/，设计包不进二进制——按需人工拷入 canonical 目录或走 marketplace）、守卫测试（计数类断言更新）、README skill 清单描述。
 - 验收：go test 全绿；plugins/forge-design 12 skill 完整迁移（git mv 保留历史）；skillsqa audit 通过。
 
 ### 1e. 教科书瘦身 + maintainability 合并
