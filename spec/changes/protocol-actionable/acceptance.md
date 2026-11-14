@@ -40,7 +40,7 @@ sh scripts/checks/deadcode-zero.sh
 
 ## 人工检查
 
-- 迁移节覆盖 1.84 的实际残留：四个入口的 `FORGE:START` 段、两处 hook 配置只删条目
+- 迁移节覆盖 1.84 的实际残留：四个入口的 `FORGE:START` 段、四处 hook 配置只删条目
   （不删整文件、回滚 `[features] hooks`）、插件登记、skills 链接与缓存；删除前都有备份。
 - 托管块顶部的硬规则不会把「一行文案」也逼进全套门禁：`forge task wild` 与
   「这次不用走 forge」两个出口在块内可见。

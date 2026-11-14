@@ -35,11 +35,13 @@
   jsonl 里的字样误报出来）。
 - hook 配置**只删条目、不删文件**：codex 的 `hooks.json` 里用户自己的 hook 要保留，
   `config.toml` 的 `[features] hooks` 要回滚；claude `settings.json` 同理。
-- skills 分发：先 `find … -maxdepth 1 -type l -delete` 删指向缓存目录的链接，再删
-  `~/.forge/skills-cache`；否则 Windows 上会留下悬空 junction。插件还要清
-  `installed_plugins.json` 的 forge 条目。
-- 自检四条：四个入口无 `FORGE:START`、两个 hook 配置无 `forge hook`、缓存目录不存在、
-  skills 目录无悬空链接；再在仓库里跑 `forge status` 看契约。
+- skills 分发：先用 glob + `readlink` 预览、只删目标含 `skills-cache` 的链接，再删
+  `~/.forge/skills-cache`；另删真实目录 `~/.claude/skills/forge-quality`（旧版写死的
+  「只在横幅出现时才生效」文案）。否则 Windows 上会留下悬空 junction。插件登记要清
+  Claude 的 `installed_plugins.json` 与 Kimi 的 `installed.json`。
+- 自检：四个入口无 `FORGE:START`、四处 hook 配置（claude/codex/windsurf/cursor）无
+  `forge hook`、插件登记无 forge 条目、缓存与 `forge-quality` 目录不存在、skills 目录
+  无悬空链接；再在仓库里跑 `forge status` 看契约。
 
 ## 附带的清理
 
