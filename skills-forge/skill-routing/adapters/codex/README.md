@@ -20,7 +20,7 @@ Codex 的机制限制（实测确认）：
 
 收到用户消息时，先扫描意图是否命中下表关键词。**命中即 read 对应 SKILL.md 全文，严格按其流程处理**，不要自己瞎搞。
 
-路由表单一真相源：`<skills-root>/skill-routing/routes.json`（`<skills-root>` = `$FORGE_SKILLS_CANONICAL` 或 `~/.forge/skills-cache/embedded`；修改后重启 Codex 生效）。下表 SKILL.md 路径同理用 `<skills-root>` 占位——按你机器实际 skill 安装根替换。
+路由表单一真相源：`<skills-root>/skill-routing/routes.json`（`<skills-root>` = `$FORGE_SKILLS_CANONICAL` 或 `forge-skills-cache/embedded`（系统临时目录）；修改后重启 Codex 生效）。下表 SKILL.md 路径同理用 `<skills-root>` 占位——按你机器实际 skill 安装根替换。
 
 | 关键词 | skill | SKILL.md 路径 |
 |---|---|---|
