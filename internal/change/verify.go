@@ -211,9 +211,9 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	// 模板骨架不是判据：init+new 之后四份文件还是模板，直接 verify 会把
 	// 通用示例命令当成这个 change 的验收标准（在 Go 仓库里甚至能封印）。
 	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
-		want := "四份产物"
+		want := "五份产物（含 goal.md）"
 		if c.Fast {
-			want = "fast 通道要求的两份产物（proposal、acceptance）"
+			want = "fast 通道要求的三份产物（goal、proposal、acceptance）"
 		}
 		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——%s都填成这个 change 自己的内容、并删掉%s后再 verify",
 			id, strings.Join(problems, "、"), want, scaffoldHint)
@@ -576,8 +576,8 @@ const scaffoldHint = "文件头那行 forge:fill 注释标记"
 //
 // status 与 verify 共用这一个判定：两处各写一份，改一处就会漂移成"status 说
 // 可以跑、verify 说产物不全"。
-// 普通 change 要四份产物，少一份就少了对应的审计线索；fast 通道只要求
-// "为什么做"和"怎么算完"——省的是文档，不是判据与证据。
+// 普通 change 要五份产物（goal + 四份），少一份就少了对应的审计线索；fast 通道
+// 要求 goal/proposal/acceptance——省的是 design/tasks，不是目标与判据。
 func DocProblems(dir string, fast bool) []string {
 	required := []string{FileProposal, FileDesign, FileTasks, FileAcceptance}
 	if fast {
@@ -592,6 +592,13 @@ func DocProblems(dir string, fast bool) []string {
 		}
 		if strings.Contains(string(raw), scaffoldMarker) {
 			out = append(out, name+"（仍是模板骨架）")
+		}
+	}
+	// goal.md 是第五份产物：存在就必须五段写完；不存在按老 change 兼容放行
+	//（`change new` 自本版起总会生成它，新 change 无法绕过）。
+	if raw, err := os.ReadFile(filepath.Join(dir, FileGoal)); err == nil {
+		if _, perr := ParseGoal(string(raw)); perr != nil {
+			out = append(out, FileGoal+"（"+perr.Error()+"）")
 		}
 	}
 	return out

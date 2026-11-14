@@ -1,11 +1,14 @@
 package taskpipeline
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -412,6 +415,15 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		}, nil
 	}
 
+	// 3.2 goal 契约（task-goal-contract）：启动时钉了 goal.md 就必须还是同一份。
+	// 改 goal 等于改判据——悄悄扩大/缩小范围是最便宜的自欺，故直接阻断；没钉
+	// 契约的老任务/自由文本 goal 只记 advisory（向后兼容）。
+	if state != nil && state.Kind != "generic" {
+		if block := checkGoalContract(root, state); block != nil {
+			return block, nil
+		}
+	}
+
 	// 3.5 产物链分档执法（artifact-chain-workflow.md §2）：rubric/human/hard 档
 	// 按事实阻断（缺失/L1 lint/审批/漂移），默认链只发一次性 advisory 汇总——
 	// 放在方案前置（4）之前：链阻断时本轮不再叠加 plan-first 提示（噪音纪律），
@@ -517,4 +529,65 @@ func behaviorSurfaceHits(changed []string) []string {
 		}
 	}
 	return out
+}
+
+// checkGoalContract 校验任务启动时钉住的 goal 契约没有被改过（task-goal-contract）。
+//
+// 只比对原始字节的 sha256：五段完整性在 task start 时已由 change.LoadGoal 校验，
+// 这里再做一次解析只会多一个失败面。文件读不到按 BLOCKED 处理——"看不到契约"
+// 不能当成"没有契约"放行（契约文件被删也是改判据）。
+func checkGoalContract(root string, state *TaskState) *ExecuteResult {
+	if state == nil {
+		return nil
+	}
+	if state.GoalContract == nil {
+		entry := &checklog.Entry{
+			Check:   checklog.CheckGoalContract,
+			Passed:  false,
+			Checked: true,
+			TaskRef: state.TaskRef,
+			Level:   checklog.LevelAdvisory,
+			Detail:  "advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标五段不在 git 里，评审只能靠标题猜意图",
+		}
+		recordAudit(root, entry)
+		fmt.Fprintf(os.Stderr, "%s\n", entry.Detail)
+		return nil
+	}
+
+	abs := filepath.Join(root, filepath.FromSlash(state.GoalContract.Path))
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		return &ExecuteResult{
+			GateID:  GateImplement,
+			Passed:  false,
+			Message: fmt.Sprintf("goal 契约读不到：%s（%v）——契约文件被删也算改判据；还原文件或重开任务", state.GoalContract.Path, err),
+		}
+	}
+	sum := sha256.Sum256(raw)
+	got := hex.EncodeToString(sum[:])
+	if got != state.GoalContract.SHA256 {
+		return &ExecuteResult{
+			GateID: GateImplement,
+			Passed: false,
+			Message: fmt.Sprintf("goal 契约在任务启动后被修改：%s（启动时 %s…，现在 %s…）——改 goal 等于改判据；还原 goal.md，或 forge task abort 后重开任务",
+				state.GoalContract.Path, shortHash(state.GoalContract.SHA256), shortHash(got)),
+		}
+	}
+	entry := &checklog.Entry{
+		Check:   checklog.CheckGoalContract,
+		Passed:  true,
+		Checked: true,
+		TaskRef: state.TaskRef,
+		Level:   checklog.LevelPass,
+		Detail:  "goal contract unchanged: " + state.GoalContract.Path,
+	}
+	recordAudit(root, entry)
+	return nil
+}
+
+func shortHash(h string) string {
+	if len(h) > 12 {
+		return h[:12]
+	}
+	return h
 }

@@ -305,6 +305,9 @@ type Status struct {
 	Nodes       []NodeStatus `json:"nodes,omitempty"`
 	Attempts    int          `json:"attempts"`
 	LastVerdict string       `json:"last_verdict,omitempty"` // sealed / failed / stale / none
+	// Goal 是 goal 契约（task-goal-contract）的状态：complete / incomplete / missing。
+	// missing 只对老 change 出现——`change new` 自本版起必写 goal.md。
+	Goal string `json:"goal,omitempty"`
 	// PriorAttempts 是最近失败验证的摘要（新→旧）。循环停下或返工时先读它：
 	// 同样的命令、同样的退出码，重跑一遍只是再烧一次 token。
 	PriorAttempts []PriorAttempt `json:"prior_attempts,omitempty"`
@@ -324,6 +327,14 @@ func StatusOf(root, id string) (*Status, error) {
 		Verdict:  "action",
 		Attempts: len(fullAttempts(atts)),
 		Nodes:    nodeStatuses(c, atts),
+	}
+	switch {
+	case c.HasGoal && c.GoalComplete:
+		st.Goal = "complete"
+	case c.HasGoal:
+		st.Goal = "incomplete"
+	default:
+		st.Goal = "missing"
 	}
 	// 已封印的 change 不再需要死路记忆：封印是终态，历史失败只作记录。
 	if !c.Sealed {

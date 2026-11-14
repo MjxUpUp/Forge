@@ -69,7 +69,7 @@ func EscapeReasonOf(e *Entry) string {
 var allCheckNames = []CheckName{
 	CheckAutoCompile, CheckAssertion, CheckTaskVerify, CheckTaskComplete, CheckTaskGuard,
 	CheckBashGuard, CheckFileSentinel, CheckScopeDrift, CheckCheatScan, CheckUnusedScan,
-	CheckEscapeHatch, CheckSkillTrigger, CheckKimiPluginStale, CheckReviewPass, CheckPlanFirst,
+	CheckEscapeHatch, CheckSkillTrigger, CheckKimiPluginStale, CheckReviewPass, CheckPlanFirst, CheckGoalContract,
 	CheckToolFailure, CheckSubagentStop, CheckTestNudge, CheckTakeoverPolicy,
 	CheckAttribution, CheckBundleVerify, CheckConventionsInject, CheckConventionsLint,
 	CheckCrossRepoImpact, CheckProjectSync, CheckTaskStarted,
