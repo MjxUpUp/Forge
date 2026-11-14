@@ -24,8 +24,8 @@ func init() {
 
 var configCmd = &cobra.Command{
 	Use:   `config`,
-	Short: `用户级偏好（compat 兼容基线声明）`,
-	Long: `forge config 管理 forge 的用户级偏好（~/.forge/config.json）。
+	Short: `兼容基线声明（compat）`,
+	Long: `forge config 管理 forge 的兼容基线（~/.forge/config.json）。
 
 compat——本机行为按哪个 forge 版本的默认走（空 = 跟最新，不钉）。`,
 }
