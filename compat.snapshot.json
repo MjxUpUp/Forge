@@ -1016,13 +1016,10 @@
       "path": "forge task resume",
       "flags": [
         "all-projects",
-        "compact-flag",
-        "hook",
         "json",
         "match",
         "no-attach",
         "ref",
-        "reinject",
         "workspace"
       ]
     },

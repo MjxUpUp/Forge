@@ -24,10 +24,8 @@ import (
 // 自愈的垫片（"MZ" 开头）直接跳过。
 
 // healNpmShimIfNeeded 对当前可执行文件执行自愈。由 PersistentPreRunE 调用，使每次
-// forge 调用（包括 hook spawn，只要能进来一次）都为下一次修好垫片。quiet 抑制一次
-// 性 stderr 提示（hook 子树用：其 stderr 可能作为阻断原因进入 agent 上下文，
-// 提示绝不能被误读为阻断）。
-func healNpmShimIfNeeded(quiet bool) {
+// forge 调用都为下一次修好垫片。
+func healNpmShimIfNeeded() {
 	if runtime.GOOS != "windows" {
 		return
 	}
@@ -36,7 +34,7 @@ func healNpmShimIfNeeded(quiet bool) {
 		return
 	}
 	healed, err := healNpmShim(exe)
-	if err == nil && healed && !quiet {
+	if err == nil && healed {
 		fmt.Fprintf(os.Stderr, "[forge] 已将脆弱的 npm sh 垫片替换为真实二进制（kimi 等 POSIX-shell 宿主开箱即用）\n")
 	}
 }

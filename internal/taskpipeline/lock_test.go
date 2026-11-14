@@ -158,31 +158,6 @@ func TestMutateTaskState_FnErrorNoSave(t *testing.T) {
 	}
 }
 
-// TestResumeStale_PerSession：per-session sentinel——同 sid Mark 后 Consume 恰为 true
-// 一次；不同 sid 互不影响（多 session 修复：B 的 prompt 不再消费 A 的压缩标记）。
-func TestResumeStale_PerSession(t *testing.T) {
-	dir := t.TempDir()
-	if err := MarkResumeStale(dir, "sid-a"); err != nil {
-		t.Fatal(err)
-	}
-	if ConsumeResumeStale(dir, "sid-b") {
-		t.Error("sid-b 不应消费 sid-a 的标记")
-	}
-	if !ConsumeResumeStale(dir, "sid-a") {
-		t.Error("sid-a 应消费到自己的标记")
-	}
-	if ConsumeResumeStale(dir, "sid-a") {
-		t.Error("标记应只被消费一次")
-	}
-	// 空 sid 永不消费（legacy session 走 task-scoped bool）
-	if err := MarkResumeStale(dir, "sid-c"); err != nil {
-		t.Fatal(err)
-	}
-	if ConsumeResumeStale(dir, "") {
-		t.Error("空 sid 不应消费任何标记")
-	}
-}
-
 // TestCurrentSessionID_FallbackChain：多 host session 探测——Claude env 优先；
 // FORGE_SESSION_ID（runHook 从任意 host stdin 的 session_id 注入）兜底；"default"
 // （脚本侧空占位符）与未设都返回 ""。
