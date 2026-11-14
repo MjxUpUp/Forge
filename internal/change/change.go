@@ -119,6 +119,9 @@ type Change struct {
 	// `change new` 自动生成。
 	HasGoal      bool `json:"has_goal"`
 	GoalComplete bool `json:"goal_complete"`
+	// GoalRequired 表示这个 change 由本版 change new 创建、必须保留 goal.md。
+	// 老 change 没有这个标记：它们本来就没有 goal.md，verify 保持兼容放行。
+	GoalRequired bool `json:"goal_required,omitempty"`
 
 	// EvidenceCount 是已落盘的证据目录数；Latest 是最新一次的摘要（可能为空）。
 	EvidenceCount int    `json:"evidence_count"`
@@ -135,7 +138,7 @@ type Change struct {
 	DiffBound bool `json:"diff_bound"`
 	// BoundHead 是封印时记录的 commit，供列表展示"证据绑在哪一版代码上"。
 	BoundHead string `json:"bound_head,omitempty"`
-	// Fast 表示这个 change 走的是快速通道：只要求 proposal 与 acceptance。
+	// Fast 表示这个 change 走的是快速通道：只要求 goal、proposal 与 acceptance。
 	// 判据、证据、封印一样不少——省的只是文档份数。
 	Fast bool `json:"fast,omitempty"`
 
@@ -252,13 +255,16 @@ func New(root, id, title string) (string, error) {
 		FileDesign:     tmplDesign,
 		FileTasks:      tmplTasks,
 		FileAcceptance: tmplAcceptance,
-		FileGoal:       renderGoalTemplate(id, title),
+		FileGoal:       tmplGoal,
 	}
 	for name, tmpl := range files {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte(renderTemplate(tmpl, id, title)), 0o644); err != nil {
 			return "", fmt.Errorf("change: 写 %s: %w", relTo(root, path), err)
 		}
+	}
+	if err := writeGoalRequired(dir); err != nil {
+		return "", err
 	}
 	return dir, nil
 }
@@ -458,6 +464,7 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 	c.HasDesign = exists(filepath.Join(dir, FileDesign))
 	c.HasTasks = exists(filepath.Join(dir, FileTasks))
 	c.HasAcceptance = exists(filepath.Join(dir, FileAcceptance))
+	c.GoalRequired = exists(filepath.Join(dir, GoalRequiredFile))
 	c.HasGoal = exists(filepath.Join(dir, FileGoal))
 	if c.HasGoal {
 		if raw, rerr := os.ReadFile(filepath.Join(dir, FileGoal)); rerr == nil {
@@ -706,6 +713,11 @@ func renderTemplate(tmpl, id, title string) string {
 	return strings.ReplaceAll(out, "{{title}}", title)
 }
 
+// GoalRequiredFile 标记「这个 change 是本版新建的，必须保留 goal.md」。
+// 没有它就无法区分「老 change 本来没有 goal.md」与「新 change 把 goal.md 删了」——
+// 后者等于删掉目标契约就能绕过 verify。
+const GoalRequiredFile = ".goal-required"
+
 // FastFile 是快速通道标记：存在即表示这个 change 只走精简产物。
 const FastFile = "FAST"
 
@@ -730,15 +742,18 @@ func NewFast(root, id, title string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("change: 创建 %s: %w", relTo(root, dir), err)
 	}
-	files := map[string]string{FileProposal: tmplProposal, FileAcceptance: tmplAcceptance, FileGoal: renderGoalTemplate(id, title)}
+	files := map[string]string{FileProposal: tmplProposal, FileAcceptance: tmplAcceptance, FileGoal: tmplGoal}
 	for name, tmpl := range files {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte(renderTemplate(tmpl, id, title)), 0o644); err != nil {
 			return "", fmt.Errorf("change: 写 %s: %w", relTo(root, path), err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, FastFile), []byte("快速通道：只要求 proposal 与 acceptance。\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, FastFile), []byte("快速通道：只要求 goal、proposal 与 acceptance。\n"), 0o644); err != nil {
 		return "", fmt.Errorf("change: 写 %s: %w", relTo(root, filepath.Join(dir, FastFile)), err)
+	}
+	if err := writeGoalRequired(dir); err != nil {
+		return "", err
 	}
 	return dir, nil
 }
@@ -759,4 +774,13 @@ func latestSealingSummary(id, evDir string, names []string) (*Summary, bool) {
 		return sum, true
 	}
 	return nil, false
+}
+
+// writeGoalRequired 标记「本 change 由新版创建」：删除 goal.md 不能被当成老 change 放行。
+func writeGoalRequired(dir string) error {
+	p := filepath.Join(dir, GoalRequiredFile)
+	if err := os.WriteFile(p, []byte("本 change 由 forge change new 创建：goal.md 是必填产物（删掉不等于老 change）。\n"), 0o644); err != nil {
+		return fmt.Errorf("change: 写 %s: %w", relTo(dir, p), err)
+	}
+	return nil
 }

@@ -555,23 +555,21 @@ func checkGoalContract(root string, state *TaskState) *ExecuteResult {
 	}
 
 	abs := filepath.Join(root, filepath.FromSlash(state.GoalContract.Path))
+	// 状态文件里的路径是启动时校验过的相对路径；但 state 可以被历史版本/手改写坏，
+	// 读之前再守一次，绝不让契约读取跑到仓库外。
+	if clean := filepath.ToSlash(filepath.Clean(filepath.FromSlash(state.GoalContract.Path))); filepath.IsAbs(state.GoalContract.Path) ||
+		clean == ".." || strings.HasPrefix(clean, "../") {
+		return blockGoalContract(root, state, fmt.Sprintf("goal 契约路径不合法：%q（必须是仓库内相对路径）——重开任务重新钉契约", state.GoalContract.Path))
+	}
 	raw, err := os.ReadFile(abs)
 	if err != nil {
-		return &ExecuteResult{
-			GateID:  GateImplement,
-			Passed:  false,
-			Message: fmt.Sprintf("goal 契约读不到：%s（%v）——契约文件被删也算改判据；还原文件或重开任务", state.GoalContract.Path, err),
-		}
+		return blockGoalContract(root, state, fmt.Sprintf("goal 契约读不到：%s（%v）——契约文件被删也算改判据；还原文件或重开任务", state.GoalContract.Path, err))
 	}
 	sum := sha256.Sum256(raw)
 	got := hex.EncodeToString(sum[:])
 	if got != state.GoalContract.SHA256 {
-		return &ExecuteResult{
-			GateID: GateImplement,
-			Passed: false,
-			Message: fmt.Sprintf("goal 契约在任务启动后被修改：%s（启动时 %s…，现在 %s…）——改 goal 等于改判据；还原 goal.md，或 forge task abort 后重开任务",
-				state.GoalContract.Path, shortHash(state.GoalContract.SHA256), shortHash(got)),
-		}
+		return blockGoalContract(root, state, fmt.Sprintf("goal 契约在任务启动后被修改：%s（启动时 %s…，现在 %s…）——改 goal 等于改判据；还原 goal.md，或 forge task abort 后重开任务",
+			state.GoalContract.Path, shortHash(state.GoalContract.SHA256), shortHash(got)))
 	}
 	entry := &checklog.Entry{
 		Check:   checklog.CheckGoalContract,
@@ -583,6 +581,21 @@ func checkGoalContract(root string, state *TaskState) *ExecuteResult {
 	}
 	recordAudit(root, entry)
 	return nil
+}
+
+// blockGoalContract 落一条失败检查再返回 BLOCKED：与其它 check 一致，
+	// 失败也要进 checklog，否则证据里只看到「门禁没过」却看不到是哪条、
+	// 当时的契约哈希是什么——复盘只能猜。
+func blockGoalContract(root string, state *TaskState, msg string) *ExecuteResult {
+	recordAudit(root, &checklog.Entry{
+		Check:   checklog.CheckGoalContract,
+		Passed:  false,
+		Checked: true,
+		TaskRef: state.TaskRef,
+		Level:   checklog.LevelWarn,
+		Detail:  msg,
+	})
+	return &ExecuteResult{GateID: GateImplement, Passed: false, Message: msg}
 }
 
 func shortHash(h string) string {

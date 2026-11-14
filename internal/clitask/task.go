@@ -343,6 +343,14 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	createBranch, _ := cmd.Flags().GetBool("branch")
 	useWorktree, _ := cmd.Flags().GetBool("worktree")
 
+	// goal 契约（task-goal-contract）：在任何磁盘副作用（worktree/分支）之前解析并校验，
+	// 避免"worktree 建好了、分支切过去了才发现 goal.md 没填完"的半副作用。
+	// 路径按仓库根解析；worktree 与主检出同仓，goal.md 的相对路径两边一致。
+	goalContract, goalSummary, gerr := resolveGoalContract(cmd, root)
+	if gerr != nil {
+		return gerr
+	}
+
 	// --worktree (multi-task-concurrency §7, L4): create the isolated workspace FIRST,
 	// then run the whole start flow rooted there — task state lands in the shared DataDir
 	// (worktrees share the project key by design), the binding anchors the NEW path, and
@@ -370,13 +378,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		// stdout belongs to the --json contract (machine-parseable only); human hints go to stderr.
 		fmt.Fprintf(cmd.ErrOrStderr(), "worktree 已创建: %s（如本次启动失败可 git worktree remove 清理）\n", wtRoot)
 		fmt.Fprintf(cmd.ErrOrStderr(), "下一步：cd %s 并重开窗口，或直接 forge task resume 接续\n", wtRoot)
-	}
-
-	// goal 契约（task-goal-contract）：在读任何状态/切分支之前解析并校验，
-	// 避免"分支建好了才发现 goal.md 没填完"的半副作用。
-	goalContract, goalSummary, gerr := resolveGoalContract(cmd, root)
-	if gerr != nil {
-		return gerr
 	}
 
 	// --branch：从 main/master 创建新分支并切过去。

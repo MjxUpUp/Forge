@@ -9,7 +9,7 @@ go build ./...
 ```
 
 ```bash
-go test ./internal/change/ -run 'TestParseGoal|TestLoadGoal|TestGoalHash' -count=1
+go test ./internal/change/ -run 'TestParseGoal|TestLoadGoal|TestGoalHash|TestDocProblems' -count=1
 ```
 
 ```bash
@@ -21,7 +21,15 @@ go test ./internal/cli/ -run 'TestChangeNew_WritesGoalContract|TestChangeNewFast
 ```
 
 ```bash
-grep -q "goal.md" docs/reference/cli.md
+go test ./internal/clitask/ -run 'TestResolveGoalContract|TestTaskStart_RegistersGoalContractFlags' -count=1
+```
+
+```bash
+grep -q "五份模板" docs/reference/cli.md
+```
+
+```bash
+grep -q "goal.md" README.md
 ```
 
 ```bash
@@ -30,4 +38,4 @@ sh scripts/checks/deadcode-zero.sh
 
 ## 人工检查项（可选）
 
-- [ ] `forge change status task-goal-contract` 里 goal 契约显示「五段已填」。`
+- [ ] `forge change status task-goal-contract` 里 goal 契约显示「五段已填」。

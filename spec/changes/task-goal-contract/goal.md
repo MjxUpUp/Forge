@@ -14,7 +14,7 @@ change: `task-goal-contract`
 
 - 兼容没有 `goal.md` 的老 change 与老任务：缺失只 advisory/提示，不阻断。
 - 不复制正文进 TaskState，只存 `Path + SHA256`，避免双写漂移。
-- 不引入新的必填 flag：`--goal` 自由文本继续可用（无契约，走 advisory）。
+- 不新增普通 change/task 的必填 flag：`--goal` 自由文本继续可用（无契约，走 advisory）；fast 的 `--by-human` 是唯一例外。
 - Windows/macOS/Linux 路径处理一致（仓库相对路径、正斜杠）。
 
 ## Out of Scope
@@ -25,4 +25,4 @@ change: `task-goal-contract`
 
 ## Check
 
-`acceptance.md` 的 #1–#5：build、goal 解析与契约校验测试、change new 生成 goal、文档引用、deadcode 零。
+`acceptance.md` 的 #1–#8：build、goal 解析与老 change 兼容、task start 互斥与仓内/符号链接边界、change new 人批、文档口径、deadcode 零。
