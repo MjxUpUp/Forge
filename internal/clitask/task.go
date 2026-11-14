@@ -382,7 +382,13 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			gc, sum, rerr := resolveGoalContract(cmd, wtRoot)
 			if rerr != nil {
 				discardTaskWorktree(root, explicitRef, wtDir, wtRoot)
-				return fmt.Errorf("goal 契约在 worktree 里读不到（--worktree 基于 %s，主检出里未提交的 goal.md 不在其中）：%w；先把 goal.md 提交，或不用 --worktree", base, rerr)
+				// base 缺省时由 worktreeBase 解析出真正基线；报错里必须给出
+				// 具体分支名，否则「基于 ，」是用户唯一看到的指引里的硬伤。
+				baseName := base
+				if baseName == "" {
+					baseName, _ = worktreeBase(root, base)
+				}
+				return fmt.Errorf("goal 契约在 worktree 里读不到（--worktree 基于 %s，主检出里未提交的 goal.md 不在其中）：%w；先把 goal.md 提交，或不用 --worktree", baseName, rerr)
 			}
 			goalContract, goalSummary = gc, sum
 		}

@@ -344,3 +344,34 @@ func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
 		t.Fatalf("误报 goal 漂移: %s %s", out, errOut)
 	}
 }
+
+// TestTaskStart_WorktreeChangeRequiresCommittedGoal 钉住 --worktree + --change
+// 的另一半语义：worktree 从 base 检出，主检出里未提交的 goal.md 读不到时必须
+// 报错并回滚 worktree 与派生分支，不能留下半副作用。
+func TestTaskStart_WorktreeChangeRequiresCommittedGoal(t *testing.T) {
+	tmpDir := wtSetupProject(t)
+
+	if out, errOut, code := runForge(t, tmpDir, "change", "new", "flow2", "--title", "flow2 probe"); code != 0 {
+		t.Fatalf("change new failed: %s %s", out, errOut)
+	}
+	goalPath := filepath.Join(tmpDir, "spec", "changes", "flow2", "goal.md")
+	if err := os.WriteFile(goalPath, []byte(completeGoalForTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 故意不提交 goal.md。
+
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-uncommitted", "--change", "flow2", "--title", "flow2 wt")
+	if code == 0 {
+		t.Fatalf("未提交 goal.md 时 --worktree --change 应失败: %s", stdout)
+	}
+	if got := stdout + stderr; !strings.Contains(got, "goal 契约在 worktree 里读不到") || !strings.Contains(got, "基于 main") {
+		t.Fatalf("报错应说明 worktree 基线且 goal 未提交，got: %s", got)
+	}
+	wtPath := filepath.Join(filepath.Dir(tmpDir), filepath.Base(tmpDir)+"-wt", "feat-flow-uncommitted")
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Fatalf("失败后 worktree 应被回滚，仍存在于 %s", wtPath)
+	}
+	if refs := wtGitOut(t, tmpDir, "branch", "--list", "feat/flow-uncommitted"); strings.TrimSpace(refs) != "" {
+		t.Fatalf("失败后派生分支应被删除，仍存在: %s", refs)
+	}
+}
