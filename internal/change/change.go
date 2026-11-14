@@ -114,6 +114,11 @@ type Change struct {
 	HasDesign     bool `json:"has_design"`
 	HasTasks      bool `json:"has_tasks"`
 	HasAcceptance bool `json:"has_acceptance"`
+	// HasGoal 表示 goal.md 存在；GoalComplete 表示五段都写完（无 forge:fill 残留）。
+	// 老 change 没有 goal.md 属历史产物——verify 只告警不阻断，新 change 由
+	// `change new` 自动生成。
+	HasGoal      bool `json:"has_goal"`
+	GoalComplete bool `json:"goal_complete"`
 
 	// EvidenceCount 是已落盘的证据目录数；Latest 是最新一次的摘要（可能为空）。
 	EvidenceCount int    `json:"evidence_count"`
@@ -223,7 +228,7 @@ func Init(root, profile string) (created []string, err error) {
 	return created, nil
 }
 
-// New 创建一个 change 骨架（四份产物模板），返回目录。
+// New 创建一个 change 骨架（五份产物模板，含 goal.md），返回目录。
 // 已存在则报错——change 是人的决策落点，不能被静默覆盖。
 func New(root, id, title string) (string, error) {
 	if err := ValidID(id); err != nil {
@@ -247,6 +252,7 @@ func New(root, id, title string) (string, error) {
 		FileDesign:     tmplDesign,
 		FileTasks:      tmplTasks,
 		FileAcceptance: tmplAcceptance,
+		FileGoal:       renderGoalTemplate(id, title),
 	}
 	for name, tmpl := range files {
 		path := filepath.Join(dir, name)
@@ -452,6 +458,14 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 	c.HasDesign = exists(filepath.Join(dir, FileDesign))
 	c.HasTasks = exists(filepath.Join(dir, FileTasks))
 	c.HasAcceptance = exists(filepath.Join(dir, FileAcceptance))
+	c.HasGoal = exists(filepath.Join(dir, FileGoal))
+	if c.HasGoal {
+		if raw, rerr := os.ReadFile(filepath.Join(dir, FileGoal)); rerr == nil {
+			if _, perr := ParseGoal(string(raw)); perr == nil {
+				c.GoalComplete = true
+			}
+		}
+	}
 
 	evDir := filepath.Join(dir, EvidenceDirName)
 	if evEntries, eerr := os.ReadDir(evDir); eerr == nil {
@@ -716,7 +730,7 @@ func NewFast(root, id, title string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("change: 创建 %s: %w", relTo(root, dir), err)
 	}
-	files := map[string]string{FileProposal: tmplProposal, FileAcceptance: tmplAcceptance}
+	files := map[string]string{FileProposal: tmplProposal, FileAcceptance: tmplAcceptance, FileGoal: renderGoalTemplate(id, title)}
 	for name, tmpl := range files {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte(renderTemplate(tmpl, id, title)), 0o644); err != nil {

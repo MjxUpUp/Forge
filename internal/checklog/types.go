@@ -96,6 +96,13 @@ const (
 	// 方案/目标=true，无=false——永远 Checked=true 且绝不阻断（advisory）。属
 	// observation 类，排除出证据强度分桶（见 BuildEvidenceChain）。
 	CheckPlanFirst CheckName = "plan-first"
+	// CheckGoalContract records the task-implement goal-contract check (task-goal-contract).
+	//
+	// CheckGoalContract 记录 task-implement 的 goal 契约校验（task-goal-contract）：
+	// 任务启动时钉了 goal.md 哈希则重算比对——不一致即 BLOCKED（改 goal 等于改判据，
+	// 必须重开任务）；未钉契约（老任务 / 自由文本 goal）只记 advisory。属 observation
+	// 类，未列入 evidence 白名单，不进证据强度分桶。
+	CheckGoalContract CheckName = "goal-contract"
 	// CheckToolFailure records one PostToolUseFailure observation (2026-08-22 failure-track hook, #4-A).
 	//
 	// CheckToolFailure 记录一次 PostToolUseFailure 观察（2026-08-22 failure-track
