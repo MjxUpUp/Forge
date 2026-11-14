@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.86.0](https://github.com/MjxUpUp/Forge/compare/v1.85.2...v1.86.0) (2026-11-14)
+
+
+### Features
+
+* **change:** goal.md 作为第五份产物，task start 钉哈希；fast 需人批 ([23e6e9f](https://github.com/MjxUpUp/Forge/commit/23e6e9fdf8194677304f1628e8256f69c02b20a2))
+
+
+### Bug Fixes
+
+* **change:** 收 review 回件——change id 边界、新 change 必留 goal.md、门禁接线测试 ([e7e85ef](https://github.com/MjxUpUp/Forge/commit/e7e85ef33d8756a1f2359ea806ec39006b9f8995))
+* **change:** 收文档 L2 回件——模板去掉不存在的 decisions 出口、判据换成防回归脚本 ([83167c0](https://github.com/MjxUpUp/Forge/commit/83167c0bf298b51d6f4b96a9481e69a2045c2a51))
+* **clitask:** --worktree 启动在 worktree 内重解析 goal 契约（P2-A） ([25f8a4f](https://github.com/MjxUpUp/Forge/commit/25f8a4f5d5b0a54b198c759fffdd41444fd03fe7))
+
 ## [1.85.2](https://github.com/MjxUpUp/Forge/compare/v1.85.1...v1.85.2) (2026-11-14)
 
 
