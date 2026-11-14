@@ -30,6 +30,13 @@
   旧 plugin 目录、`~/.forge/skills-cache` 与指向它的符号链接。
 - 自检：仓库内 `forge status` 正常；用户目录 `grep -rl "forge hook"` 为空。
 
+## 附带的清理
+
+`spec/changes/cmd-surface-convergence/` 在归档后又因 amend 重新落回工作树，与
+`spec/changes/archive/20261114-cmd-surface-convergence/` 重复，导致 `forge change check`
+把它当作未归档 change 并报「证据已失效」。本次一并删除这份重复目录，避免每个分支
+都继承一条假红。
+
 ## 风险与取舍
 
 - **措辞过强**：可能让 agent 对一行文案也跑全套门禁 → 用「代码改动」限定，并保留
