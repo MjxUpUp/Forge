@@ -108,11 +108,10 @@ func runChangeClarify(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("change: --note 与 --note-file 只能给一个，别让两份正文互相覆盖")
 	}
 	if noteFile != "" {
-		abs, aerr := filepath.Abs(noteFile)
-		if aerr != nil {
-			return aerr
+		abs := noteFile
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(root, abs)
 		}
-		// 词法检查先挡一层，再解析符号链接挡指向仓外的软链（相对路径按仓库根解析）。
 		rel, rerr := filepath.Rel(root, abs)
 		if rerr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return fmt.Errorf("change: --note-file 必须在仓库内（与 --goal-file 同一约束）：%s", noteFile)
@@ -121,7 +120,8 @@ func runChangeClarify(cmd *cobra.Command, args []string) error {
 		if serr != nil {
 			return fmt.Errorf("change: 读取 --note-file: %w", serr)
 		}
-		if rrel, rerr := filepath.Rel(root, resolved); rerr != nil || rrel == ".." || strings.HasPrefix(rrel, ".."+string(filepath.Separator)) {
+		rootResolved, _ := filepath.EvalSymlinks(root)
+		if rrel, rerr := filepath.Rel(rootResolved, resolved); rerr != nil || rrel == ".." || strings.HasPrefix(rrel, ".."+string(filepath.Separator)) {
 			return fmt.Errorf("change: --note-file 指向了仓库外的文件（符号链接）：%s", noteFile)
 		}
 		raw, rerr := os.ReadFile(resolved)

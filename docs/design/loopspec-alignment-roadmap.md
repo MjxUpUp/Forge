@@ -43,7 +43,7 @@ Forge 两样都缺：change 只有固定五份文件，没有节点；入口不�
 
 ```text
         ┌─────────────── 人 ───────────────┐
-        │  一次选择：fast / standard / task │  ← forge start（ASK）
+        │  一次选择：fast / standard / task │  ← forge start（规划中，未实现）
         └───────────────┬──────────────────┘
                         ▼
   契约层（人负责，agent 起草，改了就重新批准）
@@ -99,7 +99,7 @@ spec/profiles/<name>.yaml
 
 ```mermaid
 flowchart TD
-  U[请求 / 需求] --> S[forge start]
+  U[请求 / 需求] --> S[forge start（规划中）]
   S -->|只做小修| T[task start --kind task]
   S -->|fast 需人批| F[goal + acceptance]
   S -->|standard| C[goal 五段 + acceptance]
