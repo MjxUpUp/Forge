@@ -22,13 +22,14 @@ go test ./internal/taskpipeline/ -run 'TestNextDecision' -count=1
 #3 任务是入口、change 可后补；显式 `--change` 才要求 ready：
 
 ```bash
-go test ./internal/clitask/ -run 'TestTaskStart_NoChangeAllowedInSpecRepo|TestTaskStart_ChangeMustBeReady|TestGuardEntryRouting_AllowsWithoutChange' -count=1
+go test ./internal/clitask/ -run 'TestTaskStart_NoChangeAllowedInSpecRepo|TestTaskStart_ChangeMustBeReady|TestGuardEntryRouting_AllowsWithoutChange|TestTaskStart_KindHelpListsTask' -count=1
 ```
 
 #4 阶段推导与 clarify 记录（含 fast/老 change 例外）：
 
 ```bash
 go test ./internal/change/ -run 'TestStage|TestClarify|TestUnboundTasks' -count=1
+go test ./internal/cli/ -run 'TestNextContext_ReadyChangesRequireGoal|TestChangeClarify_LegacyChangeWithoutGoal|TestChangePhase_ArchivedChange|TestChangeClarify_NoteFile' -count=1
 ```
 
 #5 e2e 真实路由：

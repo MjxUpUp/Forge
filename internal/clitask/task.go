@@ -350,7 +350,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("task: --kind 只支持 code|generic|task，收到 %q", kind)
 	}
 	changeID, _ := cmd.Flags().GetString("change")
-	if gerr := guardEntryRouting(root, kind, changeID); gerr != nil {
+	if gerr := guardEntryRouting(root, changeID); gerr != nil {
 		return gerr
 	}
 
