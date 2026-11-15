@@ -4,10 +4,14 @@
 ## 开始之前（硬规则）
 
 - **任何代码改动之前，先跑 `forge next`**，只执行它给出的下一步；不要自己挑流程。
-- **功能改动先立 change**：本仓库声明了 `spec/forge.yaml` 时，`task start` 不带 `--change`
-  会被拒绝。正确顺序是 `forge change new <id>` → 填产物 → `forge change phase <id>`
-  看还缺什么 → `forge task start --ref <ref> --change <id>`。
-  确实是一句话小修，才用 `forge task start --kind task …`（显式小修出口，仍走三道门禁）。
+- **功能改动先立 change**：任务是一等入口，随时可以开工；change 是记录单元，
+  既能在开工前立，也能中途补。建议的顺序是 `forge change new <id>` → 填产物 →
+  `forge change phase <id>` 看还缺什么 → `forge task start --ref <ref> --change <id>`
+  把 goal 钉成哈希。**不立 change 也允许开工**（`task start` 不带 `--change`）；
+  只有你显式带 `--change` 时，那个 change 必须已经 ready。
+- 一句话小修可以加 `--kind task`：它仍是任务（走三道门禁），只是向人和审计说明
+  「这次没有立 change」。它不是绕过门禁的开关。
+- **不要为了让门禁放行而临时改产物**：阶段机只读文件，伪造 goal/design 会留在 diff 里。
 - 一次任务只做一件事，做完依次跑 `forge task gate task-implement`、`forge task verify-acceptance`
   （实跑验收）、`forge task gate task-verify`、`forge task gate task-complete`，最后
   `forge task complete`。

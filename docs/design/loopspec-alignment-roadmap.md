@@ -119,7 +119,7 @@ flowchart TD
 
 | 里程碑 | 交付物 | 验收判据 | 预估 | 依赖 |
 | --- | --- | --- | --- | --- |
-| **R0 入口决策** | `forge start`；`next` 在「声明 spec + 脏树 + 无任务」时输出 ASK（`requires_human: true`）；`task start` 无 `--change`/`--kind task` 时拒绝；decision 落 checklog | 在 spec 仓库里不带参数开工会被问/被拒；`--kind task` 可过；e2e 覆盖两条路 | 1–2 天 | 无 |
+| **R0 入口决策**（已交付） | `next` 在「声明 spec + 脏树 + 无任务」时按 change 阶段给下一步；`task start` 随时可开，显式 `--change` 才校验 ready；`change phase` 推导缺什么 | 脏树里 agent 能被 `next` 引导；不带 `--change` 能开工；ready 的 change 能直接带 `--change` 开工；e2e 覆盖两条路 | 1–2 天（已完成） | 无 |
 | **R1 fragment 编译** | `spec/fragments`、`spec/profiles` loader；`forge change plan`；`change gate --task` 读节点判据；`plan --print` | 用 `loopspec-fragments/backend-tests` 原样编译成功；三节点 change 逐节点过 gate | 3–5 天 | R0 |
 | **R2 节点返工** | 节点失败 → 重跑该节点 → 证据进 priorAttempts；`plan` 漂移检测（tasks hash） | 一个节点故意失败两次，第三次修复后通过；代码未被回滚 | 3–4 天 | R1 |
 | **R3 通道建议** | 按 diff 规模/文件数建议 fast/standard；`start` 默认值可配置 | 20 个历史任务回放：小修 90% 被建议 fast，大改 90% 被建议 standard | 2–3 天 | R0 |
@@ -171,7 +171,8 @@ R0–R2 是「对齐 LoopSpec 且更快」的最小闭环；R3 是省人往返�
 **最小补法（spec-kit 形状，不搬 fragment）**：
 
 - **A1 入口路由**（≈R0）：`forge next` / `forge start` 输出 ASK；`task start` 在 spec 仓库必须 `--change` 或 `--kind task`；
-- **A2 阶段机**：`forge change stage` 四态 `specify → clarify → plan → tasks`，每态只允许写当前产物；`clarify` 必须是「人回答过 Out of Scope / 非目标」才转 `plan`（一次人往返）；
+- **A2 阶段机**（已交付为 `forge change phase`，五态 `specify → clarify → plan → tasks → ready`）：阶段从文件推导、不写状态；`clarify` 必须是「人回答过边界 / 非目标」才转 `plan`（一次人往返）；fast change 跳过 design/tasks；
+- **A2 附注**：任务是一等入口——不带 `--change` 的 `task start` 永远可用，显式 `--change` 才校验 ready；阶段是「补记录时还缺什么」，不是「开工许可」；
 - **A3 任务绑定**：`tasks.md` 每条任务必须写 `（判据：acceptance #N）`，`change gate --task N` 才能跑；没绑定的任务不能勾选；
 - **A4 宪法检查**：`spec/forge.yaml` 加 `constitution:`（禁止命令、必跑测试），`change verify` 前置检查；
 - **A5 逐任务证据**：gate 证据按任务落，不再只有整条 change 的证据。
@@ -199,4 +200,4 @@ Forge 串不起来的三层原因：
 
 一句话：**LoopSpec 让「计划」成为开工的前提；Forge 让「任务」成为开工的前提，把计划降级成可选文档。** 文档拦不住人，状态机才能。
 
-要补的不是再加一条 advisory，而是把入口改成状态机：`next` 读 change 状态、`task start` 要求 change（或显式 `--kind task`）。这正好是 A1+A2 的内容。
+要补的不是再加一条 advisory，而是把入口做成状态感知：`next` 读 change 阶段并给下一步，`task start` 随时可开、显式 `--change` 才校验 ready。这正好是 A1+A2 的内容。
