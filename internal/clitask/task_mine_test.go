@@ -41,8 +41,8 @@ func TestTaskMine_EmptyReturnsArray(t *testing.T) {
 // mine 与门禁对「阻塞」不可能不一致。
 func TestTaskMine_BlockedShowsPendingDeps(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/up`, `--title`, `上游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--role`, `frontend`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--role`, `frontend`, `--title`, `下游`)
 
 	out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--blocked`, `--json`)
 	if code != 0 {
@@ -78,9 +78,9 @@ func TestTaskMine_BlockedShowsPendingDeps(t *testing.T) {
 // 仍 pending（delivered 才放行），其 detail 读作 [claimed, 0/3]。
 func TestTaskMine_BlockedAnnotatesDepStatus(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/up`, `--assignee`, `kimi`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--assignee`, `kimi`, `--title`, `上游`)
 	runForge(t, dir, `task`, `claim`, `--ref`, `feat/up`, `--as`, `kimi`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--title`, `下游`)
 
 	out, _, code := runForge(t, dir, `task`, `mine`, `--agent`, `kimi`, `--blocked`, `--json`)
 	if code != 0 {
@@ -111,7 +111,7 @@ func TestTaskMine_AllProjects(t *testing.T) {
 		if out, _, code := runForge(t, d, `registry`, `add`, `.`); code != 0 {
 			t.Fatalf(`integrations enable claude-code: %s`, out)
 		}
-		runForge(t, d, "task", "start", "--kind", "task", "--ref", ref, "--assignee", "kimi", "--title", ref)
+		runForge(t, d, "task", "start", "--ref", ref, "--assignee", "kimi", "--title", ref)
 		return d
 	}
 	dirA := makeProject("feat/a")
@@ -141,7 +141,7 @@ func TestTaskMine_AllProjects_ExcludesDeclined(t *testing.T) {
 		if out, _, code := runForge(t, d, `registry`, `add`, `.`); code != 0 {
 			t.Fatalf(`integrations enable claude-code: %s`, out)
 		}
-		runForge(t, d, "task", "start", "--kind", "task", "--ref", ref, "--assignee", "kimi", "--title", ref)
+		runForge(t, d, "task", "start", "--ref", ref, "--assignee", "kimi", "--title", ref)
 		return d
 	}
 	dirA := makeProject("feat/keep")
@@ -166,9 +166,9 @@ func TestTaskMine_AllProjects_ExcludesDeclined(t *testing.T) {
 // pending_deps 必须只列仍未交付的那个——已交付的上游不应出现。守卫 PendingDependencies 不误报已交付 ref。
 func TestTaskMine_MultipleDepsPendingList(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/a`, `--title`, `A`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/b`, `--title`, `B`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/a`, `--depends-on`, `feat/b`, `--assignee`, `kimi`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/a`, `--title`, `A`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/b`, `--title`, `B`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/a`, `--depends-on`, `feat/b`, `--assignee`, `kimi`, `--title`, `下游`)
 	// 交付 A，B 仍 pending
 	runForge(t, dir, `task`, `assign`, `--ref`, `feat/a`, `--to`, `kimi`, `--by`, `claude-code`)
 	runForge(t, dir, `task`, `claim`, `--ref`, `feat/a`, `--as`, `kimi`)

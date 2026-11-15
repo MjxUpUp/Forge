@@ -317,11 +317,11 @@ func runChangeNew(cmd *cobra.Command, args []string) error {
 	fmt.Printf("已创建 %s\n", rel)
 	fmt.Println()
 	if fast {
-		fmt.Println("快速通道：写 goal（目标五段）、proposal（为什么做）与 acceptance（怎么算完），删掉三份文件里的 forge:fill 标记。")
+		fmt.Println("快速通道：写 goal（目标五段）、proposal（为什么做）、acceptance（怎么算完），再跑 forge change clarify（人回答边界与非目标），删掉三份文件里的 forge:fill 标记。")
 	} else {
 		fmt.Println("按顺序写：goal（目标五段）→ proposal（为什么做）→ design（怎么做）→ tasks（拆步骤）→ acceptance（可执行判据）")
 	}
-	fmt.Printf("写完后运行：forge change verify %s\n", id)
+	fmt.Printf("写完后先看阶段：forge change phase %s（补齐到 ready）；要封印证据再跑 forge change verify %s\n", id, id)
 	return nil
 }
 

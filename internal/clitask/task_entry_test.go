@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// task_entry_test.go —— 入口路由 A1：声明了 spec 的仓库里，功能改动必须先立 change；
-// --kind task 是一句话小修的显式出口。
+// task_entry_test.go —— 入口路由（A1，2026-11-15 修订）：任务是一等入口，
+// change 可以后补；只有显式 `--change` 时才要求那个 change 已 ready。
 
 func entryRepo(t *testing.T) string {
 	t.Helper()
@@ -24,41 +24,58 @@ func entryRepo(t *testing.T) string {
 	return dir
 }
 
-func TestTaskStart_RequiresChangeOrKindTask(t *testing.T) {
+// TestTaskStart_NoChangeAllowedInSpecRepo：声明 spec 的仓库也允许直接开工——
+// 「先立 change」是建议，不是开工许可；任务是一等入口。
+func TestTaskStart_NoChangeAllowedInSpecRepo(t *testing.T) {
 	dir := entryRepo(t)
 	stdout, stderr, code := runForgeStreams(t, dir, "task", "start", "--ref", "feat/entry", "--title", "功能改动")
-	if code == 0 {
-		t.Fatalf("task start without change must fail in a spec repo, stdout=%s", stdout)
-	}
-	combined := stdout + stderr
-	if !strings.Contains(combined, "先立 change") || !strings.Contains(combined, "--kind task") {
-		t.Fatalf("error should point at change new and the --kind task escape: %s", combined)
-	}
-}
-
-func TestTaskStart_ExplicitKindTaskAllowed(t *testing.T) {
-	dir := entryRepo(t)
-	stdout, stderr, code := runForgeStreams(t, dir, "task", "start", "--ref", "feat/entry", "--title", "小修", "--kind", "task")
 	if code != 0 {
-		t.Fatalf("--kind task should pass in a spec repo: %s%s", stdout, stderr)
+		t.Fatalf("task start without change must pass (task-first): %s%s", stdout, stderr)
 	}
 	runForge(t, dir, "task", "abort", "--ref", "feat/entry")
 }
 
-func TestGuardEntryRouting_PhaseMustBeReady(t *testing.T) {
+// TestTaskStart_ChangeMustBeReady：显式链接 change 时，它必须已经 ready；
+// 否则钉进去的 goal 契约与阶段不符。
+func TestTaskStart_ChangeMustBeReady(t *testing.T) {
 	dir := entryRepo(t)
 	if out, _, code := runForge(t, dir, "change", "new", "entry-demo", "--title", "demo"); code != 0 {
 		t.Fatalf("change new failed: %s", out)
 	}
-	// 新 change 的 goal 还是脚手架 → 不能开工。
-	err := guardEntryRouting(dir, "", "entry-demo")
-	if err == nil || !strings.Contains(err.Error(), "specify") {
-		t.Fatalf("goal not filled: want specify error, got %v", err)
+	stdout, stderr, code := runForgeStreams(t, dir, "task", "start", "--ref", "feat/entry", "--title", "功能改动", "--change", "entry-demo")
+	if code == 0 {
+		t.Fatalf("linking an unready change must fail, stdout=%s", stdout)
 	}
-	// 非 spec 仓库不受影响。
+	combined := stdout + stderr
+	if !strings.Contains(combined, "specify") || !strings.Contains(combined, "change phase") {
+		t.Fatalf("error should name the phase and the phase command: %s", combined)
+	}
+	// --kind task 不能绕过显式链接检查（否则「小修」成了万能逃生口）。
+	if out, _, code := runForge(t, dir, "task", "start", "--ref", "feat/entry2", "--title", "小修", "--kind", "task", "--change", "entry-demo"); code == 0 {
+		t.Fatalf("--kind task must not bypass the ready check for an explicit --change: %s", out)
+	}
+}
+
+// TestGuardEntryRouting_AllowsWithoutChange：没有 --change 一律放行（spec 与普通仓库同）。
+func TestGuardEntryRouting_AllowsWithoutChange(t *testing.T) {
+	spec := entryRepo(t)
+	if err := guardEntryRouting(spec, ""); err != nil {
+		t.Fatalf("spec repo without --change must pass: %v", err)
+	}
 	plain := t.TempDir()
 	runGit(t, plain, "init")
-	if err := guardEntryRouting(plain, "", ""); err != nil {
-		t.Fatalf("plain repo must not be gated: %v", err)
+	if err := guardEntryRouting(plain, ""); err != nil {
+		t.Fatalf("plain repo must pass: %v", err)
+	}
+}
+
+// --kind 的帮助面必须列出 task：它是「小修标记」的唯一显式入口说明。
+func TestTaskStart_KindHelpListsTask(t *testing.T) {
+	flag := taskStartCmd.Flags().Lookup("kind")
+	if flag == nil {
+		t.Fatal("task start 应有 --kind")
+	}
+	if !strings.Contains(flag.Usage, "task（小修标记") {
+		t.Errorf("--kind 帮助未列出 task：%s", flag.Usage)
 	}
 }

@@ -21,7 +21,7 @@ func TestTaskStart_StampsNodeLease(t *testing.T) {
 	if stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium"); code != 0 {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
-	if _, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feat/lease", "--title", "lease test"); code != 0 {
+	if _, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--ref", "feat/lease", "--title", "lease test"); code != 0 {
 		t.Fatalf("task start failed: %s", stderr)
 	}
 	stdout, _, code := runForgeStreams(t, tmpDir, "task", "context", "--ref", "feat/lease", "--json")

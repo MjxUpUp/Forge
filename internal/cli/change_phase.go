@@ -32,11 +32,11 @@ var changePhaseCmd = &cobra.Command{
 	Short: "这个 change 走到哪一阶段、还缺什么（specify → clarify → plan → tasks → ready）",
 	Long: `按磁盘上的产物推导 change 的阶段，并给出补齐的下一步命令：
 
-  specify  goal.md 五段没填完
+  specify  goal.md 五段没填完（老 change 没有 goal.md 时跳过）
   clarify  缺 clarify.md（边界与非目标 + 人确认），或文件不完整
-  plan     design.md 缺失或还是脚手架
-  tasks    tasks.md 缺失 / 没有任务 / 有任务没写判据编号
-  ready    可以 forge task start --change <id>
+  plan     proposal.md/design.md 缺失或还是脚手架
+  tasks    acceptance.md/tasks.md 缺失、没有任务、或有任务没写判据编号
+  ready    可以 forge task start --change <id>（老 change 没有 goal.md 时只能不带 --change）
 
 阶段不写状态文件：每次都从文件重建，没有"阶段文件过期"的漂移。`,
 	Args: cobra.ExactArgs(1),
@@ -76,7 +76,11 @@ func runChangePhase(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "change: %s\n阶段: %s\n", id, phase)
 	if phase == change.PhaseReady {
-		fmt.Fprintf(out, "下一步：forge task start --ref feat/%s --branch --title \"…\" --change %s\n", id, id)
+		if c, _, lerr := change.Load(root, id); lerr == nil && !c.HasGoal {
+			fmt.Fprintf(out, "下一步：老 change 没有 goal.md，不能 --change 钉契约：\n  - 补 spec/changes/%s/goal.md 后重新 phase，或\n  - forge task start --ref feat/%s --branch（不钉契约，implement 只记 advisory）\n", id, id)
+			return nil
+		}
+		fmt.Fprintf(out, "下一步：forge task start --ref feat/%s --branch --change %s\n", id, id)
 		return nil
 	}
 	for _, m := range missing {
@@ -99,8 +103,28 @@ func runChangeClarify(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("change: clarify 需要 --by-human——先问用户「边界是什么、明确不做什么」，得到回答后再加该 flag；agent 不得自批")
 	}
 	note, _ := cmd.Flags().GetString("note")
-	if noteFile, _ := cmd.Flags().GetString("note-file"); noteFile != "" {
-		raw, rerr := os.ReadFile(noteFile)
+	noteFile, _ := cmd.Flags().GetString("note-file")
+	if note != "" && noteFile != "" {
+		return fmt.Errorf("change: --note 与 --note-file 只能给一个，别让两份正文互相覆盖")
+	}
+	if noteFile != "" {
+		abs := noteFile
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(root, abs)
+		}
+		rel, rerr := filepath.Rel(root, abs)
+		if rerr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("change: --note-file 必须在仓库内（与 --goal-file 同一约束）：%s", noteFile)
+		}
+		resolved, serr := filepath.EvalSymlinks(abs)
+		if serr != nil {
+			return fmt.Errorf("change: 读取 --note-file: %w", serr)
+		}
+		rootResolved, _ := filepath.EvalSymlinks(root)
+		if rrel, rerr := filepath.Rel(rootResolved, resolved); rerr != nil || rrel == ".." || strings.HasPrefix(rrel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("change: --note-file 指向了仓库外的文件（符号链接）：%s", noteFile)
+		}
+		raw, rerr := os.ReadFile(resolved)
 		if rerr != nil {
 			return fmt.Errorf("change: 读取 --note-file: %w", rerr)
 		}
@@ -119,21 +143,24 @@ func runChangeClarify(cmd *cobra.Command, args []string) error {
 	if _, err := os.Stat(path); err == nil && !force {
 		return fmt.Errorf("change: %s 已存在——要重写请加 --force（历史澄清删了就没法回溯）", filepath.ToSlash(filepath.Join("spec/changes", id, change.FileClarify)))
 	}
-	g, _, _, err := change.LoadGoal(root, id)
-	if err != nil {
-		return fmt.Errorf("change: clarify 之前先把 goal.md 填完：%w", err)
-	}
 	nonGoals := ""
-	for _, s := range g.Sections {
-		if s.Key == "out_of_scope" {
-			nonGoals = s.Body
+	if g, _, _, gerr := change.LoadGoal(root, id); gerr == nil {
+		for _, s := range g.Sections {
+			if s.Key == "out_of_scope" {
+				nonGoals = s.Body
+			}
 		}
+	} else if change.FileGoalExists(root, id) {
+		// 有 goal.md 但读不出来（缺段/脚手架未清）：clarify 不该掩盖那个错误。
+		return fmt.Errorf("change: clarify 之前先把 goal.md 填完：%w", gerr)
 	}
-	body := change.RenderClarify(id, note, nonGoals, time.Now())
+	// 老 change（没有 goal.md）允许记录澄清：非目标留空，由 --note 说明边界。
+	now := time.Now()
+	body := change.RenderClarify(id, note, nonGoals, now)
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		return fmt.Errorf("change: 写 clarify.md: %w", err)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "已记录 clarify.md（人确认时间 %s）\n", time.Now().UTC().Format(time.RFC3339))
+	fmt.Fprintf(cmd.OutOrStdout(), "已记录 clarify.md（人确认时间 %s）\n", now.UTC().Format(time.RFC3339))
 	fmt.Fprintf(cmd.OutOrStdout(), "下一步：forge change phase %s\n", id)
 	return nil
 }

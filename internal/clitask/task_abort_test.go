@@ -45,7 +45,7 @@ func TestTaskAbort_ExplicitRef(t *testing.T) {
 
 	// Start a task with an explicit ref. It must create the state file AND set
 	// the active-task-ref (the legacy global file, since no CLAUDE_CODE_SESSION_ID).
-	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feature/test-abort", "--title", "abort probe"); code != 0 {
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "feature/test-abort", "--title", "abort probe"); code != 0 {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}
 	statePath := taskStatePath(tmpDir, "feature/test-abort")
@@ -103,7 +103,7 @@ func TestTaskAbort_ClearsOtherSessionsAnchors(t *testing.T) {
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "initial")
 	runGit(t, tmpDir, "checkout", "-b", "feature/anchors")
-	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feature/anchors", "--title", "anchors probe"); code != 0 {
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "feature/anchors", "--title", "anchors probe"); code != 0 {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}
 	const ref = "feature/anchors"
@@ -200,8 +200,8 @@ func TestTaskAbort_NoTaskErrors(t *testing.T) {
 // 因上游缺失永远阻塞。我们不级联 abort，但 JSON 带 dependents_blocked 让编排器可重指或 abort 它们。
 func TestTaskAbort_WarnsReverseDeps(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/up`, `--title`, `上游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
 
 	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/up`, `--json`)
 	if code != 0 {
@@ -225,9 +225,9 @@ func TestTaskAbort_WarnsReverseDeps(t *testing.T) {
 // 任务的 ClearActiveTaskRef。
 func TestTaskAbort_CascadeAbortsDependents(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/up`, `--title`, `上游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/mid`, `--depends-on`, `feat/up`, `--title`, `中游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/mid`, `--assignee`, `kimi`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/mid`, `--depends-on`, `feat/up`, `--title`, `中游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/mid`, `--assignee`, `kimi`, `--title`, `下游`)
 
 	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/up`, `--cascade`, `--json`)
 	if code != 0 {
@@ -265,8 +265,8 @@ func TestTaskAbort_CascadeAbortsDependents(t *testing.T) {
 // feat/up（detached 列 feat/down）。
 func TestTaskAbort_DetachDepsRemovesEdge(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/up`, `--title`, `上游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--assignee`, `kimi`, `--title`, `下游`)
 
 	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/up`, `--detach-deps`, `--json`)
 	if code != 0 {
@@ -293,9 +293,9 @@ func TestTaskAbort_DetachDepsRemovesEdge(t *testing.T) {
 // feat/down 的 DependsOn（mine 仍显示 feat/down 阻塞于 feat/other），而 feat/up 消失。钉住闭包保边正确性。
 func TestTaskAbort_DetachDepsKeepsOtherEdges(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/up`, `--title`, `上游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/other`, `--title`, `其他上游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--depends-on`, `feat/other`, `--assignee`, `kimi`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/other`, `--title`, `其他上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--depends-on`, `feat/other`, `--assignee`, `kimi`, `--title`, `下游`)
 
 	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/up`, `--detach-deps`, `--json`)
 	if code != 0 {
@@ -319,10 +319,10 @@ func TestTaskAbort_DetachDepsKeepsOtherEdges(t *testing.T) {
 // 的线性链之外的非线性拓扑。
 func TestTaskAbort_CascadeDiamondTopology(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/a`, `--title`, `A`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/b`, `--depends-on`, `feat/a`, `--title`, `B`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/c`, `--depends-on`, `feat/a`, `--title`, `C`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/d`, `--depends-on`, `feat/b`, `--depends-on`, `feat/c`, `--assignee`, `kimi`, `--title`, `D`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/a`, `--title`, `A`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/b`, `--depends-on`, `feat/a`, `--title`, `B`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/c`, `--depends-on`, `feat/a`, `--title`, `C`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/d`, `--depends-on`, `feat/b`, `--depends-on`, `feat/c`, `--assignee`, `kimi`, `--title`, `D`)
 
 	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/a`, `--cascade`, `--json`)
 	if code != 0 {
@@ -358,7 +358,7 @@ func TestTaskAbort_CascadeDiamondTopology(t *testing.T) {
 // --cascade 删依赖方，--detach-deps 留依赖方。
 func TestTaskAbort_CascadeAndDetachMutuallyExclusive(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/x`, `--title`, `X`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/x`, `--title`, `X`)
 	out, _, code := runForge(t, dir, `task`, `abort`, `--ref`, `feat/x`, `--cascade`, `--detach-deps`)
 	if code == 0 {
 		t.Fatalf(`--cascade 与 --detach-deps 互斥应失败, got exit 0: %s`, out)

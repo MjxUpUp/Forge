@@ -80,6 +80,10 @@ func nextContext(root, branch string, dirty bool, behindRemote int) taskpipeline
 				continue
 			}
 			ctx.OpenChanges = append(ctx.OpenChanges, c.ID)
+			if phase, _, err := change.ComputePhase(root, c.ID); err == nil && phase == change.PhaseReady && c.HasGoal {
+				// 老 change（无 goal.md）不能 --change：钉契约需要五段 goal。
+				ctx.ReadyChanges = append(ctx.ReadyChanges, c.ID)
+			}
 		}
 	}
 	return ctx
