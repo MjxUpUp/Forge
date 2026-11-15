@@ -89,7 +89,7 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
 cd your-project
 forge init                 # 在仓库里声明契约：只写仓库内产物
 git add -A && git commit -m "chore: forge init"   # 让 next 看到干净工作区
-forge next                 # 从当前 git/任务状态推导恰好一条下一步，只执行它
+forge next                 # 从当前 git/任务状态推导恰好一条下一步，作为建议执行（小修也可直接 task start）
 # 干净工作区没有任务时 next 可能只给 forge status；任务是一等入口，想开工直接 task start 即可
 ```
 
@@ -104,10 +104,10 @@ forge task start --ref feat/fix-typo --branch --title "修正文案"
 **场景 B：想留可评审记录——先立 change，再钉契约开工**
 
 ```bash
-# 先回到 main，--branch 只能从 main/master 建分支
+git checkout main   # --branch 只能从 main/master 建分支
 forge change new my-feature --title "一句话说清要做什么"
 # 填 goal.md 五段，问人「边界/非目标」后：
-forge change clarify my-feature --by-human --note "只改 A；不动 B"
+forge change clarify my-feature --by-human --note "只改 A.txt 的文案，不动 B 模块与接口"
 # 补齐 proposal.md / design.md / tasks.md（每条绑判据编号）/ acceptance.md
 forge change phase my-feature        # 每补一份看一次，直到 ready
 forge task start --ref feat/my-feature --branch --change my-feature
@@ -154,7 +154,7 @@ hooks: off         # 兼容字段：保留只为老契约可解析，不启用�
 |------|------|
 | `forge init` | 在仓库里声明 forge 契约：写 `spec/forge.yaml`、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的入口指针；不写 `~/.forge`（`--profile mini\|standard\|full`，`--project` 已废弃为 no-op） |
 | `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步；声明了 spec 的仓库脏树会建议推进已有 change、立 change，或给出可直接粘贴的 `task start --change <id>` |
-| `forge change init/new/list/phase/clarify/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 五份产物（`goal.md` 五段目标 + proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（有块只改块内、无块末尾追加；`CLAUDE.md` 不存在默认不建，`.cursor/rules/` 目录已存在时补 forge.mdc，要凭空创建用 `--pointers`，`none` 完全不碰）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`；随 git 提交；与 `forge init` 同源，都是仓库内产物）；`new --fast` 只要求 goal.md + proposal + acceptance，且必须带 `--by-human`（agent 不得自批）；`phase <id>` 按产物报阶段（specify→clarify→plan→tasks→ready），`clarify --by-human --note` 记录边界与非目标；`task start` 不带 `--change` 也可以开工（任务是一等入口；带 `--change` 才要求该 change 已 ready；一句话小修可加 `--kind task`）；`goal.md` 随 git 走，`task start --change <id>` 启动时钉 `Path+SHA256`，启动后改 goal 即让 implement 门禁 BLOCKED|
+| `forge change init/new/list/phase/clarify/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 五份产物（`goal.md` 五段目标 + proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（有块只改块内、无块末尾追加；`CLAUDE.md` 不存在默认不建，`.cursor/rules/` 目录已存在时补 forge.mdc，要凭空创建用 `--pointers`，`none` 完全不碰）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`；随 git 提交；与 `forge init` 同源，都是仓库内产物）；`new --fast` 只要求 goal.md + proposal + acceptance + clarify 的人确认，且必须带 `--by-human`（agent 不得自批）；`phase <id>` 按产物报阶段（specify→clarify→plan→tasks→ready），`clarify --by-human --note` 记录边界与非目标；`task start` 不带 `--change` 也可以开工（任务是一等入口；带 `--change` 才要求该 change 已 ready；一句话小修可加 `--kind task`）；`goal.md` 随 git 走，`task start --change <id>` 启动时钉 `Path+SHA256`，启动后改 goal 即让 implement 门禁 BLOCKED|
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-verify → task-complete |
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |
@@ -168,7 +168,7 @@ hooks: off         # 兼容字段：保留只为老契约可解析，不启用�
 
 其余命令族（`skills`、`enforcement`、`eval`、`act`、`workspace`、`project`、`registry`（含 `registry add` 显式登记）、`harness`、`compat`、`conventions`、`policy`、`selfcheck`、`migrate`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`、`verify`、`trust`）见同一份[完整命令表](docs/reference/cli.md)。
 
-**回环怎么跑**：agent 每个回合先 `forge change status <id>`，只执行它给出的下一步——补产物、跑 verify、读失败证据、重跑，acceptance 的判据全部通过才归档。判断标准来自仓库里的文件与证据，不来自对话记忆；in-loop 不需要宿主插件（`forge change status/verify` 仍是 forge 二进制提供的命令，所以「零安装」指不用装宿主插件，不是不用装 forge）。逐节点推进用 `forge change gate <id> --task N`：只跑该任务引用的判据，节点证据不封印整条 change。
+**回环怎么跑**：agent 每个回合先 `forge change status <id>`，把它给出的下一步当建议执行——补产物、跑 verify、读失败证据、重跑，acceptance 的判据全部通过才归档。判断标准来自仓库里的文件与证据，不来自对话记忆；in-loop 不需要宿主插件（`forge change status/verify` 仍是 forge 二进制提供的命令，所以「零安装」指不用装宿主插件，不是不用装 forge）。逐节点推进用 `forge change gate <id> --task N`：只跑该任务引用的判据，节点证据不封印整条 change。
 
 **证据怎么变成合并前提**：`forge change check` 给 CI 与 pre-commit 同一套判据——每个未归档 change 都得有一份与当前代码和判据一致的封印证据。仓库里带两份接线示例：
 
@@ -177,7 +177,7 @@ hooks: off         # 兼容字段：保留只为老契约可解析，不启用�
 
 `--json` 在所有路径上输出同一份 `{checked,problems,skipped}`（空列表是 `[]`，跳过时退出码 0）。信任边界：`change check` 只把未归档 change 当作待交付物，已归档的是历史；把未封印的 change 手工 `git mv` 进 `archive/` 等于人宣布它已交付——工具不再检查，这一步只能靠 review。
 
-「同一个原因」指每次 verify/gate 的**第一条失败命令**：换一条命令、或中间有一次通过，就重新计数。连续 3 次同因失败 → `blocked`，此时 `next_steps` 不再给任何可执行命令，恢复命令放在 `handoff` 字段里，由人执行。fast change（`new --fast`）的判据与证据规则和普通 change 完全一样，只是只要求 goal + proposal + acceptance 三份产物，且 `--fast` 必须带 `--by-human`（人已同意）。
+「同一个原因」指每次 verify/gate 的**第一条失败命令**：换一条命令、或中间有一次通过，就重新计数。连续 3 次同因失败 → `blocked`，此时 `next_steps` 不再给任何可执行命令，恢复命令放在 `handoff` 字段里，由人执行。fast change（`new --fast`）的判据与证据规则和普通 change 完全一样，只是只要求 goal + proposal + acceptance 三份产物外加 clarify 的人确认，且 `--fast` 必须带 `--by-human`（人已同意）。
 
 ## 📦 安装
 
