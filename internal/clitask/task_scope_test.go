@@ -22,7 +22,7 @@ func TestTaskScope_E2E_FlagToStatusToAddToShow(t *testing.T) {
 	}
 
 	// 两条 --scope（StringArray：整条不切）。
-	startOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/scope-e2e`,
+	startOut, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/scope-e2e`,
 		`--scope`, `internal/cli/task.go`,
 		`--scope`, `internal/cli/scope.go`)
 	if code != 0 {
@@ -159,7 +159,7 @@ func TestTaskScope_ShowEmptyScope(t *testing.T) {
 	if stdout, _, code := runForge(t, dir, `init`, `--mode`, `medium`); code != 0 {
 		t.Fatalf(`forge init failed: %s`, stdout)
 	}
-	if _, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/no-scope`); code != 0 {
+	if _, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/no-scope`); code != 0 {
 		t.Fatal(`task start failed`)
 	}
 	showOut, _, code := runForge(t, dir, `task`, `scope`, `show`)

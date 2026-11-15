@@ -1206,6 +1206,11 @@ func (s *TaskState) AllAcceptancePassed() bool {
 // 老 task 无 Kind 字段）；只有显式"generic"才不走门禁。
 const TaskKindGeneric = "generic"
 
+// TaskKindTask 是「小修任务」的 kind：声明了 spec 流程的仓库里，一句话小修可以
+// 不立 change 直接开任务；它仍走 implement/verify/complete 三道门禁，只是豁免
+// 「必须先有 ready 的 change」这条入口要求（Kind 为空/\"code\" 仍按普通功能改动处理）。
+const TaskKindTask = "task"
+
 // IsGeneric reports whether the task is the non-gated type (Kind == generic).
 //
 // IsGeneric 报告 task 是否为非门禁类型（Kind=="generic"）。generic task 承载调研/设计/纯

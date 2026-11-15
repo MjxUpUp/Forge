@@ -84,7 +84,7 @@ func TestE2E_TaskStartCreatesState(t *testing.T) {
 	git(t, dir, "commit", "-m", "initial")
 
 	// On the default branch, start a task that creates its own branch.
-	forge(t, dir, "task", "start", "--ref", "feat/e2e-probe",
+	forge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/e2e-probe",
 		"--title", "probe", "--branch")
 
 	branches := git(t, dir, "branch", "--list")

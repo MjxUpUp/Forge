@@ -77,7 +77,7 @@ func wedgeScript(forgeBin string) []wedgeStep {
 		{name: "forge init", argv: []string{forgeBin, "init"}},
 		{name: "fixture(红)", argv: []string{"sh", "-c",
 			"printf '#!/bin/sh\\necho NOT-READY\\nexit 1\\n' > main_check.sh && git add main_check.sh && git -c user.name=wedge -c user.email=wedge@localhost -c commit.gpgsign=false commit -qm init"}},
-		{name: "task start", argv: []string{forgeBin, "task", "start", "--ref", "feat/wedge-demo", "--branch",
+		{name: "task start", argv: []string{forgeBin, "task", "start", "--kind", "task", "--ref", "feat/wedge-demo", "--branch",
 			"--accept", "sh main_check.sh :: ALL-GOOD"}, expectContains: []string{"feat/wedge-demo"}},
 		{name: "verify(红·如实挂)", argv: []string{forgeBin, "task", "verify-acceptance"},
 			expectFail: true, expectContains: []string{"存在未通过项"}},

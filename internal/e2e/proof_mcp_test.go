@@ -28,7 +28,7 @@ func TestE2E_FromIssue_PersistsExternalOrigin(t *testing.T) {
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "initial")
 
-	forge(t, dir, "task", "start", "--ref", "feat/pow-ext", "--title", "pow ext origin",
+	forge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/pow-ext", "--title", "pow ext origin",
 		"--from-issue", "https://linear.app/acme/issue/ENG-42", "--branch")
 
 	state, err := taskpipeline.LoadTaskState(dir, "feat/pow-ext")
@@ -56,7 +56,7 @@ func TestE2E_VerifyAcceptance_RecordsAcceptedHeadCommit(t *testing.T) {
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "initial")
 
-	forge(t, dir, "task", "start", "--ref", "feat/pow-acc", "--title", "pow acceptance",
+	forge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/pow-acc", "--title", "pow acceptance",
 		"--accept", "go version :: go version", "--branch")
 	forge(t, dir, "task", "verify-acceptance")
 
@@ -90,7 +90,7 @@ func TestE2E_TaskComplete_BlockedWhenAcceptanceNotRun(t *testing.T) {
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "initial")
 
-	forge(t, dir, "task", "start", "--ref", "feat/pow-block", "--title", "pow block",
+	forge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/pow-block", "--title", "pow block",
 		"--accept", "go version :: go version", "--branch")
 	passAllGates(t, dir, "feat/pow-block") // 过 task-implement/task-verify/review-pass/task-complete gate
 
@@ -126,7 +126,7 @@ func TestE2E_TaskComplete_PassAfterVerifyAcceptance(t *testing.T) {
 	dir := freshProject(t)
 	git(t, dir, "add", ".")
 	git(t, dir, "commit", "-m", "initial")
-	forge(t, dir, "task", "start", "--ref", "feat/pow-ok", "--title", "pow ok",
+	forge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/pow-ok", "--title", "pow ok",
 		"--accept", "go version :: go version", "--branch")
 
 	// 过 implement/verify gate + review pass（不含 task-complete gate——它 MarkComplete 后 verify 找不到 active task）。
