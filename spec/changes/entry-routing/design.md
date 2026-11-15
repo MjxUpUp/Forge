@@ -2,6 +2,10 @@
 
 change: `entry-routing`
 
+## TL;DR
+
+任务先开工是合法的；change 是记录单元，可后补。`next` 按阶段给建议，`task start --change` 只检查「链接的 change 已 ready」，其余不拦。
+
 ## 0. 决策
 
 **任务是一等入口，change 是记录单元。** 机器只在两处做硬事：
@@ -127,3 +131,21 @@ const (
 | 老 change 被误判 | 没有 goal.md 跳过 specify；`TestStage_LegacyChangeWithoutGoal` |
 | 阶段与证据混淆 | 阶段只描述「开工前还缺什么」，verify 仍按 acceptance 实跑；文档明确两条轴 |
 | 提示文案与实现漂移 | 守卫报错引用同一份 hints；文档守卫钉 CLI 参考 |
+## 8. 不做（Non-goals）
+
+- 不引入 plan digest 批准、逐节点 PASS/FAIL 报告（LoopSpec 的耗时来源）。
+- 不做 fragment/profile 编译（roadmap 的 R1–R4），本 change 只做 A1+A2+A3。
+- 不改 acceptance 围栏语法与 verify 的判定方式。
+- 不把 `--kind task` 做成旁路：它只是标记，门禁不减。
+- 不自动创建 change 骨架之外的产物；clarify 必须有人回答。
+
+## 9. 验证（Verification）
+
+- `forge change verify entry-routing` 的 9 条围栏（build、next、task-first/link、phase/clarify、e2e、托管块、help 文档、gofmt、deadcode）。
+- 变异验证：`task_entry.go` 的 `return nil`、`phase.go` 的 `false &&`、`next.go` 的 `false &&` 三处注入均让对应用例变红。
+- 双评审：代码评审对 diff 与规格逐条核对；文档评审按 L2 打分（≥75 才记录）。
+- 发布后用子 agent 在真实仓库跑一次「脏树 → next → task start → change 后补 → complete」，观察每一步是否与文档一致。
+
+## TL;DR
+
+任务先开工是合法的；change 是记录单元，可后补。`next` 按阶段给建议，`task start --change` 只检查「链接的 change 已 ready」，其余不拦。
