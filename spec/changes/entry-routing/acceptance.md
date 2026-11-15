@@ -13,38 +13,51 @@ change: `entry-routing`
 go build ./...
 ```
 
-#2 next 决策表（四象限 + 未声明仓库不变）：
+#2 next 决策表（四象限 + ready change 前进 + 未声明仓库不变）：
 
 ```bash
 go test ./internal/taskpipeline/ -run 'TestNextDecision' -count=1
 ```
 
-#3 task start 守卫与 `--kind task`：
+#3 任务是入口、change 可后补；显式 `--change` 才要求 ready：
 
 ```bash
-go test ./internal/clitask/ -run 'TestTaskStart_RequiresChangeOrKindTask|TestTaskStart_ExplicitKindTaskAllowed' -count=1
+go test ./internal/clitask/ -run 'TestTaskStart_NoChangeAllowedInSpecRepo|TestTaskStart_ChangeMustBeReady|TestGuardEntryRouting_AllowsWithoutChange|TestTaskStart_KindHelpListsTask' -count=1
 ```
 
-#4 阶段推导与 clarify 记录：
+#4 阶段推导与 clarify 记录（含 fast/老 change 例外）：
 
 ```bash
-go test ./internal/change/ -run 'TestStage|TestClarifyRecord|TestUnboundTasks' -count=1
+go test ./internal/change/ -run 'TestStage|TestClarify|TestUnboundTasks' -count=1
+go test ./internal/cli/ -run 'TestNextContext_ReadyChangesRequireGoal|TestChangeClarify_LegacyChangeWithoutGoal|TestChangePhase_ArchivedChange|TestChangeClarify_NoteFile' -count=1
 ```
 
 #5 e2e 真实路由：
 
 ```bash
-go test ./internal/e2e/ -run 'TestEntryRoutingChangeFirst|TestChangeStageBlocksEarlyTask' -count=1
+go test ./internal/e2e/ -run 'TestEntryRoutingTaskFirstThenChange|TestChangeStageBlocksEarlyTask' -count=1
 ```
 
-#6 死代码零：
+#6 托管块守卫（协议说出的话必须与实现一致）：
+
+```bash
+go test ./internal/change/ -run TestAgentsProtocol -count=1
+```
+
+#7 CLI 文档守卫（帮助面与 cli.md）：
+
+```bash
+go test ./internal/cli/ -run 'TestHelpSurface' -count=1
+```
+
+#8 gofmt 干净（CI 同款）：
+
+```bash
+sh scripts/checks/gofmt-clean.sh
+```
+
+#9 死代码零：
 
 ```bash
 sh scripts/checks/deadcode-zero.sh
-```
-
-#7 文档与模板守卫：
-
-```bash
-go test ./internal/cli/ -run 'TestAgentsProtocol|TestHelpSurface|TestCliReference' -count=1
 ```
