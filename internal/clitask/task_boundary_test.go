@@ -35,7 +35,7 @@ func TestTaskStart_BoundaryEventInsteadOfClear(t *testing.T) {
 	runGit(t, tmpDir, "checkout", "-b", "feature/task-a")
 
 	// 任务 A 启动并积累一条证据。
-	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "task-a", "--title", "A"); code != 0 {
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "task-a", "--title", "A"); code != 0 {
 		t.Fatalf("task start A failed: %s", stdout)
 	}
 	if err := checklog.Record(tmpDir, &checklog.Entry{
@@ -51,7 +51,7 @@ func TestTaskStart_BoundaryEventInsteadOfClear(t *testing.T) {
 	activeLog := filepath.Join(forgedata.DataDirFor(tmpDir), "checklog.jsonl")
 
 	// 任务 B 在同项目启动（并发任务，按设计共享 DataDir）。
-	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "task-b", "--title", "B"); code != 0 {
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "task-b", "--title", "B"); code != 0 {
 		t.Fatalf("task start B failed: %s", stdout)
 	}
 

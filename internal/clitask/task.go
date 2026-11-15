@@ -57,7 +57,7 @@ func init() {
 	taskStartCmd.Flags().StringArray("scope", nil, `计划改动文件白名单（可重复 --scope）：精确路径 internal/cli/task.go / glob internal/cli/*.go / 目录前缀 internal/cli。开工前声明，advisory 检测 scope-drift；中途可用 forge task scope add 追加`)
 	// 接续真相源 flags（continuity）：把 goal/plan/发起工具随 task start 持久化进 TaskState，
 	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的「start 持久化」模式。
-	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）")
+	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）| task（小修标记：不绑 change，仍走三道门禁）")
 	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
 	taskStartCmd.Flags().String("change", "", "关联 change id：读 spec/changes/<id>/goal.md 作为 goal 契约（五段式，钉内容哈希，implement 门禁校验）")
 	taskStartCmd.Flags().String("goal-file", "", "goal 契约文件（仓库内路径，五段式：Objective/Why/Constraints/Out of Scope/Check；与 --change 互斥）")
@@ -344,6 +344,11 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	useWorktree, _ := cmd.Flags().GetBool("worktree")
 
 	kind, _ := cmd.Flags().GetString("kind")
+	switch kind {
+	case "", "code", tasktypes.TaskKindGeneric, tasktypes.TaskKindTask:
+	default:
+		return fmt.Errorf("task: --kind 只支持 code|generic|task，收到 %q", kind)
+	}
 	changeID, _ := cmd.Flags().GetString("change")
 	if gerr := guardEntryRouting(root, kind, changeID); gerr != nil {
 		return gerr
