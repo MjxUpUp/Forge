@@ -130,7 +130,7 @@ const (
 | fast change 永远到不了 ready | 阶段表里 fast 跳过 design/tasks；`TestStage_FastChangeReadyAfterClarify` |
 | 老 change 被误判 | 没有 goal.md 跳过 specify；`TestStage_LegacyChangeWithoutGoal` |
 | 阶段与证据混淆 | 阶段只描述「开工前还缺什么」，verify 仍按 acceptance 实跑；文档明确两条轴 |
-| 提示文案与实现漂移 | 守卫报错引用同一份 hints；文档守卫钉 CLI 参考 |
+| 提示文案与实现漂移 | 守卫报错引用同一份 hints；`TestHelpSurface` 钉住 cli.md 的关键串 |
 ## 8. 不做（Non-goals）
 
 - 不引入 plan digest 批准、逐节点 PASS/FAIL 报告（LoopSpec 的耗时来源）。
@@ -145,7 +145,3 @@ const (
 - 变异验证：`task_entry.go` 的 `return nil`、`phase.go` 的 `false &&`、`next.go` 的 `false &&` 三处注入均让对应用例变红。
 - 双评审：代码评审对 diff 与规格逐条核对；文档评审按 L2 打分（≥75 才记录）。
 - 发布后用子 agent 在真实仓库跑一次「脏树 → next → task start → change 后补 → complete」，观察每一步是否与文档一致。
-
-## TL;DR
-
-任务先开工是合法的；change 是记录单元，可后补。`next` 按阶段给建议，`task start --change` 只检查「链接的 change 已 ready」，其余不拦。

@@ -1,0 +1,112 @@
+{
+  "change": "entry-routing",
+  "started_at": "2026-11-15T16:36:29Z",
+  "finished_at": "2026-11-15T16:36:59Z",
+  "passed": true,
+  "sealed": true,
+  "head": "9fd03dc68be4bd43b1cb3cfa01ee205d685fdf65",
+  "diff_sha256": "df23b8f55865fca9b63b07ac4dd4f7ceadb8d43e3313c207c2df60df3fc1ea0d",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "390bc61d7247e72d44036ff1e5a55f41ae0255acd2312857dd4dfade21db36de"
+    },
+    {
+      "path": "docs/design/loopspec-alignment-roadmap.md",
+      "sha256": "97675bc6813be9f21b82f925eddba587e4a4fd3ac1c2e0aadb864b8e17e51522"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "14f755519bafbd41791b2cc61d4be907c5e1da5c421b42dbb4d021529bb50948"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "700edc6582650776ee8029d919321cfed599b5199831bf92d1fd7e2c546be7a6"
+    },
+    {
+      "path": "internal/cli/change.go",
+      "sha256": "9f80f31f3f5be2ea34e3ef80ad458d4cedf62b317bf7ca97422618ed02439974"
+    },
+    {
+      "path": "internal/taskpipeline/next.go",
+      "sha256": "2f70af2347589e9090bdaab7795192dfa8a58b83d8a5c68689d885a3996ec4bf"
+    },
+    {
+      "path": "spec/changes/entry-routing/design.md",
+      "sha256": "7e8956cd24c65ded98e53781e556728ec5cb7ce9fbde963a037a67c1d507a7c3"
+    }
+  ],
+  "acceptance_sha256": "070a2b28675e9b35c7c27ff73cf25904e06cb4c28f655b553300d4a826ffc69e",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2717
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run 'TestNextDecision' -count=1",
+      "exit": 0,
+      "duration_ms": 2810,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestTaskStart_NoChangeAllowedInSpecRepo|TestTaskStart_ChangeMustBeReady|TestGuardEntryRouting_AllowsWithoutChange' -count=1",
+      "exit": 0,
+      "duration_ms": 5814,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestStage|TestClarify|TestUnboundTasks' -count=1",
+      "exit": 0,
+      "duration_ms": 2113,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/e2e/ -run 'TestEntryRoutingTaskFirstThenChange|TestChangeStageBlocksEarlyTask' -count=1",
+      "exit": 0,
+      "duration_ms": 8323,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run TestAgentsProtocol -count=1",
+      "exit": 0,
+      "duration_ms": 847,
+      "stdout_file": "06.stdout"
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestHelpSurface' -count=1",
+      "exit": 0,
+      "duration_ms": 3022,
+      "stdout_file": "07.stdout"
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 219
+    },
+    {
+      "index": 9,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4504
+    }
+  ]
+}

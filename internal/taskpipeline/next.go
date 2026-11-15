@@ -93,7 +93,7 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 			if len(ctx.OpenChanges) > 0 {
 				return NextResult{
 					Next:   "forge change phase " + ctx.OpenChanges[0],
-					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物；也可以先不带 --change 直接 task start 开工（change 事后再补）",
+					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物（没有 goal.md 的老 change 可补 goal.md，或直接不带 --change 开工）；也可以先不带 --change 直接 task start 开工（change 事后再补）",
 					State:  state,
 				}
 			}
