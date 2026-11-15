@@ -69,7 +69,7 @@ func TestWorkspaceCreateAddListStatus(t *testing.T) {
 	}
 
 	// 仓 A 起一个活跃任务 → status 跨两个成员聚到它。
-	forge(t, dirA, "task", "start", "--ref", "feat/ws-a", "--title", "a task", "--branch")
+	forge(t, dirA, "task", "start", "--kind", "task", "--ref", "feat/ws-a", "--title", "a task", "--branch")
 	out = forge(t, dirA, "workspace", "status", "ws")
 	if !strings.Contains(out, keyA) || !strings.Contains(out, keyB) {
 		t.Errorf("workspace status 应列出两仓成员，got:\n%s", out)
@@ -120,7 +120,7 @@ func TestWorkspaceImpactGate(t *testing.T) {
 	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
 
 	dirA, _, _, _ := wsFixture(t)
-	forge(t, dirA, "task", "start", "--ref", "feat/xr", "--title", "cross repo", "--branch")
+	forge(t, dirA, "task", "start", "--kind", "task", "--ref", "feat/xr", "--title", "cross repo", "--branch")
 
 	// 真实改动 + commit，满足 task-implement 的内容检查。
 	writeFile(t, dirA, "xr.go", "package main\n\nfunc XR() int { return 1 }\n")
@@ -184,9 +184,9 @@ func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
 	dirA, dirB, _, keyB := wsFixture(t)
 
 	// 先在仓 B 建好 tb，让写入侧校验看到存活目标。
-	forge(t, dirB, "task", "start", "--ref", "feat/tb", "--title", "b task", "--branch")
+	forge(t, dirB, "task", "start", "--kind", "task", "--ref", "feat/tb", "--title", "b task", "--branch")
 	dep := keyB + `:feat/tb`
-	out, err := forgeErr(t, dirA, "task", "start", "--ref", "feat/ta", "--title", "a task", "--branch", "--depends-on", dep)
+	out, err := forgeErr(t, dirA, "task", "start", "--kind", "task", "--ref", "feat/ta", "--title", "a task", "--branch", "--depends-on", dep)
 	if err != nil {
 		t.Fatalf("跨仓 --depends-on 应被接受: %v\noutput: %s", err, out)
 	}
@@ -233,8 +233,8 @@ func TestWorkspaceDoctorDepCycle(t *testing.T) {
 
 	// 先建前向引用（tb 尚未创建 → 容忍，stderr 给 advisory），再建回边——
 	// 两条边闭合成环。
-	forge(t, dirA, "task", "start", "--ref", "feat/ta", "--title", "a task", "--branch", "--depends-on", keyB+`:feat/tb`)
-	forge(t, dirB, "task", "start", "--ref", "feat/tb", "--title", "b task", "--branch", "--depends-on", keyA+`:feat/ta`)
+	forge(t, dirA, "task", "start", "--kind", "task", "--ref", "feat/ta", "--title", "a task", "--branch", "--depends-on", keyB+`:feat/tb`)
+	forge(t, dirB, "task", "start", "--kind", "task", "--ref", "feat/tb", "--title", "b task", "--branch", "--depends-on", keyA+`:feat/ta`)
 
 	out := forge(t, dirA, "workspace", "doctor")
 	if !strings.Contains(out, `dep-cycle`) {

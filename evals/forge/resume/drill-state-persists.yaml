@@ -9,7 +9,7 @@ files:
 
       func main() { println("ok") }
 steps:
-  - argv: ["{forge}", "task", "start", "--ref", "EVAL-DRILL-1", "--title", "接续演练"]
+  - argv: ["{forge}", "task", "start", "--kind", "task", "--ref", "EVAL-DRILL-1", "--title", "接续演练"]
     expect_contains: ["EVAL-DRILL-1"]
   - argv: ["{forge}", "task", "status", "--json"]
     expect_contains: ["EVAL-DRILL-1"]

@@ -87,7 +87,10 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
 
 ```bash
 cd your-project
-forge init    # 在仓库里声明契约：只写仓库内产物
+forge init      # 在仓库里声明契约：只写仓库内产物
+forge change new my-feature --title "一句话说清要做什么"
+forge change phase my-feature   # 告诉你还缺哪份产物（specify → clarify → plan → tasks → ready）
+forge task start --ref feat/my-feature --branch --change my-feature
 ```
 
 `forge init` **只在仓库里写文件**（随 git 提交，不会被误当成用户级状态）：
@@ -127,8 +130,8 @@ hooks: off         # 兼容字段：保留只为老契约可解析，不启用�
 | 命令 | 用途 |
 |------|------|
 | `forge init` | 在仓库里声明 forge 契约：写 `spec/forge.yaml`、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的入口指针；不写 `~/.forge`（`--profile mini\|standard\|full`，`--project` 已废弃为 no-op） |
-| `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步 |
-| `forge change init/new/list/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 五份产物（`goal.md` 五段目标 + proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（有块只改块内、无块末尾追加；`CLAUDE.md` 不存在默认不建，`.cursor/rules/` 目录已存在时补 forge.mdc，要凭空创建用 `--pointers`，`none` 完全不碰）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`；随 git 提交；与 `forge init` 同源，都是仓库内产物）；`new --fast` 只要求 goal.md + proposal + acceptance，且必须带 `--by-human`（agent 不得自批）；`goal.md` 随 git 走，`task start --change <id>` 启动时钉 `Path+SHA256`，启动后改 goal 即让 implement 门禁 BLOCKED|
+| `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步；声明了 spec 的仓库里脏树会先要求立 change（或推进已有的 change 阶段） |
+| `forge change init/new/list/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 五份产物（`goal.md` 五段目标 + proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（有块只改块内、无块末尾追加；`CLAUDE.md` 不存在默认不建，`.cursor/rules/` 目录已存在时补 forge.mdc，要凭空创建用 `--pointers`，`none` 完全不碰）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`；随 git 提交；与 `forge init` 同源，都是仓库内产物）；`new --fast` 只要求 goal.md + proposal + acceptance，且必须带 `--by-human`（agent 不得自批）；`phase <id>` 按产物报阶段（specify→clarify→plan→tasks→ready），`clarify --by-human --note` 记录边界与非目标；声明 spec 的仓库里 `task start` 不带 `--change` 会被拒绝（一句话小修用 `--kind task`）；`goal.md` 随 git 走，`task start --change <id>` 启动时钉 `Path+SHA256`，启动后改 goal 即让 implement 门禁 BLOCKED|
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-verify → task-complete |
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |

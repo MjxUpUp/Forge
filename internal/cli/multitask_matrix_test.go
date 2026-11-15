@@ -46,7 +46,7 @@ func TestMultiTaskConcurrency_Matrix(t *testing.T) {
 
 	// 任务 A 启动（同目录，带会话身份使锚定成立），窗口 A 的 WIP 落盘 + 归属台账记账。
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sess-a")
-	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "task-a", "--title", "A"); code != 0 {
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "task-a", "--title", "A"); code != 0 {
 		t.Fatalf("task start A: %s", stdout)
 	}
 	os.WriteFile(filepath.Join(tmpDir, "a-wip.go"), []byte("package a\n"), 0644)
@@ -56,7 +56,7 @@ func TestMultiTaskConcurrency_Matrix(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "b-wip.go"), []byte("package b\n"), 0644)
 	attribution.Record(tmpDir, attribution.Event{Ts: time.Now().Add(time.Second), Sid: "sess-b", Kind: attribution.KindWrite, Path: "b-wip.go"})
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sess-b")
-	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "task-b", "--title", "B"); code != 0 {
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "task-b", "--title", "B"); code != 0 {
 		t.Fatalf("task start B: %s", stdout)
 	}
 

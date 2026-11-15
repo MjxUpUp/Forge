@@ -343,6 +343,12 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	createBranch, _ := cmd.Flags().GetBool("branch")
 	useWorktree, _ := cmd.Flags().GetBool("worktree")
 
+	kind, _ := cmd.Flags().GetString("kind")
+	changeID, _ := cmd.Flags().GetString("change")
+	if gerr := guardEntryRouting(root, kind, changeID); gerr != nil {
+		return gerr
+	}
+
 	// goal 契约（task-goal-contract）：在任何磁盘副作用（worktree/分支）之前解析并校验，
 	// 避免"worktree 建好了、分支切过去了才发现 goal.md 没填完"的半副作用。
 	// 路径按仓库根解析；worktree 与主检出同仓，goal.md 的相对路径两边一致。

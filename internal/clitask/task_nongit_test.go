@@ -48,7 +48,7 @@ func TestTaskStart_NonGitWarningOnStderr(t *testing.T) {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
 
-	stdout, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--ref", "feat/nongit", "--title", "non-git probe")
+	stdout, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feat/nongit", "--title", "non-git probe")
 	if code != 0 {
 		t.Fatalf("forge task start failed: %s", stderr)
 	}
@@ -78,7 +78,7 @@ func TestTaskStart_NonGitJSONStdoutClean(t *testing.T) {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
 
-	stdout, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--ref", "feat/jsonclean", "--json")
+	stdout, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feat/jsonclean", "--json")
 	if code != 0 {
 		t.Fatalf("forge task start --json failed: %s", stderr)
 	}
@@ -108,7 +108,7 @@ func TestTaskStart_GitRepoNoWarning(t *testing.T) {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
 
-	_, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--ref", "feat/gitcase", "--title", "git project")
+	_, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feat/gitcase", "--title", "git project")
 	if code != 0 {
 		t.Fatalf("forge task start failed: %s", stderr)
 	}
@@ -150,7 +150,7 @@ func TestTaskStart_AnchorsCreatorSession(t *testing.T) {
 	if stdout, _, code := runForge(t, tmpDir, "init", "--mode", "medium"); code != 0 {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
-	if _, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--ref", "feat/anchor", "--origin-tool", "pi", "--title", "anchor test"); code != 0 {
+	if _, stderr, code := runForgeStreams(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feat/anchor", "--origin-tool", "pi", "--title", "anchor test"); code != 0 {
 		t.Fatalf("task start failed: %s", stderr)
 	}
 	// context --json 拉回完整 state JSON；断言创建方 session + 工具已锚定进 session_links。
