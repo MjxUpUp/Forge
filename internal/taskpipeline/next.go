@@ -42,6 +42,9 @@ type NextContext struct {
 	SpecDeclared bool
 	// OpenChanges 是未归档 change 的 id（按字母序）。
 	OpenChanges []string
+	// ReadyChanges 是其中阶段已到 ready 的 id；ReadyChanges 非空时下一步是
+	// 用 task start --change 开工，而不是再补 change 产物。
+	ReadyChanges []string
 }
 
 // NextDecision 保留旧签名（纯任务上下文）：调用方没有 spec 信息时应走这里。
@@ -79,10 +82,17 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 		if dirty {
 			// 入口路由：声明了 spec 的仓库先立 change（goal+acceptance），
 			// 有打开的 change 就先推进它的阶段；--kind task 是显式小修出口。
+			if len(ctx.ReadyChanges) > 0 {
+				return NextResult{
+					Next:   "forge task start --ref feat/<id> --branch --title \"<title>\" --change " + ctx.ReadyChanges[0],
+					Reason: "工作区有未归属变更，且已有 ready 的 change——用 task start --change 开工（任务是一等入口；change 可以事后再补）",
+					State:  state,
+				}
+			}
 			if len(ctx.OpenChanges) > 0 {
 				return NextResult{
 					Next:   "forge change phase " + ctx.OpenChanges[0],
-					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物（小修可改走 forge task start --kind task）",
+					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物；也可以直接 task start --kind task 开工",
 					State:  state,
 				}
 			}

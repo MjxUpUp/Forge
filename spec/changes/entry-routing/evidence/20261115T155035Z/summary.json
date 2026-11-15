@@ -1,0 +1,168 @@
+{
+  "change": "entry-routing",
+  "started_at": "2026-11-15T15:50:35Z",
+  "finished_at": "2026-11-15T15:50:57Z",
+  "passed": true,
+  "sealed": true,
+  "head": "b565e01395dd4574321f134c53210f7701809afc",
+  "diff_sha256": "76d63b3313b6838e5f39e5c84cdd3ade8c62d4d6a67297ac36c067daa6a08412",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "81ec59bba52c498e4bf0adc32fd9e3c1fb6754341d4821e60b301fd42f136221"
+    },
+    {
+      "path": "docs/design/loopspec-alignment-roadmap.md",
+      "sha256": "55da5ccaa99af5ac4df52fec611246abe8559d09283e58d13feb5264755402fd"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "ceaa48f234bc007d348d90fca59cc8c1d4b0c1fe008e73ceaae55a08d42d2362"
+    },
+    {
+      "path": "internal/change/phase.go",
+      "sha256": "5438bf8a4a3f3fb0c294dbff4a85bdb511875aa6bdaa5a878fd8d4194c1d0cd7"
+    },
+    {
+      "path": "internal/change/phase_test.go",
+      "sha256": "8151488baee9b8b4917ed29e7079ff009a00c63fe519c6d3b62743e8e86669cf"
+    },
+    {
+      "path": "internal/change/status.go",
+      "sha256": "b865286db536399eb65996f51d61e32ba2b267a422b62bad86881ed871441176"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "803c308d17680609ae992604eb7f77bb4c0bff2ad86ef33e4ef435382ac9f86a"
+    },
+    {
+      "path": "internal/cli/change_phase.go",
+      "sha256": "85d287fa8c4194ad8375b8d3e84e13e70fdb971672396298c2e731f8216a3cbd"
+    },
+    {
+      "path": "internal/cli/next.go",
+      "sha256": "021e97f28473511b7339b5e492806b1c1ecb50be990b77bb344627ef1a666a89"
+    },
+    {
+      "path": "internal/clitask/task_entry.go",
+      "sha256": "cd8f511c0d847a47ac13000186db6a44f36e40ad66fa89b187ab7a592c786eb7"
+    },
+    {
+      "path": "internal/clitask/task_entry_test.go",
+      "sha256": "3ca712e862c9b4b364580280537843d48e4a27c387fa9c03ce954e738b227fb6"
+    },
+    {
+      "path": "internal/clitask/task_worktree_test.go",
+      "sha256": "42c7121541f763a901ce5adf02b2f7f0266d3a554adeeec522833ca9ad452538"
+    },
+    {
+      "path": "internal/e2e/entry_routing_test.go",
+      "sha256": "aaac61e643340d839002bf25a4972c1d2d1cf738927ed699a79f4a32bb42b0ab"
+    },
+    {
+      "path": "internal/taskpipeline/next.go",
+      "sha256": "13675de33eeabdca02abc6787a9725b980717fafe22e5c7b9a3b5d676cf49732"
+    },
+    {
+      "path": "internal/taskpipeline/next_test.go",
+      "sha256": "bded7e783c412a3aabf1c7ea7f4dd35273b76b4a5c51c8b12013e5f282c49b66"
+    },
+    {
+      "path": "scripts/checks/gofmt-clean.sh",
+      "sha256": "68e1d39640783361143b139f9b247151d0d1d34c9169552417f0cb2edce668a5"
+    },
+    {
+      "path": "spec/changes/entry-routing/acceptance.md",
+      "sha256": "89baf545a2a5e5365241d349558190f607ea9f8d55da14a66bc75ee09bc2436c"
+    },
+    {
+      "path": "spec/changes/entry-routing/design.md",
+      "sha256": "e8f47a06b2481d8ff566befc85fdd31d6c8b9d950c861e9da1590f614bce17ae"
+    },
+    {
+      "path": "spec/changes/entry-routing/goal.md",
+      "sha256": "04150a73103b7c9981488b4161dca415dc53d4ca03c6ce7bcb98d8543f6b744d"
+    },
+    {
+      "path": "spec/changes/entry-routing/proposal.md",
+      "sha256": "1626188b7852093fe44b2a17c504d30b09da6d5f5d6cdc115bd631b72926a3bd"
+    },
+    {
+      "path": "spec/changes/entry-routing/tasks.md",
+      "sha256": "eada6f42f20875ddec684855c04e4d486b3b44b2b05be73f0af3bc74d65b54aa"
+    }
+  ],
+  "acceptance_sha256": "89baf545a2a5e5365241d349558190f607ea9f8d55da14a66bc75ee09bc2436c",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2233
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run 'TestNextDecision' -count=1",
+      "exit": 0,
+      "duration_ms": 1135,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestTaskStart_NoChangeAllowedInSpecRepo|TestTaskStart_ChangeMustBeReady|TestGuardEntryRouting_AllowsWithoutChange' -count=1",
+      "exit": 0,
+      "duration_ms": 4249,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestStage|TestClarify|TestUnboundTasks' -count=1",
+      "exit": 0,
+      "duration_ms": 1182,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/e2e/ -run 'TestEntryRoutingTaskFirstThenChange|TestChangeStageBlocksEarlyTask' -count=1",
+      "exit": 0,
+      "duration_ms": 5311,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run TestAgentsProtocol -count=1",
+      "exit": 0,
+      "duration_ms": 787,
+      "stdout_file": "06.stdout"
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestHelpSurface|TestCliReference' -count=1",
+      "exit": 0,
+      "duration_ms": 2742,
+      "stdout_file": "07.stdout"
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 180
+    },
+    {
+      "index": 9,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4350
+    }
+  ]
+}
