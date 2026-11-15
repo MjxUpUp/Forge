@@ -3,7 +3,7 @@
 
 ## 开始之前（硬规则）
 
-- **任何代码改动之前，先跑 `forge next`**，只执行它给出的下一步；不要自己挑流程。
+- **任何代码改动之前，先跑 `forge next`**，把它当建议：通常执行它给出的下一步；一句话小修可直接 task start，并在标题里写清意图。
 - **记录改动：建议先立 change**：任务是一等入口，随时可以开工；change 是记录单元，
   既能在开工前立，也能中途补。建议的顺序是 `forge change new <id>` → 填产物 →
   `forge change phase <id>` 看还缺什么 → `forge task start --ref <ref> --change <id>`
@@ -70,15 +70,15 @@
    `forge change phase <id>` 到 ready → `forge task start --ref <分支名> --change <id>`
    （`--change` 要求 change 已到 `ready`，并把 goal.md 内容哈希钉进 state；没有
    goal 契约时也可以用 `--goal-file` 或 `--goal`）。已开着的任务不能换契约——重开任务。
-2. 干活。真要做的是「改代码」而不是「写文档」时，implement 门禁会核对确有改动。
-3. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
+3. 干活。真要做的是「改代码」而不是「写文档」时，implement 门禁会核对确有改动。
+4. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
    → `forge task gate task-verify`（配对测试、cheat-scan 等；多数是 advisory，复发才升硬）。
    BLOCKED 先读它给的证据，不要换个说法重试。complete 会硬查验收已实跑且未过期。
-4. 派只读子 agent 审查当前 diff，然后 `forge review pass --note "..."` 记录结论
+5. 派只读子 agent 审查当前 diff，然后 `forge review pass --note "..."` 记录结论
    ——这是 task-complete 的硬前置，不是可选项；审查后改源码会因快照不一致被拒。
    纯文档改动另用 `forge task doc-review --passed pass --score <N>` 记录（≥75 才过）。
-5. `forge task gate task-complete` → `forge task complete`。只提交不算完成。
-6. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
+6. `forge task gate task-complete` → `forge task complete`。只提交不算完成。
+7. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
    只用于确实不适用的门禁：验证类（`--test-coverage`/`--acceptance-gate`/`--artifact-chain`/
    `--skill-decisions`/`--doc-gate`）会降证据强度并留审计，节奏类（`--work-activity`）只审计，
    别当常规手段。

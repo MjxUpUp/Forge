@@ -1,10 +1,10 @@
 # 对齐 LoopSpec：计划可组合，执行仍确定性
 
-状态：设计草案（2026-11-15）。待拍板：R0 是否现在做、R1 是否原样兼容 `loopspec-fragments` 格式。
+状态：设计草案（2026-11-15）。R0 已在 1.87 交付；R1–R4 待拍板。
 
 ## 1. 问题
 
-JustForMe 一天 9 个任务、0 个 change。agent 跑了 `forge next`，拿到的下一步是 `task start`——它没有违反规则，是 `forge next` 的决策表里没有 change（`internal/taskpipeline/next.go:58-64` 不读 `spec/changes/`），而 `AGENTS.md` 硬规则又要求「只执行 next 给的下一步」。
+JustForMe 一天 9 个任务、0 个 change。agent 跑了 `forge next`，拿到的下一步是 `task start`——它没有违反规则，是 `forge next` 的决策表里没有 change（`internal/taskpipeline/next.go:58-64` 不读 `spec/changes/`，这是 R0 前的状态），而 `AGENTS.md` 硬规则又要求「只执行 next 给的下一步」。
 
 LoopSpec 用两件东西防住这件事：
 
@@ -143,7 +143,7 @@ R0–R2 是「对齐 LoopSpec 且更快」的最小闭环；R3 是省人往返�
 
 ## 9. 待拍板
 
-1. R0 现在做（1–2 天，改 `next`/`task start`/模板，不碰定位）——建议先做；
+1. R1 是否现在做（R0 已交付；建议先观察 R0 的实际使用 1–2 周）；
 2. R1 是否原样读 `loopspec-fragments`（建议是；我们只加 `acceptance:`，不改上游格式）；
 3. R3「按 diff 建议通道」默认开还是只提示（建议只提示，人仍可覆盖）。
 
@@ -163,14 +163,14 @@ R0–R2 是「对齐 LoopSpec 且更快」的最小闭环；R3 是省人往返�
 **为什么那个会话会出现问题**（因果链）：
 
 1. 请求是聊天里的一句「做 JFM 保活机制」，没有进入 change；
-2. agent 按硬规则跑 `forge next`，`next` 只读 git + TaskState（`internal/taskpipeline/next.go:58-64`），脏树 + 无任务 → 唯一出口 `task start`；
+2. agent 按硬规则跑 `forge next`，`next` 只读 git + TaskState（`internal/taskpipeline/next.go:58-64`；R0 前），脏树 + 无任务 → 唯一出口 `task start`；
 3. 硬规则说「只执行 next 给的下一步」，change 段只是说明，不是门禁 → 合规地跳过 change；
 4. `task start` 不带 `--change` 也能成功，只在 implement 门禁给一条 advisory → 即使有 goal 契约也拦不住；
 5. 于是直接在 worktree 里改 8 个文件，没有 spec、没有 clarify、没有 plan 评审。
 
 **最小补法（spec-kit 形状，不搬 fragment）**：
 
-- **A1 入口路由**（≈R0）：`forge next` / `forge start` 输出 ASK；`task start` 在 spec 仓库必须 `--change` 或 `--kind task`；
+- **A1 入口路由**（≈R0）：`forge next` 给出建议；`task start` 永远可以不带 `--change` 开工，显式 `--change` 才要求该 change 已 ready；
 - **A2 阶段机**（已交付为 `forge change phase`，五态 `specify → clarify → plan → tasks → ready`）：阶段从文件推导、不写状态；`clarify` 必须是「人回答过边界 / 非目标」才转 `plan`（一次人往返）；fast change 跳过 design/tasks；
 - **A2 附注**：任务是一等入口——不带 `--change` 的 `task start` 永远可用，显式 `--change` 才校验 ready；阶段是「补记录时还缺什么」，不是「开工许可」；
 - **A3 任务绑定**：`tasks.md` 每条任务必须写 `（判据：acceptance #N）`，`change gate --task N` 才能跑；没绑定的任务不能勾选；
@@ -187,7 +187,7 @@ A1+A2+A3 是「spec-kit 思想」的最小闭环（约 4–6 天），比 fragme
 | --- | --- | --- |
 | 工作单元 | Change（`plans/` 是它的子状态） | **Task**（`TaskState`；change 是旁路） |
 | 入口 | 只有一个：`change new` → `status=unplanned` | 两个：`task start`（主）与 `change new`（可选，互不引用） |
-| 状态机 | 一份：`change status` 的 `unplanned/planning/active/complete` 驱动 `nextSteps` | 两份：task 有门禁状态机；change 只有 verify 状态；`next` 只读前者的 `internal/taskpipeline/next.go:58-64` |
+| 状态机 | 一份：`change status` 的 `unplanned/planning/active/complete` 驱动 `nextSteps` | 两份：task 有门禁状态机；change 只有 verify 状态；`next` 只读前者的 `internal/taskpipeline/next.go:58-64`（R0 前） |
 | 计划的地位 | Plan 是冻结真相源，未 approve 不能 active | plan/design 只是文档；`TaskState` 不引用 change |
 | 人批 | 状态转移（draft→approved），CLI 强制 | advisory 检查；不批也能往下走 |
 | 强制力 | 「只有 CLI 能改状态」+ hook 拒绝直接改 plan | 门禁默认 fail-open（advisory），路由也不例外 |
@@ -195,7 +195,7 @@ A1+A2+A3 是「spec-kit 思想」的最小闭环（约 4–6 天），比 fragme
 Forge 串不起来的三层原因：
 
 1. **定位取舍（有意识）**：`docs/design/positioning.md` 把 Forge 定为「验证与状态层」，明确「不替代循环本身」。于是把「怎么开工、要不要写 spec」交给 agent/人，Forge 只验结果。`task` 因此成了主单元，change 成了可选的文档旁路。
-2. **两个生命周期从未接线**：`task start` 的 `--change` 是可选参数（Change A 才加），`TaskState` 不要求 `Change` 字段；`next` 不 import `specroot`。这不是漏写一行，是两套状态机各自演进、没有合并点。
+2. **两个生命周期从未接线**：`task start` 的 `--change` 是可选参数（Change A 才加），`TaskState` 不要求 `Change` 字段；`next` 不 import `specroot`（R0 前）。这不是漏写一行，是两套状态机各自演进、没有合并点。
 3. **删掉执行层后暴露**：阶段 B–D 删了 hook/plugin 后，唯一剩下的入口提示是 `next`——一个纯 task 状态机。以前 hook 至少能拦一下（虽然也不认 change），现在连拦截都没了。
 
 一句话：**LoopSpec 让「计划」成为开工的前提；Forge 让「任务」成为开工的前提，把计划降级成可选文档。** 文档拦不住人，状态机才能。
