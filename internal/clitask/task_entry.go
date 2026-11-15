@@ -23,7 +23,7 @@ import (
 //
 // 规则：没带 --change 直接放行；带了 --change 就要求它已经 ready——这是「链接
 // 契约」的检查，不是「开工许可」的检查。
-func guardEntryRouting(root, kind, changeID string) error {
+func guardEntryRouting(root, changeID string) error {
 	if changeID == "" {
 		return nil
 	}

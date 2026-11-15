@@ -69,3 +69,47 @@ func TestChangePhase_ArchivedChange(t *testing.T) {
 		t.Fatalf("错误应说明已归档: %s %s", out, stderr)
 	}
 }
+
+// --note-file 按仓库根解析：从子目录传相对路径应能找到仓库根的文件。
+func TestChangeClarify_NoteFileIsRepoRelative(t *testing.T) {
+	dir := t.TempDir()
+	if out, errOut, code := runForge(t, dir, "change", "init"); code != 0 {
+		t.Fatalf("init: %s %s", out, errOut)
+	}
+	legacyChange(t, dir, "legacy")
+	note := "只改 A.txt 的文案，不动 B 模块与接口"
+	if err := os.WriteFile(filepath.Join(dir, "note.txt"), []byte(note), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runForge(t, sub, "change", "clarify", "legacy", "--by-human", "--note-file", "note.txt")
+	if code != 0 {
+		t.Fatalf("clarify from subdir: %s %s", out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "spec", "changes", "legacy", "clarify.md")); err != nil {
+		t.Fatalf("clarify.md 未生成：%v", err)
+	}
+}
+
+// 仓外 note 文件必须拒绝。
+func TestChangeClarify_NoteFileOutsideRepoRejected(t *testing.T) {
+	dir := t.TempDir()
+	if out, errOut, code := runForge(t, dir, "change", "init"); code != 0 {
+		t.Fatalf("init: %s %s", out, errOut)
+	}
+	legacyChange(t, dir, "legacy")
+	outside := filepath.Join(t.TempDir(), "outside.md")
+	if err := os.WriteFile(outside, []byte("只改 A.txt 的文案，不动 B 模块与接口"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runForge(t, dir, "change", "clarify", "legacy", "--by-human", "--note-file", outside)
+	if code == 0 {
+		t.Fatalf("仓外 note-file 应被拒绝：%s %s", out, errOut)
+	}
+	if combined := out + errOut; !strings.Contains(combined, "必须在仓库内") {
+		t.Fatalf("错误文案应说明必须在仓库内：%s", combined)
+	}
+}
