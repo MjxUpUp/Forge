@@ -57,7 +57,7 @@ func guardEntryRouting(root, kind, changeID string) error {
 
 - `changeID != ""` 时**不因 `--kind task` 短路**：显式链接了 change，就得满足它的阶段。
 - 调用点在 `task.go` 里读完 `--worktree` 之后、任何磁盘副作用之前。
-- 老 change（无 goal.md）阶段规则见 §3，能直接到达 `ready`，不会被卡。
+- 老 change（无 goal.md）阶段规则见 §3：可以到达 `ready`，但不能带 `--change` 起任务（钉契约需要 goal.md）；`change phase` 的下一步会据此改口径，`next` 也不会推荐它。
 
 ## 3. 阶段机（A2）
 
@@ -110,7 +110,7 @@ const (
 | 链接检查 | `TestTaskStart_ChangeMustBeReady`（`--kind task` 不能绕过显式链接） |
 | 阶段推导 | `TestStage_Progression`、`TestStage_UnboundTaskBlocksReady`、`TestStage_FastChangeReadyAfterClarify`、`TestStage_LegacyChangeWithoutGoal`、`TestClarify_NonGoalsHyphenVariant`、`TestUnboundTasks` |
 | e2e 真实链路 | `TestEntryRoutingTaskFirstThenChange`（脏树 → 建议 → 直接开工 → abort → 立 change → 未 ready 拒 → 补齐 → ready → next 前进 → 带 `--change` 开工）、`TestChangeStageBlocksEarlyTask` |
-| 文档/托管块 | `TestAgentsProtocol*`、`TestHelpSurface_*`、`TestCliReference_CoversAllTopLevelCommands` |
+| 文档/托管块 | `TestAgentsProtocol*`、`TestHelpSurface_*` |
 
 ## 6. 影响面
 

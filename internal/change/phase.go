@@ -55,7 +55,7 @@ func ParseClarify(raw []byte) (*Clarify, error) {
 		case strings.HasPrefix(trimmed, "## "):
 			section = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(trimmed, "## ")))
 			section = strings.Join(strings.Fields(section), "")
-			section = strings.ReplaceAll(section, "-", "")
+			section = strings.NewReplacer("-", "", "_", "").Replace(section)
 			continue
 		case strings.HasPrefix(trimmed, "人确认"):
 			stamp := strings.TrimSpace(strings.TrimPrefix(trimmed, "人确认"))
@@ -160,16 +160,19 @@ func ComputePhase(root, id string) (Phase, []string, error) {
 	if scaffold(FileProposal) {
 		return PhasePlan, []string{"proposal.md 还是空的/脚手架", "写 proposal.md：为什么做、解决谁的问题、备选与取舍"}, nil
 	}
-	if scaffold(FileAcceptance) {
-		return PhaseTasks, []string{"acceptance.md 还是空的/脚手架", "写 acceptance.md：可执行判据围栏"}, nil
-	}
 
 	if c.Fast {
+		if scaffold(FileAcceptance) {
+			return PhaseTasks, []string{"acceptance.md 还是空的/脚手架", "写 acceptance.md：可执行判据围栏"}, nil
+		}
 		return PhaseReady, nil, nil
 	}
 
 	if scaffold(FileDesign) {
 		return PhasePlan, []string{"缺 design.md（或还是脚手架）", "写 design.md：怎么改、为什么这么改、影响面与风险"}, nil
+	}
+	if scaffold(FileAcceptance) {
+		return PhaseTasks, []string{"acceptance.md 还是空的/脚手架", "写 acceptance.md：可执行判据围栏"}, nil
 	}
 
 	tasksRaw, err := os.ReadFile(filepath.Join(dir, FileTasks))

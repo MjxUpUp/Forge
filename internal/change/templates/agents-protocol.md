@@ -4,7 +4,7 @@
 ## 开始之前（硬规则）
 
 - **任何代码改动之前，先跑 `forge next`**，只执行它给出的下一步；不要自己挑流程。
-- **功能改动先立 change**：任务是一等入口，随时可以开工；change 是记录单元，
+- **记录改动：建议先立 change**：任务是一等入口，随时可以开工；change 是记录单元，
   既能在开工前立，也能中途补。建议的顺序是 `forge change new <id>` → 填产物 →
   `forge change phase <id>` 看还缺什么 → `forge task start --ref <ref> --change <id>`
   把 goal 钉成哈希。**不立 change 也允许开工**（`task start` 不带 `--change`）；
@@ -61,12 +61,15 @@
 
 ## Task 流程（门禁在命令里）
 
-任务是把「一次改动」变成可审证据的容器；声明了 spec 的仓库里，功能任务必须先有
-`ready` 的 change（一句话小修用 `--kind task`），Task 门禁本身是强制的：
+任务是把「一次改动」变成可审证据的容器；change 是记录单元、可以后补——
+任务本身才是一等入口，Task 门禁是强制的：
 
-1. `forge task start --ref <分支名> --change <id> --title "..."` 起任务（`--change` 要求
-   change 已到 `ready`，并把 goal.md 内容哈希钉进 state；小修用 `--kind task`，没有
-   change 时也可以用 `--goal-file` 或 `--goal`）。
+1. `forge task start --ref <分支名> --title "…"` 起任务（不带 `--change` 也能开工；
+   一句话小修加 `--kind task` 只是标记，不放松任何门禁）。
+2. 想留可评审记录时，把 change 钉成契约：`forge change new <id>` → 填产物 →
+   `forge change phase <id>` 到 ready → `forge task start --ref <分支名> --change <id>`
+   （`--change` 要求 change 已到 `ready`，并把 goal.md 内容哈希钉进 state；没有
+   goal 契约时也可以用 `--goal-file` 或 `--goal`）。已开着的任务不能换契约——重开任务。
 2. 干活。真要做的是「改代码」而不是「写文档」时，implement 门禁会核对确有改动。
 3. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
    → `forge task gate task-verify`（配对测试、cheat-scan 等；多数是 advisory，复发才升硬）。
@@ -103,7 +106,8 @@ status 若报 `blocked`，说明同一原因（每次 verify/gate 的第一条�
 
 小的、明显不需要设计的改动可以用 `forge change new <id> --fast`：
 
-- 只要求 `goal.md`、`proposal.md` 与 `acceptance.md`（省的是 design/tasks，不是目标与判据）；
+- 只要求 `goal.md`、`proposal.md` 与 `acceptance.md`，外加 `clarify.md` 的人确认
+  （省掉的是 design/tasks，不是目标、边界与判据）；
 - 必须带 `--by-human`：先问「这次走快速通道吗」，人明确同意才能建；agent 不得自批；
 - 判据、证据、封印、失效规则完全一样，summary 里会标 `fast: true`；
 - 周界（比如 ≤3 个文件、≤50 行）是团队约定，写在这里而不是让机器猜——
@@ -112,7 +116,7 @@ status 若报 `blocked`，说明同一原因（每次 verify/gate 的第一条�
 ## 三个出口的边界
 
 - **正常 change**（默认）：五份产物 + 全套门禁。
-- **fast**：goal + proposal + acceptance，必须人批（`--by-human`）。
+- **fast**：goal + proposal + acceptance + clarify，必须人批（`--by-human`）。
 - **不走 forge**：由人明确说「这次不用走 forge」，那就只做 git 提交；不要建了 change
   又空着，也不要事后补记成 fast。agent 不得自行选择这个出口。
 

@@ -321,7 +321,7 @@ func runChangeNew(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Println("按顺序写：goal（目标五段）→ proposal（为什么做）→ design（怎么做）→ tasks（拆步骤）→ acceptance（可执行判据）")
 	}
-	fmt.Printf("写完后运行：forge change verify %s\n", id)
+	fmt.Printf("写完后先看阶段：forge change phase %s（补齐到 ready）；要封印证据再跑 forge change verify %s\n", id, id)
 	return nil
 }
 

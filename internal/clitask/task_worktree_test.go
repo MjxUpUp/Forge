@@ -48,7 +48,7 @@ func wtSetupProject(t *testing.T) string {
 func TestTaskStart_WorktreeE2E(t *testing.T) {
 	tmpDir := wtSetupProject(t)
 
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/wt-probe", "--title", "wt probe")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/wt-probe", "--title", "wt probe")
 	if code != 0 {
 		t.Fatalf("task start --worktree failed: %s %s", stdout, stderr)
 	}
@@ -120,7 +120,7 @@ func TestTaskFinish_MergeTargetGuard(t *testing.T) {
 	tmpDir := wtSetupProject(t)
 
 	// 建 worktree 任务并手工 complete（任务已完成但门禁走不了 verify——直接标记）。
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/finish-probe", "--title", "fp")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/finish-probe", "--title", "fp")
 	if code != 0 {
 		t.Fatalf("start --worktree: %s %s", stdout, stderr)
 	}
@@ -136,7 +136,7 @@ func TestTaskFinish_MergeTargetGuard(t *testing.T) {
 	}
 
 	// 重开：generic 任务（complete 不评分、无门禁）+ worktree + complete。
-	stdout, stderr, code = runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/finish-g", "--title", "g", "--kind", "generic")
+	stdout, stderr, code = runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/finish-g", "--title", "g", "--kind", "generic")
 	if code != 0 {
 		t.Fatalf("start generic --worktree: %s %s", stdout, stderr)
 	}
@@ -190,7 +190,7 @@ func TestTaskStart_BranchDerivation(t *testing.T) {
 	tmpDir := wtSetupProject(t)
 
 	// 非惯例前缀 ref + --branch：派生 feat/conventions-profile，不再被前缀校验拒绝。
-	stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "conventions-profile", "--branch", "--title", "cp")
+	stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "conventions-profile", "--branch", "--title", "cp")
 	if code != 0 {
 		t.Fatalf("非惯例 ref + --branch 应派生成功（#6 回归）: %s", stdout)
 	}
@@ -316,7 +316,7 @@ func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/flow-wt", "--change", "flow", "--title", "flow wt")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-wt", "--change", "flow", "--title", "flow wt")
 	if code != 0 {
 		t.Fatalf("task start --worktree --change failed: %s %s", stdout, stderr)
 	}
@@ -372,7 +372,7 @@ func TestTaskStart_WorktreeChangeRequiresCommittedGoal(t *testing.T) {
 	makeChangeFiles(t, tmpDir, "flow2")
 	// 故意不提交 goal.md。
 
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/flow-uncommitted", "--change", "flow2", "--title", "flow2 wt")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-uncommitted", "--change", "flow2", "--title", "flow2 wt")
 	if code == 0 {
 		t.Fatalf("未提交 goal.md 时 --worktree --change 应失败: %s", stdout)
 	}

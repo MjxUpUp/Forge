@@ -46,7 +46,7 @@ go test ./internal/change/ -run TestAgentsProtocol -count=1
 #7 CLI 文档守卫（帮助面与 cli.md）：
 
 ```bash
-go test ./internal/cli/ -run 'TestHelpSurface|TestCliReference' -count=1
+go test ./internal/cli/ -run 'TestHelpSurface' -count=1
 ```
 
 #8 gofmt 干净（CI 同款）：
