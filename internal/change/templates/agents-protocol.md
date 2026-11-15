@@ -4,12 +4,15 @@
 ## 开始之前（硬规则）
 
 - **任何代码改动之前，先跑 `forge next`**，只执行它给出的下一步；不要自己挑流程。
-  `next` 只覆盖 Task 回环：本仓库有对应 change 时，`task start` 记得补 `--change <id>`。
-- 一次任务只做一件事：`forge task start --ref <ref> --change <id>`（把 goal 钉成哈希），
-  做完依次跑 `forge task gate task-implement`、`forge task verify-acceptance`（实跑验收）、
-  `forge task gate task-verify`、`forge task gate task-complete`，最后 `forge task complete`。
-- **门禁是命令，不是 hook**：Task 门禁默认没有后台拦截（可选的 git pre-commit 除外），
-  上面每一条都要你自己跑；不跑就等于没有门禁。
+- **功能改动先立 change**：本仓库声明了 `spec/forge.yaml` 时，`task start` 不带 `--change`
+  会被拒绝。正确顺序是 `forge change new <id>` → 填产物 → `forge change phase <id>`
+  看还缺什么 → `forge task start --ref <ref> --change <id>`。
+  确实是一句话小修，才用 `forge task start --kind task …`（显式小修出口，仍走三道门禁）。
+- 一次任务只做一件事，做完依次跑 `forge task gate task-implement`、`forge task verify-acceptance`
+  （实跑验收）、`forge task gate task-verify`、`forge task gate task-complete`，最后
+  `forge task complete`。
+- **门禁是命令，不是 hook**：没有后台拦截（可选的 git pre-commit 除外），上面每一条
+  都要你自己跑；不跑就等于没有门禁。
 - 刻意的一次性小改：先 `forge task wild "<说明>"` 申报，再改；不要用「顺手」绕过门禁。
 - 「这次不用走 forge」也是合法选择，但要由人明确说出来；agent 不得自行决定跳过。
 
@@ -26,6 +29,7 @@
   forge 从 1.85 起没有 hook 执法层，改它不会换来拦截。门禁靠 agent 显式跑
   `forge task …` / `forge change …` 执行。
 - `spec/changes/<id>/goal.md` — 目标契约五段：Objective / Why / Constraints / Out of Scope / Check；填完删掉每段的 `forge:fill` 标记。
+- `spec/changes/<id>/clarify.md` — 边界与非目标 + `人确认：<UTC>`（`forge change clarify <id> --by-human --note "…"` 生成）。
 - `spec/changes/<id>/proposal.md` — 为什么做、怎样算解决。
 - `spec/changes/<id>/design.md` — 怎么改、为什么这么改。
 - `spec/changes/<id>/tasks.md` — 实施步骤；判据只写 acceptance 的围栏编号（多个用「和/或/、」分隔）。
@@ -39,6 +43,8 @@
 2. `forge change new <id> --title "..."` 生成五份产物（含 `goal.md`）。
    新 change 会留一个 `.goal-required` 标记：它让 goal.md 成为必填——删掉 goal.md 不再算「老 change」，verify 会直接拒绝。
 3. 依次填 goal → proposal → design → tasks → acceptance，并删掉每份文件里的 `forge:fill` 标记。
+   填完用 `forge change phase <id>` 确认走到 `ready`；缺 clarify.md 时先问用户边界与非目标，
+   再 `forge change clarify <id> --by-human --note "…"` 记录（agent 不得自批）。
    启动任务时用 `forge task start --change <id>` 把 goal 钉成内容哈希；启动后改 goal.md 会让 `task-implement` BLOCKED（改目标等于改判据，重开任务）。
    goal 没填完时 `task start --change` 会报错（读不出五段）；漂移后的恢复：还原 goal.md，或 `forge task abort` 后重新 `task start --change` 钉新哈希。
    老 change 没有 goal.md 时 `--change` 会报错：先补 goal.md，或改用 `forge task start --ref <ref>`（不钉契约；implement 只记 advisory）。
@@ -51,10 +57,12 @@
 
 ## Task 流程（门禁在命令里）
 
-任务是把「一次改动」变成可审证据的容器；change 可有可无，Task 门禁是强制的：
+任务是把「一次改动」变成可审证据的容器；声明了 spec 的仓库里，功能任务必须先有
+`ready` 的 change（一句话小修用 `--kind task`），Task 门禁本身是强制的：
 
 1. `forge task start --ref <分支名> --change <id> --title "..."` 起任务（`--change` 要求
-   goal.md 五段已填，并把内容哈希钉进 state；没有 change 时用 `--goal-file` 或 `--goal`）。
+   change 已到 `ready`，并把 goal.md 内容哈希钉进 state；小修用 `--kind task`，没有
+   change 时也可以用 `--goal-file` 或 `--goal`）。
 2. 干活。真要做的是「改代码」而不是「写文档」时，implement 门禁会核对确有改动。
 3. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
    → `forge task gate task-verify`（配对测试、cheat-scan 等；多数是 advisory，复发才升硬）。

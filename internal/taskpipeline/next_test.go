@@ -196,3 +196,49 @@ func TestGitBehindRemote(t *testing.T) {
 		t.Fatalf("upstream ahead by 2: got %d, want 2", got)
 	}
 }
+
+// TestNextDecision_EntryRouting pins 入口路由 A1：声明了 spec 的仓库，脏树且无活跃任务时
+// 先给「立 change / 推进已有 change」，而不是直接 task start；未声明仓库行为不变。
+func TestNextDecision_EntryRouting(t *testing.T) {
+	cases := []struct {
+		name string
+		ctx  NextContext
+		want string
+		sub  string
+	}{
+		{
+			name: "spec repo, dirty, no open change",
+			ctx:  NextContext{Branch: "main", Dirty: true, SpecDeclared: true},
+			want: "forge change new <id>",
+			sub:  "--kind task",
+		},
+		{
+			name: "spec repo, dirty, open change exists",
+			ctx:  NextContext{Branch: "main", Dirty: true, SpecDeclared: true, OpenChanges: []string{"entry-routing"}},
+			want: "forge change phase entry-routing",
+			sub:  "阶段",
+		},
+		{
+			name: "plain repo, dirty, unchanged behavior",
+			ctx:  NextContext{Branch: "main", Dirty: true},
+			want: "forge task start --ref <ref> --branch --title <title>",
+			sub:  "无活跃任务",
+		},
+		{
+			name: "spec repo clean stays status",
+			ctx:  NextContext{Branch: "main", Dirty: false, SpecDeclared: true},
+			want: "forge status",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := NextDecisionCtx(c.ctx, nil)
+			if got.Next != c.want {
+				t.Fatalf("Next = %q, want %q (reason: %s)", got.Next, c.want, got.Reason)
+			}
+			if c.sub != "" && !strings.Contains(got.Reason, c.sub) {
+				t.Errorf("Reason should mention %q: %q", c.sub, got.Reason)
+			}
+		})
+	}
+}

@@ -50,7 +50,7 @@ func switchMachine(t *testing.T, sessionID string) string {
 func exportDelegatedTask(t *testing.T, title string, pre func(dirA string), extraFlags ...string) (dirA, bundlePath string) {
 	t.Helper()
 	dirA = setupDelegateProject(t)
-	if out, _, code := runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, title); code != 0 {
+	if out, _, code := runForge(t, dirA, `task`, `start`, `--kind`, `task`, `--ref`, `feat/delegate`, `--title`, title); code != 0 {
 		t.Fatalf(`A task start: %s`, out)
 	}
 	if pre != nil {
@@ -127,7 +127,7 @@ func TestTaskExportImport_FreshRoundTrip(t *testing.T) {
 // 用 warn 独有的「无法重建时间线」断言（成功 note 也说"checklog"，裸词会骗人）。
 func TestTaskExport_WarnsWhenChecklogOmitted(t *testing.T) {
 	dir := setupDelegateProject(t)
-	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/x`, `--title`, `X`); code != 0 {
+	if out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/x`, `--title`, `X`); code != 0 {
 		t.Fatalf(`start: %s`, out)
 	}
 	bundle := filepath.Join(t.TempDir(), `bundle.json`)
@@ -235,7 +235,7 @@ func TestTaskImport_MergeUnions(t *testing.T) {
 // 保留任务形状（状态/门禁 ID/决策计数）。另验证深拷贝保证：盘上原件不被脱敏改动。
 func TestTaskExport_Redacts(t *testing.T) {
 	dirA := setupDelegateProject(t)
-	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `secret`)
+	runForge(t, dirA, `task`, `start`, `--kind`, `task`, `--ref`, `feat/delegate`, `--title`, `secret`)
 	runForge(t, dirA, `task`, `assign`, `--ref`, `feat/delegate`, `--to`, `kimi`, `--role`, `frontend`, `--by`, `claude-code`)
 	runForge(t, dirA, `task`, `decide`, `--ref`, `feat/delegate`, `--content`, `internal-api-key-12345`, `--rationale`, `leaks repo layout`, `--by`, `claude-code`)
 	runForge(t, dirA, `task`, `finding`, `--ref`, `feat/delegate`, `--content`, `sql injection`, `--evidence`, `main.go:42`, `--source`, `claude-code`)
@@ -417,7 +417,7 @@ func TestTaskExport_Redacts(t *testing.T) {
 // RecordedAt + Check + TaskRef（时间线形状）保留。深拷贝：盘上 checklog 不被动。
 func TestTaskExport_RedactsChecklog(t *testing.T) {
 	dirA := setupDelegateProject(t)
-	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `redact-cl`)
+	runForge(t, dirA, `task`, `start`, `--kind`, `task`, `--ref`, `feat/delegate`, `--title`, `redact-cl`)
 	// 直接播种一条带身份字段的 checklog 条目（Record 会盖 ToolName；我们显式设全身份三元组使断言无歧义）。
 	root := dirA
 	leaked := []checklog.Entry{
@@ -774,7 +774,7 @@ func TestTaskPort_OutputNewlinesAreReal(t *testing.T) {
 	// 机器 A：带 --include-checklog 导出，使成功 note = " 含 N 条 checklog"——换行正前方的无路径尾 token
 	// （不加 flag 则该行以输出路径结尾，Windows 上路径含反斜杠，无法确定性断言换行）。
 	dirA := setupDelegateProject(t)
-	runForge(t, dirA, `task`, `start`, `--ref`, `feat/delegate`, `--title`, `newline-guard`)
+	runForge(t, dirA, `task`, `start`, `--kind`, `task`, `--ref`, `feat/delegate`, `--title`, `newline-guard`)
 	bundlePath := filepath.Join(t.TempDir(), `b.json`)
 	exportOut, _, code := runForge(t, dirA, `task`, `export`, `--ref`, `feat/delegate`, `-o`, bundlePath, `--include-checklog`)
 	if code != 0 {

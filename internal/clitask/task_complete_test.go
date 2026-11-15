@@ -314,7 +314,7 @@ func TestTaskGate_PassesWithoutCompleting(t *testing.T) {
 	runGit(t, dir, `config`, `user.email`, `t@example.com`)
 	runGit(t, dir, `config`, `user.name`, `t`)
 	runGit(t, dir, `commit`, `--allow-empty`, `-m`, `base`)
-	gateOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/gate-active`)
+	gateOut, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/gate-active`)
 	if code != 0 {
 		t.Fatalf(`task start failed: %s`, gateOut)
 	}
