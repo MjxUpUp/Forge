@@ -194,7 +194,7 @@ npm install -g @agent_forge/forge
 ## ⬆️ 从 1.84 及更早版本升级
 
 1.85 删除了宿主层：hook 执法、用户级 `CLAUDE.md` / `AGENTS.md` 注入、插件、skills 分发都不再存在，
-`forge uninstall` 也随宿主层一起删了。旧版本留在用户目录里的东西不会自动消失，需要手工清理
+forge 的 `uninstall` 子命令也随宿主层一起删了。旧版本留在用户目录里的东西不会自动消失，需要手工清理
 （删除前先备份）。下面命令按 bash 写，Windows 请用 Git Bash / MSYS 执行。
 
 旧版会写的位置（按你用过的宿主看）：
