@@ -18,7 +18,7 @@ import (
 func TestTaskStart_TTLFlagPersists(t *testing.T) {
 	dir := setupDelegateProject(t)
 
-	if out, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/ttl", "--title", "ttl task", "--ttl", "24h"); code != 0 {
+	if out, _, code := runForge(t, dir, "task", "start", "--ref", "feat/ttl", "--title", "ttl task", "--ttl", "24h"); code != 0 {
 		t.Fatalf("task start --ttl: %s", out)
 	}
 	state, err := taskpipeline.LoadTaskState(dir, "feat/ttl")
@@ -31,7 +31,7 @@ func TestTaskStart_TTLFlagPersists(t *testing.T) {
 
 	// 不带 --ttl 时 TTL 留零值——向后兼容回落全局（health.effectiveTTL 对零 TTL 返回 7d 常量，
 	// 故 legacy 任务行为完全不变）。
-	if out, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/no-ttl", "--title", "no ttl"); code != 0 {
+	if out, _, code := runForge(t, dir, "task", "start", "--ref", "feat/no-ttl", "--title", "no ttl"); code != 0 {
 		t.Fatalf("task start: %s", out)
 	}
 	state2, err := taskpipeline.LoadTaskState(dir, "feat/no-ttl")

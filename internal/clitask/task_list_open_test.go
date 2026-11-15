@@ -57,7 +57,7 @@ func TestTaskListOpen(t *testing.T) {
 	}
 
 	for _, task := range [][2]string{{`feat/one`, `第一个`}, {`feat/two`, `第二个`}} {
-		if out, _, code := runForge(t, projA, `task`, `start`, `--kind`, `task`, `--ref`, task[0], `--title`, task[1]); code != 0 {
+		if out, _, code := runForge(t, projA, `task`, `start`, `--ref`, task[0], `--title`, task[1]); code != 0 {
 			t.Fatalf(`task start %s: %s`, task[0], out)
 		}
 	}
@@ -74,7 +74,7 @@ func TestTaskListOpen(t *testing.T) {
 	if err := taskpipeline.SaveTaskState(projA, &taskpipeline.TaskState{TaskRef: `feat/done`, Summary: `已完成`, StartedAt: done, CompletedAt: &done}); err != nil {
 		t.Fatalf(`seed completed task: %v`, err)
 	}
-	if out, _, code := runForge(t, projB, `task`, `start`, `--kind`, `task`, `--ref`, `feat/in-b`, `--title`, `B 的任务`); code != 0 {
+	if out, _, code := runForge(t, projB, `task`, `start`, `--ref`, `feat/in-b`, `--title`, `B 的任务`); code != 0 {
 		t.Fatalf(`task start feat/in-b: %s`, out)
 	}
 

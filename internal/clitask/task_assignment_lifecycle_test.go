@@ -57,7 +57,7 @@ func setupDelegateProject(t *testing.T) string {
 // startChild 经 CLI 启动一个 parent 的子任务（ParentTaskRef=parent）。
 func startChild(t *testing.T, dir, ref, parent string) {
 	t.Helper()
-	if out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, ref, `--parent`, parent, `--title`, ref); code != 0 {
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, ref, `--parent`, parent, `--title`, ref); code != 0 {
 		t.Fatalf(`start child %s exit %d: %s`, ref, code, out)
 	}
 }
@@ -159,7 +159,7 @@ func TestTaskAssignClaimDeliver_Lifecycle(t *testing.T) {
 	dir := setupDelegateProject(t)
 
 	// Start a task to delegate.
-	if stdout, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "delegated work"); code != 0 {
+	if stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "delegated work"); code != 0 {
 		t.Fatalf("task start failed: %s", stdout)
 	}
 
@@ -224,7 +224,7 @@ func TestTaskDeliver_AsFlag(t *testing.T) {
 	dir := setupDelegateProject(t)
 
 	// 相符的 --as：静默交付，无不符 advisory。
-	if stdout, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "as-flag"); code != 0 {
+	if stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "as-flag"); code != 0 {
 		t.Fatalf("task start failed: %s", stdout)
 	}
 	assignClaim(t, dir, "feat/delegate", "kimi")
@@ -247,7 +247,7 @@ func TestTaskDeliver_AsFlag(t *testing.T) {
 	}
 
 	// 不符的 --as：仍交付（仅 advisory），警告须点明两个身份。
-	if stdout, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate-2", "--title", "as-flag-2"); code != 0 {
+	if stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate-2", "--title", "as-flag-2"); code != 0 {
 		t.Fatalf("task start 2 failed: %s", stdout)
 	}
 	assignClaim(t, dir, "feat/delegate-2", "kimi")
@@ -273,7 +273,7 @@ func TestTaskDeliver_AsFlag(t *testing.T) {
 // 警告但仍接受——软校验契约。任务创建为 offered，工作方用 --as 仍能显式认领。
 func TestTaskAssign_UnknownAgentWarnAccepted(t *testing.T) {
 	dir := setupDelegateProject(t)
-	if stdout, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "x"); code != 0 {
+	if stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x"); code != 0 {
 		t.Fatalf("task start failed: %s", stdout)
 	}
 	// codebuddy is NOT in KnownAgents (no project marker) → warn, but exit 0 and offered.
@@ -316,7 +316,7 @@ func TestTaskAssign_RequiresTo(t *testing.T) {
 // 可见，敏感内容可先审视。
 func TestTaskAssign_WarnsFindingsVisibleToAssignee(t *testing.T) {
 	dir := setupDelegateProject(t)
-	if out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/x`, `--title`, `X`); code != 0 {
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/x`, `--title`, `X`); code != 0 {
 		t.Fatalf(`start: %s`, out)
 	}
 	// runForge 用 CombinedOutput，stderr 合入第一返回值，故 output 含 warn。
@@ -338,7 +338,7 @@ func TestTaskStart_AssigneeWarnAccepted(t *testing.T) {
 	dir := setupDelegateProject(t)
 	// start --assignee codebuddy: unknown agent → warn but accept (the soft-validation contract
 	// is identical to `task assign --to`).
-	stdout, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--assignee", "codebuddy", "--role", "frontend", "--title", "x")
+	stdout, _, code := runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--assignee", "codebuddy", "--role", "frontend", "--title", "x")
 	if code != 0 {
 		t.Fatalf("start --assignee to unknown agent should be accepted (warn only), got exit %d: %s", code, stdout)
 	}
@@ -364,7 +364,7 @@ func TestTaskStart_AssigneeWarnAccepted(t *testing.T) {
 // claimed)→deliver。钉住「答复后任务恢复到可交付态」——input-required 不死锁的保证。
 func TestTaskQuestionAnswer_Lifecycle(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "x")
+	runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
 	assignClaim(t, dir, "feat/delegate", "kimi")
 
 	// question: claimed → input-required
@@ -405,7 +405,7 @@ func TestTaskQuestionAnswer_Lifecycle(t *testing.T) {
 func TestTaskFailCancelReopen(t *testing.T) {
 	t.Run("fail: claimed->failed", func(t *testing.T) {
 		dir := setupDelegateProject(t)
-		runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "x")
+		runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
 		runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code")
 		runForge(t, dir, "task", "claim", "--ref", "feat/delegate", "--as", "kimi")
 		stdout, _, code := runForge(t, dir, "task", "fail", "--ref", "feat/delegate", "--reason", "编译不过")
@@ -418,7 +418,7 @@ func TestTaskFailCancelReopen(t *testing.T) {
 	})
 	t.Run("cancel: offered->canceled", func(t *testing.T) {
 		dir := setupDelegateProject(t)
-		runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "x")
+		runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
 		runForge(t, dir, "task", "assign", "--ref", "feat/delegate", "--to", "kimi", "--by", "claude-code")
 		stdout, _, code := runForge(t, dir, "task", "cancel", "--ref", "feat/delegate", "--reason", "需求变了")
 		if code != 0 {
@@ -430,7 +430,7 @@ func TestTaskFailCancelReopen(t *testing.T) {
 	})
 	t.Run("reopen: delivered->claimed", func(t *testing.T) {
 		dir := setupDelegateProject(t)
-		runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "x")
+		runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
 		deliverChild(t, dir, "feat/delegate", "kimi")
 		stdout, _, code := runForge(t, dir, "task", "reopen", "--ref", "feat/delegate", "--reason", "联调发现 bug")
 		if code != 0 {
@@ -447,7 +447,7 @@ func TestTaskFailCancelReopen(t *testing.T) {
 // TestTaskQuestion_RequiresContent：question 的 --content 必填（回抛需有内容）。
 func TestTaskQuestion_RequiresContent(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "x")
+	runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
 	assignClaim(t, dir, "feat/delegate", "kimi")
 	stdout, _, code := runForge(t, dir, "task", "question", "--ref", "feat/delegate")
 	if code == 0 {
@@ -464,7 +464,7 @@ func TestTaskQuestion_RequiresContent(t *testing.T) {
 // 空答复仍能解除 input-required 死锁，不强制编排器编造 rationale。
 func TestTaskAnswer_EmptyAllowed(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/delegate", "--title", "x")
+	runForge(t, dir, "task", "start", "--ref", "feat/delegate", "--title", "x")
 	assignClaim(t, dir, "feat/delegate", "kimi")
 	runForge(t, dir, "task", "question", "--ref", "feat/delegate", "--content", "q")
 	stdout, _, code := runForge(t, dir, "task", "answer", "--ref", "feat/delegate")
@@ -483,8 +483,8 @@ func TestTaskAnswer_EmptyAllowed(t *testing.T) {
 // delivered → IsDelivered true，不强制上游过自身门禁——证明门禁认全部三种交付形态，而非仅 complete。
 func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/up`, `--title`, `上游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
 
 	// B 过 task-verify：上游 feat/up 未交付 → HARD BLOCK（注入点在 prerequisite 之前，故最先触发）
 	stdout, _, code := runForge(t, dir, `task`, `gate`, `task-verify`, `--ref`, `feat/down`)
@@ -535,9 +535,9 @@ func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
 func TestTaskStart_DependsOnCycleRejected(t *testing.T) {
 	dir := setupDelegateProject(t)
 	// A 依赖 B（B 尚不存在 → 前向引用允许，lookup 返回 nil → 无环 → 接受）
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/a`, `--depends-on`, `feat/b`, `--title`, `A`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/a`, `--depends-on`, `feat/b`, `--title`, `A`)
 	// B 依赖 A：B→A→B（A 已依赖 B）闭合环 → 拒绝
-	stdout, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/b`, `--depends-on`, `feat/a`, `--title`, `B`)
+	stdout, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/b`, `--depends-on`, `feat/a`, `--title`, `B`)
 	if code == 0 {
 		t.Fatalf(`start feat/b --depends-on feat/a 应因环拒绝（B→A→B）, got exit 0: %s`, stdout)
 	}
@@ -553,8 +553,8 @@ func TestTaskStart_DependsOnCycleRejected(t *testing.T) {
 // 条件里回归掉，本测试会抓到——上游未交付的 task 也不该溜过 completion。
 func TestTaskDependsOn_GateCompleteAlsoBlocks(t *testing.T) {
 	dir := setupDelegateProject(t)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/up`, `--title`, `上游`)
-	runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/up`, `--title`, `上游`)
+	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
 	stdout, _, code := runForge(t, dir, `task`, `gate`, `task-complete`, `--ref`, `feat/down`)
 	if code == 0 {
 		t.Fatalf(`task-complete 应因上游未交付 BLOCKED, got exit 0: %s`, stdout)
@@ -661,7 +661,7 @@ func TestTaskResume_AutoClaim(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := setupDelegateProject(t)
-			if out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/delegate`, `--title`, tc.title); code != 0 {
+			if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/delegate`, `--title`, tc.title); code != 0 {
 				t.Fatalf(`task start exit %d: %s`, code, out)
 			}
 			if tc.assignTo != "" {

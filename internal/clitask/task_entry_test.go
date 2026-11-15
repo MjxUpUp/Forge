@@ -68,3 +68,14 @@ func TestGuardEntryRouting_AllowsWithoutChange(t *testing.T) {
 		t.Fatalf("plain repo must pass: %v", err)
 	}
 }
+
+// --kind 的帮助面必须列出 task：它是「小修标记」的唯一显式入口说明。
+func TestTaskStart_KindHelpListsTask(t *testing.T) {
+	flag := taskStartCmd.Flags().Lookup("kind")
+	if flag == nil {
+		t.Fatal("task start 应有 --kind")
+	}
+	if !strings.Contains(flag.Usage, "task（小修标记") {
+		t.Errorf("--kind 帮助未列出 task：%s", flag.Usage)
+	}
+}

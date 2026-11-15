@@ -182,7 +182,7 @@ func TestTaskStart_AcceptGoTestAutoVerbose(t *testing.T) {
 	if stdout, _, code := runForge(t, dir, `init`, `--mode`, `medium`); code != 0 {
 		t.Fatalf(`forge init failed: %s`, stdout)
 	}
-	out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/gov`,
+	out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/gov`,
 		`--accept`, `go test ./... :: PASS`,
 		`--accept`, `go build ./...`)
 	if code != 0 {
@@ -429,7 +429,7 @@ func TestTaskAcceptance_E2E_FlagToStatusToVerify(t *testing.T) {
 
 	// 两条 --accept（StringArray：整条不切，含空格/:: 不被拆）。第二条 `go version ::` 是
 	// 尾部裸 ::（无 expected），顺带验证 ParseAcceptance 的尾部 :: 兼容。
-	startOut, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/spec-e2e`,
+	startOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/spec-e2e`,
 		`--accept`, `go version :: go version`,
 		`--accept`, `go version ::`)
 	if code != 0 {
@@ -492,7 +492,7 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 	}
 
 	// 1. 纯 --plan-file：acceptance 应含 2 条提取条目 + 可见性提示
-	startOut, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/plan-only`,
+	startOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/plan-only`,
 		`--plan-file`, planPath)
 	if code != 0 {
 		t.Fatalf(`task start --plan-file failed: %s`, startOut)
@@ -522,7 +522,7 @@ func TestTaskStart_PlanFileExtractsAcceptance(t *testing.T) {
 	// 2. --accept 与 --plan-file 共存：显式 --accept 优先；去重按 (Run, Expected, Assertions)
 	// 三元组口径（L2 P1 起与结果匹配键同口径）——plan 的 go version 与显式条目 Expected
 	// 不同，是两个不同检查，不再被 Run 键吞掉。
-	startOut2, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/plan-and-accept`,
+	startOut2, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/plan-and-accept`,
 		`--accept`, `go version :: OVERRIDE`,
 		`--plan-file`, planPath)
 	if code != 0 {
