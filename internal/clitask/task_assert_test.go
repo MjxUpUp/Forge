@@ -98,7 +98,7 @@ func TestTaskStart_AssertBinding(t *testing.T) {
 	if out, _, code := runForge(t, dir, `init`, `--mode`, `medium`); code != 0 {
 		t.Fatalf(`forge init failed: %s`, out)
 	}
-	out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/assert-bind`,
+	out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/assert-bind`,
 		`--accept`, `go version :: go version`,
 		`--assert`, `exit: :: 0`,
 		`--assert`, `not-contains: :: NONEXISTENT`,
@@ -132,12 +132,12 @@ func TestTaskStart_AssertBinding(t *testing.T) {
 	}
 
 	// 声明期拒绝：叙述性 glob（CJK 主导）——降级发生在声明时而非跑时。
-	if _, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/assert-narrative`,
+	if _, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/assert-narrative`,
 		`--assert`, `file-changed:把所有源码文件都改一遍`); code == 0 {
 		t.Error(`叙述性 glob 应被声明期拒绝（exit 非 0）`)
 	}
 	// 声明期拒绝：未知类型（regex 宪法——意见不走 hard）。
-	if _, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/assert-regex`,
+	if _, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/assert-regex`,
 		`--accept`, `go version ::`,
 		`--assert`, `regex:^ok$ :: ok`); code == 0 {
 		t.Error(`regex 断言应被声明期拒绝`)
@@ -165,7 +165,7 @@ func TestTaskStart_AcceptFile(t *testing.T) {
 	if err := os.WriteFile(yamlPath, []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/accept-file`,
+	out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/accept-file`,
 		`--accept-file`, yamlPath)
 	if code != 0 {
 		t.Fatalf(`task start --accept-file failed: %s`, out)
@@ -187,7 +187,7 @@ func TestTaskStart_AcceptFile(t *testing.T) {
 	if err := os.WriteFile(yamlPath, []byte("criteria: [}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/accept-file-bad`,
+	if _, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/accept-file-bad`,
 		`--accept-file`, yamlPath); code == 0 {
 		t.Error(`坏 YAML 应拒绝启动`)
 	}
@@ -200,7 +200,7 @@ func TestTaskAccept_Assert(t *testing.T) {
 	if out, _, code := runForge(t, dir, `init`, `--mode`, `medium`); code != 0 {
 		t.Fatalf(`forge init failed: %s`, out)
 	}
-	if out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, `feat/accept-assert`); code != 0 {
+	if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/accept-assert`); code != 0 {
 		t.Fatalf(`task start failed: %s`, out)
 	}
 	out, _, code := runForge(t, dir, `task`, `accept`,

@@ -87,16 +87,29 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
 
 ```bash
 cd your-project
-forge init      # 在仓库里声明契约：只写仓库内产物
-forge next      # 从当前 git/任务状态推导恰好一条下一步
+forge init                 # 在仓库里声明契约：只写仓库内产物
+git add -A && git commit -m "chore: forge init"   # 让 next 看到干净工作区
+forge next                 # 从当前 git/任务状态推导恰好一条下一步，只执行它
+# 干净工作区没有任务时 next 可能只给 forge status；任务是一等入口，想开工直接 task start 即可
+```
 
-# 日常小改：任务是一等入口，直接开工
+**场景 A：小修——任务是一等入口，直接开工**（change 可以事后补）
+
+```bash
 forge task start --ref feat/fix-typo --branch --title "修正文案"
+# 做完依次跑：task gate task-implement → task verify-acceptance
+#            → task gate task-verify → review pass → task gate task-complete → task complete
+```
 
-# 有明确需求、想留下可评审记录时：立 change，再带 --change 开工
+**场景 B：想留可评审记录——先立 change，再钉契约开工**
+
+```bash
+# 先回到 main，--branch 只能从 main/master 建分支
 forge change new my-feature --title "一句话说清要做什么"
-# 填 goal.md 五段 → 问人边界 → forge change clarify my-feature --by-human --note "…"
-forge change phase my-feature   # 还缺哪份产物（specify → clarify → plan → tasks → ready）
+# 填 goal.md 五段，问人「边界/非目标」后：
+forge change clarify my-feature --by-human --note "只改 A；不动 B"
+# 补齐 proposal.md / design.md / tasks.md（每条绑判据编号）/ acceptance.md
+forge change phase my-feature        # 每补一份看一次，直到 ready
 forge task start --ref feat/my-feature --branch --change my-feature
 ```
 
@@ -140,7 +153,7 @@ hooks: off         # 兼容字段：保留只为老契约可解析，不启用�
 | 命令 | 用途 |
 |------|------|
 | `forge init` | 在仓库里声明 forge 契约：写 `spec/forge.yaml`、`spec/changes/`、AGENTS.md 托管块，并按默认规则维护已存在的入口指针；不写 `~/.forge`（`--profile mini\|standard\|full`，`--project` 已废弃为 no-op） |
-| `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步；声明了 spec 的仓库脏树会建议先立 change 或推进已有 change（也可以直接 `task start` 开工） |
+| `forge next` | 从 git/任务状态推导**恰好一条**下一步命令——agent 不自选下一步；声明了 spec 的仓库脏树会建议推进已有 change、立 change，或给出可直接粘贴的 `task start --change <id>` |
 | `forge change init/new/list/phase/clarify/verify/status/gate/check/agents` | 仓库内 change 生命周期：`spec/changes/<id>/` 五份产物（`goal.md` 五段目标 + proposal/design/tasks/acceptance）+ 可执行判据 + 证据封印（绑定 commit；工作区有未提交改动时另记每个文件的 sha256——不依赖 forge 接管，产物随仓库走）。`status` 是循环里唯一该看的下一步来源（同因失败 3 次就停下交给人；`prior_attempts` 列出最近失败的证据，返工前先读）；`gate --task N` 只跑某条任务的判据；`check` 是 CI 与 pre-commit 共用的证据闸门（未封印/失效/失败 → 退出 2，`--staged` 只查暂存区碰到的 change）；`agents` 重同步 AGENTS.md 的 forge 托管块并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（有块只改块内、无块末尾追加；`CLAUDE.md` 不存在默认不建，`.cursor/rules/` 目录已存在时补 forge.mdc，要凭空创建用 `--pointers`，`none` 完全不碰）；`change init` 会在仓库根写 `spec/` 与 AGENTS.md，并按默认规则维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`；随 git 提交；与 `forge init` 同源，都是仓库内产物）；`new --fast` 只要求 goal.md + proposal + acceptance，且必须带 `--by-human`（agent 不得自批）；`phase <id>` 按产物报阶段（specify→clarify→plan→tasks→ready），`clarify --by-human --note` 记录边界与非目标；`task start` 不带 `--change` 也可以开工（任务是一等入口；带 `--change` 才要求该 change 已 ready；一句话小修可加 `--kind task`）；`goal.md` 随 git 走，`task start --change <id>` 启动时钉 `Path+SHA256`，启动后改 goal 即让 implement 门禁 BLOCKED|
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-verify → task-complete |

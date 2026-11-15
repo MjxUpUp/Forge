@@ -284,10 +284,10 @@ forge task score                  # 查看质量评分
 
 ## 入口路由与阶段机
 
-- `forge next`：声明了 `spec/forge.yaml` 的仓库，工作区有未归属改动时：没有未完成 change → 建议 `forge change new <id>`；有未完成的 change → 请先看 `forge change phase <id>`；该 change 已 ready → 直接给 `forge task start --change <id>`。任务是一等入口，`task start` 永远可达。未声明契约的仓库行为不变（仍是 `task start` / `wild` 申报）。JSON 的 `state` 里有 `spec_declared` 与 `open_changes`（计数）。
+- `forge next`：声明了 `spec/forge.yaml` 的仓库，工作区有未归属改动时：没有未完成 change → 建议 `forge change new <id>`；有未完成的 change → 请先看 `forge change phase <id>`；该 change 已 ready → 直接给 `forge task start --change <id>`。任务是一等入口，`task start` 永远可达。未声明契约的仓库行为不变（仍是 `task start` / `wild` 申报）。JSON 的 `state` 里有 `spec_declared`、`open_changes` 与 `ready_changes`（计数；ready 但无 goal.md 的老 change 不计入）。
 - `forge task start`：任务是一等入口——不带 `--change` 随时可以开工，change 可以事后补。
   带 `--change` 时要求该 change 已到 `ready` 阶段，否则报错里给出当前阶段与缺失项（这条检查只是「链接契约」的完整性，不是「开工许可」）。
   `--kind task` 标记「这次是小修、没有立 change」，仍走三道门禁；`--kind generic` 仍是「不走门禁的调研/设计任务」。
-- `forge change phase <id> [--json]`：按产物推导阶段——`specify`（goal.md 五段没填完；没有 goal.md 的老 change 跳过这一段）→ `clarify`（缺 clarify.md 或没写「人确认：」）→ `plan`（proposal/design 缺失或仍是脚手架）→ `tasks`（acceptance 或 tasks 缺失/没任务/任务没写判据编号）→ `ready`。fast change 不要求 design/tasks（那是 fast 的定义），proposal 与 acceptance 齐、clarify 有记录即 ready。阶段不落状态文件，每次都从磁盘重建；`ready` 只表示产物齐，不表示必须开工。
-- `forge change list` 的 `STAGE` 与 `phase` 是两套概念：`STAGE` 描述交付/证据走到哪（empty/proposal/design/tasks/verified），`phase` 描述开工前还缺什么；同一个 change 可以 `STAGE=tasks` 而 `phase=ready`，两者不矛盾。
+- `forge change phase <id> [--json]`：按产物推导阶段——`specify`（goal.md 五段没填完；没有 goal.md 的老 change 跳过这一段）→ `clarify`（缺 clarify.md 或没写「人确认：」）→ `plan`（proposal/design 缺失或仍是脚手架）→ `tasks`（acceptance 或 tasks 缺失/没任务/任务没写判据编号）→ `ready`。fast change 不要求 design/tasks（那是 fast 的定义），proposal 与 acceptance 齐、clarify 有记录即 ready。阶段不落状态文件，每次都从磁盘重建；`ready` 只表示产物齐，不表示必须开工。**老 change（没有 goal.md）可以是 `ready`，但不能带 `--change` 起任务**——命令会提示先补 goal.md，或改用 `task start --ref <ref>`（不钉契约）。
+- `forge change list` 的 **STAGE 列**（交付/证据走到哪：empty/proposal/design/tasks/verified）与 `forge change phase` 的 **phase**（开工前还缺什么）是两套概念：同一个 change 可以 `STAGE=tasks` 而 `phase=ready`，两者不矛盾。`change list` 不显示 phase（要看 phase 用 `forge change phase <id>` 或 `forge change status <id> --json`）。
 - `forge change clarify <id> --by-human --note "…" [--note-file <path>] [--force]`：写 `clarify.md`（边界 / 非目标 / `人确认：<UTC>`）。必须带 `--by-human`——先问用户边界与非目标；已存在要 `--force`；`--note` 至少 10 个字。非目标总是取 goal.md 的 Out of Scope（--note-file 也必须在仓库内，与 --goal-file 同一约束）。

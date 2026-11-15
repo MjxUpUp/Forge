@@ -67,6 +67,7 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 		"behind_remote": behindRemote,
 		"spec_declared": ctx.SpecDeclared,
 		"open_changes":  len(ctx.OpenChanges),
+		"ready_changes": len(ctx.ReadyChanges),
 		"active_task":   nextTaskRef(st),
 		"gates_passed":  nextGateHistory(st),
 		"review_passed": nextReviewPassed(st),
@@ -81,10 +82,10 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 	if st == nil {
 		if dirty {
 			// 入口路由：声明了 spec 的仓库先立 change（goal+acceptance），
-			// 有打开的 change 就先推进它的阶段；--kind task 是显式小修出口。
+			// 有打开的 change 就先推进它的阶段；任务本身始终是一等入口（不带 --change 也能开工）。
 			if len(ctx.ReadyChanges) > 0 {
 				return NextResult{
-					Next:   "forge task start --ref feat/<id> --branch --title \"<title>\" --change " + ctx.ReadyChanges[0],
+					Next:   "forge task start --ref feat/" + ctx.ReadyChanges[0] + " --branch --change " + ctx.ReadyChanges[0],
 					Reason: "工作区有未归属变更，且已有 ready 的 change——用 task start --change 开工（任务是一等入口；change 可以事后再补）",
 					State:  state,
 				}
@@ -92,14 +93,14 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 			if len(ctx.OpenChanges) > 0 {
 				return NextResult{
 					Next:   "forge change phase " + ctx.OpenChanges[0],
-					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物；也可以直接 task start --kind task 开工",
+					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物；也可以先不带 --change 直接 task start 开工（change 事后再补）",
 					State:  state,
 				}
 			}
 			if ctx.SpecDeclared {
 				return NextResult{
 					Next:   "forge change new <id>",
-					Reason: "工作区有未归属变更——这个仓库用 spec 流程：先立 change（goal+acceptance）再开工；一句话小修可改走 forge task start --kind task",
+					Reason: "工作区有未归属变更——这个仓库用 spec 流程：可以把它立成 change（goal+acceptance）再开工，change 也能事后再补；不立 change 就直接 task start 开工",
 					State:  state,
 				}
 			}

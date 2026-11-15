@@ -126,7 +126,7 @@ func TestDesignStartFlowReviewFixes(t *testing.T) {
 	runGit(t, dir, "commit", "-m", "initial")
 	runGit(t, dir, "checkout", "-b", "feat/tp")
 
-	if out, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/tp", "--title", "T", "--tier-reason", "x"); code == 0 || !strings.Contains(out, "--tier") {
+	if out, _, code := runForge(t, dir, "task", "start", "--ref", "feat/tp", "--title", "T", "--tier-reason", "x"); code == 0 || !strings.Contains(out, "--tier") {
 		t.Fatalf("--tier-reason 无 --tier 应拒绝, code=%d out=%s", code, out)
 	}
 
@@ -134,7 +134,7 @@ func TestDesignStartFlowReviewFixes(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "design.md"), []byte(design), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/tp", "--title", "T", "--artifact", "design=design.md"); code != 0 {
+	if out, _, code := runForge(t, dir, "task", "start", "--ref", "feat/tp", "--title", "T", "--artifact", "design=design.md"); code != 0 {
 		t.Fatalf("task start: %s", out)
 	}
 	st, err := taskpipeline.LoadTaskState(dir, "feat/tp")

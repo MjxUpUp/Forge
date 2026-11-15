@@ -27,7 +27,7 @@ func TestTaskFinding_ArchivesTriggeringFinding(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte("package main\n"), 0644)
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "init")
-	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feat/arch-probe", "--title", "arch", "--kind", "generic"); code != 0 {
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "feat/arch-probe", "--title", "arch", "--kind", "generic"); code != 0 {
 		t.Fatalf("task start: %s", stdout)
 	}
 
