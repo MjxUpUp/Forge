@@ -301,6 +301,7 @@ func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
 	if err := os.WriteFile(goalPath, []byte(completeGoalForTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	makeChangeFiles(t, tmpDir, "flow")
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "goal")
 
@@ -368,6 +369,7 @@ func TestTaskStart_WorktreeChangeRequiresCommittedGoal(t *testing.T) {
 	if err := os.WriteFile(goalPath, []byte(completeGoalForTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	makeChangeFiles(t, tmpDir, "flow2")
 	// 故意不提交 goal.md。
 
 	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/flow-uncommitted", "--change", "flow2", "--title", "flow2 wt")
@@ -383,5 +385,23 @@ func TestTaskStart_WorktreeChangeRequiresCommittedGoal(t *testing.T) {
 	}
 	if refs := wtGitOut(t, tmpDir, "branch", "--list", "feat/flow-uncommitted"); strings.TrimSpace(refs) != "" {
 		t.Fatalf("失败后派生分支应被删除，仍存在: %s", refs)
+	}
+}
+
+// makeChangeFiles 把 change 补到 ready 阶段（除 goal.md 之外的四份产物），
+// 供 --worktree 用例验证锚点；这里不关心产物内容本身是否精炼。
+func makeChangeFiles(t *testing.T, dir, id string) {
+	t.Helper()
+	files := map[string]string{
+		"clarify.md":    "## 边界\n\n只验证 worktree 里 goal.md 的锚点。\n\n## 非目标\n\n不改阶段机与门禁。\n\n人确认：2026-11-15T00:00:00Z\n",
+		"proposal.md":   "# 提案\n\n验证 worktree 的 goal 锚点。\n",
+		"design.md":     "# 设计\n\n在 worktree 里读 goal.md。\n",
+		"acceptance.md": "# 验收\n\n```bash\ntrue\n```\n",
+		"tasks.md":      "# 任务\n\n- [ ] 1. 验证 worktree 锚点（判据：acceptance #1）\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, "spec", "changes", id, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

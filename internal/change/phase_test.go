@@ -65,6 +65,8 @@ func TestStage_Progression(t *testing.T) {
 		t.Fatalf("clarify written phase = %s, want plan", phase)
 	}
 
+	writeChangeFile(t, root, id, FileProposal, "# 提案\n\n为什么：任务入口旁路 change。\n")
+	writeChangeFile(t, root, id, FileAcceptance, "## 判据\n\n```bash\ngo version\n```\n")
 	writeChangeFile(t, root, id, FileDesign, "# 设计\n\n实现三件事。\n")
 	phase, _, err = ComputePhase(root, id)
 	if err != nil {
@@ -95,6 +97,8 @@ func TestStage_UnboundTaskBlocksReady(t *testing.T) {
 	}
 	writeChangeFile(t, root, id, FileGoal, phaseGoal(id))
 	writeChangeFile(t, root, id, FileClarify, RenderClarify(id, "边界：只改 cli。", "", time.Now()))
+	writeChangeFile(t, root, id, FileProposal, "# 提案\n\n为什么。\n")
+	writeChangeFile(t, root, id, FileAcceptance, "## 判据\n\n```bash\ngo version\n```\n")
 	writeChangeFile(t, root, id, FileDesign, "# 设计\n\n实现。\n")
 	writeChangeFile(t, root, id, FileTasks, "- [ ] 1. 做 A（判据：acceptance #1）\n- [ ] 2. 忘了写判据\n")
 
@@ -134,5 +138,67 @@ func TestUnboundTasks(t *testing.T) {
 	tasks := ParseTasks([]byte("- [ ] 1. A（判据：acceptance #1）\n- [ ] 2. B\n- [x] 3. C（判据：acceptance #2）\n"))
 	if got := UnboundTasks(tasks); len(got) != 1 || got[0] != 2 {
 		t.Fatalf("UnboundTasks = %v, want [2]", got)
+	}
+}
+
+// TestStage_FastChangeReadyAfterClarify：fast change 没有 design/tasks，是形态
+// 差异而不是半成品——填完 goal/proposal/acceptance 并 clarify 后必须 ready。
+func TestStage_FastChangeReadyAfterClarify(t *testing.T) {
+	root := t.TempDir()
+	id := "fastdemo"
+	if _, err := Init(root, specroot.ProfileMini); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewFast(root, id, "fast demo"); err != nil {
+		t.Fatal(err)
+	}
+	writeChangeFile(t, root, id, FileGoal, phaseGoal(id))
+	writeChangeFile(t, root, id, FileProposal, "# 提案\n\n为什么：小改动。\n")
+	writeChangeFile(t, root, id, FileAcceptance, "## 判据\n\n```bash\ngo version\n```\n")
+	writeChangeFile(t, root, id, FileClarify, RenderClarify(id, "只改一处。", "", time.Now()))
+
+	phase, missing, err := ComputePhase(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phase != PhaseReady {
+		t.Fatalf("fast change phase = %s, want ready (missing: %v)", phase, missing)
+	}
+}
+
+// TestStage_LegacyChangeWithoutGoal：没有 goal.md 也没有 .goal-required 的老 change
+// 跳过 goal 段，停在 clarify（而不是永远 specify）。
+func TestStage_LegacyChangeWithoutGoal(t *testing.T) {
+	root := t.TempDir()
+	id := "legacy"
+	if _, err := Init(root, specroot.ProfileMini); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(root, id, "legacy"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "spec", "changes", id, FileGoal)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "spec", "changes", id, GoalRequiredFile)); err != nil {
+		t.Fatal(err)
+	}
+	phase, _, err := ComputePhase(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phase != PhaseClarify {
+		t.Fatalf("legacy change phase = %s, want clarify", phase)
+	}
+}
+
+// TestClarify_NonGoalsHyphenVariant：`## Non-Goals` 应被接受（常见英文写法）。
+func TestClarify_NonGoalsHyphenVariant(t *testing.T) {
+	c, err := ParseClarify([]byte("## 边界\n\n只改 cli。\n\n## Non-Goals\n\n不做 UI。\n\n人确认: 2026-11-15T00:00:00Z\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c.NonGoals, "不做 UI") {
+		t.Fatalf("non-goals lost: %q", c.NonGoals)
 	}
 }

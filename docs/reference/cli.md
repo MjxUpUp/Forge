@@ -60,7 +60,7 @@
 | 命令 | 说明 |
 |------|------|
 | `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-verify/task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理 |
-| `forge task start --change <id>` / `--goal-file <path>` | 把 goal 契约钉进任务：`--change` 读 `spec/changes/<id>/goal.md`，`--goal-file` 读仓库内任意五段式文件；启动时记 Path+SHA256，`task gate task-implement` 重算，漂移即 BLOCKED。二者与 `--goal` 自由文本互斥；`--kind task` 是声明 spec 仓库里的一句话小修出口（豁免「必须先有 ready 的 change」，仍走三道门禁） |
+| `forge task start --change <id>` / `--goal-file <path>` | 把 goal 契约钉进任务：`--change` 读 `spec/changes/<id>/goal.md`，`--goal-file` 读仓库内任意五段式文件；启动时记 Path+SHA256，`task gate task-implement` 重算，漂移即 BLOCKED。二者与 `--goal` 自由文本互斥；`--kind task` 标记「这次是小修、没有立 change」，仍走三道门禁；任务是一等入口，不带 `--change` 随时可以开工 |
 | `forge next [--json]` | 单命令引导：从 git/任务状态推导**恰好一条**下一步命令+理由（无任务有脏树时：声明了 spec 的仓库先给 `forge change new`（有未完成 change 则给 `forge change phase <id>`），未声明仓库仍是 task start/wild 申报；门禁链→下一步命令：implement→验收实跑→verify→review pass→complete 门→complete）。agent 不自选下一步——push 侧由 `forge gate push` 兜底 |
 | `forge task intent "<注记>"` | 追加意图注记（三段工件之 intent 段）：append-only——没有覆写/删除入口，意图历史即决策史，防轮次重写导致的语义漂移（rot） |
 | `forge task checklist add/tick/drop` | 操作对账单（checklist 段）：勾选即进度、断点存活，task-complete 硬门禁要求全勾（report 写完不算 done，checkbox 才算） |
@@ -284,7 +284,10 @@ forge task score                  # 查看质量评分
 
 ## 入口路由与阶段机
 
-- `forge next`：声明了 `spec/forge.yaml` 的仓库，工作区有未归属改动时先给「立 change」——没有未完成 change 时给 `forge change new <id>`，有则给 `forge change phase <id>`；未声明契约的仓库行为不变（仍是 `task start` / `wild` 申报）。JSON 的 `state` 里有 `spec_declared` 与 `open_changes`。
-- `forge task start`：声明了 spec 的仓库里，不带 `--change` 会被拒绝（报错指向 `forge change new` 与 `--kind task`）。`--kind task` 是「一句话小修」的显式出口：豁免 change 前置，仍走三道门禁；`--kind generic` 仍是「不走门禁的调研/设计任务」。带 `--change` 时要求该 change 已到 `ready` 阶段，否则报错里给出当前阶段与缺失项。
-- `forge change phase <id> [--json]`：按产物推导阶段——`specify`（goal.md 五段没填完）→ `clarify`（缺 clarify.md 或没写「人确认：」）→ `plan`（design.md 缺失/仍是脚手架）→ `tasks`（tasks.md 缺失/没任务/任务没写判据编号）→ `ready`（可以 `task start --change`）。阶段不落状态文件，每次都从磁盘重建。
-- `forge change clarify <id> --by-human --note "…" [--note-file <path>] [--force]`：写 `clarify.md`（边界 / 非目标 / `人确认：<UTC>`）。必须带 `--by-human`——先问用户边界与非目标；已存在要 `--force`。非目标缺省时抄 goal.md 的 Out of Scope。
+- `forge next`：声明了 `spec/forge.yaml` 的仓库，工作区有未归属改动时：没有未完成 change → 建议 `forge change new <id>`；有未完成的 change → 请先看 `forge change phase <id>`；该 change 已 ready → 直接给 `forge task start --change <id>`。任务是一等入口，`task start` 永远可达。未声明契约的仓库行为不变（仍是 `task start` / `wild` 申报）。JSON 的 `state` 里有 `spec_declared` 与 `open_changes`（计数）。
+- `forge task start`：任务是一等入口——不带 `--change` 随时可以开工，change 可以事后补。
+  带 `--change` 时要求该 change 已到 `ready` 阶段，否则报错里给出当前阶段与缺失项（这条检查只是「链接契约」的完整性，不是「开工许可」）。
+  `--kind task` 标记「这次是小修、没有立 change」，仍走三道门禁；`--kind generic` 仍是「不走门禁的调研/设计任务」。
+- `forge change phase <id> [--json]`：按产物推导阶段——`specify`（goal.md 五段没填完；没有 goal.md 的老 change 跳过这一段）→ `clarify`（缺 clarify.md 或没写「人确认：」）→ `plan`（proposal/design 缺失或仍是脚手架）→ `tasks`（acceptance 或 tasks 缺失/没任务/任务没写判据编号）→ `ready`。fast change 不要求 design/tasks（那是 fast 的定义），proposal 与 acceptance 齐、clarify 有记录即 ready。阶段不落状态文件，每次都从磁盘重建；`ready` 只表示产物齐，不表示必须开工。
+- `forge change list` 的 `STAGE` 与 `phase` 是两套概念：`STAGE` 描述交付/证据走到哪（empty/proposal/design/tasks/verified），`phase` 描述开工前还缺什么；同一个 change 可以 `STAGE=tasks` 而 `phase=ready`，两者不矛盾。
+- `forge change clarify <id> --by-human --note "…" [--note-file <path>] [--force]`：写 `clarify.md`（边界 / 非目标 / `人确认：<UTC>`）。必须带 `--by-human`——先问用户边界与非目标；已存在要 `--force`；`--note` 至少 10 个字。非目标总是取 goal.md 的 Out of Scope（--note-file 也必须在仓库内，与 --goal-file 同一约束）。

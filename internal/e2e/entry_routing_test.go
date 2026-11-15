@@ -7,8 +7,9 @@ import (
 	"testing"
 )
 
-// entry_routing_test.go —— 入口路由 A1/A2 的真实二进制链路：
-// 脏树 → next 让先立 change → change new → next 让看 phase → 补齐 → task start 放行。
+// entry_routing_test.go —— 入口路由 A1/A2 的真实二进制链路（2026-11-15 修订）：
+// 任务是一等入口（不带 change 也能开工）；change 是记录单元，可后补；显式
+// --change 时才要求 ready。
 
 func entryRepo(t *testing.T) string {
 	t.Helper()
@@ -24,48 +25,55 @@ func entryRepo(t *testing.T) string {
 	return dir
 }
 
-func TestEntryRoutingChangeFirst(t *testing.T) {
+func TestEntryRoutingTaskFirstThenChange(t *testing.T) {
 	t.Setenv("FORGE_DATA_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	dir := entryRepo(t)
 
+	// 脏树 + 声明 spec：next 建议立 change，但同时明确 task 可以先开。
 	out := forge(t, dir, "next", "--json")
-	if !strings.Contains(out, "forge change new") || !strings.Contains(out, "--kind task") {
-		t.Fatalf("dirty spec repo: next should ask for a change first, got %s", out)
+	if !strings.Contains(out, "forge change new") {
+		t.Fatalf("dirty spec repo: next should mention change new, got %s", out)
+	}
+	if !strings.Contains(out, "task start") {
+		t.Fatalf("next should keep task start reachable, got %s", out)
 	}
 
+	// 任务是一等入口：不带 --change 直接开工，不被拒。
+	forge(t, dir, "task", "start", "--ref", "feat/demo", "--title", "demo")
+	forge(t, dir, "task", "abort", "--ref", "feat/demo")
+
+	// 补一个 change 作为记录：显式链接时要求 ready。
 	forge(t, dir, "change", "new", "demo", "--title", "demo")
 	out = forge(t, dir, "next", "--json")
 	if !strings.Contains(out, "forge change phase demo") {
-		t.Fatalf("with an open change: next should point at its stage, got %s", out)
+		t.Fatalf("with an unready open change: next should point at phase, got %s", out)
 	}
-
-	// goal 还是脚手架 → task start --change 必须被拒。
-	msg := readFile(t, dir, "spec/changes/demo/goal.md")
-	_ = msg
-	if out, err := forgeErr(t, dir, "task", "start", "--ref", "feat/demo", "--title", "demo", "--change", "demo"); err == nil {
+	if out, err := forgeErr(t, dir, "task", "start", "--ref", "feat/demo2", "--title", "demo", "--change", "demo"); err == nil {
 		t.Fatalf("task start --change should fail before the change is ready: %s", out)
 	} else if !strings.Contains(out, "specify") {
 		t.Fatalf("error should name the phase (specify): %s", out)
 	}
 
-	// 补齐：goal → clarify → design → tasks。
+	// 补齐：goal → clarify → proposal/acceptance/design/tasks。
 	writeFile(t, dir, "spec/changes/demo/goal.md", entryGoal("demo"))
 	forge(t, dir, "change", "clarify", "demo", "--by-human", "--note", "只做入口路由，不做组装。")
+	writeFile(t, dir, "spec/changes/demo/proposal.md", "# 提案\n\n为什么：记录交付过程。\n")
+	writeFile(t, dir, "spec/changes/demo/acceptance.md", "## 判据\n\n```bash\ntrue\n```\n")
 	writeFile(t, dir, "spec/changes/demo/design.md", "# 设计\n\n实现入口路由。\n")
 	writeFile(t, dir, "spec/changes/demo/tasks.md", "- [ ] 1. 做 A（判据：acceptance #1）\n")
-	writeFile(t, dir, "spec/changes/demo/acceptance.md", "# 验收\n\n```bash\ntrue\n```\n")
 
 	out = forge(t, dir, "change", "phase", "demo")
 	if !strings.Contains(out, "ready") {
 		t.Fatalf("filled change should be ready, got %s", out)
 	}
+	// ready 之后 next 必须前进到开工，而不是停在 change phase。
 	out = forge(t, dir, "next", "--json")
-	if !strings.Contains(out, "forge change phase demo") {
-		t.Fatalf("next should keep pointing at the ready change, got %s", out)
+	if !strings.Contains(out, "--change demo") {
+		t.Fatalf("ready change: next should advance to task start --change, got %s", out)
 	}
-	forge(t, dir, "task", "start", "--ref", "feat/demo", "--title", "demo", "--change", "demo")
-	forge(t, dir, "task", "abort", "--ref", "feat/demo")
+	forge(t, dir, "task", "start", "--ref", "feat/demo3", "--title", "demo", "--change", "demo")
+	forge(t, dir, "task", "abort", "--ref", "feat/demo3")
 }
 
 func TestChangeStageBlocksEarlyTask(t *testing.T) {

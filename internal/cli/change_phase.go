@@ -100,7 +100,14 @@ func runChangeClarify(cmd *cobra.Command, args []string) error {
 	}
 	note, _ := cmd.Flags().GetString("note")
 	if noteFile, _ := cmd.Flags().GetString("note-file"); noteFile != "" {
-		raw, rerr := os.ReadFile(noteFile)
+		abs, aerr := filepath.Abs(noteFile)
+		if aerr != nil {
+			return aerr
+		}
+		if rel, rerr := filepath.Rel(root, abs); rerr != nil || strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("change: --note-file 必须在仓库内（与 --goal-file 同一约束）：%s", noteFile)
+		}
+		raw, rerr := os.ReadFile(abs)
 		if rerr != nil {
 			return fmt.Errorf("change: 读取 --note-file: %w", rerr)
 		}
