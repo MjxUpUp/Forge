@@ -1,0 +1,88 @@
+{
+  "change": "entry-routing",
+  "started_at": "2026-11-15T16:29:13Z",
+  "finished_at": "2026-11-15T16:29:37Z",
+  "passed": true,
+  "sealed": true,
+  "head": "ceb3ea49242a528a11a62d50b8da2aa1bdb41e97",
+  "diff_sha256": "d397b88720b1ff92b7e52d8a55eea186595a9f52dbad8a74382c3a6f110bc2e5",
+  "files": [
+    {
+      "path": "spec/changes/entry-routing/design.md",
+      "sha256": "deb4aa7f0875580a3bd675f3593d8d0dd0bc36062fd140ac08440fca26d4db5a"
+    }
+  ],
+  "acceptance_sha256": "070a2b28675e9b35c7c27ff73cf25904e06cb4c28f655b553300d4a826ffc69e",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3083
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run 'TestNextDecision' -count=1",
+      "exit": 0,
+      "duration_ms": 1107,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestTaskStart_NoChangeAllowedInSpecRepo|TestTaskStart_ChangeMustBeReady|TestGuardEntryRouting_AllowsWithoutChange' -count=1",
+      "exit": 0,
+      "duration_ms": 4369,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestStage|TestClarify|TestUnboundTasks' -count=1",
+      "exit": 0,
+      "duration_ms": 1196,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/e2e/ -run 'TestEntryRoutingTaskFirstThenChange|TestChangeStageBlocksEarlyTask' -count=1",
+      "exit": 0,
+      "duration_ms": 6298,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run TestAgentsProtocol -count=1",
+      "exit": 0,
+      "duration_ms": 792,
+      "stdout_file": "06.stdout"
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestHelpSurface' -count=1",
+      "exit": 0,
+      "duration_ms": 2854,
+      "stdout_file": "07.stdout"
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 182
+    },
+    {
+      "index": 9,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4460
+    }
+  ]
+}
