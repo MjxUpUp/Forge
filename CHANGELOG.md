@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.87.0](https://github.com/MjxUpUp/Forge/compare/v1.86.0...v1.87.0) (2026-11-15)
+
+
+### Features
+
+* **routing:** 任务是一等入口，change 可后补（A1+A2+A3） ([76546d3](https://github.com/MjxUpUp/Forge/commit/76546d3a42c244f7bedf84bac68d903689fb534d))
+* **routing:** 入口路由与阶段机——功能改动先立 change（A1+A2+A3） ([e2c6f7b](https://github.com/MjxUpUp/Forge/commit/e2c6f7b245196f1a413b6af4061b823160f034ce))
+
+
+### Bug Fixes
+
+* **routing:** 代码评审 P3——note-file 仓根解析、老 change 提示、判据补覆盖 ([21917f6](https://github.com/MjxUpUp/Forge/commit/21917f61e5d164ffe42afb6884e570f27c9e4859))
+
 ## [1.86.0](https://github.com/MjxUpUp/Forge/compare/v1.85.2...v1.86.0) (2026-11-14)
 
 
