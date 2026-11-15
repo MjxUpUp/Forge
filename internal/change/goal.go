@@ -134,3 +134,9 @@ func GoalHash(content []byte) string {
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:])
 }
+
+// FileGoalExists 报告 change 目录里是否有 goal.md（老 change 兼容路径用）。
+func FileGoalExists(root, id string) bool {
+	_, err := os.Stat(GoalPath(root, id))
+	return err == nil
+}

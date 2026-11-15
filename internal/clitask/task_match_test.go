@@ -102,7 +102,7 @@ func TestResumeMatch(t *testing.T) {
 	dir := t.TempDir()
 	initGitProject(t, dir)
 	for _, task := range [][2]string{{`feat/resume-pull`, `任务接续改为按需拉取`}, {`fix/hazard-exit-ux`, `hazard 退出体验`}} {
-		if out, _, code := runForge(t, dir, `task`, `start`, `--kind`, `task`, `--ref`, task[0], `--title`, task[1]); code != 0 {
+		if out, _, code := runForge(t, dir, `task`, `start`, `--ref`, task[0], `--title`, task[1]); code != 0 {
 			t.Fatalf(`task start %s: %s`, task[0], out)
 		}
 	}

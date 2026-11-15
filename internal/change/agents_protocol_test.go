@@ -47,3 +47,17 @@ func TestAgentsProtocol_HardRulesComeFirst(t *testing.T) {
 		t.Error("「开始之前（硬规则）」必须排在「change 流程」之前")
 	}
 }
+
+// 协议不能回退成 change-first：任务是一等入口，change 可后补。
+func TestAgentsProtocol_ForbidsChangeFirstWording(t *testing.T) {
+	forbidden := []string{
+		"必须先有",
+		"功能任务必须",
+		"先有 ready",
+	}
+	for _, bad := range forbidden {
+		if strings.Contains(tmplAgents, bad) {
+			t.Errorf("agents-protocol 模板回退到 change-first 叙述：%q", bad)
+		}
+	}
+}

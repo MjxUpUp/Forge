@@ -210,13 +210,19 @@ func TestNextDecision_EntryRouting(t *testing.T) {
 			name: "spec repo, dirty, no open change",
 			ctx:  NextContext{Branch: "main", Dirty: true, SpecDeclared: true},
 			want: "forge change new <id>",
-			sub:  "--kind task",
+			sub:  "task start",
 		},
 		{
 			name: "spec repo, dirty, open change exists",
 			ctx:  NextContext{Branch: "main", Dirty: true, SpecDeclared: true, OpenChanges: []string{"entry-routing"}},
 			want: "forge change phase entry-routing",
 			sub:  "阶段",
+		},
+		{
+			name: "spec repo, dirty, ready change exists",
+			ctx:  NextContext{Branch: "main", Dirty: true, SpecDeclared: true, OpenChanges: []string{"entry-routing"}, ReadyChanges: []string{"entry-routing"}},
+			want: "forge task start --ref feat/entry-routing --branch --change entry-routing",
+			sub:  "ready",
 		},
 		{
 			name: "plain repo, dirty, unchanged behavior",

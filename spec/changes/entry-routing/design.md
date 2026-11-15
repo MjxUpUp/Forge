@@ -1,55 +1,79 @@
-# 设计：入口路由与阶段机
+# 设计：入口路由与阶段机（任务优先，change 可后补）
 
 change: `entry-routing`
 
-## 一句话
+## TL;DR
 
-把「要不要走 change」从文案变成状态：`next` 读 change 状态，`task start` 缺省拒绝，change 阶段由文件推导且卡住未完成的产物。
+任务先开工是合法的；change 是记录单元，可后补。`next` 按阶段给建议，`task start --change` 只检查「链接的 change 已 ready」，其余不拦。
 
-## 1. 入口路由（A1）
+## 0. 决策
 
-### 决策表
+**任务是一等入口，change 是记录单元。** 机器只在两处做硬事：
 
-`NextDecision` 增加上下文（新增 `NextContext`，保留旧签名的薄包装避免测试大改）：
+1. **路由**：`forge next` 在「声明了 spec 的仓库 + 脏树 + 没有活跃任务」时，按现有 change 的阶段给下一步（ready → 直接开工；未完成 → 先看 phase；没有 → 建议立 change），而不是无条件 `task start`。
+2. **链接检查**：`task start --change <id>` 时该 change 必须 `ready`，否则钉进去的 goal 哈希与阶段不符。
+
+除此之外不拦：不带 `--change` 的 `task start` 一律成功（小修、先干活后补记录都走这条）。
+
+第一版曾把「先立 change」做成 `task start` 的前置（`--kind task` 作逃生舱），实测把两条正路堵死，且 fast change 因缺 design/tasks 永远到不了 ready。本设计是反向修订，保留的约束只有「链接了就一致」。
+
+## 1. 路由（A1）
+
+`internal/taskpipeline/next.go`：
 
 ```go
 type NextContext struct {
-    Branch       string
-    Dirty        bool
-    BehindRemote int
-    // SpecDeclared 表示仓库有 spec/forge.yaml；未声明时所有新规则不生效。
-    SpecDeclared bool
-    // OpenChanges 是未归档 change 的 id（按字母序）；>0 时下一步先看它的阶段。
-    OpenChanges []string
+    Branch        string
+    Dirty         bool
+    BehindRemote  int
+    SpecDeclared  bool
+    OpenChanges   []string   // 未归档 change 的 id（字母序）
+    ReadyChanges  []string   // 其中阶段已 ready 的 id
 }
 ```
 
-无活跃任务时（`st == nil`）：
+决策表（脏树、无活跃任务）：
 
-| 条件 | Next | Reason |
+| 条件 | 下一步命令 | Reason 要点 |
 | --- | --- | --- |
-| dirty && SpecDeclared && len(OpenChanges)==0 | `forge change new <id>` | 「功能改动先立 change（goal+acceptance）；一句话小修可 `forge task start --kind task`」 |
-| dirty && SpecDeclared && len(OpenChanges)>0 | `forge change phase <id>` | 「已有未完成的 change，先按它的阶段补产物」 |
-| dirty（未声明 spec） | `forge task start …`（不变） | 不变 |
-| 不 dirty && behindRemote>0 | `git pull --ff-only`（不变） | 不变 |
-| 其余 | `forge status`（不变） | 不变 |
+| dirty && `len(ReadyChanges)>0` | `forge task start --ref feat/<id> --branch --change <id>`（title 由人补） | 已有 ready 的 change，直接带契约开工 |
+| dirty && `len(OpenChanges)>0` | `forge change phase <id>` | 已有未完成 change，看还缺什么；也可先不带 `--change` 开工 |
+| dirty && SpecDeclared && no change | `forge change new <id>` | 建议先立 change；小修可 `--kind task` 直接开工 |
+| dirty && !SpecDeclared | `forge task start …`（原样） | 未声明契约，行为不变 |
 
-`forge next` 的 JSON 增加 `"requires_human": true`（新增字段，不改旧字段）用于 change 创建与 clarify 两处。
+`internal/cli/next.go` 的 `nextContext` 负责填 `SpecDeclared`（`specroot.Declared`）、`OpenChanges`（`change.List`，过滤 `c.Archive`）与 `ReadyChanges`（逐个 `change.ComputePhase == PhaseReady`）。`--json` 的 `state` 新增 `ready_changes`，旧字段不变。
 
-### task start 守卫
+## 2. 链接检查（A1 守卫）
 
-`runTaskStart` 在 spec 仓库（`specroot.Declared(root)`）且 `state.Change == ""` 且 `Kind != TaskKindTask` 时：
+`internal/clitask/task_entry.go`：
 
+```go
+func guardEntryRouting(root, kind, changeID string) error {
+    if changeID == "" { return nil }            // 任务是一等入口
+    phase, hints, err := change.ComputePhase(root, changeID)
+    if err != nil { return err }
+    if phase != change.PhaseReady {
+        return fmt.Errorf("change %q 还停在 %s 阶段——先补齐产物再链接（%s）；也可以先不带 --change 开工，事后再补 change", ...)
+    }
+    return nil
+}
 ```
-错误：这个仓库用 spec 流程（spec/forge.yaml）。功能改动请先 forge change new <id>，
-然后 task start --change <id>；确实是一句话小修，请显式加 --kind task 重跑。
-```
 
-`--kind task` 是新的 kind 值：走 3 道门禁，但豁免 change 要求（`TaskKindTask = "task"`；`IsGeneric` 不受影响）。
+- `changeID != ""` 时**不因 `--kind task` 短路**：显式链接了 change，就得满足它的阶段。
+- 调用点在 `task.go` 里读完 `--worktree` 之后、任何磁盘副作用之前。
+- 老 change（无 goal.md）阶段规则见 §3：可以到达 `ready`，但不能带 `--change` 起任务（钉契约需要 goal.md）；`change phase` 的下一步会据此改口径，`next` 也不会推荐它。
 
-## 2. 阶段机（A2）
+## 3. 阶段机（A2）
 
-### 阶段推导（`internal/change/phase.go`）
+`internal/change/phase.go`，阶段从文件推导、不写状态：
+
+| 阶段 | 判据 |
+| --- | --- |
+| `specify` | `HasGoal \|\| GoalRequired` 且 `ParseGoal` 失败（缺段/空段/残留 `forge:fill`）；没有 goal.md 的老 change 跳过这一段 |
+| `clarify` | `clarify.md` 不存在，或 `ParseClarify` 失败（缺 `## 边界` 正文或缺 `人确认：`） |
+| `plan` | `proposal.md`/`design.md` 缺失、仍是脚手架（`forge:fill` 标记） |
+| `tasks` | `acceptance.md`/`tasks.md` 缺失或脚手架、0 条任务、或有任务没写 `Criteria` |
+| `ready` | 以上都齐；`fast` change 跳过 design/tasks |
 
 ```go
 type Phase string
@@ -60,63 +84,64 @@ const (
     PhaseTasks   Phase = "tasks"
     PhaseReady   Phase = "ready"
 )
-
-// ComputePhase 只读文件；missing 是给人看的下一步说明。
-func ComputePhase(root, id string) (Phase, []string, error)
 ```
 
-推导规则（短路，先满足先返回）：
-
-| 阶段 | 判据 |
-| --- | --- |
-| specify | `goal.md` 不存在 / `ParseGoal` 失败（缺段、空段、残留 `forge:fill`） |
-| clarify | `clarify.md` 不存在或 `ParseClarify` 失败（缺 `## 边界` 正文或缺 `人确认：` 行） |
-| plan | `design.md` 不存在或仍是脚手架（含 `forge:fill` 标记） |
-| tasks | `tasks.md` 不存在 / 0 条任务 / 任一条任务 `Criteria` 为空 |
-| ready | 以上都过 |
-
-`forge change phase <id>` 输出当前阶段、缺失项、下一步命令；`--json` 给结构体。
-**不写状态文件**：阶段永远可从文件重建，所以没有「阶段文件过期」这种漂移。
+- `ComputePhase(root, id) (Phase, []string, error)`：`ValidID` → 目录存在（归档目录单独报「已归档」）→ 逐级判定；`hints` 是「缺什么」的人话列表，供 `change phase` 与 `change start` 报错复用。
+- `UnboundTasks` 与 `change gate --task N` 共用 `ParseTasks` 的 `Criteria` 解析。
+- `change status` 的 `Status` 增加 `phase`（omitempty），`nextSteps` 按阶段给下一步；`list` 的 `STAGE`（交付/证据阶段）与 `phase`（开工前缺什么）是两套概念，不互相替代。
 
 ### clarify 记录
 
-`forge change clarify <id> --by-human --note "边界/非目标"`：
+`forge change clarify <id> --by-human --note "…"`：
 
-- 缺 `--by-human` → 报错「先问用户，得到明确回答再加 --by-human」；
-- 渲染 `internal/change/templates/clarify.md`：`## 边界`（note 正文）、`## 非目标`（从 goal 的 Out of Scope 抄一份）、`人确认：<UTC 时间>`；
-- 已存在时要求 `--force` 覆盖（避免把历史澄清冲掉）。
+- `--by-human` 必需（agent 不得自批）；
+- `--note` 至少 10 个字；`--note-file` 必须在仓库内；
+- 渲染 `## 边界`、`## 非目标`（总是取 goal.md 的 Out of Scope）、`人确认：<RFC3339>`；
+- 已存在要 `--force`；解析器接受 `non-goals`/`non_goals` 变体与空格分隔的时间戳。
 
-### 与 task start 的连接
+## 4. 任务绑定（A3）
 
-`task start --change <id>` 前置：`ComputePhase == ready`，否则报错并给出 `forge change phase <id>` 的具体缺失。`--kind task` 不检查 change。
+- `tasks.md` 每条任务写 `（判据：acceptance #N）`；
+- 未绑定的任务让阶段停在 `tasks`（不是 `ready`）；
+- `change gate --task N` 复用同一解析，不存在/已勾选/没判据编号都拒绝。
 
-## 3. 任务绑定（A3）
+## 5. 测试
 
-- 绑定语法沿用 `ParseTasks`（`（判据：acceptance #N）`），不新增语法；
-- `ComputePhase` 把「任意任务无判据」判为 `tasks` 阶段未完成；
-- `forge change status` 在 tasks 未绑定时给出同样的提示（复用 same helper `UnboundTasks`）。
-
-## 4. 测试
-
-| 层 | 用例 |
+| 覆盖 | 测试 |
 | --- | --- |
-| next 决策表 | `TestNextDecision_EntryRouting`（四象限：声明/未声明 × 有无 change） |
-| task start 守卫 | `TestTaskStart_RequiresChangeOrKindTask`、`TestTaskStart_ExplicitKindTaskAllowed`（隔离 HOME，spec 仓库） |
-| 阶段推导 | `TestStage_Progression`（specify→clarify→plan→tasks→ready 逐级）、`TestStage_UnboundTaskBlocksReady`、`TestClarifyRecord_RequiresByHuman` |
-| e2e | `TestEntryRoutingChangeFirst`（脏树 → next 给 change new → 建 change → next 给 phase → 补齐 → task start 通过）、`TestChangeStageBlocksEarlyTask`（goal 没填完就 task start --change 必须失败） |
-| 文档 | `TestAgentsProtocol_MentionsEntryRouting`、`TestHelpSurface_NoHostLayerWording` 保持绿 |
+| next 决策表 | `TestNextDecision_EntryRouting`（四象限 + ready change 前进） |
+| task start 一等入口 | `TestTaskStart_NoChangeAllowedInSpecRepo`、`TestGuardEntryRouting_AllowsWithoutChange` |
+| 链接检查 | `TestTaskStart_ChangeMustBeReady`（`--kind task` 不能绕过显式链接） |
+| 阶段推导 | `TestStage_Progression`、`TestStage_UnboundTaskBlocksReady`、`TestStage_FastChangeReadyAfterClarify`、`TestStage_LegacyChangeWithoutGoal`、`TestClarify_NonGoalsHyphenVariant`、`TestUnboundTasks` |
+| e2e 真实链路 | `TestEntryRoutingTaskFirstThenChange`（脏树 → 建议 → 直接开工 → abort → 立 change → 未 ready 拒 → 补齐 → ready → next 前进 → 带 `--change` 开工）、`TestChangeStageBlocksEarlyTask` |
+| 文档/托管块 | `TestAgentsProtocol*`、`TestHelpSurface_*` |
 
-## 5. 兼容性
+## 6. 影响面
 
-- 未声明 spec 的仓库：`next` / `task start` 行为与 1.86 完全一致；
-- 已声明但不想走 change 的仓库：`--kind task` 显式出口；
-- 老的打开 change（五份产物没有 clarify.md）会停在 `clarify` 阶段——这是预期：`forge change clarify --by-human --note …` 一次即可放行，`change verify` 不受影响。
+- 源码：`internal/taskpipeline/next.go`、`internal/cli/next.go`、`internal/clitask/task_entry.go`、`internal/clitask/task.go`、`internal/change/phase.go`（新）、`internal/change/status.go`、`internal/cli/change_phase.go`（新）。
+- 产物/测试：`spec/changes/entry-routing/*`、`internal/{change,clitask,taskpipeline,e2e}/*_test.go`、`internal/evalkit/{artifact,wedgedrill}.go`、`evals/forge/resume/*.yaml`、`scripts/checks/gofmt-clean.sh`。
+- 文档：`docs/reference/cli.md`、`README.md`、`internal/change/templates/agents-protocol.md`、`docs/design/loopspec-alignment-roadmap.md`；`compat.snapshot.json` 重钉（194 命令）。
 
-## 6. 风险
+## 7. 风险
 
-| 风险 | 对冲 |
+| 风险 | 缓解 |
 | --- | --- |
-| 有人嫌 clarify 多一步 | clarify 只要求一段话 + 人确认；`--kind task` 是造反例的出口 |
-| next 给出的 change id 占位符让 agent 困惑 | 文案里给 `forge change new <id>`，并说明「id 用短横线命名」 |
-| 阶段推导把老 change 卡死 | 老 change 只在 `task start --change` 时检查；`change verify`/`gate` 不检查 phase |
-| 与 goal 哈希检查重复 | 不重复：phase 管「开工前」，goal 哈希管「开工后漂移」 |
+| 路由把「先干活后补记录」堵回去 | 显式规则：不带 `--change` 永远放行；e2e 第一条路径就钉住它 |
+| fast change 永远到不了 ready | 阶段表里 fast 跳过 design/tasks；`TestStage_FastChangeReadyAfterClarify` |
+| 老 change 被误判 | 没有 goal.md 跳过 specify；`TestStage_LegacyChangeWithoutGoal` |
+| 阶段与证据混淆 | 阶段只描述「开工前还缺什么」，verify 仍按 acceptance 实跑；文档明确两条轴 |
+| 提示文案与实现漂移 | 守卫报错引用同一份 hints；`TestHelpSurface` 钉住 cli.md 的关键串 |
+## 8. 不做（Non-goals）
+
+- 不引入 plan digest 批准、逐节点 PASS/FAIL 报告（LoopSpec 的耗时来源）。
+- 不做 fragment/profile 编译（roadmap 的 R1–R4），本 change 只做 A1+A2+A3。
+- 不改 acceptance 围栏语法与 verify 的判定方式。
+- 不把 `--kind task` 做成旁路：它只是标记，门禁不减。
+- 不自动创建 change 骨架之外的产物；clarify 必须有人回答。
+
+## 9. 验证（Verification）
+
+- `forge change verify entry-routing` 的 9 条围栏（build、next、task-first/link、phase/clarify、e2e、托管块、help 文档、gofmt、deadcode）。
+- 变异验证：`task_entry.go` 的 `return nil`、`phase.go` 的 `false &&`、`next.go` 的 `false &&` 三处注入均让对应用例变红。
+- 双评审：代码评审对 diff 与规格逐条核对；文档评审按 L2 打分（≥75 才记录）。
+- 发布后用子 agent 在真实仓库跑一次「脏树 → next → task start → change 后补 → complete」，观察每一步是否与文档一致。
