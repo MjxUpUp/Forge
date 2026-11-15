@@ -25,7 +25,7 @@ func TestHandoff_PriorAttemptsReinjected(t *testing.T) {
 		t.Fatalf("forge init failed: %s", stdout)
 	}
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "sess-x")
-	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "feat/handoff-r", "--title", "hr"); code != 0 {
+	if stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "feat/handoff-r", "--title", "hr"); code != 0 {
 		t.Fatalf("start: %s", stdout)
 	}
 	// 归档一轮失败（模拟 review FAIL 后 task finding 触发）。

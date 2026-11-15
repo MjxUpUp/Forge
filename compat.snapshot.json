@@ -64,6 +64,15 @@
       ]
     },
     {
+      "path": "forge change clarify",
+      "flags": [
+        "by-human",
+        "force",
+        "note",
+        "note-file"
+      ]
+    },
+    {
       "path": "forge change gate",
       "flags": [
         "task",
@@ -88,6 +97,12 @@
         "by-human",
         "fast",
         "title"
+      ]
+    },
+    {
+      "path": "forge change phase",
+      "flags": [
+        "json"
       ]
     },
     {

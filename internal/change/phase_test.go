@@ -1,0 +1,138 @@
+package change
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/MjxUpUp/Forge/internal/specroot"
+)
+
+// phase_test.go —— 入口路由 A2：阶段推导（specify → clarify → plan → tasks → ready）。
+
+func writeChangeFile(t *testing.T, root, id, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, "spec", "changes", id, name), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func phaseGoal(id string) string {
+	return "# 目标：" + id + "\n\n" +
+		"change: `" + id + "`\n\n" +
+		"## Objective\n\n把入口路由变成状态。\n\n" +
+		"## Why\n\n脏树直接任务会让 change 旁路。\n\n" +
+		"## Constraints\n\n只对声明 spec 的仓库生效。\n\n" +
+		"## Out of Scope\n\n不做 fragment 组装。\n\n" +
+		"## Check\n\n- forge change phase 能报阶段\n"
+}
+
+func TestStage_Progression(t *testing.T) {
+	root := t.TempDir()
+	id := "demo"
+	if _, err := Init(root, specroot.ProfileMini); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(root, id, "demo"); err != nil {
+		t.Fatal(err)
+	}
+
+	phase, missing, err := ComputePhase(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phase != PhaseSpecify {
+		t.Fatalf("fresh change phase = %s, want specify (missing: %v)", phase, missing)
+	}
+
+	writeChangeFile(t, root, id, FileGoal, phaseGoal(id))
+	phase, _, err = ComputePhase(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phase != PhaseClarify {
+		t.Fatalf("goal filled phase = %s, want clarify", phase)
+	}
+
+	writeChangeFile(t, root, id, FileClarify, RenderClarify(id, "只做入口路由，不做组装。", "", time.Now()))
+	phase, _, err = ComputePhase(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phase != PhasePlan {
+		t.Fatalf("clarify written phase = %s, want plan", phase)
+	}
+
+	writeChangeFile(t, root, id, FileDesign, "# 设计\n\n实现三件事。\n")
+	phase, _, err = ComputePhase(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phase != PhaseTasks {
+		t.Fatalf("design wrote phase = %s, want tasks", phase)
+	}
+
+	writeChangeFile(t, root, id, FileTasks, "# 任务\n\n- [ ] 1. 做 A（判据：acceptance #1）\n- [ ] 2. 做 B（判据：acceptance #2）\n")
+	phase, missing, err = ComputePhase(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phase != PhaseReady {
+		t.Fatalf("all artifacts phase = %s, want ready (missing: %v)", phase, missing)
+	}
+}
+
+func TestStage_UnboundTaskBlocksReady(t *testing.T) {
+	root := t.TempDir()
+	id := "demo"
+	if _, err := Init(root, specroot.ProfileMini); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(root, id, "demo"); err != nil {
+		t.Fatal(err)
+	}
+	writeChangeFile(t, root, id, FileGoal, phaseGoal(id))
+	writeChangeFile(t, root, id, FileClarify, RenderClarify(id, "边界：只改 cli。", "", time.Now()))
+	writeChangeFile(t, root, id, FileDesign, "# 设计\n\n实现。\n")
+	writeChangeFile(t, root, id, FileTasks, "- [ ] 1. 做 A（判据：acceptance #1）\n- [ ] 2. 忘了写判据\n")
+
+	phase, missing, err := ComputePhase(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if phase != PhaseTasks {
+		t.Fatalf("unbound task phase = %s, want tasks", phase)
+	}
+	if len(missing) == 0 || !strings.Contains(strings.Join(missing, " "), "#2") {
+		t.Fatalf("missing hints should name task #2: %v", missing)
+	}
+}
+
+func TestClarifyRecord_RequiresByHuman(t *testing.T) {
+	// 没有「人确认」行的 clarify.md 必须被判未完成。
+	if _, err := ParseClarify([]byte("## 边界\n\n只改 cli。\n\n## 非目标\n\n不做 UI。\n")); err == nil ||
+		!strings.Contains(err.Error(), "人确认") {
+		t.Fatalf("missing 人确认 line must fail with 人确认 hint, got %v", err)
+	}
+	// 有人确认但边界为空，同样不行。
+	if _, err := ParseClarify([]byte("## 边界\n\n## 非目标\n\n不做 UI。\n\n人确认：2026-11-15T00:00:00Z\n")); err == nil {
+		t.Fatal("empty boundary must fail")
+	}
+	// 正常记录可解析。
+	got, err := ParseClarify([]byte(RenderClarify("demo", "只改 cli。", "不动 server。", time.Now())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Boundary != "只改 cli。" || got.NonGoals != "不动 server。" || got.ConfirmedAt.IsZero() {
+		t.Fatalf("parsed clarify = %+v", got)
+	}
+}
+
+func TestUnboundTasks(t *testing.T) {
+	tasks := ParseTasks([]byte("- [ ] 1. A（判据：acceptance #1）\n- [ ] 2. B\n- [x] 3. C（判据：acceptance #2）\n"))
+	if got := UnboundTasks(tasks); len(got) != 1 || got[0] != 2 {
+		t.Fatalf("UnboundTasks = %v, want [2]", got)
+	}
+}

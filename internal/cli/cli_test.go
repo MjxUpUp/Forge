@@ -397,7 +397,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	runGit(t, tmpDir, "checkout", "-b", "feature/test-scoring")
 
 	// Start a task
-	stdout, _, code := runForge(t, tmpDir, "task", "start")
+	stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task")
 	if code != 0 {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}

@@ -72,7 +72,7 @@ func TestProjectSyncDualMachineRoundTrip(t *testing.T) {
 	gitInit(t, repoA)
 	t.Setenv(`FORGE_DATA_HOME`, homeA)
 	forge(t, repoA, `init`)
-	forge(t, repoA, `task`, `start`, `--ref`, `feat/e2e-sync`, `--title`, `e2e 双机同步`)
+	forge(t, repoA, `task`, `start`, `--kind`, `task`, `--ref`, `feat/e2e-sync`, `--title`, `e2e 双机同步`)
 	// 门禁跑一次即留 checklog 证据（PASS/BLOCKED/FAIL 都记 checklog —— trace 的原料）。
 	// Phase C 起仓库内契约（spec/forge.yaml）在，task-implement 的产物链缺失只是
 	// advisory，门禁本身会通过——这里不要求它失败，只要 checklog 有本任务记录即可。

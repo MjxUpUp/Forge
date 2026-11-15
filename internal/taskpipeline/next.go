@@ -31,9 +31,29 @@ type NextResult struct {
 // 不会静默漂移（增量复审 P3-4）。
 const nextCmdVerifyAcceptance = "forge task verify-acceptance"
 
-// 门禁顺序与真实链严格一致：implement →（验收未实跑则 verify-acceptance）→ gate task-verify
-// → review pass → gate task-complete → task complete。每条 Next 恰一条命令（无 && 复合）。
+// NextContext 是 next 决策需要的仓库上下文。SpecDeclared/OpenChanges 让「入口路由」
+// 成为状态而不是文案：声明了 spec/forge.yaml 的仓库，脏树且没有打开 change 时先立
+// change，而不是直接 task start（JustForMe 9 个任务 0 个 change 的直接原因）。
+type NextContext struct {
+	Branch       string
+	Dirty        bool
+	BehindRemote int
+	// SpecDeclared 表示仓库有 spec/forge.yaml；未声明时所有新规则不生效。
+	SpecDeclared bool
+	// OpenChanges 是未归档 change 的 id（按字母序）。
+	OpenChanges []string
+}
+
+// NextDecision 保留旧签名（纯任务上下文）：调用方没有 spec 信息时应走这里。
 func NextDecision(branch string, dirty bool, behindRemote int, st *TaskState) NextResult {
+	return NextDecisionCtx(NextContext{Branch: branch, Dirty: dirty, BehindRemote: behindRemote}, st)
+}
+
+// NextDecisionCtx 是带仓库上下文的决策函数；门禁顺序与真实链严格一致：
+// implement →（验收未实跑则 verify-acceptance）→ gate task-verify → review pass →
+// gate task-complete → task complete。每条 Next 恰一条命令（无 && 复合）。
+func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
+	branch, dirty, behindRemote := ctx.Branch, ctx.Dirty, ctx.BehindRemote
 	gates := map[string]bool{}
 	for _, g := range nextGateHistory(st) {
 		gates[g] = true
@@ -42,6 +62,8 @@ func NextDecision(branch string, dirty bool, behindRemote int, st *TaskState) Ne
 		"branch":        branch,
 		"dirty":         dirty,
 		"behind_remote": behindRemote,
+		"spec_declared": ctx.SpecDeclared,
+		"open_changes":  len(ctx.OpenChanges),
 		"active_task":   nextTaskRef(st),
 		"gates_passed":  nextGateHistory(st),
 		"review_passed": nextReviewPassed(st),
@@ -55,6 +77,22 @@ func NextDecision(branch string, dirty bool, behindRemote int, st *TaskState) Ne
 	// 无活跃任务（ActiveTaskState 对已完成任务返回 nil——完成态经此分支）：归属问题优先。
 	if st == nil {
 		if dirty {
+			// 入口路由：声明了 spec 的仓库先立 change（goal+acceptance），
+			// 有打开的 change 就先推进它的阶段；--kind task 是显式小修出口。
+			if len(ctx.OpenChanges) > 0 {
+				return NextResult{
+					Next:   "forge change phase " + ctx.OpenChanges[0],
+					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物（小修可改走 forge task start --kind task）",
+					State:  state,
+				}
+			}
+			if ctx.SpecDeclared {
+				return NextResult{
+					Next:   "forge change new <id>",
+					Reason: "工作区有未归属变更——这个仓库用 spec 流程：先立 change（goal+acceptance）再开工；一句话小修可改走 forge task start --kind task",
+					State:  state,
+				}
+			}
 			return NextResult{
 				Next:   `forge task start --ref <ref> --branch --title <title>`,
 				Reason: "工作区有未归属变更而无活跃任务——先建任务收编（刻意的一次性小改可改走 forge task wild \"<说明>\" 申报）",
