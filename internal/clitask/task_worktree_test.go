@@ -48,7 +48,7 @@ func wtSetupProject(t *testing.T) string {
 func TestTaskStart_WorktreeE2E(t *testing.T) {
 	tmpDir := wtSetupProject(t)
 
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/wt-probe", "--title", "wt probe")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/wt-probe", "--title", "wt probe")
 	if code != 0 {
 		t.Fatalf("task start --worktree failed: %s %s", stdout, stderr)
 	}
@@ -120,7 +120,7 @@ func TestTaskFinish_MergeTargetGuard(t *testing.T) {
 	tmpDir := wtSetupProject(t)
 
 	// 建 worktree 任务并手工 complete（任务已完成但门禁走不了 verify——直接标记）。
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/finish-probe", "--title", "fp")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/finish-probe", "--title", "fp")
 	if code != 0 {
 		t.Fatalf("start --worktree: %s %s", stdout, stderr)
 	}
@@ -136,7 +136,7 @@ func TestTaskFinish_MergeTargetGuard(t *testing.T) {
 	}
 
 	// 重开：generic 任务（complete 不评分、无门禁）+ worktree + complete。
-	stdout, stderr, code = runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/finish-g", "--title", "g", "--kind", "generic")
+	stdout, stderr, code = runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/finish-g", "--title", "g", "--kind", "generic")
 	if code != 0 {
 		t.Fatalf("start generic --worktree: %s %s", stdout, stderr)
 	}
@@ -190,7 +190,7 @@ func TestTaskStart_BranchDerivation(t *testing.T) {
 	tmpDir := wtSetupProject(t)
 
 	// 非惯例前缀 ref + --branch：派生 feat/conventions-profile，不再被前缀校验拒绝。
-	stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--ref", "conventions-profile", "--branch", "--title", "cp")
+	stdout, _, code := runForge(t, tmpDir, "task", "start", "--ref", "conventions-profile", "--branch", "--title", "cp")
 	if code != 0 {
 		t.Fatalf("非惯例 ref + --branch 应派生成功（#6 回归）: %s", stdout)
 	}
@@ -301,6 +301,7 @@ func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
 	if err := os.WriteFile(goalPath, []byte(completeGoalForTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	makeChangeFiles(t, tmpDir, "flow")
 	runGit(t, tmpDir, "add", ".")
 	runGit(t, tmpDir, "commit", "-m", "goal")
 
@@ -315,7 +316,7 @@ func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/flow-wt", "--change", "flow", "--title", "flow wt")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-wt", "--change", "flow", "--title", "flow wt")
 	if code != 0 {
 		t.Fatalf("task start --worktree --change failed: %s %s", stdout, stderr)
 	}
@@ -368,9 +369,10 @@ func TestTaskStart_WorktreeChangeRequiresCommittedGoal(t *testing.T) {
 	if err := os.WriteFile(goalPath, []byte(completeGoalForTest), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	makeChangeFiles(t, tmpDir, "flow2")
 	// 故意不提交 goal.md。
 
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--worktree", "--ref", "feat/flow-uncommitted", "--change", "flow2", "--title", "flow2 wt")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-uncommitted", "--change", "flow2", "--title", "flow2 wt")
 	if code == 0 {
 		t.Fatalf("未提交 goal.md 时 --worktree --change 应失败: %s", stdout)
 	}
@@ -383,5 +385,23 @@ func TestTaskStart_WorktreeChangeRequiresCommittedGoal(t *testing.T) {
 	}
 	if refs := wtGitOut(t, tmpDir, "branch", "--list", "feat/flow-uncommitted"); strings.TrimSpace(refs) != "" {
 		t.Fatalf("失败后派生分支应被删除，仍存在: %s", refs)
+	}
+}
+
+// makeChangeFiles 把 change 补到 ready 阶段（除 goal.md 之外的四份产物），
+// 供 --worktree 用例验证锚点；这里不关心产物内容本身是否精炼。
+func makeChangeFiles(t *testing.T, dir, id string) {
+	t.Helper()
+	files := map[string]string{
+		"clarify.md":    "## 边界\n\n只验证 worktree 里 goal.md 的锚点。\n\n## 非目标\n\n不改阶段机与门禁。\n\n人确认：2026-11-15T00:00:00Z\n",
+		"proposal.md":   "# 提案\n\n验证 worktree 的 goal 锚点。\n",
+		"design.md":     "# 设计\n\n在 worktree 里读 goal.md。\n",
+		"acceptance.md": "# 验收\n\n```bash\ntrue\n```\n",
+		"tasks.md":      "# 任务\n\n- [ ] 1. 验证 worktree 锚点（判据：acceptance #1）\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, "spec", "changes", id, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

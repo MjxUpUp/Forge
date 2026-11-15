@@ -308,6 +308,9 @@ type Status struct {
 	// Goal 是 goal 契约（task-goal-contract）的状态：complete / incomplete / missing。
 	// missing 只对老 change 出现——`change new` 自本版起必写 goal.md。
 	Goal string `json:"goal,omitempty"`
+	// Phase 是入口阶段机的当前阶段（specify/clarify/plan/tasks/ready）；
+	// ready 只表示产物齐，不表示必须开工——任务是一等入口。
+	Phase string `json:"phase,omitempty"`
 	// GoalRequired 表示本 change 必须保留 goal.md（删了就是改判据，不是老 change）。
 	GoalRequired bool `json:"goal_required,omitempty"`
 	// PriorAttempts 是最近失败验证的摘要（新→旧）。循环停下或返工时先读它：
@@ -331,6 +334,9 @@ func StatusOf(root, id string) (*Status, error) {
 		Nodes:    nodeStatuses(c, atts),
 	}
 	st.GoalRequired = c.GoalRequired
+	if phase, _, err := ComputePhase(root, c.ID); err == nil {
+		st.Phase = string(phase)
+	}
 	switch {
 	case c.HasGoal && c.GoalComplete:
 		st.Goal = "complete"
@@ -506,6 +512,22 @@ func nextSteps(root string, c *Change, st *Status) []string {
 		}
 	}
 
+	// 封印是终态：产物齐不齐、阶段走到哪，都不应盖过「归档」这一步。
+	if c.Sealed {
+		src := relTo(root, c.Dir)
+		return []string{"归档：git mv " + src + " spec/changes/archive/" + archiveNameSuggestion(c.ID)}
+	}
+
+	if st.Phase != "" && st.Phase != string(PhaseReady) {
+		if phase, missing, err := ComputePhase(root, c.ID); err == nil && phase != PhaseReady {
+			hint := "补齐产物"
+			if len(missing) > 0 {
+				hint = missing[len(missing)-1]
+			}
+			return []string{"阶段：" + string(phase) + "——" + hint, "forge change phase " + c.ID}
+		}
+	}
+
 	if missing := DocProblems(c.Dir, c.Fast); len(missing) > 0 {
 		return []string{
 			"补齐产物：" + strings.Join(missing, "、"),
@@ -517,11 +539,6 @@ func nextSteps(root string, c *Change, st *Status) []string {
 		return []string{"补 " + FileAcceptance + "：至少要有一条能跑的判据。"}
 	}
 	switch {
-	case c.Sealed:
-		// 基准是 spec/changes 的上一层（仓库根），否则命令里的路径在哪个 cwd
-		// 下都不对。归档只看整条 verify 的判据；未过节点只作记录，不拦归档。
-		src := relTo(root, c.Dir)
-		return []string{"归档：git mv " + src + " spec/changes/archive/" + archiveNameSuggestion(c.ID)}
 	case c.Stale:
 		return []string{"判据或工作区变过，证据已失效：forge change verify " + c.ID}
 	case c.Failed:

@@ -55,10 +55,15 @@ func ParseClarify(raw []byte) (*Clarify, error) {
 		case strings.HasPrefix(trimmed, "## "):
 			section = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(trimmed, "## ")))
 			section = strings.Join(strings.Fields(section), "")
+			section = strings.NewReplacer("-", "", "_", "").Replace(section)
 			continue
-		case strings.HasPrefix(trimmed, "人确认："):
-			stamp := strings.TrimSpace(strings.TrimPrefix(trimmed, "人确认："))
+		case strings.HasPrefix(trimmed, "人确认"):
+			stamp := strings.TrimSpace(strings.TrimPrefix(trimmed, "人确认"))
+			stamp = strings.TrimSpace(strings.TrimLeft(stamp, ":："))
+			stamp = strings.ReplaceAll(stamp, " ", "T")
 			if t, err := time.Parse(time.RFC3339, stamp); err == nil {
+				c.ConfirmedAt = t.UTC()
+			} else if t, err := time.Parse("2006-01-02T15:04:05", stamp); err == nil {
 				c.ConfirmedAt = t.UTC()
 			}
 			continue
@@ -76,7 +81,7 @@ func ParseClarify(raw []byte) (*Clarify, error) {
 		return nil, fmt.Errorf("change: %s 缺非空的「## 边界」段", FileClarify)
 	}
 	if c.ConfirmedAt.IsZero() {
-		return nil, fmt.Errorf("change: %s 缺「人确认：<UTC 时间>」行——先问用户，得到明确回答后再记录", FileClarify)
+		return nil, fmt.Errorf("change: %s 缺「人确认：<RFC3339 UTC>」行（接受 `人确认：2026-11-15T14:29:31Z` 或 `人确认: 2026-11-15T14:29:31Z`）——先问用户，得到明确回答后再记录", FileClarify)
 	}
 	return c, nil
 }
@@ -92,7 +97,7 @@ func RenderClarify(id, boundary, nonGoals string, now time.Time) string {
 	if ng := strings.TrimSpace(nonGoals); ng != "" {
 		b.WriteString(ng)
 	} else {
-		b.WriteString("（沿用 goal.md 的 Out of Scope）")
+		b.WriteString("（老 change 无 goal.md：非目标未记录）")
 	}
 	fmt.Fprintf(&b, "\n\n人确认：%s\n", now.UTC().Format(time.RFC3339))
 	return b.String()
@@ -110,19 +115,38 @@ func UnboundTasks(tasks []Task) []int {
 }
 
 // ComputePhase 只读文件推导 change 的阶段；missing 是给人看的「还缺什么 / 下一步」。
-// 老 change（没有 clarify.md）会停在 clarify——一次 `forge change clarify` 即可放行，
-// verify/gate 不受影响。
+//
+// 阶段只描述「产物齐不齐」，不描述「许不许开工」：task 可以随时开，change 可以后补。
+// 老 change（没有 goal.md、也没有 .goal-required）跳过 goal 段；fast change 不要求
+// design/tasks（那是 fast 的定义），但要求 proposal 与 acceptance 不是脚手架。
 func ComputePhase(root, id string) (Phase, []string, error) {
 	if err := ValidID(id); err != nil {
 		return "", nil, err
 	}
 	dir := filepath.Join(root, "spec", "changes", id)
 	if _, err := os.Stat(dir); err != nil {
+		if archived, _ := filepath.Glob(filepath.Join(root, "spec", "changes", "archive", "*-"+id)); len(archived) > 0 {
+			return "", nil, fmt.Errorf("change: %s 已归档（%s）——归档的 change 不再推进阶段", id, relTo(root, archived[0]))
+		}
 		return "", nil, fmt.Errorf("change: 不存在 %s", relTo(root, dir))
 	}
 
-	if _, _, _, err := LoadGoal(root, id); err != nil {
-		return PhaseSpecify, []string{fmt.Sprintf("goal.md 五段没填完：%v", err), "填 spec/changes/" + id + "/goal.md 并删掉 forge:fill 标记"}, nil
+	c, _, err := Load(root, id)
+	if err != nil {
+		return "", nil, err
+	}
+	scaffold := func(name string) bool {
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			return true
+		}
+		return strings.Contains(string(raw), scaffoldMarker) || strings.TrimSpace(string(raw)) == ""
+	}
+
+	if c.HasGoal || c.GoalRequired {
+		if _, _, _, err := LoadGoal(root, id); err != nil {
+			return PhaseSpecify, []string{fmt.Sprintf("goal.md 五段没填完：%v", err), "填 spec/changes/" + id + "/goal.md 并删掉 forge:fill 标记"}, nil
+		}
 	}
 
 	clarifyRaw, err := os.ReadFile(filepath.Join(dir, FileClarify))
@@ -133,12 +157,22 @@ func ComputePhase(root, id string) (Phase, []string, error) {
 		return PhaseClarify, []string{err.Error(), "补齐后重跑 forge change clarify " + id + " --by-human --note …（或 --force 覆盖）"}, nil
 	}
 
-	designRaw, err := os.ReadFile(filepath.Join(dir, FileDesign))
-	if err != nil {
-		return PhasePlan, []string{"缺 design.md", "写 design.md：怎么改、为什么这么改、影响面与风险"}, nil
+	if scaffold(FileProposal) {
+		return PhasePlan, []string{"proposal.md 还是空的/脚手架", "写 proposal.md：为什么做、解决谁的问题、备选与取舍"}, nil
 	}
-	if strings.Contains(string(designRaw), scaffoldMarker) || strings.TrimSpace(string(designRaw)) == "" {
-		return PhasePlan, []string{"design.md 还是脚手架（含 " + scaffoldHint + "）", "把 design.md 写成真正的方案"}, nil
+
+	if c.Fast {
+		if scaffold(FileAcceptance) {
+			return PhaseTasks, []string{"acceptance.md 还是空的/脚手架", "写 acceptance.md：可执行判据围栏"}, nil
+		}
+		return PhaseReady, nil, nil
+	}
+
+	if scaffold(FileDesign) {
+		return PhasePlan, []string{"缺 design.md（或还是脚手架）", "写 design.md：怎么改、为什么这么改、影响面与风险"}, nil
+	}
+	if scaffold(FileAcceptance) {
+		return PhaseTasks, []string{"acceptance.md 还是空的/脚手架", "写 acceptance.md：可执行判据围栏"}, nil
 	}
 
 	tasksRaw, err := os.ReadFile(filepath.Join(dir, FileTasks))

@@ -34,7 +34,7 @@ func initTreeGuardRepo(t *testing.T) string {
 // TestTaskGate_OffTreeBlocks 钉住「错树时门禁必须拒绝」——主树 cwd、任务 worktree 在别处。
 func TestTaskGate_OffTreeBlocks(t *testing.T) {
 	dir := initTreeGuardRepo(t)
-	if _, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/tg", "--title", "错树守护夹具", "--accept", "true :: ok", "--worktree"); code != 0 {
+	if _, _, code := runForge(t, dir, "task", "start", "--ref", "feat/tg", "--title", "错树守护夹具", "--accept", "true :: ok", "--worktree"); code != 0 {
 		t.Fatalf("task start --worktree 失败（code=%d）", code)
 	}
 	wtPath := filepath.Join(filepath.Dir(dir), filepath.Base(dir)+"-wt", "feat-tg")
@@ -76,7 +76,7 @@ func TestTaskGate_OffTreeBlocks(t *testing.T) {
 // TestWorktreeUse_Rebinds 钉住「正当出口」：worktree use 后任务锚落在当前树，门禁不再以错树拒绝。
 func TestWorktreeUse_Rebinds(t *testing.T) {
 	dir := initTreeGuardRepo(t)
-	if _, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/tu", "--title", "重锚夹具", "--accept", "true :: ok", "--worktree"); code != 0 {
+	if _, _, code := runForge(t, dir, "task", "start", "--ref", "feat/tu", "--title", "重锚夹具", "--accept", "true :: ok", "--worktree"); code != 0 {
 		t.Fatalf("task start --worktree 失败（code=%d）", code)
 	}
 
@@ -121,7 +121,7 @@ func TestWorktreeUse_Rebinds(t *testing.T) {
 // 没有这两条，「错树守护被拦了几次」「多少人靠关守护绕过去」都没法回答。
 func TestTaskGate_OffTreeRecordsChecklog(t *testing.T) {
 	dir := initTreeGuardRepo(t)
-	if _, _, code := runForge(t, dir, "task", "start", "--kind", "task", "--ref", "feat/tgr", "--title", "留痕夹具", "--accept", "true :: ok", "--worktree"); code != 0 {
+	if _, _, code := runForge(t, dir, "task", "start", "--ref", "feat/tgr", "--title", "留痕夹具", "--accept", "true :: ok", "--worktree"); code != 0 {
 		t.Fatalf("task start --worktree 失败（code=%d）", code)
 	}
 	if _, _, code := runForge(t, dir, "task", "gate", "task-implement"); code == 0 {
