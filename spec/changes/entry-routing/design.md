@@ -36,7 +36,7 @@ type NextContext struct {
 
 | 条件 | 下一步命令 | Reason 要点 |
 | --- | --- | --- |
-| dirty && `len(ReadyChanges)>0` | `forge task start --ref feat/<id> --branch --title "<title>" --change <id>` | 已有 ready 的 change，直接带契约开工 |
+| dirty && `len(ReadyChanges)>0` | `forge task start --ref feat/<id> --branch --change <id>`（title 由人补） | 已有 ready 的 change，直接带契约开工 |
 | dirty && `len(OpenChanges)>0` | `forge change phase <id>` | 已有未完成 change，看还缺什么；也可先不带 `--change` 开工 |
 | dirty && SpecDeclared && no change | `forge change new <id>` | 建议先立 change；小修可 `--kind task` 直接开工 |
 | dirty && !SpecDeclared | `forge task start …`（原样） | 未声明契约，行为不变 |

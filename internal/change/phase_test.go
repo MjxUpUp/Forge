@@ -202,3 +202,14 @@ func TestClarify_NonGoalsHyphenVariant(t *testing.T) {
 		t.Fatalf("non-goals lost: %q", c.NonGoals)
 	}
 }
+
+// TestClarify_NonGoalsUnderscoreVariant：`## Non_Goals` 也应被接受（标题归一删 `_`）。
+func TestClarify_NonGoalsUnderscoreVariant(t *testing.T) {
+	c, err := ParseClarify([]byte("## 边界\n\n只改 cli。\n\n## Non_Goals\n\n不做 UI。\n\n人确认: 2026-11-15T00:00:00Z\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c.NonGoals, "不做 UI") {
+		t.Fatalf("non-goals lost: %q", c.NonGoals)
+	}
+}

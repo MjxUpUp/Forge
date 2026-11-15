@@ -59,12 +59,12 @@ func TestTaskStart_ChangeMustBeReady(t *testing.T) {
 // TestGuardEntryRouting_AllowsWithoutChange：没有 --change 一律放行（spec 与普通仓库同）。
 func TestGuardEntryRouting_AllowsWithoutChange(t *testing.T) {
 	spec := entryRepo(t)
-	if err := guardEntryRouting(spec, "", ""); err != nil {
+	if err := guardEntryRouting(spec, ""); err != nil {
 		t.Fatalf("spec repo without --change must pass: %v", err)
 	}
 	plain := t.TempDir()
 	runGit(t, plain, "init")
-	if err := guardEntryRouting(plain, "", ""); err != nil {
+	if err := guardEntryRouting(plain, ""); err != nil {
 		t.Fatalf("plain repo must pass: %v", err)
 	}
 }

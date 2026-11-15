@@ -97,7 +97,7 @@ func RenderClarify(id, boundary, nonGoals string, now time.Time) string {
 	if ng := strings.TrimSpace(nonGoals); ng != "" {
 		b.WriteString(ng)
 	} else {
-		b.WriteString("（沿用 goal.md 的 Out of Scope）")
+		b.WriteString("（老 change 无 goal.md：非目标未记录）")
 	}
 	fmt.Fprintf(&b, "\n\n人确认：%s\n", now.UTC().Format(time.RFC3339))
 	return b.String()
