@@ -1,0 +1,58 @@
+{
+  "change": "fix-1881",
+  "started_at": "2026-11-16T10:36:49Z",
+  "finished_at": "2026-11-16T10:36:58Z",
+  "passed": true,
+  "sealed": true,
+  "head": "a81cb74a58ce210487fe4734fdd8483afc3341a3",
+  "diff_sha256": "f522ceb6a834c53fd065e1a3102513944914480d1f000ef944c4a9c6e634984c",
+  "files": [
+    {
+      "path": "spec/changes/fix-1881/proposal.md",
+      "sha256": "491e2284af8edfad99eca31251105143e4b720100eb03a71c0359a5a556fee0e"
+    }
+  ],
+  "acceptance_sha256": "9b73ca2f478026dd0ec4b5e317e7c9c1b7ac158065c345229dd3c2c6d56ab0b7",
+  "diff_bound": true,
+  "fast": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3526
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestBuildTaskReport_PinnedChangeDisclosed|TestBuildTaskReport_PinnedChangeBeatsSpecApproval' -count=1",
+      "exit": 0,
+      "duration_ms": 2625,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/forgedata/ -run 'TestLooksMSYSPath|TestGlobalHome_WarnsOnMSYSDataHome|TestGlobalHome_MSYSWarnOncePerProcess|TestGlobalHome_NoWarnOnWindowsPath' -count=1",
+      "exit": 0,
+      "duration_ms": 856,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 332
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 855,
+      "stdout_file": "05.stdout"
+    }
+  ]
+}

@@ -2,10 +2,12 @@ package forgedata
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -499,5 +501,108 @@ func TestValidKeyFormat(t *testing.T) {
 		if got := ValidKeyFormat(c.key); got != c.want {
 			t.Errorf("ValidKeyFormat(%q) = %v, want %v", c.key, got, c.want)
 		}
+	}
+}
+
+// TestLooksMSYSPath：只认 MSYS/Cygwin 形态，普通 Windows 路径与绝对 POSIX 无关路径不报。
+func TestLooksMSYSPath(t *testing.T) {
+	cases := map[string]bool{
+		`/c/tmp/x`:       true,
+		`/C/tmp/x`:       true,
+		`/cygdrive/d/x`:  true,
+		`/tmp/forge`:     true,
+		`/tmp`:           true,
+		`C:\tmp\x`:       false,
+		`D:/tmp/x`:       false,
+		`/var/lib/forge`: false,
+		`relative/path`:  false,
+	}
+	for in, want := range cases {
+		if got := looksMSYSPath(in); got != want {
+			t.Errorf("looksMSYSPath(%q)=%v，want %v", in, got, want)
+		}
+	}
+}
+
+// TestGlobalHome_WarnsOnMSYSDataHome：Windows 下 MSYS 风格 FORGE_DATA_HOME 提示一次，
+// 且返回值保持原样（提示不改行为）。
+func TestGlobalHome_WarnsOnMSYSDataHome(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("仅在 Windows 上提示")
+	}
+	t.Setenv("FORGE_DATA_HOME", `/c/tmp/forge-data`)
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	warnMSYSDataHomeOnce = sync.Once{}
+	got, herr := GlobalHome()
+	w.Close()
+	os.Stderr = old
+	if herr != nil {
+		t.Fatal(herr)
+	}
+	if got != `/c/tmp/forge-data` {
+		t.Fatalf("GlobalHome 不应改写路径，得到 %q", got)
+	}
+	buf, _ := io.ReadAll(r)
+	if !strings.Contains(string(buf), "MSYS") {
+		t.Fatalf("缺少 MSYS 路径提示，stderr=%q", string(buf))
+	}
+}
+
+// TestGlobalHome_MSYSWarnOncePerProcess：提示按进程只出一次——连续两次 GlobalHome
+// 只允许第一行 stderr 提示（文档承诺「提示一次」）。
+func TestGlobalHome_MSYSWarnOncePerProcess(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("仅在 Windows 上提示")
+	}
+	t.Setenv("FORGE_DATA_HOME", `/c/tmp/forge-data`)
+	warnMSYSDataHomeOnce = sync.Once{}
+	readOnce := func() string {
+		old := os.Stderr
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Stderr = w
+		_, _ = GlobalHome()
+		w.Close()
+		os.Stderr = old
+		buf, _ := io.ReadAll(r)
+		return string(buf)
+	}
+	first := readOnce()
+	if strings.Count(first, "⚠ FORGE_DATA_HOME") != 1 {
+		t.Fatalf("第一次应提示一行，得到 %q", first)
+	}
+	second := readOnce()
+	if second != "" {
+		t.Fatalf("第二次不应再提示，得到 %q", second)
+	}
+}
+
+// TestGlobalHome_NoWarnOnWindowsPath：Windows 风格 FORGE_DATA_HOME 不应触发 MSYS 提示
+// （只看 GOOS 不看路径形态的变异在这里会变红——代码评审 P3）。
+func TestGlobalHome_NoWarnOnWindowsPath(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("提示只在 Windows 生效")
+	}
+	t.Setenv("FORGE_DATA_HOME", `D:/tmp/forge-data`)
+	warnMSYSDataHomeOnce = sync.Once{}
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	_, _ = GlobalHome()
+	w.Close()
+	os.Stderr = old
+	buf, _ := io.ReadAll(r)
+	if len(buf) != 0 {
+		t.Fatalf("Windows 路径不应提示，stderr=%q", string(buf))
 	}
 }

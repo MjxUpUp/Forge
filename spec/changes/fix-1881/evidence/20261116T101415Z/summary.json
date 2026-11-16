@@ -1,0 +1,98 @@
+{
+  "change": "fix-1881",
+  "started_at": "2026-11-16T10:14:15Z",
+  "finished_at": "2026-11-16T10:14:27Z",
+  "passed": true,
+  "sealed": true,
+  "head": "15c3df510b3f2cd0b0187215dbfd0a904599e038",
+  "diff_sha256": "ec85381e04ff6f501826726463bd42048446e6002d3425cba9354480637133bf",
+  "files": [
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "2eece4bc212acc1ca57914fd09bea23f3986efc7c4c365dc8d2c2bca11013abe"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "8cf4c466c978e68a9e3808606648620b9ee1bc073360b62a35f9bde6f0521d21"
+    },
+    {
+      "path": "internal/clitask/task_report_honesty_test.go",
+      "sha256": "3b5e4be618b4b3e8210db116d47b6e426b303a69572fd14b51db4d704e13f025"
+    },
+    {
+      "path": "internal/forgedata/key.go",
+      "sha256": "ce2fef39e31ddfd1adf871a6fcb94bba6949171235eca0489596d853e3fd7f42"
+    },
+    {
+      "path": "internal/forgedata/key_test.go",
+      "sha256": "071a6b446f0205b329b058f5d2d438c22af42758f9bc3966a29bb7102a4a83f0"
+    },
+    {
+      "path": "spec/changes/fix-1881/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/fix-1881/FAST",
+      "sha256": "587b5c98469bc5ffae9dbe12d1dc385c501799d168aba311012bb6a800c162f5"
+    },
+    {
+      "path": "spec/changes/fix-1881/acceptance.md",
+      "sha256": "c38ab0e750ef43a2a571715fbb400ef36f5e51ff7278b727bd45863cb6655247"
+    },
+    {
+      "path": "spec/changes/fix-1881/clarify.md",
+      "sha256": "4c929334741adbaf0ffc2f05773636a445edfb184758fd29557ba6df575a210b"
+    },
+    {
+      "path": "spec/changes/fix-1881/goal.md",
+      "sha256": "ac67285e1409e970ad84b19b72827af5b895107ec402c4f8ea7f2c652a68d134"
+    },
+    {
+      "path": "spec/changes/fix-1881/proposal.md",
+      "sha256": "44640eb35719a8c061bca75357d49a5032ffdfa62e55ddf78843da56e74f6b95"
+    }
+  ],
+  "acceptance_sha256": "c38ab0e750ef43a2a571715fbb400ef36f5e51ff7278b727bd45863cb6655247",
+  "diff_bound": true,
+  "fast": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2202
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestBuildTaskReport_PinnedChangeDisclosed' -count=1",
+      "exit": 0,
+      "duration_ms": 2354,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/forgedata/ -run 'TestLooksMSYSPath|TestGlobalHome_WarnsOnMSYSDataHome' -count=1",
+      "exit": 0,
+      "duration_ms": 776,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 291
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 6541,
+      "stdout_file": "05.stdout"
+    }
+  ]
+}
