@@ -1,0 +1,87 @@
+{
+  "change": "complete-parity",
+  "started_at": "2026-11-16T02:48:05Z",
+  "finished_at": "2026-11-16T02:48:23Z",
+  "passed": true,
+  "sealed": true,
+  "head": "5ac60795d3aae17eeeb753cf39c9c3bf37959d97",
+  "diff_sha256": "dd90983c42b19f52c8afa8762ef816a38190654c8c908cafba4f80301385d80c",
+  "files": [
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "18ef1d7d85f578c098e13b3bd9c26b6118c2bf2769340e034c600b08832fe6d8"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "c1cb7bccfbd7b3edd93a1febc9a436b2242019b92a07dfbea5dd9987b3c40d4a"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "ff9a759decd9daddce5958d37994fe577b7ea97bfb7eedbee64aa1e084a83070"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "fbde23a9ecff82569f5f58c0c64ac1da544c6ea1b7407d2ae193340ae65d4aa0"
+    },
+    {
+      "path": "internal/clitask/task_report_docreview_test.go",
+      "sha256": "e3b2322d366c33d9d57fdd76e660194d90e7b68fc6ae9a5a361e7fe2c6e309d0"
+    },
+    {
+      "path": "internal/taskpipeline/artifact_advisory_test.go",
+      "sha256": "836fe879e3468093bc8c7f686caa6ffa5e87b2c12ac9d4f0b1f610ef0274f2bf"
+    },
+    {
+      "path": "internal/taskpipeline/artifactchain_gate.go",
+      "sha256": "3fdab13e95c722e6b65f055a7982b56539b88e3ac19ea79b2aa4cb1f3a87ed85"
+    },
+    {
+      "path": "internal/taskpipeline/complete_docgate_parity_test.go",
+      "sha256": "e1ef7df0b3fbd0479d9e0b762ba59539cff78dcce8922f6e46d1753be995ba36"
+    },
+    {
+      "path": "internal/taskpipeline/executor.go",
+      "sha256": "9a022e6f36b6c193f845c9965867823841728b28304069fbcea3c7adcc230279"
+    },
+    {
+      "path": "spec/changes/complete-parity/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/complete-parity/acceptance.md",
+      "sha256": "431e1aedb447388cb20238014390fff534ff9c8a3d69977d1b69713a547cebc0"
+    },
+    {
+      "path": "spec/changes/complete-parity/clarify.md",
+      "sha256": "983b539901769091403c48ed19ece74167c38775c78d6979d33fd6579716dfdc"
+    },
+    {
+      "path": "spec/changes/complete-parity/design.md",
+      "sha256": "f06ca28df665f7609a8340eba813a52928ad2ed164f8cc765c32a9b4840bb3f5"
+    },
+    {
+      "path": "spec/changes/complete-parity/goal.md",
+      "sha256": "c01cb6c7a9546f33c4d25e5303e515075c79d80d4a5a323d81d0094725357aa9"
+    },
+    {
+      "path": "spec/changes/complete-parity/proposal.md",
+      "sha256": "f36b17a6857542c646958c4ec9dbe83b819fbcc2380a30e60ebd3156e1aeadd6"
+    },
+    {
+      "path": "spec/changes/complete-parity/tasks.md",
+      "sha256": "80eec58b7c94c6ed33100295c4bfaf634f874622d832a63986ab5527ee062a4c"
+    }
+  ],
+  "acceptance_sha256": "431e1aedb447388cb20238014390fff534ff9c8a3d69977d1b69713a547cebc0",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...\ngo test ./internal/taskpipeline/ -run 'TestExecuteTaskGate_Complete|TestArtifactAdvisoryDetail' -count=1\ngo test ./internal/clitask/ -run 'TestRenderTaskReport_DocReviewDisclosure' -count=1\nsh scripts/checks/gofmt-clean.sh\nsh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 17321,
+      "stdout_file": "01.stdout"
+    }
+  ]
+}
