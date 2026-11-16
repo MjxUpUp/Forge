@@ -512,7 +512,7 @@ const (
 	//
 	// CheckGateCmdForm 记录嵌有 forge 门禁子命令的 Bash 命令的形态判定（设计 C）：1.56
 	// advisory、1.67 起 BLOCKED；Meta 携带形态标志（semicolon/pipe/multi_gate…）。
-	// deterministic（gatecmdform 纯函数判定）；属过程形态 OBSERVATION——排除出证据强度分桶。
+	// deterministic（纯函数形态判定）；属过程形态 OBSERVATION——排除出证据强度分桶。
 	CheckGateCmdForm CheckName = "gate-cmd-form"
 	// CheckHookInfra records one hook infrastructure failure (unknown hook, panic, non-block hook error) with Meta cause/subject/shown/dedup; shown=false rows are the once-per-session suppressed repeats (docs/plans/hook-silent-failure-visibility-2026-10.md).
 	//
