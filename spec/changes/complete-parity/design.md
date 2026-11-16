@@ -29,3 +29,17 @@ gate 与 complete 共享 `CheckDocGate`；交付单增加文档回检行；chang
 ## 风险
 
 gate 提前拦截会让「文档改动但还没评审」的任务更早停下——这是有意的；误伤面仅限确实改了 markdown 的任务。
+
+## 8. 不做（Non-goals）
+
+- 不强制校验评审者独立性（宿主无法证明来源），只做披露。
+- 不改评分模型、evidence 强度规则与 acceptance 语法。
+- 不改 `--accept` 的匹配算法（子串匹配是既有语义）。
+
+## 9. 验证（Verification）
+
+- `internal/taskpipeline/complete_docgate_parity_test.go`：有/无 markdown 变更两条路径。
+- `internal/taskpipeline/artifact_advisory_test.go`：契约与无契约两种文案。
+- `internal/clitask/task_report_docreview_test.go`：三种披露形态（正常/无评审者/自查）。
+- `internal/cli/task_start_hint_test.go`：空期望提示与不提示两条路径。
+- 全量：`go build ./...`、`go test ./internal/taskpipeline/ ./internal/clitask/ ./internal/cli/`、gofmt-clean、deadcode-zero、docs lint。
