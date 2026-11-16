@@ -506,7 +506,7 @@
 * **release:** optionalDependencies 平台钉随 release 火车自动 bump (`a05ca1d`)
 * **release:** optionalDependencies 平台钉随 release 火车自动 bump (`06fdaac`)
 
-## [1.66.0](https://github.com/MjxUpUp/Forge/compare/v1.65.0...v1.66.0) (2026-09-18)
+## 1.66.0 (2026-09-18)
 
 
 ### Features
@@ -702,7 +702,7 @@
 * 双独立审查（代码双轨 + 文档四维）14 项发现全闭环 (`81b7725`)
 * 死代码三重放行执法补强——req-hygiene 接线 / canary 补牙 / unused-gate / 存量清扫 (`600f052`)
 
-## [1.65.0](https://github.com/MjxUpUp/Forge/compare/v1.64.0...v1.65.0) (2026-09-18)
+## 1.65.0 (2026-09-18)
 
 
 ### Features
