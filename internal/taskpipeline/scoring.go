@@ -431,7 +431,11 @@ func loadScoringConfig(root string) *scoringtypes.ScoringConfig {
 	}
 	proto, err := protocol.Load(root)
 	if err != nil {
-		if !specroot.Declared(root) {
+		// 契约仓库没有 protocol.yml 是常态（Phase C 起 init 不写）：静默用默认。
+		// 但文件存在却加载失败（坏 YAML/权限）是配置错误，任何仓库都要告警——
+		// 静默换权重大小学等于无痕改分。
+		missingOnContract := specroot.Declared(root) && !protocol.Configured(root)
+		if !missingOnContract {
 			fmt.Fprintf(os.Stderr, "[forge] warning: protocol.yml 加载失败（%v）——评分回退默认权重/阈值\n", err)
 		}
 		return defaults

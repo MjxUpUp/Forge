@@ -30,6 +30,30 @@ func TestLoadScoringConfig_ContractRepoWithoutProtocolIsSilent(t *testing.T) {
 	}
 }
 
+// 契约仓库「缺文件」静默，但「文件存在却解析失败」是配置错误，必须告警：
+// 否则坏 YAML 会被当成默认权重，等于无痕改分。
+func TestLoadScoringConfig_ContractRepoWithBrokenProtocolWarns(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(root, ".forge"), 0o755); err != nil {
+		t.Fatalf("mkdir .forge: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "spec"), 0o755); err != nil {
+		t.Fatalf("mkdir spec: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "spec", "forge.yaml"), []byte("version: \"1\"\n"), 0o644); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	// 项目级覆盖优先级最高：写一份坏 YAML，Load 必然失败而不是「缺失」。
+	if err := os.WriteFile(filepath.Join(root, ".forge", "protocol.yml"), []byte("scoring: [unclosed\n"), 0o644); err != nil {
+		t.Fatalf("write broken protocol: %v", err)
+	}
+	stderr := captureStderr(t, func() { _ = loadScoringConfig(root) })
+	if !strings.Contains(stderr, "protocol.yml 加载失败") {
+		t.Fatalf("broken protocol.yml must warn even on a contract repo, got: %q", stderr)
+	}
+}
+
 // 非契约仓库缺 protocol.yml 仍要提示：可能是手误或类型错，静默换权重等于无痕改分。
 func TestLoadScoringConfig_NonContractRepoWarns(t *testing.T) {
 	root := t.TempDir()
