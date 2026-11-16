@@ -21,8 +21,8 @@ next 的干净工作区分支补上「开工」出口；契约仓库的评分回
 
 `internal/taskpipeline/scoring.go` 抽出 `loadScoringConfig(root)`：
 
-- `protocol.Load` 失败且 `specroot.Declared(root)` → 静默返回默认权重（阶段 C 起
-  init 不写 protocol.yml，缺文件是设计）。
+- `protocol.Load` 失败且是**契约仓库且文件不存在**（`specroot.Declared(root) && !protocol.Configured(root)`）→ 静默返回默认权重（阶段 C 起 init 不写 protocol.yml，缺文件是设计）。
+- 文件存在但加载失败（坏 YAML/权限）→ 任何仓库都告警（否则坏配置被当成默认权重，等于无痕改分）。
 - 失败且非契约仓库 → 保留原告警（可能是手误/类型错，静默改分不可接受）。
 - 成功但无 `Scoring` 段 → 默认权重（原行为）。
 
@@ -45,10 +45,11 @@ next 的干净工作区分支补上「开工」出口；契约仓库的评分回
 
 ## 4. 影响面
 
-- 代码：`internal/taskpipeline/next.go`（+11 行）、`scoring.go`（提取函数 + specroot import）。
+- 代码：`internal/taskpipeline/next.go`（干净分支新增一条路由 + `NextRepoContext`）、`scoring.go`（提取 `loadScoringConfig` 并接管 `BuildEvaluateInput` 的配置加载）。
 - 测试：`next_test.go`（干净+spec→task start；干净+spec+behindRemote→pull；
-  原「clean stays status」改为非 spec 仓库）、`scoring_config_test.go`（契约静默/非契约告警）、
-  `agents_protocol_test.go`（新增 5 条必含句）。
+  原「clean stays status」改为非 spec 仓库；`NextHint` 也吃 spec 上下文）、
+  `scoring_config_test.go`（契约缺文件静默 / 坏文件告警 / 非契约告警 / `BuildEvaluateInput` 生产路径）、
+  `agents_protocol_test.go`（新增必含句：`task accept`、不经 shell、doc-review、report --ref）。
 - 文档：模板、cli.md、AGENTS.md（`forge change agents` 同步）。
 - 不涉及：acceptance 语法、flag 集合、compat 快照（命令数不变）。
 
@@ -70,6 +71,6 @@ next 的干净工作区分支补上「开工」出口；契约仓库的评分回
 ## 7. 验证（Verification）
 
 - 单元：`TestNextDecision_EntryRouting`（spec 干净→task start、落后远端先 pull、普通仓库不变）、
-  `TestLoadScoringConfig_*`（缺文件静默 / 坏文件告警 / 非契约告警）、`TestConfigured`。
-- 模板：`TestAgentsProtocol_TaskFlowSteps` 钉 8 步关键句。
+  `TestLoadScoringConfig_*`（缺文件静默 / 坏文件告警 / 非契约告警）、`TestConfigured`、`TestBuildEvaluateInput_*`（生产路径）。
+- 模板：`TestAgentsProtocol_IsActionable` 钉 8 步关键句。
 - 文档：`forge docs lint` 0 硬失败；`change verify dogfood-fixes` 6/6。

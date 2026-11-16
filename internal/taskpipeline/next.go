@@ -3,16 +3,19 @@ package taskpipeline
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/change"
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 )
 
 // next.go —— nextDecision 纯决策函数：给定分支、脏树、活跃任务状态，返回恰好一条下一步
 // 命令 + 理由（vNext P1-2 单命令语义）。从 internal/cli/next.go 下沉（设计 B：gate/status/
 // complete 的输出点也要挂 next 行，clitask 不能反向 import cli——决策逻辑进 taskpipeline，
-// 两处消费同一真相源）。`forge next` CLI 与 clitask 的三个输出点都经 NextDecision。
+// 两处消费同一真相源）。`forge next` CLI 走 NextDecisionCtx，clitask 的输出点走 NextHint。
 //
 // docs/design/harness-fixes-a-g-2026-09.md B：门禁输出是唯一被确定性阅读的界面（两机实测
 // `forge next` 主动调用 0 次、gate 运行 139/113 次且拦截后 100% 重跑）——next 行挂在门禁
@@ -31,7 +34,8 @@ type NextResult struct {
 // 不会静默漂移（增量复审 P3-4）。
 const nextCmdVerifyAcceptance = "forge task verify-acceptance"
 
-// NextContext 是 next 决策需要的仓库上下文。SpecDeclared/OpenChanges 让「入口路由」
+// NextContext 是 next 决策需要的仓库上下文。工作区干净且声明了 spec 时直接建议
+// task start（change 可后补），不再停在 forge status 空转。SpecDeclared/OpenChanges 让「入口路由」
 // 成为状态而不是文案：声明了 spec/forge.yaml 的仓库，脏树且没有打开 change 时先立
 // change，而不是直接 task start（JustForMe 9 个任务 0 个 change 的直接原因）。
 type NextContext struct {
@@ -45,6 +49,34 @@ type NextContext struct {
 	// ReadyChanges 是其中阶段已到 ready 的 id；ReadyChanges 非空时下一步是
 	// 用 task start --change 开工，而不是再补 change 产物。
 	ReadyChanges []string
+}
+
+// NextRepoContext 从仓库实况推导 next 的上下文：spec 声明 + 未归档 change 及其阶段。
+//
+// 之所以放在 taskpipeline 而不是 CLI：NextHint 在 task gate/complete 的输出面也要用同一
+// 套上下文（否则 spec 仓库在「下一步」提示里仍会退回 forge status，复现 dogfood 死循环）。
+func NextRepoContext(root, branch string, dirty bool, behindRemote int) NextContext {
+	ctx := NextContext{Branch: branch, Dirty: dirty, BehindRemote: behindRemote}
+	ctx.SpecDeclared = specroot.Declared(root)
+	if !ctx.SpecDeclared {
+		return ctx
+	}
+	changes, err := change.List(root)
+	if err != nil {
+		return ctx
+	}
+	for _, c := range changes {
+		if c.Archive {
+			continue
+		}
+		ctx.OpenChanges = append(ctx.OpenChanges, c.ID)
+		if ph, _, err := change.ComputePhase(root, c.ID); err == nil && ph == change.PhaseReady {
+			ctx.ReadyChanges = append(ctx.ReadyChanges, c.ID)
+		}
+	}
+	sort.Strings(ctx.OpenChanges)
+	sort.Strings(ctx.ReadyChanges)
+	return ctx
 }
 
 // NextDecision 保留旧签名（纯任务上下文）：调用方没有 spec 信息时应走这里。
@@ -162,7 +194,7 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 // stderr 不影响调用方输出。
 func NextHint(root string, st *TaskState) NextResult {
 	branch, dirty := GitBranchDirty(root)
-	res := NextDecision(branch, dirty, GitBehindRemote(root), st)
+	res := NextDecisionCtx(NextRepoContext(root, branch, dirty, GitBehindRemote(root)), st)
 	// P2 时机训练：NextDecision 归一化后的**事实分支**是 verify-acceptance 待跑
 	// 且 task 尚未跑过 pairing 自检 → Reason 追加镜像自检建议（复审 P2-2：手工
 	// 重组条件三重偏差——implement 窗口的空跑会永久消费提示、completed 展示路径
