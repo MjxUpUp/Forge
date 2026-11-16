@@ -15,3 +15,7 @@
 ## 影响面
 
 `internal/cli/version.go`（新）、`internal/clitask/task.go`、`internal/clitask/task_report.go`、`docs/reference/cli.md`、两个测试文件。
+
+## compat / 命令面净增
+
+本轮新增一个顶层命令 `forge version`（等价 `--version`）：兼容面净增 1 条命令（0 个 flag），按 `docs/design/compat-commitments.md` §五「只增不删」方向无需预告；`forge compat snapshot` 已重钉为 195 命令。fast change 不产 design.md，设计理由即本节与前文「为什么做」。
