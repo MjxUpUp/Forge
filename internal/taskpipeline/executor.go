@@ -171,6 +171,11 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		if err := checkCompleteReviewPrereqs(root, state); err != nil {
 			return nil, err
 		}
+		// doc gate 与 complete 同口径（1.87.2 dogfood 发现）：gate 曾放行、complete 才报 doc gate 未通过，
+		// 照 next 走的人会在最后一步被打回。这里复用 CheckDocGate，缺 L2 回检/L1 硬失败时同样 BLOCKED。
+		if ok, reasons := CheckDocGate(root, state); !ok {
+			return nil, GateBlocked("task-complete 拒绝（doc gate，与 forge task complete 同口径）: %s；流程：forge docs lint <paths> 修 L1 → 按 doc-review skill 评审（产出者不能自检）→ commit 之后 forge task doc-review --passed pass --score <N> --round <N> --reviewer <评审者 id>；逃生（落 checklog 审计，降 evidence 强度）: forge task override --doc-gate disable 或 FORGE_DOC_GATE=disable。新阻断位点：首发即 blocked（见 docs/design/compat-commitments.md 第二节）", strings.Join(reasons, "; "))
+		}
 		changedFiles, err := checkTestCoverageBackstop(root, state)
 		if err != nil {
 			return nil, err

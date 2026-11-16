@@ -1788,6 +1788,10 @@
       "count": 1
     },
     {
+      "file": "internal/taskpipeline/executor.go",
+      "count": 1
+    },
+    {
       "file": "internal/taskpipeline/executor_check_activity.go",
       "count": 3
     },
