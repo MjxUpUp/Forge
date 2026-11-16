@@ -104,6 +104,9 @@ func runTaskAccept(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("  [%d] %s :: %s\n", i+1, c.Run, exp)
 	}
+	if n := emptyExpectedCount(added); n > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ %d 条没有期望输出（`::` 或无 expected）——只校验退出码；要校验输出写子串（匹配是 strings.Contains，不是正则）\n", n)
+	}
 	if dup := len(criteria) - len(added); dup > 0 {
 		fmt.Printf("（另有 %d 条因命令已存在被去重跳过）\n", dup)
 	}
