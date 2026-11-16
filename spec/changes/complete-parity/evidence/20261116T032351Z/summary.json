@@ -1,0 +1,80 @@
+{
+  "change": "complete-parity",
+  "started_at": "2026-11-16T03:23:51Z",
+  "finished_at": "2026-11-16T03:27:31Z",
+  "passed": true,
+  "sealed": true,
+  "head": "d14886ca3837fcf83c9b054993825fb6b0748246",
+  "diff_sha256": "74ce165ba9a52d66cf27e1efe76b95bd4518d5859f949908370b0585acd39009",
+  "files": [
+    {
+      "path": "spec/changes/complete-parity/design.md",
+      "sha256": "7c7dcd99180381c2a8fe59e58a179104562afd692a71cf9ff6be07dabac9d700"
+    }
+  ],
+  "acceptance_sha256": "ef23bb688ede6f12a7168c8001ffd1b97f28ae5003bda356b44b786b51b4f689",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 5564
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run 'TestExecuteTaskGate_Complete|TestArtifactAdvisoryDetail' -count=1",
+      "exit": 0,
+      "duration_ms": 8226,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestBuildTaskReport_DocReviewLine|TestRenderTaskReport_DocReviewDisclosure' -count=1",
+      "exit": 0,
+      "duration_ms": 3529,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestTaskStart_EmptyExpectedHint|TestTaskStart_NoEmptyExpectedHint|TestTaskStart_PlanFileEmptyExpectedHint|TestTaskAccept_EmptyExpectedHint' -count=1",
+      "exit": 0,
+      "duration_ms": 6280,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 387
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 6674
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md internal/change/templates/agents-protocol.md spec/changes/complete-parity/goal.md spec/changes/complete-parity/proposal.md spec/changes/complete-parity/design.md spec/changes/complete-parity/tasks.md spec/changes/complete-parity/acceptance.md spec/changes/complete-parity/clarify.md",
+      "exit": 0,
+      "duration_ms": 1014,
+      "stdout_file": "07.stdout"
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 188488,
+      "stdout_file": "08.stdout"
+    }
+  ]
+}

@@ -14,7 +14,7 @@ gate 与 complete 共享 `CheckDocGate`；交付单增加文档回检行；chang
 
 ## 3. 产物链提醒尊重 change 契约
 
-抽出 `artifactAdvisoryDetail(state, missing, hint)`：`GoalContract != nil` 时输出「已钉 change 目标契约（X）——task 级产物链可省略，以 change 产物为准」，否则保留原文案。
+抽出 `artifactAdvisoryDetail(state, missing, hint)`：已钉 change（`GoalContract != nil && Change != ""`）时输出「已钉 change 目标契约（X）——task 级产物链可省略，以 change 产物为准」，否则（无契约，或 `--goal-file`/`--goal` 钉了 goal 但没有 change id）保留原文案。
 
 ## 4. 空期望提示与文档
 
