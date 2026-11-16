@@ -809,6 +809,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		taskpipeline.PruneOldTasks(root, time.Now().AddDate(0, 0, -days))
 	}
 
+	if n := emptyExpectedCount(state.Acceptance); n > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ %d 条验收标准没有期望输出（`::` 或无 expected）——只校验退出码；要校验输出写子串（匹配是 strings.Contains，不是正则）\n", n)
+	}
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to create task: %w", err)
 	}
@@ -947,6 +950,17 @@ func countOtherIncomplete(states []*taskpipeline.TaskState, ownRef string) int {
 	n := 0
 	for _, s := range states {
 		if s != nil && s.TaskRef != ownRef && s.CompletedAt == nil {
+			n++
+		}
+	}
+	return n
+}
+
+// emptyExpectedCount 统计「只校验退出码」的条目：期望为空且无断言。
+func emptyExpectedCount(cs []tasktypes.AcceptanceCriterion) int {
+	n := 0
+	for _, c := range cs {
+		if c.Expected == "" && len(c.Assertions) == 0 {
 			n++
 		}
 	}
