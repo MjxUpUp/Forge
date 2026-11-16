@@ -58,3 +58,5 @@ next 的干净工作区分支补上「开工」出口；契约仓库的评分回
   明确写「也可以先 change new」并在标题模板里提示，可接受。
 - 静默默认权重会让契约仓库的评分口径不可配——但契约仓库本来就没有 protocol.yml，
   且 `--profile` 已写进 spec/forge.yaml；需要自定义评分的用户仍可放 protocol.yml（成功后走原路径）。
+  例外：文件**存在**却解析失败（坏 YAML/权限）时仍告警，否则坏配置会被当成默认权重，
+  等于无痕改分（`internal/taskpipeline/scoring.go` 用 `protocol.Configured` 区分缺失与坏文件）。

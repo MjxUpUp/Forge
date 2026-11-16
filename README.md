@@ -89,8 +89,8 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
 cd your-project
 forge init                 # 在仓库里声明契约：只写仓库内产物
 git add -A && git commit -m "chore: forge init"   # 让 next 看到干净工作区
-forge next                 # 从当前 git/任务状态推导恰好一条下一步，作为建议执行（小修也可直接 task start）
-# 干净工作区没有任务时 next 可能只给 forge status；任务是一等入口，想开工直接 task start 即可
+forge next                 # 从当前 git/任务状态推导恰好一条下一步，按建议执行（小修也可直接 task start）
+# 干净工作区没有任务时：声明了 spec 的仓库直接给 task start；未声明 spec 的仓库只给 forge status
 ```
 
 **场景 A：小修——任务是一等入口，直接开工**（change 可以事后补）

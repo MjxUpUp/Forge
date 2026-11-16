@@ -104,6 +104,11 @@ func TestNextDecision_BehindRemote(t *testing.T) {
 	if got := NextDecision("feat/x", false, 2, st); got.Next != "forge task verify-acceptance" {
 		t.Errorf("active task behind remote: Next = %q, want gate chain", got.Next)
 	}
+	// spec 仓库同样先同步：落后远端时不要直接开工，避免在旧基线上立任务。
+	if got := NextDecisionCtx(NextContext{Branch: "main", SpecDeclared: true, BehindRemote: 2}, nil); got.Next != "git pull --ff-only" {
+		t.Errorf("spec repo behind remote: Next = %q, want git pull --ff-only", got.Next)
+	}
+
 	// 未落后维持原状。
 	if got := NextDecision("main", false, 0, nil); got.Next != "forge status" {
 		t.Errorf("not behind: Next = %q, want forge status", got.Next)
@@ -229,12 +234,6 @@ func TestNextDecision_EntryRouting(t *testing.T) {
 			ctx:  NextContext{Branch: "main", SpecDeclared: true},
 			want: "forge task start --ref <ref> --branch --title <title>",
 			sub:  "change 可后补",
-		},
-		{
-			name: "spec repo, clean, behind remote → sync first",
-			ctx:  NextContext{Branch: "main", SpecDeclared: true, BehindRemote: 2},
-			want: "git pull --ff-only",
-			sub:  "先同步",
 		},
 		{
 			name: "plain repo, dirty, unchanged behavior",
