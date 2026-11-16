@@ -1,0 +1,68 @@
+{
+  "change": "complete-parity",
+  "started_at": "2026-11-16T02:56:51Z",
+  "finished_at": "2026-11-16T02:57:02Z",
+  "passed": false,
+  "sealed": false,
+  "head": "1082b847f079b8625ce8d94072e1759ca14c6b2f",
+  "diff_sha256": "fbdb5b0b0d3bed6dd83503b56e4eaa68c8066ab21dc20aedc1061dbc3a4a9c08",
+  "files": [
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "33e2d56368805814d3942431791d13ff94b3dd3c92412293a4a49a0952fe67c3"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "9b07978524f1f440fba23f37c08431aeb0af6b0856570b11eebbade6909cfd11"
+    },
+    {
+      "path": "internal/cli/task_start_hint_test.go",
+      "sha256": "ea3e7cd2b414e3e65481cab85fc5ce7ed884f155d13d8117433d74536f131712"
+    },
+    {
+      "path": "internal/clitask/task_report_docreview_test.go",
+      "sha256": "2117e9e559b77a2576d5318cd373537c48ff2e9770d6bbf2331b640ac928898b"
+    },
+    {
+      "path": "spec/changes/complete-parity/acceptance.md",
+      "sha256": "31408ed7b48404a1e932ec731f9003cb618f6f79a3da9afdea86d417f2291733"
+    },
+    {
+      "path": "spec/changes/complete-parity/design.md",
+      "sha256": "c6cc525f6dd3a3963c9a3c9535defe41060e767a481c79ea8c34f09ca039bc71"
+    },
+    {
+      "path": "spec/changes/complete-parity/tasks.md",
+      "sha256": "47b57d4af5b44b12cc0158165e3655fee22944c765cec1dfbb83a0525ff84e07"
+    }
+  ],
+  "acceptance_sha256": "31408ed7b48404a1e932ec731f9003cb618f6f79a3da9afdea86d417f2291733",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...\ngo test ./internal/taskpipeline/ -run 'TestExecuteTaskGate_Complete|TestArtifactAdvisoryDetail' -count=1\ngo test ./internal/clitask/ -run 'TestRenderTaskReport_DocReviewDisclosure' -count=1\nsh scripts/checks/gofmt-clean.sh\nsh scripts/checks/deadcode-zero.sh",
+      "exit": 1,
+      "duration_ms": 10838,
+      "stdout_file": "01.stdout",
+      "stderr_file": "01.stderr"
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestTaskStart_EmptyExpectedHint|TestTaskStart_NoEmptyExpectedHint' -count=1",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md internal/change/templates/agents-protocol.md spec/changes/complete-parity/goal.md spec/changes/complete-parity/design.md",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    }
+  ]
+}

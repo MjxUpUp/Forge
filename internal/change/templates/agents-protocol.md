@@ -82,11 +82,11 @@
 4. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
    → `forge task gate task-verify`（配对测试、cheat-scan 等；多数是 advisory，复发才升硬）。
    BLOCKED 先读它给的证据，不要换个说法重试。complete 会硬查验收已实跑且未过期。
-   `task gate task-complete` 与 `task complete` 同口径：缺 doc-review（或 L1 硬失败）时
+   `task gate task-complete` 与 `task complete` 同口径：同一 `CheckDocGate`——缺记录/记录过期/得分 <75/未决 Critical/L1 硬失败时
    gate 就 BLOCKED，不会先绿灯再在 complete 打回。
 5. 改动里含 `.md` 时先过文档闸：`forge docs lint <文件>`。
 6. 提交、再审查、再记录、再完结——顺序是：`git commit` → 派只读子 agent 审查当前 diff →
-   `forge review pass --note "..."` →（含 `.md` 时）`forge task doc-review --passed pass --score <N> --round <N>`（≥75 才过；
+   `forge review pass --note "..."` →（含 `.md` 时）`forge task doc-review --passed pass --score <N> --round <N> --reviewer <评审者 id>`（≥75 才过；
    纯文档改动同样要这一步）→ `forge task gate task-complete` → `forge task complete`。
    `review pass` 是 task-complete 的硬前置，不是可选项；`doc-review` 绑定记录时的 HEAD，
    必须在 commit 之后记录（先记再提交会让 complete 因 HEAD 前移要求重录）。
