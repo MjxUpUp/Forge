@@ -208,8 +208,8 @@ func samePath(a, b string) bool {
 
 // globalStoreMarkers 列出只有用户级全局 store（~/.forge 或 FORGE_DATA_HOME）
 // 才会含的产物：注册表文件、按项目数据树、skills 分发缓存/manifest、文件备份。
-// 项目 .forge/ 装的是 hooks/、protocol.yml、team-mode、
-// .sync-version——与这些名字无交集。
+// 项目 .forge/ 装的是 protocol.yml、team-mode、.sync-version 等项目级
+// 配置——与这些名字无交集。
 var globalStoreMarkers = []string{
 	"projects.json",
 	"projects",

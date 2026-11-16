@@ -2,7 +2,7 @@
 //
 // Package doclint 是输出可读性约束体系的 L1（机器可判）层：对 AI 产出的
 // markdown 产物做确定性 lint。禁令短语、必填章节、结论枚举与篇幅上限以
-// 本表为单一真相源——skillgen 从同一张表渲染进 forge-quality skill 文本，
+// 本表为单一真相源——forge-quality skill 文本从同一张表渲染，
 // 而不是维护第二份手写副本（设计背景见 docs/design/output-readability-gates.md）。
 package doclint
 

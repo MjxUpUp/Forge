@@ -630,7 +630,7 @@ func replaceBinaryUnix(exePath string, newData []byte) error {
 }
 
 // getCurrentVersion/compareVersions 已收敛 util 单一源（2026-09 普查 A2-2：
-// hookdispatch 的 kimi-stale 探测同样需要版本比较——纯函数下沉，两侧薄委托）。
+// 调用方的 kimi-stale 探测同样需要版本比较——纯函数下沉，两侧薄委托）。
 func getCurrentVersion(fullVersion string) string { return util.GetCurrentVersion(fullVersion) }
 
 func compareVersions(a, b string) int { return util.CompareVersions(a, b) }

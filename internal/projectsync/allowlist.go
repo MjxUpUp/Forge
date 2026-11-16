@@ -80,7 +80,7 @@ func ExportFiles(dataDir string, extra []string) ([]string, error) {
 // StripNonAllowlisted 删除 dataDir 下 allowlist 不放行的每个文件，返回被删的 rel
 // 路径。这是 allowlist 默认拒绝在导入侧的执行：Unpack 只校验 manifest↔tar 一致，
 // 而 manifest 本身不可信（无签名）——伪造 bundle 可在清单里列
-// imports.jsonl / active-task-ref-* / hooks/* / quarantine/** / hazards/**，
+// imports.jsonl / active-task-ref-* / quarantine/** / hazards/**，
 // datamerge 会忠实地把它们搬进活 DataDir（污染账本、劫持会话锚、绕过敏感 store
 // 的 --include 门槛）。选入型 store 在此无条件剥除：v1 的 import 没有 --include
 // flag，即使 bundle 诚实声明了 Includes，也是丢掉这些载荷而非换来一个未经请求
@@ -135,7 +135,7 @@ func allowlistFile(rel string) (bool, string) {
 	case `act`:
 		return rel == `act/conclusions.jsonl`, ``
 	case `stamps`:
-		// stamps/hook-deploy 是 hooks/settings.go 写的 epoch+tag 机器本地部署戳。
+		// stamps/hook-deploy 是 epoch+tag 格式的机器本地部署戳。
 		return rel != `stamps/hook-deploy`, ``
 	case `quarantine`:
 		return false, IncludeQuarantine

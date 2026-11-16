@@ -266,16 +266,16 @@ func writeEntries(entries []Entry) error {
 // never become a registered project: the user home directory or the system temp
 // root. A registered home is project-poisoning at machine scale: the lookup
 // ancestor-prefix match then claims EVERY directory under home (including all
-// test temp dirs) as "inside a project", so project-gated hooks fire everywhere
+// test temp dirs) as "inside a project", so project-scoped gates fire everywhere
 // and test outcomes drift with developer-machine state (2026-09 incident: home
-// registered on a Windows dev box → hookdispatch tests failed there while green
-// on CI, both deterministic — the flakiness was an observation artifact).
+// registered on a Windows dev box made project-scoped tests fail there while
+// green on CI, both deterministic — the flakiness was an observation artifact).
 //
 // ErrReservedPath 在路径属于保留根（用户 home 目录、系统临时根）时由 Add 返回——
 // 两者永不构成合法项目。home 被注册是机器尺度的项目毒化：lookup 的祖先前缀匹配
-// 会把 home 下的一切目录（包括所有测试临时目录）判成"在项目内"，项目级 hook 随处
+// 会把 home 下的一切目录（包括所有测试临时目录）判成"在项目内"，项目级门禁随处
 // 开火，测试结果随开发机注册表内容漂移（2026-09 实例：Windows 开发机 home 被注册
-// →hookdispatch 测试本机确定性双红而 CI 全绿——所谓 flaky 是观察截断的假象）。
+// →项目级测试本机确定性双红而 CI 全绿——所谓 flaky 是观察截断的假象）。
 var ErrReservedPath = errors.New(`registry: 拒绝把保留根注册为项目（用户 home 目录 / 系统临时根）——若确有需要请先核实路径`)
 
 // isReservedRoot reports whether ap IS (in any path form) the user home

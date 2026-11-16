@@ -241,8 +241,8 @@ func TestRecurrent_ScopeDrift_SingleFileStaysAdvisory(t *testing.T) {
 func TestBehaviorSurfaceHits(t *testing.T) {
 	changed := []string{
 		"internal/cli/init.go",
-		"internal/agentbridge/codex.go",
-		"internal/skillgen/claudemd.go",
+		"internal/protocol/loader.go",
+		"internal/registry/registry.go",
 		"internal/cli/init_test.go", // 不在行为面清单（测试文件非行为面）
 		"docs/plans/x.md",
 		"skills/foo/SKILL.md",
@@ -250,7 +250,7 @@ func TestBehaviorSurfaceHits(t *testing.T) {
 	}
 	got := behaviorSurfaceHits(changed)
 	if len(got) != 3 {
-		t.Fatalf("behaviorSurfaceHits = %v, want 3 hits（init.go/codex.go/claudemd.go）", got)
+		t.Fatalf("behaviorSurfaceHits = %v, want 3 hits（init.go/protocol/registry）", got)
 	}
 	if got2 := behaviorSurfaceHits([]string{"internal/cli/root.go"}); len(got2) != 0 {
 		t.Errorf("非行为面文件应零命中，got %v", got2)

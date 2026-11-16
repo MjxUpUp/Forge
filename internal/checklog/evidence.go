@@ -253,7 +253,7 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 // 返回 false（→ cap）：新逃生舱在未被此处显式识别前，保守按验证类对待。
 //
 // task-verify Stop 有界阻断（compat-commitments 第二节第 5 条 ④，与 work-activity 同属流程
-// 节奏类）的逃生行由 internal/hooks/embed_quality.go 以固定 detail
+// 节奏类）的逃生行以固定 detail
 // "escape-hatch: task-verify Stop bounded block bypassed ..." 写出，同样不 cap Strength；
 // 分数封顶（scoring.go 对任一逃生生效）不受影响。
 func isRhythmEscapeHatch(detail string) bool {
