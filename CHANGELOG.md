@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.88.0](https://github.com/MjxUpUp/Forge/compare/v1.87.3...v1.88.0) (2026-11-16)
+
+
+### Features
+
+* 加强隐私边界——证据封存与 bundle 外发默认脱敏 ([98c56b7](https://github.com/MjxUpUp/Forge/commit/98c56b795d359cb89625c3e8b70d27264ba26ba0))
+
+
+### Bug Fixes
+
+* **ci:** 历史重写后的两处 Linux 失败——raw string 字面 \n 与 hostname 脱敏顺序 ([c34f0c7](https://github.com/MjxUpUp/Forge/commit/c34f0c72cf8eee4013a685086f88ba1a57d914b4))
+* **ci:** 同步推送确认在测试里显式跳过；重钉 compat 快照 ([1afc3c6](https://github.com/MjxUpUp/Forge/commit/1afc3c6bffc2684f69082aea53422258686bf998))
+* **ci:** 清掉 staticcheck U1000 的四处死声明（历史重写清理残留） ([15c3df5](https://github.com/MjxUpUp/Forge/commit/15c3df510b3f2cd0b0187215dbfd0a904599e038))
+
 ## [1.87.3](https://github.com/MjxUpUp/Forge/compare/v1.87.2...v1.87.3) (2026-11-16)
 
 
