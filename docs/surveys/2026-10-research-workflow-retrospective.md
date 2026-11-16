@@ -1,7 +1,7 @@
 # research-workflow 复盘（2026-10）
 
 日期：2026-10-15 ｜ 状态：行动已落地（见「落地状态」） ｜ 明细：[证据附录](2026-10-research-workflow-review-evidence.md)
-范围：本机全部 23 个调研 run（`~/.forge/research/` 10 个、`~/.research-workflow/` 13 个）、`docs/surveys/` 落库调研、10 月 11 次调研会话转录；外部调研覆盖学界 64 条引用与业界产品 / 开源 / 社区 skill。方法：逐 run 6 项打分、31 条承重断言回原文核验、转录取证。
+范围：本机全部 23 个调研 run（forge research 目录 10 个、外部调研目录 13 个）、`docs/surveys/` 落库调研、10 月 11 次调研会话转录；外部调研覆盖学界 64 条引用与业界产品 / 开源 / 社区 skill。方法：逐 run 6 项打分、31 条承重断言回原文核验、转录取证。
 
 ## 结论
 
@@ -66,7 +66,7 @@
 |---|---|
 | 12 | SKILL.md 明示「先取日期值，再 `mkdir -p` 字面路径，不要存进变量」；forge 侧把 `VAR=$(date …)` 这类赋值视为误报（见 forge 落地清单） |
 | 13 | 飞书发布改成用户要时才发，同时改写 failure-cases 案例 6 |
-| 14 | 被设计文档引用的调研要复制进 `docs/surveys/` 并提交，引用处保留信度标注。迁移或标注仓库里 10 处 `~/.forge/research/…` 引用，以及 2 个已丢失的 run |
+| 14 | 被设计文档引用的调研要复制进 `docs/surveys/` 并提交，引用处保留信度标注。迁移或标注仓库里 10 处对 `~/` 下调研 run 的引用，以及 2 个已丢失的 run |
 | 15 | Phase L 一次都没用过：拆成独立的 `references/phase-l.md`，SKILL.md 只留路由，读取可被遥测统计；dev-lookup 的 SKIP 已指向 Phase L |
 | 16 | 新增 5–8 条 golden 调研任务，预埋 hedge、共作者、同源转载、过期数字、需本地核验这几类陷阱；用承重断言支持率和 lint 通过率作指标 |
 | 17 | （Go 侧）forge skill-trigger 不应匹配子代理完成通知或系统消息。本次复盘会话里出现了 4 次误触发 |

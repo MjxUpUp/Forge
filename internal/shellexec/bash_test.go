@@ -26,7 +26,7 @@ func TestIsWSLBash(t *testing.T) {
 		{`C:\Windows\System32\bash.exe`, true},
 		{`c:\windows\system32\bash.exe`, true},
 		{`C:\Windows\SysWOW64\bash.exe`, true},
-		{`<home>\AppData\Local\Microsoft\WindowsApps\bash.exe`, true},
+		{`C:\Users\user\AppData\Local\Microsoft\WindowsApps\bash.exe`, true},
 		{`C:/Windows/System32/bash.exe`, true},
 		{`C:\Windows/SYSWOW64\bash.exe`, true}, // 混合分隔符（CI Linux 回归钉）
 		{`D:\Program Files\Git\usr\bin\bash.exe`, false},

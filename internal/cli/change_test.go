@@ -88,7 +88,7 @@ func gitRun(t *testing.T, dir string, args ...string) {
 	}
 }
 
-// samePath 比较两个路径，容忍 Windows 短路径（<user>）与大小写差异。
+// samePath 比较两个路径，容忍 Windows 8.3 短名形态与大小写差异。
 func samePath(a, b string) bool {
 	aa, err := filepath.Abs(a)
 	if err != nil {

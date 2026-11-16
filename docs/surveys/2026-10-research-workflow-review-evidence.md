@@ -1,7 +1,7 @@
 # research-workflow 复盘 · 证据附录
 
 日期：2026-10-15 ｜ 主文：[2026-10-research-workflow-retrospective.md](2026-10-research-workflow-retrospective.md)（结论与行动）｜ 本文是主文的明细：运行数据、问题证据、业界学界做法、差距矩阵、优化项展开、更正清单与引用
-范围：`skills/research-workflow`（与 `~/.claude/skills`、插件副本一致）；本机全部调研产物——`~/.forge/research/` 10 个 run（2026-08-18 ~ 09-29）、`~/.research-workflow/` 13 个 run（2026-10-08 ~ 10-14）、`docs/surveys/` 3 篇落库调研；10 月 11 次有转录的调研会话。
+范围：`skills/research-workflow`（与用户级 skills 目录、插件副本一致）；本机全部调研产物——forge research 目录 10 个 run（2026-08-18 ~ 09-29）、外部调研目录 13 个 run（2026-10-08 ~ 10-14）、`docs/surveys/` 3 篇落库调研；10 月 11 次有转录的调研会话。
 方法：两路逐 run 审计（流程 / 引用 / 互证 / 来源 / 时效 / 成文 6 项打分）+ 31 条承重断言回原文核验 + 会话转录取证 + 两路外部调研（学界 64 条引用、业界含 5 个社区 skill 拆解）。外部数字凡本文引用的，已回 arXiv / GitHub API 原页复核。
 31 条承重断言的逐条判定见文末「31 条承重断言核验明细」；逐 run 打分与转录取证的工作底稿没有入库（含会话原文摘录）。
 
@@ -87,8 +87,8 @@
 |---|---|---|
 | 13 | Phase L 形同虚设 | 0 次使用，中等量级问题全部变成无纪律即兴搜索 |
 | 14 | 触发依赖 hook | 非 forge 项目只能等用户敲 slash；forge 项目里 skill-trigger 又会被子代理完成通知的文本误触发（本次复盘会话里出现了 4 次） |
-| 15 | 建目录命令被 hazard-guard 拦 | 被拦的是 agent 改写的 `RUN=~/.research-workflow/…-$(date …); mkdir -p $RUN`（hazards/events.jsonl 10-10 15:16、10-13 17:41），SKILL.md:115 的字面写法本身不拦；未确认拦截按项目计，卡住了同项目的 `forge task complete` |
-| 16 | run 根目录迁移无校验 | 08-28 已改到 `~/.research-workflow/`，9 月 run 仍写旧路径：8/31–9/3 是 ZCode 插件副本未更新（已确认）；9/16 后推测是 Forge 仓 10 个设计文档把 `~/.forge/research/…` 当惯例引用 |
+| 15 | 建目录命令被 hazard-guard 拦 | 被拦的是 agent 改写的 `RUN=<调研目录>/…-$(date …); mkdir -p $RUN`（hazards/events.jsonl 10-10 15:16、10-13 17:41），SKILL.md:115 的字面写法本身不拦；未确认拦截按项目计，卡住了同项目的 `forge task complete` |
+| 16 | run 根目录迁移无校验 | 08-28 已改到外部调研目录，9 月 run 仍写旧路径：8/31–9/3 是 ZCode 插件副本未更新（已确认）；9/16 后推测是 Forge 仓 10 个设计文档把旧调研 run 路径当惯例引用 |
 | 17 | 证据链断 | Forge 设计文档引用的 `forge-direction-20260905-0956`、`forge-mechanisms-20260905-1752` 两处都不存在（如 `docs/design/compat-commitments.md:3`）；forge-trust 73 条引用 30 条无 URL |
 | 18 | 下游丢信度 | `design-stage-hardening` 提案 0 处信度标记；决策模型 survey 一页结论未逐条标信度 |
 | 19 | 飞书发布被写成"必做" | 实际执行 2/23；failure-cases 案例 6 把"没自动发布"当失败，和"外发需确认"冲突 |
@@ -219,7 +219,7 @@ anthropics/skills 官方仓没有调研类 skill。共性：**门控靠脚本、
 13. **飞书发布改为可选**：只在用户要时执行；failure-cases 案例 6 改写为"用户要求发布却没发"。
 14. **下游溯源**
     - 被设计文档 / ADR 引用的调研，报告复制进仓库 `docs/surveys/` 并提交，不再引用 `~/` 下会消失的路径。
-    - 引用处保留信度标注；仓库里 10 处 `~/.forge/research/…` 引用统一迁移或标注失效。
+    - 引用处保留信度标注；仓库里 10 处对 `~/` 下调研 run 的引用统一迁移或标注失效。
 15. **Phase L 落地**：轻量档 0 使用，说明"同一 skill 内分档"在触发层不成立。两个选项：
     - 恢复独立的轻量 skill 名；
     - 在 dev-lookup 的 SKIP 里把"需要 ≥2 源的事实 / 数字 / 对比"显式转到 Phase L。
@@ -243,9 +243,9 @@ anthropics/skills 官方仓没有调研类 skill。共性：**门控靠脚本、
 | `docs/plans/design-stage-hardening-2026-10-proposal.md:32`（E6） | "上下文文件越长成本越高 [E5][E6]" | ETH 论文 v3 说长度不影响结论；"越多越差"来自 IFScale 的指令条数 | 拆开两个结论，E6 只支撑它真正说的部分 |
 | `docs/plans/acceptance-gate-and-wedge-2026-10-proposal.md:24`（未跟踪） | "Phantom Guardrails（arXiv 2607.13083）证明的正是这一点" | rsi run 把两个实验设置混成一组对比；R4 另有"对 Claude 效果弱很多"的限定被丢 | 提交前按原文重写这段论证，写明实验设置与模型限定 |
 | `skills/agent-delegation/decisions.md:98` | "审查阶段占 59.4% token" | 仅 ChatDev 场景；另有 SendMessage 首次 resume 可能整段 miss 的限定（issue #44724） | 补两处限定 |
-| `~/.research-workflow/agent-dist-standard-20261008-1552/jev-skill-routing-feasibility.md:61` | "TypeSafe 公布 ECE 0.144" | 官方从未公布；0.144 / 0.246 均为第三方转述且互相矛盾 | 文件内加更正行，防止再被后续 run 转引 |
-| `~/.forge/research/forge-trust-contract-20260929-1650/report.md:52` | 把水印"survives copy-paste but not … translation"当官方博客原话 | 官方博客无此句，且说 Claude 产出的翻译仍带水印 | 去掉引号与官方归属，改正事实 |
-| `~/.forge/research/harness-eval-20260903-0942` | OpenAI 停用 SWE-bench Verified 在 2026-08 | 2026-02（Decrypt 2026-02-24） | 改日期 |
+| `agent-dist-standard-20261008-1552/jev-skill-routing-feasibility.md:61`（内部调研 run） | "TypeSafe 公布 ECE 0.144" | 官方从未公布；0.144 / 0.246 均为第三方转述且互相矛盾 | 文件内加更正行，防止再被后续 run 转引 |
+| `forge-trust-contract-20260929-1650/report.md:52`（内部调研 run） | 把水印"survives copy-paste but not … translation"当官方博客原话 | 官方博客无此句，且说 Claude 产出的翻译仍带水印 | 去掉引号与官方归属，改正事实 |
+| `harness-eval-20260903-0942`（内部调研 run） | OpenAI 停用 SWE-bench Verified 在 2026-08 | 2026-02（Decrypt 2026-02-24） | 改日期 |
 
 另外：`docs/design/compat-commitments.md:3`、`docs/design/mechanism-hardening.md:3` 等引用的 `forge-direction-20260905-0956`、`forge-mechanisms-20260905-1752` 两个 run 目录已不存在，需要标注失效或找回原报告。
 

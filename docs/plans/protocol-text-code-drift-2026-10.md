@@ -11,7 +11,7 @@ tier: mini
 生成的项目级协议、forge-quality skill、hazard-guard 提示与 README 有 5 处与代码矛盾，agent 照文档做会失败。本批只改文本、注释与测试，让它们陈述代码的现行行为；另在 compat-commitments 第二节加一张阻断正当性分类表作为单一真相源。零新增阻断位点、命令与逃生 env。
 
 ## 问题与目标
-来源：2026-10-22 全景盘点的内部冲突清单（高严重度 5 条；调研产物在本机 `~/.research-workflow/harness-landscape-20261022-0938/internal_conflicts.md`，未入库）。
+来源：2026-10-22 全景盘点的内部冲突清单（高严重度 5 条；调研产物在本机，未入库）。
 
 | 文本说 | 代码实际 |
 |---|---|

@@ -4,9 +4,9 @@
 AGENTS.md 的 forge 托管块已是最新，无需改动
   CLAUDE.md：不存在，未创建（要启用就加 --pointers claude）
   .cursor/rules/forge.mdc：不存在，未创建（要启用就加 --pointers cursor）
-  ✓ C:/Users/<user>/AppData/Local/Temp/TestRunDocsLintHardFailureReturnsSentinel3414954566/001/clean.md
+  ✓ <home>/AppData/Local/Temp/TestRunDocsLintHardFailureReturnsSentinel3414954566/001/clean.md
 扫描 1 文件 / 硬失败 0 / 建议 0
-  ✗ C:/Users/<user>/AppData/Local/Temp/TestRunDocsLintHardFailureReturnsSentinel3414954566/001/hard.md
+  ✗ <home>/AppData/Local/Temp/TestRunDocsLintHardFailureReturnsSentinel3414954566/001/hard.md
       - [D1][硬] L2: 禁令短语命中「综上所述」：空转总结词——总结应压缩为可执行结论，不应以套话开场
 扫描 1 文件 / 硬失败 1 / 建议 0
 --- FAIL: TestEvalArtifactDrillE2E (0.85s)

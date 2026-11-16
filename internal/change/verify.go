@@ -18,6 +18,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/shellexec"
 	"github.com/MjxUpUp/Forge/internal/specroot"
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // 单条验收命令的默认超时。整包测试在慢机器上要几分钟，给足余量但必须有上限：
@@ -358,6 +359,9 @@ func writeCapture(path string, buf cappedBuffer) error {
 	if buf.truncated {
 		data = append(data, []byte("\n[forge: output truncated at 2 MiB]\n")...)
 	}
+	// 证据随 git 走：封存前把本机主目录/用户名/hostname 与已知 secret 形态
+	// 换成占位符，避免 t.TempDir() 之类的绝对路径把用户名提交进仓库。
+	data = []byte(util.Redact(string(data)))
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("change: 写证据 %s: %w", filepath.Base(path), err)
 	}

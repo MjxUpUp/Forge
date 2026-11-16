@@ -280,12 +280,12 @@ var ErrReservedPath = errors.New(`registry: 拒绝把保留根注册为项目（
 
 // isReservedRoot reports whether ap IS (in any path form) the user home
 // directory or the system temp root. Comparison goes through pathForms on both
-// sides: EvalSymlinks expands Windows 8.3 short names (<user>) and resolves
+// sides: EvalSymlinks expands Windows 8.3 short names and resolves
 // macOS /var → /private/var, so the guard holds regardless of which form a
 // caller passes — the same robustness lookup's absForms already rely on.
 //
 // isReservedRoot 判断 ap 是否（任一路径形态）等于用户 home 或系统临时根。两侧都过
-// pathForms：EvalSymlinks 展开 Windows 8.3 短名（<user>）、解析 macOS /var →
+// pathForms：EvalSymlinks 展开 Windows 8.3 短名、解析 macOS /var →
 // /private/var 符号链接，调用方传哪种形态都拦得住——与 lookup 的 absForms 同款鲁棒性。
 func isReservedRoot(ap string) bool {
 	candidates := map[string]bool{}

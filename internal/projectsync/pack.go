@@ -2,6 +2,7 @@ package projectsync
 
 import (
 	"archive/tar"
+	"bufio"
 	"compress/gzip"
 	"crypto/sha256"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // PackInput parameterizes Pack.
@@ -19,7 +22,21 @@ type PackInput struct {
 	Extra        []string // opt-in sensitive stores (IncludeQuarantine / IncludeHazards)
 	Origin       Origin
 	ForgeVersion string
-	Now          time.Time // ExportedAt stamp (injected for test determinism)
+	// Redact 在打包时把每个文本文件过一遍 util.Redact（本机主目录/用户名/
+	// hostname 与已知 secret 形态 → 占位符）。bundle 会被推到远端或交给他人，
+	// 而 checklog/toollog 里天然带绝对路径与编辑片段。
+	Redact bool
+	Now    time.Time // ExportedAt stamp (injected for test determinism)
+}
+
+// bundleEntry 是一个待写入 tar 的条目：源路径可能与 DataDir 不同（脱敏时会
+// 先落一份临时副本），Size/SHA256 一律以实际写出的字节为准。
+type bundleEntry struct {
+	rel  string
+	path string
+	size int64
+	sum  string
+	tmp  bool
 }
 
 // Pack writes the bundle (manifest.json + data/<rel>) as a gzip tar stream to w and returns the manifest it wrote.
@@ -44,17 +61,21 @@ func Pack(in PackInput, w io.Writer) (*Manifest, error) {
 		Origin:        in.Origin,
 		Includes:      in.Extra,
 	}
+	if in.Redact {
+		m.Origin = RedactedOrigin(in.Origin)
+	}
+
+	entries := make([]bundleEntry, 0, len(rels))
 	for _, rel := range rels {
-		p := filepath.Join(in.DataDir, filepath.FromSlash(rel))
-		info, serr := os.Stat(p)
-		if serr != nil {
-			return nil, fmt.Errorf(`stat %s: %w`, rel, serr)
+		e, err := prepareEntry(in.DataDir, rel, in.Redact)
+		if err != nil {
+			return nil, err
 		}
-		sum, herr := fileSHA256(p)
-		if herr != nil {
-			return nil, fmt.Errorf(`hash %s: %w`, rel, herr)
+		entries = append(entries, e)
+		if e.tmp {
+			defer os.Remove(e.path)
 		}
-		m.Files = append(m.Files, FileEntry{Path: rel, SHA256: sum, Size: info.Size()})
+		m.Files = append(m.Files, FileEntry{Path: e.rel, SHA256: e.sum, Size: e.size})
 	}
 
 	gz := gzip.NewWriter(w)
@@ -75,13 +96,13 @@ func Pack(in PackInput, w io.Writer) (*Manifest, error) {
 		return nil, err
 	}
 
-	for _, fe := range m.Files {
+	for _, fe := range entries {
 		if err := tw.WriteHeader(&tar.Header{
-			Name: `data/` + fe.Path, Mode: 0644, Size: fe.Size,
+			Name: `data/` + fe.rel, Mode: 0644, Size: fe.size,
 		}); err != nil {
 			return nil, err
 		}
-		f, ferr := os.Open(filepath.Join(in.DataDir, filepath.FromSlash(fe.Path)))
+		f, ferr := os.Open(fe.path)
 		if ferr != nil {
 			return nil, ferr
 		}
@@ -90,10 +111,91 @@ func Pack(in PackInput, w io.Writer) (*Manifest, error) {
 		_, cerr := io.Copy(tw, f)
 		f.Close()
 		if cerr != nil {
-			return nil, fmt.Errorf(`写入 %s: %w`, fe.Path, cerr)
+			return nil, fmt.Errorf(`写入 %s: %w`, fe.rel, cerr)
 		}
 	}
 	return m, nil
+}
+
+// prepareEntry 计算一个 bundle 条目的实际字节大小与哈希。Redact 时先把文件流式
+// 脱敏到临时文件（日志可能很大，不整体驻内存），manifest 的 Size/SHA256 因此
+// 描述的是脱敏后的载荷——导入方按 manifest 校验，必须与 tar 内字节一致。
+func prepareEntry(dataDir, rel string, redact bool) (bundleEntry, error) {
+	src := filepath.Join(dataDir, filepath.FromSlash(rel))
+	if !redact {
+		info, err := os.Stat(src)
+		if err != nil {
+			return bundleEntry{}, fmt.Errorf(`stat %s: %w`, rel, err)
+		}
+		sum, err := fileSHA256(src)
+		if err != nil {
+			return bundleEntry{}, fmt.Errorf(`hash %s: %w`, rel, err)
+		}
+		return bundleEntry{rel: rel, path: src, size: info.Size(), sum: sum}, nil
+	}
+
+	tmp, err := os.CreateTemp(``, `.forge-pack-*.tmp`)
+	if err != nil {
+		return bundleEntry{}, err
+	}
+	tmpName := tmp.Name()
+	if err := scrubFile(src, tmp); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return bundleEntry{}, fmt.Errorf(`脱敏 %s: %w`, rel, err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return bundleEntry{}, err
+	}
+	info, err := os.Stat(tmpName)
+	if err != nil {
+		os.Remove(tmpName)
+		return bundleEntry{}, err
+	}
+	sum, err := fileSHA256(tmpName)
+	if err != nil {
+		os.Remove(tmpName)
+		return bundleEntry{}, err
+	}
+	return bundleEntry{rel: rel, path: tmpName, size: info.Size(), sum: sum, tmp: true}, nil
+}
+
+// scrubFile 按行把 src 脱敏写入 dst。按行处理保住 JSONL 的结构，也避免把
+// 超大日志整体读进内存；超长行由 bufio.Reader 的 ReadString 兜住（不设
+// Scanner 的 token 上限）。
+func scrubFile(src string, dst io.Writer) error {
+	f, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	r := bufio.NewReaderSize(f, 64*1024)
+	for {
+		line, rerr := r.ReadString('\n')
+		if line != `` {
+			if _, werr := io.WriteString(dst, util.Redact(line)); werr != nil {
+				return werr
+			}
+		}
+		if rerr == io.EOF {
+			return nil
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
+}
+
+// RedactedOrigin 把源机器身份字段替换为占位符。Key/KeyMode/ProjectID 保留：
+// 它们是对端判定 lineage 的依据，且不携带用户名或绝对路径。
+func RedactedOrigin(o Origin) Origin {
+	o.Hostname = `<host>`
+	o.User = `<user>`
+	if o.Root != `` {
+		o.Root = `<home>`
+	}
+	return o
 }
 
 // fileSHA256 把文件流过 sha256（大日志不整体驻内存）。
