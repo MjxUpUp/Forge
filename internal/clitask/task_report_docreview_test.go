@@ -3,20 +3,66 @@ package clitask
 import (
 	"strings"
 	"testing"
+
+	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
-// TestRenderTaskReport_DocReviewDisclosure 钉住 1.87.2 dogfood 的修复：交付单必须
-// 在「审查」行下披露 L2 文档回检（分数/轮次/评审者），否则验收方无法据此决定抽查深度。
-func TestRenderTaskReport_DocReviewDisclosure(t *testing.T) {
-	rep := &taskReportJSON{
-		TaskRef:       "feat/demo",
-		DocReviewLine: "L2 score 88（round 2，reviewer-x） · 自查（独立性未校验）",
+// TestBuildTaskReport_DocReviewLine 钉住披露行的三种拼接形态——渲染器只测前缀
+// 会漏掉 reviewer 为空 / SelfReview 的真实分支（1.87.2 文档评审 M3）。
+func TestBuildTaskReport_DocReviewLine(t *testing.T) {
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	root := t.TempDir()
+
+	cases := []struct {
+		name string
+		d    *tasktypes.DocReview
+		want []string
+		deny []string
+	}{
+		{
+			name: "normal reviewer",
+			d:    &tasktypes.DocReview{Passed: true, RubricScore: 88, Round: 2, Reviewer: "reviewer-x"},
+			want: []string{"L2 score 88", "round 2", "reviewer-x"},
+			deny: []string{"自查"},
+		},
+		{
+			name: "no reviewer",
+			d:    &tasktypes.DocReview{Passed: true, RubricScore: 80, Round: 1},
+			want: []string{"未记录评审者", "自查（独立性未校验）"},
+		},
+		{
+			name: "self review",
+			d:    &tasktypes.DocReview{Passed: true, RubricScore: 80, Round: 1, Reviewer: "me", SelfReview: true},
+			want: []string{"自查（独立性未校验）"},
+		},
 	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			state := &taskpipeline.TaskState{TaskRef: "feat/demo", DocReview: c.d}
+			rep, err := buildTaskReport(root, state)
+			if err != nil {
+				t.Fatalf("buildTaskReport: %v", err)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(rep.DocReviewLine, w) {
+					t.Fatalf("DocReviewLine 缺 %q，got %q", w, rep.DocReviewLine)
+				}
+			}
+			for _, d := range c.deny {
+				if strings.Contains(rep.DocReviewLine, d) {
+					t.Fatalf("DocReviewLine 不应含 %q，got %q", d, rep.DocReviewLine)
+				}
+			}
+		})
+	}
+}
+
+// TestRenderTaskReport_DocReviewDisclosure 保证人读渲染确实把披露行印在「审查」之后。
+func TestRenderTaskReport_DocReviewDisclosure(t *testing.T) {
+	rep := &taskReportJSON{TaskRef: "feat/demo", DocReviewLine: "L2 score 88（round 2，reviewer-x）"}
 	out := renderTaskReport(rep)
 	if !strings.Contains(out, "文档回检：L2 score 88") {
 		t.Fatalf("交付单应包含文档回检行，got:\n%s", out)
-	}
-	if !strings.Contains(out, "自查（独立性未校验）") {
-		t.Fatalf("自查/未记录评审者时应显式披露，got:\n%s", out)
 	}
 }
