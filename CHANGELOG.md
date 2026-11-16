@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.87.2](https://github.com/MjxUpUp/Forge/compare/v1.87.1...v1.87.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **gate:** task-complete 与 complete 同口径；交付单披露文档回检 ([1082b84](https://github.com/MjxUpUp/Forge/commit/1082b847f079b8625ce8d94072e1759ca14c6b2f))
+* **gate:** 按代码评审 P1/P2/P3 修夹具回归、提示落点、报告判定与产物链边界 ([d14886c](https://github.com/MjxUpUp/Forge/commit/d14886ca3837fcf83c9b054993825fb6b0748246))
+* **gate:** 补 compat 首发声明与快照，报告判定/零值测试与判据覆盖（代码评审二轮） ([7a223ae](https://github.com/MjxUpUp/Forge/commit/7a223aebed0422e163f3532a2e0ddd9b4abf4621))
+
 ## [1.87.1](https://github.com/MjxUpUp/Forge/compare/v1.87.0...v1.87.1) (2026-11-16)
 
 
