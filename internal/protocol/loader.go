@@ -63,6 +63,20 @@ func ProjectLevelPath(dir string) string {
 	return filepath.Join(dir, ".forge", "protocol.yml")
 }
 
+// Configured reports whether an effective protocol.yml exists (project-level override
+// first, then the user-level DataDir copy). Load 的「缺文件」与「坏文件」要分开处理：
+// 契约仓库缺文件是常态、可以静默回退默认；文件存在却解析失败则任何仓库都要告警。
+//
+// Configured 只问存在性，不解析内容——解析仍走 Load。
+func Configured(dir string) bool {
+	path, err := pathFor(dir)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(path)
+	return err == nil
+}
+
 // Load reads the effective protocol.yml for the project (project-level override first, then the user-level DataDir copy).
 //
 // Load 读项目的生效 protocol.yml（项目级覆盖优先，其次用户级 DataDir 副本）。
