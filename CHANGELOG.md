@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.88.1](https://github.com/MjxUpUp/Forge/compare/v1.88.0...v1.88.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* **report:** 交付单披露已钉 change；Windows 提示 MSYS 风格 FORGE_DATA_HOME ([6b01d25](https://github.com/MjxUpUp/Forge/commit/6b01d25baf1b85b26c7ecd862badc168b9d21eed))
+
 ## [1.88.0](https://github.com/MjxUpUp/Forge/compare/v1.87.3...v1.88.0) (2026-11-16)
 
 
