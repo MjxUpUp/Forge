@@ -270,6 +270,11 @@ func nonGitTaskWarning() string {
 // 此处只钉呈现——缺节点时单行（链序 → 连接 + 先产出指引 + 执法预告），链完整或
 // 逃生时空串（静默与意图一致）。
 func artifactStartHint(root string, state *taskpipeline.TaskState) string {
+	// 已钉 change 契约时，"产物链预期节点未登记" 与 implement gate 的
+	// 「以 change 产物为准」自相矛盾（dogfood 实测）：开工提示也走 change 口径。
+	if state != nil && state.GoalContract != nil && state.GoalContract.Change != "" {
+		return "提示：本任务已钉 change 目标契约（" + state.GoalContract.Change + "）——task 级产物链可省略，以 change 产物为准"
+	}
 	missing, next := taskpipeline.ArtifactChainExpectation(root, state)
 	if len(missing) == 0 {
 		return ""

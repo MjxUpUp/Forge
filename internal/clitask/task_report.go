@@ -3,6 +3,9 @@ package clitask
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
+
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -59,6 +62,9 @@ type taskReportJSON struct {
 	Deterministic    int                                `json:"deterministic"`
 	AgentClaim       int                                `json:"agent_claim"`
 	UntestedAreas    []string                           `json:"untested_areas,omitempty"`
+	// RepoHasTestFiles 用于把「未验证面：无」说得诚实：仓库里连 *_test.go 都没有时，
+	// 不能写「改动源码均有配对测试」（dogfood 实测：无测试文件的仓库拿到了这句断言）。
+	RepoHasTestFiles bool `json:"repo_has_test_files"`
 	// EscapeDebt 是逃生换来的未验证面（价-1a）：每个验证类逃生 gate 一条人读
 	// 披露行——escape 免门禁不免诚实性，验收方在未验证面一屏可见。
 	EscapeDebt        []string       `json:"escape_debt,omitempty"`
@@ -135,16 +141,17 @@ func runTaskReport(cmd *cobra.Command, args []string) error {
 // buildTaskReport 从 TaskState + checklog 组装报告数据。纯组装不改状态。
 func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSON, error) {
 	rep := &taskReportJSON{
-		TaskRef:       state.TaskRef,
-		Branch:        state.Branch,
-		Kind:          state.Kind,
-		Completed:     state.CompletedAt != nil,
-		Acceptance:    state.Acceptance,
-		TierCounts:    taskpipeline.AcceptanceTierCounts(state.Acceptance),
-		HasManualTier: taskpipeline.HasManualTierAcceptance(state.Acceptance),
-		Score:         state.Score,
-		ReviewPassed:  state.ReviewPassed,
-		ReviewRounds:  len(state.ReviewRounds),
+		TaskRef:          state.TaskRef,
+		Branch:           state.Branch,
+		Kind:             state.Kind,
+		Completed:        state.CompletedAt != nil,
+		Acceptance:       state.Acceptance,
+		TierCounts:       taskpipeline.AcceptanceTierCounts(state.Acceptance),
+		HasManualTier:    taskpipeline.HasManualTierAcceptance(state.Acceptance),
+		Score:            state.Score,
+		ReviewPassed:     state.ReviewPassed,
+		ReviewRounds:     len(state.ReviewRounds),
+		RepoHasTestFiles: repoHasTestFiles(root),
 		Repro: []string{
 			fmt.Sprintf("forge task verify-acceptance --ref %s", state.TaskRef),
 			fmt.Sprintf("forge trace %s", state.TaskRef),
@@ -347,7 +354,11 @@ func renderTaskReport(rep *taskReportJSON) string {
 		// 未评分但有逃生债：债面照报（读不到不等于没有）。
 	default:
 		if len(rep.EscapeDebt) == 0 {
-			fmt.Fprintf(&b, "无（改动源码均有配对测试）\n")
+			if rep.RepoHasTestFiles {
+				fmt.Fprintf(&b, "无（改动源码均有配对测试）\n")
+			} else {
+				fmt.Fprintf(&b, "无（本仓库未检测到 *_test.go——若改动过源码，配对测试缺失）\n")
+			}
 		}
 	}
 	for _, d := range rep.EscapeDebt {
@@ -481,4 +492,28 @@ func escapeUnverifiedDesc(gate string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// repoHasTestFiles 扫仓库内是否存在 Go 测试文件（跳过 .git/vendor/node_modules），
+// 供「未验证面」渲染区分「有配对测试体系」与「仓库里根本没有测试文件」。
+func repoHasTestFiles(root string) bool {
+	found := false
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil {
+			return nil
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "vendor", "node_modules":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(d.Name(), "_test.go") {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
 }
