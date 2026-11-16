@@ -1156,6 +1156,9 @@
       ]
     },
     {
+      "path": "forge version"
+    },
+    {
       "path": "forge workspace"
     },
     {
