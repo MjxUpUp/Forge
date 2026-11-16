@@ -70,8 +70,10 @@
    验收标准最迟在 verify-acceptance 前登记：推荐开工时用 `--accept` 一次登记；
    事后补登用 `forge task accept "run :: expected" --ref <分支名>`（会标 manual 层，交付单会披露）。
    `--accept` 的 run **按空白切分后直接 exec，不经 shell**——引号、管道、`&&`
-   都不生效，写成无歧义的 argv；有测试能力的仓库，考卷至少要有一条测试类命令
-   （`go test ./...` 之类），否则 `task complete` 会以「考卷无测试类命令」拒绝。
+   都不生效，写成无歧义的 argv。expected 是**子串匹配**（strings.Contains，不是正则）；
+   空 expected（`::`）只校验退出码，task start 会提示一次。
+   有测试能力的仓库，考卷至少要有一条测试类命令（`go test ./...` 之类），
+   否则 `task complete` 会以「考卷无测试类命令」拒绝。
 2. 想留可评审记录时，把 change 钉成契约：`forge change new <id>` → 填产物 →
    `forge change phase <id>` 到 ready → `forge task start --ref <分支名> --change <id>`
    （`--change` 要求 change 已到 `ready`，并把 goal.md 内容哈希钉进 state；没有
@@ -80,16 +82,19 @@
 4. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
    → `forge task gate task-verify`（配对测试、cheat-scan 等；多数是 advisory，复发才升硬）。
    BLOCKED 先读它给的证据，不要换个说法重试。complete 会硬查验收已实跑且未过期。
+   `task gate task-complete` 与 `task complete` 同口径：同一 `CheckDocGate`——缺记录/记录过期/得分 <75/未决 Critical/L1 硬失败/证据完整性校验失败时
+   gate 就 BLOCKED，不会先绿灯再在 complete 打回。
 5. 改动里含 `.md` 时先过文档闸：`forge docs lint <文件>`。
 6. 提交、再审查、再记录、再完结——顺序是：`git commit` → 派只读子 agent 审查当前 diff →
-   `forge review pass --note "..."` →（含 `.md` 时）`forge task doc-review --passed pass --score <N> --round <N>`（≥75 才过；
+   `forge review pass --note "..."` →（含 `.md` 时）`forge task doc-review --passed pass --score <N> --round <N> --reviewer <评审者 id>`（≥75 才过；
    纯文档改动同样要这一步）→ `forge task gate task-complete` → `forge task complete`。
    `review pass` 是 task-complete 的硬前置，不是可选项；`doc-review` 绑定记录时的 HEAD，
    必须在 commit 之后记录（先记再提交会让 complete 因 HEAD 前移要求重录）。
    产出者不能自检：文档评审要派独立会话/只读子 agent，自己评的分不被采纳。
    审查后改源码会因快照不一致被拒（只能复审；或 `--acknowledge-changes` 自担、留审计）。
 7. `forge task report --ref <分支名>` 出交付单（任务完成后必须带 `--ref`，
-   不带会报 no active task）。
+   不带会报 no active task）；单里「文档回检」行会披露 L2 分数/轮次/评审者，
+   未记录评审者或自查时标「自查（独立性未校验）」。
 8. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
    只用于确实不适用的门禁：验证类（`--test-coverage`/`--acceptance-gate`/`--artifact-chain`/
    `--skill-decisions`/`--doc-gate`）会降证据强度并留审计，节奏类（`--work-activity`）只审计，

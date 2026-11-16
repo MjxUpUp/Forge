@@ -1,0 +1,112 @@
+{
+  "change": "complete-parity",
+  "started_at": "2026-11-16T03:34:00Z",
+  "finished_at": "2026-11-16T03:36:38Z",
+  "passed": true,
+  "sealed": true,
+  "head": "5e7a1ddffaaf1c81435740c3036bc82fdde73986",
+  "diff_sha256": "4f871334d7f94319b7a509b39e5b6aa56b743ca1a89e65674f8969e163fe3281",
+  "files": [
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "414a627409210053c5c69832b34d53a7faba655b4d460416ff29f3f7c2e410e7"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "3ea8a23fece8e6c4e851d65f6e556d5f86426f64a8b775fcbeafbf4607edcd47"
+    },
+    {
+      "path": "internal/clitask/task_report_docreview_test.go",
+      "sha256": "ee0e786b2e01c6efba8534b3c36a7c69fc837a4830f448af54a942273287ff38"
+    },
+    {
+      "path": "internal/taskpipeline/executor.go",
+      "sha256": "a8c7d68a0bdf14017f5f21130cbb794a7b1e639291b8403fa0dafc29d9224e87"
+    },
+    {
+      "path": "spec/changes/complete-parity/acceptance.md",
+      "sha256": "fff392cdd23d241607d9798e303a6d0e2517ea4afbcdcc59425b0045c729086d"
+    },
+    {
+      "path": "spec/changes/complete-parity/design.md",
+      "sha256": "f5433260ac094254218fcbe2b6edb0ef048267d4df3720a155c507ca32f5ca5f"
+    },
+    {
+      "path": "spec/changes/complete-parity/tasks.md",
+      "sha256": "d1ef425949ee99b964bf11c4c2aa7f1ef80c64eb43e0561c034dd95b35843e52"
+    }
+  ],
+  "acceptance_sha256": "fff392cdd23d241607d9798e303a6d0e2517ea4afbcdcc59425b0045c729086d",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2071
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run 'TestExecuteTaskGate_Complete|TestArtifactAdvisoryDetail' -count=1",
+      "exit": 0,
+      "duration_ms": 6519,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestBuildTaskReport_DocReviewLine|TestRenderTaskReport_DocReviewDisclosure' -count=1",
+      "exit": 0,
+      "duration_ms": 2593,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestTaskStart_EmptyExpectedHint|TestTaskStart_NoEmptyExpectedHint|TestTaskStart_PlanFileEmptyExpectedHint|TestTaskAccept_EmptyExpectedHint' -count=1",
+      "exit": 0,
+      "duration_ms": 4761,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 307
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 6607
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md internal/change/templates/agents-protocol.md spec/changes/complete-parity/goal.md spec/changes/complete-parity/proposal.md spec/changes/complete-parity/design.md spec/changes/complete-parity/tasks.md spec/changes/complete-parity/acceptance.md spec/changes/complete-parity/clarify.md",
+      "exit": 0,
+      "duration_ms": 811,
+      "stdout_file": "07.stdout"
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 129692,
+      "stdout_file": "08.stdout"
+    },
+    {
+      "index": 9,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestCompatSnapshotMatchesGolden|TestTaskStart_.*EmptyExpected|TestTaskAccept_EmptyExpectedHint' -count=1",
+      "exit": 0,
+      "duration_ms": 4629,
+      "stdout_file": "09.stdout"
+    }
+  ]
+}

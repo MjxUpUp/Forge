@@ -77,9 +77,12 @@ type taskReportJSON struct {
 	SelfSupplied int `json:"self_supplied,omitempty"`
 	// SelfReviewRound marks that a review stamp came from a producer session
 	//（价-1b：report 审查行的自审披露）。
-	SelfReviewRound bool     `json:"self_review_round,omitempty"`
-	SpecApprovedAt  string   `json:"spec_approved_at,omitempty"`
-	Repro           []string `json:"repro"`
+	SelfReviewRound bool `json:"self_review_round,omitempty"`
+	// DocReviewLine 是 L2 文档回检的一行人读披露（1.87.2 dogfood 发现：complete 有 doc gate，
+	// 但交付单看不到回检分数/轮次/评审者，验收方无法据此决定抽查深度）。
+	DocReviewLine  string   `json:"doc_review_line,omitempty"`
+	SpecApprovedAt string   `json:"spec_approved_at,omitempty"`
+	Repro          []string `json:"repro"`
 	// ReqCoverage is the requirement-ID coverage (reqtrace.go); nil when the
 	// task never adopted requirement IDs.
 	//
@@ -230,6 +233,20 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 	}
 	if cov := taskpipeline.TaskRequirementCoverage(root, state); cov.HasTraceData() {
 		rep.ReqCoverage = &cov
+	}
+	if d := state.DocReview; d != nil && !d.ReviewedAt.IsZero() {
+		verdict := "pass"
+		if !d.Passed {
+			verdict = "fail"
+		}
+		reviewer := d.Reviewer
+		if reviewer == "" {
+			reviewer = "未记录评审者"
+		}
+		rep.DocReviewLine = fmt.Sprintf("L2 %s（score %d，round %d，%s）", verdict, d.RubricScore, d.Round, reviewer)
+		if d.SelfReview || d.Reviewer == "" {
+			rep.DocReviewLine += " · 自查（独立性未校验）"
+		}
 	}
 	return rep, nil
 }
@@ -403,6 +420,9 @@ func renderTaskReport(rep *taskReportJSON) string {
 		review += " · ⚠ 含自审轮（盖章会话=改动生产者）"
 	}
 	fmt.Fprintf(&b, "│ 审查：%s · 对账单：%d/%d 勾\n", review, rep.ChecklistDone, rep.ChecklistTotal)
+	if rep.DocReviewLine != "" {
+		fmt.Fprintf(&b, "│ 文档回检：%s\n", rep.DocReviewLine)
+	}
 
 	// 复现。
 	fmt.Fprintf(&b, "│\n│ 复现入口（验收方抽查通道）：\n")
