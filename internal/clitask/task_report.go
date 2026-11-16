@@ -234,12 +234,16 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 	if cov := taskpipeline.TaskRequirementCoverage(root, state); cov.HasTraceData() {
 		rep.ReqCoverage = &cov
 	}
-	if d := state.DocReview; d != nil {
+	if d := state.DocReview; d != nil && !d.ReviewedAt.IsZero() {
+		verdict := "pass"
+		if !d.Passed {
+			verdict = "fail"
+		}
 		reviewer := d.Reviewer
 		if reviewer == "" {
 			reviewer = "未记录评审者"
 		}
-		rep.DocReviewLine = fmt.Sprintf("L2 score %d（round %d，%s）", d.RubricScore, d.Round, reviewer)
+		rep.DocReviewLine = fmt.Sprintf("L2 回检 %s（score %d，round %d，%s）", verdict, d.RubricScore, d.Round, reviewer)
 		if d.SelfReview || d.Reviewer == "" {
 			rep.DocReviewLine += " · 自查（独立性未校验）"
 		}

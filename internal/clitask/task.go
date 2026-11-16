@@ -511,18 +511,6 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	if err := taskpipeline.ValidateAssertions(state.Acceptance); err != nil {
 		return err
 	}
-	// 空期望披露（1.87.2 dogfood）：expected 是子串匹配，空串则只校验退出码——不提醒就容易被读成
-	// 「输出也验过了」。声明期一次性说明，别留到验收时才让人猜。
-	emptyExpected := 0
-	for _, c := range state.Acceptance {
-		if c.Expected == "" && len(c.Assertions) == 0 {
-			emptyExpected++
-		}
-	}
-	if emptyExpected > 0 {
-		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ %d 条验收标准没有期望输出（`::` 或无 expected）——只校验退出码；要校验输出写子串（匹配是 strings.Contains，不是正则）\n", emptyExpected)
-	}
-
 	// 非 git 目录的诚实边界：file-* 断言判定任务 diff（git），无 git 时 file-changed 恒假、
 	// file-untouched 恒真——声明期警告而非跑时静默误判。
 	if !taskpipeline.IsGitRepo(root) {
@@ -821,6 +809,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		taskpipeline.PruneOldTasks(root, time.Now().AddDate(0, 0, -days))
 	}
 
+	if n := emptyExpectedCount(state.Acceptance); n > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "ℹ️ %d 条验收标准没有期望输出（`::` 或无 expected）——只校验退出码；要校验输出写子串（匹配是 strings.Contains，不是正则）\n", n)
+	}
 	if err := taskpipeline.SaveTaskState(root, state); err != nil {
 		return fmt.Errorf("failed to create task: %w", err)
 	}
@@ -959,6 +950,17 @@ func countOtherIncomplete(states []*taskpipeline.TaskState, ownRef string) int {
 	n := 0
 	for _, s := range states {
 		if s != nil && s.TaskRef != ownRef && s.CompletedAt == nil {
+			n++
+		}
+	}
+	return n
+}
+
+// emptyExpectedCount 统计「只校验退出码」的条目：期望为空且无断言。
+func emptyExpectedCount(cs []tasktypes.AcceptanceCriterion) int {
+	n := 0
+	for _, c := range cs {
+		if c.Expected == "" && len(c.Assertions) == 0 {
 			n++
 		}
 	}
