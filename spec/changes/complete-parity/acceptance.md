@@ -25,5 +25,5 @@ sh scripts/checks/deadcode-zero.sh
 ```
 
 ```bash
-go run ./cmd/forge docs lint docs/reference/cli.md internal/change/templates/agents-protocol.md spec/changes/complete-parity/goal.md spec/changes/complete-parity/design.md
+go run ./cmd/forge docs lint docs/reference/cli.md internal/change/templates/agents-protocol.md spec/changes/complete-parity/goal.md spec/changes/complete-parity/proposal.md spec/changes/complete-parity/design.md spec/changes/complete-parity/tasks.md spec/changes/complete-parity/acceptance.md spec/changes/complete-parity/clarify.md
 ```
