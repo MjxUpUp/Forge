@@ -64,8 +64,13 @@
 任务是把「一次改动」变成可审证据的容器；change 是记录单元、可以后补——
 任务本身才是一等入口，Task 门禁是强制的：
 
-1. `forge task start --ref <分支名> --title "…"` 起任务（不带 `--change` 也能开工；
-   一句话小修加 `--kind task` 只是标记，不放松任何门禁）。
+1. `forge task start --ref <分支名> --title "…" --accept "run :: expected"` 起任务
+   （不带 `--change` 也能开工；一句话小修加 `--kind task` 只是标记，不放松任何门禁）。
+   验收标准必须在开工时登记：`--accept` 可重复，事后补登用
+   `forge task accept "run :: expected" --ref <分支名>`（会标 manual 层，交付单会披露）。
+   `--accept` 的 run **按空白切分后直接 exec，不经 shell**——引号、管道、`&&`
+   都不生效，写成无歧义的 argv；考卷至少要有一条测试类命令（`go test ./...` 之类），
+   否则 `task complete` 会以「考卷无测试类命令」拒绝。
 2. 想留可评审记录时，把 change 钉成契约：`forge change new <id>` → 填产物 →
    `forge change phase <id>` 到 ready → `forge task start --ref <分支名> --change <id>`
    （`--change` 要求 change 已到 `ready`，并把 goal.md 内容哈希钉进 state；没有
@@ -74,11 +79,16 @@
 4. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
    → `forge task gate task-verify`（配对测试、cheat-scan 等；多数是 advisory，复发才升硬）。
    BLOCKED 先读它给的证据，不要换个说法重试。complete 会硬查验收已实跑且未过期。
-5. 派只读子 agent 审查当前 diff，然后 `forge review pass --note "..."` 记录结论
-   ——这是 task-complete 的硬前置，不是可选项；审查后改源码会因快照不一致被拒。
-   纯文档改动另用 `forge task doc-review --passed pass --score <N>` 记录（≥75 才过）。
-6. `forge task gate task-complete` → `forge task complete`。只提交不算完成。
-7. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
+5. 改动里含 `.md` 时先过文档闸：`forge docs lint <文件>`，再
+   `forge task doc-review --passed pass --score <N> --round <N>`（≥75 才过；
+   纯文档改动同样要这一步）。
+6. 提交、再审查、再完结——顺序是：`git commit` → 派只读子 agent 审查当前 diff →
+   `forge review pass --note "..."` → `forge task gate task-complete` →
+   `forge task complete`。`review pass` 是 task-complete 的硬前置，不是可选项；
+   审查后改源码会因快照不一致被拒（只能复审）。
+7. `forge task report --ref <分支名>` 出交付单（任务完成后必须带 `--ref`，
+   不带会报 no active task）。
+8. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
    只用于确实不适用的门禁：验证类（`--test-coverage`/`--acceptance-gate`/`--artifact-chain`/
    `--skill-decisions`/`--doc-gate`）会降证据强度并留审计，节奏类（`--work-activity`）只审计，
    别当常规手段。
