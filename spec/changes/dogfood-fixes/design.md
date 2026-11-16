@@ -74,3 +74,11 @@ next 的干净工作区分支补上「开工」出口；契约仓库的评分回
   `TestLoadScoringConfig_*`（缺文件静默 / 坏文件告警 / 非契约告警）、`TestConfigured`、`TestBuildEvaluateInput_*`（生产路径）。
 - 模板：`TestAgentsProtocol_IsActionable` 钉 8 步关键句。
 - 文档：`forge docs lint` 0 硬失败；`change verify dogfood-fixes` 6/6。
+
+## 8. 增补说明（审计口径）
+
+- `goal.md` 的 Check 是**开工时**版本（被 `task start` 钉成哈希，改它会让 implement BLOCKED）；
+  其后发现的「坏 protocol.yml 仍告警」例外与 acceptance #4–#6 属于增补证据，以本文件 §5/§7 与
+  `acceptance.md` 为准。不要把 goal 的 Check 当全量判据。
+- `AGENTS.md` 是本地生成物（`.gitignore` 忽略），以 `internal/change/templates/agents-protocol.md`
+  为准；`forge change agents` 负责同步。

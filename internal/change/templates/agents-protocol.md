@@ -82,8 +82,8 @@
    BLOCKED 先读它给的证据，不要换个说法重试。complete 会硬查验收已实跑且未过期。
 5. 改动里含 `.md` 时先过文档闸：`forge docs lint <文件>`。
 6. 提交、再审查、再记录、再完结——顺序是：`git commit` → 派只读子 agent 审查当前 diff →
-   `forge review pass --note "..."` →（含 `.md` 时）`forge task doc-review --passed pass --score <N> --round <N>`
-   → `forge task gate task-complete` → `forge task complete`。
+   `forge review pass --note "..."` →（含 `.md` 时）`forge task doc-review --passed pass --score <N> --round <N>`（≥75 才过；
+   纯文档改动同样要这一步）→ `forge task gate task-complete` → `forge task complete`。
    `review pass` 是 task-complete 的硬前置，不是可选项；`doc-review` 绑定记录时的 HEAD，
    必须在 commit 之后记录（先记再提交会让 complete 因 HEAD 前移要求重录）。
    产出者不能自检：文档评审要派独立会话/只读子 agent，自己评的分不被采纳。
