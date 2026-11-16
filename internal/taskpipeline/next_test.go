@@ -225,14 +225,26 @@ func TestNextDecision_EntryRouting(t *testing.T) {
 			sub:  "ready",
 		},
 		{
+			name: "spec repo, clean, no task → task start (no status loop)",
+			ctx:  NextContext{Branch: "main", SpecDeclared: true},
+			want: "forge task start --ref <ref> --branch --title <title>",
+			sub:  "change 可后补",
+		},
+		{
+			name: "spec repo, clean, behind remote → sync first",
+			ctx:  NextContext{Branch: "main", SpecDeclared: true, BehindRemote: 2},
+			want: "git pull --ff-only",
+			sub:  "先同步",
+		},
+		{
 			name: "plain repo, dirty, unchanged behavior",
 			ctx:  NextContext{Branch: "main", Dirty: true},
 			want: "forge task start --ref <ref> --branch --title <title>",
 			sub:  "无活跃任务",
 		},
 		{
-			name: "spec repo clean stays status",
-			ctx:  NextContext{Branch: "main", Dirty: false, SpecDeclared: true},
+			name: "plain repo clean stays status",
+			ctx:  NextContext{Branch: "main", Dirty: false},
 			want: "forge status",
 		},
 	}
