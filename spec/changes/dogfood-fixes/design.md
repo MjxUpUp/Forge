@@ -60,3 +60,16 @@ next 的干净工作区分支补上「开工」出口；契约仓库的评分回
   且 `--profile` 已写进 spec/forge.yaml；需要自定义评分的用户仍可放 protocol.yml（成功后走原路径）。
   例外：文件**存在**却解析失败（坏 YAML/权限）时仍告警，否则坏配置会被当成默认权重，
   等于无痕改分（`internal/taskpipeline/scoring.go` 用 `protocol.Configured` 区分缺失与坏文件）。
+
+## 6. 不做（Non-goals）
+
+- 不改 `--accept` 的切分语义（仍按空白切分、不经 shell）——只在文档写清楚。
+- 不给 `next` 增加交互式提问或自动开工——它只给建议，执行权仍在 agent。
+- 不做 held-out 保留集、不改评分维度权重、不改门禁顺序。
+
+## 7. 验证（Verification）
+
+- 单元：`TestNextDecision_EntryRouting`（spec 干净→task start、落后远端先 pull、普通仓库不变）、
+  `TestLoadScoringConfig_*`（缺文件静默 / 坏文件告警 / 非契约告警）、`TestConfigured`。
+- 模板：`TestAgentsProtocol_TaskFlowSteps` 钉 8 步关键句。
+- 文档：`forge docs lint` 0 硬失败；`change verify dogfood-fixes` 6/6。
