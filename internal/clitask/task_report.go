@@ -243,7 +243,7 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		if reviewer == "" {
 			reviewer = "未记录评审者"
 		}
-		rep.DocReviewLine = fmt.Sprintf("L2 回检 %s（score %d，round %d，%s）", verdict, d.RubricScore, d.Round, reviewer)
+		rep.DocReviewLine = fmt.Sprintf("L2 %s（score %d，round %d，%s）", verdict, d.RubricScore, d.Round, reviewer)
 		if d.SelfReview || d.Reviewer == "" {
 			rep.DocReviewLine += " · 自查（独立性未校验）"
 		}
