@@ -1,0 +1,116 @@
+{
+  "change": "complete-parity",
+  "started_at": "2026-11-16T03:14:41Z",
+  "finished_at": "2026-11-16T03:18:04Z",
+  "passed": true,
+  "sealed": true,
+  "head": "55ea64b59ecc367c9e408dc6f04dd48ed34d088f",
+  "diff_sha256": "cb4e6ff5aabc0a48aabcae20b4067549aa47f210596d3c371f188d7385f3729a",
+  "files": [
+    {
+      "path": "internal/cli/task_start_hint_test.go",
+      "sha256": "25a63f73f656e537342bd0bde7c92b944b13c89e9340fdbdae0bb2b3db978b8a"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "43bc9554f88fd9d5c056262064cd1bd9394750a7dcbd81b84797518527e2ef8f"
+    },
+    {
+      "path": "internal/clitask/task_accept.go",
+      "sha256": "83ca06e6d8792cc33485178b75aa6b42d153a7e2112166a35532a2992c580d0a"
+    },
+    {
+      "path": "internal/clitask/task_complete_test.go",
+      "sha256": "fbb28c7bb9703212db3ceb6042387a83d77babf9ad6e5cc94dbcc9cf51aec7e6"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "7eb2dc1f3e2226cfc974b4b8a495cb599a848760eb3ea611a67cd089b652430a"
+    },
+    {
+      "path": "internal/clitask/task_report_docreview_test.go",
+      "sha256": "96dd5a53b185b7be594da7a333183baaacaed1fc8f77dcd6f736f7b9a04e4ef9"
+    },
+    {
+      "path": "internal/taskpipeline/artifact_advisory_test.go",
+      "sha256": "f1b9cc7880110cb1221edf497ecbd27b75b927a03d32d33a68beaea82bc19802"
+    },
+    {
+      "path": "internal/taskpipeline/executor.go",
+      "sha256": "b0d7448b987c22202f5188ce869b501d4c51480b22f38641df586f054b8e8936"
+    },
+    {
+      "path": "spec/changes/complete-parity/acceptance.md",
+      "sha256": "ef23bb688ede6f12a7168c8001ffd1b97f28ae5003bda356b44b786b51b4f689"
+    },
+    {
+      "path": "spec/changes/complete-parity/tasks.md",
+      "sha256": "fb795aa971057961a1c9a8d96669d5b52508582bce052dcf1295f5d1075282fe"
+    }
+  ],
+  "acceptance_sha256": "ef23bb688ede6f12a7168c8001ffd1b97f28ae5003bda356b44b786b51b4f689",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3774
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run 'TestExecuteTaskGate_Complete|TestArtifactAdvisoryDetail' -count=1",
+      "exit": 0,
+      "duration_ms": 5656,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestBuildTaskReport_DocReviewLine|TestRenderTaskReport_DocReviewDisclosure' -count=1",
+      "exit": 0,
+      "duration_ms": 4826,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestTaskStart_EmptyExpectedHint|TestTaskStart_NoEmptyExpectedHint|TestTaskStart_PlanFileEmptyExpectedHint|TestTaskAccept_EmptyExpectedHint' -count=1",
+      "exit": 0,
+      "duration_ms": 6921,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 448
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 6613
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md internal/change/templates/agents-protocol.md spec/changes/complete-parity/goal.md spec/changes/complete-parity/proposal.md spec/changes/complete-parity/design.md spec/changes/complete-parity/tasks.md spec/changes/complete-parity/acceptance.md spec/changes/complete-parity/clarify.md",
+      "exit": 0,
+      "duration_ms": 993,
+      "stdout_file": "07.stdout"
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 174076,
+      "stdout_file": "08.stdout"
+    }
+  ]
+}

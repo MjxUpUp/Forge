@@ -3,6 +3,7 @@ package clitask
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
@@ -22,18 +23,23 @@ func TestBuildTaskReport_DocReviewLine(t *testing.T) {
 	}{
 		{
 			name: "normal reviewer",
-			d:    &tasktypes.DocReview{Passed: true, RubricScore: 88, Round: 2, Reviewer: "reviewer-x"},
-			want: []string{"L2 score 88", "round 2", "reviewer-x"},
+			d:    &tasktypes.DocReview{Passed: true, RubricScore: 88, Round: 2, Reviewer: "reviewer-x", ReviewedAt: time.Now()},
+			want: []string{"L2 回检 pass（score 88", "round 2", "reviewer-x"},
 			deny: []string{"自查"},
 		},
 		{
 			name: "no reviewer",
-			d:    &tasktypes.DocReview{Passed: true, RubricScore: 80, Round: 1},
+			d:    &tasktypes.DocReview{Passed: true, RubricScore: 80, Round: 1, ReviewedAt: time.Now()},
 			want: []string{"未记录评审者", "自查（独立性未校验）"},
 		},
 		{
+			name: "failed review",
+			d:    &tasktypes.DocReview{Passed: false, RubricScore: 60, Round: 1, Reviewer: "reviewer-y", ReviewedAt: time.Now()},
+			want: []string{"L2 回检 fail（score 60", "reviewer-y"},
+		},
+		{
 			name: "self review",
-			d:    &tasktypes.DocReview{Passed: true, RubricScore: 80, Round: 1, Reviewer: "me", SelfReview: true},
+			d:    &tasktypes.DocReview{Passed: true, RubricScore: 80, Round: 1, Reviewer: "me", SelfReview: true, ReviewedAt: time.Now()},
 			want: []string{"自查（独立性未校验）"},
 		},
 	}
@@ -60,9 +66,9 @@ func TestBuildTaskReport_DocReviewLine(t *testing.T) {
 
 // TestRenderTaskReport_DocReviewDisclosure 保证人读渲染确实把披露行印在「审查」之后。
 func TestRenderTaskReport_DocReviewDisclosure(t *testing.T) {
-	rep := &taskReportJSON{TaskRef: "feat/demo", DocReviewLine: "L2 score 88（round 2，reviewer-x）"}
+	rep := &taskReportJSON{TaskRef: "feat/demo", DocReviewLine: "L2 回检 pass（score 88，round 2，reviewer-x）"}
 	out := renderTaskReport(rep)
-	if !strings.Contains(out, "文档回检：L2 score 88") {
+	if !strings.Contains(out, "文档回检：L2 回检 pass（score 88") {
 		t.Fatalf("交付单应包含文档回检行，got:\n%s", out)
 	}
 }
