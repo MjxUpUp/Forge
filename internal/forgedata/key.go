@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // 预定义错误
@@ -360,6 +361,34 @@ func RootDir(key string) string {
 	return filepath.Join(home, "projects", key)
 }
 
+// looksMSYSPath 判断路径是否是 MSYS/Cygwin 风格：/c/foo、/cygdrive/c/foo、/tmp/...
+// 这类路径在 Windows 的 Go 里不会被当成盘符绝对路径，而是相对当前盘符解析
+// （C:\c\foo），用户以为指 /c/foo，实际落到别处。只用于提示，不改变行为。
+func looksMSYSPath(p string) bool {
+	if !strings.HasPrefix(p, "/") {
+		return false
+	}
+	if strings.HasPrefix(p, "/cygdrive/") || p == "/tmp" || strings.HasPrefix(p, "/tmp/") {
+		return true
+	}
+	return len(p) >= 3 && p[2] == '/' &&
+		((p[1] >= 'a' && p[1] <= 'z') || (p[1] >= 'A' && p[1] <= 'Z'))
+}
+
+var warnMSYSDataHomeOnce sync.Once
+
+// warnMSYSDataHome 在 Windows 上对 MSYS 风格 FORGE_DATA_HOME 提示一次。
+func warnMSYSDataHome(p string) {
+	if runtime.GOOS != "windows" || !looksMSYSPath(p) {
+		return
+	}
+	warnMSYSDataHomeOnce.Do(func() {
+		fmt.Fprintf(os.Stderr,
+			"⚠ FORGE_DATA_HOME=%q 看起来是 MSYS/Cygwin 风格路径；Windows 下 Go 会按当前盘符相对解析（盘符取决于当前工作目录），不是 MSYS 的 /c/...。建议传 Windows 路径，或先 `cygpath -w` 转换。\n",
+			p)
+	})
+}
+
 // GlobalHome returns the global home.
 //
 // GlobalHome 返全局 home。FORGE_DATA_HOME 优先（覆盖 home root），否则回落 UserHomeDir。
@@ -370,6 +399,7 @@ func RootDir(key string) string {
 // 统一 FORGE_DATA_HOME，废弃 registry 旧的 FORGE_HOME env）。
 func GlobalHome() (string, error) {
 	if h := os.Getenv("FORGE_DATA_HOME"); h != "" {
+		warnMSYSDataHome(h)
 		return h, nil
 	}
 	home, err := os.UserHomeDir()

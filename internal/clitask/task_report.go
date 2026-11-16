@@ -33,7 +33,7 @@ var taskReportCmd = &cobra.Command{
   评分与证据强度：Score/Grade、deterministic vs agent-claim 占比
   未验证面：无配对测试的改动源文件（UntestedAreas——高可信=证据+显式披露未验证面）
   残留风险：完成时仍 open 的 findings（RemainingRisks）
-  考卷披露：manual 层存在告警、held-out 保留集、spec 产物 human 档审批态
+  考卷披露：manual 层存在告警、held-out 保留集、钉了 change 时的「已钉 change（<id>）——以 change 产物为准」（JSON pinned_change）、spec 产物 human 档审批态
   逃生舱库存 / 审查状态 / 复现入口
 
 --json 输出结构化形态（供面板/脚本消费）。`,
@@ -77,7 +77,10 @@ type taskReportJSON struct {
 	HeldoutRegistered bool           `json:"heldout_registered"`
 	HeldoutProbeErr   string         `json:"heldout_probe_err,omitempty"`
 	HasSpecArtifact   bool           `json:"has_spec_artifact"`
-	SpecApprovalBy    string         `json:"spec_approval_by,omitempty"`
+	// PinnedChange 是任务启动时钉住的 change id（task start --change）：change 产物
+	// 就是这条任务的产物链，交付单必须披露它，而不是笼统写「无 spec 产物」。
+	PinnedChange   string `json:"pinned_change,omitempty"`
+	SpecApprovalBy string `json:"spec_approval_by,omitempty"`
 	// SelfSupplied counts forge-unverifiable self-supplied assertions
 	//（价-1c：review self-refresh / regression --none / reset-loop 注记）。
 	SelfSupplied int `json:"self_supplied,omitempty"`
@@ -230,6 +233,9 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 	if ssEntries, serr := checklog.LoadForTask(root, state.TaskRef); serr == nil {
 		rep.SelfSupplied = countSelfSupplied(ssEntries)
 		rep.SelfReviewRound = taskpipeline.HasSelfReviewRow(root, state.TaskRef, "code-review")
+	}
+	if state.GoalContract != nil && state.GoalContract.Change != "" {
+		rep.PinnedChange = state.GoalContract.Change
 	}
 	if _, ok := state.SpecArtifacts["spec"]; ok {
 		rep.HasSpecArtifact = true
@@ -399,6 +405,8 @@ func renderTaskReport(rep *taskReportJSON) string {
 	}
 	fmt.Fprintf(&b, "│ 考卷披露：held-out 保留集 %s", heldout)
 	switch {
+	case rep.PinnedChange != "":
+		fmt.Fprintf(&b, " · 产物链：已钉 change（%s）——以 change 产物为准\n", rep.PinnedChange)
 	case rep.SpecApprovalBy != "":
 		fmt.Fprintf(&b, " · spec 已由 %s 审批（%s）\n", rep.SpecApprovalBy, rep.SpecApprovedAt)
 	case rep.HasSpecArtifact:

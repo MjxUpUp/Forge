@@ -1,0 +1,82 @@
+{
+  "change": "fix-1881",
+  "started_at": "2026-11-16T10:24:29Z",
+  "finished_at": "2026-11-16T10:24:42Z",
+  "passed": true,
+  "sealed": true,
+  "head": "a9338e7c1374122880926ec33f82cf486f537798",
+  "diff_sha256": "bdf7740781169901eac17144eaa402f9d8b3ac4a058eaa6a8f7b83d2029a0898",
+  "files": [
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "2ff521777fe42a567550266fb6f3c1bfa74bff8b9839e5e33bf02cd43534a396"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "0ae4450c56ba7ccf6f6c48cb8a58329809a2277cc92fbee3a429c83f51d2b214"
+    },
+    {
+      "path": "internal/forgedata/key.go",
+      "sha256": "6f7cfbd2b4f6eea17fe62a9c92e475413f1eea55094cd971b57f3bcef1ec0182"
+    },
+    {
+      "path": "internal/forgedata/key_test.go",
+      "sha256": "ece8d9042323b3b3888763058a709acb236c342244c72f91a8ce25667f1b0a75"
+    },
+    {
+      "path": "spec/changes/fix-1881/acceptance.md",
+      "sha256": "b9d8c80c430924f1730dc98f40c70088b0284e23e237e160ffe82eee5997c4bb"
+    },
+    {
+      "path": "spec/changes/fix-1881/goal.md",
+      "sha256": "37b07e6028c92fcbeb7cc281240555f6c1cac43c58339bd17037380f49d59997"
+    },
+    {
+      "path": "spec/changes/fix-1881/proposal.md",
+      "sha256": "c278a07eefa9b9c89196e495da04ee5ea89ef78cf12498461fdc74f1c2828a81"
+    }
+  ],
+  "acceptance_sha256": "b9d8c80c430924f1730dc98f40c70088b0284e23e237e160ffe82eee5997c4bb",
+  "diff_bound": true,
+  "fast": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2381
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestBuildTaskReport_PinnedChangeDisclosed' -count=1",
+      "exit": 0,
+      "duration_ms": 2744,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/forgedata/ -run 'TestLooksMSYSPath|TestGlobalHome_WarnsOnMSYSDataHome|TestGlobalHome_MSYSWarnOncePerProcess' -count=1",
+      "exit": 0,
+      "duration_ms": 859,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 326
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 6675,
+      "stdout_file": "05.stdout"
+    }
+  ]
+}
