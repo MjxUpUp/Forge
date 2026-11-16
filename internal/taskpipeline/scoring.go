@@ -14,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
@@ -102,25 +103,9 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		}
 	}
 
-	// 从 protocol 加载 scoring 配置
-	var config *scoringtypes.ScoringConfig
-	proto, err := protocol.Load(root)
-	if err != nil {
-		// 解析失败（用户手误/类型错）静默换默认权重会无痕改变分数——告警；
-		// 无 Scoring 段保持安静缺省。
-		fmt.Fprintf(os.Stderr, "[forge] warning: protocol.yml 加载失败（%v）——评分回退默认权重/阈值\n", err)
-		config = &scoringtypes.ScoringConfig{
-			Weights:    scoringtypes.DefaultWeights(),
-			Thresholds: scoringtypes.DefaultThresholds(),
-		}
-	} else if proto == nil || proto.Scoring == nil {
-		config = &scoringtypes.ScoringConfig{
-			Weights:    scoringtypes.DefaultWeights(),
-			Thresholds: scoringtypes.DefaultThresholds(),
-		}
-	} else {
-		config = proto.Scoring
-	}
+	// 从 protocol 加载 scoring 配置：契约仓库缺 protocol.yml 是常态（静默默认），
+	// 坏文件/非契约仓库缺文件仍告警——规则集中在 loadScoringConfig 一处。
+	config := loadScoringConfig(root)
 
 	completedAt := time.Now()
 	if state.CompletedAt != nil {
@@ -416,4 +401,31 @@ func activeSpanFromCalls(calls []toolusage.ToolCall, since, until time.Time) tim
 		return 0
 	}
 	return last.Sub(first)
+}
+
+// loadScoringConfig 读取协议里的评分权重；任何缺失都回退默认值。
+//
+// spec 契约仓库（spec/forge.yaml）从阶段 C 起不再生成 protocol.yml——那里没有文件是
+// 常态，静默用默认权重即可。只有非契约仓库才像以前一样告警：提示用户可能是手误或
+// 类型错，避免「评分被无痕改动」。
+func loadScoringConfig(root string) *scoringtypes.ScoringConfig {
+	defaults := &scoringtypes.ScoringConfig{
+		Weights:    scoringtypes.DefaultWeights(),
+		Thresholds: scoringtypes.DefaultThresholds(),
+	}
+	proto, err := protocol.Load(root)
+	if err != nil {
+		// 契约仓库没有 protocol.yml 是常态（Phase C 起 init 不写）：静默用默认。
+		// 但文件存在却加载失败（坏 YAML/权限）是配置错误，任何仓库都要告警——
+		// 静默换权重大小学等于无痕改分。
+		missingOnContract := specroot.Declared(root) && !protocol.Configured(root)
+		if !missingOnContract {
+			fmt.Fprintf(os.Stderr, "[forge] warning: protocol.yml 加载失败（%v）——评分回退默认权重/阈值\n", err)
+		}
+		return defaults
+	}
+	if proto == nil || proto.Scoring == nil {
+		return defaults
+	}
+	return proto.Scoring
 }

@@ -471,3 +471,21 @@ session_rules: []
 		t.Errorf("合规 protocol 不得产生任何 stderr 告警, got %q", stderr)
 	}
 }
+
+// Configured 只问存在性：项目级覆盖优先于 DataDir 副本，缺文件返回 false。
+func TestConfigured(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	if Configured(dir) {
+		t.Fatal("empty dir: Configured = true, want false")
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".forge"), 0o755); err != nil {
+		t.Fatalf("mkdir .forge: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".forge", "protocol.yml"), []byte("version: \"1\"\n"), 0o644); err != nil {
+		t.Fatalf("write protocol: %v", err)
+	}
+	if !Configured(dir) {
+		t.Fatal("project-level protocol.yml: Configured = false, want true")
+	}
+}

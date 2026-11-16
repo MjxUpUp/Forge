@@ -1,0 +1,64 @@
+{
+  "change": "dogfood-fixes",
+  "started_at": "2026-11-16T01:24:28Z",
+  "finished_at": "2026-11-16T01:24:39Z",
+  "passed": true,
+  "sealed": true,
+  "head": "e1174a206d1d5b3ac390766e0a74b72792516af6",
+  "diff_sha256": "2fe0eaa5cca513bf5935876379700677017c448f39d73e0d8d835b19a725c8df",
+  "files": [
+    {
+      "path": "spec/changes/dogfood-fixes/design.md",
+      "sha256": "9dab63bc776b7a8c66c11fbd8816bb52ddd7d27d66a91afeec5fd259e8777dc8"
+    }
+  ],
+  "acceptance_sha256": "8bcc7ed9ea66090c80c46588a91a72163aded204303576909309b2d8ab0257d5",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "# 1. 编译\ngo build ./...",
+      "exit": 0,
+      "duration_ms": 2955
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "# 2. next 干净路由 + 评分静默回退\ngo test ./internal/taskpipeline/ -run 'TestNextDecision|TestLoadScoringConfig' -count=1",
+      "exit": 0,
+      "duration_ms": 1043,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "# 3. AGENTS 模板钉住 dogfood 踩到的步骤\ngo test ./internal/change/ -run TestAgentsProtocol -count=1",
+      "exit": 0,
+      "duration_ms": 752,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "# 4. cli.md 与 help 面\ngo test ./internal/cli/ -run 'TestHelpSurface|TestCliReference' -count=1",
+      "exit": 0,
+      "duration_ms": 2638,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "# 5. 格式守卫\nsh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 308
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "# 6. 死代码零\nsh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 3563
+    }
+  ]
+}
