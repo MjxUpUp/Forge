@@ -347,7 +347,7 @@ docs/design/evolution-discipline-norms.md §二③/§四；仓内实践先例（
 
 ### Evidence
 
-arXiv 2603.16244：单轮 CCR F1 0.376 > 多轮 0.303 > 无上下文独立重审 0.263，多轮假阳性 +62%；arXiv 2603.12123：fresh 对同会话自审跨运行不显著，同会话二次自审最差；Claude Code Code Review 文档 REVIEW.md 复审收敛「首轮后只报 Important」；CodeRabbit 默认增量复审；调研报告 ~/.research-workflow/ai-review-cache-20261010/report.md；TestReReviewGuidanceContract / TestReReviewGuidanceConsumersReferenceConstant
+arXiv 2603.16244：单轮 CCR F1 0.376 > 多轮 0.303 > 无上下文独立重审 0.263，多轮假阳性 +62%；arXiv 2603.12123：fresh 对同会话自审跨运行不显著，同会话二次自审最差；Claude Code Code Review 文档 REVIEW.md 复审收敛「首轮后只报 Important」；CodeRabbit 默认增量复审；调研报告（内部存档，未入库）；TestReReviewGuidanceContract / TestReReviewGuidanceConsumersReferenceConstant
 
 ### Rationale
 

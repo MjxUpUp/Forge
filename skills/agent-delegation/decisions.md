@@ -95,7 +95,7 @@ forge skills validate R1-R17 全 49 通过；trigger 覆盖 5→15（31%）；dr
 
 ### Evidence
 
-Tokenomics arXiv 2601.14470：审查阶段占 59.4% token；Claude Code 文档：SendMessage 续用子 agent 首请求可读其已写缓存、fresh 子 agent 读不到父缓存；调研报告 ~/.research-workflow/ai-review-cache-20261010/report.md
+Tokenomics arXiv 2601.14470：审查阶段占 59.4% token；Claude Code 文档：SendMessage 续用子 agent 首请求可读其已写缓存、fresh 子 agent 读不到父缓存；调研报告（内部存档，未入库）
 
 ### Rationale
 

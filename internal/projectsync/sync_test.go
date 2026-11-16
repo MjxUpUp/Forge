@@ -410,3 +410,50 @@ func TestLedger_HasAndAppend(t *testing.T) {
 		t.Errorf(`坏行不应致命: ok=%v err=%v`, ok, err)
 	}
 }
+
+// TestPack_RedactScrubsPayloadAndOrigin：--redact 的 bundle 不得带本机用户名 /
+// 绝对路径 / 已知 secret；manifest 的 Size/SHA256 必须描述脱敏后的字节，否则
+// 导入方校验会失败。
+func TestPack_RedactScrubsPayloadAndOrigin(t *testing.T) {
+	dir := t.TempDir()
+	pii := `{"tool_input":"C:\\\\Users\\\\ALICE~1\\\\repo\\\\main.go","api_key":"hunter2secret"}`
+	toolLog := filepath.Join(dir, `toollog.jsonl`)
+	if err := os.WriteFile(toolLog, []byte(pii+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	m, err := Pack(PackInput{
+		DataDir: dir,
+		Origin:  Origin{Hostname: `machine-1`, User: `admin`, Root: `C:\Users\BUILDER~1\repo`, Key: `k`, KeyMode: `path`},
+		Now:     time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC),
+		Redact:  true,
+	}, &buf)
+	if err != nil {
+		t.Fatalf(`Pack: %v`, err)
+	}
+	if m.Origin.Hostname != `<host>` || m.Origin.User != `<user>` || m.Origin.Root != `<home>` {
+		t.Errorf(`manifest origin 未脱敏: %+v`, m.Origin)
+	}
+	if m.Origin.Key != `k` {
+		t.Errorf(`lineage key 不该被脱敏: %q`, m.Origin.Key)
+	}
+	dest := t.TempDir()
+	if _, err := Unpack(bytes.NewReader(buf.Bytes()), dest); err != nil {
+		t.Fatalf(`Unpack: %v`, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dest, `data`, `toollog.jsonl`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(raw)
+	if strings.Contains(got, `ALICE~1`) || strings.Contains(got, `hunter2secret`) {
+		t.Errorf(`bundle 仍含本机标识或 secret: %q`, got)
+	}
+	if !strings.Contains(got, `<home>`) || !strings.Contains(got, `[REDACTED]`) {
+		t.Errorf(`bundle 未替换为占位符: %q`, got)
+	}
+	// 完整性字段必须以脱敏载荷为准。
+	if fe := m.Files[0]; fe.Size != int64(len(raw)) {
+		t.Errorf(`manifest size = %d, 实际 %d`, fe.Size, len(raw))
+	}
+}

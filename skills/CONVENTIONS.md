@@ -169,7 +169,7 @@ Skill 是独立可用的方法论资产，forge 是可选增强层。引用方�
 **禁止的操作性引用**（R18 硬校验，命中即 `forge skills validate` 失败 / install 质量门控阻断；四类检测模式定义在 `internal/skillsqa`——forgeCmdRe / forgeHomePathRe / forgeEnvRe / forgeIntegrationFileRe）：
 
 1. forge CLI 调用（`forge <子命令>`）——**含条件块内**：「> Forge 项目」条件块与 references/forge-integration.md 两形态 2026-08 起废止，集成知识整体迁往 forge 侧
-2. 用户级 forge 路径（`~/.forge/`、`$HOME/.forge/`）——skill 自有持久化用自有命名空间（如 `~/.research-workflow/`、`~/.doc-generator/`）
+2. 用户级 forge 路径（`~/.forge/`、`$HOME/.forge/`）——skill 自有持久化用自有命名空间（如 `~/.<tool>/`）
 3. forge 环境变量（`$FORGE_*`）
 4. 集成文件指针（forge-integration.md）
 

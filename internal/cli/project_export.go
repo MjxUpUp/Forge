@@ -20,6 +20,7 @@ import (
 func init() {
 	projectExportCmd.Flags().String(`out`, ``, `输出文件（默认 ./forge-project-<项目名>-<时间戳>.tar.gz）`)
 	projectExportCmd.Flags().StringSlice(`include`, nil, `额外包含敏感 store：quarantine / hazards（逗号分隔）`)
+	projectExportCmd.Flags().Bool(`redact`, false, `把主目录/用户名/hostname 与已知 secret 替换为占位符（对外分享时推荐）`)
 }
 
 var projectExportCmd = &cobra.Command{
@@ -44,6 +45,7 @@ token）、freeze/（机器本地绝对路径）、会话锚与 sentinel、hooks
 func runProjectExport(cmd *cobra.Command, args []string) error {
 	outPath, _ := cmd.Flags().GetString(`out`)
 	include, _ := cmd.Flags().GetStringSlice(`include`)
+	redact, _ := cmd.Flags().GetBool(`redact`)
 	out := cmd.OutOrStdout()
 
 	root, err := findProjectRoot()
@@ -86,6 +88,7 @@ func runProjectExport(cmd *cobra.Command, args []string) error {
 		Extra:        include,
 		Origin:       origin,
 		ForgeVersion: cleanVersion(cmd.Root().Version),
+		Redact:       redact,
 		Now:          time.Now(),
 	}, tmp)
 	closeErr := tmp.Close()
@@ -115,6 +118,9 @@ func runProjectExport(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(out, `bundle_id=%s  key=%s（key_mode=%s）`+"\n", manifest.BundleID, origin.Key, origin.KeyMode)
 	if len(include) > 0 {
 		fmt.Fprintf(out, `⚠ 已包含敏感 store：%s`+"\n", strings.Join(include, `,`))
+	}
+	if redact {
+		fmt.Fprintf(out, `已脱敏：主目录/用户名/hostname 与已知 secret 已替换为占位符（manifest 的 key 保留用于 lineage）`+"\n")
 	}
 	fmt.Fprintf(out, `对端导入：forge project import %s`+"\n", absOut)
 	if origin.KeyMode == `path` {

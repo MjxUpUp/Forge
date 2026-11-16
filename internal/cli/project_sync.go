@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,6 +31,8 @@ import (
 // bundle 文件每次 push 覆盖——历史留在 git 里，不在文件名里。
 
 func init() {
+	projectSyncCmd.Flags().Bool(`redact`, false, `推送前把主目录/用户名/hostname 与已知 secret 替换为占位符`)
+	projectSyncCmd.Flags().Bool(`yes`, false, `跳过首次推送的确认提示`)
 	projectCmd.AddCommand(projectSyncCmd)
 }
 
@@ -155,9 +158,54 @@ func syncCommitAll(dir, prefix, msg string) (bool, error) {
 	return true, nil
 }
 
+// announceSyncPush 在推送前打印出境清单，并在首次交互式 push 时要求确认。
+// 非交互（CI/脚本）只打印清单、不拦：同步本来的用途就是无人值守的双机流转，
+// 真正的开关是 --redact 与「知道推了什么」。
+func announceSyncPush(cmd *cobra.Command, dataDir string, redact, yes bool) error {
+	out := cmd.OutOrStdout()
+	mode := `原样（含本机绝对路径与用户名）`
+	if redact {
+		mode = `已脱敏（主目录/用户名/hostname → 占位符）`
+	}
+	fmt.Fprintf(out, `出境清单：tasks/*.json、checklog*.jsonl、toollog*.jsonl、sessions*、act/conclusions.jsonl、stamps/*、protocol.yml —— %s`+`\n`, mode)
+	marker := filepath.Join(dataDir, `.sync-push-ack`)
+	if _, err := os.Stat(marker); err == nil {
+		return nil
+	}
+	if yes {
+		return writeSyncPushAck(marker)
+	}
+	if !stdinIsTerminal(cmd) {
+		return nil
+	}
+	fmt.Fprintf(out, `首次推送会把上述数据推到远端 git 仓，确认继续？[y/N] `)
+	line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case `y`, `yes`, `是`:
+		return writeSyncPushAck(marker)
+	}
+	return fmt.Errorf(`已取消同步推送（未确认）——确认后重跑，或加 --yes`)
+}
+
+func writeSyncPushAck(marker string) error {
+	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(marker, []byte(`confirmed `+time.Now().UTC().Format(time.RFC3339)+`\n`), 0o644)
+}
+
+func stdinIsTerminal(cmd *cobra.Command) bool {
+	f, ok := cmd.InOrStdin().(*os.File)
+	if !ok {
+		return false
+	}
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
+}
+
 // rePackBundle 把项目 bundle 打包进 dest/bundle.tar.gz（temp + rename），并先清扫
 // 此前崩溃残留的 .bundle-*.tmp。
-func rePackBundle(cmd *cobra.Command, root, dataDir, dest string) (*projectsync.Manifest, error) {
+func rePackBundle(cmd *cobra.Command, root, dataDir, dest string, redact bool) (*projectsync.Manifest, error) {
 	if err := os.MkdirAll(dest, 0755); err != nil {
 		return nil, err
 	}
@@ -181,6 +229,7 @@ func rePackBundle(cmd *cobra.Command, root, dataDir, dest string) (*projectsync.
 		DataDir:      dataDir,
 		Origin:       origin,
 		ForgeVersion: cleanVersion(cmd.Root().Version),
+		Redact:       redact,
 		Now:          time.Now(),
 	}, tmp)
 	if cerr := tmp.Close(); cerr != nil {
@@ -261,9 +310,14 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return err
 		}
+		redact, _ := cmd.Flags().GetBool(`redact`)
+		yes, _ := cmd.Flags().GetBool(`yes`)
+		if err := announceSyncPush(cmd, dataDir, redact, yes); err != nil {
+			return err
+		}
 		// 直接导出进缓存仓库（同目录 temp + rename）。
 		dest := filepath.Join(dir, `nodes`, id.NodeID, key)
-		manifest, err := rePackBundle(cmd, root, dataDir, dest)
+		manifest, err := rePackBundle(cmd, root, dataDir, dest, redact)
 		if err != nil {
 			return err
 		}
@@ -291,7 +345,7 @@ func runProjectSync(cmd *cobra.Command, args []string) (err error) {
 				// 已 `checkout -B` 到远端 tip，会把 worktree 里我们前缀下的 bundle 回退
 				// 成远端树上的旧字节：文件存在但是旧的，Stat 探测会跳过重打包，重试就
 				// 什么都没推（TestProjectSync_PushRetryAfterRemoteMoves 钉住的收敛洞）。
-				if _, err := rePackBundle(cmd, root, dataDir, dest); err != nil {
+				if _, err := rePackBundle(cmd, root, dataDir, dest, redact); err != nil {
 					return err
 				}
 				// 新 bundle 字节 = 新摘要——sidecar 必须重签。

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 func TestParseAcceptance_CommandsAndManualItems(t *testing.T) {
@@ -1049,5 +1051,31 @@ func TestVerify_AllowsInnocentLookalikes(t *testing.T) {
 		if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
 			t.Errorf("%q 不该被拒绝：%v", cmd, err)
 		}
+	}
+}
+
+// TestVerify_ScrubsLocalIdentityFromEvidence：证据随 git 走，封存时必须把本机
+// 主目录/用户名换成占位符——否则验收命令输出里的 t.TempDir() 绝对路径会把
+// 用户名永久写进公开仓库（历史上真实发生过）。
+func TestVerify_ScrubsLocalIdentityFromEvidence(t *testing.T) {
+	requireBash(t)
+	root, dir := repoWithChange(t, "demo")
+	writeFile(t, filepath.Join(dir, FileAcceptance),
+		"# 验收\n\n```bash\nprintf '%s\\n' \"$HOME/AppData/Local/Temp/x\"\n```\n")
+
+	res, err := Verify(context.Background(), root, "demo", VerifyOptions{})
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	out, err := os.ReadFile(filepath.Join(res.EvidenceDir, "01.stdout"))
+	if err != nil {
+		t.Fatalf("应落 stdout 证据: %v", err)
+	}
+	got := string(out)
+	if !strings.Contains(got, util.PlaceholderHome) {
+		t.Errorf("证据未把主目录替换为 %s：%q", util.PlaceholderHome, got)
+	}
+	if home, herr := os.UserHomeDir(); herr == nil && home != `` && strings.Contains(got, home) {
+		t.Errorf("证据仍含真实主目录 %q：%q", home, got)
 	}
 }
