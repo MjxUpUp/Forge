@@ -29,4 +29,10 @@ func TestArtifactAdvisoryDetail_ChangeContract(t *testing.T) {
 	if !strings.Contains(withChange, "demo") {
 		t.Fatalf("文案应点名 change id，got %q", withChange)
 	}
+
+	// --goal-file/--goal 钉了 goal 但没有 change：仍按 task 级产物链提示
+	goalOnly := artifactAdvisoryDetail(&TaskState{GoalContract: &tasktypes.GoalContract{Path: "goal.md", SHA256: "x"}}, missing, hint)
+	if !strings.Contains(goalOnly, "产物链节点缺失") || !strings.Contains(goalOnly, "按 schema.yaml 逐段产出") {
+		t.Fatalf("无 change 的 goal 契约应退回原文案，got %q", goalOnly)
+	}
 }
