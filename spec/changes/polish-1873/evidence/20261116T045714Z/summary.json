@@ -1,0 +1,81 @@
+{
+  "change": "polish-1873",
+  "started_at": "2026-11-16T04:57:14Z",
+  "finished_at": "2026-11-16T04:59:20Z",
+  "passed": true,
+  "sealed": true,
+  "head": "abf8eda3cc10af158a79915a4dd3ab2f96924d2e",
+  "diff_sha256": "11c7414d7cff293c7686aea89abc424b8708f75934b7242937c1fdc40f4b5f6c",
+  "files": [
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "269217749c968c45eaef95d7e087bc2e6060824970b504fff9d3d39612a183d3"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "babba4275d71e011e91784e395d5c88ff5d501e8052bc88ed9fe904ba1d77c9f"
+    },
+    {
+      "path": "spec/changes/polish-1873/proposal.md",
+      "sha256": "c472247b9b2509afd377e189d42a3716effd03b6aabef23637c937ae0ccc6bbc"
+    }
+  ],
+  "acceptance_sha256": "52c1ff9e3204dc72f28d34d41fbf02b17425f0d075109bb8018a65553598b95a",
+  "diff_bound": true,
+  "fast": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2490
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestArtifactStartHint|TestRepoHasGoTestFiles|TestRenderTaskReport_NoTestFilesHonest|TestBuildTaskReport_RepoHasGoTestFilesWiring' -count=1",
+      "exit": 0,
+      "duration_ms": 4026,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestVersionCommand' -count=1",
+      "exit": 0,
+      "duration_ms": 3901,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -count=1",
+      "exit": 0,
+      "duration_ms": 109327,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 188
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5091
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 741,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}
