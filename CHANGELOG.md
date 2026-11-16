@@ -5,210 +5,210 @@
 
 ### Bug Fixes
 
-* **cli:** forge version 子命令；start 产物链提示走 change 口径；report 未验证面诚实披露 ([03424e7](https://github.com/MjxUpUp/Forge/commit/03424e75c9ce17df4793c15a529192be088b8a0c))
-* 评审回件——version 归组 + compat 重钉；report 三态（Go 测试文件）；判据覆盖整包 cli ([abf8eda](https://github.com/MjxUpUp/Forge/commit/abf8eda3cc10af158a79915a4dd3ab2f96924d2e))
+* **cli:** forge version 子命令；start 产物链提示走 change 口径；report 未验证面诚实披露 (`03424e7`)
+* 评审回件——version 归组 + compat 重钉；report 三态（Go 测试文件）；判据覆盖整包 cli (`abf8eda`)
 
 ## [1.87.2](https://github.com/MjxUpUp/Forge/compare/v1.87.1...v1.87.2) (2026-11-16)
 
 
 ### Bug Fixes
 
-* **gate:** task-complete 与 complete 同口径；交付单披露文档回检 ([1082b84](https://github.com/MjxUpUp/Forge/commit/1082b847f079b8625ce8d94072e1759ca14c6b2f))
-* **gate:** 按代码评审 P1/P2/P3 修夹具回归、提示落点、报告判定与产物链边界 ([d14886c](https://github.com/MjxUpUp/Forge/commit/d14886ca3837fcf83c9b054993825fb6b0748246))
-* **gate:** 补 compat 首发声明与快照，报告判定/零值测试与判据覆盖（代码评审二轮） ([7a223ae](https://github.com/MjxUpUp/Forge/commit/7a223aebed0422e163f3532a2e0ddd9b4abf4621))
+* **gate:** task-complete 与 complete 同口径；交付单披露文档回检 (`1082b84`)
+* **gate:** 按代码评审 P1/P2/P3 修夹具回归、提示落点、报告判定与产物链边界 (`d14886c`)
+* **gate:** 补 compat 首发声明与快照，报告判定/零值测试与判据覆盖（代码评审二轮） (`7a223ae`)
 
 ## [1.87.1](https://github.com/MjxUpUp/Forge/compare/v1.87.0...v1.87.1) (2026-11-16)
 
 
 ### Bug Fixes
 
-* NextRepoContext 排除无 goal 的老 change；cli 委托同一实现；提示只在无任务时读 spec ([02ab6b7](https://github.com/MjxUpUp/Forge/commit/02ab6b7c22419337db96f87f74665dc813187fe9))
-* **routing:** next 干净工作区直接开工；契约仓库评分静默回退；AGENTS/cli 文档补齐门禁步骤 ([2077efb](https://github.com/MjxUpUp/Forge/commit/2077efb109e038cd6f49cc2ab0641f989d8c98f6))
-* **scoring:** 区分 protocol.yml 缺失与坏文件——契约仓库缺失静默、坏文件仍告警 ([e1174a2](https://github.com/MjxUpUp/Forge/commit/e1174a206d1d5b3ac390766e0a74b72792516af6))
-* 按双评审修 dogfood-fixes（生产路径接线、NextHint 上下文、文档顺序与判据） ([e609d00](https://github.com/MjxUpUp/Forge/commit/e609d00156569205f1cb2077e2e6f13ddfaf4c1a))
+* NextRepoContext 排除无 goal 的老 change；cli 委托同一实现；提示只在无任务时读 spec (`02ab6b7`)
+* **routing:** next 干净工作区直接开工；契约仓库评分静默回退；AGENTS/cli 文档补齐门禁步骤 (`2077efb`)
+* **scoring:** 区分 protocol.yml 缺失与坏文件——契约仓库缺失静默、坏文件仍告警 (`e1174a2`)
+* 按双评审修 dogfood-fixes（生产路径接线、NextHint 上下文、文档顺序与判据） (`e609d00`)
 
 ## [1.87.0](https://github.com/MjxUpUp/Forge/compare/v1.86.0...v1.87.0) (2026-11-15)
 
 
 ### Features
 
-* **routing:** 任务是一等入口，change 可后补（A1+A2+A3） ([76546d3](https://github.com/MjxUpUp/Forge/commit/76546d3a42c244f7bedf84bac68d903689fb534d))
-* **routing:** 入口路由与阶段机——功能改动先立 change（A1+A2+A3） ([e2c6f7b](https://github.com/MjxUpUp/Forge/commit/e2c6f7b245196f1a413b6af4061b823160f034ce))
+* **routing:** 任务是一等入口，change 可后补（A1+A2+A3） (`76546d3`)
+* **routing:** 入口路由与阶段机——功能改动先立 change（A1+A2+A3） (`e2c6f7b`)
 
 
 ### Bug Fixes
 
-* **routing:** 代码评审 P3——note-file 仓根解析、老 change 提示、判据补覆盖 ([21917f6](https://github.com/MjxUpUp/Forge/commit/21917f61e5d164ffe42afb6884e570f27c9e4859))
+* **routing:** 代码评审 P3——note-file 仓根解析、老 change 提示、判据补覆盖 (`21917f6`)
 
 ## [1.86.0](https://github.com/MjxUpUp/Forge/compare/v1.85.2...v1.86.0) (2026-11-14)
 
 
 ### Features
 
-* **change:** goal.md 作为第五份产物，task start 钉哈希；fast 需人批 ([23e6e9f](https://github.com/MjxUpUp/Forge/commit/23e6e9fdf8194677304f1628e8256f69c02b20a2))
-* **change:** 协议可执行化——先跑 forge next、Task 门禁段、1.84 迁移说明 ([b878cc8](https://github.com/MjxUpUp/Forge/commit/b878cc8bf4d5530dfe80cb46301cf7c13888bf18))
+* **change:** goal.md 作为第五份产物，task start 钉哈希；fast 需人批 (`23e6e9f`)
+* **change:** 协议可执行化——先跑 forge next、Task 门禁段、1.84 迁移说明 (`b878cc8`)
 
 
 ### Bug Fixes
 
-* **change:** 按双评审修迁移覆盖、门禁顺序与守卫假绿，托管块同步 ([7a7687c](https://github.com/MjxUpUp/Forge/commit/7a7687c5b98915fe25f97738a6488be8e8af0ba7))
-* **change:** 按文档复评修迁移破坏面、Cursor/其余宿主与 hooks 字段注释口径 ([eaf8113](https://github.com/MjxUpUp/Forge/commit/eaf81133d3b8872e8621f7209692c5ffed986e1e))
-* **change:** 收 review 回件——change id 边界、新 change 必留 goal.md、门禁接线测试 ([e7e85ef](https://github.com/MjxUpUp/Forge/commit/e7e85ef33d8756a1f2359ea806ec39006b9f8995))
-* **change:** 收文档 L2 回件——模板去掉不存在的 decisions 出口、判据换成防回归脚本 ([83167c0](https://github.com/MjxUpUp/Forge/commit/83167c0bf298b51d6f4b96a9481e69a2045c2a51))
-* **ci:** no-hook-refs 排除 1.84 迁移节（该节本来要引用旧命令做清理） ([64d5324](https://github.com/MjxUpUp/Forge/commit/64d532465f5eb692b88ec86bcc3707f2a7ea34e0))
-* **clitask:** --worktree 启动在 worktree 内重解析 goal 契约（P2-A） ([25f8a4f](https://github.com/MjxUpUp/Forge/commit/25f8a4f5d5b0a54b198c759fffdd41444fd03fe7))
-* **docs:** forge-quality 同时清 ~/.agents 副本并把删除命令移出注释 ([77b4a56](https://github.com/MjxUpUp/Forge/commit/77b4a56af830bc6b80cc4150781683e374a4608f))
-* **docs:** 迁移备份按宿主分目录、补 cursor/kimi 清理与 forge-quality，守卫钉动作行 ([3e7d7cc](https://github.com/MjxUpUp/Forge/commit/3e7d7cca71e27198672aff830b758c6dc71fd677))
-* **docs:** 迁移节改 POSIX glob、补 windsurf/codex 标记块与守卫动作锚点 ([5fee11a](https://github.com/MjxUpUp/Forge/commit/5fee11aab9caea5fc03897cf112d8e5dfd60c268))
-* **test:** worktree goal 期望值改从检出字节计算，兼容 core.autocrlf ([208c12b](https://github.com/MjxUpUp/Forge/commit/208c12b32f597ce85c05cd786efe2c841b5485de))
+* **change:** 按双评审修迁移覆盖、门禁顺序与守卫假绿，托管块同步 (`7a7687c`)
+* **change:** 按文档复评修迁移破坏面、Cursor/其余宿主与 hooks 字段注释口径 (`eaf8113`)
+* **change:** 收 review 回件——change id 边界、新 change 必留 goal.md、门禁接线测试 (`e7e85ef`)
+* **change:** 收文档 L2 回件——模板去掉不存在的 decisions 出口、判据换成防回归脚本 (`83167c0`)
+* **ci:** no-hook-refs 排除 1.84 迁移节（该节本来要引用旧命令做清理） (`64d5324`)
+* **clitask:** --worktree 启动在 worktree 内重解析 goal 契约（P2-A） (`25f8a4f`)
+* **docs:** forge-quality 同时清 ~/.agents 副本并把删除命令移出注释 (`77b4a56`)
+* **docs:** 迁移备份按宿主分目录、补 cursor/kimi 清理与 forge-quality，守卫钉动作行 (`3e7d7cc`)
+* **docs:** 迁移节改 POSIX glob、补 windsurf/codex 标记块与守卫动作锚点 (`5fee11a`)
+* **test:** worktree goal 期望值改从检出字节计算，兼容 core.autocrlf (`208c12b`)
 
 ## [1.85.2](https://github.com/MjxUpUp/Forge/compare/v1.85.1...v1.85.2) (2026-11-14)
 
 
 ### Bug Fixes
 
-* **skills:** 内置库列举不落盘，真实路径需求改解压到系统临时目录 ([78ad00f](https://github.com/MjxUpUp/Forge/commit/78ad00fa320f25bf9f234b1402b97816df81fd1a))
+* **skills:** 内置库列举不落盘，真实路径需求改解压到系统临时目录 (`78ad00f`)
 
 ## [1.85.1](https://github.com/MjxUpUp/Forge/compare/v1.85.0...v1.85.1) (2026-11-14)
 
 
 ### Bug Fixes
 
-* **docs:** 修正阶段 D 后 skillsdist 的现状描述 ([05e3c38](https://github.com/MjxUpUp/Forge/commit/05e3c382abdb9f69ead1bd7b39932bcbd8bc6ed0))
+* **docs:** 修正阶段 D 后 skillsdist 的现状描述 (`05e3c38`)
 
 ## [1.85.0](https://github.com/MjxUpUp/Forge/compare/v1.84.5...v1.85.0) (2026-11-13)
 
 
 ### Features
 
-* **agents:** AGENTS.md 托管块由 forge 幂等同步（ADR-0002 phase A 余额） ([32bff65](https://github.com/MjxUpUp/Forge/commit/32bff65ac0da679578504a977fe7b992e41e40e8))
-* **agents:** AGENTS.md 托管块由 forge 幂等生成 ([7dcaac9](https://github.com/MjxUpUp/Forge/commit/7dcaac9fe2782bd6ff39efb5cf65c8ff7e943f33))
-* **change:** priorAttempts 列表与单源多指针 ([cfa477b](https://github.com/MjxUpUp/Forge/commit/cfa477bfaaf76e8fbb1905390d696724cf595354))
-* **change:** 仓库内 change 生命周期与可执行判据 ([c717599](https://github.com/MjxUpUp/Forge/commit/c71759971f6ceca449144a0f9ab9d5097d2fb9ce))
-* **change:** 证据闸门 `change check`（CI/pre-commit 共用） ([650e979](https://github.com/MjxUpUp/Forge/commit/650e979541909421f18031a269246890f498ca77))
-* **hooks:** 仓库契约决定 hook 是否运行 ([b981224](https://github.com/MjxUpUp/Forge/commit/b9812244fbefc4cc48e183d14208906b1c36a91d))
-* **loop:** change status / gate / 耗尽即停 / fast 通道 ([92e61ab](https://github.com/MjxUpUp/Forge/commit/92e61ab46389490fb04f1ae185cfa65dae71742f))
-* **loop:** 回环契约 phase A——status/gate/耗尽即停/fast 通道（ADR-0002） ([a7f6755](https://github.com/MjxUpUp/Forge/commit/a7f6755c3db0d7201a03c0e4b7637fd15b6205d6))
-* **spec:** spec/forge.yaml 作为成员资格锚点，clone 即用 ([8b33167](https://github.com/MjxUpUp/Forge/commit/8b331670addfdfa7b3af89e158c75b400d78b576))
+* **agents:** AGENTS.md 托管块由 forge 幂等同步（ADR-0002 phase A 余额） (`32bff65`)
+* **agents:** AGENTS.md 托管块由 forge 幂等生成 (`7dcaac9`)
+* **change:** priorAttempts 列表与单源多指针 (`cfa477b`)
+* **change:** 仓库内 change 生命周期与可执行判据 (`c717599`)
+* **change:** 证据闸门 `change check`（CI/pre-commit 共用） (`650e979`)
+* **hooks:** 仓库契约决定 hook 是否运行 (`b981224`)
+* **loop:** change status / gate / 耗尽即停 / fast 通道 (`92e61ab`)
+* **loop:** 回环契约 phase A——status/gate/耗尽即停/fast 通道（ADR-0002） (`a7f6755`)
+* **spec:** spec/forge.yaml 作为成员资格锚点，clone 即用 (`8b33167`)
 
 
 ### Bug Fixes
 
-* **agents:** 分隔符统一一个空行、CRLF 保持、补边界测试 ([a162f4d](https://github.com/MjxUpUp/Forge/commit/a162f4d8f93be549c83fc577365a61844aa9a2ca))
-* **agents:** 多对标记拒绝猜、新建写标题、无契约拒绝同步 ([68196eb](https://github.com/MjxUpUp/Forge/commit/68196ebc00fda1512b30a11e0e98d109c1d63982))
-* **agents:** 追加不改原始字节、托管块自证身份、文档口径对齐 ([fdd4d1e](https://github.com/MjxUpUp/Forge/commit/fdd4d1e0c734430f84bdcf213d9acf75591be168))
-* **change:** $ 成对消耗、算术不吃括号、&gt;( ) 也是进程替换 ([d9c1946](https://github.com/MjxUpUp/Forge/commit/d9c1946e30e3a83dd3326c991deb8473e96f1ee5))
-* **change:** check 按评审修 —— 代码改动不再绕过 pre-commit、JSON 恒合法 ([fbcb5d9](https://github.com/MjxUpUp/Forge/commit/fbcb5d912553f11c8f8858b06890cf9108a2f3d7))
-* **change:** pre-commit 在旧版 forge / 未用 spec-changes 的仓库放行 ([dc37f3c](https://github.com/MjxUpUp/Forge/commit/dc37f3c1421ddc2df67f9a77bfd0028300f3bd1c))
-* **change:** 修阶段 A 复评的 P1（超时语义、cursor frontmatter、变异漏洞） ([b287ce7](https://github.com/MjxUpUp/Forge/commit/b287ce782e65f0c488016c75ecddb2ce2a319d50))
-* **change:** 判据只允许"一条简单命令"，缩进围栏不再被静默丢弃 ([b425c97](https://github.com/MjxUpUp/Forge/commit/b425c97b5d4329cd919db8640bcd5a0e3c93123c))
-* **change:** 判据检查改看"去引号之后的词"，引号包不住 internals ([e740308](https://github.com/MjxUpUp/Forge/commit/e740308b7868d7b38aaf7f65d7ca786cd997fcff))
-* **change:** 判据检查真正拦住嵌套 shell、eval 与 set +o ([83c92de](https://github.com/MjxUpUp/Forge/commit/83c92de3eb2fb339e4385d6fdfc06c2faa191c25))
-* **change:** 包装命令与零工作量判据，收回文档里说过头的保证 ([0ec9d23](https://github.com/MjxUpUp/Forge/commit/0ec9d23b4be5e2e64fa024de29dca7b404e0fee6))
-* **change:** 包装命令的参数、分组与占位判据，文档改成精确的覆盖清单 ([8688f80](https://github.com/MjxUpUp/Forge/commit/8688f80432e743757c1bc256917060a125052c97))
-* **change:** 双引号里的命令替换仍会执行，必须拒绝 ([a8cbed8](https://github.com/MjxUpUp/Forge/commit/a8cbed8fc58edd0da00febd1e8c3d20e4e04a5f3))
-* **change:** 反斜杠续行会拼出 $( )，算术展开不是命令替换 ([86a70a5](https://github.com/MjxUpUp/Forge/commit/86a70a5ff6025eecc120f8ade13d5ca4e17f460d))
-* **change:** 只提交证据不再判失效，判据禁令改由代码执行 ([e7ed26b](https://github.com/MjxUpUp/Forge/commit/e7ed26bda54f1c55ea67313409c240bc06bb108d))
-* **change:** 围栏各用自己的壳；封印后新出现的文件也判失效 ([aca6a40](https://github.com/MjxUpUp/Forge/commit/aca6a40ea629154b8322652d43c95c0cc34e63b4))
-* **change:** 外层 $'...' 是字面量，算术里的 $'...' 先解码再判 ([c64966b](https://github.com/MjxUpUp/Forge/commit/c64966b48ec0fed368b1cb252210bddc9333ecdc))
-* **change:** 已勾选的人工项不再从报告里消失 ([b4ffe73](https://github.com/MjxUpUp/Forge/commit/b4ffe73e246ba51ae6f4e29974219bd607309612))
-* **change:** 干净工作区留不下指纹时，HEAD 一动就判证据失效 ([d1e7630](https://github.com/MjxUpUp/Forge/commit/d1e763096a108b9edaaf60c5f62c8688ab34414c))
-* **change:** 干净验证后新写文件也判失效；判据检查按行识别注释 ([cde5b0f](https://github.com/MjxUpUp/Forge/commit/cde5b0fc1f970633b24b3a6b9e3baa9a2ec46a0c))
-* **change:** 引号跨行时不再重置，注释只到行尾 ([ce609ac](https://github.com/MjxUpUp/Forge/commit/ce609acc2654166aa26857a854fdc659e65c180f))
-* **change:** 打断的 verify 不再算一份证据；verify 先报上次证据状态 ([e61d5d1](https://github.com/MjxUpUp/Forge/commit/e61d5d1383102db3e2a6ae730e63be7e12a685d8))
-* **change:** 拒绝 env -S，并说明它的绕过面 ([4cb7807](https://github.com/MjxUpUp/Forge/commit/4cb7807276ba2f391b86d30a52751dd5c1706108))
-* **change:** 指纹改在命令跑完后取，残缺摘要不再冒充封印 ([3d155a4](https://github.com/MjxUpUp/Forge/commit/3d155a48e78e0d0c3a27ce509d959f4999d7a329))
-* **change:** 按文档二轮与代码复评修证据路径、cursor frontmatter 与 pointers 解析 ([2a952dd](https://github.com/MjxUpUp/Forge/commit/2a952dd31373bdea7480b32d9d5194b818dcde69))
-* **change:** 旧版 forge 探针真的能探出来，JSON 形状与文案对齐 ([8143270](https://github.com/MjxUpUp/Forge/commit/8143270d6d77323acd059177ae49a1389c9bcedd))
-* **change:** 注释不参与引号匹配，堵掉注释里的落单引号 ([92e3663](https://github.com/MjxUpUp/Forge/commit/92e3663a3cb19c1d19d746bf80fa3e178da890d6))
-* **change:** 被转义的空白之后的 # 不是注释 ([f5610ac](https://github.com/MjxUpUp/Forge/commit/f5610ac11407d7b1c84c3dcd834614a469e5ddcc))
-* **change:** 转义的 $ 不参与配对，算术里的反引号仍要抓 ([118472c](https://github.com/MjxUpUp/Forge/commit/118472cbdc2d4d853af9eb6db01407773d5180ab))
-* **change:** 退化检查改用 note，skipped 只表示「什么都没查」 ([e9fa805](https://github.com/MjxUpUp/Forge/commit/e9fa8057cdf5d8b354e3aa49a1fc36cb15f94406))
-* **change:** 骨架门禁、管道失败与内容级漂移判定 ([8bb6ef8](https://github.com/MjxUpUp/Forge/commit/8bb6ef8d9d25554e8892d4c17a414e891a403a26))
-* **cli:** change 命令归组并重钉 compat golden ([e0f1324](https://github.com/MjxUpUp/Forge/commit/e0f132402baf163c26c024e0a3ec2f60eead2e5d))
-* **cli:** 契约仓库的仓内清理前移到接线闸门之前（P2-1），并修 --all/list 提示与文档口径 ([410e054](https://github.com/MjxUpUp/Forge/commit/410e054fbe56169cb8169a827001d231a6dce373))
-* **cli:** 已 disable 的契约仓库不再被 autoSync 当 legacy 接线回写 HOME ([dcee1e3](https://github.com/MjxUpUp/Forge/commit/dcee1e30ebc4bac917e50e1920ffdc36cad3a8c8))
-* **cli:** 收口阶段 C 评审——按宿主接线、disable 墓碑与文档诚实性 ([3ff64da](https://github.com/MjxUpUp/Forge/commit/3ff64da3c327e197442e8771e41eba404ffe9c0a))
-* **cli:** 注册表/看板/团队模式提示与注释对齐 Phase C，并补配对测试 ([e5b799f](https://github.com/MjxUpUp/Forge/commit/e5b799f16438aa8d009c433a3678d443bfe8f544))
-* **hooks:** assertion-check 在 gate 模式静默 abort，task-implement 恒红 ([b19b7d8](https://github.com/MjxUpUp/Forge/commit/b19b7d8508e363dff27010c8968184b31bab000a))
-* **hooks:** 契约不能关掉安全底线，缺省档位与全局对齐 ([2385105](https://github.com/MjxUpUp/Forge/commit/238510541f5745aef6fbdfb69e833f68fd0394db))
-* **hooks:** 阶段 B 评审修复——测试环境 opt-in 前提 + 执法宣传残留改 audit-only ([5490d2d](https://github.com/MjxUpUp/Forge/commit/5490d2d53b0137d2d457ae32749ab97bfd653b6d))
-* **loop:** 任务正文去掉自己的编号，状态行不再打印「1. 1.」 ([4479103](https://github.com/MjxUpUp/Forge/commit/4479103663e994c7d9cce7bfd6b4f9eb22673d59))
-* **loop:** 判据连词不再丢号，围栏与归档目录补齐 ([0a04e92](https://github.com/MjxUpUp/Forge/commit/0a04e92dad9f19b67cd6e31e04459f0d8a55dfc2))
-* **loop:** 勾选后的交接不再指向 gate，判据连写与围栏宽度都算清 ([b161f39](https://github.com/MjxUpUp/Forge/commit/b161f3974400c85124d5368b0c1da6d7ecb66649))
-* **loop:** 归档建议用当天日期，去掉不会走到的分支 ([602b1dc](https://github.com/MjxUpUp/Forge/commit/602b1dcbe2261cd61abd9abcff647fbc50841fde))
-* **loop:** 按双评审修 blocked/handoff、判据解析与文档口径 ([f51eac2](https://github.com/MjxUpUp/Forge/commit/f51eac265fd5ba7ea52f0a02ec28dee78b571272))
-* **membership:** symlink 用例夹具、契约恢复与 legacy 早退 ([17e4b9a](https://github.com/MjxUpUp/Forge/commit/17e4b9a70eaf4b5a2800689856810f5fb651abfa))
-* **membership:** 契约只在仓库根生效，State 变纯读探针 ([477fb22](https://github.com/MjxUpUp/Forge/commit/477fb2261833e9b3ca82eea0400a11c533013e75))
-* **membership:** 成员资格判据统一走 projectroot.State ([89e172d](https://github.com/MjxUpUp/Forge/commit/89e172d51ce0179a081654c329d8a9e0e60cc1b6))
-* **projectroot:** walk-up 边界同时包含账户 home，防测试重定向 HOME 后越界 ([a24b480](https://github.com/MjxUpUp/Forge/commit/a24b4809f1686bdf165854f71547bca1138161fb))
-* **registry:** 拒绝/跳过保留根条目，修复 CI 上 temp 被解析成 home ([beb8c41](https://github.com/MjxUpUp/Forge/commit/beb8c4183772fae40f481b9a5d56092f262d090e))
-* **spec:** 收敛只读审查发现——主版本兼容、status --json 来源、and-list 收尾全量改写 ([6202750](https://github.com/MjxUpUp/Forge/commit/6202750ae1ada24d69ba9f428b329cc6c5286e3b))
-* **taskpipeline:** 删除 hazard 清账遗留的未用常量（staticcheck U1000，CI canary） ([8fb7117](https://github.com/MjxUpUp/Forge/commit/8fb711729495aa313cd048ca8fa89436d6d06fdc))
-* 清掉阶段 D 遗留的宿主层引用（init 下一步、全局视图提示、废弃 freeze 包、--agents flag） ([069dd39](https://github.com/MjxUpUp/Forge/commit/069dd39239f415057d89303db4d9465661ff26c9))
-* 阶段 D 评审回件——verify 改查契约、advisory 不计证据、CI 去插件引用、--agents 兼容 no-op、文档按无宿主层重写 ([180824f](https://github.com/MjxUpUp/Forge/commit/180824fb32d554f072a66a78e83c8d8205351f02))
+* **agents:** 分隔符统一一个空行、CRLF 保持、补边界测试 (`a162f4d`)
+* **agents:** 多对标记拒绝猜、新建写标题、无契约拒绝同步 (`68196eb`)
+* **agents:** 追加不改原始字节、托管块自证身份、文档口径对齐 (`fdd4d1e`)
+* **change:** $ 成对消耗、算术不吃括号、&gt;( ) 也是进程替换 (`d9c1946`)
+* **change:** check 按评审修 —— 代码改动不再绕过 pre-commit、JSON 恒合法 (`fbcb5d9`)
+* **change:** pre-commit 在旧版 forge / 未用 spec-changes 的仓库放行 (`dc37f3c`)
+* **change:** 修阶段 A 复评的 P1（超时语义、cursor frontmatter、变异漏洞） (`b287ce7`)
+* **change:** 判据只允许"一条简单命令"，缩进围栏不再被静默丢弃 (`b425c97`)
+* **change:** 判据检查改看"去引号之后的词"，引号包不住 internals (`e740308`)
+* **change:** 判据检查真正拦住嵌套 shell、eval 与 set +o (`83c92de`)
+* **change:** 包装命令与零工作量判据，收回文档里说过头的保证 (`0ec9d23`)
+* **change:** 包装命令的参数、分组与占位判据，文档改成精确的覆盖清单 (`8688f80`)
+* **change:** 双引号里的命令替换仍会执行，必须拒绝 (`a8cbed8`)
+* **change:** 反斜杠续行会拼出 $( )，算术展开不是命令替换 (`86a70a5`)
+* **change:** 只提交证据不再判失效，判据禁令改由代码执行 (`e7ed26b`)
+* **change:** 围栏各用自己的壳；封印后新出现的文件也判失效 (`aca6a40`)
+* **change:** 外层 $'...' 是字面量，算术里的 $'...' 先解码再判 (`c64966b`)
+* **change:** 已勾选的人工项不再从报告里消失 (`b4ffe73`)
+* **change:** 干净工作区留不下指纹时，HEAD 一动就判证据失效 (`d1e7630`)
+* **change:** 干净验证后新写文件也判失效；判据检查按行识别注释 (`cde5b0f`)
+* **change:** 引号跨行时不再重置，注释只到行尾 (`ce609ac`)
+* **change:** 打断的 verify 不再算一份证据；verify 先报上次证据状态 (`e61d5d1`)
+* **change:** 拒绝 env -S，并说明它的绕过面 (`4cb7807`)
+* **change:** 指纹改在命令跑完后取，残缺摘要不再冒充封印 (`3d155a4`)
+* **change:** 按文档二轮与代码复评修证据路径、cursor frontmatter 与 pointers 解析 (`2a952dd`)
+* **change:** 旧版 forge 探针真的能探出来，JSON 形状与文案对齐 (`8143270`)
+* **change:** 注释不参与引号匹配，堵掉注释里的落单引号 (`92e3663`)
+* **change:** 被转义的空白之后的 # 不是注释 (`f5610ac`)
+* **change:** 转义的 $ 不参与配对，算术里的反引号仍要抓 (`118472c`)
+* **change:** 退化检查改用 note，skipped 只表示「什么都没查」 (`e9fa805`)
+* **change:** 骨架门禁、管道失败与内容级漂移判定 (`8bb6ef8`)
+* **cli:** change 命令归组并重钉 compat golden (`e0f1324`)
+* **cli:** 契约仓库的仓内清理前移到接线闸门之前（P2-1），并修 --all/list 提示与文档口径 (`410e054`)
+* **cli:** 已 disable 的契约仓库不再被 autoSync 当 legacy 接线回写 HOME (`dcee1e3`)
+* **cli:** 收口阶段 C 评审——按宿主接线、disable 墓碑与文档诚实性 (`3ff64da`)
+* **cli:** 注册表/看板/团队模式提示与注释对齐 Phase C，并补配对测试 (`e5b799f`)
+* **hooks:** assertion-check 在 gate 模式静默 abort，task-implement 恒红 (`b19b7d8`)
+* **hooks:** 契约不能关掉安全底线，缺省档位与全局对齐 (`2385105`)
+* **hooks:** 阶段 B 评审修复——测试环境 opt-in 前提 + 执法宣传残留改 audit-only (`5490d2d`)
+* **loop:** 任务正文去掉自己的编号，状态行不再打印「1. 1.」 (`4479103`)
+* **loop:** 判据连词不再丢号，围栏与归档目录补齐 (`0a04e92`)
+* **loop:** 勾选后的交接不再指向 gate，判据连写与围栏宽度都算清 (`b161f39`)
+* **loop:** 归档建议用当天日期，去掉不会走到的分支 (`602b1dc`)
+* **loop:** 按双评审修 blocked/handoff、判据解析与文档口径 (`f51eac2`)
+* **membership:** symlink 用例夹具、契约恢复与 legacy 早退 (`17e4b9a`)
+* **membership:** 契约只在仓库根生效，State 变纯读探针 (`477fb22`)
+* **membership:** 成员资格判据统一走 projectroot.State (`89e172d`)
+* **projectroot:** walk-up 边界同时包含账户 home，防测试重定向 HOME 后越界 (`a24b480`)
+* **registry:** 拒绝/跳过保留根条目，修复 CI 上 temp 被解析成 home (`beb8c41`)
+* **spec:** 收敛只读审查发现——主版本兼容、status --json 来源、and-list 收尾全量改写 (`6202750`)
+* **taskpipeline:** 删除 hazard 清账遗留的未用常量（staticcheck U1000，CI canary） (`8fb7117`)
+* 清掉阶段 D 遗留的宿主层引用（init 下一步、全局视图提示、废弃 freeze 包、--agents flag） (`069dd39`)
+* 阶段 D 评审回件——verify 改查契约、advisory 不计证据、CI 去插件引用、--agents 兼容 no-op、文档按无宿主层重写 (`180824f`)
 
 ## [1.84.5](https://github.com/MjxUpUp/Forge/compare/v1.84.4...v1.84.5) (2026-10-25)
 
 
 ### Bug Fixes
 
-* **hooks:** 汇总四项 hook 摩擦修复（hazard 误拦、read-before-edit 误拦、升级提示泄漏、hook 静默失败） ([#143](https://github.com/MjxUpUp/Forge/issues/143)) ([7c4d8de](https://github.com/MjxUpUp/Forge/commit/7c4d8dee7ea5b4ca63226c1661220e89b6406ca3))
+* **hooks:** 汇总四项 hook 摩擦修复（hazard 误拦、read-before-edit 误拦、升级提示泄漏、hook 静默失败） ([#143](https://github.com/MjxUpUp/Forge/issues/143)) (`7c4d8de`)
 
 ## [1.84.4](https://github.com/MjxUpUp/Forge/compare/v1.84.3...v1.84.4) (2026-10-25)
 
 
 ### Bug Fixes
 
-* **review:** 复审路径补「续用原评审者」分档（doc-review / Stop hook / 双 reviewer / 协议 A·B） ([#141](https://github.com/MjxUpUp/Forge/issues/141)) ([cca2a96](https://github.com/MjxUpUp/Forge/commit/cca2a96b409677cb7db0f52fb5072542842fbe66))
+* **review:** 复审路径补「续用原评审者」分档（doc-review / Stop hook / 双 reviewer / 协议 A·B） ([#141](https://github.com/MjxUpUp/Forge/issues/141)) (`cca2a96`)
 
 ## [1.84.3](https://github.com/MjxUpUp/Forge/compare/v1.84.2...v1.84.3) (2026-10-24)
 
 
 ### Bug Fixes
 
-* **task:** 错树守护 fail-closed —— 任务锚在另一棵树时禁止在主树写源码/过门禁 + human 档链定义指纹 ([#139](https://github.com/MjxUpUp/Forge/issues/139)) ([ded892c](https://github.com/MjxUpUp/Forge/commit/ded892c9c438278c113298afb54c22e15462fe0d))
+* **task:** 错树守护 fail-closed —— 任务锚在另一棵树时禁止在主树写源码/过门禁 + human 档链定义指纹 ([#139](https://github.com/MjxUpUp/Forge/issues/139)) (`ded892c`)
 
 ## [1.84.2](https://github.com/MjxUpUp/Forge/compare/v1.84.1...v1.84.2) (2026-10-24)
 
 
 ### Bug Fixes
 
-* **review:** Stop 门禁按会话作用域判定，不再因他会话的未审改动阻断 ([#137](https://github.com/MjxUpUp/Forge/issues/137)) ([ac12459](https://github.com/MjxUpUp/Forge/commit/ac12459c80e92a9c9b86a4b3702a999ccf039c01))
+* **review:** Stop 门禁按会话作用域判定，不再因他会话的未审改动阻断 ([#137](https://github.com/MjxUpUp/Forge/issues/137)) (`ac12459`)
 
 ## [1.84.1](https://github.com/MjxUpUp/Forge/compare/v1.84.0...v1.84.1) (2026-10-22)
 
 
 ### Bug Fixes
 
-* **escape:** 逃生舱审计与裁决 + 文档卫生批 ([#131](https://github.com/MjxUpUp/Forge/issues/131)) ([eeba704](https://github.com/MjxUpUp/Forge/commit/eeba70468be88dee7ba32e12e50eef555db5b592))
-* **scope:** 合并基线分支后改动集剔除只经合并带入的文件 ([#132](https://github.com/MjxUpUp/Forge/issues/132)) ([3bae866](https://github.com/MjxUpUp/Forge/commit/3bae86610cd3d7bcf353d3aad0802ccfa7fc3f1c))
+* **escape:** 逃生舱审计与裁决 + 文档卫生批 ([#131](https://github.com/MjxUpUp/Forge/issues/131)) (`eeba704`)
+* **scope:** 合并基线分支后改动集剔除只经合并带入的文件 ([#132](https://github.com/MjxUpUp/Forge/issues/132)) (`3bae866`)
 
 ## [1.84.0](https://github.com/MjxUpUp/Forge/compare/v1.83.0...v1.84.0) (2026-10-22)
 
 
 ### Features
 
-* **eval:** 评测有效性前置——Track A preflight/leakage、扰动臂与 MDE、golden 分层与 position-swap ([#127](https://github.com/MjxUpUp/Forge/issues/127)) ([4373f27](https://github.com/MjxUpUp/Forge/commit/4373f278b35608fc8014f70154571fc0dd6b1b34))
+* **eval:** 评测有效性前置——Track A preflight/leakage、扰动臂与 MDE、golden 分层与 position-swap ([#127](https://github.com/MjxUpUp/Forge/issues/127)) (`4373f27`)
 
 
 ### Bug Fixes
 
-* **protocol:** 协议文本与代码对齐 + 阻断正当性单一真相表 ([#129](https://github.com/MjxUpUp/Forge/issues/129)) ([9c5cbfe](https://github.com/MjxUpUp/Forge/commit/9c5cbfe06b549aa8d0aaf954ffe7c5300501435d))
+* **protocol:** 协议文本与代码对齐 + 阻断正当性单一真相表 ([#129](https://github.com/MjxUpUp/Forge/issues/129)) (`9c5cbfe`)
 
 ## [1.83.0](https://github.com/MjxUpUp/Forge/compare/v1.82.0...v1.83.0) (2026-10-21)
 
 
 ### Features
 
-* **forge-dsh:** batch 单进程分派、静默回执过滤、降级提示、locale、技能库提议与版本对比 ([#125](https://github.com/MjxUpUp/Forge/issues/125)) ([b2c3a98](https://github.com/MjxUpUp/Forge/commit/b2c3a983570166b09f98f3610c96c47679d2588a))
+* **forge-dsh:** batch 单进程分派、静默回执过滤、降级提示、locale、技能库提议与版本对比 ([#125](https://github.com/MjxUpUp/Forge/issues/125)) (`b2c3a98`)
 
 ## [1.82.0](https://github.com/MjxUpUp/Forge/compare/v1.81.0...v1.82.0) (2026-10-21)
 
 
 ### Features
 
-* **forge-dsh:** 首装链路——SessionStart 必达、内置 forge 本体、首轮欢迎语与发布后验证 ([#123](https://github.com/MjxUpUp/Forge/issues/123)) ([bf0cf8f](https://github.com/MjxUpUp/Forge/commit/bf0cf8f3d95c6c93c9c573689fd5a8f4dc3876af))
+* **forge-dsh:** 首装链路——SessionStart 必达、内置 forge 本体、首轮欢迎语与发布后验证 ([#123](https://github.com/MjxUpUp/Forge/issues/123)) (`bf0cf8f`)
 
 ## [1.81.0](https://github.com/MjxUpUp/Forge/compare/v1.80.1...v1.81.0) (2026-10-21)
 
@@ -229,7 +229,7 @@
 
 ### Features
 
-* **resume:** 任务接续改为按需拉取——SessionStart 只留横幅，新增 resume --match / list --open ([#121](https://github.com/MjxUpUp/Forge/issues/121)) ([3e22f1b](https://github.com/MjxUpUp/Forge/commit/3e22f1b2239d627f6e900510e75ff836490b2faa))
+* **resume:** 任务接续改为按需拉取——SessionStart 只留横幅，新增 resume --match / list --open ([#121](https://github.com/MjxUpUp/Forge/issues/121)) (`3e22f1b`)
 
 ## [1.80.1](https://github.com/MjxUpUp/Forge/compare/v1.80.0...v1.80.1) (2026-10-21)
 
@@ -246,7 +246,7 @@
 
 ### Bug Fixes
 
-* **hazard-guard:** stop a later -count/-c from vetoing heredoc data release (16:51 false block) ([#116](https://github.com/MjxUpUp/Forge/issues/116)) ([5306f1b](https://github.com/MjxUpUp/Forge/commit/5306f1b86d8bbb788a32668d31c1ed0d9a1c29df))
+* **hazard-guard:** stop a later -count/-c from vetoing heredoc data release (16:51 false block) ([#116](https://github.com/MjxUpUp/Forge/issues/116)) (`5306f1b`)
 
 ## [1.80.0](https://github.com/MjxUpUp/Forge/compare/v1.79.2...v1.80.0) (2026-10-21)
 
@@ -273,12 +273,12 @@
 
 ### Features
 
-* **loop:** loop 契约 B1——验收同因复发判定、循环判词、预算段、死路记忆、Loop 规程 ([#117](https://github.com/MjxUpUp/Forge/issues/117)) ([dc07157](https://github.com/MjxUpUp/Forge/commit/dc07157f9f042dfcf4fa376ed55d320f67bc3b3b))
+* **loop:** loop 契约 B1——验收同因复发判定、循环判词、预算段、死路记忆、Loop 规程 ([#117](https://github.com/MjxUpUp/Forge/issues/117)) (`dc07157`)
 
 
 ### Bug Fixes
 
-* **hooks:** root-cause windows-latest flakes — MSYS /tmp noise, dedup clock floor, deadlock watchdog ([#114](https://github.com/MjxUpUp/Forge/issues/114)) ([2c7778f](https://github.com/MjxUpUp/Forge/commit/2c7778f6a7ccd1cea2cafb209432398286e5485d))
+* **hooks:** root-cause windows-latest flakes — MSYS /tmp noise, dedup clock floor, deadlock watchdog ([#114](https://github.com/MjxUpUp/Forge/issues/114)) (`2c7778f`)
 
 ## [1.79.2](https://github.com/MjxUpUp/Forge/compare/v1.79.1...v1.79.2) (2026-10-20)
 
@@ -292,766 +292,766 @@
 
 ### Bug Fixes
 
-* **loopedge:** 回环耗尽两处漏放——首次检出当场拦、--reset-loop 发放完整新预算（loop 契约 B0） ([#112](https://github.com/MjxUpUp/Forge/issues/112)) ([bc58648](https://github.com/MjxUpUp/Forge/commit/bc5864863f2e1eed64e27dafccdabc7427b3a10b))
-* **report:** task report 统计 --reset-loop 人工裁决注记 ([#113](https://github.com/MjxUpUp/Forge/issues/113)) ([d590c95](https://github.com/MjxUpUp/Forge/commit/d590c9571f561b0641966e7663176d7a268ad845))
+* **loopedge:** 回环耗尽两处漏放——首次检出当场拦、--reset-loop 发放完整新预算（loop 契约 B0） ([#112](https://github.com/MjxUpUp/Forge/issues/112)) (`bc58648`)
+* **report:** task report 统计 --reset-loop 人工裁决注记 ([#113](https://github.com/MjxUpUp/Forge/issues/113)) (`d590c95`)
 
 ## [1.79.1](https://github.com/MjxUpUp/Forge/compare/v1.79.0...v1.79.1) (2026-10-19)
 
 
 ### Bug Fixes
 
-* **dsh:** surface a missing forge CLI and refresh market metadata ([#110](https://github.com/MjxUpUp/Forge/issues/110)) ([76786b2](https://github.com/MjxUpUp/Forge/commit/76786b206de8b866e8c2aa5e5a2693d8437b60d2))
+* **dsh:** surface a missing forge CLI and refresh market metadata ([#110](https://github.com/MjxUpUp/Forge/issues/110)) (`76786b2`)
 
 ## [1.79.0](https://github.com/MjxUpUp/Forge/compare/v1.78.0...v1.79.0) (2026-10-18)
 
 
 ### Features
 
-* **eval:** 沙箱 oracle v0——变更级考卷（cheat 召回 6/7、held-out 逃逸 100%→0%） ([a08a7cf](https://github.com/MjxUpUp/Forge/commit/a08a7cfc405879fc569bb850b0be0d7fd11086d5))
+* **eval:** 沙箱 oracle v0——变更级考卷（cheat 召回 6/7、held-out 逃逸 100%→0%） (`a08a7cf`)
 
 ## [1.78.0](https://github.com/MjxUpUp/Forge/compare/v1.77.1...v1.78.0) (2026-10-15)
 
 
 ### Features
 
-* research-workflow 可信度升级 ([997aaaf](https://github.com/MjxUpUp/Forge/commit/997aaaf2aed4ff6aa395672ceb1fdca522a3cab5))
-* 证据链防断——~/ 路径失效与决策证据缺来源告警 ([5ce66c6](https://github.com/MjxUpUp/Forge/commit/5ce66c6477b39db953898771372b17446ee223f3))
-* 调研文档 L1 lint 与产物按来源定型 ([a2471dd](https://github.com/MjxUpUp/Forge/commit/a2471ddc4b15e1ef423b3424b49f6ca5df789bc3))
+* research-workflow 可信度升级 (`997aaaf`)
+* 证据链防断——~/ 路径失效与决策证据缺来源告警 (`5ce66c6`)
+* 调研文档 L1 lint 与产物按来源定型 (`a2471dd`)
 
 
 ### Bug Fixes
 
-* research-workflow 评审修订（lint 契约与文档一致性） ([b930cd2](https://github.com/MjxUpUp/Forge/commit/b930cd247bd0a387897cb01ed5dd99812479406a))
-* run 引用收窄为数字 id，文档写明落行语义 ([e2a4b43](https://github.com/MjxUpUp/Forge/commit/e2a4b430b4e7aee3821c65801c236182de589c4c))
-* survey lint 评审修订与变异体补断言 ([029a2e1](https://github.com/MjxUpUp/Forge/commit/029a2e10ed7223995499ff8c41115a07ba657d6c))
-* 增量调研补走独立核验，同步 Phase 编号 ([d59aafe](https://github.com/MjxUpUp/Forge/commit/d59aafef9dc3325d90c4f2e95d719a38f8c35b1d))
-* 清账计入调用会话、信封剥离只认行首 ([431e0f2](https://github.com/MjxUpUp/Forge/commit/431e0f29a6fe700bf95f4b01e14c785c172aa257))
-* 触发剥宿主信封、赋值误拦与清账作用域 ([ec2d335](https://github.com/MjxUpUp/Forge/commit/ec2d3354a6d8218801918ca4b957482cd8066b6f))
-* 证据链告警降噪（只查证据前缀、run 算来源） ([559b454](https://github.com/MjxUpUp/Forge/commit/559b45446c100ae05d6a8fe43daf54f0f704b1df))
+* research-workflow 评审修订（lint 契约与文档一致性） (`b930cd2`)
+* run 引用收窄为数字 id，文档写明落行语义 (`e2a4b43`)
+* survey lint 评审修订与变异体补断言 (`029a2e1`)
+* 增量调研补走独立核验，同步 Phase 编号 (`d59aafe`)
+* 清账计入调用会话、信封剥离只认行首 (`431e0f2`)
+* 触发剥宿主信封、赋值误拦与清账作用域 (`ec2d335`)
+* 证据链告警降噪（只查证据前缀、run 算来源） (`559b454`)
 
 ## [1.77.1](https://github.com/MjxUpUp/Forge/compare/v1.77.0...v1.77.1) (2026-10-15)
 
 
 ### Bug Fixes
 
-* **hookdispatch:** hook batch 管道并发泵送，修复 payload/输出超 64KB 挂死 ([168d5cf](https://github.com/MjxUpUp/Forge/commit/168d5cf24e0c69e9b18780157a1d71e978cb7743))
+* **hookdispatch:** hook batch 管道并发泵送，修复 payload/输出超 64KB 挂死 (`168d5cf`)
 
 ## [1.77.0](https://github.com/MjxUpUp/Forge/compare/v1.76.0...v1.77.0) (2026-10-13)
 
 
 ### Features
 
-* **skills:** skills decide 新增 --warrant——accept 决策缺可核验锚点或 run 锚点回归时 advisory 告警 ([ccda457](https://github.com/MjxUpUp/Forge/commit/ccda4572daa17601e80b899e3f54276f4976f537))
+* **skills:** skills decide 新增 --warrant——accept 决策缺可核验锚点或 run 锚点回归时 advisory 告警 (`ccda457`)
 
 
 ### Bug Fixes
 
-* **skills:** 审查跟进——强锚点必须做过有效 baseline 比对，比对做不成降为弱并说明原因 ([c625281](https://github.com/MjxUpUp/Forge/commit/c6252810b6721c93b128129709faa09ed0ffb759))
-* **taskpipeline:** mutation 抽样加阳性对照——未变异包测试先绿，红则 baseline-red 不计分 ([ce8424b](https://github.com/MjxUpUp/Forge/commit/ce8424bc8193b671d016da320979c3595dd2f5cf))
-* **taskpipeline:** 阳性对照审查跟进——工具链缺失单独报错、披露剔除数、零样本杀灭率 n/a ([da4ca48](https://github.com/MjxUpUp/Forge/commit/da4ca484c927a7eb75293658a38d276dd2ede3f3))
+* **skills:** 审查跟进——强锚点必须做过有效 baseline 比对，比对做不成降为弱并说明原因 (`c625281`)
+* **taskpipeline:** mutation 抽样加阳性对照——未变异包测试先绿，红则 baseline-red 不计分 (`ce8424b`)
+* **taskpipeline:** 阳性对照审查跟进——工具链缺失单独报错、披露剔除数、零样本杀灭率 n/a (`da4ca48`)
 
 ## [1.76.0](https://github.com/MjxUpUp/Forge/compare/v1.75.0...v1.76.0) (2026-10-13)
 
 
 ### Features
 
-* **skills:** 技术方案三档模板，design-audit 与 design-artifact-standards 收回核心 ([7d42168](https://github.com/MjxUpUp/Forge/commit/7d42168884da93d2070fc3cde8665ea2d07d1959))
-* **taskpipeline:** 设计阶段硬化——方案 lint、事实核查、需求追溯、分档路由 ([864cc3c](https://github.com/MjxUpUp/Forge/commit/864cc3c2ff351bc4605d9342c9c83310e4d86aa3))
+* **skills:** 技术方案三档模板，design-audit 与 design-artifact-standards 收回核心 (`7d42168`)
+* **taskpipeline:** 设计阶段硬化——方案 lint、事实核查、需求追溯、分档路由 (`864cc3c`)
 
 
 ### Bug Fixes
 
-* **skills:** 设计阶段硬化后续——重新提取刷新追溯、插件同名遮蔽检测、README design_tiers ([9eac9f7](https://github.com/MjxUpUp/Forge/commit/9eac9f714466f2bf1d5ffce49f58c9b6d37b1071))
-* **taskpipeline:** interface 块开括号后允许行尾注释与 CRLF ([8651077](https://github.com/MjxUpUp/Forge/commit/8651077fbb36dde091414a18bc5a39fe31a7e8cf))
-* **taskpipeline:** interface 块识别——一行空 interface 不吞后续函数体，支持泛型 interface ([a719e89](https://github.com/MjxUpUp/Forge/commit/a719e89dea3bb6d4d5e3c96b2dd64b4c1b550799))
-* **taskpipeline:** 复审轮 Minor——接口方法算声明、requirements.txt 触发依赖档、审批快照取锁内引用 ([50575e4](https://github.com/MjxUpUp/Forge/commit/50575e43e849c082ee84f6133eab6016572c4228))
-* **taskpipeline:** 审查轮修复——方案核查限定仓库内、Run 行追溯不丢、手工 scope 优先 ([5979346](https://github.com/MjxUpUp/Forge/commit/597934691fe2b1438ad2c0f6baa3f4938ef61dbc))
-* **taskpipeline:** 重新提取只替换来自产物的追溯——手工补登的追溯保留 ([36501d3](https://github.com/MjxUpUp/Forge/commit/36501d390b23757b399be36757ce3cfefcf82f6e))
+* **skills:** 设计阶段硬化后续——重新提取刷新追溯、插件同名遮蔽检测、README design_tiers (`9eac9f7`)
+* **taskpipeline:** interface 块开括号后允许行尾注释与 CRLF (`8651077`)
+* **taskpipeline:** interface 块识别——一行空 interface 不吞后续函数体，支持泛型 interface (`a719e89`)
+* **taskpipeline:** 复审轮 Minor——接口方法算声明、requirements.txt 触发依赖档、审批快照取锁内引用 (`50575e4`)
+* **taskpipeline:** 审查轮修复——方案核查限定仓库内、Run 行追溯不丢、手工 scope 优先 (`5979346`)
+* **taskpipeline:** 重新提取只替换来自产物的追溯——手工补登的追溯保留 (`36501d3`)
 
 ## [1.75.0](https://github.com/MjxUpUp/Forge/compare/v1.74.1...v1.75.0) (2026-10-10)
 
 
 ### Features
 
-* **review:** 分档复审——低风险修复续用首轮 reviewer 增量复核，高风险/终审新派 ([c1788f8](https://github.com/MjxUpUp/Forge/commit/c1788f866a4b1a900d687091e1c950f570d47fbb))
+* **review:** 分档复审——低风险修复续用首轮 reviewer 增量复核，高风险/终审新派 (`c1788f8`)
 
 
 ### Bug Fixes
 
-* **forge-dsh:** session-start 测试从 spec.json 推导期望名册并等整组落盘，消除 PostCompact 竞态 ([ed2443f](https://github.com/MjxUpUp/Forge/commit/ed2443f9c55117d3b63ad3fbb83a169e51e5edee))
+* **forge-dsh:** session-start 测试从 spec.json 推导期望名册并等整组落盘，消除 PostCompact 竞态 (`ed2443f`)
 
 ## [1.74.1](https://github.com/MjxUpUp/Forge/compare/v1.74.0...v1.74.1) (2026-10-09)
 
 
 ### Bug Fixes
 
-* **forge-dsh:** 消息 source 改用生产者自有 kind，适配 DSH 会话格式 V4 ([84ffb16](https://github.com/MjxUpUp/Forge/commit/84ffb16d7eeb7d214bfbfec9c4ac85bdc2581a41))
+* **forge-dsh:** 消息 source 改用生产者自有 kind，适配 DSH 会话格式 V4 (`84ffb16`)
 
 ## [1.74.0](https://github.com/MjxUpUp/Forge/compare/v1.73.2...v1.74.0) (2026-09-30)
 
 
 ### Features
 
-* **cli:** 验收跟进批——status 孤儿指引 + next 落后远端提示 + CHANGELOG 陈旧段清理 + 发版事故恢复 RUNBOOK ([ca6a861](https://github.com/MjxUpUp/Forge/commit/ca6a86170aef7c56ad5ee286ec795f285cf0bb4c))
+* **cli:** 验收跟进批——status 孤儿指引 + next 落后远端提示 + CHANGELOG 陈旧段清理 + 发版事故恢复 RUNBOOK (`ca6a861`)
 
 ## [1.73.2](https://github.com/MjxUpUp/Forge/compare/v1.73.1...v1.73.2) (2026-09-25)
 
 
 ### Bug Fixes
 
-* **ci:** npm-verify 装回钉主源 registry，传播窗 15×60s 加长 ([d071dfb](https://github.com/MjxUpUp/Forge/commit/d071dfbd8c5a3b1a4afdb5ec1b4b88af0248f059))
-* **ci:** 修复远端 release.yml——API blob 上传误用 -f 致内容为字面路径（-F 才读文件） ([e289aa5](https://github.com/MjxUpUp/Forge/commit/e289aa53dc2dfcdeb955a5345e779d8f7fd2982f))
+* **ci:** npm-verify 装回钉主源 registry，传播窗 15×60s 加长 (`d071dfb`)
+* **ci:** 修复远端 release.yml——API blob 上传误用 -f 致内容为字面路径（-F 才读文件） (`e289aa5`)
 
 ## [1.73.1](https://github.com/MjxUpUp/Forge/compare/v1.73.0...v1.73.1) (2026-09-25)
 
 
 ### Bug Fixes
 
-* **taskpipeline:** fuzz 非零退出分型——crasher 只认语料标记，瞬断重试一次 ([a0da419](https://github.com/MjxUpUp/Forge/commit/a0da41983377824d124b33fcfa52e55eb316aeea))
+* **taskpipeline:** fuzz 非零退出分型——crasher 只认语料标记，瞬断重试一次 (`a0da419`)
 
 ## [1.73.0](https://github.com/MjxUpUp/Forge/compare/v1.72.0...v1.73.0) (2026-09-25)
 
 
 ### Features
 
-* **dashboard:** 面板复发维度分布形态上板 ([4ebd1d7](https://github.com/MjxUpUp/Forge/commit/4ebd1d77dd32ae07c59d3adcfc625fac1c5704e4))
+* **dashboard:** 面板复发维度分布形态上板 (`4ebd1d7`)
 
 ## [1.72.0](https://github.com/MjxUpUp/Forge/compare/v1.71.1...v1.72.0) (2026-09-22)
 
 
 ### Features
 
-* **cli:** health 复发低分维度带分数分布直方图 + 形态判读 ([#91](https://github.com/MjxUpUp/Forge/issues/91)) ([9fdd8ac](https://github.com/MjxUpUp/Forge/commit/9fdd8ac0462423b8738a2fba24109ca88af8be45))
+* **cli:** health 复发低分维度带分数分布直方图 + 形态判读 ([#91](https://github.com/MjxUpUp/Forge/issues/91)) (`9fdd8ac`)
 
 
 ### Bug Fixes
 
-* **cli:** hazard 清账出口状态感知——halt release 可清未停机悬账，事件被毁死锁解除 ([#90](https://github.com/MjxUpUp/Forge/issues/90)) ([c4eb445](https://github.com/MjxUpUp/Forge/commit/c4eb445ae4ee149a32fb618ad87f9941ca1ec14b))
+* **cli:** hazard 清账出口状态感知——halt release 可清未停机悬账，事件被毁死锁解除 ([#90](https://github.com/MjxUpUp/Forge/issues/90)) (`c4eb445`)
 
 ## [1.71.1](https://github.com/MjxUpUp/Forge/compare/v1.71.0...v1.71.1) (2026-09-21)
 
 
 ### Bug Fixes
 
-* **ci:** Nightly master-reminder 场景适配 L1 验收登记门——complete 前登记快验收+实跑；场景失败信息带命令输出 ([8bc6c4a](https://github.com/MjxUpUp/Forge/commit/8bc6c4ac725ce001d6d85929e2301a0a7a043b9c))
+* **ci:** Nightly master-reminder 场景适配 L1 验收登记门——complete 前登记快验收+实跑；场景失败信息带命令输出 (`8bc6c4a`)
 
 ## [1.71.0](https://github.com/MjxUpUp/Forge/compare/v1.70.0...v1.71.0) (2026-09-20)
 
 
 ### Features
 
-* **evalkit:** traps 扩容 3→14——cheat-scan 七模式族策展 11 例 + 类型枚举扩容 ([671ab7a](https://github.com/MjxUpUp/Forge/commit/671ab7a7b86a37c3a1304174f712701ef91ebad3))
+* **evalkit:** traps 扩容 3→14——cheat-scan 七模式族策展 11 例 + 类型枚举扩容 (`671ab7a`)
 
 
 ### Bug Fixes
 
-* **evalkit:** 审查修复——E2E 断言解析式 14/14、traps Short 同步、枚举钉住七模式 ([4399ac3](https://github.com/MjxUpUp/Forge/commit/4399ac3514c4b7762332378128448e63d33838d9))
+* **evalkit:** 审查修复——E2E 断言解析式 14/14、traps Short 同步、枚举钉住七模式 (`4399ac3`)
 
 ## [1.70.0](https://github.com/MjxUpUp/Forge/compare/v1.69.0...v1.70.0) (2026-09-20)
 
 
 ### Features
 
-* **evalkit:** L3 校准判官——断言族 golden×10 + golden harvest + review llm 判官臂 + exit 断言接管 ([581cfb4](https://github.com/MjxUpUp/Forge/commit/581cfb49f84896d1dd58d06cb77081af9c21c337))
+* **evalkit:** L3 校准判官——断言族 golden×10 + golden harvest + review llm 判官臂 + exit 断言接管 (`581cfb4`)
 
 
 ### Bug Fixes
 
-* **evalkit:** 审查修复——判官留档走 projectroot、时间戳纳秒防覆盖、平台口径注记 ([0040d82](https://github.com/MjxUpUp/Forge/commit/0040d8219e281d50e3ed62103e8acaef2ac6af9d))
+* **evalkit:** 审查修复——判官留档走 projectroot、时间戳纳秒防覆盖、平台口径注记 (`0040d82`)
 
 ## [1.69.0](https://github.com/MjxUpUp/Forge/compare/v1.68.0...v1.69.0) (2026-09-20)
 
 
 ### Features
 
-* **skills:** 理解侧闭环——spec 样例对/约束三分类 + 原型确认可编译导出 ([9cd8db8](https://github.com/MjxUpUp/Forge/commit/9cd8db816c268f35bc0f9d466bcc7ef298ecd9ed))
+* **skills:** 理解侧闭环——spec 样例对/约束三分类 + 原型确认可编译导出 (`9cd8db8`)
 
 
 ### Bug Fixes
 
-* **skills:** 审查修复——spec 模板四反引号嵌套+accept 围栏形态对齐提取契约、plugin 镜像同步 ([fecff32](https://github.com/MjxUpUp/Forge/commit/fecff32185dc13b18088b01055eaf6f981fb1304))
+* **skills:** 审查修复——spec 模板四反引号嵌套+accept 围栏形态对齐提取契约、plugin 镜像同步 (`fecff32`)
 
 ## [1.68.0](https://github.com/MjxUpUp/Forge/compare/v1.67.0...v1.68.0) (2026-09-20)
 
 
 ### Features
 
-* **oracle-pipeline:** 断言判定分派——五型机械断言 + 逐断言证据行 + --assert/--accept-file CLI ([2d35895](https://github.com/MjxUpUp/Forge/commit/2d35895ddc425b9c6d3d836ad21b48058d0a7928))
+* **oracle-pipeline:** 断言判定分派——五型机械断言 + 逐断言证据行 + --assert/--accept-file CLI (`2d35895`)
 
 
 ### Bug Fixes
 
-* **oracle-pipeline:** 独立审查轮修复——globstar 递归翻译/空 Run v1 边角/exit 域门/YAML 严格模式 ([f3bd534](https://github.com/MjxUpUp/Forge/commit/f3bd5343f9c0b6b776ff55d5723a44895a2cd691))
+* **oracle-pipeline:** 独立审查轮修复——globstar 递归翻译/空 Run v1 边角/exit 域门/YAML 严格模式 (`f3bd534`)
 
 ## [1.67.0](https://github.com/MjxUpUp/Forge/compare/v1.66.1...v1.67.0) (2026-09-20)
 
 
 ### Features
 
-* **delivery-hardening:** 墙价硬批次——取证驱动的十项复发面关闭 ([485f713](https://github.com/MjxUpUp/Forge/commit/485f71374d9ed49d40ee617610b78c4580d817bb))
-* **oracle-pipeline:** 阶段一——考卷层级制 + complete 登记门 + conventions 兜底 + 交付验收单 + chain-init ([3024c8e](https://github.com/MjxUpUp/Forge/commit/3024c8e0f5cc742e250b425fe266cc6eea8555cf))
-* **oracle-pipeline:** 阶段三——heldout 池 + seeded-bug 红队演练 + test-diff 隔离审查 ([3818689](https://github.com/MjxUpUp/Forge/commit/381868980bf4d005aa03d35b5b4b9116f6434d2b))
-* **oracle-pipeline:** 阶段二——机器出题三件套 + 修复自证回归前置 ([85afc13](https://github.com/MjxUpUp/Forge/commit/85afc139a2c64db9f066f026abb679b3b654849a))
+* **delivery-hardening:** 墙价硬批次——取证驱动的十项复发面关闭 (`485f713`)
+* **oracle-pipeline:** 阶段一——考卷层级制 + complete 登记门 + conventions 兜底 + 交付验收单 + chain-init (`3024c8e`)
+* **oracle-pipeline:** 阶段三——heldout 池 + seeded-bug 红队演练 + test-diff 隔离审查 (`3818689`)
+* **oracle-pipeline:** 阶段二——机器出题三件套 + 修复自证回归前置 (`85afc13`)
 
 
 ### Bug Fixes
 
-* **redteam:** fixture 字面量的导出名占位符化——unused-gate 行级提取器把字符串里的 func TestXxx 当真声明（自举拦截，名字运行时拼回） ([6e63e91](https://github.com/MjxUpUp/Forge/commit/6e63e9157c6e6852b770ded9be05ec1ff1d89464))
+* **redteam:** fixture 字面量的导出名占位符化——unused-gate 行级提取器把字符串里的 func TestXxx 当真声明（自举拦截，名字运行时拼回） (`6e63e91`)
 
 ## [1.66.1](https://github.com/MjxUpUp/Forge/compare/v1.66.0...v1.66.1) (2026-09-18)
 
 
 ### Bug Fixes
 
-* **release:** optionalDependencies 平台钉随 release 火车自动 bump ([a05ca1d](https://github.com/MjxUpUp/Forge/commit/a05ca1d3a7681ecf1f60f1236aaced66c192411c))
-* **release:** optionalDependencies 平台钉随 release 火车自动 bump ([06fdaac](https://github.com/MjxUpUp/Forge/commit/06fdaacee5af74be6df7ade1af0a015ebdae5794))
+* **release:** optionalDependencies 平台钉随 release 火车自动 bump (`a05ca1d`)
+* **release:** optionalDependencies 平台钉随 release 火车自动 bump (`06fdaac`)
 
 ## [1.66.0](https://github.com/MjxUpUp/Forge/compare/v1.65.0...v1.66.0) (2026-09-18)
 
 
 ### Features
 
-* **act:** 证据式 ack——forge act retro-done 落 dispositions，已回顾 nudge 退出面板告警 ([f3f84df](https://github.com/MjxUpUp/Forge/commit/f3f84dfbce64772b983a265fd4b78141ce6e294c))
-* **artifact-chain:** 产物链工作流化——L6 接线 + schema.yaml 分档门禁 + spec→acceptance 提取 ([43b9467](https://github.com/MjxUpUp/Forge/commit/43b94679f635c18ee2dfae683585f89e0d72e3de))
-* **artifact-drill:** forge eval artifact-drill——产物链行为级演练沉淀 + 发版链路接线 ([963db17](https://github.com/MjxUpUp/Forge/commit/963db177747a504d058b892fe452818a24e4b817))
-* **bridge-verify:** H2a 静态级 dsh 插件检查器（owner 拍板提前启动 H2） ([ac2281a](https://github.com/MjxUpUp/Forge/commit/ac2281a4d6cf133590fb7e324c0ef9ae80c5c638))
-* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 ([12a7752](https://github.com/MjxUpUp/Forge/commit/12a775276182249fa659e76afc69a14dbf3c0b02))
-* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 ([fa330b6](https://github.com/MjxUpUp/Forge/commit/fa330b698285248be88de8987c4a14ac860f1944))
-* **cli:** vNext P1 pull 侧引导——forge next 单命令 + task wild 申报 + 文案接线 ([5005f78](https://github.com/MjxUpUp/Forge/commit/5005f78c5821b599a9b7427bd431b0ff86e88725))
-* **cli:** vNext P2 审计层——forge enforcement 报告+随机审计+双环/降格信号 ([649a314](https://github.com/MjxUpUp/Forge/commit/649a3141103c6cb761ce9223f1d11ccbd12b305e))
-* **conventions:** 依赖倒置契约化——CONVENTIONS §13 + R18 规则 + 17 skill 正文合规迁移 ([4b936be](https://github.com/MjxUpUp/Forge/commit/4b936be79fc86f30eb19ba3e3bf9c68bc473f18f))
-* **conventions:** 后续三件套——lint 未跑门禁 + learn 纠正写回 + codex 写入时刻补全 ([c1f3e81](https://github.com/MjxUpUp/Forge/commit/c1f3e81b265a754e80426cc79c458959e37b6c78))
-* **conventions:** 项目规范档案——扫描建档 + 会话/写入时刻注入 ([9fa18be](https://github.com/MjxUpUp/Forge/commit/9fa18beb333d5a6cefa026e231d20d5a79f151d9))
-* **discipline-first:** P1 落地——checklog outcome 分类 + test-nudge 文件级跨档升级 ([122fe1c](https://github.com/MjxUpUp/Forge/commit/122fe1c99208e1da3d61a192180c04be4778ab54))
-* **discipline-first:** P2-P4 落地 + 守护审计 3P1/3P2 修复 ([81a8e10](https://github.com/MjxUpUp/Forge/commit/81a8e107ab507ba491531ae80bf80c5280e9d02b))
-* **doclint:** 可读性门禁二期 P0——D8 结论位置 + D1/D2 清单二期 + 评委偏差防线 ([0115a76](https://github.com/MjxUpUp/Forge/commit/0115a76a67855dfca6bc615fbf9bcfbcf1e62f25))
-* **escape-hatch:** P0 修复——test-nudge 天花板审计行 + task-drift choke point ([db82842](https://github.com/MjxUpUp/Forge/commit/db82842a9c073b1e743ee9597b217b438f966d1e))
-* **escape-hatch:** P1 落地——dispatch 幂等守卫 + ratchet/Stop 有界阻断 + HITL/wild 补强 ([ae7f476](https://github.com/MjxUpUp/Forge/commit/ae7f47674229e5d990733dd9716cb95108bd790a))
-* **escape-hatch:** 门禁逃生口加固 P0+P1——审计不静默/choke point/幂等守卫/有界阻断 ([7403b2f](https://github.com/MjxUpUp/Forge/commit/7403b2f570bf33562b41399d9f4d224f5283f727))
-* **eval:** dead-checks v2 检查分类口径——blocking/advisory/gate/pipeline 四档判定 ([338ddb0](https://github.com/MjxUpUp/Forge/commit/338ddb05a40311ff9a5c25e2157442bfbad11ca1))
-* **eval:** forge eval harness-audit——A-G 修复的可复算度量 + 门禁命令形态分类器（设计 B1/M） ([74d74cf](https://github.com/MjxUpUp/Forge/commit/74d74cf3b6066e86e0d593a49c2011a608570de6))
-* **eval:** Forge 自评测体系 P0-P4 落地——forge eval 命令族 + internal/evalkit 双轨评测栈 ([bbfa97a](https://github.com/MjxUpUp/Forge/commit/bbfa97a35af294055d49a8e9ff1e0cdae74d0606))
-* **eval:** 爬坡项落地——两 trap 洞闭环 + 历史反哺 golden + judge-audit 首轮 + docker 首跑 ([9563843](https://github.com/MjxUpUp/Forge/commit/95638433bd8fa977e5c9c2fca866fe5d76d7c56e))
-* **eval:** 补齐设计量纲——golden 三门禁 12 例 + 接续演练 3 条 + Terminal-Bench 冻结 manifest 适配器 ([5c6db1a](https://github.com/MjxUpUp/Forge/commit/5c6db1a5dd522918533f40f35df99b6a6d53619e))
-* **eval:** 评测可见性与触发点接线——Pulse 看板事件 + status 健康行 + release-readiness R6 ([46fd466](https://github.com/MjxUpUp/Forge/commit/46fd466ac6ce855fdd5261867c9c974c40702508))
-* **extensibility:** hostcap 行为注册表守卫 + compat 第七面外部桥契约 + forge-dsh H1 ([b5ee64c](https://github.com/MjxUpUp/Forge/commit/b5ee64c1415b84326559711c134c44d2be1ec2d5))
-* **focus-b1:** git/PR 收口 v1——forge gate push + pre-push 钩子（方向 A P0） ([28fda45](https://github.com/MjxUpUp/Forge/commit/28fda45eb4d1711fd2c996e91d3f5c1ab32f9bc0))
-* **focus-b1l2:** 设计族拆包 + 教科书瘦身 + 死机制清理（方向 A 内容线） ([96e0182](https://github.com/MjxUpUp/Forge/commit/96e018216130a09fd2ea56aa6367f0f90006077a))
-* **focus-b1:** OTel GenAI exporter——checklog→OTLP/JSON 导出器（方向 D1） ([5f65b8c](https://github.com/MjxUpUp/Forge/commit/5f65b8c03ac34aafcddc875fe4213aecc79dd58d))
-* **focus-b1:** 自报一致性门禁 + 监控分段落地（方向 B P0） ([46262db](https://github.com/MjxUpUp/Forge/commit/46262db8cc8d7b7e192d3988c33ac201aede39bc))
-* **focus-b2cde:** issue-tracker 镜像 + task watchdog + eval 升级；B3 商业化设计（方向 C/E/F） ([b967906](https://github.com/MjxUpUp/Forge/commit/b96790609f8a584be06fe3cb2378ccf64c8645ea))
-* **focus-b2:** held-out gap 门禁 + safe-halt 语义（方向 B） ([8444093](https://github.com/MjxUpUp/Forge/commit/84440931a262982b308bdb5f49f01435b26a60d3))
-* **focus-d2:** 标准卡位补齐——AAT mapper + skills inventory + 合规对照（P1 D2，批次切分漏项） ([9826c58](https://github.com/MjxUpUp/Forge/commit/9826c58e241f2e9058e612d2ec2383de235f76fb))
-* **harness:** T7 引导层——onboarding 状态机 + 触发点 + 防 nag ([e4c32c5](https://github.com/MjxUpUp/Forge/commit/e4c32c5603b51317159f471f8ce0f7a49c66ddef))
-* **harness:** T9 传输换代——git remote push/pull + 首推出境 HITL ([e10d381](https://github.com/MjxUpUp/Forge/commit/e10d381591ae451561f8c27609093e1e8101bb45))
-* **hooks:** C gate-cmd-form advisory hook + F.1 解释器 heredoc 数据上下文 + F.2a confirm 链式分离 + F.2b advisory（设计 B2 批） ([8f8ddbe](https://github.com/MjxUpUp/Forge/commit/8f8ddbedad0e227839f8ed7d325f8809d59bc9a6))
-* **hooks:** hazard-guard 语义分词层——GuardFall 五类绕过补漏（W1 门禁可证化） ([cfe7835](https://github.com/MjxUpUp/Forge/commit/cfe7835618e1aaa65b97be86a5dae6b85ff0e698))
-* **hooks:** task-guard 执法谱系 v2——无视计数器+zcode 提升+测试锚定 ([565c2c5](https://github.com/MjxUpUp/Forge/commit/565c2c563195b9a9af9c2662dcab47e9623fd914))
-* **leverage-p0:** 六杠杆点 P0 批次——L5 命令面冻结仪表 + L1 楔子演练 + L2 spec-as-gate v2 数据形状 ([3af1301](https://github.com/MjxUpUp/Forge/commit/3af1301f4be515f8d1747143a2e2d05f4e2e6323))
-* **loopedge:** 审查回环回边——轮次预算/复发检测/exhausted 升级人工（G2 落地） ([e13e1b6](https://github.com/MjxUpUp/Forge/commit/e13e1b695936970de5151e16f760ed5ee297ffdd))
-* **mechanism-p012:** P0 版本纪律 + P1-2/3 逃生舱升级与承诺表 ([e544c4a](https://github.com/MjxUpUp/Forge/commit/e544c4acd996d275cb5925f2a027eaf5c8ac4d28))
-* **mechanism-p012:** P1-1 compat 工件 + P2 指纹分流与生产者声明 ([f5c05e5](https://github.com/MjxUpUp/Forge/commit/f5c05e5e2aebf180d35bc6671ed532d71bb0c952))
-* **multi-task-concurrency:** T10 收尾——dispatcher 心跳接线 + 落地记录 + dogfood 门禁通过 ([7d6cb0f](https://github.com/MjxUpUp/Forge/commit/7d6cb0f7c763e40c3e81ffccbbf494b8d4d68db3))
-* **observability:** T10 度量收尾——status 归属覆盖率行 + 并发矩阵总测 ([2adf07e](https://github.com/MjxUpUp/Forge/commit/2adf07e437537f13c58d1149d88f126f821dcc1f))
-* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook ([f96ad46](https://github.com/MjxUpUp/Forge/commit/f96ad46cb3ee1ec947eecce51dbf08412d38875d))
-* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook ([0f03938](https://github.com/MjxUpUp/Forge/commit/0f03938cf33bb887dbec6e5ecc659b3c93b1651b))
-* **policy:** Project Policy Layer P1——按项目退出/恢复接管（forge off/on） ([6d26e5a](https://github.com/MjxUpUp/Forge/commit/6d26e5aab6b74ca5caf37b32bd89694c5efeecb7))
-* **policy:** Project Policy Layer P2-P4——默认 ask 翻转 + 全局通道感知 + 外来 harness 让位 + 注册表写锁 ([1c6230d](https://github.com/MjxUpUp/Forge/commit/1c6230d46fb2e543319b94cb4bfc5ab15827d0a5))
-* **registry:** gc 回收孤儿项目数据目录+测试夹具隔离 ([1282cef](https://github.com/MjxUpUp/Forge/commit/1282cef875d87a7841ef91374e85e0346bb498fa))
-* **release-flow:** 发布流程硬化 P-A/P-B/P-C——update --apply/写入时刻 gofmt/dedup 窗口旋钮 ([fb9d371](https://github.com/MjxUpUp/Forge/commit/fb9d3719cf5ace19472632d306d256dc2e0f275c))
-* skills 依赖倒置 + code-review-gate 边界重划 + 工程原则增强 ([2906f9c](https://github.com/MjxUpUp/Forge/commit/2906f9c42417166f8cce996f6845da72627e013e))
-* **skills:** 工程原则增强——真·SOLID 五原则 + 契约完整性 + 测试规格档 ([95304ec](https://github.com/MjxUpUp/Forge/commit/95304ec26395032368863adf65da9b34dae5a54c))
-* **skills:** 拆分 code-review-gate——doc-review 建家 + phase-*.md 归位 design-artifact-standards ([c214cbe](https://github.com/MjxUpUp/Forge/commit/c214cbe228ac789ff78453d5819edb372b301383))
-* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 ([01a46d9](https://github.com/MjxUpUp/Forge/commit/01a46d935ab1cd32b8bded9b2719feeea5a0aed8))
-* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 ([461ef57](https://github.com/MjxUpUp/Forge/commit/461ef5795de1154ce1252df22f635cea91784d96))
-* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 ([966f52b](https://github.com/MjxUpUp/Forge/commit/966f52b7725ad9685ba97fde7271350ed9cf94a7))
-* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 ([6a235d1](https://github.com/MjxUpUp/Forge/commit/6a235d1bd04e63c9ccc98ef874b6c55ee78d41ed))
-* **skilltrigger:** A 通道重构——决策点加载/动作点内联 + 输出失败门；B next 推送化 ([c875b8a](https://github.com/MjxUpUp/Forge/commit/c875b8abab1f22052ef9d8f233a8a88c5861e7cc))
-* **specs:** T8 产物契约层——specs 文件产物 + 哈希引用 + attempts 回灌 ([1577585](https://github.com/MjxUpUp/Forge/commit/1577585046de066a0d1778721bd30fa6ab43669c))
-* **T1/T4/T7:** 锁收口 + 状态完整性签名 + 产品语义修正 ([b15e3ef](https://github.com/MjxUpUp/Forge/commit/b15e3efae398d40e1282795691ba7142b052bbef))
-* **T2:** 检测器黄金用例集 + 配对死条件修复 + untracked 源 + 批量 tracked ([1c292a7](https://github.com/MjxUpUp/Forge/commit/1c292a74096159c1a788d6e072238884724b613f))
-* **T3:** checklog 轮转 janitor + stamps 清理——active 无界增长结构性收口 ([3ae37a4](https://github.com/MjxUpUp/Forge/commit/3ae37a409398a52b2f3342738aa74fffed4c69c3))
-* **T8a:** 清理批 A——卸载通道分流/断言结构化/protocol 校验/决策转义/安装盲区 ([8f1afb9](https://github.com/MjxUpUp/Forge/commit/8f1afb93fd2e9e9bbdd085c2e2a379bf9af5840a))
-* **T8b:** 清理批 B——九项收尾：哨兵退出/死代码/session入口统一/跨仓依赖/白名单反转/git探测守卫/infra出口 ([631f3b7](https://github.com/MjxUpUp/Forge/commit/631f3b734d46b23c9ef701be1f6fdae75d1c0236))
-* **T9:** 性能簇——更新负缓存+短超时/funnel 分桶去重复解析/MoveFile 流式/空会话隔离 ([d13228e](https://github.com/MjxUpUp/Forge/commit/d13228ecb78265ac6d9300b3cbab18be5cec3f13))
-* **taskpipeline,skillsqa:** G.1 覆盖预告 + G.2 注释清理抑制 + D refs_critical/R19/步骤 0（设计 B2-3+B3 批） ([3811583](https://github.com/MjxUpUp/Forge/commit/38115831154dd994b2f1d229978a432a0060a817))
-* **taskpipeline:** req-hygiene 接线 task-verify——补 63a9457 缺失的生产调用 ([d44a65e](https://github.com/MjxUpUp/Forge/commit/d44a65e16a9caf92ba9760169c4a4a48e14229be))
-* **taskpipeline:** unused-gate——internal/ 零引用 Go 导出升格 complete 硬前置 ([e422dc2](https://github.com/MjxUpUp/Forge/commit/e422dc213299bf8fbd976620cc67d43fdfe2d024))
-* **taskpipeline:** 需求卫生检查（req-hygiene advisory）——方向二第一子步 ([63a9457](https://github.com/MjxUpUp/Forge/commit/63a94576a7eebb7169725e0189c9512a760415f5))
-* **task:** vNext P3 三段工件分层 + task-guard 缓冲窗口状态机 ([a5ff2d1](https://github.com/MjxUpUp/Forge/commit/a5ff2d199be929882112ec49639eedc13c6bf843))
+* **act:** 证据式 ack——forge act retro-done 落 dispositions，已回顾 nudge 退出面板告警 (`f3f84df`)
+* **artifact-chain:** 产物链工作流化——L6 接线 + schema.yaml 分档门禁 + spec→acceptance 提取 (`43b9467`)
+* **artifact-drill:** forge eval artifact-drill——产物链行为级演练沉淀 + 发版链路接线 (`963db17`)
+* **bridge-verify:** H2a 静态级 dsh 插件检查器（owner 拍板提前启动 H2） (`ac2281a`)
+* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 (`12a7752`)
+* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 (`fa330b6`)
+* **cli:** vNext P1 pull 侧引导——forge next 单命令 + task wild 申报 + 文案接线 (`5005f78`)
+* **cli:** vNext P2 审计层——forge enforcement 报告+随机审计+双环/降格信号 (`649a314`)
+* **conventions:** 依赖倒置契约化——CONVENTIONS §13 + R18 规则 + 17 skill 正文合规迁移 (`4b936be`)
+* **conventions:** 后续三件套——lint 未跑门禁 + learn 纠正写回 + codex 写入时刻补全 (`c1f3e81`)
+* **conventions:** 项目规范档案——扫描建档 + 会话/写入时刻注入 (`9fa18be`)
+* **discipline-first:** P1 落地——checklog outcome 分类 + test-nudge 文件级跨档升级 (`122fe1c`)
+* **discipline-first:** P2-P4 落地 + 守护审计 3P1/3P2 修复 (`81a8e10`)
+* **doclint:** 可读性门禁二期 P0——D8 结论位置 + D1/D2 清单二期 + 评委偏差防线 (`0115a76`)
+* **escape-hatch:** P0 修复——test-nudge 天花板审计行 + task-drift choke point (`db82842`)
+* **escape-hatch:** P1 落地——dispatch 幂等守卫 + ratchet/Stop 有界阻断 + HITL/wild 补强 (`ae7f476`)
+* **escape-hatch:** 门禁逃生口加固 P0+P1——审计不静默/choke point/幂等守卫/有界阻断 (`7403b2f`)
+* **eval:** dead-checks v2 检查分类口径——blocking/advisory/gate/pipeline 四档判定 (`338ddb0`)
+* **eval:** forge eval harness-audit——A-G 修复的可复算度量 + 门禁命令形态分类器（设计 B1/M） (`74d74cf`)
+* **eval:** Forge 自评测体系 P0-P4 落地——forge eval 命令族 + internal/evalkit 双轨评测栈 (`bbfa97a`)
+* **eval:** 爬坡项落地——两 trap 洞闭环 + 历史反哺 golden + judge-audit 首轮 + docker 首跑 (`9563843`)
+* **eval:** 补齐设计量纲——golden 三门禁 12 例 + 接续演练 3 条 + Terminal-Bench 冻结 manifest 适配器 (`5c6db1a`)
+* **eval:** 评测可见性与触发点接线——Pulse 看板事件 + status 健康行 + release-readiness R6 (`46fd466`)
+* **extensibility:** hostcap 行为注册表守卫 + compat 第七面外部桥契约 + forge-dsh H1 (`b5ee64c`)
+* **focus-b1:** git/PR 收口 v1——forge gate push + pre-push 钩子（方向 A P0） (`28fda45`)
+* **focus-b1l2:** 设计族拆包 + 教科书瘦身 + 死机制清理（方向 A 内容线） (`96e0182`)
+* **focus-b1:** OTel GenAI exporter——checklog→OTLP/JSON 导出器（方向 D1） (`5f65b8c`)
+* **focus-b1:** 自报一致性门禁 + 监控分段落地（方向 B P0） (`46262db`)
+* **focus-b2cde:** issue-tracker 镜像 + task watchdog + eval 升级；B3 商业化设计（方向 C/E/F） (`b967906`)
+* **focus-b2:** held-out gap 门禁 + safe-halt 语义（方向 B） (`8444093`)
+* **focus-d2:** 标准卡位补齐——AAT mapper + skills inventory + 合规对照（P1 D2，批次切分漏项） (`9826c58`)
+* **harness:** T7 引导层——onboarding 状态机 + 触发点 + 防 nag (`e4c32c5`)
+* **harness:** T9 传输换代——git remote push/pull + 首推出境 HITL (`e10d381`)
+* **hooks:** C gate-cmd-form advisory hook + F.1 解释器 heredoc 数据上下文 + F.2a confirm 链式分离 + F.2b advisory（设计 B2 批） (`8f8ddbe`)
+* **hooks:** hazard-guard 语义分词层——GuardFall 五类绕过补漏（W1 门禁可证化） (`cfe7835`)
+* **hooks:** task-guard 执法谱系 v2——无视计数器+zcode 提升+测试锚定 (`565c2c5`)
+* **leverage-p0:** 六杠杆点 P0 批次——L5 命令面冻结仪表 + L1 楔子演练 + L2 spec-as-gate v2 数据形状 (`3af1301`)
+* **loopedge:** 审查回环回边——轮次预算/复发检测/exhausted 升级人工（G2 落地） (`e13e1b6`)
+* **mechanism-p012:** P0 版本纪律 + P1-2/3 逃生舱升级与承诺表 (`e544c4a`)
+* **mechanism-p012:** P1-1 compat 工件 + P2 指纹分流与生产者声明 (`f5c05e5`)
+* **multi-task-concurrency:** T10 收尾——dispatcher 心跳接线 + 落地记录 + dogfood 门禁通过 (`7d6cb0f`)
+* **observability:** T10 度量收尾——status 归属覆盖率行 + 并发矩阵总测 (`2adf07e`)
+* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook (`f96ad46`)
+* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook (`0f03938`)
+* **policy:** Project Policy Layer P1——按项目退出/恢复接管（forge off/on） (`6d26e5a`)
+* **policy:** Project Policy Layer P2-P4——默认 ask 翻转 + 全局通道感知 + 外来 harness 让位 + 注册表写锁 (`1c6230d`)
+* **registry:** gc 回收孤儿项目数据目录+测试夹具隔离 (`1282cef`)
+* **release-flow:** 发布流程硬化 P-A/P-B/P-C——update --apply/写入时刻 gofmt/dedup 窗口旋钮 (`fb9d371`)
+* skills 依赖倒置 + code-review-gate 边界重划 + 工程原则增强 (`2906f9c`)
+* **skills:** 工程原则增强——真·SOLID 五原则 + 契约完整性 + 测试规格档 (`95304ec`)
+* **skills:** 拆分 code-review-gate——doc-review 建家 + phase-*.md 归位 design-artifact-standards (`c214cbe`)
+* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 (`01a46d9`)
+* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 (`461ef57`)
+* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 (`966f52b`)
+* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 (`6a235d1`)
+* **skilltrigger:** A 通道重构——决策点加载/动作点内联 + 输出失败门；B next 推送化 (`c875b8a`)
+* **specs:** T8 产物契约层——specs 文件产物 + 哈希引用 + attempts 回灌 (`1577585`)
+* **T1/T4/T7:** 锁收口 + 状态完整性签名 + 产品语义修正 (`b15e3ef`)
+* **T2:** 检测器黄金用例集 + 配对死条件修复 + untracked 源 + 批量 tracked (`1c292a7`)
+* **T3:** checklog 轮转 janitor + stamps 清理——active 无界增长结构性收口 (`3ae37a4`)
+* **T8a:** 清理批 A——卸载通道分流/断言结构化/protocol 校验/决策转义/安装盲区 (`8f1afb9`)
+* **T8b:** 清理批 B——九项收尾：哨兵退出/死代码/session入口统一/跨仓依赖/白名单反转/git探测守卫/infra出口 (`631f3b7`)
+* **T9:** 性能簇——更新负缓存+短超时/funnel 分桶去重复解析/MoveFile 流式/空会话隔离 (`d13228e`)
+* **taskpipeline,skillsqa:** G.1 覆盖预告 + G.2 注释清理抑制 + D refs_critical/R19/步骤 0（设计 B2-3+B3 批） (`3811583`)
+* **taskpipeline:** req-hygiene 接线 task-verify——补 63a9457 缺失的生产调用 (`d44a65e`)
+* **taskpipeline:** unused-gate——internal/ 零引用 Go 导出升格 complete 硬前置 (`e422dc2`)
+* **taskpipeline:** 需求卫生检查（req-hygiene advisory）——方向二第一子步 (`63a9457`)
+* **task:** vNext P3 三段工件分层 + task-guard 缓冲窗口状态机 (`a5ff2d1`)
 
 
 ### Bug Fixes
 
-* **artifact-chain:** 复核 P2 修正——审批作废双侧删除防 ScoreTask 回写复活 + fail-open 补审计行 + escape 全段跳过语义 ([f0d4bd5](https://github.com/MjxUpUp/Forge/commit/f0d4bd53df6dcaefdd8843d524c7d39d81adc8a2))
-* **artifact-chain:** 独立审查修正——P0 flags 未注册 + P1 审批误杀/路径穿越 ([fa50594](https://github.com/MjxUpUp/Forge/commit/fa5059403189a9725771e6ba8da999339fe71a0e))
-* **artifact-drill:** CI 守卫修正——release needs 链守卫纳入 drill 位 + raw string 字面 \n 改写 ([6b61df5](https://github.com/MjxUpUp/Forge/commit/6b61df5808f82564996ea6eed8a9fde159b3d3a7))
-* **attribution:** code-review 回应——同口径读方补齐 + 探针覆盖全部 hook 写点 + hazard 去重加会话维度 ([c6db533](https://github.com/MjxUpUp/Forge/commit/c6db533dc1c8f1c70cebad9850c38662740c093c))
-* **attribution:** dogfood 发现 [#5](https://github.com/MjxUpUp/Forge/issues/5)——hook 记账路径归一（绝对→repo 相对） ([e3bc37d](https://github.com/MjxUpUp/Forge/commit/e3bc37defce4b4665157f027bba203621e9ea1ca))
-* **attribution:** E 完成即冻结归因 + F.3 hazard 事件去重（设计 B0 批） ([35b1cdb](https://github.com/MjxUpUp/Forge/commit/35b1cdb401a5000bedeb389e30811d31a51f4ac3))
-* **attribution:** porcelain 测试期望改正斜杠字面量（windows CI 实证） ([#38](https://github.com/MjxUpUp/Forge/issues/38)) ([f325d78](https://github.com/MjxUpUp/Forge/commit/f325d7840ce58b5b9ef842e5781f04a4419b4bc6))
-* **attribution:** 空 session 不得被 sanitize 成占位符——runHazardLog 与 hook 主记录点直用入口归一值 ([9221bb8](https://github.com/MjxUpUp/Forge/commit/9221bb8aa9ea16233fbfd3fc18c54ab567077aba))
-* **bridge-verify:** 回检 86 分残留收口——多行 import/括号取用/README --json ([52ae4fe](https://github.com/MjxUpUp/Forge/commit/52ae4fe9408e2cfb0c136e048afb3e54b9637abb))
-* **canary:** S1011——吸收 main 新增 artifactdrill 用例的循环 append(main 无金丝雀门禁带入,合并后金丝雀抓住) ([47e0881](https://github.com/MjxUpUp/Forge/commit/47e088120115d9a1a156a74923cd8f581e1e4c8b))
-* **ci:** deadcode 金丝雀补牙——纯报告器 exit 0，须判 stdout 非空才 fail ([a986c50](https://github.com/MjxUpUp/Forge/commit/a986c50cf212edfc3eb015e3800bcb9556c776d0))
-* **ci:** npm-verify 加 registry 传播竞态退避——官方 API 核实后再重试 ([f8f3027](https://github.com/MjxUpUp/Forge/commit/f8f302793c735fc72aedcc422f6f8ca60ef37777))
-* **ci:** npm-verify 重试改无条件退避 8×45s——v1.56.6 实录证伪两处设计假设 ([06cab27](https://github.com/MjxUpUp/Forge/commit/06cab27d6077bce1571e159613f4f6f7cb85d1cf))
-* **ci:** permissions 提为 npm-verify job 级（step 级非法键，actionlint 实证整个 workflow 解析失败）+ 封守卫盲区（TestReleaseWorkflow_NoStepLevelPermissions，突变验证） ([9005291](https://github.com/MjxUpUp/Forge/commit/9005291ac87c18c28cd3f7e6617a61f35b0b2cf6))
-* **ci:** Release workflow test 前加 npm 版本可见步——TestNpmPlatformVersionsAligned 失败时一眼定位 ([eaa7518](https://github.com/MjxUpUp/Forge/commit/eaa751851fae883acd8e171140a344a969e630d5))
-* **ci:** Release workflow test 前加 npm 版本可见步——TestNpmPlatformVersionsAligned 失败时一眼定位 ([1526a7f](https://github.com/MjxUpUp/Forge/commit/1526a7f11c4017869c7c2ae7c5734dc73c370831))
-* **ci:** watchdog 节流测试跨小时边界稳定化 + pluginpack 多 pack marketplace 生成器 ([a1938a1](https://github.com/MjxUpUp/Forge/commit/a1938a1b0594f03a08d1e0751c3348861a80f293))
-* **ci:** Windows 兼容——GlobalProfile 用 filepath.Join、FrictionProbeArm shim 平台形态、latency Windows skip、forgedata profile 测试补齐 ([28dfe5f](https://github.com/MjxUpUp/Forge/commit/28dfe5fd35572004757a15d13fb8d09d309f3209))
-* **ci:** Windows 兼容三处——GlobalProfile 用 filepath.Join、FrictionProbeArm shim 平台形态、latency 测试 Windows skip；gofmt 收敛 ([4f981fe](https://github.com/MjxUpUp/Forge/commit/4f981fe72e7fb8c0319fcc610d837b716339fd6e))
-* **ci:** Windows 跨平台修复——HITL 确认语义统一 + worktree 删除 CWD 锁防护 ([1093f5b](https://github.com/MjxUpUp/Forge/commit/1093f5bcf4a0b47fb05a1bc099f59d5a96cf8e14))
-* **ci:** 分支 CI 抓出的两类跨平台断言——dsh 名册同步 + Windows 路径分隔符 ([c0e9caf](https://github.com/MjxUpUp/Forge/commit/c0e9caf7d7fad13aeb8997716f3958be4c7ca768))
-* **ci:** 注入断言先解 JSON 信封再归一——信封级 ToSlash 会把转义反斜杠变成双斜杠 ([cc7dfd6](https://github.com/MjxUpUp/Forge/commit/cc7dfd6934952a63c2baea091b038dd64b681074))
-* **ci:** 评审回应 NEEDS-FIX 两条 Medium——守卫钉住「无条件」属性与超时预算 ([33bee69](https://github.com/MjxUpUp/Forge/commit/33bee69fb17256cdb37ce1a18800b47767becd78))
-* **ci:** 评审回应三条 Minor——SIGPIPE 安全 grep/守卫锚防掩盖分支/版本双判据 ([fead8cf](https://github.com/MjxUpUp/Forge/commit/fead8cf6d02ed720d323b5cec50b893a55e78507))
-* **cli:** docs lint 帮助逐规则枚举（D5/D6/D7 独立可见，配对测试可断言） ([fe6bb19](https://github.com/MjxUpUp/Forge/commit/fe6bb19a999410088b55fc4f31c2db6356f90b02))
-* **cli:** enforcement 审查收口——全量 checklog/降格降噪/空会话不 join/错误告警 ([903937e](https://github.com/MjxUpUp/Forge/commit/903937eceda47066a4e064efb06bee81bce8fa44))
-* **cli:** next 决策表对齐真实门禁链（P1 审查 FAIL 修正） ([1249dc2](https://github.com/MjxUpUp/Forge/commit/1249dc2bd9478bba7608d5df69f348f421c49e1c))
-* **clitask:** C.3 stderr 兜底——stdout 非 TTY 时 BLOCKED/next 行镜像 stderr ([3d703a7](https://github.com/MjxUpUp/Forge/commit/3d703a757265af3d6340573169e114e56ba150bb))
-* **clitask:** C.3 评审回应——镜像判定抽纯函数 + TTY/silent 漏测补齐 + 基线文档 Critical 修复 ([259ef08](https://github.com/MjxUpUp/Forge/commit/259ef08e9a512fca6e386f656880547817202d6d))
-* **cli:** 版本守卫兼容 patch 发版——previousVersion 修 Sscanf 双分支只认 .0 结尾 ([ff05b09](https://github.com/MjxUpUp/Forge/commit/ff05b09157b30ad7a095222dfb7b12543d1bf7bf))
-* **compat:** EscapeEnvs 补 FORGE_REQ_HYGIENE——req-hygiene 逃生舱须同步 roster（快照面 3 守卫） ([5586af1](https://github.com/MjxUpUp/Forge/commit/5586af19cf28cae0ed96b43f29fab87a7a2cf508))
-* **dashboard:** 告警分级——alerts 只数可行动 nudge，降档噪音退出人面通道 ([ceee1ba](https://github.com/MjxUpUp/Forge/commit/ceee1bac54e695795fcf198a06745e5be51d7887))
-* **dead-code-sweep:** pluginpack README 守卫断言随 suggest 出清更新（forge off --commit 替位） ([9503796](https://github.com/MjxUpUp/Forge/commit/9503796706b84cd1901e7fcb244a089a0ba45178))
-* **dead-code-sweep:** 审查修复——marketplace 条目恢复 + 残留引用出清 + 承诺表裁决记录 ([fb8b53a](https://github.com/MjxUpUp/Forge/commit/fb8b53a3161b3a00b1838c6579da5a1f40559e5b))
-* **discipline-first:** compat 快照重钉（+3 命令/+2 检查，非破坏新增）+ skillRefAllowlist 收录 selfcheck 条目名 ([82f3756](https://github.com/MjxUpUp/Forge/commit/82f375662654d8bb1f0edbe6b5cf58e1cd0d5f64))
-* **discipline-first:** 同步清单——allCheckNames roster + README 命令表 + 命令归组 quality ([b51f601](https://github.com/MjxUpUp/Forge/commit/b51f6018c4d855b5854a3ac1c9d925f09df27511))
-* **discipline-first:** 增量复审 P3×3 收口——折叠计数守卫（PASS 穿插/&gt;8 前驱截断假折叠）+ 逗号编码守卫 + nextCmdVerifyAcceptance 常量单源 ([cd8501f](https://github.com/MjxUpUp/Forge/commit/cd8501f87c8e955ce149930a755730c81b8213a7))
-* **discipline-first:** 复审 P2×2/P3×7 修复——折叠全量集合比对/next-hint 事实分支/注释如实化/围栏对齐 ([ff2f95f](https://github.com/MjxUpUp/Forge/commit/ff2f95f2a6c352715d5a50de30005a96e66dfdee))
-* **discipline-first:** 审查 P1/P2/P3 修复——任务边界重置/门禁事实锚定/最新文件点名 ([1ed30c8](https://github.com/MjxUpUp/Forge/commit/1ed30c88ef34ec4764945a141468194eab299309))
-* **doc-review:** round-2 两条 Minor 收尾——L41 枚举补结论位置、L47 压成指针句消双维护（93/100 PASS 遗留） ([c26049a](https://github.com/MjxUpUp/Forge/commit/c26049a88db4f50012265ce6a0a55bf0ce65357e))
-* **doc-review:** 独立评审 round-1 六条发现修复（89/100 PASS → 未决项清零） ([6794a0c](https://github.com/MjxUpUp/Forge/commit/6794a0c028fc86a982c207db649c9cf5b50613c4))
-* **dogfood:** 实测三项修复——worktree ref 派生 / 归档陈旧快照 / 绑定残留 ([75f0028](https://github.com/MjxUpUp/Forge/commit/75f002800fe08ffac4adda92fc339345bfd415cd))
-* **env:** 环境性测试失败类根治——保留根守卫 + 测试密闭默认化 + registry remove 具名出口 ([8f8534e](https://github.com/MjxUpUp/Forge/commit/8f8534ed96da799d48b9e70f746edde0beffff0f))
-* **eval:** B1 双轨评审回应——基线自证 + 分类器绕过面收窄 + E1/F2/A3 口径与设计对齐 ([5fd2642](https://github.com/MjxUpUp/Forge/commit/5fd26426f3386ab3fcc0c7a26e07295546bd3e07))
-* **eval:** golden e2e 断言跨平台化（真正落地——上一轮 replace 静默未生效被 CI 抓回） ([4549711](https://github.com/MjxUpUp/Forge/commit/4549711c9d5044276042e1ffb3fb5b3c6234fba9))
-* **eval:** Windows CI 第二轮——golden 平台跳过机制 + e2e 断言跨平台化 + 词汇表补形态 ([6a324b4](https://github.com/MjxUpUp/Forge/commit/6a324b4ccc05fb44f966fb72b0f3d07b38f57b7d))
-* **eval:** Windows 三平台兼容——假二进制双形态 + 权限检查 GOOS 感知 + 测试去 sh 化 ([f829508](https://github.com/MjxUpUp/Forge/commit/f82950853bece322840ce1095263ae5f69564bd3))
-* **eval:** 两项审查遗留修复——混合 manifest 沙箱标签任务级粒度 + {dataDir} 硬报错 ([ccd58ad](https://github.com/MjxUpUp/Forge/commit/ccd58adba8ea04f5c669d52b2aff67daa6d0fc3b))
-* **eval:** 复审残留清理 + review 盖章（对抗审查闭环） ([b8c229c](https://github.com/MjxUpUp/Forge/commit/b8c229c347735d23e5a6ffe0cb8151d9598423c4))
-* **eval:** 对抗性审查修复——C1-C3 全修 + I1-I8 全修 + Minor 挑修 ([94bec29](https://github.com/MjxUpUp/Forge/commit/94bec2931270e94510f9c1e04a8f2ce7bf89c84d))
-* **eval:** 确认轮两小项——loader_warnings 守卫反转为真断言 + E1 泄漏拆无 session/他会话两字段 ([057ec20](https://github.com/MjxUpUp/Forge/commit/057ec207ae692995779b8339ac06c731511e95ac))
-* **focus-b1l2:** skill-decisions 门禁 pack 树适配 + L2 回检发现修正 ([f285d26](https://github.com/MjxUpUp/Forge/commit/f285d26c0c8f07ee0dae77d448b4d7b3710ca970))
-* **focus-b1:** 命令树补全——gate hooks install 子命令化 + mirror 挂 github 子命令 ([5c278c2](https://github.com/MjxUpUp/Forge/commit/5c278c2b5a779d6de5b00e74ca6758ed81322fd5))
-* **focus-b1:** 复审轮修复——mirror 持久化真修 + heldout complete 路径留痕 + 覆盖缺口 ([714df36](https://github.com/MjxUpUp/Forge/commit/714df3665dde127bae23acd29ea83198803c4ab3))
-* **focus-b1:** 对抗审查修复——blocker 全清 + should-fix 4 项 + notes 3 项 ([f04ee36](https://github.com/MjxUpUp/Forge/commit/f04ee362ae3caf246b1403c0ad128b1a3f7b52c4))
-* **focus-d2:** 审查修复——exit 2 契约 + 复合键 + 根解析 + rune 截断 + 文档诚实化 ([1061315](https://github.com/MjxUpUp/Forge/commit/1061315842b10e66d9a54658d850a4c6c244fa0f))
-* **golden:** artifact-chain 用例 Windows 可移植——{forge} 双引号包裹防 sh 反斜杠转义 ([8e28c24](https://github.com/MjxUpUp/Forge/commit/8e28c24ec91bd9ee1d0d1309781a3a48ab92a92f))
-* **harness:** dogfood 发现——gitignore 改根级允许清单（只跟踪 projects/） ([66ddf01](https://github.com/MjxUpUp/Forge/commit/66ddf01556c28873d7cb788639c8ec144add8f18))
-* **hazard:** halt release 文案语病——解锁前提表述修正 ([bd8fba9](https://github.com/MjxUpUp/Forge/commit/bd8fba9d5069bdcaa5da717e2b4302dd022f02d9))
-* **hookdispatch:** doc-lint 登记 isInProcessHook 名册——修复 v1.61.0 装机 unknown hook ([a64cb6c](https://github.com/MjxUpUp/Forge/commit/a64cb6c0d80a6683245053d545f7a376c04c3bd3))
-* **hookdispatch:** doc-lint 登记 isInProcessHook——修复装机 unknown hook（验收实锤） ([880e1ad](https://github.com/MjxUpUp/Forge/commit/880e1addb7ca1e606c55069e9a9c7e45092fafba))
-* **hooks:** B2-2 双轨评审回应——hook 分派接线 + F.1 裸 tag 主路径 + F.2a hook 层执法 + recall 补全 ([c937344](https://github.com/MjxUpUp/Forge/commit/c937344cc29fe1179044bbea1cc6f0b7e924e6c4))
-* **hooks:** P0 审查收口——dsh-only 陈旧注释/文档同步+不变量补钉 ([1220645](https://github.com/MjxUpUp/Forge/commit/12206456018aca336dcbae1a400d9ede1b46f04f))
-* **make:** premerge 交叉编译步加 CGO_ENABLED=0 ([893d588](https://github.com/MjxUpUp/Forge/commit/893d5885cedc51db9e2fb6bc196046cbf0c8f048))
-* **mechanism-p012:** 复审轮修复——AllCheckNames 守卫去虚设 + schema 种子真填满 + 文档诚实注记 ([d927f45](https://github.com/MjxUpUp/Forge/commit/d927f45dfd0fe3e7c1f983c2e5b06d7d64fc7732))
-* **mechanism-p012:** 对抗审查修复——blocker + 5 项 should-fix ([e24aa54](https://github.com/MjxUpUp/Forge/commit/e24aa54cab2e180397008415c20707d32f4e4bc2))
-* **npm-guard:** 版本守卫放行发布窗口单版本滞后（v1.51.0 发版实证）+ 提交态对齐 1.51.0 ([02f41d0](https://github.com/MjxUpUp/Forge/commit/02f41d023f2d51c5a88f446f1f1b96d4fdd899b8))
-* **npm:** optionalDependencies 平台包钉随 1.56.0 对齐——release-please 只 bump 主版本号不 bump 钉 ([5b9598c](https://github.com/MjxUpUp/Forge/commit/5b9598c6e321bc246767e8c48e43d926fb394301))
-* **npm:** optionalDependencies 平台包钉随 1.56.1 对齐（release-please 不 bump 钉的系统性缺口——测试放宽与 extra-files 补钉入 B4 批） ([cad038c](https://github.com/MjxUpUp/Forge/commit/cad038c653a7921977e926062880333a46f553ce))
-* **npm:** pins 对齐 1.56.3（release-please 不 bump 钉的根治方案——B4 批加 extra-files 更新器） ([ebeaa70](https://github.com/MjxUpUp/Forge/commit/ebeaa708b2e24b58ae8db988f6ffa0083d03fe1a))
-* **p1:** 代码审查三条修复——SecondScore 去 omitempty（合法 0 分不丢）、co-score 越界显式拒绝、tag: 后空内容 critical 拒绝（含测试） ([c47f0c1](https://github.com/MjxUpUp/Forge/commit/c47f0c15baacb669e792b092866f4ebf4f3a30f2))
-* **policy:** forge policy state 对 managed 打印字面值——StatusManaged 空串的显示层映射 ([4ff41d0](https://github.com/MjxUpUp/Forge/commit/4ff41d0cb924bb49ba9baa9b8f8b42c96be84bc0))
-* **policy:** plugin README 退出文案改走生成器单一真相源——资产源 + 新二进制重生成 ([5068806](https://github.com/MjxUpUp/Forge/commit/5068806420544e7627cb449fc890d23ec012cd88))
-* **premerge:** 预检修复——接续 fixture 对齐解析链 v2 + README 补新命令 + gofmt ([b445396](https://github.com/MjxUpUp/Forge/commit/b445396af7b83bda561b179af25dd87eb4253fc2))
-* **registry:** gc dry-run 汇总报计划处置数+Keys godoc 英文首句 ([c137ca4](https://github.com/MjxUpUp/Forge/commit/c137ca4a006d2c4c102be7a5936bb3b344dac4b9))
-* **registry:** 写锁同进程互斥 + 竞争退化可观测——CI 实证 24 并发 Add 丢条目根因 ([04321eb](https://github.com/MjxUpUp/Forge/commit/04321eb54f18b770a0f68ac9eab0fdb357e90dda))
-* **release-flow:** L2 F1 接线修复——apply 生产路径改 npmInstallArgs 直构（argv+semver 消费点复验）+ Windows --plugin 契约 + spec 复审变更记录 ([b984512](https://github.com/MjxUpUp/Forge/commit/b98451289c992fbad2a33abad09e0faafc1eb4fb))
-* **release-flow:** 复审 P2+P3×8 收口——去重窗口真钳制/apply argv 直构+semver 消费点复验/自验精确比较/安装超时/Windows plugin 契约/gofmt 块短路/env 恢复/注释同步 ([a17cd5a](https://github.com/MjxUpUp/Forge/commit/a17cd5afbdc815b1fb855712a6b480ea9a7dd462))
-* **release:** pins 对齐步改推分支+开 PR（main 分支保护拒直推）+ 空/无 tag critical 文案分流 + ci 守卫封 step 级 permissions 盲区 ([f3dae10](https://github.com/MjxUpUp/Forge/commit/f3dae10f124e85d4c93cdb9f28209af526b0e2df))
-* **release:** 发布链三项验收修复——npm-verify 显式平台同装、发布后 pins 自动对齐、空 critical 文案分流 ([b85a0a0](https://github.com/MjxUpUp/Forge/commit/b85a0a0f32d3630122762486b96755e6a712f77b))
-* **review-b1:** 两轮审查 B1 快速修复 28 项——静默降级补告警/Windows 平台修复/检测器小补 ([5483e20](https://github.com/MjxUpUp/Forge/commit/5483e20cfdd5f45e3c3a58dd3093a737b5edb489))
-* **review-b2-followup:** 修复 B2 引入的 e2e 回归——可执行脚本副本不可用 rename 原子写 ([32314b4](https://github.com/MjxUpUp/Forge/commit/32314b49d87e23db7f9a1e3f79586ccc27847c38))
-* **review-b2:** 数据丢失/原子写批次——用户资产全部改走 AtomicWrite + 读失败误判修复 ([b4ccd0a](https://github.com/MjxUpUp/Forge/commit/b4ccd0a70b1295b05bd17933429d5f13d3967136))
-* **review-b3:** 锁与并发批次——盖章路径入锁/串号覆盖中止/级联护史/锁身份自愈 ([506bc12](https://github.com/MjxUpUp/Forge/commit/506bc12b7e2868fc3a7955363d21dfd577dc2bef))
-* **review-b4:** 信任与安全批次——--untrusted 剥离补洞/注入面封堵/发版脚本加固 ([158ba63](https://github.com/MjxUpUp/Forge/commit/158ba63e8984075be886ec180bc142639588010a))
-* **review-b5-followup:** srclint 白名单补录注释体 catch 正则 ([70fc13a](https://github.com/MjxUpUp/Forge/commit/70fc13ac71ed190f8ce2c10353b92cdf33a0a44b))
-* **review-b5/b6:** 检测器批次 + 产品语义——消 contest/ 逃逸区/补 Go 族检测/init 自伤修复 ([e4f45b0](https://github.com/MjxUpUp/Forge/commit/e4f45b0489bcd48fcc073fc8e05990d66547ad14))
-* **review:** A1 补齐收尾——孤儿 gitPorcelain 删除 + 现场过滤测试随领域迁 taskpipeline ([85e78c5](https://github.com/MjxUpUp/Forge/commit/85e78c5eeb329c0475dcdbc72eba6e513a9de07e))
-* **review:** clitask 迁移双轨审查收口——接缝兜底与注释/死链出清 ([f351094](https://github.com/MjxUpUp/Forge/commit/f351094c65bc443bc9f9272d54b3cacc67610014))
-* **review:** hookdispatch 双轨审查 3 建议收口 ([bc6da60](https://github.com/MjxUpUp/Forge/commit/bc6da609229dd3d9e274fcdc9a06e9385e9a44be))
-* **review:** tasktypes 下沉审查收口——3 项装饰项 ([a1ec456](https://github.com/MjxUpUp/Forge/commit/a1ec4565b7857c98df64180006b0531b048ee079))
-* **review:** 代码审查 1C3M 修复——锁 pack 行重钉（verify exit 0）、看起来正常补测试、帮助断言 bullet 级+Short、v2 状态行推进 ([8c0cac9](https://github.com/MjxUpUp/Forge/commit/8c0cac962377dac84b25e9a4ed37146b9a8a070f))
-* **review:** 任务下沉审查 5 项收口 ([eae19f4](https://github.com/MjxUpUp/Forge/commit/eae19f48c1c8660a45b214b4b01ad856c615cbec))
-* **review:** 双轨审查收口——注释残留出清与死常量裁决 ([f367d4f](https://github.com/MjxUpUp/Forge/commit/f367d4f0ca4e91eb249272d37e41613255cbddb3))
-* **review:** 复审残留——priorAttempts 真实接线进 HANDOFF + symlink 主检出判定 ([6bebee0](https://github.com/MjxUpUp/Forge/commit/6bebee0226a2194067b86cdfca71f04ad50e730f))
-* **review:** 审查修复——B1 共享会话误标外来 / B2 finish 合并守卫 / H 台账 TTL / M1 M2 LOW 六项 ([b9fabd4](https://github.com/MjxUpUp/Forge/commit/b9fabd44097fee183f06a4b5891441ed709351e8))
-* **review:** 审查轮 4 项修复——逃生舱错位/词表真相源/无效测试/CI 诊断 ([d38838c](https://github.com/MjxUpUp/Forge/commit/d38838ce021cad761ec3cdffc290d88807bd23df))
-* **review:** 清扫任务双轨审查收口——4 项 LOW 全解 ([948d473](https://github.com/MjxUpUp/Forge/commit/948d473cc3478de76a9c3bca400fb8bacb1028b3))
-* **review:** 迁移审查收口——Version seam 改惰性闭包（阻断项） ([e56b4a0](https://github.com/MjxUpUp/Forge/commit/e56b4a0ccdc0fc5152d1b3116fe6e3f51577f18d))
-* **skills:** decisions.md 补入 pack 镜像 + compat 快照重钉 ([563d0b5](https://github.com/MjxUpUp/Forge/commit/563d0b5d9d50dd157baa2e0c8ac7e028cbe3834d))
-* **skills:** R18 修复——5.5 步去 forge 化，retro-done 命令移至 Directive 生成面 ([dfa28d5](https://github.com/MjxUpUp/Forge/commit/dfa28d5e80f17633128d68684d0dc807a18520ac))
-* **skills:** review 修复——notes 入库（C1）+ 悬空指针清零（C2）+ 漏迁条件块迁出（C3） ([4f01b25](https://github.com/MjxUpUp/Forge/commit/4f01b25e0d08f687669fb5449fc4b239dae63634))
-* **skilltrigger:** B2-1 双轨评审回应——抑制计数接线/anyInline 聚合/编译器失败签名/B1 占位符口径等 ([0d64789](https://github.com/MjxUpUp/Forge/commit/0d64789b2bd51de6bae09341973a102d1cd9788b))
-* **skilltrigger:** 确认轮 9 条新发现——anyInline 载荷侧/go 编译签名/词边界/夹具补齐 ([4d61a30](https://github.com/MjxUpUp/Forge/commit/4d61a30c4fbf3740d1c6aa6bad4dc55aa57e474b))
-* **skilltrigger:** 终审轮 3 条——next_line_test 注释如实（complete 面未覆盖）、decisions.md 误抄两树修正、中文失败签名恢复全词（测试失败|编译失败） ([d1bd632](https://github.com/MjxUpUp/Forge/commit/d1bd632fc1602d9e1360c5ffa399e5bad6b3374e))
-* **task:** dogfood [#6](https://github.com/MjxUpUp/Forge/issues/6)——--branch 共享 ref 派生 + 两项使用偏离引导 ([690be1a](https://github.com/MjxUpUp/Forge/commit/690be1a740b2b9d8a942cea21ebbb55c406a6099))
-* **task:** P3 审查收口——锁内变更/校验前置/wild 清计数/ID 基准/启发式范围 ([717e53d](https://github.com/MjxUpUp/Forge/commit/717e53dbbf450ccb4b95fcf9ca28cbf80f307674))
-* **taskpipeline:** task-verify 增零验收 advisory——重任务证据自述化的开工点拦截 ([5290057](https://github.com/MjxUpUp/Forge/commit/5290057473a1acb2b7d7fc068a58bea2bf187b9e))
-* **test:** next-line 测试夹具补 git identity——CI 无全局 git config 时 commit exit 128 ([896ac0b](https://github.com/MjxUpUp/Forge/commit/896ac0b48c46e7a54123e55c9461791daf40583a))
-* **test:** runHookCapture 入口 cwd 自愈——前序测试删除 chdir 目录时 getwd 失败贯穿全组（CI -race 实证） ([8ec0fbf](https://github.com/MjxUpUp/Forge/commit/8ec0fbf738d5490bb6f199690997d08a984a9161))
-* **test:** 三包 TestMain 隔离 FORGE_DATA_HOME——根治孤儿目录泄写 ([ee03257](https://github.com/MjxUpUp/Forge/commit/ee032571410646a04338cf3c75514dd5163e4dd6))
-* **test:** 合并 main 的语义消解——TestMain 单点化 + 管道捕获并发排水利族修复 ([392147f](https://github.com/MjxUpUp/Forge/commit/392147f73ded76bcef7e7b747bd16edbc766760a))
-* **test:** 审查回应——TestMain 显式清理替换 defer 死代码 ([1b06575](https://github.com/MjxUpUp/Forge/commit/1b0657594595380040d16e4c934a78b6a1083d13))
-* **test:** 版本对齐守卫接受 release-please 瞬态——钉在当前或前一版且平台包对齐主包即合法（1.56.0/1.56.1/1.56.2 三轮发版实证的系统性缺口：release-please 不 bump optionalDependencies 钉） ([f5eda03](https://github.com/MjxUpUp/Forge/commit/f5eda030b0690b138613bdd27949f99a67a1d856))
-* **test:** 非 forge 场景 helper 入口 cwd 重锚——前序测试删除 chdir 目录后 getwd ENOENT 贯穿（CI 实证 hook_test.go:493/527） ([83d55ff](https://github.com/MjxUpUp/Forge/commit/83d55ff50d634d0dcb1345e11cd7c591e61d4589))
-* **worktree:** [#4](https://github.com/MjxUpUp/Forge/issues/4) 二次修订——finish 真接 ClearByID + abort 全量清扫绑定 ([1b5c06e](https://github.com/MjxUpUp/Forge/commit/1b5c06e4d77271af9e56f73b105166f24f615eeb))
-* 双独立审查（代码双轨 + 文档四维）14 项发现全闭环 ([81b7725](https://github.com/MjxUpUp/Forge/commit/81b772505841eb113e966be57ad335532934fb04))
-* 死代码三重放行执法补强——req-hygiene 接线 / canary 补牙 / unused-gate / 存量清扫 ([600f052](https://github.com/MjxUpUp/Forge/commit/600f052d0c55e4bcc0b2af9e2ded01ecf1925bf7))
+* **artifact-chain:** 复核 P2 修正——审批作废双侧删除防 ScoreTask 回写复活 + fail-open 补审计行 + escape 全段跳过语义 (`f0d4bd5`)
+* **artifact-chain:** 独立审查修正——P0 flags 未注册 + P1 审批误杀/路径穿越 (`fa50594`)
+* **artifact-drill:** CI 守卫修正——release needs 链守卫纳入 drill 位 + raw string 字面 \n 改写 (`6b61df5`)
+* **attribution:** code-review 回应——同口径读方补齐 + 探针覆盖全部 hook 写点 + hazard 去重加会话维度 (`c6db533`)
+* **attribution:** dogfood 发现 [#5](https://github.com/MjxUpUp/Forge/issues/5)——hook 记账路径归一（绝对→repo 相对） (`e3bc37d`)
+* **attribution:** E 完成即冻结归因 + F.3 hazard 事件去重（设计 B0 批） (`35b1cdb`)
+* **attribution:** porcelain 测试期望改正斜杠字面量（windows CI 实证） ([#38](https://github.com/MjxUpUp/Forge/issues/38)) (`f325d78`)
+* **attribution:** 空 session 不得被 sanitize 成占位符——runHazardLog 与 hook 主记录点直用入口归一值 (`9221bb8`)
+* **bridge-verify:** 回检 86 分残留收口——多行 import/括号取用/README --json (`52ae4fe`)
+* **canary:** S1011——吸收 main 新增 artifactdrill 用例的循环 append(main 无金丝雀门禁带入,合并后金丝雀抓住) (`47e0881`)
+* **ci:** deadcode 金丝雀补牙——纯报告器 exit 0，须判 stdout 非空才 fail (`a986c50`)
+* **ci:** npm-verify 加 registry 传播竞态退避——官方 API 核实后再重试 (`f8f3027`)
+* **ci:** npm-verify 重试改无条件退避 8×45s——v1.56.6 实录证伪两处设计假设 (`06cab27`)
+* **ci:** permissions 提为 npm-verify job 级（step 级非法键，actionlint 实证整个 workflow 解析失败）+ 封守卫盲区（TestReleaseWorkflow_NoStepLevelPermissions，突变验证） (`9005291`)
+* **ci:** Release workflow test 前加 npm 版本可见步——TestNpmPlatformVersionsAligned 失败时一眼定位 (`eaa7518`)
+* **ci:** Release workflow test 前加 npm 版本可见步——TestNpmPlatformVersionsAligned 失败时一眼定位 (`1526a7f`)
+* **ci:** watchdog 节流测试跨小时边界稳定化 + pluginpack 多 pack marketplace 生成器 (`a1938a1`)
+* **ci:** Windows 兼容——GlobalProfile 用 filepath.Join、FrictionProbeArm shim 平台形态、latency Windows skip、forgedata profile 测试补齐 (`28dfe5f`)
+* **ci:** Windows 兼容三处——GlobalProfile 用 filepath.Join、FrictionProbeArm shim 平台形态、latency 测试 Windows skip；gofmt 收敛 (`4f981fe`)
+* **ci:** Windows 跨平台修复——HITL 确认语义统一 + worktree 删除 CWD 锁防护 (`1093f5b`)
+* **ci:** 分支 CI 抓出的两类跨平台断言——dsh 名册同步 + Windows 路径分隔符 (`c0e9caf`)
+* **ci:** 注入断言先解 JSON 信封再归一——信封级 ToSlash 会把转义反斜杠变成双斜杠 (`cc7dfd6`)
+* **ci:** 评审回应 NEEDS-FIX 两条 Medium——守卫钉住「无条件」属性与超时预算 (`33bee69`)
+* **ci:** 评审回应三条 Minor——SIGPIPE 安全 grep/守卫锚防掩盖分支/版本双判据 (`fead8cf`)
+* **cli:** docs lint 帮助逐规则枚举（D5/D6/D7 独立可见，配对测试可断言） (`fe6bb19`)
+* **cli:** enforcement 审查收口——全量 checklog/降格降噪/空会话不 join/错误告警 (`903937e`)
+* **cli:** next 决策表对齐真实门禁链（P1 审查 FAIL 修正） (`1249dc2`)
+* **clitask:** C.3 stderr 兜底——stdout 非 TTY 时 BLOCKED/next 行镜像 stderr (`3d703a7`)
+* **clitask:** C.3 评审回应——镜像判定抽纯函数 + TTY/silent 漏测补齐 + 基线文档 Critical 修复 (`259ef08`)
+* **cli:** 版本守卫兼容 patch 发版——previousVersion 修 Sscanf 双分支只认 .0 结尾 (`ff05b09`)
+* **compat:** EscapeEnvs 补 FORGE_REQ_HYGIENE——req-hygiene 逃生舱须同步 roster（快照面 3 守卫） (`5586af1`)
+* **dashboard:** 告警分级——alerts 只数可行动 nudge，降档噪音退出人面通道 (`ceee1ba`)
+* **dead-code-sweep:** pluginpack README 守卫断言随 suggest 出清更新（forge off --commit 替位） (`9503796`)
+* **dead-code-sweep:** 审查修复——marketplace 条目恢复 + 残留引用出清 + 承诺表裁决记录 (`fb8b53a`)
+* **discipline-first:** compat 快照重钉（+3 命令/+2 检查，非破坏新增）+ skillRefAllowlist 收录 selfcheck 条目名 (`82f3756`)
+* **discipline-first:** 同步清单——allCheckNames roster + README 命令表 + 命令归组 quality (`b51f601`)
+* **discipline-first:** 增量复审 P3×3 收口——折叠计数守卫（PASS 穿插/&gt;8 前驱截断假折叠）+ 逗号编码守卫 + nextCmdVerifyAcceptance 常量单源 (`cd8501f`)
+* **discipline-first:** 复审 P2×2/P3×7 修复——折叠全量集合比对/next-hint 事实分支/注释如实化/围栏对齐 (`ff2f95f`)
+* **discipline-first:** 审查 P1/P2/P3 修复——任务边界重置/门禁事实锚定/最新文件点名 (`1ed30c8`)
+* **doc-review:** round-2 两条 Minor 收尾——L41 枚举补结论位置、L47 压成指针句消双维护（93/100 PASS 遗留） (`c26049a`)
+* **doc-review:** 独立评审 round-1 六条发现修复（89/100 PASS → 未决项清零） (`6794a0c`)
+* **dogfood:** 实测三项修复——worktree ref 派生 / 归档陈旧快照 / 绑定残留 (`75f0028`)
+* **env:** 环境性测试失败类根治——保留根守卫 + 测试密闭默认化 + registry remove 具名出口 (`8f8534e`)
+* **eval:** B1 双轨评审回应——基线自证 + 分类器绕过面收窄 + E1/F2/A3 口径与设计对齐 (`5fd2642`)
+* **eval:** golden e2e 断言跨平台化（真正落地——上一轮 replace 静默未生效被 CI 抓回） (`4549711`)
+* **eval:** Windows CI 第二轮——golden 平台跳过机制 + e2e 断言跨平台化 + 词汇表补形态 (`6a324b4`)
+* **eval:** Windows 三平台兼容——假二进制双形态 + 权限检查 GOOS 感知 + 测试去 sh 化 (`f829508`)
+* **eval:** 两项审查遗留修复——混合 manifest 沙箱标签任务级粒度 + {dataDir} 硬报错 (`ccd58ad`)
+* **eval:** 复审残留清理 + review 盖章（对抗审查闭环） (`b8c229c`)
+* **eval:** 对抗性审查修复——C1-C3 全修 + I1-I8 全修 + Minor 挑修 (`94bec29`)
+* **eval:** 确认轮两小项——loader_warnings 守卫反转为真断言 + E1 泄漏拆无 session/他会话两字段 (`057ec20`)
+* **focus-b1l2:** skill-decisions 门禁 pack 树适配 + L2 回检发现修正 (`f285d26`)
+* **focus-b1:** 命令树补全——gate hooks install 子命令化 + mirror 挂 github 子命令 (`5c278c2`)
+* **focus-b1:** 复审轮修复——mirror 持久化真修 + heldout complete 路径留痕 + 覆盖缺口 (`714df36`)
+* **focus-b1:** 对抗审查修复——blocker 全清 + should-fix 4 项 + notes 3 项 (`f04ee36`)
+* **focus-d2:** 审查修复——exit 2 契约 + 复合键 + 根解析 + rune 截断 + 文档诚实化 (`1061315`)
+* **golden:** artifact-chain 用例 Windows 可移植——{forge} 双引号包裹防 sh 反斜杠转义 (`8e28c24`)
+* **harness:** dogfood 发现——gitignore 改根级允许清单（只跟踪 projects/） (`66ddf01`)
+* **hazard:** halt release 文案语病——解锁前提表述修正 (`bd8fba9`)
+* **hookdispatch:** doc-lint 登记 isInProcessHook 名册——修复 v1.61.0 装机 unknown hook (`a64cb6c`)
+* **hookdispatch:** doc-lint 登记 isInProcessHook——修复装机 unknown hook（验收实锤） (`880e1ad`)
+* **hooks:** B2-2 双轨评审回应——hook 分派接线 + F.1 裸 tag 主路径 + F.2a hook 层执法 + recall 补全 (`c937344`)
+* **hooks:** P0 审查收口——dsh-only 陈旧注释/文档同步+不变量补钉 (`1220645`)
+* **make:** premerge 交叉编译步加 CGO_ENABLED=0 (`893d588`)
+* **mechanism-p012:** 复审轮修复——AllCheckNames 守卫去虚设 + schema 种子真填满 + 文档诚实注记 (`d927f45`)
+* **mechanism-p012:** 对抗审查修复——blocker + 5 项 should-fix (`e24aa54`)
+* **npm-guard:** 版本守卫放行发布窗口单版本滞后（v1.51.0 发版实证）+ 提交态对齐 1.51.0 (`02f41d0`)
+* **npm:** optionalDependencies 平台包钉随 1.56.0 对齐——release-please 只 bump 主版本号不 bump 钉 (`5b9598c`)
+* **npm:** optionalDependencies 平台包钉随 1.56.1 对齐（release-please 不 bump 钉的系统性缺口——测试放宽与 extra-files 补钉入 B4 批） (`cad038c`)
+* **npm:** pins 对齐 1.56.3（release-please 不 bump 钉的根治方案——B4 批加 extra-files 更新器） (`ebeaa70`)
+* **p1:** 代码审查三条修复——SecondScore 去 omitempty（合法 0 分不丢）、co-score 越界显式拒绝、tag: 后空内容 critical 拒绝（含测试） (`c47f0c1`)
+* **policy:** forge policy state 对 managed 打印字面值——StatusManaged 空串的显示层映射 (`4ff41d0`)
+* **policy:** plugin README 退出文案改走生成器单一真相源——资产源 + 新二进制重生成 (`5068806`)
+* **premerge:** 预检修复——接续 fixture 对齐解析链 v2 + README 补新命令 + gofmt (`b445396`)
+* **registry:** gc dry-run 汇总报计划处置数+Keys godoc 英文首句 (`c137ca4`)
+* **registry:** 写锁同进程互斥 + 竞争退化可观测——CI 实证 24 并发 Add 丢条目根因 (`04321eb`)
+* **release-flow:** L2 F1 接线修复——apply 生产路径改 npmInstallArgs 直构（argv+semver 消费点复验）+ Windows --plugin 契约 + spec 复审变更记录 (`b984512`)
+* **release-flow:** 复审 P2+P3×8 收口——去重窗口真钳制/apply argv 直构+semver 消费点复验/自验精确比较/安装超时/Windows plugin 契约/gofmt 块短路/env 恢复/注释同步 (`a17cd5a`)
+* **release:** pins 对齐步改推分支+开 PR（main 分支保护拒直推）+ 空/无 tag critical 文案分流 + ci 守卫封 step 级 permissions 盲区 (`f3dae10`)
+* **release:** 发布链三项验收修复——npm-verify 显式平台同装、发布后 pins 自动对齐、空 critical 文案分流 (`b85a0a0`)
+* **review-b1:** 两轮审查 B1 快速修复 28 项——静默降级补告警/Windows 平台修复/检测器小补 (`5483e20`)
+* **review-b2-followup:** 修复 B2 引入的 e2e 回归——可执行脚本副本不可用 rename 原子写 (`32314b4`)
+* **review-b2:** 数据丢失/原子写批次——用户资产全部改走 AtomicWrite + 读失败误判修复 (`b4ccd0a`)
+* **review-b3:** 锁与并发批次——盖章路径入锁/串号覆盖中止/级联护史/锁身份自愈 (`506bc12`)
+* **review-b4:** 信任与安全批次——--untrusted 剥离补洞/注入面封堵/发版脚本加固 (`158ba63`)
+* **review-b5-followup:** srclint 白名单补录注释体 catch 正则 (`70fc13a`)
+* **review-b5/b6:** 检测器批次 + 产品语义——消 contest/ 逃逸区/补 Go 族检测/init 自伤修复 (`e4f45b0`)
+* **review:** A1 补齐收尾——孤儿 gitPorcelain 删除 + 现场过滤测试随领域迁 taskpipeline (`85e78c5`)
+* **review:** clitask 迁移双轨审查收口——接缝兜底与注释/死链出清 (`f351094`)
+* **review:** hookdispatch 双轨审查 3 建议收口 (`bc6da60`)
+* **review:** tasktypes 下沉审查收口——3 项装饰项 (`a1ec456`)
+* **review:** 代码审查 1C3M 修复——锁 pack 行重钉（verify exit 0）、看起来正常补测试、帮助断言 bullet 级+Short、v2 状态行推进 (`8c0cac9`)
+* **review:** 任务下沉审查 5 项收口 (`eae19f4`)
+* **review:** 双轨审查收口——注释残留出清与死常量裁决 (`f367d4f`)
+* **review:** 复审残留——priorAttempts 真实接线进 HANDOFF + symlink 主检出判定 (`6bebee0`)
+* **review:** 审查修复——B1 共享会话误标外来 / B2 finish 合并守卫 / H 台账 TTL / M1 M2 LOW 六项 (`b9fabd4`)
+* **review:** 审查轮 4 项修复——逃生舱错位/词表真相源/无效测试/CI 诊断 (`d38838c`)
+* **review:** 清扫任务双轨审查收口——4 项 LOW 全解 (`948d473`)
+* **review:** 迁移审查收口——Version seam 改惰性闭包（阻断项） (`e56b4a0`)
+* **skills:** decisions.md 补入 pack 镜像 + compat 快照重钉 (`563d0b5`)
+* **skills:** R18 修复——5.5 步去 forge 化，retro-done 命令移至 Directive 生成面 (`dfa28d5`)
+* **skills:** review 修复——notes 入库（C1）+ 悬空指针清零（C2）+ 漏迁条件块迁出（C3） (`4f01b25`)
+* **skilltrigger:** B2-1 双轨评审回应——抑制计数接线/anyInline 聚合/编译器失败签名/B1 占位符口径等 (`0d64789`)
+* **skilltrigger:** 确认轮 9 条新发现——anyInline 载荷侧/go 编译签名/词边界/夹具补齐 (`4d61a30`)
+* **skilltrigger:** 终审轮 3 条——next_line_test 注释如实（complete 面未覆盖）、decisions.md 误抄两树修正、中文失败签名恢复全词（测试失败|编译失败） (`d1bd632`)
+* **task:** dogfood [#6](https://github.com/MjxUpUp/Forge/issues/6)——--branch 共享 ref 派生 + 两项使用偏离引导 (`690be1a`)
+* **task:** P3 审查收口——锁内变更/校验前置/wild 清计数/ID 基准/启发式范围 (`717e53d`)
+* **taskpipeline:** task-verify 增零验收 advisory——重任务证据自述化的开工点拦截 (`5290057`)
+* **test:** next-line 测试夹具补 git identity——CI 无全局 git config 时 commit exit 128 (`896ac0b`)
+* **test:** runHookCapture 入口 cwd 自愈——前序测试删除 chdir 目录时 getwd 失败贯穿全组（CI -race 实证） (`8ec0fbf`)
+* **test:** 三包 TestMain 隔离 FORGE_DATA_HOME——根治孤儿目录泄写 (`ee03257`)
+* **test:** 合并 main 的语义消解——TestMain 单点化 + 管道捕获并发排水利族修复 (`392147f`)
+* **test:** 审查回应——TestMain 显式清理替换 defer 死代码 (`1b06575`)
+* **test:** 版本对齐守卫接受 release-please 瞬态——钉在当前或前一版且平台包对齐主包即合法（1.56.0/1.56.1/1.56.2 三轮发版实证的系统性缺口：release-please 不 bump optionalDependencies 钉） (`f5eda03`)
+* **test:** 非 forge 场景 helper 入口 cwd 重锚——前序测试删除 chdir 目录后 getwd ENOENT 贯穿（CI 实证 hook_test.go:493/527） (`83d55ff`)
+* **worktree:** [#4](https://github.com/MjxUpUp/Forge/issues/4) 二次修订——finish 真接 ClearByID + abort 全量清扫绑定 (`1b5c06e`)
+* 双独立审查（代码双轨 + 文档四维）14 项发现全闭环 (`81b7725`)
+* 死代码三重放行执法补强——req-hygiene 接线 / canary 补牙 / unused-gate / 存量清扫 (`600f052`)
 
 ## [1.65.0](https://github.com/MjxUpUp/Forge/compare/v1.64.0...v1.65.0) (2026-09-18)
 
 
 ### Features
 
-* **escape-hatch:** P0 修复——test-nudge 天花板审计行 + task-drift choke point ([db82842](https://github.com/MjxUpUp/Forge/commit/db82842a9c073b1e743ee9597b217b438f966d1e))
-* **escape-hatch:** P1 落地——dispatch 幂等守卫 + ratchet/Stop 有界阻断 + HITL/wild 补强 ([ae7f476](https://github.com/MjxUpUp/Forge/commit/ae7f47674229e5d990733dd9716cb95108bd790a))
-* **escape-hatch:** 门禁逃生口加固 P0+P1——审计不静默/choke point/幂等守卫/有界阻断 ([7403b2f](https://github.com/MjxUpUp/Forge/commit/7403b2f570bf33562b41399d9f4d224f5283f727))
+* **escape-hatch:** P0 修复——test-nudge 天花板审计行 + task-drift choke point (`db82842`)
+* **escape-hatch:** P1 落地——dispatch 幂等守卫 + ratchet/Stop 有界阻断 + HITL/wild 补强 (`ae7f476`)
+* **escape-hatch:** 门禁逃生口加固 P0+P1——审计不静默/choke point/幂等守卫/有界阻断 (`7403b2f`)
 
 ## [1.64.0](https://github.com/MjxUpUp/Forge/compare/v1.63.0...v1.64.0) (2026-09-18)
 
 
 ### Features
 
-* **release-flow:** 发布流程硬化 P-A/P-B/P-C——update --apply/写入时刻 gofmt/dedup 窗口旋钮 ([fb9d371](https://github.com/MjxUpUp/Forge/commit/fb9d3719cf5ace19472632d306d256dc2e0f275c))
+* **release-flow:** 发布流程硬化 P-A/P-B/P-C——update --apply/写入时刻 gofmt/dedup 窗口旋钮 (`fb9d371`)
 
 
 ### Bug Fixes
 
-* **release-flow:** L2 F1 接线修复——apply 生产路径改 npmInstallArgs 直构（argv+semver 消费点复验）+ Windows --plugin 契约 + spec 复审变更记录 ([b984512](https://github.com/MjxUpUp/Forge/commit/b98451289c992fbad2a33abad09e0faafc1eb4fb))
-* **release-flow:** 复审 P2+P3×8 收口——去重窗口真钳制/apply argv 直构+semver 消费点复验/自验精确比较/安装超时/Windows plugin 契约/gofmt 块短路/env 恢复/注释同步 ([a17cd5a](https://github.com/MjxUpUp/Forge/commit/a17cd5afbdc815b1fb855712a6b480ea9a7dd462))
+* **release-flow:** L2 F1 接线修复——apply 生产路径改 npmInstallArgs 直构（argv+semver 消费点复验）+ Windows --plugin 契约 + spec 复审变更记录 (`b984512`)
+* **release-flow:** 复审 P2+P3×8 收口——去重窗口真钳制/apply argv 直构+semver 消费点复验/自验精确比较/安装超时/Windows plugin 契约/gofmt 块短路/env 恢复/注释同步 (`a17cd5a`)
 
 ## [1.63.0](https://github.com/MjxUpUp/Forge/compare/v1.62.0...v1.63.0) (2026-09-18)
 
 
 ### Features
 
-* **discipline-first:** P1 落地——checklog outcome 分类 + test-nudge 文件级跨档升级 ([122fe1c](https://github.com/MjxUpUp/Forge/commit/122fe1c99208e1da3d61a192180c04be4778ab54))
-* **discipline-first:** P2-P4 落地 + 守护审计 3P1/3P2 修复 ([81a8e10](https://github.com/MjxUpUp/Forge/commit/81a8e107ab507ba491531ae80bf80c5280e9d02b))
+* **discipline-first:** P1 落地——checklog outcome 分类 + test-nudge 文件级跨档升级 (`122fe1c`)
+* **discipline-first:** P2-P4 落地 + 守护审计 3P1/3P2 修复 (`81a8e10`)
 
 
 ### Bug Fixes
 
-* **discipline-first:** compat 快照重钉（+3 命令/+2 检查，非破坏新增）+ skillRefAllowlist 收录 selfcheck 条目名 ([82f3756](https://github.com/MjxUpUp/Forge/commit/82f375662654d8bb1f0edbe6b5cf58e1cd0d5f64))
-* **discipline-first:** 同步清单——allCheckNames roster + README 命令表 + 命令归组 quality ([b51f601](https://github.com/MjxUpUp/Forge/commit/b51f6018c4d855b5854a3ac1c9d925f09df27511))
-* **discipline-first:** 增量复审 P3×3 收口——折叠计数守卫（PASS 穿插/&gt;8 前驱截断假折叠）+ 逗号编码守卫 + nextCmdVerifyAcceptance 常量单源 ([cd8501f](https://github.com/MjxUpUp/Forge/commit/cd8501f87c8e955ce149930a755730c81b8213a7))
-* **discipline-first:** 复审 P2×2/P3×7 修复——折叠全量集合比对/next-hint 事实分支/注释如实化/围栏对齐 ([ff2f95f](https://github.com/MjxUpUp/Forge/commit/ff2f95f2a6c352715d5a50de30005a96e66dfdee))
-* **discipline-first:** 审查 P1/P2/P3 修复——任务边界重置/门禁事实锚定/最新文件点名 ([1ed30c8](https://github.com/MjxUpUp/Forge/commit/1ed30c88ef34ec4764945a141468194eab299309))
+* **discipline-first:** compat 快照重钉（+3 命令/+2 检查，非破坏新增）+ skillRefAllowlist 收录 selfcheck 条目名 (`82f3756`)
+* **discipline-first:** 同步清单——allCheckNames roster + README 命令表 + 命令归组 quality (`b51f601`)
+* **discipline-first:** 增量复审 P3×3 收口——折叠计数守卫（PASS 穿插/&gt;8 前驱截断假折叠）+ 逗号编码守卫 + nextCmdVerifyAcceptance 常量单源 (`cd8501f`)
+* **discipline-first:** 复审 P2×2/P3×7 修复——折叠全量集合比对/next-hint 事实分支/注释如实化/围栏对齐 (`ff2f95f`)
+* **discipline-first:** 审查 P1/P2/P3 修复——任务边界重置/门禁事实锚定/最新文件点名 (`1ed30c8`)
 
 ## [1.62.0](https://github.com/MjxUpUp/Forge/compare/v1.61.3...v1.62.0) (2026-09-16)
 
 
 ### Features
 
-* **bridge-verify:** H2a 静态级 dsh 插件检查器（owner 拍板提前启动 H2） ([ac2281a](https://github.com/MjxUpUp/Forge/commit/ac2281a4d6cf133590fb7e324c0ef9ae80c5c638))
-* **extensibility:** hostcap 行为注册表守卫 + compat 第七面外部桥契约 + forge-dsh H1 ([b5ee64c](https://github.com/MjxUpUp/Forge/commit/b5ee64c1415b84326559711c134c44d2be1ec2d5))
+* **bridge-verify:** H2a 静态级 dsh 插件检查器（owner 拍板提前启动 H2） (`ac2281a`)
+* **extensibility:** hostcap 行为注册表守卫 + compat 第七面外部桥契约 + forge-dsh H1 (`b5ee64c`)
 
 
 ### Bug Fixes
 
-* **bridge-verify:** 回检 86 分残留收口——多行 import/括号取用/README --json ([52ae4fe](https://github.com/MjxUpUp/Forge/commit/52ae4fe9408e2cfb0c136e048afb3e54b9637abb))
+* **bridge-verify:** 回检 86 分残留收口——多行 import/括号取用/README --json (`52ae4fe`)
 
 ## [1.61.3](https://github.com/MjxUpUp/Forge/compare/v1.61.2...v1.61.3) (2026-09-16)
 
 
 ### Bug Fixes
 
-* **release:** pins 对齐步改推分支+开 PR（main 分支保护拒直推）+ 空/无 tag critical 文案分流 + ci 守卫封 step 级 permissions 盲区 ([f3dae10](https://github.com/MjxUpUp/Forge/commit/f3dae10f124e85d4c93cdb9f28209af526b0e2df))
+* **release:** pins 对齐步改推分支+开 PR（main 分支保护拒直推）+ 空/无 tag critical 文案分流 + ci 守卫封 step 级 permissions 盲区 (`f3dae10`)
 
 ## [1.61.2](https://github.com/MjxUpUp/Forge/compare/v1.61.1...v1.61.2) (2026-09-16)
 
 
 ### Bug Fixes
 
-* **ci:** permissions 提为 npm-verify job 级（step 级非法键，actionlint 实证整个 workflow 解析失败）+ 封守卫盲区（TestReleaseWorkflow_NoStepLevelPermissions，突变验证） ([9005291](https://github.com/MjxUpUp/Forge/commit/9005291ac87c18c28cd3f7e6617a61f35b0b2cf6))
-* **release:** 发布链三项验收修复——npm-verify 显式平台同装、发布后 pins 自动对齐、空 critical 文案分流 ([b85a0a0](https://github.com/MjxUpUp/Forge/commit/b85a0a0f32d3630122762486b96755e6a712f77b))
+* **ci:** permissions 提为 npm-verify job 级（step 级非法键，actionlint 实证整个 workflow 解析失败）+ 封守卫盲区（TestReleaseWorkflow_NoStepLevelPermissions，突变验证） (`9005291`)
+* **release:** 发布链三项验收修复——npm-verify 显式平台同装、发布后 pins 自动对齐、空 critical 文案分流 (`b85a0a0`)
 
 ## [1.61.1](https://github.com/MjxUpUp/Forge/compare/v1.61.0...v1.61.1) (2026-09-15)
 
 
 ### Bug Fixes
 
-* **hookdispatch:** doc-lint 登记 isInProcessHook 名册——修复 v1.61.0 装机 unknown hook ([a64cb6c](https://github.com/MjxUpUp/Forge/commit/a64cb6c0d80a6683245053d545f7a376c04c3bd3))
-* **hookdispatch:** doc-lint 登记 isInProcessHook——修复装机 unknown hook（验收实锤） ([880e1ad](https://github.com/MjxUpUp/Forge/commit/880e1addb7ca1e606c55069e9a9c7e45092fafba))
+* **hookdispatch:** doc-lint 登记 isInProcessHook 名册——修复 v1.61.0 装机 unknown hook (`a64cb6c`)
+* **hookdispatch:** doc-lint 登记 isInProcessHook——修复装机 unknown hook（验收实锤） (`880e1ad`)
 
 ## [1.61.0](https://github.com/MjxUpUp/Forge/compare/v1.60.0...v1.61.0) (2026-09-15)
 
 
 ### Features
 
-* **doclint:** 可读性门禁二期 P0——D8 结论位置 + D1/D2 清单二期 + 评委偏差防线 ([0115a76](https://github.com/MjxUpUp/Forge/commit/0115a76a67855dfca6bc615fbf9bcfbcf1e62f25))
-* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook ([f96ad46](https://github.com/MjxUpUp/Forge/commit/f96ad46cb3ee1ec947eecce51dbf08412d38875d))
-* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook ([0f03938](https://github.com/MjxUpUp/Forge/commit/0f03938cf33bb887dbec6e5ecc659b3c93b1651b))
+* **doclint:** 可读性门禁二期 P0——D8 结论位置 + D1/D2 清单二期 + 评委偏差防线 (`0115a76`)
+* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook (`f96ad46`)
+* **p1:** 可读性门禁二期 P1——双评落档 + Finding.Tag 聚合 + doc-lint 写时 hook (`0f03938`)
 
 
 ### Bug Fixes
 
-* **cli:** docs lint 帮助逐规则枚举（D5/D6/D7 独立可见，配对测试可断言） ([fe6bb19](https://github.com/MjxUpUp/Forge/commit/fe6bb19a999410088b55fc4f31c2db6356f90b02))
-* **doc-review:** round-2 两条 Minor 收尾——L41 枚举补结论位置、L47 压成指针句消双维护（93/100 PASS 遗留） ([c26049a](https://github.com/MjxUpUp/Forge/commit/c26049a88db4f50012265ce6a0a55bf0ce65357e))
-* **doc-review:** 独立评审 round-1 六条发现修复（89/100 PASS → 未决项清零） ([6794a0c](https://github.com/MjxUpUp/Forge/commit/6794a0c028fc86a982c207db649c9cf5b50613c4))
-* **p1:** 代码审查三条修复——SecondScore 去 omitempty（合法 0 分不丢）、co-score 越界显式拒绝、tag: 后空内容 critical 拒绝（含测试） ([c47f0c1](https://github.com/MjxUpUp/Forge/commit/c47f0c15baacb669e792b092866f4ebf4f3a30f2))
-* **review:** 代码审查 1C3M 修复——锁 pack 行重钉（verify exit 0）、看起来正常补测试、帮助断言 bullet 级+Short、v2 状态行推进 ([8c0cac9](https://github.com/MjxUpUp/Forge/commit/8c0cac962377dac84b25e9a4ed37146b9a8a070f))
+* **cli:** docs lint 帮助逐规则枚举（D5/D6/D7 独立可见，配对测试可断言） (`fe6bb19`)
+* **doc-review:** round-2 两条 Minor 收尾——L41 枚举补结论位置、L47 压成指针句消双维护（93/100 PASS 遗留） (`c26049a`)
+* **doc-review:** 独立评审 round-1 六条发现修复（89/100 PASS → 未决项清零） (`6794a0c`)
+* **p1:** 代码审查三条修复——SecondScore 去 omitempty（合法 0 分不丢）、co-score 越界显式拒绝、tag: 后空内容 critical 拒绝（含测试） (`c47f0c1`)
+* **review:** 代码审查 1C3M 修复——锁 pack 行重钉（verify exit 0）、看起来正常补测试、帮助断言 bullet 级+Short、v2 状态行推进 (`8c0cac9`)
 
 ## [1.60.0](https://github.com/MjxUpUp/Forge/compare/v1.59.1...v1.60.0) (2026-09-15)
 
 
 ### Features
 
-* **taskpipeline:** req-hygiene 接线 task-verify——补 63a9457 缺失的生产调用 ([d44a65e](https://github.com/MjxUpUp/Forge/commit/d44a65e16a9caf92ba9760169c4a4a48e14229be))
-* **taskpipeline:** unused-gate——internal/ 零引用 Go 导出升格 complete 硬前置 ([e422dc2](https://github.com/MjxUpUp/Forge/commit/e422dc213299bf8fbd976620cc67d43fdfe2d024))
+* **taskpipeline:** req-hygiene 接线 task-verify——补 63a9457 缺失的生产调用 (`d44a65e`)
+* **taskpipeline:** unused-gate——internal/ 零引用 Go 导出升格 complete 硬前置 (`e422dc2`)
 
 
 ### Bug Fixes
 
-* **ci:** deadcode 金丝雀补牙——纯报告器 exit 0，须判 stdout 非空才 fail ([a986c50](https://github.com/MjxUpUp/Forge/commit/a986c50cf212edfc3eb015e3800bcb9556c776d0))
-* **review:** 审查轮 4 项修复——逃生舱错位/词表真相源/无效测试/CI 诊断 ([d38838c](https://github.com/MjxUpUp/Forge/commit/d38838ce021cad761ec3cdffc290d88807bd23df))
-* 死代码三重放行执法补强——req-hygiene 接线 / canary 补牙 / unused-gate / 存量清扫 ([600f052](https://github.com/MjxUpUp/Forge/commit/600f052d0c55e4bcc0b2af9e2ded01ecf1925bf7))
+* **ci:** deadcode 金丝雀补牙——纯报告器 exit 0，须判 stdout 非空才 fail (`a986c50`)
+* **review:** 审查轮 4 项修复——逃生舱错位/词表真相源/无效测试/CI 诊断 (`d38838c`)
+* 死代码三重放行执法补强——req-hygiene 接线 / canary 补牙 / unused-gate / 存量清扫 (`600f052`)
 
 ## [1.59.1](https://github.com/MjxUpUp/Forge/compare/v1.59.0...v1.59.1) (2026-09-14)
 
 
 ### Bug Fixes
 
-* **compat:** EscapeEnvs 补 FORGE_REQ_HYGIENE——req-hygiene 逃生舱须同步 roster（快照面 3 守卫） ([5586af1](https://github.com/MjxUpUp/Forge/commit/5586af19cf28cae0ed96b43f29fab87a7a2cf508))
+* **compat:** EscapeEnvs 补 FORGE_REQ_HYGIENE——req-hygiene 逃生舱须同步 roster（快照面 3 守卫） (`5586af1`)
 
 ## [1.59.0](https://github.com/MjxUpUp/Forge/compare/v1.58.1...v1.59.0) (2026-09-14)
 
 
 ### Features
 
-* **taskpipeline:** 需求卫生检查（req-hygiene advisory）——方向二第一子步 ([63a9457](https://github.com/MjxUpUp/Forge/commit/63a94576a7eebb7169725e0189c9512a760415f5))
+* **taskpipeline:** 需求卫生检查（req-hygiene advisory）——方向二第一子步 (`63a9457`)
 
 ## [1.58.1](https://github.com/MjxUpUp/Forge/compare/v1.58.0...v1.58.1) (2026-09-14)
 
 
 ### Bug Fixes
 
-* **ci:** Release workflow test 前加 npm 版本可见步——TestNpmPlatformVersionsAligned 失败时一眼定位 ([eaa7518](https://github.com/MjxUpUp/Forge/commit/eaa751851fae883acd8e171140a344a969e630d5))
-* **ci:** Release workflow test 前加 npm 版本可见步——TestNpmPlatformVersionsAligned 失败时一眼定位 ([1526a7f](https://github.com/MjxUpUp/Forge/commit/1526a7f11c4017869c7c2ae7c5734dc73c370831))
+* **ci:** Release workflow test 前加 npm 版本可见步——TestNpmPlatformVersionsAligned 失败时一眼定位 (`eaa7518`)
+* **ci:** Release workflow test 前加 npm 版本可见步——TestNpmPlatformVersionsAligned 失败时一眼定位 (`1526a7f`)
 
 ## [1.58.0](https://github.com/MjxUpUp/Forge/compare/v1.57.1...v1.58.0) (2026-09-14)
 
 
 ### Features
 
-* **eval:** dead-checks v2 检查分类口径——blocking/advisory/gate/pipeline 四档判定 ([338ddb0](https://github.com/MjxUpUp/Forge/commit/338ddb05a40311ff9a5c25e2157442bfbad11ca1))
+* **eval:** dead-checks v2 检查分类口径——blocking/advisory/gate/pipeline 四档判定 (`338ddb0`)
 
 
 ### Bug Fixes
 
-* **ci:** Windows 兼容——GlobalProfile 用 filepath.Join、FrictionProbeArm shim 平台形态、latency Windows skip、forgedata profile 测试补齐 ([28dfe5f](https://github.com/MjxUpUp/Forge/commit/28dfe5fd35572004757a15d13fb8d09d309f3209))
-* **ci:** Windows 兼容三处——GlobalProfile 用 filepath.Join、FrictionProbeArm shim 平台形态、latency 测试 Windows skip；gofmt 收敛 ([4f981fe](https://github.com/MjxUpUp/Forge/commit/4f981fe72e7fb8c0319fcc610d837b716339fd6e))
+* **ci:** Windows 兼容——GlobalProfile 用 filepath.Join、FrictionProbeArm shim 平台形态、latency Windows skip、forgedata profile 测试补齐 (`28dfe5f`)
+* **ci:** Windows 兼容三处——GlobalProfile 用 filepath.Join、FrictionProbeArm shim 平台形态、latency 测试 Windows skip；gofmt 收敛 (`4f981fe`)
 
 ## [1.57.1](https://github.com/MjxUpUp/Forge/compare/v1.57.0...v1.57.1) (2026-09-13)
 
 
 ### Bug Fixes
 
-* **test:** 非 forge 场景 helper 入口 cwd 重锚——前序测试删除 chdir 目录后 getwd ENOENT 贯穿（CI 实证 hook_test.go:493/527） ([83d55ff](https://github.com/MjxUpUp/Forge/commit/83d55ff50d634d0dcb1345e11cd7c591e61d4589))
+* **test:** 非 forge 场景 helper 入口 cwd 重锚——前序测试删除 chdir 目录后 getwd ENOENT 贯穿（CI 实证 hook_test.go:493/527） (`83d55ff`)
 
 ## [1.57.0](https://github.com/MjxUpUp/Forge/compare/v1.56.7...v1.57.0) (2026-09-13)
 
 
 ### Features
 
-* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 ([12a7752](https://github.com/MjxUpUp/Forge/commit/12a775276182249fa659e76afc69a14dbf3c0b02))
-* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 ([fa330b6](https://github.com/MjxUpUp/Forge/commit/fa330b698285248be88de8987c4a14ac860f1944))
-* **hooks:** hazard-guard 语义分词层——GuardFall 五类绕过补漏（W1 门禁可证化） ([cfe7835](https://github.com/MjxUpUp/Forge/commit/cfe7835618e1aaa65b97be86a5dae6b85ff0e698))
+* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 (`12a7752`)
+* **cli,hooks:** W0 hook 瘦身三件套——档位/耗时预算门/死检查报告 (`fa330b6`)
+* **hooks:** hazard-guard 语义分词层——GuardFall 五类绕过补漏（W1 门禁可证化） (`cfe7835`)
 
 ## [1.56.7](https://github.com/MjxUpUp/Forge/compare/v1.56.6...v1.56.7) (2026-09-11)
 
 
 ### Bug Fixes
 
-* **ci:** npm-verify 重试改无条件退避 8×45s——v1.56.6 实录证伪两处设计假设 ([06cab27](https://github.com/MjxUpUp/Forge/commit/06cab27d6077bce1571e159613f4f6f7cb85d1cf))
-* **ci:** 评审回应 NEEDS-FIX 两条 Medium——守卫钉住「无条件」属性与超时预算 ([33bee69](https://github.com/MjxUpUp/Forge/commit/33bee69fb17256cdb37ce1a18800b47767becd78))
+* **ci:** npm-verify 重试改无条件退避 8×45s——v1.56.6 实录证伪两处设计假设 (`06cab27`)
+* **ci:** 评审回应 NEEDS-FIX 两条 Medium——守卫钉住「无条件」属性与超时预算 (`33bee69`)
 
 ## [1.56.6](https://github.com/MjxUpUp/Forge/compare/v1.56.5...v1.56.6) (2026-09-11)
 
 
 ### Bug Fixes
 
-* **ci:** npm-verify 加 registry 传播竞态退避——官方 API 核实后再重试 ([f8f3027](https://github.com/MjxUpUp/Forge/commit/f8f302793c735fc72aedcc422f6f8ca60ef37777))
-* **ci:** 评审回应三条 Minor——SIGPIPE 安全 grep/守卫锚防掩盖分支/版本双判据 ([fead8cf](https://github.com/MjxUpUp/Forge/commit/fead8cf6d02ed720d323b5cec50b893a55e78507))
+* **ci:** npm-verify 加 registry 传播竞态退避——官方 API 核实后再重试 (`f8f3027`)
+* **ci:** 评审回应三条 Minor——SIGPIPE 安全 grep/守卫锚防掩盖分支/版本双判据 (`fead8cf`)
 
 ## [1.56.5](https://github.com/MjxUpUp/Forge/compare/v1.56.4...v1.56.5) (2026-09-11)
 
 
 ### Bug Fixes
 
-* **clitask:** C.3 stderr 兜底——stdout 非 TTY 时 BLOCKED/next 行镜像 stderr ([3d703a7](https://github.com/MjxUpUp/Forge/commit/3d703a757265af3d6340573169e114e56ba150bb))
-* **clitask:** C.3 评审回应——镜像判定抽纯函数 + TTY/silent 漏测补齐 + 基线文档 Critical 修复 ([259ef08](https://github.com/MjxUpUp/Forge/commit/259ef08e9a512fca6e386f656880547817202d6d))
+* **clitask:** C.3 stderr 兜底——stdout 非 TTY 时 BLOCKED/next 行镜像 stderr (`3d703a7`)
+* **clitask:** C.3 评审回应——镜像判定抽纯函数 + TTY/silent 漏测补齐 + 基线文档 Critical 修复 (`259ef08`)
 
 ## [1.56.4](https://github.com/MjxUpUp/Forge/compare/v1.56.3...v1.56.4) (2026-09-11)
 
 
 ### Bug Fixes
 
-* **npm:** pins 对齐 1.56.3（release-please 不 bump 钉的根治方案——B4 批加 extra-files 更新器） ([ebeaa70](https://github.com/MjxUpUp/Forge/commit/ebeaa708b2e24b58ae8db988f6ffa0083d03fe1a))
+* **npm:** pins 对齐 1.56.3（release-please 不 bump 钉的根治方案——B4 批加 extra-files 更新器） (`ebeaa70`)
 
 ## [1.56.3](https://github.com/MjxUpUp/Forge/compare/v1.56.2...v1.56.3) (2026-09-11)
 
 
 ### Bug Fixes
 
-* **test:** 版本对齐守卫接受 release-please 瞬态——钉在当前或前一版且平台包对齐主包即合法（1.56.0/1.56.1/1.56.2 三轮发版实证的系统性缺口：release-please 不 bump optionalDependencies 钉） ([f5eda03](https://github.com/MjxUpUp/Forge/commit/f5eda030b0690b138613bdd27949f99a67a1d856))
+* **test:** 版本对齐守卫接受 release-please 瞬态——钉在当前或前一版且平台包对齐主包即合法（1.56.0/1.56.1/1.56.2 三轮发版实证的系统性缺口：release-please 不 bump optionalDependencies 钉） (`f5eda03`)
 
 ## [1.56.2](https://github.com/MjxUpUp/Forge/compare/v1.56.1...v1.56.2) (2026-09-11)
 
 
 ### Bug Fixes
 
-* **npm:** optionalDependencies 平台包钉随 1.56.1 对齐（release-please 不 bump 钉的系统性缺口——测试放宽与 extra-files 补钉入 B4 批） ([cad038c](https://github.com/MjxUpUp/Forge/commit/cad038c653a7921977e926062880333a46f553ce))
+* **npm:** optionalDependencies 平台包钉随 1.56.1 对齐（release-please 不 bump 钉的系统性缺口——测试放宽与 extra-files 补钉入 B4 批） (`cad038c`)
 
 ## [1.56.1](https://github.com/MjxUpUp/Forge/compare/v1.56.0...v1.56.1) (2026-09-11)
 
 
 ### Bug Fixes
 
-* **npm:** optionalDependencies 平台包钉随 1.56.0 对齐——release-please 只 bump 主版本号不 bump 钉 ([5b9598c](https://github.com/MjxUpUp/Forge/commit/5b9598c6e321bc246767e8c48e43d926fb394301))
+* **npm:** optionalDependencies 平台包钉随 1.56.0 对齐——release-please 只 bump 主版本号不 bump 钉 (`5b9598c`)
 
 ## [1.56.0](https://github.com/MjxUpUp/Forge/compare/v1.55.1...v1.56.0) (2026-09-11)
 
 
 ### Features
 
-* **eval:** forge eval harness-audit——A-G 修复的可复算度量 + 门禁命令形态分类器（设计 B1/M） ([74d74cf](https://github.com/MjxUpUp/Forge/commit/74d74cf3b6066e86e0d593a49c2011a608570de6))
-* **hooks:** C gate-cmd-form advisory hook + F.1 解释器 heredoc 数据上下文 + F.2a confirm 链式分离 + F.2b advisory（设计 B2 批） ([8f8ddbe](https://github.com/MjxUpUp/Forge/commit/8f8ddbedad0e227839f8ed7d325f8809d59bc9a6))
-* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 ([01a46d9](https://github.com/MjxUpUp/Forge/commit/01a46d935ab1cd32b8bded9b2719feeea5a0aed8))
-* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 ([461ef57](https://github.com/MjxUpUp/Forge/commit/461ef5795de1154ce1252df22f635cea91784d96))
-* **skilltrigger:** A 通道重构——决策点加载/动作点内联 + 输出失败门；B next 推送化 ([c875b8a](https://github.com/MjxUpUp/Forge/commit/c875b8abab1f22052ef9d8f233a8a88c5861e7cc))
-* **taskpipeline,skillsqa:** G.1 覆盖预告 + G.2 注释清理抑制 + D refs_critical/R19/步骤 0（设计 B2-3+B3 批） ([3811583](https://github.com/MjxUpUp/Forge/commit/38115831154dd994b2f1d229978a432a0060a817))
+* **eval:** forge eval harness-audit——A-G 修复的可复算度量 + 门禁命令形态分类器（设计 B1/M） (`74d74cf`)
+* **hooks:** C gate-cmd-form advisory hook + F.1 解释器 heredoc 数据上下文 + F.2a confirm 链式分离 + F.2b advisory（设计 B2 批） (`8f8ddbe`)
+* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 (`01a46d9`)
+* **skills:** 演化纪律三缺口落地——事前成功度量门 + deferred 承诺三要素 + 不混车审查项 (`461ef57`)
+* **skilltrigger:** A 通道重构——决策点加载/动作点内联 + 输出失败门；B next 推送化 (`c875b8a`)
+* **taskpipeline,skillsqa:** G.1 覆盖预告 + G.2 注释清理抑制 + D refs_critical/R19/步骤 0（设计 B2-3+B3 批） (`3811583`)
 
 
 ### Bug Fixes
 
-* **attribution:** code-review 回应——同口径读方补齐 + 探针覆盖全部 hook 写点 + hazard 去重加会话维度 ([c6db533](https://github.com/MjxUpUp/Forge/commit/c6db533dc1c8f1c70cebad9850c38662740c093c))
-* **attribution:** E 完成即冻结归因 + F.3 hazard 事件去重（设计 B0 批） ([35b1cdb](https://github.com/MjxUpUp/Forge/commit/35b1cdb401a5000bedeb389e30811d31a51f4ac3))
-* **attribution:** 空 session 不得被 sanitize 成占位符——runHazardLog 与 hook 主记录点直用入口归一值 ([9221bb8](https://github.com/MjxUpUp/Forge/commit/9221bb8aa9ea16233fbfd3fc18c54ab567077aba))
-* **eval:** B1 双轨评审回应——基线自证 + 分类器绕过面收窄 + E1/F2/A3 口径与设计对齐 ([5fd2642](https://github.com/MjxUpUp/Forge/commit/5fd26426f3386ab3fcc0c7a26e07295546bd3e07))
-* **eval:** 确认轮两小项——loader_warnings 守卫反转为真断言 + E1 泄漏拆无 session/他会话两字段 ([057ec20](https://github.com/MjxUpUp/Forge/commit/057ec207ae692995779b8339ac06c731511e95ac))
-* **hooks:** B2-2 双轨评审回应——hook 分派接线 + F.1 裸 tag 主路径 + F.2a hook 层执法 + recall 补全 ([c937344](https://github.com/MjxUpUp/Forge/commit/c937344cc29fe1179044bbea1cc6f0b7e924e6c4))
-* **skills:** decisions.md 补入 pack 镜像 + compat 快照重钉 ([563d0b5](https://github.com/MjxUpUp/Forge/commit/563d0b5d9d50dd157baa2e0c8ac7e028cbe3834d))
-* **skilltrigger:** B2-1 双轨评审回应——抑制计数接线/anyInline 聚合/编译器失败签名/B1 占位符口径等 ([0d64789](https://github.com/MjxUpUp/Forge/commit/0d64789b2bd51de6bae09341973a102d1cd9788b))
-* **skilltrigger:** 确认轮 9 条新发现——anyInline 载荷侧/go 编译签名/词边界/夹具补齐 ([4d61a30](https://github.com/MjxUpUp/Forge/commit/4d61a30c4fbf3740d1c6aa6bad4dc55aa57e474b))
-* **skilltrigger:** 终审轮 3 条——next_line_test 注释如实（complete 面未覆盖）、decisions.md 误抄两树修正、中文失败签名恢复全词（测试失败|编译失败） ([d1bd632](https://github.com/MjxUpUp/Forge/commit/d1bd632fc1602d9e1360c5ffa399e5bad6b3374e))
-* **test:** next-line 测试夹具补 git identity——CI 无全局 git config 时 commit exit 128 ([896ac0b](https://github.com/MjxUpUp/Forge/commit/896ac0b48c46e7a54123e55c9461791daf40583a))
-* **test:** 三包 TestMain 隔离 FORGE_DATA_HOME——根治孤儿目录泄写 ([ee03257](https://github.com/MjxUpUp/Forge/commit/ee032571410646a04338cf3c75514dd5163e4dd6))
-* **test:** 审查回应——TestMain 显式清理替换 defer 死代码 ([1b06575](https://github.com/MjxUpUp/Forge/commit/1b0657594595380040d16e4c934a78b6a1083d13))
+* **attribution:** code-review 回应——同口径读方补齐 + 探针覆盖全部 hook 写点 + hazard 去重加会话维度 (`c6db533`)
+* **attribution:** E 完成即冻结归因 + F.3 hazard 事件去重（设计 B0 批） (`35b1cdb`)
+* **attribution:** 空 session 不得被 sanitize 成占位符——runHazardLog 与 hook 主记录点直用入口归一值 (`9221bb8`)
+* **eval:** B1 双轨评审回应——基线自证 + 分类器绕过面收窄 + E1/F2/A3 口径与设计对齐 (`5fd2642`)
+* **eval:** 确认轮两小项——loader_warnings 守卫反转为真断言 + E1 泄漏拆无 session/他会话两字段 (`057ec20`)
+* **hooks:** B2-2 双轨评审回应——hook 分派接线 + F.1 裸 tag 主路径 + F.2a hook 层执法 + recall 补全 (`c937344`)
+* **skills:** decisions.md 补入 pack 镜像 + compat 快照重钉 (`563d0b5`)
+* **skilltrigger:** B2-1 双轨评审回应——抑制计数接线/anyInline 聚合/编译器失败签名/B1 占位符口径等 (`0d64789`)
+* **skilltrigger:** 确认轮 9 条新发现——anyInline 载荷侧/go 编译签名/词边界/夹具补齐 (`4d61a30`)
+* **skilltrigger:** 终审轮 3 条——next_line_test 注释如实（complete 面未覆盖）、decisions.md 误抄两树修正、中文失败签名恢复全词（测试失败|编译失败） (`d1bd632`)
+* **test:** next-line 测试夹具补 git identity——CI 无全局 git config 时 commit exit 128 (`896ac0b`)
+* **test:** 三包 TestMain 隔离 FORGE_DATA_HOME——根治孤儿目录泄写 (`ee03257`)
+* **test:** 审查回应——TestMain 显式清理替换 defer 死代码 (`1b06575`)
 
 ## [1.55.1](https://github.com/MjxUpUp/Forge/compare/v1.55.0...v1.55.1) (2026-09-09)
 
 
 ### Bug Fixes
 
-* **taskpipeline:** task-verify 增零验收 advisory——重任务证据自述化的开工点拦截 ([5290057](https://github.com/MjxUpUp/Forge/commit/5290057473a1acb2b7d7fc068a58bea2bf187b9e))
+* **taskpipeline:** task-verify 增零验收 advisory——重任务证据自述化的开工点拦截 (`5290057`)
 
 ## [1.55.0](https://github.com/MjxUpUp/Forge/compare/v1.54.0...v1.55.0) (2026-09-09)
 
 
 ### Features
 
-* **act:** 证据式 ack——forge act retro-done 落 dispositions，已回顾 nudge 退出面板告警 ([f3f84df](https://github.com/MjxUpUp/Forge/commit/f3f84dfbce64772b983a265fd4b78141ce6e294c))
+* **act:** 证据式 ack——forge act retro-done 落 dispositions，已回顾 nudge 退出面板告警 (`f3f84df`)
 
 
 ### Bug Fixes
 
-* **dashboard:** 告警分级——alerts 只数可行动 nudge，降档噪音退出人面通道 ([ceee1ba](https://github.com/MjxUpUp/Forge/commit/ceee1bac54e695795fcf198a06745e5be51d7887))
-* **skills:** R18 修复——5.5 步去 forge 化，retro-done 命令移至 Directive 生成面 ([dfa28d5](https://github.com/MjxUpUp/Forge/commit/dfa28d5e80f17633128d68684d0dc807a18520ac))
+* **dashboard:** 告警分级——alerts 只数可行动 nudge，降档噪音退出人面通道 (`ceee1ba`)
+* **skills:** R18 修复——5.5 步去 forge 化，retro-done 命令移至 Directive 生成面 (`dfa28d5`)
 
 ## [1.54.0](https://github.com/MjxUpUp/Forge/compare/v1.53.0...v1.54.0) (2026-09-08)
 
 
 ### Features
 
-* **loopedge:** 审查回环回边——轮次预算/复发检测/exhausted 升级人工（G2 落地） ([e13e1b6](https://github.com/MjxUpUp/Forge/commit/e13e1b695936970de5151e16f760ed5ee297ffdd))
+* **loopedge:** 审查回环回边——轮次预算/复发检测/exhausted 升级人工（G2 落地） (`e13e1b6`)
 
 
 ### Bug Fixes
 
-* **canary:** S1011——吸收 main 新增 artifactdrill 用例的循环 append(main 无金丝雀门禁带入,合并后金丝雀抓住) ([47e0881](https://github.com/MjxUpUp/Forge/commit/47e088120115d9a1a156a74923cd8f581e1e4c8b))
-* **golden:** artifact-chain 用例 Windows 可移植——{forge} 双引号包裹防 sh 反斜杠转义 ([8e28c24](https://github.com/MjxUpUp/Forge/commit/8e28c24ec91bd9ee1d0d1309781a3a48ab92a92f))
-* **test:** 合并 main 的语义消解——TestMain 单点化 + 管道捕获并发排水利族修复 ([392147f](https://github.com/MjxUpUp/Forge/commit/392147f73ded76bcef7e7b747bd16edbc766760a))
-* **env:** 环境性测试失败类根治——保留根守卫（registry.Add 拒绝注册 home/系统临时根）+ 测试密闭默认化（hookdispatch TestMain 隔离）+ `forge registry remove` 具名出口 ([8f8534e](https://github.com/MjxUpUp/Forge/commit/8f8534ed96da799d48b9e70f746edde0beffff0f))
+* **canary:** S1011——吸收 main 新增 artifactdrill 用例的循环 append(main 无金丝雀门禁带入,合并后金丝雀抓住) (`47e0881`)
+* **golden:** artifact-chain 用例 Windows 可移植——{forge} 双引号包裹防 sh 反斜杠转义 (`8e28c24`)
+* **test:** 合并 main 的语义消解——TestMain 单点化 + 管道捕获并发排水利族修复 (`392147f`)
+* **env:** 环境性测试失败类根治——保留根守卫（registry.Add 拒绝注册 home/系统临时根）+ 测试密闭默认化（hookdispatch TestMain 隔离）+ `forge registry remove` 具名出口 (`8f8534e`)
 
 ## [1.53.0](https://github.com/MjxUpUp/Forge/compare/v1.52.0...v1.53.0) (2026-09-08)
 
 
 ### Features
 
-* **artifact-drill:** forge eval artifact-drill——产物链行为级演练沉淀 + 发版链路接线 ([963db17](https://github.com/MjxUpUp/Forge/commit/963db177747a504d058b892fe452818a24e4b817))
+* **artifact-drill:** forge eval artifact-drill——产物链行为级演练沉淀 + 发版链路接线 (`963db17`)
 
 
 ### Bug Fixes
 
-* **artifact-drill:** CI 守卫修正——release needs 链守卫纳入 drill 位 + raw string 字面 \n 改写 ([6b61df5](https://github.com/MjxUpUp/Forge/commit/6b61df5808f82564996ea6eed8a9fde159b3d3a7))
+* **artifact-drill:** CI 守卫修正——release needs 链守卫纳入 drill 位 + raw string 字面 \n 改写 (`6b61df5`)
 
 ## [1.52.0](https://github.com/MjxUpUp/Forge/compare/v1.51.0...v1.52.0) (2026-09-07)
 
 
 ### Features
 
-* **artifact-chain:** 产物链工作流化——L6 接线 + schema.yaml 分档门禁 + spec→acceptance 提取 ([43b9467](https://github.com/MjxUpUp/Forge/commit/43b94679f635c18ee2dfae683585f89e0d72e3de))
-* **leverage-p0:** 六杠杆点 P0 批次——L5 命令面冻结仪表 + L1 楔子演练 + L2 spec-as-gate v2 数据形状 ([3af1301](https://github.com/MjxUpUp/Forge/commit/3af1301f4be515f8d1747143a2e2d05f4e2e6323))
+* **artifact-chain:** 产物链工作流化——L6 接线 + schema.yaml 分档门禁 + spec→acceptance 提取 (`43b9467`)
+* **leverage-p0:** 六杠杆点 P0 批次——L5 命令面冻结仪表 + L1 楔子演练 + L2 spec-as-gate v2 数据形状 (`3af1301`)
 
 
 ### Bug Fixes
 
-* **artifact-chain:** 复核 P2 修正——审批作废双侧删除防 ScoreTask 回写复活 + fail-open 补审计行 + escape 全段跳过语义 ([f0d4bd5](https://github.com/MjxUpUp/Forge/commit/f0d4bd53df6dcaefdd8843d524c7d39d81adc8a2))
-* **artifact-chain:** 独立审查修正——P0 flags 未注册 + P1 审批误杀/路径穿越 ([fa50594](https://github.com/MjxUpUp/Forge/commit/fa5059403189a9725771e6ba8da999339fe71a0e))
+* **artifact-chain:** 复核 P2 修正——审批作废双侧删除防 ScoreTask 回写复活 + fail-open 补审计行 + escape 全段跳过语义 (`f0d4bd5`)
+* **artifact-chain:** 独立审查修正——P0 flags 未注册 + P1 审批误杀/路径穿越 (`fa50594`)
 
 ## [1.51.0](https://github.com/MjxUpUp/Forge/compare/v1.50.0...v1.51.0) (2026-09-06)
 
 
 ### Features
 
-* **focus-b1:** git/PR 收口 v1——forge gate push + pre-push 钩子（方向 A P0） ([28fda45](https://github.com/MjxUpUp/Forge/commit/28fda45eb4d1711fd2c996e91d3f5c1ab32f9bc0))
-* **focus-b1l2:** 设计族拆包 + 教科书瘦身 + 死机制清理（方向 A 内容线） ([96e0182](https://github.com/MjxUpUp/Forge/commit/96e018216130a09fd2ea56aa6367f0f90006077a))
-* **focus-b1:** OTel GenAI exporter——checklog→OTLP/JSON 导出器（方向 D1） ([5f65b8c](https://github.com/MjxUpUp/Forge/commit/5f65b8c03ac34aafcddc875fe4213aecc79dd58d))
-* **focus-b1:** 自报一致性门禁 + 监控分段落地（方向 B P0） ([46262db](https://github.com/MjxUpUp/Forge/commit/46262db8cc8d7b7e192d3988c33ac201aede39bc))
-* **focus-b2cde:** issue-tracker 镜像 + task watchdog + eval 升级；B3 商业化设计（方向 C/E/F） ([b967906](https://github.com/MjxUpUp/Forge/commit/b96790609f8a584be06fe3cb2378ccf64c8645ea))
-* **focus-b2:** held-out gap 门禁 + safe-halt 语义（方向 B） ([8444093](https://github.com/MjxUpUp/Forge/commit/84440931a262982b308bdb5f49f01435b26a60d3))
-* **focus-d2:** 标准卡位补齐——AAT mapper + skills inventory + 合规对照（P1 D2，批次切分漏项） ([9826c58](https://github.com/MjxUpUp/Forge/commit/9826c58e241f2e9058e612d2ec2383de235f76fb))
-* **mechanism-p012:** P0 版本纪律 + P1-2/3 逃生舱升级与承诺表 ([e544c4a](https://github.com/MjxUpUp/Forge/commit/e544c4acd996d275cb5925f2a027eaf5c8ac4d28))
-* **mechanism-p012:** P1-1 compat 工件 + P2 指纹分流与生产者声明 ([f5c05e5](https://github.com/MjxUpUp/Forge/commit/f5c05e5e2aebf180d35bc6671ed532d71bb0c952))
+* **focus-b1:** git/PR 收口 v1——forge gate push + pre-push 钩子（方向 A P0） (`28fda45`)
+* **focus-b1l2:** 设计族拆包 + 教科书瘦身 + 死机制清理（方向 A 内容线） (`96e0182`)
+* **focus-b1:** OTel GenAI exporter——checklog→OTLP/JSON 导出器（方向 D1） (`5f65b8c`)
+* **focus-b1:** 自报一致性门禁 + 监控分段落地（方向 B P0） (`46262db`)
+* **focus-b2cde:** issue-tracker 镜像 + task watchdog + eval 升级；B3 商业化设计（方向 C/E/F） (`b967906`)
+* **focus-b2:** held-out gap 门禁 + safe-halt 语义（方向 B） (`8444093`)
+* **focus-d2:** 标准卡位补齐——AAT mapper + skills inventory + 合规对照（P1 D2，批次切分漏项） (`9826c58`)
+* **mechanism-p012:** P0 版本纪律 + P1-2/3 逃生舱升级与承诺表 (`e544c4a`)
+* **mechanism-p012:** P1-1 compat 工件 + P2 指纹分流与生产者声明 (`f5c05e5`)
 
 
 ### Bug Fixes
 
-* **ci:** watchdog 节流测试跨小时边界稳定化 + pluginpack 多 pack marketplace 生成器 ([a1938a1](https://github.com/MjxUpUp/Forge/commit/a1938a1b0594f03a08d1e0751c3348861a80f293))
-* **dead-code-sweep:** pluginpack README 守卫断言随 suggest 出清更新（forge off --commit 替位） ([9503796](https://github.com/MjxUpUp/Forge/commit/9503796706b84cd1901e7fcb244a089a0ba45178))
-* **dead-code-sweep:** 审查修复——marketplace 条目恢复 + 残留引用出清 + 承诺表裁决记录 ([fb8b53a](https://github.com/MjxUpUp/Forge/commit/fb8b53a3161b3a00b1838c6579da5a1f40559e5b))
-* **focus-b1l2:** skill-decisions 门禁 pack 树适配 + L2 回检发现修正 ([f285d26](https://github.com/MjxUpUp/Forge/commit/f285d26c0c8f07ee0dae77d448b4d7b3710ca970))
-* **focus-b1:** 命令树补全——gate hooks install 子命令化 + mirror 挂 github 子命令 ([5c278c2](https://github.com/MjxUpUp/Forge/commit/5c278c2b5a779d6de5b00e74ca6758ed81322fd5))
-* **focus-b1:** 复审轮修复——mirror 持久化真修 + heldout complete 路径留痕 + 覆盖缺口 ([714df36](https://github.com/MjxUpUp/Forge/commit/714df3665dde127bae23acd29ea83198803c4ab3))
-* **focus-b1:** 对抗审查修复——blocker 全清 + should-fix 4 项 + notes 3 项 ([f04ee36](https://github.com/MjxUpUp/Forge/commit/f04ee362ae3caf246b1403c0ad128b1a3f7b52c4))
-* **focus-d2:** 审查修复——exit 2 契约 + 复合键 + 根解析 + rune 截断 + 文档诚实化 ([1061315](https://github.com/MjxUpUp/Forge/commit/1061315842b10e66d9a54658d850a4c6c244fa0f))
-* **hazard:** halt release 文案语病——解锁前提表述修正 ([bd8fba9](https://github.com/MjxUpUp/Forge/commit/bd8fba9d5069bdcaa5da717e2b4302dd022f02d9))
-* **mechanism-p012:** 复审轮修复——AllCheckNames 守卫去虚设 + schema 种子真填满 + 文档诚实注记 ([d927f45](https://github.com/MjxUpUp/Forge/commit/d927f45dfd0fe3e7c1f983c2e5b06d7d64fc7732))
-* **mechanism-p012:** 对抗审查修复——blocker + 5 项 should-fix ([e24aa54](https://github.com/MjxUpUp/Forge/commit/e24aa54cab2e180397008415c20707d32f4e4bc2))
+* **ci:** watchdog 节流测试跨小时边界稳定化 + pluginpack 多 pack marketplace 生成器 (`a1938a1`)
+* **dead-code-sweep:** pluginpack README 守卫断言随 suggest 出清更新（forge off --commit 替位） (`9503796`)
+* **dead-code-sweep:** 审查修复——marketplace 条目恢复 + 残留引用出清 + 承诺表裁决记录 (`fb8b53a`)
+* **focus-b1l2:** skill-decisions 门禁 pack 树适配 + L2 回检发现修正 (`f285d26`)
+* **focus-b1:** 命令树补全——gate hooks install 子命令化 + mirror 挂 github 子命令 (`5c278c2`)
+* **focus-b1:** 复审轮修复——mirror 持久化真修 + heldout complete 路径留痕 + 覆盖缺口 (`714df36`)
+* **focus-b1:** 对抗审查修复——blocker 全清 + should-fix 4 项 + notes 3 项 (`f04ee36`)
+* **focus-d2:** 审查修复——exit 2 契约 + 复合键 + 根解析 + rune 截断 + 文档诚实化 (`1061315`)
+* **hazard:** halt release 文案语病——解锁前提表述修正 (`bd8fba9`)
+* **mechanism-p012:** 复审轮修复——AllCheckNames 守卫去虚设 + schema 种子真填满 + 文档诚实注记 (`d927f45`)
+* **mechanism-p012:** 对抗审查修复——blocker + 5 项 should-fix (`e24aa54`)
 
 ## [1.50.0](https://github.com/MjxUpUp/Forge/compare/v1.49.0...v1.50.0) (2026-09-04)
 
 
 ### Features
 
-* **eval:** Forge 自评测体系 P0-P4 落地——forge eval 命令族 + internal/evalkit 双轨评测栈 ([bbfa97a](https://github.com/MjxUpUp/Forge/commit/bbfa97a35af294055d49a8e9ff1e0cdae74d0606))
-* **eval:** 爬坡项落地——两 trap 洞闭环 + 历史反哺 golden + judge-audit 首轮 + docker 首跑 ([9563843](https://github.com/MjxUpUp/Forge/commit/95638433bd8fa977e5c9c2fca866fe5d76d7c56e))
-* **eval:** 补齐设计量纲——golden 三门禁 12 例 + 接续演练 3 条 + Terminal-Bench 冻结 manifest 适配器 ([5c6db1a](https://github.com/MjxUpUp/Forge/commit/5c6db1a5dd522918533f40f35df99b6a6d53619e))
-* **eval:** 评测可见性与触发点接线——Pulse 看板事件 + status 健康行 + release-readiness R6 ([46fd466](https://github.com/MjxUpUp/Forge/commit/46fd466ac6ce855fdd5261867c9c974c40702508))
+* **eval:** Forge 自评测体系 P0-P4 落地——forge eval 命令族 + internal/evalkit 双轨评测栈 (`bbfa97a`)
+* **eval:** 爬坡项落地——两 trap 洞闭环 + 历史反哺 golden + judge-audit 首轮 + docker 首跑 (`9563843`)
+* **eval:** 补齐设计量纲——golden 三门禁 12 例 + 接续演练 3 条 + Terminal-Bench 冻结 manifest 适配器 (`5c6db1a`)
+* **eval:** 评测可见性与触发点接线——Pulse 看板事件 + status 健康行 + release-readiness R6 (`46fd466`)
 
 
 ### Bug Fixes
 
-* **eval:** golden e2e 断言跨平台化（真正落地——上一轮 replace 静默未生效被 CI 抓回） ([4549711](https://github.com/MjxUpUp/Forge/commit/4549711c9d5044276042e1ffb3fb5b3c6234fba9))
-* **eval:** Windows CI 第二轮——golden 平台跳过机制 + e2e 断言跨平台化 + 词汇表补形态 ([6a324b4](https://github.com/MjxUpUp/Forge/commit/6a324b4ccc05fb44f966fb72b0f3d07b38f57b7d))
-* **eval:** Windows 三平台兼容——假二进制双形态 + 权限检查 GOOS 感知 + 测试去 sh 化 ([f829508](https://github.com/MjxUpUp/Forge/commit/f82950853bece322840ce1095263ae5f69564bd3))
-* **eval:** 两项审查遗留修复——混合 manifest 沙箱标签任务级粒度 + {dataDir} 硬报错 ([ccd58ad](https://github.com/MjxUpUp/Forge/commit/ccd58adba8ea04f5c669d52b2aff67daa6d0fc3b))
-* **eval:** 复审残留清理 + review 盖章（对抗审查闭环） ([b8c229c](https://github.com/MjxUpUp/Forge/commit/b8c229c347735d23e5a6ffe0cb8151d9598423c4))
-* **eval:** 对抗性审查修复——C1-C3 全修 + I1-I8 全修 + Minor 挑修 ([94bec29](https://github.com/MjxUpUp/Forge/commit/94bec2931270e94510f9c1e04a8f2ce7bf89c84d))
+* **eval:** golden e2e 断言跨平台化（真正落地——上一轮 replace 静默未生效被 CI 抓回） (`4549711`)
+* **eval:** Windows CI 第二轮——golden 平台跳过机制 + e2e 断言跨平台化 + 词汇表补形态 (`6a324b4`)
+* **eval:** Windows 三平台兼容——假二进制双形态 + 权限检查 GOOS 感知 + 测试去 sh 化 (`f829508`)
+* **eval:** 两项审查遗留修复——混合 manifest 沙箱标签任务级粒度 + {dataDir} 硬报错 (`ccd58ad`)
+* **eval:** 复审残留清理 + review 盖章（对抗审查闭环） (`b8c229c`)
+* **eval:** 对抗性审查修复——C1-C3 全修 + I1-I8 全修 + Minor 挑修 (`94bec29`)
 
 ## [1.49.0](https://github.com/MjxUpUp/Forge/compare/v1.48.1...v1.49.0) (2026-09-02)
 
@@ -1062,175 +1062,175 @@
 
 ### Features
 
-* **policy:** Project Policy Layer P1——按项目退出/恢复接管（forge off/on） ([6d26e5a](https://github.com/MjxUpUp/Forge/commit/6d26e5aab6b74ca5caf37b32bd89694c5efeecb7))
-* **policy:** Project Policy Layer P2-P4——默认 ask 翻转 + 全局通道感知 + 外来 harness 让位 + 注册表写锁 ([1c6230d](https://github.com/MjxUpUp/Forge/commit/1c6230d46fb2e543319b94cb4bfc5ab15827d0a5))
+* **policy:** Project Policy Layer P1——按项目退出/恢复接管（forge off/on） (`6d26e5a`)
+* **policy:** Project Policy Layer P2-P4——默认 ask 翻转 + 全局通道感知 + 外来 harness 让位 + 注册表写锁 (`1c6230d`)
 
 
 ### Bug Fixes
 
-* **policy:** forge policy state 对 managed 打印字面值——StatusManaged 空串的显示层映射 ([4ff41d0](https://github.com/MjxUpUp/Forge/commit/4ff41d0cb924bb49ba9baa9b8f8b42c96be84bc0))
-* **policy:** plugin README 退出文案改走生成器单一真相源——资产源 + 新二进制重生成 ([5068806](https://github.com/MjxUpUp/Forge/commit/5068806420544e7627cb449fc890d23ec012cd88))
+* **policy:** forge policy state 对 managed 打印字面值——StatusManaged 空串的显示层映射 (`4ff41d0`)
+* **policy:** plugin README 退出文案改走生成器单一真相源——资产源 + 新二进制重生成 (`5068806`)
 
 ## [1.48.1](https://github.com/MjxUpUp/Forge/compare/v1.48.0...v1.48.1) (2026-09-01)
 
 
 ### Bug Fixes
 
-* **attribution:** porcelain 测试期望改正斜杠字面量（windows CI 实证） ([#38](https://github.com/MjxUpUp/Forge/issues/38)) ([f325d78](https://github.com/MjxUpUp/Forge/commit/f325d7840ce58b5b9ef842e5781f04a4419b4bc6))
-* **review:** A1 补齐收尾——孤儿 gitPorcelain 删除 + 现场过滤测试随领域迁 taskpipeline ([85e78c5](https://github.com/MjxUpUp/Forge/commit/85e78c5eeb329c0475dcdbc72eba6e513a9de07e))
-* **review:** clitask 迁移双轨审查收口——接缝兜底与注释/死链出清 ([f351094](https://github.com/MjxUpUp/Forge/commit/f351094c65bc443bc9f9272d54b3cacc67610014))
-* **review:** hookdispatch 双轨审查 3 建议收口 ([bc6da60](https://github.com/MjxUpUp/Forge/commit/bc6da609229dd3d9e274fcdc9a06e9385e9a44be))
-* **review:** tasktypes 下沉审查收口——3 项装饰项 ([a1ec456](https://github.com/MjxUpUp/Forge/commit/a1ec4565b7857c98df64180006b0531b048ee079))
-* **review:** 任务下沉审查 5 项收口 ([eae19f4](https://github.com/MjxUpUp/Forge/commit/eae19f48c1c8660a45b214b4b01ad856c615cbec))
-* **review:** 双轨审查收口——注释残留出清与死常量裁决 ([f367d4f](https://github.com/MjxUpUp/Forge/commit/f367d4f0ca4e91eb249272d37e41613255cbddb3))
-* **review:** 清扫任务双轨审查收口——4 项 LOW 全解 ([948d473](https://github.com/MjxUpUp/Forge/commit/948d473cc3478de76a9c3bca400fb8bacb1028b3))
-* **review:** 迁移审查收口——Version seam 改惰性闭包（阻断项） ([e56b4a0](https://github.com/MjxUpUp/Forge/commit/e56b4a0ccdc0fc5152d1b3116fe6e3f51577f18d))
+* **attribution:** porcelain 测试期望改正斜杠字面量（windows CI 实证） ([#38](https://github.com/MjxUpUp/Forge/issues/38)) (`f325d78`)
+* **review:** A1 补齐收尾——孤儿 gitPorcelain 删除 + 现场过滤测试随领域迁 taskpipeline (`85e78c5`)
+* **review:** clitask 迁移双轨审查收口——接缝兜底与注释/死链出清 (`f351094`)
+* **review:** hookdispatch 双轨审查 3 建议收口 (`bc6da60`)
+* **review:** tasktypes 下沉审查收口——3 项装饰项 (`a1ec456`)
+* **review:** 任务下沉审查 5 项收口 (`eae19f4`)
+* **review:** 双轨审查收口——注释残留出清与死常量裁决 (`f367d4f`)
+* **review:** 清扫任务双轨审查收口——4 项 LOW 全解 (`948d473`)
+* **review:** 迁移审查收口——Version seam 改惰性闭包（阻断项） (`e56b4a0`)
 
 ## [1.48.0](https://github.com/MjxUpUp/Forge/compare/v1.47.0...v1.48.0) (2026-08-31)
 
 
 ### Features
 
-* **cli:** vNext P1 pull 侧引导——forge next 单命令 + task wild 申报 + 文案接线 ([5005f78](https://github.com/MjxUpUp/Forge/commit/5005f78c5821b599a9b7427bd431b0ff86e88725))
-* **cli:** vNext P2 审计层——forge enforcement 报告+随机审计+双环/降格信号 ([649a314](https://github.com/MjxUpUp/Forge/commit/649a3141103c6cb761ce9223f1d11ccbd12b305e))
-* **hooks:** task-guard 执法谱系 v2——无视计数器+zcode 提升+测试锚定 ([565c2c5](https://github.com/MjxUpUp/Forge/commit/565c2c563195b9a9af9c2662dcab47e9623fd914))
-* **registry:** gc 回收孤儿项目数据目录+测试夹具隔离 ([1282cef](https://github.com/MjxUpUp/Forge/commit/1282cef875d87a7841ef91374e85e0346bb498fa))
-* **task:** vNext P3 三段工件分层 + task-guard 缓冲窗口状态机 ([a5ff2d1](https://github.com/MjxUpUp/Forge/commit/a5ff2d199be929882112ec49639eedc13c6bf843))
+* **cli:** vNext P1 pull 侧引导——forge next 单命令 + task wild 申报 + 文案接线 (`5005f78`)
+* **cli:** vNext P2 审计层——forge enforcement 报告+随机审计+双环/降格信号 (`649a314`)
+* **hooks:** task-guard 执法谱系 v2——无视计数器+zcode 提升+测试锚定 (`565c2c5`)
+* **registry:** gc 回收孤儿项目数据目录+测试夹具隔离 (`1282cef`)
+* **task:** vNext P3 三段工件分层 + task-guard 缓冲窗口状态机 (`a5ff2d1`)
 
 
 ### Bug Fixes
 
-* **cli:** enforcement 审查收口——全量 checklog/降格降噪/空会话不 join/错误告警 ([903937e](https://github.com/MjxUpUp/Forge/commit/903937eceda47066a4e064efb06bee81bce8fa44))
-* **cli:** next 决策表对齐真实门禁链（P1 审查 FAIL 修正） ([1249dc2](https://github.com/MjxUpUp/Forge/commit/1249dc2bd9478bba7608d5df69f348f421c49e1c))
-* **hooks:** P0 审查收口——dsh-only 陈旧注释/文档同步+不变量补钉 ([1220645](https://github.com/MjxUpUp/Forge/commit/12206456018aca336dcbae1a400d9ede1b46f04f))
-* **registry:** gc dry-run 汇总报计划处置数+Keys godoc 英文首句 ([c137ca4](https://github.com/MjxUpUp/Forge/commit/c137ca4a006d2c4c102be7a5936bb3b344dac4b9))
-* **task:** P3 审查收口——锁内变更/校验前置/wild 清计数/ID 基准/启发式范围 ([717e53d](https://github.com/MjxUpUp/Forge/commit/717e53dbbf450ccb4b95fcf9ca28cbf80f307674))
+* **cli:** enforcement 审查收口——全量 checklog/降格降噪/空会话不 join/错误告警 (`903937e`)
+* **cli:** next 决策表对齐真实门禁链（P1 审查 FAIL 修正） (`1249dc2`)
+* **hooks:** P0 审查收口——dsh-only 陈旧注释/文档同步+不变量补钉 (`1220645`)
+* **registry:** gc dry-run 汇总报计划处置数+Keys godoc 英文首句 (`c137ca4`)
+* **task:** P3 审查收口——锁内变更/校验前置/wild 清计数/ID 基准/启发式范围 (`717e53d`)
 
 ## [1.47.0](https://github.com/MjxUpUp/Forge/compare/v1.46.0...v1.47.0) (2026-08-30)
 
 
 ### Features
 
-* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 ([966f52b](https://github.com/MjxUpUp/Forge/commit/966f52b7725ad9685ba97fde7271350ed9cf94a7))
-* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 ([6a235d1](https://github.com/MjxUpUp/Forge/commit/6a235d1bd04e63c9ccc98ef874b6c55ee78d41ed))
-* **T1/T4/T7:** 锁收口 + 状态完整性签名 + 产品语义修正 ([b15e3ef](https://github.com/MjxUpUp/Forge/commit/b15e3efae398d40e1282795691ba7142b052bbef))
-* **T2:** 检测器黄金用例集 + 配对死条件修复 + untracked 源 + 批量 tracked ([1c292a7](https://github.com/MjxUpUp/Forge/commit/1c292a74096159c1a788d6e072238884724b613f))
-* **T3:** checklog 轮转 janitor + stamps 清理——active 无界增长结构性收口 ([3ae37a4](https://github.com/MjxUpUp/Forge/commit/3ae37a409398a52b2f3342738aa74fffed4c69c3))
-* **T8a:** 清理批 A——卸载通道分流/断言结构化/protocol 校验/决策转义/安装盲区 ([8f1afb9](https://github.com/MjxUpUp/Forge/commit/8f1afb93fd2e9e9bbdd085c2e2a379bf9af5840a))
-* **T8b:** 清理批 B——九项收尾：哨兵退出/死代码/session入口统一/跨仓依赖/白名单反转/git探测守卫/infra出口 ([631f3b7](https://github.com/MjxUpUp/Forge/commit/631f3b734d46b23c9ef701be1f6fdae75d1c0236))
-* **T9:** 性能簇——更新负缓存+短超时/funnel 分桶去重复解析/MoveFile 流式/空会话隔离 ([d13228e](https://github.com/MjxUpUp/Forge/commit/d13228ecb78265ac6d9300b3cbab18be5cec3f13))
+* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 (`966f52b`)
+* **skills:** 零反向依赖迁移——R18 硬校验 + 集成知识出库 + forge 原生 skill 迁出 (`6a235d1`)
+* **T1/T4/T7:** 锁收口 + 状态完整性签名 + 产品语义修正 (`b15e3ef`)
+* **T2:** 检测器黄金用例集 + 配对死条件修复 + untracked 源 + 批量 tracked (`1c292a7`)
+* **T3:** checklog 轮转 janitor + stamps 清理——active 无界增长结构性收口 (`3ae37a4`)
+* **T8a:** 清理批 A——卸载通道分流/断言结构化/protocol 校验/决策转义/安装盲区 (`8f1afb9`)
+* **T8b:** 清理批 B——九项收尾：哨兵退出/死代码/session入口统一/跨仓依赖/白名单反转/git探测守卫/infra出口 (`631f3b7`)
+* **T9:** 性能簇——更新负缓存+短超时/funnel 分桶去重复解析/MoveFile 流式/空会话隔离 (`d13228e`)
 
 
 ### Bug Fixes
 
-* **make:** premerge 交叉编译步加 CGO_ENABLED=0 ([893d588](https://github.com/MjxUpUp/Forge/commit/893d5885cedc51db9e2fb6bc196046cbf0c8f048))
-* **review-b1:** 两轮审查 B1 快速修复 28 项——静默降级补告警/Windows 平台修复/检测器小补 ([5483e20](https://github.com/MjxUpUp/Forge/commit/5483e20cfdd5f45e3c3a58dd3093a737b5edb489))
-* **review-b2-followup:** 修复 B2 引入的 e2e 回归——可执行脚本副本不可用 rename 原子写 ([32314b4](https://github.com/MjxUpUp/Forge/commit/32314b49d87e23db7f9a1e3f79586ccc27847c38))
-* **review-b2:** 数据丢失/原子写批次——用户资产全部改走 AtomicWrite + 读失败误判修复 ([b4ccd0a](https://github.com/MjxUpUp/Forge/commit/b4ccd0a70b1295b05bd17933429d5f13d3967136))
-* **review-b3:** 锁与并发批次——盖章路径入锁/串号覆盖中止/级联护史/锁身份自愈 ([506bc12](https://github.com/MjxUpUp/Forge/commit/506bc12b7e2868fc3a7955363d21dfd577dc2bef))
-* **review-b4:** 信任与安全批次——--untrusted 剥离补洞/注入面封堵/发版脚本加固 ([158ba63](https://github.com/MjxUpUp/Forge/commit/158ba63e8984075be886ec180bc142639588010a))
-* **review-b5-followup:** srclint 白名单补录注释体 catch 正则 ([70fc13a](https://github.com/MjxUpUp/Forge/commit/70fc13ac71ed190f8ce2c10353b92cdf33a0a44b))
-* **review-b5/b6:** 检测器批次 + 产品语义——消 contest/ 逃逸区/补 Go 族检测/init 自伤修复 ([e4f45b0](https://github.com/MjxUpUp/Forge/commit/e4f45b0489bcd48fcc073fc8e05990d66547ad14))
-* **skills:** review 修复——notes 入库（C1）+ 悬空指针清零（C2）+ 漏迁条件块迁出（C3） ([4f01b25](https://github.com/MjxUpUp/Forge/commit/4f01b25e0d08f687669fb5449fc4b239dae63634))
+* **make:** premerge 交叉编译步加 CGO_ENABLED=0 (`893d588`)
+* **review-b1:** 两轮审查 B1 快速修复 28 项——静默降级补告警/Windows 平台修复/检测器小补 (`5483e20`)
+* **review-b2-followup:** 修复 B2 引入的 e2e 回归——可执行脚本副本不可用 rename 原子写 (`32314b4`)
+* **review-b2:** 数据丢失/原子写批次——用户资产全部改走 AtomicWrite + 读失败误判修复 (`b4ccd0a`)
+* **review-b3:** 锁与并发批次——盖章路径入锁/串号覆盖中止/级联护史/锁身份自愈 (`506bc12`)
+* **review-b4:** 信任与安全批次——--untrusted 剥离补洞/注入面封堵/发版脚本加固 (`158ba63`)
+* **review-b5-followup:** srclint 白名单补录注释体 catch 正则 (`70fc13a`)
+* **review-b5/b6:** 检测器批次 + 产品语义——消 contest/ 逃逸区/补 Go 族检测/init 自伤修复 (`e4f45b0`)
+* **skills:** review 修复——notes 入库（C1）+ 悬空指针清零（C2）+ 漏迁条件块迁出（C3） (`4f01b25`)
 
 ## [1.46.0](https://github.com/MjxUpUp/Forge/compare/v1.45.4...v1.46.0) (2026-08-28)
 
 
 ### Features
 
-* **conventions:** 依赖倒置契约化——CONVENTIONS §13 + R18 规则 + 17 skill 正文合规迁移 ([4b936be](https://github.com/MjxUpUp/Forge/commit/4b936be79fc86f30eb19ba3e3bf9c68bc473f18f))
-* **conventions:** 后续三件套——lint 未跑门禁 + learn 纠正写回 + codex 写入时刻补全 ([c1f3e81](https://github.com/MjxUpUp/Forge/commit/c1f3e81b265a754e80426cc79c458959e37b6c78))
-* skills 依赖倒置 + code-review-gate 边界重划 + 工程原则增强 ([2906f9c](https://github.com/MjxUpUp/Forge/commit/2906f9c42417166f8cce996f6845da72627e013e))
-* **skills:** 工程原则增强——真·SOLID 五原则 + 契约完整性 + 测试规格档 ([95304ec](https://github.com/MjxUpUp/Forge/commit/95304ec26395032368863adf65da9b34dae5a54c))
-* **skills:** 拆分 code-review-gate——doc-review 建家 + phase-*.md 归位 design-artifact-standards ([c214cbe](https://github.com/MjxUpUp/Forge/commit/c214cbe228ac789ff78453d5819edb372b301383))
+* **conventions:** 依赖倒置契约化——CONVENTIONS §13 + R18 规则 + 17 skill 正文合规迁移 (`4b936be`)
+* **conventions:** 后续三件套——lint 未跑门禁 + learn 纠正写回 + codex 写入时刻补全 (`c1f3e81`)
+* skills 依赖倒置 + code-review-gate 边界重划 + 工程原则增强 (`2906f9c`)
+* **skills:** 工程原则增强——真·SOLID 五原则 + 契约完整性 + 测试规格档 (`95304ec`)
+* **skills:** 拆分 code-review-gate——doc-review 建家 + phase-*.md 归位 design-artifact-standards (`c214cbe`)
 
 
 ### Bug Fixes
 
-* **ci:** 分支 CI 抓出的两类跨平台断言——dsh 名册同步 + Windows 路径分隔符 ([c0e9caf](https://github.com/MjxUpUp/Forge/commit/c0e9caf7d7fad13aeb8997716f3958be4c7ca768))
-* **ci:** 注入断言先解 JSON 信封再归一——信封级 ToSlash 会把转义反斜杠变成双斜杠 ([cc7dfd6](https://github.com/MjxUpUp/Forge/commit/cc7dfd6934952a63c2baea091b038dd64b681074))
-* 双独立审查（代码双轨 + 文档四维）14 项发现全闭环 ([81b7725](https://github.com/MjxUpUp/Forge/commit/81b772505841eb113e966be57ad335532934fb04))
+* **ci:** 分支 CI 抓出的两类跨平台断言——dsh 名册同步 + Windows 路径分隔符 (`c0e9caf`)
+* **ci:** 注入断言先解 JSON 信封再归一——信封级 ToSlash 会把转义反斜杠变成双斜杠 (`cc7dfd6`)
+* 双独立审查（代码双轨 + 文档四维）14 项发现全闭环 (`81b7725`)
 
 ## [1.45.4](https://github.com/MjxUpUp/Forge/compare/v1.45.3...v1.45.4) (2026-08-28)
 
 
 ### Bug Fixes
 
-* **task:** dogfood [#6](https://github.com/MjxUpUp/Forge/issues/6)——--branch 共享 ref 派生 + 两项使用偏离引导 ([690be1a](https://github.com/MjxUpUp/Forge/commit/690be1a740b2b9d8a942cea21ebbb55c406a6099))
+* **task:** dogfood [#6](https://github.com/MjxUpUp/Forge/issues/6)——--branch 共享 ref 派生 + 两项使用偏离引导 (`690be1a`)
 
 ## [1.45.3](https://github.com/MjxUpUp/Forge/compare/v1.45.2...v1.45.3) (2026-08-28)
 
 
 ### Bug Fixes
 
-* **attribution:** dogfood 发现 [#5](https://github.com/MjxUpUp/Forge/issues/5)——hook 记账路径归一（绝对→repo 相对） ([e3bc37d](https://github.com/MjxUpUp/Forge/commit/e3bc37defce4b4665157f027bba203621e9ea1ca))
+* **attribution:** dogfood 发现 [#5](https://github.com/MjxUpUp/Forge/issues/5)——hook 记账路径归一（绝对→repo 相对） (`e3bc37d`)
 
 ## [1.45.2](https://github.com/MjxUpUp/Forge/compare/v1.45.1...v1.45.2) (2026-08-27)
 
 
 ### Bug Fixes
 
-* **worktree:** [#4](https://github.com/MjxUpUp/Forge/issues/4) 二次修订——finish 真接 ClearByID + abort 全量清扫绑定 ([1b5c06e](https://github.com/MjxUpUp/Forge/commit/1b5c06e4d77271af9e56f73b105166f24f615eeb))
+* **worktree:** [#4](https://github.com/MjxUpUp/Forge/issues/4) 二次修订——finish 真接 ClearByID + abort 全量清扫绑定 (`1b5c06e`)
 
 ## [1.45.1](https://github.com/MjxUpUp/Forge/compare/v1.45.0...v1.45.1) (2026-08-27)
 
 
 ### Bug Fixes
 
-* **dogfood:** 实测三项修复——worktree ref 派生 / 归档陈旧快照 / 绑定残留 ([75f0028](https://github.com/MjxUpUp/Forge/commit/75f002800fe08ffac4adda92fc339345bfd415cd))
-* **harness:** dogfood 发现——gitignore 改根级允许清单（只跟踪 projects/） ([66ddf01](https://github.com/MjxUpUp/Forge/commit/66ddf01556c28873d7cb788639c8ec144add8f18))
+* **dogfood:** 实测三项修复——worktree ref 派生 / 归档陈旧快照 / 绑定残留 (`75f0028`)
+* **harness:** dogfood 发现——gitignore 改根级允许清单（只跟踪 projects/） (`66ddf01`)
 
 ## [1.45.0](https://github.com/MjxUpUp/Forge/compare/v1.44.0...v1.45.0) (2026-08-27)
 
 
 ### Features
 
-* **attribution:** L3 归属服务——session→文件台账 + Stop 对账 + 覆盖率度量（T2） ([e900633](https://github.com/MjxUpUp/Forge/commit/e90063352dc093d621057a150b89ad31f23ef38d))
-* **attribution:** T3 消费者切换——四类工作树读取全部经归属过滤 ([ea1977e](https://github.com/MjxUpUp/Forge/commit/ea1977e129818cae6aa663d7001600eeaaebf1d2))
-* **harness:** T6 harness repo——git 化用户级台账 + 信任分类 + 边界批量提交 ([91c9e1d](https://github.com/MjxUpUp/Forge/commit/91c9e1df682b3ac2a6c9f8a0cae21681191d2379))
-* **harness:** T7 引导层——onboarding 状态机 + 触发点 + 防 nag ([e4c32c5](https://github.com/MjxUpUp/Forge/commit/e4c32c5603b51317159f471f8ce0f7a49c66ddef))
-* **harness:** T9 传输换代——git remote push/pull + 首推出境 HITL ([e10d381](https://github.com/MjxUpUp/Forge/commit/e10d381591ae451561f8c27609093e1e8101bb45))
-* **multi-task-concurrency:** T10 收尾——dispatcher 心跳接线 + 落地记录 + dogfood 门禁通过 ([7d6cb0f](https://github.com/MjxUpUp/Forge/commit/7d6cb0f7c763e40c3e81ffccbbf494b8d4d68db3))
-* **observability:** T10 度量收尾——status 归属覆盖率行 + 并发矩阵总测 ([2adf07e](https://github.com/MjxUpUp/Forge/commit/2adf07e437537f13c58d1149d88f126f821dcc1f))
-* **review:** 评审可观测性——finding 带轮次/快照、非 task 盖章落 checklog、审计去重标注 ([5392309](https://github.com/MjxUpUp/Forge/commit/5392309b5c5ca72976738d71a969dc7999ad1f1a))
-* **skills:** code-review-gate 收敛纪律——复审新发现归因 + 双轨分歧判读 + --note 实质留痕 ([f2320fa](https://github.com/MjxUpUp/Forge/commit/f2320fafe00cd4ba06f3740827503a4fdaadda97))
-* **specs:** T8 产物契约层——specs 文件产物 + 哈希引用 + attempts 回灌 ([1577585](https://github.com/MjxUpUp/Forge/commit/1577585046de066a0d1778721bd30fa6ab43669c))
-* **state:** L2 事件化——task start 废 Clear 改边界事件 + stamp 内容寻址 ([dc495b9](https://github.com/MjxUpUp/Forge/commit/dc495b929512b3e1b9669517fa300201835bc51a))
-* **worktree:** T4 身份层——workspace 绑定存储 + 解析链 v2 + P5 守卫 ([08acadc](https://github.com/MjxUpUp/Forge/commit/08acadc8422e54912f6a591b7472be785f6bd293))
-* **worktree:** T5 worktree 生命周期——start --worktree / finish / janitor ([049946f](https://github.com/MjxUpUp/Forge/commit/049946f40efcdeb785bf34e1f5c1cb10433dbc83))
+* **attribution:** L3 归属服务——session→文件台账 + Stop 对账 + 覆盖率度量（T2） (`e900633`)
+* **attribution:** T3 消费者切换——四类工作树读取全部经归属过滤 (`ea1977e`)
+* **harness:** T6 harness repo——git 化用户级台账 + 信任分类 + 边界批量提交 (`91c9e1d`)
+* **harness:** T7 引导层——onboarding 状态机 + 触发点 + 防 nag (`e4c32c5`)
+* **harness:** T9 传输换代——git remote push/pull + 首推出境 HITL (`e10d381`)
+* **multi-task-concurrency:** T10 收尾——dispatcher 心跳接线 + 落地记录 + dogfood 门禁通过 (`7d6cb0f`)
+* **observability:** T10 度量收尾——status 归属覆盖率行 + 并发矩阵总测 (`2adf07e`)
+* **review:** 评审可观测性——finding 带轮次/快照、非 task 盖章落 checklog、审计去重标注 (`5392309`)
+* **skills:** code-review-gate 收敛纪律——复审新发现归因 + 双轨分歧判读 + --note 实质留痕 (`f2320fa`)
+* **specs:** T8 产物契约层——specs 文件产物 + 哈希引用 + attempts 回灌 (`1577585`)
+* **state:** L2 事件化——task start 废 Clear 改边界事件 + stamp 内容寻址 (`dc495b9`)
+* **worktree:** T4 身份层——workspace 绑定存储 + 解析链 v2 + P5 守卫 (`08acadc`)
+* **worktree:** T5 worktree 生命周期——start --worktree / finish / janitor (`049946f`)
 
 
 ### Bug Fixes
 
-* **ci:** Windows 跨平台修复——HITL 确认语义统一 + worktree 删除 CWD 锁防护 ([1093f5b](https://github.com/MjxUpUp/Forge/commit/1093f5bcf4a0b47fb05a1bc099f59d5a96cf8e14))
-* **premerge:** 预检修复——接续 fixture 对齐解析链 v2 + README 补新命令 + gofmt ([b445396](https://github.com/MjxUpUp/Forge/commit/b445396af7b83bda561b179af25dd87eb4253fc2))
-* **review:** 复审残留——priorAttempts 真实接线进 HANDOFF + symlink 主检出判定 ([6bebee0](https://github.com/MjxUpUp/Forge/commit/6bebee0226a2194067b86cdfca71f04ad50e730f))
-* **review:** 审查 nits——CheckReviewPass 注释同步双模式、unused-scan 同款去重标注 ([9d18d31](https://github.com/MjxUpUp/Forge/commit/9d18d3189c61fadfc781555f29f3aac00e3c17bf))
-* **review:** 审查修复——B1 共享会话误标外来 / B2 finish 合并守卫 / H 台账 TTL / M1 M2 LOW 六项 ([b9fabd4](https://github.com/MjxUpUp/Forge/commit/b9fabd44097fee183f06a4b5891441ed709351e8))
+* **ci:** Windows 跨平台修复——HITL 确认语义统一 + worktree 删除 CWD 锁防护 (`1093f5b`)
+* **premerge:** 预检修复——接续 fixture 对齐解析链 v2 + README 补新命令 + gofmt (`b445396`)
+* **review:** 复审残留——priorAttempts 真实接线进 HANDOFF + symlink 主检出判定 (`6bebee0`)
+* **review:** 审查 nits——CheckReviewPass 注释同步双模式、unused-scan 同款去重标注 (`9d18d31`)
+* **review:** 审查修复——B1 共享会话误标外来 / B2 finish 合并守卫 / H 台账 TTL / M1 M2 LOW 六项 (`b9fabd4`)
 
 ## [1.44.0](https://github.com/MjxUpUp/Forge/compare/v1.43.0...v1.44.0) (2026-08-26)
 
 
 ### Features
 
-* **dashboard:** sync可观测——操作结果落checklog(project-sync,init/push/pull成败皆录,status只读不落;具名返回defer单点捕获)经feed上板为新kind sync;projects.json行带绑定与最近push/pull(sync-remote.json直读不走指纹缓存,omitempty未绑定零结构变化);observation类排除出证据分桶;复审minor全修(用法错误不落章/失败Detail带remote截断300rune) ([e95a0ad](https://github.com/MjxUpUp/Forge/commit/e95a0ada33a2811a16dec8e41396bf5767aef613))
-* **dashboard:** 三契约上板——state.lease投影租约(持有者/有效/过期时刻/fencing,ExpiresAt抽单一公式)/docReview块(L2回检判定+rubric分+轮次,roundsTotal钳制防--round跳号自相矛盾)/skills总览送达列(复用BuildTriggerFunnel送达章,nil存量诚实单列);复审minor全修:ExpiresAt补nil对称防护/ReviewedAt改指针免零值假日期 ([85f84a7](https://github.com/MjxUpUp/Forge/commit/85f84a7c675a2f7a6ee861bde402d7f9efcdbc93))
-* **dashboard:** 验签事件流——bundle验签verdict落checklog(bundle-verify,五档Level映射,Meta携verdict+signer结构化契约)并经feed上板为新kind sig-verify(severity取EffectiveLevel,标题读Meta不解析散文);observation类排除出证据分桶;dry-run不落章保--dry-run无侧效应契约;复审minor全修(nil防御/ZH注释补齐) ([ce23dd9](https://github.com/MjxUpUp/Forge/commit/ce23dd98f90132dde53aec466301702d4b4e2f42))
-* **workspace:** 多 repo workspace——workspaces.json 清单+跨仓影响门禁+跨仓任务依赖 ([25acdfa](https://github.com/MjxUpUp/Forge/commit/25acdfab988133f800dc44f0c1403b4b4f970678))
+* **dashboard:** sync可观测——操作结果落checklog(project-sync,init/push/pull成败皆录,status只读不落;具名返回defer单点捕获)经feed上板为新kind sync;projects.json行带绑定与最近push/pull(sync-remote.json直读不走指纹缓存,omitempty未绑定零结构变化);observation类排除出证据分桶;复审minor全修(用法错误不落章/失败Detail带remote截断300rune) (`e95a0ad`)
+* **dashboard:** 三契约上板——state.lease投影租约(持有者/有效/过期时刻/fencing,ExpiresAt抽单一公式)/docReview块(L2回检判定+rubric分+轮次,roundsTotal钳制防--round跳号自相矛盾)/skills总览送达列(复用BuildTriggerFunnel送达章,nil存量诚实单列);复审minor全修:ExpiresAt补nil对称防护/ReviewedAt改指针免零值假日期 (`85f84a7`)
+* **dashboard:** 验签事件流——bundle验签verdict落checklog(bundle-verify,五档Level映射,Meta携verdict+signer结构化契约)并经feed上板为新kind sig-verify(severity取EffectiveLevel,标题读Meta不解析散文);observation类排除出证据分桶;dry-run不落章保--dry-run无侧效应契约;复审minor全修(nil防御/ZH注释补齐) (`ce23dd9`)
+* **workspace:** 多 repo workspace——workspaces.json 清单+跨仓影响门禁+跨仓任务依赖 (`25acdfa`)
 
 
 ### Bug Fixes
 
-* **dashboard:** 枚举兼容三修——Weak证据染红(原落绿色分支误导)/未知grade·kind中性兜底(原染红F·冒用task样式)/skill名改结构化字段FeedEvent.Skill(折叠卡原正则反解中文标题随措辞静默失效) ([2245c99](https://github.com/MjxUpUp/Forge/commit/2245c994e07d34e97721554f3ce50a2b6f41a782))
-* **workspace:** 复审加固——key 格式 allowlist + status 守卫 + 仓根缓存 ([0c881e8](https://github.com/MjxUpUp/Forge/commit/0c881e8d3c78f9f2e57fb1ca841eeff2e64d36c1))
+* **dashboard:** 枚举兼容三修——Weak证据染红(原落绿色分支误导)/未知grade·kind中性兜底(原染红F·冒用task样式)/skill名改结构化字段FeedEvent.Skill(折叠卡原正则反解中文标题随措辞静默失效) (`2245c99`)
+* **workspace:** 复审加固——key 格式 allowlist + status 守卫 + 仓根缓存 (`0c881e8`)
 
 ## [1.43.0](https://github.com/MjxUpUp/Forge/compare/v1.42.2...v1.43.0) (2026-08-25)
 
 
 ### Features
 
-* **agentbridge:** 新增 ZCode (z.ai) 宿主适配——translator 合并写 ~/.zcode/cli/config.json + ~/.zcode 用户级检测与 .zcode 项目标记归因 + hostcap 行 + 卸载/doctor/init 摘要集成 ([7d9861f](https://github.com/MjxUpUp/Forge/commit/7d9861f6ebfa494627aa35bb0c9fa51662f640f2))
-* **readability:** AI 产物可读性三层约束与输出→回检门禁落地——L1 `forge docs lint`（D1-D7 确定性规则）+ L2 rubric 评审（`forge task doc-review`）+ task-complete doc gate + 5 个文档模板 + 评分新增表达质量维度（[设计](docs/design/output-readability-gates.md)） ([b36fa13](https://github.com/MjxUpUp/Forge/commit/b36fa13bd99ec6855888b8ed9275db1d9d8fb39e))
+* **agentbridge:** 新增 ZCode (z.ai) 宿主适配——translator 合并写 ~/.zcode/cli/config.json + ~/.zcode 用户级检测与 .zcode 项目标记归因 + hostcap 行 + 卸载/doctor/init 摘要集成 (`7d9861f`)
+* **readability:** AI 产物可读性三层约束与输出→回检门禁落地——L1 `forge docs lint`（D1-D7 确定性规则）+ L2 rubric 评审（`forge task doc-review`）+ task-complete doc gate + 5 个文档模板 + 评分新增表达质量维度（[设计](docs/design/output-readability-gates.md)） (`b36fa13`)
 
 
 ### ⚠ 行为变更（非 BREAKING，需知悉）
@@ -1241,112 +1241,112 @@
 
 ### Bug Fixes
 
-* CLI 一致性与人体工学 ([7aeae6c](https://github.com/MjxUpUp/Forge/commit/7aeae6cd9184163451006472c0d845137ed0d7a9))
-* **doclint:** 类型匹配改用 BASE 名（修 session-retrospective 目录误判）+ decisions.md 豁免（append-only 治理日志非即时阅读产物） ([f0b8f58](https://github.com/MjxUpUp/Forge/commit/f0b8f58e5c5210fb6c8f224dffaee7689fbacca7))
-* guard 准确性三修（assertion-check / read-before-edit / bash-guard） ([63ad68f](https://github.com/MjxUpUp/Forge/commit/63ad68fd4465082cb7ca686f0e5759736c8935e6))
-* hazard-guard 误报治理与授权路径协议 ([ec4e30b](https://github.com/MjxUpUp/Forge/commit/ec4e30b7b640c90e275f38ccadef4a3fa047a3a0))
-* hook 文案死引用清理与 AGENTS.md 模板事实修正 ([66340fa](https://github.com/MjxUpUp/Forge/commit/66340fa223bd467acace6fb63ab3b1e65f3c6871))
-* kimi 宿主 advisory 改走 pending 队列 + UserPromptSubmit 攒发 ([9be4c40](https://github.com/MjxUpUp/Forge/commit/9be4c4042c06b100fd52030bad4405df1ee877b4))
-* **readability:** L2 文档评审跟进——rubric 补类型覆盖范围声明/PR 模板段数契约修正/设计文档签名与豁免清单同步/模板删复述收尾句/rubric 独立性条款收紧/路由行去硬列举（评审 93 分零 Critical，逐条 delete-list 执行） ([2af8d77](https://github.com/MjxUpUp/Forge/commit/2af8d77778a2a0b3805188b0e88b0918bfc46a2e))
-* **readability:** 代码审查跟进——C1 CHANGELOG 豁免大小写死码/C2 存量文档过自身门禁（SKILL.md 反引号+checklist 收窄 release-）/C3 设计文档强制入库（全局 gitignore 吞未跟踪 docs）/I1 CLI --base 与门禁同集合（含未跟踪剔已删除）/I3 checklog Level 仅阻断分支/I4 git diff 失败落审计/I5 DocReview 增内容指纹（未提交修改判过期）/I6 skill 渲染反引号/M1-M9（围栏 run 长度/D4 散文限定/D7 非围栏计数/IO 规则登记/帮助文本同步/chore golden 案例恢复/CLI 单测/盲区声明） ([0b823e8](https://github.com/MjxUpUp/Forge/commit/0b823e8403ba71f31e8df00d0fc8f07ca91d11a9))
-* **readability:** 双复审跟进——D4 触发词限定散文（修围栏内设问误报+行号保原始）/session-retrospective 验证指针改为 lint+test 双查（单测扫不出存量误伤）/设计文档笔误与版本口径/--base flag 帮助同步 ([d7d0aa5](https://github.com/MjxUpUp/Forge/commit/d7d0aa5b9b503828f2472d9e0998cdcfec00b44d))
-* **readability:** 复审跟进——删未接线 HasHard/doclint 豁免 .zcode 会话目录/code-review-gate 补决策 ([8a2d759](https://github.com/MjxUpUp/Forge/commit/8a2d759115892ba95ffd84249242696c1c8d8205))
-* skill-trigger 控噪与 advisory 去重 ([ca529e7](https://github.com/MjxUpUp/Forge/commit/ca529e7de187abd986debfdf9a5377e01e435c83))
-* skills frontmatter 治理 ([d852444](https://github.com/MjxUpUp/Forge/commit/d852444fdc0acdc6beeb801de77e21af375462ce))
-* 门禁漏洞四修 ([2eb3e31](https://github.com/MjxUpUp/Forge/commit/2eb3e31debf2918f0a2765e769fd8e26b8fd13d0))
+* CLI 一致性与人体工学 (`7aeae6c`)
+* **doclint:** 类型匹配改用 BASE 名（修 session-retrospective 目录误判）+ decisions.md 豁免（append-only 治理日志非即时阅读产物） (`f0b8f58`)
+* guard 准确性三修（assertion-check / read-before-edit / bash-guard） (`63ad68f`)
+* hazard-guard 误报治理与授权路径协议 (`ec4e30b`)
+* hook 文案死引用清理与 AGENTS.md 模板事实修正 (`66340fa`)
+* kimi 宿主 advisory 改走 pending 队列 + UserPromptSubmit 攒发 (`9be4c40`)
+* **readability:** L2 文档评审跟进——rubric 补类型覆盖范围声明/PR 模板段数契约修正/设计文档签名与豁免清单同步/模板删复述收尾句/rubric 独立性条款收紧/路由行去硬列举（评审 93 分零 Critical，逐条 delete-list 执行） (`2af8d77`)
+* **readability:** 代码审查跟进——C1 CHANGELOG 豁免大小写死码/C2 存量文档过自身门禁（SKILL.md 反引号+checklist 收窄 release-）/C3 设计文档强制入库（全局 gitignore 吞未跟踪 docs）/I1 CLI --base 与门禁同集合（含未跟踪剔已删除）/I3 checklog Level 仅阻断分支/I4 git diff 失败落审计/I5 DocReview 增内容指纹（未提交修改判过期）/I6 skill 渲染反引号/M1-M9（围栏 run 长度/D4 散文限定/D7 非围栏计数/IO 规则登记/帮助文本同步/chore golden 案例恢复/CLI 单测/盲区声明） (`0b823e8`)
+* **readability:** 双复审跟进——D4 触发词限定散文（修围栏内设问误报+行号保原始）/session-retrospective 验证指针改为 lint+test 双查（单测扫不出存量误伤）/设计文档笔误与版本口径/--base flag 帮助同步 (`d7d0aa5`)
+* **readability:** 复审跟进——删未接线 HasHard/doclint 豁免 .zcode 会话目录/code-review-gate 补决策 (`8a2d759`)
+* skill-trigger 控噪与 advisory 去重 (`ca529e7`)
+* skills frontmatter 治理 (`d852444`)
+* 门禁漏洞四修 (`2eb3e31`)
 
 ## [1.42.2](https://github.com/MjxUpUp/Forge/compare/v1.42.1...v1.42.2) (2026-08-24)
 
 
 ### Bug Fixes
 
-* **hooks:** session marker 迁 FORGE_DATA_DIR/markers——MSYS /tmp 只读机器上 NOWARN 去噪静默失效 ([836c897](https://github.com/MjxUpUp/Forge/commit/836c897fddd73c5ff7b07e3b973ec18c361d1aad))
-* **qa:** 回顾发现三问题的结构修复——audit 自指豁免/decide 拒写 embed 缓存/hazard confirm --last ([238c282](https://github.com/MjxUpUp/Forge/commit/238c28241ae05827736a1610e22431556b5d51dd))
-* **qa:** 复审跟进五项——decisions.md 豁免收窄为根级+仅 DC-10/decide 测试哨兵化/--last Args 测试+优先级说明/竞态披露 ([1a86925](https://github.com/MjxUpUp/Forge/commit/1a869259b1ec62a98076514c99555dfef6436ec5))
-* **skills:** DC-10 跟进——3 skill 的 npx 调用改 lockfile 锁定的本地依赖运行形态 ([6fe8c6b](https://github.com/MjxUpUp/Forge/commit/6fe8c6b473b5442b9e875fc9fbb6c736fe33b4b1))
-* **skills:** 复审跟进四项——decisions 自回引改连字符形态/preview 改 npm exec 不依赖预置 script/审查污染还原提示/tsc 注释精确化（audit 复扫 0 finding） ([ad137cd](https://github.com/MjxUpUp/Forge/commit/ad137cd82af69b3300a5000d0f734345812b27cf))
+* **hooks:** session marker 迁 FORGE_DATA_DIR/markers——MSYS /tmp 只读机器上 NOWARN 去噪静默失效 (`836c897`)
+* **qa:** 回顾发现三问题的结构修复——audit 自指豁免/decide 拒写 embed 缓存/hazard confirm --last (`238c282`)
+* **qa:** 复审跟进五项——decisions.md 豁免收窄为根级+仅 DC-10/decide 测试哨兵化/--last Args 测试+优先级说明/竞态披露 (`1a86925`)
+* **skills:** DC-10 跟进——3 skill 的 npx 调用改 lockfile 锁定的本地依赖运行形态 (`6fe8c6b`)
+* **skills:** 复审跟进四项——decisions 自回引改连字符形态/preview 改 npm exec 不依赖预置 script/审查污染还原提示/tsc 注释精确化（audit 复扫 0 finding） (`ad137cd`)
 
 ## [1.42.1](https://github.com/MjxUpUp/Forge/compare/v1.42.0...v1.42.1) (2026-08-23)
 
 
 ### Bug Fixes
 
-* **act:** 逃生舱cap证据缩放+nudge 14天窗口+历史结论就地迁移 ([62c02eb](https://github.com/MjxUpUp/Forge/commit/62c02ebadc7aa14f194afca1361e0d9413ded8ef))
-* **protocol:** 审查-修复-复审闭环补复审规定——多轮盖章 ADVISORY+SKILL.md+生成文案 ([6c54c68](https://github.com/MjxUpUp/Forge/commit/6c54c682c50a84d1e981e215da46ebc1cdee6c11))
-* **review-r2:** 复审五项修复——窗口沿内联注释/override Short 谎报/笔误/豁免措辞统一+守卫测试 ([5d62720](https://github.com/MjxUpUp/Forge/commit/5d627205446fe7e28123512f554802f445539faf))
-* **review-r3:** 窗口内侧边界注释 1ns→1 秒，与代码 time.Second 一致（第三轮验证 INFO） ([848ca89](https://github.com/MjxUpUp/Forge/commit/848ca89171463144dfc533c62c7b32d8b6ed2dcb))
-* **review:** code-review 六项修复——README第6处谎报文案/评分封顶独立性注释/豁免说明补齐/窗口沿契约/权限保留/过时注释 ([7bb65a8](https://github.com/MjxUpUp/Forge/commit/7bb65a8e7382ac8373e6aa99d93f632ce7336fb4))
-* **review:** 复审跟进四项——快照增量触发/决策ID回归生成器/死断言/文档同步 ([0059111](https://github.com/MjxUpUp/Forge/commit/0059111c97ee86e0f9c145e577ccaa121c072a7a))
+* **act:** 逃生舱cap证据缩放+nudge 14天窗口+历史结论就地迁移 (`62c02eb`)
+* **protocol:** 审查-修复-复审闭环补复审规定——多轮盖章 ADVISORY+SKILL.md+生成文案 (`6c54c68`)
+* **review-r2:** 复审五项修复——窗口沿内联注释/override Short 谎报/笔误/豁免措辞统一+守卫测试 (`5d62720`)
+* **review-r3:** 窗口内侧边界注释 1ns→1 秒，与代码 time.Second 一致（第三轮验证 INFO） (`848ca89`)
+* **review:** code-review 六项修复——README第6处谎报文案/评分封顶独立性注释/豁免说明补齐/窗口沿契约/权限保留/过时注释 (`7bb65a8`)
+* **review:** 复审跟进四项——快照增量触发/决策ID回归生成器/死断言/文档同步 (`0059111`)
 
 ## [1.42.0](https://github.com/MjxUpUp/Forge/compare/v1.41.0...v1.42.0) (2026-08-23)
 
 
 ### Features
 
-* **hostcap:** dsh task-guard advisory 升级为 exit-2 硬阻断（PromoteAdvisory 路径 (b)） ([17fc107](https://github.com/MjxUpUp/Forge/commit/17fc107a1b0afbc2e87813cfc79daedec18c0b7f))
+* **hostcap:** dsh task-guard advisory 升级为 exit-2 硬阻断（PromoteAdvisory 路径 (b)） (`17fc107`)
 
 
 ### Bug Fixes
 
-* **pulse-task:** task.json Truncated 透传+证据反编造守卫+前端无证据如实展示 ([c5d0eb7](https://github.com/MjxUpUp/Forge/commit/c5d0eb7809268424e96674d723eae558c4ef4717))
+* **pulse-task:** task.json Truncated 透传+证据反编造守卫+前端无证据如实展示 (`c5d0eb7`)
 
 ## [1.41.0](https://github.com/MjxUpUp/Forge/compare/v1.40.1...v1.41.0) (2026-08-22)
 
 
 ### Features
 
-* **agentbridge:** 扩接 failure-track/subagent-track 到 cursor+copilot，补 cursor payload 方言适配 ([e54971e](https://github.com/MjxUpUp/Forge/commit/e54971e974d2130ef8e2bebf275186b556c12ffe))
-* **hooks:** 接线三观察hook补事件缺口+PreToolUse permissionDecision+Bash tool-track ([a8fd3c6](https://github.com/MjxUpUp/Forge/commit/a8fd3c692dadfecaef7b3ad27bf50038dbea43d5))
+* **agentbridge:** 扩接 failure-track/subagent-track 到 cursor+copilot，补 cursor payload 方言适配 (`e54971e`)
+* **hooks:** 接线三观察hook补事件缺口+PreToolUse permissionDecision+Bash tool-track (`a8fd3c6`)
 
 
 ### Bug Fixes
 
-* **deferred-batch1:** 延后项批量落地——uninstall codebuddy/kimi-manifest 出口/doctor 未装目标门控/dsh 文档补齐 ([a098b45](https://github.com/MjxUpUp/Forge/commit/a098b454a2d67eafe82244f6590fc9865310bd21))
-* **docs,doctor:** 补齐协议文档9个接线hook + doctor新增skills分发审计节 ([c701f6d](https://github.com/MjxUpUp/Forge/commit/c701f6d9dbd37ec874dd6ac75386fac50fc184e6))
-* **skillseval:** effectiveness 被动 join 修复非 git 数据目录解析+测试判别力（评审 M 级两项） ([4b53b85](https://github.com/MjxUpUp/Forge/commit/4b53b85093578dc276f6d9049625b7b0bf688b23))
+* **deferred-batch1:** 延后项批量落地——uninstall codebuddy/kimi-manifest 出口/doctor 未装目标门控/dsh 文档补齐 (`a098b45`)
+* **docs,doctor:** 补齐协议文档9个接线hook + doctor新增skills分发审计节 (`c701f6d`)
+* **skillseval:** effectiveness 被动 join 修复非 git 数据目录解析+测试判别力（评审 M 级两项） (`4b53b85`)
 
 ## [1.40.1](https://github.com/MjxUpUp/Forge/compare/v1.40.0...v1.40.1) (2026-08-21)
 
 
 ### Bug Fixes
 
-* **update:** forge update 感知 npm 安装通道——npm 用户改查 npm registry 并重定向到对应包管理器 ([#18](https://github.com/MjxUpUp/Forge/issues/18)) ([7c66a1a](https://github.com/MjxUpUp/Forge/commit/7c66a1ab62da2a3890d03e67343573853b587586))
+* **update:** forge update 感知 npm 安装通道——npm 用户改查 npm registry 并重定向到对应包管理器 ([#18](https://github.com/MjxUpUp/Forge/issues/18)) (`7c66a1a`)
 
 ## [1.40.0](https://github.com/MjxUpUp/Forge/compare/v1.39.1...v1.40.0) (2026-08-21)
 
 
 ### Features
 
-* **git-sync:** forge project sync init/push/pull/status——git 传输通道（forge-sync 固定分支、nodes/&lt;node_id&gt;/&lt;key&gt;/ 前缀只写自己、bundle 覆盖式推送、pull 复用 project import 账本幂等）——Phase 1 传输层 ([ae14ee5](https://github.com/MjxUpUp/Forge/commit/ae14ee5406d3c8bbb9b1081e1bf2a37f06a59ef8))
-* **hlc:** 混合逻辑时钟——Timestamp(Wall+Logical)/Compare/Parse + Clock.Now/Observe，回拨下单调、并发唯一——多机器 Phase 0，sync-convergence §3 的 LWW 决胜键 ([7370fbe](https://github.com/MjxUpUp/Forge/commit/7370fbeea0b7b1871105646f9155ea86faa7dbad))
-* **nodeid:** 节点身份地基——ed25519 密钥对，node_id=公钥指纹（fnode_&lt;32hex&gt;），rotation_chain 格式预留，forge node show（私钥不出展示面）——多机器 Phase 0，设计见 docs/design/node-identity.md ([a587e88](https://github.com/MjxUpUp/Forge/commit/a587e88b6fc9778af363a6c201eca612e3e93c0f))
-* **nodestamp:** 事件打戳——Stamp(node_id/seq/ts_hlc/sig) 内嵌 checklog/toolusage/act/sessions 四收口点，node-seq 跨进程计数器（O_EXCL 锁+persist-before-use+原子落盘），fail-open 零戳，损坏禁用防 seq 复用——node-identity.md §4 ([acbdd3a](https://github.com/MjxUpUp/Forge/commit/acbdd3ac5895d931ebc5c4cc4091673005a76309))
-* **pulse-node:** Pulse 事件流渲染 node 归因——FeedEvent.Node（conclusion/skill-trigger 携 nodestamp，task-start 携租约持有者，存量无戳记录零字段）+ 前端 node-chip（fnode 短标签）——Phase 3 ([2ad2a5a](https://github.com/MjxUpUp/Forge/commit/2ad2a5a0e06e25af817fa3d262b46578a1699d7e))
-* **task-convergence:** MergeTaskStateSync 收敛层——规范排序+确定性决胜（交换律/幂等字节一致）、ReviewRounds 并集防采纳覆盖、SessionLinks/History 单侧重复归一、40 种子 property test + 双 DataDir 双向合并测试——sync-convergence §2 B 类 ([f2b916c](https://github.com/MjxUpUp/Forge/commit/f2b916c24c7b896510d5a4f7eab881542c371e23))
-* **task-lease:** 跨机任务租约——Lease(holder/ts_hlc/ttl/fencing)+start 自动认领(fail-open)+gate 他机活跃租约 advisory+合并 fencing 高者胜——sync-convergence §4 个人档 ([905133f](https://github.com/MjxUpUp/Forge/commit/905133f6282d5abf4adb90d575e637615a951024))
-* **trust:** 信任层——trust.json store（TOFU+0600+原子写）+ forge trust list/add/remove/require-signed + bundle .sig sidecar 签名（export/sync push 无条件签）与导入验签（invalid 恒拒/团队档未签拒/未知签名者告警）+ 双机 sign→verify e2e——node-identity §3 ([2484aa2](https://github.com/MjxUpUp/Forge/commit/2484aa2869bc6071434d369ed1fdf49c183ce60f))
+* **git-sync:** forge project sync init/push/pull/status——git 传输通道（forge-sync 固定分支、nodes/&lt;node_id&gt;/&lt;key&gt;/ 前缀只写自己、bundle 覆盖式推送、pull 复用 project import 账本幂等）——Phase 1 传输层 (`ae14ee5`)
+* **hlc:** 混合逻辑时钟——Timestamp(Wall+Logical)/Compare/Parse + Clock.Now/Observe，回拨下单调、并发唯一——多机器 Phase 0，sync-convergence §3 的 LWW 决胜键 (`7370fbe`)
+* **nodeid:** 节点身份地基——ed25519 密钥对，node_id=公钥指纹（fnode_&lt;32hex&gt;），rotation_chain 格式预留，forge node show（私钥不出展示面）——多机器 Phase 0，设计见 docs/design/node-identity.md (`a587e88`)
+* **nodestamp:** 事件打戳——Stamp(node_id/seq/ts_hlc/sig) 内嵌 checklog/toolusage/act/sessions 四收口点，node-seq 跨进程计数器（O_EXCL 锁+persist-before-use+原子落盘），fail-open 零戳，损坏禁用防 seq 复用——node-identity.md §4 (`acbdd3a`)
+* **pulse-node:** Pulse 事件流渲染 node 归因——FeedEvent.Node（conclusion/skill-trigger 携 nodestamp，task-start 携租约持有者，存量无戳记录零字段）+ 前端 node-chip（fnode 短标签）——Phase 3 (`2ad2a5a`)
+* **task-convergence:** MergeTaskStateSync 收敛层——规范排序+确定性决胜（交换律/幂等字节一致）、ReviewRounds 并集防采纳覆盖、SessionLinks/History 单侧重复归一、40 种子 property test + 双 DataDir 双向合并测试——sync-convergence §2 B 类 (`f2b916c`)
+* **task-lease:** 跨机任务租约——Lease(holder/ts_hlc/ttl/fencing)+start 自动认领(fail-open)+gate 他机活跃租约 advisory+合并 fencing 高者胜——sync-convergence §4 个人档 (`905133f`)
+* **trust:** 信任层——trust.json store（TOFU+0600+原子写）+ forge trust list/add/remove/require-signed + bundle .sig sidecar 签名（export/sync push 无条件签）与导入验签（invalid 恒拒/团队档未签拒/未知签名者告警）+ 双机 sign→verify e2e——node-identity §3 (`2484aa2`)
 
 
 ### Bug Fixes
 
-* **ci:** 分支三平台 CI 首跑的 Windows 失败修复 ([a155235](https://github.com/MjxUpUp/Forge/commit/a155235501936b7c48575c5edab795849c14a5de))
-* **git-sync:** skillRefAllowlist 收编 forge-sync（同步通道固定分支名，非 skill） ([939cfd6](https://github.com/MjxUpUp/Forge/commit/939cfd6aeef7d2fd6788fd184b34b819e1ebcba3))
-* **git-sync:** 审查跟进——ls-remote 区分无分支/不可达（init 真 fail-fast 且不写半成品绑定）、push 一次重拉重试（并发非快进收敛）、commit 限定前缀+扫 tmp 残骸+关 gpgsign/hooks、pull 逐节点容错+ValidNodeID 形态检查、补不可达 init/坏节点跳过测试 ([6d3ef9a](https://github.com/MjxUpUp/Forge/commit/6d3ef9a1baaa8e44e27d798b21a7832b7bca5122))
-* **hlc:** 审查跟进——Logical 饱和推进 Wall 替代 int32 回绕（静默破单调+不可解析）、String 全定宽（%019d.%010d，字符串序==Compare序全值域成立）、Parse 拒非数字/前导+、补溢出与等墙 recv 分支测试 ([a52c618](https://github.com/MjxUpUp/Forge/commit/a52c6185a72395d5b374d720de657bb006f0fe37))
-* **nodeid:** 审查跟进——Save 原子化（CreateTemp+fsync+rename）、CheckConsistent 拒 null rotation_chain、Load 收紧宽松权限、ValidNodeID 手写校验对齐 fpid 风格、私钥值级防泄断言、补篡改/损坏分支测试 ([c6cedda](https://github.com/MjxUpUp/Forge/commit/c6ceddaa87c21b89df24b887d692d85ac3c025f1))
-* **pulse-node:** 复审跟进——task-start node 复用「过期即自由」单一规则（Lease.ActiveAt，崩溃机器 stale 认领不留看板）、测试补有效/过期双边界+wire 级 omitempty 断言+吞错修复、UI title 区分「当前持有/来源机器」语义 ([d080cc3](https://github.com/MjxUpUp/Forge/commit/d080cc3464a9784e72b1aca2cd5ee7d641f461e2))
-* **review-followup:** dsh 交付复审 14 项发现修复——静默丢推送/字面量\n/TOCTOU/验签前置/可观测性 ([8f28ebc](https://github.com/MjxUpUp/Forge/commit/8f28ebc078db3ca8d4b7cf680f0188a99d0afbb3))
-* **task-convergence:** 复审跟进——completionCanon 剔除并集字段 ReviewRounds + 纳入 AcceptanceForeign（同命令异标志=不同块）、标量验收决胜键含标志、dedupByKey 保持 nil/空表示（防决胜键跨轮翻转）、property test 补 stepwise 轮次收敛断言 ([7f91a4f](https://github.com/MjxUpUp/Forge/commit/7f91a4fe69ae2465cd09c29cfbbe11ca8fea77d5))
-* **task-convergence:** 审查跟进——History 改全内容并集（保住重试 provenance，时间序保 lastGateAt 锚）、review 锚只随完成块走（防跨块混杂）、块决胜非空优先、AcceptanceForeign 随采纳块、SessionLinks 冲突 Sync 路径确定性裁决、不可信路径恢复本地权威、property test 共享 ID 池+全字段 op ([8497c30](https://github.com/MjxUpUp/Forge/commit/8497c30b15757165a3b2a8ba4f4f2031b906b697))
-* **task-lease:** 复审跟进——resume/attach 接手方认领租约（advisory 追踪实际工作机）、同值 fencing 破平带 oracle 定向测试（双机同时认领收敛） ([d878232](https://github.com/MjxUpUp/Forge/commit/d878232ed1665a8901e9854811bc54d36427a0ff))
-* **trust:** 复审跟进——篡改 e2e 分两层钉（unpack 完整性层 + 重打包挂旧 sidecar 的签名层真拒）、pull 失败节点汇总为 pull 级错误（策略拒收不再静默 exit 0）、团队档签名失败硬错误、.sig 原子写、trust CLI 面测试、设计文档实现校正 ([ffb4e7c](https://github.com/MjxUpUp/Forge/commit/ffb4e7c1d8819bbcb1a24253044e61cc0c26aba9))
+* **ci:** 分支三平台 CI 首跑的 Windows 失败修复 (`a155235`)
+* **git-sync:** skillRefAllowlist 收编 forge-sync（同步通道固定分支名，非 skill） (`939cfd6`)
+* **git-sync:** 审查跟进——ls-remote 区分无分支/不可达（init 真 fail-fast 且不写半成品绑定）、push 一次重拉重试（并发非快进收敛）、commit 限定前缀+扫 tmp 残骸+关 gpgsign/hooks、pull 逐节点容错+ValidNodeID 形态检查、补不可达 init/坏节点跳过测试 (`6d3ef9a`)
+* **hlc:** 审查跟进——Logical 饱和推进 Wall 替代 int32 回绕（静默破单调+不可解析）、String 全定宽（%019d.%010d，字符串序==Compare序全值域成立）、Parse 拒非数字/前导+、补溢出与等墙 recv 分支测试 (`a52c618`)
+* **nodeid:** 审查跟进——Save 原子化（CreateTemp+fsync+rename）、CheckConsistent 拒 null rotation_chain、Load 收紧宽松权限、ValidNodeID 手写校验对齐 fpid 风格、私钥值级防泄断言、补篡改/损坏分支测试 (`c6cedda`)
+* **pulse-node:** 复审跟进——task-start node 复用「过期即自由」单一规则（Lease.ActiveAt，崩溃机器 stale 认领不留看板）、测试补有效/过期双边界+wire 级 omitempty 断言+吞错修复、UI title 区分「当前持有/来源机器」语义 (`d080cc3`)
+* **review-followup:** dsh 交付复审 14 项发现修复——静默丢推送/字面量\n/TOCTOU/验签前置/可观测性 (`8f28ebc`)
+* **task-convergence:** 复审跟进——completionCanon 剔除并集字段 ReviewRounds + 纳入 AcceptanceForeign（同命令异标志=不同块）、标量验收决胜键含标志、dedupByKey 保持 nil/空表示（防决胜键跨轮翻转）、property test 补 stepwise 轮次收敛断言 (`7f91a4f`)
+* **task-convergence:** 审查跟进——History 改全内容并集（保住重试 provenance，时间序保 lastGateAt 锚）、review 锚只随完成块走（防跨块混杂）、块决胜非空优先、AcceptanceForeign 随采纳块、SessionLinks 冲突 Sync 路径确定性裁决、不可信路径恢复本地权威、property test 共享 ID 池+全字段 op (`8497c30`)
+* **task-lease:** 复审跟进——resume/attach 接手方认领租约（advisory 追踪实际工作机）、同值 fencing 破平带 oracle 定向测试（双机同时认领收敛） (`d878232`)
+* **trust:** 复审跟进——篡改 e2e 分两层钉（unpack 完整性层 + 重打包挂旧 sidecar 的签名层真拒）、pull 失败节点汇总为 pull 级错误（策略拒收不再静默 exit 0）、团队档签名失败硬错误、.sig 原子写、trust CLI 面测试、设计文档实现校正 (`ffb4e7c`)
 
 ## [1.39.1](https://github.com/MjxUpUp/Forge/compare/v1.39.0...v1.39.1) (2026-08-20)
 
 
 ### Bug Fixes
 
-* **dsh/opencode:** win32 spawn 走 cmd.exe 解析 npm .cmd shim——修掉全门禁静默失效 ([1a0c1a4](https://github.com/MjxUpUp/Forge/commit/1a0c1a48cfb3fac0dc132b0ca9a8fd8e799967c8))
+* **dsh/opencode:** win32 spawn 走 cmd.exe 解析 npm .cmd shim——修掉全门禁静默失效 (`1a0c1a4`)
 * **dsh:** @agent_forge/forge-dsh 0.1.1 随发版火车发布——Windows spawn 修复到达插件用户（release.yml 幂等发布，读插件自身 version）
 
 ## [1.39.0](https://github.com/MjxUpUp/Forge/compare/v1.38.2...v1.39.0) (2026-08-20)
@@ -1354,37 +1354,37 @@
 
 ### Features
 
-* **agentbridge:** 接入 DeepSeek Harness 插件生态（plugins/forge-dsh） ([0a4b7f3](https://github.com/MjxUpUp/Forge/commit/0a4b7f38938fbc70d339359d71513e0c7c8d077f))
+* **agentbridge:** 接入 DeepSeek Harness 插件生态（plugins/forge-dsh） (`0a4b7f3`)
 
 
 ### Bug Fixes
 
-* **release:** 首发前审查跟进——license 对齐 Apache-2.0 + forge-dsh dry-run 门禁 ([0e22f66](https://github.com/MjxUpUp/Forge/commit/0e22f66da5d3df9fdb3d82d7ace1d1357bcf6b85))
+* **release:** 首发前审查跟进——license 对齐 Apache-2.0 + forge-dsh dry-run 门禁 (`0e22f66`)
 
 ## [1.38.2](https://github.com/MjxUpUp/Forge/compare/v1.38.1...v1.38.2) (2026-08-20)
 
 
 ### Bug Fixes
 
-* **agentbridge:** kimi plugin manifest 恢复 skill-trigger 全事件绑定——看板 kimi 任务仅 5 事件 ([b4a0a27](https://github.com/MjxUpUp/Forge/commit/b4a0a27b429b366da030aba08e7ce2da26d39a7b))
+* **agentbridge:** kimi plugin manifest 恢复 skill-trigger 全事件绑定——看板 kimi 任务仅 5 事件 (`b4a0a27`)
 
 ## [1.38.1](https://github.com/MjxUpUp/Forge/compare/v1.38.0...v1.38.1) (2026-08-20)
 
 
 ### Bug Fixes
 
-* **cli:** sync/migrate/project help 加跨机器迁移交叉指引 ([a15a41a](https://github.com/MjxUpUp/Forge/commit/a15a41a38e03042373830de25f8357e985db6395))
-* **skillsqa:** 修正安全规则数自述 22→21（实计 21=18 对齐 audit.py+3 本地） ([fb622c7](https://github.com/MjxUpUp/Forge/commit/fb622c7111193df78d64d93a5d9cce417ddd6c03))
+* **cli:** sync/migrate/project help 加跨机器迁移交叉指引 (`a15a41a`)
+* **skillsqa:** 修正安全规则数自述 22→21（实计 21=18 对齐 audit.py+3 本地） (`fb622c7`)
 
 ## [1.38.0](https://github.com/MjxUpUp/Forge/compare/v1.37.0...v1.38.0) (2026-08-19)
 
 
 ### Features
 
-* **ci:** release-please 接管发版——Release PR 自动 bump/tag，dispatch 串联 release.yml ([e73609c](https://github.com/MjxUpUp/Forge/commit/e73609c5c47fd3b98235d5ec97939034c03b0d7f))
+* **ci:** release-please 接管发版——Release PR 自动 bump/tag，dispatch 串联 release.yml (`e73609c`)
 
 
 ### Bug Fixes
 
-* **ci:** release-please workflow 被 GitHub 静态拒绝——secrets 上下文移出 steps.if ([735bab7](https://github.com/MjxUpUp/Forge/commit/735bab7e5b8d334d7dc600b95f955e03a8b77cdb))
-* **ci:** 审查修复——守卫锚定断言/删always-update/串行化/先算后写 ([e68f28a](https://github.com/MjxUpUp/Forge/commit/e68f28a2a5edfa194ba98cc8341f5cf1058f9000))
+* **ci:** release-please workflow 被 GitHub 静态拒绝——secrets 上下文移出 steps.if (`735bab7`)
+* **ci:** 审查修复——守卫锚定断言/删always-update/串行化/先算后写 (`e68f28a`)
