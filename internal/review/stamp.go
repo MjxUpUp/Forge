@@ -34,9 +34,8 @@ import (
 	"github.com/MjxUpUp/Forge/internal/util"
 )
 
-// MaxReviewRounds 是 Stop hook 反复 block 同一 diff 的兜底上限。超过后 advisory
-// 放行——防 agent 不调 forge review pass 导致的 Stop 死循环（task-verify 历史教训：
-// Stop block 会触发 retry-loop，见 hooks/embed.go TaskVerifyHook 注释）。
+// MaxReviewRounds 是同一 diff 被反复打回时的兜底上限。超过后 advisory 放行——
+// 防 agent 不调 forge review pass 造成的死循环。
 const MaxReviewRounds = 3
 
 // Decision is the review decision produced by EvaluateFor for the current

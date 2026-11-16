@@ -1,25 +1,17 @@
 // Package hostcap is the host-capability registry: a deliberately minimal leaf package with zero upward dependencies.
 //
-// Package hostcap 是宿主能力注册表：刻意最小化的叶子包（仅依赖标准库、零向上依赖，
-// 与 agentsignals 同级），每个受支持宿主以声明式结构描述其身份信号与运行时能力。
-// 它存在的原因：宿主差异此前以 `agent == "kimi"` 式 hardcode 散落在 internal/cli
-// 各处（stdin normalize switch、输出 emitter switch、advisory 提升 map、session-id
-// env 链）——每接一个新宿主要在 N 处特判，漏任何一处就成为归因断点（2026-08 的
-// kimi/cursor/reasonix 会话归因缺口）。
-// agent 名字符串与 agentbridge.AgentType 逐字一致，按纯字符串保留（与 agentsignals
-// 同一约定），使本包永不 import agentbridge。
-// import 方向：taskpipeline 与 cli 可 import hostcap；hostcap 不 import 标准库以外
-// 任何包，故永不闭合 agentbridge→skillgen→taskpipeline 环（环的缘由见
-// internal/agentsignals/agentsignals.go）。
+// Package hostcap 是宿主能力注册表：刻意最小化的叶子包（标准库之外零依赖，与
+// agentsignals 同级），每个受支持宿主以声明式结构描述身份信号与运行时能力。
+// 宿主差异集中在这里，消费侧用查表代替 `agent == "kimi"` 式特判，避免每接一个
+// 新宿主就在多处判断、漏一处即成为归因断点。
 //
-// 阶段 1 加入了身份信号（哪个 env 变量 / stdin 字段携带 session id；哪个 env 变量
-// 能在 shell 里识别宿主）。阶段 2 把运行时协议知识作为附加声明式字段收编：
-// ContextChannels（哪些事件能把 allow 路径 detail 送达模型）、DroppedStdoutEvents、
-// PromoteAdvisory、PatchToolName、StdinDialect、InstallIndicators。其中部分能力背后
-// 的行为**函数**（stdin normalizer、输出 emitter）仍留在 internal/hookdispatch——它们耦合
-// HookInput/HookOutput 协议类型且直接写 os.Stdout，hostcap import hookdispatch 会闭
-// 合 import 环——故 hookdispatch 侧保留以这些字段为键的包级 map[string]func 注册表，所有
-// 宿主名门控改为查注册表而非比较字面名。
+// 身份信号回答两个问题：哪个 env 变量或 stdin 字段携带 session id（StdinSessionFields、
+// ShellSessionEnv），以及哪个 env 变量能在 shell 里识别宿主。运行时协议以声明式
+// 字段表达：ContextChannels（哪些事件能把 detail 送达模型）、DroppedStdoutEvents、
+// PromoteAdvisory、PatchToolName、StdinDialect、InstallIndicators。
+//
+// 宿主名以纯字符串保存（"claude-code"、"cursor"…），与 agentsignals 同一约定；
+// 本包只依赖标准库，被 taskpipeline、clitask 与 cli 导入，反向依赖不允许。
 //
 // # 接新宿主清单（ONBOARDING）
 //
@@ -79,9 +71,9 @@ type InstallIndicator struct {
 // 为键的行为函数（stdin normalizer、输出 emitter）住在 internal/cli 的包级
 // 注册表里（为何不能迁来本包，见包文档）。
 type Host struct {
-	// Name matches agentbridge.AgentType verbatim ("claude-code", "kimi", ...).
+	// Name 是宿主标识（"claude-code"、"kimi"……），与 agentsignals 的字符串约定一致。
 	//
-	// Name 与 agentbridge.AgentType 逐字一致（"claude-code"、"kimi"……）。
+	// Name 是宿主标识（"claude-code"、"kimi"……）。
 	Name string
 
 	// ShellSessionEnv is the env var the host injects into every shell/tool command it spawns, carrying the session id (claude-code: CLAUDE_CODE_SESSION_ID).
@@ -98,12 +90,8 @@ type Host struct {
 	//
 	// StdinSessionFields 按优先级列出 hook stdin 中携带 session id 的 JSON 字段。
 	// 多数宿主发 Claude 形 session_id；cursor 的工具/Stop/prompt 事件只带
-	// conversation_id（forge 此前在这些事件上两者都不读 → 每条 cursor 的
-	// checklog/toollog 都落到 legacy 全局键）；windsurf 发 trajectory_id；
-	// cline 发 taskId；reasonix 发 camelCase sessionId。非 Claude 形方言由各自
-	// normalizer（cli/hook_normalize.go）映射；本列是各宿主来源字段的文档
-	// （conversation_id 回落本身是宿主无关的——cli/hook.go 对任何 Claude 形
-	// payload 都用它填空的 SessionID，无需按宿主分支）。
+	// conversation_id；windsurf 发 trajectory_id；cline 发 taskId；reasonix 发
+	// camelCase sessionId。本列是各宿主来源字段的文档，按宿主分支读取。
 	StdinSessionFields []string
 
 	// StdinDialect names the hook-stdin dialect: "" = Claude-shape (the default unmarshal suffices).
@@ -125,10 +113,9 @@ type Host struct {
 	// ContextChannels maps hook event name → Channel for events whose allow-path detail reaches the model.
 	//
 	// ContextChannels 把 allow 路径 detail 能送达模型的 hook 事件名映射到
-	// Channel。map 中缺失的事件回落 DefaultChannel。各行注明出处 emitter
-	// （cli/hook.go 的 emitXxxOutput）。两个字段都未设的宿主（claude-code、
-	// codebuddy、opencode、reasonix）在 ContextChannel() 里走 Claude 兼容默认
-	// 行：全事件送达，"claude/additionalContext"。
+	// Channel。map 中缺失的事件回落 DefaultChannel。两个字段都未设的宿主
+	// （claude-code、codebuddy、opencode、reasonix）在 ContextChannel() 里走
+	// Claude 兼容默认：全事件送达，"claude/additionalContext"。
 	ContextChannels map[string]Channel
 
 	// DefaultChannel is the fallback for events missing from ContextChannels (windsurf: everything — no stdout JSON protocol at all; cline: everything — contextModification injects on every fanned-out event).
@@ -142,25 +129,16 @@ type Host struct {
 	//
 	// DroppedStdoutEvents 列出 allow 路径 stdout 被宿主丢出模型上下文的 hook
 	// 事件（kimi 0.35.0：PostToolUse/SessionStart/PostCompact 为
-	// observation-only，wire.jsonl 实证）。驱动 stale advisory 改搭
-	// UserPromptSubmit 通道的 hook（kimiStaleRidesHook）与 skill-trigger 的
-	// stdout 打印门控。
+	// observation-only，wire.jsonl 实证）；消费方据此避免在这些事件上依赖 stdout。
 	DroppedStdoutEvents []string
 
 	// PromoteAdvisory maps advisory hook name → rule for hosts where an advisory does not constrain behavior, so the REAL advisory (isolated from the hook's success/clean branch by the rule) is promoted to a block (passed true→false → exit 2, stderr shown to the model).
 	//
 	// PromoteAdvisory 把 advisory hook 名映射到规则，面向 advisory 不构成行为
-	// 约束的宿主：**真** advisory（由规则从该 hook 的成功/干净分支隔出）被提升
-	// 为阻断（passed true→false → exit 2，stderr 展示给模型）。准入路径有二：
-	// (a) advisory 通道物理性失效；(b) 通道送达但 advisory 被实证无视——dsh
-	// 2026-08-22：task-guard 的 WARN 经 agent.inject 到达了模型 inbox，但其文案
-	// 自述「allowed」（状态通知而非指令），下一个动作就是继续 edit，且所有下游
-	// 门禁都 task-scoped（无任务 ⇒ 静默通过）。通道送达且 advisory 足够的宿主
-	// 为 nil——kimi 也是 nil：其路径 (a) 提升已于 2026-08-24 **退役**——reason
-	// 自述「allowed」的 deny 自相矛盾（且 kimi 把 PreToolUse 上**任何** stdout
-	// 都当 deny，诚实的 advisory 文案也走不了 allow 路径）。kimi 的 advisory 改为
-	// 按项目入队、UserPromptSubmit 时攒发（cli hook_kimi_advisory.go）。逃生舱
-	// FORGE_KIMI_ADVISORY / FORGE_ADVISORY_PROMOTION 留在 cli（env 开关，非宿主能力）。
+	// 约束的宿主：规则把**真** advisory 从成功/干净分支隔出并提升为阻断
+	// （passed true→false → exit 2，stderr 展示给模型）。准入路径二选一：
+	// (a) advisory 通道物理性失效；(b) 通道送达但被实证无视（文案自述「allowed」
+	// 时模型当成状态通知而继续动作）。通道送达且 advisory 足够的宿主为 nil。
 	PromoteAdvisory map[string]AdvisoryRule
 
 	// PatchToolName names the host's patch-style edit tool whose tool_input carries ONLY {command: <patch text>} — no file_path (codex: apply_patch).
@@ -175,24 +153,22 @@ type Host struct {
 	// InstallIndicators lists the user-level config dirs whose existence proves the tool is installed (see InstallIndicator).
 	//
 	// InstallIndicators 列出其存在即证明工具已安装的用户级配置目录（见
-	// InstallIndicator）。由 agentbridge.DetectAgents 消费；项目级标记住在
+	// InstallIndicator）。项目级标记住在
 	// agentsignals（另一类信号，不在此重复）。
 	InstallIndicators []InstallIndicator
 }
 
-// Hosts 是全部受支持宿主的注册表，顺序无意义（查表用 Lookup）。身份行于
-// 2026-08 对照各 translator 与 kimi wire.jsonl 路由研究
-// （internal/agentbridge/kimi-hook-routing.md）核实。
+// Hosts 是全部受支持宿主的注册表，顺序无意义（查表用 Lookup）。身份行
+// 对照各宿主的文档与实测路由核实。
 var Hosts = []Host{
 	{
 		Name: "claude-code", ShellSessionEnv: "CLAUDE_CODE_SESSION_ID", StdinSessionFields: []string{"session_id"},
-		// CLAUDE_CONFIG_DIR 覆盖整个目录（与 hooks/plugin_detect.go 共享的
-		// env 优先约定）；回落 ~/.claude。
+		// CLAUDE_CONFIG_DIR 覆盖整个目录（env 优先，缺省回落 ~/.claude）。
 		InstallIndicators: []InstallIndicator{{Env: "CLAUDE_CONFIG_DIR", Path: "~/.claude"}},
 	},
 	{
 		Name: "cursor", StdinSessionFields: []string{"session_id", "conversation_id"},
-		// emitCursorOutput：顶层 additional_context 仅 PostToolUse/SessionStart 被读。
+		// cursor 的顶层 additional_context 仅 PostToolUse/SessionStart 被读取。
 		ContextChannels: map[string]Channel{
 			"PostToolUse":  {Delivered: true, Label: "cursor/additional_context"},
 			"SessionStart": {Delivered: true, Label: "cursor/additional_context"},
@@ -202,7 +178,7 @@ var Hosts = []Host{
 	},
 	{
 		Name: "copilot", StdinSessionFields: []string{"session_id"},
-		// emitCopilotOutput：camelCase additionalContext 仅 sessionStart/
+		// copilot 的 camelCase additionalContext 仅 sessionStart/
 		// postToolUse；userPromptSubmitted 的 stdout 对 command hook 会被丢弃。
 		ContextChannels: map[string]Channel{
 			"PostToolUse":  {Delivered: true, Label: "copilot/additionalContext"},
@@ -213,7 +189,7 @@ var Hosts = []Host{
 	{
 		Name: "windsurf", StdinSessionFields: []string{"trajectory_id"},
 		StdinDialect: "windsurf",
-		// emitWindsurfOutput：完全没有 stdout JSON 协议——allow 静默
+		// windsurf 没有 stdout JSON 协议——allow 静默
 		// （show_output:false）。
 		DefaultChannel: Channel{Delivered: false, Label: "windsurf/no-context-channel"},
 		// ~/.codeium 下有 windsurf/hooks.json 与 windsurf/memories/global_rules.md
@@ -222,7 +198,7 @@ var Hosts = []Host{
 	},
 	{
 		Name: "codex", StdinSessionFields: []string{"session_id"},
-		// emitCodexOutput：hookSpecificOutput.additionalContext 仅在 SessionStart/
+		// codex 的 hookSpecificOutput.additionalContext 仅在 SessionStart/
 		// PreToolUse/PostToolUse/UserPromptSubmit 被采纳；Stop/PostCompact 无上下文通道。
 		ContextChannels: map[string]Channel{
 			"SessionStart":     {Delivered: true, Label: "codex/hookSpecificOutput"},
@@ -246,7 +222,7 @@ var Hosts = []Host{
 	{
 		Name: "cline", StdinSessionFields: []string{"taskId"},
 		StdinDialect: "cline",
-		// emitClineOutput：allow 路径的 contextModification 注入任务（wrapper 对
+		// cline 的 allow 路径走 contextModification 注入（wrapper 对
 		// 每个扇出事件都转发）。
 		DefaultChannel: Channel{Delivered: true, Label: "cline/contextModification"},
 	},
@@ -255,22 +231,17 @@ var Hosts = []Host{
 		// kimi 的 prompt 字段是 content-block 数组——normalizer 完全替代默认
 		// unmarshal。
 		StdinDialect: "kimi", StdinReplacesParse: true,
-		// emitKimiOutput 把 detail 打 stdout；kimi 仅在 UserPromptSubmit 把
-		// stdout 送进模型上下文（wire.jsonl 实证，见
-		// internal/agentbridge/kimi-hook-routing.md）。
+		// kimi 把 detail 打 stdout；仅 UserPromptSubmit 会把
+		// stdout 送进模型上下文（wire.jsonl 实证）。
 		ContextChannels: map[string]Channel{
 			"UserPromptSubmit": {Delivered: true, Label: "kimi/stdout-UserPromptSubmit"},
 		},
 		DefaultChannel: Channel{Delivered: false, Label: "kimi/no-channel"},
 		// kimi 0.35.0 在这些事件上丢弃 allow 路径 stdout（observation-only）。
 		DroppedStdoutEvents: []string{"PostToolUse", "SessionStart", "PostCompact"},
-		// 不设 PromoteAdvisory 规则（2026-08-24 退役）：P0 提升把
-		// task-guard/bash-guard/assertion-check 的 advisory 变成 exit-2 deny，
-		// 而 reason 自述「allowed」——自相矛盾，且编辑被实际拦截、直到盲重试才发现。
-		// 生产 checklog 显示 kimi/no-channel 的 advisory 100% 丢失。advisory 现改为
-		// 按项目入队、在 UserPromptSubmit（上方唯一送达通道）攒成**一条**注入——见
-		// cli hook_kimi_advisory.go。阻断类 hook（read-before-edit、hazard-guard、
-		// freeze-guard）仍走 exit 2 deny——那是设计内的阻断。
+		// 不设 PromoteAdvisory 规则：kimi 在 exit 2 之外的 stdout 通道只在
+		// UserPromptSubmit 送达，提升为 deny 的 advisory 反而自相矛盾。
+		// kimi 上的 advisory 在 UserPromptSubmit（上方唯一送达通道）攒成一条注入。
 	},
 	{Name: "codebuddy", StdinSessionFields: []string{"session_id"}},
 	{Name: "reasonix", StdinSessionFields: []string{"sessionId"}, StdinDialect: "reasonix"},
@@ -314,7 +285,7 @@ var Hosts = []Host{
 		// 事件上读 hookSpecificOutput.additionalContext，exit 2 是阻断捷径——
 		// 故不要 StdinDialect、不进 outputEmitters、不设 ContextChannels 行：
 		// Claude 兼容默认（全事件送达，"claude/additionalContext"）是按文档
-		// 诚实的路由。ZCode 独有的执法差异随接线侧记录（agentbridge/zcode.go）：
+		// 诚实的路由。ZCode 独有的执法差异：
 		// 无 PostCompact/SubagentStop 事件，Stop 阻断连续 3 轮后强制结束。
 		//
 		// 2026-08-31 wire 实证补记：通道已验证送达（model-io 转录中 WARN 经

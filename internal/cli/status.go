@@ -223,7 +223,7 @@ func evalHealthLine(root string) string {
 	return line
 }
 
-// contractStatusLines 渲染契约的生效情况。契约写坏时 hookdispatch 按审计模式
+// contractStatusLines 渲染契约的生效情况。契约写坏时按审计模式
 // 静默放行（ADR-0002 阶段 B：opt-in posture 下坏契约不打开执法，也不回落全局档位）
 // ——这里必须让人看见「契约写着错拼写、执法没按你写的那份生效」。
 // 不阻断 status：仓库身份仍然成立，只是执法没开。

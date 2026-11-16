@@ -6,16 +6,11 @@ import (
 )
 
 // agentsignals 是刻意最小化的叶子包：持有项目级 agent 标记表与助手函数，仅依赖标准库
-// （os/filepath），零向上依赖 agentbridge/skillgen/taskpipeline。
+// （os/filepath），不依赖仓库内其它包。
 //
-// 为何存在：agentbridge 已导入 skillgen，skillgen 已导入 taskpipeline
-// （agentbridge→skillgen→taskpipeline），故 taskpipeline 不能再导入 agentbridge，否则
-// 闭合导入环。但 taskpipeline 的会话归因（detectAgentType）需要与 agentbridge 的
-// DetectAgents 接线期扫描相同的标记表——该表必须放在二者都能触达、又不形成环的地方。
-// 零向上依赖的叶子包即此处。
-//
-// 此处的 agent 名字符串（"claude-code"、"cursor"...）与 agentbridge.AgentType 常量逐字
-// 一致；刻意用纯字符串（而非 agentbridge.AgentType）正是为了让本包永不导入 agentbridge。
+// 会话归因（taskpipeline 的 detectAgentType）需要一个「项目里存在哪些 agent 标记」的
+// 单一真相源；把它放在叶子包，taskpipeline 与调用方都能读取，而不会形成包间循环。
+// agent 名以纯字符串保存（"claude-code"、"cursor"...），与 hostcap 的宿主标识同一约定。
 
 // projectMarker 把项目级路径（相对分段 + 文件还是目录）与它所表示的 agent 名配对。
 type projectMarker struct {
@@ -24,7 +19,7 @@ type projectMarker struct {
 	agent    string
 }
 
-// projectMarkers 与 agentbridge.DetectAgents 的项目级检查同序镜像，使首次匹配优先级
+// projectMarkers 是有序表：首次匹配优先级
 // （ProjectAgentMarker）与全集合检测（ProjectAgentMarkers）都与接线期扫描一致。
 // 每条标记的设计理由随附于它记录的决策旁，使本表同时成为"哪些标记算数"与"为何算数"的
 // 唯一真相源。kimi/reasonix/codex 的共同主题：这些 agent 的用户级配置目录在工具一装上

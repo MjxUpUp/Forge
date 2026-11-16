@@ -46,17 +46,16 @@ func TestGetCurrentVersion(t *testing.T) {
 }
 
 // TestPackageLeaf pins the dependency direction: util must never depend on
-// cli/hookdispatch — it is the leaf both sides consume (2026-09 census A2-2).
+// the cli package — it is the leaf both sides consume.
 //
-// TestPackageLeaf 钉住依赖方向：util 永不依赖 cli/hookdispatch——它是两侧
-// 共同消费的叶子包（2026-09 普查 A2-2）。
+// TestPackageLeaf 钉住依赖方向：util 永不依赖 cli——它是两侧共同消费的叶子包。
 func TestPackageLeaf(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", ".").Output()
 	if err != nil {
 		t.Skipf("go list unavailable in test environment: %v", err)
 	}
 	for _, dep := range strings.Fields(string(out)) {
-		if strings.HasSuffix(dep, "/internal/cli") || strings.HasSuffix(dep, "/internal/hookdispatch") {
+		if strings.HasSuffix(dep, "/internal/cli") {
 			t.Errorf("util must not depend on %s", dep)
 		}
 	}

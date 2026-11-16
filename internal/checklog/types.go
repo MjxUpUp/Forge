@@ -565,7 +565,7 @@ const (
 //
 // MetaKeyResolvePath / MetaKeyPostSeal 是任务归因探针的机器载荷命名空间
 // （docs/design/harness-fixes-a-g-2026-09.md E.1/E.2）：任何 check 的行都可携带。
-// 写方 hookdispatch（hook 行）与 taskpipeline.recordAudit（执行器行），读方
+// 写方为各门禁输出与 taskpipeline.recordAudit（执行器行），读方
 // `forge eval harness-audit`（泄漏计数）——单一真相源，与上方 MetaKey* 同款契约缝。
 const (
 	// MetaKeyResolvePath records which detection path resolved the active task: active-file / workspace / branch / legacy (taskpipeline.ResolvePath*).
@@ -581,7 +581,7 @@ const (
 	// MetaKeySuggested carries the command a next-hint row proposed (design B); harness-audit B1 matches it against the session's subsequent Bash calls.
 	//
 	// MetaKeySuggested 携带 next-hint 行建议的命令（设计 B）；harness-audit B1 用它与会话
-	// 随后的 Bash 调用比对算采纳率。写方 clitask 门禁输出，读方 harnessaudit。
+	// 随后的 Bash 调用比对算采纳率。写方 clitask 门禁输出，读方为报表/审计侧。
 	MetaKeySuggested = "suggested"
 )
 
