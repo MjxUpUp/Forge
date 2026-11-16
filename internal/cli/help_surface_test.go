@@ -69,7 +69,7 @@ func TestHelpSurface_EntryRouting(t *testing.T) {
 	}
 }
 
-// dogfood 修复的文档钉子：这三句是 agent 照抄的说明书，缺了就会踩同一个坑。
+// dogfood 修复的文档钉子：这四句是 agent 照抄的说明书，缺了就会踩同一个坑。
 func TestCliReference_DogfoodFixesPinned(t *testing.T) {
 	root := repoRoot
 	data, err := os.ReadFile(filepath.Join(root, "docs", "reference", "cli.md"))
