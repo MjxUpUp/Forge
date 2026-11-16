@@ -35,8 +35,8 @@ next 的干净工作区分支补上「开工」出口；契约仓库的评分回
 2. 可选钉 change 契约。
 3. 干活。
 4. implement → verify-acceptance → task-verify（BLOCKED 先读证据）。
-5. 含 .md 时 `docs lint` + `task doc-review --score`。
-6. commit → 只读子代理审查 → `review pass` → `task-complete` → `task complete`。
+5. 含 .md 时 `docs lint`。
+6. commit → 只读子代理审查 → `review pass` → `task doc-review --score`（commit 之后记录）→ `task-complete` → `task complete`。
 7. `task report --ref`（完成后必须带）。
 8. abort/override 的边界。
 
