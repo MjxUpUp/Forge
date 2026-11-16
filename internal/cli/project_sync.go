@@ -167,7 +167,7 @@ func announceSyncPush(cmd *cobra.Command, dataDir string, redact, yes bool) erro
 	if redact {
 		mode = `已脱敏（主目录/用户名/hostname → 占位符）`
 	}
-	fmt.Fprintf(out, `出境清单：tasks/*.json、checklog*.jsonl、toollog*.jsonl、sessions*、act/conclusions.jsonl、stamps/*、protocol.yml —— %s`+`\n`, mode)
+	fmt.Fprintf(out, `出境清单：tasks/*.json、checklog*.jsonl、toollog*.jsonl、sessions*、act/conclusions.jsonl、stamps/*、protocol.yml —— %s`+"\n", mode)
 	marker := filepath.Join(dataDir, `.sync-push-ack`)
 	if _, err := os.Stat(marker); err == nil {
 		return nil
@@ -191,7 +191,7 @@ func writeSyncPushAck(marker string) error {
 	if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(marker, []byte(`confirmed `+time.Now().UTC().Format(time.RFC3339)+`\n`), 0o644)
+	return os.WriteFile(marker, []byte(`confirmed `+time.Now().UTC().Format(time.RFC3339)+"\n"), 0o644)
 }
 
 func stdinIsTerminal(cmd *cobra.Command) bool {

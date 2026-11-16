@@ -69,6 +69,14 @@ func ScrubPaths(s string) string {
 			}
 		}
 	}
+	if host, err := os.Hostname(); err == nil && len(host) >= 3 {
+		s = strings.ReplaceAll(s, host, PlaceholderHost)
+	}
+	// hostname 先于用户名替换：CI 主机名常以用户名开头（如 runnervmccnms），
+	// 先替换用户名会把 hostname 拆成 "<user>vmccnms"，host 再也匹配不上。
+	if host, err := os.Hostname(); err == nil && len(host) >= 3 {
+		s = strings.ReplaceAll(s, host, PlaceholderHost)
+	}
 	if u, err := user.Current(); err == nil {
 		name := u.Username
 		if i := strings.LastIndexAny(name, `\/`); i >= 0 {
@@ -77,9 +85,6 @@ func ScrubPaths(s string) string {
 		if len(name) >= 3 {
 			s = strings.ReplaceAll(s, name, PlaceholderUser)
 		}
-	}
-	if host, err := os.Hostname(); err == nil && len(host) >= 3 {
-		s = strings.ReplaceAll(s, host, PlaceholderHost)
 	}
 	s = winUserDir.ReplaceAllString(s, PlaceholderHome)
 	s = msysUserDir.ReplaceAllString(s, PlaceholderHome)
