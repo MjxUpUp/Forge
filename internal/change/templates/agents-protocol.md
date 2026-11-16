@@ -82,7 +82,7 @@
 4. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）
    → `forge task gate task-verify`（配对测试、cheat-scan 等；多数是 advisory，复发才升硬）。
    BLOCKED 先读它给的证据，不要换个说法重试。complete 会硬查验收已实跑且未过期。
-   `task gate task-complete` 与 `task complete` 同口径：同一 `CheckDocGate`——缺记录/记录过期/得分 <75/未决 Critical/L1 硬失败时
+   `task gate task-complete` 与 `task complete` 同口径：同一 `CheckDocGate`——缺记录/记录过期/得分 <75/未决 Critical/L1 硬失败/证据完整性校验失败时
    gate 就 BLOCKED，不会先绿灯再在 complete 打回。
 5. 改动里含 `.md` 时先过文档闸：`forge docs lint <文件>`。
 6. 提交、再审查、再记录、再完结——顺序是：`git commit` → 派只读子 agent 审查当前 diff →
