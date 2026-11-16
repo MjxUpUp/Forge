@@ -453,7 +453,8 @@
       "path": "forge project export",
       "flags": [
         "include",
-        "out"
+        "out",
+        "redact"
       ]
     },
     {
@@ -467,7 +468,11 @@
       ]
     },
     {
-      "path": "forge project sync"
+      "path": "forge project sync",
+      "flags": [
+        "redact",
+        "yes"
+      ]
     },
     {
       "path": "forge registry"

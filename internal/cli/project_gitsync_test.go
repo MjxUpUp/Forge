@@ -65,6 +65,14 @@ func runProjectSyncForTest(t *testing.T, projRoot, home string, args ...string) 
 	t.Helper()
 	t.Setenv("FORGE_DATA_HOME", home)
 	chdirAndRestore(t, projRoot)
+	// 直接调 RunE 不会解析 argv：push 的首次确认用 --yes 显式跳过（测试非交互）。
+	if len(args) > 0 && args[0] == `push` {
+		if err := projectSyncCmd.Flags().Set(`yes`, `true`); err != nil {
+			t.Fatalf("set --yes: %v", err)
+		}
+	} else {
+		_ = projectSyncCmd.Flags().Set(`yes`, `false`)
+	}
 	if err := projectSyncCmd.RunE(projectSyncCmd, args); err != nil {
 		t.Fatalf("project sync %v: %v", args, err)
 	}
