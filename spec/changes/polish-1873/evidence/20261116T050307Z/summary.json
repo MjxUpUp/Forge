@@ -1,0 +1,67 @@
+{
+  "change": "polish-1873",
+  "started_at": "2026-11-16T05:03:07Z",
+  "finished_at": "2026-11-16T05:05:08Z",
+  "passed": true,
+  "sealed": true,
+  "head": "87e16c74e6db7c78281c51b7323a009b6e314cba",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "52c1ff9e3204dc72f28d34d41fbf02b17425f0d075109bb8018a65553598b95a",
+  "diff_bound": true,
+  "fast": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2372
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestArtifactStartHint|TestRepoHasGoTestFiles|TestRenderTaskReport_NoTestFilesHonest|TestBuildTaskReport_RepoHasGoTestFilesWiring' -count=1",
+      "exit": 0,
+      "duration_ms": 2807,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestVersionCommand' -count=1",
+      "exit": 0,
+      "duration_ms": 3957,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -count=1",
+      "exit": 0,
+      "duration_ms": 105783,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 292
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4660
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 731,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}
