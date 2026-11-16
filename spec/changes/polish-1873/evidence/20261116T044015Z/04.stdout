@@ -1,0 +1,145 @@
+已把 forge 托管块追加到 AGENTS.md 末尾（原有内容未动）
+  CLAUDE.md：不存在，未创建（要启用就加 --pointers claude）
+  .cursor/rules/forge.mdc：不存在，未创建（要启用就加 --pointers cursor）
+AGENTS.md 的 forge 托管块已是最新，无需改动
+  CLAUDE.md：不存在，未创建（要启用就加 --pointers claude）
+  .cursor/rules/forge.mdc：不存在，未创建（要启用就加 --pointers cursor）
+  ✓ C:/Users/ADMINI~1/AppData/Local/Temp/TestRunDocsLintHardFailureReturnsSentinel3414954566/001/clean.md
+扫描 1 文件 / 硬失败 0 / 建议 0
+  ✗ C:/Users/ADMINI~1/AppData/Local/Temp/TestRunDocsLintHardFailureReturnsSentinel3414954566/001/hard.md
+      - [D1][硬] L2: 禁令短语命中「综上所述」：空转总结词——总结应压缩为可执行结论，不应以套话开场
+扫描 1 文件 / 硬失败 1 / 建议 0
+--- FAIL: TestEvalArtifactDrillE2E (0.85s)
+    eval_cli_test.go:146: artifact-drill 应通过（exit 1）：  ✅ git init                       54ms
+          ✅ forge init                     47ms
+          ✅ fixture                        217ms
+          ✅ start --artifact(登记+提取)        331ms
+          ❌ schema(注入 hard/human 档)        72ms
+        ARTIFACT-DRILL FAIL at "schema(注入 hard/human 档)"
+        no project dir under FORGE_DATA_HOME
+        
+        报告：C:\Users\ADMINI~1\AppData\Local\Temp\forge-test-3037785714\evals\forge\artifact-drill-20261116-044049.json
+        artifact drill failed at schema(注入 hard/human 档)
+BLOCKED: evalkit: preflight 违例，拒绝启动——do-nothing 通过（判分定义有缺陷）: t1（首发即 blocked，见 docs/design/compat-commitments.md；确需跳过设 FORGE_EVAL_PREFLIGHT=skip，证据封顶 Weak）
+[forge] 建议：forge harness init 建立私有研发台账仓库（过程状态获得 git 史；触发点 test；agent 不得代批，需人在终端确认）
+[forge] 建议：forge harness init 建立私有研发台账仓库（过程状态获得 git 史；触发点 test；agent 不得代批，需人在终端确认）
+[forge] 建议：forge harness init 建立私有研发台账仓库（过程状态获得 git 史；触发点 test；agent 不得代批，需人在终端确认）
+[forge] 建议：forge harness init 建立私有研发台账仓库（过程状态获得 git 史；触发点 test；agent 不得代批，需人在终端确认）
+本次改动（已就位）：
+  + spec/forge.yaml
+  + spec/changes/
+  + spec/changes/archive/
+  + AGENTS.md
+
+forge 仓库契约已就位（只写仓库内产物，不写用户主目录）
+
+下一步：
+  forge registry add                  # 把本项目登记进全局视图（dashboard/task --all-projects）；本地任务不需要
+  forge change new <id> --title "..."  # 建一个 change
+  forge status                         # 看当前状态
+spec/forge.yaml 已存在：档位不覆盖（改档位请直接编辑该文件）
+forge 契约已存在：已同步 AGENTS.md 与指针（spec/forge.yaml 未改）
+提示: lite 是旧的接线档位；仓库契约最小档叫 mini，按 mini 处理
+本次改动（已就位）：
+  + spec/forge.yaml
+  + spec/changes/
+  + spec/changes/archive/
+  + AGENTS.md
+
+forge 仓库契约已就位（只写仓库内产物，不写用户主目录）
+
+下一步：
+  forge registry add                  # 把本项目登记进全局视图（dashboard/task --all-projects）；本地任务不需要
+  forge change new <id> --title "..."  # 建一个 change
+  forge status                         # 看当前状态
+项目 '002' 已退出 forge 接管（declined）：项目级 hook 全部静默，init/自动接管不再生效。
+恢复：在项目内运行 'forge on'。
+项目 '002' 已恢复 forge 接管（managed）。
+项目 '002' 已退出 forge 接管（declined）：项目级 hook 全部静默，init/自动接管不再生效。
+恢复：在项目内运行 'forge on'。
+项目 '002' 已退出 forge 接管（declined）：项目级 hook 全部静默，init/自动接管不再生效。
+恢复：在项目内运行 'forge on'。
+已退出 2 个项目的接管；恢复单个项目：在项目内运行 'forge on'。
+已写入 .forge-decline（团队声明，建议 git commit 使其对所有协作者生效）。
+项目 '002' 已退出 forge 接管（declined）：项目级 hook 全部静默，init/自动接管不再生效。
+恢复：在项目内运行 'forge on'。
+已移除 .forge-decline（团队声明；本地删除请随变更一并 git commit，否则他人 pull 后仍让位）。
+项目 '002' 已恢复 forge 接管（managed）。
+提示：本项目尚未初始化完整接线，请运行 'forge init' 补全（现在不会被拒绝）。
+项目 '002' 已退出 forge 接管（declined）：项目级 hook 全部静默，init/自动接管不再生效。
+恢复：在项目内运行 'forge on'。
+项目 '002' 已恢复 forge 接管（managed）。
+提示：本项目尚未初始化完整接线，请运行 'forge init' 补全（现在不会被拒绝）。
+✅ 已绑定同步 remote：C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_TwoMachineGitRoundtrip3544224447\005（node=fnode_a6450f65a25039ee05c49533986a61d7，分支 forge-sync）
+✅ 已推送 bundle b9aaa5af0070734f6ea84b63128e6992（2 文件）→ nodes/fnode_a6450f65a25039ee05c49533986a61d7/b19f6bda4a94/
+✅ 已绑定同步 remote：C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_TwoMachineGitRoundtrip3544224447\005（node=fnode_0d01618017a35b0cdce04cf3d9dc9d96，分支 forge-sync）
+导入节点 fnode_a6450f65a25039ee05c49533986a61d7 的 bundle…
+✅ pull 完成：处理 1 个他机 bundle（账本幂等，已导入的自动跳过）
+✅ 已推送 bundle 83d5e088262621b00c7596f9e2be3628（3 文件）→ nodes/fnode_0d01618017a35b0cdce04cf3d9dc9d96/b19f6bda4a94/
+导入节点 fnode_0d01618017a35b0cdce04cf3d9dc9d96 的 bundle…
+✅ pull 完成：处理 1 个他机 bundle（账本幂等，已导入的自动跳过）
+导入节点 fnode_0d01618017a35b0cdce04cf3d9dc9d96 的 bundle…
+✅ pull 完成：处理 1 个他机 bundle（账本幂等，已导入的自动跳过）
+✅ 已绑定同步 remote：C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_PullSkipsBadNodes2520259242\005（node=fnode_8b5f5aeea8835edd1b3bb53330642aed，分支 forge-sync）
+✅ 已推送 bundle 2130e412bef00f30f17d51412cd940fb（2 文件）→ nodes/fnode_8b5f5aeea8835edd1b3bb53330642aed/d9a9752238b9/
+✅ 已绑定同步 remote：C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_PullSkipsBadNodes2520259242\005（node=fnode_8bccbaefd26bb6a51ff6d34514eaea24，分支 forge-sync）
+导入节点 fnode_8b5f5aeea8835edd1b3bb53330642aed 的 bundle…
+导入节点 fnode_99999999999999999999999999999999 的 bundle…
+⚠ 节点 fnode_99999999999999999999999999999999 导入失败: bundle 校验失败: bundle 不是合法 gzip 流: gzip: invalid header
+⚠ 跳过非法节点目录名 "notanode"
+✅ 已绑定同步 remote：C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_PullWarnsOnKeyMismatch1807452811\005（node=fnode_e93329f594ce4fcd782bc49e47483e22，分支 forge-sync）
+✅ 已推送 bundle 7f39c3f036dd2822345b9547c5741365（2 文件）→ nodes/fnode_e93329f594ce4fcd782bc49e47483e22/7198260bdd80/
+✅ 已绑定同步 remote：C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_StatusQuotesIllegalNodeDirs3586214442\003（node=fnode_2fbbd561f946b3c20b2363bae9386c28，分支 forge-sync）
+✅ 已推送 bundle f74b0f74c10efdeb675f359b62efeddd（2 文件）→ nodes/fnode_2fbbd561f946b3c20b2363bae9386c28/5c054a3bc4e7/
+✅ 已绑定同步 remote：C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_StatusReportsNodes1977508639\003（node=fnode_feba52b7ccb2c729d0de6cab1af9d54f，分支 forge-sync）
+✅ 已推送 bundle 30e763d5af11ff24bcb5ceaec97f438a（2 文件）→ nodes/fnode_feba52b7ccb2c729d0de6cab1af9d54f/2c2e74614937/
+✅ 已绑定同步 remote：C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_OutcomeRecorded1612486412\003（node=fnode_d07a0975c878bf9c749123a0617e4f0d，分支 forge-sync）
+✅ 已推送 bundle 5a516e7e315cd6ffe8d58ccabefe4957（2 文件）→ nodes/fnode_d07a0975c878bf9c749123a0617e4f0d/645b2d9bb71b/
+remote:     C:\Users\ADMINI~1\AppData\Local\Temp\TestProjectSync_OutcomeRecorded1612486412\003
+node:       fnode_d07a0975c878bf9c749123a0617e4f0d
+last push:  2026-11-16T04:41:17Z
+last pull:  —
+nodes seen: [fnode_d07a0975c878bf9c749123a0617e4f0d]
+✅ 2 条判分已留档 C:\Users\Administrator\AppData\Local\Temp\TestReviewLLM_ScoresLifecycle2185443537\001\evals\forge\judge-samples\llm-1794804078788103300.json
+→ 算 κ（地板 0.6，不达标降级 ADVISORY）：forge eval judge-audit --scores C:\Users\Administrator\AppData\Local\Temp\TestReviewLLM_ScoresLifecycle2185443537\001\evals\forge\judge-samples\llm-1794804078788103300.json
+✅ task feat/recheck-req: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=23cda1c）
+⚠ 本次为带 --note 的基线刷新（内容已变更）：--note 是自供文本、forge 无法验证复审真发生过，已记 self-refresh WARN 审计区分于普通轮次。
+✅ task feat/recheck-req: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=23cda1c）
+⚠ 本次为自我承担的基线刷新（--acknowledge-changes）：已记 self-refresh WARN 审计。协议要求修复后复审——复审分两档：修复 diff 小、未触及高风险面（鉴权/数据迁移/并发/公共 API）且测试等确定性检查全绿 → 续用首轮 reviewer（宿主支持续用时，如 Claude Code SendMessage）做增量复核，只喂上轮 findings + 修复 diff + 测试结果、不给作者推理，只审修复 diff 及其波及面与未解决的原发现、不重审未改动代码（首轮并行派了多个 reviewer 时按轨道续用：有发现的那一轨必续用以核原发现是否真正解决，eng-reviewer 始终续用以核回归与调用方，cheat-detector 无发现时在修复命中作弊模式速查表任一项（含新增吞错/类型压制/永假分支、新增而无测试的分支）或触及测试断言/mock 时那一轨也续用，只审修复 diff，首轮零发现时两个都续用，不新派补位）；否则（高风险/大改/终审/第 3 轮起）新派只读子 agent 全量复审。复审结论记入 `forge review pass --note "<复审结论>"` 刷新审查基线。
+✅ task feat/explicit-ref: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=）
+✅ task feat/rework-rounds: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=）
+✅ task feat/rework-rounds: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=）
+✅ task feat/review-note: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=）
+✅ task feat/review-note: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=）
+✅ task feat/unreachable-base: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=1bec3b5）
+✅ task feat/unreachable-base: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=1bec3b5）
+⚠ 上次审查基线 deadbeef 不可达（历史可能被 amend/rebase 改写）——本次按 fail-open 重盖章，已记 WARN 级 baseline-unreachable 审计；建议确认当前代码已经过审查
+⚠ [test-diff] 本次审查范围内含测试文件变更（solver_test.go, widget.spec.ts）——「修测试使过」是修复回路最大嫌疑人：审查结论须单独说明测试变更的依据（预期变了？依据是什么？）；已落 test-diff 观察行
+✅ task feat/testdiff: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=604be7f）
+✅ task feat/notestdiff: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=209953c）
+✅ task feat/committed-diff: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=f464c3e）
+⚠ [test-diff] 本次审查范围内含测试文件变更（main_test.go）——「修测试使过」是修复回路最大嫌疑人：审查结论须单独说明测试变更的依据（预期变了？依据是什么？）；已落 test-diff 观察行
+✅ task feat/committed-diff: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=0d1ff65）
+⚠ 本次为带 --note 的基线刷新（内容已变更）：--note 是自供文本、forge 无法验证复审真发生过，已记 self-refresh WARN 审计区分于普通轮次。
+⚠ [self-review] 本会话既是改动生产者又盖了审查章——已记 self-review WARN 披露行（report 审查段可见）。协议要求独立只读子 agent/独立会话复审。
+✅ task feat/selfrev: code-review-gate 已通过（task-complete 门禁前置满足，基线 HEAD=899fe2a）
+  C:\Users\ADMINI~1\AppData\Local\Temp\TestCheckGlobalForge_RealLayout2183946113\001\no-forge-root not found — run 'forge init' in a project first
+  C:\Users\ADMINI~1\AppData\Local\Temp\TestCheckGlobalForge_RealLayout2183946113\002 exists
+  C:\Users\ADMINI~1\AppData\Local\Temp\TestCheckGlobalForge_RealLayout2183946113\002\projects/ missing — run 'forge task start' in a project to create its runtime-state dir
+  C:\Users\ADMINI~1\AppData\Local\Temp\TestCheckGlobalForge_RealLayout2183946113\002 exists
+ADVISORY: [task-complete] 工作区有 1 处未提交变更——协议顺序：三门禁通过 → git commit → forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）
+运行测试套件: go test ./...
+✅ 测试通过 — 真实结果已记为 deterministic 证据（checklog: test-run）
+未检测到项目测试命令（无 go.mod / Cargo.toml / package.json / pytest 配置）—— 无可运行的测试套件。
+运行测试套件: go test ./...
+✅ 测试通过 — 真实结果已记为 deterministic 证据（checklog: test-run）
+运行测试套件: go test ./...
+❌ 测试失败 — 失败结果已记入 checklog：
+--- FAIL: TestFail (0.00s)
+    fail_test.go:5: intentional failure
+FAIL
+FAIL	testproj	0.521s
+FAIL
+FAIL
+FAIL	github.com/MjxUpUp/Forge/internal/cli	87.587s
+FAIL
