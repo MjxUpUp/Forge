@@ -34,4 +34,3 @@ next 不给开工命令，文档不写验收与文档闸。对真实用户来说
 - 契约仓库 `task complete` 不再打印「protocol.yml 加载失败」；非契约仓库仍告警。
 - AGENTS 模板写入验收登记、doc gate、提交→审查→完结顺序、`--accept` 切分方式、
   `task report --ref`；对应断言测试通过。
-- 其余判据（cli.md 三处文档、gofmt、deadcode）由 acceptance #4–#6 覆盖。
