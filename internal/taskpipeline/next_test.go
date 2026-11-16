@@ -104,6 +104,11 @@ func TestNextDecision_BehindRemote(t *testing.T) {
 	if got := NextDecision("feat/x", false, 2, st); got.Next != "forge task verify-acceptance" {
 		t.Errorf("active task behind remote: Next = %q, want gate chain", got.Next)
 	}
+	// spec 仓库同样先同步：落后远端时不要直接开工，避免在旧基线上立任务。
+	if got := NextDecisionCtx(NextContext{Branch: "main", SpecDeclared: true, BehindRemote: 2}, nil); got.Next != "git pull --ff-only" {
+		t.Errorf("spec repo behind remote: Next = %q, want git pull --ff-only", got.Next)
+	}
+
 	// 未落后维持原状。
 	if got := NextDecision("main", false, 0, nil); got.Next != "forge status" {
 		t.Errorf("not behind: Next = %q, want forge status", got.Next)
@@ -225,14 +230,20 @@ func TestNextDecision_EntryRouting(t *testing.T) {
 			sub:  "ready",
 		},
 		{
+			name: "spec repo, clean, no task → task start (no status loop)",
+			ctx:  NextContext{Branch: "main", SpecDeclared: true},
+			want: "forge task start --ref <ref> --branch --title <title>",
+			sub:  "change 可后补",
+		},
+		{
 			name: "plain repo, dirty, unchanged behavior",
 			ctx:  NextContext{Branch: "main", Dirty: true},
 			want: "forge task start --ref <ref> --branch --title <title>",
 			sub:  "无活跃任务",
 		},
 		{
-			name: "spec repo clean stays status",
-			ctx:  NextContext{Branch: "main", Dirty: false, SpecDeclared: true},
+			name: "plain repo clean stays status",
+			ctx:  NextContext{Branch: "main", Dirty: false},
 			want: "forge status",
 		},
 	}
@@ -246,5 +257,22 @@ func TestNextDecision_EntryRouting(t *testing.T) {
 				t.Errorf("Reason should mention %q: %q", c.sub, got.Reason)
 			}
 		})
+	}
+}
+
+// NextHint 也要吃 spec 上下文：task gate/complete 的「→ next:」输出面不能退回 status
+// （否则 dogfood 的 next→status 死循环在最常被读的位置复现）。
+func TestNextHint_SpecRepoCleanSuggestsTaskStart(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(dir, "spec", "changes"), 0o755); err != nil {
+		t.Fatalf("mkdir spec: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "spec", "forge.yaml"), []byte("version: \"1\"\n"), 0o644); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	res := NextHint(dir, nil)
+	if !strings.Contains(res.Next, "forge task start") {
+		t.Fatalf("NextHint on clean spec repo = %q, want forge task start", res.Next)
 	}
 }
