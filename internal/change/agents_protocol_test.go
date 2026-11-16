@@ -17,6 +17,8 @@ func TestAgentsProtocol_IsActionable(t *testing.T) {
 		"按空白切分后直接 exec，不经 shell",
 		"task doc-review",
 		"forge task report --ref",
+		"forge review pass",
+		"必须在 commit 之后记录",
 		"forge task start --ref <ref> --change <id>",
 		"--artifact-chain",
 	}
