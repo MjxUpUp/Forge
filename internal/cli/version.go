@@ -24,5 +24,6 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
+	versionCmd.GroupID = "lifecycle"
 	rootCmd.AddCommand(versionCmd)
 }
