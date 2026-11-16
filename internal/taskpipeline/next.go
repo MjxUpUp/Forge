@@ -70,7 +70,8 @@ func NextRepoContext(root, branch string, dirty bool, behindRemote int) NextCont
 			continue
 		}
 		ctx.OpenChanges = append(ctx.OpenChanges, c.ID)
-		if ph, _, err := change.ComputePhase(root, c.ID); err == nil && ph == change.PhaseReady {
+		if ph, _, err := change.ComputePhase(root, c.ID); err == nil && ph == change.PhaseReady && c.HasGoal {
+			// 老 change（无 goal.md）不能 --change：钉契约需要五段 goal。
 			ctx.ReadyChanges = append(ctx.ReadyChanges, c.ID)
 		}
 	}
@@ -194,7 +195,13 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 // stderr 不影响调用方输出。
 func NextHint(root string, st *TaskState) NextResult {
 	branch, dirty := GitBranchDirty(root)
-	res := NextDecisionCtx(NextRepoContext(root, branch, dirty, GitBehindRemote(root)), st)
+	var res NextResult
+	if st == nil {
+		// 只有「无活跃任务」分支读 change 目录；活跃任务的门禁链不需要（避免每次 gate 输出多读一圈盘）。
+		res = NextDecisionCtx(NextRepoContext(root, branch, dirty, GitBehindRemote(root)), nil)
+	} else {
+		res = NextDecision(branch, dirty, GitBehindRemote(root), st)
+	}
 	// P2 时机训练：NextDecision 归一化后的**事实分支**是 verify-acceptance 待跑
 	// 且 task 尚未跑过 pairing 自检 → Reason 追加镜像自检建议（复审 P2-2：手工
 	// 重组条件三重偏差——implement 窗口的空跑会永久消费提示、completed 展示路径

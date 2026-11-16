@@ -7,7 +7,7 @@ go build ./...
 
 ```bash
 # 2. next 干净路由 + 评分静默回退
-go test ./internal/taskpipeline/ -run 'TestNextDecision|TestLoadScoringConfig|TestBuildEvaluateInput|TestNextHint_SpecRepo' -count=1
+go test ./internal/taskpipeline/ -run 'TestNextDecision|TestLoadScoringConfig|TestBuildEvaluateInput|TestNextHint_SpecRepo|TestNextRepoContext' -count=1
 go test ./internal/protocol/ -run TestConfigured -count=1
 ```
 
