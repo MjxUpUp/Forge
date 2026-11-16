@@ -1,0 +1,5 @@
+--- FAIL: TestCliReference_DogfoodFixesPinned (0.00s)
+    help_surface_test.go:87: cli.md 缺少 dogfood 修复的说明："ready 的 change 直接给 `forge task start --change <id>`"
+FAIL
+FAIL	github.com/MjxUpUp/Forge/internal/cli	1.788s
+FAIL
