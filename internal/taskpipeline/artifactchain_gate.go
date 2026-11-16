@@ -236,7 +236,7 @@ func CheckArtifactChainGate(root string, state *TaskState, taskRef string) *Exec
 		}
 		return nil
 	}
-	detail := GateAdvisory("%s", fmt.Sprintf("[task-implement] 产物链节点缺失: %s——按 schema.yaml 逐段产出（%s）；一次性提醒，不阻断", strings.Join(missing, "/"), nextArtifactHint(chain, missing)))
+	detail := GateAdvisory("%s", artifactAdvisoryDetail(state, missing, nextArtifactHint(chain, missing)))
 	fmt.Fprintln(os.Stderr, detail)
 	recordAudit(root, &checklog.Entry{
 		Check:   checklog.CheckArtifactChain,
@@ -439,4 +439,14 @@ func CheckArtifactChainDrift(root string, state *TaskState) []string {
 		fmt.Fprintf(os.Stderr, "[task-complete] 漂移产物审批已作废: %s（重登记后 forge task artifact --approve <stage>）\n", strings.Join(drifted, ", "))
 	}
 	return blocked
+}
+
+// artifactAdvisoryDetail 生成产物链缺失的一次性提醒文案。已钉 change goal 时，
+// task 级产物链只是可选项——1.87.2 dogfood 发现原文案会诱导 agent 再做一套
+// task 级产物，与 change 产物重复；这里把口径改成「以 change 为准」。
+func artifactAdvisoryDetail(state *TaskState, missing []string, hint string) string {
+	if state != nil && state.GoalContract != nil && state.GoalContract.Change != "" {
+		return fmt.Sprintf("[task-implement] 已钉 change 目标契约（%s）——task 级产物链（%s）可省略，以 change 产物为准；需要额外 task 级材料时再补，不阻断", state.GoalContract.Change, strings.Join(missing, "/"))
+	}
+	return fmt.Sprintf("[task-implement] 产物链节点缺失: %s——按 schema.yaml 逐段产出（%s）；一次性提醒，不阻断", strings.Join(missing, "/"), hint)
 }
