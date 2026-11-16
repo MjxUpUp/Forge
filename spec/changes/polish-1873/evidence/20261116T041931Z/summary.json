@@ -1,0 +1,101 @@
+{
+  "change": "polish-1873",
+  "started_at": "2026-11-16T04:19:31Z",
+  "finished_at": "2026-11-16T04:19:46Z",
+  "passed": true,
+  "sealed": true,
+  "head": "99d78c6b927f03d6342e55025206078f43e91583",
+  "diff_sha256": "42f875619652a074b6564d05b60bbc1518c162c3d8506c4d2a2e5e1a5cd63abf",
+  "files": [
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "a32fd63f5cd320c3b01667ab5fb5170ae0ba560452f4bc23f0f1006397c571a4"
+    },
+    {
+      "path": "internal/cli/version.go",
+      "sha256": "2eb24fb04a9667081ae923e96c92c57123877cfdbc5bf035b1b50d9a07079020"
+    },
+    {
+      "path": "internal/cli/version_test.go",
+      "sha256": "4a7f519ec2582ba0d294beb3779a4490185544f9ec74afbe39219f84a4bfaa00"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "ae27018b4e240e3c4864ebe0def218040ec7c4ac33719f0f513fb346da98f629"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "4ae4d08c9b51aa609690443883c00a35e9601233171a38520b95da8dbe4fd03e"
+    },
+    {
+      "path": "internal/clitask/task_report_honesty_test.go",
+      "sha256": "057389b82f1f71657a82ddf0a477faa69a2201aea2e8d456d400989ab518efed"
+    },
+    {
+      "path": "spec/changes/polish-1873/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/polish-1873/FAST",
+      "sha256": "587b5c98469bc5ffae9dbe12d1dc385c501799d168aba311012bb6a800c162f5"
+    },
+    {
+      "path": "spec/changes/polish-1873/acceptance.md",
+      "sha256": "3d144897ca8c1a337031b0bd76ce11610a0c5ee2114efdbd1b046c55e00514f0"
+    },
+    {
+      "path": "spec/changes/polish-1873/clarify.md",
+      "sha256": "39ba6ea6cfc00076aff783b5e520bd92dfb76c3f4ae9481829526f16fd7194b8"
+    },
+    {
+      "path": "spec/changes/polish-1873/goal.md",
+      "sha256": "0ba80bc0503d0d8e69feda4cb23b30b669d6defd6b1b54e89b8ca27847ac1a18"
+    },
+    {
+      "path": "spec/changes/polish-1873/proposal.md",
+      "sha256": "74dd7dc339121dc9f7ce21a0b19e81bd64700bf3c922cca248fe4ac8cd91f09f"
+    }
+  ],
+  "acceptance_sha256": "3d144897ca8c1a337031b0bd76ce11610a0c5ee2114efdbd1b046c55e00514f0",
+  "diff_bound": true,
+  "fast": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2977
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestArtifactStartHint_ChangePinned|TestRepoHasTestFiles' -count=1",
+      "exit": 0,
+      "duration_ms": 3209,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestVersionCommand' -count=1",
+      "exit": 0,
+      "duration_ms": 3272,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 281
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5261
+    }
+  ]
+}

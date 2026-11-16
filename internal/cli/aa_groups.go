@@ -2,7 +2,7 @@ package cli
 
 // 命令族温和分组：命令路径全不变，仅让 `forge --help` 按职能分组展示。
 //
-// 为什么用 GroupID 而非归并路径：20 个顶层命令的路径已写进 README、CLAUDE.md、
+// 为什么用 GroupID 而非归并路径：21 个顶层命令的路径已写进 README、CLAUDE.md、
 // session-retrospective skill、MCP 文档与用户脚本——改路径要同步 5+ 处且破坏向后兼容。
 // cobra 的 Command.Group 只改 help 展示，零迁移成本。
 //

@@ -1,0 +1,99 @@
+{
+  "change": "polish-1873",
+  "started_at": "2026-11-16T04:40:15Z",
+  "finished_at": "2026-11-16T04:41:52Z",
+  "passed": false,
+  "sealed": false,
+  "head": "03424e75c9ce17df4793c15a529192be088b8a0c",
+  "diff_sha256": "ce2fc36edd982564bc92c3ca0fe7dd3ecbe292c59ad85856cc4ad07569c644a0",
+  "files": [
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "83c55e4a4ff7b0342ba0fd0b79d85649cc8d93139899d0441f9e31205b244e07"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "f1a3032dea1bfaf352c80da63e95ac3afa400e188dfd475ebf08da6494909e7c"
+    },
+    {
+      "path": "internal/cli/aa_groups.go",
+      "sha256": "f367e829b77851adf8822dcd99007316a19b28fdbe399e4549ca2dfd5211944d"
+    },
+    {
+      "path": "internal/cli/version.go",
+      "sha256": "c4812162d59bb32baf3b175902bc04907e2d7528f986b6d5b5cdba1223e8552d"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "ede988920753ee1e72f2a9cef819d8c8e9ce61f2aeea2c4b3b74844459e25e2f"
+    },
+    {
+      "path": "internal/clitask/task_report_honesty_test.go",
+      "sha256": "e192aeddca3fcdef818ac5e22f667b248a6f569ee1510bd94555ff0b87fb5098"
+    },
+    {
+      "path": "spec/changes/polish-1873/acceptance.md",
+      "sha256": "52c1ff9e3204dc72f28d34d41fbf02b17425f0d075109bb8018a65553598b95a"
+    }
+  ],
+  "acceptance_sha256": "52c1ff9e3204dc72f28d34d41fbf02b17425f0d075109bb8018a65553598b95a",
+  "diff_bound": true,
+  "fast": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2058
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestArtifactStartHint|TestRepoHasGoTestFiles|TestRenderTaskReport_NoTestFilesHonest|TestBuildTaskReport_RepoHasGoTestFilesWiring' -count=1",
+      "exit": 0,
+      "duration_ms": 2307,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestVersionCommand' -count=1",
+      "exit": 0,
+      "duration_ms": 3840,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -count=1",
+      "exit": 1,
+      "duration_ms": 88872,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    }
+  ]
+}
