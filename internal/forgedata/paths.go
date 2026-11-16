@@ -136,36 +136,10 @@ func (p *Project) ensureMeta() error {
 // MetaPath 返回 DataDir/.migration-meta.json
 func (p *Project) MetaPath() string { return filepath.Join(p.DataDir, ".migration-meta.json") }
 
-// HazardsEventsPath returns DataDir/hazards/events.jsonl.
-//
-// HazardsEventsPath 返回 DataDir/hazards/events.jsonl
-func (p *Project) HazardsEventsPath() string {
-	return filepath.Join(p.DataDir, "hazards", "events.jsonl")
-}
-
-// HazardsConfirmPath returns DataDir/hazards/<fp>.json.
-//
-// HazardsConfirmPath 返回 DataDir/hazards/<fp>.json
-func (p *Project) HazardsConfirmPath(fp string) string {
-	return filepath.Join(p.DataDir, "hazards", fp+".json")
-}
-
 // ActDir returns DataDir/act.
 //
 // ActDir 返回 DataDir/act
 func (p *Project) ActDir() string { return filepath.Join(p.DataDir, "act") }
-
-// FreezeDir returns DataDir/freeze.
-//
-// FreezeDir 返回 DataDir/freeze
-func (p *Project) FreezeDir() string { return filepath.Join(p.DataDir, "freeze") }
-
-// FreezeStatePath returns DataDir/freeze/state.json.
-//
-// FreezeStatePath 返回 DataDir/freeze/state.json
-func (p *Project) FreezeStatePath() string {
-	return filepath.Join(p.DataDir, "freeze", "state.json")
-}
 
 // ActConclusionsPath returns DataDir/act/conclusions.jsonl.
 //

@@ -2,7 +2,6 @@ package taskpipeline
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -269,143 +268,11 @@ func LoadSessions(root string) ([]SessionRecord, error) {
 }
 
 // detectAgentType 检查已知的 agent 配置目录，按固定优先级顺序返回首个命中。委托给共享
-// agentsignals 表——与 agentbridge.DetectAgents 接线同源——使会话归因与 agent 接线对
-// "哪些项目标记算数"永不分歧，且覆盖全部受支持 agent（不再只是四个遗留标记）。首次匹配
-// 优先级确定（有序切片，非 map）：早期遍历 map 的版本在项目含多个 agent 目录（如
-// .claude + .cursor）时使 OriginTool 跨进程启动不确定——归属错误正是 types.go
-// OriginTool 注释论证过的危害。
+// agentsignals 表，使会话归因与 agent 接线对"哪些项目标记算数"永不分歧，且覆盖
+// 全部受支持 agent。优先级确定（有序切片，非 map）：项目含多个 agent 目录
+// （如 .claude + .cursor）时 OriginTool 不随启动次序漂移。
 func detectAgentType(root string) string {
 	return agentsignals.ProjectAgentMarker(root)
-}
-
-// StampSessionAgent fills an EMPTY AgentType on the authoritative session record with the given agent, best-effort.
-//
-// StampSessionAgent 用给定 agent 填充权威 session 记录上空的 AgentType（尽力而为），并把同
-// 一值反映到 append-only 的 sessions.jsonl，使读 jsonl（而非 scoped 文件）的 LoadSessions /
-// 归因查询能看到盖戳的 agent。
-//
-// 它服务无标记场景：翻译器会把 hook 命令改写为携带 `--agent <name>` 的 agent
-// （kimi、reasonix、windsurf），即便项目没有 detectAgentType 认识的标记，它们也会带解析出
-// 的 agent 触发 hook，故 session 以空 AgentType 创建。session 起始后的首个 Pre/PostToolUse
-// 把该权威 agent 盖到记录上。
-//
-// 它帮不到 Claude-兼容-stdin 翻译器（codex、codebuddy、opencode）：这些以 agent=="" 触发
-// hook（命令上无 --agent），故盖戳对它们是 no-op——它们依赖 Part 1 的项目标记（codex/
-// opencode 有标记；codebuddy 设计上无标记，是已知归因缺口）。
-//
-// 契约——刻意收窄，使盖戳绝不使归因更糟：
-//   - 在 live 记录与 jsonl 上都只填空的 AgentType（绝不覆盖非空值，否则会冲掉正确的标记归因）；
-//   - session 记录不存在时不创建文件（session 还不存在时盖戳无意义——下次 task start 时
-//     EnsureSession 会创建）；
-//   - 不轮换；
-//   - 每 session 至多碰 jsonl 一次（仅当文件盖戳确实填了空）；
-//   - 所有错误吞掉（尽力而为的簿记——盖戳失败绝不能打断工具调用）。
-//
-// jsonl 重写在并发下是尽力而为：两个 session 在首个工具事件同时盖戳可能在 read-modify-
-// write 上竞争，其中一条 jsonl 行保持空。这可接受，因为（a）每 session 至多一次，
-// （b）scoped/legacy 文件仍是权威 live 记录，jsonl 是尽力而为的历史——scoped 值不会丢。
-func StampSessionAgent(root, sessionID, agent string) {
-	if agent == "" {
-		return
-	}
-	var changed bool
-	var logSID string
-	if sessionID != "" {
-		changed = stampScopedSession(root, sessionID, agent)
-		logSID = sessionID
-	} else {
-		changed, logSID = stampLegacySession(root, agent)
-	}
-	if changed && logSID != "" {
-		upsertSessionAgentInLog(root, logSID, agent)
-	}
-}
-
-// stampScopedSession 盖戳 session-scoped 记录 sessions/<sid>.json。仅当确实填了空 AgentType
-// 时返回 true（用于判断 jsonl 是否需要同步更新）。写回的是它读取的那个确切路径——而非
-// saveScopedSession（后者按 s.SessionID 重新推导路径，一旦 SessionID 与文件名漂移就会写偏）。
-func stampScopedSession(root, sessionID, agent string) bool {
-	path := sessionScopedFilePath(root, sessionID)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false // absent or unreadable — nothing to stamp (do NOT create).
-	}
-	var s SessionRecord
-	if err := json.Unmarshal(data, &s); err != nil {
-		return false // corrupt — leave it (EnsureSession rebuilds on the next start).
-	}
-	if s.AgentType != "" {
-		return false // already attributed — never overwrite.
-	}
-	s.AgentType = agent
-	out, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return false
-	}
-	if err := util.AtomicWrite(path, out, 0644); err != nil {
-		return false
-	}
-	return true
-}
-
-// stampLegacySession 盖戳 legacy 全局 session.json。返回 (changed, sid)：sid 是记录自身的
-// SessionID（传给 jsonl upsert，因 legacy 调用方传空 sessionID，而 jsonl 行以记录真实 id 为键）。
-func stampLegacySession(root, agent string) (changed bool, sid string) {
-	s, err := loadSession(root)
-	if err != nil || s == nil {
-		return false, ""
-	}
-	if s.AgentType != "" {
-		return false, ""
-	}
-	s.AgentType = agent
-	if err := saveSession(root, s); err != nil {
-		return false, ""
-	}
-	return true, s.SessionID
-}
-
-// upsertSessionAgentInLog 重写 DataDir/sessions.jsonl，使匹配 sessionID 的行在其 AgentType
-// 当前为空时填上给定 agent。这是让盖戳的 agent 对 LoadSessions 与归因指标可见的关键：
-// appendSessionLog 只在 session 创建时写一行（彼时 AgentType 仍为空），而 LoadSessions 读
-// jsonl——不读 scoped 的 sessions/<sid>.json——故只动 scoped 文件的盖戳对一切 jsonl 消费方
-// 不可见。没有这一步，盖戳对"53% agent_type 缺失"指标在 scoped session 上的贡献恰好为零。
-//
-// 尽力而为 + 幂等：只改 AgentType 为空的行（绝不覆盖）；无匹配行则不写（session 可能尚未记
-// 日志）；AtomicWrite（temp+rename）使重写无撕裂。行/字节结构在往返中保持（按换行分割后以同
-// 分隔符重新连接，含尾随换行时也保留）。
-func upsertSessionAgentInLog(root, sessionID, agent string) {
-	if sessionID == "" {
-		return
-	}
-	path := sessionsLogPath(root)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return // no log yet — nothing to update.
-	}
-	lines := bytes.Split(data, []byte("\n"))
-	changed := false
-	for i, ln := range lines {
-		if len(bytes.TrimSpace(ln)) == 0 {
-			continue
-		}
-		var s SessionRecord
-		if err := json.Unmarshal(ln, &s); err != nil {
-			continue // skip unparseable line, preserve it as-is.
-		}
-		if s.SessionID != sessionID || s.AgentType != "" {
-			continue
-		}
-		s.AgentType = agent
-		if rewritten, err := json.Marshal(s); err == nil {
-			lines[i] = rewritten
-			changed = true
-		}
-	}
-	if !changed {
-		return
-	}
-	_ = util.AtomicWrite(path, bytes.Join(lines, []byte("\n")), 0644)
 }
 
 // newSessionID 生成唯一 session 标识符，含时间戳与随机后缀。
@@ -445,53 +312,6 @@ func CurrentSessionID() string {
 	return ""
 }
 
-// EnsureHookSession registers a session observed on the hook path, best-effort.
-//
-// EnsureHookSession 登记 hook 路径上观察到的会话，尽力而为。hook 分发器手持权威
-// 双重身份——从宿主 stdin 归一化的 session id 加解析出的 --agent——而 CLI 路径
-// （`forge task start` 的 EnsureSession）是此前唯一的登记点。agent 经无身份 env
-// 的 Bash 工具驱动 forge 的宿主（kimi/codex/cursor/...）从不以真实 session id
-// 走到 CLI 路径，故没有本函数它们的会话永远不被登记：sessions.jsonl 全机只有
-// agent_type=claude-code（2026-08 归因审计）。
-//
-// 语义：
-//   - sessionID 为空 → no-op（legacy 全局 session.json 保持 stamp-only 路径；
-//     无 session id 的 hook 不得触发 legacy 轮换）。
-//   - 记录不存在 → 以 AgentType = agent 建档（来自 --agent 的声明式真相）。
-//     agent 为空 → 回落项目标记弱信号（detectAgentType），同 ensureScopedSession。
-//   - 记录已存在 → 沿用 StampSessionAgent 的只填空契约（绝不覆盖，jsonl 每会话
-//     至多同步一次）。
-//   - 吞掉所有错误：簿记绝不能打断 hook。
-func EnsureHookSession(root, sessionID, agent string) {
-	if root == "" || sessionID == "" {
-		return
-	}
-	if _, err := os.Stat(sessionScopedFilePath(root, sessionID)); err == nil {
-		// Already registered — fill an empty AgentType only (idempotent).
-		//
-		// 已登记——仅填空的 AgentType（幂等）。
-		StampSessionAgent(root, sessionID, agent)
-		return
-	}
-	agentType := agent
-	if agentType == "" {
-		agentType = detectAgentType(root)
-	}
-	now := time.Now()
-	s := &SessionRecord{
-		SessionID:    sessionID,
-		StartedAt:    now,
-		StartedEpoch: now.Unix(),
-		AgentType:    agentType,
-	}
-	if err := saveScopedSession(root, s); err != nil {
-		return
-	}
-	// 同一 SessionID 的重复 jsonl 行可容忍（LoadSessions 保留每个可解析行；
-	// upsertSessionAgentInLog 全部更新）——两个 hook 竞争首次登记时可能都追加。
-	_ = appendSessionLog(root, s)
-}
-
 // lastSessionFreshWindow 限定 last-session 指针可被采纳的时长：除 claude-code
 // 外任何宿主的 Bash 工具里跑 `forge task start` 都不带身份 env，故 CLI 侧采纳
 // 最近一次 hook 观察到的会话——但仅限此窗口内。残留的误归属风险（agent 活动
@@ -524,34 +344,6 @@ type LastSessionPointer struct {
 // lastSessionPath 返回项目 DataDir 内指针文件的路径。
 func lastSessionPath(root string) string {
 	return filepath.Join(dataHome(root), "last-session.json")
-}
-
-// TouchLastSession refreshes the last-session pointer, throttled to one write per lastSessionWriteThrottle.
-//
-// TouchLastSession 刷新 last-session 指针，按 lastSessionWriteThrottle 节流。
-// 由 hook 分发器在宿主提供了 session id 的每次事件上调用。尽力而为：吞掉所有
-// 错误。
-func TouchLastSession(root, sessionID, agent, event string) {
-	if root == "" || sessionID == "" {
-		return
-	}
-	path := lastSessionPath(root)
-	if data, err := os.ReadFile(path); err == nil {
-		var p LastSessionPointer
-		if json.Unmarshal(data, &p) == nil && time.Since(time.Unix(p.Epoch, 0)) < lastSessionWriteThrottle {
-			return
-		}
-	}
-	out, err := json.Marshal(LastSessionPointer{
-		SessionID: sessionID,
-		Agent:     agent,
-		Epoch:     time.Now().Unix(),
-		Event:     event,
-	})
-	if err != nil {
-		return
-	}
-	_ = util.AtomicWrite(path, out, 0644)
 }
 
 // RecentHookSession returns the pointer's session id and agent when the pointer exists and is younger than lastSessionFreshWindow; otherwise ok=false.

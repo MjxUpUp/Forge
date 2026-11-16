@@ -23,24 +23,13 @@
 //
 // # 接新宿主清单（ONBOARDING）
 //
-// 每一行对应一个机械执法点，漏任何一步会被指名的守卫测试/快照拦下（依据：
-// docs/design/hostcap-behavior-registry.md）：
-//  1. 本注册表加一行 Host——缺 StdinDialect 对应 normalizer →
-//     hookdispatch.TestHostcapDialectRegistry 红；无 emitter 且未登记 Claude
-//     默认 → TestHostcapEmitterRegistry 红；新增 agent=="x" 字面量特判 →
-//     TestNoHostLiteralGates 红（豁免须带理由登记）。
-//  2. internal/agentbridge 加 Translator 文件并接入 AllTranslators。
-//  3. ForgeHookSpec 接线（internal/hooks/settings.go）+ 镜像守卫
-//     （TestPluginPack_HooksMirrorSettings / TestDshPluginSpecMirrorsSpec 同族）。
-//  4. README 多 agent 支持表加行。
-//  5. forge compat snapshot 重钉（compat.snapshot.json 的变更进 PR diff 显式审阅）。
+// 每一行对应一个机械执法点（依据：docs/design/hostcap-behavior-registry.md）：
+// 新增 Host 时同步本注册表、本包守卫测试与 README 多 agent 支持表，并重钉
+// forge compat snapshot（compat.snapshot.json 的变更进 PR diff 显式审阅）。
 package hostcap
 
 import (
 	"os"
-	"path/filepath"
-	"slices"
-	"strings"
 )
 
 // Channel describes whether an ALLOW-path detail emission on one hook event actually reaches the host's model context, plus a short channel label for checklog stamping (recordSkillTriggerHits) and usage-funnel analysis.
@@ -82,26 +71,6 @@ type InstallIndicator struct {
 	// Path 是 home 相对的回落路径（"~/.claude"）；"~/" 前缀在 Resolve 时展开为
 	// 用户 home 目录。
 	Path string
-}
-
-// Resolve returns the absolute candidate directory for this indicator: Env (joined with EnvSuffix) when set, else Path with "~/" expanded to the user home.
-//
-// Resolve 返回该指示的绝对候选目录：Env 已设时返回 Env（join EnvSuffix），
-// 否则把 Path 的 "~/" 展开为用户 home。无法确定 home 目录时返回 ""。
-func (i InstallIndicator) Resolve() string {
-	if i.Env != "" {
-		if v := os.Getenv(i.Env); v != "" {
-			if i.EnvSuffix != "" {
-				return filepath.Join(v, i.EnvSuffix)
-			}
-			return v
-		}
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, strings.TrimPrefix(i.Path, "~/"))
 }
 
 // Host describes one supported host's identity signals and runtime protocol capabilities.
@@ -365,100 +334,6 @@ var Hosts = []Host{
 		},
 		InstallIndicators: []InstallIndicator{{Path: "~/.zcode"}},
 	},
-}
-
-// Lookup returns the registry row for name, or nil when the host is unknown (callers treat unknown as the Claude-compatible default, mirroring the pre-registry switch defaults).
-//
-// Lookup 返回 name 对应的注册表行，宿主未知时返回 nil（调用方按 Claude 兼容
-// 默认处理，与注册表之前的 switch default 语义一致）。
-func Lookup(name string) *Host {
-	for i := range Hosts {
-		if Hosts[i].Name == name {
-			return &Hosts[i]
-		}
-	}
-	return nil
-}
-
-// ContextChannel reports whether an ALLOW-path detail emission on (hostName, event) actually reaches the model's context on that host, plus a short channel label.
-//
-// ContextChannel 报告 (hostName, event) 上 allow 路径的 detail 输出是否真到达
-// 该宿主的模型上下文，并给出简短通道标签。无通道行的宿主与未知宿主走 Claude
-// 兼容默认：emitClaudeOutput 的裸 hookSpecificOutput，其 additionalContext 在
-// 每个事件上都被 Claude 注入（送达，"claude/additionalContext"）。
-func ContextChannel(hostName, event string) (delivered bool, label string) {
-	if h := Lookup(hostName); h != nil && (len(h.ContextChannels) > 0 || h.DefaultChannel.Label != "") {
-		if ch, ok := h.ContextChannels[event]; ok {
-			return ch.Delivered, ch.Label
-		}
-		return h.DefaultChannel.Delivered, h.DefaultChannel.Label
-	}
-	return true, "claude/additionalContext"
-}
-
-// ShouldPromoteAdvisory reports whether the given hook's detail qualifies as a "must-reach-the-model" advisory on this host per its PromoteAdvisory rules.
-//
-// ShouldPromoteAdvisory 按本宿主的 PromoteAdvisory 规则报告给定 hook 的
-// detail 是否属于「必须送达模型」的 advisory。未知 hook 与无提升规则的宿主
-// 返回 false。
-func (h *Host) ShouldPromoteAdvisory(hookName, detail string) bool {
-	rule, ok := h.PromoteAdvisory[hookName]
-	if !ok {
-		return false
-	}
-	if !strings.Contains(detail, rule.Contains) {
-		return false
-	}
-	if rule.Excludes != "" && strings.Contains(detail, rule.Excludes) {
-		return false
-	}
-	return true
-}
-
-// PromotesHook reports whether this host carries ANY promotion rule for hookName (rule existence, detail-independent).
-//
-// PromotesHook 报告本宿主是否为 hookName 携带**任一**提升规则（规则存在性，
-// 与 detail 无关）。须在具体 detail 尚不存在前配置 hook 行为的调用方用它而非
-// ShouldPromoteAdvisory——cli 据此设置 FORGE_TASKGUARD_PROMOTED，让 task-guard
-// 脚本在提升宿主上放弃每会话一次的去噪（模型盲重试即可绕过的 deny——NOWARN
-// 标记让第二次相同 edit 静默放行——算不上执法）。
-func (h *Host) PromotesHook(hookName string) bool {
-	_, ok := h.PromoteAdvisory[hookName]
-	return ok
-}
-
-// DropsStdoutEvent reports whether this host drops the given event's allow-path stdout from the model context.
-//
-// DropsStdoutEvent 报告本宿主是否把给定事件的 allow 路径 stdout 丢出模型上下文。
-func (h *Host) DropsStdoutEvent(event string) bool {
-	return slices.Contains(h.DroppedStdoutEvents, event)
-}
-
-// IsPatchTool reports whether toolName is any host's patch-style edit tool (PatchToolName column; codex: apply_patch).
-//
-// IsPatchTool 报告 toolName 是否为某宿主的 patch 式编辑工具（PatchToolName
-// 列；codex：apply_patch）。调用方按工具名判断，因为 hook stdin 是 Claude 形、
-// agent 可能为空。
-func IsPatchTool(toolName string) bool {
-	for _, h := range Hosts {
-		if h.PatchToolName != "" && h.PatchToolName == toolName {
-			return true
-		}
-	}
-	return false
-}
-
-// InstallDir resolves the first install indicator for hostName ("" when the host is unknown, has no indicators, or the home dir cannot be determined).
-//
-// InstallDir 解析 hostName 的第一个安装指示（宿主未知、无指示、或无法确定
-// home 目录时返回 ""）。是 agentbridge 导出的 env 优先 config-home 约定
-// （ClaudeConfigHomeDir 等）的单一真相源。
-func InstallDir(hostName string) string {
-	h := Lookup(hostName)
-	if h == nil || len(h.InstallIndicators) == 0 {
-		return ""
-	}
-	return h.InstallIndicators[0].Resolve()
 }
 
 // ProbeShellIdentity inspects the process environment for a host-injected session id and returns (hostName, sessionID).

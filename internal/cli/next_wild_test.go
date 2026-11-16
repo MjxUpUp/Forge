@@ -12,83 +12,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/clitask"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
 
 // next_wild_test.go 钉住 vNext P1 两个新命令：forge next（单命令引导——决策表）
 // 与 forge task wild（野外申报——落盘契约）。
-
-// TestNextDecision 覆盖决策表全行：无任务（脏/净）、门禁链逐步（含验收实跑与过门
-// 两分、task-complete gate 在 complete 之前——P1 审查 FAIL 修正的核心行）、乱序
-// 状态、活跃任务忽略脏树。nextDecision 是纯函数——git/任务状态接入由 runNext
-// 负责，此处钉语义。
-func TestNextDecision(t *testing.T) {
-	withGates := func(gates ...string) *taskpipeline.TaskState {
-		st := &taskpipeline.TaskState{TaskRef: "feat/x"}
-		for _, g := range gates {
-			st.History = append(st.History, taskpipeline.TaskGateResult{Gate: g, Passed: true})
-		}
-		return st
-	}
-	reviewed := func(st *taskpipeline.TaskState) *taskpipeline.TaskState {
-		st.ReviewPassed = true
-		return st
-	}
-	withAcceptance := func(head string) []taskpipeline.AcceptanceCriterion {
-		return []taskpipeline.AcceptanceCriterion{{Run: "go test ./...", AcceptedHeadCommit: head}}
-	}
-	// accRun 给状态装上「已实跑」的验收（oracle-pipeline L1 起零验收任务的 next
-	// 被 verify-acceptance 先占——测下游阶段排序的行用本助手跳过考卷段）。
-	accRun := func(st *taskpipeline.TaskState) *taskpipeline.TaskState {
-		st.Acceptance = withAcceptance("abc123")
-		return st
-	}
-	cases := []struct {
-		name   string
-		branch string
-		dirty  bool
-		st     *taskpipeline.TaskState
-		want   string // Next 全等或唯一关键子串
-		exact  bool   // true=Next 必须全等 want
-	}{
-		{"no task + dirty tree", "main", true, nil, `forge task start --ref <ref> --branch --title <title>`, true},
-		{"no task + clean tree", "main", false, nil, "forge status", true},
-		{"task just started", "feat/x", false, withGates(), "forge task gate task-implement", true},
-		{"active task ignores dirty tree", "feat/x", true, accRun(withGates("task-implement")), "forge task gate task-verify", true},
-		{"acceptance pending → run it first", "feat/x", false, func() *taskpipeline.TaskState {
-			st := withGates("task-implement")
-			st.Acceptance = withAcceptance("")
-			return st
-		}(), "forge task verify-acceptance", true},
-		{"acceptance run → gate verify", "feat/x", false, accRun(withGates("task-implement")), "forge task gate task-verify", true},
-		{"no acceptance criteria → verify-acceptance first (L1 registration gate)", "feat/x", false, withGates("task-implement"), "forge task verify-acceptance", true},
-		{"verified not reviewed", "feat/x", false, accRun(withGates("task-implement", "task-verify")), "forge review pass", true},
-		{"reviewed but complete-gate missing → gate first", "feat/x", false, reviewed(accRun(withGates("task-implement", "task-verify"))), "forge task gate task-complete", true},
-		{"three gates + review → complete", "feat/x", false, reviewed(accRun(withGates("task-implement", "task-verify", "task-complete"))), "forge task complete", true},
-		{"out-of-order: complete-gate passed, review missing", "feat/x", false, accRun(withGates("task-implement", "task-verify", "task-complete")), "forge review pass", true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got := nextDecision(c.branch, c.dirty, 0, c.st)
-			if c.exact && got.Next != c.want || !c.exact && !strings.Contains(got.Next, c.want) {
-				t.Errorf("nextDecision(%q, dirty=%v) Next = %q, want %q (reason: %q)", c.branch, c.dirty, got.Next, c.want, got.Reason)
-			}
-			// 单命令契约：Next 不得是 &&/; 复合（P1 审查 MEDIUM）。
-			if strings.Contains(got.Next, "&&") || strings.Contains(got.Next, ";") {
-				t.Errorf("Next 必须恰一条命令（无复合），got %q", got.Next)
-			}
-			if got.Reason == "" {
-				t.Errorf("Reason 恒非空（单命令契约），got %+v", got)
-			}
-		})
-	}
-	// 无任务 + 脏树：理由必须提到 wild 出口（INV-1 的合法出口要在引导里可见）。
-	got := nextDecision("main", true, 0, nil)
-	if !strings.Contains(got.Reason, "forge task wild") {
-		t.Errorf("dirty-no-task 引导应指向 wild 申报出口, reason = %q", got.Reason)
-	}
-}
 
 // TestNextJSONOutput 钉住 --json 契约：{"next","reason","state"} 三字段、next 恰一条
 // 命令。在临时 git 仓库（干净树、无任务）上走 runNext 全链路。

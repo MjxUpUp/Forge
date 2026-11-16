@@ -434,28 +434,22 @@ func TestTestCoverageWhitelistSkillsDirIsPrecise(t *testing.T) {
 	}
 }
 
-// TestTestCoverageWhitelistsHookEmbedContainer: internal/hooks/embed.go holds
-// shell scripts as Go string constants (HazardGuardHook, WorkflowTestGuardHook,
-// …) — no Go logic to unit-test; the scripts' behavior is exercised end-to-end
-// by internal/e2e. baseExact="embed.go" exempts it without a same-package
-// embed_test.go. This is the regression surfaced by ce9b2410: the
-// file-level hasMatchingTest check flagged embed.go as "changed source without
-// a test" even though its coverage lives in internal/e2e.
-func TestTestCoverageWhitelistsHookEmbedContainer(t *testing.T) {
+// TestTestCoverageWhitelistsEmbedAssets: embed.go holds only //go:embed
+// directives (dashboard UI, skills assets) — no Go logic to unit-test.
+// baseExact="embed.go" exempts exactly that basename.
+func TestTestCoverageWhitelistsEmbedAssets(t *testing.T) {
 	for _, p := range []string{
-		"internal/hooks/embed.go",
-		"hooks/embed.go",
+		"internal/dashboard/embed.go",
+		"skills/embed.go",
+		"skills-forge/embed.go",
 	} {
 		if !isWhitelisted(p) {
-			t.Errorf("isWhitelisted(%q) = false; hook-script container embed.go must be exempt", p)
+			t.Errorf("isWhitelisted(%q) = false; embed asset container must be exempt", p)
 		}
 	}
-	// baseExact precision: only a final component equal to "embed.go" matches.
-	// Real forge source whose name merely contains "embed" stays required.
 	for _, p := range []string{
-		"internal/hooks/embed_test_support.go",
-		"internal/hooks/hooks.go",
-		"internal/agentbridge/embedder.go",
+		"internal/dashboard/embed_test_support.go",
+		"internal/cli/embed_assets.go",
 	} {
 		if isWhitelisted(p) {
 			t.Errorf("isWhitelisted(%q) = true; non-embed.go source must NOT be exempt", p)
@@ -773,54 +767,6 @@ func TestIsSourceFile_VendorExcluded(t *testing.T) {
 	}
 }
 
-// TestClassifyChangedPath pins the exported single-source classifier the test-nudge
-// hook (cli) shares with this gate: same verdict for "owes a paired test" (source
-// extension, non-whitelisted, not itself a test) and "is itself a test". A nudge
-// counting whitelist files or missing test files would teach agents a different
-// rule than the one that enforces at task-verify.
-//
-// TestClassifyChangedPath 钉住导出的单一真相源分类器——test-nudge hook（cli）
-// 与本门禁共用：「欠配对测试」（源码后缀、非白名单、自身非测试）与「自身是
-// 测试」同规判定。nudge 若计白名单文件或漏认测试文件，教给 agent 的规则就
-// 和执法的规则分叉了。
-func TestClassifyChangedPath(t *testing.T) {
-	cases := []struct {
-		path       string
-		wantSource bool
-		wantTest   bool
-	}{
-		// Real source: owes a paired test.
-		//
-		// 真源码：欠配对测试。
-		{"internal/foo/bar.go", true, false},
-		{"pkg/x.py", true, false},
-		{"src/x.rs", true, false},
-		// Test files: is-test, owes nothing.
-		//
-		// 测试文件：是测试，不欠。
-		{"internal/foo/bar_test.go", false, true},
-		{"pkg/x.spec.ts", false, true},
-		// Whitelisted source (entry points / generated / pure types): neither.
-		//
-		// 白名单源码（入口/生成物/纯类型）：两者皆非。
-		{"cmd/forge/main.go", false, false},
-		{"pkg/x.gen.go", false, false},
-		{"pkg/types.go", false, false},
-		{"src/lib.rs", false, false},
-		// Non-source and vendor baselines: neither.
-		//
-		// 非源码与 vendor 基线：两者皆非。
-		{"README.md", false, false},
-		{"vendor/github.com/x/y.go", false, false},
-	}
-	for _, c := range cases {
-		source, test := ClassifyChangedPath(c.path)
-		if source != c.wantSource || test != c.wantTest {
-			t.Errorf("ClassifyChangedPath(%q) = (%v, %v), want (%v, %v)", c.path, source, test, c.wantSource, c.wantTest)
-		}
-	}
-}
-
 // TestTestCoverageDetail_StatesCurrentBackstop pins the advisory detail to the live backstop
 // rule: the threshold comes from testCoverageHardGateThreshold, and the retracted G.1 "3→2
 // from 1.58" notice (compat commitments §三, 2026-10-22) must not reappear.
@@ -839,55 +785,5 @@ func TestTestCoverageDetail_StatesCurrentBackstop(t *testing.T) {
 	}
 	if got := testCoverageDetail(true, nil); strings.Contains(got, "BLOCKED") {
 		t.Fatalf("passing detail must not carry the notice, got: %s", got)
-	}
-}
-
-// TestTestPairsSource pins the exported single-file pairing probe (discipline-first-gates
-// P1-B): the nudge side asks "does THIS test file pair THIS source file" while the gate
-// side (hasMatchingTest) asks the same convention over a changed set — both must share
-// testCandidates or the nudge would rehearse a different gate than the one that runs.
-//
-// TestTestPairsSource 钉住导出的单文件配对探针（discipline-first-gates P1-B）：nudge 侧
-// 问「这个测试文件是否配对这个源文件」，门禁侧（hasMatchingTest）按同一约定问
-// changed 集合——两者必须共用 testCandidates，否则 nudge 预演的门禁与实际执行的分叉。
-func TestTestPairsSource(t *testing.T) {
-	cases := []struct {
-		test string
-		src  string
-		want bool
-	}{
-		// Go：同目录 foo.go ↔ foo_test.go。
-		{"internal/audit/audit_test.go", "internal/audit/audit.go", true},
-		{"internal/audit/other_test.go", "internal/audit/audit.go", false},
-		{"audit_test.go", "internal/audit/audit.go", false},
-		// TS/JS 四形态（镜像 hasMatchingTest 的宽松集）。
-		{"src/a.test.ts", "src/a.ts", true},
-		{"src/a.spec.ts", "src/a.ts", true},
-		{"src/a.test.tsx", "src/a.tsx", true},
-		{"src/a.test.js", "src/a.js", true},
-		{"src/a.spec.jsx", "src/a.jsx", true},
-		{"src/a.test.ts", "src/a.js", false},
-		// Rust。
-		{"src/main_test.rs", "src/main.rs", true},
-		// Python 三候选。
-		{"pkg/test_mod.py", "pkg/mod.py", true},
-		{"pkg/mod_test.py", "pkg/mod.py", true},
-		{"tests/test_mod.py", "pkg/mod.py", true},
-		// Java 驼峰三形态。
-		{"src/MainTest.java", "src/Main.java", true},
-		{"src/MainTests.java", "src/Main.java", true},
-		{"src/MainIT.java", "src/Main.java", true},
-		// Ruby。
-		{"app/models/user_spec.rb", "app/models/user.rb", true},
-		// default 语言（zig）：同目录 stem+"_test."+任意扩展。
-		{"src/foo_test.zig", "src/foo.zig", true},
-		// 无关文件永不配对。
-		{"src/a_test.go", "src/b.go", false},
-		{"src/a.md", "src/a.go", false},
-	}
-	for _, c := range cases {
-		if got := TestPairsSource(c.test, c.src); got != c.want {
-			t.Errorf("TestPairsSource(%q, %q) = %v, want %v", c.test, c.src, got, c.want)
-		}
 	}
 }

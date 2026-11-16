@@ -65,36 +65,6 @@ func TestView_Foreign_LivenessIsPerSession(t *testing.T) {
 	}
 }
 
-// TestReconcile_FillsView：对账视图必须带上「何时写的」「谁碰过哪些路径」「谁还活着」——
-// review 门禁的存活窗口与作用域守卫全靠它们，缺了就只能整树判定（回到事故行为）。
-func TestReconcile_FillsView(t *testing.T) {
-	root := initGitRepo(t)
-	write(t, root, "a.go", "package a\n")
-	ts := time.Now().Add(-90 * time.Second).Truncate(time.Millisecond)
-	Record(root, Event{Ts: ts, Sid: "sess-a", Kind: KindWrite, Path: "a.go"})
-
-	view := Reconcile(root)
-	e, ok := view.LastWriter["a.go"]
-	if !ok {
-		t.Fatalf("a.go 应有胜出事件，得 %+v", view.LastWriter)
-	}
-	if e.Sid != "sess-a" || !e.Ts.Equal(ts) {
-		t.Errorf("胜出事件应为 sess-a@%v，得 %s@%v", ts, e.Sid, e.Ts)
-	}
-	// 无主路径不进 LastWriter（没有事件就没有写入者）
-	if _, ok := view.LastWriter["missing.go"]; ok {
-		t.Error("无主路径不应出现在 LastWriter")
-	}
-	// 历史触碰并集不限于当前变更集——它是「本会话碰没碰过」守卫的数据源
-	if !view.Touched["sess-a"]["a.go"] {
-		t.Errorf("sess-a 应记有 a.go 的历史触碰，得 %+v", view.Touched)
-	}
-	// 存活时间戳来自台账，判定「邻居还在不在干活」
-	if !view.LastSeen["sess-a"].Equal(ts) {
-		t.Errorf("LastSeen[sess-a] 应为 %v，得 %v", ts, view.LastSeen["sess-a"])
-	}
-}
-
 // TestEvent_Confidence：写/编辑观测是宿主直接事实（high），bash 推断是启发式（low）。
 // 这条断言钉住「推断不可与事实同权」的可读契约——消费方按 Confidence 降权时不能把
 // 两类混为一谈。

@@ -73,36 +73,3 @@ func TestForTaskUntil_EvidenceNotInflatedByPostSealClaims(t *testing.T) {
 		t.Fatalf("sealed strength = %v, want Strong", sealed.Strength())
 	}
 }
-
-func TestLatestByCheckForTaskWindow_EmptySessionKeptOnlyForOwnTask(t *testing.T) {
-	dir := t.TempDir()
-	base := time.Date(2026, 9, 7, 22, 50, 0, 0, time.UTC)
-	// 本任务本会话的 assertion-check 通过
-	writeEntry(t, dir, Entry{Check: CheckAssertion, Passed: true, Checked: true, TaskRef: "fix/x", SessionID: "s1", RecordedAt: base.Add(time.Minute)})
-	// 空 session、归属其他任务的 assertion-check 失败——旧语义会无条件保留并覆盖上一条
-	writeEntry(t, dir, Entry{Check: CheckAssertion, Passed: false, Checked: true, TaskRef: "chore/other", SessionID: "", RecordedAt: base.Add(2 * time.Minute)})
-	// 空 session、归属本任务——仍应保留（CLI 无 session 调用是常态）
-	writeEntry(t, dir, Entry{Check: CheckAutoCompile, Passed: true, Checked: true, TaskRef: "fix/x", SessionID: "", RecordedAt: base.Add(3 * time.Minute)})
-	// 封印后的本任务行——until 截断
-	writeEntry(t, dir, Entry{Check: CheckAutoCompile, Passed: false, Checked: true, TaskRef: "fix/x", SessionID: "s1", RecordedAt: base.Add(2 * time.Hour)})
-
-	got, err := LatestByCheckForTaskWindow(dir, "s1", "fix/x", base, base.Add(time.Hour))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if e := got[CheckAssertion]; e == nil || !e.Passed || e.TaskRef != "fix/x" {
-		t.Fatalf("assertion latest = %+v, want own-task pass (foreign empty-session row must not override)", e)
-	}
-	if e := got[CheckAutoCompile]; e == nil || !e.Passed {
-		t.Fatalf("auto-compile latest = %+v, want pre-seal own-task pass (empty session, own TaskRef kept; post-seal excluded)", e)
-	}
-
-	// 兼容包装：旧签名语义不变（空 session 无条件保留、无上界）
-	legacy, err := LatestByCheckForSessionSince(dir, "s1", base)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if e := legacy[CheckAssertion]; e == nil || e.Passed {
-		t.Fatalf("legacy wrapper must keep old semantics (foreign empty-session row wins by time), got %+v", e)
-	}
-}

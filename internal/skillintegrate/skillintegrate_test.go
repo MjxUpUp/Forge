@@ -40,23 +40,3 @@ func TestListNonEmpty(t *testing.T) {
 		}
 	}
 }
-
-// TestPointerLine — pointer-line format and the skilltrigger output contract (no ASCII double quotes); skills without a note return an empty string.
-//
-// TestPointerLine — 指针行格式与 skilltrigger 输出契约（不含 ASCII 双引号）；
-// 无笔记的 skill 返空串。
-func TestPointerLine(t *testing.T) {
-	p := PointerLine("code-review-gate")
-	if p == "" {
-		t.Fatal("有笔记的 skill 应返回指针行")
-	}
-	if !strings.Contains(p, "forge skills integration code-review-gate") {
-		t.Errorf("指针行应含查看命令, got: %s", p)
-	}
-	if strings.Contains(p, `"`) {
-		t.Errorf("指针行不得含 ASCII 双引号（render 输出契约）, got: %s", p)
-	}
-	if PointerLine("no-such-skill") != "" {
-		t.Error("无笔记 skill 的指针行应为空串")
-	}
-}

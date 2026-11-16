@@ -61,7 +61,6 @@ var AllowedFm = map[string]bool{
 
 // ValidTriggerEvents — metadata.triggers[].event 合法值（通用 skill-trigger 框架支持的事件）。
 // PostCompact 不在内——该事件不支持 additionalContext 注入（plan 边界）。
-// 与 internal/hooks ForgeHookSpec 挂载的 5 事件一致。
 //
 // ValidTriggerEvents — metadata.triggers[].event 合法值（通用 skill-trigger 框架支持的事件）。
 // PostCompact 不在内——该事件不支持 additionalContext 注入（plan 边界）。
@@ -70,9 +69,8 @@ var ValidTriggerEvents = map[string]bool{
 	"Stop": true, "SessionStart": true,
 }
 
-// ValidConditions — metadata.triggers[].when 合法值（skilltrigger.Conditions 词汇表）。
-// 与 internal/skilltrigger.Conditions 的 key 集合必须一致——drift 守卫
-// TestValidConditions_MatchEngine 断言两者同步（新增 condition 须同时改两处）。
+// ValidConditions — metadata.triggers[].when 合法值。新增 condition 须同步
+// skill-trigger 判定实现与本表。
 //
 // ValidConditions — metadata.triggers[].when 合法值（skilltrigger.Conditions 词汇表）。
 // 与 internal/skilltrigger.Conditions 的 key 集合必须一致——drift 守卫

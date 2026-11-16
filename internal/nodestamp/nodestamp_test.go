@@ -9,9 +9,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/MjxUpUp/Forge/internal/hlc"
-	"github.com/MjxUpUp/Forge/internal/nodeid"
 )
 
 // withHome 隔离 FORGE_DATA_HOME 并重置进程级单例。
@@ -22,23 +19,6 @@ func withHome(t *testing.T) string {
 	resetForTest()
 	t.Cleanup(resetForTest)
 	return dir
-}
-
-func TestNext_StampsAllFields(t *testing.T) {
-	withHome(t)
-	s := Next()
-	if !nodeid.ValidNodeID(s.NodeID) {
-		t.Fatalf("NodeID %q invalid", s.NodeID)
-	}
-	if s.Seq != 1 {
-		t.Fatalf("first Seq = %d, want 1 (pre-increment)", s.Seq)
-	}
-	if _, err := hlc.Parse(s.TsHLC); err != nil {
-		t.Fatalf("TsHLC %q unparsable: %v", s.TsHLC, err)
-	}
-	if s.Sig != "" {
-		t.Fatalf("v1 Sig must be empty, got %q", s.Sig)
-	}
 }
 
 func TestNext_SeqMonotonicAcrossCalls(t *testing.T) {
@@ -102,17 +82,6 @@ func TestNext_CorruptCounterFailsOpen(t *testing.T) {
 	s2 := Next()
 	if s2 != (Stamp{}) {
 		t.Fatalf("corrupt counter must yield zero Stamp (fail-open), got %+v", s2)
-	}
-}
-
-func TestNext_HLCMonotonicAcrossCalls(t *testing.T) {
-	withHome(t)
-	a := Next()
-	b := Next()
-	ta, _ := hlc.Parse(a.TsHLC)
-	tb, _ := hlc.Parse(b.TsHLC)
-	if hlc.Compare(tb, ta) <= 0 {
-		t.Fatalf("ts_hlc not monotonic: %q then %q", a.TsHLC, b.TsHLC)
 	}
 }
 

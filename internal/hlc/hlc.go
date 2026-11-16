@@ -17,8 +17,6 @@ package hlc
 import (
 	"fmt"
 	"math"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -31,26 +29,6 @@ type Timestamp struct {
 	Logical int32 `json:"logical"`
 }
 
-// Compare returns -1/0/+1 for a </=/> b.
-//
-// Compare 返回 -1/0/+1（a </=/> b）。Wall 主导；Logical 破 Wall 平手。
-func Compare(a, b Timestamp) int {
-	switch {
-	case a.Wall != b.Wall:
-		if a.Wall < b.Wall {
-			return -1
-		}
-		return 1
-	case a.Logical != b.Logical:
-		if a.Logical < b.Logical {
-			return -1
-		}
-		return 1
-	default:
-		return 0
-	}
-}
-
 // String renders the canonical fixed-width form "<wall 19-digit>.<logical 10-digit>".
 //
 // String 渲染为规范定宽形 "<wall 19 位>.<logical 10 位>"。两分量按类型位宽零填充，
@@ -58,34 +36,6 @@ func Compare(a, b Timestamp) int {
 // 排序键（sync-convergence §2），无需自定义比较器。
 func (t Timestamp) String() string {
 	return fmt.Sprintf(`%019d.%010d`, t.Wall, t.Logical)
-}
-
-// Parse parses a timestamp string.
-//
-// Parse 解析时间戳字符串。每分量仅数字（无 '+'、无符号），同值的非规范编码无法
-// 在同步边界上拆裂去重键；溢出与畸形输入响亮失败，绝不静默变零值。
-func Parse(s string) (Timestamp, error) {
-	dot := strings.IndexByte(s, '.')
-	if dot <= 0 || dot == len(s)-1 || strings.IndexByte(s[dot+1:], '.') >= 0 {
-		return Timestamp{}, fmt.Errorf(`malformed hlc %q`, s)
-	}
-	wallPart, logicalPart := s[:dot], s[dot+1:]
-	for _, part := range []string{wallPart, logicalPart} {
-		for _, c := range part {
-			if c < '0' || c > '9' {
-				return Timestamp{}, fmt.Errorf(`malformed hlc %q: non-digit component`, s)
-			}
-		}
-	}
-	wall, err := strconv.ParseInt(wallPart, 10, 64)
-	if err != nil {
-		return Timestamp{}, fmt.Errorf(`malformed hlc wall %q: %w`, s, err)
-	}
-	logical, err := strconv.ParseInt(logicalPart, 10, 32)
-	if err != nil {
-		return Timestamp{}, fmt.Errorf(`malformed hlc logical %q: %w`, s, err)
-	}
-	return Timestamp{Wall: wall, Logical: int32(logical)}, nil
 }
 
 // Clock is a process-local HLC source, safe for concurrent use.
@@ -116,38 +66,6 @@ func (c *Clock) Now() Timestamp {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.tickLocked(c.wall().UnixMilli())
-}
-
-// Observe merges a remote timestamp (received over sync) and returns a fresh local one strictly greater than it: the classic HLC recv rule.
-//
-// STATUS (v1, fix/dsh-review-followup): UNWIRED — no production caller yet. Today's
-// decisive keys are fencing + canonical bytes (see the sync-convergence §3 实现校正);
-// stamps/leases carry ts_hlc as a display + reserved field. Wire this when the first
-// cross-machine ts_hlc consumer lands (A-class G-Set / LWW), together with clock
-// persistence — a per-process clock alone cannot deliver cross-process monotonicity.
-//
-// Observe 合并远端时间戳（经同步收到）并返回严格大于它的本地新时间戳——经典 HLC
-// recv 规则。「收到未来事件」因此永不毒害本地单调性。
-//
-// 状态（v1，fix/dsh-review-followup）：未接线——暂无生产调用方。今日决胜键是
-// fencing + 规范字节（见 sync-convergence §3 实现校正）；戳/租约里的 ts_hlc 是展示
-// 与预留字段。待首个跨机 ts_hlc 消费方（A 类 G-Set / LWW）落地时接线，并配套时钟
-// 持久化——仅进程内时钟给不出跨进程单调性。
-func (c *Clock) Observe(remote Timestamp) Timestamp {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	wall := c.wall().UnixMilli()
-	switch {
-	case wall > c.last.Wall && wall > remote.Wall:
-		c.last = Timestamp{Wall: wall, Logical: 0}
-	case c.last.Wall > remote.Wall:
-		c.last = advanceLocked(c.last.Wall, c.last.Logical)
-	case remote.Wall > c.last.Wall:
-		c.last = advanceLocked(remote.Wall, remote.Logical)
-	default: // remote.Wall == c.last.Wall (local wall may lag behind both)
-		c.last = advanceLocked(c.last.Wall, max(c.last.Logical, remote.Logical))
-	}
-	return c.last
 }
 
 // tickLocked 对 wallMillis 严格单调推进 last。

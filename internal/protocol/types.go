@@ -5,8 +5,7 @@ import "github.com/MjxUpUp/Forge/internal/scoringtypes"
 // Protocol represents the project's quality-protocol configuration.
 //
 // Protocol 表示项目的质量协议配置。
-// 存为 .forge/protocol.yml —— 定义质量 standards 与 session 行为，
-// 适用于每个 Claude Code session，与 pipeline 状态无关。
+// 存为 .forge/protocol.yml —— 定义质量 standards 与 session 行为规则。
 type Protocol struct {
 	Version      string                      `yaml:"version"      json:"version"`
 	Standards    []Standard                  `yaml:"standards"    json:"standards"`
@@ -112,7 +111,6 @@ type Standard struct {
 	ID          string `yaml:"id"           json:"id"`
 	Name        string `yaml:"name"         json:"name"`
 	Description string `yaml:"description"  json:"description"`
-	EnforceHook string `yaml:"enforce_hook,omitempty" json:"enforce_hook,omitempty"`
 	Severity    string `yaml:"severity"     json:"severity"` // error, warning, info
 	Enabled     bool   `yaml:"enabled"      json:"enabled"`
 }

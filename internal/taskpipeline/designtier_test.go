@@ -8,10 +8,29 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
+
+// writeTestProtocol 把 p 序列化进 dir 的用户级 DataDir 副本 protocol.yml。
+func writeTestProtocol(t *testing.T, dir string, p protocol.Protocol) {
+	t.Helper()
+	data, err := yaml.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(forgedata.DataDirFor(dir), "protocol.yml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // TestDesignTier 钉住 W4 分档路由：硬触发器推导、标准变更豁免、跨模块信号、声明与推导
 // 取较高者、带理由下调、protocol.yml 覆盖、go.mod patch 升级豁免、事后升档。
@@ -74,17 +93,15 @@ func TestDesignTier(t *testing.T) {
 	t.Run("protocol.yml 追加与同名覆盖", func(t *testing.T) {
 		t.Setenv("FORGE_DATA_HOME", t.TempDir())
 		root := t.TempDir()
-		proto := protocol.DefaultProtocol()
-		proto.DesignTiers = &protocol.DesignTiersConfig{
-			Rules: []protocol.DesignTierRule{
-				{Name: "billing", Tier: "full", Paths: []string{"seg:billing"}},
-				{Name: "dependency", Tier: "full", Paths: []string{"go.mod"}},
+		writeTestProtocol(t, root, protocol.Protocol{
+			DesignTiers: &protocol.DesignTiersConfig{
+				Rules: []protocol.DesignTierRule{
+					{Name: "billing", Tier: "full", Paths: []string{"seg:billing"}},
+					{Name: "dependency", Tier: "full", Paths: []string{"go.mod"}},
+				},
+				StandardChanges: []string{"*.golden"},
 			},
-			StandardChanges: []string{"*.golden"},
-		}
-		if err := protocol.SaveDataDir(root, proto); err != nil {
-			t.Fatal(err)
-		}
+		})
 		if tier, _ := DeriveDesignTier(root, []string{"internal/billing/pay.go"}); tier != "full" {
 			t.Errorf("追加规则应生效, got %q", tier)
 		}

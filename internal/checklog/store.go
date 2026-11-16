@@ -252,36 +252,6 @@ func LoadForTaskUntil(root, taskRef string, until time.Time) ([]Entry, error) {
 	return out, nil
 }
 
-// LatestByCheckForSession returns the latest entry per check name, scoped to the given session.
-//
-// LatestByCheckForSession 返回限定在给定 session 内、每个 check name 的最新条目。
-//
-// 过滤规则（防止两个 Claude Code session 在共享 checkout 上并发时评分被对端污染）：
-//   - sessionID 为空（legacy / 无 session）：不过滤——每条都计入。
-//   - sessionID 非空：SessionID 非空且与 sessionID 不同的条目被排除。
-//     SessionID 为空（全局/legacy）的条目始终保留，让全局适用的 check 仍能登记。
-//
-// 状态注记（2026-09 代码普查清扫；2026-09-10 E.4 更新）：三个生产读方（taskpipeline
-// BuildEvaluateInput / clitask checkMissingHooks / hookdispatch scoringPassUnchanged）已全部
-// 改走 LatestByCheckForTaskWindow（空 session 行按 TaskRef 归属 + 封印上界）；本函数与
-// LatestByCheckForSessionSince 当前均无生产读方，仅由本包测试钉住「空 session 无条件保留、
-// 无上界」的旧语义作兼容面。保留为文档化 API（会话全史读方的形态），非死代码回收对象。
-func LatestByCheckForSession(root, sessionID string) (map[CheckName]*Entry, error) {
-	return LatestByCheckForSessionSince(root, sessionID, time.Time{})
-}
-
-// LatestByCheckForSessionSince is LatestByCheckForSession with a lower time bound (multi-task-concurrency M2 fix).
-//
-// LatestByCheckForSessionSince 是带时间下界的 LatestByCheckForSession
-// （multi-task-concurrency M2 修正）：active 日志现在是跨任务累积的 append-only 时
-// 间线（task start 不再 Clear）——意图是「本任务期间」的会话级读方必须同时按任务
-// StartedAt 设界，否则新任务继承上一任务的 PASS 与评分信用。since 零值 = 旧的无界
-// 行为（真正想要会话全史的调用方）。SessionID 为空的旧条目依旧总是保留（与父函数
-// 同语义）。评分类读方请用 LatestByCheckForTaskWindow（见上方状态注记）。
-func LatestByCheckForSessionSince(root, sessionID string, since time.Time) (map[CheckName]*Entry, error) {
-	return LatestByCheckForTaskWindow(root, sessionID, "", since, time.Time{})
-}
-
 // LatestByCheckForTaskWindow is the task-aware, time-bounded form of LatestByCheckForSessionSince.
 //
 // LatestByCheckForTaskWindow 是 LatestByCheckForSessionSince 的任务感知、带上界形态：

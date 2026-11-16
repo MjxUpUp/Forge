@@ -84,21 +84,6 @@ func warnSeqRestart() {
 	fmt.Fprintf(os.Stderr, `⚠ forge: node-seq 缺失而节点身份已存在——计数器将从 1 重新起算；若本机此前打过戳且 (node_id, seq) 已有跨机消费，存在复用风险（A 类 G-Set 启用前本告示将升级为硬禁用）`+"\n")
 }
 
-// resetForTest drops the process singletons (tests simulate process restart).
-//
-// resetForTest 丢弃进程单例（测试模拟进程重启）。
-func resetForTest() {
-	mu.Lock()
-	defer mu.Unlock()
-	clock = nil
-	identity = nil
-	idTried = false
-	identityFresh = false
-	cachedHome = ``
-	degradeNoted = false
-	seqRestartNoted = false
-}
-
 // Next returns the next stamp, or a zero Stamp on any failure (fail-open).
 //
 // Next 返回下一个戳；任何失败返回零值 Stamp（fail-open）。

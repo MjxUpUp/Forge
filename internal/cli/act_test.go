@@ -1,19 +1,14 @@
 package cli
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/clitask"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
-	"github.com/MjxUpUp/Forge/internal/toolusage"
-	"github.com/MjxUpUp/Forge/internal/util"
 )
 
 // TestAppendConclusion_WritesAndDirectives pins the wiring boundary in task.go: appendConclusion must persist the conclusion to DataDir/act/conclusions.jsonl, and Directive must reflect evidence strength.
@@ -150,70 +145,6 @@ func TestActNudge(t *testing.T) {
 			t.Errorf(`无结论应静默，got: %q`, out)
 		}
 	})
-}
-
-// TestPrintSkillReach pins the skill-reach profile injected into `act show`: when toollog has Skill invocations for the task, an extra Skills line is printed; with no invocations it stays silent (no empty Skills line).
-//
-// TestPrintSkillReach 钉住 act show 注入的 skill 触达画像：toollog 有该 task 的 Skill
-// 调用时多打印一行 Skills，无调用时静默（不留空 Skills 行）。用 LoadForTaskAll 跨归档，
-// task start 归档后查历史 task 的 Skills 仍可见（下面 has_skill_calls_archived 验证）。
-func TestPrintSkillReach(t *testing.T) {
-	t.Run(`has_skill_calls_prints`, func(t *testing.T) {
-		root, _ := forgedatatest.RealProject(t)
-		for _, s := range []string{`foo`, `bar`} {
-			if err := toolusage.Record(root, &toolusage.ToolCall{
-				ToolName: `Skill`, ToolInput: `{"skill":"` + s + `"}`, TaskRef: `feat/reach`,
-			}); err != nil {
-				t.Fatalf(`seed Skill 调用: %v`, err)
-			}
-		}
-		out := captureStdout(t, func() { printSkillReach(root, `feat/reach`) })
-		if !strings.Contains(out, `Skills:`) || !strings.Contains(out, `foo`) || !strings.Contains(out, `bar`) {
-			t.Errorf(`应有 Skills: foo, bar，got: %q`, out)
-		}
-	})
-
-	t.Run(`no_calls_silent`, func(t *testing.T) {
-		root, _ := forgedatatest.RealProject(t)
-		out := captureStdout(t, func() { printSkillReach(root, `feat/none`) })
-		if strings.TrimSpace(out) != `` {
-			t.Errorf(`无 Skill 调用应静默（不留空 Skills 行），got: %q`, out)
-		}
-	})
-
-	// P1 核心验证：toollog 归档改为直接 rename 模拟（旧的 toolusage.Clear 助手已作
-	// 死代码删除——task start 不再截断 toollog）。归档后查该 task 的 Skills
-	// 必须仍可见（LoadForTaskAll 跨归档），否则完成的任务再 forge act show 永远看不到 Skills。
-	t.Run(`has_skill_calls_archived`, func(t *testing.T) {
-		root, _ := forgedatatest.RealProject(t)
-		if err := toolusage.Record(root, &toolusage.ToolCall{
-			ToolName: `Skill`, ToolInput: `{"skill":"archived-skill"}`, TaskRef: `feat/old`,
-		}); err != nil {
-			t.Fatalf(`seed: %v`, err)
-		}
-		if err := archiveToollogForTest(t, root); err != nil {
-			t.Fatalf(`归档模拟（rename active toollog）: %v`, err)
-		}
-		out := captureStdout(t, func() { printSkillReach(root, `feat/old`) })
-		if !strings.Contains(out, `archived-skill`) {
-			t.Errorf(`归档后仍应读到该 task 的 Skills（LoadForTaskAll 跨归档），got: %q`, out)
-		}
-	})
-}
-
-// archiveToollogForTest 把 active toollog 重命名为带时间戳的归档——即旧
-// toolusage.Clear 为 `forge task start` 归档产出的磁盘形态。读取方必须跨归档
-// （LoadForTaskAll / LoadAllAll）。
-func archiveToollogForTest(t *testing.T, root string) error {
-	t.Helper()
-	dir := forgedata.DataDirFor(root)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	return os.Rename(
-		filepath.Join(dir, `toollog.jsonl`),
-		util.ArchivedName(dir, `toollog`, time.Now()),
-	)
 }
 
 // TestActRetroDone 钉住 forge act retro-done 的证据式 ack 契约：按 --ref 定位最新
