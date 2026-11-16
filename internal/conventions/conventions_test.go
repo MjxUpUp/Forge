@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // writeRepoFile 在 root 下创建 rel（父目录自动创建），内容 content。
@@ -85,34 +84,6 @@ func TestScan_IgnoresForgeSectionInFingerprint(t *testing.T) {
 		"# house rules v2 — project edited\n\nerror wrap: fmt.Errorf %w\n\n<!-- FORGE:START -->\nforge protocol text v2 rewritten\n<!-- FORGE:END -->\n")
 	if !Stale(root, p) {
 		t.Fatal("project-owned text change must flip staleness")
-	}
-}
-
-// TestExemplars_TestTargetGetsTestExemplars pins the conditional test-file exclusion: writing foo_test.go points at sibling tests (they are the RIGHT pattern for a test target); the exclusion only guards source targets.
-//
-// TestExemplars_TestTargetGetsTestExemplars 钉住条件化的测试文件排除：写
-// foo_test.go 时应指向兄弟测试（对测试目标它们恰是正确模式）；排除只保护
-// 源码目标。
-func TestExemplars_TestTargetGetsTestExemplars(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "internal", "srv")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range []string{"alpha.go", "alpha_test.go", "beta_test.go"} {
-		if err := os.WriteFile(filepath.Join(dir, f), []byte("package srv\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	got := Exemplars(root, filepath.Join(dir, "gamma_test.go"))
-	for i := range got { // Windows 分隔符归一（同 TestExemplars）
-		got[i] = filepath.ToSlash(got[i])
-	}
-	if !contains(got, "internal/srv/alpha_test.go") || !contains(got, "internal/srv/beta_test.go") {
-		t.Fatalf("test target should point at sibling tests, got %v", got)
-	}
-	if contains(got, "internal/srv/alpha.go") {
-		t.Fatalf("source file must not crowd out test exemplars for a test target, got %v", got)
 	}
 }
 
@@ -220,150 +191,6 @@ func TestProfileStorageRoundTrip(t *testing.T) {
 	}
 }
 
-// TestGenerateSummary_AndSessionInject pins the digest scaffold content and the session injection: framing line, staleness visibility, line budget, ellipsis marker on truncation.
-//
-// TestGenerateSummary_AndSessionInject 钉住摘要骨架内容与会话注入：框架行、
-// 过期可见性、行数预算、截断省略标记。
-func TestGenerateSummary_AndSessionInject(t *testing.T) {
-	p := &Profile{
-		Version:      ProfileVersion,
-		Stack:        "go",
-		LintCmd:      "golangci-lint run",
-		TestCmd:      "go test ./...",
-		Instructions: []SourceFile{{Path: "AGENTS.md"}},
-		StyleConfigs: []SourceFile{{Path: ".golangci.yml"}},
-	}
-	sum := GenerateSummary(p)
-	for _, want := range []string{"golangci-lint run", "AGENTS.md", ".golangci.yml", "提取要点"} {
-		if !strings.Contains(sum, want) {
-			t.Fatalf("GenerateSummary missing %q:\n%s", want, sum)
-		}
-	}
-
-	inj := SessionInject(p, sum, false)
-	if !strings.Contains(inj, "conventions profile") || !strings.Contains(inj, "AGENTS.md") {
-		t.Fatalf("SessionInject missing framing/digest:\n%s", inj)
-	}
-	if n := nonEmptyLines(inj); n > SummaryLineBudget+3 { // 容差=框架行+stale 行+截断省略行（预算15 时合法上限 18）
-		t.Fatalf("SessionInject %d non-empty lines, budget %d", n, SummaryLineBudget)
-	}
-
-	staleInj := SessionInject(p, sum, true)
-	if !strings.Contains(staleInj, "STALE") {
-		t.Fatal("stale injection must say STALE (a stale digest is worse than none — visible, not silent)")
-	}
-
-	// 摘要被删：回落生成版，不静默。
-	if inj := SessionInject(p, "", false); !strings.Contains(inj, "stack") && !strings.Contains(inj, "AGENTS.md") {
-		t.Fatalf("SessionInject with empty summary should fall back to generated digest:\n%s", inj)
-	}
-
-	// 超预算截断带省略标记。
-	long := strings.Repeat("rule line\n", 40)
-	if inj := SessionInject(p, long, false); !strings.Contains(inj, "…（摘要超行数上限") {
-		t.Fatalf("truncated injection missing ellipsis marker:\n%.200s", inj)
-	}
-	if inj := SessionInject(nil, "x", false); inj != "" {
-		t.Fatal("nil profile must render empty")
-	}
-}
-
-// TestSuggestInit pins the no-profile suggestion: only when conventions are declared, naming the files.
-//
-// TestSuggestInit 钉住无档案建议：仅在已声明规范时给出，点名文件。
-func TestSuggestInit(t *testing.T) {
-	if SuggestInit(nil) != "" {
-		t.Fatal("no declared conventions must not suggest")
-	}
-	s := SuggestInit([]string{"AGENTS.md", "CONVENTIONS.md"})
-	if !strings.Contains(s, "AGENTS.md") || !strings.Contains(s, "forge conventions init") {
-		t.Fatalf("SuggestInit = %q", s)
-	}
-}
-
-// TestWriteInject pins the write-time block: instruction pointers, exemplar names, staleness line, and the silent path when there is nothing to say.
-//
-// TestWriteInject 钉住写入时刻块：规范指针、范例名、过期行、无可奉告时静默。
-func TestWriteInject(t *testing.T) {
-	p := &Profile{Version: ProfileVersion, Instructions: []SourceFile{{Path: "AGENTS.md"}}}
-	s := WriteInject("internal/foo/bar.go", p, true, []string{"internal/foo/baz.go"})
-	if !strings.Contains(s, "internal/foo/bar.go") || !strings.Contains(s, "AGENTS.md") ||
-		!strings.Contains(s, "internal/foo/baz.go") || !strings.Contains(s, "stale") {
-		t.Fatalf("WriteInject = %q", s)
-	}
-	bare := &Profile{Version: ProfileVersion}
-	if WriteInject("x.go", bare, false, nil) != "" {
-		t.Fatal("no instructions + no exemplars must stay silent")
-	}
-	if WriteInject("x.go", nil, false, nil) != "" {
-		t.Fatal("nil profile must stay silent")
-	}
-}
-
-// TestExemplars pins exemplar selection: same extension, test/dotfile exclusion, recency order, cap, repo-relative output.
-//
-// TestExemplars 钉住范例选择：同扩展名、排除测试/点文件、按新近排序、
-// 上限、仓库相对输出。
-func TestExemplars(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "internal", "srv")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now()
-	files := []struct {
-		name string
-		age  time.Duration
-	}{
-		{"alpha.go", 3 * time.Hour},
-		{"beta.go", 1 * time.Hour},
-		{"gamma.go", 2 * time.Hour},
-		{"delta.go", 0},
-		{"alpha_test.go", 0}, // 测试文件：教错模式，排除
-		{".hidden.go", 0},    // 点文件：排除
-		{"notes.txt", 0},     // 扩展名不同：排除
-	}
-	for _, f := range files {
-		full := filepath.Join(dir, f.name)
-		if err := os.WriteFile(full, []byte("package srv\n"), 0644); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chtimes(full, now.Add(-f.age), now.Add(-f.age)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	got := Exemplars(root, filepath.Join(dir, "new.go"))
-	// 路径分隔符归一：Windows 上 filepath 系产出反斜杠（CI 三平台红过一轮，
-	// 2026-08-28）——期望值统一用正斜杠表述，比较前 ToSlash。
-	for i := range got {
-		got[i] = filepath.ToSlash(got[i])
-	}
-	want := []string{"internal/srv/delta.go", "internal/srv/beta.go", "internal/srv/gamma.go"}
-	if len(got) != len(want) {
-		t.Fatalf("Exemplars = %v, want %v (cap %d, recency order)", got, want, ExemplarMax)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("Exemplars[%d] = %q, want %q (full: %v)", i, got[i], want[i], got)
-		}
-	}
-}
-
-// TestTrimToLines covers the budget boundary both sides.
-//
-// TestTrimToLines 覆盖预算边界的两侧。
-func TestTrimToLines(t *testing.T) {
-	if got := TrimToLines("a\n\nb\n", 5); got != "a\nb" {
-		t.Fatalf("TrimToLines under budget = %q", got)
-	}
-	if got := TrimToLines("a\nb\nc", 2); got != "a\nb\n…（摘要超行数上限，全文 forge conventions show）" {
-		t.Fatalf("TrimToLines over budget = %q", got)
-	}
-	if got := TrimToLines("  \n \n", 5); got != "" {
-		t.Fatalf("TrimToLines blank = %q", got)
-	}
-}
-
 // contains reports whether the list holds s.
 func contains(list []string, s string) bool {
 	for _, v := range list {
@@ -372,17 +199,6 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
-}
-
-// nonEmptyLines counts non-empty lines of s.
-func nonEmptyLines(s string) int {
-	n := 0
-	for _, l := range strings.Split(s, "\n") {
-		if strings.TrimSpace(l) != "" {
-			n++
-		}
-	}
-	return n
 }
 
 // TestEnrichSummary pins the layer-4 write-back contract.

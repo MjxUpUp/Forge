@@ -10,7 +10,6 @@ package skillintegrate
 
 import (
 	"embed"
-	"fmt"
 	"slices"
 )
 
@@ -34,14 +33,6 @@ func Lookup(skill string) (string, bool) {
 	return string(b), true
 }
 
-// Has reports whether a skill has an integration note.
-//
-// Has 报告 skill 是否有集成笔记（渲染层指针用，避免读全文）。
-func Has(skill string) bool {
-	_, ok := Lookup(skill)
-	return ok
-}
-
 // List returns the skill names that have integration notes (sorted).
 //
 // List 返回有集成笔记的 skill 名（字典序）。
@@ -59,15 +50,4 @@ func List() []string {
 	}
 	slices.Sort(out)
 	return out
-}
-
-// PointerLine returns the pointer line for skill-trigger recommendation blocks.
-//
-// PointerLine 返回 skill-trigger 推荐块里的指针行（无笔记返空串）。文案走
-// skilltrigger 的输出契约：事实陈述、非祈使、不含 ASCII 双引号。
-func PointerLine(skill string) string {
-	if !Has(skill) {
-		return ""
-	}
-	return fmt.Sprintf("    forge 集成（仅 forge 项目）：forge skills integration %s", skill)
 }

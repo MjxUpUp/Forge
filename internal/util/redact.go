@@ -31,14 +31,3 @@ var redactPatterns = []*regexp.Regexp{
 
 // redactedToken 替换占位符。保持可读（说明被脱敏的类别）而不泄漏长度信息。
 const redactedToken = "[REDACTED]"
-
-// RedactSecrets replaces known secret shapes in the text with [REDACTED].
-//
-// RedactSecrets 把文本中已知形态的 secret 替换为 [REDACTED]。纯函数、无 IO；
-// 消费方：摘录采集（cli/skill_trigger.go）。
-func RedactSecrets(s string) string {
-	for _, re := range redactPatterns {
-		s = re.ReplaceAllString(s, redactedToken)
-	}
-	return s
-}

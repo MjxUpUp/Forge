@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/nodestamp"
@@ -322,30 +321,6 @@ func loadFromPath(path string) ([]ToolCall, error) {
 		calls = append(calls, call)
 	}
 	return calls, scanner.Err()
-}
-
-// TruncateInput truncates a string to maxToolInputLen characters (rune-safe,
-// ellipsis-marked.
-//
-// TruncateInput 把字符串截断到 maxToolInputLen 个字符（rune-safe，
-// 截断带省略号——见 util.TruncateRunes，与 hazard 包共享的单一真相源）。
-func TruncateInput(s string) string {
-	return util.TruncateRunes(s, maxToolInputLen)
-}
-
-// EstimateTokens roughly estimates the token count of a string (loop cost proxy,
-// not an exact bill).
-//
-// EstimateTokens 粗估字符串 token 数（loop 成本代理，非精确账单）。
-// 无 tiktoken 依赖：中文≈1字/1-2 token、英文≈4 char/token，折中用 rune/3。
-// 用于 iteration breaker 与 trace 可见性——判断「loop 是否跑飞」，不用于计费，
-// 精度够成本量级判断即可（1.5x 偏差不影响「该不该换策略」的决策）。
-func EstimateTokens(s string) int {
-	n := utf8.RuneCountInString(s)
-	if n == 0 {
-		return 0
-	}
-	return n/3 + 1
 }
 
 // SumEstTokens sums the estimated tokens across a set of ToolCalls (for

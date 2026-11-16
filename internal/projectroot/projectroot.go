@@ -233,18 +233,6 @@ func isGlobalForgeStore(forgeDir string) bool {
 	return false
 }
 
-// FindFrom 把任意目录（不必是 cwd）解析到包含它的 forge 项目根，语义与 Find 一致。
-// 阶段 D 起没有宿主热路径调用它；保留给库用户与测试，纯读、不自愈登记。
-func FindFrom(cwd string) (string, error) {
-	root, _, _, err := resolveFrom(cwd)
-	return root, err
-}
-
-// FindFromReadOnly 与 FindFrom 相同：本实现从不自愈登记，热路径只读。
-func FindFromReadOnly(cwd string) (string, error) {
-	return FindFrom(cwd)
-}
-
 // legacyHomeDirs 返回 walk-up 必须停下的 home 边界。
 //
 // 只用 os.UserHomeDir 不够：它读 USERPROFILE/HOME，测试会把这两个 env 重定向到

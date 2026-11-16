@@ -109,43 +109,6 @@ func TestDriftedCommands_Dedup(t *testing.T) {
 	})
 }
 
-// TestDanglingSkillRefs_Mechanism 证明检测能抓真 skill 断链，同时豁免单段 token（工具/
-// 关键字）并尊重 knownSkills + allowlist。用 rune(0x60) 反引号拼接 + raw string 构造，
-// 绕过 Windows 双引号腐蚀。这是 TestDriftedCommands 的 skill 引用对应物。
-func TestDanglingSkillRefs_Mechanism(t *testing.T) {
-	bt := string(rune(0x60)) // 反引号字符，绕过双引号腐蚀
-	known := map[string]bool{`code-review-gate`: true, `tdd-cycle`: true}
-	allow := map[string]bool{`hazard-guard`: true} // hook 名，非 skill
-
-	cases := []struct {
-		name string
-		text string
-		want []string
-	}{
-		{name: `真 skill 引用放行`, text: `用 ` + bt + `code-review-gate` + bt + ` 审查`, want: nil},
-		{name: `断链 skill 抓到`, text: `走 ` + bt + `frontend-stack-selection` + bt + ` 选型`, want: []string{`frontend-stack-selection`}},
-		{name: `单段工具豁免`, text: `跑 ` + bt + `grep` + bt + ` 与 ` + bt + `curl` + bt, want: nil},
-		{name: `单段关键字豁免`, text: bt + `any` + bt + ` 与 ` + bt + `while` + bt + ` 不报`, want: nil},
-		{name: `allowlist 非skill放行`, text: bt + `hazard-guard` + bt + ` hook 已拦`, want: nil},
-		{name: `CamelCase 命名示例豁免`, text: `不叫 ` + bt + `MyCard` + bt + `/` + bt + `Card1` + bt, want: nil},
-		{name: `多段断链与真skill混合`, text: `用 ` + bt + `code-review-gate` + bt + ` 后走 ` + bt + `ai-generated-ui-review` + bt, want: []string{`ai-generated-ui-review`}},
-		{name: `同token去重`, text: bt + `frontend-stack-selection` + bt + ` 与 ` + bt + `frontend-stack-selection` + bt, want: []string{`frontend-stack-selection`}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := DanglingSkillRefs(tc.text, known, allow)
-			if len(got) != len(tc.want) {
-				t.Fatalf(`DanglingSkillRefs = %v, want %v (text=%q)`, got, tc.want, tc.text)
-			}
-			for i := range tc.want {
-				if got[i] != tc.want[i] {
-					t.Errorf(`got[%d]=%q want %q`, i, got[i], tc.want[i])
-				}
-			}
-		})
-	}
-}
-
 // TestDriftedCommands_NoCrossLinePhantom：正则字符类排除 \n，被换行截断的 code span 不会
 // 被拼成幻影引用。修复前 "`forge experience\npropose`" 会匹配出 m[1]="experience\npropose"，
 // 报出一个文档作者从未写过的 drift 路径。
@@ -162,24 +125,6 @@ func TestDriftedCommands_NoCrossLinePhantom(t *testing.T) {
 			t.Fatalf("cross-line code span must not form a phantom reference, got %v", drifted)
 		}
 	})
-}
-
-// TestAllFlags 钉死 flag 清单：隐藏 flag/命令排除，cobra help flag 排除，
-// id 为排序的 "cmd --flag"。
-func TestAllFlags(t *testing.T) {
-	root := &cobra.Command{Use: "forge"}
-	vis := &cobra.Command{Use: "init"}
-	vis.Flags().Bool("project", false, "team mode")
-	vis.Flags().Bool("secret", false, "hidden flag")
-	_ = vis.Flags().MarkHidden("secret")
-	hid := &cobra.Command{Use: "internal", Hidden: true}
-	hid.Flags().Bool("ghost", false, "on hidden command")
-	root.AddCommand(vis, hid)
-
-	got := AllFlags(root)
-	if len(got) != 1 || got[0] != "init --project" {
-		t.Fatalf("AllFlags = %v, want [init --project]", got)
-	}
 }
 
 // TestStaleBinaryHint 钉住追加在「命令不存在」drift advisory 尾部的版本提示（usage

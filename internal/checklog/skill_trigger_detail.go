@@ -82,14 +82,7 @@ const (
 	TriggerModeInline = "inline"
 )
 
-// DetailForSkillTrigger builds the Detail string for a CheckSkillTrigger entry.
-//
-// DetailForSkillTrigger 构造 CheckSkillTrigger 条目的 Detail 字符串。它是 skill-trigger Detail 格式的
-// 唯一真相源——写方（cli/recordSkillTriggerHits）与读方（skillseval.SkillCountsFromChecklog 经
-// SkillFromTriggerDetail）都走本契约，故格式变更不可能让两侧静默失配。否则两侧手工镜像的格式串可能
-// 漂移（写方加字段、读方仍旧形状），被动 skill-trigger 信号会从 usage 分析里静默消失——与 skill-trigger
-// P0 embed-fallback 停服同类的跨包契约断层。写方+读方同位置是结构性修复；这对函数构造性地保持同步
-// （TestDetailForSkillTrigger_RoundTrip 钉死）。
+// DetailForSkillTrigger 是 skill-trigger 条目的 detail 契约（写方/读方共用）。
 func DetailForSkillTrigger(skill, event, reason string) string {
 	return "skill-trigger: " + skill + " hit (event=" + event + " " + reason + ")"
 }
@@ -110,24 +103,4 @@ func SkillFromTriggerDetail(detail string) string {
 		return rest[:i]
 	}
 	return ""
-}
-
-// EventFromTriggerDetail inverts the event slot of DetailForSkillTrigger: the hook event name (UserPromptSubmit / PreToolUse / PostToolUse / Stop / SessionStart) of a CheckSkillTrigger entry, "" when the Detail does not follow the contract.
-//
-// EventFromTriggerDetail 反转 DetailForSkillTrigger 的 event 槽位：返回 CheckSkillTrigger 条目
-// 的 hook 事件名（UserPromptSubmit / PreToolUse / PostToolUse / Stop / SessionStart），Detail
-// 不合契约返回 ""。harness-audit 按通道归因转化率（设计 A2/M）唯一的事件来源——与
-// SkillFromTriggerDetail 同位置，格式变更两侧同时可见。
-func EventFromTriggerDetail(detail string) string {
-	const marker = " hit (event="
-	i := strings.Index(detail, marker)
-	if i < 0 || !strings.HasPrefix(detail, "skill-trigger: ") {
-		return ""
-	}
-	rest := detail[i+len(marker):]
-	end := strings.IndexAny(rest, " )")
-	if end < 0 {
-		return rest
-	}
-	return rest[:end]
 }

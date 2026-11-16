@@ -84,36 +84,6 @@ func TestLoadAll_NoFile(t *testing.T) {
 	}
 }
 
-func TestLatestByCheckForSession_LatestWins(t *testing.T) {
-	dir := t.TempDir()
-	isolateDataHome(t)
-
-	// Record two entries for auto-compile: one fail, then one pass
-	Record(dir, &Entry{Check: CheckAutoCompile, Passed: false, Detail: "failed"})
-	time.Sleep(10 * time.Millisecond) // ensure ordering
-	Record(dir, &Entry{Check: CheckAutoCompile, Passed: true, Detail: "passed"})
-	Record(dir, &Entry{Check: CheckAssertion, Passed: true, Detail: "ok"})
-
-	latest, err := LatestByCheckForSession(dir, "")
-	if err != nil {
-		t.Fatalf("LatestByCheckForSession: %v", err)
-	}
-	if len(latest) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(latest))
-	}
-	// Latest auto-compile should be the passing one
-	if ac, ok := latest[CheckAutoCompile]; !ok {
-		t.Fatal("auto-compile not in results")
-	} else if !ac.Passed {
-		t.Error("latest auto-compile should be passed")
-	}
-	if as, ok := latest[CheckAssertion]; !ok {
-		t.Fatal("assertion-check not in results")
-	} else if !as.Passed {
-		t.Error("assertion-check should be passed")
-	}
-}
-
 func TestRecord_RotatesArchiveWhenOversized(t *testing.T) {
 	dir := t.TempDir()
 	isolateDataHome(t)

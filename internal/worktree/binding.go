@@ -204,26 +204,3 @@ func Anchors(root, taskRef string) []Binding {
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
 	return out
 }
-
-// Touch refreshes the heartbeat (display-only; resolution never gates on it).
-//
-// Touch 刷新心跳（仅展示用；解析从不对它设门）。尽力而为静默——分发器每个 hook
-// 顺带调用。
-func Touch(root string) {
-	orig, rerr := os.ReadFile(bindingPath(root))
-	if rerr != nil {
-		return // no binding on disk → nothing to touch (also: never RESURRECT a cleared one)
-	}
-	b := Load(root)
-	if b == nil {
-		return
-	}
-	b.LastSeenAt = time.Now()
-	if data, err := json.MarshalIndent(b, "", "  "); err == nil {
-		// 按内容 CAS：文件自读取后已变即他人胜出——丢弃本次 LastSeenAt 无害；
-		// 重写会回滚并发的改绑（BindTask 是显式动作，Touch 只是 advisory）。
-		if cur, err := os.ReadFile(bindingPath(root)); err == nil && string(cur) == string(orig) {
-			_ = util.AtomicWrite(bindingPath(root), data, 0o644)
-		}
-	}
-}

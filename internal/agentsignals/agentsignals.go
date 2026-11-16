@@ -104,29 +104,6 @@ func ProjectAgentMarker(projectDir string) string {
 	return ""
 }
 
-// ProjectAgentMarkers returns the deduplicated agent names of ALL matching
-// project-level markers in projectDir, in projectMarkers order (first occurrence
-// wins for dedup).
-//
-// ProjectAgentMarkers 返回 projectDir 中所有命中的项目级标记的 agent 名（去重），
-// 顺序遵循 projectMarkers（首次出现者保留）。用于给每个检测到的 agent 接线
-// （一个项目可被多个 agent 共用）。
-func ProjectAgentMarkers(projectDir string) []string {
-	var agents []string
-	seen := map[string]bool{}
-	for _, m := range projectMarkers {
-		if !markerExists(projectDir, m) {
-			continue
-		}
-		if seen[m.agent] {
-			continue
-		}
-		seen[m.agent] = true
-		agents = append(agents, m.agent)
-	}
-	return agents
-}
-
 // KnownAgents returns the deduplicated list of agent names recognized by project
 // markers, in projectMarkers order (first occurrence wins for dedup).
 //

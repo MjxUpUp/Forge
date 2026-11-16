@@ -245,21 +245,6 @@ type View struct {
 	LastSeen map[string]time.Time
 }
 
-// AttributionRate is attributed / (attributed + orphans); 1 when nothing changed.
-//
-// AttributionRate = attributed / (attributed + orphans)；无变更时为 1。T2 的覆盖率
-// 度量——台账实际解释现实的频率。
-func (v *View) AttributionRate() float64 {
-	total := len(v.Orphans)
-	for _, fs := range v.BySession {
-		total += len(fs)
-	}
-	if total == 0 {
-		return 1
-	}
-	return float64(total-len(v.Orphans)) / float64(total)
-}
-
 // Reconcile builds the View: git status's changed set joined against the ledger, per-path last-writer-wins by timestamp.
 //
 // Reconcile 构建视图：git status 的变更集与台账按时间戳做每路径最后写入者判定。
@@ -368,21 +353,4 @@ func (v *View) Foreign(sid string, window time.Duration) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// SessionTouched returns the set of repo-relative paths this session has ever touched (ledger union, no reconciliation against current status — the fast predicate for trigger conditions like source_changed_uncommitted).
-//
-// SessionTouched 返回本会话触碰过的路径全集（台账并集，不对账当前状态——
-// source_changed_uncommitted 这类触发条件的快速谓词）。
-func SessionTouched(root, sid string) map[string]bool {
-	set := map[string]bool{}
-	if sid == "" {
-		return set
-	}
-	for _, e := range loadLedger(root) {
-		if e.Sid == sid {
-			set[e.Path] = true
-		}
-	}
-	return set
 }

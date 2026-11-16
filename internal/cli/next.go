@@ -64,10 +64,3 @@ func runNext(cmd *cobra.Command, args []string) error {
 func nextContext(root, branch string, dirty bool, behindRemote int) taskpipeline.NextContext {
 	return taskpipeline.NextRepoContext(root, branch, dirty, behindRemote)
 }
-
-// nextDecision 委托 taskpipeline.NextDecision（设计 B：决策逻辑下沉，gate/status/complete
-// 输出点与 `forge next` 共用同一真相源——clitask 不能反向 import cli）。纯函数单测锚点在
-// taskpipeline/next_test.go。
-func nextDecision(branch string, dirty bool, behindRemote int, st *taskpipeline.TaskState) taskpipeline.NextResult {
-	return taskpipeline.NextDecision(branch, dirty, behindRemote, st)
-}

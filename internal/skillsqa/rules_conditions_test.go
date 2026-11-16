@@ -15,7 +15,7 @@ func TestValidConditions_Vocabulary(t *testing.T) {
 		"skill_file_touched", // P1b 新增：编辑 SKILL.md 时触发编写规范（skill-authoring-standard）
 	}
 	if len(ValidConditions) != len(want) {
-		t.Fatalf("ValidConditions 词表数=%d want %d（%v）——新增 condition 须同步 skilltrigger.Conditions 并更新本测试",
+		t.Fatalf("ValidConditions 词表数=%d want %d（%v）——新增 condition 须同步 skill-trigger 判定实现并更新本测试",
 			len(ValidConditions), len(want), validConditionsSorted())
 	}
 	for _, w := range want {

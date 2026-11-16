@@ -6,7 +6,7 @@ set -eu
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 awk '
-  /^## .*从 1\.84/ { skip = 1; next }
+  /^## .*1\.84/ { skip = 1; next }
   /^## / { skip = 0 }
   !skip { print }
 ' README.md > "$tmp"

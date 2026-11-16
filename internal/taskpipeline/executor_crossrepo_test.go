@@ -185,11 +185,7 @@ func TestCrossRepoImpact_RequiredBlocks(t *testing.T) {
 	dir, key := setupCrossRepoRepo(t)
 	setupCrossRepoWorkspace(t, key)
 
-	proto := protocol.DefaultProtocol()
-	proto.CrossRepoImpact = `required`
-	if err := protocol.SaveDataDir(dir, proto); err != nil {
-		t.Fatalf("SaveDataDir: %v", err)
-	}
+	writeTestProtocol(t, dir, protocol.Protocol{CrossRepoImpact: `required`})
 
 	state := &TaskState{TaskRef: `test-crossrepo-required`, Branch: `feat/test`}
 	state.RecordGateResult("task-implement", true, "")

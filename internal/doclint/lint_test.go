@@ -239,15 +239,6 @@ func TestLintFileSkipMarkerAndPathExempt(t *testing.T) {
 	}
 }
 
-func TestRenderBannedPhrasesForSkill(t *testing.T) {
-	out := RenderBannedPhrasesForSkill()
-	for _, want := range []string{"综上所述", "基本可以", "问题不大", "整体良好"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("渲染输出应包含禁令短语 %q", want)
-		}
-	}
-}
-
 func TestLintTextTemplateFilesSkipInstanceRules(t *testing.T) {
 	// doc-generator templates define structure (骨架 in fences) — D5 must not
 	// demand the instance heading from the template itself, while D1 still

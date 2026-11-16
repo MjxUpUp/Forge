@@ -233,10 +233,3 @@ func (c *pulseCache) skillEval(canonical, evalDir, skill string) *skillEvalData 
 	c.loadCounts[key]++
 	return d
 }
-
-// loadCount 报告 key 发生了几次真实加载（测试观测点）。
-func (c *pulseCache) loadCount(key string) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.loadCounts[key]
-}

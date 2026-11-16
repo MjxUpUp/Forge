@@ -7,7 +7,6 @@
 package doclint
 
 import (
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -250,20 +249,4 @@ func matchDocType(filename string) *DocType {
 		}
 	}
 	return nil
-}
-
-// RenderBannedPhrasesForSkill renders the D1/D2 tables into skill/protocol text (skillgen calls this — the banned list must not be hand-copied into a second location).
-//
-// RenderBannedPhrasesForSkill 把 D1/D2 表渲染为 skill/协议文本（skillgen 调用
-// 本函数——禁令清单不允许手抄到第二处）。短语反引号包裹：生成的 skill 文本
-// 须能过自身的 doclint（行内代码豁免），与 claudemd 规则 7 同构。
-func RenderBannedPhrasesForSkill() string {
-	var sb strings.Builder
-	for _, p := range BannedPhrases {
-		fmt.Fprintf(&sb, "- `%s` —%s\n", p.Pattern.String(), p.Reason)
-	}
-	for _, p := range EvidenceFreeConclusions {
-		fmt.Fprintf(&sb, "- `%s` —%s\n", p.Pattern.String(), p.Reason)
-	}
-	return sb.String()
 }

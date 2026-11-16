@@ -73,23 +73,3 @@ func TestProjectAgentMarker_WindsurfrulesMustBeFile(t *testing.T) {
 		t.Errorf("ProjectAgentMarker with .windsurfrules DIR = %q, want empty (marker requires a file)", got)
 	}
 }
-
-// TestProjectAgentMarkers_AllMatchesDeduped：含 .cline + .clinerules（都映射 cline）+
-// .reasonix 的项目返回 ["cline","reasonix"]——cline 只出现一次。顺序遵循表（cline 在
-// reasonix 之前）。
-func TestProjectAgentMarkers_AllMatchesDeduped(t *testing.T) {
-	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, `.cline`), 0755)
-	os.MkdirAll(filepath.Join(dir, `.clinerules`), 0755)
-	os.MkdirAll(filepath.Join(dir, `.reasonix`), 0755)
-	got := agentsignals.ProjectAgentMarkers(dir)
-	want := []string{`cline`, `reasonix`}
-	if len(got) != len(want) {
-		t.Fatalf("ProjectAgentMarkers = %v, want %v", got, want)
-	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("ProjectAgentMarkers[%d] = %q, want %q (full: %v)", i, got[i], w, got)
-		}
-	}
-}

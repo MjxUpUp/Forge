@@ -15,8 +15,7 @@ import (
 // CLI 在门禁失败消息里明示此逃生舱，避免被静默绕过。
 const testCoverageDisableEnv = "FORGE_TEST_COVERAGE"
 
-// sourceExts 是 test-coverage 门控认定的「源码」后缀集。早期 hooks/embed.go 内嵌的一层
-// bash advisory hook 镜像此集合，hook 精简时已删——本门控现是唯一真相源。
+// sourceExts 是 test-coverage 门控认定的「源码」后缀集。
 var sourceExts = map[string]bool{
 	".go": true, ".rs": true, ".ts": true, ".tsx": true,
 	".js": true, ".jsx": true, ".py": true, ".java": true,
@@ -66,11 +65,9 @@ var testCoverageWhitelist = []whitelistEntry{
 	// 「skills/」子串匹配不到「skills-forge/」（斜杠位置不同），单独放行。带尾斜杠，
 	// 避免误放行 internal/cli/skills-forge-utils.go 类未来源码文件（review W6）。
 	{substr: "skills-forge/"},
-	// 内嵌 hook 脚本容器：internal/hooks/embed.go 把 shell 脚本作为 Go string 常量
-	// （HazardGuardHook、WorkflowTestGuardHook 等）持有。无 Go 逻辑可单元测试——
-	// 脚本行为由 internal/e2e 端到端验证（如 TestHook_HazardGuard_BlocksHazardousCommand）。
-	// 无此豁免，文件级 hasMatchingTest 检查（在同 package 找 embed_test.go）会
-	// 误把它标为改动源码无配对测试。
+	// 内嵌资产容器：embed.go 只持有 //go:embed 指令与静态资源声明（dashboard UI、
+	// skills 资产），无 Go 逻辑可单元测试。无此豁免，文件级 hasMatchingTest 检查
+	// 会把它标为改动源码无配对测试。
 	{baseExact: "embed.go"},
 	// Rust 入口——与 Go crate 的 main.go 对等。baseExact 匹配 basename，
 	// 故 src/main.rs 和 src-tauri/src/main.rs 都命中。Rust 惯例：二进制
@@ -454,53 +451,6 @@ func testCandidates(src string) []string {
 	}
 }
 
-// TestPairsSource reports whether testPath is an idiomatic direct pairing test for
-// srcPath (discipline-first-gates P1-B): the nudge side's single-file probe. Paths
-// are repo-relative forward-slash forms. Shares testCandidates with the gate's
-// hasMatchingTest so a nudge-removed file is exactly a file the gate would stop
-// counting as missing.
-//
-// Known one-way asymmetry (by design, review P3): hasMatchingTest's Go
-// package-level fallback (ANY _test.go in the same dir covers the source) has no
-// mirror here — the nudge may keep naming a Go file the gate already considers
-// covered via a sibling test. Direction is safe (TestPairsSource hits ⊆
-// hasMatchingTest hits); do NOT "complete" it without revisiting the session-state
-// pairing semantics.
-//
-// TestPairsSource 报告 testPath 是否是 srcPath 的惯用直接配对测试
-// （discipline-first-gates P1-B）：nudge 侧的单文件探针。路径为仓库相对
-// forward-slash 形态。与门禁侧 hasMatchingTest 共用 testCandidates——nudge 移除的
-// 文件恰是门禁将不再计为 missing 的文件。
-//
-// 已知的单向不对称（设计如此，审查 P3）：hasMatchingTest 的 Go package 级兜底
-// （同目录任意 _test.go 即覆盖源码）在此无镜像——nudge 可能持续点名门禁已经
-// 视为已覆盖的 Go 文件。方向安全（TestPairsSource 命中 ⊆ hasMatchingTest 命中）；
-// 未重新审视会话态配对语义前不得「补齐」。
-func TestPairsSource(testPath, srcPath string) bool {
-	testPath = filepath.ToSlash(testPath)
-	for _, p := range testCandidates(srcPath) {
-		if p == testPath {
-			return true
-		}
-	}
-	// default 语言（zig/nim/java 小写形态等）的 stem+"_test."+测试自身扩展：
-	// 同目录前缀限定，兄弟源码的测试永不配对。
-	srcPath = filepath.ToSlash(srcPath)
-	ext := filepath.Ext(srcPath)
-	switch ext {
-	case ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".py":
-		return false // 这些语言的候选已在上方精确判过
-	}
-	base := strings.TrimSuffix(srcPath, ext)
-	dir := filepath.ToSlash(filepath.Dir(srcPath))
-	d := ""
-	if dir != "." && dir != "" {
-		d = dir + "/"
-	}
-	prefix := d + filepath.ToSlash(filepath.Base(base)) + "_test."
-	return len(testPath) > len(prefix) && strings.HasPrefix(testPath, prefix)
-}
-
 // hasMatchingTest 推断改动源码文件的惯用测试文件路径，并在改动集合里查它
 // （各语言惯例见 testCandidates；Go 的 package 级兜底与 default 语言的前缀扫描
 // 依赖 changed 集合，留在本函数）。
@@ -568,17 +518,6 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 		}
 		return false
 	}
-}
-
-// ClassifyChangedPath reports whether a path is source that owes a paired test (non-whitelisted, non-test, source extension) and whether it is itself a test file.
-//
-// ClassifyChangedPath 报告一个路径是否是欠配对测试的源码（非白名单、非测试、
-// 源码后缀），以及它自身是否测试文件。供 test-nudge 进程内 hook（cli）共用——
-// 事中 nudge 与 task-verify 门禁按同一规则判「源码/测试」：若 nudge 计白名单
-// 文件或漏认测试文件，就会与它所预演的门禁分叉，教给 agent 的规则与实际执行
-// 的规则不同（与 checklog.DetailForSkillTrigger 的单一真相源契约同理）。
-func ClassifyChangedPath(path string) (source, test bool) {
-	return isSourceFile(path) && !isWhitelisted(path) && !isTestFile(path), isTestFile(path)
 }
 
 // testCoverageDetail 返回门禁裁定的简短 checklog detail 字符串（刻意短——
