@@ -30,6 +30,3 @@ type ToolCall struct {
 	// 稳定 sha1 ID 永不漂移。
 	nodestamp.Stamp
 }
-
-// maxToolInputLen 是 tool_input 存储的截断上限。
-const maxToolInputLen = 500

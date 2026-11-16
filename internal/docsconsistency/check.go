@@ -169,12 +169,6 @@ func DriftedInProject(root string) []string {
 	return DriftedCommands(string(body))
 }
 
-// skillBacktickRef 匹配反引号包裹的 kebab-case token——forgeBacktickRef（针对 forge
-// 命令路径）的 skill 名对应物。反引号限定排除散文，小写首字母 kebab 形态排除 CamelCase
-// 命名示例（MyCard）。用 rune(0x60) + raw string 构造，绕过 Windows 输入层双引号腐蚀
-// （会破坏双引号 Go 字符串字面量）。
-var skillBacktickRef = regexp.MustCompile(string(rune(0x60)) + `([a-z][a-z0-9-]*)` + string(rune(0x60)))
-
 // homePathRef matches a ~/ path written in a document: ASCII path characters only, so the match stops at whitespace, backticks, brackets, quotes and CJK punctuation.
 //
 // homePathRef 匹配文档里写的 ~/ 路径：只收 ASCII 路径字符，遇空白、反引号、括号、引号、

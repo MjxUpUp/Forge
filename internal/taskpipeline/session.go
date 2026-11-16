@@ -322,13 +322,6 @@ func CurrentSessionID() string {
 // 是 agent 的 Bash 工具；窗口限制了暴露面）。
 const lastSessionFreshWindow = 15 * time.Minute
 
-// lastSessionWriteThrottle 限制指针重写频率：hook 每次工具调用都触发，而指针
-// 的消费方只需要分钟级新鲜度。节流是会话无关的：两个非 claude 宿主交错
-// （kimi + codex）时，宿主切换最长需要一个节流窗口才反映到指针——期间新宿
-// 主的 `forge task start` 会采纳前一个宿主的会话（review M1；接受——单宿主
-// 使用是主流，且错误仅限归因）。
-const lastSessionWriteThrottle = 30 * time.Second
-
 // LastSessionPointer records the most recent hook-observed session, bridging the hook-path/CLI-path identity gap.
 //
 // LastSessionPointer 记录项目最近一次 hook 观察到的会话，桥接 hook 路径（从
