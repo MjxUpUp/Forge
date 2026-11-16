@@ -1,0 +1,116 @@
+{
+  "change": "dogfood-fixes",
+  "started_at": "2026-11-16T01:19:34Z",
+  "finished_at": "2026-11-16T01:19:54Z",
+  "passed": true,
+  "sealed": true,
+  "head": "24832da2268ca62934b813443ec403acb4dd83a6",
+  "diff_sha256": "6f9fb7089d9b7bca15ed2880ba6996c08d87c8839d8f99a0f764892bea6beea5",
+  "files": [
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "07c40723a722931d3c0e65c9f6c990bc700240366dd5db7a6186bac15ceb7a9f"
+    },
+    {
+      "path": "internal/change/agents_protocol_test.go",
+      "sha256": "7333d549a310f3c4bef17009ba28572367ca300225037051ec6051828b9b3c8c"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "0919d60dbee9397b78ed2ba477f9284eca10106978da18a91d50577cd158404f"
+    },
+    {
+      "path": "internal/taskpipeline/next.go",
+      "sha256": "a785c1f6491476284bcb7868a19fa6c11178674d1b296adc96913d402d3d7051"
+    },
+    {
+      "path": "internal/taskpipeline/next_test.go",
+      "sha256": "08164470e658a9d44e4b479214d4ad7e489e54da2f5018e91df549315233b610"
+    },
+    {
+      "path": "internal/taskpipeline/scoring.go",
+      "sha256": "723131dc388f437753165e3bdee651cea42449dfb54410e59d7ef7c054f3a794"
+    },
+    {
+      "path": "internal/taskpipeline/scoring_config_test.go",
+      "sha256": "243d09f58e194a38ada0af5004eba9d9489e5c7e88c8f5b78510479501a5701e"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/acceptance.md",
+      "sha256": "8bcc7ed9ea66090c80c46588a91a72163aded204303576909309b2d8ab0257d5"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/clarify.md",
+      "sha256": "d80dd4a27f9142178ed0fdda1713a36fa1a9a9be79dda0d440ed53af18138865"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/design.md",
+      "sha256": "dfc638711d141d9ec02340b013417ccecf82c51dc5585fe7a4905ed0a22574e5"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/goal.md",
+      "sha256": "2581951c4f1788e7f57f2b82d401b8e551bfa488c5f4e54bcea8865efe7c3958"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/proposal.md",
+      "sha256": "6e3d41dbde510c4711c734f5c0e05a32c29c2fab8e67c7a6aa3cc6f0da6c1173"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/tasks.md",
+      "sha256": "75ff54767bec8971c91c1189e1671186dc078be61164f5a017440e5843edcb2c"
+    }
+  ],
+  "acceptance_sha256": "8bcc7ed9ea66090c80c46588a91a72163aded204303576909309b2d8ab0257d5",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "# 1. 编译\ngo build ./...",
+      "exit": 0,
+      "duration_ms": 4845
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "# 2. next 干净路由 + 评分静默回退\ngo test ./internal/taskpipeline/ -run 'TestNextDecision|TestLoadScoringConfig' -count=1",
+      "exit": 0,
+      "duration_ms": 1420,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "# 3. AGENTS 模板钉住 dogfood 踩到的步骤\ngo test ./internal/change/ -run TestAgentsProtocol -count=1",
+      "exit": 0,
+      "duration_ms": 2030,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "# 4. cli.md 与 help 面\ngo test ./internal/cli/ -run 'TestHelpSurface|TestCliReference' -count=1",
+      "exit": 0,
+      "duration_ms": 4666,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "# 5. 格式守卫\nsh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 391
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "# 6. 死代码零\nsh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5963
+    }
+  ]
+}

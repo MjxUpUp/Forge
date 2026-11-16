@@ -14,6 +14,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/scoring"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/MjxUpUp/Forge/internal/toolusage"
 )
@@ -416,4 +417,27 @@ func activeSpanFromCalls(calls []toolusage.ToolCall, since, until time.Time) tim
 		return 0
 	}
 	return last.Sub(first)
+}
+
+// loadScoringConfig 读取协议里的评分权重；任何缺失都回退默认值。
+//
+// spec 契约仓库（spec/forge.yaml）从阶段 C 起不再生成 protocol.yml——那里没有文件是
+// 常态，静默用默认权重即可。只有非契约仓库才像以前一样告警：提示用户可能是手误或
+// 类型错，避免「评分被无痕改动」。
+func loadScoringConfig(root string) *scoringtypes.ScoringConfig {
+	defaults := &scoringtypes.ScoringConfig{
+		Weights:    scoringtypes.DefaultWeights(),
+		Thresholds: scoringtypes.DefaultThresholds(),
+	}
+	proto, err := protocol.Load(root)
+	if err != nil {
+		if !specroot.Declared(root) {
+			fmt.Fprintf(os.Stderr, "[forge] warning: protocol.yml 加载失败（%v）——评分回退默认权重/阈值\n", err)
+		}
+		return defaults
+	}
+	if proto == nil || proto.Scoring == nil {
+		return defaults
+	}
+	return proto.Scoring
 }

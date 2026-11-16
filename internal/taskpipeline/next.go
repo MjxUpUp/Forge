@@ -119,6 +119,13 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 				State:  state,
 			}
 		}
+		if ctx.SpecDeclared {
+			return NextResult{
+				Next:   `forge task start --ref <ref> --branch --title <title>`,
+				Reason: "工作区干净且没有活跃任务——直接开新任务（一句话小修加 --kind task；想留可评审记录也可以先 forge change new <id>，change 可后补；不要停在 status 上空转）",
+				State:  state,
+			}
+		}
 		return NextResult{
 			Next:   "forge status",
 			Reason: "无活跃任务且工作区干净——查看项目状态或认领任务（forge task mine）",
