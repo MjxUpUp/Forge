@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.87.3](https://github.com/MjxUpUp/Forge/compare/v1.87.2...v1.87.3) (2026-11-16)
+
+
+### Bug Fixes
+
+* **cli:** forge version 子命令；start 产物链提示走 change 口径；report 未验证面诚实披露 ([03424e7](https://github.com/MjxUpUp/Forge/commit/03424e75c9ce17df4793c15a529192be088b8a0c))
+* 评审回件——version 归组 + compat 重钉；report 三态（Go 测试文件）；判据覆盖整包 cli ([abf8eda](https://github.com/MjxUpUp/Forge/commit/abf8eda3cc10af158a79915a4dd3ab2f96924d2e))
+
 ## [1.87.2](https://github.com/MjxUpUp/Forge/compare/v1.87.1...v1.87.2) (2026-11-16)
 
 
