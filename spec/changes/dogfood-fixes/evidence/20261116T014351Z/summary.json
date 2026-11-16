@@ -1,0 +1,76 @@
+{
+  "change": "dogfood-fixes",
+  "started_at": "2026-11-16T01:43:51Z",
+  "finished_at": "2026-11-16T01:44:14Z",
+  "passed": true,
+  "sealed": true,
+  "head": "fe3463fb1e29f765ccc0c2a7b65640140e6131f1",
+  "diff_sha256": "666488dd7dbd59867d74bc6fa4fcf380170579b91aa988c2ee083fa340e68a75",
+  "files": [
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "5f3f8e31a31da3f621cb464d8b0206e086af74b5f1a846f067e61c55891d7e88"
+    },
+    {
+      "path": "internal/cli/help_surface_test.go",
+      "sha256": "c5a09ad276f356b7be0964bbbd0ab4bba6a34bf95597fa58c3123fe953f32b27"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/acceptance.md",
+      "sha256": "f1ba68a9e04f252b6a8060c2f1100d90e201cb81ace37fd52b5643ff14b30647"
+    },
+    {
+      "path": "spec/changes/dogfood-fixes/design.md",
+      "sha256": "a927cda785958076449fa7ee638a02b8191e51f52e6ae0b8bfc34bb12aad143c"
+    }
+  ],
+  "acceptance_sha256": "f1ba68a9e04f252b6a8060c2f1100d90e201cb81ace37fd52b5643ff14b30647",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "# 1. 编译\ngo build ./...",
+      "exit": 0,
+      "duration_ms": 4923
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "# 2. next 干净路由 + 评分静默回退\ngo test ./internal/taskpipeline/ -run 'TestNextDecision|TestLoadScoringConfig|TestBuildEvaluateInput|TestNextHint_SpecRepo' -count=1\ngo test ./internal/protocol/ -run TestConfigured -count=1",
+      "exit": 0,
+      "duration_ms": 5306,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "# 3. AGENTS 模板钉住 dogfood 踩到的步骤\ngo test ./internal/change/ -run TestAgentsProtocol -count=1",
+      "exit": 0,
+      "duration_ms": 2004,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "# 4. cli.md 与 help 面\ngo test ./internal/cli/ -run 'TestHelpSurface|TestCliReference' -count=1",
+      "exit": 0,
+      "duration_ms": 4754,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "# 5. 格式守卫\nsh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 332
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "# 6. 死代码零\nsh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5443
+    }
+  ]
+}

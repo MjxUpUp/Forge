@@ -68,3 +68,23 @@ func TestHelpSurface_EntryRouting(t *testing.T) {
 		}
 	}
 }
+
+// dogfood 修复的文档钉子：这四句是 agent 照抄的说明书，缺了就会踩同一个坑。
+func TestCliReference_DogfoodFixesPinned(t *testing.T) {
+	root := repoRoot
+	data, err := os.ReadFile(filepath.Join(root, "docs", "reference", "cli.md"))
+	if err != nil {
+		t.Fatalf("read cli.md: %v", err)
+	}
+	doc := string(data)
+	for _, want := range []string{
+		"落后远端先给 `git pull --ff-only`",
+		"ready 且 goal.md 齐备的 change 直接给 `forge task start --change <id>`",
+		"按空白切分后直接 exec",
+		"不带 `--ref` 会报 no active task",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("cli.md 缺少 dogfood 修复的说明：%q", want)
+		}
+	}
+}
