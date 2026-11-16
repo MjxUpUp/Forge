@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/MjxUpUp/Forge/internal/change"
-	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -61,32 +59,10 @@ func runNext(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// nextContext 读仓库的 spec 状态：是否声明契约、有哪些未归档 change。
-// 读失败按「未声明/无打开 change」处理——next 是引导命令，不能因为 spec 目录
-// 半坏就拒绝给出下一步。
+// nextContext 读仓库的 spec 状态（委托 taskpipeline.NextRepoContext，
+// 与 gate/status/complete 的提示共用一份实现，避免两处漂移）。
 func nextContext(root, branch string, dirty bool, behindRemote int) taskpipeline.NextContext {
-	ctx := taskpipeline.NextContext{
-		Branch:       branch,
-		Dirty:        dirty,
-		BehindRemote: behindRemote,
-		SpecDeclared: specroot.Declared(root),
-	}
-	if !ctx.SpecDeclared {
-		return ctx
-	}
-	if changes, err := change.List(root); err == nil {
-		for _, c := range changes {
-			if c.Archive {
-				continue
-			}
-			ctx.OpenChanges = append(ctx.OpenChanges, c.ID)
-			if phase, _, err := change.ComputePhase(root, c.ID); err == nil && phase == change.PhaseReady && c.HasGoal {
-				// 老 change（无 goal.md）不能 --change：钉契约需要五段 goal。
-				ctx.ReadyChanges = append(ctx.ReadyChanges, c.ID)
-			}
-		}
-	}
-	return ctx
+	return taskpipeline.NextRepoContext(root, branch, dirty, behindRemote)
 }
 
 // nextDecision 委托 taskpipeline.NextDecision（设计 B：决策逻辑下沉，gate/status/complete
