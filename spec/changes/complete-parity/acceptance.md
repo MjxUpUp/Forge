@@ -31,3 +31,7 @@ go run ./cmd/forge docs lint docs/reference/cli.md internal/change/templates/age
 ```bash
 go test ./internal/clitask/ -count=1
 ```
+
+```bash
+go test ./internal/cli/ -run 'TestCompatSnapshotMatchesGolden|TestTaskStart_.*EmptyExpected|TestTaskAccept_EmptyExpectedHint' -count=1
+```

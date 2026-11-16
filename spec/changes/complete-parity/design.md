@@ -10,7 +10,7 @@ gate 与 complete 共享 `CheckDocGate`；交付单增加文档回检行；chang
 
 ## 2. 交付单披露文档回检
 
-`taskReportJSON` 增加 `DocReviewLine`；从 `state.DocReview` 渲染「L2 score N（round n，reviewer）」；`SelfReview` 或未记录评审者时追加「自查（独立性未校验）」。`renderTaskReport` 在「审查」行下输出。
+`taskReportJSON` 增加 `DocReviewLine`；从 `state.DocReview` 渲染「L2 回检 pass/fail（score N，round N，reviewer）」（`ReviewedAt` 为零值时不显示，避免与 doc gate 的「未记录」口径分叉）；`SelfReview` 或未记录评审者时追加「自查（独立性未校验）」。`renderTaskReport` 在「审查」行下输出。
 
 ## 3. 产物链提醒尊重 change 契约
 
@@ -40,6 +40,6 @@ gate 提前拦截会让「文档改动但还没评审」的任务更早停下—
 
 - `internal/taskpipeline/complete_docgate_parity_test.go`：有/无 markdown 变更两条路径。
 - `internal/taskpipeline/artifact_advisory_test.go`：契约与无契约两种文案。
-- `internal/clitask/task_report_docreview_test.go`：三种披露形态（正常/无评审者/自查）。
+- `internal/clitask/task_report_docreview_test.go`：四种披露形态（正常/无评审者/自查/failed）与零值 `ReviewedAt` 不显示。
 - `internal/cli/task_start_hint_test.go`：空期望提示与不提示两条路径。
 - 全量：`go build ./...`、`go test ./internal/taskpipeline/ ./internal/clitask/ ./internal/cli/`、gofmt-clean、deadcode-zero、docs lint。
