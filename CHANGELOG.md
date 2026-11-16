@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.87.1](https://github.com/MjxUpUp/Forge/compare/v1.87.0...v1.87.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* NextRepoContext 排除无 goal 的老 change；cli 委托同一实现；提示只在无任务时读 spec ([02ab6b7](https://github.com/MjxUpUp/Forge/commit/02ab6b7c22419337db96f87f74665dc813187fe9))
+* **routing:** next 干净工作区直接开工；契约仓库评分静默回退；AGENTS/cli 文档补齐门禁步骤 ([2077efb](https://github.com/MjxUpUp/Forge/commit/2077efb109e038cd6f49cc2ab0641f989d8c98f6))
+* **scoring:** 区分 protocol.yml 缺失与坏文件——契约仓库缺失静默、坏文件仍告警 ([e1174a2](https://github.com/MjxUpUp/Forge/commit/e1174a206d1d5b3ac390766e0a74b72792516af6))
+* 按双评审修 dogfood-fixes（生产路径接线、NextHint 上下文、文档顺序与判据） ([e609d00](https://github.com/MjxUpUp/Forge/commit/e609d00156569205f1cb2077e2e6f13ddfaf4c1a))
+
 ## [1.87.0](https://github.com/MjxUpUp/Forge/compare/v1.86.0...v1.87.0) (2026-11-15)
 
 
