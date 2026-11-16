@@ -18,7 +18,7 @@ go test ./internal/change/ -run TestAgentsProtocol -count=1
 
 ```bash
 # 4. cli.md 与 help 面
-go test ./internal/cli/ -run 'TestHelpSurface' -count=1
+go test ./internal/cli/ -run 'TestHelpSurface|TestCliReference' -count=1
 ```
 
 ```bash
