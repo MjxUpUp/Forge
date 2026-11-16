@@ -502,10 +502,10 @@ const (
 	// （Passed=false、Level=advisory）；不进 evidence 白名单——它是给外层循环的
 	// 停止信号，不是验证声明。
 	CheckAcceptanceRecurrence CheckName = "acceptance-recurrence"
-	// CheckNextHint records one "→ next:" line appended to gate/status/complete output (design B); Meta["suggested"] carries the suggested command so harness-audit B1 can measure adoption (same command run within 10 minutes).
+	// CheckNextHint records one "→ next:" line appended to gate/status/complete output; Meta[MetaKeySuggested] carries the suggested command.
 	//
-	// CheckNextHint 记录一次挂在 gate/status/complete 输出末尾的「→ next:」行（设计 B）：
-	// Meta["suggested"] 携带建议命令，harness-audit B1 据此测采纳率（10 分钟内执行同命令）。
+	// CheckNextHint 记录一次挂在 gate/status/complete 输出末尾的「→ next:」行：
+	// Meta[MetaKeySuggested] 携带建议命令。
 	// deterministic（forge 自身渲染）但属引导层 OBSERVATION——排除出证据强度分桶。
 	CheckNextHint CheckName = "next-hint"
 	// CheckGateCmdForm records the gate-cmd-form verdict for a Bash command that embeds a forge gate subcommand (design C): advisory in 1.56, BLOCKED from 1.67; Meta carries the classified form flags.
@@ -561,12 +561,12 @@ const (
 	MetaKeySyncOp = "sync_op"
 )
 
-// MetaKeyResolvePath / MetaKeyPostSeal namespace the task-attribution probe payload (docs/design/harness-fixes-a-g-2026-09.md E.1/E.2); any check's row may carry them. Writers: hookdispatch (hook rows) and taskpipeline.recordAudit (executor rows); reader: `forge eval harness-audit` — one source of truth, same contract-seam discipline as the MetaKey* constants above.
+// MetaKeyResolvePath / MetaKeyPostSeal namespace the task-attribution probe payload: any check row may carry them, so attribution stays in Meta instead of widening Entry. Writers: taskpipeline annotate marks rows landing after the evidence seal (MetaKeyPostSeal), tree-guard gate rows name the detection path that resolved the task (MetaKeyResolvePath). Consumers read Meta by key — one source of truth, same contract-seam discipline as the MetaKey* constants above.
 //
-// MetaKeyResolvePath / MetaKeyPostSeal 是任务归因探针的机器载荷命名空间
-// （docs/design/harness-fixes-a-g-2026-09.md E.1/E.2）：任何 check 的行都可携带。
-// 写方为各门禁输出与 taskpipeline.recordAudit（执行器行），读方
-// `forge eval harness-audit`（泄漏计数）——单一真相源，与上方 MetaKey* 同款契约缝。
+// MetaKeyResolvePath / MetaKeyPostSeal 是任务归因探针的机器载荷命名空间：任何 check 行
+// 都可携带，归因因此留在 Meta 里而不必扩宽 Entry。写方：taskpipeline 的 annotate 给
+// 封印之后的行打 MetaKeyPostSeal，tree-guard 门禁行写 MetaKeyResolvePath（解析到任务的
+// 探测路径）；消费侧按 key 读取。单一真相源，与上方 MetaKey* 同款契约缝。
 const (
 	// MetaKeyResolvePath records which detection path resolved the active task: active-file / workspace / branch / legacy (taskpipeline.ResolvePath*).
 	//
@@ -578,10 +578,10 @@ const (
 	// MetaKeyPostSeal = "true" 标记该行落在任务证据封印（task-complete 门禁通过）之后
 	// ——行保留供 trace，但评分/结论按 TaskState.SealedAt 截断不计入。
 	MetaKeyPostSeal = "post_seal"
-	// MetaKeySuggested carries the command a next-hint row proposed (design B); harness-audit B1 matches it against the session's subsequent Bash calls.
+	// MetaKeySuggested carries the command a next-hint row proposed; writer is taskpipeline.NextHint, consumers read it from Meta alongside the row.
 	//
-	// MetaKeySuggested 携带 next-hint 行建议的命令（设计 B）；harness-audit B1 用它与会话
-	// 随后的 Bash 调用比对算采纳率。写方 clitask 门禁输出，读方为报表/审计侧。
+	// MetaKeySuggested 携带 next-hint 行建议的命令：写方 taskpipeline.NextHint，
+	// 消费侧随行从 Meta 读取。
 	MetaKeySuggested = "suggested"
 )
 

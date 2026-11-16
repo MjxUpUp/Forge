@@ -103,7 +103,7 @@ func TestTreeGuardIsObservationOnly(t *testing.T) {
 }
 
 // TestHookInfraCheckInRoster 钉住 hook 基础设施失败的 check 名进 roster：漏登记 =
-// hookdispatch 写了 hook-infra 行，但 compat 快照与 forge trace 的清单里看不到它。
+// 有 hook-infra 行落盘，但 compat 快照与 forge trace 的清单里看不到它。
 func TestHookInfraCheckInRoster(t *testing.T) {
 	if string(CheckHookInfra) != "hook-infra" {
 		t.Errorf("常量值漂移: %q != hook-infra", CheckHookInfra)

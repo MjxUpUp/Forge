@@ -61,16 +61,15 @@ const (
 	//
 	// MetaKeySkills：逗号连接的 skill 列表（stop-max-rounds advisory 条目使用）。
 	MetaKeySkills = "skills"
-	// MetaKeyTriggerMode labels the delivery mode of a hit: "load" (full skill pointer, decision-point channel) or "inline" (one-line action instruction, action-point channel). Writer: skill-trigger render (design A); reader: harness-audit A4.
+	// MetaKeyTriggerMode labels the delivery mode of a hit: "load" (full skill pointer, decision-point channel) or "inline" (one-line action instruction, action-point channel). Writer: skill-trigger render.
 	//
 	// MetaKeyTriggerMode 标注一次命中的投递模式："load"（完整 skill 指引，决策点通道）或
-	// "inline"（一行动作指令，动作点通道）。写方 skill-trigger 渲染（设计 A），读方
-	// harness-audit A4（docs/design/harness-fixes-a-g-2026-09.md）。
+	// "inline"（一行动作指令，动作点通道）。写方 skill-trigger 渲染。
 	MetaKeyTriggerMode = "mode"
-	// MetaKeyFollowPattern carries the trigger's declared follow matcher (regexp over subsequent Bash commands) so A4 「inline 跟随率」 is measurable per trigger.
+	// MetaKeyFollowPattern carries the trigger's declared follow matcher (regexp over subsequent Bash commands) so inline follow-through stays attributable per trigger.
 	//
-	// MetaKeyFollowPattern 携带 trigger 声明的 follow 匹配器（对后续 Bash 命令的正则），使 A4
-	// 「inline 跟随率」按 trigger 可测；未声明则该命中不进 A4 分母。
+	// MetaKeyFollowPattern 携带 trigger 声明的 follow 匹配器（对后续 Bash 命令的正则），
+	// 使 inline 跟随率可按 trigger 统计；未声明则该命中不进分母。
 	MetaKeyFollowPattern = "follow"
 )
 
