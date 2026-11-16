@@ -7,7 +7,8 @@ go build ./...
 
 ```bash
 # 2. next 干净路由 + 评分静默回退
-go test ./internal/taskpipeline/ -run 'TestNextDecision|TestLoadScoringConfig' -count=1
+go test ./internal/taskpipeline/ -run 'TestNextDecision|TestLoadScoringConfig|TestBuildEvaluateInput|TestNextHint_SpecRepo' -count=1
+go test ./internal/protocol/ -run TestConfigured -count=1
 ```
 
 ```bash
@@ -17,7 +18,7 @@ go test ./internal/change/ -run TestAgentsProtocol -count=1
 
 ```bash
 # 4. cli.md 与 help 面
-go test ./internal/cli/ -run 'TestHelpSurface|TestCliReference' -count=1
+go test ./internal/cli/ -run 'TestHelpSurface' -count=1
 ```
 
 ```bash

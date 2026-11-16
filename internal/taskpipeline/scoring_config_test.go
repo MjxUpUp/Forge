@@ -63,3 +63,31 @@ func TestLoadScoringConfig_NonContractRepoWarns(t *testing.T) {
 		t.Fatalf("non-contract repo should warn on missing protocol.yml, got: %q", stderr)
 	}
 }
+
+// 生产路径（BuildEvaluateInput）必须走同一份配置加载：契约仓库缺 protocol.yml 不告警。
+// 之前 loadScoringConfig 是孤儿函数，测试全绿而 task complete 仍打印告警。
+func TestBuildEvaluateInput_ContractRepoNoProtocolWarning(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(root, "spec"), 0o755); err != nil {
+		t.Fatalf("mkdir spec: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "spec", "forge.yaml"), []byte("version: \"1\"\n"), 0o644); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	st := &TaskState{TaskRef: "feat/probe", Branch: "main", HeadCommit: "deadbeef"}
+	stderr := captureStderr(t, func() { _, _, _ = BuildEvaluateInput(root, st) })
+	if strings.Contains(stderr, "protocol.yml 加载失败") {
+		t.Fatalf("contract repo must not warn about missing protocol.yml in production path, got: %q", stderr)
+	}
+}
+
+func TestBuildEvaluateInput_NonContractRepoWarns(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	st := &TaskState{TaskRef: "feat/probe", Branch: "main", HeadCommit: "deadbeef"}
+	stderr := captureStderr(t, func() { _, _, _ = BuildEvaluateInput(root, st) })
+	if !strings.Contains(stderr, "protocol.yml 加载失败") {
+		t.Fatalf("non-contract repo must warn in production path, got: %q", stderr)
+	}
+}

@@ -259,3 +259,20 @@ func TestNextDecision_EntryRouting(t *testing.T) {
 		})
 	}
 }
+
+// NextHint 也要吃 spec 上下文：task gate/complete 的「→ next:」输出面不能退回 status
+// （否则 dogfood 的 next→status 死循环在最常被读的位置复现）。
+func TestNextHint_SpecRepoCleanSuggestsTaskStart(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("FORGE_DATA_HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(dir, "spec", "changes"), 0o755); err != nil {
+		t.Fatalf("mkdir spec: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "spec", "forge.yaml"), []byte("version: \"1\"\n"), 0o644); err != nil {
+		t.Fatalf("write contract: %v", err)
+	}
+	res := NextHint(dir, nil)
+	if !strings.Contains(res.Next, "forge task start") {
+		t.Fatalf("NextHint on clean spec repo = %q, want forge task start", res.Next)
+	}
+}

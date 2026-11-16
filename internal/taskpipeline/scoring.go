@@ -103,25 +103,9 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		}
 	}
 
-	// 从 protocol 加载 scoring 配置
-	var config *scoringtypes.ScoringConfig
-	proto, err := protocol.Load(root)
-	if err != nil {
-		// 解析失败（用户手误/类型错）静默换默认权重会无痕改变分数——告警；
-		// 无 Scoring 段保持安静缺省。
-		fmt.Fprintf(os.Stderr, "[forge] warning: protocol.yml 加载失败（%v）——评分回退默认权重/阈值\n", err)
-		config = &scoringtypes.ScoringConfig{
-			Weights:    scoringtypes.DefaultWeights(),
-			Thresholds: scoringtypes.DefaultThresholds(),
-		}
-	} else if proto == nil || proto.Scoring == nil {
-		config = &scoringtypes.ScoringConfig{
-			Weights:    scoringtypes.DefaultWeights(),
-			Thresholds: scoringtypes.DefaultThresholds(),
-		}
-	} else {
-		config = proto.Scoring
-	}
+	// 从 protocol 加载 scoring 配置：契约仓库缺 protocol.yml 是常态（静默默认），
+	// 坏文件/非契约仓库缺文件仍告警——规则集中在 loadScoringConfig 一处。
+	config := loadScoringConfig(root)
 
 	completedAt := time.Now()
 	if state.CompletedAt != nil {

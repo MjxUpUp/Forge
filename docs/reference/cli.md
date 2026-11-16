@@ -61,7 +61,7 @@
 |------|------|
 | `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-verify/task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理 |
 | `forge task start --change <id>` / `--goal-file <path>` | 把 goal 契约钉进任务：`--change` 读 `spec/changes/<id>/goal.md`，`--goal-file` 读仓库内任意五段式文件；启动时记 Path+SHA256，`task gate task-implement` 重算，漂移即 BLOCKED。二者与 `--goal` 自由文本互斥；`--kind task` 标记「这次是小修、没有立 change」，仍走三道门禁；任务是一等入口，不带 `--change` 随时可以开工 |
-| `forge next [--json]` | 单命令引导：从 git/任务状态推导**恰好一条**下一步命令+理由（无任务有脏树时：声明了 spec 的仓库先给 `forge change new`（有未完成 change 则给 `forge change phase <id>`），未声明仓库仍是 task start/wild 申报；门禁链→下一步命令：implement→验收实跑→verify→review pass→complete 门→complete）。无活跃任务且工作区干净时：声明了 spec 的仓库直接给 `forge task start`（不再停在 `forge status`，change 可后补），未声明仓库仍是 `forge status`。agent 不自选下一步——push 侧由 `forge gate push` 兜底 |
+| `forge next [--json]` | 单命令引导：从 git/任务状态推导**恰好一条**下一步命令+理由（无任务有脏树时：声明了 spec 的仓库先给 `forge change new`（有 ready 的 change 直接给 `forge task start --change <id>`；未 ready 才给 `forge change phase <id>`），未声明仓库仍是 task start/wild 申报；门禁链→下一步命令：implement→验收实跑→verify→review pass→complete 门→complete）。无活跃任务且工作区干净时：声明了 spec 的仓库直接给 `forge task start`（落后远端先给 `git pull --ff-only`；不再停在 `forge status`，change 可后补），未声明仓库仍是 `forge status`。agent 不自选下一步——push 侧由 `forge gate push` 兜底 |
 | `forge task intent "<注记>"` | 追加意图注记（三段工件之 intent 段）：append-only——没有覆写/删除入口，意图历史即决策史，防轮次重写导致的语义漂移（rot） |
 | `forge task checklist add/tick/drop` | 操作对账单（checklist 段）：勾选即进度、断点存活，task-complete 硬门禁要求全勾（report 写完不算 done，checkbox 才算） |
 | `forge task start --invariant "run :: expected"` | 析出不变量（instrument 段）：声明期校验必须是可执行命令（叙述性约束被拒并指引降级到 checklist/intent），映射进验收标准——机器对账/freshness/complete 前置全覆盖 |
