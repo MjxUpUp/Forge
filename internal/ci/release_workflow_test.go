@@ -496,3 +496,30 @@ func TestReleaseWorkflow_NoStepLevelPermissions(t *testing.T) {
 		}
 	}
 }
+
+// TestReleaseWorkflow_NpmSelfChecksTarballs 钉住「发布后 tarball 可下载」自检：
+// npm 的版本文档与 tarball 分两步落盘，2.0.1 出现过 dist.tarball 长时间 404，
+// 而 npm install 对 optionalDependencies 取不到包时只是静默跳过——用户装完没有
+// 可执行文件。发布 job 必须自己 HEAD 这 6 个 tarball 并失败（带重试等 CDN 复制）。
+func TestReleaseWorkflow_NpmSelfChecksTarballs(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	for _, want := range []string{
+		"tarball 不可下载",
+		"registry.npmjs.org/@agent_forge/forge-$pkg",
+		"dist.tarball",
+		"for _ in $(seq 1 20)",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("release.yml 的 npm 发布 job 应包含 tarball 自检片段 %q（防止 optional 包静默缺失）", want)
+		}
+	}
+	for _, pkg := range []string{"darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"} {
+		if !strings.Contains(s, pkg) {
+			t.Errorf("tarball 自检应覆盖平台子包 %s", pkg)
+		}
+	}
+}

@@ -216,6 +216,32 @@ jobs:
           else
             npm publish --access public --provenance
           fi
+
+          # 发布后自检：每个包的 tarball 必须真的能下载。npm 的版本文档与 tarball 是
+          # 两步落盘，2.0.1 就出现过 win32-x64 / linux-x64 的 dist.tarball 长时间 404，
+          # 而 npm install 对 optionalDependencies 取不到包时只是静默跳过——用户装完
+          # 没有可执行文件。CDN 复制有延迟，这里最多等约 10 分钟；仍 404 就让 job 红。
+          for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
+            url="https://registry.npmjs.org/@agent_forge/forge-$pkg/-/forge-$pkg-$VER.tgz"
+            ok=0
+            for _ in $(seq 1 20); do
+              code=$(curl -sS -o /dev/null -w '%{http_code}' -I "$url" || echo 000)
+              if [ "$code" = "200" ]; then ok=1; break; fi
+              sleep 30
+            done
+            if [ "$ok" != "1" ]; then
+              echo "::error::tarball 不可下载（HTTP $code）：$url"
+              exit 1
+            fi
+            echo "tarball ok: $url"
+          done
+          url="https://registry.npmjs.org/@agent_forge/forge/-/forge-$VER.tgz"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -I "$url" || echo 000)
+          if [ "$code" != "200" ]; then
+            echo "::error::主包 tarball 不可下载（HTTP $code）：$url"
+            exit 1
+          fi
+          echo "tarball ok: $url"
         working-directory: npm
 
   # 发布后装机验证：补「发布后装机无人验证」缺口——npm job 只保证包发出去，
