@@ -11,14 +11,15 @@ import (
 	"testing"
 )
 
-// TestRunJSInfraNotice 钉死 npm/run.js 对「平台子包缺失」这类包装器侧基础设施失败的
-// 可见性（docs/plans/hook-silent-failure-visibility-2026-10.md）：hook 调用同一宿主
-// 进程同因首次 exit 1 + 带修复办法的 stderr，之后静默 exit 0；stdout 的 approve 契约
-// 不变；非 hook 调用每次都有 stderr 提示、退出码保持 0；FORGE_HOOK_INFRA_DEDUP=0
-// 恢复逐次 exit 1。需要 node——没有则跳过（run.js 本身就依赖 node）。
+// TestRunJSInfraNotice 钉死 npm/run.js 对「平台子包缺失」的失败可见性：包装器必须
+// stderr 带修复办法并 exit 1，stdout 不得出现任何「成功/approve」标记——1.x 的
+// hook fail-open（打 approve JSON 并 exit 0）随 hook 层删除一并移除。需要 node，
+// 没有则跳过（run.js 本身就依赖 node）。
 func TestRunJSInfraNotice(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("去重状态键用 ppid，Windows 不在此测范围")
+		// 平台子包在 Windows 上同样解析不到；但 Windows 没有 node 的偶发路径差异，
+		// 统一跑一遍更有说服力（此前跳过是历史原因）。
+		t.Log("windows: 照常执行")
 	}
 	nodeBin, err := exec.LookPath("node")
 	if err != nil {
@@ -34,14 +35,11 @@ func TestRunJSInfraNotice(t *testing.T) {
 	if err := os.WriteFile(script, src, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	state := t.TempDir()
-	env := func(extra ...string) []string {
-		return append(append(os.Environ(),
-			"HOME="+dir, "NODE_PATH=", "TMPDIR="+state, "FORGE_HOOK_INFRA_DEDUP="), extra...)
-	}
-	run := func(extraEnv []string, args ...string) (code int, stdout, stderr string) {
+	env := append(os.Environ(), "HOME="+dir, "NODE_PATH=", "TMPDIR="+dir)
+
+	run := func(args ...string) (code int, stdout, stderr string) {
 		cmd := exec.Command(nodeBin, append([]string{script}, args...)...)
-		cmd.Env = env(extraEnv...)
+		cmd.Env = env
 		var so, se bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &so, &se
 		err := cmd.Run()
@@ -55,39 +53,30 @@ func TestRunJSInfraNotice(t *testing.T) {
 		}
 		return code, so.String(), se.String()
 	}
-	const approve = `{"decision":"approve"}`
 
-	// hook 调用：首次 exit 1 + 修复办法。
-	code, out, errOut := run(nil, "hook", "batch")
+	// 缺失子包：exit 1、stderr 给出修复办法、stdout 不得有成功标记。
+	code, out, errOut := run("--version")
 	if code != 1 {
-		t.Fatalf("hook 调用首次应 exit 1，got %d（stderr=%q）", code, errOut)
+		t.Fatalf("缺平台子包应 exit 1，got %d（stderr=%q）", code, errOut)
 	}
-	for _, want := range []string{"subpackage-missing", "不阻断", "npm i -g @agent_forge/forge --include=optional", "FORGE_HOOK_INFRA_DEDUP=0"} {
+	for _, want := range []string{"is not installed", "npm i -g @agent_forge/forge --include=optional"} {
 		if !strings.Contains(errOut, want) {
-			t.Errorf("首次 stderr 应含 %q，got %q", want, errOut)
+			t.Errorf("stderr 应含 %q，got %q", want, errOut)
 		}
 	}
-	if !strings.Contains(out, approve) {
-		t.Errorf("stdout 的 approve 契约不变，got %q", out)
+	if strings.Contains(out, "approve") || strings.Contains(out, "decision") {
+		t.Errorf("stdout 不得出现 1.x 的 approve 契约，got %q", out)
 	}
 
-	// 同一父进程（本测试进程）再次：静默 exit 0，仍打印 approve。
-	code, out, errOut = run(nil, "hook", "batch")
-	if code != 0 || strings.TrimSpace(errOut) != "" || !strings.Contains(out, approve) {
-		t.Errorf("同因重复应静默 exit 0 + approve，got code=%d stdout=%q stderr=%q", code, out, errOut)
+	// 重复调用：每次都是同样的响亮失败，不做「同因静默」去重。
+	code2, out2, errOut2 := run("task", "report")
+	if code2 != 1 {
+		t.Fatalf("重复调用也应 exit 1，got %d", code2)
 	}
-
-	// 逃生口：去重关闭 → 逐次 exit 1。
-	code, _, errOut = run([]string{"FORGE_HOOK_INFRA_DEDUP=0"}, "hook", "batch")
-	if code != 1 || !strings.Contains(errOut, "subpackage-missing") {
-		t.Errorf("去重关闭应逐次 exit 1，got code=%d stderr=%q", code, errOut)
+	if strings.TrimSpace(out2) != "" {
+		t.Errorf("重复调用 stdout 应为空，got %q", out2)
 	}
-
-	// 非 hook 调用（交互使用）：每次都有 stderr 提示，退出码保持 0。
-	for i := 0; i < 2; i++ {
-		code, _, errOut = run(nil, "--version")
-		if code != 0 || !strings.Contains(errOut, "subpackage-missing") {
-			t.Errorf("非 hook 调用第 %d 次应 exit 0 且 stderr 有提示，got code=%d stderr=%q", i+1, code, errOut)
-		}
+	if !strings.Contains(errOut2, "is not installed") {
+		t.Errorf("重复调用 stderr 应仍带原因，got %q", errOut2)
 	}
 }
