@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.2](https://github.com/MjxUpUp/Forge/compare/v2.0.1...v2.0.2) (2026-11-17)
+
+
+### Bug Fixes
+
+* **npm:** 包装器兼容全局安装的嵌套落点，spawn 同步抛错也响亮失败 ([fd0541c](https://github.com/MjxUpUp/Forge/commit/fd0541ce28e7ef87aa6d93290ead6b022b454ad0))
+
 ## [2.0.1](https://github.com/MjxUpUp/Forge/compare/v2.0.0...v2.0.1) (2026-11-17)
 
 
