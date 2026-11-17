@@ -194,12 +194,18 @@ func TestGoalTemplateMatchesParser(t *testing.T) {
 			heads = append(heads, strings.TrimSpace(strings.TrimPrefix(line, "## ")))
 		}
 	}
-	if len(heads) != len(goalSectionSpecs) {
-		t.Fatalf("模板有 %d 个二级标题，解析器要求 %d 段: %v", len(heads), len(goalSectionSpecs), heads)
+	var wantTitles []string
+	for _, spec := range goalSectionSpecs {
+		if spec.Required {
+			wantTitles = append(wantTitles, spec.Title)
+		}
 	}
-	for i, spec := range goalSectionSpecs {
-		if heads[i] != spec.Title {
-			t.Errorf("第 %d 段标题 = %q，want %q（顺序也要一致）", i+1, heads[i], spec.Title)
+	if len(heads) != len(wantTitles) {
+		t.Fatalf("模板有 %d 个二级标题，必填段定义 %d 个: heads=%v required=%v", len(heads), len(wantTitles), heads, wantTitles)
+	}
+	for i, title := range wantTitles {
+		if heads[i] != title {
+			t.Errorf("第 %d 段标题 = %q，want %q（顺序也要一致）", i+1, heads[i], title)
 		}
 	}
 
@@ -218,7 +224,7 @@ func TestGoalTemplateMatchesParser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("按模板填完后必须可解析: %v\n%s", err, filled)
 	}
-	if len(g.Sections) != len(goalSectionSpecs) {
-		t.Fatalf("解析出 %d 段，want %d", len(g.Sections), len(goalSectionSpecs))
+	if len(g.Sections) != len(heads) {
+		t.Fatalf("解析出 %d 段，want %d（模板标题数）", len(g.Sections), len(heads))
 	}
 }

@@ -16,7 +16,7 @@ func TestGateIDsMatchConstants(t *testing.T) {
 	want := []struct {
 		id  string
 		idx int
-	}{{GateImplement, 0}, {GateVerify, 1}, {GateComplete, 2}}
+	}{{GateImplement, 0}, {GateComplete, 1}}
 	for _, w := range want {
 		if gates[w.idx].ID != w.id {
 			t.Errorf("DefaultGates()[%d].ID = %q, want %q", w.idx, gates[w.idx].ID, w.id)

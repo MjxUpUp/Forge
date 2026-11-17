@@ -163,7 +163,7 @@ func init() {
 	reviewLLMCmd.Flags().String("scores", "", "判分文件（JudgeAuditEntry 数组，独立只读子代理产出）——校验后落 judge-samples 留档")
 	reviewPassCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测；ref 不存在直接报错，不回落分支 stamp）")
 	reviewPassCmd.Flags().String("note", "", "审查结论文本（记入 ReviewRound/stamp 与 checklog 审计留痕）")
-	reviewPassCmd.Flags().Bool("acknowledge-changes", false, "距上次审查基线有源码变更时显式确认重盖章（自我承担，checklog 记 self-refresh WARN 审计；正规路径是按分档规则复审后用 --note 记复审结论，分档规则见 forge review status）")
+	reviewPassCmd.Flags().String("reviewer", "", "评审者 id（复审时必须与上次不同；源码变更后同一 reviewer 的自证会被拒绝）")
 	reviewGateCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	reviewStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 }
@@ -184,8 +184,8 @@ var reviewCmd = &cobra.Command{
 }
 
 var reviewPassCmd = &cobra.Command{
-	Use:   "pass [--ref <ref>] [--note <text>] [--acknowledge-changes]",
-	Short: "标记当前变更已通过 code-review-gate（--note 记审查结论到审计留痕；距上次基线有源码变更时需 --note 或 --acknowledge-changes 显式确认）",
+	Use:   "pass [--ref <ref>] [--note <text>] [--reviewer <id>]",
+	Short: "标记当前变更已通过 code-review-gate（--note 记结论；源码变更后复审须换新的 --reviewer）",
 	RunE:  runReviewPass,
 }
 
@@ -228,8 +228,8 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	}
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	note, _ := cmd.Flags().GetString("note")
-	acknowledgeChanges, _ := cmd.Flags().GetBool("acknowledge-changes")
-	return runReviewPassAt(root, explicitRef, note, acknowledgeChanges)
+	reviewer, _ := cmd.Flags().GetString("reviewer")
+	return runReviewPassAt(root, explicitRef, note, reviewer)
 }
 
 // shortHash 截断 commit hash 用于单行 detail 输出（空保持空）。
@@ -247,7 +247,7 @@ func shortHash(h string) string {
 // 模式）与 checklog review-pass 条目——审计留痕记结论而非只记盖章。
 // acknowledgeChanges（--acknowledge-changes）显式确认对变更源码的重盖章（见下方
 // 自助刷新守卫）；有内容增量而 note 与确认皆无的重盖章被拒绝。
-func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) error {
+func runReviewPassAt(root, explicitRef, note, reviewer string) error {
 	// task 模式：写任务状态字段，由 task-complete 门禁消费
 	var state *taskpipeline.TaskState
 	if explicitRef != "" {
@@ -299,16 +299,17 @@ func runReviewPassAt(root, explicitRef, note string, acknowledgeChanges bool) er
 				case err != nil:
 					baselineUnreachable = s.ReviewedHeadCommit
 				case cur != s.ReviewedChangeHash:
-					if !acknowledgeChanges && note == "" {
-						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——%s；确认变更无需复审（自我承担，记 self-refresh WARN 审计）用 `forge review pass --acknowledge-changes`", s.ReviewedHeadCommit, review.ReReviewGuidance)
+					if reviewer == "" || reviewer == s.LastReviewer {
+						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——%s。复审必须派一个新的只读子 agent，并用 `--reviewer <新 id>` 记录；同一 reviewer 的自证、以及用 --note 刷新基线都已被移除", s.ReviewedHeadCommit, review.ReReviewGuidance)
 					}
-					// 对【已变更内容】的任何重盖章都是基线刷新、都必须可审计：
-					// --note 与 --acknowledge-changes 都是 forge 无法验证的自供文本，
-					// 只标记后者会让对抗 agent 用 --note 把刷新洗成正常 PASS 级条目
-					//（2026-08-29 功能探针）。措辞上仍可区分两条路径。
+					// 换 reviewer 复审：仍是一次基线刷新，记 WARN 级 self-refresh 审计，
+					// 但允许推进——独立性由「新 reviewer id」保证，而不是自供文本。
 					selfRefresh = true
-					selfRefreshViaNote = !acknowledgeChanges
+					selfRefreshViaNote = false
 				}
+			}
+			if reviewer != "" {
+				s.LastReviewer = reviewer
 			}
 			s.MarkReviewPassedWithNote(head, hash, note)
 			state = s

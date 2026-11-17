@@ -93,7 +93,7 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 
 	// 第 1 轮：首次盖章——静默（无既有基线，不欠确认）。
 	first := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 			t.Fatalf("runReviewPassAt 第 1 次: %v", err)
 		}
 	})
@@ -104,7 +104,7 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	// 第 2 轮且无代码变更（同状态重复盖章：瞬态重试/重建基线）——依旧静默：
 	// 无内容增量，无需确认。
 	repeat := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 			t.Fatalf("runReviewPassAt 无变更重盖: %v", err)
 		}
 	})
@@ -112,15 +112,15 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Errorf(`同状态重复盖章无需确认、应静默（触发条件是内容增量非轮次计数），got: %q`, repeat)
 	}
 
-	// 修复 + 提交 → 内容增量。裸盖章现在必须被【拒绝】（漏洞关闭），且拒绝
-	// 文案须指明复审协议。
+	// 修复 + 提交 → 内容增量。同一 reviewer 的重盖章必须被【拒绝】，且拒绝文案
+	// 指明复审协议（换新的只读子 agent + --reviewer）。
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(1) }\n"), 0644)
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `fix: apply review findings`)
-	if err := runReviewPassAt(dir, ref, "", false); err == nil {
-		t.Fatal("快照变更后的裸盖章必须被拒绝（self-refresh 漏洞）")
-	} else if !strings.Contains(err.Error(), "复审") || !strings.Contains(err.Error(), "acknowledge-changes") {
-		t.Errorf("拒绝文案须指明复审协议与确认途径，got: %v", err)
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err == nil {
+		t.Fatal("快照变更后的同一 reviewer 重盖章必须被拒绝")
+	} else if !strings.Contains(err.Error(), "复审") || !strings.Contains(err.Error(), "--reviewer") {
+		t.Errorf("拒绝文案须指明复审协议（新的只读子 agent + --reviewer），got: %v", err)
 	} else if !strings.Contains(err.Error(), review.ReReviewGuidance) {
 		t.Errorf("拒绝文案须携带分档复审指引（单一真相源 review.ReReviewGuidance），got: %v", err)
 	}
@@ -129,20 +129,14 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Fatalf("被拒绝的盖章不得追加 ReviewRound, err=%v rounds=%v", err, st)
 	}
 
-	// 诚实流：复审已做、结论经 --note 记录 → 盖章成功；条目为普通 pass
-	// （note 即确认），无 self-refresh 标记。
-	if err := runReviewPassAt(dir, ref, "复审结论：修复正确，无新发现", false); err != nil {
-		t.Fatalf("--note 记复审结论的盖章应放行: %v", err)
+	// --note 不再是确认途径：同一 reviewer 带 note 同样被拒。
+	if err := runReviewPassAt(dir, ref, "复审结论：修复正确，无新发现", "rev-1"); err == nil {
+		t.Fatal("--note 不得再绕过复审要求（self-refresh 已移除）")
 	}
 
-	// 仅工作区增量（未提交修复）→ 裸盖章再次被拒；--acknowledge-changes
-	// 放行并记 WARN self-refresh 审计。
-	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(2) }\n"), 0644)
-	if err := runReviewPassAt(dir, ref, "", false); err == nil {
-		t.Fatal("工作区增量的裸盖章同样必须被拒绝")
-	}
-	if err := runReviewPassAt(dir, ref, "", true); err != nil {
-		t.Fatalf("--acknowledge-changes 显式确认应放行: %v", err)
+	// 新的 reviewer 复审 → 放行，并记 WARN 级 self-refresh 审计。
+	if err := runReviewPassAt(dir, ref, "复审结论：修复正确，无新发现", "rev-2"); err != nil {
+		t.Fatalf("新的 reviewer 复审应放行: %v", err)
 	}
 	entries, err := checklog.LoadAll(dir)
 	if err != nil {
@@ -155,7 +149,16 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		}
 	}
 	if last == nil || last.Level != checklog.LevelWarn || !strings.Contains(last.Detail, "self-refresh") {
-		t.Errorf("--acknowledge-changes 的盖章须记 WARN self-refresh 审计, got %+v", last)
+		t.Errorf("换 reviewer 的复审须记 WARN self-refresh 审计, got %+v", last)
+	}
+
+	// 仅工作区增量（未提交修复）→ 同一 reviewer 再拒；换新 reviewer 放行。
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(2) }\n"), 0644)
+	if err := runReviewPassAt(dir, ref, "", "rev-2"); err == nil {
+		t.Fatal("工作区增量的同一 reviewer 重盖章同样必须被拒绝")
+	}
+	if err := runReviewPassAt(dir, ref, "", "rev-3"); err != nil {
+		t.Fatalf("换新 reviewer 复审应放行: %v", err)
 	}
 
 	// 非源码增量：只 amend commit message（内容不变）→ 裸盖章照常放行且静默
@@ -164,7 +167,7 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	runGit(t, dir, `commit`, `-m`, `fix: workdir fix`)
 	runGit(t, dir, `commit`, `--amend`, `-m`, `fix: workdir fix (message only)`)
 	silent := captureStdout(t, func() {
-		if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 			t.Fatalf("仅 commit message 变更（内容不变）不应要求确认: %v", err)
 		}
 	})
@@ -185,7 +188,7 @@ func TestRunReviewPassAt_ExplicitRef(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 		t.Fatalf("runReviewPassAt(--ref): %v", err)
 	}
 	reloaded, err := taskpipeline.LoadTaskState(dir, ref)
@@ -197,7 +200,7 @@ func TestRunReviewPassAt_ExplicitRef(t *testing.T) {
 	}
 
 	// 不存在的 ref → 硬报错，不回落 stamp
-	if err := runReviewPassAt(dir, `feat/nonexistent`, "", false); err == nil {
+	if err := runReviewPassAt(dir, `feat/nonexistent`, "", "rev-1"); err == nil {
 		t.Fatal("ref 不存在应报错返回（不回落分支 stamp 分支）")
 	}
 }
@@ -214,7 +217,7 @@ func TestRunReviewPassAt_RecordsRounds(t *testing.T) {
 	}
 
 	for i := 0; i < 2; i++ {
-		if err := runReviewPassAt(dir, ref, "", false); err != nil {
+		if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 			t.Fatalf("runReviewPassAt 第 %d 次: %v", i+1, err)
 		}
 	}
@@ -270,7 +273,7 @@ func TestRunReviewPassAt_Note(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runReviewPassAt(dir, ref, "审查结论：双轨无发现，快照一致", false); err != nil {
+	if err := runReviewPassAt(dir, ref, "审查结论：双轨无发现，快照一致", "rev-1"); err != nil {
 		t.Fatalf("runReviewPassAt --note: %v", err)
 	}
 
@@ -304,7 +307,7 @@ func TestRunReviewPassAt_Note(t *testing.T) {
 
 	// 空 note：ReviewRound.Note 保持空、detail 保持旧形状（无 "note:" 后缀）——
 	// 绝大多数不带 flag 的 pass 不留噪声。
-	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 		t.Fatalf("runReviewPassAt 空 note: %v", err)
 	}
 	reloaded, err = taskpipeline.LoadTaskState(dir, ref)
@@ -378,7 +381,7 @@ func TestRunReviewPassAt_BaselineUnreachableAudited(t *testing.T) {
 	}
 
 	// 首次盖章建立真实基线。
-	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 		t.Fatalf("首次盖章: %v", err)
 	}
 
@@ -395,7 +398,7 @@ func TestRunReviewPassAt_BaselineUnreachableAudited(t *testing.T) {
 
 	// 裸重盖章：fail-open（不拒绝），但必须记 WARN 级 baseline-unreachable
 	// 审计条目。
-	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 		t.Fatalf("基线不可达应 fail-open 放行: %v", err)
 	}
 	entries, err := checklog.LoadAll(dir)
@@ -434,7 +437,7 @@ func TestRunReviewPassAt_NonTaskRecordsChecklog(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(1) }\n"), 0644)
 
 	captureStdout(t, func() {
-		if err := runReviewPassAt(dir, "", "复审结论：非 task 审查，双轨无发现", false); err != nil {
+		if err := runReviewPassAt(dir, "", "复审结论：非 task 审查，双轨无发现", "rev-1"); err != nil {
 			t.Fatalf("runReviewPassAt 非 task 模式: %v", err)
 		}
 	})
@@ -502,7 +505,7 @@ func TestReviewTestTouchedFilesAndStamp(t *testing.T) {
 		t.Fatalf(`应点名 2 个测试文件（Go+TS），got %v`, touched)
 	}
 	// review pass → checklog 落 test-diff 观察行（Meta files）。
-	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 		t.Fatalf(`review pass: %v`, err)
 	}
 	found := false
@@ -538,7 +541,7 @@ func TestReviewTestDiff_SilentWhenNoTestChanges(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, `impl.go`), []byte("package main\n\nfunc G() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 		t.Fatalf(`review pass: %v`, err)
 	}
 	entries, _ := checklog.LoadForTask(dir, ref)
@@ -566,15 +569,15 @@ func TestReviewTestDiff_CommittedFormCaught(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 首轮盖章（建立基线；此时无测试变更）。
-	if err := runReviewPassAt(dir, ref, "", false); err != nil {
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 		t.Fatalf(`首轮盖章: %v`, err)
 	}
 	// 「修测试使过」主形态：弱化测试【已提交】，工作树干净。
 	os.WriteFile(filepath.Join(dir, `main_test.go`), []byte("package main\n\nimport \"testing\"\n\nfunc TestW(t *testing.T) { _ = 1 }\n"), 0644)
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `weaken test`)
-	// 二轮盖章（有旧基线 → 须 --note 过自助刷新守卫）。
-	if err := runReviewPassAt(dir, ref, "复审：测试变更已单独核查", false); err != nil {
+	// 二轮盖章（有旧基线 → 必须换新的 reviewer，同一 reviewer 会因自证被拒）。
+	if err := runReviewPassAt(dir, ref, "复审：测试变更已单独核查", "rev-2"); err != nil {
 		t.Fatalf(`二轮盖章: %v`, err)
 	}
 	found := false

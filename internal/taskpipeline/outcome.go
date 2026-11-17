@@ -6,6 +6,4 @@ package taskpipeline
 // 刻意事实级而非 task 级：早 nudge 兑现后尾段新欠的文件，agent 从未被告知，
 // 记 confirmation 会系统性虚高 D3（守护审计 P2-1，2026-09-17）。
 
-import (
-
-)
+import ()

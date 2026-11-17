@@ -32,7 +32,7 @@ func TestNextRepoContext_ReadyChangeWithoutGoalIsNotRecommended(t *testing.T) {
 	write("tasks.md", "- [ ] 改 A（判据：acceptance #1）\n")
 	write("acceptance.md", "```bash\n# 1. build\ngo build ./...\n```\n")
 	// 退化成老 change：删掉 goal.md 与 .goal-required。
-	for _, name := range []string{change.FileGoal, change.GoalRequiredFile} {
+	for _, name := range []string{change.FileGoal, change.GoalRequiredFile, change.FileChange} {
 		if err := os.Remove(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("remove %s: %v", name, err)
 		}

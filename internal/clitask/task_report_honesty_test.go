@@ -25,19 +25,6 @@ func TestArtifactStartHint_ChangePinned(t *testing.T) {
 	}
 }
 
-// TestArtifactStartHint_NoChangeKeepsOldWording：契约存在但未钉 change（--goal/--goal-file）
-// 时必须保留旧的产物链提示——这是 change 口径的边界。
-func TestArtifactStartHint_NoChangeKeepsOldWording(t *testing.T) {
-	st := &taskpipeline.TaskState{GoalContract: &tasktypes.GoalContract{Path: "goal.md", SHA256: "x"}}
-	got := artifactStartHint(t.TempDir(), st)
-	if !strings.Contains(got, "未登记") {
-		t.Fatalf("未钉 change 时应保留旧提示：%q", got)
-	}
-	if strings.Contains(got, "已钉 change 目标契约") {
-		t.Fatalf("未钉 change 时不应出现 change 口径：%q", got)
-	}
-}
-
 // TestRepoHasGoTestFiles：无测试文件与有测试文件两种仓库要能区分（report 措辞的事实来源）。
 func TestRepoHasGoTestFiles(t *testing.T) {
 	empty := t.TempDir()

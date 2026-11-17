@@ -136,22 +136,6 @@ func TestEvalWedgeDrillE2E(t *testing.T) {
 	}
 }
 
-// TestEvalArtifactDrillE2E 钉住产物链演练全套通过（artifact-chain-workflow.md
-// 落地收尾）：登记→hard 前置阻断→human 产物/审批阻断→链齐放行→提取的验收实跑
-// →手改产物 complete 漂移拦截→修复后放行，在隔离 HOME 下端到端可走通——发布
-// workflow 的 drill 门禁位与 nightly 消费的同一条链。
-func TestEvalArtifactDrillE2E(t *testing.T) {
-	out, _, code := runForge(t, repoRoot, "eval", "artifact-drill")
-	if code != 0 {
-		t.Fatalf("artifact-drill 应通过（exit %d）：%s", code, out)
-	}
-	for _, want := range []string{"ARTIFACT-DRILL PASS", "gate(阻断·hard 前置缺失)", "gate(阻断·审批缺失)", "complete(阻断·漂移)", "complete(修复后放行)"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("输出缺 %q: %s", want, out)
-		}
-	}
-}
-
 func TestEvalOtelE2E(t *testing.T) {
 	// --limit 1 最小化输出；断言 OTLP 骨架与 scope 契约（versioned mapper 形状）。
 	// 隔离 HOME 下 checklog 可能为空——span 级断言（forge.session/events 属性）由
@@ -224,10 +208,10 @@ func TestEvalRedteamCmd(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("redteam 应全拦（exit 0）: %s", out)
 	}
-	if !strings.Contains(out, "拦截率 5/5") {
-		t.Fatalf("报告应含拦截率 5/5: %s", out)
+	if !strings.Contains(out, "拦截率 4/4") {
+		t.Fatalf("报告应含拦截率 4/4: %s", out)
 	}
-	for _, seed := range []string{"zero-acceptance-delivery", "unused-internal-export", "swallowed-error", "type-suppression", "heldout-gap"} {
+	for _, seed := range []string{"zero-acceptance-delivery", "swallowed-error", "type-suppression", "heldout-gap"} {
 		if !strings.Contains(out, seed) {
 			t.Errorf("报告应点名种子 %s: %s", seed, out)
 		}

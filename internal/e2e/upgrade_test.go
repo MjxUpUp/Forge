@@ -322,10 +322,10 @@ func passAllGates(t *testing.T, dir, ref string) {
 	git(t, dir, "add", "e2e-scratch.txt")
 	git(t, dir, "commit", "-m", "e2e: code change for task-implement")
 
-	// Pass gates in order: task-implement, task-verify, then task-complete.
+	// Pass gates in order: task-implement, then task-complete.
 	// task-complete 有 ReviewPassed 硬前置——先 forge review pass 标记（task 模式
 	// 写 TaskState.ReviewPassed），否则 task-complete 被拦。
-	for _, g := range []string{"task-implement", "task-verify"} {
+	for g := range map[string]int{"task-implement": 1} {
 		out, err := forgeErr(t, dir, "task", "gate", g, "--ref", ref)
 		if err != nil {
 			t.Fatalf("forge task gate %s failed: %v\noutput: %s", g, err, out)

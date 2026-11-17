@@ -171,7 +171,7 @@ func TestServe_PulseTask(t *testing.T) {
 		SessionID: "secret-session-xyz", // 值含 session 字样，泄露则测试红
 		StartedAt: base,
 		// 直构 History 时 CurrentGate 不会自动推进（那是 RecordGateResult 的职责），显式设置。
-		CurrentGate: "task-verify",
+		CurrentGate: "task-complete",
 		History: []taskpipeline.TaskGateResult{
 			{Gate: "task-implement", Passed: true, CompletedAt: base.Add(time.Hour), HeadCommit: "abc1234567890"},
 		},
@@ -204,11 +204,11 @@ func TestServe_PulseTask(t *testing.T) {
 	if payload.TaskRef != "feat/x" || payload.Project == "" {
 		t.Errorf("taskRef/project 异常: %q/%q", payload.TaskRef, payload.Project)
 	}
-	if payload.State.CurrentGate != "task-verify" || payload.State.OriginTool != "pi" || payload.State.Zombie {
+	if payload.State.CurrentGate != "task-complete" || payload.State.OriginTool != "pi" || payload.State.Zombie {
 		t.Errorf("state 异常: %+v", payload.State)
 	}
-	if payload.State.GateProgress.Passed != 1 || payload.State.GateProgress.Total != 3 {
-		t.Errorf("gateProgress = %+v, want 1/3", payload.State.GateProgress)
+	if payload.State.GateProgress.Passed != 1 || payload.State.GateProgress.Total != 2 {
+		t.Errorf("gateProgress = %+v, want 1/2", payload.State.GateProgress)
 	}
 	if len(payload.Events) == 0 {
 		t.Error("events 不得为空（至少有 task-start + gate）")
@@ -293,7 +293,7 @@ func TestServe_PulseTask_Truncated(t *testing.T) {
 	// 1 条 task-start + defaultFeedLimit+10 条 gate 事件 = 超 defaultFeedLimit → 必截断。
 	for i := 0; i < defaultFeedLimit+10; i++ {
 		st.History = append(st.History, taskpipeline.TaskGateResult{
-			Gate: "task-verify", Passed: true, CompletedAt: base.Add(time.Duration(i+1) * time.Minute),
+			Gate: "task-complete", Passed: true, CompletedAt: base.Add(time.Duration(i+1) * time.Minute),
 		})
 	}
 	if err := taskpipeline.SaveTaskState(root, st); err != nil {
@@ -306,7 +306,7 @@ func TestServe_PulseTask_Truncated(t *testing.T) {
 	}
 	for i := 0; i < defaultFeedLimit-1; i++ {
 		exact.History = append(exact.History, taskpipeline.TaskGateResult{
-			Gate: "task-verify", Passed: true, CompletedAt: base.Add(time.Duration(i+1) * time.Minute),
+			Gate: "task-complete", Passed: true, CompletedAt: base.Add(time.Duration(i+1) * time.Minute),
 		})
 	}
 	if err := taskpipeline.SaveTaskState(root, exact); err != nil {

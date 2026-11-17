@@ -195,9 +195,6 @@
       ]
     },
     {
-      "path": "forge eval artifact-drill"
-    },
-    {
       "path": "forge eval audit-verify"
     },
     {
@@ -389,6 +386,12 @@
       ]
     },
     {
+      "path": "forge impact",
+      "flags": [
+        "json"
+      ]
+    },
+    {
       "path": "forge init",
       "flags": [
         "agents",
@@ -524,9 +527,9 @@
     {
       "path": "forge review pass",
       "flags": [
-        "acknowledge-changes",
         "note",
-        "ref"
+        "ref",
+        "reviewer"
       ]
     },
     {
@@ -534,15 +537,6 @@
       "flags": [
         "ref"
       ]
-    },
-    {
-      "path": "forge selfcheck"
-    },
-    {
-      "path": "forge selfcheck pairing"
-    },
-    {
-      "path": "forge selfcheck scope"
     },
     {
       "path": "forge skills"
@@ -730,22 +724,6 @@
       ]
     },
     {
-      "path": "forge task artifact",
-      "flags": [
-        "approve",
-        "by",
-        "check",
-        "checked",
-        "extract",
-        "file",
-        "json",
-        "list",
-        "set",
-        "stdin",
-        "verify"
-      ]
-    },
-    {
       "path": "forge task assign",
       "flags": [
         "by",
@@ -776,12 +754,6 @@
       "flags": [
         "reason",
         "ref"
-      ]
-    },
-    {
-      "path": "forge task chain-init",
-      "flags": [
-        "force"
       ]
     },
     {
@@ -832,19 +804,6 @@
       "flags": [
         "as",
         "ref"
-      ]
-    },
-    {
-      "path": "forge task doc-review",
-      "flags": [
-        "co-reviewer",
-        "co-score",
-        "critical",
-        "passed",
-        "ref",
-        "reviewer",
-        "round",
-        "score"
       ]
     },
     {
@@ -1068,7 +1027,6 @@
       "flags": [
         "accept",
         "accept-file",
-        "artifact",
         "assert",
         "assignee",
         "base",
@@ -1272,8 +1230,6 @@
   ],
   "escapes": [
     "FORGE_ACCEPTANCE_GATE",
-    "FORGE_ARTIFACT_CHAIN",
-    "FORGE_DOC_GATE",
     "FORGE_EVAL_PREFLIGHT",
     "FORGE_GATE_PUSH",
     "FORGE_HELDOUT",
@@ -1286,7 +1242,6 @@
     "FORGE_SKILL_DECISIONS",
     "FORGE_TASK_TREE_GUARD",
     "FORGE_TEST_COVERAGE",
-    "FORGE_UNUSED_SCAN",
     "FORGE_WORK_ACTIVITY"
   ],
   "payload": [
@@ -1788,18 +1743,6 @@
       "count": 2
     },
     {
-      "file": "internal/taskpipeline/crossrepo.go",
-      "count": 2
-    },
-    {
-      "file": "internal/taskpipeline/docgate.go",
-      "count": 1
-    },
-    {
-      "file": "internal/taskpipeline/executor.go",
-      "count": 1
-    },
-    {
       "file": "internal/taskpipeline/executor_check_activity.go",
       "count": 3
     },
@@ -1809,15 +1752,7 @@
     },
     {
       "file": "internal/taskpipeline/executor_check_complete.go",
-      "count": 4
-    },
-    {
-      "file": "internal/taskpipeline/executor_check_verify.go",
-      "count": 2
-    },
-    {
-      "file": "internal/taskpipeline/executor_check_verify_advisories.go",
-      "count": 1
+      "count": 3
     },
     {
       "file": "internal/taskpipeline/gate_message.go",
@@ -1826,10 +1761,6 @@
     {
       "file": "internal/taskpipeline/pushgate.go",
       "count": 1
-    },
-    {
-      "file": "internal/taskpipeline/reqtrace.go",
-      "count": 2
     }
   ],
   "bridges": null

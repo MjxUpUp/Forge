@@ -37,15 +37,3 @@ func TestWedgeScript_TaskStartDoesNotRequireKind(t *testing.T) {
 		}
 	}
 }
-
-func TestArtifactScript_TaskStartDoesNotRequireKind(t *testing.T) {
-	steps := taskStartSteps(artifactScript("forge", t.TempDir()))
-	if len(steps) == 0 {
-		t.Fatal("artifactScript 里没有 task start 步骤")
-	}
-	for _, st := range steps {
-		if hasFlag(st.argv, "--kind") {
-			t.Errorf("artifactScript 的 %q 不该带 --kind（任务是一等入口）：%v", st.name, st.argv)
-		}
-	}
-}

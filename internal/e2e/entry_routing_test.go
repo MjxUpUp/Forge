@@ -55,13 +55,11 @@ func TestEntryRoutingTaskFirstThenChange(t *testing.T) {
 		t.Fatalf("error should name the phase (specify): %s", out)
 	}
 
-	// 补齐：goal → clarify → proposal/acceptance/design/tasks。
+	// 补齐：goal → clarify → change/acceptance。
 	writeFile(t, dir, "spec/changes/demo/goal.md", entryGoal("demo"))
 	forge(t, dir, "change", "clarify", "demo", "--by-human", "--note", "只做入口路由，不做组装。")
-	writeFile(t, dir, "spec/changes/demo/proposal.md", "# 提案\n\n为什么：记录交付过程。\n")
+	writeFile(t, dir, "spec/changes/demo/change.md", "# 改动\n\n实现入口路由。\n\n## 影响\n\n无。\n\n## 验证\n\nacceptance #1。\n")
 	writeFile(t, dir, "spec/changes/demo/acceptance.md", "## 判据\n\n```bash\ntrue\n```\n")
-	writeFile(t, dir, "spec/changes/demo/design.md", "# 设计\n\n实现入口路由。\n")
-	writeFile(t, dir, "spec/changes/demo/tasks.md", "- [ ] 1. 做 A（判据：acceptance #1）\n")
 
 	out = forge(t, dir, "change", "phase", "demo")
 	if !strings.Contains(out, "ready") {

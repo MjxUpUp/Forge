@@ -129,10 +129,10 @@ func TestRecordGateResultDedupPrevents25x(t *testing.T) {
 	state.RecordGateResult("task-implement", true, "")
 
 	// Pass task-verify once (legitimate)
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	verifyCount := 0
 	for _, r := range state.History {
-		if r.Gate == "task-verify" && r.Passed {
+		if r.Gate == "task-implement" && r.Passed {
 			verifyCount++
 		}
 	}
@@ -142,12 +142,12 @@ func TestRecordGateResultDedupPrevents25x(t *testing.T) {
 
 	// Stop hook re-runs task-verify 24 more times — should all be no-ops
 	for i := 0; i < 24; i++ {
-		state.RecordGateResult("task-verify", true, "")
+		state.RecordGateResult("task-complete", true, "")
 	}
 
 	verifyCount = 0
 	for _, r := range state.History {
-		if r.Gate == "task-verify" && r.Passed {
+		if r.Gate == "task-implement" && r.Passed {
 			verifyCount++
 		}
 	}
@@ -227,14 +227,14 @@ func TestNewTaskState(t *testing.T) {
 func TestCompletedGates(t *testing.T) {
 	state := &TaskState{}
 	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 
 	completed := state.CompletedGates()
 	if len(completed) != 2 {
 		t.Fatalf("CompletedGates count = %d, want 2", len(completed))
 	}
-	if completed[0] != "task-implement" || completed[1] != "task-verify" {
-		t.Errorf("CompletedGates = %v, want [task-implement, task-verify]", completed)
+	if completed[0] != "task-implement" || completed[1] != "task-complete" {
+		t.Errorf("CompletedGates = %v, want [task-implement task-complete]", completed)
 	}
 }
 
@@ -261,7 +261,7 @@ func TestListTaskStates(t *testing.T) {
 func TestMarkComplete(t *testing.T) {
 	state := &TaskState{}
 	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	state.RecordGateResult("task-complete", true, "")
 
 	if !state.IsComplete() {
@@ -561,7 +561,7 @@ func TestLastGateSkipsTiming(t *testing.T) {
 
 	// Pass all gates up to task-verify
 	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	state.MarkReviewPassed("", "") // 满足 review 硬前置以隔离 timing 逻辑
 
 	// task-complete (last gate) should pass immediately despite 10m interval
@@ -580,7 +580,7 @@ func TestTaskCompleteRequiresReview(t *testing.T) {
 	dir := t.TempDir()
 	state := &TaskState{TaskRef: "review-gate", Branch: "feat/r"}
 	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 
 	// ReviewPassed 仍 false → task-complete 必须拒绝
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err == nil {
@@ -598,7 +598,7 @@ func TestIsLastGate(t *testing.T) {
 	if !isLastGate("task-complete") {
 		t.Error("task-complete should be the last gate")
 	}
-	if isLastGate("task-verify") {
+	if isLastGate("task-implement") {
 		t.Error("task-verify should NOT be the last gate")
 	}
 	if isLastGate("task-implement") {
@@ -613,287 +613,6 @@ func TestIsLastGate(t *testing.T) {
 // 特征，如 kimi）时，work-activity 计数恒为 0，硬门禁是 100% 误报。门禁必须放行、stderr
 // 含 advisory、并落 CheckNameTelemetryMissing 审计条目，让 score/dashboard/trace 能看到
 // 该 gate 是在遥测降级下放行的，而非验证了真实活动。
-func TestWorkActivityTelemetryMissingDegradesToAdvisory(t *testing.T) {
-	dir := initRepoWithMainGo(t)
-
-	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
-
-	state := &TaskState{
-		TaskRef: "test-auto-activity",
-		Branch:  "feat/test",
-	}
-
-	// 通过 task-implement（auto）——之后不记任何 Read/活动
-	state.RecordGateResult("task-implement", true, "")
-
-	var gateErr error
-	stderr := captureStderr(t, func() {
-		_, gateErr = ExecuteTaskGate(dir, "task-verify", state)
-	})
-	if gateErr != nil {
-		t.Fatalf("遥测缺失时 task-verify 应 advisory 放行，got: %v", gateErr)
-	}
-	if !strings.Contains(stderr, advisoryPrefix) {
-		t.Fatalf("stderr 应含 advisory 说明遥测缺失，got: %q", stderr)
-	}
-
-	// 审计已落盘——降级必须可见，不能静默。
-	if firstCheckEntry(t, dir, "test-auto-activity", CheckNameTelemetryMissing) == nil {
-		t.Fatalf("checklog 应有 CheckNameTelemetryMissing 审计条目")
-	}
-}
-
-// TestWorkActivityStillEnforcedAfterAutoGate pins the 3-gate rule documented at the work-activity check in executor.go: the check is intentionally NOT skipped after an auto gate.
-//
-// TestWorkActivityStillEnforcedAfterAutoGate 钉死 executor.go 工作活动检查处记录的
-// 3-gate 规则：auto gate 之后故意不跳过本检查。3-gate 流水线下 task-verify 紧跟
-// auto 的 task-implement，implement→verify 这段正是必须强制 read-before-edit 的
-// 区间——auto 后跳过是 5-gate 时代旧规则（已删除的 isPreviousGateAuto 即其残
-// 留），会让检查失效。遥测通道存活（本任务有 hook 分发的 checklog 条目）但活动
-// 确实为零时，task-verify 仍必须 BLOCKED——遥测缺失降级不得成为借道逃逸。
-func TestWorkActivityStillEnforcedAfterAutoGate(t *testing.T) {
-	dir := initRepoWithMainGo(t)
-
-	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
-
-	state := &TaskState{
-		TaskRef: "test-auto-activity-blocked",
-		Branch:  "feat/test",
-	}
-
-	// 遥测存活：本任务存在一条 hook 分发的 checklog 条目（带 ToolName）。ToolName
-	// "Bash" 不在 WorkActivity 的 workTools 内，故活动仍确实为 0——门禁必须 BLOCK，
-	// 证明降级只在两条通道都空时触发。
-	if err := checklog.Record(dir, &checklog.Entry{
-		Check:    checklog.CheckAutoCompile,
-		ToolName: "Bash",
-		Passed:   true,
-		Checked:  true,
-		TaskRef:  "test-auto-activity-blocked",
-	}); err != nil {
-		t.Fatalf("checklog.Record: %v", err)
-	}
-
-	// 通过 task-implement（auto）——之后不记任何 Read/活动
-	state.RecordGateResult("task-implement", true, "")
-
-	_, err := ExecuteTaskGate(dir, "task-verify", state)
-	if err == nil {
-		t.Fatal("task-verify after auto gate with zero activity (telemetry alive) must be BLOCKED — the 5-gate-era skip rule must not come back")
-	}
-	if !strings.HasPrefix(err.Error(), blockedPrefix) {
-		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
-	}
-}
-
-// TestWorkActivityExplorationCounts pins the 2026-08-23 doc-implementation drift fix at the executor surface (the surface CLAUDE.md's error table talks about): a pure-exploration stretch (Grep/Glob, zero Read, zero Edit) is real work and must PASS the work-activity gate.
-//
-// TestWorkActivityExplorationCounts 在 executor 表面（即 CLAUDE.md 错误表所说的
-// 那个表面）钉死 2026-08-23 文档-实现漂移修复：纯探索段落（Grep/Glob、零
-// Read、零 Edit）是真实工作，必须通过 work-activity 门禁。修复前 Grep/Glob
-// 进不了 toollog（matcher 缺口），错误表「用 Read/Grep/Glob 探索」的建议是
-// 空头支票——门禁一直拦到出现 Read 为止。
-func TestWorkActivityExplorationCounts(t *testing.T) {
-	dir := initRepoWithMainGo(t)
-
-	t.Setenv("FORGE_WORK_ACTIVITY", "")
-
-	state := &TaskState{
-		TaskRef: "test-explore-activity",
-		Branch:  "feat/test",
-	}
-
-	// 纯探索：两次 Grep、一次 Glob，零 Read、零 Edit。按真实 tool-track
-	// hook 的记录方式落 toollog（带任务 ref）。时间戳为 Record 时刻；任务
-	// 刚在之前启动。
-	state.StartedAt = time.Now().Add(-1 * time.Second)
-	for _, tool := range []string{"Grep", "Glob", "Grep"} {
-		call := &toolusage.ToolCall{ToolName: tool, TaskRef: "test-explore-activity"}
-		if err := toolusage.Record(dir, call); err != nil {
-			t.Fatalf("toolusage.Record(%s): %v", tool, err)
-		}
-	}
-
-	state.RecordGateResult("task-implement", true, "")
-
-	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
-		t.Fatalf("pure exploration (Grep/Glob, no edits) must satisfy work-activity, got: %v", err)
-	}
-}
-
-// TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit pins the strictness boundary of the same fix: exploration counts toward "was there work", but NEVER toward "did you read before edit".
-//
-// TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit 钉死同一修复的严格
-// 性边界：探索计入「有无工作」，绝不计入「改前是否读过」。有 Edit、有
-// Grep、零 Read 的段落仍必须 BLOCK——浏览匹配不等于读过要改的文件。
-func TestWorkActivityExplorationDoesNotSatisfyReadBeforeEdit(t *testing.T) {
-	dir := initRepoWithMainGo(t)
-
-	t.Setenv("FORGE_WORK_ACTIVITY", "")
-
-	state := &TaskState{
-		TaskRef: "test-explore-not-read",
-		Branch:  "feat/test",
-	}
-	state.StartedAt = time.Now().Add(-1 * time.Second)
-	for _, tool := range []string{"Grep", "Glob", "Edit"} {
-		call := &toolusage.ToolCall{ToolName: tool, TaskRef: "test-explore-not-read"}
-		if err := toolusage.Record(dir, call); err != nil {
-			t.Fatalf("toolusage.Record(%s): %v", tool, err)
-		}
-	}
-
-	state.RecordGateResult("task-implement", true, "")
-
-	_, err := ExecuteTaskGate(dir, "task-verify", state)
-	if err == nil {
-		t.Fatal("edit-without-read must stay BLOCKED even with Grep/Glob activity — exploration never substitutes for reading the edited file")
-	}
-	if !strings.HasPrefix(err.Error(), blockedPrefix) {
-		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
-	}
-}
-
-// TestWorkActivitySessionAlivePreventsDegrade pins the session-scoped cross-check (code-review 2026-08): toollog.jsonl lives in the agent-writable DataDir, so "toollog empty" alone cannot prove telemetry loss — an agent could delete it to fabricate the degrade for a fresh task with no task-scoped entries.
-//
-// TestWorkActivitySessionAlivePreventsDegrade 钉住 session 级交叉验证
-// （code-review 2026-08）：toollog.jsonl 在 agent 可写的 DataDir，「toollog 为空」
-// 本身不能证明遥测缺失——agent 删掉它即可为一个还没有任务级条目的新任务伪造
-// 降级。分发正常的 session 会跨任务累积 hook 分发条目；当前 session 存在任一
-// 此类条目（即便挂在别的 task ref 下）就必须抑制降级、维持 HARD stop。
-func TestWorkActivitySessionAlivePreventsDegrade(t *testing.T) {
-	dir := initRepoWithMainGo(t)
-
-	t.Setenv("FORGE_WORK_ACTIVITY", "") // 确保不受外部环境 escape 影响
-
-	state := &TaskState{
-		TaskRef:   "test-session-alive",
-		Branch:    "feat/test",
-		SessionID: "sess-telemetry-alive",
-	}
-
-	// 无 toollog、本任务零条目，但当前 session 有 hook 分发条目（挂在同 session
-	// 前一个任务下）——证明本机本 session 的 PostToolUse 分发是通的。
-	if err := checklog.Record(dir, &checklog.Entry{
-		Check:     checklog.CheckAutoCompile,
-		ToolName:  "Write",
-		Passed:    true,
-		Checked:   true,
-		TaskRef:   "test-session-alive-previous-task",
-		SessionID: "sess-telemetry-alive",
-	}); err != nil {
-		t.Fatalf("checklog.Record: %v", err)
-	}
-
-	state.RecordGateResult("task-implement", true, "")
-
-	_, err := ExecuteTaskGate(dir, "task-verify", state)
-	if err == nil {
-		t.Fatal("session 遥测存活时（即便 toollog 被删、本任务零条目）不得降级——必须 BLOCKED")
-	}
-	if !strings.HasPrefix(err.Error(), blockedPrefix) {
-		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
-	}
-}
-
-// TestWorkActivitySessionAliveNotMaskedByGateAudit pins pitfall 3a (code-review 2026-08): the session-alive check must full-scan, not fold to latest-per-check.
-//
-// TestWorkActivitySessionAliveNotMaskedByGateAudit 钉住坑 3a（code-review 2026-08）：
-// session 存活检查必须全量扫描，不能按 check 折叠到最新一条。同名 check 下、时间
-// 更晚的 gate 审计条目（ToolName=""）会在折叠 map 里遮蔽更早的 hook 分发条目，
-// 让干净 session 里的伪造降级复活。
-func TestWorkActivitySessionAliveNotMaskedByGateAudit(t *testing.T) {
-	dir := initRepoWithMainGo(t)
-
-	t.Setenv("FORGE_WORK_ACTIVITY", "")
-
-	state := &TaskState{
-		TaskRef:   "test-session-masked",
-		Branch:    "feat/test",
-		SessionID: "sess-masked",
-	}
-	now := time.Now()
-	// 较早：hook 分发条目（ToolName 有值；取 "Bash"——不在 WorkActivity 的
-	// workTools 内，活动仍确实为 0）。挂在前一个任务名下——本任务的 hookEntries
-	// 必须为 0，降级能否触发才完全取决于 sessionAlive（否则折叠 map 的旧实现
-	// 也能假通过，钉不住 3a）；较晚：同 check 名的 gate 审计条目
-	// （ToolName=""）——折叠 map 里后者遮蔽前者，全量扫描不受骗。
-	if err := checklog.Record(dir, &checklog.Entry{
-		Check:      checklog.CheckAutoCompile,
-		ToolName:   "Bash",
-		Passed:     true,
-		Checked:    true,
-		TaskRef:    "test-session-masked-previous-task",
-		SessionID:  "sess-masked",
-		RecordedAt: now,
-	}); err != nil {
-		t.Fatalf("record hook entry: %v", err)
-	}
-	if err := checklog.Record(dir, &checklog.Entry{
-		Check:      checklog.CheckAutoCompile,
-		Passed:     true,
-		Checked:    true,
-		TaskRef:    "test-session-masked",
-		SessionID:  "sess-masked",
-		Detail:     "auto-compile.sh: PASS",
-		RecordedAt: now.Add(time.Second),
-	}); err != nil {
-		t.Fatalf("record gate audit entry: %v", err)
-	}
-
-	state.RecordGateResult("task-implement", true, "")
-
-	_, err := ExecuteTaskGate(dir, "task-verify", state)
-	if err == nil {
-		t.Fatal("hook 条目被 gate 审计条目遮蔽时仍须判定遥测存活——必须 BLOCKED")
-	}
-	if !strings.HasPrefix(err.Error(), blockedPrefix) {
-		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
-	}
-}
-
-// TestWorkActivityMixedHostKimiStillDegrades pins pitfall 3b (code-review 2026-08): when state.SessionID is empty (kimi/legacy), the session-alive check must count ONLY empty-session hook entries.
-//
-// TestWorkActivityMixedHostKimiStillDegrades 钉住坑 3b（code-review 2026-08）：
-// state.SessionID 为空（kimi/legacy）时，session 存活检查只认空 session 的 hook
-// 条目。session 过滤把 "" 当「不过滤」，朴素实现会把混合 host 项目里 Claude 的
-// 条目误算成 kimi 的遥测——让本降级要消除的 100% 误 BLOCK 复活。
-func TestWorkActivityMixedHostKimiStillDegrades(t *testing.T) {
-	dir := initRepoWithMainGo(t)
-
-	t.Setenv("FORGE_WORK_ACTIVITY", "")
-
-	// kimi 任务：SessionID 为空。项目里有 Claude session 留下的 hook 分发条目
-	// （SessionID 非空）——不得算作 kimi 的遥测。
-	state := &TaskState{
-		TaskRef: "test-mixed-host-kimi",
-		Branch:  "feat/test",
-	}
-	if err := checklog.Record(dir, &checklog.Entry{
-		Check:     checklog.CheckAutoCompile,
-		ToolName:  "Write",
-		Passed:    true,
-		Checked:   true,
-		TaskRef:   "some-earlier-claude-task",
-		SessionID: "claude-session-123",
-	}); err != nil {
-		t.Fatalf("record claude entry: %v", err)
-	}
-
-	state.RecordGateResult("task-implement", true, "")
-
-	var gateErr error
-	stderr := captureStderr(t, func() {
-		_, gateErr = ExecuteTaskGate(dir, "task-verify", state)
-	})
-	if gateErr != nil {
-		t.Fatalf("混合 host 下 kimi 任务（无空 session 条目）应照常降级放行，got: %v", gateErr)
-	}
-	if !strings.Contains(stderr, advisoryPrefix) {
-		t.Fatalf("stderr 应含遥测缺失 advisory，got: %q", stderr)
-	}
-}
-
 func TestActiveTaskState_BranchDetection(t *testing.T) {
 	dir := initRepoWithTasksDir(t)
 	runGit(t, dir, "commit", "--allow-empty", "-m", "init")
@@ -1187,7 +906,7 @@ func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 	// Seed a Read so the work-activity check does not pre-empt.
 	state := &TaskState{TaskRef: "cov-scope", Branch: "feat/cov"}
 	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	state.MarkReviewPassed("", "") // 满足 review 硬前置以隔离 coverage 逻辑
 	base := time.Now().Add(2 * time.Second)
 	rr := toolusage.ToolCall{ToolName: "Read", TaskRef: "cov-scope", Timestamp: base}
@@ -1207,32 +926,6 @@ func TestTestCoverageCheckScopedToVerifyGate(t *testing.T) {
 // TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion 钉死方案 A 核心：
 // task-complete 兜底对「大改零断言」硬阻断——改了 ≥3 个源文件既无配对测试也无任何断言
 // = corrupt success 铁证（eval 证据：feat/eval-core 0/19、feat/m2 0/25 照过 complete 的漏洞）。
-func TestTaskCompleteTestCoverageHardGate_BlockedOnBigChangeNoAssertion(t *testing.T) {
-	dir := t.TempDir()
-	initRepoWithMaster(t, dir)
-	writeCommitSource(t, dir, map[string]string{
-		"a.go": "package main\n\nfunc A() int { return 1 }\n",
-		"b.go": "package main\n\nfunc B() int { return 2 }\n",
-		"c.go": "package main\n\nfunc C() int { return 3 }\n",
-	}, "add 3 sources no test")
-
-	state := newVerifyState(t, dir, "bigchange-noassert")
-	state.RecordGateResult("task-verify", true, "")
-	state.MarkReviewPassed("", "") // 满足 review 硬前置以隔离 coverage 逻辑
-
-	_, err := ExecuteTaskGate(dir, "task-complete", state)
-	if err == nil {
-		t.Fatal("task-complete 应因大改零断言被 BLOCKED——corrupt success 兜底失效（agent 可改 3+ 源文件不写测试不写断言照过 complete）")
-	}
-	if !strings.HasPrefix(err.Error(), blockedPrefix) {
-		t.Fatalf("应是 GateBlocked（HARD stop），got: %v", err)
-	}
-}
-
-// TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass: a small change (<=2 files) advisory-passes even with zero assertions — fudge factor, aligning with the industry Sonar <20-line exemption spirit (using file count as a proxy for line count).
-//
-// TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass 小改（≤2 文件）即使零断言
-// 也 advisory 放行——fudge factor，对齐业界 Sonar <20 行豁免精神（用文件数代理行数）。
 func TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass(t *testing.T) {
 	dir := t.TempDir()
 	initRepoWithMaster(t, dir)
@@ -1242,7 +935,7 @@ func TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass(t *testing.T) 
 	}, "add 2 sources no test")
 
 	state := newVerifyState(t, dir, "smallchange-noassert")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	state.MarkReviewPassed("", "")
 
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
@@ -1268,7 +961,7 @@ func TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass(t *testing
 	}, "add 3 sources in diff pkgs + assertion test elsewhere")
 
 	state := newVerifyState(t, dir, "bigchange-withassert")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	state.MarkReviewPassed("", "")
 
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
@@ -1290,7 +983,7 @@ func TestTaskCompleteTestCoverageHardGate_EscapePasses(t *testing.T) {
 	}, "add 3 sources no test")
 
 	state := newVerifyState(t, dir, "bigchange-escape")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	state.MarkReviewPassed("", "")
 	t.Setenv("FORGE_TEST_COVERAGE", "disable")
 
@@ -1305,126 +998,6 @@ func TestTaskCompleteTestCoverageHardGate_EscapePasses(t *testing.T) {
 // gate 必须按改动文件推断 DesignPhases 并 SaveTaskState 持久化，下游
 // （Conclusion/health/review 子 agent）才读得到。若有人删了接通块，下游行为测试只
 // 隐式暴露、定位困难——这里直接断言「盘上 state.DesignPhases == [requirement, api]」。
-func TestExecuteTaskGate_TaskVerify_PersistsDesignPhases(t *testing.T) {
-	dir := initRepoOnBranch(t, "feat/phase")
-
-	writeFile := func(name, body string) {
-		full := filepath.Join(dir, name)
-		os.MkdirAll(filepath.Dir(full), 0755)
-		os.WriteFile(full, []byte(body), 0644)
-	}
-	// 触发 requirement + api 两个设计阶段。
-	writeFile("docs/prd/feature.md", "# PRD\n## 验收\n- foo\n")
-	writeFile("api/openapi/spec.yaml", "openapi: 3.0\n")
-	// 测试自带本地 .gitignore（docs/）钉死盲区前提——不依赖开发机 ~/.gitignore_global
-	// （CI/他人机器可能没配 docs/，那时 git 会正常跟踪 docs/prd，测的成 happy path
-	// 而非兜底）。写本地 .gitignore 后 git add -A 跳过 docs/prd/feature.md，
-	// taskChangedFiles(git diff) 漏掉它，scanDesignArtifacts 直接读文件系统兜底让
-	// PhaseRequirement 仍能推出——验证 gitignore 盲区修复（不是绕过）。
-	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("docs/\n"), 0644)
-	runGit(t, dir, "add", "-A")
-	runGit(t, dir, "commit", "-m", "add prd + openapi")
-	// 前提断言：docs/prd/feature.md 确实被忽略——否则下面 DesignPhases==[requirement,api]
-	// 测的是 git 看到了它（happy path）而非 scan 兜底。check-ignore -q 被忽略返 0。
-	if err := exec.Command("git", "-C", dir, "check-ignore", "-q", "docs/prd/feature.md").Run(); err != nil {
-		t.Fatalf("前提不成立:docs/prd/feature.md 未被忽略(%v)——.gitignore 没生效?将测 happy path", err)
-	}
-
-	state := &TaskState{TaskRef: "phase-persist", Branch: "feat/phase"}
-	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
-	state.MarkReviewPassed("", "")
-	base := time.Now().Add(2 * time.Second)
-	if err := toolusage.Record(dir, &toolusage.ToolCall{ToolName: "Read", TaskRef: "phase-persist", Timestamp: base}); err != nil {
-		t.Fatalf("seed Read: %v", err)
-	}
-
-	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
-		t.Fatalf("ExecuteTaskGate task-verify: %v", err)
-	}
-
-	// 从盘读回——验证接通块真的持久化了，不是只改内存 state。
-	loaded, err := LoadTaskState(dir, "phase-persist")
-	if err != nil {
-		t.Fatalf("LoadTaskState: %v", err)
-	}
-	want := []DesignPhase{PhaseRequirement, PhaseAPI}
-	if len(loaded.DesignPhases) != len(want) {
-		t.Fatalf("DesignPhases=%v want %v（接通块未写盘？）", loaded.DesignPhases, want)
-	}
-	for i, p := range want {
-		if loaded.DesignPhases[i] != p {
-			t.Errorf("DesignPhases[%d]=%s want %s", i, loaded.DesignPhases[i], p)
-		}
-	}
-}
-
-// TestWorkActivityEscapeHatchAuditsToChecklog guards the A4 fix: the
-// FORGE_WORK_ACTIVITY=disable escape hatch bypasses the read-before-edit check,
-// but its use must be audited to checklog so `forge trace` can surface it. Here
-// no Read is seeded — the hatch is what lets the gate pass, and it must leave a
-// trail.
-func TestWorkActivityEscapeHatchAuditsToChecklog(t *testing.T) {
-	dir := initRepoOnBranch(t, "feat/hatch")
-
-	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
-
-	// No seeded Read — without the hatch, the read-before-edit check would
-	// refuse task-verify. With the hatch it passes AND records an audit entry.
-	state := &TaskState{TaskRef: "hatch-wa", Branch: "feat/hatch"}
-	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
-
-	if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
-		t.Fatalf("task-verify should PASS with FORGE_WORK_ACTIVITY=disable: %v", err)
-	}
-
-	found := firstCheckEntry(t, dir, "hatch-wa", checklog.CheckEscapeHatch)
-	if found == nil {
-		t.Fatal("escape-hatch checklog entry not recorded for FORGE_WORK_ACTIVITY=disable")
-	}
-	if !strings.Contains(found.Detail, "FORGE_WORK_ACTIVITY") {
-		t.Errorf("escape-hatch detail = %q, want it to mention FORGE_WORK_ACTIVITY", found.Detail)
-	}
-}
-
-// TestReadBeforeEditFailureIsBlocked guards Plan-1's exit-code contract: an edit-without-read must hard-fail task-verify carrying the BLOCKED prefix rather than soft advisory prose — the BLOCKED token makes the hard stop unambiguous.
-//
-// TestReadBeforeEditFailureIsBlocked guards 方案1's exit-code contract: editing
-// without reading must hard-fail task-verify with the BLOCKED: prefix, not soft
-// advisory prose — the BLOCKED marker makes the hard stop unambiguous. Asserts both
-// the BLOCKED: contract prefix and the recognizable reason phrase.
-func TestReadBeforeEditFailureIsBlocked(t *testing.T) {
-	dir := initRepoOnBranch(t, "feat/rbe-block")
-
-	state := &TaskState{TaskRef: "rbe-block", Branch: "feat/rbe-block", StartedAt: time.Now()}
-	state.RecordGateResult("task-implement", true, "")
-
-	// Seed an Edit but NO Read — reads==0, edits>0 → read-before-edit hard fail.
-	editTS := time.Now().Add(2 * time.Second)
-	if err := toolusage.Record(dir, &toolusage.ToolCall{ToolName: "Edit", TaskRef: "rbe-block", Timestamp: editTS}); err != nil {
-		t.Fatalf("seed Edit: %v", err)
-	}
-
-	_, err := ExecuteTaskGate(dir, "task-verify", state)
-	if err == nil {
-		t.Fatal("task-verify unexpectedly passed (want BLOCKED hard failure for edit-without-read)")
-	}
-	if !strings.HasPrefix(err.Error(), blockedPrefix) {
-		t.Errorf("read-before-edit failure = %q, want BLOCKED contract prefix", err.Error())
-	}
-	if !strings.Contains(err.Error(), "without reading any code") {
-		t.Errorf("read-before-edit failure = %q, want the recognizable reason phrase", err.Error())
-	}
-}
-
-// TestTaskComplete_DocsConsistencyAdvisory guards the docs-consistency advisory at task-complete: README drift (a backtick reference to a non-existent forge command) must be recorded to checklog but must NOT block the gate (advisory, not blocking).
-//
-// TestTaskComplete_DocsConsistencyAdvisory guards the task-complete docs-consistency
-// advisory: README drift (反引号引用不存在的 forge 命令) must be recorded to checklog
-// but must NOT block the gate (advisory, not blocking). This is the local-before-push
-// counterpart to the CI guard A — drift surfaced at `forge task complete` time, not
-// only after CI runs.
 func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	dir := initRepoOnBranch(t, "feat/docs")
 
@@ -1448,7 +1021,7 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 
 	state := &TaskState{TaskRef: "docs-drift", Branch: "feat/docs"}
 	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	state.MarkReviewPassed("", "") // 满足 review 硬前置
 
 	// docs drift 是 advisory——task-complete 必须仍 Passed（不阻塞）。
@@ -1473,41 +1046,19 @@ func TestTaskComplete_DocsConsistencyAdvisory(t *testing.T) {
 	}
 }
 
-// TestGateAdvancementRecordsAgentClaim guards the evidence-chain agent-claim data source: when an agent advances the task-verify / task-complete gate, ExecuteTaskGate must record that claim to checklog (Source=agent-claim, backstopped by Record's SourceForCheck).
+// TestGateAdvancementRecordsAgentClaim guards the evidence-chain agent-claim data source: when an agent advances the task-complete gate, ExecuteTaskGate must record that claim to checklog (Source=agent-claim, backstopped by Record's SourceForCheck).
 //
 // TestGateAdvancementRecordsAgentClaim 守卫证据链 agent-claim 数据源：agent 推进
-// task-verify / task-complete gate 时，ExecuteTaskGate 必须把该「声明」记进 checklog
-// （Source=agent-claim，由 Record 的 SourceForCheck 兜底写入）。没有这两个记录点，
+// task-complete gate 时，ExecuteTaskGate 必须把该「声明」记进 checklog
+// （Source=agent-claim，由 Record 的 SourceForCheck 兜底写入）。没有这个记录点，
 // EvidenceChain 的 agent-claim 桶恒为 0，「完成声明 vs deterministic 支撑」的对比失效——
 // 本测试把数据源接入钉成可回归验证。
 func TestGateAdvancementRecordsAgentClaim(t *testing.T) {
-	t.Run("task-verify records agent-claim", func(t *testing.T) {
-		dir := initRepoOnBranch(t, "feat/claim-v")
-		// 走真实 read-before-edit 路径（seed 一个 Read）而非 FORGE_WORK_ACTIVITY=disable
-		// 逃避——确保 claim 记录点在真实 gate 流程末端被覆盖，防 future early-return 漏检。
-		state := &TaskState{TaskRef: "claim-v", Branch: "feat/claim-v", StartedAt: time.Now()}
-		state.RecordGateResult("task-implement", true, "")
-		readTS := time.Now().Add(2 * time.Second)
-		if err := toolusage.Record(dir, &toolusage.ToolCall{ToolName: "Read", TaskRef: "claim-v", Timestamp: readTS}); err != nil {
-			t.Fatalf("seed Read: %v", err)
-		}
-		if _, err := ExecuteTaskGate(dir, "task-verify", state); err != nil {
-			t.Fatalf("task-verify should pass: %v", err)
-		}
-		entry := firstCheckEntry(t, dir, "claim-v", checklog.CheckTaskVerify)
-		if entry == nil {
-			t.Fatal(`task-verify 未记录 CheckTaskVerify 声明（agent-claim 数据源断裂）`)
-		}
-		if entry.Source != checklog.EvidenceAgentClaim {
-			t.Errorf(`CheckTaskVerify.Source = %s, want agent-claim`, entry.Source)
-		}
-	})
-
 	t.Run("task-complete records agent-claim", func(t *testing.T) {
 		dir := initRepoOnBranch(t, "feat/claim-c")
 		state := &TaskState{TaskRef: "claim-c", Branch: "feat/claim-c"}
 		state.RecordGateResult("task-implement", true, "")
-		state.RecordGateResult("task-verify", true, "")
+		state.RecordGateResult("task-complete", true, "")
 		state.MarkReviewPassed("", "") // 满足 review 硬前置
 		if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
 			t.Fatalf("task-complete should pass: %v", err)
@@ -1544,7 +1095,7 @@ func TestTaskComplete_DocsConsistencyNoDriftSilent(t *testing.T) {
 
 	state := &TaskState{TaskRef: "docs-clean", Branch: "feat/clean"}
 	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", true, "")
+	state.RecordGateResult("task-complete", true, "")
 	state.MarkReviewPassed("", "")
 
 	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
@@ -1607,7 +1158,7 @@ func writeSrc(t *testing.T, dir, rel, content string) {
 func fullyGatedState(ref string) *TaskState {
 	s := &TaskState{TaskRef: ref, Branch: "feat/" + ref}
 	s.RecordGateResult("task-implement", true, "")
-	s.RecordGateResult("task-verify", true, "")
+	s.RecordGateResult("task-implement", true, "")
 	return s
 }
 

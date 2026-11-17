@@ -249,22 +249,13 @@ func nonGitTaskWarning() string {
 		"如需完整质量保障，执行 `git init`（任务流程本身可继续）。任务无法推进或临时放弃时用 `forge task abort --ref <ref>` 清理。"
 }
 
-// artifactStartHint 渲染 task start 的开工前产物链提示（discipline-first P3）：
-// 探针语义在 taskpipeline.ArtifactChainExpectation（与 implement gate 同一真相源），
-// 此处只钉呈现——缺节点时单行（链序 → 连接 + 先产出指引 + 执法预告），链完整或
-// 逃生时空串（静默与意图一致）。
-func artifactStartHint(root string, state *taskpipeline.TaskState) string {
-	// 已钉 change 契约时，"产物链预期节点未登记" 与 implement gate 的
-	// 「以 change 产物为准」自相矛盾（dogfood 实测）：开工提示也走 change 口径。
+// artifactStartHint 渲染 task start 的开工提示：只有钉了 change 契约时才提示
+// 「以 change 产物为准」。产物链检查已随 1.89 移除，不再预告「预期节点未登记」。
+func artifactStartHint(_ string, state *taskpipeline.TaskState) string {
 	if state != nil && state.GoalContract != nil && state.GoalContract.Change != "" {
 		return "提示：本任务已钉 change 目标契约（" + state.GoalContract.Change + "）——task 级产物链可省略，以 change 产物为准"
 	}
-	missing, next := taskpipeline.ArtifactChainExpectation(root, state)
-	if len(missing) == 0 {
-		return ""
-	}
-	return "提示：本任务产物链预期节点未登记（" + strings.Join(missing, "→") +
-		"）——开工前产出最便宜（方向错误在产物阶段拦下）；先产出：" + next + "。implement gate 将按档执法"
+	return ""
 }
 
 // detectOriginTool 返回任务的发起工具（声明式真相，区别于 SessionRecord.AgentType 的目录探测弱信号）。

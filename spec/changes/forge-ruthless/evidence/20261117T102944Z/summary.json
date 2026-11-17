@@ -1,0 +1,320 @@
+{
+  "change": "forge-ruthless",
+  "started_at": "2026-11-17T10:29:44Z",
+  "finished_at": "2026-11-17T10:33:30Z",
+  "passed": true,
+  "sealed": true,
+  "head": "7f70a1617d3fd0b247d52af653e327e23072d9ea",
+  "diff_sha256": "63d5e21214746559f32acd11bfa2ac641889031afd0a63796c0e46af8d1128b1",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "625dcd023f5ee003991a73ff45b7d5999bcff3375714194e55e37c40c2487ff6"
+    },
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "c4ac5efd6fcdb8a58c80a1cc9db528ed198eeba0d791b36fe5f07aca68dd8d6b"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "82260d4262d070dd9ad3d732d38422990304644593b7b3c5df13812128141068"
+    },
+    {
+      "path": "evals/forge/resume/drill-complete-gate-advance.yaml",
+      "sha256": "a4bbd270361417e492e47a89647617d4dbf9c065dbc9664e61feb89956ab380d"
+    },
+    {
+      "path": "internal/change/change_test.go",
+      "sha256": "121c4e2bc795f06d41a34a550ac301d98bfa1c6aca95cccd8b576fcb7824346b"
+    },
+    {
+      "path": "internal/change/goal.go",
+      "sha256": "72cc07333075a2e882ed836c9915bc8176afd3159a293bb4539c88d3694834a2"
+    },
+    {
+      "path": "internal/change/goal_test.go",
+      "sha256": "3a56510304b974bc33ecc503a96965c6963b8383394d62545f68f95b32734354"
+    },
+    {
+      "path": "internal/change/phase_test.go",
+      "sha256": "a608e1000b410c9a2c309735f3c61790660d6457853c2a5a4e0dfef09274c01d"
+    },
+    {
+      "path": "internal/change/status_review_test.go",
+      "sha256": "342ccfd220436905b9b04641fed04eed117d5e31600f098f445c0497597816e1"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "b9a8904d5fc55e113f5221fdc6bfc8ac51f4b6c9df544ca3f51b4817c6a72029"
+    },
+    {
+      "path": "internal/cli/change_test.go",
+      "sha256": "1ff0e37c3af74c583f0014196800bcce60cc45664952b8a7a005534e46fee84a"
+    },
+    {
+      "path": "internal/cli/cli_test.go",
+      "sha256": "b5eea1d24b7f52ba81974618ae9728c88093de5e601b11b8fa208948613699ca"
+    },
+    {
+      "path": "internal/cli/eval.go",
+      "sha256": "6af6adc1e1154bab9325e0c3837107a99c39f15b58bc695df60aea6b14d0ed97"
+    },
+    {
+      "path": "internal/cli/eval_cli_test.go",
+      "sha256": "59820f01313b5279423d68e2b529749bfab68fad2b77c623a4ff4e74409cd55d"
+    },
+    {
+      "path": "internal/cli/next_context_test.go",
+      "sha256": "04e9e0f22861870e777ee35cd76a1bf8dc9c39a52e0d9e5103793334e885c0ea"
+    },
+    {
+      "path": "internal/cli/review.go",
+      "sha256": "74a27da5323531b5daaf727a8634e9bf5b2905e5ea21b4d18bc66061a40a9124"
+    },
+    {
+      "path": "internal/cli/review_test.go",
+      "sha256": "425b5c6cacfda9f98293989283244baa0de118339a2f6788e57245f3f6d115cd"
+    },
+    {
+      "path": "internal/cli/selfcheck.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/cli/selfcheck_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "835a6e02275537c5b79aceada08c89c760179a0cec72cc00b2377816f5d15d04"
+    },
+    {
+      "path": "internal/clitask/task_assignment_lifecycle_test.go",
+      "sha256": "af69ee921ac3c4ccbe5c7bcd319b29270b6fde488f9442eb641da188710c052d"
+    },
+    {
+      "path": "internal/clitask/task_chain.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/clitask/task_chain_design_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/clitask/task_chain_test.go",
+      "sha256": "fdc20388e7299298b99398a15b7978ef6f2f85577919a0b1b7789672f0f0509a"
+    },
+    {
+      "path": "internal/clitask/task_chaininit.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/clitask/task_complete_test.go",
+      "sha256": "d1f3ca8883a2f2b2a8cc0108195bf6c30548055543486c6b323f72c45f9d8c39"
+    },
+    {
+      "path": "internal/clitask/task_mine_test.go",
+      "sha256": "f17a5a5972bb56ccfd022c3416c4ced9a04f27b0343409b8ffac4e6624b5ed36"
+    },
+    {
+      "path": "internal/clitask/task_oracle_test.go",
+      "sha256": "693e78a90b1d48bae1acab6410bedf07cb04821b6b246e73f10dc52f6af46892"
+    },
+    {
+      "path": "internal/clitask/task_report_honesty_test.go",
+      "sha256": "3aaeedc42c9d5f4772bfcc7a5f881b6b53b4036f3381b0976fc04b6d84f4bc26"
+    },
+    {
+      "path": "internal/clitask/task_starthint_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/clitask/task_worktree_test.go",
+      "sha256": "a361664d0a3f2f8c9c2b87c72d6346d67ab7c1e289833ded53fa1265b0aeb789"
+    },
+    {
+      "path": "internal/compat/compat.go",
+      "sha256": "d44156de9b35e642d65f8048810c40f6a100ce187fe784baff608c62d7fb640d"
+    },
+    {
+      "path": "internal/compat/escape_envs_test.go",
+      "sha256": "64beabdfccded454c830451d4e4a629521f23c7f0066078a5c509fcf5f283684"
+    },
+    {
+      "path": "internal/dashboard/feed_test.go",
+      "sha256": "09ed0090af4601bc68f7ea2e240037834c29555d79f47a5a8b8db3bbdaa4fb94"
+    },
+    {
+      "path": "internal/dashboard/pulse_api_test.go",
+      "sha256": "9df6bfab810ff49926b8d0ae84ea04748850790810b5572fb83441e42bdc0cbe"
+    },
+    {
+      "path": "internal/e2e/entry_routing_test.go",
+      "sha256": "d0ed60ff1e42f2d16f2b816794ff8a50acc6f86f61dcd65fca915fe546a84d34"
+    },
+    {
+      "path": "internal/e2e/proof_mcp_test.go",
+      "sha256": "ac7c63b466e288f4d4ee4bcd254f3d0b413a2938bc578ad18bdfdcedfc39254a"
+    },
+    {
+      "path": "internal/e2e/upgrade_test.go",
+      "sha256": "2c392b36aa7b81155c4227ef39824b1ee1edeea07157ff73e10c7645518bc935"
+    },
+    {
+      "path": "internal/e2e/workspace_test.go",
+      "sha256": "f60cc8aebdb9edeecebcb5d5ca25045d1dc69741c32a146b0c1e9da37dc681b1"
+    },
+    {
+      "path": "internal/evalkit/artifactdrill.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/evalkit/artifactdrill_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/evalkit/drill_args_test.go",
+      "sha256": "c5aeca70cf6e7a2ff73a4154af3a50f401d8eb2438b871df01c785cc59e27e9c"
+    },
+    {
+      "path": "internal/taskpipeline/approvaldigest.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/taskpipeline/crossrepo.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/taskpipeline/designcheck.go",
+      "sha256": "684e09eaa820f38d1db25c51e3db45f107e58406cbbb3995a90ca68e8fc1a74b"
+    },
+    {
+      "path": "internal/taskpipeline/executor_planfirst_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/taskpipeline/executor_test.go",
+      "sha256": "57b5dc904e553ee85ea4f1624336f9deaf43f3d7ec8153a3d210ce513f02c27a"
+    },
+    {
+      "path": "internal/taskpipeline/loopedge_age_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/taskpipeline/loopedge_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/taskpipeline/loopverdict_test.go",
+      "sha256": "0d75569d17096322de70cd640e51063908a12473c0026a5fbe9bc17551072f50"
+    },
+    {
+      "path": "internal/taskpipeline/next_repo_context_test.go",
+      "sha256": "6c57d2e7aa827cb587e9467d095bd67d1d061a4351b6e52f4709e98c06070269"
+    },
+    {
+      "path": "internal/taskpipeline/outcome.go",
+      "sha256": "4d85a2ab4474792a42ffff7d395bba33589fd9d5059d9e87ed5478aff474414c"
+    },
+    {
+      "path": "internal/taskpipeline/redteam_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/taskpipeline/reqtrace.go",
+      "sha256": "1839a0fd5da6d6d58e6cc1cdce9203cd0fa4ff80b0d2c4c2b569e64c28310aa6"
+    },
+    {
+      "path": "internal/taskpipeline/selfcheck.go",
+      "sha256": "2ad2521d35d8ee214f708c0259c7392259ad48202243d85d65c0f2f7a9f52578"
+    },
+    {
+      "path": "internal/taskpipeline/testcoverage.go",
+      "sha256": "209dda7a8598e3a728ae7e407328b91c32b9588eeb5d8bef69d1113b3241142c"
+    },
+    {
+      "path": "internal/taskpipeline/testcoverage_skill_test.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/tasktypes/gates_test.go",
+      "sha256": "bb3ae268d3939882ea83b9da920903abc8f5f3bce71e881adc10fe64dbecf00c"
+    },
+    {
+      "path": "internal/tasktypes/types.go",
+      "sha256": "8875f263cb64c99cc7a2d18bc2170875ae1dc6ba2d92deb6faaba050e13968b9"
+    },
+    {
+      "path": "scripts/checks/no-removed-checks.sh",
+      "sha256": "6d5eae3921e85525bd6c8407cb349f6acf951fd0aeeaaf50659472788fe3b53f"
+    },
+    {
+      "path": "spec/changes/forge-ruthless/change.md",
+      "sha256": "8ab1dafcdd9d5fc204ae7f2c27eb4dbe2a64402cb887aa6fa9c1710d1a44d874"
+    }
+  ],
+  "acceptance_sha256": "ab59ef7d063644529c7347b5dd792a5b814758aa53b4e109843326af529e1880",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 1653
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ -count=1",
+      "exit": 0,
+      "duration_ms": 98908,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 94091,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test -v ./internal/change/ -count=1",
+      "exit": 0,
+      "duration_ms": 22200,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestImpact|TestHelpSurface' -count=1",
+      "exit": 0,
+      "duration_ms": 3407,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 180
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4850
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 534,
+      "stdout_file": "08.stdout"
+    }
+  ]
+}

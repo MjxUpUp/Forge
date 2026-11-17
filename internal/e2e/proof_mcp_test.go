@@ -92,7 +92,7 @@ func TestE2E_TaskComplete_BlockedWhenAcceptanceNotRun(t *testing.T) {
 
 	forge(t, dir, "task", "start", "--ref", "feat/pow-block", "--title", "pow block",
 		"--accept", "go version :: go version", "--branch")
-	passAllGates(t, dir, "feat/pow-block") // 过 task-implement/task-verify/review-pass/task-complete gate
+	passAllGates(t, dir, "feat/pow-block") // 过 task-implement/review-pass/task-complete gate
 
 	// forge task complete 应被 acceptance pre-flight BLOCKED（验收未实跑，AcceptedHeadCommit 空）
 	out, err := forgeErr(t, dir, "task", "complete", "--ref", "feat/pow-block")
@@ -139,7 +139,7 @@ func TestE2E_TaskComplete_PassAfterVerifyAcceptance(t *testing.T) {
 	}
 	git(t, dir, "add", "e2e-scratch.txt")
 	git(t, dir, "commit", "-m", "e2e: code change for task-implement")
-	for _, g := range []string{"task-implement", "task-verify"} {
+	for _, g := range []string{"task-implement"} {
 		if out, err := forgeErr(t, dir, "task", "gate", g, "--ref", "feat/pow-ok"); err != nil {
 			t.Fatalf("forge task gate %s: %v\n%s", g, err, out)
 		}

@@ -9,7 +9,7 @@
   `forge change phase <id>` 看还缺什么 → `forge task start --ref <ref> --change <id>`
   把 goal 钉成哈希。**不立 change 也允许开工**（`task start` 不带 `--change`）；
   只有你显式带 `--change` 时，那个 change 必须已经 ready。
-- 一句话小修可以加 `--kind task`：它仍是任务（走三道门禁），只是向人和审计说明
+- 一句话小修可以加 `--kind task`：它仍是任务（走两道门禁），只是向人和审计说明
   「这次没有立 change」。它不是绕过门禁的开关。
 - **不要为了让门禁放行而临时改产物**：阶段机只读文件，伪造 goal/design 会留在 diff 里。
 - 一次任务只做一件事，做完依次跑 `forge task gate task-implement`、`forge task verify-acceptance`

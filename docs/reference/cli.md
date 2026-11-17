@@ -18,12 +18,12 @@
 | `forge version` | 打印版本（与 `forge --version` 同源）：发布构建输出 `版本 (commit: …, built: …)`，dev 构建输出 `dev`；便于脚本用子命令形态取版本 |
 | `forge status [--json] [--system]` | 查看项目状态（任务管道 + 质量信号）；`--system` 跑系统级健康检查（~/.forge、PATH、孤儿 hook、skills manifest） |
 | `forge verify [--run-tests] [--regression] [--scenario <name>] [--collect-golden <dir>]` | 项目级验证入口：默认只检查仓库契约（`spec/forge.yaml` 存在且 version/profile/hooks 合法，输出档位与规则计数）；`--run-tests` 探测并实跑项目测试命令（go/Cargo/npm/pytest，未探测到只报告），结果记 checklog `test-run` 证据；`--regression/--scenario` 的 E2E 场景仍指向已删除的宿主层（`forge data-dir`、hooks 副本），当前不可用；`--collect-golden` 是从已完成任务采集 golden case 的开发工具 |
-| `forge change init [--profile mini\|standard\|full]` / `new <id> [--title <标题>] [--fast [--by-human]]` / `list [--json]` / `verify <id> [--timeout 10m]` / `status <id> [--json]` / `gate <id> --task <N> [--timeout 10m]` / `check [--staged] [--json]` / `phase <id> [--json]` / `clarify <id> --by-human --note "…" [--force]` / `agents [--pointers claude|cursor|all|none]` | 仓库内 change 生命周期（不要求 forge 接管）：init 写 `spec/forge.yaml`（默认 `hooks: off`）、`spec/changes/`（含 `archive/`），同步 AGENTS.md 的 forge 托管块（缺文件整份写、无块追加、有块就地替换，标记外不动），并维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`）；new 生成五份模板（`goal.md` 五段目标契约 + proposal/design/tasks/acceptance；`--fast` 只生成 goal + proposal + acceptance（仍需 clarify 的人确认），且必须带 `--by-human` 表明人已同意）；list 从文件系统推导阶段与证据状态；verify 实跑 acceptance 判据并封印证据；status 给下一步；gate 只跑某个节点的判据；check 检查每个未归档 change 的证据是否成立（CI 与 pre-commit 共用的闸门，不合格退出码 2）；agents 单独重同步 AGENTS.md 的托管块（`<!-- forge:begin -->`…`<!-- forge:end -->`），并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（`--pointers` 点名；缺省只维护已存在的 `CLAUDE.md`，`.cursor/rules/` 目录存在时补 `forge.mdc`；详见文末补充）。详见文末「change 子命令补充」 |
+| `forge change init [--profile mini\|standard\|full]` / `new <id> [--title <标题>] [--fast [--by-human]]` / `list [--json]` / `verify <id> [--timeout 10m]` / `status <id> [--json]` / `gate <id> --task <N> [--timeout 10m]` / `check [--staged] [--json]` / `phase <id> [--json]` / `clarify <id> --by-human --note "…" [--force]` / `agents [--pointers claude|cursor|all|none]` | 仓库内 change 生命周期（不要求 forge 接管）：init 写 `spec/forge.yaml`（默认 `hooks: off`）、`spec/changes/`（含 `archive/`），同步 AGENTS.md 的 forge 托管块（缺文件整份写、无块追加、有块就地替换，标记外不动），并维护已存在的入口指针（已有 `CLAUDE.md` 追加指针、已有 `.cursor/rules/` 目录补 `forge.mdc`）；new 生成三份模板（`goal.md` 三段目标契约 + `change.md` 改动/影响/验证 + `acceptance.md`；`tasks.md` 可选；`--fast` 同布局，仍需 clarify 的人确认，且必须带 `--by-human` 表明人已同意）；list 从文件系统推导阶段与证据状态；verify 实跑 acceptance 判据并封印证据；status 给下一步；gate 只跑某个节点的判据；check 检查每个未归档 change 的证据是否成立（CI 与 pre-commit 共用的闸门，不合格退出码 2）；agents 单独重同步 AGENTS.md 的托管块（`<!-- forge:begin -->`…`<!-- forge:end -->`），并维护 `CLAUDE.md` / `.cursor/rules/forge.mdc` 指针（`--pointers` 点名；缺省只维护已存在的 `CLAUDE.md`，`.cursor/rules/` 目录存在时补 `forge.mdc`；详见文末补充）。详见文末「change 子命令补充」 |
 | `forge update [--apply]` | 检查并更新到最新版本（按安装通道分流：npm 安装自动检测包管理器 npm/pnpm/yarn，查 npm registry 并打印对应更新命令——npm 包不可变，原地替换会被下次 install 还原，故不代下载，可用 `FORGE_NPM_REGISTRY` 覆盖 registry；GitHub Release/手动安装从 GitHub 下载自替换）；npm 通道加 `--apply` 直接代跑包管理器安装命令并自验新版本（Windows 下二进制被占用时只打印命令） |
 | `forge off [--all] [--commit]` 或 `forge on` | 按项目退出/恢复接管（Project Policy Layer）：`off` 把当前项目（git 根）置为 declined——只改注册表条目（含决策来源/时间审计），不改任何宿主配置（没有 hook 层可静默），`forge init` 拒绝（退出不被任何默认路径重置）；`--all` 一键全退；`--commit` 额外在仓库根写 `.forge-decline` 团队声明（committed 后对所有协作者让位，deny-wins）；`on` 是 declined→managed 的唯一恢复通道（清 `.forge-decline` 声明文件；从未 init 的项目提示先 `forge init`）；仓库已有 `spec/forge.yaml` 且当前是 managed 时，`on` 直接提示「已由仓库契约声明接管」并返回（不写注册表）；若是 declined（`forge off`、`policy yield` 或 clone 到带 `.forge-decline` 的仓库），则照常恢复为 managed（契约仍在，不要求先 init；若随后提示补全接线，再跑一次 `forge init`）。状态存注册表条目（含决策来源/时间审计），`forge status` 退出码即「是否 managed」 |
 | `forge config get/set compat <版本>` | 兼容基线声明（指纹分流 v1，GODEBUG go 行声明的轻量版）：声明"行为按哪个版本的默认走"（v1 为声明性锚点 + 落后提醒，暂不分派行为——完整分流机制见承诺表"刻意不做"）；`forge status` 显示兼容基线行与落后 minor 数；遥测回读（逃生舱使用聚合）见 `forge eval dashboard`；`--raw` 只输出值供脚本消费。原 `takeover` 三档偏好随 init-suggest 一并移除 |
 | `forge policy state` / `forge policy yield` | 接管策略快查/外来 harness 让位：`state` 打印当前目录三态（managed\|declined\|unknown，退出码恒 0，供脚本分流）；判据与 `forge status` 共用同一套解析（`resolveFrom`）：有 `spec/forge.yaml` 的仓库报 managed，不再因为没进全局注册表而报 unknown。例外是该仓库处于 declined（`forge off`、`policy yield` 或 clone 到带 `.forge-decline` 的仓库）——declined 优先于契约，这里会如实报 declined，`forge status` 则以非零退出码报「已退出接管」（`resolveFrom` 两个入口只差这一点：`status` 把 declined 当失败，`policy state` 把它当状态）。另注意仓库级 `hooks` 字段与 `forge off` 是两件事：`hooks` 现在只是契约里的兼容字段（合法值 `on`/`off`，缺省 `off`，`forge status` 会把它显示出来；宿主层已删除，没有东西消费它），`forge off` 才是成员资格退出；`yield` 检测外来 harness 高置信信号（`.specify/`、`.claude/commands`、`.claude/settings.json` 含 hooks/permissions、`.cursor/rules`——单一真相源 internal/harnessdetect），命中即让位（declined, by=foreign-harness）并打印说明，`forge on` 显式覆盖 |
-| `forge conventions init [--force]` | 项目规范档案（conventions-profile）：机械扫描本仓库**已声明**的规范——AGENTS.md/CLAUDE.md/.github/copilot-instructions.md 等规范文件、lint/format 配置、stack 工具链命令——写入用户级档案 `~/.forge/projects/<key>/conventions/`；**没有会话注入通道**：档案只是用户级文件，摘要要自己 `forge conventions show` 看（同一份档案跨宿主共享）；摘要的「提取要点」节由 agent 代码考古增补，重跑 init 保留提炼内容（`--force` 才重建骨架）；规范源文件变化后指纹翻转，show 提示重扫；task-verify 会提醒「档案声明的 lint 命令本任务未跑」（advisory，提醒与 checklog 审计行经 `FORGE_CONVENTIONS_LINT=disable` 一并静默） |
+| `forge conventions init [--force]` | 项目规范档案（conventions-profile）：机械扫描本仓库**已声明**的规范——AGENTS.md/CLAUDE.md/.github/copilot-instructions.md 等规范文件、lint/format 配置、stack 工具链命令——写入用户级档案 `~/.forge/projects/<key>/conventions/`；**没有会话注入通道**：档案只是用户级文件，摘要要自己 `forge conventions show` 看（同一份档案跨宿主共享）；摘要的「提取要点」节由 agent 代码考古增补，重跑 init 保留提炼内容（`--force` 才重建骨架）；规范源文件变化后指纹翻转，show 提示重扫；complete 不再消费 conventions 提醒（1.89 移除后该 advisory 仅留 checklog） |
 | `forge conventions show` | 查看规范档案：stack/lint/test/build 命令、规范声明文件与 lint 配置清单、fingerprint 与过期状态（STALE=源已漂移，重跑 `forge conventions init` 刷新）、摘要全文 |
 | `forge conventions learn <rule>` | 纠正增量写回（conventions-profile）：用户/审查指出规范违规时当场把该规则写进摘要提取要点节（一字不差去重、替换待提取占位、超 15 行预算警告——展示按 15 行截断，全文仍在 summary.md）——纠正离开会话上下文进持久档案，下次 `forge conventions show` 即生效 |
 | `forge migrate [--dry-run] [--force]` | 把旧 `.forge/` runtime state（tasks/gates/checklog/toollog/act/sessions/quarantine/active-task-ref 等）迁到用户级 DataDir（`~/.forge/projects/<key>/`）——升级到 runtime state 外迁版本后的迁移路径；未改过的 `.forge/protocol.yml` 由 autoSync 自动迁 DataDir，用户改过的保留为团队共享覆盖层；迁移的 task 文件落地即剥离外来门禁信号（review/验收/评分/完成/逃生舱/generic 须本机重挣，验收命令带外来标记）；幂等，`--dry-run` 预览，`--force` 覆盖 DataDir 已有同名 |
@@ -60,8 +60,8 @@
 
 | 命令 | 说明 |
 |------|------|
-| `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-verify/task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理；start 会预跑已登记的 acceptance（逐条最长 15s，失败不阻断，只在输出里记录基线） |
-| `forge task start --change <id>` / `--goal-file <path>` | 把 goal 契约钉进任务：`--change` 读 `spec/changes/<id>/goal.md`，`--goal-file` 读仓库内任意五段式文件；启动时记 Path+SHA256，`task gate task-implement` 重算，漂移即 BLOCKED。二者与 `--goal` 自由文本互斥；`--kind task` 标记「这次是小修、没有立 change」，仍走三道门禁；任务是一等入口，不带 `--change` 随时可以开工 |
+| `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理；start 会预跑已登记的 acceptance（逐条最长 15s，失败不阻断，只在输出里记录基线） |
+| `forge task start --change <id>` / `--goal-file <path>` | 把 goal 契约钉进任务：`--change` 读 `spec/changes/<id>/goal.md`，`--goal-file` 读仓库内任意五段式文件；启动时记 Path+SHA256，`task gate task-implement` 重算，漂移即 BLOCKED。二者与 `--goal` 自由文本互斥；`--kind task` 标记「这次是小修、没有立 change」，仍走两道门禁；任务是一等入口，不带 `--change` 随时可以开工 |
 | `forge next [--json]` | 单命令引导：从 git/任务状态推导**恰好一条**下一步命令+理由（无任务有脏树时：声明了 spec 的仓库先给 `forge change new`（有 ready 且 goal.md 齐备的 change 直接给 `forge task start --change <id>`；未 ready 或缺 goal.md 才给 `forge change phase <id>`），未声明仓库仍是 task start/wild 申报；门禁链→下一步命令：implement→验收实跑→verify→review pass→complete 门→complete）。无活跃任务且工作区干净时：声明了 spec 的仓库直接给 `forge task start`（落后远端先给 `git pull --ff-only`；不再停在 `forge status`，change 可后补），未声明仓库仍是 `forge status`。agent 不自选下一步——push 侧由 `forge gate push` 兜底 |
 | `forge task intent "<注记>"` | 追加意图注记（三段工件之 intent 段）：append-only——没有覆写/删除入口，意图历史即决策史，防轮次重写导致的语义漂移（rot） |
 | `forge task checklist add/tick/drop` | 操作对账单（checklist 段）：勾选即进度、断点存活，task-complete 硬门禁要求全勾（report 写完不算 done，checkbox 才算） |
@@ -74,26 +74,22 @@
 | `forge task status` | 查看当前任务门禁状态（含已登记产物链产物与漂移/审批态） |
 | `forge task list --open [--workspace\|--all-projects] [--json]` | 列出未完成任务供用户挑选要接续哪个：每条带项目、标题、门禁进度、首条下一步、未解决阻塞数、派活状态、最后活动时间。默认当前项目；`--workspace` 扩到当前项目所属多仓 forge workspace 的全部成员（不属于任何 workspace 时回落当前项目）；`--all-projects` 扩到本机全部已接管项目。只读 |
 | `forge task list --plan-conversion` | plan-first advisory 转化率报告（先测量再翻转）：已发/发后已补方案/发后仍无方案/未发自带方案四计数 + 转化率——叙事 stage 是否升档由数据决定而非直觉 |
-| `forge task artifact --set <stage> --file <path> \| --stdin \| --list [--json] \| --verify \| --approve <stage> --by <人> [--checked <项>] \| --extract \| --check [--file <path>]` | 产物链操作（见 docs/design/artifact-chain-workflow.md）：登记阶段产物（哈希引用，漂移探测；登记 design 产物时其「触点」一节自动写入 PlanScope（手工 `--scope` / `task scope add` 优先），实改超出即报「方案外改动」）/ 查看链态 / 漂移校验（采用需求 ID 的任务附需求覆盖表：已验证/未验证/孤儿）/ 人工审批（human 档经 --by 归因到人、签内容哈希，内容再改即作废；批前打印一屏审批摘要——TL;DR、高危步骤、Open Questions、自上次批准的变化；`--checked` 可重复，记录本次审了什么）/ 从产物提取验收标准（`accept: <cmd> :: <expected>` 行与 \`\`\`accept 围栏编译成验收门禁——产物成为硬门禁的源码；提取的标准盖考卷层级 spec-extract；`accept[REQ-3]:` 前缀或行尾 `#REQ-3` 声明该条验证的需求 ID，两种写法并存取并集）/ 方案事实核查 `--check`（方案中的路径、`file:line`、Go 符号、Go 模块是否真实存在；`new:` 行豁免；advisory）。链与档位（advisory\|rubric\|human\|hard，HARD 只守事实）由 `<DataDir>/schemas/schema.yaml` 声明（缺省默认链 proposal→spec→design→plan 全 advisory 零阻断）；`task start --artifact "<stage>=<path>"` 开工即登记并就地提取验收；complete 前漂移 pre-flight：hard/human 档漂移阻断、advisory/rubric 留痕、漂移一律作废审批；逃生（落审计）`FORGE_ARTIFACT_CHAIN=disable` 或 `forge task override --artifact-chain disable`；已钉 change 契约的任务，产物链提醒改为「以 change 产物为准」，task 级产物可省 |
-| `forge task chain-init [--force]` | 一键接线产物链执法：写默认链 schema 且 spec 档升 human——spec 里的考卷围栏（accept: 行/```accept 块）从此需 forge task artifact --approve spec --by <审批人> 签字才算定稿，内容再改即作废（业务正确性的签字入口）；已存在 schema 须 --force 显式覆盖；不依赖活跃任务 |
 | `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |
 | `forge task gate <gate-id>` | 验证单道任务门禁 |
 | `forge task impact --level none\|multi [--repo <key>]... [--note <说明>] [--ref <ref>]` | 声明当前任务的跨仓影响（多仓 workspace 成员的 verify 前置，单仓改动也须显式声明）：`--level none` 改动限定本仓；`--level multi --repo <key>` 波及指定成员 repo（`--repo` 可重复）。默认 advisory（未声明只提醒），protocol.yml 配 `cross_repo_impact: required` 升级为 HARD stop（四段式 WHAT/WHY/HOW/REF 报错），详见 docs/design/multi-repo-workspace.md |
 | `forge task verify-acceptance [--ref <ref>] [--trust-foreign]` | 实跑验收标准（task start --accept 登记），记 deterministic 证据；v2 断言逐条判定并记 `acceptance-assert` 证据行（聚合 `acceptance` 行保留）；验收命令来自 task import / .forge migrate（外来标记）时首跑须 `--trust-foreign`（人工审阅命令清单后显式受信，防外来命令串直接执行）；登记了 held-out 保留集（`task start --heldout <file>`）时同时实跑双套件并记 gap——可见全过而保留集挂 = test-generalization gap（SpecBench 形态，`FORGE_HELDOUT=disable` 逃生留痕），task-complete 边界复跑；零登记时自动从 conventions 档案兜底登记默认套件（build/test/lint，考卷层级 conventions——项目默认考卷而非实现者自选），并从 held-out 池自动抽 1 套业务坏天气集入卷（池非空时） |
 | `forge task accept <criteria...> [--ref <ref>] [--assert "type:arg :: expected"]` | 补登记验收标准（考卷层级 manual——实现者看过代码后出的题，梯子最弱一级）：格式同 --accept（"run :: expected"，可多条），`--assert` 挂本命令最后一条标准（file-\* 可独立）；锁内合并按 (Run, Expected, Assertions) 三元组去重（已存在的同一检查保留原层级）；已完成任务拒绝补登（考卷在交付前定稿）；交付验收单如实披露 manual 层存在 |
 | `forge task report [--ref <ref>] [--json]` | 交付验收单（验收方单页视图）：考卷逐条结果+层级与来源分布、评分与证据强度（deterministic vs agent-claim）、未验证面（UntestedAreas；JSON 字段 `repo_has_go_test_files`，仓库内无 Go 测试文件时如实披露「未检测到 Go 测试文件」而不写「均有配对测试」）、残留风险（完成时 open findings）、考卷披露（manual 层告警/held-out 保留集/产物链——任务用 `--change` 钉了 change 时显示「已钉 change（<id>）——以 change 产物为准」，并取代同行的 spec 披露（「spec 已由 … 审批」/「spec 产物未审批」/「无 spec 产物」三种文案）；JSON 顶层字段 `pinned_change`、`spec_approval_by`、`spec_approved_at`、`has_spec_artifact`）、逃生舱库存、审查轮次——附复现入口（verify-acceptance 重跑 / trace 证据链）；逃生债行（每个验证类逃生转为未验证面披露）、自供申辩计数、自审标记（盖章会话=改动生产者时 doc-gate 不消费自录分）；文档回检行（L2 分数/轮次/评审者，未记录评审者、或记录时 SelfReview（盖章会话=改动生产者）时标「自查（独立性未校验）」）；--json 结构化输出。任务完成后不带 `--ref` 会报 no active task——报告必须显式指定任务 |
-| `forge task mutation [--sample N]` | mutation 抽样（机器出题治假绿；作用于当前活跃任务，无 --ref）：对任务改动的 Go 源文件注入变异体（比较/逻辑翻转），逐个原地变异→实跑所在包 go test→立即还原——杀不死变异体的测试是装饰品（断言弱化/空断言无论覆盖率多高都查不出）。判定走 go 退出码契约（测试失败=杀灭/构建失败=无效体/通过=存活逐位点点名）；确定性均匀抽样（默认 3；只变异磁盘上有配对测试的改动文件，FORGE_MUTATION_TIMEOUT 调单变异体超时）；证据落 mutation-sampling deterministic 行（计入证据强度）；advisory 不阻断 |
 | `forge task fuzz [--sec N] [--max N]` | fuzz 实跑（作用于当前活跃任务，无 --ref）：发现任务改动包的 Fuzz 目标并按预算执行 Go 原生引擎（默认 30s/目标、最多 3 个）——edge 清单再全也是人枚举的，fuzz 是无记忆的对抗者；失败目标分型：退出码 1=真 crasher（崩溃输入由 go 写进 testdata/，证据即语料，修完 go test 回归），构建失败/预算中断则无 crasher 语料；证据落 fuzz-run deterministic 行；advisory 不阻断 |
 | `forge task edgecheck` | edge case 清单（作用于当前活跃任务，无 --ref）：任务改动的每个导出函数 × 五维（基数/值域/时序/环境/故障）机械枚举成可勾选骨架，落 DataDir/edgecases/——机器出骨架、验收前逐项填断言；确定性生成（文件序×声明序） |
 | `forge task regression --finding <id> --test <file> \| --none --note <理由>` | 登记 finding 的回归测试绑定（修复自证）：修前红由 finding 作证、修后绿由 --test 指向的本任务改动 _test.go 作证（三重校验：后缀/任务窗口/真含测试函数）；无可测形态走 --none --note 落审计行——`forge task finding --resolve` 的硬前置，没有回归的 fixed 会复发 |
 | `forge task heldout-pool --add <file> --name <名> [--tag <组>] \| --list [--tag <组>] \| --draw N [--tag <组>] [--apply] [--ref <任务>]` | held-out 池（独立出题）：把出保留题变成项目资产——业务坏天气集（金额边界/并发/退款链）沉淀进 DataDir/heldout-pool/，任务侧 `--draw N --apply [--ref <任务>]` 名序确定性抽取并入指定/活跃任务保留集（按 Run 去重、保留集计数不清零、落 apply 审计行；verify-acceptance 实跑双套件记 gap）；同名拒绝静默换锚；--add/--list/--draw 是项目级动作不依赖活跃任务；「测试的测试」是人工边界——池里的题必须人出 |
-| task-complete 验收登记门禁（自动） | 非 generic 交付任务零验收标准 → 拒绝完成（考卷缺位）；考卷质量下限：有测试能力仓库考卷须含 ≥1 条测试类命令——单条 go build 不构成合格考卷；doc gate 与 `forge task complete` 同口径（同一 `CheckDocGate`）：变更了 .md 却缺 L2 回检、记录过期、得分 <75、未决 Critical、L1 硬失败或证据完整性校验失败时，gate task-complete 直接 BLOCKED（不再先绿灯、complete 才报；gate 只在首次 complete 前跑）；mutation 复发升硬：Go 改动连续 3 任务零 mutation 证据 → 硬拦（FORGE_MUTATION_GATE=disable 逃生）。考卷层级梯子：spec 产物提取（human 档可签字）＞ start 登记 ＞ conventions 兜底 ＞ manual 补登（验收单披露）。逃生与 freshness 共用舱：`forge task override --acceptance-gate disable` / `FORGE_ACCEPTANCE_GATE=disable`（落审计、降 evidence） |
+| task-complete 验收登记门禁（自动） | 非 generic 交付任务零验收标准 → 拒绝完成（考卷缺位）；考卷质量下限：有测试能力仓库考卷须含 ≥1 条测试类命令——单条 go build 不构成合格考卷。考卷层级梯子：spec 产物提取（human 档可签字）＞ start 登记 ＞ conventions 兜底 ＞ manual 补登（验收单披露）。逃生舱：`forge task override --acceptance-gate disable` / `FORGE_ACCEPTANCE_GATE=disable`（落审计、降 evidence） |
 | `forge task mirror github [--repo owner/name] [--dry-run]` | 分派任务镜像到 GitHub Issues（Forge 台账为主真相、issue 为组织可见面；offered→建 issue 打 forge:状态 label，终态→关闭；映射存 DataDir/mirror-gh.json；经 gh CLI，无 gh 明确报错）——Symphony 验证的组织面入口需求 |
 | `forge compat snapshot [--out <file>]` / `forge compat report [--base <ref>] [--json]` | 可执行兼容工件（七面快照：命令树+flags / CheckName roster / 逃生舱 env / 内嵌载荷 sha256 / 序列化 schema 键 / 阻断位点计数 / 外部桥契约）——golden（compat.snapshot.json）入库、PR diff 呈现；report 对比基线：破坏性变更（removed/changed）exit 2、added 提示同步文档（cargo-semver-checks 契约本地化：0=过 / 2=违规 / 1=工具故障）；承诺表见 docs/design/compat-commitments.md |
 | `forge config get/set compat <版本>` | 兼容基线声明（指纹分流 v1，GODEBUG go 行声明的轻量版）：声明"行为按哪个版本的默认走"（v1 为声明性锚点 + 落后提醒，暂不分派行为——完整分流机制见承诺表"刻意不做"）；`forge status` 显示兼容基线行与落后 minor 数；遥测回读（逃生舱使用聚合）见 `forge eval dashboard` |
 | `forge task watchdog [--stall 45m] [--release]` | 长时任务停滞检测（always-on 治理）：从 checklog/toollog 取未完成任务的最后活动，超阈报停滞（task-stalled advisory，marker 节流每小时一条）；`--release` 清停滞任务租约；顺带展示 token 熔断信号 |
-| `forge task doc-review --passed <pass\|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <tag:发现>] [--co-reviewer <id> --co-score <N>]` | 记录 L2 文档回检证据（输出→回检循环）：按 doc-review skill 四维评审后落档（产出者不能自检）；`--score` 为 0-100 总分、`--round` 轮次（≥3 轮未过升级人工确认）、`--critical` 落 Critical findings（未决阻断 complete；`tag:` 前缀打标供进化判据聚合）、`--co-reviewer/--co-score` 落同家族 borderline 双评记录（gate 不消费，只作分歧率观测）。task-complete 的 doc gate 消费该证据 |
-| `forge task finding --content <text> [--tag <枚举>] \| --resolve <id> \| --stats [--source <source>]` | 记录发现/标 fixed/跨任务聚合：`--tag` 打类别标（padding/conclusion/template/false-precision/disclaimer/evidence/style）；`--stats --source doc-review` 按 Tag×Round 跨任务聚合计数——session-retrospective「同类打回 ≥3 次」升级判据的机器来源 |
+| `forge task finding --content <text> [--tag <枚举>] \| --resolve <id> \| --stats [--source <source>]` | 记录发现/标 fixed/跨任务聚合：`--tag` 打类别标（padding/conclusion/template/false-precision/disclaimer/evidence/style）；`--stats --source doc-review` 按 Tag 跨任务聚合计数（历史记录仍可读）——session-retrospective「同类打回 ≥3 次」升级判据的机器来源 |
 | task-complete 自报一致性门禁（自动） | checklist 已勾选项里声称执行过的验证类命令（go test/pytest/cargo test 等）与 toollog 实测 Bash 集比对：测试类声称任务全程零匹配 = 虚报进度形态（arXiv 2605.29442）→ 拒绝完成；非测试类差集只留 advisory 痕；toollog 缺失（宿主遥测未接）跳过——区分"无法验证"与"验证通过"；逃生（留痕）`FORGE_SELF_REPORT=disable` |
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D11：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅/结论位置/调研文档的来源、信度标注与内部标签——调研三条 D9-D11 在观察期内全是 advisory）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
 | `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、门禁/逃生舱/检查器自证与已知盲区清单（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
@@ -118,7 +114,7 @@
 | `forge gate hooks install [--uninstall]` | 安装 git pre-push 钩子（core.hooksPath=.forge/git-hooks，调 `forge gate push`；forge 不在 PATH 时 fail-open 放行）——治理随 git 走的本地接线 |
 | `forge task scope add <glob> [--ref <ref>]` | 追加计划改动文件到白名单（支持中途迭代；--ref 指定任务，不依赖活跃任务检测） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
-| `forge task override [--work-activity\|--test-coverage\|--acceptance-gate\|--skill-decisions\|--doc-gate] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关 read-before-edit）；使用落 checklog 审计。验证类（test-coverage/acceptance-gate/skill-decisions/doc-gate）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度。doc-gate 的放行须在 doc-review 轮次上限后经人工确认再走 |
+| `forge task override [--work-activity\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关活动检查）；使用落 checklog 审计。验证类（acceptance-gate/skill-decisions）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度。 |
 | `forge task complete` | 标记任务完成（自动评分） |
 | `forge task abort [--ref <ref>] [--cascade\|--detach-deps]` | 中止并删除任务（清理 ghost/卡住任务，不评分；存在反向依赖时默认仅提示，`--cascade` 递归中止所有依赖它的任务，`--detach-deps` 从依赖它的任务移除该依赖边） |
 | `forge task score` | 查看任务质量评分 |
@@ -129,7 +125,7 @@
 | `forge task decide --rejected --content --rationale` | 记一条已证伪方案（死路记忆，docs/plans/loop-contract-2026-10-proposal.md）：`--content` 写方案、`--rationale` 写失败证据；resume 单独成节【已证伪方案】并进 tl;dr，不列入已确认决策。验收同因复发时 forge 会自动记一条 |
 | `forge task next <step>` | 追加下一步（可多条） |
 | `forge task block --content/--resolve <id>` | 登记阻塞或解决阻塞（open→resolved） |
-| `forge task finding --content/--resolve <id>` \| `--reset-loop --note` | 记录跨工具发现（带来源工具）、标 fixed（指纹入 ResolvedPrints 记忆）；**审查回环**（回边语义，docs/design/artifact-chain-workflow.md）：open finding 跨过 schema 回边 max_rounds 次复核、或已解决 finding 同指纹再登记（复活）→ 回环耗尽，complete 被拦升级人工；人工裁决 `--reset-loop --note` 重开（审计行落地）。耗尽后唯一出口是人——终止权外置 |
+| `forge task finding --content <text> [--tag <枚举>] \| --resolve <id> \| --stats [--source <source>]` | 记录发现/标 fixed/跨任务聚合：`--tag` 打类别标（padding/conclusion/template/false-precision/disclaimer/evidence/style）；`--stats --source doc-review` 按 Tag 跨任务聚合计数（历史记录仍可读）——session-retrospective「同类打回 ≥3 次」升级判据的机器来源 |
 | `forge task attach --ref --tool` | 锚定 session+工具到 task（跨工具多向锚定：pi 起、claude-code 接） |
 | `forge task assign --ref <ref> --to <agent> [--role] [--by]` | 把任务分派给指定 agent（offered 起步，编排器侧；未知 agent 警告但接受） |
 | `forge task claim --ref <ref> [--as <agent>]` | 工作方认领分派给自己的任务（offered→claimed，自动锚定 session） |
@@ -143,7 +139,6 @@
 | `forge task export --ref <ref> [-o\|--output file] [--include-checklog] [--redact]` | 把任务导出为跨机器 JSON Bundle（task state 存于用户级 DataDir 不随仓库走，跨机器交接需此载体；--include-checklog 附带证据链；--redact 抹除 issue/agent/commit/证据供对外分享） |
 | `forge task import --file <bundle> [--force\|--merge]` | 从 Bundle 导入任务到本地（导入 session 标记幽灵仅溯源；默认同 ref 拒绝，--force 覆盖，--merge 按 ID 并集协作记录；含 checklog 则回放进本地 trace） |
 | `forge task health [--json]` | 扫描全 project 上浮僵尸/死锁/长期未答复任务（只读告警，不改状态）：offered>7d / claimed>TTL（无 checklog 活动）/ input-required>7d / abandoned_count≥2 标黄，DependsOn 指向 failed/canceled/缺失的死锁链与环主动报；与 mine/看板共享同一检测真相源 |
-| `forge selfcheck pairing` / `forge selfcheck scope` | 门禁镜像自检（discipline-first-gates）：对当前活跃任务跑与 task-verify **同一计算路径**的秒级自检——`pairing` 镜像 test-coverage 配对检查、`scope` 镜像 PlanScope 漂移；发现项逐文件列出 + 修复指引（exit 1 供脚本感知，非阻断），每次运行落 `selfcheck-pairing`/`selfcheck-scope` 观察条目——其后失败的 verify 门禁按事实级交集归 confirmation（agent 已被告知这批文件）而非 discovery。逃生激活时显式标注「门禁已豁免、以下为事实」。`forge next` 在验收待跑且未自检时提示先行自检 |
 
 </details>
 
@@ -154,7 +149,7 @@
 
 | 命令 | 说明 |
 |------|------|
-| `forge review pass [--ref <ref>] [--note <文本>] [--acknowledge-changes]` | 标记当前变更已通过 code-review-gate（task 模式写任务状态，否则写分支 stamp）；--note 审查结论文本记入 ReviewRound/stamp 与 checklog 审计留痕；距上次基线有源码变更时裸 pass 会被拒——须 --note 记复审结论，或 --acknowledge-changes 显式自我承担（记 WARN 级 self-refresh 审计） |
+| `forge review pass [--ref <ref>] [--score N] [--reviewer <评审者 id>]` | 标记当前变更已通过 code-review（task 模式写任务状态，否则写分支 stamp）；`--score` 记分，`--reviewer` 记评审者。基线之后又有源码变更时必须派**新的只读评审者**并换一个 `--reviewer`：同一 reviewer 自证、或用 `--note` 刷新基线都会被拒（记 WARN 审计） |
 | `forge review gate` | 判定当前是否需要审查（显式运行，agent 或 CI 调用；exit 0=放行，1=需审 block；评估本身失败 fail-open 放行） |
 | `forge review status` | 显示当前审查状态 |
 
@@ -235,7 +230,7 @@
 
 ## 🚦 工作流程与进阶形态
 
-每个开发任务自动走 3 道门禁。下面是 `task start` 的完整形态（worktree 隔离 / 分派 / 依赖 / 方案档位 / scope 白名单）：
+每个开发任务自动走 2 道门禁（implement → complete），验收在中间用 `forge task verify-acceptance` 实跑。下面是 `task start` 的完整形态（worktree 隔离 / 分派 / 依赖 / 方案档位 / scope 白名单）：
 
 ```bash
 forge task start --ref feat/add-login --branch --accept "go test -v ./... :: PASS"   # 创建任务+分支+登记验收标准（--accept 可重复；Expected 是输出子串匹配；go test 带 Expected 或 contains/not-contains 断言忘加 -v 时 start 自动补——无 -v 无 PASS 行永不匹配）
@@ -245,14 +240,14 @@ forge task start --ref feat/goal --branch --change task-goal-contract          #
 forge task start --ref feat/hotfix --goal-file docs/goal.md                   # 非 change 流程也可用仓库内五段式 goal 文件；与 --change 二选一，且与 --goal 互斥
 forge task start --ref feat/add-login --tier mini                                 # 方案档位：none 直接改 / mini 小方案 / full 完整方案；与硬触发器（迁移/schema/接口契约/鉴权/依赖/跨模块）推导档位取较高者，下调须 --tier-reason 写明理由（advisory）
 #   规则表可在 protocol.yml 的 design_tiers 段覆盖：rules（按 name 追加或替换内置规则，tier 取 mini/full，paths 支持 seg:<目录名> / 含 / 的路径 glob 或目录前缀 / 文件名 glob）、standard_changes（追加不触发档位的例行改动）、replace_defaults（弃用内置规则与内置例行改动）
-forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），声明上游依赖 feat/api（DAG 环检测；task-verify/task-complete 在 feat/api 交付前阻断）
+forge task start --ref feat/frontend --assignee kimi --role frontend --depends-on feat/api   # 创建即分派给 kimi（offered），声明上游依赖 feat/api（DAG 环检测；task-complete 在 feat/api 交付前阻断）
 forge task start --ref feat/hotfix --assignee kimi --ttl 24h   # per-task TTL 覆盖全局 7d 僵尸窗口：短时效分派 24h 无活动即标僵尸（offered/claimed/input-required 通用；0=用全局默认）
 # AI 自动完成工作...
 forge task gate task-implement    # ✅ 代码实现（advisory：编译/断言提醒，agent 自检）
 forge task verify-acceptance      # ✅ 实跑验收标准，记 deterministic 证据（spec-as-gate）
-forge task gate task-verify       # ✅ 测试验证
+forge task verify-acceptance      # ✅ 实跑验收
 forge task scope show             # 查看声明白名单 + 实时 scope-drift（advisory，不阻塞）
-forge task gate task-complete     # ✅ 完成确认（第三道门禁；门禁全过 ≠ 任务完结）
+forge task gate task-complete     # ✅ 完成确认（第二道门禁；门禁全过 ≠ 任务完结）
 forge task complete               # 🏁 任务完结：MarkComplete + 自动评分 + Act 结论 + 清 active ref（2026-08-18 死锁修复后完成标记归属本命令——门禁只过不 complete 会留僵尸任务）
 forge task score                  # 查看质量评分
 ```
@@ -263,10 +258,6 @@ forge task score                  # 查看质量评分
 门禁之间有时间和活动检查，防止 AI 跳过阶段直接提交。`task-implement` 的编译/断言检查为 advisory 提醒（由 agent 自检，不阻塞）——forge 技术栈无关，适配 loop engineering。`forge task verify-acceptance` 实跑 `task start --accept` 登记的验收标准（`Run :: Expected`），把 dev-workflow Plan 的验收条件从 plan 文本变成不可伪造的 deterministic 证据——对冲 agent 自述"满足验收"却没真跑的盲区。`forge task complete` 对非 generic 任务硬前置至少一条登记验收标准（零验收 = 考卷缺位拒绝完成；考卷来源分级盖章：spec-extract ＞ start ＞ conventions 兜底 ＞ manual 补登，交付验收单如实披露各层级计数）。
 
 **门禁退出码契约**：`forge task gate` 非 0 退出（输出 `BLOCKED:` 前缀）= 硬阻断，必须修复后重跑；零退出但见 `ADVISORY:` 前缀 = 软信号（gate 仍过、已记 checklog，应修不阻断）。按退出码而非文案行动——硬错误的散文易被误读成提醒而跳过。
-
-**PlanScope 白名单（规划前置）**：`task start --scope <glob>`（可重复，或中途 `forge task scope add <glob>` 追加）声明"打算改哪些文件"。`task-verify` 比对实改源码与声明的差集，记一条 `scope-drift` 证据（deterministic，`forge trace` 可见）并 stderr 提醒。全程 **advisory 不阻塞**——变更影响分析召回率仅 ~44%，scope 是 prediction 非 contract，偏差是常态信号而非异常；它把"规划前置"变成可度量、可回顾的契约，正堵在 review 反复出问题的根因上。
-
-**Cheat-scan（机械作弊模式扫描）**：`task-verify` 扫任务新增行（`+` 行），机械检测 7 类 AI 作弊模式——`type-suppression`（`@ts-ignore`/`eslint-disable`/`#[allow]`/`type: ignore`）、`error-swallow`（空 `catch{}`/`except:pass`）、`dead-branch`（`if(false)`/`if(1===2)`）、`comment-only-fix`（某文件新增行全注释零逻辑）、`comment-as-debt`（新增债务注释标记不解决）、`phantom-import`（相对 import 解析不到磁盘文件）、`path-assumption`（OS 路径分隔符被当内容匹配器，如 `HasPrefix(line, string(filepath.Separator))`——跨平台崩溃指纹）——记一条 `cheat-scan` 证据（deterministic，`forge trace` 可见）并 stderr 列出命中。全程 **advisory 不阻塞**：这些模式此前全靠 code-review-gate 的 LLM 子 agent 判断，LLM 每轮对同一 diff 重新采样抓不同子集，是"每轮 review 冒新问题"的体感来源；抽到 deterministic 后，机械模式一次判准，LLM-reviewer 退到只做语义判断（设计/架构/mock 是否幻觉）。`comment-only-fix` 是启发式（severity=low，纯文档任务可能误报）。
 
 </details>
 
@@ -289,7 +280,7 @@ forge task score                  # 查看质量评分
 - `forge next`：声明了 `spec/forge.yaml` 的仓库，工作区有未归属改动时：没有未完成 change → 建议 `forge change new <id>`；有未完成的 change → 请先看 `forge change phase <id>`；该 change 已 ready → 直接给 `forge task start --change <id>`。任务是一等入口，`task start` 永远可达。未声明契约的仓库行为不变（仍是 `task start` / `wild` 申报）。JSON 的 `state` 里有 `spec_declared`、`open_changes` 与 `ready_changes`（计数；ready 但无 goal.md 的老 change 不计入）。
 - `forge task start`：任务是一等入口——不带 `--change` 随时可以开工，change 可以事后补。
   带 `--change` 时要求该 change 已到 `ready` 阶段，否则报错里给出当前阶段与缺失项（这条检查只是「链接契约」的完整性，不是「开工许可」）。
-  `--kind task` 标记「这次是小修、没有立 change」，仍走三道门禁；`--kind generic` 仍是「不走门禁的调研/设计任务」。
+  `--kind task` 标记「这次是小修、没有立 change」，仍走两道门禁；`--kind generic` 仍是「不走门禁的调研/设计任务」。
 - `forge change phase <id> [--json]`：按产物推导阶段——`specify`（goal.md 五段没填完；没有 goal.md 的老 change 跳过这一段）→ `clarify`（缺 clarify.md 或没写「人确认：」）→ `plan`（proposal/design 缺失或仍是脚手架）→ `tasks`（acceptance 或 tasks 缺失/没任务/任务没写判据编号）→ `ready`。fast change 不要求 design/tasks（那是 fast 的定义），proposal 与 acceptance 齐、clarify 有记录即 ready。阶段不落状态文件，每次都从磁盘重建；`ready` 只表示产物齐，不表示必须开工。**老 change（没有 goal.md）可以是 `ready`，但不能带 `--change` 起任务**——命令会提示先补 goal.md，或改用 `task start --ref <ref>`（不钉契约）。
 - `forge change list` 的 **STAGE 列**（交付/证据走到哪：empty/proposal/design/tasks/verified）与 `forge change phase` 的 **phase**（开工前还缺什么）是两套概念：同一个 change 可以 `STAGE=tasks` 而 `phase=ready`，两者不矛盾。`change list` 不显示 phase（要看 phase 用 `forge change phase <id>` 或 `forge change status <id> --json`）。
 - `forge change clarify <id> --by-human --note "…" [--note-file <path>] [--force]`：写 `clarify.md`（边界 / 非目标 / `人确认：<UTC>`）。必须带 `--by-human`——先问用户边界与非目标；已存在要 `--force`；`--note` 至少 10 个字。非目标默认取 goal.md 的 Out of Scope（老 change 无 goal.md 时记为「非目标未记录」）（--note-file 也必须在仓库内，与 --goal-file 同一约束）。

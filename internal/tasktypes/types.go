@@ -486,7 +486,10 @@ type SessionLink struct {
 // TaskState 追踪单个 task pipeline 的状态。
 // 存于 DataDir/tasks/{sanitized-ref}.json。
 type TaskState struct {
-	TaskRef        string                    `json:"task_ref"`
+	TaskRef string `json:"task_ref"`
+	// LastReviewer 是最近一次 review pass 记录的评审者 id；源码变更后的复审必须是
+	// 一个新的 reviewer（同一 reviewer 的自证不再被接受）。
+	LastReviewer   string                    `json:"last_reviewer,omitempty"`
 	Branch         string                    `json:"branch"`
 	Source         string                    `json:"source"` // explicit | branch
 	Summary        string                    `json:"summary"`

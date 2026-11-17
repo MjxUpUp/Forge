@@ -47,15 +47,6 @@ func GoalRequiredKeys() []string {
 	return out
 }
 
-// GoalSectionKeys 返回必填段落键（供 CLI/文档展示）。
-func GoalSectionKeys() []string {
-	out := make([]string, 0, len(goalSectionSpecs))
-	for _, s := range goalSectionSpecs {
-		out = append(out, s.Key)
-	}
-	return out
-}
-
 // ParseGoal 解析 goal.md：按二级标题取段（新 change 必填 three：objective/out of scope/check），标题大小写与空格不敏感
 // （"Out of Scope"/"OutOfScope" 等价）。缺段/空段/残留 forge:fill 标记都算未完成。
 func ParseGoal(content string) (*Goal, error) {

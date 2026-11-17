@@ -422,8 +422,8 @@ func TestTaskScoreWorkflow(t *testing.T) {
 		t.Fatalf("forge task verify-acceptance failed: %s", stdout)
 	}
 
-	// Pass gates (task-implement now has real code changes; task-verify follows)
-	for _, g := range []string{"task-implement", "task-verify"} {
+	// Pass gates (task-implement now has real code changes; task-complete follows)
+	for _, g := range []string{"task-implement"} {
 		stdout, _, code = runForge(t, tmpDir, "task", "gate", g)
 		if code != 0 {
 			t.Fatalf("forge task gate %s failed: %s", g, stdout)

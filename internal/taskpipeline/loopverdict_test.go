@@ -85,13 +85,13 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 		}, LoopVerdictDone, ""},
 		{"同一门禁连续两次 BLOCKED", func() LoopInputs {
 			in := base()
-			in.State = withReset(in.State, GateVerify, false, false)
+			in.State = withReset(in.State, GateComplete, false, false)
 			return in
 		}, LoopVerdictEscalate, LoopCodeGateRepeatBlocked},
 		{"hook 路径（Silent）的 BLOCKED 不计", func() LoopInputs {
 			in := base()
 			for i := 0; i < 3; i++ {
-				in.State.History = append(in.State.History, tasktypes.TaskGateResult{Gate: GateVerify, Passed: false, CompletedAt: time.Now(), Silent: true})
+				in.State.History = append(in.State.History, tasktypes.TaskGateResult{Gate: GateComplete, Passed: false, CompletedAt: time.Now(), Silent: true})
 			}
 			return in
 		}, LoopVerdictDone, ""},
@@ -107,7 +107,7 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 		}, LoopVerdictDone, ""},
 		{"重置之前的 BLOCKED 不计", func() LoopInputs {
 			in := base()
-			in.State = withReset(in.State, GateVerify, false, false)
+			in.State = withReset(in.State, GateComplete, false, false)
 			reset := time.Now().Add(time.Second)
 			in.State.LoopResetAt = &reset
 			return in
