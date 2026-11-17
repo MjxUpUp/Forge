@@ -51,8 +51,6 @@ var (
 	fileRefRe = regexp.MustCompile(`^([\w.\-/]+\.[A-Za-z0-9]+):([A-Za-z_][\w.]*|\d+)$`)
 	// goModuleRe matches a Go module path (host with a dot + at least one path segment).
 	goModuleRe = regexp.MustCompile(`^(?:[a-z0-9\-]+\.)+[a-z]{2,}(?:/[\w.\-]+)+$`)
-	// newMarkerRe marks a line whose references are planned new files/deps.
-	newMarkerRe = regexp.MustCompile(`(?i)\bnew(?:-dep)?:`)
 	// touchpointsHeadingRe matches the touch-point section heading.
 	touchpointsHeadingRe = regexp.MustCompile(`(?i)^#{2,6}\s*(触点|touch[ -]?points?)`)
 )
@@ -98,18 +96,6 @@ func looksLikeRepoPath(tok string) bool {
 	}
 	return strings.Contains(tok, "/") && (filepath.Ext(tok) != "" || strings.HasSuffix(tok, "/"))
 }
-
-// interfaceBlockRe captures `type Name interface { … }` blocks (closing brace at line start).
-// Type parameters are allowed (`type Set[T any] interface {`); the opening brace
-// end its line (a trailing // comment and CRLF are fine), so one-line `interface{}`
-// never opens a block that would
-// swallow the following function bodies.
-var interfaceBlockRe = regexp.MustCompile(`(?ms)^type\s+(\w+)(?:\[[^\]]*\])?\s+interface\s*\{[ \t]*(?://[^\n]*)?\r?\n(.*?)^\}`)
-
-// maxDesignRefBytes caps how much of a referenced file the check reads.
-//
-// maxDesignRefBytes 是核查读取被引用文件的字节上限。
-const maxDesignRefBytes = 4 << 20
 
 // ParseTouchpoints extracts repo paths from the touch-point section (触点 /
 // Touch points): the first path-like token of each list item or table row, with a

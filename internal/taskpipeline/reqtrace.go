@@ -267,13 +267,3 @@ func FormatRequirementCoverage(c RequirementCoverage) string {
 //
 // CheckNameReqCoverage 是需求覆盖检查的 checklog 名。
 const CheckNameReqCoverage checklog.CheckName = "req-coverage"
-
-// reqCoverageDisableEnv is the escape hatch of the requirement-coverage check.
-//
-// reqCoverageDisableEnv 是需求覆盖检查的逃生舱。
-const reqCoverageDisableEnv = "FORGE_REQ_COVERAGE"
-
-// escapeReqCoverage is the which key of the requirement-coverage escape (v1 env only).
-//
-// escapeReqCoverage 是需求覆盖逃生的 which 键（v1 仅 env）。
-const escapeReqCoverage = "req-coverage"

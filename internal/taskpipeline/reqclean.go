@@ -34,9 +34,6 @@ import (
 // agent 无法伪造结果侧）。
 const CheckNameReqHygiene checklog.CheckName = "req-hygiene"
 
-// reqHygieneDisableEnv 是需求卫生检查的逃生舱（沿 FORGE_DOC_GATE 模式）。
-const reqHygieneDisableEnv = "FORGE_REQ_HYGIENE"
-
 // reqHygieneAmbiguityMarkers 匹配显式歧义标记（完整词表见下方正则——本注释不连写
 // 具体标记词：cheat-scan 的 comment-as-debt 会扫本仓自身源码，注释里连写债务词形
 // 即自噬误报，同 cheatscan.go debtMarkerWords 的拆写纪律）。

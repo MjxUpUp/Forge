@@ -76,23 +76,10 @@ const (
 	escapeAcceptanceGate = "acceptance-gate"
 	escapeSkillDecisions = "skill-decisions"
 	escapeDocGate        = "doc-gate"
-	// escapeReqHygiene：需求卫生检查的 which 键。v1 仅 env 逃生（switch 无 case，
-	// self-report 同款）——不得借用 escapeDocGate：否则 per-task override --doc-gate
-	// disable 会连带静默关闭 req-hygiene（2026-09-15 审查轮 finding 1）。
-	escapeReqHygiene = "req-hygiene"
-	// escapeArtifactChain：产物链分档执法与漂移 pre-flight 的 which 键
-	//（artifact-chain-workflow.md §2/§5 逃生舱）。
-	escapeArtifactChain = "artifact-chain"
 	// escapeSelfReport：自报一致性门禁的 which 键。v1 仅 env 逃生（上方 switch 无
 	// case——per-task override flag 留给需要时再扩 TaskOverrides 面）。
 	escapeSelfReport = "self-report"
-	// escapeMutationGate：mutation 复发升硬门的 which 键（delivery-hardening
-	// 硬-1b）。v1 仅 env 逃生（switch 无 case，self-report 同款）。
-	escapeMutationGate = "mutation-gate"
 	// envWorkActivity: the global env for the work-activity escape hatch (executor getDisableWorkActivity).
 	// envWorkActivity: work-activity 逃生舱对应的全局 env（executor getDisableWorkActivity）。
 	envWorkActivity = "FORGE_WORK_ACTIVITY"
-	// envSkillDecisions: the global env for the skill-decisions escape hatch (CI/test fallback).
-	// envSkillDecisions: skill-decisions 逃生舱对应的全局 env（CI/测试 fallback）。
-	envSkillDecisions = "FORGE_SKILL_DECISIONS"
 )

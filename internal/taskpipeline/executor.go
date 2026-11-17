@@ -57,12 +57,6 @@ const CheckNameUncommittedAtComplete checklog.CheckName = "uncommitted-at-comple
 // dashboard / forge trace 能照出任务反复卡在门禁等上游——否则该反复停滞信号不可见，与「从未尝试」无法区分。
 const CheckNameDependencyGate checklog.CheckName = "dependency-gate"
 
-// skillDecisionsEscapeAdvisoryFmt 是经逃生舱（per-task override 或 env）绕过
-// skill-decisions guardrail 时打印的 ADVISORY。包级单一来源，供文案守卫测试断言
-// （TestTaskVerify_SkillDecisionsGuardrail_EscapeHatchBypasses 断言它提及 2026-08
-// 证据缩放豁免——遗漏它的提示会低估重证据任务的 Strength 状态）。
-const skillDecisionsEscapeAdvisoryFmt = `skill %s 的 SKILL.md 改动已用 --skill-decisions disable 逃生舱绕过 guardrail——evidence 强度降级到 Weak（重证据任务按证据缩放豁免）。仍建议跑 'forge skills decide --skill <name> --outcome <accept|reject> --diagnosis <为何改> --revision <改了啥> --evidence <依据>' 记决策，避免下一轮 agent 重复探索已失败方向`
-
 // recordAudit 落盘 checklog 条目并让落盘失败可听见：checklog.Record 的 error 极易
 // 被丢掉（调用读起来像纯副作用），但落盘证据不可缺——score/dashboard/trace 都读
 // 这些条目，静默写失败会让「task 为何卡在某门禁」无信号。按包内既有 warning 风格

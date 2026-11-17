@@ -8,15 +8,6 @@ import _ "embed"
 //go:embed templates/change.md
 var tmplChange string
 
-//go:embed templates/proposal.md
-var tmplProposal string
-
-//go:embed templates/design.md
-var tmplDesign string
-
-//go:embed templates/tasks.md
-var tmplTasks string
-
 //go:embed templates/acceptance.md
 var tmplAcceptance string
 
