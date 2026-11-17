@@ -11,15 +11,7 @@ const completeGoal = `# 示例：目标契约
 
 ## Objective
 
-让 change 有第五份产物。
-
-## Why
-
-因为目标不该只活在会话里。
-
-## Constraints
-
-必须兼容没有 goal.md 的老 change。
+让 change 有了 goal 产物。
 
 ## Out of Scope
 
@@ -35,10 +27,10 @@ func TestParseGoal_Complete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseGoal: %v", err)
 	}
-	if len(g.Sections) != 5 {
-		t.Fatalf("sections = %d, want 5", len(g.Sections))
+	if len(g.Sections) != 3 {
+		t.Fatalf("sections = %d, want 3", len(g.Sections))
 	}
-	if g.Sections[0].Key != "objective" || !strings.Contains(g.Sections[0].Body, "第五份产物") {
+	if g.Sections[0].Key != "objective" || !strings.Contains(g.Sections[0].Body, "goal 产物") {
 		t.Fatalf("objective section = %+v", g.Sections[0])
 	}
 }
@@ -64,8 +56,6 @@ func TestParseGoal_ScaffoldMarkerIsIncomplete(t *testing.T) {
 func TestParseGoal_HeadingAliases(t *testing.T) {
 	aliased := strings.NewReplacer(
 		"## Objective", "## 目标",
-		"## Why", "## 原因",
-		"## Constraints", "## 约束",
 		"## Out of Scope", "## 范围外",
 		"## Check", "## 检查",
 	).Replace(completeGoal)

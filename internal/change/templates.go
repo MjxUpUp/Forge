@@ -20,7 +20,7 @@ var tmplTasks string
 //go:embed templates/acceptance.md
 var tmplAcceptance string
 
-// goal.md 是第五份产物（task-goal-contract）：五段式目标契约，进 git 可评审。
+// goal.md 是三份产物之一：三段式目标契约，进 git 可评审。
 //
 //go:embed templates/goal.md
 var tmplGoal string

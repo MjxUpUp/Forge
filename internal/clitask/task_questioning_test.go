@@ -28,7 +28,7 @@ func TestTaskQuestioningCmd_NoActiveTask(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(oldWd) })
 
-	for _, sub := range []string{"mutation", "fuzz", "edgecheck"} {
+	for _, sub := range []string{"fuzz", "edgecheck"} {
 		resetQuestioningFlags()
 		Root.SetArgs([]string{sub})
 		Root.SetOut(nil)
@@ -70,7 +70,7 @@ func TestMutationNextStep_BaselineRedNeverAllKilled(t *testing.T) {
 
 // resetQuestioningFlags 重置 L2/L4 命令族的 flag 残留（同进程多次 Execute）。
 func resetQuestioningFlags() {
-	for _, cmd := range []*cobra.Command{taskMutationCmd, taskFuzzCmd, taskEdgecheckCmd, taskFindingCmd, taskRegressionCmd} {
+	for _, cmd := range []*cobra.Command{taskFuzzCmd, taskEdgecheckCmd, taskFindingCmd, taskRegressionCmd} {
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
 			f.Changed = false
 			_ = f.Value.Set(f.DefValue)

@@ -12,7 +12,7 @@ layers:
       - "任务接续上下文（forge session / HANDOFF 结构化字段）"
   - layer: Scheduling
     mechanisms:
-      - "taskpipeline 三门（task-implement/task-verify/task-complete）塑形任务循环"
+      - "taskpipeline 两道门禁（task-implement/task-complete）塑形任务循环"
       - "多任务并发编排与 active-task-ref 指针"
   - layer: Verification
     mechanisms:
@@ -34,7 +34,6 @@ hooks:
   - "tool-track / subagent-stop / failure-track（观测记录）"
 gates:
   - { id: task-implement, kind: hard, where: "任务首个门（唯一硬失败：无代码改动）" }
-  - { id: task-verify, kind: advisory, where: "验证门（test-coverage/work-activity/cheat-scan 等默认 advisory）" }
   - { id: task-complete, kind: advisory, where: "完成门（acceptance/doc-gate 默认 advisory；protocol 可升级）" }
 escapes:
   - "FORGE_TEST_COVERAGE"

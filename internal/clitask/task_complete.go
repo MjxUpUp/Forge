@@ -157,16 +157,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(sr.UnmatchedTests, `; `))
 	}
 
-	// mutation 消费前置（delivery-hardening 硬-1b）：复发升硬——项目连续
-	// 多个 Go 改动任务零 mutation 证据时硬拦（跑 forge task mutation 或逃生）；
-	// 首发只 advisory（complete 输出明示）。
-	if ok, reasons, advisory := taskpipeline.CheckMutationRecurrence(root, state); !ok {
-		return fmt.Errorf(`mutation recurrence 未通过：%s`,
-			strings.Join(reasons, `; `))
-	} else if advisory != "" {
-		fmt.Fprintf(os.Stderr, "ADVISORY: [mutation-gate] %s\n", advisory)
-	}
-
 	// 影响面披露（forge-ruthless）：complete 时按 diff 算一次影响面，把「改了文档 /
 	// 源码无测试」摆到交付单上。这是披露不是门禁——不阻断完成，只让 reviewer 看见。
 	if rep, err := impact.Collect(root); err == nil {

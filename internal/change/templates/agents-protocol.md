@@ -50,8 +50,8 @@
    填完用 `forge change phase <id>` 确认走到 `ready`；缺 clarify.md 时先问用户边界与非目标，
    再 `forge change clarify <id> --by-human --note "…"` 记录（agent 不得自批）。
    启动任务时用 `forge task start --change <id>` 把 goal 钉成内容哈希；启动后改 goal.md 会让 `task-implement` BLOCKED（改目标等于改判据，重开任务）。
-   goal 没填完时 `task start --change` 会报错（读不出五段）；漂移后的恢复：还原 goal.md，或 `forge task abort` 后重新 `task start --change` 钉新哈希。
-   老 change（五份产物布局）仍可读：`change verify`/`gate` 按 proposal/design/tasks 走老规则；
+   goal 没填完时 `task start --change` 会报错（读不出三段必填段）；漂移后的恢复：还原 goal.md，或 `forge task abort` 后重新 `task start --change` 钉新哈希。
+   老 change（proposal/design/tasks 布局）仍可读：`change verify`/`gate` 按老规则走；
    没有 goal.md 时 `--change` 会报错，改用 `forge task start --ref <ref>` 即可。
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
 5. 先勾 tasks.md 的进度、再跑 verify、然后提交（证据指纹含 tasks.md，勾选或提交后再改文件都会让证据失效）。归档用 `git mv spec/changes/<id> spec/changes/archive/$(date +%Y%m%d)-<id>`（八位日期 + 连字符 + change id；`archive/` 目录由 init 建好）。
@@ -87,7 +87,7 @@
    `review pass` 是 task-complete 的硬前置；**同一个 reviewer 不能给自己复审**，
    只接受新的 reviewer id。审查后改源码会因快照不一致被拒。
 7. `forge task report --ref <分支名>` 出交付单（完成后必须带 `--ref`）；单里披露
-   影响面与文档回检，评审者未记录时会标出来。
+   影响面（impact 的文档/测试建议），评审者未记录时会标出来。
 8. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`
    只用于确实不适用的门禁：验证类（`--acceptance-gate`/`--skill-decisions`）会降证据强度
    并留审计，节奏类（`--work-activity`）只审计，别当常规手段。

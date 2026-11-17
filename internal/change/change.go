@@ -67,6 +67,9 @@ const (
 	StageDesign Stage = "design"
 	// StageTasks：提案 + 设计 + 任务拆分，可以开工。
 	StageTasks Stage = "tasks"
+	// StagePlan：三份产物布局（goal + change.md + acceptance）已写完，
+	// 还没跑 verify。老三份布局（proposal/design/tasks）不走这个阶段。
+	StagePlan Stage = "plan"
 	// StageVerified：有与当前判据、当前改动一致（未 stale）的通过证据。
 	StageVerified Stage = "verified"
 	// StageArchived：已归档到 spec/changes/archive/。
@@ -115,7 +118,7 @@ type Change struct {
 	HasDesign     bool `json:"has_design"`
 	HasTasks      bool `json:"has_tasks"`
 	HasAcceptance bool `json:"has_acceptance"`
-	// HasGoal 表示 goal.md 存在；GoalComplete 表示五段都写完（无 forge:fill 残留）。
+	// HasGoal 表示 goal.md 存在；GoalComplete 表示三段必填段都写完（无 forge:fill 残留）。
 	// 老 change 没有 goal.md 属历史产物——verify 只告警不阻断，新 change 由
 	// `change new` 自动生成。
 	// HasChange 表示三份产物布局下的 change.md 存在（forge-ruthless）。
@@ -233,7 +236,7 @@ func Init(root, profile string) (created []string, err error) {
 	return created, nil
 }
 
-// New 创建一个 change 骨架（五份产物模板，含 goal.md），返回目录。
+// New 创建一个 change 骨架（三份产物模板：goal.md、change.md、acceptance.md），返回目录。
 // 已存在则报错——change 是人的决策落点，不能被静默覆盖。
 func New(root, id, title string) (string, error) {
 	if err := ValidID(id); err != nil {
@@ -569,6 +572,8 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 	switch {
 	case c.Sealed:
 		c.Stage = StageVerified
+	case c.HasChange && c.HasGoal:
+		c.Stage = StagePlan
 	case c.HasTasks:
 		c.Stage = StageTasks
 	case c.HasDesign:

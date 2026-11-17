@@ -100,7 +100,6 @@ var EscapeEnvs = []string{
 	"FORGE_REQ_HYGIENE",
 	"FORGE_REQ_COVERAGE",
 	"FORGE_MUTATION_TIMEOUT",
-	"FORGE_MUTATION_GATE",
 	"FORGE_EVAL_PREFLIGHT",
 	// 2026-10-22 裁决（compat-commitments §三）：两者都撤下本来会触发的阻断，按逃生舱入册。
 	"FORGE_RECURRENT_HARDEN",

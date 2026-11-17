@@ -445,7 +445,7 @@ func checkGoalContract(root string, state *TaskState) *ExecuteResult {
 			Checked: true,
 			TaskRef: state.TaskRef,
 			Level:   checklog.LevelAdvisory,
-			Detail:  "advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标五段不在 git 里，评审只能靠标题猜意图",
+			Detail:  "advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标三段不在 git 里，评审只能靠标题猜意图",
 		}
 		recordAudit(root, entry)
 		fmt.Fprintf(os.Stderr, "%s\n", entry.Detail)

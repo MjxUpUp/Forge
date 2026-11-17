@@ -148,11 +148,11 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 			last = &entries[i]
 		}
 	}
-	if last == nil || last.Level != checklog.LevelWarn || !strings.Contains(last.Detail, "self-refresh") {
+	if last == nil || last.Level != checklog.LevelWarn || !strings.Contains(last.Detail, "re-review") {
 		t.Errorf("换 reviewer 的复审须记 WARN self-refresh 审计, got %+v", last)
 	}
 
-	// 仅工作区增量（未提交修复）→ 同一 reviewer 再拒；换新 reviewer 放行。
+	// 仅工作区增量（未提交修复）→ 已参与过的 reviewer 再拒；换新 reviewer 放行。
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(2) }\n"), 0644)
 	if err := runReviewPassAt(dir, ref, "", "rev-2"); err == nil {
 		t.Fatal("工作区增量的同一 reviewer 重盖章同样必须被拒绝")
@@ -173,6 +173,14 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	})
 	if strings.Contains(silent, "复审") || strings.Contains(silent, "self-refresh") {
 		t.Errorf("非源码变更（amend message）应静默放行，got: %q", silent)
+	}
+
+	// 交替绕过：再提交一处源码变更，已参与过复审的 rev-2 必须被拒。
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(4) }\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `fix: second real change`)
+	if err := runReviewPassAt(dir, ref, "", "rev-2"); err == nil {
+		t.Fatal("参与过复审的 reviewer 再次复审必须被拒绝（防止交替绕过）")
 	}
 }
 

@@ -1,0 +1,224 @@
+{
+  "change": "forge-ruthless",
+  "started_at": "2026-11-17T11:14:00Z",
+  "finished_at": "2026-11-17T11:18:02Z",
+  "passed": true,
+  "sealed": true,
+  "head": "46d33d7d069cf39fa92a5d80d581197d6c36e3a1",
+  "diff_sha256": "6794a1dd6063f4885f7dc39dbbd3394ccc063fb7564c62f07b5be23b96f882c8",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "8b86ef146bb586d1afae05894b45a068d81a383368c758f160306b31e16a7479"
+    },
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "7640fbc8f634a7d2090adc1fe569fd2f660e7a09df9a50b644659d9de38dc4fd"
+    },
+    {
+      "path": "docs/design/artifact-chain-workflow.md",
+      "sha256": "9a7061179e854cdf65141f715eaf98ddc5415b46fc0953a84f4fd66937bbdda8"
+    },
+    {
+      "path": "docs/design/compat-commitments.md",
+      "sha256": "a28462a7ecb7c30cf4e40bace5154eceed957706c3c052066885713d0b9e1c32"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "a3c6bd52980a595cfbd0b5f786615e47e81e6302eab0e0291de3bf114817eccb"
+    },
+    {
+      "path": "evals/forge/gates-card.yaml",
+      "sha256": "45adec0a31807f852e9a2a5376351c16ca40ace7a3af0d5aeec74bcdf1038ded"
+    },
+    {
+      "path": "internal/change/change.go",
+      "sha256": "49c473b94bd06a8079a5dadc20895fd6a4c4e511b40749115211842c6d93844e"
+    },
+    {
+      "path": "internal/change/goal.go",
+      "sha256": "cc688b0a7114b39a4b15c7133f736cedfa4ac681363680bda4900ed5ec6fd427"
+    },
+    {
+      "path": "internal/change/goal_test.go",
+      "sha256": "4776bb3f39a10aea1090aee94c9407287122e7fe0d2c3fc5121112a442761f0c"
+    },
+    {
+      "path": "internal/change/phase.go",
+      "sha256": "62fd03a1b8259b07739f60e6840fd60ec65bdc92cb0200f478455c783f46ac69"
+    },
+    {
+      "path": "internal/change/templates.go",
+      "sha256": "3c16fc5faa016481d8bd1f7f32506305e3fd24d15ad689ea8fbb0fa69c509bd5"
+    },
+    {
+      "path": "internal/change/templates/acceptance.md",
+      "sha256": "62972500dc3b0e0de78f6db2738d2db96aa6120514b690fd24f65e33a689a277"
+    },
+    {
+      "path": "internal/change/templates/agents-protocol.md",
+      "sha256": "1d7329b4664d182b134c47bf43ac853e5a4ce1190c2eab8a48c70e8e381242ab"
+    },
+    {
+      "path": "internal/change/verify.go",
+      "sha256": "799d4981cc1532779097f8c53ffb68622fc0cbbeb8e964e2b5945ca7b0918bdd"
+    },
+    {
+      "path": "internal/cli/change.go",
+      "sha256": "7517b2785b8cd307c6c950a7be8ac4b17b31990ff41828589602b4d8d2b2d828"
+    },
+    {
+      "path": "internal/cli/review.go",
+      "sha256": "50a47b665426d1fc0d750b539812576c8bfeea84761935a01774c6a8b803bdaf"
+    },
+    {
+      "path": "internal/cli/review_test.go",
+      "sha256": "9f2d31584824086b0ea011a004e8c386da0ab9f183ec8036ec0bae4623b00b69"
+    },
+    {
+      "path": "internal/cli/verify_scenarios.go",
+      "sha256": "005657fc3a976169ce43eab0f3d064bded2b8bef1954938fe2e7e1a3b8752ca4"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "88240a3d75cca0f3649aae4e22332c0b956b36e5021d1ab63ba4db0d729c6582"
+    },
+    {
+      "path": "internal/clitask/task_complete.go",
+      "sha256": "c72f6ee42cc6a282861fe75424d7e43684330caf7aecbf1a017b3e2b1e694eaf"
+    },
+    {
+      "path": "internal/clitask/task_oracle_test.go",
+      "sha256": "17cc0921e1bcf20c0d5ac42512c39f54143dc2a24d251a424c4966ee0466c2d0"
+    },
+    {
+      "path": "internal/clitask/task_questioning.go",
+      "sha256": "fee7ce83f3b3efbbfc45cba550a71007a27cdb0b78a1f31126738883d5cf7750"
+    },
+    {
+      "path": "internal/clitask/task_questioning_test.go",
+      "sha256": "1c96b7ce3862cbfa9d2c287f913d17422d38e109b27df80433a41a4ec8edfbda"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "48ae9cedb6fedb95318b28e2306a51691d44277086b4479425bbf42349f67767"
+    },
+    {
+      "path": "internal/compat/compat.go",
+      "sha256": "1307c512cc731356654fd7ffef537dd22f86dd2ae93e2332de4d370674994f52"
+    },
+    {
+      "path": "internal/compat/escape_envs_test.go",
+      "sha256": "d8f730e3a05be4a894de06b8e69d2fbb5644628d088112c64ac1fd924b629175"
+    },
+    {
+      "path": "internal/impact/impact.go",
+      "sha256": "b111de1797cbe687da00779f75bcb423f818d37394adf193e3dfa6e92b91ecb2"
+    },
+    {
+      "path": "internal/impact/impact_test.go",
+      "sha256": "4d6899e7643b0dc2afe0f735ade611d567601a953a0f4cdc75046a376f62b1d4"
+    },
+    {
+      "path": "internal/taskpipeline/executor.go",
+      "sha256": "b4adf577225b7c5258c0be9c081cf629b4afe9de0e657acd056e366c0e5ee086"
+    },
+    {
+      "path": "internal/taskpipeline/executor_check_complete.go",
+      "sha256": "9962ba78b02581f158b982c9afd61bbedc675271d95c0f8563eaab3ea7943866"
+    },
+    {
+      "path": "internal/taskpipeline/loopverdict_test.go",
+      "sha256": "3076bc47a2095007c24b974aae9f1dcc2aeb8e617fa993e8884568efe5dc2031"
+    },
+    {
+      "path": "internal/taskpipeline/mutationgate.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/taskpipeline/next.go",
+      "sha256": "a3a40a34cc366942a4a85a30a7e010bfe8e26af4f7f1bff0c43e9f42c3c00de7"
+    },
+    {
+      "path": "internal/taskpipeline/next_test.go",
+      "sha256": "27c5895c72a0532b5c7f92109548e9a2659f2db03045bf5e9c0e97aaa0086f01"
+    },
+    {
+      "path": "internal/taskpipeline/selfcheck.go",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "internal/tasktypes/types.go",
+      "sha256": "2f879a8f83984bfb5d98cc73a2698bb549662eae0b7595bdc6566ec2dafb2232"
+    },
+    {
+      "path": "scripts/checks/no-removed-checks.sh",
+      "sha256": "e92840ea6f3cd5814b431d709999c668df3be487f7ef3934c09ad26352e4e286"
+    }
+  ],
+  "acceptance_sha256": "ab59ef7d063644529c7347b5dd792a5b814758aa53b4e109843326af529e1880",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2128
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ -count=1",
+      "exit": 0,
+      "duration_ms": 107235,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 99798,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test -v ./internal/change/ -count=1",
+      "exit": 0,
+      "duration_ms": 24128,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestImpact|TestHelpSurface' -count=1",
+      "exit": 0,
+      "duration_ms": 2615,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 211
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5342
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 121,
+      "stdout_file": "08.stdout"
+    }
+  ]
+}

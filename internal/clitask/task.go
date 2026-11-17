@@ -102,11 +102,8 @@ func init() {
 	addScopeFlags(taskListCmd)
 	taskOverrideCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
 	taskOverrideCmd.Flags().String("work-activity", "", "设为 disable 跳过 read-before-edit/work-activity 门禁")
-	taskOverrideCmd.Flags().String("test-coverage", "", "设为 disable 跳过 test-coverage 门禁")
 	taskOverrideCmd.Flags().String("acceptance-gate", "", `设为 disable 跳过 task-complete 的 acceptance pre-flight 门禁`)
 	taskOverrideCmd.Flags().String("skill-decisions", "", `设为 disable 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）`)
-	taskOverrideCmd.Flags().String("doc-gate", "", `设为 disable 跳过 task-complete 的 doc pre-flight（输出→回检门禁；轮次上限后的放行须人工确认后走这里）`)
-	taskOverrideCmd.Flags().String("artifact-chain", "", `设为 disable 跳过产物链分档执法与漂移 pre-flight（落 checklog 审计，降 evidence 强度）`)
 	taskListCmd.Flags().Bool("plan-conversion", false, "输出 plan-first advisory 转化率报告（已发/已转化/未转化/未发有方案四计数）")
 	taskScopeAddCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	taskImpactCmd.Flags().String(`level`, ``, `跨仓影响级别：none（纯本仓）| multi（波及其他 repo）——必填`)
@@ -212,7 +209,7 @@ var taskScopeShowCmd = &cobra.Command{
 	RunE:  runTaskScopeShow,
 }
 var taskOverrideCmd = &cobra.Command{
-	Use:   `override [--work-activity disable] [--test-coverage disable] [--acceptance-gate disable] [--skill-decisions disable] [--doc-gate disable]`,
+	Use:   `override [--work-activity disable] [--acceptance-gate disable] [--skill-decisions disable]`,
 	Short: "设置 per-task 逃生舱（优先全局 env，不污染他任务；验证类降 evidence 强度到 Weak（重证据按证据缩放豁免），work-activity 是节奏门禁不降强度）",
 	RunE:  runTaskOverride,
 }
@@ -874,6 +871,16 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				exp = "(退出码 0)"
 			}
 			fmt.Printf("  %d. %s :: %s\n", i+1, c.Run, exp)
+		}
+		// 预跑：把基线摆出来，失败不阻断（判据可能本来就红，先看见比做完再发现省一轮）。
+		pre := RunAcceptancePreflight(root, state.Acceptance)
+		fmt.Printf("验收预跑：%d/%d 通过（失败不阻断，只记录基线）\n", pre.Passed, pre.Total)
+		for i, f := range pre.Fails {
+			if i >= 3 {
+				fmt.Printf("  …还有 %d 条失败\n", len(pre.Fails)-3)
+				break
+			}
+			fmt.Printf("  ✗ %s（exit %d）\n", f.Command, f.Exit)
 		}
 	}
 

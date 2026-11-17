@@ -36,10 +36,10 @@ func TestNextDecision_GateChain(t *testing.T) {
 	}{
 		{"no gates", withGates(false, ""), "forge task gate task-implement"},
 		{"implement done, acceptance pending", withGates(false, "", GateImplement), "forge task verify-acceptance"},
-		{"acceptance ran, verify pending", withGates(false, "abc123", GateImplement), "forge task gate task-verify"},
-		{"verify done, review pending", withGates(false, "abc123", GateImplement, GateVerify), "forge review pass"},
-		{"review done, complete gate pending", withGates(true, "abc123", GateImplement, GateVerify), "forge task gate task-complete"},
-		{"all gates + review", withGates(true, "abc123", GateImplement, GateVerify, GateComplete), "forge task complete"},
+		{"acceptance ran, review pending", withGates(false, "abc123", GateImplement), "forge review pass"},
+		{"review pending", withGates(false, "abc123", GateImplement), "forge review pass"},
+		{"review done, complete gate pending", withGates(true, "abc123", GateImplement), "forge task gate task-complete"},
+		{"all gates + review", withGates(true, "abc123", GateImplement, GateComplete), "forge task complete"},
 	}
 	for _, c := range cases {
 		got := NextDecision("feat/x", false, 0, c.st)

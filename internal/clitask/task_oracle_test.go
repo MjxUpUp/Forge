@@ -396,7 +396,7 @@ func TestReportSelfSupplied(t *testing.T) {
 	dir, taskRef := setupChainTask(t, "")
 	if err := checklog.Record(dir, &checklog.Entry{
 		Check: checklog.CheckReviewPass, Passed: true, Checked: true, TaskRef: taskRef,
-		Detail: "self-refresh: baseline re-stamped over changed source via --note; review round 1 passed",
+		Detail: "re-review: baseline re-stamped over changed source by reviewer rev-2; review round 1 passed",
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -71,7 +71,7 @@ func NextRepoContext(root, branch string, dirty bool, behindRemote int) NextCont
 		}
 		ctx.OpenChanges = append(ctx.OpenChanges, c.ID)
 		if ph, _, err := change.ComputePhase(root, c.ID); err == nil && ph == change.PhaseReady && c.HasGoal {
-			// 老 change（无 goal.md）不能 --change：钉契约需要五段 goal。
+			// 老 change（无 goal.md）不能 --change：钉契约需要 goal 必填三段。
 			ctx.ReadyChanges = append(ctx.ReadyChanges, c.ID)
 		}
 	}
@@ -176,14 +176,12 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 		return NextResult{Next: nextCmdVerifyAcceptance, Reason: "未登记验收标准（complete 硬前置）——先跑 verify-acceptance（有 conventions 档案时自动登记默认套件）或 forge task accept \"run :: expected\" 补登", State: state}
 	case nextAcceptancePending(st):
 		return NextResult{Next: nextCmdVerifyAcceptance, Reason: "验收标准尚未实跑回扣——先实跑（AcceptedHeadCommit 为空的标准待跑）", State: state}
-	case !gates[GateVerify]:
-		return NextResult{Next: "forge task gate task-verify", Reason: "验收已实跑——过验证门", State: state}
 	case !nextReviewPassed(st):
 		return NextResult{Next: "forge review pass", Reason: "验证已过而审查未过——派只读子代理审查当前 diff 后标记（task-complete 门禁硬前置）", State: state}
 	case !gates[GateComplete]:
-		return NextResult{Next: "forge task gate task-complete", Reason: "实现/验证/审查齐备——过第三道门（forge task complete 要求三门禁全过）", State: state}
+		return NextResult{Next: "forge task gate task-complete", Reason: "实现/审查齐备——过完成任务门（forge task complete 要求两道门禁全过）", State: state}
 	default:
-		return NextResult{Next: "forge task complete", Reason: "三门禁与审查齐备——完结并评分（此后手工合并分支）", State: state}
+		return NextResult{Next: "forge task complete", Reason: "两道门禁与审查齐备——完结并评分（此后手工合并分支）", State: state}
 	}
 }
 
@@ -201,16 +199,6 @@ func NextHint(root string, st *TaskState) NextResult {
 		res = NextDecisionCtx(NextRepoContext(root, branch, dirty, GitBehindRemote(root)), nil)
 	} else {
 		res = NextDecision(branch, dirty, GitBehindRemote(root), st)
-	}
-	// P2 时机训练：NextDecision 归一化后的**事实分支**是 verify-acceptance 待跑
-	// 且 task 尚未跑过 pairing 自检 → Reason 追加镜像自检建议（复审 P2-2：手工
-	// 重组条件三重偏差——implement 窗口的空跑会永久消费提示、completed 展示路径
-	// 错误追加、delivered-but-active 被错误抑制——按 res.Next 判定一并消除）。
-	// Next 命令本体不变（每行恰一条命令的纪律保持）；跑过即消失——习惯训练
-	// 恰好训练到它存在为止。
-	if st != nil && res.Next == nextCmdVerifyAcceptance && st.TaskRef != "" &&
-		!selfcheckRanForTask(root, st.TaskRef) {
-		res.Reason += "；可先 forge selfcheck pairing 镜像自检（与门禁同口径，秒级）"
 	}
 	entry := &checklog.Entry{
 		Check:     checklog.CheckNextHint,

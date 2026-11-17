@@ -106,7 +106,7 @@ forge task start --ref feat/fix-typo --branch --title "修正文案"
 ```bash
 git checkout main   # --branch 只能从 main/master 建分支
 forge change new my-feature --title "一句话说清要做什么"
-# 填 goal.md 五段，问人「边界/非目标」后：
+# 填 goal.md 三段（Objective / Out of Scope / Check），问人「边界/非目标」后：
 forge change clarify my-feature --by-human --note "只改 A.txt 的文案，不动 B 模块与接口"
 # 补齐 goal.md（三段）/ change.md（改动·影响·验证）/ acceptance.md
 forge change phase my-feature        # 每补一份看一次，直到 ready
@@ -309,7 +309,7 @@ rm -rf ~/.forge/skills-backup ~/.forge/.init-suggested
 
 欢迎提 Issue 和 PR。开发时注意：
 
-1. **门禁先行** —— 任何源码变更走 `forge task` 三门禁（implement → verify → complete），不经任务的改动不被质量评分追踪。
+1. **门禁先行** —— 任何源码变更走 `forge task` 两道门禁（implement → complete，`review pass` 是 complete 的硬前置）；不经任务的改动不被质量评分追踪。
 2. **注释双语** —— Go godoc 采用形式 A（英文段 → 空 `//` → 中文段），中文不删、不单语；行内注释与字符串字面量不动。
 3. **审查闭环** —— 提交前派独立只读子 agent 跑 code-review-gate 双轨（AI 作弊 + 工程规范），`forge review pass` 标记后才能过 task-complete 门禁。
 4. **提交纪律** —— 提交源码与手维护文档（`docs/reference/` 下的参考文档是测试硬依赖，

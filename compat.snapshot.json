@@ -930,12 +930,6 @@
       ]
     },
     {
-      "path": "forge task mutation",
-      "flags": [
-        "sample"
-      ]
-    },
-    {
       "path": "forge task next",
       "flags": [
         "ref"
@@ -945,11 +939,8 @@
       "path": "forge task override",
       "flags": [
         "acceptance-gate",
-        "artifact-chain",
-        "doc-gate",
         "ref",
         "skill-decisions",
-        "test-coverage",
         "work-activity"
       ]
     },
@@ -1233,7 +1224,6 @@
     "FORGE_EVAL_PREFLIGHT",
     "FORGE_GATE_PUSH",
     "FORGE_HELDOUT",
-    "FORGE_MUTATION_GATE",
     "FORGE_MUTATION_TIMEOUT",
     "FORGE_RECURRENT_HARDEN",
     "FORGE_REQ_COVERAGE",

@@ -112,7 +112,7 @@ func TestCollect_ClassifiesChangedFiles(t *testing.T) {
 	}
 }
 
-// 重命名取新路径；删除项整体跳过（否则"删了文档"会被要求同步文档）。
+// 重命名取新路径；删除项也计入改动（删掉文档同样要 reviewer 看见）。
 func TestCollect_RenameAndDelete(t *testing.T) {
 	dir := newRepo(t)
 	write(t, dir, "README.md", "# base\n")
@@ -128,11 +128,11 @@ func TestCollect_RenameAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if !reflect.DeepEqual(rep.Changed, []string{"internal/solo/new.go"}) {
-		t.Errorf("Changed = %v, want 只有重命名后的新路径", rep.Changed)
+	if !reflect.DeepEqual(rep.Changed, []string{"README.md", "internal/solo/new.go"}) {
+		t.Errorf("Changed = %v, want README 删除项 + 重命名后的新路径", rep.Changed)
 	}
-	if len(rep.Docs) != 0 {
-		t.Errorf("Docs = %v, want 空（README 是删除项）", rep.Docs)
+	if !reflect.DeepEqual(rep.Docs, []string{"README.md"}) {
+		t.Errorf("Docs = %v, want [README.md]", rep.Docs)
 	}
 	if !reflect.DeepEqual(rep.SourcesWithoutTest, []string{"internal/solo/new.go"}) {
 		t.Errorf("SourcesWithoutTest = %v", rep.SourcesWithoutTest)

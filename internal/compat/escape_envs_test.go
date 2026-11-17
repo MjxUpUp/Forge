@@ -13,10 +13,9 @@ func TestMutationTimeoutEscapeEnvRegistered(t *testing.T) {
 	t.Fatal(`FORGE_MUTATION_TIMEOUT 应在 EscapeEnvs roster（compat 快照 escapes 面）`)
 }
 
-// TestHardeningEscapeEnvsRegistered（墙价硬批次）：FORGE_MUTATION_GATE 在 roster。
+// TestHardeningEscapeEnvsRegistered（墙价硬批次）：mutation 检查已在 1.88 删除，
+// roster 不得再留它的逃生舱。
 func TestHardeningEscapeEnvsRegistered(t *testing.T) {
-	// 阶段 D 删除了 FORGE_GATE_CMD_FORM（gate 命令形态）与 FORGE_HAZARD_PENDING
-	// （hazard 台账）对应的宿主层功能，只剩 mutation gate 需要登记。
 	for _, env := range []string{"FORGE_MUTATION_GATE"} {
 		found := false
 		for _, e := range EscapeEnvs {
@@ -24,8 +23,8 @@ func TestHardeningEscapeEnvsRegistered(t *testing.T) {
 				found = true
 			}
 		}
-		if !found {
-			t.Errorf("%s 应在 EscapeEnvs roster", env)
+		if found {
+			t.Errorf("%s 已随 mutation 检查删除，不应再在 EscapeEnvs roster", env)
 		}
 	}
 }

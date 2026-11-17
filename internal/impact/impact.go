@@ -100,9 +100,6 @@ func parsePorcelainZ(out string) []string {
 		if strings.ContainsAny(xy, "RC") {
 			i++ // 下一条是重命名/复制的旧路径
 		}
-		if strings.ContainsAny(xy, "D") {
-			continue // 删除项：不算改动文件
-		}
 		p := f[3:] // "XY path"：XY 后恰好一个空格
 		p = filepath.ToSlash(p)
 		if p == "" || strings.HasSuffix(p, "/") {

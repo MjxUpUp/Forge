@@ -142,10 +142,10 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 			}
 		})
 	}
-	// Next 与 NextDecision 同源：done 态下一步是 verify 门（implement 已过、验收已跑）。
+	// Next 与 NextDecision 同源：done 态下一步是 review pass（implement 已过、验收已跑）。
 	v := EvaluateLoopVerdict(base())
 	want := NextDecision("feat/v", false, 0, convergedState()).Next
-	if v.Next != want || !strings.Contains(v.Next, "task-verify") {
+	if v.Next != want || !strings.Contains(v.Next, "review pass") {
 		t.Fatalf("Next=%q want %q", v.Next, want)
 	}
 	// 每个 Code 都有解除方式（封闭枚举守卫）。

@@ -145,7 +145,7 @@ func ComputePhase(root, id string) (Phase, []string, error) {
 
 	if c.HasGoal || c.GoalRequired {
 		if _, _, _, err := LoadGoal(root, id); err != nil {
-			return PhaseSpecify, []string{fmt.Sprintf("goal.md 五段没填完：%v", err), "填 spec/changes/" + id + "/goal.md 并删掉 forge:fill 标记"}, nil
+			return PhaseSpecify, []string{fmt.Sprintf("goal.md 必填三段没填完：%v", err), "填 spec/changes/" + id + "/goal.md 并删掉 forge:fill 标记"}, nil
 		}
 	}
 

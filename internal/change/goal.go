@@ -9,10 +9,10 @@ import (
 	"strings"
 )
 
-// FileGoal 是 goal 契约的产物文件名：change 的第五份产物，随 git 走。
+// FileGoal 是 goal 契约的产物文件名：change 的第一份产物，随 git 走。
 const FileGoal = "goal.md"
 
-// GoalSection 是 goal 契约的必填段落。五段对应「交代目标/原因/约束/范围外/检查」：
+// GoalSection 是 goal 契约的段落。三段必填对应「目标/范围外/检查」；\n// Why/Constraints 保留为可选段：
 // 缺任何一段，agent 都能把「做完了」解释成另一件事。
 type GoalSection struct {
 	Key      string `json:"key"`
@@ -127,7 +127,7 @@ func LoadGoal(root, id string) (*Goal, string, string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, "", "", fmt.Errorf("change %q 没有 goal.md（第五份产物）：先补 %s", id, relTo(root, path))
+			return nil, "", "", fmt.Errorf("change %q 没有 goal.md（三份产物之一）：先补 %s", id, relTo(root, path))
 		}
 		return nil, "", "", fmt.Errorf("读取 %s: %w", relTo(root, path), err)
 	}
