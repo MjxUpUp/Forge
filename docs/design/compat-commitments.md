@@ -4,6 +4,15 @@
 
 本文是 forge 对外的兼容契约——三向 × 三档承诺矩阵 + 门禁文案契约。机械执法点：`forge compat snapshot/report`（七面盘点——六面 + 外部桥契约面 bridges，见 compat-bridge-face.md；任何面变更显式过 golden）；`TestNpmPlatformVersionsAligned`（分发对齐）；导入侧版本偏移警示（`sync-version-skew`）。
 
+## 零、1.89 的破坏性收窄（读旧文档前先看这段）
+
+1.89 起 Forge 只做「验证与状态层」：门禁降为两道（`task-implement`、`task-complete`），
+产物改三份（`goal.md` / `change.md` / `acceptance.md`，`tasks.md` 可选），
+`task-verify`、`task doc-review`、`task mutation`、`task artifact`、`task chain-init`、
+`forge selfcheck`、`eval artifact-drill` 已删除；`review pass` 只接受新的 `--reviewer`。
+
+旧的四份/五份产物布局与已删命令仍可读（老 change 按老规则 verify/gate），但不再生成。
+
 ## 一、三向 × 三档承诺矩阵
 
 | 方向 \ 档位 | 强承诺（破坏即 bug） | 弱承诺（尽力 + 行为变更公告） | 不承诺（显式排除） |
