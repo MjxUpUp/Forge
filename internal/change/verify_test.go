@@ -270,7 +270,7 @@ func repoWithChange(t *testing.T, id string) (root, dir string) {
 // 真实流程里人要填内容；测试只关心标记消失后 verify 是否放行。
 func fillScaffold(t *testing.T, dir string) {
 	t.Helper()
-	for _, name := range []string{FileGoal, FileProposal, FileDesign, FileTasks, FileAcceptance} {
+	for _, name := range []string{FileGoal, FileChange, FileAcceptance} {
 		path := filepath.Join(dir, name)
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -542,14 +542,14 @@ func TestVerify_RefusesMissingDocs(t *testing.T) {
 	requireBash(t)
 	root, dir := repoWithChange(t, "demo")
 	writeFile(t, filepath.Join(dir, FileAcceptance), "```bash\necho judged\n```\n")
-	if err := os.Remove(filepath.Join(dir, FileDesign)); err != nil {
+	if err := os.Remove(filepath.Join(dir, FileChange)); err != nil {
 		t.Fatal(err)
 	}
 	_, err := Verify(context.Background(), root, "demo", VerifyOptions{})
 	if err == nil {
-		t.Fatal("缺少 design.md 时 verify 应拒绝")
+		t.Fatal("缺少 change.md 时 verify 应拒绝")
 	}
-	if !strings.Contains(err.Error(), FileDesign) {
+	if !strings.Contains(err.Error(), FileChange) {
 		t.Errorf("错误应点名缺失的文件，got %v", err)
 	}
 }

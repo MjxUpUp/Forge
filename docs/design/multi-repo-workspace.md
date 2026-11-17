@@ -30,12 +30,12 @@
 | `forge workspace status <name>` | 读侧聚合：按 key 扫各成员 DataDir 的活跃任务（ref/gate 进度/branch）；成员故障告警跳过，绝不整视图空白 |
 | `forge workspace doctor [--json]` | drift 检出（全部 advisory 不阻断）：not-registered / path-missing / path-mismatch / multi-workspace / empty / dep-cycle |
 
-## 3. 跨仓影响声明：task-verify 的 cross-repo-impact 门禁
+## 3. 跨仓影响声明（历史：cross-repo-impact 门禁已在 1.88 删除）
 
 ### 决策
 
 - `TaskState.CrossRepoImpact`（nil = 未声明，向后兼容；`forge task impact --level none|multi [--repo <key>]... [--note]` 写入）。**单仓改动也必须显式声明 none**——声明动作本身即意义（规则即代码模式：强迫开工前想清楚影响面）。
-- 默认 **advisory**（fail-open 哲学：清单是全局用户级 store，任何机器都可能缺失/损坏，基建故障一律降级 warn 级 advisory，绝不阻断）；protocol.yml 配 `cross_repo_impact: required` 把「未声明」升级为 HARD stop。
+- 默认 **advisory**；1.88 激进减法已删除该门禁，`protocol.yml` 的 `cross_repo_impact: required` 不再有消费方——声明只作为 `task report` 与评审的参考。
 - 报错**四段式** WHAT/WHY/HOW/REF（规则即代码的报错契约；REF 指回本文档）。
 - 声明畸形（multi 空 repos / 越界 key / 未知 level）只给 advisory 修正提示——声明意图在，因笔误阻断会惩罚配合的 agent。
 - 无多仓成员资格的 repo **整体跳过且不记日志**（对占绝大多数的单仓场景保持静默）。

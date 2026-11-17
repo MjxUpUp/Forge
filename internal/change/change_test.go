@@ -100,18 +100,14 @@ func TestNew_CreatesSkeleton(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	for _, name := range []string{FileProposal, FileDesign, FileTasks, FileAcceptance} {
+	for _, name := range []string{FileGoal, FileChange, FileAcceptance} {
 		path := filepath.Join(dir, name)
 		raw, rerr := os.ReadFile(path)
 		if rerr != nil {
 			t.Fatalf("缺产物 %s: %v", name, rerr)
 		}
-		if name == FileProposal {
-			for _, want := range []string{"示例标题", "`demo-change`"} {
-				if !strings.Contains(string(raw), want) {
-					t.Errorf("proposal 缺 %q", want)
-				}
-			}
+		if len(strings.TrimSpace(string(raw))) == 0 {
+			t.Errorf("%s 是空模板", name)
 		}
 	}
 

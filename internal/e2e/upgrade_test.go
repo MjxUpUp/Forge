@@ -297,8 +297,10 @@ func TestFreshInstall(t *testing.T) {
 
 // ---------- Helpers ----------
 
-// passAllGates passes all 3 task gates (v0.17: reduced from 5) for the given task ref.
-func passAllGates(t *testing.T, dir, ref string) {
+// passGatesUpToReview 只推进到 task-implement + review pass（不碰 task-complete）：
+// task-complete 现在自带验收前置（review-ruthless-3 P2-1），需要断言它被拦的测试
+// 不能先让助手把这道门禁过掉。
+func passGatesUpToReview(t *testing.T, dir, ref string) {
 	t.Helper()
 
 	// Disable gate timing for E2E tests (gates pass in rapid sequence)
@@ -322,10 +324,7 @@ func passAllGates(t *testing.T, dir, ref string) {
 	git(t, dir, "add", "e2e-scratch.txt")
 	git(t, dir, "commit", "-m", "e2e: code change for task-implement")
 
-	// Pass gates in order: task-implement, task-verify, then task-complete.
-	// task-complete 有 ReviewPassed 硬前置——先 forge review pass 标记（task 模式
-	// 写 TaskState.ReviewPassed），否则 task-complete 被拦。
-	for _, g := range []string{"task-implement", "task-verify"} {
+	for g := range map[string]int{"task-implement": 1} {
 		out, err := forgeErr(t, dir, "task", "gate", g, "--ref", ref)
 		if err != nil {
 			t.Fatalf("forge task gate %s failed: %v\noutput: %s", g, err, out)
@@ -333,9 +332,5 @@ func passAllGates(t *testing.T, dir, ref string) {
 	}
 	if out, err := forgeErr(t, dir, "review", "pass"); err != nil {
 		t.Fatalf("forge review pass failed: %v\noutput: %s", err, out)
-	}
-	out, err := forgeErr(t, dir, "task", "gate", "task-complete", "--ref", ref)
-	if err != nil {
-		t.Fatalf("forge task gate task-complete failed: %v\noutput: %s", err, out)
 	}
 }

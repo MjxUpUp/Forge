@@ -34,7 +34,6 @@ func init() {
 	Root.AddCommand(taskListCmd)
 	Root.AddCommand(taskScopeCmd)
 	Root.AddCommand(taskOverrideCmd)
-	Root.AddCommand(taskDocReviewCmd)
 	Root.AddCommand(taskImpactCmd)
 	taskScopeCmd.AddCommand(taskScopeAddCmd)
 	taskScopeCmd.AddCommand(taskScopeShowCmd)
@@ -57,7 +56,7 @@ func init() {
 	taskStartCmd.Flags().StringArray("scope", nil, `计划改动文件白名单（可重复 --scope）：精确路径 internal/cli/task.go / glob internal/cli/*.go / 目录前缀 internal/cli。开工前声明，advisory 检测 scope-drift；中途可用 forge task scope add 追加`)
 	// 接续真相源 flags（continuity）：把 goal/plan/发起工具随 task start 持久化进 TaskState，
 	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的「start 持久化」模式。
-	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 3 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）| task（小修标记：不绑 change，仍走三道门禁）")
+	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 2 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）| task（小修标记：不绑 change，仍走两道门禁）")
 	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
 	taskStartCmd.Flags().String("change", "", "关联 change id：读 spec/changes/<id>/goal.md 作为 goal 契约（五段式，钉内容哈希，implement 门禁校验）")
 	taskStartCmd.Flags().String("goal-file", "", "goal 契约文件（仓库内路径，五段式：Objective/Why/Constraints/Out of Scope/Check；与 --change 互斥）")
@@ -103,25 +102,14 @@ func init() {
 	addScopeFlags(taskListCmd)
 	taskOverrideCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
 	taskOverrideCmd.Flags().String("work-activity", "", "设为 disable 跳过 read-before-edit/work-activity 门禁")
-	taskOverrideCmd.Flags().String("test-coverage", "", "设为 disable 跳过 test-coverage 门禁")
 	taskOverrideCmd.Flags().String("acceptance-gate", "", `设为 disable 跳过 task-complete 的 acceptance pre-flight 门禁`)
 	taskOverrideCmd.Flags().String("skill-decisions", "", `设为 disable 跳过 skill-decisions guardrail（改 SKILL.md 必须记决策）`)
-	taskOverrideCmd.Flags().String("doc-gate", "", `设为 disable 跳过 task-complete 的 doc pre-flight（输出→回检门禁；轮次上限后的放行须人工确认后走这里）`)
-	taskOverrideCmd.Flags().String("artifact-chain", "", `设为 disable 跳过产物链分档执法与漂移 pre-flight（落 checklog 审计，降 evidence 强度）`)
 	taskListCmd.Flags().Bool("plan-conversion", false, "输出 plan-first advisory 转化率报告（已发/已转化/未转化/未发有方案四计数）")
 	taskScopeAddCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	taskImpactCmd.Flags().String(`level`, ``, `跨仓影响级别：none（纯本仓）| multi（波及其他 repo）——必填`)
 	taskImpactCmd.Flags().StringArray(`repo`, nil, `受影响的项目 key（可重复 --repo；仅 level=multi 携带，none 下忽略）`)
 	taskImpactCmd.Flags().String(`note`, ``, `影响说明（自由文本，供 review 阅读）`)
 	taskImpactCmd.Flags().String(`ref`, ``, `任务 ref（默认当前活跃任务）`)
-	taskDocReviewCmd.Flags().String("ref", "", "任务 ref（默认当前活跃任务）")
-	taskDocReviewCmd.Flags().String("passed", "", "评审结论：pass | fail（必填）")
-	taskDocReviewCmd.Flags().Int("score", 0, "rubric 四维总分 0-100（判据见 doc-review skill）")
-	taskDocReviewCmd.Flags().Int("round", 0, "本轮次编号（从 1 递增；≥3 轮未过升级人工确认）")
-	taskDocReviewCmd.Flags().String("reviewer", "", "评审者标识（子代理/session id——产出者不能当回检者）")
-	taskDocReviewCmd.Flags().StringSlice("critical", nil, "Critical 发现内容（可重复；未决将阻断 doc gate，须 forge task finding resolve 解决）。支持 tag: 内容前缀打标（tag ∈ padding/conclusion/template/false-precision/disclaimer/evidence/style，冒号后为内容）")
-	taskDocReviewCmd.Flags().String("co-reviewer", "", "第二评委 id（同家族 borderline 双评，rubric 评分纪律 6；与 --co-score 成对）")
-	taskDocReviewCmd.Flags().Int("co-score", -1, "第二评委 rubric 总分 0-100（与 --co-reviewer 成对；落档可观测，gate 不消费）")
 }
 
 // CommitBestEffort is the seam for the cli-side harness commit hook: completion
@@ -140,10 +128,17 @@ var CommitBestEffort = func(reason string) {}
 var Root = &cobra.Command{
 	Use:   "task",
 	Short: "任务级质量管道管理",
+	Args:  cobra.NoArgs,
 	Long: `forge task 管理任务级质量门禁。
 
-每个开发任务走 3 道门禁：实现（task-implement）→ 验证（task-verify）→ 完成（task-complete）。
-任务上下文自动从 git 分支名推断。`,
+每个开发任务走 2 道门禁：实现（task-implement）→ 完成（task-complete）。
+review pass 是 complete 的硬前置；任务上下文自动从 git 分支名推断。`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return fmt.Errorf("未知的 task 子命令 %q（forge task --help 看可用子命令；已删除的门禁命令会直接报错而不是静默成功）", args[0])
+		}
+		return cmd.Help()
+	},
 }
 
 var taskStartCmd = &cobra.Command{
@@ -221,18 +216,11 @@ var taskScopeShowCmd = &cobra.Command{
 	RunE:  runTaskScopeShow,
 }
 var taskOverrideCmd = &cobra.Command{
-	Use:   `override [--work-activity disable] [--test-coverage disable] [--acceptance-gate disable] [--skill-decisions disable] [--doc-gate disable]`,
+	Use:   `override [--work-activity disable] [--acceptance-gate disable] [--skill-decisions disable]`,
 	Short: "设置 per-task 逃生舱（优先全局 env，不污染他任务；验证类降 evidence 强度到 Weak（重证据按证据缩放豁免），work-activity 是节奏门禁不降强度）",
 	RunE:  runTaskOverride,
 }
 
-var taskDocReviewCmd = &cobra.Command{
-	Use:   "doc-review --passed <pass|fail> --score <N> [--round <R>] [--reviewer <id>] [--critical <tag:发现>] [--co-reviewer <id> --co-score <N>]",
-	Short: "记录 L2 文档回检证据（按 doc-review skill 评审后落档；doc gate 消费）",
-	RunE:  runTaskDocReview,
-}
-
-// phaseExplosionWarning 在指定 session 已有过多未完成 task 时返回非空告警——
 // 即「phase 爆炸」反模式（一个 plan 拆成 N 个 task 各跑全套门禁）。仅 advisory
 // （不阻塞）。无需告警时返 ""（少于 3、未知 session 或出错）。
 func phaseExplosionWarning(root, sessionID, currentRef string) string {
@@ -265,22 +253,13 @@ func nonGitTaskWarning() string {
 		"如需完整质量保障，执行 `git init`（任务流程本身可继续）。任务无法推进或临时放弃时用 `forge task abort --ref <ref>` 清理。"
 }
 
-// artifactStartHint 渲染 task start 的开工前产物链提示（discipline-first P3）：
-// 探针语义在 taskpipeline.ArtifactChainExpectation（与 implement gate 同一真相源），
-// 此处只钉呈现——缺节点时单行（链序 → 连接 + 先产出指引 + 执法预告），链完整或
-// 逃生时空串（静默与意图一致）。
-func artifactStartHint(root string, state *taskpipeline.TaskState) string {
-	// 已钉 change 契约时，"产物链预期节点未登记" 与 implement gate 的
-	// 「以 change 产物为准」自相矛盾（dogfood 实测）：开工提示也走 change 口径。
+// artifactStartHint 渲染 task start 的开工提示：只有钉了 change 契约时才提示
+// 「以 change 产物为准」。产物链检查已随 1.89 移除，不再预告「预期节点未登记」。
+func artifactStartHint(_ string, state *taskpipeline.TaskState) string {
 	if state != nil && state.GoalContract != nil && state.GoalContract.Change != "" {
 		return "提示：本任务已钉 change 目标契约（" + state.GoalContract.Change + "）——task 级产物链可省略，以 change 产物为准"
 	}
-	missing, next := taskpipeline.ArtifactChainExpectation(root, state)
-	if len(missing) == 0 {
-		return ""
-	}
-	return "提示：本任务产物链预期节点未登记（" + strings.Join(missing, "→") +
-		"）——开工前产出最便宜（方向错误在产物阶段拦下）；先产出：" + next + "。implement gate 将按档执法"
+	return ""
 }
 
 // detectOriginTool 返回任务的发起工具（声明式真相，区别于 SessionRecord.AgentType 的目录探测弱信号）。
@@ -654,7 +633,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			aref, aerr := taskpipeline.WriteArtifact(root, ctx.TaskRef, stage, string(data))
 			if aerr != nil {
 				// 审查 P2-4：写失败至少 stderr 一行——静默跳过会让用户以为登记成功。
-				fmt.Fprintf(cmd.ErrOrStderr(), "⚠️ --artifact %q 登记失败（%v）——之后可用 forge task artifact --set %s 重登记\n", spec, aerr, stage)
+				fmt.Fprintf(cmd.ErrOrStderr(), "⚠️ --artifact %q 登记失败（%v）\n", spec, aerr)
 				continue
 			}
 			aref.Source = taskpipeline.ArtifactSource(root, path)
@@ -899,6 +878,16 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 				exp = "(退出码 0)"
 			}
 			fmt.Printf("  %d. %s :: %s\n", i+1, c.Run, exp)
+		}
+		// 预跑：把基线摆出来，失败不阻断（判据可能本来就红，先看见比做完再发现省一轮）。
+		pre := RunAcceptancePreflight(root, state.Acceptance)
+		fmt.Printf("验收预跑：%d/%d 通过（失败不阻断，只记录基线）\n", pre.Passed, pre.Total)
+		for i, f := range pre.Fails {
+			if i >= 3 {
+				fmt.Printf("  …还有 %d 条失败\n", len(pre.Fails)-3)
+				break
+			}
+			fmt.Printf("  ✗ %s（exit %d）\n", f.Command, f.Exit)
 		}
 	}
 

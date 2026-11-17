@@ -8,7 +8,7 @@
 
 ## scope 声明白名单（可度量契约）
 
-`forge task start` 时用 `--scope <glob>`（可重复，或中途 `forge task scope add <glob>`）把 plan 里"要改哪些文件"持久化进任务的 PlanScope 白名单。task-verify 比对实改源码与声明的差集，偏离时记 `checklog:scope-drift`（advisory 不阻塞——scope 是 prediction 非 contract）。Plan 里的文件清单直接对应 `--scope` glob：如"改 internal/auth/login.rs 和 session.rs" → `--scope "internal/auth/login.rs" --scope "internal/auth/session.rs"`（或目录前缀 `--scope "internal/auth/"`）。
+`--scope <glob>` 仍可登记（可重复，或中途 `forge task scope add <glob>`），但 task-verify 的差集比对已随 1.88 删除；scope 现在是给人和评审看的声明：scope 是 prediction 不是 contract，偏离由评审者对照 `forge impact` 判断。Plan 里的文件清单直接对应 `--scope` glob：如"改 internal/auth/login.rs 和 session.rs" → `--scope "internal/auth/login.rs"`。
 
 ## 方案档位（design tier）
 
@@ -16,5 +16,5 @@
 
 ## 触点 → PlanScope 与需求追溯
 
-- `forge task artifact --set design --file <方案>`（或 `task start --artifact design=<方案>`）登记方案时，「触点」一节自动写入 PlanScope（手工 `--scope` 优先）；task-verify 的 scope-drift 把超出部分标为「方案外改动」。
-- 验收写 `accept[REQ-n]: <cmd> :: <expected>` 或行尾 `#REQ-n`；`forge task verify-acceptance` 与 `forge task artifact --verify` 输出「已验证 / 未验证 / 孤儿」覆盖表，`forge task report` 一并披露。complete 时默认 advisory；产物链 spec/design ≥ rubric 档时未验证需求阻断（逃生 `FORGE_REQ_COVERAGE=disable`）。
+- 方案写在 change.md 的「改动 / 影响 / 验证」里（1.88 起不再有 artifact 命令）；影响面用 `forge impact` 随时查看，`--scope` 仍可显式声明 PlanScope。
+- 验收写在 change 的 acceptance.md 或 `task start --accept`；`forge task verify-acceptance` 实跑并记确定性证据，`forge task report` 一并披露影响面。

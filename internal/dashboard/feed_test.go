@@ -153,8 +153,8 @@ func TestAggregateFeed_EventFields(t *testing.T) {
 	if start.Severity != "info" {
 		t.Errorf("进行中 task-start severity = %q, want info", start.Severity)
 	}
-	if !strings.Contains(start.Title, "feat/x") || !strings.Contains(start.Title, "pi") || !strings.Contains(start.Title, "gate 1/3") {
-		t.Errorf("task-start 标题应含 ref + origin tool + gate 进度（1/3）: %q", start.Title)
+	if !strings.Contains(start.Title, "feat/x") || !strings.Contains(start.Title, "pi") || !strings.Contains(start.Title, "gate 1/2") {
+		t.Errorf("task-start 标题应含 ref + origin tool + gate 进度（1/2）: %q", start.Title)
 	}
 
 	st := find("skill-trigger", nil)

@@ -76,7 +76,7 @@ npm → npm-verify** 五段强依赖链：
 | job | 作用 | needs |
 |-----|------|-------|
 | **test** | `go test ./... -race` + `go vet` + tag↔版本对账 | （源头） |
-| **drill** | `eval wedge-drill` + `eval artifact-drill`——行为级冒烟（发布物必须真实跑过） | `test` |
+| **drill** | `eval wedge-drill` + `change check`——行为级冒烟（发布物必须真实跑过） | `test` |
 | **goreleaser** | 跨平台二进制 + SBOM + cosign 签名 → GitHub Release 资产 | `test, drill` |
 | **npm** | 发 `@agent_forge/forge` + 5 平台子包到 npmjs.org（带 provenance） | `goreleaser` |
 | **npm-verify** | npm 装回并断言 `forge --version` == tag，**且在装机上跑双 drill**（行为级装机验收） | `npm` |

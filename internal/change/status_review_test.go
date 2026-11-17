@@ -256,8 +256,8 @@ func TestStatus_SealedWithMissingDocNeedsRepair(t *testing.T) {
 	if _, err := Verify(context.Background(), root, "demo", VerifyOptions{}); err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
-	if err := os.Remove(filepath.Join(dir, FileDesign)); err != nil {
-		t.Fatalf("remove design: %v", err)
+	if err := os.Remove(filepath.Join(dir, FileChange)); err != nil {
+		t.Fatalf("remove change: %v", err)
 	}
 	st, err := StatusOf(root, "demo")
 	if err != nil {
@@ -266,7 +266,7 @@ func TestStatus_SealedWithMissingDocNeedsRepair(t *testing.T) {
 	if st.Verdict != "action" {
 		t.Fatalf("verdict = %q, want action（产物被删不能直接归档）", st.Verdict)
 	}
-	if len(st.NextSteps) == 0 || !strings.Contains(st.NextSteps[0], FileDesign) {
+	if len(st.NextSteps) == 0 || !strings.Contains(st.NextSteps[0], FileChange) {
 		t.Fatalf("next steps = %v, want 指向缺的 design.md", st.NextSteps)
 	}
 }

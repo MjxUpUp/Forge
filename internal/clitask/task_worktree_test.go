@@ -394,10 +394,8 @@ func makeChangeFiles(t *testing.T, dir, id string) {
 	t.Helper()
 	files := map[string]string{
 		"clarify.md":    "## 边界\n\n只验证 worktree 里 goal.md 的锚点。\n\n## 非目标\n\n不改阶段机与门禁。\n\n人确认：2026-11-15T00:00:00Z\n",
-		"proposal.md":   "# 提案\n\n验证 worktree 的 goal 锚点。\n",
-		"design.md":     "# 设计\n\n在 worktree 里读 goal.md。\n",
+		"change.md":     "# 改动\n\n验证 worktree 的 goal 锚点。\n\n## 影响\n\n无。\n\n## 验证\n\nacceptance #1。\n",
 		"acceptance.md": "# 验收\n\n```bash\ntrue\n```\n",
-		"tasks.md":      "# 任务\n\n- [ ] 1. 验证 worktree 锚点（判据：acceptance #1）\n",
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(dir, "spec", "changes", id, name), []byte(body), 0o644); err != nil {

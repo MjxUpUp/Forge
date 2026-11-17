@@ -122,9 +122,9 @@ forge skills eval-report --skill <X>                   # 看 pass-rate / 回归 
 - 批量实跑回归走核心循环的 step 4（eval-cases → eval-record → eval-report），本节只定
   case 集本身的编写纪律。
 
-## 与 task-verify 的衔接
+## 与评审的衔接
 
-改 skill 源码时，task-verify gate 会 advisory 提醒「记决策」（skill-decisions-advisory）：
+改 skill 源码时不再有 task-verify 的「记决策」advisory（已随 1.88 删除）；是否补 decisions.md 由评审者判断：
 非平凡优化（改了行为/检查项/流程）就 `forge skills decide` 记一条；trivial（typo/格式）忽略。
 
 ## 与其他 skill 的衔接

@@ -46,9 +46,9 @@ var workspaceCmd = &cobra.Command{
 
 workspace 是一组共同交付的 forge 项目的逻辑分组（如 app + 后端 + infra 仓）。
 成员按项目 key 引用（路径只是展示缓存，漂移由 doctor 检出）；同一 repo 允许
-属于多个 workspace（重叠由 doctor 标 advisory）。多仓 workspace 成员的任务
-在 task-verify 须声明跨仓影响（forge task impact），默认 advisory，protocol
-cross_repo_impact: required 可升级为阻断。
+属于多个 workspace（重叠由 doctor 标 advisory）。跨仓影响声明用
+forge task impact：1.88 激进减法删除了 cross-repo-impact 门禁，声明只是
+report 与评审的参考，不再阻断 task-verify 或任何其它命令。
 
 子命令：
   create  创建空 workspace

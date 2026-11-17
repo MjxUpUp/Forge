@@ -8,7 +8,6 @@ package e2e
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,125 +99,6 @@ func TestWorkspaceDoctorDrift(t *testing.T) {
 	}
 	if !strings.Contains(out, `advisory`) {
 		t.Errorf("doctor 应声明全部 advisory 不阻断，got:\n%s", out)
-	}
-}
-
-// TestWorkspaceImpactGate covers the task-verify cross-repo-impact gate
-// end-to-end: default advisory (verify passes, advisory on stderr) → protocol
-// cross_repo_impact: required turns the undeclared case into a HARD stop →
-// `forge task impact --level none` unblocks verify again. Also pins the Step 4
-// card line on `forge task status` (未声明 → none).
-//
-// TestWorkspaceImpactGate 端到端覆盖 task-verify 的 cross-repo-impact 门禁：
-// 默认 advisory（verify 通过，stderr 提醒）→ protocol 配
-// cross_repo_impact: required 后未声明变 HARD stop → `forge task impact
-// --level none` 后 verify 恢复通过。同时钉住 Step 4 的卡片行（forge task
-// status 上 未声明 → none）。
-func TestWorkspaceImpactGate(t *testing.T) {
-	// 与 passAllGates 相同的门禁计时/工作活动豁免（这里门禁连跑）。
-	t.Setenv("FORGE_GATE_MIN_INTERVAL", "0s")
-	t.Setenv("FORGE_WORK_ACTIVITY", "disable")
-
-	dirA, _, _, _ := wsFixture(t)
-	forge(t, dirA, "task", "start", "--ref", "feat/xr", "--title", "cross repo", "--branch")
-
-	// 真实改动 + commit，满足 task-implement 的内容检查。
-	writeFile(t, dirA, "xr.go", "package main\n\nfunc XR() int { return 1 }\n")
-	git(t, dirA, "add", "xr.go")
-	git(t, dirA, "commit", "-m", "e2e: cross-repo impact probe")
-	forge(t, dirA, "task", "gate", "task-implement", "--ref", "feat/xr")
-
-	// Step 4 卡片行：status 卡片点名 workspace + 声明状态。
-	out := forge(t, dirA, "task", "status")
-	if !strings.Contains(out, `Workspace: ws（2 repos）· 跨仓影响: 未声明`) {
-		t.Errorf("task status 缺 workspace 上下文行，got:\n%s", out)
-	}
-
-	// 默认 advisory：verify 通过，四段式提醒落 stderr。
-	out, err := forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/xr")
-	if err != nil {
-		t.Fatalf("默认 advisory 下 verify 不应被阻断: %v\noutput: %s", err, out)
-	}
-	if !strings.Contains(out, `未声明跨仓影响`) {
-		t.Errorf("advisory 输出应含「未声明跨仓影响」，got:\n%s", out)
-	}
-
-	// 经 DataDir 的 protocol.yml 升级为 required（零项目写入时代：项目树没有
-	// .forge/protocol.yml）。
-	protoPath := filepath.Join(forgedata.DataDirFor(dirA), "protocol.yml")
-	// 阶段 D 删掉 autoSync 后，DataDir 的 protocol.yml 不再自动生成：
-	// 这里直接写一份最小协议（Load 会补默认值）。
-	if err := os.MkdirAll(filepath.Dir(protoPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, ``, protoPath, "version: \"1\"\ncross_repo_impact: required\n")
-
-	out, err = forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/xr")
-	if err == nil {
-		t.Fatalf("required 模式下未声明应阻断 verify\noutput: %s", out)
-	}
-	if !strings.Contains(out, `HARD stop`) || !strings.Contains(out, `cross_repo_impact`) {
-		t.Errorf("阻断输出应含 HARD stop + cross_repo_impact 四段式，got:\n%s", out)
-	}
-
-	// 声明 none → verify 不再因 cross-repo-impact 阻断（required 翻转前该门禁
-	// 本就能过，故直接断言恢复通过）。
-	forge(t, dirA, "task", "impact", "--level", "none")
-	out, err = forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/xr")
-	if err != nil {
-		t.Fatalf("声明 none 后 verify 应恢复通过: %v\noutput: %s", err, out)
-	}
-	out = forge(t, dirA, "task", "status")
-	if !strings.Contains(out, `跨仓影响: none`) {
-		t.Errorf("声明后 status 卡片应显示 跨仓影响: none，got:\n%s", out)
-	}
-}
-
-// TestWorkspaceCrossRepoDependsOn covers key:ref dependencies across repos.
-//
-// TestWorkspaceCrossRepoDependsOn 覆盖跨仓 key:ref 依赖：仓 A 的 ta 依赖
-// keyB:feat/tb → ta 的 verify 被阻断且 pending 消息原样携带 key:ref → tb
-// 交付后 pending 消失（verify 此时只剩 task-implement 前置未过，绝不再报
-// 该依赖）。
-func TestWorkspaceCrossRepoDependsOn(t *testing.T) {
-	dirA, dirB, _, keyB := wsFixture(t)
-
-	// 先在仓 B 建好 tb，让写入侧校验看到存活目标。
-	forge(t, dirB, "task", "start", "--ref", "feat/tb", "--title", "b task", "--branch")
-	dep := keyB + `:feat/tb`
-	out, err := forgeErr(t, dirA, "task", "start", "--ref", "feat/ta", "--title", "a task", "--branch", "--depends-on", dep)
-	if err != nil {
-		t.Fatalf("跨仓 --depends-on 应被接受: %v\noutput: %s", err, out)
-	}
-
-	// ta verify → DependsOn 门禁先于前置检查触发，原样点名 key:ref。
-	out, err = forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/ta")
-	if err == nil {
-		t.Fatalf("上游未交付时 ta 的 verify 应被阻断\noutput: %s", out)
-	}
-	if !strings.Contains(out, `上游 task 未交付`) || !strings.Contains(out, dep) {
-		t.Errorf("阻断输出应原样含 pending 依赖 %s，got:\n%s", dep, out)
-	}
-
-	// 走真实命令路径交付 tb（passAllGates + task complete，
-	// TestMasterBranchReminder 同款）：无分派任务的 IsDelivered = IsComplete =
-	// History 里门禁全过，故只写 completed_at 的夹具手术不会放行依赖方——
-	// 门禁必须真过。仓 B 是多仓成员，其 verify 会带 cross-repo advisory——
-	// 仅 advisory，不阻断。
-	passAllGates(t, dirB, "feat/tb")
-	// oracle-pipeline L1：complete 登记门硬前置——登记快验收并实跑（scratch
-	// commit 之后，快照新鲜）。
-	forge(t, dirB, "task", "accept", "go version :: go version", "--ref", "feat/tb")
-	forge(t, dirB, "task", "verify-acceptance", "--ref", "feat/tb")
-	forge(t, dirB, "task", "complete", "--ref", "feat/tb")
-
-	// 重跑 verify：跨仓 pending 消失；只剩 task-implement 前置未过。
-	out, _ = forgeErr(t, dirA, "task", "gate", "task-verify", "--ref", "feat/ta")
-	if strings.Contains(out, `上游 task 未交付`) || strings.Contains(out, dep) {
-		t.Errorf("tb 交付后 verify 不应再报该 pending，got:\n%s", out)
-	}
-	if !strings.Contains(out, `prerequisite`) {
-		t.Errorf("依赖放行后应只剩前置门禁阻断（证明确已越过 DependsOn 检查），got:\n%s", out)
 	}
 }
 

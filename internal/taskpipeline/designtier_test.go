@@ -172,18 +172,6 @@ func TestDesignTier(t *testing.T) {
 		}
 	})
 
-	t.Run("implement 首轮判定并落 design-tier 行", func(t *testing.T) {
-		t.Setenv("FORGE_DATA_HOME", t.TempDir())
-		root := t.TempDir()
-		st := &TaskState{TaskRef: "feat/impl", PlanScope: []string{"proto/v1/user.proto"}}
-		RecordImplementDesignTier(root, st, nil)
-		if st.DesignTier == nil || st.DesignTier.Final != "full" {
-			t.Fatalf("应判 full: %+v", st.DesignTier)
-		}
-		if !findCheckEntry(t, root, st.TaskRef, CheckNameDesignTier) {
-			t.Fatal("应落 design-tier 行")
-		}
-	})
 }
 
 // TestPlanConversionByTier 钉住 W0.2：按档位统计任务数、跳过（要求方案却无 design/plan）

@@ -145,7 +145,7 @@ func ComputePhase(root, id string) (Phase, []string, error) {
 
 	if c.HasGoal || c.GoalRequired {
 		if _, _, _, err := LoadGoal(root, id); err != nil {
-			return PhaseSpecify, []string{fmt.Sprintf("goal.md 五段没填完：%v", err), "填 spec/changes/" + id + "/goal.md 并删掉 forge:fill 标记"}, nil
+			return PhaseSpecify, []string{fmt.Sprintf("goal.md 必填三段没填完：%v", err), "填 spec/changes/" + id + "/goal.md 并删掉 forge:fill 标记"}, nil
 		}
 	}
 
@@ -155,6 +155,17 @@ func ComputePhase(root, id string) (Phase, []string, error) {
 	}
 	if _, err := ParseClarify(clarifyRaw); err != nil {
 		return PhaseClarify, []string{err.Error(), "补齐后重跑 forge change clarify " + id + " --by-human --note …（或 --force 覆盖）"}, nil
+	}
+
+	// 三份产物布局（forge-ruthless）：change.md 取代 proposal/design/tasks。
+	if c.HasChange || exists(filepath.Join(dir, FileChange)) {
+		if scaffold(FileChange) {
+			return PhasePlan, []string{"change.md 还是空的/脚手架", "写 change.md：改动 / 影响 / 验证"}, nil
+		}
+		if scaffold(FileAcceptance) {
+			return PhaseTasks, []string{"acceptance.md 还是空的/脚手架", "写 acceptance.md：可执行判据围栏"}, nil
+		}
+		return PhaseReady, nil, nil
 	}
 
 	if scaffold(FileProposal) {

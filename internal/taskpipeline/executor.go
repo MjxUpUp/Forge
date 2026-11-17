@@ -40,9 +40,9 @@ const CheckNameBranchUnmerged checklog.CheckName = "branch-unmerged"
 const CheckNameGoalOutputMismatch checklog.CheckName = "goal-output-mismatch"
 
 // CheckNameUncommittedAtComplete 是 task-complete 提交顺序 advisory 的 checklog
-// 名：complete 时工作区仍有未提交变更——协议规定的顺序是三门禁 → git commit →
+// 名：complete 时工作区仍有未提交变更——协议规定的顺序是门禁与验收 → git commit →
 // forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务
-// 追踪/保护）。2026-08-17 实证：某会话三门禁全过后先 complete、32 分钟后才
+// 追踪/保护）。2026-08-17 实证：某会话门禁全过后先 complete、32 分钟后才
 // commit——侥幸零实质损害（其间无写入），但窗口真实存在。仅 advisory，永不阻塞。
 const CheckNameUncommittedAtComplete checklog.CheckName = "uncommitted-at-complete"
 
@@ -168,23 +168,13 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// test-coverage 兜底，再到 complete 时的各 advisory。changedFiles 在兜底内算一次、
 	// advisory 段复用（taskChangedFiles 起多个 git 子进程——不跑第二遍）。
 	if gateID == GateComplete && state.CompletedAt == nil {
-		if err := checkCompleteReviewPrereqs(root, state); err != nil {
+		if err := CheckCompleteReviewPrereqs(root, state); err != nil {
 			return nil, err
 		}
-		// doc gate 与 complete 同口径（1.87.2 dogfood 发现）：gate 曾放行、complete 才报 doc gate 未通过，
-		// 照 next 走的人会在最后一步被打回。这里复用 CheckDocGate，缺 L2 回检/L1 硬失败时同样 BLOCKED。
-		if ok, reasons := CheckDocGate(root, state); !ok {
-			return nil, GateBlocked("task-complete 拒绝（doc gate，与 forge task complete 同口径）: %s；流程：forge docs lint <paths> 修 L1 → 按 doc-review skill 评审（产出者不能自检）→ commit 之后 forge task doc-review --passed pass --score <N> --round <N> --reviewer <评审者 id>；逃生（落 checklog 审计，降 evidence 强度）: forge task override --doc-gate disable 或 FORGE_DOC_GATE=disable。新阻断位点：首发即 blocked（见 docs/design/compat-commitments.md 第二节）", strings.Join(reasons, "; "))
-		}
-		changedFiles, err := checkTestCoverageBackstop(root, state)
-		if err != nil {
-			return nil, err
-		}
-		// 需求覆盖（reqtrace.go，提案 W3.3）：默认 advisory；产物链 spec/design ≥ rubric 档时阻断。
-		if err := CheckRequirementCoverageAtComplete(root, state); err != nil {
-			return nil, err
-		}
-		// 事后升档（designtier.go，提案 W4.4）：实际 diff 要求更高档位且无 design 产物 → advisory。
+		// 验收前置（零验收 / 从未实跑 / 过期）不在 executor 层拦：这里的调用方有大量
+		// 构造合成 state 的单测，拦了会把门禁语义和测试夹具耦死。CLI 的两条入口
+		// （`task gate task-complete`、`task complete`）各自调 CheckCompleteAcceptancePrereqs。
+		changedFiles := taskChangedFiles(root, state)
 		CheckDesignTierEscalation(root, state, changedFiles)
 		adviseCompleteDelivery(root, state, changedFiles)
 	}
@@ -207,41 +197,6 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 		if err := checkWorkActivity(root, gateID, state); err != nil {
 			return nil, err
 		}
-	}
-
-	// task-verify 检查（executor_check_verify*.go）。gitChanged 在 syncVerifyDesignPhases
-	// 算一次后传给每个消费方；findingsDirty 自 cheat-scan 段流入 unused-scan 段，由后者
-	// 在两段之后统一持久化一次。
-	if gateID == GateVerify && state.CompletedAt == nil {
-		gitChanged := syncVerifyDesignPhases(root, state)
-		if err := checkVerifyTestCoverage(root, state, gitChanged); err != nil {
-			return nil, err
-		}
-
-		// cross-repo-impact 声明（多仓 workspace，crossrepo.go）：本 repo 属于多仓
-		// workspace 时，任务必须带显式影响声明——包括 "none"（声明强迫显式思考）。
-		// 默认 advisory（fail-open 哲学）；protocol cross_repo_impact: required 把
-		// 未声明升级为硬阻断。无多仓成员资格的 repo 静默跳过（不记日志）。
-		// CheckCrossRepoImpact 在 BuildEvidenceChain 中排除——它是声明状态的观测，
-		// 非验证证据。
-		if err := checkCrossRepoImpact(root, state); err != nil {
-			return nil, err
-		}
-
-		if err := checkVerifyScopeDrift(root, state, gitChanged); err != nil {
-			return nil, err
-		}
-		findingsDirty := scanCheatFindings(root, state)
-		adviseVerifyDocGate(root, state)
-		scanUnusedFindings(root, state, findingsDirty)
-		adviseReqHygiene(root, state)
-		adviseConventionsLint(root, state)
-		adviseTestCapability(root, state)
-		adviseSkillEval(root, state, gitChanged)
-		if err := checkSkillDecisions(root, state, gitChanged); err != nil {
-			return nil, err
-		}
-		adviseAcceptance(root, state)
 	}
 
 	// 证据链 agent-claim（executor_check_common.go）：仅在 gate 实际通过且任务未完成时记录
@@ -429,62 +384,6 @@ func checkImplement(root string, state *TaskState) (*ExecuteResult, error) {
 		}
 	}
 
-	// 3.5 产物链分档执法（artifact-chain-workflow.md §2）：rubric/human/hard 档
-	// 按事实阻断（缺失/L1 lint/审批/漂移），默认链只发一次性 advisory 汇总——
-	// 放在方案前置（4）之前：链阻断时本轮不再叠加 plan-first 提示（噪音纪律），
-	// 修复产物后的重试轮再走 4。fail-open：坏 schema 回落默认链，绝不因配置错误
-	// 阻断；逃生舱 env/override 落 CheckEscapeHatch 审计行。
-	if block := CheckArtifactChainGate(root, state, taskRef); block != nil {
-		return block, nil
-	}
-
-	// 4. 方案前置记录（shift-left）：产出了真实改动但 Plan/Goal 皆空的代码任务 = 跳过
-	// 方案阶段——方向错误会拖到审查环节才暴露，那是 实现→审查→返工 循环最贵的一端。
-	// 放在代码改动校验之后：失败/空改的 implement 重试不会每轮刷日志。无方案仅
-	// advisory，绝不阻塞（小修复合法地不写方案）。
-	//
-	// 每任务记录一次：实现首次坐实时落条目（有方案=Passed:true）并发提示，之后的
-	// implement 重试两者都跳过。每任务一次（2026-08 噪音审计）：同一 advisory 在单
-	// 任务上最多重复 3 次（8 个任务 30 条全同文案）——首次之后信息量不再增长。
-	// PlanFirstAdvisoryFired 把已发标记持久化进 task state，重试（每次从磁盘重载
-	// state）跳过条目与 stderr 提示。
-	if state != nil && !state.PlanFirstAdvisoryFired {
-		hasPlan := state.Plan != "" || state.Goal != ""
-		entry := &checklog.Entry{
-			Check:   checklog.CheckPlanFirst,
-			Passed:  hasPlan,
-			Checked: true,
-			TaskRef: taskRef,
-			Level:   checklog.LevelAdvisory,
-		}
-		if hasPlan {
-			entry.Detail = "plan/goal recorded before implementation"
-		} else {
-			entry.Detail = GateAdvisory("[task-implement] 无方案记录（task start 未带 --plan-file/--goal）——方案先行能在方案阶段拦下方向错误，降低审查-返工轮次；小修复可忽略本提示")
-			fmt.Fprintf(os.Stderr, "%s\n", entry.Detail)
-		}
-		recordAudit(root, entry)
-		// 方案档位判定（designtier.go，提案 W4/W0.1）：搭每任务一次的同一段——首个
-		// implement 轮用 PlanScope + 已改文件跑硬触发器，落 design-tier 行。advisory。
-		RecordImplementDesignTier(root, state, taskChangedFiles(root, state))
-		// 先置标记再持久化（best-effort）：即便落盘失败，本进程内的重试也不会重发；
-		// 跨进程重试最坏重发一次，优于静默丢失「已记录」的语义。与 DesignPhases 持久化
-		// 同款模式（executor.go task-verify 段）。
-		// Flag first, persist second (best-effort): even if the write fails, retries
-		// within this process stay silent; a cross-process retry re-fires at most once —
-		// better than silently losing the "already recorded" semantics. Same pattern as
-		// the DesignPhases persistence (executor.go task-verify section).
-		state.PlanFirstAdvisoryFired = true
-		decided := state.DesignTier
-		if err := MergeOrPersistTaskState(root, state, func(s *TaskState) error {
-			s.PlanFirstAdvisoryFired = true
-			s.DesignTier = decided
-			return nil
-		}); err != nil {
-			fmt.Fprintln(os.Stderr, "[task-implement] plan-first marker persist failed:", err)
-		}
-	}
-
 	return &ExecuteResult{
 		GateID:  GateImplement,
 		Passed:  true,
@@ -549,7 +448,7 @@ func checkGoalContract(root string, state *TaskState) *ExecuteResult {
 			Checked: true,
 			TaskRef: state.TaskRef,
 			Level:   checklog.LevelAdvisory,
-			Detail:  "advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标五段不在 git 里，评审只能靠标题猜意图",
+			Detail:  "advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标三段不在 git 里，评审只能靠标题猜意图",
 		}
 		recordAudit(root, entry)
 		fmt.Fprintf(os.Stderr, "%s\n", entry.Detail)

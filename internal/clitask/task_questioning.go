@@ -9,28 +9,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// task_questioning.go — oracle-pipeline L2 机器出题三命令（mutation/fuzz/
-// edgecheck）。「写码快但交付质量待研究」的正面回答：bad case 不再靠实现者
+// task_questioning.go — oracle-pipeline L2 机器出题命令（fuzz/edgecheck）。「写码快但交付质量待研究」的正面回答：bad case 不再靠实现者
 // 自觉出题——变异体逐个注入、fuzz 批量生成、edge 清单机械枚举，全部 forge
 // 亲自执行并落 deterministic 证据。
-
-var taskMutationCmd = &cobra.Command{
-	Use:   "mutation [--sample N]",
-	Short: "mutation 抽样：对任务改动注入变异体并实跑包测试（杀不死=假绿，bad case 机器出题）",
-	Long: `mutation 抽样（oracle-pipeline L2a）：扫描任务改动的 Go 源文件的算子位点
-（比较翻转/逻辑翻转），确定性抽样后逐个原地变异、实跑所在包 go test、
-立即还原。杀不死变异体的测试是装饰品——断言弱化/空断言无论覆盖率多高
-都查不出；每个变异体就是一道注入的 bad case。
-
-判定（go 工具退出码契约）：测试失败=杀灭；构建失败=无效体（编译器抓住的
-不算测试的功）；通过=存活（stderr 逐位点点名）。证据：一条 mutation-sampling
-checklog 行（deterministic，计入证据强度）。原地变异带 sidecar 备份护栏
-（<file>.forge-mutbak）——还原失败指路备份文件（勿用 git checkout：会连带
-销毁任务未提交改动）；进程被杀时备份残留，下次起跑检测到即拒绝执行。
-advisory 不阻断。--sample 控制抽样数（默认 6）；单变异体超时
-FORGE_MUTATION_TIMEOUT（默认 3m）。`,
-	RunE: runTaskMutation,
-}
 
 var taskFuzzCmd = &cobra.Command{
 	Use:   "fuzz [--sec N] [--max N]",
@@ -55,46 +36,12 @@ var taskEdgecheckCmd = &cobra.Command{
 }
 
 func init() {
-	Root.AddCommand(taskMutationCmd)
 	Root.AddCommand(taskFuzzCmd)
 	Root.AddCommand(taskEdgecheckCmd)
-	taskMutationCmd.Flags().Int("sample", 6, "抽样变异体数量（确定性均匀取样）")
 	taskFuzzCmd.Flags().Int("sec", 30, "每目标 fuzz 预算（秒）")
 	taskFuzzCmd.Flags().Int("max", 3, "最多实跑的目标数（其余记 skipped）")
 }
 
-func runTaskMutation(cmd *cobra.Command, args []string) error {
-	root, err := projectroot.Find()
-	if err != nil {
-		return err
-	}
-	sample, _ := cmd.Flags().GetInt("sample")
-	state, err := taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-	if err != nil {
-		return fmt.Errorf("failed to load task state: %w", err)
-	}
-	if state == nil {
-		return fmt.Errorf("no active task——mutation 抽样作用于当前任务的改动集（forge task start / --ref 族命令不适用：抽样结果要落进任务证据链）")
-	}
-	res, checked, err := taskpipeline.RunMutationSampling(root, state, sample)
-	if err != nil {
-		return err
-	}
-	if !checked {
-		fmt.Println("任务改动集中无 Go 非测试源文件或无可变异位点——抽样空转（Checked=false，不落证据行）")
-		return nil
-	}
-	fmt.Print(taskpipeline.FormatMutationSummary(res))
-	fmt.Println(mutationNextStep(res))
-	return nil
-}
-
-// mutationNextStep returns the closing line for a checked mutation run. A red
-// baseline wins over every other outcome: when some packages were not measured,
-// the run must never conclude "all killed".
-//
-// mutationNextStep 返回已执行抽样的收尾指引行。基线红优先于其他结论：部分包未被
-// 度量时，绝不能落到"全部杀灭"。
 func mutationNextStep(res taskpipeline.MutationResult) string {
 	switch {
 	case len(res.BaselineRed) > 0:

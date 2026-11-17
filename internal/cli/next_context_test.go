@@ -23,6 +23,7 @@ func fillReady(t *testing.T, dir, id string) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
+		"change.md":     "# 改动\n\n改 A 的渲染路径。\n\n## 影响\n\n无。\n\n## 验证\n\nacceptance #1。\n",
 		"proposal.md":   "# 提案\n\n为什么做。\n",
 		"design.md":     "# 设计\n\n怎么改。\n",
 		"acceptance.md": "# 验收\n\n```\ntrue\n```\n",

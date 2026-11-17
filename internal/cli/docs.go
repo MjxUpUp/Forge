@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/doclint"
-	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
 
@@ -162,7 +162,7 @@ func collectLintTargets(args []string, base string) ([]string, error) {
 		// 与 doc gate 共用（taskpipeline.ChangedMarkdownSince）：门禁 BLOCKED
 		// 文案承诺「forge docs lint 可复现」——CLI 必须枚举同一集合
 		// （已提交 + 工作区 + 未跟踪、剔除已删除、应用豁免）。
-		files, err := taskpipeline.ChangedMarkdownSince(root, base)
+		files, err := changedMarkdownSince(root, base)
 		if err != nil {
 			return nil, fmt.Errorf("--base 扫描失败: %w", err)
 		}
@@ -171,6 +171,28 @@ func collectLintTargets(args []string, base string) ([]string, error) {
 	}
 
 	return nil, fmt.Errorf("需要路径参数或 --base <rev>（如 forge docs lint docs/ 或 forge docs lint --base main）")
+}
+
+// changedMarkdownSince 列出 base..工作区之间改动的 markdown（已提交 + 未跟踪，剔除已删除）。
+func changedMarkdownSince(root, base string) ([]string, error) {
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "--diff-filter=d", base).Output()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		p := filepath.ToSlash(strings.TrimSpace(line))
+		if p == "" || !strings.HasSuffix(strings.ToLower(p), ".md") || strings.HasPrefix(p, "spec/changes/") {
+			continue
+		}
+		seen[p] = true
+	}
+	files := make([]string, 0, len(seen))
+	for p := range seen {
+		files = append(files, p)
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 var docsCmd = &cobra.Command{

@@ -185,7 +185,7 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 		// 主检出或无绑定任务：无 worktree 可清理。
 		sid := taskpipeline.CurrentSessionID()
 		if st, _ := taskpipeline.ActiveTaskState(root, sid); st != nil && st.CompletedAt == nil {
-			return fmt.Errorf("任务 %s 尚未 complete——先过完三道门禁（当前 %s）", st.TaskRef, st.CurrentGate)
+			return fmt.Errorf("任务 %s 尚未 complete——先过完两道门禁（当前 %s）", st.TaskRef, st.CurrentGate)
 		}
 		fmt.Println("无本目录 worktree 绑定，无需清理")
 		return nil
@@ -198,7 +198,7 @@ func runTaskFinish(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	if state.CompletedAt == nil {
-		return fmt.Errorf("任务 %s 尚未 complete——先过完三道门禁（当前 %s）", state.TaskRef, state.CurrentGate)
+		return fmt.Errorf("任务 %s 尚未 complete——先过完两道门禁（当前 %s）", state.TaskRef, state.CurrentGate)
 	}
 	wtPath := binding.Path
 

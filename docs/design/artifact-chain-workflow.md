@@ -1,6 +1,6 @@
 # 《产物链工作流化》——L6 契约层接线 + schema.yaml 声明化 + spec→acceptance 提取 + advisory 转化率（落地设计）
 
-状态：设计定稿，随 `feat/artifact-chain-workflow` 落地。
+状态：**已删除（1.88 激进减法）**——本文是历史设计，产物链检查与 `forge task artifact` 已移除；保留供审计当时的判断。
 依据：multi-task-concurrency.md §9/§10（L6 产物契约层原案，schema.yaml DAG 与门禁五态在该节已设计）；leverage-points-landing.md 总原则（advisory fail-open / HARD 只守事实 / 逃生舱 env-disable-able 落 checklog 审计行 / 单一真相源 guard 钉住）；本仓现状实证（`WriteArtifact` 单生产调用方 `internal/clitask/task.go:484` 仅 plan stage、`VerifyArtifact` 零生产调用方、proposal/spec/design 三 stage 零写入方、plan-first advisory 已发 24 次但转化率无报告）。
 
 ---

@@ -353,33 +353,9 @@ func CheckDesignTierEscalation(root string, state *TaskState, changed []string) 
 	}
 	d := tasktypes.DesignTierDecision{Declared: declared, Derived: derived, Final: final, Triggers: triggers}
 	RecordDesignTier(root, state.TaskRef, "complete", d, true)
-	fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 实际改动要求%s，但任务档位为 %s 且未登记 design 产物（触发：%s）——补方案：forge task artifact --set design --file <path>",
+	fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 实际改动要求%s，但任务档位为 %s 且未登记 design 产物（触发：%s）——补方案：在 change.md 的「改动 / 影响 / 验证」里写清设计取舍与影响面",
 		tierDeliverable(derived), final, strings.Join(triggers, "，")))
 }
 
-// RecordImplementDesignTier decides (if not yet decided) and records the tier at
-// the first implement round, using PlanScope plus files changed so far. Called
-// from the once-per-task plan-first block.
-//
-// RecordImplementDesignTier 在首个 implement 轮判定（若尚未判定）并记录档位，用
-// PlanScope 加上已改文件。由每任务一次的 plan-first 段调用。
-func RecordImplementDesignTier(root string, state *TaskState, changed []string) {
-	files := append(append([]string(nil), state.PlanScope...), changed...)
-	derived, triggers := DeriveDesignTier(root, files)
-	var d tasktypes.DesignTierDecision
-	if state.DesignTier != nil {
-		d = DecideDesignTier(state.DesignTier.Declared, state.DesignTier.Reason, derived, triggers)
-	} else {
-		d = DecideDesignTier("", "", derived, triggers)
-	}
-	state.DesignTier = &d
-	RecordDesignTier(root, state.TaskRef, "implement", d, false)
-	_, hasDesign := state.SpecArtifacts["design"]
-	switch {
-	case d.Final != tasktypes.DesignTierNone && !hasDesign && state.Plan == "":
-		fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-implement] %s——尚无方案产物（forge task artifact --set design --file <path>）", FormatDesignTierAdvice(d)))
-	case d.Final == tasktypes.DesignTierFull && hasDesign && state.ArtifactApprovals["design"].Hash == "":
-		// D4 目标映射 full → design 阶段 human；本批只给 advisory（提案原则 2）。
-		fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-implement] 完整方案档：design 产物尚未人工批准——批准走 forge task artifact --approve design --by <审批人>（需产物链 design 设为 human 档；本批不阻断）"))
-	}
-}
+// RecordImplementDesignTier 已随 plan-first 一起移除：档位只在 complete 时按实际
+// diff 复核（CheckDesignTierEscalation），不再有 implement 轮的一次性判定。

@@ -8,34 +8,23 @@
 |---|---|---|
 | L1（机器可判） | `forge docs lint`（D1-D11 规则） | 禁令短语、必填章节、结论枚举、篇幅上限、结论位置，以及调研文档的来源、信度标注、内部标签（D9-D11，advisory）——exit 0=过 / 2=硬失败 |
 | L2（skill 本体） | rubric-docs.md 四维评分 | L1 判不了的「重点是否前置、详略是否得当、证据是否可追溯、受众是否匹配」 |
-| 门禁（流程） | task-complete doc gate | 变更了 markdown 产物的任务，complete 前须有 fresh 的 L2 回检记录 |
+| 门禁（流程） | — | 1.88 激进减法后 doc gate 已删除，L2 评审由人或评审子代理按需发起 |
 | L3（不自动化） | 显式标注 | 业务价值、对外措辞——模板标「需人工确认」，评分跳过 |
 
 ## 完整流程（L1 → L2 → 落档）
 
 1. **L1**：落盘 .md 跑 `forge docs lint <paths>`，硬失败先修（PR 描述/commit body 不落盘，按模板结构核对）。
-2. **L2**：按 skill 正文流程派独立子代理评分（产出者不能自检），产出四维得分 + 分级发现。打回后的复审分档（小修订续用首轮评审者，重写结论、大改、即将进行第 3 轮评审时新派）见 doc-review SKILL.md 的「步骤 5：门控决策与收敛」，doc gate 的重评原因（打回、评审过期）给出同口径摘要。
-3. **落档**：`forge task doc-review --passed pass --score <N>`（`--passed failed --note "<原因>"` 记录未过），自动带轮次与证据关联。
-4. **双评**（同家族且总分落在 75-79 即将放行时必做；70-74 本就未过，不触发）：`--co-reviewer <id> --co-score <N>` 落档两家记录——gate 不消费，只作分歧率观测（output-readability-gates-v2.md P1-A）。
-5. **打标**：Critical 发现用 `tag:` 前缀携带类别（枚举 padding/conclusion/template/false-precision/disclaimer/evidence/style），如 `--critical "padding: 大段复述前文"`。
+2. **L2**：按 skill 正文流程派独立子代理评分（产出者不能自检），产出四维得分 + 分级发现。打回后的复审分档（小修订续用首轮评审者，重写结论、大改、即将进行第 3 轮评审时新派）见 doc-review SKILL.md 的「步骤 5：门控决策与收敛」。
+3. **记录**：把四维得分与 Critical 发现写进 PR 描述或 change.md 的「验证」一节。`forge task doc-review` 与 doc gate 已删除（1.88 激进减法）：交付单不再披露分数，也不再有门禁代你拦文档。
 
 ## 进化判据聚合（session-retrospective 步骤 6 的机器来源）
 
 `forge task finding --stats --source doc-review` 跨任务按 Tag×Round 聚合打回计数（含已 fixed/wontfix——被打回过本身就是重复信号）；同 Tag 计数 ≥3 即满足升级判据，升级落点见 session-retrospective。
 
-## doc gate 规则（complete 前的硬前置）
+## 文档回检的位置
 
-以下任一命中即拒绝 `forge task complete`：
-
-- 任务变更了 markdown 产物但**无 L2 记录**，或记录**过期**（产物在记录之后又改过）
-- L2 **得分 < 75**（阈值与 rubric-docs.md 对齐，真相源在 skill）
-- **未决 Critical** 发现
-
-task-verify（task complete 前的自检）会提前发 advisory 提醒未过文档的清单，不必等到 complete 被拒才发现。
-
-## 逃生口（显式自我承担）
-
-`forge task override --doc-gate disable`——3 轮未过后须人工确认；override 会把任务 evidence 降到 Weak（诚实代价：跳过回检的任务在审查时按弱证据对待）。
+doc gate 与 `forge task doc-review` 都已删除：文档是否过 L2 由评审者判断，不再有命令替你拦。
+变动 `.md` 时仍然要先过 `forge docs lint`（L1 是机器能判的那部分），L2 结论写进交付说明即可。
 
 ## rubric 进化回路
 

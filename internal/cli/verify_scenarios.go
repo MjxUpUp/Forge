@@ -653,7 +653,7 @@ func verifyFileExists(dir, name string) bool {
 	return err == nil
 }
 
-// passAllVerifyGates 为给定 task ref 通过全部 3 个 task gate（v0.17：从 5 个精简）。
+// passAllVerifyGates 为给定 task ref 通过 implement 门禁（两道门禁布局）。
 func passAllVerifyGates(forgeBin, dir string, env []string, ref string) error {
 	// 经子进程 env 关闭 work-activity 门禁（不用 os.Setenv：senv.env 在场景开始
 	// 就从 os.Environ() 快照，之后的进程级 Setenv 永远到不了显式 cmd.Env 的
@@ -673,7 +673,7 @@ func passAllVerifyGates(forgeBin, dir string, env []string, ref string) error {
 		return fmt.Errorf("git commit (verify change) failed: %v\n%s", err, out)
 	}
 
-	for _, g := range []string{taskpipeline.GateImplement, taskpipeline.GateVerify} {
+	for _, g := range []string{taskpipeline.GateImplement} {
 		out, err := verifyRunForgeEnv(forgeBin, dir, env, "task", "gate", g, "--ref", ref)
 		if err != nil {
 			return fmt.Errorf("gate %s failed: %v\n%s", g, err, out)

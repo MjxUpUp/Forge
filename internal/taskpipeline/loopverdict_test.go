@@ -85,13 +85,13 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 		}, LoopVerdictDone, ""},
 		{"同一门禁连续两次 BLOCKED", func() LoopInputs {
 			in := base()
-			in.State = withReset(in.State, GateVerify, false, false)
+			in.State = withReset(in.State, GateComplete, false, false)
 			return in
 		}, LoopVerdictEscalate, LoopCodeGateRepeatBlocked},
 		{"hook 路径（Silent）的 BLOCKED 不计", func() LoopInputs {
 			in := base()
 			for i := 0; i < 3; i++ {
-				in.State.History = append(in.State.History, tasktypes.TaskGateResult{Gate: GateVerify, Passed: false, CompletedAt: time.Now(), Silent: true})
+				in.State.History = append(in.State.History, tasktypes.TaskGateResult{Gate: GateComplete, Passed: false, CompletedAt: time.Now(), Silent: true})
 			}
 			return in
 		}, LoopVerdictDone, ""},
@@ -107,7 +107,7 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 		}, LoopVerdictDone, ""},
 		{"重置之前的 BLOCKED 不计", func() LoopInputs {
 			in := base()
-			in.State = withReset(in.State, GateVerify, false, false)
+			in.State = withReset(in.State, GateComplete, false, false)
 			reset := time.Now().Add(time.Second)
 			in.State.LoopResetAt = &reset
 			return in
@@ -142,10 +142,10 @@ func TestEvaluateLoopVerdict(t *testing.T) {
 			}
 		})
 	}
-	// Next 与 NextDecision 同源：done 态下一步是 verify 门（implement 已过、验收已跑）。
+	// Next 与 NextDecision 同源：done 态下一步是 review pass（implement 已过、验收已跑）。
 	v := EvaluateLoopVerdict(base())
 	want := NextDecision("feat/v", false, 0, convergedState()).Next
-	if v.Next != want || !strings.Contains(v.Next, "task-verify") {
+	if v.Next != want || !strings.Contains(v.Next, "review pass") {
 		t.Fatalf("Next=%q want %q", v.Next, want)
 	}
 	// 每个 Code 都有解除方式（封闭枚举守卫）。

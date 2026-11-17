@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/artifactchain"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
@@ -251,42 +250,6 @@ func TestVerifyAcceptance_FallbackRuns(t *testing.T) {
 	}
 }
 
-// TestArtifactInitSchema_WritesAndRefusesOverwrite: init-schema writes the
-// default chain with spec promoted to human; a second call without --force is
-// refused (explicit ownership), --force overwrites.
-//
-// TestArtifactInitSchema_WritesAndRefusesOverwrite：init-schema 写默认链且
-// spec 升 human 档；无 --force 的二次调用被拒（显式承担覆盖），--force 覆盖。
-func TestArtifactInitSchema_WritesAndRefusesOverwrite(t *testing.T) {
-	dir, _ := setupChainTask(t, "")
-	out := captureStdout(t, func() {
-		if err := runArtifactInitSchema(false); err != nil {
-			t.Fatalf(`init-schema: %v`, err)
-		}
-	})
-	if !strings.Contains(out, "human") {
-		t.Errorf(`输出应说明 spec=human 档: %q`, out)
-	}
-	chain, warns := artifactchain.Load(dir)
-	for _, w := range warns {
-		t.Errorf(`Load 回读不应告警: %s`, w)
-	}
-	specStage, ok := chain.StageByName("spec")
-	if !ok || specStage.Mode != artifactchain.ModeHuman {
-		t.Fatalf(`spec 应为 human 档: %+v`, specStage)
-	}
-	if s, _ := chain.StageByName("design"); s.Mode != artifactchain.ModeAdvisory {
-		t.Errorf(`design 应维持 advisory: %+v`, s)
-	}
-	// 无 --force 覆盖拒绝。
-	if err := runArtifactInitSchema(false); err == nil || !strings.Contains(err.Error(), "--force") {
-		t.Fatalf(`已存在 schema 应拒绝并指引 --force: %v`, err)
-	}
-	if err := runArtifactInitSchema(true); err != nil {
-		t.Fatalf(`--force 应覆盖: %v`, err)
-	}
-}
-
 // TestBuildAndRenderTaskReport: the report assembles every disclosure section
 // from TaskState + checklog and renders it as the acceptor's single page.
 //
@@ -433,7 +396,7 @@ func TestReportSelfSupplied(t *testing.T) {
 	dir, taskRef := setupChainTask(t, "")
 	if err := checklog.Record(dir, &checklog.Entry{
 		Check: checklog.CheckReviewPass, Passed: true, Checked: true, TaskRef: taskRef,
-		Detail: "self-refresh: baseline re-stamped over changed source via --note; review round 1 passed",
+		Detail: "re-review: baseline re-stamped over changed source by reviewer rev-2; review round 1 passed",
 	}); err != nil {
 		t.Fatal(err)
 	}

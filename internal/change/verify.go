@@ -212,9 +212,9 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	// 模板骨架不是判据：init+new 之后产物文件还都是模板，直接 verify 会把
 	// 通用示例命令当成这个 change 的验收标准（在 Go 仓库里甚至能封印）。
 	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
-		want := "五份产物（含 goal.md）"
+		want := "三份产物（goal/change/acceptance）"
 		if c.Fast {
-			want = "fast 通道要求的三份产物（goal、proposal、acceptance）"
+			want = "fast 通道要求的三份产物（goal、change、acceptance）"
 		}
 		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——%s都填成这个 change 自己的内容、并删掉%s后再 verify",
 			id, strings.Join(problems, "、"), want, scaffoldHint)
@@ -580,12 +580,19 @@ const scaffoldHint = "文件头那行 forge:fill 注释标记"
 //
 // status 与 verify 共用这一个判定：两处各写一份，改一处就会漂移成"status 说
 // 可以跑、verify 说产物不全"。
-// 普通 change 要五份产物（goal + 四份），少一份就少了对应的审计线索；fast 通道
-// 要求 goal/proposal/acceptance——省的是 design/tasks，不是目标与判据。
+// 普通 change 要三份产物（goal + change + acceptance），少一份就少了对应的审计线索；fast 通道
+// 与普通 change 同布局（goal/change/acceptance + clarify 的人确认）——省的是 tasks 与 design 的展开，
+// 不是目标、边界与判据。
 func DocProblems(dir string, fast bool) []string {
-	required := []string{FileProposal, FileDesign, FileTasks, FileAcceptance}
-	if fast {
-		required = []string{FileProposal, FileAcceptance}
+	// 三份产物化（forge-ruthless）：新 change 只需要 goal + change + acceptance；
+	// 老 change（有 proposal/design）按老规则继续校验，两者都兼容。
+	newLayout := exists(filepath.Join(dir, FileChange)) || exists(filepath.Join(dir, GoalRequiredFile))
+	required := []string{FileChange, FileAcceptance}
+	if !newLayout {
+		required = []string{FileProposal, FileDesign, FileTasks, FileAcceptance}
+		if fast {
+			required = []string{FileProposal, FileAcceptance}
+		}
 	}
 	var out []string
 	for _, name := range required {
@@ -598,7 +605,7 @@ func DocProblems(dir string, fast bool) []string {
 			out = append(out, name+"（仍是模板骨架）")
 		}
 	}
-	// goal.md 是第五份产物：存在就必须五段写完；不存在按老 change 兼容放行
+	// goal.md 是第一份产物：存在就必须三段必填写完；不存在按老 change 兼容放行
 	//（`change new` 自本版起总会生成它，并留下 .goal-required 标记——新 change
 	// 删掉 goal.md 不再能冒充老 change 绕过 verify）。
 	goalPath := filepath.Join(dir, FileGoal)

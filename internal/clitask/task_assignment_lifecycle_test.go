@@ -487,7 +487,7 @@ func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
 	runForge(t, dir, `task`, `start`, `--ref`, `feat/down`, `--depends-on`, `feat/up`, `--title`, `下游`)
 
 	// B 过 task-verify：上游 feat/up 未交付 → HARD BLOCK（注入点在 prerequisite 之前，故最先触发）
-	stdout, _, code := runForge(t, dir, `task`, `gate`, `task-verify`, `--ref`, `feat/down`)
+	stdout, _, code := runForge(t, dir, `task`, `gate`, `task-complete`, `--ref`, `feat/down`)
 	if code == 0 {
 		t.Fatalf(`task-verify 应因上游未交付 BLOCKED, got exit 0: %s`, stdout)
 	}
@@ -513,7 +513,7 @@ func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
 		}
 	}
 	if !foundDepGateBlock {
-		t.Errorf(`task-verify 因依赖未交付 BLOCKED 应记一条 dependency-gate(Passed=false) checklog, got %d 条: %+v`, len(entries), entries)
+		t.Errorf(`task-complete 因依赖未交付 BLOCKED 应记一条 dependency-gate(Passed=false) checklog, got %d 条: %+v`, len(entries), entries)
 	}
 
 	// 让上游交付（assignment-delivered，无需过上游门禁）
@@ -521,7 +521,7 @@ func TestTaskDependsOn_GateBlocksUntilUpstreamDelivered(t *testing.T) {
 
 	// 再过 B 的 task-verify：DependsOn 已满足，不再因依赖 BLOCKED（可能因 prerequisite 等其他原因 BLOCK，
 	// 但绝不应再是「上游未交付」——这正是门禁放行依赖的信号）
-	stdout, _, _ = runForge(t, dir, `task`, `gate`, `task-verify`, `--ref`, `feat/down`)
+	stdout, _, _ = runForge(t, dir, `task`, `gate`, `task-complete`, `--ref`, `feat/down`)
 	if strings.Contains(stdout, `上游 task 未交付`) {
 		t.Errorf(`上游已交付后不应再因依赖 BLOCKED, got: %s`, stdout)
 	}

@@ -1,7 +1,6 @@
 package taskpipeline
 
 import (
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -215,17 +214,6 @@ const testCoverageHardGateThreshold = 3
 // TestCoverageHardGateThreshold 导出 task-complete 兜底阈值，供包外面向用户的文案
 // （test-nudge tier3）从同一常量取值，不再手抄数字。
 const TestCoverageHardGateThreshold = testCoverageHardGateThreshold
-
-// testCoverageShouldBlock 决定 task-complete 兜底是否对缺测试硬阻断。missingN 是
-// 「无配对测试的改动源文件数」（非全部改动源文件数）——与上方阈值文档一致：缺测
-// 多（≥阈值）且零断言 → 阻断（corrupt success：改了源码既无配对测试也无任何断言）。
-// 缺测少（<阈值，fudge factor——如测试充分改动只漏 1 个文件的部分覆盖）或「有断言
-// 但 0 配对覆盖」（测试在别处/重构场景）→ advisory 放行。断言信号复用
-// scoring.CollectAssertionDensity（13 个跨语言 marker），避免只看「测试是否存在」
-// 的同义反复陷阱（AI 测试固化 bug）。
-func testCoverageShouldBlock(missingN, assertN int) bool {
-	return missingN >= testCoverageHardGateThreshold && assertN == 0
-}
 
 // taskChangedFiles 返回 task 期间改动的文件集合。
 // 含 task 的 HeadCommit（task start 时记录）之后的已提交改动加工作树——
@@ -518,38 +506,4 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 		}
 		return false
 	}
-}
-
-// testCoverageDetail 返回门禁裁定的简短 checklog detail 字符串（刻意短——
-// checklog Detail 是单行，不是 formatMissing 产出的面向用户失败消息）。
-func testCoverageDetail(ok bool, missing []string) string {
-	if ok {
-		return "all changed source files have corresponding tests"
-	}
-	// G.1 的 3→2 收紧预告（原定 1.58）已撤回（compat-commitments §三 2026-10-22 裁决）：
-	// 文案只陈述现行 backstop 规则，阈值取自 testCoverageHardGateThreshold 单一真相源。
-	notice := fmt.Sprintf(" (缺测 >=%d 个源文件且零断言时 task-complete BLOCKED——补测试或 forge task override --test-coverage disable)", testCoverageHardGateThreshold)
-	if len(missing) > 3 {
-		return fmt.Sprintf("missing tests for %d files: %s ...%s", len(missing), strings.Join(missing[:3], ", "), notice)
-	}
-	return "missing tests for: " + strings.Join(missing, ", ") + notice
-}
-
-// formatMissing 产出面向用户的门禁失败消息。
-// dogfood 4.2/2.1：原 advisory 末尾教 escape（"To bypass: FORGE_TEST_COVERAGE=disable"），
-// 实测让 agent 把 disable 写进 task plan 当固定流程（DevWorkbench 330 次）。改为注入
-// test-discipline skill 指引（复刻 code-review-gate 的 hook 强制驱动路径）——escape 降级为
-// 末尾审计脚注，不再当头条教学。
-func formatMissing(missing []string) string {
-	primary := "Add tests for changed source (CLAUDE.md rule 4: 测试伴随变更). " +
-		"→ 加载 test-discipline skill：" +
-		"测试质量守卫，区分单元测试与端到端、防断言弱化与假测试。" +
-		"入口(main.go/cmd)/生成物(.gen./_generated/.pb.)/纯类型文件(types/dto/models)白名单免测。"
-	footnote := " 确不可测时设 FORGE_TEST_COVERAGE=disable（落 checklog 审计，可 forge trace 追溯）。"
-	if len(missing) > 5 {
-		return fmt.Sprintf("%d source files changed without a corresponding test: %s ... (and %d more). %s%s",
-			len(missing), strings.Join(missing[:5], ", "), len(missing)-5, primary, footnote)
-	}
-	return fmt.Sprintf("source files changed without a corresponding test: %s. %s%s",
-		strings.Join(missing, ", "), primary, footnote)
 }

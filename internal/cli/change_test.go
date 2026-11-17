@@ -191,13 +191,13 @@ func TestChangeNewFast_WritesTwoTemplates(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(root, "spec", "changes", "tiny")
-	for _, name := range []string{change.FileGoal, change.FileProposal, change.FileAcceptance, change.FastFile} {
+	for _, name := range []string{change.FileGoal, change.FileChange, change.FileAcceptance, change.FastFile} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("fast change 缺 %s: %v", name, err)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, change.FileDesign)); err == nil {
-		t.Error("fast change 不该写 design.md")
+		t.Error("fast change 不该写 design.md/proposal.md")
 	}
 }
 
@@ -329,7 +329,7 @@ func TestChangeCheck_StagedCatchesCodeOnlyAndTouchedChange(t *testing.T) {
 	}
 
 	// 碰了 demo 自己的产物：只查它，未封印同样拦下。
-	gitRun(t, root, "add", "spec/changes/demo/proposal.md")
+	gitRun(t, root, "add", "spec/changes/demo/change.md")
 	_, _, err = captureOutput(t, func() error {
 		return runChangeCheck(changeCheckCmd, nil)
 	})
@@ -639,10 +639,8 @@ func TestChangeStatus_StderrPathIsRepoRelativeOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"goal.md":       "# 示例：目标契约\n\n## Objective\n\n跑一次失败判据。\n\n## Why\n\n验证证据路径。\n\n## Constraints\n\n不改实现。\n\n## Out of Scope\n\n不做修复。\n\n## Check\n\nacceptance #1。\n",
-		"proposal.md":   "# 提案\n\ndemo\n",
-		"design.md":     "# 设计\n\ndemo\n",
-		"tasks.md":      "# 任务\n\n- [ ] 1. 跑\n\n判据：acceptance #1\n",
+		"goal.md":       "# 示例：目标契约\n\n## Objective\n\n跑一次失败判据。\n\n## Out of Scope\n\n不做修复。\n\n## Check\n\nacceptance #1。\n",
+		"change.md":     "# 改动\n\n跑一次失败判据，验证证据路径。\n\n## 影响\n\n无。\n\n## 验证\n\nacceptance #1。\n",
 		"acceptance.md": "# 验收\n\n```bash\nls /definitely/not/here\n```\n",
 	}
 	for name, body := range files {
@@ -754,7 +752,7 @@ func TestChangeNewFast_WithHumanApproval(t *testing.T) {
 		t.Fatalf("带 --by-human 应通过: %v", err)
 	}
 	dir := filepath.Join(root, "spec", "changes", "approved")
-	for _, name := range []string{change.FileGoal, change.FileProposal, change.FileAcceptance} {
+	for _, name := range []string{change.FileGoal, change.FileChange, change.FileAcceptance} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("approved fast change 缺 %s: %v", name, err)
 		}

@@ -92,8 +92,8 @@ func TestTaskMine_BlockedAnnotatesDepStatus(t *testing.T) {
 	if !strings.Contains(out, `"status": "claimed"`) {
 		t.Errorf(`上游 claimed，pending_dep_detail.status 应为 claimed, got: %s`, out)
 	}
-	if !strings.Contains(out, `"gate_passed": 0`) || !strings.Contains(out, `"gate_total": 3`) {
-		t.Errorf(`上游无门禁通过，应 gate_passed=0/gate_total=3, got: %s`, out)
+	if !strings.Contains(out, `"gate_passed": 0`) || !strings.Contains(out, `"gate_total": 2`) {
+		t.Errorf(`上游无门禁通过，应 gate_passed=0/gate_total=2, got: %s`, out)
 	}
 }
 

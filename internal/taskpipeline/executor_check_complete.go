@@ -14,7 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/review"
-	"github.com/MjxUpUp/Forge/internal/scoring"
 )
 
 // task-complete 硬前置：code-review-gate 必须已通过（ReviewPassed=true）。
@@ -29,9 +28,10 @@ import (
 // ReviewPassed 硬前置正交——上面拒「没审过」，这里拒「审过但代码又变了」，两者叠加才构成完整闭环。
 // ReviewedHeadCommit=="" → commit-then-review 流（审查时工作区干净，hash 空）或老 state 兼容，
 // 跳过本检查（仅留 ReviewPassed 硬前置语义）。base 不可达（amend/rebase 改写历史致 git 对象消失）
-// → fail-open 放行 + 警告：amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
-// （可达则严、不可达则松的非对称是设计本意）。
-func checkCompleteReviewPrereqs(root string, state *TaskState) error {
+// → 拒绝（review-ruthless-4/5）：基线没了就无法证明审后被改了什么，fail-open 等于给
+// 「审后改码 + 改写历史 + 裸重盖章」留后门；恢复方式是派新的 reviewer 复审当前 diff
+// 并用 `forge review pass --reviewer <新 id>` 重盖章。
+func CheckCompleteReviewPrereqs(root string, state *TaskState) error {
 	// checklist 硬门禁（vNext P3，设计 M5/M6）：勾选状态即进度——未全勾不是完成。
 	// tracked-checklist 同语义：report 写完不算 done，checkbox 才算。
 	if undone := state.UntickedChecklist(); len(undone) > 0 {
@@ -44,59 +44,16 @@ func checkCompleteReviewPrereqs(root string, state *TaskState) error {
 	if state.ReviewPassed && state.ReviewedHeadCommit != "" {
 		cur, _, err := TaskFingerprint(root, state, state.ReviewedHeadCommit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[task-complete] 警告：审查基线 commit %s 不可达（%v）——历史可能被改写（amend/rebase），advisory 放行；建议重新 forge review pass 刷新基线\n", state.ReviewedHeadCommit, err)
-			// fail-open 落盘留痕（非阻塞，Passed=true 表 gate 仍过）：amend 逃审是设计权衡，但
-			// score/dashboard 必须能照出「靠 fail-open 而非真复审通过」，事后可追溯，不能只 stderr。
-			recordAudit(root, &checklog.Entry{
-				Check:   CheckNameReviewSnapshot,
-				Passed:  true,
-				Checked: true,
-				TaskRef: state.TaskRef,
-				Detail:  fmt.Sprintf("fail-open: 审查基线 %s 不可达（%v）——amend/rebase 致历史改写，放行未重审", state.ReviewedHeadCommit, err),
-			})
+			// 基线不可达：历史被 amend/rebase 或 gc 改写。无法证明工作区内容就是审查时的那份，
+			// 因此不放行——「审后改码必须重审」是这轮的核心承诺，fail-open 会把它变成
+			// 「git commit --amend + git gc」三步绕过（review-ruthless-4 P2-A 实证）。
+			return GateBlocked("task-complete 拒绝：审查基线 commit %s 不可达（%v）——历史被改写后无法证明工作区仍是审查过的那份。HARD stop——请派新的只读 reviewer 重新审当前 diff，并用 `forge review pass --reviewer <新 id>` 刷新基线", state.ReviewedHeadCommit, err)
 		} else if cur != state.ReviewedChangeHash {
-			// 复审指引单一真相源在 review.ReReviewGuidance（分档复审：低风险修复续用首轮
-			// reviewer 增量复核，高风险/终审新派）——门禁文案不再默认「重新派」。
-			return GateBlocked("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。HARD stop——%s（基线有源码变更时裸 `forge review pass` 会被拒：须 --note 记复审结论或 --acknowledge-changes 自我承担并留 self-refresh 审计）", state.ReviewedHeadCommit, review.ReReviewGuidance)
+			// 复审指引单一真相源在 review.ReReviewGuidance（只有一档：换新的 reviewer）。
+			return GateBlocked("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。HARD stop——%s（基线有源码变更时裸 `forge review pass` 会被拒：须换一个新的 `--reviewer <id>` 复审）", state.ReviewedHeadCommit, review.ReReviewGuidance)
 		}
 	}
 	return nil
-}
-
-// checkTestCoverageBackstop 是 test-coverage 兜底硬前置（task-complete）：补 task-verify
-// advisory 的缺口——advisory 语境下 agent 自述即过（eval 证据：0/19、0/25 覆盖照过 complete，
-// 0 次加载 test-discipline）。此处对「大面积未覆盖且零断言」硬阻断：≥3 个改动源文件无配对
-// 测试、且全仓零断言 = corrupt success 铁证（大改无任何验证痕迹）。部分覆盖（缺测试文件 <3 个，
-// fudge factor，对齐业界 Sonar <20 行豁免精神）或「有断言但 0 配对覆盖」（测试在别处/重构场景）
-// 仍 advisory 放行——避免误伤。阈值按「无配对测试的文件数」计（与 testCoverageHardGateThreshold
-// 文档一致），而非全部改动源文件数——否则改 3 文件只缺 1 个测试也会被硬阻断，且 BLOCKED 文案说谎。
-// escape（per-task override / FORGE_TEST_COVERAGE）由 CheckTestCoverage 内部返回 ok=true
-// 处理，此处天然放行（验证类逃生，降 evidence Weak 留痕；重证据任务按 2026-08 证据
-// 缩放豁免，见 checklog.EscapeDowngradedStrength）。
-// 方案 B：BLOCKED 消息复用 formatMissing 的 skill 路由——advisory 语境失效（0 触发），
-// blocking 语境下 agent 必须处理才能过（skill 驱动靠 advisory→blocking 转变，非新机制）。
-// 断言信号复用 scoring.CollectAssertionDensity（已注入 EvaluateInput；taskpipeline→scoring
-// 单向无循环依赖）。checklog 记最终态——覆盖 task-verify 的记录（agent 可能在两 gate 间补了
-// 测试，Latest 应反映 task-complete 时覆盖状态供 score/trace）。
-//
-// 返回任务的变更文件列表：taskChangedFiles 起多个 git 子进程，其结果同时喂本覆盖门禁
-// （走预计算列表变体——CheckTestCoverage 内不再第二次跑 taskChangedFiles）与后续行为面/
-// goal↔output 检查（2026-08-29 审查轮：门禁此前会重算一遍，多个 git 子进程双跑）。
-func checkTestCoverageBackstop(root string, state *TaskState) (changedFiles []string, err error) {
-	changedFiles = taskChangedFiles(root, state)
-	ok, missing, total := checkTestCoverageChanged(root, state, changedFiles)
-	// 守护审计 P1-2（2026-09-17）：backstop 是真正 BLOCK 的执法层，条目与 verify
-	// 同口径（共享 testCoverageEntry——Meta + 失败 outcome 章）——D1-D3 由此覆盖
-	// advisory 层与 blocking 层，不再只见前者。
-	recordAudit(root, testCoverageEntry(root, state, ok, missing))
-	if !ok && len(missing) > 0 {
-		assertN, _ := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
-		if testCoverageShouldBlock(len(missing), assertN) {
-			return nil, GateBlocked("task-complete 拒绝（HARD stop）：改了 %d 个源文件其中 %d 个无配对测试且零断言（assertN=0）——corrupt success 风险（大改无任何验证痕迹）。%s", total, len(missing), formatMissing(missing))
-		}
-		fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-complete] "), formatMissing(missing))
-	}
-	return changedFiles, nil
 }
 
 // adviseCompleteDelivery 跑 task-complete 的 advisory 组——docs-consistency drift、行为面、
@@ -141,7 +98,7 @@ func adviseCompleteDelivery(root string, state *TaskState, changedFiles []string
 	}
 
 	// 提交顺序 advisory：complete 时工作区还有未提交变更 = 文档规定的顺序
-	// （三门禁 → git commit → forge task complete）被倒置。仅 advisory——
+	// （实现门禁 + 验收 → commit → 审查 → 完成门禁）被倒置。仅 advisory——
 	// complete 照常成功；意义在把顺序滑落在还能补救的精确时刻（active task
 	// ref 清空之前）照出来，而非惩罚。git 探测不可判定时 fail-open（非仓库/
 	// 探测失败）。
@@ -155,7 +112,7 @@ func adviseCompleteDelivery(root string, state *TaskState, changedFiles []string
 				TaskRef: state.TaskRef,
 				Detail:  fmt.Sprintf("%d uncommitted changes in working tree at task complete", n),
 			})
-			fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 工作区有 %d 处未提交变更——协议顺序：三门禁通过 → git commit → forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）", n))
+			fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 工作区有 %d 处未提交变更——协议顺序：实现门禁 + 验收实跑 → git commit → 审查 → 完成门禁（task-complete）→ forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）", n))
 		}
 	}
 
@@ -238,4 +195,17 @@ func adviseDanglingHomePaths(root string, state *TaskState, changedFiles []strin
 		Meta:    map[string]string{"docs.kind": "home-path"},
 	})
 	fmt.Fprintf(os.Stderr, "%s文档引用的本机证据路径已不存在——证据链会断：%s（把证据复制进仓库并改引仓库内路径，或在同一行标注「失效」）\n", GateAdvisory("[task-complete] "), strings.Join(findings, "; "))
+}
+
+// CheckCompleteAcceptancePrereqs 把 task complete 的验收前置（已登记 + 实跑未过期）
+// 复用给 task-complete 门禁——两道门禁必须查同一组前置，否则 gate 会给出
+// 「齐备」的假绿、而 complete 才拦。
+func CheckCompleteAcceptancePrereqs(root string, state *TaskState) error {
+	if ok, reasons := CheckAcceptanceRegistered(root, state); !ok {
+		return GateBlocked("task-complete 拒绝（零验收/未实跑/过期与 forge task complete 同口径）：零验收标准——%s。登记出口：forge task accept \"run :: expected\"；逃生：forge task override --acceptance-gate disable", strings.Join(reasons, "; "))
+	}
+	if ok, reasons := CheckAcceptanceFresh(root, state); !ok {
+		return GateBlocked("task-complete 拒绝（零验收/未实跑/过期与 forge task complete 同口径）：验收未实跑/快照过期/未通过——%s。先 forge task verify-acceptance；逃生：forge task override --acceptance-gate disable", strings.Join(reasons, "; "))
+	}
+	return nil
 }

@@ -4,7 +4,7 @@
 
 ## 环节感知加载（phase-aware，如有设计产物）
 
-如果任务是**设计阶段产物审查**（非纯代码实现），`task-verify` gate 的 `inferDesignPhases` 已根据文件路径推断设计阶段并落盘 `state.DesignPhases`。据此加载对应 checklist，而非只加载通用 `review-checklist.md`：
+如果任务是**设计阶段产物审查**（非纯代码实现），评审者先按文件路径判断设计阶段（inferDesignPhases 已随 task-verify 删除，不再自动落盘）。据此加载对应 checklist，而非只加载通用 `review-checklist.md`：
 
 ```bash
 # 检查任务是否有 DesignPhases（需有 active task）
@@ -52,13 +52,13 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 ## cheat-scan 预扫（7 类已 deterministic 判定，子 agent 不重复判断）
 
-`task-verify` 的 cheat-scan 已机械扫任务新增行（`+` 行）的 `type-suppression`（`@ts-ignore`/`eslint-disable`/`#[allow]`/`type: ignore`）、`error-swallow`（空 `catch{}`/`except:pass`）、`dead-branch`（`if(false)`/`if(1===2)`）、`comment-only-fix`（某文件新增行全注释零逻辑）、`comment-as-debt`（新增债务注释标记不解决）、`phantom-import`（相对 import 解析不到磁盘文件——幻觉 mock 的机械子集；外部包存在性仍需语义判断）、`path-assumption`（OS 路径分隔符被当内容匹配器——跨平台崩溃指纹），命中记 `checklog:cheat-scan`（`forge trace` 可见）并 stderr 列出。审查前先看 `forge trace` 的 cheat-scan 条目——这 7 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到其余模式（断言弱化/假重构/跨层语义幻觉/测试松绑等需语义判断的）和轨道 B 的设计/架构上。这正是"每轮 review 冒新问题"的根因对策：机械模式一次判准，不靠 LLM 每轮重采样。
+cheat-scan 已随 1.88 激进减法删除（不再有机械预扫）；历史上它扫描任务新增行的 `type-suppression`（`@ts-ignore`/`eslint-disable`/`#[allow]`/`type: ignore`）、`error-swallow`（空 `catch{}`/`except:pass`）、`dead-branch`（`if(false)`/`if(1===2)`）、`comment-only-fix`（某文件新增行全注释零逻辑）、`comment-as-debt`（新增债务注释标记不解决）、`phantom-import`（相对 import 解析不到磁盘文件——幻觉 mock 的机械子集；外部包存在性仍需语义判断）、`path-assumption`（OS 路径分隔符被当内容匹配器——跨平台崩溃指纹），命中记 `checklog:cheat-scan`（`forge trace` 可见）并 stderr 列出。审查前先看 `forge trace` 的 cheat-scan 条目——这 7 类已被 deterministic 判过，子 agent **跳过它们**，把精力放到其余模式（断言弱化/假重构/跨层语义幻觉/测试松绑等需语义判断的）和轨道 B 的设计/架构上。这正是"每轮 review 冒新问题"的根因对策：机械模式一次判准，不靠 LLM 每轮重采样。
 
 ## 自动触发：Stop hook 与 task-complete 门禁
 
 本 skill 不再只靠手动唤起——forge 两条自动挡（2026-06-27 落地），让审查成为提交/结束的硬前置：
 
-- **task 流程**：task-complete 门禁有 ReviewPassed 硬前置。派子 agent 审查通过后须运行 `forge review pass` 标记，否则过不了 task-complete 门禁、无法 complete。**多轮盖章**：`forge review pass` 检测到代码快照自上一枚盖章轮以来已变（返工后重新盖章）时发 `ADVISORY:` 提醒复审义务——本枚章只在只读 reviewer 已按分档规则复审过修复时合法（低风险修复续用首轮 reviewer 增量复核，高风险/终审/第 3 轮起新派全量复审；修复者不能自证，见 SKILL.md「审查-修复-复审闭环」节）；同状态重复盖章（瞬态重试/重建基线）静默。
+- **task 流程**：task-complete 门禁有 ReviewPassed 硬前置。派子 agent 审查通过后须运行 `forge review pass` 标记，否则过不了 task-complete 门禁、无法 complete。**多轮盖章**：`forge review pass` 检测到代码快照自上一枚盖章轮以来已变（返工后重新盖章）时发 `ADVISORY:` 提醒复审义务——本枚章只在**新的只读 reviewer**（`--reviewer <新 id>`）已复审当前 diff 时合法：同一 reviewer 的自证与 `--note` 刷新基线都已被移除；修复者不能自证。
 - **非 task 流程**：会话结束前 Stop hook 自动检测未审的源码变更，未审则拦截会话结束，additionalContext 指引加载 code-review-gate + 派子 agent + `forge review pass`。同一 diff 反复未审最多拦截 3 次后 advisory 放行（防 Stop 死循环）。
 
 手动查状态：`forge review status`。
@@ -67,5 +67,5 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 > 迁移注记：本文件 2026-08 自 skills/code-review-gate/references/forge-integration.md 迁入（skills 零反向依赖契约，CONVENTIONS §13），并收纳 SKILL.md 迁出的盖章快照协议：
 
-- `forge review pass` 检测到距上次审查基线有源码变更时，裸盖章会被拒绝——正规路径是复审后 `forge review pass --note "<复审结论>"`；确认变更无需复审时用 `--acknowledge-changes` 显式自我承担（checklog 记 WARN 级 self-refresh 审计）。非源码变更（amend commit message、保内容 rebase 等）不改变内容指纹，无需确认；同状态重复盖章保持静默。
+- `forge review pass` 检测到距上次审查基线有源码变更时会被拒绝——必须派一个新的只读评审者，用新的 `--reviewer <id>` 复审；`--note` 不再能刷新基线，`--acknowledge-changes` 已删除。非源码变更（amend commit message、保内容 rebase 等）不改变内容指纹，无需确认；同状态重复盖章保持静默。
 - **`--note` 必须记录审查实质，不只结论**：覆盖范围（审了哪些文件/diff、几轨几 pass）、关键验证动作（grep 落位、实跑探针）、分歧与归因（双轨发现集差异、后轮新发现的归因分类）。反例（审计实证，2026-08）：一周 40 次 review-pass 仅 1 次带 note——无实质 note 的盖章 = rubber-stamp 盲区。审查发现同时用 `forge task finding` 录入（自动带轮次 Round 与代码指纹 ChangeHash）。

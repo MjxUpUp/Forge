@@ -1,7 +1,7 @@
 # 接续演练 2：三门推进 + review 前置 + 完成（C3）。
 # 链路：task start → 真实代码变更提交 → gate task-implement → task accept +
 # verify-acceptance（oracle-pipeline L1：complete 登记门硬前置至少一条验收，
-# 实跑快照供 freshness 消费）→ gate task-verify（FORGE_WORK_ACTIVITY=disable
+# 实跑快照供 freshness 消费）→ gate task-complete（FORGE_WORK_ACTIVITY=disable
 # 逃生舱——演练会如实观察到分数封顶）→ forge review pass（code-review-gate 是
 # task-complete 的 HARD 前置）→ gate task-complete → task complete。
 # 校准自真实二进制（2026-09-03，Score 89/B 封顶可见）。
@@ -22,8 +22,6 @@ steps:
     expect_contains: ["manual"]
   - argv: ["{forge}", "task", "verify-acceptance", "--ref", "EVAL-C2"]
     expect_contains: ["全部通过"]
-  - argv: ["{forge}", "task", "gate", "task-verify", "--ref", "EVAL-C2"]
-    env: ["FORGE_WORK_ACTIVITY=disable"]
   - argv: ["{forge}", "review", "pass"]
     expect_contains: ["code-review-gate 已通过"]
   - argv: ["{forge}", "task", "gate", "task-complete", "--ref", "EVAL-C2"]

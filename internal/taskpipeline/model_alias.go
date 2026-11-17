@@ -98,11 +98,6 @@ func GateByID(id string) *TaskGate { return tasktypes.GateByID(id) }
 // GateIDs 委托叶子模型返回有序 gate ID 清单。
 func GateIDs() []string { return tasktypes.GateIDs() }
 
-// AllDesignPhases delegates to the leaf model's phase list.
-//
-// AllDesignPhases 委托叶子模型返回全部设计阶段。
-func AllDesignPhases() []DesignPhase { return tasktypes.AllDesignPhases() }
-
 // EnrichFinding stamps the review context (Round + ChangeHash — see Finding)
 // onto a finding about to be recorded.
 //

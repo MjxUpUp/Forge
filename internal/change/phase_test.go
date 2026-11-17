@@ -65,18 +65,16 @@ func TestStage_Progression(t *testing.T) {
 		t.Fatalf("clarify written phase = %s, want plan", phase)
 	}
 
-	writeChangeFile(t, root, id, FileProposal, "# 提案\n\n为什么：任务入口旁路 change。\n")
 	writeChangeFile(t, root, id, FileAcceptance, "## 判据\n\n```bash\ngo version\n```\n")
-	writeChangeFile(t, root, id, FileDesign, "# 设计\n\n实现三件事。\n")
 	phase, _, err = ComputePhase(root, id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if phase != PhaseTasks {
-		t.Fatalf("design wrote phase = %s, want tasks", phase)
+	if phase != PhasePlan {
+		t.Fatalf("acceptance without change.md phase = %s, want plan", phase)
 	}
 
-	writeChangeFile(t, root, id, FileTasks, "# 任务\n\n- [ ] 1. 做 A（判据：acceptance #1）\n- [ ] 2. 做 B（判据：acceptance #2）\n")
+	writeChangeFile(t, root, id, FileChange, "# 改动\n\n实现三件事。\n\n## 影响\n\n无。\n\n## 验证\n\nacceptance #1。\n")
 	phase, missing, err = ComputePhase(root, id)
 	if err != nil {
 		t.Fatal(err)
@@ -101,6 +99,10 @@ func TestStage_UnboundTaskBlocksReady(t *testing.T) {
 	writeChangeFile(t, root, id, FileAcceptance, "## 判据\n\n```bash\ngo version\n```\n")
 	writeChangeFile(t, root, id, FileDesign, "# 设计\n\n实现。\n")
 	writeChangeFile(t, root, id, FileTasks, "- [ ] 1. 做 A（判据：acceptance #1）\n- [ ] 2. 忘了写判据\n")
+	// 老布局：删掉 change.md 与 .goal-required，tasks 绑定才参与阶段判定。
+	for _, f := range []string{FileChange, GoalRequiredFile} {
+		_ = os.Remove(filepath.Join(root, "spec", "changes", id, f))
+	}
 
 	phase, missing, err := ComputePhase(root, id)
 	if err != nil {
@@ -153,7 +155,7 @@ func TestStage_FastChangeReadyAfterClarify(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeChangeFile(t, root, id, FileGoal, phaseGoal(id))
-	writeChangeFile(t, root, id, FileProposal, "# 提案\n\n为什么：小改动。\n")
+	writeChangeFile(t, root, id, FileChange, "# 改动\n\n小改动。\n\n## 影响\n\n无。\n\n## 验证\n\nacceptance #1。\n")
 	writeChangeFile(t, root, id, FileAcceptance, "## 判据\n\n```bash\ngo version\n```\n")
 	writeChangeFile(t, root, id, FileClarify, RenderClarify(id, "只改一处。", "", time.Now()))
 

@@ -195,9 +195,6 @@
       ]
     },
     {
-      "path": "forge eval artifact-drill"
-    },
-    {
       "path": "forge eval audit-verify"
     },
     {
@@ -389,6 +386,12 @@
       ]
     },
     {
+      "path": "forge impact",
+      "flags": [
+        "json"
+      ]
+    },
+    {
       "path": "forge init",
       "flags": [
         "agents",
@@ -524,9 +527,10 @@
     {
       "path": "forge review pass",
       "flags": [
-        "acknowledge-changes",
         "note",
-        "ref"
+        "ref",
+        "reviewer",
+        "score"
       ]
     },
     {
@@ -534,15 +538,6 @@
       "flags": [
         "ref"
       ]
-    },
-    {
-      "path": "forge selfcheck"
-    },
-    {
-      "path": "forge selfcheck pairing"
-    },
-    {
-      "path": "forge selfcheck scope"
     },
     {
       "path": "forge skills"
@@ -730,22 +725,6 @@
       ]
     },
     {
-      "path": "forge task artifact",
-      "flags": [
-        "approve",
-        "by",
-        "check",
-        "checked",
-        "extract",
-        "file",
-        "json",
-        "list",
-        "set",
-        "stdin",
-        "verify"
-      ]
-    },
-    {
       "path": "forge task assign",
       "flags": [
         "by",
@@ -776,12 +755,6 @@
       "flags": [
         "reason",
         "ref"
-      ]
-    },
-    {
-      "path": "forge task chain-init",
-      "flags": [
-        "force"
       ]
     },
     {
@@ -832,19 +805,6 @@
       "flags": [
         "as",
         "ref"
-      ]
-    },
-    {
-      "path": "forge task doc-review",
-      "flags": [
-        "co-reviewer",
-        "co-score",
-        "critical",
-        "passed",
-        "ref",
-        "reviewer",
-        "round",
-        "score"
       ]
     },
     {
@@ -971,12 +931,6 @@
       ]
     },
     {
-      "path": "forge task mutation",
-      "flags": [
-        "sample"
-      ]
-    },
-    {
       "path": "forge task next",
       "flags": [
         "ref"
@@ -986,11 +940,8 @@
       "path": "forge task override",
       "flags": [
         "acceptance-gate",
-        "artifact-chain",
-        "doc-gate",
         "ref",
         "skill-decisions",
-        "test-coverage",
         "work-activity"
       ]
     },
@@ -1068,7 +1019,6 @@
       "flags": [
         "accept",
         "accept-file",
-        "artifact",
         "assert",
         "assignee",
         "base",
@@ -1272,12 +1222,9 @@
   ],
   "escapes": [
     "FORGE_ACCEPTANCE_GATE",
-    "FORGE_ARTIFACT_CHAIN",
-    "FORGE_DOC_GATE",
     "FORGE_EVAL_PREFLIGHT",
     "FORGE_GATE_PUSH",
     "FORGE_HELDOUT",
-    "FORGE_MUTATION_GATE",
     "FORGE_MUTATION_TIMEOUT",
     "FORGE_RECURRENT_HARDEN",
     "FORGE_REQ_COVERAGE",
@@ -1286,7 +1233,6 @@
     "FORGE_SKILL_DECISIONS",
     "FORGE_TASK_TREE_GUARD",
     "FORGE_TEST_COVERAGE",
-    "FORGE_UNUSED_SCAN",
     "FORGE_WORK_ACTIVITY"
   ],
   "payload": [
@@ -1313,7 +1259,7 @@
     {
       "tree": "canonical",
       "name": "code-review-gate",
-      "sha256": "0eba1cdde80022c25210312c1a87bc9f2fc20be054973499733fde5cb099689f"
+      "sha256": "47e97909d17104d1f9537dec02aec56ef62f78acafb2491006eae15c6c5dd305"
     },
     {
       "tree": "canonical",
@@ -1358,7 +1304,7 @@
     {
       "tree": "canonical",
       "name": "doc-review",
-      "sha256": "8c3e8fbc05f14f2989674120f8d0ac56818e9a23fc95856ca882ff9d255d97e4"
+      "sha256": "0c0be38da1bf3b37d6daeec97aac5f47425fd5f3faecefa4518117ce6c799571"
     },
     {
       "tree": "canonical",
@@ -1388,7 +1334,7 @@
     {
       "tree": "canonical",
       "name": "merge-release-choreography",
-      "sha256": "5d527e55beb850cdbb8256b72f6b97a25fc468751b3a08a824469a944b033c9b"
+      "sha256": "d4a0918b92e4c395ba06b4a066af59265a6826bb6f5767a5ab99ef84c85394fe"
     },
     {
       "tree": "canonical",
@@ -1498,7 +1444,7 @@
     {
       "tree": "forge",
       "name": "skill-evolution",
-      "sha256": "16652c8d31cdc3176ac8ec2379e38fd69d577301284e4c1b72da251361f8dfab"
+      "sha256": "5bcd0e5c467f77edb679dfa4f1b0954fe303f42aefaa1e15e7a94406d7bc9f6f"
     },
     {
       "tree": "forge",
@@ -1788,18 +1734,6 @@
       "count": 2
     },
     {
-      "file": "internal/taskpipeline/crossrepo.go",
-      "count": 2
-    },
-    {
-      "file": "internal/taskpipeline/docgate.go",
-      "count": 1
-    },
-    {
-      "file": "internal/taskpipeline/executor.go",
-      "count": 1
-    },
-    {
       "file": "internal/taskpipeline/executor_check_activity.go",
       "count": 3
     },
@@ -1809,15 +1743,7 @@
     },
     {
       "file": "internal/taskpipeline/executor_check_complete.go",
-      "count": 4
-    },
-    {
-      "file": "internal/taskpipeline/executor_check_verify.go",
-      "count": 2
-    },
-    {
-      "file": "internal/taskpipeline/executor_check_verify_advisories.go",
-      "count": 1
+      "count": 6
     },
     {
       "file": "internal/taskpipeline/gate_message.go",
@@ -1826,10 +1752,6 @@
     {
       "file": "internal/taskpipeline/pushgate.go",
       "count": 1
-    },
-    {
-      "file": "internal/taskpipeline/reqtrace.go",
-      "count": 2
     }
   ],
   "bridges": null

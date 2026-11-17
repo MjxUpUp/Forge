@@ -42,7 +42,7 @@ metadata:
 ### S3. Commit
 
 - commit 信息描述**变更内容和原因**（不是 diff 复述）。
-- forge 任务顺序铁律：**commit 必须在 task complete 之前**（complete 清空 active ref，之后提交源码会被 file-sentinel quarantine）。正确顺序：三门禁 → commit → complete。
+- forge 任务顺序铁律：**commit 必须在 task complete 之前**（complete 清空 active ref，之后提交源码会被 file-sentinel quarantine）。正确顺序：实现门禁 → 验收 → commit → 审阅 → 完成门禁 → complete。
 - 提交前 test-discipline 已在 PreToolUse 挡过断言弱化，这里不重审。
 
 ### S4. Merge

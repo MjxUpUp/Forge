@@ -148,11 +148,15 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 链定义指纹 advisory（docs/design/task-tree-guard.md §6）：审批时的 schema.yaml 与
-	// 现在不同——内容没变但「要跑的图」变了。只提示重批，绝不阻断（改链不该把在途任务
-	// 锁死，multi-task-concurrency §8 退化矩阵）。
-	for _, w := range taskpipeline.ChainDigestStale(root, state) {
-		fmt.Fprintf(os.Stderr, "⚠️ [chain] %s\n", w)
+	// task-complete 的验收前置与 `task complete` 同口径（review-ruthless-3 P2-1）：
+	// 零验收标准、验收从未实跑、或实跑记录已过期，都必须在 gate 这一步拒，
+	// 不能拖到最后 complete 才报。放在 executor 之后，让依赖/上游未交付这类
+	// 更根本的阻断先说话（它们决定任务能否交付，而不是考卷是否合格）。
+	// executor 层不做这条：单测构造合成 state 会被误伤。
+	if result.Passed && gateID == taskpipeline.GateComplete {
+		if err := taskpipeline.CheckCompleteAcceptancePrereqs(root, state); err != nil {
+			return err
+		}
 	}
 
 	// Token 成本熔断（advisory）：task 累计估算 token 超阈值则警示。让 token 计量不止于
@@ -378,7 +382,7 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 		// 无辜档案）。
 		added, zeroReason := registerConventionsDefaults(root, state)
 		if len(added) == 0 {
-			fmt.Printf("本任务未登记验收标准（forge task start --accept \"run :: expected\"、forge task accept 补登，或 forge task artifact --extract 从 spec 提取）；conventions 兜底未成：%s。\n", zeroReason)
+			fmt.Printf("本任务未登记验收标准（forge task start --accept \"run :: expected\" 或 forge task accept 补登）；conventions 兜底未成：%s。\n", zeroReason)
 			return nil
 		}
 	}

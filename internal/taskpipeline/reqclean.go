@@ -23,6 +23,7 @@ package taskpipeline
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -75,7 +76,7 @@ func CheckRequirementsHygiene(root string, state *TaskState) []reqHygieneFinding
 		if !ok {
 			continue
 		}
-		abs := artifactAbsPath(root, ref)
+		abs := filepath.Join(root, filepath.FromSlash(ref.Path))
 		body, err := os.ReadFile(abs)
 		if err != nil {
 			continue
@@ -153,43 +154,4 @@ func scanOpenQuestions(text string) []reqHygieneFinding {
 func hasSpecArtifacts(state *TaskState) bool {
 	_, ok := state.SpecArtifacts["spec"]
 	return ok
-}
-
-// RunReqHygiene 实跑需求卫生扫描并落 checklog（advisory——永不阻断）。
-// 逃生：FORGE_REQ_HYGIENE=disable 落 escape-hatch 留痕（v1 仅 env——which 键
-// escapeReqHygiene 独立于 doc-gate，防 --doc-gate disable 连带关闭本检查）。
-func RunReqHygiene(root string, state *TaskState) {
-	if escapeDisabled(state, escapeReqHygiene, reqHygieneDisableEnv) {
-		recordAudit(root, &checklog.Entry{
-			Check:   CheckNameReqHygiene,
-			Passed:  true,
-			Checked: true,
-			Level:   checklog.LevelWarn,
-			TaskRef: state.TaskRef,
-			Detail:  `escape-hatch: req hygiene bypassed (FORGE_REQ_HYGIENE=disable)`,
-			Meta:    map[string]string{"escape.gate": "req-hygiene", "escape.reason": checklog.EscapeReasonEnv, "escape.owner": "env"},
-		})
-		return
-	}
-
-	findings := CheckRequirementsHygiene(root, state)
-	e := &checklog.Entry{
-		Check:   CheckNameReqHygiene,
-		Passed:  true,
-		Checked: true,
-		Level:   checklog.LevelPass,
-		TaskRef: state.TaskRef,
-	}
-	if len(findings) > 0 {
-		e.Level = checklog.LevelAdvisory
-		e.Detail = fmt.Sprintf("ADVISORY: 需求卫生 %d 项发现（歧义标记/模糊量词/验收缺失/未关闭问题）——advisory 不阻断，建议清理", len(findings))
-		for i, f := range findings {
-			if i >= 5 {
-				e.Detail += fmt.Sprintf(" …（其余 %d 项略）", len(findings)-5)
-				break
-			}
-			e.Detail += fmt.Sprintf("\n  [%s] %s", f.Category, f.Detail)
-		}
-	}
-	recordAudit(root, e)
 }

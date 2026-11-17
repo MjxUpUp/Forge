@@ -48,7 +48,7 @@ var changeCmd = &cobra.Command{
 	Long: `forge change 把交付过程做成仓库里的文件，而不是装在机器上的插件：
 
   spec/forge.yaml                     契约（有它就算 forge 项目，clone 即用）
-  spec/changes/<id>/goal.md            目标契约（Objective/Why/Constraints/Out of Scope/Check 五段）
+  spec/changes/<id>/goal.md            目标契约（Objective/Out of Scope/Check 三段必填）
   spec/changes/<id>/proposal.md       为什么做
   spec/changes/<id>/design.md         怎么做
   spec/changes/<id>/tasks.md          拆成哪些步骤
@@ -70,7 +70,7 @@ var changeInitCmd = &cobra.Command{
 
 var changeNewCmd = &cobra.Command{
 	Use:   "new <id> [--title <标题>] [--fast]",
-	Short: "新建一个 change 骨架（含 goal.md 五段契约；--fast 只要 goal 与 proposal/acceptance，且须 --by-human）",
+	Short: "新建一个 change 骨架（含 goal.md 三段契约；--fast 只要 goal/change/acceptance，且须 --by-human）",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runChangeNew,
 }
@@ -317,9 +317,9 @@ func runChangeNew(cmd *cobra.Command, args []string) error {
 	fmt.Printf("已创建 %s\n", rel)
 	fmt.Println()
 	if fast {
-		fmt.Println("快速通道：写 goal（目标五段）、proposal（为什么做）、acceptance（怎么算完），再跑 forge change clarify（人回答边界与非目标），删掉三份文件里的 forge:fill 标记。")
+		fmt.Println("快速通道：写 goal（目标三段）、change（改动/影响/验证）、acceptance（怎么算完），再跑 forge change clarify（人回答边界与非目标），删掉三份文件里的 forge:fill 标记。")
 	} else {
-		fmt.Println("按顺序写：goal（目标五段）→ proposal（为什么做）→ design（怎么做）→ tasks（拆步骤）→ acceptance（可执行判据）")
+		fmt.Println("按顺序写：goal（目标三段）→ change（改动/影响/验证）→ acceptance（可执行判据）")
 	}
 	fmt.Printf("写完后先看阶段：forge change phase %s（补齐到 ready）；要封印证据再跑 forge change verify %s\n", id, id)
 	return nil
@@ -366,7 +366,7 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 		}
 		if c.Fast {
 			if note == "" {
-				note = "fast（快速通道：只要求 goal + proposal + acceptance）"
+				note = "fast（快速通道：goal + change + acceptance + 人确认澄清）"
 			} else {
 				note = "fast；" + note
 			}
@@ -589,7 +589,7 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 	}
 	switch st.Goal {
 	case "complete":
-		fmt.Println("目标契约：goal.md 五段已填")
+		fmt.Println("目标契约：goal.md 三段必填已填")
 	case "incomplete":
 		fmt.Println("目标契约：goal.md 还没填完（verify 会拒绝）")
 	case "required-missing":

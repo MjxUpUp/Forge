@@ -60,6 +60,13 @@ jobs:
         run: sh scripts/checks/deadcode-zero.sh
       - if: matrix.os == 'ubuntu-latest'
         run: sh scripts/checks/no-hook-refs.sh
+      # 已删命令/门禁不得在用户可见文本里回流（1.88 激进减法）：守卫自身曾在
+      # 默认目标缺失与通配写法下假绿，这里带默认目标集合常态跑，红了要修文案。
+      - if: matrix.os == 'ubuntu-latest'
+        run: sh scripts/checks/no-removed-checks.sh
+      # change 产物数量的文档口径（三份）：旧「五份/四份」说法会让 agent 少填 change.md。
+      - if: matrix.os == 'ubuntu-latest'
+        run: sh scripts/checks/docs-artifact-counts.sh
 
   # 发版脚本（scripts/release.js）的 node:test 测试。原来只存在于本地，CI 不跑 = 没测试。
   scripts-test:

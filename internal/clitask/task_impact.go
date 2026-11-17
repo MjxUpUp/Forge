@@ -9,22 +9,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// forge task impact 写任务的跨仓影响声明（TaskState.CrossRepoImpact）——
-// task-verify cross-repo-impact 门禁（crossrepo.go）的写入侧。声明走
-// MutateTaskState（per-task 锁，load→mutate→save），与其他改状态的 task
-// 子命令一致。level=none 不携带 repo 列表（单仓改动声明「不波及其他仓」
-// ——声明动作本身即意义）。
+// forge task impact 写任务的跨仓影响声明（TaskState.CrossRepoImpact）。
+// 1.88 激进减法删除了 cross-repo-impact 门禁：声明不再阻断任何检查，只作为
+// 供 task report 与评审参考的元信息。声明走 MutateTaskState（per-task 锁），
+// level=none 不携带 repo 列表（单仓改动声明「不波及其他仓」）。
 
 var taskImpactCmd = &cobra.Command{
 	Use:   `impact`,
-	Short: `声明当前任务的跨仓影响（多仓 workspace 的 verify 前置）`,
-	Long: `forge task impact 声明当前活跃任务的跨仓影响，写入 task state 供 task-verify 门禁检查。
+	Short: `声明当前任务的跨仓影响（report/评审参考；1.88 已删对应门禁）`,
+	Long: `forge task impact 声明当前活跃任务的跨仓影响，写入 task state。
 
-本 repo 属于多仓 workspace（forge workspace）时，task-verify 要求显式声明：
+声明是元信息：1.88 激进减法删除了 cross-repo-impact 门禁，它不再阻断任何命令，
+只作为 task report 与评审的参考。用法：
   forge task impact --level none                          改动纯本仓，不波及其他 repo
   forge task impact --level multi --repo <key> [--note]   波及指定成员 repo（可重复 --repo）
-
-默认 advisory（未声明只提醒）；protocol.yml 配 cross_repo_impact: required 后未声明会阻断 verify。
 详见 docs/design/multi-repo-workspace.md。`,
 	RunE: runTaskImpact,
 }

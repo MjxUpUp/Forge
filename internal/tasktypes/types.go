@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -377,24 +376,6 @@ func IsValidFindingTag(s string) bool {
 	return false
 }
 
-// SplitFindingTag splits an optional "<tag>:<content>" prefix off a finding
-// value: a known tag followed by ":" sets the tag; anything else is content
-// verbatim (a colon in free prose must not silently eat the head of the text).
-//
-// SplitFindingTag 从发现值里拆出可选的「<tag>:<内容>」前缀：已知 tag 后跟
-// 冒号则取为打标；其余原样作为内容（自由散文里的冒号不得吞掉句头）。
-func SplitFindingTag(v string) (content, tag string) {
-	i := strings.Index(v, ":")
-	if i <= 0 {
-		return v, ""
-	}
-	candidate := v[:i]
-	if IsValidFindingTag(candidate) {
-		return strings.TrimSpace(v[i+1:]), candidate
-	}
-	return v, ""
-}
-
 // Artifact is a reference to a task-related artifact (file / command output /
 // url / doc).
 //
@@ -505,7 +486,16 @@ type SessionLink struct {
 // TaskState 追踪单个 task pipeline 的状态。
 // 存于 DataDir/tasks/{sanitized-ref}.json。
 type TaskState struct {
-	TaskRef        string                    `json:"task_ref"`
+	TaskRef string `json:"task_ref"`
+	// LastReviewer 是最近一次 review pass 记录的评审者 id；源码变更后的复审必须是
+	// 一个新的 reviewer（同一 reviewer 的自证不再被接受）。
+	LastReviewer string `json:"last_reviewer,omitempty"`
+	// Reviewers 是参与过复审的 reviewer id 集合：同一 id 不能给自己复审（
+	// 只记 LastReviewer 会被 alice→bob→alice 交替绕过）。
+	Reviewers []string `json:"reviewers,omitempty"`
+	// ReviewScore 是 review pass 时评审者给出的 0-100 分（--score）；只做记录，
+	// 不参与门禁判定（门禁只看 ReviewPassed 与快照一致性）。
+	ReviewScore    *int                      `json:"review_score,omitempty"`
 	Branch         string                    `json:"branch"`
 	Source         string                    `json:"source"` // explicit | branch
 	Summary        string                    `json:"summary"`
@@ -635,7 +625,7 @@ type TaskState struct {
 	// 记录接续。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的信息结构，
 	// 但持久化进用户级 DataDir/tasks/<ref>.json 而非靠 agent 自觉读写 md。边界：用户级 state
 	// 不随仓库走——跨机器接续需要显式的 export/import 载体（尚未建）。
-	Kind       string `json:"kind,omitempty"`        // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
+	Kind       string `json:"kind,omitempty"`        // "" | "code" = 走 2 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
 	OriginTool string `json:"origin_tool,omitempty"` // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
 	Goal       string `json:"goal,omitempty"`        // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）
 	// GoalContract pins the goal.md this task was started against (task-goal-contract).

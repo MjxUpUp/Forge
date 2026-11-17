@@ -6,7 +6,7 @@ Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到�
 
 ## 核心功能
 
-- **任务级门禁** — 每个开发任务走 3 道门禁：实现 → 验证 → 完成
+- **任务级门禁** — 每个开发任务走两道门禁（实现、完成）并实跑验收
 - **change 证据封印** — `forge change verify` 实跑 acceptance 判据，证据绑定 commit/diff 并随仓库走
 - **无拦截层** — 写操作不经过 forge，质量只能由 gate/verify 与 CI 检查（`forge change check`）
 - **质量评分** — 每个任务完成后自动评分，量化 AI 编码质量
@@ -38,14 +38,13 @@ forge **没有宿主层**：不分发宿主插件、不写宿主配置。任务�
 
 ### 任务级门禁
 
-每个开发任务自动走 3 道门禁：
+每个开发任务走两道门禁并实跑验收：
 
 ```bash
 forge task start --ref feat/add-login --branch   # 创建任务 + 分支
 # AI 自动完成工作...
-forge task gate task-implement    # ✅ 代码实现（advisory：编译/断言自检提醒）
-forge task gate task-verify       # ✅ 测试验证
-forge task gate task-complete     # ✅ 完成确认
+forge task gate task-implement    # ✅ 代码实现（确有代码改动）
+forge task gate task-complete     # ✅ 完成确认（review pass 硬前置）
 forge task complete               # 🏁 任务完结（自动评分 + 清 active ref；git commit 在此之前）
 forge task score                  # 查看质量评分
 ```

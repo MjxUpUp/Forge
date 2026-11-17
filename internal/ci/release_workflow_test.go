@@ -117,10 +117,17 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 		t.Fatal("release.yml 缺 drill job（发布前行为级冒烟——发布物必须真实跑过）")
 	}
 	drillRuns := jobStepRuns(drill)
-	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
+	for _, want := range []string{"eval wedge-drill", "release-smoke.sh"} {
 		if !strings.Contains(drillRuns, want) {
 			t.Fatalf("drill job 必须跑 %s（缺则发布链丢行为级冒烟）: %s", want, drillRuns)
 		}
+	}
+	if strings.Contains(drillRuns, "artifact-drill") {
+		t.Fatalf("drill job 不得再调用已删除的 artifact-drill: %s", drillRuns)
+	}
+	// `forge change check` 在本仓库（change 全归档）会空跑成功，不能当发布冒烟。
+	if strings.Contains(drillRuns, "forge change check") {
+		t.Fatalf("drill job 不得只用 `forge change check`（归档后空跑，证明不了发布物可用）: %s", drillRuns)
 	}
 	// 演练报告留痕（审计漏点 #3 解法）：报告必须上传为 workflow artifacts——
 	// 发布过程在 forge 台账之外，报告是唯一可追溯载体。
@@ -216,15 +223,20 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 		}
 	}
 	if checkoutIdx < 0 {
-		t.Fatal("npm-verify 缺 actions/checkout——装机验收脚本（eval wedge-drill / artifact-drill）来自仓库 scripts/")
+		t.Fatal("npm-verify 缺 actions/checkout——装机验收（eval wedge-drill / change check）依赖仓库内容")
 	}
 	// 阶段 D 删除了 plugins/forge-dsh 与 scripts/verify-dsh-install.js：装机 job 不再有
 	// 「装回插件」这一步，原先的 dsh 步骤顺序/参数守卫一并退役。
 	verifyRuns := jobStepRuns(npmVerify)
-	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
+	for _, want := range []string{"eval wedge-drill", "release-smoke.sh"} {
 		if !strings.Contains(verifyRuns, want) {
 			t.Fatalf("npm-verify 必须在装机上跑 %s（装机行为级验收——只验版本号不够）: %s", want, verifyRuns)
 		}
+	}
+	// 裸 `forge change check` 在本仓库会空跑（change 全归档），装机验收要点名
+	// release-smoke.sh：它自己造 change 并实跑 verify。
+	if strings.Contains(verifyRuns, "forge change check") {
+		t.Fatalf("npm-verify 不得只跑 `forge change check`（归档后空跑）: %s", verifyRuns)
 	}
 	// 签名验证闭环（审计漏点 #1 解法）：cosign 只签不验 = 供应链证据无消费方。
 	if !strings.Contains(verifyRuns, "cosign verify-blob") {
@@ -288,6 +300,32 @@ func TestReleaseWorkflow_TestJobIsGateSource(t *testing.T) {
 	}
 	if !hasRace {
 		t.Fatal("test job 必须带 -race（与 ci.yml 一致的竞态检测标准）——现未发现 -race")
+	}
+}
+
+// TestReleaseSmoke_IsBehavioral：发布冒烟脚本必须自己造 change 并实跑 verify，
+// 而不是只跑 `forge change check`（归档后空跑退出 0）。nightly 与 release 都要接它。
+//
+// TestReleaseSmoke_IsBehavioral pins that scripts/checks/release-smoke.sh really
+// creates a change and runs verify (behavior-level), and that both the release
+// drill job and the nightly workflow invoke it.
+func TestReleaseSmoke_IsBehavioral(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "scripts", "checks", "release-smoke.sh"))
+	if err != nil {
+		t.Fatalf("读发布冒烟脚本: %v", err)
+	}
+	body := string(b)
+	for _, want := range []string{"change init", "change new", "change verify", "change check"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("release-smoke.sh 必须包含 %q（行为级：自己建 change 并实跑 verify）", want)
+		}
+	}
+	nightly, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "nightly.yml"))
+	if err != nil {
+		t.Fatalf("读 nightly.yml: %v", err)
+	}
+	if !strings.Contains(string(nightly), "release-smoke.sh") {
+		t.Error("nightly.yml 必须调用 release-smoke.sh（否则 nightly 的发布冒烟只剩空跑）")
 	}
 }
 

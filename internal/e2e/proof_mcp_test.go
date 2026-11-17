@@ -92,21 +92,28 @@ func TestE2E_TaskComplete_BlockedWhenAcceptanceNotRun(t *testing.T) {
 
 	forge(t, dir, "task", "start", "--ref", "feat/pow-block", "--title", "pow block",
 		"--accept", "go version :: go version", "--branch")
-	passAllGates(t, dir, "feat/pow-block") // 过 task-implement/task-verify/review-pass/task-complete gate
+	// 只推进到 task-implement + review pass；task-complete 由下面的断言自己推
+	//（review-ruthless-3 P2-1：gate 现在也带验收前置，助手不能先把它过掉）。
+	passGatesUpToReview(t, dir, "feat/pow-block")
 
-	// forge task complete 应被 acceptance pre-flight BLOCKED（验收未实跑，AcceptedHeadCommit 空）
-	out, err := forgeErr(t, dir, "task", "complete", "--ref", "feat/pow-block")
+	out, err := forgeErr(t, dir, "task", "gate", "task-complete")
 	if err == nil {
-		t.Fatalf(`forge task complete 应被 acceptance pre-flight 拦截（验收未实跑），却成功。output: %s`, out)
+		t.Fatalf(`forge task gate task-complete 应被验收前置拦截（验收未实跑），却成功。output: %s`, out)
 	}
-	if !strings.Contains(out, "acceptance pre-flight") {
-		t.Errorf(`BLOCKED 输出应含 "acceptance pre-flight" 提示，got:`+"\n"+`%s`, out)
+	if !strings.Contains(out, "验收未实跑") {
+		t.Errorf(`gate BLOCKED 输出应含 "验收未实跑" 提示，got:`+"\n"+`%s`, out)
 	}
 
-	// 逃生舱（env）：FORGE_ACCEPTANCE_GATE=disable 落 checklog 审计后放行——证明逃生舱接线。
+	// gate 未通过时 complete 会先报 Missing gates（完成标记依赖门禁全过）——
+	// 这正是「先过门禁再 complete」的时序契约，不是本测试要钉的 acceptance 语义。
+
+	// 逃生舱（env）：FORGE_ACCEPTANCE_GATE=disable 落 checklog 审计后放行——gate 与
+	// complete 两条路径共用同一个逃生舱（review-ruthless-3 P2-1 要求同口径）。
 	t.Setenv("FORGE_ACCEPTANCE_GATE", "disable") // t.Setenv 自动还原，优于 os.Setenv+defer
-	out, err = forgeErr(t, dir, "task", "complete", "--ref", "feat/pow-block")
-	if err != nil {
+	if out, err := forgeErr(t, dir, "task", "gate", "task-complete"); err != nil {
+		t.Fatalf(`escape 后 task gate task-complete 应放行，got err: %v output: %s`, err, out)
+	}
+	if out, err := forgeErr(t, dir, "task", "complete", "--ref", "feat/pow-block"); err != nil {
 		t.Fatalf(`escape 后 forge task complete 应放行，got err: %v output: %s`, err, out)
 	}
 }
@@ -139,7 +146,7 @@ func TestE2E_TaskComplete_PassAfterVerifyAcceptance(t *testing.T) {
 	}
 	git(t, dir, "add", "e2e-scratch.txt")
 	git(t, dir, "commit", "-m", "e2e: code change for task-implement")
-	for _, g := range []string{"task-implement", "task-verify"} {
+	for _, g := range []string{"task-implement"} {
 		if out, err := forgeErr(t, dir, "task", "gate", g, "--ref", "feat/pow-ok"); err != nil {
 			t.Fatalf("forge task gate %s: %v\n%s", g, err, out)
 		}

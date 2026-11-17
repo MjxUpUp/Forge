@@ -269,7 +269,7 @@ func countSelfSupplied(entries []checklog.Entry) int {
 	n := 0
 	for _, e := range entries {
 		switch {
-		case e.Check == checklog.CheckReviewPass && strings.Contains(e.Detail, "self-refresh"):
+		case e.Check == checklog.CheckReviewPass && strings.Contains(e.Detail, "re-review"):
 			n++
 		case e.Check == checklog.CheckEscapeHatch && checklog.EscapeGateOf(&e) == "finding-regression":
 			n++

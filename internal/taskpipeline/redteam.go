@@ -117,26 +117,6 @@ var redteamSeeds = []RedteamSeed{
 		},
 	},
 	{
-		Name:    "unused-internal-export",
-		Catcher: "unused-gate（internal/ 零引用导出硬拦）",
-		Plant: func(t RedteamCtx) bool {
-			// 布雷：交付一个没人用的 internal 导出。
-			dir := filepath.Join(t.Root, "internal", "ledger")
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return false
-			}
-			// __REPORT__ 占位：理由见 fixture 头注（导出名连写会被行级提取器
-			// 当本文件的零引用导出拦下——名字运行时拼回）。
-			ledgerSrc := "package ledger\n\n// __REPORT__ is never wired.\nfunc __REPORT__() int { return 1 }\n"
-			ledgerSrc = strings.ReplaceAll(ledgerSrc, "__REPORT__", "Re"+"port")
-			if err := os.WriteFile(filepath.Join(dir, "ledger.go"), []byte(ledgerSrc), 0o644); err != nil {
-				return false
-			}
-			ok, _ := CheckUnusedGate(t.Root, t.State)
-			return !ok
-		},
-	},
-	{
 		Name:    "swallowed-error",
 		Catcher: "cheat-scan error-swallow（新增行吞错模式）",
 		Plant: func(t RedteamCtx) bool {
