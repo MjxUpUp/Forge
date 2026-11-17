@@ -1,0 +1,208 @@
+{
+  "change": "forge-ruthless",
+  "started_at": "2026-11-17T12:42:47Z",
+  "finished_at": "2026-11-17T12:46:33Z",
+  "passed": true,
+  "sealed": true,
+  "head": "4d084871e447c64a85ddd50f7a22524fa092b8ed",
+  "diff_sha256": "6a9c0c78ae95a31572212d4254bef6d545914c1ace3b2933910fc84642f67f60",
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "10d1da5bb4c86bb4deb7f33438e659d8395290790b5a3d98146a934babacc755"
+    },
+    {
+      "path": ".github/workflows/nightly.yml",
+      "sha256": "c2783c94226e475b463b77b079f5645e7adf3ef325f1a29f430cf0acf21cd128"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "sha256": "bcc7c13ac0e4f1851339b8982d34daa43496f9936180050fba2bc70805d9b584"
+    },
+    {
+      "path": "README.md",
+      "sha256": "9fd4b4513fd3cf00e9b2562b4e6c538396e3336cdd634691c960aafc2338dd92"
+    },
+    {
+      "path": "RELEASE.md",
+      "sha256": "375705930b44fa252dd9111f37c45f7fd65088079492d2aab45449f1ad5aaca3"
+    },
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "17ae5ddbd49a1d24d58c4293e50f33f95c576a81022c803fd945d27f6e14d235"
+    },
+    {
+      "path": "internal/ci/release_workflow_test.go",
+      "sha256": "f380920a6044ae63b8617d8d34bc46b7e4c4545b5d19bec69b37b327ac4b74b2"
+    },
+    {
+      "path": "internal/cli/review.go",
+      "sha256": "7f0435006c80e5f7dedc85053cc3a688a73daed3002080d518212ab440a6f071"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "950d34d4b30c32c6c255d2841095d283cf3e080450025d58bb8bf6ca373e4b3f"
+    },
+    {
+      "path": "internal/clitask/task_impact.go",
+      "sha256": "f666b79ac397fb0911f675e3dbc7f6f248dd45e2a63d12f53542776ff6b52016"
+    },
+    {
+      "path": "internal/clitask/task_misc.go",
+      "sha256": "82035cd10365e028ff22eae85745d76be469e44fbbfb05a70aa8695e9239aca4"
+    },
+    {
+      "path": "internal/clitask/task_worktree.go",
+      "sha256": "5e6dde50578c9d606c4596a980e836a9a23c5339503002d53a8674f2970340ad"
+    },
+    {
+      "path": "internal/protocol/types.go",
+      "sha256": "3a0b84fc971f5cbb01f004ab46bd3c56b96ff3e7e14b65d9f5fdc92c5322b970"
+    },
+    {
+      "path": "internal/review/rereview.go",
+      "sha256": "d609cd587b4b9fb0fd6b6ed5dac7081dc920eb848b3f4ba9b64b3c48c39c454e"
+    },
+    {
+      "path": "internal/review/rereview_test.go",
+      "sha256": "2f45906ae46acf750398bfe5d96c7f8b9499646efd29774c030782b76b968b42"
+    },
+    {
+      "path": "internal/skillintegrate/notes/code-review-gate.md",
+      "sha256": "9ff0e090450cabfc9b1cb339bb9443ad855d7e9dc4e451be19068e3c6b651f95"
+    },
+    {
+      "path": "internal/skillintegrate/notes/design-artifact-standards.md",
+      "sha256": "96617ab5311df530816630acfc21be20840ed57b564b9b03e814e7565dd9d36f"
+    },
+    {
+      "path": "internal/skillintegrate/notes/dev-workflow.md",
+      "sha256": "217d1e1de37bf1e53a88d9271754ec4cd07f7937afdaa0ae874fcb5a9b3e0bcd"
+    },
+    {
+      "path": "internal/skillintegrate/notes/doc-review.md",
+      "sha256": "1b14a13407e964473a225cdc6b57bc456de945b159332ea1b5f68e6c82f052b2"
+    },
+    {
+      "path": "internal/skillintegrate/notes/implementation-discipline.md",
+      "sha256": "3ea34b416f6873eebba21e81ff67a2aeb1318fb3767eb0cbc113e50811886741"
+    },
+    {
+      "path": "internal/skillintegrate/notes/project-acceptance.md",
+      "sha256": "79036d951ebb9d336512f8508b8d6896feb6076dcf3388fcb226fe0cfeee145d"
+    },
+    {
+      "path": "internal/taskpipeline/executor.go",
+      "sha256": "7ee15c850449e15492deda6c34cdb449c4a66598b579fb4ef732d64184b62802"
+    },
+    {
+      "path": "internal/taskpipeline/executor_check_complete.go",
+      "sha256": "3a4bb47ddf860b6313b4ae97a43b3aba7482111fcbe9ce1cbe4b2268f85a2829"
+    },
+    {
+      "path": "internal/taskpipeline/executor_test.go",
+      "sha256": "f6ab00da3b8330f6a4a43fdbcf75cfd72764d9c57fe0f638516c6f72ad7789df"
+    },
+    {
+      "path": "npm/README.md",
+      "sha256": "578400cbcb4e1d51fc9553b08bda3f5469819d329a43d025da4fae64c4c0237d"
+    },
+    {
+      "path": "scripts/checks/docs-artifact-counts.sh",
+      "sha256": "c79599de61e310bfb041817d5b00501292cfd778e1f47b4da72fdbf1e7210c72"
+    },
+    {
+      "path": "scripts/checks/no-removed-checks.sh",
+      "sha256": "f9543dfb0959d2291f9980d23c209f9c172b389bfa156d2ac766ad66ab87fb71"
+    },
+    {
+      "path": "skills-forge/skill-evolution/SKILL.md",
+      "sha256": "5bcd0e5c467f77edb679dfa4f1b0954fe303f42aefaa1e15e7a94406d7bc9f6f"
+    },
+    {
+      "path": "skills-forge/skill-routing/routes.json",
+      "sha256": "00a9096caa0c814cfcd65d491cfccfef744a39790d68f2a04846a99124532e19"
+    },
+    {
+      "path": "skills/doc-review/SKILL.md",
+      "sha256": "0c0be38da1bf3b37d6daeec97aac5f47425fd5f3faecefa4518117ce6c799571"
+    },
+    {
+      "path": "skills/merge-release-choreography/SKILL.md",
+      "sha256": "d4a0918b92e4c395ba06b4a066af59265a6826bb6f5767a5ab99ef84c85394fe"
+    },
+    {
+      "path": "tmp_doc.py",
+      "sha256": "ddc1d978c967358d3b83d025fe7bc98e02b11c7ac8f90707a9350ef2d1bfc695"
+    },
+    {
+      "path": "tmp_notes2.py",
+      "sha256": "5ad9df86181664c9cbe50b42d5dc7dde55ab05477cbac88bad8e3b0c4a94f1d4"
+    }
+  ],
+  "acceptance_sha256": "ab59ef7d063644529c7347b5dd792a5b814758aa53b4e109843326af529e1880",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 1745
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ -count=1",
+      "exit": 0,
+      "duration_ms": 100193,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 93621,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test -v ./internal/change/ -count=1",
+      "exit": 0,
+      "duration_ms": 23037,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestImpact|TestHelpSurface' -count=1",
+      "exit": 0,
+      "duration_ms": 2613,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 198
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4047
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 698,
+      "stdout_file": "08.stdout"
+    }
+  ]
+}

@@ -1226,23 +1226,24 @@ func TestTaskComplete_ReviewSnapshotEmptyBaselineSkips(t *testing.T) {
 	}
 }
 
-// TestTaskComplete_ReviewSnapshotUnreachableFailOpen: an unreachable baseline (amend/rebase rewrote history and the git object is gone) → fail-open pass. amend is a normal workflow; forcing re-review would loop forever; aligns with the fail-open philosophy of review/stamp.go (the asymmetry of strict-when- reachable, lenient-when-not is intentional).
+// TestTaskComplete_ReviewSnapshotUnreachableBlocks: an unreachable baseline (amend/rebase + gc
+// rewrote history so the reviewed commit object is gone) → BLOCKED, not fail-open.
 //
-// TestTaskComplete_ReviewSnapshotUnreachableFailOpen 基线不可达（amend/rebase 改写历史致 git 对象消失）
-// → fail-open 放行。amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
-// （可达则严、不可达则松的非对称是设计本意）。且必须落 checklog 留痕——让 score/dashboard 照出
-// 「靠 fail-open 而非真复审通过」，不能只 stderr 一闪而过（审查反馈的可观测性兜底）。
-func TestTaskComplete_ReviewSnapshotUnreachableFailOpen(t *testing.T) {
+// TestTaskComplete_ReviewSnapshotUnreachableBlocks 基线不可达（amend/rebase + gc 后审查过的 commit
+// 对象已消失）→ 拒绝而不是放行。历史被改写后无法证明工作区仍是审查过的那份；fail-open 会让
+// 「git commit --amend && git gc」变成三步绕过审后的路径（review-ruthless-4 P2-A 实证）。
+// 恢复路径是派新的只读 reviewer 重新审当前 diff 并用 `--reviewer <新 id>` 刷新基线。
+func TestTaskComplete_ReviewSnapshotUnreachableBlocks(t *testing.T) {
 	dir := initTaskGitRepo(t)
 	state := fullyGatedState(`snap-unreachable`)
 	state.MarkReviewPassed("deadbeefnotacommit", `anyc0ntent`)
 
-	if _, err := ExecuteTaskGate(dir, "task-complete", state); err != nil {
-		t.Fatalf(`基线不可达应 fail-open 放行（amend 正常流），got: %v`, err)
+	_, err := ExecuteTaskGate(dir, "task-complete", state)
+	if err == nil {
+		t.Fatalf(`基线不可达不得放行（否则 amend+gc 可绕过审查），got pass`)
 	}
-	// fail-open 必须落盘——断言 checklog 有 CheckNameReviewSnapshot 条目（防回归成「只 stderr 无痕迹」）。
-	if firstCheckEntry(t, dir, `snap-unreachable`, CheckNameReviewSnapshot) == nil {
-		t.Fatalf(`fail-open 应落 checklog:%s 留痕，实际无——score/dashboard 照不出"靠 fail-open 而非真复审通过"`, CheckNameReviewSnapshot)
+	if !strings.Contains(err.Error(), `不可达`) {
+		t.Fatalf(`拒绝文案应说明基线不可达，got: %v`, err)
 	}
 }
 

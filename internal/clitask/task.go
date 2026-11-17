@@ -633,7 +633,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 			aref, aerr := taskpipeline.WriteArtifact(root, ctx.TaskRef, stage, string(data))
 			if aerr != nil {
 				// 审查 P2-4：写失败至少 stderr 一行——静默跳过会让用户以为登记成功。
-				fmt.Fprintf(cmd.ErrOrStderr(), "⚠️ --artifact %q 登记失败（%v）——之后可用 forge task artifact --set %s 重登记\n", spec, aerr, stage)
+				fmt.Fprintf(cmd.ErrOrStderr(), "⚠️ --artifact %q 登记失败（%v）\n", spec, aerr)
 				continue
 			}
 			aref.Source = taskpipeline.ArtifactSource(root, path)

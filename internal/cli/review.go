@@ -211,7 +211,7 @@ var reviewStatusCmd = &cobra.Command{
 // 会提前终止字符串（forge-security-hook-fail-open 记的坑），双引号串里则是普通字符。
 // 第 2 步后的复审分档行内嵌 review.ReReviewGuidance（单一真相源）：stamp 内容寻址、
 // 读不出「本分支此前已审」，所以不在代码里判首审/复审，条件句交给 agent——首审照派，
-// 修复后复审按分档续用首轮 reviewer，避免每轮 Stop 都引导新派冷启动子 agent。
+// 复审只有一档：换一个新的 reviewer，避免自证。
 const gateGuidance = "检测到未审查的源码变更。请按序完成：\n" +
 	"1. 按 code-review-gate 策略执行（仓库/技能文档）\n" +
 	"2. 按其策略派【只读】子 agent 审查当前 diff——独立上下文是底线，不可自审绕过\n" +
@@ -230,11 +230,15 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	note, _ := cmd.Flags().GetString("note")
 	reviewer, _ := cmd.Flags().GetString("reviewer")
-	score, _ := cmd.Flags().GetInt("score")
-	if score < 0 || score > 100 {
-		return fmt.Errorf("--score 取值 0-100（收到 %d）", score)
+	rawScore, _ := cmd.Flags().GetInt("score")
+	if rawScore < 0 || rawScore > 100 {
+		return fmt.Errorf("--score 取值 0-100（收到 %d）", rawScore)
 	}
-	return runReviewPassAt(root, explicitRef, note, reviewer, score)
+	if cmd.Flags().Changed("score") {
+		// 0 是合法评审结论，不能用「非零」表示「没给」——用是否给了参数区分。
+		return runReviewPassAt(root, explicitRef, note, reviewer, rawScore)
+	}
+	return runReviewPassAt(root, explicitRef, note, reviewer)
 }
 
 // shortHash 截断 commit hash 用于单行 detail 输出（空保持空）。
@@ -341,7 +345,7 @@ func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) err
 					s.Reviewers = append(s.Reviewers, reviewer)
 				}
 			}
-			if len(score) > 0 && score[0] > 0 {
+			if len(score) > 0 {
 				v := score[0]
 				s.ReviewScore = &v
 			}

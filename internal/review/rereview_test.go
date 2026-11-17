@@ -8,50 +8,21 @@ import (
 	"testing"
 )
 
-// TestReReviewGuidanceContract pins the tiered re-review semantics carried by
-// ReReviewGuidance: both tiers, the incremental-input contract, and the
-// `--note` refresh step must stay; a pipe would break the CLAUDE.md table cell
-// that embeds it.
+// TestReReviewGuidanceContract pins the single-tier re-review semantics: code
+// re-review always needs a NEW reviewer id; self re-stamping and `--note`
+// baseline refreshes are gone. A pipe would break the CLAUDE.md table cell.
 //
-// TestReReviewGuidanceContract 钉住 ReReviewGuidance 承载的分档复审语义：两档、
-// 增量复核的输入契约、`--note` 刷新基线步骤都不得丢；含竖线会撑破嵌入它的
-// CLAUDE.md 表格单元格。
+// TestReReviewGuidanceContract 钉住代码复审只有一档：必须换新的 reviewer id；
+// 同一 reviewer 自证与 `--note` 刷新基线都已移除。含竖线会撑破 CLAUDE.md 表格单元格。
 func TestReReviewGuidanceContract(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		want string
-	}{
-		{"低风险档：续用首轮 reviewer", "续用首轮 reviewer"},
-		{"低风险档判据：确定性检查全绿", "确定性检查全绿"},
-		{"增量输入契约：不给作者推理", "不给作者推理"},
-		{"增量输入契约：只喂 findings + 修复 diff", "上轮 findings + 修复 diff"},
-		{"收敛靠范围约束：只审修复 diff 及其波及面", "只审修复 diff 及其波及面"},
-		{"收敛靠范围约束：不重审未改动代码", "不重审未改动代码"},
-		{"高风险档：新派只读子 agent", "新派只读子 agent 全量复审"},
-		{"高风险档判据：终审/第 3 轮起", "终审/第 3 轮起"},
-		{"刷新基线步骤", "forge review pass --note"},
-		{"首轮并行多 reviewer：按轨道续用", "按轨道续用"},
-		{"首轮并行多 reviewer：不新派补位", "不新派补位"},
-		{"有发现的轨道必续用以核原发现", "有发现的那一轨必续用以核原发现是否真正解决"},
-		{"eng-reviewer 始终续用核回归与调用方", "eng-reviewer 始终续用以核回归与调用方"},
-		{"cheat-detector 无发现时按触发条件续用", "cheat-detector 无发现时在修复命中作弊模式速查表任一项"},
-		{"首轮零发现时两个都续用", "首轮零发现时两个都续用"},
-		{"cheat-detector 续用范围：只审修复 diff", "那一轨也续用，只审修复 diff"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if !strings.Contains(ReReviewGuidance, tc.want) {
-				t.Errorf("ReReviewGuidance 缺少 %q，got: %s", tc.want, ReReviewGuidance)
-			}
-		})
+	for _, want := range []string{"新的只读子 agent", "--reviewer <新 id>", "--note", "移除"} {
+		if !strings.Contains(ReReviewGuidance, want) {
+			t.Errorf("ReReviewGuidance 缺少 %q，got: %s", want, ReReviewGuidance)
+		}
 	}
-	if strings.Contains(ReReviewGuidance, "|") {
-		t.Errorf("ReReviewGuidance 含 '|'，会撑破 CLAUDE.md 常见错误表单元格: %s", ReReviewGuidance)
-	}
-	// code-review-gate 明令不分级（无 severity 字段）：复审收敛只能用范围约束，
-	// 严重性措辞在其契约里无定义、不可执行。
-	for _, severity := range []string{"Important", "Critical", "nit", "Minor"} {
-		if strings.Contains(ReReviewGuidance, severity) {
-			t.Errorf("ReReviewGuidance 含严重性措辞 %q——与 code-review-gate 不分级契约冲突: %s", severity, ReReviewGuidance)
+	for _, banned := range []string{"续用首轮", "按轨道续用", "刷新审查基线", "|"} {
+		if strings.Contains(ReReviewGuidance, banned) {
+			t.Errorf("ReReviewGuidance 不得含 %q（分档续用/自供刷新已废止，或会撑破表格）: %s", banned, ReReviewGuidance)
 		}
 	}
 }

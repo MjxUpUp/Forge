@@ -327,7 +327,7 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 	}
 	if !changed {
 		fmt.Printf("当前 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
-		fmt.Println(`设置：--work-activity disable / --test-coverage disable / --acceptance-gate disable / --skill-decisions disable（验证类逃生降评分强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
+		fmt.Println(`设置：--work-activity disable / --acceptance-gate disable（验证类逃生降评分强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
 		return nil
 	}
 	// 锁内逃生舱写入——只合并 Overrides 字段（§13 丢失更新）。

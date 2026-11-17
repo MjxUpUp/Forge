@@ -117,10 +117,13 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 		t.Fatal("release.yml 缺 drill job（发布前行为级冒烟——发布物必须真实跑过）")
 	}
 	drillRuns := jobStepRuns(drill)
-	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
+	for _, want := range []string{"eval wedge-drill", "change check"} {
 		if !strings.Contains(drillRuns, want) {
 			t.Fatalf("drill job 必须跑 %s（缺则发布链丢行为级冒烟）: %s", want, drillRuns)
 		}
+	}
+	if strings.Contains(drillRuns, "artifact-drill") {
+		t.Fatalf("drill job 不得再调用已删除的 artifact-drill: %s", drillRuns)
 	}
 	// 演练报告留痕（审计漏点 #3 解法）：报告必须上传为 workflow artifacts——
 	// 发布过程在 forge 台账之外，报告是唯一可追溯载体。
@@ -216,12 +219,12 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 		}
 	}
 	if checkoutIdx < 0 {
-		t.Fatal("npm-verify 缺 actions/checkout——装机验收脚本（eval wedge-drill / artifact-drill）来自仓库 scripts/")
+		t.Fatal("npm-verify 缺 actions/checkout——装机验收（eval wedge-drill / change check）依赖仓库内容")
 	}
 	// 阶段 D 删除了 plugins/forge-dsh 与 scripts/verify-dsh-install.js：装机 job 不再有
 	// 「装回插件」这一步，原先的 dsh 步骤顺序/参数守卫一并退役。
 	verifyRuns := jobStepRuns(npmVerify)
-	for _, want := range []string{"eval wedge-drill", "eval artifact-drill"} {
+	for _, want := range []string{"eval wedge-drill", "change check"} {
 		if !strings.Contains(verifyRuns, want) {
 			t.Fatalf("npm-verify 必须在装机上跑 %s（装机行为级验收——只验版本号不够）: %s", want, verifyRuns)
 		}

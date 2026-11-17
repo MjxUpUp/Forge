@@ -43,19 +43,12 @@ func CheckCompleteReviewPrereqs(root string, state *TaskState) error {
 	if state.ReviewPassed && state.ReviewedHeadCommit != "" {
 		cur, _, err := TaskFingerprint(root, state, state.ReviewedHeadCommit)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[task-complete] 警告：审查基线 commit %s 不可达（%v）——历史可能被改写（amend/rebase），advisory 放行；建议重新 forge review pass 刷新基线\n", state.ReviewedHeadCommit, err)
-			// fail-open 落盘留痕（非阻塞，Passed=true 表 gate 仍过）：amend 逃审是设计权衡，但
-			// score/dashboard 必须能照出「靠 fail-open 而非真复审通过」，事后可追溯，不能只 stderr。
-			recordAudit(root, &checklog.Entry{
-				Check:   CheckNameReviewSnapshot,
-				Passed:  true,
-				Checked: true,
-				TaskRef: state.TaskRef,
-				Detail:  fmt.Sprintf("fail-open: 审查基线 %s 不可达（%v）——amend/rebase 致历史改写，放行未重审", state.ReviewedHeadCommit, err),
-			})
+			// 基线不可达：历史被 amend/rebase 或 gc 改写。无法证明工作区内容就是审查时的那份，
+			// 因此不放行——「审后改码必须重审」是这轮的核心承诺，fail-open 会把它变成
+			// 「git commit --amend + git gc」三步绕过（review-ruthless-4 P2-A 实证）。
+			return GateBlocked("task-complete 拒绝：审查基线 commit %s 不可达（%v）——历史被改写后无法证明工作区仍是审查过的那份。HARD stop——请派新的只读 reviewer 重新审当前 diff，并用 `forge review pass --reviewer <新 id>` 刷新基线", state.ReviewedHeadCommit, err)
 		} else if cur != state.ReviewedChangeHash {
-			// 复审指引单一真相源在 review.ReReviewGuidance（分档复审：低风险修复续用首轮
-			// reviewer 增量复核，高风险/终审新派）——门禁文案不再默认「重新派」。
+			// 复审指引单一真相源在 review.ReReviewGuidance（只有一档：换新的 reviewer）。
 			return GateBlocked("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。HARD stop——%s（基线有源码变更时裸 `forge review pass` 会被拒：须换一个新的 `--reviewer <id>` 复审）", state.ReviewedHeadCommit, review.ReReviewGuidance)
 		}
 	}
@@ -104,7 +97,7 @@ func adviseCompleteDelivery(root string, state *TaskState, changedFiles []string
 	}
 
 	// 提交顺序 advisory：complete 时工作区还有未提交变更 = 文档规定的顺序
-	// （三门禁 → git commit → forge task complete）被倒置。仅 advisory——
+	// （实现门禁 + 验收 → commit → 审查 → 完成门禁）被倒置。仅 advisory——
 	// complete 照常成功；意义在把顺序滑落在还能补救的精确时刻（active task
 	// ref 清空之前）照出来，而非惩罚。git 探测不可判定时 fail-open（非仓库/
 	// 探测失败）。
@@ -118,7 +111,7 @@ func adviseCompleteDelivery(root string, state *TaskState, changedFiles []string
 				TaskRef: state.TaskRef,
 				Detail:  fmt.Sprintf("%d uncommitted changes in working tree at task complete", n),
 			})
-			fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 工作区有 %d 处未提交变更——协议顺序：三门禁通过 → git commit → forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）", n))
+			fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] 工作区有 %d 处未提交变更——协议顺序：实现门禁 + 验收实跑 → git commit → 审查 → 完成门禁（task-complete）→ forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）", n))
 		}
 	}
 
@@ -208,10 +201,10 @@ func adviseDanglingHomePaths(root string, state *TaskState, changedFiles []strin
 // 「齐备」的假绿、而 complete 才拦。
 func CheckCompleteAcceptancePrereqs(root string, state *TaskState) error {
 	if ok, reasons := CheckAcceptanceRegistered(root, state); !ok {
-		return GateBlocked("task-complete 拒绝（与 forge task complete 同口径）：零验收标准——%s。登记出口：forge task accept \"run :: expected\"；逃生：forge task override --acceptance-gate disable", strings.Join(reasons, "; "))
+		return GateBlocked("task-complete 拒绝（零验收/未实跑/过期与 forge task complete 同口径）：零验收标准——%s。登记出口：forge task accept \"run :: expected\"；逃生：forge task override --acceptance-gate disable", strings.Join(reasons, "; "))
 	}
 	if ok, reasons := CheckAcceptanceFresh(root, state); !ok {
-		return GateBlocked("task-complete 拒绝（与 forge task complete 同口径）：验收未实跑/快照过期/未通过——%s。先 forge task verify-acceptance；逃生：forge task override --acceptance-gate disable", strings.Join(reasons, "; "))
+		return GateBlocked("task-complete 拒绝（零验收/未实跑/过期与 forge task complete 同口径）：验收未实跑/快照过期/未通过——%s。先 forge task verify-acceptance；逃生：forge task override --acceptance-gate disable", strings.Join(reasons, "; "))
 	}
 	return nil
 }

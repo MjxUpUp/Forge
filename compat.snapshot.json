@@ -1304,7 +1304,7 @@
     {
       "tree": "canonical",
       "name": "doc-review",
-      "sha256": "8c3e8fbc05f14f2989674120f8d0ac56818e9a23fc95856ca882ff9d255d97e4"
+      "sha256": "0c0be38da1bf3b37d6daeec97aac5f47425fd5f3faecefa4518117ce6c799571"
     },
     {
       "tree": "canonical",
@@ -1334,7 +1334,7 @@
     {
       "tree": "canonical",
       "name": "merge-release-choreography",
-      "sha256": "5d527e55beb850cdbb8256b72f6b97a25fc468751b3a08a824469a944b033c9b"
+      "sha256": "d4a0918b92e4c395ba06b4a066af59265a6826bb6f5767a5ab99ef84c85394fe"
     },
     {
       "tree": "canonical",
@@ -1444,7 +1444,7 @@
     {
       "tree": "forge",
       "name": "skill-evolution",
-      "sha256": "16652c8d31cdc3176ac8ec2379e38fd69d577301284e4c1b72da251361f8dfab"
+      "sha256": "5bcd0e5c467f77edb679dfa4f1b0954fe303f42aefaa1e15e7a94406d7bc9f6f"
     },
     {
       "tree": "forge",
@@ -1743,7 +1743,7 @@
     },
     {
       "file": "internal/taskpipeline/executor_check_complete.go",
-      "count": 5
+      "count": 6
     },
     {
       "file": "internal/taskpipeline/gate_message.go",

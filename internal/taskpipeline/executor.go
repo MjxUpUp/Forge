@@ -40,9 +40,9 @@ const CheckNameBranchUnmerged checklog.CheckName = "branch-unmerged"
 const CheckNameGoalOutputMismatch checklog.CheckName = "goal-output-mismatch"
 
 // CheckNameUncommittedAtComplete 是 task-complete 提交顺序 advisory 的 checklog
-// 名：complete 时工作区仍有未提交变更——协议规定的顺序是三门禁 → git commit →
+// 名：complete 时工作区仍有未提交变更——协议规定的顺序是门禁与验收 → git commit →
 // forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务
-// 追踪/保护）。2026-08-17 实证：某会话三门禁全过后先 complete、32 分钟后才
+// 追踪/保护）。2026-08-17 实证：某会话门禁全过后先 complete、32 分钟后才
 // commit——侥幸零实质损害（其间无写入），但窗口真实存在。仅 advisory，永不阻塞。
 const CheckNameUncommittedAtComplete checklog.CheckName = "uncommitted-at-complete"
 

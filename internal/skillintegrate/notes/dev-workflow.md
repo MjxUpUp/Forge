@@ -8,7 +8,7 @@
 
 ## scope 声明白名单（可度量契约）
 
-`forge task start` 时用 `--scope <glob>`（可重复，或中途 `forge task scope add <glob>`）把 plan 里"要改哪些文件"持久化进任务的 PlanScope 白名单。task-verify 比对实改源码与声明的差集，偏离时记 `checklog:scope-drift`（advisory 不阻塞——scope 是 prediction 非 contract）。Plan 里的文件清单直接对应 `--scope` glob：如"改 internal/auth/login.rs 和 session.rs" → `--scope "internal/auth/login.rs" --scope "internal/auth/session.rs"`（或目录前缀 `--scope "internal/auth/"`）。
+`--scope <glob>` 仍可登记（可重复，或中途 `forge task scope add <glob>`），但 task-verify 的差集比对已随 1.88 删除；scope 现在是给人和评审看的声明：scope 是 prediction 不是 contract，偏离由评审者对照 `forge impact` 判断。Plan 里的文件清单直接对应 `--scope` glob：如"改 internal/auth/login.rs 和 session.rs" → `--scope "internal/auth/login.rs"`。
 
 ## 方案档位（design tier）
 

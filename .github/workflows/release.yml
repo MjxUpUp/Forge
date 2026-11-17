@@ -42,8 +42,8 @@ jobs:
           fi
 
   # 行为级冒烟门禁（发布物在 publish 前必须真实跑过——forge 理念：验收 = 实跑
-  # 证据，不是"构建成功"）：wedge-drill 验首证据链，artifact-drill 验产物链分档
-  # 执法。goreleaser（GitHub Release + 签名产物）与 npm（registry 发布）都在本
+  # 证据，不是"构建成功"）：wedge-drill 验首证据链，change check 验产物链证据。
+  # goreleaser（GitHub Release + 签名产物）与 npm（registry 发布）都在本
   # job 之后——演练红则发布链整体不放行。
   drill:
     needs: test
@@ -56,7 +56,7 @@ jobs:
           go-version-file: go.mod
       - run: go build -o /tmp/forge ./cmd/forge/
       - run: /tmp/forge eval wedge-drill
-      - run: /tmp/forge eval artifact-drill
+      - run: /tmp/forge change check
       # 演练报告作为发布证据留痕（审计漏点 #3：发布过程在 forge 台账之外——
       # 报告挂 workflow artifacts 补上可追溯载体；发布审计 = 报告 + 对账输出）。
       - name: Upload drill reports (release evidence)
@@ -66,7 +66,6 @@ jobs:
           name: drill-reports
           path: |
             ~/.forge/evals/forge/wedge-drill-*.json
-            ~/.forge/evals/forge/artifact-drill-*.json
           if-no-files-found: warn
 
   goreleaser:
@@ -330,12 +329,12 @@ jobs:
             --title "chore(release): npm-align pins 对齐 $VER" \
             --body "发布后自动对齐 npm pins（发布 workflow 收尾步；合并后下一轮发版从对齐态起步）"
       # 装机行为级验收（版本对上 ≠ 行为对）：用户真实安装路径上跑双 drill——
-      # 首证据链 + 产物链分档执法。npm 包自带二进制，这里跑的就是用户会拿到的
+      # 首证据链 + 产物链证据完整性。npm 包自带二进制，这里跑的就是用户会拿到的
       # 那个二进制（v1.52.0 发版审计：装机验证曾只验版本号，行为级缺口）。
       - name: Behavioral smoke on installed binary
         run: |
           forge eval wedge-drill
-          forge eval artifact-drill
+          forge change check
       # 签名验证闭环（审计漏点 #1：cosign 只签不验）——goreleaser keyless 签的
       # checksums.txt 必须有人验过才算供应链证据。identity 匹配本仓 workflow 的
       # OIDC 身份；Verify 失败 = 发布资产被篡改或签名链异常，发布判定失败。

@@ -14,26 +14,17 @@
 ## 完整流程（L1 → L2 → 落档）
 
 1. **L1**：落盘 .md 跑 `forge docs lint <paths>`，硬失败先修（PR 描述/commit body 不落盘，按模板结构核对）。
-2. **L2**：按 skill 正文流程派独立子代理评分（产出者不能自检），产出四维得分 + 分级发现。打回后的复审分档（小修订续用首轮评审者，重写结论、大改、即将进行第 3 轮评审时新派）见 doc-review SKILL.md 的「步骤 5：门控决策与收敛」，doc gate 的重评原因（打回、评审过期）给出同口径摘要。
-3. **记录**：把四维得分与 Critical 发现写进 PR 描述或 change.md 的「验证」一节（`forge task doc-review` 已在 1.88 删除，交付单不再披露分数）。
+2. **L2**：按 skill 正文流程派独立子代理评分（产出者不能自检），产出四维得分 + 分级发现。打回后的复审分档（小修订续用首轮评审者，重写结论、大改、即将进行第 3 轮评审时新派）见 doc-review SKILL.md 的「步骤 5：门控决策与收敛」。
+3. **记录**：把四维得分与 Critical 发现写进 PR 描述或 change.md 的「验证」一节。`forge task doc-review` 与 doc gate 已删除（1.88 激进减法）：交付单不再披露分数，也不再有门禁代你拦文档。
 
 ## 进化判据聚合（session-retrospective 步骤 6 的机器来源）
 
 `forge task finding --stats --source doc-review` 跨任务按 Tag×Round 聚合打回计数（含已 fixed/wontfix——被打回过本身就是重复信号）；同 Tag 计数 ≥3 即满足升级判据，升级落点见 session-retrospective。
 
-## doc gate 规则（complete 前的硬前置）
+## 文档回检的位置
 
-以下任一命中即拒绝 `forge task complete`：
-
-- 任务变更了 markdown 产物但**无 L2 记录**，或记录**过期**（产物在记录之后又改过）
-- L2 **得分 < 75**（阈值与 rubric-docs.md 对齐，真相源在 skill）
-- **未决 Critical** 发现
-
-task-verify（task complete 前的自检）会提前发 advisory 提醒未过文档的清单，不必等到 complete 被拒才发现。
-
-## 逃生口（显式自我承担）
-
-`forge task override --doc-gate disable`——3 轮未过后须人工确认；override 会把任务 evidence 降到 Weak（诚实代价：跳过回检的任务在审查时按弱证据对待）。
+doc gate 与 `forge task doc-review` 都已删除：文档是否过 L2 由评审者判断，不再有命令替你拦。
+变动 `.md` 时仍然要先过 `forge docs lint`（L1 是机器能判的那部分），L2 结论写进交付说明即可。
 
 ## rubric 进化回路
 
