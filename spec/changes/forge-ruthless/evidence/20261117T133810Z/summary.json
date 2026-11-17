@@ -1,0 +1,74 @@
+{
+  "change": "forge-ruthless",
+  "started_at": "2026-11-17T13:38:10Z",
+  "finished_at": "2026-11-17T13:42:03Z",
+  "passed": true,
+  "sealed": true,
+  "head": "f9d9d2220850c94cb07c363d258c9a2afa736be5",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "ab59ef7d063644529c7347b5dd792a5b814758aa53b4e109843326af529e1880",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2038
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ -count=1",
+      "exit": 0,
+      "duration_ms": 102945,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 96309,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test -v ./internal/change/ -count=1",
+      "exit": 0,
+      "duration_ms": 22619,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestImpact|TestHelpSurface' -count=1",
+      "exit": 0,
+      "duration_ms": 2669,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 202
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4993
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 927,
+      "stdout_file": "08.stdout"
+    }
+  ]
+}
