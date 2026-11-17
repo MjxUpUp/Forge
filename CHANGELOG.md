@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.3](https://github.com/MjxUpUp/Forge/compare/v2.0.2...v2.0.3) (2026-11-17)
+
+
+### Bug Fixes
+
+* **ci:** 发布冒烟接受 PATH 上的裸命令名 ([552241a](https://github.com/MjxUpUp/Forge/commit/552241a283d2e4063222cd10ab99560a5892fefc))
+
 ## [2.0.2](https://github.com/MjxUpUp/Forge/compare/v2.0.1...v2.0.2) (2026-11-17)
 
 
