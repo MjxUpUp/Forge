@@ -254,7 +254,7 @@ func nonGitTaskWarning() string {
 }
 
 // artifactStartHint 渲染 task start 的开工提示：只有钉了 change 契约时才提示
-// 「以 change 产物为准」。产物链检查已随 1.89 移除，不再预告「预期节点未登记」。
+// 「以 change 产物为准」。产物链检查已随 2.0 移除，不再预告「预期节点未登记」。
 func artifactStartHint(_ string, state *taskpipeline.TaskState) string {
 	if state != nil && state.GoalContract != nil && state.GoalContract.Change != "" {
 		return "提示：本任务已钉 change 目标契约（" + state.GoalContract.Change + "）——task 级产物链可省略，以 change 产物为准"
