@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/MjxUpUp/Forge/compare/v2.0.0...v2.0.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **npm:** 启动器按同级平台子包解析，禁止祖先目录遮蔽与静默 approve ([d4f62f7](https://github.com/MjxUpUp/Forge/commit/d4f62f7f039e473889051dd659887a1a4ee1491c))
+
 ## [2.0.0](https://github.com/MjxUpUp/Forge/compare/v1.88.1...v2.0.0) (2026-11-17)
 
 
