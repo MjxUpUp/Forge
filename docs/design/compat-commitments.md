@@ -11,7 +11,7 @@
 `task-verify`、`task doc-review`、`task mutation`、`task artifact`、`task chain-init`、
 `forge selfcheck`、`eval artifact-drill` 已删除；`review pass` 只接受新的 `--reviewer`。
 
-旧的四份/五份产物布局与已删命令仍可读（老 change 按老规则 verify/gate），但不再生成。
+旧的多产物布局（四份/五份时代）与已删命令仍可读（老 change 按老规则 verify/gate），但不再生成。
 
 ## 一、三向 × 三档承诺矩阵
 
