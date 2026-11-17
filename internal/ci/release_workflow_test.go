@@ -523,3 +523,22 @@ func TestReleaseWorkflow_NpmSelfChecksTarballs(t *testing.T) {
 		}
 	}
 }
+
+// TestReleaseSmoke_AcceptsBareCommandName 钉住冒烟脚本的参数形态：CI 里 npm i -g
+// 装出来的 forge 只在 PATH 上，参数是裸命令名 `forge` 而不是路径；脚本必须先用
+// command -v 解析，再判可执行（2.0.2 的 npm-verify 就因为只判 [-x forge] 挂了）。
+func TestReleaseSmoke_AcceptsBareCommandName(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "scripts", "checks", "release-smoke.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	for _, want := range []string{"command -v", "找不到可执行文件"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("release-smoke.sh 应先用 command -v 解析裸命令名（got 缺少 %q）", want)
+		}
+	}
+	if strings.Contains(s, `if [ ! -x "$BIN" ]`) && !strings.Contains(s, "command -v") {
+		t.Errorf("release-smoke.sh 不能只对参数做 [-x] 判断——PATH 上的裸命令名会被误判为缺失")
+	}
+}

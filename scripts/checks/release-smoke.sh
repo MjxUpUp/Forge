@@ -6,11 +6,18 @@
 # 在本仓库（change 全归档后）它会输出「没有未归档的 change」并成功退出，等于
 # 空跑，不能证明发布物能跑。真正的发布冒烟必须自己造一个 change 再验证。
 #
-# 用法：sh scripts/checks/release-smoke.sh <forge 二进制路径>
+# 用法：sh scripts/checks/release-smoke.sh <forge 二进制路径或 PATH 上的命令名>
 # 退出码：0 = 发布物能建 change、能封印证据、check 认账；非 0 = 发布物坏。
 set -euo pipefail
 
 BIN="${1:-./forge}"
+# `forge` 这类裸命令名按 PATH 解析（CI 里 npm i -g 装出来的就在 PATH 上）；
+# 带路径的仍按文件判断。
+if ! resolved="$(command -v -- "$BIN" 2>/dev/null)"; then
+  echo "release-smoke: 找不到可执行文件: $BIN" >&2
+  exit 2
+fi
+BIN="$resolved"
 if [ ! -x "$BIN" ]; then
   echo "release-smoke: 找不到可执行文件: $BIN" >&2
   exit 2
