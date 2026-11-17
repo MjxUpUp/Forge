@@ -5,6 +5,9 @@ import _ "embed"
 // 模板是内嵌的：`forge change new` 在没有任何网络的机器上也要能产出骨架。
 // 想改措辞直接改这些 .md，重新编译即生效——不需要在运行时找模板目录。
 //
+//go:embed templates/change.md
+var tmplChange string
+
 //go:embed templates/proposal.md
 var tmplProposal string
 

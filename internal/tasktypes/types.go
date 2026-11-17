@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -375,24 +374,6 @@ func IsValidFindingTag(s string) bool {
 		}
 	}
 	return false
-}
-
-// SplitFindingTag splits an optional "<tag>:<content>" prefix off a finding
-// value: a known tag followed by ":" sets the tag; anything else is content
-// verbatim (a colon in free prose must not silently eat the head of the text).
-//
-// SplitFindingTag 从发现值里拆出可选的「<tag>:<内容>」前缀：已知 tag 后跟
-// 冒号则取为打标；其余原样作为内容（自由散文里的冒号不得吞掉句头）。
-func SplitFindingTag(v string) (content, tag string) {
-	i := strings.Index(v, ":")
-	if i <= 0 {
-		return v, ""
-	}
-	candidate := v[:i]
-	if IsValidFindingTag(candidate) {
-		return strings.TrimSpace(v[i+1:]), candidate
-	}
-	return v, ""
 }
 
 // Artifact is a reference to a task-related artifact (file / command output /

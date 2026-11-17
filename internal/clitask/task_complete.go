@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/impact"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
@@ -138,39 +139,12 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
-	// artifact-chain drift pre-flight（artifact-chain-workflow.md §5）：产物引用在
-	// 登记后被手改 = 登记的事实失效——hard/human 档阻断 complete；advisory/rubric
-	// 档 warn 留痕；漂移一律作废该 stage 审批（在 CheckArtifactChainDrift 内）。
-	if driftReasons := taskpipeline.CheckArtifactChainDrift(root, state); len(driftReasons) > 0 {
-		return fmt.Errorf(`产物链漂移 pre-flight 未通过: %s；修复: forge task artifact --set <stage> --file <path> 重登记（human 档再 --approve）。逃生（落 checklog 审计，降 evidence 强度）: forge task override --artifact-chain disable 或 FORGE_ARTIFACT_CHAIN=disable`,
-			strings.Join(driftReasons, `; `))
-	}
-
 	// 回环耗尽 pre-flight（artifact-chain-workflow.md「回边语义」节）：审查回环
 	// 轮次预算耗尽或已解决 finding 复活 = 机器侧迭代到此为止——升级人工，complete
 	// 被拦。终止权外置：耗尽后唯一出口是人（--reset-loop / abort）。
 	if loopReasons := taskpipeline.CheckLoopExhausted(root, state); len(loopReasons) > 0 {
 		return fmt.Errorf(`回环耗尽 pre-flight 未通过: %s；人工裁决出口: forge task finding --reset-loop --note "<裁决>"（审计行落地）后重试，或 forge task abort。逃生（落 checklog 审计，降 evidence 强度）: FORGE_ARTIFACT_CHAIN=disable`,
 			strings.Join(loopReasons, `; `))
-	}
-
-	// doc pre-flight（输出→回检循环的流程节点）：任务变更了 markdown 产物时，
-	// complete 前 L1 确定性 lint 全过 + L2 回检证据（DocReview fresh/Passed/
-	// ≥75 分）+ 零未决 Critical。无文档产物放行；逃生舱与 acceptance 对称。
-	// 设计：docs/design/output-readability-gates.md（飞书《AI 产物可读性差调研
-	// 设计》落地方案二）。
-	if ok, reasons := taskpipeline.CheckDocGate(root, state); !ok {
-		return fmt.Errorf(`doc gate 未通过（文档产物未过 L1 lint / L2 回检）: %s；流程：forge docs lint <paths> 修 L1 → 按 doc-review skill 评审（产出者不能自检）→ forge task doc-review 记录证据。逃生（落 checklog 审计，降 evidence 强度到 Weak）: forge task override --doc-gate disable 或 FORGE_DOC_GATE=disable`,
-			strings.Join(reasons, `; `))
-	}
-
-	// unused wiring pre-flight（unusedgate.go）：本任务新增、位于 internal/ 且零引用
-	// 的 Go 导出 = 实现了但没接线（BUG-1 形态；2026-09-14 RunReqHygiene 事故实证
-	// advisory 链路拦不住它）。complete 前硬拦——接线或删除；Go internal 包规则使
-	// 「外部消费者」豁免对该子集不成立，反射/注册表误报走逃生舱（落审计）。
-	if ok, reasons := taskpipeline.CheckUnusedGate(root, state); !ok {
-		return fmt.Errorf(`unused-gate 未通过（internal/ 下 Go 导出零引用——实现了但没接线）: %s。逃生（落 checklog 审计）: FORGE_UNUSED_SCAN=disable`,
-			strings.Join(reasons, `; `))
 	}
 
 	// self-report pre-flight（focus-batches §1b，方向 B）：checklist 已勾选项声称
@@ -191,6 +165,14 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	} else if advisory != "" {
 		fmt.Fprintf(os.Stderr, "ADVISORY: [mutation-gate] %s\n", advisory)
+	}
+
+	// 影响面披露（forge-ruthless）：complete 时按 diff 算一次影响面，把「改了文档 /
+	// 源码无测试」摆到交付单上。这是披露不是门禁——不阻断完成，只让 reviewer 看见。
+	if rep, err := impact.Collect(root); err == nil {
+		if len(rep.Docs) > 0 || len(rep.SourcesWithoutTest) > 0 {
+			fmt.Printf("影响面：%s\n", impact.SummaryLine(rep))
+		}
 	}
 
 	// MarkComplete 恰在此处（pre-flight 之后）：完成标记属于 `forge task complete` 的整个

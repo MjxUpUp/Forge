@@ -22,12 +22,12 @@ import (
 
 func TestDefaultGates(t *testing.T) {
 	gates := DefaultGates()
-	if len(gates) != 3 {
-		t.Fatalf("DefaultGates count = %d, want 3", len(gates))
+	if len(gates) != 2 {
+		t.Fatalf("DefaultGates count = %d, want 2", len(gates))
 	}
 
-	// v0.17: reduced from 5 to 3 gates
-	wantIDs := []string{"task-implement", "task-verify", "task-complete"}
+	// forge-ruthless: reduced from 3 to 2 gates（task-verify 并入 complete）
+	wantIDs := []string{"task-implement", "task-complete"}
 	for i, g := range gates {
 		if g.ID != wantIDs[i] {
 			t.Errorf("gates[%d].ID = %q, want %q", i, g.ID, wantIDs[i])
@@ -36,12 +36,12 @@ func TestDefaultGates(t *testing.T) {
 }
 
 func TestGateByID(t *testing.T) {
-	g := GateByID("task-verify")
+	g := GateByID("task-complete")
 	if g == nil {
-		t.Fatal("GateByID(task-verify) returned nil")
+		t.Fatal("GateByID(task-complete) returned nil")
 	}
-	if g.Name != "测试验证" {
-		t.Errorf("Name = %q, want 测试验证", g.Name)
+	if g.Name == "" {
+		t.Error("Name should not be empty")
 	}
 
 	if GateByID("nonexistent") != nil {
@@ -57,12 +57,11 @@ func TestTaskStateNextGate(t *testing.T) {
 
 	// Pass first gate
 	state.RecordGateResult("task-implement", true, "")
-	if got := state.NextGate(); got != "task-verify" {
-		t.Errorf("NextGate after implement = %q, want task-verify", got)
+	if got := state.NextGate(); got != "task-complete" {
+		t.Errorf("NextGate after implement = %q, want task-complete", got)
 	}
 
 	// Pass all gates
-	state.RecordGateResult("task-verify", true, "")
 	state.RecordGateResult("task-complete", true, "")
 	if got := state.NextGate(); got != "" {
 		t.Errorf("NextGate after all passed = %q, want empty", got)
@@ -87,13 +86,13 @@ func TestTaskStateIsComplete(t *testing.T) {
 func TestTaskStateFailedGate(t *testing.T) {
 	state := &TaskState{}
 	state.RecordGateResult("task-implement", true, "")
-	state.RecordGateResult("task-verify", false, "")
+	state.RecordGateResult("task-complete", false, "")
 
-	if state.NextGate() != "task-verify" {
-		t.Errorf("NextGate after fail = %q, want task-verify", state.NextGate())
+	if state.NextGate() != "task-complete" {
+		t.Errorf("NextGate after fail = %q, want task-complete", state.NextGate())
 	}
-	if state.CurrentGate != "task-verify" {
-		t.Errorf("CurrentGate = %q, want task-verify", state.CurrentGate)
+	if state.CurrentGate != "task-complete" {
+		t.Errorf("CurrentGate = %q, want task-complete", state.CurrentGate)
 	}
 }
 

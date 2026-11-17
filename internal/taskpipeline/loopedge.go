@@ -199,18 +199,6 @@ func CheckLoopExhausted(root string, state *TaskState) []string {
 	if state == nil {
 		return nil
 	}
-	if escapeDisabled(state, escapeArtifactChain, artifactChainDisableEnv) {
-		recordAudit(root, &checklog.Entry{
-			Check:   checklog.CheckEscapeHatch,
-			Passed:  true,
-			Checked: true,
-			Level:   checklog.LevelWarn,
-			TaskRef: state.TaskRef,
-			Detail:  "escape-hatch: loop exhaustion bypassed (per-task override or FORGE_ARTIFACT_CHAIN=disable)",
-			Meta:    map[string]string{"escape.gate": "artifact-chain", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": state.TaskRef},
-		})
-		return nil
-	}
 	// 双轨：重算（幂等，轮龄事实）优先；持久标记（复活的不可逆记录）兜底。
 	// 重算命中先置内存标记再落盘（loop-contract B0）：MergeOrPersistTaskState 只改
 	// 锁内副本，不回写调用方 state——只落盘会让本次 pre-flight 拿旧内存判定、首次

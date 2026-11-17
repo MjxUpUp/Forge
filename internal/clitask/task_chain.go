@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -273,25 +274,11 @@ func runArtifactVerify() error {
 	if err != nil {
 		return err
 	}
-	drifted := taskpipeline.VerifyArtifactsReport(root, st)
-	// 链定义指纹（docs/design/task-tree-guard.md §6）：审批时签的 schema.yaml 与现在不同
-	// ——内容没漂移、但「要跑的图」变了。advisory：不阻断，只提示重批。
-	for _, c := range taskpipeline.ChainDigestStale(root, st) {
-		fmt.Printf("  ⚠️ [chain] %s\n", c)
-	}
 	// 需求覆盖表（reqtrace.go，提案 W3.2）：产物声明的 REQ 与验收追溯对账。
 	if cov := taskpipeline.TaskRequirementCoverage(root, st); cov.HasTraceData() {
 		fmt.Println(taskpipeline.FormatRequirementCoverage(cov))
 	}
-	if len(drifted) == 0 {
-		fmt.Printf("全部 %d 个产物引用校验通过（无漂移）\n", len(st.SpecArtifacts))
-		return nil
-	}
-	fmt.Printf("发现 %d 处漂移：\n", len(drifted))
-	for _, d := range drifted {
-		fmt.Println("  - " + d)
-	}
-	fmt.Println("重登记: forge task artifact --set <stage> --file <path>；漂移在 hard/human 档将阻断 complete")
+	fmt.Println("产物链漂移检查已移除（forge-ruthless：只保留 change 产物与验收）")
 	return nil
 }
 
@@ -327,7 +314,7 @@ func runArtifactApprove(stage, by string, checked []string) error {
 	// 审批摘要（提案 W5.1）：批之前先给一屏摘要——人审决策、高危步骤与未决问题，
 	// 而不是逐行审计划（CHI 2025：人对 AI 计划的信任校准度只有 0.50）。
 	if ref, has := st.SpecArtifacts[stage]; has {
-		if body, rerr := os.ReadFile(taskpipeline.ArtifactAbsPath(root, ref)); rerr == nil {
+		if body, rerr := os.ReadFile(filepath.Join(root, filepath.FromSlash(ref.Path))); rerr == nil {
 			prev, _ := os.ReadFile(taskpipeline.ApprovedSnapshotPath(root, st.TaskRef, stage))
 			fmt.Print(taskpipeline.RenderApprovalDigest(stage, string(body), string(prev)))
 		}
@@ -358,7 +345,7 @@ func runArtifactApprove(stage, by string, checked []string) error {
 	// 审批已落盘后再存快照（审查轮：落盘失败时不得把未批准内容存成「上次批准」）。
 	// 用锁内批准的那份引用（审查轮：锁外读的 st 可能早于并发重登记）。
 	if approvedRef.Path != "" {
-		if serr := taskpipeline.SaveApprovedSnapshot(root, st.TaskRef, stage, taskpipeline.ArtifactAbsPath(root, approvedRef)); serr != nil {
+		if serr := taskpipeline.SaveApprovedSnapshot(root, st.TaskRef, stage, filepath.Join(root, filepath.FromSlash(approvedRef.Path))); serr != nil {
 			fmt.Fprintf(os.Stderr, "⚠️ 审批快照未落盘（下次审批无法给出变化摘要）: %v\n", serr)
 		}
 	}
@@ -390,7 +377,7 @@ func runArtifactCheck(file string) error {
 		if !has {
 			return fmt.Errorf("任务未登记 design 产物——先 forge task artifact --set design --file <path>，或用 --file 直接核查")
 		}
-		path = taskpipeline.ArtifactAbsPath(root, ref)
+		path = filepath.Join(root, filepath.FromSlash(ref.Path))
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -464,7 +451,7 @@ func runArtifactExtract() error {
 		allReadable := true
 		for _, name := range stages {
 			ref := s.SpecArtifacts[name]
-			extracted, xerr := taskpipeline.ParseAcceptanceFromArtifactFile(taskpipeline.ArtifactAbsPath(root, ref))
+			extracted, xerr := taskpipeline.ParseAcceptanceFromArtifactFile(filepath.Join(root, filepath.FromSlash(ref.Path)))
 			if xerr != nil {
 				fmt.Fprintf(os.Stderr, "⚠️ %s 产物不可读（%v）——跳过\n", name, xerr)
 				allReadable = false

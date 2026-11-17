@@ -157,6 +157,17 @@ func ComputePhase(root, id string) (Phase, []string, error) {
 		return PhaseClarify, []string{err.Error(), "补齐后重跑 forge change clarify " + id + " --by-human --note …（或 --force 覆盖）"}, nil
 	}
 
+	// 三份产物布局（forge-ruthless）：change.md 取代 proposal/design/tasks。
+	if c.HasChange || exists(filepath.Join(dir, FileChange)) {
+		if scaffold(FileChange) {
+			return PhasePlan, []string{"change.md 还是空的/脚手架", "写 change.md：改动 / 影响 / 验证"}, nil
+		}
+		if scaffold(FileAcceptance) {
+			return PhaseTasks, []string{"acceptance.md 还是空的/脚手架", "写 acceptance.md：可执行判据围栏"}, nil
+		}
+		return PhaseReady, nil, nil
+	}
+
 	if scaffold(FileProposal) {
 		return PhasePlan, []string{"proposal.md 还是空的/脚手架", "写 proposal.md：为什么做、解决谁的问题、备选与取舍"}, nil
 	}

@@ -44,6 +44,7 @@ const (
 	ArchiveDirName = "archive"
 
 	// FileProposal 等是 change 目录内的标准产物名。
+	FileChange     = "change.md"
 	FileProposal   = "proposal.md"
 	FileDesign     = "design.md"
 	FileTasks      = "tasks.md"
@@ -117,6 +118,8 @@ type Change struct {
 	// HasGoal 表示 goal.md 存在；GoalComplete 表示五段都写完（无 forge:fill 残留）。
 	// 老 change 没有 goal.md 属历史产物——verify 只告警不阻断，新 change 由
 	// `change new` 自动生成。
+	// HasChange 表示三份产物布局下的 change.md 存在（forge-ruthless）。
+	HasChange    bool `json:"has_change"`
 	HasGoal      bool `json:"has_goal"`
 	GoalComplete bool `json:"goal_complete"`
 	// GoalRequired 表示这个 change 由本版 change new 创建、必须保留 goal.md。
@@ -250,9 +253,7 @@ func New(root, id, title string) (string, error) {
 		return "", fmt.Errorf("change: 创建 %s: %w", relTo(root, dir), err)
 	}
 	files := map[string]string{
-		FileProposal:   tmplProposal,
-		FileDesign:     tmplDesign,
-		FileTasks:      tmplTasks,
+		FileChange:     tmplChange,
 		FileAcceptance: tmplAcceptance,
 		FileGoal:       tmplGoal,
 	}
@@ -465,6 +466,7 @@ func loadFrom(root, id, dir string, fp *Fingerprint) (*Change, error) {
 	c.HasAcceptance = exists(filepath.Join(dir, FileAcceptance))
 	c.GoalRequired = exists(filepath.Join(dir, GoalRequiredFile))
 	c.HasGoal = exists(filepath.Join(dir, FileGoal))
+	c.HasChange = exists(filepath.Join(dir, FileChange))
 	if c.HasGoal {
 		if raw, rerr := os.ReadFile(filepath.Join(dir, FileGoal)); rerr == nil {
 			if _, perr := ParseGoal(string(raw)); perr == nil {
@@ -741,7 +743,7 @@ func NewFast(root, id, title string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("change: 创建 %s: %w", relTo(root, dir), err)
 	}
-	files := map[string]string{FileProposal: tmplProposal, FileAcceptance: tmplAcceptance, FileGoal: tmplGoal}
+	files := map[string]string{FileChange: tmplChange, FileAcceptance: tmplAcceptance, FileGoal: tmplGoal}
 	for name, tmpl := range files {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte(renderTemplate(tmpl, id, title)), 0o644); err != nil {

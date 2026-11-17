@@ -15,9 +15,10 @@ const FileGoal = "goal.md"
 // GoalSection 是 goal 契约的必填段落。五段对应「交代目标/原因/约束/范围外/检查」：
 // 缺任何一段，agent 都能把「做完了」解释成另一件事。
 type GoalSection struct {
-	Key   string `json:"key"`
-	Title string `json:"title"`
-	Body  string `json:"body"`
+	Key      string `json:"key"`
+	Title    string `json:"title"`
+	Body     string `json:"body"`
+	Required bool   `json:"required,omitempty"`
 }
 
 // Goal 是 goal.md 的结构化视图（不缓存，每次从文件解析）。
@@ -27,11 +28,23 @@ type Goal struct {
 
 // goalSectionSpecs 是段落键与标题的单一真相源；顺序即渲染顺序。
 var goalSectionSpecs = []GoalSection{
-	{Key: "objective", Title: "Objective"},
+	{Key: "objective", Title: "Objective", Required: true},
 	{Key: "why", Title: "Why"},
 	{Key: "constraints", Title: "Constraints"},
-	{Key: "out_of_scope", Title: "Out of Scope"},
-	{Key: "check", Title: "Check"},
+	{Key: "out_of_scope", Title: "Out of Scope", Required: true},
+	{Key: "check", Title: "Check", Required: true},
+}
+
+// GoalRequiredKeys 返回新 change 必须填的段（三份产物化后：目标、范围外、检查）。
+// Why/Constraints 保留为可选段：老 change 与愿意写的人继续用，但不再强制。
+func GoalRequiredKeys() []string {
+	out := make([]string, 0, 3)
+	for _, s := range goalSectionSpecs {
+		if s.Required {
+			out = append(out, s.Key)
+		}
+	}
+	return out
 }
 
 // GoalSectionKeys 返回必填段落键（供 CLI/文档展示）。
@@ -43,7 +56,7 @@ func GoalSectionKeys() []string {
 	return out
 }
 
-// ParseGoal 解析 goal.md：按二级标题取五段，标题大小写与空格不敏感
+// ParseGoal 解析 goal.md：按二级标题取段（新 change 必填 three：objective/out of scope/check），标题大小写与空格不敏感
 // （"Out of Scope"/"OutOfScope" 等价）。缺段/空段/残留 forge:fill 标记都算未完成。
 func ParseGoal(content string) (*Goal, error) {
 	sections := map[string]string{}
@@ -70,6 +83,12 @@ func ParseGoal(content string) (*Goal, error) {
 	g := &Goal{}
 	var missing []string
 	for _, spec := range goalSectionSpecs {
+		if !spec.Required {
+			if body, ok := sections[spec.Key]; ok && body != "" && !strings.Contains(body, scaffoldMarker) {
+				g.Sections = append(g.Sections, GoalSection{Key: spec.Key, Title: spec.Title, Body: body})
+			}
+			continue
+		}
 		body, ok := sections[spec.Key]
 		if !ok || body == "" {
 			missing = append(missing, spec.Title)
@@ -82,7 +101,7 @@ func ParseGoal(content string) (*Goal, error) {
 		g.Sections = append(g.Sections, GoalSection{Key: spec.Key, Title: spec.Title, Body: body})
 	}
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("goal 契约未完成：缺 %s（五段：%s）", strings.Join(missing, "、"), strings.Join(GoalSectionKeys(), " / "))
+		return nil, fmt.Errorf("goal 契约未完成：缺 %s（必填三段：%s）", strings.Join(missing, "、"), strings.Join(GoalRequiredKeys(), " / "))
 	}
 	return g, nil
 }

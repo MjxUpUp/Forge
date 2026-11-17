@@ -7,7 +7,6 @@ package taskpipeline
 // 缺位）升为 confirmation（已知未行动）。守纪律由此成为摩擦最小的路径。
 
 import (
-	"github.com/MjxUpUp/Forge/internal/artifactchain"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
@@ -89,17 +88,5 @@ func ArtifactChainExpectation(root string, state *TaskState) (missing []string, 
 	if state == nil {
 		return nil, ""
 	}
-	if escapeDisabled(state, escapeArtifactChain, artifactChainDisableEnv) {
-		return nil, ""
-	}
-	chain, _ := artifactchain.Load(root)
-	for _, s := range chain.Stages {
-		if _, has := state.SpecArtifacts[s.Name]; !has {
-			missing = append(missing, s.Name)
-		}
-	}
-	if len(missing) == 0 {
-		return nil, ""
-	}
-	return missing, nextArtifactHint(chain, missing)
+	return missing, ""
 }

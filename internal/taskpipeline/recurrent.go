@@ -22,7 +22,6 @@ import (
 	"strconv"
 
 	"github.com/MjxUpUp/Forge/internal/act"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
@@ -109,21 +108,6 @@ func recurrentThreshold() int {
 // 逃生舱退回纯 advisory；本来会升硬时由 recordRecurrentHardenEscape 落审计行。
 func recurrentHardenEnabled() bool {
 	return os.Getenv(recurrentHardenDisableEnv) != "disable"
-}
-
-// loadConclusions 读项目已完成任务的结论供复发分析。fail-open：任何错误（非 forge 项目、act 目录
-// 不可读、ProjectFor 失败）返回 nil——调用方把 nil 当「无复发」保持 advisory，故缺失/不可读的历史
-// 永不阻断。
-func loadConclusions(root string) []act.Conclusion {
-	proj, err := forgedata.ProjectFor(root)
-	if err != nil {
-		return nil
-	}
-	cs, err := act.LoadAll(proj)
-	if err != nil {
-		return nil
-	}
-	return cs
 }
 
 // scopeDriftSevere 报告超 scope drift 集是否够 per-task 轴的「严重」：≥ scopeDriftSevereThreshold 个

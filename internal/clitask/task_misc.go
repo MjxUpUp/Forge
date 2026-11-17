@@ -3,7 +3,6 @@ package clitask
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/projectroot"
 	"github.com/MjxUpUp/Forge/internal/taskcontext"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
-	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/spf13/cobra"
 )
 
@@ -368,145 +366,6 @@ func describeOverrides(o taskpipeline.TaskOverrides) string {
 		return "（无）"
 	}
 	return strings.Join(parts, ", ")
-}
-
-// runTaskDocReview 在 rubric 评审（doc-review skill）
-// 后记录 L2 文档回检证据。门禁（CheckDocGate）是消费方：评审未记录、过期、
-// 未通过或得分低于阈值时 complete 被拒。仅记录不会伪造通过——--passed fail
-// 保持阻断并累加轮次（升级上限的计数）。Critical 发现落 Findings
-// （Source=doc-review、Severity=critical），经 forge task finding resolve 解决。
-func runTaskDocReview(cmd *cobra.Command, args []string) error {
-	root, err := projectroot.Find()
-	if err != nil {
-		return err
-	}
-	explicitRef, _ := cmd.Flags().GetString("ref")
-	passedFlag, _ := cmd.Flags().GetString("passed")
-	score, _ := cmd.Flags().GetInt("score")
-	round, _ := cmd.Flags().GetInt("round")
-	reviewer, _ := cmd.Flags().GetString("reviewer")
-	criticals, _ := cmd.Flags().GetStringSlice("critical")
-	coReviewer, _ := cmd.Flags().GetString("co-reviewer")
-	coScore, _ := cmd.Flags().GetInt("co-score")
-
-	if passedFlag != "pass" && passedFlag != "fail" {
-		return fmt.Errorf(`--passed 必填且只接受 pass | fail，got %q（先按 doc-review skill 评审——产出者不能当回检者）`, passedFlag)
-	}
-	if score < 0 || score > 100 {
-		return fmt.Errorf("--score 取值 0-100（rubric 四维各 0-25），got %d", score)
-	}
-	// 双评成对校验：co-score 未给（-1 哨兵）时 co-reviewer 必须为空，反之亦然
-	// ——半份双评记录比没有更糟（分歧率统计会被残缺行污染）。哨兵之外的一律
-	// 进 0-100 校验：越界负分（如 -5）静默吞掉会让输入错误拿到成功回执。
-	if coScore != -1 && (coScore < 0 || coScore > 100) {
-		return fmt.Errorf("--co-score 取值 0-100，got %d", coScore)
-	}
-	if (coReviewer != "") != (coScore >= 0) {
-		return fmt.Errorf("--co-reviewer 与 --co-score 须成对给出（同家族 borderline 双评，rubric 评分纪律 6）；got co-reviewer=%q co-score=%d", coReviewer, coScore)
-	}
-
-	var state *taskpipeline.TaskState
-	if explicitRef != "" {
-		state, err = taskpipeline.LoadTaskState(root, explicitRef)
-	} else {
-		state, err = taskpipeline.ActiveTaskState(root, taskpipeline.CurrentSessionID())
-		if err == nil && state == nil {
-			err = fmt.Errorf("no active task. Run 'forge task start' first")
-		}
-	}
-	if err != nil {
-		return fmt.Errorf("failed to load task state: %w", err)
-	}
-
-	if round <= 0 {
-		// 从上一轮自动递增：第 2 轮评审不得静默重置为 1（升级上限数真实轮次）。
-		round = 1
-		if state.DocReview != nil && state.DocReview.Round >= round {
-			round = state.DocReview.Round + 1
-		}
-	}
-
-	// 轮次历史保留（循环的可观测收敛）：历史轮次留在 DocReviewHistory，得分
-	// 趋势可从任务状态查询——「两轮之间 Critical 不降」是异常信号而非散文。
-	// 截断保留最近 10 轮（内存卫生）。
-	// 锁内 doc-review 写入——DocReview、轮次历史与 critical findings 都必须在
-	// 锁内状态上写入：MutateTaskState 锁内重载最新盘上状态，曾加在锁外旧快照上
-	// 的 findings 会被静默丢弃（2026-09-15 测试实锤——--critical 此前从未真正
-	// 落档，critical 拦截形同虚设）。
-	selfReviewed := false // 锁内闭包写入、锁外消费（审查 P2-5：外层 state 是锁前
-	// 快照——曾在锁后读 state.DocReview 判自审，首轮永远 nil、后续迟到一轮）
-	if err := taskpipeline.MutateTaskState(root, state.TaskRef, func(s *taskpipeline.TaskState) error {
-		for _, c := range criticals {
-			content, tag := tasktypes.SplitFindingTag(c)
-			if strings.TrimSpace(content) == "" {
-				// "style:" 这类打标后内容为空的输入会落一条空 critical——
-				// 阻断 doc gate 但没人看得懂要修什么（finding 命令对空 content
-				// 同款必填校验）。文案按有无 tag 区分：裸空串的「去掉前缀」提示
-				// 是误导（评审 observation，2026-09-15）。
-				if tag != "" {
-					return fmt.Errorf("--critical %q 打标后内容为空——tag 后补上发现内容", c)
-				}
-				return fmt.Errorf("--critical 内容为空——写清要修什么（发现必须有内容）")
-			}
-			nf := taskpipeline.Finding{
-				Content:  content,
-				Tag:      tag,
-				Source:   taskpipeline.DocReviewSource,
-				Severity: taskpipeline.FindingSeverityCritical,
-				Evidence: fmt.Sprintf("round %d rubric=%d", round, score),
-			}
-			taskpipeline.EnrichFinding(root, s, &nf)
-			s.AddFinding(nf)
-		}
-		if s.DocReview != nil && !s.DocReview.ReviewedAt.IsZero() {
-			s.DocReviewHistory = append(s.DocReviewHistory, *s.DocReview)
-			if len(s.DocReviewHistory) > 10 {
-				s.DocReviewHistory = s.DocReviewHistory[len(s.DocReviewHistory)-10:]
-			}
-		}
-		// 双评只在成对给出时落档：SecondScore 不落 -1 哨兵（零值 = 未双评的
-		// 契约见 DocReview 字段注释）。
-		docReview := &taskpipeline.DocReview{
-			Passed:          passedFlag == "pass",
-			RubricScore:     score,
-			Round:           round,
-			Reviewer:        reviewer,
-			ReviewedAt:      time.Now(),
-			HeadCommit:      taskpipeline.GetHeadCommit(root),
-			DocsFingerprint: taskpipeline.DocContentFingerprint(root, s),
-		}
-		// 价-1b（独立性归因）：记录会话 ∈ 生产者集 → 自审标记 + 披露行。
-		// doc gate 不消费自录分数（docgate.go 侧拦）。
-		if ok, known := taskpipeline.ReviewIndependence(root, s.TaskRef, taskpipeline.CurrentSessionID()); known && !ok {
-			docReview.SelfReview = true
-			selfReviewed = true
-		}
-		if coReviewer != "" {
-			docReview.SecondReviewer = coReviewer
-			docReview.SecondScore = coScore
-		}
-		s.DocReview = docReview
-		return nil
-	}); err != nil {
-		return fmt.Errorf("failed to save task state: %w", err)
-	}
-	if selfReviewed {
-		taskpipeline.RecordSelfReviewRow(root, state.TaskRef, taskpipeline.CurrentSessionID(), "doc-review")
-		fmt.Fprintln(os.Stderr, "⚠ [self-review] 本会话既是文档产出者又录了回检分——已记 self-review 标记，doc gate 不消费自录分数（独立会话/子 agent 复审后重新记录）")
-	}
-
-	coNote := ""
-	if coReviewer != "" {
-		coNote = fmt.Sprintf("，co-reviewer %s（%d）", coReviewer, coScore)
-	}
-	fmt.Printf("doc-review 已记录（round %d，score %d，verdict %s，critical +%d%s）。\n", round, score, passedFlag, len(criticals), coNote)
-	if passedFlag == "pass" && score < taskpipeline.DocRubricThreshold {
-		fmt.Printf("注意：verdict=pass 但 score %d < 阈值 %d——doc gate 仍会拦截（得分与结论矛盾，复评）。\n", score, taskpipeline.DocRubricThreshold)
-	}
-	if passedFlag != "pass" && round >= taskpipeline.DocReviewMaxRounds {
-		fmt.Printf("已 %d 轮未过（上限 %d）——升级人工确认：用户裁定放行（forge task override --doc-gate disable）或给出下一轮修复方向。\n", round, taskpipeline.DocReviewMaxRounds)
-	}
-	return nil
 }
 
 // runTaskScopeShow 打印声明的 PlanScope + 实时 scope-drift（实改源码 vs 声明的差集）。

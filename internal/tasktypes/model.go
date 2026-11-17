@@ -227,13 +227,3 @@ const (
 	PhaseBackend     DesignPhase = "backend"     // 后端设计（services / domain / 业务逻辑）
 	PhaseTest        DesignPhase = "test-design" // 测试用例设计（test 文件）
 )
-
-// AllDesignPhases returns every design phase.
-//
-// AllDesignPhases 返回全部设计阶段。
-func AllDesignPhases() []DesignPhase {
-	return []DesignPhase{
-		PhaseRequirement, PhaseAPI, PhaseDatabase,
-		PhaseFrontend, PhaseBackend, PhaseTest,
-	}
-}

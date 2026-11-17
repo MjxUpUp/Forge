@@ -3,13 +3,11 @@ package taskpipeline
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/doclint"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/protocol"
 	"github.com/MjxUpUp/Forge/internal/scoring"
@@ -128,21 +126,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 	// 35）；无 toollog（<2 条）回落挂钟，由 scoreEfficiencyWithSpan 处理。
 	activeSpan := taskActiveSpan(root, state)
 
-	// 表达维度输入（输出→回检循环度量锚点）：评分时实时重算——与 doc gate 同
-	// doclint + changedMarkdownDocs 逻辑，维度与门禁结论不会不一致。
-	docDeliverables := changedMarkdownDocs(root, state)
-	docLintHard := 0
-	for _, d := range docDeliverables {
-		issues, lerr := doclint.LintFile(filepath.Join(root, filepath.FromSlash(d)))
-		if lerr != nil {
-			continue
-		}
-		for _, iss := range issues {
-			if iss.Hard() {
-				docLintHard++
-			}
-		}
-	}
+	var docDeliverables []string
 	var docRubric *int
 	if state.DocReview != nil && !state.DocReview.ReviewedAt.IsZero() {
 		s := state.DocReview.RubricScore
@@ -174,9 +158,7 @@ func BuildEvaluateInput(root string, state *TaskState) (*scoring.EvaluateInput, 
 		EvidenceAgentClaim:    evAgentClaim,
 
 		HasDocDeliverables: len(docDeliverables) > 0,
-		DocLintHardIssues:  docLintHard,
 		DocRubricScore:     docRubric,
-		DocGateEscaped:     escapeDisabled(state, escapeDocGate, docGateDisableEnv),
 	}
 	return input, config, nil
 }

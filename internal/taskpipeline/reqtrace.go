@@ -19,11 +19,11 @@ package taskpipeline
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
-	"github.com/MjxUpUp/Forge/internal/artifactchain"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
@@ -298,7 +298,7 @@ func ComputeRequirementCoverage(declared []string, criteria []AcceptanceCriterio
 func TaskRequirementCoverage(root string, state *TaskState) RequirementCoverage {
 	var declared []string
 	for _, ref := range state.SpecArtifacts {
-		body, err := os.ReadFile(artifactAbsPath(root, ref))
+		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(ref.Path)))
 		if err != nil {
 			continue
 		}
@@ -341,84 +341,3 @@ const reqCoverageDisableEnv = "FORGE_REQ_COVERAGE"
 //
 // escapeReqCoverage 是需求覆盖逃生的 which 键（v1 仅 env）。
 const escapeReqCoverage = "req-coverage"
-
-// reqCoverageBlocking reports whether unverified requirements should block
-// complete: only when the chain puts spec or design at rubric tier or stricter
-// (proposal W3.3 — advisory by default).
-//
-// reqCoverageBlocking 报告未验证需求是否应阻断 complete：仅当产物链把 spec 或
-// design 设为 rubric 及更严档位（提案 W3.3——默认 advisory）。
-func reqCoverageBlocking(chain *artifactchain.Chain) bool {
-	for _, name := range []string{"spec", "design"} {
-		if s, ok := chain.StageByName(name); ok && s.Mode != artifactchain.ModeAdvisory {
-			return true
-		}
-	}
-	return false
-}
-
-// anyCriterionTraced reports whether at least one criterion declares traces.
-//
-// anyCriterionTraced 报告是否至少有一条验收声明了追溯 ID。
-func anyCriterionTraced(cs []AcceptanceCriterion) bool {
-	for _, c := range cs {
-		if len(c.Traces) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// CheckRequirementCoverageAtComplete runs the complete-time coverage check:
-// advisory by default, blocking when reqCoverageBlocking holds. Tasks without
-// requirement IDs are silent (no entry).
-//
-// CheckRequirementCoverageAtComplete 跑 complete 时的需求覆盖检查：默认 advisory，
-// reqCoverageBlocking 成立时阻断。没用需求 ID 的任务静默（不落条目）。
-func CheckRequirementCoverageAtComplete(root string, state *TaskState) error {
-	cov := TaskRequirementCoverage(root, state)
-	if !cov.HasTraceData() {
-		return nil
-	}
-	if escapeDisabled(state, escapeReqCoverage, reqCoverageDisableEnv) {
-		recordAudit(root, &checklog.Entry{
-			Check: checklog.CheckEscapeHatch, Passed: true, Checked: true, Level: checklog.LevelWarn,
-			TaskRef: state.TaskRef,
-			Detail:  "escape-hatch: req coverage bypassed (FORGE_REQ_COVERAGE=disable)",
-			Meta:    map[string]string{"escape.gate": "req-coverage", "escape.reason": checklog.EscapeReasonEnv, "escape.owner": "env"},
-		})
-		return nil
-	}
-	unverified := cov.UnverifiedIDs()
-	entry := &checklog.Entry{
-		Check: CheckNameReqCoverage, Passed: len(unverified) == 0, Checked: true, TaskRef: state.TaskRef,
-		Level: checklog.LevelPass,
-		Meta: map[string]string{
-			"declared":   fmt.Sprint(len(cov.Declared)),
-			"verified":   fmt.Sprint(len(cov.Verified)),
-			"unverified": strings.Join(unverified, ","),
-			"orphans":    strings.Join(cov.Orphans, ","),
-		},
-	}
-	if len(unverified) == 0 {
-		entry.Detail = fmt.Sprintf("全部 %d 条声明需求已验证", len(cov.Declared))
-		recordAudit(root, entry)
-		return nil
-	}
-	chain, _ := artifactchain.Load(root)
-	// 只在任务确实采用了追溯写法（至少一条验收带 Traces）时阻断：只在 spec 正文里
-	// 提到 REQ-n 而从未写 accept[REQ-n] 的存量任务，升档后不被突然拦下（审查轮）。
-	if reqCoverageBlocking(chain) && anyCriterionTraced(state.Acceptance) {
-		entry.Level = checklog.LevelBlocked
-		entry.Detail = "unverified requirements: " + strings.Join(unverified, ",")
-		recordAudit(root, entry)
-		return GateBlocked("task-complete 拒绝：%d 条声明需求未验证（%s）——给它们补带 accept[REQ-n] 的验收并实跑 verify-acceptance；产物链 spec/design 处于 rubric 及以上档位时本检查阻断，默认链只 advisory（首发即 blocked 于显式升档的链，见 docs/design/compat-commitments.md §二；逃生：%s=disable）",
-			len(unverified), strings.Join(unverified, ", "), reqCoverageDisableEnv)
-	}
-	entry.Passed = true
-	entry.Level = checklog.LevelAdvisory
-	entry.Detail = "unverified requirements: " + strings.Join(unverified, ",")
-	recordAudit(root, entry)
-	fmt.Fprintf(os.Stderr, "%s\n", GateAdvisory("[task-complete] %s", FormatRequirementCoverage(cov)))
-	return nil
-}

@@ -14,7 +14,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/review"
-	"github.com/MjxUpUp/Forge/internal/scoring"
 )
 
 // task-complete 硬前置：code-review-gate 必须已通过（ReviewPassed=true）。
@@ -61,42 +60,6 @@ func checkCompleteReviewPrereqs(root string, state *TaskState) error {
 		}
 	}
 	return nil
-}
-
-// checkTestCoverageBackstop 是 test-coverage 兜底硬前置（task-complete）：补 task-verify
-// advisory 的缺口——advisory 语境下 agent 自述即过（eval 证据：0/19、0/25 覆盖照过 complete，
-// 0 次加载 test-discipline）。此处对「大面积未覆盖且零断言」硬阻断：≥3 个改动源文件无配对
-// 测试、且全仓零断言 = corrupt success 铁证（大改无任何验证痕迹）。部分覆盖（缺测试文件 <3 个，
-// fudge factor，对齐业界 Sonar <20 行豁免精神）或「有断言但 0 配对覆盖」（测试在别处/重构场景）
-// 仍 advisory 放行——避免误伤。阈值按「无配对测试的文件数」计（与 testCoverageHardGateThreshold
-// 文档一致），而非全部改动源文件数——否则改 3 文件只缺 1 个测试也会被硬阻断，且 BLOCKED 文案说谎。
-// escape（per-task override / FORGE_TEST_COVERAGE）由 CheckTestCoverage 内部返回 ok=true
-// 处理，此处天然放行（验证类逃生，降 evidence Weak 留痕；重证据任务按 2026-08 证据
-// 缩放豁免，见 checklog.EscapeDowngradedStrength）。
-// 方案 B：BLOCKED 消息复用 formatMissing 的 skill 路由——advisory 语境失效（0 触发），
-// blocking 语境下 agent 必须处理才能过（skill 驱动靠 advisory→blocking 转变，非新机制）。
-// 断言信号复用 scoring.CollectAssertionDensity（已注入 EvaluateInput；taskpipeline→scoring
-// 单向无循环依赖）。checklog 记最终态——覆盖 task-verify 的记录（agent 可能在两 gate 间补了
-// 测试，Latest 应反映 task-complete 时覆盖状态供 score/trace）。
-//
-// 返回任务的变更文件列表：taskChangedFiles 起多个 git 子进程，其结果同时喂本覆盖门禁
-// （走预计算列表变体——CheckTestCoverage 内不再第二次跑 taskChangedFiles）与后续行为面/
-// goal↔output 检查（2026-08-29 审查轮：门禁此前会重算一遍，多个 git 子进程双跑）。
-func checkTestCoverageBackstop(root string, state *TaskState) (changedFiles []string, err error) {
-	changedFiles = taskChangedFiles(root, state)
-	ok, missing, total := checkTestCoverageChanged(root, state, changedFiles)
-	// 守护审计 P1-2（2026-09-17）：backstop 是真正 BLOCK 的执法层，条目与 verify
-	// 同口径（共享 testCoverageEntry——Meta + 失败 outcome 章）——D1-D3 由此覆盖
-	// advisory 层与 blocking 层，不再只见前者。
-	recordAudit(root, testCoverageEntry(root, state, ok, missing))
-	if !ok && len(missing) > 0 {
-		assertN, _ := scoring.CollectAssertionDensity(root, state.Branch, state.HeadCommit)
-		if testCoverageShouldBlock(len(missing), assertN) {
-			return nil, GateBlocked("task-complete 拒绝（HARD stop）：改了 %d 个源文件其中 %d 个无配对测试且零断言（assertN=0）——corrupt success 风险（大改无任何验证痕迹）。%s", total, len(missing), formatMissing(missing))
-		}
-		fmt.Fprintf(os.Stderr, "%s%s\n", GateAdvisory("[task-complete] "), formatMissing(missing))
-	}
-	return changedFiles, nil
 }
 
 // adviseCompleteDelivery 跑 task-complete 的 advisory 组——docs-consistency drift、行为面、

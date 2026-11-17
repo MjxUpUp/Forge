@@ -15,7 +15,6 @@ package taskpipeline
 // 调用方（hook.go）记 checklog CheckScopeDrift 供 review/看板，绝不阻断工具调用。
 
 import (
-	"fmt"
 	"path"
 	"path/filepath"
 	"strings"
@@ -163,16 +162,4 @@ func ScopeDrift(changed, scope []string) []string {
 // 不做二次推导。
 func ChangedFiles(root string, state *TaskState) []string {
 	return taskChangedFiles(root, state)
-}
-
-// scopeDriftDetail 为 scope-drift 判定生成简明的 checklog detail（单行——
-// checklog Detail 是摘要，非面向用户的 stderr 消息）。
-func scopeDriftDetail(drift []string) string {
-	if len(drift) == 0 {
-		return "all changed source files within declared PlanScope"
-	}
-	if len(drift) > 5 {
-		return fmt.Sprintf("scope-drift: %d files out-of-scope: %s ...", len(drift), strings.Join(drift[:5], ", "))
-	}
-	return "scope-drift: out-of-scope: " + strings.Join(drift, ", ")
 }

@@ -583,9 +583,15 @@ const scaffoldHint = "文件头那行 forge:fill 注释标记"
 // 普通 change 要五份产物（goal + 四份），少一份就少了对应的审计线索；fast 通道
 // 要求 goal/proposal/acceptance——省的是 design/tasks，不是目标与判据。
 func DocProblems(dir string, fast bool) []string {
-	required := []string{FileProposal, FileDesign, FileTasks, FileAcceptance}
-	if fast {
-		required = []string{FileProposal, FileAcceptance}
+	// 三份产物化（forge-ruthless）：新 change 只需要 goal + change + acceptance；
+	// 老 change（有 proposal/design）按老规则继续校验，两者都兼容。
+	newLayout := exists(filepath.Join(dir, FileChange)) || exists(filepath.Join(dir, GoalRequiredFile))
+	required := []string{FileChange, FileAcceptance}
+	if !newLayout {
+		required = []string{FileProposal, FileDesign, FileTasks, FileAcceptance}
+		if fast {
+			required = []string{FileProposal, FileAcceptance}
+		}
 	}
 	var out []string
 	for _, name := range required {

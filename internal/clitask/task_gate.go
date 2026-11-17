@@ -148,13 +148,6 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 链定义指纹 advisory（docs/design/task-tree-guard.md §6）：审批时的 schema.yaml 与
-	// 现在不同——内容没变但「要跑的图」变了。只提示重批，绝不阻断（改链不该把在途任务
-	// 锁死，multi-task-concurrency §8 退化矩阵）。
-	for _, w := range taskpipeline.ChainDigestStale(root, state) {
-		fmt.Fprintf(os.Stderr, "⚠️ [chain] %s\n", w)
-	}
-
 	// Token 成本熔断（advisory）：task 累计估算 token 超阈值则警示。让 token 计量不止于
 	// forge trace 可观测，而是 task gate 推进时的成本上限信号（loop engineering 成本治理）。
 	if w, _ := toolusage.TaskTokenBreaker(root, state.TaskRef); w != "" {
