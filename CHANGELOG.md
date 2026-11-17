@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.0.0](https://github.com/MjxUpUp/Forge/compare/v1.88.1...v2.0.0) (2026-11-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* task-verify/doc-review/mutation/artifact/chain-init/selfcheck/eval artifact-drill 已删除；change 产物由四份/五份改为三份（goal/change/acceptance，tasks 可选）；review pass 只接受新的 --reviewer。旧布局与旧 change 仍可读。
+
+### Features
+
+* 门禁降为两道、产物改三份、删除十项检查 ([c048d7a](https://github.com/MjxUpUp/Forge/commit/c048d7a8e169d96bf678358d690aaa8e5ce433d6))
+
+
+### Bug Fixes
+
+* **2.0:** 清理静态检查未用符号、旧模板与已删逃生舱并复钉 compat ([da92fc1](https://github.com/MjxUpUp/Forge/commit/da92fc1799f343a895f0bad984c2ebf9ffe3df9a))
+* **ruthless:** 评审闭环——next/selfcheck/文案/预跑/墓碑/三份口径 ([8e10124](https://github.com/MjxUpUp/Forge/commit/8e10124ab18a013f71a75b7a594bd60a2de631cb))
+* **ruthless:** 闭合 review-ruthless-3——complete 复核 review 快照、reviewer 归一化、删命令报错、gate 同口径验收前置 ([4d08487](https://github.com/MjxUpUp/Forge/commit/4d084871e447c64a85ddd50f7a22524fa092b8ed))
+* **ruthless:** 闭合 review-ruthless-4——工作流口径、审查基线不可达改拒、活提示与守卫接入 CI ([09330db](https://github.com/MjxUpUp/Forge/commit/09330dbf9d3c336dfd012e247984121e893d2fc1))
+* **ruthless:** 闭合 review-ruthless-5——基线不可达拒绝重盖章、发布冒烟改行为级、复审口径统一、守卫覆盖 ADR ([e7b9b2a](https://github.com/MjxUpUp/Forge/commit/e7b9b2a2be3c0c9435cad810d347b301dab004eb))
+
 ## [1.88.1](https://github.com/MjxUpUp/Forge/compare/v1.88.0...v1.88.1) (2026-11-16)
 
 
