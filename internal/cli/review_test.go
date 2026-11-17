@@ -68,8 +68,8 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 // TestRunReviewPassAt_ReworkRoundRequiresRecheck 钉住自助刷新守卫
 // （2026-08-25 gate-loopholes，取代 2026-08 的盖章后 advisory）：当
 // `forge review pass` 重盖的基线自上次盖章以来【源码内容】已变——修复再提交的
-// 循环形状——裸 pass 一律【拒绝】；agent 须记录复审结论（--note，诚实流）或显式
-// 自我承担（--acknowledge-changes，记 WARN self-refresh 审计）。非源码增量
+// 循环形状——裸 pass 一律【拒绝】；agent 必须派新的只读 reviewer 并用
+// `--reviewer <新 id>` 记录（同一 reviewer 自证与 --note 刷新基线都已移除）。非源码增量
 // （amend commit message、内容不变）无需确认；同状态重复盖章（瞬态重试）保持
 // 静默。动机：快照闭环（task-complete 硬阻断）只强制循环的「形状」；旧
 // advisory 让修复者零复审零审计地自助刷新基线（真实 usage 日志案例：agent 被
@@ -375,12 +375,12 @@ func TestRenderReviewStatus_ExplicitRef(t *testing.T) {
 	}
 }
 
-// TestRunReviewPassAt_BaselineUnreachableAudited 钉住 fail-open 的审计留痕
-// （review minor #2）：上次审查基线 commit 不可达（amend/rebase 改写历史）时，
-// 裸 `forge review pass` 按 fail-open 重盖章——但 fail-open 不得静默：
-// checklog review-pass 条目升级为 WARN 并打 baseline-unreachable 标记，与
-// executor fail-open 同样落 checklog 的做法对齐。
-func TestRunReviewPassAt_BaselineUnreachableAudited(t *testing.T) {
+// TestRunReviewPassAt_BaselineUnreachableRequiresNewReviewer 钉住
+// review-ruthless-5 P1：上次审查基线 commit 不可达（amend/rebase+gc 改写历史）
+// 时，同一 reviewer 的裸重盖章必须被拒——否则「审后改码 + 改写历史 + 再 --pass」
+// 能重置基线而不复审。换一个新的 reviewer 复审当前 diff 才允许，并记 WARN 级
+// baseline-unreachable 审计。
+func TestRunReviewPassAt_BaselineUnreachableRequiresNewReviewer(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, `init`)
 	runGit(t, dir, `config`, `user.email`, `test@test.com`)
@@ -411,10 +411,23 @@ func TestRunReviewPassAt_BaselineUnreachableAudited(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 裸重盖章：fail-open（不拒绝），但必须记 WARN 级 baseline-unreachable
-	// 审计条目。
-	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
-		t.Fatalf("基线不可达应 fail-open 放行: %v", err)
+	// 同一 reviewer 裸重盖章：必须拒绝，且不落章。
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err == nil {
+		t.Fatal("基线不可达时同一 reviewer 裸重盖章应被拒绝")
+	} else if !strings.Contains(err.Error(), "不可达") || !strings.Contains(err.Error(), "--reviewer") {
+		t.Errorf("拒绝文案应说明基线不可达并要求新 reviewer, got: %v", err)
+	}
+	st, err = taskpipeline.LoadTaskState(dir, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.ReviewedHeadCommit != `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` {
+		t.Errorf("拒绝时不得改写审查基线, got %s", st.ReviewedHeadCommit)
+	}
+
+	// 换新的 reviewer 复审当前 diff：允许，并记 WARN 级 baseline-unreachable。
+	if err := runReviewPassAt(dir, ref, "", "rev-2"); err != nil {
+		t.Fatalf("新 reviewer 应可重盖基线: %v", err)
 	}
 	entries, err := checklog.LoadAll(dir)
 	if err != nil {
@@ -430,7 +443,7 @@ func TestRunReviewPassAt_BaselineUnreachableAudited(t *testing.T) {
 		t.Fatal("缺 review-pass 条目")
 	}
 	if last.Level != checklog.LevelWarn || !strings.Contains(last.Detail, "baseline-unreachable") {
-		t.Errorf("fail-open 重盖章须记 WARN 级 baseline-unreachable 审计, got level=%s detail=%q", last.Level, last.Detail)
+		t.Errorf("新 reviewer 重盖须记 WARN 级 baseline-unreachable 审计, got level=%s detail=%q", last.Level, last.Detail)
 	}
 }
 

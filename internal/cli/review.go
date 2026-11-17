@@ -216,7 +216,7 @@ const gateGuidance = "检测到未审查的源码变更。请按序完成：\n" 
 	"1. 按 code-review-gate 策略执行（仓库/技能文档）\n" +
 	"2. 按其策略派【只读】子 agent 审查当前 diff——独立上下文是底线，不可自审绕过\n" +
 	"   (a) 首审、新会话接手、没有首轮 reviewer 的句柄、或这版不是对已审代码的修复（如新增功能）：按本步新派\n" +
-	"   (b) 本会话内已对本分支派过 reviewer、这版是修复后的 diff 且句柄可续用（复审）：" + review.ReReviewGuidance + "（非 task 模式没有审查基线刷新，`--note` 只作审计留痕）\n" +
+	"   (b) 本会话内已对本分支派过 reviewer、这版是修复后的 diff（复审——必须换一个新的 reviewer id）：" + review.ReReviewGuidance + "（非 task 模式没有审查基线刷新，`--note` 只作审计留痕）\n" +
 	"3. 审查通过后运行 `forge review pass` 标记\n" +
 	"审查发现的问题按类型接 skill：运行时 bug/逻辑错误 → systematic-debugging；编译错误 → compile-fix-loop；断言弱化/假测试 → test-discipline。\n" +
 	"范围说明：本次判定只覆盖能归因到当前会话的源码变更；已被证明属于其他活跃会话的变更已排除，不要求你审查。\n" +
@@ -308,9 +308,9 @@ func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) err
 		// --acknowledge-changes（自我承担，记 WARN self-refresh 审计）。对变更内容
 		// 裸盖章一律【拒绝】。非源码变更（amend commit message、保内容 rebase）
 		// 指纹不变、无需确认；同状态重复盖章（瞬态重试）保持静默。基线不可达
-		// （历史改写）→ fail-open，与 executor 的快照检查一致——但 fail-open
-		// 的裸重盖章记 WARN 级 baseline-unreachable 审计（review minor #2：
-		// fail-open 不能零留痕，对齐 executor fail-open 落 checklog 的做法）。
+		// （历史被 amend/rebase+gc 改写）时同样【拒绝】裸盖章：基线没了就无法
+		// 证明审后改了什么，fail-open 等于给「同 reviewer + 改写历史」留后门
+		// （review-ruthless-5 P1）。必须派新的只读子 agent 复审并换 --reviewer。
 		//
 		// 丢失更新加固（2026-08-29 审查轮）：load→守卫→盖章→保存 整段改在 per-task
 		// 锁内执行（MutateTaskState 锁内重载 state）——此前对锁前快照裸 SaveTaskState
@@ -329,7 +329,11 @@ func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) err
 				cur, _, err := taskpipeline.TaskFingerprint(root, s, s.ReviewedHeadCommit)
 				switch {
 				case err != nil:
+					if reviewer == "" || reviewerUsed(s, reviewer) {
+						return fmt.Errorf("review pass 拒绝：上次审查基线（HEAD=%s）已不可达（历史被 amend/rebase+gc 改写）——无法确认审后被改了什么。请派新的只读子 agent 复审当前 diff，并用 `--reviewer <新 id>` 记录；同一 reviewer 的裸重盖章不再被接受。%s", s.ReviewedHeadCommit, review.ReReviewGuidance)
+					}
 					baselineUnreachable = s.ReviewedHeadCommit
+					selfRefresh = true
 				case cur != s.ReviewedChangeHash:
 					if reviewer == "" || reviewerUsed(s, reviewer) {
 						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——%s。复审必须派一个新的只读子 agent，并用 `--reviewer <新 id>` 记录；同一 reviewer 的自证、以及用 --note 刷新基线都已被移除", s.ReviewedHeadCommit, review.ReReviewGuidance)
@@ -423,7 +427,7 @@ func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) err
 			}
 		}
 		if baselineUnreachable != "" {
-			fmt.Printf("⚠ 上次审查基线 %s 不可达（历史可能被 amend/rebase 改写）——本次按 fail-open 重盖章，已记 WARN 级 baseline-unreachable 审计；建议确认当前代码已经过审查\n", shortHash(baselineUnreachable))
+			fmt.Printf("⚠ 上次审查基线 %s 不可达（历史可能被 amend/rebase 改写）——已由新的 reviewer 复审当前 diff 并重盖章（记 WARN 级 baseline-unreachable 审计）\n", shortHash(baselineUnreachable))
 		}
 		// 上方盖章前自助刷新守卫取代了旧的盖章后复审 ADVISORY（2026-08 协议缺口
 		// 修复，2026-08-25 被取代）：对变更内容裸盖章现在直接【拒绝】而非盖完再

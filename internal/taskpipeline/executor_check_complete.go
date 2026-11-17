@@ -28,8 +28,9 @@ import (
 // ReviewPassed 硬前置正交——上面拒「没审过」，这里拒「审过但代码又变了」，两者叠加才构成完整闭环。
 // ReviewedHeadCommit=="" → commit-then-review 流（审查时工作区干净，hash 空）或老 state 兼容，
 // 跳过本检查（仅留 ReviewPassed 硬前置语义）。base 不可达（amend/rebase 改写历史致 git 对象消失）
-// → fail-open 放行 + 警告：amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
-// （可达则严、不可达则松的非对称是设计本意）。
+// → 拒绝（review-ruthless-4/5）：基线没了就无法证明审后被改了什么，fail-open 等于给
+// 「审后改码 + 改写历史 + 裸重盖章」留后门；恢复方式是派新的 reviewer 复审当前 diff
+// 并用 `forge review pass --reviewer <新 id>` 重盖章。
 func CheckCompleteReviewPrereqs(root string, state *TaskState) error {
 	// checklist 硬门禁（vNext P3，设计 M5/M6）：勾选状态即进度——未全勾不是完成。
 	// tracked-checklist 同语义：report 写完不算 done，checkbox 才算。

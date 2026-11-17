@@ -34,5 +34,7 @@ jobs:
       # 回归，补 PR CI 只跑单元测试的缺口（v1.52.0 发版审计：产物链行为级零
       # 覆盖，drill 沉淀后此处常态跑）。
       - run: /tmp/forge eval wedge-drill
-      # 产物链行为级冒烟已由 change check 承担（1.88 激进减法删除了 artifact-drill）。
-      - run: /tmp/forge change check
+      # 发布物行为级冒烟（1.88 激进减法删除了 artifact-drill）：在临时仓库里用
+      # 构建出的二进制真实建 change→verify→change check。本仓库 change 全归档时
+      # `forge change check` 会空跑成功退出 0，不能替代这一步。
+      - run: sh scripts/checks/release-smoke.sh /tmp/forge

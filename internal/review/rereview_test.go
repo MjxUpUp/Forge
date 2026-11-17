@@ -105,7 +105,10 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 		},
 		{
 			name: "code-review-gate",
-			want: []string{"按轨道续用", "不新派补位", "`cheat-detector` 无发现时", "命中下面作弊模式速查表任一项", "`eng-reviewer` 始终续用", "首轮零发现", "有发现的轨道必续用"},
+			// Forge 门禁要求复审换新 reviewer（同一 reviewer 自证与 --note 刷新已移除）；
+			// 分档只决定审多深，不得作为续用同一 reviewer 的豁免。
+			want:  []string{"按轨道续用", "不新派补位", "`cheat-detector` 无发现时", "命中下面作弊模式速查表任一项", "`eng-reviewer` 始终续用", "首轮零发现", "有发现的轨道必续用", "复审必须由**新的只读子 agent**", "--reviewer <新 id>", "不豁免换人"},
+			stale: []string{"同一 reviewer 的自证、以及用 --note 刷新基线都可行"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

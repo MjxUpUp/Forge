@@ -42,9 +42,11 @@ jobs:
           fi
 
   # 行为级冒烟门禁（发布物在 publish 前必须真实跑过——forge 理念：验收 = 实跑
-  # 证据，不是"构建成功"）：wedge-drill 验首证据链，change check 验产物链证据。
-  # goreleaser（GitHub Release + 签名产物）与 npm（registry 发布）都在本
-  # job 之后——演练红则发布链整体不放行。
+  # 证据，不是"构建成功"）：wedge-drill 验首证据链；release-smoke 在临时仓库里
+  # 用**待发布二进制**真实建 change → 填产物 → verify 封印 → change check。
+  # 不能只跑 `forge change check`：本仓库 change 归档后它会空跑成功退出 0，
+  # 证明不了发布物可用（review-ruthless-5 P1）。goreleaser 与 npm 都在本 job
+  # 之后——演练红则发布链整体不放行。
   drill:
     needs: test
     runs-on: ubuntu-latest
@@ -56,7 +58,7 @@ jobs:
           go-version-file: go.mod
       - run: go build -o /tmp/forge ./cmd/forge/
       - run: /tmp/forge eval wedge-drill
-      - run: /tmp/forge change check
+      - run: sh scripts/checks/release-smoke.sh /tmp/forge
       # 演练报告作为发布证据留痕（审计漏点 #3：发布过程在 forge 台账之外——
       # 报告挂 workflow artifacts 补上可追溯载体；发布审计 = 报告 + 对账输出）。
       - name: Upload drill reports (release evidence)
@@ -334,7 +336,7 @@ jobs:
       - name: Behavioral smoke on installed binary
         run: |
           forge eval wedge-drill
-          forge change check
+          sh scripts/checks/release-smoke.sh forge
       # 签名验证闭环（审计漏点 #1：cosign 只签不验）——goreleaser keyless 签的
       # checksums.txt 必须有人验过才算供应链证据。identity 匹配本仓 workflow 的
       # OIDC 身份；Verify 失败 = 发布资产被篡改或签名链异常，发布判定失败。

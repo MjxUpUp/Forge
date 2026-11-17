@@ -33,10 +33,29 @@ for f in README.md docs/reference/cli.md; do
 done
 
 # 反向：不得再出现四份/五份产物的旧口径，也不得再引用已删除的模板文件。
-if grep -n -E '四份产物|四个产物|五份产物|五个产物|五份模板|四份模板' $files; then
-  printf 'docs-artifact-counts: 上面这些行仍是旧口径（应为三份）\n'
-  exit 1
-fi
+# 扫描面扩到 docs/adr、docs/design、docs/plans——旧口径的残留正是在这些地方
+# （review-ruthless-5 P2-3 实证 ADR 未被扫到）。历史说明行（写「历史/阶段 A/更早/
+# 作废/存档」）豁免：解释当时形态不算当前口径。
+scan_dirs="docs/adr docs/design docs/plans"
+for f in $files; do
+  if grep -n -E '四份产物|四个产物|五份产物|五个产物|五份模板|四份模板' "$f" \
+    | grep -vE '历史|阶段 A|阶段A|更早|作废|存档'; then
+    printf 'docs-artifact-counts: %s 上面这些行仍是旧口径（应为三份）\n' "$f"
+    exit 1
+  fi
+done
+for d in $scan_dirs; do
+  [ -d "$d" ] || continue
+  if grep -rn -E '四份产物|四个产物|五份产物|五个产物|五份模板|四份模板' "$d" \
+    | grep -vE '历史|阶段 A|阶段A|更早|作废|存档'; then
+    printf 'docs-artifact-counts: %s 上面这些行仍是旧口径（应为三份）\n' "$d"
+    exit 1
+  fi
+  if grep -rn -E 'templates/(proposal|design)\.md' "$d" | grep -vE '历史|阶段 A|阶段A|更早|作废|存档'; then
+    printf 'docs-artifact-counts: %s 上面这些行引用了已删除的模板\n' "$d"
+    exit 1
+  fi
+done
 if grep -n -E 'templates/(proposal|design)\.md' $files; then
   printf 'docs-artifact-counts: 上面这些行引用了已删除的模板\n'
   exit 1

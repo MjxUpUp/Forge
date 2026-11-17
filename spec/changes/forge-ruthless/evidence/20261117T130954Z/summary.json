@@ -1,0 +1,152 @@
+{
+  "change": "forge-ruthless",
+  "started_at": "2026-11-17T13:09:54Z",
+  "finished_at": "2026-11-17T13:13:47Z",
+  "passed": true,
+  "sealed": true,
+  "head": "09330dbf9d3c336dfd012e247984121e893d2fc1",
+  "diff_sha256": "9e4692c062260b7fc5d1c1c3fd9f0ab9d062cf4a9b4a0d315827b05fd12e0c21",
+  "files": [
+    {
+      "path": ".github/workflows/nightly.yml",
+      "sha256": "25edc6387ce1d3683594466e462022df4aaa03a120ce22daef2bfa439aa28e08"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "sha256": "16deed43758be757304e6f8cb735209c467f2ae6d0357e634fdbaefd35eefd3c"
+    },
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "8ab97da1ed395ef4a3252a5a76044d17cb1ff7c3411954140f5319114ef4ca56"
+    },
+    {
+      "path": "docs/adr/0002-repo-takeover-drop-host-layer.md",
+      "sha256": "5ed12026361bc549690ba20c39214a17323f4de32b9806cf2ec34697b119653e"
+    },
+    {
+      "path": "docs/design/multi-repo-workspace.md",
+      "sha256": "0a3cde03ac9a06642323a5b69f48e7f0a6185a46b00bb9e6604a0ed317734fd3"
+    },
+    {
+      "path": "internal/change/verify.go",
+      "sha256": "f15bd9951d2fe014cbc3a98a5e660a71b9ad77eda9718272d076594fc840b362"
+    },
+    {
+      "path": "internal/ci/release_workflow_test.go",
+      "sha256": "42fba63bb4556baeef42b648febe6d6df46211d72f13e76eae1289d7b38e624a"
+    },
+    {
+      "path": "internal/cli/review.go",
+      "sha256": "7f9cddbb6d5482fab74f637c362157ec9aecf3e9e309a0f872b7ceb4b5f43626"
+    },
+    {
+      "path": "internal/cli/review_test.go",
+      "sha256": "aa866a25cf3e194ec2ef4cc668d56cfe8730c4589e37c5db7b0d16a6ddbe3bf8"
+    },
+    {
+      "path": "internal/cli/workspace.go",
+      "sha256": "229f5d1b02fdc96809bd576e6441221cb95c8c338d0c3c5350ea3e300e47dad7"
+    },
+    {
+      "path": "internal/clitask/task_impact.go",
+      "sha256": "175ace45a5c361b32044024549ef8c479f753e2d9acaf3eeafde683ef1ff7c12"
+    },
+    {
+      "path": "internal/review/rereview_test.go",
+      "sha256": "b4be56eb9b5d7d89fac993316e1365b87e9819e82bfe9c39c2eb0aef3f48d3e5"
+    },
+    {
+      "path": "internal/taskpipeline/executor_check_complete.go",
+      "sha256": "0cccd048b042d57784c1c128527b94d1c98075c42f69c218b86e2cf51e0cfb8e"
+    },
+    {
+      "path": "scripts/checks/docs-artifact-counts.sh",
+      "sha256": "26145465b62eb59fd8d2674ea4a8dc3b7ff16c0c8894e99b67346b3149735ea9"
+    },
+    {
+      "path": "scripts/checks/no-removed-checks.sh",
+      "sha256": "c32498a93398cc7296e8de6aed93faf312eb102149e01d68652fe08c66354994"
+    },
+    {
+      "path": "scripts/checks/release-smoke.sh",
+      "sha256": "0f8cab24518bcbc1899f0fd240424e1264322ecf8afda04bdce5cfa44b97ff3a"
+    },
+    {
+      "path": "skills/code-review-gate/SKILL.md",
+      "sha256": "47e97909d17104d1f9537dec02aec56ef62f78acafb2491006eae15c6c5dd305"
+    },
+    {
+      "path": "tmp_doc.py",
+      "sha256": "\u003cmissing\u003e"
+    },
+    {
+      "path": "tmp_notes2.py",
+      "sha256": "\u003cmissing\u003e"
+    }
+  ],
+  "acceptance_sha256": "ab59ef7d063644529c7347b5dd792a5b814758aa53b4e109843326af529e1880",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2036
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ -count=1",
+      "exit": 0,
+      "duration_ms": 102151,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 96882,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test -v ./internal/change/ -count=1",
+      "exit": 0,
+      "duration_ms": 23125,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestImpact|TestHelpSurface' -count=1",
+      "exit": 0,
+      "duration_ms": 2565,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 184
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5528
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 902,
+      "stdout_file": "08.stdout"
+    }
+  ]
+}

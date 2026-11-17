@@ -16,7 +16,7 @@ import (
 
 var taskImpactCmd = &cobra.Command{
 	Use:   `impact`,
-	Short: `声明当前任务的跨仓影响（多仓 workspace 的 verify 前置）`,
+	Short: `声明当前任务的跨仓影响（report/评审参考；1.88 已删对应门禁）`,
 	Long: `forge task impact 声明当前活跃任务的跨仓影响，写入 task state。
 
 声明是元信息：1.88 激进减法删除了 cross-repo-impact 门禁，它不再阻断任何命令，

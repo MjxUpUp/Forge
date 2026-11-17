@@ -581,7 +581,8 @@ const scaffoldHint = "文件头那行 forge:fill 注释标记"
 // status 与 verify 共用这一个判定：两处各写一份，改一处就会漂移成"status 说
 // 可以跑、verify 说产物不全"。
 // 普通 change 要三份产物（goal + change + acceptance），少一份就少了对应的审计线索；fast 通道
-// 要求 goal/proposal/acceptance——省的是 design/tasks，不是目标与判据。
+// 与普通 change 同布局（goal/change/acceptance + clarify 的人确认）——省的是 tasks 与 design 的展开，
+// 不是目标、边界与判据。
 func DocProblems(dir string, fast bool) []string {
 	// 三份产物化（forge-ruthless）：新 change 只需要 goal + change + acceptance；
 	// 老 change（有 proposal/design）按老规则继续校验，两者都兼容。
