@@ -84,7 +84,7 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	}
 
 	// generic kind（调研/设计/纯接续任务）：跳过门禁 IsComplete 检查和评分。这类任务的价值在
-	// 持久化的 plan/决策/阻塞（接续真相源），不在代码质量门禁。自动把 3 道门禁标 passed（保持
+	// 持久化的 plan/决策/阻塞（接续真相源），不在代码质量门禁。自动把门禁标 passed（保持
 	// History 完整供 list/dashboard 显示）+ MarkComplete + 清 active-task-ref，不评分不创建 review。
 	if state.IsGeneric() {
 		if err := completeGenericTask(root, state); err != nil {
@@ -111,7 +111,7 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// 提取（可经 human 档业务签字）＞ start 登记 ＞ conventions 兜底 ＞ 事后补登
 	// （manual，验收单如实披露）。逃生与 freshness 检查共用 acceptance-gate 舱。
 	if ok, reasons := taskpipeline.CheckAcceptanceRegistered(root, state); !ok {
-		return fmt.Errorf(`acceptance registration 未通过（零验收标准——考卷缺位）: %s。登记出口：forge task accept "run :: expected"（本任务补登，层级 manual）；forge task artifact --extract（从 spec 产物提取）；或先 forge task verify-acceptance（有 conventions 档案时自动登记默认套件）。逃生（落 checklog 审计，降 evidence 强度）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable`,
+		return fmt.Errorf(`acceptance registration 未通过（零验收标准——考卷缺位）: %s。登记出口：forge task accept "run :: expected"（本任务补登，层级 manual）；或先 forge task verify-acceptance（有 conventions 档案时自动登记默认套件）。逃生（落 checklog 审计，降 evidence 强度）: forge task override --acceptance-gate disable 或 FORGE_ACCEPTANCE_GATE=disable`,
 			strings.Join(reasons, `; `))
 	}
 
@@ -143,7 +143,7 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// 轮次预算耗尽或已解决 finding 复活 = 机器侧迭代到此为止——升级人工，complete
 	// 被拦。终止权外置：耗尽后唯一出口是人（--reset-loop / abort）。
 	if loopReasons := taskpipeline.CheckLoopExhausted(root, state); len(loopReasons) > 0 {
-		return fmt.Errorf(`回环耗尽 pre-flight 未通过: %s；人工裁决出口: forge task finding --reset-loop --note "<裁决>"（审计行落地）后重试，或 forge task abort。逃生（落 checklog 审计，降 evidence 强度）: FORGE_ARTIFACT_CHAIN=disable`,
+		return fmt.Errorf(`回环耗尽 pre-flight 未通过: %s；人工裁决出口: forge task finding --reset-loop --note "<裁决>"（审计行落地）后重试，或 forge task abort`,
 			strings.Join(loopReasons, `; `))
 	}
 
@@ -163,6 +163,12 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		if len(rep.Docs) > 0 || len(rep.SourcesWithoutTest) > 0 {
 			fmt.Printf("影响面：%s\n", impact.SummaryLine(rep))
 		}
+	}
+
+	// review 硬前置 + 审查快照一致性（与 task gate task-complete 同一函数）：
+	// 审后改码必须复审——complete 自己也要复核，不能只靠 gate 记录。
+	if err := taskpipeline.CheckCompleteReviewPrereqs(root, state); err != nil {
+		return err
 	}
 
 	// MarkComplete 恰在此处（pre-flight 之后）：完成标记属于 `forge task complete` 的整个

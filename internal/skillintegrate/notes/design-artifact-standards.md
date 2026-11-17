@@ -8,4 +8,4 @@
 - 自动衔接：task-verify hook 的 `inferDesignPhases` 按已写文件路径推断设计阶段（PRD 需放 `docs/prd/`、API 需路径含 `openapi/api/proto` 等），code-review-gate 审查期据此加载本 skill references/ 下同一份 phase-*.md 复核（6 环节全覆盖；路径不匹配时回退通用清单）。
 - 枚举同步：6 个环节枚举与 `internal/taskpipeline/phase_detect.go` 的 `allDesignPhases` 保持一致；phase-*.md 路径/文件名/环节增删变更时，code-review-gate 的 phase 加载表需同步更新。
 - 文档产物空转检测：`forge docs lint`（D1-D11，机器可查）。
-- 技术方案行：`forge task artifact --check` 核查方案引用；doc-review rubric 的「技术方案」行给出 Critical 判据。
+- 技术方案行：方案引用由 review 人工核对（`forge task artifact --check` 已随 1.88 激进减法删除）；doc-review rubric 的「技术方案」行给出 Critical 判据。

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
@@ -64,6 +65,33 @@ func setupDeadlockTask(t *testing.T, acceptRaw []string) (dir string) {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// markReviewedDirect 直接写入 review 快照（等价于一次 `forge review pass`）。
+// 这些测试的临时仓库没有登记成 forge 项目，跑不了 review 命令；但 complete 自己会
+// 复核 review 快照（review-ruthless-3 P1-1），所以夹具必须提供一份与当前 HEAD 一致的
+// 审查记录。
+func markReviewedDirect(t *testing.T, dir, taskRef string) {
+	t.Helper()
+	state, err := taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := exec.Command(`git`, `rev-parse`, `HEAD`)
+	out.Dir = dir
+	headBytes, err := out.Output()
+	if err != nil {
+		t.Fatalf(`git rev-parse HEAD: %v`, err)
+	}
+	head := strings.TrimSpace(string(headBytes))
+	hash, _, err := review.SourceChangesSince(dir, head)
+	if err != nil {
+		t.Fatalf(`SourceChangesSince: %v`, err)
+	}
+	state.MarkReviewPassed(head, hash)
+	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestTaskComplete_PreflightFailureKeepsTaskActive pins the fix's core contract: a failing pre-flight must leave the task ACTIVE (CompletedAt==nil) so verify-acceptance can refresh the stale snapshots and complete can be retried; on success MarkComplete lands after the pre-flight with scoring in tow; double complete is idempotent.
@@ -124,7 +152,9 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 		t.Fatalf(`死锁修复后 verify-acceptance 必须仍可刷新: %v`, runErr)
 	}
 
-	// 5. complete 重试通过：MarkComplete + 评分。
+	// 5. 复审（review-ruthless-3 P1-1：complete 自己复核 review 快照）后重试：
+	//    MarkComplete + 评分。
+	markReviewedDirect(t, dir, taskRef)
 	fresh, err := taskpipeline.LoadTaskState(dir, taskRef)
 	if err != nil {
 		t.Fatal(err)
@@ -184,6 +214,11 @@ func TestTaskComplete_ClearsAllTaskAnchors(t *testing.T) {
 	if verErr != nil {
 		t.Fatalf(`verify-acceptance 应通过: %v`, verErr)
 	}
+	state, err = taskpipeline.LoadTaskState(dir, taskRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markReviewedDirect(t, dir, taskRef)
 	state, err = taskpipeline.LoadTaskState(dir, taskRef)
 	if err != nil {
 		t.Fatal(err)
@@ -255,7 +290,8 @@ func TestTaskGate_PassesWithoutCompleting(t *testing.T) {
 	runGit(t, dir, `config`, `user.name`, `t`)
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `base`)
-	gateOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/gate-active`)
+	gateOut, _, code := runForge(t, dir, `task`, `start`, `--ref`, `feat/gate-active`,
+		`--accept`, `go version :: go version`)
 	if code != 0 {
 		t.Fatalf(`task start failed: %s`, gateOut)
 	}
@@ -269,6 +305,10 @@ func TestTaskGate_PassesWithoutCompleting(t *testing.T) {
 		if code != 0 {
 			t.Fatalf(`task gate %s 应通过: %s`, g, out)
 		}
+	}
+	// task-complete 的验收前置（review-ruthless-3 P2-1）：先实跑考卷。
+	if out, _, code := runForge(t, dir, `task`, `verify-acceptance`); code != 0 {
+		t.Fatalf(`task verify-acceptance failed: %s`, out)
 	}
 	// task-complete 的 ReviewPassed 硬前置：先 review pass。
 	if out, _, code := runForge(t, dir, `review`, `pass`); code != 0 {

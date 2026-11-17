@@ -152,7 +152,7 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 			ref := state.SpecArtifacts[name]
 			line := fmt.Sprintf("  %s → %s (%s)", name, ref.Path, ref.Hash)
 			if taskpipeline.ArtifactCurrentHash(root, ref) != ref.Hash {
-				line += " ⚠️漂移（重登记: forge task artifact --set）"
+				line += " ⚠️漂移（重登记: forge task start --change 或重新钉产物）"
 			}
 			if apr, has := state.ArtifactApprovals[name]; has {
 				line += fmt.Sprintf(" [已审批 by %s]", apr.By)

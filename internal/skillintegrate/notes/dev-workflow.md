@@ -16,5 +16,5 @@
 
 ## 触点 → PlanScope 与需求追溯
 
-- `forge task artifact --set design --file <方案>`（或 `task start --artifact design=<方案>`）登记方案时，「触点」一节自动写入 PlanScope（手工 `--scope` 优先）；task-verify 的 scope-drift 把超出部分标为「方案外改动」。
-- 验收写 `accept[REQ-n]: <cmd> :: <expected>` 或行尾 `#REQ-n`；`forge task verify-acceptance` 与 `forge task artifact --verify` 输出「已验证 / 未验证 / 孤儿」覆盖表，`forge task report` 一并披露。complete 时默认 advisory；产物链 spec/design ≥ rubric 档时未验证需求阻断（逃生 `FORGE_REQ_COVERAGE=disable`）。
+- 方案写在 change.md 的「改动 / 影响 / 验证」里（1.88 起不再有 artifact 命令）；影响面用 `forge impact` 随时查看，`--scope` 仍可显式声明 PlanScope。
+- 验收写在 change 的 acceptance.md 或 `task start --accept`；`forge task verify-acceptance` 实跑并记确定性证据，`forge task report` 一并披露影响面。

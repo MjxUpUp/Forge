@@ -366,7 +366,7 @@ func runChangeList(cmd *cobra.Command, _ []string) error {
 		}
 		if c.Fast {
 			if note == "" {
-				note = "fast（快速通道：只要求 goal + proposal + acceptance）"
+				note = "fast（快速通道：goal + change + acceptance + 人确认澄清）"
 			} else {
 				note = "fast；" + note
 			}

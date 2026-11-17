@@ -8,16 +8,14 @@
 |---|---|---|
 | L1（机器可判） | `forge docs lint`（D1-D11 规则） | 禁令短语、必填章节、结论枚举、篇幅上限、结论位置，以及调研文档的来源、信度标注、内部标签（D9-D11，advisory）——exit 0=过 / 2=硬失败 |
 | L2（skill 本体） | rubric-docs.md 四维评分 | L1 判不了的「重点是否前置、详略是否得当、证据是否可追溯、受众是否匹配」 |
-| 门禁（流程） | task-complete doc gate | 变更了 markdown 产物的任务，complete 前须有 fresh 的 L2 回检记录 |
+| 门禁（流程） | — | 1.88 激进减法后 doc gate 已删除，L2 评审由人或评审子代理按需发起 |
 | L3（不自动化） | 显式标注 | 业务价值、对外措辞——模板标「需人工确认」，评分跳过 |
 
 ## 完整流程（L1 → L2 → 落档）
 
 1. **L1**：落盘 .md 跑 `forge docs lint <paths>`，硬失败先修（PR 描述/commit body 不落盘，按模板结构核对）。
 2. **L2**：按 skill 正文流程派独立子代理评分（产出者不能自检），产出四维得分 + 分级发现。打回后的复审分档（小修订续用首轮评审者，重写结论、大改、即将进行第 3 轮评审时新派）见 doc-review SKILL.md 的「步骤 5：门控决策与收敛」，doc gate 的重评原因（打回、评审过期）给出同口径摘要。
-3. **落档**：`forge task doc-review --passed pass --score <N>`（`--passed failed --note "<原因>"` 记录未过），自动带轮次与证据关联。
-4. **双评**（同家族且总分落在 75-79 即将放行时必做；70-74 本就未过，不触发）：`--co-reviewer <id> --co-score <N>` 落档两家记录——gate 不消费，只作分歧率观测（output-readability-gates-v2.md P1-A）。
-5. **打标**：Critical 发现用 `tag:` 前缀携带类别（枚举 padding/conclusion/template/false-precision/disclaimer/evidence/style），如 `--critical "padding: 大段复述前文"`。
+3. **记录**：把四维得分与 Critical 发现写进 PR 描述或 change.md 的「验证」一节（`forge task doc-review` 已在 1.88 删除，交付单不再披露分数）。
 
 ## 进化判据聚合（session-retrospective 步骤 6 的机器来源）
 

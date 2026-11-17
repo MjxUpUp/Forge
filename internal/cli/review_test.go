@@ -134,6 +134,13 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Fatal("--note 不得再绕过复审要求（self-refresh 已移除）")
 	}
 
+	// reviewer id 归一化：尾随空白与大小写变体都不能冒充「换人」。
+	for _, sneaky := range []string{"rev-1 ", " REV-1", "Rev-1\t"} {
+		if err := runReviewPassAt(dir, ref, "", sneaky); err == nil {
+			t.Fatalf("reviewer %q 只是 rev-1 的空白/大小写变体，必须被拒绝", sneaky)
+		}
+	}
+
 	// 新的 reviewer 复审 → 放行，并记 WARN 级 self-refresh 审计。
 	if err := runReviewPassAt(dir, ref, "复审结论：修复正确，无新发现", "rev-2"); err != nil {
 		t.Fatalf("新的 reviewer 复审应放行: %v", err)

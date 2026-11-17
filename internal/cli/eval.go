@@ -40,6 +40,13 @@ import (
 var evalCmd = &cobra.Command{
 	Use:   "eval",
 	Short: "Forge 自评测（双轨：端到端 profile×model × 治理层 golden/遥测/陷阱）",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return fmt.Errorf("未知的 eval 子命令 %q（forge eval --help 看可用子命令）", args[0])
+		}
+		return cmd.Help()
+	},
 }
 
 // recordEvalRow records one observation-class eval audit row on the cwd project.

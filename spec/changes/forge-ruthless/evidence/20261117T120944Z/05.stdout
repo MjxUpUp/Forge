@@ -1,0 +1,22 @@
+=== RUN   TestHelpSurface_NoHostLayerWording
+--- PASS: TestHelpSurface_NoHostLayerWording (0.00s)
+=== RUN   TestHelpSurface_ContractFirstShort
+--- PASS: TestHelpSurface_ContractFirstShort (0.00s)
+=== RUN   TestHelpSurface_CliReferenceContractWording
+--- PASS: TestHelpSurface_CliReferenceContractWording (0.00s)
+=== RUN   TestHelpSurface_EntryRouting
+--- PASS: TestHelpSurface_EntryRouting (0.00s)
+=== RUN   TestImpactRender
+=== RUN   TestImpactRender/无改动
+=== RUN   TestImpactRender/只有源码无测试
+=== RUN   TestImpactRender/三段齐全
+=== RUN   TestImpactRender/只有建议测试目录
+--- PASS: TestImpactRender (0.00s)
+    --- PASS: TestImpactRender/无改动 (0.00s)
+    --- PASS: TestImpactRender/只有源码无测试 (0.00s)
+    --- PASS: TestImpactRender/三段齐全 (0.00s)
+    --- PASS: TestImpactRender/只有建议测试目录 (0.00s)
+=== RUN   TestImpactCommandSurface
+--- PASS: TestImpactCommandSurface (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/cli	1.495s

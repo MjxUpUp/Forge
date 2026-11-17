@@ -37,7 +37,7 @@ forge task verify-acceptance    # 实跑验收标准 → 不可伪造的 determi
 forge trace feat/demo           # 查看任务的完整证据链
 ```
 
-跑 `forge eval wedge-drill` 可在任何机器上自检这条首证据路径（隔离环境，60 秒）；`forge eval artifact-drill` 自检产物链分档执法全链。两者是发版 workflow 的行为级冒烟门禁与 nightly 的每日行为回归。
+跑 `forge eval wedge-drill` 可在任何机器上自检这条首证据路径（隔离环境，60 秒），它是发版 workflow 的行为级冒烟门禁与 nightly 的每日行为回归。
 
 ## 🎯 它补的是哪一层
 

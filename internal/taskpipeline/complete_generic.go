@@ -12,7 +12,7 @@ import (
 // auto-passes the 3 gates, marks complete, clears the active-task ref, and
 // handles L1 binding per checkout shape.
 //
-// CompleteGeneric 完成 generic kind 任务（调研/设计/纯接续）：自动标 3 道门禁 passed
+// CompleteGeneric 完成 generic kind 任务（调研/设计/纯接续）：自动标门禁 passed
 // （History 完整供 list/dashboard 显示，但不跑任何检查——ExecuteTaskGate 对 generic 秒过）+
 // MarkComplete + 清 active-task-ref。不评分、不创建 review——generic 任务的价值在持久化的
 // 接续字段，不在代码质量门禁。（2026-09 普查 A1：自 cli/task_gate.go 下沉；harness 提交

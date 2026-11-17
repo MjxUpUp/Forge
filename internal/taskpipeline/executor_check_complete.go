@@ -30,7 +30,7 @@ import (
 // 跳过本检查（仅留 ReviewPassed 硬前置语义）。base 不可达（amend/rebase 改写历史致 git 对象消失）
 // → fail-open 放行 + 警告：amend 是正常工作流，强复审会死循环；对齐 review/stamp.go 的 fail-open 哲学
 // （可达则严、不可达则松的非对称是设计本意）。
-func checkCompleteReviewPrereqs(root string, state *TaskState) error {
+func CheckCompleteReviewPrereqs(root string, state *TaskState) error {
 	// checklist 硬门禁（vNext P3，设计 M5/M6）：勾选状态即进度——未全勾不是完成。
 	// tracked-checklist 同语义：report 写完不算 done，checkbox 才算。
 	if undone := state.UntickedChecklist(); len(undone) > 0 {
@@ -201,4 +201,17 @@ func adviseDanglingHomePaths(root string, state *TaskState, changedFiles []strin
 		Meta:    map[string]string{"docs.kind": "home-path"},
 	})
 	fmt.Fprintf(os.Stderr, "%s文档引用的本机证据路径已不存在——证据链会断：%s（把证据复制进仓库并改引仓库内路径，或在同一行标注「失效」）\n", GateAdvisory("[task-complete] "), strings.Join(findings, "; "))
+}
+
+// CheckCompleteAcceptancePrereqs 把 task complete 的验收前置（已登记 + 实跑未过期）
+// 复用给 task-complete 门禁——两道门禁必须查同一组前置，否则 gate 会给出
+// 「齐备」的假绿、而 complete 才拦。
+func CheckCompleteAcceptancePrereqs(root string, state *TaskState) error {
+	if ok, reasons := CheckAcceptanceRegistered(root, state); !ok {
+		return GateBlocked("task-complete 拒绝（与 forge task complete 同口径）：零验收标准——%s。登记出口：forge task accept \"run :: expected\"；逃生：forge task override --acceptance-gate disable", strings.Join(reasons, "; "))
+	}
+	if ok, reasons := CheckAcceptanceFresh(root, state); !ok {
+		return GateBlocked("task-complete 拒绝（与 forge task complete 同口径）：验收未实跑/快照过期/未通过——%s。先 forge task verify-acceptance；逃生：forge task override --acceptance-gate disable", strings.Join(reasons, "; "))
+	}
+	return nil
 }

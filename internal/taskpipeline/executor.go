@@ -168,9 +168,12 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// test-coverage 兜底，再到 complete 时的各 advisory。changedFiles 在兜底内算一次、
 	// advisory 段复用（taskChangedFiles 起多个 git 子进程——不跑第二遍）。
 	if gateID == GateComplete && state.CompletedAt == nil {
-		if err := checkCompleteReviewPrereqs(root, state); err != nil {
+		if err := CheckCompleteReviewPrereqs(root, state); err != nil {
 			return nil, err
 		}
+		// 验收前置（零验收 / 从未实跑 / 过期）不在 executor 层拦：这里的调用方有大量
+		// 构造合成 state 的单测，拦了会把门禁语义和测试夹具耦死。CLI 的两条入口
+		// （`task gate task-complete`、`task complete`）各自调 CheckCompleteAcceptancePrereqs。
 		changedFiles := taskChangedFiles(root, state)
 		CheckDesignTierEscalation(root, state, changedFiles)
 		adviseCompleteDelivery(root, state, changedFiles)

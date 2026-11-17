@@ -492,7 +492,10 @@ type TaskState struct {
 	LastReviewer string `json:"last_reviewer,omitempty"`
 	// Reviewers 是参与过复审的 reviewer id 集合：同一 id 不能给自己复审（
 	// 只记 LastReviewer 会被 alice→bob→alice 交替绕过）。
-	Reviewers      []string                  `json:"reviewers,omitempty"`
+	Reviewers []string `json:"reviewers,omitempty"`
+	// ReviewScore 是 review pass 时评审者给出的 0-100 分（--score）；只做记录，
+	// 不参与门禁判定（门禁只看 ReviewPassed 与快照一致性）。
+	ReviewScore    *int                      `json:"review_score,omitempty"`
 	Branch         string                    `json:"branch"`
 	Source         string                    `json:"source"` // explicit | branch
 	Summary        string                    `json:"summary"`
@@ -622,7 +625,7 @@ type TaskState struct {
 	// 记录接续。对应 session-continuity HANDOFF + cross-tool-context AI_CONTEXT 的信息结构，
 	// 但持久化进用户级 DataDir/tasks/<ref>.json 而非靠 agent 自觉读写 md。边界：用户级 state
 	// 不随仓库走——跨机器接续需要显式的 export/import 载体（尚未建）。
-	Kind       string `json:"kind,omitempty"`        // "" | "code" = 走 3 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
+	Kind       string `json:"kind,omitempty"`        // "" | "code" = 走 2 道门禁（默认，向后兼容）；"generic" = 不走门禁，承载调研/设计/纯接续任务
 	OriginTool string `json:"origin_tool,omitempty"` // 声明式发起工具（pi/claude-code/opencode/codex/cursor…）；区别于 SessionRecord.AgentType 的目录探测弱信号
 	Goal       string `json:"goal,omitempty"`        // 目标叙述（可多行；比 Summary 一行标题更丰富，是"为什么做"）
 	// GoalContract pins the goal.md this task was started against (task-goal-contract).

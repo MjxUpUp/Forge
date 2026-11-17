@@ -1,0 +1,216 @@
+{
+  "change": "forge-ruthless",
+  "started_at": "2026-11-17T12:09:44Z",
+  "finished_at": "2026-11-17T12:13:53Z",
+  "passed": true,
+  "sealed": true,
+  "head": "8e10124ab18a013f71a75b7a594bd60a2de631cb",
+  "diff_sha256": "147da7fd90c133dde9428a6e3c28f70e4b972b89027efacf2b8e4c9eccc85468",
+  "files": [
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "9be290c9e7fbcce3f95bcc3155174396ac092002cfb032e628adc0b450fdeacc"
+    },
+    {
+      "path": "README.md",
+      "sha256": "11adb2c94e83245671f80fc75f127817bd8e405e550dbb68037d4f67652a6a1a"
+    },
+    {
+      "path": "READMEs/README.zh-CN.md",
+      "sha256": "e8c3d03349bfc4b3dc0fc33894fa56bee1a0910c80410c6dc9c6f8fce9da5fbc"
+    },
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "6f80d80cc5350c2d6573463fa88661a4c29d1cfad3a69c41d665d95f30e65e87"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "8a84eb62dbc4cc1fbf028a9debad4d2255dfa5eb41c75956248da6d22468e72b"
+    },
+    {
+      "path": "internal/change/verify.go",
+      "sha256": "4adbf6d6be6e16e7c4130f7888372df7a9d607872102a9e0f9cbfa57873d644d"
+    },
+    {
+      "path": "internal/cli/change.go",
+      "sha256": "cd4a7eb7eb61c7ad674e4dd2e236350b53e863088d578718f6d941fbaa1e45e4"
+    },
+    {
+      "path": "internal/cli/eval.go",
+      "sha256": "75a85eb4b7762543df6877a22ad83a3f0214248700c183551dd19f74992faf65"
+    },
+    {
+      "path": "internal/cli/review.go",
+      "sha256": "c47aa9307e21837f5780ee2d3659e25071dbe8788e7b6fccec99a2a14f9d480d"
+    },
+    {
+      "path": "internal/cli/review_test.go",
+      "sha256": "639a840689bb24887c19b4fad3a18dee1ac7303aeb133b1532de9c224716443e"
+    },
+    {
+      "path": "internal/clitask/task.go",
+      "sha256": "dbd83878056d43d72727525bb3d53194dbbd6afe7a66883452a26fabd494bdef"
+    },
+    {
+      "path": "internal/clitask/task_accept.go",
+      "sha256": "07a5511748b17886562bfc9174ea8b995477dc824d280d68fbe59d7dc3dbb169"
+    },
+    {
+      "path": "internal/clitask/task_complete.go",
+      "sha256": "4e526d98b293dd114c8cac2661825b686e3113620f196f22e5dd7f141c5fa4f9"
+    },
+    {
+      "path": "internal/clitask/task_complete_test.go",
+      "sha256": "cc107a5b1a984c587e33e19f8a4056a89946be06fde1607c1eb8ac45cefae48d"
+    },
+    {
+      "path": "internal/clitask/task_gate.go",
+      "sha256": "5b43fa139a10d70a1cad96364634ebc24f725e5101e558d0b7277b29a93a16cf"
+    },
+    {
+      "path": "internal/clitask/task_misc.go",
+      "sha256": "5763cea21ef7af9f71fae3f7e2c677e98d94a2d16d171dabf79186b8e50ac673"
+    },
+    {
+      "path": "internal/clitask/task_subcommand_test.go",
+      "sha256": "fdbe6f107a6f839358cdadbee73ce54c14d8648c547298befd21fd8354960abd"
+    },
+    {
+      "path": "internal/e2e/proof_mcp_test.go",
+      "sha256": "ee0157804fe40c9f1c15532e564972374dd25904d0815964eac33e9bbf72b2c5"
+    },
+    {
+      "path": "internal/e2e/upgrade_test.go",
+      "sha256": "cd29f97356e72ad465f209fd556e0b287f0f02e63e08073a43bbac06d31ea0f2"
+    },
+    {
+      "path": "internal/skillintegrate/notes/code-review-gate.md",
+      "sha256": "2e922708d3a0d5cb00b3a03fd725c995362d5ce806054ad55f2703c93b0cb661"
+    },
+    {
+      "path": "internal/skillintegrate/notes/design-artifact-standards.md",
+      "sha256": "96de2215d61ff2d91675c44d0d77d7126589fd9b1838508548690634c9cc1830"
+    },
+    {
+      "path": "internal/skillintegrate/notes/dev-workflow.md",
+      "sha256": "bb2c7a25cecdcb684de75e36c68d4a821a4ab9ed974be9e1aec8028a0311526d"
+    },
+    {
+      "path": "internal/skillintegrate/notes/doc-generator.md",
+      "sha256": "35fd6d63430765037420f376bb047b4bb7b7c6873ba5cb2e610ffedd5da58ce3"
+    },
+    {
+      "path": "internal/skillintegrate/notes/doc-review.md",
+      "sha256": "228d275774cf57ac40722bb95f928ebeadae677dd4f71be78139d57bd47e90d1"
+    },
+    {
+      "path": "internal/skillintegrate/notes/evidence-based-proposal.md",
+      "sha256": "e9524de38541139cef70caa51f23b11a8f57a1fe13861c6082bbf56168136ab9"
+    },
+    {
+      "path": "internal/skillintegrate/notes/project-acceptance.md",
+      "sha256": "d09f2e9719e7dd5fffbd6ed60e5a1c22d63967dc502fcd9c885ad8c4cc167987"
+    },
+    {
+      "path": "internal/taskpipeline/complete_generic.go",
+      "sha256": "86974a31e5be09185ce864265ab87aa15ed3076692611e2062673df1de0f00eb"
+    },
+    {
+      "path": "internal/taskpipeline/complete_prereqs_test.go",
+      "sha256": "063ef60c02da0fbcd4421d514967d8743caf72bd30c6c2bba9a35b435bfec567"
+    },
+    {
+      "path": "internal/taskpipeline/designtier.go",
+      "sha256": "08c6a185470b37d47fd5fce31eca02216046b3eab21b1908f3ef2b3248f1e098"
+    },
+    {
+      "path": "internal/taskpipeline/designtier_test.go",
+      "sha256": "a105a181e0c95b7b548889ee7c6d79b5d1ed670c570d23dc9ee576e2073e3a92"
+    },
+    {
+      "path": "internal/taskpipeline/executor.go",
+      "sha256": "2bc2024903b0762e0b9aabbd8edc8aa4d3f183b57c269d485653a5b52683df40"
+    },
+    {
+      "path": "internal/taskpipeline/executor_check_complete.go",
+      "sha256": "5a236e67c0a17f55e0ab39aeadf8628757722cd86d2aa7f804034896454510b9"
+    },
+    {
+      "path": "internal/tasktypes/types.go",
+      "sha256": "2e820e685d7fff8a491234789716c1c9b7051051685ab65fc21cea593fa6d90c"
+    },
+    {
+      "path": "npm/README.md",
+      "sha256": "f168bd2dc10be1632f406f60c08fd395efdb5fcfa6bf6ebd6a9d576c0a2e5ea2"
+    },
+    {
+      "path": "scripts/checks/no-removed-checks.sh",
+      "sha256": "b818c1fe3542f2e6895ad0ef8fae269d884e0c1587afc0ef598e73df91b9657e"
+    }
+  ],
+  "acceptance_sha256": "ab59ef7d063644529c7347b5dd792a5b814758aa53b4e109843326af529e1880",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2190
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ -count=1",
+      "exit": 0,
+      "duration_ms": 109374,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 103859,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test -v ./internal/change/ -count=1",
+      "exit": 0,
+      "duration_ms": 24291,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestImpact|TestHelpSurface' -count=1",
+      "exit": 0,
+      "duration_ms": 2742,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 207
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5582
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 606,
+      "stdout_file": "08.stdout"
+    }
+  ]
+}

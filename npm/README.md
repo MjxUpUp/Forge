@@ -43,9 +43,8 @@ forge **没有宿主层**：不分发宿主插件、不写宿主配置。任务�
 ```bash
 forge task start --ref feat/add-login --branch   # 创建任务 + 分支
 # AI 自动完成工作...
-forge task gate task-implement    # ✅ 代码实现（advisory：编译/断言自检提醒）
-forge task gate task-verify       # ✅ 测试验证
-forge task gate task-complete     # ✅ 完成确认
+forge task gate task-implement    # ✅ 代码实现（确有代码改动）
+forge task gate task-complete     # ✅ 完成确认（review pass 硬前置）
 forge task complete               # 🏁 任务完结（自动评分 + 清 active ref；git commit 在此之前）
 forge task score                  # 查看质量评分
 ```

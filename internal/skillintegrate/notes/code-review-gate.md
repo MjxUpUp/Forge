@@ -67,5 +67,5 @@ forge trace <task-ref>     # 证据链分桶行 + Weak/Unverified 警告（同�
 
 > 迁移注记：本文件 2026-08 自 skills/code-review-gate/references/forge-integration.md 迁入（skills 零反向依赖契约，CONVENTIONS §13），并收纳 SKILL.md 迁出的盖章快照协议：
 
-- `forge review pass` 检测到距上次审查基线有源码变更时，裸盖章会被拒绝——正规路径是复审后 `forge review pass --note "<复审结论>"`；确认变更无需复审时用 `--acknowledge-changes` 显式自我承担（checklog 记 WARN 级 self-refresh 审计）。非源码变更（amend commit message、保内容 rebase 等）不改变内容指纹，无需确认；同状态重复盖章保持静默。
+- `forge review pass` 检测到距上次审查基线有源码变更时会被拒绝——必须派一个新的只读评审者，用新的 `--reviewer <id>` 复审；`--note` 不再能刷新基线，`--acknowledge-changes` 已删除。非源码变更（amend commit message、保内容 rebase 等）不改变内容指纹，无需确认；同状态重复盖章保持静默。
 - **`--note` 必须记录审查实质，不只结论**：覆盖范围（审了哪些文件/diff、几轨几 pass）、关键验证动作（grep 落位、实跑探针）、分歧与归因（双轨发现集差异、后轮新发现的归因分类）。反例（审计实证，2026-08）：一周 40 次 review-pass 仅 1 次带 note——无实质 note 的盖章 = rubber-stamp 盲区。审查发现同时用 `forge task finding` 录入（自动带轮次 Round 与代码指纹 ChangeHash）。

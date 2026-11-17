@@ -214,7 +214,7 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
 		want := "三份产物（goal/change/acceptance）"
 		if c.Fast {
-			want = "fast 通道要求的三份产物（goal、proposal、acceptance）"
+			want = "fast 通道要求的三份产物（goal、change、acceptance）"
 		}
 		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——%s都填成这个 change 自己的内容、并删掉%s后再 verify",
 			id, strings.Join(problems, "、"), want, scaffoldHint)

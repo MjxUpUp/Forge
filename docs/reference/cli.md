@@ -73,7 +73,6 @@
 | `forge task wild "<说明>"` | 野外动作申报：任务管道外的显式留痕出口（比静默绕过诚实、比强制建任务轻）。记会话/分支/HEAD/是否已有任务到 `wild/declarations.jsonl`，累计计数供审计回溯（vNext INV-1 的合法出口之一） |
 | `forge task status` | 查看当前任务门禁状态（含已登记产物链产物与漂移/审批态） |
 | `forge task list --open [--workspace\|--all-projects] [--json]` | 列出未完成任务供用户挑选要接续哪个：每条带项目、标题、门禁进度、首条下一步、未解决阻塞数、派活状态、最后活动时间。默认当前项目；`--workspace` 扩到当前项目所属多仓 forge workspace 的全部成员（不属于任何 workspace 时回落当前项目）；`--all-projects` 扩到本机全部已接管项目。只读 |
-| `forge task list --plan-conversion` | plan-first advisory 转化率报告（先测量再翻转）：已发/发后已补方案/发后仍无方案/未发自带方案四计数 + 转化率——叙事 stage 是否升档由数据决定而非直觉 |
 | `forge task mine [--agent <agent>] [--role <role>] [--all-projects] [--blocked] [--json]` | 列出分派给当前/指定 agent 的任务（`--all-projects` 全仓扫描按项目分组；`--blocked` 仅被依赖阻塞的，标注卡在哪环 [status, gate 进度 passed/total]） |
 | `forge task gate <gate-id>` | 验证单道任务门禁 |
 | `forge task impact --level none\|multi [--repo <key>]... [--note <说明>] [--ref <ref>]` | 声明当前任务的跨仓影响（多仓 workspace 成员的 verify 前置，单仓改动也须显式声明）：`--level none` 改动限定本仓；`--level multi --repo <key>` 波及指定成员 repo（`--repo` 可重复）。默认 advisory（未声明只提醒），protocol.yml 配 `cross_repo_impact: required` 升级为 HARD stop（四段式 WHAT/WHY/HOW/REF 报错），详见 docs/design/multi-repo-workspace.md |
@@ -287,5 +286,5 @@ forge task score                  # 查看质量评分
 
 ## 环境变量：`FORGE_DATA_HOME`
 
-- 用户级数据目录。默认 `~/.forge`（Windows 为 `%USERPROFILE%\.forge`）。其余逃生舱环境变量（`FORGE_HELDOUT`、`FORGE_ARTIFACT_CHAIN` 等）见各自命令行说明，不在此列。
+- 用户级数据目录。默认 `~/.forge`（Windows 为 `%USERPROFILE%\.forge`）。其余逃生舱环境变量（`FORGE_HELDOUT` 等）见各自命令行说明，不在此列。
 - Windows 下若传入 MSYS/Cygwin 风格路径（`/c/...`、`/cygdrive/...`、`/tmp/...`），forge 会向 **stderr** 提示一次（同一进程只提示一次）「按当前盘符相对解析」，但**不改正路径**——需要可预期的落盘位置时传 Windows 路径，或先用 `cygpath -w` 转换。

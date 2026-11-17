@@ -529,7 +529,8 @@
       "flags": [
         "note",
         "ref",
-        "reviewer"
+        "reviewer",
+        "score"
       ]
     },
     {
@@ -1742,7 +1743,7 @@
     },
     {
       "file": "internal/taskpipeline/executor_check_complete.go",
-      "count": 3
+      "count": 5
     },
     {
       "file": "internal/taskpipeline/gate_message.go",

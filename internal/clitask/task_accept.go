@@ -23,8 +23,7 @@ var taskAcceptCmd = &cobra.Command{
 考卷层级制（oracle-pipeline L1）：本命令登记的标准盖 manual 层——实现者看过
 代码之后才出的题，是考卷梯子里最弱的一级（spec 提取 ＞ start 登记 ＞
 conventions 兜底 ＞ manual）。层级随登记一次盖章、不可改写；forge task report
-将如实披露 manual 层的存在。先于代码写考卷请用 task start --accept 或
-forge task artifact --extract（从 spec 产物提取）。`,
+将如实披露 manual 层的存在。先于代码写考卷请用 task start --accept。`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runTaskAccept,
 }

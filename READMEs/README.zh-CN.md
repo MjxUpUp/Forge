@@ -51,9 +51,8 @@ forge trace feat/demo           # 查看证据链
 ```bash
 forge task start --ref feat/xxx --branch --title "描述"   # 建任务 + 分支
 # AI 工作（门禁由下面的命令显式驱动）
-forge task gate task-implement    # 门禁1：实现（编译 / 断言 advisory 自检）
-forge task gate task-verify       # 门禁2：验证（测试伴随变更）
-forge task gate task-complete     # 门禁3：完成确认
+forge task gate task-implement    # 门禁1：实现（确有代码改动）
+forge task gate task-complete     # 门禁2：完成确认（review pass 硬前置）
 forge task complete               # 🏁 任务完结（自动评分 + 清 active ref；git commit 必须在此之前）
 forge task score                  # 质量评分
 ```
@@ -75,7 +74,7 @@ Forge 不分发宿主插件、不写宿主配置：`forge` 是一个仓库内的
 
 - **项目未被识别** → 跑 `forge init` 声明契约；全局看板看不到它时再 `forge registry add .`。
 - **`forge` 命令 not found** → npm 全局安装目录不在 PATH。`npm root -g` 看路径，加入 shell rc。
-- **二审 reviewer 反复冒新问题** → `forge task gate task-verify` 含 cheat-scan deterministic 扫描（type-suppression / error-swallow / dead-branch / comment-only-fix / comment-as-debt / phantom-import / path-assumption），机械模式一次判准，LLM-reviewer 退到只做语义判断。
+- **门禁只有两道** → `task-implement` 与 `task-complete`；`forge review pass --reviewer <id>` 是 complete 的硬前置，同一 reviewer 不能给自己复审。
 
 ## 与英文版的差异
 

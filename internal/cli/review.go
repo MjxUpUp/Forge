@@ -164,6 +164,7 @@ func init() {
 	reviewPassCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测；ref 不存在直接报错，不回落分支 stamp）")
 	reviewPassCmd.Flags().String("note", "", "审查结论文本（记入 ReviewRound/stamp 与 checklog 审计留痕）")
 	reviewPassCmd.Flags().String("reviewer", "", "评审者 id（复审时必须与上次不同；源码变更后同一 reviewer 的自证会被拒绝）")
+	reviewPassCmd.Flags().Int("score", 0, "评审者给出的 0-100 分（只记录，不参与门禁判定）")
 	reviewGateCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	reviewStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 }
@@ -229,7 +230,11 @@ func runReviewPass(cmd *cobra.Command, args []string) error {
 	explicitRef, _ := cmd.Flags().GetString("ref")
 	note, _ := cmd.Flags().GetString("note")
 	reviewer, _ := cmd.Flags().GetString("reviewer")
-	return runReviewPassAt(root, explicitRef, note, reviewer)
+	score, _ := cmd.Flags().GetInt("score")
+	if score < 0 || score > 100 {
+		return fmt.Errorf("--score 取值 0-100（收到 %d）", score)
+	}
+	return runReviewPassAt(root, explicitRef, note, reviewer, score)
 }
 
 // shortHash 截断 commit hash 用于单行 detail 输出（空保持空）。
@@ -250,14 +255,28 @@ func shortHash(h string) string {
 // containsString 报告 ss 是否含 s（reviewer 集合的线性判定）。
 func containsString(ss []string, s string) bool {
 	for _, v := range ss {
-		if v == s {
+		if strings.EqualFold(strings.TrimSpace(v), s) {
 			return true
 		}
 	}
 	return false
 }
 
-func runReviewPassAt(root, explicitRef, note, reviewer string) error {
+// reviewerUsed 判断 id 是否已在这个任务上用过（大小写与首尾空白归一）——
+// 否则 `--reviewer "rev-1 "` 或 `REV-1` 就能冒充换人。
+func reviewerUsed(s *taskpipeline.TaskState, id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(s.LastReviewer), id) {
+		return true
+	}
+	return containsString(s.Reviewers, id)
+}
+
+func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) error {
+	reviewer = strings.TrimSpace(reviewer)
 	// task 模式：写任务状态字段，由 task-complete 门禁消费
 	var state *taskpipeline.TaskState
 	if explicitRef != "" {
@@ -308,7 +327,7 @@ func runReviewPassAt(root, explicitRef, note, reviewer string) error {
 				case err != nil:
 					baselineUnreachable = s.ReviewedHeadCommit
 				case cur != s.ReviewedChangeHash:
-					if reviewer == "" || reviewer == s.LastReviewer || containsString(s.Reviewers, reviewer) {
+					if reviewer == "" || reviewerUsed(s, reviewer) {
 						return fmt.Errorf("review pass 拒绝：距上次审查基线（HEAD=%s）源码已变更——%s。复审必须派一个新的只读子 agent，并用 `--reviewer <新 id>` 记录；同一 reviewer 的自证、以及用 --note 刷新基线都已被移除", s.ReviewedHeadCommit, review.ReReviewGuidance)
 					}
 					// 换 reviewer 复审：记 WARN 级 re-review 审计并允许推进——
@@ -318,9 +337,13 @@ func runReviewPassAt(root, explicitRef, note, reviewer string) error {
 			}
 			if reviewer != "" {
 				s.LastReviewer = reviewer
-				if reviewer != "" && !containsString(s.Reviewers, reviewer) {
+				if !containsString(s.Reviewers, reviewer) {
 					s.Reviewers = append(s.Reviewers, reviewer)
 				}
+			}
+			if len(score) > 0 && score[0] > 0 {
+				v := score[0]
+				s.ReviewScore = &v
 			}
 			s.MarkReviewPassedWithNote(head, hash, note)
 			state = s
