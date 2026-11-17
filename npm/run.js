@@ -38,19 +38,36 @@ if (!SUPPORTED.has(platKey)) {
   );
 }
 
-// __dirname 是 …/node_modules/@agent_forge/forge，平台子包是它的兄弟目录。
-const binaryPath = path.join(__dirname, "..", `forge-${platKey}`, "bin", exe);
-if (!fs.existsSync(binaryPath)) {
+// __dirname 是 …/node_modules/@agent_forge/forge。平台子包可能落在两处，都要找：
+//   1) 包内嵌套：…/@agent_forge/forge/node_modules/@agent_forge/forge-<plat>/bin（全局安装实测）
+//   2) 兄弟目录：…/@agent_forge/forge-<plat>/bin（本地安装被 hoist 时的常见形态）
+// 不在此列的位置（祖先 node_modules）刻意不找——那正是 1.42.2 祖先遮蔽的来源。
+const candidates = [
+  path.join(__dirname, "node_modules", platformPkg, "bin", exe),
+  path.join(__dirname, "..", `forge-${platKey}`, "bin", exe),
+];
+const binaryPath = candidates.find((p) => fs.existsSync(p));
+if (binaryPath === undefined) {
   die(
     `platform package ${platformPkg} is not installed`,
     "重装并保留 optionalDependencies：npm i -g @agent_forge/forge --include=optional（不要带 --omit=optional）。"
   );
 }
 
-const child = spawn(binaryPath, process.argv.slice(2), {
-  stdio: "inherit",
-  env: process.env,
-});
+let child;
+try {
+  child = spawn(binaryPath, process.argv.slice(2), {
+    stdio: "inherit",
+    env: process.env,
+  });
+} catch (e) {
+  // spawn 也可能同步抛（Windows 上无效 exe 报 spawn UNKNOWN）——不能让它变成
+  // 带栈迹的 node 崩溃，更不能用退出码 0 掩盖失败。
+  die(
+    `spawn failed: ${e.message}`,
+    `检查 ${binaryPath} 是否存在且可执行（chmod +x）；仍失败则重装：npm i -g @agent_forge/forge --include=optional。`
+  );
+}
 
 // spawn 失败走 error 事件而非 exit——没有监听器会带栈迹崩溃并把失败说成成功。
 child.on("error", (e) => {

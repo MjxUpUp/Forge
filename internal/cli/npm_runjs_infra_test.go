@@ -80,3 +80,70 @@ func TestRunJSInfraNotice(t *testing.T) {
 		t.Errorf("重复调用 stderr 应仍带原因，got %q", errOut2)
 	}
 }
+
+// TestRunJSInfraNotice_NestedPlatformPackageIsFound 钉住全局安装的落点：npm 会把
+// 平台子包放在包内 node_modules/@agent_forge/forge-<plat> 下，不是兄弟目录。
+// 放一个不可执行的占位二进制，报错应是「spawn failed」而不是「is not installed」，
+// 证明候选路径被命中；同时验证 spawn 同步抛错时也被包装成响亮失败。
+func TestRunJSInfraNotice_NestedPlatformPackageIsFound(t *testing.T) {
+	nodeBin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node 不可用")
+	}
+	src, err := os.ReadFile(filepath.Join("..", "..", "npm", "run.js"))
+	if err != nil {
+		t.Fatalf("读 npm/run.js: %v", err)
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "run.js")
+	if err := os.WriteFile(script, src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	arch := runtime.GOARCH
+	if arch == "amd64" {
+		arch = "x64"
+	}
+	platKey := runtime.GOOS + "-" + arch
+	if runtime.GOOS == "windows" {
+		platKey = "win32-" + arch
+	}
+	env := append(os.Environ(), "HOME="+dir, "NODE_PATH=", "TMPDIR="+dir)
+	run := func(args ...string) (code int, stdout, stderr string) {
+		cmd := exec.Command(nodeBin, append([]string{script}, args...)...)
+		cmd.Env = env
+		var so, se bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &so, &se
+		err := cmd.Run()
+		var ee *exec.ExitError
+		switch {
+		case err == nil:
+		case errors.As(err, &ee):
+			code = ee.ExitCode()
+		default:
+			t.Fatalf("运行 run.js: %v", err)
+		}
+		return code, so.String(), se.String()
+	}
+	nested := filepath.Join(dir, "node_modules", "@agent_forge", "forge-"+platKey, "bin")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exeName := "forge"
+	if runtime.GOOS == "windows" {
+		exeName = "forge.exe"
+	}
+	if err := os.WriteFile(filepath.Join(nested, exeName), []byte("not-a-real-binary"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	codeNested, outNested, errNested := run("--version")
+	if codeNested == 0 {
+		t.Fatalf("占位二进制不可执行，应非 0 退出，got 0（stdout=%q）", outNested)
+	}
+	if strings.Contains(errNested, "is not installed") {
+		t.Fatalf("包内嵌套的平台子包应被找到（不该报 is not installed），stderr=%q", errNested)
+	}
+	if !strings.Contains(errNested, "spawn failed") {
+		t.Errorf("应报 spawn failed，got %q", errNested)
+	}
+
+}
