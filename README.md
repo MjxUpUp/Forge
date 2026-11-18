@@ -96,9 +96,9 @@ forge next                 # 从当前 git/任务状态推导恰好一条下一�
 **场景 A：小修——任务是一等入口，直接开工**（change 可以事后补）
 
 ```bash
-forge task start --ref feat/fix-typo --branch --title "修正文案"
+forge task start --ref feat/fix-typo --branch --title "修正文案" --agent <实现者 id>
 # 做完依次跑：task gate task-implement → task verify-acceptance
-#            → review pass --reviewer <id> → task gate task-complete → task complete
+#            → review pass --reviewer <该任务绑定的评审者 id> → task gate task-complete → task complete
 ```
 
 **场景 B：想留可评审记录——先立 change，再钉契约开工**
@@ -110,8 +110,13 @@ forge change new my-feature --title "一句话说清要做什么"
 forge change clarify my-feature --by-human --note "只改 A.txt 的文案，不动 B 模块与接口"
 # 补齐 goal.md（三段）/ change.md（改动·影响·验证）/ acceptance.md
 forge change phase my-feature        # 每补一份看一次，直到 ready
-forge task start --ref feat/my-feature --branch --change my-feature
+forge task start --ref feat/my-feature --branch --change my-feature --agent <实现者 id> \
+  --accept "test -f A.txt" --accept-red "test -f A.txt"   # --accept-red：开工时它应当失败
 ```
+
+两条 2.1 起的新默认：**实现者身份**（`--agent`）让 `review pass` 能拒绝自批；**先失败证明**
+（`--accept-red`）让 `task complete` 能证明判据在实现前确实红过（没有可失败的场景可不登记，
+交付单会如实写「未登记」）。
 
 带 `--change` 时那个 change 必须已 `ready`（阶段机只读文件，不写状态）；不带
 `--change` 则随时可以开工——change 可以事后补，`forge change verify` 才是它的封口。
@@ -322,19 +327,20 @@ rm -rf ~/.forge/skills-backup ~/.forge/.init-suggested
 | `forge task artifact …` / `forge task chain-init` | 命令已删除；产物就是 change 里的 `goal.md` / `change.md` / `acceptance.md` |
 | `forge selfcheck` | 该子命令已删除；用 `forge docs lint <文件>` + `forge change check` |
 | `forge eval artifact-drill` | 子命令已删除；用 `scripts/checks/release-smoke.sh <forge 二进制>`（发布冒烟）或 `forge change check` |
-| `forge review pass --note "…"` 刷新基线 | 必须换**新的**只读 reviewer：`--reviewer <新 id>`；同一 reviewer 自证会被拒 |
+| `forge review pass --note "…"` 刷新基线 / 每轮换新 reviewer | 2.1 起改为**评审者复用**：首轮 `--reviewer <id>` 绑定，之后每轮用同一 id（换新 id 会把旧问题丢掉、永远收敛不了）；确实要换人用 `--rotate-reviewer --reason "…"` 留痕；上一轮未闭合项用 `--findings <清单>` 承接 |
 | 五份产物（proposal/design/tasks + acceptance + goal） | 三份：`goal.md`（三段）+ `change.md` + `acceptance.md`；`clarify.md` 记人确认，`tasks.md` 可选 |
 
-`forge init` / `forge integrations` / `forge hook` / `forge freeze` / `forge doctor` 已在 1.85 删除，
+`forge integrations` / `forge hook` / `forge freeze` / `forge doctor` 已在 1.85 删除，
 宿主层（用户级 CLAUDE.md / AGENTS.md 注入、hook 执行、插件、skills 分发）整体不存在了；
-升级前如果还留着那些注入，按上一节「从 1.84 及更早版本升级」清掉。
+升级前如果还留着那些注入，按上一节「从 1.84 及更早版本升级」清掉。`forge init` 仍然存在，
+但它现在只写仓库内产物（契约 / changes 目录 / AGENTS 托管块 / 已存在的指针文件），不碰用户目录。
 
 ### 每个老项目要做的
 
 ```bash
 # 0) 先升级二进制
-npm i -g @agent_forge/forge@2.0.4 --include=optional --registry=https://registry.npmjs.org
-forge version                      # 应 >= 2.0.4
+npm i -g @agent_forge/forge@2.1.3 --include=optional --registry=https://registry.npmjs.org
+forge version                      # 应 >= 2.1.3
 
 # 1) 仓库里：搬旧 runtime state（.forge/ 里有历史 task/checklog 时）
 cd <your-repo>
