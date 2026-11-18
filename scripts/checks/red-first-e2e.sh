@@ -20,7 +20,8 @@ fi
 
 work=$(mktemp -d)
 data=$(mktemp -d)
-trap 'rm -rf "$work" "$data"' EXIT
+# Windows 上临时目录偶尔有句柄未释放，清理失败不能把 e2e 判成失败。
+trap 'rm -rf "$work" "$data" 2>/dev/null || true' EXIT
 # 数据目录必须在仓库外：写进仓库会被 `git add -A` 收进去，切分支时报「local changes
 # would be overwritten」，e2e 自己就把自己绊倒。
 export FORGE_DATA_HOME="$data"
