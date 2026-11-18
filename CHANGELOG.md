@@ -13,6 +13,13 @@
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
 
+## [2.1.3](https://github.com/MjxUpUp/Forge/compare/v2.1.2...v2.1.3) (2026-11-18)
+
+
+### Bug Fixes
+
+* **ci:** npm 幂等判据改为 tarball 可下载，自检窗口扩到 20 分钟 ([f6008eb](https://github.com/MjxUpUp/Forge/commit/f6008eb41fe72c5e955895340a5cbff0489ebfa6))
+
 ## [2.1.2](https://github.com/MjxUpUp/Forge/compare/v2.1.1...v2.1.2) (2026-11-18)
 
 
