@@ -527,9 +527,13 @@
     {
       "path": "forge review pass",
       "flags": [
+        "criteria-reviewed",
+        "findings",
         "note",
+        "reason",
         "ref",
         "reviewer",
+        "rotate-reviewer",
         "score"
       ]
     },
@@ -1019,6 +1023,9 @@
       "flags": [
         "accept",
         "accept-file",
+        "accept-red",
+        "allow-empty-criteria",
+        "allow-green",
         "assert",
         "assignee",
         "base",
@@ -1256,7 +1263,7 @@
     {
       "tree": "canonical",
       "name": "code-review-gate",
-      "sha256": "ecefb02747e1f3987563037d7a1f72f55094c9161f45670a1b277912e13affc7"
+      "sha256": "b186117601f9e15cd9b522e9539ca2642bd9cd043e87161726a904ab90cb0957"
     },
     {
       "tree": "canonical",

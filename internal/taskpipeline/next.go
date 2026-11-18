@@ -10,6 +10,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/change"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/specroot"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // next.go —— nextDecision 纯决策函数：给定分支、脏树、活跃任务状态，返回恰好一条下一步
@@ -177,12 +178,30 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 	case nextAcceptancePending(st):
 		return NextResult{Next: nextCmdVerifyAcceptance, Reason: "验收标准尚未实跑回扣——先实跑（AcceptedHeadCommit 为空的标准待跑）", State: state}
 	case !nextReviewPassed(st):
-		return NextResult{Next: "forge review pass", Reason: "验证已过而审查未过——派只读子代理审查当前 diff 后标记（task-complete 门禁硬前置）", State: state}
+		// 评审连续性：本轮复审必须由同一个 code-review 子 agent 承接——把上次的
+		// id 直接写进建议命令，避免「每轮换个新 id 重扫、旧问题悄悄消失」。
+		cmd := "forge review pass"
+		reason := "验证已过而审查未过——派只读子代理审查当前 diff 后标记（task-complete 门禁硬前置）"
+		if st != nil {
+			if id := reviewOwner(st); id != "" {
+				cmd += " --reviewer " + id
+				reason += "；复用上一轮的评审者 " + id + "（换人用 --rotate-reviewer --reason）"
+			}
+		}
+		return NextResult{Next: cmd, Reason: reason, State: state}
 	case !gates[GateComplete]:
 		return NextResult{Next: "forge task gate task-complete", Reason: "实现/审查齐备——过完成任务门（forge task complete 要求两道门禁全过）", State: state}
 	default:
 		return NextResult{Next: "forge task complete", Reason: "两道门禁与审查齐备——完结并评分（此后手工合并分支）", State: state}
 	}
+}
+
+// reviewOwner 取任务已绑定的 code-review 子 agent id（空表示还没绑）。
+func reviewOwner(st *tasktypes.TaskState) string {
+	if st == nil || len(st.Agents) == 0 {
+		return ""
+	}
+	return st.Agents["code-review"]
 }
 
 // NextHint derives the hint for a task context and records one next-hint checklog row (design B:

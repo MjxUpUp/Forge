@@ -47,6 +47,11 @@ func init() {
 	taskStartCmd.Flags().StringArray("assert", nil, `v2 结构化断言（可重复 --assert）：格式 "type:arg :: expected"，附属于同命令中 preceding --accept；file-changed/file-untouched 可独立出现（无 Run）。类型：exit（期望退出码）|contains|not-contains（输出子串）|file-changed|file-untouched（glob 对任务 diff）`)
 	// 批量考卷声明：YAML 一次声明全部条目（含断言），键与任务状态 JSON 一致。
 	taskStartCmd.Flags().String("accept-file", "", `验收标准 YAML 文件（批量声明）：顶层 criteria:，每条 run/expected/assertions[type/arg/expected]；与 --accept 同层级、按三元组去重合并`)
+	// 先红后绿（red-first-evidence）：红判据在开工时实跑一次并保留退出码，
+	// complete 据此核对「先失败过、现在通过」——不猜 git 顺序也能核对先后。
+	taskStartCmd.Flags().StringArray("accept-red", nil, `先失败证明（可重复 --accept-red）：实现前应当失败的判据，格式 "run" 或 "run :: 说明"。开工时实跑一次并把退出码记进任务状态；task complete 要求它开工时确实失败、且同一 run 的 --accept 判据现在通过`)
+	taskStartCmd.Flags().Bool("allow-green", false, `允许 --accept-red 判据在开工时已经通过（回归修复等场景）；会记进任务状态，complete 不再要求红记录`)
+	taskStartCmd.Flags().Bool("allow-empty-criteria", false, `允许带 --change 启动但零验收判据（留痕例外；默认拒绝——判据要写在实现之前）`)
 	// held-out 套件（SpecBench 双套件思想）：保留集不进 TaskState（task status 不展示），
 	// 登记到 DataDir 侧车；可见验收全过而 held-out 挂 = test-generalization gap。
 	taskStartCmd.Flags().String("heldout", "", `held-out 保留验收集（文件路径，每行一条 "run :: expected"，# 注释）：登记进 DataDir 侧车不进任务状态；verify-acceptance 与 task-complete 实跑，可见全过而保留集挂即 BLOCKED（SpecBench gap 形态）`)
@@ -759,6 +764,37 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		if w := phaseExplosionWarning(root, state.SessionID, ctx.TaskRef); w != "" {
 			fmt.Fprintln(os.Stderr, w)
 		}
+	}
+
+	// 判据先于实现（red-first-evidence F1）：带 --change 的任务必须在开工时就
+	// 登记判据——change 的三份产物已经把「怎样算解决」写死在实现之前，这里只是
+	// 把同一件事落到 task 考卷上；没有判据就开工等于「先做后编验收」。
+	allowEmptyCriteria, _ := cmd.Flags().GetBool("allow-empty-criteria")
+	if err := requireCriteriaForChange(changeID, state.Acceptance, allowEmptyCriteria, state); err != nil {
+		return err
+	}
+
+	// 先红后绿（red-first-evidence F2）：--accept-red 的每条命令在开工时实跑一次，
+	// 把退出码连同 HEAD 记进任务状态。它是「实现前确实失败过」的唯一机械证据；
+	// 已经通过的红判据默认拒绝（--allow-green 留痕放行，用于回归修复类任务）。
+	if redRaw, _ := cmd.Flags().GetStringArray("accept-red"); len(redRaw) > 0 {
+		allowGreen, _ := cmd.Flags().GetBool("allow-green")
+		now := time.Now().UTC().Format(time.RFC3339)
+		for _, r := range redRaw {
+			run := strings.TrimSpace(strings.SplitN(r, "::", 2)[0])
+			if run == "" {
+				continue
+			}
+			code, out := runPreflightCommand(root, run)
+			state.RedAttempts = append(state.RedAttempts, tasktypes.RedAttempt{
+				Run: run, Exit: code, Output: truncatePreflightOutput(out),
+				Head: state.HeadCommit, At: now,
+			})
+			if code == 0 && !allowGreen {
+				return fmt.Errorf("先失败证明不成立：%q 在开工时已经通过（exit 0）——它证明不了新行为先失败过。换成针对新行为的判据，或确认这是回归修复后用 --allow-green 显式留痕", run)
+			}
+		}
+		state.AllowGreen = allowGreen
 	}
 
 	// 追加 task-started 边界事件，取代清空日志（multi-task-concurrency 设计 §5，L2 事件

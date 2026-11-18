@@ -60,8 +60,8 @@
 
 | 命令 | 说明 |
 |------|------|
-| `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理；start 会预跑已登记的 acceptance（逐条最长 15s，失败不阻断，只在输出里记录基线） |
-| `forge task start --change <id>` / `--goal-file <path>` | 把 goal 契约钉进任务：`--change` 读 `spec/changes/<id>/goal.md`，`--goal-file` 读仓库内任意三段式文件（Objective / Out of Scope / Check）；启动时记 Path+SHA256，`task gate task-implement` 重算，漂移即 BLOCKED。二者与 `--goal` 自由文本互斥；`--kind task` 标记「这次是小修、没有立 change」，仍走两道门禁；任务是一等入口，不带 `--change` 随时可以开工 |
+| `forge task start --ref <type/desc> --branch` | 创建任务（自动创建分支）；`--depends-on <ref>` 声明上游依赖（task-complete 在上游交付前阻断），支持 `<key>:<ref>` 跨仓依赖——key 须为本 repo 所属 workspace 的成员（`forge workspace add`），缺失目标按保守 pending 处理；start 会预跑已登记的 acceptance（逐条最长 15s，失败不阻断，只在输出里记录基线）；`--accept-red <cmd>` 登记「开工前必须失败」的判据（红快照写进任务状态；`task complete` 要求每条红判据已在同一命令上转绿，开工即绿要 `--allow-green` 显式留痕）；`--allow-empty-criteria` 是带 `--change` 却确实没有可执行判据时的留痕例外 |
+| `forge task start --change <id>` / `--goal-file <path>` | 把 goal 契约钉进任务：`--change` 读 `spec/changes/<id>/goal.md`，`--goal-file` 读仓库内任意三段式文件（Objective / Out of Scope / Check）；启动时记 Path+SHA256，`task gate task-implement` 重算，漂移即 BLOCKED。二者与 `--goal` 自由文本互斥；`--kind task` 标记「这次是小修、没有立 change」，仍走两道门禁；任务是一等入口，不带 `--change` 随时可以开工；但带 `--change` 时必须至少登记一条 `--accept` （判据先于实现，F1）——确实没有可执行判据时用 `--allow-empty-criteria` 显式留痕 |
 | `forge next [--json]` | 单命令引导：从 git/任务状态推导**恰好一条**下一步命令+理由（无任务有脏树时：声明了 spec 的仓库先给 `forge change new`（有 ready 且 goal.md 齐备的 change 直接给 `forge task start --change <id>`；未 ready 或缺 goal.md 才给 `forge change phase <id>`），未声明仓库仍是 task start/wild 申报；门禁链→下一步命令：implement→验收实跑→verify→review pass→complete 门→complete）。无活跃任务且工作区干净时：声明了 spec 的仓库直接给 `forge task start`（落后远端先给 `git pull --ff-only`；不再停在 `forge status`，change 可后补），未声明仓库仍是 `forge status`。agent 不自选下一步——push 侧由 `forge gate push` 兜底 |
 | `forge task intent "<注记>"` | 追加意图注记（三段工件之 intent 段）：append-only——没有覆写/删除入口，意图历史即决策史，防轮次重写导致的语义漂移（rot） |
 | `forge task checklist add/tick/drop` | 操作对账单（checklist 段）：勾选即进度、断点存活，task-complete 硬门禁要求全勾（report 写完不算 done，checkbox 才算） |
@@ -114,7 +114,7 @@
 | `forge task scope add <glob> [--ref <ref>]` | 追加计划改动文件到白名单（支持中途迭代；--ref 指定任务，不依赖活跃任务检测） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
 | `forge task override [--work-activity\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关活动检查）；使用落 checklog 审计。验证类（acceptance-gate/skill-decisions）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度。 |
-| `forge task complete` | 标记任务完成（自动评分） |
+| `forge task complete` | 标记任务完成（自动评分）。硬前置：本题两道门禁齐备 + 审查快照与当前 diff 一致 + 验收已实跑且新鲜 + **红先绿闭环**（每条 `--accept-red` 判据在同一命令上出现过失败、之后转绿；没登记红判据则不拦，但 report 会写「未登记」） |
 | `forge task abort [--ref <ref>] [--cascade\|--detach-deps]` | 中止并删除任务（清理 ghost/卡住任务，不评分；存在反向依赖时默认仅提示，`--cascade` 递归中止所有依赖它的任务，`--detach-deps` 从依赖它的任务移除该依赖边） |
 | `forge task score` | 查看任务质量评分 |
 | `forge task resume [--ref <ref>]` | 拉回任务接续上下文（目标/计划/决策/阻塞/参与工具+门禁进度+git 已改），跨会话/跨工具秒级恢复；同时把当前 session 锚定到任务（锚定只能显式做：没有 hook 捕获源码写入，未 resume 的 session 不会被自动补锚） |
@@ -148,7 +148,7 @@
 
 | 命令 | 说明 |
 |------|------|
-| `forge review pass [--ref <ref>] [--score N] [--reviewer <评审者 id>]` | 标记当前变更已通过 code-review（task 模式写任务状态，否则写分支 stamp）；`--score` 记分，`--reviewer` 记评审者。基线之后又有源码变更时必须派**新的只读评审者**并换一个 `--reviewer`：同一 reviewer 自证、或用 `--note` 刷新基线都会被拒（记 WARN 审计） |
+| `forge review pass [--ref <ref>] [--score N] [--reviewer <id>] [--rotate-reviewer --reason <原因>] [--findings <file>] [--criteria-reviewed <n>]` | 标记当前变更已通过 code-review（task 模式写任务状态，否则写分支 stamp）。**评审者复用是默认规则**：首轮 `--reviewer <id>` 绑定该任务的 code-review 子 agent，之后每次复审必须复用同一 id（换人 `--rotate-reviewer --reason` 显式留痕，记 WARN 审计）；裸 `--note` 刷新基线被拒。`--findings <file>` 承接上一轮未闭合项：markdown 清单 `- [ ]/- [x]/- [~]`，上轮 open 的 id 本轮必须关闭或 `(waived: 原因)`，消失即拒绝；`--criteria-reviewed <n>` 记「独立核对过多少条验收判据」；`--score 0` 合法；审查基线 commit 不可达（历史被改写）时必须显式 `--rotate-reviewer` 换新 id |
 | `forge review gate` | 判定当前是否需要审查（显式运行，agent 或 CI 调用；exit 0=放行，1=需审 block；评估本身失败 fail-open 放行） |
 | `forge review status` | 显示当前审查状态 |
 

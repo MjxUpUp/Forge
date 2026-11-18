@@ -12,15 +12,15 @@ import (
 // re-review always needs a NEW reviewer id; self re-stamping and `--note`
 // baseline refreshes are gone. A pipe would break the CLAUDE.md table cell.
 //
-// TestReReviewGuidanceContract 钉住代码复审只有一档：必须换新的 reviewer id；
-// 同一 reviewer 自证与 `--note` 刷新基线都已移除。含竖线会撑破 CLAUDE.md 表格单元格。
+// TestReReviewGuidanceContract 钉住代码复审只有一档：同一个 code-review 评审者承接，
+// 换人须 --rotate-reviewer --reason；`--note` 不能刷新基线。含竖线会撑破 CLAUDE.md 表格单元格。
 func TestReReviewGuidanceContract(t *testing.T) {
-	for _, want := range []string{"新的只读子 agent", "--reviewer <新 id>", "--note", "移除"} {
+	for _, want := range []string{"同一个 code-review 评审者", "--reviewer <id>", "--rotate-reviewer", "--reason", "--note"} {
 		if !strings.Contains(ReReviewGuidance, want) {
 			t.Errorf("ReReviewGuidance 缺少 %q，got: %s", want, ReReviewGuidance)
 		}
 	}
-	for _, banned := range []string{"续用首轮", "按轨道续用", "刷新审查基线", "|"} {
+	for _, banned := range []string{"续用首轮", "按轨道续用", "新的只读子 agent", "|"} {
 		if strings.Contains(ReReviewGuidance, banned) {
 			t.Errorf("ReReviewGuidance 不得含 %q（分档续用/自供刷新已废止，或会撑破表格）: %s", banned, ReReviewGuidance)
 		}
@@ -105,9 +105,9 @@ func TestSkillsCarryResumeTier(t *testing.T) {
 		},
 		{
 			name: "code-review-gate",
-			// Forge 门禁要求复审换新 reviewer（同一 reviewer 自证与 --note 刷新已移除）；
+			// Forge 门禁要求复审由同一个 reviewer 承接（换人须 rotate 留痕）；
 			// 分档只决定审多深，不得作为续用同一 reviewer 的豁免。
-			want:  []string{"按轨道续用", "不新派补位", "`cheat-detector` 无发现时", "命中下面作弊模式速查表任一项", "`eng-reviewer` 始终续用", "首轮零发现", "有发现的轨道必续用", "复审必须由**新的只读子 agent**", "--reviewer <新 id>", "不豁免换人"},
+			want:  []string{"按轨道续用", "不新派补位", "`cheat-detector` 无发现时", "命中下面作弊模式速查表任一项", "`eng-reviewer` 始终续用", "首轮零发现", "有发现的轨道必续用", "复审必须由**同一个 reviewer 承接**", "--rotate-reviewer --reason", "不豁免换人"},
 			stale: []string{"同一 reviewer 的自证、以及用 --note 刷新基线都可行"},
 		},
 	} {

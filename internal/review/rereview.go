@@ -4,10 +4,11 @@ package review
 // changed after review", shown by the task-complete snapshot gate, `forge
 // review pass` refusals and the generated CLAUDE.md error table.
 //
-// 复审只有一档：换一个新的只读 reviewer（`--reviewer <新 id>`）重新审当前
-// diff。同一 reviewer 不能给自己复审，`--note` 也不再能刷新基线——独立性来自
-// 「新的审查者」，不是自供的复审结论。
-const ReReviewGuidance = "复审必须派一个新的只读子 agent 重新审当前 diff，并用 `forge review pass --reviewer <新 id>` 记录；同一 reviewer 的自证与 `--note` 刷新基线都已被移除"
+// 复审只有一档：由同一个 code-review 评审者承接（首次 `--reviewer <id>` 绑定，
+// 之后复用同一 id）——换新 reviewer 每轮都可能扫出新问题，评审无法收敛。确实
+// 需要换视角时用 `--rotate-reviewer --reason` 显式换人并留痕；`--note` 不能再
+// 刷新审查基线。
+const ReReviewGuidance = "复审由同一个 code-review 评审者承接（首次用 `--reviewer <id>` 绑定，之后复用同一 id）；需要换人时用 `--rotate-reviewer --reason` 显式留痕；`--note` 不能刷新审查基线"
 
 // DocReReviewGuidance is the single source of truth for "what to do after a
 // doc-review round failed or the document changed after review", shown by the
