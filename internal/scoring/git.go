@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 )
 
 // CollectGitData collects the git diff stat used by the scope dimension.
@@ -65,6 +67,12 @@ func changedFiles(root, base string) ([]string, error) {
 		for _, line := range strings.Split(string(out), "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || seen[line] {
+				continue
+			}
+			// Windows 保留设备名幻影路径（`nul/…`）不是真文件：`\\?\` 前缀能建出、
+			// git 会照实列出，但把它算进变更集会让 scope 维度误判（与 review/change
+			// 的幻影过滤同一口径）。
+			if ghostpath.IsReserved(line) {
 				continue
 			}
 			seen[line] = true

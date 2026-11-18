@@ -224,7 +224,7 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	// 才允许实跑判据。老布局（proposal/design/tasks）没有 clarify 概念，放行以兼容。
 	// 之前只在 `change phase` 里校验，verify 可以绕过——文档说一套、命令做另一套
 	// （review-ruthless-4 P2-2）。
-	if err := requireClarify(c, id); err != nil {
+	if err := RequireClarify(c, id); err != nil {
 		return nil, err
 	}
 	if !c.HasAcceptance {
@@ -514,7 +514,7 @@ func changedFiles(root string) ([]FileDigest, bool) {
 // requireClarify 校验新布局（goal/change）的 clarify.md 已由人确认。
 // 老布局（proposal/design/tasks）没有 clarify 概念，放行以兼容。
 // verify 与 gate 共用：两条命令对「能不能开工」必须同口径。
-func requireClarify(c *Change, id string) error {
+func RequireClarify(c *Change, id string) error {
 	if !c.HasChange && !c.HasGoal && !c.GoalRequired {
 		return nil
 	}

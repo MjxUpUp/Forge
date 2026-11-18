@@ -371,6 +371,20 @@ func runReviewPassAtOpts(root, explicitRef, note, reviewer string, o reviewOptio
 			// 评审者连续性（red-first-evidence）：同一任务的 code-review 角色一旦
 			// 绑定，后续轮次必须复用同一子 agent——换新 reviewer 每轮都能扫出新
 			// 问题，评审无法收敛。换人必须显式 --rotate-reviewer --reason（留痕）。
+			// 未指定评审者时，实现者可以一条命令自批，且交付单无从判断独立性：
+			// 登记了实现者就必须显式指定一个独立 reviewer（review-rfe-1 P1-a）。
+			if s.Implementer != "" && strings.TrimSpace(reviewer) == "" {
+				boundNow := ""
+				if s.Agents != nil {
+					boundNow = strings.TrimSpace(s.Agents[roleCodeReview])
+				}
+				if boundNow == "" {
+					return fmt.Errorf("review pass 拒绝：本任务登记了实现者 %s（task start --agent）——评审必须由独立的子 agent 执行，用 `--reviewer <独立 id>` 指定；不指定就无法验证独立性", s.Implementer)
+				}
+			}
+			if s.Implementer != "" && sameAgent(s.Implementer, reviewer) {
+				return fmt.Errorf("review pass 拒绝：%s 是这个任务的实现者（task start --agent %s）——评审必须由独立的子 agent 执行；换成另一个 reviewer id，或在 task start 时如实登记实现者", reviewer, s.Implementer)
+			}
 			bound := ""
 			if s.Agents != nil {
 				bound = strings.TrimSpace(s.Agents[roleCodeReview])

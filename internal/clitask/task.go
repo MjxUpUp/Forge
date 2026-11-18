@@ -51,6 +51,7 @@ func init() {
 	// complete 据此核对「先失败过、现在通过」——不猜 git 顺序也能核对先后。
 	taskStartCmd.Flags().StringArray("accept-red", nil, `先失败证明（可重复 --accept-red）：实现前应当失败的判据，格式 "run" 或 "run :: 说明"。开工时实跑一次并把退出码记进任务状态；task complete 要求它开工时确实失败、且同一 run 的 --accept 判据现在通过`)
 	taskStartCmd.Flags().Bool("allow-green", false, `允许 --accept-red 判据在开工时已经通过（回归修复等场景）；会记进任务状态，complete 不再要求红记录`)
+	taskStartCmd.Flags().String("agent", "", `实现者身份（子 agent id）。记录进任务状态，供 review pass 校验「评审者 ≠ 实现者」；不传则交付单披露「未记录实现者」`)
 	taskStartCmd.Flags().Bool("allow-empty-criteria", false, `允许带 --change 启动但零验收判据（留痕例外；默认拒绝——判据要写在实现之前）`)
 	// held-out 套件（SpecBench 双套件思想）：保留集不进 TaskState（task status 不展示），
 	// 登记到 DataDir 侧车；可见验收全过而 held-out 挂 = test-generalization gap。
@@ -769,6 +770,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	// 判据先于实现（red-first-evidence F1）：带 --change 的任务必须在开工时就
 	// 登记判据——change 的三份产物已经把「怎样算解决」写死在实现之前，这里只是
 	// 把同一件事落到 task 考卷上；没有判据就开工等于「先做后编验收」。
+	if agent, _ := cmd.Flags().GetString("agent"); strings.TrimSpace(agent) != "" {
+		state.Implementer = strings.TrimSpace(agent)
+	}
 	allowEmptyCriteria, _ := cmd.Flags().GetBool("allow-empty-criteria")
 	if err := requireCriteriaForChange(changeID, state.Acceptance, allowEmptyCriteria, state); err != nil {
 		return err

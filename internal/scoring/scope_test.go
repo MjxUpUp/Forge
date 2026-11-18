@@ -1,8 +1,11 @@
 package scoring
 
 import (
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -219,5 +222,27 @@ func TestCollectAssertionDensity_DeadProbeReturnsZeros(t *testing.T) {
 	count, files := CollectAssertionDensity(dir, "", "")
 	if count != 0 || files != 0 {
 		t.Fatalf("dead probe: got (count=%d, files=%d), want (0, 0)", count, files)
+	}
+}
+
+// TestChangedFiles_PinsGhostpathFilter：Windows 保留设备名幻影路径（`nul/win.go`）
+// 会被 git 照实列出，必须从变更集里剔除。本机 git 开启 core.protectNTFS 后无法
+// 造出这种路径（`update-index` 直接拒绝），所以端到端复现不可行；这里改为钉住
+// 调用点，并在有 Windows 语义时验证判定函数，防止过滤被静默删掉（review-rfe-1 P3-b）。
+func TestChangedFiles_PinsGhostpathFilter(t *testing.T) {
+	src, err := os.ReadFile("git.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "ghostpath.IsReserved(line)") {
+		t.Fatal("changedFiles 必须用 ghostpath.IsReserved 过滤幻影路径（调用点被删会复活 scope 误判）")
+	}
+	if runtime.GOOS == "windows" {
+		if !ghostpath.IsReserved("nul/win.go") {
+			t.Error("Windows 上 nul/win.go 应判为幻影路径")
+		}
+		if ghostpath.IsReserved("internal/review/stamp.go") {
+			t.Error("普通源码路径不应被判为幻影")
+		}
 	}
 }

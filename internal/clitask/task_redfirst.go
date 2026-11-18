@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
@@ -32,6 +33,12 @@ func CheckRedFirst(root string, s *tasktypes.TaskState) error {
 				continue
 			}
 			return fmt.Errorf("先失败证明缺失：%q 在开工时就已经通过（exit 0）——它证明不了新行为先失败过。换一条针对新行为的判据，或下一次用 --allow-green 显式留痕", run)
+		}
+		if strings.TrimSpace(r.Head) != strings.TrimSpace(s.HeadCommit) {
+			return fmt.Errorf("先失败证明未绑定开工时刻：红快照 head=%s，任务开工 head=%s——红快照必须由 task start 当场拍下（事后 checkout 回基线补拍的记录不算）", shortSHA(r.Head), shortSHA(s.HeadCommit))
+		}
+		if older, err := commitsOlderThan(root, s.HeadCommit, s.StartedAt); err == nil && older != "" {
+			return fmt.Errorf("先失败证明可疑：%s 的提交早于任务开工时间（红快照是事后补拍的）——请在开工前登记红判据，或对回归修复用 --allow-green", older)
 		}
 		if r.Head != "" && head != "" && !isGitAncestor(root, r.Head, head) {
 			return fmt.Errorf("先失败证明缺失：%q 的红记录来自 %s，它不在当前分支历史里——红证据必须来自本任务开工时的同一历史", run, shortSHA(r.Head))
@@ -82,4 +89,37 @@ func requireCriteriaForChange(changeID string, criteria []tasktypes.AcceptanceCr
 		return nil
 	}
 	return fmt.Errorf("task start 拒绝：带 --change 启动的任务必须至少登记一条验收判据（`--accept \"run :: expected\"`）——判据要写在实现之前，否则「先有判据」无法证明。确实没有可执行判据时用 --allow-empty-criteria 显式留痕")
+}
+
+// commitsOlderThan 返回 startHead..HEAD 里 committer 时间早于 startedAt 的提交
+// （短 sha，顿号分隔）。红快照必须诚实：如果实现早就提交过（先实现、再 checkout
+// 回基线 start 的补拍场景），这些提交的时间戳会早于 StartedAt，git 本身能证伪。
+func commitsOlderThan(root, startHead string, startedAt time.Time) (string, error) {
+	if startedAt.IsZero() || strings.TrimSpace(startHead) == "" {
+		return "", nil
+	}
+	start := startedAt
+	// --first-parent：只看主线提交。合并一条开工前就存在的分支是常规操作，
+	// 把它的第二父历史也算进来会误判成「事后补拍」（review-rfe-1 P2-b）。
+	out, err := exec.Command("git", "-C", root, "log", "--first-parent", "--format=%h %ct", startHead+"..HEAD").Output()
+	if err != nil {
+		return "", err
+	}
+	var old []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.Fields(line)
+		if len(parts) != 2 {
+			continue
+		}
+		var ts int64
+		if _, err := fmt.Sscanf(parts[1], "%d", &ts); err != nil {
+			continue
+		}
+		// 容差 5 秒：秒级时间戳下无法区分同秒提交；2 分钟会让「先实现、回基线
+		// 补拍、再快进合并」在 1 秒内通过的攻击（review-rfe-1 P2-a 实测 Score 87）。
+		if ts < start.Add(-5*time.Second).Unix() {
+			old = append(old, parts[0])
+		}
+	}
+	return strings.Join(old, "、"), nil
 }

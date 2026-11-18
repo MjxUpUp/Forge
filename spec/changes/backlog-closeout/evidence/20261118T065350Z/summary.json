@@ -1,0 +1,82 @@
+{
+  "change": "backlog-closeout",
+  "started_at": "2026-11-18T06:53:50Z",
+  "finished_at": "2026-11-18T06:57:28Z",
+  "passed": true,
+  "sealed": true,
+  "head": "eb929d571e57633acac6b30686e31ee3e875c54f",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "a412e3e20d75b7600a53e721c8ab15984bf8ee5b599de387a25a6a68b9b8e72c",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3022
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/clitask/ ./internal/tasktypes/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 107665,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ ./internal/scoring/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 81575,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 683,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 187
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4550
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 861,
+      "stdout_file": "07.stdout"
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "go build -o /tmp/forge-backlog.exe ./cmd/forge",
+      "exit": 0,
+      "duration_ms": 1349
+    },
+    {
+      "index": 9,
+      "shell": "bash",
+      "command": "sh scripts/checks/red-first-e2e.sh /tmp/forge-backlog.exe",
+      "exit": 0,
+      "duration_ms": 17770,
+      "stdout_file": "09.stdout",
+      "stderr_file": "09.stderr"
+    }
+  ]
+}

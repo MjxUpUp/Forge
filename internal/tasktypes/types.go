@@ -566,6 +566,10 @@ type TaskState struct {
 	// AllowEmptyCriteria 记下「带 --change 启动但零判据」的显式例外（F1 留痕）。
 	AllowEmptyCriteria bool `json:"allow_empty_criteria,omitempty"`
 
+	// Implementer 是登记任务时显式声明的实现者 id（--agent）。评审独立性只能靠
+	// 「实现者 ≠ 评审者」来验证；没记录时 report 会写「未记录实现者（独立性未验证）」。
+	Implementer string `json:"implementer,omitempty"`
+
 	// DesignPhases is the design phase inferred by inferDesignPhases at the
 	// task-verify gate.
 	//
