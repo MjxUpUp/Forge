@@ -13,6 +13,22 @@
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
 
+## [2.1.0](https://github.com/MjxUpUp/Forge/compare/v2.0.4...v2.1.0) (2026-11-18)
+
+
+### Features
+
+* **red-first:** 红先绿证据、判据溯源与评审者复用连续性 ([1774965](https://github.com/MjxUpUp/Forge/commit/177496526a347d8116565189197c5ad6aae8e89d))
+
+
+### Bug Fixes
+
+* **e2e:** 临时目录清理失败不得把 red-first e2e 判成失败（Windows 句柄） ([9605405](https://github.com/MjxUpUp/Forge/commit/960540588f56c6958de3408a5bf7801849d41b49))
+* **guards:** docs-artifact-counts 豁免迁移对照表（行内含三份/迁移/升级/对照） ([3bc6e05](https://github.com/MjxUpUp/Forge/commit/3bc6e054d0961c487bb65d1b6eedd5a572084afe))
+* **red-first:** go test 判据按 -v 归一化、豁免原因去空白、零判据拒认领 ([16c617f](https://github.com/MjxUpUp/Forge/commit/16c617f99ce80ffeff03b7192604b4fc3f5818dd))
+* **red-first:** 接线 complete 的红先绿检查、豁免须写原因、换人披露 ([0322d99](https://github.com/MjxUpUp/Forge/commit/0322d9963a23eedf1388e208cc5ec08b2ccbc91a))
+* **review:** 门禁指引带 --reviewer、豁免原因只认可打印字符 ([d32c5de](https://github.com/MjxUpUp/Forge/commit/d32c5de0f9e6282b3ad810e74bb37cff4d17d8a8))
+
 ## [2.0.4](https://github.com/MjxUpUp/Forge/compare/v2.0.3...v2.0.4) (2026-11-18)
 
 
