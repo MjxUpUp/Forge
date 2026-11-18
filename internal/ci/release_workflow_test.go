@@ -518,7 +518,12 @@ func TestReleaseWorkflow_NpmSelfChecksTarballs(t *testing.T) {
 		"tarball 不可下载",
 		"registry.npmjs.org/@agent_forge/forge-$pkg",
 		"dist.tarball",
-		"for _ in $(seq 1 20)",
+		// 2.1.2 实录：darwin-x64 的 tarball 约 12 分钟后才 200，linux-x64/win32-x64 更久——
+		// 10 分钟窗口击穿，扩到 20 分钟。
+		"for i in $(seq 1 40)",
+		// 幂等判据必须是 tarball 可下载：只查 packument 会把「文档在、tarball 缺」的
+		// 残缺版本当已发布跳过（2.1.2 的 win32-x64 就是这样没发出去）。
+		"的版本文档已存在但 tarball 不可下载",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("release.yml 的 npm 发布 job 应包含 tarball 自检片段 %q（防止 optional 包静默缺失）", want)

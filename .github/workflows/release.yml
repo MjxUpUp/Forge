@@ -199,8 +199,15 @@ jobs:
           # 加固，公开仓库 + package.json repository 字段匹配即可，无需额外配置）。
           # 只加在真实 publish 上：dry-run 在本地预演（无 OIDC 环境）也要能跑。
           for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
-            if npm view "@agent_forge/forge-$pkg@$VER" version >/dev/null 2>&1; then
-              echo "already published @agent_forge/forge-$pkg@$VER, skipping"
+            # 幂等判据必须是 tarball 可下载，不是 packument 里有这个版本：npm 的版本
+            # 文档与 tarball 是两步落盘，2.1.2 出现过 win32-x64 文档缺位、其余包文档
+            # 已 visible 但 tarball 404——只查 `npm view` 会把残缺版本当成「已发布」跳过。
+            turl="https://registry.npmjs.org/@agent_forge/forge-$pkg/-/forge-$pkg-$VER.tgz"
+            if [ "$(curl -sS -o /dev/null -w '%{http_code}' -I "$turl" || echo 000)" = "200" ]; then
+              echo "already published @agent_forge/forge-$pkg@$VER (tarball ok), skipping"
+            elif npm view "@agent_forge/forge-$pkg@$VER" version >/dev/null 2>&1; then
+              echo "::error::@agent_forge/forge-$pkg@$VER 的版本文档已存在但 tarball 不可下载（npm 不允许覆盖已发布版本）——请发一个补丁版本"
+              exit 1
             else
               # cd 进子包目录再 publish：裸路径 "platforms/$pkg" 含 / 会被 npm-package-arg
               # 解析成 GitHub shorthand（user/platforms repo/$pkg）→ git ls-remote 失败。
@@ -211,8 +218,12 @@ jobs:
           # 主包 version + optionalDependencies 各项 version 注入后 publish
           tmp=$(mktemp)
           jq --arg v "$VER" '.version = $v | .optionalDependencies |= with_entries(.value = $v)' package.json > "$tmp" && mv "$tmp" package.json
-          if npm view "@agent_forge/forge@$VER" version >/dev/null 2>&1; then
-            echo "already published @agent_forge/forge@$VER, skipping"
+          mturl="https://registry.npmjs.org/@agent_forge/forge/-/forge-$VER.tgz"
+          if [ "$(curl -sS -o /dev/null -w '%{http_code}' -I "$mturl" || echo 000)" = "200" ]; then
+            echo "already published @agent_forge/forge@$VER (tarball ok), skipping"
+          elif npm view "@agent_forge/forge@$VER" version >/dev/null 2>&1; then
+            echo "::error::@agent_forge/forge@$VER 的版本文档已存在但 tarball 不可下载——请发一个补丁版本"
+            exit 1
           else
             npm publish --access public --provenance
           fi
@@ -224,9 +235,10 @@ jobs:
           for pkg in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-x64; do
             url="https://registry.npmjs.org/@agent_forge/forge-$pkg/-/forge-$pkg-$VER.tgz"
             ok=0
-            for _ in $(seq 1 20); do
+            for i in $(seq 1 40); do
               code=$(curl -sS -o /dev/null -w '%{http_code}' -I "$url" || echo 000)
               if [ "$code" = "200" ]; then ok=1; break; fi
+              [ $((i % 6)) -eq 0 ] && echo "still waiting for $url (HTTP $code, ${i}0s)"
               sleep 30
             done
             if [ "$ok" != "1" ]; then
