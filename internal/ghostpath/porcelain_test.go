@@ -2,8 +2,10 @@ package ghostpath
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -84,5 +86,56 @@ func TestFilterReserved(t *testing.T) {
 	}
 	if got[0] != "a.go" || got[len(got)-1] != "a.go" {
 		t.Fatalf("FilterReserved 必须保持顺序，got %v", got)
+	}
+}
+
+// gitReservedFile 在 root 里用 \\?\ 前缀建一个真实的保留名文件并提交进 HEAD。
+// 返回提交后的仓库；失败时测试自己 skip（本机文件系统可能不允许）。
+func gitReservedFile(t *testing.T, root, name string) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		t.Skip("保留名只在 Windows 上成立")
+	}
+	if err := os.WriteFile(`\\?\`+filepath.Join(root, name), []byte("real\n"), 0o644); err != nil {
+		t.Skipf("无法用 \\\\?\\ 前缀建真实保留名文件：%v", err)
+	}
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root, "-c", "core.protectNTFS=false"}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@x", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@x")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Skipf("git %v 失败（本机文件系统不接受保留名）：%v %s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("add", "--", name)
+	run("commit", "-qm", "add "+name)
+}
+
+// TestIsPhantomPath_DeletedTrackedFileIsNotPhantom 钉住第二形态的假阴性：
+// 删掉一个已提交的真实保留名文件同样是真改动，不能被当成幻影吞掉。
+func TestIsPhantomPath_DeletedTrackedFileIsNotPhantom(t *testing.T) {
+	root := t.TempDir()
+	gitReservedFile(t, root, "aux.go")
+	if err := os.Remove(`\\?\` + filepath.Join(root, "aux.go")); err != nil {
+		t.Skipf("删不掉已提交的保留名文件：%v", err)
+	}
+	if IsPhantomPath(root, "aux.go") {
+		t.Fatal("HEAD 里仍被跟踪的 aux.go 删除后是真改动，不该判幻影")
+	}
+	if LineHasReservedPath(root, " D aux.go") {
+		t.Fatal("删除已提交的 aux.go 被整行跳过：工作区会误判为干净")
+	}
+}
+
+// TestFilterReserved_DropsOnlyPhantom 钉住过滤函数本体（不是只验「原样返回」）。
+func TestFilterReserved_DropsOnlyPhantom(t *testing.T) {
+	root := t.TempDir()
+	if runtime.GOOS != "windows" {
+		t.Skip("保留名只在 Windows 上成立")
+	}
+	got := FilterReserved(root, []string{"nul/win.go", "a.go", "con.txt"})
+	if strings.Join(got, ",") != "a.go" {
+		t.Fatalf("FilterReserved 必须只剔掉幻影路径，got %v", got)
 	}
 }

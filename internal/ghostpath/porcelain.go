@@ -2,6 +2,7 @@ package ghostpath
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -34,13 +35,32 @@ func existsOnDisk(root, p string) bool {
 	return err == nil
 }
 
-// IsPhantomPath 判断 p 是否是「git 报出来、但磁盘上不存在」的保留名路径。
+// trackedInHead 报告 path 是否已提交在 HEAD 里（一次 ls-tree）。
+func trackedInHead(root, p string) bool {
+	cmd := exec.Command("git", "-C", root, "ls-tree", "-r", "--name-only", "-z", "HEAD", "--", filepath.FromSlash(p))
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(out), "\x00") {
+		if strings.TrimSpace(line) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// IsPhantomPath 判断 p 是否是「git 报出来、但磁盘上不存在、也不在 HEAD 里」的保留名路径。
 //
 // 只按名字过滤会把真实文件一起吞掉：Windows 上用 `\\?\` 前缀可以建出 `aux.go`，
 // git 照实列出，而它是真源码——把它当幻影会让工作区被误判为干净（假阴性）。
-// 所以判定必须落到「磁盘上是否存在」这一层。
+// 只看磁盘也不够：删掉一个已提交的 `aux.go` 后它同样「不在磁盘上」，但那是真改动
+// （假阴性第二形态）。所以三个条件都要：名字是保留名、磁盘没有、HEAD 里也没有。
 func IsPhantomPath(root, p string) bool {
-	return IsReserved(p) && !existsOnDisk(root, p)
+	if !IsReserved(p) || existsOnDisk(root, p) {
+		return false
+	}
+	return !trackedInHead(root, p)
 }
 
 // LineHasReservedPath 判断一行 git status 是否【整行】都是不存在的保留名路径。
@@ -57,7 +77,7 @@ func LineHasReservedPath(root, line string) bool {
 		if IsReserved(p) {
 			reserved = true
 		}
-		if existsOnDisk(root, p) {
+		if existsOnDisk(root, p) || trackedInHead(root, p) {
 			return false
 		}
 	}
