@@ -44,12 +44,14 @@ func TestLineHasReservedPath(t *testing.T) {
 		}
 		return
 	}
-	for _, line := range []string{"?? nul/win.go", "?? internal/aux/helpers.go", " M con.txt", "R  a.go -> lpt1/x.go"} {
+	for _, line := range []string{"?? nul/win.go", "?? internal/aux/helpers.go", " M con.txt", "R  con.txt -> nul/x.go"} {
 		if !LineHasReservedPath(root, line) {
 			t.Fatalf("LineHasReservedPath(%q) = false, want true", line)
 		}
 	}
-	for _, line := range []string{" M internal/cli/docs.go", "?? README.md", "?? auxiliary/helpers.go"} {
+	// 重命名的源侧是非保留名时整行不是幻影：真实仓库里源文件通常还被 HEAD 跟踪，
+	// 拿它当幻影会把这行真改动吞掉（宁可多保留，不可漏改动）。
+	for _, line := range []string{" M internal/cli/docs.go", "?? README.md", "?? auxiliary/helpers.go", "R  a.go -> lpt1/x.go"} {
 		if LineHasReservedPath(root, line) {
 			t.Fatalf("LineHasReservedPath(%q) = true, want false", line)
 		}

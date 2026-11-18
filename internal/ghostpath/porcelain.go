@@ -72,16 +72,17 @@ func LineHasReservedPath(root, line string) bool {
 	if len(paths) == 0 {
 		return false
 	}
-	reserved := false
 	for _, p := range paths {
-		if IsReserved(p) {
-			reserved = true
+		// 一行里只要有一个非保留名路径，这行就不可能是「整行幻影」——先判名字，
+		// 免得为每个普通路径都 spawn 一次 git（complete advisory 会扫完全部脏行）。
+		if !IsReserved(p) {
+			return false
 		}
 		if existsOnDisk(root, p) || trackedInHead(root, p) {
 			return false
 		}
 	}
-	return reserved
+	return true
 }
 
 // FilterReserved 过滤掉幻影路径，保持其余顺序不变。
