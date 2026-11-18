@@ -321,6 +321,17 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		if rotations > 0 {
 			line += fmt.Sprintf(" · 换人 %d 次", rotations)
 		}
+		// 独立性只能靠「实现者 ≠ 评审者」验证：没登记实现者时如实说未验证，
+		// 而不是默认独立（同 id 自批的风险由 task start --agent 记录来暴露）。
+		if state.Implementer != "" {
+			verdict := "独立"
+			if strings.EqualFold(strings.TrimSpace(state.Implementer), strings.TrimSpace(reviewer)) {
+				verdict = "与实现者同一 id（独立性未通过）"
+			}
+			line += fmt.Sprintf(" · 实现者 %s（%s）", state.Implementer, verdict)
+		} else {
+			line += " · 实现者未记录（独立性未验证）"
+		}
 		rep.ReviewChainLine = line
 	}
 	return rep, nil

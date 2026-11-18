@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/doclint"
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 	"github.com/spf13/cobra"
 )
 
@@ -183,6 +184,9 @@ func changedMarkdownSince(root, base string) ([]string, error) {
 	for _, line := range strings.Split(string(out), "\n") {
 		p := filepath.ToSlash(strings.TrimSpace(line))
 		if p == "" || !strings.HasSuffix(strings.ToLower(p), ".md") || strings.HasPrefix(p, "spec/changes/") {
+			continue
+		}
+		if ghostpath.IsReserved(p) {
 			continue
 		}
 		seen[p] = true

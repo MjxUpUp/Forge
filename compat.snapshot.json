@@ -1024,6 +1024,7 @@
         "accept",
         "accept-file",
         "accept-red",
+        "agent",
         "allow-empty-criteria",
         "allow-green",
         "assert",

@@ -47,7 +47,7 @@ func GateTask(ctx context.Context, root, id string, taskNo int, opts GateOptions
 		return nil, fmt.Errorf("change: 任务 %d 没写判据编号——在任务行末尾加「（判据：acceptance #N）」才能单独 gate", taskNo)
 	}
 
-	if err := requireClarify(c, id); err != nil {
+	if err := RequireClarify(c, id); err != nil {
 		return nil, err
 	}
 	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {

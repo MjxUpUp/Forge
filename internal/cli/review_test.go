@@ -622,3 +622,33 @@ func TestReviewTestDiff_CommittedFormCaught(t *testing.T) {
 		t.Fatal(`已提交形态的测试变更在二轮盖章必须落 test-diff 行（P2-3 回归钉）`)
 	}
 }
+
+// TestReviewIndependence_RejectsImplementer：评审者不能是实现者本人——同 id 自批在
+// 旧机制里只被「必须换新 reviewer」间接挡住；现在复审允许复用同一 reviewer（为了收敛），
+// 独立性必须由「实现者 ≠ 评审者」显式校验。
+func TestReviewIndependence_RejectsImplementer(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+
+	const ref = `feat/independence`
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{
+		TaskRef:     ref,
+		Branch:      ref,
+		Implementer: "impl-agent-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runReviewPassAt(dir, ref, "", "impl-agent-1")
+	if err == nil || !strings.Contains(err.Error(), "实现者") {
+		t.Fatalf("实现者自批必须被拒, got %v", err)
+	}
+	if err := runReviewPassAt(dir, ref, "", "review-agent-2"); err != nil {
+		t.Fatalf("独立评审者应放行: %v", err)
+	}
+}

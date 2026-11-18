@@ -40,6 +40,7 @@ func TestRedAttempts_CheckRedFirst(t *testing.T) {
 		return &tasktypes.TaskState{
 			TaskRef:    "feat/x",
 			Acceptance: []tasktypes.AcceptanceCriterion{{Run: "true", Passed: true}},
+			HeadCommit: head,
 		}
 	}
 
@@ -88,6 +89,8 @@ func TestRedAttempts_CheckRedFirst(t *testing.T) {
 
 	t.Run("红记录来自改写掉的历史拒绝", func(t *testing.T) {
 		s := green()
+		// HeadCommit 与红记录 head 相同，才会走到祖先校验；否则先被「未绑定开工时刻」拦。
+		s.HeadCommit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 		s.RedAttempts = []tasktypes.RedAttempt{{Run: "true", Exit: 1, Head: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", At: time.Now().UTC().Format(time.RFC3339)}}
 		err := CheckRedFirst(dir, s)
 		if err == nil || !strings.Contains(err.Error(), "不在当前分支历史里") {
@@ -151,6 +154,7 @@ func TestTaskComplete_RedFirst(t *testing.T) {
 	green := func() *tasktypes.TaskState {
 		return &tasktypes.TaskState{
 			Acceptance:  []tasktypes.AcceptanceCriterion{{Run: "test -f f.txt", Passed: true}},
+			HeadCommit:  head,
 			RedAttempts: []tasktypes.RedAttempt{{Run: "test -f f.txt", Exit: 1, Head: head}},
 		}
 	}
@@ -232,6 +236,7 @@ func TestRedAttempts_GoTestNormalized(t *testing.T) {
 
 	s := &tasktypes.TaskState{
 		Acceptance:  []tasktypes.AcceptanceCriterion{{Run: "go test -v ./...", Passed: true}},
+		HeadCommit:  head,
 		RedAttempts: []tasktypes.RedAttempt{{Run: "go test ./...", Exit: 1, Head: head}},
 	}
 	if err := CheckRedFirst(dir, s); err != nil {
@@ -245,5 +250,44 @@ func TestReportEscapeHatch_ZeroCriteria(t *testing.T) {
 	rep, _ := buildTaskReport("/repo", s)
 	if !strings.Contains(rep.RedFirstLine, "--allow-empty-criteria 留痕") {
 		t.Fatalf("零判据任务的交付单必须披露留痕, got %q", rep.RedFirstLine)
+	}
+}
+
+// TestRedAttempts_BackdatedCommits：红快照只能由 task start 当场拍下。若任务开工
+// 之后混进了「提交时间早于开工时间」的提交，说明红快照是事后 checkout 回基线补拍的，
+// 必须拒绝（review-rfe-1 P2-a）。
+func TestRedAttempts_BackdatedCommits(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+	start := gitHeadForTest(t, dir)
+	started := time.Now().UTC()
+
+	cmd := exec.Command("git", "commit", "--allow-empty", "-m", "backdated")
+	cmd.Dir = dir
+	// 提交时间早于开工时间 10 分钟：这是「先开工、再回补一个假红」的典型形态。
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_DATE="+started.Add(-10*time.Minute).Format(time.RFC3339),
+		"GIT_COMMITTER_DATE="+started.Add(-10*time.Minute).Format(time.RFC3339),
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("backdated commit: %v %s", err, out)
+	}
+
+	s := &tasktypes.TaskState{
+		Acceptance:  []tasktypes.AcceptanceCriterion{{Run: "true", Passed: true}},
+		HeadCommit:  start,
+		StartedAt:   started,
+		RedAttempts: []tasktypes.RedAttempt{{Run: "true", Exit: 1, Head: start, At: started.Format(time.RFC3339)}},
+	}
+	err := CheckRedFirst(dir, s)
+	if err == nil || !strings.Contains(err.Error(), "可疑") {
+		t.Fatalf("开工后出现早于开工时间的提交必须报可疑, got %v", err)
 	}
 }
