@@ -121,3 +121,15 @@ func TestParseFindings_RejectsBlankAndDuplicate(t *testing.T) {
 		t.Fatal("重复 ID 必须被拒")
 	}
 }
+
+// TestWaivedHasReason_RejectsInvisible 钉住：只由不可见字符组成的「原因」不算原因。
+func TestWaivedHasReason_RejectsInvisible(t *testing.T) {
+	for _, bad := range []string{"- [~] P1-a (waived: \u200c)", "- [~] P1-a (waived: \ufeff)", "- [~] P1-a （waived：\u3000）"} {
+		if _, err := parseFindings(bad); err == nil {
+			t.Errorf("只有不可见字符/空白的原因应被拒: %q", bad)
+		}
+	}
+	if _, err := parseFindings("- [~] P1-a (waived: 需要时间线证明)"); err != nil {
+		t.Errorf("真实原因应通过: %v", err)
+	}
+}

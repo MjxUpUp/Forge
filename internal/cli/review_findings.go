@@ -86,6 +86,9 @@ func waivedHasReason(text string) bool {
 		rest = strings.TrimRightFunc(rest, func(r rune) bool {
 			return unicode.IsSpace(r) || r == ')' || r == '）'
 		})
+		// 只认可打印字符：零宽连接符（U+200C）、BOM（U+FEFF）这类不可见字符
+		// 看着像「写了原因」，实际什么都没说——上一轮 review-rfe-1 用它们绕过了。
+		rest = strings.TrimFunc(rest, func(r rune) bool { return !unicode.IsGraphic(r) })
 		if rest != "" {
 			return true
 		}
