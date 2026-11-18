@@ -47,7 +47,7 @@ func CheckCompleteReviewPrereqs(root string, state *TaskState) error {
 			// 基线不可达：历史被 amend/rebase 或 gc 改写。无法证明工作区内容就是审查时的那份，
 			// 因此不放行——「审后改码必须重审」是这轮的核心承诺，fail-open 会把它变成
 			// 「git commit --amend + git gc」三步绕过（review-ruthless-4 P2-A 实证）。
-			return GateBlocked("task-complete 拒绝：审查基线 commit %s 不可达（%v）——历史被改写后无法证明工作区仍是审查过的那份。HARD stop——请派新的只读 reviewer 重新审当前 diff，并用 `forge review pass --reviewer <新 id>` 刷新基线", state.ReviewedHeadCommit, err)
+			return GateBlocked("task-complete 拒绝：审查基线 commit %s 不可达（%v）——历史被改写后无法证明工作区仍是审查过的那份。HARD stop——请派新的只读 reviewer 重新审当前 diff，并用 `forge review pass --reviewer <新 id> --rotate-reviewer --reason '基线被改写'` 刷新基线", state.ReviewedHeadCommit, err)
 		} else if cur != state.ReviewedChangeHash {
 			// 复审指引单一真相源在 review.ReReviewGuidance（连续性：同一个 reviewer 承接）。
 			return GateBlocked("task-complete 拒绝：审查通过后检测到源码变更（基线 HEAD=%s）。HARD stop——%s（基线有源码变更时裸 `forge review pass` 会被拒：须由同一个 code-review reviewer 复审）", state.ReviewedHeadCommit, review.ReReviewGuidance)

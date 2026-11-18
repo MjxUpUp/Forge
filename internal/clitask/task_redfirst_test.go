@@ -214,3 +214,36 @@ func TestTaskComplete_RedFirstBlocks(t *testing.T) {
 		t.Fatalf("拒绝理由应含「未闭合」: %s %s", out, errs)
 	}
 }
+
+// TestRedAttempts_GoTestNormalized 钉住 go test 的 -v 归一化：task start 会把带
+// expected 的 `go test …` 改写成 `go test -v …`，而 --accept-red 原样记录；
+// 不归一化就会在 complete 处永久死锁（review-rfe-1 P1-c 实证）。
+func TestRedAttempts_GoTestNormalized(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@t.com")
+	runGit(t, dir, "config", "user.name", "T")
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "init")
+	head := gitHeadForTest(t, dir)
+
+	s := &tasktypes.TaskState{
+		Acceptance:  []tasktypes.AcceptanceCriterion{{Run: "go test -v ./...", Passed: true}},
+		RedAttempts: []tasktypes.RedAttempt{{Run: "go test ./...", Exit: 1, Head: head}},
+	}
+	if err := CheckRedFirst(dir, s); err != nil {
+		t.Fatalf("go test 判据按 -v 归一化后应视为同一 run: %v", err)
+	}
+}
+
+// TestReportEscapeHatch_ZeroCriteria 钉住逃生舱留痕在「零判据 + 零红记录」时仍披露。
+func TestReportEscapeHatch_ZeroCriteria(t *testing.T) {
+	s := &tasktypes.TaskState{AllowEmptyCriteria: true}
+	rep, _ := buildTaskReport("/repo", s)
+	if !strings.Contains(rep.RedFirstLine, "--allow-empty-criteria 留痕") {
+		t.Fatalf("零判据任务的交付单必须披露留痕, got %q", rep.RedFirstLine)
+	}
+}

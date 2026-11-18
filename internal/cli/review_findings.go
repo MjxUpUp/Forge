@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 // reviewFinding 是评审问题清单里的一条。
@@ -22,9 +23,11 @@ type reviewFinding struct {
 }
 
 // parseFindings 解析评审问题清单。空行与 markdown 标题忽略；其余非清单行、以及
-// 缺 id 的清单项一律报错——宽容解析会让「未闭合项承接」变成可绕过的散文。
+// 缺 id、id 重复的清单项一律报错——宽容解析会让「未闭合项承接」变成可绕过的散文，
+// 重复 id 会让「哪一行算数」变成隐式约定（review-rfe-1 P3-i 实证）。
 func parseFindings(raw string) ([]reviewFinding, error) {
 	var out []reviewFinding
+	seen := map[string]bool{}
 	for _, line := range strings.Split(raw, "\n") {
 		t := strings.TrimSpace(line)
 		lower := strings.ToLower(t)
@@ -50,6 +53,10 @@ func parseFindings(raw string) ([]reviewFinding, error) {
 		}
 		f.ID = strings.TrimSuffix(fields[0], ":")
 		f.Text = strings.TrimSpace(t)
+		if seen[strings.ToLower(f.ID)] {
+			return nil, fmt.Errorf("清单里 ID 重复：%s（同一 id 只能出现一次）", f.ID)
+		}
+		seen[strings.ToLower(f.ID)] = true
 		if f.Waived {
 			// 豁免必须写明原因：`- [~] id` 不带原因等于让上一轮的未闭合项
 			// 无声消失（review-rfe-1 P2-b 实证过）。
@@ -62,7 +69,9 @@ func parseFindings(raw string) ([]reviewFinding, error) {
 	return out, nil
 }
 
-// waivedHasReason 判断豁免是否带了非空原因：接受半角/全角括号与冒号。
+// waivedHasReason 判断豁免是否带了非空原因：接受半角/全角括号与冒号；
+// 原因里只有空白（含全角空格、零宽空格）不算原因——否则「豁免必须写原因」
+// 退化成敲一个全角空格（review-rfe-1 P2-e 实证）。
 func waivedHasReason(text string) bool {
 	lower := strings.ToLower(text)
 	for _, marker := range []string{"(waived", "（waived"} {
@@ -71,8 +80,12 @@ func waivedHasReason(text string) bool {
 			continue
 		}
 		rest := lower[idx+len(marker):]
-		rest = strings.TrimLeft(rest, " :：\t")
-		rest = strings.TrimRight(rest, ")） \t")
+		rest = strings.TrimLeftFunc(rest, func(r rune) bool {
+			return unicode.IsSpace(r) || r == 0x200b || r == ':' || r == '：'
+		})
+		rest = strings.TrimRightFunc(rest, func(r rune) bool {
+			return unicode.IsSpace(r) || r == ')' || r == '）'
+		})
 		if rest != "" {
 			return true
 		}

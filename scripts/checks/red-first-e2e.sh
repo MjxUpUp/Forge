@@ -109,4 +109,29 @@ case "$report" in
   *) echo "red-first-e2e: report 缺少评审连续性：$report" >&2; exit 1 ;;
 esac
 
+
+# go test 判据的红→绿闭环：start 会把带 expected 的 `go test ./...` 改写成
+# `go test -v ./...`，而 --accept-red 原样记录——不归一化就会在 complete 处死锁
+# （review-rfe-1 P1-c）。这里真跑一遍，保证归一化不是单测里的自说自话。
+gwork="$work/gotest"
+mkdir -p "$gwork"
+(
+  cd "$gwork" || exit 1
+  git init -q . && git config user.email e2e@example.com && git config user.name e2e
+  printf 'module example.com/gv\n\ngo 1.21\n' > go.mod
+  printf 'package gv\n' > gv.go
+  printf 'package gv\n\nimport "testing"\n\nfunc TestBroken(t *testing.T) { t.Fatal("red on purpose") }\n' > gv_test.go
+  FORGE_DATA_HOME="$data" "$BIN" init >/dev/null
+  git add -A && git commit -qm red
+  FORGE_DATA_HOME="$data" "$BIN" task start --ref feat/gv --branch --accept "go test ./... :: PASS" --accept-red "go test ./..." >/dev/null
+  printf 'package gv\n' > gv.go
+  printf 'package gv\n\nimport "testing"\n\nfunc TestBroken(t *testing.T) {}\n' > gv_test.go
+  git add . && git commit -qm "green"
+  FORGE_DATA_HOME="$data" "$BIN" task gate task-implement >/dev/null
+  FORGE_DATA_HOME="$data" "$BIN" task verify-acceptance >/dev/null
+  FORGE_DATA_HOME="$data" "$BIN" review pass --ref feat/gv --reviewer e2e-gv >/dev/null
+  FORGE_DATA_HOME="$data" "$BIN" task gate task-complete >/dev/null
+  FORGE_DATA_HOME="$data" "$BIN" task complete >/dev/null
+) || { echo "red-first-e2e: go test 判据的红→绿闭环失败（-v 归一化）"; exit 1; }
+
 echo "red-first-e2e: ok（红→绿闭环、换人拒绝、同人复审放行、report 两行披露）"

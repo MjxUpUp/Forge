@@ -246,6 +246,16 @@ func hasFileAssertion(cs []AcceptanceCriterion) bool {
 	return false
 }
 
+// NormalizeGoTestRun 把一条判据命令归一化到「go test」的 verbose 形态：带 expected
+// 的验收在 task start 会被改写成 `go test -v ...`，而 --accept-red 原样记录。红绿
+// 比较若整串比较，合法流程会在 complete 处永久死锁——两侧都过这里。
+func NormalizeGoTestRun(run string) string {
+	if rewritten, ok := ensureGoTestVerboseRun(strings.TrimSpace(run)); ok {
+		return rewritten
+	}
+	return strings.TrimSpace(run)
+}
+
 // ensureGoTestVerboseRun 是 EnsureGoTestVerbose 的单命令核心：run 是不带任何 -v 变体
 // 的 `go test ...` 时返回 ok=true 与改写后命令；否则原样返回 (run, false)。
 func ensureGoTestVerboseRun(run string) (string, bool) {

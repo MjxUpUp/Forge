@@ -265,10 +265,22 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 			rep.DocReviewLine += " · 自查（独立性未校验）"
 		}
 	}
-	if len(state.RedAttempts) == 0 && len(state.Acceptance) > 0 {
-		rep.RedFirstLine = "未登记（判据开工时没失败过——测试先行的机械证据缺失；用 --accept-red 登记先失败判据）"
+	// 逃生舱留痕必须与「有无红记录」解耦：--allow-empty-criteria 的典型场景正是
+	// 零判据零红记录，拼在 len(RedAttempts)>0 分支里等于最该披露时恰好不出现
+	// （review-rfe-1 P3-d 实证）。
+	hatchNotes := make([]string, 0, 2)
+	if state.AllowGreen {
+		hatchNotes = append(hatchNotes, "--allow-green 留痕")
 	}
-	if len(state.RedAttempts) > 0 {
+	if state.AllowEmptyCriteria {
+		hatchNotes = append(hatchNotes, "--allow-empty-criteria 留痕")
+	}
+	suffix := ""
+	if len(hatchNotes) > 0 {
+		suffix = "；" + strings.Join(hatchNotes, "；")
+	}
+	switch {
+	case len(state.RedAttempts) > 0:
 		red, turned := 0, 0
 		for _, r := range state.RedAttempts {
 			if r.Exit != 0 {
@@ -278,13 +290,11 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 				}
 			}
 		}
-		rep.RedFirstLine = fmt.Sprintf("%d 条（开工时失败 %d），其中已转绿 %d", len(state.RedAttempts), red, turned)
-		if state.AllowGreen {
-			rep.RedFirstLine += "；--allow-green 留痕"
-		}
-		if state.AllowEmptyCriteria {
-			rep.RedFirstLine += "；--allow-empty-criteria 留痕"
-		}
+		rep.RedFirstLine = fmt.Sprintf("%d 条（开工时失败 %d），其中已转绿 %d", len(state.RedAttempts), red, turned) + suffix
+	case len(state.Acceptance) > 0:
+		rep.RedFirstLine = "未登记（判据开工时没失败过——测试先行的机械证据缺失；用 --accept-red 登记先失败判据）" + suffix
+	case len(hatchNotes) > 0:
+		rep.RedFirstLine = "未登记（任务没有登记验收判据）" + suffix
 	}
 	if n := len(state.ReviewRounds); n > 0 {
 		last := state.ReviewRounds[n-1]
@@ -300,11 +310,7 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 			line += fmt.Sprintf(" · 上轮未闭合 %d", state.ReviewRounds[n-2].OpenFindings)
 		}
 		if last.CriteriaReviewed != nil {
-			if total := len(state.Acceptance); total > 0 {
-				line += fmt.Sprintf(" · 认领判据 %d/%d 条", *last.CriteriaReviewed, total)
-			} else {
-				line += fmt.Sprintf(" · 认领判据 %d 条", *last.CriteriaReviewed)
-			}
+			line += fmt.Sprintf(" · 认领判据 %d/%d 条", *last.CriteriaReviewed, len(state.Acceptance))
 		}
 		rotations := 0
 		for _, r := range state.ReviewRounds {

@@ -110,3 +110,14 @@ func TestReviewFindingsCarry(t *testing.T) {
 		t.Errorf("本轮应记 0 未闭合 / 2 已关闭, got %+v", last)
 	}
 }
+
+// TestParseFindings_RejectsBlankAndDuplicate 钉住两条退路：豁免原因只写空白
+// （含全角空格）不算原因；同一 id 出现两次时「哪行生效」不该靠猜。
+func TestParseFindings_RejectsBlankAndDuplicate(t *testing.T) {
+	if _, err := parseFindings("- [~] P1-a (waived: \u3000)\n"); err == nil {
+		t.Fatal("全角空格的豁免原因必须被拒")
+	}
+	if _, err := parseFindings("- [x] P1-a 关\n- [ ] P1-a 又开\n"); err == nil {
+		t.Fatal("重复 ID 必须被拒")
+	}
+}

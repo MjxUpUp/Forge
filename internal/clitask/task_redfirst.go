@@ -37,17 +37,19 @@ func CheckRedFirst(root string, s *tasktypes.TaskState) error {
 			return fmt.Errorf("先失败证明缺失：%q 的红记录来自 %s，它不在当前分支历史里——红证据必须来自本任务开工时的同一历史", run, shortSHA(r.Head))
 		}
 		if !hasPassingGreen(s, run) {
-			return fmt.Errorf("先失败证明未闭合：%q 开工时确实失败过，但同一 run 的绿判据现在没有通过记录。先跑 `forge task verify-acceptance` 让它转绿（task complete 不接受只红不绿）", run)
+			return fmt.Errorf("先失败证明未闭合：%q 开工时确实失败过，但同一 run 的绿判据现在没有通过记录（go test 判据会按 -v 归一化后比较）。确认红判据与绿判据是同一条命令，且绿判据已在 verify-acceptance 里通过", run)
 		}
 	}
 	return nil
 }
 
-// hasPassingGreen 找同一 Run 且已通过的绿判据。Run 按去空白后整串比较——
-// 预跑与 verify-acceptance 用的是同一字符串，不做模糊匹配。
+// hasPassingGreen 找同一 Run 且已通过的绿判据。两侧都过 NormalizeGoTestRun：
+// task start 会把带 expected 的 `go test …` 改写成 `go test -v …`，而 --accept-red
+// 原样记录——整串比较会让合法流程永不匹配（review-rfe-1 P1-c 实证）。
 func hasPassingGreen(s *tasktypes.TaskState, run string) bool {
+	want := taskpipeline.NormalizeGoTestRun(run)
 	for _, c := range s.Acceptance {
-		if strings.TrimSpace(c.Run) == run && c.Passed {
+		if taskpipeline.NormalizeGoTestRun(c.Run) == want && c.Passed {
 			return true
 		}
 	}
