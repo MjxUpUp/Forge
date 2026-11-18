@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -788,4 +789,53 @@ func TestKnownReviewed_ContentAddressedFilenameMatch(t *testing.T) {
 	if _, ok := knownReviewed(root, target); !ok {
 		t.Fatal("legacy <branch>.stamp 的内容命中必须保留（读兼容）")
 	}
+}
+
+// TestChangedSourceFilesSince_SkipsReservedDeviceNames 复现幻影源码树：Windows 上
+// 用 `\\?\` 前缀可以真的建出 `nul/` 目录（普通 API 建不了），git 随后会把它当
+// 未跟踪目录列出来。评审的文件枚举必须跳过，否则审查快照会跟工作区状态对不上
+// （实测：删掉幻影目录后 gate 报「审查通过后源码变更」）。
+func TestChangedSourceFilesSince_SkipsReservedDeviceNames(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("保留设备名是 Windows 特有的形态")
+	}
+	dir := initGitRepo(t)
+	ext := `\\?\` + filepath.Join(dir, "nul")
+	if err := os.MkdirAll(ext, 0o755); err != nil {
+		t.Skipf("无法用扩展路径建出 nul/：%v", err)
+	}
+	defer os.RemoveAll(ext)
+	if err := os.WriteFile(filepath.Join(ext, "win.go"), []byte("package nul\n"), 0o644); err != nil {
+		t.Skipf("无法在 nul/ 下写文件：%v", err)
+	}
+
+	// 另一个真实的新源码文件必须在列，证明过滤没有误伤。
+	write(t, dir, "real.go", "package real\n")
+	_, untracked := changedSourceFilesSince(dir, "HEAD")
+	for _, f := range untracked {
+		if strings.Contains(f, "nul/") || strings.HasPrefix(f, "nul") {
+			t.Errorf("changedSourceFilesSince 不该列出保留设备名幻影路径，got %q", f)
+		}
+	}
+	// 非 Windows 上 `aux.go` 是正常源码，不能被当成幻影过滤（ghostpath 只在
+	// Windows 判保留名）；这条断言防止 IsReserved 退化成「永远过滤」。
+	if runtime.GOOS != "windows" {
+		write(t, dir, "aux.go", "package aux\n")
+		_, untrackedAux := changedSourceFilesSince(dir, "HEAD")
+		if !containsFile(untrackedAux, "aux.go") {
+			t.Errorf("非 Windows 上 aux.go 应被列出，got %v", untrackedAux)
+		}
+	}
+	if !containsFile(untracked, "real.go") {
+		t.Errorf("真实新增源码文件应被列出，got %v", untracked)
+	}
+}
+
+func containsFile(files []string, want string) bool {
+	for _, f := range files {
+		if f == want {
+			return true
+		}
+	}
+	return false
 }

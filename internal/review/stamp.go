@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 	"log"
 	"os"
 	"os/exec"
@@ -546,7 +547,7 @@ func foreignWindow() time.Duration {
 
 // changedSourceFilesSince 返回自 baseCommit 起变更的【源码】文件，分 tracked（修改/删除，含
 // base..HEAD 已提交 + 工作区未提交）和 untracked（新增）。base=="" → HEAD。已排除 .forge/、
-// 非源码扩展、生成物路径。
+// 非源码扩展、生成物路径、Windows 保留设备名路径。
 func changedSourceFilesSince(root, baseCommit string) (tracked, untracked []string) {
 	base := baseCommit
 	if base == "" {
@@ -554,14 +555,14 @@ func changedSourceFilesSince(root, baseCommit string) (tracked, untracked []stri
 	}
 	if out, e := gitOut(root, "diff", "--name-only", base, "--", ".", ":(exclude).forge"); e == nil {
 		for _, f := range nonEmptyLines(out) {
-			if isSourceCode(f) {
+			if isSourceCode(f) && !ghostpath.IsReserved(f) {
 				tracked = append(tracked, f)
 			}
 		}
 	}
 	if out, e := gitOut(root, "ls-files", "--others", "--exclude-standard", "--", ".", ":(exclude).forge"); e == nil {
 		for _, f := range nonEmptyLines(out) {
-			if isSourceCode(f) {
+			if isSourceCode(f) && !ghostpath.IsReserved(f) {
 				untracked = append(untracked, f)
 			}
 		}

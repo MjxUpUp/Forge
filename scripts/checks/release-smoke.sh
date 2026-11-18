@@ -93,4 +93,27 @@ esac
   exit 1
 }
 
-echo "release-smoke: ok（建 change → 填产物 → verify 封印 → change check）"
+# 提交后再验一次：干净工作区的封印只绑提交（summary 有 head、没有 files）。
+# 之前的冒烟只覆盖了「脏工作区 + 文件指纹」这条路径，提交后证据是否仍被认账
+# 没验过——而用户的真实流程几乎总是「先提交、再封印」。
+git add -A
+git -c commit.gpgsign=false commit -q -m "smoke: seal evidence"
+"$BIN" change verify smoke >/dev/null
+latest="$(ls -1d spec/changes/smoke/evidence/* | sort | tail -1)"
+grep -q '"head"' "$latest/summary.json" || {
+  echo "release-smoke: 干净工作区封印应绑定 head，实际 summary:" >&2
+  cat "$latest/summary.json" >&2
+  exit 1
+}
+if grep -q '"files"' "$latest/summary.json"; then
+  echo "release-smoke: 干净工作区封印不该记 files（应只绑 head），实际 summary:" >&2
+  cat "$latest/summary.json" >&2
+  exit 1
+fi
+"$BIN" change check >/dev/null
+"$BIN" change status smoke | grep -q "verified" || {
+  echo "release-smoke: 提交后重验，status 未显示 verified" >&2
+  exit 1
+}
+
+echo "release-smoke: ok（建 change → 填产物 → verify 封印 → 提交后重验绑 head → change check）"

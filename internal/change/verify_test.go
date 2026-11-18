@@ -281,6 +281,12 @@ func fillScaffold(t *testing.T, dir string) {
 			t.Fatal(err)
 		}
 	}
+	// 新布局把 clarify 当 verify 的硬前置（人确认过边界）；夹具补一份，
+	// 让既有用例继续验证「标记消失后是否放行」这件事本身。
+	clarify := RenderClarify(filepath.Base(dir), "边界：只改本 change 涉及的文件。", "", time.Now())
+	if err := os.WriteFile(filepath.Join(dir, FileClarify), []byte(clarify), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func newGitRepo(t *testing.T) string {
@@ -1077,5 +1083,32 @@ func TestVerify_ScrubsLocalIdentityFromEvidence(t *testing.T) {
 	}
 	if home, herr := os.UserHomeDir(); herr == nil && home != `` && strings.Contains(got, home) {
 		t.Errorf("证据仍含真实主目录 %q：%q", home, got)
+	}
+}
+
+// TestVerify_NewLayoutRequiresClarify 钉住 clarify 是 verify 的硬前置（review-ruthless-4
+// P2-2：以前只有 phase 校验，verify 可以绕过，文档与命令不一致）。老布局不受影响，
+// 由 TestFastChange_OnlyNeedsProposalAndAcceptance 等既有用例覆盖。
+func TestVerify_NewLayoutRequiresClarify(t *testing.T) {
+	root, dir := repoWithChange(t, "demo")
+	fillScaffold(t, dir)
+	// 删掉夹具写好的 clarify：这正是「产物填完、但没人确认边界」的现场。
+	if err := os.Remove(filepath.Join(dir, FileClarify)); err != nil {
+		t.Fatal(err)
+	}
+	writeAcceptance(t, dir, "echo ok")
+
+	_, err := Verify(context.Background(), root, "demo", VerifyOptions{Timeout: 30 * time.Second})
+	if err == nil || !strings.Contains(err.Error(), FileClarify) {
+		t.Fatalf("缺 clarify 时必须拒绝 verify，got %v", err)
+	}
+
+	writeFile(t, filepath.Join(dir, FileClarify), RenderClarify("demo", "边界：只改本 change。", "", time.Now()))
+	res, err := Verify(context.Background(), root, "demo", VerifyOptions{Timeout: 30 * time.Second})
+	if err != nil {
+		t.Fatalf("补齐 clarify 后应放行：%v", err)
+	}
+	if !res.Summary.Sealed {
+		t.Fatal("应当封印")
 	}
 }

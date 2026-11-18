@@ -47,7 +47,7 @@
 2. `forge change new <id> --title "..."` 生成三份产物（`goal.md`、`change.md`、`acceptance.md`）。
    新 change 会留一个 `.goal-required` 标记：它让 goal.md 成为必填——删掉 goal.md 不再算「老 change」，verify 会直接拒绝。
 3. 依次填 goal → change → acceptance，并删掉每份文件里的 `forge:fill` 标记。
-   填完用 `forge change phase <id>` 确认走到 `ready`；缺 clarify.md 时先问用户边界与非目标，
+   填完用 `forge change phase <id>` 确认走到 `ready`；缺 clarify.md 时先问用户边界与非目标（verify 会拒绝没有 clarify 的 change），
    再 `forge change clarify <id> --by-human --note "…"` 记录（agent 不得自批）。
    启动任务时用 `forge task start --change <id>` 把 goal 钉成内容哈希；启动后改 goal.md 会让 `task-implement` BLOCKED（改目标等于改判据，重开任务）。
    goal 没填完时 `task start --change` 会报错（读不出三段必填段）；漂移后的恢复：还原 goal.md，或 `forge task abort` 后重新 `task start --change` 钉新哈希。
