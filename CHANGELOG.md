@@ -1,23 +1,21 @@
 # Changelog
 
-## Unreleased
+## [2.0.4](https://github.com/MjxUpUp/Forge/compare/v2.0.3...v2.0.4) (2026-11-18)
+
 
 ### ⚠ 升级注意
 
 * **`clarify.md` 成为 `change verify` / `change gate` 的硬前置**：三份布局（`goal.md` + `change.md` + `acceptance.md`）的 change 若还没记录 `人确认：<UTC>`，升级后 `verify`/`gate` 会直接拒绝（报错会给出 `forge change clarify <id> --by-human` 的修法）。老布局（`proposal.md`/`design.md`/`tasks.md`）不受影响。
-
-### Bug Fixes
-
-* review 的文件枚举跳过 Windows 保留设备名幻影路径（`nul/` 等），且该过滤只在 Windows 生效——Linux/macOS 上 `aux.go` 这类正常源码不会被误吞
-* change 证据的 `files` 指纹同样过滤保留设备名幻影路径，不再出现「什么都没改、`change check` 却报证据失效」
-
-## [2.0.4](https://github.com/MjxUpUp/Forge/compare/v2.0.3...v2.0.4) (2026-11-18)
 
 
 ### Bug Fixes
 
 * 按 review-leftovers-204 收紧——保留名过滤仅 Windows、证据侧同修、gate 同口径要 clarify ([8c6b1c4](https://github.com/MjxUpUp/Forge/commit/8c6b1c464385f51d8b8f00c0477263e75b56e218))
 * 闭合 2.0.3 遗留——保留名幻影树、clarify 硬前置、守卫与冒烟补路径 ([12af1a1](https://github.com/MjxUpUp/Forge/commit/12af1a15c1036bc20fefc8831a7ab9034d18dbc2))
+* review 的文件枚举跳过 Windows 保留设备名幻影路径（`nul/` 等），且该过滤只在 Windows 生效——Linux/macOS 上 `aux.go` 这类正常源码不会被误吞
+* change 证据的 `files` 指纹同样过滤保留设备名幻影路径，不再出现「什么都没改、`change check` 却报证据失效」
+* 发布冒烟改为真行为：临时仓库里建 change → 填产物 → 提交后重验（封印只绑 head）→ check；守卫脚本不再被空模式假绿
+
 
 ## [2.0.3](https://github.com/MjxUpUp/Forge/compare/v2.0.2...v2.0.3) (2026-11-17)
 
