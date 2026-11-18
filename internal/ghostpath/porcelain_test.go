@@ -141,3 +141,26 @@ func TestFilterReserved_DropsOnlyPhantom(t *testing.T) {
 		t.Fatalf("FilterReserved 必须只剔掉幻影路径，got %v", got)
 	}
 }
+
+// TestIsPhantomPath_ReservedDirSegmentIsAlwaysPhantom 钉住「保留名当目录」形态：
+// 哪怕磁盘上真有一个 nul/ 目录（\\?\ 可建），git 的常规 API 也管不了它，
+// 它不是源码——必须继续当幻影，否则 review 快照又会跟工作区状态对不上。
+func TestIsPhantomPath_ReservedDirSegmentIsAlwaysPhantom(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("保留名只在 Windows 上成立")
+	}
+	root := t.TempDir()
+	dir := `\\?\` + filepath.Join(root, "nul")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Skipf("无法用扩展路径建出 nul/：%v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "win.go"), []byte("package nul\n"), 0o644); err != nil {
+		t.Skipf("无法在 nul/ 下写文件：%v", err)
+	}
+	if !IsPhantomPath(root, "nul/win.go") {
+		t.Fatal("保留名目录段必须永远判幻影（磁盘上真存在也不算源码）")
+	}
+	if !LineHasReservedPath(root, "?? nul/win.go") {
+		t.Fatal("nul/win.go 的整行状态必须被判幻影")
+	}
+}

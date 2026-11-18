@@ -50,17 +50,45 @@ func trackedInHead(root, p string) bool {
 	return false
 }
 
-// IsPhantomPath 判断 p 是否是「git 报出来、但磁盘上不存在、也不在 HEAD 里」的保留名路径。
+// hasReservedDirSegment 报告路径的【目录段】里是否有保留设备名。
+//
+// Windows 的保留名指向设备，不是普通文件：`nul\win.go` 这种「保留名当目录」的路径
+// 在常规 API 下不可达，git 的 `\\?\` 视角却能建出来并列出——它永远是幻影，
+// 哪怕磁盘上真有一个这样的目录。单文件形态（`aux.go`）不同：那可能是一个真实
+// 源码文件，要靠磁盘/HEAD 判真假。
+func hasReservedDirSegment(p string) bool {
+	parts := strings.Split(filepath.ToSlash(strings.TrimSpace(p)), "/")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, seg := range parts[:len(parts)-1] {
+		if IsReserved(seg) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsPhantomPath 判断 p 是否是不会被 git 正常管理的保留名幻影路径。
+//
+// 三层判定：
+//   - 名字是保留名（非 Windows 恒假）；
+//   - HEAD 里没有跟踪它（跟踪中的文件被删是真改动，不能吞）；
+//   - 目录段是保留名（`nul/win.go`）→ 幻影；单文件保留名（`aux.go`）看磁盘是否存在。
 //
 // 只按名字过滤会把真实文件一起吞掉：Windows 上用 `\\?\` 前缀可以建出 `aux.go`，
 // git 照实列出，而它是真源码——把它当幻影会让工作区被误判为干净（假阴性）。
-// 只看磁盘也不够：删掉一个已提交的 `aux.go` 后它同样「不在磁盘上」，但那是真改动
-// （假阴性第二形态）。所以三个条件都要：名字是保留名、磁盘没有、HEAD 里也没有。
 func IsPhantomPath(root, p string) bool {
-	if !IsReserved(p) || existsOnDisk(root, p) {
+	if !IsReserved(p) {
 		return false
 	}
-	return !trackedInHead(root, p)
+	if trackedInHead(root, p) {
+		return false
+	}
+	if hasReservedDirSegment(p) {
+		return true
+	}
+	return !existsOnDisk(root, p)
 }
 
 // LineHasReservedPath 判断一行 git status 是否【整行】都是不存在的保留名路径。
@@ -75,10 +103,7 @@ func LineHasReservedPath(root, line string) bool {
 	for _, p := range paths {
 		// 一行里只要有一个非保留名路径，这行就不可能是「整行幻影」——先判名字，
 		// 免得为每个普通路径都 spawn 一次 git（complete advisory 会扫完全部脏行）。
-		if !IsReserved(p) {
-			return false
-		}
-		if existsOnDisk(root, p) || trackedInHead(root, p) {
+		if !IsReserved(p) || !IsPhantomPath(root, p) {
 			return false
 		}
 	}
