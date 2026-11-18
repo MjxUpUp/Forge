@@ -13,6 +13,21 @@
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
 
+## [2.1.2](https://github.com/MjxUpUp/Forge/compare/v2.1.1...v2.1.2) (2026-11-18)
+
+
+### Bug Fixes
+
+* **backlog-p3:** 幻影判定再收一层——HEAD 里仍跟踪的保留名文件不算幻影 ([098fed9](https://github.com/MjxUpUp/Forge/commit/098fed966198794ccb1e0d3b1ba4f26cc7391189))
+* **backlog-p3:** 幻影判定改看磁盘存在性，补顺序/接线测试与证据入库 ([3e00cce](https://github.com/MjxUpUp/Forge/commit/3e00cce4e4304474548ceb4275ba0d0ca100f864))
+* **backlog-p3:** 幻影路径判定收敛到 ghostpath，gate/verify preflight 顺序对齐 ([2863fd6](https://github.com/MjxUpUp/Forge/commit/2863fd6bec5556905eb08d596283a4d00aaa15a6))
+* **ghostpath:** 保留名当目录永远是幻影，单文件才看磁盘/HEAD ([938f4dd](https://github.com/MjxUpUp/Forge/commit/938f4dd2e3482e7cf52af8c3acc690c79e1df921))
+
+
+### Performance Improvements
+
+* **ghostpath:** 非保留名路径短路，不再为每行脏状态 spawn git ls-tree ([62c1f2b](https://github.com/MjxUpUp/Forge/commit/62c1f2bfc2ad451c0c3544609d19ff6eb063972a))
+
 ## [2.1.1](https://github.com/MjxUpUp/Forge/compare/v2.1.0...v2.1.1) (2026-11-18)
 
 
