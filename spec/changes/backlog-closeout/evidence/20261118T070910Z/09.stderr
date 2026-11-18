@@ -1,0 +1,15 @@
+ℹ️ 1 条验收标准没有期望输出（`::` 或无 expected）——只校验退出码；要校验输出写子串（匹配是 strings.Contains，不是正则）
+提示：本任务无 --plan-file/--goal——接续字段将为空（压缩/换窗口后现场靠 git 猜）；建议 task start 带 --plan-file <方案> 或 --goal <目标>，中途用 forge task decide/next 落盘（multi-ta[REDACTED] L6）
+advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标三段不在 git 里，评审只能靠标题猜意图
+ADVISORY: [ta[REDACTED]] 任务分支 feat/red 尚未合入主干 master——完成不等于交付（合入后再算交付）
+→ session-retrospective: 完成声明证据 Weak（ratio=0.40, deterministic=2/agent-claim=3）——deterministic 证据不足，核查声称的验证是否真发生过，低分维度：code-quality。回顾根因并按载体决策树沉淀（防再犯），完成后 `forge act retro-done --ref feat/red --carrier <memory|skill|claudemd|code|hook|ci|none> [--lesson <教训>]` 落 ack（否则 nudge 留面板）。`forge act show` 看结构化结论。
+ℹ️ 1 条验收标准没有期望输出（`::` 或无 expected）——只校验退出码；要校验输出写子串（匹配是 strings.Contains，不是正则）
+提示：本任务无 --plan-file/--goal——接续字段将为空（压缩/换窗口后现场靠 git 猜）；建议 task start 带 --plan-file <方案> 或 --goal <目标>，中途用 forge task decide/next 落盘（multi-ta[REDACTED] L6）
+advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标三段不在 git 里，评审只能靠标题猜意图
+ADVISORY: [ta[REDACTED]] 任务分支 feat/red-unclosed 尚未合入主干 master——完成不等于交付（合入后再算交付）
+ℹ️ 验收命令自动补 -v（go test 无 -v 时输出无 PASS 行，Expected 子串永不匹配）：go test ./...
+提示：本任务无 --plan-file/--goal——接续字段将为空（压缩/换窗口后现场靠 git 猜）；建议 task start 带 --plan-file <方案> 或 --goal <目标>，中途用 forge task decide/next 落盘（multi-ta[REDACTED] L6）
+advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标三段不在 git 里，评审只能靠标题猜意图
+⚠ [test-diff] 本次审查范围内含测试文件变更（gv_test.go）——「修测试使过」是修复回路最大嫌疑人：审查结论须单独说明测试变更的依据（预期变了？依据是什么？）；已落 test-diff 观察行
+ADVISORY: [ta[REDACTED]] 任务分支 feat/gv 尚未合入主干 master——完成不等于交付（合入后再算交付）
+→ session-retrospective: 完成声明证据 Weak（ratio=0.25, deterministic=1/agent-claim=3）——deterministic 证据不足，核查声称的验证是否真发生过，低分维度：code-quality。回顾根因并按载体决策树沉淀（防再犯），完成后 `forge act retro-done --ref feat/gv --carrier <memory|skill|claudemd|code|hook|ci|none> [--lesson <教训>]` 落 ack（否则 nudge 留面板）。`forge act show` 看结构化结论。
