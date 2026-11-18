@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -243,7 +244,12 @@ func GitBranchDirty(root string) (string, bool) {
 	}
 	dirty := false
 	if out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output(); err == nil {
-		dirty = strings.TrimSpace(string(out)) != ""
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.TrimSpace(line) != "" && !ghostpath.LineHasReservedPath(root, line) {
+				dirty = true
+				break
+			}
+		}
 	}
 	return branch, dirty
 }

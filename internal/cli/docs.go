@@ -186,15 +186,15 @@ func changedMarkdownSince(root, base string) ([]string, error) {
 		if p == "" || !strings.HasSuffix(strings.ToLower(p), ".md") || strings.HasPrefix(p, "spec/changes/") {
 			continue
 		}
-		if ghostpath.IsReserved(p) {
-			continue
-		}
 		seen[p] = true
 	}
 	files := make([]string, 0, len(seen))
 	for p := range seen {
 		files = append(files, p)
 	}
+	// 保留名幻影路径不是真文件：\?\ 能建出、git 会列出，但它们既不该算文档变更，
+	// 也不该被当源码审。判定走 ghostpath（磁盘存在就保留），一处定义、多处复用。
+	files = ghostpath.FilterReserved(root, files)
 	sort.Strings(files)
 	return files, nil
 }

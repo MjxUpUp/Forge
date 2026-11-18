@@ -234,14 +234,15 @@ func TestChangedFiles_PinsGhostpathFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(src), "ghostpath.IsReserved(line)") {
-		t.Fatal("changedFiles 必须用 ghostpath.IsReserved 过滤幻影路径（调用点被删会复活 scope 误判）")
+	if !strings.Contains(string(src), "ghostpath.IsPhantomPath(root, line)") {
+		t.Fatal("changedFiles 必须用 ghostpath.IsPhantomPath 过滤幻影路径（只漏磁盘上不存在的保留名）")
 	}
 	if runtime.GOOS == "windows" {
-		if !ghostpath.IsReserved("nul/win.go") {
-			t.Error("Windows 上 nul/win.go 应判为幻影路径")
+		root := t.TempDir()
+		if !ghostpath.IsPhantomPath(root, "nul/win.go") {
+			t.Error("Windows 上不存在的 nul/win.go 应判为幻影路径")
 		}
-		if ghostpath.IsReserved("internal/review/stamp.go") {
+		if ghostpath.IsPhantomPath(root, "internal/review/stamp.go") {
 			t.Error("普通源码路径不应被判为幻影")
 		}
 	}
