@@ -573,7 +573,14 @@ func runChangeStatus(cmd *cobra.Command, args []string) error {
 	if st.Fast {
 		fast = "  fast"
 	}
-	fmt.Printf("change: %s   stage: %s%s\n", st.ID, st.Stage, fast)
+	// Stage 是按「产物到哪了」算的旧口径（proposal/design/tasks），Phase 是开工前
+	// 的推进口径（specify→clarify→plan→tasks→ready）。三份布局下两者会分叉，两个都打
+	// 出来，避免「status 说 plan、phase 说 ready」的对不上。
+	phaseNote := ""
+	if st.Phase != "" && st.Phase != st.Stage {
+		phaseNote = fmt.Sprintf("（phase: %s）", st.Phase)
+	}
+	fmt.Printf("change: %s   stage: %s%s%s\n", st.ID, st.Stage, phaseNote, fast)
 	switch st.LastVerdict {
 	case "sealed":
 		fmt.Println("验证：已封印")

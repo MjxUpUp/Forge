@@ -488,7 +488,7 @@ type SessionLink struct {
 type TaskState struct {
 	TaskRef string `json:"task_ref"`
 	// LastReviewer 是最近一次 review pass 记录的评审者 id；源码变更后的复审必须是
-	// 一个新的 reviewer（同一 reviewer 的自证不再被接受）。
+	// 同一个 code-review 评审者承接（连续性）；换人须显式 rotate 并留痕。
 	LastReviewer string `json:"last_reviewer,omitempty"`
 	// Reviewers 是参与过复审的 reviewer id 集合：同一 id 不能给自己复审（
 	// 只记 LastReviewer 会被 alice→bob→alice 交替绕过）。
@@ -541,6 +541,30 @@ type TaskState struct {
 	// ReviewedHeadCommit/ReviewedChangeHash 重复（那两字段仍是快照校验的真相源；
 	// 本列表只加历史，对门禁零行为变化）。
 	ReviewRounds []ReviewRound `json:"review_rounds,omitempty"`
+
+	// Agents binds a role (code-review, implement, ...) to the sub-agent id that
+	// filled it. Review continuity reads it: once code-review is bound, later
+	// review passes must reuse that id (rotate explicitly with --rotate-reviewer).
+	//
+	// Agents 把角色（code-review/implement…）绑定到执行它的子 agent id。评审连续性
+	// 据此要求后续轮次复用同一 id（换人必须显式 --rotate-reviewer）。
+	Agents map[string]string `json:"agents,omitempty"`
+
+	// RedAttempts records the red-before-green evidence: each `task start
+	// --accept-red` command is executed once at task start and its exit code is
+	// kept. `task complete` requires every red run to have failed at start and its
+	// matching green criterion to pass now — the only mechanically checkable form
+	// of "tests first" that does not guess git history.
+	//
+	// RedAttempts 记录「先红后绿」证据：`task start --accept-red` 的每条命令在开工时
+	// 实跑一次并保留退出码。`task complete` 要求每条红命令开工时确实失败、且同一 Run
+	// 的绿判据现在通过——这是不猜 git 历史、又能机械核对的「测试先行」。
+	RedAttempts []RedAttempt `json:"red_attempts,omitempty"`
+	// AllowGreen marks an explicit --allow-green waiver (a red claim that already
+	// passed at start, e.g. a regression fix that is already covered).
+	AllowGreen bool `json:"allow_green,omitempty"`
+	// AllowEmptyCriteria 记下「带 --change 启动但零判据」的显式例外（F1 留痕）。
+	AllowEmptyCriteria bool `json:"allow_empty_criteria,omitempty"`
 
 	// DesignPhases is the design phase inferred by inferDesignPhases at the
 	// task-verify gate.
@@ -842,6 +866,17 @@ type TaskGateResult struct {
 	Silent bool `json:"silent,omitempty"`
 }
 
+// RedAttempt is one red-before-green probe taken at `task start --accept-red`.
+//
+// RedAttempt 是 `task start --accept-red` 在开工时做的一次「红」探测。
+type RedAttempt struct {
+	Run    string `json:"run"`
+	Exit   int    `json:"exit"`
+	Output string `json:"output,omitempty"`
+	Head   string `json:"head,omitempty"`
+	At     string `json:"at,omitempty"`
+}
+
 // ReviewRound records one `forge review pass` event (the reviewed snapshot +
 // when).
 //
@@ -850,6 +885,20 @@ type ReviewRound struct {
 	HeadCommit string    `json:"head_commit,omitempty"`
 	ChangeHash string    `json:"change_hash,omitempty"`
 	ReviewedAt time.Time `json:"reviewed_at"`
+	// Reviewer / OpenFindings / ClosedFindings / CriteriaReviewed / OpenIDs carry
+	// the continuity ledger: who reviewed this round, how many findings were open
+	// and closed, how many criteria the reviewer claimed to have checked, and the
+	// still-open finding ids the next round must carry forward.
+	//
+	// Reviewer/OpenFindings/ClosedFindings/CriteriaReviewed/OpenIDs 是评审连续性的
+	// 账本：谁审的、本轮未闭合/已关闭几条、认领核对了多少条判据、以及下一轮必须
+	// 承接的未闭合 id。它们只做记录与收敛校验，不参与分数计算。
+	Reviewer         string   `json:"reviewer,omitempty"`
+	RotatedFrom      string   `json:"rotated_from,omitempty"`
+	OpenFindings     int      `json:"open_findings,omitempty"`
+	ClosedFindings   int      `json:"closed_findings,omitempty"`
+	CriteriaReviewed *int     `json:"criteria_reviewed,omitempty"`
+	OpenIDs          []string `json:"open_ids,omitempty"`
 	// Note is the optional reviewer conclusion text from `forge review pass --note`
 	// (audit trail: what the reviewer concluded, not just that they stamped).
 	//
@@ -1078,15 +1127,23 @@ func (s *TaskState) MarkReviewPassed(headCommit, changeHash string) {
 // （`forge review pass --note`）记到追加的 ReviewRound 上——审计留痕不只记「盖过
 // 章」，还记 reviewer 的结论。
 func (s *TaskState) MarkReviewPassedWithNote(headCommit, changeHash, note string) {
+	s.MarkReviewPassedWithRound(headCommit, changeHash, note, ReviewRound{})
+}
+
+// MarkReviewPassedWithRound is MarkReviewPassedWithNote with a pre-filled round
+// (reviewer, findings ledger, criteria reviewed) — the continuity record.
+//
+// MarkReviewPassedWithRound 是带预填轮次字段的版本（评审者、未闭合/已关闭项、
+// 认领判据数）——评审连续性的账本。
+func (s *TaskState) MarkReviewPassedWithRound(headCommit, changeHash, note string, r ReviewRound) {
 	s.ReviewPassed = true
 	s.ReviewedHeadCommit = headCommit
 	s.ReviewedChangeHash = changeHash
-	s.ReviewRounds = append(s.ReviewRounds, ReviewRound{
-		HeadCommit: headCommit,
-		ChangeHash: changeHash,
-		ReviewedAt: time.Now(),
-		Note:       note,
-	})
+	r.HeadCommit = headCommit
+	r.ChangeHash = changeHash
+	r.ReviewedAt = time.Now()
+	r.Note = note
+	s.ReviewRounds = append(s.ReviewRounds, r)
 }
 
 // ReworkRounds derives the review-rework loop counts from recorded history:

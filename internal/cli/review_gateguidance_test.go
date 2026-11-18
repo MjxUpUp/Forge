@@ -35,7 +35,7 @@ func TestGateGuidanceCarriesReReviewTier(t *testing.T) {
 	a := strings.Index(gateGuidance, fresh)
 	b := strings.Index(gateGuidance, resume)
 	tier := strings.Index(gateGuidance, review.ReReviewGuidance)
-	mark := strings.Index(gateGuidance, "3. 审查通过后运行 `forge review pass`")
+	mark := strings.Index(gateGuidance, "3. 审查通过后运行 `forge review pass --reviewer <id>`")
 	if a < 0 || b < 0 || !(dispatch >= 0 && dispatch < a && a < b && b < tier && tier < mark) {
 		t.Errorf("须依次为：派发步 → (a) 首审/新会话新派 → (b) 复审条件前缀 → 分档指引 → 标记步，index dispatch=%d a=%d b=%d tier=%d mark=%d", dispatch, a, b, tier, mark)
 	}

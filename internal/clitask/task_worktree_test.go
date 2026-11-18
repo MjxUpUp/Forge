@@ -316,7 +316,7 @@ func TestTaskStart_WorktreeChangePinsWorktreeGoal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-wt", "--change", "flow", "--title", "flow wt")
+	stdout, stderr, code := runForge(t, tmpDir, "task", "start", "--worktree", "--ref", "feat/flow-wt", "--change", "flow", "--title", "flow wt", "--accept", "true ::")
 	if code != 0 {
 		t.Fatalf("task start --worktree --change failed: %s %s", stdout, stderr)
 	}

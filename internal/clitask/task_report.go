@@ -89,9 +89,13 @@ type taskReportJSON struct {
 	SelfReviewRound bool `json:"self_review_round,omitempty"`
 	// DocReviewLine 是 L2 文档回检的一行人读披露（1.87.2 dogfood 发现：complete 有 doc gate，
 	// 但交付单看不到回检分数/轮次/评审者，验收方无法据此决定抽查深度）。
-	DocReviewLine  string   `json:"doc_review_line,omitempty"`
-	SpecApprovedAt string   `json:"spec_approved_at,omitempty"`
-	Repro          []string `json:"repro"`
+	DocReviewLine string `json:"doc_review_line,omitempty"`
+	// RedFirstLine / ReviewChainLine 是 red-first-evidence 的两行人读事实：
+	// 先失败证明是否成立、评审者是谁/第几轮/承接了多少未闭合项。
+	RedFirstLine    string   `json:"red_first_line,omitempty"`
+	ReviewChainLine string   `json:"review_chain_line,omitempty"`
+	SpecApprovedAt  string   `json:"spec_approved_at,omitempty"`
+	Repro           []string `json:"repro"`
 	// ReqCoverage is the requirement-ID coverage (reqtrace.go); nil when the
 	// task never adopted requirement IDs.
 	//
@@ -260,6 +264,64 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		if d.SelfReview || d.Reviewer == "" {
 			rep.DocReviewLine += " · 自查（独立性未校验）"
 		}
+	}
+	// 逃生舱留痕必须与「有无红记录」解耦：--allow-empty-criteria 的典型场景正是
+	// 零判据零红记录，拼在 len(RedAttempts)>0 分支里等于最该披露时恰好不出现
+	// （review-rfe-1 P3-d 实证）。
+	hatchNotes := make([]string, 0, 2)
+	if state.AllowGreen {
+		hatchNotes = append(hatchNotes, "--allow-green 留痕")
+	}
+	if state.AllowEmptyCriteria {
+		hatchNotes = append(hatchNotes, "--allow-empty-criteria 留痕")
+	}
+	suffix := ""
+	if len(hatchNotes) > 0 {
+		suffix = "；" + strings.Join(hatchNotes, "；")
+	}
+	switch {
+	case len(state.RedAttempts) > 0:
+		red, turned := 0, 0
+		for _, r := range state.RedAttempts {
+			if r.Exit != 0 {
+				red++
+				if hasPassingGreen(state, strings.TrimSpace(r.Run)) {
+					turned++
+				}
+			}
+		}
+		rep.RedFirstLine = fmt.Sprintf("%d 条（开工时失败 %d），其中已转绿 %d", len(state.RedAttempts), red, turned) + suffix
+	case len(state.Acceptance) > 0:
+		rep.RedFirstLine = "未登记（判据开工时没失败过——测试先行的机械证据缺失；用 --accept-red 登记先失败判据）" + suffix
+	case len(hatchNotes) > 0:
+		rep.RedFirstLine = "未登记（任务没有登记验收判据）" + suffix
+	}
+	if n := len(state.ReviewRounds); n > 0 {
+		last := state.ReviewRounds[n-1]
+		reviewer := last.Reviewer
+		if reviewer == "" {
+			reviewer = "未记录评审者"
+		}
+		line := fmt.Sprintf("%s（第 %d 轮）", reviewer, n)
+		if last.OpenFindings+last.ClosedFindings > 0 {
+			line += fmt.Sprintf(" · 本轮未闭合 %d / 已关闭 %d", last.OpenFindings, last.ClosedFindings)
+		}
+		if n > 1 && state.ReviewRounds[n-2].OpenFindings > 0 {
+			line += fmt.Sprintf(" · 上轮未闭合 %d", state.ReviewRounds[n-2].OpenFindings)
+		}
+		if last.CriteriaReviewed != nil {
+			line += fmt.Sprintf(" · 认领判据 %d/%d 条", *last.CriteriaReviewed, len(state.Acceptance))
+		}
+		rotations := 0
+		for _, r := range state.ReviewRounds {
+			if r.RotatedFrom != "" {
+				rotations++
+			}
+		}
+		if rotations > 0 {
+			line += fmt.Sprintf(" · 换人 %d 次", rotations)
+		}
+		rep.ReviewChainLine = line
 	}
 	return rep, nil
 }
@@ -443,6 +505,12 @@ func renderTaskReport(rep *taskReportJSON) string {
 		review += " · ⚠ 含自审轮（盖章会话=改动生产者）"
 	}
 	fmt.Fprintf(&b, "│ 审查：%s · 对账单：%d/%d 勾\n", review, rep.ChecklistDone, rep.ChecklistTotal)
+	if rep.RedFirstLine != "" {
+		fmt.Fprintf(&b, "│ 先失败证明：%s\n", rep.RedFirstLine)
+	}
+	if rep.ReviewChainLine != "" {
+		fmt.Fprintf(&b, "│ 评审连续性：%s\n", rep.ReviewChainLine)
+	}
 	if rep.DocReviewLine != "" {
 		fmt.Fprintf(&b, "│ 文档回检：%s\n", rep.DocReviewLine)
 	}

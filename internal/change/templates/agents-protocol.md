@@ -16,6 +16,14 @@
   （实跑验收）、`git commit` → 只读子 agent 审查 diff → `forge review pass --reviewer <评审者 id>`
   → `forge task gate task-complete` → `forge task complete`。**只有两道门禁**（implement、complete）；
   review pass 是 complete 的硬前置。
+- **先失败证明**：判据要能证明「实现前它确实失败过」。开工时用 `--accept-red <命令>` 登记一条
+  当时失败、实现后应转绿的判据；`task complete` 会要求每条红判据在同一命令上已经转绿。
+  没有可失败的东西（纯文档/重构）不登记也行，但交付单会写「先失败证明：未登记」——
+  那是给评审看的缺口，不是可以顺手谎报的字段。
+- **评审者复用**：同一个任务由同一个 code-review 子 agent 连续复审（首轮 `--reviewer <id>` 绑定，
+  之后复用同一 id）——每轮换新 id 会把旧问题丢掉、永远收敛不了。确实需要换人时
+  `--rotate-reviewer --reason "<原因>"` 显式留痕；上一轮的未闭合项用 `--findings <清单>` 承接，
+  关闭或 `(waived: 原因)` 才放行。
 - **门禁是命令，不是 hook**：没有后台拦截（可选的 git pre-commit 除外），上面每一条
   都要你自己跑；不跑就等于没有门禁。
 - 刻意的一次性小改：先 `forge task wild "<说明>"` 申报，再改；不要用「顺手」绕过门禁。
@@ -81,11 +89,11 @@
 4. `forge task gate task-implement` → `forge task verify-acceptance`（实跑考卷并记确定性证据）。
    BLOCKED 先读它给的证据，不要换个说法重试；complete 会硬查验收已实跑且未过期。
 5. 改动里含 `.md` 时先过文档闸：`forge docs lint <文件>`。
-6. 提交、再审查、再记录、再完结——顺序是：`git commit` → 派**新的只读子 agent**
-   审查当前 diff → `forge review pass --score <0-100> --reviewer <评审者 id>` →
-   `forge task gate task-complete` → `forge task complete`。
-   `review pass` 是 task-complete 的硬前置；**同一个 reviewer 不能给自己复审**，
-   只接受新的 reviewer id。审查后改源码会因快照不一致被拒。
+6. 提交、再审查、再记录、再完结——顺序是：`git commit` → 派**负责本任务的 code-review
+   子 agent**（首轮绑定、之后复用同一 id）审查当前 diff → `forge review pass --score <0-100>
+   --reviewer <该 id> [--findings <上一轮清单>]` → `forge task gate task-complete` →
+   `forge task complete`。`review pass` 是 task-complete 的硬前置；审查后改源码会因快照
+   不一致被拒——由同一个 reviewer 复审（换人须 `--rotate-reviewer --reason`）。
 7. `forge task report --ref <分支名>` 出交付单（完成后必须带 `--ref`）；单里披露
    影响面（impact 的文档/测试建议），评审者未记录时会标出来。
 8. 卡住或方向错了：`forge task abort`（只清 state，不动代码）；逃生舱 `task override`

@@ -70,7 +70,7 @@ func TestEntryRoutingTaskFirstThenChange(t *testing.T) {
 	if !strings.Contains(out, "--change demo") {
 		t.Fatalf("ready change: next should advance to task start --change, got %s", out)
 	}
-	forge(t, dir, "task", "start", "--ref", "feat/demo3", "--title", "demo", "--change", "demo")
+	forge(t, dir, "task", "start", "--ref", "feat/demo3", "--title", "demo", "--change", "demo", "--accept", "true ::")
 	forge(t, dir, "task", "abort", "--ref", "feat/demo3")
 }
 

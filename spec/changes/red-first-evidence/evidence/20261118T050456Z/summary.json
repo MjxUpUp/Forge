@@ -1,0 +1,116 @@
+{
+  "change": "red-first-evidence",
+  "started_at": "2026-11-18T05:04:56Z",
+  "finished_at": "2026-11-18T05:05:50Z",
+  "passed": true,
+  "sealed": true,
+  "head": "3bc6e054d0961c487bb65d1b6eedd5a572084afe",
+  "diff_sha256": "9be2fba873f48a0a513ef846b01a335a3dd4f2794b1eff2041422ef7e77d9dcc",
+  "files": [
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "ec053ea97b81b7ba35302e34b926f2a72a95e61cd7bb47e0f42f9e32b8d0846d"
+    },
+    {
+      "path": "internal/cli/review.go",
+      "sha256": "82f68bae9807f3ff5e72a5e851c48c3ad38343be0635f6f20422264e67a74931"
+    },
+    {
+      "path": "internal/cli/review_findings.go",
+      "sha256": "b2010d4e9b3ca8449eb4998b86cfad0b5351048aabfc051a0defa9ac2399f89c"
+    },
+    {
+      "path": "internal/cli/review_test.go",
+      "sha256": "d1be4f366d878198d4934914848ce1f9be2d71f0957580f09eda5f3ba6e9c246"
+    },
+    {
+      "path": "internal/clitask/task_complete.go",
+      "sha256": "7c28476386ad2f1c6a57e762341f7583a85c1fe49689e82dbff087d5fc1fcdaf"
+    },
+    {
+      "path": "internal/clitask/task_redfirst_test.go",
+      "sha256": "0f9a85cd37a03a17db6b4c9e2538f999cc1af75fa15fb91229dbdf00e856c733"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "fb8f709df2e2a9d68d0b3ed240c7876eb332244d29f700d749e0484f5ad52b8d"
+    },
+    {
+      "path": "internal/taskpipeline/next.go",
+      "sha256": "35459defbcb5592c298a8cada17736ccb44ce643d1e8fcbabaa3ab6b2b5340f7"
+    },
+    {
+      "path": "internal/tasktypes/types.go",
+      "sha256": "74e508d3030f9008e9dae6acc5512251304f444d955ed11e408d26f02ad7f2c3"
+    },
+    {
+      "path": "scripts/checks/red-first-e2e.sh",
+      "sha256": "9ec44c28304598ea57480290f25b55dc51fba5082b608b0ffb4819922e811035"
+    }
+  ],
+  "acceptance_sha256": "e1b2383fab06d89e4188a86e87419564c5a1da49ff12813472a8e1f80550cb4c",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 4568
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/tasktypes/ ./internal/clitask/ -run 'TestRedAttempts|TestTaskStart_ChangeRequiresCriteria|TestTaskComplete_RedFirst' -count=1",
+      "exit": 0,
+      "duration_ms": 10323,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestReviewContinuity|TestReviewFindings|TestReviewCriteriaReviewed' -count=1",
+      "exit": 0,
+      "duration_ms": 14154,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go build -o /tmp/forge-redfirst ./cmd/forge",
+      "exit": 0,
+      "duration_ms": 2357
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/red-first-e2e.sh /tmp/forge-redfirst",
+      "exit": 0,
+      "duration_ms": 13841,
+      "stdout_file": "05.stdout",
+      "stderr_file": "05.stderr"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md READMEs/README.zh-CN.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 1425,
+      "stdout_file": "06.stdout"
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 272
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 6629
+    }
+  ]
+}

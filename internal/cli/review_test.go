@@ -74,10 +74,8 @@ func TestRenderReviewPassBlindSpot(t *testing.T) {
 // 静默。动机：快照闭环（task-complete 硬阻断）只强制循环的「形状」；旧
 // advisory 让修复者零复审零审计地自助刷新基线（真实 usage 日志案例：agent 被
 // HARD 拦后直接自己重跑 `forge review pass` 放行）。
-func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
+func TestReviewContinuity_ReworkRoundRequiresSameReviewer(t *testing.T) {
 	dir := t.TempDir()
-	// 真实 git 夹具：守卫触发条件是内容指纹增量，需要会动的 HEAD——裸临时目录
-	// 的 head/hash 恒空，永远不触发。
 	runGit(t, dir, `init`)
 	runGit(t, dir, `config`, `user.email`, `test@test.com`)
 	runGit(t, dir, `config`, `user.name`, `Test`)
@@ -86,12 +84,10 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 	runGit(t, dir, `commit`, `-m`, `initial`)
 
 	const ref = `feat/recheck-req`
-	state := &taskpipeline.TaskState{TaskRef: ref, Branch: `feat/recheck-req`}
-	if err := taskpipeline.SaveTaskState(dir, state); err != nil {
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{TaskRef: ref, Branch: ref}); err != nil {
 		t.Fatal(err)
 	}
 
-	// 第 1 轮：首次盖章——静默（无既有基线，不欠确认）。
 	first := captureStdout(t, func() {
 		if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 			t.Fatalf("runReviewPassAt 第 1 次: %v", err)
@@ -101,49 +97,31 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Errorf(`第 1 轮盖章不应出现复审提示（尚无修复发生），got: %q`, first)
 	}
 
-	// 第 2 轮且无代码变更（同状态重复盖章：瞬态重试/重建基线）——依旧静默：
-	// 无内容增量，无需确认。
 	repeat := captureStdout(t, func() {
 		if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
 			t.Fatalf("runReviewPassAt 无变更重盖: %v", err)
 		}
 	})
 	if strings.Contains(repeat, "复审") {
-		t.Errorf(`同状态重复盖章无需确认、应静默（触发条件是内容增量非轮次计数），got: %q`, repeat)
+		t.Errorf(`同状态重复盖章无需确认、应静默，got: %q`, repeat)
 	}
 
-	// 修复 + 提交 → 内容增量。同一 reviewer 的重盖章必须被【拒绝】，且拒绝文案
-	// 指明复审协议（换新的只读子 agent + --reviewer）。
+	// 修复 + 提交 → 内容增量。换人必须被拒：连续性要求同一个评审者承接。
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(1) }\n"), 0644)
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `fix: apply review findings`)
-	if err := runReviewPassAt(dir, ref, "", "rev-1"); err == nil {
-		t.Fatal("快照变更后的同一 reviewer 重盖章必须被拒绝")
-	} else if !strings.Contains(err.Error(), "复审") || !strings.Contains(err.Error(), "--reviewer") {
-		t.Errorf("拒绝文案须指明复审协议（新的只读子 agent + --reviewer），got: %v", err)
-	} else if !strings.Contains(err.Error(), review.ReReviewGuidance) {
-		t.Errorf("拒绝文案须携带分档复审指引（单一真相源 review.ReReviewGuidance），got: %v", err)
+	if err := runReviewPassAt(dir, ref, "", "rev-2"); err == nil {
+		t.Fatal("已绑定 rev-1 时，rev-2 复审必须被拒绝（评审者连续性）")
+	} else if !strings.Contains(err.Error(), "rev-1") || !strings.Contains(err.Error(), "rotate-reviewer") {
+		t.Errorf("拒绝文案须指明已绑定的 reviewer 与 --rotate-reviewer 出口，got: %v", err)
 	}
-	// 拒绝不得落章：仍恰为 2 轮。
 	if st, err := taskpipeline.LoadTaskState(dir, ref); err != nil || len(st.ReviewRounds) != 2 {
 		t.Fatalf("被拒绝的盖章不得追加 ReviewRound, err=%v rounds=%v", err, st)
 	}
 
-	// --note 不再是确认途径：同一 reviewer 带 note 同样被拒。
-	if err := runReviewPassAt(dir, ref, "复审结论：修复正确，无新发现", "rev-1"); err == nil {
-		t.Fatal("--note 不得再绕过复审要求（self-refresh 已移除）")
-	}
-
-	// reviewer id 归一化：尾随空白与大小写变体都不能冒充「换人」。
-	for _, sneaky := range []string{"rev-1 ", " REV-1", "Rev-1\t"} {
-		if err := runReviewPassAt(dir, ref, "", sneaky); err == nil {
-			t.Fatalf("reviewer %q 只是 rev-1 的空白/大小写变体，必须被拒绝", sneaky)
-		}
-	}
-
-	// 新的 reviewer 复审 → 放行，并记 WARN 级 self-refresh 审计。
-	if err := runReviewPassAt(dir, ref, "复审结论：修复正确，无新发现", "rev-2"); err != nil {
-		t.Fatalf("新的 reviewer 复审应放行: %v", err)
+	// 同一 reviewer 复审变更后的 diff → 放行，记 WARN 级 re-review 审计。
+	if err := runReviewPassAt(dir, ref, "复审结论：修复正确，无新发现", "rev-1"); err != nil {
+		t.Fatalf("同一 reviewer 复审应放行（连续性）: %v", err)
 	}
 	entries, err := checklog.LoadAll(dir)
 	if err != nil {
@@ -156,20 +134,27 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		}
 	}
 	if last == nil || last.Level != checklog.LevelWarn || !strings.Contains(last.Detail, "re-review") {
-		t.Errorf("换 reviewer 的复审须记 WARN self-refresh 审计, got %+v", last)
+		t.Errorf("同一 reviewer 的复审须记 WARN re-review 审计, got %+v", last)
+	}
+	if !strings.Contains(last.Detail, "reviewer=rev-1") {
+		t.Errorf("checklog 应记录评审者 id, got %q", last.Detail)
 	}
 
-	// 仅工作区增量（未提交修复）→ 已参与过的 reviewer 再拒；换新 reviewer 放行。
+	// id 归一化：空白/大小写变体只是 rev-1 本身，不得被当成换人。
+	if err := runReviewPassAt(dir, ref, "", " REV-1 "); err != nil {
+		t.Fatalf("rev-1 的空白/大小写变体就是同一评审者，应放行: %v", err)
+	}
+
+	// 工作区增量（未提交）同样由同一 reviewer 承接；换人仍拒。
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(2) }\n"), 0644)
-	if err := runReviewPassAt(dir, ref, "", "rev-2"); err == nil {
-		t.Fatal("工作区增量的同一 reviewer 重盖章同样必须被拒绝")
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err != nil {
+		t.Fatalf("工作区增量由同一 reviewer 复审应放行: %v", err)
 	}
-	if err := runReviewPassAt(dir, ref, "", "rev-3"); err != nil {
-		t.Fatalf("换新 reviewer 复审应放行: %v", err)
+	if err := runReviewPassAt(dir, ref, "", "rev-3"); err == nil {
+		t.Fatal("换人在未声明 --rotate-reviewer 时不得放行")
 	}
 
-	// 非源码增量：只 amend commit message（内容不变）→ 裸盖章照常放行且静默
-	// ——守卫区分源码内容变更与非源码变更（amend 不误伤）。
+	// 非源码增量：只 amend commit message（内容不变）→ 静默放行。
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `fix: workdir fix`)
 	runGit(t, dir, `commit`, `--amend`, `-m`, `fix: workdir fix (message only)`)
@@ -182,12 +167,18 @@ func TestRunReviewPassAt_ReworkRoundRequiresRecheck(t *testing.T) {
 		t.Errorf("非源码变更（amend message）应静默放行，got: %q", silent)
 	}
 
-	// 交替绕过：再提交一处源码变更，已参与过复审的 rev-2 必须被拒。
+	// 显式换人 + 理由：放行并更新绑定；之后旧 id 被拒。
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(4) }\n"), 0644)
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `fix: second real change`)
-	if err := runReviewPassAt(dir, ref, "", "rev-2"); err == nil {
-		t.Fatal("参与过复审的 reviewer 再次复审必须被拒绝（防止交替绕过）")
+	if err := runReviewPassAtOpts(dir, ref, "", "rev-3", reviewOptions{Rotate: true, Reason: "原评审者上下文已满"}); err != nil {
+		t.Fatalf("显式换人应放行: %v", err)
+	}
+	if err := runReviewPassAt(dir, ref, "", "rev-1"); err == nil {
+		t.Fatal("换人后旧 reviewer 不得再盖章（连续性跟随绑定）")
+	}
+	if st, err := taskpipeline.LoadTaskState(dir, ref); err != nil || st.Agents["code-review"] != "rev-3" {
+		t.Fatalf("换人后角色绑定应更新为 rev-3, got %+v err=%v", st.Agents, err)
 	}
 }
 
@@ -380,7 +371,7 @@ func TestRenderReviewStatus_ExplicitRef(t *testing.T) {
 // 时，同一 reviewer 的裸重盖章必须被拒——否则「审后改码 + 改写历史 + 再 --pass」
 // 能重置基线而不复审。换一个新的 reviewer 复审当前 diff 才允许，并记 WARN 级
 // baseline-unreachable 审计。
-func TestRunReviewPassAt_BaselineUnreachableRequiresNewReviewer(t *testing.T) {
+func TestReviewContinuity_BaselineUnreachableRequiresRotation(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, `init`)
 	runGit(t, dir, `config`, `user.email`, `test@test.com`)
@@ -416,6 +407,10 @@ func TestRunReviewPassAt_BaselineUnreachableRequiresNewReviewer(t *testing.T) {
 		t.Fatal("基线不可达时同一 reviewer 裸重盖章应被拒绝")
 	} else if !strings.Contains(err.Error(), "不可达") || !strings.Contains(err.Error(), "--reviewer") {
 		t.Errorf("拒绝文案应说明基线不可达并要求新 reviewer, got: %v", err)
+	} else if !strings.Contains(err.Error(), review.ReReviewGuidance) {
+		// 文案单一真相源：拒绝信息必须带上 review.ReReviewGuidance，
+		// 否则改一处漏一处（review-rfe-1 P3-e 实证过这条断言被删）。
+		t.Errorf("拒绝文案应含 review.ReReviewGuidance, got: %v", err)
 	}
 	st, err = taskpipeline.LoadTaskState(dir, ref)
 	if err != nil {
@@ -425,9 +420,17 @@ func TestRunReviewPassAt_BaselineUnreachableRequiresNewReviewer(t *testing.T) {
 		t.Errorf("拒绝时不得改写审查基线, got %s", st.ReviewedHeadCommit)
 	}
 
-	// 换新的 reviewer 复审当前 diff：允许，并记 WARN 级 baseline-unreachable。
-	if err := runReviewPassAt(dir, ref, "", "rev-2"); err != nil {
-		t.Fatalf("新 reviewer 应可重盖基线: %v", err)
+	// 历史被改写是异常路径：换人必须显式 `--rotate-reviewer --reason` 留痕。
+	if err := runReviewPassAt(dir, ref, "", "rev-2"); err == nil {
+		t.Fatal("基线不可达时，未声明 --rotate-reviewer 的新 reviewer 不得重盖")
+	} else if !strings.Contains(err.Error(), "rotate-reviewer") {
+		t.Errorf("拒绝文案应指明 --rotate-reviewer --reason, got: %v", err)
+	}
+	if err := runReviewPassAtOpts(dir, ref, "", "rev-2", reviewOptions{Rotate: true}); err == nil {
+		t.Fatal("--rotate-reviewer 缺 --reason 必须被拒绝")
+	}
+	if err := runReviewPassAtOpts(dir, ref, "", "rev-2", reviewOptions{Rotate: true, Reason: "基线被 amend+gc 改写，重审当前 diff"}); err != nil {
+		t.Fatalf("显式换人应可重盖基线: %v", err)
 	}
 	entries, err := checklog.LoadAll(dir)
 	if err != nil {
@@ -604,8 +607,8 @@ func TestReviewTestDiff_CommittedFormCaught(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, `main_test.go`), []byte("package main\n\nimport \"testing\"\n\nfunc TestW(t *testing.T) { _ = 1 }\n"), 0644)
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `weaken test`)
-	// 二轮盖章（有旧基线 → 必须换新的 reviewer，同一 reviewer 会因自证被拒）。
-	if err := runReviewPassAt(dir, ref, "复审：测试变更已单独核查", "rev-2"); err != nil {
+	// 二轮盖章（有旧基线 → 连续性下由同一 reviewer 承接）。
+	if err := runReviewPassAt(dir, ref, "复审：测试变更已单独核查", "rev-1"); err != nil {
 		t.Fatalf(`二轮盖章: %v`, err)
 	}
 	found := false

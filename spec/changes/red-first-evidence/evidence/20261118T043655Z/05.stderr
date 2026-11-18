@@ -1,0 +1,7 @@
+ℹ️ 1 条验收标准没有期望输出（`::` 或无 expected）——只校验退出码；要校验输出写子串（匹配是 strings.Contains，不是正则）
+提示：本任务无 --plan-file/--goal——接续字段将为空（压缩/换窗口后现场靠 git 猜）；建议 task start 带 --plan-file <方案> 或 --goal <目标>，中途用 forge task decide/next 落盘（multi-ta[REDACTED] L6）
+advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标三段不在 git 里，评审只能靠标题猜意图
+ADVISORY: [ta[REDACTED]] 实际改动要求小方案（单文件，skills/doc-generator/references/template-tech-plan.md），但任务档位为 none 且未登记 design 产物（触发：cross-module: 5 个目录）——补方案：在 change.md 的「改动 / 影响 / 验证」里写清设计取舍与影响面
+ADVISORY: [ta[REDACTED]] 工作区有 3 处未提交变更——协议顺序：实现门禁 + 验收实跑 → git commit → 审查 → 完成门禁（ta[REDACTED]）→ forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）
+ADVISORY: [ta[REDACTED]] 任务分支 feat/red 尚未合入主干 master——完成不等于交付（合入后再算交付）
+→ session-retrospective: 完成声明证据 Weak（ratio=0.40, deterministic=2/agent-claim=3）——deterministic 证据不足，核查声称的验证是否真发生过，低分维度：code-quality。回顾根因并按载体决策树沉淀（防再犯），完成后 `forge act retro-done --ref feat/red --carrier <memory|skill|claudemd|code|hook|ci|none> [--lesson <教训>]` 落 ack（否则 nudge 留面板）。`forge act show` 看结构化结论。
