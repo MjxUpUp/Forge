@@ -305,6 +305,82 @@ rm -rf ~/.forge/skills-backup ~/.forge/.init-suggested
 （2.1.277 起）在没有 `CLAUDE.md` 时会直接读 `AGENTS.md`；不确定自己的版本是否支持时，
 跑 `forge change agents --pointers claude` 生成 `CLAUDE.md` 指针最稳妥。
 
+## ⬆️ 从 1.85–1.9x 升级到 2.0
+
+2.0 是破坏性版本：门禁从三道降为两道、change 产物从五份改成三份，并删掉十项检查
+（文档闸门、产物链、未用导出扫描、覆盖率回扣、变异抽样、方案先行、二次验证、
+自检、需求覆盖、技能决策——以上均已删除，具体命令见下表）。**老仓库不会自动损坏，
+但旧流程里的命令、CI 步骤和脚本会失效**，升级时按下面清单改。
+
+### 命令面的破坏性变化
+
+| 旧用法 | 2.0 之后 |
+| --- | --- |
+| `forge task gate task-verify` | 门禁已删除；验收只跑 `forge task verify-acceptance` |
+| `forge task doc-review --passed … --score …` | 命令已删除；文档回检并入评审，结论记在 `forge review pass --score N --reviewer <id>` |
+| `forge task mutation` | 命令已删除；抽样变异不再由 forge 做 |
+| `forge task artifact …` / `forge task chain-init` | 命令已删除；产物就是 change 里的 `goal.md` / `change.md` / `acceptance.md` |
+| `forge selfcheck` | 该子命令已删除；用 `forge docs lint <文件>` + `forge change check` |
+| `forge eval artifact-drill` | 子命令已删除；用 `scripts/checks/release-smoke.sh <forge 二进制>`（发布冒烟）或 `forge change check` |
+| `forge review pass --note "…"` 刷新基线 | 必须换**新的**只读 reviewer：`--reviewer <新 id>`；同一 reviewer 自证会被拒 |
+| 五份产物（proposal/design/tasks + acceptance + goal） | 三份：`goal.md`（三段）+ `change.md` + `acceptance.md`；`clarify.md` 记人确认，`tasks.md` 可选 |
+
+`forge init` / `forge integrations` / `forge hook` / `forge freeze` / `forge doctor` 已在 1.85 删除，
+宿主层（用户级 CLAUDE.md / AGENTS.md 注入、hook 执行、插件、skills 分发）整体不存在了；
+升级前如果还留着那些注入，按上一节「从 1.84 及更早版本升级」清掉。
+
+### 每个老项目要做的
+
+```bash
+# 0) 先升级二进制
+npm i -g @agent_forge/forge@2.0.4 --include=optional --registry=https://registry.npmjs.org
+forge version                      # 应 >= 2.0.4
+
+# 1) 仓库里：搬旧 runtime state（.forge/ 里有历史 task/checklog 时）
+cd <your-repo>
+forge migrate --dry-run            # 预览要搬的文件
+forge migrate
+
+# 2) 刷新仓库的 AGENTS.md 托管块（老块的硬规则还是三道门禁的旧文案）
+forge change agents
+
+# 3) 看进行中的 change 和任务
+forge change list
+forge status
+
+# 4) 需要全局面板时再显式登记（2.0 起 init 不再自登记）
+forge registry add
+```
+
+进行中的老 change（proposal/design/tasks 布局）**可以继续按老规则跑完**：
+`forge change verify` / `forge change gate` 对老布局仍按老判据走，不需要补三份。
+想换新布局就新建一个 change 重开（`forge change new <id>` → 填三份 → `clarify --by-human`）。
+新布局的 change 缺 `clarify.md` 时 `verify` 与 `gate` 都会拒绝（`forge change clarify <id> --by-human` 补）。
+
+### 清掉旧版本留下的机器级垃圾
+
+```bash
+# 旧宿主层的运行时残留（1.85 起已无用；只是历史文件，删掉不影响任何命令）
+find ~/.forge/projects -maxdepth 2 -name hooks -type d -exec rm -rf {} +
+find ~/.forge/projects -maxdepth 2 -name protocol.yml -delete
+
+# 注册表里的死路径与孤儿数据目录
+forge registry prune               # 移除路径已不存在的条目
+forge registry audit               # 看 key 漂移 / 孤儿目录 / 非法 ID
+forge registry gc --prune          # 孤儿数据目录移入 ~/.forge/backups/gc-<时间戳>/
+```
+
+`forge registry gc` 默认演练，`--prune` 才动手；备份目录确认无需恢复后可以手动删。
+
+### 升级后的自检
+
+```bash
+forge change check                 # 每个仓库：契约与证据自洽，退出码 0/2
+forge status                       # 任务管道：应显示两道门禁
+```
+
+再在 CI 脚本里搜一遍上一节表格左列的旧命令名，应当没有残留；有的话按表格换成对应替代命令。
+
 ## 🤝 贡献
 
 欢迎提 Issue 和 PR。开发时注意：
