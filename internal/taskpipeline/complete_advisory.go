@@ -33,7 +33,7 @@ func uncommittedChanges(root string) (count int, determinable bool) {
 		return 0, false
 	}
 	for _, line := range strings.Split(string(out), "\n") {
-		if strings.TrimSpace(line) == "" || ghostpath.LineHasReservedPath(line) {
+		if strings.TrimSpace(line) == "" || ghostpath.LineHasReservedPath(root, line) {
 			continue
 		}
 		count++

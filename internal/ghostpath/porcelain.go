@@ -1,6 +1,10 @@
 package ghostpath
 
-import "strings"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+)
 
 // porcelainPaths 取出一行 `git status --porcelain` 里的路径（重命名取两侧）。
 //
@@ -20,25 +24,51 @@ func porcelainPaths(line string) []string {
 	return []string{strings.Trim(rest, "\"")}
 }
 
-// LineHasReservedPath 判断一行 git status 是否涉及 Windows 保留名路径。
-//
-// 工作区状态探测里出现 `?? nul/` 这类幻影目录时，整行都不该算「工作区有改动」：
-// 它既不是源码也不是文档，只是文件系统的事实噪声（git 能写 index，Win32 API 建不出来）。
-// 判定走 IsReserved，所以在非 Windows 上恒为 false——`aux.go` 之类正常文件不受影响。
-func LineHasReservedPath(line string) bool {
-	for _, p := range porcelainPaths(line) {
-		if IsReserved(p) {
-			return true
-		}
+// existsOnDisk 报告仓库内相对路径在磁盘上是否存在（目录也算存在）。
+func existsOnDisk(root, p string) bool {
+	p = strings.TrimSuffix(strings.TrimSpace(p), "/")
+	if p == "" {
+		return false
 	}
-	return false
+	_, err := os.Lstat(filepath.Join(root, filepath.FromSlash(p)))
+	return err == nil
 }
 
-// FilterReserved 过滤掉保留名路径，保持其余顺序不变。
-func FilterReserved(paths []string) []string {
-	out := paths[:0:0]
+// IsPhantomPath 判断 p 是否是「git 报出来、但磁盘上不存在」的保留名路径。
+//
+// 只按名字过滤会把真实文件一起吞掉：Windows 上用 `\\?\` 前缀可以建出 `aux.go`，
+// git 照实列出，而它是真源码——把它当幻影会让工作区被误判为干净（假阴性）。
+// 所以判定必须落到「磁盘上是否存在」这一层。
+func IsPhantomPath(root, p string) bool {
+	return IsReserved(p) && !existsOnDisk(root, p)
+}
+
+// LineHasReservedPath 判断一行 git status 是否【整行】都是不存在的保留名路径。
+//
+// 一行里只要有一个路径不是保留名、或某个保留名路径在磁盘上真实存在，这一行就是
+// 真改动，必须保留。重命名 `R old -> new` 只有两侧都缺失才算幻影。
+func LineHasReservedPath(root, line string) bool {
+	paths := porcelainPaths(line)
+	if len(paths) == 0 {
+		return false
+	}
+	reserved := false
 	for _, p := range paths {
 		if IsReserved(p) {
+			reserved = true
+		}
+		if existsOnDisk(root, p) {
+			return false
+		}
+	}
+	return reserved
+}
+
+// FilterReserved 过滤掉幻影路径，保持其余顺序不变。
+func FilterReserved(root string, paths []string) []string {
+	out := paths[:0:0]
+	for _, p := range paths {
+		if IsPhantomPath(root, p) {
 			continue
 		}
 		out = append(out, p)

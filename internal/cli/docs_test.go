@@ -42,10 +42,10 @@ func TestChangedMarkdownSince_PinsGhostpathFilter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(src), "ghostpath.IsReserved(p)") {
-		t.Fatal("changedMarkdownSince 必须用 ghostpath.IsReserved 过滤幻影路径")
+	if !strings.Contains(string(src), "ghostpath.FilterReserved(root, files)") {
+		t.Fatal("changedMarkdownSince 必须用 ghostpath.FilterReserved 过滤幻影路径（磁盘存在就保留）")
 	}
-	if runtime.GOOS == "windows" && !ghostpath.IsReserved("nul/readme.md") {
-		t.Error("Windows 上 nul/readme.md 应判为幻影路径")
+	if runtime.GOOS == "windows" && !ghostpath.IsPhantomPath(t.TempDir(), "nul/readme.md") {
+		t.Error("Windows 上不存在的 nul/readme.md 应判为幻影路径")
 	}
 }

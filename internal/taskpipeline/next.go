@@ -245,7 +245,7 @@ func GitBranchDirty(root string) (string, bool) {
 	dirty := false
 	if out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output(); err == nil {
 		for _, line := range strings.Split(string(out), "\n") {
-			if strings.TrimSpace(line) != "" && !ghostpath.LineHasReservedPath(line) {
+			if strings.TrimSpace(line) != "" && !ghostpath.LineHasReservedPath(root, line) {
 				dirty = true
 				break
 			}

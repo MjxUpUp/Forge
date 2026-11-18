@@ -501,7 +501,7 @@ func changedFiles(root string) ([]FileDigest, bool) {
 	seen := make(map[string]bool)
 	var out []FileDigest
 	for _, p := range splitNul(diff + untracked) {
-		if p == "" || isEvidencePath(p) || ghostpath.IsReserved(p) || seen[p] {
+		if p == "" || isEvidencePath(p) || ghostpath.IsPhantomPath(root, p) || seen[p] {
 			continue
 		}
 		seen[p] = true

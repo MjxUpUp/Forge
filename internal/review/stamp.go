@@ -555,14 +555,14 @@ func changedSourceFilesSince(root, baseCommit string) (tracked, untracked []stri
 	}
 	if out, e := gitOut(root, "diff", "--name-only", base, "--", ".", ":(exclude).forge"); e == nil {
 		for _, f := range nonEmptyLines(out) {
-			if isSourceCode(f) && !ghostpath.IsReserved(f) {
+			if isSourceCode(f) && !ghostpath.IsPhantomPath(root, f) {
 				tracked = append(tracked, f)
 			}
 		}
 	}
 	if out, e := gitOut(root, "ls-files", "--others", "--exclude-standard", "--", ".", ":(exclude).forge"); e == nil {
 		for _, f := range nonEmptyLines(out) {
-			if isSourceCode(f) && !ghostpath.IsReserved(f) {
+			if isSourceCode(f) && !ghostpath.IsPhantomPath(root, f) {
 				untracked = append(untracked, f)
 			}
 		}

@@ -72,7 +72,7 @@ func changedFiles(root, base string) ([]string, error) {
 			// Windows 保留设备名幻影路径（`nul/…`）不是真文件：`\\?\` 前缀能建出、
 			// git 会照实列出，但把它算进变更集会让 scope 维度误判（与 review/change
 			// 的幻影过滤同一口径）。
-			if ghostpath.IsReserved(line) {
+			if ghostpath.IsPhantomPath(root, line) {
 				continue
 			}
 			seen[line] = true
