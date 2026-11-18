@@ -7,6 +7,7 @@ package taskpipeline
 
 import (
 	"errors"
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 	"os/exec"
 	"strings"
 )
@@ -32,9 +33,10 @@ func uncommittedChanges(root string) (count int, determinable bool) {
 		return 0, false
 	}
 	for _, line := range strings.Split(string(out), "\n") {
-		if strings.TrimSpace(line) != "" {
-			count++
+		if strings.TrimSpace(line) == "" || ghostpath.LineHasReservedPath(line) {
+			continue
 		}
+		count++
 	}
 	return count, true
 }

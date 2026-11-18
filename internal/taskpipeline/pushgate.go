@@ -18,6 +18,7 @@ package taskpipeline
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -254,7 +255,13 @@ func gitStatusDirty(root string) bool {
 	if err != nil {
 		return false
 	}
-	return strings.TrimSpace(string(out)) != ""
+	// 保留名幻影路径（`?? nul/`）不算工作区改动：Win32 建不出来，只是 index 事实。
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.TrimSpace(line) != "" && !ghostpath.LineHasReservedPath(line) {
+			return true
+		}
+	}
+	return false
 }
 
 // recordPushGate 落 checklog 行（blocked→fail；dirty-only→warn；否则 pass）。

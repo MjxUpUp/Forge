@@ -1,0 +1,116 @@
+{
+  "change": "backlog-p3",
+  "started_at": "2026-11-18T07:29:13Z",
+  "finished_at": "2026-11-18T07:32:30Z",
+  "passed": true,
+  "sealed": true,
+  "head": "1843cda49ca21a6d2de1748c9590c88b87b5e98e",
+  "diff_sha256": "da85817808d2c007689ed9417121a5e639cc3899f4c5c671a7c7edaab016ef3a",
+  "files": [
+    {
+      "path": "internal/change/gate.go",
+      "sha256": "ac36ba5291162e761ef9c0df9b9f69f1e0ac1dc4f5206f53ec2cbfcf5a36bcf2"
+    },
+    {
+      "path": "internal/ghostpath/porcelain.go",
+      "sha256": "5b5c19ddbb642ad270803c1bec97e6d3bec38feaa331fe113e8d6f07c428bbe3"
+    },
+    {
+      "path": "internal/ghostpath/porcelain_test.go",
+      "sha256": "158d87d3b4a8eb865b928bea29ec97665e7f1f9ce7737640de8a02d9298b7467"
+    },
+    {
+      "path": "internal/taskpipeline/complete_advisory.go",
+      "sha256": "43e8f3492f17e24e8b7cc91edbc3ce0582da77f22ce2bdbdd36ad015e2373b64"
+    },
+    {
+      "path": "internal/taskpipeline/next.go",
+      "sha256": "7954ce327b6aad248f254c565b8633755d512a79923971c29f307417ad1df272"
+    },
+    {
+      "path": "internal/taskpipeline/pushgate.go",
+      "sha256": "625688133144514e6f79cf17fb86c719f040040f842f03f57aa028fc2b997a26"
+    },
+    {
+      "path": "internal/taskpipeline/trust.go",
+      "sha256": "9dc951965d4ac357fb5cc0b97d78a096add6e8b389450009c26b793b0415d001"
+    },
+    {
+      "path": "spec/changes/backlog-p3/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/backlog-p3/acceptance.md",
+      "sha256": "b0c8679cff883a65800e27099ad066f554665e7105df9758731344062f2819d6"
+    },
+    {
+      "path": "spec/changes/backlog-p3/change.md",
+      "sha256": "1afc46c2ca91490edd6b7ea0692545a34936951a7dfa56483aec46c2c5f2a8c9"
+    },
+    {
+      "path": "spec/changes/backlog-p3/clarify.md",
+      "sha256": "120e3aaa84f3b945fd3798343ac49d8e725123e4835533374dc4683149565577"
+    },
+    {
+      "path": "spec/changes/backlog-p3/goal.md",
+      "sha256": "df0b70f54aebfece03790656a77c75af24ecb88c8a73186d5b6c8df51e5e3611"
+    }
+  ],
+  "acceptance_sha256": "b0c8679cff883a65800e27099ad066f554665e7105df9758731344062f2819d6",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2303
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/ghostpath/ ./internal/taskpipeline/ ./internal/change/ -count=1",
+      "exit": 0,
+      "duration_ms": 108459,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ ./internal/scoring/ -count=1",
+      "exit": 0,
+      "duration_ms": 80798,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 586,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 187
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4264
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 863,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}

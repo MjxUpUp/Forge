@@ -11,7 +11,7 @@ import (
 // 两个入口共用：
 //
 //   - task import（cli/task_port.go）：手改/恶意的 bundle 绝不能不经本机重验就满足本机门禁；
-//   - .forge migrate（cli/sync.go migrateRuntimeResidue + cli/migrate.go）：repo 提交的
+//   - .forge migrate（cli/migrate.go）：repo 提交的
 //     .forge/tasks/*.json 是攻击者可书写的内容（clone 恶意仓库即得），否则会被逐字提升为
 //     DataDir 信任状态。
 //

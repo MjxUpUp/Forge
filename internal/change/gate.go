@@ -47,12 +47,14 @@ func GateTask(ctx context.Context, root, id string, taskNo int, opts GateOptions
 		return nil, fmt.Errorf("change: 任务 %d 没写判据编号——在任务行末尾加「（判据：acceptance #N）」才能单独 gate", taskNo)
 	}
 
-	if err := RequireClarify(c, id); err != nil {
-		return nil, err
-	}
+	// 顺序与 verify 一致：先报「产物没填完」，再报「没人确认边界」——缺文件比缺确认
+	// 更根本，用户该先补文件（review-backlog-closeout P3 的口径分叉）。
 	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
 		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——补齐、删掉%s后再 gate",
 			id, strings.Join(problems, "、"), scaffoldHint)
+	}
+	if err := RequireClarify(c, id); err != nil {
+		return nil, err
 	}
 	accRaw, err := os.ReadFile(filepath.Join(c.Dir, FileAcceptance))
 	if err != nil {
