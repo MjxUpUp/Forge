@@ -224,6 +224,8 @@ func TestFastChange_OnlyNeedsProposalAndAcceptance(t *testing.T) {
 		}
 		writeFile(t, path, strings.ReplaceAll(string(raw), scaffoldMarker, ""))
 	}
+	// verify 对三份布局要求 clarify 已由人确认（review-ruthless-4 P2-2）。
+	writeFile(t, filepath.Join(dir, FileClarify), RenderClarify("tiny", "边界：只改本 change。", "", time.Now()))
 	writeAcceptance(t, dir, "echo ok")
 
 	res, err := Verify(context.Background(), root, "tiny", VerifyOptions{Timeout: 30 * time.Second})
@@ -471,6 +473,7 @@ func TestStatus_CapsPriorAttemptsAtTenThroughStatusOf(t *testing.T) {
 		"goal.md":       "# 目标契约\n\n## Objective\n\n做点事。\n\n## Why\n\n因为要做。\n\n## Constraints\n\n- 无。\n\n## Out of Scope\n\n- 无。\n\n## Check\n\n- acceptance #1 通过。\n",
 		"change.md":     "# 改动\n\nx\n",
 		"acceptance.md": "# 验收\n\n```bash\ntest -f missing.txt\n```\n",
+		"clarify.md":    RenderClarify("demo", "边界：只改本 change。", "", time.Now()),
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)

@@ -219,6 +219,21 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——%s都填成这个 change 自己的内容、并删掉%s后再 verify",
 			id, strings.Join(problems, "、"), want, scaffoldHint)
 	}
+	// 新布局（goal/change）把 clarify 当开工前的硬前置：产物写全、人确认过边界，
+	// 才允许实跑判据。老布局（proposal/design/tasks）没有 clarify 概念，放行以兼容。
+	// 之前只在 `change phase` 里校验，verify 可以绕过——文档说一套、命令做另一套
+	// （review-ruthless-4 P2-2）。
+	if c.HasChange || c.HasGoal || c.GoalRequired {
+		clarifyRaw, err := os.ReadFile(filepath.Join(c.Dir, FileClarify))
+		if err != nil {
+			return nil, fmt.Errorf("change: %s 缺 %s（边界与非目标 + 人确认）——先问人边界，再跑 `forge change clarify %s --by-human --note '…'`",
+				id, FileClarify, id)
+		}
+		if _, err := ParseClarify(clarifyRaw); err != nil {
+			return nil, fmt.Errorf("change: %s 的 %s 不合格：%w——补齐后重跑 `forge change clarify %s --by-human`（或 --force 覆盖）",
+				id, FileClarify, err, id)
+		}
+	}
 	if !c.HasAcceptance {
 		return nil, fmt.Errorf("change: %s 没有 %s（无法验证）", relTo(root, c.Dir), FileAcceptance)
 	}

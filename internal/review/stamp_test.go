@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -788,4 +789,72 @@ func TestKnownReviewed_ContentAddressedFilenameMatch(t *testing.T) {
 	if _, ok := knownReviewed(root, target); !ok {
 		t.Fatal("legacy <branch>.stamp 的内容命中必须保留（读兼容）")
 	}
+}
+
+// TestHasReservedDeviceSegment 表驱动钉住 Windows 保留设备名判定：CON、con.txt、
+// NUL、aux/、lpt9 都算；普通名（console、null、auxiliary）不算。
+func TestHasReservedDeviceSegment(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"nul/win.go", true},
+		{"NUL/win.go", true},
+		{"nul.txt", true},
+		{"con", true},
+		{"aux/x.go", true},
+		{"com1", true},
+		{"lpt9/y.go", true},
+		{"internal/nul/x.go", true},
+		{"console.go", false},
+		{"null.go", false},
+		{"auxiliary.go", false},
+		{"com10/x.go", false},
+		{"internal/cli/review.go", false},
+	}
+	for _, c := range cases {
+		if got := hasReservedDeviceSegment(c.path); got != c.want {
+			t.Errorf("hasReservedDeviceSegment(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+}
+
+// TestChangedSourceFilesSince_SkipsReservedDeviceNames 复现幻影源码树：Windows 上
+// 用 `\\?\` 前缀可以真的建出 `nul/` 目录（普通 API 建不了），git 随后会把它当
+// 未跟踪目录列出来。评审的文件枚举必须跳过，否则审查快照会跟工作区状态对不上
+// （实测：删掉幻影目录后 gate 报「审查通过后源码变更」）。
+func TestChangedSourceFilesSince_SkipsReservedDeviceNames(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("保留设备名是 Windows 特有的形态")
+	}
+	dir := initGitRepo(t)
+	ext := `\\?\` + filepath.Join(dir, "nul")
+	if err := os.MkdirAll(ext, 0o755); err != nil {
+		t.Skipf("无法用扩展路径建出 nul/：%v", err)
+	}
+	defer os.RemoveAll(ext)
+	if err := os.WriteFile(filepath.Join(ext, "win.go"), []byte("package nul\n"), 0o644); err != nil {
+		t.Skipf("无法在 nul/ 下写文件：%v", err)
+	}
+
+	// 另一个真实的新源码文件必须在列，证明过滤没有误伤。
+	write(t, dir, "real.go", "package real\n")
+	_, untracked := changedSourceFilesSince(dir, "HEAD")
+	for _, f := range untracked {
+		if strings.Contains(f, "nul/") || strings.HasPrefix(f, "nul") {
+			t.Errorf("changedSourceFilesSince 不该列出保留设备名幻影路径，got %q", f)
+		}
+	}
+	if !containsFile(untracked, "real.go") {
+		t.Errorf("真实新增源码文件应被列出，got %v", untracked)
+	}
+}
+
+func containsFile(files []string, want string) bool {
+	for _, f := range files {
+		if f == want {
+			return true
+		}
+	}
+	return false
 }

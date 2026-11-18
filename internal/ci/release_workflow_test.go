@@ -320,6 +320,13 @@ func TestReleaseSmoke_IsBehavioral(t *testing.T) {
 			t.Errorf("release-smoke.sh 必须包含 %q（行为级：自己建 change 并实跑 verify）", want)
 		}
 	}
+	// 提交后重验这一条路径：干净工作区的封印只绑 head、不记 files。缺了它，
+	// 冒烟只覆盖「脏工作区 + 文件指纹」，用户真实流程（先提交再封印）没验过。
+	for _, want := range []string{"git add -A", "git -c commit.gpgsign=false commit", `grep -q '"head"'`, `grep -q '"files"'`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("release-smoke.sh 必须覆盖提交后重验（缺 %q）", want)
+		}
+	}
 	nightly, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "nightly.yml"))
 	if err != nil {
 		t.Fatalf("读 nightly.yml: %v", err)

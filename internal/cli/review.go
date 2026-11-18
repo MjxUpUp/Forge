@@ -369,7 +369,7 @@ func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) err
 			detail = fmt.Sprintf("re-review: baseline re-stamped over changed source by reviewer %s; ", reviewer) + detail
 		}
 		if baselineUnreachable != "" {
-			detail = fmt.Sprintf("baseline-unreachable: prior review baseline %s not reachable (history rewritten) — re-stamped fail-open; ", shortHash(baselineUnreachable)) + detail
+			detail = fmt.Sprintf("baseline-unreachable: prior review baseline %s not reachable (history rewritten) — re-stamped by new reviewer; ", shortHash(baselineUnreachable)) + detail
 		}
 		if note != "" {
 			detail += "; note: " + note

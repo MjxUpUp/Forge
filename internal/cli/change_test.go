@@ -642,6 +642,7 @@ func TestChangeStatus_StderrPathIsRepoRelativeOnce(t *testing.T) {
 		"goal.md":       "# 示例：目标契约\n\n## Objective\n\n跑一次失败判据。\n\n## Out of Scope\n\n不做修复。\n\n## Check\n\nacceptance #1。\n",
 		"change.md":     "# 改动\n\n跑一次失败判据，验证证据路径。\n\n## 影响\n\n无。\n\n## 验证\n\nacceptance #1。\n",
 		"acceptance.md": "# 验收\n\n```bash\nls /definitely/not/here\n```\n",
+		"clarify.md":    "# 澄清\n\n## 边界\n\n只验证证据路径的打印。\n\n## 非目标\n\n不做修复。\n\n人确认：2026-11-18T00:00:00Z\n",
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(root, "spec", "changes", "demo", name), []byte(body), 0o644); err != nil {
