@@ -626,6 +626,36 @@ func TestReviewTestDiff_CommittedFormCaught(t *testing.T) {
 // TestReviewIndependence_RejectsImplementer：评审者不能是实现者本人——同 id 自批在
 // 旧机制里只被「必须换新 reviewer」间接挡住；现在复审允许复用同一 reviewer（为了收敛），
 // 独立性必须由「实现者 ≠ 评审者」显式校验。
+// TestReviewIndependence_RequiresReviewerWhenImplementerSet：登记了实现者却不指定
+// 评审者时，实现者一条 `forge review pass` 就能自批，交付单还会写「独立」——
+// 必须拒绝并要求显式 --reviewer（review-rfe-1 P1-a）。
+func TestReviewIndependence_RequiresReviewerWhenImplementerSet(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, `init`)
+	runGit(t, dir, `config`, `user.email`, `test@test.com`)
+	runGit(t, dir, `config`, `user.name`, `Test`)
+	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() {}\n"), 0644)
+	runGit(t, dir, `add`, `.`)
+	runGit(t, dir, `commit`, `-m`, `initial`)
+
+	const ref = `feat/independence-noreviewer`
+	if err := taskpipeline.SaveTaskState(dir, &taskpipeline.TaskState{
+		TaskRef:     ref,
+		Branch:      ref,
+		Implementer: "impl-agent-9",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := runReviewPassAt(dir, ref, "", "")
+	if err == nil || !strings.Contains(err.Error(), "--reviewer") {
+		t.Fatalf("登记了实现者时未指定评审者必须被拒, got %v", err)
+	}
+	if err := runReviewPassAt(dir, ref, "", "review-agent-9"); err != nil {
+		t.Fatalf("指定独立评审者应放行: %v", err)
+	}
+}
+
 func TestReviewIndependence_RejectsImplementer(t *testing.T) {
 	dir := t.TempDir()
 	runGit(t, dir, `init`)

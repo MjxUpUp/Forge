@@ -60,6 +60,18 @@ func TestRedAttempts_CheckRedFirst(t *testing.T) {
 		}
 	})
 
+	t.Run("红记录的 head 必须等于开工时刻", func(t *testing.T) {
+		// 事后补拍最容易的形态：把红快照的 head 指向别处。红快照必须绑定开工
+		// 那一刻的 HeadCommit，否则「开工时是红的」无从证明（review-rfe-1 P3-a：
+		// 此前这条校验没有测试，删掉它没有任何测试变红）。
+		s := green()
+		s.RedAttempts = []tasktypes.RedAttempt{{Run: "true", Exit: 1, Head: "deadbeef", At: time.Now().UTC().Format(time.RFC3339)}}
+		err := CheckRedFirst(dir, s)
+		if err == nil || !strings.Contains(err.Error(), "未绑定开工时刻") {
+			t.Fatalf("红记录 head 与开工 head 不一致必须被拒, got %v", err)
+		}
+	})
+
 	t.Run("红且已转绿放行", func(t *testing.T) {
 		s := green()
 		s.RedAttempts = []tasktypes.RedAttempt{{Run: "true", Exit: 1, Head: head, At: time.Now().UTC().Format(time.RFC3339)}}

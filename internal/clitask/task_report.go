@@ -298,7 +298,8 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 	}
 	if n := len(state.ReviewRounds); n > 0 {
 		last := state.ReviewRounds[n-1]
-		reviewer := last.Reviewer
+		reviewerRaw := strings.TrimSpace(last.Reviewer)
+		reviewer := reviewerRaw
 		if reviewer == "" {
 			reviewer = "未记录评审者"
 		}
@@ -324,8 +325,13 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		// 独立性只能靠「实现者 ≠ 评审者」验证：没登记实现者时如实说未验证，
 		// 而不是默认独立（同 id 自批的风险由 task start --agent 记录来暴露）。
 		if state.Implementer != "" {
+			// 用原始值判定：空 reviewer 先被替换成「未记录评审者」再比较，会得出
+			// 假的「独立」结论（review-rfe-1 P1-a）。
 			verdict := "独立"
-			if strings.EqualFold(strings.TrimSpace(state.Implementer), strings.TrimSpace(reviewer)) {
+			switch {
+			case reviewerRaw == "":
+				verdict = "评审者未记录（独立性未验证）"
+			case strings.EqualFold(strings.TrimSpace(state.Implementer), reviewerRaw):
 				verdict = "与实现者同一 id（独立性未通过）"
 			}
 			line += fmt.Sprintf(" · 实现者 %s（%s）", state.Implementer, verdict)

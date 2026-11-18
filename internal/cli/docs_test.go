@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -29,5 +32,20 @@ func TestDocsLintHelpCoversAllRules(t *testing.T) {
 		if strings.Contains(long, stale) {
 			t.Errorf("docs lint 帮助文案残留过期规则范围 %s（现为 D1-D11）", stale)
 		}
+	}
+}
+
+// TestChangedMarkdownSince_PinsGhostpathFilter：与 scoring 同一口径，钉住 cli 侧的
+// 幻影路径过滤调用点（review-rfe-1 P3-b）。
+func TestChangedMarkdownSince_PinsGhostpathFilter(t *testing.T) {
+	src, err := os.ReadFile("docs.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "ghostpath.IsReserved(p)") {
+		t.Fatal("changedMarkdownSince 必须用 ghostpath.IsReserved 过滤幻影路径")
+	}
+	if runtime.GOOS == "windows" && !ghostpath.IsReserved("nul/readme.md") {
+		t.Error("Windows 上 nul/readme.md 应判为幻影路径")
 	}
 }

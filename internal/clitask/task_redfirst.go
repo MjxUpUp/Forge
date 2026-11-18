@@ -99,7 +99,9 @@ func commitsOlderThan(root, startHead string, startedAt time.Time) (string, erro
 		return "", nil
 	}
 	start := startedAt
-	out, err := exec.Command("git", "-C", root, "log", "--format=%h %ct", startHead+"..HEAD").Output()
+	// --first-parent：只看主线提交。合并一条开工前就存在的分支是常规操作，
+	// 把它的第二父历史也算进来会误判成「事后补拍」（review-rfe-1 P2-b）。
+	out, err := exec.Command("git", "-C", root, "log", "--first-parent", "--format=%h %ct", startHead+"..HEAD").Output()
 	if err != nil {
 		return "", err
 	}
@@ -113,7 +115,9 @@ func commitsOlderThan(root, startHead string, startedAt time.Time) (string, erro
 		if _, err := fmt.Sscanf(parts[1], "%d", &ts); err != nil {
 			continue
 		}
-		if ts < start.Add(-2*time.Minute).Unix() {
+		// 容差 5 秒：秒级时间戳下无法区分同秒提交；2 分钟会让「先实现、回基线
+		// 补拍、再快进合并」在 1 秒内通过的攻击（review-rfe-1 P2-a 实测 Score 87）。
+		if ts < start.Add(-5*time.Second).Unix() {
 			old = append(old, parts[0])
 		}
 	}

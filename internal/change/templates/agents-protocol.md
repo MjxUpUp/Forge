@@ -6,7 +6,7 @@
 - **任何代码改动之前，先跑 `forge next`**，把它当建议：通常执行它给出的下一步；一句话小修可直接 task start，并在标题里写清意图。
 - **记录改动：建议先立 change**：任务是一等入口，随时可以开工；change 是记录单元，
   既能在开工前立，也能中途补。建议的顺序是 `forge change new <id>` → 填产物 →
-  `forge change phase <id>` 看还缺什么 → `forge task start --ref <ref> --change <id>`
+  `forge change phase <id>` 看还缺什么 → `forge task start --ref <ref> --change <id> --agent <实现者 id>`
   把 goal 钉成哈希。**不立 change 也允许开工**（`task start` 不带 `--change`）；
   只有你显式带 `--change` 时，那个 change 必须已经 ready。
 - 一句话小修可以加 `--kind task`：它仍是任务（走两道门禁），只是向人和审计说明
@@ -59,6 +59,7 @@
    再 `forge change clarify <id> --by-human --note "…"` 记录（agent 不得自批）。
    启动任务时用 `forge task start --change <id>` 把 goal 钉成内容哈希；启动后改 goal.md 会让 `task-implement` BLOCKED（改目标等于改判据，重开任务）。
    goal 没填完时 `task start --change` 会报错（读不出三段必填段）；漂移后的恢复：还原 goal.md，或 `forge task abort` 后重新 `task start --change` 钉新哈希。
+   `--agent <实现者 id>` 登记是谁在实现：不传时独立性无法验证（report 会如实写「实现者未记录（独立性未验证）」），`review pass` 也无法拒绝「实现者自批」。
    老 change（proposal/design/tasks 布局）仍可读：`change verify`/`gate` 按老规则走；
    没有 goal.md 时 `--change` 会报错，改用 `forge task start --ref <ref>` 即可。
 4. `forge change verify <id>` 实跑 acceptance；全部通过才封印证据。
@@ -92,7 +93,7 @@
 6. 提交、再审查、再记录、再完结——顺序是：`git commit` → 派**负责本任务的 code-review
    子 agent**（首轮绑定、之后复用同一 id）审查当前 diff → `forge review pass --score <0-100>
    --reviewer <该 id> [--findings <上一轮清单>]` → `forge task gate task-complete` →
-   `forge task complete`。`review pass` 是 task-complete 的硬前置；审查后改源码会因快照
+   `forge task complete`。`review pass` 是 task-complete 的硬前置；评审者不得与实现者同一 id（`task start --agent` 登记的那个）；审查后改源码会因快照
    不一致被拒——由同一个 reviewer 复审（换人须 `--rotate-reviewer --reason`）。
 7. `forge task report --ref <分支名>` 出交付单（完成后必须带 `--ref`）；单里披露
    影响面（impact 的文档/测试建议），评审者未记录时会标出来。
