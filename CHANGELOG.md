@@ -13,6 +13,15 @@
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
 
+## [2.1.1](https://github.com/MjxUpUp/Forge/compare/v2.1.0...v2.1.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **backlog:** 文档写清 first-parent 盲区与 5 秒窗口；封印 070910Z 入库 ([737b842](https://github.com/MjxUpUp/Forge/commit/737b8428d99198ddaf17cddc85105a002990c930))
+* **backlog:** 红快照绑开工时刻、实现者独立性、幻影路径收口 ([59659ee](https://github.com/MjxUpUp/Forge/commit/59659ee77b026ca28fbd77913415b62f2671bdb9))
+* **backlog:** 评审闭环——实现者必须指定评审者、红快照容差收到 5 秒、合并按 first-parent ([eb929d5](https://github.com/MjxUpUp/Forge/commit/eb929d571e57633acac6b30686e31ee3e875c54f))
+
 ## [2.1.0](https://github.com/MjxUpUp/Forge/compare/v2.0.4...v2.1.0) (2026-11-18)
 
 
