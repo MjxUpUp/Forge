@@ -184,7 +184,7 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 		reason := "验证已过而审查未过——派只读子代理审查当前 diff 后标记（task-complete 门禁硬前置）"
 		if st != nil {
 			if id := reviewOwner(st); id != "" {
-				cmd += " --reviewer " + id
+				cmd += " --reviewer " + strconv.Quote(id)
 				reason += "；复用上一轮的评审者 " + id + "（换人用 --rotate-reviewer --reason）"
 			}
 		}

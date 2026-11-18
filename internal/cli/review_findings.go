@@ -50,12 +50,34 @@ func parseFindings(raw string) ([]reviewFinding, error) {
 		}
 		f.ID = strings.TrimSuffix(fields[0], ":")
 		f.Text = strings.TrimSpace(t)
-		if strings.Contains(strings.ToLower(f.Text), "(waived") || strings.Contains(strings.ToLower(f.Text), "（waived") {
-			f.Waived = true
+		if f.Waived {
+			// 豁免必须写明原因：`- [~] id` 不带原因等于让上一轮的未闭合项
+			// 无声消失（review-rfe-1 P2-b 实证过）。
+			if !waivedHasReason(f.Text) {
+				return nil, fmt.Errorf("豁免必须写原因（`- [~] %s (waived: 原因)`）: %q", f.ID, line)
+			}
 		}
 		out = append(out, f)
 	}
 	return out, nil
+}
+
+// waivedHasReason 判断豁免是否带了非空原因：接受半角/全角括号与冒号。
+func waivedHasReason(text string) bool {
+	lower := strings.ToLower(text)
+	for _, marker := range []string{"(waived", "（waived"} {
+		idx := strings.Index(lower, marker)
+		if idx < 0 {
+			continue
+		}
+		rest := lower[idx+len(marker):]
+		rest = strings.TrimLeft(rest, " :：\t")
+		rest = strings.TrimRight(rest, ")） \t")
+		if rest != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // findFinding 按 ID 找清单条目（大小写不敏感）。

@@ -148,7 +148,7 @@
 
 | 命令 | 说明 |
 |------|------|
-| `forge review pass [--ref <ref>] [--score N] [--reviewer <id>] [--rotate-reviewer --reason <原因>] [--findings <file>] [--criteria-reviewed <n>]` | 标记当前变更已通过 code-review（task 模式写任务状态，否则写分支 stamp）。**评审者复用是默认规则**：首轮 `--reviewer <id>` 绑定该任务的 code-review 子 agent，之后每次复审必须复用同一 id（换人 `--rotate-reviewer --reason` 显式留痕，记 WARN 审计）；裸 `--note` 刷新基线被拒。`--findings <file>` 承接上一轮未闭合项：markdown 清单 `- [ ]/- [x]/- [~]`，上轮 open 的 id 本轮必须关闭或 `(waived: 原因)`，消失即拒绝；`--criteria-reviewed <n>` 记「独立核对过多少条验收判据」；`--score 0` 合法；审查基线 commit 不可达（历史被改写）时必须显式 `--rotate-reviewer` 换新 id |
+| `forge review pass [--ref <ref>] [--score N] [--reviewer <id>] [--rotate-reviewer --reason <原因>] [--findings <file>] [--criteria-reviewed <n>]` | 标记当前变更已通过 code-review（task 模式写任务状态，否则写分支 stamp）。**评审者复用是默认规则**：首轮 `--reviewer <id>` 绑定该任务的 code-review 子 agent，之后每次复审必须复用同一 id（换人 `--rotate-reviewer --reason` 显式留痕，记 WARN 审计）；裸 `--note` 刷新基线被拒。`--findings <file>` 承接上一轮未闭合项：markdown 清单 `- [ ]/- [x]/- [~]`，上轮 open 的 id 本轮必须关闭或 `(waived: 原因)`（**原因不能省**，否则拒绝），消失即拒绝；换人会记 `rotated_from`，report 显示「换人 N 次」；`--criteria-reviewed <n>` 记「独立核对过多少条验收判据」（不得超过任务登记的总数；report 显示 `n/N`）；`--score 0` 合法；审查基线 commit 不可达（历史被改写）时必须显式 `--rotate-reviewer` 换新 id |
 | `forge review gate` | 判定当前是否需要审查（显式运行，agent 或 CI 调用；exit 0=放行，1=需审 block；评估本身失败 fail-open 放行） |
 | `forge review status` | 显示当前审查状态 |
 

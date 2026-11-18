@@ -131,6 +131,12 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
+	// 红先绿 pre-flight：--accept-red 登记的判据必须开工时真失败过、且同一命令现在转绿。
+	// 这是「测试先行」唯一的机械证据——没有它，红先绿只是交付单上的一句话。
+	if err := CheckRedFirst(root, state); err != nil {
+		return err
+	}
+
 	// held-out pre-flight（focus-batches §2a）：登记了保留集的任务在完成边界复跑
 	// 双套件——防"验收后改码"staleness 的最强形态就是 complete 时再跑一次测试。
 	// 可见全过而保留集挂 = test-generalization gap（SpecBench 形态）→ 拒绝完成。

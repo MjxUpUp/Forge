@@ -170,3 +170,47 @@ func TestTaskComplete_RedFirst(t *testing.T) {
 		t.Fatalf("--allow-green 留痕后应放行: %v", err)
 	}
 }
+
+// TestTaskComplete_RedFirstBlocks 走 CLI 路径：红判据一直没转绿时 `task complete`
+// 必须被拒（review-rfe-1 P1-a 当初就是「检查没接线，测试直调函数」漏掉的）。
+func TestTaskComplete_RedFirstBlocks(t *testing.T) {
+	t.Setenv(`FORGE_DATA_HOME`, t.TempDir())
+	t.Setenv(`HOME`, t.TempDir())
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@example.com")
+	runGit(t, dir, "config", "user.name", "t")
+	runGit(t, dir, "config", "commit.gpgsign", "false")
+	if out, errs, code := runForge(t, dir, "change", "init"); code != 0 {
+		t.Fatalf("change init: %s %s", out, errs)
+	}
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-qm", "init")
+
+	if out, errs, code := runForge(t, dir, "task", "start", "--ref", "feat/unclosed", "--branch",
+		"--accept", "test -f f.txt ::", "--accept-red", "test -f never.txt"); code != 0 {
+		t.Fatalf("task start: %s %s", out, errs)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "-A")
+	runGit(t, dir, "commit", "-qm", "feat: f")
+	for _, args := range [][]string{
+		{"task", "gate", "task-implement"},
+		{"task", "verify-acceptance"},
+		{"review", "pass", "--ref", "feat/unclosed", "--reviewer", "rev-unclosed", "--score", "80"},
+		{"task", "gate", "task-complete"},
+	} {
+		if out, errs, code := runForge(t, dir, args...); code != 0 {
+			t.Fatalf("%v: %s %s", args, out, errs)
+		}
+	}
+	out, errs, code := runForge(t, dir, "task", "complete")
+	if code == 0 {
+		t.Fatalf("红判据未转绿时 task complete 应被拒，却通过了: %s", out)
+	}
+	if !strings.Contains(out+errs, "未闭合") {
+		t.Fatalf("拒绝理由应含「未闭合」: %s %s", out, errs)
+	}
+}

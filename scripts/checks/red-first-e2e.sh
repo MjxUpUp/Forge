@@ -6,7 +6,8 @@
 #   2. 红判据开工时已通过 → 拒绝（先失败证明不成立）；
 #   3. 判据转绿后 verify-acceptance 通过、task complete 放行（红→绿闭环）；
 #   4. 复审必须由同一个 reviewer 承接：换 id 被拒，同 id 放行；
-#   5. report 披露「先失败证明」与「评审连续性」。
+#   5. report 披露「先失败证明」与「评审连续性」；
+#   6. 红判据一直没转绿 → task complete 被拒（负例，守住 complete 真的调用了检查）。
 #
 # 用法：sh scripts/checks/red-first-e2e.sh <forge 二进制|PATH 上的命令名>
 set -eu
@@ -18,8 +19,11 @@ if ! command -v -- "$BIN" >/dev/null 2>&1 && [ ! -x "$BIN" ]; then
 fi
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
-export FORGE_DATA_HOME="$work/forge-data"
+data=$(mktemp -d)
+trap 'rm -rf "$work" "$data"' EXIT
+# 数据目录必须在仓库外：写进仓库会被 `git add -A` 收进去，切分支时报「local changes
+# would be overwritten」，e2e 自己就把自己绊倒。
+export FORGE_DATA_HOME="$data"
 
 cd "$work"
 git init -q
@@ -70,6 +74,29 @@ fi
 
 "$BIN" task gate task-complete >/dev/null
 "$BIN" task complete >/dev/null
+
+git checkout -q master
+
+# 负例（review-rfe-1 P1-b）：红判据一直没转绿 → task complete 必须被拒。
+# 没有这一条，一个「complete 根本不检查红先绿」的二进制也能让整卷验收全绿。
+"$BIN" task start --ref feat/red-unclosed --branch \
+  --accept "test -f feature.txt ::" \
+  --accept-red "test -f never.txt" >/dev/null
+printf 'more\n' >> feature.txt
+git add -A
+git commit -qm "feat: more"
+"$BIN" task gate task-implement >/dev/null
+"$BIN" task verify-acceptance >/dev/null
+"$BIN" review pass --ref feat/red-unclosed --reviewer e2e-reviewer2 --score 80 >/dev/null
+"$BIN" task gate task-complete >/dev/null
+if out=$("$BIN" task complete 2>&1); then
+  echo "red-first-e2e: 红判据未转绿时 task complete 应被拒绝，却通过了：$out" >&2
+  exit 1
+fi
+case "$out" in
+  *未闭合*) : ;;
+  *) echo "red-first-e2e: complete 的拒绝理由不对：$out" >&2; exit 1 ;;
+esac
 
 report=$("$BIN" task report --ref feat/red 2>&1)
 case "$report" in

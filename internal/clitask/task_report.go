@@ -279,6 +279,12 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 			}
 		}
 		rep.RedFirstLine = fmt.Sprintf("%d 条（开工时失败 %d），其中已转绿 %d", len(state.RedAttempts), red, turned)
+		if state.AllowGreen {
+			rep.RedFirstLine += "；--allow-green 留痕"
+		}
+		if state.AllowEmptyCriteria {
+			rep.RedFirstLine += "；--allow-empty-criteria 留痕"
+		}
 	}
 	if n := len(state.ReviewRounds); n > 0 {
 		last := state.ReviewRounds[n-1]
@@ -294,7 +300,20 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 			line += fmt.Sprintf(" · 上轮未闭合 %d", state.ReviewRounds[n-2].OpenFindings)
 		}
 		if last.CriteriaReviewed != nil {
-			line += fmt.Sprintf(" · 认领判据 %d 条", *last.CriteriaReviewed)
+			if total := len(state.Acceptance); total > 0 {
+				line += fmt.Sprintf(" · 认领判据 %d/%d 条", *last.CriteriaReviewed, total)
+			} else {
+				line += fmt.Sprintf(" · 认领判据 %d 条", *last.CriteriaReviewed)
+			}
+		}
+		rotations := 0
+		for _, r := range state.ReviewRounds {
+			if r.RotatedFrom != "" {
+				rotations++
+			}
+		}
+		if rotations > 0 {
+			line += fmt.Sprintf(" · 换人 %d 次", rotations)
 		}
 		rep.ReviewChainLine = line
 	}

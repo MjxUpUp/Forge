@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/review"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/spf13/cobra"
 )
@@ -406,6 +407,10 @@ func TestReviewContinuity_BaselineUnreachableRequiresRotation(t *testing.T) {
 		t.Fatal("基线不可达时同一 reviewer 裸重盖章应被拒绝")
 	} else if !strings.Contains(err.Error(), "不可达") || !strings.Contains(err.Error(), "--reviewer") {
 		t.Errorf("拒绝文案应说明基线不可达并要求新 reviewer, got: %v", err)
+	} else if !strings.Contains(err.Error(), review.ReReviewGuidance) {
+		// 文案单一真相源：拒绝信息必须带上 review.ReReviewGuidance，
+		// 否则改一处漏一处（review-rfe-1 P3-e 实证过这条断言被删）。
+		t.Errorf("拒绝文案应含 review.ReReviewGuidance, got: %v", err)
 	}
 	st, err = taskpipeline.LoadTaskState(dir, ref)
 	if err != nil {

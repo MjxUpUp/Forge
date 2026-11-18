@@ -222,7 +222,7 @@ const gateGuidance = "检测到未审查的源码变更。请按序完成：\n" 
 	"2. 按其策略派【只读】子 agent 审查当前 diff——独立上下文是底线，不可自审绕过\n" +
 	"   (a) 首审、新会话接手、没有首轮 reviewer 的句柄、或这版不是对已审代码的修复（如新增功能）：按本步新派\n" +
 	"   (b) 本会话内已对本分支派过 reviewer、这版是修复后的 diff（复审——由同一个 reviewer 承接）：" + review.ReReviewGuidance + "（非 task 模式没有审查基线刷新，`--note` 只作审计留痕）\n" +
-	"3. 审查通过后运行 `forge review pass` 标记\n" +
+	"3. 审查通过后运行 `forge review pass --reviewer <该任务绑定的 id>` 标记（首轮绑定、之后复用同一 id）\n" +
 	"审查发现的问题按类型接 skill：运行时 bug/逻辑错误 → systematic-debugging；编译错误 → compile-fix-loop；断言弱化/假测试 → test-discipline。\n" +
 	"范围说明：本次判定只覆盖能归因到当前会话的源码变更；已被证明属于其他活跃会话的变更已排除，不要求你审查。\n" +
 	"注：同一 diff 反复未审最多判定 3 次后 advisory 放行（防无限重试）。"
@@ -450,8 +450,12 @@ func runReviewPassAtOpts(root, explicitRef, note, reviewer string, o reviewOptio
 			if o.Score != nil {
 				s.ReviewScore = o.Score
 			}
+			if o.CriteriaReviewed != nil && len(s.Acceptance) > 0 && *o.CriteriaReviewed > len(s.Acceptance) {
+				return fmt.Errorf("--criteria-reviewed %d 超过本任务登记的 %d 条验收判据——认领数不能大于判据总数", *o.CriteriaReviewed, len(s.Acceptance))
+			}
 			round := tasktypes.ReviewRound{
 				Reviewer:         reviewer,
+				RotatedFrom:      rotatedFrom,
 				CriteriaReviewed: o.CriteriaReviewed,
 			}
 			for _, f := range findings {

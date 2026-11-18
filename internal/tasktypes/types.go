@@ -894,6 +894,7 @@ type ReviewRound struct {
 	// 账本：谁审的、本轮未闭合/已关闭几条、认领核对了多少条判据、以及下一轮必须
 	// 承接的未闭合 id。它们只做记录与收敛校验，不参与分数计算。
 	Reviewer         string   `json:"reviewer,omitempty"`
+	RotatedFrom      string   `json:"rotated_from,omitempty"`
 	OpenFindings     int      `json:"open_findings,omitempty"`
 	ClosedFindings   int      `json:"closed_findings,omitempty"`
 	CriteriaReviewed *int     `json:"criteria_reviewed,omitempty"`
