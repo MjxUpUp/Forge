@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 	"io"
 	"os"
 	"os/exec"
@@ -223,16 +224,8 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	// 才允许实跑判据。老布局（proposal/design/tasks）没有 clarify 概念，放行以兼容。
 	// 之前只在 `change phase` 里校验，verify 可以绕过——文档说一套、命令做另一套
 	// （review-ruthless-4 P2-2）。
-	if c.HasChange || c.HasGoal || c.GoalRequired {
-		clarifyRaw, err := os.ReadFile(filepath.Join(c.Dir, FileClarify))
-		if err != nil {
-			return nil, fmt.Errorf("change: %s 缺 %s（边界与非目标 + 人确认）——先问人边界，再跑 `forge change clarify %s --by-human --note '…'`",
-				id, FileClarify, id)
-		}
-		if _, err := ParseClarify(clarifyRaw); err != nil {
-			return nil, fmt.Errorf("change: %s 的 %s 不合格：%w——补齐后重跑 `forge change clarify %s --by-human`（或 --force 覆盖）",
-				id, FileClarify, err, id)
-		}
+	if err := requireClarify(c, id); err != nil {
+		return nil, err
 	}
 	if !c.HasAcceptance {
 		return nil, fmt.Errorf("change: %s 没有 %s（无法验证）", relTo(root, c.Dir), FileAcceptance)
@@ -508,7 +501,7 @@ func changedFiles(root string) ([]FileDigest, bool) {
 	seen := make(map[string]bool)
 	var out []FileDigest
 	for _, p := range splitNul(diff + untracked) {
-		if p == "" || isEvidencePath(p) || seen[p] {
+		if p == "" || isEvidencePath(p) || ghostpath.IsReserved(p) || seen[p] {
 			continue
 		}
 		seen[p] = true
@@ -516,6 +509,25 @@ func changedFiles(root string) ([]FileDigest, bool) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, true
+}
+
+// requireClarify 校验新布局（goal/change）的 clarify.md 已由人确认。
+// 老布局（proposal/design/tasks）没有 clarify 概念，放行以兼容。
+// verify 与 gate 共用：两条命令对「能不能开工」必须同口径。
+func requireClarify(c *Change, id string) error {
+	if !c.HasChange && !c.HasGoal && !c.GoalRequired {
+		return nil
+	}
+	clarifyRaw, err := os.ReadFile(filepath.Join(c.Dir, FileClarify))
+	if err != nil {
+		return fmt.Errorf("change: %s 缺 %s（边界与非目标 + 人确认）——先问人边界，再跑 `forge change clarify %s --by-human --note '…'`",
+			id, FileClarify, id)
+	}
+	if _, err := ParseClarify(clarifyRaw); err != nil {
+		return fmt.Errorf("change: %s 的 %s 不合格：%w——补齐后重跑 `forge change clarify %s --by-human`（或 --force 覆盖）",
+			id, FileClarify, err, id)
+	}
+	return nil
 }
 
 func splitNul(s string) []string {

@@ -791,34 +791,6 @@ func TestKnownReviewed_ContentAddressedFilenameMatch(t *testing.T) {
 	}
 }
 
-// TestHasReservedDeviceSegment 表驱动钉住 Windows 保留设备名判定：CON、con.txt、
-// NUL、aux/、lpt9 都算；普通名（console、null、auxiliary）不算。
-func TestHasReservedDeviceSegment(t *testing.T) {
-	cases := []struct {
-		path string
-		want bool
-	}{
-		{"nul/win.go", true},
-		{"NUL/win.go", true},
-		{"nul.txt", true},
-		{"con", true},
-		{"aux/x.go", true},
-		{"com1", true},
-		{"lpt9/y.go", true},
-		{"internal/nul/x.go", true},
-		{"console.go", false},
-		{"null.go", false},
-		{"auxiliary.go", false},
-		{"com10/x.go", false},
-		{"internal/cli/review.go", false},
-	}
-	for _, c := range cases {
-		if got := hasReservedDeviceSegment(c.path); got != c.want {
-			t.Errorf("hasReservedDeviceSegment(%q) = %v, want %v", c.path, got, c.want)
-		}
-	}
-}
-
 // TestChangedSourceFilesSince_SkipsReservedDeviceNames 复现幻影源码树：Windows 上
 // 用 `\\?\` 前缀可以真的建出 `nul/` 目录（普通 API 建不了），git 随后会把它当
 // 未跟踪目录列出来。评审的文件枚举必须跳过，否则审查快照会跟工作区状态对不上
@@ -843,6 +815,15 @@ func TestChangedSourceFilesSince_SkipsReservedDeviceNames(t *testing.T) {
 	for _, f := range untracked {
 		if strings.Contains(f, "nul/") || strings.HasPrefix(f, "nul") {
 			t.Errorf("changedSourceFilesSince 不该列出保留设备名幻影路径，got %q", f)
+		}
+	}
+	// 非 Windows 上 `aux.go` 是正常源码，不能被当成幻影过滤（ghostpath 只在
+	// Windows 判保留名）；这条断言防止 IsReserved 退化成「永远过滤」。
+	if runtime.GOOS != "windows" {
+		write(t, dir, "aux.go", "package aux\n")
+		_, untrackedAux := changedSourceFilesSince(dir, "HEAD")
+		if !containsFile(untrackedAux, "aux.go") {
+			t.Errorf("非 Windows 上 aux.go 应被列出，got %v", untrackedAux)
 		}
 	}
 	if !containsFile(untracked, "real.go") {

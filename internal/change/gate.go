@@ -47,6 +47,9 @@ func GateTask(ctx context.Context, root, id string, taskNo int, opts GateOptions
 		return nil, fmt.Errorf("change: 任务 %d 没写判据编号——在任务行末尾加「（判据：acceptance #N）」才能单独 gate", taskNo)
 	}
 
+	if err := requireClarify(c, id); err != nil {
+		return nil, err
+	}
 	if problems := DocProblems(c.Dir, c.Fast); len(problems) > 0 {
 		return nil, fmt.Errorf("change: %s 的产物还不完整（%s）——补齐、删掉%s后再 gate",
 			id, strings.Join(problems, "、"), scaffoldHint)

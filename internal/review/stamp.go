@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/MjxUpUp/Forge/internal/ghostpath"
 	"log"
 	"os"
 	"os/exec"
@@ -544,32 +545,6 @@ func foreignWindow() time.Duration {
 	return time.Duration(n) * time.Minute
 }
 
-// reservedDeviceNames 是 Windows 上的保留设备名。它们无法用普通 Win32 API 创建，
-// 但能借 `\\?\` 前缀（以及 git 直接写 index/树的路径）出现——评审的文件枚举若照单
-// 全收，就会把 `nul/win.go` 这种幻影路径当成源码树，进而让审查快照与工作区状态
-// 对不上（实测：删掉幻影目录后 gate 报「审查通过后源码变更」）。
-// 判定按「去掉扩展名后的段名」比较：CON、con.txt、NUL 都算。
-var reservedDeviceNames = map[string]bool{
-	"con": true, "prn": true, "aux": true, "nul": true,
-	"com1": true, "com2": true, "com3": true, "com4": true, "com5": true,
-	"com6": true, "com7": true, "com8": true, "com9": true,
-	"lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
-	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
-}
-
-// hasReservedDeviceSegment 判断路径里是否有任一段是 Windows 保留设备名。
-func hasReservedDeviceSegment(p string) bool {
-	for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
-		if i := strings.IndexByte(seg, '.'); i >= 0 {
-			seg = seg[:i]
-		}
-		if reservedDeviceNames[strings.ToLower(seg)] {
-			return true
-		}
-	}
-	return false
-}
-
 // changedSourceFilesSince 返回自 baseCommit 起变更的【源码】文件，分 tracked（修改/删除，含
 // base..HEAD 已提交 + 工作区未提交）和 untracked（新增）。base=="" → HEAD。已排除 .forge/、
 // 非源码扩展、生成物路径、Windows 保留设备名路径。
@@ -580,14 +555,14 @@ func changedSourceFilesSince(root, baseCommit string) (tracked, untracked []stri
 	}
 	if out, e := gitOut(root, "diff", "--name-only", base, "--", ".", ":(exclude).forge"); e == nil {
 		for _, f := range nonEmptyLines(out) {
-			if isSourceCode(f) && !hasReservedDeviceSegment(f) {
+			if isSourceCode(f) && !ghostpath.IsReserved(f) {
 				tracked = append(tracked, f)
 			}
 		}
 	}
 	if out, e := gitOut(root, "ls-files", "--others", "--exclude-standard", "--", ".", ":(exclude).forge"); e == nil {
 		for _, f := range nonEmptyLines(out) {
-			if isSourceCode(f) && !hasReservedDeviceSegment(f) {
+			if isSourceCode(f) && !ghostpath.IsReserved(f) {
 				untracked = append(untracked, f)
 			}
 		}
