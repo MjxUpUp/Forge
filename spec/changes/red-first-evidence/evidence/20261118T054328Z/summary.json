@@ -1,0 +1,74 @@
+{
+  "change": "red-first-evidence",
+  "started_at": "2026-11-18T05:43:28Z",
+  "finished_at": "2026-11-18T05:44:10Z",
+  "passed": true,
+  "sealed": true,
+  "head": "b2f996833c059e739d9c1c615395509081db7b39",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "e1b2383fab06d89e4188a86e87419564c5a1da49ff12813472a8e1f80550cb4c",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2883
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/tasktypes/ ./internal/clitask/ -run 'TestRedAttempts|TestTaskStart_ChangeRequiresCriteria|TestTaskComplete_RedFirst' -count=1",
+      "exit": 0,
+      "duration_ms": 6482,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestReviewContinuity|TestReviewFindings|TestReviewCriteriaReviewed' -count=1",
+      "exit": 0,
+      "duration_ms": 10382,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go build -o /tmp/forge-redfirst ./cmd/forge",
+      "exit": 0,
+      "duration_ms": 1292
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/red-first-e2e.sh /tmp/forge-redfirst",
+      "exit": 0,
+      "duration_ms": 16708,
+      "stdout_file": "05.stdout",
+      "stderr_file": "05.stderr"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md READMEs/README.zh-CN.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 675,
+      "stdout_file": "06.stdout"
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 192
+    },
+    {
+      "index": 8,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4042
+    }
+  ]
+}
