@@ -444,9 +444,8 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		fmt.Println("Task Score History:")
 		fmt.Println(strings.Repeat("─", 60))
 		for _, s := range scored {
-			fmt.Printf("  %s — %.0f (%s) — %s\n",
-				s.TaskRef, s.Score.Overall, s.Score.Grade,
-				s.Score.ScoredAt.Format("2006-01-02 15:04"))
+			fmt.Printf("  %s — %s\n",
+				s.TaskRef, s.Score.ScoredAt.Format("2006-01-02 15:04"))
 		}
 		return nil
 	}
@@ -486,21 +485,21 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 	}
 
 	if asJSON {
-		output, _ := json.MarshalIndent(state.Score, "", "  ")
+		output, _ := json.MarshalIndent(taskpipeline.BuildTaskEvidence(".", state), "", "  ")
 		fmt.Println(string(output))
 		return nil
 	}
 
 	fmt.Printf("Task: %s\n", state.TaskRef)
 	fmt.Println(strings.Repeat("─", 60))
-	for _, d := range state.Score.Dimensions {
-		fmt.Printf("  %-15s %3d  %s\n", d.Dimension, d.Score, d.Detail)
-	}
-	fmt.Println(strings.Repeat("─", 60))
-	fmt.Printf("  Overall: %.0f (%s)\n", state.Score.Overall, state.Score.Grade)
-	// 审查-返工循环度量（检验审查流程是否收敛的结果指标）。仅信息展示——不进加权总分。
-	if ev := state.Score.Evidence; ev != nil && (ev.ReviewPasses > 0 || ev.CompleteRejections > 0) {
-		fmt.Printf("  返工轮次: review pass %d 次 / task-complete 被拒 %d 次\n", ev.ReviewPasses, ev.CompleteRejections)
+	ev := taskpipeline.BuildTaskEvidence(".", state)
+	fmt.Printf("  %-15s %3d\n", "判据", ev.Criteria)
+	fmt.Printf("  %-15s %3d\n", "红先绿", ev.RedFirstClosed)
+	fmt.Printf("  %-15s %3d\n", "评审轮次", ev.ReviewRounds)
+	fmt.Printf("  %-15s %3d\n", "逃生舱", ev.Escapes)
+	// 审查-返工循环度量（检验审查流程是否收敛的结果指标）。仅信息展示。
+	if ev := state.Score; ev != nil && ev.Evidence != nil && (ev.Evidence.ReviewPasses > 0 || ev.Evidence.CompleteRejections > 0) {
+		fmt.Printf("  返工轮次: review pass %d 次 / task-complete 被拒 %d 次\n", ev.Evidence.ReviewPasses, ev.Evidence.CompleteRejections)
 	}
 	return nil
 }
@@ -557,11 +556,7 @@ func runTaskList(cmd *cobra.Command, args []string) error {
 		if s.CompletedAt != nil {
 			status = "completed"
 		}
-		score := ""
-		if s.Score != nil {
-			score = fmt.Sprintf(" — %.0f (%s)", s.Score.Overall, s.Score.Grade)
-		}
-		fmt.Printf("  %-25s %s%s\n", s.TaskRef, status, score)
+		fmt.Printf("  %-25s %s\n", s.TaskRef, status)
 	}
 	return nil
 }
@@ -694,12 +689,8 @@ func printTaskLine(s *taskpipeline.TaskState) {
 	if s.CompletedAt != nil {
 		status = "completed"
 	}
-	score := ""
-	if s.Score != nil {
-		score = fmt.Sprintf(" %.0f (%s)", s.Score.Overall, s.Score.Grade)
-	}
 	startTime := s.StartedAt.Format("01-02 15:04")
-	fmt.Printf("  %s  %-25s %s%s\n", startTime, s.TaskRef, status, score)
+	fmt.Printf("  %s  %-25s %s\n", startTime, s.TaskRef, status)
 }
 
 // printTaskTreeLine 以 tree 格式打印单个 task。
@@ -709,18 +700,11 @@ func printTaskTreeLine(prefix string, s *taskpipeline.TaskState) {
 	if s.CompletedAt == nil {
 		status = "🔄"
 	}
-	score := ""
-	if s.Score != nil {
-		score = fmt.Sprintf(" %.0f(%s)", s.Score.Overall, s.Score.Grade)
-		if s.Score.Overall < 70 {
-			score += " ⚠"
-		}
-	}
 	summary := ""
 	if s.Summary != "" && s.Summary != s.TaskRef {
 		summary = fmt.Sprintf(" — %s", s.Summary)
 	}
-	fmt.Printf("%s %s %-25s %s%s%s\n", prefix, startTime, s.TaskRef, status, score, summary)
+	fmt.Printf("%s %s %-25s %s%s\n", prefix, startTime, s.TaskRef, status, summary)
 }
 
 // findLatestTaskTime 返回一组 task 中最近的时间。

@@ -180,8 +180,8 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	if done.CompletedAt == nil {
 		t.Fatal(`成功路径必须 MarkComplete`)
 	}
-	if done.Score == nil {
-		t.Fatal(`成功路径必须评分（Score 非 nil）`)
+	if done.Evidence == nil {
+		t.Fatal(`成功路径必须落事实清单（Evidence 非 nil）`)
 	}
 
 	// 6. 幂等：重复 complete 不再重跑副作用、不报错。

@@ -444,9 +444,12 @@ func TestTaskScoreWorkflow(t *testing.T) {
 		t.Fatalf("forge task complete failed: %s", stdout)
 	}
 
-	// Score should be present
-	if !strings.Contains(stdout, "Score:") {
-		t.Fatalf("expected score in complete output, got: %s", stdout)
+	// 2.3 起 complete 只报事实清单，不再产出合成分
+	if strings.Contains(stdout, "Score:") {
+		t.Fatalf("complete 不应再打印合成分，got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "判据") {
+		t.Fatalf("complete 应打印事实清单，got: %s", stdout)
 	}
 
 	// Query score explicitly
@@ -454,8 +457,8 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("forge task score failed: %s", stdout)
 	}
-	if !strings.Contains(stdout, "Overall:") {
-		t.Fatalf("expected Overall in score output, got: %s", stdout)
+	if !strings.Contains(stdout, "判据") {
+		t.Fatalf("task score 现在只报事实清单，got: %s", stdout)
 	}
 
 	// Score JSON output
@@ -467,14 +470,8 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &scoreResult); err != nil {
 		t.Fatalf("score JSON parse error: %v, output: %s", err, stdout)
 	}
-	if _, ok := scoreResult["overall"]; !ok {
-		t.Fatal("score JSON missing 'overall' field")
-	}
-	if _, ok := scoreResult["grade"]; !ok {
-		t.Fatal("score JSON missing 'grade' field")
-	}
-	if _, ok := scoreResult["dimensions"]; !ok {
-		t.Fatal("score JSON missing 'dimensions' field")
+	if _, ok := scoreResult["criteria"]; !ok {
+		t.Fatal("task score --json 应输出事实清单（criteria 字段）")
 	}
 }
 

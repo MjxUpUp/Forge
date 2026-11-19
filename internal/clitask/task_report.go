@@ -10,7 +10,6 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/spf13/cobra"
@@ -56,7 +55,7 @@ type taskReportJSON struct {
 	Acceptance       []taskpipeline.AcceptanceCriterion `json:"acceptance"`
 	TierCounts       map[string]int                     `json:"tier_counts"`
 	HasManualTier    bool                               `json:"has_manual_tier"`
-	Score            *scoringtypes.ScoreResult          `json:"score,omitempty"`
+	Evidence         *tasktypes.TaskEvidence            `json:"evidence,omitempty"`
 	EvidenceStrength string                             `json:"evidence_strength,omitempty"`
 	Deterministic    int                                `json:"deterministic"`
 	AgentClaim       int                                `json:"agent_claim"`
@@ -155,7 +154,7 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		Acceptance:         state.Acceptance,
 		TierCounts:         taskpipeline.AcceptanceTierCounts(state.Acceptance),
 		HasManualTier:      taskpipeline.HasManualTierAcceptance(state.Acceptance),
-		Score:              state.Score,
+		Evidence:           evidenceFor(state),
 		ReviewPassed:       state.ReviewPassed,
 		ReviewRounds:       len(state.ReviewRounds),
 		RepoHasGoTestFiles: goTestFilesPtr(root),
@@ -414,14 +413,22 @@ func renderTaskReport(rep *taskReportJSON) string {
 		}
 	}
 
-	// 评分与证据。
-	fmt.Fprintf(&b, "│\n│ 评分与证据：")
-	if rep.Score != nil {
-		fmt.Fprintf(&b, "%.0f (%s) · ", rep.Score.Overall, rep.Score.Grade)
+	// 事实清单（不评分）。
+	fmt.Fprintf(&b, "│\n│ 事实清单：")
+	if rep.Evidence != nil {
+		fmt.Fprintf(&b, "判据 %d（通过 %d）· 红先绿 %d/%d · 评审 %d 轮",
+			rep.Evidence.Criteria, rep.Evidence.CriteriaPassed,
+			rep.Evidence.RedFirstClosed, rep.Evidence.RedFirstTrials, rep.Evidence.ReviewRounds)
+		if rep.Evidence.ReviewScore != nil {
+			fmt.Fprintf(&b, "（score %d）", *rep.Evidence.ReviewScore)
+		}
+		if rep.Evidence.Escapes > 0 {
+			fmt.Fprintf(&b, " · 逃生 %d 次", rep.Evidence.Escapes)
+		}
+		fmt.Fprintf(&b, "\n")
 	} else {
-		fmt.Fprintf(&b, "未评分 · ")
+		fmt.Fprintf(&b, "未登记\n")
 	}
-	fmt.Fprintf(&b, "证据 %s（deterministic %d / agent-claim %d）\n", rep.EvidenceStrength, rep.Deterministic, rep.AgentClaim)
 
 	// 未验证面（高可信=证据+显式披露未验证面）。逃生债（价-1a）并入本段——
 	// 被免掉的门禁就是没验证的面。
@@ -433,9 +440,9 @@ func renderTaskReport(rep *taskReportJSON) string {
 		for _, f := range rep.UntestedAreas {
 			fmt.Fprintf(&b, "│   - %s\n", f)
 		}
-	case rep.Score == nil && len(rep.EscapeDebt) == 0:
+	case rep.Evidence == nil && len(rep.EscapeDebt) == 0:
 		fmt.Fprintf(&b, "未知（任务未评分——complete 时计算）\n")
-	case rep.Score == nil:
+	case rep.Evidence == nil:
 		// 未评分但有逃生债：债面照报（读不到不等于没有）。
 	default:
 		if len(rep.EscapeDebt) == 0 {
@@ -621,6 +628,13 @@ func repoHasGoTestFiles(root string) (found, known bool) {
 }
 
 // goTestFilesPtr 把扫描结果转成三态指针：nil=扫描失败（退回原句）。
+func evidenceFor(state *taskpipeline.TaskState) *tasktypes.TaskEvidence {
+	if state.Evidence != nil {
+		return state.Evidence
+	}
+	return taskpipeline.BuildTaskEvidence(".", state)
+}
+
 func goTestFilesPtr(root string) *bool {
 	found, known := repoHasGoTestFiles(root)
 	if !known {

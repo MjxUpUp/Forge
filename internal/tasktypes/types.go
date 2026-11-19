@@ -503,7 +503,8 @@ type TaskState struct {
 	History        []TaskGateResult          `json:"history"`
 	StartedAt      time.Time                 `json:"started_at"`
 	CompletedAt    *time.Time                `json:"completed_at,omitempty"`
-	Score          *scoringtypes.ScoreResult `json:"score,omitempty"`
+	Score          *scoringtypes.ScoreResult `json:"score,omitempty"` // 兼容字段：2.3 起不再写入，新流程只写 Evidence
+	Evidence       *TaskEvidence             `json:"evidence,omitempty"`
 	HeadCommit     string                    `json:"head_commit,omitempty"`     // 用于 duplicate detection
 	SessionID      string                    `json:"session_id,omitempty"`      // 创建本 task 的 agent session
 	ExternalOrigin ExternalOrigin            `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
