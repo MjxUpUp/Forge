@@ -19,6 +19,18 @@
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
 
+## [2.3.0](https://github.com/MjxUpUp/Forge/compare/v2.2.0...v2.3.0) (2026-11-19)
+
+
+### Features
+
+* **drop-score:** complete/report/list 只报事实清单，不再产出合成分 ([22ea220](https://github.com/MjxUpUp/Forge/commit/22ea2209a261984189a665771718b421b2c81e0f))
+
+
+### Bug Fixes
+
+* **drop-score:** 事实清单不再洗白——未测面现算、红先绿归一化、逃生读 checklog ([6a892c8](https://github.com/MjxUpUp/Forge/commit/6a892c8e9b43d80bd9969bdfa0e627f33ab0ddd0))
+
 ## [2.2.0](https://github.com/MjxUpUp/Forge/compare/v2.1.3...v2.2.0) (2026-11-19)
 
 
