@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [3.0.0](https://github.com/MjxUpUp/Forge/compare/v2.3.1...v3.0.0) (2026-11-19)
+
 ### ⚠ 升级注意
 
 * **复审改为「评审者复用」**：同一个任务的 code-review 必须由首轮绑定的同一个子 agent 继续（`--reviewer <id>`），源码变更后再用**新** reviewer 会被拒；确实需要换人时用 `--rotate-reviewer --reason "<原因>"` 显式留痕。原先「源码一变就必须换新 reviewer」的规则已反转——每轮换人会把上一轮的问题丢掉，评审收敛不了。上一轮的未闭合项用 `--findings <清单>` 承接，关闭或 `(waived: 原因)` 才放行。
@@ -19,9 +21,6 @@
 
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
-
-## [3.0.0](https://github.com/MjxUpUp/Forge/compare/v2.3.1...v3.0.0) (2026-11-19)
-
 
 ### ⚠ BREAKING CHANGES
 
