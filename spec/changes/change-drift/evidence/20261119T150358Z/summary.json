@@ -1,0 +1,96 @@
+{
+  "change": "change-drift",
+  "started_at": "2026-11-19T15:03:58Z",
+  "finished_at": "2026-11-19T15:04:13Z",
+  "passed": true,
+  "sealed": true,
+  "head": "75256dd6b2c6543763e042758698cb88fc2f6da0",
+  "diff_sha256": "d02e8095f497297f0b9ce1ca0ab1a9a87f5a87b57cc7cf2f079f440184ee134b",
+  "files": [
+    {
+      "path": "internal/change/drift.go",
+      "sha256": "137f33f254b6f19cf1fddd61d7b0df638e0d0b7105ddd5926a5e30faf52afe70"
+    },
+    {
+      "path": "internal/change/drift_test.go",
+      "sha256": "0d7c58010766702f38ff4d7ce60b9fa76651b7f323fa8b3f8ee544e52b377a5e"
+    },
+    {
+      "path": "internal/cli/change.go",
+      "sha256": "06d8f468595f3eb29b5e38c11829dfe399f05692b385b0bab8db9cc5a7a8dff9"
+    },
+    {
+      "path": "internal/cli/change_drift.go",
+      "sha256": "91db2f54d8f44dbabf3847efce4ada8efee8c92b8955ca6cba5e451a9331f1bc"
+    },
+    {
+      "path": "spec/changes/change-drift/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/change-drift/acceptance.md",
+      "sha256": "bb16be54760467aa5e692457aa7c848c534ac27d6d412ca5e2977c5e8513c525"
+    },
+    {
+      "path": "spec/changes/change-drift/change.md",
+      "sha256": "a7792454acec2df343c73b588b637272657d8ee638a4df45b912e7992498a502"
+    },
+    {
+      "path": "spec/changes/change-drift/clarify.md",
+      "sha256": "40b326bb37f8826261b2da4bdf51211a7761fb396bea1a62448f23742de2d5ad"
+    },
+    {
+      "path": "spec/changes/change-drift/goal.md",
+      "sha256": "0f8f3083c6f38591bfd7148a4ca1b5cf7ef8d99934843f1a7c59de7e85b7ac68"
+    }
+  ],
+  "acceptance_sha256": "bb16be54760467aa5e692457aa7c848c534ac27d6d412ca5e2977c5e8513c525",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2352
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/change/ -run 'TestDeclaredPaths|TestDrift' -count=1",
+      "exit": 0,
+      "duration_ms": 1336,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestChange' -count=1",
+      "exit": 0,
+      "duration_ms": 5767,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 700,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 192
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 3811
+    }
+  ]
+}

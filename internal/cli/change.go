@@ -27,6 +27,7 @@ func init() {
 	changeCmd.AddCommand(changeGateCmd)
 	changeCmd.AddCommand(changeAgentsCmd)
 	changeCmd.AddCommand(changeCheckCmd)
+	changeCmd.AddCommand(newChangeDriftCmd())
 
 	changeInitCmd.Flags().String("profile", "mini", "门禁档位：mini / standard / full")
 	changeNewCmd.Flags().String("title", "", "change 标题（缺省用 id）")
