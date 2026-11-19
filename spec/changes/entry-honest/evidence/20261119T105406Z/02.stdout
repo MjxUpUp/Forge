@@ -1,0 +1,2515 @@
+=== RUN   TestParseAcceptanceFromArtifact
+=== RUN   TestParseAcceptanceFromArtifact/accept_列表行（含中文同义与列表前缀）
+=== RUN   TestParseAcceptanceFromArtifact/Run/Expected_行对与_plan_解析同语义
+=== RUN   TestParseAcceptanceFromArtifact/accept_围栏块
+=== RUN   TestParseAcceptanceFromArtifact/普通代码围栏内的_accept_字样不误提
+=== RUN   TestParseAcceptanceFromArtifact/无验收内容返回空
+--- PASS: TestParseAcceptanceFromArtifact (0.00s)
+    --- PASS: TestParseAcceptanceFromArtifact/accept_列表行（含中文同义与列表前缀） (0.00s)
+    --- PASS: TestParseAcceptanceFromArtifact/Run/Expected_行对与_plan_解析同语义 (0.00s)
+    --- PASS: TestParseAcceptanceFromArtifact/accept_围栏块 (0.00s)
+    --- PASS: TestParseAcceptanceFromArtifact/普通代码围栏内的_accept_字样不误提 (0.00s)
+    --- PASS: TestParseAcceptanceFromArtifact/无验收内容返回空 (0.00s)
+=== RUN   TestParseAcceptanceFromArtifactFile
+--- PASS: TestParseAcceptanceFromArtifactFile (0.01s)
+=== RUN   TestCheckAcceptanceFresh_ContentSnapshot
+--- PASS: TestCheckAcceptanceFresh_ContentSnapshot (1.77s)
+=== RUN   TestVerifyAcceptance_ContentSnapshotFallback
+--- PASS: TestVerifyAcceptance_ContentSnapshotFallback (0.97s)
+=== RUN   TestMergeAcceptanceResults_ContentFields
+--- PASS: TestMergeAcceptanceResults_ContentFields (0.00s)
+=== RUN   TestAcceptanceRecurrence
+--- PASS: TestAcceptanceRecurrence (2.24s)
+=== RUN   TestDetectAcceptanceRecurrenceRules
+=== RUN   TestDetectAcceptanceRecurrenceRules/两次不同_hash_同指纹
+=== RUN   TestDetectAcceptanceRecurrenceRules/指纹不同
+=== RUN   TestDetectAcceptanceRecurrenceRules/hash_为空不可度量
+=== RUN   TestDetectAcceptanceRecurrenceRules/阈值_3_中间一对_hash_相同
+=== RUN   TestDetectAcceptanceRecurrenceRules/阈值_3_全不同
+=== RUN   TestDetectAcceptanceRecurrenceRules/关闭
+=== RUN   TestDetectAcceptanceRecurrenceRules/已通过不判
+=== RUN   TestDetectAcceptanceRecurrenceRules/hash_变但文件指纹没变_→_self-mutating_疑点
+--- PASS: TestDetectAcceptanceRecurrenceRules (0.00s)
+    --- PASS: TestDetectAcceptanceRecurrenceRules/两次不同_hash_同指纹 (0.00s)
+    --- PASS: TestDetectAcceptanceRecurrenceRules/指纹不同 (0.00s)
+    --- PASS: TestDetectAcceptanceRecurrenceRules/hash_为空不可度量 (0.00s)
+    --- PASS: TestDetectAcceptanceRecurrenceRules/阈值_3_中间一对_hash_相同 (0.00s)
+    --- PASS: TestDetectAcceptanceRecurrenceRules/阈值_3_全不同 (0.00s)
+    --- PASS: TestDetectAcceptanceRecurrenceRules/关闭 (0.00s)
+    --- PASS: TestDetectAcceptanceRecurrenceRules/已通过不判 (0.00s)
+    --- PASS: TestDetectAcceptanceRecurrenceRules/hash_变但文件指纹没变_→_self-mutating_疑点 (0.00s)
+=== RUN   TestMergeAcceptanceResultsFailHistoryCap
+--- PASS: TestMergeAcceptanceResultsFailHistoryCap (0.00s)
+=== RUN   TestRecurrenceStickyUntilReset
+--- PASS: TestRecurrenceStickyUntilReset (0.31s)
+=== RUN   TestStripTrustDropsFailHistory
+--- PASS: TestStripTrustDropsFailHistory (0.00s)
+=== RUN   TestStampAcceptanceSource_WriteOnce
+--- PASS: TestStampAcceptanceSource_WriteOnce (0.00s)
+=== RUN   TestCheckAcceptanceRegistered_BlockOnZero
+--- PASS: TestCheckAcceptanceRegistered_BlockOnZero (0.00s)
+=== RUN   TestCheckAcceptanceRegistered_PassCases
+--- PASS: TestCheckAcceptanceRegistered_PassCases (0.00s)
+=== RUN   TestCheckAcceptanceRegistered_EscapeAudited
+--- PASS: TestCheckAcceptanceRegistered_EscapeAudited (0.02s)
+=== RUN   TestConventionsDefaultAcceptance_FromProfile
+--- PASS: TestConventionsDefaultAcceptance_FromProfile (0.01s)
+=== RUN   TestRegisterAcceptance_MergeAndTier
+--- PASS: TestRegisterAcceptance_MergeAndTier (0.03s)
+=== RUN   TestAcceptanceTierHelpers
+--- PASS: TestAcceptanceTierHelpers (0.00s)
+=== RUN   TestHeldoutRegistered_Probe
+--- PASS: TestHeldoutRegistered_Probe (0.01s)
+=== RUN   TestStripForeignGateSignals_NormalizesAcceptanceTier
+--- PASS: TestStripForeignGateSignals_NormalizesAcceptanceTier (0.00s)
+=== RUN   TestStripForeignGateSignals_StripsNoneRegression
+--- PASS: TestStripForeignGateSignals_StripsNoneRegression (0.00s)
+=== RUN   TestRegisterAcceptance_RejectsCompleted
+--- PASS: TestRegisterAcceptance_RejectsCompleted (0.02s)
+=== RUN   TestEnsureGoTestVerbose
+=== RUN   TestEnsureGoTestVerbose/补_-v
+=== RUN   TestEnsureGoTestVerbose/带其他_flag_时插在最前
+=== RUN   TestEnsureGoTestVerbose/已带_-v_不动
+=== RUN   TestEnsureGoTestVerbose/已带_-v=true_不动
+=== RUN   TestEnsureGoTestVerbose/空_Expected_不动（只看退出码）
+=== RUN   TestEnsureGoTestVerbose/非_go_test_不动
+=== RUN   TestEnsureGoTestVerbose/非_go_命令不动
+=== RUN   TestEnsureGoTestVerbose/gotestsum_不动（非字面_go_test）
+=== RUN   TestEnsureGoTestVerbose/shell_组合不动
+--- PASS: TestEnsureGoTestVerbose (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/补_-v (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/带其他_flag_时插在最前 (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/已带_-v_不动 (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/已带_-v=true_不动 (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/空_Expected_不动（只看退出码） (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/非_go_test_不动 (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/非_go_命令不动 (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/gotestsum_不动（非字面_go_test） (0.00s)
+    --- PASS: TestEnsureGoTestVerbose/shell_组合不动 (0.00s)
+=== RUN   TestParseAcceptance
+--- PASS: TestParseAcceptance (0.00s)
+=== RUN   TestVerifyAcceptance_RunsAndClassifies
+--- PASS: TestVerifyAcceptance_RunsAndClassifies (0.56s)
+=== RUN   TestTruncateAcceptanceOutput_ValidUTF8
+--- PASS: TestTruncateAcceptanceOutput_ValidUTF8 (0.00s)
+=== RUN   TestTruncateAcceptanceOutput_ShortUnchanged
+--- PASS: TestTruncateAcceptanceOutput_ShortUnchanged (0.00s)
+=== RUN   TestParseAcceptanceFromPlan
+=== RUN   TestParseAcceptanceFromPlan/集中验收块
+=== RUN   TestParseAcceptanceFromPlan/Task_内联多块（全文扫描）
+=== RUN   TestParseAcceptanceFromPlan/无验收块返空
+=== RUN   TestParseAcceptanceFromPlan/裸_Run_无_Expected（只看退出码_0）
+=== RUN   TestParseAcceptanceFromPlan/孤立_Expected_前无_Run_丢弃
+=== RUN   TestParseAcceptanceFromPlan/连续两_Run_中间无_Expected（前者裸落盘）
+--- PASS: TestParseAcceptanceFromPlan (0.00s)
+    --- PASS: TestParseAcceptanceFromPlan/集中验收块 (0.00s)
+    --- PASS: TestParseAcceptanceFromPlan/Task_内联多块（全文扫描） (0.00s)
+    --- PASS: TestParseAcceptanceFromPlan/无验收块返空 (0.00s)
+    --- PASS: TestParseAcceptanceFromPlan/裸_Run_无_Expected（只看退出码_0） (0.00s)
+    --- PASS: TestParseAcceptanceFromPlan/孤立_Expected_前无_Run_丢弃 (0.00s)
+    --- PASS: TestParseAcceptanceFromPlan/连续两_Run_中间无_Expected（前者裸落盘） (0.00s)
+=== RUN   TestMergeAcceptance
+--- PASS: TestMergeAcceptance (0.00s)
+=== RUN   TestVerifyAcceptance_RecordsAcceptedHeadCommit
+--- PASS: TestVerifyAcceptance_RecordsAcceptedHeadCommit (0.43s)
+=== RUN   TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty
+--- PASS: TestVerifyAcceptance_AcceptedHeadCommit_NonGitEmpty (0.18s)
+=== RUN   TestParseAcceptanceFromPlan_FencedCodeBlock
+--- PASS: TestParseAcceptanceFromPlan_FencedCodeBlock (0.00s)
+=== RUN   TestCheckAcceptanceFresh
+=== RUN   TestCheckAcceptanceFresh/无_acceptance_放行
+=== RUN   TestCheckAcceptanceFresh/未实跑（AcceptedHeadCommit_空）BLOCKED
+=== RUN   TestCheckAcceptanceFresh/快照过期（AcceptedHeadCommit_≠_HEAD）BLOCKED
+=== RUN   TestCheckAcceptanceFresh/未通过（Passed=false）BLOCKED
+=== RUN   TestCheckAcceptanceFresh/全_fresh_放行（AcceptedHeadCommit==HEAD_且_Passed）
+=== RUN   TestCheckAcceptanceFresh/escape_override_放行（per-task）
+--- PASS: TestCheckAcceptanceFresh (0.38s)
+    --- PASS: TestCheckAcceptanceFresh/无_acceptance_放行 (0.00s)
+    --- PASS: TestCheckAcceptanceFresh/未实跑（AcceptedHeadCommit_空）BLOCKED (0.03s)
+    --- PASS: TestCheckAcceptanceFresh/快照过期（AcceptedHeadCommit_≠_HEAD）BLOCKED (0.03s)
+    --- PASS: TestCheckAcceptanceFresh/未通过（Passed=false）BLOCKED (0.03s)
+    --- PASS: TestCheckAcceptanceFresh/全_fresh_放行（AcceptedHeadCommit==HEAD_且_Passed） (0.03s)
+    --- PASS: TestCheckAcceptanceFresh/escape_override_放行（per-task） (0.01s)
+=== RUN   TestCheckAcceptanceFresh_NonGitShortCircuit
+--- PASS: TestCheckAcceptanceFresh_NonGitShortCircuit (0.03s)
+=== RUN   TestMergeAcceptanceResults
+--- PASS: TestMergeAcceptanceResults (0.00s)
+=== RUN   TestMergeAcceptanceResults_AssertionsKey
+--- PASS: TestMergeAcceptanceResults_AssertionsKey (0.00s)
+=== RUN   TestAcceptanceCriterion_V1ShapeUnchanged
+=== RUN   TestAcceptanceCriterion_V1ShapeUnchanged/v1_序列化无_assertions_键
+=== RUN   TestAcceptanceCriterion_V1ShapeUnchanged/v1_JSON_反序列化_Assertions_为_nil
+=== RUN   TestAcceptanceCriterion_V1ShapeUnchanged/v2_round-trip_保真
+--- PASS: TestAcceptanceCriterion_V1ShapeUnchanged (0.00s)
+    --- PASS: TestAcceptanceCriterion_V1ShapeUnchanged/v1_序列化无_assertions_键 (0.00s)
+    --- PASS: TestAcceptanceCriterion_V1ShapeUnchanged/v1_JSON_反序列化_Assertions_为_nil (0.00s)
+    --- PASS: TestAcceptanceCriterion_V1ShapeUnchanged/v2_round-trip_保真 (0.00s)
+=== RUN   TestActivityCheckStillSkipsOnLastGate
+--- PASS: TestActivityCheckStillSkipsOnLastGate (0.46s)
+=== RUN   TestJudgeAssertion_Dispatch
+=== RUN   TestJudgeAssertion_Dispatch/exit_0_hit
+=== RUN   TestJudgeAssertion_Dispatch/exit_0_default
+=== RUN   TestJudgeAssertion_Dispatch/exit_1_miss
+=== RUN   TestJudgeAssertion_Dispatch/exit_non-numeric_fail-closed
+=== RUN   TestJudgeAssertion_Dispatch/exit_without_run
+=== RUN   TestJudgeAssertion_Dispatch/contains_hit
+=== RUN   TestJudgeAssertion_Dispatch/contains_miss
+=== RUN   TestJudgeAssertion_Dispatch/contains_CJK_substring
+=== RUN   TestJudgeAssertion_Dispatch/not-contains_clean
+=== RUN   TestJudgeAssertion_Dispatch/not-contains_cheat_hit
+=== RUN   TestJudgeAssertion_Dispatch/file-changed_glob_hit
+=== RUN   TestJudgeAssertion_Dispatch/file-changed_dir_hit
+=== RUN   TestJudgeAssertion_Dispatch/file-changed_miss
+=== RUN   TestJudgeAssertion_Dispatch/file-untouched_protected
+=== RUN   TestJudgeAssertion_Dispatch/file-untouched_violated
+=== RUN   TestJudgeAssertion_Dispatch/file-untouched_non-source_covered
+=== RUN   TestJudgeAssertion_Dispatch/unknown_type_fail-closed
+--- PASS: TestJudgeAssertion_Dispatch (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/exit_0_hit (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/exit_0_default (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/exit_1_miss (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/exit_non-numeric_fail-closed (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/exit_without_run (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/contains_hit (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/contains_miss (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/contains_CJK_substring (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/not-contains_clean (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/not-contains_cheat_hit (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/file-changed_glob_hit (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/file-changed_dir_hit (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/file-changed_miss (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/file-untouched_protected (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/file-untouched_violated (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/file-untouched_non-source_covered (0.00s)
+    --- PASS: TestJudgeAssertion_Dispatch/unknown_type_fail-closed (0.00s)
+=== RUN   TestRunAndJudgeCriterion_V1ByteIdentical
+--- PASS: TestRunAndJudgeCriterion_V1ByteIdentical (0.40s)
+=== RUN   TestRunAndJudgeCriterion_V2
+--- PASS: TestRunAndJudgeCriterion_V2 (0.20s)
+=== RUN   TestRunTestCommandCode
+--- PASS: TestRunTestCommandCode (0.47s)
+=== RUN   TestParseAssertion
+--- PASS: TestParseAssertion (0.00s)
+=== RUN   TestValidateAssertion
+--- PASS: TestValidateAssertion (0.00s)
+=== RUN   TestValidateAssertions
+--- PASS: TestValidateAssertions (0.00s)
+=== RUN   TestAttachAssertions
+--- PASS: TestAttachAssertions (0.00s)
+=== RUN   TestParseAcceptanceYAML
+--- PASS: TestParseAcceptanceYAML (0.00s)
+=== RUN   TestEnsureGoTestVerbose_OutputAssertion
+--- PASS: TestEnsureGoTestVerbose_OutputAssertion (0.00s)
+=== RUN   TestVerifyAcceptanceWithVerdicts_GitFileAssertions
+--- PASS: TestVerifyAcceptanceWithVerdicts_GitFileAssertions (0.83s)
+=== RUN   TestJudgeAssertion_ExitNonZeroHit
+--- PASS: TestJudgeAssertion_ExitNonZeroHit (0.00s)
+=== RUN   TestChangedMatches_Globstar
+--- PASS: TestChangedMatches_Globstar (0.00s)
+=== RUN   TestValidateAssertion_GlobstarAndExitRange
+--- PASS: TestValidateAssertion_GlobstarAndExitRange (0.00s)
+=== RUN   TestRunAndJudgeCriterion_EmptyRunV1Edge
+--- PASS: TestRunAndJudgeCriterion_EmptyRunV1Edge (0.00s)
+=== RUN   TestParseAcceptanceYAML_UnknownKeyRejected
+--- PASS: TestParseAcceptanceYAML_UnknownKeyRejected (0.00s)
+=== RUN   TestRunAndJudgeCriterion_ExitTakeover
+--- PASS: TestRunAndJudgeCriterion_ExitTakeover (0.08s)
+=== RUN   TestAssignTo
+=== RUN   TestAssignTo/creates_offered_assignment
+=== RUN   TestAssignTo/rejects_empty_agent
+=== RUN   TestAssignTo/rejects_duplicate
+--- PASS: TestAssignTo (0.00s)
+    --- PASS: TestAssignTo/creates_offered_assignment (0.00s)
+    --- PASS: TestAssignTo/rejects_empty_agent (0.00s)
+    --- PASS: TestAssignTo/rejects_duplicate (0.00s)
+=== RUN   TestClaim
+=== RUN   TestClaim/offered_matching_agent_->_claimed
+=== RUN   TestClaim/wrong_agent_rejected
+=== RUN   TestClaim/non-offered_rejected
+=== RUN   TestClaim/no_assignment_rejected
+--- PASS: TestClaim (0.00s)
+    --- PASS: TestClaim/offered_matching_agent_->_claimed (0.00s)
+    --- PASS: TestClaim/wrong_agent_rejected (0.00s)
+    --- PASS: TestClaim/non-offered_rejected (0.00s)
+    --- PASS: TestClaim/no_assignment_rejected (0.00s)
+=== RUN   TestDeliver
+=== RUN   TestDeliver/claimed_->_delivered
+=== RUN   TestDeliver/offered->delivered_skip_rejected
+--- PASS: TestDeliver (0.00s)
+    --- PASS: TestDeliver/claimed_->_delivered (0.00s)
+    --- PASS: TestDeliver/offered->delivered_skip_rejected (0.00s)
+=== RUN   TestQuestionAnswer
+=== RUN   TestQuestionAnswer/claim->question->answer_records_decision
+=== RUN   TestQuestionAnswer/answer_on_non-input-required_rejected
+=== RUN   TestQuestionAnswer/empty_answer_still_resumes_without_decision
+--- PASS: TestQuestionAnswer (0.00s)
+    --- PASS: TestQuestionAnswer/claim->question->answer_records_decision (0.00s)
+    --- PASS: TestQuestionAnswer/answer_on_non-input-required_rejected (0.00s)
+    --- PASS: TestQuestionAnswer/empty_answer_still_resumes_without_decision (0.00s)
+=== RUN   TestFail
+--- PASS: TestFail (0.00s)
+=== RUN   TestCancel
+--- PASS: TestCancel (0.00s)
+=== RUN   TestReopen
+--- PASS: TestReopen (0.00s)
+=== RUN   TestAbandon
+--- PASS: TestAbandon (0.00s)
+=== RUN   TestIsOfferedTo
+--- PASS: TestIsOfferedTo (0.00s)
+=== RUN   TestAddDependency
+=== RUN   TestAddDependency/accepts_+_dedups
+=== RUN   TestAddDependency/rejects_self-reference
+=== RUN   TestAddDependency/rejects_direct_cycle
+=== RUN   TestAddDependency/rejects_transitive_cycle
+=== RUN   TestAddDependency/accepts_diamond_no_cycle
+--- PASS: TestAddDependency (0.00s)
+    --- PASS: TestAddDependency/accepts_+_dedups (0.00s)
+    --- PASS: TestAddDependency/rejects_self-reference (0.00s)
+    --- PASS: TestAddDependency/rejects_direct_cycle (0.00s)
+    --- PASS: TestAddDependency/rejects_transitive_cycle (0.00s)
+    --- PASS: TestAddDependency/accepts_diamond_no_cycle (0.00s)
+=== RUN   TestIsDelivered
+=== RUN   TestIsDelivered/assignment-delivered
+=== RUN   TestIsDelivered/complete_via_all_gates_passed
+=== RUN   TestIsDelivered/non-delivered_states
+--- PASS: TestIsDelivered (0.00s)
+    --- PASS: TestIsDelivered/assignment-delivered (0.00s)
+    --- PASS: TestIsDelivered/complete_via_all_gates_passed (0.00s)
+    --- PASS: TestIsDelivered/non-delivered_states (0.00s)
+=== RUN   TestIsDelivered_ReopenRevokesAssignmentTask
+--- PASS: TestIsDelivered_ReopenRevokesAssignmentTask (0.00s)
+=== RUN   TestIsDelivered_FailedCanceledNotDelivered
+=== RUN   TestIsDelivered_FailedCanceledNotDelivered/failed
+=== RUN   TestIsDelivered_FailedCanceledNotDelivered/canceled
+--- PASS: TestIsDelivered_FailedCanceledNotDelivered (0.00s)
+    --- PASS: TestIsDelivered_FailedCanceledNotDelivered/failed (0.00s)
+    --- PASS: TestIsDelivered_FailedCanceledNotDelivered/canceled (0.00s)
+=== RUN   TestAddDependency_PartialWriteRollback
+--- PASS: TestAddDependency_PartialWriteRollback (0.00s)
+=== RUN   TestAttachSession
+--- PASS: TestAttachSession (0.14s)
+=== RUN   TestAttributedPorcelain_TaskScene
+--- PASS: TestAttributedPorcelain_TaskScene (0.51s)
+=== RUN   TestClearActiveTaskRefsForTask_ClearsAllPointersAndBinding
+--- PASS: TestClearActiveTaskRefsForTask_ClearsAllPointersAndBinding (0.08s)
+=== RUN   TestActiveTaskStateWithPath_LabelsResolutionPath
+--- PASS: TestActiveTaskStateWithPath_LabelsResolutionPath (0.09s)
+=== RUN   TestRecordAudit_BackfillsSessionAndMarksPostSeal
+--- PASS: TestRecordAudit_BackfillsSessionAndMarksPostSeal (0.06s)
+=== RUN   TestActiveSpanFromCalls
+--- PASS: TestActiveSpanFromCalls (0.00s)
+=== RUN   TestForeignAttributedPaths_ProvenForeignOnly
+--- PASS: TestForeignAttributedPaths_ProvenForeignOnly (0.46s)
+=== RUN   TestTaskChangedFiles_ExcludesForeignOnly
+--- PASS: TestTaskChangedFiles_ExcludesForeignOnly (0.54s)
+=== RUN   TestTaskFingerprint_ExclusionConsistency
+--- PASS: TestTaskFingerprint_ExclusionConsistency (0.66s)
+=== RUN   TestForeignAttributedPaths_SharedSessionNotForeign
+--- PASS: TestForeignAttributedPaths_SharedSessionNotForeign (0.39s)
+=== RUN   TestDetectors
+--- PASS: TestDetectors (0.00s)
+=== RUN   TestDetectCommentOnly
+--- PASS: TestDetectCommentOnly (0.00s)
+=== RUN   TestScanCheatPatterns_SelfScanNoCommentDebt
+--- PASS: TestScanCheatPatterns_SelfScanNoCommentDebt (0.88s)
+=== RUN   TestScanCheatPatterns_RealGitDiff
+--- PASS: TestScanCheatPatterns_RealGitDiff (0.79s)
+=== RUN   TestScanCheatPatterns_UntrackedFiles
+--- PASS: TestScanCheatPatterns_UntrackedFiles (0.66s)
+=== RUN   TestScanCheatPatterns_CleanDiff
+--- PASS: TestScanCheatPatterns_CleanDiff (0.86s)
+=== RUN   TestScanCheatPatterns_NoSource
+--- PASS: TestScanCheatPatterns_NoSource (0.72s)
+=== RUN   TestParseNewStart
+--- PASS: TestParseNewStart (0.00s)
+=== RUN   TestCheatScanDetail
+--- PASS: TestCheatScanDetail (0.00s)
+=== RUN   TestCollectAddedLines_CommittedAndUntracked
+--- PASS: TestCollectAddedLines_CommittedAndUntracked (0.93s)
+=== RUN   TestCollectAddedLines_BatchedTrackedNoDup
+--- PASS: TestCollectAddedLines_BatchedTrackedNoDup (0.94s)
+=== RUN   TestDetectPhantomImport
+--- PASS: TestDetectPhantomImport (0.02s)
+=== RUN   TestDetectCommentOnly_CleanupTaskSuppressed
+--- PASS: TestDetectCommentOnly_CleanupTaskSuppressed (0.00s)
+=== RUN   TestTaskComplete_BranchUnmergedAdvisory
+--- PASS: TestTaskComplete_BranchUnmergedAdvisory (1.64s)
+=== RUN   TestTaskComplete_UncommittedAtCompleteAdvisory
+--- PASS: TestTaskComplete_UncommittedAtCompleteAdvisory (1.43s)
+=== RUN   TestTaskComplete_GoalOutputMismatchAdvisory
+--- PASS: TestTaskComplete_GoalOutputMismatchAdvisory (0.71s)
+=== RUN   TestGoalKeywords
+--- PASS: TestGoalKeywords (0.00s)
+=== RUN   TestPathSegmentKeywords
+--- PASS: TestPathSegmentKeywords (0.00s)
+=== RUN   TestCompleteAdvisoryDanglingHomePaths
+--- PASS: TestCompleteAdvisoryDanglingHomePaths (1.04s)
+=== RUN   TestCompleteGeneric
+--- PASS: TestCompleteGeneric (0.19s)
+=== RUN   TestCheckCompleteReviewPrereqs_BlocksStaleSnapshot
+--- PASS: TestCheckCompleteReviewPrereqs_BlocksStaleSnapshot (0.69s)
+=== RUN   TestCheckCompleteReviewPrereqs_RequiresReviewPassed
+--- PASS: TestCheckCompleteReviewPrereqs_RequiresReviewPassed (0.31s)
+=== RUN   TestCheckCompleteAcceptancePrereqs_BlocksZeroAcceptance
+--- PASS: TestCheckCompleteAcceptancePrereqs_BlocksZeroAcceptance (0.36s)
+=== RUN   TestCheckCompleteAcceptancePrereqs_BlocksStaleRun
+--- PASS: TestCheckCompleteAcceptancePrereqs_BlocksStaleRun (0.61s)
+=== RUN   TestCompleteReconcilesAssignment
+=== RUN   TestCompleteReconcilesAssignment/offered_auto-reclaimed_to_delivered_with_audit_trail
+=== RUN   TestCompleteReconcilesAssignment/claimed_auto-reclaimed_to_delivered_with_audit_trail
+=== RUN   TestCompleteReconcilesAssignment/input-required_auto-reclaimed_to_delivered_with_audit_trail
+=== RUN   TestCompleteReconcilesAssignment/generic_kind_path_reconciles_too
+=== RUN   TestCompleteReconcilesAssignment/human-delivered_terminal_untouched
+=== RUN   TestCompleteReconcilesAssignment/failed_and_canceled_terminals_untouched
+=== RUN   TestCompleteReconcilesAssignment/no_assignment_is_a_no-op
+=== RUN   TestCompleteReconcilesAssignment/reopen_after_auto-deliver_clears_the_audit_flag
+=== RUN   TestCompleteReconcilesAssignment/reclaim_from_input-required_clears_the_pending_question
+=== RUN   TestCompleteReconcilesAssignment/reopened_task_is_detected_by_IsReopened
+--- PASS: TestCompleteReconcilesAssignment (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/offered_auto-reclaimed_to_delivered_with_audit_trail (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/claimed_auto-reclaimed_to_delivered_with_audit_trail (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/input-required_auto-reclaimed_to_delivered_with_audit_trail (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/generic_kind_path_reconciles_too (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/human-delivered_terminal_untouched (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/failed_and_canceled_terminals_untouched (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/no_assignment_is_a_no-op (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/reopen_after_auto-deliver_clears_the_audit_flag (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/reclaim_from_input-required_clears_the_pending_question (0.00s)
+    --- PASS: TestCompleteReconcilesAssignment/reopened_task_is_detected_by_IsReopened (0.00s)
+=== RUN   TestZombieSkipsCompleted
+=== RUN   TestZombieSkipsCompleted/completed_offered_past_TTL_is_not_zombie
+=== RUN   TestZombieSkipsCompleted/completed_claimed_stale_is_not_zombie
+=== RUN   TestZombieSkipsCompleted/completed_with_repeat_abandons_is_not_zombie
+=== RUN   TestZombieSkipsCompleted/incomplete_offered_past_TTL_still_zombie_(control)
+=== RUN   TestZombieSkipsCompleted/reopened_task_is_zombie_again_(review_M1)
+=== RUN   TestZombieSkipsCompleted/reopened-then-reclaimed_offered_is_not_immune_(review_M1_recheck)
+--- PASS: TestZombieSkipsCompleted (0.00s)
+    --- PASS: TestZombieSkipsCompleted/completed_offered_past_TTL_is_not_zombie (0.00s)
+    --- PASS: TestZombieSkipsCompleted/completed_claimed_stale_is_not_zombie (0.00s)
+    --- PASS: TestZombieSkipsCompleted/completed_with_repeat_abandons_is_not_zombie (0.00s)
+    --- PASS: TestZombieSkipsCompleted/incomplete_offered_past_TTL_still_zombie_(control) (0.00s)
+    --- PASS: TestZombieSkipsCompleted/reopened_task_is_zombie_again_(review_M1) (0.00s)
+    --- PASS: TestZombieSkipsCompleted/reopened-then-reclaimed_offered_is_not_immune_(review_M1_recheck) (0.00s)
+=== RUN   TestActiveTaskRef_SessionIsolation
+--- PASS: TestActiveTaskRef_SessionIsolation (0.08s)
+=== RUN   TestActiveTaskRef_EmptySession_LegacyFile
+--- PASS: TestActiveTaskRef_EmptySession_LegacyFile (0.02s)
+=== RUN   TestEnsureSession_Scoped_UsesRealSessionID
+--- PASS: TestEnsureSession_Scoped_UsesRealSessionID (0.03s)
+=== RUN   TestEnsureSession_Scoped_DistinctSessionsIsolated
+--- PASS: TestEnsureSession_Scoped_DistinctSessionsIsolated (0.05s)
+=== RUN   TestHasActiveTaskFromOtherSession
+=== RUN   TestHasActiveTaskFromOtherSession/other_session_active
+=== RUN   TestHasActiveTaskFromOtherSession/only_own_session
+=== RUN   TestHasActiveTaskFromOtherSession/no_sessions
+=== RUN   TestHasActiveTaskFromOtherSession/empty_sessionID
+=== RUN   TestHasActiveTaskFromOtherSession/stale_empty_file_not_counted
+=== RUN   TestHasActiveTaskFromOtherSession/stale_orphan_from_crashed_session_not_counted
+=== RUN   TestHasActiveTaskFromOtherSession/legacy_file_excluded
+=== RUN   TestHasActiveTaskFromOtherSession/mixed_sessions_integrated
+--- PASS: TestHasActiveTaskFromOtherSession (0.10s)
+    --- PASS: TestHasActiveTaskFromOtherSession/other_session_active (0.01s)
+    --- PASS: TestHasActiveTaskFromOtherSession/only_own_session (0.01s)
+    --- PASS: TestHasActiveTaskFromOtherSession/no_sessions (0.00s)
+    --- PASS: TestHasActiveTaskFromOtherSession/empty_sessionID (0.01s)
+    --- PASS: TestHasActiveTaskFromOtherSession/stale_empty_file_not_counted (0.02s)
+    --- PASS: TestHasActiveTaskFromOtherSession/stale_orphan_from_crashed_session_not_counted (0.02s)
+    --- PASS: TestHasActiveTaskFromOtherSession/legacy_file_excluded (0.01s)
+    --- PASS: TestHasActiveTaskFromOtherSession/mixed_sessions_integrated (0.02s)
+=== RUN   TestSanitizeSessionID_StripsUnsafeChars
+--- PASS: TestSanitizeSessionID_StripsUnsafeChars (0.00s)
+=== RUN   TestIsGeneric
+--- PASS: TestIsGeneric (0.00s)
+=== RUN   TestHasContinuity
+--- PASS: TestHasContinuity (0.00s)
+=== RUN   TestAddSessionDedupAndBackfill
+--- PASS: TestAddSessionDedupAndBackfill (0.00s)
+=== RUN   TestAddDecisionAutoFill
+--- PASS: TestAddDecisionAutoFill (0.00s)
+=== RUN   TestResolveBlocker
+--- PASS: TestResolveBlocker (0.00s)
+=== RUN   TestOpenBlockers
+--- PASS: TestOpenBlockers (0.00s)
+=== RUN   TestAddFindingAutoFill
+--- PASS: TestAddFindingAutoFill (0.00s)
+=== RUN   TestNewContinuityID_NoCollision
+--- PASS: TestNewContinuityID_NoCollision (0.00s)
+=== RUN   TestExecuteTaskGate_GenericSkipsChecks
+--- PASS: TestExecuteTaskGate_GenericSkipsChecks (0.00s)
+=== RUN   TestCheckConventionsLint_FiresWhenNotRun
+--- PASS: TestCheckConventionsLint_FiresWhenNotRun (0.20s)
+=== RUN   TestCheckConventionsLint_SatisfiedWhenRun
+--- PASS: TestCheckConventionsLint_SatisfiedWhenRun (0.20s)
+=== RUN   TestCheckConventionsLint_UndecidableStaysSilent
+=== RUN   TestCheckConventionsLint_UndecidableStaysSilent/无档案无遥测
+=== RUN   TestCheckConventionsLint_UndecidableStaysSilent/有档案无遥测
+=== RUN   TestCheckConventionsLint_UndecidableStaysSilent/无档案有遥测
+=== RUN   TestCheckConventionsLint_UndecidableStaysSilent/env_逃生
+--- PASS: TestCheckConventionsLint_UndecidableStaysSilent (0.74s)
+    --- PASS: TestCheckConventionsLint_UndecidableStaysSilent/无档案无遥测 (0.14s)
+    --- PASS: TestCheckConventionsLint_UndecidableStaysSilent/有档案无遥测 (0.25s)
+    --- PASS: TestCheckConventionsLint_UndecidableStaysSilent/无档案有遥测 (0.17s)
+    --- PASS: TestCheckConventionsLint_UndecidableStaysSilent/env_逃生 (0.19s)
+=== RUN   TestCheckConventionsLint_MatchingPrecision
+=== RUN   TestCheckConventionsLint_MatchingPrecision/description_假阳性被杀
+=== RUN   TestCheckConventionsLint_MatchingPrecision/连字符词边界
+=== RUN   TestCheckConventionsLint_MatchingPrecision/真实命中仍工作
+--- PASS: TestCheckConventionsLint_MatchingPrecision (0.54s)
+    --- PASS: TestCheckConventionsLint_MatchingPrecision/description_假阳性被杀 (0.18s)
+    --- PASS: TestCheckConventionsLint_MatchingPrecision/连字符词边界 (0.16s)
+    --- PASS: TestCheckConventionsLint_MatchingPrecision/真实命中仍工作 (0.20s)
+=== RUN   TestSplitDepRef
+--- PASS: TestSplitDepRef (0.00s)
+=== RUN   TestPendingDependencies_CrossRepo
+--- PASS: TestPendingDependencies_CrossRepo (0.03s)
+=== RUN   TestAddDependency_CrossRepoRef
+=== RUN   TestAddDependency_CrossRepoRef/key:ref_stored_verbatim_+_deduped
+=== RUN   TestAddDependency_CrossRepoRef/same-repo_cycle_still_refused_alongside_cross-repo_refs
+=== RUN   TestAddDependency_CrossRepoRef/own-key_self-ref_is_NOT_caught_here_(CLI_validation_owns_it)
+--- PASS: TestAddDependency_CrossRepoRef (0.00s)
+    --- PASS: TestAddDependency_CrossRepoRef/key:ref_stored_verbatim_+_deduped (0.00s)
+    --- PASS: TestAddDependency_CrossRepoRef/same-repo_cycle_still_refused_alongside_cross-repo_refs (0.00s)
+    --- PASS: TestAddDependency_CrossRepoRef/own-key_self-ref_is_NOT_caught_here_(CLI_validation_owns_it) (0.00s)
+=== RUN   TestLoadDepState_RejectsMalformedKey
+--- PASS: TestLoadDepState_RejectsMalformedKey (0.01s)
+=== RUN   TestDesignTier
+=== RUN   TestDesignTier/纯文档是标准变更
+=== RUN   TestDesignTier/单模块改动直接改
+=== RUN   TestDesignTier/迁移目录触发完整方案
+=== RUN   TestDesignTier/sql_文件触发完整方案
+=== RUN   TestDesignTier/proto_触发完整方案
+=== RUN   TestDesignTier/鉴权目录触发完整方案
+=== RUN   TestDesignTier/author.go_不是鉴权
+=== RUN   TestDesignTier/依赖文件触发小方案
+=== RUN   TestDesignTier/跨_3_个目录触发小方案
+=== RUN   TestDesignTier/声明与推导取较高者，下调须带理由
+=== RUN   TestDesignTier/protocol.yml_追加与同名覆盖
+=== RUN   TestDesignTier/go.mod_只升_patch_是标准变更，新增依赖不是
+=== RUN   TestDesignTier/事后升档：diff_要求更高档且无_design_产物时落_escalated_行
+ADVISORY: [ta[REDACTED]] 实际改动要求完整方案（需求/设计/任务三文件 + 备选与取舍 + 人工批准），但任务档位为 none 且未登记 design 产物（触发：auth: internal/auth/token.go）——补方案：在 change.md 的「改动 / 影响 / 验证」里写清设计取舍与影响面
+--- PASS: TestDesignTier (0.50s)
+    --- PASS: TestDesignTier/纯文档是标准变更 (0.00s)
+    --- PASS: TestDesignTier/单模块改动直接改 (0.00s)
+    --- PASS: TestDesignTier/迁移目录触发完整方案 (0.00s)
+    --- PASS: TestDesignTier/sql_文件触发完整方案 (0.00s)
+    --- PASS: TestDesignTier/proto_触发完整方案 (0.00s)
+    --- PASS: TestDesignTier/鉴权目录触发完整方案 (0.00s)
+    --- PASS: TestDesignTier/author.go_不是鉴权 (0.00s)
+    --- PASS: TestDesignTier/依赖文件触发小方案 (0.00s)
+    --- PASS: TestDesignTier/跨_3_个目录触发小方案 (0.00s)
+    --- PASS: TestDesignTier/声明与推导取较高者，下调须带理由 (0.00s)
+    --- PASS: TestDesignTier/protocol.yml_追加与同名覆盖 (0.02s)
+    --- PASS: TestDesignTier/go.mod_只升_patch_是标准变更，新增依赖不是 (0.44s)
+    --- PASS: TestDesignTier/事后升档：diff_要求更高档且无_design_产物时落_escalated_行 (0.04s)
+=== RUN   TestPlanConversionByTier
+--- PASS: TestPlanConversionByTier (0.00s)
+=== RUN   TestDesignTierReviewFixes
+--- PASS: TestDesignTierReviewFixes (0.00s)
+=== RUN   TestGenerateEdgeChecklist
+--- PASS: TestGenerateEdgeChecklist (0.52s)
+=== RUN   TestGenerateEdgeChecklist_NoExportedChanges
+--- PASS: TestGenerateEdgeChecklist_NoExportedChanges (0.53s)
+=== RUN   TestSkillDecisionsBlockingAffected
+=== RUN   TestSkillDecisionsBlockingAffected/SKILL.md_triggers
+=== RUN   TestSkillDecisionsBlockingAffected/scripts_not_blocking
+=== RUN   TestSkillDecisionsBlockingAffected/references_not_blocking
+=== RUN   TestSkillDecisionsBlockingAffected/decisions.md_not_blocking
+=== RUN   TestSkillDecisionsBlockingAffected/non-skill_source_excluded
+=== RUN   TestSkillDecisionsBlockingAffected/skills_root_excluded
+=== RUN   TestSkillDecisionsBlockingAffected/mixed_picks_SKILL.md_only_+_sorted
+--- PASS: TestSkillDecisionsBlockingAffected (0.00s)
+    --- PASS: TestSkillDecisionsBlockingAffected/SKILL.md_triggers (0.00s)
+    --- PASS: TestSkillDecisionsBlockingAffected/scripts_not_blocking (0.00s)
+    --- PASS: TestSkillDecisionsBlockingAffected/references_not_blocking (0.00s)
+    --- PASS: TestSkillDecisionsBlockingAffected/decisions.md_not_blocking (0.00s)
+    --- PASS: TestSkillDecisionsBlockingAffected/non-skill_source_excluded (0.00s)
+    --- PASS: TestSkillDecisionsBlockingAffected/skills_root_excluded (0.00s)
+    --- PASS: TestSkillDecisionsBlockingAffected/mixed_picks_SKILL.md_only_+_sorted (0.00s)
+=== RUN   TestSkillDecisionsAdvisoryAffected
+=== RUN   TestSkillDecisionsAdvisoryAffected/scripts_advisory
+=== RUN   TestSkillDecisionsAdvisoryAffected/references_advisory
+=== RUN   TestSkillDecisionsAdvisoryAffected/SKILL.md_not_advisory_(covered_by_blocking)
+=== RUN   TestSkillDecisionsAdvisoryAffected/subdir_SKILL.md_advisory_(non-canonical)
+=== RUN   TestSkillDecisionsAdvisoryAffected/subdir_SKILL.md_+_scripts_same_skill
+=== RUN   TestSkillDecisionsAdvisoryAffected/decisions.md_excluded
+=== RUN   TestSkillDecisionsAdvisoryAffected/same_skill_SKILL+scripts_→_advisory_excludes_(blocking_covers_foo)
+=== RUN   TestSkillDecisionsAdvisoryAffected/mixed:_foo_blocking,_bar_advisory
+=== RUN   TestSkillDecisionsAdvisoryAffected/non-skill_excluded
+--- PASS: TestSkillDecisionsAdvisoryAffected (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/scripts_advisory (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/references_advisory (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/SKILL.md_not_advisory_(covered_by_blocking) (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/subdir_SKILL.md_advisory_(non-canonical) (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/subdir_SKILL.md_+_scripts_same_skill (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/decisions.md_excluded (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/same_skill_SKILL+scripts_→_advisory_excludes_(blocking_covers_foo) (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/mixed:_foo_blocking,_bar_advisory (0.00s)
+    --- PASS: TestSkillDecisionsAdvisoryAffected/non-skill_excluded (0.00s)
+=== RUN   TestSkillDecisionsRecorded
+--- PASS: TestSkillDecisionsRecorded (0.94s)
+=== RUN   TestCountDecisionEntries
+--- PASS: TestCountDecisionEntries (0.00s)
+=== RUN   TestFormatSkillDecisionsAdvisory
+--- PASS: TestFormatSkillDecisionsAdvisory (0.00s)
+=== RUN   TestDefaultGates
+--- PASS: TestDefaultGates (0.00s)
+=== RUN   TestGateByID
+--- PASS: TestGateByID (0.00s)
+=== RUN   TestTaskStateNextGate
+--- PASS: TestTaskStateNextGate (0.00s)
+=== RUN   TestTaskStateIsComplete
+--- PASS: TestTaskStateIsComplete (0.00s)
+=== RUN   TestTaskStateFailedGate
+--- PASS: TestTaskStateFailedGate (0.00s)
+=== RUN   TestRecordGateResultDedup
+--- PASS: TestRecordGateResultDedup (0.00s)
+=== RUN   TestRecordGateResultDedupPrevents25x
+--- PASS: TestRecordGateResultDedupPrevents25x (0.00s)
+=== RUN   TestSaveAndLoadTaskState
+--- PASS: TestSaveAndLoadTaskState (0.02s)
+=== RUN   TestLoadMissingTask
+--- PASS: TestLoadMissingTask (0.01s)
+=== RUN   TestNewTaskState
+--- PASS: TestNewTaskState (0.00s)
+=== RUN   TestCompletedGates
+--- PASS: TestCompletedGates (0.00s)
+=== RUN   TestListTaskStates
+--- PASS: TestListTaskStates (0.03s)
+=== RUN   TestMarkComplete
+--- PASS: TestMarkComplete (0.00s)
+=== RUN   TestHasCodeChanges_NonGitRepo
+--- PASS: TestHasCodeChanges_NonGitRepo (0.05s)
+=== RUN   TestHasCodeChanges_NoChanges
+--- PASS: TestHasCodeChanges_NoChanges (0.46s)
+=== RUN   TestHasCodeChanges_WithUncommittedChanges
+--- PASS: TestHasCodeChanges_WithUncommittedChanges (0.41s)
+=== RUN   TestHasCodeChanges_UntrackedNewFile
+--- PASS: TestHasCodeChanges_UntrackedNewFile (0.46s)
+=== RUN   TestHasCodeChanges_FeatureBranchWithCommits
+--- PASS: TestHasCodeChanges_FeatureBranchWithCommits (0.78s)
+=== RUN   TestHasCodeChanges_MainBranchHeadCommit
+--- PASS: TestHasCodeChanges_MainBranchHeadCommit (0.70s)
+=== RUN   TestHasCodeChanges_HeadCommitAtHead
+--- PASS: TestHasCodeChanges_HeadCommitAtHead (0.53s)
+=== RUN   TestRecordAudit_FailureWarnsOnStderr
+--- PASS: TestRecordAudit_FailureWarnsOnStderr (0.01s)
+=== RUN   TestSanitizeRefInStatePath
+--- PASS: TestSanitizeRefInStatePath (0.02s)
+=== RUN   TestLoadTaskState_RefCollisionRejected
+--- PASS: TestLoadTaskState_RefCollisionRejected (0.02s)
+=== RUN   TestLastGateSkipsTiming
+--- PASS: TestLastGateSkipsTiming (0.77s)
+=== RUN   TestTaskCompleteRequiresReview
+--- PASS: TestTaskCompleteRequiresReview (0.31s)
+=== RUN   TestIsLastGate
+--- PASS: TestIsLastGate (0.00s)
+=== RUN   TestActiveTaskState_BranchDetection
+--- PASS: TestActiveTaskState_BranchDetection (0.44s)
+=== RUN   TestActiveTaskState_FallbackSingleIncompleteOnMaster
+--- PASS: TestActiveTaskState_FallbackSingleIncompleteOnMaster (0.29s)
+=== RUN   TestActiveTaskState_FallbackAmbiguousMultipleIncomplete
+--- PASS: TestActiveTaskState_FallbackAmbiguousMultipleIncomplete (0.24s)
+=== RUN   TestActiveTaskState_FallbackIgnoresCompleted
+--- PASS: TestActiveTaskState_FallbackIgnoresCompleted (0.21s)
+=== RUN   TestActiveTaskState_NoTasks
+--- PASS: TestActiveTaskState_NoTasks (0.19s)
+=== RUN   TestActiveTaskState_ExplicitRefFilePriority
+--- PASS: TestActiveTaskState_ExplicitRefFilePriority (0.25s)
+=== RUN   TestActiveTaskState_StaleRefFileFallsThrough
+--- PASS: TestActiveTaskState_StaleRefFileFallsThrough (0.26s)
+=== RUN   TestActiveTaskState_BranchProbeLoadFailureFallsThrough
+--- PASS: TestActiveTaskState_BranchProbeLoadFailureFallsThrough (0.34s)
+=== RUN   TestSetActiveAndClearActiveTaskRef
+--- PASS: TestSetActiveAndClearActiveTaskRef (0.02s)
+=== RUN   TestGateTimingExemptsAutoGates
+--- PASS: TestGateTimingExemptsAutoGates (0.55s)
+=== RUN   TestTestCoverageCheckScopedToVerifyGate
+ADVISORY: [ta[REDACTED]] 任务分支 feat/cov 尚未合入主干 master——完成不等于交付（合入后再算交付）
+--- PASS: TestTestCoverageCheckScopedToVerifyGate (0.88s)
+=== RUN   TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass
+ADVISORY: [ta[REDACTED]] 任务分支 feat/testcov 尚未合入主干 master——完成不等于交付（合入后再算交付）
+--- PASS: TestTaskCompleteTestCoverageHardGate_SmallChangeAdvisoryPass (0.80s)
+=== RUN   TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass
+ADVISORY: [ta[REDACTED]] 实际改动要求小方案（单文件，skills/doc-generator/references/template-tech-plan.md），但任务档位为 none 且未登记 design 产物（触发：cross-module: 4 个目录）——补方案：在 change.md 的「改动 / 影响 / 验证」里写清设计取舍与影响面
+ADVISORY: [ta[REDACTED]] 任务分支 feat/testcov 尚未合入主干 master——完成不等于交付（合入后再算交付）
+--- PASS: TestTaskCompleteTestCoverageHardGate_BigChangeWithAssertionsPass (0.99s)
+=== RUN   TestTaskCompleteTestCoverageHardGate_EscapePasses
+ADVISORY: [ta[REDACTED]] 任务分支 feat/testcov 尚未合入主干 master——完成不等于交付（合入后再算交付）
+--- PASS: TestTaskCompleteTestCoverageHardGate_EscapePasses (0.93s)
+=== RUN   TestTaskComplete_DocsConsistencyAdvisory
+ADVISORY: [ta[REDACTED]] 文档一致性 drift——README 反引号引用了不存在的 forge 命令：ghostpropose（提交前修复，详见 skills/docs-consistency-guard；若这些命令在新版 forge 已存在，可能是本地 forge 二进制过旧，先 forge update 再排查）
+ADVISORY: [ta[REDACTED]] 任务分支 feat/docs 尚未合入主干 master——完成不等于交付（合入后再算交付）
+--- PASS: TestTaskComplete_DocsConsistencyAdvisory (1.02s)
+=== RUN   TestGateAdvancementRecordsAgentClaim
+=== RUN   TestGateAdvancementRecordsAgentClaim/ta[REDACTED]
+--- PASS: TestGateAdvancementRecordsAgentClaim (0.78s)
+    --- PASS: TestGateAdvancementRecordsAgentClaim/ta[REDACTED] (0.78s)
+=== RUN   TestTaskComplete_DocsConsistencyNoDriftSilent
+ADVISORY: [ta[REDACTED]] 任务分支 feat/clean 尚未合入主干 master——完成不等于交付（合入后再算交付）
+--- PASS: TestTaskComplete_DocsConsistencyNoDriftSilent (0.81s)
+=== RUN   TestTaskComplete_ReviewSnapshotRejectsPostReviewChange
+--- PASS: TestTaskComplete_ReviewSnapshotRejectsPostReviewChange (0.64s)
+=== RUN   TestTaskComplete_ReviewSnapshotPassWhenUnchanged
+ADVISORY: [ta[REDACTED]] 工作区有 1 处未提交变更——协议顺序：实现门禁 + 验收实跑 → git commit → 审查 → 完成门禁（ta[REDACTED]）→ forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）
+--- PASS: TestTaskComplete_ReviewSnapshotPassWhenUnchanged (0.99s)
+=== RUN   TestTaskComplete_ReviewSnapshotEmptyBaselineSkips
+ADVISORY: [ta[REDACTED]] 工作区有 1 处未提交变更——协议顺序：实现门禁 + 验收实跑 → git commit → 审查 → 完成门禁（ta[REDACTED]）→ forge task complete（complete 会清空 active task ref，之后的源码写入脱离任务追踪）
+--- PASS: TestTaskComplete_ReviewSnapshotEmptyBaselineSkips (0.73s)
+=== RUN   TestTaskComplete_ReviewSnapshotUnreachableBlocks
+--- PASS: TestTaskComplete_ReviewSnapshotUnreachableBlocks (0.34s)
+=== RUN   TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses
+--- PASS: TestTaskComplete_ReviewSnapshotCommitReviewedContentPasses (1.04s)
+=== RUN   TestActiveTaskState_BranchGuardOtherActiveSession
+--- PASS: TestActiveTaskState_BranchGuardOtherActiveSession (0.36s)
+=== RUN   TestParseExternalOriginURL
+=== RUN   TestParseExternalOriginURL/linear_完整路径
+=== RUN   TestParseExternalOriginURL/github_org/repo/issues
+=== RUN   TestParseExternalOriginURL/空串返零值
+=== RUN   TestParseExternalOriginURL/非_URL_仅保留原串
+=== RUN   TestParseExternalOriginURL/未知_tracker_仅保留_URL
+=== RUN   TestParseExternalOriginURL/linear_无_issue_段不崩
+--- PASS: TestParseExternalOriginURL (0.00s)
+    --- PASS: TestParseExternalOriginURL/linear_完整路径 (0.00s)
+    --- PASS: TestParseExternalOriginURL/github_org/repo/issues (0.00s)
+    --- PASS: TestParseExternalOriginURL/空串返零值 (0.00s)
+    --- PASS: TestParseExternalOriginURL/非_URL_仅保留原串 (0.00s)
+    --- PASS: TestParseExternalOriginURL/未知_tracker_仅保留_URL (0.00s)
+    --- PASS: TestParseExternalOriginURL/linear_无_issue_段不崩 (0.00s)
+=== RUN   TestFailureFingerprintStableAcrossNoise
+=== RUN   TestFailureFingerprintStableAcrossNoise/go_test
+=== RUN   TestFailureFingerprintStableAcrossNoise/pytest
+=== RUN   TestFailureFingerprintStableAcrossNoise/jest
+--- PASS: TestFailureFingerprintStableAcrossNoise (0.00s)
+    --- PASS: TestFailureFingerprintStableAcrossNoise/go_test (0.00s)
+    --- PASS: TestFailureFingerprintStableAcrossNoise/pytest (0.00s)
+    --- PASS: TestFailureFingerprintStableAcrossNoise/jest (0.00s)
+=== RUN   TestNormalizeFailureOutputKeepsLines
+--- PASS: TestNormalizeFailureOutputKeepsLines (0.00s)
+=== RUN   TestFailureTailTakesLastNonEmpty
+--- PASS: TestFailureTailTakesLastNonEmpty (0.00s)
+=== RUN   TestEnrichFinding
+--- PASS: TestEnrichFinding (1.20s)
+=== RUN   TestRequireFindingRegression_RevalidatesBinding
+--- PASS: TestRequireFindingRegression_RevalidatesBinding (0.64s)
+=== RUN   TestIsGoTestFileWithTests
+--- PASS: TestIsGoTestFileWithTests (0.50s)
+=== RUN   TestRequireFindingRegression_IntegrityBroken
+[forge] warning: task tampered integrity check FAILED — state file was modified outside forge; gate-satisfying fields will not be trusted
+--- PASS: TestRequireFindingRegression_IntegrityBroken (0.03s)
+=== RUN   TestDiscoverFuzzTargets_AndRunFuzz
+--- PASS: TestDiscoverFuzzTargets_AndRunFuzz (3.22s)
+=== RUN   TestClassifyFuzzCrasher
+--- PASS: TestClassifyFuzzCrasher (0.00s)
+=== RUN   TestRunFuzz_NonCrasherRetry
+--- PASS: TestRunFuzz_NonCrasherRetry (0.40s)
+=== RUN   TestGateBlockedPrefix
+--- PASS: TestGateBlockedPrefix (0.00s)
+=== RUN   TestGateAdvisoryPrefix
+--- PASS: TestGateAdvisoryPrefix (0.00s)
+=== RUN   TestUncommittedChanges_IgnoresOnlyPhantomPaths
+--- PASS: TestUncommittedChanges_IgnoresOnlyPhantomPaths (0.60s)
+=== RUN   TestExecuteTaskGate_GoalContractWiring
+--- PASS: TestExecuteTaskGate_GoalContractWiring (0.66s)
+=== RUN   TestCheckGoalContract_NoContractIsAdvisory
+advisory: 本任务没有 goal 契约（task start 未带 --change/--goal-file）——目标三段不在 git 里，评审只能靠标题猜意图
+--- PASS: TestCheckGoalContract_NoContractIsAdvisory (0.02s)
+=== RUN   TestCheckGoalContract_UnchangedPasses
+--- PASS: TestCheckGoalContract_UnchangedPasses (0.03s)
+=== RUN   TestCheckGoalContract_DriftBlocks
+--- PASS: TestCheckGoalContract_DriftBlocks (0.02s)
+=== RUN   TestCheckGoalContract_DeletedFileBlocks
+--- PASS: TestCheckGoalContract_DeletedFileBlocks (0.02s)
+=== RUN   TestGolden_CheatSampleMatrix
+=== RUN   TestGolden_CheatSampleMatrix/empty-catch
+=== RUN   TestGolden_CheatSampleMatrix/comment-body-catch
+=== RUN   TestGolden_CheatSampleMatrix/go-err-discard-var
+=== RUN   TestGolden_CheatSampleMatrix/go-err-discard-plain
+=== RUN   TestGolden_CheatSampleMatrix/python-except-pass
+=== RUN   TestGolden_CheatSampleMatrix/if-false-paren
+=== RUN   TestGolden_CheatSampleMatrix/if-false-go
+=== RUN   TestGolden_CheatSampleMatrix/while-false
+=== RUN   TestGolden_CheatSampleMatrix/ts-ignore-comment
+=== RUN   TestGolden_CheatSampleMatrix/ts-nocheck
+=== RUN   TestGolden_CheatSampleMatrix/go-nolint
+=== RUN   TestGolden_CheatSampleMatrix/mypy-type-ignore
+=== RUN   TestGolden_CheatSampleMatrix/java-suppress-warnings
+=== RUN   TestGolden_CheatSampleMatrix/comment-catch-line
+=== RUN   TestGolden_CheatSampleMatrix/go-nolint-plain
+=== RUN   TestGolden_CheatSampleMatrix/nolint-in-prose-not-flagged
+=== RUN   TestGolden_CheatSampleMatrix/go-blank-import-not-flagged
+=== RUN   TestGolden_CheatSampleMatrix/go-tuple-assign
+=== RUN   TestGolden_CheatSampleMatrix/real-catch
+=== RUN   TestGolden_CheatSampleMatrix/catch-with-comment-plus-code
+=== RUN   TestGolden_CheatSampleMatrix/if-real-condition
+=== RUN   TestGolden_CheatSampleMatrix/directive-in-string-literal
+=== RUN   TestGolden_CheatSampleMatrix/type-ignore-without-hash
+--- PASS: TestGolden_CheatSampleMatrix (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/empty-catch (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/comment-body-catch (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/go-err-discard-var (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/go-err-discard-plain (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/python-except-pass (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/if-false-paren (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/if-false-go (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/while-false (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/ts-ignore-comment (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/ts-nocheck (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/go-nolint (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/mypy-type-ignore (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/java-suppress-warnings (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/comment-catch-line (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/go-nolint-plain (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/nolint-in-prose-not-flagged (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/go-blank-import-not-flagged (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/go-tuple-assign (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/real-catch (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/catch-with-comment-plus-code (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/if-real-condition (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/directive-in-string-literal (0.00s)
+    --- PASS: TestGolden_CheatSampleMatrix/type-ignore-without-hash (0.00s)
+=== RUN   TestGolden_IsTestFileMatrix
+--- PASS: TestGolden_IsTestFileMatrix (0.00s)
+=== RUN   TestGolden_TestPairingMatrix
+=== RUN   TestGolden_TestPairingMatrix/go-normal
+=== RUN   TestGolden_TestPairingMatrix/go-missing
+=== RUN   TestGolden_TestPairingMatrix/java-test-suffix
+=== RUN   TestGolden_TestPairingMatrix/java-tests-suffix
+=== RUN   TestGolden_TestPairingMatrix/java-it-suffix
+=== RUN   TestGolden_TestPairingMatrix/java-underscore
+=== RUN   TestGolden_TestPairingMatrix/java-missing
+=== RUN   TestGolden_TestPairingMatrix/rb-daemon-spec-not-pair
+=== RUN   TestGolden_TestPairingMatrix/rb-spec
+=== RUN   TestGolden_TestPairingMatrix/rb-test-suffix
+=== RUN   TestGolden_TestPairingMatrix/rb-minitest-prefix
+=== RUN   TestGolden_TestPairingMatrix/zig-test
+=== RUN   TestGolden_TestPairingMatrix/nim-test
+=== RUN   TestGolden_TestPairingMatrix/nim-missing
+=== RUN   TestGolden_TestPairingMatrix/py-root-prefix
+=== RUN   TestGolden_TestPairingMatrix/py-root-suffix
+=== RUN   TestGolden_TestPairingMatrix/py-tests-dir
+=== RUN   TestGolden_TestPairingMatrix/py-root-missing
+=== RUN   TestGolden_TestPairingMatrix/java-cross-dir-not-pair
+=== RUN   TestGolden_TestPairingMatrix/zig-cross-dir-not-pair
+--- PASS: TestGolden_TestPairingMatrix (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/go-normal (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/go-missing (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/java-test-suffix (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/java-tests-suffix (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/java-it-suffix (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/java-underscore (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/java-missing (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/rb-daemon-spec-not-pair (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/rb-spec (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/rb-test-suffix (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/rb-minitest-prefix (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/zig-test (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/nim-test (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/nim-missing (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/py-root-prefix (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/py-root-suffix (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/py-tests-dir (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/py-root-missing (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/java-cross-dir-not-pair (0.00s)
+    --- PASS: TestGolden_TestPairingMatrix/zig-cross-dir-not-pair (0.00s)
+=== RUN   TestGolden_CheckTestCoverage_AcceptancePairs
+=== RUN   TestGolden_CheckTestCoverage_AcceptancePairs/java-pair
+=== RUN   TestGolden_CheckTestCoverage_AcceptancePairs/python-root-pair
+--- PASS: TestGolden_CheckTestCoverage_AcceptancePairs (1.83s)
+    --- PASS: TestGolden_CheckTestCoverage_AcceptancePairs/java-pair (0.93s)
+    --- PASS: TestGolden_CheckTestCoverage_AcceptancePairs/python-root-pair (0.90s)
+=== RUN   TestGolden_CheckTestCoverageChanged_EscapeHatchPreserved
+--- PASS: TestGolden_CheckTestCoverageChanged_EscapeHatchPreserved (0.53s)
+=== RUN   TestIsOfferedZombie
+=== RUN   TestIsOfferedZombie/offered_older_than_TTL_is_zombie
+=== RUN   TestIsOfferedZombie/offered_fresh_is_not
+=== RUN   TestIsOfferedZombie/recent_abandon_resets_the_baseline
+=== RUN   TestIsOfferedZombie/missing_OfferedAt_cannot_age
+=== RUN   TestIsOfferedZombie/non-offered_is_not_checked
+--- PASS: TestIsOfferedZombie (0.00s)
+    --- PASS: TestIsOfferedZombie/offered_older_than_TTL_is_zombie (0.00s)
+    --- PASS: TestIsOfferedZombie/offered_fresh_is_not (0.00s)
+    --- PASS: TestIsOfferedZombie/recent_abandon_resets_the_baseline (0.00s)
+    --- PASS: TestIsOfferedZombie/missing_OfferedAt_cannot_age (0.00s)
+    --- PASS: TestIsOfferedZombie/non-offered_is_not_checked (0.00s)
+=== RUN   TestIsClaimedStale
+=== RUN   TestIsClaimedStale/claimed_old_with_no_activity_is_stale
+=== RUN   TestIsClaimedStale/recent_checklog_activity_resets_window
+=== RUN   TestIsClaimedStale/claimed_fresh_is_not_stale
+=== RUN   TestIsClaimedStale/non-claimed_is_not_checked
+--- PASS: TestIsClaimedStale (0.02s)
+    --- PASS: TestIsClaimedStale/claimed_old_with_no_activity_is_stale (0.00s)
+    --- PASS: TestIsClaimedStale/recent_checklog_activity_resets_window (0.01s)
+    --- PASS: TestIsClaimedStale/claimed_fresh_is_not_stale (0.00s)
+    --- PASS: TestIsClaimedStale/non-claimed_is_not_checked (0.00s)
+=== RUN   TestEffectiveTTL
+--- PASS: TestEffectiveTTL (0.00s)
+=== RUN   TestIsOfferedZombie_PerTaskTTL
+=== RUN   TestIsOfferedZombie_PerTaskTTL/per-task_TTL_shorter_than_global_flags_earlier
+=== RUN   TestIsOfferedZombie_PerTaskTTL/per-task_TTL_longer_than_global_defers_flagging
+--- PASS: TestIsOfferedZombie_PerTaskTTL (0.00s)
+    --- PASS: TestIsOfferedZombie_PerTaskTTL/per-task_TTL_shorter_than_global_flags_earlier (0.00s)
+    --- PASS: TestIsOfferedZombie_PerTaskTTL/per-task_TTL_longer_than_global_defers_flagging (0.00s)
+=== RUN   TestIsInputReqStale
+=== RUN   TestIsInputReqStale/claimed_old,_never_worked,_unanswered_is_stale
+=== RUN   TestIsInputReqStale/recent_checklog_activity_resets_window
+=== RUN   TestIsInputReqStale/claimed_fresh_is_not_stale
+=== RUN   TestIsInputReqStale/claim_old_but_question_recent_is_not_stale_(QuestionAt_dominates)
+=== RUN   TestIsInputReqStale/non-input-required_is_not_checked
+--- PASS: TestIsInputReqStale (0.02s)
+    --- PASS: TestIsInputReqStale/claimed_old,_never_worked,_unanswered_is_stale (0.00s)
+    --- PASS: TestIsInputReqStale/recent_checklog_activity_resets_window (0.01s)
+    --- PASS: TestIsInputReqStale/claimed_fresh_is_not_stale (0.00s)
+    --- PASS: TestIsInputReqStale/claim_old_but_question_recent_is_not_stale_(QuestionAt_dominates) (0.00s)
+    --- PASS: TestIsInputReqStale/non-input-required_is_not_checked (0.00s)
+=== RUN   TestIsRepeatAbandon
+=== RUN   TestIsRepeatAbandon/in-flight_with_count>=2_is_zombie
+=== RUN   TestIsRepeatAbandon/terminal_status_not_flagged
+=== RUN   TestIsRepeatAbandon/count_below_threshold_not_flagged
+--- PASS: TestIsRepeatAbandon (0.00s)
+    --- PASS: TestIsRepeatAbandon/in-flight_with_count>=2_is_zombie (0.00s)
+    --- PASS: TestIsRepeatAbandon/terminal_status_not_flagged (0.00s)
+    --- PASS: TestIsRepeatAbandon/count_below_threshold_not_flagged (0.00s)
+=== RUN   TestIsZombie
+=== RUN   TestIsZombie/non-delegated_never_zombie
+=== RUN   TestIsZombie/terminal_status_never_zombie
+=== RUN   TestIsZombie/offered_zombie_carries_reason
+=== RUN   TestIsZombie/multiple_signals_collect_multiple_reasons
+--- PASS: TestIsZombie (0.01s)
+    --- PASS: TestIsZombie/non-delegated_never_zombie (0.00s)
+    --- PASS: TestIsZombie/terminal_status_never_zombie (0.00s)
+    --- PASS: TestIsZombie/offered_zombie_carries_reason (0.00s)
+    --- PASS: TestIsZombie/multiple_signals_collect_multiple_reasons (0.00s)
+=== RUN   TestDeadlockedDependency
+=== RUN   TestDeadlockedDependency/failed_dependency_deadlocks
+=== RUN   TestDeadlockedDependency/canceled_dependency_deadlocks
+=== RUN   TestDeadlockedDependency/missing_dependency_deadlocks
+=== RUN   TestDeadlockedDependency/pending-but-alive_dependency_is_not_a_deadlock
+=== RUN   TestDeadlockedDependency/delivered_dependency_is_not_a_deadlock
+--- PASS: TestDeadlockedDependency (0.00s)
+    --- PASS: TestDeadlockedDependency/failed_dependency_deadlocks (0.00s)
+    --- PASS: TestDeadlockedDependency/canceled_dependency_deadlocks (0.00s)
+    --- PASS: TestDeadlockedDependency/missing_dependency_deadlocks (0.00s)
+    --- PASS: TestDeadlockedDependency/pending-but-alive_dependency_is_not_a_deadlock (0.00s)
+    --- PASS: TestDeadlockedDependency/delivered_dependency_is_not_a_deadlock (0.00s)
+=== RUN   TestHasDependencyCycle
+=== RUN   TestHasDependencyCycle/two-node_cycle_detected
+=== RUN   TestHasDependencyCycle/acyclic_chain_not_flagged
+=== RUN   TestHasDependencyCycle/self-dependency_is_a_cycle
+=== RUN   TestHasDependencyCycle/missing_dependency_is_a_leaf_not_a_cycle
+=== RUN   TestHasDependencyCycle/reachable_non-start_cycle_still_blocks
+--- PASS: TestHasDependencyCycle (0.00s)
+    --- PASS: TestHasDependencyCycle/two-node_cycle_detected (0.00s)
+    --- PASS: TestHasDependencyCycle/acyclic_chain_not_flagged (0.00s)
+    --- PASS: TestHasDependencyCycle/self-dependency_is_a_cycle (0.00s)
+    --- PASS: TestHasDependencyCycle/missing_dependency_is_a_leaf_not_a_cycle (0.00s)
+    --- PASS: TestHasDependencyCycle/reachable_non-start_cycle_still_blocks (0.00s)
+=== RUN   TestOrchestrationReady
+=== RUN   TestOrchestrationReady/empty_parent_ref_is_ready
+=== RUN   TestOrchestrationReady/no_children_is_ready
+=== RUN   TestOrchestrationReady/all_delivered_is_ready
+=== RUN   TestOrchestrationReady/all_terminal_(delivered+failed+canceled)_is_ready
+=== RUN   TestOrchestrationReady/unassigned_complete_child_counts_as_terminal
+=== RUN   TestOrchestrationReady/non-terminal_child_is_not_ready
+=== RUN   TestOrchestrationReady/pending_collects_all_non-terminal_in_stable_order
+=== RUN   TestOrchestrationReady/unrelated_children_of_other_parents_ignored
+--- PASS: TestOrchestrationReady (0.00s)
+    --- PASS: TestOrchestrationReady/empty_parent_ref_is_ready (0.00s)
+    --- PASS: TestOrchestrationReady/no_children_is_ready (0.00s)
+    --- PASS: TestOrchestrationReady/all_delivered_is_ready (0.00s)
+    --- PASS: TestOrchestrationReady/all_terminal_(delivered+failed+canceled)_is_ready (0.00s)
+    --- PASS: TestOrchestrationReady/unassigned_complete_child_counts_as_terminal (0.00s)
+    --- PASS: TestOrchestrationReady/non-terminal_child_is_not_ready (0.00s)
+    --- PASS: TestOrchestrationReady/pending_collects_all_non-terminal_in_stable_order (0.00s)
+    --- PASS: TestOrchestrationReady/unrelated_children_of_other_parents_ignored (0.00s)
+=== RUN   TestHeldoutRoundTrip
+--- PASS: TestHeldoutRoundTrip (0.01s)
+=== RUN   TestVerifyHeldout_GapStates
+=== RUN   TestVerifyHeldout_GapStates/gap_可见过保留集挂
+=== RUN   TestVerifyHeldout_GapStates/both_fail_可见同挂只记warn
+=== RUN   TestVerifyHeldout_GapStates/pass_全过
+=== RUN   TestVerifyHeldout_GapStates/skip_未登记
+--- PASS: TestVerifyHeldout_GapStates (0.28s)
+    --- PASS: TestVerifyHeldout_GapStates/gap_可见过保留集挂 (0.13s)
+    --- PASS: TestVerifyHeldout_GapStates/both_fail_可见同挂只记warn (0.08s)
+    --- PASS: TestVerifyHeldout_GapStates/pass_全过 (0.07s)
+    --- PASS: TestVerifyHeldout_GapStates/skip_未登记 (0.00s)
+=== RUN   TestCheckHeldoutFresh
+--- PASS: TestCheckHeldoutFresh (0.13s)
+=== RUN   TestHeldout_RunCountRotation
+--- PASS: TestHeldout_RunCountRotation (0.33s)
+=== RUN   TestHeldout_LegacyArraySidecar
+--- PASS: TestHeldout_LegacyArraySidecar (0.07s)
+=== RUN   TestHeldoutPool_RoundTrip
+--- PASS: TestHeldoutPool_RoundTrip (0.10s)
+=== RUN   TestApplyHeldoutToTask_PreservesRunCountAndAudits
+--- PASS: TestApplyHeldoutToTask_PreservesRunCountAndAudits (0.04s)
+=== RUN   TestReviewIndependence_SelfReviewDetected
+--- PASS: TestReviewIndependence_SelfReviewDetected (0.04s)
+=== RUN   TestSelfReviewRow
+--- PASS: TestSelfReviewRow (0.02s)
+=== RUN   TestBashWritesFiles
+--- PASS: TestBashWritesFiles (0.00s)
+=== RUN   TestTaskStateIntegrity_SignVerifyRoundTrip
+--- PASS: TestTaskStateIntegrity_SignVerifyRoundTrip (0.03s)
+=== RUN   TestTaskStateIntegrity_TamperedStateFlagged
+[forge] warning: task integ-tamper integrity check FAILED — state file was modified outside forge; gate-satisfying fields will not be trusted
+--- PASS: TestTaskStateIntegrity_TamperedStateFlagged (0.03s)
+=== RUN   TestTaskStateIntegrity_LegacyUnsignedAllowed
+--- PASS: TestTaskStateIntegrity_LegacyUnsignedAllowed (0.01s)
+=== RUN   TestLease_FailOpenIsAnnouncedOnStderr
+--- PASS: TestLease_FailOpenIsAnnouncedOnStderr (0.01s)
+=== RUN   TestClaimLease_FencingMonotonic
+--- PASS: TestClaimLease_FencingMonotonic (0.00s)
+=== RUN   TestLeaseStatus_ForeignActive
+--- PASS: TestLeaseStatus_ForeignActive (0.00s)
+=== RUN   TestLeaseStatus_Expiry
+--- PASS: TestLeaseStatus_Expiry (0.00s)
+=== RUN   TestLease_ActiveAt
+--- PASS: TestLease_ActiveAt (0.00s)
+=== RUN   TestLease_MergeHigherFencingWins
+--- PASS: TestLease_MergeHigherFencingWins (0.00s)
+=== RUN   TestLease_MergeEqualFencingDeterministic
+--- PASS: TestLease_MergeEqualFencingDeterministic (0.00s)
+=== RUN   TestLease_ExpiresAt
+--- PASS: TestLease_ExpiresAt (0.00s)
+=== RUN   TestLockTask_MutualExclusion
+--- PASS: TestLockTask_MutualExclusion (0.31s)
+=== RUN   TestLockTask_StaleBreak
+--- PASS: TestLockTask_StaleBreak (0.01s)
+=== RUN   TestMutateTaskState_SequentialLostUpdate
+--- PASS: TestMutateTaskState_SequentialLostUpdate (1.02s)
+=== RUN   TestMutateTaskState_FnErrorNoSave
+--- PASS: TestMutateTaskState_FnErrorNoSave (0.01s)
+=== RUN   TestCurrentSessionID_FallbackChain
+--- PASS: TestCurrentSessionID_FallbackChain (0.00s)
+=== RUN   TestIsLockContentionErr_PlatformContract
+--- PASS: TestIsLockContentionErr_PlatformContract (0.00s)
+=== RUN   TestIsLoopResetEntry
+--- PASS: TestIsLoopResetEntry (0.47s)
+=== RUN   TestEvaluateLoopVerdict
+=== RUN   TestEvaluateLoopVerdict/全收敛且新鲜_→_done
+=== RUN   TestEvaluateLoopVerdict/验收复发
+=== RUN   TestEvaluateLoopVerdict/回环耗尽
+=== RUN   TestEvaluateLoopVerdict/input-required
+=== RUN   TestEvaluateLoopVerdict/失败次数预算
+=== RUN   TestEvaluateLoopVerdict/token_预算
+=== RUN   TestEvaluateLoopVerdict/改动文件预算
+=== RUN   TestEvaluateLoopVerdict/无进展：连续_K_次通过条数未增
+=== RUN   TestEvaluateLoopVerdict/有进展：最近一次增加_→_不判无进展
+=== RUN   TestEvaluateLoopVerdict/同一门禁连续两次_BLOCKED
+=== RUN   TestEvaluateLoopVerdict/hook_路径（Silent）的_BLOCKED_不计
+=== RUN   TestEvaluateLoopVerdict/ta[REDACTED]连续_BLOCKED_是正常节奏，不计
+=== RUN   TestEvaluateLoopVerdict/门禁_BLOCKED_后通过_→_清除
+=== RUN   TestEvaluateLoopVerdict/重置之前的_BLOCKED_不计
+=== RUN   TestEvaluateLoopVerdict/零条验收_→_continue
+=== RUN   TestEvaluateLoopVerdict/有一条_Passed=false_→_continue（非_git_下_fresh_也放行时仍不_done）
+=== RUN   TestEvaluateLoopVerdict/通过后又改了源码（不新鲜）→_continue
+--- PASS: TestEvaluateLoopVerdict (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/全收敛且新鲜_→_done (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/验收复发 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/回环耗尽 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/input-required (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/失败次数预算 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/token_预算 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/改动文件预算 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/无进展：连续_K_次通过条数未增 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/有进展：最近一次增加_→_不判无进展 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/同一门禁连续两次_BLOCKED (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/hook_路径（Silent）的_BLOCKED_不计 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/ta[REDACTED]连续_BLOCKED_是正常节奏，不计 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/门禁_BLOCKED_后通过_→_清除 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/重置之前的_BLOCKED_不计 (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/零条验收_→_continue (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/有一条_Passed=false_→_continue（非_git_下_fresh_也放行时仍不_done） (0.00s)
+    --- PASS: TestEvaluateLoopVerdict/通过后又改了源码（不新鲜）→_continue (0.00s)
+=== RUN   TestLoopBudgetVerdict
+--- PASS: TestLoopBudgetVerdict (0.74s)
+=== RUN   TestComputeLoopVerdictNoSideEffects
+--- PASS: TestComputeLoopVerdictNoSideEffects (0.59s)
+=== RUN   TestFormatLoopVerdictLine
+--- PASS: TestFormatLoopVerdictLine (0.00s)
+=== RUN   TestMergeTaskStateSync_ConvergenceProperty
+--- PASS: TestMergeTaskStateSync_ConvergenceProperty (0.01s)
+=== RUN   TestMergeTaskStateSync_CanonicalOrdering
+--- PASS: TestMergeTaskStateSync_CanonicalOrdering (0.00s)
+=== RUN   TestMergeTaskStateSync_GateHistoryContentUnion
+--- PASS: TestMergeTaskStateSync_GateHistoryContentUnion (0.00s)
+=== RUN   TestMergeTaskStateSync_BothCompleteFirstFinisherWins
+--- PASS: TestMergeTaskStateSync_BothCompleteFirstFinisherWins (0.00s)
+=== RUN   TestUnionDecisions_EmptyIDNotCollapsed
+--- PASS: TestUnionDecisions_EmptyIDNotCollapsed (0.00s)
+=== RUN   TestGhostForeignSessions_OnlyGhosts
+--- PASS: TestGhostForeignSessions_OnlyGhosts (0.00s)
+=== RUN   TestMergeTaskState_IdentityAuthoritative
+--- PASS: TestMergeTaskState_IdentityAuthoritative (0.00s)
+=== RUN   TestMergeTaskStateSync_FailedGateHealedByPassed
+--- PASS: TestMergeTaskStateSync_FailedGateHealedByPassed (0.00s)
+=== RUN   TestMergeTaskStateSync_CompletionMonotonic
+--- PASS: TestMergeTaskStateSync_CompletionMonotonic (0.00s)
+=== RUN   TestExcludeMergedInFiles_DropsBaseOnlyFiles
+--- PASS: TestExcludeMergedInFiles_DropsBaseOnlyFiles (1.48s)
+=== RUN   TestExcludeMergedInFiles_KeepsConflictResolution
+--- PASS: TestExcludeMergedInFiles_KeepsConflictResolution (1.79s)
+=== RUN   TestExcludeMergedInFiles_NoMergeUnchanged
+--- PASS: TestExcludeMergedInFiles_NoMergeUnchanged (0.49s)
+=== RUN   TestTaskChangedFiles_MergedMainNotDrift
+--- PASS: TestTaskChangedFiles_MergedMainNotDrift (1.60s)
+=== RUN   TestExcludeMergedInFiles_KeepsOwnSideBranch
+--- PASS: TestExcludeMergedInFiles_KeepsOwnSideBranch (1.78s)
+=== RUN   TestExcludeMergedInFiles_InvertedFirstParentUnchanged
+=== RUN   TestExcludeMergedInFiles_InvertedFirstParentUnchanged/merged_into_main
+=== RUN   TestExcludeMergedInFiles_InvertedFirstParentUnchanged/merged_into_main,_then_continued
+=== RUN   TestExcludeMergedInFiles_InvertedFirstParentUnchanged/forked_before_from
+--- PASS: TestExcludeMergedInFiles_InvertedFirstParentUnchanged (5.18s)
+    --- PASS: TestExcludeMergedInFiles_InvertedFirstParentUnchanged/merged_into_main (1.73s)
+    --- PASS: TestExcludeMergedInFiles_InvertedFirstParentUnchanged/merged_into_main,_then_continued (1.72s)
+    --- PASS: TestExcludeMergedInFiles_InvertedFirstParentUnchanged/forked_before_from (1.73s)
+=== RUN   TestExcludeMergedInFiles_KeepsDeletedPathOfHeavyRename
+--- PASS: TestExcludeMergedInFiles_KeepsDeletedPathOfHeavyRename (2.05s)
+=== RUN   TestExcludeMergedInFiles_GitFailureUnchanged
+--- PASS: TestExcludeMergedInFiles_GitFailureUnchanged (1.00s)
+=== RUN   TestExcludeMergedInFiles_KeepsOctopusSideBranch
+=== RUN   TestExcludeMergedInFiles_KeepsOctopusSideBranch/main+side
+=== RUN   TestExcludeMergedInFiles_KeepsOctopusSideBranch/side+main
+--- PASS: TestExcludeMergedInFiles_KeepsOctopusSideBranch (6.70s)
+    --- PASS: TestExcludeMergedInFiles_KeepsOctopusSideBranch/main+side (3.35s)
+    --- PASS: TestExcludeMergedInFiles_KeepsOctopusSideBranch/side+main (3.35s)
+=== RUN   TestExcludeMergedInFiles_LocalBaseUntrustedWithRemote
+--- PASS: TestExcludeMergedInFiles_LocalBaseUntrustedWithRemote (2.29s)
+=== RUN   TestExcludeMergedInFiles_KeepsDeletionAgainstStaleBaseParent
+--- PASS: TestExcludeMergedInFiles_KeepsDeletionAgainstStaleBaseParent (1.53s)
+=== RUN   TestExcludeMergedInFiles_KeepsDeletionPairedAsRename
+--- PASS: TestExcludeMergedInFiles_KeepsDeletionPairedAsRename (1.67s)
+=== RUN   TestExcludeMergedInFiles_KeepsTaskSideEditOverwrittenByBase
+--- PASS: TestExcludeMergedInFiles_KeepsTaskSideEditOverwrittenByBase (1.96s)
+=== RUN   TestExcludeMergedInFiles_CrissCrossChecksEveryMergeBase
+--- PASS: TestExcludeMergedInFiles_CrissCrossChecksEveryMergeBase (3.44s)
+=== RUN   TestExcludeMergedInFiles_PureRenameMatchesNoMerge
+--- PASS: TestExcludeMergedInFiles_PureRenameMatchesNoMerge (2.37s)
+=== RUN   TestRenamePair
+--- PASS: TestRenamePair (0.00s)
+=== RUN   TestBuildMirrorPlan
+--- PASS: TestBuildMirrorPlan (0.00s)
+=== RUN   TestBuildMirrorPlan_NoOp
+--- PASS: TestBuildMirrorPlan_NoOp (0.00s)
+=== RUN   TestBuildMirrorPlan_FailedGetsLabel
+--- PASS: TestBuildMirrorPlan_FailedGetsLabel (0.00s)
+=== RUN   TestMirrorTitleTruncation
+--- PASS: TestMirrorTitleTruncation (0.00s)
+=== RUN   TestMirrorMappingRoundTrip
+--- PASS: TestMirrorMappingRoundTrip (0.02s)
+=== RUN   TestScanMutationSites
+--- PASS: TestScanMutationSites (0.00s)
+=== RUN   TestSampleMutationSites_Deterministic
+--- PASS: TestSampleMutationSites_Deterministic (0.00s)
+=== RUN   TestRunMutationSampling_KillsAndSurvives
+  ☠ 存活 calc.go:11（<→>=）——测试没抓住这道 bad case
+  ☠ 存活 calc.go:14（>→<=）——测试没抓住这道 bad case
+--- PASS: TestRunMutationSampling_KillsAndSurvives (9.91s)
+=== RUN   TestMutationBaselineRed
+  ⚠ 基线红：. 未变异时测试就未通过——跳过其变异体（杀灭率会被既有失败伪造）
+--- PASS: TestMutationBaselineRed (2.29s)
+=== RUN   TestSitesOutsidePackages
+--- PASS: TestSitesOutsidePackages (0.00s)
+=== RUN   TestMutationBaselineRed_VerdictPrecedence
+--- PASS: TestMutationBaselineRed_VerdictPrecedence (0.02s)
+=== RUN   TestMutationZeroSignal_NoFakePass
+--- PASS: TestMutationZeroSignal_NoFakePass (0.02s)
+=== RUN   TestNextRepoContext_ReadyChangeWithoutGoalIsNotRecommended
+--- PASS: TestNextRepoContext_ReadyChangeWithoutGoalIsNotRecommended (0.16s)
+=== RUN   TestNextRepoContext_StaleReadyChangeIsNotRecommended
+--- PASS: TestNextRepoContext_StaleReadyChangeIsNotRecommended (0.54s)
+=== RUN   TestNextRepoContext_FreshReadyChangeIsRecommended
+--- PASS: TestNextRepoContext_FreshReadyChangeIsRecommended (0.19s)
+=== RUN   TestNextRepoContext_StaleBoundary
+=== RUN   TestNextRepoContext_StaleBoundary/71h
+=== RUN   TestNextRepoContext_StaleBoundary/73h
+--- PASS: TestNextRepoContext_StaleBoundary (0.38s)
+    --- PASS: TestNextRepoContext_StaleBoundary/71h (0.18s)
+    --- PASS: TestNextRepoContext_StaleBoundary/73h (0.20s)
+=== RUN   TestNextRepoContext_OpenChangeBeatsStale
+--- PASS: TestNextRepoContext_OpenChangeBeatsStale (0.26s)
+=== RUN   TestNextRepoContext_StaleChangeIDsExposed
+--- PASS: TestNextRepoContext_StaleChangeIDsExposed (0.18s)
+=== RUN   TestNextRepoContext_ShallowCloneStaleChangeIsNotRecommended
+--- PASS: TestNextRepoContext_ShallowCloneStaleChangeIsNotRecommended (1.45s)
+=== RUN   TestNextDecision_GateChain
+--- PASS: TestNextDecision_GateChain (0.00s)
+=== RUN   TestNextDecision_BehindRemote
+--- PASS: TestNextDecision_BehindRemote (0.00s)
+=== RUN   TestNextHint_RecordsChecklogRow
+--- PASS: TestNextHint_RecordsChecklogRow (0.47s)
+=== RUN   TestGitBehindRemote
+--- PASS: TestGitBehindRemote (0.97s)
+=== RUN   TestNextDecision_EntryRouting
+=== RUN   TestNextDecision_EntryRouting/spec_repo,_dirty,_no_open_change
+=== RUN   TestNextDecision_EntryRouting/spec_repo,_dirty,_open_change_exists
+=== RUN   TestNextDecision_EntryRouting/spec_repo,_dirty,_ready_change_exists
+=== RUN   TestNextDecision_EntryRouting/spec_repo,_clean,_no_task_→_task_start_(no_status_loop)
+=== RUN   TestNextDecision_EntryRouting/plain_repo,_dirty,_unchanged_behavior
+=== RUN   TestNextDecision_EntryRouting/plain_repo_clean_stays_status
+--- PASS: TestNextDecision_EntryRouting (0.00s)
+    --- PASS: TestNextDecision_EntryRouting/spec_repo,_dirty,_no_open_change (0.00s)
+    --- PASS: TestNextDecision_EntryRouting/spec_repo,_dirty,_open_change_exists (0.00s)
+    --- PASS: TestNextDecision_EntryRouting/spec_repo,_dirty,_ready_change_exists (0.00s)
+    --- PASS: TestNextDecision_EntryRouting/spec_repo,_clean,_no_task_→_task_start_(no_status_loop) (0.00s)
+    --- PASS: TestNextDecision_EntryRouting/plain_repo,_dirty,_unchanged_behavior (0.00s)
+    --- PASS: TestNextDecision_EntryRouting/plain_repo_clean_stays_status (0.00s)
+=== RUN   TestNextHint_SpecRepoCleanSuggestsTaskStart
+--- PASS: TestNextHint_SpecRepoCleanSuggestsTaskStart (0.16s)
+=== RUN   TestEscapeDisabled_Precedence
+--- PASS: TestEscapeDisabled_Precedence (0.00s)
+=== RUN   TestEscapeDisabled_NoEnvNoOverride
+--- PASS: TestEscapeDisabled_NoEnvNoOverride (0.00s)
+=== RUN   TestEscapeDisabled_OverrideOnly
+--- PASS: TestEscapeDisabled_OverrideOnly (0.00s)
+=== RUN   TestEscapeDisabled_NilState
+--- PASS: TestEscapeDisabled_NilState (0.00s)
+=== RUN   TestComputePlanConversion
+--- PASS: TestComputePlanConversion (0.00s)
+=== RUN   TestRunPushGate_CleanPass
+--- PASS: TestRunPushGate_CleanPass (0.68s)
+=== RUN   TestRunPushGate_CheatBlocks
+--- PASS: TestRunPushGate_CheatBlocks (1.12s)
+=== RUN   TestRunPushGate_EscapeSkips
+--- PASS: TestRunPushGate_EscapeSkips (0.39s)
+=== RUN   TestRunPushGate_DirtyWarns
+--- PASS: TestRunPushGate_DirtyWarns (0.64s)
+=== RUN   TestScanCheatPatternsRange_RangeOnly
+--- PASS: TestScanCheatPatternsRange_RangeOnly (0.47s)
+=== RUN   TestRunPushGate_FullyQualifiedRef
+--- PASS: TestRunPushGate_FullyQualifiedRef (0.88s)
+=== RUN   TestBlockedTasksOnBranch
+--- PASS: TestBlockedTasksOnBranch (0.04s)
+=== RUN   TestProducersOnBranch
+--- PASS: TestProducersOnBranch (0.28s)
+=== RUN   TestLowDimCounts
+--- PASS: TestLowDimCounts (0.00s)
+=== RUN   TestDimRecurrent
+--- PASS: TestDimRecurrent (0.00s)
+=== RUN   TestLowDimCounts_NoiseBand
+--- PASS: TestLowDimCounts_NoiseBand (0.00s)
+=== RUN   TestLowDimCounts_LegacyFallback
+--- PASS: TestLowDimCounts_LegacyFallback (0.00s)
+=== RUN   TestRecurrentThreshold
+--- PASS: TestRecurrentThreshold (0.00s)
+=== RUN   TestRecurrentHardenEnabled
+--- PASS: TestRecurrentHardenEnabled (0.00s)
+=== RUN   TestScopeDriftSevere
+--- PASS: TestScopeDriftSevere (0.00s)
+=== RUN   TestScanSpecText_AmbiguityMarkers
+--- PASS: TestScanSpecText_AmbiguityMarkers (0.00s)
+=== RUN   TestCheckRequirementsHygiene_MissingAcceptance
+--- PASS: TestCheckRequirementsHygiene_MissingAcceptance (0.00s)
+=== RUN   TestMarkReviewPassed_AppendsReviewRounds
+--- PASS: TestMarkReviewPassed_AppendsReviewRounds (0.00s)
+=== RUN   TestReworkRounds
+--- PASS: TestReworkRounds (0.00s)
+=== RUN   TestScoreTask_AttachesReworkEvidence
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+--- PASS: TestScoreTask_AttachesReworkEvidence (1.26s)
+=== RUN   TestMatchesScope
+=== RUN   TestMatchesScope/空_scope_全覆盖
+=== RUN   TestMatchesScope/精确匹配
+=== RUN   TestMatchesScope/精确不匹配
+=== RUN   TestMatchesScope/目录前缀递归（无尾斜杠）
+=== RUN   TestMatchesScope/目录前缀递归（尾斜杠）
+=== RUN   TestMatchesScope/前缀不误匹配同名片段
+=== RUN   TestMatchesScope/glob_直接子文件
+=== RUN   TestMatchesScope/glob_不跨层级
+=== RUN   TestMatchesScope/通配根级_ext
+=== RUN   TestMatchesScope/通配根级不跨层级
+=== RUN   TestMatchesScope/多_entry_任一命中
+=== RUN   TestMatchesScope/Go_测试随源码覆盖
+=== RUN   TestMatchesScope/TS_测试随源码覆盖
+=== RUN   TestMatchesScope/Python_测试随源码覆盖
+=== RUN   TestMatchesScope/测试文件源码不在_scope
+=== RUN   TestMatchesScope/生成文件恒覆盖
+=== RUN   TestMatchesScope/main.go_恒覆盖
+--- PASS: TestMatchesScope (0.00s)
+    --- PASS: TestMatchesScope/空_scope_全覆盖 (0.00s)
+    --- PASS: TestMatchesScope/精确匹配 (0.00s)
+    --- PASS: TestMatchesScope/精确不匹配 (0.00s)
+    --- PASS: TestMatchesScope/目录前缀递归（无尾斜杠） (0.00s)
+    --- PASS: TestMatchesScope/目录前缀递归（尾斜杠） (0.00s)
+    --- PASS: TestMatchesScope/前缀不误匹配同名片段 (0.00s)
+    --- PASS: TestMatchesScope/glob_直接子文件 (0.00s)
+    --- PASS: TestMatchesScope/glob_不跨层级 (0.00s)
+    --- PASS: TestMatchesScope/通配根级_ext (0.00s)
+    --- PASS: TestMatchesScope/通配根级不跨层级 (0.00s)
+    --- PASS: TestMatchesScope/多_entry_任一命中 (0.00s)
+    --- PASS: TestMatchesScope/Go_测试随源码覆盖 (0.00s)
+    --- PASS: TestMatchesScope/TS_测试随源码覆盖 (0.00s)
+    --- PASS: TestMatchesScope/Python_测试随源码覆盖 (0.00s)
+    --- PASS: TestMatchesScope/测试文件源码不在_scope (0.00s)
+    --- PASS: TestMatchesScope/生成文件恒覆盖 (0.00s)
+    --- PASS: TestMatchesScope/main.go_恒覆盖 (0.00s)
+=== RUN   TestScopeDrift
+--- PASS: TestScopeDrift (0.00s)
+=== RUN   TestScopeDrift_EmptyScopeNil
+--- PASS: TestScopeDrift_EmptyScopeNil (0.00s)
+=== RUN   TestScopeDrift_PreservesOrder
+--- PASS: TestScopeDrift_PreservesOrder (0.00s)
+=== RUN   TestSourcePathsForTest
+--- PASS: TestSourcePathsForTest (0.00s)
+=== RUN   TestLoadScoringConfig_ContractRepoWithoutProtocolIsSilent
+--- PASS: TestLoadScoringConfig_ContractRepoWithoutProtocolIsSilent (0.01s)
+=== RUN   TestLoadScoringConfig_ContractRepoWithBrokenProtocolWarns
+--- PASS: TestLoadScoringConfig_ContractRepoWithBrokenProtocolWarns (0.00s)
+=== RUN   TestLoadScoringConfig_NonContractRepoWarns
+--- PASS: TestLoadScoringConfig_NonContractRepoWarns (0.00s)
+=== RUN   TestBuildEvaluateInput_ContractRepoNoProtocolWarning
+--- PASS: TestBuildEvaluateInput_ContractRepoNoProtocolWarning (0.24s)
+=== RUN   TestBuildEvaluateInput_NonContractRepoWarns
+--- PASS: TestBuildEvaluateInput_NonContractRepoWarns (0.28s)
+=== RUN   TestScoreTask_EscapeOverrideCapsAt89
+--- PASS: TestScoreTask_EscapeOverrideCapsAt89 (0.67s)
+=== RUN   TestScoreTask_EscapeDocGateCapsAt89
+--- PASS: TestScoreTask_EscapeDocGateCapsAt89 (0.71s)
+=== RUN   TestScoreTask_NoOverrideNotCapped
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+--- PASS: TestScoreTask_NoOverrideNotCapped (0.61s)
+=== RUN   TestScoreTask_EnvEscapeRecordedCapsAt89
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+ADVISORY: [score] 本任务用过逃生舱（override 或 env 豁免）——总分封顶 89（Grade=B），逃生有代价
+--- PASS: TestScoreTask_EnvEscapeRecordedCapsAt89 (0.90s)
+=== RUN   TestBuildEvaluateInput_SkipsInfraEntries
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+--- PASS: TestBuildEvaluateInput_SkipsInfraEntries (0.93s)
+=== RUN   TestScoreTask_EvidenceBundle_UntestedAndRisks
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+--- PASS: TestScoreTask_EvidenceBundle_UntestedAndRisks (0.91s)
+=== RUN   TestScoreTask_EvidenceBundle_RisksCapped
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+--- PASS: TestScoreTask_EvidenceBundle_RisksCapped (0.70s)
+=== RUN   TestScoreTask_EvidenceBundle_UntestedUnderEscape
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+--- PASS: TestScoreTask_EvidenceBundle_UntestedUnderEscape (0.61s)
+=== RUN   TestExtractClaimedCommands
+--- PASS: TestExtractClaimedCommands (0.00s)
+=== RUN   TestCheckSelfReport_States
+=== RUN   TestCheckSelfReport_States/blocked_测试声称零证据
+=== RUN   TestCheckSelfReport_States/warn_有部分证据时差集降级
+=== RUN   TestCheckSelfReport_States/pass_声称有据
+=== RUN   TestCheckSelfReport_States/skip_无toollog遥测
+=== RUN   TestCheckSelfReport_States/skip_无checklist
+--- PASS: TestCheckSelfReport_States (0.07s)
+    --- PASS: TestCheckSelfReport_States/blocked_测试声称零证据 (0.02s)
+    --- PASS: TestCheckSelfReport_States/warn_有部分证据时差集降级 (0.02s)
+    --- PASS: TestCheckSelfReport_States/pass_声称有据 (0.02s)
+    --- PASS: TestCheckSelfReport_States/skip_无toollog遥测 (0.00s)
+    --- PASS: TestCheckSelfReport_States/skip_无checklist (0.00s)
+=== RUN   TestCheckSelfReport_EscapeHatch
+--- PASS: TestCheckSelfReport_EscapeHatch (0.02s)
+=== RUN   TestCheckSelfReport_ChecklogRow
+--- PASS: TestCheckSelfReport_ChecklogRow (0.02s)
+=== RUN   TestSegmentEvents
+--- PASS: TestSegmentEvents (0.00s)
+=== RUN   TestSegmentEvents_Degenerate
+--- PASS: TestSegmentEvents_Degenerate (0.00s)
+=== RUN   TestHasSession_IgnoresImportedGhosts
+--- PASS: TestHasSession_IgnoresImportedGhosts (0.00s)
+=== RUN   TestHasSession_LocalLinkStillSeen
+--- PASS: TestHasSession_LocalLinkStillSeen (0.00s)
+=== RUN   TestAddSession_DoesNotDedupAgainstGhost
+--- PASS: TestAddSession_DoesNotDedupAgainstGhost (0.00s)
+=== RUN   TestAddSession_LocalDedupStillWorks
+--- PASS: TestAddSession_LocalDedupStillWorks (0.00s)
+=== RUN   TestEnsureSession_CreatesNewSession
+--- PASS: TestEnsureSession_CreatesNewSession (0.02s)
+=== RUN   TestEnsureSession_WritesStartedEpoch
+--- PASS: TestEnsureSession_WritesStartedEpoch (0.04s)
+=== RUN   TestEnsureSession_ReusesExistingWithinMaxIdle
+--- PASS: TestEnsureSession_ReusesExistingWithinMaxIdle (0.02s)
+=== RUN   TestEnsureSession_RotatesAfterMaxIdle
+--- PASS: TestEnsureSession_RotatesAfterMaxIdle (0.05s)
+=== RUN   TestLoadSessions_IncludesCurrent
+--- PASS: TestLoadSessions_IncludesCurrent (0.02s)
+=== RUN   TestLoadSessions_EmptyDir
+--- PASS: TestLoadSessions_EmptyDir (0.00s)
+=== RUN   TestSessionAgentTypeDetection
+--- PASS: TestSessionAgentTypeDetection (0.00s)
+=== RUN   TestDetectAgentType_DeterministicPriority
+--- PASS: TestDetectAgentType_DeterministicPriority (0.00s)
+=== RUN   TestNewTaskState_HasSessionID
+--- PASS: TestNewTaskState_HasSessionID (0.03s)
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/claude
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/cursor
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/copilot
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/windsurf
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/codex
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/opencode
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/cline
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/clinerules
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/kimi
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/reasonix
+=== RUN   TestDetectAgentType_RecognizesAllSupportedAgents/zcode
+--- PASS: TestDetectAgentType_RecognizesAllSupportedAgents (0.03s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/claude (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/cursor (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/copilot (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/windsurf (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/codex (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/opencode (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/cline (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/clinerules (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/kimi (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/reasonix (0.00s)
+    --- PASS: TestDetectAgentType_RecognizesAllSupportedAgents/zcode (0.00s)
+=== RUN   TestWriteArtifact_ReferenceTriangle
+--- PASS: TestWriteArtifact_ReferenceTriangle (0.02s)
+=== RUN   TestArchiveAttempt_WriteOnceAndFeedback
+--- PASS: TestArchiveAttempt_WriteOnceAndFeedback (0.04s)
+=== RUN   TestSaveTaskState_ConcurrentAtomic
+--- PASS: TestSaveTaskState_ConcurrentAtomic (0.18s)
+=== RUN   TestSetActiveTaskRef_AtomicAndReadable
+--- PASS: TestSetActiveTaskRef_AtomicAndReadable (0.02s)
+=== RUN   TestPruneOldTasks
+--- PASS: TestPruneOldTasks (0.03s)
+=== RUN   TestPruneOldTasks_GatesDoneNeverCompletedZombie
+--- PASS: TestPruneOldTasks_GatesDoneNeverCompletedZombie (0.03s)
+=== RUN   TestIsGitRepo_NonGitDirectory
+--- PASS: TestIsGitRepo_NonGitDirectory (0.03s)
+=== RUN   TestIsGitRepo_GitDirectory
+--- PASS: TestIsGitRepo_GitDirectory (0.10s)
+=== RUN   TestSaveTaskState_DataDirGitProject
+--- PASS: TestSaveTaskState_DataDirGitProject (0.08s)
+=== RUN   TestEnsureSession_DataDirGitProject
+--- PASS: TestEnsureSession_DataDirGitProject (0.10s)
+=== RUN   TestEnsureSession_EmptyID_DataDirGitProject
+--- PASS: TestEnsureSession_EmptyID_DataDirGitProject (0.12s)
+=== RUN   TestMarkCompleteGrace_WritesEpochTimestamp
+--- PASS: TestMarkCompleteGrace_WritesEpochTimestamp (0.08s)
+=== RUN   TestMarkCompleteGrace_EmptySessionSilent
+--- PASS: TestMarkCompleteGrace_EmptySessionSilent (0.07s)
+=== RUN   TestCompleteGracePath_SessionIDSanitization
+--- PASS: TestCompleteGracePath_SessionIDSanitization (0.07s)
+=== RUN   TestTaskTreeStatus_States
+--- PASS: TestTaskTreeStatus_States (0.59s)
+=== RUN   TestTreeGuardDisabled_Env
+--- PASS: TestTreeGuardDisabled_Env (0.00s)
+=== RUN   TestTaskChangedFiles_InterleavedFirstToComplete
+--- PASS: TestTaskChangedFiles_InterleavedFirstToComplete (1.21s)
+=== RUN   TestTaskChangedFiles_ExcludesCompletedSiblingCommits
+--- PASS: TestTaskChangedFiles_ExcludesCompletedSiblingCommits (1.44s)
+=== RUN   TestTaskChangedFiles_InProgressSiblingNotAnAnchor
+--- PASS: TestTaskChangedFiles_InProgressSiblingNotAnAnchor (0.92s)
+=== RUN   TestTaskChangedFiles_AttributionDegradesSafely
+--- PASS: TestTaskChangedFiles_AttributionDegradesSafely (1.20s)
+=== RUN   TestCheckTestCapability_GoUnitTests
+--- PASS: TestCheckTestCapability_GoUnitTests (0.06s)
+=== RUN   TestCheckTestCapability_E2EClassified
+--- PASS: TestCheckTestCapability_E2EClassified (0.06s)
+=== RUN   TestCheckTestCapability_NoTests
+--- PASS: TestCheckTestCapability_NoTests (0.05s)
+=== RUN   TestCheckTestCapability_Disabled
+--- PASS: TestCheckTestCapability_Disabled (0.01s)
+=== RUN   TestCheckTestCapability_NodeVitestStack
+--- PASS: TestCheckTestCapability_NodeVitestStack (0.06s)
+=== RUN   TestCheckTestCapability_GitLsFilesPath
+--- PASS: TestCheckTestCapability_GitLsFilesPath (0.22s)
+=== RUN   TestCheckTestCapability_RustStack
+--- PASS: TestCheckTestCapability_RustStack (0.06s)
+=== RUN   TestCheckTestCapability_PythonStack
+--- PASS: TestCheckTestCapability_PythonStack (0.06s)
+=== RUN   TestCheckTestCapability_NodePlaceholderNoRunner
+--- PASS: TestCheckTestCapability_NodePlaceholderNoRunner (0.05s)
+=== RUN   TestCheckTestCapability_NodeGenericTestScript
+--- PASS: TestCheckTestCapability_NodeGenericTestScript (0.05s)
+=== RUN   TestDetectTestCommand
+--- PASS: TestDetectTestCommand (0.01s)
+=== RUN   TestRunTestCommand_ExitCode
+--- PASS: TestRunTestCommand_ExitCode (0.40s)
+=== RUN   TestStripForeignGateSignals_ControlFlow
+--- PASS: TestStripForeignGateSignals_ControlFlow (0.00s)
+=== RUN   TestStripForeignGateSignals_NoAcceptanceNoMarker
+--- PASS: TestStripForeignGateSignals_NoAcceptanceNoMarker (0.00s)
+=== RUN   TestStripForeignGateSignals_FailedGateHistoryKept
+--- PASS: TestStripForeignGateSignals_FailedGateHistoryKept (0.00s)
+=== RUN   TestStripForeignGateSignals_DefaultDenySweep
+--- PASS: TestStripForeignGateSignals_DefaultDenySweep (0.00s)
+=== RUN   TestHasAcceptance
+--- PASS: TestHasAcceptance (0.00s)
+=== RUN   TestAllAcceptancePassed
+--- PASS: TestAllAcceptancePassed (0.00s)
+=== RUN   TestExternalOrigin_JSONRoundTrip
+--- PASS: TestExternalOrigin_JSONRoundTrip (0.00s)
+=== RUN   TestAcceptanceCriterion_AcceptedHeadCommitTag
+--- PASS: TestAcceptanceCriterion_AcceptedHeadCommitTag (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/taskpipeline	134.144s
+=== RUN   TestActivities_CleanChangeUsesCommitTime
+--- PASS: TestActivities_CleanChangeUsesCommitTime (0.52s)
+=== RUN   TestActivities_DirtyChangeCountsAsFresh
+--- PASS: TestActivities_DirtyChangeCountsAsFresh (0.53s)
+=== RUN   TestActivities_NoGitFallsBackToMtime
+--- PASS: TestActivities_NoGitFallsBackToMtime (0.10s)
+=== RUN   TestActivities_BatchMatchesExpected
+--- PASS: TestActivities_BatchMatchesExpected (0.57s)
+=== RUN   TestActivities_ShallowCloneIsStale
+--- PASS: TestActivities_ShallowCloneIsStale (0.87s)
+=== RUN   TestActivities_RenameDoesNotPolluteIDs
+--- PASS: TestActivities_RenameDoesNotPolluteIDs (0.43s)
+=== RUN   TestActivities_ShallowCloneDirtyIsFresh
+--- PASS: TestActivities_ShallowCloneDirtyIsFresh (0.78s)
+=== RUN   TestAgentsProtocol_IsActionable
+--- PASS: TestAgentsProtocol_IsActionable (0.00s)
+=== RUN   TestAgentsProtocol_NoRemovedHostLayerClaims
+--- PASS: TestAgentsProtocol_NoRemovedHostLayerClaims (0.00s)
+=== RUN   TestAgentsProtocol_HardRulesComeFirst
+--- PASS: TestAgentsProtocol_HardRulesComeFirst (0.00s)
+=== RUN   TestAgentsProtocol_ForbidsChangeFirstWording
+--- PASS: TestAgentsProtocol_ForbidsChangeFirstWording (0.00s)
+=== RUN   TestEnsureAgentsBlock_CreatesFile
+--- PASS: TestEnsureAgentsBlock_CreatesFile (0.00s)
+=== RUN   TestEnsureAgentsBlock_PreservesHumanContent
+--- PASS: TestEnsureAgentsBlock_PreservesHumanContent (0.01s)
+=== RUN   TestEnsureAgentsBlock_UpdatesBlockOnly
+--- PASS: TestEnsureAgentsBlock_UpdatesBlockOnly (0.01s)
+=== RUN   TestEnsureAgentsBlock_Idempotent
+--- PASS: TestEnsureAgentsBlock_Idempotent (0.00s)
+=== RUN   TestEnsureAgentsBlock_RejectsUnpairedMarkers
+--- PASS: TestEnsureAgentsBlock_RejectsUnpairedMarkers (0.01s)
+=== RUN   TestEnsureAgentsBlock_RejectsMultipleBlocks
+--- PASS: TestEnsureAgentsBlock_RejectsMultipleBlocks (0.01s)
+=== RUN   TestEnsureAgentsBlock_AppendKeepsOriginalBytes
+--- PASS: TestEnsureAgentsBlock_AppendKeepsOriginalBytes (0.01s)
+=== RUN   TestEnsureAgentsBlock_SeparatorIsOneBlankLine
+=== RUN   TestEnsureAgentsBlock_SeparatorIsOneBlankLine/no_trailing_newline
+=== RUN   TestEnsureAgentsBlock_SeparatorIsOneBlankLine/one_newline
+=== RUN   TestEnsureAgentsBlock_SeparatorIsOneBlankLine/two_newlines
+=== RUN   TestEnsureAgentsBlock_SeparatorIsOneBlankLine/crlf
+=== RUN   TestEnsureAgentsBlock_SeparatorIsOneBlankLine/crlf_two
+--- PASS: TestEnsureAgentsBlock_SeparatorIsOneBlankLine (0.04s)
+    --- PASS: TestEnsureAgentsBlock_SeparatorIsOneBlankLine/no_trailing_newline (0.01s)
+    --- PASS: TestEnsureAgentsBlock_SeparatorIsOneBlankLine/one_newline (0.01s)
+    --- PASS: TestEnsureAgentsBlock_SeparatorIsOneBlankLine/two_newlines (0.01s)
+    --- PASS: TestEnsureAgentsBlock_SeparatorIsOneBlankLine/crlf (0.01s)
+    --- PASS: TestEnsureAgentsBlock_SeparatorIsOneBlankLine/crlf_two (0.01s)
+=== RUN   TestEnsureAgentsBlock_UpdateIsByteExact
+--- PASS: TestEnsureAgentsBlock_UpdateIsByteExact (0.01s)
+=== RUN   TestEnsureAgentsBlock_RejectsReversedMarkers
+--- PASS: TestEnsureAgentsBlock_RejectsReversedMarkers (0.01s)
+=== RUN   TestEnsureAgentsBlock_WhitespaceOnlyFileGetsTitle
+--- PASS: TestEnsureAgentsBlock_WhitespaceOnlyFileGetsTitle (0.01s)
+=== RUN   TestEnsureAgentsBlock_CRLFStaysIdempotent
+--- PASS: TestEnsureAgentsBlock_CRLFStaysIdempotent (0.01s)
+=== RUN   TestEnsureAgentPointers_SkipsMissingByDefault
+--- PASS: TestEnsureAgentPointers_SkipsMissingByDefault (0.00s)
+=== RUN   TestEnsureAgentPointers_CreateWhenRequestedAndIdempotent
+--- PASS: TestEnsureAgentPointers_CreateWhenRequestedAndIdempotent (0.01s)
+=== RUN   TestEnsureAgentPointers_PreservesHumanContent
+--- PASS: TestEnsureAgentPointers_PreservesHumanContent (0.01s)
+=== RUN   TestEnsureAgentPointers_RejectsUnpairedMarkers
+--- PASS: TestEnsureAgentPointers_RejectsUnpairedMarkers (0.01s)
+=== RUN   TestEnsureAgentPointers_AddsCursorFrontmatterToExistingFile
+--- PASS: TestEnsureAgentPointers_AddsCursorFrontmatterToExistingFile (0.01s)
+=== RUN   TestEnsureManagedBlock_PreservesCRLF
+--- PASS: TestEnsureManagedBlock_PreservesCRLF (0.01s)
+=== RUN   TestInit_ReportsCreatedOnPointerFailure
+--- PASS: TestInit_ReportsCreatedOnPointerFailure (0.01s)
+=== RUN   TestEnsureCursorFrontmatter_KeepsKeysAndAddsAlwaysApply
+--- PASS: TestEnsureCursorFrontmatter_KeepsKeysAndAddsAlwaysApply (0.00s)
+=== RUN   TestEnsureCursorFrontmatter_TurnsFalseIntoTrue
+--- PASS: TestEnsureCursorFrontmatter_TurnsFalseIntoTrue (0.01s)
+=== RUN   TestValidID
+--- PASS: TestValidID (0.00s)
+=== RUN   TestInit_CreatesContract
+--- PASS: TestInit_CreatesContract (0.01s)
+=== RUN   TestInit_KeepsExistingAgentsFile
+--- PASS: TestInit_KeepsExistingAgentsFile (0.01s)
+=== RUN   TestInit_RejectsUnknownProfile
+--- PASS: TestInit_RejectsUnknownProfile (0.00s)
+=== RUN   TestNew_RequiresContract
+--- PASS: TestNew_RequiresContract (0.00s)
+=== RUN   TestNew_CreatesSkeleton
+--- PASS: TestNew_CreatesSkeleton (0.02s)
+=== RUN   TestList_DerivesStageFromFiles
+--- PASS: TestList_DerivesStageFromFiles (0.06s)
+=== RUN   TestLoad_StaleWhenAcceptanceEdited
+--- PASS: TestLoad_StaleWhenAcceptanceEdited (0.08s)
+=== RUN   TestLoad_MissingChange
+--- PASS: TestLoad_MissingChange (0.03s)
+=== RUN   TestList_IgnoresIncompleteEvidence
+--- PASS: TestList_IgnoresIncompleteEvidence (0.69s)
+=== RUN   TestLessEvidenceName_OrdersNumericSuffix
+--- PASS: TestLessEvidenceName_OrdersNumericSuffix (0.00s)
+=== RUN   TestLoad_IgnoresSummaryOfAnotherChange
+--- PASS: TestLoad_IgnoresSummaryOfAnotherChange (0.43s)
+=== RUN   TestCheckProblems_SealedPasses
+--- PASS: TestCheckProblems_SealedPasses (0.11s)
+=== RUN   TestCheckProblems_UnsealedAndStaleExplainWhy
+--- PASS: TestCheckProblems_UnsealedAndStaleExplainWhy (0.14s)
+=== RUN   TestCheckProblems_FailedBeatsOtherReasons
+--- PASS: TestCheckProblems_FailedBeatsOtherReasons (0.11s)
+=== RUN   TestCheckProblems_OnlyTouchedSkipsOthers
+--- PASS: TestCheckProblems_OnlyTouchedSkipsOthers (0.06s)
+=== RUN   TestTouchedChanges_MapsRepoSelfPaths
+--- PASS: TestTouchedChanges_MapsRepoSelfPaths (0.02s)
+=== RUN   TestCheckProblems_ArchivedNeverBlocks
+--- PASS: TestCheckProblems_ArchivedNeverBlocks (0.05s)
+=== RUN   TestTouchedChanges_UsesChangesRootNotRepoRoot
+--- PASS: TestTouchedChanges_UsesChangesRootNotRepoRoot (0.00s)
+=== RUN   TestHasOutsideChanges
+--- PASS: TestHasOutsideChanges (0.02s)
+=== RUN   TestCheckProblems_PassedChecksMissingHashIsNotAFailure
+--- PASS: TestCheckProblems_PassedChecksMissingHashIsNotAFailure (0.06s)
+=== RUN   TestGateTask_NewLayoutRequiresClarify
+--- PASS: TestGateTask_NewLayoutRequiresClarify (0.09s)
+=== RUN   TestParseGoal_Complete
+--- PASS: TestParseGoal_Complete (0.00s)
+=== RUN   TestParseGoal_MissingSection
+--- PASS: TestParseGoal_MissingSection (0.00s)
+=== RUN   TestParseGoal_ScaffoldMarkerIsIncomplete
+--- PASS: TestParseGoal_ScaffoldMarkerIsIncomplete (0.00s)
+=== RUN   TestParseGoal_HeadingAliases
+--- PASS: TestParseGoal_HeadingAliases (0.00s)
+=== RUN   TestLoadGoal_MissingFile
+--- PASS: TestLoadGoal_MissingFile (0.00s)
+=== RUN   TestGoalHash_Stable
+--- PASS: TestGoalHash_Stable (0.00s)
+=== RUN   TestDocProblems_LegacyChangeWithoutGoalAllowed
+--- PASS: TestDocProblems_LegacyChangeWithoutGoalAllowed (0.02s)
+=== RUN   TestDocProblems_IncompleteGoalRejected
+--- PASS: TestDocProblems_IncompleteGoalRejected (0.01s)
+=== RUN   TestDocProblems_NewChangeCannotDropGoal
+--- PASS: TestDocProblems_NewChangeCannotDropGoal (0.31s)
+=== RUN   TestDocProblems_LegacyChangeWithoutGoalStillAllowed
+--- PASS: TestDocProblems_LegacyChangeWithoutGoalStillAllowed (0.32s)
+=== RUN   TestGoalTemplateMatchesParser
+--- PASS: TestGoalTemplateMatchesParser (0.00s)
+=== RUN   TestShellWords
+--- PASS: TestShellWords (0.00s)
+=== RUN   TestNestedShellPathsAndFlags
+--- PASS: TestNestedShellPathsAndFlags (0.00s)
+=== RUN   TestDisablesProtection
+--- PASS: TestDisablesProtection (0.00s)
+=== RUN   TestHasEvalOnlyInCommandPosition
+--- PASS: TestHasEvalOnlyInCommandPosition (0.00s)
+=== RUN   TestLintJudgeAllowsQuotedOperators
+--- PASS: TestLintJudgeAllowsQuotedOperators (0.00s)
+=== RUN   TestLintJudgeRejectsCompoundPrograms
+--- PASS: TestLintJudgeRejectsCompoundPrograms (0.00s)
+=== RUN   TestLintJudgeAllowsLookalikeArguments
+--- PASS: TestLintJudgeAllowsLookalikeArguments (0.00s)
+=== RUN   TestLintJudgeRejectsSubstitutionInDoubleQuotes
+--- PASS: TestLintJudgeRejectsSubstitutionInDoubleQuotes (0.00s)
+=== RUN   TestLintJudgeCommentDoesNotShiftQuotes
+--- PASS: TestLintJudgeCommentDoesNotShiftQuotes (0.00s)
+=== RUN   TestLintJudgeLineContinuationAndArithmetic
+--- PASS: TestLintJudgeLineContinuationAndArithmetic (0.00s)
+=== RUN   TestLintJudgeEscapedSpaceBeforeHash
+--- PASS: TestLintJudgeEscapedSpaceBeforeHash (0.00s)
+=== RUN   TestLintJudgeHashAfterArithmeticIsLiteral
+--- PASS: TestLintJudgeHashAfterArithmeticIsLiteral (0.00s)
+=== RUN   TestLintJudgeCommentAndContinuationInterplay
+--- PASS: TestLintJudgeCommentAndContinuationInterplay (0.00s)
+=== RUN   TestLintJudgeDollarRunsAndArithmeticLeak
+--- PASS: TestLintJudgeDollarRunsAndArithmeticLeak (0.00s)
+=== RUN   TestLintJudgeEscapedDollarAndBacktickInArithmetic
+--- PASS: TestLintJudgeEscapedDollarAndBacktickInArithmetic (0.00s)
+=== RUN   TestLintJudgeQuotesInsideArithmeticAndANSI
+--- PASS: TestLintJudgeQuotesInsideArithmeticAndANSI (0.00s)
+=== RUN   TestIsHex
+--- PASS: TestIsHex (0.00s)
+=== RUN   TestStage_Progression
+--- PASS: TestStage_Progression (0.16s)
+=== RUN   TestStage_UnboundTaskBlocksReady
+--- PASS: TestStage_UnboundTaskBlocksReady (0.06s)
+=== RUN   TestClarifyRecord_RequiresByHuman
+--- PASS: TestClarifyRecord_RequiresByHuman (0.00s)
+=== RUN   TestUnboundTasks
+--- PASS: TestUnboundTasks (0.00s)
+=== RUN   TestStage_FastChangeReadyAfterClarify
+--- PASS: TestStage_FastChangeReadyAfterClarify (0.06s)
+=== RUN   TestStage_LegacyChangeWithoutGoal
+--- PASS: TestStage_LegacyChangeWithoutGoal (0.05s)
+=== RUN   TestClarify_NonGoalsHyphenVariant
+--- PASS: TestClarify_NonGoalsHyphenVariant (0.00s)
+=== RUN   TestClarify_NonGoalsUnderscoreVariant
+--- PASS: TestClarify_NonGoalsUnderscoreVariant (0.00s)
+=== RUN   TestGateAndVerifyShareFirstError
+--- PASS: TestGateAndVerifyShareFirstError (0.03s)
+=== RUN   TestStatus_BlockedNextStepsHaveNoCommand
+--- PASS: TestStatus_BlockedNextStepsHaveNoCommand (0.25s)
+=== RUN   TestStatus_SealedOverridesNodeBlocked
+--- PASS: TestStatus_SealedOverridesNodeBlocked (0.38s)
+=== RUN   TestStatus_DoneDoesNotClearBlocked
+--- PASS: TestStatus_DoneDoesNotClearBlocked (0.26s)
+=== RUN   TestParseTasks_SkipsFencedExamplesAndNeedsAcceptance
+--- PASS: TestParseTasks_SkipsFencedExamplesAndNeedsAcceptance (0.00s)
+=== RUN   TestStatusJSON_UsesSnakeCase
+--- PASS: TestStatusJSON_UsesSnakeCase (0.08s)
+=== RUN   TestLoad_CorruptNewestSummaryDoesNotResurrectSeal
+--- PASS: TestLoad_CorruptNewestSummaryDoesNotResurrectSeal (0.06s)
+=== RUN   TestParseTasks_CriteriaConjunctions
+--- PASS: TestParseTasks_CriteriaConjunctions (0.00s)
+=== RUN   TestParseTasks_FenceWidth
+--- PASS: TestParseTasks_FenceWidth (0.00s)
+=== RUN   TestTrimTaskNumber_KeepsVersionLikeText
+--- PASS: TestTrimTaskNumber_KeepsVersionLikeText (0.00s)
+=== RUN   TestStatus_BlockedDoneTaskHandsOffToVerify
+--- PASS: TestStatus_BlockedDoneTaskHandsOffToVerify (0.26s)
+=== RUN   TestStatus_SealedWithMissingDocNeedsRepair
+--- PASS: TestStatus_SealedWithMissingDocNeedsRepair (0.14s)
+=== RUN   TestInit_CreatesArchiveDir
+--- PASS: TestInit_CreatesArchiveDir (0.01s)
+=== RUN   TestParseTasks_CriteriaLooseConnectives
+--- PASS: TestParseTasks_CriteriaLooseConnectives (0.00s)
+=== RUN   TestParseTasks_FenceVariants
+=== RUN   TestParseTasks_FenceVariants/tilde
+=== RUN   TestParseTasks_FenceVariants/closing_with_info
+=== RUN   TestParseTasks_FenceVariants/unclosed
+--- PASS: TestParseTasks_FenceVariants (0.00s)
+    --- PASS: TestParseTasks_FenceVariants/tilde (0.00s)
+    --- PASS: TestParseTasks_FenceVariants/closing_with_info (0.00s)
+    --- PASS: TestParseTasks_FenceVariants/unclosed (0.00s)
+=== RUN   TestParseTasks
+--- PASS: TestParseTasks (0.00s)
+=== RUN   TestGateTask_RunsOnlyReferencedFences
+--- PASS: TestGateTask_RunsOnlyReferencedFences (0.18s)
+=== RUN   TestGateTask_RejectsBadTasks
+--- PASS: TestGateTask_RejectsBadTasks (0.04s)
+=== RUN   TestGateTask_FailureKeepsEvidence
+--- PASS: TestGateTask_FailureKeepsEvidence (0.12s)
+=== RUN   TestStatus_UnfilledPointsAtMissingDocs
+--- PASS: TestStatus_UnfilledPointsAtMissingDocs (0.13s)
+=== RUN   TestStatus_BlockedAfterRepeatedSameCause
+--- PASS: TestStatus_BlockedAfterRepeatedSameCause (0.38s)
+=== RUN   TestStatus_SealedSuggestsArchive
+--- PASS: TestStatus_SealedSuggestsArchive (0.18s)
+=== RUN   TestFastChange_OnlyNeedsProposalAndAcceptance
+--- PASS: TestFastChange_OnlyNeedsProposalAndAcceptance (0.14s)
+=== RUN   TestLoad_IgnoresNodeEvidenceForSealing
+--- PASS: TestLoad_IgnoresNodeEvidenceForSealing (0.34s)
+=== RUN   TestStatus_BlockedWhenNodeExhausted
+--- PASS: TestStatus_BlockedWhenNodeExhausted (0.30s)
+=== RUN   TestParseTasks_StripsOwnNumbering
+--- PASS: TestParseTasks_StripsOwnNumbering (0.00s)
+=== RUN   TestStatus_PriorAttemptsListFailingHistory
+--- PASS: TestStatus_PriorAttemptsListFailingHistory (0.22s)
+=== RUN   TestStatus_PriorAttemptsExplainMissingCommand
+--- PASS: TestStatus_PriorAttemptsExplainMissingCommand (0.15s)
+=== RUN   TestPriorAttempts_SkipsPassingAndCapsAtTen
+--- PASS: TestPriorAttempts_SkipsPassingAndCapsAtTen (0.00s)
+=== RUN   TestPriorAttempts_MarkTimeoutInsteadOfExit
+--- PASS: TestPriorAttempts_MarkTimeoutInsteadOfExit (0.00s)
+=== RUN   TestStatus_CapsPriorAttemptsAtTenThroughStatusOf
+--- PASS: TestStatus_CapsPriorAttemptsAtTenThroughStatusOf (0.97s)
+=== RUN   TestNodeStatuses_CountsOnlyOwnAttempts
+--- PASS: TestNodeStatuses_CountsOnlyOwnAttempts (0.25s)
+=== RUN   TestNodeStatuses_LastEvidenceIsNewestAttempt
+--- PASS: TestNodeStatuses_LastEvidenceIsNewestAttempt (0.35s)
+=== RUN   TestParseAcceptance_CommandsAndManualItems
+--- PASS: TestParseAcceptance_CommandsAndManualItems (0.00s)
+=== RUN   TestParseAcceptance_MultilineCommand
+--- PASS: TestParseAcceptance_MultilineCommand (0.00s)
+=== RUN   TestVerify_SealsAndPersistsEvidence
+--- PASS: TestVerify_SealsAndPersistsEvidence (0.15s)
+=== RUN   TestVerify_StopsAtFirstFailure
+--- PASS: TestVerify_StopsAtFirstFailure (0.09s)
+=== RUN   TestVerify_MultilineFenceMidFailureNotSealed
+--- PASS: TestVerify_MultilineFenceMidFailureNotSealed (0.10s)
+=== RUN   TestVerify_RejectsManualOnly
+--- PASS: TestVerify_RejectsManualOnly (0.03s)
+=== RUN   TestVerify_Timeout
+--- PASS: TestVerify_Timeout (5.10s)
+=== RUN   TestWorktreeFingerprint_TracksUntrackedContent
+--- PASS: TestWorktreeFingerprint_TracksUntrackedContent (1.25s)
+=== RUN   TestList_MarksStaleWhenWorktreeChanges
+--- PASS: TestList_MarksStaleWhenWorktreeChanges (0.93s)
+=== RUN   TestVerify_RejectsTraversalID
+--- PASS: TestVerify_RejectsTraversalID (0.02s)
+=== RUN   TestVerify_SameSecondWritesSeparateEvidence
+--- PASS: TestVerify_SameSecondWritesSeparateEvidence (0.18s)
+=== RUN   TestLoad_StaleAfterAcceptanceDeleted
+--- PASS: TestLoad_StaleAfterAcceptanceDeleted (0.16s)
+=== RUN   TestLoad_StaleWhenAcceptanceUnreadable
+--- PASS: TestLoad_StaleWhenAcceptanceUnreadable (0.14s)
+=== RUN   TestWorktreeFingerprint_IgnoresEvidence
+--- PASS: TestWorktreeFingerprint_IgnoresEvidence (0.56s)
+=== RUN   TestList_NotStaleAfterCommit
+--- PASS: TestList_NotStaleAfterCommit (1.13s)
+=== RUN   TestList_StaleWhenHeadMovesAfterCleanVerify
+--- PASS: TestList_StaleWhenHeadMovesAfterCleanVerify (1.28s)
+=== RUN   TestList_ArchivedUnaffectedByLaterCommits
+--- PASS: TestList_ArchivedUnaffectedByLaterCommits (1.33s)
+=== RUN   TestVerify_RefusesMissingDocs
+--- PASS: TestVerify_RefusesMissingDocs (0.04s)
+=== RUN   TestVerify_RefusesUnfilledScaffold
+--- PASS: TestVerify_RefusesUnfilledScaffold (0.02s)
+=== RUN   TestVerify_RejectsPipe
+--- PASS: TestVerify_RejectsPipe (0.02s)
+=== RUN   TestLoad_StaleAfterEditPostCommit
+--- PASS: TestLoad_StaleAfterEditPostCommit (1.14s)
+=== RUN   TestVerify_RejectsCommentOnlyFence
+--- PASS: TestVerify_RejectsCommentOnlyFence (0.03s)
+=== RUN   TestVerify_FingerprintTakenAfterCommands
+--- PASS: TestVerify_FingerprintTakenAfterCommands (0.71s)
+=== RUN   TestLoad_RejectsSummaryWithoutChecks
+--- PASS: TestLoad_RejectsSummaryWithoutChecks (0.06s)
+=== RUN   TestLoad_RejectsSummaryWithFailingCheck
+--- PASS: TestLoad_RejectsSummaryWithFailingCheck (0.07s)
+=== RUN   TestWorktreeFingerprint_IgnoresArchivedEvidence
+--- PASS: TestWorktreeFingerprint_IgnoresArchivedEvidence (0.50s)
+=== RUN   TestVerify_RejectsForbiddenShellForms
+--- PASS: TestVerify_RejectsForbiddenShellForms (0.15s)
+=== RUN   TestVerify_AllowsQuotedOperatorLiteral
+--- PASS: TestVerify_AllowsQuotedOperatorLiteral (0.11s)
+=== RUN   TestVerify_CommentBackslashDoesNotSwallowNextLine
+--- PASS: TestVerify_CommentBackslashDoesNotSwallowNextLine (0.11s)
+=== RUN   TestList_NotStaleAfterCommittingEvidence
+--- PASS: TestList_NotStaleAfterCommittingEvidence (1.20s)
+=== RUN   TestList_StaleWhenNewFileAppearsAfterCommit
+--- PASS: TestList_StaleWhenNewFileAppearsAfterCommit (1.27s)
+=== RUN   TestVerify_IgnoresOperatorsInCommentsAndEscapes
+--- PASS: TestVerify_IgnoresOperatorsInCommentsAndEscapes (0.12s)
+=== RUN   TestVerify_RejectsOperatorsAfterCommentLine
+--- PASS: TestVerify_RejectsOperatorsAfterCommentLine (0.04s)
+=== RUN   TestList_StaleWhenNewFileAfterCleanVerifyCommit
+--- PASS: TestList_StaleWhenNewFileAfterCleanVerifyCommit (1.25s)
+=== RUN   TestVerify_RejectsOperatorAfterMultilineQuote
+--- PASS: TestVerify_RejectsOperatorAfterMultilineQuote (0.02s)
+=== RUN   TestVerify_AllowsOperatorInsideMultilineQuote
+--- PASS: TestVerify_AllowsOperatorInsideMultilineQuote (0.10s)
+=== RUN   TestVerify_RejectsNestedShellForms
+--- PASS: TestVerify_RejectsNestedShellForms (0.24s)
+=== RUN   TestVerify_RejectsEval
+--- PASS: TestVerify_RejectsEval (0.03s)
+=== RUN   TestVerify_RejectsSetPlusO
+--- PASS: TestVerify_RejectsSetPlusO (0.03s)
+=== RUN   TestVerify_AllowsEscapedPipeLiteral
+--- PASS: TestVerify_AllowsEscapedPipeLiteral (0.09s)
+=== RUN   TestVerify_RejectsTraversalIDBeforeTouch
+--- PASS: TestVerify_RejectsTraversalIDBeforeTouch (0.03s)
+=== RUN   TestParseAcceptance_IndentedFenceIsReal
+--- PASS: TestParseAcceptance_IndentedFenceIsReal (0.00s)
+=== RUN   TestVerify_RejectsQuotedShellEscapes
+--- PASS: TestVerify_RejectsQuotedShellEscapes (0.16s)
+=== RUN   TestVerify_AllowsInnocentLookalikes
+--- PASS: TestVerify_AllowsInnocentLookalikes (0.49s)
+=== RUN   TestVerify_ScrubsLocalIdentityFromEvidence
+--- PASS: TestVerify_ScrubsLocalIdentityFromEvidence (0.11s)
+=== RUN   TestVerify_NewLayoutRequiresClarify
+--- PASS: TestVerify_NewLayoutRequiresClarify (0.12s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/change	32.903s
+=== RUN   TestTaskGate_BlockedMirrorsToStderrWhenPiped
+--- PASS: TestTaskGate_BlockedMirrorsToStderrWhenPiped (0.81s)
+=== RUN   TestTaskGate_PassedDoesNotMirrorToStderr
+--- PASS: TestTaskGate_PassedDoesNotMirrorToStderr (0.79s)
+=== RUN   TestTaskGate_SilentBlockedNoMirrorOutput
+--- PASS: TestTaskGate_SilentBlockedNoMirrorOutput (0.57s)
+=== RUN   TestMirrorBlockedToStderrDecision
+--- PASS: TestMirrorBlockedToStderrDecision (0.00s)
+=== RUN   TestBlockedResultLineFormat
+--- PASS: TestBlockedResultLineFormat (0.00s)
+=== RUN   TestHandoff_PriorAttemptsReinjected
+--- PASS: TestHandoff_PriorAttemptsReinjected (1.16s)
+=== RUN   TestCommitBestEffort_NoopFallback
+--- PASS: TestCommitBestEffort_NoopFallback (0.00s)
+=== RUN   TestTaskStatus_PrintsNextLine
+--- PASS: TestTaskStatus_PrintsNextLine (0.46s)
+=== RUN   TestTaskGate_PrintsNextLineOnBlock
+--- PASS: TestTaskGate_PrintsNextLineOnBlock (0.67s)
+=== RUN   TestPhaseExplosionWarning_TriggersAtThree
+--- PASS: TestPhaseExplosionWarning_TriggersAtThree (0.03s)
+=== RUN   TestPhaseExplosionWarning_SilentBelowThreshold
+--- PASS: TestPhaseExplosionWarning_SilentBelowThreshold (0.02s)
+=== RUN   TestPhaseExplosionWarning_IgnoresOtherSessions
+--- PASS: TestPhaseExplosionWarning_IgnoresOtherSessions (0.03s)
+=== RUN   TestPhaseExplosionWarning_IgnoresCompleted
+--- PASS: TestPhaseExplosionWarning_IgnoresCompleted (0.03s)
+=== RUN   TestPhaseExplosionWarning_EmptySession
+--- PASS: TestPhaseExplosionWarning_EmptySession (0.00s)
+=== RUN   TestTaskAbort_ExplicitRef
+--- PASS: TestTaskAbort_ExplicitRef (0.79s)
+=== RUN   TestTaskAbort_ClearsOtherSessionsAnchors
+--- PASS: TestTaskAbort_ClearsOtherSessionsAnchors (0.77s)
+=== RUN   TestTaskAbort_NoRefResolvesActiveTask
+--- PASS: TestTaskAbort_NoRefResolvesActiveTask (0.76s)
+=== RUN   TestTaskAbort_NoTaskErrors
+--- PASS: TestTaskAbort_NoTaskErrors (0.37s)
+=== RUN   TestTaskAbort_WarnsReverseDeps
+--- PASS: TestTaskAbort_WarnsReverseDeps (1.30s)
+=== RUN   TestTaskAbort_CascadeAbortsDependents
+--- PASS: TestTaskAbort_CascadeAbortsDependents (1.54s)
+=== RUN   TestTaskAbort_DetachDepsRemovesEdge
+--- PASS: TestTaskAbort_DetachDepsRemovesEdge (1.24s)
+=== RUN   TestTaskAbort_DetachDepsKeepsOtherEdges
+--- PASS: TestTaskAbort_DetachDepsKeepsOtherEdges (1.43s)
+=== RUN   TestTaskAbort_CascadeDiamondTopology
+--- PASS: TestTaskAbort_CascadeDiamondTopology (1.73s)
+=== RUN   TestTaskAbort_CascadeAndDetachMutuallyExclusive
+--- PASS: TestTaskAbort_CascadeAndDetachMutuallyExclusive (0.89s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_RecordsDeterministic
+--- PASS: TestRunTaskVerifyAcceptanceAt_RecordsDeterministic (0.73s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_RecordsFailure
+--- PASS: TestRunTaskVerifyAcceptanceAt_RecordsFailure (0.84s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent
+--- PASS: TestRunTaskVerifyAcceptanceAt_NoAcceptanceSilent (0.03s)
+=== RUN   TestTaskStart_AcceptGoTestAutoVerbose
+--- PASS: TestTaskStart_AcceptGoTestAutoVerbose (0.68s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_ExplicitRef
+--- PASS: TestRunTaskVerifyAcceptanceAt_ExplicitRef (0.73s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust
+--- PASS: TestRunTaskVerifyAcceptanceAt_ForeignRequiresTrust (1.58s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY
+--- PASS: TestRunTaskVerifyAcceptanceAt_TrustForeignRequiresHumanTTY (0.04s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_MinttyGuidance
+--- PASS: TestRunTaskVerifyAcceptanceAt_MinttyGuidance (0.05s)
+=== RUN   TestTaskVerifyAcceptance_TrustForeignFlagRegistered
+--- PASS: TestTaskVerifyAcceptance_TrustForeignFlagRegistered (0.00s)
+=== RUN   TestTaskAcceptance_E2E_FlagToStatusToVerify
+--- PASS: TestTaskAcceptance_E2E_FlagToStatusToVerify (1.83s)
+=== RUN   TestTaskStart_PlanFileExtractsAcceptance
+--- PASS: TestTaskStart_PlanFileExtractsAcceptance (1.15s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_RecordsAssertionRows
+验收标准实跑结果：
+  ✅ [1] go version :: go version
+     ✅ assert exit :: 0
+     ✅ assert contains :: go version
+  ✅ [2] go version :: (退出码 0)
+     ✅ assert not-contains :: NONEXISTENT-MARKER
+────────────────────────────────────────
+✅ 全部通过 — 真实结果已记为 deterministic 证据（checklog: acceptance）
+loop: done → next: forge task gate ta[REDACTED]
+--- PASS: TestRunTaskVerifyAcceptanceAt_RecordsAssertionRows (1.03s)
+=== RUN   TestTaskStart_AssertBinding
+--- PASS: TestTaskStart_AssertBinding (0.69s)
+=== RUN   TestTaskStart_AcceptFile
+--- PASS: TestTaskStart_AcceptFile (0.65s)
+=== RUN   TestTaskAccept_Assert
+--- PASS: TestTaskAccept_Assert (0.49s)
+=== RUN   TestRunTaskVerifyAcceptanceAt_NotContainsBlocked
+验收标准实跑结果：
+  ❌ [1] go version :: (退出码 0)
+     ❌ assert not-contains :: go version
+     go version go1.26.4 windows/amd64
+────────────────────────────────────────
+❌ 存在未通过项 — 失败结果已记入 checklog（acceptance）
+loop: continue → next: forge task gate ta[REDACTED]
+--- PASS: TestRunTaskVerifyAcceptanceAt_NotContainsBlocked (0.79s)
+=== RUN   TestCompleteGenericTask_OrchestrationWarn
+--- PASS: TestCompleteGenericTask_OrchestrationWarn (3.21s)
+=== RUN   TestTaskAssignClaimDeliver_Lifecycle
+--- PASS: TestTaskAssignClaimDeliver_Lifecycle (1.41s)
+=== RUN   TestTaskDeliver_AsFlag
+--- PASS: TestTaskDeliver_AsFlag (1.76s)
+=== RUN   TestTaskAssign_UnknownAgentWarnAccepted
+--- PASS: TestTaskAssign_UnknownAgentWarnAccepted (0.93s)
+=== RUN   TestTaskAssign_RequiresTo
+--- PASS: TestTaskAssign_RequiresTo (0.56s)
+=== RUN   TestTaskAssign_WarnsFindingsVisibleToAssignee
+--- PASS: TestTaskAssign_WarnsFindingsVisibleToAssignee (0.85s)
+=== RUN   TestTaskStart_AssigneeWarnAccepted
+--- PASS: TestTaskStart_AssigneeWarnAccepted (0.86s)
+=== RUN   TestTaskQuestionAnswer_Lifecycle
+--- PASS: TestTaskQuestionAnswer_Lifecycle (1.15s)
+=== RUN   TestTaskFailCancelReopen
+=== RUN   TestTaskFailCancelReopen/fail:_claimed->failed
+=== RUN   TestTaskFailCancelReopen/cancel:_offered->canceled
+=== RUN   TestTaskFailCancelReopen/reopen:_delivered->claimed
+--- PASS: TestTaskFailCancelReopen (3.33s)
+    --- PASS: TestTaskFailCancelReopen/fail:_claimed->failed (1.03s)
+    --- PASS: TestTaskFailCancelReopen/cancel:_offered->canceled (0.98s)
+    --- PASS: TestTaskFailCancelReopen/reopen:_delivered->claimed (1.31s)
+=== RUN   TestTaskQuestion_RequiresContent
+--- PASS: TestTaskQuestion_RequiresContent (0.96s)
+=== RUN   TestTaskAnswer_EmptyAllowed
+--- PASS: TestTaskAnswer_EmptyAllowed (1.08s)
+=== RUN   TestTaskDependsOn_GateBlocksUntilUpstreamDelivered
+--- PASS: TestTaskDependsOn_GateBlocksUntilUpstreamDelivered (1.42s)
+=== RUN   TestTaskStart_DependsOnCycleRejected
+--- PASS: TestTaskStart_DependsOnCycleRejected (0.86s)
+=== RUN   TestTaskDependsOn_GateCompleteAlsoBlocks
+--- PASS: TestTaskDependsOn_GateCompleteAlsoBlocks (1.03s)
+=== RUN   TestTaskResume_AutoClaim
+=== RUN   TestTaskResume_AutoClaim/happy_path
+=== RUN   TestTaskResume_AutoClaim/not_offered
+=== RUN   TestTaskResume_AutoClaim/other_agent
+=== RUN   TestTaskResume_AutoClaim/no_agent
+=== RUN   TestTaskResume_AutoClaim/json_suppresses_notice
+--- PASS: TestTaskResume_AutoClaim (6.31s)
+    --- PASS: TestTaskResume_AutoClaim/happy_path (1.21s)
+    --- PASS: TestTaskResume_AutoClaim/not_offered (1.18s)
+    --- PASS: TestTaskResume_AutoClaim/other_agent (1.38s)
+    --- PASS: TestTaskResume_AutoClaim/no_agent (1.58s)
+    --- PASS: TestTaskResume_AutoClaim/json_suppresses_notice (0.96s)
+=== RUN   TestTaskStart_BoundaryEventInsteadOfClear
+--- PASS: TestTaskStart_BoundaryEventInsteadOfClear (1.11s)
+=== RUN   TestTaskComplete_PreflightFailureKeepsTaskActive
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+
+⚠ WARNING: Critical quality hooks were NOT executed during this task:
+  - assertion-check
+  The score (B, 80) may not reflect actual code quality.
+  Ensure the AI agent ran all required hooks during implementation.
+
+ADVISORY: 若本次任务产出过非显然教训（排查链长的坑、会重复踩的模式、差点进主干的缺陷），评估沉淀载体（→ session-retrospective）；常识/一次性细节/代码已记录的不沉淀。
+--- PASS: TestTaskComplete_PreflightFailureKeepsTaskActive (3.79s)
+=== RUN   TestTaskComplete_ClearsAllTaskAnchors
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+
+⚠ WARNING: Critical quality hooks were NOT executed during this task:
+  - assertion-check
+  The score (A, 93) may not reflect actual code quality.
+  Ensure the AI agent ran all required hooks during implementation.
+
+ADVISORY: 若本次任务产出过非显然教训（排查链长的坑、会重复踩的模式、差点进主干的缺陷），评估沉淀载体（→ session-retrospective）；常识/一次性细节/代码已记录的不沉淀。
+--- PASS: TestTaskComplete_ClearsAllTaskAnchors (2.41s)
+=== RUN   TestTaskComplete_IdempotentGuardOnGeneric
+--- PASS: TestTaskComplete_IdempotentGuardOnGeneric (0.02s)
+=== RUN   TestTaskComplete_AcceptsNonTestCommands
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+
+⚠ WARNING: Critical quality hooks were NOT executed during this task:
+  - assertion-check
+  The score (A, 93) may not reflect actual code quality.
+  Ensure the AI agent ran all required hooks during implementation.
+
+ADVISORY: 若本次任务产出过非显然教训（排查链长的坑、会重复踩的模式、差点进主干的缺陷），评估沉淀载体（→ session-retrospective）；常识/一次性细节/代码已记录的不沉淀。
+--- PASS: TestTaskComplete_AcceptsNonTestCommands (2.16s)
+=== RUN   TestTaskGate_PassesWithoutCompleting
+--- PASS: TestTaskGate_PassesWithoutCompleting (3.52s)
+=== RUN   TestRenderResumeSections
+--- PASS: TestRenderResumeSections (0.00s)
+=== RUN   TestRenderResume_ExternalOrigin
+--- PASS: TestRenderResume_ExternalOrigin (0.00s)
+=== RUN   TestRenderResumeEmpty
+--- PASS: TestRenderResumeEmpty (0.00s)
+=== RUN   TestRenderResumeBlockerStatus
+--- PASS: TestRenderResumeBlockerStatus (0.00s)
+=== RUN   TestRenderResume_StripsANSI
+--- PASS: TestRenderResume_StripsANSI (0.00s)
+=== RUN   TestRenderResumeTldr
+--- PASS: TestRenderResumeTldr (0.00s)
+=== RUN   TestRenderResumeTldr_NoContinuity
+--- PASS: TestRenderResumeTldr_NoContinuity (0.00s)
+=== RUN   TestUnknownDepKeys
+--- PASS: TestUnknownDepKeys (0.00s)
+=== RUN   TestValidateDependsOnRefs
+=== RUN   TestValidateDependsOnRefs/纯本仓依赖不碰清单
+=== RUN   TestValidateDependsOnRefs/越界_key_前缀拒绝
+=== RUN   TestValidateDependsOnRefs/清单不可读_fail-open
+=== RUN   TestValidateDependsOnRefs/跨仓目标缺失：容忍_+_advisory
+=== RUN   TestValidateDependsOnRefs/跨仓目标存在：静默
+=== RUN   TestValidateDependsOnRefs/本仓_key_自引用拒绝
+--- PASS: TestValidateDependsOnRefs (0.08s)
+    --- PASS: TestValidateDependsOnRefs/纯本仓依赖不碰清单 (0.01s)
+    --- PASS: TestValidateDependsOnRefs/越界_key_前缀拒绝 (0.02s)
+    --- PASS: TestValidateDependsOnRefs/清单不可读_fail-open (0.01s)
+    --- PASS: TestValidateDependsOnRefs/跨仓目标缺失：容忍_+_advisory (0.01s)
+    --- PASS: TestValidateDependsOnRefs/跨仓目标存在：静默 (0.02s)
+    --- PASS: TestValidateDependsOnRefs/本仓_key_自引用拒绝 (0.01s)
+=== RUN   TestDuplicateScoreWarnings_SameBranchSameHEAD
+--- PASS: TestDuplicateScoreWarnings_SameBranchSameHEAD (0.00s)
+=== RUN   TestDuplicateScoreWarnings_CrossBranchNoWarn
+--- PASS: TestDuplicateScoreWarnings_CrossBranchNoWarn (0.00s)
+=== RUN   TestDuplicateScoreWarnings_IncompleteNoWarn
+--- PASS: TestDuplicateScoreWarnings_IncompleteNoWarn (0.00s)
+=== RUN   TestTaskStart_NoChangeAllowedInSpecRepo
+--- PASS: TestTaskStart_NoChangeAllowedInSpecRepo (0.74s)
+=== RUN   TestTaskStart_ChangeMustBeReady
+--- PASS: TestTaskStart_ChangeMustBeReady (0.82s)
+=== RUN   TestGuardEntryRouting_AllowsWithoutChange
+--- PASS: TestGuardEntryRouting_AllowsWithoutChange (0.56s)
+=== RUN   TestTaskStart_KindHelpListsTask
+--- PASS: TestTaskStart_KindHelpListsTask (0.00s)
+=== RUN   TestGuardEntryRouting_RequiresClarify
+--- PASS: TestGuardEntryRouting_RequiresClarify (0.68s)
+=== RUN   TestTaskStart_RegistersGoalContractFlags
+--- PASS: TestTaskStart_RegistersGoalContractFlags (0.00s)
+=== RUN   TestResolveGoalContract_RejectsTwoSources
+--- PASS: TestResolveGoalContract_RejectsTwoSources (0.00s)
+=== RUN   TestResolveGoalContract_RejectsFreeTextWithContract
+--- PASS: TestResolveGoalContract_RejectsFreeTextWithContract (0.00s)
+=== RUN   TestResolveGoalContract_RejectsPathOutsideRepo
+--- PASS: TestResolveGoalContract_RejectsPathOutsideRepo (0.01s)
+=== RUN   TestResolveGoalContract_MissingChangeGoalFails
+--- PASS: TestResolveGoalContract_MissingChangeGoalFails (0.00s)
+=== RUN   TestResolveGoalContract_RejectsSymlinkEscape
+    task_goal_test.go:81: 本机不支持符号链接：symlink <home>\AppData\Local\Temp\TestResolveGoalContract_RejectsSymlinkEscape191467478\001\goal.md <home>\AppData\Local\Temp\TestResolveGoalContract_RejectsSymlinkEscape191467478\002\goal.md: A required privilege is not held by the client.
+--- SKIP: TestResolveGoalContract_RejectsSymlinkEscape (0.01s)
+=== RUN   TestResolveGoalContract_RejectsTraversalChangeID
+--- PASS: TestResolveGoalContract_RejectsTraversalChangeID (0.02s)
+=== RUN   TestCollectGoldenFromTask_MetaSource
+[forge] warning: git diff stat unavailable (git diff failed (base..HEAD: exit status 129; HEAD: exit status 129)) — scope dimension scores neutral
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+[forge] warning: assertion-density collection failed (git diff/ls-files failed (base..HEAD: exit status 129; HEAD: exit status 129; others: exit status 128)) — fake-test penalty skipped (testing dimension not punished on a dead probe)
+[forge] warning: git diff stat unavailable (git diff failed (base..HEAD: exit status 129; HEAD: exit status 129)) — scope dimension scores neutral
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+[forge] warning: assertion-density collection failed (git diff/ls-files failed (base..HEAD: exit status 129; HEAD: exit status 129; others: exit status 128)) — fake-test penalty skipped (testing dimension not punished on a dead probe)
+--- PASS: TestCollectGoldenFromTask_MetaSource (1.27s)
+=== RUN   TestCollectGoldenFromTask_NotScored
+--- PASS: TestCollectGoldenFromTask_NotScored (0.01s)
+=== RUN   TestGoldenCaseName
+--- PASS: TestGoldenCaseName (0.00s)
+=== RUN   TestTaskHealth_ReportsZombiesAndDeadlocks
+=== RUN   TestTaskHealth_ReportsZombiesAndDeadlocks/json_lists_only_flagged_tasks
+=== RUN   TestTaskHealth_ReportsZombiesAndDeadlocks/text_surfaces_markers_and_omits_healthy
+--- PASS: TestTaskHealth_ReportsZombiesAndDeadlocks (0.63s)
+    --- PASS: TestTaskHealth_ReportsZombiesAndDeadlocks/json_lists_only_flagged_tasks (0.10s)
+    --- PASS: TestTaskHealth_ReportsZombiesAndDeadlocks/text_surfaces_markers_and_omits_healthy (0.08s)
+=== RUN   TestTaskHealth_CleanProjectReportsNothing
+--- PASS: TestTaskHealth_CleanProjectReportsNothing (0.53s)
+=== RUN   TestTaskHealth_ReadyOrchestration
+=== RUN   TestTaskHealth_ReadyOrchestration/generic_parent_with_pending_child_is_NOT_ready
+=== RUN   TestTaskHealth_ReadyOrchestration/completed_orchestrator_is_not_re-flagged
+--- PASS: TestTaskHealth_ReadyOrchestration (2.98s)
+    --- PASS: TestTaskHealth_ReadyOrchestration/generic_parent_with_pending_child_is_NOT_ready (0.68s)
+    --- PASS: TestTaskHealth_ReadyOrchestration/completed_orchestrator_is_not_re-flagged (1.68s)
+=== RUN   TestTaskHeldoutPool_CLI
+Error: 恰好一个动作：--add <file> --name <名> | --list | --draw N [--apply]
+Usage:
+  task heldout-pool --add <file> --name <名> [--tag <组>] | --list [--tag <组>] | --draw N [--tag <组>] [--apply] [flags]
+
+Flags:
+      --add string    沉淀：<file>（每行 run :: expected）
+      --apply         --draw 并入当前活跃任务的 held-out 侧车
+      --draw int      抽取套数（名序确定性取前 N）
+  -h, --help          help for heldout-pool
+      --list          列池
+      --name string   --add 的池集名（必填）
+      --ref string    指定任务（--apply 并入该任务侧车；缺省取活跃任务）
+      --tag string    分组标签（money/concurrency/…；--list/--draw 过滤用）
+
+Error: 池集 money-bounds 已存在——换内容请先删 <home>\AppData\Local\Temp\forge-clita[REDACTED]\projects\bcff62fe66a8\heldout-pool\money-bounds.json（拒绝静默换锚）
+Usage:
+  task heldout-pool --add <file> --name <名> [--tag <组>] | --list [--tag <组>] | --draw N [--tag <组>] [--apply] [flags]
+
+Flags:
+      --add string    沉淀：<file>（每行 run :: expected）
+      --apply         --draw 并入当前活跃任务的 held-out 侧车
+      --draw int      抽取套数（名序确定性取前 N）
+  -h, --help          help for heldout-pool
+      --list          列池
+      --name string   --add 的池集名（必填）
+      --ref string    指定任务（--apply 并入该任务侧车；缺省取活跃任务）
+      --tag string    分组标签（money/concurrency/…；--list/--draw 过滤用）
+
+--- PASS: TestTaskHeldoutPool_CLI (0.55s)
+=== RUN   TestTaskHeldoutPool_CompletedRejectAndNoTaskList
+Error: 任务已完成——保留集在交付前定稿，拒绝事后注入
+Usage:
+  task heldout-pool --add <file> --name <名> [--tag <组>] | --list [--tag <组>] | --draw N [--tag <组>] [--apply] [flags]
+
+Flags:
+      --add string    沉淀：<file>（每行 run :: expected）
+      --apply         --draw 并入当前活跃任务的 held-out 侧车
+      --draw int      抽取套数（名序确定性取前 N）
+  -h, --help          help for heldout-pool
+      --list          列池
+      --name string   --add 的池集名（必填）
+      --ref string    指定任务（--apply 并入该任务侧车；缺省取活跃任务）
+      --tag string    分组标签（money/concurrency/…；--list/--draw 过滤用）
+
+--- PASS: TestTaskHeldoutPool_CompletedRejectAndNoTaskList (0.52s)
+=== RUN   TestTaskStart_StampsNodeLease
+--- PASS: TestTaskStart_StampsNodeLease (0.86s)
+=== RUN   TestTaskListOpen
+=== RUN   TestTaskListOpen/current_project_fields
+=== RUN   TestTaskListOpen/all_projects
+=== RUN   TestTaskListOpen/workspace
+=== RUN   TestTaskListOpen/flag_validation_and_legacy_output
+=== RUN   TestTaskListOpen/no_open_tasks
+--- PASS: TestTaskListOpen (2.95s)
+    --- PASS: TestTaskListOpen/current_project_fields (0.07s)
+    --- PASS: TestTaskListOpen/all_projects (0.07s)
+    --- PASS: TestTaskListOpen/workspace (0.48s)
+    --- PASS: TestTaskListOpen/flag_validation_and_legacy_output (0.22s)
+    --- PASS: TestTaskListOpen/no_open_tasks (0.15s)
+=== RUN   TestResumeRendersDeadEnds
+✓ 已证伪方案已记 [ddmz4s8o88uh8-9-566a17e8]: 用全局锁串行化写入
+✓ 已证伪方案已存在（幂等跳过） [ddmz4s8o88uh8-9-566a17e8]: 用全局锁串行化写入
+✓ 决策已记 [ddmz4s8pk85i4-a-4af44bfd]: 用全局锁串行化写入
+✓ 决策已记 [ddmz4s8qb8iio-b-97d9d81a]: 用分片锁
+--- PASS: TestResumeRendersDeadEnds (0.18s)
+=== RUN   TestTaskStatusJSONLoopVerdict
+--- PASS: TestTaskStatusJSONLoopVerdict (0.39s)
+=== RUN   TestFindingLoopEdgeLifecycle
+✓ 发现已记 [fdmz4s8yyf8cw-c-3732736d] (claude-code): 数据库连接泄漏
+✓ 发现 [fdmz4s8yyf8cw-c-3732736d] 已标 fixed
+[finding] ⚠️ 已解决 finding 复活（指纹 24a571e4fc9de3e9）——回环立即耗尽，升级人工
+✓ 发现已记 [fdmz4s933yo28-d-5b7c253e] (claude-code): 数据库连接泄漏
+✓ 回环已重置（耗尽态清除；回环预算从第 1 轮重新起算）——ResolvedPrints 保留，复活仍会被抓
+--- PASS: TestFindingLoopEdgeLifecycle (0.47s)
+=== RUN   TestFindingResetLoopGrantsFreshBudget
+✓ 发现已记 [fdmz4s96fpxjg-e-97634dbe] (claude-code): 老问题
+--- PASS: TestFindingResetLoopGrantsFreshBudget (0.23s)
+=== RUN   TestFindingLoopBudgetByReviewRounds
+✓ 发现已记 [fdmz4s9a492t0-f-10544696] (claude-code): 老问题
+[loopedge] ⚠️ 回环耗尽（rounds-exhausted: finding "fdmz4s9a492t0-f-10544696" 轮龄 2 ≥ 预算 2（open 未修））——升级人工：forge task finding --reset-loop --note "<裁决>"
+--- PASS: TestFindingLoopBudgetByReviewRounds (0.14s)
+=== RUN   TestFuzzyMatch
+=== RUN   TestFuzzyMatch/exact_ref
+=== RUN   TestFuzzyMatch/case-insensitive_substring
+=== RUN   TestFuzzyMatch/words_out_of_order
+=== RUN   TestFuzzyMatch/punctuated_single_word
+=== RUN   TestFuzzyMatch/typo_transposition
+=== RUN   TestFuzzyMatch/chinese_fragment
+=== RUN   TestFuzzyMatch/abbreviation_subsequence
+=== RUN   TestFuzzyMatch/single_char_is_noise
+=== RUN   TestFuzzyMatch/single_char_plus_punctuation_is_noise
+=== RUN   TestFuzzyMatch/scattered_han_chars_are_noise
+=== RUN   TestFuzzyMatch/unrelated_query
+=== RUN   TestFuzzyMatch/completed_task_excluded
+=== RUN   TestFuzzyMatch/ties_ordered_by_last_activity_then_ref
+=== RUN   TestFuzzyMatch/query_validation
+--- PASS: TestFuzzyMatch (0.00s)
+    --- PASS: TestFuzzyMatch/exact_ref (0.00s)
+    --- PASS: TestFuzzyMatch/case-insensitive_substring (0.00s)
+    --- PASS: TestFuzzyMatch/words_out_of_order (0.00s)
+    --- PASS: TestFuzzyMatch/punctuated_single_word (0.00s)
+    --- PASS: TestFuzzyMatch/typo_transposition (0.00s)
+    --- PASS: TestFuzzyMatch/chinese_fragment (0.00s)
+    --- PASS: TestFuzzyMatch/abbreviation_subsequence (0.00s)
+    --- PASS: TestFuzzyMatch/single_char_is_noise (0.00s)
+    --- PASS: TestFuzzyMatch/single_char_plus_punctuation_is_noise (0.00s)
+    --- PASS: TestFuzzyMatch/scattered_han_chars_are_noise (0.00s)
+    --- PASS: TestFuzzyMatch/unrelated_query (0.00s)
+    --- PASS: TestFuzzyMatch/completed_task_excluded (0.00s)
+    --- PASS: TestFuzzyMatch/ties_ordered_by_last_activity_then_ref (0.00s)
+    --- PASS: TestFuzzyMatch/query_validation (0.00s)
+=== RUN   TestResumeMatch
+--- PASS: TestResumeMatch (1.37s)
+=== RUN   TestTaskMine_EmptyReturnsArray
+--- PASS: TestTaskMine_EmptyReturnsArray (0.49s)
+=== RUN   TestTaskMine_BlockedShowsPendingDeps
+--- PASS: TestTaskMine_BlockedShowsPendingDeps (1.34s)
+=== RUN   TestTaskMine_BlockedAnnotatesDepStatus
+--- PASS: TestTaskMine_BlockedAnnotatesDepStatus (1.18s)
+=== RUN   TestTaskMine_AllProjects
+--- PASS: TestTaskMine_AllProjects (1.56s)
+=== RUN   TestTaskMine_AllProjects_ExcludesDeclined
+--- PASS: TestTaskMine_AllProjects_ExcludesDeclined (1.55s)
+=== RUN   TestTaskMine_MultipleDepsPendingList
+--- PASS: TestTaskMine_MultipleDepsPendingList (1.46s)
+=== RUN   TestTaskMine_AnnotatesZombie
+=== RUN   TestTaskMine_AnnotatesZombie/json_carries_is_zombie_for_stalled_only
+=== RUN   TestTaskMine_AnnotatesZombie/text_shows_marker_for_stalled
+--- PASS: TestTaskMine_AnnotatesZombie (0.66s)
+    --- PASS: TestTaskMine_AnnotatesZombie/json_carries_is_zombie_for_stalled_only (0.10s)
+    --- PASS: TestTaskMine_AnnotatesZombie/text_shows_marker_for_stalled (0.09s)
+=== RUN   TestMineRendersCompletedNotOffered
+=== RUN   TestMineRendersCompletedNotOffered/json_status_is_complete
+=== RUN   TestMineRendersCompletedNotOffered/text_renders_complete_not_offered
+--- PASS: TestMineRendersCompletedNotOffered (0.73s)
+    --- PASS: TestMineRendersCompletedNotOffered/json_status_is_complete (0.08s)
+    --- PASS: TestMineRendersCompletedNotOffered/text_renders_complete_not_offered (0.12s)
+=== RUN   TestAdviseUnclaimedAssignment
+=== RUN   TestAdviseUnclaimedAssignment/other_agent_gating_unclaimed_offered_emits_advisory
+⚠️ [assignment] ADVISORY: 任务 feat/delegated 分派给 kimi 且尚未 claimed，当前由 claude-code 推进 ta[REDACTED]（编排器代跑合法；若是执行方接手，请先 forge task claim）
+=== RUN   TestAdviseUnclaimedAssignment/assignee_gating_own_task_stays_silent
+=== RUN   TestAdviseUnclaimedAssignment/claimed_task_stays_silent
+=== RUN   TestAdviseUnclaimedAssignment/other_gates_and_failed_gates_stay_silent
+=== RUN   TestAdviseUnclaimedAssignment/undetectable_current_agent_stays_silent
+--- PASS: TestAdviseUnclaimedAssignment (0.05s)
+    --- PASS: TestAdviseUnclaimedAssignment/other_agent_gating_unclaimed_offered_emits_advisory (0.03s)
+    --- PASS: TestAdviseUnclaimedAssignment/assignee_gating_own_task_stays_silent (0.01s)
+    --- PASS: TestAdviseUnclaimedAssignment/claimed_task_stays_silent (0.00s)
+    --- PASS: TestAdviseUnclaimedAssignment/other_gates_and_failed_gates_stay_silent (0.00s)
+    --- PASS: TestAdviseUnclaimedAssignment/undetectable_current_agent_stays_silent (0.01s)
+=== RUN   TestAnnotateDep_CrossRepoResolves
+--- PASS: TestAnnotateDep_CrossRepoResolves (0.01s)
+=== RUN   TestTaskStart_NonGitWarningOnStderr
+--- PASS: TestTaskStart_NonGitWarningOnStderr (0.51s)
+=== RUN   TestTaskStart_NonGitJSONStdoutClean
+--- PASS: TestTaskStart_NonGitJSONStdoutClean (0.55s)
+=== RUN   TestTaskStart_GitRepoNoWarning
+--- PASS: TestTaskStart_GitRepoNoWarning (0.82s)
+=== RUN   TestNonGitTaskWarning_ContainsKeyInfo
+--- PASS: TestNonGitTaskWarning_ContainsKeyInfo (0.00s)
+=== RUN   TestTaskStart_AnchorsCreatorSession
+--- PASS: TestTaskStart_AnchorsCreatorSession (1.04s)
+=== RUN   TestTaskAcceptCmd_RegistersManualTier
+--- PASS: TestTaskAcceptCmd_RegistersManualTier (0.16s)
+=== RUN   TestTaskAcceptCmd_RejectsCompleted
+Error: 任务 feat/chain-cli 已完成——验收标准不可再补登（考卷必须在交付前定稿；发现问题的正确出口是开新修复任务并带上失败的验收命令）
+Usage:
+  task accept <criteria...> [flags]
+
+Flags:
+      --assert stringArray   v2 结构化断言（可重复 --assert）："type:arg :: expected"，附属于本命令最后一条标准；file-changed/file-untouched 可独立出现（无 Run）。类型：exit|contains|not-contains|file-changed|file-untouched
+  -h, --help                 help for accept
+      --ref string           指定任务 ref（缺省取活跃任务）
+
+--- PASS: TestTaskAcceptCmd_RejectsCompleted (0.08s)
+=== RUN   TestTaskComplete_BlockedWhenZeroAcceptance
+--- PASS: TestTaskComplete_BlockedWhenZeroAcceptance (0.04s)
+=== RUN   TestRegisterConventionsDefaults_Wiring
+未登记验收标准——已从 conventions 档案自动登记默认套件（考卷层级 conventions，项目默认考卷）：
+  [1] go version
+ℹ held-out 池为空——业务坏天气集（金额边界/并发/退款链）可沉淀一次全程受益：forge task heldout-pool --add <file> --name <名>
+--- PASS: TestRegisterConventionsDefaults_Wiring (0.06s)
+=== RUN   TestVerifyAcceptance_FallbackRuns
+--- PASS: TestVerifyAcceptance_FallbackRuns (0.99s)
+=== RUN   TestBuildAndRenderTaskReport
+--- PASS: TestBuildAndRenderTaskReport (0.08s)
+=== RUN   TestRenderTaskReport_EmptyBranches
+--- PASS: TestRenderTaskReport_EmptyBranches (0.00s)
+=== RUN   TestReportEscapeDebt
+--- PASS: TestReportEscapeDebt (0.05s)
+=== RUN   TestReportSelfSupplied
+--- PASS: TestReportSelfSupplied (0.04s)
+=== RUN   TestReportCountsLoopReset
+--- PASS: TestReportCountsLoopReset (0.11s)
+=== RUN   TestGateSilentRefErrorMustFail
+Error: 加载任务 "HEAD" 失败: task "HEAD" not found: run 'forge task start' first: open <home>\AppData\Local\Temp\forge-clita[REDACTED]\projects\p5ccf01b106dd\tasks\HEAD.json: The system cannot find the file specified.
+Usage:
+  task gate <gate-id> [--silent] [flags]
+
+Flags:
+  -h, --help         help for gate
+      --ref string   指定任务引用（不依赖分支检测）
+      --silent       静默模式（仅返回退出码）
+
+--- PASS: TestGateSilentRefErrorMustFail (0.07s)
+=== RUN   TestDescribeOverrides_SkillDecisions
+--- PASS: TestDescribeOverrides_SkillDecisions (0.00s)
+=== RUN   TestDescribeOverrides_AllThreeFlags
+--- PASS: TestDescribeOverrides_AllThreeFlags (0.00s)
+=== RUN   TestDescribeOverrides_Empty
+--- PASS: TestDescribeOverrides_Empty (0.00s)
+=== RUN   TestTaskOverrideCmdShortNoWorkActivityLie
+--- PASS: TestTaskOverrideCmdShortNoWorkActivityLie (0.00s)
+=== RUN   TestTaskExportImport_FreshRoundTrip
+--- PASS: TestTaskExportImport_FreshRoundTrip (2.11s)
+=== RUN   TestTaskExport_WarnsWhenChecklogOmitted
+--- PASS: TestTaskExport_WarnsWhenChecklogOmitted (1.58s)
+=== RUN   TestTaskImport_DefaultRejectsExisting
+--- PASS: TestTaskImport_DefaultRejectsExisting (3.30s)
+=== RUN   TestTaskImport_ForceOverwrites
+--- PASS: TestTaskImport_ForceOverwrites (2.51s)
+=== RUN   TestTaskImport_MergeUnions
+--- PASS: TestTaskImport_MergeUnions (2.26s)
+=== RUN   TestTaskExport_Redacts
+--- PASS: TestTaskExport_Redacts (1.88s)
+=== RUN   TestTaskExport_RedactsChecklog
+--- PASS: TestTaskExport_RedactsChecklog (0.96s)
+=== RUN   TestTaskImport_RejectsMalformedSchema
+--- PASS: TestTaskImport_RejectsMalformedSchema (1.68s)
+=== RUN   TestTaskImport_StripsForeignGateSignals
+--- PASS: TestTaskImport_StripsForeignGateSignals (1.71s)
+=== RUN   TestTaskImport_MergeDoesNotIntroduceForeignSignals
+--- PASS: TestTaskImport_MergeDoesNotIntroduceForeignSignals (1.46s)
+=== RUN   TestFilterImportedChecklog_DropsDuplicates
+--- PASS: TestFilterImportedChecklog_DropsDuplicates (0.02s)
+=== RUN   TestTaskPort_OutputNewlinesAreReal
+--- PASS: TestTaskPort_OutputNewlinesAreReal (1.55s)
+=== RUN   TestProjectBaseName_RootAndDriveLetter
+--- PASS: TestProjectBaseName_RootAndDriveLetter (0.00s)
+=== RUN   TestRunAcceptancePreflight_Counts
+--- PASS: TestRunAcceptancePreflight_Counts (0.13s)
+=== RUN   TestRunAcceptancePreflight_Empty
+--- PASS: TestRunAcceptancePreflight_Empty (0.00s)
+=== RUN   TestTruncatePreflightOutput
+--- PASS: TestTruncatePreflightOutput (0.00s)
+=== RUN   TestTaskQuestioningCmd_NoActiveTask
+Error: no active task——fuzz 作用于当前任务改动包的 Fuzz 目标（证据要落进任务链）
+Usage:
+  task fuzz [--sec N] [--max N] [flags]
+
+Flags:
+  -h, --help      help for fuzz
+      --max int   最多实跑的目标数（其余记 skipped） (default 3)
+      --sec int   每目标 fuzz 预算（秒） (default 30)
+
+Error: no active task——edgecheck 作用于当前任务的改动集
+Usage:
+  task edgecheck [flags]
+
+Flags:
+  -h, --help   help for edgecheck
+
+--- PASS: TestTaskQuestioningCmd_NoActiveTask (0.12s)
+=== RUN   TestMutationNextStep_BaselineRedNeverAllKilled
+--- PASS: TestMutationNextStep_BaselineRedNeverAllKilled (0.00s)
+=== RUN   TestTaskReclaim
+--- PASS: TestTaskReclaim (0.75s)
+=== RUN   TestTaskReclaim_EmptyJSON
+--- PASS: TestTaskReclaim_EmptyJSON (0.56s)
+=== RUN   TestRedAttempts_CheckRedFirst
+=== RUN   TestRedAttempts_CheckRedFirst/没有红声明时不受约束
+=== RUN   TestRedAttempts_CheckRedFirst/allow-green_放行
+=== RUN   TestRedAttempts_CheckRedFirst/红记录的_head_必须等于开工时刻
+=== RUN   TestRedAttempts_CheckRedFirst/红且已转绿放行
+=== RUN   TestRedAttempts_CheckRedFirst/红但未转绿拒绝
+=== RUN   TestRedAttempts_CheckRedFirst/开工即全绿拒绝
+=== RUN   TestRedAttempts_CheckRedFirst/红记录来自改写掉的历史拒绝
+--- PASS: TestRedAttempts_CheckRedFirst (0.58s)
+    --- PASS: TestRedAttempts_CheckRedFirst/没有红声明时不受约束 (0.00s)
+    --- PASS: TestRedAttempts_CheckRedFirst/allow-green_放行 (0.00s)
+    --- PASS: TestRedAttempts_CheckRedFirst/红记录的_head_必须等于开工时刻 (0.03s)
+    --- PASS: TestRedAttempts_CheckRedFirst/红且已转绿放行 (0.07s)
+    --- PASS: TestRedAttempts_CheckRedFirst/红但未转绿拒绝 (0.07s)
+    --- PASS: TestRedAttempts_CheckRedFirst/开工即全绿拒绝 (0.04s)
+    --- PASS: TestRedAttempts_CheckRedFirst/红记录来自改写掉的历史拒绝 (0.07s)
+=== RUN   TestTaskStart_ChangeRequiresCriteria
+--- PASS: TestTaskStart_ChangeRequiresCriteria (0.00s)
+=== RUN   TestTaskComplete_RedFirst
+--- PASS: TestTaskComplete_RedFirst (0.46s)
+=== RUN   TestTaskComplete_RedFirstBlocks
+--- PASS: TestTaskComplete_RedFirstBlocks (5.15s)
+=== RUN   TestRedAttempts_GoTestNormalized
+--- PASS: TestRedAttempts_GoTestNormalized (0.42s)
+=== RUN   TestReportEscapeHatch_ZeroCriteria
+--- PASS: TestReportEscapeHatch_ZeroCriteria (0.00s)
+=== RUN   TestRedAttempts_BackdatedCommits
+--- PASS: TestRedAttempts_BackdatedCommits (0.44s)
+=== RUN   TestTaskFindingResolve_RequiresRegressionTest
+Error: finding f-r1 无回归绑定（oracle-pipeline L4：修前红由 finding 作证、修后绿由回归测试作证——没有回归的 fixed 会复发）。登记：forge task regression --finding f-r1 --test <本任务改动的 _test.go>；确无可测形态：forge task regression --finding f-r1 --none --note <理由>（落审计行）
+Usage:
+  task finding --content <text> [--source <tool>] [--tag <enum>] [--evidence <text>] | --resolve <id> | --stats [--source <source>] [--ref <ref>] [flags]
+
+Flags:
+      --content string    发现内容（新增时必填）
+      --evidence string   证据（文件:行 / 命令输出）
+  -h, --help              help for finding
+      --note string       --reset-loop 的人工裁决说明（必填，可审计）
+      --ref string        指定任务引用（--stats 时省略 = 跨全部任务聚合）
+      --reset-loop        人工裁决：清除回环耗尽态并重开回环预算（open finding 从下一轮重新计龄；--note 必填；审计行落地，终止权外置的唯一出口）
+      --resolve string    要标 fixed 的发现 ID（与 --content 互斥）
+      --source string     来源工具（默认探测当前工具）
+      --stats             跨任务聚合统计：按 Tag×Round 计数（session-retrospective 升级判据「同类打回 ≥3 次」的机器来源）
+      --tag string        类别打标（枚举：padding/conclusion/template/false-precision/disclaimer/evidence/style；doc-review 打回打标，供 --stats 进化判据计数）
+
+Error: --test <本任务改动的测试文件> 与 --none --note <理由> 二选一
+Usage:
+  task regression --finding <id> --test <file> | --none --note <理由> [flags]
+
+Flags:
+      --finding string   要绑定的发现 ID（必填）
+  -h, --help             help for regression
+      --none             无可测形态声明（须 --note <理由>，落审计行）
+      --note string      --none 的理由（必填，可审计）
+      --ref string       指定任务（缺省取活跃任务）
+      --test string      回归测试文件：本任务改动的 _test.go
+
+Error: --test "plain.go" 未通过校验：须是本任务改动的 _test.go 且含 Test/Fuzz 函数（拿无关旧测试冒充回归不算数；forge task scope show 看任务改动集）
+Usage:
+  task regression --finding <id> --test <file> | --none --note <理由> [flags]
+
+Flags:
+      --finding string   要绑定的发现 ID（必填）
+  -h, --help             help for regression
+      --none             无可测形态声明（须 --note <理由>，落审计行）
+      --note string      --none 的理由（必填，可审计）
+      --ref string       指定任务（缺省取活跃任务）
+      --test string      回归测试文件：本任务改动的 _test.go
+
+Error: 未找到发现 ID "f-nope"（forge task resume 查看现有 ID）
+Usage:
+  task regression --finding <id> --test <file> | --none --note <理由> [flags]
+
+Flags:
+      --finding string   要绑定的发现 ID（必填）
+  -h, --help             help for regression
+      --none             无可测形态声明（须 --note <理由>，落审计行）
+      --note string      --none 的理由（必填，可审计）
+      --ref string       指定任务（缺省取活跃任务）
+      --test string      回归测试文件：本任务改动的 _test.go
+
+--- PASS: TestTaskFindingResolve_RequiresRegressionTest (0.97s)
+=== RUN   TestTaskRegression_BareNoteRefused
+Error: --test <本任务改动的测试文件> 与 --none --note <理由> 二选一
+Usage:
+  task regression --finding <id> --test <file> | --none --note <理由> [flags]
+
+Flags:
+      --finding string   要绑定的发现 ID（必填）
+  -h, --help             help for regression
+      --none             无可测形态声明（须 --note <理由>，落审计行）
+      --note string      --none 的理由（必填，可审计）
+      --ref string       指定任务（缺省取活跃任务）
+      --test string      回归测试文件：本任务改动的 _test.go
+
+--- PASS: TestTaskRegression_BareNoteRefused (0.35s)
+=== RUN   TestArtifactStartHint_ChangePinned
+--- PASS: TestArtifactStartHint_ChangePinned (0.00s)
+=== RUN   TestRepoHasGoTestFiles
+--- PASS: TestRepoHasGoTestFiles (0.00s)
+=== RUN   TestBuildTaskReport_RepoHasGoTestFilesWiring
+--- PASS: TestBuildTaskReport_RepoHasGoTestFilesWiring (0.01s)
+=== RUN   TestRenderTaskReport_NoTestFilesHonest
+--- PASS: TestRenderTaskReport_NoTestFilesHonest (0.00s)
+=== RUN   TestBuildTaskReport_PinnedChangeDisclosed
+--- PASS: TestBuildTaskReport_PinnedChangeDisclosed (0.01s)
+=== RUN   TestBuildTaskReport_PinnedChangeBeatsSpecApproval
+--- PASS: TestBuildTaskReport_PinnedChangeBeatsSpecApproval (0.01s)
+=== RUN   TestTaskResume_NoHookModeFlags
+--- PASS: TestTaskResume_NoHookModeFlags (0.00s)
+=== RUN   TestTaskScope_E2E_FlagToStatusToAddToShow
+--- PASS: TestTaskScope_E2E_FlagToStatusToAddToShow (0.68s)
+=== RUN   TestTaskScope_AddExplicitRef
+--- PASS: TestTaskScope_AddExplicitRef (0.25s)
+=== RUN   TestTaskScope_ShowNoActiveTask
+--- PASS: TestTaskScope_ShowNoActiveTask (0.14s)
+=== RUN   TestTaskScope_ShowEmptyScope
+--- PASS: TestTaskScope_ShowEmptyScope (0.42s)
+=== RUN   TestScoreTask_EvidenceFromChecklog
+[forge] warning: git diff stat unavailable (git diff failed (base..HEAD: exit status 129; HEAD: exit status 129)) — scope dimension scores neutral
+[forge] warning: protocol.yml 加载失败（protocol.yml not found: run 'forge init' first）——评分回退默认权重/阈值
+[forge] warning: assertion-density collection failed (git diff/ls-files failed (base..HEAD: exit status 129; HEAD: exit status 129; others: exit status 128)) — fake-test penalty skipped (testing dimension not punished on a dead probe)
+--- PASS: TestScoreTask_EvidenceFromChecklog (0.58s)
+=== RUN   TestRoot_UnknownSubcommandErrors
+--- PASS: TestRoot_UnknownSubcommandErrors (0.02s)
+=== RUN   TestRoot_NoArgsShowsHelp
+--- PASS: TestRoot_NoArgsShowsHelp (0.02s)
+=== RUN   TestTaskGate_OffTreeBlocks
+--- PASS: TestTaskGate_OffTreeBlocks (1.42s)
+=== RUN   TestWorktreeUse_Rebinds
+--- PASS: TestWorktreeUse_Rebinds (1.55s)
+=== RUN   TestTaskGate_OffTreeRecordsChecklog
+--- PASS: TestTaskGate_OffTreeRecordsChecklog (1.94s)
+=== RUN   TestTaskStart_TTLFlagPersists
+--- PASS: TestTaskStart_TTLFlagPersists (1.05s)
+=== RUN   TestLastActivityFor
+--- PASS: TestLastActivityFor (0.01s)
+=== RUN   TestRecordStalled_Throttle
+--- PASS: TestRecordStalled_Throttle (0.03s)
+=== RUN   TestMirrorGithubFakeGh
+  ✅ t/m → issue #99
+--- PASS: TestMirrorGithubFakeGh (0.04s)
+=== RUN   TestRunTaskWildRequiresNote
+--- PASS: TestRunTaskWildRequiresNote (0.00s)
+=== RUN   TestWildQuotaConstants
+--- PASS: TestWildQuotaConstants (0.00s)
+=== RUN   TestWorkspaceContextLine
+=== RUN   TestWorkspaceContextLine/无成员资格_→_空行
+=== RUN   TestWorkspaceContextLine/单仓_workspace_不渲染（只是标签）
+=== RUN   TestWorkspaceContextLine/多仓成员_+_未声明
+=== RUN   TestWorkspaceContextLine/声明段镜像_none_/_multi
+=== RUN   TestWorkspaceContextLine/一_key_属多个多仓_workspace_→_单行全点名
+=== RUN   TestWorkspaceContextLine/清单损坏_fail-open_→_空行
+=== RUN   TestWorkspaceContextLine/空_root_不触碰_store
+--- PASS: TestWorkspaceContextLine (0.10s)
+    --- PASS: TestWorkspaceContextLine/无成员资格_→_空行 (0.01s)
+    --- PASS: TestWorkspaceContextLine/单仓_workspace_不渲染（只是标签） (0.02s)
+    --- PASS: TestWorkspaceContextLine/多仓成员_+_未声明 (0.02s)
+    --- PASS: TestWorkspaceContextLine/声明段镜像_none_/_multi (0.02s)
+    --- PASS: TestWorkspaceContextLine/一_key_属多个多仓_workspace_→_单行全点名 (0.02s)
+    --- PASS: TestWorkspaceContextLine/清单损坏_fail-open_→_空行 (0.01s)
+    --- PASS: TestWorkspaceContextLine/空_root_不触碰_store (0.00s)
+=== RUN   TestTaskStart_WorktreeE2E
+--- PASS: TestTaskStart_WorktreeE2E (1.03s)
+=== RUN   TestWorktreeJanitor_DeadAnchor
+--- PASS: TestWorktreeJanitor_DeadAnchor (0.44s)
+=== RUN   TestTaskFinish_MergeTargetGuard
+--- PASS: TestTaskFinish_MergeTargetGuard (2.70s)
+=== RUN   TestTaskStart_BranchDerivation
+--- PASS: TestTaskStart_BranchDerivation (1.00s)
+=== RUN   TestDeriveBranchName
+--- PASS: TestDeriveBranchName (0.00s)
+=== RUN   TestCreateTaskWorktreeDelegatesDerivation
+--- PASS: TestCreateTaskWorktreeDelegatesDerivation (0.00s)
+=== RUN   TestCopyWorktreeIncludesWarnsOnFailure
+--- PASS: TestCopyWorktreeIncludesWarnsOnFailure (0.01s)
+=== RUN   TestTaskStart_WorktreeChangePinsWorktreeGoal
+--- PASS: TestTaskStart_WorktreeChangePinsWorktreeGoal (2.37s)
+=== RUN   TestTaskStart_WorktreeChangeRequiresCommittedGoal
+--- PASS: TestTaskStart_WorktreeChangeRequiresCommittedGoal (1.08s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/clitask	144.693s
