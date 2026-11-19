@@ -19,6 +19,14 @@
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
 
+## [2.3.1](https://github.com/MjxUpUp/Forge/compare/v2.3.0...v2.3.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **eval:** 与 verify 同语义的 set -e、超时收进程树、--json 也落盘、失败原因取尾部 ([9ace0eb](https://github.com/MjxUpUp/Forge/commit/9ace0ebd9d876e04c764953e6af32f2c3826a06d))
+* **eval:** 围栏整段交给 shell、超时与纯 JSON、失败原因可见 ([ab2ba6b](https://github.com/MjxUpUp/Forge/commit/ab2ba6bc3b3c7bb40cc469eb6c95397f184413ff))
+
 ## [2.3.0](https://github.com/MjxUpUp/Forge/compare/v2.2.0...v2.3.0) (2026-11-19)
 
 
