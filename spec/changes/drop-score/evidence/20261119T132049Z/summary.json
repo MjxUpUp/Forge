@@ -1,0 +1,66 @@
+{
+  "change": "drop-score",
+  "started_at": "2026-11-19T13:20:49Z",
+  "finished_at": "2026-11-19T13:22:58Z",
+  "passed": true,
+  "sealed": true,
+  "head": "6a892c8e9b43d80bd9969bdfa0e627f33ab0ddd0",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "915f1ec2d14b43246267b5497c0a11b3f6ba8dcd125eac4e893c738b2929e504",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2164
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/tasktypes/ ./internal/clitask/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 110623,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestTaskComplete|TestTaskReport|TestTaskList' -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 3288,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 180
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4277
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ -run 'TestBuildTaskEvidence' -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 1107,
+      "stdout_file": "06.stdout"
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestTaskScoreWorkflow' -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 6905,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}
