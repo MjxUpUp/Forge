@@ -59,11 +59,6 @@ func Activities(root string, ids []string) map[string]time.Time {
 	return out
 }
 
-// LastActivity 返回单个 change 的最近活动时间（Activities 的单个版本）。
-func LastActivity(root, id string) (time.Time, error) {
-	return Activities(root, []string{id})[id], nil
-}
-
 // dirtyChangeIDs 返回 spec/changes 下有未提交改动（含未跟踪）的 change id。
 func dirtyChangeIDs(root string) map[string]bool {
 	out := map[string]bool{}
