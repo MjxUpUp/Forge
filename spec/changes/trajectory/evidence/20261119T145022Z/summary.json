@@ -1,0 +1,110 @@
+{
+  "change": "trajectory",
+  "started_at": "2026-11-19T14:50:22Z",
+  "finished_at": "2026-11-19T14:51:12Z",
+  "passed": false,
+  "sealed": false,
+  "head": "c2867695fffedd70e230e5568e06d5d806d1859a",
+  "diff_sha256": "290e087d45e7cb5f1bc6e180c7ad0efe454d7b16170738bf727334dde4e02d0c",
+  "files": [
+    {
+      "path": "internal/checklog/types.go",
+      "sha256": "18cd349a7527c0642b1fe95adbec5e4d943e8f3f9fe490bcf7690e4d712a5f5a"
+    },
+    {
+      "path": "internal/cli/review.go",
+      "sha256": "ce5f3dc03eb201a656993c3aa748e4b5d908125140dfedc53c10c80e61e973ac"
+    },
+    {
+      "path": "internal/clitask/task_gate.go",
+      "sha256": "f12ec611022b01adf1f3036705d75b7e42a9b56ad7c6158e79c2fc71fc201c27"
+    },
+    {
+      "path": "internal/clitask/task_report.go",
+      "sha256": "b8240f7dd336227ffd027e83de7a00ea617911636f990835e0ce1e27cf21e626"
+    },
+    {
+      "path": "internal/clitask/task_report_trajectory_test.go",
+      "sha256": "c460c658537c132ad99a96667b76d1b3b7a586a40aa9f2489ffa98cc7662253f"
+    },
+    {
+      "path": "spec/changes/trajectory/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/trajectory/acceptance.md",
+      "sha256": "462841ad5c8ae3f2112cb37c0e717741be0f16089063f00e89dc605685406d2b"
+    },
+    {
+      "path": "spec/changes/trajectory/change.md",
+      "sha256": "2aa3d77824aca2925835155f9b7582a34c04ece2eb7289507bb0f2f309f5b541"
+    },
+    {
+      "path": "spec/changes/trajectory/clarify.md",
+      "sha256": "c8d2130b6c29b7eeacca4ad07c321ad3bae39d12c22ef0e1cac8acc6380f3b9d"
+    },
+    {
+      "path": "spec/changes/trajectory/goal.md",
+      "sha256": "b244301c1009d66ef0275894087d5c6154625ba2a03b0c90195a8bfcb273e6c1"
+    }
+  ],
+  "acceptance_sha256": "462841ad5c8ae3f2112cb37c0e717741be0f16089063f00e89dc605685406d2b",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2236
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/checklog/ -count=1",
+      "exit": 0,
+      "duration_ms": 9236,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/clitask/ -run 'TestBuildTrajectoryLine|TestRunTaskVerifyAcceptanceAt' -count=1",
+      "exit": 0,
+      "duration_ms": 7184,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestReview' -count=1",
+      "exit": 0,
+      "duration_ms": 29974,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 734,
+      "stdout_file": "05.stdout"
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 1,
+      "duration_ms": 198,
+      "stderr_file": "06.stderr"
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    }
+  ]
+}
