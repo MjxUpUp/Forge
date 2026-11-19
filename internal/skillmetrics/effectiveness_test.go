@@ -46,11 +46,12 @@ func newTestProject(t *testing.T) (*forgedata.Project, string) {
 
 var fixedTime = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 
-func recordConclusion(t *testing.T, p *forgedata.Project, taskRef string, score float64, strength string, ratio float64) {
+// recordConclusion 落一条完成结论：2.3 起只带事实（证据强度 + 证据比），
+// 没有分数——成效面板统计的是命中×证据形态，不掺合成分。
+func recordConclusion(t *testing.T, p *forgedata.Project, taskRef, strength string, ratio float64) {
 	t.Helper()
 	mustWrite(t, act.Append(p, &act.Conclusion{
 		TaskRef:     taskRef,
-		Score:       score,
 		Strength:    strength,
 		Ratio:       ratio,
 		CompletedAt: fixedTime,
@@ -65,8 +66,8 @@ func TestAnalyzeEffectiveness(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordSkillCall(t, root, "good-skill", "t1")
 	recordSkillCall(t, root, "weak-skill", "t2")
-	recordConclusion(t, proj, "t1", 90, "Strong", 1.0)
-	recordConclusion(t, proj, "t2", 60, "Weak", 0.2)
+	recordConclusion(t, proj, "t1", "Strong", 1.0)
+	recordConclusion(t, proj, "t2", "Weak", 0.2)
 
 	effs, err := AnalyzeEffectiveness(proj)
 	if err != nil {
@@ -80,14 +81,14 @@ func TestAnalyzeEffectiveness(t *testing.T) {
 	if good.Skill != "good-skill" || weak.Skill != "weak-skill" {
 		t.Fatalf("order/skill mismatch: %+v", effs)
 	}
-	if good.HitCount != 1 || good.TaskCount != 1 || good.AvgScore != 90 || good.AvgRatio != 1.0 || good.WeakRate != 0 {
+	if good.HitCount != 1 || good.TaskCount != 1 || good.AvgRatio != 1.0 || good.WeakRate != 0 {
 		t.Fatalf("good-skill wrong: %+v", good)
 	}
 	if weak.WeakRate != 1.0 {
 		t.Fatalf("weak-skill WeakRate=%v want 1.0（Strength=Weak）", weak.WeakRate)
 	}
-	if weak.AvgScore != 60 || weak.AvgRatio != 0.2 {
-		t.Fatalf("weak-skill avg wrong: %+v", weak)
+	if weak.AvgRatio != 0.2 {
+		t.Fatalf("weak-skill avg ratio wrong: %+v", weak)
 	}
 }
 
@@ -99,10 +100,10 @@ func TestAnalyzeEffectiveness_TaskDedup(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordSkillCall(t, root, "s", "t1")
 	recordSkillCall(t, root, "s", "t1") // 同 task 重复：hits++，task 去重
-	recordSkillCall(t, root, "s", "t2") // t2 带不同分数：去重断言的判别锚——若 t1 被双折，AvgScore=(80+80+60)/3≈73.3 而非 70
+	recordSkillCall(t, root, "s", "t2") // t2 带不同证据比：去重断言的判别锚——若 t1 被双折，AvgRatio=(0.8+0.8+0.6)/3≈0.733 而非 0.7
 	recordSkillCall(t, root, "s", "t3") // t3 无 conclusion：计入 TaskCount 但不计 avg 分母
-	recordConclusion(t, proj, "t1", 80, "Strong", 0.8)
-	recordConclusion(t, proj, "t2", 60, "Strong", 0.6)
+	recordConclusion(t, proj, "t1", "Strong", 0.8)
+	recordConclusion(t, proj, "t2", "Strong", 0.6)
 	// t3 故意无 conclusion
 
 	effs, err := AnalyzeEffectiveness(proj)
@@ -119,11 +120,8 @@ func TestAnalyzeEffectiveness_TaskDedup(t *testing.T) {
 	if e.TaskCount != 3 {
 		t.Fatalf("TaskCount=%d want 3（t1+t2+t3，去重）", e.TaskCount)
 	}
-	if e.AvgScore != 70 {
-		t.Fatalf("AvgScore=%v want 70（t1 只折一次：(80+60)/2；双折=(80+80+60)/3≈73.3）", e.AvgScore)
-	}
 	if e.AvgRatio != 0.7 {
-		t.Fatalf("AvgRatio=%v want 0.7（(0.8+0.6)/2）", e.AvgRatio)
+		t.Fatalf("AvgRatio=%v want 0.7（t1 只折一次：(0.8+0.6)/2；双折≈0.733）", e.AvgRatio)
 	}
 }
 
@@ -149,7 +147,7 @@ func TestAnalyzeEffectiveness_Empty(t *testing.T) {
 func TestAnalyzeEffectiveness_WeakIncludesUnverified(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordSkillCall(t, root, "s", "t1")
-	recordConclusion(t, proj, "t1", 95, "Unverified", 0.0)
+	recordConclusion(t, proj, "t1", "Unverified", 0.0)
 
 	effs, err := AnalyzeEffectiveness(proj)
 	if err != nil {
@@ -157,31 +155,6 @@ func TestAnalyzeEffectiveness_WeakIncludesUnverified(t *testing.T) {
 	}
 	if effs[0].WeakRate != 1.0 {
 		t.Fatalf("Unverified 应计入弱占比，WeakRate=%v want 1.0", effs[0].WeakRate)
-	}
-}
-
-// TestAnalyzeEffectiveness_UnscoredTaskExcluded: Score==0 (unscored, act.BuildConclusion score==nil sentinel) is excluded from AvgScore denominator — otherwise artificially lowers avg.
-//
-// TestAnalyzeEffectiveness_UnscoredTaskExcluded：Score==0（未评分，act.BuildConclusion
-// score==nil 哨兵值）不计入 AvgScore 分母——否则人为拉低 avg。但其证据强度仍计入
-// AvgRatio/WeakRate 分母（ratio/证据与 score 独立）。
-func TestAnalyzeEffectiveness_UnscoredTaskExcluded(t *testing.T) {
-	proj, root := newTestProject(t)
-	recordSkillCall(t, root, "s", "t1")
-	recordSkillCall(t, root, "s", "t2")
-	recordConclusion(t, proj, "t1", 0, "Strong", 0.9) // 未评分（Score=0 哨兵）
-	recordConclusion(t, proj, "t2", 90, "Strong", 1.0)
-
-	effs, err := AnalyzeEffectiveness(proj)
-	if err != nil {
-		t.Fatal(err)
-	}
-	e := effs[0]
-	if e.AvgScore != 90 {
-		t.Fatalf("AvgScore=%v want 90（t1 Score=0 不计入分母，非 (0+90)/2=45）", e.AvgScore)
-	}
-	if e.AvgRatio != 0.95 { // (0.9+1.0)/2，两个 conclusion 都计入
-		t.Fatalf("AvgRatio=%v want 0.95（ratio 与 score 独立，未评分 task 仍计入）", e.AvgRatio)
 	}
 }
 
@@ -193,7 +166,7 @@ func TestAnalyzeEffectiveness_UnscoredTaskExcluded(t *testing.T) {
 func TestAnalyzeEffectiveness_NoDataIsWeak(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordSkillCall(t, root, "s", "t1")
-	recordConclusion(t, proj, "t1", 95, "NoData", 0.0)
+	recordConclusion(t, proj, "t1", "NoData", 0.0)
 
 	effs, err := AnalyzeEffectiveness(proj)
 	if err != nil {
@@ -228,7 +201,7 @@ func TestAnalyzeEffectiveness_PassiveTriggerJoin(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordTrigger(t, root, "passive-skill", "t1")
 	recordTrigger(t, root, "no-task-skill", "") // 无 TaskRef：只计命中
-	recordConclusion(t, proj, "t1", 85, "Strong", 0.7)
+	recordConclusion(t, proj, "t1", "Strong", 0.7)
 
 	effs, err := AnalyzeEffectiveness(proj)
 	if err != nil {
@@ -242,26 +215,27 @@ func TestAnalyzeEffectiveness_PassiveTriggerJoin(t *testing.T) {
 	if nt.Skill != "no-task-skill" || ps.Skill != "passive-skill" {
 		t.Fatalf("order/skill mismatch: %+v", effs)
 	}
-	if ps.HitCount != 1 || ps.TaskCount != 1 || ps.AvgScore != 85 || ps.AvgRatio != 0.7 || ps.WeakRate != 0 {
+	if ps.HitCount != 1 || ps.TaskCount != 1 || ps.AvgRatio != 0.7 || ps.WeakRate != 0 {
 		t.Fatalf("passive-skill 应完整挂上 t1 成效: %+v", ps)
 	}
-	if nt.HitCount != 1 || nt.TaskCount != 0 || nt.AvgScore != 0 || nt.AvgRatio != 0 {
+	if nt.HitCount != 1 || nt.TaskCount != 0 || nt.AvgRatio != 0 {
 		t.Fatalf("no-task-skill 只计命中不挂成效: %+v", nt)
 	}
 }
 
-// TestAnalyzeEffectiveness_PassiveActiveDedup pins the cross-source dedup: the SAME (skill, task) hit both passively (trigger entry) and actively (Skill call) counts HitCount=2 but folds the outcome ONCE — the aggregator's per-(skill, task) dedup spans both sources, so a passive trigger followed by an active load in one task does not double the task's weight.
+// TestAnalyzeEffectiveness_PassiveActiveDedup pins the cross-source dedup: the SAME (skill, task) hit both passively (trigger entry) and actively (Skill call) counts HitCount=2 but folds the outcome ONCE.
 //
 // TestAnalyzeEffectiveness_PassiveActiveDedup 钉死跨源去重：同一 (skill, task) 既被
-// 动（触发条目）又主动（Skill 调用）命中时 HitCount=2 但成效只折入一次——聚合器的
-// per-(skill, task) 去重横跨两源，同 task 内被动触发+主动加载不会让该 task 权重翻倍。
+// 动（触发条目）又主动（Skill 调用）命中时 HitCount 全累加但成效只折入一次——
+// 聚合器的 per-(skill, task) 去重横跨两源，同 task 内被动触发+主动加载不会让该 task
+// 权重翻倍。判别锚用两条不同 ratio 的结论：单折 (0.8+0.6)/2=0.7，t1 双折则 ≈0.733。
 func TestAnalyzeEffectiveness_PassiveActiveDedup(t *testing.T) {
 	proj, root := newTestProject(t)
 	recordTrigger(t, root, "s", "t1")
 	recordSkillCall(t, root, "s", "t1")
-	recordSkillCall(t, root, "s", "t2") // t2 带不同分数：判别锚——单一 conclusion task 双折时分子分母同乘（80/1==160/2），断言恒过；异分才锁得住 fold-once
-	recordConclusion(t, proj, "t1", 80, "Strong", 0.8)
-	recordConclusion(t, proj, "t2", 60, "Strong", 0.6)
+	recordSkillCall(t, root, "s", "t2")
+	recordConclusion(t, proj, "t1", "Strong", 0.8)
+	recordConclusion(t, proj, "t2", "Strong", 0.6)
 
 	effs, err := AnalyzeEffectiveness(proj)
 	if err != nil {
@@ -277,12 +251,12 @@ func TestAnalyzeEffectiveness_PassiveActiveDedup(t *testing.T) {
 	if e.TaskCount != 2 {
 		t.Fatalf("TaskCount=%d want 2（跨源去重）", e.TaskCount)
 	}
-	if e.AvgScore != 70 || e.AvgRatio != 0.7 {
-		t.Fatalf("成效只折入一次（fold-once：(80+60)/2=70；t1 双折则 ≈73.3）: %+v", e)
+	if e.AvgRatio != 0.7 {
+		t.Fatalf("成效只折入一次（fold-once：(0.8+0.6)/2=0.7；t1 双折则 ≈0.733）: %+v", e)
 	}
 }
 
-// TestAnalyzeEffectiveness_NonGitRootPin pins the data-dir resolution for non-git projects (review M-1): a non-git Project has GitRoot=="" and Root=<registered path>.
+// TestAnalyzeEffectiveness_NonGitRootPin pins the data-dir resolution for non-git projects (review M-1).
 //
 // TestAnalyzeEffectiveness_NonGitRootPin 钉死非 git 项目的数据目录解析（审查 M-1）：
 // 非 git Project 的 GitRoot==""、Root=<注册路径>。两个命中源必须经 Root 解析——若经
@@ -298,7 +272,7 @@ func TestAnalyzeEffectiveness_NonGitRootPin(t *testing.T) {
 		ConfigDir: filepath.Join(root, ".forge"),
 	}
 	recordTrigger(t, root, "s", "t1")
-	recordConclusion(t, proj, "t1", 85, "Strong", 0.7)
+	recordConclusion(t, proj, "t1", "Strong", 0.7)
 
 	effs, err := AnalyzeEffectiveness(proj)
 	if err != nil {
@@ -307,7 +281,7 @@ func TestAnalyzeEffectiveness_NonGitRootPin(t *testing.T) {
 	if len(effs) != 1 || effs[0].Skill != "s" {
 		t.Fatalf("非 git 项目经 Root 解析必须读到被动源: %+v", effs)
 	}
-	if e := effs[0]; e.HitCount != 1 || e.TaskCount != 1 || e.AvgScore != 85 || e.AvgRatio != 0.7 {
+	if e := effs[0]; e.HitCount != 1 || e.TaskCount != 1 || e.AvgRatio != 0.7 {
 		t.Fatalf("join 应完整挂上 t1 成效: %+v", e)
 	}
 }

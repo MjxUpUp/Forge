@@ -73,6 +73,12 @@
       ]
     },
     {
+      "path": "forge change drift",
+      "flags": [
+        "json"
+      ]
+    },
+    {
       "path": "forge change gate",
       "flags": [
         "task",
@@ -1153,7 +1159,6 @@
     {
       "path": "forge verify",
       "flags": [
-        "collect-golden",
         "regression",
         "run-tests",
         "scenario"
@@ -1275,7 +1280,6 @@
     "FORGE_GATE_PUSH",
     "FORGE_HELDOUT",
     "FORGE_MUTATION_TIMEOUT",
-    "FORGE_RECURRENT_HARDEN",
     "FORGE_SELF_REPORT",
     "FORGE_TASK_TREE_GUARD",
     "FORGE_TEST_COVERAGE",
@@ -1625,6 +1629,15 @@
       "doc_review_history[].rubric_score",
       "doc_review_history[].second_score",
       "doc_review_history[].self_review",
+      "evidence",
+      "evidence.criteria",
+      "evidence.criteria_passed",
+      "evidence.escapes",
+      "evidence.red_first_closed",
+      "evidence.red_first_trials",
+      "evidence.remaining_risks",
+      "evidence.review_rounds",
+      "evidence.untested_areas",
       "external_origin",
       "external_origin.identifier",
       "external_origin.issue_id",
@@ -1701,15 +1714,6 @@
       "review_rounds[].reviewed_at",
       "reviewed_head_commit",
       "rolled_back_to",
-      "score",
-      "score.dimensions",
-      "score.dimensions[].detail",
-      "score.dimensions[].dimension",
-      "score.dimensions[].score",
-      "score.grade",
-      "score.overall",
-      "score.scored_at",
-      "score.task_ref",
       "session_id",
       "session_links",
       "session_links[].joined_at",

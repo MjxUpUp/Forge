@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // initGitForgeProject 在 dir 建好 forge 项目（git + init + 初始提交 + feat/port 分支）但不碰 env——
@@ -527,20 +527,20 @@ func TestTaskImport_RejectsMalformedSchema(t *testing.T) {
 	}
 }
 
-// TestTaskImport_StripsForeignGateSignals: imported review/acceptance/score signals are FOREIGN evidence and must NOT be honored locally — otherwise a hand-edited bundle could satisfy the task-complete gate's hard prerequisites without the review sub-agent / verify-acceptance ever running on this machine.
+// TestTaskImport_StripsForeignGateSignals: imported review/acceptance/evidence signals are FOREIGN evidence and must NOT be honored locally — otherwise a hand-edited bundle could satisfy the task-complete gate's hard prerequisites without the review sub-agent / verify-acceptance ever running on this machine.
 //
-// TestTaskImport_StripsForeignGateSignals：导入的 review/验收/评分信号是外来证据，本机不得采信——否则
+// TestTaskImport_StripsForeignGateSignals：导入的 review/验收/完成事实清单是外来证据，本机不得采信——否则
 // 手改的 bundle 可绕过 task-complete 门禁的硬前置而本机从未跑过 review 子 agent / verify-acceptance。
 // import 落地时这些信号被清空；History（门禁进度，溯源）保留。
 func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
-	// On A: fake a fully-reviewed + scored + acceptance-passed task (a foreign bundle could carry these).
+	// On A: fake a fully-reviewed + evidence-stamped + acceptance-passed task (a foreign bundle could carry these).
 	_, bundlePath := exportDelegatedTask(t, `trusted-on-A`, func(dirA string) {
 		src, err := taskpipeline.LoadTaskState(dirA, `feat/delegate`)
 		if err != nil {
 			t.Fatalf(`load A: %v`, err)
 		}
 		src.MarkReviewPassed(`aaa111`, `hash-aaa`)
-		src.Score = &scoringtypes.ScoreResult{Overall: 91}
+		src.Evidence = &tasktypes.TaskEvidence{Criteria: 4, CriteriaPassed: 4, ReviewRounds: 1}
 		src.Acceptance = []taskpipeline.AcceptanceCriterion{
 			{Run: `go test ./...`, Expected: `ok`, Passed: true, AcceptedHeadCommit: `aaa111`, Output: `ok`},
 		}
@@ -575,8 +575,8 @@ func TestTaskImport_StripsForeignGateSignals(t *testing.T) {
 	if got.ReviewedHeadCommit != `` || got.ReviewedChangeHash != `` {
 		t.Errorf(`外来 review 快照应清空, got HeadCommit=%q ChangeHash=%q`, got.ReviewedHeadCommit, got.ReviewedChangeHash)
 	}
-	if got.Score != nil {
-		t.Errorf(`外来 Score 应清空（本机 complete 时重算）, got %+v`, got.Score)
+	if got.Evidence != nil {
+		t.Errorf(`外来 Evidence 应清空（本机 complete 时重算）, got %+v`, got.Evidence)
 	}
 	if len(got.Acceptance) == 0 {
 		t.Fatal(`Acceptance 结构应保留（只清信号，不删条目）`)

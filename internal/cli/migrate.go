@@ -95,7 +95,7 @@ AGENTS.md/.sync-version（同步戳）。老版本残留的 pipeline.yml/state.j
 		}
 		if sanitized > 0 {
 			fmt.Fprintln(out)
-			fmt.Fprintf(out, "已清洗 %d 个迁移任务的外来门禁信号（review/验收/评分/完成/逃生舱须本机重跑；验收命令带外来标记，verify-acceptance 首跑须 --trust-foreign）\n", sanitized)
+			fmt.Fprintf(out, "已清洗 %d 个迁移任务的外来门禁信号（review/验收/完成/逃生舱须本机重跑；验收命令带外来标记，verify-acceptance 首跑须 --trust-foreign）\n", sanitized)
 		}
 		if !migrateDryRun && len(res.Left) > 0 {
 			fmt.Fprintln(out)

@@ -92,7 +92,7 @@ func lastChecklogActivity(root, taskRef string) time.Time {
 // 情，已完成任务可能悬置 offered/claimed 分派——没有此检查，它 7 天后会被误报僵尸。两个例外：
 // 被 REOPEN 的任务（IsReopened：delivered→claimed 返工，IsComplete 按设计仍为 true）重新在途
 // ——卡住的返工必须上浮，不能躲在完成免疫后面；门禁全过但从未跑 forge task complete 的任务
-// （CompletedAt 仍为 nil）同样免疫——活已干完，只差评分动作。
+// （CompletedAt 仍为 nil）同样免疫——活已干完，只差 complete 动作。
 func assignmentInFlight(s *TaskState) bool {
 	if s == nil || s.Assignment == nil || (s.IsComplete() && !s.IsReopened()) {
 		return false

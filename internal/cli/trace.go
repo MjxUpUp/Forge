@@ -16,13 +16,13 @@ func init() {
 }
 
 // traceCmd 实现 `forge trace <task-ref>`：重放任务的完整质量事件时间线
-// （工具调用 + 检查结果），把单个评分还原成可回溯的故事。checklog/toolusage
+// （工具调用 + 检查结果），把一次完成还原成可回溯的故事。checklog/toolusage
 // 之上的可观测性消费层。
 var traceCmd = &cobra.Command{
 	Use:   "trace <task-ref> [--window <chars>]",
 	Short: "查看任务的完整质量事件时间线",
 	Long: `forge trace 重放一个任务从开始到完成的所有质量事件：
-工具调用、检查结果、门禁推进。把"一个评分"还原成"一条可回溯的时间线"。
+工具调用、检查结果、门禁推进。把"一次完成"还原成"一条可回溯的时间线"。
 
 数据源：DataDir/checklog*.jsonl（检查事件，含已归档）+ DataDir/toollog.jsonl（工具调用）。
 	DataDir：git 项目 ~/.forge/projects/<key>/，非 git 项目 <root>/.forge/。
@@ -134,7 +134,7 @@ func runTrace(cmd *cobra.Command, args []string) error {
 	}
 
 	// 证据链分桶：把本任务检查按 deterministic（hook/gate 实跑，不可伪造）vs
-	// agent-claim（agent 自述）汇总。review/评分据此对冲 LLM-judge 看不出「agent
+	// agent-claim（agent 自述）汇总。review 据此对冲 LLM-judge 看不出「agent
 	// 跳过前置就声明完成」的盲区——deterministic 占比是「完成声明可信度」的硬信号。
 	if len(checks) > 0 {
 		fmt.Printf("\n  证据链: %d 条 — deterministic=%d（hook/gate 实跑） agent-claim=%d（agent 自述）\n",

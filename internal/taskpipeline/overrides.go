@@ -42,16 +42,6 @@ func escapeDisabled(state *TaskState, which, envVar string) bool {
 	return os.Getenv(envVar) == "disable"
 }
 
-// usedAnyOverride 报告是否有任一 per-task 逃生舱被设为 "disable"。ScoreTask 用它
-// 作封顶的两个逃生信号之一：设了 override 但没走到 bypass 分支的任务 checklog
-// 无条目，但逃生意图已留痕，必须付同样代价。互补信号是
-// taskEscapeHatchRecorded——覆盖不动 state.Overrides 的 env 形式逃生。
-func usedAnyOverride(o TaskOverrides) bool {
-	return o.WorkActivity == "disable" || o.TestCoverage == "disable" ||
-		o.AcceptanceGate == "disable" || o.SkillDecisions == "disable" ||
-		o.DocGate == "disable" || o.ArtifactChain == "disable"
-}
-
 // taskEscapeHatchRecorded 报告任务的 checklog 是否含任一 CheckEscapeHatch 条目。
 // 这是 env 形式逃生（FORGE_TEST_COVERAGE=disable 等）的封顶信号：它们经
 // escapeDisabled 绕过、不动 state.Overrides，但每个 bypass 分支都会记录逃生舱条目。

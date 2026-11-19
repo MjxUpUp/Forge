@@ -13,12 +13,11 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/act"
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // pulseServer 挂完整 middleware 栈（Host 校验 + 安全头 + mux），与 Serve 一致，
@@ -46,10 +45,9 @@ func pulseGet(t *testing.T, url string) (int, []byte) {
 
 // pulseTaskPayload 是 task.json 测试家族的共用解码目标（2026-08-30 瘦身合并原
 // 6 个内联 payload struct）：任一 task.json 断言读取字段的并集——缺席的 JSON
-// 字段解码为零值，各测试只看到自己那一片契约。taskRef/project/state/score/
-// acceptance（TestServe_PulseTask）、dimensions/cappedReason/evidence
-// （ScoredTask）、events/truncated（Truncated）、结论回填证据指针
-// （EvidenceBackfill / NoFabrication）、state.lease/docReview（LeaseAndDocReview）。
+// 字段解码为零值，各测试只看到自己那一片契约。taskRef/project/state/facts/
+// acceptance（TestServe_PulseTask）、state.lease/docReview（LeaseAndDocReview）、
+// events/truncated（Truncated）。
 type pulseTaskPayload struct {
 	TaskRef   string      `json:"taskRef"`
 	Project   string      `json:"project"`
@@ -72,24 +70,21 @@ type pulseTaskPayload struct {
 			TTLSec     int64     `json:"ttlSec"`
 		} `json:"lease"`
 	} `json:"state"`
-	Score *struct {
-		Overall        float64 `json:"overall"`
-		Grade          string  `json:"grade"`
-		FromConclusion bool    `json:"fromConclusion"`
-		CappedReason   string  `json:"cappedReason"`
-		Dimensions     []struct {
-			Name   string  `json:"name"`
-			Weight float64 `json:"weight"`
-			Score  int     `json:"score"`
-			Detail string  `json:"detail"`
-		} `json:"dimensions"`
-		Evidence *struct {
+	Facts *struct {
+		Criteria       int  `json:"criteria"`
+		CriteriaPassed int  `json:"criteriaPassed"`
+		RedFirstTrials int  `json:"redFirstTrials"`
+		RedFirstClosed int  `json:"redFirstClosed"`
+		ReviewRounds   int  `json:"reviewRounds"`
+		Escapes        int  `json:"escapes"`
+		FromConclusion bool `json:"fromConclusion"`
+		Evidence       *struct {
 			Deterministic int     `json:"deterministic"`
 			AgentClaim    int     `json:"agentClaim"`
 			Ratio         float64 `json:"ratio"`
 			Strength      string  `json:"strength"`
 		} `json:"evidence"`
-	} `json:"score"`
+	} `json:"facts"`
 	Acceptance struct {
 		Pass  int `json:"pass"`
 		Total int `json:"total"`
@@ -161,7 +156,7 @@ func TestServe_PulseFeed(t *testing.T) {
 	}
 }
 
-// TestServe_PulseTask：/api/pulse/task.json 返回任务状态 + 其事件 + 评分；
+// TestServe_PulseTask：/api/pulse/task.json 返回任务状态 + 其事件 + 完成事实；
 // SessionID 绝不泄露进 JSON body。
 func TestServe_PulseTask(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
@@ -175,15 +170,15 @@ func TestServe_PulseTask(t *testing.T) {
 		History: []taskpipeline.TaskGateResult{
 			{Gate: "task-implement", Passed: true, CompletedAt: base.Add(time.Hour), HeadCommit: "abc1234567890"},
 		},
-		Score: nil,
 	}
 	if err := taskpipeline.SaveTaskState(root, st); err != nil {
 		t.Fatal(err)
 	}
 	if err := act.Append(p, &act.Conclusion{
 		TaskRef: "feat/x", SessionID: "secret-session-xyz",
-		Score: 85, Grade: "B", Strength: "Strong",
+		Strength: "Strong", Ratio: 0.8,
 		Deterministic: 4, AgentClaim: 1, AcceptancePass: 2, AcceptanceTotal: 2,
+		RedFirstTrials: 2, RedFirstClosed: 1, ReviewRounds: 1,
 		CompletedAt: base.Add(2 * time.Hour),
 	}); err != nil {
 		t.Fatal(err)
@@ -221,40 +216,43 @@ func TestServe_PulseTask(t *testing.T) {
 	if payload.Acceptance.Pass != 2 || payload.Acceptance.Total != 2 {
 		t.Errorf("acceptance = %+v, want 2/2（来自 act 结论）", payload.Acceptance)
 	}
-	// state.Score 为 nil 的存量任务：评分块须从结论回填（否则详情页与自己的
-	// conclusion 事件自相矛盾——流里显示 B 85 分，评分块却显示"未评分"）。
-	if payload.Score == nil || payload.Score.Overall != 85 || payload.Score.Grade != "B" || !payload.Score.FromConclusion {
-		t.Errorf("score 结论回填异常: %+v", payload.Score)
+	// 完成事实从结论投影：判据/红先绿/评审来自事实清单，det/claim 证据块来自结论
+	// 自身——否则详情页与本任务自己的 conclusion 事件自相矛盾。
+	if payload.Facts == nil || !payload.Facts.FromConclusion {
+		t.Fatalf("facts 结论投影异常: %+v", payload.Facts)
+	}
+	f := payload.Facts
+	if f.Criteria != 2 || f.CriteriaPassed != 2 || f.RedFirstTrials != 2 || f.RedFirstClosed != 1 || f.ReviewRounds != 1 {
+		t.Errorf("facts 事实异常: %+v", f)
+	}
+	if f.Evidence == nil || f.Evidence.Deterministic != 4 || f.Evidence.AgentClaim != 1 ||
+		f.Evidence.Ratio != 0.8 || f.Evidence.Strength != "Strong" {
+		t.Errorf("facts 证据块异常: %+v", f.Evidence)
 	}
 }
 
-// TestServe_PulseTask_ScoredTask：带 TaskState.Score 的任务输出 score 块，含维度
-// （name/weight/score/detail）与 evidence。
-func TestServe_PulseTask_ScoredTask(t *testing.T) {
+// TestServe_PulseTask_FactsFromState：TaskState.Evidence 有值且无 act 结论时，facts
+// 直接来自任务状态的事实清单（FromConclusion=false，证据块缺席——状态只存事实，
+// det/claim 只有结论携带）。
+func TestServe_PulseTask_FactsFromState(t *testing.T) {
 	root, _ := forgedatatest.RealProject(t)
 	base := time.Unix(1700000000, 0).UTC()
 	st := &taskpipeline.TaskState{
-		TaskRef: "feat/scored", Branch: "feat/scored", StartedAt: base,
+		TaskRef: "feat/facts", Branch: "feat/facts", StartedAt: base,
+		Evidence: &tasktypes.TaskEvidence{
+			Criteria: 3, CriteriaPassed: 2, RedFirstTrials: 2, RedFirstClosed: 1,
+			ReviewRounds: 3, Escapes: 1,
+		},
 	}
 	for _, g := range taskpipeline.DefaultGates() {
 		st.History = append(st.History, taskpipeline.TaskGateResult{Gate: g.ID, Passed: true, CompletedAt: base.Add(time.Hour)})
-	}
-	// 直接构造 ScoreResult（ScoreTask 要走完整评分管线，fixture 直填更稳）。
-	st.Score = &scoringtypes.ScoreResult{
-		TaskRef: "feat/scored", Overall: 90, Grade: "A", ScoredAt: base,
-		Dimensions: []scoringtypes.DimensionScore{
-			{Dimension: scoringtypes.DimensionProcess, Score: 95, Detail: "门禁全过"},
-			{Dimension: scoringtypes.DimensionTesting, Score: 85, Detail: "测试齐备"},
-		},
-		Evidence:     &scoringtypes.EvidenceSummary{Deterministic: 3, AgentClaim: 1, Total: 4, Ratio: 0.75},
-		CappedReason: "escape-hatch",
 	}
 	if err := taskpipeline.SaveTaskState(root, st); err != nil {
 		t.Fatal(err)
 	}
 	srv := pulseServer(t, Options{Root: root})
 
-	code, body := pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/scored")
+	code, body := pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/facts")
 	if code != 200 {
 		t.Fatalf("status = %d: %s", code, body)
 	}
@@ -262,22 +260,19 @@ func TestServe_PulseTask_ScoredTask(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
-	if payload.Score == nil {
-		t.Fatal("带评分的任务 score 不得为 null")
+	if payload.Facts == nil {
+		t.Fatal("带证据清单的任务 facts 不得为 null")
 	}
-	if payload.Score.Overall != 90 || payload.Score.Grade != "A" {
-		t.Errorf("score overall/grade 异常: %+v", payload.Score)
+	f := payload.Facts
+	if f.FromConclusion {
+		t.Error("fromConclusion 须为 false——事实来自任务状态，不是 act 结论")
 	}
-	// 权重来自 scoringtypes.DefaultWeights()（pulse API 按维度名重新推导），
-	// 断言用同一真相源——写死 0.25 在新增 expression 维度（权重重平衡）时断裂。
-	if len(payload.Score.Dimensions) != 2 || payload.Score.Dimensions[0].Name != "process" || payload.Score.Dimensions[0].Weight != scoringtypes.DefaultWeights()[string(scoringtypes.DimensionProcess)] {
-		t.Errorf("dimensions 异常: %+v", payload.Score.Dimensions)
+	if f.Criteria != 3 || f.CriteriaPassed != 2 || f.RedFirstTrials != 2 || f.RedFirstClosed != 1 ||
+		f.ReviewRounds != 3 || f.Escapes != 1 {
+		t.Errorf("facts 异常: %+v", f)
 	}
-	if payload.Score.Evidence.Deterministic != 3 || payload.Score.Evidence.AgentClaim != 1 {
-		t.Errorf("evidence 异常: %+v", payload.Score.Evidence)
-	}
-	if payload.Score.CappedReason != "escape-hatch" {
-		t.Errorf("cappedReason = %q, want escape-hatch", payload.Score.CappedReason)
+	if f.Evidence != nil {
+		t.Errorf("证据块须缺席（状态只有事实，无 det/claim），实际: %+v", f.Evidence)
 	}
 }
 
@@ -359,45 +354,30 @@ func TestServe_PulseTask_Truncated(t *testing.T) {
 	}
 }
 
-// TestServe_PulseTask_EvidenceBackfill: a scored task whose ScoreResult.Evidence is nil
-// (buildEvidenceSummary returns nil when det+claim=0 — legitimate for tasks scored
-// before evidence collection) still gets the evidence block backfilled from its act
-// conclusion; otherwise the detail page shows no 证据链 while its own conclusion event
-// in the transcript below carries det/claim counts — self-contradiction, the same bug
-// class the FromConclusion score backfill fixed. FromConclusion must stay false: the
-// score itself is real, only the evidence block is degraded.
-//
-// TestServe_PulseTask_EvidenceBackfill：ScoreResult.Evidence 为 nil 的已评分任务
-// （det+claim=0 时 buildEvidenceSummary 合法地返回 nil——证据采集上线前评分的存量
-// 任务）仍须从 act 结论回填证据块；否则详情页评分块无证据链，而下方 transcript 里
-// 自己的 conclusion 事件却带着 det/claim 计数——自相矛盾，与 FromConclusion 评分
-// 回填修的是同一类 bug。FromConclusion 须保持 false：评分本身是真的，仅证据块降级。
-func TestServe_PulseTask_EvidenceBackfill(t *testing.T) {
+// TestServe_PulseTask_ConclusionFactsPreferred：任务状态自带证据清单、同时又有 act
+// 结论时，facts 以结论为准（FromConclusion=true）——结论是完成时刻冻结的事实，
+// 状态里的清单在 complete 之后可能被重算改写。
+func TestServe_PulseTask_ConclusionFactsPreferred(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 	base := time.Unix(1700000000, 0).UTC()
 	st := &taskpipeline.TaskState{
-		TaskRef: "feat/noevi", Branch: "feat/noevi", StartedAt: base,
-		Score: &scoringtypes.ScoreResult{
-			TaskRef: "feat/noevi", Overall: 72, Grade: "C", ScoredAt: base,
-			Dimensions: []scoringtypes.DimensionScore{
-				{Dimension: scoringtypes.DimensionProcess, Score: 70, Detail: "部分门禁"},
-			},
-			Evidence: nil, // 评分时无证据输入——合法 nil
-		},
+		TaskRef: "feat/both", Branch: "feat/both", StartedAt: base,
+		Evidence: &tasktypes.TaskEvidence{Criteria: 9, CriteriaPassed: 9, ReviewRounds: 7},
 	}
 	if err := taskpipeline.SaveTaskState(root, st); err != nil {
 		t.Fatal(err)
 	}
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/noevi", Score: 72, Grade: "C", Strength: "Weak",
-		Deterministic: 5, AgentClaim: 3, Ratio: 0.625,
+		TaskRef: "feat/both", Strength: "Weak", Ratio: 0.625,
+		Deterministic: 5, AgentClaim: 3,
+		AcceptancePass: 1, AcceptanceTotal: 2, ReviewRounds: 1,
 		CompletedAt: base.Add(time.Hour),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	srv := pulseServer(t, Options{Root: root})
 
-	code, body := pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/noevi")
+	code, body := pulseGet(t, srv.URL+"/api/pulse/task.json?ref=feat/both")
 	if code != 200 {
 		t.Fatalf("status = %d: %s", code, body)
 	}
@@ -405,53 +385,31 @@ func TestServe_PulseTask_EvidenceBackfill(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
-	if payload.Score == nil {
-		t.Fatal("score 不得为 null")
+	if payload.Facts == nil || !payload.Facts.FromConclusion {
+		t.Fatalf("facts 应来自结论: %+v", payload.Facts)
 	}
-	if payload.Score.FromConclusion {
-		t.Error("fromConclusion 须为 false——评分真实存在，仅证据块回填")
+	if payload.Facts.Criteria != 2 || payload.Facts.CriteriaPassed != 1 || payload.Facts.ReviewRounds != 1 {
+		t.Errorf("facts 须取结论而非状态清单: %+v", payload.Facts)
 	}
-	if payload.Score.Evidence == nil {
-		t.Fatal("evidence 须从结论回填，不得为 null（详情页否则自相矛盾）")
-	}
-	ev := payload.Score.Evidence
-	if ev.Deterministic != 5 || ev.AgentClaim != 3 || ev.Strength != "Weak" || ev.Ratio != 0.625 {
-		t.Errorf("回填 evidence 异常: %+v", ev)
+	ev := payload.Facts.Evidence
+	if ev == nil || ev.Deterministic != 5 || ev.AgentClaim != 3 || ev.Strength != "Weak" || ev.Ratio != 0.625 {
+		t.Errorf("结论证据块异常: %+v", ev)
 	}
 }
 
-// TestServe_PulseTask_NoEvidenceNoFabrication: the anti-fabrication guard — a scored
-// task whose conclusion carries zero evidence (det=0, claim=0, Strength="NoData"; the
-// only shape BuildConclusion emits for zero evidence — Strength is never empty in
-// production) must NOT get a fabricated all-zero evidence block: score.evidence stays
-// null and the frontend shows「无证据记录」honestly. Regression guard for the former
-// always-true `Strength != ""` disjunct that made this skip path unreachable in
-// production, and against "simplifying" the backfill into an unconditional one.
-//
-// TestServe_PulseTask_NoEvidenceNoFabrication：反编造守卫——结论零证据（det=0、
-// claim=0、Strength="NoData"；BuildConclusion 对零证据的唯一生产形态——生产里
-// Strength 永非空）的已评分任务不得被编造全零证据块：score.evidence 保持 null，
-// 前端如实显示「无证据记录」。回归守卫：曾有的 `Strength != ""` 恒真析取项让本
-// skip 路径生产不可达；也防回填分支被「简化」成无条件回填。
+// TestServe_PulseTask_NoEvidenceNoFabrication：结论零证据（det=0、claim=0、
+// Strength="NoData"）时 facts.evidence 须保持 null，不得编造全零证据块——前端
+// 如实显示「无证据记录」。回归守卫：防回填分支被「简化」成无条件构造证据块。
 func TestServe_PulseTask_NoEvidenceNoFabrication(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 	base := time.Unix(1700000000, 0).UTC()
-	st := &taskpipeline.TaskState{
-		TaskRef: "feat/noevi-guard", Branch: "feat/noevi-guard", StartedAt: base,
-		Score: &scoringtypes.ScoreResult{
-			TaskRef: "feat/noevi-guard", Overall: 72, Grade: "C", ScoredAt: base,
-			Dimensions: []scoringtypes.DimensionScore{
-				{Dimension: scoringtypes.DimensionProcess, Score: 70, Detail: "部分门禁"},
-			},
-			Evidence: nil, // 评分时无证据输入——合法 nil
-		},
-	}
+	st := &taskpipeline.TaskState{TaskRef: "feat/noevi-guard", Branch: "feat/noevi-guard", StartedAt: base}
 	if err := taskpipeline.SaveTaskState(root, st); err != nil {
 		t.Fatal(err)
 	}
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/noevi-guard", Score: 72, Grade: "C", Strength: "NoData",
-		Deterministic: 0, AgentClaim: 0, Ratio: 0,
+		TaskRef: "feat/noevi-guard", Strength: "NoData",
+		Deterministic: 0, AgentClaim: 0, Ratio: 0, AcceptancePass: 1, AcceptanceTotal: 1,
 		CompletedAt: base.Add(time.Hour),
 	}); err != nil {
 		t.Fatal(err)
@@ -466,14 +424,11 @@ func TestServe_PulseTask_NoEvidenceNoFabrication(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
 	}
-	if payload.Score == nil {
-		t.Fatal("score 不得为 null——评分真实存在")
+	if payload.Facts == nil || !payload.Facts.FromConclusion {
+		t.Fatalf("facts 应来自结论: %+v", payload.Facts)
 	}
-	if payload.Score.Evidence != nil {
-		t.Errorf("evidence 须保持 null（零证据结论不得回填编造的全零块），实际: %+v", payload.Score.Evidence)
-	}
-	if payload.Score.FromConclusion {
-		t.Error("fromConclusion 须为 false——评分真实存在，不走结论降级回填")
+	if payload.Facts.Evidence != nil {
+		t.Errorf("evidence 须保持 null（零证据结论不得编造全零块），实际: %+v", payload.Facts.Evidence)
 	}
 }
 
@@ -493,7 +448,7 @@ func TestServe_PulseTask_Errors(t *testing.T) {
 }
 
 // TestServe_PulseProjects：/api/pulse/projects.json 列出每个项目的活跃/僵尸计数与
-// 最近结论的 grade/score。
+// 最近结论的完成事实（判据、证据强度、完成时间）。
 func TestServe_PulseProjects(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 	now := time.Now()
@@ -513,7 +468,7 @@ func TestServe_PulseProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/done", Score: 88, Grade: "B", Strength: "Strong", CompletedAt: now,
+		TaskRef: "feat/done", AcceptancePass: 2, AcceptanceTotal: 3, Strength: "Strong", CompletedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -524,12 +479,16 @@ func TestServe_PulseProjects(t *testing.T) {
 		t.Fatalf("status = %d: %s", code, body)
 	}
 	var rows []struct {
-		Key         string   `json:"key"`
-		Name        string   `json:"name"`
-		ActiveTasks int      `json:"activeTasks"`
-		Zombies     int      `json:"zombies"`
-		LastGrade   string   `json:"lastGrade"`
-		LastScore   *float64 `json:"lastScore"`
+		Key            string `json:"key"`
+		Name           string `json:"name"`
+		ActiveTasks    int    `json:"activeTasks"`
+		Zombies        int    `json:"zombies"`
+		LastConclusion *struct {
+			Criteria       int       `json:"criteria"`
+			CriteriaPassed int       `json:"criteriaPassed"`
+			Strength       string    `json:"strength"`
+			At             time.Time `json:"at"`
+		} `json:"lastConclusion"`
 	}
 	if err := json.Unmarshal(body, &rows); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
@@ -544,28 +503,32 @@ func TestServe_PulseProjects(t *testing.T) {
 	if r0.ActiveTasks != 2 || r0.Zombies != 1 {
 		t.Errorf("activeTasks/zombies = %d/%d, want 2/1", r0.ActiveTasks, r0.Zombies)
 	}
-	if r0.LastGrade != "B" || r0.LastScore == nil || *r0.LastScore != 88 {
-		t.Errorf("lastGrade/lastScore 异常: %+v", r0)
+	if r0.LastConclusion == nil || r0.LastConclusion.Criteria != 3 || r0.LastConclusion.CriteriaPassed != 2 ||
+		r0.LastConclusion.Strength != "Strong" || !r0.LastConclusion.At.Equal(now) {
+		t.Errorf("lastConclusion 异常: %+v", r0.LastConclusion)
 	}
 }
 
-// TestServe_PulseStats：无数据时数值字段为 null（非 0）；有结论时带真实聚合值。
+// TestServe_PulseStats：无数据时数值字段为 null（非 0）、事实字段整组缺席；有结论时
+// 带真实聚合值（判据/红先绿/评审/逃生与强度分布）。
 func TestServe_PulseStats(t *testing.T) {
-	// 空项目：数值字段 null。
+	// 空项目：数值字段 null，事实字段缺席。
 	rootEmpty, _ := forgedatatest.RealProject(t)
 	srv := pulseServer(t, Options{Root: rootEmpty})
 	code, body := pulseGet(t, srv.URL+"/api/pulse/stats.json")
 	if code != 200 {
 		t.Fatalf("status = %d: %s", code, body)
 	}
-	for _, field := range []string{`"avgScore":null`, `"medianScore":null`, `"evidenceBlindRate":null`} {
-		if !strings.Contains(string(body), field) {
-			t.Errorf("空数据应输出 %s，body=%s", field, body)
-		}
+	if !strings.Contains(string(body), `"evidenceBlindRate":null`) {
+		t.Errorf("空数据应输出 evidenceBlindRate:null，body=%s", body)
 	}
-	// 反编造：无结论时分布形态字段整组缺席（nil 指针/nil map/零值 + omitempty），
-	// 不得出现编造的空分布。
-	for _, field := range []string{`"lowDims"`, `"conclusions"`, `"gradeDist"`, `"strengthDist"`, `"cappedWeak"`} {
+	// 反编造：无结论时事实/分布字段整组缺席（omitempty 零值），不得出现编造的
+	// 空分布或零计数；评分时代字段彻底消失。
+	for _, field := range []string{
+		`"conclusions"`, `"strengthDist"`, `"cappedWeak"`, `"criteria"`, `"criteriaPassed"`,
+		`"redFirstTrials"`, `"redFirstClosed"`, `"reviewRounds"`, `"escapes"`,
+		`"avgScore"`, `"medianScore"`, `"trend"`, `"gradeDist"`, `"lowDims"`,
+	} {
 		if strings.Contains(string(body), field) {
 			t.Errorf("空数据 %s 应缺席，body=%s", field, body)
 		}
@@ -576,28 +539,30 @@ func TestServe_PulseStats(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 	now := time.Now()
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/a", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: now.Add(-2 * time.Hour),
+		TaskRef: "feat/a", Strength: "Strong", CompletedAt: now.Add(-2 * time.Hour),
+		AcceptanceTotal: 3, AcceptancePass: 3, RedFirstTrials: 1, RedFirstClosed: 1, ReviewRounds: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/b", Score: 60, Grade: "D", Strength: "Weak", RetrospectiveNudge: true,
-		CompletedAt: now.Add(-1 * time.Hour),
+		TaskRef: "feat/b", Strength: "Weak", RetrospectiveNudge: true, CompletedAt: now.Add(-1 * time.Hour),
+		AcceptanceTotal: 2, AcceptancePass: 0,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// 窗口外（15 天前）的 nudge：计 alerts 不应计入——钉住窗口在 API 面生效。
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/stale", Score: 60, Grade: "D", Strength: "Weak", RetrospectiveNudge: true,
-		CompletedAt: now.Add(-15 * 24 * time.Hour),
+		TaskRef: "feat/stale", Strength: "Weak", RetrospectiveNudge: true, CompletedAt: now.Add(-15 * 24 * time.Hour),
+		AcceptanceTotal: 1, AcceptancePass: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// 窗口内降档 Weak（ratio 0.75 本该 Strong，det 6 < 豁免沿 20）：计 nudges 拆解、
 	// 不计 alerts——钉住 2026-09 告警分级在 API 面生效（alerts 只数可行动分量）。
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/capped", Score: 89, Grade: "B", Strength: "Weak", Ratio: 0.75,
+		TaskRef: "feat/capped", Strength: "Weak", Ratio: 0.75,
 		Deterministic: 6, AgentClaim: 2, RetrospectiveNudge: true,
+		AcceptanceTotal: 2, AcceptancePass: 2, RedFirstTrials: 1, RedFirstClosed: 1, ReviewRounds: 1, Escapes: 1,
 		CompletedAt: now.Add(-30 * time.Minute),
 	}); err != nil {
 		t.Fatal(err)
@@ -611,37 +576,22 @@ func TestServe_PulseStats(t *testing.T) {
 		Projects          int            `json:"projects"`
 		ActiveTasks       int            `json:"activeTasks"`
 		Zombies           int            `json:"zombies"`
-		AvgScore          *float64       `json:"avgScore"`
-		MedianScore       *float64       `json:"medianScore"`
-		Trend             string         `json:"trend"`
 		Alerts            int            `json:"alerts"`
 		Nudges            int            `json:"nudges"`
 		NudgesActionable  int            `json:"nudgesActionable"`
 		EvidenceBlindRate *float64       `json:"evidenceBlindRate"`
 		Conclusions       int            `json:"conclusions"`
-		GradeDist         map[string]int `json:"gradeDist"`
 		StrengthDist      map[string]int `json:"strengthDist"`
 		CappedWeak        int            `json:"cappedWeak"`
-		LowDims           *struct {
-			Dims []struct {
-				Dimension string      `json:"dimension"`
-				Count     int         `json:"count"`
-				Scores    map[int]int `json:"scores"`
-				Spread    bool        `json:"spread"`
-			} `json:"dims"`
-		} `json:"lowDims"`
+		Criteria          int            `json:"criteria"`
+		CriteriaPassed    int            `json:"criteriaPassed"`
+		RedFirstTrials    int            `json:"redFirstTrials"`
+		RedFirstClosed    int            `json:"redFirstClosed"`
+		ReviewRounds      int            `json:"reviewRounds"`
+		Escapes           int            `json:"escapes"`
 	}
 	if err := json.Unmarshal(body, &stats); err != nil {
 		t.Fatalf("decode: %v\n%s", err, body)
-	}
-	if stats.AvgScore == nil || *stats.AvgScore < 72.24 || *stats.AvgScore > 72.26 {
-		t.Errorf("avgScore = %v, want ≈72.25（(80+60+60+89)/4）", stats.AvgScore)
-	}
-	if stats.MedianScore == nil || *stats.MedianScore != 70 {
-		t.Errorf("medianScore = %v, want 70（排序 [60,60,80,89] 取 (60+80)/2）", stats.MedianScore)
-	}
-	if stats.Trend == "" {
-		t.Error("trend 不得为空串")
 	}
 	if stats.Alerts != 1 { // 窗口内真弱 feat/b 计；capped 降档与 stale 窗外均不计
 		t.Errorf("alerts = %d, want 1", stats.Alerts)
@@ -658,114 +608,23 @@ func TestServe_PulseStats(t *testing.T) {
 	if stats.Conclusions != 4 {
 		t.Errorf("conclusions = %d, want 4", stats.Conclusions)
 	}
-	if stats.GradeDist["B"] != 2 || stats.GradeDist["D"] != 2 || len(stats.GradeDist) != 2 {
-		t.Errorf("gradeDist = %v, want B=2 D=2", stats.GradeDist)
-	}
 	if stats.StrengthDist["Strong"] != 1 || stats.StrengthDist["Weak"] != 3 || len(stats.StrengthDist) != 2 {
 		t.Errorf("strengthDist = %v, want Strong=1 Weak=3", stats.StrengthDist)
 	}
 	if stats.CappedWeak != 1 { // 仅 feat/capped（Weak 带 det 6）是封顶；b/stale 无 det 是盲区
 		t.Errorf("cappedWeak = %d, want 1", stats.CappedWeak)
 	}
-	// 有结论但夹具未设 LowDimensions → lowDims 出现且 dims 为空（「健康」空态，
-	// 区别于无结论时的字段缺席——前端分别渲染「无」与「—」）。
-	if stats.LowDims == nil || len(stats.LowDims.Dims) != 0 {
-		t.Errorf("lowDims = %+v, want 非nil 且 dims 空", stats.LowDims)
+	if stats.Criteria != 8 || stats.CriteriaPassed != 6 {
+		t.Errorf("criteria = %d/%d, want 6/8（3+2+1+2 通过 3+0+1+2）", stats.CriteriaPassed, stats.Criteria)
 	}
-}
-
-// TestServe_PulseStats_LowDims：复发低分维度投影——直方图来自全档 DimScores（含
-// 非低分档），spread 由服务端 SpreadAcrossBuckets 判定。跨全档＝量纲/粒度信号，
-// 集中低档＝纪律缺口（docs/plans/low-dim-recurrence-2026-09.md）。
-func TestServe_PulseStats_LowDims(t *testing.T) {
-	decode := func(t *testing.T, body []byte) struct {
-		Dimension string      `json:"dimension"`
-		Count     int         `json:"count"`
-		Scores    map[int]int `json:"scores"`
-		Spread    bool        `json:"spread"`
-	} {
-		t.Helper()
-		var stats struct {
-			LowDims *struct {
-				Dims []struct {
-					Dimension string      `json:"dimension"`
-					Count     int         `json:"count"`
-					Scores    map[int]int `json:"scores"`
-					Spread    bool        `json:"spread"`
-				} `json:"dims"`
-			} `json:"lowDims"`
-		}
-		if err := json.Unmarshal(body, &stats); err != nil {
-			t.Fatalf("decode: %v\n%s", err, body)
-		}
-		if stats.LowDims == nil || len(stats.LowDims.Dims) != 1 {
-			t.Fatalf("lowDims 应恰含 1 个维度，got %+v\n%s", stats.LowDims, body)
-		}
-		return stats.LowDims.Dims[0]
+	if stats.RedFirstTrials != 2 || stats.RedFirstClosed != 2 {
+		t.Errorf("redFirst = %d/%d 已转绿, want 2/2", stats.RedFirstClosed, stats.RedFirstTrials)
 	}
-
-	appendConc := func(t *testing.T, p *forgedata.Project, lowDim string, scores ...float64) {
-		t.Helper()
-		c := &act.Conclusion{TaskRef: "feat/x", Score: 60, Grade: "D", Strength: "Weak", CompletedAt: time.Now().Add(-time.Hour)}
-		for _, sc := range scores {
-			c.DimScores = append(c.DimScores, act.DimScore{Dimension: lowDim, Score: sc})
-			if sc < 70 {
-				c.LowDimensions = append(c.LowDimensions, lowDim)
-			}
-		}
-		if err := act.Append(p, c); err != nil {
-			t.Fatal(err)
-		}
+	if stats.ReviewRounds != 3 {
+		t.Errorf("reviewRounds = %d, want 3（a 2 + capped 1）", stats.ReviewRounds)
 	}
-
-	// 跨全档：scope 低分 40×2，另有任务 scope=95——直方图触 ≥80 档 → spread=true。
-	rootSpread, pSpread := forgedatatest.RealProject(t)
-	appendConc(t, pSpread, "scope", 40)
-	appendConc(t, pSpread, "scope", 40)
-	appendConc(t, pSpread, "scope", 95) // 高分任务：不进 LowDimensions，但进直方图
-	srv := pulseServer(t, Options{Root: rootSpread})
-	_, body := pulseGet(t, srv.URL+"/api/pulse/stats.json")
-	dim := decode(t, body)
-	if dim.Dimension != "scope" || dim.Count != 2 {
-		t.Errorf("dimension/count = %s/%d, want scope/2（Count 数低分任务，直方图数全部）", dim.Dimension, dim.Count)
-	}
-	if dim.Scores[40] != 2 || dim.Scores[95] != 1 {
-		t.Errorf("scores = %v, want 40×2 95×1（全档直方图，含非低分档）", dim.Scores)
-	}
-	if !dim.Spread {
-		t.Errorf("spread = false, want true（直方图触 95 ≥80 档——量纲/粒度信号）")
-	}
-
-	// 集中低档：testing 只有 45/50 → spread=false。
-	rootLow, pLow := forgedatatest.RealProject(t)
-	appendConc(t, pLow, "testing", 45)
-	appendConc(t, pLow, "testing", 50)
-	srv2 := pulseServer(t, Options{Root: rootLow})
-	_, body2 := pulseGet(t, srv2.URL+"/api/pulse/stats.json")
-	dim2 := decode(t, body2)
-	if dim2.Dimension != "testing" || dim2.Count != 2 {
-		t.Errorf("dimension/count = %s/%d, want testing/2", dim2.Dimension, dim2.Count)
-	}
-	if dim2.Spread {
-		t.Errorf("spread = true, want false（无 ≥80 档——集中低档纪律缺口）")
-	}
-
-	// 存量结论（无 DimScores）：scores 缺席（退回纯 ×N），spread=false 维持存量语义。
-	rootLegacy, pLegacy := forgedatatest.RealProject(t)
-	if err := act.Append(pLegacy, &act.Conclusion{
-		TaskRef: "feat/legacy", Score: 60, Grade: "D", Strength: "Weak",
-		LowDimensions: []string{"scope"}, CompletedAt: time.Now().Add(-time.Hour),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	srv3 := pulseServer(t, Options{Root: rootLegacy})
-	_, body3 := pulseGet(t, srv3.URL+"/api/pulse/stats.json")
-	if strings.Contains(string(body3), `"scores"`) {
-		t.Errorf("存量结论无 DimScores 时 scores 应缺席，body=%s", body3)
-	}
-	dim3 := decode(t, body3)
-	if dim3.Dimension != "scope" || dim3.Count != 1 || dim3.Spread {
-		t.Errorf("legacy dim = %+v, want scope/1/spread=false（无分布证据不判量纲信号）", dim3)
+	if stats.Escapes != 1 {
+		t.Errorf("escapes = %d, want 1", stats.Escapes)
 	}
 }
 
@@ -946,7 +805,7 @@ func TestServe_PulsePage(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("status = %d: %s", resp.StatusCode, body)
 	}
-	for _, marker := range []string{`Forge <span class="accent">Pulse</span>`, `/api/pulse/feed.json`, `data-theme`, `SKILL_FOLD_MIN`, `skill-fold`, `复发维度`} {
+	for _, marker := range []string{`Forge <span class="accent">Pulse</span>`, `/api/pulse/feed.json`, `data-theme`, `SKILL_FOLD_MIN`, `skill-fold`, `判据通过`, `证据盲区`} {
 		if !strings.Contains(string(body), marker) {
 			t.Errorf("页面缺关键标记 %q", marker)
 		}
@@ -1181,21 +1040,21 @@ func TestServe_PulseStats_AckedNudgeExcluded(t *testing.T) {
 	now := time.Now()
 	// 真弱（ratio 0.44）+ 已回顾 → 退出告警。
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/acked", SessionID: "s1", Score: 86, Grade: "B", Strength: "Weak",
+		TaskRef: "feat/acked", SessionID: "s1", Strength: "Weak",
 		Ratio: 0.44, RetrospectiveNudge: true, CompletedAt: now.Add(-2 * time.Hour),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// 真弱 + 未回顾 → 留在告警。
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/pending", SessionID: "s2", Score: 86, Grade: "B", Strength: "Weak",
+		TaskRef: "feat/pending", SessionID: "s2", Strength: "Weak",
 		Ratio: 0.33, RetrospectiveNudge: true, CompletedAt: now.Add(-1 * time.Hour),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// 同 ref 不同 session（重做）+ 未回顾 → 不被旧 ack 误伤，留在告警。
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/acked", SessionID: "s3", Score: 86, Grade: "B", Strength: "Weak",
+		TaskRef: "feat/acked", SessionID: "s3", Strength: "Weak",
 		Ratio: 0.40, RetrospectiveNudge: true, CompletedAt: now.Add(-30 * time.Minute),
 	}); err != nil {
 		t.Fatal(err)

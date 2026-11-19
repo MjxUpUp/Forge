@@ -60,8 +60,9 @@ func feedFixture(t *testing.T) (root string, dataDir string, base time.Time) {
 		RecordedAt: base.Add(3 * time.Hour),
 	}})
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/x", Score: 92, Grade: "A", Strength: "Strong",
+		TaskRef: "feat/x", Strength: "Strong",
 		Deterministic: 5, AgentClaim: 1, AcceptancePass: 2, AcceptanceTotal: 3,
+		RedFirstTrials: 2, RedFirstClosed: 1, ReviewRounds: 1,
 		CompletedAt: base.Add(4 * time.Hour),
 	}); err != nil {
 		t.Fatal(err)
@@ -112,7 +113,7 @@ func TestAggregateFeed_MergeSortsDesc(t *testing.T) {
 }
 
 // TestAggregateFeed_EventFields 钉住前端消费的 per-kind 字段契约：gate 带
-// gate/passed/commit（+retry detail），conclusion 带 grade（分数内联标题）+ 证据
+// gate/passed/commit（+retry detail），conclusion 带事实（判据/评审/逃生内联标题）+ 证据
 // detail，task-start 标题带 origin tool 与 gate 进度。
 func TestAggregateFeed_EventFields(t *testing.T) {
 	root, _, base := feedFixture(t)
@@ -166,11 +167,13 @@ func TestAggregateFeed_EventFields(t *testing.T) {
 	}
 
 	con := find("conclusion", nil)
-	if con.Grade != "A" || con.Severity != "ok" || !strings.Contains(con.Title, "92 分") {
-		t.Errorf("conclusion 事件异常（分数内联在 Title）: %+v", con)
+	if con.Severity != "ok" || !strings.Contains(con.Title, "feat/x") ||
+		!strings.Contains(con.Title, "判据 2/3") || !strings.Contains(con.Title, "证据 Strong") {
+		t.Errorf("conclusion 事件异常（判据/强度内联在 Title）: %+v", con)
 	}
-	if !strings.Contains(con.Detail, "Strong") || !strings.Contains(con.Detail, "2/3") {
-		t.Errorf("conclusion Detail 应带证据强度与验收 x/y: %q", con.Detail)
+	if !strings.Contains(con.Detail, "红先绿 1/2") || !strings.Contains(con.Detail, "评审 1 轮") ||
+		!strings.Contains(con.Detail, "det=5") || !strings.Contains(con.Detail, "claim=1") {
+		t.Errorf("conclusion Detail 应带红先绿/评审/逃生与 det/claim: %q", con.Detail)
 	}
 }
 
@@ -285,20 +288,27 @@ func TestAggregateFeed_ZombieSeverity(t *testing.T) {
 	}
 }
 
-// TestAggregateFeed_ConclusionSeverityMap 钉住 grade→severity 映射：
-// A/B→ok、C→info、D→warn、F→fail。
-func TestAggregateFeed_ConclusionSeverityMap(t *testing.T) {
+// TestAggregateFeed_ConclusionSeverityByEvidence 钉住证据强度→severity 映射：
+// Unverified→fail（压过 nudge）、RetrospectiveNudge→warn、其余→ok。2.3 起没有
+// severity 只读事实。
+func TestAggregateFeed_ConclusionSeverityByEvidence(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 	base := time.Unix(1700000000, 0).UTC()
-	grades := []struct {
-		grade string
-		want  string
+	cases := []struct {
+		ref      string
+		strength string
+		nudge    bool
+		want     string
 	}{
-		{"A", "ok"}, {"B", "ok"}, {"C", "info"}, {"D", "warn"}, {"F", "fail"},
+		{"feat/strong", "Strong", false, "ok"},
+		{"feat/weak", "Weak", false, "ok"},
+		{"feat/nudge", "Weak", true, "warn"},
+		{"feat/unverified", "Unverified", false, "fail"},
+		{"feat/unverified-nudge", "Unverified", true, "fail"},
 	}
-	for i, g := range grades {
+	for i, c := range cases {
 		if err := act.Append(p, &act.Conclusion{
-			TaskRef: "feat/" + g.grade, Grade: g.grade, Score: 50, Strength: "Strong",
+			TaskRef: c.ref, Strength: c.strength, RetrospectiveNudge: c.nudge,
 			CompletedAt: base.Add(time.Duration(i) * time.Hour),
 		}); err != nil {
 			t.Fatal(err)
@@ -311,12 +321,12 @@ func TestAggregateFeed_ConclusionSeverityMap(t *testing.T) {
 	got := map[string]string{}
 	for _, e := range events.Events {
 		if e.Kind == "conclusion" {
-			got[e.Grade] = e.Severity
+			got[e.TaskRef] = e.Severity
 		}
 	}
-	for _, g := range grades {
-		if got[g.grade] != g.want {
-			t.Errorf("grade %s severity = %q, want %q", g.grade, got[g.grade], g.want)
+	for _, c := range cases {
+		if got[c.ref] != c.want {
+			t.Errorf("%s（%s nudge=%v）severity = %q, want %q", c.ref, c.strength, c.nudge, got[c.ref], c.want)
 		}
 	}
 }
@@ -380,7 +390,7 @@ func TestAggregateFeed_Limit(t *testing.T) {
 	base := time.Unix(1700000000, 0).UTC()
 	for i := 0; i < 5; i++ {
 		if err := act.Append(p, &act.Conclusion{
-			TaskRef: "feat/c" + string(rune('a'+i)), Grade: "B", Score: 80, Strength: "Strong",
+			TaskRef: "feat/c" + string(rune('a'+i)), Strength: "Strong",
 			CompletedAt: base.Add(time.Duration(i) * time.Hour),
 		}); err != nil {
 			t.Fatal(err)

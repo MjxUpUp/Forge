@@ -62,7 +62,7 @@ func init() {
 	taskStartCmd.Flags().StringArray("scope", nil, `计划改动文件白名单（可重复 --scope）：精确路径 internal/cli/task.go / glob internal/cli/*.go / 目录前缀 internal/cli。开工前声明，advisory 检测 scope-drift；中途可用 forge task scope add 追加`)
 	// 接续真相源 flags（continuity）：把 goal/plan/发起工具随 task start 持久化进 TaskState，
 	// 供 forge task resume 跨会话/跨工具拉回。复用 --scope/--accept 的「start 持久化」模式。
-	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 2 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 不评分）| task（小修标记：不绑 change，仍走两道门禁）")
+	taskStartCmd.Flags().String("kind", "", "任务类型：code（默认，走 2 道门禁）| generic（不走门禁，调研/设计/纯接续任务，complete 只记事实）| task（小修标记：不绑 change，仍走两道门禁）")
 	taskStartCmd.Flags().String("goal", "", "目标叙述（为什么做，可多行；比 title 一行标题更丰富，持久化供 resume 拉回）")
 	taskStartCmd.Flags().String("change", "", "关联 change id：读 spec/changes/<id>/goal.md 作为 goal 契约（五段式，钉内容哈希，implement 门禁校验）")
 	taskStartCmd.Flags().String("goal-file", "", "goal 契约文件（仓库内路径，五段式：Objective/Why/Constraints/Out of Scope/Check；与 --change 互斥）")
@@ -101,7 +101,7 @@ func init() {
 	taskAbortCmd.Flags().Bool(`detach-deps`, false, `从依赖此任务的 task 的 DependsOn 移除该边（解除依赖，保留依赖方任务）`)
 	taskScoreCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskScoreCmd.Flags().Bool("json", false, "JSON 格式输出")
-	taskScoreCmd.Flags().Bool("history", false, "显示所有已完成任务的评分历史")
+	taskScoreCmd.Flags().Bool("history", false, "显示所有已完成任务的事实清单历史")
 	taskListCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskListCmd.Flags().Bool("timeline", false, "按会话时间线显示所有任务")
 	taskListCmd.Flags().Bool("open", false, "只列未完成任务（带标题/门禁进度/下一步/阻塞/派活状态/最后活动），供用户挑选要接续哪个；可配 --workspace / --all-projects")
@@ -181,19 +181,19 @@ var taskVerifyAcceptanceCmd = &cobra.Command{
 
 var taskCompleteCmd = &cobra.Command{
 	Use:   "complete",
-	Short: "标记任务完成（自动评分）",
+	Short: "标记任务完成（跑门禁、记完成事实）",
 	RunE:  runTaskComplete,
 }
 
 var taskAbortCmd = &cobra.Command{
 	Use:   "abort [--ref <ref>] [--cascade|--detach-deps]",
-	Short: "中止并删除任务（清理 ghost/卡住任务，不评分）",
+	Short: "中止并删除任务（清理 ghost/卡住任务，不产出完成事实）",
 	RunE:  runTaskAbort,
 }
 
 var taskScoreCmd = &cobra.Command{
 	Use:   "score [--json] [--history]",
-	Short: "查看任务质量评分",
+	Short: "查看任务完成事实（判据/红先绿/评审轮次/逃生）",
 	RunE:  runTaskScore,
 }
 
@@ -250,12 +250,12 @@ func phaseExplosionWarning(root, sessionID, currentRef string) string {
 }
 
 // nonGitTaskWarning 是项目非 git 仓库时 `task start` 打印的降级模式提示。
-// forge 设计上 git-optional——门禁照常过、`complete` 照常评分——但 agent 须
-// 知道哪些评分维度失真，免得把中性分读成管道坏了。提到 `abort`：用户不想继续
-// 的降级任务正是 abort 存在的场景。
+// forge 设计上 git-optional——门禁照常过、`complete` 照常记完成事实——但 agent 须
+// 知道哪些事实会缺口（改动面），免得把「读不出」当成管道坏了。提到 `abort`：用户
+// 不想继续的降级任务正是 abort 存在的场景。
 func nonGitTaskWarning() string {
-	return "⚠️ 当前项目不是 git 仓库。forge 以降级模式运行：门禁照常通过、任务可完成评分，但以下评分维度将不可用或偏低：\n" +
-		"  - 变更范围 (scope)：无 git diff，固定中性分\n" +
+	return "⚠️ 当前项目不是 git 仓库。forge 以降级模式运行：门禁照常通过、任务可完成，但改动面事实将不可用：\n" +
+		"  - 变更范围 (scope)：无 git diff，读不出改了哪些文件\n" +
 		"如需完整质量保障，执行 `git init`（任务流程本身可继续）。任务无法推进或临时放弃时用 `forge task abort --ref <ref>` 清理。"
 }
 
@@ -853,7 +853,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Warning: failed to bind workspace: %v\n", err)
 	}
 
-	// 非 git 项目优雅降级——门禁照常过、`complete` 照常评分——但依赖 git 的维度归中性，
+	// 非 git 项目优雅降级——门禁照常过、`complete` 照常记事实——但依赖 git 的改动面读不出，
 	// 且 task 无 commit 可锚。这是 code-knowledge-base session 缺失的信号：没有它，
 	// agent 在裸目录里启动 task 时不知自己在降级模式而盲目挣扎。stderr 输出保持 --json 干净。
 	if !taskpipeline.IsGitRepo(root) {

@@ -17,9 +17,9 @@ import (
 
 // task_report.go — oracle-pipeline L5：一站式交付验收单。用户的出口站从「拼
 // task status / trace / act show / score 四条命令」变成一条命令：考卷逐条结果
-// （带层级）、评分与证据强度、未验证面、残留风险、考卷披露（manual 层/held-out/
+// （带层级）、证据强度与事实清单、未验证面、残留风险、考卷披露（manual 层/held-out/
 // spec 审批）、逃生舱库存、审查状态——每条声明都给复现入口。证据束字段
-// （UntestedAreas/RemainingRisks）由 ScoreTask 落盘，本命令只组装渲染。
+// （UntestedAreas/RemainingRisks）由完成事实采集（BuildTaskEvidence）落盘，本命令只组装渲染。
 
 var taskReportCmd = &cobra.Command{
 	Use:   "report [--ref <ref>] [--json]",
@@ -29,7 +29,7 @@ var taskReportCmd = &cobra.Command{
 
   考卷（验收标准）：逐条 层级/命令/期望/结果，来源分布（spec-extract/start/
     conventions/manual 四级考卷梯）
-  评分与证据强度：Score/Grade、deterministic vs agent-claim 占比
+  证据强度与事实清单：判据通过、红先绿、deterministic vs agent-claim 占比
   未验证面：无配对测试的改动源文件（UntestedAreas——高可信=证据+显式披露未验证面）
   残留风险：完成时仍 open 的 findings（RemainingRisks）
   考卷披露：manual 层存在告警、held-out 保留集、钉了 change 时的「已钉 change（<id>）——以 change 产物为准」（JSON pinned_change）、spec 产物 human 档审批态
@@ -173,7 +173,7 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		}
 	}
 
-	// 证据链（评分外的实时口径：进行中任务也能看当前强度）。读失败如实标注
+	// 证据链（完成事实之外的实时口径：进行中任务也能看当前强度）。读失败如实标注
 	//（审查 P2-3：「读不到」不得渲染成「零证据」——两者对验收方含义不同）。
 	if entries, err := checklog.LoadForTask(root, state.TaskRef); err == nil {
 		ec := checklog.BuildEvidenceChain(entries, state.TaskRef)
@@ -206,19 +206,18 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		rep.EvidenceStrength = "unknown（checklog 不可读：" + err.Error() + "）"
 	}
 
-	// 证据束披露字段：已评分任务直接读 ScoreTask 落盘的结果；未评分任务残留风险
-	// 仍有廉价来源（open findings 原始清单），未验证面留空并在渲染层标注「未评分」。
-	if state.Score != nil && state.Score.Evidence != nil {
-		if len(state.Score.Evidence.UntestedAreas) > 0 {
-			rep.UntestedAreas = state.Score.Evidence.UntestedAreas
+	// 证据束披露字段：完成事实清单（Evidence，缺失时由 BuildTaskEvidence 现算）直接
+	// 提供未验证面与残留风险；老任务没有事实清单时残留风险回落 open findings 原始清单。
+	if ev := evidenceFor(state); ev != nil {
+		if len(ev.UntestedAreas) > 0 {
+			rep.UntestedAreas = ev.UntestedAreas
 		}
-		if len(state.Score.Evidence.RemainingRisks) > 0 {
-			rep.RemainingRisks = state.Score.Evidence.RemainingRisks
+		if len(ev.RemainingRisks) > 0 {
+			rep.RemainingRisks = ev.RemainingRisks
 		}
 	} else {
 		for _, f := range state.Findings {
-			// 与 scoring.go evidenceRemainingRisks 同判：open（含旧 findings 的
-			// 空 severity）才算残留，fixed/wontfix 不是。
+			// open（含旧 findings 的空 severity）才算残留，fixed/wontfix 不是。
 			if f.Status == "open" {
 				rep.RemainingRisks = append(rep.RemainingRisks, formatFindingRisk(f))
 			}
@@ -445,9 +444,9 @@ func renderTaskReport(rep *taskReportJSON) string {
 			fmt.Fprintf(&b, "│   - %s\n", f)
 		}
 	case rep.Evidence == nil && len(rep.EscapeDebt) == 0:
-		fmt.Fprintf(&b, "未知（任务未评分——complete 时计算）\n")
+		fmt.Fprintf(&b, "未知（未采集完成事实——complete 时计算）\n")
 	case rep.Evidence == nil:
-		// 未评分但有逃生债：债面照报（读不到不等于没有）。
+		// 未采集完成事实但有逃生债：债面照报（读不到不等于没有）。
 	default:
 		if len(rep.EscapeDebt) == 0 {
 			switch {

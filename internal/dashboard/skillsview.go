@@ -27,14 +27,13 @@ const skillsCoverageNote = "主动 Skill 调用仅 Claude Code 有 toollog 记�
 
 // SkillSummary is one row of the skills overview.
 //
-// SkillSummary 是 skills 总览的一行。Health/AvgScore 用指针，「无数据」序列化为 null
+// SkillSummary 是 skills 总览的一行。Health 用指针，「无数据」序列化为 null
 // 而非编造的 0。
 type SkillSummary struct {
 	Name      string   `json:"name"`
 	Health    *float64 `json:"health"`    // 最新 EvalRun.HealthScore；无 run 为 null
 	Hits      int      `json:"hits"`      // 被动 skill-trigger + 主动 Skill 调用合并
 	TaskCount int      `json:"taskCount"` // 涉及的不同 task 数（被动触发+主动调用合并，per-task 去重）
-	AvgScore  *float64 `json:"avgScore"`  // 关联任务均分（Score>0 才计）；无为 null
 	// Delivered / DeliveryUnknown come from the trigger funnel's delivery stamps (checklog Delivered, e.g. kimi advisory-queue drain): confirmed deliveries vs legacy pre-stamp hits (nil — honestly separate, never assumed delivered).
 	//
 	// Delivered / DeliveryUnknown 来自触发漏斗的送达章（checklog Delivered，如 kimi
@@ -122,8 +121,6 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 	delivered := map[string]int{}       // skill → 漏斗确认送达数（checklog Delivered=true 章）
 	deliveryUnknown := map[string]int{} // skill → 送达章引入前的存量命中（nil 章，诚实单列）
 	effTasks := map[string]int{}        // skill → 关联 task 数（跨项目求和）
-	effScoreSum := map[string]float64{} // skill → Σ(avgScore×taskCount)，跨项目加权合并
-	effScoreN := map[string]int{}       // skill → ΣtaskCount（上面加权的分母）
 
 	for _, pr := range resolvePulseRoots(opts) {
 		d, err := sharedPulseCache.projectData(pr)
@@ -146,10 +143,6 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 		}
 		for _, e := range d.effs {
 			effTasks[e.Skill] += e.TaskCount
-			// 跨项目合并按各项目 task 数加权其 AvgScore——单项目（常见情形）精确；
-			// 多项目合并是看板级近似，因 SkillEffectiveness 不导出 scored-task 分母。
-			effScoreSum[e.Skill] += e.AvgScore * float64(e.TaskCount)
-			effScoreN[e.Skill] += e.TaskCount
 		}
 	}
 
@@ -188,10 +181,6 @@ func AggregateSkills(opts Options, canonical, evalDir string) (SkillsOverview, e
 			TaskCount:       effTasks[name],
 			Delivered:       delivered[name],
 			DeliveryUnknown: deliveryUnknown[name],
-		}
-		if effScoreN[name] > 0 {
-			avg := effScoreSum[name] / float64(effScoreN[name])
-			sum.AvgScore = &avg
 		}
 		if evalDir != "" {
 			if runs := sharedPulseCache.skillEval(canonical, evalDir, name).runs; len(runs) > 0 {

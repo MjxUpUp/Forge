@@ -327,7 +327,7 @@ func runTaskOverride(cmd *cobra.Command, args []string) error {
 	}
 	if !changed {
 		fmt.Printf("当前 per-task 逃生舱：%s\n", describeOverrides(state.Overrides))
-		fmt.Println(`设置：--work-activity disable / --acceptance-gate disable（验证类逃生降评分强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
+		fmt.Println(`设置：--work-activity disable / --acceptance-gate disable（验证类逃生降证据强度到 Weak，重证据任务按证据缩放豁免；work-activity 不降）`)
 		return nil
 	}
 	// 锁内逃生舱写入——只合并 Overrides 字段（§13 丢失更新）。
@@ -420,32 +420,34 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 显示所有已评分 task 的历史
+	// 显示所有已完成 task 的事实历史（2.3 起没有分数字段可列）
 	if showHistory {
 		states, err := taskpipeline.ListTaskStates(root)
 		if err != nil {
 			return err
 		}
-		var scored []*taskpipeline.TaskState
+		var done []*taskpipeline.TaskState
 		for _, s := range states {
-			if s.Score != nil {
-				scored = append(scored, s)
+			if s.CompletedAt != nil {
+				done = append(done, s)
 			}
 		}
-		if len(scored) == 0 {
-			fmt.Println("No scored tasks yet.")
+		if len(done) == 0 {
+			fmt.Println("No completed tasks yet.")
 			return nil
 		}
 		if asJSON {
-			output, _ := json.MarshalIndent(scored, "", "  ")
+			output, _ := json.MarshalIndent(done, "", "  ")
 			fmt.Println(string(output))
 			return nil
 		}
-		fmt.Println("Task Score History:")
+		fmt.Println("Task Completion Facts:")
 		fmt.Println(strings.Repeat("─", 60))
-		for _, s := range scored {
-			fmt.Printf("  %s — %s\n",
-				s.TaskRef, s.Score.ScoredAt.Format("2006-01-02 15:04"))
+		for _, s := range done {
+			ev := taskpipeline.BuildTaskEvidence(root, s)
+			fmt.Printf("  %s — %s  判据 %d/%d 红先绿 %d/%d 评审 %d 轮 逃生 %d\n",
+				s.TaskRef, s.CompletedAt.Format("2006-01-02 15:04"),
+				ev.CriteriaPassed, ev.Criteria, ev.RedFirstClosed, ev.RedFirstTrials, ev.ReviewRounds, ev.Escapes)
 		}
 		return nil
 	}
@@ -462,7 +464,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to load task state: %w", err)
 		}
-		// 兜底：完成的 task 不再 active 但仍可评分。
+		// 兜底：完成的 task 不再 active 但仍可读完成事实。
 		if state == nil {
 			ctx := taskcontext.Detect(root)
 			if ctx.IsSet() {
@@ -477,7 +479,7 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 	if !state.IsComplete() {
 		return fmt.Errorf("task not complete. Complete it first with 'forge task complete'")
 	}
-	// 不再补算评分：2.3 起 task score 只读事实清单；老任务沿用盘上的历史 score 仅作只读兼容。
+	// 2.3 起不补算任何合成量：完成证据只读事实清单（BuildTaskEvidence）。
 
 	if asJSON {
 		output, _ := json.MarshalIndent(taskpipeline.BuildTaskEvidence(".", state), "", "  ")
@@ -493,8 +495,8 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  %-15s %3d\n", "评审轮次", ev.ReviewRounds)
 	fmt.Printf("  %-15s %3d\n", "逃生舱", ev.Escapes)
 	// 审查-返工循环度量（检验审查流程是否收敛的结果指标）。仅信息展示。
-	if ev := state.Score; ev != nil && ev.Evidence != nil && (ev.Evidence.ReviewPasses > 0 || ev.Evidence.CompleteRejections > 0) {
-		fmt.Printf("  返工轮次: review pass %d 次 / task-complete 被拒 %d 次\n", ev.Evidence.ReviewPasses, ev.Evidence.CompleteRejections)
+	if ev.ReviewRounds > 0 {
+		fmt.Printf("  返工轮次: review pass %d 轮\n", ev.ReviewRounds)
 	}
 	return nil
 }

@@ -106,8 +106,8 @@ func resolveScalarTiebreaksSync(local, incoming *TaskState) {
 		if canonBlockLess(incoming.Assignment, local.Assignment) {
 			local.Assignment = incoming.Assignment
 		}
-		if canonBlockLess(incoming.Score, local.Score) {
-			local.Score = incoming.Score
+		if canonBlockLess(incoming.Evidence, local.Evidence) {
+			local.Evidence = incoming.Evidence
 		}
 		if canonBlockLess(incoming.PlanScope, local.PlanScope) {
 			local.PlanScope = incoming.PlanScope
@@ -157,7 +157,7 @@ func isEmptyCanon(c string) bool {
 // 并集（方向无关）而非替换，不应动摇块身份。含 AcceptanceForeign——同命令不同
 // 信任标志是不同块（标志即执行闸；按方向渗漏破坏交换律）。
 func completionCanon(s *TaskState) string {
-	return canonicalJSON([]any{s.CompletedAt, s.ReviewPassed, s.ReviewedHeadCommit, s.ReviewedChangeHash, s.Score, s.Assignment, s.Acceptance, s.AcceptanceForeign})
+	return canonicalJSON([]any{s.CompletedAt, s.ReviewPassed, s.ReviewedHeadCommit, s.ReviewedChangeHash, s.Evidence, s.Assignment, s.Acceptance, s.AcceptanceForeign})
 }
 
 // adoptCompletionBlock 整块采纳传入完成块——ReviewRounds 除外：它是只追加历史，
@@ -169,7 +169,7 @@ func adoptCompletionBlock(local, incoming *TaskState) {
 	local.ReviewedHeadCommit = incoming.ReviewedHeadCommit
 	local.ReviewedChangeHash = incoming.ReviewedChangeHash
 	local.ReviewRounds = unionReviewRounds(local.ReviewRounds, incoming.ReviewRounds)
-	local.Score = incoming.Score
+	local.Evidence = incoming.Evidence
 	local.Assignment = incoming.Assignment
 	local.Acceptance = incoming.Acceptance
 	// AcceptanceForeign 随验收块一起走（防外来 Run 命令任意执行的执行闸——

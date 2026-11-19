@@ -10,7 +10,7 @@ import (
 // EvidenceChain 把一个任务散落在 checklog.jsonl（含归档历史）里的证据条目，
 // 聚成"声称做了哪些验证、其中多少有 deterministic 证据"的结构化视图。
 //
-// 它是路线 1（证据链底座）的核心产出：review 子 agent 和评分不再只能看 diff，
+// 它是路线 1（证据链底座）的核心产出：review 子 agent 不再只能看 diff，
 // 而是先看本任务是否有足够 deterministic 证据支撑"完成"声明——对冲 LLM-judge
 // 看不出"agent 跳过前置就声明完成"的盲区。
 type EvidenceChain struct {
@@ -182,7 +182,7 @@ func (ec EvidenceChain) Strength() EvidenceStrength {
 var verificationChecks = map[CheckName]bool{
 	// auto-compile / assertion-check：阶段 D 起没有内嵌编译/断言 hook 实跑，
 	// taskpipeline 的 implement 检查只留 advisory 记录（Checked=false，
-	// Source 显式写 agent-claim）。白名单保留是因为评分/证据测试仍按 check 名
+	// Source 显式写 agent-claim）。白名单保留是因为证据测试仍按 check 名
 	// 读这两条记录；真正决定分桶的是 Entry.Source，不再默认 deterministic。
 	CheckAutoCompile:                      true, // auto-compile：advisory 记录（未实跑）
 	CheckAssertion:                        true, // assertion-check：advisory 记录（未实跑）
@@ -255,7 +255,7 @@ func BuildEvidenceChain(entries []Entry, taskRef string) EvidenceChain {
 // task-verify Stop 有界阻断（compat-commitments 第二节第 5 条 ④，与 work-activity 同属流程
 // 节奏类）的逃生行以固定 detail
 // "escape-hatch: task-verify Stop bounded block bypassed ..." 写出，同样不 cap Strength；
-// 分数封顶（scoring.go 对任一逃生生效）不受影响。
+// 逃生计入完成事实清单的逃生数（BuildTaskEvidence.Escapes），不再封顶分数。
 func isRhythmEscapeHatch(detail string) bool {
 	return strings.Contains(detail, "work-activity") || strings.Contains(detail, "task-verify Stop bounded block")
 }
@@ -263,7 +263,7 @@ func isRhythmEscapeHatch(detail string) bool {
 // ForTask loads all evidence for a task from disk (including archived checklog-*.jsonl) and aggregates it.
 //
 // ForTask 从磁盘加载一个任务的全部证据（含归档 checklog-*.jsonl）并聚合，无时间上界
-// （forge trace 语义）。评分与 Act 结论走 ForTaskUntil 以封印时刻截断。
+// （forge trace 语义）。Act 结论走 ForTaskUntil 以封印时刻截断。
 func ForTask(root, taskRef string) (EvidenceChain, error) {
 	return ForTaskUntil(root, taskRef, time.Time{})
 }

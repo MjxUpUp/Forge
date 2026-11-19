@@ -185,17 +185,18 @@ func TestPostInitSmokeCommands(t *testing.T) {
 
 // --------------- Test: TestStatusShowsHealthSignal ---------------
 
-// TestStatusShowsHealthSignal 钉住 status 接入项目级质量信号：有完成任务结论时，status
-// 主入口必须亮出证据盲区率/复发低分维度——防 deterministic 信号在 forge health 算了但
+// TestStatusShowsHealthSignal 钉住 status 接入项目级完成事实：有完成任务结论时，status
+// 主入口必须亮出证据盲区率/判据事实——防 deterministic 信号在 forge health 算了但
 // status（"项目在哪"主入口）看不到的可见性缺口。
 func TestStatusShowsHealthSignal(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
 	initProject(t, tmpDir, "--mode", "medium")
 
-	// 种 2 个结论：1 Strong + 1 Unverified → 盲区率 50%（触发系统性告警）；都带 scope 低分。
+	// 种 2 个结论：1 Strong + 1 Unverified → 盲区率 50%（触发系统性告警）。
+	// 判据事实合计 3/5、先失败证明 1/1 —— status 的完成事实块必须照实渲染。
 	seed := []act.Conclusion{
-		{TaskRef: `feat/a`, Grade: `A`, Strength: `Strong`, Score: 95, LowDimensions: []string{`scope`}, CompletedAt: time.Now()},
-		{TaskRef: `feat/b`, Grade: `D`, Strength: `Unverified`, Score: 60, LowDimensions: []string{`scope`}, RetrospectiveNudge: true, CompletedAt: time.Now()},
+		{TaskRef: `feat/a`, Strength: `Strong`, AcceptanceTotal: 3, AcceptancePass: 3, RedFirstTrials: 1, RedFirstClosed: 1, CompletedAt: time.Now()},
+		{TaskRef: `feat/b`, Strength: `Unverified`, AcceptanceTotal: 2, AcceptancePass: 0, RetrospectiveNudge: true, CompletedAt: time.Now()},
 	}
 	for i := range seed {
 		if err := act.Append(p, &seed[i]); err != nil {
@@ -203,12 +204,12 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 		}
 	}
 
-	// pretty：质量信号块 + 系统性盲区告警 + scope 复发都必须出现。
+	// pretty：完成事实块 + 系统性盲区告警 + 判据事实都必须出现。
 	stdout, _, code := runForge(t, tmpDir, "status")
 	if code != 0 {
 		t.Fatalf("forge status exit %d: %s", code, stdout)
 	}
-	for _, want := range []string{`质量信号`, `证据盲区率`, `系统性盲区`, `scope`} {
+	for _, want := range []string{`完成事实`, `证据盲区率`, `系统性盲区`, `判据通过 3/5`} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("status 缺 %q（质量信号块未渲染）\noutput: %s", want, stdout)
 		}

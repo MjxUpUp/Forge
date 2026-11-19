@@ -58,14 +58,14 @@ const CheckNameUncommittedAtComplete checklog.CheckName = "uncommitted-at-comple
 const CheckNameDependencyGate checklog.CheckName = "dependency-gate"
 
 // recordAudit 落盘 checklog 条目并让落盘失败可听见：checklog.Record 的 error 极易
-// 被丢掉（调用读起来像纯副作用），但落盘证据不可缺——score/dashboard/trace 都读
+// 被丢掉（调用读起来像纯副作用），但落盘证据不可缺——dashboard/trace 都读
 // 这些条目，静默写失败会让「task 为何卡在某门禁」无信号。按包内既有 warning 风格
 // 打 stderr 后继续：审计自身绝不阻断门禁。
 //
 // 归因补全（docs/design/harness-fixes-a-g-2026-09.md E.2/E.4）：条目带 TaskRef 时按
 // 任务状态回填——SessionID 为空取任务创建会话（乙机 59% 的 checklog 行无 session，
-// 评分的会话级读方只能靠 TaskRef 归属）；任务已封印（task-complete 门禁已过）则打
-// Meta[post_seal]=true，行保留供 trace，评分/结论按 SealedAt 截断不计。状态读失败
+// 结论的会话级读方只能靠 TaskRef 归属）；任务已封印（task-complete 门禁已过）则打
+// Meta[post_seal]=true，行保留供 trace，结论按 SealedAt 截断不计。状态读失败
 // 静默跳过——补全是尽力而为，审计行本身绝不因它丢失。
 func recordAudit(root string, entry *checklog.Entry) {
 	annotateAttribution(root, entry)
@@ -140,7 +140,7 @@ func ExecuteTaskGate(root string, gateID string, state *TaskState) (*ExecuteResu
 	// 强制 3 道门禁会把「开个调研/接续任务」变成过门禁负担，与接续真相源低摩擦持久化的定位相悖。
 	// kind 默认空/"code"仍走完整门禁（向后兼容：老 task 无 Kind 字段）。直接标通过，跳过前置
 	// gate / 审查快照 / 工作活动 / advisory 全部检查——generic task 的价值在持久化的 plan/决策，
-	// 不在门禁。complete 评分也据此分流（见 cli/runTaskComplete）。
+	// 不在门禁。complete 的事实采集也据此分流（见 cli/runTaskComplete）。
 	if state.IsGeneric() {
 		return &ExecuteResult{
 			GateID:  gateID,

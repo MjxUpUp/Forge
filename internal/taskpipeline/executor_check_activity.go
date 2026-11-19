@@ -44,8 +44,8 @@ func checkWorkActivity(root string, gateID string, state *TaskState) error {
 			// toollog 有数据——发生过任何编辑时，至少要求一次 Read：agent 改
 			// 代码前必须先理解它。「只改不读」就是要拦的失败模式。纯探索段落
 			// （edits==0、explores>0）无需 Read 即放行——没有编辑过需要先读的
-			// 东西。允许 edit-heavy 工作；read/edit ratio 由评分（scope /
-			// activity）反映，不当 gate——严格的 ratio 会拦掉正常的 edit-heavy
+			// 东西。允许 edit-heavy 工作；read/edit ratio 由事实清单与
+			// activity 记录反映，不当 gate——严格的 ratio 会拦掉正常的 edit-heavy
 			// 任务。旧的 read-check WARN 按分层降噪处理已下沉到 forge-quality
 			// 的 Red Flags 文本。
 			if edits > 0 && reads == 0 {

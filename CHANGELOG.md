@@ -10,6 +10,7 @@
 
 ### ⚠ 行为变化（entry-honest，2026-11-19）
 
+* **评分合成分整体删除（drop-score 第二批）**：`TaskState.score` 及其子键从序列化面移除，任务完成只保留事实清单 `TaskState.evidence`（判据通过数、红先绿、评审轮次、逃生数）；`forge act health`（dashboard pulse）不再输出 `overall`/`grade`，`forge task golden`、`internal/scoring`、`internal/scoringtypes` 一并删除；merge 收敛改用事实清单比较。旧 state 的 `score` 键按未知字段忽略，`evidence` 缺失时按 checklog 与状态现算事实。`forge verify --collect-golden` 与 `FORGE_RECURRENT_HARDEN` 同步移除——破坏性面与预告见 `docs/design/compat-commitments.md`「2026-11-20 drop-score 第二批」。
 * **`forge next` 不再推荐陈旧 change**：ready 但超过 72 小时没动过的 change 只进 `stale_changes` / `stale_change_ids`，不会被当成下一步；有脏树时给 `forge change new`，干净树仍给 `task start`。陈旧判定：工作区干净的 change 看它最近一次提交时间；有未提交改动才取「文件时间与提交时间的较大者」；浅克隆无法判定历史时一律按陈旧处理，换机器/新 clone 不会把旧活刷成新鲜。
 * **删掉「考卷必须含测试类命令」启发式**：`task complete` 不再按命令名猜判据质量（`go test`/`npm test` 之类前缀）。判据可信度由实跑回扣、新鲜度、红先绿、评审认领共同决定；`node --test`、`test -f x` 等合法判据不再被误拒。
 * **协议不再默认先跑 `forge next`**：用户提出新需求时直接 `forge change new` / `forge task start`；next 只用于继续或接手已有任务。

@@ -22,7 +22,7 @@ import (
 // project_import.go —— `forge project import`：把 bundle 落地到本机。
 //
 // 信任模型（lineage 条件判定，已与用户定案）：派生 key 相同 = 同身份 lineage
-// （同一开发者的另一台机器）⇒ 默认保留结果字段（评分/完成/门禁历史）、幽灵化
+// （同一开发者的另一台机器）⇒ 默认保留结果字段（完成/门禁历史）、幽灵化
 // session；key 不匹配 ⇒ 默认完整 StripForeignGateSignals（外来门禁信号绝不满足
 // 本机门禁），--trust-foreign 是显式知情的例外；--untrusted 对同 key bundle 也
 // 强制剥离。
@@ -38,7 +38,7 @@ import (
 
 func init() {
 	projectImportCmd.Flags().Bool(`dry-run`, false, `校验并列出将执行的动作，不落盘`)
-	projectImportCmd.Flags().Bool(`untrusted`, false, `按不可信处理：即使同 key 也完整剥离外来门禁/评分/完成信号`)
+	projectImportCmd.Flags().Bool(`untrusted`, false, `按不可信处理：即使同 key 也完整剥离外来门禁/完成信号`)
 	projectImportCmd.Flags().Bool(`trust-foreign`, false, `key 不匹配时仍按受信合并（外来 bundle 的显式放行）`)
 	projectImportCmd.Flags().Bool(`force`, false, `已导入过的 bundle 重新导入（默认跳过）`)
 	projectImportCmd.Flags().Bool(`adopt-id`, false, `本机无 ID 而 bundle 来自 ID 身份项目时，直接采纳其项目 ID（含本机数据迁移）`)
@@ -225,7 +225,7 @@ func runProjectImport(cmd *cobra.Command, args []string) error {
 	if untrusted && manifest.Origin.Key == localKey {
 		trustNote = `不可信（--untrusted：同 key 仍剥离外来信号）`
 	} else if !trusted {
-		trustNote = `不可信（key 不匹配：剥离外来门禁/评分/完成信号；--trust-foreign 放行）`
+		trustNote = `不可信（key 不匹配：剥离外来门禁/完成信号；--trust-foreign 放行）`
 	}
 	fmt.Fprintf(out, `信任：%s`+"\n", trustNote)
 

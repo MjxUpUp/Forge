@@ -9,8 +9,8 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 	"github.com/spf13/pflag"
 )
 
@@ -274,10 +274,11 @@ func TestBuildAndRenderTaskReport(t *testing.T) {
 	)
 	st.SpecArtifacts = map[string]taskpipeline.ArtifactRef{"spec": {Path: "specs/x/spec.md", Hash: "aa"}}
 	st.ArtifactApprovals = map[string]taskpipeline.ArtifactApproval{"spec": {By: "alice", At: time.Now(), Hash: "aa"}}
-	st.Score = &scoringtypes.ScoreResult{Overall: 88, Grade: "B", Evidence: &scoringtypes.EvidenceSummary{
+	st.Evidence = &tasktypes.TaskEvidence{
+		Criteria: 2, CriteriaPassed: 1, ReviewRounds: 2,
 		UntestedAreas:  []string{"internal/pay/refund.go"},
 		RemainingRisks: []string{"critical: 退款金额计算越界"},
-	}}
+	}
 	if err := taskpipeline.SaveTaskState(dir, st); err != nil {
 		t.Fatalf(`SaveTaskState: %v`, err)
 	}
@@ -346,17 +347,17 @@ func TestBuildAndRenderTaskReport(t *testing.T) {
 	}
 }
 
-// TestRenderTaskReport_EmptyBranches: pure render branches — no score → 未评分
+// TestRenderTaskReport_EmptyBranches: pure render branches — no evidence → 未采集完成事实
 // + 未验证面未知；零残留 → 无未决 finding；无 spec → 无 spec 产物；零逃生 → 无。
 //
-// TestRenderTaskReport_EmptyBranches：渲染纯函数的空分支——无评分 → 未评分 +
+// TestRenderTaskReport_EmptyBranches：渲染纯函数的空分支——无完成事实 → 未采集完成事实 +
 // 未验证面未知；零残留 → 无未决 finding；无 spec → 无 spec 产物；零逃生 → 无。
 func TestRenderTaskReport_EmptyBranches(t *testing.T) {
 	rep := &taskReportJSON{TaskRef: "feat/empty", TierCounts: map[string]int{}}
 	text := renderTaskReport(rep)
 	for _, want := range []string{
-		"未评分",
-		"未验证面：未知（任务未评分",
+		"未采集完成事实",
+		"未验证面：未知（未采集完成事实",
 		"残留风险：无未决 finding",
 		"held-out 保留集 未登记 · 无 spec 产物",
 		"逃生舱：无",

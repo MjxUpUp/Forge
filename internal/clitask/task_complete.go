@@ -70,27 +70,27 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 // runTaskCompleteAt 是 runTaskComplete 的 root 注入核心（独立可测，与
 // runTaskVerifyAcceptanceAt 同款范式）。task 解析之后的一切都在这里。顺序契约
 // （dogfood 2026-08-18 死锁修复）：重复完成守卫 → generic 路径 → IsComplete →
-// acceptance pre-flight → MarkComplete → 评分 → 反馈 → 清 ref。MarkComplete 只在
+// acceptance pre-flight → MarkComplete → 采集完成事实 → 反馈 → 清 ref。MarkComplete 只在
 // pre-flight 通过之后发生——pre-flight 失败必须保持任务 active，verify-acceptance
 // （默认认 active；--ref 可显式指定）才能刷新过期快照、complete 才能重试。（修复前
 // 最后一道 gate 就标记完成，gate 后的 commit 一移动 HEAD → pre-flight 永久失败且
 // 无复活路径。）
 func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
-	// 幂等重复完成守卫：已 finalize 的任务（完成且已评分；或从不评分的已完成 generic
-	// 任务）不得重跑完成副作用（重复评分、重复 HEAD 告警、第二条 Act 结论）。
+	// 幂等重复完成守卫：已 finalize 的任务（完成且已采集事实；或已完成 generic
+	// 任务）不得重跑完成副作用（重复采集、重复 HEAD 告警、第二条 Act 结论）。
 	if state.CompletedAt != nil && (state.Evidence != nil || state.IsGeneric()) {
 		fmt.Printf("Task %s already completed（已完成，幂等跳过）。\n", state.TaskRef)
 		return nil
 	}
 
-	// generic kind（调研/设计/纯接续任务）：跳过门禁 IsComplete 检查和评分。这类任务的价值在
+	// generic kind（调研/设计/纯接续任务）：跳过门禁 IsComplete 检查与完成事实采集。这类任务的价值在
 	// 持久化的 plan/决策/阻塞（接续真相源），不在代码质量门禁。自动把门禁标 passed（保持
-	// History 完整供 list/dashboard 显示）+ MarkComplete + 清 active-task-ref，不评分不创建 review。
+	// History 完整供 list/dashboard 显示）+ MarkComplete + 清 active-task-ref，不采集事实、不创建 review。
 	if state.IsGeneric() {
 		if err := completeGenericTask(root, state); err != nil {
 			return err
 		}
-		fmt.Printf("Task %s completed (generic, 接续任务不评分)。\n", state.TaskRef)
+		fmt.Printf("Task %s completed (generic, 接续任务不产完成事实)。\n", state.TaskRef)
 		return nil
 	}
 
@@ -172,10 +172,10 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 
 	// MarkComplete 恰在此处（pre-flight 之后）：完成标记属于 `forge task complete` 的整个
 	// 动作而非某道 gate（dogfood 2026-08-18 死锁修复的另一面——见 runTaskGate 的对应注释）。
-	// firstComplete 门控（review m1）：仅首次完成时标记——评分失败留下的 CompletedAt!=nil、
-	// Score==nil 中间态重试时，再评分是预期恢复，但 CompletedAt 不得被重置（污染
-	// duration 度量）、Act 结论不得二次追加（act.Append 无 TaskRef 去重）。
-	// 先落盘再评分，评分失败也不丢完成状态。
+	// firstComplete 门控（review m1）：仅首次完成时标记——完成事实落盘失败留下的
+	// CompletedAt!=nil、Evidence==nil 中间态重试时，补采事实是预期恢复，但 CompletedAt
+	// 不得被重置（污染 duration 度量）、Act 结论不得二次追加（act.Append 无 TaskRef 去重）。
+	// 先落盘再采集事实，采集失败也不丢完成状态。
 	firstComplete := state.CompletedAt == nil
 	if firstComplete {
 		state.MarkComplete()
@@ -256,9 +256,9 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	}
 
 	// Act 反馈臂（PDCA Act）：构建证据驱动结论落盘，喂给 session-retrospective。
-	// 即使评分失败也建（证据强度不依赖分数）；Nudge 时打印一行回顾指令（stderr，
-	// stdout --json 保持干净）。仅 firstComplete（review m1）——评分失败重试不得为
-	// 同一任务追加第二条结论。无 Nudge（证据强+高分）时 sedimentReminder 仍打印
+	// 证据强度只由 checklog 事实决定；Nudge 时打印一行回顾指令（stderr，
+	// stdout --json 保持干净）。仅 firstComplete（review m1）——重试不得为
+	// 同一任务追加第二条结论。无 Nudge（证据强）时 sedimentReminder 仍打印
 	// 一句轻提醒：干净任务同样产出可复用教训（2026-08-18 case-split/CI 清扫
 	// 都是 A 但都沉淀了多条），此前沉淀评估全靠用户记得问。结论落盘失败时
 	// （ok=false）跳过提醒——刚警告完「结论落盘失败」又提醒「评估沉淀载体」
@@ -302,13 +302,6 @@ func missingGates(state *taskpipeline.TaskState) string {
 		}
 	}
 	return strings.Join(missing, ", ")
-}
-
-// scoreTask 评估已完成的 task 并保存评分。
-// scoreTask thin-wrapper：评分下沉到 taskpipeline.ScoreTask（单一真相源）。cli runTaskComplete
-// /runTaskScore 与测试透明复用——MCP forge_task_complete 走同一 taskpipeline.ScoreTask。
-func scoreTask(root string, state *taskpipeline.TaskState) error {
-	return taskpipeline.ScoreTask(root, state)
 }
 
 // appendConclusion thin-wrapper：Act 结论构建+落盘下沉到 taskpipeline.AppendConclusion

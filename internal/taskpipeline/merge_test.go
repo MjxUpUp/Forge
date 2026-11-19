@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // merge_test.go —— 共享合并语义（task import --merge 与 project import 的
@@ -49,7 +49,7 @@ func TestGhostForeignSessions_OnlyGhosts(t *testing.T) {
 		TaskRef:      `feat/ghost`,
 		CompletedAt:  &now,
 		ReviewPassed: true,
-		Score:        &scoringtypes.ScoreResult{Grade: `A`},
+		Evidence:     &tasktypes.TaskEvidence{Criteria: 2, CriteriaPassed: 2},
 		Kind:         `generic`,
 		Assignment:   &Assignment{Agent: `claude`, Status: `offered`},
 		SessionLinks: []SessionLink{{SessionID: `sid-1`, Tool: `claude-code`}, {SessionID: `sid-2`, Tool: `codex`}},
@@ -64,7 +64,7 @@ func TestGhostForeignSessions_OnlyGhosts(t *testing.T) {
 			t.Errorf(`SessionLinks[%d] 内容不应被改（仅标 Imported）`, i)
 		}
 	}
-	if s.CompletedAt == nil || !s.ReviewPassed || s.Score == nil || s.Kind != `generic` || s.Assignment == nil {
+	if s.CompletedAt == nil || !s.ReviewPassed || s.Evidence == nil || s.Kind != `generic` || s.Assignment == nil {
 		t.Error(`幽灵化不得触碰结果/控制流/分派字段（仅 session 链接）`)
 	}
 	if len(s.Acceptance) != 1 || !s.Acceptance[0].Passed {
@@ -156,14 +156,14 @@ func TestMergeTaskStateSync_FailedGateHealedByPassed(t *testing.T) {
 	}
 }
 
-// TestMergeTaskStateSync_CompletionMonotonic: an incoming COMPLETED snapshot of the same task completes the local incomplete copy (whole completion block adopted — CompletedAt/ReviewPassed/Score/Assignment), while a local completion is never downgraded by an incoming incomplete snapshot.
+// TestMergeTaskStateSync_CompletionMonotonic: an incoming COMPLETED snapshot of the same task completes the local incomplete copy (whole completion block adopted — CompletedAt/ReviewPassed/Evidence/Assignment), while a local completion is never downgraded by an incoming incomplete snapshot.
 //
 // TestMergeTaskStateSync_CompletionMonotonic：同任务的传入「已完成」快照使本地未完
-// 成副本完成（整块采纳完成字段——CompletedAt/ReviewPassed/Score/Assignment）；
+// 成副本完成（整块采纳完成字段——CompletedAt/ReviewPassed/Evidence/Assignment）；
 // 本地已完成绝不被传入未完成快照降级。双向收敛；重复合并是 no-op（幂等）。
 func TestMergeTaskStateSync_CompletionMonotonic(t *testing.T) {
 	done := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
-	score := &scoringtypes.ScoreResult{Grade: `A`}
+	evidence := &tasktypes.TaskEvidence{Criteria: 3, CriteriaPassed: 3, ReviewRounds: 1}
 	assignment := &Assignment{Agent: `claude`, Status: `delivered`}
 
 	// 方向 1：本地未完成 + 传入已完成 → 采纳完成块
@@ -176,7 +176,7 @@ func TestMergeTaskStateSync_CompletionMonotonic(t *testing.T) {
 		CompletedAt:  &done,
 		ReviewPassed: true,
 		ReviewRounds: []ReviewRound{{HeadCommit: `h1`, ChangeHash: `c1`, ReviewedAt: done}},
-		Score:        score,
+		Evidence:     evidence,
 		Assignment:   assignment,
 		History:      []TaskGateResult{gateResult(`task-implement`, true), gateResult(`task-verify`, true), gateResult(`task-complete`, true)},
 	}
@@ -184,8 +184,8 @@ func TestMergeTaskStateSync_CompletionMonotonic(t *testing.T) {
 	if local.CompletedAt == nil || !local.CompletedAt.Equal(done) {
 		t.Errorf(`传入已完成应被采纳，got %v`, local.CompletedAt)
 	}
-	if !local.ReviewPassed || local.Score != score || local.Assignment != assignment {
-		t.Error(`完成块（ReviewPassed/Score/Assignment）应随完成一并采纳`)
+	if !local.ReviewPassed || local.Evidence != evidence || local.Assignment != assignment {
+		t.Error(`完成块（ReviewPassed/Evidence/Assignment）应随完成一并采纳`)
 	}
 	if len(local.ReviewRounds) != 1 || local.ReviewRounds[0].HeadCommit != `h1` {
 		t.Errorf(`ReviewRounds 应随完成块一并采纳（返工度量原料）, got %+v`, local.ReviewRounds)
@@ -198,9 +198,10 @@ func TestMergeTaskStateSync_CompletionMonotonic(t *testing.T) {
 	local2 := &TaskState{
 		TaskRef:     `feat/sync-done2`,
 		CompletedAt: &done,
-		Score:       score,
+		Evidence:    evidence,
 		History:     []TaskGateResult{gateResult(`task-complete`, true)},
 	}
+
 	incoming2 := &TaskState{
 		TaskRef: `feat/sync-done2`,
 		History: []TaskGateResult{gateResult(`task-implement`, true)},

@@ -7,8 +7,8 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // TestActRebuild_RebuildsFromTasks is the regression guard for the DevWorkbench empty-dashboard bug: old projects (all tasks completed before act shipped) have no DataDir/act/conclusions.jsonl — the dashboard only reads conclusions.jsonl and never tasks/*.json, so it shows empty. rebuild must reconstruct conclusions from tasks.
@@ -29,7 +29,7 @@ func TestActRebuild_RebuildsFromTasks(t *testing.T) {
 	state := &taskpipeline.TaskState{
 		TaskRef:     `feat/old-task`,
 		SessionID:   `sess-old`,
-		Score:       &scoringtypes.ScoreResult{Overall: 80, Grade: `B`},
+		Evidence:    &tasktypes.TaskEvidence{Criteria: 3, CriteriaPassed: 3, ReviewRounds: 1},
 		CompletedAt: &completed,
 	}
 	if err := taskpipeline.SaveTaskState(tmpDir, state); err != nil {
@@ -52,24 +52,28 @@ func TestActRebuild_RebuildsFromTasks(t *testing.T) {
 	if cs[0].TaskRef != `feat/old-task` {
 		t.Errorf(`TaskRef=%q want feat/old-task`, cs[0].TaskRef)
 	}
+	// 事实清单必须从 TaskState 复原——重建结论的量化面只有事实。
+	if cs[0].AcceptanceTotal != 3 || cs[0].AcceptancePass != 3 || cs[0].ReviewRounds != 1 {
+		t.Errorf(`结论事实=%d/%d rounds=%d want 3/3/1`, cs[0].AcceptancePass, cs[0].AcceptanceTotal, cs[0].ReviewRounds)
+	}
 }
 
-// TestActRebuild_SkipsUnscored verifies filtering: unscored/incomplete tasks are skipped (not counted in the rebuild).
+// TestActRebuild_SkipsIncomplete verifies filtering: tasks without CompletedAt are skipped (not counted in the rebuild).
 //
-// TestActRebuild_SkipsUnscored 验证过滤：未评分/未完成的任务跳过（不计入重建）。
-func TestActRebuild_SkipsUnscored(t *testing.T) {
+// TestActRebuild_SkipsIncomplete 验证过滤：没有 CompletedAt 的任务跳过（不计入重建）。
+func TestActRebuild_SkipsIncomplete(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
 	runForge(t, tmpDir, `init`, `--mode`, `medium`)
 	completed := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
 	if err := taskpipeline.SaveTaskState(tmpDir, &taskpipeline.TaskState{
-		TaskRef:     `feat/scored`,
-		Score:       &scoringtypes.ScoreResult{Overall: 90, Grade: `A`},
+		TaskRef:     `feat/completed`,
+		Evidence:    &tasktypes.TaskEvidence{Criteria: 2, CriteriaPassed: 2},
 		CompletedAt: &completed,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := taskpipeline.SaveTaskState(tmpDir, &taskpipeline.TaskState{
-		TaskRef: `feat/unscored`, // 无 Score + 无 CompletedAt
+		TaskRef: `feat/incomplete`, // 无 CompletedAt
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -77,12 +81,12 @@ func TestActRebuild_SkipsUnscored(t *testing.T) {
 	if code != 0 {
 		t.Fatalf(`exit %d: %s`, code, out)
 	}
-	if !strings.Contains(out, `跳过 1 个未评分`) {
-		t.Errorf(`应跳过 1 个未评分，got: %s`, out)
+	if !strings.Contains(out, `跳过 1 个未完成`) {
+		t.Errorf(`应跳过 1 个未完成，got: %s`, out)
 	}
 	cs, _ := act.LoadAll(p)
-	if len(cs) != 1 || cs[0].TaskRef != `feat/scored` {
-		t.Errorf(`只应重建 scored，got %d 条: %+v`, len(cs), cs)
+	if len(cs) != 1 || cs[0].TaskRef != `feat/completed` {
+		t.Errorf(`只应重建 completed，got %d 条: %+v`, len(cs), cs)
 	}
 }
 
@@ -92,14 +96,14 @@ func TestActRebuild_SkipsUnscored(t *testing.T) {
 func TestActRebuild_BacksUpExisting(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
 	runForge(t, tmpDir, `init`, `--mode`, `medium`)
-	old := act.Conclusion{TaskRef: `feat/legacy`, Grade: `B`, CompletedAt: time.Now()}
+	old := act.Conclusion{TaskRef: `feat/legacy`, Strength: `Strong`, CompletedAt: time.Now()}
 	if err := act.Append(p, &old); err != nil {
 		t.Fatal(err)
 	}
 	completed := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
 	if err := taskpipeline.SaveTaskState(tmpDir, &taskpipeline.TaskState{
 		TaskRef:     `feat/rebuilt`,
-		Score:       &scoringtypes.ScoreResult{Overall: 90, Grade: `A`},
+		Evidence:    &tasktypes.TaskEvidence{Criteria: 1, CriteriaPassed: 1},
 		CompletedAt: &completed,
 	}); err != nil {
 		t.Fatal(err)
@@ -118,11 +122,11 @@ func TestActRebuild_BacksUpExisting(t *testing.T) {
 	}
 }
 
-// TestActRebuild_HalfCompleteSkipped covers the real-world shape of "scored but complete failed midway": Score != nil but CompletedAt == nil — such a task never truly finished, its conclusion is meaningless, and it must be skipped.
+// TestActRebuild_HalfCompleteSkipped covers the real-world shape of "acceptance recorded but complete failed midway": Evidence filled but CompletedAt == nil — such a task never truly finished, its conclusion is meaningless, and it must be skipped.
 //
-// TestActRebuild_HalfCompleteSkipped 覆盖"评分了但 complete 中途失败"的真实形态：
-// Score != nil 但 CompletedAt == nil —— 这种任务没真正完成，结论无意义，必须跳过。
-// 与 SkipsUnscored（完全无字段）互补，钉死过滤逻辑的两个分支都用 AND。
+// TestActRebuild_HalfCompleteSkipped 覆盖"验收事实已记但 complete 中途失败"的真实形态：
+// Evidence 有值但 CompletedAt == nil —— 这种任务没真正完成，结论无意义，必须跳过。
+// 与 SkipsIncomplete（完全无字段）互补，钉死过滤逻辑只看 CompletedAt。
 func TestActRebuild_HalfCompleteSkipped(t *testing.T) {
 	tmpDir, p := forgedatatest.RealProject(t)
 	runForge(t, tmpDir, `init`, `--mode`, `medium`)
@@ -130,15 +134,15 @@ func TestActRebuild_HalfCompleteSkipped(t *testing.T) {
 	// 真正完成的任务（应重建）
 	if err := taskpipeline.SaveTaskState(tmpDir, &taskpipeline.TaskState{
 		TaskRef:     `feat/done`,
-		Score:       &scoringtypes.ScoreResult{Overall: 90, Grade: `A`},
+		Evidence:    &tasktypes.TaskEvidence{Criteria: 2, CriteriaPassed: 2},
 		CompletedAt: &completed,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// 评分了但未 complete（应跳过——评分流程跑完但 task-complete 门禁没过）
+	// 验收事实已记但未 complete（应跳过——task-complete 门禁没过）
 	if err := taskpipeline.SaveTaskState(tmpDir, &taskpipeline.TaskState{
-		TaskRef: `feat/scored-not-completed`,
-		Score:   &scoringtypes.ScoreResult{Overall: 70, Grade: `C`},
+		TaskRef:  `feat/verified-not-completed`,
+		Evidence: &tasktypes.TaskEvidence{Criteria: 2, CriteriaPassed: 1},
 		// 无 CompletedAt
 	}); err != nil {
 		t.Fatal(err)
@@ -149,6 +153,6 @@ func TestActRebuild_HalfCompleteSkipped(t *testing.T) {
 	}
 	cs, _ := act.LoadAll(p)
 	if len(cs) != 1 || cs[0].TaskRef != `feat/done` {
-		t.Errorf(`应只重建 done，半完成（有 Score 无 CompletedAt）必须跳过，got %d: %+v`, len(cs), cs)
+		t.Errorf(`应只重建 done，半完成（有 Evidence 无 CompletedAt）必须跳过，got %d: %+v`, len(cs), cs)
 	}
 }

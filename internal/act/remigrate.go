@@ -16,11 +16,10 @@ import (
 // 因此迁移重建 cap 前的 EvidenceChain{Deterministic, AgentClaim, UsedEscapeHatch:true}
 // 再跑 Strength()；无需回读原始 checklog，零信息损失。
 //
-// RetrospectiveNudge 按 BuildConclusion 同一判据重算（Unverified/Weak 或 分数<70）——
-// 注意分数判据让翻成 Strong 的低分任务保持 nudge（教训在低分，不在证据）。
+// RetrospectiveNudge 按 BuildConclusion 同一判据重算（Unverified/Weak）——2.3 起
+// 没有分数判据，证据强就是强。
 //
-// 无关字段逐字保留：迁移只重推导判定字段——历史事实（分数/档/占比/计数/时间/戳）
-// 不动。
+// 无关字段逐字保留：迁移只重推导判定字段——历史事实（占比/计数/时间/戳）不动。
 //
 // 幂等：迁移后的 Strength==Strong 不再匹配 Weak 指纹，第二次跑是 no-op。
 func RemigrateConclusion(c Conclusion) Conclusion {
@@ -36,8 +35,7 @@ func RemigrateConclusion(c Conclusion) Conclusion {
 	}
 	out := c
 	out.Strength = ec.Strength().String()
-	// 与 BuildConclusion 同判据：证据弱或低分。翻成 Strong 的低分任务仍 nudge——
-	// 教训在低分。
-	out.RetrospectiveNudge = ec.Strength() == checklog.Unverified || ec.Strength() == checklog.Weak || c.Score < 70
+	// 与 BuildConclusion 同判据：只按证据强度。
+	out.RetrospectiveNudge = ec.Strength() == checklog.Unverified || ec.Strength() == checklog.Weak
 	return out
 }

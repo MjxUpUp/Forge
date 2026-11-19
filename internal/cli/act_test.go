@@ -19,7 +19,7 @@ import (
 func TestAppendConclusion_WritesAndDirectives(t *testing.T) {
 	root, p := forgedatatest.RealProject(t)
 
-	// 裸 state：无验收、无评分、无证据 → NoData 强度 → 不 nudge → Directive 空。结论仍应落盘。
+	// 裸 state：无验收、无证据 → NoData 强度 → 不 nudge → Directive 空。结论仍应落盘。
 	state := &taskpipeline.TaskState{TaskRef: `feat/wire`, SessionID: `sess-wire`}
 	d, ok := clitask.AppendConclusion(root, state)
 	if !ok {
@@ -39,7 +39,7 @@ func TestAppendConclusion_WritesAndDirectives(t *testing.T) {
 		t.Errorf(`TaskRef=%q want feat/wire`, c.TaskRef)
 	}
 	if c.RetrospectiveNudge {
-		t.Error(`NoData+nil score 不应 RetrospectiveNudge`)
+		t.Error(`NoData+无证据 不应 RetrospectiveNudge`)
 	}
 }
 
@@ -70,7 +70,7 @@ func TestAppendConclusion_AcceptanceCounted(t *testing.T) {
 // Nudge）得到指向 session-retrospective 的轻提醒。此前干净任务的沉淀评估
 // 全靠用户记得问（2026-08-18 case-split/CI 清扫：A 分但多条教训）。
 func TestSedimentReminder(t *testing.T) {
-	directive := `→ session-retrospective: 任务评分 65 (D)。回顾根因并按载体决策树沉淀（防再犯）。`
+	directive := `→ session-retrospective: 完成声明证据 Unverified（ratio=0.40, deterministic=2/agent-claim=3）——deterministic 证据不足，按载体决策树沉淀（防再犯）。`
 	if got := clitask.SedimentReminder(directive); got != directive {
 		t.Errorf(`有 directive 应原样透传：got=%q want=%q`, got, directive)
 	}
@@ -95,9 +95,9 @@ func TestActNudge(t *testing.T) {
 		if out, _, code := runForge(t, tmpDir, `init`, `--mode`, `medium`); code != 0 {
 			t.Fatalf(`init: %s`, out)
 		}
-		// 高分但 Unverified（零实跑证据）= LLM-judge 盲区 → RetrospectiveNudge → Directive 非空。
+		// 声明完成但 Unverified（零实跑证据）= LLM-judge 盲区 → RetrospectiveNudge → Directive 非空。
 		c := act.Conclusion{
-			TaskRef: `feat/blind`, Grade: `A`, Strength: `Unverified`, Score: 95,
+			TaskRef: `feat/blind`, Strength: `Unverified`,
 			RetrospectiveNudge: true, CompletedAt: time.Now(),
 		}
 		if err := act.Append(p, &c); err != nil {
@@ -116,9 +116,9 @@ func TestActNudge(t *testing.T) {
 	t.Run(`clean_strong_silent`, func(t *testing.T) {
 		tmpDir, p := forgedatatest.RealProject(t)
 		runForge(t, tmpDir, `init`, `--mode`, `medium`)
-		// Strong + 高分 + 无低分维度 = 干净完成 → Directive 空 → 静默（不发噪声）。
+		// Strong 证据 = 干净完成 → Directive 空 → 静默（不发噪声）。
 		c := act.Conclusion{
-			TaskRef: `feat/clean`, Grade: `A`, Strength: `Strong`, Score: 95,
+			TaskRef: `feat/clean`, Strength: `Strong`,
 			RetrospectiveNudge: false, CompletedAt: time.Now(),
 		}
 		if err := act.Append(p, &c); err != nil {
@@ -157,8 +157,8 @@ func TestActRetroDone(t *testing.T) {
 			t.Fatalf(`init: %s`, out)
 		}
 		c := act.Conclusion{
-			TaskRef: `feat/weak`, SessionID: `sess-9`, Grade: `B`, Strength: `Weak`,
-			Score: 86, Ratio: 0.44, RetrospectiveNudge: true,
+			TaskRef: `feat/weak`, SessionID: `sess-9`, Strength: `Weak`,
+			Ratio: 0.44, RetrospectiveNudge: true,
 			CompletedAt: time.Date(2026, 9, 9, 10, 0, 0, 0, time.UTC),
 		}
 		if err := act.Append(p, &c); err != nil {
@@ -189,8 +189,8 @@ func TestActRetroDone(t *testing.T) {
 	t.Run(`same_ref_picks_latest_conclusion`, func(t *testing.T) {
 		tmpDir, p := forgedatatest.RealProject(t)
 		runForge(t, tmpDir, `init`, `--mode`, `medium`)
-		older := act.Conclusion{TaskRef: `feat/redo`, SessionID: `s1`, Grade: `B`,
-			Strength: `Weak`, Score: 86, RetrospectiveNudge: true,
+		older := act.Conclusion{TaskRef: `feat/redo`, SessionID: `s1`,
+			Strength: `Weak`, Ratio: 0.44, RetrospectiveNudge: true,
 			CompletedAt: time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)}
 		newer := older
 		newer.SessionID = `s2`
@@ -223,7 +223,7 @@ func TestActRetroDone(t *testing.T) {
 	t.Run(`invalid_carrier_errors`, func(t *testing.T) {
 		tmpDir, p := forgedatatest.RealProject(t)
 		runForge(t, tmpDir, `init`, `--mode`, `medium`)
-		c := act.Conclusion{TaskRef: `feat/x`, Grade: `B`, Strength: `Weak`, Score: 86,
+		c := act.Conclusion{TaskRef: `feat/x`, Strength: `Weak`, Ratio: 0.44,
 			RetrospectiveNudge: true, CompletedAt: time.Now()}
 		if err := act.Append(p, &c); err != nil {
 			t.Fatal(err)

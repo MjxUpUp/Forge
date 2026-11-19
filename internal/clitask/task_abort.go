@@ -12,10 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// runTaskAbort 移除任务但不评分。删除 task state 文件（DataDir/tasks/<ref>.json），
+// runTaskAbort 移除任务但不产完成事实（不写 checklog 证据）。删除 task state 文件（DataDir/tasks/<ref>.json），
 // 当 session-scoped active-task-ref 指向被 abort 的 task 时也清掉。这是给卡死或
 // 永远过不了门禁的 ghost task 的逃生舱——如在非 git 项目启动的 task，或半途放弃的
-// task。与 `task complete` 不同，abort 绝不评分、绝不创建 review，项目质量记录不被
+// task。与 `task complete` 不同，abort 绝不产生完成事实、绝不创建 review，项目质量记录不被
 // 放弃的尝试污染。
 //
 // task 实际做的 code/commit 改动不动——abort 只回收 forge state。后续可用同 ref 重新 start。
@@ -82,7 +82,7 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 			if t == nil {
 				continue
 			}
-			// 已完成的依赖方早已过门禁，承载项目已沉淀的评分/质量记录——级联的
+			// 已完成的依赖方早已过门禁，承载项目已沉淀的完成事实/质量记录——级联的
 			// 存在意义是清掉永远过不了门的链，不是销毁已完成的历史（abort 自己
 			// 的文档承诺质量记录不被放弃的尝试污染）。
 			if t.CompletedAt != nil {

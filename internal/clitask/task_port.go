@@ -187,7 +187,7 @@ func runTaskImport(cmd *cobra.Command, args []string) error {
 	// StripForeignGateSignals 内完成（单一真相源，紧随其后），migrate 路径同样拿到——下方每种
 	// 策略看到的都是已幽灵化的链接。
 
-	// 导入的 review/验收/评分信号是外来证据——本机绝不信任。不剥离则手改/有 bug 的 bundle 带上
+	// 导入的 review/验收/完成事实信号是外来证据——本机绝不信任。不剥离则手改/有 bug 的 bundle 带上
 	// ReviewPassed=true + 验收 Passed/AcceptedHeadCommit=当前 HEAD，就能满足 task-complete 门禁的硬
 	// 前置，而本机从未跑过 review 子 agent / verify-acceptance。控制流字段同样剥离（2026-08-15
 	// 审查）：CompletedAt（会关掉所有 CompletedAt==nil 守卫的硬检查）、Overrides（静默关四个硬门禁）、

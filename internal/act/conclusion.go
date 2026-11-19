@@ -3,9 +3,9 @@
 // Package act 实现 PDCA 的 Act 反馈臂：把每个完成任务的证据驱动结论结构化落盘，
 // 喂给 session-retrospective / agent 回顾，防"经验流失"。
 //
-// 设计原则（对冲 LLM-judge 盲区）：结论字段全来自 deterministic 数据（checklog 实跑证据 +
-// 评分），非 agent 叙述。一个任务可能"高分但 Unverified"（agent 自述完成、零实跑证据）——
-// 这正是研究指出的 Tenure 0.000 盲区，RetrospectiveNudge 据证据强度（非仅分数）触发回顾。
+// 设计原则（对冲 LLM-judge 盲区）：结论字段全来自 deterministic 事实（checklog 实跑证据 +
+// 任务事实清单），非 agent 叙述。一个任务可能"看起来很干净但 Unverified"（agent 自述完成、
+// 零实跑证据）——这正是研究指出的 Tenure 0.000 盲区，RetrospectiveNudge 只按证据强度触发回顾。
 package act
 
 import (
@@ -22,7 +22,7 @@ import (
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/nodestamp"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 var mu sync.Mutex
@@ -43,7 +43,7 @@ const strongRatioFloor = 0.5
 // retroactively on stored conclusions — zero schema change, zero migration.
 //
 // EscapeCapped 报告本结论的 Weak 是否来自验证类逃生舱降档——即若无逃生舱本该 Strong
-// （Ratio >= 0.5），其「证据弱」是评分时刻已收的逃生【税】，不是真证据缺口。纯由
+// （Ratio >= 0.5），其「证据弱」是完成时刻已收的逃生【税】，不是真证据缺口。纯由
 // 持久化字段（Strength + Ratio）推导：Weak 且 Ratio >= 0.5 ⟺ 被降档，因为 ratio >= 0.5
 // 本评 Strong、只有 EscapeDowngradedStrength 会把它压回 Weak。对存量结论向后生效
 // ——零 schema 变更、零迁移。消费方：health.NudgeActionable（告警分级，2026-09）。
@@ -51,17 +51,15 @@ func (c Conclusion) EscapeCapped() bool {
 	return c.Strength == checklog.Weak.String() && c.Ratio >= strongRatioFloor
 }
 
-// Conclusion is a traceable conclusion for a completed task — score + evidence strength + acceptance pass-rate + low-score dimensions.
+// Conclusion is a traceable conclusion for a completed task — evidence strength + acceptance facts.
 //
-// Conclusion 是一个完成任务的可追溯结论——score + 证据强度 + 验收通过率 + 低分维度。
-// 全字段从 deterministic 来源聚合（评分/checklog/TaskState），供 session-retrospective
-// 消费：回顾"这次完成声明有多少实跑证据支撑"，而非靠 agent 临结束回忆。
+// Conclusion 是一个完成任务的可追溯结论——证据强度 + 判据事实（通过数/先失败/评审轮次/
+// 逃生次数）。全字段从 deterministic 来源聚合（checklog/TaskState 事实清单），供
+// session-retrospective 消费：回顾"这次完成声明有多少实跑证据支撑"，而非靠 agent 临结束
+// 回忆。刻意不携带任何合成分：要量化就数事实。
 type Conclusion struct {
 	TaskRef   string `json:"task_ref"`
 	SessionID string `json:"session_id,omitempty"`
-	// 0-100; 0 when unscored.
-	Score float64 `json:"score"`           // 0-100；未评分时 0
-	Grade string  `json:"grade,omitempty"` // A/B/C/D/F
 	// Strong/Weak/Unverified/NoData (checklog.EvidenceStrength.String).
 	Strength string `json:"strength"` // Strong/Weak/Unverified/NoData（checklog.EvidenceStrength.String）
 	// deterministic/total; 0 when total=0.
@@ -74,20 +72,25 @@ type Conclusion struct {
 	AcceptancePass int `json:"acceptance_pass"` // verify-acceptance 通过条目数
 	// Total number of acceptance criteria.
 	AcceptanceTotal int `json:"acceptance_total"` // 验收标准总数
-	// Scoring dimensions below 70.
-	LowDimensions []string `json:"low_dimensions,omitempty"` // <70 的评分维度
-	// DimScores carries EVERY dimension's raw score (not just the <70 binary).
+	// RedFirstTrials counts registered red-first criteria; RedFirstClosed counts the
+	// ones that already turned green on the same command.
 	//
-	// DimScores 携带每个维度的原始分（而非只有 <70 二值）。噪声带消费方（复发升硬）
-	// 需要数字：67 和 40 在 LowDimensions 里都是「低」，但按 AutoDesign margin 校准，
-	// 70 切线附近 0-3 分的边界抖动折价后只有 40 是明确低。BuildConclusion 在 score != nil
-	// 时填充；存量结论（早于该字段）反序列化为 nil——消费方须回落 LowDimensions。
-	DimScores   []DimScore `json:"dim_scores,omitempty"`
-	CompletedAt time.Time  `json:"completed_at"`
-	// RetrospectiveNudge: weak evidence (Unverified/Weak) or low score (<70) → true.
+	// RedFirstTrials / RedFirstClosed：先失败证明的登记数 / 已转绿数（事实，不是率）。
+	RedFirstTrials int `json:"red_first_trials,omitempty"`
+	RedFirstClosed int `json:"red_first_closed,omitempty"`
+	// ReviewRounds is the number of review-pass rounds recorded on the task.
 	//
-	// RetrospectiveNudge：证据弱（Unverified/Weak）或低分（<70）→ true。驱动 session-retrospective
-	// 在会话结束回顾这次的完成声明——尤其"高分但证据弱"的盲区（分数看不出 agent 是否真验证过）。
+	// ReviewRounds：评审轮次数（同一 reviewer 复审的轮次史）。
+	ReviewRounds int `json:"review_rounds,omitempty"`
+	// Escapes counts escape-hatch overrides plus waived checks on the task.
+	//
+	// Escapes：逃生舱（override / 豁免）次数——被免掉的门禁数，不是分数。
+	Escapes     int       `json:"escapes,omitempty"`
+	CompletedAt time.Time `json:"completed_at"`
+	// RetrospectiveNudge: weak evidence (Unverified/Weak) → true.
+	//
+	// RetrospectiveNudge：证据弱（Unverified/Weak）→ true。驱动 session-retrospective
+	// 在会话结束回顾这次的完成声明——"看起来完成但没有实跑证据"正是分数看不出的盲区。
 	RetrospectiveNudge bool `json:"retrospective_nudge"`
 	// DesignPhases holds the design phases inferred by inferDesignPhases (e.g. requirement/api/backend). Used for phase-aware health reports (phase_pass_rate) and loop integration.
 	//
@@ -99,54 +102,39 @@ type Conclusion struct {
 	nodestamp.Stamp
 }
 
-// DimScore is one scoring dimension's raw score — the number behind the <70 binary, so noise-band consumers can tell a 40 (clearly low) from a 67 (boundary flap).
+// BuildConclusion is a pure function: it aggregates the task fact sheet + evidence chain into a Conclusion.
 //
-// DimScore 是单个评分维度的原始分——<70 二值背后的数字，让噪声带消费方能区分
-// 40（明确低）与 67（边界抖动）。
-type DimScore struct {
-	Dimension string  `json:"dimension"`
-	Score     float64 `json:"score"`
-}
-
-// BuildConclusion is a pure function: it aggregates score + evidence chain + acceptance results into a Conclusion.
-//
-// BuildConclusion 是纯函数：从评分 + 证据链 + 验收结果聚合出 Conclusion。不碰磁盘，
-// 便于单测。解耦于 taskpipeline——调用方（task.go）从 TaskState 提取原始值传入，避免循环依赖。
+// BuildConclusion 是纯函数：从任务事实清单 + 证据链聚合出 Conclusion。不碰磁盘，便于
+// 单测。解耦于 taskpipeline——调用方传入已算好的 fact sheet（TaskEvidence），避免循环依赖。
 func BuildConclusion(
 	taskRef, sessionID string,
-	score *scoringtypes.ScoreResult,
+	ev *tasktypes.TaskEvidence,
 	ec checklog.EvidenceChain,
-	acceptancePass, acceptanceTotal int,
 	completedAt time.Time,
 	designPhases []string,
 ) Conclusion {
 	c := Conclusion{
-		TaskRef:         taskRef,
-		SessionID:       sessionID,
-		AcceptancePass:  acceptancePass,
-		AcceptanceTotal: acceptanceTotal,
-		CompletedAt:     completedAt,
-		Strength:        ec.Strength().String(),
-		Ratio:           ec.Ratio(),
-		Deterministic:   ec.Deterministic,
-		AgentClaim:      ec.AgentClaim,
-		DesignPhases:    designPhases,
+		TaskRef:       taskRef,
+		SessionID:     sessionID,
+		CompletedAt:   completedAt,
+		Strength:      ec.Strength().String(),
+		Ratio:         ec.Ratio(),
+		Deterministic: ec.Deterministic,
+		AgentClaim:    ec.AgentClaim,
+		DesignPhases:  designPhases,
 	}
-	if score != nil {
-		c.Score = score.Overall
-		c.Grade = score.Grade
-		c.DimScores = make([]DimScore, 0, len(score.Dimensions))
-		for _, d := range score.Dimensions {
-			c.DimScores = append(c.DimScores, DimScore{Dimension: string(d.Dimension), Score: float64(d.Score)})
-			if d.Score < 70 {
-				c.LowDimensions = append(c.LowDimensions, string(d.Dimension))
-			}
-		}
+	if ev != nil {
+		c.AcceptancePass = ev.CriteriaPassed
+		c.AcceptanceTotal = ev.Criteria
+		c.RedFirstTrials = ev.RedFirstTrials
+		c.RedFirstClosed = ev.RedFirstClosed
+		c.ReviewRounds = ev.ReviewRounds
+		c.Escapes = ev.Escapes
 	}
 	strength := ec.Strength()
-	// Act 触发：证据弱（声明主要靠 agent 自述）或低分——两者都值得回顾。Strong 且>=70 的干净
-	// 完成不 nudge（无教训可沉淀），避免噪声。
-	c.RetrospectiveNudge = strength == checklog.Unverified || strength == checklog.Weak || (score != nil && score.Overall < 70)
+	// Act 触发：证据弱（声明主要靠 agent 自述）才值得回顾。Strong 的干净完成不 nudge
+	//（无教训可沉淀），避免噪声。
+	c.RetrospectiveNudge = strength == checklog.Unverified || strength == checklog.Weak
 	return c
 }
 
@@ -238,23 +226,14 @@ func Latest(p *forgedata.Project) (*Conclusion, error) {
 // Directive returns a one-line action instruction for the agent when RetrospectiveNudge fires (printed by task complete).
 //
 // Directive 返回 RetrospectiveNudge 时给 agent 的一行行动指令（供 task complete 打印）。
-// Strong 且>=70 时返回空串（静默，不发噪声）。指令锚定 deterministic 数字，非叙述。
+// 不 nudge（证据 Strong）时返回空串（静默，不发噪声）。指令锚定 deterministic 数字，
+// 非叙述；触发条件只有证据弱，故不另设分支。
 func (c Conclusion) Directive() string {
 	if !c.RetrospectiveNudge {
 		return ""
 	}
-	var reason string
-	switch c.Strength {
-	case checklog.Unverified.String(), checklog.Weak.String():
-		reason = fmt.Sprintf("完成声明证据 %s（ratio=%.2f, deterministic=%d/agent-claim=%d）——deterministic 证据不足，核查声称的验证是否真发生过",
-			c.Strength, c.Ratio, c.Deterministic, c.AgentClaim)
-	default:
-		// 走到这说明是低分触发（strength=Strong/NoData 但 score<70）
-		reason = fmt.Sprintf("任务评分 %.0f (%s)", c.Score, c.Grade)
-	}
-	if len(c.LowDimensions) > 0 {
-		reason += "，低分维度：" + strings.Join(c.LowDimensions, "/")
-	}
+	reason := fmt.Sprintf("完成声明证据 %s（ratio=%.2f, deterministic=%d/agent-claim=%d）——deterministic 证据不足，核查声称的验证是否真发生过",
+		c.Strength, c.Ratio, c.Deterministic, c.AgentClaim)
 	// 收尾落章指令（2026-09 证据式 ack）：回顾做完结环——具体命令放 forge 侧生成
 	//（canonical skill 按 §13 零反向依赖，只载环境中性原则，见其 5.5 步）。载体
 	// 枚举从 Carriers 单一真相源派生，不做第三份手抄镜像。

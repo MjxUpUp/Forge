@@ -32,7 +32,7 @@ func MergeTaskState(local, incoming *TaskState) {
 //     留存、且因下方的完成块采纳本机不会再重跑该门禁。同结论冲突保本地条目
 //     （稳定、幂等）。
 //  2. 完成块单调采纳：同任务的传入「已完成」快照整块完成本地未完成副本
-//     （CompletedAt / ReviewPassed / review 锚 / Score / Assignment / 验收结果）
+//     （CompletedAt / ReviewPassed / review 锚 / Evidence / Assignment / 验收结果）
 //     ——对端做完了工作，本地权威并集会让本地永远停在未完成、每轮同步来回翻。
 //     本地已完成绝不被降级（传入未完成者败；双已完成保本地）。
 //
@@ -53,7 +53,7 @@ func MergeTaskStateSync(local, incoming *TaskState) {
 	// 确定性同 ID 冲突决胜（收敛层；仅受信路径）。
 	resolveRecordConflictsSync(local, incoming)
 	// 门禁 history 按全内容键并集（不按 gate 折叠）：重试 provenance（Failed 后重跑
-	// Passed）是 ReworkRounds/评分/feed 的承重数据——按 gate 折叠会静默删除它。
+	// Passed）是 ReworkRounds/证据/feed 的承重数据——按 gate 折叠会静默删除它。
 	// gatePassed 仍能看到 Passed 条目，旧 prefer-Passed 规则的愈合防死锁保障保留
 	// （对端的 Passed 进入并集）。
 	local.History = unionGateHistoryByContent(local.History, incoming.History)

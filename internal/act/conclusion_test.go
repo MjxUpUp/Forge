@@ -8,7 +8,7 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata/forgedatatest"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // fixedTime 给测试一个稳定的完成时刻（不用 time.Now，避免时序断言飘）。
@@ -18,58 +18,53 @@ func ec(det, agent int) checklog.EvidenceChain {
 	return checklog.EvidenceChain{Deterministic: det, AgentClaim: agent}
 }
 
-func score(overall float64, grade string, dims ...scoringtypes.DimensionScore) *scoringtypes.ScoreResult {
-	return &scoringtypes.ScoreResult{Overall: overall, Grade: grade, Dimensions: dims}
-}
-
-func dim(name scoringtypes.Dimension, sc int) scoringtypes.DimensionScore {
-	return scoringtypes.DimensionScore{Dimension: name, Score: sc}
+// facts 构造任务事实清单（判据/红先绿/评审轮次/逃生）——2.3 起结论只由事实聚合，
+// 没有任何合成分可传。
+func facts(criteria, passed, redTrials, redClosed, rounds, escapes int) *tasktypes.TaskEvidence {
+	return &tasktypes.TaskEvidence{
+		Criteria: criteria, CriteriaPassed: passed,
+		RedFirstTrials: redTrials, RedFirstClosed: redClosed,
+		ReviewRounds: rounds, Escapes: escapes,
+	}
 }
 
 func TestBuildConclusion_NudgeByEvidenceStrength(t *testing.T) {
-	// 核心契约：RetrospectiveNudge 按证据强度（非仅分数）触发。每个 case 用该档专属
-	// 关键词断言，防分档回归被掩盖（一档断言短语漏进另一档时立即暴露）。
+	// 核心契约：RetrospectiveNudge 只由证据强度触发（2.3 起没有分数判据）。每个 case 用
+	// 该档专属关键词断言，防分档回归被掩盖（一档断言短语漏进另一档时立即暴露）。
 	tests := []struct {
 		name      string
 		ec        checklog.EvidenceChain
-		score     *scoringtypes.ScoreResult
+		ev        *tasktypes.TaskEvidence
 		wantNudge bool
 		strength  string
 	}{
 		{
-			name:      `NoData+高分→不nudge（无证据中性，与Strength语义一致）`,
+			name:      `NoData→不nudge（无证据中性，与Strength语义一致）`,
 			ec:        ec(0, 0),
-			score:     score(90, `A`),
+			ev:        facts(4, 4, 1, 1, 1, 0),
 			wantNudge: false,
 			strength:  `NoData`,
 		},
 		{
-			// ★ 盲区命门：高分但零 deterministic 证据——agent 自述完成、没真跑验证
-			name:      `Unverified+高分→nudge（高分但零实跑证据，对冲LLM-judge盲区）`,
+			// ★ 盲区命门：判据全绿但零 deterministic 证据——agent 自述完成、没真跑验证
+			name:      `Unverified→nudge（零实跑证据，对冲LLM-judge盲区）`,
 			ec:        ec(0, 2),
-			score:     score(95, `A`),
+			ev:        facts(4, 4, 1, 1, 1, 0),
 			wantNudge: true,
 			strength:  `Unverified`,
 		},
 		{
 			name:      `Weak→nudge（deterministic<agent-claim，声明主要靠自述）`,
 			ec:        ec(1, 3), // ratio=0.25
-			score:     score(88, `A`),
+			ev:        facts(3, 2, 2, 1, 2, 1),
 			wantNudge: true,
 			strength:  `Weak`,
 		},
 		{
-			name:      `Strong+高分→不nudge（干净完成，无教训可沉淀）`,
+			name:      `Strong→不nudge（干净完成，无教训可沉淀）`,
 			ec:        ec(3, 1), // ratio=0.75
-			score:     score(92, `A`),
+			ev:        facts(5, 5, 1, 1, 1, 0),
 			wantNudge: false,
-			strength:  `Strong`,
-		},
-		{
-			name:      `Strong+低分→nudge（证据足但分低，仍有教训）`,
-			ec:        ec(3, 1),
-			score:     score(65, `D`),
-			wantNudge: true,
 			strength:  `Strong`,
 		},
 		{
@@ -79,7 +74,7 @@ func TestBuildConclusion_NudgeByEvidenceStrength(t *testing.T) {
 			ec: checklog.EvidenceChain{
 				Deterministic: 100, AgentClaim: 2, UsedEscapeHatch: true, // ratio≈0.98
 			},
-			score:     score(99, `A`),
+			ev:        facts(2, 2, 0, 0, 1, 1),
 			wantNudge: false,
 			strength:  `Strong`,
 		},
@@ -88,129 +83,86 @@ func TestBuildConclusion_NudgeByEvidenceStrength(t *testing.T) {
 			ec: checklog.EvidenceChain{
 				Deterministic: 4, AgentClaim: 1, UsedEscapeHatch: true, // ratio 0.8, det<20
 			},
-			score:     score(90, `A`),
+			ev:        facts(2, 1, 1, 0, 1, 1),
 			wantNudge: true,
 			strength:  `Weak`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := BuildConclusion(`feat/x`, `sess-1`, tt.score, tt.ec, 0, 0, fixedTime, nil)
+			c := BuildConclusion(`feat/x`, `sess-1`, tt.ev, tt.ec, fixedTime, nil)
 			if c.Strength != tt.strength {
 				t.Errorf(`Strength=%q want %q（分档回归？检查 Strength 计算）`, c.Strength, tt.strength)
 			}
 			if c.RetrospectiveNudge != tt.wantNudge {
 				t.Errorf(`RetrospectiveNudge=%v want %v（强度档→nudge 映射断链）`, c.RetrospectiveNudge, tt.wantNudge)
 			}
-			if c.Score != tt.score.Overall {
-				t.Errorf(`Score=%v want %v`, c.Score, tt.score.Overall)
+			// 事实清单必须逐字进结论——这是回顾/面板唯一的量化来源。
+			if c.AcceptancePass != tt.ev.CriteriaPassed || c.AcceptanceTotal != tt.ev.Criteria {
+				t.Errorf(`Acceptance=%d/%d want %d/%d`, c.AcceptancePass, c.AcceptanceTotal, tt.ev.CriteriaPassed, tt.ev.Criteria)
 			}
-			if c.Grade != tt.score.Grade {
-				t.Errorf(`Grade=%q want %q`, c.Grade, tt.score.Grade)
+			if c.RedFirstTrials != tt.ev.RedFirstTrials || c.RedFirstClosed != tt.ev.RedFirstClosed {
+				t.Errorf(`RedFirst=%d/%d want %d/%d`, c.RedFirstClosed, c.RedFirstTrials, tt.ev.RedFirstClosed, tt.ev.RedFirstTrials)
+			}
+			if c.ReviewRounds != tt.ev.ReviewRounds || c.Escapes != tt.ev.Escapes {
+				t.Errorf(`ReviewRounds=%d Escapes=%d want %d/%d`, c.ReviewRounds, c.Escapes, tt.ev.ReviewRounds, tt.ev.Escapes)
 			}
 		})
 	}
 }
 
-func TestBuildConclusion_LowDimensionsCaptured(t *testing.T) {
-	// 只有 <70 的维度进 LowDimensions；>=70 的不进。
-	c := BuildConclusion(`feat/x`, ``, score(70, `C`,
-		dim(`completeness`, 60),
-		dim(`tests`, 95),
-		dim(`design`, 69),
-	), ec(0, 0), 0, 0, fixedTime, nil)
-	want := []string{`completeness`, `design`}
-	if len(c.LowDimensions) != len(want) {
-		t.Fatalf(`LowDimensions=%v want %v`, c.LowDimensions, want)
+func TestBuildConclusion_FactsCarried(t *testing.T) {
+	// 六项事实逐一映射（含零值边界的独立用例：红先绿未登记时仍应写 0）。
+	c := BuildConclusion(`feat/x`, ``, facts(7, 6, 3, 2, 4, 1), ec(3, 1), fixedTime, nil)
+	if c.AcceptanceTotal != 7 || c.AcceptancePass != 6 {
+		t.Errorf(`Acceptance=%d/%d want 6/7`, c.AcceptancePass, c.AcceptanceTotal)
 	}
-	for i, d := range want {
-		if c.LowDimensions[i] != d {
-			t.Errorf(`LowDimensions[%d]=%q want %q`, i, c.LowDimensions[i], d)
-		}
+	if c.RedFirstTrials != 3 || c.RedFirstClosed != 2 {
+		t.Errorf(`RedFirst=%d/%d want 2/3`, c.RedFirstClosed, c.RedFirstTrials)
 	}
-}
-
-func TestBuildConclusion_DimScoresFilled(t *testing.T) {
-	// 噪声带契约（P4）：DimScores 携带每个维度的原始分（非只有 <70 二值），让复发升硬能
-	// 区分 67（边界抖动）与 40（明确低）。JSON 往返须保留数字；缺 dim_scores 的存量行
-	// 反序列化为 nil（回落路径）。
-	c := BuildConclusion(`feat/x`, ``, score(70, `C`,
-		dim(`completeness`, 60),
-		dim(`tests`, 95),
-		dim(`design`, 67),
-	), ec(0, 0), 0, 0, fixedTime, nil)
-	if len(c.DimScores) != 3 {
-		t.Fatalf(`DimScores len=%d want 3（全量维度，含 >=70）`, len(c.DimScores))
+	if c.ReviewRounds != 4 || c.Escapes != 1 {
+		t.Errorf(`ReviewRounds=%d Escapes=%d want 4/1`, c.ReviewRounds, c.Escapes)
 	}
-	want := []DimScore{
-		{Dimension: `completeness`, Score: 60},
-		{Dimension: `tests`, Score: 95},
-		{Dimension: `design`, Score: 67},
-	}
-	for i, w := range want {
-		if c.DimScores[i] != w {
-			t.Errorf(`DimScores[%d]=%+v want %+v`, i, c.DimScores[i], w)
-		}
-	}
-
-	// JSON 往返保留原始数字。
-	root := forgedatatest.ForDataDir(t.TempDir())
-	if err := Append(root, &c); err != nil {
-		t.Fatalf(`Append: %v`, err)
-	}
-	got, err := LoadAll(root)
-	if err != nil {
-		t.Fatalf(`LoadAll: %v`, err)
-	}
-	if len(got) != 1 || len(got[0].DimScores) != 3 || got[0].DimScores[2].Score != 67 {
-		t.Errorf(`DimScores round-trip 丢失：got=%+v`, got[0].DimScores)
+	// 事实不参与强度判定：证据全绿时 Strong 与判据通过率无关。
+	if c.Strength != `Strong` || c.RetrospectiveNudge {
+		t.Errorf(`Strength=%q nudge=%v want Strong/false（事实不进强度判定）`, c.Strength, c.RetrospectiveNudge)
 	}
 }
 
-func TestBuildConclusion_NilScore(t *testing.T) {
-	// 未评分（score=nil）：Score=0、Grade 空、LowDimensions 空；nudge 仅由强度决定。
-	c := BuildConclusion(`feat/x`, ``, nil, ec(0, 2), 1, 3, fixedTime, nil)
-	if c.Score != 0 {
-		t.Errorf(`Score=%v want 0（nil score 应得 0）`, c.Score)
-	}
-	if c.Grade != `` {
-		t.Errorf(`Grade=%q want 空（nil score 无 grade）`, c.Grade)
-	}
-	if len(c.LowDimensions) != 0 {
-		t.Errorf(`LowDimensions=%v want 空（nil score 无维度）`, c.LowDimensions)
-	}
-	if len(c.DimScores) != 0 {
-		t.Errorf(`DimScores=%v want 空（nil score 无维度）`, c.DimScores)
+func TestBuildConclusion_NilEvidence(t *testing.T) {
+	// 未提供事实清单（ev=nil）：所有事实字段为零；nudge 仅由强度决定。
+	c := BuildConclusion(`feat/x`, ``, nil, ec(0, 2), fixedTime, nil)
+	if c.AcceptancePass != 0 || c.AcceptanceTotal != 0 || c.RedFirstTrials != 0 ||
+		c.RedFirstClosed != 0 || c.ReviewRounds != 0 || c.Escapes != 0 {
+		t.Errorf(`nil ev 应得全零事实，got pass=%d/%d red=%d/%d rounds=%d escapes=%d`,
+			c.AcceptancePass, c.AcceptanceTotal, c.RedFirstClosed, c.RedFirstTrials, c.ReviewRounds, c.Escapes)
 	}
 	if !c.RetrospectiveNudge {
 		t.Error(`RetrospectiveNudge=false want true（Unverified 应触发）`)
 	}
-	if c.AcceptancePass != 1 || c.AcceptanceTotal != 3 {
-		t.Errorf(`Acceptance=%d/%d want 1/3`, c.AcceptancePass, c.AcceptanceTotal)
-	}
 }
 
 func TestDirective(t *testing.T) {
-	// Strong+>=70→空（静默，无噪声）；其余→含 session-retrospective 锚点。
+	// 干净完成（Strong）→空（静默，无噪声）；其余→含 session-retrospective 锚点。
 	cases := []struct {
 		name    string
 		c       Conclusion
 		wantSub string // 期望子串；空串表示期望 Directive 返回空
 	}{
 		{
-			name:    `Strong高分→空（不发噪声）`,
-			c:       Conclusion{Strength: `Strong`, Ratio: 0.75, Score: 92, Grade: `A`},
+			name:    `Strong→空（不发噪声）`,
+			c:       Conclusion{Strength: `Strong`, Ratio: 0.75, Deterministic: 3, AgentClaim: 1},
 			wantSub: ``,
 		},
 		{
 			name:    `Unverified→带证据理由`,
-			c:       Conclusion{Strength: `Unverified`, Ratio: 0, Deterministic: 0, AgentClaim: 2, Score: 95, Grade: `A`, RetrospectiveNudge: true},
+			c:       Conclusion{Strength: `Unverified`, Ratio: 0, Deterministic: 0, AgentClaim: 2, RetrospectiveNudge: true},
 			wantSub: `deterministic 证据不足`,
 		},
 		{
-			name:    `低分→带评分理由`,
-			c:       Conclusion{Strength: `Strong`, Ratio: 0.75, Score: 65, Grade: `D`, RetrospectiveNudge: true, LowDimensions: []string{`completeness`}},
-			wantSub: `低分维度：completeness`,
+			name:    `Weak→带比率理由`,
+			c:       Conclusion{Strength: `Weak`, Ratio: 0.25, Deterministic: 1, AgentClaim: 3, RetrospectiveNudge: true},
+			wantSub: `ratio=0.25`,
 		},
 	}
 	for _, tc := range cases {
@@ -218,7 +170,7 @@ func TestDirective(t *testing.T) {
 			got := tc.c.Directive()
 			if tc.wantSub == `` {
 				if got != `` {
-					t.Errorf(`Strong+高分应静默，got %q`, got)
+					t.Errorf(`Strong 应静默，got %q`, got)
 				}
 				return
 			}
@@ -235,8 +187,8 @@ func TestDirective(t *testing.T) {
 func TestAppendLoadAll_RoundTrip(t *testing.T) {
 	root := forgedatatest.ForDataDir(t.TempDir())
 
-	c1 := BuildConclusion(`feat/a`, `s1`, score(95, `A`), ec(3, 1), 2, 2, fixedTime, nil)
-	c2 := BuildConclusion(`feat/b`, `s2`, score(60, `D`), ec(0, 2), 0, 3, fixedTime.Add(time.Hour), nil)
+	c1 := BuildConclusion(`feat/a`, `s1`, facts(2, 2, 1, 1, 1, 0), ec(3, 1), fixedTime, nil)
+	c2 := BuildConclusion(`feat/b`, `s2`, facts(3, 0, 2, 0, 3, 2), ec(0, 2), fixedTime.Add(time.Hour), nil)
 
 	if err := Append(root, &c1); err != nil {
 		t.Fatalf(`Append c1: %v`, err)
@@ -254,7 +206,12 @@ func TestAppendLoadAll_RoundTrip(t *testing.T) {
 	}
 	// 时序：fixedTime < fixedTime+1h
 	if got[0].TaskRef != `feat/a` || got[1].TaskRef != `feat/b` {
-		t.Errorf(`时序错乱：got[%q,%q] want [feat/a,feat/b]`, got[0].TaskRef, got[1].TaskRef)
+		t.Errorf(`时序错乱：got=[%q,%q] want [feat/a,feat/b]`, got[0].TaskRef, got[1].TaskRef)
+	}
+	// 事实清单 JSON 往返不丢（判据/红先绿/评审/逃生都是可审计事实）。
+	if got[1].AcceptanceTotal != 3 || got[1].AcceptancePass != 0 || got[1].RedFirstTrials != 2 ||
+		got[1].ReviewRounds != 3 || got[1].Escapes != 2 {
+		t.Errorf(`事实清单往返丢失：got=%+v`, got[1])
 	}
 
 	latest, err := Latest(root)
@@ -274,7 +231,7 @@ func TestLoadAll_MalformedLineSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	content := []byte("{not json}\n" +
-		`{"task_ref":"feat/ok","score":80,"strength":"Strong","ratio":0.75,"deterministic":3,"agent_claim":1,"completed_at":"2026-07-01T10:00:00Z","retrospective_nudge":false}` + "\n")
+		`{"task_ref":"feat/ok","strength":"Strong","ratio":0.75,"deterministic":3,"agent_claim":1,"acceptance_pass":2,"acceptance_total":2,"completed_at":"2026-07-01T10:00:00Z","retrospective_nudge":false}` + "\n")
 	if err := os.WriteFile(path, content, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -284,6 +241,9 @@ func TestLoadAll_MalformedLineSkipped(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].TaskRef != `feat/ok` {
 		t.Errorf(`LoadAll=%+v want 仅 feat/ok（坏行跳过）`, got)
+	}
+	if got[0].AcceptancePass != 2 || got[0].AcceptanceTotal != 2 {
+		t.Errorf(`存量行事实未读出：pass=%d/%d`, got[0].AcceptancePass, got[0].AcceptanceTotal)
 	}
 }
 
@@ -309,8 +269,8 @@ func TestLoadAll_LongLineSkipped(t *testing.T) {
 	}
 	// 用 Append 追加正常结论（避免手工拼 JSON 双引号），CompletedAt 零值由 Append 补 now。
 	if err := Append(root, &Conclusion{
-		TaskRef: `feat/ok`, Score: 80, Strength: `Strong`, Ratio: 0.75,
-		Deterministic: 3, AgentClaim: 1,
+		TaskRef: `feat/ok`, Strength: `Strong`, Ratio: 0.75,
+		Deterministic: 3, AgentClaim: 1, AcceptancePass: 1, AcceptanceTotal: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -341,14 +301,14 @@ func TestLoadAll_AbsentFileReturnsNil(t *testing.T) {
 }
 
 func TestBuildConclusion_DesignPhases(t *testing.T) {
-	// 非空 phases → 原样写入 Conclusion.DesignPhases（此前 5 处调用全传 nil，未覆盖）。
+	// 非空 phases → 原样写入 Conclusion.DesignPhases。
 	phases := []string{`api`, `backend`}
-	c := BuildConclusion(`feat/x`, `s1`, score(90, `A`), ec(3, 1), 0, 0, fixedTime, phases)
+	c := BuildConclusion(`feat/x`, `s1`, facts(1, 1, 0, 0, 1, 0), ec(3, 1), fixedTime, phases)
 	if len(c.DesignPhases) != 2 || c.DesignPhases[0] != `api` || c.DesignPhases[1] != `backend` {
 		t.Errorf(`DesignPhases=%v want [api backend]`, c.DesignPhases)
 	}
 	// nil phases → 空（零值）。
-	c2 := BuildConclusion(`feat/y`, `s2`, score(90, `A`), ec(3, 1), 0, 0, fixedTime, nil)
+	c2 := BuildConclusion(`feat/y`, `s2`, facts(1, 1, 0, 0, 1, 0), ec(3, 1), fixedTime, nil)
 	if len(c2.DesignPhases) != 0 {
 		t.Errorf(`nil phases → DesignPhases=%v want 空`, c2.DesignPhases)
 	}
@@ -357,7 +317,7 @@ func TestBuildConclusion_DesignPhases(t *testing.T) {
 func TestAppendLoadAll_DesignPhasesRoundTrip(t *testing.T) {
 	// JSON 序列化往返：design_phases,omitempty 在非空时必须正确写读，不丢。
 	root := forgedatatest.ForDataDir(t.TempDir())
-	c := BuildConclusion(`feat/p`, `s1`, score(85, `B`), ec(3, 1), 1, 1, fixedTime,
+	c := BuildConclusion(`feat/p`, `s1`, facts(2, 2, 1, 1, 1, 0), ec(3, 1), fixedTime,
 		[]string{`requirement`, `api`})
 	if err := Append(root, &c); err != nil {
 		t.Fatalf(`Append: %v`, err)
@@ -395,7 +355,7 @@ func TestEscapeCapped_PinsChecklogStrength(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			capped := BuildConclusion(`feat/x`, `s`, score(89, `B`), tc.ec, 0, 0, fixedTime, nil)
+			capped := BuildConclusion(`feat/x`, `s`, facts(1, 1, 0, 0, 1, 0), tc.ec, fixedTime, nil)
 			// 定理：EscapeCapped ⟺ 实际 Weak 且无逃生舱的同证据链会评 Strong
 			//（豁免档未降档、实际 Strong，不在定理内——合取的第二项必须含「实际 Weak」）。
 			noHatch := tc.ec
@@ -418,7 +378,7 @@ func TestEscapeCapped_PinsChecklogStrength(t *testing.T) {
 // ref 与载体枚举）——具体命令放 forge 侧生成面而非 canonical skill（§13 零反向依赖），
 // 这里就是它唯一的机器钉。干净完成（非 nudge）仍静默。
 func TestDirective_ContainsRetroDoneInstruction(t *testing.T) {
-	nudged := BuildConclusion(`feat/ack-pin`, `s1`, score(65, `D`), ec(1, 3), 0, 0, fixedTime, nil)
+	nudged := BuildConclusion(`feat/ack-pin`, `s1`, facts(3, 1, 1, 1, 1, 0), ec(1, 3), fixedTime, nil)
 	d := nudged.Directive()
 	if !strings.Contains(d, `forge act retro-done --ref feat/ack-pin`) {
 		t.Errorf(`Directive 缺 retro-done 调用（含本任务 ref），got: %s`, d)
@@ -429,7 +389,7 @@ func TestDirective_ContainsRetroDoneInstruction(t *testing.T) {
 	if !strings.Contains(d, `nudge 留面板`) {
 		t.Errorf(`Directive 缺忘调用后果（错过的回顾可见），got: %s`, d)
 	}
-	clean := BuildConclusion(`feat/clean`, `s1`, score(92, `A`), ec(3, 1), 0, 0, fixedTime, nil)
+	clean := BuildConclusion(`feat/clean`, `s1`, facts(5, 5, 1, 1, 1, 0), ec(3, 1), fixedTime, nil)
 	if clean.Directive() != `` {
 		t.Errorf(`干净完成应静默，got: %s`, clean.Directive())
 	}

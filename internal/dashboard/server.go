@@ -2,7 +2,7 @@
 //
 // Package dashboard 把 Forge 质量治理数据渲染成本地只读的 Pulse web 面板。一条命令
 // `forge dashboard` 聚合全部已登记项目（默认全局），只服务一个页面：事件流
-// （task-start / gate / skill 触发 / 结论）、任务评分与证据链、skills 聚合。
+// （task-start / gate / skill 触发 / 结论）、任务完成事实与证据链、skills 聚合。
 //
 // 设计原则：纯只读、纯本地、纯 stdlib。
 //   - 聚合经 feed.go / skillsview.go 复用 act / checklog / taskpipeline / health 的

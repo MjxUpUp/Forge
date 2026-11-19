@@ -8,8 +8,6 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
-
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 )
 
 // TaskGate defines a lightweight task-level quality gate.
@@ -495,22 +493,23 @@ type TaskState struct {
 	Reviewers []string `json:"reviewers,omitempty"`
 	// ReviewScore 是 review pass 时评审者给出的 0-100 分（--score）；只做记录，
 	// 不参与门禁判定（门禁只看 ReviewPassed 与快照一致性）。
-	ReviewScore    *int                      `json:"review_score,omitempty"`
-	Branch         string                    `json:"branch"`
-	Source         string                    `json:"source"` // explicit | branch
-	Summary        string                    `json:"summary"`
-	CurrentGate    string                    `json:"current_gate"`
-	History        []TaskGateResult          `json:"history"`
-	StartedAt      time.Time                 `json:"started_at"`
-	CompletedAt    *time.Time                `json:"completed_at,omitempty"`
-	Score          *scoringtypes.ScoreResult `json:"score,omitempty"` // 兼容字段：2.3 起不再写入，新流程只写 Evidence
-	Evidence       *TaskEvidence             `json:"evidence,omitempty"`
-	Checkpoints    []Checkpoint              `json:"checkpoints,omitempty"`
-	RolledBackTo   string                    `json:"rolled_back_to,omitempty"`
-	HeadCommit     string                    `json:"head_commit,omitempty"`     // 用于 duplicate detection
-	SessionID      string                    `json:"session_id,omitempty"`      // 创建本 task 的 agent session
-	ExternalOrigin ExternalOrigin            `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
-	ReviewPassed   bool                      `json:"review_passed,omitempty"`   // code-review-gate 通过标记；task-complete 门禁的硬前置
+	ReviewScore *int             `json:"review_score,omitempty"`
+	Branch      string           `json:"branch"`
+	Source      string           `json:"source"` // explicit | branch
+	Summary     string           `json:"summary"`
+	CurrentGate string           `json:"current_gate"`
+	History     []TaskGateResult `json:"history"`
+	StartedAt   time.Time        `json:"started_at"`
+	CompletedAt *time.Time       `json:"completed_at,omitempty"`
+	// Evidence 是任务的完成事实清单（判据/红先绿/评审轮次/逃生次数/未验证面）。
+	// 2.3 起这是唯一的完成证据形状；此前的 score 兼容字段已删除（见 drop-score-2）。
+	Evidence       *TaskEvidence  `json:"evidence,omitempty"`
+	Checkpoints    []Checkpoint   `json:"checkpoints,omitempty"`
+	RolledBackTo   string         `json:"rolled_back_to,omitempty"`
+	HeadCommit     string         `json:"head_commit,omitempty"`     // 用于 duplicate detection
+	SessionID      string         `json:"session_id,omitempty"`      // 创建本 task 的 agent session
+	ExternalOrigin ExternalOrigin `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
+	ReviewPassed   bool           `json:"review_passed,omitempty"`   // code-review-gate 通过标记；task-complete 门禁的硬前置
 	// Integrity: HMAC signature over the canonical JSON, written by SaveTaskState
 	// and verified on load (state-integrity-signing). integrityBroken is the runtime
 	// flag set when a present signature fails.
@@ -967,8 +966,8 @@ func (s *TaskState) EvidenceSealed() bool {
 // SealedAt returns the evidence-seal instant: the task-complete gate's pass time; CompletedAt for generic tasks; zero while unsealed.
 //
 // SealedAt 返回证据封印时刻：task-complete 门禁的通过时间；generic 任务取 CompletedAt；
-// 未封印返回零值。评分/结论的证据读取用它作时间上界（checklog.ForTaskUntil /
-// LatestByCheckForTaskWindow）。CompletedAt 晚于门禁时间时仍取门禁时间——那才是
+// 未封印返回零值。结论的事实读取用它作时间上界（checklog.ForTaskUntil）。
+// CompletedAt 晚于门禁时间时仍取门禁时间——那才是
 // 「完成声明」成立的时刻。
 func (s *TaskState) SealedAt() time.Time {
 	if s == nil {
@@ -1268,7 +1267,7 @@ const TaskKindTask = "task"
 // IsGeneric reports whether the task is the non-gated type (Kind == generic).
 //
 // IsGeneric 报告 task 是否为非门禁类型（Kind=="generic"）。generic task 承载调研/设计/纯
-// 接续工作，不走 implement→verify→complete 门禁、complete 不评分。
+// 接续工作，不走 implement→verify→complete 门禁，complete 只记事实。
 func (s *TaskState) IsGeneric() bool { return s.Kind == TaskKindGeneric }
 
 // HasContinuity reports whether the task carries any continuity content (any of
