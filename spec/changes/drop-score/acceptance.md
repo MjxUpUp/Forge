@@ -21,5 +21,9 @@ sh scripts/checks/deadcode-zero.sh
 ```
 
 ```bash
-go test ./internal/clitask/ -run 'TestTaskComplete_PrintsFactsNotGrade|TestBuildTaskEvidence|TestTaskReport_EvidenceNotScore' -count=1 :: ok
+go test ./internal/taskpipeline/ -run 'TestBuildTaskEvidence' -count=1 :: ok
+```
+
+```bash
+go test ./internal/cli/ -run 'TestTaskScoreWorkflow' -count=1 :: ok
 ```
