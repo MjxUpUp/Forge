@@ -31,7 +31,12 @@ func AppendConclusion(root string, state *TaskState) (act.Conclusion, string, er
 	if state.CompletedAt != nil {
 		completedAt = *state.CompletedAt
 	}
-	ev := BuildTaskEvidence(root, state)
+	// 已落盘的事实清单优先：rebuild 等场景只拿到完成时的 TaskState（Acceptance 等
+	// 明细可能已被后续迁移裁剪），用 recorded evidence 复原才与 complete 时一致。
+	ev := state.Evidence
+	if ev == nil {
+		ev = BuildTaskEvidence(root, state)
+	}
 	conc := act.BuildConclusion(state.TaskRef, state.SessionID, ev, ec, completedAt, phaseKeys(state.DesignPhases))
 	directive := conc.Directive()
 	proj, perr := forgedata.ProjectFor(root)
