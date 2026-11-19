@@ -88,7 +88,7 @@ func NextRepoContext(root, branch string, dirty bool, behindRemote int) NextCont
 		// 一次算完整批：next 在 30+ 个 ready change 时也不该为每个 change 起 git 子进程。
 		acts := change.Activities(root, readyIDs)
 		for _, id := range readyIDs {
-			if last := acts[id]; !last.IsZero() && time.Since(last) > change.StaleAfter {
+			if last, ok := acts[id]; ok && (last.IsZero() || time.Since(last) > change.StaleAfter) {
 				ctx.StaleChanges = append(ctx.StaleChanges, id)
 				continue
 			}

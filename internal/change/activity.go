@@ -40,8 +40,10 @@ func Activities(root string, ids []string) map[string]time.Time {
 		switch {
 		case !hasMtime && !hasCommit:
 			out[id] = now // 都不存在：别把不存在的目录判成陈旧
+		case shallow && dirty[id]:
+			out[id] = mtime // 人都在改它了，别判陈旧
 		case shallow:
-			out[id] = time.Time{} // 无法判定：按陈旧处理（见函数注释）
+			out[id] = time.Time{} // 无法判定历史：按陈旧处理（见函数注释）
 		case !hasCommit:
 			out[id] = mtime
 		case !dirty[id]:
@@ -65,7 +67,10 @@ func LastActivity(root, id string) (time.Time, error) {
 // dirtyChangeIDs 返回 spec/changes 下有未提交改动（含未跟踪）的 change id。
 func dirtyChangeIDs(root string) map[string]bool {
 	out := map[string]bool{}
-	cmd := exec.Command("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "spec/changes")
+	// --no-renames：-z 下 rename 的第二条 record 是「被改名的旧路径」原文，按它解析会
+	// 把首段当成 change id（例如 spec/changes/newc/goal.md → "c/changes/newc/goal.md"），
+	// 于是旧 change 被标成「有改动」而判新鲜（评审 P3-b）。
+	cmd := exec.Command("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--", "spec/changes")
 	cmd.Dir = root
 	raw, err := cmd.Output()
 	if err != nil {

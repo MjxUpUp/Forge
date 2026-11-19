@@ -1,0 +1,85 @@
+{
+  "change": "entry-honest",
+  "started_at": "2026-11-19T10:16:58Z",
+  "finished_at": "2026-11-19T10:20:29Z",
+  "passed": false,
+  "sealed": false,
+  "head": "e09f40f761971e50f608a0d682fd8855ae6ac6f7",
+  "diff_sha256": "308e6f3f95c71c839284a41dd9877a037c45541ca544e502e31f9d5a0c7b8ff4",
+  "files": [
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "f0d50ccd06c1a682d66b844901511288a32bd33a7d1014dd8adc0ab40cce5a8c"
+    },
+    {
+      "path": "internal/change/activity.go",
+      "sha256": "df44b73a50b57e112e7ed487f52435e5890f8134ff2220606bd234794cd07bd0"
+    },
+    {
+      "path": "internal/change/activity_test.go",
+      "sha256": "3847d08a5d0f6882a867558979088176aaa41e02b26353dee887cb443ada6f3b"
+    },
+    {
+      "path": "internal/taskpipeline/next.go",
+      "sha256": "e92cae5b31b888d91a29f92845417f2f98968f3f9a328d02f86fcb9dad4326ad"
+    }
+  ],
+  "acceptance_sha256": "59a160cfad02b2e89cce9abad5b43710cba91354265a31addfccbd3de5500511",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2115
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ ./internal/change/ ./internal/clitask/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 119123,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 84750,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 642,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 194
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 1,
+      "duration_ms": 4536,
+      "stdout_file": "06.stdout"
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 0,
+      "skipped": true
+    }
+  ]
+}
