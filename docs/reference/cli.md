@@ -116,6 +116,8 @@
 | `forge task scope add <glob> [--ref <ref>]` | 追加计划改动文件到白名单（支持中途迭代；--ref 指定任务，不依赖活跃任务检测） |
 | `forge task scope show` | 查看声明的白名单 + 实时 scope-drift（advisory，不阻塞） |
 | `forge task override [--work-activity\|--acceptance-gate\|--skill-decisions] disable` | per-task 逃生舱：关闭指定门禁检查（如批量重构时关活动检查）；使用落 checklog 审计。验证类（acceptance-gate/skill-decisions）evidence 强度 cap 到 Weak（重证据任务按证据缩放豁免）；work-activity 是节奏门禁，只审计不降强度。 |
+| `forge task checkpoint [--label <说明>] [--list]` | 给当前工作树存一个快照（`git stash create` 的不可达提交，不改工作树、不产生可见提交），记进任务状态；保留最近 20 个 |
+| `forge task rollback <checkpoint-id>` | `git stash apply` 把工作树恢复到该存档点（只放回内容，冲突需手工处理）；记录 `rolled_back_to` |
 | `forge task complete` | 标记任务完成（自动评分）。硬前置：本题两道门禁齐备 + 审查快照与当前 diff 一致 + 验收已实跑且新鲜 + **红先绿闭环**（每条 `--accept-red` 判据在同一命令上出现过失败、之后转绿；没登记红判据则不拦，但 report 会写「未登记」） |
 | `forge task abort [--ref <ref>] [--cascade\|--detach-deps]` | 中止并删除任务（清理 ghost/卡住任务，不评分；存在反向依赖时默认仅提示，`--cascade` 递归中止所有依赖它的任务，`--detach-deps` 从依赖它的任务移除该依赖边） |
 | `forge task score` | 查看任务质量评分 |

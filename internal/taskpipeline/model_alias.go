@@ -25,6 +25,7 @@ type (
 	Assignment          = tasktypes.Assignment
 	SessionLink         = tasktypes.SessionLink
 	TaskState           = tasktypes.TaskState
+	Checkpoint          = tasktypes.Checkpoint
 	CrossRepoImpact     = tasktypes.CrossRepoImpact
 	TaskGateResult      = tasktypes.TaskGateResult
 	ReviewRound         = tasktypes.ReviewRound

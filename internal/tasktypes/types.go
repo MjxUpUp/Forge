@@ -505,6 +505,8 @@ type TaskState struct {
 	CompletedAt    *time.Time                `json:"completed_at,omitempty"`
 	Score          *scoringtypes.ScoreResult `json:"score,omitempty"` // 兼容字段：2.3 起不再写入，新流程只写 Evidence
 	Evidence       *TaskEvidence             `json:"evidence,omitempty"`
+	Checkpoints    []Checkpoint              `json:"checkpoints,omitempty"`
+	RolledBackTo   string                    `json:"rolled_back_to,omitempty"`
 	HeadCommit     string                    `json:"head_commit,omitempty"`     // 用于 duplicate detection
 	SessionID      string                    `json:"session_id,omitempty"`      // 创建本 task 的 agent session
 	ExternalOrigin ExternalOrigin            `json:"external_origin,omitempty"` // 外部 issue 来源（--from_issue 解析）；空=本地 branch 推断 origin
@@ -1744,4 +1746,13 @@ type GoalContract struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
 	Change string `json:"change,omitempty"`
+}
+
+// Checkpoint 是 forge task checkpoint 记下的工作树快照（git stash create 的不可达提交）。
+type Checkpoint struct {
+	ID    string `json:"id"`
+	Ref   string `json:"ref"`
+	Head  string `json:"head"`
+	At    string `json:"at"`
+	Label string `json:"label,omitempty"`
 }
