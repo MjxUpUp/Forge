@@ -793,6 +793,21 @@ type Entry struct {
 	// 更大的载荷属旁路存储。omitempty：旧条目（Meta 前）解码为 nil——读方把缺键当
 	// 「未知」，绝不当零值语义。
 	Meta map[string]string `json:"meta,omitempty"`
+	// DurationMS is how long the checked thing actually took (0 = not measured).
+	//
+	// DurationMS 是这次检查实际耗时（毫秒；0 = 未测）。轨迹观测（2026-11-20）把它落进
+	// checklog，report 才能回答「门禁/验收/评审各花多久」，而不是只能看墙钟推断。
+	DurationMS int64 `json:"duration_ms,omitempty"`
+	// Attempt is the 1-based occurrence of this check for the same task (0 = legacy).
+	//
+	// Attempt 是同一任务下该检查的第几次（从 1 起；0 = 旧条目）。重试次数此前只能从
+	// 多条相同 check 的条数反推，落成字段后可直接读。
+	Attempt int `json:"attempt,omitempty"`
+	// Steps is the number of units the check covered (criteria, checks, rounds).
+	//
+	// Steps 是该检查覆盖的单元数（判据条数 / 检查项数 / 轮次）。耗时没有分母时无法
+	// 解释——3 秒跑 1 条和 3 秒跑 40 条是两回事。
+	Steps int `json:"steps,omitempty"`
 	// Stamp 携带机器归因字段（node_id/seq/ts_hlc/sig），由 Record 经 nodestamp.Next
 	// 落章——存量行与 fail-open 时为零值（打戳绝不阻塞它依附的事件）。拍平进本
 	// JSON 对象。

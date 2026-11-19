@@ -91,10 +91,13 @@ type taskReportJSON struct {
 	DocReviewLine string `json:"doc_review_line,omitempty"`
 	// RedFirstLine / ReviewChainLine 是 red-first-evidence 的两行人读事实：
 	// 先失败证明是否成立、评审者是谁/第几轮/承接了多少未闭合项。
-	RedFirstLine    string   `json:"red_first_line,omitempty"`
-	ReviewChainLine string   `json:"review_chain_line,omitempty"`
-	SpecApprovedAt  string   `json:"spec_approved_at,omitempty"`
-	Repro           []string `json:"repro"`
+	RedFirstLine    string `json:"red_first_line,omitempty"`
+	ReviewChainLine string `json:"review_chain_line,omitempty"`
+	// TrajectoryLine 是轨迹观测（2026-11-20）：耗时与步数来自 checklog 的
+	// duration_ms/steps/attempt，回答「验收/评审各花了多久、跑了几轮」。
+	TrajectoryLine string   `json:"trajectory_line,omitempty"`
+	SpecApprovedAt string   `json:"spec_approved_at,omitempty"`
+	Repro          []string `json:"repro"`
 	// ReqCoverage is the requirement-ID coverage (reqtrace.go); nil when the
 	// task never adopted requirement IDs.
 	//
@@ -339,6 +342,7 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		}
 		rep.ReviewChainLine = line
 	}
+	rep.TrajectoryLine = buildTrajectoryLine(root, state.TaskRef)
 	return rep, nil
 }
 
@@ -529,6 +533,9 @@ func renderTaskReport(rep *taskReportJSON) string {
 		review += " · ⚠ 含自审轮（盖章会话=改动生产者）"
 	}
 	fmt.Fprintf(&b, "│ 审查：%s · 对账单：%d/%d 勾\n", review, rep.ChecklistDone, rep.ChecklistTotal)
+	if rep.TrajectoryLine != "" {
+		fmt.Fprintf(&b, "│ 轨迹：%s\n", rep.TrajectoryLine)
+	}
 	if rep.RedFirstLine != "" {
 		fmt.Fprintf(&b, "│ 先失败证明：%s\n", rep.RedFirstLine)
 	}
@@ -641,4 +648,49 @@ func goTestFilesPtr(root string) *bool {
 		return nil
 	}
 	return &found
+}
+
+// buildTrajectoryLine 从 checklog 汇总本任务的耗时轨迹（验收/评审），回答
+// 「各阶段花了多久」——此前只能拿墙钟差猜。只读落章条目、不改状态。
+func buildTrajectoryLine(root, taskRef string) string {
+	if taskRef == "" {
+		return ""
+	}
+	entries, err := checklog.LoadAll(root)
+	if err != nil {
+		return ""
+	}
+	var acc, rev int
+	var accLast, revLast checklog.Entry
+	for _, e := range entries {
+		if e.TaskRef != taskRef || e.DurationMS <= 0 {
+			continue
+		}
+		switch e.Check {
+		case taskpipeline.CheckNameAcceptance:
+			acc++
+			accLast = e
+		case checklog.CheckReviewPass:
+			rev++
+			revLast = e
+		}
+	}
+	var parts []string
+	if acc > 0 {
+		parts = append(parts, fmt.Sprintf("验收 %d 轮（末轮 %s·%d 条判据）", acc, durMS(accLast.DurationMS), accLast.Steps))
+	}
+	if rev > 0 {
+		parts = append(parts, fmt.Sprintf("评审 %d 轮（末轮 %s）", rev, durMS(revLast.DurationMS)))
+	}
+	if len(parts) == 0 {
+		return "未记录（旧条目没有 duration_ms）"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func durMS(ms int64) string {
+	if ms < 1000 {
+		return fmt.Sprintf("%dms", ms)
+	}
+	return fmt.Sprintf("%.1fs", float64(ms)/1000)
 }

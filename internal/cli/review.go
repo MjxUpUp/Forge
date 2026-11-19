@@ -516,6 +516,9 @@ func runReviewPassAtOpts(root, explicitRef, note, reviewer string, o reviewOptio
 			Checked: true,
 			TaskRef: state.TaskRef,
 			Detail:  detail,
+			// 轨迹：Attempt=这是第几轮复审，Steps=本次接手的 findings 条数。
+			Attempt: len(state.ReviewRounds),
+			Steps:   len(findings),
 		}
 		if selfRefresh || baselineUnreachable != "" || rotatedFrom != "" {
 			entry.Level = checklog.LevelWarn

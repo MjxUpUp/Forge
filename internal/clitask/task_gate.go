@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -419,8 +420,10 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 	// 尝试在无受信的情况下执行已去标记的外来命令；改为 fail-closed（崩溃后标记仍在，重跑
 	// 重新要求 --trust-foreign）。
 
+	accStart := time.Now()
 	verdicts := taskpipeline.VerifyAcceptanceWithVerdicts(root, state)
 	allPassed := state.AllAcceptancePassed()
+	accDuration := time.Since(accStart)
 
 	// 逐断言证据行（spec-as-gate v2，leverage-points-landing.md L2 P1）：每条断言一行
 	// deterministic acceptance-assert，trace 不展开也能定位挂的是哪条断言；聚合行紧随
@@ -452,6 +455,10 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 		Checked: true,
 		TaskRef: state.TaskRef,
 		Detail:  formatAcceptanceDetail(state.Acceptance),
+		// 轨迹：耗时与判据条数（steps）同批落章——report 的「轨迹」行直接读，
+		// 不再拿墙钟差猜「验收花了多久」。
+		DurationMS: accDuration.Milliseconds(),
+		Steps:      len(state.Acceptance),
 		// 通过条数/总条数进 Meta：循环判词的 no-progress 规则读结构化键，不解析 Detail 散文。
 		Meta: map[string]string{
 			taskpipeline.MetaKeyAcceptancePassed: strconv.Itoa(acceptancePassCount(state.Acceptance)),
