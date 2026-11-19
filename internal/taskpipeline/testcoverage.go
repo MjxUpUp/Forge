@@ -120,9 +120,9 @@ func coverageEscapeActive(root string, state *TaskState) bool {
 // source file changed during the task must have a corresponding test file also
 // changed. 返回 (ok, missing, total)：未改源码 / 所有改动源码均在 whitelist /
 // 每个都有配对测试时 ok=true；total 是需配对测试的改动源码文件数
-// （covered = total-len(missing)），评分维度据此连续打分而非二元 ok。
+// （covered = total-len(missing)），供覆盖率报告连续展示而非二元 ok。
 //
-// 导出是为了让 scoring（cli.scoreTask）能复用 task-verify 门禁算出的精确裁定，
+// 导出是为了让完成事实采集（BuildTaskEvidence）能复用 task-verify 门禁算出的精确裁定，
 // 而非从 git diff 重新推导覆盖——后者在 task 改动于 task start 前已 commit 时
 // 低估覆盖（HeadCommit == HEAD → 空 diff → testing 维度看不见测试）。
 //
@@ -447,7 +447,7 @@ func hasMatchingTest(src string, changed map[string]bool) bool {
 	// 归一源码路径以匹配：filepath.Dir 跑 Clean，Windows 下会把 '/' 转成
 	// OS 分隔符 '\'，而 changed 的 key 保持 forward-slash。不 ToSlash 时，
 	// 下面的 package-level 兜底在 Windows 上静默永不命中——破坏门控
-	// （及 scoreTask 的 B3 live 兜底）对任何多目录 package 的判定。
+	// （及测试覆盖事实的 B3 live 兜底）对任何多目录 package 的判定。
 	src = filepath.ToSlash(src)
 	for _, p := range testCandidates(src) {
 		if changed[p] {

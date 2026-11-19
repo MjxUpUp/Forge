@@ -1,6 +1,6 @@
-// Package toolusage records AI agent tool calls, used for quality scoring.
+// Package toolusage records AI agent tool calls, used as input for quality inspection.
 //
-// Package toolusage 记录 AI agent 的 tool 调用，用于质量评分。
+// Package toolusage 记录 AI agent 的 tool 调用，用于质量审计（事实来源，不产分数）。
 package toolusage
 
 import (

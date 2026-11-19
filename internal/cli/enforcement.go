@@ -63,14 +63,18 @@ type enforcementReport struct {
 
 // taskAudit 是一次随机审计的 join 结果：任务 × 其会话的执法遥测。
 type taskAudit struct {
-	TaskRef      string  `json:"task_ref"`
-	SessionID    string  `json:"session_id"`
-	Ignores      int     `json:"ignores"`    // 该会话的无视计数（0=未触发或未留痕）
-	WildCount    int     `json:"wild_count"` // 该会话的野外申报数
-	Advisories   int     `json:"advisories"` // 该任务的 task-guard advisory 条数
-	Blocked      int     `json:"blocked"`    // 该任务的 blocked 条数
-	ScoreOverall float64 `json:"score_overall,omitempty"`
-	Verdict      string  `json:"verdict"` // 采样结论一句话
+	TaskRef    string `json:"task_ref"`
+	SessionID  string `json:"session_id"`
+	Ignores    int    `json:"ignores"`    // 该会话的无视计数（0=未触发或未留痕）
+	WildCount  int    `json:"wild_count"` // 该会话的野外申报数
+	Advisories int    `json:"advisories"` // 该任务的 task-guard advisory 条数
+	Blocked    int    `json:"blocked"`    // 该任务的 blocked 条数
+	// 完成事实（来自 BuildTaskEvidence）：抽审查生产量时用事实而非分数。
+	Criteria       int    `json:"criteria,omitempty"`
+	CriteriaPassed int    `json:"criteria_passed,omitempty"`
+	RedFirstClosed int    `json:"red_first_closed,omitempty"`
+	Escapes        int    `json:"escapes,omitempty"`
+	Verdict        string `json:"verdict"` // 采样结论一句话
 }
 
 func runEnforcement(cmd *cobra.Command, args []string) error {
@@ -101,8 +105,9 @@ func runEnforcement(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(w, "降格复审（提升规则零阻断零升档——zombie rule）：%s\n", strings.Join(rep.DemotionReview, "、"))
 	}
 	for _, s := range rep.Samples {
-		fmt.Fprintf(w, "· %s（session %s）：ignores=%d wild=%d advisory=%d blocked=%d — %s\n",
-			s.TaskRef, shortSession(s.SessionID), s.Ignores, s.WildCount, s.Advisories, s.Blocked, s.Verdict)
+		fmt.Fprintf(w, "· %s（session %s）：ignores=%d wild=%d advisory=%d blocked=%d 判据=%d/%d 逃生=%d — %s\n",
+			s.TaskRef, shortSession(s.SessionID), s.Ignores, s.WildCount, s.Advisories, s.Blocked,
+			s.CriteriaPassed, s.Criteria, s.Escapes, s.Verdict)
 	}
 	if rep.TaskGuard.Advisory == 0 && rep.TaskGuard.Blocked == 0 && rep.WildDeclarations == 0 {
 		fmt.Fprintln(w, "（无执法事件记录——干净或未启用）")
@@ -218,8 +223,11 @@ func sampleCompletedTasks(root, dataDir string, n int) []taskAudit {
 			a.Ignores = ignores[st.SessionID]
 			a.WildCount = wild[st.SessionID]
 		}
-		if st.Score != nil {
-			a.ScoreOverall = st.Score.Overall
+		if ev := taskpipeline.BuildTaskEvidence(root, st); ev != nil {
+			a.Criteria = ev.Criteria
+			a.CriteriaPassed = ev.CriteriaPassed
+			a.RedFirstClosed = ev.RedFirstClosed
+			a.Escapes = ev.Escapes
 		}
 		for _, e := range entries {
 			if e.TaskRef != st.TaskRef || string(e.Check) != "task-guard" {

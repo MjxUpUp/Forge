@@ -49,7 +49,6 @@ type FeedEvent struct {
 	Gate     string    `json:"gate,omitempty"`   // gate 事件: implement/verify/complete
 	Passed   *bool     `json:"passed,omitempty"` // gate 事件
 	Commit   string    `json:"commit,omitempty"` // gate 事件 HeadCommit 短哈希
-	Grade    string    `json:"grade,omitempty"`  // conclusion 事件（分数内联在 Title）
 	// Node is the originating machine's node_id (multi-machine Phase 3).
 	//
 	// Node 是来源机器的 node_id（多机器 Phase 3）：conclusion 与 skill-trigger 事件
@@ -406,33 +405,22 @@ func shortCommit(h string) string {
 	return h
 }
 
-// conclusionEvent 投影 act 结论：severity 按 grade 映射（A/B→ok、C→info、D→warn、
-// F→fail），Detail 带证据强度 + det/claim 数 + 验收 x/y。
+// conclusionEvent 投影 act 结论：severity 按证据强度（Unverified→fail、其余 nudge→warn、
+// 否则 ok），Title 带判据通过事实，Detail 带先失败证明/评审轮次/逃生 + det/claim。
 func conclusionEvent(pr pulseRoot, c act.Conclusion) FeedEvent {
-	score := int(c.Score + 0.5) // 四舍五入到 int，内联进标题（前端不另读分数字段）
+	sev := FeedSeverityOK
+	if c.RetrospectiveNudge {
+		sev = FeedSeverityWarn
+	}
+	if c.Strength == "Unverified" {
+		sev = FeedSeverityFail
+	}
 	return FeedEvent{
 		Time: c.CompletedAt, Kind: FeedKindConclusion, Project: pr.name, TaskRef: c.TaskRef,
-		Severity: gradeSeverity(c.Grade),
-		Title:    fmt.Sprintf("%s 完成 · %s %d 分", c.TaskRef, c.Grade, score),
-		Detail: fmt.Sprintf("证据 %s · det=%d claim=%d · 验收 %d/%d",
-			c.Strength, c.Deterministic, c.AgentClaim, c.AcceptancePass, c.AcceptanceTotal),
-		Grade: c.Grade,
-		Node:  c.NodeID, // 结论落章机器
-	}
-}
-
-// gradeSeverity 把字母 grade 映射成 feed severity；未知/空 grade 保持 info。
-func gradeSeverity(grade string) string {
-	switch grade {
-	case "A", "B":
-		return FeedSeverityOK
-	case "C":
-		return FeedSeverityInfo
-	case "D":
-		return FeedSeverityWarn
-	case "F":
-		return FeedSeverityFail
-	default:
-		return FeedSeverityInfo
+		Severity: sev,
+		Title:    fmt.Sprintf("%s 完成 · 判据 %d/%d · 证据 %s", c.TaskRef, c.AcceptancePass, c.AcceptanceTotal, c.Strength),
+		Detail: fmt.Sprintf("红先绿 %d/%d · 评审 %d 轮 · 逃生 %d · det=%d claim=%d",
+			c.RedFirstClosed, c.RedFirstTrials, c.ReviewRounds, c.Escapes, c.Deterministic, c.AgentClaim),
+		Node: c.NodeID, // 结论落章机器
 	}
 }

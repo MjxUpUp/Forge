@@ -7,18 +7,15 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
-	"github.com/MjxUpUp/Forge/internal/toolusage"
 	"github.com/MjxUpUp/Forge/internal/worktree"
 )
 
 // Attribution freeze (docs/design/harness-fixes-a-g-2026-09.md E): completing a task clears
 // every session pointer and workspace binding that names it; audit rows backfill the session
-// and carry the resolve_path / post_seal probe; efficiency uses the toollog active span
-// instead of the wall clock.
+// and carry the resolve_path / post_seal probe.
 //
 // 归因冻结（docs/design/harness-fixes-a-g-2026-09.md E）：完成时清掉所有指向该任务的
-// 会话指针 + workspace 绑定；审计行回填 session 并打 resolve_path / post_seal 探针；
-// efficiency 用 toollog 活跃跨度替代挂钟。
+// 会话指针 + workspace 绑定；审计行回填 session 并打 resolve_path / post_seal 探针。
 
 func sealedState(ref string, t0 time.Time) *TaskState {
 	s := &TaskState{TaskRef: ref, Branch: ref, StartedAt: t0, SessionID: "sess-owner"}
@@ -125,24 +122,5 @@ func TestRecordAudit_BackfillsSessionAndMarksPostSeal(t *testing.T) {
 	}
 	if rows[0].Meta[checklog.MetaKeyPostSeal] != "true" {
 		t.Errorf("post-seal row must be flagged, meta = %v", rows[0].Meta)
-	}
-}
-
-func TestActiveSpanFromCalls(t *testing.T) {
-	t0 := time.Date(2026, 9, 7, 22, 50, 0, 0, time.UTC)
-	calls := []toolusage.ToolCall{
-		{ToolName: "Read", Timestamp: t0.Add(-5 * time.Minute)}, // task start 之前：不计
-		{ToolName: "Edit", Timestamp: t0.Add(2 * time.Minute)},
-		{ToolName: "Bash", Timestamp: t0.Add(40 * time.Minute)},
-		{ToolName: "Bash", Timestamp: t0.Add(30 * time.Hour)}, // 封印之后：不计
-	}
-	if got := activeSpanFromCalls(calls, t0, t0.Add(time.Hour)); got != 38*time.Minute {
-		t.Fatalf("active span = %v, want 38m", got)
-	}
-	if got := activeSpanFromCalls(calls[:1], t0, t0.Add(time.Hour)); got != 0 {
-		t.Fatalf("fewer than 2 in-window calls must yield 0 (fallback to wall clock), got %v", got)
-	}
-	if got := activeSpanFromCalls(calls, t0, time.Time{}); got != 30*time.Hour-2*time.Minute {
-		t.Fatalf("zero until = unbounded upper, got %v", got)
 	}
 }

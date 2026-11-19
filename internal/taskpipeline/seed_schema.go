@@ -9,7 +9,6 @@ package taskpipeline
 import (
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
@@ -63,13 +62,16 @@ func SeedTaskStateForSchema() any {
 		NotifiedAt: &now, AbandonedCount: 1, AbandonedAt: &now, AutoDelivered: true,
 	}
 	s.Lease = &tasktypes.Lease{HolderNode: "n", TsHLC: "t", TTLSec: 60, Fencing: 1, ClaimedAt: 1}
-	// 复审发现的 17 个顶层遗漏键逐一填满（score/cross_repo_impact/spec_artifacts/
+	// 复审发现的 17 个顶层遗漏键逐一填满（evidence/cross_repo_impact/spec_artifacts/
 	// session_links/decisions/next_steps/blockers/artifacts/parent_task_ref/
 	// depends_on/kind/ttl/resume_stale/reviewed_head_commit/reviewed_change_hash/
 	// acceptance_foreign/plan_first_advisory_fired）+ 嵌套 note/round/change_hash。
-	s.Score = &scoringtypes.ScoreResult{
-		TaskRef: "seed/ref", Overall: 90, Grade: "A", ScoredAt: now,
-		Dimensions: []scoringtypes.DimensionScore{{Dimension: "verification", Score: 90, Detail: "d"}},
+	// 事实清单的每个键都必须填满：漏填的键不在序列化承诺面（drop-score-2 起
+	// score 键已删除，完成证据只由 evidence 承载）。
+	s.Evidence = &tasktypes.TaskEvidence{
+		Criteria: 3, CriteriaPassed: 2, RedFirstTrials: 2, RedFirstClosed: 1,
+		ReviewRounds: 1, Escapes: 1,
+		UntestedAreas: []string{"a.go"}, RemainingRisks: []string{"minor: x"},
 	}
 	s.CrossRepoImpact = &tasktypes.CrossRepoImpact{Level: "multi", Repos: []string{"r"}, Note: "n", DeclaredAt: now}
 	s.SpecArtifacts = map[string]tasktypes.ArtifactRef{"intent": {Path: "p", Hash: "h", UpdatedAt: now}}

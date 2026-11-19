@@ -59,9 +59,10 @@ func StripForeignGateSignals(s *TaskState) {
 	s.ReviewedHeadCommit = ``
 	s.ReviewedChangeHash = ``
 	// ReviewRounds 是 review-pass 历史——与快照字段同信任类：外来 review 打戳不得
-	// 虚增本机返工度量（ScoreTask 会把 len(ReviewRounds) 折进 Evidence.ReviewPasses）。
+	// 虚增本机返工度量（BuildTaskEvidence 把 len(ReviewRounds) 折进 ReviewRounds 事实）。
 	s.ReviewRounds = nil
-	s.Score = nil
+	// 完成事实清单同属结果信号：外来 Evidence 是未受信状态的派生结果。
+	s.Evidence = nil
 	for i := range s.Acceptance {
 		s.Acceptance[i].Passed = false
 		s.Acceptance[i].AcceptedHeadCommit = ``

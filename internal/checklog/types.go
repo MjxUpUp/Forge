@@ -51,12 +51,12 @@ const (
 	// 留痕供 review 核查）。层 2（引用了但语义没接通）机械不可判 → 仍归 LLM reviewer /
 	// code-review-gate。
 	CheckUnusedScan CheckName = "unused-scan"
-	// CheckEscapeHatch records usage of gate-bypass escape hatches (FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY / FORGE_RECURRENT_HARDEN).
+	// CheckEscapeHatch records usage of gate-bypass escape hatches (FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY).
 	//
 	// CheckEscapeHatch 记录 gate-bypass 逃生舱的使用（FORGE_TEST_COVERAGE /
-	// FORGE_WORK_ACTIVITY / FORGE_RECURRENT_HARDEN）。这些逃生舱是合法工具，但其使用必须
+	// FORGE_WORK_ACTIVITY）。这些逃生舱是合法工具，但其使用必须
 	// 留痕可审计、不能静默——agent 通过 export FORGE_TEST_COVERAGE=disable 绕过
-	// test-coverage gate 时，应留下可见轨迹。A4：记录以便 forge trace 与评分能展示
+	// test-coverage gate 时，应留下可见轨迹。A4：记录以便 forge trace 能展示
 	// 逃生舱使用。Passed=true（bypass 已生效）、Checked=true、Detail 标注逃生舱名。
 	CheckEscapeHatch CheckName = "escape-hatch"
 	// CheckSkillTrigger records a canonical skill that the skill-trigger framework fired (passive injection via AdditionalContext) — making skill reach observable downstream.
@@ -403,7 +403,7 @@ const (
 	// deterministic（门禁比对两份本地台账，agent 无法伪造 toollog 侧）。
 	// 判定：pass（全部声称有据）/ warn（非测试类声称未匹配）/ fail（测试类声称
 	// 在任务全程零匹配——虚报进度的形态）。关于任务自身诚实度的观察类，喂给
-	// review 与评分上下文。
+	// review 上下文。
 	CheckSelfReport CheckName = "self-report-consistency"
 	// CheckGatePush records one `forge gate push` outcome (push-boundary gate:
 	// cheat-scan re-run over base...HEAD + unresolved BLOCKED tasks on the
@@ -576,7 +576,7 @@ const (
 	// MetaKeyPostSeal = "true" marks a row landing after the task's evidence seal (task-complete gate passed) — kept for trace, excluded from scoring/conclusion by the TaskState.SealedAt window.
 	//
 	// MetaKeyPostSeal = "true" 标记该行落在任务证据封印（task-complete 门禁通过）之后
-	// ——行保留供 trace，但评分/结论按 TaskState.SealedAt 截断不计入。
+	// ——行保留供 trace，但结论按 TaskState.SealedAt 截断不计入。
 	MetaKeyPostSeal = "post_seal"
 	// MetaKeySuggested carries the command a next-hint row proposed; writer is taskpipeline.NextHint, consumers read it from Meta alongside the row.
 	//
@@ -591,7 +591,7 @@ const (
 // 工具实跑或 gate 代码判定，不可被 agent 伪造）与 agent-claim（agent 自述的
 // 验证）。
 //
-// 用途：review 子 agent 和评分据此对冲 LLM-judge 盲区——业界反复证实（Tenure
+// 用途：review 子 agent 据此对冲 LLM-judge 盲区——业界反复证实（Tenure
 // "0.85 vs 0.000" 案例）LLM judge 看不出"agent 跳过前置就声明完成"的最严重
 // 失败模式；只有 deterministic 证据能照出。EvidenceChain 按 Source 分桶，
 // review 时优先采信 deterministic，agent-claim 仅作初筛信号。
@@ -606,7 +606,7 @@ const (
 	// EvidenceAgentClaim: agent self-reported verification (e.g. `I ran the end-to-end tests` but not confirmed by a hook).
 	//
 	// EvidenceAgentClaim: agent 自述的验证（如"我跑过端到端测试了"但未由 hook
-	// 确认）。可信度低于 deterministic，评分/review 应区别对待。
+	// 确认）。可信度低于 deterministic，review 应区别对待。
 	EvidenceAgentClaim EvidenceSource = "agent-claim"
 )
 

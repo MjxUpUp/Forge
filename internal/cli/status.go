@@ -92,11 +92,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "warn: 无法列出任务状态（继续渲染其余区块）: %v\n", tsErr)
 	}
 
-	// Project-level quality signals (task→project rollup): surface the evidence-blind-spot rate / recurring low-score
-	// dimensions at the status main entry. Otherwise deterministic signals computed in forge health are invisible to the
+	// Project-level quality signals (task→project rollup): surface the evidence-blind-spot rate / criteria pass /
+	// red-first / strength distribution at the status main entry. Otherwise deterministic signals computed in forge health are invisible to the
 	// user in status (the where-is-the-project main entry) — a visibility gap. Omitted when conclusions is empty (no completed tasks yet).
 	//
-	// 项目级质量信号（task→project 上卷）：把证据盲区率/复发低分维度亮在 status 主入口。
+	// 项目级质量信号（task→project 上卷）：把证据盲区率/判据通过/红先绿/证据强度分布亮在 status 主入口。
 	// 否则 deterministic 信号在 forge health 里算好了，但用户在 status（「项目在哪」主入口）
 	// 看不到——可见性缺口。conclusions 为空时省略（项目还没完成任务）。
 	var hs *health.Summary
@@ -161,19 +161,18 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Show detected agents
 	//
-	// 项目级质量信号（与 --json 的 Health 同源）。compact 一块，只在有完成任务时显示：
-	// 盲区率是头条（项目级 LLM-judge 盲区），复发低分维度次之。forge health 看完整趋势。
+	// 项目级完成事实（与 --json 的 Health 同源）。compact 一块，只在有完成任务时显示：
+	// 盲区率是头条（项目级 LLM-judge 盲区），判据事实次之。forge health 看完整事实。
 	if hs != nil {
 		fmt.Println()
 		fmt.Println(strings.Repeat("─", 60))
-		fmt.Printf(`质量信号: %d 任务完成, 均分 %.0f, 证据盲区率 %.0f%%`+"\n",
-			hs.TotalTasks, hs.AvgScore, hs.BlindSpotRate*100)
+		fmt.Printf(`完成事实: %d 任务完成, 判据通过 %d/%d, 证据盲区率 %.0f%%`+"\n",
+			hs.TotalTasks, hs.CriteriaPassed, hs.Criteria, hs.BlindSpotRate*100)
 		if hs.BlindSpotRate >= 0.5 {
 			fmt.Println(`  ⚠ 系统性盲区：过半完成声明缺 deterministic 证据——project 级该查验证为何没真跑`)
 		}
-		if len(hs.LowDims) > 0 {
-			top := hs.LowDims[0]
-			fmt.Printf(`  复发低分维度: %s ×%d（forge health 看全部）`+"\n", top.Dimension, top.Count)
+		if hs.RedFirstTrials > 0 {
+			fmt.Printf(`  先失败证明: %d/%d 已转绿（forge health 看全部）`+"\n", hs.RedFirstClosed, hs.RedFirstTrials)
 		}
 	}
 

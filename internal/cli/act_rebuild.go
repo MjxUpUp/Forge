@@ -21,8 +21,8 @@ conclusions.jsonl（写入用户级 ~/.forge/projects/<项目key>/act/）。
 
 背景：act 结论落盘是后加功能，act 上线前完成的任务没有 conclusions.jsonl，导致 forge
 dashboard / act list 对旧项目显示空——dashboard 只读 conclusions.jsonl，不读 tasks/*.json。
-rebuild 遍历所有有 Score+CompletedAt 的任务，从 TaskState + checklog 证据链重建结论
-（复用 task complete 时的 appendConclusion 逻辑，单一真相源）。
+rebuild 遍历所有已完成（CompletedAt 非空）的任务，从 TaskState 事实清单 + checklog
+证据链重建结论（复用 task complete 时的 appendConclusion 逻辑，单一真相源）。
 
 现有 conclusions.jsonl 先备份到 .bak。rebuild 全量重建（幂等：多次跑结果一致，按完成时间排序）。
 
@@ -53,7 +53,7 @@ func runActRebuild(cmd *cobra.Command, args []string) error {
 	}
 	n, failed := 0, 0
 	for _, state := range states {
-		if state.Score == nil || state.CompletedAt == nil {
+		if state.CompletedAt == nil {
 			continue
 		}
 		if _, ok := clitask.AppendConclusion(root, state); !ok {
@@ -68,7 +68,7 @@ func runActRebuild(cmd *cobra.Command, args []string) error {
 	if failed > 0 {
 		return fmt.Errorf("重建完成但 %d 条结论落盘失败（conclusions.jsonl 不完整；原文件备份在 %s，可手动恢复）", failed, backup)
 	}
-	fmt.Printf("重建 %d 条结论 → ~/.forge/projects/<项目key>/act/conclusions.jsonl（已完成任务 %d 个，跳过 %d 个未评分）\n",
+	fmt.Printf("重建 %d 条结论 → ~/.forge/projects/<项目key>/act/conclusions.jsonl（共 %d 个任务，跳过 %d 个未完成）\n",
 		n, len(states), len(states)-n)
 	fmt.Println("运行 forge dashboard 或 forge act list 查看数据。")
 	return nil

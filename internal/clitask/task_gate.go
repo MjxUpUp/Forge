@@ -54,7 +54,7 @@ func recordTreeGuardOffTree(root, gateID string, state *taskpipeline.TaskState, 
 }
 
 // recordTreeGuardEscape 把「关掉守护」记成 escape-hatch 行（§5）：逃生舱必须留痕，
-// 否则 task-tree-guard 是静默的。评分侧按既有 CheckEscapeHatch 规则 capped。
+// 否则 task-tree-guard 是静默的。逃生按既有 CheckEscapeHatch 规则计入事实清单。
 // 每会话每任务至多一条（marker 节流，沿用 recordGateCmdFormEscape 的形态）。
 func recordTreeGuardEscape(root string, state *taskpipeline.TaskState) {
 	sid := taskpipeline.CurrentSessionID()
@@ -131,7 +131,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	if ts := taskpipeline.TaskTreeStatus(root, state.TaskRef); ts.State == taskpipeline.TreeOffTree {
 		if taskpipeline.TreeGuardDisabled() {
 			// 逃生舱留痕（§5）：关掉守护不是静默——checklog 落一条 escape-hatch，
-			// 评分随之 capped；否则「错树守护」在关闭时完全没有痕迹。
+			// 逃生随之计入完成事实；否则「错树守护」在关闭时完全没有痕迹。
 			recordTreeGuardEscape(root, state)
 		} else {
 			recordTreeGuardOffTree(root, gateID, state, ts)
@@ -187,7 +187,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 	// 刷新只能由 verify-acceptance（默认认 active task，可用 --ref 显式指定）完成。门一过
 	// 任务即失活 → 验收刷新死锁（本次 v2 任务实测踩中：review 修复 commit 移动 HEAD 后
 	// complete 永久 BLOCKED，且无任何 CLI 路径可复活）。完成 = `forge task complete` 的
-	// 整个动作（pre-flight → MarkComplete → 评分 → 反馈 → 清 ref）；门禁全过只是它的
+	// 整个动作（pre-flight → MarkComplete → 采集完成事实 → 反馈 → 清 ref）；门禁全过只是它的
 	// 前置条件，不是完成本身。
 	//
 	// 锁内门禁结果写入：runTaskGate 顶部的 load 早于可能长达分钟级的 ExecuteTaskGate

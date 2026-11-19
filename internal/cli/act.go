@@ -27,11 +27,11 @@ func init() {
 var actCmd = &cobra.Command{
 	Use:   "act",
 	Short: "Act 反馈臂——证据驱动的任务结论（喂给 session-retrospective）",
-	Long: `forge act 读取每个完成任务的证据驱动结论（评分 + 证据强度 + 验收通过率 + 低分维度），
+	Long: `forge act 读取每个完成任务的证据驱动结论（证据强度 + 验收通过率 + 判据/红先绿/评审/逃生事实），
 落盘在 ~/.forge/projects/<项目key>/act/conclusions.jsonl（用户级数据目录）。是 PDCA Act 反馈臂的产出：会话回顾不再靠 agent 临结束
 回忆，而是读结构化、deterministic 的结论。Weak/Unverified 证据（完成声明主要靠 agent 自述）
-或低分任务的结论会标 RetrospectiveNudge——session-retrospective 据此优先回顾，对冲"高分但
-没真验证"的 LLM-judge 盲区（分数看不出 agent 是否真跑过验证）。`,
+或证据不足的结论会标 RetrospectiveNudge——session-retrospective 据此优先回顾，对冲
+"声明完成但没真验证"的 LLM-judge 盲区（分数曾是代理信号，2.3 起改读事实）。`,
 }
 
 var actShowCmd = &cobra.Command{
@@ -50,8 +50,8 @@ var actNudgeCmd = &cobra.Command{
 	Use:   "nudge",
 	Short: "输出最新结论的回顾指令（有 nudge 才输出，否则静默）——供 agent/脚本收尾时显式调用",
 	Long: `forge act nudge 供任务收尾时显式调用（agent 或脚本，不再有会话结束 hook）：读最新任务结论，若标
-RetrospectiveNudge（证据弱 Unverified/Weak 或低分 <70）则输出一行可执行回顾指令（Directive），
-否则完全静默。Strong 且>=70 的干净完成不发噪声——nudge 只在有盲区时出现。
+RetrospectiveNudge（证据弱 Unverified/Weak）则输出一行可执行回顾指令（Directive），
+否则完全静默。证据强（Strong）的干净完成不发噪声——nudge 只在有盲区时出现。
 
 这是 Act 反馈臂的会话结束触发点（阶段 D 起无 hook，需显式调用）：Directive 不只在 forge task complete 时打印一次（易被后续
 工作淹没），也在会话结束的质量信号面 surface，确保"高分但没真验证"的盲区到达回顾真正发生
@@ -182,8 +182,8 @@ func runActList(cmd *cobra.Command, args []string) error {
 		if c.RetrospectiveNudge {
 			nudge = " ⚠回顾"
 		}
-		fmt.Printf("  %-22s %3.0f %-8s evidence=%-10s ratio=%.2f%s\n",
-			c.TaskRef, c.Score, c.Grade, c.Strength, c.Ratio, nudge)
+		fmt.Printf("  %-22s %-10s 判据 %d/%d 红先绿 %d/%d ratio=%.2f%s\n",
+			c.TaskRef, c.Strength, c.AcceptancePass, c.AcceptanceTotal, c.RedFirstClosed, c.RedFirstTrials, c.Ratio, nudge)
 	}
 	return nil
 }
@@ -218,14 +218,19 @@ func printConclusion(c *act.Conclusion) {
 	if c.SessionID != "" {
 		fmt.Printf("Session:     %s\n", c.SessionID)
 	}
-	fmt.Printf("Score:       %.0f (%s)\n", c.Score, c.Grade)
 	fmt.Printf("Evidence:    %s (ratio=%.2f, deterministic=%d agent-claim=%d)\n",
 		c.Strength, c.Ratio, c.Deterministic, c.AgentClaim)
 	if c.AcceptanceTotal > 0 {
 		fmt.Printf("Acceptance:  %d/%d 通过\n", c.AcceptancePass, c.AcceptanceTotal)
 	}
-	if len(c.LowDimensions) > 0 {
-		fmt.Printf("Low dims:    %s\n", strings.Join(c.LowDimensions, ", "))
+	if c.RedFirstTrials > 0 {
+		fmt.Printf("Red-first:   %d/%d 已转绿\n", c.RedFirstClosed, c.RedFirstTrials)
+	}
+	if c.ReviewRounds > 0 {
+		fmt.Printf("Review:      %d 轮\n", c.ReviewRounds)
+	}
+	if c.Escapes > 0 {
+		fmt.Printf("Escapes:     %d 次\n", c.Escapes)
 	}
 	fmt.Printf("Completed:   %s\n", c.CompletedAt.Format("2006-01-02 15:04"))
 	if d := c.Directive(); d != "" {

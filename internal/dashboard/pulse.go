@@ -18,11 +18,11 @@ import (
 	"github.com/MjxUpUp/Forge/internal/act"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/health"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/skillscanonical"
 	"github.com/MjxUpUp/Forge/internal/skillseval"
 	"github.com/MjxUpUp/Forge/internal/skillsfm"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // errInvalidSkillName 报告被拒的 skill 名 query 参数（路径遍历防护）。
@@ -202,15 +202,7 @@ type pulseLease struct {
 	TTLSec     int64     `json:"ttlSec"`
 }
 
-// pulseDimension 是一个评分维度及其配置权重。
-type pulseDimension struct {
-	Name   string  `json:"name"`
-	Weight float64 `json:"weight"`
-	Score  int     `json:"score"`
-	Detail string  `json:"detail"`
-}
-
-// pulseEvidence 是评分的证据来源分布。
+// pulseEvidence 是完成证据的来源分布。
 type pulseEvidence struct {
 	Deterministic int     `json:"deterministic"`
 	AgentClaim    int     `json:"agentClaim"`
@@ -218,16 +210,18 @@ type pulseEvidence struct {
 	Strength      string  `json:"strength,omitempty"`
 }
 
-// pulseScore 是 task.json 的 score 块（任务未评分且无结论可回填时为 nil）。
-// FromConclusion 标记从最新 act 结论回填的降级块（存量任务的 TaskState.Score 从未落盘）
-// ——该形态 dimensions 为空，前端如实标注而不是伪造维度条。
-type pulseScore struct {
-	Overall        float64          `json:"overall"`
-	Grade          string           `json:"grade"`
-	Dimensions     []pulseDimension `json:"dimensions"`
-	CappedReason   string           `json:"cappedReason,omitempty"`
-	Evidence       *pulseEvidence   `json:"evidence,omitempty"`
-	FromConclusion bool             `json:"fromConclusion,omitempty"`
+// pulseFacts 是 task.json 的完成事实块：判据通过、先失败证明、评审轮次、逃生次数
+// 与证据来源分布。2.3 起没有 overall/grade/维度分——要量化就数事实。
+// FromConclusion 标记该块来自最新 act 结论（而非盘上的 TaskEvidence），前端如实标注。
+type pulseFacts struct {
+	Criteria       int            `json:"criteria"`
+	CriteriaPassed int            `json:"criteriaPassed"`
+	RedFirstTrials int            `json:"redFirstTrials,omitempty"`
+	RedFirstClosed int            `json:"redFirstClosed,omitempty"`
+	ReviewRounds   int            `json:"reviewRounds,omitempty"`
+	Escapes        int            `json:"escapes,omitempty"`
+	Evidence       *pulseEvidence `json:"evidence,omitempty"`
+	FromConclusion bool           `json:"fromConclusion,omitempty"`
 }
 
 // pulseAcceptance 是 verify-acceptance 的 x/y。
@@ -245,10 +239,10 @@ type pulseTaskResponse struct {
 	State      pulseTaskState  `json:"state"`
 	Events     []FeedEvent     `json:"events"`
 	Truncated  bool            `json:"truncated"` // events 被默认上限截断（最早事件不可达）
-	Score      *pulseScore     `json:"score"`
+	Facts      *pulseFacts     `json:"facts,omitempty"`
 	Acceptance pulseAcceptance `json:"acceptance"`
 	// DocReview 是输出→回检循环的 L2 回检证据（doc gate）。任务无回检记录时为
-	// nil——前端仅在存在时渲染该块，「未回检」绝不伪装成全零评分块。
+	// nil——前端仅在存在时渲染该块，「未回检」绝不伪装成全零事实块。
 	DocReview *pulseDocReview `json:"docReview,omitempty"`
 }
 
@@ -265,7 +259,7 @@ type pulseDocReview struct {
 }
 
 // buildPulseTask 组装 task.json 载荷：状态投影（僵尸经共享 taskpipeline.IsZombie 计算）、
-// 任务级事件流（复用 AggregateFeed 的 TaskRef 过滤）、来自 TaskState.Score 的评分块
+// 任务级事件流（复用 AggregateFeed 的 TaskRef 过滤）、来自 TaskState.Evidence 的事实块
 // （存量任务从最新 act 结论回填），以及 join 自该结论的验收 + 证据强度。事件流归并
 // 失败返回 error 不吞没——handler 转成 500，与 feed.json 同语义。
 func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, now time.Time) (pulseTaskResponse, error) {
@@ -311,52 +305,17 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 	resp.Events = res.Events
 	resp.Truncated = res.Truncated
 
-	if state.Score != nil {
-		resp.Score = toPulseScore(state.Score)
-	}
-
-	// 验收 + 证据强度：优先最新 act 结论（两者都有）；尚无结论时退化用现活的
+	// 完成事实 + 验收：优先最新 act 结论（事实清单与证据强度都在结论里，含 TaskState
+	// 从未落盘事实块的存量任务）；尚无结论时退化用盘上的 TaskEvidence / 现活
 	// Acceptance 切片。结论取自指纹门控缓存，不再现读 act.LoadAll。
 	if d, err := sharedPulseCache.projectData(pr); err == nil {
 		for i := len(d.conclusions) - 1; i >= 0; i-- {
-			if d.conclusions[i].TaskRef != state.TaskRef {
+			c := &d.conclusions[i]
+			if c.TaskRef != state.TaskRef {
 				continue
 			}
-			resp.Acceptance = pulseAcceptance{Pass: d.conclusions[i].AcceptancePass, Total: d.conclusions[i].AcceptanceTotal}
-			// 存量任务：结论在但 TaskState.Score 从未落盘（Score 字段后下沉；
-			// cli/act_rebuild.go 处理同一形态）。回填降级评分块，避免详情页与自己的
-			// conclusion 事件自相矛盾。
-			if resp.Score == nil && d.conclusions[i].Score > 0 {
-				resp.Score = &pulseScore{
-					Overall:    d.conclusions[i].Score,
-					Grade:      d.conclusions[i].Grade,
-					Dimensions: []pulseDimension{},
-					Evidence: &pulseEvidence{
-						Deterministic: d.conclusions[i].Deterministic,
-						AgentClaim:    d.conclusions[i].AgentClaim,
-						Ratio:         d.conclusions[i].Ratio,
-						Strength:      d.conclusions[i].Strength,
-					},
-					FromConclusion: true,
-				}
-			} else if resp.Score != nil && resp.Score.Evidence == nil &&
-				d.conclusions[i].Deterministic+d.conclusions[i].AgentClaim > 0 {
-				// Score 真实存在但 Evidence 为 nil（评分时零证据输入，buildEvidenceSummary
-				// 合法返回 nil）：整块从结论回填，否则详情页评分块无证据链、下方
-				// transcript 的 conclusion 事件却带 det/claim——自相矛盾。结论本身无证据
-				// 数据时不回填（全零块是编造，保持 null 由前端如实显示"无证据"）。
-				// 守卫只看 det+claim：Strength 不能当信号——BuildConclusion 永写
-				// ec.Strength().String()，零证据结论的 Strength 是非空 "NoData"，
-				// 判空恒假（曾有的 `Strength != ""` 析取项让本 skip 路径生产不可达）。
-				resp.Score.Evidence = &pulseEvidence{
-					Deterministic: d.conclusions[i].Deterministic,
-					AgentClaim:    d.conclusions[i].AgentClaim,
-					Ratio:         d.conclusions[i].Ratio,
-					Strength:      d.conclusions[i].Strength,
-				}
-			} else if resp.Score != nil && resp.Score.Evidence != nil && resp.Score.Evidence.Strength == "" {
-				resp.Score.Evidence.Strength = d.conclusions[i].Strength
-			}
+			resp.Acceptance = pulseAcceptance{Pass: c.AcceptancePass, Total: c.AcceptanceTotal}
+			resp.Facts = factsFromConclusion(c)
 			break
 		}
 	}
@@ -368,6 +327,13 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 			}
 		}
 		resp.Acceptance = pulseAcceptance{Pass: pass, Total: len(state.Acceptance)}
+	}
+	if resp.Facts == nil {
+		ev := state.Evidence
+		if ev == nil {
+			ev = taskpipeline.BuildTaskEvidence(pr.root, state)
+		}
+		resp.Facts = factsFromEvidence(ev)
 	}
 
 	// ("第 5 轮 · 累计 2 轮").
@@ -395,46 +361,67 @@ func buildPulseTask(opts Options, pr pulseRoot, state *taskpipeline.TaskState, n
 	return resp, nil
 }
 
-// toPulseScore 把 scoringtypes.ScoreResult 投影成线上形状，维度带上配置权重
-// （取自 scoringtypes.DefaultWeights）。
-func toPulseScore(s *scoringtypes.ScoreResult) *pulseScore {
-	weights := scoringtypes.DefaultWeights()
-	dims := make([]pulseDimension, 0, len(s.Dimensions))
-	for _, d := range s.Dimensions {
-		dims = append(dims, pulseDimension{
-			Name:   string(d.Dimension),
-			Weight: weights[string(d.Dimension)],
-			Score:  d.Score,
-			Detail: d.Detail,
-		})
+// factsFromEvidence 把盘上的事实清单投影成线上块；nil 事实清单返回 nil（前端如实
+// 显示「无事实」，绝不编造全零块）。
+func factsFromEvidence(ev *tasktypes.TaskEvidence) *pulseFacts {
+	if ev == nil {
+		return nil
 	}
-	out := &pulseScore{
-		Overall:      s.Overall,
-		Grade:        s.Grade,
-		Dimensions:   dims,
-		CappedReason: s.CappedReason,
+	return &pulseFacts{
+		Criteria:       ev.Criteria,
+		CriteriaPassed: ev.CriteriaPassed,
+		RedFirstTrials: ev.RedFirstTrials,
+		RedFirstClosed: ev.RedFirstClosed,
+		ReviewRounds:   ev.ReviewRounds,
+		Escapes:        ev.Escapes,
 	}
-	if s.Evidence != nil {
-		out.Evidence = &pulseEvidence{
-			Deterministic: s.Evidence.Deterministic,
-			AgentClaim:    s.Evidence.AgentClaim,
-			Ratio:         s.Evidence.Ratio,
+}
+
+// factsFromConclusion 从最新 act 结论投影完成事实；证据强度只在结论里，且只在
+// 确有证据条目时回填（零证据结论不编造证据块）。
+func factsFromConclusion(c *act.Conclusion) *pulseFacts {
+	if c == nil {
+		return nil
+	}
+	f := &pulseFacts{
+		Criteria:       c.AcceptanceTotal,
+		CriteriaPassed: c.AcceptancePass,
+		RedFirstTrials: c.RedFirstTrials,
+		RedFirstClosed: c.RedFirstClosed,
+		ReviewRounds:   c.ReviewRounds,
+		Escapes:        c.Escapes,
+		FromConclusion: true,
+	}
+	if c.Deterministic+c.AgentClaim > 0 {
+		f.Evidence = &pulseEvidence{
+			Deterministic: c.Deterministic,
+			AgentClaim:    c.AgentClaim,
+			Ratio:         c.Ratio,
+			Strength:      c.Strength,
 		}
 	}
-	return out
+	return f
 }
 
 // pulseProject 是 /api/pulse/projects.json 的一行。
 type pulseProject struct {
-	Key         string   `json:"key"`
-	Name        string   `json:"name"`
-	ActiveTasks int      `json:"activeTasks"`
-	Zombies     int      `json:"zombies"`
-	LastGrade   string   `json:"lastGrade,omitempty"`
-	LastScore   *float64 `json:"lastScore"` // 无结论时 null
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	ActiveTasks int    `json:"activeTasks"`
+	Zombies     int    `json:"zombies"`
+	// LastConclusion 是最近一条结论的事实摘要（判据/证据强度/完成时间）；无结论时 nil。
+	LastConclusion *pulseLastConclusion `json:"lastConclusion,omitempty"`
 	// Sync 是机器本地的 git 同步绑定 + 最近操作戳（sync Phase 1）。未初始化（或
 	// 文件不可读）时为 nil——omitempty 保持未绑定项目的线上结构不变。
 	Sync *pulseSync `json:"sync,omitempty"`
+}
+
+// pulseLastConclusion 是项目行上的最近完成事实：判据通过数、证据强度、完成时间。
+type pulseLastConclusion struct {
+	Criteria       int       `json:"criteria"`
+	CriteriaPassed int       `json:"criteriaPassed"`
+	Strength       string    `json:"strength"`
+	At             time.Time `json:"at"`
 }
 
 // pulseSync 是 DataDir/sync-remote.json 的面板投影（机器本地，永不随 bundle 旅行）。
@@ -487,9 +474,12 @@ func aggregatePulseProjects(opts Options, now time.Time) []pulseProject {
 				}
 			}
 			if latest := latestConclusion(d.conclusions); latest != nil {
-				row.LastGrade = latest.Grade
-				score := latest.Score
-				row.LastScore = &score
+				row.LastConclusion = &pulseLastConclusion{
+					Criteria:       latest.AcceptanceTotal,
+					CriteriaPassed: latest.AcceptancePass,
+					Strength:       latest.Strength,
+					At:             latest.CompletedAt,
+				}
 			}
 		}
 		// 同步绑定独立于缓存错误分支——缓存读失败不该藏起绑定信息（反之亦然）。
@@ -507,54 +497,37 @@ func latestConclusion(cs []act.Conclusion) *act.Conclusion {
 	return &cs[len(cs)-1]
 }
 
-// pulseLowDim 是一个复发低分维度（<70）及其全档分数直方图与形态判定。
-// spread 在服务端经 health.DimFreq.SpreadAcrossBuckets 算好——前端只渲染措辞
-// （跨全档＝量纲/粒度信号；集中低档＝纪律缺口），不做判定逻辑。
-type pulseLowDim struct {
-	Dimension string      `json:"dimension"`
-	Count     int         `json:"count"`
-	Scores    map[int]int `json:"scores,omitempty"` // 全档直方图；存量结论无 DimScores 时缺席（退回纯 ×N）
-	Spread    bool        `json:"spread"`
-}
-
-// pulseLowDims 包装低维列表，守住「无数据绝不编造 0」：无结论时指针为 nil
-// （字段缺席，面板显示 —）；有结论但无低维时 Dims 为空切片（面板显示「无」）——
-// 区分「无数据」与「健康」两种空态。
-type pulseLowDims struct {
-	Dims []pulseLowDim `json:"dims"`
-}
-
-// pulseStats 是 /api/pulse/stats.json 载荷。数值聚合用指针，「无数据」是 null，
-// 绝不编造 0。
+// pulseStats 是 /api/pulse/stats.json 载荷。无数据用 nil 指针/null，绝不编造 0。
+// 2.3 起只有事实：判据通过、先失败证明、评审轮次、逃生次数、证据强度分布——
+// 没有均分/中位/档位分布/低维直方图。
 type pulseStats struct {
 	Projects          int      `json:"projects"`
 	ActiveTasks       int      `json:"activeTasks"`
 	Zombies           int      `json:"zombies"`
-	AvgScore          *float64 `json:"avgScore"`
-	MedianScore       *float64 `json:"medianScore"`
-	Trend             string   `json:"trend"`
 	Alerts            int      `json:"alerts"`
 	Nudges            int      `json:"nudges"`           // 窗口内 nudge 总量·14天（透明拆解分量；全量见 health.nudge_count）
-	NudgesActionable  int      `json:"nudgesActionable"` // 告警分量：窗口内非降档 nudge（真弱/Unverified/低分；alerts = zombies + 此值）
+	NudgesActionable  int      `json:"nudgesActionable"` // 告警分量：窗口内非降档 nudge（alerts = zombies + 此值）
 	EvidenceBlindRate *float64 `json:"evidenceBlindRate"`
 
-	// —— 分布形态（2026-09 上板，承接 v1.72.0 health 直方图，见
-	// docs/plans/low-dim-recurrence-2026-09.md）。仅在存在结论时填充；
-	// omitempty 保持无数据时的线上结构不变。——
-	Conclusions  int            `json:"conclusions,omitempty"`  // 均分/分布的样本量
-	GradeDist    map[string]int `json:"gradeDist,omitempty"`    // A/B/C/D/F → 数
-	StrengthDist map[string]int `json:"strengthDist,omitempty"` // Strong/Weak/Unverified/NoData → 数
-	CappedWeak   int            `json:"cappedWeak,omitempty"`   // 逃生舱封顶 Weak（带 det 证据——是逃生代价，不是盲区）
-	LowDims      *pulseLowDims  `json:"lowDims,omitempty"`      // 复发低分维度 + 全档直方图 + 形态判定
+	// —— 完成事实 + 强度分布。仅在存在结论时填充；omitempty 保持无数据时的线上
+	// 结构不变。——
+	Conclusions    int            `json:"conclusions,omitempty"`
+	StrengthDist   map[string]int `json:"strengthDist,omitempty"` // Strong/Weak/Unverified/NoData → 数
+	CappedWeak     int            `json:"cappedWeak,omitempty"`   // 逃生舱封顶 Weak（带 det 证据——是逃生代价，不是盲区）
+	Criteria       int            `json:"criteria,omitempty"`
+	CriteriaPassed int            `json:"criteriaPassed,omitempty"`
+	RedFirstTrials int            `json:"redFirstTrials,omitempty"`
+	RedFirstClosed int            `json:"redFirstClosed,omitempty"`
+	ReviewRounds   int            `json:"reviewRounds,omitempty"`
+	Escapes        int            `json:"escapes,omitempty"`
 }
 
-// aggregatePulseStats 跨范围合并结论，复用 health.SummarizeAtAcked 算均分/中位/趋势/盲区率
-// （与质量看板单一真相）；alerts = 僵尸任务数 + 窗口化【可行动】结论数
+// aggregatePulseStats 跨范围合并结论，复用 health.SummarizeAtAcked 得盲区率/强度分布
+// 与事实合计（与质量看板单一真相）；alerts = 僵尸任务数 + 窗口化【可行动】结论数
 // （NudgeActionable，14 天——见 health.NudgeRecentWindow）。降档 Weak（逃生税已收）
-// 不进告警、只留 Nudges 拆解（2026-09 告警疲劳分级：8/11 面板告警是降档噪音）。
-// 源数据取自指纹门控缓存。
+// 不进告警、只留 Nudges 拆解（2026-09 告警疲劳分级）。源数据取自指纹门控缓存。
 func aggregatePulseStats(opts Options, now time.Time) pulseStats {
-	stats := pulseStats{Trend: "insufficient"}
+	stats := pulseStats{}
 	var cs []act.Conclusion
 	var disps []act.Disposition
 	for _, pr := range resolvePulseRoots(opts) {
@@ -580,43 +553,25 @@ func aggregatePulseStats(opts Options, now time.Time) pulseStats {
 		return stats
 	}
 	// 窗口化 summary（2026-08 告警疲劳校准）：面向告警的 Nudges 用 NudgeRecent
-	//（14 天窗口）而非全量 NudgeCount——陈旧 nudge（session 早已关闭、历史上无 ack
-	// 机制）不得把面板红灯永远挂着。全量计数仍留在 health/查询面供趋势分析。
-	// 2026-09 分级：alerts 只加 NudgeActionable（非降档）——降档 Weak 的逃生税已在
-	// 评分时收取，人面通道重复展示是噪音；Nudges 保留窗口总量作拆解。
-	// 2026-09 证据式 ack：被 retro-done disposition（identity 匹配，匹配器单一真相源
-	// 在 act.AckMatcher）ack 的 nudge 退出 Nudges/NudgesActionable——已回顾的不占
-	// 告警，未回顾的留在面板（「错过的回顾」可见）。
+	//（14 天窗口）而非全量 NudgeCount；2026-09 分级只加 NudgeActionable；证据式 ack
+	// 让已 retro-done 的 nudge 退出告警（匹配器单一真相源在 act.AckMatcher）。
 	summary := health.SummarizeAtAcked(cs, now, act.AckMatcher(disps))
-	avg := summary.AvgScore
-	median := summary.MedianScore
 	blind := summary.BlindSpotRate
-	stats.AvgScore = &avg
-	stats.MedianScore = &median
 	stats.EvidenceBlindRate = &blind
-	if summary.Trend != "" {
-		stats.Trend = summary.Trend
-	}
 	stats.Nudges = summary.NudgeRecent
 	stats.NudgesActionable = summary.NudgeActionable
 	stats.Alerts += summary.NudgeActionable
-	// 分布形态投影（2026-09 上板，承接 v1.72.0 health 直方图）：summary 已算好，
-	// 纯投影零新增 IO。仅在存在结论时到达此处——无结论走上方提前 return，字段
-	// 缺席（lowDims 为 nil 指针、分布 map 为 nil），面板显示 — 而非编造的空。
+	// 事实与强度分布纯投影，零新增 IO。仅在存在结论时到达此处——无结论走上方提前
+	// return，字段缺席而非编造的空。
 	stats.Conclusions = summary.TotalTasks
-	stats.GradeDist = summary.GradeDist
 	stats.StrengthDist = summary.StrengthDist
 	stats.CappedWeak = summary.CappedWeakCount
-	dims := make([]pulseLowDim, 0, len(summary.LowDims))
-	for _, d := range summary.LowDims {
-		dims = append(dims, pulseLowDim{
-			Dimension: d.Dimension,
-			Count:     d.Count,
-			Scores:    d.Scores,
-			Spread:    d.SpreadAcrossBuckets(),
-		})
-	}
-	stats.LowDims = &pulseLowDims{Dims: dims}
+	stats.Criteria = summary.Criteria
+	stats.CriteriaPassed = summary.CriteriaPassed
+	stats.RedFirstTrials = summary.RedFirstTrials
+	stats.RedFirstClosed = summary.RedFirstClosed
+	stats.ReviewRounds = summary.ReviewRounds
+	stats.Escapes = summary.Escapes
 	return stats
 }
 

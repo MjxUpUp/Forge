@@ -64,7 +64,7 @@ func writeToollogEntries(t *testing.T, dataDir string, lines []string) {
 }
 
 // skillsFixture 构造：canonical {alpha, beta}；项目带 2 次被动 skill-trigger（alpha）+
-// 1 次主动 Skill 调用（alpha，task feat/t1）+ feat/t1 的评分结论（80/B）；evalDir 含
+// 1 次主动 Skill 调用（alpha，task feat/t1）+ feat/t1 的完成结论（判据 2/2）；evalDir 含
 // alpha 的 2 条 run（baseline run-1 全过，latest run-2 一条 trigger 退化）+ baselines.json 锚 run-1。
 func skillsFixture(t *testing.T) (opts Options, canonical, evalDir string) {
 	t.Helper()
@@ -85,7 +85,9 @@ func skillsFixture(t *testing.T) (opts Options, canonical, evalDir string) {
 		`{"tool_name":"Skill","tool_input":"{\"skill\":\"alpha\"}","task_ref":"feat/t1","timestamp":"` + now.UTC().Format(time.RFC3339) + `"}`,
 	})
 	if err := act.Append(p, &act.Conclusion{
-		TaskRef: "feat/t1", Score: 80, Grade: "B", Strength: "Strong", CompletedAt: now,
+		TaskRef: "feat/t1", Strength: "Strong",
+		AcceptanceTotal: 2, AcceptancePass: 2, RedFirstTrials: 1, RedFirstClosed: 1,
+		CompletedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -153,11 +155,11 @@ func TestAggregateSkills_HitsMergeTwoSources(t *testing.T) {
 	}
 }
 
-// TestAggregateSkills_EffectivenessJoin: the active Skill call's TaskRef joins to the act conclusion, giving taskCount=1 / avgScore=80 for alpha.
+// TestAggregateSkills_TaskJoin: the active Skill call's TaskRef joins to the act conclusion, giving taskCount=1 for alpha.
 //
-// TestAggregateSkills_EffectivenessJoin：主动 Skill 调用的 TaskRef join 到 act 结论，
-// alpha 得 taskCount=1 / avgScore=80。
-func TestAggregateSkills_EffectivenessJoin(t *testing.T) {
+// TestAggregateSkills_TaskJoin：主动 Skill 调用的 TaskRef join 到 act 结论，alpha 得
+// taskCount=1（无关联任务的 beta 为 0）。2.3 起 join 只产事实计数，不产平均分。
+func TestAggregateSkills_TaskJoin(t *testing.T) {
 	opts, canonical, evalDir := skillsFixture(t)
 	ov, err := AggregateSkills(opts, canonical, evalDir)
 	if err != nil {
@@ -167,12 +169,9 @@ func TestAggregateSkills_EffectivenessJoin(t *testing.T) {
 	if alpha.TaskCount != 1 {
 		t.Errorf("alpha taskCount = %d, want 1", alpha.TaskCount)
 	}
-	if alpha.AvgScore == nil || *alpha.AvgScore != 80 {
-		t.Errorf("alpha avgScore = %v, want 80", alpha.AvgScore)
-	}
 	beta := findSkill(t, ov.Skills, "beta")
-	if beta.AvgScore != nil {
-		t.Errorf("beta 无关联任务，avgScore 应为 null，got %v", *beta.AvgScore)
+	if beta.TaskCount != 0 {
+		t.Errorf("beta 无关联任务，taskCount 应为 0，got %d", beta.TaskCount)
 	}
 }
 

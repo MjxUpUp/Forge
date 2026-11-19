@@ -33,7 +33,6 @@ func gatesOffEnv() []string {
 		"FORGE_TEST_COVERAGE=disable",
 		"FORGE_DOC_GATE=disable",
 		"FORGE_ACCEPTANCE_GATE=disable",
-		"FORGE_RECURRENT_HARDEN=disable",
 		"FORGE_SKILL_TRIGGER=0",
 		"FORGE_CONVENTIONS_LINT=0",
 	}

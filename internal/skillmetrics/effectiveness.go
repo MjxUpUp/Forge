@@ -32,14 +32,13 @@ const (
 // CheckSkillTrigger 条目）与 task 成效（act conclusion）。
 //
 // 全字段 deterministic：命中数来自 toollog（tool-track 采集）与 checklog
-// （skill-trigger hook），成效来自评分 + 证据链（act 结论），无 agent 主观判断
+// （skill-trigger hook），成效来自事实清单 + 证据链（act 结论），无 agent 主观判断
 // ——绕开 Agent-as-a-Judge 的 meta-evaluation 红线。
 // 这是"复用率 + 成功率"信号在 Forge 的 agent-neutral 实现。
 type SkillEffectiveness struct {
 	Skill     string  `json:"skill"`
 	HitCount  int     `json:"hit_count"`  // 总命中次数（主动调用 + 被动触发，同一 task 多次累加）
 	TaskCount int     `json:"task_count"` // 涉及不同 task 数
-	AvgScore  float64 `json:"avg_score"`  // 有评分 task（Score>0）的平均分；未评分 task 不计入分母
 	AvgRatio  float64 `json:"avg_ratio"`  // 平均证据 ratio（deterministic/total），分母=有 conclusion 的 task
 	WeakRate  float64 `json:"weak_rate"`  // Strength=Weak/Unverified/NoData 的 task 占比（分母同 AvgRatio）
 }
@@ -48,13 +47,10 @@ type SkillEffectiveness struct {
 type effectivenessAggregator struct {
 	hits     int
 	tasks    map[string]bool
-	scoreSum float64
 	ratioSum float64
 	weak     int
 	// conN is the number of tasks with a corresponding act conclusion (AvgRatio/WeakRate denominator).
 	conN int // 有对应 act conclusion 的 task 数（AvgRatio/WeakRate 分母）
-	// scoredN is the number of those tasks with Score>0 (AvgScore denominator, excluding unscored).
-	scoredN int // 其中 Score>0 的 task 数（AvgScore 分母，排除未评分）
 }
 
 // AnalyzeEffectiveness correlates skill hits (toollog active Skill calls + checklog passive CheckSkillTrigger entries) with task effectiveness in act conclusion.
@@ -63,8 +59,8 @@ type effectivenessAggregator struct {
 // CheckSkillTrigger 条目）与 act conclusion 的 task 成效。
 //
 // 按 TaskRef 连接 per-project 数据源（同 DataDir）：toollog 记 Skill 调用 + TaskRef，
-// checklog 记 CheckSkillTrigger 条目 + TaskRef，act conclusion 记 task 的评分 + 证据
-// 强度。产出每个 skill 在其涉及 task 上的平均成效。
+// checklog 记 CheckSkillTrigger 条目 + TaskRef，act conclusion 记 task 的证据 ratio +
+// 证据强度。产出每个 skill 在其涉及 task 上的平均成效（事实，不含评分）。
 //
 // 被动 join（2026-08-22）闭合「面板只显示命中数、质量列全空」缺口：多数 skill 经
 // skill-trigger hook 命中（被动注入）而非主动 Skill 工具调用——只 join toollog 时它们
@@ -72,7 +68,7 @@ type effectivenessAggregator struct {
 // 既有被动触发又有主动加载」只计一次成效，而 HitCount 两种信号都累加。
 //
 // agent-neutral（核心信号）：act conclusion 是任何 agent 跑的 task 都有的 deterministic
-// 评分 + 证据链，与具体 agent 无关。主动命中数据来自 toollog 的 Skill 工具调用——当前
+// 证据链，与具体 agent 无关。主动命中数据来自 toollog 的 Skill 工具调用——当前
 // 仅 Claude Code 产生（cursor/codex 等 skill 经 mdc/AGENTS.md 注入、无工具调用事件）；
 // 被动 checklog join 让每个接了 hook 的 host 都有命中信号。与 usage.go 包注释同类
 // caveat 一致。
@@ -103,8 +99,8 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 	}
 
 	stats := map[string]*effectivenessAggregator{}
-	// record 把一次命中（主动或被动）喂进聚合器：hits 恒累加；task 成效（分数/ratio/
-	// 强度）只在首次遇到该 (skill, task) 对时折入——跨两源去重，同 task 内被动触发+
+	// record 把一次命中（主动或被动）喂进聚合器：hits 恒累加；task 成效（ratio/强度）
+	// 只在首次遇到该 (skill, task) 对时折入——跨两源去重，同 task 内被动触发+
 	// 主动加载只计一次成效。
 	record := func(name, taskRef string) {
 		a, ok := stats[name]
@@ -124,12 +120,6 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 			a.ratioSum += con.Ratio
 			if con.Strength == strengthWeak || con.Strength == strengthUnverified || con.Strength == strengthNoData {
 				a.weak++
-			}
-			// AvgScore 分母只计 Score>0：Score==0 是 act.BuildConclusion 在 score==nil
-			// 时的哨兵值（评分未跑/失败），计入会人为拉低 avg 分。
-			if con.Score > 0 {
-				a.scoreSum += con.Score
-				a.scoredN++
 			}
 		}
 	}
@@ -175,12 +165,8 @@ func AnalyzeEffectiveness(p *forgedata.Project) ([]SkillEffectiveness, error) {
 			HitCount:  a.hits,
 			TaskCount: len(a.tasks),
 		}
-		// AvgScore 用 scoredN（Score>0）；AvgRatio/WeakRate 用 conN（有 conclusion）——
-		// ratio/证据强度在 conclusion 里总有效，未评分 task 的 Score 不污染 avg 分但其
-		// 证据强度仍参与弱占比。
-		if a.scoredN > 0 {
-			se.AvgScore = a.scoreSum / float64(a.scoredN)
-		}
+		// AvgRatio/WeakRate 用 conN（有 conclusion 的 task）——ratio 与证据强度是
+		// 结论里的事实字段，恒有效；不掺任何合成分。
 		if a.conN > 0 {
 			se.AvgRatio = a.ratioSum / float64(a.conN)
 			se.WeakRate = float64(a.weak) / float64(a.conN)

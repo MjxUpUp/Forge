@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/MjxUpUp/Forge/internal/hlc"
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
+	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
 // merge_converge_test.go —— MergeTaskStateSync 的收敛性质锚
@@ -71,7 +71,7 @@ func randomTaskOps(r *rand.Rand, s *TaskState, n int, tag string) {
 		case 7:
 			done := ts
 			s.CompletedAt = &done
-			s.Score = &scoringtypes.ScoreResult{Grade: `A`, Overall: float64(80 + r.Intn(20))}
+			s.Evidence = &tasktypes.TaskEvidence{Criteria: 3, CriteriaPassed: 3, ReviewRounds: 1 + r.Intn(2)}
 		case 8:
 			s.SessionLinks = append(s.SessionLinks, SessionLink{SessionID: fmt.Sprintf(`s-%d`, r.Intn(4)), JoinedAt: ts, Imported: r.Intn(2) == 0})
 		case 9: // review anchors set between task-verify and task-complete
@@ -229,22 +229,20 @@ func TestMergeTaskStateSync_GateHistoryContentUnion(t *testing.T) {
 // with different snapshots → the EARLIER completion block wins,
 // direction-independently (the first finish is the real one.
 //
-// TestMergeTaskStateSync_BothCompleteFirstFinisherWins：双完成且快照不同 → 更早的
+// TestMergeTaskStateSync_BothCompleteFirstFinisherWins：双完成且事实清单不同 → 更早的
 // 完成块胜，方向无关（先完成者是真实完成；后完成者是对已完成工作的重跑）。
 func TestMergeTaskStateSync_BothCompleteFirstFinisherWins(t *testing.T) {
 	early := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	late := time.Date(2026, 8, 20, 11, 0, 0, 0, time.UTC)
-	mk := func(at time.Time, grade string) *TaskState {
-		return &TaskState{TaskRef: `feat/c`, CompletedAt: &at, Score: &scoringtypes.ScoreResult{Grade: grade}}
+	mk := func(at time.Time, passed int) *TaskState {
+		return &TaskState{TaskRef: `feat/c`, CompletedAt: &at, Evidence: &tasktypes.TaskEvidence{Criteria: 3, CriteriaPassed: passed}}
 	}
-	ab := mk(early, `A`)
-	MergeTaskStateSync(ab, mk(late, `B`))
-	ba := mk(late, `B`)
-	MergeTaskStateSync(ba, mk(early, `A`))
-	if ab.Score.Grade != `A` || !ab.CompletedAt.Equal(early) {
-		t.Fatalf("both-complete winner = %+v, want earlier completion (grade A)", ab.Score)
-	}
-	if taskJSON(t, ab) != taskJSON(t, ba) {
+	ab := mk(early, 3)
+	MergeTaskStateSync(ab, mk(late, 2))
+	ba := mk(late, 2)
+	MergeTaskStateSync(ba, mk(early, 3))
+	if ab.Evidence == nil || ab.Evidence.CriteriaPassed != 3 || !ab.CompletedAt.Equal(early) {
+		t.Fatalf("both-complete winner = %+v, want earlier completion (3/3 facts)", ab.Evidence)
 		t.Fatalf("both-complete not direction-independent:\nab=%s\nba=%s", taskJSON(t, ab), taskJSON(t, ba))
 	}
 }

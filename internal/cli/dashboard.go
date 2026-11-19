@@ -31,7 +31,7 @@ var dashboardCmd = &cobra.Command{
 	Use:   "dashboard",
 	Short: "本地全局质量看板（Pulse）——聚合全部登记项目，起 HTTP 服务可视化",
 	Long: `forge dashboard 在本地起一个只读 web 看板（Pulse 面板），聚合 ~/.forge/projects.json
-登记的所有项目：事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合。
+登记的所有项目：事件流（任务/gate/skill 触发/结论）、任务完成事实与证据链、skills 聚合。
 服务绑定 localhost，自动打开浏览器，Ctrl+C 退出。
 
 看板始终是全局维度——在任意目录运行都聚合全部登记项目，面板内可按项目侧栏过滤；

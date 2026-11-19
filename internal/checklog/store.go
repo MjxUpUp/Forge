@@ -221,7 +221,7 @@ func LoadAllAll(root string) ([]Entry, error) {
 // LoadForTask filters by task ref across the active checklog and all archived checklog-*.jsonl, returning matches in chronological order.
 //
 // LoadForTask 按 task ref 跨 active checklog 与所有归档 checklog-*.jsonl 过滤，按时间序返回命中。
-// 供 forge trace <ref> 重建 task 完整事件时间线（无时间上界：trace 要全史）。评分/结论
+// 供 forge trace <ref> 重建 task 完整事件时间线（无时间上界：trace 要全史）。结论
 // 读取用 LoadForTaskUntil 以封印时刻截断。
 func LoadForTask(root, taskRef string) ([]Entry, error) {
 	return LoadForTaskUntil(root, taskRef, time.Time{})
@@ -230,7 +230,7 @@ func LoadForTask(root, taskRef string) ([]Entry, error) {
 // LoadForTaskUntil is LoadForTask with an upper time bound: entries recorded after until are excluded; zero until = unbounded.
 //
 // LoadForTaskUntil 是带时间上界的 LoadForTask：RecordedAt 晚于 until 的条目被排除；
-// until 零值 = 无界（trace 语义）。评分与 Act 结论传任务的封印时刻
+// until 零值 = 无界（trace 语义）。Act 结论传任务的封印时刻
 // （TaskState.SealedAt）——task-complete 门禁通过之后仍落到该任务名下的行（异会话
 // hazard 拦截、重复 verify 自述）不得进完成声明的证据链
 // （docs/design/harness-fixes-a-g-2026-09.md E.4）。
@@ -250,44 +250,6 @@ func LoadForTaskUntil(root, taskRef string, until time.Time) ([]Entry, error) {
 		out = append(out, e)
 	}
 	return out, nil
-}
-
-// LatestByCheckForTaskWindow is the task-aware, time-bounded form of LatestByCheckForSessionSince.
-//
-// LatestByCheckForTaskWindow 是 LatestByCheckForSessionSince 的任务感知、带上界形态：
-//   - taskRef 非空时，SessionID 为空的条目只在 TaskRef 等于 taskRef 时保留——旧语义
-//     「空 session 无条件保留」让 CLI 无 session 调用产生的他任务条目按时间覆盖本任务
-//     的最新值（乙机 59% 的 checklog 行无 session_id，是评分输入被污染的主通道）；
-//     taskRef 为空退化为旧语义（兼容包装）。
-//   - until 非零时，RecordedAt 晚于 until 的条目排除（评分传封印时刻）。
-//
-// docs/design/harness-fixes-a-g-2026-09.md E.4。
-func LatestByCheckForTaskWindow(root, sessionID, taskRef string, since, until time.Time) (map[CheckName]*Entry, error) {
-	entries, err := LoadAll(root)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[CheckName]*Entry)
-	for i := range entries {
-		e := &entries[i]
-		if sessionID != "" && e.SessionID != "" && e.SessionID != sessionID {
-			continue
-		}
-		if taskRef != "" && e.SessionID == "" && e.TaskRef != taskRef {
-			continue
-		}
-		if !since.IsZero() && e.RecordedAt.Before(since) {
-			continue
-		}
-		if !until.IsZero() && e.RecordedAt.After(until) {
-			continue
-		}
-		if existing, ok := result[e.Check]; !ok || e.RecordedAt.After(existing.RecordedAt) {
-			result[e.Check] = e
-		}
-	}
-	return result, nil
 }
 
 // archiveLocked 把现存 checklog 重命名为带时间戳的备份，但**不**加锁；调用方必须持有 mu

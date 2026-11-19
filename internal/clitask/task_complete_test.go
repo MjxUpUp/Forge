@@ -8,7 +8,7 @@ package clitask
 // 2026-08-25 起为源码内容指纹——见 acceptance.go CheckAcceptanceFresh），而刷新只能由
 // verify-acceptance（只认 active task）完成 → review 修复 commit 改动源码后 complete
 // 永久 BLOCKED，且 start/claim/attach/resume 无一能复活。修复：完成标记归还
-// `forge task complete`（pre-flight 之后、评分之前），gate 不再 MarkComplete。
+// `forge task complete`（pre-flight 之后、采集事实之前），gate 不再 MarkComplete。
 
 import (
 	"os"
@@ -108,7 +108,7 @@ func markReviewedDirect(t *testing.T, dir, taskRef string) {
 //
 // TestTaskComplete_PreflightFailureKeepsTaskActive 钉死死锁修复的核心契约：pre-flight
 // 失败必须保持任务 active（CompletedAt==nil），verify-acceptance 才能刷新过期快照，
-// complete 才能重试通过；成功路径上 MarkComplete 落在 pre-flight 之后、评分随行；
+// complete 才能重试通过；成功路径上 MarkComplete 落在 pre-flight 之后、事实采集随行；
 // 重复 complete 幂等。
 func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	dir := setupDeadlockTask(t, []string{`go version :: go version`})
@@ -163,7 +163,7 @@ func TestTaskComplete_PreflightFailureKeepsTaskActive(t *testing.T) {
 	}
 
 	// 5. 复审（review-ruthless-3 P1-1：complete 自己复核 review 快照）后重试：
-	//    MarkComplete + 评分。
+	//    MarkComplete + 采集完成事实。
 	markReviewedDirect(t, dir, taskRef)
 	fresh, err := taskpipeline.LoadTaskState(dir, taskRef)
 	if err != nil {
@@ -254,7 +254,7 @@ func TestTaskComplete_ClearsAllTaskAnchors(t *testing.T) {
 // TestTaskComplete_IdempotentGuardOnGeneric a completed generic task re-completes idempotently (generic never scores — the guard must key on IsGeneric, not Score).
 //
 // TestTaskComplete_IdempotentGuardOnGeneric 已完成的 generic 任务重复 complete 幂等
-// （generic 不评分，守卫须走 IsGeneric 分支而非 Score）。
+// （generic 不采集事实，守卫须走 IsGeneric 分支而非 Evidence）。
 func TestTaskComplete_IdempotentGuardOnGeneric(t *testing.T) {
 	dir := t.TempDir()
 	const sid = `test-session-generic`

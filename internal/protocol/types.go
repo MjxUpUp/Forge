@@ -1,16 +1,13 @@
 package protocol
 
-import "github.com/MjxUpUp/Forge/internal/scoringtypes"
-
 // Protocol represents the project's quality-protocol configuration.
 //
 // Protocol 表示项目的质量协议配置。
 // 存为 .forge/protocol.yml —— 定义质量 standards 与 session 行为规则。
 type Protocol struct {
-	Version      string                      `yaml:"version"      json:"version"`
-	Standards    []Standard                  `yaml:"standards"    json:"standards"`
-	SessionRules []SessionRule               `yaml:"session_rules" json:"session_rules"`
-	Scoring      *scoringtypes.ScoringConfig `yaml:"scoring,omitempty" json:"scoring,omitempty"`
+	Version      string        `yaml:"version"      json:"version"`
+	Standards    []Standard    `yaml:"standards"    json:"standards"`
+	SessionRules []SessionRule `yaml:"session_rules" json:"session_rules"`
 	// CrossRepoImpact is a retained config key. The cross-repo-impact gate was
 	// removed in 1.88; the field is kept so老 config 文件仍能解析，但不再有任何
 	// 门禁读取它（`forge task impact` 的声明同样只作文档性元信息）。
