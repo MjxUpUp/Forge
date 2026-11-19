@@ -1,0 +1,104 @@
+{
+  "change": "skill-new",
+  "started_at": "2026-11-19T14:58:16Z",
+  "finished_at": "2026-11-19T14:58:27Z",
+  "passed": true,
+  "sealed": true,
+  "head": "6bcc86d84f0787fc7a56c1f543a1147ae40fdb91",
+  "diff_sha256": "1fa1dc11c56795f96877c183f2b5a1fef11114269190d527e0dc8b75296058bf",
+  "files": [
+    {
+      "path": "compat.snapshot.json",
+      "sha256": "3636ec1842f0b11db7ae3ec1128089d39966a56600b1435005c1bb4d36ef2ac6"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "ce3ed67f5434787c29321b385691d723f08f495ceb03d5df717f4be4ac9a3d6b"
+    },
+    {
+      "path": "internal/cli/skill.go",
+      "sha256": "8ba50a12520c328b53182995216b8a7e258b0c9bc2cd2da3f0694a0879b70b55"
+    },
+    {
+      "path": "internal/cli/skill_test.go",
+      "sha256": "40246ec49c85c5d160c3981cdde36eae4073146b656c121328921935fc5ad152"
+    },
+    {
+      "path": "internal/skillcap/skillcap.go",
+      "sha256": "2993d27d7bf1729ed50ca29a3f0e36f4b42d788d9e59afce631977c2e42a9a6c"
+    },
+    {
+      "path": "internal/skillcap/skillcap_test.go",
+      "sha256": "2ca385bb3ef6662a60c431d2546dfe7f60b9ab6222767be3d992091bde084521"
+    },
+    {
+      "path": "spec/changes/skill-new/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/skill-new/acceptance.md",
+      "sha256": "801238c215fb1d9f996f4af743d19deecd4ced27095867dd9a6600a6a0e43896"
+    },
+    {
+      "path": "spec/changes/skill-new/change.md",
+      "sha256": "cbd7ca1596409bcde8bb491e3c07206714d7149a3e4e45c72e3b6a624d39415d"
+    },
+    {
+      "path": "spec/changes/skill-new/clarify.md",
+      "sha256": "b931b30993b293c2785da01f54dd86aef84c6b7a75e341eef84effc9b07e812c"
+    },
+    {
+      "path": "spec/changes/skill-new/goal.md",
+      "sha256": "068701fcf65b91d018150cbb8bc8677ab3975dd2facfb41507218ea1627076b1"
+    }
+  ],
+  "acceptance_sha256": "801238c215fb1d9f996f4af743d19deecd4ced27095867dd9a6600a6a0e43896",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2387
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/skillcap/ -count=1",
+      "exit": 0,
+      "duration_ms": 829,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestSkill' -count=1",
+      "exit": 0,
+      "duration_ms": 3021,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 712,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 183
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 3826
+    }
+  ]
+}
