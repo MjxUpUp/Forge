@@ -19,6 +19,21 @@
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
 
+## [2.2.0](https://github.com/MjxUpUp/Forge/compare/v2.1.3...v2.2.0) (2026-11-19)
+
+
+### Features
+
+* **entry-honest:** 删命令名启发式考卷门禁，next 不再推荐陈旧 change ([071a353](https://github.com/MjxUpUp/Forge/commit/071a353d2c3ccacdbcc4b7b9e4a5b027a9a5a3e1))
+
+
+### Bug Fixes
+
+* **entry-honest:** 浅克隆按陈旧处理，不推荐无法判定的旧 change ([e09f40f](https://github.com/MjxUpUp/Forge/commit/e09f40f761971e50f608a0d682fd8855ae6ac6f7))
+* **entry-honest:** 浅克隆按陈旧处理并补测试，rename 不再污染 change id ([28b53cf](https://github.com/MjxUpUp/Forge/commit/28b53cfbaa4637e94f7a84664cec602587d9648e))
+* **entry-honest:** 陈旧判定改为干净树看提交、脏树取 max，并补批量与浅克隆说明 ([74853e0](https://github.com/MjxUpUp/Forge/commit/74853e0b21c5614de62e2d255426fed3d6bfc7a7))
+* **entry-honest:** 陈旧判定改用提交时间兜底、半成品优先、陈旧 id 进 state ([f97009d](https://github.com/MjxUpUp/Forge/commit/f97009da2ccee459ae66baf5db0013f30d6c24e8))
+
 ## [2.1.3](https://github.com/MjxUpUp/Forge/compare/v2.1.2...v2.1.3) (2026-11-18)
 
 
