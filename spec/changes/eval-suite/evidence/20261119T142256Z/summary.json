@@ -1,0 +1,66 @@
+{
+  "change": "eval-suite",
+  "started_at": "2026-11-19T14:22:56Z",
+  "finished_at": "2026-11-19T14:23:11Z",
+  "passed": true,
+  "sealed": true,
+  "head": "7034d461a496faac8f3b33fc351011012e75bfcd",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "8d6131eec188ef6caf813c441dc736b8e15bf4dee2ba29a229d7497b23614104",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2196
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/evalsuite/ -count=1",
+      "exit": 0,
+      "duration_ms": 1056,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestEvalSuite|TestEvalTrend|TestCompatSnapshotMatchesGolden' -count=1",
+      "exit": 0,
+      "duration_ms": 4024,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 683,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 220
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5276
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 844,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}

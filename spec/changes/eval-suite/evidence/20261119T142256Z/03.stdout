@@ -1,0 +1,16 @@
+=== RUN   TestCompatSnapshotMatchesGolden
+--- PASS: TestCompatSnapshotMatchesGolden (0.12s)
+=== RUN   TestEvalSuite_RunsArchivedCriteria
+--- PASS: TestEvalSuite_RunsArchivedCriteria (0.23s)
+=== RUN   TestEvalSuite_JSONIsPureJSON
+--- PASS: TestEvalSuite_JSONIsPureJSON (0.19s)
+=== RUN   TestEvalSuite_FailingCriteriaShowsReason
+--- PASS: TestEvalSuite_FailingCriteriaShowsReason (0.21s)
+=== RUN   TestEvalSuite_UnknownOnlyIsAnError
+--- PASS: TestEvalSuite_UnknownOnlyIsAnError (0.10s)
+=== RUN   TestEvalSuite_JSONRecordWritesFile
+--- PASS: TestEvalSuite_JSONRecordWritesFile (0.19s)
+=== RUN   TestEvalTrend_ReadsRecordedRuns
+--- PASS: TestEvalTrend_ReadsRecordedRuns (0.30s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/cli	2.820s
