@@ -3,7 +3,8 @@
 
 ## 开始之前（硬规则）
 
-- **任何代码改动之前，先跑 `forge next`**，把它当建议：通常执行它给出的下一步；一句话小修可直接 task start，并在标题里写清意图。
+- **用户提出新需求 / 新任务时，直接开工**：记录型需求 `forge change new <id>`，一句话小修 `forge task start`（标题写清意图）。不要把 `forge next` 当默认第一步——它只回答「接着做手上这件事该怎么走」。
+- **只有在继续 / 接手已有任务，或确实不知道当前该干什么时才跑 `forge next`**。它不会把陈旧 change 当作下一步：ready 但超过三天没动过的 change 只出现在 `stale_changes` 里（`forge change list` 可查、归档由人决定）。
 - **记录改动：建议先立 change**：任务是一等入口，随时可以开工；change 是记录单元，
   既能在开工前立，也能中途补。建议的顺序是 `forge change new <id>` → 填产物 →
   `forge change phase <id>` 看还缺什么 → `forge task start --ref <ref> --change <id> --agent <实现者 id>`

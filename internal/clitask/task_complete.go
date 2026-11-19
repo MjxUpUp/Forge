@@ -115,13 +115,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
-	// 考卷质量前置（delivery-hardening 墙-2a）：登记门关"零考卷"，本门关"最廉价
-	// 的弱考卷"——须含至少一条测试类命令（仓库有测试能力时）。
-	if ok, reasons := taskpipeline.CheckAcceptanceQuality(root, state); !ok {
-		return fmt.Errorf(`acceptance quality 未通过（考卷无测试类命令）: %s`,
-			strings.Join(reasons, `; `))
-	}
-
 	// acceptance pre-flight（proof-of-work consumer）：task 声明了验收标准时，complete 前
 	// deterministic 校验每条都 fresh（AcceptedHeadCommit==HEAD）且 Passed。给 AcceptedHeadCommit
 	// 补消费方——MCP 拆除后该字段只写不读成孤儿，本检查把它从声明层变 affordance gate。

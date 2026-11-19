@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/MjxUpUp/Forge/internal/change"
 	"github.com/MjxUpUp/Forge/internal/checklog"
@@ -48,9 +49,13 @@ type NextContext struct {
 	SpecDeclared bool
 	// OpenChanges 是未归档 change 的 id（按字母序）。
 	OpenChanges []string
-	// ReadyChanges 是其中阶段已到 ready 的 id；ReadyChanges 非空时下一步是
+	// ReadyChanges 是其中阶段已到 ready、且最近 72 小时有改动的 id；非空时下一步是
 	// 用 task start --change 开工，而不是再补 change 产物。
 	ReadyChanges []string
+	// StaleChanges 是 ready 但三天没动过的 id。它们不进推荐——用户想开新任务时
+	// 被旧 change 劫持是纯粹的浪费（2026-11-19 Claude 会话实证：2h17m 的会话开头
+	// 被 next 指向一个已放弃的 ready change）。
+	StaleChanges []string
 }
 
 // NextRepoContext 从仓库实况推导 next 的上下文：spec 声明 + 未归档 change 及其阶段。
@@ -74,11 +79,16 @@ func NextRepoContext(root, branch string, dirty bool, behindRemote int) NextCont
 		ctx.OpenChanges = append(ctx.OpenChanges, c.ID)
 		if ph, _, err := change.ComputePhase(root, c.ID); err == nil && ph == change.PhaseReady && c.HasGoal {
 			// 老 change（无 goal.md）不能 --change：钉契约需要 goal 必填三段。
+			if last, err := change.LastActivity(root, c.ID); err == nil && !last.IsZero() && time.Since(last) > change.StaleAfter {
+				ctx.StaleChanges = append(ctx.StaleChanges, c.ID)
+				continue
+			}
 			ctx.ReadyChanges = append(ctx.ReadyChanges, c.ID)
 		}
 	}
 	sort.Strings(ctx.OpenChanges)
 	sort.Strings(ctx.ReadyChanges)
+	sort.Strings(ctx.StaleChanges)
 	return ctx
 }
 
@@ -103,6 +113,7 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 		"spec_declared": ctx.SpecDeclared,
 		"open_changes":  len(ctx.OpenChanges),
 		"ready_changes": len(ctx.ReadyChanges),
+		"stale_changes": len(ctx.StaleChanges),
 		"active_task":   nextTaskRef(st),
 		"gates_passed":  nextGateHistory(st),
 		"review_passed": nextReviewPassed(st),
@@ -122,6 +133,13 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 				return NextResult{
 					Next:   "forge task start --ref feat/" + ctx.ReadyChanges[0] + " --branch --change " + ctx.ReadyChanges[0],
 					Reason: "工作区有未归属变更，且已有 ready 的 change——用 task start --change 开工（任务是一等入口；change 可以事后再补）",
+					State:  state,
+				}
+			}
+			if len(ctx.StaleChanges) > 0 && len(ctx.ReadyChanges) == 0 {
+				return NextResult{
+					Next:   "forge change new <id>",
+					Reason: fmt.Sprintf("工作区有未归属变更——先把这次要做的事立成 change；另有 %d 个 ready change 已超过三天没动（陈旧，不是下一步），需要的话用 forge change list 查看或归档，不要被它们拖回旧活", len(ctx.StaleChanges)),
 					State:  state,
 				}
 			}

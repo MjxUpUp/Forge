@@ -10,8 +10,13 @@ import (
 func TestAgentsProtocol_IsActionable(t *testing.T) {
 	required := []string{
 		"## 开始之前（硬规则）",
-		"先跑 `forge next`",
+		"直接开工",
+		"不要把 `forge next` 当默认第一步",
+		"stale_changes",
 		"## Task 流程（门禁在命令里）",
+		"--accept-red",
+		"--agent",
+		"评审者复用",
 		"门禁是命令，不是 hook",
 		"按空白切分后直接 exec，不经 shell",
 		"验收预跑",
@@ -33,6 +38,7 @@ func TestAgentsProtocol_NoRemovedHostLayerClaims(t *testing.T) {
 	forbidden := []string{
 		"hazard-guard",
 		"hooks: on",
+		"先跑 `forge next`", // 2026-11-19：入口诚实——新需求直接开工，next 只用于继续
 	}
 	for _, bad := range forbidden {
 		if strings.Contains(tmplAgents, bad) {
