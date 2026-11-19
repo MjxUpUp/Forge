@@ -182,6 +182,9 @@ func TestActivities_ShallowCloneIsStale(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(base, "README.md"), []byte("x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(base, "README.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	gitRun(t, base, "add", "-A")
 	gitRun(t, base, "commit", "-m", "touch root")
 
@@ -229,5 +232,55 @@ func TestActivities_RenameDoesNotPolluteIDs(t *testing.T) {
 	}
 	if time.Since(acts["newc"]) > time.Hour {
 		t.Fatalf("被 rename 的 change 自己确实是刚动过，应算新鲜，got %v", acts["newc"])
+	}
+}
+
+// TestActivities_ShallowCloneDirtyIsFresh 浅克隆里「无法判定历史」只在干净时成立：
+// 人正在改（脏或未跟踪）应以 mtime 为准算新鲜，否则浅克隆会把正在做的活判成陈旧
+// （评审 P3-e：dirty-shallow 这一态此前只有手工端到端覆盖）。
+func TestActivities_ShallowCloneDirtyIsFresh(t *testing.T) {
+	base := t.TempDir()
+	initRepo(t, base)
+	chDir := filepath.Join(base, "spec", "changes", "old")
+	if err := os.MkdirAll(chDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chDir, "goal.md"), []byte("# old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-5 * 24 * time.Hour).Format(time.RFC3339)
+	cmd := exec.Command("git", "add", "-A")
+	cmd.Dir = base
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "-m", "old")
+	cmd.Dir = base
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+old, "GIT_COMMITTER_DATE="+old)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(base, "README.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, base, "add", "-A")
+	gitRun(t, base, "commit", "-m", "touch root")
+
+	cloneDir := t.TempDir()
+	cmd = exec.Command("git", "clone", "--depth", "1", "file://"+filepath.ToSlash(base), cloneDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("clone --depth 1 不可用: %v\n%s", err, out)
+	}
+	if out, err := exec.Command("git", "-C", cloneDir, "rev-parse", "--is-shallow-repository").Output(); err != nil || strings.TrimSpace(string(out)) != "true" {
+		t.Skipf("clone 不是浅克隆，跳过: %v %s", err, out)
+	}
+	// 在浅克隆里改 change 自己的文件（未提交）。
+	cloneChDir := filepath.Join(cloneDir, "spec", "changes", "old")
+	if err := os.WriteFile(filepath.Join(cloneChDir, "goal.md"), []byte("# old\n# edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := Activities(cloneDir, []string{"old"})["old"]
+	if time.Since(got) > time.Hour {
+		t.Fatalf("浅克隆里正在改的 change 应算新鲜（mtime），got %v", got)
 	}
 }

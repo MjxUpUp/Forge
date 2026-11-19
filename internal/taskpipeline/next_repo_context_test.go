@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -239,5 +240,88 @@ func TestNextRepoContext_StaleChangeIDsExposed(t *testing.T) {
 	}
 	if !strings.Contains(got.Reason, "old") {
 		t.Fatalf("理由应点名陈旧 change，实际 %q", got.Reason)
+	}
+}
+
+// TestNextRepoContext_ShallowCloneStaleChangeIsNotRecommended 浅克隆里 next 必须把
+// 「无法判定历史」的 ready change 当陈旧消费（评审 P3-e：之前只有 Activities 层测试，
+// 把 next.go 的 `ok && (IsZero || …)` 改回 `!last.IsZero()` 时全包测试仍绿）。
+func TestNextRepoContext_ShallowCloneStaleChangeIsNotRecommended(t *testing.T) {
+	base := t.TempDir()
+	gitDo := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = base
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	gitDo("init", "-q")
+	gitDo("config", "user.email", "t@example.com")
+	gitDo("config", "user.name", "t")
+	if _, err := change.Init(base, specroot.ProfileMini); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := change.New(base, "old", "old"); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(base, "spec", "changes", "old")
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	write(change.FileGoal, "# goal：old\n\n## Objective\n\nold goal\n\n## Out of Scope\n\nnone\n\n## Check\n\nls\n")
+	write(change.FileChange, "# change：old\n\n## 改动\n\nx\n\n## 影响\n\nnone\n\n## 验证\n\nacceptance\n")
+	write(change.FileAcceptance, "# acceptance：old\n\n```bash\nls .\n```\n")
+	write(change.FileClarify, "## 边界\n\nonly this\n\n人确认：2026-11-19T00:00:00Z\n")
+	old := time.Now().Add(-5 * 24 * time.Hour).Format(time.RFC3339)
+	cmd := exec.Command("git", "add", "-A")
+	cmd.Dir = base
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "-m", "old")
+	cmd.Dir = base
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+old, "GIT_COMMITTER_DATE="+old)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(base, "README.md"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("git", "add", "-A")
+	cmd.Dir = base
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "-m", "touch root")
+	cmd.Dir = base
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+
+	cloneDir := t.TempDir()
+	cmd = exec.Command("git", "clone", "--depth", "1", "file://"+filepath.ToSlash(base), cloneDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("clone --depth 1 不可用: %v\n%s", err, out)
+	}
+	if out, err := exec.Command("git", "-C", cloneDir, "rev-parse", "--is-shallow-repository").Output(); err != nil || strings.TrimSpace(string(out)) != "true" {
+		t.Skipf("clone 不是浅克隆，跳过: %v %s", err, out)
+	}
+
+	ctx := NextRepoContext(cloneDir, "master", true, 0)
+	for _, id := range ctx.ReadyChanges {
+		if id == "old" {
+			t.Fatalf("浅克隆无法判定历史，old 不应进 ReadyChanges")
+		}
+	}
+	found := false
+	for _, id := range ctx.StaleChanges {
+		if id == "old" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("浅克隆里 old 应作为陈旧出现，StaleChanges=%v", ctx.StaleChanges)
 	}
 }

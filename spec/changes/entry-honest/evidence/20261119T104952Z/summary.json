@@ -1,0 +1,76 @@
+{
+  "change": "entry-honest",
+  "started_at": "2026-11-19T10:49:52Z",
+  "finished_at": "2026-11-19T10:53:57Z",
+  "passed": true,
+  "sealed": true,
+  "head": "1d803b592a69a5401239addc5fa93c0544c233fe",
+  "diff_sha256": "46cfdbcede27c908f50eaf4d62260ed03bffc4d7b82b5e39e161eebbda90c7ed",
+  "files": [
+    {
+      "path": "internal/change/activity_test.go",
+      "sha256": "6a46bf17ef94f7f118b7c7164116ca78a005adf457993d91284daa45877f6374"
+    },
+    {
+      "path": "internal/taskpipeline/next_repo_context_test.go",
+      "sha256": "eded9aaeaeb2645f1a442823f5a86e2129a14efc7bf9eadb09a09339ce4900e4"
+    }
+  ],
+  "acceptance_sha256": "59a160cfad02b2e89cce9abad5b43710cba91354265a31addfccbd3de5500511",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2068
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ ./internal/change/ ./internal/clitask/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 138910,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 96836,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 801,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 204
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5273
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 1024,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}
