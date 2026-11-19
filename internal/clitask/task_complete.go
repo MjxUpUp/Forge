@@ -78,7 +78,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// 幂等重复完成守卫：已 finalize 的任务（完成且已评分；或从不评分的已完成 generic
 	// 任务）不得重跑完成副作用（重复评分、重复 HEAD 告警、第二条 Act 结论）。
-	if state.CompletedAt != nil && (state.Score != nil || state.IsGeneric()) {
+	if state.CompletedAt != nil && (state.Evidence != nil || state.IsGeneric()) {
 		fmt.Printf("Task %s already completed（已完成，幂等跳过）。\n", state.TaskRef)
 		return nil
 	}
@@ -193,10 +193,13 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 
 	// 事实清单（不评分）：判据实跑、红先绿、评审轮次、逃生舱都直接数。
 	ev := taskpipeline.BuildTaskEvidence(root, state)
-	state.Evidence = ev
-	if err := taskpipeline.SaveTaskState(root, state); err != nil {
+	if err := taskpipeline.MergeOrPersistTaskState(root, state, func(s *taskpipeline.TaskState) error {
+		s.Evidence = ev
+		return nil
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to save evidence: %v\n", err)
 	}
+	state.Evidence = ev
 	completed := fmt.Sprintf("Task %s completed! 判据 %d 条（通过 %d）· 红先绿 %d/%d 条 · 评审 %d 轮",
 		state.TaskRef, ev.Criteria, ev.CriteriaPassed, ev.RedFirstClosed, ev.RedFirstTrials, ev.ReviewRounds)
 	if ev.ReviewScore != nil {

@@ -20,8 +20,9 @@ func BuildTaskEvidence(root string, state *TaskState) *tasktypes.TaskEvidence {
 	}
 	for _, r := range state.RedAttempts {
 		ev.RedFirstTrials++
+		want := NormalizeGoTestRun(r.Run)
 		for _, c := range state.Acceptance {
-			if c.Run == r.Run && c.Passed {
+			if c.Passed && NormalizeGoTestRun(c.Run) == want {
 				ev.RedFirstClosed++
 				break
 			}
@@ -49,6 +50,11 @@ func BuildTaskEvidence(root string, state *TaskState) *tasktypes.TaskEvidence {
 	if state.AllowEmptyCriteria {
 		ev.Escapes++
 	}
+	if recorded, err := taskEscapeHatchRecorded(root, state.TaskRef); err == nil && recorded {
+		ev.Escapes++
+	}
+	// 未测面必须总是现算（不依赖历史 Score）：逃生激活时按无视逃生的配对口径披露。
+	ev.UntestedAreas = CoveragePairingForDisclosure(root, state)
 	var open []tasktypes.Finding
 	for _, f := range state.Findings {
 		if f.Status == "open" {

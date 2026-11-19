@@ -474,15 +474,10 @@ func runTaskScore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no active task")
 	}
 
-	// 未评分则评分
-	if state.Score == nil {
-		if !state.IsComplete() {
-			return fmt.Errorf("task not complete. Complete it first with 'forge task complete'")
-		}
-		if err := scoreTask(root, state); err != nil {
-			return fmt.Errorf("scoring failed: %w", err)
-		}
+	if !state.IsComplete() {
+		return fmt.Errorf("task not complete. Complete it first with 'forge task complete'")
 	}
+	// 不再补算评分：2.3 起 task score 只读事实清单；老任务沿用盘上的历史 score 仅作只读兼容。
 
 	if asJSON {
 		output, _ := json.MarshalIndent(taskpipeline.BuildTaskEvidence(".", state), "", "  ")
