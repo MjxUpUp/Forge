@@ -104,5 +104,7 @@ func SeedTaskStateForSchema() any {
 	// findings/review_rounds 的嵌套可选键（round/change_hash/note）。
 	s.Findings = append(s.Findings, tasktypes.Finding{ID: "f2", Content: "c", Source: "s", Status: "open", Round: 1, ChangeHash: "h"})
 	s.ReviewRounds = append(s.ReviewRounds, tasktypes.ReviewRound{HeadCommit: "abc", ChangeHash: "h", ReviewedAt: now, Note: "n"})
+	s.Checkpoints = append(s.Checkpoints, tasktypes.Checkpoint{ID: "c", Ref: "r", Head: "h", At: "a", Label: "l"})
+	s.RolledBackTo = "c"
 	return s
 }

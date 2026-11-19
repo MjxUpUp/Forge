@@ -77,3 +77,57 @@ func TestTaskCheckpoint_RefusesCleanTreeAndUnknownID(t *testing.T) {
 		t.Fatalf("unknown id must fail and be named: %s", out+errOut)
 	}
 }
+
+func TestTaskCheckpoint_NoActiveTaskIsFriendly(t *testing.T) {
+	dir := t.TempDir()
+	ckGitRun(t, dir, "init", "-q", ".")
+	ckGitRun(t, dir, "config", "user.email", "t@example.com")
+	ckGitRun(t, dir, "config", "user.name", "t")
+	if _, _, code := runForgeStreams(t, dir, "init"); code != 0 {
+		t.Fatalf("forge init failed")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runForgeStreams(t, dir, "task", "checkpoint", "--list")
+	if code == 0 || !strings.Contains(out+errOut, "没有活跃任务") {
+		t.Fatalf("no active task must be a friendly error, got code=%d %s", code, out+errOut)
+	}
+	if strings.Contains(errOut, "nil pointer") || strings.Contains(out, "nil pointer") {
+		t.Fatalf("must not panic: %s", out+errOut)
+	}
+}
+
+func TestTaskCheckpoint_RefusesUntrackedFiles(t *testing.T) {
+	dir := setupCheckpointRepo(t)
+	// git stash create 不含 untracked：静默漏存会在 rollback 时丢文件，必须拒绝。
+	if err := os.WriteFile(filepath.Join(dir, "brand-new.txt"), []byte("n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, code := runForgeStreams(t, dir, "task", "checkpoint")
+	if code == 0 || !strings.Contains(out+errOut, "未跟踪") {
+		t.Fatalf("untracked must be refused with a clear reason, got %s", out)
+	}
+}
+
+func TestTaskCheckpoint_IDsStayUniquePastLimit(t *testing.T) {
+	dir := setupCheckpointRepo(t)
+	last := ""
+	for i := 0; i < 21; i++ {
+		if err := os.WriteFile(filepath.Join(dir, "keep.txt"), []byte(strings.Repeat("x", i+1)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, _, code := runForgeStreams(t, dir, "task", "checkpoint")
+		if code != 0 {
+			t.Fatalf("checkpoint %d failed: %s", i, out)
+		}
+		last = out
+	}
+	if !strings.Contains(last, "cp-21") {
+		t.Fatalf("21st checkpoint should be cp-21, got %s", last)
+	}
+	list, _, _ := runForgeStreams(t, dir, "task", "checkpoint", "--list")
+	if strings.Count(list, "  cp-21  ") != 1 {
+		t.Fatalf("ids must not repeat, list:\n%s", list)
+	}
+}

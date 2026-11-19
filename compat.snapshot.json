@@ -790,6 +790,13 @@
       "path": "forge task checklist tick"
     },
     {
+      "path": "forge task checkpoint",
+      "flags": [
+        "label",
+        "list"
+      ]
+    },
+    {
       "path": "forge task claim",
       "flags": [
         "as",
@@ -1013,6 +1020,9 @@
         "ref",
         "workspace"
       ]
+    },
+    {
+      "path": "forge task rollback"
     },
     {
       "path": "forge task scope"
@@ -1557,6 +1567,12 @@
       "checklist[].done",
       "checklist[].done_at",
       "checklist[].id",
+      "checkpoints",
+      "checkpoints[].at",
+      "checkpoints[].head",
+      "checkpoints[].id",
+      "checkpoints[].label",
+      "checkpoints[].ref",
       "completed_at",
       "cross_repo_impact",
       "cross_repo_impact.declared_at",
@@ -1669,6 +1685,7 @@
       "review_rounds[].reviewed_at",
       "review_rounds[].reviewed_at",
       "reviewed_head_commit",
+      "rolled_back_to",
       "score",
       "score.dimensions",
       "score.dimensions[].detail",

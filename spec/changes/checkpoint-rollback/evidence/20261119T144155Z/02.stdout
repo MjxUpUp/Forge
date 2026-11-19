@@ -1,0 +1,12 @@
+=== RUN   TestTaskCheckpoint_RollbackRestoresWorktree
+--- PASS: TestTaskCheckpoint_RollbackRestoresWorktree (1.22s)
+=== RUN   TestTaskCheckpoint_RefusesCleanTreeAndUnknownID
+--- PASS: TestTaskCheckpoint_RefusesCleanTreeAndUnknownID (0.83s)
+=== RUN   TestTaskCheckpoint_NoActiveTaskIsFriendly
+--- PASS: TestTaskCheckpoint_NoActiveTaskIsFriendly (0.25s)
+=== RUN   TestTaskCheckpoint_RefusesUntrackedFiles
+--- PASS: TestTaskCheckpoint_RefusesUntrackedFiles (0.74s)
+=== RUN   TestTaskCheckpoint_IDsStayUniquePastLimit
+--- PASS: TestTaskCheckpoint_IDsStayUniquePastLimit (6.21s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/cli	10.783s

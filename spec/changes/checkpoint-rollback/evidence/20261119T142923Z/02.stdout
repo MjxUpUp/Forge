@@ -1,0 +1,6 @@
+=== RUN   TestTaskCheckpoint_RollbackRestoresWorktree
+--- PASS: TestTaskCheckpoint_RollbackRestoresWorktree (1.18s)
+=== RUN   TestTaskCheckpoint_RefusesCleanTreeAndUnknownID
+--- PASS: TestTaskCheckpoint_RefusesCleanTreeAndUnknownID (0.78s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/cli	3.500s
