@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/scoringtypes"
 	"github.com/MjxUpUp/Forge/internal/taskpipeline"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
@@ -67,7 +66,7 @@ func TestBuildTaskReport_RepoHasGoTestFilesWiring(t *testing.T) {
 // TestRenderTaskReport_NoTestFilesHonest：没有测试文件时，「未验证面：无」不得断言
 // 「改动源码均有配对测试」；扫描未知时退回原句。
 func TestRenderTaskReport_NoTestFilesHonest(t *testing.T) {
-	rep := &taskReportJSON{Score: &scoringtypes.ScoreResult{Overall: 88, Grade: "B"}}
+	rep := &taskReportJSON{Evidence: &tasktypes.TaskEvidence{Criteria: 3, CriteriaPassed: 3}}
 	no := false
 	rep.RepoHasGoTestFiles = &no
 	out := renderTaskReport(rep)

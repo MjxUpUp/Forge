@@ -78,7 +78,7 @@ func runTaskComplete(cmd *cobra.Command, args []string) error {
 func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// 幂等重复完成守卫：已 finalize 的任务（完成且已评分；或从不评分的已完成 generic
 	// 任务）不得重跑完成副作用（重复评分、重复 HEAD 告警、第二条 Act 结论）。
-	if state.CompletedAt != nil && (state.Score != nil || state.IsGeneric()) {
+	if state.CompletedAt != nil && (state.Evidence != nil || state.IsGeneric()) {
 		fmt.Printf("Task %s already completed（已完成，幂等跳过）。\n", state.TaskRef)
 		return nil
 	}
@@ -191,42 +191,34 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 		return fmt.Errorf("failed to save task state: %w", err)
 	}
 
-	// 自动评分 task
-	if err := scoreTask(root, state); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: scoring failed: %v\n", err)
+	// 事实清单（不评分）：判据实跑、红先绿、评审轮次、逃生舱都直接数。
+	ev := taskpipeline.BuildTaskEvidence(root, state)
+	if err := taskpipeline.MergeOrPersistTaskState(root, state, func(s *taskpipeline.TaskState) error {
+		s.Evidence = ev
+		return nil
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to save evidence: %v\n", err)
 	}
+	state.Evidence = ev
+	completed := fmt.Sprintf("Task %s completed! 判据 %d 条（通过 %d）· 红先绿 %d/%d 条 · 评审 %d 轮",
+		state.TaskRef, ev.Criteria, ev.CriteriaPassed, ev.RedFirstClosed, ev.RedFirstTrials, ev.ReviewRounds)
+	if ev.ReviewScore != nil {
+		completed += fmt.Sprintf("（score %d）", *ev.ReviewScore)
+	}
+	if ev.Escapes > 0 {
+		completed += fmt.Sprintf(" · 逃生 %d 次", ev.Escapes)
+	}
+	fmt.Printf("%s → 详见 forge task report\n", completed)
 
-	if state.Score != nil {
-		fmt.Printf("Task %s completed! Score: %.0f (%s)\n", state.TaskRef, state.Score.Overall, state.Score.Grade)
-
-		// 重复 HEAD 检测：同一分支上另一个已完成 task 与之共享 HeadCommit（在相同 commit
-		// 范围上重评分）时告警。仅限同分支避免假阳性——每个从同一 master HEAD 拉出的
-		// feature 分支都在 task start 时记同样的 HeadCommit，但它们的 diff 在独立分支上不重叠，
-		// 故跨分支匹配不算重复。
-		if state.HeadCommit != "" {
-			allStates, listErr := taskpipeline.ListTaskStates(root)
-			if listErr == nil {
-				for _, w := range duplicateScoreWarnings(state, allStates) {
-					fmt.Fprintf(os.Stderr, "⚠ Warning: %s\n", w)
-				}
+	// 重复 HEAD 检测：同一分支上另一个已完成 task 与之共享 HeadCommit（在相同 commit
+	// 范围上重复完成）时告警。仅限同分支避免假阳性。
+	if state.HeadCommit != "" {
+		allStates, listErr := taskpipeline.ListTaskStates(root)
+		if listErr == nil {
+			for _, w := range duplicateScoreWarnings(state, allStates) {
+				fmt.Fprintf(os.Stderr, "⚠ Warning: %s\n", w)
 			}
 		}
-
-		// 缺失 hook 检查：关键质量 hook 从未跑过时告警。
-		missingHooks := checkMissingHooks(root, state)
-		hasMissingHooks := len(missingHooks) > 0
-		if hasMissingHooks {
-			fmt.Fprintf(os.Stderr, "\n⚠ WARNING: Critical quality hooks were NOT executed during this task:\n")
-			for _, h := range missingHooks {
-				fmt.Fprintf(os.Stderr, "  - %s\n", h)
-			}
-			fmt.Fprintf(os.Stderr, "  The score (%s, %.0f) may not reflect actual code quality.\n",
-				state.Score.Grade, state.Score.Overall)
-			fmt.Fprintf(os.Stderr, "  Ensure the AI agent ran all required hooks during implementation.\n\n")
-		}
-
-	} else {
-		fmt.Printf("Task %s completed!\n", state.TaskRef)
 	}
 
 	// 设计 B：complete 输出末尾的 next 行——任务完结后的下一步（通常是合并分支/开新任务）
@@ -295,49 +287,6 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	}
 
 	return nil
-}
-
-// checkMissingHooks 返本任务期间从未跑过的关键质量 hook 名（基于 checklog 条目与 gate 历史）。
-// 读取口径与评分读方一致（LatestByCheckForTaskWindow：空 session 行按 TaskRef 归属、上界取
-// 封印时刻）——complete 报告说的「缺了什么 hook」与评分依据的是同一份数据。
-func checkMissingHooks(root string, state *taskpipeline.TaskState) []string {
-	var missing []string
-
-	latestChecks, err := checklog.LatestByCheckForTaskWindow(root, state.SessionID, state.TaskRef, state.StartedAt, state.SealedAt())
-	if err != nil || latestChecks == nil {
-		// 读不到 checklog——除非 gate 历史显示跑过，否则假设所有 hook 都缺失。
-		compileRan := false
-		for _, r := range state.History {
-			if r.Gate == taskpipeline.GateImplement && r.Passed {
-				compileRan = true
-				break
-			}
-		}
-		if !compileRan {
-			missing = append(missing, "auto-compile")
-		}
-		missing = append(missing, "assertion-check")
-		return missing
-	}
-
-	if _, ok := latestChecks[checklog.CheckAssertion]; !ok {
-		missing = append(missing, "assertion-check")
-	}
-	if _, ok := latestChecks[checklog.CheckAutoCompile]; !ok {
-		// 检查编译是否经 task-implement gate 跑过。
-		compileRan := false
-		for _, r := range state.History {
-			if r.Gate == taskpipeline.GateImplement && r.Passed {
-				compileRan = true
-				break
-			}
-		}
-		if !compileRan {
-			missing = append(missing, "auto-compile")
-		}
-	}
-
-	return missing
 }
 
 func missingGates(state *taskpipeline.TaskState) string {
