@@ -99,6 +99,14 @@ func TestRun_ExecutesWholeScriptInShell(t *testing.T) {
 	}
 }
 
+func TestRun_MidScriptFailureIsRed(t *testing.T) {
+	// 与 change verify 同语义：中途失败不能被末行成功掩盖。
+	rec := Run(t.TempDir(), []Case{{Change: "mid", Fence: 1, Shell: "bash", Command: "false\necho after-failure"}}, "")
+	if rec.Passed != 0 {
+		t.Fatalf("mid-script failure must fail the case: %+v", rec.Results[0])
+	}
+}
+
 func TestRun_ReportsMissingCommandAsError(t *testing.T) {
 	rec := Run(t.TempDir(), []Case{{Change: "x", Fence: 1, Shell: "bash", Command: "definitely-not-a-command-xyz"}}, "")
 	if rec.Passed != 0 {

@@ -1,0 +1,66 @@
+{
+  "change": "eval-suite",
+  "started_at": "2026-11-19T13:40:55Z",
+  "finished_at": "2026-11-19T13:41:08Z",
+  "passed": true,
+  "sealed": true,
+  "head": "ab2ba6bc3b3c7bb40cc469eb6c95397f184413ff",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "5e35a26b94462b5a18e4233bef826fb95981a23c436b44498561d5fa5244791e",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2300
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/evalsuite/ -count=1",
+      "exit": 0,
+      "duration_ms": 947,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestEvalSuite|TestEvalTrend' -count=1",
+      "exit": 0,
+      "duration_ms": 4474,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 670,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 175
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 3718
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 828,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}

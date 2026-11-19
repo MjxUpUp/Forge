@@ -84,12 +84,14 @@ func runEvalSuite(cmd *cobra.Command, _ []string) error {
 			}
 		}
 		fmt.Printf("回归基线：%d/%d 通过（HEAD %s）\n", rec.Passed, rec.Total, head)
-		if record {
-			if path, err := evalsuite.Save(root, rec); err != nil {
-				return err
-			} else {
-				fmt.Printf("已记录：%s\n", path)
-			}
+	}
+	if record {
+		path, err := evalsuite.Save(root, rec)
+		if err != nil {
+			return err
+		}
+		if !asJSON {
+			fmt.Printf("已记录：%s\n", path)
 		}
 	}
 	if rec.Passed != rec.Total {
@@ -104,8 +106,13 @@ func failureReason(r evalsuite.Result) string {
 	if r.Error != "" {
 		return r.Error
 	}
-	if strings.TrimSpace(r.Output) != "" {
-		return strings.TrimSpace(strings.SplitN(r.Output, "\n", 2)[0])
+	if out := strings.TrimSpace(r.Output); out != "" {
+		lines := strings.Split(out, "\n")
+		for i := len(lines) - 1; i >= 0; i-- {
+			if l := strings.TrimSpace(lines[i]); l != "" {
+				return l
+			}
+		}
 	}
 	return ""
 }
@@ -150,8 +157,9 @@ func gitHead(root string) string {
 
 func firstLineOfCommand(s string) string {
 	s = strings.SplitN(strings.TrimSpace(s), "\n", 2)[0]
-	if len(s) > 80 {
-		s = s[:80] + "…"
+	r := []rune(s)
+	if len(r) > 60 {
+		s = string(r[:60]) + "…"
 	}
 	return s
 }

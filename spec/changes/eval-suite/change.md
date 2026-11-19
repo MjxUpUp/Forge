@@ -2,7 +2,7 @@
 
 ## 改动
 
-1. 新增 `internal/evalsuite`：`Load` 解析 `spec/changes/archive/*/acceptance.md` 的 bash 围栏（跳过 `# suite: skip`、支持 `--only`/`--max`），`Run` 逐条 exec 并计时（与 acceptance 相同的切分语义，不过 shell），`Save` 写 `.forge/evals/<ts>.json` + `index.jsonl`，`Trend` 读最近 N 次。
+1. 新增 `internal/evalsuite`：`Load` 解析 `spec/changes/archive/*/acceptance.md` 的 bash 围栏（跳过 `# suite: skip`、支持 `--only`/`--max`），`Run` 逐条把围栏整段交给 shell（与 `change verify` 同语义，含 `set -e`/`pipefail` 前缀），计时并保留输出尾部，`Save` 写 `.forge/evals/<ts>.json` + `index.jsonl`，`Trend` 读最近 N 次。
 2. 新增 `forge eval suite [--only|--max|--json|--record]` 与 `forge eval trend [--last|--json]`（挂在既有 `forge eval` 下）。
 3. `docs/reference/cli.md` 的 eval 段补两行；README 的「日常循环」补一条「隔一段时间跑一次回归基线」。
 

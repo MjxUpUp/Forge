@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -50,7 +51,7 @@ type Record struct {
 	Results []Result  `json:"results"`
 }
 
-var fenceRe = regexp.MustCompile("(?s)```(bash|sh|shell)[ \t]*\\r?\\n(.*?)```")
+var fenceRe = regexp.MustCompile("(?is)```(bash|sh|shell)[ \\t]*\\r?\\n(.*?)```")
 
 // Load 收集归档 change 的 acceptance 围栏（可选按 change id 过滤，max<=0 表示不限）。
 //
@@ -83,10 +84,11 @@ func Load(root string, only string, max int) ([]Case, error) {
 		for _, m := range fenceRe.FindAllStringSubmatch(string(raw), -1) {
 			n++
 			body := strings.TrimSpace(m[2])
+			lang := strings.ToLower(m[1])
 			if body == "" || strings.Contains(body, "# suite: skip") {
 				continue
 			}
-			cases = append(cases, Case{Change: id, Fence: n, Shell: m[1], Command: body})
+			cases = append(cases, Case{Change: id, Fence: n, Shell: lang, Command: body})
 			if max > 0 && len(cases) >= max {
 				return cases, nil
 			}
@@ -125,12 +127,25 @@ func runOne(root string, c Case) Result {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultCaseTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, shell, "-c", c.Command)
+	// 与 change verify 同语义：多行围栏中途失败必须整条红（否则末行成功会掩盖失败）。
+	prefix := "set -e"
+	if strings.HasSuffix(strings.ToLower(shell), "bash") || strings.HasSuffix(strings.ToLower(shell), "bash.exe") {
+		prefix = "set -eo pipefail"
+	}
+	cmd := exec.CommandContext(ctx, shell, "-c", prefix+"\n"+c.Command)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	res.DurationMS = time.Since(start).Milliseconds()
 	res.Output = capOutput(string(out), 4000)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			killTree(cmd)
+			res.Exit = -1
+			res.Error = fmt.Sprintf("判据超过 %s 未结束，已终止（子进程可能仍在）", DefaultCaseTimeout)
+			res.DurationMS = time.Since(start).Milliseconds()
+			res.Output = capOutput(string(out), 4000)
+			return res
+		}
 		var ee *exec.ExitError
 		switch {
 		case errors.As(err, &ee):
@@ -151,16 +166,29 @@ func runOne(root string, c Case) Result {
 // shellFor 把围栏语言映射到本地 shell：bash 优先用 shellexec 找到的 bash，
 // sh/shell 用 sh 退到 bash（Windows 上没有 sh 时先看 bash）。
 func shellFor(kind string) (string, error) {
-	bash, err := shellexec.FindBash()
-	if err == nil && bash != "" {
-		return bash, nil
-	}
 	if kind == "sh" || kind == "shell" {
 		if p, err := exec.LookPath("sh"); err == nil {
 			return p, nil
 		}
 	}
+	bash, err := shellexec.FindBash()
+	if err == nil && bash != "" {
+		return bash, nil
+	}
 	return "", fmt.Errorf("找不到可用的 shell（bash/sh），回归判据无法执行：%v", err)
+}
+
+// killTree 尽量收掉超时判据派生的进程树：只杀 shell 会留下占着输出管道的孙进程，
+// 让 CombinedOutput 永远等不到 EOF（评审 F3 的实测）。
+func killTree(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	if runtime.GOOS == "windows" {
+		_ = exec.Command("taskkill", "/T", "/F", "/PID", fmt.Sprint(cmd.Process.Pid)).Run()
+		return
+	}
+	_ = cmd.Process.Kill()
 }
 
 // capOutput 截断到 max 字节但不切开 UTF-8；尾部标注截断。

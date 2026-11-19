@@ -92,6 +92,17 @@ func TestEvalSuite_UnknownOnlyIsAnError(t *testing.T) {
 	}
 }
 
+func TestEvalSuite_JSONRecordWritesFile(t *testing.T) {
+	dir := setupEvalSuiteRepo(t)
+	if _, _, code := runForgeStreams(t, dir, "eval", "suite", "--json", "--record"); code != 0 {
+		t.Fatalf("json record run failed: %d", code)
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, ".forge", "evals"))
+	if err != nil || len(entries) < 2 {
+		t.Fatalf("--json --record must still write records: %v %v", err, entries)
+	}
+}
+
 func TestEvalTrend_ReadsRecordedRuns(t *testing.T) {
 	dir := setupEvalSuiteRepo(t)
 	if _, _, code := runForgeStreams(t, dir, "eval", "suite", "--record"); code != 0 {

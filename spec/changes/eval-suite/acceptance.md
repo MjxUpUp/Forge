@@ -9,7 +9,7 @@ go test -v ./internal/evalsuite/ -count=1
 ```
 
 ```bash
-go test -v ./internal/cli/ -run 'TestEvalSuite|TestEvalTrend' -count=1
+go test -v ./internal/cli/ -run 'TestEvalSuite|TestEvalTrend|TestCompatSnapshotMatchesGolden' -count=1
 ```
 
 ```bash
