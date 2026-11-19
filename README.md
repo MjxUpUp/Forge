@@ -165,6 +165,7 @@ hooks: off         # 兼容字段：保留只为老契约可解析，不启用�
 | `forge task start --ref <type/desc> --branch --accept "run :: expected"` | 建任务 + 建分支 + 登记验收标准 |
 | `forge task gate <gate-id>` | 推进门禁：task-implement → task-complete |
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |
+| `forge task checkpoint` / `rollback <id>` | 工作树存档点：大改前 `checkpoint --label`，改乱了 `rollback cp-N`（git stash 语义，不产生提交） |
 | `forge task complete` | 完结任务：输出事实清单（判据/红先绿/评审/逃生）+ Act 结论 + 清 active ref |
 | `forge eval suite [--record]` | 仓库级回归基线：逐条实跑归档 change 的 acceptance 判据，看跨任务退化（失败不阻断门禁） |
 | `forge eval trend` | 看最近 N 次回归基线的通过率与 HEAD |
