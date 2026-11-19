@@ -1,0 +1,8 @@
+=== RUN   TestEvalSuite_RunsArchivedCriteria
+--- PASS: TestEvalSuite_RunsArchivedCriteria (0.26s)
+=== RUN   TestEvalSuite_FailingCriteriaExitNonZero
+--- PASS: TestEvalSuite_FailingCriteriaExitNonZero (0.17s)
+=== RUN   TestEvalTrend_ReadsRecordedRuns
+--- PASS: TestEvalTrend_ReadsRecordedRuns (0.21s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/cli	2.028s

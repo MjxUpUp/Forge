@@ -1,0 +1,16 @@
+=== RUN   TestLoad_CollectsFencesAndSkipsSuiteSkip
+--- PASS: TestLoad_CollectsFencesAndSkipsSuiteSkip (0.01s)
+=== RUN   TestLoad_UnknownOnlyListsAvailable
+--- PASS: TestLoad_UnknownOnlyListsAvailable (0.01s)
+=== RUN   TestLoad_MultiLineFenceIsOneScript
+--- PASS: TestLoad_MultiLineFenceIsOneScript (0.01s)
+=== RUN   TestRun_ExecutesWholeScriptInShell
+--- PASS: TestRun_ExecutesWholeScriptInShell (0.07s)
+=== RUN   TestRun_ReportsMissingCommandAsError
+--- PASS: TestRun_ReportsMissingCommandAsError (0.04s)
+=== RUN   TestSaveAndTrend
+--- PASS: TestSaveAndTrend (0.04s)
+=== RUN   TestCapOutputKeepsValidUTF8
+--- PASS: TestCapOutputKeepsValidUTF8 (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/evalsuite	0.204s

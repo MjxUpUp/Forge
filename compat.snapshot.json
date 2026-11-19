@@ -323,12 +323,28 @@
       ]
     },
     {
+      "path": "forge eval suite",
+      "flags": [
+        "json",
+        "max",
+        "only",
+        "record"
+      ]
+    },
+    {
       "path": "forge eval traps"
     },
     {
       "path": "forge eval traps run",
       "flags": [
         "dir"
+      ]
+    },
+    {
+      "path": "forge eval trend",
+      "flags": [
+        "json",
+        "last"
       ]
     },
     {

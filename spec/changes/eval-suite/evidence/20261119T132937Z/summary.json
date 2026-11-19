@@ -1,0 +1,112 @@
+{
+  "change": "eval-suite",
+  "started_at": "2026-11-19T13:29:37Z",
+  "finished_at": "2026-11-19T13:29:48Z",
+  "passed": true,
+  "sealed": true,
+  "head": "aa6f6cc0fa25a1ddf13825efc347f5c0ed6d538a",
+  "diff_sha256": "f6ebf1947deecc315188e766356bec3fa84a609f0d1008959039c2cb551d0583",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "054008279dad7c4b219d58a019b551f6e50ea12cf948e32fac3d2fce21a87005"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "2e4eb4c513d82685b858ec7663d1a0a15e170923b0c41d803dea80f790c4fb81"
+    },
+    {
+      "path": "internal/cli/evalsuite.go",
+      "sha256": "9589e9e5b4cb0c590b0af493c2c6a0a198dce9379b859ed8962cba0642427ef3"
+    },
+    {
+      "path": "internal/cli/evalsuite_test.go",
+      "sha256": "36d0ceae03c88018a86aa8d40185e614a3cb196a49fc196708698c7dcf54358e"
+    },
+    {
+      "path": "internal/evalsuite/evalsuite.go",
+      "sha256": "ad72b8e8b57e12a9f69f1eeb69e263f5328e0e3a97dd00a2102beb78a8f1f3c0"
+    },
+    {
+      "path": "internal/evalsuite/evalsuite_test.go",
+      "sha256": "7f58b2024540b7198031919a961520fac6ea22984807b777838d316b9a49e81a"
+    },
+    {
+      "path": "spec/changes/eval-suite/.goal-required",
+      "sha256": "68f393a4d0952319c7189266d191f15c0f64fee8943cb6356b4e29cd0a202459"
+    },
+    {
+      "path": "spec/changes/eval-suite/acceptance.md",
+      "sha256": "e560112655bca8f125d990eec43a2c39d7921b4588f47639dcb6288ac0aac25c"
+    },
+    {
+      "path": "spec/changes/eval-suite/change.md",
+      "sha256": "a8d4c740201386dab92d72a3373355c1c76cbe7c3ee2fa747044105b09bdf6d6"
+    },
+    {
+      "path": "spec/changes/eval-suite/clarify.md",
+      "sha256": "1a82ef793c031bef9efc7c0d177153f56ef3b8306d7cb64151b72bfe188dddf2"
+    },
+    {
+      "path": "spec/changes/eval-suite/goal.md",
+      "sha256": "dfd735bb49321ec8669ab49807041dc1645eff28e62f729143096942bdda3ecc"
+    }
+  ],
+  "acceptance_sha256": "e560112655bca8f125d990eec43a2c39d7921b4588f47639dcb6288ac0aac25c",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2079
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/evalsuite/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 812,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -run 'TestEvalSuite|TestEvalTrend' -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 3182,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 662,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 174
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 3640
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 869,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}

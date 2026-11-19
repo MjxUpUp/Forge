@@ -1,0 +1,12 @@
+=== RUN   TestEvalSuite_RunsArchivedCriteria
+--- PASS: TestEvalSuite_RunsArchivedCriteria (0.23s)
+=== RUN   TestEvalSuite_JSONIsPureJSON
+--- PASS: TestEvalSuite_JSONIsPureJSON (0.18s)
+=== RUN   TestEvalSuite_FailingCriteriaShowsReason
+--- PASS: TestEvalSuite_FailingCriteriaShowsReason (0.22s)
+=== RUN   TestEvalSuite_UnknownOnlyIsAnError
+--- PASS: TestEvalSuite_UnknownOnlyIsAnError (0.11s)
+=== RUN   TestEvalTrend_ReadsRecordedRuns
+--- PASS: TestEvalTrend_ReadsRecordedRuns (0.33s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/cli	2.744s
