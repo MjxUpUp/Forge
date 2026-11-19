@@ -1,0 +1,58 @@
+{
+  "change": "skill-new",
+  "started_at": "2026-11-19T14:59:25Z",
+  "finished_at": "2026-11-19T14:59:37Z",
+  "passed": true,
+  "sealed": true,
+  "head": "ce8b3aa10d5752060a88cafee12ce5e3e3f5e87f",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "801238c215fb1d9f996f4af743d19deecd4ced27095867dd9a6600a6a0e43896",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3346
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/skillcap/ -count=1",
+      "exit": 0,
+      "duration_ms": 832,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli/ -run 'TestSkill' -count=1",
+      "exit": 0,
+      "duration_ms": 2883,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 700,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 181
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4348
+    }
+  ]
+}
