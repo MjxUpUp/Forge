@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [3.0.0](https://github.com/MjxUpUp/Forge/compare/v2.3.1...v3.0.0) (2026-11-19)
+
 ### ⚠ 升级注意
 
 * **复审改为「评审者复用」**：同一个任务的 code-review 必须由首轮绑定的同一个子 agent 继续（`--reviewer <id>`），源码变更后再用**新** reviewer 会被拒；确实需要换人时用 `--rotate-reviewer --reason "<原因>"` 显式留痕。原先「源码一变就必须换新 reviewer」的规则已反转——每轮换人会把上一轮的问题丢掉，评审收敛不了。上一轮的未闭合项用 `--findings <清单>` 承接，关闭或 `(waived: 原因)` 才放行。
@@ -19,6 +21,24 @@
 
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
 * **评审连续性**：`review pass` 记录 reviewer 绑定与轮次（未闭合/已关闭/换人次数），`forge next` 的复审提示直接带上次的 reviewer id；`task report` 新增「先失败证明」「评审连续性」两行。
+
+### ⚠ BREAKING CHANGES
+
+* **drop-score:** TaskState.score 及其 9 个子键移除，完成面只保留事实清单 TaskState.evidence（判据通过数、红先绿、评审轮次、逃生数）；forge task golden 与 forge verify --collect-golden 移除；FORGE_RECURRENT_HARDEN 逃生舱移除；protocol.yml 的 scoring: 段不再读取；act 结论 score/grade/dim_scores/low_dimensions、dashboard pulse stats avgScore/medianScore/trend/gradeDist/lowDims、skills 聚合 avgScore、task audit score_overall 一并移除。internal/scoring 与 internal/scoringtypes 整包删除；merge 收敛改用事实清单比较。旧 state/配置/结论按未知键忽略。破坏面记录见 docs/design/compat-commitments.md「2026-11-20 drop-score 第二批」。
+
+### Features
+
+* **change-drift:** forge change drift 对照声明与实际改动（advisory） ([cca4752](https://github.com/MjxUpUp/Forge/commit/cca47521bba5837eabef9b3bf8d92638b080b803))
+* **drop-score:** 删除评分合成分（第二批） ([7766fe8](https://github.com/MjxUpUp/Forge/commit/7766fe8a87cb1f12143efec23c84db9784312a2e))
+* **skill:** forge skill new 把 retro 教训落成 SKILL.md ([cb7a147](https://github.com/MjxUpUp/Forge/commit/cb7a14700688a33827160d33f43b2218c07357d0))
+* **trajectory:** checklog 记 duration_ms/steps/attempt，report 显示轨迹 ([3cb612f](https://github.com/MjxUpUp/Forge/commit/3cb612f67b656c85ab615309dc325e78d7b852b1))
+
+
+### Bug Fixes
+
+* **act:** rebuild 用已落盘事实清单复原完成结论 ([e3ed7dd](https://github.com/MjxUpUp/Forge/commit/e3ed7dd4519d3d7089801789244a2ff6fbc6e487))
+* **checkpoint:** 从 git stash create 输出里解析对象名，容忍警告行 ([90e1971](https://github.com/MjxUpUp/Forge/commit/90e1971572275e7477e7082770bd0b3724298fa0))
+* **checkpoint:** 修评审四条 P1——无任务判空、ID 唯一、拒绝 untracked、refs 保活 ([9d9a361](https://github.com/MjxUpUp/Forge/commit/9d9a361577389293af0b0051cdf33cb03d7a79c7))
 
 ## [2.3.1](https://github.com/MjxUpUp/Forge/compare/v2.3.0...v2.3.1) (2026-11-19)
 
