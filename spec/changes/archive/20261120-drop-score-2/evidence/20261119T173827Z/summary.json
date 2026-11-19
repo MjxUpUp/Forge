@@ -1,0 +1,56 @@
+{
+  "change": "drop-score-2",
+  "started_at": "2026-11-19T17:38:27Z",
+  "finished_at": "2026-11-19T17:40:22Z",
+  "passed": true,
+  "sealed": true,
+  "head": "101a07c761744d55d4e9989efd045858bc4c84b2",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "4f46b235b1800ed544853bbbac893792d2410d10ef8683424cfefa6f1c1fbeca",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3029
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go vet ./...",
+      "exit": 0,
+      "duration_ms": 1850
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-scoring-refs.sh",
+      "exit": 0,
+      "duration_ms": 289
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline/ ./internal/dashboard/ ./internal/clitask/ -count=1",
+      "exit": 0,
+      "duration_ms": 105114,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 279
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4655
+    }
+  ]
+}
