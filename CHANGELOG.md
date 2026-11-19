@@ -8,6 +8,12 @@
 * **带 `--change` 启动必须登记验收判据**：`task start --change <id>` 至少一条 `--accept`；确实没有可执行判据时用 `--allow-empty-criteria` 留痕。
 * **先失败证明（可选但会被披露）**：`task start --accept-red "<命令>"` 登记开工前必须失败的判据；`task complete` 要求同一命令已经转绿（`go test` 判据两侧按 `-v` 归一化）。没登记不拦，但交付单会写「未登记」。
 
+### ⚠ 行为变化（entry-honest，2026-11-19）
+
+* **`forge next` 不再推荐陈旧 change**：ready 但超过 72 小时没动过的 change 只进 `stale_changes` / `stale_change_ids`，不会被当成下一步；有脏树时给 `forge change new`，干净树仍给 `task start`。陈旧判定取「目录文件时间与 change 目录最近一次提交时间」的较大者，换机器/新 clone 不会把旧活刷成新鲜。
+* **删掉「考卷必须含测试类命令」启发式**：`task complete` 不再按命令名猜判据质量（`go test`/`npm test` 之类前缀）。判据可信度由实跑回扣、新鲜度、红先绿、评审认领共同决定；`node --test`、`test -f x` 等合法判据不再被误拒。
+* **协议不再默认先跑 `forge next`**：用户提出新需求时直接 `forge change new` / `forge task start`；next 只用于继续或接手已有任务。
+
 ### Features
 
 * **测试先行三事实**：红先绿证据（`--accept-red` + `task complete` 校验）、判据先于实现（带 `--change` 必须登记判据）、判据溯源（`review pass --criteria-reviewed <n>`，交付单显示 `n/N`）。
