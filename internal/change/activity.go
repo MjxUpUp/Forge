@@ -20,8 +20,10 @@ const StaleAfter = 72 * time.Hour
 //   - 判定必须扛得住换机器：clone / worktree add 会把目录 mtime 刷成检出时间，
 //     所以「干净」的 change 用**提交时间**，而不是 mtime；
 //   - 有未提交改动（含未跟踪文件）时，人正在动它——取 max(文件 mtime, 提交时间)；
-//   - 没有 git（或浅克隆：`git log -- path` 会返回被 graft 的 HEAD 时间）时退回
-//     文件 mtime，并接受它可能偏新。
+//   - 没有 git 时退回文件 mtime（本地目录至少反映人何时动过文件）；
+//   - 浅克隆（`git log -- path` 只会返回被 graft 的 HEAD 时间）无法判定历史，
+//     一律按**陈旧**处理——不推荐旧 change 比把人拖回旧活更安全；要接着做就显式
+//     `forge task start --change <id>`。
 //
 // 批量实现：一次 `git status --porcelain` 拿脏 change、一次 `git log --name-only`
 // 拿每个 change 目录最近一次提交的时间——31 个 change 也从 31 次子进程降到 2 次。
@@ -38,7 +40,9 @@ func Activities(root string, ids []string) map[string]time.Time {
 		switch {
 		case !hasMtime && !hasCommit:
 			out[id] = now // 都不存在：别把不存在的目录判成陈旧
-		case shallow || !hasCommit:
+		case shallow:
+			out[id] = time.Time{} // 无法判定：按陈旧处理（见函数注释）
+		case !hasCommit:
 			out[id] = mtime
 		case !dirty[id]:
 			out[id] = ct
