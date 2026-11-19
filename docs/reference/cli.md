@@ -91,6 +91,8 @@
 | `forge task finding --content <text> [--tag <枚举>] \| --resolve <id> \| --stats [--source <source>]` | 记录发现/标 fixed/跨任务聚合：`--tag` 打类别标（padding/conclusion/template/false-precision/disclaimer/evidence/style）；`--stats --source doc-review` 按 Tag 跨任务聚合计数（历史记录仍可读）——session-retrospective「同类打回 ≥3 次」升级判据的机器来源 |
 | task-complete 自报一致性门禁（自动） | checklist 已勾选项里声称执行过的验证类命令（go test/pytest/cargo test 等）与 toollog 实测 Bash 集比对：测试类声称任务全程零匹配 = 虚报进度形态（arXiv 2605.29442）→ 拒绝完成；非测试类差集只留 advisory 痕；toollog 缺失（宿主遥测未接）跳过——区分"无法验证"与"验证通过"；逃生（留痕）`FORGE_SELF_REPORT=disable` |
 | `forge docs lint [paths...] [--base <rev>]` | 文档产物 L1 确定性 lint（D1-D11：禁令短语/无证据结论/复述 diff/通过断言无证据/必填章节/结论枚举/篇幅/结论位置/调研文档的来源、信度标注与内部标签——调研三条 D9-D11 在观察期内全是 advisory）；`--base` 改扫该基线以来变更的 .md。exit code：0=通过 2=硬失败。禁令清单单一真相源在 `internal/doclint`，同步渲染进 forge-quality skill |
+| `forge eval suite [--only <change>] [--max N] [--json] [--record]` | 仓库级回归基线：把已归档 change 的 acceptance 围栏逐条实跑（`# suite: skip` 跳过重判据），改一处代码能看到历史判据有没有退化。失败以非零退出，但**不阻断**任何门禁；`--record` 落 `.forge/evals/<ts>.json` 并追加 `index.jsonl` |
+| `forge eval trend [--last N] [--json]` | 读 `.forge/evals/index.jsonl`，显示最近 N 次运行的通过率与 HEAD |
 | `forge eval card [--render]` | 治理披露卡：Forge 占 ETCSOVG 哪四层、门禁/逃生舱/检查器自证与已知盲区清单（缺节 BLOCKED）。评测体系：docs/design/forge-evaluation-system.md |
 | `forge eval friction [--corpus <dir>] [--timeout 120s] [--json]` | 摩擦净值实验（脚本化双臂）：诱饵语料在「门禁开 / 既有逃生舱全开」两臂下实跑，量拦截率、残余与检查器开销（ON-OFF 墙钟）；端到端 agent 臂走 FORGE_EVAL_MODEL 通道 |
 | `forge eval rule-ledger --record --rule <id> --claim <预测> --probe <命令>` / `--verify --rule <id>` / `--list` | 门禁规则可证伪台账：规则变更带预测声明 + 可执行 probe，verify 实跑落账结论（`evals/rule-ledger.jsonl` 随库提交；损坏行 fail-closed） |

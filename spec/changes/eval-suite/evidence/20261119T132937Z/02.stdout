@@ -1,0 +1,10 @@
+=== RUN   TestLoad_CollectsFencesAndSkipsSuiteSkip
+--- PASS: TestLoad_CollectsFencesAndSkipsSuiteSkip (0.01s)
+=== RUN   TestRun_ReportsPassAndFail
+--- PASS: TestRun_ReportsPassAndFail (0.03s)
+=== RUN   TestSaveAndTrend
+--- PASS: TestSaveAndTrend (0.02s)
+=== RUN   TestSplitCommand_QuotesAndUnbalanced
+--- PASS: TestSplitCommand_QuotesAndUnbalanced (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/evalsuite	0.087s
