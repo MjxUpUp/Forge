@@ -45,9 +45,10 @@ func TestTaskCheckpoint_RollbackRestoresWorktree(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("v2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	out, _, code := runForgeStreams(t, dir, "task", "checkpoint", "--label", "before refactor")
+	out, errOut, code := runForgeStreams(t, dir, "task", "checkpoint", "--label", "before refactor")
 	if code != 0 || !strings.Contains(out, "cp-1") {
-		t.Fatalf("checkpoint failed: %s", out)
+		st := ckGitRun(t, dir, "status", "--porcelain")
+		t.Fatalf("checkpoint failed: code=%d out=%q err=%q status=%q", code, out, errOut, st)
 	}
 	ckGitRun(t, dir, "checkout", "--", "keep.txt")
 	if b, _ := os.ReadFile(filepath.Join(dir, "keep.txt")); strings.TrimSpace(string(b)) != "v1" {
@@ -117,9 +118,10 @@ func TestTaskCheckpoint_IDsStayUniquePastLimit(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "keep.txt"), []byte(strings.Repeat("x", i+1)+"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out, _, code := runForgeStreams(t, dir, "task", "checkpoint")
+		out, errOut, code := runForgeStreams(t, dir, "task", "checkpoint")
 		if code != 0 {
-			t.Fatalf("checkpoint %d failed: %s", i, out)
+			st := ckGitRun(t, dir, "status", "--porcelain")
+			t.Fatalf("checkpoint %d failed: code=%d out=%q err=%q status=%q", i, code, out, errOut, st)
 		}
 		last = out
 	}

@@ -94,7 +94,7 @@ func runTaskCheckpoint(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("工作树快照失败：%w", err)
 	}
-	ref = strings.TrimSpace(ref)
+	ref = parseStashRef(ref)
 	if ref == "" {
 		return fmt.Errorf("工作区没有可快照的改动——先改点东西，或用 git commit 记录已有进度")
 	}
@@ -160,6 +160,36 @@ func runTaskRollback(_ *cobra.Command, args []string) error {
 	}
 	fmt.Printf("已回滚到 %s（%s）。stash apply 只放回内容，冲突需手工处理。\n", target.ID, target.Ref)
 	return nil
+}
+
+// parseStashRef 从 git stash create 的输出里取对象名。git 会把某些 warning
+// （如 core.autocrlf 的「LF will be replaced by CRLF」提示）写进 stdout：
+// 整段 TrimSpace 后直接当 ref 会让 update-ref 收到「警告行 + 对象名」并以
+// 128 失败（fatal: not a valid SHA1）——这是 windows CI 上 checkpoint 恒红
+// 的根因（2026-11-20 实录），不是 git stash 本身失败。按行从后往前取第一个
+// 合法对象名（SHA-1 40 位、SHA-256 64 位），把警告行留在原地不参与解析。
+func parseStashRef(out string) string {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if s := strings.TrimSpace(lines[i]); isHexObjectName(s) {
+			return s
+		}
+	}
+	return ""
+}
+
+// isHexObjectName 判断 s 是不是一个完整长度的十六进制对象名。
+func isHexObjectName(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func nextCheckpointID(cps []taskpipeline.Checkpoint) string {
