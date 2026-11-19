@@ -5,11 +5,11 @@ go build ./...
 ```
 
 ```bash
-go test -v ./internal/evalsuite/ -count=1 :: ok
+go test -v ./internal/evalsuite/ -count=1
 ```
 
 ```bash
-go test -v ./internal/cli/ -run 'TestEvalSuite|TestEvalTrend' -count=1 :: ok
+go test -v ./internal/cli/ -run 'TestEvalSuite|TestEvalTrend' -count=1
 ```
 
 ```bash

@@ -15,7 +15,8 @@ var evalSuiteCmd = &cobra.Command{
 	Use:   "suite [--only <change>] [--max N] [--json] [--record]",
 	Short: "跑归档 change 的 acceptance 判据（仓库级回归基线）",
 	Long: `把已归档 change 的 acceptance 围栏当作回归基线逐条实跑：
-改一处、跑所有历史判据，看整体有没有退化。
+改一处、跑所有历史判据，看整体有没有退化。每条判据都在 shell 里跑，
+单条超时 10 分钟；失败以非零退出，但不阻断任何门禁。
 
 围栏里写 ` + "`# suite: skip`" + ` 的整条跳过（重判据归 change 自己的 verify）。
 默认只跑最近 5 条；--max 0 表示全跑。--record 把结果写进 .forge/evals/ 并追加索引。`,
@@ -33,9 +34,9 @@ var evalTrendCmd = &cobra.Command{
 func init() {
 	evalSuiteCmd.Flags().String("only", "", "只跑某个 change 的判据（按 change id）")
 	evalSuiteCmd.Flags().Int("max", 5, "最多跑多少条判据（0 = 不限）")
-	evalSuiteCmd.Flags().Bool("json", false, "JSON 输出")
+	evalSuiteCmd.Flags().Bool("json", false, "JSON 输出（纯 JSON，可直接 jq）")
 	evalSuiteCmd.Flags().Bool("record", false, "把结果写入 .forge/evals/ 并追加索引")
-	evalTrendCmd.Flags().Int("last", 10, "看最近多少次运行")
+	evalTrendCmd.Flags().Int("last", 10, "看最近多少次运行（0 = 全部）")
 	evalTrendCmd.Flags().Bool("json", false, "JSON 输出")
 	evalCmd.AddCommand(evalSuiteCmd)
 	evalCmd.AddCommand(evalTrendCmd)
@@ -56,38 +57,57 @@ func runEvalSuite(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if len(cases) == 0 {
-		fmt.Println("没有可跑的回归判据（spec/changes/archive/*/acceptance.md）")
+		if asJSON {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("没有可跑的回归判据（spec/changes/archive/*/acceptance.md；围栏可写 # suite: skip 跳过）")
+		}
 		return nil
 	}
 	head := gitHead(root)
 	rec := evalsuite.Run(root, cases, head)
 
-	for _, r := range rec.Results {
-		mark := "✅"
-		if !r.Passed {
-			mark = "❌"
-		}
-		fmt.Printf("  %s %s#%d  %s（%dms）\n", mark, r.Change, r.Fence, firstLineOfCommand(r.Command), r.DurationMS)
-		if !r.Passed && r.Output != "" {
-			fmt.Printf("     %s\n", strings.SplitN(r.Output, "\n", 2)[0])
-		}
-	}
-	fmt.Printf("回归基线：%d/%d 通过（HEAD %s）\n", rec.Passed, rec.Total, head)
-	if record {
-		path, err := evalsuite.Save(root, rec)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("已记录：%s\n", path)
-	}
 	if asJSON {
 		raw, _ := json.MarshalIndent(rec, "", "  ")
 		fmt.Println(string(raw))
+	} else {
+		for _, r := range rec.Results {
+			mark := "✅"
+			if !r.Passed {
+				mark = "❌"
+			}
+			fmt.Printf("  %s %s#%d  %s（%dms）\n", mark, r.Change, r.Fence, firstLineOfCommand(r.Command), r.DurationMS)
+			if !r.Passed {
+				if reason := failureReason(r); reason != "" {
+					fmt.Printf("     %s\n", reason)
+				}
+			}
+		}
+		fmt.Printf("回归基线：%d/%d 通过（HEAD %s）\n", rec.Passed, rec.Total, head)
+		if record {
+			if path, err := evalsuite.Save(root, rec); err != nil {
+				return err
+			} else {
+				fmt.Printf("已记录：%s\n", path)
+			}
+		}
 	}
 	if rec.Passed != rec.Total {
 		return fmt.Errorf("回归基线有 %d 条判据失败", rec.Total-rec.Passed)
 	}
 	return nil
+}
+
+// failureReason 优先给执行错误（找不到命令、超时），否则给输出首行——
+// 只打印 ❌ 而不给原因，等于让人再去翻 JSON。
+func failureReason(r evalsuite.Result) string {
+	if r.Error != "" {
+		return r.Error
+	}
+	if strings.TrimSpace(r.Output) != "" {
+		return strings.TrimSpace(strings.SplitN(r.Output, "\n", 2)[0])
+	}
+	return ""
 }
 
 func runEvalTrend(cmd *cobra.Command, _ []string) error {
@@ -102,7 +122,11 @@ func runEvalTrend(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if len(rows) == 0 {
-		fmt.Println("还没有评估记录（先跑 forge eval suite --record）")
+		if asJSON {
+			fmt.Println("[]")
+		} else {
+			fmt.Println("还没有评估记录（先跑 forge eval suite --record）")
+		}
 		return nil
 	}
 	if asJSON {
