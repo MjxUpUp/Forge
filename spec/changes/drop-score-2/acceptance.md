@@ -9,7 +9,7 @@ go vet ./...
 ```
 
 ```bash
-git grep -l "internal/scoring" -- '*.go' || true
+sh scripts/checks/no-scoring-refs.sh
 ```
 
 ```bash
