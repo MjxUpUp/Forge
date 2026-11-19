@@ -271,6 +271,58 @@ func TestTaskComplete_IdempotentGuardOnGeneric(t *testing.T) {
 	}
 }
 
+// 2026-11-19 入口诚实：complete 不再按「命令像不像测试」拦任务。base 上曾有一条
+// 「考卷必须含测试类命令」的启发式（CheckAcceptanceQuality），它把 `test -f x` /
+// `node --test` 这类合法判据当不合格；删除后这里钉住「非测试类判据也能 complete」，
+// 避免门禁再长回来（评审 P3-e：删门禁本身没有回归钉子）。
+func TestTaskComplete_AcceptsNonTestCommands(t *testing.T) {
+	dir := setupDeadlockTask(t, []string{`test -f marker.txt ::`})
+	if err := os.WriteFile(filepath.Join(dir, `marker.txt`), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(`git`, `add`, `-A`)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf(`git add: %v\n%s`, err, out)
+	}
+	cmd = exec.Command(`git`, `commit`, `-m`, `marker`)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf(`git commit: %v\n%s`, err, out)
+	}
+	head := exec.Command(`git`, `rev-parse`, `HEAD`)
+	head.Dir = dir
+	out, err := head.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir2 := dir
+	state, err := taskpipeline.LoadTaskState(dir2, `feat/deadlock`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.HeadCommit = strings.TrimSpace(string(out))
+	if err := taskpipeline.SaveTaskState(dir2, state); err != nil {
+		t.Fatal(err)
+	}
+
+	var verErr error
+	_ = captureStdout(t, func() { verErr = runTaskVerifyAcceptanceAt(dir2, "", false) })
+	if verErr != nil {
+		t.Fatalf(`verify-acceptance 应通过（判据只有 test -f）: %v`, verErr)
+	}
+	markReviewedDirect(t, dir2, `feat/deadlock`)
+	state, err = taskpipeline.LoadTaskState(dir2, `feat/deadlock`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var runErr error
+	_ = captureStdout(t, func() { runErr = runTaskCompleteAt(dir2, state) })
+	if runErr != nil {
+		t.Fatalf(`非测试类判据不应被 complete 拒绝: %v`, runErr)
+	}
+}
+
 // TestTaskGate_PassesWithoutCompleting E2E: gates no longer MarkComplete — after ALL THREE gates pass (review pass → task-complete), the task must still be active (CompletedAt==nil) and visible to ActiveTaskState.
 //
 // TestTaskGate_PassesWithoutCompleting E2E 钉住 gate 不再 MarkComplete：**三道门禁全部

@@ -55,7 +55,8 @@ type NextContext struct {
 	// StaleChanges 是 ready 但三天没动过的 id。它们不进推荐——用户想开新任务时
 	// 被旧 change 劫持是纯粹的浪费（2026-11-19 Claude 会话实证：2h17m 的会话开头
 	// 被 next 指向一个已放弃的 ready change）。
-	StaleChanges []string
+	StaleChanges   []string
+	StaleChangeIDs []string
 }
 
 // NextRepoContext 从仓库实况推导 next 的上下文：spec 声明 + 未归档 change 及其阶段。
@@ -89,6 +90,7 @@ func NextRepoContext(root, branch string, dirty bool, behindRemote int) NextCont
 	sort.Strings(ctx.OpenChanges)
 	sort.Strings(ctx.ReadyChanges)
 	sort.Strings(ctx.StaleChanges)
+	ctx.StaleChangeIDs = ctx.StaleChanges
 	return ctx
 }
 
@@ -107,16 +109,17 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 		gates[g] = true
 	}
 	state := map[string]any{
-		"branch":        branch,
-		"dirty":         dirty,
-		"behind_remote": behindRemote,
-		"spec_declared": ctx.SpecDeclared,
-		"open_changes":  len(ctx.OpenChanges),
-		"ready_changes": len(ctx.ReadyChanges),
-		"stale_changes": len(ctx.StaleChanges),
-		"active_task":   nextTaskRef(st),
-		"gates_passed":  nextGateHistory(st),
-		"review_passed": nextReviewPassed(st),
+		"branch":           branch,
+		"dirty":            dirty,
+		"behind_remote":    behindRemote,
+		"spec_declared":    ctx.SpecDeclared,
+		"open_changes":     len(ctx.OpenChanges),
+		"ready_changes":    len(ctx.ReadyChanges),
+		"stale_changes":    len(ctx.StaleChanges),
+		"stale_change_ids": ctx.StaleChangeIDs,
+		"active_task":      nextTaskRef(st),
+		"gates_passed":     nextGateHistory(st),
+		"review_passed":    nextReviewPassed(st),
 	}
 
 	// 已完结任务（status --ref 的展示路径会把 CompletedAt!=nil 的状态喂进来）：完成态不
@@ -136,17 +139,17 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 					State:  state,
 				}
 			}
-			if len(ctx.StaleChanges) > 0 && len(ctx.ReadyChanges) == 0 {
+			if half := firstUnfinishedChange(ctx); half != "" {
 				return NextResult{
-					Next:   "forge change new <id>",
-					Reason: fmt.Sprintf("工作区有未归属变更——先把这次要做的事立成 change；另有 %d 个 ready change 已超过三天没动（陈旧，不是下一步），需要的话用 forge change list 查看或归档，不要被它们拖回旧活", len(ctx.StaleChanges)),
+					Next:   "forge change phase " + half,
+					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物：没有 goal.md 的老 change 可补 goal.md，其余情况可以先不带 --change 直接 task start 开工（change 事后再补）",
 					State:  state,
 				}
 			}
-			if len(ctx.OpenChanges) > 0 {
+			if len(ctx.StaleChanges) > 0 && len(ctx.ReadyChanges) == 0 {
 				return NextResult{
-					Next:   "forge change phase " + ctx.OpenChanges[0],
-					Reason: "工作区有未归属变更，且已有未完成的 change——先看它的阶段并补齐产物：没有 goal.md 的老 change 可补 goal.md，其余情况可以先不带 --change 直接 task start 开工（change 事后再补）",
+					Next:   "forge change new <id>",
+					Reason: fmt.Sprintf("工作区有未归属变更——先把这次要做的事立成 change；另有 %d 个 ready change 已超过三天没动（%s），陈旧、不是下一步；要接着做旧活就显式 `forge change status <id>`/`task start --change <id>`，不要靠 next 兜", len(ctx.StaleChanges), staleIDs(ctx.StaleChangeIDs)),
 					State:  state,
 				}
 			}
@@ -320,4 +323,33 @@ func nextAcceptancePending(st *TaskState) bool {
 		}
 	}
 	return false
+}
+
+// staleIDs 把陈旧 change 的 id 拼成人能读的短列表（最多三个）。
+func staleIDs(ids []string) string {
+	if len(ids) == 0 {
+		return "无"
+	}
+	if len(ids) <= 3 {
+		return strings.Join(ids, "、")
+	}
+	return strings.Join(ids[:3], "、") + fmt.Sprintf(" 等 %d 个", len(ids))
+}
+
+// firstUnfinishedChange 找「还没 ready、也没被判陈旧」的第一个 change：这类才值得
+// 推 change phase 去补齐。ready 的走 ReadyChanges，陈旧的走 StaleChanges。
+func firstUnfinishedChange(ctx NextContext) string {
+	excluded := make(map[string]bool, len(ctx.ReadyChanges)+len(ctx.StaleChanges))
+	for _, id := range ctx.ReadyChanges {
+		excluded[id] = true
+	}
+	for _, id := range ctx.StaleChanges {
+		excluded[id] = true
+	}
+	for _, id := range ctx.OpenChanges {
+		if !excluded[id] {
+			return id
+		}
+	}
+	return ""
 }

@@ -16,6 +16,6 @@ change: `entry-honest`
 
 ## 验证
 
-- `internal/taskpipeline/next_test.go` 新增「陈旧 ready change 不推荐、给 change new」「新鲜 ready change 仍推荐 task start --change」两态。
-- `internal/taskpipeline/acceptance_register_test.go` 删除质量门用例；`internal/clitask/task_complete_test.go` 不再构造「无测试类命令」的失败预期。
+- `internal/taskpipeline/next_repo_context_test.go` 新增「陈旧 ready change 不推荐、给 change new」「新鲜 ready change 仍推荐 task start --change」「71h/73h 边界」「半成品优先于陈旧」「陈旧 id 进 state」五组断言。
+- base 上本来没有质量门测试可删（`git grep CheckAcceptanceQuality <base> -- "*_test.go"` 为空）；本轮在 `internal/clitask/task_complete_test.go` 补 `TestTaskComplete_AcceptsNonTestCommands` 作为回归钉子，防止门禁再长回来。
 - docs lint、gofmt、deadcode、全量测试。

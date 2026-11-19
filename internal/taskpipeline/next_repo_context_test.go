@@ -141,3 +141,103 @@ func TestNextRepoContext_FreshReadyChangeIsRecommended(t *testing.T) {
 		t.Fatalf("应推荐 task start --change fresh，实际 %q", got.Next)
 	}
 }
+
+// writeReadyChange 造一个 ready 的 change，并把目录内所有文件的时间回拨 age。
+func writeReadyChange(t *testing.T, root, id string, age time.Duration) {
+	t.Helper()
+	if _, err := change.New(root, id, id); err != nil {
+		t.Fatalf("New(%s): %v", id, err)
+	}
+	dir := filepath.Join(root, "spec", "changes", id)
+	for name, body := range map[string]string{
+		"clarify.md":    "## 边界\n\nb\n\n## 非目标\n\nn\n\n人确认：2026-11-19T00:00:00Z\n",
+		"goal.md":       "# t\n\n## Objective\n\n做 x\n\n## Out of Scope\n\n不做 y\n\n## Check\n\n- 判据\n",
+		"change.md":     "## 改动\n\nx\n\n## 影响\n\ny\n\n## 验证\n\nz\n",
+		"acceptance.md": "```bash\ngo build ./...\n```\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	if age > 0 {
+		ts := time.Now().Add(-age)
+		if err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return err
+			}
+			return os.Chtimes(path, ts, ts)
+		}); err != nil {
+			t.Fatalf("chtimes: %v", err)
+		}
+	}
+}
+
+// 72h 边界：71h 仍算新鲜、73h 才算陈旧（评审 P3-e：只有「5 天/刚建」两侧用例，
+// 把 StaleAfter 改成 24h 也全绿）。
+func TestNextRepoContext_StaleBoundary(t *testing.T) {
+	cases := []struct {
+		name  string
+		age   time.Duration
+		stale bool
+	}{
+		{"71h", 71 * time.Hour, false},
+		{"73h", 73 * time.Hour, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			if _, err := change.Init(root, specroot.ProfileMini); err != nil {
+				t.Fatalf("Init: %v", err)
+			}
+			writeReadyChange(t, root, "demo", tc.age)
+			ctx := NextRepoContext(root, "main", true, 0)
+			if tc.stale {
+				if len(ctx.StaleChanges) != 1 {
+					t.Fatalf("%v 应判陈旧，StaleChanges=%v ReadyChanges=%v", tc.age, ctx.StaleChanges, ctx.ReadyChanges)
+				}
+				return
+			}
+			if len(ctx.ReadyChanges) != 1 {
+				t.Fatalf("%v 应算新鲜，StaleChanges=%v ReadyChanges=%v", tc.age, ctx.StaleChanges, ctx.ReadyChanges)
+			}
+		})
+	}
+}
+
+// 评审 P2-b：stale 分支曾排在 OpenChanges 之前，会把「手上正在填的 change」盖掉。
+// 半成品（缺 clarify）+ 陈旧 ready 时，应先推半成品的 phase。
+func TestNextRepoContext_OpenChangeBeatsStale(t *testing.T) {
+	root := t.TempDir()
+	if _, err := change.Init(root, specroot.ProfileMini); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	writeReadyChange(t, root, "old", 5*24*time.Hour)
+	if _, err := change.New(root, "half", "half"); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := NextRepoContext(root, "main", true, 0)
+	got := NextDecisionCtx(ctx, nil)
+	if !strings.Contains(got.Next, "forge change phase half") {
+		t.Fatalf("半成品 change 应优先于陈旧 change，实际 %q（原因 %q）", got.Next, got.Reason)
+	}
+}
+
+// 评审 P3-a：state 里要有陈旧 change 的 id，而不只是一个计数。
+func TestNextRepoContext_StaleChangeIDsExposed(t *testing.T) {
+	root := t.TempDir()
+	if _, err := change.Init(root, specroot.ProfileMini); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	writeReadyChange(t, root, "old", 5*24*time.Hour)
+	ctx := NextRepoContext(root, "main", true, 0)
+	got := NextDecisionCtx(ctx, nil)
+	if ctx.StaleChangeIDs == nil || len(ctx.StaleChangeIDs) != 1 || ctx.StaleChangeIDs[0] != "old" {
+		t.Fatalf("StaleChangeIDs = %v，应含 old", ctx.StaleChangeIDs)
+	}
+	if !strings.Contains(got.Next, "change new") {
+		t.Fatalf("只有陈旧 change 时应给新任务入口，实际 %q", got.Next)
+	}
+	if !strings.Contains(got.Reason, "old") {
+		t.Fatalf("理由应点名陈旧 change，实际 %q", got.Reason)
+	}
+}

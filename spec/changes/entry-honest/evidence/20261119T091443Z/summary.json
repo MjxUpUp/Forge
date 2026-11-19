@@ -1,0 +1,104 @@
+{
+  "change": "entry-honest",
+  "started_at": "2026-11-19T09:14:43Z",
+  "finished_at": "2026-11-19T09:18:26Z",
+  "passed": true,
+  "sealed": true,
+  "head": "071a353d2c3ccacdbcc4b7b9e4a5b027a9a5a3e1",
+  "diff_sha256": "58ca117d62ff7fce49132a89a4c5274c00b0448f8b12acee56c49ff31ce01ee1",
+  "files": [
+    {
+      "path": "docs/design/oracle-pipeline-2026-09.md",
+      "sha256": "ad702e79980a32afa13cfee57b8161c05958900f8b5c710e459e3c91b39f8d5f"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "ef92786974f78f0f76ba731a7a96f491bb6c63d99cacfb1f7edc0db39d41a5eb"
+    },
+    {
+      "path": "internal/change/activity.go",
+      "sha256": "bb7104560f6d3b5b27112c2ce3e8d2d8bb75c7361e7853fbb4e0954ce77ea460"
+    },
+    {
+      "path": "internal/change/activity_test.go",
+      "sha256": "d89f8db76d1b3a9aaade7ff9c75f7d27611adfbf9543770187ffec61a6100bd1"
+    },
+    {
+      "path": "internal/cli/verify_scenarios.go",
+      "sha256": "62c8ee0c2c3b4a169cbbbbd6784012ad85d43a6b57e0af721ed5c0ceb32a33dd"
+    },
+    {
+      "path": "internal/clitask/task_complete_test.go",
+      "sha256": "152b956f555ade8539488a6f6711f961950fd11809316a57c3267547d5d27ec0"
+    },
+    {
+      "path": "internal/taskpipeline/next.go",
+      "sha256": "5604f38bad50d02db190af7379862f01553eec64205a79a648de170ac72ac118"
+    },
+    {
+      "path": "internal/taskpipeline/next_repo_context_test.go",
+      "sha256": "e89a20e5449253384c1162c7d17d25c3ad9298c9343d943a04b8dbf21216b3ca"
+    },
+    {
+      "path": "spec/changes/entry-honest/change.md",
+      "sha256": "019ecb1d6f844232e52ad8ee736b835ee0dfec77fa17444fb0f20b21d88e9743"
+    }
+  ],
+  "acceptance_sha256": "59a160cfad02b2e89cce9abad5b43710cba91354265a31addfccbd3de5500511",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2138
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ ./internal/change/ ./internal/clitask/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 128365,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 85416,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 711,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 189
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 4751
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 824,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}

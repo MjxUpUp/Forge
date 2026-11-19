@@ -71,7 +71,7 @@ flag 判 changed/破坏性，故一律新命令）；② 八个命令同属一�
 - 墙-1a gate-cmd-form BLOCK ratchet（1.67 机械版本门，会话上限 5，FORGE_GATE_CMD_FORM=0 逃生落审计）——治管道滥用（取证 22 次）
 - 墙-1b hazard 清账：未确认拦截悬账 → complete 硬拦；confirm/release 加真人终端 char-device 判别（治 7 拦 0 确认照常交付；FORGE_HAZARD_PENDING=disable 留 CI 逃生）
 - 墙-1c --silent 修正：显式 --ref 解析失败必非零（治 --ref HEAD --silent 伪造推进信号）
-- 墙-2a 考卷质量下限：有测试能力仓库考卷须含 ≥1 条测试类命令（治单条 go build 弱考卷；无测试能力仓库跳过防假墙）
+- 墙-2a 考卷质量下限：有测试能力仓库考卷须含 ≥1 条测试类命令（**已删除，2026-11-19**：命令名枚举永远补不完，判据可信度改由实跑/红先绿/评审认领）
 - 墙-2b heldout 自动入卷：兜底路径自动 --draw 1 --apply（用户出题一次全程受益；池空提示沉淀）
 - 价-1a 逃生→未验证面：每个验证类逃生在 report 转为显式披露行（免验收方翻 checklog）
 - 价-1b 独立性归因：盖章会话 ∈ 生产者集（toollog Write/Edit 归因）→ self-review 标记：doc-gate 不消费自录分（治自录 92 分洞）；review-pass 落 WARN 披露行

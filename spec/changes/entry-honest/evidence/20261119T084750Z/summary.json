@@ -1,0 +1,66 @@
+{
+  "change": "entry-honest",
+  "started_at": "2026-11-19T08:47:50Z",
+  "finished_at": "2026-11-19T08:51:18Z",
+  "passed": true,
+  "sealed": true,
+  "head": "071a353d2c3ccacdbcc4b7b9e4a5b027a9a5a3e1",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "59a160cfad02b2e89cce9abad5b43710cba91354265a31addfccbd3de5500511",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 3149
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline/ ./internal/change/ ./internal/clitask/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 114425,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli/ -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 83087,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md docs/reference/cli.md",
+      "exit": 0,
+      "duration_ms": 687,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "sh scripts/checks/gofmt-clean.sh",
+      "exit": 0,
+      "duration_ms": 174
+    },
+    {
+      "index": 6,
+      "shell": "bash",
+      "command": "sh scripts/checks/deadcode-zero.sh",
+      "exit": 0,
+      "duration_ms": 5159
+    },
+    {
+      "index": 7,
+      "shell": "bash",
+      "command": "sh scripts/checks/no-removed-checks.sh",
+      "exit": 0,
+      "duration_ms": 912,
+      "stdout_file": "07.stdout"
+    }
+  ]
+}
