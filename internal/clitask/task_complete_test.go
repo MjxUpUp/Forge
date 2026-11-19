@@ -42,7 +42,17 @@ func setupDeadlockTask(t *testing.T, acceptRaw []string) (dir string) {
 	run(`git`, `init`)
 	run(`git`, `config`, `user.email`, `t@example.com`)
 	run(`git`, `config`, `user.name`, `t`)
-	run(`git`, `commit`, `--allow-empty`, `-m`, `init`)
+	// 带 go.mod + *_test.go：让 fixture 具备「有测试能力」这个几何形状——
+	// 2026-11-19 删掉的 CheckAcceptanceQuality 只在有测试能力时才拦「考卷没有测试类
+	// 命令」，夹具若没有测试文件，原门禁复活也不会触发，回归钉子就是空的。
+	if err := os.WriteFile(filepath.Join(dir, `go.mod`), []byte("module fixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, `main_test.go`), []byte("package fixture\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(`git`, `add`, `-A`)
+	run(`git`, `commit`, `-m`, `init`)
 
 	const taskRef = `feat/deadlock`
 	if err := taskpipeline.SetActiveTaskRef(dir, sid, taskRef); err != nil {
@@ -268,6 +278,61 @@ func TestTaskComplete_IdempotentGuardOnGeneric(t *testing.T) {
 	}
 	if !strings.Contains(out, `already completed`) && !strings.Contains(out, `已完成`) {
 		t.Fatalf(`幂等跳过应有提示, got %s`, out)
+	}
+}
+
+// 2026-11-19 入口诚实：complete 不再按「命令像不像测试」拦任务。base 上曾有一条
+// 「考卷必须含测试类命令」的启发式（CheckAcceptanceQuality），它把 `test -f x` /
+// `node --test` 这类合法判据当不合格；删除后这里钉住「非测试类判据也能 complete」，
+// 避免门禁再长回来（评审 P3-e：删门禁本身没有回归钉子）。
+func TestTaskComplete_AcceptsNonTestCommands(t *testing.T) {
+	dir := setupDeadlockTask(t, []string{`test -f marker.txt ::`})
+	if cap := taskpipeline.CheckTestCapability(dir); !cap.HasTests {
+		t.Fatalf(`夹具必须是「有测试能力」的仓库，否则这条钉子钉不住原启发式：%+v`, cap)
+	}
+	if err := os.WriteFile(filepath.Join(dir, `marker.txt`), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(`git`, `add`, `-A`)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf(`git add: %v\n%s`, err, out)
+	}
+	cmd = exec.Command(`git`, `commit`, `-m`, `marker`)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf(`git commit: %v\n%s`, err, out)
+	}
+	head := exec.Command(`git`, `rev-parse`, `HEAD`)
+	head.Dir = dir
+	out, err := head.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir2 := dir
+	state, err := taskpipeline.LoadTaskState(dir2, `feat/deadlock`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.HeadCommit = strings.TrimSpace(string(out))
+	if err := taskpipeline.SaveTaskState(dir2, state); err != nil {
+		t.Fatal(err)
+	}
+
+	var verErr error
+	_ = captureStdout(t, func() { verErr = runTaskVerifyAcceptanceAt(dir2, "", false) })
+	if verErr != nil {
+		t.Fatalf(`verify-acceptance 应通过（判据只有 test -f）: %v`, verErr)
+	}
+	markReviewedDirect(t, dir2, `feat/deadlock`)
+	state, err = taskpipeline.LoadTaskState(dir2, `feat/deadlock`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var runErr error
+	_ = captureStdout(t, func() { runErr = runTaskCompleteAt(dir2, state) })
+	if runErr != nil {
+		t.Fatalf(`非测试类判据不应被 complete 拒绝: %v`, runErr)
 	}
 }
 

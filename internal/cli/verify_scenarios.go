@@ -245,9 +245,9 @@ func runScenarioMasterReminder(forgeBin string) ScenarioResult {
 		return failResult("master-reminder", fmt.Sprintf("pass gates failed: %v", err), start)
 	}
 	// oracle-pipeline L1：task complete 有验收登记硬前置（零验收标准=考卷缺位
-	// 直接拦）——补登一条快验收并实跑（最后 commit 之后，快照新鲜；fixture 仓
-	// 无 _test.go，考卷质量门按 CheckTestCapability 无测试能力放行），与 e2e
-	// workspace_test 的 passAllGates 后 accept→verify-acceptance 同模式。
+	// 直接拦）——补登一条快验收并实跑（最后 commit 之后，快照新鲜）。2026-11-19
+	// 起不再有「考卷必须含测试类命令」的质量门（CheckAcceptanceQuality 已删），
+	// 这里只需保证判据可执行、实跑过、未过期。
 	if out, err := verifyRunForgeEnv(forgeBin, dir, senv.env, "task", "accept", "go version :: go version", "--ref", "EXP-1"); err != nil {
 		return failResult("master-reminder", fmt.Sprintf("task accept failed: %v\n%s", err, out), start)
 	}

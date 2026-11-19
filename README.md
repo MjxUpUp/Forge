@@ -89,8 +89,10 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
 cd your-project
 forge init                 # 在仓库里声明契约：只写仓库内产物
 git add -A && git commit -m "chore: forge init"   # 让 next 看到干净工作区
-forge next                 # 从当前 git/任务状态推导恰好一条下一步，按建议执行（小修也可直接 task start）
-# 干净工作区没有任务时：声明了 spec 的仓库直接给 task start（落后远端先给 git pull --ff-only）；未声明 spec 的仓库只给 forge status
+# 有了新需求就直接开工（见场景 A/B）；不必先跑 forge next
+# forge next 只回答「接着做手上这件事该怎么走」——它在有 bug/改动时给还原命令，
+# 无任务且干净时给下一条任务入口；陈旧的 ready change 只出现在 stale_changes 里，
+# 不会把你拖回三天没动的旧活
 ```
 
 **场景 A：小修——任务是一等入口，直接开工**（change 可以事后补）
