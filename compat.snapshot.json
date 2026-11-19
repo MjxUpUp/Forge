@@ -560,6 +560,21 @@
       ]
     },
     {
+      "path": "forge skill"
+    },
+    {
+      "path": "forge skill new",
+      "flags": [
+        "description",
+        "dir",
+        "evidence",
+        "force",
+        "json",
+        "lesson",
+        "when"
+      ]
+    },
+    {
       "path": "forge skills"
     },
     {
