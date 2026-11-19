@@ -296,12 +296,12 @@ func TestTaskComplete_AcceptsNonTestCommands(t *testing.T) {
 	cmd := exec.Command(`git`, `add`, `-A`)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf(`git add: %v\n%s`, err, out)
+		t.Fatalf("git add: %v\n%s", err, out)
 	}
 	cmd = exec.Command(`git`, `commit`, `-m`, `marker`)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf(`git commit: %v\n%s`, err, out)
+		t.Fatalf("git commit: %v\n%s", err, out)
 	}
 	head := exec.Command(`git`, `rev-parse`, `HEAD`)
 	head.Dir = dir
