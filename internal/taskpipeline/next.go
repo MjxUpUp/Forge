@@ -73,18 +73,26 @@ func NextRepoContext(root, branch string, dirty bool, behindRemote int) NextCont
 	if err != nil {
 		return ctx
 	}
+	var readyIDs []string
 	for _, c := range changes {
 		if c.Archive {
 			continue
 		}
 		ctx.OpenChanges = append(ctx.OpenChanges, c.ID)
+		// 老 change（无 goal.md）不能 --change：钉契约需要 goal 必填三段。
 		if ph, _, err := change.ComputePhase(root, c.ID); err == nil && ph == change.PhaseReady && c.HasGoal {
-			// 老 change（无 goal.md）不能 --change：钉契约需要 goal 必填三段。
-			if last, err := change.LastActivity(root, c.ID); err == nil && !last.IsZero() && time.Since(last) > change.StaleAfter {
-				ctx.StaleChanges = append(ctx.StaleChanges, c.ID)
+			readyIDs = append(readyIDs, c.ID)
+		}
+	}
+	if len(readyIDs) > 0 {
+		// 一次算完整批：next 在 30+ 个 ready change 时也不该为每个 change 起 git 子进程。
+		acts := change.Activities(root, readyIDs)
+		for _, id := range readyIDs {
+			if last := acts[id]; !last.IsZero() && time.Since(last) > change.StaleAfter {
+				ctx.StaleChanges = append(ctx.StaleChanges, id)
 				continue
 			}
-			ctx.ReadyChanges = append(ctx.ReadyChanges, c.ID)
+			ctx.ReadyChanges = append(ctx.ReadyChanges, id)
 		}
 	}
 	sort.Strings(ctx.OpenChanges)
@@ -92,6 +100,14 @@ func NextRepoContext(root, branch string, dirty bool, behindRemote int) NextCont
 	sort.Strings(ctx.StaleChanges)
 	ctx.StaleChangeIDs = ctx.StaleChanges
 	return ctx
+}
+
+// staleIDsState 输出稳定形状：没有陈旧项时是 []，不是 null（JSON 消费方不该判空踩坑）。
+func staleIDsState(ids []string) []string {
+	if ids == nil {
+		return []string{}
+	}
+	return ids
 }
 
 // NextDecision 保留旧签名（纯任务上下文）：调用方没有 spec 信息时应走这里。
@@ -116,7 +132,7 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 		"open_changes":     len(ctx.OpenChanges),
 		"ready_changes":    len(ctx.ReadyChanges),
 		"stale_changes":    len(ctx.StaleChanges),
-		"stale_change_ids": ctx.StaleChangeIDs,
+		"stale_change_ids": staleIDsState(ctx.StaleChangeIDs),
 		"active_task":      nextTaskRef(st),
 		"gates_passed":     nextGateHistory(st),
 		"review_passed":    nextReviewPassed(st),
@@ -149,7 +165,7 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 			if len(ctx.StaleChanges) > 0 && len(ctx.ReadyChanges) == 0 {
 				return NextResult{
 					Next:   "forge change new <id>",
-					Reason: fmt.Sprintf("工作区有未归属变更——先把这次要做的事立成 change；另有 %d 个 ready change 已超过三天没动（%s），陈旧、不是下一步；要接着做旧活就显式 `forge change status <id>`/`task start --change <id>`，不要靠 next 兜", len(ctx.StaleChanges), staleIDs(ctx.StaleChangeIDs)),
+					Reason: fmt.Sprintf("工作区有未归属变更——先把这次要做的事立成 change；另有 %d 个 ready change 已超过三天没动（%s），陈旧、不是下一步；要接着做旧活就显式 `forge task start --change <id>`（`change status` 只读），不要靠 next 兜", len(ctx.StaleChanges), staleIDs(ctx.StaleChangeIDs)),
 					State:  state,
 				}
 			}

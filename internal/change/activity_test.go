@@ -8,90 +8,134 @@ import (
 	"time"
 )
 
-// runGit 在 dir 里跑一条 git 命令；失败直接 t.Fatal（测试环境一定有 git）。
-func runGit(t *testing.T, dir string, env []string, args ...string) {
+func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
-		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com",
-	)
-	cmd.Env = append(cmd.Env, env...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
 
-// LastActivity 取 max(文件 mtime, 最近一次提交时间)：只看 mtime 时，git clone /
-// checkout / worktree add 会把陈旧 change 刷成「新鲜」，而换机器正是这个保护最该
-// 生效的场景（代码评审 P2-a）。
-func TestLastActivity_UsesLaterOfFileAndCommitTime(t *testing.T) {
-	root := t.TempDir()
-	runGit(t, root, nil, "init", "-q", ".")
-	dir := filepath.Join(root, "spec", "changes", "demo")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+func initRepo(t *testing.T, dir string) {
+	t.Helper()
+	gitRun(t, dir, "init")
+	gitRun(t, dir, "config", "user.email", "t@example.com")
+	gitRun(t, dir, "config", "user.name", "t")
+}
+
+// TestActivities_CleanChangeUsesCommitTime 钉住评审 P1-a 的修法方向：换机器 /
+// clone / worktree add 会把目录 mtime 刷成检出时刻，所以「干净」的 change 必须用
+// 提交时间判定——否则三天没动的 old 会在 clone 后立刻变成「新鲜」。
+func TestActivities_CleanChangeUsesCommitTime(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	chDir := filepath.Join(dir, "spec", "changes", "old")
+	if err := os.MkdirAll(chDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(dir, "goal.md")
-	if err := os.WriteFile(file, []byte("# g\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(chDir, "goal.md"), []byte("# old\n"), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	old := time.Now().Add(-5 * 24 * time.Hour).Format("2006-01-02T15:04:05Z")
+	cmd := exec.Command("git", "add", "-A")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	env := append(os.Environ(),
+		"GIT_AUTHOR_DATE="+old,
+		"GIT_COMMITTER_DATE="+old,
+	)
+	cmd = exec.Command("git", "commit", "-m", "old change")
+	cmd.Dir = dir
+	cmd.Env = env
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
 	}
 
-	// 场景一：文件 mtime 五天前，但刚刚提交 → 提交时间算数（检出后 mtime 被刷新的等价形态）。
-	old := time.Now().Add(-5 * 24 * time.Hour)
-	if err := os.Chtimes(file, old, old); err != nil {
+	// 模拟 clone：文件 mtime 现在，提交时间 5 天前，工作区干净。
+	if err := os.Chtimes(filepath.Join(chDir, "goal.md"), time.Now(), time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	runGit(t, root, nil, "add", "-A")
-	runGit(t, root, nil, "commit", "-qm", "c1")
-	got, err := LastActivity(root, "demo")
-	if err != nil {
-		t.Fatalf("LastActivity: %v", err)
-	}
-	if time.Since(got) > 2*time.Minute {
-		t.Fatalf("刚提交过的 change 应算新鲜，实际活动时间 %v（差 %v）", got, time.Since(got))
-	}
-
-	// 场景二：文件 mtime 是现在，但提交是五天前 → mtime 的未提交编辑算数。
-	now := time.Now()
-	if err := os.Chtimes(file, now, now); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(file, []byte("# g\n\n未提交的编辑\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	runGit(t, root, nil, "add", "-A")
-	runGit(t, root, []string{"GIT_COMMITTER_DATE=" + old.Format(time.RFC3339), "GIT_AUTHOR_DATE=" + old.Format(time.RFC3339)}, "commit", "-qm", "c2")
-	got, err = LastActivity(root, "demo")
-	if err != nil {
-		t.Fatalf("LastActivity: %v", err)
-	}
-	if time.Since(got) > 2*time.Minute {
-		t.Fatalf("工作区刚改过应算新鲜，实际活动时间 %v", got)
+	got := Activities(dir, []string{"old"})["old"]
+	if time.Since(got) < 4*24*time.Hour {
+		t.Fatalf("干净的旧 change 必须按提交时间判陈旧，got %v（距今 %v）", got, time.Since(got))
 	}
 }
 
-// 没有 git（或没有提交）时退化为纯 mtime：不能因为 git 缺失就返回零值。
-func TestLastActivity_NoGitFallsBackToMtime(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "spec", "changes", "demo")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+// TestActivities_DirtyChangeCountsAsFresh 有人正在动它（有未提交改动）时算新鲜。
+func TestActivities_DirtyChangeCountsAsFresh(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	chDir := filepath.Join(dir, "spec", "changes", "wip")
+	if err := os.MkdirAll(chDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(dir, "goal.md")
-	if err := os.WriteFile(file, []byte("# g\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(chDir, "goal.md"), []byte("# wip\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	want := time.Now().Add(-10 * time.Hour).Truncate(time.Second)
-	if err := os.Chtimes(file, want, want); err != nil {
+	old := time.Now().Add(-5 * 24 * time.Hour).Format("2006-01-02T15:04:05Z")
+	cmd := exec.Command("git", "add", "-A")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	cmd = exec.Command("git", "commit", "-m", "wip")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE="+old, "GIT_COMMITTER_DATE="+old)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v\n%s", err, out)
+	}
+	// 未提交的改动（评审细节：含未跟踪文件）→ 正在推进。
+	if err := os.WriteFile(filepath.Join(chDir, "change.md"), []byte("# wip change\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := LastActivity(root, "demo")
-	if err != nil {
-		t.Fatalf("LastActivity: %v", err)
+	got := Activities(dir, []string{"wip"})["wip"]
+	if time.Since(got) > time.Hour {
+		t.Fatalf("有未提交改动的 change 应算新鲜，got %v（距今 %v）", got, time.Since(got))
 	}
-	if got.IsZero() || got.Sub(want).Abs() > 2*time.Second {
-		t.Fatalf("无 git 时应退回 mtime=%v，实际 %v", want, got)
+}
+
+// TestActivities_NoGitFallsBackToMtime 没有 git 时退回文件 mtime（可能偏新，已写进注释）。
+func TestActivities_NoGitFallsBackToMtime(t *testing.T) {
+	dir := t.TempDir()
+	chDir := filepath.Join(dir, "spec", "changes", "plain")
+	if err := os.MkdirAll(chDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chDir, "goal.md"), []byte("# plain\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := Activities(dir, []string{"plain"})["plain"]
+	if time.Since(got) > time.Hour {
+		t.Fatalf("无 git 时应退回文件 mtime，got %v（距今 %v）", got, time.Since(got))
+	}
+}
+
+// TestActivities_BatchMatchesSingle 批量的结果必须与单查一致（next 用批量，测试用单查）。
+func TestActivities_BatchMatchesSingle(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	for _, id := range []string{"a", "b"} {
+		chDir := filepath.Join(dir, "spec", "changes", id)
+		if err := os.MkdirAll(chDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(chDir, "goal.md"), []byte(id+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-m", "both")
+	batch := Activities(dir, []string{"a", "b"})
+	for _, id := range []string{"a", "b"} {
+		single, err := LastActivity(dir, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !single.Equal(batch[id]) {
+			t.Fatalf("%s: 单查 %v != 批量 %v", id, single, batch[id])
+		}
 	}
 }
