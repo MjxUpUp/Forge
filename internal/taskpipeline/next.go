@@ -230,7 +230,7 @@ func NextDecisionCtx(ctx NextContext, st *TaskState) NextResult {
 	case !gates[GateComplete]:
 		return NextResult{Next: "forge task gate task-complete", Reason: "实现/审查齐备——过完成任务门（forge task complete 要求两道门禁全过）", State: state}
 	default:
-		return NextResult{Next: "forge task complete", Reason: "两道门禁与审查齐备——完结并评分（此后手工合并分支）", State: state}
+		return NextResult{Next: "forge task complete", Reason: "两道门禁与审查齐备——完结并采集完成事实（此后手工合并分支）", State: state}
 	}
 }
 
