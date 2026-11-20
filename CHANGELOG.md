@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## [3.0.1](https://github.com/MjxUpUp/Forge/compare/v3.0.0...v3.0.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **next:** 收尾提示改为采集完成事实，不再提已删的评分 ([83dcd16](https://github.com/MjxUpUp/Forge/commit/83dcd165cc5d7a66aac137e40f6846586bbb8b91))
+
 ## [3.0.0](https://github.com/MjxUpUp/Forge/compare/v2.3.1...v3.0.0) (2026-11-19)
 
 ### ⚠ 升级注意
