@@ -7,8 +7,8 @@ go build ./...
 # 2 宿主时代检查名不再存在
 go test ./internal/checklog -run TestNoHostEraCheckNames -count=1 :: --- PASS
 
-# 3 旧命令组已消失
-go run ./cmd/forge workspace :: unknown command
+# 3 核心命令面（删除面钉住：旧命令组不在命令树上）
+go test ./internal/cli -run TestCoreOnlyCommandSurface -count=1 :: --- PASS
 
 # 4 核心包测试绿
 go test ./internal/change ./internal/clitask ./internal/cli -count=1 :: ok
