@@ -21,3 +21,14 @@
 - `go build ./...`、`go test ./... -count=1` 全绿。
 - 定向：`internal/criteria`、`internal/testledger` 的单测；`internal/change` 的选择器空匹配两例（红/绿两侧）；`internal/cli` 的死命令守卫。
 - 端到端 smoke（仓外临时项目）：init → change → task → 门禁 → verify 封印；反证用 `-run` 不存在的测试必须不封印。
+
+## 测试变更依据（respond to test-diff 提示）
+
+本批大量测试文件变更全部是**随包删除**的，不是为了让测试过而改断言：
+
+- 被删的 37 个 `*_test.go` 属于已删的 skills 脚手架包（cliskills/skillseval/skillsdecisions/skilltrigger/skillscanonical/skillsqa/skillmetrics/skillintegrate/skillsdist/skillsfm），包没了测试一起走。
+- `internal/act/conclusion_test.go`、`internal/clitask/task_depref_test.go`、`internal/docsconsistency/check_test.go`、`internal/taskpipeline/executor_skill_decisions_test.go` 是**契约变更**：文案里不再教已删命令，断言跟着新契约走（新断言比旧的更严：要求说明「已随 core-only 移除」）。
+- `internal/workspace/workspace_test.go` 删的是 doctor 相关用例（Doctor 方法零调用已删）。
+- `internal/taskpipeline/golden_cheat_test.go` 删两个只测死门禁函数的 golden。
+- 新增的 `criteria_test.go`、`verify_selector_test.go`、`guarded_test.go`、`dead_hint_guard_test.go` 是新能力的判据，不是放宽。
+
