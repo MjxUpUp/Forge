@@ -15,6 +15,7 @@ var Annotations = map[string]string{
 	"change phase":   "看还缺哪些产物、下一步该补哪个文件",
 	"change status":  "回环入口：只执行它给的 next steps，不自己挑顺序",
 	"change verify":  "实跑 acceptance 并封印证据（唯一能产出「已验证」的命令）",
+	"docs closure":   "能力面闭合表：命令树与活文档的漂移（--strict 有漂移退出非 0）",
 	"docs lint":      "文档闸：改 .md 后先过一遍结构/禁令检查",
 	"impact":         "看改动影响面（哪些文档、哪些源码同目录没有测试）",
 	"next":           "只在继续/接手已有任务时用；新需求直接开工，别把它当默认第一步",

@@ -606,8 +606,9 @@ type Summary struct {
 	// 节点证据不封印整个 change，只在 change status 里回答"这条过了吗"。
 	Task int `json:"task,omitempty"`
 	// Fast 记录这次验证发生在快速通道上，便于统计 fast 的比例与返工率。
-	Fast   bool    `json:"fast,omitempty"`
-	Checks []Check `json:"checks"`
+	Fast       bool        `json:"fast,omitempty"`
+	Checks     []Check     `json:"checks"`
+	Capability *Capability `json:"capability,omitempty"`
 }
 
 // fingerprintPaths 取出指纹里的路径列表。

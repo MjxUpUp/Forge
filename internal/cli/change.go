@@ -502,7 +502,11 @@ func runChangeVerify(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("verify %s\n\n", id)
-	res, err := change.Verify(context.Background(), root, id, change.VerifyOptions{Timeout: timeout})
+	surface, serr := agentSurface()
+	if serr != nil {
+		return serr
+	}
+	res, err := change.Verify(context.Background(), root, id, change.VerifyOptions{Timeout: timeout, Surface: surface})
 	if err != nil {
 		return err
 	}
@@ -547,6 +551,12 @@ func runChangeVerify(cmd *cobra.Command, args []string) error {
 	relEv := res.EvidenceDir
 	if r, rerr := filepath.Rel(root, res.EvidenceDir); rerr == nil {
 		relEv = filepath.ToSlash(r)
+	}
+	if cp := res.Summary.Capability; cp != nil {
+		fmt.Printf("能力面：%d 条命令 / %d 个 flag（注解 %d 条）；活文档漂移 %d 处\n", cp.Commands, cp.Flags, cp.Annotated, cp.DriftCount)
+		for _, d := range cp.Drifts {
+			fmt.Printf("  ✗ %s\n", d)
+		}
 	}
 	if res.Summary.Sealed {
 		if !res.Summary.DiffBound {

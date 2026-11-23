@@ -189,6 +189,8 @@ type VerifyOptions struct {
 	Timeout time.Duration
 	// Now 可注入时间（测试用），零值取 time.Now。
 	Now time.Time
+	// Surface 是调用方给的能力面（CLI 从命令树自报）。空表示不算这一块。
+	Surface []SurfaceCommand
 }
 
 // Verify 实跑 change 的 acceptance.md 并落一份证据。
@@ -285,6 +287,7 @@ func Verify(ctx context.Context, root, id string, opts VerifyOptions) (*Result, 
 	// 只有"全部实跑命令通过"才封印。人工检查项留给 `change verify` 的输出
 	// 末尾列出，由人自己确认——它们不进入封印，也就不构成假绿。
 	sum.Sealed = passed
+	sum.Capability = buildCapability(root, opts.Surface)
 	sum.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 
 	if err := writeSummary(evDir, sum); err != nil {
