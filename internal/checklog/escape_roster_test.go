@@ -2,32 +2,6 @@ package checklog
 
 import "testing"
 
-// TestArtifactChainChecksInRoster 钉住产物链两 CheckName 进 roster（compat 面 2
-// 单一真相源）：漏登记 = checklog 条目落盘但 compat/看板看不到——面缩水。
-// eval-artifact-drill（演练执行记录）与 artifact-drift（漂移观测）是两个概念
-// 最易漏登。
-func TestArtifactChainChecksInRoster(t *testing.T) {
-	want := map[CheckName]string{
-		CheckArtifactChain: "artifact-chain",
-		CheckArtifactDrift: "artifact-drift",
-		CheckArtifactDrill: "eval-artifact-drill",
-	}
-	for name, lit := range want {
-		if string(name) != lit {
-			t.Errorf("常量值漂移: %q != %q", name, lit)
-		}
-	}
-	roster := AllCheckNames()
-	seen := make(map[string]bool, len(roster))
-	for _, n := range roster {
-		seen[n] = true
-	}
-	for _, lit := range want {
-		if !seen[lit] {
-			t.Errorf("AllCheckNames 缺 %q——escape.go allCheckNames 未同步", lit)
-		}
-	}
-}
 
 // TestGoalContractCheckInRoster 钉住 goal-contract 进 roster（task-goal-contract
 // Change A）：漏登记 = implement 门禁的契约观测在 compat 面/看板不可见。
@@ -43,30 +17,6 @@ func TestGoalContractCheckInRoster(t *testing.T) {
 	t.Fatal("AllCheckNames 缺 goal-contract——escape.go allCheckNames 未同步")
 }
 
-// TestSelfcheckChecksInRoster 钉住 selfcheck 两 CheckName 进 roster（discipline-first
-// P2）：漏登记 = selfcheck 条目落盘但 compat 面/看板看不到——镜像自检的落痕对分析
-// 面不可见。
-func TestSelfcheckChecksInRoster(t *testing.T) {
-	want := map[CheckName]string{
-		CheckSelfcheckPairing: "selfcheck-pairing",
-		CheckSelfcheckScope:   "selfcheck-scope",
-	}
-	for name, lit := range want {
-		if string(name) != lit {
-			t.Errorf("常量值漂移: %q != %q", name, lit)
-		}
-	}
-	roster := AllCheckNames()
-	seen := make(map[string]bool, len(roster))
-	for _, n := range roster {
-		seen[n] = true
-	}
-	for _, lit := range want {
-		if !seen[lit] {
-			t.Errorf("AllCheckNames 缺 %q——escape.go allCheckNames 未同步", lit)
-		}
-	}
-}
 
 // TestTreeGuardCheckInRoster 钉住错树守护的 check 名进 roster（compat 面 2
 // 单一真相源）：漏登记 = 门禁/写入层写了 tree-guard 行，但 compat 快照与
@@ -102,20 +52,3 @@ func TestTreeGuardIsObservationOnly(t *testing.T) {
 	}
 }
 
-// TestHookInfraCheckInRoster 钉住 hook 基础设施失败的 check 名进 roster：漏登记 =
-// 有 hook-infra 行落盘，但 compat 快照与 forge trace 的清单里看不到它。
-func TestHookInfraCheckInRoster(t *testing.T) {
-	if string(CheckHookInfra) != "hook-infra" {
-		t.Errorf("常量值漂移: %q != hook-infra", CheckHookInfra)
-	}
-	seen := false
-	for _, n := range AllCheckNames() {
-		if n == "hook-infra" {
-			seen = true
-			break
-		}
-	}
-	if !seen {
-		t.Fatal("AllCheckNames 缺 hook-infra——escape.go allCheckNames 未同步")
-	}
-}

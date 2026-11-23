@@ -18,16 +18,6 @@ const (
 	CheckTaskVerify   CheckName = "task-verify"
 	CheckTaskComplete CheckName = "task-complete"
 	CheckTaskGuard    CheckName = "task-guard"
-	CheckBashGuard    CheckName = "bash-guard"
-	CheckFileSentinel CheckName = "file-sentinel"
-	// CheckScopeDrift records advisory scope drift: an agent modified source files not declared in PlanScope.
-	//
-	// CheckScopeDrift 记录 advisory scope 偏差：agent 改了未在 PlanScope 声明的源码文件。
-	// 对应 Terraform drift detection（声明态 vs 实际态的差集）。deterministic（hook 实算
-	// MatchesScope/ScopeDrift，agent 无法伪造）。Passed 语义：无偏差=true，有偏差=false——
-	// 但永远 Checked=true 且绝不阻断工具调用（advisory）。变更影响分析召回率仅 ~44%，
-	// scope 是 prediction 非 contract，偏差是常态信号；本记录供 review/看板度量，不作门禁。
-	CheckScopeDrift CheckName = "scope-drift"
 	// CheckCheatScan records advisory AI cheat-pattern scan results: at task-verify, mechanically detects new-line hits across 7 categories.
 	//
 	// CheckCheatScan 记录 advisory AI 作弊模式扫描结果：task-verify 时机械检测 7 类
@@ -40,17 +30,6 @@ const (
 	// 可能，留痕供 review 核查）。本记录把"机械可检的作弊"从 LLM-review 每轮重采样
 	// 抽到一次性 deterministic 判决——对冲"每轮 review 冒新问题"的根因。
 	CheckCheatScan CheckName = "cheat-scan"
-	// CheckUnusedScan records advisory unreferenced-export scan results: at task-verify, detects newly-added exported symbols with no production reference.
-	//
-	// CheckUnusedScan 记录 advisory 未引用导出符号扫描结果：task-verify 时机械检测本次新增
-	// 的导出符号（Go func/type/method、TS export、Rust pub）在本任务生产代码里零引用——疑似
-	// "实现了但没接线"（层 1 接线检测）。单测验实现不验接线；接线一断测试照绿、功能已死
-	// （Forge 自己的 BUG-1：inferDesignPhases 零生产调用方）。deterministic（gate 实算
-	// ScanUnusedSymbols，agent 无法伪造）。Passed 语义：无未引用导出=true，命中=false——但
-	// 永远 Checked=true 且绝不阻塞（advisory；库/反射/外部消费的导出合法地无仓内调用方，
-	// 留痕供 review 核查）。层 2（引用了但语义没接通）机械不可判 → 仍归 LLM reviewer /
-	// code-review-gate。
-	CheckUnusedScan CheckName = "unused-scan"
 	// CheckEscapeHatch records usage of gate-bypass escape hatches (FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY).
 	//
 	// CheckEscapeHatch 记录 gate-bypass 逃生舱的使用（FORGE_TEST_COVERAGE /
@@ -67,17 +46,6 @@ const (
 	// agent 无法伪造）。Passed=true、Checked=true、Detail 标 skill 名 + 触发原因。不计入证据强度
 	// （它是 skill 触发的观测，非验证证据）——见 BuildEvidenceChain。
 	CheckSkillTrigger CheckName = "skill-trigger"
-	// CheckKimiPluginStale records that the kimi-installed forge plugin lags behind the running forge binary (tag-locked install, no auto-update).
-	//
-	// CheckKimiPluginStale 记录 kimi 已装 forge plugin 落后于运行中的 forge 二进制
-	// （tag 锁定安装、无自动更新）。Passed=true 且 Level=LevelWarn（escape-hatch 模式：
-	// Passed 保持中性不影响证据聚合，warn 信号走 Level），Checked=true，Detail 带修复
-	// 提示。仅在 advisory 真正于 resume-reinject（UserPromptSubmit）通道触发时记录，
-	// 每日至多一条（kimiStaleMarker 节流）。存在理由：该漂移在生产曾三重不可见
-	// （2026-08-15 审计）——kimi 丢 SessionStart stdout（advisory 旧通道）、noise gate
-	// 丢该 hook 的 PASS、plugin 落后两个 release 期间模型/用户/日志全静默。无此条目，
-	// `forge trace`/看板看不到 plugin 漂移。
-	CheckKimiPluginStale CheckName = "kimi-plugin-stale"
 	// CheckReviewPass records one `forge review pass` event.
 	//
 	// CheckReviewPass 记录一次 `forge review pass` 事件。task 模式：审过的快照
@@ -88,14 +56,6 @@ const (
 	// 声明并打戳"的标记），不是验证证据——与 cheat-scan 同类的排除出证据强度分桶
 	// （见 BuildEvidenceChain）。价值在于让审查-返工循环可度量（每任务轮次数）。
 	CheckReviewPass CheckName = "review-pass"
-	// CheckPlanFirst records the advisory that a code task reached task-implement with neither Plan nor Goal recorded (no --plan-file/--goal at task start).
-	//
-	// CheckPlanFirst 记录 advisory：代码任务到达 task-implement 时 Plan/Goal 均未记录
-	// （task start 时没带 --plan-file/--goal）。方案先行能降低审查返工（shift-left：
-	// 方向错误在方案阶段拦比 diff 阶段拦便宜），故门禁留软痕。Passed 语义：有
-	// 方案/目标=true，无=false——永远 Checked=true 且绝不阻断（advisory）。属
-	// observation 类，排除出证据强度分桶（见 BuildEvidenceChain）。
-	CheckPlanFirst CheckName = "plan-first"
 	// CheckGoalContract records the task-implement goal-contract check (task-goal-contract).
 	//
 	// CheckGoalContract 记录 task-implement 的 goal 契约校验（task-goal-contract）：
@@ -121,83 +81,6 @@ const (
 	// 子 agent 活动此前在 forge 侧零记录，sessions.jsonl 约 53% 会话缺 agent_type
 	// （2026-08 归因审计）。
 	CheckSubagentStop CheckName = "subagent-stop"
-	// CheckTestNudge records one mid-task test reminder fired by the test-nudge hook
-	// (2026-08-22 #4-E; discipline-first P1-B 2026-09-17): the task-scoped unpaired-
-	// FILE set crossed an escalation tier (3/5/8). Meta carries unpaired_files (count),
-	// tier, and files (newest ≤8, forward-slash repo-relative) — the fact-level
-	// confirmation lookup intersects this list against a failing gate's missing set.
-	//
-	// CheckTestNudge 记录 test-nudge hook 发出的一次事中测试提醒（2026-08-22
-	// #4-E；discipline-first P1-B 2026-09-17）：任务作用域的未配对**文件**集合跨过
-	// 升级档位（3/5/8）。Meta 携带 unpaired_files（计数）、tier、files（最新 ≤8、
-	// 仓库相对 forward-slash）——事实级 confirmation 判定拿这份清单与失败门禁的
-	// missing 集合求交集。它是 task-verify test-coverage 门禁的事中伴随（门禁只在
-	// verify 时刻触发，往往在代码写完数小时后）；nudge 在 agent 还能便宜修复的
-	// 时机抓住漂移。deterministic（hook 侧实算，agent 无法伪造）但属过程漂移的
-	// OBSERVATION 而非任何验证——与其他条目一样排除出 evidence strength。
-	CheckTestNudge CheckName = "test-nudge"
-	// CheckSelfcheckPairing records one `forge selfcheck pairing` run: the agent
-	// proactively ran the mirror computation of the test-coverage gate over its
-	// own task's change set (discipline-first-gates P2). Fact-level: the entry's
-	// missing_list intersecting a later failing gate's missing set upgrades that
-	// gate to confirmation (agent was shown these files and did not act) — a
-	// clean selfcheck (empty list) never upgrades anything. Agent-asserted
-	// observation, NOT forge-guaranteed: checklog is an unauthenticated JSONL
-	// (entries can be minted via import/direct write — same trust boundary as
-	// trust.go's forged-gate posture); the only forgery direction launders
-	// discovery→confirmation, i.e. self-incrimination. Excluded from evidence
-	// strength — it asserts "the agent saw this fact", never "the fact is fixed".
-	//
-	// CheckSelfcheckPairing 记录一次 `forge selfcheck pairing` 运行：agent 对
-	// 自己任务的改动集主动跑了 test-coverage 门禁的镜像计算
-	// （discipline-first-gates P2）。事实级：条目的 missing_list 与其后失败门禁
-	// 的 missing 集合有交集才升 confirmation（这批文件展示过而未行动）——干净
-	// 自检（空清单）永不升级。agent 自述观察、非 forge 担保：checklog 是无鉴权
-	// JSONL（可经 import/直写铸造——与 trust.go 的伪造门禁姿态同信任边界）；可
-	// 伪造方向只能把 discovery 洗成 confirmation，即自证其罪。排除出 evidence
-	// strength——它声明「agent 看过这个事实」，不声明「事实已被修复」。
-	CheckSelfcheckPairing CheckName = "selfcheck-pairing"
-	// CheckSelfcheckScope records one `forge selfcheck scope` run — the
-	// PlanScope-drift mirror probe (discipline-first-gates P2). NOTE: unlike
-	// pairing, this entry does NOT feed the outcome classification (scope-drift
-	// failures stay discovery — no upstream-signal wiring for scope yet).
-	//
-	// CheckSelfcheckScope 记录一次 `forge selfcheck scope` 运行——PlanScope
-	// 漂移的镜像探针（discipline-first-gates P2）。注意：与 pairing 不同，
-	// 本条目**不**参与 outcome 分类（scope-drift 失败仍恒 discovery——scope 侧
-	// 尚无上游信号接线）。
-	CheckSelfcheckScope CheckName = "selfcheck-scope"
-	// CheckTestNudgeState records one throttled AUDIT row from the test-nudge
-	// hook's suppressed path (escape-hatch-hardening P0-A): after the tier
-	// ceiling is reached, every 20th non-escalating source-write evaluation
-	// leaves this row so the audit trail never goes silent (discipline-first
-	// principle 2; 2026-09-18 forensics: 150+ writes past the ceiling produced
-	// zero records). Delivered is explicitly false — audit-only, never injected.
-	// Distinct check name on purpose: the D1-D3 metrics and anti-gaming guard
-	// count check name `test-nudge`; state rows must not pollute their
-	// denominators.
-	//
-	// CheckTestNudgeState 记录 test-nudge 压制路径的节流审计行
-	// （escape-hatch-hardening P0-A）：tier 天花板打满后,每累计 20 次非升档
-	// 源码写入评估落一行本条目——审计轨迹永不静默（discipline-first 原则 2；
-	// 2026-09-18 取证:天花板后 150+ 次写入零记录）。Delivered 显式
-	// false——纯审计,绝不注入。刻意用独立 check 名：D1-D3 度量与防伪护栏
-	// 按 check 名 `test-nudge` 统计,状态行不得污染其分母。
-	CheckTestNudgeState CheckName = "test-nudge-state"
-	// CheckTaskDrift records one task-drift advisory (escape-hatch-hardening
-	// P0-B): a git boundary verb (commit/merge/branch/checkout -b/switch -c)
-	// executed while the repo sits OUTSIDE the active task's branch. Passed=
-	// false, Level=warn, never blocks in P0. The 2026-09-18 forensics: the
-	// agent ran 5 commits + 3 branch creations + 2 merges beyond the task
-	// branch with zero mediation — the pipeline's only choke point was a verb
-	// the agent never used.
-	//
-	// CheckTaskDrift 记录一次 task-drift advisory（escape-hatch-hardening
-	// P0-B）：git 边界动词（commit/merge/branch/checkout -b/switch -c）在
-	// 活跃任务分支之外执行。Passed=false、Level=warn、P0 永不阻断。
-	// 2026-09-18 取证:agent 在任务分支之外 5 次 commit + 3 次建分支 + 2 次
-	// merge 全程无中介——管线唯一的 choke point 挂在 agent 不会用的动词上。
-	CheckTaskDrift CheckName = "task-drift"
 	// CheckDecisionWarrant records the warrant check of one `forge skills decide`
 	// (R2 Warrant-Aware Acceptance): whether an accept decision carries a
 	// checkable anchor (run:<id> compared clean against the skill's baseline is
@@ -221,15 +104,6 @@ const (
 	// 59.4% 进决策记录时丢了来源与场景限定）。advisory：缺 URL 时 Passed=false，决策照常
 	// 写入；两段文本都不含外部数字时不落行。不在 evidence 白名单，永不参与证据强度。
 	CheckDecisionEvidence CheckName = "decision-evidence"
-	// CheckConventionsInject records one conventions-layer injection fired by the conventions hooks (2026-08-28).
-	//
-	// CheckConventionsInject 记录 conventions 层的一次注入（2026-08-28，
-	// conventions-profile）：SessionStart/PostCompact 的会话摘要，或 PreToolUse
-	// Write|Edit 的写入时刻指针。deterministic（hook 从档案 + 树扫描渲染，
-	// agent 无法伪造）但属投递层的 OBSERVATION 而非任何验证——与其他观察
-	// check 一样排除出 evidence strength。Meta 携带事件与档案是否过期，
-	// 投递漏斗可区分「新鲜摘要」与「过期警告」两类注入。
-	CheckConventionsInject CheckName = "conventions-inject"
 	// CheckConventionsLint records the conventions-profile layer-3 advisory at task-verify (2026-08-28).
 	//
 	// CheckConventionsLint 记录 conventions-profile 层 3 在 task-verify 的
@@ -257,16 +131,6 @@ const (
 	// observation 类（与任何任务的验证是否实跑无关）——排除出证据强度分桶。操作
 	// 名走 Meta[MetaKeySyncOp]。
 	CheckProjectSync CheckName = "project-sync"
-	// CheckCrossRepoImpact records the task-verify cross-repo-impact declaration check.
-	//
-	// CheckCrossRepoImpact 记录 task-verify 的跨仓影响声明检查（多仓 workspace，
-	// 见 docs/design/multi-repo-workspace.md）：所属 repo 属于多仓 workspace 的
-	// 任务是否经 `forge task impact` 声明了影响（none|multi）。deterministic
-	//（门禁实读 TaskState 声明 + workspace 清单，agent 无法伪造判定）。
-	// observation 类——未声明/声明畸形是跨仓纪律的流程信号，非本任务的验证证据——
-	// 与 scope-drift 一样排除出证据强度分桶。默认 advisory；protocol
-	// cross_repo_impact: required 把未声明升级为门禁阻断。
-	CheckCrossRepoImpact CheckName = "cross-repo-impact"
 	// CheckTaskStarted records the task-start boundary event (multi-task-concurrency design §5).
 	//
 	// CheckTaskStarted 记录任务启动边界事件（multi-task-concurrency 设计 §5，L2 事件
@@ -441,43 +305,6 @@ const (
 	// re-export 会静默裁剪较新字段（旧版本反序列化丢弃未知键）。观察类；warn
 	// 级、绝不硬拒（K8s 偏移窗口语义：无声变有声，幂等导入体验不变）。
 	CheckSyncVersionSkew CheckName = "sync-version-skew"
-	// CheckArtifactChain records the artifact-chain check at task-implement
-	// (artifact-chain-workflow.md §2): one entry per gate run covering the
-	// declared chain — either the one-shot advisory aggregate (default chain,
-	// Passed=false when stages are missing) or the tiered enforcement verdict
-	// (rubric/human/hard: missing artifact / failed L1 lint / absent or
-	// hash-mismatched approval / drifted reference → gate BLOCKED).
-	//
-	// CheckArtifactChain 记录 task-implement 的产物链检查（artifact-chain-workflow.md
-	// §2）：每次 gate 跑一条，覆盖声明的链——要么一次性 advisory 汇总（默认链，
-	// 有节点缺失时 Passed=false），要么分档执法判定（rubric/human/hard：产物缺失 /
-	// L1 lint 不过 / 审批缺失或哈希失配 / 引用漂移 → gate BLOCKED）。hard 只守事实
-	//（存在+哈希+审批匹配），意见类判断不进本门禁。
-	CheckArtifactChain CheckName = "artifact-chain"
-	// CheckArtifactDrift records artifact-reference drift found at complete
-	// pre-flight (artifact-chain-workflow.md §5): a SpecArtifacts ref whose file
-	// hash no longer matches (ArtifactCurrentHash). Drift voids that stage's approval
-	// unconditionally; for hard/human tiers it also blocks complete. warn-level
-	// for advisory/rubric tiers (auditable, non-blocking).
-	//
-	// CheckArtifactDrift 记录 complete pre-flight 发现的产物引用漂移
-	//（artifact-chain-workflow.md §5）：SpecArtifacts 引用的文件哈希失配
-	//（ArtifactCurrentHash）。漂移一律作废该 stage 审批；hard/human 档同时阻断
-	// complete；advisory/rubric 档仅 warn（留痕不拦）。
-	CheckArtifactDrift CheckName = "artifact-drift"
-	// CheckArtifactDrill records one `forge eval artifact-drill` outcome
-	// (artifact-chain behavioral drill: scripted replay of register → tiered
-	// blocks → approve → extracted-acceptance real-run → drift intercept →
-	// repair → complete). Deterministic (scripted assertions, no LLM); the
-	// release workflow's drill gate and nightly consume it as the behavioral
-	// smoke for the artifact chain.
-	//
-	// CheckArtifactDrill 记录一次 `forge eval artifact-drill` 结果（产物链行为
-	// 级演练：脚本化重放 登记→分档阻断→审批→提取验收实跑→漂移拦截→修复→完成）。
-	// deterministic（脚本化断言，无 LLM）；release workflow 的 drill 门禁位与
-	// nightly 消费它作为产物链的行为级冒烟。与 artifact-drift（漂移观测）是两个
-	// 概念：本名是演练执行记录。
-	CheckArtifactDrill CheckName = "eval-artifact-drill"
 	// CheckLoopExhausted records the review→implement loop exhaustion state
 	// (artifact-chain-workflow.md「回边语义」节): Passed=false rows are the
 	// escalation record when complete is blocked (round budget spent on an open
@@ -508,19 +335,6 @@ const (
 	// Meta[MetaKeySuggested] 携带建议命令。
 	// deterministic（forge 自身渲染）但属引导层 OBSERVATION——排除出证据强度分桶。
 	CheckNextHint CheckName = "next-hint"
-	// CheckGateCmdForm records the gate-cmd-form verdict for a Bash command that embeds a forge gate subcommand (design C): advisory in 1.56, BLOCKED from 1.67; Meta carries the classified form flags.
-	//
-	// CheckGateCmdForm 记录嵌有 forge 门禁子命令的 Bash 命令的形态判定（设计 C）：1.56
-	// advisory、1.67 起 BLOCKED；Meta 携带形态标志（semicolon/pipe/multi_gate…）。
-	// deterministic（纯函数形态判定）；属过程形态 OBSERVATION——排除出证据强度分桶。
-	CheckGateCmdForm CheckName = "gate-cmd-form"
-	// CheckHookInfra records one hook infrastructure failure (unknown hook, panic, non-block hook error) with Meta cause/subject/shown/dedup; shown=false rows are the once-per-session suppressed repeats (docs/plans/hook-silent-failure-visibility-2026-10.md).
-	//
-	// CheckHookInfra 记录一次 hook 基础设施失败（unknown hook、panic、非阻断 hook 错误），
-	// Meta 带 cause/subject/shown/dedup；shown=false 行是同会话被去重静默的重复发生
-	// （docs/plans/hook-silent-failure-visibility-2026-10.md）。deterministic（forge 自身
-	// 捕获）；属基建可见性 OBSERVATION——排除出证据强度分桶。
-	CheckHookInfra CheckName = "hook-infra"
 	// CheckTreeGuard records one off-tree decision from the task-tree guard
 	// (docs/design/task-tree-guard.md §5): the BLOCK (Passed=false, Meta carries
 	// anchor/wtid/resolve_path) or the same-off-tree announce emitted by the hook

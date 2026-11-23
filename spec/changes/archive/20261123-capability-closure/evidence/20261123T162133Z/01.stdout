@@ -1,0 +1,4 @@
+=== RUN   TestScanDocsClassifies
+--- PASS: TestScanDocsClassifies (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/capability	0.528s

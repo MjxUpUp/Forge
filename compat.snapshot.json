@@ -4,50 +4,6 @@
       "path": "forge"
     },
     {
-      "path": "forge act"
-    },
-    {
-      "path": "forge act list",
-      "flags": [
-        "json"
-      ]
-    },
-    {
-      "path": "forge act nudge"
-    },
-    {
-      "path": "forge act rebuild"
-    },
-    {
-      "path": "forge act remigrate",
-      "flags": [
-        "dry-run"
-      ]
-    },
-    {
-      "path": "forge act retro-done",
-      "flags": [
-        "carrier",
-        "lesson",
-        "ref"
-      ]
-    },
-    {
-      "path": "forge act show",
-      "flags": [
-        "ref"
-      ]
-    },
-    {
-      "path": "forge bridge"
-    },
-    {
-      "path": "forge bridge verify",
-      "flags": [
-        "json"
-      ]
-    },
-    {
       "path": "forge change"
     },
     {
@@ -142,273 +98,19 @@
       ]
     },
     {
-      "path": "forge config"
-    },
-    {
-      "path": "forge config get",
-      "flags": [
-        "raw"
-      ]
-    },
-    {
-      "path": "forge config set"
-    },
-    {
-      "path": "forge conventions"
-    },
-    {
-      "path": "forge conventions init",
-      "flags": [
-        "force"
-      ]
-    },
-    {
-      "path": "forge conventions learn"
-    },
-    {
-      "path": "forge conventions show"
-    },
-    {
-      "path": "forge dashboard",
-      "flags": [
-        "no-open",
-        "port"
-      ]
-    },
-    {
       "path": "forge docs"
     },
     {
-      "path": "forge docs closure"
+      "path": "forge docs closure",
+      "flags": [
+        "json",
+        "strict"
+      ]
     },
     {
       "path": "forge docs lint",
       "flags": [
         "base",
-        "json"
-      ]
-    },
-    {
-      "path": "forge enforcement",
-      "flags": [
-        "json",
-        "sample"
-      ]
-    },
-    {
-      "path": "forge eval"
-    },
-    {
-      "path": "forge eval aat",
-      "flags": [
-        "limit",
-        "out"
-      ]
-    },
-    {
-      "path": "forge eval audit-verify"
-    },
-    {
-      "path": "forge eval card",
-      "flags": [
-        "render"
-      ]
-    },
-    {
-      "path": "forge eval dashboard",
-      "flags": [
-        "dry-run",
-        "json"
-      ]
-    },
-    {
-      "path": "forge eval decompose",
-      "flags": [
-        "manifest",
-        "models",
-        "profiles",
-        "repeats",
-        "variants",
-        "wallclock"
-      ]
-    },
-    {
-      "path": "forge eval friction",
-      "flags": [
-        "corpus",
-        "json",
-        "timeout"
-      ]
-    },
-    {
-      "path": "forge eval golden"
-    },
-    {
-      "path": "forge eval golden harvest",
-      "flags": [
-        "since"
-      ]
-    },
-    {
-      "path": "forge eval golden private-init"
-    },
-    {
-      "path": "forge eval golden rotate",
-      "flags": [
-        "max-cases"
-      ]
-    },
-    {
-      "path": "forge eval golden run",
-      "flags": [
-        "dir",
-        "json",
-        "release",
-        "repeats",
-        "rewrite-manifest"
-      ]
-    },
-    {
-      "path": "forge eval judge-audit",
-      "flags": [
-        "scores"
-      ]
-    },
-    {
-      "path": "forge eval oracle"
-    },
-    {
-      "path": "forge eval oracle run",
-      "flags": [
-        "arm",
-        "image",
-        "json",
-        "out",
-        "repeats",
-        "suite"
-      ]
-    },
-    {
-      "path": "forge eval otel",
-      "flags": [
-        "limit",
-        "out"
-      ]
-    },
-    {
-      "path": "forge eval redteam"
-    },
-    {
-      "path": "forge eval report",
-      "flags": [
-        "quarter"
-      ]
-    },
-    {
-      "path": "forge eval resume-drill",
-      "flags": [
-        "dir"
-      ]
-    },
-    {
-      "path": "forge eval rule-ledger",
-      "flags": [
-        "claim",
-        "list",
-        "probe",
-        "record",
-        "rule",
-        "verify"
-      ]
-    },
-    {
-      "path": "forge eval run",
-      "flags": [
-        "forge-ref",
-        "manifest",
-        "model",
-        "profile",
-        "repeats",
-        "variants",
-        "wallclock"
-      ]
-    },
-    {
-      "path": "forge eval suite",
-      "flags": [
-        "json",
-        "max",
-        "only",
-        "record"
-      ]
-    },
-    {
-      "path": "forge eval traps"
-    },
-    {
-      "path": "forge eval traps run",
-      "flags": [
-        "dir"
-      ]
-    },
-    {
-      "path": "forge eval trend",
-      "flags": [
-        "json",
-        "last"
-      ]
-    },
-    {
-      "path": "forge eval wedge-drill"
-    },
-    {
-      "path": "forge gate"
-    },
-    {
-      "path": "forge gate hooks"
-    },
-    {
-      "path": "forge gate hooks install",
-      "flags": [
-        "uninstall"
-      ]
-    },
-    {
-      "path": "forge gate push",
-      "flags": [
-        "dry-run",
-        "ref"
-      ]
-    },
-    {
-      "path": "forge harness"
-    },
-    {
-      "path": "forge harness commit"
-    },
-    {
-      "path": "forge harness init",
-      "flags": [
-        "from-existing",
-        "remote",
-        "yes"
-      ]
-    },
-    {
-      "path": "forge harness pull"
-    },
-    {
-      "path": "forge harness push",
-      "flags": [
-        "yes"
-      ]
-    },
-    {
-      "path": "forge harness status"
-    },
-    {
-      "path": "forge health",
-      "flags": [
         "json"
       ]
     },
@@ -429,23 +131,7 @@
       ]
     },
     {
-      "path": "forge migrate",
-      "flags": [
-        "dry-run",
-        "force"
-      ]
-    },
-    {
       "path": "forge next",
-      "flags": [
-        "json"
-      ]
-    },
-    {
-      "path": "forge node"
-    },
-    {
-      "path": "forge node show",
       "flags": [
         "json"
       ]
@@ -459,82 +145,6 @@
     },
     {
       "path": "forge on"
-    },
-    {
-      "path": "forge policy"
-    },
-    {
-      "path": "forge policy state"
-    },
-    {
-      "path": "forge policy yield"
-    },
-    {
-      "path": "forge project"
-    },
-    {
-      "path": "forge project adopt",
-      "flags": [
-        "dry-run",
-        "regenerate"
-      ]
-    },
-    {
-      "path": "forge project export",
-      "flags": [
-        "include",
-        "out",
-        "redact"
-      ]
-    },
-    {
-      "path": "forge project import",
-      "flags": [
-        "adopt-id",
-        "dry-run",
-        "force",
-        "trust-foreign",
-        "untrusted"
-      ]
-    },
-    {
-      "path": "forge project sync",
-      "flags": [
-        "redact",
-        "yes"
-      ]
-    },
-    {
-      "path": "forge registry"
-    },
-    {
-      "path": "forge registry add"
-    },
-    {
-      "path": "forge registry audit",
-      "flags": [
-        "json"
-      ]
-    },
-    {
-      "path": "forge registry gc",
-      "flags": [
-        "prune"
-      ]
-    },
-    {
-      "path": "forge registry prune"
-    },
-    {
-      "path": "forge registry rekey",
-      "flags": [
-        "dry-run",
-        "from",
-        "to"
-      ]
-    },
-    {
-      "path": "forge registry remove"
     },
     {
       "path": "forge review"
@@ -568,173 +178,6 @@
       "path": "forge review status",
       "flags": [
         "ref"
-      ]
-    },
-    {
-      "path": "forge skill"
-    },
-    {
-      "path": "forge skill new",
-      "flags": [
-        "description",
-        "dir",
-        "evidence",
-        "force",
-        "json",
-        "lesson",
-        "when"
-      ]
-    },
-    {
-      "path": "forge skills"
-    },
-    {
-      "path": "forge skills audit",
-      "flags": [
-        "gate",
-        "json",
-        "skill"
-      ]
-    },
-    {
-      "path": "forge skills battery",
-      "flags": [
-        "gate",
-        "json"
-      ]
-    },
-    {
-      "path": "forge skills decide",
-      "flags": [
-        "by",
-        "commit",
-        "diagnosis",
-        "evidence",
-        "outcome",
-        "prediction",
-        "probe-run",
-        "rationale",
-        "revision",
-        "skill",
-        "warrant"
-      ]
-    },
-    {
-      "path": "forge skills effectiveness",
-      "flags": [
-        "json"
-      ]
-    },
-    {
-      "path": "forge skills eval-baseline",
-      "flags": [
-        "run-id",
-        "skill"
-      ]
-    },
-    {
-      "path": "forge skills eval-cases",
-      "flags": [
-        "blind",
-        "skill"
-      ]
-    },
-    {
-      "path": "forge skills eval-gen",
-      "flags": [
-        "all",
-        "cases-only",
-        "save",
-        "skill"
-      ]
-    },
-    {
-      "path": "forge skills eval-record",
-      "flags": [
-        "agent-model",
-        "forge-version",
-        "from",
-        "skill"
-      ]
-    },
-    {
-      "path": "forge skills eval-report",
-      "flags": [
-        "baseline",
-        "json",
-        "skill",
-        "verbose"
-      ]
-    },
-    {
-      "path": "forge skills integration"
-    },
-    {
-      "path": "forge skills inventory",
-      "flags": [
-        "json",
-        "lock",
-        "verify"
-      ]
-    },
-    {
-      "path": "forge skills list",
-      "flags": [
-        "json"
-      ]
-    },
-    {
-      "path": "forge skills mutex-gen"
-    },
-    {
-      "path": "forge skills mutex-record",
-      "flags": [
-        "agent-model",
-        "forge-version",
-        "from"
-      ]
-    },
-    {
-      "path": "forge skills mutex-report",
-      "flags": [
-        "gate",
-        "json"
-      ]
-    },
-    {
-      "path": "forge skills revert",
-      "flags": [
-        "decision",
-        "dry-run",
-        "edit",
-        "skill"
-      ]
-    },
-    {
-      "path": "forge skills usage",
-      "flags": [
-        "by-keyword",
-        "json",
-        "top",
-        "undertrigger"
-      ]
-    },
-    {
-      "path": "forge skills validate",
-      "flags": [
-        "json",
-        "skill"
-      ]
-    },
-    {
-      "path": "forge skills verify",
-      "flags": [
-        "at",
-        "decision",
-        "history",
-        "history-json",
-        "result",
-        "skill"
       ]
     },
     {
@@ -1160,111 +603,20 @@
       ]
     },
     {
-      "path": "forge trace",
-      "flags": [
-        "window"
-      ]
-    },
-    {
-      "path": "forge trust"
-    },
-    {
-      "path": "forge trust add",
-      "flags": [
-        "label",
-        "profile"
-      ]
-    },
-    {
-      "path": "forge trust list"
-    },
-    {
-      "path": "forge trust remove"
-    },
-    {
-      "path": "forge trust require-signed"
-    },
-    {
-      "path": "forge update",
-      "flags": [
-        "apply"
-      ]
-    },
-    {
-      "path": "forge verify",
-      "flags": [
-        "regression",
-        "run-tests",
-        "scenario"
-      ]
-    },
-    {
       "path": "forge version"
-    },
-    {
-      "path": "forge workspace"
-    },
-    {
-      "path": "forge workspace add",
-      "flags": [
-        "path"
-      ]
-    },
-    {
-      "path": "forge workspace create"
-    },
-    {
-      "path": "forge workspace doctor",
-      "flags": [
-        "json"
-      ]
-    },
-    {
-      "path": "forge workspace list",
-      "flags": [
-        "json"
-      ]
-    },
-    {
-      "path": "forge workspace remove",
-      "flags": [
-        "key",
-        "path"
-      ]
-    },
-    {
-      "path": "forge workspace status"
-    },
-    {
-      "path": "forge worktree"
-    },
-    {
-      "path": "forge worktree janitor"
-    },
-    {
-      "path": "forge worktree use",
-      "flags": [
-        "ref"
-      ]
     }
   ],
   "checks": [
     "acceptance-recurrence",
-    "artifact-chain",
-    "artifact-drift",
     "assertion-check",
     "attribution",
     "auto-compile",
-    "bash-guard",
     "bundle-verify",
     "cheat-scan",
-    "conventions-inject",
     "conventions-lint",
-    "cross-repo-impact",
     "decision-evidence",
     "decision-warrant",
     "escape-hatch",
-    "eval-artifact-drill",
     "eval-audit-forged",
     "eval-decompose",
     "eval-golden-rotate",
@@ -1277,36 +629,24 @@
     "eval-run",
     "eval-traps-run",
     "eval-wedge-drill",
-    "file-sentinel",
-    "gate-cmd-form",
     "gate-push",
     "goal-contract",
-    "hook-infra",
-    "kimi-plugin-stale",
     "loop-exhausted",
     "next-hint",
-    "plan-first",
     "project-sync",
     "review-pass",
-    "scope-drift",
     "self-report-consistency",
-    "selfcheck-pairing",
-    "selfcheck-scope",
     "skill-trigger",
     "subagent-stop",
     "sync-version-skew",
     "takeover-policy",
     "task-complete",
-    "task-drift",
     "task-guard",
     "task-stalled",
     "task-started",
     "task-verify",
-    "test-nudge",
-    "test-nudge-state",
     "tool-failure",
-    "tree-guard",
-    "unused-scan"
+    "tree-guard"
   ],
   "escapes": [
     "FORGE_ACCEPTANCE_GATE",
@@ -1781,20 +1121,8 @@
   },
   "blockings": [
     {
-      "file": "internal/aatout/aatout.go",
-      "count": 1
-    },
-    {
       "file": "internal/cli/bundle_sig.go",
       "count": 2
-    },
-    {
-      "file": "internal/cli/enforcement.go",
-      "count": 2
-    },
-    {
-      "file": "internal/cli/trace.go",
-      "count": 1
     },
     {
       "file": "internal/cliskills/skills_audit.go",
@@ -1810,10 +1138,6 @@
     },
     {
       "file": "internal/compat/scan.go",
-      "count": 1
-    },
-    {
-      "file": "internal/dashboard/feed.go",
       "count": 1
     },
     {

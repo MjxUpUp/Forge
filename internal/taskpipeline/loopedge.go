@@ -24,7 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MjxUpUp/Forge/internal/artifactchain"
 	"github.com/MjxUpUp/Forge/internal/checklog"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
@@ -40,17 +39,14 @@ func LoopFingerprint(content string) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-// loopBudgetRounds returns the review→implement edge's max_rounds (default 3
-// when the edge is not declared).
+// loopBudgetRounds returns the review→implement edge's max_rounds.
+//
+// core-only：声明式产物链（artifact-chain schema）已删，回环预算回到固定默认值 3。
+// 曾经的 schema 覆写是 hook 时代的产物面，核心流程不再读它。
+//
+// loopBudgetRounds 返回 review→implement 回边的轮次预算（固定 3）。
 func loopBudgetRounds(root string) int {
-	chain, warns := artifactchain.Load(root)
-	for _, w := range warns {
-		fmt.Fprintln(os.Stderr, w)
-	}
-	if e, ok := chain.EdgeByFrom(artifactchain.EdgeFromReview); ok {
-		return e.MaxRounds
-	}
-	return artifactchain.DefaultMaxRounds
+	return 3
 }
 
 // findingLoopAge returns how many review cycles an open finding has survived

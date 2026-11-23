@@ -240,27 +240,6 @@ func TestStatusShowsHealthSignal(t *testing.T) {
 // --------------- Test 8: TestHelperFunctions ---------------
 
 func TestHelperFunctions(t *testing.T) {
-	t.Run("truncate", func(t *testing.T) {
-		tests := []struct {
-			input string
-			max   int
-			want  string
-		}{
-			{"hello", 10, "hello"},
-			{"hello world", 8, "hello..."},
-			{"short", 5, "short"},
-			{"abcdef", 5, "ab..."},
-			{"abc", 3, "abc"},
-			{"中文测试内容", 4, "中..."},
-		}
-		for _, tc := range tests {
-			got := truncate(tc.input, tc.max)
-			if got != tc.want {
-				t.Errorf("truncate(%q, %d) = %q, want %q", tc.input, tc.max, got, tc.want)
-			}
-		}
-	})
-
 	t.Run("findProjectRoot", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		projectDir := filepath.Join(tmpDir, "myproject")

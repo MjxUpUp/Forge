@@ -1,0 +1,4 @@
+=== RUN   TestLiveDocsSkipsDeletedNotes
+--- PASS: TestLiveDocsSkipsDeletedNotes (0.01s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/capability	0.031s

@@ -1,0 +1,4 @@
+=== RUN   TestVerifySummaryCarriesCapability
+--- PASS: TestVerifySummaryCarriesCapability (0.11s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/change	0.136s

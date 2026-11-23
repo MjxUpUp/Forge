@@ -129,7 +129,6 @@ func initRepoContract(dir, profile string) error {
 	fmt.Println("forge 仓库契约已就位（只写仓库内产物，不写用户主目录）")
 	fmt.Println()
 	fmt.Println("下一步：")
-	fmt.Println("  forge registry add                  # 把本项目登记进全局视图（dashboard/task --all-projects）；本地任务不需要")
 	fmt.Println("  forge change new <id> --title \"...\"  # 建一个 change")
 	fmt.Println("  forge status                         # 看当前状态")
 	return nil

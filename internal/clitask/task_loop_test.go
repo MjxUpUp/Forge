@@ -172,15 +172,16 @@ func TestFindingLoopBudgetByReviewRounds(t *testing.T) {
 	if len(state.Findings) != 1 {
 		t.Fatalf("前置 finding 缺失: %+v", state.Findings)
 	}
-	// 复核两轮后（ReviewRounds=2，finding.Round=1 → 轮龄 2 ≥ 预算 2）→ 耗尽。
-	state.ReviewRounds = make([]taskpipeline.ReviewRound, 2)
+	// 复核三轮后（ReviewRounds=3，finding.Round=1 → 轮龄 3 ≥ 预算 3）→ 耗尽。
+	// core-only 删掉了 artifactchain 的链式预算，loopBudgetRounds 现在固定为 3。
+	state.ReviewRounds = make([]taskpipeline.ReviewRound, 3)
 	if marker := taskpipeline.MarkLoopExhaustedIfDue(dir, state); marker == nil {
 		t.Fatal("轮龄达预算应耗尽")
 	}
-	// 轮龄未到（仅 1 轮）不耗尽。上一步已把耗尽标记同步进内存 state（B0），
+	// 轮龄未到（仅 2 轮）不耗尽。上一步已把耗尽标记同步进内存 state（B0），
 	// 必须先清掉——否则 MarkLoopExhaustedIfDue 见标记即返回 nil，本断言恒真。
 	state.LoopExhausted = nil
-	state.ReviewRounds = make([]taskpipeline.ReviewRound, 1)
+	state.ReviewRounds = make([]taskpipeline.ReviewRound, 2)
 	if marker := taskpipeline.MarkLoopExhaustedIfDue(dir, state); marker != nil {
 		t.Fatalf("轮龄未到不应耗尽: %+v", marker)
 	}

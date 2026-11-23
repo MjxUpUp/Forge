@@ -32,7 +32,11 @@ var docsClosureCmd = &cobra.Command{
 	RunE: runDocsClosure,
 }
 
-func init() { docsCmd.AddCommand(docsClosureCmd) }
+func init() {
+	docsClosureCmd.Flags().BoolVar(&docsClosureJSON, "json", false, "以 JSON 输出闭合表")
+	docsClosureCmd.Flags().BoolVar(&docsClosureStrict, "strict", false, "有漂移即非零退出")
+	docsCmd.AddCommand(docsClosureCmd)
+}
 
 func runDocsClosure(cmd *cobra.Command, args []string) error {
 	root, err := os.Getwd()

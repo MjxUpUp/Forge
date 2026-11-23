@@ -189,8 +189,6 @@ var verificationChecks = map[CheckName]bool{
 	CheckTaskVerify:                       true, // task-verify：门禁推进（SourceForCheck 默认 agent-claim）
 	CheckTaskComplete:                     true, // task-complete：门禁推进（同上）
 	CheckTaskGuard:                        true, // task-guard：PreToolUse 拦截判定
-	CheckBashGuard:                        true, // bash-guard：PreToolUse 拦截判定
-	CheckFileSentinel:                     true, // file-sentinel：哨兵文件判定
 	CheckName("acceptance"):               true, // taskpipeline.CheckNameAcceptance：实跑验收标准（deterministic 不可伪造）
 	CheckName("acceptance-assert"):        true, // taskpipeline.CheckNameAcceptanceAssert：验收 v2 逐断言判定行（deterministic；guard：evidence_guard_test.go 对照 taskpipeline 源声明）
 	CheckName("test-run"):                 true, // taskpipeline.CheckNameTestRun：实跑测试套件（deterministic 不可伪造）

@@ -68,21 +68,17 @@ func EscapeReasonOf(e *Entry) string {
 // 与 types.go 常量同步——guard：compat 测试对比 AllCheckNames 与 types.go 源扫描）。
 var allCheckNames = []CheckName{
 	CheckAutoCompile, CheckAssertion, CheckTaskVerify, CheckTaskComplete, CheckTaskGuard,
-	CheckBashGuard, CheckFileSentinel, CheckScopeDrift, CheckCheatScan, CheckUnusedScan,
-	CheckEscapeHatch, CheckSkillTrigger, CheckKimiPluginStale, CheckReviewPass, CheckPlanFirst, CheckGoalContract,
-	CheckToolFailure, CheckSubagentStop, CheckTestNudge, CheckTakeoverPolicy,
-	CheckAttribution, CheckBundleVerify, CheckConventionsInject, CheckConventionsLint,
-	CheckCrossRepoImpact, CheckProjectSync, CheckTaskStarted,
+	CheckCheatScan, CheckEscapeHatch, CheckSkillTrigger, CheckReviewPass, CheckGoalContract,
+	CheckToolFailure, CheckSubagentStop, CheckTakeoverPolicy,
+	CheckAttribution, CheckBundleVerify, CheckConventionsLint,
+	CheckProjectSync, CheckTaskStarted,
 	CheckEvalMetricsIncomplete, CheckEvalGoldenRun, CheckEvalGoldenRotate, CheckEvalJudgeWeak,
 	CheckEvalTrapsRun, CheckEvalRun, CheckEvalDecompose, CheckEvalResumeDrill, CheckEvalAuditForged,
 	CheckEvalPreflight, CheckEvalGoldenTestQuery,
 	CheckWedgeDrill,
 	CheckSelfReport, CheckGatePush, CheckTaskStalled, CheckSyncVersionSkew,
 	CheckLoopExhausted, CheckAcceptanceRecurrence,
-	CheckArtifactChain, CheckArtifactDrift, CheckArtifactDrill,
-	CheckNextHint, CheckGateCmdForm, CheckHookInfra, CheckTreeGuard,
-	CheckSelfcheckPairing, CheckSelfcheckScope,
-	CheckTestNudgeState, CheckTaskDrift,
+	CheckNextHint, CheckTreeGuard,
 	CheckDecisionWarrant, CheckDecisionEvidence,
 }
 

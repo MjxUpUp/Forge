@@ -34,10 +34,10 @@ Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到�
 forge init
 forge task start --ref feat/demo --branch --accept "git log -1 :: commit"
 forge task verify-acceptance    # 实跑验收标准 → 不可伪造的 deterministic 证据
-forge trace feat/demo           # 查看任务的完整证据链
+forge task report --ref feat/demo # 交付单：判据结果 + 证据强度 + 未验证面
 ```
 
-跑 `forge eval wedge-drill` 可在任何机器上自检这条首证据路径（隔离环境，60 秒），它是发版 workflow 的行为级冒烟门禁与 nightly 的每日行为回归。
+跑 `forge change check` 可在任何机器上自检仓库契约与证据是否自洽（退出码 0/2），它是 CI 与 pre-commit 共用的同一个闸门。
 
 ## 🎯 它补的是哪一层
 
@@ -134,11 +134,11 @@ forge task start --ref feat/my-feature --branch --change my-feature --agent <实
 
 它**不写** `~/.forge`、`~/.claude`、`~/.codex`，也不登记全局注册表；重复运行只同步仓库内托管块。`--project` 已废弃为 no-op，`--profile mini|standard|full` 写入契约。
 
-forge **没有宿主层**：不分发宿主插件、不写宿主配置。门禁由 agent 显式跑 `forge task`/`forge change` 命令驱动；证据、状态与判据仍然落盘、可审计。需要全局看板或 `forge task list --open --all-projects` 时，用 `forge registry add` 显式登记项目（`forge dashboard` 只读聚合登记过的项目）。
+forge **没有宿主层**：不分发宿主插件、不写宿主配置。门禁由 agent 显式跑 `forge task`/`forge change` 命令驱动；证据、状态与判据仍然落盘、可审计。项目内任务用 `forge task list` 看；跨项目的全局聚合命令（`registry` / `dashboard`）已在 core-only 中删除。
 
 > **仓库自己决定要不要接管。** `forge init` 写的 `spec/forge.yaml` 把成员资格放在仓库本身——clone 到新机器、换个 agent 也能解析到项目身份。
 >
-> 查找位置：**只认 git 仓库根的 `spec/forge.yaml`**，向上找到 git 根就停；子目录里的同名文件不激活整仓（monorepo 里一个子包不该悄悄改变别人的行为，要激活就放到仓库根），非 git 目录向上查找，走到用户 home 就停（`~` 本身不算项目根）。放好之后 `forge status` 应显示 `spec: spec/forge.yaml (仓库声明式成员资格)`；`forge policy state` 应输出 managed（declined 的仓库例外——`forge off`、`policy yield` 或 clone 到带 `.forge-decline` 的仓库都会这样；成员资格退出优先于契约，`forge on` 可恢复）。
+> 查找位置：**只认 git 仓库根的 `spec/forge.yaml`**，向上找到 git 根就停；子目录里的同名文件不激活整仓（monorepo 里一个子包不该悄悄改变别人的行为，要激活就放到仓库根），非 git 目录向上查找，走到用户 home 就停（`~` 本身不算项目根）。放好之后 `forge status` 应显示 `spec: spec/forge.yaml (仓库声明式成员资格)`；declined 的仓库例外——`forge off` 或 clone 到带 `.forge-decline` 的仓库会让 `forge status` 以非零退出码报「已退出接管」，`forge on` 可恢复。
 
 ```yaml
 # spec/forge.yaml
@@ -167,16 +167,12 @@ hooks: off         # 兼容字段：保留只为老契约可解析，不启用�
 | `forge task verify-acceptance` | 实跑验收标准，落 deterministic 证据 |
 | `forge task checkpoint` / `rollback <id>` | 工作树存档点：大改前 `checkpoint --label`，改乱了 `rollback cp-N`（git stash 语义，不产生提交） |
 | `forge task complete` | 完结任务：输出事实清单（判据/红先绿/评审/逃生）+ Act 结论 + 清 active ref |
-| `forge eval suite [--record]` | 仓库级回归基线：逐条实跑归档 change 的 acceptance 判据，看跨任务退化（失败不阻断门禁） |
-| `forge eval trend` | 看最近 N 次回归基线的通过率与 HEAD |
 | `forge task report` | 交付验收单（考卷逐条结果 + 证据强度 + 未验证面） |
 | `forge task resume --match "<关键词>"` | 跨会话/跨工具拉回任务上下文 |
 | `forge review pass` / `forge review status` | 代码审查标记与状态 |
-| `forge gate push` | git 推送边界门禁（cheat-scan 复检 + 未消解 BLOCKED 任务） |
-| `forge trace <ref>` / `forge health` / `forge dashboard` | 证据链时间线 / 质量趋势 / 全局看板（Pulse） |
 | `forge status` | 项目状态 |
 
-其余命令族（`skills`、`enforcement`、`eval`、`act`、`workspace`、`project`、`registry`（含 `registry add` 显式登记）、`harness`、`compat`、`conventions`、`policy`、`migrate`、`update`、`node`、`bridge`、`docs`、`worktree`、`on`/`off`、`config`、`verify`、`trust`）见同一份[完整命令表](docs/reference/cli.md)。
+其余命令（`change`、`task`、`review`、`docs`、`impact`、`test`、`compat`、`on`/`off`、`next`、`status`、`version`）见同一份[完整命令表](docs/reference/cli.md)。core-only 之后不再有 `eval`/`gate`/`trace`/`health`/`dashboard`/`registry`/`migrate`/`harness`/`workspace`/`skill`/`update` 这些命令组。
 
 **回环怎么跑**：agent 每个回合先 `forge change status <id>`，把它给出的下一步当建议执行——补产物、跑 verify、读失败证据、重跑，acceptance 的判据全部通过才归档。判断标准来自仓库里的文件与证据，不来自对话记忆；in-loop 不需要宿主插件（`forge change status/verify` 仍是 forge 二进制提供的命令，所以「零安装」指不用装宿主插件，不是不用装 forge）。逐节点推进用 `forge change gate <id> --task N`：只跑该任务引用的判据，节点证据不封印整条 change。
 
@@ -218,11 +214,11 @@ forge 的 `uninstall` 子命令也随宿主层一起删了。旧版本留在用�
 | Kimi | `~/.kimi-code/config.toml`（`# FORGE:START` 注释段） | — | `~/.kimi-code/plugins/installed.json` 的 forge 条目 |
 
 > 1.84 的用户级接线名册还有 cline / codebuddy / zcode / opencode 等宿主；它们在各自
-> hooks 目录写文件，本表不逐一列出。不确定时先 `grep -rl "forge hook"
-> ~/.claude/settings.json ~/.codex/hooks.json ~/.codeium/windsurf/hooks.json ~/.cursor/hooks.json`
-> 以及这些宿主的 hooks 目录，再删。
+> hooks 目录写文件，本表不逐一列出。不确定时先在这些文件里搜「forge」与「hook」两个词
+> （`~/.claude/settings.json`、`~/.codex/hooks.json`、`~/.codeium/windsurf/hooks.json`、
+> `~/.cursor/hooks.json`），以及这些宿主的 hooks 目录，再删。
 
-这些段里最要命的一句是「只有看到 `[forge-session]` 横幅或 forge hook 输出才按 forge 行事，
+这些段里最要命的一句是「只有看到 `[forge-session]` 横幅或 forge 的 hook 输出才按 forge 行事，
 否则忽略并不要运行 forge 命令」——1.85 没有横幅也没有 hook，这个条件恒假，Claude 会主动无视 forge。
 
 ```bash
@@ -256,12 +252,12 @@ grep -l 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md \
 #    同一文件里 forge 段之外的内容（团队规范、你自己的偏好）保留不动。
 
 # 2) Codex hook 配置：只删 forge 条目，别删整个文件
-#    编辑 ~/.codex/hooks.json，删掉 command 里带 "forge hook" 的条目；
+#    编辑 ~/.codex/hooks.json，删掉 command 里同时含 forge 与 hook 的条目；
 #    再把 ~/.codex/config.toml 里 [features] hooks = true 改回 false（或删掉该行）。
 #    如果 config.toml 里有 # FORGE:START … # FORGE:END 整块（旧版没有 [features] 表时
 #    自动追加的），整块删掉，否则会留下孤立标记。
 
-# 3) Claude settings / Windsurf / Cursor hooks：同样只删带 "forge hook" 的条目
+# 3) Claude settings / Windsurf / Cursor hooks：同样只删带 forge 与 hook 的条目
 #    编辑 ~/.claude/settings.json 的 hooks 段；
 #    编辑 ~/.codeium/windsurf/hooks.json，删 forge 条目；
 #    编辑 ~/.cursor/hooks.json，删 forge 条目（旧版写过 user-level hook）。
@@ -291,7 +287,7 @@ rm -f ~/.forge/skills-manifest.json
 # 6) 自检：下面都应为空
 grep -l 'FORGE:START' ~/.claude/CLAUDE.md ~/.codex/AGENTS.md \
   ~/.codeium/windsurf/memories/global_rules.md ~/.kimi-code/config.toml 2>/dev/null
-grep -rl 'forge hook' ~/.claude/settings.json ~/.codex/hooks.json \
+grep -rl 'forge' ~/.claude/settings.json ~/.codex/hooks.json \
   ~/.codeium/windsurf/hooks.json ~/.cursor/hooks.json 2>/dev/null
 grep -l 'forge' ~/.claude/plugins/installed_plugins.json ~/.kimi-code/plugins/installed.json 2>/dev/null
 ls ~/.forge/skills-cache 2>/dev/null
@@ -326,16 +322,16 @@ rm -rf ~/.forge/skills-backup ~/.forge/.init-suggested
 
 | 旧用法 | 2.0 之后 |
 | --- | --- |
-| `forge task gate task-verify` | 门禁已删除；验收只跑 `forge task verify-acceptance` |
-| `forge task doc-review --passed … --score …` | 命令已删除；文档回检并入评审，结论记在 `forge review pass --score N --reviewer <id>` |
-| `forge task mutation` | 命令已删除；抽样变异不再由 forge 做 |
-| `forge task artifact …` / `forge task chain-init` | 命令已删除；产物就是 change 里的 `goal.md` / `change.md` / `acceptance.md` |
-| `forge selfcheck` | 该子命令已删除；用 `forge docs lint <文件>` + `forge change check` |
-| `forge eval artifact-drill` | 子命令已删除；用 `scripts/checks/release-smoke.sh <forge 二进制>`（发布冒烟）或 `forge change check` |
+| forge task gate task-verify | 门禁已删除；验收只跑 `forge task verify-acceptance` |
+| forge task doc-review（--passed/--score 形态已废） | 命令已删除；文档回检并入评审，结论记在 `forge review pass --score N --reviewer <id>` |
+| forge task mutation | 命令已删除；抽样变异不再由 forge 做 |
+| forge task artifact / forge task chain-init | 命令已删除；产物就是 change 里的 `goal.md` / `change.md` / `acceptance.md` |
+| forge selfcheck | 该子命令已删除；用 `forge docs lint <文件>` + `forge change check` |
+| forge eval artifact-drill | 子命令已删除；用 `scripts/checks/release-smoke.sh <forge 二进制>`（发布冒烟）或 `forge change check` |
 | `forge review pass --note "…"` 刷新基线 / 每轮换新 reviewer | 2.1 起改为**评审者复用**：首轮 `--reviewer <id>` 绑定，之后每轮用同一 id（换新 id 会把旧问题丢掉、永远收敛不了）；确实要换人用 `--rotate-reviewer --reason "…"` 留痕；上一轮未闭合项用 `--findings <清单>` 承接 |
 | 五份产物（proposal/design/tasks + acceptance + goal） | 三份：`goal.md`（三段）+ `change.md` + `acceptance.md`；`clarify.md` 记人确认，`tasks.md` 可选 |
 
-`forge integrations` / `forge hook` / `forge freeze` / `forge doctor` 已在 1.85 删除，
+forge integrations / forge hook / forge freeze / forge doctor 已删除（1.85），
 宿主层（用户级 CLAUDE.md / AGENTS.md 注入、hook 执行、插件、skills 分发）整体不存在了；
 升级前如果还留着那些注入，按上一节「从 1.84 及更早版本升级」清掉。`forge init` 仍然存在，
 但它现在只写仓库内产物（契约 / changes 目录 / AGENTS 托管块 / 已存在的指针文件），不碰用户目录。
@@ -347,20 +343,17 @@ rm -rf ~/.forge/skills-backup ~/.forge/.init-suggested
 npm i -g @agent_forge/forge@2.1.3 --include=optional --registry=https://registry.npmjs.org
 forge version                      # 应 >= 2.1.3
 
-# 1) 仓库里：搬旧 runtime state（.forge/ 里有历史 task/checklog 时）
+# 1) 仓库里：core-only 之后没有 migrate / registry 命令，旧 .forge/ 数据保持原样即可
+#    （只是本地历史，不参与门禁判定，也不再有命令读它）
 cd <your-repo>
-forge migrate --dry-run            # 预览要搬的文件
-forge migrate
 
-# 2) 刷新仓库的 AGENTS.md 托管块（老块的硬规则还是三道门禁的旧文案）
+# 2) 刷新仓库的 AGENTS.md 托管块（块由运行中的命令树生成）
 forge change agents
 
 # 3) 看进行中的 change 和任务
 forge change list
 forge status
 
-# 4) 需要全局面板时再显式登记（2.0 起 init 不再自登记）
-forge registry add
 ```
 
 进行中的老 change（proposal/design/tasks 布局）**可以继续按老规则跑完**：
@@ -375,13 +368,9 @@ forge registry add
 find ~/.forge/projects -maxdepth 2 -name hooks -type d -exec rm -rf {} +
 find ~/.forge/projects -maxdepth 2 -name protocol.yml -delete
 
-# 注册表里的死路径与孤儿数据目录
-forge registry prune               # 移除路径已不存在的条目
-forge registry audit               # 看 key 漂移 / 孤儿目录 / 非法 ID
-forge registry gc --prune          # 孤儿数据目录移入 ~/.forge/backups/gc-<时间戳>/
 ```
 
-`forge registry gc` 默认演练，`--prune` 才动手；备份目录确认无需恢复后可以手动删。
+旧注册表文件 `~/.forge/projects.json` 只是历史文件，core-only 之后没有命令再读它，可以直接删。
 
 ### 升级后的自检
 

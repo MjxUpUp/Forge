@@ -32,9 +32,6 @@ Forge 是 coding agent 循环的验证与状态层：门禁由显式命令推进
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// 检查更新（24h 缓存，失败静默）
-		checkForUpdate(cmd.Root().Version, cmd)
-
 		// 自愈 npm 的脆弱 Windows sh 垫片（依赖 coreutils），让 POSIX-shell
 		// 宿主能把 `forge` 解析到真实二进制。
 		healNpmShimIfNeeded()

@@ -11,7 +11,5 @@ import (
 //  2. 挂载 Root（forge task）与 WorktreeCmd（forge worktree——定义随簇迁出，
 //     命令面是根级）到 rootCmd。
 func init() {
-	clitask.CommitBestEffort = HarnessCommitBestEffort
 	rootCmd.AddCommand(clitask.Root)
-	rootCmd.AddCommand(clitask.WorktreeCmd)
 }

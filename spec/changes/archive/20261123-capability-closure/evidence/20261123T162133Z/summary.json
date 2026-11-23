@@ -1,0 +1,62 @@
+{
+  "change": "capability-closure",
+  "started_at": "2026-11-23T16:21:33Z",
+  "finished_at": "2026-11-23T16:21:36Z",
+  "passed": true,
+  "sealed": true,
+  "head": "20ef5a6d1d8b4e45300cb9020f1c60deac446b3c",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "b588ae454ef6572c3d7faf30990067b5cb9d40206e1b39e50a6cbcebca8f06cb",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go test -v ./internal/capability -run TestScanDocsClassifies -count=1",
+      "exit": 0,
+      "duration_ms": 1115,
+      "stdout_file": "01.stdout"
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/capability -run TestLiveDocsSkipsDeletedNotes -count=1",
+      "exit": 0,
+      "duration_ms": 605,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/change -run TestVerifySummaryCarriesCapability -count=1",
+      "exit": 0,
+      "duration_ms": 751,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs closure",
+      "exit": 0,
+      "duration_ms": 539,
+      "stdout_file": "04.stdout"
+    }
+  ],
+  "capability": {
+    "commands": 200,
+    "flags": 379,
+    "annotated": 21,
+    "drift_count": 9,
+    "drifts": [
+      "README.md:221 hook",
+      "README.md:225 hook",
+      "README.md:259 hook",
+      "README.md:264 hook",
+      "README.md:294 hook",
+      "README.md:338 integrations",
+      "README.md:338 hook",
+      "README.md:338 freeze",
+      "README.md:338 doctor"
+    ]
+  }
+}

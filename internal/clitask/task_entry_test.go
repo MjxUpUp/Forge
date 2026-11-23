@@ -107,3 +107,19 @@ func TestGuardEntryRouting_RequiresClarify(t *testing.T) {
 		t.Fatalf("缺 clarify 时入口必须拒绝并点出 clarify（阶段停在 clarify，与 verify/gate 同口径）, got %v", err)
 	}
 }
+
+// makeChangeFiles 把 change 补到 ready 阶段（除 goal.md 之外的四份产物），
+// 供入口路由用例验证「产物齐 + clarify 齐」的放行路径；这里不关心产物内容本身是否精炼。
+func makeChangeFiles(t *testing.T, dir, id string) {
+	t.Helper()
+	files := map[string]string{
+		"clarify.md":    "## 边界\n\n只验证入口路由。\n\n## 非目标\n\n不改阶段机与门禁。\n\n人确认：2026-11-15T00:00:00Z\n",
+		"change.md":     "# 改动\n\n验证入口路由。\n\n## 影响\n\n无。\n\n## 验证\n\nacceptance #1。\n",
+		"acceptance.md": "# 验收\n\n```bash\ntrue\n```\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, "spec", "changes", id, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

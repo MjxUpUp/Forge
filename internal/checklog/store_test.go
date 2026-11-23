@@ -462,7 +462,7 @@ func TestRecord_DerivesLevelFallback(t *testing.T) {
 		{Check: CheckAutoCompile, Passed: true, Detail: "all good"},                            // → pass
 		{Check: CheckAutoCompile, Passed: false, Detail: "compile broke"},                      // → fail
 		{Check: CheckTaskGuard, Passed: false, Detail: "BLOCKED: unread source edit"},          // → blocked
-		{Check: CheckScopeDrift, Passed: true, Detail: "ADVISORY: drift beyond PlanScope"},     // → advisory
+		{Check: CheckName("scope-drift"), Passed: true, Detail: "ADVISORY: drift beyond PlanScope"},     // → advisory
 		{Check: CheckEscapeHatch, Passed: true, Level: LevelWarn, Detail: "escape-hatch: x"},   // explicit wins → warn
 		{Check: CheckAutoCompile, Passed: false, Level: LevelWarn, Detail: "INFRA: spawn err"}, // explicit wins over derive
 	}

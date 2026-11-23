@@ -70,20 +70,3 @@ func TestReviewLLM_ScoresLifecycle(t *testing.T) {
 		t.Fatalf(`应留档 1 份判分副本，got %v`, matches)
 	}
 }
-
-// TestEvalGoldenHarvest_CLI：--since 不可达 ref 报错（eval.go 配对面）。
-func TestEvalGoldenHarvest_CLI(t *testing.T) {
-	dir := t.TempDir()
-	runGit(t, dir, "init")
-	if out, _, code := runForgeStreams(t, dir, `init`, `--mode`, `medium`); code != 0 {
-		t.Fatalf(`forge init failed: %s`, out)
-	}
-	t.Chdir(dir)
-	cmd := &cobra.Command{Use: "harvest"}
-	cmd.Flags().String("since", "", "")
-	_ = cmd.Flags().Set("since", "no-such-ref")
-	err := runEvalGoldenHarvest(cmd, nil)
-	if err == nil || !strings.Contains(err.Error(), "不是可达的 git ref") {
-		t.Errorf(`坏 ref 应明确报错，got %v`, err)
-	}
-}

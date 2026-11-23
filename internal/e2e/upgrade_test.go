@@ -193,7 +193,6 @@ func freshProject(t *testing.T) string {
 	// settings/CLAUDE.md/skill）改由 integrations enable 显式完成。夹具跑的是执法
 	// 路径，需要这些资产在位，故在 init 之后接线 claude-code（TestMain 已隔离
 	// CLAUDE_CONFIG_DIR / HOME / FORGE_DATA_HOME）。
-	forge(t, dir, "registry", "add", ".")
 	return dir
 }
 

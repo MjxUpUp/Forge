@@ -69,14 +69,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// 接管状态行（Project Policy Layer P1）：能走到这里的状态必然是 managed——
 	// declined 已被上方 Find 分支拦截提示，此处无需分叉。
 	if !asJSON {
-		if home, herr := forgedata.GlobalHome(); herr == nil {
-			fmt.Printf("Harness:       %s\n", harnessStateLabel(readHarnessState(home)))
-		}
-		fmt.Printf("归属覆盖:      %s\n", attributionCoverageLine(root))
 		fmt.Printf("自评测:        %s\n", evalHealthLine(root))
-		fmt.Printf("兼容基线:      %s\n", compatStatusLine())
 		fmt.Printf("接管状态:      managed（forge 接管中）\n")
-		MaybeOfferHarness("forge status")
 	}
 
 	// status is an aggregate view: a task-list failure must not fail the whole

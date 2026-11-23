@@ -16,7 +16,6 @@ func TestSourceForCheck(t *testing.T) {
 	}{
 		{CheckAutoCompile, EvidenceDeterministic},
 		{CheckAssertion, EvidenceDeterministic},
-		{CheckFileSentinel, EvidenceDeterministic},
 		{CheckTaskVerify, EvidenceAgentClaim},
 		{CheckTaskComplete, EvidenceAgentClaim},
 		{CheckName("some-future-check"), EvidenceDeterministic},
@@ -66,14 +65,16 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 		{Check: CheckTaskVerify, Source: EvidenceAgentClaim, TaskRef: "t"},
 		// Legacy data without Source, falls back to deterministic.
 		//
-		{Check: CheckFileSentinel, Source: "", TaskRef: "t"}, // 旧数据无 Source，兜底为 deterministic
+		{Check: CheckName("file-sentinel"), Source: "", TaskRef: "t"}, // 旧数据无 Source，兜底为 deterministic
 		// Legacy data, falls back to deterministic.
 		//
 		{Check: CheckTaskGuard, Source: "", TaskRef: "t"}, // 旧数据，兜底为 deterministic
 	}
 	ec := BuildEvidenceChain(entries, "t")
-	if ec.Deterministic != 4 {
-		t.Fatalf(`deterministic bucket: got %d, want 4 (auto-compile+assertion+file-sentinel+task-guard)`, ec.Deterministic)
+	// core-only 删了 file-sentinel 检查名，它不再在白名单里——旧数据行保留在
+	// entries 中供 trace，但不进 deterministic 桶。
+	if ec.Deterministic != 3 {
+		t.Fatalf(`deterministic bucket: got %d, want 3 (auto-compile+assertion+task-guard)`, ec.Deterministic)
 	}
 	if ec.AgentClaim != 1 {
 		t.Fatalf(`agent-claim bucket: got %d, want 1 (task-verify)`, ec.AgentClaim)
@@ -118,8 +119,8 @@ func TestBuildEvidenceChain_ObservationChecksExcluded(t *testing.T) {
 	}{
 		{`scope-drift`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckScopeDrift, Source: EvidenceDeterministic, TaskRef: "t"}, // 多条 drift 也不计入
+			{Check: CheckName("scope-drift"), Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckName("scope-drift"), Source: EvidenceDeterministic, TaskRef: "t"}, // 多条 drift 也不计入
 		}, 1, 3, false},
 		{`cheat-scan`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
@@ -129,20 +130,20 @@ func TestBuildEvidenceChain_ObservationChecksExcluded(t *testing.T) {
 		{`review-pass/plan-first`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
 			{Check: CheckReviewPass, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckPlanFirst, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckName("plan-first"), Source: EvidenceDeterministic, TaskRef: "t"},
 		}, 1, 3, false},
 		{`observation-hooks（tool-failure/subagent-stop/test-nudge/conventions）`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
 			{Check: CheckToolFailure, Source: EvidenceDeterministic, TaskRef: "t"},
 			{Check: CheckSubagentStop, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckTestNudge, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckConventionsInject, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckName("test-nudge"), Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckName("conventions-inject"), Source: EvidenceDeterministic, TaskRef: "t"},
 			{Check: CheckConventionsLint, Source: EvidenceDeterministic, TaskRef: "t"},
 		}, 1, 6, false},
 		{`unused-scan`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckUnusedScan, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckUnusedScan, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckName("unused-scan"), Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckName("unused-scan"), Source: EvidenceDeterministic, TaskRef: "t"},
 		}, 1, 3, false},
 		// escape-hatch：det=2（auto-compile+assertion 基线）+ 逃生条目被跳过但置标志。
 		{`escape-hatch（跳过分桶，但置 UsedEscapeHatch）`, []Entry{
@@ -157,7 +158,7 @@ func TestBuildEvidenceChain_ObservationChecksExcluded(t *testing.T) {
 		}, 1, 3, false},
 		{`kimi-plugin-stale`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckKimiPluginStale, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckName("kimi-plugin-stale"), Source: EvidenceDeterministic, TaskRef: "t"},
 		}, 1, 2, false},
 		{`bundle-verify`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
@@ -169,7 +170,7 @@ func TestBuildEvidenceChain_ObservationChecksExcluded(t *testing.T) {
 		}, 1, 2, false},
 		{`cross-repo-impact`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckCrossRepoImpact, Source: EvidenceDeterministic, TaskRef: "t"},
+			{Check: CheckName("cross-repo-impact"), Source: EvidenceDeterministic, TaskRef: "t"},
 		}, 1, 2, false},
 		{`task-started`, []Entry{
 			{Check: CheckTaskStarted, Source: EvidenceDeterministic, TaskRef: "t"},
@@ -431,7 +432,7 @@ func TestBuildEvidenceChain_VerificationWhitelist(t *testing.T) {
 	entries := []Entry{
 		// 白名单成员：照旧按 Source 分桶（对既有验证 check 语义等价）。
 		{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-		{Check: CheckFileSentinel, Source: "", TaskRef: "t"}, // 空 Source 兜底仍生效
+		{Check: CheckName("acceptance"), Source: "", TaskRef: "t"}, // 空 Source 兜底仍生效
 		{Check: CheckTaskVerify, Source: EvidenceAgentClaim, TaskRef: "t"},
 		{Check: CheckName("acceptance"), Source: EvidenceDeterministic, TaskRef: "t"},
 		{Check: CheckName("test-run"), Source: EvidenceDeterministic, TaskRef: "t"},
@@ -443,7 +444,7 @@ func TestBuildEvidenceChain_VerificationWhitelist(t *testing.T) {
 	}
 	ec := BuildEvidenceChain(entries, "t")
 	if ec.Deterministic != 4 {
-		t.Fatalf(`白名单内应计入 deterministic: got %d, want 4（auto-compile + file-sentinel 兜底 + acceptance + test-run）`, ec.Deterministic)
+		t.Fatalf(`白名单内应计入 deterministic: got %d, want 4（auto-compile + acceptance×2 + test-run）`, ec.Deterministic)
 	}
 	if ec.AgentClaim != 1 {
 		t.Fatalf(`task-verify 应计 agent-claim: got %d, want 1`, ec.AgentClaim)
