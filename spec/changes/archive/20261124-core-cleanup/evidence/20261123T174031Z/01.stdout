@@ -1,0 +1,4 @@
+=== RUN   TestSelectorMatchedNothing
+--- PASS: TestSelectorMatchedNothing (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/criteria	0.028s

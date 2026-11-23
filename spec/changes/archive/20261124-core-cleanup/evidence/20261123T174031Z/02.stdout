@@ -1,0 +1,4 @@
+=== RUN   TestVerifyFailsWhenSelectorMatchesNothing
+--- PASS: TestVerifyFailsWhenSelectorMatchesNothing (1.65s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/change	1.682s

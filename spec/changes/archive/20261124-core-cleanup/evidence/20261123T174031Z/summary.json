@@ -1,0 +1,51 @@
+{
+  "change": "core-cleanup",
+  "started_at": "2026-11-23T17:40:31Z",
+  "finished_at": "2026-11-23T17:42:31Z",
+  "passed": true,
+  "sealed": true,
+  "head": "29e8b2c5a2bd4faf3c0c7a2cc510d097936da9ad",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "b08e12031e862d38c2cedd40ca4412efa88e94600d3ea8aa44cbaddfe372ec32",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go test -v ./internal/criteria -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 936,
+      "stdout_file": "01.stdout"
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/change -run TestVerifyFailsWhenSelectorMatchesNothing -count=1 :: --- PASS",
+      "exit": 0,
+      "duration_ms": 2638,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli -run TestNoDeadCommandHints -count=1 :: --- PASS",
+      "exit": 0,
+      "duration_ms": 3150,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./... -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 112675,
+      "stdout_file": "04.stdout"
+    }
+  ],
+  "capability": {
+    "commands": 87,
+    "flags": 210,
+    "annotated": 21,
+    "drift_count": 0
+  }
+}
