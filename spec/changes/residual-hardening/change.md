@@ -26,8 +26,8 @@
 
 - 删除面：`internal/act` 少 2 个文件（约 200 行 + 测试）、`forgedata` 少 1 个方法、`health` 少 1 个导出函数与 1 个测试。
 - `forge status` 的 health 段语义不变（`SummarizeAt` 行为与原来 `SummarizeAtAcked(cs, now, nil)` 完全一致）。
-- compat 快照：`internal/act/disposition.go` 是阻断文件（`count: 2` 那条），删除后载荷面会变，
-  需要重钉 `compat.snapshot.json`。
+- compat 快照：实测 `forge compat snapshot` 与入库 golden 无差异（七面 87/40/9/43/3/11/0），
+  `internal/act/disposition.go` 不在阻断文件面里，因此本轮不需要重钉 `compat.snapshot.json`。
 - 文档：`docs/design/test-ledger.md` 补「switch/循环分支与 helper 间接跳过」；`docs/reference/cli.md` 无命令面变化。
 - 测试：新增 criteria 用例、testledger 边界用例、compat skills 守卫；删 health 的 ack 用例。
 
@@ -36,3 +36,16 @@
 `forge task verify-acceptance` 实跑 6 条判据；其中 #1 在实现前是红的（`TestSelectorEmptySignals`
 尚不存在，且新判定会把「-run 空匹配」判负），作为先失败证明登记。另跑 `go vet` 与
 `forge docs closure --strict` 确认命令面漂移仍为 0。
+
+### 测试变更依据（回应 test-diff）
+
+- `internal/criteria/evidence_test.go`（新增）：判据 #1 的考卷本身——8 个子例覆盖三类信号与两类豁免，
+  实现前其中 2 例确实失败（先红后绿），不是事后补写的断言。
+- `internal/testledger/skip_branch_test.go`（新增）：钉住分类口径而非实现细节——switch/for 分支、
+  经 helper、顶层无条件四类 Skip 各自的 HasSkip/SkipGuarded，并断言只有顶层那条进违规。
+- `internal/cli/dead_hint_guard_test.go`（改）：守卫从 fmt 参数扩到全部字符串字面量，属**收紧**；
+  为让新面可跑，逐处改写的是被守卫判定为死的文案（改写而非放宽断言）。
+- `internal/compat/skills_content_test.go`（新增）：新增守卫，无既有断言被改。
+- `internal/health/summary_test.go`（删 `TestSummarizeAtAcked`）：被测函数 `SummarizeAtAcked`
+  已随死面删除，测试随功能消失；保留的 `TestSummarizeAt` 覆盖同一行为（ack 恒 nil 的原路径）。
+- `internal/act/disposition_test.go`（删）：随 `disposition.go` 整文件删除，非为过测试而删断言。
