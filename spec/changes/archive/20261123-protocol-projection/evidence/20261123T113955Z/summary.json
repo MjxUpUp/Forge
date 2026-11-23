@@ -1,0 +1,53 @@
+{
+  "change": "protocol-projection",
+  "started_at": "2026-11-23T11:39:55Z",
+  "finished_at": "2026-11-23T11:40:32Z",
+  "passed": true,
+  "sealed": true,
+  "head": "3e213ded8b97f4d3e5790000e939494e850d551f",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "28b5c3725b69a502f3b2ab37e73a682129473d82b7a1d2c67ba97b91ad3874df",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go test ./internal/agentproto -count=1",
+      "exit": 0,
+      "duration_ms": 1749,
+      "stdout_file": "01.stdout"
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/agentproto -run TestAnnotationsMatchTree -count=1",
+      "exit": 0,
+      "duration_ms": 1200,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/agentproto -run TestTemplateHasNoDeadCommand -count=1",
+      "exit": 0,
+      "duration_ms": 1234,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/change -count=1",
+      "exit": 0,
+      "duration_ms": 32043,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go run ./cmd/forge change agents --check",
+      "exit": 0,
+      "duration_ms": 712,
+      "stdout_file": "05.stdout"
+    }
+  ]
+}

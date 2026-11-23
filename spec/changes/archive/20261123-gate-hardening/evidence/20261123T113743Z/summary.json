@@ -1,0 +1,45 @@
+{
+  "change": "gate-hardening",
+  "started_at": "2026-11-23T11:37:43Z",
+  "finished_at": "2026-11-23T11:39:50Z",
+  "passed": true,
+  "sealed": true,
+  "head": "3e213ded8b97f4d3e5790000e939494e850d551f",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "ab8827696886b665295cc4ee7e325d21b5f714ceaccc22823afc8f979d6b139e",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go test -v ./internal/taskpipeline -run TestRunSelectorNoMatchJudgedFail -count=1",
+      "exit": 0,
+      "duration_ms": 1024,
+      "stdout_file": "01.stdout"
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/clitask -run TestCompleteRequiresRedFirstDeclaration -count=1",
+      "exit": 0,
+      "duration_ms": 3135,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/cli -run TestReviewPassRequiresCriteriaReviewed -count=1",
+      "exit": 0,
+      "duration_ms": 3135,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/taskpipeline ./internal/clitask ./internal/cli -count=1",
+      "exit": 0,
+      "duration_ms": 120073,
+      "stdout_file": "04.stdout"
+    }
+  ]
+}

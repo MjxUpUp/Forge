@@ -1,0 +1,14 @@
+=== RUN   TestCompleteRequiresRedFirstDeclaration
+=== RUN   TestCompleteRequiresRedFirstDeclaration/行为类改动未登记先失败证明
+=== RUN   TestCompleteRequiresRedFirstDeclaration/已登记红判据
+=== RUN   TestCompleteRequiresRedFirstDeclaration/显式豁免留痕
+=== RUN   TestCompleteRequiresRedFirstDeclaration/纯文档改动不要求
+=== RUN   TestCompleteRequiresRedFirstDeclaration/空状态
+--- PASS: TestCompleteRequiresRedFirstDeclaration (0.00s)
+    --- PASS: TestCompleteRequiresRedFirstDeclaration/行为类改动未登记先失败证明 (0.00s)
+    --- PASS: TestCompleteRequiresRedFirstDeclaration/已登记红判据 (0.00s)
+    --- PASS: TestCompleteRequiresRedFirstDeclaration/显式豁免留痕 (0.00s)
+    --- PASS: TestCompleteRequiresRedFirstDeclaration/纯文档改动不要求 (0.00s)
+    --- PASS: TestCompleteRequiresRedFirstDeclaration/空状态 (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/clitask	2.237s

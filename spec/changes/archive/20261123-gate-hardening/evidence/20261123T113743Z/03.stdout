@@ -1,0 +1,5 @@
+=== RUN   TestReviewPassRequiresCriteriaReviewed
+✅ task feat/criteria-required: code-review-gate 已通过（ta[REDACTED] 门禁前置满足，基线 HEAD=2a21cc7）
+--- PASS: TestReviewPassRequiresCriteriaReviewed (0.58s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/cli	1.956s

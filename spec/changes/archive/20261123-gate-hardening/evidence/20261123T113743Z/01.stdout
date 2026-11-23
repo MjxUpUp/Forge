@@ -1,0 +1,14 @@
+=== RUN   TestRunSelectorNoMatchJudgedFail
+=== RUN   TestRunSelectorNoMatchJudgedFail/-run_无匹配
+=== RUN   TestRunSelectorNoMatchJudgedFail/-run=_无匹配
+=== RUN   TestRunSelectorNoMatchJudgedFail/有测试真跑过
+=== RUN   TestRunSelectorNoMatchJudgedFail/无_-run_选择器
+=== RUN   TestRunSelectorNoMatchJudgedFail/-run_匹配上但失败
+--- PASS: TestRunSelectorNoMatchJudgedFail (0.00s)
+    --- PASS: TestRunSelectorNoMatchJudgedFail/-run_无匹配 (0.00s)
+    --- PASS: TestRunSelectorNoMatchJudgedFail/-run=_无匹配 (0.00s)
+    --- PASS: TestRunSelectorNoMatchJudgedFail/有测试真跑过 (0.00s)
+    --- PASS: TestRunSelectorNoMatchJudgedFail/无_-run_选择器 (0.00s)
+    --- PASS: TestRunSelectorNoMatchJudgedFail/-run_匹配上但失败 (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/taskpipeline	0.037s
