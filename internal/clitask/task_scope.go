@@ -88,7 +88,7 @@ func collectScopedTasks(scope taskScope, warn io.Writer) ([]projectTasks, error)
 		if groups, ok := collectWorkspace(root, warn); ok {
 			return groups, nil
 		}
-		fmt.Fprintln(warn, `[forge] 当前项目不属于任何多仓 forge workspace，按当前项目列出`)
+		fmt.Fprintln(warn, `[forge] 当前项目不属于任何多仓 workspace（workspace 命令已随 core-only 移除），按当前项目列出`)
 	}
 	return collectRoots([]string{root}, warn), nil
 }

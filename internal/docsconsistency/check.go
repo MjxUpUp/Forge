@@ -98,9 +98,9 @@ func StaleBinaryHint() string {
 		v = fn()
 	}
 	if v == "" {
-		return "；若这些命令在新版 forge 已存在，可能是本地 forge 二进制过旧，先 forge update 再排查"
+		return "；若这些命令在新版 forge 已存在，可能是本地 forge 二进制过旧，先重装（npm i -g @agent_forge/forge；旧 forge update 命令已随 core-only 移除）再排查"
 	}
-	return fmt.Sprintf("；若这些命令在新版 forge 已存在，可能是本地 forge 版本过旧（当前 %s），先 forge update 再排查", v)
+	return fmt.Sprintf("；若这些命令在新版 forge 已存在，可能是本地 forge 版本过旧（当前 %s），先重装 forge 二进制（npm i -g @agent_forge/forge；旧 forge update 命令已随 core-only 移除）再排查", v)
 }
 
 // findSub 在 parent 的直接子命令里按 Name 找。cobra Commands() 不展开别名，

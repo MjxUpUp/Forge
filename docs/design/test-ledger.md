@@ -53,3 +53,19 @@ skips:
 `forge test probe --since <rev>` 只取该 rev 之后 diff 命中的非测试 Go 源文件，
 复用任务级抽样引擎的算子与判定，回答"这次改的那几行，测试抓得住吗"。文件
 来源由 git 回答，不由 agent 自报——这是它和任务内抽样的唯一区别。
+
+## 条件跳过不算「被跳过」
+
+第一版把「源码里有 `t.Skip*`」一律记成 skipped，结果是 51 条平台/环境闸门
+（`if runtime.GOOS != "windows" { t.Skip(...) }`、`if testing.Short()`、
+`exec.LookPath("git")`）全被标成「未审批的跳过」，把真信号埋在噪声里——
+和「137 条死命令」同一类错误。
+
+现在 `skipInfo` 用 AST 判断 Skip 出现的位置：
+
+- 出现在 `if` / `for` / `switch` / `select` 等控制结构体内 → **条件跳过**
+  （平台上照常跑，只在特定环境不发生），单列计数，不进 skipped、不进违规；
+- 出现在函数体顶层（无条件）→ **真跳过**，仍要理由与审批。
+
+条件按执行记录落 live / orphaned：它在别的机器上跑过，账本照样认。
+

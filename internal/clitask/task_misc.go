@@ -81,9 +81,9 @@ func runTaskStatus(cmd *cobra.Command, args []string) error {
 	// 错树守护的状态面（docs/design/task-tree-guard.md §4）：锚在别处时一行说清，免得
 	// 门禁 BLOCK 之后还得去翻 workspaces/<wtid>.json 才知道锚在哪。
 	if ts := taskpipeline.TaskTreeStatus(root, state.TaskRef); ts.State == taskpipeline.TreeOffTree {
-		fmt.Printf("Tree: off-tree（锚：%s——当前目录不是该任务的 worktree；cd 过去或 forge worktree use）\n", ts.AnchorPath)
+		fmt.Printf("Tree: off-tree（锚：%s——当前目录不是该任务的 worktree；cd 过去——worktree 命令已随 core-only 移除）\n", ts.AnchorPath)
 	} else if ts.State == taskpipeline.TreeDeadAnchor {
-		fmt.Printf("Tree: dead-anchor（锚：%s 已不存在——forge worktree janitor 可清理）\n", ts.AnchorPath)
+		fmt.Printf("Tree: dead-anchor（锚：%s 已不存在——worktree janitor 已随 core-only 移除，手工删掉该任务状态即可）\n", ts.AnchorPath)
 	}
 	fmt.Printf("Started: %s\n", state.StartedAt.Format("2006-01-02 15:04"))
 	fmt.Println(strings.Repeat("─", 40))

@@ -380,14 +380,14 @@ func TestEscapeCapped_PinsChecklogStrength(t *testing.T) {
 func TestDirective_ContainsRetroDoneInstruction(t *testing.T) {
 	nudged := BuildConclusion(`feat/ack-pin`, `s1`, facts(3, 1, 1, 1, 1, 0), ec(1, 3), fixedTime, nil)
 	d := nudged.Directive()
-	if !strings.Contains(d, `forge act retro-done --ref feat/ack-pin`) {
-		t.Errorf(`Directive 缺 retro-done 调用（含本任务 ref），got: %s`, d)
+	if !strings.Contains(d, `session-retrospective`) {
+		t.Errorf(`Directive 缺回顾入口，got: %s`, d)
 	}
-	if !strings.Contains(d, `--carrier <memory|skill|claudemd|code|hook|ci|none>`) {
+	if !strings.Contains(d, `memory|skill|claudemd|code|hook|ci|none`) {
 		t.Errorf(`Directive 缺载体枚举（与 Carriers 单一真相源一致），got: %s`, d)
 	}
-	if !strings.Contains(d, `nudge 留面板`) {
-		t.Errorf(`Directive 缺忘调用后果（错过的回顾可见），got: %s`, d)
+	if !strings.Contains(d, `没有 ack 命令`) || !strings.Contains(d, `留在面板`) {
+		t.Errorf(`Directive 须如实说明本版没有 ack 命令、nudge 会留在面板，got: %s`, d)
 	}
 	clean := BuildConclusion(`feat/clean`, `s1`, facts(5, 5, 1, 1, 1, 0), ec(3, 1), fixedTime, nil)
 	if clean.Directive() != `` {

@@ -8,6 +8,10 @@
 //   - Skip 分两件事：有没有写理由（源码里 t.Skip 的参数必须是非空字符串字面量），
 //     以及这条理由有没有被审批（spec/test-skips.yaml 里的清单）。两者都满足才算
 //     合法的跳过；只满足一半就进违规清单。
+//   - 只有无条件 Skip 才算“被跳过的测试”。写在 if 里的 Skip（平台/环境/短模式闸门）
+//     是条件跳过：测试平时照常跑，把它算成 skipped 会让账本满屏噪声——第一版就是
+//     这样，59 条“未审批”里有 50 多条其实是 if runtime.GOOS != "windows" 这类闸门。
+//     “信号里掺噪声”和“没有信号”一样糟。
 //   - 记录里存在、源码里已经没有的测试判 phantom——测试被删是允许的，但删除要
 //     留痕，而不是悄悄从账本里消失。
 package testledger
@@ -54,6 +58,9 @@ type Decl struct {
 	Line       int
 	HasSkip    bool
 	SkipReason string // 只认非空字符串字面量参数；变量/空串都算"没写理由"
+	// SkipGuarded 表示这条 t.Skip* 全部写在 if 条件里（环境闸门）。条件跳过的测试
+	// 平时照常跑，不是"被静默关掉的测试"，因此不计入 skipped、也不需要审批。
+	SkipGuarded bool
 }
 
 // Record 是一条执行记录（来自 go test -json 的 pass/fail/skip 事件）。
@@ -81,6 +88,7 @@ type Entry struct {
 	State        State     `json:"state"`
 	SkipReason   string    `json:"skip_reason,omitempty"`
 	SkipApproved bool      `json:"skip_approved,omitempty"`
+	GuardedSkip  bool      `json:"guarded_skip,omitempty"`
 	LastSeen     time.Time `json:"last_seen,omitempty"`
 }
 
@@ -143,14 +151,15 @@ func ScanDecls(root string) ([]Decl, error) {
 			if !ok || fn.Name == nil || !strings.HasPrefix(fn.Name.Name, "Test") {
 				continue
 			}
-			hasSkip, reason := skipInfo(fn.Body)
+			hasSkip, reason, guarded := skipInfo(fn.Body)
 			decls = append(decls, Decl{
-				Test:       fn.Name.Name,
-				Package:    pkg,
-				File:       rel,
-				Line:       fs2.Position(fn.Pos()).Line,
-				HasSkip:    hasSkip,
-				SkipReason: reason,
+				Test:        fn.Name.Name,
+				Package:     pkg,
+				File:        rel,
+				Line:        fs2.Position(fn.Pos()).Line,
+				HasSkip:     hasSkip,
+				SkipReason:  reason,
+				SkipGuarded: guarded,
 			})
 		}
 		return nil
@@ -167,38 +176,95 @@ func ScanDecls(root string) ([]Decl, error) {
 	return decls, nil
 }
 
-// skipInfo 判断函数体里有没有 t.Skip* 调用，以及第一参数是不是非空字符串字面量。
-func skipInfo(body *ast.BlockStmt) (bool, string) {
+// skipInfo 判断函数体里有几个 t.Skip* 调用：有没有、第一参数是不是非空字符串
+// 字面量，以及它们是否【全都】写在 if 条件里。
+//
+// “在 if 里”这一维是账本能说实话的关键：绝大多数 Skip 是环境闸门
+// （if runtime.GOOS != "windows"、if testing.Short()、if _, err := exec.LookPath("git"); err != nil），
+// 这些测试平时照常跑，不该被算成“被静默关掉的测试”。真正的静默删除是函数体里
+// 无条件的 t.Skip——那种才需要理由与审批。
+func skipInfo(body *ast.BlockStmt) (has bool, reason string, guarded bool) {
 	if body == nil {
-		return false, ""
+		return false, "", false
 	}
-	has, reason := false, ""
-	ast.Inspect(body, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		switch sel.Sel.Name {
-		case "Skip", "SkipNow", "Skipf":
-			has = true
-			if len(call.Args) == 0 {
-				return true
+	guarded = true
+	var walk func(n ast.Node, inIf bool)
+	walk = func(n ast.Node, inIf bool) {
+		switch x := n.(type) {
+		case nil:
+			return
+		case *ast.BlockStmt:
+			for _, s := range x.List {
+				walk(s, inIf)
 			}
-			lit, ok := call.Args[0].(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				return true
+		case *ast.IfStmt:
+			walk(x.Init, true)
+			walk(x.Cond, true)
+			walk(x.Body, true)
+			if x.Else != nil {
+				walk(x.Else, true)
 			}
-			if v, uerr := strconv.Unquote(lit.Value); uerr == nil && strings.TrimSpace(v) != "" {
-				reason = strings.TrimSpace(v)
+		case *ast.ForStmt:
+			walk(x.Body, inIf)
+		case *ast.RangeStmt:
+			walk(x.Body, inIf)
+		case *ast.SwitchStmt:
+			walk(x.Body, inIf)
+		case *ast.TypeSwitchStmt:
+			walk(x.Body, inIf)
+		case *ast.SelectStmt:
+			walk(x.Body, inIf)
+		case *ast.CaseClause:
+			for _, s := range x.Body {
+				walk(s, inIf)
+			}
+		case *ast.CommClause:
+			for _, s := range x.Body {
+				walk(s, inIf)
+			}
+		case *ast.LabeledStmt:
+			walk(x.Stmt, inIf)
+		case *ast.GoStmt:
+			walk(x.Call, inIf)
+		case *ast.DeferStmt:
+			walk(x.Call, inIf)
+		case *ast.ExprStmt:
+			walk(x.X, inIf)
+		case *ast.AssignStmt:
+			for _, e := range x.Lhs {
+				walk(e, inIf)
+			}
+			for _, e := range x.Rhs {
+				walk(e, inIf)
+			}
+		case *ast.ReturnStmt:
+			for _, e := range x.Results {
+				walk(e, inIf)
+			}
+		case *ast.CallExpr:
+			if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
+				switch sel.Sel.Name {
+				case "Skip", "SkipNow", "Skipf":
+					has = true
+					if !inIf {
+						guarded = false
+					}
+					if len(x.Args) > 0 {
+						if lit, ok := x.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+							if v, uerr := strconv.Unquote(lit.Value); uerr == nil && strings.TrimSpace(v) != "" {
+								reason = strings.TrimSpace(v)
+							}
+						}
+					}
+				}
+			}
+			for _, a := range x.Args {
+				walk(a, inIf)
 			}
 		}
-		return true
-	})
-	return has, reason
+	}
+	walk(body, false)
+	return has, reason, has && guarded
 }
 
 // ParseExecJSON 读 go test -json 的事件流，只保留带 Test 的 pass/fail/skip。
@@ -341,8 +407,9 @@ func Build(decls []Decl, recs []Record, opts Options) *Ledger {
 		if hasRec {
 			e.LastSeen = rec.At
 		}
+		e.GuardedSkip = d.HasSkip && d.SkipGuarded
 		switch {
-		case d.HasSkip:
+		case d.HasSkip && !d.SkipGuarded:
 			e.State = StateSkipped
 			e.SkipReason = d.SkipReason
 			if ap, ok := opts.Approvals[key]; ok && strings.TrimSpace(ap.ApprovedBy) != "" {

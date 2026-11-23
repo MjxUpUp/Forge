@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MjxUpUp/Forge/internal/criteria"
 	"github.com/MjxUpUp/Forge/internal/shellexec"
 	"github.com/MjxUpUp/Forge/internal/specroot"
 	"github.com/MjxUpUp/Forge/internal/util"
@@ -37,6 +38,10 @@ type Check struct {
 	DurationMS int64  `json:"duration_ms"`
 	TimedOut   bool   `json:"timed_out,omitempty"`
 	Skipped    bool   `json:"skipped,omitempty"`
+	// SelectorEmpty 表示命令退出 0、但 go test 的 -run 选择器一条测试都没匹配上：
+	// 退出码 0 证明的是"没有东西失败"，不是"被测行为跑过"。这种判据不能算通过，
+	// 但也不能伪造 exit 码——单独记一个字段，让证据里看得出是怎么失败的。
+	SelectorEmpty bool `json:"selector_empty,omitempty"`
 	// StdoutFile/StderrFile 是相对证据目录的文件名（空表示没有输出）。
 	StdoutFile string `json:"stdout_file,omitempty"`
 	StderrFile string `json:"stderr_file,omitempty"`
@@ -358,6 +363,12 @@ func runCheck(ctx context.Context, root, shell, evDir string, check Check, timeo
 	}
 	if check.WriteError != "" {
 		check.Exit = -1
+	}
+	// 退出 0 不等于"判据真的检验了东西"：go test 的 -run 选择器没匹配到任何测试时
+	// 只打印 "no tests to run" 然后退出 0。task 侧已经判负（B1），change 侧此前仍是
+	// 假绿——同一个洞在两个面上各修一次才算堵住。
+	if check.Exit == 0 && criteria.SelectorMatchedNothing(check.Command, stdout.buf.String()) {
+		check.SelectorEmpty = true
 	}
 	return check
 }
@@ -745,7 +756,7 @@ func runPlan(ctx context.Context, root, evDir string, plan []plannedCheck, timeo
 		}
 		check.Shell = shellName
 		check = runCheck(ctx, root, shell, evDir, check, timeout)
-		if check.Exit != 0 {
+		if check.Exit != 0 || check.SelectorEmpty {
 			passed = false
 		}
 		checks = append(checks, check)

@@ -212,7 +212,7 @@ func (f *File) Create(name string) error {
 func (f *File) AddRepo(name string, repo RepoRef) error {
 	w := f.Find(name)
 	if w == nil {
-		return fmt.Errorf("workspace %q not found (run `forge workspace create %s` first)", name, name)
+		return fmt.Errorf("workspace %q not found（workspace 命令已随 core-only 移除，手工写 workspace 配置）", name)
 	}
 	if repo.Key == `` {
 		return fmt.Errorf(`workspace: repo key must not be empty`)

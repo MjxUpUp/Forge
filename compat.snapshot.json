@@ -1125,10 +1125,6 @@
       "count": 2
     },
     {
-      "file": "internal/cliskills/skills_audit.go",
-      "count": 2
-    },
-    {
       "file": "internal/clitask/task_gate.go",
       "count": 1
     },

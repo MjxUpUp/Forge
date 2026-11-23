@@ -114,9 +114,9 @@ func verifyBundleForImport(root, bundlePath, digestHex string, out io.Writer, dr
 	case nodeid.SigVerified:
 		fmt.Fprintf(out, `签名验证通过（节点 %s）`+"\n", sig.NodeID)
 	case nodeid.SigMissing:
-		fmt.Fprintln(out, `提示：bundle 无签名 sidecar（个人档默认放行；forge trust require-signed on 后必须签名）`)
+		fmt.Fprintln(out, `提示：bundle 无签名 sidecar（个人档默认放行；信任策略要求签名时必须签名——trust 命令已随 core-only 移除，策略见 forge 配置）`)
 	case nodeid.SigUnknownSigner:
-		fmt.Fprintf(out, `⚠ 签名者 %s 不在 trust store——按未签名处理（forge trust add 登记后可验真）`+"\n", sig.NodeID)
+		fmt.Fprintf(out, `⚠ 签名者 %s 不在 trust store——按未签名处理（登记签名者的 trust 命令已随 core-only 移除）`+"\n", sig.NodeID)
 	case nodeid.SigInvalid:
 		return fmt.Errorf(`bundle 签名验证失败（内容被篡改或签名者与 trust store 公钥不符）——拒绝导入`)
 	case nodeid.SigRejected:

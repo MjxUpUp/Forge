@@ -143,18 +143,18 @@ func TestStaleBinaryHint(t *testing.T) {
 
 	RegisterVersion(func() string { return "v1.34.0" })
 	hint := StaleBinaryHint()
-	if !strings.Contains(hint, "v1.34.0") || !strings.Contains(hint, "forge update") {
-		t.Errorf("注册版本后 hint 应带版本号并指向 forge update, got %q", hint)
+	if !strings.Contains(hint, "v1.34.0") || !strings.Contains(hint, "@agent_forge/forge") {
+		t.Errorf("注册版本后 hint 应带版本号并指向 npm 重装, got %q", hint)
 	}
 
 	RegisterVersion(nil)
 	hint = StaleBinaryHint()
-	if !strings.Contains(hint, "forge update") {
-		t.Errorf("未注册版本时 hint 也应带 forge update 指引, got %q", hint)
+	if !strings.Contains(hint, "@agent_forge/forge") {
+		t.Errorf("未注册版本时 hint 也应带 npm 重装指引, got %q", hint)
 	}
 
 	RegisterVersion(func() string { return "" })
-	if hint := StaleBinaryHint(); !strings.Contains(hint, "forge update") {
+	if hint := StaleBinaryHint(); !strings.Contains(hint, "@agent_forge/forge") {
 		t.Errorf("空版本串时 hint 应降级为通用句, got %q", hint)
 	}
 }

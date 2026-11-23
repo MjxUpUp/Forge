@@ -516,6 +516,9 @@ func runChangeVerify(cmd *cobra.Command, args []string) error {
 		switch {
 		case c.Skipped:
 			fmt.Printf("  ⏭  [%d] %s — 未执行（前一条失败）\n", c.Index, firstLine(c.Command))
+		case c.SelectorEmpty:
+			failed++
+			fmt.Printf("  ❌ [%d] %s — 选择器未匹配任何测试（go test 退出 0，但 no tests to run）\n", c.Index, firstLine(c.Command))
 		case c.Exit == 0:
 			fmt.Printf("  ✅ [%d] %s — %s\n", c.Index, firstLine(c.Command), dur(c.DurationMS))
 		default:
@@ -926,6 +929,9 @@ func runChangeGate(cmd *cobra.Command, args []string) error {
 		switch {
 		case c.Skipped:
 			fmt.Printf("  ⏭  [%d] %s — 未执行（前一条失败）\n", c.Index, firstLine(c.Command))
+		case c.SelectorEmpty:
+			failed++
+			fmt.Printf("  ❌ [%d] %s — 选择器未匹配任何测试（go test 退出 0，但 no tests to run）\n", c.Index, firstLine(c.Command))
 		case c.Exit == 0:
 			fmt.Printf("  ✅ [%d] %s — %s\n", c.Index, firstLine(c.Command), dur(c.DurationMS))
 		default:

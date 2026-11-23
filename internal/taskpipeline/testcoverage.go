@@ -4,8 +4,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/MjxUpUp/Forge/internal/checklog"
 )
 
 // testCoverageDisableEnv 让项目可关闭 test-coverage 门控
@@ -83,76 +81,6 @@ var testCoverageWhitelist = []whitelistEntry{
 	{substr: "src-tauri/"},
 }
 
-// CheckNameTestCoverage 是 test-coverage 门控决策的 checklog 条目名，
-// 使 trace 能展示门禁裁定（而非仅各次 edit 的 WARN）。
-const CheckNameTestCoverage checklog.CheckName = "test-coverage-gate"
-
-// coverageEscapeActive 记录 bypass 审计条目，并在 test-coverage 门控被逃生（per-task
-// override 或全局 env）时返回 true——由 CheckTestCoverage 及其预计算列表变体共用，
-// 任何调用路径都绕不过审计（A4 + 方案5：逃生舱使用必须留痕）。审计理由见下方内联注释。
-func coverageEscapeActive(root string, state *TaskState) bool {
-	if !escapeDisabled(state, escapeTestCoverage, testCoverageDisableEnv) {
-		return false
-	}
-	// A4 + 方案5: audit the bypass (per-task override OR global env). The hatch is
-	// 是合理场景（仅文档仓库、生成代码、whitelist-only task），但其使用必须
-	// 留痕——否则 agent 会静默绕过 test-coverage 门控。UsedEscapeHatch → Strength
-	// cap Weak 让逃生有代价而非免费。
-	taskRef := ""
-	if state != nil {
-		taskRef = state.TaskRef
-	}
-	recordAudit(root, &checklog.Entry{
-		Check:   checklog.CheckEscapeHatch,
-		Passed:  true,
-		Checked: true,
-		Level:   checklog.LevelWarn, // 逃生舱使用是 warn 语义（bypass 已生效但须留痕），derive 只会给 pass
-		TaskRef: taskRef,
-		Detail:  "escape-hatch: test-coverage gate bypassed (per-task override or FORGE_TEST_COVERAGE=disable)",
-		Meta:    map[string]string{"escape.gate": "test-coverage", "escape.reason": checklog.EscapeReasonOverride, "escape.owner": state.TaskRef},
-	})
-	return true
-}
-
-// CheckTestCoverage computes the changed set itself and reports missing test coverage.
-//
-// CheckTestCoverage enforces CLAUDE.md rule 4 (测试伴随变更): every non-whitelisted
-// source file changed during the task must have a corresponding test file also
-// changed. 返回 (ok, missing, total)：未改源码 / 所有改动源码均在 whitelist /
-// 每个都有配对测试时 ok=true；total 是需配对测试的改动源码文件数
-// （covered = total-len(missing)），供覆盖率报告连续展示而非二元 ok。
-//
-// 导出是为了让完成事实采集（BuildTaskEvidence）能复用 task-verify 门禁算出的精确裁定，
-// 而非从 git diff 重新推导覆盖——后者在 task 改动于 task start 前已 commit 时
-// 低估覆盖（HeadCommit == HEAD → 空 diff → testing 维度看不见测试）。
-//
-// 优雅降级：非 git 仓库或空 diff → ok=true（不误报）。
-//
-// 本入口自行计算 changed 集。已经算过 taskChangedFiles 的调用方（executor 各 gate
-// 为 phase 推断/行为面提示算过一次）必须改用 checkTestCoverageChanged——
-// taskChangedFiles 起多个 git 子进程，不应每 gate 跑两遍（2026-08-29 审查轮：双算消除）。
-func CheckTestCoverage(root string, state *TaskState) (ok bool, missing []string, total int) {
-	if coverageEscapeActive(root, state) {
-		return true, nil, 0
-	}
-	return checkTestCoverageChanged(root, state, taskChangedFiles(root, state))
-}
-
-// checkTestCoverageChanged 是 CheckTestCoverage 的内部变体，接受【预计算】的改动文件
-// 列表（来自 taskChangedFiles）。行为与 CheckTestCoverage 完全一致——含逃生舱审计，
-// 传入 gitChanged 的 executor 调用点不会意外跳过审计。门控语义的完整注释见上方
-// CheckTestCoverage。
-func checkTestCoverageChanged(root string, state *TaskState, changed []string) (ok bool, missing []string, total int) {
-	if coverageEscapeActive(root, state) {
-		return true, nil, 0
-	}
-	if len(changed) == 0 {
-		return true, nil, 0
-	}
-	missing, total = coveragePairing(changed)
-	return len(missing) == 0, missing, total
-}
-
 // coveragePairing is the pure source↔test pairing pass shared by the gate path
 // (checkTestCoverageChanged, behind the escape early-out) and the disclosure
 // path (CoveragePairingForDisclosure, deliberately WITHOUT the escape
@@ -201,19 +129,6 @@ func CoveragePairingForDisclosure(root string, state *TaskState) []string {
 	missing, _ := coveragePairing(taskChangedFiles(root, state))
 	return missing
 }
-
-// testCoverageHardGateThreshold 是 task-complete 兜底硬阻断的最小「无配对测试的源文件数」。
-// ≥此阈值且零断言才阻断——小改（<3 文件）fudge factor 豁免（对齐业界 Sonar <20 行豁免精神，
-// 但用文件数代理行数以避免 git diff 行数计算 + 循环依赖）。eval 证据：feat/eval-core 0/19、
-// feat/m2 0/25 是典型 corrupt success（大改零覆盖）；fix/m2-review-fixes 0/2 是 13 行小修，
-// fudge factor 豁免合理。
-const testCoverageHardGateThreshold = 3
-
-// TestCoverageHardGateThreshold exports the task-complete backstop threshold so user-facing copy outside this package (test-nudge tier 3) derives from the same constant instead of a hand-copied number.
-//
-// TestCoverageHardGateThreshold 导出 task-complete 兜底阈值，供包外面向用户的文案
-// （test-nudge tier3）从同一常量取值，不再手抄数字。
-const TestCoverageHardGateThreshold = testCoverageHardGateThreshold
 
 // taskChangedFiles 返回 task 期间改动的文件集合。
 // 含 task 的 HeadCommit（task start 时记录）之后的已提交改动加工作树——

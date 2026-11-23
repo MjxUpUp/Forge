@@ -136,7 +136,7 @@ func TestCountDecisionEntries(t *testing.T) {
 
 func TestFormatSkillDecisionsAdvisory(t *testing.T) {
 	got := formatSkillDecisionsAdvisory([]string{"foo", "bar"})
-	for _, want := range []string{"foo", "bar", "decide --skill foo", "decide --skill bar", "辅助资源", "四元组", "理解 why"} {
+	for _, want := range []string{"foo", "bar", "SKILL-DECISIONS.md", "辅助资源", "四元组", "理解 why"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("advisory missing %q: %s", want, got)
 		}

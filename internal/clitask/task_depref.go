@@ -73,12 +73,12 @@ func validateDependsOnRefs(root, selfRef string, deps []string, stderr io.Writer
 	}
 	f, err := workspace.Load()
 	if err != nil {
-		fmt.Fprintf(stderr, "Warning: workspace 清单不可读（%v）——跨仓依赖成员资格未校验（fail-open 放行，forge workspace doctor 可复检）\n", err)
+		fmt.Fprintf(stderr, "Warning: workspace 清单不可读（%v）——跨仓依赖成员资格未校验（fail-open 放行）\n", err)
 		return nil
 	}
 	ownKey := ownRepoKey(root)
 	if bad := unknownDepKeys(f, ownKey, deps); len(bad) > 0 {
-		return fmt.Errorf("依赖的 key 前缀 %v 不是本 repo（key %s）所属任何 workspace 的成员——先 forge workspace add 把目标 repo 加入同一 workspace，或去掉 key 前缀改用本仓 ref", bad, ownKey)
+		return fmt.Errorf("依赖的 key 前缀 %v 不是本 repo（key %s）所属任何 workspace 的成员——把目标 repo 加进同一 workspace 清单（workspace 命令已随 core-only 移除，直接编辑清单文件），或去掉 key 前缀改用本仓 ref", bad, ownKey)
 	}
 	for _, d := range deps {
 		key, taskRef := taskpipeline.SplitDepRef(d)

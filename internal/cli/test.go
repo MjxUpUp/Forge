@@ -158,6 +158,15 @@ func renderTestLedger(w io.Writer, l *testledger.Ledger, records, bad int) {
 		}
 		fmt.Fprintln(w)
 	}
+	guarded := 0
+	for _, e := range l.Entries {
+		if e.GuardedSkip {
+			guarded++
+		}
+	}
+	if guarded > 0 {
+		fmt.Fprintf(w, "  条件跳过 %d（if 里的 t.Skip：环境/平台闸门，平时照常跑，不计入 skipped）\n", guarded)
+	}
 	if records == 0 {
 		fmt.Fprintln(w, "\n还没有执行记录——先在仓里跑 go test -json ./... 并把输出接进 forge test record；没有记录的测试一律算 orphaned。")
 	}

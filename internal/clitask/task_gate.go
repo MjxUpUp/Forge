@@ -257,7 +257,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 func registerConventionsDefaults(root string, state *taskpipeline.TaskState) ([]taskpipeline.AcceptanceCriterion, string) {
 	defaults, perr := taskpipeline.ConventionsDefaultAcceptance(root)
 	if perr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ conventions 档案读取失败（不兜底，零验收状态保持）：%v——修复：forge conventions init 重建档案\n", perr)
+		fmt.Fprintf(os.Stderr, "⚠ conventions 档案读取失败（不兜底，零验收状态保持）：%v——修复：按 conventions 模板手工重建档案（conventions 命令已随 core-only 移除）\n", perr)
 		return nil, "档案存在但读取失败（见上方 stderr——forge conventions init 重建）"
 	}
 	if len(defaults) == 0 {
@@ -399,7 +399,7 @@ func runTaskVerifyAcceptanceAt(root, explicitRef string, trustForeign bool) erro
 	// 操纵 LLM agent，而被注入的 agent 大可直接照拒绝文案的指引加上 flag——char device 检查是
 	// 区分人类 shell 与 agent 管道 stdin 的唯一判别器。
 	if state.AcceptanceForeign && !trustForeign {
-		fmt.Println("⚠ 本任务的验收命令来自外来源（task import / .forge migrate），未审阅前拒绝执行。命令清单：")
+		fmt.Println("⚠ 本任务的验收命令来自外来源（task import / 旧 .forge 数据迁移），未审阅前拒绝执行。命令清单：")
 		for i, c := range state.Acceptance {
 			fmt.Printf("  [%d] %s\n", i+1, c.Run)
 		}

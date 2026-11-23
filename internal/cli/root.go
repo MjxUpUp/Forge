@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MjxUpUp/Forge/internal/cliskills"
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
@@ -92,9 +91,6 @@ func Execute() {
 		// 读退出码的消费方（docs lint：2=硬失败）相对旧的 RunE 内 os.Exit(2) 零变化。
 		var hex *hardExitError
 		if errors.As(err, &hex) {
-			os.Exit(2)
-		}
-		if errors.Is(err, cliskills.ErrHardExit) {
 			os.Exit(2)
 		}
 		fmt.Fprintln(os.Stderr, err)

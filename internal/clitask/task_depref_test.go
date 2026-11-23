@@ -126,8 +126,8 @@ func TestValidateDependsOnRefs(t *testing.T) {
 		writeDepRefWorkspace(t, ownKey, `ee0000000005`)
 		var stderr bytes.Buffer
 		err := validateDependsOnRefs(root, `self`, []string{`stranger:t1`}, &stderr)
-		if err == nil || !strings.Contains(err.Error(), `forge workspace add`) {
-			t.Fatalf(`越界 key 应拒绝并提示 forge workspace add, got %v`, err)
+		if err == nil || !strings.Contains(err.Error(), `core-only`) {
+			t.Fatalf(`越界 key 应拒绝并提示 workspace 能力已移除, got %v`, err)
 		}
 	})
 	t.Run(`清单不可读 fail-open`, func(t *testing.T) {

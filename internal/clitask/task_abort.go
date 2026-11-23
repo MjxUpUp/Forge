@@ -238,7 +238,7 @@ func runTaskAbort(cmd *cobra.Command, args []string) error {
 	// 跨仓盲区（见上方扫描处的 KNOWN LIMITATION 注释）：仅当本 repo 属于多仓 workspace 时
 	// 提示一句——扫描本身仍只覆盖本仓。
 	if multiRepoMembership(root) {
-		fmt.Fprintf(os.Stderr, "Note: 跨仓依赖方（他仓 task 以 key:ref 依赖 %s）不在本次扫描内；若存在，其门禁会把本 ref 永久计 pending——需到对应 repo 摘掉依赖边（forge workspace doctor 可检跨仓环）\n", taskRef)
+		fmt.Fprintf(os.Stderr, "Note: 跨仓依赖方（他仓 task 以 key:ref 依赖 %s）不在本次扫描内；若存在，其门禁会把本 ref 永久计 pending——需到对应 repo 摘掉依赖边（跨仓环检测已随 core-only 移除）\n", taskRef)
 	}
 	fmt.Println("Code changes are untouched. Re-start with: forge task start --ref " + taskRef)
 	return nil

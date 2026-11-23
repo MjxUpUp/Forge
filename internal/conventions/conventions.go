@@ -470,7 +470,7 @@ func EnrichSummary(dataDir, rule string) (EnrichResult, error) {
 		return EnrichResult{}, fmt.Errorf("conventions: empty rule")
 	}
 	if !SummaryExists(dataDir) {
-		return EnrichResult{}, fmt.Errorf("conventions: no summary.md — run `forge conventions init` first")
+		return EnrichResult{}, fmt.Errorf("conventions: no summary.md — conventions 命令已随 core-only 移除，请按模板手工补齐档案")
 	}
 	summary := LoadSummary(dataDir)
 	ruleLine := "- " + rule

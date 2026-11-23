@@ -35,7 +35,7 @@ const (
 // （记教训，防同类拦截复发），而不是只修眼前实例；门禁的终极 KPI 是让自己
 // 失业（discipline-first-gates 原则）。
 func GateBlocked(format string, args ...any) error {
-	return fmt.Errorf(blockedPrefix+format+"\n还债：修复后以 forge skills decide --outcome reject --diagnosis <根因> 记教训，防同类拦截复发（拦截喂纪律层，门禁才越来越少拦）", args...)
+	return fmt.Errorf(blockedPrefix+format+"\n还债：修复后把根因与教训记进纪律层（AGENTS.md 不变量或所在技能的 SKILL-DECISIONS.md；forge skills 命令已随 core-only 移除），防同类拦截复发（拦截喂纪律层，门禁才越来越少拦）", args...)
 }
 
 // GateAdvisory formats a soft, non-blocking gate signal.

@@ -163,7 +163,7 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		RepoHasGoTestFiles: goTestFilesPtr(root),
 		Repro: []string{
 			fmt.Sprintf("forge task verify-acceptance --ref %s", state.TaskRef),
-			fmt.Sprintf("forge trace %s", state.TaskRef),
+			fmt.Sprintf("forge task status --ref %s", state.TaskRef),
 		},
 	}
 	for _, item := range state.Checklist {

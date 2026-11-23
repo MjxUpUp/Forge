@@ -55,7 +55,7 @@ func LeaseStatus(s *TaskState, nodeID string, now time.Time) LeaseState {
 	expires := s.Lease.ExpiresAt()
 	return LeaseState{
 		ForeignActive: true,
-		Message: fmt.Sprintf(`任务 %s 当前由节点 %s 持有租约（fencing %d，%s 前有效）——若是你的另一台机器可忽略；若非，先 forge project sync pull 对齐状态再动手`,
+		Message: fmt.Sprintf(`任务 %s 当前由节点 %s 持有租约（fencing %d，%s 前有效）——若是你的另一台机器可忽略；若非，先确认那台机器是否已经做完（跨节点同步命令已随 core-only 移除，只能人工对齐）`,
 			s.TaskRef, s.Lease.HolderNode, s.Lease.Fencing, expires.Format(`15:04`)),
 	}
 }

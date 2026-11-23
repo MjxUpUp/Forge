@@ -867,7 +867,7 @@ func runReviewLLM(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Printf("✅ %d 条判分已留档 %s\n", len(entries), dst)
-	fmt.Printf("→ 算 κ（地板 0.6，不达标降级 ADVISORY）：forge eval judge-audit --scores %s\n", dst)
+	fmt.Printf("→ 留档完成。κ 计算命令（旧 eval judge-audit）已随 core-only 移除，本文件供人工对照评分\n")
 	return nil
 }
 

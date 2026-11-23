@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/MjxUpUp/Forge/internal/forgedata"
 )
 
 // TestCreateAddFindRemove covers the CRUD spine: create → add → find → workpaces-for → remove, including the duplicate-name refusal and the same-key upsert (add twice = one member, refreshed path).
@@ -256,101 +254,5 @@ func TestJSONShape(t *testing.T) {
 	w := f.Find(`fleet`)
 	if w == nil || len(w.Repos) != 1 || w.Repos[0].Key != `k1` {
 		t.Fatalf("磁盘形态应能读回, got %+v", f)
-	}
-}
-
-// TestDoctor exercises every drift class against a fake live registry (non-git temp dirs → PathKey identity, matching registryKeys' fallback).
-//
-// TestDoctor 用假注册表（非 git 临时目录 → PathKey 身份，对应 registryKeys
-// 的回落）覆盖全部 drift 类别。
-func TestDoctor(t *testing.T) {
-	liveA := t.TempDir() // 注册表里的活路径
-	liveB := t.TempDir()
-	staleCache := t.TempDir() // 仍存在但已非 keyB 现路径的旧缓存
-	keyA := forgedata.PathKey(liveA)
-	keyB := forgedata.PathKey(liveB)
-
-	f := &File{}
-	for _, name := range []string{`fleet`, `overlap`, `empty`} {
-		if err := f.Create(name); err != nil {
-			t.Fatal(err)
-		}
-	}
-	add := func(ws string, r RepoRef) {
-		if err := f.AddRepo(ws, r); err != nil {
-			t.Fatal(err)
-		}
-	}
-	add(`fleet`, RepoRef{Key: keyA, Path: liveA})          // 健康成员
-	add(`fleet`, RepoRef{Key: `ghost-key`, Path: `/gone`}) // 不在注册表
-	add(`overlap`, RepoRef{Key: keyA, Path: liveA})        // 同 key 第二 workspace
-	add(`overlap`, RepoRef{Key: keyB, Path: staleCache})   // 缓存路径与现路径不符（旧路径仍存活）
-
-	findings := f.Doctor([]string{liveA, liveB})
-	byKind := map[string][]Finding{}
-	for _, fd := range findings {
-		byKind[fd.Kind] = append(byKind[fd.Kind], fd)
-	}
-
-	if got := byKind[DriftNotRegistered]; len(got) != 1 || got[0].Key != `ghost-key` {
-		t.Errorf("not-registered = %+v, want 1 条 ghost-key", got)
-	}
-	if got := byKind[DriftMultiWorkspace]; len(got) != 1 || got[0].Key != keyA {
-		t.Errorf("multi-workspace = %+v, want 1 条 keyA", got)
-	}
-	if got := byKind[DriftEmpty]; len(got) != 1 || got[0].Workspace != `empty` {
-		t.Errorf("empty = %+v, want 1 条 empty workspace", got)
-	}
-	// /gone 挂在未注册成员上：not-registered 已报，不应再叠加 path-missing
-	// （key 解析不出时路径比对无意义）。
-	if got := byKind[DriftPathMissing]; len(got) != 0 {
-		t.Errorf("path-missing = %+v, want 0（未注册成员不再叠加路径检查）", got)
-	}
-	if got := byKind[DriftPathMismatch]; len(got) != 1 || got[0].Key != keyB || got[0].RegistryPath != liveB {
-		t.Errorf("path-mismatch = %+v, want 1 条 keyB（registry 现路径 liveB）", got)
-	}
-}
-
-// TestDoctor_MissingCachedPath: the cached display path died on disk while the key still resolves in the registry → path-missing with the current path attached for the fix hint.
-//
-// TestDoctor_MissingCachedPath：缓存展示路径在磁盘上消失但 key 仍能在注册表
-// 解析 → path-missing，并附上现路径供修复提示。
-func TestDoctor_MissingCachedPath(t *testing.T) {
-	live := t.TempDir()
-	dead := filepath.Join(t.TempDir(), `deleted`)
-	key := forgedata.PathKey(live)
-
-	f := &File{}
-	if err := f.Create(`fleet`); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.AddRepo(`fleet`, RepoRef{Key: key, Path: dead}); err != nil {
-		t.Fatal(err)
-	}
-	findings := f.Doctor([]string{live})
-	if len(findings) != 1 || findings[0].Kind != DriftPathMissing {
-		t.Fatalf("应只报 1 条 path-missing, got %+v", findings)
-	}
-	if findings[0].RegistryPath != live {
-		t.Errorf("path-missing 应带 registry 现路径 %q, got %q", live, findings[0].RegistryPath)
-	}
-}
-
-// TestDoctor_Healthy: a manifest whose members all resolve cleanly reports nothing (doctor must stay silent on health — noise trains users to ignore it).
-//
-// TestDoctor_Healthy：成员全部健康解析的清单零报告（doctor 必须在健康时
-// 静默——噪音会训练用户无视它）。
-func TestDoctor_Healthy(t *testing.T) {
-	live := t.TempDir()
-	key := forgedata.PathKey(live)
-	f := &File{}
-	if err := f.Create(`fleet`); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.AddRepo(`fleet`, RepoRef{Key: key, Path: live}); err != nil {
-		t.Fatal(err)
-	}
-	if got := f.Doctor([]string{live}); len(got) != 0 {
-		t.Errorf("健康清单应零 finding, got %+v", got)
 	}
 }

@@ -467,7 +467,7 @@ func TestRecordAudit_FailureWarnsOnStderr(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stderr = w
-	recordAudit(root, &checklog.Entry{Check: CheckNameTestCoverage, Passed: true, Checked: true})
+	recordAudit(root, &checklog.Entry{Check: checklog.CheckEscapeHatch, Passed: true, Checked: true})
 	w.Close()
 	os.Stderr = old
 	out, err := io.ReadAll(r)

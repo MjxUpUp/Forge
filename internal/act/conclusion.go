@@ -238,6 +238,6 @@ func (c Conclusion) Directive() string {
 	//（canonical skill 按 §13 零反向依赖，只载环境中性原则，见其 5.5 步）。载体
 	// 枚举从 Carriers 单一真相源派生，不做第三份手抄镜像。
 	return "→ session-retrospective: " + reason +
-		"。回顾根因并按载体决策树沉淀（防再犯），完成后 `forge act retro-done --ref " + c.TaskRef +
-		" --carrier <" + strings.Join(Carriers, "|") + "> [--lesson <教训>]` 落 ack（否则 nudge 留面板）。`forge act show` 看结构化结论。"
+		"。回顾根因并按载体决策树沉淀（防再犯；载体候选 " + strings.Join(Carriers, "|") +
+		"）——本版 forge 没有 ack 命令，这条 nudge 会一直留在面板，直到证据变强。"
 }

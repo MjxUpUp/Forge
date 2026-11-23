@@ -166,7 +166,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			fmt.Println(`  ⚠ 系统性盲区：过半完成声明缺 deterministic 证据——project 级该查验证为何没真跑`)
 		}
 		if hs.RedFirstTrials > 0 {
-			fmt.Printf(`  先失败证明: %d/%d 已转绿（forge health 看全部）`+"\n", hs.RedFirstClosed, hs.RedFirstTrials)
+			fmt.Printf(`  先失败证明: %d/%d 已转绿（完整分布见 forge status --json）`+"\n", hs.RedFirstClosed, hs.RedFirstTrials)
 		}
 	}
 

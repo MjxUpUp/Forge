@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/MjxUpUp/Forge/internal/checklog"
+	"github.com/MjxUpUp/Forge/internal/criteria"
 	"github.com/MjxUpUp/Forge/internal/tasktypes"
 )
 
@@ -301,10 +302,9 @@ func judgeAcceptance(passed bool, output, expected string) bool {
 // 这种情况 go 退出 0 并打印 "[no tests to run]"——只看退出码的判据会把
 // 「测试被改名/删除/换了包」封印成通过（B1）。
 func RunSelectorMatchedNothing(run, output string) bool {
-	if !strings.Contains(run, "-run") {
-		return false
-	}
-	return strings.Contains(output, "no tests to run")
+	// 判定本体在 internal/criteria：change verify 也用同一份，避免两侧各写一套
+	// 后一边修好、另一边继续把空跑当通过。
+	return criteria.SelectorMatchedNothing(run, output)
 }
 
 // VerifyAcceptanceWithVerdicts actually runs each Run command of state's

@@ -227,13 +227,10 @@ func gitShowPath(root, base, path string) string {
 // formatSkillDecisionsAdvisory 生成 advisory 提醒（辅助资源改动，不阻断）。
 // 用单引号包裹命令名，避免 Windows Edit 双引号腐蚀坑（见 windows-input-quote-corruption）。
 func formatSkillDecisionsAdvisory(skills []string) string {
-	cmds := make([]string, len(skills))
-	for i, s := range skills {
-		cmds[i] = "decide --skill " + s
-	}
 	return fmt.Sprintf(
 		"变更涉及 skill %s 的辅助资源（scripts/references/cases）——若为非平凡优化，"+
-			"用 'forge skills %s' 记录决策（诊断/修订/证据/结果四元组，让下一轮 agent "+
-			"理解 why）。trivial 改动（typo/格式）可忽略",
-		strings.Join(skills, ", "), strings.Join(cmds, "; forge skills "))
+			"在技能目录的决策档案（SKILL-DECISIONS.md）里补一条：诊断/修订/证据/结果四元组，"+
+			"让下一轮 agent 理解 why（forge skills 命令已随 core-only 移除，直接写文件）。"+
+			"trivial 改动（typo/格式）可忽略",
+		strings.Join(skills, ", "))
 }
