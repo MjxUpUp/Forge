@@ -1,0 +1,4 @@
+=== RUN   TestNoDeadCommandHints
+--- PASS: TestNoDeadCommandHints (0.20s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/cli	1.813s

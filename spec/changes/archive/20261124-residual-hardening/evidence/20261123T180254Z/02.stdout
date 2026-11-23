@@ -1,0 +1,4 @@
+=== RUN   TestSkipClassificationEdgeCases
+--- PASS: TestSkipClassificationEdgeCases (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/testledger	0.028s

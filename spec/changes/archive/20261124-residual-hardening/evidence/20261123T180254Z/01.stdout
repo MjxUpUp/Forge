@@ -1,0 +1,20 @@
+=== RUN   TestSelectorEmptySignals
+=== RUN   TestSelectorEmptySignals/no_tests_to_run
+=== RUN   TestSelectorEmptySignals/no_test_files
+=== RUN   TestSelectorEmptySignals/verbose_without_any_RUN_line
+=== RUN   TestSelectorEmptySignals/verbose_with_RUN_line
+=== RUN   TestSelectorEmptySignals/cached_has_no_RUN_but_is_a_real_pass
+=== RUN   TestSelectorEmptySignals/no_-run_selector:_not_our_business
+=== RUN   TestSelectorEmptySignals/non_go-test_tool_with_-run_flag
+=== RUN   TestSelectorEmptySignals/failing_test_is_exit_code's_business
+--- PASS: TestSelectorEmptySignals (0.00s)
+    --- PASS: TestSelectorEmptySignals/no_tests_to_run (0.00s)
+    --- PASS: TestSelectorEmptySignals/no_test_files (0.00s)
+    --- PASS: TestSelectorEmptySignals/verbose_without_any_RUN_line (0.00s)
+    --- PASS: TestSelectorEmptySignals/verbose_with_RUN_line (0.00s)
+    --- PASS: TestSelectorEmptySignals/cached_has_no_RUN_but_is_a_real_pass (0.00s)
+    --- PASS: TestSelectorEmptySignals/no_-run_selector:_not_our_business (0.00s)
+    --- PASS: TestSelectorEmptySignals/non_go-test_tool_with_-run_flag (0.00s)
+    --- PASS: TestSelectorEmptySignals/failing_test_is_exit_code's_business (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/criteria	0.022s

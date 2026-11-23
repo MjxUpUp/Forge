@@ -1,0 +1,4 @@
+=== RUN   TestSkillsContentDirs
+--- PASS: TestSkillsContentDirs (0.00s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/compat	0.029s
