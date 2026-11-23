@@ -1,0 +1,45 @@
+{
+  "change": "test-ledger",
+  "started_at": "2026-11-23T12:53:59Z",
+  "finished_at": "2026-11-23T12:55:55Z",
+  "passed": true,
+  "sealed": true,
+  "head": "61788e028fcfc48b1fdaa250f5abaeeef26a8fd5",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "80deeea800a7d55e44c7a12fcc02c48c4981eb5134f98dcfe312beb381a235a8",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go test -v ./internal/testledger -run TestClassifyFourStates -count=1",
+      "exit": 0,
+      "duration_ms": 1089,
+      "stdout_file": "01.stdout"
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test -v ./internal/testledger -run TestLedgerViolations -count=1",
+      "exit": 0,
+      "duration_ms": 1020,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test -v ./internal/mutprobe -run TestChangedGoSourcesSince -count=1",
+      "exit": 0,
+      "duration_ms": 1866,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/testledger ./internal/mutprobe ./internal/impact ./internal/cli -count=1",
+      "exit": 0,
+      "duration_ms": 111963,
+      "stdout_file": "04.stdout"
+    }
+  ]
+}

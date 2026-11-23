@@ -1,0 +1,4 @@
+=== RUN   TestChangedGoSourcesSince
+--- PASS: TestChangedGoSourcesSince (0.48s)
+PASS
+ok  	github.com/MjxUpUp/Forge/internal/mutprobe	0.540s
