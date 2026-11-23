@@ -35,7 +35,9 @@ const (
 
 var (
 	protoLine = regexp.MustCompile(`^<!-- forge:proto version=(\S+) sha=([0-9a-f]+) -->$`)
-	forgeSpan = regexp.MustCompile("forge ([^`\\n]+)")
+	// span 在中文/ASCII 标点处截断：散文里一条命令后面常紧跟逗号再跟下一句，
+	// 读到行尾会把两句粘成一条假路径。
+	forgeSpan = regexp.MustCompile("forge ([^`\\n，。；、：！？（）]+)")
 	cmdToken  = regexp.MustCompile("^[a-zA-Z][a-zA-Z0-9-]*$")
 	flagToken = regexp.MustCompile("^--([a-z][a-z0-9-]*)$")
 )
@@ -122,6 +124,18 @@ func RenderAppendix(cmds []Command) (string, error) {
 	return strings.TrimRight(b.String(), "\n"), nil
 }
 
+// trimTrailingPunct 去掉 token 末尾不属于命令/flag 的字符（中文标点、括号、句号等）。
+// 只剥尾部：路径段与 flag 名都是 ASCII 小写字母/数字/连字符，尾部的别的东西一定是
+// 散文标点而不是命令的一部分。
+func trimTrailingPunct(tok string) string {
+	return strings.TrimRightFunc(tok, func(r rune) bool {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return false
+		}
+		return r != '-' && r != '_'
+	})
+}
+
 // Check 校验散文对命令树的引用，返回问题清单（空 = 无漂移）。
 //
 // 两类问题：
@@ -130,6 +144,12 @@ func RenderAppendix(cmds []Command) (string, error) {
 //
 // flag 只做**全局**存在性检查，不追究它挂在哪条命令上——散文里一处 flag 常被多种
 // 入口共用，追究归属会造出一堆误报，而误报会让这条检查失去信誉。
+//
+// 覆盖边界（要如实说）：只抓「路径从头就没对上」的引用，即整条命令被删/改名
+// （forge hook … 这类）。已知父命令、只改了子命令名的（forge task gaet → task gate）
+// 会退化成「路径停在父命令、后面当参数」，**不报**——因为参数是位置的、无从与
+// 子命令区分，硬判会造出一堆把 <id>/<title> 当幻影的误报。这条检查不做的事，
+// 靠 TestAnnotationsMatchTree 与 review 兜。
 func Check(cmds []Command, prose string) []string {
 	byPath := make(map[string]Command, len(cmds))
 	for _, c := range cmds {
@@ -146,7 +166,15 @@ func Check(cmds []Command, prose string) []string {
 	seen := map[string]bool{}
 	for _, m := range forgeSpan.FindAllStringSubmatch(prose, -1) {
 		span := strings.TrimSpace(m[1])
-		toks := strings.Fields(span)
+		// 中文标点常紧贴命令（「跑 forge change agents，然后…」）。先剥掉 token 尾部的
+		// 非命令字符，否则一个逗号就能造出一条幻影命令——误报会让检查失去信誉，而失去
+		// 信誉的检查等于没有。
+		var toks []string
+		for _, t := range strings.Fields(span) {
+			if t = trimTrailingPunct(t); t != "" {
+				toks = append(toks, t)
+			}
+		}
 		// 首个 token 不是 ASCII 命令名，说明这是散文里提到 forge（如「由 forge 维护」），
 		// 不是命令引用——不追究，否则整段中文都会被当成幻影命令。
 		if len(toks) == 0 || !cmdToken.MatchString(toks[0]) {

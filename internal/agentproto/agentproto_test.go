@@ -106,3 +106,30 @@ func TestStampNormalizesVersion(t *testing.T) {
 		t.Fatal("归一后的版本与短版本不是同一个块头——幂等断裂")
 	}
 }
+
+// 中文标点紧贴命令是散文的常态；剥不掉尾部标点就会造出幻影命令假警报。
+func TestCheckIgnoresTrailingPunctuation(t *testing.T) {
+	cmds := []agentproto.Command{{Path: "change"}, {Path: "change agents"}, {Path: "change phase"}}
+	prose := "先跑 forge change agents，再跑 forge change phase。"
+	if issues := agentproto.Check(cmds, prose); len(issues) != 0 {
+		t.Fatalf("标点被当成命令的一部分：%v", issues)
+	}
+}
+
+// 真幻影仍必须被抓住——上一修的是误报，不是把检查关掉。
+func TestCheckStillCatchesPhantomCommand(t *testing.T) {
+	cmds := []agentproto.Command{{Path: "change"}, {Path: "change agents"}}
+	// 整条命令被删（forge hook … 是 forge 1.88 删掉的面）必须报出来。
+	if issues := agentproto.Check(cmds, "先跑 forge hook install，再继续"); len(issues) == 0 {
+		t.Fatal("已删命令没有被抓住")
+	}
+}
+
+// 已知边界：父命令还在、只改了子命令名的引用不报（参数与子命令不可区分）。
+// 这个测试是边界声明，不是期望——它红了说明有人把检查做宽了，需要同时说明误报怎么控。
+func TestCheckKnownGapSubcommandRename(t *testing.T) {
+	cmds := []agentproto.Command{{Path: "task"}, {Path: "task gate"}}
+	if issues := agentproto.Check(cmds, "跑 forge task gaet 试试"); len(issues) != 0 {
+		t.Fatalf("边界变了：现在是 %v", issues)
+	}
+}
