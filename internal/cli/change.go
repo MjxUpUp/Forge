@@ -251,17 +251,23 @@ func runChangeAgentsCheck(root string, opts change.AgentsOptions) error {
 		return err
 	}
 	got, ok := change.ReadAgentsBlock(root)
-	switch {
-	case !ok:
+	if !ok {
 		issues = append(issues, "AGENTS.md 里没有 forge 托管块——跑 `forge change agents` 写入")
-	case got != want:
+	} else {
 		gotV, gotSHA, gotOK := agentproto.ParseProto(got)
-		wantV, wantSHA, _ := agentproto.ParseProto(want)
-		if !gotOK {
+		wantV, wantSHA, wantOK := agentproto.ParseProto(want)
+		switch {
+		case !gotOK:
 			issues = append(issues, "托管块没有块头指纹（旧版 forge 写入）——跑 `forge change agents` 重新同步")
-		} else {
-			issues = append(issues, fmt.Sprintf("块已陈旧：AGENTS.md 记录 version=%s sha=%s，当前二进制应写 version=%s sha=%s——跑 `forge change agents` 同步",
-				gotV, gotSHA, wantV, wantSHA))
+		case !wantOK:
+			issues = append(issues, "当前二进制生成的块头解析失败（版本串含空格？）——这是 forge 自身的 bug，请报告")
+		case gotSHA != wantSHA:
+			// 只比正文指纹：sha 覆盖散文+附录，版本号不在其中。版本变了而内容没变
+			// 不算漂移——否则每次升级二进制都报一次假警，检查就会被人忽略。
+			issues = append(issues, fmt.Sprintf("块内容已陈旧：AGENTS.md 正文指纹 sha=%s，当前二进制应写 sha=%s——跑 `forge change agents` 同步",
+				gotSHA, wantSHA))
+		case gotV != wantV:
+			fmt.Printf("  (版本不同：块记录 %s，当前二进制 %s——内容一致，不算漂移)\n", gotV, wantV)
 		}
 	}
 

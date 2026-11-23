@@ -50,7 +50,12 @@ func SHA(body string) string {
 //
 // 幂等：正文里已有的 proto 行先摘掉再重算，故同一正文 + 同一版本永远得到同一结果。
 func Stamp(body, version string) string {
-	if version == "" {
+	// 版本号必须是单个 token：proto 行是 `version=(\S+) sha=…` 的一条可解析记录，
+	// 而 cli 注入的版本串带空格与括号（如 `v3.0.1-1-gabc (commit: …, built: …)`）。
+	// 不归一化的话块头永远解析不回来，--check 会把「格式不对」误报成「块陈旧」。
+	if f := strings.Fields(version); len(f) > 0 {
+		version = f[0]
+	} else {
 		version = "dev"
 	}
 	lines := strings.Split(body, "\n")

@@ -88,3 +88,21 @@ func TestTemplateHasNoDeadCommand(t *testing.T) {
 		t.Fatalf("协议散文引用了不存在的命令/flag（%d 处）：\n  %s", len(issues), strings.Join(issues, "\n  "))
 	}
 }
+
+// 版本串来自 ldflags，真实形态带空格与括号；块头必须仍是可解析的单 token。
+func TestStampNormalizesVersion(t *testing.T) {
+	body := agentproto.Stamp("## 命令面（生成）", "v3.0.1-1-gabc123 (commit: deadbeef, built: 2026-11-23T10:39:17Z)")
+	v, sha, ok := agentproto.ParseProto(body)
+	if !ok {
+		t.Fatalf("块头解析不回来：%q", body[:80])
+	}
+	if v != "v3.0.1-1-gabc123" {
+		t.Fatalf("版本没有归一成单 token：%q", v)
+	}
+	if len(sha) != 12 {
+		t.Fatalf("sha 长度不对：%q", sha)
+	}
+	if got := agentproto.Stamp(body, "v3.0.1-1-gabc123"); got != body {
+		t.Fatal("归一后的版本与短版本不是同一个块头——幂等断裂")
+	}
+}
