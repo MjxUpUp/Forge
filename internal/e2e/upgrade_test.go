@@ -330,7 +330,8 @@ func passGatesUpToReview(t *testing.T, dir, ref string) {
 			t.Fatalf("forge task gate %s failed: %v\noutput: %s", g, err, out)
 		}
 	}
-	if out, err := forgeErr(t, dir, "review", "pass"); err != nil {
+	// B3 起 review pass 必须声明核对判据条数；e2e 不真做评审，如实认领 0 条。
+	if out, err := forgeErr(t, dir, "review", "pass", "--criteria-reviewed", "0"); err != nil {
 		t.Fatalf("forge review pass failed: %v\noutput: %s", err, out)
 	}
 }

@@ -51,6 +51,7 @@ func init() {
 	// complete 据此核对「先失败过、现在通过」——不猜 git 顺序也能核对先后。
 	taskStartCmd.Flags().StringArray("accept-red", nil, `先失败证明（可重复 --accept-red）：实现前应当失败的判据，格式 "run" 或 "run :: 说明"。开工时实跑一次并把退出码记进任务状态；task complete 要求它开工时确实失败、且同一 run 的 --accept 判据现在通过`)
 	taskStartCmd.Flags().Bool("allow-green", false, `允许 --accept-red 判据在开工时已经通过（回归修复等场景）；会记进任务状态，complete 不再要求红记录`)
+	taskStartCmd.Flags().String("red-first-waived", "", `行为类改动不做先失败证明的显式豁免理由（B2）：写进任务状态供评审查看。空 = 未豁免，task complete 要求行为类任务登记 --accept-red`)
 	taskStartCmd.Flags().String("agent", "", `实现者身份（子 agent id）。记录进任务状态，供 review pass 校验「评审者 ≠ 实现者」；不传则交付单披露「未记录实现者」`)
 	taskStartCmd.Flags().Bool("allow-empty-criteria", false, `允许带 --change 启动但零验收判据（留痕例外；默认拒绝——判据要写在实现之前）`)
 	// held-out 套件（SpecBench 双套件思想）：保留集不进 TaskState（task status 不展示），
@@ -776,6 +777,9 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	allowEmptyCriteria, _ := cmd.Flags().GetBool("allow-empty-criteria")
 	if err := requireCriteriaForChange(changeID, state.Acceptance, allowEmptyCriteria, state); err != nil {
 		return err
+	}
+	if waived, _ := cmd.Flags().GetString("red-first-waived"); strings.TrimSpace(waived) != "" {
+		state.RedFirstWaived = strings.TrimSpace(waived)
 	}
 
 	// 先红后绿（red-first-evidence F2）：--accept-red 的每条命令在开工时实跑一次，

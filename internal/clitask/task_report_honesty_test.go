@@ -156,3 +156,25 @@ func TestBuildTaskReport_PinnedChangeBeatsSpecApproval(t *testing.T) {
 		t.Fatalf("pinned 时应取代 spec 审批行：%q", out)
 	}
 }
+
+// TestBuildTaskReport_WaiverDisclosed：--red-first-waived 的豁免理由必须出现在交付单里。
+// 豁免不是「未登记」——若两者渲染成同一句话，显式豁免就退化成静默跳过（B2 的可审性）。
+func TestBuildTaskReport_WaiverDisclosed(t *testing.T) {
+	dir := t.TempDir()
+	state := &taskpipeline.TaskState{
+		TaskRef:        "feat/demo",
+		Acceptance:     []taskpipeline.AcceptanceCriterion{{Run: "go version", Expected: "go version", Passed: true}},
+		RedFirstWaived: "夹具：手工验收，没有可失败的红判据",
+	}
+	rep, err := buildTaskReport(dir, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := renderTaskReport(rep)
+	if !strings.Contains(out, "豁免登记（理由：夹具：手工验收，没有可失败的红判据）") {
+		t.Fatalf("交付单没有披露豁免理由：%q", out)
+	}
+	if strings.Contains(out, "未登记（判据开工时没失败过") {
+		t.Fatalf("豁免被渲染成未登记，评审看不出这是显式豁免：%q", out)
+	}
+}

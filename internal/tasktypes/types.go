@@ -565,6 +565,13 @@ type TaskState struct {
 	// AllowGreen marks an explicit --allow-green waiver (a red claim that already
 	// passed at start, e.g. a regression fix that is already covered).
 	AllowGreen bool `json:"allow_green,omitempty"`
+	// RedFirstWaived 记下「行为类改动但显式不做先失败证明」的理由（task start
+	// --red-first-waived "<原因>"）。空 = 未豁免：task complete 要求行为类任务必须
+	// 有红判据。豁免必须带理由——无理由的豁免等于把门禁关掉。
+	//
+	// RedFirstWaived records an explicit, reasoned waiver of the red-first
+	// declaration requirement for behavior-changing tasks.
+	RedFirstWaived string `json:"red_first_waived,omitempty"`
 	// AllowEmptyCriteria 记下「带 --change 启动但零判据」的显式例外（F1 留痕）。
 	AllowEmptyCriteria bool `json:"allow_empty_criteria,omitempty"`
 

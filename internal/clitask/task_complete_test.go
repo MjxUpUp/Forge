@@ -66,6 +66,8 @@ func setupDeadlockTask(t *testing.T, acceptRaw []string) (dir string) {
 		StartedAt:  time.Now(),
 		HeadCommit: head,
 		Acceptance: taskpipeline.ParseAcceptance(acceptRaw),
+		// 夹具直接构造状态：本测试验证快照刷新与死锁契约，不验证红先绿。
+		RedFirstWaived: "夹具直接构造 TaskState（不经 task start）",
 	}
 	// 三道门禁全部通过（RecordGateResult）——旧 bug 正是最后这道完成标记把任务打死。
 	for _, g := range taskpipeline.DefaultGates() {
@@ -376,7 +378,7 @@ func TestTaskGate_PassesWithoutCompleting(t *testing.T) {
 		t.Fatalf(`task verify-acceptance failed: %s`, out)
 	}
 	// task-complete 的 ReviewPassed 硬前置：先 review pass。
-	if out, _, code := runForge(t, dir, `review`, `pass`); code != 0 {
+	if out, _, code := runForge(t, dir, `review`, `pass`, `--criteria-reviewed`, `0`); code != 0 {
 		t.Fatalf(`forge review pass failed: %s`, out)
 	}
 	if out, _, code := runForge(t, dir, `task`, `gate`, `task-complete`); code != 0 {

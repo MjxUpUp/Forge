@@ -14,7 +14,7 @@ files:
 
       func main() { println("ok") }
 steps:
-  - argv: ["{forge}", "task", "start", "--ref", "EVAL-C2", "--title", "门禁推进演练"]
+  - argv: ["{forge}", "task", "start", "--ref", "EVAL-C2", "--title", "门禁推进演练", "--red-first-waived", "演练只有手工验收，没有可失败的红判据"]
     expect_contains: ["EVAL-C2"]
   - argv: ["sh", "-c", "printf 'package main\\n\\nfunc V() int { return 1 }\\n' > v.go && git add v.go && git -c user.name=evalkit -c user.email=evalkit@localhost -c commit.gpgsign=false commit -qm drill"]
   - argv: ["{forge}", "task", "gate", "task-implement", "--ref", "EVAL-C2"]
@@ -22,7 +22,7 @@ steps:
     expect_contains: ["manual"]
   - argv: ["{forge}", "task", "verify-acceptance", "--ref", "EVAL-C2"]
     expect_contains: ["全部通过"]
-  - argv: ["{forge}", "review", "pass"]
+  - argv: ["{forge}", "review", "pass", "--reviewer", "evalkit", "--criteria-reviewed", "1"]
     expect_contains: ["code-review-gate 已通过"]
   - argv: ["{forge}", "task", "gate", "task-complete", "--ref", "EVAL-C2"]
   - argv: ["{forge}", "task", "complete"]

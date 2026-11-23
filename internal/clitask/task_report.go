@@ -281,6 +281,9 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		suffix = "；" + strings.Join(hatchNotes, "；")
 	}
 	switch {
+	case strings.TrimSpace(state.RedFirstWaived) != "":
+		// 豁免不是「没登记」：理由必须随交付单走到评审眼前，否则显式豁免退化成静默跳过。
+		rep.RedFirstLine = "豁免登记（理由：" + strings.TrimSpace(state.RedFirstWaived) + "）——本次没有先失败证明" + suffix
 	case len(state.RedAttempts) > 0:
 		red, turned := 0, 0
 		for _, r := range state.RedAttempts {

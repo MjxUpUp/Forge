@@ -215,7 +215,7 @@ func TestTaskComplete_RedFirstBlocks(t *testing.T) {
 	for _, args := range [][]string{
 		{"task", "gate", "task-implement"},
 		{"task", "verify-acceptance"},
-		{"review", "pass", "--ref", "feat/unclosed", "--reviewer", "rev-unclosed", "--score", "80"},
+		{"review", "pass", "--ref", "feat/unclosed", "--reviewer", "rev-unclosed", "--score", "80", "--criteria-reviewed", "0"},
 		{"task", "gate", "task-complete"},
 	} {
 		if out, errs, code := runForge(t, dir, args...); code != 0 {

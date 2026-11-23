@@ -151,7 +151,7 @@ func TestE2E_TaskComplete_PassAfterVerifyAcceptance(t *testing.T) {
 			t.Fatalf("forge task gate %s: %v\n%s", g, err, out)
 		}
 	}
-	if out, err := forgeErr(t, dir, "review", "pass"); err != nil {
+	if out, err := forgeErr(t, dir, "review", "pass", "--criteria-reviewed", "0"); err != nil {
 		t.Fatalf("forge review pass: %v\n%s", err, out)
 	}
 

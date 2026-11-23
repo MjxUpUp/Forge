@@ -300,8 +300,12 @@ func sameAgent(a, b string) bool {
 	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
 
+// runReviewPassAt 保留旧签名（测试与内部调用），score 可选。
+// B3 起 --criteria-reviewed 在 CLI 面必填；这个内部包装默认认领 0 条
+//（= 明确「本轮没核对判据」），不替调用方编造数字。
 func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) error {
-	var o reviewOptions
+	zero := 0
+	o := reviewOptions{CriteriaReviewed: &zero}
 	if len(score) > 0 {
 		v := score[0]
 		o.Score = &v
@@ -310,6 +314,11 @@ func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) err
 }
 
 func runReviewPassAtOpts(root, explicitRef, note, reviewer string, o reviewOptions) error {
+	// B3：核对判据条数必须由评审者显式声明（0 = 一条都没核对），不设默认值——
+	// 「审过但没看判据」是最常见的评审空洞，默认值不能替评审者认领。
+	if o.CriteriaReviewed == nil {
+		return fmt.Errorf("review pass 拒绝：必须声明 --criteria-reviewed <n>——本次独立核对了多少条验收判据（一条都没看就写 0）")
+	}
 	reviewer = strings.TrimSpace(reviewer)
 	// task 模式：写任务状态字段，由 task-complete 门禁消费
 	var state *taskpipeline.TaskState

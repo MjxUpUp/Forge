@@ -398,7 +398,9 @@ func TestTaskScoreWorkflow(t *testing.T) {
 	runGit(t, tmpDir, "checkout", "-b", "feature/test-scoring")
 
 	// Start a task
-	stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task")
+	// B 批起：行为类改动（含 main.go）没登记 --accept-red 会被 task complete 阻断；
+	// 本测试只验评分/事实清单链路，用显式豁免表达「这次没有可失败的红判据」。
+	stdout, _, code := runForge(t, tmpDir, "task", "start", "--kind", "task", "--red-first-waived", "夹具只验评分链路：手工验收 go version，无红判据")
 	if code != 0 {
 		t.Fatalf("forge task start failed: %s", stdout)
 	}
@@ -431,7 +433,7 @@ func TestTaskScoreWorkflow(t *testing.T) {
 		}
 	}
 	// task-complete 的 ReviewPassed 硬前置：先 review pass 满足之。
-	if stdout, _, code = runForge(t, tmpDir, "review", "pass"); code != 0 {
+	if stdout, _, code = runForge(t, tmpDir, "review", "pass", "--criteria-reviewed", "0"); code != 0 {
 		t.Fatalf("forge review pass failed: %s", stdout)
 	}
 	stdout, _, code = runForge(t, tmpDir, "task", "gate", "task-complete")

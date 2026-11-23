@@ -171,7 +171,7 @@ func TestReviewContinuity_ReworkRoundRequiresSameReviewer(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, `main.go`), []byte("package main\n\nfunc main() { println(4) }\n"), 0644)
 	runGit(t, dir, `add`, `.`)
 	runGit(t, dir, `commit`, `-m`, `fix: second real change`)
-	if err := runReviewPassAtOpts(dir, ref, "", "rev-3", reviewOptions{Rotate: true, Reason: "原评审者上下文已满"}); err != nil {
+	if err := runReviewPassAtOpts(dir, ref, "", "rev-3", reviewOptions{Rotate: true, Reason: "原评审者上下文已满", CriteriaReviewed: intPtr(0)}); err != nil {
 		t.Fatalf("显式换人应放行: %v", err)
 	}
 	if err := runReviewPassAt(dir, ref, "", "rev-1"); err == nil {
@@ -426,10 +426,10 @@ func TestReviewContinuity_BaselineUnreachableRequiresRotation(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "rotate-reviewer") {
 		t.Errorf("拒绝文案应指明 --rotate-reviewer --reason, got: %v", err)
 	}
-	if err := runReviewPassAtOpts(dir, ref, "", "rev-2", reviewOptions{Rotate: true}); err == nil {
+	if err := runReviewPassAtOpts(dir, ref, "", "rev-2", reviewOptions{Rotate: true, CriteriaReviewed: intPtr(0)}); err == nil {
 		t.Fatal("--rotate-reviewer 缺 --reason 必须被拒绝")
 	}
-	if err := runReviewPassAtOpts(dir, ref, "", "rev-2", reviewOptions{Rotate: true, Reason: "基线被 amend+gc 改写，重审当前 diff"}); err != nil {
+	if err := runReviewPassAtOpts(dir, ref, "", "rev-2", reviewOptions{Rotate: true, Reason: "基线被 amend+gc 改写，重审当前 diff", CriteriaReviewed: intPtr(0)}); err != nil {
 		t.Fatalf("显式换人应可重盖基线: %v", err)
 	}
 	entries, err := checklog.LoadAll(dir)

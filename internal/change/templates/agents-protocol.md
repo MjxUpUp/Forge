@@ -14,11 +14,13 @@
   「这次没有立 change」。它不是绕过门禁的开关。
 - **不要为了让门禁放行而临时改产物**：阶段机只读文件，伪造 goal/design 会留在 diff 里。
 - 一次任务只做一件事，做完依次跑 `forge task gate task-implement`、`forge task verify-acceptance`
-  （实跑验收）、`git commit` → 只读子 agent 审查 diff → `forge review pass --reviewer <评审者 id>`
+  （实跑验收）、`git commit` → 只读子 agent 审查 diff → `forge review pass --reviewer <评审者 id> --criteria-reviewed <核对了多少条判据>`
   → `forge task gate task-complete` → `forge task complete`。**只有两道门禁**（implement、complete）；
-  review pass 是 complete 的硬前置。
+  review pass 是 complete 的硬前置（必须声明 `--criteria-reviewed`：本次核对了多少条判据）。
 - **先失败证明**：判据要能证明「实现前它确实失败过」。开工时用 `--accept-red <命令>` 登记一条
   当时失败、实现后应转绿的判据；`task complete` 会要求每条红判据在同一命令上已经转绿。
+  行为类改动（含源码扩展名）**没登记红判据会被 task complete 阻断**；确实无可失败之物时
+  用 `--red-first-waived "<理由>"` 显式豁免，理由留在状态里供评审看。
   没有可失败的东西（纯文档/重构）不登记也行，但交付单会写「先失败证明：未登记」——
   那是给评审看的缺口，不是可以顺手谎报的字段。
 - **评审者复用**：同一个任务由同一个 code-review 子 agent 连续复审（首轮 `--reviewer <id>` 绑定，
@@ -93,7 +95,7 @@
 5. 改动里含 `.md` 时先过文档闸：`forge docs lint <文件>`。
 6. 提交、再审查、再记录、再完结——顺序是：`git commit` → 派**负责本任务的 code-review
    子 agent**（首轮绑定、之后复用同一 id）审查当前 diff → `forge review pass --score <0-100>
-   --reviewer <该 id> [--findings <上一轮清单>]` → `forge task gate task-complete` →
+   --reviewer <该 id> --criteria-reviewed <核对了多少条判据> [--findings <上一轮清单>]` → `forge task gate task-complete` →
    `forge task complete`。`review pass` 是 task-complete 的硬前置；评审者不得与实现者同一 id（`task start --agent` 登记的那个）；审查后改源码会因快照
    不一致被拒——由同一个 reviewer 复审（换人须 `--rotate-reviewer --reason`）。
 7. `forge task report --ref <分支名>` 出交付单（完成后必须带 `--ref`）；单里披露

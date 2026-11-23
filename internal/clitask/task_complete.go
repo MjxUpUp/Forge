@@ -124,6 +124,13 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 			strings.Join(reasons, `; `))
 	}
 
+	// 先失败证明「已声明」pre-flight（B2）：行为类改动连 --accept-red 都没登记时，
+	// 红先绿机制根本没有输入——CheckRedFirst 只能核对已登记项是否闭合，管不了缺席。
+	// 豁免走 task start --red-first-waived "<理由>"，理由留在状态里供评审看。
+	if err := CheckRedFirstDeclared(state, taskpipeline.TaskChangedFiles(root, state)); err != nil {
+		return err
+	}
+
 	// 红先绿 pre-flight：--accept-red 登记的判据必须开工时真失败过、且同一命令现在转绿。
 	// 这是「测试先行」唯一的机械证据——没有它，红先绿只是交付单上的一句话。
 	if err := CheckRedFirst(root, state); err != nil {

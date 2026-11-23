@@ -291,6 +291,22 @@ func judgeAcceptance(passed bool, output, expected string) bool {
 	}
 }
 
+// RunSelectorMatchedNothing reports whether a `go test` invocation carried a -run
+// selector that matched no test at all. go test exits 0 and prints
+// "[no tests to run]" in that case, so a judge that only reads the exit code
+// would seal a criterion whose test was renamed, deleted or moved to another
+// package — the criterion still "passes" while checking nothing.
+//
+// RunSelectorMatchedNothing 报告 `go test` 带了 -run 选择器却一条测试都没匹配上。
+// 这种情况 go 退出 0 并打印 "[no tests to run]"——只看退出码的判据会把
+// 「测试被改名/删除/换了包」封印成通过（B1）。
+func RunSelectorMatchedNothing(run, output string) bool {
+	if !strings.Contains(run, "-run") {
+		return false
+	}
+	return strings.Contains(output, "no tests to run")
+}
+
 // VerifyAcceptanceWithVerdicts actually runs each Run command of state's
 // acceptance criteria, matches the Expected substring, fills back
 // Passed/Output, and returns the per-assertion verdicts — the evidence-row

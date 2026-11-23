@@ -58,7 +58,7 @@ func TestReviewFindingsCarry(t *testing.T) {
 	if err := os.WriteFile(first, []byte("- [ ] P1-a 门禁可绕过\n- [x] P2-b 已修\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := runReviewPassAtOpts(dir, ref, "", "rev-1", reviewOptions{FindingsPath: first}); err != nil {
+	if err := runReviewPassAtOpts(dir, ref, "", "rev-1", reviewOptions{FindingsPath: first, CriteriaReviewed: intPtr(0)}); err != nil {
 		t.Fatalf("首轮带清单应放行: %v", err)
 	}
 	st, err := taskpipeline.LoadTaskState(dir, ref)
@@ -88,7 +88,7 @@ func TestReviewFindingsCarry(t *testing.T) {
 	if err := os.WriteFile(missing, []byte("- [x] P2-b 已修\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err = runReviewPassAtOpts(dir, ref, "", "rev-1", reviewOptions{FindingsPath: missing})
+	err = runReviewPassAtOpts(dir, ref, "", "rev-1", reviewOptions{FindingsPath: missing, CriteriaReviewed: intPtr(0)})
 	if err == nil || !strings.Contains(err.Error(), "没有交代") {
 		t.Fatalf("未闭合项消失必须拒绝, got %v", err)
 	}
@@ -98,7 +98,7 @@ func TestReviewFindingsCarry(t *testing.T) {
 	if err := os.WriteFile(closed, []byte("- [x] P1-a 门禁已收口\n- [x] P2-b 已修\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := runReviewPassAtOpts(dir, ref, "", "rev-1", reviewOptions{FindingsPath: closed}); err != nil {
+	if err := runReviewPassAtOpts(dir, ref, "", "rev-1", reviewOptions{FindingsPath: closed, CriteriaReviewed: intPtr(0)}); err != nil {
 		t.Fatalf("关闭未闭合项后应放行: %v", err)
 	}
 	st, err = taskpipeline.LoadTaskState(dir, ref)

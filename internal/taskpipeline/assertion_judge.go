@@ -154,9 +154,15 @@ func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string)
 		code, out := RunTestCommandCode(root, c.Run)
 		ctx.ran = true
 		ctx.exitCode = code
+		exitOK = code == 0
+		// B1：`go test -run <名字>` 一条测试都没匹配上时 go 仍退出 0，只打印
+		// "[no tests to run]"——只看退出码会把「测试改名/删除/换包」封印成通过。
+		if exitOK && RunSelectorMatchedNothing(c.Run, out) {
+			exitOK = false
+			out += "\n[forge] 选择器未匹配任何测试（no tests to run）：go test 退出 0 不代表被测行为跑过"
+		}
 		ctx.output = out
 		output = out
-		exitOK = code == 0
 		c.Output = truncateAcceptanceOutput(output)
 		// 同因复发（loop 契约 B1-1）的指纹在【完整】输出上算——Output 已截断，
 		// 截断后再去噪算不稳（见 failnorm.go）。先按失败记下，通过时在下方清掉。

@@ -53,7 +53,9 @@
     {
       "path": "forge change agents",
       "flags": [
-        "pointers"
+        "check",
+        "pointers",
+        "print"
       ]
     },
     {
@@ -1090,6 +1092,7 @@
         "origin-tool",
         "parent",
         "plan-file",
+        "red-first-waived",
         "ref",
         "role",
         "scope",
