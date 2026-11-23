@@ -18,10 +18,11 @@ import (
 // Report 是一次 diff 的影响面报告：只做能由代码判定的部分，
 // 判断不了的不猜。
 type Report struct {
-	Changed            []string `json:"changed"`              // 相对仓库根的路径，已排序
-	Docs               []string `json:"docs"`                 // 命中的文档
-	SourcesWithoutTest []string `json:"sources_without_test"` // 改动且同目录没有 _test.go 的 .go 源文件
-	SuggestedTests     []string `json:"suggested_tests"`      // 同目录已有 _test.go 的目录（去重、排序）
+	Changed            []string           `json:"changed"`              // 相对仓库根的路径，已排序
+	Docs               []string           `json:"docs"`                 // 命中的文档
+	SourcesWithoutTest []string           `json:"sources_without_test"` // 改动且同目录没有 _test.go 的 .go 源文件
+	SuggestedTests     []string           `json:"suggested_tests"`      // 同目录已有 _test.go 的目录（去重、排序）
+	TestState          []PackageTestState `json:"test_state,omitempty"` // 建议目录各自的测试账本摘要
 }
 
 // Collect 读取 git 工作区状态（相对 HEAD 的改动 + 未跟踪文件），返回报告。
@@ -79,6 +80,7 @@ func Collect(root string) (*Report, error) {
 		rep.SuggestedTests = append(rep.SuggestedTests, dir)
 	}
 	sort.Strings(rep.SuggestedTests)
+	rep.TestState = collectTestState(root, rep.SuggestedTests)
 	return rep, nil
 }
 

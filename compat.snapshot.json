@@ -1129,6 +1129,34 @@
       "path": "forge task wild"
     },
     {
+      "path": "forge test"
+    },
+    {
+      "path": "forge test ledger",
+      "flags": [
+        "approvals",
+        "json",
+        "max-age",
+        "record",
+        "strict"
+      ]
+    },
+    {
+      "path": "forge test probe",
+      "flags": [
+        "json",
+        "sample",
+        "since"
+      ]
+    },
+    {
+      "path": "forge test record",
+      "flags": [
+        "in",
+        "out"
+      ]
+    },
+    {
       "path": "forge trace",
       "flags": [
         "window"

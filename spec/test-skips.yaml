@@ -1,0 +1,13 @@
+# Skip 审批清单（forge test ledger 读它判断"这条跳过有没有人批过"）。
+#
+# 每条必须有 test（import path + "." + 测试名）、reason（人读的理由）、
+# approved_by（审批人的 id）、at（日期）。没有登记在这里的 Skip 会被账本
+# 标成"未审批"；t.Skip 没写理由的，连这一关都到不了。
+#
+# 示例：
+# skips:
+#   - test: github.com/MjxUpUp/Forge/internal/e2e.TestNeedsDevice
+#     reason: 需要真实设备，CI 上没有
+#     approved_by: lead
+#     at: 2026-11-23
+skips: []

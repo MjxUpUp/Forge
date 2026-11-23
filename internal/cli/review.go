@@ -302,7 +302,7 @@ func sameAgent(a, b string) bool {
 
 // runReviewPassAt 保留旧签名（测试与内部调用），score 可选。
 // B3 起 --criteria-reviewed 在 CLI 面必填；这个内部包装默认认领 0 条
-//（= 明确「本轮没核对判据」），不替调用方编造数字。
+// （= 明确「本轮没核对判据」），不替调用方编造数字。
 func runReviewPassAt(root, explicitRef, note, reviewer string, score ...int) error {
 	zero := 0
 	o := reviewOptions{CriteriaReviewed: &zero}

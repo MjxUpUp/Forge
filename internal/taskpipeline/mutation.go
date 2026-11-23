@@ -274,11 +274,18 @@ func runPkgTests(ctx context.Context, root, pkgDir string, timeout time.Duration
 // 它），那是 test-coverage 门的地盘；本裁剪把预算集中在"测试存在、断言
 // 强度未知"的真实问题上。
 func RunMutationSampling(root string, state *TaskState, sample int) (MutationResult, bool, error) {
+	return RunMutationSamplingFiles(root, state.TaskRef, changedGoSourceFiles(root, state), sample)
+}
+
+// RunMutationSamplingFiles 对调用方给定的文件清单（repo 相对、非测试 .go）做
+// 变异抽样实跑——文件来源可以是一次任务改动，也可以是一段 git diff（增量探针）。
+// taskRef 只用于证据行归属，空串表示不归属任务。其余语义与 RunMutationSampling
+// 完全一致：跳过无配对测试的文件、确定性抽样、阳性对照、原地变异后立即还原。
+func RunMutationSamplingFiles(root, taskRef string, changed []string, sample int) (MutationResult, bool, error) {
 	res := MutationResult{}
 	if sample <= 0 {
 		sample = 3
 	}
-	changed := changedGoSourceFiles(root, state)
 	if len(changed) == 0 {
 		return res, false, nil
 	}
@@ -361,7 +368,7 @@ func RunMutationSampling(root string, state *TaskState, sample int) (MutationRes
 	if k := res.Killed + res.Survived; k > 0 {
 		res.Score = float64(res.Killed) / float64(k)
 	}
-	recordMutationRow(root, state.TaskRef, res)
+	recordMutationRow(root, taskRef, res)
 	return res, true, nil
 }
 

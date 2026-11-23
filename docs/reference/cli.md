@@ -209,7 +209,10 @@
 | 命令 | 说明 |
 |------|------|
 | `forge health [--json]` | 项目级质量趋势——聚合所有任务结论（分数走势/证据盲区率/复发低分维度，task→project 粒度联动） |
-| `forge impact [--json]` | 按 git 工作区 diff（相对 HEAD 的改动 + 未跟踪文件）列出影响面：改动文件数、需要同步的文档、改了但同目录没有 `_test.go` 的源码、建议先跑的测试目录；只做能由代码判定的部分，语义影响不猜（非 git 仓库报错）。`--json` 输出结构化报告 |
+| `forge impact [--json]` | 按 git 工作区 diff（相对 HEAD 的改动 + 未跟踪文件）列出影响面：改动文件数、需要同步的文档、改了但同目录没有 `_test.go` 的源码、建议先跑的测试目录及其测试账本摘要（live/orphaned/skipped，含未审批数）；只做能由代码判定的部分，语义影响不猜（非 git 仓库报错）。`--json` 输出结构化报告 |
+| `forge test ledger [--json] [--strict] [--max-age 168h]` | 测试账本：按执行记录把全仓测试判成 live / orphaned / skipped / phantom 四态（无记录一律 orphaned）；列出 Skip 缺理由、Skip 未审批（`spec/test-skips.yaml` 无人登记）、phantom 三类待交代项。`--strict` 对这三类判失败 |
+| `forge test record [--in <file>] [--out <path>]` | 从 stdin 或文件读 `go test -json` 事件流，把 pass/fail/skip 记录追加到 `.forge/test-exec.jsonl`（账本的真相源） |
+| `forge test probe [--since <rev>] [--sample N]` | 增量变异探针：只取该 rev 之后 diff 命中的非测试 Go 源文件做变异抽样实跑，报告 killed/survived；文件来源由 git 回答，不复用任务状态 |
 | `forge enforcement [--json] [--sample N]` | 执法健康报告（只读）：聚合 task-guard 的 advisory/blocked 计数、无视升档会话、测试编辑计数与野外申报，给出双环（升档会话超阈）与降格（zombie rule 复审）两个治理信号；`--sample N` 抽 N 个已完成任务 join 其 session 的 ignores/wild 遥测 |
 | `forge trace <task-ref> [--window <chars>]` | 查看任务的完整质量事件时间线（checklog + toollog + token）；`--window` 输出分段监控窗口（每窗 ≤ 预算字符、头部周期性守卫重注入——下游 LLM judge/取证按窗取输入，禁止全量轨迹塞上下文，Classifier Context Rot 缓解） |
 | `forge dashboard [--port <n>] [--no-open]` | 本地全局质量看板（Pulse 面板）——在任意目录运行都聚合 `~/.forge/projects.json` 登记的全部项目（`forge registry add` 显式登记），渲染事件流（任务/gate/skill 触发/结论）、任务评分与证据链、skills 聚合（localhost 只读，自动开浏览器，Ctrl+C 退出，面板内按项目过滤）；项目目录被移走/删除后注册表条目自动淡出（读时惰性精简），不留幽灵路径 |

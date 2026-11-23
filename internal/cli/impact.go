@@ -89,4 +89,14 @@ func renderImpact(w io.Writer, r *impact.Report) {
 			fmt.Fprintf(w, "  %s\n", p)
 		}
 	}
+	if len(r.TestState) > 0 {
+		fmt.Fprintln(w, "测试账本（这些目录里的测试现状）：")
+		for _, ts := range r.TestState {
+			fmt.Fprintf(w, "  %s  live %d / orphaned %d / skipped %d", ts.Dir, ts.Live, ts.Orphaned, ts.Skipped)
+			if ts.SkippedUnapproved > 0 {
+				fmt.Fprintf(w, "（未审批 %d）", ts.SkippedUnapproved)
+			}
+			fmt.Fprintln(w)
+		}
+	}
 }
