@@ -201,15 +201,15 @@ func evalHealthLine(root string) string {
 	}
 	if latestGolden == nil {
 		if judgeWeak || forged {
-			return "有告警（判分器降级/伪造审计行）——forge eval dashboard 查看详情"
+			return "有告警（判分器降级/伪造审计行）——用 forge status --json 看明细"
 		}
-		return "未度量（forge eval golden run 建立基线）"
+		return "未度量（golden 基线的采集命令已随 core-only 移除）"
 	}
 	detail := strings.TrimPrefix(latestGolden.Detail, "golden run: ")
 	line := fmt.Sprintf("golden %s（%s）", detail, latestGolden.RecordedAt.Format("01-02 15:04"))
 	switch {
 	case forged:
-		line += " · ⚠ 伪造审计行待溯源（forge eval audit-verify）"
+		line += " · ⚠ 伪造审计行待溯源（audit-verify 已随 core-only 移除）"
 	case judgeWeak:
 		line += " · ⚠ 判分器降级 ADVISORY（κ<0.6）"
 	}

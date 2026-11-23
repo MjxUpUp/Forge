@@ -405,7 +405,7 @@ func SummaryExists(dataDir string) bool {
 // 这里最终的内容。
 func GenerateSummary(p *Profile) string {
 	var b strings.Builder
-	b.WriteString("# conventions digest（forge conventions init 生成；提取要点由 agent 代码考古后补全，整份保持 ≤15 行）\n")
+	b.WriteString("# conventions digest（由 conventions 档案初始化时生成；提取要点由 agent 代码考古后补全，整份保持 ≤15 行）\n")
 	var toolchain []string
 	for _, kv := range []struct{ k, v string }{
 		{"stack", p.Stack}, {"lint", p.LintCmd}, {"test", p.TestCmd}, {"build", p.BuildCmd},

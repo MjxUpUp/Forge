@@ -53,7 +53,7 @@ var taskImportCmd = &cobra.Command{
   · --force：覆盖既有任务（先删后写）
   · --merge：保留本地任务定义，合并协作记录（Decisions/Findings/Blockers/History/SessionLinks/
     NextSteps/Artifacts 按 ID/键去重并集）
-若 Bundle 带 checklog，条目追加到本地 checklog.jsonl（保留源时序，供 forge trace 重建时间线）。`,
+若 Bundle 带 checklog，条目追加到本地 checklog.jsonl（保留源时序，供 forge task status --ref 查看当前状态）。`,
 	RunE: runTaskImport,
 }
 

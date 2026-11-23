@@ -35,7 +35,7 @@ func BuildQuarterlyReport(evalDir string, quarter string, now time.Time) (string
 	// dashboard 快照。
 	snap := latestJSON(filepath.Join(dir, "snapshots"), "snapshot-")
 	if snap == "" {
-		missing = append(missing, "dashboard 快照（forge eval dashboard 尚未运行）")
+		missing = append(missing, "dashboard 快照（采集命令已随 core-only 移除，尚未生成）")
 	} else {
 		b.WriteString(sectionFor("dashboard 遥测快照（C4/C7）", snap))
 	}

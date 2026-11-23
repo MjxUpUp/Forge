@@ -36,7 +36,7 @@ const configDirName = ".forge"
 // ErrNoForgeConfig：cwd 不在 forge 项目内（全局注册表无登记且找不到遗留的项目级
 // `.forge/`）。由 projectroot.Find/FindProject 返回——forgedata.ProjectFor 本身
 // 是纯路径推导，不再判定 init 状态。
-var ErrNoForgeConfig = errors.New(`forgedata: not a forge project; run ` + "`forge init` first")
+var ErrNoForgeConfig = errors.New(`forgedata: not inside a forge repo; run ` + "`forge init` first")
 
 // ProjectFor derives the project identity from cwd.
 //
@@ -148,12 +148,3 @@ func (p *Project) ActConclusionsPath() string {
 	return filepath.Join(p.DataDir, "act", "conclusions.jsonl")
 }
 
-// ActDispositionsPath returns DataDir/act/dispositions.jsonl — the append-only
-// record of retro-done acks (evidence-based ack of RetrospectiveNudge; see
-// act.Disposition).
-//
-// ActDispositionsPath 返回 DataDir/act/dispositions.jsonl——retro-done ack 的
-// append-only 记录（RetrospectiveNudge 的证据式 ack；见 act.Disposition）。
-func (p *Project) ActDispositionsPath() string {
-	return filepath.Join(p.DataDir, "act", "dispositions.jsonl")
-}

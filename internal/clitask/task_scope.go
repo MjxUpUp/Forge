@@ -38,7 +38,7 @@ const (
 //
 // addScopeFlags 在 cmd 上注册共享的 --workspace/--all-projects 范围 flag。
 func addScopeFlags(cmd *cobra.Command) {
-	cmd.Flags().Bool("workspace", false, "范围扩到当前项目所属 forge workspace 的全部成员仓")
+	cmd.Flags().Bool("workspace", false, "范围扩到当前项目所属成员仓（forge workspace 已随 core-only 移除，flag 保留仅为兼容）")
 	cmd.Flags().Bool("all-projects", false, "范围扩到本机全部已接管（managed）项目")
 }
 

@@ -115,9 +115,14 @@ const DefaultMaxAge = 7 * 24 * time.Hour
 //
 // 跳过 vendor / 隐藏目录 / node_modules / testdata：前者不是本仓代码，后者
 // 是测试夹具（里面的 *_test.go 常是故意写坏的反例，不该进账本）。
+//
+// 跳过来源分两层：函数体里直接写的 t.Skip*（按语法位置判断是否在条件里），
+// 以及调用同目录 helper 时的间接跳过（helper 里写着 Skip，测试本身一行 Skip
+// 都没有——纯看调用点根本看不出来，只能把 helper 也解析一遍）。
 func ScanDecls(root string) ([]Decl, error) {
 	mod := modulePath(root)
-	var decls []Decl
+	byDir := map[string][]parsedTestFile{}
+	var dirs []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -140,113 +145,225 @@ func ScanDecls(root string) ([]Decl, error) {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		fs2 := token.NewFileSet()
-		f, perr := parser.ParseFile(fs2, p, nil, 0)
+		fset := token.NewFileSet()
+		f, perr := parser.ParseFile(fset, p, nil, 0)
 		if perr != nil {
 			return nil // 单个文件解析失败不废整次扫描；账本少一行比整本读不出来好
 		}
-		pkg := dirPackage(mod, path.Dir(rel))
-		for _, dec := range f.Decls {
-			fn, ok := dec.(*ast.FuncDecl)
-			if !ok || fn.Name == nil || !strings.HasPrefix(fn.Name.Name, "Test") {
-				continue
-			}
-			hasSkip, reason, guarded := skipInfo(fn.Body)
-			decls = append(decls, Decl{
-				Test:        fn.Name.Name,
-				Package:     pkg,
-				File:        rel,
-				Line:        fs2.Position(fn.Pos()).Line,
-				HasSkip:     hasSkip,
-				SkipReason:  reason,
-				SkipGuarded: guarded,
-			})
+		dir := path.Dir(rel)
+		if _, seen := byDir[dir]; !seen {
+			dirs = append(dirs, dir)
 		}
+		byDir[dir] = append(byDir[dir], parsedTestFile{rel: rel, fset: fset, file: f})
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	sort.Strings(dirs)
+	var decls []Decl
+	for _, dir := range dirs {
+		files := byDir[dir]
+		helpers := helperSkips(files)
+		pkg := dirPackage(mod, dir)
+		for _, pf := range files {
+			for _, dec := range pf.file.Decls {
+				fn, ok := dec.(*ast.FuncDecl)
+				if !ok || fn.Name == nil || !strings.HasPrefix(fn.Name.Name, "Test") {
+					continue
+				}
+				hasSkip, reason, guarded := skipInfo(fn.Body)
+				if !hasSkip {
+					if h, ok := callsHelper(fn.Body, helpers); ok {
+						hasSkip, guarded = true, true
+						reason = "经 helper 跳过（" + h + " 内含 t.Skip）"
+					}
+				}
+				decls = append(decls, Decl{
+					Test:        fn.Name.Name,
+					Package:     pkg,
+					File:        pf.rel,
+					Line:        pf.fset.Position(fn.Pos()).Line,
+					HasSkip:     hasSkip,
+					SkipReason:  reason,
+					SkipGuarded: guarded,
+				})
+			}
+		}
+	}
 	sort.Slice(decls, func(i, j int) bool {
 		if decls[i].Package != decls[j].Package {
 			return decls[i].Package < decls[j].Package
+		}
+		if decls[i].File != decls[j].File {
+			return decls[i].File < decls[j].File
 		}
 		return decls[i].Line < decls[j].Line
 	})
 	return decls, nil
 }
 
-// skipInfo 判断函数体里有几个 t.Skip* 调用：有没有、第一参数是不是非空字符串
-// 字面量，以及它们是否【全都】写在 if 条件里。
+// parsedTestFile 是一个已解析的测试文件（同目录的 helper 要一起看，所以按目录攒）。
+type parsedTestFile struct {
+	rel  string
+	fset *token.FileSet
+	file *ast.File
+}
+
+// helperSkips 找出同目录里"一定会跳过"的 helper 函数，返回 函数名 -> 理由。
 //
-// “在 if 里”这一维是账本能说实话的关键：绝大多数 Skip 是环境闸门
+// 判据很粗：非 Test* 的函数体里出现 t.Skip* 就算 helper（helper 存在的意义
+// 就是"某些条件下不起作用"，它内部必然带自己的闸门）。再跑几轮不动点，
+// 让"helper 调 helper"也能传递到调用点。
+func helperSkips(files []parsedTestFile) map[string]string {
+	own := map[string]string{}
+	for _, pf := range files {
+		for _, dec := range pf.file.Decls {
+			fn, ok := dec.(*ast.FuncDecl)
+			if !ok || fn.Name == nil || strings.HasPrefix(fn.Name.Name, "Test") {
+				continue
+			}
+			if has, reason, _ := skipInfo(fn.Body); has {
+				if strings.TrimSpace(reason) == "" {
+					reason = "t.Skip"
+				}
+				own[fn.Name.Name] = reason
+			}
+		}
+	}
+	for round := 0; round < 8; round++ {
+		changed := false
+		for _, pf := range files {
+			for _, dec := range pf.file.Decls {
+				fn, ok := dec.(*ast.FuncDecl)
+				if !ok || fn.Name == nil || strings.HasPrefix(fn.Name.Name, "Test") {
+					continue
+				}
+				if _, done := own[fn.Name.Name]; done {
+					continue
+				}
+				if h, ok := callsHelper(fn.Body, own); ok {
+					own[fn.Name.Name] = "经 " + h + " 跳过"
+					changed = true
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return own
+}
+
+// callsHelper 找一个函数体里对 helper 集合中函数的调用（只认裸标识符调用）。
+func callsHelper(body *ast.BlockStmt, helpers map[string]string) (string, bool) {
+	if body == nil || len(helpers) == 0 {
+		return "", false
+	}
+	found := ""
+	ast.Inspect(body, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := call.Fun.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if _, isHelper := helpers[id.Name]; isHelper && found == "" {
+			found = id.Name
+		}
+		return true
+	})
+	return found, found != ""
+}
+
+// skipInfo 判断函数体里有几个 t.Skip* 调用：有没有、第一参数是不是非空字符串
+// 字面量，以及它们是否【全都】写在条件上下文里。
+//
+// "在条件里"这一维是账本能说实话的关键：绝大多数 Skip 是环境闸门
 // （if runtime.GOOS != "windows"、if testing.Short()、if _, err := exec.LookPath("git"); err != nil），
-// 这些测试平时照常跑，不该被算成“被静默关掉的测试”。真正的静默删除是函数体里
-// 无条件的 t.Skip——那种才需要理由与审批。
+// 这些测试平时照常跑，不该被算成"被静默关掉的测试"。真正的静默删除是函数体里
+// 无条件的那一句 t.Skip("我先不管了")。
+//
+// 条件上下文包括 if / for / range / switch / type switch / select 的体与分支：
+// "case 里 Skip" 与 "if 里 Skip" 在语义上没区别——都是某条件下才不跑。
 func skipInfo(body *ast.BlockStmt) (has bool, reason string, guarded bool) {
 	if body == nil {
 		return false, "", false
 	}
 	guarded = true
-	var walk func(n ast.Node, inIf bool)
-	walk = func(n ast.Node, inIf bool) {
+	var walk func(n ast.Node, inCond bool)
+	walk = func(n ast.Node, inCond bool) {
 		switch x := n.(type) {
 		case nil:
 			return
 		case *ast.BlockStmt:
 			for _, s := range x.List {
-				walk(s, inIf)
+				walk(s, inCond)
 			}
 		case *ast.IfStmt:
 			walk(x.Init, true)
 			walk(x.Cond, true)
 			walk(x.Body, true)
-			if x.Else != nil {
-				walk(x.Else, true)
-			}
+			walk(x.Else, true)
 		case *ast.ForStmt:
-			walk(x.Body, inIf)
+			walk(x.Init, true)
+			walk(x.Cond, true)
+			walk(x.Post, true)
+			walk(x.Body, true)
 		case *ast.RangeStmt:
-			walk(x.Body, inIf)
+			walk(x.Key, true)
+			walk(x.Value, true)
+			walk(x.X, true)
+			walk(x.Body, true)
 		case *ast.SwitchStmt:
-			walk(x.Body, inIf)
+			walk(x.Init, true)
+			walk(x.Tag, true)
+			walk(x.Body, true)
 		case *ast.TypeSwitchStmt:
-			walk(x.Body, inIf)
+			walk(x.Init, true)
+			walk(x.Assign, true)
+			walk(x.Body, true)
 		case *ast.SelectStmt:
-			walk(x.Body, inIf)
+			walk(x.Body, true)
 		case *ast.CaseClause:
+			for _, e := range x.List {
+				walk(e, true)
+			}
 			for _, s := range x.Body {
-				walk(s, inIf)
+				walk(s, true)
 			}
 		case *ast.CommClause:
+			walk(x.Comm, true)
 			for _, s := range x.Body {
-				walk(s, inIf)
+				walk(s, true)
 			}
 		case *ast.LabeledStmt:
-			walk(x.Stmt, inIf)
+			walk(x.Stmt, inCond)
 		case *ast.GoStmt:
-			walk(x.Call, inIf)
+			walk(x.Call, inCond)
 		case *ast.DeferStmt:
-			walk(x.Call, inIf)
+			walk(x.Call, inCond)
 		case *ast.ExprStmt:
-			walk(x.X, inIf)
+			walk(x.X, inCond)
 		case *ast.AssignStmt:
 			for _, e := range x.Lhs {
-				walk(e, inIf)
+				walk(e, inCond)
 			}
 			for _, e := range x.Rhs {
-				walk(e, inIf)
+				walk(e, inCond)
 			}
 		case *ast.ReturnStmt:
 			for _, e := range x.Results {
-				walk(e, inIf)
+				walk(e, inCond)
 			}
 		case *ast.CallExpr:
 			if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
 				switch sel.Sel.Name {
 				case "Skip", "SkipNow", "Skipf":
 					has = true
-					if !inIf {
+					if !inCond {
 						guarded = false
 					}
 					if len(x.Args) > 0 {
@@ -259,7 +376,7 @@ func skipInfo(body *ast.BlockStmt) (has bool, reason string, guarded bool) {
 				}
 			}
 			for _, a := range x.Args {
-				walk(a, inIf)
+				walk(a, inCond)
 			}
 		}
 	}

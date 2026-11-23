@@ -223,6 +223,18 @@ func Latest(p *forgedata.Project) (*Conclusion, error) {
 	return &cs[len(cs)-1], nil
 }
 
+// Carriers is the closed vocabulary of retrospective carriers (single source of
+// truth) — mirrors the session-retrospective skill's carrier decision tree
+// (memory / skill / CLAUDE.md / code / hook / CI) plus none (lesson logged,
+// no carrier warranted). Directive renders it into the one-line instruction, so
+// the Go side and the skill never drift into two hand-copied lists.
+//
+// Carriers 是回顾载体的封闭词汇表（单一真相源）——镜像 session-retrospective skill
+// 的载体决策树（memory / skill / claude.md / code / hook / CI）加 none（有教训
+// 但无需落载体）。Directive 把它渲进那一行指令，Go 侧与技能不会漂成两份手抄表。
+// 写侧校验随 forge act 命令一起移除（core-only），这里只保留读侧需要的枚举。
+var Carriers = []string{"memory", "skill", "claudemd", "code", "hook", "ci", "none"}
+
 // Directive returns a one-line action instruction for the agent when RetrospectiveNudge fires (printed by task complete).
 //
 // Directive 返回 RetrospectiveNudge 时给 agent 的一行行动指令（供 task complete 打印）。

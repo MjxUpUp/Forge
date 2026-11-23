@@ -21,15 +21,28 @@ var deletedTopCommands = []string{
 }
 
 // benignPhrases 让「说明某命令已被移除」的文案通过：它们提到死命令是为了告知，
-// 不是为了让人去跑。
-var benignPhrases = []string{"已删除", "已随 core-only 移除", "命令不存在", "已移除", "removed"}
+// 不是为了让人去跑。deadhint:allow 是逐行逃生舱（确实要举一个反例时用）。
+var benignPhrases = []string{"已删除", "已随 core-only 移除", "命令不存在", "已移除", "removed", "deadhint:allow"}
 
 func deadHintPattern() *regexp.Regexp {
 	return regexp.MustCompile("forge (" + strings.Join(deletedTopCommands, "|") + ")([^a-z0-9_-]|$)")
 }
 
-// TestNoDeadCommandHints 扫仓内非测试 Go 源码：fmt 系调用的字符串实参里不得出现
-// forge 加已删命令。只看 fmt 调用（打印面），注释与历史文档不管——注释不执行。
+func benignLine(s string) bool {
+	for _, b := range benignPhrases {
+		if strings.Contains(s, b) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestNoDeadCommandHints 扫仓内所有非测试 Go 源码的字符串字面量，以及
+// internal/**/templates 下的模板文档：不得出现 forge 加已删命令。
+//
+// 只看字符串字面量（常量、错误文案、模板正文），注释不执行也不进产物；
+// 字符串字面量覆盖了「打印给用户看」与「拼进模板/文件」两条路径——第一版只扫
+// fmt 系调用，漏掉 Errorf 之外的构造（字符串常量、模板拼接）。
 func TestNoDeadCommandHints(t *testing.T) {
 	root := filepath.Join("..", "..")
 	re := deadHintPattern()
@@ -46,41 +59,56 @@ func TestNoDeadCommandHints(t *testing.T) {
 			}
 			return nil
 		}
+		rel, rerr := filepath.Rel(root, path)
+		if rerr != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		src, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		lines := strings.Split(string(src), "\n")
+		lineOf := func(n ast.Node) string {
+			ln := fset.Position(n.Pos()).Line
+			if ln >= 1 && ln <= len(lines) {
+				return lines[ln-1]
+			}
+			return ""
+		}
+
+		if strings.HasSuffix(path, ".md") {
+			if !strings.Contains(rel, "templates/") {
+				return nil
+			}
+			for i, line := range lines {
+				if re.FindString(line) == "" || benignLine(line) {
+					continue
+				}
+				offenders = append(offenders, rel+":"+itoa(i+1)+" "+strings.TrimSpace(re.FindString(line)))
+			}
+			return nil
+		}
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		f, perr := parser.ParseFile(fset, path, nil, 0)
+		f, perr := parser.ParseFile(fset, path, src, 0)
 		if perr != nil {
 			return nil // 解析失败交给 go build 去报
 		}
 		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
+			lit, ok := n.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
 				return true
 			}
-			if !isFmtCall(call) {
+			match := re.FindString(lit.Value)
+			if match == "" {
 				return true
 			}
-			for _, arg := range call.Args {
-				ast.Inspect(arg, func(m ast.Node) bool {
-					lit, ok := m.(*ast.BasicLit)
-					if !ok || lit.Kind != token.STRING {
-						return true
-					}
-					v := lit.Value
-					match := re.FindString(v)
-					if match == "" {
-						return true
-					}
-					for _, b := range benignPhrases {
-						if strings.Contains(v, b) {
-							return true
-						}
-					}
-					offenders = append(offenders, fset.Position(lit.Pos()).String()+" "+strings.TrimSpace(match))
-					return true
-				})
+			if benignLine(lit.Value) || benignLine(lineOf(lit)) {
+				return true
 			}
+			offenders = append(offenders, fset.Position(lit.Pos()).String()+" "+strings.TrimSpace(match))
 			return true
 		})
 		return nil
@@ -93,18 +121,14 @@ func TestNoDeadCommandHints(t *testing.T) {
 	}
 }
 
-func isFmtCall(c *ast.CallExpr) bool {
-	sel, ok := c.Fun.(*ast.SelectorExpr)
-	if !ok {
-		return false
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
 	}
-	pkg, ok := sel.X.(*ast.Ident)
-	if !ok || pkg.Name != "fmt" {
-		return false
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
 	}
-	switch sel.Sel.Name {
-	case "Sprintf", "Errorf", "Fprintf", "Printf", "Println", "Print", "Fprintln", "Fprint", "Sprint", "Sprintln":
-		return true
-	}
-	return false
+	return string(b)
 }

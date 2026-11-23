@@ -139,7 +139,7 @@ func runTaskGate(cmd *cobra.Command, args []string) error {
 			// 能无歧义识别的硬失败信号，也是 compat 的 blockings 扫描面
 			// （internal/compat/scan.go 认 GateBlocked 包装的位点）——否则本次新增的
 			// 阻断在 compat 工件里完全不可见。
-			return taskpipeline.GateBlocked("门禁 %s（错树）：任务 %s 锚在另一棵树 %s——当前目录不是该任务的 worktree，在这里过门禁只会记在一棵空树上。到锚树里跑：cd %q；或把任务迁到当前树：forge worktree use（关闭守护：FORGE_TASK_TREE_GUARD=0，记 checklog 且任务评分 capped）",
+			return taskpipeline.GateBlocked("门禁 %s（错树）：任务 %s 锚在另一棵树 %s——当前目录不是该任务的 worktree，在这里过门禁只会记在一棵空树上。到锚树里跑：cd %q；或把任务迁到当前树（旧 forge worktree use 已随 core-only 移除；关闭守护：FORGE_TASK_TREE_GUARD=0，记 checklog 且任务评分 capped）",
 				gateID, state.TaskRef, ts.AnchorPath, ts.AnchorPath)
 		}
 	}
@@ -258,10 +258,10 @@ func registerConventionsDefaults(root string, state *taskpipeline.TaskState) ([]
 	defaults, perr := taskpipeline.ConventionsDefaultAcceptance(root)
 	if perr != nil {
 		fmt.Fprintf(os.Stderr, "⚠ conventions 档案读取失败（不兜底，零验收状态保持）：%v——修复：按 conventions 模板手工重建档案（conventions 命令已随 core-only 移除）\n", perr)
-		return nil, "档案存在但读取失败（见上方 stderr——forge conventions init 重建）"
+		return nil, "档案存在但读取失败（见上方 stderr——按模板手工重建；forge conventions init 已随 core-only 移除）"
 	}
 	if len(defaults) == 0 {
-		return nil, "无 conventions 档案（forge conventions init 可建立默认套件）"
+		return nil, "无 conventions 档案（按 conventions 模板手工建立；forge conventions init 已随 core-only 移除）"
 	}
 	added, err := taskpipeline.RegisterAcceptance(root, state.TaskRef, defaults, taskpipeline.AcceptanceSourceConventions)
 	if err != nil {

@@ -106,7 +106,7 @@ const harvestHeader = `# HARVEST CANDIDATE（机械投影骨架，非策展用�
 # 策展流程：① 在干净环境实跑 probe 看 verify-acceptance 的真实判定；
 # ② 翻转 kind/expect（clean→defective 时 detect_any 改 exit_nonzero）；
 # ③ 补 description 的语境（该考卷原本抓什么）；④ 移入上级 golden/ 目录并
-# forge eval golden run 校验 + 指纹轮换。canonical 目录永不被 harvest 写入。
+# 用 golden 校验（已随 core-only 移除）核对 + 指纹轮换。canonical 目录永不被 harvest 写入。
 `
 
 // harvestID renders a stable candidate id from task ref + criterion index.

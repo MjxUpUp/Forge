@@ -92,7 +92,7 @@ func init() {
 	taskStatusCmd.Flags().Bool("json", false, "JSON 格式输出")
 	taskStatusCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskGateCmd.Flags().Bool("silent", false, "静默模式（仅返回退出码）")
-	taskVerifyAcceptanceCmd.Flags().Bool(`trust-foreign`, false, `受信外来验收命令（task import/.forge migrate 带入）：确认已人工审阅命令清单后执行，首次受信运行清除外来标记`)
+	taskVerifyAcceptanceCmd.Flags().Bool(`trust-foreign`, false, `受信外来验收命令（task import 带入）：确认已人工审阅命令清单后执行，首次受信运行清除外来标记`)
 	taskVerifyAcceptanceCmd.Flags().String("ref", "", "指定任务引用（不依赖活跃任务检测）")
 	taskGateCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
 	taskCompleteCmd.Flags().String("ref", "", "指定任务引用（不依赖分支检测）")
@@ -175,7 +175,7 @@ var taskVerifyAcceptanceCmd = &cobra.Command{
 把 dev-workflow Plan 的 "Run: <cmd>, Expected: <out>" 验收标准从 plan 文本变成不可伪造的实跑证据，
 对冲 agent 自述"满足验收"但没真跑的盲区。
 
-验收命令若来自 task import / .forge migrate（外来标记），首次执行前须人工审阅命令清单并加
+验收命令若来自 task import（外来标记），首次执行前须人工审阅命令清单并加
 --trust-foreign 显式受信——外来命令串是可任意执行的载荷，不审阅就跑等于把执行权交给 bundle 作者。`,
 	RunE: runTaskVerifyAcceptance,
 }

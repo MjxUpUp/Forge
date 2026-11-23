@@ -825,7 +825,7 @@ var reviewLLMCmd = &cobra.Command{
      （对抗立场、产出者不能自审），产出 schema 化 JudgeAuditEntry 判分文件。
   2. --scores <file>：校验判分文件（JudgeAuditEntry 数组：doc_id/judge_scores/
      human_score/threshold），落 evals/forge/judge-samples/llm-<ts>.json 留档，
-     并提示 forge eval judge-audit --scores <file> 算 κ（地板 0.6）。
+     并提示外部判官按 judge-audit 口径算出 κ（该命令已随 core-only 移除；地板 0.6）。
 
 判官永不进 hard：κ<0.6 自动降级 ADVISORY（意见不走 hard 红线）——判分管
 「可命题」类约束的评审对照，BLOCKED 决策仍只属于机械事实门禁。`,
