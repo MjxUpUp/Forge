@@ -1,0 +1,8 @@
+ok  	github.com/MjxUpUp/Forge/internal/checklog	0.033s
+ok  	github.com/MjxUpUp/Forge/internal/cli	1.009s
+ok  	github.com/MjxUpUp/Forge/internal/change	28.121s
+ok  	github.com/MjxUpUp/Forge/internal/clitask	86.046s
+ok  	github.com/MjxUpUp/Forge/internal/cli	50.662s
+命令面：87 条命令 / 210 个 flag（agent 注解 21 条）
+活文档：7 份
+drift: 0

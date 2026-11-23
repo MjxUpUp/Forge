@@ -1,0 +1,27 @@
+{
+  "change": "core-only",
+  "started_at": "2026-11-23T17:09:18Z",
+  "finished_at": "2026-11-23T17:10:50Z",
+  "passed": true,
+  "sealed": true,
+  "head": "9a6d4597c0777e68338700d1ff1e03535d3a7e89",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "47526c0ef61a01bc9cbbe9b119efe7781bcb73ef7bb482acf9cecf8159e9c255",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "# 1 全仓可编译\ngo build ./...\n\n# 2 宿主时代检查名不再存在\ngo test ./internal/checklog -run TestNoHostEraCheckNames -count=1 :: --- PASS\n\n# 3 核心命令面（删除面钉住：旧命令组不在命令树上）\ngo test ./internal/cli -run TestCoreOnlyCommandSurface -count=1 :: --- PASS\n\n# 4 核心包测试绿\ngo test ./internal/change ./internal/clitask ./internal/cli -count=1 :: ok\n\n# 5 活文档漂移为 0\ngo run ./cmd/forge docs closure --strict :: drift: 0",
+      "exit": 0,
+      "duration_ms": 91821,
+      "stdout_file": "01.stdout"
+    }
+  ],
+  "capability": {
+    "commands": 87,
+    "flags": 210,
+    "annotated": 21,
+    "drift_count": 0
+  }
+}
