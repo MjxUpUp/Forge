@@ -65,6 +65,12 @@ func commandTree() *cobra.Command {
 	return cmdTreeFn()
 }
 
+// CommandTree 暴露已注册的命令树（未注册时为 nil）。
+//
+// cli 在 init 里注入 rootCmd；agentproto 的命令面生成与文档漂移检查都经此拿树，
+// 这样 cli ↔ 检查包之间不需要 import 环。
+func CommandTree() *cobra.Command { return commandTree() }
+
 // RegisterVersion registers the callback returning the running binary's version — same cycle-breaking pattern as RegisterCommandTree (cli init injects func(){ return rootCmd.Version }).
 //
 // RegisterVersion 注册「返回运行中二进制版本」的回调——与 RegisterCommandTree 同款

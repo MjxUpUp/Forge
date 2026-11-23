@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/MjxUpUp/Forge/internal/agentproto"
 )
 
 // AGENTS.md 的托管块：forge 只改两个标记之间的内容，标记外是人写的东西。
@@ -26,14 +28,49 @@ const (
 	AgentsUnchanged AgentsAction = "unchanged" // 托管块内容已是最新
 )
 
-// EnsureAgentsBlock 幂等写入 AGENTS.md 的托管块。
+// AgentsOptions 是托管块里「从命令树生成」的那部分输入。
+//
+// Commands 为空时只写手写散文（库调用方与旧测试路径）；cli 一律带上面与版本，
+// 这样块头指纹与命令面附录才存在，--check 才有可比的东西。
+type AgentsOptions struct {
+	Commands []agentproto.Command
+	Version  string
+}
+
+// EnsureAgentsBlock 幂等写入 AGENTS.md 的托管块（不带生成面：散文 + 标记）。
 //
 // 规则：只动 <!-- forge:begin --> 与 <!-- forge:end --> 之间；标记外一字不改。
 func EnsureAgentsBlock(root string) (AgentsAction, error) {
-	return ensureManagedBlock(filepath.Join(root, AgentsFile), "# "+AgentsFile+"\n\n",
-		managedBlock{begin: agentsBegin, end: agentsEnd, body: strings.TrimSpace(renderTemplate(tmplAgents, "", ""))})
+	return EnsureAgentsBlockOpts(root, AgentsOptions{})
 }
 
+// EnsureAgentsBlockOpts 同 EnsureAgentsBlock，但带上生成面（命令面附录 + 块头指纹）。
+func EnsureAgentsBlockOpts(root string, opts AgentsOptions) (AgentsAction, error) {
+	body, err := AgentsBlockBody(opts)
+	if err != nil {
+		return "", err
+	}
+	return ensureManagedBlock(filepath.Join(root, AgentsFile), "# "+AgentsFile+"\n\n",
+		managedBlock{begin: agentsBegin, end: agentsEnd, body: body})
+}
+
+// AgentsBlockBody 渲染托管块正文：手写散文 + 生成的命令面附录 + 块头指纹。
+//
+// 散文是判断（教 agent 怎么做事），附录是事实（命令还在不在）——两者来源不同，
+// 所以只有后者生成。
+func AgentsBlockBody(opts AgentsOptions) (string, error) {
+	body := strings.TrimSpace(renderTemplate(tmplAgents, "", ""))
+	if len(opts.Commands) > 0 {
+		appendix, err := agentproto.RenderAppendix(opts.Commands)
+		if err != nil {
+			return "", err
+		}
+		if appendix != "" {
+			body += "\n\n" + appendix
+		}
+	}
+	return agentproto.Stamp(body, opts.Version), nil
+}
 // managedBlock 是"标记包住的一段由代码维护的文字"。
 type managedBlock struct {
 	begin, end, body string

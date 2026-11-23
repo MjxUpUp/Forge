@@ -872,6 +872,7 @@ func runTaskStart(cmd *cobra.Command, args []string) error {
 	if ctx.Summary != "" {
 		fmt.Printf("Summary: %s\n", ctx.Summary)
 	}
+	taskStartAgentsAdvisory(root)
 	// 使用偏离引导（conventions-profile 会话审计，2026-08-28；均 advisory 不阻断）：
 	// (a) L4 未用 worktree——主检出直接开任务分支是受支持的降级形态，但多任务并发
 	//     时未提交变更共堆一处正是隔离设计要消的风险面；仅在其他未完成任务存在时

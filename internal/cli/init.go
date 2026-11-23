@@ -86,7 +86,11 @@ func initRepoContract(dir, profile string) error {
 		if profile != "" {
 			fmt.Fprintln(os.Stderr, "spec/forge.yaml 已存在：档位不覆盖（改档位请直接编辑该文件）")
 		}
-		if _, err := change.EnsureAgentsBlock(dir); err != nil {
+		opts, oerr := agentsOpts()
+		if oerr != nil {
+			return oerr
+		}
+		if _, err := change.EnsureAgentsBlockOpts(dir, opts); err != nil {
 			return err
 		}
 		reports, err := change.EnsureAgentPointers(dir, nil)
@@ -112,6 +116,14 @@ func initRepoContract(dir, profile string) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	// change.Init 写的块只有散文（库路径没有命令树）；这里用当前命令树重写一次，
+	// 让 init 直接产出带命令面与块头指纹的块——否则刚 init 完 --check 就报陈旧。
+	if opts, oerr := agentsOpts(); oerr == nil {
+		if _, err := change.EnsureAgentsBlockOpts(dir, opts); err != nil {
+			return err
+		}
 	}
 
 	fmt.Println("forge 仓库契约已就位（只写仓库内产物，不写用户主目录）")

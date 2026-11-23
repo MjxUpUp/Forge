@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/MjxUpUp/Forge/internal/agentproto"
 	"github.com/MjxUpUp/Forge/internal/change"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
 	"github.com/MjxUpUp/Forge/internal/projectroot"
@@ -41,6 +42,8 @@ func init() {
 	changeCheckCmd.Flags().Bool("staged", false, "只看暂存区（pre-commit 用；暂存区出现 spec/changes/ 之外的改动则退化为全量）")
 	changeCheckCmd.Flags().Bool("json", false, "JSON 格式输出")
 	changeAgentsCmd.Flags().String("pointers", "", "同时维护指向 AGENTS.md 的指针文件：claude / cursor / all / none（缺省只维护已存在的 CLAUDE.md；.cursor/rules/ 目录存在时补 forge.mdc）")
+	changeAgentsCmd.Flags().Bool("check", false, "只检查不写：块头指纹与命令面附录是否与当前命令树一致（末行输出 drift: N，漂移时非 0 退出）")
+	changeAgentsCmd.Flags().Bool("print", false, "只打印将要写入的托管块正文，不落盘")
 }
 
 var changeCmd = &cobra.Command{
@@ -165,12 +168,32 @@ func runChangeAgents(cmd *cobra.Command, _ []string) error {
 	if !specroot.Declared(root) {
 		return fmt.Errorf("change: %s 还没有 spec/forge.yaml——先跑 `forge change init` 声明契约，再同步 AGENTS.md", root)
 	}
+	cmds, err := agentSurface()
+	if err != nil {
+		return err
+	}
+	opts := change.AgentsOptions{Commands: cmds, Version: cmd.Root().Version}
+
+	// 只读的两个出口先走：--print 说清「要写什么」，--check 说清「现在漂不漂」。
+	// 二者都不落盘——检查要是顺带改文件，就没人敢在 CI 里跑了。
+	if doPrint, _ := cmd.Flags().GetBool("print"); doPrint {
+		body, err := change.AgentsBlockBody(opts)
+		if err != nil {
+			return err
+		}
+		fmt.Println(body)
+		return nil
+	}
+	if doCheck, _ := cmd.Flags().GetBool("check"); doCheck {
+		return runChangeAgentsCheck(root, opts)
+	}
+
 	pointers, _ := cmd.Flags().GetString("pointers")
 	create, none, err := parsePointerNames(pointers)
 	if err != nil {
 		return err
 	}
-	action, err := change.EnsureAgentsBlock(root)
+	action, err := change.EnsureAgentsBlockOpts(root, opts)
 	if err != nil {
 		return err
 	}
@@ -207,6 +230,47 @@ func runChangeAgents(cmd *cobra.Command, _ []string) error {
 		default:
 			fmt.Printf("  %s：指针已是最新\n", r.File)
 		}
+	}
+	return nil
+}
+
+// runChangeAgentsCheck 只读地检查托管块与当前命令树是否一致。
+//
+// 两类漂移分开报：散文引用了不存在的命令（agent 会被指向死路），以及已写的块与
+// 「当前二进制应生成的内容」不一致（命令面变过、或块是旧版本写的）。末行固定为
+// drift: N——脚本只认这一行，不需要解析中文。
+func runChangeAgentsCheck(root string, opts change.AgentsOptions) error {
+	prose, err := change.AgentsBlockBody(change.AgentsOptions{})
+	if err != nil {
+		return err
+	}
+	issues := agentproto.Check(opts.Commands, prose)
+
+	want, err := change.AgentsBlockBody(opts)
+	if err != nil {
+		return err
+	}
+	got, ok := change.ReadAgentsBlock(root)
+	switch {
+	case !ok:
+		issues = append(issues, "AGENTS.md 里没有 forge 托管块——跑 `forge change agents` 写入")
+	case got != want:
+		gotV, gotSHA, gotOK := agentproto.ParseProto(got)
+		wantV, wantSHA, _ := agentproto.ParseProto(want)
+		if !gotOK {
+			issues = append(issues, "托管块没有块头指纹（旧版 forge 写入）——跑 `forge change agents` 重新同步")
+		} else {
+			issues = append(issues, fmt.Sprintf("块已陈旧：AGENTS.md 记录 version=%s sha=%s，当前二进制应写 version=%s sha=%s——跑 `forge change agents` 同步",
+				gotV, gotSHA, wantV, wantSHA))
+		}
+	}
+
+	fmt.Printf("drift: %d\n", len(issues))
+	for _, s := range issues {
+		fmt.Printf("  - %s\n", s)
+	}
+	if len(issues) > 0 {
+		return fmt.Errorf("change agents --check: %d 处漂移（见上）", len(issues))
 	}
 	return nil
 }
