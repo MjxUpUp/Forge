@@ -67,19 +67,13 @@ func EscapeReasonOf(e *Entry) string {
 // allCheckNames 是 CheckName 常量 roster 的显式清单（compat 面 2 的单一真相源；
 // 与 types.go 常量同步——guard：compat 测试对比 AllCheckNames 与 types.go 源扫描）。
 var allCheckNames = []CheckName{
-	CheckAutoCompile, CheckAssertion, CheckTaskVerify, CheckTaskComplete, CheckTaskGuard,
+	CheckAutoCompile, CheckAssertion, CheckTaskVerify, CheckTaskComplete,
 	CheckCheatScan, CheckEscapeHatch, CheckSkillTrigger, CheckReviewPass, CheckGoalContract,
 	CheckToolFailure, CheckSubagentStop, CheckTakeoverPolicy,
-	CheckAttribution, CheckBundleVerify, CheckConventionsLint,
-	CheckProjectSync, CheckTaskStarted,
-	CheckEvalMetricsIncomplete, CheckEvalGoldenRun, CheckEvalGoldenRotate, CheckEvalJudgeWeak,
-	CheckEvalTrapsRun, CheckEvalRun, CheckEvalDecompose, CheckEvalResumeDrill, CheckEvalAuditForged,
-	CheckEvalPreflight, CheckEvalGoldenTestQuery,
-	CheckWedgeDrill,
-	CheckSelfReport, CheckGatePush, CheckTaskStalled, CheckSyncVersionSkew,
+	CheckBundleVerify, CheckConventionsLint, CheckTaskStarted,
+	CheckSelfReport, CheckGatePush, CheckTaskStalled,
 	CheckLoopExhausted, CheckAcceptanceRecurrence,
 	CheckNextHint, CheckTreeGuard,
-	CheckDecisionWarrant, CheckDecisionEvidence,
 }
 
 // AllCheckNames 返回 CheckName roster 的排序副本（compat 面 2 / dashboards 消费）。

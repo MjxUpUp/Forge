@@ -2,7 +2,6 @@ package checklog
 
 import "testing"
 
-
 // TestGoalContractCheckInRoster 钉住 goal-contract 进 roster（task-goal-contract
 // Change A）：漏登记 = implement 门禁的契约观测在 compat 面/看板不可见。
 func TestGoalContractCheckInRoster(t *testing.T) {
@@ -16,7 +15,6 @@ func TestGoalContractCheckInRoster(t *testing.T) {
 	}
 	t.Fatal("AllCheckNames 缺 goal-contract——escape.go allCheckNames 未同步")
 }
-
 
 // TestTreeGuardCheckInRoster 钉住错树守护的 check 名进 roster（compat 面 2
 // 单一真相源）：漏登记 = 门禁/写入层写了 tree-guard 行，但 compat 快照与
@@ -51,4 +49,3 @@ func TestTreeGuardIsObservationOnly(t *testing.T) {
 		t.Fatalf("tree-guard 行必须保留在 Entries（forge trace 可见），got %d", len(ec.Entries))
 	}
 }
-

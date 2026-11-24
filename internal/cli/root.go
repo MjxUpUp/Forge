@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 	"github.com/MjxUpUp/Forge/internal/forgedata"
@@ -72,6 +73,24 @@ func (e *hardExitError) Error() string { return "hard failure (exit 2)" }
 // skills validate 等同款后续可迁移——不在本次允许改动文件清单内）。
 var errHardExit error = &hardExitError{}
 
+// straySubcommand 预检「非可执行父命令 + 多余位置参数」：cobra 对这类输入
+// 打印帮助并返回 nil（退出码 0），脚本会把拼错的子命令当成成功。返回父命令
+// 路径与首个多余 token；无可疑输入时两者皆空。可执行叶子命令的多余参数
+// （如 `change verify abc`）交给命令自己处理，不在此拦截。
+func straySubcommand(args []string) (parent, token string) {
+	cmd, rest, err := rootCmd.Find(args)
+	if err != nil || cmd == nil || cmd == rootCmd || cmd.Runnable() || !cmd.HasSubCommands() {
+		return "", ""
+	}
+	for _, a := range rest {
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		return cmd.CommandPath(), a
+	}
+	return "", ""
+}
+
 func Execute() {
 	// graceful degradation (resilience §2.6 模式7 fail-open)：panic 时输出诊断到 stderr +
 	// exit 2，保证 forge CLI 永不裸奔。dogfood 1.1：forge CLI panic 后偶发空 stdout 致
@@ -86,6 +105,10 @@ func Execute() {
 			os.Exit(2)
 		}
 	}()
+	if parent, token := straySubcommand(os.Args[1:]); token != "" {
+		fmt.Fprintf(os.Stderr, "forge: unknown command %q for %q\n", token, parent)
+		os.Exit(1)
+	}
 	if err := rootCmd.Execute(); err != nil {
 		// 以退出码传达结论的命令（docs lint 硬失败）：结论已由命令自身打印，此处不再回显。
 		// 读退出码的消费方（docs lint：2=硬失败）相对旧的 RunE 内 os.Exit(2) 零变化。

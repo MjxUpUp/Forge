@@ -22,10 +22,6 @@ func TestMetaKeyLiterals(t *testing.T) {
 		{"MetaKeySuggested", MetaKeySuggested, "suggested"},
 		{"MetaKeyVerdict", MetaKeyVerdict, "verdict"},
 		{"MetaKeySigner", MetaKeySigner, "signer"},
-		{"MetaKeySyncOp", MetaKeySyncOp, "sync_op"},
-		{"MetaKeyAttributionAttributed", MetaKeyAttributionAttributed, "attribution.attributed"},
-		{"MetaKeyAttributionOrphans", MetaKeyAttributionOrphans, "attribution.orphans"},
-		{"MetaKeyAttributionRate", MetaKeyAttributionRate, "attribution.rate"},
 	}
 
 	seen := make(map[string]string, len(cases))

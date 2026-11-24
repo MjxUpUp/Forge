@@ -68,13 +68,13 @@ func TestBuildEvidenceChain_BucketsAndLegacyFallback(t *testing.T) {
 		{Check: CheckName("file-sentinel"), Source: "", TaskRef: "t"}, // 旧数据无 Source，兜底为 deterministic
 		// Legacy data, falls back to deterministic.
 		//
-		{Check: CheckTaskGuard, Source: "", TaskRef: "t"}, // 旧数据，兜底为 deterministic
+		{Check: CheckName("acceptance"), Source: "", TaskRef: "t"}, // 旧数据，兜底为 deterministic
 	}
 	ec := BuildEvidenceChain(entries, "t")
 	// core-only 删了 file-sentinel 检查名，它不再在白名单里——旧数据行保留在
 	// entries 中供 trace，但不进 deterministic 桶。
 	if ec.Deterministic != 3 {
-		t.Fatalf(`deterministic bucket: got %d, want 3 (auto-compile+assertion+task-guard)`, ec.Deterministic)
+		t.Fatalf(`deterministic bucket: got %d, want 3 (auto-compile+assertion+acceptance)`, ec.Deterministic)
 	}
 	if ec.AgentClaim != 1 {
 		t.Fatalf(`agent-claim bucket: got %d, want 1 (task-verify)`, ec.AgentClaim)
@@ -164,9 +164,9 @@ func TestBuildEvidenceChain_ObservationChecksExcluded(t *testing.T) {
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
 			{Check: CheckBundleVerify, Source: EvidenceDeterministic, TaskRef: "t", Meta: map[string]string{MetaKeyVerdict: "verified"}},
 		}, 1, 2, false},
-		{`project-sync`, []Entry{
+		{`tool-failure`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},
-			{Check: CheckProjectSync, Source: EvidenceDeterministic, TaskRef: "t", Meta: map[string]string{MetaKeySyncOp: "push"}},
+			{Check: CheckToolFailure, Source: EvidenceDeterministic, TaskRef: "t"},
 		}, 1, 2, false},
 		{`cross-repo-impact`, []Entry{
 			{Check: CheckAutoCompile, Source: EvidenceDeterministic, TaskRef: "t"},

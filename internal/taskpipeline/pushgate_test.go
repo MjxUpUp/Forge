@@ -164,7 +164,7 @@ func TestBlockedTasksOnBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	checklog.Record(dir, &checklog.Entry{
-		Check: checklog.CheckTaskGuard, Passed: false, Checked: true,
+		Check: checklog.CheckToolFailure, Passed: false, Checked: true,
 		Level: checklog.LevelBlocked, TaskRef: "t/b1",
 		Detail: "BLOCKED: test",
 	})
@@ -174,7 +174,7 @@ func TestBlockedTasksOnBranch(t *testing.T) {
 	}
 	// 后续同 check pass 行消解。
 	checklog.Record(dir, &checklog.Entry{
-		Check: checklog.CheckTaskGuard, Passed: true, Checked: true,
+		Check: checklog.CheckToolFailure, Passed: true, Checked: true,
 		Level: checklog.LevelPass, TaskRef: "t/b1", Detail: "pass",
 	})
 	got = blockedTasksOnBranch(dir, "feat/bt")

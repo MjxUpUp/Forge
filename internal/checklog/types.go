@@ -17,7 +17,6 @@ const (
 	CheckAssertion    CheckName = "assertion-check"
 	CheckTaskVerify   CheckName = "task-verify"
 	CheckTaskComplete CheckName = "task-complete"
-	CheckTaskGuard    CheckName = "task-guard"
 	// CheckCheatScan records advisory AI cheat-pattern scan results: at task-verify, mechanically detects new-line hits across 7 categories.
 	//
 	// CheckCheatScan 记录 advisory AI 作弊模式扫描结果：task-verify 时机械检测 7 类
@@ -81,29 +80,6 @@ const (
 	// 子 agent 活动此前在 forge 侧零记录，sessions.jsonl 约 53% 会话缺 agent_type
 	// （2026-08 归因审计）。
 	CheckSubagentStop CheckName = "subagent-stop"
-	// CheckDecisionWarrant records the warrant check of one `forge skills decide`
-	// (R2 Warrant-Aware Acceptance): whether an accept decision carries a
-	// checkable anchor (run:<id> compared clean against the skill's baseline is
-	// strong; any other existing anchor is weak) and, for run anchors, whether
-	// the run regresses. Advisory: Passed=false for missing/invalid/regression,
-	// the decision is still written. Source is deterministic (forge checks the
-	// anchor itself), but the check is not in the evidence whitelist
-	// (evidence.go verificationChecks), so it never feeds evidence strength.
-	//
-	// CheckDecisionWarrant 记录一次 `forge skills decide` 的理由核验（R2
-	// Warrant-Aware Acceptance）：accept 决策是否带可核验锚点（与该 skill 的 baseline
-	// 有效比对且无回归的 run:<id> 为强；其余存在的锚点为弱），run 锚点是否回归。
-	// advisory：missing/invalid/regression 时 Passed=false，决策照常写入。Source 为
-	// deterministic（forge 自己核验锚点），但不在 evidence 白名单（evidence.go
-	// verificationChecks），永不参与证据强度。
-	CheckDecisionWarrant CheckName = "decision-warrant"
-	// CheckDecisionEvidence records whether a `forge skills decide` cites external figures (percentages, multipliers, arXiv ids) in its evidence or rationale without any source URL. Advisory: Passed=false when figures lack a URL, the decision is still written; not in the evidence whitelist.
-	//
-	// CheckDecisionEvidence 记录一次 `forge skills decide` 的 Evidence / Rationale 是否引用了
-	// 外部数字（百分比、倍数、arXiv 编号）却没给来源 URL（2026-10 research-workflow 复盘：
-	// 59.4% 进决策记录时丢了来源与场景限定）。advisory：缺 URL 时 Passed=false，决策照常
-	// 写入；两段文本都不含外部数字时不落行。不在 evidence 白名单，永不参与证据强度。
-	CheckDecisionEvidence CheckName = "decision-evidence"
 	// CheckConventionsLint records the conventions-profile layer-3 advisory at task-verify (2026-08-28).
 	//
 	// CheckConventionsLint 记录 conventions-profile 层 3 在 task-verify 的
@@ -123,14 +99,6 @@ const (
 	// Meta[MetaKeyVerdict]、签名者 node_id 走 Meta[MetaKeySigner]——读方永不解析
 	// Detail 散文。
 	CheckBundleVerify CheckName = "bundle-verify"
-	// CheckProjectSync records one git-transport sync op outcome (init/push/pull — sync-convergence Phase 1).
-	//
-	// CheckProjectSync 记录一次 git 通道同步操作的结果（init/push/pull——
-	// sync-convergence Phase 1）。机器本地的 sync-remote.json 只给成功操作打戳，
-	// 失败的 push 留着旧时间戳、终端之外完全不可见；本条目是让失败可见的记录。
-	// observation 类（与任何任务的验证是否实跑无关）——排除出证据强度分桶。操作
-	// 名走 Meta[MetaKeySyncOp]。
-	CheckProjectSync CheckName = "project-sync"
 	// CheckTaskStarted records the task-start boundary event (multi-task-concurrency design §5).
 	//
 	// CheckTaskStarted 记录任务启动边界事件（multi-task-concurrency 设计 §5，L2 事件
@@ -140,14 +108,6 @@ const (
 	// 标记而非任何验证结果——排除出证据强度分桶。该标记也是后续日志滚动（janitor
 	// 按 task_started 边界归档）与跨机 ts 归并的分段锚点。
 	CheckTaskStarted CheckName = "task-started"
-	// CheckAttribution records the Stop-time attribution reconciliation coverage (multi-task-concurrency design §6, L3): how much of the working tree's changed set the session→file ledger explains (attributed vs orphan).
-	//
-	// CheckAttribution 记录 Stop 时归属对账的覆盖率（multi-task-concurrency 设计 §6，
-	// L3）：会话→文件台账解释了工作树变更集的多少（attributed vs orphan）。这是 T2
-	// spike 的那把尺子——bash-infer 的去留由实测覆盖率决定，不靠拍脑袋。观察类：
-	// 覆盖率是基建健康度，非任务验证——排除出证据强度分桶。计数走
-	// Meta[MetaKeyAttribution*]。
-	CheckAttribution CheckName = "attribution"
 	// CheckTakeoverPolicy records per-project takeover state flips (forge on/off,
 	// Project Policy Layer P1). Observation class: the audit trail of "who turned
 	// takeover off/on and when" — never task verification, excluded from evidence-
@@ -159,98 +119,6 @@ const (
 	// 排除出证据强度分桶。仅在项目已有 DataDir 时落盘；从未 init 的项目以注册表
 	// Entry 决策字段为审计。
 	CheckTakeoverPolicy CheckName = "takeover-policy"
-	// CheckEvalMetricsIncomplete records a fail-closed rejection of the eval metrics
-	// dictionary (docs/design/forge-evaluation-system.md P0): a metrics.yaml entry is
-	// missing one of its mandatory fields (claim/track/definition/source/misuse_note/
-	// min_samples). Observation class — the eval tooling refusing to run on an
-	// incomplete dictionary is itself an eval-infrastructure audit trail, never task
-	// verification; excluded from evidence-strength bucketing.
-	//
-	// CheckEvalMetricsIncomplete 记录评测指标字典的 fail-closed 拒绝
-	// （docs/design/forge-evaluation-system.md P0）：metrics.yaml 条目缺失任一必填
-	// 字段（claim/track/definition/source/misuse_note/min_samples）。观察类——评测
-	// 工具拒跑不完整字典这件事本身就是评测基建的审计轨迹，绝非任务验证，排除出
-	// 证据强度分桶。
-	CheckEvalMetricsIncomplete CheckName = "eval-metrics-incomplete"
-	// CheckEvalGoldenRun records one `forge eval golden run` outcome (precision/recall
-	// baseline over the labeled gate cases). Observation class — eval evidence about
-	// the gates, never about the current task; excluded from evidence-strength
-	// bucketing.
-	//
-	// CheckEvalGoldenRun 记录一次 `forge eval golden run` 的结果（golden 标注集上
-	// 的 precision/recall 基线）。观察类——是关于门禁的评测证据，与当前任务无关，
-	// 排除出证据强度分桶。
-	CheckEvalGoldenRun CheckName = "eval-golden-run"
-	// CheckEvalGoldenRotate records one quarterly golden-set rotation (cases swapped
-	// in/out, retirement reasons). Observation class — dataset governance audit.
-	//
-	// CheckEvalGoldenRotate 记录一次季度 golden 集轮换（换入/换出用例与退役原因）。
-	// 观察类——数据集治理审计。
-	CheckEvalGoldenRotate CheckName = "eval-golden-rotate"
-	// CheckEvalJudgeWeak records that a judge's agreement audit fell below the
-	// reliability bar (Cohen's kappa < threshold), degrading downstream decisions to
-	// advisory. Observation class.
-	//
-	// CheckEvalJudgeWeak 记录某判分器的一致性审计低于可靠性阈值（Cohen's kappa
-	// 低于阈值），其下游决策降级为 advisory。观察类。
-	CheckEvalJudgeWeak CheckName = "eval-judge-weak"
-	// CheckEvalTrapsRun records one `forge eval traps run` outcome (adversarial trap
-	// capture rate). Observation class.
-	//
-	// CheckEvalTrapsRun 记录一次 `forge eval traps run` 的结果（对抗陷阱识破率）。
-	// 观察类。
-	CheckEvalTrapsRun CheckName = "eval-traps-run"
-	// CheckEvalRun records one Track-A benchmark run (`forge eval run`) with its
-	// four-tuple (profile×model×benchmark×split) headline. Observation class.
-	//
-	// CheckEvalRun 记录一次 Track A 基准运行（`forge eval run`），头部带四元组
-	// （profile×model×benchmark×split）摘要。观察类。
-	CheckEvalRun CheckName = "eval-run"
-	// CheckEvalDecompose records one variance-decomposition campaign
-	// (`forge eval decompose`). Observation class.
-	//
-	// CheckEvalDecompose 记录一次方差分解战役（`forge eval decompose`）。观察类。
-	CheckEvalDecompose CheckName = "eval-decompose"
-	// CheckEvalPreflight records a Track-A preflight refusal (`forge eval run`):
-	// the oracle arm failed or was undeclared, or the do-nothing arm passed — the
-	// evaluation itself is invalid (cycle plan R3). Observation class; the
-	// refusal is the evaluation tool's own audit trail, never task verification.
-	//
-	// CheckEvalPreflight 记录一次 Track A preflight 拒绝启动（`forge eval run`）：
-	// oracle 臂未通过或未声明，或 do-nothing 臂通过——评测自身不合法（周期总纲
-	// R3）。观察类——是评测工具自身的审计轨迹，绝非任务验证。
-	CheckEvalPreflight CheckName = "eval-preflight"
-	// CheckEvalGoldenTestQuery records one query of the golden test layer
-	// (`forge eval golden run --release`) with the running query count — the
-	// test layer is only meaningful while its query count stays small (cycle
-	// plan R5). Observation class.
-	//
-	// CheckEvalGoldenTestQuery 记录一次 golden test 层查询（`forge eval golden run
-	// --release`）及累计查询次数——test 层只在查询次数少时有意义（周期总纲 R5）。
-	// 观察类。
-	CheckEvalGoldenTestQuery CheckName = "eval-golden-test-query"
-	// CheckEvalResumeDrill records one continuity-drill batch (`forge eval
-	// resume-drill`). Observation class.
-	//
-	// CheckEvalResumeDrill 记录一批接续演练（`forge eval resume-drill`）。观察类。
-	CheckEvalResumeDrill CheckName = "eval-resume-drill"
-	// CheckWedgeDrill records one wedge-drill batch (`forge eval wedge-drill`):
-	// the scripted first-evidence path (init → accept → red → fix → green →
-	// trace) doubling as a release smoke (leverage-points-landing.md L1).
-	// Observation class.
-	//
-	// CheckWedgeDrill 记录一批楔子演练（`forge eval wedge-drill`）——脚本化的
-	// 首证据路径（init → accept → 红 → 修 → 绿 → trace），兼作发布冒烟
-	//（leverage-points-landing.md L1）。观察类。
-	CheckWedgeDrill CheckName = "eval-wedge-drill"
-	// CheckEvalAuditForged records an audit-row integrity failure surfaced by
-	// `forge eval audit-verify` (forged signature or replayed stamp). Security-
-	// adjacent observation — never task verification; excluded from evidence-
-	// strength bucketing.
-	//
-	// CheckEvalAuditForged 记录 `forge eval audit-verify` 上浮的审计行完整性失败
-	//（签名伪造或戳重放）。安全邻接观察——绝非任务验证，排除出证据强度分桶。
-	CheckEvalAuditForged CheckName = "eval-audit-forged"
 	// CheckSelfReport records the task-complete self-report consistency check:
 	// verify-class commands claimed as done in the checklist are matched against
 	// the Bash commands the toollog actually recorded for this task (focus-batches
@@ -293,18 +161,6 @@ const (
 	// 观察类——僵尸认领与 overnight 会话失联的 always-on 治理信号；marker 节流每
 	// 任务每小时至多一条。
 	CheckTaskStalled CheckName = "task-stalled"
-	// CheckSyncVersionSkew records a bundle forward-version-skew observation on
-	// import (mechanism-hardening P0-1): the bundle was exported by a NEWER forge
-	// than the local binary — local re-export would silently clip newer fields
-	// (old-version unmarshal drops unknown keys). Observation class; warn-level,
-	// never blocks (K8s version-skew semantics: audible, not hard-rejecting —
-	// idempotent re-import stays free).
-	//
-	// CheckSyncVersionSkew 记录导入侧的 bundle 前向版本偏移观察
-	//（mechanism-hardening P0-1）：bundle 由比本机新的 forge 导出——本机
-	// re-export 会静默裁剪较新字段（旧版本反序列化丢弃未知键）。观察类；warn
-	// 级、绝不硬拒（K8s 偏移窗口语义：无声变有声，幂等导入体验不变）。
-	CheckSyncVersionSkew CheckName = "sync-version-skew"
 	// CheckLoopExhausted records the review→implement loop exhaustion state
 	// (artifact-chain-workflow.md「回边语义」节): Passed=false rows are the
 	// escalation record when complete is blocked (round budget spent on an open
@@ -351,14 +207,6 @@ const (
 	CheckTreeGuard CheckName = "tree-guard"
 )
 
-// MetaKeyAttribution* 归属覆盖率条目的机器载荷命名空间（写入方 attribution/metric.go
-// 与未来读方的单一真相源——与 MetaKeyVerdict/MetaKeySyncOp 同样的接缝契约纪律）。
-const (
-	MetaKeyAttributionAttributed = "attribution.attributed"
-	MetaKeyAttributionOrphans    = "attribution.orphans"
-	MetaKeyAttributionRate       = "attribution.rate"
-)
-
 const (
 	// MetaKeyVerdict / MetaKeySigner namespace bundle-verify's machine payload.
 	//
@@ -368,11 +216,6 @@ const (
 	// 契约缝纪律。
 	MetaKeyVerdict = "verdict"
 	MetaKeySigner  = "signer"
-	// MetaKeySyncOp namespaces project-sync's op name (init/push/pull) — same contract-seam discipline as above: writer cli/project_sync.go, reader the dashboard feed.
-	//
-	// MetaKeySyncOp 给 project-sync 的操作名（init/push/pull）命名空间——同款契约
-	// 缝纪律：写方 cli/project_sync.go，读方 dashboard feed。
-	MetaKeySyncOp = "sync_op"
 )
 
 // MetaKeyResolvePath / MetaKeyPostSeal namespace the task-attribution probe payload: any check row may carry them, so attribution stays in Meta instead of widening Entry. Writers: taskpipeline annotate marks rows landing after the evidence seal (MetaKeyPostSeal), tree-guard gate rows name the detection path that resolved the task (MetaKeyResolvePath). Consumers read Meta by key — one source of truth, same contract-seam discipline as the MetaKey* constants above.

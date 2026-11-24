@@ -81,7 +81,7 @@ func stampWith(nodeID string, seq int64, ts, sig string) nodestamp.Stamp {
 func TestRecordedEntriesCarrySignatures(t *testing.T) {
 	isolateHome(t)
 	root := t.TempDir()
-	for _, check := range []CheckName{CheckTaskVerify, CheckCheatScan, CheckEvalGoldenRun} {
+	for _, check := range []CheckName{CheckTaskVerify, CheckCheatScan, CheckReviewPass} {
 		if err := Record(root, &Entry{Check: check, Passed: true, Checked: true, Detail: "d"}); err != nil {
 			t.Fatal(err)
 		}

@@ -171,7 +171,7 @@ func TestEscapeRosterComplete(t *testing.T) {
 // 双向对齐——对抗审查 should-fix：原注释宣称守卫而未实现）。
 func TestAllCheckNamesSorted(t *testing.T) {
 	names := AllCheckNames()
-	if len(names) < 30 {
+	if len(names) < 20 {
 		t.Fatalf("roster 异常小: %d", len(names))
 	}
 	// 源对照：checklog/types.go 里 `CheckXxx CheckName = "y"` 声明集（复审

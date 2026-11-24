@@ -63,7 +63,7 @@ func TestVerificationChecksLiteralsDeclared(t *testing.T) {
 			}
 		}
 	}
-	if len(declared) < 50 {
+	if len(declared) < 40 {
 		t.Fatalf("源声明扫描异常少: %d（正则或路径漂移？）", len(declared))
 	}
 	for c := range verificationChecks {
