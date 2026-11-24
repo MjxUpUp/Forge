@@ -152,13 +152,33 @@ func DriftedCommands(doc string) []string {
 	// "experience propose, experience propose"。
 	seen := make(map[string]bool)
 	var drifted []string
-	for _, m := range forgeBacktickRef.FindAllStringSubmatch(doc, -1) {
-		if ValidateForgePath(m[1]) != "" && !seen[m[1]] {
-			seen[m[1]] = true
-			drifted = append(drifted, m[1])
+	for _, line := range strings.Split(doc, "\n") {
+		// 已删除语境豁免：迁移表/升级说明里写「旧命令 `forge selfcheck` 已删除」是事实
+		// 陈述，不是现行教学——与 capability 活文档判定同一口径（行内含标记即整行豁免）。
+		if hasDeletedMarker(line) {
+			continue
+		}
+		for _, m := range forgeBacktickRef.FindAllStringSubmatch(line, -1) {
+			if ValidateForgePath(m[1]) != "" && !seen[m[1]] {
+				seen[m[1]] = true
+				drifted = append(drifted, m[1])
+			}
 		}
 	}
 	return drifted
+}
+
+// deletedMarkers 是「该命令/能力已删除」的语境词。命中即视为历史陈述：文档在说明旧
+// 用法已不可用时必然会写出已删命令，把它报成 drift 会把迁移表判成回归。
+var deletedMarkers = []string{"已删除", "已移除", "deprecated", "removed in"}
+
+func hasDeletedMarker(line string) bool {
+	for _, m := range deletedMarkers {
+		if strings.Contains(line, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // DriftedInProject scans the user project root README.md and returns forge command references that have drifted.

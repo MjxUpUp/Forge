@@ -109,6 +109,22 @@ func TestDriftedCommands_Dedup(t *testing.T) {
 	})
 }
 
+// TestDriftedCommands_SkipsDeletedNotes：迁移表里写「旧命令 `forge selfcheck` 已删除」是
+// 事实陈述而非现行教学，必须豁免；同一文本里未被标记的 ghost 仍要抓住，证明豁免只按行
+// 生效、不会吞掉真漂移。
+func TestDriftedCommands_SkipsDeletedNotes(t *testing.T) {
+	root := &cobra.Command{Use: "forge"}
+	root.AddCommand(&cobra.Command{Use: "init"})
+
+	doc := "旧命令 `forge selfcheck` 已删除；现行 `forge init` 可用。\n另见 `forge bogus`。"
+	withTree(t, root, func() {
+		drifted := DriftedCommands(doc)
+		if len(drifted) != 1 || drifted[0] != "bogus" {
+			t.Fatalf("deleted-note line must be exempt, other ghosts still caught, got %v", drifted)
+		}
+	})
+}
+
 // TestDriftedCommands_NoCrossLinePhantom：正则字符类排除 \n，被换行截断的 code span 不会
 // 被拼成幻影引用。修复前 "`forge experience\npropose`" 会匹配出 m[1]="experience\npropose"，
 // 报出一个文档作者从未写过的 drift 路径。
