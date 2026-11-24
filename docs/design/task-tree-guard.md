@@ -18,7 +18,7 @@
 
 ## 1. 问题：任务可以锚在一棵树，工作在另一棵
 
-`forge task start --worktree` 会在 repo 树外建独立 worktree、切分支，并在 start 收尾时写绑定与活跃指针；但**这两步不是 `--worktree` 专属**——普通 start 也会无条件写 `SetActiveTaskRef` 与 `worktree.BindTask`，所以每个任务都有活锚。而没有任何机制**要求**后续编辑真的发生在那棵树里。
+`forge task start --worktree` 会在 repo 树外建独立 worktree、切分支，并在 start 收尾时写绑定与活跃指针；但**这两步不是 `--worktree` 专属**——普通 start 也会无条件写 `SetActiveTaskRef` 与 `worktree.BindTask`，所以任何由 forge 启动的任务都会写活锚（外部手工造的 TaskState 除外）。而没有任何机制**要求**后续编辑真的发生在那棵树里。
 
 历史复现（v1.84.2 真机，临时 repo）：`task start --worktree` 建出 `<repo>-wt/feat-wt-lane` → 回主检出执行 `task status` 仍解析出该任务且无提示 → 在主检出改源码、跑 `task gate task-implement` → **passed**。
 
@@ -45,9 +45,9 @@
 ## 3. 门禁侧执法与逃生
 
 - 拦截点：`internal/clitask/task_gate.go` 的 `runTaskGate` 在 `TaskTreeStatus` 为 `off-tree` 时 `GateBlocked`，**在跑判据之前**拒绝——避免在一棵空树上刷出绿色证据。
-- 逃生：`FORGE_TASK_TREE_GUARD=0`（`=0` 才关）。关闭后门禁放行，但落一条 `escape-hatch` 行（`escape.gate=task-tree-guard`），任务按逃生舱规则记 capped。
+- 逃生：`FORGE_TASK_TREE_GUARD=0`（`=0` 才关）。关闭后门禁放行，但落一条 `escape-hatch` 行（`escape.gate=task-tree-guard`），任务落一条逃生记录、证据强度封顶 Weak（3.0 起没有分数，capped 不再指分数）。
 - 留痕：每次错树 BLOCK 落一条 `tree-guard` checklog 行（`Passed=false`、`Level=warn`，Meta 带 `tree_guard=off-tree`、`anchor`、`wtid`），它是**观察证据**，不进 evidence 白名单。
-- 关开关 ≠ 回到旧行为：`task status` 仍会显示 `Tree: off-tree`，checklog 仍记逃生行，评分仍 capped。
+- 关开关 ≠ 回到旧行为：`task status` 仍会显示 `Tree: off-tree`，checklog 仍记逃生行，证据强度仍按逃生规则封顶。
 
 ## 4. 已知限制
 

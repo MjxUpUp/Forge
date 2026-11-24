@@ -11,7 +11,7 @@
 - Go 工具链（演示一、二要跑 `go test`）、git 2.28+（要支持 `git init -b`）。
 - Forge ≥ 3.0.1：`npm install -g @agent_forge/forge@latest`，装完 `forge version` 确认。
 
-两个术语：**判据**是 acceptance.md 里 bash 围栏中的命令 + 期望子串；**证据封印**指 `forge change verify` 实跑判据后写进 `spec/changes/<id>/evidence/<UTC>/` 的 stdout/stderr/exit 与 summary.json——它是「已验证」的唯一来源。
+两个术语：**判据**是 acceptance.md 里 bash 围栏中的命令 + 期望子串；**证据封印**指 `forge change verify` 实跑判据后写进 `spec/changes/<id>/evidence/<UTC>/` 的 stdout/stderr/exit 与 summary.json——它是 change「已验证」结论的唯一来源（task 侧的验收记录由 `forge task verify-acceptance` 落在任务状态与 checklog）。
 
 ## 演示一：`-run` 指向不存在的测试，`go test` 退 0 也算失败
 

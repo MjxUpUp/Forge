@@ -20,7 +20,7 @@ OWASP 对 skill 供应链的缓解措施钦定了 ed25519 签名、skill invento
 
 | AST 条目 | 缓解要求（OWASP 口径） | Forge 对应（3.0） | 满足度 |
 |---|---|---|---|
-| AST01 Malicious Skills | 签名与来源验证 | checklog 行的 ed25519 签名字段（`sig`/`key_id`），校验入口是导入侧验签（`bundle-verify` 检查） | 部分（SKILL.md 本体签名不在本仓库范围） |
+| AST01 Malicious Skills | 签名与来源验证 | checklog 行的 ed25519 签名字段（`sig`/`key_id`），校验入口原本是导入侧验签（`bundle-verify`）；该导入路径已随 core-only 移除，现有行仍可由 checklog 直接核对签名与版本字段 | 部分（SKILL.md 本体签名不在本仓库范围） |
 | AST02 Supply Chain | 安装源验证 | 分发面由 `TestNpmPlatformVersionsAligned` 守卫 wrapper 与平台子包对齐 | 部分（原 `forge doctor` 漂移检测已删除） |
 | AST03 Over-Privileged | 权限最小化 | 无宿主接线：forge 不注入 hook、不持有宿主权限，只在命令内检查 | 部分（机制已随宿主层移除） |
 | AST05 Untrusted Instructions | 不可信指令隔离 | task 门禁的 skill-decisions 检查（改 SKILL.md 必须记决策） | 部分 |
@@ -47,13 +47,13 @@ Forge 的证据强度分级（deterministic > agent-claim）与 CAISI「agent �
 
 ## 六、信通院「可信AI智能编码工具」评估（16 能力项）
 
-评估对象是编码工具而非治理层——Forge 定位是**厂商侧评估佐证**（「可信放大器」）：审计链（checklog 签名 + 版本字段）、门禁证据分级、变更全链路留痕映射「应用成熟度/安全」维度的材料。对应关系按能力项逐条：操作可追溯 ↔ toollog / checklog / `forge task report`；交付可复核 ↔ `forge change verify` 证据目录；测试卫生 ↔ `forge test ledger`。**原映射里的 hazard-guard / file-sentinel / bash-guard 已随宿主层与 core-only 移除**，代码安全维度不再由本仓库提供证据。注：具体能力项编号以评估现行文件为准，本表不预设编号对应。
+评估对象是编码工具而非治理层——Forge 定位是**厂商侧评估佐证**（「可信放大器」）：审计链（checklog 签名 + 版本字段）、门禁证据分级、变更全链路留痕映射「应用成熟度/安全」维度的材料。对应关系按能力项逐条：操作可追溯 ↔ checklog / `forge task report`（toollog 是 1.85 前的历史数据，不再新写入）；交付可复核 ↔ `forge change verify` 证据目录；测试卫生 ↔ `forge test ledger`。**原映射里的 hazard-guard / file-sentinel / bash-guard 已随宿主层与 core-only 移除**，代码安全维度不再由本仓库提供证据。注：具体能力项编号以评估现行文件为准，本表不预设编号对应。
 
 ## 七、使用方式（采购/审计应答）
 
 1. `forge change verify <id>`——交出 `spec/changes/<id>/evidence/<UTC>/` 目录（判据、命令、退出码、时间戳）；
 2. `forge test ledger` + `forge test record`——测试现状与实跑记录（skipped 必须带理由与审批）；
 3. `forge docs closure --strict`——命令面与活文档一致性的可复核快照；
-4. `forge compat snapshot`——七面兼容盘点，作为「能力面只增不删」的审计锚点。
+4. `forge compat snapshot`——七面兼容盘点，作为能力面变更的审计锚点（3.0 已发生一次收窄，见 compat-commitments §零）。
 
 红线（诚实呈现）：全部标准处于早期——本表是「映射与卡位」而非「合规认证」；企业应答话术用「取证/降险/问卷通关」，不用「强制/认证」（EU 延期与 coding agent 非高风险类目已核实）。**能力已移除的行如实写「已删除」，不拿旧导出器充证据。**

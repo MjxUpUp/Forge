@@ -26,18 +26,18 @@ Stop trusting AI-generated code. Start gating it.
 
 > **AI 写的代码，你放心直接提交吗？**
 
-Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到代码提交，每一步产出物都要留下 deterministic 证据，门禁由 CLI 确定性把关。质量检查只在 `forge task gate` / `forge change verify` 的进程内执行，没有实时拦截层，写操作不经过 forge。
+Forge 在 AI 编码过程中插入结构化质量门禁——从任务创建到代码提交，每一步产出物都要留下 deterministic 证据，门禁由 CLI 确定性把关。质量检查只在 `forge task gate` / `forge task verify-acceptance` / `forge change verify` / `forge change check` 的进程内执行，没有实时拦截层，写操作不经过 forge。
 
 **⚡ 60 秒拿到第一个证据**：
 
 ```bash
 forge init
-forge task start --ref feat/demo --branch --accept "git log -1 :: commit"
+forge task start --ref feat/demo --branch --agent demo-agent --accept "git log -1 :: commit"
 forge task verify-acceptance    # 实跑验收标准 → 不可伪造的 deterministic 证据
 forge task report --ref feat/demo # 交付单：判据结果 + 证据强度 + 未验证面
 ```
 
-跑 `forge change check` 可在任何机器上自检仓库契约与证据是否自洽（退出码 0/2），它是 CI 与 pre-commit 共用的同一个闸门。
+跑 `forge change check` 可在任何机器上自检仓库契约与证据是否自洽（退出码 0/2），它既是 CI 的闸门，也是仓库自带可选 pre-commit 脚本调用的同一条检查（forge 不安装 hook）。
 
 ## 🎯 它补的是哪一层
 
@@ -76,7 +76,7 @@ Forge 是 deterministic 的——范围是 "deterministic where code can verify"
     <td width="50%" valign="top"><strong>🔧 显式命令驱动</strong><br/>forge 没有实时拦截层：门禁由 agent 显式跑 forge task / forge change 命令触发，状态与证据落盘可审计。</td>
   </tr>
   <tr>
-    <td valign="top"><strong>🧭 质量只由 gate/verify 与 CI 把关</strong><br/>没有拦截层：写操作不经过 forge；质量检查发生在 forge task gate / forge change verify 进程内，合并前由 CI 的 forge change check 兜底。</td>
+    <td valign="top"><strong>🧭 质量只由 gate/verify 与 CI 把关</strong><br/>没有拦截层：写操作不经过 forge；质量检查发生在 forge task gate / forge task verify-acceptance / forge change verify 进程内，合并前由 CI 的 forge change check 兜底。</td>
     <td valign="top"><strong>📒 测试账本</strong><br/>`forge test ledger` 按 `go test -json` 记录给出测试四态（live / orphaned / skipped / phantom），Skip 必须写理由并经人审批；条件跳过单独计数，不算被跳过。</td>
   </tr>
 </table>
@@ -143,7 +143,7 @@ forge **没有宿主层**：不分发宿主插件、不写宿主配置。门禁�
 ```yaml
 # spec/forge.yaml
 version: "1"       # 契约版本，按主版本兼容
-profile: standard  # standard | mini | full（省略该字段按 standard 解析；forge init 写入的是 mini）
+profile: mini      # mini | standard | full（省略该字段按 standard 解析；forge init 写入的是 mini）
 hooks: off         # 兼容字段：保留只为老契约可解析，不启用任何执法
 ```
 
@@ -178,7 +178,7 @@ hooks: off         # 兼容字段：保留只为老契约可解析，不启用�
 
 **证据怎么变成合并前提**：`forge change check` 给 CI 与 pre-commit 同一套判据——每个未归档 change 都得有一份与当前代码和判据一致的封印证据。仓库里带两份接线示例：
 
-- `.githooks/pre-commit`：`git config core.hooksPath .githooks` 启用。它只查暂存区碰到的 change；一旦暂存区出现 `spec/changes/` 之外的改动（代码、文档），就退化为检查全部 change——封印的证据绑的是代码内容，只看被碰到的 change 会放行一个注定在 CI 变红的提交。hook 执行时看的是工作区：`git add` 后又改回文件、或漏 add 证据，本地可能放行而 CI 变红。机器上没有 `forge` 或版本太旧时它打印原因后放行，仓库还没有 `spec/changes/` 时静默放行（不打扰还没用 change 流程的仓库）；POSIX 上需要可执行位，clone 后若丢了用 `chmod +x .githooks/pre-commit`。
+- `.githooks/pre-commit`（仓库自带、可选；forge 不安装 hook）：`git config core.hooksPath .githooks` 启用。它只查暂存区碰到的 change；一旦暂存区出现 `spec/changes/` 之外的改动（代码、文档），就退化为检查全部 change——封印的证据绑的是代码内容，只看被碰到的 change 会放行一个注定在 CI 变红的提交。hook 执行时看的是工作区：`git add` 后又改回文件、或漏 add 证据，本地可能放行而 CI 变红。机器上没有 `forge` 或版本太旧时它打印原因后放行，仓库还没有 `spec/changes/` 时静默放行（不打扰还没用 change 流程的仓库）；POSIX 上需要可执行位，clone 后若丢了用 `chmod +x .githooks/pre-commit`。
 - `.github/workflows/change-verify.yml`：只在 PR 上跑（main 上有新提交后再 merge，合并后的树与被封印的那版不同，证据按设计判失效——那是合并噪音，不是代码变了），`fetch-depth: 0` 且检 PR head sha；有 `spec/changes/` 才执行 `forge change check`，没有就整步跳过。它从源码构建 forge（这一行只在 forge 自己的仓库成立；别的仓库要换成安装固定版本的 forge），所以不存在「没装 forge 就放行」；要让它在 GitHub 上真拦住合并，还得在仓库设置里设为 required status check。
 
 `--json` 在所有路径上输出同一份 `{checked,problems,skipped}`（空列表是 `[]`，跳过时退出码 0）。信任边界：`change check` 只把未归档 change 当作待交付物，已归档的是历史；把未封印的 change 手工 `git mv` 进 `archive/` 等于人宣布它已交付——工具不再检查，这一步只能靠 review。
@@ -299,7 +299,7 @@ forge status                       # 任务管道：应显示两道门禁
 
 欢迎提 Issue 和 PR。开发时注意：
 
-1. **门禁先行** —— 任何源码变更走 `forge task` 两道门禁（implement → complete，`review pass` 是 complete 的硬前置）；不经任务的改动不被质量评分追踪。
+1. **门禁先行** —— 任何源码变更走 `forge task` 两道门禁（implement → complete，`review pass` 是 complete 的硬前置）；不经任务的改动不会被 task 门禁与完成记录追踪。
 2. **注释双语** —— Go godoc 采用形式 A（英文段 → 空 `//` → 中文段），中文不删、不单语；行内注释与字符串字面量不动。
 3. **审查闭环** —— 提交前派独立只读子 agent 跑 code-review-gate 双轨（AI 作弊 + 工程规范），`forge review pass` 标记后才能过 task-complete 门禁。
 4. **提交纪律** —— 提交源码与手维护文档（`docs/reference/` 下的参考文档是测试硬依赖，
@@ -316,7 +316,7 @@ forge status                       # 任务管道：应显示两道门禁
 | [定位与设计依据](docs/design/positioning.md) | 为什么是确定性门禁而不是模型自检 |
 | [中文使用指南](READMEs/README.zh-CN.md) | 面向国内用户的安装 / 日常 / 多宿主精简指南 |
 | [项目主页](homepage/index.md) | 一分钟简介 + 核心能力速览 |
-| [评估数据约定](evals/README.md) | skill eval 黄金 case 集与盲测迭代纪律 |
+| [历史评测数据](evals/README.md) | 3.0 前 skill eval 的黄金 case 集存档（评测命令已移除） |
 
 ## License
 

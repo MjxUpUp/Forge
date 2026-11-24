@@ -1,5 +1,7 @@
 # evals/ — skill eval 数据资产
 
+> 状态：历史。3.0（core-only）起 `forge skills` 与评测命令已移除，本目录只作黄金 case 集存档，文中命令不可再执行。
+
 本目录是 skill eval 闭环中**进 VCS、可评审**的那部分数据。机器产物（runs/baselines）默认落 `~/.forge/evals`，CI 上用 `forge skills --dir evals ...` 指向本目录。
 
 ## 目录语义

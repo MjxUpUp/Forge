@@ -9,7 +9,7 @@
 AI 编码是一个循环：写代码 → 运行 → 读反馈 → 修正 → 再写。这个循环由 coding agent（Claude Code、Codex）驱动，**Forge 不替代循环本身**——它补上循环最容易缺的两层：
 
 - **验证层** — 每一轮产出物经门禁检验：编译通过、验收判据可执行且未空匹配、证据可封印、测试现状可核对（`forge test ledger`）、命令面与文档一致（`forge docs closure`）。循环跑得越快，越需要自动化验证兜底，而不是靠人盯着。
-- **状态层** — 跨循环的任务状态：2 道门禁（实现 → 完成，验收在两者之间实跑 `verify-acceptance`）、活跃任务追踪、门禁历史。"做到哪了 / 是否达标"有持久化、可审计的记录，而不是只活在 agent 的上下文里（上下文一压缩就丢）。
+- **状态层** — 跨循环的任务状态：2 道门禁（实现 → 完成，验收在两者之间由 `forge task verify-acceptance` 实跑；change 侧用 `forge change verify`）、活跃任务追踪、门禁历史。"做到哪了 / 是否达标"有持久化、可审计的记录，而不是只活在 agent 的上下文里（上下文一压缩就丢）。
 
 换言之，coding agent 负责**跑循环**，Forge 负责**让每一轮循环产出可信、状态可追**。Forge 是 deterministic 的——范围是 "deterministic where code can verify"：行为/意图正确性是任何传感器的 remit 之外，那部分留给 review 与人。验证的判据与证据链归产品而非模型厂商，所以这一层不随模型代际贬值——模型变强时该删的是脚手架（feedforward），不是传感器（feedback）。
 

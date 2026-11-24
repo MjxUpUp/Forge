@@ -90,6 +90,7 @@ forge change verify demo       # 实跑判据并封印证据到 evidence/<UTC>/
 | `forge docs <lint\|closure>` | 文档结构闸 / 命令面与活文档漂移闸 |
 | `forge test <ledger\|record\|probe>` | 测试账本（四态）、导入 go test -json 记录、增量变异探针 |
 | `forge compat <snapshot\|check>` | 兼容快照盘点与比对 |
+| `forge version` / `forge next` / `forge on` / `forge off` / `forge review` | 版本、下一步、接管开/关、评审记录（完整表见 docs/reference/cli.md） |
 
 ### 任务管理
 
