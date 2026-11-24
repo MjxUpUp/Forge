@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### ⚠ 破坏性变化（core-only，2026-11-24）
+
+* **命令面从 200 条收窄到 87 条**：旧时代命令组整组删除——`act`、`bridge`、`config`、`conventions`、`dashboard`、`enforcement`、`eval`、`gate`、`harness`、`health`、`migrate`、`node`、`policy`、`project`、`registry`、`skill`、`skills`、`trace`、`trust`、`update`、`verify`、`workspace`、`worktree` 均已删除（运行得到 `unknown command`）。保留 `init / on / off / version / next / status / change / task / review / docs / impact / test / compat`。
+* **技能脚手架整包移除**：`internal/cliskills`（约 3.2k 行）与 `skillintegrate`/`skillmetrics`/`skillscanonical`/`skillsdecisions`/`skillsdist`/`skillseval`/`skillsfm`/`skillsqa`/`skilltrigger` 等包及其测试删除（合计约 14k 行）；`skills/` 与 `skills-forge/` 的 SKILL.md 内容目录保留，由 `TestSkillsContentDirs` 守卫结构。
+* **评测与导出体系删除**：`internal/aatout`、`internal/otelout`、`internal/evalsuite`、`internal/artifactchain`、`internal/datamerge`、`internal/dashboard`、`internal/bridgeverify`、`internal/projectsync`、`internal/skillcap`、`internal/userconfig` 删除；checklog 保留为审计事实源。
+* **18 个宿主时代检查名移除**（bash-guard / file-sentinel / scope-drift / artifact-chain / hook-infra 等），`TestNoHostEraCheckNames` 防止它们被加回。
+* **文档随之收窄**：`docs/plans`、`docs/surveys` 与 22 份历史设计删除；`docs/design/compat-commitments.md` 只承诺 3.0 仍在的三面（数据面/命令面/分发面），历史裁决移到 `docs/archive/compat-rulings-2026.md`；`forge docs closure` 的守卫面扩到 README/npm/homepage/READMEs/design/compliance/migration，历史设计用「状态：历史」标记豁免。
+
+### Bug Fixes
+
+* **判据选择器空匹配不再假绿**：`change verify` 与 `task verify-acceptance` 对 `-run` 指向不存在测试、`no test files`、`-v` 下无 `=== RUN` 的 go test 输出判负（`internal/criteria`）。
+* **测试账本不再把条件跳过当噪声**：`forge test ledger` 只把无条件的 `t.Skip` 算作 skipped；`if`/`switch`/循环分支里的平台闸门单列为「条件跳过」。
+
 ## [3.0.1](https://github.com/MjxUpUp/Forge/compare/v3.0.0...v3.0.1) (2026-11-20)
 
 

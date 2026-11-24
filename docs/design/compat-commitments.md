@@ -1,92 +1,53 @@
 # Forge 兼容承诺表（compat commitments）
 
-状态：生效中（自首个含本文档的发版起；证据链：机制史调研报告（内部调研，2026-10-15 起原件已不可复核） §六/§八，K8s deprecation policy / PEP 387 / GODEBUG 形态先例）。
+状态：生效中（3.0 core-only 收窄后）。历史裁决与预算记账已移入 [docs/archive/compat-rulings-2026.md](../archive/compat-rulings-2026.md)。
 
-本文是 forge 对外的兼容契约——三向 × 三档承诺矩阵 + 门禁文案契约。机械执法点：`forge compat snapshot/report`（七面盘点——六面 + 外部桥契约面 bridges，见 compat-bridge-face.md；任何面变更显式过 golden）；`TestNpmPlatformVersionsAligned`（分发对齐）；导入侧版本偏移警示（`sync-version-skew`）。
+本文是 forge 对外的兼容契约——三向 × 三档承诺矩阵 + 门禁文案契约。机械执法点：`forge compat snapshot` / `forge compat check`（七面盘点，任何面变更显式过 golden）；分发面另有 `TestNpmPlatformVersionsAligned`（wrapper 与平台子包版本对齐）。
 
-## 零、2.0 的破坏性收窄（读旧文档前先看这段）
+## 零、先看：破坏性收窄的历史（读旧文档前必看）
 
-2.0 起 Forge 只做「验证与状态层」：门禁降为两道（`task-implement`、`task-complete`），
-产物改三份（`goal.md` / `change.md` / `acceptance.md`，`tasks.md` 可选），
-`task-verify`、`task doc-review`、`task mutation`、`task artifact`、`task chain-init`、
-`forge selfcheck`、`eval artifact-drill` 已删除；`review pass` 只接受新的 `--reviewer`。
-
-旧的多产物布局（四份/五份时代）与已删命令仍可读（老 change 按老规则 verify/gate），但不再生成。
+- **2.0**：forge 只做「验证与状态层」——门禁降为两道（`task-implement`、`task-complete`），产物改三份（`goal.md` / `change.md` / `acceptance.md`，`tasks.md` 可选），`task-verify`、`task doc-review`、`task mutation`、`task artifact`、`task chain-init`、`forge selfcheck`、`forge eval artifact-drill` 已删除。
+- **3.0（core-only）**：删除宿主接线、评测体系、看板、多仓同步与一批项目生命周期命令组（`act`、`bridge`、`config`、`conventions`、`dashboard`、`enforcement`、`eval`、`gate`、`harness`、`health`、`migrate`、`node`、`policy`、`project`、`registry`、`skill`/`skills`、`trace`、`trust`、`update`、`verify`、`workspace`、`worktree`）。因此**宿主面与多机同步面退出承诺矩阵**，本表只剩数据面、命令面、分发面三向。完整清单与替代物见 `CHANGELOG.md` 与 `spec/changes/archive/20261124-core-only`。
+- 老 change 的旧布局仍可读（按老规则 verify/gate），但不再生成。
 
 ## 一、三向 × 三档承诺矩阵
 
 | 方向 \ 档位 | 强承诺（破坏即 bug） | 弱承诺（尽力 + 行为变更公告） | 不承诺（显式排除） |
 |---|---|---|---|
-| **对下：数据面**（checklog.jsonl / toollog / TaskState / heldout 侧车） | 已落盘数据永远可读：append-only + legacy 字段兜底 + 惰性重推导；**序列化键只增不删不改名**（compat golden 守卫） | 语义推导规则可随版本演进（同一行数据在不同版本读出的 Strength 可变——审计视角的已知属性，见调研 dive_06 T3） | 历史行的显示排版/未文档化内部字段 |
-| **对下：命令面**（CLI 命令与 flag） | 命令与 flag **只增不删不改名**（compat golden 守卫；删除/改名须走下节的预告流程） | flag 语义收紧（advisory→blocked）按文案契约带预告版本 | 输出文本排版（porcelain 可变，Git 惯例）；退出码契约：0=过 / 2=BLOCKED / 1=故障 |
-| **对侧：多机同步**（forge-sync bundle） | 导入幂等 + 原样保留（AppendEntries 不重签）；bundle manifest 携带 forge_version | 前向偏移（新 bundle 入旧节点）警告不硬拒（K8s 偏移窗口语义；旧节点 re-export 裁剪较新字段的风险已显性化） | 跨版本字段透传（类型化反序列化会丢弃未知键——建议升级本机 forge 后再转发放） |
-| **对上：宿主面**（12 宿主接线） | 未知 hook 事件/未知 stdin 字段不崩不脏（宽容读）；接线幂等（重装不毁用户已有 hooks）；单宿主方言错误不污染他宿主归因 | 新宿主能力机会式跟进（按发版节奏） | 跟随宿主 experimental 特性的稳定性；宿主自身回归（如 v2.0.31 hooks 全失效） |
-| **分发面**（npm） | wrapper 与平台子包版本逐版本互锁（CI 守卫 TestNpmPlatformVersionsAligned） | release-please 驱动 semver | — |
+| **对下：数据面**（checklog.jsonl / toollog / TaskState） | 已落盘数据永远可读：append-only + legacy 字段兜底 + 惰性重推导；**序列化键只增不删不改名**（compat golden 守卫） | 语义推导规则可随版本演进（同一行数据在不同版本读出的 Strength 可变——审计视角的已知属性） | 历史行的显示排版 / 未文档化内部字段 |
+| **对下：命令面**（CLI 命令与 flag） | 命令与 flag **只增不删不改名**（compat golden 守卫；删除/改名须走 §二 的预告流程） | flag 语义收紧（advisory→blocked）按 §二 文案契约带预告版本 | 输出文本排版（porcelain 可变，Git 惯例）；退出码契约固定：0=过 / 2=BLOCKED / 1=故障 |
+| **分发面**（npm） | wrapper 与平台子包版本逐版本互锁（CI 守卫 `TestNpmPlatformVersionsAligned`） | release-please 驱动 semver | — |
 
 ## 二、门禁文案契约（advisory → blocked 的预告纪律）
 
-依据 PEP 387（"警告文本必须写明预计生效版本+反馈渠道"是 Python 的硬要求）与 K8s 承诺矩阵形态：
+1. **新增 BLOCKED 门禁的拒绝文案必须包含其一**：①预告版本（「自 vX.Y 起 advisory 转 blocked」——仅当该门禁曾以 advisory 形态发布过）；②「首发即 blocked」声明 + 指向本文档（无存量暴露则无预告义务）。
+2. **时间承诺**：已发布的 advisory 门禁转 blocked，**预告期 ≥2 个 minor 版本**，期间文案持续显示预告版本。
+3. **逃生舱纪律**：阻断位点必须有 `FORGE_*` env 逃生或 per-task override（现行清单以 `compat.EscapeEnvs` 为准，当前 9 个），逃生留 checklog 痕 + evidence 强度封顶 Weak；豁免行携带 reason/owner 元数据。只想拦截「命令组合形态」的门禁（合规形态即放行）不强制配独立逃生舱——放行被禁形态本身就等于取消门禁。
+4. **机械执法**：`forge compat check` 的 blocking-sites 面使新增 BLOCKED 位点在 golden diff 里显式可见——新增须同时更新本文档或 `CHANGELOG.md` 的行为变更节。
+5. **阻断正当性分类（单一真相源）**：一处阻断只有落进下表某一类才正当，并须满足该类的必备约束；落不进任何一类的只能 advisory。判别顺序自上而下、命中即停：拦的是命令组合形态 → ③；放行权须在人 → ⑤；拦的是时机或顺序而非交付内容 → ④；证据或评测本身不成立 → ②；交付声明缺可核验的事实或记录 → ①。（早期的「⑥ 宿主提升」类已随宿主层在 2.x 移除，历史文本见 archive。）
 
-1. **新增 BLOCKED 门禁的拒绝文案必须包含其一**：①预告版本（"自 vX.Y 起 advisory 转 blocked"——若该门禁曾以 advisory 形态发布过）；②"首发即 blocked"声明 + 指向本文档（若门禁与含它的版本同首发，无存量暴露则无预告义务）。
-2. **时间承诺**：已发布的 advisory 门禁转 blocked，**预告期 ≥2 个 minor 版本**（PEP 387 口径；期间文案持续显示预告版本）。
-3. **逃生舱纪律**：第 5 条 ①② 类 BLOCKED 门禁必须有 `FORGE_*` env 或 per-task override 逃生舱，经 §三 裁决的显式出口命令或无逃生裁决除外（③–⑥ 类的出口约束见第 5 条表；形态门禁豁免见本条末），逃生留 checklog 痕 + evidence 封顶 Weak；豁免行携带 reason/owner 元数据（v1 简化：reason 为机制枚举值——`per-task override` / `env`——尚无自由文本 `--reason` flag，owner 在 env 逃生时记 "env" 而非委托任务；升级为设计文档 P1-2 的后续项）。**形态门禁豁免（2026-09-10 裁决）**：拒绝「命令组合形态」而非「操作本身」的门禁（合规形态即放行、拒绝文案指明放行形态）**不强制**配独立逃生舱——放行被禁形态本身的逃生舱等于取消门禁；是否配置按存量暴露风险自选（F.2a hazard confirm 链式分离：新形态无存量、不配；C gate-cmd-form：存量脚本可能嵌门禁连刷、保留 env 逃生 `FORGE_GATE_CMD_FORM=0` 作过渡，无 per-task override）。两例均见 docs/design/harness-fixes-a-g-2026-09.md。
-4. **机械执法**：`forge compat report` 的 blocking-sites 面使新增 BLOCKED 位点在 golden diff 里显式可见——新增须同时更新本文档或 CHANGELOG 行为变更节，否则 report 以 warn 提示。
-5. **阻断正当性分类（单一真相源，2026-10-22 起）**：一处阻断只有落进下表某一类才正当，并须满足该类的必备约束；落不进任何一类的只能 advisory。新增 BLOCKED 位点的提案须写明所属类别。第 1、2 条（拒绝文案与预告期）对 ①–⑤ 类中新增或由 advisory 转硬的位点都生效（⑥ 不适用，裁决见 §三 2026-10-22 逃生舱审计与裁决批），下表「必备约束」只列各类特有项。判别顺序（自上而下，命中即停）：底层规则是 advisory、只因某个宿主上 advisory 不构成行为约束而按宿主升为阻断 → ⑥（按项目履历升硬的复发升硬不属此类，归 ①）；拦的是命令组合形态（合规形态即放行）→ ③；放行权须在人（高危或越权操作本身，或其未经人工确认的悬账）→ ⑤；拦的是动作的时机或顺序而非交付内容（门禁未按序推进、门禁间无工作；不含快照过期、上游未交付与审查前置，它们是交付内容缺事实或记录）→ ④；证据或评测本身不成立（伪造、评测设计不合法，或团队档下证据包来源不可核验；不含时效过期；不论在哪个时点拦）→ ②；交付声明（门禁、verify、complete 时点）缺可核验的事实或记录 → ①；其余会话或流程动作（Stop、Edit、commit 时点）→ ④。（§三 较早条目里的 ①②③ 是裁决序号，与本表类别号无关。）其他文档里的「HARD 只守事实」「BLOCKED 仅用于证据造假 / 评测自身不合法」是对 ①② 类的局部口径，冲突时以本表为准。
-
-   | 类别 | 何时正当 | 必备约束 | 现行代表位点 |
-   |---|---|---|---|
-   | ① 事实缺失 | 交付声明缺可机器核验的事实或记录：验收未实跑或快照过期、缺配对测试且零断言、改 SKILL.md 未记决策、需求未被验收覆盖、文档回检或代码审查未记录、checklist 未勾完、上游依赖未交付；项目在 testing / scope 维度复发低分后，本任务仍缺配对测试或实改严重超出 PlanScope（复发升硬） | 逃生舱（env 或 per-task override），逃生留 checklog 并封顶 evidence Weak；或经 §三 裁决的显式出口命令（代码审查前置、checklist、上游依赖三处，见 2026-10-22 逃生舱审计与裁决批；出口须留 checklog 审计行，缺的登记为已知例外） | acceptance-gate、test-coverage 兜底、skill-decisions、req-coverage、doc gate、task-complete 前置（审查、checklist）、上游依赖未交付（verify 与 complete 两处）、复发升硬（testing、scope 两支） |
-   | ② 证据不合法 | 证据或评测自身不成立：held-out 逃逸、自报验证命令与 toollog 不符、评测 preflight 不合法、跨机导入的证据包签名不符；团队档 require-signed 下证据包缺签名或签名者未登记（来源不可核验） | 同 ①；签名不符经 §三 裁决无逃生（逃生等于接受伪造）；require-signed 拒收的出口是 `forge trust require-signed off`（签名缺失时只有这一条）或 `forge trust add`（签名者未登记时）；出口无审计行，见已知例外 | held-out cheat-suspect、self-report、eval preflight、bundle 验签（签名不符与 require-signed 拒收两处） |
-   | ③ 形态 | 拒绝命令组合形态而非操作本身，合规形态即放行 | 按第 3 条形态门禁豁免，可不配独立逃生舱；拒绝文案须写明放行形态 | gate-cmd-form（1.67 起，会话上限 5）、hazard confirm 链式分离 |
-   > 2026-11-17（1.88 激进减法）：`task-verify`、doc gate、test-coverage 兜底、req-coverage、artifact-chain、mutation 复发门禁均已删除；下表相关行仅作历史记录，现行承诺以 README 与 `docs/reference/cli.md` 为准。
-
-   | ④ 流程节奏 | 防门禁空转或脱离任务流程：门禁间无工作、未读即改、任务分支外提交、Stop 时有未提交代码变更、非 task 模式未审查即停、门禁未按序推进 | 须有会话阻断上限（超限回落 advisory）或明确出口命令；有逃生 env 的须留审计行 | work-activity、read-before-edit、task-drift（上限 5）、task-verify Stop（上限 3）、review-stop（审查轮次上限 3）、前置门禁顺序 |
-   | ⑤ 安全 HITL | 高危或越权操作及其未经人工确认的悬账，放行权在人 | 出口须由用户发起（hazard confirm 机械校验真人终端）；env 逃生若有，只用于误报止血或无人 CI，并留审计行 | hazard-guard、hazard-pending、freeze-guard、项目级 `.forge/*` 与 `.claude/settings*` 自保护 |
-   | ⑥ 宿主提升 | 宿主上 advisory 不构成行为约束，把它提升为阻断：(a) advisory 通道物理失效，或 (b) 通道送达但 advisory 被实证无视（`internal/hostcap/hostcap.go` PromoteAdvisory 的两条准入路径） | 只作用于 hostcap 登记的宿主；文案须标明是宿主提升，底层规则仍按 advisory 计；逃生 `FORGE_ADVISORY_PROMOTION=soft`（仅 kimi 的 `FORGE_KIMI_ADVISORY=soft` 随 kimi 提升退役而不再起作用） | task-guard 在 dsh/zcode 上（路径 b） |
-
-   已知例外（与上表约束不符，待补或待裁决，修复前不得被新提案援引为先例）：
-   - freeze-guard 与项目级自保护（⑤）：`forge freeze --off` 等出口没有真人终端校验，只靠协议约束。
-   - checklist 与上游依赖的显式出口（①）：`forge task checklist drop` 直接从任务状态删除该项、`forge task abort --detach-deps` 摘掉下游的依赖边，两者都不写 checklog——待补审计行。
-   - bundle require-signed 拒收（②）：出口 `forge trust require-signed off` / `forge trust add` 不写 checklog——待补审计行。
-
-   2026-10-22 已处理（见 §三「逃生舱审计与裁决批」）：task-verify Stop 逃生审计、复发升硬与宿主提升入 roster、宿主提升文案、审查前置 / checklist / 上游依赖三处显式出口与 bundle 验签签名不符无逃生的裁决。
+| 类别 | 何时正当 | 必备约束 | 现行代表位点 |
+|---|---|---|---|
+| ① 事实缺失 | 交付声明缺可机器核验的事实或记录：验收未实跑或快照过期、改 SKILL.md 未记决策、需求未被验收覆盖、文档回检或代码审查未记录、checklist 未勾完、上游依赖未交付 | 逃生舱（env 或 per-task override），逃生留 checklog 并封顶 evidence Weak | acceptance-gate、skill-decisions、req-coverage、doc gate、task-complete 前置 |
+| ② 证据不合法 | 证据或评测自身不成立：held-out 逃逸、自报验证命令与 toollog 不符、评测 preflight 不合法、bundle 签名不符 | 同 ①；签名不符无逃生（逃生等于接受伪造） | held-out cheat-suspect、self-report、eval preflight |
+| ③ 形态 | 拒绝命令组合形态而非操作本身，合规形态即放行 | 按第 3 条形态门禁豁免，可不配独立逃生舱；拒绝文案须写明放行形态 | gate-cmd-form |
+| ④ 流程节奏 | 防门禁空转或脱离任务流程：门禁间无工作、未读即改、任务分支外提交 | 须有会话阻断上限（超限回落 advisory）或明确出口命令 | work-activity、task-drift（上限 5） |
+| ⑤ 安全 HITL | 高危或越权操作及其未经人工确认的悬账，放行权在人 | 出口须由用户发起（真人终端执行） | task-tree-guard 的错树写入拦截 |
 
 ## 三、生效口径与存量处理
 
-- 本契约自首个含本文档的版本生效。本批新增门禁（held-out / self-report / gate push 等）与契约同版本首发——按第 2 节②无预告义务；1.50.0 及更早的已发布版本不含它们，无存量用户暴露。
-- 既有逃生舱（FORGE_TEST_COVERAGE / FORGE_WORK_ACTIVITY / FORGE_ACCEPTANCE_GATE / FORGE_DOC_GATE / FORGE_SKILL_DECISIONS / FORGE_SELF_REPORT / FORGE_HELDOUT / FORGE_GATE_PUSH / FORGE_TASK_DRIFT / FORGE_TASK_VERIFY_STOP / FORGE_ADVISORY_PROMOTION，完整清单以 `compat.EscapeEnvs` 为准）：**不设 TTL**（env 传入式 = 不传即失效），但 dashboard 逃生舱库存提供永久化与 unfulfilled 候选信号（复查而非过期——调研反框架律：衰减靠复查不靠硬过期）。基础设施旋钮（非门禁逃生,不列舱位）：FORGE_HOOK_DEDUP_WINDOW（dispatch 幂等窗口,0=禁用）。
-
-### 存量处理裁决记录
-
-- **2026-11-20 drop-score 第二批（change `drop-score-2`；第一批 drop-score 见 CHANGELOG 2.3.0）**：**显式的破坏性收窄**，援引 §零 2.0 先例——「合成分」概念整体删除，不提供替代指标。① 数据面破坏：`TaskState.score` 及全部子键（`score`、`score.grade`、`score.overall`、`score.scored_at`、`score.task_ref`、`score.dimensions[]` 及其 `dimension`/`score`/`detail`）从序列化面移除（`internal/tasktypes/types.go`）；替代物是第一批已入库的 `TaskState.evidence` 事实清单（`internal/taskpipeline/evidence.go` 的 `BuildTaskEvidence`）。旧 state 里的 `score` 键按未知字段忽略；`evidence` 缺失时 complete/report 现算事实，已落盘数据仍可读。② 命令面破坏两处：`forge verify --collect-golden` flag 删除（golden case 采集随 `internal/scoring` 一起移除）；`forge task golden` 子命令删除（唯一消费者是评分输入）。③ 逃生舱面：`FORGE_RECURRENT_HARDEN` 移出 roster（复发升硬逻辑 `internal/taskpipeline/recurrent.go` 随评分链删除）。④ 零新增阻断位点、零新增命令；`forge compat report` 的 changed/removed 项即本批清单。⑤ 配置与输出面：`protocol.yml` 的 `scoring:` 段（`internal/protocol/types.go` 的 `Protocol.Scoring`，自定义 weights/thresholds）不再被读取——旧文件仍可解析（未知键忽略），但自定义权重不再生效；act 结论 JSON 的 `score`/`grade`/`dim_scores`/`low_dimensions`、dashboard pulse stats 的 `avgScore`/`medianScore`/`trend`/`gradeDist`/`lowDims`、skills 聚合的 `avgScore`、`forge task audit` 的 `score_overall` 一并移除，替代物是事实字段（`criteria`/`criteria_passed`/`red_first_*`/`review_rounds`/`escapes`/`strength`）。预告：本表 + CHANGELOG Unreleased「行为变化」节。
-- **2026-10-24 task-tree-guard 批（设计 docs/design/task-tree-guard.md）**：① 命令面 +1：`forge worktree use`（纯新增子命令；`forge worktree janitor` / `forge task finish` 行为不变）。② 新增 BLOCKED 位点两处，同批首发即 blocked、无预告义务（第二节第 1 条②）：task-guard 在「任务锚在另一棵树、当前树不是锚」时拒绝**任意已知非测试路径**的写入（`internal/hooks/embed_task.go` 读 `FORGE_TASK_OFFTREE`，exit 1；README/docs/.forge 配置一并阻断，空 `FILE_PATH` 也阻断）——这一处在 bash hook 里，属 compat 已声明边界，不进 blockings 面；三个 task gate 同判据 BLOCK（`internal/clitask/task_gate.go`，走 `taskpipeline.GateBlocked` 契约）——这 1 处进 blockings 面，所以 `compat report` 的 blockings 计数是 **+1**，与文案的「两处」差额是声明边界所致。拒绝文案都指向本文档要求的逃生 env。③ 逃生 `FORGE_TASK_TREE_GUARD=0` 入 `compat.EscapeEnvs`：关闭后不再拦，但留 `escape-hatch` 行（`escape.gate=task-tree-guard`、reason/owner），**任务评分必然封顶**（`internal/taskpipeline/scoring.go` 的 `escapeCapMaxScore`）；证据强度是否降档取决于**确定性证据占比**（`Deterministic/Total`，不是逃生次数占比）——`internal/checklog/evidence.go` 的 `EscapeDowngradedStrength` 在该占比 ≥ `escapeCapRatioFloor` 且 deterministic 条数 ≥ `escapeCapEvidenceFloor` 时保留 strong（重证据的边际逃生）。④ checks 面新增 `tree-guard`（added，非破坏；deterministic，但不入 evidence 白名单——它记录的是「拦截观测」，不是验证证据）。**它只记 off-tree 判定（门禁 BLOCK 与 hook 侧同一次错树留痕）**；关守护的逃生另记 `escape-hatch`（`escape.gate=task-tree-guard`），不复用 `tree-guard`，否则「被拦下多少」与「绕过多少」两个相反口径会混成一条。⑤ 数据面只增键：`ArtifactApproval` 增 `chain_digest`（存量审批解出空串=不做链定义判定；`internal/taskpipeline/seed_schema.go` 的 schema 种子同批填入非空值，否则 compat 的 schemas 面看不到这个键）。⑥ **默认行为的变化面比「用 `--worktree` 却回主树」更宽**，须如实记账：`forge task start` 在通用路径**无条件**写锚（`internal/clitask/task.go:768` `SetActiveTaskRef` + `:775` `worktree.BindTask`，不只在 `--worktree` 时；legacy 桥另会在主检出物化 binding，`internal/taskpipeline/state.go:276`）。因此每个任务都有活锚——在任务启动的那棵树里工作 → `ok-anchored`，放行；**放行结论与 v1.84.2 一致，但输出不再逐行一致**：本批在同一路径加了 stale 链定义提示（`internal/clitask/task_gate.go` 的 `⚠️ [chain] …`，只在审批时链定义与当前 `schema.yaml` 不同时才打，且只进 stderr 不进退出码）。换到另一棵树（手工 `git worktree add`、或既有 linked worktree 经分支探测解析，`internal/taskpipeline/state.go:245-259`）且未用 `forge worktree use` 迁移 → `off-tree` → 新增 BLOCK。这是 P1 的目标面（错树本身就是漏洞），不是副作用，但它确实扩大到「所有在任务锚树之外工作」的形态；用户的正当出口是到锚树里做或 `forge worktree use` 显式迁移。未启动任务的目录行为不变。
-
-- **2026-10-22 逃生舱审计与裁决批（方案 docs/plans/escape-rulings-doc-hygiene-2026-10.md）**：(1) task-verify Stop 有界阻断：`FORGE_TASK_VERIFY_STOP=0` 在本来会阻断时（会话限额未用完）每会话每任务写一行 escape-hatch 审计（`internal/hooks/embed_quality.go`）。代价按 ④ 类计：任务分数照常封顶，证据强度不降 Weak——与同类的 work-activity 逃生一致（`internal/checklog/evidence.go` 的 isRhythmEscapeHatch）。该阻断 2026-09-18（escape-hatch-hardening P1）由 advisory 直接转为有界阻断，未按第二节第 1、2 条预告——追认：每会话上限 3 次、超限回落 advisory、有逃生 env，风险有界；拒绝文案改为指向第二节第 5 条 ④。此追认不得被后续转硬援引。(2) 复发升硬：`FORGE_RECURRENT_HARDEN=disable` 撤下的是本来会触发的 BLOCKED，归 ① 类逃生——入 `compat.EscapeEnvs`，本来会升硬时写 escape-hatch 审计行，与其它逃生同价（分数封顶、证据 Weak，重证据任务按证据缩放豁免）；原设计「不加 Strength 惩罚」（见 `internal/taskpipeline/recurrent.go` 旧注释与 `internal/skillgen/claudemd.go` 生成的协议文本）作废，testing 与 scope 两个分支同样处理。未复发的项目关掉开关不产生审计行。(3) 宿主提升：`FORGE_ADVISORY_PROMOTION` 入 roster；提升后的 task-guard 拒绝文案标明 Host promotion 并给出逃生。⑥ 类不适用第二节第 1、2 条（预告声明与预告期）：底层规则仍是 advisory，提升只为已实证 advisory 被无视的宿主恢复约束力，且逃生 env 常备。(4) 显式出口与无逃生裁决（不补 env 逃生舱，作为第二节第 3 条的例外分别写进第 5 条 ①、② 行）：代码审查前置——出口是 `forge review pass`；task 模式下审查结论记入任务的审查轮次（非 task 模式记 stamp），同会话盖章另记 self-review 披露行；基线之后又有源码变更时须加 `--note`（复审结论）或 `--acknowledge-changes`，两者都记 WARN self-refresh 审计；两者都不封顶分数、不降证据强度，这是审查门禁的既有设计。checklist 未勾完——出口是 `forge task checklist tick` / `drop`；上游依赖未交付——出口是交付上游，或中止上游时用 `forge task abort --detach-deps` 摘掉依赖边。后两者目前不写 checklog，已登记为已知例外待补。bundle 验签（② 类）：签名不符维持无逃生——此时的逃生等于接受伪造；团队档 require-signed 拒收另有出口（`forge trust require-signed off` / `forge trust add`），出口不写审计行，已登记为已知例外。(5) 快照逃生面 +2（`FORGE_RECURRENT_HARDEN`、`FORGE_ADVISORY_PROMOTION`，added 非破坏）；零新增阻断位点、零新增命令。
-- **2026-10-22 协议文本与代码对齐批**：(1) gate-cmd-form 的「1.58 承诺未兑现」已知债销账——代码自 1.67.0 起以机械版本门 BLOCK（`internal/hookdispatch/hook_gate_cmd_form.go` 的 `gateCmdFormBlockVersion`），逃生只有 `FORGE_GATE_CMD_FORM=0`；生成的项目级协议文本、checklog 注释同批改正为 1.67、删除从未实现的 per-task override 说法。(2) test-coverage G.1「自 1.58 起阈值 3→2」预告**撤回**：预告挂了 25 个 minor 未兑现，长期悬置与第二节第 2 条「期间文案持续显示预告版本」的意图不符；收紧与否另行按第二节重新预告，本批不改行为，`testCoverageHardGateThreshold` 仍为 3，advisory 文案改为陈述现行规则并从该常量取值。(3) F.2b hazard confirm 真人化不设独立逃生舱：放行权本身在人，真人在终端执行 confirm 即出口（第二节第 5 条 ⑤）；harness-fixes-a-g 设计中的 `--hazard-agent-confirm` override 不实现，教 agent 自行 confirm 的协议、hook 与 skill 文案同批改为「请用户在自己的终端运行」。本批零新增阻断位点、零新增命令与逃生 env。
-- **2026-10-21 评测有效性前置批（周期总纲 docs/plans/acceptance-gate-and-wedge-2026-10-proposal.md R3–R5，方案 docs/plans/eval-validity-r3-r5-2026-10.md，实现 `internal/evalkit/preflight.go` / `stats.go` / `golden.go` / `judgeaudit.go`）**：① 命令面净增 0。`forge eval run` / `eval decompose` 新增 `--variants`、`eval golden run` 新增 `--release`，compat 引擎按 flags 签名整体比对判 changed/破坏性，援引 2026-09-20 裁决：纯新增、不改既有 flag 语义。② 新增 BLOCKED 位点一处：Track A preflight（带 `test_cmd` 的任务 oracle 臂未过或未声明 `oracle_cmd`、do-nothing 臂通过）拒绝启动、exit 2——属评测设计 §十许可的「评测自身不合法」，按第二节第 1 条②首发即 blocked，拒绝文案已指向本文档；逃生 `FORGE_EVAL_PREFLIGHT=skip`（已入 compat.EscapeEnvs roster，留 escape-hatch 行，scorecard Note 写明证据封顶 Weak）。存量暴露：只作用于带 `test_cmd` 且后端为 docker 的任务；仓库内唯一此类示例 `evals/forge/manifests/tb-frozen-example.yaml` 的判分本身会被 do-nothing 击穿，已同批改为检查 run 产物并补 `oracle_cmd`；只有 `command` 的 manifest 与 scripted/exec 后端标 `preflight=n/a`、行为不变。仓库外用户自写的、带 `test_cmd` 的 docker manifest 升级后可能被拦：当前外部用户为 0（周期总纲 §一第 5 条），且拒绝文案给出逃生 env，不设预告期。③ checks 面新增 `eval-preflight`、`eval-golden-test-query`（added，非破坏），观察类，不入 evidence 白名单。④ BenchTask 新增 `oracle_cmd`/`leakage_cmd`，RunSpec 新增 `variants`，GoldenCase 新增 `layer`，JudgeAuditEntry 新增 `pair_original`/`pair_swapped`；Scorecard / GoldenReport / JudgeAuditReport / DecomposeReport 只追加键——存量 manifest、用例、分数文件逐字节可读；无 `layer` 的用例集指纹不变（守卫 `TestGoldenTestLayerQueryCount` 对照已钉的 MANIFEST.sha256）。**援引边界**同 2026-09-20。
-- **2026-10-20 loop 契约 B1 批（提案 docs/plans/loop-contract-2026-10-proposal.md B1-1～B1-5，实现 `internal/taskpipeline/loopverdict.go` / `acceptance_recurrence.go` / `failnorm.go` / `loopconfig.go`）**：① 命令面净增 0。`forge task decide` 新增 `--rejected`（死路记忆），compat 引擎按 flags 签名整体比对判 changed/破坏性，援引 2026-09-20 裁决：纯新增、不改既有 flag 语义——既有 `--content/--by/--affects/--rationale` 的解析与幂等判定不变（幂等键加入 Kind，对不带新 flag 的调用 Kind 恒为空，行为逐字节一致）。② checks 面新增 `acceptance-recurrence`（added，非破坏）；Source 为 deterministic，但不入 evidence 白名单，不参与证据强度。③ 零新增阻断位点、零新增逃生 env——同因复发、预算、判词全部 advisory：verify-acceptance 每条复发各打一行 `ADVISORY:`，末尾加一行 `loop:`，退出码契约不变；`task status --json` 只追加顶层 `loop_verdict`，原有键集合与顺序不变（嵌入结构体，守卫 `TestTaskStatusJSONLoopVerdict`）。日后把预算升为 BLOCKED 须按第二节第 1 条①、第 2 条（预告期 ≥2 minor）并按第 3 条配逃生舱。④ TaskState 新增 `acceptance[].fail_history`（及嵌套 at/exit_code/fingerprint/change_hash/changed）、`decisions[].kind` 与 `history[].silent`（hook 路径记录的门禁结果标记），protocol.yml 新增 `loop:` 段——只增键，存量 state / protocol 逐字节兼容；checklog `acceptance` 聚合行 Meta 增 `passed`/`total` 两键（append-only）；`task resume/context` 与 hook 注入文本增「循环判词:」头行与【已证伪方案】节（输出文本面，不承诺）。**援引边界**同 2026-09-20。
-- **2026-10-13 理由锚点批（decision-warrant，实现 `internal/cliskills/skills_decide_warrant.go`）**：① 命令面净增 0。`forge skills decide` 新增 `--warrant`，compat 引擎按 flags 签名整体比对判 changed/破坏性，援引 2026-09-20 裁决：纯新增、不改既有 flag 语义——新校验（单行、≤512 字节）只作用于新 flag，既有 flag 的解析与校验不变。② checks 面新增 `decision-warrant`（added，非破坏）；Source 为 deterministic，但不入 evidence 白名单，不参与证据强度。③ 零新增阻断位点、零新增逃生 env——缺锚点、核验失败、run 回归均只 advisory 告警（stderr WARN；在 forge 项目内另落 checklog 行），决策照常写入、退出码不变；这是对既有 accept 调用唯一可见的变化，落在第一节命令面「不承诺」的输出文本与数据面强承诺的 checklog append-only 之内。日后升格为 BLOCKED 须按第二节第 1 条①（拒绝文案带预告版本）、第 2 条（预告期 ≥2 minor）并按第 3 条配逃生舱。④ SkillDecision 新增 `warrant` 键并在 decisions.md 渲染为 `Warrant` 字段行——只增键，无该字段的存量决策逐字节兼容（decisions.md 不属 compat golden 面，守卫为 `TestFormatDecision_NoWarrantLineWhenEmpty`）。**援引边界**同 2026-09-20。
-- **2026-10-12 设计阶段硬化批（design-stage-hardening，提案 docs/plans/design-stage-hardening-2026-10-proposal.md）**：① 命令面净增 0——方案事实核查走既有 `forge task artifact` 的新动作 `--check`（及审批附注 `--checked`），分档走 `task start --tier/--tier-reason`；compat 引擎按 flags 签名整体比对判 changed/破坏性，援引 2026-09-20 裁决：纯新增、不改既有 flag 语义。② 新增 BLOCKED 位点一处（reqtrace.go 需求覆盖）：只在用户显式把产物链 spec/design 升到 rubric 及以上档位时阻断，默认链 advisory——属第二节②「首发即 blocked」，拒绝文案已指向本文档，逃生 `FORGE_REQ_COVERAGE=disable`（已入 compat.EscapeEnvs roster）。③ TaskState 新增 `plan_scope_source` / `design_tier`，AcceptanceCriterion 新增 `traces`，ArtifactApproval 新增 `checked`——只增键，存量 state 逐字节兼容。**援引边界**同 2026-09-20。
-- **2026-09-20 纯新增 flag 的 changed 判定（assertion-dispatch 批）**：task start 新增 `--assert`/`--accept-file`、task accept 新增 `--assert`——compat 引擎按 flags 签名整体比对,纯新增也判 changed/破坏性（签名 diff 粒度无法区分「加 flag」与「改名 flag」）。裁决为可接受：① 强承诺「只增不删不改名」未破坏——本变更是**纯新增**,无删除/改名/语义收紧；② 设计上断言必须与 `--accept` 就近绑定（preceding 绑定规则）,独立命令会撕裂考卷声明的时序语义——oracle-pipeline「一律新命令避 changed」先例不适用于附着型参数；③ CHANGELOG 行为变更节已预声明,快照重钉入库。**援引边界**：此裁决只覆盖「纯新增、不改既有 flag 语义」的变更——借机收紧/改名/删除既有 flag 仍须按 §二预告流程。
-- **2026-09-18 task-drift BLOCK ratchet（机械版本门先例）**：task-drift（escape-hatch-hardening P1）1.64 以 advisory 首发,预告文案载明「自 1.66 起 advisory 转 BLOCK」,**且 ratchet 以代码内版本门机械生效**（`util.CompareVersions(version, "1.66.0")`——非 gate-cmd-form 式「文案承诺、实现另行跟进」的软预告;后者 1.58 承诺曾记为已知债,已于 1.67.0 以同款机械版本门兑现,见 2026-10-22 条）。逃生舱 `FORGE_TASK_DRIFT=0`（留 checklog escape-hatch 行,evidence 封顶 Weak）;另有**会话阻断上限 5 次**（超限自动降级 advisory——有界阻断,防 deny 死循环;CC Stop hook 8 次强制放行同哲学）。
-- **2026-09-06 死代码清扫批**：移除 4 个命令（clone check / suggest 族 / skills analyze、mine）未走 ≥2 minor 预告。可辩护依据：① 零使用证据（本机 checklog 全史无痕迹 + npm 从未发布含冻结标注的版本——冻结声明从未出海，无存量用户接触）；② 决策文档 feature-focus §2.3 冻结决议留痕在先；③ CHANGELOG 行为变更节 + 迁移指引齐备。**援引边界**：此裁决不可作为常规命令删除的先例——若无同等零使用证据，命令删除必须走预告流程。
+- 本契约自首个含本文档的版本生效。3.0 的 core-only 收窄是**显式破坏性变更**：清单、替代物与理由见 `CHANGELOG.md` 3.0 节与归档 change `spec/changes/archive/20261124-core-only`。
+- 既有逃生舱（完整清单以 `compat.EscapeEnvs` 为准）**不设 TTL**（env 传入式 = 不传即失效）。
+- 历史裁决记录（drop-score、task-tree-guard 批、逃生舱审计、纯新增 flag 判定等）按时间保存在 [docs/archive/compat-rulings-2026.md](../archive/compat-rulings-2026.md)，供审计复盘，不再逐条重述。
 
 ## 四、刻意不做（记录裁决，防重新发明）
 
-- **事前审批门禁**：DORA 实证外部审批与交付绩效负相关——用事后审计+自动化复查承接。
-- **基线文件式棘轮**（冻结存量违规）：forge 规模走 Google"先清零"路线（新门禁默认只对新任务生效）。
-- **GODEBUG 式按版本给默认行为的完整机制**：等 BLOCKED 门禁数量增长后再评估（记录时 8 个逃生舱、管理成本不成比例；2026-10-22 roster 已 21 个，已越过「增长后」——下一次新增 BLOCKED 位点的提案须附复验结论）。
+- **事前审批门禁**：DORA 实证外部审批与交付绩效负相关——用事后审计 + 自动化复查承接。
+- **基线文件式棘轮**（冻结存量违规）：forge 规模走「先清零」路线（新门禁默认只对新任务生效）。
+- **GODEBUG 式按版本给默认行为的完整机制**：等 BLOCKED 门禁数量增长后再评估（当前 9 个逃生舱，管理成本不成比例）。
 
-## 五、命令面冻结（L5 杠杆，2026-09-07 起；依据 docs/design/leverage-points-landing.md）
+## 五、命令面冻结（L5 杠杆，2026-09-07 起）
 
-- 单个 minor 内 commands **净增 ≤2**，且每个新增命令的 PR 须附设计文档链接。`forge compat report` 的 `net-added commands` 行是该预算的软仪表——只展示不强断：硬阻断命令新增会用"参数级执法"对冲冻结本身要遏制的形态（Meadows 杠杆点 12 的堆积病），预算执法走本节的评审流程。
-- 超预算须在本节追加裁决记录（援引边界与 §三存量处理裁决同格式），否则按违例评审。
-- 首发预算记账：leverage-p0 批次净增 +1（`forge eval wedge-drill`，L1 楔子演练）。
-- 1.56 批次记账：净增 +1（`forge eval harness-audit`，A–G 修复的可复算度量；设计 docs/design/harness-fixes-a-g-2026-09.md M，该设计声明本 minor 仅此一个新命令，预算用 1/2）。
-- calibrated-judge 批次记账（2026-09-20）：净增 +2（`forge eval golden harvest`、`forge review llm`，L3 校准判官/leverage-points-landing.md L3）——本 minor 预算用尽 2/2。
-- oracle-pipeline 批次裁决（2026-09，超预算）：本批计划净增 +9（阶段一 `forge task accept`/`task report`/`task chain-init`，阶段二 `task mutation`/`task fuzz`/`task edgecheck`/`task regression`，阶段三 heldout 池命令入口/`forge eval redteam`），超"单 minor 净增 ≤2"。理由：① 全部为 added 非破坏（不触碰既有命令面——加 flag 判 changed/破坏性，故一律新命令）；② 九命令同属一个能力（正确性传递链，设计 docs/design/oracle-pipeline-2026-09.md），拆 minor 拆的是一个可评审整体；③ 用户对整批方案已拍板。**援引边界**：不可作为无关命令堆积的先例——与该设计无整体关系的命令新增仍按 ≤2/minor 预算。
-- 2026-10-22 补记（按 tag 快照逐版本对比 `commands` 面得出，此前未当期记账）：
-  - 1.57 批次：净增 +3（`forge eval dead-checks`、`forge eval friction`、`forge eval rule-ledger`，下文简称 eval-dead-checks、eval-friction、eval-rule-ledger），超预算 1。三者来自不同工作项：eval-dead-checks 是 W0.1 死检查报告（docs/design/slim-w0-spec.md），eval-friction 是 W2 摩擦净值实验架，eval-rule-ledger 是 W5 规则台账（后两者经 `feat/w4w5w2-batch` 合入）。没有「同属一个能力」的理由可援引，按违例记账，不追认。
-  - 1.63 批次：净增 +3（`forge selfcheck`、`forge selfcheck pairing`、`forge selfcheck scope`），超预算 1。三者是同一个镜像自检能力的父命令与两个子命令（设计 docs/plans/discipline-first-gates-2026-09.md），追认。
-  - 1.79 批次：净增 +2（`forge eval oracle`、`forge eval oracle run`，设计 docs/design/sandbox-oracle.md），在预算内，但落在周期总纲「命令面净增 0」的周期里；周期总纲已同批登记为例外。
-  - **援引边界**：补记只说明历史，不构成「事后追认即可超预算」的先例；超预算仍须当期在本节记裁决。
+- 单个 minor 内 commands **净增 ≤2**，且每个新增命令的 PR 须附设计文档链接。`forge compat check` 的 `net-added commands` 行是该预算的软仪表——只展示不强断。
+- 超预算须在本节当期追加裁决记录（援引边界与格式同 §三），否则按违例评审。
+- 历史记账（1.56 至 1.79 各批次、含超预算违例与追认）见 [docs/archive/compat-rulings-2026.md](../archive/compat-rulings-2026.md)。

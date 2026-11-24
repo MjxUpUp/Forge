@@ -1,6 +1,6 @@
 # multi-task-concurrency：同 repo 多任务并发与任务接续总体设计
 
-状态：已落地（T1–T10，`2e1b183e`）。文中的 `internal/cli/hook.go`、`internal/cli/task.go` 已在后续拆包中分别移到 `internal/hookdispatch/`、`internal/clitask/`，行号以拆包前为准。
+状态：历史（六层并发/接续设计已在 2.x 落地；文中的 `forge config`、`forge worktree`、`forge project`、`forge harness`、`forge hazards` 等命令已随 core-only 移除）。原记录：已落地（T1–T10，`2e1b183e`）。文中的 `internal/cli/hook.go`、`internal/cli/task.go` 已在后续拆包中分别移到 `internal/hookdispatch/`、`internal/clitask/`，行号以拆包前为准。
 
 > 特性分支：`feat/multi-task-concurrency`（单一 goal；执行期拆多个任务，见 §12）。本文记录六层架构的完整设计决策与依据；代码注释只保留局部 rationale，全局权衡在这里。
 >

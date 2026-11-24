@@ -201,3 +201,5 @@ ADR:154 的三条完成判据逐条状态：① 「节点失败 → 返工 → �
 - `docs/plans/loop-contract-2026-10-proposal.md`（B0 回环耗尽放行漏洞、B1 `loop_verdict` 与 `loop:` 预算段，本 ADR 与它对齐）
 - 本地取证（仓库外，不可复核）：原 `~/.forge/projects/<key>/hazards/events.jsonl` 的 153 条事件快照，跨 23 个有事件日；`internal/hazard` 删除后该路径不再产生新数据
 - 用户反馈原话（m00078）：「当一个项目并不是 forge 接管时，我们的命令/hook/文件安全检查/代码检查仍会无脑执行……完全可以让 agent 无需明确安装我们的插件」
+
+> 注（2026-11，core-only 收窄）：上文引用的部分 `docs/design/*` 与 `docs/plans/*` 文档已随 core-only 删除（宿主层、hook、hazard、评测导出等能力一并移除）；引用保留为当时的决策依据。

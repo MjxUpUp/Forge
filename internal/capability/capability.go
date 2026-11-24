@@ -124,19 +124,54 @@ func ScanFiles(root string, files []string, cmds []agentproto.Command) ([]Drift,
 	return out, nil
 }
 
+// HistoricalMarker 是一份文档「只作历史记录」的状态行。
+// 带它的文档不参与漂移判定：里面出现的已删命令是历史记载，不是教用户怎么做。
+const HistoricalMarker = "状态：历史"
+
+// liveDocFiles 是逐份检查的活文档（用户最先读到的那几份）。
+var liveDocFiles = []string{"README.md", "AGENTS.md", "npm/README.md", "homepage/index.md"}
+
+// liveDocDirs 是整目录参与的活文档范围。
+// 2026-11 的审查发现：只收 docs/reference 与模板时，READMEs/、npm、homepage、
+// docs/design、docs/compliance 长期积累已删命令而 docs closure 一直报 0。
+var liveDocDirs = []string{
+	filepath.Join("docs", "reference"),
+	filepath.Join("docs", "design"),
+	filepath.Join("docs", "compliance"),
+	filepath.Join("docs", "migration"),
+	"READMEs",
+	filepath.Join("internal", "change", "templates"),
+}
+
+// IsHistoricalDoc 判断文档首屏是否声明了自己是历史记录。
+func IsHistoricalDoc(path string) bool {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	head := body
+	if len(head) > 4096 {
+		head = head[:4096]
+	}
+	return strings.Contains(string(head), HistoricalMarker)
+}
+
 func LiveDocs(root string) ([]string, error) {
 	var files []string
-	for _, f := range []string{"README.md", "AGENTS.md"} {
+	for _, f := range liveDocFiles {
 		if st, err := os.Stat(filepath.Join(root, f)); err == nil && !st.IsDir() {
 			files = append(files, f)
 		}
 	}
-	for _, dir := range []string{filepath.Join("docs", "reference"), filepath.Join("internal", "change", "templates")} {
+	for _, dir := range liveDocDirs {
 		walkErr := filepath.WalkDir(filepath.Join(root, dir), func(p string, d os.DirEntry, err error) error {
 			if err != nil {
 				return nil
 			}
 			if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+				return nil
+			}
+			if IsHistoricalDoc(p) {
 				return nil
 			}
 			rel, rerr := filepath.Rel(root, p)

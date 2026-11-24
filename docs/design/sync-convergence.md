@@ -1,6 +1,6 @@
 # sync-convergence：多机器数据收敛语义设计
 
-状态：部分落地——Phase 0/1 规则已实施；HLC 目前只用于展示，未作决胜键。
+状态：历史（Phase 0/1 规则已在 2.x 实施；跨机器同步命令与 `forge doctor` 已随 core-only 移除，姊妹篇 node-identity.md 已删除）。原记录：部分落地，HLC 只用于展示。
 
 > 姊妹篇：`docs/design/node-identity.md`（节点身份与信任）。本文定义每类数据在双机/多机并发写入下的**收敛规则**——这是自动同步（Phase 1）和任务租约（Phase 2）的正确性前提。代码注释只保留局部 rationale，全局权衡在这里。
 

@@ -90,3 +90,5 @@
 - docs/design/leverage-points-landing.md（L2 spec-as-gate v2 / L3 校准判官）
 - docs/design/oracle-pipeline-2026-09.md（考卷层级制/held-out 池——第 ④⑤ 步的既有落地）
 - docs/design/compat-commitments.md §三（纯新增 flag 裁决——批次 A 的命令面变更依据）
+
+> 注（2026-11，core-only 收窄）：上文引用的部分 `docs/design/*` 与 `docs/plans/*` 文档已随 core-only 删除（宿主层、hook、hazard、评测导出等能力一并移除）；引用保留为当时的决策依据。

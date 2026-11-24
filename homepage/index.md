@@ -15,15 +15,16 @@ npm install -g @agent_forge/forge
 # 2. 在仓库里声明契约 —— 只写仓库内产物，不碰 ~/.forge
 cd your-project && forge init
 
-# 3. 可选：登记进全局看板
-forge registry add .
+# 3. 立第一个 change：产物随仓库走，可审可回溯
+forge change new demo
 ```
 
 ## 核心能力
 
-- **任务级门禁** — 每个开发任务走 3 道门禁（实现 → 验证 → 完成），防跳过
+- **任务级门禁** — 每个开发任务走两道门禁（实现 → 完成），门禁是命令不是 hook，跑没跑留下证据
+- **change 证据封印** — `forge change verify` 实跑 acceptance 判据，证据绑定提交内容，改文件即失效
 - **cheat-scan 机械检测** — AI 作弊模式（断言弱化、吞错、死分支）一次判准
-- **质量评分** — 每个任务完成自动量化 score，沉淀项目级质量基线
+- **测试账本与能力面闭合** — `forge test ledger` 看测试四态（活/孤儿/被跳过/幻影），`forge docs closure` 让文档与命令树对账
 
 ## 设计定位
 
@@ -31,23 +32,23 @@ Forge = Loop Engineering 的 **验证 + 状态层**。AI 编码是一个循环�
 
 ## 设计原则
 
-执法协议的设计共识，四篇可链接的设计文档（对应 dsh 官网把理论论文放在导航位的做法——设计资产即门面）：
+执法协议的设计共识，可链接的设计文档（设计资产即门面）：
 
-- [插件哲学](../docs/design/plugin-philosophy.md) — 扩展面少而统一、静态可审计：不学"一切皆插件"，采纳 Cordis 的 disposer 契约与 seam 三分法
-- [演化纪律规范](../docs/design/evolution-discipline-norms.md) — 适应度函数门、deferred 三要素、expand-contract 迁移编舞
-- [机制加固](../docs/design/mechanism-hardening.md) — 逃生舱治理与 advisory→BLOCKED 升档承诺
-- [兼容承诺](../docs/design/compat-commitments.md) — 兼容快照棘轮（七面盘点，含外部桥契约面），数据只增不删
+- [兼容承诺](../docs/design/compat-commitments.md) — 兼容快照棘轮：数据面、命令面、分发面只增不删
+- [定位与边界](../docs/design/positioning.md) — 验证层与状态层到底覆盖什么、不覆盖什么
+- [测试账本](../docs/design/test-ledger.md) — 测试四态判定、Skip 审批、增量变异探针
+- [命令参考](../docs/reference/cli.md) — 由命令树生成的全表，与二进制同步
 
 ## 多 agent 支持
 
-Forge 不分发宿主插件、不写宿主配置：任何 agent/IDE 都在 shell 里调用同一组 `forge task` / `forge change` 命令，证据、评分与状态仍然落盘可审计。
+Forge 不分发宿主插件、不写宿主配置：任何 agent/IDE 都在 shell 里调用同一组 `forge task` / `forge change` 命令，证据与状态仍然落盘可审计。
 
 `forge init` 只写仓库内产物（`spec/forge.yaml`、`spec/changes/`、`AGENTS.md` 托管块与已存在指针），**不写** `~/.forge`、`~/.claude`、`~/.codex`。团队要 git 共享契约：提交 `spec/` 与 `AGENTS.md`。
 
 ## 真实证据
 
-- 自举（dogfood）：Forge 用 Forge 自身管住质量，每 PR 过三门禁评分
-- 真实评分 fixture：`scoring/testdata/golden_real/` 固化评分形状防算法隐性漂移
+- 自举（dogfood）：Forge 用 Forge 自身管住质量，每 PR 过两道门禁并实跑验收
+- 验收不可伪造：`forge change verify` 的判据是命令，`-run` 匹配不到测试按失败计（不会空过）
 - code-review 确定性：`forge review pass` 绑定代码快照，拒绝改码后空过
 
 ## 文档资源
@@ -55,7 +56,7 @@ Forge 不分发宿主插件、不写宿主配置：任何 agent/IDE 都在 shell
 - 主文档：[README.md](../README.md)
 - 中文精简：[READMEs/README.zh-CN.md](../READMEs/README.zh-CN.md)
 - 协议：[internal/protocol](../internal/protocol)
-- 质量协议 Skill：`forge skills list` 查看内置库（阶段 D 起 forge 不再向宿主目录分发 skill）
+- 从 1.84 及更早版本升级：[docs/migration/upgrade-from-1.84.md](../docs/migration/upgrade-from-1.84.md)
 
 ## 许可
 
