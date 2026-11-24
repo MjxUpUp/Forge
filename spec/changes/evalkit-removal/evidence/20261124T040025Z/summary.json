@@ -1,0 +1,58 @@
+{
+  "change": "evalkit-removal",
+  "started_at": "2026-11-24T04:00:25Z",
+  "finished_at": "2026-11-24T04:02:13Z",
+  "passed": true,
+  "sealed": true,
+  "head": "47b3b55ed6ffc9a10f5f7a29902a525ea1c27320",
+  "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "acceptance_sha256": "2cdbfc68685a355c2b85d7751fc3ab2fd6bb4b17adde99cc9ce5d80d02147909",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go build ./...",
+      "exit": 0,
+      "duration_ms": 2360
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go test ./internal/cli -run TestReviewHasNoLLMJudgeArm -count=1",
+      "exit": 0,
+      "duration_ms": 1755,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/compat -count=1",
+      "exit": 0,
+      "duration_ms": 721,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs closure --strict",
+      "exit": 0,
+      "duration_ms": 476,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go test ./internal/cli ./internal/change ./internal/taskpipeline -count=1",
+      "exit": 0,
+      "duration_ms": 102784,
+      "stdout_file": "05.stdout"
+    }
+  ],
+  "capability": {
+    "commands": 86,
+    "flags": 209,
+    "annotated": 21,
+    "drift_count": 0
+  }
+}
