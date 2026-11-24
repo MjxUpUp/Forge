@@ -147,4 +147,3 @@ func (p *Project) ActDir() string { return filepath.Join(p.DataDir, "act") }
 func (p *Project) ActConclusionsPath() string {
 	return filepath.Join(p.DataDir, "act", "conclusions.jsonl")
 }
-

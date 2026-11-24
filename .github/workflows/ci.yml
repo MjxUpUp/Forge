@@ -82,8 +82,8 @@ jobs:
           node-version: "22"
       - run: node --test scripts/release.test.js
 
-  # skills 质量门禁：canonical 库规范校验 + 安全审查 + plugin pack 生成物漂移 + eval 电池/互斥集。
-  # 单 job 串行跑（共享一次 build），任一失败即红。
+  # 技能内容目录门禁：core-only 删掉了 `forge skills` 脚手架，规范校验改由 Go 测试承担
+  # （每个目录必须有 SKILL.md、name 与目录同名、description 非空）。
   skills-qa:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -92,16 +92,7 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
-      - run: go build -o /tmp/forge ./cmd/forge/
-      # R1-R17 规范校验（exit 2 = 规范失败）。--canonical 指向仓库内 skills/，不走 embed。
-      - run: /tmp/forge skills validate --canonical ./skills
-      # 21 条安全规则审查；--gate：HIGH/CRITICAL 即 exit 4。
-      - run: /tmp/forge skills audit --canonical ./skills --gate
-  # 生成物漂移门禁已在阶段 D 移除（插件载荷随宿主层删除）。
-      # 再 git diff 比对——有人改了生成物源头却没重跑 pack，这里立刻红。
-      # pathspec 必须覆盖 plugins/ 下两份载荷（plugin.json/reasonix-plugin.json）
-      # ——W0.2 审查实证：只盖根级 marketplace 时载荷 stale 而 CI 绿。
-      # eval 回归电池 + 互斥集混淆矩阵。空电池/无 run 打 vacuous 提示不拦
-      # （「未检查」不是「已验证无回归」——范围诚实性，见 battery 语义）。
-      - run: /tmp/forge skills battery --dir evals --gate
-      - run: /tmp/forge skills mutex-report --dir evals --gate
+      # 技能脚手架命令（`forge skills validate/audit`）已随 core-only 删除；
+      # 内容目录的规范守卫改由 Go 测试承担：每个技能目录必须有 SKILL.md、
+      # frontmatter 的 name 与目录同名、description 非空（internal/compat）。
+      - run: go test ./internal/compat -run TestSkillsContentDirs -count=1 -v

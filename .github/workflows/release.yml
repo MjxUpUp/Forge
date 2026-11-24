@@ -42,8 +42,8 @@ jobs:
           fi
 
   # 行为级冒烟门禁（发布物在 publish 前必须真实跑过——forge 理念：验收 = 实跑
-  # 证据，不是"构建成功"）：wedge-drill 验首证据链；release-smoke 在临时仓库里
-  # 用**待发布二进制**真实建 change → 填产物 → verify 封印 → change check。
+  # 证据，不是"构建成功"）：release-smoke 在临时仓库里用**待发布二进制**真实建
+  # change → 填产物 → verify 封印 → 归档。
   # 不能只跑 `forge change check`：本仓库 change 归档后它会空跑成功退出 0，
   # 证明不了发布物可用（review-ruthless-5 P1）。goreleaser 与 npm 都在本 job
   # 之后——演练红则发布链整体不放行。
@@ -57,18 +57,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build -o /tmp/forge ./cmd/forge/
-      - run: /tmp/forge eval wedge-drill
       - run: sh scripts/checks/release-smoke.sh /tmp/forge
-      # 演练报告作为发布证据留痕（审计漏点 #3：发布过程在 forge 台账之外——
-      # 报告挂 workflow artifacts 补上可追溯载体；发布审计 = 报告 + 对账输出）。
-      - name: Upload drill reports (release evidence)
-        if: always()
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
-        with:
-          name: drill-reports
-          path: |
-            ~/.forge/evals/forge/wedge-drill-*.json
-          if-no-files-found: warn
 
   goreleaser:
     needs: [test, drill]
@@ -368,12 +357,11 @@ jobs:
           git push -u origin "$BRANCH" && gh pr create --base main --head "$BRANCH" \
             --title "chore(release): npm-align pins 对齐 $VER" \
             --body "发布后自动对齐 npm pins（发布 workflow 收尾步；合并后下一轮发版从对齐态起步）"
-      # 装机行为级验收（版本对上 ≠ 行为对）：用户真实安装路径上跑双 drill——
-      # 首证据链 + 产物链证据完整性。npm 包自带二进制，这里跑的就是用户会拿到的
-      # 那个二进制（v1.52.0 发版审计：装机验证曾只验版本号，行为级缺口）。
+      # 装机行为级验收（版本对上 ≠ 行为对）：用户真实安装路径上跑发布冒烟——
+      # 临时仓库里建 change → verify → 归档。npm 包自带二进制，这里跑的就是用户
+      # 会拿到的那个二进制（v1.52.0 发版审计：装机验证曾只验版本号）。
       - name: Behavioral smoke on installed binary
         run: |
-          forge eval wedge-drill
           sh scripts/checks/release-smoke.sh forge
       # 签名验证闭环（审计漏点 #1：cosign 只签不验）——goreleaser keyless 签的
       # checksums.txt 必须有人验过才算供应链证据。identity 匹配本仓 workflow 的

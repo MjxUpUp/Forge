@@ -283,4 +283,3 @@ func TestSummarize_EmptyStrengthGuard(t *testing.T) {
 		t.Errorf(`TotalTasks=%d want 2（空 Strength 任务仍计入总数）`, s.TotalTasks)
 	}
 }
-

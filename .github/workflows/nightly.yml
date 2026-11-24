@@ -11,8 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  # E2E 回归 + 装机一致性 smoke：每日在 fresh runner 上验证「用户真实装机路径」
-  # （PR CI 只跑单元测试，不覆盖 init/doctor/分发漂移这条链）。
+  # 全量回归 + 能力面闭合 + 发布物行为冒烟：每日在 fresh runner 上跑一次
+  # PR CI 覆盖不到的面（文档漂移、测试账本、临时仓库里的 change→verify→归档）。
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -22,18 +22,12 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build -o /tmp/forge ./cmd/forge/
-      # E2E 回归场景（fresh-install / upgrade 等）。
-      - run: /tmp/forge verify --regression
-      # 先装机（用户级零项目写入），后续 doctor/drift-check 才有检查对象。
-      - run: /tmp/forge init
-      # 装机后环境一致性 smoke。
-      - run: /tmp/forge doctor
-      # 分发分叉检测（canonical vs 已分发）。
-      - run: /tmp/forge skills drift-check
-      # 行为级演练（隔离环境脚本化断言）：首证据链 + 产物链分档执法——每日行为
-      # 回归，补 PR CI 只跑单元测试的缺口（v1.52.0 发版审计：产物链行为级零
-      # 覆盖，drill 沉淀后此处常态跑）。
-      - run: /tmp/forge eval wedge-drill
+      # 全量单元/集成（PR CI 走平台矩阵，nightly 再跑一次全量，防时序相关回归）。
+      - run: go test ./... -count=1
+      # 能力面闭合：命令树与活文档的漂移（core-only 之后是主要回归面）。
+      - run: /tmp/forge docs closure --strict
+      # 测试账本：执行记录与真实测试的偏差（phantom/orphaned）。
+      - run: /tmp/forge test ledger
       # 发布物行为级冒烟（1.88 激进减法删除了 artifact-drill）：在临时仓库里用
       # 构建出的二进制真实建 change→verify→change check。本仓库 change 全归档时
       # `forge change check` 会空跑成功退出 0，不能替代这一步。

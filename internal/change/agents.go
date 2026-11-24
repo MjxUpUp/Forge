@@ -71,6 +71,7 @@ func AgentsBlockBody(opts AgentsOptions) (string, error) {
 	}
 	return agentproto.Stamp(body, opts.Version), nil
 }
+
 // managedBlock 是"标记包住的一段由代码维护的文字"。
 type managedBlock struct {
 	begin, end, body string
