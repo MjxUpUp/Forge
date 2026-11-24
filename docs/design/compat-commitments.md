@@ -15,7 +15,7 @@
 | 方向 \ 档位 | 强承诺（破坏即 bug） | 弱承诺（尽力 + 行为变更公告） | 不承诺（显式排除） |
 |---|---|---|---|
 | **对下：数据面**（checklog.jsonl / toollog / TaskState） | 已落盘数据永远可读：append-only + legacy 字段兜底 + 惰性重推导；**序列化键只增不删不改名**（compat golden 守卫） | 语义推导规则可随版本演进（同一行数据在不同版本读出的 Strength 可变——审计视角的已知属性） | 历史行的显示排版 / 未文档化内部字段 |
-| **对下：命令面**（CLI 命令与 flag，自 3.0.1 起） | 命令与 flag **只增不删不改名**（compat golden 守卫；删除/改名须走 §二 的预告流程；历史删除见 §零） | flag 语义收紧（advisory→blocked）按 §二 文案契约带预告版本 | 输出文本排版（porcelain 可变，Git 惯例）；退出码契约固定：0=过 / 2=BLOCKED / 1=故障 |
+| **对下：命令面**（CLI 命令与 flag，自 4.0.0 起） | 命令与 flag **只增不删不改名**（compat golden 守卫；删除/改名须走 §二 的预告流程；历史删除见 §零） | flag 语义收紧（advisory→blocked）按 §二 文案契约带预告版本 | 输出文本排版（porcelain 可变，Git 惯例）；退出码契约固定：0=过 / 2=BLOCKED / 1=故障 |
 | **分发面**（npm） | wrapper 与平台子包版本逐版本互锁（CI 守卫 `TestNpmPlatformVersionsAligned`） | release-please 驱动 semver | — |
 
 ## 二、门禁文案契约（advisory → blocked 的预告纪律）
@@ -26,7 +26,7 @@
 4. **机械执法**：`forge compat check` 的 blocking-sites 面使新增 BLOCKED 位点在 golden diff 里显式可见——新增须同时更新本文档或 `CHANGELOG.md` 的行为变更节。
 5. **阻断正当性分类（单一真相源）**：一处阻断只有落进下表某一类才正当，并须满足该类的必备约束；落不进任何一类的只能 advisory。判别顺序自上而下、命中即停：拦的是命令组合形态 → ③；放行权须在人 → ⑤；拦的是时机或顺序而非交付内容 → ④；证据或评测本身不成立 → ②；交付声明缺可核验的事实或记录 → ①。（早期的「⑥ 宿主提升」类已随宿主层在 1.85 移除，历史文本见 archive。）
 
-| 类别 | 何时正当 | 必备约束 | 代表位点（† = 已随 3.0 移除，仅作分类示例） |
+| 类别 | 何时正当 | 必备约束 | 代表位点（† = 已随 4.0 移除，仅作分类示例） |
 |---|---|---|---|
 | ① 事实缺失 | 交付声明缺可机器核验的事实或记录：验收未实跑或快照过期、改 SKILL.md 未记决策、需求未被验收覆盖、文档回检或代码审查未记录、checklist 未勾完、上游依赖未交付 | 逃生舱（env 或 per-task override），逃生留 checklog 并封顶 evidence Weak | acceptance-gate、skill-decisions、req-coverage、doc gate、task-complete 前置 |
 | ② 证据不合法 | 证据或评测自身不成立：held-out 逃逸、自报验证命令与 toollog 不符、评测 preflight 不合法、bundle 签名不符 | 同 ①；签名不符无逃生（逃生等于接受伪造） | held-out cheat-suspect、self-report、eval preflight† |

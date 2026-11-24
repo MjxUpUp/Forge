@@ -197,16 +197,16 @@ npm install -g @agent_forge/forge
 # 支持平台：macOS (x86_64/ARM64)、Linux (x86_64/ARM64)、Windows (x86_64)
 ```
 
-## ⬆️ 升级到 3.0（core-only）
+## ⬆️ 升级到 4.0（core-only）
 
-3.0 是第二次破坏性收窄：只保留核心链路，旧时代命令组整组移除。命令面从 200 条降到 87 条，技能脚手架（`internal/cliskills` 等约 14k 行）与 10 个 internal 包一并删除。
+4.0 是第二次破坏性收窄：只保留核心链路，旧时代命令组整组移除。命令面从 200 条降到 87 条，技能脚手架（`internal/cliskills` 等约 14k 行）与 10 个 internal 包一并删除。
 
 **保留**：`init / on / off / version / next / status / change / task / review / docs / impact / test / compat`。
 
 **已删除**（运行会得到 `unknown command`）：`act`、`bridge`、`config`、`conventions`、`dashboard`、`enforcement`、`eval`、`gate`、`harness`、`health`、`migrate`、`node`、`policy`、`project`、`registry`、`skill`、`skills`、`trace`、`trust`、`update`、`verify`、`workspace`、`worktree`，以及任务下的 `doc-review` / `mutation` / `artifact` / `chain-init` 子命令与 `forge selfcheck`。
 
 ```bash
-npm i -g @agent_forge/forge@latest   # 应 >= 3.0.1
+npm i -g @agent_forge/forge@latest   # 应 >= 4.0.0
 forge version
 forge docs closure                   # 命令面 87 条、drift 0
 ```
@@ -255,7 +255,7 @@ forge integrations / forge hook / forge freeze / forge doctor 已删除（1.85�
 ```bash
 # 0) 先升级二进制
 npm i -g @agent_forge/forge@latest --include=optional --registry=https://registry.npmjs.org
-forge version                      # 应 >= 3.0.1
+forge version                      # 应 >= 4.0.0
 
 # 1) 仓库里：core-only 之后没有 migrate / registry 命令，旧 .forge/ 数据保持原样即可
 #    （只是本地历史，不参与门禁判定，也不再有命令读它）
@@ -316,7 +316,7 @@ forge status                       # 任务管道：应显示两道门禁
 | [定位与设计依据](docs/design/positioning.md) | 为什么是确定性门禁而不是模型自检 |
 | [中文使用指南](READMEs/README.zh-CN.md) | 面向国内用户的安装 / 日常 / 多宿主精简指南 |
 | [项目主页](homepage/index.md) | 一分钟简介 + 核心能力速览 |
-| [历史评测数据](evals/README.md) | 3.0 前 skill eval 的黄金 case 集存档（评测命令已移除） |
+| [历史评测数据](evals/README.md) | 4.0 前 skill eval 的黄金 case 集存档（评测命令已移除） |
 
 ## License
 

@@ -4,7 +4,7 @@
 
 依据：发展方向调研（2026-09-05，dive_04 标准与合规卡位）。标准状态快照：IETF AAT -02 个人草案；OTel GenAI semconv 无 stable；OWASP ACS v0.1；AST10 v1.0 2026 版；EU AI Act 高风险义务延期至 2027-12 且 coding agent 非高风险类目；信通院评估是国内投标事实门槛。
 
-## 零、3.0 之后的证据面（先看这段，避免按旧导出器回答）
+## 零、4.0 之后的证据面（先看这段，避免按旧导出器回答）
 
 core-only 批次把评测与导出体系整体去掉了：`forge eval` 命令组、`forge skills`、`forge doctor` 均已删除，导出包 `internal/aatout`、`internal/otelout` 也已删除。因此本表**不再承诺** OTel/AAT 形状的机器导出；继续成立的证据是：
 
@@ -18,7 +18,7 @@ core-only 批次把评测与导出体系整体去掉了：`forge eval` 命令组
 
 OWASP 对 skill 供应链的缓解措施钦定了 ed25519 签名、skill inventories、hash pinning。Forge 当前只保留其中与「仓库内证据」相关的部分：
 
-| AST 条目 | 缓解要求（OWASP 口径） | Forge 对应（3.0） | 满足度 |
+| AST 条目 | 缓解要求（OWASP 口径） | Forge 对应（4.0） | 满足度 |
 |---|---|---|---|
 | AST01 Malicious Skills | 签名与来源验证 | checklog 行的 ed25519 签名字段（`sig`/`key_id`），校验入口原本是导入侧验签（`bundle-verify`）；该导入路径已随 core-only 移除，现有行仍可由 checklog 直接核对签名与版本字段 | 部分（SKILL.md 本体签名不在本仓库范围） |
 | AST02 Supply Chain | 安装源验证 | 分发面由 `TestNpmPlatformVersionsAligned` 守卫 wrapper 与平台子包对齐 | 部分（原 `forge doctor` 漂移检测已删除） |
@@ -54,6 +54,6 @@ Forge 的证据强度分级（deterministic > agent-claim）与 CAISI「agent �
 1. `forge change verify <id>`——交出 `spec/changes/<id>/evidence/<UTC>/` 目录（判据、命令、退出码、时间戳）；
 2. `forge test ledger` + `forge test record`——测试现状与实跑记录（skipped 必须带理由与审批）；
 3. `forge docs closure --strict`——命令面与活文档一致性的可复核快照；
-4. `forge compat snapshot`——七面兼容盘点，作为能力面变更的审计锚点（3.0 已发生一次收窄，见 compat-commitments §零）。
+4. `forge compat snapshot`——七面兼容盘点，作为能力面变更的审计锚点（4.0 已发生一次收窄，见 compat-commitments §零）。
 
 红线（诚实呈现）：全部标准处于早期——本表是「映射与卡位」而非「合规认证」；企业应答话术用「取证/降险/问卷通关」，不用「强制/认证」（EU 延期与 coding agent 非高风险类目已核实）。**能力已移除的行如实写「已删除」，不拿旧导出器充证据。**

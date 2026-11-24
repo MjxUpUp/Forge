@@ -74,7 +74,7 @@ Forge 不分发宿主插件、不写宿主配置：`forge` 是一个仓库内的
 - **项目未被识别** → 跑 `forge init` 声明契约（`spec/forge.yaml` 是激活判据）。
 - **`forge` 命令 not found** → npm 全局安装目录不在 PATH。`npm root -g` 看路径，加入 shell rc。
 - **门禁只有两道** → `task-implement` 与 `task-complete`；`forge review pass --reviewer <id>` 是 complete 的硬前置，同一 reviewer 不能给自己复审。
-- **3.0 之后命令变少了** → 3.0 的 core-only 批次删掉了评测、看板、多仓同步与项目生命周期等一批命令；更早的 1.85 已移除宿主层，见[从 1.84 升级](../docs/migration/upgrade-from-1.84.md)与根 README 的「3.0 / core-only」小节。
+- **4.0 之后命令变少了** → 4.0 的 core-only 批次删掉了评测、看板、多仓同步与项目生命周期等一批命令；更早的 1.85 已移除宿主层，见[从 1.84 升级](../docs/migration/upgrade-from-1.84.md)与根 README 的「4.0 / core-only」小节。
 
 ## 与英文版的差异
 

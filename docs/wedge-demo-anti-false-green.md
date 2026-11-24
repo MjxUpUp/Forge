@@ -1,21 +1,21 @@
 # Forge 演示：识破「假绿」
 
-状态：现行（2026-11 按 3.0 core-only 重写；演示命令全部在 3.0 命令面上，旧版的 mutation / trace / eval 演示已删除）。
+状态：现行（2026-11 按 4.0 core-only 重写；演示命令全部在 4.0 命令面上，旧版的 mutation / trace / eval 演示已删除）。
 
 这份文档给第一次接触 Forge 的人照着跑。三个小演示说明一件事：**命令退出 0，不等于这件事被验证过**。Forge 把这类「假绿」变成可执行的判据。全程在终端里操作，不需要 AI agent。
 
-标签：**【已实跑】** 表示 2026-11-23 在 3.0 二进制（v3.0.1-19）上照本文命令跑过，输出逐字相同；**【源码原文】** 表示未实跑，文案与源码核对过；**【推算】** 表示按源码推断，以实跑为准。
+标签：**【已实跑】** 表示 2026-11-23 在 core-only 开发期二进制（v3.0.1-19）上照本文命令跑过，输出逐字相同；**【源码原文】** 表示未实跑，文案与源码核对过；**【推算】** 表示按源码推断，以实跑为准。
 
 ## 前置
 
 - Go 工具链（演示一、二要跑 `go test`）、git 2.28+（要支持 `git init -b`）。
-- Forge ≥ 3.0.1：`npm install -g @agent_forge/forge@latest`，装完 `forge version` 确认。
+- Forge ≥ 4.0.0：`npm install -g @agent_forge/forge@latest`，装完 `forge version` 确认。
 
 两个术语：**判据**是 acceptance.md 里 bash 围栏中的命令 + 期望子串；**证据封印**指 `forge change verify` 实跑判据后写进 `spec/changes/<id>/evidence/<UTC>/` 的 stdout/stderr/exit 与 summary.json——它是 change「已验证」结论的唯一来源（task 侧的验收记录由 `forge task verify-acceptance` 落在任务状态与 checklog）。
 
 ## 演示一：`-run` 指向不存在的测试，`go test` 退 0 也算失败
 
-`go test -run NoSuchName ./...` 的退出码是 **0**，输出里只有一句 `no tests to run`。旧版 `change verify` 只看退出码，于是这种判据永远绿——它什么也没测。3.0 把它判负。
+`go test -run NoSuchName ./...` 的退出码是 **0**，输出里只有一句 `no tests to run`。旧版 `change verify` 只看退出码，于是这种判据永远绿——它什么也没测。4.0 把它判负。
 
 1. 建一个带测试的示例仓库：
 

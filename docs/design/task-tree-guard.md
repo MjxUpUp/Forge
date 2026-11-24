@@ -1,8 +1,8 @@
 # task-tree-guard：任务树的错树守护
 
-状态：已发布（判定与门禁拦截在 3.0 仍生效；宿主 hook 层与 `forge worktree use` 均已删除，差异见 §0）。
+状态：已发布（判定与门禁拦截在 4.0 仍生效；宿主 hook 层与 `forge worktree use` 均已删除，差异见 §0）。
 
-## 0. 3.0 之后的现实（读旧段落前先看）
+## 0. 4.0 之后的现实（读旧段落前先看）
 
 | 面 | 现状 |
 |---|---|
@@ -45,7 +45,7 @@
 ## 3. 门禁侧执法与逃生
 
 - 拦截点：`internal/clitask/task_gate.go` 的 `runTaskGate` 在 `TaskTreeStatus` 为 `off-tree` 时 `GateBlocked`，**在跑判据之前**拒绝——避免在一棵空树上刷出绿色证据。
-- 逃生：`FORGE_TASK_TREE_GUARD=0`（`=0` 才关）。关闭后门禁放行，但落一条 `escape-hatch` 行（`escape.gate=task-tree-guard`），任务落一条逃生记录、证据强度封顶 Weak（3.0 起没有分数，capped 不再指分数）。
+- 逃生：`FORGE_TASK_TREE_GUARD=0`（`=0` 才关）。关闭后门禁放行，但落一条 `escape-hatch` 行（`escape.gate=task-tree-guard`），任务落一条逃生记录、证据强度封顶 Weak（4.0 起没有分数，capped 不再指分数）。
 - 留痕：每次错树 BLOCK 落一条 `tree-guard` checklog 行（`Passed=false`、`Level=warn`，Meta 带 `tree_guard=off-tree`、`anchor`、`wtid`），它是**观察证据**，不进 evidence 白名单。
 - 关开关 ≠ 回到旧行为：`task status` 仍会显示 `Tree: off-tree`，checklog 仍记逃生行，证据强度仍按逃生规则封顶。
 
