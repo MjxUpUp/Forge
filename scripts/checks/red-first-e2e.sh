@@ -62,16 +62,16 @@ git commit -qm "feat: add feature"
 "$BIN" task verify-acceptance >/dev/null
 
 # 评审连续性：首轮绑定评审者，源码变更后换 id 被拒、同 id 放行。
-"$BIN" review pass --ref feat/red --reviewer e2e-reviewer --score 80 >/dev/null
+"$BIN" review pass --ref feat/red --reviewer e2e-reviewer --score 80 --criteria-reviewed 1 >/dev/null
 printf '// touched\n' >> feature.txt
 git add -A
 git commit -qm "fix: touch"
 "$BIN" task verify-acceptance >/dev/null
-if out=$("$BIN" review pass --ref feat/red --reviewer e2e-other 2>&1); then
+if out=$("$BIN" review pass --ref feat/red --reviewer e2e-other --criteria-reviewed 1 2>&1); then
   echo "red-first-e2e: 换 reviewer 应被拒绝，却通过了：$out" >&2
   exit 1
 fi
-"$BIN" review pass --ref feat/red --reviewer e2e-reviewer --score 82 >/dev/null
+"$BIN" review pass --ref feat/red --reviewer e2e-reviewer --score 82 --criteria-reviewed 1 >/dev/null
 
 "$BIN" task gate task-complete >/dev/null
 "$BIN" task complete >/dev/null
@@ -88,7 +88,7 @@ git add -A
 git commit -qm "feat: more"
 "$BIN" task gate task-implement >/dev/null
 "$BIN" task verify-acceptance >/dev/null
-"$BIN" review pass --ref feat/red-unclosed --reviewer e2e-reviewer2 --score 80 >/dev/null
+"$BIN" review pass --ref feat/red-unclosed --reviewer e2e-reviewer2 --score 80 --criteria-reviewed 1 >/dev/null
 "$BIN" task gate task-complete >/dev/null
 if out=$("$BIN" task complete 2>&1); then
   echo "red-first-e2e: 红判据未转绿时 task complete 应被拒绝，却通过了：$out" >&2
@@ -129,7 +129,7 @@ mkdir -p "$gwork"
   git add . && git commit -qm "green"
   FORGE_DATA_HOME="$data" "$BIN" task gate task-implement >/dev/null
   FORGE_DATA_HOME="$data" "$BIN" task verify-acceptance >/dev/null
-  FORGE_DATA_HOME="$data" "$BIN" review pass --ref feat/gv --reviewer e2e-gv >/dev/null
+  FORGE_DATA_HOME="$data" "$BIN" review pass --ref feat/gv --reviewer e2e-gv --criteria-reviewed 1 >/dev/null
   FORGE_DATA_HOME="$data" "$BIN" task gate task-complete >/dev/null
   FORGE_DATA_HOME="$data" "$BIN" task complete >/dev/null
 ) || { echo "red-first-e2e: go test 判据的红→绿闭环失败（-v 归一化）"; exit 1; }

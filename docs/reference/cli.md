@@ -23,7 +23,7 @@
 
 \`forge task complete\` 只做收尾记账，不放行任何新东西；\`forge task report --ref <ref>\` 出交付单。
 
-## change 的五份产物
+## change 的三份必需产物（另有 clarify 与可选 tasks）
 
 \`goal.md\`（Objective / Out of Scope / Check 三段）· \`change.md\`（改动/影响/验证）·
 \`acceptance.md\`（\`\`\`bash 围栏判据）· \`clarify.md\`（边界与非目标 + 人确认，必须 \`--by-human\`）·

@@ -24,7 +24,8 @@ if [ ! -x "$BIN" ]; then
 fi
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+# Windows 上临时目录偶尔有句柄未释放，清理失败不能把已经通过的 smoke 判成失败。
+trap 'rm -rf "$WORK" 2>/dev/null || true' EXIT
 cd "$WORK"
 
 git init -q .

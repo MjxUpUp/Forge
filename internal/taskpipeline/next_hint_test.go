@@ -6,7 +6,7 @@ import (
 )
 
 // TestNextDecision_CompleteHintMentionsFacts 钉住收尾提示的措辞：3.0 起完成面只采集事实，
-// 提示里不能再出现「评分」（internal/scoring 已删除，写评分会误导 agent 去找分数）。
+// 提示里不能再出现「评分」（评分包已删除，写评分会误导 agent 去找分数）。
 func TestNextDecision_CompleteHintMentionsFacts(t *testing.T) {
 	st := &TaskState{TaskRef: "feat/x"}
 	st.History = []TaskGateResult{

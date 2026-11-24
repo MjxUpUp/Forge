@@ -1,18 +1,20 @@
 #!/bin/sh
-# 守卫：README 必须保留从 1.84 及更早版本升级时的旧注入清理说明。
+# 守卫：从 1.84 及更早版本升级时的旧注入清理手册必须保留（2026-11 从 README 拆到
+# docs/migration/upgrade-from-1.84.md，README 只留摘要与指针）。
 # POSIX sh（dash 也能跑）：acceptance 用 `sh` 调用本脚本。
 set -eu
-f="README.md"
-[ -f "$f" ] || { echo "缺 README.md"; exit 1; }
-grep -q '从 1.84 及更早版本升级' "$f" || { echo "README 缺 1.84 迁移节"; exit 1; }
+f="docs/migration/upgrade-from-1.84.md"
+[ -f "$f" ] || { echo "缺 docs/migration/upgrade-from-1.84.md"; exit 1; }
+grep -q '从 1.84 及更早版本升级' "$f" || { echo "迁移手册缺 1.84 迁移节"; exit 1; }
+grep -q 'upgrade-from-1.84.md' README.md || { echo "README 缺迁移手册指针"; exit 1; }
 grep -q 'FORGE:START' "$f" || { echo "README 迁移节缺旧注入定位"; exit 1; }
 grep -q '\.codeium/windsurf' "$f" || { echo "README 迁移节漏 windsurf 的全局注入"; exit 1; }
 grep -q '\.kimi-code/config\.toml' "$f" || { echo "README 迁移节漏 kimi 的全局注入"; exit 1; }
 grep -q '\.cursor/hooks\.json' "$f" || { echo "README 迁移节漏 cursor 的 hook 配置"; exit 1; }
 
 # 锚点必须落在「动作行」上：文件名在表格/备份行里也会出现，只 grep 文件名会假绿。
-grep -qE '编辑 .*hooks\.json.*forge hook' "$f" \
-  || { echo "README 缺「编辑 codex hooks.json 只删 forge 条目」动作"; exit 1; }
+grep -qE 'codex/hooks\.json.*forge 与 hook' "$f" \
+  || { echo "迁移手册缺「编辑 codex hooks.json 只删 forge 条目」动作"; exit 1; }
 grep -qE '编辑 .*windsurf/hooks\.json' "$f" \
   || { echo "README 缺「编辑 windsurf hooks.json」动作"; exit 1; }
 grep -qE '编辑 .*cursor/hooks\.json' "$f" \

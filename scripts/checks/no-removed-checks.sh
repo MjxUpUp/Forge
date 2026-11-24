@@ -21,7 +21,7 @@ PATTERN='task doc-review|forge task doc-review|task mutation|forge task mutation
 
 if [ "$#" -eq 0 ]; then
   set -- README.md READMEs/README.zh-CN.md npm/README.md CONTRIBUTING.md RELEASE.md skills \
-    docs/reference internal/change/templates internal/skillintegrate/notes skills-forge
+    docs/reference internal/change/templates skills-forge
   # decisions.md 是历史决策日志，允许记录当时存在的机制。
 fi
 
@@ -45,13 +45,9 @@ for target in "$@"; do
   fi
   if [ -n "$hits" ]; then
     # 逐行判定：行内出现明确的移除措辞即免检（只豁免这一行，不是整段/整文件）。
-    hits="$(printf '%s\n' "$hits" | awk '
-      /decisions\.md:/ { next }
-      {
-        removal = ($0 ~ /已删除|已移除|已下线|已退役|已随/)
-        if (removal) next
-        print
-      }')" || true
+    # 用 grep 而不是 awk：gawk 在 LC_ALL=C 下对多字节中文正则可能匹配不到（实测
+    # 「已随」被判不匹配），grep 按字节比较稳定。
+    hits="$(printf '%s\n' "$hits" | grep -vE 'decisions\.md:|已删除|已移除|已下线|已退役|已随')" || true
   fi
   if [ -n "$hits" ]; then
     printf '%s\n' "$hits"

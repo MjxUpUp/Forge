@@ -9,8 +9,6 @@ set -euo pipefail
 files=(
   internal/cli/root.go
   internal/cli/review.go
-  internal/cli/verify.go
-  internal/cli/config.go
   internal/cli/shim_heal.go
   internal/clitask/task_continuity.go
 )
