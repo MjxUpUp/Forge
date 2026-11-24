@@ -79,10 +79,7 @@ func TestScanBlockings(t *testing.T) {
 // rosterExtraSources 登记 EscapeEnvs 中常量不在 taskpipeline 扫描面的条目
 // (env → 所在源文件)。守卫不放松:文件必须存在且字面量在场——搬家/改名/
 // 删除都会红。新增条目须带一句所在层的理由。
-var rosterExtraSources = map[string]string{
-	"FORGE_EVAL_PREFLIGHT": "../evalkit/preflight.go", // evalkit 层:Track A preflight（评测自身不合法）BLOCK 的逃生（R3）
-	// hookdispatch 层:宿主提升（dsh/zcode 把 task-guard advisory 升为阻断）的逃生（2026-10-22 入册）
-}
+var rosterExtraSources = map[string]string{}
 
 // TestEscapeRosterComplete 守卫（对抗审查 should-fix：原注释宣称源对照而实际
 // 只查非空——执法点虚设）：源扫描 taskpipeline 里 escapeDisabled 使用的

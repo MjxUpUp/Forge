@@ -1,5 +1,8 @@
 # judge-audit 采样协议（首轮 2026-09-04）
 
+> 状态：历史（2026-11）。`forge review llm` 与 `forge eval judge-audit` 已随
+> core-only / evalkit 移除而删除；本目录只保留当时的采样数据，命令不可复现。
+
 ## 样本构成（8 份）
 
 - 6 份真实文档：docs/design/ 五篇 + golden README（全部经 `forge docs lint` 0 硬失败）

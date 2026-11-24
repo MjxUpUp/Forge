@@ -156,12 +156,6 @@
       ]
     },
     {
-      "path": "forge review llm",
-      "flags": [
-        "scores"
-      ]
-    },
-    {
       "path": "forge review pass",
       "flags": [
         "criteria-reviewed",
@@ -650,7 +644,6 @@
   ],
   "escapes": [
     "FORGE_ACCEPTANCE_GATE",
-    "FORGE_EVAL_PREFLIGHT",
     "FORGE_GATE_PUSH",
     "FORGE_HELDOUT",
     "FORGE_MUTATION_TIMEOUT",
@@ -1135,14 +1128,6 @@
     {
       "file": "internal/compat/scan.go",
       "count": 1
-    },
-    {
-      "file": "internal/evalkit/preflight.go",
-      "count": 1
-    },
-    {
-      "file": "internal/evalkit/telemetry.go",
-      "count": 2
     },
     {
       "file": "internal/taskpipeline/executor_check_activity.go",

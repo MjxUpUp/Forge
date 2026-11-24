@@ -75,7 +75,6 @@ acceptance 围栏里不能用管道 \`|\`、\`||\`、后台 \`&\`、\`set +e\`�
 | \`forge on\` | — |
 | \`forge review\` | — |
 | \`forge review gate\` | --ref |
-| \`forge review llm\` | --scores |
 | \`forge review pass\` | --criteria-reviewed, --findings, --note, --reason, --ref, --reviewer, --rotate-reviewer, --score |
 | \`forge review status\` | --ref |
 | \`forge status\` | --json, --system |
