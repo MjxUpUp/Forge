@@ -1,0 +1,65 @@
+{
+  "change": "doc-truth",
+  "started_at": "2026-11-24T02:34:06Z",
+  "finished_at": "2026-11-24T02:35:49Z",
+  "passed": true,
+  "sealed": true,
+  "head": "5ef62d0a8f48f30c328944ed924b67aca9c19b78",
+  "diff_sha256": "29195fd3f843adb85cb15037c17a3bbc81bad4d084e44c920564f1f3adf83f2c",
+  "files": [
+    {
+      "path": "spec/changes/doc-truth/acceptance.md",
+      "sha256": "377c41beb9d501009f498ab241a3b4075c479c4cd8716e97e76a8e1ee0a879af"
+    }
+  ],
+  "acceptance_sha256": "377c41beb9d501009f498ab241a3b4075c479c4cd8716e97e76a8e1ee0a879af",
+  "diff_bound": true,
+  "checks": [
+    {
+      "index": 1,
+      "shell": "bash",
+      "command": "go test ./internal/capability -run TestLiveDocsCoversEntryDocs -count=1 :: --- PASS",
+      "exit": 0,
+      "duration_ms": 2035,
+      "stdout_file": "01.stdout"
+    },
+    {
+      "index": 2,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs closure --strict :: drift: 0",
+      "exit": 0,
+      "duration_ms": 1011,
+      "stdout_file": "02.stdout"
+    },
+    {
+      "index": 3,
+      "shell": "bash",
+      "command": "go test ./internal/cli -run TestNoDeadCommandHints -count=1 :: --- PASS",
+      "exit": 0,
+      "duration_ms": 8118,
+      "stdout_file": "03.stdout"
+    },
+    {
+      "index": 4,
+      "shell": "bash",
+      "command": "go test ./internal/capability ./internal/docsconsistency ./internal/change ./internal/cli -count=1 :: ok",
+      "exit": 0,
+      "duration_ms": 90412,
+      "stdout_file": "04.stdout"
+    },
+    {
+      "index": 5,
+      "shell": "bash",
+      "command": "go run ./cmd/forge docs lint README.md",
+      "exit": 0,
+      "duration_ms": 954,
+      "stdout_file": "05.stdout"
+    }
+  ],
+  "capability": {
+    "commands": 87,
+    "flags": 210,
+    "annotated": 21,
+    "drift_count": 0
+  }
+}

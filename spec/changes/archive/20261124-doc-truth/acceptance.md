@@ -21,5 +21,5 @@ go test ./internal/capability ./internal/docsconsistency ./internal/change ./int
 ```
 
 ```bash
-go run ./cmd/forge docs lint README.md :: 硬失败 0
+go run ./cmd/forge docs lint README.md
 ```
