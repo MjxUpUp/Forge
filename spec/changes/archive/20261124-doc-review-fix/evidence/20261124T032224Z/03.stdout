@@ -1,0 +1,4 @@
+ok  	github.com/MjxUpUp/Forge/internal/capability	0.089s
+ok  	github.com/MjxUpUp/Forge/internal/docsconsistency	0.049s
+ok  	github.com/MjxUpUp/Forge/internal/change	33.936s
+ok  	github.com/MjxUpUp/Forge/internal/cli	57.371s
