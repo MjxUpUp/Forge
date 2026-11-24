@@ -20,3 +20,11 @@
 ## 验证
 
 `go build ./...`；两个新守卫测试先红后绿；`go test ./internal/checklog ./internal/cli ./internal/compat` 绿；`forge docs closure --strict` drift 0；另手工实测四条未知子命令的退出码与 stderr。
+## 测试变更依据（回应 test-diff 提示）
+
+- 新增 `internal/cli/subcommand_guard_test.go`、`internal/checklog/historical_check_guard_test.go`：为本次两条新行为建守卫，先红后绿（基线 2/5）。
+- 删 `internal/checklog/eval_validity_roster_test.go`、`escape_test.go` 的 `TestWedgeDrillInRoster`：它们钉住的常量 `CheckEvalPreflight`/`CheckEvalGoldenTestQuery`/`CheckWedgeDrill` 本次删除，测试对象已不存在——不是改断言让它过，而是删掉对已删除对象的断言，改由 `TestNoHistoricalCheckNames` 反向钉住「这些名字不得回来」。
+- `evidence_test.go`：`project-sync` 用例换为 `tool-failure`（`CheckProjectSync` 已删）；legacy 兜底样例 `CheckTaskGuard` 换成 `CheckName("acceptance")`——原期望是「白名单内 + Source 为空 ⇒ deterministic」，`task-complete` 在白名单但默认 source 是 agent-claim，会改变分桶，故改用默认 deterministic 的 acceptance；期望值 3 不变。
+- `store_test.go`、`pushgate_test.go`、`verify_test.go`：只是样例检查名换名（`CheckTaskGuard`/`CheckEvalGoldenRun` → `CheckToolFailure`/`CheckReviewPass`），断言的 Level/分桶/签名语义不变。
+- `evidence_guard_test.go` 阈值 50→40、`compat_test.go` roster 阈值 30→20：随 18 个常量删除下调基线，declared 实际 45、roster 实际 22；守卫逻辑（白名单条目必须在源里声明 / roster 双向对齐）未改。
+- `escape_roster_test.go`、`meta_keys_test.go`：gofmt 空行与删除已删 MetaKey 的条目。
