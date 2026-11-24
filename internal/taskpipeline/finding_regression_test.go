@@ -2,6 +2,7 @@ package taskpipeline
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,6 +48,51 @@ func TestRequireFindingRegression_RevalidatesBinding(t *testing.T) {
 	if err := RequireFindingRegression(dir, disk, "f-re"); err == nil || !strings.Contains(err.Error(), "失效") {
 		t.Fatalf(`测试文件删除后绑定应失效: %v`, err)
 	}
+}
+
+// TestTaskChangedFilesStrict：门禁侧要能区分「真的零改动」与「git 读不出来」。
+// 非 git 目录（大量单元夹具）沿用旧行为返回空集不报错；在真仓库里返回工作树改动。
+func TestTaskChangedFilesStrict(t *testing.T) {
+	plain := t.TempDir()
+	if files, err := TaskChangedFilesStrict(plain, &TaskState{}); err != nil || len(files) != 0 {
+		t.Fatalf("非 git 目录应返回空集且无错误: files=%v err=%v", files, err)
+	}
+
+	dir := t.TempDir()
+	runGit(t, dir, "init")
+	runGit(t, dir, "config", "user.email", "t@example.com")
+	runGit(t, dir, "config", "user.name", "t")
+	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", ".")
+	runGit(t, dir, "commit", "-m", "base")
+	base := strings.TrimSpace(gitOutput(t, dir, "rev-parse", "HEAD"))
+	if err := os.WriteFile(filepath.Join(dir, "b.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, err := TaskChangedFilesStrict(dir, &TaskState{HeadCommit: base})
+	if err != nil {
+		t.Fatalf("git 仓库读改动不应报错: %v", err)
+	}
+	found := false
+	for _, f := range files {
+		if filepath.ToSlash(f) == "b.go" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("严格版应看到工作树新增 b.go，实得 %v", files)
+	}
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return string(out)
 }
 
 // TestIsGoTestFileWithTests: the three-way validation (suffix / task window /

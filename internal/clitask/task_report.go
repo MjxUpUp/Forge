@@ -281,7 +281,7 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 		suffix = "；" + strings.Join(hatchNotes, "；")
 	}
 	switch {
-	case strings.TrimSpace(state.RedFirstWaived) != "":
+	case strings.TrimSpace(state.RedFirstWaived) != "" && len(state.RedAttempts) == 0:
 		// 豁免不是「没登记」：理由必须随交付单走到评审眼前，否则显式豁免退化成静默跳过。
 		rep.RedFirstLine = "豁免登记（理由：" + strings.TrimSpace(state.RedFirstWaived) + "）——本次没有先失败证明" + suffix
 	case len(state.RedAttempts) > 0:
@@ -295,6 +295,10 @@ func buildTaskReport(root string, state *taskpipeline.TaskState) (*taskReportJSO
 			}
 		}
 		rep.RedFirstLine = fmt.Sprintf("%d 条（开工时失败 %d），其中已转绿 %d", len(state.RedAttempts), red, turned) + suffix
+		if strings.TrimSpace(state.RedFirstWaived) != "" {
+			// 既有红记录又有豁免：不能只说豁免，已有证据必须一起露出来。
+			rep.RedFirstLine += "；另有豁免登记（理由：" + strings.TrimSpace(state.RedFirstWaived) + "）"
+		}
 	case len(state.Acceptance) > 0:
 		rep.RedFirstLine = "未登记（判据开工时没失败过——测试先行的机械证据缺失；用 --accept-red 登记先失败判据）" + suffix
 	case len(hatchNotes) > 0:

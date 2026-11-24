@@ -127,7 +127,11 @@ func runTaskCompleteAt(root string, state *taskpipeline.TaskState) error {
 	// 先失败证明「已声明」pre-flight（B2）：行为类改动连 --accept-red 都没登记时，
 	// 红先绿机制根本没有输入——CheckRedFirst 只能核对已登记项是否闭合，管不了缺席。
 	// 豁免走 task start --red-first-waived "<理由>"，理由留在状态里供评审看。
-	if err := CheckRedFirstDeclared(state, taskpipeline.TaskChangedFiles(root, state)); err != nil {
+	changed, cerr := taskpipeline.TaskChangedFilesStrict(root, state)
+	if cerr != nil {
+		return fmt.Errorf("红先绿已声明检查无法进行：%w。恢复路径：确认 git 可用且仓库完整（git status）后重试", cerr)
+	}
+	if err := CheckRedFirstDeclared(state, changed); err != nil {
 		return err
 	}
 

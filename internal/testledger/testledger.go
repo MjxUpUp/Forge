@@ -175,7 +175,8 @@ func ScanDecls(root string) ([]Decl, error) {
 				hasSkip, reason, guarded := skipInfo(fn.Body)
 				if !hasSkip {
 					if h, ok := callsHelper(fn.Body, helpers); ok {
-						hasSkip, guarded = true, true
+						hs := helpers[h]
+						hasSkip, guarded = true, hs.guarded
 						reason = "经 helper 跳过（" + h + " 内含 t.Skip）"
 					}
 				}
@@ -210,24 +211,32 @@ type parsedTestFile struct {
 	file *ast.File
 }
 
-// helperSkips 找出同目录里"一定会跳过"的 helper 函数，返回 函数名 -> 理由。
+// helperSkip 是一个 helper 的跳过信息：理由，以及它内部的 Skip 是否全在
+// 条件里（决定调用点算"条件跳过"还是"无条件跳过"）。
+type helperSkip struct {
+	reason  string
+	guarded bool
+}
+
+// helperSkips 找出同目录里"可能跳过"的 helper 函数，返回 函数名 -> 信息。
 //
 // 判据很粗：非 Test* 的函数体里出现 t.Skip* 就算 helper（helper 存在的意义
-// 就是"某些条件下不起作用"，它内部必然带自己的闸门）。再跑几轮不动点，
-// 让"helper 调 helper"也能传递到调用点。
-func helperSkips(files []parsedTestFile) map[string]string {
-	own := map[string]string{}
+// 就是"某些条件下不起作用"）。再跑几轮不动点，让"helper 调 helper"也能传递
+// 到调用点。guarded 跟着传播：helper 里是无条件 Skip，调用点就必须按无条件
+// 跳过记，否则账本会把"永远不跑"洗成"条件跳过"。
+func helperSkips(files []parsedTestFile) map[string]helperSkip {
+	own := map[string]helperSkip{}
 	for _, pf := range files {
 		for _, dec := range pf.file.Decls {
 			fn, ok := dec.(*ast.FuncDecl)
 			if !ok || fn.Name == nil || strings.HasPrefix(fn.Name.Name, "Test") {
 				continue
 			}
-			if has, reason, _ := skipInfo(fn.Body); has {
+			if has, reason, guarded := skipInfo(fn.Body); has {
 				if strings.TrimSpace(reason) == "" {
 					reason = "t.Skip"
 				}
-				own[fn.Name.Name] = reason
+				own[fn.Name.Name] = helperSkip{reason: reason, guarded: guarded}
 			}
 		}
 	}
@@ -243,7 +252,7 @@ func helperSkips(files []parsedTestFile) map[string]string {
 					continue
 				}
 				if h, ok := callsHelper(fn.Body, own); ok {
-					own[fn.Name.Name] = "经 " + h + " 跳过"
+					own[fn.Name.Name] = helperSkip{reason: "经 " + h + " 跳过", guarded: own[h].guarded}
 					changed = true
 				}
 			}
@@ -256,7 +265,7 @@ func helperSkips(files []parsedTestFile) map[string]string {
 }
 
 // callsHelper 找一个函数体里对 helper 集合中函数的调用（只认裸标识符调用）。
-func callsHelper(body *ast.BlockStmt, helpers map[string]string) (string, bool) {
+func callsHelper[T any](body *ast.BlockStmt, helpers map[string]T) (string, bool) {
 	if body == nil || len(helpers) == 0 {
 		return "", false
 	}
@@ -341,6 +350,10 @@ func skipInfo(body *ast.BlockStmt) (has bool, reason string, guarded bool) {
 			}
 		case *ast.LabeledStmt:
 			walk(x.Stmt, inCond)
+		case *ast.FuncLit:
+			// t.Run/子 goroutine 里的闭包同样要扫：跳过写在闭包里也是"这条
+			// 测试可能不跑"，不能因为多了一层函数字面量就看不见。
+			walk(x.Body, inCond)
 		case *ast.GoStmt:
 			walk(x.Call, inCond)
 		case *ast.DeferStmt:
@@ -365,6 +378,11 @@ func skipInfo(body *ast.BlockStmt) (has bool, reason string, guarded bool) {
 					has = true
 					if !inCond {
 						guarded = false
+					}
+					// SkipNow 不接受理由参数：它本身不是"没写理由"，用一个
+					// 固定文案占位，避免被 缺理由 规则误判。
+					if sel.Sel.Name == "SkipNow" {
+						reason = "t.SkipNow（该 API 不接受理由）"
 					}
 					if len(x.Args) > 0 {
 						if lit, ok := x.Args[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
@@ -509,7 +527,14 @@ func Build(decls []Decl, recs []Record, opts Options) *Ledger {
 	}
 	latest := map[string]Record{}
 	for _, r := range recs {
-		key := r.Package + "." + r.Test
+		// 子测试（Test="TestFoo/sub"）是父测试的一次运行，不是独立声明：按父名
+		// 归并，否则每个 subtest 都会掉进 phantom 循环，账本被自己跑出来的记录
+		// 判成"测试已删除"。
+		name := r.Test
+		if i := strings.Index(name, "/"); i > 0 {
+			name = name[:i]
+		}
+		key := r.Package + "." + name
 		if prev, ok := latest[key]; !ok || r.At.After(prev.At) {
 			latest[key] = r
 		}

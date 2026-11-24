@@ -69,13 +69,6 @@ func TestNoDeadCommandHints(t *testing.T) {
 			return nil
 		}
 		lines := strings.Split(string(src), "\n")
-		lineOf := func(n ast.Node) string {
-			ln := fset.Position(n.Pos()).Line
-			if ln >= 1 && ln <= len(lines) {
-				return lines[ln-1]
-			}
-			return ""
-		}
 
 		if strings.HasSuffix(path, ".md") {
 			if !strings.Contains(rel, "templates/") {
@@ -105,7 +98,9 @@ func TestNoDeadCommandHints(t *testing.T) {
 			if match == "" {
 				return true
 			}
-			if benignLine(lit.Value) || benignLine(lineOf(lit)) {
+			// 只按字面量本身判豁免：同一行别处出现「已删除」也可能是无关语句，
+			// 整行豁免会把真正教用户跑死命令的文案一起放过。
+			if benignLine(lit.Value) {
 				return true
 			}
 			offenders = append(offenders, fset.Position(lit.Pos()).String()+" "+strings.TrimSpace(match))

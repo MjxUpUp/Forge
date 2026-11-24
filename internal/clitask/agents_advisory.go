@@ -35,7 +35,10 @@ func taskStartAgentsAdvisory(root string) {
 	if err != nil {
 		return
 	}
-	_, wantSHA, _ := agentproto.ParseProto(want)
+	wantBody, wantSHA, ok := agentproto.ParseProto(want)
+	if !ok || wantBody == "" {
+		return // 自己生成不出带指纹的块：没有可信的比较基准，宁可沉默也不误报 skew
+	}
 	if gotSHA == wantSHA {
 		return
 	}

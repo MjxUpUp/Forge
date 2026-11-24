@@ -76,7 +76,7 @@ func collectScopedTasks(scope taskScope, warn io.Writer) ([]projectTasks, error)
 	if scope == scopeAllProjects {
 		roots := registry.ListManaged()
 		if len(roots) == 0 {
-			return nil, fmt.Errorf(`全局视图已随 core-only 移除（forge registry 命令不存在）：去掉 --all-projects 单项目查看`)
+			return nil, fmt.Errorf(`没有已登记的其它项目（登记命令 forge registry 已随 core-only 移除，全局视图只会读到此前留下的登记记录）：去掉 --all-projects 单项目查看`)
 		}
 		return collectRoots(roots, warn), nil
 	}

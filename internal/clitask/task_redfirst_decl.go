@@ -9,7 +9,11 @@ import (
 
 // behaviorSourceExts 是「行为类改动」的判据：改到这些扩展名就要求登记先失败证明。
 // 文档、配置、脚本（.sh/.md/.yml）不算——它们没有可先失败的单元行为。
-var behaviorSourceExts = []string{".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".java", ".kt"}
+var behaviorSourceExts = []string{
+	".go", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".java", ".kt", ".kts",
+	".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".cs", ".rb", ".php", ".swift", ".scala", ".lua",
+	".dart", ".m", ".mm", ".vue", ".svelte", ".ex", ".exs", ".erl", ".hs", ".clj", ".zig",
+}
 
 // CheckRedFirstDeclared 核对「先失败证明是否已声明」：行为类改动（changed 里含源码
 // 扩展名）却一条 --accept-red 都没登记时阻断完成。

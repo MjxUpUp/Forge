@@ -159,7 +159,7 @@ func runAndJudgeCriterion(root string, c *AcceptanceCriterion, changed []string)
 		// "[no tests to run]"——只看退出码会把「测试改名/删除/换包」封印成通过。
 		if exitOK && RunSelectorMatchedNothing(c.Run, out) {
 			exitOK = false
-			out += "\n[forge] 选择器未匹配任何测试（no tests to run）：go test 退出 0 不代表被测行为跑过"
+			out += "\n[forge] 选择器未匹配任何测试（no tests to run / no test files）：go test 退出 0 不代表被测行为跑过"
 		}
 		ctx.output = out
 		output = out

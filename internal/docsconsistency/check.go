@@ -170,7 +170,7 @@ func DriftedCommands(doc string) []string {
 
 // deletedMarkers 是「该命令/能力已删除」的语境词。命中即视为历史陈述：文档在说明旧
 // 用法已不可用时必然会写出已删命令，把它报成 drift 会把迁移表判成回归。
-var deletedMarkers = []string{"已删除", "已移除", "deprecated", "removed in"}
+var deletedMarkers = []string{"已删除", "已移除", "已废弃", "removed in"}
 
 func hasDeletedMarker(line string) bool {
 	for _, m := range deletedMarkers {

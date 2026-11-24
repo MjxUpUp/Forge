@@ -9,9 +9,9 @@ import (
 // TestSelectorEmptySignals 钉住「-run 选择器空跑成功」的三类信号与两类豁免。
 //
 // 三类信号：
-//   1. go test 明确说 no tests to run（选择器没匹配到测试）；
-//   2. go test 明确说 [no test files]（包内根本没有测试文件，退出码仍是 0）；
-//   3. -v 下输出里没有任何 === RUN——执行过的测试必然打印该行，没有就是没跑到。
+//  1. go test 明确说 no tests to run（选择器没匹配到测试）；
+//  2. go test 明确说 [no test files]（包内根本没有测试文件，退出码仍是 0）；
+//  3. -v 下输出里没有任何 === RUN——执行过的测试必然打印该行，没有就是没跑到。
 //
 // 两类豁免：
 //   - (cached)：缓存命中的成功结果本来就没有 RUN 行，不能因此判负；
@@ -63,6 +63,13 @@ func TestSelectorEmptySignals(t *testing.T) {
 			name: "non go-test tool with -run flag",
 			run:  "mytool -run nightly",
 			out:  "started\nfinished\n",
+			want: false,
+		},
+		{
+			// 别的工具也会打印这句话；没有 go test 的形状信号时不猜。
+			name: "foreign tool mentioning no tests to run",
+			run:  "make -run nightly",
+			out:  "make: no tests to run for this target\n",
 			want: false,
 		},
 		{

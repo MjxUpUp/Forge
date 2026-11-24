@@ -1,10 +1,3 @@
-// Package criteria 收集"一条判据的退出码 0 到底证明了什么"的共同判定。
-//
-// change verify（change 侧 acceptance）与 task verify-acceptance（task 侧判据）
-// 跑的是同一类命令，也踩过同一个坑：go test 带了 -run 选择器却没匹配到任何测试时
-// 退出 0 并打印 "no tests to run"。只看退出码的判据会把"测试被改名/删除/换包"
-// 封印成通过。两边必须用同一份判定，否则修了一边另一边继续假绿（B1 只修了 task
-// 侧，change 侧漏了整整一批）。
 package criteria
 
 import "strings"
@@ -12,11 +5,16 @@ import "strings"
 // SelectorMatchedNothing 判断一条 go test 判据是否因为 -run 选择器没匹配到任何
 // 测试而"空跑成功"。
 //
-// 三类信号，前两类是 go 的显式输出，第三类是结构证据：
-//  1. "no tests to run" —— 选择器在某个包里一个测试都没匹配上；
-//  2. "no test files" —— 那个包根本没有测试文件（退出码同样是 0，判据等于没跑）；
-//  3. -v 下却没有任何 "=== RUN" —— go test -v 对每个执行过的测试都打印该行，
-//     没有就是没跑到（要求输出确实像 go test，避免误伤别的工具的 -run 参数）。
+// 判定必须按包读输出：go test ./... -run X 里没匹配到的包会单独打印
+// "ok <pkg> [no tests to run]"，而其他包可能真的跑了测试。只看是否出现该子串，
+// 会把"一部分包跑了"误判成整体空跑（假红）；只看退出码，又会被"一个包都没匹配"
+// 骗过（假绿）。这里的口径是：
+//  1. 单包/整体 warning "testing: warning: no tests to run" —— go 明确说选择器
+//     一个测试都没匹配上；
+//  2. 所有包结果行（ok / FAIL / ?）都带 [no tests to run] 或 [no test files] ——
+//     本次运行没有任何一个包真正执行了测试；
+//  3. -v 下输出里没有任何 "=== RUN" 或 "--- " 用例行 —— 执行过的测试必然打印
+//     这两类行，没有就是没跑到（要求输出确实像 go test，避免误伤别的工具的 -run）。
 //
 // 两类豁免：
 //   - "(cached)" —— 缓存命中的成功结果本来就没有 RUN 行，不能因此判负；
@@ -29,32 +27,77 @@ func SelectorMatchedNothing(run, output string) bool {
 	if !strings.Contains(run, "-run") {
 		return false
 	}
-	if strings.Contains(output, "no tests to run") || strings.Contains(output, "no test files") {
-		return true
-	}
 	if strings.Contains(output, "(cached)") {
 		return false
 	}
-	if !verboseGoTest(run) || !looksLikeGoTestOutput(output) {
+	results := packageResultLines(output)
+	if !looksLikeGoTestOutput(output, results) {
 		return false
 	}
-	return !strings.Contains(output, "=== RUN")
+	// 1. go 的显式整体告警：选择器一条测试都没匹配上。
+	if strings.Contains(output, "testing: warning: no tests to run") {
+		return true
+	}
+	// 2. 逐包结果行：只有"每个包都没跑测试"才算空跑。
+	if len(results) > 0 {
+		allEmpty := true
+		for _, l := range results {
+			if !strings.Contains(l, "[no tests to run]") && !strings.Contains(l, "[no test files]") {
+				allEmpty = false
+				break
+			}
+		}
+		if allEmpty {
+			return true
+		}
+	}
+	// 3. -v 但没有任何执行痕迹（"=== RUN" / "--- PASS" / "--- FAIL"）。
+	if verboseGoTest(run) && !strings.Contains(output, "=== RUN") && !strings.Contains(output, "--- ") {
+		return true
+	}
+	return false
 }
 
-// verboseGoTest 报告命令是否带 -v（含 -test.v 及其 =true/1 形式）。
+// packageResultLines 取 go test 的包结果行：以 ok / FAIL / ? 开头并跟空白。
+func packageResultLines(out string) []string {
+	var lines []string
+	for _, line := range strings.Split(out, "\n") {
+		t := strings.TrimSpace(line)
+		for _, p := range []string{"ok", "FAIL", "?"} {
+			if strings.HasPrefix(t, p) && len(t) > len(p) {
+				if c := t[len(p)]; c == ' ' || c == '\t' {
+					lines = append(lines, t)
+					break
+				}
+			}
+		}
+	}
+	return lines
+}
+
+// verboseGoTest 报告命令是否带 -v（含 -test.v 及其 =true/1 形式；=false/0 不算）。
 func verboseGoTest(run string) bool {
 	for _, f := range strings.Fields(run) {
-		if f == "-v" || strings.HasPrefix(f, "-test.v") {
+		switch {
+		case f == "-v":
 			return true
+		case f == "-test.v":
+			return true
+		case strings.HasPrefix(f, "-test.v="):
+			v := strings.TrimPrefix(f, "-test.v=")
+			return v == "true" || v == "1"
 		}
 	}
 	return false
 }
 
-// looksLikeGoTestOutput 用 go test 的输出标记判断"这是不是 go test 在说话"：
-// 成功行 "ok  "、无测试文件 "?   "、PASS 行、用例行前缀 "--- "。
-func looksLikeGoTestOutput(out string) bool {
-	for _, m := range []string{"ok  ", "ok\t", "?   ", "PASS", "--- "} {
+// looksLikeGoTestOutput 判断"这是不是 go test 在说话"：有包结果行（ok/FAIL/?），
+// 或出现 PASS / 用例行前缀 "--- "。别的工具的 -run 不会产出这些形状。
+func looksLikeGoTestOutput(out string, results []string) bool {
+	if len(results) > 0 {
+		return true
+	}
+	for _, m := range []string{"PASS", "--- ", "=== RUN", "no tests to run", "[no test files]"} {
 		if strings.Contains(out, m) {
 			return true
 		}

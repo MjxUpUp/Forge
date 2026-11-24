@@ -32,7 +32,9 @@ func collectTestState(root string, dirs []string) []PackageTestState {
 	}
 	recs, _, err := testledger.LoadRecords(filepath.Join(root, ".forge", "test-exec.jsonl"))
 	if err != nil {
-		return nil
+		// 记录文件存在但读不动（权限/损坏）：按"没有记录"降级，仍把每个目录
+		// 如实报成 orphaned。整段消失会把"没有证据"读成"没有这个问题"。
+		recs = nil
 	}
 	approvals, err := testledger.LoadSkipApprovals(filepath.Join(root, "spec", "test-skips.yaml"))
 	if err != nil {

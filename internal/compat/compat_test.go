@@ -171,8 +171,10 @@ func TestEscapeRosterComplete(t *testing.T) {
 // 双向对齐——对抗审查 should-fix：原注释宣称守卫而未实现）。
 func TestAllCheckNamesSorted(t *testing.T) {
 	names := AllCheckNames()
-	if len(names) < 20 {
-		t.Fatalf("roster 异常小: %d", len(names))
+	// 下界贴住当前清单（core-only 清掉 18 个历史名后为 22 条）：再减说明有人
+	// 又删了检查名，必须同时读一遍这里有意的删除——不然守卫会随清单一起缩水。
+	if len(names) < 22 {
+		t.Fatalf("roster 异常小: %d（core-only 后应为 22 条，删名需同步本条下界并说明）", len(names))
 	}
 	// 源对照：checklog/types.go 里 `CheckXxx CheckName = "y"` 声明集（复审
 	// 发现原实现读 internal/compat/types.go（不存在）+ 正则双重转义，双

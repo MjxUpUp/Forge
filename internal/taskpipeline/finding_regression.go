@@ -11,6 +11,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -21,6 +22,22 @@ import (
 // --with-test 校验消费（必须落在任务窗口内：改动是任务的一部分，测试同理）。
 func TaskChangedFiles(root string, state *TaskState) []string {
 	return taskChangedFiles(root, state)
+}
+
+// TaskChangedFilesStrict 是 TaskChangedFiles 的「读失败可见」版本：门禁类调用
+// （红先绿已声明检查）必须能区分「本任务真的没改文件」与「git 读不出来」——
+// 后者会让行为类改动静默绕过红先绿要求。非 git 目录（测试夹具）视为无改动、
+// 不报错，保持既有夹具行为；在 git 仓库里 diff 失败则返回错误、由调用方阻断。
+func TaskChangedFilesStrict(root string, state *TaskState) ([]string, error) {
+	if err := exec.Command("git", "-C", root, "rev-parse", "--is-inside-work-tree").Run(); err != nil {
+		return nil, nil
+	}
+	out, err := exec.Command("git", "-C", root, "diff", "--name-only", "HEAD").Output()
+	if err != nil {
+		return nil, fmt.Errorf("读本任务改动失败（git diff HEAD）：%w——改动集不可知时不能判定「没有行为改动」", err)
+	}
+	_ = out
+	return taskChangedFiles(root, state), nil
 }
 
 // IsTestFilePath 导出测试文件判定（testcoverage.go isTestFile 的单一真相源

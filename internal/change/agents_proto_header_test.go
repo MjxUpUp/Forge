@@ -6,12 +6,20 @@ import (
 
 	"github.com/MjxUpUp/Forge/internal/agentproto"
 	"github.com/MjxUpUp/Forge/internal/change"
+	_ "github.com/MjxUpUp/Forge/internal/cli" // init 注册 rootCmd 回调；缺它命令树为 nil，块里没有命令面
 	"github.com/MjxUpUp/Forge/internal/docsconsistency"
 )
 
 // 块头指纹是 skew 检测的唯一依据：没有它，agent 读到的块与二进制对不上也没人知道。
 func TestAgentsBlockCarriesProtoHeader(t *testing.T) {
-	cmds := agentproto.FromCobra(docsconsistency.CommandTree())
+	tree := docsconsistency.CommandTree()
+	if tree == nil {
+		t.Fatal("docsconsistency.CommandTree() 为 nil——cli 的 init 未注册命令树")
+	}
+	cmds := agentproto.FromCobra(tree)
+	if len(cmds) < 50 {
+		t.Fatalf("命令树只有 %d 条命令，明显没走通", len(cmds))
+	}
 	opts := change.AgentsOptions{Commands: cmds, Version: "9.9.9"}
 	dir := t.TempDir()
 
