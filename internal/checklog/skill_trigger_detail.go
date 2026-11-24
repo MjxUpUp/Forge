@@ -81,14 +81,7 @@ const (
 	TriggerModeInline = "inline"
 )
 
-// DetailForSkillTrigger 是 skill-trigger 条目的 detail 契约（写方/读方共用）。
-func DetailForSkillTrigger(skill, event, reason string) string {
-	return "skill-trigger: " + skill + " hit (event=" + event + " " + reason + ")"
-}
-
-// SkillFromTriggerDetail inverts DetailForSkillTrigger: extracts the skill name from a CheckSkillTrigger entry's Detail.
-//
-// SkillFromTriggerDetail 反转 DetailForSkillTrigger：从 CheckSkillTrigger 条目的 Detail 提取 skill 名。
+// SkillFromTriggerDetail 解析 skill-trigger 条目的 Detail，从中提取 skill 名。
 // 不匹配契约的 Detail（前缀错 / 无 marker）返回 ""——调用方跳过不可解析条目，而非崩溃或误归。与
 // DetailForSkillTrigger 同位置，使反转构造性地保持正确。
 func SkillFromTriggerDetail(detail string) string {

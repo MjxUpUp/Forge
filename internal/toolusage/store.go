@@ -116,33 +116,6 @@ func LoadForTaskAll(root, taskRef string) ([]ToolCall, error) {
 	return filtered, nil
 }
 
-// LoadAllAll reads all ToolCall entries from the active toollog and every
-// archived toollog-*.jsonl, symmetric with LoadForTaskAll / checklog.LoadAllAll.
-//
-// LoadAllAll 从 active toollog 与所有归档的 toollog-*.jsonl 读取全部 ToolCall 条目，
-// 与 LoadForTaskAll / checklog.LoadAllAll 对称——供 skill usage 与 effectiveness
-// 分析使用，使跨任务聚合（热门排名、hit×成效关联、undertrigger 候选）能扛过
-// task start 时的 Archive（它会清空 active toollog）。没有它，skills
-// usage/effectiveness 只反映当前任务。
-func LoadAllAll(root string) ([]ToolCall, error) {
-	matches, err := filepath.Glob(filepath.Join(dataDir(root), `toollog*.jsonl`))
-	if err != nil {
-		return nil, err
-	}
-	var all []ToolCall
-	for _, path := range matches {
-		calls, err := loadFromPath(path)
-		if err != nil {
-			// per-file 失败（IO/权限/文件锁占用）静默跳过：跨归档全量聚合中单个坏文件
-			// 不应让整表失败——与 LoadForTaskAll 同策略。loadFromPath 内部已对单行 JSON
-			// 损坏做 per-line 容错（json.Unmarshal 失败即 continue），这里只兜底整文件不可读。
-			continue
-		}
-		all = append(all, calls...)
-	}
-	return all, nil
-}
-
 // ToollogHasData reports whether the active toollog.jsonl exists and is
 // non-empty. loadFromPath returns nil,nil both for a missing file and an empty
 // one, so callers cannot distinguish 'telemetry never arrived' from 'telemetry

@@ -260,18 +260,6 @@ func jobStepRuns(job releaseJob) string {
 	return b.String()
 }
 
-// jobStepUses concatenates all `uses:` actions of a job's steps.
-//
-// jobStepUses 拼接 job 全部步骤引用的 action（uses:）。
-func jobStepUses(job releaseJob) string {
-	var b strings.Builder
-	for _, s := range job.Steps {
-		b.WriteString(s.Uses)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
 // TestReleaseWorkflow_TestJobIsGateSource: the test job is the source of the needs chain — if it degrades (drops go test, drops -race), the whole anti-bypass chain becomes nominal (goreleaser needs an empty test).
 //
 // TestReleaseWorkflow_TestJobIsGateSource：test job 是 needs 链的源头——

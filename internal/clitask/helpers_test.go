@@ -34,29 +34,6 @@ func captureStdout(t *testing.T, fn func()) string {
 	return <-done
 }
 
-// captureStderr 临时重定向 os.Stderr 捕获告警输出（与 cli 版同款 panic 安全收尾）。
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stderr
-	r, w, _ := os.Pipe()
-	os.Stderr = w
-	defer func() {
-		os.Stderr = old
-		w.Close()
-		r.Close()
-	}()
-	var buf bytes.Buffer
-	done := make(chan struct{})
-	go func() {
-		_, _ = io.Copy(&buf, r)
-		close(done)
-	}()
-	fn()
-	w.Close() // 触发 goroutine EOF
-	<-done    // 等待读取完成
-	return buf.String()
-}
-
 // seedTaskState 经 SaveTaskState 写真实 TaskState（mutate 回调表达状态机链式
 // 构造）——与 internal/cli/helpers_test.go 同实现，注释互指防漂移。
 func seedTaskState(t *testing.T, root, ref string, mutate func(*taskpipeline.TaskState)) {

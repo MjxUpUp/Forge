@@ -108,30 +108,7 @@ func keyFromCommonDir(resolvedGitDir string) string {
 	return hash12(h.Sum64())
 }
 
-// ResolvedGitDir returns cwd's fully-resolved `.git` common dir — the same resolution Key() performs (worktree/submodule .git file → main repo .git, EvalSymlinks, CanonicalCase).
-//
-// ResolvedGitDir 返回 cwd 完全解析后的 `.git` common dir——与 Key() 同一解析
-// （worktree/submodule 的 .git file → 主 repo .git、EvalSymlinks、CanonicalCase）。
-// 导出给 `forge project adopt`：它需要主 worktree 根（该目录的父目录）来写 ID
-// 文件，与 cwd 落在哪个 worktree 无关。错误契约与 Key 相同
-// （ErrNotInGitRepo / ErrInvalidGitFile）。
-func ResolvedGitDir(cwd string) (string, error) {
-	return resolveGitDir(cwd)
-}
-
-// KeyFromPath is the path-regime derivation: the key this repo had BEFORE any project ID existed (and would still have if the ID file were removed). adopt uses it as the migration source key.
-//
-// KeyFromPath 是路径体系推导：本项目在任何 project ID 存在之前的 key（也是 ID
-// 文件被删后将回到的 key）。adopt 用它作迁移源 key。错误契约与 Key 相同。
-func KeyFromPath(cwd string) (string, error) {
-	gitDir, err := resolveGitDir(cwd)
-	if err != nil {
-		return ``, err
-	}
-	return keyFromCommonDir(gitDir), nil
-}
-
-// resolveGitDir 是 Key/ResolvedGitDir/KeyFromPath 共享的解析主干：
+// resolveGitDir 是 Key 的解析主干：
 // FindGitRoot → .git 目录或文件解析 → EvalSymlinks → CanonicalCase。
 func resolveGitDir(cwd string) (string, error) {
 	gitRoot := FindGitRoot(cwd)

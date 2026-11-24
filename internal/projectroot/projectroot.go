@@ -25,20 +25,6 @@ import (
 	"github.com/MjxUpUp/Forge/internal/specroot"
 )
 
-// FindProject resolves cwd → *forgedata.Project (Key / Root / GitRoot / DataDir / ConfigDir).
-//
-// FindProject 解析 cwd → *forgedata.Project（Key / Root / GitRoot / DataDir /
-// ConfigDir）。成员资格按 Resolve 的顺序判定（仓库契约 → 注册表 → 遗留 .forge/）；
-// Project 本身由 forgedata.ProjectFor 推导（ConfigDir = <root>/.forge/ 存在时，
-// 否则 DataDir）。
-func FindProject() (*forgedata.Project, error) {
-	root, err := Find()
-	if err != nil {
-		return nil, err
-	}
-	return forgedata.ProjectFor(root)
-}
-
 // Find resolves the current working directory to the forge project root.
 //
 // Find 把当前工作目录解析到 forge 项目根。cwd 不在 forge 项目内时返回

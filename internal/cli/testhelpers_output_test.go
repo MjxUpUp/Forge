@@ -45,28 +45,3 @@ var repoRoot = func() string {
 		dir = parent
 	}
 }()
-
-// convWrite writes rel under root (parent dirs auto-made).
-func convWrite(t *testing.T, root, rel, content string) {
-	t.Helper()
-	full := filepath.Join(root, rel)
-	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(full, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// chdirAndRestore chdirs into dir for the duration of the test.
-func chdirAndRestore(t *testing.T, dir string) {
-	t.Helper()
-	old, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(old) })
-}
