@@ -109,31 +109,27 @@ func TestReleaseWorkflow_TagTriggered(t *testing.T) {
 func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	wf := loadReleaseWorkflow(t)
 
-	// drill：行为级冒烟门禁（wedge-drill + artifact-drill）——发布物必须真实跑过，
-	// 不是"构建成功"就发（forge 理念：验收 = 实跑证据）。排在 goreleaser 之前，
-	// 演练红则 GitHub Release 与 npm 发布整体不放行。
+	// drill：行为级冒烟门禁（release-smoke）——发布物必须在临时仓库里真实走
+	// change→填产物→verify→归档，不是"构建成功"就发（forge 理念：验收 = 实跑证据）。
+	// 排在 goreleaser 之前，冒烟红则 GitHub Release 与 npm 发布整体不放行。
 	drill, ok := wf.Jobs["drill"]
 	if !ok {
 		t.Fatal("release.yml 缺 drill job（发布前行为级冒烟——发布物必须真实跑过）")
 	}
 	drillRuns := jobStepRuns(drill)
-	for _, want := range []string{"eval wedge-drill", "release-smoke.sh"} {
-		if !strings.Contains(drillRuns, want) {
-			t.Fatalf("drill job 必须跑 %s（缺则发布链丢行为级冒烟）: %s", want, drillRuns)
-		}
+	if !strings.Contains(drillRuns, "release-smoke.sh") {
+		t.Fatalf("drill job 必须跑 release-smoke.sh（缺则发布链丢行为级冒烟）: %s", drillRuns)
 	}
-	if strings.Contains(drillRuns, "artifact-drill") {
-		t.Fatalf("drill job 不得再调用已删除的 artifact-drill: %s", drillRuns)
+	// core-only 删掉了 eval 命令组与产物链演练：drill 里再出现旧演练命令，
+	// 说明发版链没跟上命令面（CI 会红，而不是静默跑到 unknown command）。
+	for _, gone := range []string{"eval wedge-drill", "artifact-drill"} {
+		if strings.Contains(drillRuns, gone) {
+			t.Fatalf("drill job 不得再调用已删除的 %s（core-only 已移除 eval 命令组）: %s", gone, drillRuns)
+		}
 	}
 	// `forge change check` 在本仓库（change 全归档）会空跑成功，不能当发布冒烟。
 	if strings.Contains(drillRuns, "forge change check") {
 		t.Fatalf("drill job 不得只用 `forge change check`（归档后空跑，证明不了发布物可用）: %s", drillRuns)
-	}
-	// 演练报告留痕（审计漏点 #3 解法）：报告必须上传为 workflow artifacts——
-	// 发布过程在 forge 台账之外，报告是唯一可追溯载体。
-	drillUses := jobStepUses(drill)
-	if !strings.Contains(drillUses, "upload-artifact") {
-		t.Fatalf("drill job 必须以 upload-artifact 上传演练报告——发布审计载体缺失: %s", drillUses)
 	}
 
 	goreleaser, ok := wf.Jobs["goreleaser"]
@@ -228,10 +224,12 @@ func TestReleaseWorkflow_NeedsChain(t *testing.T) {
 	// 阶段 D 删除了 plugins/forge-dsh 与 scripts/verify-dsh-install.js：装机 job 不再有
 	// 「装回插件」这一步，原先的 dsh 步骤顺序/参数守卫一并退役。
 	verifyRuns := jobStepRuns(npmVerify)
-	for _, want := range []string{"eval wedge-drill", "release-smoke.sh"} {
-		if !strings.Contains(verifyRuns, want) {
-			t.Fatalf("npm-verify 必须在装机上跑 %s（装机行为级验收——只验版本号不够）: %s", want, verifyRuns)
-		}
+	if !strings.Contains(verifyRuns, "release-smoke.sh") {
+		t.Fatalf("npm-verify 必须在装机上跑 release-smoke.sh（装机行为级验收——只验版本号不够）: %s", verifyRuns)
+	}
+	// core-only 删掉了 eval 命令组：装机冒烟里再出现旧演练命令说明发版链没跟上命令面。
+	if strings.Contains(verifyRuns, "eval wedge-drill") {
+		t.Fatalf("npm-verify 不得再调用已删除的 eval wedge-drill（core-only 已移除 eval 命令组）: %s", verifyRuns)
 	}
 	// 裸 `forge change check` 在本仓库会空跑（change 全归档），装机验收要点名
 	// release-smoke.sh：它自己造 change 并实跑 verify。
