@@ -1,19 +1,56 @@
 # Changelog
 
-## Unreleased
+## [4.0.0](https://github.com/MjxUpUp/Forge/compare/v3.0.1...v4.0.0) (2026-11-24)
 
 ### ⚠ 破坏性变化（core-only，2026-11-24）
 
-* **命令面从 200 条收窄到 87 条**：旧时代命令组整组删除——`act`、`bridge`、`config`、`conventions`、`dashboard`、`enforcement`、`eval`、`gate`、`harness`、`health`、`migrate`、`node`、`policy`、`project`、`registry`、`skill`、`skills`、`trace`、`trust`、`update`、`verify`、`workspace`、`worktree` 均已删除（运行得到 `unknown command`）。保留 `init / on / off / version / next / status / change / task / review / docs / impact / test / compat`。
+* **命令面从 200 条收窄到 86 条**：旧时代命令组整组删除——`act`、`bridge`、`config`、`conventions`、`dashboard`、`enforcement`、`eval`、`gate`、`harness`、`health`、`migrate`、`node`、`policy`、`project`、`registry`、`skill`、`skills`、`trace`、`trust`、`update`、`verify`、`workspace`、`worktree` 均已删除（运行得到 `unknown command`）。保留 `init / on / off / version / next / status / change / task / review / docs / impact / test / compat`。
 * **技能脚手架整包移除**：`internal/cliskills`（约 3.2k 行）与 `skillintegrate`/`skillmetrics`/`skillscanonical`/`skillsdecisions`/`skillsdist`/`skillseval`/`skillsfm`/`skillsqa`/`skilltrigger` 等包及其测试删除（合计约 14k 行）；`skills/` 与 `skills-forge/` 的 SKILL.md 内容目录保留，由 `TestSkillsContentDirs` 守卫结构。
 * **评测与导出体系删除**：`internal/aatout`、`internal/otelout`、`internal/evalsuite`、`internal/artifactchain`、`internal/datamerge`、`internal/dashboard`、`internal/bridgeverify`、`internal/projectsync`、`internal/skillcap`、`internal/userconfig` 删除；checklog 保留为审计事实源。
 * **18 个宿主时代检查名移除**（bash-guard / file-sentinel / scope-drift / artifact-chain / hook-infra 等），`TestNoHostEraCheckNames` 防止它们被加回。
-* **文档随之收窄**：`docs/plans`、`docs/surveys` 与 22 份历史设计删除；`docs/design/compat-commitments.md` 只承诺 3.0 仍在的三面（数据面/命令面/分发面），历史裁决移到 `docs/archive/compat-rulings-2026.md`；`forge docs closure` 的守卫面扩到 README/npm/homepage/READMEs/design/compliance/migration，历史设计用「状态：历史」标记豁免。
+* **文档随之收窄**：`docs/plans`、`docs/surveys` 与 22 份历史设计删除；`docs/design/compat-commitments.md` 只承诺 core-only 后仍在的三面（数据面/命令面/分发面），历史裁决移到 `docs/archive/compat-rulings-2026.md`；`forge docs closure` 的守卫面扩到 README/npm/homepage/READMEs/design/compliance/migration，历史设计用「状态：历史」标记豁免。
 
-### Bug Fixes
+### Bug Fixes（core-only 补充）
 
 * **判据选择器空匹配不再假绿**：`change verify` 与 `task verify-acceptance` 对 `-run` 指向不存在测试、`no test files`、`-v` 下无 `=== RUN` 的 go test 输出判负（`internal/criteria`）。
 * **测试账本不再把条件跳过当噪声**：`forge test ledger` 只把无条件的 `t.Skip` 算作 skipped；`if`/`switch`/循环分支里的平台闸门单列为「条件跳过」。
+
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** 未知子命令 exit 1；清空 18 个历史检查名
+* **cli:** 删除 review llm 判官臂与 internal/evalkit
+* **core:** 只留核心命令面——删旧时代命令组、死检查名、死接线与历史计划文档
+
+### Features
+
+* **agents:** 托管块由命令树生成，带块头指纹与漂移检查 ([6888e48](https://github.com/MjxUpUp/Forge/commit/6888e48ec9d1381ff7c0f5cc4c2787578374e936))
+* **capability:** 能力面闭合表——命令树与活文档的漂移进 verify 摘要 ([20ef5a6](https://github.com/MjxUpUp/Forge/commit/20ef5a6d1d8b4e45300cb9020f1c60deac446b3c))
+* **test:** 测试账本——执行记录为真相源、Skip 需理由与审批、impact 报测试状态、增量 mutation 探针 ([61788e0](https://github.com/MjxUpUp/Forge/commit/61788e028fcfc48b1fdaa250f5abaeeef26a8fd5))
+
+
+### Bug Fixes
+
+* **agentproto:** 命令引用在标点处截断，并写明覆盖边界 ([0258201](https://github.com/MjxUpUp/Forge/commit/0258201594d178cdf74275ee9077eb47f115d4f0))
+* **agentproto:** 版本串归一成单 token，--check 只比正文指纹 ([bd03e03](https://github.com/MjxUpUp/Forge/commit/bd03e03b073162b807649aa6463596387dfdd761))
+* **ci:** 发布链断言跟上 4.0 命令面，新增 workflow 死命令守卫 ([46d03e6](https://github.com/MjxUpUp/Forge/commit/46d03e6bb2e9bb58c5c8bc3507a62537fe82c03f))
+* **ci:** 守卫脚本对齐 core-only 后的仓库现状 ([862deff](https://github.com/MjxUpUp/Forge/commit/862deffcbe50d077a65ab0afa5fe1bd9c98f6010))
+* **ci:** 清掉 canary 报出的不可达符号，发布工作流断言改用现存命令 ([384ea23](https://github.com/MjxUpUp/Forge/commit/384ea23dbcded393f052530c72143c6f9b20004b))
+* **ci:** 清掉 workflow 里的已删命令，gofmt 五个文件 ([a625507](https://github.com/MjxUpUp/Forge/commit/a625507d10a01b43771f10439f810cc48ccaf8ef))
+* **ci:** 迁移段按版本号识别——1.85–2.0 升级节的 forge hook 讲解不再误判 ([f32a335](https://github.com/MjxUpUp/Forge/commit/f32a3357a6d0238d969609b3f872bebd12431962))
+* **cli:** 未知子命令 exit 1；清空 18 个历史检查名 ([501ac36](https://github.com/MjxUpUp/Forge/commit/501ac36a6aefc4e4b38cf3c657e6d777200d6953))
+* **core:** 假绿判负、死代码/死提示清空、技能脚手架移除 ([0263a76](https://github.com/MjxUpUp/Forge/commit/0263a764b33274ef149d9d592e17845ce4dac189))
+* **core:** 收口核心清理的五条残留风险 ([69d08d2](https://github.com/MjxUpUp/Forge/commit/69d08d2de1ae716a51dd4ca324f51e4855145ea8))
+* **docsconsistency:** 「已删除」语境行豁免，迁移表不再被报成漂移 ([5ef62d0](https://github.com/MjxUpUp/Forge/commit/5ef62d0a8f48f30c328944ed924b67aca9c19b78))
+* **gate:** 默认值硬化——-run 空匹配判负、先失败证明必填、review 必须声明核对判据数 ([3e213de](https://github.com/MjxUpUp/Forge/commit/3e213ded8b97f4d3e5790000e939494e850d551f))
+* 评审修复——选择器多包判定、探针未跟踪文件、账本子测试、门禁严格化 ([a3a496c](https://github.com/MjxUpUp/Forge/commit/a3a496c1bcf518e256ff2250cb079546c6125fc6))
+
+
+### Code Refactoring
+
+* **cli:** 删除 review llm 判官臂与 internal/evalkit ([47b3b55](https://github.com/MjxUpUp/Forge/commit/47b3b55ed6ffc9a10f5f7a29902a525ea1c27320))
+* **core:** 只留核心命令面——删旧时代命令组、死检查名、死接线与历史计划文档 ([cbcfb42](https://github.com/MjxUpUp/Forge/commit/cbcfb424e5dcfe285bb4896d956beb55db0c6680))
 
 ## [3.0.1](https://github.com/MjxUpUp/Forge/compare/v3.0.0...v3.0.1) (2026-11-20)
 
